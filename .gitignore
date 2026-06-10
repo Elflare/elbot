@@ -1,0 +1,16 @@
+# Local assistant/editor state
+.codecompanion-plan/
+.serena/
+
+# Local secrets and runtime data
+.env
+config/.env
+*.db
+*.sqlite
+*.sqlite3
+
+data/logs/
+data/cron_sandbox/
+data/elbot_sessions.db
+bin/
+

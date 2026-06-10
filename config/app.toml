@@ -1,0 +1,58 @@
+# Main application config example. Relative paths are resolved from this file.
+
+[config_files]
+providers = "providers.toml"
+state = "state.toml"
+
+[storage]
+sqlite_path = "../data/elbot_sessions.db"
+
+[runtime]
+log_level = "info"
+log_retention_days = 30
+
+[maintenance.log_cleanup]
+enabled = true
+schedule = "0 3 * * *"
+
+[context]
+compact_enabled = true
+compact_trigger_ratio = 0.8
+
+[soul]
+path = "SOUL.md"
+
+[view]
+session_list_page_size = 10
+
+[commands]
+prefixes = ["/"]
+
+[tools]
+max_rounds_per_turn = 10
+
+[security]
+user_max_tool_risk = "low"
+superadmin_confirm_risk = "high"
+
+[security.superadmins]
+cli = ["local"]
+
+[session]
+non_superadmin_idle_ttl_minutes = 10
+
+[session.naming]
+trigger_step = 3
+
+[session.cleanup]
+enabled = false
+retention_days = 30
+
+[platform.cli]
+enabled = true
+
+# [platform.qqonebot]
+# enabled = false
+# ws_url = "ws://127.0.0.1:6700/"
+# access_token = "change-me"
+# trigger_keywords = ["bot"]

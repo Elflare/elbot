@@ -1,0 +1,263 @@
+package agent
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"elbot/internal/config"
+	"elbot/internal/hook"
+	"elbot/internal/llm"
+	"elbot/internal/output"
+	"elbot/internal/platform"
+)
+
+type llmCallResult struct {
+	Text      string
+	RawText   string
+	Usage     *llm.Usage
+	ToolCalls []llm.ToolCallRequest
+	Outputs   []output.Output
+	Messages  []llm.LLMMessage
+}
+
+func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.ModelSelection, messages []llm.LLMMessage, tools []llm.ToolSchema, latestUserContent string) (llmCallResult, string, error) {
+	startedAt := time.Now()
+	baseMessages := append([]llm.LLMMessage(nil), messages...)
+	requestMessages := messages
+	event, err := a.runHook(ctx, hook.Event{
+		Point:   hook.PointLLMRequestPrepared,
+		Session: hook.SessionContext{ID: sessionID},
+		LLM: hook.LLMPayload{
+			Provider: selection.Provider,
+			Model:    selection.Model,
+			Messages: requestMessages,
+			Tools:    tools,
+		},
+	})
+	if err != nil {
+		return llmCallResult{}, latestUserContent, fmt.Errorf("llm request hook: %w", err)
+	}
+	selection.Provider = event.LLM.Provider
+	selection.Model = event.LLM.Model
+	requestMessages = event.LLM.Messages
+	latestUserContent = llm.LatestUserSegmentContentText(requestMessages)
+	tools = event.LLM.Tools
+	req := llm.ChatRequest{
+		Model:    selection.Model,
+		Messages: requestMessages,
+		Tools:    tools,
+	}
+	ch, err := a.clientForProvider(selection.Provider).ChatStream(ctx, req)
+	if err != nil {
+		if shouldFallbackVision(requestMessages, err) {
+			a.notifyVisionFallbackOnce(ctx, sessionID)
+			return a.callLLM(ctx, sessionID, selection, fallbackVisionMessages(baseMessages), tools, latestUserContent)
+		}
+		a.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", err.Error())
+		a.notifyHookError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, ElapsedMS: elapsedMillis(startedAt)}}, err)
+		return llmCallResult{}, latestUserContent, fmt.Errorf("chat: %w", err)
+	}
+	var assistant strings.Builder
+	var usage *llm.Usage
+	var toolCalls []llm.ToolCallRequest
+	showReasoning := a.shouldShowCLIReasoning(ctx)
+	reasoningOpen := false
+	for chunk := range ch {
+		if chunk.Error != nil {
+			if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				content := assistant.String()
+				return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages}, latestUserContent, nil
+			}
+			if shouldFallbackVision(requestMessages, chunk.Error) {
+				a.notifyVisionFallbackOnce(ctx, sessionID)
+				return a.callLLM(ctx, sessionID, selection, fallbackVisionMessages(baseMessages), tools, latestUserContent)
+			}
+			a.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", chunk.Error.Error())
+			a.notifyHookError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, RawText: assistant.String(), Text: assistant.String(), ToolCalls: toolCalls, Usage: usage, ElapsedMS: elapsedMillis(startedAt)}}, chunk.Error)
+
+			return llmCallResult{}, latestUserContent, fmt.Errorf("chat stream: %w", chunk.Error)
+		}
+		if chunk.Usage != nil {
+			usage = chunk.Usage
+		}
+		if chunk.DeltaReasoningContent != "" && showReasoning {
+			if !reasoningOpen {
+				a.sendCLIReasoning(ctx, "[thinking] ")
+				reasoningOpen = true
+			}
+			a.sendCLIReasoning(ctx, chunk.DeltaReasoningContent)
+		}
+		for _, delta := range chunk.ToolCallDeltas {
+			toolCalls = append(toolCalls, llm.ToolCallRequest{ID: delta.ID, Name: delta.Name, Arguments: delta.Args})
+		}
+		assistant.WriteString(chunk.DeltaContent)
+	}
+	if reasoningOpen {
+		a.sendCLIReasoning(ctx, "[/thinking]\n\n")
+	}
+	elapsedMs := elapsedMillis(startedAt)
+	content := assistant.String()
+	event, err = a.runHook(ctx, hook.Event{
+		Point:   hook.PointLLMResponseReceived,
+		Session: hook.SessionContext{ID: sessionID},
+		LLM: hook.LLMPayload{
+			Provider:  selection.Provider,
+			Model:     selection.Model,
+			Usage:     usage,
+			RawText:   content,
+			Text:      content,
+			ToolCalls: toolCalls,
+			ElapsedMS: elapsedMs,
+		},
+	})
+	if err != nil {
+		return llmCallResult{}, latestUserContent, fmt.Errorf("llm response hook: %w", err)
+	}
+	usage = event.LLM.Usage
+	toolCalls = event.LLM.ToolCalls
+	a.logLLMOutput(sessionID, selection, event.LLM.Text, event.LLM.RawText, len(toolCalls), elapsedMs)
+	a.auditUsage(sessionID, selection, usage, elapsedMs)
+	return llmCallResult{Text: event.LLM.Text, RawText: event.LLM.RawText, Usage: usage, ToolCalls: toolCalls, Outputs: event.Outputs, Messages: baseMessages}, latestUserContent, nil
+}
+
+func (a *Agent) logLLMOutput(sessionID string, selection config.ModelSelection, text, rawText string, toolCallCount int, elapsedMs int64) {
+	if a.logger == nil {
+		return
+	}
+	a.logger.Info("llm output",
+		"event", "llm_output",
+		"session_id", sessionID,
+		"provider", selection.Provider,
+		"model", selection.Model,
+		"elapsed_ms", elapsedMs,
+		"text", text,
+		"raw_text", rawText,
+		"tool_call_count", toolCallCount,
+	)
+}
+
+func shouldFallbackVision(messages []llm.LLMMessage, err error) bool {
+	if err == nil || !llm.MessagesHaveImageSegment(messages) {
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	needles := []string{"image", "vision", "multimodal", "content part", "unexpected item type in content", "provided messages input is invalid", "unsupported", "does not support"}
+	for _, needle := range needles {
+		if strings.Contains(text, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func fallbackVisionMessages(messages []llm.LLMMessage) []llm.LLMMessage {
+	out := append([]llm.LLMMessage(nil), messages...)
+	for i := range out {
+		if len(out[i].Segments) == 0 {
+			continue
+		}
+		out[i].Segments = llm.TextSegments(llm.SegmentsContentText(out[i].Segments))
+	}
+	return out
+}
+
+func (a *Agent) notifyVisionFallbackOnce(ctx context.Context, sessionID string) {
+	if !a.shouldShowCLIReasoning(ctx) {
+		return
+	}
+	a.visionFallbackMu.Lock()
+	if a.visionFallbackNotified[sessionID] {
+		a.visionFallbackMu.Unlock()
+		return
+	}
+	a.visionFallbackNotified[sessionID] = true
+	a.visionFallbackMu.Unlock()
+	a.sendChat(ctx, "当前模型似乎不支持视觉，图片已按文本描述处理。\n")
+}
+
+func (a *Agent) userMessageSegments(ctx context.Context, text string) []llm.MessageSegment {
+	if msg, ok := platform.MessageContextFrom(ctx); ok && len(msg.Segments) > 0 {
+		return platformSegmentsToLLM(msg.Segments, text)
+	}
+	return llm.TextSegments(text)
+}
+
+func platformSegmentsToLLM(segments []platform.MessageSegment, fallbackText string) []llm.MessageSegment {
+	out := make([]llm.MessageSegment, 0, len(segments))
+	for _, segment := range segments {
+		switch segment.Type {
+		case platform.SegmentText:
+			if segment.Text != "" {
+				out = append(out, llm.MessageSegment{Type: llm.SegmentText, Text: segment.Text})
+			}
+		case platform.SegmentImage:
+			if segment.URL != "" {
+				out = append(out, llm.MessageSegment{Type: llm.SegmentImage, URL: segment.URL, MIMEType: segment.MIMEType, Name: segment.Name})
+			} else {
+				out = append(out, llm.MessageSegment{Type: llm.SegmentText, Text: fileSegmentText(segment.Name, "图片")})
+			}
+		case platform.SegmentFile:
+			// TODO: 后续支持语音、视频和普通文件的真实模型输入；当前统一回滚为文本描述。
+			out = append(out, llm.MessageSegment{Type: llm.SegmentFile, Text: fileSegmentText(segment.Name, segment.Text), MIMEType: segment.MIMEType, Name: segment.Name})
+		}
+	}
+	if len(out) == 0 {
+		return llm.TextSegments(fallbackText)
+	}
+	return out
+}
+
+func fileSegmentText(name, fallback string) string {
+	fallback = strings.TrimSpace(fallback)
+	if fallback == "" {
+		fallback = "文件"
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "[" + fallback + "]"
+	}
+	return fmt.Sprintf("[%s: %s]", fallback, name)
+}
+
+func (a *Agent) isCLIContext(ctx context.Context) bool {
+	if msg, ok := platform.MessageContextFrom(ctx); ok {
+		return msg.Platform == "cli"
+	}
+	return a.platform != nil && a.platform.Name() == "cli"
+}
+
+func (a *Agent) shouldShowCLIReasoning(ctx context.Context) bool {
+	return a.isCLIContext(ctx)
+}
+
+func (a *Agent) sendCLIReasoning(ctx context.Context, text string) {
+	if !a.shouldShowCLIReasoning(ctx) || text == "" {
+		return
+	}
+	manager := a.outputs
+	manager.Sender = agentOutputSender{agent: a, ctx: ctx}
+	if manager.Logger == nil {
+		manager.Logger = a.logger
+	}
+	_ = manager.SendChat(ctx, output.Text(text))
+}
+
+func (a *Agent) auditUsage(sessionID string, selection config.ModelSelection, usage *llm.Usage, elapsedMs int64) {
+	attrs := []any{"session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMs}
+	if usage != nil {
+		attrs = append(attrs,
+			"prompt_tokens", usage.PromptTokens,
+			"completion_tokens", usage.CompletionTokens,
+			"total_tokens", usage.TotalTokens,
+			"cache_hit_tokens", usage.CacheHitTokens,
+		)
+	}
+	a.auditDebug("llm_usage", attrs...)
+}
+
+func elapsedMillis(startedAt time.Time) int64 {
+	return time.Since(startedAt).Milliseconds()
+}

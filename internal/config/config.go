@@ -1,0 +1,456 @@
+package config
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+
+	"github.com/pelletier/go-toml/v2"
+)
+
+const DefaultPath = "config/app.toml"
+const EnvConfigFile = "ELBOT_CONFIG_FILE"
+const AppDirName = "ElBot"
+const XDGAppDirName = "elbot"
+const PluginConfigDirName = "plugins"
+
+type Config struct {
+	ConfigFiles         ConfigFilesConfig         `toml:"config_files"`
+	ModeModels          map[string]ModelSelection `toml:"mode_models"`
+	NamingModel         ModelSelection            `toml:"naming_model"`
+	CompactModel        ModelSelection            `toml:"-"`
+	GlobalDefault       GlobalDefaultConfig       `toml:"global_default"`
+	Providers           map[string]ProviderConfig `toml:"providers"`
+	ModelMetadata       ModelMetadataConfig       `toml:"model_metadata"`
+	Storage             StorageConfig             `toml:"storage"`
+	Runtime             RuntimeConfig             `toml:"runtime"`
+	Context             ContextConfig             `toml:"context"`
+	Commands            CommandsConfig            `toml:"commands"`
+	Tools               ToolsConfig               `toml:"tools"`
+	View                ViewConfig                `toml:"view"`
+	Security            SecurityConfig            `toml:"security"`
+	Session             SessionConfig             `toml:"session"`
+	Maintenance         MaintenanceConfig         `toml:"maintenance"`
+	Platform            PlatformConfig            `toml:"platform"`
+	Soul                SoulConfig                `toml:"soul"`
+	ConfigPath          string                    `toml:"-"`
+	ProvidersConfigPath string                    `toml:"-"`
+	StateConfigPath     string                    `toml:"-"`
+}
+
+type ConfigFilesConfig struct {
+	Providers string `toml:"providers"`
+	State     string `toml:"state"`
+}
+
+type ModelSelection struct {
+	Provider string `toml:"provider"`
+	Model    string `toml:"model"`
+}
+
+type ProviderConfig struct {
+	BaseURL      string                 `toml:"base_url"`
+	APIKey       string                 `toml:"api_key"`
+	APIKeyEnv    string                 `toml:"api_key_env"`
+	Proxy        string                 `toml:"proxy"`
+	Models       []string               `toml:"models"`
+	ExtraPayload map[string]any         `toml:"extra_payload"`
+	ModelConfigs map[string]ModelConfig `toml:"model_configs"`
+}
+
+type ModelConfig struct {
+	ExtraPayload map[string]any `toml:"extra_payload"`
+}
+
+type GlobalDefaultConfig struct {
+	Stream      bool    `toml:"stream"`
+	MaxTokens   int     `toml:"max_tokens"`
+	Temperature float64 `toml:"temperature"`
+}
+
+type ModelMetadataConfig struct {
+	DefaultContextWindow int            `toml:"default_context_window"`
+	ContextWindows       map[string]int `toml:"context_windows"`
+}
+
+type StorageConfig struct {
+	SQLitePath string `toml:"sqlite_path"`
+}
+
+type SoulConfig struct {
+	Path string `toml:"path"`
+}
+
+type RuntimeConfig struct {
+	LogLevel         string `toml:"log_level"`
+	LogRetentionDays int    `toml:"log_retention_days"`
+}
+
+type ContextConfig struct {
+	CompactEnabled      bool    `toml:"compact_enabled"`
+	CompactTriggerRatio float64 `toml:"compact_trigger_ratio"`
+}
+
+type CommandsConfig struct {
+	Prefixes []string `toml:"prefixes"`
+}
+
+type ToolsConfig struct {
+	MaxRoundsPerTurn int `toml:"max_rounds_per_turn"`
+}
+
+type ViewConfig struct {
+	SessionListPageSize int `toml:"session_list_page_size"`
+}
+
+type SecurityConfig struct {
+	UserMaxToolRisk       string              `toml:"user_max_tool_risk"`
+	SuperadminConfirmRisk string              `toml:"superadmin_confirm_risk"`
+	Superadmins           map[string][]string `toml:"superadmins"`
+}
+
+type SessionConfig struct {
+	DefaultMode                 string               `toml:"default_mode"`
+	NonSuperadminIdleTTLMinutes int                  `toml:"non_superadmin_idle_ttl_minutes"`
+	Cleanup                     SessionCleanupConfig `toml:"cleanup"`
+	Naming                      SessionNamingConfig  `toml:"naming"`
+}
+
+type MaintenanceConfig struct {
+	LogCleanup CronTaskConfig `toml:"log_cleanup"`
+}
+
+type PlatformConfig map[string]map[string]any
+
+type CronTaskConfig struct {
+	Enabled  bool   `toml:"enabled"`
+	Schedule string `toml:"schedule"`
+}
+
+type SessionNamingConfig struct {
+	TriggerStep int `toml:"trigger_step"`
+}
+
+type SessionCleanupConfig struct {
+	Enabled       bool `toml:"enabled"`
+	RetentionDays int  `toml:"retention_days"`
+}
+
+func ResolvePath(path string) (string, error) {
+	if strings.TrimSpace(path) != "" {
+		return filepath.Clean(path), nil
+	}
+	if envPath := strings.TrimSpace(os.Getenv(EnvConfigFile)); envPath != "" {
+		return filepath.Clean(envPath), nil
+	}
+	if defaultPath, ok := platformDefaultConfigPath(); ok {
+		if _, err := os.Stat(defaultPath); err == nil {
+			return defaultPath, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("stat default config %q: %w", defaultPath, err)
+		}
+	}
+	return filepath.Clean(DefaultPath), nil
+}
+
+func platformDefaultConfigPath() (string, bool) {
+	if dir, err := os.UserConfigDir(); err == nil && strings.TrimSpace(dir) != "" {
+		name := XDGAppDirName
+		if runtime.GOOS == "windows" {
+			name = AppDirName
+		}
+		return filepath.Join(dir, name, "app.toml"), true
+	}
+	return "", false
+}
+
+func ConfigEnv(key, configDir string) (string, bool, error) {
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		return value, true, nil
+	}
+	return lookupDotEnv(key, filepath.Join(configDir, ".env"))
+}
+
+func lookupDotEnv(key, path string) (string, bool, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", false, nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("open env file %q: %w", path, err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		name, value, ok := strings.Cut(line, "=")
+		if !ok || strings.TrimSpace(name) != key {
+			continue
+		}
+		return strings.TrimSpace(unquoteEnvValue(value)), true, nil
+	}
+	if err := scanner.Err(); err != nil {
+		return "", false, fmt.Errorf("read env file %q: %w", path, err)
+	}
+	return "", false, nil
+}
+
+func unquoteEnvValue(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) >= 2 {
+		quote := value[0]
+		if (quote == '\'' || quote == '"') && value[len(value)-1] == quote {
+			return value[1 : len(value)-1]
+		}
+	}
+	return value
+}
+func Load(path string) (*Config, error) {
+	configPath, err := ResolvePath(path)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := defaultAppConfig()
+	if err := loadTOML(configPath, cfg); err != nil {
+		return nil, err
+	}
+	cfg.applyAppDefaults()
+
+	providersPath := resolveRelative(configPath, cfg.ConfigFiles.Providers)
+	providersCfg := &Config{}
+	if err := loadTOML(providersPath, providersCfg); err != nil {
+		return nil, err
+	}
+	cfg.mergeProviders(providersCfg)
+	cfg.applyProviderDefaults()
+	if err := cfg.resolveProviderAPIKeys(filepath.Dir(configPath)); err != nil {
+		return nil, err
+	}
+
+	statePath := resolveRelative(configPath, cfg.ConfigFiles.State)
+	stateCfg := &StateConfig{}
+	if err := loadTOML(statePath, stateCfg); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+	} else {
+		cfg.applyState(stateCfg)
+	}
+
+	if err := cfg.validateModeModels(); err != nil {
+		return nil, err
+	}
+	cfg.Storage.SQLitePath = resolveRelative(configPath, cfg.Storage.SQLitePath)
+	cfg.Soul.Path = resolveRelative(configPath, cfg.Soul.Path)
+	cfg.ConfigPath = configPath
+	cfg.ProvidersConfigPath = providersPath
+	cfg.StateConfigPath = statePath
+	return cfg, nil
+}
+
+func PluginConfigDir(configPath string) string {
+	// 插件专属配置不进入 Config 模型。
+	// app 层只提供 plugins 目录，具体字段由插件自行解析，避免核心配置结构随插件膨胀。
+	if configPath == "" {
+		configPath = DefaultPath
+	}
+	return filepath.Join(filepath.Dir(filepath.Clean(configPath)), PluginConfigDirName)
+}
+
+type StateConfig struct {
+	Session      StateSessionConfig        `toml:"session"`
+	ModeModels   map[string]ModelSelection `toml:"mode_models"`
+	NamingModel  ModelSelection            `toml:"naming_model"`
+	CompactModel ModelSelection            `toml:"compact_model"`
+}
+
+type StateSessionConfig struct {
+	DefaultMode string `toml:"default_mode"`
+}
+
+func SaveState(path string, state StateConfig) error {
+	data, err := toml.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("marshal state config: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create state config dir %q: %w", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("write state config %q: %w", path, err)
+	}
+	return nil
+}
+
+func Default() *Config {
+	cfg := defaultAppConfig()
+	cfg.applyProviderDefaults()
+	return cfg
+}
+
+func defaultAppConfig() *Config {
+	cfg := &Config{}
+	cfg.applyAppDefaults()
+	cfg.Session.NonSuperadminIdleTTLMinutes = 10
+	return cfg
+}
+
+func loadTOML(path string, out any) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read config %q: %w", path, err)
+	}
+	if err := toml.Unmarshal(data, out); err != nil {
+		return fmt.Errorf("parse config %q: %w", path, err)
+	}
+	return nil
+}
+
+func (c *Config) applyAppDefaults() {
+	if c.ConfigFiles.Providers == "" {
+		c.ConfigFiles.Providers = "providers.toml"
+	}
+	if c.ConfigFiles.State == "" {
+		c.ConfigFiles.State = "state.toml"
+	}
+	if c.Storage.SQLitePath == "" {
+		c.Storage.SQLitePath = "../data/elbot_sessions.db"
+	}
+	if c.Soul.Path == "" {
+		c.Soul.Path = "SOUL.md"
+	}
+	if c.Runtime.LogLevel == "" {
+		c.Runtime.LogLevel = "info"
+	}
+	if c.Runtime.LogRetentionDays <= 0 {
+		c.Runtime.LogRetentionDays = 30
+	}
+	if c.Context.CompactTriggerRatio == 0 {
+		c.Context.CompactTriggerRatio = 0.8
+	}
+	if len(c.Commands.Prefixes) == 0 {
+		c.Commands.Prefixes = []string{"/"}
+	}
+	if c.Tools.MaxRoundsPerTurn <= 0 {
+		c.Tools.MaxRoundsPerTurn = 2
+	}
+	if c.View.SessionListPageSize <= 0 {
+		c.View.SessionListPageSize = 10
+	}
+	if c.Security.UserMaxToolRisk == "" {
+		c.Security.UserMaxToolRisk = "low"
+	}
+	if c.Security.SuperadminConfirmRisk == "" {
+		c.Security.SuperadminConfirmRisk = "high"
+	}
+	if c.Security.Superadmins == nil {
+		c.Security.Superadmins = map[string][]string{"cli": {"local"}}
+	}
+	if c.Platform == nil {
+		c.Platform = PlatformConfig{}
+	}
+	if c.Session.NonSuperadminIdleTTLMinutes < 0 {
+		c.Session.NonSuperadminIdleTTLMinutes = 0
+	}
+	if c.Session.Cleanup.RetentionDays == 0 {
+		c.Session.Cleanup.RetentionDays = 30
+	}
+	if c.Maintenance.LogCleanup.Schedule == "" {
+		c.Maintenance.LogCleanup.Schedule = "0 3 * * *"
+	}
+	if c.Session.Naming.TriggerStep <= 0 {
+		c.Session.Naming.TriggerStep = 1
+	}
+}
+
+func (c *Config) applyProviderDefaults() {
+	if c.Providers == nil {
+		c.Providers = map[string]ProviderConfig{}
+	}
+	if c.ModelMetadata.DefaultContextWindow <= 0 {
+		c.ModelMetadata.DefaultContextWindow = 8192
+	}
+	if c.ModelMetadata.ContextWindows == nil {
+		c.ModelMetadata.ContextWindows = map[string]int{}
+	}
+}
+
+func (c *Config) applyState(state *StateConfig) {
+	if len(state.ModeModels) > 0 {
+		if c.ModeModels == nil {
+			c.ModeModels = map[string]ModelSelection{}
+		}
+		for mode, model := range state.ModeModels {
+			c.ModeModels[mode] = model
+		}
+	}
+	if state.NamingModel.Provider != "" || state.NamingModel.Model != "" {
+		c.NamingModel = state.NamingModel
+	}
+	if state.CompactModel.Provider != "" || state.CompactModel.Model != "" {
+		// 压缩模型是运行态选择，只从 state.toml 读取；未配置时由调用方用当前模式模型兜底。
+		c.CompactModel = state.CompactModel
+	}
+	if state.Session.DefaultMode != "" {
+		c.Session.DefaultMode = state.Session.DefaultMode
+	}
+}
+
+func (c *Config) resolveProviderAPIKeys(configDir string) error {
+	for name, provider := range c.Providers {
+		if strings.TrimSpace(provider.APIKey) != "" || strings.TrimSpace(provider.APIKeyEnv) == "" {
+			continue
+		}
+		value, ok, err := ConfigEnv(provider.APIKeyEnv, configDir)
+		if err != nil {
+			return fmt.Errorf("resolve provider %q api key: %w", name, err)
+		}
+		if !ok || strings.TrimSpace(value) == "" {
+			continue
+		}
+		provider.APIKey = value
+		c.Providers[name] = provider
+	}
+	return nil
+}
+
+func (c *Config) validateModeModels() error {
+	if c.Session.DefaultMode == "" {
+		c.Session.DefaultMode = "work"
+	}
+	if c.Session.DefaultMode != "work" && c.Session.DefaultMode != "chat" {
+		return fmt.Errorf("session.default_mode must be work or chat, got %q", c.Session.DefaultMode)
+	}
+	for _, mode := range []string{"work", "chat"} {
+		selected := c.ModeModels[mode]
+		if selected.Provider == "" || selected.Model == "" {
+			return fmt.Errorf("mode_models.%s provider/model is required", mode)
+		}
+	}
+	return nil
+}
+
+func (c *Config) mergeProviders(providerCfg *Config) {
+	c.GlobalDefault = providerCfg.GlobalDefault
+	c.Providers = providerCfg.Providers
+	c.ModelMetadata = providerCfg.ModelMetadata
+}
+
+func resolveRelative(baseFile, path string) string {
+	if path == "" || filepath.IsAbs(path) {
+		return filepath.Clean(path)
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(baseFile), path))
+}

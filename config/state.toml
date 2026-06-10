@@ -1,0 +1,10 @@
+[session]
+default_mode = "work"
+
+[mode_models.work]
+provider = "deepseek"
+model = "deepseek-chat"
+
+[mode_models.chat]
+provider = "deepseek"
+model = "deepseek-chat"

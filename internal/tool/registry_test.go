@@ -1,0 +1,345 @@
+package tool
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"elbot/internal/llm"
+	"elbot/internal/security"
+	"elbot/internal/session"
+	"elbot/internal/storage"
+)
+
+type fakeTool struct {
+	name           string
+	source         Source
+	risk           RiskLevel
+	hidden         bool
+	superadminOnly bool
+	dependsOn      []string
+}
+
+func (t fakeTool) Name() string { return t.name }
+
+func (t fakeTool) Info() Info {
+	risk := t.risk
+	if risk == "" {
+		risk = RiskLow
+	}
+	return Info{Name: t.name, Description: "fake " + t.name, Source: t.source, Risk: risk, Hidden: t.hidden, SuperadminOnly: t.superadminOnly, DependsOn: t.dependsOn}
+}
+
+func (t fakeTool) Schema() llm.ToolSchema {
+	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: t.name, Description: t.Info().Description, Parameters: map[string]any{"type": "object"}}}
+}
+
+func (t fakeTool) Call(context.Context, CallRequest) (*Result, error) {
+	return &Result{Content: "ok"}, nil
+}
+
+func TestRegistryRegisterListDiscover(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeTool{name: "b", source: SourceSkillPy}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(fakeTool{name: "a", source: SourceBuiltin}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(fakeTool{name: "a", source: SourceSkillGo}); err == nil {
+		t.Fatal("expected duplicate registration error")
+	}
+
+	infos := registry.List()
+	if len(infos) != 2 || infos[0].Name != "a" || infos[1].Name != "b" {
+		t.Fatalf("unexpected sorted infos: %#v", infos)
+	}
+
+	all, err := registry.Discover("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all.Tools) != 2 || all.Tools[0].Info.Name != "a" || all.Tools[1].Info.Name != "b" {
+		t.Fatalf("unexpected discovery list: %#v", all.Tools)
+	}
+
+	one, err := registry.Discover("a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(one.Tools) != 1 || one.Tools[0].Info.Name != "a" || one.Tools[0].Schema == nil || one.Tools[0].Schema.Function.Name != "a" {
+		t.Fatalf("unexpected discovery detail: %#v", one.Tools)
+	}
+	if _, err := registry.Discover("missing"); err == nil {
+		t.Fatal("expected missing tool error")
+	}
+}
+
+func TestRegistryUnregisterBuiltinRejected(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeTool{name: "builtin", source: SourceBuiltin}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Unregister("builtin"); err == nil {
+		t.Fatal("expected builtin unregister error")
+	}
+}
+
+func TestDiscoverToolDescriptionEncouragesSpeakingBeforeToolUse(t *testing.T) {
+	description := NewDiscoverTool(NewRegistry()).Info().Description
+	if !strings.Contains(description, "先用一句简短自然语言") {
+		t.Fatalf("description should guide model to speak before tool use: %q", description)
+	}
+}
+
+func TestDiscoverToolDoesNotExposeRisk(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(NewDiscoverTool(registry)); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(fakeTool{name: "shell", source: SourceBuiltin}); err != nil {
+		t.Fatal(err)
+	}
+
+	args, _ := json.Marshal(map[string]string{"name": "shell"})
+	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if json.Valid(result.Data) == false {
+		t.Fatalf("discover result is not json: %s", result.Data)
+	}
+	if strings.Contains(result.Content, `"schema"`) || !strings.Contains(result.Content, "已发现工具：shell") {
+		t.Fatalf("discover content should summarize found tools without schema: %q", result.Content)
+	}
+}
+
+func TestDiscoverToolSkillDetailReturnsReadableContent(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeDetailTool{name: "zrlong", source: SourceSkillGo, detail: "#skill zrlong\n<- $request:string!\n-> $result:string"}); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]string{"name": "zrlong"})
+	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "#skill zrlong") || !strings.Contains(result.Content, "<- $request") || !strings.Contains(result.Content, "-> $result") {
+		t.Fatalf("skill detail should be returned as readable content: %q", result.Content)
+	}
+	if strings.Contains(string(result.Data), `\u003c`) || strings.Contains(string(result.Data), `\u003e`) {
+		t.Fatalf("discovery data should not html-escape ELyph symbols: %s", result.Data)
+	}
+}
+
+func TestDiscoverToolSupportsBatchAndDependencies(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeTool{name: "main", source: SourceBuiltin, dependsOn: []string{"dep"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(fakeTool{name: "dep", source: SourceBuiltin, hidden: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	args, _ := json.Marshal(map[string][]string{"names": []string{"main"}})
+	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var discovery DiscoveryResult
+	if err := json.Unmarshal(result.Data, &discovery); err != nil {
+		t.Fatal(err)
+	}
+	if len(discovery.Tools) != 2 || discovery.Tools[0].Info.Name != "main" || discovery.Tools[1].Info.Name != "dep" {
+		t.Fatalf("unexpected details: %#v", discovery.Tools)
+	}
+}
+
+func TestDiscoverToolSchemaJSONUsesOpenAIFieldNames(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeTool{name: "shell", source: SourceBuiltin}); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]string{"name": "shell"})
+	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(result.Data)
+	if !strings.Contains(text, `"type":"function"`) || !strings.Contains(text, `"function"`) || strings.Contains(text, `"Type"`) || strings.Contains(text, `"Function"`) {
+		t.Fatalf("schema json should use lowercase OpenAI fields: %s", text)
+	}
+}
+
+func TestDiscoverToolHidesHiddenToolsFromList(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeTool{name: "visible", source: SourceBuiltin}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(fakeTool{name: "hidden", source: SourceBuiltin, hidden: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(result.Data), "hidden") || !strings.Contains(string(result.Data), "visible") {
+		t.Fatalf("hidden list filtering failed: %s", result.Data)
+	}
+}
+
+func TestDiscoverToolSkillDetailDoesNotReturnSchemaAndActivatesWrapper(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeDetailTool{name: "docx", source: SourceSkillPy, detail: "# DOCX", activate: []string{"python_skill_run"}}); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]string{"name": "docx"})
+	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var discovery DiscoveryResult
+	if err := json.Unmarshal(result.Data, &discovery); err != nil {
+		t.Fatal(err)
+	}
+	if len(discovery.Tools) != 1 || discovery.Tools[0].Detail != "# DOCX" || discovery.Tools[0].Schema != nil {
+		t.Fatalf("discovery = %#v", discovery)
+	}
+	if !strings.Contains(result.Content, "# DOCX") {
+		t.Fatalf("skill detail should be llm-facing content: %q", result.Content)
+	}
+	activated, ok := result.Metadata[MetadataActivateTools].([]string)
+	if !ok || len(activated) != 1 || activated[0] != "python_skill_run" {
+		t.Fatalf("metadata = %#v", result.Metadata)
+	}
+}
+
+func TestDiscoverToolCannotQueryHiddenRootTool(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeTool{name: "hidden", source: SourceBuiltin, hidden: true}); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]string{"name": "hidden"})
+	if _, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args}); err == nil {
+		t.Fatal("expected hidden tool discover error")
+	}
+}
+
+func TestDiscoverToolHidesSuperadminOnlyToolsFromNormalUser(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeTool{name: "cron", source: SourceBuiltin, risk: RiskMedium, superadminOnly: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	policy := security.NewPolicy("medium", "high", map[string][]string{"cli": {"local"}})
+	actor := security.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: security.RoleUser}
+	ctx := security.WithPolicy(security.WithActor(context.Background(), actor), policy)
+	result, err := NewDiscoverTool(registry).Call(ctx, CallRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(result.Data), "cron") {
+		t.Fatalf("superadmin-only tool should be hidden from normal user: %s", result.Data)
+	}
+
+	args, _ := json.Marshal(map[string]string{"name": "cron"})
+	if _, err := NewDiscoverTool(registry).Call(ctx, CallRequest{Arguments: args}); err == nil {
+		t.Fatal("expected normal user detail query to be denied")
+	}
+}
+
+func TestDiscoverToolShowsSuperadminOnlyToolsToSuperadmin(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeTool{name: "cron", source: SourceBuiltin, risk: RiskMedium, superadminOnly: true}); err != nil {
+		t.Fatal(err)
+	}
+	policy := security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
+	actor := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
+	ctx := security.WithPolicy(security.WithActor(context.Background(), actor), policy)
+
+	result, err := NewDiscoverTool(registry).Call(ctx, CallRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(result.Data), "cron") {
+		t.Fatalf("superadmin-only tool should be visible to superadmin: %s", result.Data)
+	}
+}
+
+type fakeDetailTool struct {
+	name     string
+	source   Source
+	detail   string
+	activate []string
+}
+
+func (t fakeDetailTool) Name() string { return t.name }
+func (t fakeDetailTool) Info() Info {
+	return Info{Name: t.name, Description: "fake " + t.name, Source: t.source, Risk: RiskLow}
+}
+func (t fakeDetailTool) Schema() llm.ToolSchema { return llm.ToolSchema{} }
+func (t fakeDetailTool) Call(context.Context, CallRequest) (*Result, error) {
+	return &Result{Content: t.detail}, nil
+}
+func (t fakeDetailTool) Detail() string          { return t.detail }
+func (t fakeDetailTool) ActivateTools() []string { return t.activate }
+
+func TestDiscoverDependenciesHandleCycles(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeTool{name: "a", source: SourceBuiltin, dependsOn: []string{"b"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(fakeTool{name: "b", source: SourceBuiltin, dependsOn: []string{"a"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	details, errors := registry.DiscoverDetails([]string{"a"}, nil)
+	if len(errors) != 0 || len(details) != 2 {
+		t.Fatalf("details=%#v errors=%#v", details, errors)
+	}
+}
+
+func TestSchemaProviderDoesNotInjectHiddenToolNames(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeTool{name: "visible", source: SourceBuiltin}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(fakeTool{name: "hidden", source: SourceBuiltin, hidden: true}); err != nil {
+		t.Fatal(err)
+	}
+	provider := SchemaProvider{Registry: registry}
+	names, err := provider.ToolNames(context.Background(), storage.SessionModeWork, nil, session.Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(names, ",")
+	if !strings.Contains(joined, "visible") || strings.Contains(joined, "hidden") {
+		t.Fatalf("names = %#v", names)
+	}
+}
+
+func TestBuilderBuildsInfoAndSchema(t *testing.T) {
+	builder := NewBuilder("demo").
+		Description("demo tool").
+		Risk(RiskMedium).
+		Hidden().
+		DependsOn("dep").
+		String("query", "搜索词", Required()).
+		Object("payload", "任意 JSON 对象").
+		Integer("limit", "数量")
+
+	info := builder.BuildInfo()
+	if info.Name != "demo" || !info.Hidden || len(info.DependsOn) != 1 || info.DependsOn[0] != "dep" {
+		t.Fatalf("info = %#v", info)
+	}
+	schema := builder.BuildSchema()
+	if schema.Function.Name != "demo" || schema.Function.Parameters["required"] == nil {
+		t.Fatalf("schema = %#v", schema)
+	}
+	properties := schema.Function.Parameters["properties"].(map[string]any)
+	if properties["payload"].(map[string]any)["type"] != "object" {
+		t.Fatalf("object property missing: %#v", schema)
+	}
+}

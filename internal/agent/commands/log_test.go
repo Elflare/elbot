@@ -1,0 +1,159 @@
+package commands
+
+import (
+	"context"
+	"strings"
+	"testing"
+	"time"
+
+	"elbot/internal/command"
+	"elbot/internal/logging"
+)
+
+type fakeLogService struct {
+	query   logging.LogQuery
+	entries []logging.LogEntry
+}
+
+func (s *fakeLogService) QueryLogs(ctx context.Context, query logging.LogQuery) ([]logging.LogEntry, error) {
+	s.query = query
+	return s.entries, nil
+}
+
+func TestAuditCommandParsesFilters(t *testing.T) {
+	service := &fakeLogService{entries: []logging.LogEntry{{
+		Time:   time.Date(2026, 6, 3, 15, 0, 0, 0, time.Local),
+		Fields: map[string]string{"event": "tool_call", "risk": "high", "tool": "shell"},
+	}}}
+	result, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: "--event tool_call --risk high --tool shell -n 3 --days 2"})
+	if err != nil {
+		t.Fatalf("audit handle: %v", err)
+	}
+	if service.query.Prefix != "audit" || service.query.Limit != 3 || service.query.Days != 2 || strings.ToLower(service.query.MinLevel) != "info" {
+		t.Fatalf("query = %#v", service.query)
+	}
+	if service.query.Fields["event"] != "tool_call" || service.query.Fields["risk"] != "high" || service.query.Fields["tool"] != "shell" {
+		t.Fatalf("fields = %#v", service.query.Fields)
+	}
+	if !strings.Contains(result.Content, "tool_call") || !strings.Contains(result.Content, "tool=shell") {
+		t.Fatalf("content = %q", result.Content)
+	}
+}
+
+func TestLogCommandDefaultsToInfoAndFiveEntries(t *testing.T) {
+	service := &fakeLogService{entries: []logging.LogEntry{{
+		Time:    time.Date(2026, 6, 3, 15, 0, 0, 0, time.Local),
+		Level:   "INFO",
+		Message: "started",
+		Fields:  map[string]string{},
+	}}}
+	result, err := NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{})
+	if err != nil {
+		t.Fatalf("log handle: %v", err)
+	}
+	if service.query.Prefix != "elbot" || service.query.Limit != defaultLogListLimit || strings.ToLower(service.query.MinLevel) != "info" {
+		t.Fatalf("query = %#v", service.query)
+	}
+	if !strings.Contains(result.Content, "runtime logs:") || !strings.Contains(result.Content, "started") {
+		t.Fatalf("content = %q", result.Content)
+	}
+}
+
+func TestLogCommandShowsStructuredRuntimeFields(t *testing.T) {
+	service := &fakeLogService{entries: []logging.LogEntry{{
+		Time:    time.Date(2026, 6, 6, 19, 19, 1, 0, time.Local),
+		Level:   "INFO",
+		Message: "hook triggered",
+		Fields: map[string]string{
+			"point":          "platform.connected",
+			"hook":           "notify_qqonebot_connected",
+			"priority":       "1000",
+			"order":          "1",
+			"mode":           "run",
+			"before_content": "secret before",
+			"after_content":  "secret after",
+			"raw_content":    "secret raw",
+		},
+	}}}
+	result, err := NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{})
+	if err != nil {
+		t.Fatalf("log handle: %v", err)
+	}
+	for _, want := range []string{"hook triggered", "point=platform.connected", "hook=notify_qqonebot_connected", "priority=1000", "order=1", "mode=run"} {
+		if !strings.Contains(result.Content, want) {
+			t.Fatalf("content missing %q:\n%s", want, result.Content)
+		}
+	}
+	for _, hidden := range []string{"secret before", "secret after", "secret raw", "before_content", "after_content", "raw_content"} {
+		if strings.Contains(result.Content, hidden) {
+			t.Fatalf("content should hide %q:\n%s", hidden, result.Content)
+		}
+	}
+}
+
+func TestLogCommandDebugShowsRawEntries(t *testing.T) {
+	raw := `time="2026-06-03 15:00:00" level=DEBUG msg="openai chat request" body="{big request}" extra=value`
+	service := &fakeLogService{entries: []logging.LogEntry{{
+		Time:    time.Date(2026, 6, 3, 15, 0, 0, 0, time.Local),
+		Level:   "DEBUG",
+		Message: "openai chat request",
+		Fields:  map[string]string{"body": "{big request}"},
+		Raw:     raw,
+	}}}
+	result, err := NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: "--level debug"})
+	if err != nil {
+		t.Fatalf("log handle: %v", err)
+	}
+	if strings.ToLower(service.query.MinLevel) != "debug" {
+		t.Fatalf("MinLevel = %q", service.query.MinLevel)
+	}
+	if !strings.Contains(result.Content, raw) {
+		t.Fatalf("content = %q", result.Content)
+	}
+}
+
+func TestLogCommandDebugShowsParsedBodyJSON(t *testing.T) {
+	raw := `time="2026-06-03 15:00:00" level=DEBUG msg="openai chat request" model=test body_json="{\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}"`
+	body := `{"messages":[{"role":"user","content":"hello"}]}`
+	service := &fakeLogService{entries: []logging.LogEntry{{
+		Time:    time.Date(2026, 6, 3, 15, 0, 0, 0, time.Local),
+		Level:   "DEBUG",
+		Message: "openai chat request",
+		Fields:  map[string]string{"body_json": body},
+		Raw:     raw,
+	}}}
+	result, err := NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: "--level debug"})
+	if err != nil {
+		t.Fatalf("log handle: %v", err)
+	}
+	if strings.ToLower(service.query.MinLevel) != "debug" {
+		t.Fatalf("MinLevel = %q", service.query.MinLevel)
+	}
+	if !strings.Contains(result.Content, "body_json:\n") || !strings.Contains(result.Content, body) {
+		t.Fatalf("content = %q", result.Content)
+	}
+	if strings.Contains(result.Content, `body_json="{\"`) {
+		t.Fatalf("content should not show escaped raw body_json:\n%s", result.Content)
+	}
+}
+
+func TestAuditCommandDebugShowsRawEntries(t *testing.T) {
+	raw := `time="2026-06-03 15:00:00" level=DEBUG msg="audit event" event=llm_usage prompt_tokens=123 completion_tokens=456`
+	service := &fakeLogService{entries: []logging.LogEntry{{
+		Time:    time.Date(2026, 6, 3, 15, 0, 0, 0, time.Local),
+		Level:   "DEBUG",
+		Message: "audit event",
+		Fields:  map[string]string{"event": "llm_usage"},
+		Raw:     raw,
+	}}}
+	result, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: "--level debug"})
+	if err != nil {
+		t.Fatalf("audit handle: %v", err)
+	}
+	if strings.ToLower(service.query.MinLevel) != "debug" {
+		t.Fatalf("MinLevel = %q", service.query.MinLevel)
+	}
+	if !strings.Contains(result.Content, raw) {
+		t.Fatalf("content = %q", result.Content)
+	}
+}

@@ -1,0 +1,16 @@
+# Code Hook plugin: emoticon.
+# This plugin handles complex logic that is not suitable for declarative rules.
+# It runs on llm.response.received, extracts tokens like [[微笑]], removes them from
+# llm.text, and appends emoticon outputs. The assistant raw text remains unchanged.
+
+
+# Optional. Defaults to true.
+enabled = true
+
+# Optional. Defaults to 1000. Smaller priority runs earlier at the same hook point.
+priority = 1000
+
+# Parent directory of emoticon categories. For token [[微笑]], the plugin randomly
+# picks an image from root_dir/微笑/. Supported extensions: jpg, jpeg, png, gif, webp.
+# Windows paths may use either / or \\.
+root_dir = "/home/tenshi/project/nonebot-elfreese/data/elfreese_emotions"

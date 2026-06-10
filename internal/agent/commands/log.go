@@ -1,0 +1,393 @@
+package commands
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"elbot/internal/command"
+	"elbot/internal/logging"
+)
+
+const defaultLogListLimit = 5
+
+func auditInfo() command.Info {
+	return command.Info{
+		Name:        "audit",
+		Usage:       "/audit [options]",
+		Description: "Show recent audit events.",
+		Help: strings.TrimSpace(`Options:
+  -n, --limit <n>       Number of events to show. Default: 5.
+  --days <n>            Read logs from the last n days. Default: 1.
+  --level <level>       Minimum level: debug, info, warn, error.
+  -d, -i, -w, -e       Shorthand for --level debug/info/warn/error.
+  --since <time>        Show events after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
+
+  --until <time>        Show events before a time.
+  --event <name>        Filter by event, e.g. tool_call, llm_usage, permission_denied.
+  --risk <level>        Filter by risk.
+  --actor <id>          Filter by actor_id.
+  --session <id>        Filter by session_id.
+  --tool <name>         Filter by tool.
+  --msg <text>          Filter by msg field.
+  --contains <text>     Filter by latest_message_json field.
+
+Examples:
+  /audit
+  /audit --event tool_call --risk high -n 10
+  /audit -d --contains "hello"
+  /audit --actor cli:local --since 24h`),
+
+	}
+}
+
+func NewAudit(deps Deps) command.Handler {
+	info := auditInfo()
+	return command.NewFunc(info, func(ctx context.Context, req command.Request) (*command.Result, error) {
+		if wantsCommandHelp(req.Args) {
+			return formatCommandHelp(req.Prefix, info), nil
+		}
+		query, err := parseAuditQuery(req.Args)
+		if err != nil {
+			return nil, err
+		}
+		return queryLogs(ctx, deps, query, formatAuditEntries(query.MinLevel))
+	})
+}
+
+func logInfo() command.Info {
+	return command.Info{
+		Name:        "log",
+		Usage:       "/log [options]",
+		Description: "Show recent runtime logs.",
+		Help: strings.TrimSpace(`Options:
+  -n, --limit <n>       Number of log lines to show. Default: 5.
+  --days <n>            Read logs from the last n days. Default: 1.
+  --level <level>       Minimum level: debug, info, warn, error. Default: info.
+  -d, -i, -w, -e       Shorthand for --level debug/info/warn/error.
+  --since <time>        Show logs after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
+
+  --until <time>        Show logs before a time.
+  --msg <text>          Filter by msg field.
+  --contains <text>     Filter by latest_message_json field.
+
+Examples:
+  /log
+  /log -w -n 10
+  /log --msg startup --days 3`),
+
+	}
+}
+
+func NewLog(deps Deps) command.Handler {
+	info := logInfo()
+	return command.NewFunc(info, func(ctx context.Context, req command.Request) (*command.Result, error) {
+		if wantsCommandHelp(req.Args) {
+			return formatCommandHelp(req.Prefix, info), nil
+		}
+		query, err := parseRuntimeLogQuery(req.Args)
+		if err != nil {
+			return nil, err
+		}
+		return queryLogs(ctx, deps, query, formatRuntimeLogEntries(query.MinLevel))
+	})
+}
+
+func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, formatter func([]logging.LogEntry) string) (*command.Result, error) {
+	if deps.Logs == nil {
+		return &command.Result{Content: "log reader is not configured\n"}, nil
+	}
+	entries, err := deps.Logs.QueryLogs(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	if len(entries) == 0 {
+		return &command.Result{Content: "no log entries found\n"}, nil
+	}
+	return &command.Result{Content: formatter(entries)}, nil
+}
+
+func parseAuditQuery(args string) (logging.LogQuery, error) {
+	query := baseLogQuery("audit")
+	query.MinLevel = "info"
+	fields := map[string]string{}
+	if err := parseLogArgs(args, &query, func(name, value string) error {
+		switch name {
+		case "event":
+			fields["event"] = value
+		case "risk":
+			fields["risk"] = value
+		case "actor":
+			fields["actor_id"] = value
+		case "session":
+			fields["session_id"] = value
+		case "tool":
+			fields["tool"] = value
+		default:
+			return fmt.Errorf("unknown option: --%s", name)
+		}
+		return nil
+	}); err != nil {
+		return query, err
+	}
+	query.Fields = fields
+	return query, nil
+}
+
+func parseRuntimeLogQuery(args string) (logging.LogQuery, error) {
+	query := baseLogQuery("elbot")
+	query.MinLevel = "info"
+	if err := parseLogArgs(args, &query, func(name, value string) error {
+		return fmt.Errorf("unknown option: --%s", name)
+	}); err != nil {
+		return query, err
+	}
+	return query, nil
+}
+
+func baseLogQuery(prefix string) logging.LogQuery {
+	return logging.LogQuery{Prefix: prefix, Limit: defaultLogListLimit, Days: 1}
+}
+
+func parseLogArgs(args string, query *logging.LogQuery, extra func(name, value string) error) error {
+	fields := strings.Fields(args)
+	for i := 0; i < len(fields); i++ {
+		name := fields[i]
+		switch name {
+		case "-n", "--limit":
+			value, err := nextArg(fields, &i, name)
+			if err != nil {
+				return err
+			}
+			limit, err := parsePositiveInt(value, "limit")
+			if err != nil {
+				return err
+			}
+			query.Limit = limit
+		case "--days":
+			value, err := nextArg(fields, &i, name)
+			if err != nil {
+				return err
+			}
+			days, err := parsePositiveInt(value, "days")
+			if err != nil {
+				return err
+			}
+			query.Days = days
+		case "--since":
+			value, err := nextArg(fields, &i, name)
+			if err != nil {
+				return err
+			}
+			parsed, err := parseLogTime(value)
+			if err != nil {
+				return err
+			}
+			query.Since = &parsed
+		case "--until":
+			value, err := nextArg(fields, &i, name)
+			if err != nil {
+				return err
+			}
+			parsed, err := parseLogTime(value)
+			if err != nil {
+				return err
+			}
+			query.Until = &parsed
+		case "--level":
+			value, err := nextArg(fields, &i, name)
+			if err != nil {
+				return err
+			}
+			query.MinLevel = value
+		case "-d":
+			query.MinLevel = "debug"
+		case "-i":
+			query.MinLevel = "info"
+		case "-w":
+			query.MinLevel = "warn"
+		case "-e":
+			query.MinLevel = "error"
+		case "--msg":
+			value, err := nextArg(fields, &i, name)
+			if err != nil {
+				return err
+			}
+			query.MsgContains = value
+		case "--contains":
+
+			value, err := nextArg(fields, &i, name)
+			if err != nil {
+				return err
+			}
+			query.Contains = value
+		default:
+			if strings.HasPrefix(name, "--") {
+				value, err := nextArg(fields, &i, name)
+				if err != nil {
+					return err
+				}
+				if err := extra(strings.TrimPrefix(name, "--"), value); err != nil {
+					return err
+				}
+				continue
+			}
+			return fmt.Errorf("unexpected argument: %s", name)
+		}
+	}
+	return nil
+}
+
+func nextArg(fields []string, index *int, option string) (string, error) {
+	if *index+1 >= len(fields) {
+		return "", fmt.Errorf("%s requires a value", option)
+	}
+	*index = *index + 1
+	return fields[*index], nil
+}
+
+func parsePositiveInt(value, name string) (int, error) {
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 1 {
+		return 0, fmt.Errorf("%s must be a positive number", name)
+	}
+	return parsed, nil
+}
+
+func parseLogTime(value string) (time.Time, error) {
+	if d, err := time.ParseDuration(value); err == nil {
+		return time.Now().Add(-d), nil
+	}
+	layouts := []string{"2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02"}
+	for _, layout := range layouts {
+		if parsed, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+			return parsed, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("invalid time: %s", value)
+}
+
+func formatAuditEntries(minLevel string) func([]logging.LogEntry) string {
+	return func(entries []logging.LogEntry) string {
+		if isDebugQuery(minLevel) {
+			return formatRawLogEntries("audit events", entries)
+		}
+
+		var sb strings.Builder
+		sb.WriteString("audit events:\n")
+		for _, entry := range entries {
+			f := entry.Fields
+			sb.WriteString(fmt.Sprintf("  %s %s", formatLogEntryTime(entry), fieldOr(f, "event", entry.Message)))
+			appendField(&sb, "session", f["session_id"])
+			appendField(&sb, "actor", f["actor_id"])
+			appendField(&sb, "tool", f["tool"])
+			appendField(&sb, "risk", f["risk"])
+			appendField(&sb, "model", f["model"])
+			appendField(&sb, "action", f["action"])
+			appendField(&sb, "reason", f["reason"])
+			appendField(&sb, "error", f["error"])
+			sb.WriteString("\n")
+		}
+		return sb.String()
+	}
+}
+
+func formatRuntimeLogEntries(minLevel string) func([]logging.LogEntry) string {
+	return func(entries []logging.LogEntry) string {
+		if isDebugQuery(minLevel) {
+			return formatRawLogEntries("runtime logs", entries)
+		}
+
+		var sb strings.Builder
+		sb.WriteString("runtime logs:\n")
+		for _, entry := range entries {
+			sb.WriteString(fmt.Sprintf("  %s %s %s", formatLogEntryTime(entry), strings.ToLower(entry.Level), entry.Message))
+			appendRuntimeLogFields(&sb, entry.Fields)
+			sb.WriteString("\n")
+		}
+		return sb.String()
+	}
+}
+
+func appendRuntimeLogFields(sb *strings.Builder, fields map[string]string) {
+	for _, key := range []string{
+		"point", "hook", "priority", "order", "mode",
+		"hook_point", "hook_mode",
+		"kind", "name", "platform",
+		"session_id", "request_id", "request_kind", "request_phase",
+		"actor_id", "actor_role",
+		"provider", "model", "tool", "risk",
+		"error",
+	} {
+		appendField(sb, key, fields[key])
+	}
+}
+
+func formatRawLogEntries(title string, entries []logging.LogEntry) string {
+	var sb strings.Builder
+	sb.WriteString(title)
+	sb.WriteString(":\n")
+	for _, entry := range entries {
+		sb.WriteString("  ")
+		sb.WriteString(formatDebugLogEntry(entry))
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+func formatDebugLogEntry(entry logging.LogEntry) string {
+	body := strings.TrimSpace(entry.Fields["body_json"])
+	if body == "" {
+		return entry.Raw
+	}
+	line := strings.TrimSpace(entry.Raw)
+	if idx := strings.Index(line, " body_json="); idx >= 0 {
+		line = line[:idx]
+	}
+	return line + "\n    body_json:\n" + indentDebugBlock(body, "      ")
+}
+
+func indentDebugBlock(text, prefix string) string {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		lines[i] = prefix + line
+	}
+	return strings.Join(lines, "\n")
+}
+
+func isDebugQuery(minLevel string) bool {
+	return strings.EqualFold(strings.TrimSpace(minLevel), "debug")
+}
+
+func formatLogEntryTime(entry logging.LogEntry) string {
+	if entry.Time.IsZero() {
+		return "unknown-time"
+	}
+	return entry.Time.Format("2006-01-02 15:04:05")
+}
+
+func fieldOr(fields map[string]string, key, fallback string) string {
+	if value := fields[key]; value != "" {
+		return value
+	}
+	return fallback
+}
+
+func appendField(sb *strings.Builder, label, value string) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return
+	}
+	sb.WriteString(fmt.Sprintf(" %s=%s", label, value))
+}
+
+type LogModule struct{}
+
+func (LogModule) RegisterCommands(registrar Registrar, deps Deps) error {
+	return RegisterFactories(registrar, deps,
+		NewLog,
+		NewAudit,
+	)
+}
