@@ -13,4 +13,4 @@ priority = 1000
 # Parent directory of emoticon categories. For token [[微笑]], the plugin randomly
 # picks an image from root_dir/微笑/. Supported extensions: jpg, jpeg, png, gif, webp.
 # Windows paths may use either / or \\.
-root_dir = "/home/tenshi/project/nonebot-elfreese/data/elfreese_emotions"
+root_dir = "emoticons"
