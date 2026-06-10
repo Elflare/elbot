@@ -28,9 +28,30 @@ const (
 	PointToolCallPrepared        Point = "tool.call.prepared"
 	PointToolCallCompleted       Point = "tool.call.completed"
 	PointAgentOutputPrepared     Point = "agent.output.prepared"
+	PointAgentTurnOutputPrepared Point = "agent.turn.output.prepared"
 	PointPlatformMessageSent     Point = "platform.message.sent"
 	PointErrorOccurred           Point = "error.occurred"
 )
+
+func KnownPoint(point Point) bool {
+	switch point {
+	case PointPlatformConnected,
+		PointPlatformMessageReceived,
+		PointAgentInputPrepared,
+		PointLLMTurnPrepared,
+		PointLLMRequestPrepared,
+		PointLLMResponseReceived,
+		PointToolCallPrepared,
+		PointToolCallCompleted,
+		PointAgentOutputPrepared,
+		PointAgentTurnOutputPrepared,
+		PointPlatformMessageSent,
+		PointErrorOccurred:
+		return true
+	default:
+		return false
+	}
+}
 
 // Event carries the context available at a hook point. Fields are populated
 // according to Point; hook handlers should only rely on fields relevant there.

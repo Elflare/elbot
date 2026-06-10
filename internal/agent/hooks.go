@@ -150,27 +150,38 @@ func (a *Agent) sendNoticeOutput(ctx context.Context, target output.Target, out 
 	return manager.SendNotice(ctx, target, out)
 }
 
+func (a *Agent) prepareAssistantOutput(ctx context.Context, point hook.Point, text string) (string, error) {
+	event, err := a.runHook(ctx, hook.Event{Point: point, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(text)}})
+	if err != nil {
+		return "", err
+	}
+	return llm.SegmentsTextOnly(event.Message.Segments), nil
+}
+
 func (a *Agent) sendChatWithReceipt(ctx context.Context, text string) (platform.Receipt, error) {
 	if strings.TrimSpace(text) == "" && bufferAssistantOutput(ctx) {
 		return platform.Receipt{}, nil
 	}
-	event, err := a.runHook(ctx, hook.Event{Point: hook.PointAgentOutputPrepared, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(text)}})
+	preparedText, err := a.prepareAssistantOutput(ctx, hook.PointAgentOutputPrepared, text)
 	if err != nil {
 		return platform.Receipt{}, err
 	}
 	manager := a.outputs
+
 	manager.Sender = agentOutputSender{agent: a, ctx: ctx}
 	if manager.Logger == nil {
 		manager.Logger = a.logger
 	}
-	err = manager.SendChat(ctx, output.Text(llm.SegmentsTextOnly(event.Message.Segments)))
+	err = manager.SendChat(ctx, output.Text(preparedText))
+
 	if err != nil {
 		if a.logger != nil {
 			a.logger.WarnContext(ctx, "chat send failed", "error", err.Error())
 		}
 		return platform.Receipt{}, err
 	}
-	a.notifyHook(ctx, hook.Event{Point: hook.PointPlatformMessageSent, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: event.Message.Segments}})
+	a.notifyHook(ctx, hook.Event{Point: hook.PointPlatformMessageSent, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(preparedText)}})
+
 	return platform.Receipt{}, nil
 }
 

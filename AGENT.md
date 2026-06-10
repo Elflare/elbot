@@ -29,9 +29,9 @@
 - `internal/agent/core.go`：Agent 主结构与消息入口；装配核心依赖，分发 slash 命令和普通输入，处理 Actor/Scope fallback 与命令权限审计。
 - `internal/agent/input.go`：普通输入分发辅助；处理 idle 过期、平台引用 fork、归档拒聊、LLM 打断追加、工具 pending 输入和高风险工具确认命令。
 - `internal/agent/completion.go`：平台补全辅助；处理 CLI 命令、`/fork` 参数和风险确认阶段补全。TODO：后续抽成独立补全服务。
-- `internal/agent/chat.go`：普通对话主流程；加载上下文、构建 Prompt、驱动 LLM/工具循环，并持久化本轮 transcript。
-- `internal/agent/hooks.go`：Agent Hook 与输出接入；生成事件上下文，运行 Hook，并把 Hook/工具输出意图交给 Output Manager 发送。
-- `internal/agent/chat_llm.go`：LLM 调用与消息转换辅助；处理 Hook 后请求、流式响应、多模态转换、reasoning/usage/runtime 日志。
+- `internal/agent/chat.go`：普通对话主流程；加载上下文、构建 Prompt、驱动 LLM/工具循环，最终平台输出先跑 `agent.turn.output.prepared`，流式输出用最终文本 replace，随后持久化本轮 transcript。
+- `internal/agent/hooks.go`：Agent Hook 与输出接入；生成事件上下文，运行 Hook，提供 assistant 输出预处理，并把 Hook/工具输出意图交给 Output Manager 发送。
+- `internal/agent/chat_llm.go`：LLM 调用与消息转换辅助；处理 Hook 后请求、流式响应、多模态转换、reasoning/usage/runtime 日志；流式最终 replace 由对话主流程在输出 Hook 后完成。
 - `internal/agent/chat_tools.go`：工具执行与确认辅助；处理工具调用、风险确认、transcript、工具调用记录和 schema 注入。
 - `internal/agent/risk_confirmation.go`：风险确认阶段命令定义与文案；统一生成 `/detail`、`/confirm`、`/confirmtool`、`/confirmall`、`/reject`、`/stop` 及别名的提示、补全和识别。
 - `internal/agent/cron.go`：Agent 后台 cron runner；绕过 slash 命令解析，使用 cron 专用 session 静默运行 LLM，注入 `data/cron_sandbox/` 工具 sandbox context，要求最终 JSON 由 cron service 解析；cron session 写 `title_renamed=true` 避免自动命名覆盖。
@@ -83,10 +83,10 @@
 
 ### Hook Layer
 
-- `internal/hook/hook.go`：Hook 基础包；定义事件点、payload、Handler/Manager、注册模块、匹配规则和按优先级串行执行的事件流水线。
+- `internal/hook/hook.go`：Hook 基础包；定义事件点、已知点校验、payload、Handler/Manager、注册模块、匹配规则和按优先级串行执行的事件流水线。
 
-- `internal/hook/builtin/register.go`：随程序发布的 Hook 插件注册入口；组合规则插件、表情插件和常驻记忆 Hook，app 层传配置目录、日志、安全策略、工具 Registry、resident memory store 和审计回调。
-- `internal/hook/rules/rules.go`：TOML Rule Hook 插件；支持显式 matches、优先级、文本改写、output 和低风险工具调用。
+- `internal/hook/builtin/register.go`：随程序发布的 Hook 插件注册入口；组合规则插件、表情插件和常驻记忆 Hook，app 层传配置目录、日志、安全策略、工具 Registry、resident memory store、审计和可选通知回调。
+- `internal/hook/rules/rules.go`：TOML Rule Hook 插件；支持优先级、文本改写、output 和低风险工具调用，配置错误会记录日志并尽量通知消息区。
 - `internal/hook/plugins/emoticon/emoticon.go`：表情 Hook；匹配 LLM 输出中的 `[[表情名]]`，随机发送本地图片并删除 token。
 - `internal/hook/plugins/resident_memory/resident_memory.go`：常驻记忆 Hook；每 turn 注入当前 platform + actor 的常驻记忆和临时用户名。
 

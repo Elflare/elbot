@@ -14,6 +14,44 @@ import (
 	"elbot/internal/storage"
 )
 
+func (a *Agent) finishIntermediateOutput(ctx context.Context, streamCtx context.Context, stream platform.MessageStream, text string, streaming bool) error {
+	if streaming {
+		if strings.TrimSpace(text) != "" {
+			if err := a.replaceStreamOutput(ctx, streamCtx, stream, text); err != nil {
+				return err
+			}
+		}
+		_, err := stream.Finish(streamCtx)
+		return err
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+	if _, err := a.sendChatWithReceipt(ctx, text); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (a *Agent) replaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream platform.MessageStream, text string) error {
+	if err := a.replaceStreamOutput(ctx, streamCtx, stream, text); err != nil {
+		return err
+	}
+	_, err := stream.Finish(streamCtx)
+	return err
+}
+
+func (a *Agent) replaceStreamOutput(ctx context.Context, streamCtx context.Context, stream platform.MessageStream, text string) error {
+	prepared, err := a.prepareAssistantOutput(ctx, hook.PointAgentOutputPrepared, text)
+	if err != nil {
+		return err
+	}
+	if _, err := stream.Replace(streamCtx, prepared); err != nil {
+		return fmt.Errorf("stream replace: %w", err)
+	}
+	return nil
+}
+
 func (a *Agent) startMessageStream(ctx context.Context) platform.MessageStream {
 	if bufferAssistantOutput(ctx) {
 		return nil
@@ -125,6 +163,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	var finalText string
 	var finalRawText string
 	var platformFinalText string
+	var finalStream platform.MessageStream
 	var usage *llm.Usage
 	turnMessages := []storage.Message{}
 	toolRounds := 0
@@ -147,11 +186,6 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			return err
 		}
 		streaming := result.Stream != nil
-		if streaming {
-			if _, finishErr := result.Stream.Finish(reqCtx); finishErr != nil {
-				return finishErr
-			}
-		}
 		if errors.Is(reqCtx.Err(), context.Canceled) || errors.Is(reqCtx.Err(), context.DeadlineExceeded) {
 			return nil
 		}
@@ -165,23 +199,24 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		if err := a.sendOutputs(ctx, result.Outputs); err != nil {
 			return err
 		}
-		if assistantText != "" && !bufferOutput && !streaming {
-			a.sendChat(ctx, assistantText)
-		}
 		if len(result.ToolCalls) == 0 {
 			if inToolPhase {
 				if pending := a.turns.DrainMerged(session.ID); pending != "" {
 					// 用户可能在后续 LLM 响应期间补充输入；继续同一轮请求，避免 pending 被结束流程丢弃。
+					if err := a.finishIntermediateOutput(ctx, reqCtx, result.Stream, assistantText, streaming); err != nil {
+						return err
+					}
 					llmMessages = appendAssistantTextMessage(llmMessages, assistantText, assistantRawText)
 					llmMessages = appendPendingUserInput(llmMessages, &turnMessages, pending)
 					continue
 				}
 			}
 			platformFinalText = joinAssistantText(platformFinalText, assistantText)
+			finalStream = result.Stream
 			break
 		}
-		if assistantText != "" && bufferOutput {
-			a.sendChat(ctx, assistantText)
+		if err := a.finishIntermediateOutput(ctx, reqCtx, result.Stream, assistantText, streaming); err != nil {
+			return err
 		}
 		if !inToolPhase {
 			if !a.turns.StartToolPhase(session.ID) {
@@ -201,12 +236,6 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			if err != nil {
 				return err
 			}
-			summaryStreaming := summary.Stream != nil
-			if summaryStreaming {
-				if _, finishErr := summary.Stream.Finish(reqCtx); finishErr != nil {
-					return finishErr
-				}
-			}
 			if len(summary.ToolCalls) > 0 {
 				// TODO: 后续支持强制 tool_choice=none；当前总结请求已不传 tools，若仍返回工具调用则忽略。
 				a.sendPreview(ctx, "总结请求仍返回了工具调用，已忽略。")
@@ -222,15 +251,13 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 					summaryRawText = summaryText
 				}
 			}
-			if summaryText != "" && !bufferOutput && !summaryStreaming {
-				a.sendChat(ctx, summaryText)
-			}
 			if summary.Usage != nil {
 				usage = summary.Usage
 			}
 			finalText = joinAssistantText(finalText, summaryText)
 			finalRawText = joinAssistantText(finalRawText, summaryRawText)
 			platformFinalText = joinAssistantText(platformFinalText, summaryText)
+			finalStream = summary.Stream
 			break
 		}
 		toolRounds++
@@ -248,8 +275,22 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("补充：" + confirmationExtra)})
 		}
 	}
-	if !bufferOutput {
-		a.sendChat(ctx, "\n")
+	platformOutputText := platformFinalText
+	if strings.TrimSpace(platformOutputText) != "" {
+		var err error
+		platformOutputText, err = a.prepareAssistantOutput(ctx, hook.PointAgentTurnOutputPrepared, platformOutputText)
+		if err != nil {
+			return fmt.Errorf("turn output hook: %w", err)
+		}
+		if !bufferOutput {
+			if finalStream != nil {
+				if err := a.replaceAndFinishStream(ctx, reqCtx, finalStream, platformOutputText); err != nil {
+					return err
+				}
+			} else if _, err := a.sendChatWithReceipt(ctx, platformOutputText); err != nil {
+				return err
+			}
+		}
 	}
 
 	// 工具调用消息按 OpenAI messages 形态保存；discover 结果持久化时会压缩 schema，避免历史上下文膨胀。
@@ -277,8 +318,8 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		a.audit("persistence_error", "session_id", session.ID, "operation", "append_assistant_message", "error", err.Error())
 		return err
 	}
-	if bufferOutput && strings.TrimSpace(platformFinalText) != "" {
-		receipt, err := a.sendChatWithReceipt(ctx, platformFinalText)
+	if bufferOutput && strings.TrimSpace(platformOutputText) != "" {
+		receipt, err := a.sendChatWithReceipt(ctx, platformOutputText)
 		if err != nil {
 			a.audit("platform_send_error", "session_id", session.ID, "operation", "send_assistant_message", "error", err.Error())
 			return err

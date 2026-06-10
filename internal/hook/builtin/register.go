@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"context"
 	"log/slog"
 
 	"elbot/internal/hook"
@@ -20,6 +21,7 @@ type Options struct {
 	ResidentMemoryStore *resident.Store
 	Logger              *slog.Logger
 	Audit               func(event string, attrs ...any)
+	Notify              func(context.Context, string)
 }
 
 func RegisterAll(registrar hook.Registrar, opts Options) error {
@@ -32,7 +34,9 @@ func RegisterAll(registrar hook.Registrar, opts Options) error {
 		Policy:    opts.Policy,
 		Logger:    opts.Logger,
 		Audit:     opts.Audit,
+		Notify:    opts.Notify,
 	})
+
 	if err != nil {
 		return err
 	}

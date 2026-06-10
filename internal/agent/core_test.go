@@ -300,6 +300,54 @@ func TestStreamingOutputAppendsRawAndReplacesHookText(t *testing.T) {
 	}
 }
 
+func TestStreamingOutputPreparedHookReplacesFinalMessage(t *testing.T) {
+	p := &fakeStreamingPlatform{}
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: "猫"}}}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	if err := manager.Register(hook.Registration{Point: hook.PointAgentOutputPrepared, Name: "test.output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, regexp.MustCompile("猫"), "狗", true)
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register output hook: %v", err)
+	}
+	a.SetHookManager(manager)
+
+	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if got := strings.Join(p.stream.appends, ""); got != "猫" {
+		t.Fatalf("stream appends = %q", got)
+	}
+	if len(p.stream.replaces) != 1 || p.stream.replaces[0] != "狗" {
+		t.Fatalf("stream replaces = %#v", p.stream.replaces)
+	}
+}
+
+func TestTurnOutputPreparedHookReplacesFinalStreamingMessage(t *testing.T) {
+	p := &fakeStreamingPlatform{}
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: "猫"}}}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	if err := manager.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "test.turn_output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, regexp.MustCompile("猫"), "狗", true)
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register turn output hook: %v", err)
+	}
+	a.SetHookManager(manager)
+
+	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if got := strings.Join(p.stream.appends, ""); got != "猫" {
+		t.Fatalf("stream appends = %q", got)
+	}
+	if len(p.stream.replaces) != 1 || p.stream.replaces[0] != "狗" {
+		t.Fatalf("stream replaces = %#v", p.stream.replaces)
+	}
+}
+
 func TestNonStreamingPlatformSendsOnlyHookText(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{

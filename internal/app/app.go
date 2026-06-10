@@ -226,6 +226,12 @@ func Run(ctx context.Context, opts Options) error {
 		Audit: func(event string, attrs ...any) {
 			logs.Audit().Log(context.Background(), slog.LevelInfo, "audit event", append([]any{"event", event}, attrs...)...)
 		},
+		Notify: func(ctx context.Context, text string) {
+			if agt == nil {
+				return
+			}
+			_, _ = agt.SendNoticeOutput(ctx, output.Target{}, output.Text(text))
+		},
 	}); err != nil {
 		return err
 	}

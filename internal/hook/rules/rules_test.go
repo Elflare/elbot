@@ -2,11 +2,130 @@ package rules
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 )
+
+func TestRuleNormalizeFlatConditionAndAction(t *testing.T) {
+	rule := Rule{
+		If:     "platform.name",
+		Op:     hook.MatchFull,
+		Value:  "qqonebot",
+		Action: "send",
+		Text:   "connected",
+		Target: Target{Superadmins: true},
+	}
+	if err := rule.normalize(); err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+	if len(rule.Match) != 1 || rule.Match[0].Field != "platform.name" || rule.Match[0].Op != hook.MatchFull {
+		t.Fatalf("match = %#v", rule.Match)
+	}
+	if len(rule.Actions) != 1 || rule.Actions[0].Type != "send" || rule.Actions[0].Text != "connected" {
+		t.Fatalf("actions = %#v", rule.Actions)
+	}
+}
+
+func TestRuleNormalizeAlwaysAndPattern(t *testing.T) {
+	rule := Rule{
+		Always:  true,
+		Action:  "replace",
+		Field:   "message.text",
+		Pattern: "cat",
+		Replace: "dog",
+		All:     true,
+	}
+	if err := rule.normalize(); err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+	if len(rule.Match) != 1 || rule.Match[0].Op != hook.MatchAlways {
+		t.Fatalf("match = %#v", rule.Match)
+	}
+	if len(rule.Actions) != 1 || rule.Actions[0].Match != "cat" || !rule.Actions[0].All {
+		t.Fatalf("actions = %#v", rule.Actions)
+	}
+}
+
+func TestRuleNormalizeKeepsListFormat(t *testing.T) {
+	rule := Rule{
+		Match: []hook.Condition{
+			{Field: "platform.name", Op: hook.MatchFull, Value: "qqonebot"},
+			{Field: "message.text", Op: hook.MatchContains, Value: "猫"},
+		},
+		Actions: []Action{
+			{Type: "replace", Field: "message.text", Pattern: "猫", Replace: "狗", All: true},
+			{Type: "append", Field: "message.text", Text: "!"},
+		},
+	}
+	if err := rule.normalize(); err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+	if len(rule.Match) != 2 {
+		t.Fatalf("match = %#v", rule.Match)
+	}
+	if len(rule.Actions) != 2 || rule.Actions[0].Match != "猫" || rule.Actions[1].Type != "append" {
+		t.Fatalf("actions = %#v", rule.Actions)
+	}
+}
+
+func TestRuleNormalizeRejectsAmbiguousCondition(t *testing.T) {
+	rule := Rule{Always: true, If: "message.text", Op: hook.MatchContains, Value: "cat", Action: "append"}
+	err := rule.normalize()
+	if err == nil || !strings.Contains(err.Error(), "always cannot be combined") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRuleNormalizeRejectsActionWithActions(t *testing.T) {
+	rule := Rule{Always: true, Action: "send", Actions: []Action{{Type: "append", Field: "message.text", Text: "two"}}}
+	err := rule.normalize()
+	if err == nil || !strings.Contains(err.Error(), "action cannot be combined") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestValidateRuleRejectsUnknownHookPoint(t *testing.T) {
+	rule := Rule{Name: "bad", On: "agent.out.prepared", Match: []hook.Condition{{Op: hook.MatchAlways}}, Actions: []Action{{Type: "append", Field: "message.text", Text: "!"}}}
+	err := validateRule(rule)
+	if err == nil || !strings.Contains(err.Error(), "unknown hook point") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestTurnOutputPreparedAllowsMessageText(t *testing.T) {
+	module := Module{}
+	event := hook.Event{Point: hook.PointAgentTurnOutputPrepared, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments("猫")}}
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "replace", Field: "message.text", Match: "猫", Replace: "狗", All: true}}}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if text := llm.SegmentsTextOnly(got.Message.Segments); text != "狗" {
+		t.Fatalf("text = %q", text)
+	}
+}
+
+func TestLoadConfigRejectsUnknownLegacyField(t *testing.T) {
+	dir := t.TempDir()
+	content := `[[rules]]
+name = "legacy"
+on = "platform.connected"
+
+[rules.send]
+text = "old"
+`
+	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	_, _, err := loadConfig(dir)
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+}
 
 func TestTextActionsKeepMediaSegmentsInPlace(t *testing.T) {
 	module := Module{}

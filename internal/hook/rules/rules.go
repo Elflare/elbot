@@ -31,6 +31,7 @@ type Options struct {
 	Policy    *security.Policy
 	Logger    *slog.Logger
 	Audit     func(event string, attrs ...any)
+	Notify    func(context.Context, string)
 }
 
 type Config struct {
@@ -42,8 +43,23 @@ type Rule struct {
 	On       string           `toml:"on"`
 	Priority int              `toml:"priority"`
 	Enabled  *bool            `toml:"enabled"`
-	Matches  []hook.Condition `toml:"matches"`
+	If       string           `toml:"if"`
+	Op       string           `toml:"op"`
+	Value    string           `toml:"value"`
+	Always   bool             `toml:"always"`
+	Match    []hook.Condition `toml:"match"`
+	Action   string           `toml:"action"`
 	Actions  []Action         `toml:"actions"`
+	Field    string           `toml:"field"`
+	Text     string           `toml:"text"`
+	Pattern  string           `toml:"pattern"`
+	Replace  string           `toml:"replace"`
+	Kind     string           `toml:"kind"`
+	Path     string           `toml:"path"`
+	Tool     string           `toml:"tool"`
+	Args     string           `toml:"arguments"`
+	All      bool             `toml:"all"`
+	Target   Target           `toml:"target"`
 }
 
 type Action struct {
@@ -51,7 +67,8 @@ type Action struct {
 	Type      string `toml:"type"`
 	Field     string `toml:"field"`
 	Text      string `toml:"text"`
-	Match     string `toml:"match"`
+	Pattern   string `toml:"pattern"`
+	Match     string `toml:"-"`
 	Replace   string `toml:"replace"`
 	Kind      string `toml:"kind"`
 	Path      string `toml:"path"`
@@ -78,8 +95,10 @@ type Module struct {
 func NewModule(opts Options) (Module, error) {
 	cfg, path, err := loadConfig(opts.ConfigDir)
 	if err != nil {
+		reportConfigError(context.Background(), opts, path, err)
 		return Module{}, err
 	}
+
 	module := Module{Rules: cfg.Rules, Opts: opts, Logger: opts.Logger}
 	if module.Logger != nil {
 		enabled := 0
@@ -110,14 +129,15 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 			name = fmt.Sprintf("rule.%d", index+1)
 		}
 		if m.Logger != nil {
-			m.Logger.Info("hook rule registered", "name", name, "point", rule.On, "priority", priority, "matches", len(rule.Matches), "actions", len(rule.Actions))
+			m.Logger.Info("hook rule registered", "name", name, "point", rule.On, "priority", priority, "matches", len(rule.Match), "actions", len(rule.Actions))
 		}
+
 		rule := rule
 		if err := registrar.Register(hook.Registration{
 			Point:    hook.Point(rule.On),
 			Priority: priority,
 			Name:     "rules." + name,
-			Match:    hook.Match{Conditions: rule.Matches},
+			Match:    hook.Match{Conditions: rule.Match},
 			Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 				return m.runRule(ctx, rule, event)
 			}),
@@ -141,10 +161,94 @@ func loadConfig(configDir string) (Config, string, error) {
 		return Config{}, path, fmt.Errorf("read hook rule config %q: %w", path, err)
 	}
 	var cfg Config
-	if err := toml.Unmarshal(data, &cfg); err != nil {
+	decoder := toml.NewDecoder(strings.NewReader(string(data)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&cfg); err != nil {
+		return Config{}, path, fmt.Errorf("parse hook rule config %q: %w", path, err)
+	}
+	if err := cfg.normalize(); err != nil {
 		return Config{}, path, fmt.Errorf("parse hook rule config %q: %w", path, err)
 	}
 	return cfg, path, nil
+}
+
+func reportConfigError(ctx context.Context, opts Options, path string, err error) {
+	if opts.Logger != nil {
+		opts.Logger.Error("hook rule config error", "path", path, "error", err)
+	}
+	if opts.Notify != nil {
+		opts.Notify(ctx, fmt.Sprintf("Hook rules 配置错误：%v", err))
+	}
+}
+
+func (c *Config) normalize() error {
+	for i := range c.Rules {
+		if err := c.Rules[i].normalize(); err != nil {
+			return fmt.Errorf("rule %d: %w", i+1, err)
+		}
+	}
+	return nil
+}
+
+func (r *Rule) normalize() error {
+	conditions, err := r.conditions()
+	if err != nil {
+		return err
+	}
+	r.Match = conditions
+
+	for i := range r.Actions {
+		r.Actions[i].normalize()
+	}
+	if strings.TrimSpace(r.Action) == "" {
+		return nil
+	}
+	if len(r.Actions) > 0 {
+		return fmt.Errorf("action cannot be combined with actions")
+	}
+	r.Actions = []Action{r.inlineAction()}
+	return nil
+}
+
+func (r Rule) conditions() ([]hook.Condition, error) {
+	flat := strings.TrimSpace(r.If) != "" || strings.TrimSpace(r.Op) != "" || r.Value != ""
+	if r.Always {
+		if flat || len(r.Match) > 0 {
+			return nil, fmt.Errorf("always cannot be combined with if/op/value or match")
+		}
+		return []hook.Condition{{Op: hook.MatchAlways}}, nil
+	}
+	if flat && len(r.Match) > 0 {
+		return nil, fmt.Errorf("if/op/value cannot be combined with match")
+	}
+	if flat {
+		return []hook.Condition{{Field: r.If, Op: r.Op, Value: r.Value}}, nil
+	}
+	return r.Match, nil
+}
+
+func (r Rule) inlineAction() Action {
+	action := Action{
+		Type:      r.Action,
+		Field:     r.Field,
+		Text:      r.Text,
+		Pattern:   r.Pattern,
+		Replace:   r.Replace,
+		Kind:      r.Kind,
+		Path:      r.Path,
+		Tool:      r.Tool,
+		Arguments: r.Args,
+		All:       r.All,
+		Target:    r.Target,
+	}
+	action.normalize()
+	return action
+}
+
+func (a *Action) normalize() {
+	if a.Match == "" {
+		a.Match = a.Pattern
+	}
 }
 
 func (r Rule) enabled() bool {
@@ -155,15 +259,20 @@ func validateRule(rule Rule) error {
 	if strings.TrimSpace(rule.On) == "" {
 		return fmt.Errorf("hook rule %q missing on", rule.Name)
 	}
+	if !hook.KnownPoint(hook.Point(rule.On)) {
+		return fmt.Errorf("hook rule %q unknown hook point %q", rule.Name, rule.On)
+	}
+
 	if len(rule.Actions) == 0 {
 		return fmt.Errorf("hook rule %q has no actions", rule.Name)
 	}
-	if len(rule.Matches) == 0 {
-		return fmt.Errorf("hook rule %q missing matches", rule.Name)
+	if len(rule.Match) == 0 {
+		return fmt.Errorf("hook rule %q missing match", rule.Name)
 	}
-	if err := (hook.Match{Conditions: rule.Matches}).Validate(); err != nil {
+	if err := (hook.Match{Conditions: rule.Match}).Validate(); err != nil {
 		return fmt.Errorf("hook rule %q matches: %w", rule.Name, err)
 	}
+
 	for _, action := range rule.Actions {
 		if strings.TrimSpace(action.Type) == "" {
 			return fmt.Errorf("hook rule %q has action without type", rule.Name)
@@ -359,10 +468,11 @@ func allowField(event hook.Event, field string) error {
 		if field == "tool.result" {
 			return nil
 		}
-	case hook.PointAgentOutputPrepared, hook.PointPlatformMessageSent:
+	case hook.PointAgentOutputPrepared, hook.PointAgentTurnOutputPrepared, hook.PointPlatformMessageSent:
 		if field == "message.text" && event.Message.Role == string(llm.RoleAssistant) {
 			return nil
 		}
+
 	}
 	return fmt.Errorf("field %q cannot be edited at hook point %q", field, event.Point)
 }

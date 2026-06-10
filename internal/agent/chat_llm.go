@@ -126,12 +126,8 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 	usage = event.LLM.Usage
 	toolCalls = event.LLM.ToolCalls
 	finalText := event.LLM.Text
-	if stream != nil {
-		if _, err := stream.Replace(ctx, finalText); err != nil {
-			return llmCallResult{}, latestUserContent, fmt.Errorf("stream replace: %w", err)
-		}
-	}
 	a.logLLMOutput(sessionID, selection, finalText, event.LLM.RawText, len(toolCalls), elapsedMs)
+
 	a.auditUsage(sessionID, selection, usage, elapsedMs)
 	return llmCallResult{Text: finalText, RawText: event.LLM.RawText, Usage: usage, ToolCalls: toolCalls, Outputs: event.Outputs, Messages: baseMessages, Stream: stream}, latestUserContent, nil
 }
