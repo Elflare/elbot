@@ -29,6 +29,10 @@ type completer interface {
 	Complete(text string) []string
 }
 
+type cliMessageStream struct {
+	adapter *Adapter
+}
+
 // New creates a new CLI adapter.
 func New() *Adapter {
 	return &Adapter{output: make(chan tea.Msg, 256), userName: "user", assistantName: "assistant"}
@@ -102,6 +106,37 @@ func (a *Adapter) notifyConnected(ctx context.Context) {
 	if notify != nil {
 		notify(ctx, a.Name())
 	}
+}
+
+func (a *Adapter) StartStream(ctx context.Context) (platform.MessageStream, error) {
+	if !isatty.IsTerminal(os.Stdin.Fd()) {
+		return nil, fmt.Errorf("cli streaming output requires interactive TUI")
+	}
+	a.mu.Lock()
+	program := a.program
+	a.mu.Unlock()
+	if program == nil {
+		return nil, fmt.Errorf("cli TUI is not running")
+	}
+	return cliMessageStream{adapter: a}, nil
+}
+
+func (s cliMessageStream) Append(ctx context.Context, text string) error {
+	if text == "" {
+		return nil
+	}
+	s.adapter.sendTUIMessage(tuiOutputMsg(text), text)
+	return nil
+}
+
+func (s cliMessageStream) Replace(ctx context.Context, text string) (platform.Receipt, error) {
+	s.adapter.sendTUIMessage(tuiReplaceAssistantMsg(text), text)
+	return platform.Receipt{}, nil
+}
+
+func (s cliMessageStream) Finish(ctx context.Context) (platform.Receipt, error) {
+	s.adapter.sendTUIMessage(tuiFinishAssistantMsg{}, "\n")
+	return platform.Receipt{}, nil
 }
 
 func (a *Adapter) SendChat(ctx context.Context, out output.Output) (platform.Receipt, error) {

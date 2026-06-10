@@ -53,6 +53,36 @@ func (p *fakePlatform) SendNotice(ctx context.Context, target output.Target, out
 	return platform.Receipt{}, nil
 }
 
+type fakeStreamingPlatform struct {
+	fakePlatform
+	stream fakeMessageStream
+}
+
+type fakeMessageStream struct {
+	appends  []string
+	replaces []string
+	finished int
+}
+
+func (p *fakeStreamingPlatform) StartStream(ctx context.Context) (platform.MessageStream, error) {
+	return &p.stream, nil
+}
+
+func (s *fakeMessageStream) Append(ctx context.Context, text string) error {
+	s.appends = append(s.appends, text)
+	return nil
+}
+
+func (s *fakeMessageStream) Replace(ctx context.Context, text string) (platform.Receipt, error) {
+	s.replaces = append(s.replaces, text)
+	return platform.Receipt{}, nil
+}
+
+func (s *fakeMessageStream) Finish(ctx context.Context) (platform.Receipt, error) {
+	s.finished++
+	return platform.Receipt{}, nil
+}
+
 type fakeLLMBlock struct {
 	started chan struct{}
 	release chan struct{}
@@ -221,6 +251,78 @@ func newTestStore(t *testing.T) storage.Store {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	return store
+}
+
+func TestHandleMessageSendsLLMErrorToPlatform(t *testing.T) {
+	p := &fakePlatform{}
+	a := New(p, &fakeLLM{replies: []string{"__ERR__"}}, "test-model", config.ProviderConfig{}, newTestStore(t))
+
+	err := a.HandleMessage(context.Background(), "hello")
+	if err == nil || !strings.Contains(err.Error(), "fake stream error") {
+		t.Fatalf("HandleMessage err = %v", err)
+	}
+	got := p.out.String()
+	if !strings.Contains(got, "请求失败：") || !strings.Contains(got, "fake stream error") {
+		t.Fatalf("platform output missing error: %q", got)
+	}
+}
+
+func TestStreamingOutputAppendsRawAndReplacesHookText(t *testing.T) {
+	p := &fakeStreamingPlatform{}
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{{
+		{DeltaContent: "hello "},
+		{DeltaContent: "[[wave]]"},
+	}}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	if err := manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "test.replace", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		event.LLM.Text = strings.ReplaceAll(event.LLM.Text, "[[wave]]", "world")
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register response hook: %v", err)
+	}
+	a.SetHookManager(manager)
+
+	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if got := strings.Join(p.stream.appends, ""); got != "hello [[wave]]" {
+		t.Fatalf("stream appends = %q", got)
+	}
+	if len(p.stream.replaces) != 1 || p.stream.replaces[0] != "hello world" {
+		t.Fatalf("stream replaces = %#v", p.stream.replaces)
+	}
+	if p.stream.finished != 1 {
+		t.Fatalf("stream finished = %d", p.stream.finished)
+	}
+	if strings.Contains(p.out.String(), "hello world") {
+		t.Fatalf("streaming output should not also send normal chat: %q", p.out.String())
+	}
+}
+
+func TestNonStreamingPlatformSendsOnlyHookText(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{{
+		{DeltaContent: "hello "},
+		{DeltaContent: "[[wave]]"},
+	}}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	if err := manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "test.replace", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		event.LLM.Text = strings.ReplaceAll(event.LLM.Text, "[[wave]]", "world")
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register response hook: %v", err)
+	}
+	a.SetHookManager(manager)
+
+	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	got := p.out.String()
+	if !strings.Contains(got, "hello world") || strings.Contains(got, "[[wave]]") {
+		t.Fatalf("non-streaming output = %q", got)
+	}
 }
 
 func TestCompleteForkMessageID(t *testing.T) {

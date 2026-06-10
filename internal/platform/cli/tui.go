@@ -14,6 +14,8 @@ import (
 )
 
 type tuiOutputMsg string
+type tuiReplaceAssistantMsg string
+type tuiFinishAssistantMsg struct{}
 type tuiNoticeMsg string
 
 type tuiProgramSetter func(*tea.Program)
@@ -32,6 +34,7 @@ type tuiModel struct {
 	userName             string
 	assistantName        string
 	assistantOpen        bool
+	assistantStart       int
 	viewport             viewport.Model
 	noticeViewport       viewport.Model
 	input                textinput.Model
@@ -93,6 +96,12 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tuiOutputMsg:
 		m.appendAssistantContent(string(msg))
+		return m, waitTUIOutput(m.output)
+	case tuiReplaceAssistantMsg:
+		m.replaceAssistantContent(string(msg))
+		return m, waitTUIOutput(m.output)
+	case tuiFinishAssistantMsg:
+		m.finishAssistantContent()
 		return m, waitTUIOutput(m.output)
 	case tuiNoticeMsg:
 		m.appendNotice(string(msg))
@@ -294,10 +303,29 @@ func (m *tuiModel) appendAssistantContent(text string) {
 		if strings.TrimSpace(m.content) != "" {
 			m.content += "\n"
 		}
+		m.assistantStart = len(m.content)
 		m.content += m.assistantName + ": "
 		m.assistantOpen = true
 	}
 	m.content += text
+	m.refreshContent()
+}
+
+func (m *tuiModel) replaceAssistantContent(text string) {
+	if !m.assistantOpen {
+		m.appendAssistantContent(text)
+		return
+	}
+	if m.assistantStart < 0 || m.assistantStart > len(m.content) {
+		m.assistantStart = len(m.content)
+	}
+	m.content = m.content[:m.assistantStart] + m.assistantName + ": " + text
+	m.refreshContent()
+}
+
+func (m *tuiModel) finishAssistantContent() {
+	m.assistantOpen = false
+	m.assistantStart = 0
 	m.refreshContent()
 }
 

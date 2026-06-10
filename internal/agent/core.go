@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
@@ -240,6 +241,9 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 	defer func() {
 		if err != nil {
 			a.notifyHookError(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}}, err)
+			if shouldNotifyUserError(err) {
+				a.sendChat(ctx, "请求失败："+err.Error()+"\n")
+			}
 		}
 	}()
 	event, err := a.runHook(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
@@ -271,6 +275,10 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 		return nil
 	}
 	return a.handleInput(ctx, text)
+}
+
+func shouldNotifyUserError(err error) bool {
+	return err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
 }
 
 func (a *Agent) scope(ctx context.Context) session.Scope {

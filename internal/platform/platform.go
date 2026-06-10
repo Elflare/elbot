@@ -36,6 +36,20 @@ type Receipt struct {
 	PlatformMessageID string
 }
 
+// StreamingMessageSender is an optional platform capability for editable streaming output.
+// Platforms can implement it with terminal replacement, message editing, or any equivalent mechanism.
+type StreamingMessageSender interface {
+	StartStream(ctx context.Context) (MessageStream, error)
+}
+
+// MessageStream represents one assistant message that can be appended while streaming
+// and replaced with the final post-hook content.
+type MessageStream interface {
+	Append(ctx context.Context, text string) error
+	Replace(ctx context.Context, text string) (Receipt, error)
+	Finish(ctx context.Context) (Receipt, error)
+}
+
 // MessageSender sends chat messages and notifications through a platform.
 type MessageSender interface {
 	SendChat(ctx context.Context, out output.Output) (Receipt, error)

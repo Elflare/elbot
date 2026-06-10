@@ -9,9 +9,31 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/platform"
 	"elbot/internal/request"
 	"elbot/internal/storage"
 )
+
+func (a *Agent) startMessageStream(ctx context.Context) platform.MessageStream {
+	if bufferAssistantOutput(ctx) {
+		return nil
+	}
+	if msg, ok := platform.MessageContextFrom(ctx); ok && msg.Sender != nil {
+		if sender, ok := msg.Sender.(platform.StreamingMessageSender); ok {
+			stream, err := sender.StartStream(ctx)
+			if err == nil {
+				return stream
+			}
+		}
+	}
+	if sender, ok := a.platform.(platform.StreamingMessageSender); ok {
+		stream, err := sender.StartStream(ctx)
+		if err == nil {
+			return stream
+		}
+	}
+	return nil
+}
 
 func (a *Agent) handleChat(ctx context.Context, text string) error {
 	session, err := a.sessions.GetOrCreateCurrent(ctx, a.scope(ctx), text)
@@ -112,7 +134,8 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		if inToolPhase {
 			llmMessages = a.drainPendingUserInput(session.ID, llmMessages, &turnMessages)
 		}
-		result, updatedUserContent, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, latestUserContent)
+		stream := a.startMessageStream(reqCtx)
+		result, updatedUserContent, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, latestUserContent, stream)
 		latestUserContent = ""
 		if len(result.Messages) > 0 {
 			llmMessages = result.Messages
@@ -122,6 +145,12 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		}
 		if err != nil {
 			return err
+		}
+		streaming := result.Stream != nil
+		if streaming {
+			if _, finishErr := result.Stream.Finish(reqCtx); finishErr != nil {
+				return finishErr
+			}
 		}
 		if errors.Is(reqCtx.Err(), context.Canceled) || errors.Is(reqCtx.Err(), context.DeadlineExceeded) {
 			return nil
@@ -136,7 +165,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		if err := a.sendOutputs(ctx, result.Outputs); err != nil {
 			return err
 		}
-		if assistantText != "" && !bufferOutput {
+		if assistantText != "" && !bufferOutput && !streaming {
 			a.sendChat(ctx, assistantText)
 		}
 		if len(result.ToolCalls) == 0 {
@@ -167,9 +196,16 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			llmMessages = append(llmMessages, skippedToolMessages(result.ToolCalls, a.maxToolRoundsPerTurn())...)
 			llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("工具调用轮次已达到上限，请基于已有工具结果和当前上下文总结当前进度，不要继续调用工具。")})
 			tools = nil
-			summary, _, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, "")
+			stream := a.startMessageStream(reqCtx)
+			summary, _, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, "", stream)
 			if err != nil {
 				return err
+			}
+			summaryStreaming := summary.Stream != nil
+			if summaryStreaming {
+				if _, finishErr := summary.Stream.Finish(reqCtx); finishErr != nil {
+					return finishErr
+				}
 			}
 			if len(summary.ToolCalls) > 0 {
 				// TODO: 后续支持强制 tool_choice=none；当前总结请求已不传 tools，若仍返回工具调用则忽略。
@@ -186,7 +222,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 					summaryRawText = summaryText
 				}
 			}
-			if summaryText != "" && !bufferOutput {
+			if summaryText != "" && !bufferOutput && !summaryStreaming {
 				a.sendChat(ctx, summaryText)
 			}
 			if summary.Usage != nil {

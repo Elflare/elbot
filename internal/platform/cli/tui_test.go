@@ -52,6 +52,34 @@ func TestAppendAssistantContentDoesNotAddSeparatorOnNewline(t *testing.T) {
 	}
 }
 
+func TestReplaceAssistantContentReplacesCurrentBlock(t *testing.T) {
+	m := &tuiModel{userName: "user", assistantName: "assistant"}
+	m.appendUserContent("hello")
+	m.appendAssistantContent("raw ")
+	m.appendAssistantContent("[[token]]")
+	m.replaceAssistantContent("final text")
+
+	got := m.content
+	if !strings.Contains(got, "assistant: final text") {
+		t.Fatalf("missing final text: %q", got)
+	}
+	if strings.Contains(got, "raw") || strings.Contains(got, "[[token]]") {
+		t.Fatalf("raw streamed text was not replaced: %q", got)
+	}
+}
+
+func TestFinishAssistantContentStartsNextAssistantBlock(t *testing.T) {
+	m := &tuiModel{assistantName: "assistant"}
+	m.appendAssistantContent("first")
+	m.finishAssistantContent()
+	m.appendAssistantContent("second")
+
+	got := m.content
+	if strings.Count(got, "assistant: ") != 2 {
+		t.Fatalf("expected two assistant blocks: %q", got)
+	}
+}
+
 func TestAppendUserContentAddsSeparatorBetweenTurns(t *testing.T) {
 	m := &tuiModel{userName: "user", assistantName: "assistant", width: 12}
 	m.appendUserContent("第一轮")

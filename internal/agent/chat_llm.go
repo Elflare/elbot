@@ -21,9 +21,10 @@ type llmCallResult struct {
 	ToolCalls []llm.ToolCallRequest
 	Outputs   []output.Output
 	Messages  []llm.LLMMessage
+	Stream    platform.MessageStream
 }
 
-func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.ModelSelection, messages []llm.LLMMessage, tools []llm.ToolSchema, latestUserContent string) (llmCallResult, string, error) {
+func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.ModelSelection, messages []llm.LLMMessage, tools []llm.ToolSchema, latestUserContent string, stream platform.MessageStream) (llmCallResult, string, error) {
 	startedAt := time.Now()
 	baseMessages := append([]llm.LLMMessage(nil), messages...)
 	requestMessages := messages
@@ -54,7 +55,7 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 	if err != nil {
 		if shouldFallbackVision(requestMessages, err) {
 			a.notifyVisionFallbackOnce(ctx, sessionID)
-			return a.callLLM(ctx, sessionID, selection, fallbackVisionMessages(baseMessages), tools, latestUserContent)
+			return a.callLLM(ctx, sessionID, selection, fallbackVisionMessages(baseMessages), tools, latestUserContent, stream)
 		}
 		a.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", err.Error())
 		a.notifyHookError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, ElapsedMS: elapsedMillis(startedAt)}}, err)
@@ -69,11 +70,11 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 		if chunk.Error != nil {
 			if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				content := assistant.String()
-				return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages}, latestUserContent, nil
+				return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages, Stream: stream}, latestUserContent, nil
 			}
 			if shouldFallbackVision(requestMessages, chunk.Error) {
 				a.notifyVisionFallbackOnce(ctx, sessionID)
-				return a.callLLM(ctx, sessionID, selection, fallbackVisionMessages(baseMessages), tools, latestUserContent)
+				return a.callLLM(ctx, sessionID, selection, fallbackVisionMessages(baseMessages), tools, latestUserContent, stream)
 			}
 			a.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", chunk.Error.Error())
 			a.notifyHookError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, RawText: assistant.String(), Text: assistant.String(), ToolCalls: toolCalls, Usage: usage, ElapsedMS: elapsedMillis(startedAt)}}, chunk.Error)
@@ -93,7 +94,13 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 		for _, delta := range chunk.ToolCallDeltas {
 			toolCalls = append(toolCalls, llm.ToolCallRequest{ID: delta.ID, Name: delta.Name, Arguments: delta.Args})
 		}
-		assistant.WriteString(chunk.DeltaContent)
+		delta := chunk.DeltaContent
+		assistant.WriteString(delta)
+		if stream != nil && delta != "" {
+			if err := stream.Append(ctx, delta); err != nil {
+				return llmCallResult{}, latestUserContent, fmt.Errorf("stream append: %w", err)
+			}
+		}
 	}
 	if reasoningOpen {
 		a.sendCLIReasoning(ctx, "[/thinking]\n\n")
@@ -118,9 +125,15 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 	}
 	usage = event.LLM.Usage
 	toolCalls = event.LLM.ToolCalls
-	a.logLLMOutput(sessionID, selection, event.LLM.Text, event.LLM.RawText, len(toolCalls), elapsedMs)
+	finalText := event.LLM.Text
+	if stream != nil {
+		if _, err := stream.Replace(ctx, finalText); err != nil {
+			return llmCallResult{}, latestUserContent, fmt.Errorf("stream replace: %w", err)
+		}
+	}
+	a.logLLMOutput(sessionID, selection, finalText, event.LLM.RawText, len(toolCalls), elapsedMs)
 	a.auditUsage(sessionID, selection, usage, elapsedMs)
-	return llmCallResult{Text: event.LLM.Text, RawText: event.LLM.RawText, Usage: usage, ToolCalls: toolCalls, Outputs: event.Outputs, Messages: baseMessages}, latestUserContent, nil
+	return llmCallResult{Text: finalText, RawText: event.LLM.RawText, Usage: usage, ToolCalls: toolCalls, Outputs: event.Outputs, Messages: baseMessages, Stream: stream}, latestUserContent, nil
 }
 
 func (a *Agent) logLLMOutput(sessionID string, selection config.ModelSelection, text, rawText string, toolCallCount int, elapsedMs int64) {
