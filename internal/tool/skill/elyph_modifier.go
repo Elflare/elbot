@@ -59,7 +59,7 @@ func (ReadElSkillTool) Info() tool.Info {
 	return tool.NewBuilder(ReadElSkillName).
 		Description("按行读取 ElBot 原生 ELyph skill 的 SKILL.elyph，返回 1-based 行号，供修改前定位使用。").
 		Source(tool.SourceBuiltin).
-		Risk(tool.RiskLow).
+		Risk(tool.RiskMedium).
 		BuildInfo()
 }
 
