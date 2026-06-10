@@ -118,8 +118,11 @@ func (m *Manager) Stop() context.Context {
 	if !m.started || m.scheduler == nil {
 		m.started = false
 		m.mu.Unlock()
-		return context.Background()
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		return ctx
 	}
+
 	scheduler := m.scheduler
 	m.started = false
 	m.scheduler = nil

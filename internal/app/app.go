@@ -184,6 +184,14 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	profiler.Mark("platform init")
 	var agt *agent.Agent
+	startupHookNotices := []string{}
+	notifyHookIssue := func(ctx context.Context, text string) {
+		if agt == nil {
+			startupHookNotices = append(startupHookNotices, text)
+			return
+		}
+		_, _ = agt.SendNoticeOutput(ctx, output.Target{}, output.Text(text))
+	}
 	cronService := elcron.NewService(elcron.Options{
 		Manager:          cronManager,
 		Store:            store,
@@ -226,17 +234,14 @@ func Run(ctx context.Context, opts Options) error {
 		Audit: func(event string, attrs ...any) {
 			logs.Audit().Log(context.Background(), slog.LevelInfo, "audit event", append([]any{"event", event}, attrs...)...)
 		},
-		Notify: func(ctx context.Context, text string) {
-			if agt == nil {
-				return
-			}
-			_, _ = agt.SendNoticeOutput(ctx, output.Target{}, output.Text(text))
-		},
+		Notify: notifyHookIssue,
 	}); err != nil {
-		return err
+		logger.Error("hook registration failed", "error", err)
+		notifyHookIssue(context.Background(), fmt.Sprintf("Hook 注册失败：%v", err))
 	}
 	if err := registerCronPlatformHook(hooks, cronService); err != nil {
-		return err
+		logger.Error("cron platform hook registration failed", "error", err)
+		notifyHookIssue(context.Background(), fmt.Sprintf("Cron Hook 注册失败：%v", err))
 	}
 	profiler.Mark("hook register")
 	agt = agent.NewWithOptions(platforms.Primary, adapter, workModel.Provider, cfg.ModeModels, cfg.Providers, cfg.StateConfigPath, store, cfg.Commands.Prefixes, session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode}, cfg.NamingModel, namingAdapter, namingModel, namingLogger{logger: logger}, cfg.Soul.Path)
@@ -251,6 +256,9 @@ func Run(ctx context.Context, opts Options) error {
 	agt.SetSecurityPolicy(securityPolicy)
 	agt.SetContextOptions(cfg.Context, cfg.ModelMetadata, cfg.CompactModel)
 	cronService.SetRunner(agt)
+	for _, notice := range startupHookNotices {
+		notifyHookIssue(context.Background(), notice)
+	}
 	profiler.Mark("agent init")
 
 	registerPlatformHooks(agt, platforms.Runtimes)

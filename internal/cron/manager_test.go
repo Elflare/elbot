@@ -184,3 +184,13 @@ func TestManagerStartSchedulesEnabledJobs(t *testing.T) {
 		t.Fatal("cron manager did not stop")
 	}
 }
+
+func TestManagerStopBeforeStartDoesNotBlock(t *testing.T) {
+	manager := NewManager(nil, nil)
+	stopCtx := manager.Stop()
+	select {
+	case <-stopCtx.Done():
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("cron manager stop before start did not finish")
+	}
+}

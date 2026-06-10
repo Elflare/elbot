@@ -16,11 +16,11 @@
 ### 入口与启动
 
 - `cmd/elbot/main.go`：程序入口；解析启动参数、创建根 context，并调用 `internal/app.Run`。
-- `internal/app/app.go`：应用装配入口；加载配置、日志、SQLite、LLM、Agent、Tool、Platform、Hook、Output、Cron 等依赖并启动平台 runtime。
+- `internal/app/app.go`：应用装配入口；加载配置、日志、SQLite、LLM、Agent、Tool、Platform、Hook、Output、Cron 等依赖并启动平台 runtime；Hook 插件错误按非致命处理，启动期通知会在 Agent 就绪后补发。
 
 ### Cron 与维护任务
 
-- `internal/cron/manager.go`：中央 Cron Runtime；基于 `robfig/cron/v3` 调度持久化 job，提供 handler 注册、job upsert/disable/delete、启动加载、执行日志、运行状态更新和同 job 防并发。
+- `internal/cron/manager.go`：中央 Cron Runtime；基于 `robfig/cron/v3` 调度持久化 job，提供 handler 注册、job upsert/disable/delete、启动加载、执行日志、运行状态更新、同 job 防并发和未启动 Stop 的安全返回。
 - `internal/cron/service.go`：LLM 可编排 cron 服务；管理用户 cron metadata，支持 once/周期、direct/LLM 触发、missed once 补投递、LLM cron JSON 结果解析与失败通知。
 - `internal/maintenance/maintenance.go`：系统维护任务；提供日志清理和过期 Session 清理 handler，供中央 Cron 注册为系统任务。
 

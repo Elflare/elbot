@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"elbot/internal/hook"
@@ -28,6 +29,9 @@ func RegisterAll(registrar hook.Registrar, opts Options) error {
 	if registrar == nil {
 		return nil
 	}
+	residentMemoryModule := residentmemory.NewModule(residentmemory.Options{Store: opts.ResidentMemoryStore})
+	registerModule(registrar, opts, "resident_memory", residentMemoryModule)
+
 	rulesModule, err := rules.NewModule(rules.Options{
 		ConfigDir: opts.ConfigDir,
 		Tools:     opts.Tools,
@@ -36,24 +40,35 @@ func RegisterAll(registrar hook.Registrar, opts Options) error {
 		Audit:     opts.Audit,
 		Notify:    opts.Notify,
 	})
+	if err == nil {
+		registerModule(registrar, opts, "rules", rulesModule)
+	} else {
+		reportPluginError(opts, "rules", err)
+	}
 
-	if err != nil {
-		return err
-	}
 	emoticonModule, err := emoticon.NewModule(emoticon.Options{ConfigDir: opts.ConfigDir, Logger: opts.Logger})
-	if err != nil {
-		return err
-	}
-	residentMemoryModule := residentmemory.NewModule(residentmemory.Options{Store: opts.ResidentMemoryStore})
-	modules := []hook.Module{
-		residentMemoryModule,
-		rulesModule,
-		emoticonModule,
-	}
-	for _, module := range modules {
-		if err := module.RegisterHooks(registrar); err != nil {
-			return err
-		}
+	if err == nil {
+		registerModule(registrar, opts, "emoticon", emoticonModule)
+	} else {
+		reportPluginError(opts, "emoticon", err)
 	}
 	return nil
+}
+
+func registerModule(registrar hook.Registrar, opts Options, name string, module hook.Module) {
+	if err := module.RegisterHooks(registrar); err != nil {
+		reportPluginError(opts, name, err)
+	}
+}
+
+func reportPluginError(opts Options, name string, err error) {
+	if err == nil {
+		return
+	}
+	if opts.Logger != nil {
+		opts.Logger.Error("hook plugin disabled", "plugin", name, "error", err)
+	}
+	if opts.Notify != nil {
+		opts.Notify(context.Background(), fmt.Sprintf("Hook 插件 %s 已禁用：%v", name, err))
+	}
 }

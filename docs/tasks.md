@@ -681,6 +681,7 @@
 - [x] 方案 1：Go 内置 Hook Module 注册。新增 Hook Module/Registrar 地基，内置 Hook 通过 Go 代码显式注册到 HookManager，适合稳定、可测试、随程序发布的扩展。
 - [ ] 方案 2：外部 Hook 目录扫描（预留，可能不做）。目录暂定 `hooks/<name>/HOOK.toml + command`，通过 stdin/stdout JSON 协议收发 Hook Event；用于未来用户免编译扩展，但存在安全、调试、跨平台和性能成本，是否实现后续再定。
 - [ ] 方案 2：若未来实现，外部 Hook 默认应显式启用、限制超时，并复用 Hook priority 顺序；不使用 Go plugin，避免 Windows/Linux 兼容和动态加载维护成本。
+- [ ] 临时hook
 
 
 ## Milestone 14：QQ 适配
@@ -797,6 +798,7 @@
 - [x] cron session 使用 cron 标题并写入 `title_renamed=true`，避免后台自动命名覆盖；广播时复制 session 到目标平台便于各平台 `/resume` 查看。
 - [x] 启动后补跑 missed 的 enabled 一次性 cron，失败写日志并提示 CLI。
 - [ ] 可以指定模型，默认使用当前主模型。（暂时是固定主模型，以后配置在state.toml中）
+- [ ] 周期cron也支持过期时间
 
 ### 多模态
 
@@ -806,8 +808,3 @@
 - [ ] 后续支持语音、视频和普通文件的真实处理，不再仅文本化。
 - [ ] 后续支持 CLI 图片输入，例如本地路径转图片 segment。
 
-## Milestone17: 开源准备
-
-- [ ] 个人配置与仓库分离
-- [ ] 个人配置同步
-- [ ] 本项目docs与readme
