@@ -12,6 +12,7 @@ type RegisterOptions struct {
 	SkillManager        *skill.Manager
 	CronService         *elcron.Service
 	LongMemoryDir       string
+	ArtifactManager     *ArtifactManager
 }
 
 func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
@@ -36,6 +37,11 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 			if err := registry.Register(cronTool); err != nil {
 				return err
 			}
+		}
+	}
+	if opts.ArtifactManager != nil {
+		if err := registry.Register(NewSendFileTool(opts.ArtifactManager)); err != nil {
+			return err
 		}
 	}
 	if err := registry.Register(NewWebSearchTool()); err != nil {

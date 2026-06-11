@@ -286,11 +286,21 @@ func targetToQQ(outTarget output.Target) (target, error) {
 func outputSegments(out output.Output) ([]Segment, error) {
 	switch out.Kind {
 	case output.KindEmoticon, output.KindImage:
-		file, err := imageBase64File(out.Source.Path)
+		file, err := base64SourceFile(out.Source, "image")
 		if err != nil {
 			return nil, err
 		}
 		return []Segment{{Type: "image", Data: map[string]any{"file": file}}}, nil
+	case output.KindFile:
+		file, err := base64SourceFile(out.Source, "file")
+		if err != nil {
+			return nil, err
+		}
+		data := map[string]any{"file": file}
+		if name := strings.TrimSpace(out.Name); name != "" {
+			data["name"] = name
+		}
+		return []Segment{{Type: "file", Data: data}}, nil
 	case output.KindAt:
 		qq := strings.TrimSpace(out.Name)
 		if qq == "" {
@@ -305,14 +315,20 @@ func outputSegments(out output.Output) ([]Segment, error) {
 	}
 }
 
-func imageBase64File(path string) (string, error) {
-	path = strings.TrimSpace(path)
+func base64SourceFile(source output.Source, label string) (string, error) {
+	if len(source.Data) > 0 {
+		return "base64://" + base64.StdEncoding.EncodeToString(source.Data), nil
+	}
+	if url := strings.TrimSpace(source.URL); url != "" {
+		return url, nil
+	}
+	path := strings.TrimSpace(source.Path)
 	if path == "" {
-		return "", fmt.Errorf("image path is empty")
+		return "", fmt.Errorf("%s path is empty", label)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("read image %q: %w", path, err)
+		return "", fmt.Errorf("read %s %q: %w", label, path, err)
 	}
 	return "base64://" + base64.StdEncoding.EncodeToString(data), nil
 }

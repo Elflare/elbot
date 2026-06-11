@@ -24,7 +24,6 @@ import (
 	platformbuiltin "elbot/internal/platform/builtin"
 	"elbot/internal/security"
 	"elbot/internal/session"
-	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool/builtin"
 )
@@ -139,16 +138,9 @@ func Run(ctx context.Context, opts Options) error {
 	profiler.Mark("sqlite.New")
 	defer store.Close()
 
-	maint := maintenance.NewService(logs, store, cfg.Session.Cleanup, logger)
+	maint := maintenance.NewServiceWithConfig(logs, store, cfg, logger)
 	cronManager := elcron.NewManager(store.CronJobs(), logger)
-	if err := cronManager.RegisterHandler("maintenance.log_cleanup", func(ctx context.Context, job storage.CronJob) error {
-		return maint.RunLogCleanup(ctx)
-	}); err != nil {
-		return err
-	}
-	if err := cronManager.RegisterHandler("maintenance.session_cleanup", func(ctx context.Context, job storage.CronJob) error {
-		return maint.RunSessionCleanup(ctx)
-	}); err != nil {
+	if err := maint.RegisterCronHandlers(cronManager); err != nil {
 		return err
 	}
 	profiler.Mark("cron async prepared")
@@ -208,7 +200,7 @@ func Run(ctx context.Context, opts Options) error {
 	if err := cronManager.RegisterHandler(elcron.UserHandlerName, cronService.Handler); err != nil {
 		return err
 	}
-	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{ConfigDir: filepath.Dir(cfg.ConfigPath), CronService: cronService})
+	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{ConfigDir: filepath.Dir(cfg.ConfigPath), CronService: cronService, SandboxRoot: cfg.Sandbox.Root, ArtifactConfig: cfg.Artifact})
 	if err != nil {
 		return err
 	}
@@ -248,6 +240,7 @@ func Run(ctx context.Context, opts Options) error {
 	agt.SetSessionListPageSize(cfg.View.SessionListPageSize)
 	agt.SetCleanupRetentionDays(cfg.Session.Cleanup.RetentionDays)
 	agt.SetNonSuperadminIdleTTLMinutes(cfg.Session.NonSuperadminIdleTTLMinutes)
+	agt.SetSandboxPaths(cfg.Sandbox.Root, filepath.Join(cfg.Sandbox.Root, "artifact"))
 	agt.SetLogManager(logs)
 	agt.SetToolRuntime(toolRegistry, skillManager.Scanner)
 	agt.SetToolConfig(cfg.Tools)
@@ -333,24 +326,7 @@ func startCronAsync(ctx context.Context, manager *elcron.Manager, service *elcro
 }
 
 func setupCron(ctx context.Context, manager *elcron.Manager, cfg *config.Config) error {
-	if manager == nil || cfg == nil {
-		return nil
-	}
-	if cfg.Maintenance.LogCleanup.Enabled {
-		if _, err := manager.UpsertJob(ctx, elcron.UpsertJobRequest{Name: "system.maintenance.log_cleanup", Handler: "maintenance.log_cleanup", Schedule: cfg.Maintenance.LogCleanup.Schedule, Enabled: true}); err != nil {
-			return err
-		}
-	} else if err := manager.DisableJob(ctx, "system.maintenance.log_cleanup"); err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return err
-	}
-	if cfg.Session.Cleanup.Enabled {
-		if _, err := manager.UpsertJob(ctx, elcron.UpsertJobRequest{Name: "system.maintenance.session_cleanup", Handler: "maintenance.session_cleanup", Schedule: cfg.Maintenance.LogCleanup.Schedule, Enabled: true}); err != nil {
-			return err
-		}
-	} else if err := manager.DisableJob(ctx, "system.maintenance.session_cleanup"); err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return err
-	}
-	return manager.Start(ctx)
+	return maintenance.SetupCron(ctx, manager, cfg)
 }
 
 func platformStopsAppOnExit(adapter platformRuntime) bool {

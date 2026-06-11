@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -76,6 +77,8 @@ type Agent struct {
 	sessionListPageSize         int
 	cleanupRetentionDays        int
 	nonSuperadminIdleTTLMinutes int
+	sandboxRoot                 string
+	artifactDir                 string
 	logger                      *slog.Logger
 	auditLogger                 *slog.Logger
 	logReader                   logging.Reader
@@ -156,6 +159,8 @@ func NewWithOptions(p platform.PlatformAdapter, client llm.LLM, providerName str
 		sessionListPageSize:         config.Default().View.SessionListPageSize,
 		cleanupRetentionDays:        30,
 		nonSuperadminIdleTTLMinutes: config.Default().Session.NonSuperadminIdleTTLMinutes,
+		sandboxRoot:                 config.Default().Sandbox.Root,
+		artifactDir:                 filepath.Join(config.Default().Sandbox.Root, "artifact"),
 		actorID:                     "cli:local",
 		scopeID:                     "local",
 	}
@@ -352,6 +357,18 @@ func (a *Agent) SetNonSuperadminIdleTTLMinutes(minutes int) {
 		minutes = 0
 	}
 	a.nonSuperadminIdleTTLMinutes = minutes
+}
+
+func (a *Agent) SetSandboxPaths(root, artifactDir string) {
+	root = filepath.Clean(root)
+	if root == "." || root == "" {
+		root = config.Default().Sandbox.Root
+	}
+	if artifactDir == "" {
+		artifactDir = filepath.Join(root, "artifact")
+	}
+	a.sandboxRoot = root
+	a.artifactDir = filepath.Clean(artifactDir)
 }
 
 func (a *Agent) retentionDays() int {

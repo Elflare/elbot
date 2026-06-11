@@ -22,7 +22,7 @@
 
 - `internal/cron/manager.go`：中央 Cron Runtime；基于 `robfig/cron/v3` 调度持久化 job，提供 handler 注册、job upsert/disable/delete、启动加载、执行日志、运行状态更新、同 job 防并发和未启动 Stop 的安全返回。
 - `internal/cron/service.go`：LLM 可编排 cron 服务；管理用户 cron metadata，支持 once/周期、direct/LLM 触发、missed once 补投递、LLM cron JSON 结果解析与失败通知。
-- `internal/maintenance/maintenance.go`：系统维护任务；提供日志清理和过期 Session 清理 handler，供中央 Cron 注册为系统任务。
+- `internal/maintenance/maintenance.go`：系统维护任务；集中注册维护类 Cron，提供日志清理、过期 Session 清理和 artifact 沙盒清理。
 
 ### Agent 编排
 
@@ -34,7 +34,7 @@
 - `internal/agent/chat_llm.go`：LLM 调用与消息转换辅助；处理 Hook 后请求、流式响应、多模态转换、reasoning/usage/runtime 日志；流式最终 replace 由对话主流程在输出 Hook 后完成。
 - `internal/agent/chat_tools.go`：工具执行与确认辅助；处理工具调用、风险确认、transcript、工具调用记录和 schema 注入。
 - `internal/agent/risk_confirmation.go`：风险确认阶段命令定义与文案；统一生成 `/detail`、`/confirm`、`/confirmtool`、`/confirmall`、`/reject`、`/stop` 及别名的提示、补全和识别。
-- `internal/agent/cron.go`：Agent 后台 cron runner；绕过 slash 命令解析，使用 cron 专用 session 静默运行 LLM，注入 `data/cron_sandbox/` 工具 sandbox context，要求最终 JSON 由 cron service 解析；cron session 写 `title_renamed=true` 避免自动命名覆盖。
+- `internal/agent/cron.go`：Agent 后台 cron runner；绕过 slash 命令解析，使用 cron 专用 session 静默运行 LLM，注入统一 sandbox 下的 `cron/` 工具 context（默认 `data/sandbox/cron`），要求最终 JSON 由 cron service 解析；cron session 写 `title_renamed=true` 避免自动命名覆盖。
 - `internal/agent/cron_tools.go`：cron 工具确认特例；后台 cron shell 非 critical 自动确认，critical 直接回 tool message 提醒用相对路径/低风险命令且不等待用户。
 - `internal/agent/prompt.go`：Soul Prompt Builder；加载 `SOUL.md`，合并常驻记忆、工具名称提示和压缩摘要，避免生成多条 system prompt。
 - `internal/agent/tools.go`：Agent Tool Runtime 注入与命令依赖实现；维护工具 Registry、skill scanner，并把工具 schema provider 和工具名称 provider 接入 Prompt Builder。
@@ -72,7 +72,7 @@
 
 配置约定：默认配置查找顺序为 `--config`、`ELBOT_CONFIG_FILE`、平台配置目录（Windows `%APPDATA%/ElBot/app.toml`；Linux XDG `~/.config/elbot/app.toml`）、最后回退源码目录 `config/app.toml`。静态配置在 `app.toml`，Provider 列表在同目录 `providers.toml`，运行时热切换状态在同目录 `state.toml`；Hook/插件配置固定放在同目录 `plugins/<plugin-name>.toml`，app 层不解析插件专属字段。Provider key 推荐用 `api_key_env`，读取优先级为系统环境变量 > 配置目录 `.env`。
 
-- `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录/source fallback 解析 `app.toml`，读取并合并 app/provider/state 配置，解析相对路径和 `api_key_env`，默认上下文窗口归属 provider 模型元信息。
+- `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录/source fallback 解析 `app.toml`，读取并合并 app/provider/state 配置，解析相对路径和 `api_key_env`，包含 sandbox/artifact 与 S3/R2 预留配置。
 - `internal/logging/logging.go`：日志地基；创建运行日志与审计日志的 `slog.Logger`，`Manager` 统一持有 `elbot-YYYY-MM-DD.log`、`audit-YYYY-MM-DD.log` 文件、暴露日志目录和可配置旧日志清理入口。
 - `internal/logging/reader.go`：结构化文本日志读取器；解析 `slog.TextHandler` 输出，支持 `/log`、`/audit` 的时间、等级、字段、msg、latest message 文本和条数过滤，并放宽单行读取上限以支持较大的 Debug 请求体。
 - `config/app.toml`：应用主配置；保存 storage、runtime、context、commands、tools、security、session cleanup、view、platform、soul 等静态设置。
@@ -118,14 +118,16 @@
 ### Tool Runtime
 
 - `internal/tool/tool.go`：Tool Runtime 核心类型与 Registry；管理工具注册、查询、schema、权限、风险评估和执行结果结构。
-- `internal/tool/sandbox.go`：工具执行轻量 sandbox context；当前用于标记 cron 后台 shell 的共用工作目录与后台运行态，只随本次 context 传播，不写入 Session。
+- `internal/tool/sandbox.go`：工具执行轻量 sandbox context；传递统一 sandbox root、当前工作目录、artifact 目录和 cron 后台状态，只随本次 context 传播，不写入 Session。
 - `internal/tool/builder.go`：Go Tool Builder；用于声明工具描述、风险、隐藏、superadmin-only、依赖和常用参数 schema，减少内置工具与包装工具手写 JSON schema 的成本。
 - `internal/tool/discover.go`：`discover_tool` 内置工具；无参列出可见工具/skill 简介，有 `name`/`names` 时普通工具仅返回“已发现工具”文本并把完整 schema 留在结构化 Data 供 Agent 注入 top-level tools，外置 skill 返回 markdown/ELyph detail；查询 py/go skill 会通过内部 metadata 激活隐藏包装工具 `python_skill_run`/`go_skill_run`。
 - `internal/tool/provider.go`：Tool Runtime 到 Agent Prompt/LLM schema 的 provider 适配；work 模式注入 `discover_tool` 和当前 Actor 可用且未隐藏的工具名称，chat 模式不注入。
 - `internal/tool/executor.go`：工具执行器；把模型产生的 `llm.ToolCallRequest` 转换为 Tool Runtime 调用，执行前按 Actor/Policy 做风险等级兜底校验，并把结果转换为 LLM tool message。
 
-- `internal/tool/builtin/runtime.go`：内置工具 Runtime；集中创建 Tool Registry、常驻记忆 store、Skill Manager 和内置工具私有路径，让 app 层不关心具体内置工具清单。
-- `internal/tool/builtin/register.go`：内置工具注册细节；由 builtin Runtime 调用，统一注册 `discover_tool`、常驻记忆、长期记忆、cron、web 搜索/提取、shell、skill 包装工具和 Go 元 skill。
+- `internal/tool/builtin/runtime.go`：内置工具 Runtime；集中创建 Tool Registry、常驻记忆 store、Skill Manager、Artifact Manager 和内置工具私有路径，让 app 层不关心具体内置工具清单。
+- `internal/tool/builtin/register.go`：内置工具注册细节；由 builtin Runtime 调用，统一注册 `discover_tool`、常驻记忆、长期记忆、cron、`send_file`、web 搜索/提取、shell、skill 包装工具和 Go 元 skill。
+- `internal/tool/builtin/artifact.go`：artifact 文件暂存 helper；sandbox 内文件直接发送，外部文件复制到统一 sandbox 的 `artifact/` 子目录，做大小、文件名、MIME 和 Windows/MSYS 路径处理，未来可接 S3/R2。
+- `internal/tool/builtin/send_file.go`：内置发文件工具；仅超管可用，支持 `path`/`file` 参数，相对路径在 cron 中按 cron sandbox 解析，外部文件确认/自动处理后通过 output.File 发送。
 - `internal/tool/builtin/long_memory.go`：全局长期记忆工具组；可见入口 `long_memory` 依赖隐藏 CRUD/Search 工具，仅超管可用；Markdown 文件是源数据，SQLite FTS 是可重建索引，搜索/分类前会轻量同步并提示手改格式损坏文件。
 - `internal/tool/builtin/cron.go`：内置 cron 工具组；可见主工具 `cron` 依赖隐藏 CRUD 工具，查询为 medium 风险，增删改停用为 high 风险，全部仅超级管理员可用；`cron_list` 默认隐藏已完成 cron，传 `include_completed=true` 才显示历史完成项。
 - `internal/tool/builtin/env.go`：内置工具环境变量读取 helper；优先读 OS env，缺失时读取配置目录 `.env`，用于 Tavily/Jina API key。

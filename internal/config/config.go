@@ -35,6 +35,8 @@ type Config struct {
 	Security            SecurityConfig            `toml:"security"`
 	Session             SessionConfig             `toml:"session"`
 	Maintenance         MaintenanceConfig         `toml:"maintenance"`
+	Sandbox             SandboxConfig             `toml:"sandbox"`
+	Artifact            ArtifactConfig            `toml:"artifact"`
 	Platform            PlatformConfig            `toml:"platform"`
 	Soul                SoulConfig                `toml:"soul"`
 	ConfigPath          string                    `toml:"-"`
@@ -121,7 +123,24 @@ type SessionConfig struct {
 }
 
 type MaintenanceConfig struct {
-	LogCleanup CronTaskConfig `toml:"log_cleanup"`
+	LogCleanup      CronTaskConfig `toml:"log_cleanup"`
+	ArtifactCleanup CronTaskConfig `toml:"artifact_cleanup"`
+}
+
+type SandboxConfig struct {
+	Root string `toml:"root"`
+}
+
+type ArtifactConfig struct {
+	RetentionDays        int    `toml:"retention_days"`
+	MaxDirectBase64Bytes int64  `toml:"max_direct_base64_bytes"`
+	Backend              string `toml:"backend"`
+	S3Endpoint           string `toml:"s3_endpoint"`
+	S3Region             string `toml:"s3_region"`
+	S3Bucket             string `toml:"s3_bucket"`
+	S3AccessKeyEnv       string `toml:"s3_access_key_env"`
+	S3SecretKeyEnv       string `toml:"s3_secret_key_env"`
+	S3PublicBaseURL      string `toml:"s3_public_base_url"`
 }
 
 type PlatformConfig map[string]map[string]any
@@ -254,6 +273,7 @@ func Load(path string) (*Config, error) {
 	}
 	cfg.Storage.SQLitePath = resolveRelative(configPath, cfg.Storage.SQLitePath)
 	cfg.Soul.Path = resolveRelative(configPath, cfg.Soul.Path)
+	cfg.Sandbox.Root = resolveRelative(configPath, cfg.Sandbox.Root)
 	cfg.ConfigPath = configPath
 	cfg.ProvidersConfigPath = providersPath
 	cfg.StateConfigPath = statePath
@@ -369,6 +389,24 @@ func (c *Config) applyAppDefaults() {
 	}
 	if c.Maintenance.LogCleanup.Schedule == "" {
 		c.Maintenance.LogCleanup.Schedule = "0 3 * * *"
+	}
+	if c.Maintenance.ArtifactCleanup.Schedule == "" {
+		c.Maintenance.ArtifactCleanup.Schedule = "0 4 * * *"
+	}
+	if c.Sandbox.Root == "" {
+		c.Sandbox.Root = "../data/sandbox"
+	}
+	if c.Artifact.RetentionDays == 0 {
+		c.Artifact.RetentionDays = 7
+	}
+	if c.Artifact.MaxDirectBase64Bytes <= 0 {
+		c.Artifact.MaxDirectBase64Bytes = 8 * 1024 * 1024
+	}
+	if c.Artifact.Backend == "" {
+		c.Artifact.Backend = "base64"
+	}
+	if c.Artifact.S3Region == "" {
+		c.Artifact.S3Region = "auto"
 	}
 	if c.Session.Naming.TriggerStep <= 0 {
 		c.Session.Naming.TriggerStep = 1

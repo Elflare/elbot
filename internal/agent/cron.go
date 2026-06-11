@@ -48,9 +48,17 @@ func (a *Agent) RunCronMessage(ctx context.Context, req elcron.RunCronMessageReq
 	// 最终报告由 cron service 解析 LLM 返回 JSON 后再投递到目标平台。
 	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Platform: platformName, ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, DisplayName: actor.DisplayName, ScopeID: scopeID, Sender: discardSender{}, BufferAssistantOutput: true})
 	ctx = security.WithPolicy(security.WithActor(ctx, actor), a.securityPolicy)
-	// 后台 cron shell 使用轻量 sandbox，上下文只在本次执行传播，
+	// 后台 cron shell 使用统一 sandbox 下的 cron 子目录，上下文只在本次执行传播，
 	// 不写入 Session，避免影响普通对话工具调用。
-	ctx = tool.WithSandboxContext(ctx, tool.SandboxContext{Dir: filepath.Join("data", "cron_sandbox"), CronBackground: true})
+	sandboxRoot := a.sandboxRoot
+	if sandboxRoot == "" {
+		sandboxRoot = filepath.Join("data", "sandbox")
+	}
+	artifactDir := a.artifactDir
+	if artifactDir == "" {
+		artifactDir = filepath.Join(sandboxRoot, "artifact")
+	}
+	ctx = tool.WithSandboxContext(ctx, tool.SandboxContext{Root: sandboxRoot, Dir: filepath.Join(sandboxRoot, "cron"), ArtifactDir: artifactDir, CronBackground: true})
 
 	if req.ModelProvider != "" || req.Model != "" {
 		ctx = context.WithValue(ctx, cronModelSelectionKey{}, config.ModelSelection{Provider: req.ModelProvider, Model: req.Model})

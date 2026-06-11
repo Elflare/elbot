@@ -73,6 +73,24 @@ max_rounds_per_turn = 3
 enabled = true
 schedule = "0 4 * * *"
 
+[maintenance.artifact_cleanup]
+enabled = true
+schedule = "0 5 * * *"
+
+[sandbox]
+root = "../data/sandbox"
+
+[artifact]
+retention_days = 9
+max_direct_base64_bytes = 123456
+backend = "base64"
+s3_endpoint = "https://r2.example"
+s3_region = "auto"
+s3_bucket = "elbot-artifacts"
+s3_access_key_env = "ELBOT_TEST_S3_ACCESS"
+s3_secret_key_env = "ELBOT_TEST_S3_SECRET"
+s3_public_base_url = "https://files.example"
+
 [platform.qqonebot]
 enabled = true
 ws_url = "ws://example"
@@ -173,9 +191,19 @@ model = "deepseek-compact"
 	if !reflect.DeepEqual(cfg.Session.Cleanup, wantCleanup) {
 		t.Fatalf("cleanup = %#v, want %#v", cfg.Session.Cleanup, wantCleanup)
 	}
-	wantMaintenance := MaintenanceConfig{LogCleanup: CronTaskConfig{Enabled: true, Schedule: "0 4 * * *"}}
+	wantMaintenance := MaintenanceConfig{
+		LogCleanup:      CronTaskConfig{Enabled: true, Schedule: "0 4 * * *"},
+		ArtifactCleanup: CronTaskConfig{Enabled: true, Schedule: "0 5 * * *"},
+	}
 	if !reflect.DeepEqual(cfg.Maintenance, wantMaintenance) {
 		t.Fatalf("maintenance = %#v, want %#v", cfg.Maintenance, wantMaintenance)
+	}
+	if cfg.Sandbox.Root != filepath.Clean(filepath.Join(configDir, "../data/sandbox")) {
+		t.Fatalf("sandbox root = %q", cfg.Sandbox.Root)
+	}
+	wantArtifact := ArtifactConfig{RetentionDays: 9, MaxDirectBase64Bytes: 123456, Backend: "base64", S3Endpoint: "https://r2.example", S3Region: "auto", S3Bucket: "elbot-artifacts", S3AccessKeyEnv: "ELBOT_TEST_S3_ACCESS", S3SecretKeyEnv: "ELBOT_TEST_S3_SECRET", S3PublicBaseURL: "https://files.example"}
+	if !reflect.DeepEqual(cfg.Artifact, wantArtifact) {
+		t.Fatalf("artifact = %#v, want %#v", cfg.Artifact, wantArtifact)
 	}
 	wantNaming := SessionNamingConfig{TriggerStep: 3}
 	if !reflect.DeepEqual(cfg.Session.Naming, wantNaming) {
@@ -284,8 +312,15 @@ model = "deepseek-chat"
 	if !reflect.DeepEqual(cfg.Session.Cleanup, wantCleanup) {
 		t.Fatalf("cleanup = %#v, want %#v", cfg.Session.Cleanup, wantCleanup)
 	}
-	if cfg.Maintenance.LogCleanup.Schedule != "0 3 * * *" {
+	if cfg.Maintenance.LogCleanup.Schedule != "0 3 * * *" || cfg.Maintenance.ArtifactCleanup.Schedule != "0 4 * * *" {
 		t.Fatalf("maintenance defaults = %#v", cfg.Maintenance)
+	}
+	if cfg.Sandbox.Root != filepath.Clean(filepath.Join(configDir, "../data/sandbox")) {
+		t.Fatalf("sandbox root default = %q", cfg.Sandbox.Root)
+	}
+	wantArtifact := ArtifactConfig{RetentionDays: 7, MaxDirectBase64Bytes: 8 * 1024 * 1024, Backend: "base64", S3Region: "auto"}
+	if !reflect.DeepEqual(cfg.Artifact, wantArtifact) {
+		t.Fatalf("artifact defaults = %#v, want %#v", cfg.Artifact, wantArtifact)
 	}
 	if cfg.Session.Naming.TriggerStep != 1 {
 		t.Fatalf("naming trigger step = %d", cfg.Session.Naming.TriggerStep)
