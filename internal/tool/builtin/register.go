@@ -11,6 +11,7 @@ type RegisterOptions struct {
 	ResidentMemoryStore *resident.Store
 	SkillManager        *skill.Manager
 	CronService         *elcron.Service
+	LongMemoryDir       string
 }
 
 func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
@@ -22,7 +23,15 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 			return err
 		}
 	}
+	if longMemoryDir := opts.LongMemoryDir; longMemoryDir != "" {
+		for _, memoryTool := range NewLongMemoryTools(longMemoryDir) {
+			if err := registry.Register(memoryTool); err != nil {
+				return err
+			}
+		}
+	}
 	if opts.CronService != nil {
+
 		for _, cronTool := range NewCronTools(opts.CronService) {
 			if err := registry.Register(cronTool); err != nil {
 				return err

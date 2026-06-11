@@ -178,10 +178,11 @@ func TestCreateLLMCronRequiresElyphTask(t *testing.T) {
 	if _, err := svc.Create(context.Background(), base); err == nil || !strings.Contains(err.Error(), "#task") {
 		t.Fatalf("invalid LLM cron error = %v", err)
 	}
-	base.Message = testElyphTask("daily")
+	base.Message = testElyphTask("daily_task")
 	if _, err := svc.Create(context.Background(), base); err != nil {
-		t.Fatalf("valid ELyph LLM cron should be accepted: %v", err)
+		t.Fatalf("valid ELyph LLM cron with different task name should be accepted: %v", err)
 	}
+
 }
 
 func TestCreateDirectCronDoesNotRequireElyphTask(t *testing.T) {

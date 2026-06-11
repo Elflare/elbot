@@ -28,13 +28,17 @@ ElBot includes a Hook Layer that can extend key event points such as Agent input
 
 ElBot separates runtime logs from audit logs. It supports structured fields, log queries, audit queries, request status inspection, and runtime debugging. Runtime logs help diagnose operational issues, while audit logs track command denial, tool calls, Cron delivery, persistence errors, and other important events. For long-running bots, this reduces troubleshooting cost and makes high-risk operations easier to trace.
 
-### 5. Resident memory and persistent memory
+### 5. Resident memory and long-term memory
 
-ElBot separates memory into lightweight resident memory and queryable persistent memory. Resident memory is kept short and stable, containing only information that is truly useful in every turn, which reduces token usage. Longer and more complex memory is not automatically injected; instead, the LLM can query it when needed. Compared with automatic RAG or graph-based long-term memory, this approach is more controllable, avoids irrelevant memory pollution, and reduces retrieval and injection cost.
+ElBot separates memory into resident memory and long-term memory. Resident memory only stores short, stable information that is truly useful in every turn, reducing token usage. Longer and more complex memory is not automatically injected; instead, the LLM actively discovers and queries it through the `long_memory` tool when needed.
+
+Long-term memory uses human-readable Markdown files as the source data, with SQLite FTS as a rebuildable search index. This balances transparency with retrieval efficiency.
+
+Compared with fully automatic RAG or graph-based long-term memory, ElBot's memory design is more explicit and controllable.
 
 ### 6. Direct Cron and LLM Cron
 
-ElBot includes both a central Cron runtime and an LLM-orchestrated Cron service. Direct Cron sends fixed content on schedule, while LLM Cron lets a model execute one-time or recurring tasks from task descriptions and requires a parseable JSON result. It supports once/recurring jobs, missed once delivery, multi-platform notification, execution logs, and failure alerts, making it useful for reminders, daily reports, monitoring summaries, and background automation.
+ElBot includes both a central Cron runtime and an LLM-orchestrated Cron service. Direct Cron sends fixed content on schedule, while LLM Cron lets a model execute tasks from task descriptions.
 
 ### 7. ELyph: task notation for LLM collaboration
 
@@ -42,23 +46,23 @@ ElBot introduces ELyph Task Notation for LLM Cron and native skills. ELyph is de
 
 ### 8. LLM-created El Skills
 
-ElBot provides the `create_el_skill` meta tool, allowing the LLM to turn reusable experience into El Skills. An El Skill can describe its purpose, inputs, outputs, and execution rules in ELyph, and can optionally include Go source code for concrete implementation. ELyph validation runs before creation, and successful skills are reloaded automatically. This allows the Agent not only to solve one-off tasks, but also to solidify recurring workflows into reusable capabilities.
+ElBot provides the `create_el_skill` meta tool, allowing the LLM to turn reusable experience into El Skills.
 
 ### 9. Compatible with Python skills from the web
 
-Besides native El Skills, ElBot is also compatible with common external Python skill structures. It can scan `SKILL.md` or `SKILL.elyph`, read the skill name, description, use cases, and risk level, then execute the skill through hidden wrapper tools. This makes it possible to reuse existing skill ecosystems while gradually moving toward the more structured ELyph format.
+Besides native El Skills, ElBot is also compatible with common external Python skill structures. It automatically scans `SKILL.md` or `SKILL.elyph`, reads the skill name, description, use cases, and risk level, then executes the skill through hidden wrapper tools.
 
 ### 10. Multi-platform and rich output abstraction
 
-ElBot abstracts platform and output layers. It currently supports CLI and QQ OneBot, with room for more platforms. Hooks, tools, and plugins do not send platform messages directly; instead, they return platform-independent output intents such as text, images, files, mentions, or emoticons. Platforms send rich output when supported and automatically fall back to text when necessary, reducing coupling between plugins and platform adapters.
+ElBot abstracts platform and output layers. It currently supports CLI and QQ OneBot, with room for more platforms.
 
 ### 11. Sessions, forks, and context compaction
 
-ElBot includes a persistent Session service with session resume, archive, pin, delete, pagination, and platform isolation. When replying to historical assistant messages, it can automatically fork a branch session to avoid polluting the original timeline. The context layer supports model window resolution, compaction checkpoints, and summary injection, helping long conversations control context size while keeping history traceable.
+ElBot includes a persistent Session service with session resume, archive, pin, fork, delete, pagination, and platform isolation.
 
 ### 12. Security policy and risk confirmation
 
-ElBot's tool system includes risk levels, permission checks, and high-risk confirmation. Normal users can only discover and call tools within their allowed risk level, and even superadmins must confirm high-risk tool calls. Shell commands are classified by risk and pass through confirmation, while background Cron uses a lightweight sandbox to limit path escape. This gives the Agent practical execution power while reducing the chance of accidental damage.
+ElBot's tool system includes risk levels, permission checks, and high-risk confirmation. Normal users can only discover and call tools within their allowed risk level, and superadmins must also confirm high-risk tool calls.
 
 ## Usage
 

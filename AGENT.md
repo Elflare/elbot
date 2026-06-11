@@ -124,7 +124,9 @@
 - `internal/tool/provider.go`：Tool Runtime 到 Agent Prompt/LLM schema 的 provider 适配；work 模式注入 `discover_tool` 和当前 Actor 可用且未隐藏的工具名称，chat 模式不注入。
 - `internal/tool/executor.go`：工具执行器；把模型产生的 `llm.ToolCallRequest` 转换为 Tool Runtime 调用，执行前按 Actor/Policy 做风险等级兜底校验，并把结果转换为 LLM tool message。
 
-- `internal/tool/builtin/register.go`：内置工具集中注册入口；统一注册 `discover_tool`、常驻记忆、cron、web 搜索/提取、shell、skill 包装工具和 Go 元 skill，避免 app 装配层逐个知道具体工具。
+- `internal/tool/builtin/runtime.go`：内置工具 Runtime；集中创建 Tool Registry、常驻记忆 store、Skill Manager 和内置工具私有路径，让 app 层不关心具体内置工具清单。
+- `internal/tool/builtin/register.go`：内置工具注册细节；由 builtin Runtime 调用，统一注册 `discover_tool`、常驻记忆、长期记忆、cron、web 搜索/提取、shell、skill 包装工具和 Go 元 skill。
+- `internal/tool/builtin/long_memory.go`：全局长期记忆工具组；可见入口 `long_memory` 依赖隐藏 CRUD/Search 工具，仅超管可用；Markdown 文件是源数据，SQLite FTS 是可重建索引，搜索/分类前会轻量同步并提示手改格式损坏文件。
 - `internal/tool/builtin/cron.go`：内置 cron 工具组；可见主工具 `cron` 依赖隐藏 CRUD 工具，查询为 medium 风险，增删改停用为 high 风险，全部仅超级管理员可用；`cron_list` 默认隐藏已完成 cron，传 `include_completed=true` 才显示历史完成项。
 - `internal/tool/builtin/env.go`：内置工具环境变量读取 helper；优先读 OS env，缺失时读取配置目录 `.env`，用于 Tavily/Jina API key。
 - `internal/tool/builtin/web_search.go`：Tavily 搜索工具；返回 answer、来源链接和摘要，并依赖 `web_extract`。

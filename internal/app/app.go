@@ -19,7 +19,6 @@ import (
 	"elbot/internal/llm/openai"
 	"elbot/internal/logging"
 	"elbot/internal/maintenance"
-	"elbot/internal/memory/resident"
 	"elbot/internal/output"
 	"elbot/internal/platform"
 	platformbuiltin "elbot/internal/platform/builtin"
@@ -27,9 +26,7 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
-	"elbot/internal/tool"
 	"elbot/internal/tool/builtin"
-	"elbot/internal/tool/skill"
 )
 
 type Options struct {
@@ -211,12 +208,13 @@ func Run(ctx context.Context, opts Options) error {
 	if err := cronManager.RegisterHandler(elcron.UserHandlerName, cronService.Handler); err != nil {
 		return err
 	}
-	toolRegistry := tool.NewRegistry()
-	residentStore := resident.NewStore(filepath.Join(filepath.Dir(cfg.ConfigPath), "memories.toml"))
-	skillManager := skill.NewManager("", toolRegistry)
-	if err := builtin.RegisterAll(toolRegistry, builtin.RegisterOptions{ResidentMemoryStore: residentStore, SkillManager: skillManager, CronService: cronService}); err != nil {
+	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{ConfigDir: filepath.Dir(cfg.ConfigPath), CronService: cronService})
+	if err != nil {
 		return err
 	}
+	toolRegistry := toolRuntime.Registry
+	residentStore := toolRuntime.ResidentMemoryStore
+	skillManager := toolRuntime.SkillManager
 	profiler.Mark("builtin tools register")
 	if err := skillManager.Reload(ctx); err != nil {
 		return err

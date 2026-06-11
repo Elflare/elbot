@@ -221,7 +221,7 @@ func (s *Service) Create(ctx context.Context, req UpsertRequest) (*storage.CronJ
 		return nil, err
 	}
 	meta := Metadata{Kind: metadataKind, Version: 1, Title: strings.TrimSpace(req.Title), CreatedBy: actorMetadata(req.Actor), Schedule: CronSchedule{Mode: req.ScheduleMode, RunAt: strings.TrimSpace(req.RunAt), CronExpr: strings.TrimSpace(req.CronExpr)}, Trigger: CronTrigger{Mode: req.TriggerMode, Message: strings.TrimSpace(req.Message)}, Target: CronTarget{AllEnabledPlatforms: req.AllEnabledPlatforms, SourcePlatform: firstNonEmpty(req.SourcePlatform, req.Actor.Platform)}}
-	if err := validateElyphCronTask(req.Name, meta); err != nil {
+	if err := validateElyphCronTask(meta); err != nil {
 		return nil, err
 	}
 	if req.Enabled {
@@ -276,7 +276,7 @@ func (s *Service) Update(ctx context.Context, req PatchRequest) (*storage.CronJo
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
-	if err := validateElyphCronTask(name, meta); err != nil {
+	if err := validateElyphCronTask(meta); err != nil {
 		return nil, err
 	}
 	if enabled {
@@ -365,22 +365,15 @@ func (s *Service) List(ctx context.Context, includeDisabled, includeCompleted bo
 	return views, nil
 }
 
-func validateElyphCronTask(jobName string, meta Metadata) error {
-	// LLM cron 要求 message 是与 job 名匹配的 ELyph #task。
-	// 这样执行时可以注入规则卡，且任务正文保持可 lint、可复用、可审计。
+func validateElyphCronTask(meta Metadata) error {
+	// LLM cron 要求 message 是合法 ELyph #task。
+	// 执行时会注入规则卡，任务正文保持可 lint、可复用、可审计；
+	// task 名仅作为任务内部标识，不要求和 cron job 名一致。
 	if meta.Trigger.Mode != TriggerLLM {
 		return nil
 	}
-	if _, err := elyph.ParseTask(meta.Trigger.Message, cronTaskName(jobName)); err != nil {
-		return err
-	}
-	return nil
-}
-
-func cronTaskName(jobName string) string {
-	name := normalizeJobName(jobName)
-	name = strings.TrimPrefix(name, "user.cron.")
-	return name
+	_, err := elyph.ParseTask(meta.Trigger.Message, "")
+	return err
 }
 
 func (s *Service) validateUserSchedule(meta *Metadata) error {
