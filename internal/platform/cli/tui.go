@@ -107,7 +107,7 @@ func runTUI(ctx context.Context, handler platform.PlatformHandler, completion *c
 		handler:       handler,
 		output:        output,
 		copyState:     copyModeState{},
-		clipboard:     systemClipboardWriter{},
+		clipboard:     newClipboardWriter(),
 		completion:    completion,
 		input:         input,
 		userName:      userName,
