@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -21,6 +22,21 @@ type tuiNoticeMsg string
 type tuiProgramSetter func(*tea.Program)
 
 const noticePanelWidth = 40
+
+var (
+	tuiTitleStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("15")).
+			Background(lipgloss.Color("62")).
+			Padding(0, 1)
+	tuiTitleMutedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	tuiStatusStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	tuiUserStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
+	tuiAssistantStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("217"))
+	tuiNoticeStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	tuiSeparatorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	tuiPanelStyle      = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).BorderForeground(lipgloss.Color("8")).PaddingLeft(1)
+)
 
 type tuiModel struct {
 	ctx     context.Context
@@ -48,7 +64,7 @@ type tuiModel struct {
 func runTUI(ctx context.Context, handler platform.PlatformHandler, output chan tea.Msg, setProgram tuiProgramSetter, userName, assistantName string) error {
 	input := textinput.New()
 	input.Focus()
-	input.Prompt = "> "
+	input.Prompt = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81")).Render("❯ ")
 	input.CharLimit = 4096
 
 	if userName == "" {
@@ -86,10 +102,11 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		chatWidth, noticeWidth := m.layoutWidths()
+		bodyHeight := max(1, msg.Height-4)
 		m.viewport.Width = chatWidth
-		m.viewport.Height = max(1, msg.Height-3)
+		m.viewport.Height = bodyHeight
 		m.noticeViewport.Width = noticeWidth
-		m.noticeViewport.Height = max(1, msg.Height-3)
+		m.noticeViewport.Height = bodyHeight
 		m.input.Width = msg.Width
 		m.refreshContent()
 		m.refreshNotices()
@@ -177,8 +194,32 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m tuiModel) View() string {
-	status := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("Ctrl+C/Esc exit · C-k/C-j chat · C-u/C-d notices · Up/Down history")
-	return m.bodyView() + "\n" + status + "\n" + m.input.View()
+	return m.headerView() + "\n" + m.bodyView() + "\n" + m.statusView() + "\n" + m.input.View()
+}
+
+func (m tuiModel) headerView() string {
+	chatWidth, noticeWidth := m.layoutWidths()
+	if m.width <= 0 {
+		return tuiTitleStyle.Render("ElBot CLI")
+	}
+	chatTitle := tuiTitleStyle.Render("ElBot CLI")
+	if noticeWidth > 0 {
+		chatTitle += " " + tuiTitleMutedStyle.Render("chat")
+	}
+	header := lipgloss.NewStyle().Width(chatWidth).Render(chatTitle)
+	if noticeWidth <= 0 {
+		return header
+	}
+	noticeTitle := tuiTitleMutedStyle.Width(noticeWidth).Render("notices")
+	return lipgloss.JoinHorizontal(lipgloss.Top, header, noticeTitle)
+}
+
+func (m tuiModel) statusView() string {
+	status := "Ctrl+C/Esc exit · C-k/C-j chat · C-u/C-d notices · Up/Down history"
+	if len(m.completionCandidates) > 1 {
+		status += " · Tab " + strconv.Itoa(m.completionIndex+1) + "/" + strconv.Itoa(len(m.completionCandidates))
+	}
+	return tuiStatusStyle.Render(status)
 }
 
 func (m tuiModel) bodyView() string {
@@ -187,7 +228,7 @@ func (m tuiModel) bodyView() string {
 		return m.viewport.View()
 	}
 	chat := lipgloss.NewStyle().Width(chatWidth).Render(m.viewport.View())
-	notice := lipgloss.NewStyle().Width(noticeWidth).Border(lipgloss.NormalBorder(), false, false, false, true).BorderForeground(lipgloss.Color("8")).PaddingLeft(1).Render(m.noticeViewport.View())
+	notice := tuiPanelStyle.Width(noticeWidth).Render(m.noticeViewport.View())
 	return lipgloss.JoinHorizontal(lipgloss.Top, chat, notice)
 }
 
@@ -359,21 +400,45 @@ func (m *tuiModel) refreshNotices() {
 	if !m.layoutNoticeVisible() {
 		return
 	}
+	contentWidth := max(1, m.noticeViewport.Width-4)
 	var sb strings.Builder
-	sb.WriteString("通知\n")
-	sb.WriteString(strings.Repeat("─", max(4, m.noticeViewport.Width-2)))
+	sb.WriteString(tuiNoticeStyle.Bold(true).Render("通知"))
+	if len(m.notices) == 0 {
+		sb.WriteString("\n")
+		sb.WriteString(tuiTitleMutedStyle.Render("暂无通知"))
+		m.noticeViewport.SetContent(sb.String())
+		return
+	}
 	for _, notice := range m.notices {
-		sb.WriteString("\n")
-		sb.WriteString(wrapDisplayWidth(notice, max(1, m.noticeViewport.Width-2)))
-		sb.WriteString("\n")
+		sb.WriteString("\n\n")
+		sb.WriteString(tuiNoticeStyle.Render("• "))
+		sb.WriteString(wrapDisplayWidth(notice, contentWidth))
 	}
 	m.noticeViewport.SetContent(sb.String())
 	m.noticeViewport.GotoBottom()
 }
 
 func (m *tuiModel) refreshContent() {
-	m.viewport.SetContent(m.wrappedContent())
+	m.viewport.SetContent(m.renderContent(m.wrappedContent()))
 	m.viewport.GotoBottom()
+}
+
+func (m tuiModel) renderContent(content string) string {
+	if content == "" {
+		return tuiTitleMutedStyle.Render("还没有消息。输入内容后按 Enter 发送。")
+	}
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		switch {
+		case strings.HasPrefix(line, m.userName+": "):
+			lines[i] = renderSpeakerLine(line, m.userName, tuiUserStyle)
+		case strings.HasPrefix(line, m.assistantName+": "):
+			lines[i] = renderSpeakerLine(line, m.assistantName, tuiAssistantStyle)
+		case isSeparatorLine(line):
+			lines[i] = tuiSeparatorStyle.Render(line)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m tuiModel) wrappedContent() string {
@@ -381,6 +446,16 @@ func (m tuiModel) wrappedContent() string {
 		return m.content
 	}
 	return wrapDisplayWidth(m.content, m.viewport.Width)
+}
+
+func renderSpeakerLine(line, name string, style lipgloss.Style) string {
+	prefix := name + ":"
+	return style.Render(prefix) + strings.TrimPrefix(line, prefix)
+}
+
+func isSeparatorLine(line string) bool {
+	line = strings.TrimSpace(line)
+	return line != "" && strings.Trim(line, "─") == ""
 }
 
 func wrapDisplayWidth(text string, width int) string {
