@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+
 	"runtime"
 	"strings"
 	"testing"
@@ -15,9 +17,10 @@ import (
 
 func TestCreateElSkillCreatesBuildsAndReloads(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module skilltest\n\ngo 1.26\n"), 0o644); err != nil {
-		t.Fatal(err)
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go executable not found")
 	}
+
 	registry := tool.NewRegistry()
 	manager := NewManager(root, registry)
 	creator := NewCreateElSkillTool(manager)
@@ -43,13 +46,42 @@ func TestCreateElSkillCreatesBuildsAndReloads(t *testing.T) {
 	if _, err := os.Stat(binary); err != nil {
 		t.Fatalf("binary missing: %v", err)
 	}
+	goMod, err := os.ReadFile(filepath.Join(root, "go", "hello_skill", "go.mod"))
+	if err != nil {
+		t.Fatalf("go.mod missing: %v", err)
+	}
+	if !strings.Contains(string(goMod), "module elbot-skill/hello_skill") || !strings.Contains(string(goMod), "\ngo ") {
+		t.Fatalf("go.mod = %q", string(goMod))
+	}
+
 	registered, ok := registry.Get("hello_skill")
 	if !ok || registered.Info().Source != tool.SourceSkillGo || registered.Info().Risk != tool.RiskLow {
 		t.Fatalf("registered = %#v ok=%v", registered, ok)
 	}
 }
 
+func TestParseGoModVersion(t *testing.T) {
+	cases := map[string]string{
+		"go1.22.0":   "1.22",
+		"go1.23.4\n": "1.23",
+		"go1.24rc1":  "1.24",
+	}
+	for input, want := range cases {
+		got, err := parseGoModVersion(input)
+		if err != nil {
+			t.Fatalf("parseGoModVersion(%q): %v", input, err)
+		}
+		if got != want {
+			t.Fatalf("parseGoModVersion(%q) = %q, want %q", input, got, want)
+		}
+	}
+	if _, err := parseGoModVersion("devel go1.25"); err == nil {
+		t.Fatal("expected unsupported version error")
+	}
+}
+
 func TestCreateElSkillCanCreateTextOnlySkill(t *testing.T) {
+
 	root := t.TempDir()
 	registry := tool.NewRegistry()
 	creator := NewCreateElSkillTool(NewManager(root, registry))

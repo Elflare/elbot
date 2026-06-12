@@ -81,8 +81,14 @@ func (t CreateElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*too
 	if _, err := parseRisk(args.Risk); err != nil {
 		return nil, err
 	}
+	goVersion := ""
 	if strings.TrimSpace(args.GoSource) != "" {
 		if err := validateGoSource(args.GoSource); err != nil {
+			return nil, err
+		}
+		var err error
+		goVersion, err = detectGoModVersion(ctx)
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -109,6 +115,9 @@ func (t CreateElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*too
 		if err := os.WriteFile(filepath.Join(root, "main.go"), []byte(args.GoSource), 0o644); err != nil {
 			return nil, fmt.Errorf("write main.go: %w", err)
 		}
+		if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(goModContent(name, goVersion)), 0o644); err != nil {
+			return nil, fmt.Errorf("write go.mod: %w", err)
+		}
 		binary := name
 		if runtime.GOOS == "windows" {
 			binary += ".exe"
@@ -133,6 +142,53 @@ func (t CreateElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*too
 		return nil, fmt.Errorf("ELyph skill written but reload failed: %w", err)
 	}
 	return &tool.Result{Content: fmt.Sprintf("created ELyph skill %s", name)}, nil
+}
+
+func detectGoModVersion(ctx context.Context) (string, error) {
+	goPath, err := exec.LookPath("go")
+	if err != nil {
+		return "", fmt.Errorf("system go executable not found; install Go and ensure it is in PATH before creating Go skill")
+	}
+	cmd := exec.CommandContext(ctx, goPath, "env", "GOVERSION")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("detect go version: %w\nstderr:\n%s", err, truncateOutput(stderr.String()))
+	}
+	version, err := parseGoModVersion(stdout.String())
+	if err != nil {
+		return "", err
+	}
+	return version, nil
+}
+
+func parseGoModVersion(output string) (string, error) {
+	version := strings.TrimSpace(output)
+	if !strings.HasPrefix(version, "go") {
+		return "", fmt.Errorf("detect go version: unsupported go version output %q", version)
+	}
+	version = strings.TrimPrefix(version, "go")
+	parts := strings.Split(version, ".")
+	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+		return "", fmt.Errorf("detect go version: unsupported go version output %q", strings.TrimSpace(output))
+	}
+	minor := parts[1]
+	for i, r := range minor {
+		if r < '0' || r > '9' {
+			minor = minor[:i]
+			break
+		}
+	}
+	if minor == "" {
+		return "", fmt.Errorf("detect go version: unsupported go version output %q", strings.TrimSpace(output))
+	}
+	return parts[0] + "." + minor, nil
+}
+
+func goModContent(name, version string) string {
+	return fmt.Sprintf("module elbot-skill/%s\n\ngo %s\n", name, version)
 }
 
 func validateSkillName(name string) error {
