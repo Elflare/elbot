@@ -73,6 +73,12 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 		if err := registry.Register(skill.NewModifyElSkillTool(opts.SkillManager)); err != nil {
 			return err
 		}
+		if err := registry.Register(skill.NewReadGoSkillTool(opts.SkillManager)); err != nil {
+			return err
+		}
+		if err := registry.Register(skill.NewModifyGoSkillTool(opts.SkillManager)); err != nil {
+			return err
+		}
 	}
 
 	return nil
