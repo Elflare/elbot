@@ -51,7 +51,7 @@ func (CreateElSkillTool) Info() tool.Info {
 
 func (CreateElSkillTool) Schema() llm.ToolSchema {
 	return tool.NewBuilder(CreateElSkillName).
-		Description("创建 ElBot 原生 ELyph skill。工具会写入 SKILL.elyph；提供 go_source 时写入 main.go 并编译 binary。Go skill 后续通过 go_skill_run 调用，skill_name 选择 skill，其余顶层字段会作为业务参数 JSON 写入 stdin。").
+		Description("创建 ElBot 原生 ELyph skill。工具会写入 SKILL.elyph；提供 go_source 时写入 main.go 并编译 binary。Go skill 后续通过 go_skill_run 调用，skill_name 选择 skill，payload 对象会作为业务参数 JSON 写入 stdin。").
 		String("name", "skill 名称，也是目录名和 binary 名；使用小写字母、数字、下划线或短横线。", tool.Required()).
 		String("description", "skill 的可复用能力简述。", tool.Required()).
 		String("risk", "风险等级：safe, low, medium, high, critical。", tool.Required()).

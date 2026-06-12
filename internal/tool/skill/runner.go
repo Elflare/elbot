@@ -131,9 +131,10 @@ func (GoRunner) Info() tool.Info {
 
 func (GoRunner) Schema() llm.ToolSchema {
 	return tool.NewBuilder(GoRunnerName).
-		Description("运行指定 Go skill。参数 skill_name 用于选择 skill，timeout_ms 用于设置超时，其余顶层字段会作为业务参数 JSON 写入 skill stdin。").
+		Description("运行指定 Go skill，并把 payload JSON 原样写入 skill stdin。调用 Go skill 时必须通过本 runner：skill_name 选择 skill，payload 放业务参数对象，timeout_ms 设置超时。兼容旧格式：未提供 payload 时，除 skill_name/timeout_ms 外的顶层字段会作为业务参数 JSON 写入 stdin。").
 		String("skill_name", "Go skill 名称。", tool.Required()).
-		Integer("timeout_ms", "可选，超时时间，默认 30000。其余顶层字段会原样作为业务参数写入 stdin。").
+		Object("payload", "业务参数 JSON 对象，会原样写入 Go skill 的 stdin。例如 {\"url\":\"magnet:?xt=...\",\"title\":\"番剧名\"}。", tool.Required()).
+		Integer("timeout_ms", "可选，超时时间，默认 30000。").
 		BuildSchema()
 }
 
@@ -201,6 +202,15 @@ func parseGoRunnerArgs(data json.RawMessage) (goRunnerArgs, error) {
 			return goRunnerArgs{}, fmt.Errorf("timeout_ms: %w", err)
 		}
 	}
+	if value := raw["payload"]; len(value) > 0 {
+		var payload map[string]json.RawMessage
+		if err := json.Unmarshal(value, &payload); err != nil {
+			return goRunnerArgs{}, fmt.Errorf("payload must be object: %w", err)
+		}
+		args.Payload = json.RawMessage(value)
+		return args, nil
+	}
+	// Backward compatibility: older calls may put business fields at top level.
 	delete(raw, "skill_name")
 	delete(raw, "timeout_ms")
 	payload, err := json.Marshal(raw)
