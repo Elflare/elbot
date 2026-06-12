@@ -95,8 +95,12 @@ func TestCancelKeyClearsCompletionOrInputBeforeQuit(t *testing.T) {
 	}
 
 	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil {
+		t.Fatal("esc on empty input should not quit")
+	}
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 	if cmd == nil {
-		t.Fatal("esc on empty input should quit")
+		t.Fatal("ctrl+c on empty input should quit")
 	}
 }
 

@@ -297,8 +297,10 @@
 - [x] 预留接口，在工具调用循环中，用户直接发送消息不打断，而是在当前循环下一次 LLM 调用中附带这个消息。（若是多条，则合并为一条消息）。
 - [x] 预留 /stopall，未来可能多平台同时对话或者在群聊中，不同群员进行对话，超级管理员无论在哪个平台都可以直接 stopall。
 - [x] 交互式 CLI 引入最小 Bubble Tea TUI 地基，支持输出区与输入区分离、用户输入回显、输入历史、命令补全和自动换行。
-- [x] CLI TUI 支持 PgUp/PgDn/Home/End/Ctrl+U/Ctrl+D 键盘滚动长输出；为保留终端原生选择复制，不启用鼠标事件捕获。
+- [x] CLI TUI 支持 PgUp/PgDn/Home/End/Ctrl+U/Ctrl+D 键盘滚动长输出，并启用鼠标事件支持分区滚动与 copy mode。
+
 - [x] CLI TUI 支持 Tab 补全候选窗、上下选择候选，且 Esc/Ctrl+C 会先关闭候选窗或清空输入，再次按才退出。
+- [x] CLI TUI 支持鼠标分区滚动和 Vim-like copy mode：Alt+h/Alt+l 进入聊天/通知复制模式，hjkl/v/V/y 选择复制，`/` 在当前区域搜索。
 - [ ] CLI TUI 后续支持 Markdown 渲染，可考虑接入 Glamour。后续能配置用户名和助手名配置
 
 

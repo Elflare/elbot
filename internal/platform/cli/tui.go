@@ -70,6 +70,8 @@ type tuiModel struct {
 	handler platform.PlatformHandler
 	output  chan tea.Msg
 
+	copyState       copyModeState
+	clipboard       clipboardWriter
 	completion      *completion.Service
 	completionState completionState
 	content         string
@@ -104,17 +106,19 @@ func runTUI(ctx context.Context, handler platform.PlatformHandler, completion *c
 		ctx:           ctx,
 		handler:       handler,
 		output:        output,
+		copyState:     copyModeState{},
+		clipboard:     systemClipboardWriter{},
 		completion:    completion,
 		input:         input,
 		userName:      userName,
 		assistantName: assistantName,
 	}
-	program := tea.NewProgram(m)
+	program := tea.NewProgram(m, tea.WithMouseCellMotion())
 	if setProgram != nil {
 		setProgram(program)
 		defer setProgram(nil)
 	}
-	// 默认不启用鼠标捕获，保留终端原生选择/复制能力。
+	// 启用鼠标捕获，用于分区滚动和 copy mode 区域选择。
 	_, err := program.Run()
 	return err
 }
@@ -144,9 +148,33 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tuiNoticeMsg:
 		m.appendNotice(string(msg))
 		return m, waitTUIOutput(m.output)
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
 	case tea.KeyMsg:
+		if m.copyState.active() {
+			return m.updateCopyMode(msg)
+		}
 		switch msg.String() {
-		case "ctrl+c", "esc":
+		case "alt+h":
+			m.enterCopyMode(regionChat)
+			return m, nil
+		case "alt+l":
+			if m.layoutNoticeVisible() {
+				m.enterCopyMode(regionNotice)
+			} else {
+				m.copyState.Status = "notices hidden"
+			}
+			return m, nil
+		case "esc":
+			if m.completionState.visible() {
+				m.clearCompletion()
+				return m, nil
+			}
+			if m.input.Value() != "" {
+				m.input.SetValue("")
+			}
+			return m, nil
+		case "ctrl+c":
 			if m.completionState.visible() {
 				m.clearCompletion()
 				return m, nil
@@ -221,6 +249,9 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if m.copyState.active() {
+		return m, nil
+	}
 	oldInput := m.input.Value()
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
@@ -308,7 +339,10 @@ func (m tuiModel) headerView() string {
 }
 
 func (m tuiModel) statusView() string {
-	status := "Ctrl+C/Esc exit · C-k/C-j chat · C-u/C-d notices · Up/Down history"
+	if m.copyState.active() {
+		return tuiStatusStyle.Render(m.copyStatusText())
+	}
+	status := "Alt+h chat copy · Alt+l notices copy · Esc clear · Ctrl+C exit · C-k/C-j chat · C-u/C-d notices"
 	if m.completionState.visible() {
 		status += " · completion " + strconv.Itoa(m.completionState.index+1) + "/" + strconv.Itoa(len(m.completionState.items))
 	}
@@ -508,6 +542,10 @@ func (m *tuiModel) refreshNotices() {
 	if !m.layoutNoticeVisible() {
 		return
 	}
+	if m.copyState.active() && m.copyState.Region == regionNotice {
+		m.noticeViewport.SetContent(m.renderCopyLines(regionNotice, m.noticeCopyLines()))
+		return
+	}
 	contentWidth := max(1, m.noticeViewport.Width-4)
 	var sb strings.Builder
 	sb.WriteString(tuiNoticeStyle.Bold(true).Render("通知"))
@@ -527,8 +565,22 @@ func (m *tuiModel) refreshNotices() {
 }
 
 func (m *tuiModel) refreshContent() {
-	m.viewport.SetContent(m.renderContent(m.wrappedContent()))
+	content := m.wrappedContent()
+	if m.copyState.active() && m.copyState.Region == regionChat {
+		m.viewport.SetContent(m.renderCopyLines(regionChat, splitLines(content)))
+		return
+	}
+	m.viewport.SetContent(m.renderContent(content))
 	m.viewport.GotoBottom()
+}
+
+func (m *tuiModel) refreshCopyRegion() {
+	switch m.copyState.Region {
+	case regionChat:
+		m.refreshContent()
+	case regionNotice:
+		m.refreshNotices()
+	}
 }
 
 func (m tuiModel) renderContent(content string) string {
