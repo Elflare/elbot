@@ -2,8 +2,11 @@ package agent
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/llm"
 	"elbot/internal/platform"
@@ -14,6 +17,53 @@ import (
 type recordingToolProvider struct {
 	tools []llm.ToolSchema
 	calls int
+}
+
+func TestFileSoulProviderCachesUntilFileChanges(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "SOUL.md")
+	if err := os.WriteFile(path, []byte("first"), 0o644); err != nil {
+		t.Fatalf("write soul: %v", err)
+	}
+	provider := &FileSoulProvider{Path: path}
+	got, err := provider.SystemPrompt(context.Background(), storage.SessionModeWork)
+	if err != nil {
+		t.Fatalf("SystemPrompt first: %v", err)
+	}
+	if got != "first" {
+		t.Fatalf("first prompt = %q", got)
+	}
+	got, err = provider.SystemPrompt(context.Background(), storage.SessionModeWork)
+	if err != nil {
+		t.Fatalf("SystemPrompt cached: %v", err)
+	}
+	if got != "first" {
+		t.Fatalf("cached prompt = %q", got)
+	}
+}
+
+func TestFileSoulProviderReloadsWhenFileChanges(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "SOUL.md")
+	if err := os.WriteFile(path, []byte("first"), 0o644); err != nil {
+		t.Fatalf("write soul: %v", err)
+	}
+	provider := &FileSoulProvider{Path: path}
+	if _, err := provider.SystemPrompt(context.Background(), storage.SessionModeWork); err != nil {
+		t.Fatalf("SystemPrompt first: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("second"), 0o644); err != nil {
+		t.Fatalf("rewrite soul: %v", err)
+	}
+	nextModTime := time.Now().Add(time.Second)
+	if err := os.Chtimes(path, nextModTime, nextModTime); err != nil {
+		t.Fatalf("touch soul: %v", err)
+	}
+	got, err := provider.SystemPrompt(context.Background(), storage.SessionModeWork)
+	if err != nil {
+		t.Fatalf("SystemPrompt reloaded: %v", err)
+	}
+	if got != "second" {
+		t.Fatalf("reloaded prompt = %q", got)
+	}
 }
 
 func TestPromptBuilderMergesToolNamesIntoSingleSystemMessage(t *testing.T) {

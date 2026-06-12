@@ -36,7 +36,7 @@
 - `internal/agent/risk_confirmation.go`：风险确认阶段命令定义与文案；统一生成 `/detail`、`/confirm`、`/confirmtool`、`/confirmall`、`/reject`、`/stop` 及别名的提示、补全和识别。
 - `internal/agent/cron.go`：Agent 后台 cron runner；绕过 slash 命令解析，使用 cron 专用 session 静默运行 LLM，注入统一 sandbox 下的 `cron/` 工具 context（默认 `data/sandbox/cron`），要求最终 JSON 由 cron service 解析；cron session 写 `title_renamed=true` 避免自动命名覆盖。
 - `internal/agent/cron_tools.go`：cron 工具确认特例；后台 cron shell 非 critical 自动确认，critical 直接回 tool message 提醒用相对路径/低风险命令且不等待用户。
-- `internal/agent/prompt.go`：Soul Prompt Builder；加载 `SOUL.md`，合并常驻记忆、工具名称提示和压缩摘要，避免生成多条 system prompt。
+- `internal/agent/prompt.go`：Soul Prompt Builder；按文件状态缓存并加载 `SOUL.md`，合并常驻记忆、工具名称提示和压缩摘要，避免生成多条 system prompt。
 - `internal/agent/tools.go`：Agent Tool Runtime 注入与命令依赖实现；维护工具 Registry、skill scanner，并把工具 schema provider 和工具名称 provider 接入 Prompt Builder。
 - `internal/agent/tool_cache.go`：Session 级已发现工具 schema 缓存；discover 到的工具按 Session 保存，工具名持久化到 Session metadata，后续 work 请求用稳定顺序注入 top-level tools。
 - `internal/agent/session_metadata.go`：Session metadata 编解码辅助；当前用于保存已 discover 工具名和最近一次 LLM usage，使 `/status` 在 `/resume` 后仍可显示最近 token 状态。

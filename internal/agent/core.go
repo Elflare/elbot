@@ -119,7 +119,7 @@ func NewWithOptions(p platform.PlatformAdapter, client llm.LLM, providerName str
 	clients := map[string]llm.LLM{workModel.Provider: client}
 	promptSoul := SoulProvider(staticSoulProvider{Prompt: "You are a helpful assistant."})
 	if soulPath != "" {
-		promptSoul = FileSoulProvider{Path: soulPath}
+		promptSoul = &FileSoulProvider{Path: soulPath}
 	}
 	a := &Agent{
 		platform:               p,

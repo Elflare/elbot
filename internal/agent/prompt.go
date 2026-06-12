@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"elbot/internal/llm"
 	"elbot/internal/session"
@@ -17,19 +19,58 @@ type SoulProvider interface {
 }
 
 type FileSoulProvider struct {
-	Path string
+	Path  string
+	mu    sync.Mutex
+	cache soulPromptCache
 }
 
-func (p FileSoulProvider) SystemPrompt(ctx context.Context, mode string) (string, error) {
+type soulPromptCache struct {
+	loaded  bool
+	content string
+	state   soulFileState
+}
+
+type soulFileState struct {
+	size    int64
+	modTime time.Time
+}
+
+func (p *FileSoulProvider) SystemPrompt(ctx context.Context, mode string) (string, error) {
 	_ = mode // 两种模式都使用同一个 SOUL.md，mode 只预留给未来多 Soul 策略。
 	if err := ctx.Err(); err != nil {
 		return "", err
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	state, err := currentSoulFileState(p.Path)
+	if err != nil {
+		return "", err
+	}
+	if p.cache.loaded && sameSoulFileState(p.cache.state, state) {
+		return p.cache.content, nil
 	}
 	data, err := os.ReadFile(p.Path)
 	if err != nil {
 		return "", fmt.Errorf("read soul prompt %q: %w", p.Path, err)
 	}
-	return string(data), nil
+	content := string(data)
+	p.cache = soulPromptCache{loaded: true, content: content, state: state}
+	return content, nil
+}
+
+func currentSoulFileState(path string) (soulFileState, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return soulFileState{}, nil
+		}
+		return soulFileState{}, fmt.Errorf("stat soul prompt %q: %w", path, err)
+	}
+	return soulFileState{size: info.Size(), modTime: info.ModTime()}, nil
+}
+
+func sameSoulFileState(left, right soulFileState) bool {
+	return left.size == right.size && left.modTime.Equal(right.modTime)
 }
 
 type ToolSchemaProvider interface {
