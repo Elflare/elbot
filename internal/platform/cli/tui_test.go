@@ -4,6 +4,10 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"elbot/internal/completion"
 )
 
 type fakeCompletingHandler struct {
@@ -14,13 +18,16 @@ func (h fakeCompletingHandler) HandleMessage(context.Context, string) error { re
 func (h fakeCompletingHandler) Complete(string) []string                    { return h.candidates }
 
 func TestCompleteInputCyclesCandidates(t *testing.T) {
-	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}}
+	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, width: 80, height: 20}
 	m.input.SetValue("/c")
 
 	updated, _ := m.completeInput()
 	m = updated.(tuiModel)
 	if got := m.input.Value(); got != "/chat" {
 		t.Fatalf("first completion = %q", got)
+	}
+	if !m.completionState.visible() {
+		t.Fatal("completion popup should be visible")
 	}
 	if strings.TrimSpace(m.content) != "" {
 		t.Fatalf("completion candidates should not be printed to transcript: %q", m.content)
@@ -37,6 +44,66 @@ func TestCompleteInputCyclesCandidates(t *testing.T) {
 	if got := m.input.Value(); got != "/chat" {
 		t.Fatalf("cycled completion = %q", got)
 	}
+}
+
+func TestCompletionSelectionUsesArrowKeysWhenPopupVisible(t *testing.T) {
+	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, width: 80, height: 20}
+	m.input.SetValue("/c")
+	updated, _ := m.completeInput()
+	m = updated.(tuiModel)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(tuiModel)
+	if got := m.input.Value(); got != "/checkmodel" {
+		t.Fatalf("down completion = %q", got)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(tuiModel)
+	if got := m.input.Value(); got != "/chat" {
+		t.Fatalf("up completion = %q", got)
+	}
+}
+
+func TestCompletionServicePreferredOverLegacyHandler(t *testing.T) {
+	service := completion.NewService(staticCompletionSource{{Text: "/service"}, {Text: "/service2"}})
+	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/legacy"}}, completion: service, width: 80, height: 20}
+	m.input.SetValue("/s")
+	updated, _ := m.completeInput()
+	m = updated.(tuiModel)
+	if got := m.input.Value(); got != "/service" {
+		t.Fatalf("completion = %q", got)
+	}
+}
+
+func TestCancelKeyClearsCompletionOrInputBeforeQuit(t *testing.T) {
+	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, width: 80, height: 20}
+	m.input.SetValue("/c")
+	updated, _ := m.completeInput()
+	m = updated.(tuiModel)
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(tuiModel)
+	if cmd != nil || m.completionState.visible() || m.input.Value() == "" {
+		t.Fatalf("esc should close popup only, visible=%v input=%q cmd=%v", m.completionState.visible(), m.input.Value(), cmd)
+	}
+
+	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	m = updated.(tuiModel)
+	if cmd != nil || m.input.Value() != "" {
+		t.Fatalf("ctrl+c should clear input only, input=%q cmd=%v", m.input.Value(), cmd)
+	}
+
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd == nil {
+		t.Fatal("esc on empty input should quit")
+	}
+}
+
+type staticCompletionSource []completion.Item
+
+func (s staticCompletionSource) Complete(context.Context, completion.Request) []completion.Item {
+	return s
 }
 
 func TestAppendAssistantContentDoesNotAddSeparatorOnNewline(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"elbot/internal/agent"
+	"elbot/internal/completion"
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
 	"elbot/internal/hook"
@@ -252,6 +253,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	profiler.Mark("agent init")
 
+	registerCompletionPlatforms(agt, platforms.Runtimes)
 	registerPlatformHooks(agt, platforms.Runtimes)
 	profiler.Mark("platform hooks")
 	startupDuration := profiler.Flush()
@@ -271,6 +273,24 @@ type platformLifecycle interface {
 type platformHookAgent interface {
 	RegisterPlatformSender(name string, sender platform.MessageSender)
 	NotifyPlatformConnected(ctx context.Context, platformName string)
+}
+
+type completionPlatform interface {
+	SetCompleter(*completion.Service)
+}
+
+func registerCompletionPlatforms(agent *agent.Agent, adapters []platformRuntime) {
+	if agent == nil {
+		return
+	}
+	for _, adapter := range adapters {
+		if adapter == nil {
+			continue
+		}
+		if completer, ok := adapter.(completionPlatform); ok {
+			completer.SetCompleter(agent.CompletionService())
+		}
+	}
 }
 
 func registerCronPlatformHook(hooks hook.Registrar, service *elcron.Service) error {

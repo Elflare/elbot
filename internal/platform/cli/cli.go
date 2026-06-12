@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mattn/go-isatty"
 
+	"elbot/internal/completion"
 	"elbot/internal/output"
 	"elbot/internal/platform"
 )
@@ -23,10 +24,7 @@ type Adapter struct {
 	userName      string
 	assistantName string
 	connectNotify func(context.Context, string)
-}
-
-type completer interface {
-	Complete(text string) []string
+	completion    *completion.Service
 }
 
 type cliMessageStream struct {
@@ -41,6 +39,12 @@ func New() *Adapter {
 // Name returns the platform name.
 func (a *Adapter) Name() string {
 	return "cli"
+}
+
+func (a *Adapter) SetCompleter(service *completion.Service) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.completion = service
 }
 
 func (a *Adapter) SetConnectNotifier(notify func(context.Context, string)) {
@@ -90,7 +94,10 @@ func (a *Adapter) runScanner(ctx context.Context, handler platform.PlatformHandl
 }
 
 func (a *Adapter) runInteractive(ctx context.Context, handler platform.PlatformHandler) error {
-	return runTUI(ctx, handler, a.output, a.setProgram, a.userName, a.assistantName)
+	a.mu.Lock()
+	completion := a.completion
+	a.mu.Unlock()
+	return runTUI(ctx, handler, completion, a.output, a.setProgram, a.userName, a.assistantName)
 }
 
 func (a *Adapter) setProgram(program *tea.Program) {

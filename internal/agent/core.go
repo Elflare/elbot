@@ -11,6 +11,7 @@ import (
 
 	agentcommands "elbot/internal/agent/commands"
 	"elbot/internal/command"
+	"elbot/internal/completion"
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
 	"elbot/internal/hook"
@@ -54,6 +55,7 @@ type Agent struct {
 	requests                    *request.Manager
 	turns                       *turn.Manager
 	commands                    *command.Router
+	completion                  *completion.Service
 	titleGen                    *titleGenerator
 	promptBuilder               PromptBuilder
 	tools                       ToolSchemaProvider
@@ -188,6 +190,11 @@ func NewWithOptions(p platform.PlatformAdapter, client llm.LLM, providerName str
 	}); err != nil {
 		panic(err)
 	}
+	a.completion = completion.NewService(
+		completion.RiskConfirmationSource{Router: a.commands, Sessions: a.sessions, Turns: a.turns, Scope: a.scope, CommandNames: riskConfirmationCommandNames()},
+		completion.ForkMessageSource{Router: a.commands, Sessions: a.sessions, Store: a.store, Scope: a.scope},
+		completion.RouterSource{Router: a.commands},
+	)
 	return a
 }
 

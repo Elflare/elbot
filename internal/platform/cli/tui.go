@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
+	"elbot/internal/completion"
 	"elbot/internal/platform"
 )
 
@@ -21,7 +22,10 @@ type tuiNoticeMsg string
 
 type tuiProgramSetter func(*tea.Program)
 
-const noticePanelWidth = 40
+const (
+	noticePanelWidth        = 40
+	maxCompletionPopupItems = 8
+)
 
 var (
 	tuiTitleStyle = lipgloss.NewStyle().
@@ -29,39 +33,61 @@ var (
 			Foreground(lipgloss.Color("15")).
 			Background(lipgloss.Color("62")).
 			Padding(0, 1)
-	tuiTitleMutedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	tuiStatusStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	tuiUserStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
-	tuiAssistantStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("217"))
-	tuiNoticeStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-	tuiSeparatorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	tuiPanelStyle      = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).BorderForeground(lipgloss.Color("8")).PaddingLeft(1)
+	tuiTitleMutedStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	tuiStatusStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	tuiUserStyle               = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
+	tuiAssistantStyle          = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("217"))
+	tuiNoticeStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	tuiSeparatorStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	tuiPanelStyle              = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).BorderForeground(lipgloss.Color("8")).PaddingLeft(1)
+	tuiCompletionStyle         = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("62")).Padding(0, 1)
+	tuiCompletionSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("62"))
 )
+
+type legacyCompleter interface {
+	Complete(text string) []string
+}
+
+type completionState struct {
+	base  string
+	items []completion.Item
+	index int
+}
+
+func (s completionState) visible() bool {
+	return len(s.items) > 1
+}
+
+func (s completionState) currentText() string {
+	if len(s.items) == 0 || s.index < 0 || s.index >= len(s.items) {
+		return ""
+	}
+	return s.items[s.index].Text
+}
 
 type tuiModel struct {
 	ctx     context.Context
 	handler platform.PlatformHandler
 	output  chan tea.Msg
 
-	content              string
-	notices              []string
-	history              []string
-	histPos              int
-	userName             string
-	assistantName        string
-	assistantOpen        bool
-	assistantStart       int
-	viewport             viewport.Model
-	noticeViewport       viewport.Model
-	input                textinput.Model
-	width                int
-	height               int
-	completionBase       string
-	completionCandidates []string
-	completionIndex      int
+	completion      *completion.Service
+	completionState completionState
+	content         string
+	notices         []string
+	history         []string
+	histPos         int
+	userName        string
+	assistantName   string
+	assistantOpen   bool
+	assistantStart  int
+	viewport        viewport.Model
+	noticeViewport  viewport.Model
+	input           textinput.Model
+	width           int
+	height          int
 }
 
-func runTUI(ctx context.Context, handler platform.PlatformHandler, output chan tea.Msg, setProgram tuiProgramSetter, userName, assistantName string) error {
+func runTUI(ctx context.Context, handler platform.PlatformHandler, completion *completion.Service, output chan tea.Msg, setProgram tuiProgramSetter, userName, assistantName string) error {
 	input := textinput.New()
 	input.Focus()
 	input.Prompt = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81")).Render("❯ ")
@@ -78,6 +104,7 @@ func runTUI(ctx context.Context, handler platform.PlatformHandler, output chan t
 		ctx:           ctx,
 		handler:       handler,
 		output:        output,
+		completion:    completion,
 		input:         input,
 		userName:      userName,
 		assistantName: assistantName,
@@ -101,13 +128,7 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		chatWidth, noticeWidth := m.layoutWidths()
-		bodyHeight := max(1, msg.Height-4)
-		m.viewport.Width = chatWidth
-		m.viewport.Height = bodyHeight
-		m.noticeViewport.Width = noticeWidth
-		m.noticeViewport.Height = bodyHeight
-		m.input.Width = msg.Width
+		m.resizeViewports()
 		m.refreshContent()
 		m.refreshNotices()
 		return m, nil
@@ -126,6 +147,14 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "esc":
+			if m.completionState.visible() {
+				m.clearCompletion()
+				return m, nil
+			}
+			if m.input.Value() != "" {
+				m.input.SetValue("")
+				return m, nil
+			}
 			return m, tea.Quit
 		case "pgup":
 			m.viewport.ScrollUp(max(1, m.viewport.Height-1))
@@ -154,9 +183,17 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab", "ctrl+i":
 			return m.completeInput()
 		case "up":
+			if m.completionState.visible() {
+				m.selectCompletion(-1)
+				return m, nil
+			}
 			m.clearCompletion()
 			return m.prevHistory()
 		case "down":
+			if m.completionState.visible() {
+				m.selectCompletion(1)
+				return m, nil
+			}
 			m.clearCompletion()
 			return m.nextHistory()
 		case "enter":
@@ -194,7 +231,63 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m tuiModel) View() string {
-	return m.headerView() + "\n" + m.bodyView() + "\n" + m.statusView() + "\n" + m.input.View()
+	return m.headerView() + "\n" + m.bodyView() + m.completionView() + "\n" + m.statusView() + "\n" + m.input.View()
+}
+
+func (m *tuiModel) resizeViewports() {
+	chatWidth, noticeWidth := m.layoutWidths()
+	bodyHeight := max(1, m.height-4-m.completionViewHeight())
+	m.viewport.Width = chatWidth
+	m.viewport.Height = bodyHeight
+	m.noticeViewport.Width = noticeWidth
+	m.noticeViewport.Height = bodyHeight
+	m.input.Width = m.width
+}
+
+func (m tuiModel) completionViewHeight() int {
+	if !m.completionState.visible() {
+		return 0
+	}
+	count := min(len(m.completionState.items), maxCompletionPopupItems)
+	return count + 3
+}
+
+func (m tuiModel) completionView() string {
+	if !m.completionState.visible() {
+		return ""
+	}
+	items := m.completionState.items
+	start := 0
+	if m.completionState.index >= maxCompletionPopupItems {
+		start = m.completionState.index - maxCompletionPopupItems + 1
+	}
+	end := min(len(items), start+maxCompletionPopupItems)
+	lines := make([]string, 0, end-start+1)
+	for i := start; i < end; i++ {
+		text := completionDisplayText(items[i])
+		if i == m.completionState.index {
+			text = tuiCompletionSelectedStyle.Width(max(1, m.completionPopupWidth()-4)).Render(text)
+		}
+		lines = append(lines, text)
+	}
+	lines = append(lines, tuiTitleMutedStyle.Render(strconv.Itoa(m.completionState.index+1)+"/"+strconv.Itoa(len(items))+" · Tab/↑/↓"))
+	return "\n" + tuiCompletionStyle.Width(m.completionPopupWidth()).Render(strings.Join(lines, "\n"))
+}
+
+func (m tuiModel) completionPopupWidth() int {
+	chatWidth, _ := m.layoutWidths()
+	return min(max(24, chatWidth/2), max(24, chatWidth))
+}
+
+func completionDisplayText(item completion.Item) string {
+	label := item.Label
+	if label == "" {
+		label = item.Text
+	}
+	if item.Description == "" {
+		return label
+	}
+	return label + "  " + item.Description
 }
 
 func (m tuiModel) headerView() string {
@@ -216,8 +309,8 @@ func (m tuiModel) headerView() string {
 
 func (m tuiModel) statusView() string {
 	status := "Ctrl+C/Esc exit · C-k/C-j chat · C-u/C-d notices · Up/Down history"
-	if len(m.completionCandidates) > 1 {
-		status += " · Tab " + strconv.Itoa(m.completionIndex+1) + "/" + strconv.Itoa(len(m.completionCandidates))
+	if m.completionState.visible() {
+		status += " · completion " + strconv.Itoa(m.completionState.index+1) + "/" + strconv.Itoa(len(m.completionState.items))
 	}
 	return tuiStatusStyle.Render(status)
 }
@@ -242,49 +335,64 @@ func (m tuiModel) layoutWidths() (int, int) {
 }
 
 func (m tuiModel) completeInput() (tea.Model, tea.Cmd) {
-	c, ok := m.handler.(completer)
-	if !ok {
+	if m.completionState.visible() && m.input.Value() == m.completionState.currentText() {
+		m.selectCompletion(1)
 		return m, nil
 	}
-	value := m.input.Value()
-	if len(m.completionCandidates) > 0 && isCompletionCandidate(value, m.completionCandidates) {
-		m.completionIndex = (m.completionIndex + 1) % len(m.completionCandidates)
-		m.input.SetValue(m.completionCandidates[m.completionIndex])
-		m.input.CursorEnd()
-		return m, nil
-	}
-	candidates := c.Complete(value)
-	switch len(candidates) {
+	items := m.complete(m.input.Value())
+	switch len(items) {
 	case 0:
 		m.clearCompletion()
 		return m, nil
 	case 1:
 		m.clearCompletion()
-		m.input.SetValue(candidates[0])
+		m.input.SetValue(items[0].Text)
 		m.input.CursorEnd()
 	default:
-		m.completionBase = value
-		m.completionCandidates = append([]string(nil), candidates...)
-		m.completionIndex = 0
-		m.input.SetValue(candidates[0])
-		m.input.CursorEnd()
+		m.completionState = completionState{base: m.input.Value(), items: append([]completion.Item(nil), items...), index: 0}
+		m.applyCurrentCompletion()
+		m.resizeViewports()
 	}
 	return m, nil
 }
 
-func isCompletionCandidate(value string, candidates []string) bool {
-	for _, candidate := range candidates {
-		if value == candidate {
-			return true
-		}
+func (m tuiModel) complete(value string) []completion.Item {
+	if m.completion != nil {
+		return m.completion.Complete(m.ctx, completion.Request{Text: value})
 	}
-	return false
+	c, ok := m.handler.(legacyCompleter)
+	if !ok {
+		return nil
+	}
+	texts := c.Complete(value)
+	items := make([]completion.Item, 0, len(texts))
+	for _, text := range texts {
+		items = append(items, completion.Item{Text: text})
+	}
+	return items
 }
 
 func (m *tuiModel) clearCompletion() {
-	m.completionBase = ""
-	m.completionCandidates = nil
-	m.completionIndex = 0
+	m.completionState = completionState{}
+	m.resizeViewports()
+}
+
+func (m *tuiModel) selectCompletion(delta int) {
+	if !m.completionState.visible() {
+		return
+	}
+	count := len(m.completionState.items)
+	m.completionState.index = (m.completionState.index + delta + count) % count
+	m.applyCurrentCompletion()
+}
+
+func (m *tuiModel) applyCurrentCompletion() {
+	text := m.completionState.currentText()
+	if text == "" {
+		return
+	}
+	m.input.SetValue(text)
+	m.input.CursorEnd()
 }
 
 func (m tuiModel) prevHistory() (tea.Model, tea.Cmd) {

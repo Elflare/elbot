@@ -60,7 +60,8 @@
 
 - `internal/command/types.go`：命令系统基础类型；定义 `Info`、`Request`、`Result` 和 `Handler` interface；`Info.Help` 用于命令级详细帮助。
 - `internal/command/handler.go`：函数式命令 handler 适配器；用 `NewFunc` 快速把函数包装成 `Handler`。
-- `internal/command/router.go`：命令 Router；处理 prefix 解析、注册冲突检测、alias、分发、命令列表、命令详情查找、命令名补全和批量注册辅助；后续参数补全应抽到更模块化的补全服务。
+- `internal/command/router.go`：命令 Router；处理 prefix 解析、注册冲突检测、alias、分发、命令列表、命令详情查找和基础命令名补全。
+- `internal/completion/`：平台补全服务；组合 Router、风险确认和 `/fork` message ID 等补全 source，app 层注入到支持补全的平台，Agent 仅保留兼容转发入口。
 
 ### Request 与 Turn 运行态
 
@@ -158,9 +159,9 @@
 - `internal/platform/platform.go`：平台抽象；定义 `PlatformAdapter`、`PlatformHandler`、统一 `SendChat`/`SendNotice` 的 message sender、发送 receipt、平台 `MessageSegment`（text/image/file）和每条入站消息的 Actor/Scope/发送目标上下文；上下文可携带平台解析出的 fork 来源消息与多模态消息段。
 - `internal/platform/config.go`：平台配置辅助；把 `app.toml` 中 `[platform.<name>]` 原始 section 解码给适配器自有 Config，并提供关键词前缀剥离 helper。
 - `internal/platform/builtin/builtin.go`：内置平台装配；创建 CLI，并把各平台 raw config 交给对应适配器工厂解析，避免全局 config 知道具体平台字段。
-- `internal/platform/cli/cli.go`：CLI 平台实现；非 TTY 下读取 stdin，交互式终端下启动 Bubble Tea TUI，处理 `/exit`、转发输入给 Agent；实现统一 `SendChat`/`SendNotice`，聊天进主区，通知进 TUI 通知区或非 TTY `[notice]` fallback；当前 CLI 退出会结束前台应用，后续服务化可调整生命周期接口。
+- `internal/platform/cli/cli.go`：CLI 平台实现；非 TTY 下读取 stdin，交互式终端下启动 Bubble Tea TUI，支持注入补全服务；实现统一 `SendChat`/`SendNotice`，聊天进主区，通知进 TUI 通知区或非 TTY `[notice]` fallback；当前 CLI 退出会结束前台应用，后续服务化可调整生命周期接口。
 - `internal/platform/qq-onebot/`：QQ OneBot v11 正向 WebSocket 适配；处理私聊/群聊文本、图片、@、reply、关键词触发、引用 fork、消息映射和富输出发送。引用 bot 历史消息会按本地映射/get_msg 解析，必要时自动 fork。
-- `internal/platform/cli/tui.go`：cli ui相关
+- `internal/platform/cli/tui.go`：Bubble Tea TUI；提供聊天/通知/输入区、异步提交、历史、滚动、补全候选窗和样式渲染；聊天原文保持纯文本，显示时再用 lipgloss 美化。
 
 ### Session 服务
 
