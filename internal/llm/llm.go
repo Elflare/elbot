@@ -59,6 +59,7 @@ type ToolFunctionSchema struct {
 // ChatRequest is the input for an LLM chat call.
 type ChatRequest struct {
 	Model       string
+	SessionID   string
 	Messages    []LLMMessage
 	Tools       []ToolSchema
 	Temperature float64

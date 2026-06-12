@@ -136,6 +136,44 @@ func TestChatStream_DebugLogIncludesLatestMessageJSON(t *testing.T) {
 	}
 }
 
+func TestChatStreamLogsFirstSystemMessageOncePerSession(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: [DONE]\n\n")
+		w.(http.Flusher).Flush()
+	}))
+	defer srv.Close()
+
+	var logs bytes.Buffer
+	adapter := New(srv.URL, "secret-key", nil)
+	adapter.SetLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	req := llm.ChatRequest{
+		Model:     "test",
+		SessionID: "session-1",
+		Messages: []llm.LLMMessage{
+			{Role: llm.RoleSystem, Segments: llm.TextSegments("system prompt")},
+			{Role: llm.RoleUser, Segments: llm.TextSegments("hello")},
+		},
+	}
+	for i := 0; i < 2; i++ {
+		ch, err := adapter.ChatStream(context.Background(), req)
+		if err != nil {
+			t.Fatalf("ChatStream %d: %v", i, err)
+		}
+		for range ch {
+		}
+	}
+
+	logText := logs.String()
+	if strings.Count(logText, "first_system_message_json=") != 1 {
+		t.Fatalf("first system message should be logged once, got logs:\n%s", logText)
+	}
+	if !strings.Contains(logText, "session_id=session-1") || !strings.Contains(logText, "system_hash=") {
+		t.Fatalf("debug log missing session/hash summary: %s", logText)
+	}
+}
+
 func TestChatStream_SendsMultimodalContentParts(t *testing.T) {
 	var capturedBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

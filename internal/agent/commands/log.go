@@ -21,8 +21,10 @@ func auditInfo() command.Info {
 		Help: strings.TrimSpace(`Options:
   -n, --limit <n>       Number of events to show. Default: 5.
   --days <n>            Read logs from the last n days. Default: 1.
-  --level <level>       Minimum level: debug, info, warn, error.
-  -d, -i, -w, -e       Shorthand for --level debug/info/warn/error.
+  --level <level>       Minimum level: debug, info, warn, error. Default: debug.
+  -d, -i, -w, -e       Shorthand for --level debug/info/warn/error. -d also shows raw entries.
+  -u, -a, -t           Filter user/assistant/tool events.
+  --hook               Filter hook events.
   --since <time>        Show events after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
 
   --until <time>        Show events before a time.
@@ -32,14 +34,13 @@ func auditInfo() command.Info {
   --session <id>        Filter by session_id.
   --tool <name>         Filter by tool.
   --msg <text>          Filter by msg field.
-  --contains <text>     Filter by latest_message_json field.
+  --contains <text>     Filter by text/arguments/result/raw fields.
 
 Examples:
   /audit
   /audit --event tool_call --risk high -n 10
   /audit -d --contains "hello"
   /audit --actor cli:local --since 24h`),
-
 	}
 }
 
@@ -53,7 +54,7 @@ func NewAudit(deps Deps) command.Handler {
 		if err != nil {
 			return nil, err
 		}
-		return queryLogs(ctx, deps, query, formatAuditEntries(query.MinLevel))
+		return queryLogs(ctx, deps, query, formatAuditEntries(query.Raw))
 	})
 }
 
@@ -65,19 +66,20 @@ func logInfo() command.Info {
 		Help: strings.TrimSpace(`Options:
   -n, --limit <n>       Number of log lines to show. Default: 5.
   --days <n>            Read logs from the last n days. Default: 1.
-  --level <level>       Minimum level: debug, info, warn, error. Default: info.
-  -d, -i, -w, -e       Shorthand for --level debug/info/warn/error.
+  --level <level>       Minimum level: debug, info, warn, error. Default: debug.
+  -d, -i, -w, -e       Shorthand for --level debug/info/warn/error. -d also shows raw entries.
+  -u, -a, -t           Filter user/assistant/tool events.
+  --hook               Filter hook events.
   --since <time>        Show logs after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
 
   --until <time>        Show logs before a time.
   --msg <text>          Filter by msg field.
-  --contains <text>     Filter by latest_message_json field.
+  --contains <text>     Filter by text/arguments/result/raw fields.
 
 Examples:
   /log
   /log -w -n 10
   /log --msg startup --days 3`),
-
 	}
 }
 
@@ -91,7 +93,7 @@ func NewLog(deps Deps) command.Handler {
 		if err != nil {
 			return nil, err
 		}
-		return queryLogs(ctx, deps, query, formatRuntimeLogEntries(query.MinLevel))
+		return queryLogs(ctx, deps, query, formatRuntimeLogEntries(query.Raw))
 	})
 }
 
@@ -111,9 +113,9 @@ func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, formatter
 
 func parseAuditQuery(args string) (logging.LogQuery, error) {
 	query := baseLogQuery("audit")
-	query.MinLevel = "info"
+	query.MinLevel = "debug"
 	fields := map[string]string{}
-	if err := parseLogArgs(args, &query, func(name, value string) error {
+	if err := parseLogArgs(args, &query, fields, func(name, value string) error {
 		switch name {
 		case "event":
 			fields["event"] = value
@@ -132,18 +134,30 @@ func parseAuditQuery(args string) (logging.LogQuery, error) {
 	}); err != nil {
 		return query, err
 	}
+	if fields["event"] == "user_message" {
+		fields["event"] = "user_input"
+	}
+	if fields["event"] == "assistant_message" {
+		fields["event"] = "assistant_output"
+	}
+	if len(query.FieldExists) > 0 {
+		query.FieldExists = nil
+		fields["event"] = "hook"
+	}
 	query.Fields = fields
 	return query, nil
 }
 
 func parseRuntimeLogQuery(args string) (logging.LogQuery, error) {
 	query := baseLogQuery("elbot")
-	query.MinLevel = "info"
-	if err := parseLogArgs(args, &query, func(name, value string) error {
+	query.MinLevel = "debug"
+	fields := map[string]string{}
+	if err := parseLogArgs(args, &query, fields, func(name, value string) error {
 		return fmt.Errorf("unknown option: --%s", name)
 	}); err != nil {
 		return query, err
 	}
+	query.Fields = fields
 	return query, nil
 }
 
@@ -151,13 +165,16 @@ func baseLogQuery(prefix string) logging.LogQuery {
 	return logging.LogQuery{Prefix: prefix, Limit: defaultLogListLimit, Days: 1}
 }
 
-func parseLogArgs(args string, query *logging.LogQuery, extra func(name, value string) error) error {
-	fields := strings.Fields(args)
-	for i := 0; i < len(fields); i++ {
-		name := fields[i]
+func parseLogArgs(args string, query *logging.LogQuery, fields map[string]string, extra func(name, value string) error) error {
+	parts, err := splitLogArgs(args)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < len(parts); i++ {
+		name := parts[i]
 		switch name {
 		case "-n", "--limit":
-			value, err := nextArg(fields, &i, name)
+			value, err := nextArg(parts, &i, name)
 			if err != nil {
 				return err
 			}
@@ -167,7 +184,7 @@ func parseLogArgs(args string, query *logging.LogQuery, extra func(name, value s
 			}
 			query.Limit = limit
 		case "--days":
-			value, err := nextArg(fields, &i, name)
+			value, err := nextArg(parts, &i, name)
 			if err != nil {
 				return err
 			}
@@ -177,7 +194,7 @@ func parseLogArgs(args string, query *logging.LogQuery, extra func(name, value s
 			}
 			query.Days = days
 		case "--since":
-			value, err := nextArg(fields, &i, name)
+			value, err := nextArg(parts, &i, name)
 			if err != nil {
 				return err
 			}
@@ -187,7 +204,7 @@ func parseLogArgs(args string, query *logging.LogQuery, extra func(name, value s
 			}
 			query.Since = &parsed
 		case "--until":
-			value, err := nextArg(fields, &i, name)
+			value, err := nextArg(parts, &i, name)
 			if err != nil {
 				return err
 			}
@@ -197,35 +214,44 @@ func parseLogArgs(args string, query *logging.LogQuery, extra func(name, value s
 			}
 			query.Until = &parsed
 		case "--level":
-			value, err := nextArg(fields, &i, name)
+			value, err := nextArg(parts, &i, name)
 			if err != nil {
 				return err
 			}
 			query.MinLevel = value
+			query.Raw = strings.EqualFold(value, "debug")
 		case "-d":
 			query.MinLevel = "debug"
+			query.Raw = true
 		case "-i":
 			query.MinLevel = "info"
 		case "-w":
 			query.MinLevel = "warn"
 		case "-e":
 			query.MinLevel = "error"
+		case "-u":
+			fields["event"] = "user_message"
+		case "-a":
+			fields["event"] = "assistant_message"
+		case "-t":
+			fields["event"] = "tool_call"
+		case "--hook":
+			query.FieldExists = append(query.FieldExists, "hook")
 		case "--msg":
-			value, err := nextArg(fields, &i, name)
+			value, err := nextArg(parts, &i, name)
 			if err != nil {
 				return err
 			}
 			query.MsgContains = value
 		case "--contains":
-
-			value, err := nextArg(fields, &i, name)
+			value, err := nextArg(parts, &i, name)
 			if err != nil {
 				return err
 			}
 			query.Contains = value
 		default:
 			if strings.HasPrefix(name, "--") {
-				value, err := nextArg(fields, &i, name)
+				value, err := nextArg(parts, &i, name)
 				if err != nil {
 					return err
 				}
@@ -238,6 +264,54 @@ func parseLogArgs(args string, query *logging.LogQuery, extra func(name, value s
 		}
 	}
 	return nil
+}
+
+func splitLogArgs(args string) ([]string, error) {
+	parts := []string{}
+	var current strings.Builder
+	var quote rune
+	escaped := false
+	for _, r := range args {
+		if escaped {
+			current.WriteRune(r)
+			escaped = false
+			continue
+		}
+		if r == '\\' {
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			if r == quote {
+				quote = 0
+				continue
+			}
+			current.WriteRune(r)
+			continue
+		}
+		if r == '\'' || r == '"' {
+			quote = r
+			continue
+		}
+		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+			if current.Len() > 0 {
+				parts = append(parts, current.String())
+				current.Reset()
+			}
+			continue
+		}
+		current.WriteRune(r)
+	}
+	if escaped {
+		current.WriteRune('\\')
+	}
+	if quote != 0 {
+		return nil, fmt.Errorf("unterminated quoted argument")
+	}
+	if current.Len() > 0 {
+		parts = append(parts, current.String())
+	}
+	return parts, nil
 }
 
 func nextArg(fields []string, index *int, option string) (string, error) {
@@ -269,9 +343,9 @@ func parseLogTime(value string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("invalid time: %s", value)
 }
 
-func formatAuditEntries(minLevel string) func([]logging.LogEntry) string {
+func formatAuditEntries(raw bool) func([]logging.LogEntry) string {
 	return func(entries []logging.LogEntry) string {
-		if isDebugQuery(minLevel) {
+		if raw {
 			return formatRawLogEntries("audit events", entries)
 		}
 
@@ -286,6 +360,9 @@ func formatAuditEntries(minLevel string) func([]logging.LogEntry) string {
 			appendField(&sb, "risk", f["risk"])
 			appendField(&sb, "model", f["model"])
 			appendField(&sb, "action", f["action"])
+			appendField(&sb, "args", f["arguments"])
+			appendField(&sb, "result", f["result"])
+			appendField(&sb, "text", f["text"])
 			appendField(&sb, "reason", f["reason"])
 			appendField(&sb, "error", f["error"])
 			sb.WriteString("\n")
@@ -294,9 +371,9 @@ func formatAuditEntries(minLevel string) func([]logging.LogEntry) string {
 	}
 }
 
-func formatRuntimeLogEntries(minLevel string) func([]logging.LogEntry) string {
+func formatRuntimeLogEntries(raw bool) func([]logging.LogEntry) string {
 	return func(entries []logging.LogEntry) string {
-		if isDebugQuery(minLevel) {
+		if raw {
 			return formatRawLogEntries("runtime logs", entries)
 		}
 
@@ -313,13 +390,13 @@ func formatRuntimeLogEntries(minLevel string) func([]logging.LogEntry) string {
 
 func appendRuntimeLogFields(sb *strings.Builder, fields map[string]string) {
 	for _, key := range []string{
-		"point", "hook", "priority", "order", "mode",
+		"event", "point", "hook", "priority", "order", "mode",
 		"hook_point", "hook_mode",
 		"kind", "name", "platform",
 		"session_id", "request_id", "request_kind", "request_phase",
 		"actor_id", "actor_role",
 		"provider", "model", "tool", "risk",
-		"error",
+		"text", "raw_text", "first_system_message_json", "arguments", "result", "success", "error",
 	} {
 		appendField(sb, key, fields[key])
 	}

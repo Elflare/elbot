@@ -29,7 +29,7 @@ func TestAuditCommandParsesFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("audit handle: %v", err)
 	}
-	if service.query.Prefix != "audit" || service.query.Limit != 3 || service.query.Days != 2 || strings.ToLower(service.query.MinLevel) != "info" {
+	if service.query.Prefix != "audit" || service.query.Limit != 3 || service.query.Days != 2 || strings.ToLower(service.query.MinLevel) != "debug" {
 		t.Fatalf("query = %#v", service.query)
 	}
 	if service.query.Fields["event"] != "tool_call" || service.query.Fields["risk"] != "high" || service.query.Fields["tool"] != "shell" {
@@ -40,7 +40,7 @@ func TestAuditCommandParsesFilters(t *testing.T) {
 	}
 }
 
-func TestLogCommandDefaultsToInfoAndFiveEntries(t *testing.T) {
+func TestLogCommandDefaultsToDebugAndFiveEntries(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{
 		Time:    time.Date(2026, 6, 3, 15, 0, 0, 0, time.Local),
 		Level:   "INFO",
@@ -51,7 +51,7 @@ func TestLogCommandDefaultsToInfoAndFiveEntries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("log handle: %v", err)
 	}
-	if service.query.Prefix != "elbot" || service.query.Limit != defaultLogListLimit || strings.ToLower(service.query.MinLevel) != "info" {
+	if service.query.Prefix != "elbot" || service.query.Limit != defaultLogListLimit || strings.ToLower(service.query.MinLevel) != "debug" {
 		t.Fatalf("query = %#v", service.query)
 	}
 	if !strings.Contains(result.Content, "runtime logs:") || !strings.Contains(result.Content, "started") {
@@ -88,6 +88,80 @@ func TestLogCommandShowsStructuredRuntimeFields(t *testing.T) {
 		if strings.Contains(result.Content, hidden) {
 			t.Fatalf("content should hide %q:\n%s", hidden, result.Content)
 		}
+	}
+}
+
+func TestLogCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
+	service := &fakeLogService{entries: []logging.LogEntry{{Message: "user input", Fields: map[string]string{"event": "user_message", "text": "hello world"}}}}
+	_, err := NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `-u --contains "hello world"`})
+	if err != nil {
+		t.Fatalf("log handle: %v", err)
+	}
+	if service.query.Fields["event"] != "user_message" || service.query.Contains != "hello world" || service.query.Raw {
+		t.Fatalf("query = %#v", service.query)
+	}
+
+	_, err = NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `-a`})
+	if err != nil {
+		t.Fatalf("log handle -a: %v", err)
+	}
+	if service.query.Fields["event"] != "assistant_message" {
+		t.Fatalf("query = %#v", service.query)
+	}
+
+	_, err = NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `-t`})
+	if err != nil {
+		t.Fatalf("log handle -t: %v", err)
+	}
+	if service.query.Fields["event"] != "tool_call" {
+		t.Fatalf("query = %#v", service.query)
+	}
+
+	_, err = NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `--hook`})
+	if err != nil {
+		t.Fatalf("log handle --hook: %v", err)
+	}
+	if len(service.query.FieldExists) != 1 || service.query.FieldExists[0] != "hook" {
+		t.Fatalf("query = %#v", service.query)
+	}
+}
+
+func TestAuditCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
+	service := &fakeLogService{entries: []logging.LogEntry{{Message: "audit event", Fields: map[string]string{"event": "tool_call", "arguments": "hello world"}}}}
+	_, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `-t --contains "hello world"`})
+	if err != nil {
+		t.Fatalf("audit handle: %v", err)
+	}
+	if service.query.Fields["event"] != "tool_call" || service.query.Contains != "hello world" || service.query.Raw {
+		t.Fatalf("query = %#v", service.query)
+	}
+
+	_, err = NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `--hook`})
+	if err != nil {
+		t.Fatalf("audit handle --hook: %v", err)
+	}
+	if service.query.Fields["event"] != "hook" {
+		t.Fatalf("query = %#v", service.query)
+	}
+}
+
+func TestLogCommandHelpAndRawDebug(t *testing.T) {
+	service := &fakeLogService{}
+	result, err := NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `-h`})
+	if err != nil {
+		t.Fatalf("log help: %v", err)
+	}
+	if !strings.Contains(result.Content, "command: log") {
+		t.Fatalf("content = %q", result.Content)
+	}
+
+	service.entries = []logging.LogEntry{{Message: "debug", Level: "DEBUG", Raw: "raw debug"}}
+	result, err = NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `-d`})
+	if err != nil {
+		t.Fatalf("log raw: %v", err)
+	}
+	if !service.query.Raw || !strings.Contains(result.Content, "raw debug") {
+		t.Fatalf("query = %#v content = %q", service.query, result.Content)
 	}
 }
 

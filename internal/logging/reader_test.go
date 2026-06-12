@@ -33,6 +33,33 @@ func TestReaderParsesAndFiltersTextLogs(t *testing.T) {
 	}
 }
 
+func TestReaderContainsMatchesStructuredFieldsAndRaw(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "elbot-"+time.Now().Format("2006-01-02")+".log")
+	content := "time=\"2026-06-03 15:00:00\" level=INFO msg=\"user input\" event=user_message text=\"hello world\"\n" +
+		"time=\"2026-06-03 15:01:00\" level=INFO msg=\"tool call\" event=tool_call arguments=\"{\\\"path\\\":\\\"a.txt\\\"}\" result=\"file content\"\n" +
+		"time=\"2026-06-03 15:02:00\" level=INFO msg=other custom_field=needle\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+
+	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "elbot", Contains: "file content"})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Fields["event"] != "tool_call" {
+		t.Fatalf("entries = %#v", entries)
+	}
+
+	entries, err = (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "elbot", Contains: "needle"})
+	if err != nil {
+		t.Fatalf("Query raw: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Message != "other" {
+		t.Fatalf("entries = %#v", entries)
+	}
+}
+
 func TestReaderAppliesMinLevelAndLimit(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "elbot-"+time.Now().Format("2006-01-02")+".log")

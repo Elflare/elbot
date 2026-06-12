@@ -105,6 +105,9 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		Content:   userContent,
 		Metadata:  userSegmentsMetadata(userSegments),
 	}
+	if a.logger != nil {
+		a.logger.Info("user input", "event", "user_message", "session_id", session.ID, "text", previewLogText(userContent))
+	}
 
 	loaded, err := a.contextLoader.Load(ctx, session.ID)
 	if err != nil {

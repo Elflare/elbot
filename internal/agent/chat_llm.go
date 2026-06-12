@@ -47,9 +47,10 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 	latestUserContent = llm.LatestUserSegmentContentText(requestMessages)
 	tools = event.LLM.Tools
 	req := llm.ChatRequest{
-		Model:    selection.Model,
-		Messages: requestMessages,
-		Tools:    tools,
+		Model:     selection.Model,
+		SessionID: sessionID,
+		Messages:  requestMessages,
+		Tools:     tools,
 	}
 	ch, err := a.clientForProvider(selection.Provider).ChatStream(ctx, req)
 	if err != nil {
@@ -137,13 +138,13 @@ func (a *Agent) logLLMOutput(sessionID string, selection config.ModelSelection, 
 		return
 	}
 	a.logger.Info("llm output",
-		"event", "llm_output",
+		"event", "assistant_message",
 		"session_id", sessionID,
 		"provider", selection.Provider,
 		"model", selection.Model,
 		"elapsed_ms", elapsedMs,
-		"text", text,
-		"raw_text", rawText,
+		"text", previewLogText(text),
+		"raw_text", previewLogText(rawText),
 		"tool_call_count", toolCallCount,
 	)
 }

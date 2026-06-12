@@ -327,6 +327,21 @@ func (a *Agent) recordToolCall(ctx context.Context, sessionID string, call llm.T
 			a.logger.Warn("record tool call failed", "session_id", sessionID, "tool", call.Name, "error", err)
 		}
 	}
+	if a.logger != nil {
+		a.logger.Info("tool call",
+			"event", "tool_call",
+			"session_id", sessionID,
+			"arguments", previewArguments(call.Arguments),
+			"result", previewLogText(result),
+			"tool", call.Name,
+			"tool_call_id", call.ID,
+			"actor_id", record.ActorID,
+			"risk", risk,
+			"success", record.Success,
+			"elapsed_ms", record.FinishedAt.Sub(record.StartedAt).Milliseconds(),
+			"error", record.Error,
+		)
+	}
 	a.audit("tool_call",
 		"session_id", sessionID,
 		"arguments", previewArguments(call.Arguments),

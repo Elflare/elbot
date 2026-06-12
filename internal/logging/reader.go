@@ -24,8 +24,10 @@ type LogQuery struct {
 	Since       *time.Time
 	Until       *time.Time
 	Fields      map[string]string
+	FieldExists []string
 	Contains    string
 	MsgContains string
+	Raw         bool
 }
 
 type LogEntry struct {
@@ -201,13 +203,27 @@ func matchLogEntry(entry LogEntry, query LogQuery) bool {
 			return false
 		}
 	}
-	if query.Contains != "" && !containsFold(entry.Fields["latest_message_json"], query.Contains) {
+	for _, key := range query.FieldExists {
+		if strings.TrimSpace(entry.Fields[key]) == "" {
+			return false
+		}
+	}
+	if query.Contains != "" && !logEntryContains(entry, query.Contains) {
 		return false
 	}
 	if query.MsgContains != "" && !containsFold(entry.Message, query.MsgContains) {
 		return false
 	}
 	return true
+}
+
+func logEntryContains(entry LogEntry, needle string) bool {
+	for _, key := range []string{"text", "raw_text", "arguments", "result", "latest_message_json", "first_system_message_json"} {
+		if containsFold(entry.Fields[key], needle) {
+			return true
+		}
+	}
+	return containsFold(entry.Raw, needle)
 }
 
 func containsFold(value, needle string) bool {

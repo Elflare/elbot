@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 
 	"elbot/internal/llm"
 )
@@ -24,6 +25,8 @@ type Adapter struct {
 	modelExtraPayloads map[string]map[string]any
 	client             *http.Client
 	logger             *slog.Logger
+	loggedSystemMu     sync.Mutex
+	loggedSystem       map[string]bool
 }
 
 // New creates a new OpenAI-compatible adapter.
@@ -42,6 +45,7 @@ func NewWithModelExtraPayloads(baseURL, apiKey string, extraPayload map[string]a
 		extraPayload:       extraPayload,
 		modelExtraPayloads: modelExtraPayloads,
 		client:             &http.Client{},
+		loggedSystem:       map[string]bool{},
 	}
 }
 
@@ -118,13 +122,34 @@ func (a *Adapter) logChatRequest(req llm.ChatRequest, bodyBytes []byte) {
 	if a.logger == nil {
 		return
 	}
-	attrs := []any{"endpoint", a.endpoint(), "model", req.Model, "latest_message_json", latestMessageJSON(req.Messages), "first_system_message_json", firstSystemMessageJSON(req.Messages)}
+	a.logFirstSystemMessage(req)
+	attrs := []any{"endpoint", a.endpoint(), "model", req.Model, "session_id", req.SessionID, "latest_message_json", latestMessageJSON(req.Messages)}
 	// Debug 日志默认只记录请求摘要，不记录 Authorization 和完整 body。
 	// 完整 body 可能包含用户正文、图片 URL、工具参数等敏感信息，
 	// 需要临时排查时再手动打开。
 	// attrs := []any{"endpoint", a.endpoint(), "model", req.Model, "body_json", string(bodyBytes)}
 	attrs = append(attrs, chatRequestLogSummary(req, bodyBytes)...)
 	a.logger.Debug("openai chat request", attrs...)
+}
+
+func (a *Adapter) logFirstSystemMessage(req llm.ChatRequest) {
+	if req.SessionID == "" || firstSystemText(req.Messages) == "" {
+		return
+	}
+	a.loggedSystemMu.Lock()
+	if a.loggedSystem[req.SessionID] {
+		a.loggedSystemMu.Unlock()
+		return
+	}
+	a.loggedSystem[req.SessionID] = true
+	a.loggedSystemMu.Unlock()
+
+	a.logger.Info("system prompt",
+		"event", "system_message",
+		"session_id", req.SessionID,
+		"model", req.Model,
+		"first_system_message_json", firstSystemMessageJSON(req.Messages),
+	)
 }
 
 func latestMessageJSON(messages []llm.LLMMessage) string {
