@@ -115,10 +115,15 @@ func TestSearchMatchRangesFindsAllMatches(t *testing.T) {
 	}
 }
 
-func TestSearchMatchRange(t *testing.T) {
-	start, end, ok := searchMatchRange("second error line", "error", copyCursor{Line: 2, Col: 7})
-	if !ok || start != 7 || end != 11 {
-		t.Fatalf("range = %d %d %v", start, end, ok)
+func TestRenderSearchLineKeepsCursorVisible(t *testing.T) {
+	m := newCopyTestModel()
+	m.enterCopyMode(regionChat)
+	m.copyState.SearchQuery = "error"
+	m.copyState.Cursor = copyCursor{Line: 2, Col: 8}
+
+	rendered := m.renderCopyLine(2, "second error line")
+	if !strings.Contains(rendered, tuiCopyCursorStyle.Render("r")) {
+		t.Fatalf("rendered line should contain cursor on current character: %q", rendered)
 	}
 }
 

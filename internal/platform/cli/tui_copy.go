@@ -497,7 +497,8 @@ func (m tuiModel) renderCopyLine(lineIndex int, line string) string {
 	}
 	if matches := searchMatchRanges(line, m.copyState.SearchQuery); len(matches) > 0 {
 		current := -1
-		if lineIndex == m.copyState.Cursor.Line {
+		hasCursor := lineIndex == m.copyState.Cursor.Line
+		if hasCursor {
 			for i, match := range matches {
 				if match.start == m.copyState.Cursor.Col {
 					current = i
@@ -505,7 +506,7 @@ func (m tuiModel) renderCopyLine(lineIndex int, line string) string {
 				}
 			}
 		}
-		return renderSearchMatches(line, matches, current)
+		return renderSearchMatches(line, matches, current, m.copyState.Cursor.Col, hasCursor)
 	}
 	if lineIndex == m.copyState.Cursor.Line {
 		return renderCursor(line, m.copyState.Cursor.Col)
@@ -546,42 +547,55 @@ func searchMatchRanges(line, query string) []copyRange {
 	return matches
 }
 
-func searchMatchRange(line, query string, cursor copyCursor) (int, int, bool) {
-	if query == "" {
-		return 0, 0, false
-	}
-	start := cursor.Col
-	end := start + runeLen(query) - 1
-	if start < 0 || start >= runeLen(line) || end < start {
-		return 0, 0, false
-	}
-	return start, end, true
-}
-
-func renderSearchMatches(line string, matches []copyRange, current int) string {
+func renderSearchMatches(line string, matches []copyRange, current, cursorCol int, hasCursor bool) string {
 	runes := []rune(line)
 	if len(runes) == 0 || len(matches) == 0 {
 		return line
 	}
+	if hasCursor {
+		cursorCol = clampInt(cursorCol, 0, len(runes)-1)
+	}
 	var sb strings.Builder
 	pos := 0
+	writeRunes := func(start, end int, style lipgloss.Style, styled bool) {
+		if end <= start {
+			return
+		}
+		writeText := func(text string) {
+			if styled {
+				text = style.Render(text)
+			}
+			sb.WriteString(text)
+		}
+		if !hasCursor || cursorCol < start || cursorCol >= end {
+			writeText(string(runes[start:end]))
+			return
+		}
+		if start < cursorCol {
+			writeText(string(runes[start:cursorCol]))
+		}
+		sb.WriteString(tuiCopyCursorStyle.Render(string(runes[cursorCol])))
+		if cursorCol+1 < end {
+			writeText(string(runes[cursorCol+1 : end]))
+		}
+	}
 	for i, match := range matches {
 		start := clampInt(match.start, pos, len(runes))
 		end := clampInt(match.end, start-1, len(runes)-1)
 		if start > pos {
-			sb.WriteString(string(runes[pos:start]))
+			writeRunes(pos, start, lipgloss.Style{}, false)
 		}
 		if end >= start {
 			style := tuiCopySearchStyle
 			if i == current {
 				style = tuiCopySearchCurrentStyle
 			}
-			sb.WriteString(style.Render(string(runes[start : end+1])))
+			writeRunes(start, end+1, style, true)
 			pos = end + 1
 		}
 	}
 	if pos < len(runes) {
-		sb.WriteString(string(runes[pos:]))
+		writeRunes(pos, len(runes), lipgloss.Style{}, false)
 	}
 	return sb.String()
 }
