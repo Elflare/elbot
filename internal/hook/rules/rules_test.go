@@ -181,6 +181,26 @@ func TestReplaceActionFirstAndAllAcrossTextSegments(t *testing.T) {
 	}
 }
 
+func TestLLMResponseRawTextCanMatchButCannotBeEdited(t *testing.T) {
+	module := Module{}
+	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "visible", RawText: "raw token"}}
+	matched, err := module.runRule(context.Background(), Rule{
+		Match:   []hook.Condition{{Field: "llm.raw_text", Op: hook.MatchContains, Value: "raw"}},
+		Actions: []Action{{Type: "append", Field: "llm.text", Text: " output"}},
+	}, event)
+	if err != nil {
+		t.Fatalf("runRule match raw_text: %v", err)
+	}
+	if matched.LLM.Text != "visible output" || matched.LLM.RawText != "raw token" {
+		t.Fatalf("matched event = %#v", matched.LLM)
+	}
+
+	_, err = module.runRule(context.Background(), Rule{Actions: []Action{{Type: "append", Field: "llm.raw_text", Text: " changed"}}}, event)
+	if err == nil || !strings.Contains(err.Error(), `field "llm.raw_text" cannot be edited`) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestLatestUserTextActionWritesBackToMessages(t *testing.T) {
 	module := Module{}
 	event := hook.Event{

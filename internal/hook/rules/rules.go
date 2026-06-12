@@ -383,8 +383,6 @@ func prependTextField(event hook.Event, field, value string) (hook.Event, error)
 		event.LLM.Messages = llm.PrependLatestUserSegmentText(event.LLM.Messages, value)
 	case "llm.text":
 		event.LLM.Text = value + event.LLM.Text
-	case "llm.raw_text":
-		event.LLM.RawText = value + event.LLM.RawText
 	case "tool.arguments":
 		event.Tool.Arguments = value + event.Tool.Arguments
 	case "tool.result":
@@ -403,8 +401,6 @@ func appendTextField(event hook.Event, field, value string) (hook.Event, error) 
 		event.LLM.Messages = llm.AppendLatestUserSegmentText(event.LLM.Messages, value)
 	case "llm.text":
 		event.LLM.Text += value
-	case "llm.raw_text":
-		event.LLM.RawText += value
 	case "tool.arguments":
 		event.Tool.Arguments += value
 	case "tool.result":
@@ -423,8 +419,6 @@ func replaceTextField(event hook.Event, field string, pattern *regexp.Regexp, re
 		event.LLM.Messages = llm.ReplaceLatestUserSegmentText(event.LLM.Messages, pattern, replacement, all)
 	case "llm.text":
 		event.LLM.Text = replaceString(event.LLM.Text, pattern, replacement, all)
-	case "llm.raw_text":
-		event.LLM.RawText = replaceString(event.LLM.RawText, pattern, replacement, all)
 	case "tool.arguments":
 		event.Tool.Arguments = replaceString(event.Tool.Arguments, pattern, replacement, all)
 	case "tool.result":
@@ -457,7 +451,7 @@ func allowField(event hook.Event, field string) error {
 			return nil
 		}
 	case hook.PointLLMResponseReceived:
-		if field == "llm.text" || field == "llm.raw_text" {
+		if field == "llm.text" {
 			return nil
 		}
 	case hook.PointToolCallPrepared:

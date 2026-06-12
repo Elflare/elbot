@@ -50,11 +50,6 @@ func appendAssistantTextMessage(messages []llm.LLMMessage, content, rawContent s
 func (a *Agent) executeToolCalls(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string) ([]llm.LLMMessage, string, []storage.Message, bool) {
 	sessionID := session.ID
 
-	if strings.TrimSpace(assistantText) == "" {
-		a.sendPreview(ctx, fmt.Sprintf("模型准备调用工具：%s", joinToolNames(calls)))
-	} else {
-		a.sendChat(ctx, "\n")
-	}
 	executor := tool.Executor{Registry: a.toolRegistry, Actor: a.actor(ctx), Policy: a.securityPolicy}
 	messages := make([]llm.LLMMessage, 0, len(calls))
 	preparedCalls := make([]llm.ToolCallRequest, 0, len(calls))
@@ -356,17 +351,19 @@ func (a *Agent) recordToolCall(ctx context.Context, sessionID string, call llm.T
 }
 
 func (a *Agent) sendPreview(ctx context.Context, text string) {
-	if !strings.HasSuffix(text, "\n") {
-		text += "\n"
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
 	}
-	event, err := a.runHook(ctx, hook.Event{Point: hook.PointAgentOutputPrepared, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(strings.TrimSuffix(text, "\n"))}})
+	event, err := a.runHook(ctx, hook.Event{Point: hook.PointAgentOutputPrepared, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(text)}})
 	if err != nil {
 		return
 	}
-	preview := "[tool] " + llm.SegmentsTextOnly(event.Message.Segments)
-	if !strings.HasSuffix(preview, "\n") {
-		preview += "\n"
+	body := strings.TrimSpace(llm.SegmentsTextOnly(event.Message.Segments))
+	if body == "" {
+		return
 	}
+	preview := "[tool] " + body
 	_ = a.sendNoticeOutput(ctx, output.Target{}, output.Text(preview))
 	a.notifyHook(ctx, hook.Event{Point: hook.PointPlatformMessageSent, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(preview)}})
 }

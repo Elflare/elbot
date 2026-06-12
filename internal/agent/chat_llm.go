@@ -130,7 +130,7 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 	a.logLLMOutput(sessionID, selection, finalText, event.LLM.RawText, len(toolCalls), elapsedMs)
 
 	a.auditUsage(sessionID, selection, usage, elapsedMs)
-	return llmCallResult{Text: finalText, RawText: event.LLM.RawText, Usage: usage, ToolCalls: toolCalls, Outputs: event.Outputs, Messages: baseMessages, Stream: stream}, latestUserContent, nil
+	return llmCallResult{Text: finalText, RawText: content, Usage: usage, ToolCalls: toolCalls, Outputs: event.Outputs, Messages: baseMessages, Stream: stream}, latestUserContent, nil
 }
 
 func (a *Agent) logLLMOutput(sessionID string, selection config.ModelSelection, text, rawText string, toolCallCount int, elapsedMs int64) {

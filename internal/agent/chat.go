@@ -92,7 +92,11 @@ func (a *Agent) startChat(ctx context.Context, session *storage.Session, text st
 	if !a.turns.StartLLM(session.ID, text) {
 		return nil
 	}
-	return a.runChat(ctx, session, text)
+	if err := a.runChat(ctx, session, text); err != nil {
+		a.turns.StopSession(session.ID)
+		return err
+	}
+	return nil
 }
 
 func (a *Agent) runChat(ctx context.Context, session *storage.Session, text string) error {
@@ -197,19 +201,19 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		if result.Usage != nil {
 			usage = result.Usage
 		}
-		finalText = joinAssistantText(finalText, assistantText)
-		finalRawText = joinAssistantText(finalRawText, assistantRawText)
 		if err := a.sendOutputs(ctx, result.Outputs); err != nil {
 			return err
 		}
 		if len(result.ToolCalls) == 0 {
+			finalText = joinAssistantText(finalText, assistantRawText)
+			finalRawText = joinAssistantText(finalRawText, assistantRawText)
 			if inToolPhase {
 				if pending := a.turns.DrainMerged(session.ID); pending != "" {
 					// 用户可能在后续 LLM 响应期间补充输入；继续同一轮请求，避免 pending 被结束流程丢弃。
 					if err := a.finishIntermediateOutput(ctx, reqCtx, result.Stream, assistantText, streaming); err != nil {
 						return err
 					}
-					llmMessages = appendAssistantTextMessage(llmMessages, assistantText, assistantRawText)
+					llmMessages = appendAssistantTextMessage(llmMessages, assistantRawText, assistantRawText)
 					llmMessages = appendPendingUserInput(llmMessages, &turnMessages, pending)
 					continue
 				}
@@ -257,14 +261,14 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			if summary.Usage != nil {
 				usage = summary.Usage
 			}
-			finalText = joinAssistantText(finalText, summaryText)
+			finalText = joinAssistantText(finalText, summaryRawText)
 			finalRawText = joinAssistantText(finalRawText, summaryRawText)
 			platformFinalText = joinAssistantText(platformFinalText, summaryText)
 			finalStream = summary.Stream
 			break
 		}
 		toolRounds++
-		toolMessages, confirmationExtra, transcriptMessages, stopped := a.executeToolCalls(reqCtx, session, result.ToolCalls, assistantText, assistantRawText)
+		toolMessages, confirmationExtra, transcriptMessages, stopped := a.executeToolCalls(reqCtx, session, result.ToolCalls, assistantRawText, assistantRawText)
 		if stopped {
 			return nil
 		}

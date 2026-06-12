@@ -954,7 +954,10 @@ func TestChatExecutesToolAndFollowsUp(t *testing.T) {
 		t.Fatalf("HandleMessage: %v", err)
 	}
 	preview := p.preview.String()
-	if !strings.Contains(preview, "模型准备调用工具：shell") || !strings.Contains(preview, "正在调用 shell") {
+	if strings.Contains(preview, "模型准备调用工具：shell") {
+		t.Fatalf("unexpected preparation preview output: %q", preview)
+	}
+	if !strings.Contains(preview, "正在调用 shell") {
 		t.Fatalf("missing preview output: %q", preview)
 	}
 	if strings.Contains(preview, "shell 调用完成") {
@@ -2002,7 +2005,7 @@ func TestNewSessionsResumeCommands(t *testing.T) {
 	}
 }
 
-func TestLLMResponseHookCanRewritePersistedAssistantContent(t *testing.T) {
+func TestLLMResponseHookRewritesOutputButPersistsRawAssistantContent(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"raw response"}}
 	store := newTestStore(t)
@@ -2028,8 +2031,8 @@ func TestLLMResponseHookCanRewritePersistedAssistantContent(t *testing.T) {
 		t.Fatalf("list messages: %v", err)
 	}
 	got := messages[len(messages)-1].Content
-	if got != "cleaned response" {
-		t.Fatalf("assistant content = %q, want cleaned response", got)
+	if got != "raw response" {
+		t.Fatalf("assistant content = %q, want raw response", got)
 	}
 	if !strings.Contains(p.out.String(), "cleaned response") {
 		t.Fatalf("platform output = %q, want cleaned response", p.out.String())
@@ -2097,7 +2100,7 @@ func TestEmoticonHookSendsSeparateOutputAndCleansPersistedContent(t *testing.T) 
 		t.Fatalf("list messages: %v", err)
 	}
 	got := messages[len(messages)-1].Content
-	if got != "像这样~" {
-		t.Fatalf("assistant content = %q, want cleaned text", got)
+	if got != "[[微笑]] 像这样~" {
+		t.Fatalf("assistant content = %q, want raw text", got)
 	}
 }
