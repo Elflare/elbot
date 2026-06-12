@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -101,7 +102,7 @@ func (r PythonRunner) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	if args.Stdin != "" {
 		cmd.Stdin = strings.NewReader(args.Stdin)
 	}
-	return runCommand(cmd)
+	return runCommand(runCtx, "python skill", cmd)
 }
 
 type GoRunner struct {
@@ -131,9 +132,9 @@ func (GoRunner) Info() tool.Info {
 
 func (GoRunner) Schema() llm.ToolSchema {
 	return tool.NewBuilder(GoRunnerName).
-		Description("运行指定 Go skill，并把 payload JSON 原样写入 skill stdin。调用 Go skill 时必须通过本 runner：skill_name 选择 skill，payload 放业务参数对象，timeout_ms 设置超时。兼容旧格式：未提供 payload 时，除 skill_name/timeout_ms 外的顶层字段会作为业务参数 JSON 写入 stdin。").
+		Description("运行指定 Go skill，并把 payload JSON 原样写入 skill stdin。调用 Go skill 时必须通过本 runner：skill_name 选择 skill，payload 放业务参数对象，timeout_ms 设置超时。").
 		String("skill_name", "Go skill 名称。", tool.Required()).
-		Object("payload", "业务参数 JSON 对象，会原样写入 Go skill 的 stdin。例如 {\"url\":\"magnet:?xt=...\",\"title\":\"番剧名\"}。", tool.Required()).
+		Object("payload", "业务参数 JSON 对象，会原样写入 Go skill 的 stdin。例如 {\"url\":\"xxx\"}。", tool.Required()).
 		Integer("timeout_ms", "可选，超时时间，默认 30000。").
 		BuildSchema()
 }
@@ -174,16 +175,13 @@ func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (*tool.Result,
 	if !ok || record.Kind != KindGo || record.BinaryPath == "" {
 		return nil, fmt.Errorf("go skill %q not found", args.SkillName)
 	}
-	if len(args.Payload) == 0 {
-		args.Payload = json.RawMessage(`{}`)
-	}
 	timeout := runnerTimeout(args.TimeoutMS)
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, record.BinaryPath)
 	cmd.Dir = record.Root
 	cmd.Stdin = bytes.NewReader(args.Payload)
-	return runCommand(cmd)
+	return runCommand(runCtx, "go skill", cmd)
 }
 
 func parseGoRunnerArgs(data json.RawMessage) (goRunnerArgs, error) {
@@ -202,22 +200,15 @@ func parseGoRunnerArgs(data json.RawMessage) (goRunnerArgs, error) {
 			return goRunnerArgs{}, fmt.Errorf("timeout_ms: %w", err)
 		}
 	}
-	if value := raw["payload"]; len(value) > 0 {
-		var payload map[string]json.RawMessage
-		if err := json.Unmarshal(value, &payload); err != nil {
-			return goRunnerArgs{}, fmt.Errorf("payload must be object: %w", err)
-		}
-		args.Payload = json.RawMessage(value)
-		return args, nil
+	value := raw["payload"]
+	if len(value) == 0 {
+		return goRunnerArgs{}, fmt.Errorf("payload is required")
 	}
-	// Backward compatibility: older calls may put business fields at top level.
-	delete(raw, "skill_name")
-	delete(raw, "timeout_ms")
-	payload, err := json.Marshal(raw)
-	if err != nil {
-		return goRunnerArgs{}, fmt.Errorf("payload: %w", err)
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(value, &payload); err != nil {
+		return goRunnerArgs{}, fmt.Errorf("payload must be object: %w", err)
 	}
-	args.Payload = payload
+	args.Payload = json.RawMessage(value)
 	return args, nil
 }
 
@@ -248,7 +239,7 @@ func safeRelativePath(root, rel string) (string, error) {
 	return clean, nil
 }
 
-func runCommand(cmd *exec.Cmd) (*tool.Result, error) {
+func runCommand(ctx context.Context, label string, cmd *exec.Cmd) (*tool.Result, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -257,12 +248,36 @@ func runCommand(cmd *exec.Cmd) (*tool.Result, error) {
 	out := truncateOutput(stdout.String())
 	errText := truncateOutput(stderr.String())
 	if err != nil {
-		if errText != "" {
-			return nil, fmt.Errorf("run command: %w: %s", err, errText)
-		}
-		return nil, fmt.Errorf("run command: %w", err)
+		return nil, commandError(ctx, label, err, out, errText)
 	}
 	return resultFromStdout(out)
+}
+
+func commandError(ctx context.Context, label string, err error, stdout, stderr string) error {
+	if ctxErr := ctx.Err(); errors.Is(ctxErr, context.DeadlineExceeded) {
+		return fmt.Errorf("%s timed out: %w%s", label, ctxErr, commandOutputSuffix(stdout, stderr))
+	} else if errors.Is(ctxErr, context.Canceled) {
+		return fmt.Errorf("%s canceled: %w%s", label, ctxErr, commandOutputSuffix(stdout, stderr))
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return fmt.Errorf("%s process failed with exit code %d: %w%s", label, exitErr.ExitCode(), err, commandOutputSuffix(stdout, stderr))
+	}
+	return fmt.Errorf("start %s failed: %w", label, err)
+}
+
+func commandOutputSuffix(stdout, stderr string) string {
+	parts := []string{}
+	if strings.TrimSpace(stdout) != "" {
+		parts = append(parts, "stdout:\n"+stdout)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		parts = append(parts, "stderr:\n"+stderr)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "\n" + strings.Join(parts, "\n")
 }
 
 func resultFromStdout(out string) (*tool.Result, error) {

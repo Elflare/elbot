@@ -120,7 +120,7 @@
 
 - `internal/tool/tool.go`：Tool Runtime 核心类型与 Registry；管理工具注册、查询、schema、权限、风险评估和执行结果结构。
 - `internal/tool/sandbox.go`：工具执行轻量 sandbox context；传递统一 sandbox root、当前工作目录、artifact 目录和 cron 后台状态，只随本次 context 传播，不写入 Session。
-- `internal/tool/builder.go`：Go Tool Builder；用于声明工具描述、风险、隐藏、superadmin-only、依赖和常用参数 schema，减少内置工具与包装工具手写 JSON schema 的成本。
+- `internal/tool/builder.go`：Go Tool Builder；用于声明工具描述、风险、隐藏、superadmin-only、依赖和常用参数 schema，Object 参数默认允许任意 JSON 字段，减少内置工具与包装工具手写 schema 的成本。
 - `internal/tool/discover.go`：`discover_tool` 内置工具；无参列出可见工具/skill 简介，有 `name`/`names` 时普通工具仅返回“已发现工具”文本并把完整 schema 留在结构化 Data 供 Agent 注入 top-level tools，外置 skill 返回 markdown/ELyph detail；查询 py/go skill 会通过内部 metadata 激活隐藏包装工具 `python_skill_run`/`go_skill_run`。
 - `internal/tool/provider.go`：Tool Runtime 到 Agent Prompt/LLM schema 的 provider 适配；work 模式注入 `discover_tool` 和当前 Actor 可用且未隐藏的工具名称，chat 模式不注入。
 - `internal/tool/executor.go`：工具执行器；把模型产生的 `llm.ToolCallRequest` 转换为 Tool Runtime 调用，执行前按 Actor/Policy 做风险等级兜底校验，并把结果转换为 LLM tool message。
@@ -145,7 +145,7 @@
 
 - `internal/tool/skill/descriptor.go`：skill 描述对象；让 py/go skill 可被 `discover_tool` 查到详情，ELyph skill detail 会按需前置短规则卡，Markdown skill 不注入；skill 本体不作为可直接调用 schema 暴露。
 - `internal/tool/skill/scanner.go`：skill 文件系统扫描与 reload；默认根目录为 Windows `%APPDATA%/ElBot/skills` 或 Linux XDG data `elbot/skills`；Go skill 必须使用 `go/<skill>/SKILL.elyph`，可选 binary；Python skill 优先读 `SKILL.elyph` 覆写 Agent 可读说明，否则回退 `SKILL.md`；同步新增/删除 skill 并更新 catalog。
-- `internal/tool/skill/runner.go`：隐藏包装工具实现；`python_skill_run` 固定在 py skill 目录用 `uv run python` 执行脚本，`go_skill_run` 选择 Go skill binary，读取 `skill_name` 和可选 `timeout_ms` 后把其余顶层字段作为业务 JSON 写入 stdin；包装工具本身隐藏，执行风险按目标 skill 的 `risk` 评估。
+- `internal/tool/skill/runner.go`：隐藏包装工具实现；`python_skill_run` 固定在 py skill 目录用 `uv run python` 执行脚本，`go_skill_run` 选择 Go skill binary 并把必填 `payload` 对象 JSON 写入 stdin；执行错误会区分启动/超时/进程失败并回传 stdout/stderr，风险按目标 skill 的 `risk` 评估。
 
 ### Tool 约定
 

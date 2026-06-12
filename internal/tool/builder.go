@@ -68,7 +68,11 @@ func (b *Builder) Boolean(name, description string, opts ...ParamOption) *Builde
 }
 
 func (b *Builder) Object(name, description string, opts ...ParamOption) *Builder {
-	return b.param(name, "object", description, opts...)
+	b.param(name, "object", description, opts...)
+	if property, ok := b.properties[name].(map[string]any); ok {
+		property["additionalProperties"] = true
+	}
+	return b
 }
 
 func (b *Builder) StringArray(name, description string, opts ...ParamOption) *Builder {

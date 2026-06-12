@@ -339,7 +339,8 @@ func TestBuilderBuildsInfoAndSchema(t *testing.T) {
 		t.Fatalf("schema = %#v", schema)
 	}
 	properties := schema.Function.Parameters["properties"].(map[string]any)
-	if properties["payload"].(map[string]any)["type"] != "object" {
+	payload := properties["payload"].(map[string]any)
+	if payload["type"] != "object" || payload["additionalProperties"] != true {
 		t.Fatalf("object property missing: %#v", schema)
 	}
 }
