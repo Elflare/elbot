@@ -358,7 +358,10 @@ func formatAuditEntries(raw bool) func([]logging.LogEntry) string {
 			appendField(&sb, "actor", f["actor_id"])
 			appendField(&sb, "tool", f["tool"])
 			appendField(&sb, "risk", f["risk"])
+			appendField(&sb, "provider", f["provider"])
 			appendField(&sb, "model", f["model"])
+			appendField(&sb, "elapsed_ms", f["elapsed_ms"])
+			appendLLMUsageFields(&sb, f)
 			appendField(&sb, "action", f["action"])
 			appendField(&sb, "args", f["arguments"])
 			appendField(&sb, "result", f["result"])
@@ -386,6 +389,42 @@ func formatRuntimeLogEntries(raw bool) func([]logging.LogEntry) string {
 		}
 		return sb.String()
 	}
+}
+
+func appendLLMUsageFields(sb *strings.Builder, fields map[string]string) {
+	prompt := strings.TrimSpace(fields["prompt_tokens"])
+	completion := strings.TrimSpace(fields["completion_tokens"])
+	total := strings.TrimSpace(fields["total_tokens"])
+	if prompt != "" || completion != "" || total != "" {
+		sb.WriteString(" tokens=")
+		sb.WriteString(firstNonEmptyLogField(prompt, "?"))
+		sb.WriteString("/")
+		sb.WriteString(firstNonEmptyLogField(completion, "?"))
+		sb.WriteString("/")
+		sb.WriteString(firstNonEmptyLogField(total, "?"))
+	}
+	cacheHit := strings.TrimSpace(fields["cache_hit_tokens"])
+	if cacheHit == "" {
+		return
+	}
+	sb.WriteString(" cache_hit=")
+	sb.WriteString(cacheHit)
+	if prompt == "" {
+		return
+	}
+	cacheHitTokens, errHit := strconv.Atoi(cacheHit)
+	promptTokens, errPrompt := strconv.Atoi(prompt)
+	if errHit != nil || errPrompt != nil || promptTokens <= 0 {
+		return
+	}
+	sb.WriteString(fmt.Sprintf("/%d(%.1f%%)", promptTokens, float64(cacheHitTokens)*100/float64(promptTokens)))
+}
+
+func firstNonEmptyLogField(value, fallback string) string {
+	if strings.TrimSpace(value) != "" {
+		return value
+	}
+	return fallback
 }
 
 func appendRuntimeLogFields(sb *strings.Builder, fields map[string]string) {

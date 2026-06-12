@@ -211,6 +211,34 @@ func TestLogCommandDebugShowsParsedBodyJSON(t *testing.T) {
 	}
 }
 
+func TestAuditCommandFormatsLLMUsageTokens(t *testing.T) {
+	service := &fakeLogService{entries: []logging.LogEntry{{
+		Time:    time.Date(2026, 6, 12, 10, 12, 57, 0, time.Local),
+		Level:   "DEBUG",
+		Message: "audit event",
+		Fields: map[string]string{
+			"event":             "llm_usage",
+			"session_id":        "sess-1",
+			"provider":          "deepseek",
+			"model":             "deepseek-v4-flash",
+			"elapsed_ms":        "1234",
+			"prompt_tokens":     "1000",
+			"completion_tokens": "200",
+			"total_tokens":      "1200",
+			"cache_hit_tokens":  "750",
+		},
+	}}}
+	result, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: "--event llm_usage"})
+	if err != nil {
+		t.Fatalf("audit handle: %v", err)
+	}
+	for _, want := range []string{"llm_usage", "provider=deepseek", "model=deepseek-v4-flash", "elapsed_ms=1234", "tokens=1000/200/1200", "cache_hit=750/1000(75.0%)"} {
+		if !strings.Contains(result.Content, want) {
+			t.Fatalf("content missing %q:\n%s", want, result.Content)
+		}
+	}
+}
+
 func TestAuditCommandDebugShowsRawEntries(t *testing.T) {
 	raw := `time="2026-06-03 15:00:00" level=DEBUG msg="audit event" event=llm_usage prompt_tokens=123 completion_tokens=456`
 	service := &fakeLogService{entries: []logging.LogEntry{{
