@@ -80,7 +80,8 @@ type ModelMetadataConfig struct {
 }
 
 type StorageConfig struct {
-	SQLitePath string `toml:"sqlite_path"`
+	SessionsSQLitePath    string `toml:"sessions_sqlite_path"`
+	ChatHistorySQLitePath string `toml:"chat_history_sqlite_path"`
 }
 
 type SoulConfig struct {
@@ -123,8 +124,9 @@ type SessionConfig struct {
 }
 
 type MaintenanceConfig struct {
-	LogCleanup      CronTaskConfig `toml:"log_cleanup"`
-	ArtifactCleanup CronTaskConfig `toml:"artifact_cleanup"`
+	LogCleanup         CronTaskConfig           `toml:"log_cleanup"`
+	ArtifactCleanup    CronTaskConfig           `toml:"artifact_cleanup"`
+	ChatHistoryCleanup ChatHistoryCleanupConfig `toml:"chat_history_cleanup"`
 }
 
 type SandboxConfig struct {
@@ -148,6 +150,12 @@ type PlatformConfig map[string]map[string]any
 type CronTaskConfig struct {
 	Enabled  bool   `toml:"enabled"`
 	Schedule string `toml:"schedule"`
+}
+
+type ChatHistoryCleanupConfig struct {
+	Enabled       bool   `toml:"enabled"`
+	Schedule      string `toml:"schedule"`
+	RetentionDays int    `toml:"retention_days"`
 }
 
 type SessionNamingConfig struct {
@@ -185,6 +193,23 @@ func platformDefaultConfigPath() (string, bool) {
 		return filepath.Join(dir, name, "app.toml"), true
 	}
 	return "", false
+}
+
+func platformDefaultDataDir() string {
+	name := XDGAppDirName
+	if runtime.GOOS == "windows" {
+		if dir, err := os.UserConfigDir(); err == nil && strings.TrimSpace(dir) != "" {
+			return filepath.Join(dir, AppDirName, "data")
+		}
+		return filepath.Join(AppDirName, "data")
+	}
+	if dir := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); dir != "" {
+		return filepath.Join(dir, name)
+	}
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		return filepath.Join(home, ".local", "share", name)
+	}
+	return "data"
 }
 
 func ConfigEnv(key, configDir string) (string, bool, error) {
@@ -271,7 +296,8 @@ func Load(path string) (*Config, error) {
 	if err := cfg.validateModeModels(); err != nil {
 		return nil, err
 	}
-	cfg.Storage.SQLitePath = resolveRelative(configPath, cfg.Storage.SQLitePath)
+	cfg.Storage.SessionsSQLitePath = resolveRelative(configPath, cfg.Storage.SessionsSQLitePath)
+	cfg.Storage.ChatHistorySQLitePath = resolveRelative(configPath, cfg.Storage.ChatHistorySQLitePath)
 	cfg.Soul.Path = resolveRelative(configPath, cfg.Soul.Path)
 	cfg.Sandbox.Root = resolveRelative(configPath, cfg.Sandbox.Root)
 	cfg.ConfigPath = configPath
@@ -345,8 +371,11 @@ func (c *Config) applyAppDefaults() {
 	if c.ConfigFiles.State == "" {
 		c.ConfigFiles.State = "state.toml"
 	}
-	if c.Storage.SQLitePath == "" {
-		c.Storage.SQLitePath = "../data/elbot_sessions.db"
+	if c.Storage.SessionsSQLitePath == "" {
+		c.Storage.SessionsSQLitePath = filepath.Join(platformDefaultDataDir(), "elbot_sessions.db")
+	}
+	if c.Storage.ChatHistorySQLitePath == "" {
+		c.Storage.ChatHistorySQLitePath = filepath.Join(platformDefaultDataDir(), "elbot_chat_history.db")
 	}
 	if c.Soul.Path == "" {
 		c.Soul.Path = "SOUL.md"
@@ -393,8 +422,14 @@ func (c *Config) applyAppDefaults() {
 	if c.Maintenance.ArtifactCleanup.Schedule == "" {
 		c.Maintenance.ArtifactCleanup.Schedule = "0 4 * * *"
 	}
+	if c.Maintenance.ChatHistoryCleanup.Schedule == "" {
+		c.Maintenance.ChatHistoryCleanup.Schedule = "0 35 4 * * *"
+	}
+	if c.Maintenance.ChatHistoryCleanup.RetentionDays == 0 {
+		c.Maintenance.ChatHistoryCleanup.RetentionDays = 180
+	}
 	if c.Sandbox.Root == "" {
-		c.Sandbox.Root = "../data/sandbox"
+		c.Sandbox.Root = filepath.Join(platformDefaultDataDir(), "sandbox")
 	}
 	if c.Artifact.RetentionDays == 0 {
 		c.Artifact.RetentionDays = 7

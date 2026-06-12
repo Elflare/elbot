@@ -50,7 +50,8 @@ state = "state.toml"
 path = "SOUL.md"
 
 [storage]
-sqlite_path = "../data/elbot_sessions.db"
+sessions_sqlite_path = "../data/elbot_sessions.db"
+chat_history_sqlite_path = "../data/elbot_chat_history.db"
 
 [runtime]
 log_level = "debug"
@@ -163,8 +164,12 @@ model = "deepseek-compact"
 		t.Fatalf("StateConfigPath = %q, want %q", cfg.StateConfigPath, filepath.Clean(statePath))
 	}
 	wantDB := filepath.Clean(filepath.Join(configDir, "../data/elbot_sessions.db"))
-	if cfg.Storage.SQLitePath != wantDB {
-		t.Fatalf("SQLitePath = %q, want %q", cfg.Storage.SQLitePath, wantDB)
+	if cfg.Storage.SessionsSQLitePath != wantDB {
+		t.Fatalf("SessionsSQLitePath = %q, want %q", cfg.Storage.SessionsSQLitePath, wantDB)
+	}
+	wantChatHistoryDB := filepath.Clean(filepath.Join(configDir, "../data/elbot_chat_history.db"))
+	if cfg.Storage.ChatHistorySQLitePath != wantChatHistoryDB {
+		t.Fatalf("ChatHistorySQLitePath = %q, want %q", cfg.Storage.ChatHistorySQLitePath, wantChatHistoryDB)
 	}
 	if cfg.Runtime.LogLevel != "debug" || cfg.Runtime.LogRetentionDays != 14 {
 		t.Fatalf("runtime = %#v", cfg.Runtime)
@@ -192,8 +197,9 @@ model = "deepseek-compact"
 		t.Fatalf("cleanup = %#v, want %#v", cfg.Session.Cleanup, wantCleanup)
 	}
 	wantMaintenance := MaintenanceConfig{
-		LogCleanup:      CronTaskConfig{Enabled: true, Schedule: "0 4 * * *"},
-		ArtifactCleanup: CronTaskConfig{Enabled: true, Schedule: "0 5 * * *"},
+		LogCleanup:         CronTaskConfig{Enabled: true, Schedule: "0 4 * * *"},
+		ArtifactCleanup:    CronTaskConfig{Enabled: true, Schedule: "0 5 * * *"},
+		ChatHistoryCleanup: ChatHistoryCleanupConfig{Schedule: "0 35 4 * * *", RetentionDays: 180},
 	}
 	if !reflect.DeepEqual(cfg.Maintenance, wantMaintenance) {
 		t.Fatalf("maintenance = %#v, want %#v", cfg.Maintenance, wantMaintenance)
@@ -315,7 +321,7 @@ model = "deepseek-chat"
 	if cfg.Maintenance.LogCleanup.Schedule != "0 3 * * *" || cfg.Maintenance.ArtifactCleanup.Schedule != "0 4 * * *" {
 		t.Fatalf("maintenance defaults = %#v", cfg.Maintenance)
 	}
-	if cfg.Sandbox.Root != filepath.Clean(filepath.Join(configDir, "../data/sandbox")) {
+	if cfg.Sandbox.Root != filepath.Clean(filepath.Join(platformDefaultDataDir(), "sandbox")) {
 		t.Fatalf("sandbox root default = %q", cfg.Sandbox.Root)
 	}
 	wantArtifact := ArtifactConfig{RetentionDays: 7, MaxDirectBase64Bytes: 8 * 1024 * 1024, Backend: "base64", S3Region: "auto"}
@@ -331,9 +337,13 @@ model = "deepseek-chat"
 	if cfg.Session.NonSuperadminIdleTTLMinutes != 10 {
 		t.Fatalf("default non-superadmin idle ttl = %d", cfg.Session.NonSuperadminIdleTTLMinutes)
 	}
-	wantDB := filepath.Clean(filepath.Join(configDir, "../data/elbot_sessions.db"))
-	if cfg.Storage.SQLitePath != wantDB {
-		t.Fatalf("SQLitePath = %q, want %q", cfg.Storage.SQLitePath, wantDB)
+	wantDB := filepath.Clean(filepath.Join(platformDefaultDataDir(), "elbot_sessions.db"))
+	if cfg.Storage.SessionsSQLitePath != wantDB {
+		t.Fatalf("SessionsSQLitePath = %q, want %q", cfg.Storage.SessionsSQLitePath, wantDB)
+	}
+	wantChatHistoryDB := filepath.Clean(filepath.Join(platformDefaultDataDir(), "elbot_chat_history.db"))
+	if cfg.Storage.ChatHistorySQLitePath != wantChatHistoryDB {
+		t.Fatalf("ChatHistorySQLitePath = %q, want %q", cfg.Storage.ChatHistorySQLitePath, wantChatHistoryDB)
 	}
 	if cfg.Soul.Path != filepath.Clean(filepath.Join(configDir, "SOUL.md")) {
 		t.Fatalf("Soul.Path = %q", cfg.Soul.Path)

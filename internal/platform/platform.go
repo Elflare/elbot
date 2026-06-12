@@ -67,12 +67,14 @@ const (
 	SegmentText  MessageSegmentType = "text"
 	SegmentImage MessageSegmentType = "image"
 	SegmentFile  MessageSegmentType = "file"
+	SegmentAt    MessageSegmentType = "at"
 )
 
 // MessageSegment is one typed part parsed from an inbound platform message.
 type MessageSegment struct {
 	Type     MessageSegmentType
 	Text     string
+	UserID   string
 	URL      string
 	MIMEType string
 	Name     string

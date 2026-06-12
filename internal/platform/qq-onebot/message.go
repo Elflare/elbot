@@ -90,8 +90,10 @@ func normalizeSegments(segments []Segment, selfID int64) NormalizedMessage {
 			out.Mentioned = true
 			if qq == self {
 				out.AtSelf = true
-			} else if qq != "" {
-				parts = append(parts, "[at qq:"+qq+"]")
+			} else if qq != "" && qq != "all" {
+				text := "[at qq:" + qq + "]"
+				parts = append(parts, text)
+				out.Segments = append(out.Segments, platform.MessageSegment{Type: platform.SegmentAt, Text: text, UserID: qq})
 			}
 		case "reply":
 			out.ReplyID = strings.TrimSpace(segmentDataString(seg.Data, "id"))

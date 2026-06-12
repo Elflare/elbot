@@ -36,3 +36,25 @@ func StripTriggerKeyword(text string, keywords []string) (string, bool) {
 	}
 	return text, false
 }
+
+func HasCommandPrefix(text string, prefixes []string) bool {
+	_, ok := CommandName(text, prefixes)
+	return ok
+}
+
+func CommandName(text string, prefixes []string) (string, bool) {
+	text = strings.TrimSpace(text)
+	for _, prefix := range prefixes {
+		prefix = strings.TrimSpace(prefix)
+		if prefix == "" || !strings.HasPrefix(text, prefix) {
+			continue
+		}
+		rest := strings.TrimSpace(strings.TrimPrefix(text, prefix))
+		if rest == "" {
+			return "", true
+		}
+		name, _, _ := strings.Cut(rest, " ")
+		return strings.TrimSpace(name), true
+	}
+	return "", false
+}

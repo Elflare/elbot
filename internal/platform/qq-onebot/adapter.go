@@ -31,6 +31,7 @@ type Config struct {
 	APITimeoutSeconds        int      `toml:"api_timeout_seconds"`
 	TriggerKeywords          []string `toml:"trigger_keywords"`
 	Superadmins              []string `toml:"-"`
+	CommandPrefixes          []string `toml:"-"`
 }
 
 func qqTextPages(text string) []string {
@@ -62,11 +63,12 @@ func (a *Adapter) sendQQText(ctx context.Context, t target, text string) (string
 }
 
 type Adapter struct {
-	cfg       Config
-	store     storage.Store
-	transport *Transport
-	logger    *slog.Logger
-	notify    func(context.Context, string)
+	cfg         Config
+	store       storage.Store
+	chatHistory storage.ChatHistoryRepository
+	transport   *Transport
+	logger      *slog.Logger
+	notify      func(context.Context, string)
 }
 
 type target struct {
@@ -77,14 +79,15 @@ type target struct {
 
 type targetKey struct{}
 
-func NewFromPlatformConfig(raw map[string]any, store storage.Store, logger *slog.Logger, superadmins []string) (*Adapter, error) {
+func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, logger *slog.Logger, superadmins []string, commandPrefixes []string) (*Adapter, error) {
 	var cfg Config
 	if err := platform.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode qqonebot config: %w", err)
 	}
 	cfg.Superadmins = superadmins
+	cfg.CommandPrefixes = append([]string(nil), commandPrefixes...)
 	applyDefaults(&cfg)
-	return New(cfg, store, logger), nil
+	return New(cfg, store, chatHistory, logger), nil
 }
 
 func applyDefaults(cfg *Config) {
@@ -97,9 +100,12 @@ func applyDefaults(cfg *Config) {
 	if cfg.APITimeoutSeconds <= 0 {
 		cfg.APITimeoutSeconds = 15
 	}
+	if len(cfg.CommandPrefixes) == 0 {
+		cfg.CommandPrefixes = []string{"/"}
+	}
 }
 
-func New(cfg Config, store storage.Store, logger *slog.Logger) *Adapter {
+func New(cfg Config, store storage.Store, chatHistory storage.ChatHistoryRepository, logger *slog.Logger) *Adapter {
 	applyDefaults(&cfg)
 
 	timeout := time.Duration(cfg.APITimeoutSeconds) * time.Second
@@ -107,8 +113,9 @@ func New(cfg Config, store storage.Store, logger *slog.Logger) *Adapter {
 		timeout = 15 * time.Second
 	}
 	return &Adapter{
-		cfg:   cfg,
-		store: store,
+		cfg:         cfg,
+		store:       store,
+		chatHistory: chatHistory,
 		transport: &Transport{
 			URL:         cfg.URL,
 			AccessToken: cfg.AccessToken,
@@ -285,6 +292,15 @@ func targetToQQ(outTarget output.Target) (target, error) {
 
 func outputSegments(out output.Output) ([]Segment, error) {
 	switch out.Kind {
+	case output.KindReply:
+		replyID := strings.TrimSpace(out.ReplyToPlatformMessageID)
+		if replyID == "" {
+			return nil, fmt.Errorf("reply target message id is empty")
+		}
+		return []Segment{
+			{Type: "reply", Data: map[string]any{"id": replyID}},
+			{Type: "text", Data: map[string]any{"text": out.Text}},
+		}, nil
 	case output.KindEmoticon, output.KindImage:
 		file, err := base64SourceFile(out.Source, "image")
 		if err != nil {
@@ -351,6 +367,7 @@ func (a *Adapter) readLoop(ctx context.Context, handler platform.PlatformHandler
 
 func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHandler, event Event) {
 	normalized := normalizeMessage(event.Message, event.RawMessage, event.SelfID)
+	a.recordChatMessage(ctx, event, normalized)
 	if !a.shouldHandle(event, normalized) {
 		return
 	}
@@ -358,7 +375,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 	if stripped, ok := platform.StripTriggerKeyword(text, a.cfg.TriggerKeywords); ok {
 		text = stripped
 	}
-	if text == "" && !strings.HasPrefix(strings.TrimSpace(event.RawMessage), "/") {
+	if text == "" && !platform.HasCommandPrefix(event.RawMessage, a.cfg.CommandPrefixes) {
 		return
 	}
 	currentSegments := a.resolveImageSegments(ctx, normalized.Segments)
@@ -377,7 +394,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 	var referenceSegments []platform.MessageSegment
 	if normalized.ReplyID != "" {
 		trimmed := strings.TrimSpace(text)
-		if strings.HasPrefix(trimmed, "/") {
+		if platform.HasCommandPrefix(trimmed, a.cfg.CommandPrefixes) {
 			text = a.commandWithReference(event, normalized.ReplyID, trimmed)
 		} else if a.isLatestOwnAssistantReference(msgCtx, event, normalized.ReplyID) {
 			// 用户常会引用机器人最后一条消息来继续说话；这种情况不需要 fork，也不需要重复塞引用内容。
@@ -444,7 +461,7 @@ func (a *Adapter) shouldHandle(event Event, normalized NormalizedMessage) bool {
 		return false
 	}
 	text := strings.TrimSpace(normalized.Text)
-	if strings.HasPrefix(text, "/") {
+	if platform.HasCommandPrefix(text, a.cfg.CommandPrefixes) {
 		return true
 	}
 	if _, ok := platform.StripTriggerKeyword(text, a.cfg.TriggerKeywords); ok {
@@ -471,7 +488,8 @@ func (a *Adapter) isBotReply(event Event, replyID string) bool {
 }
 
 func (a *Adapter) commandWithReference(event Event, replyID, text string) string {
-	if text != "/fork" || a.store == nil {
+	name, ok := platform.CommandName(text, a.cfg.CommandPrefixes)
+	if !ok || name != "fork" || a.store == nil {
 		return text
 	}
 	msg, err := a.store.Messages().FindByPlatformMessage(context.Background(), a.Name(), scopeID(event), replyID)
@@ -566,6 +584,31 @@ func (a *Adapter) withReference(ctx context.Context, event Event, replyID, text 
 		return fmt.Sprintf("[%s]：%s", label, content), segments
 	}
 	return fmt.Sprintf("[%s]：%s\n\n%s", label, content, text), segments
+}
+
+func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized NormalizedMessage) {
+	if a.chatHistory == nil || strings.TrimSpace(normalized.Text) == "" || event.MessageID == 0 {
+		return
+	}
+	createdAt := storage.Now()
+	if event.Time > 0 {
+		createdAt = time.Unix(event.Time, 0)
+	}
+	message := &storage.ChatMessage{
+		Platform:                 a.Name(),
+		PlatformScopeID:          scopeID(event),
+		ScopeType:                event.MessageType,
+		PlatformMessageID:        strconv.FormatInt(event.MessageID, 10),
+		SenderID:                 strconv.FormatInt(event.UserID, 10),
+		SenderName:               displayName(event.Sender, event.UserID),
+		Text:                     normalized.Text,
+		Raw:                      event.RawMessage,
+		ReplyToPlatformMessageID: normalized.ReplyID,
+		CreatedAt:                createdAt,
+	}
+	if err := a.chatHistory.Append(ctx, message); err != nil {
+		a.logWarn("record qq chat message failed", "error", err, "message_id", event.MessageID)
+	}
 }
 
 func finalMessageSegments(text string, current, referenced []platform.MessageSegment) []platform.MessageSegment {

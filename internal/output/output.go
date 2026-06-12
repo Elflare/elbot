@@ -15,6 +15,7 @@ const (
 	KindImage    Kind = "image"
 	KindFile     Kind = "file"
 	KindAt       Kind = "at"
+	KindReply    Kind = "reply"
 )
 
 type Target struct {
@@ -43,13 +44,14 @@ type Source struct {
 }
 
 type Output struct {
-	Kind    Kind
-	Text    string
-	Name    string
-	AltText string
-	Source  Source
-	Target  Target
-	Meta    map[string]any
+	Kind                     Kind
+	Text                     string
+	Name                     string
+	AltText                  string
+	ReplyToPlatformMessageID string
+	Source                   Source
+	Target                   Target
+	Meta                     map[string]any
 }
 
 func Text(text string) Output {
@@ -86,6 +88,10 @@ func At(userID string) Output {
 		out.AltText = "@" + userID
 	}
 	return out
+}
+
+func Reply(platformMessageID, text string) Output {
+	return Output{Kind: KindReply, Text: text, ReplyToPlatformMessageID: strings.TrimSpace(platformMessageID)}
 }
 
 type Sender interface {
@@ -205,6 +211,12 @@ func FallbackText(out Output) string {
 			return ""
 		}
 		return fmt.Sprintf("@%s\n", name)
+	case KindReply:
+		replyID := strings.TrimSpace(out.ReplyToPlatformMessageID)
+		if replyID == "" {
+			return ensureTrailingNewline(out.Text)
+		}
+		return fmt.Sprintf("[引用消息 %s]\n%s", replyID, ensureTrailingNewline(out.Text))
 	case KindImage:
 		label := firstNonEmpty(out.Name, out.Source.URL, out.Source.Path, out.Text)
 		if label == "" {

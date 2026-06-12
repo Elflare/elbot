@@ -22,7 +22,7 @@
 
 - `internal/cron/manager.go`：中央 Cron Runtime；基于 `robfig/cron/v3` 调度持久化 job，提供 handler 注册、job upsert/disable/delete、启动加载、执行日志、运行状态更新、同 job 防并发和未启动 Stop 的安全返回。
 - `internal/cron/service.go`：LLM 可编排 cron 服务；管理用户 cron metadata，支持 once/周期、direct/LLM 触发、missed once 补投递、LLM cron JSON 结果解析与失败通知。
-- `internal/maintenance/maintenance.go`：系统维护任务；集中注册维护类 Cron，提供日志清理、过期 Session 清理和 artifact 沙盒清理。
+- `internal/maintenance/maintenance.go`：系统维护任务；集中注册维护类 Cron，提供日志、Session、artifact 和聊天历史清理。
 
 ### Agent 编排
 
@@ -98,7 +98,7 @@
 
 ### Output Layer
 
-- `internal/output/output.go`：平台无关输出意图与发送管理；定义 text/image/file/at/emoticon 等输出类型、fallback 文本和统一发送入口。
+- `internal/output/output.go`：平台无关输出意图与发送管理；定义 text/image/file/at/reply/emoticon 等输出类型、fallback 文本和统一发送入口。
 
 ### Security Layer
 
@@ -126,9 +126,10 @@
 - `internal/tool/executor.go`：工具执行器；把模型产生的 `llm.ToolCallRequest` 转换为 Tool Runtime 调用，执行前按 Actor/Policy 做风险等级兜底校验，并把结果转换为 LLM tool message。
 
 - `internal/tool/builtin/runtime.go`：内置工具 Runtime；集中创建 Tool Registry、常驻记忆 store、Skill Manager、Artifact Manager 和内置工具私有路径，让 app 层不关心具体内置工具清单。
-- `internal/tool/builtin/register.go`：内置工具注册细节；由 builtin Runtime 调用，统一注册 `discover_tool`、常驻记忆、长期记忆、cron、`send_file`、web 搜索/提取、shell、skill 包装工具和 Go 元 skill。
+- `internal/tool/builtin/register.go`：内置工具注册细节；由 builtin Runtime 调用，统一注册 `discover_tool`、常驻记忆、长期记忆、cron、`send_file`、聊天历史、web 搜索/提取、shell、skill 包装工具和 Go 元 skill。
 - `internal/tool/builtin/artifact.go`：artifact 文件暂存 helper；sandbox 内文件直接发送，外部文件复制到统一 sandbox 的 `artifact/` 子目录，做大小、文件名、MIME 和 Windows/MSYS 路径处理，未来可接 S3/R2。
 - `internal/tool/builtin/send_file.go`：内置发文件工具；仅超管可用，支持 `path`/`file` 参数，相对路径在 cron 中按 cron sandbox 解析，外部文件确认/自动处理后通过 output.File 发送。
+- `internal/tool/builtin/chat_history.go`：内置聊天历史工具；按当前 platform/scope 搜索、查看上下文和引用回复平台聊天记录。
 - `internal/tool/builtin/long_memory.go`：全局长期记忆工具组；可见入口 `long_memory` 依赖隐藏 CRUD/Search 工具，仅超管可用；Markdown 文件是源数据，SQLite FTS 是可重建索引，搜索/分类前会轻量同步并提示手改格式损坏文件。
 - `internal/tool/builtin/cron.go`：内置 cron 工具组；可见主工具 `cron` 依赖隐藏 CRUD 工具，查询为 medium 风险，增删改停用为 high 风险，全部仅超级管理员可用；`cron_list` 默认隐藏已完成 cron，传 `include_completed=true` 才显示历史完成项。
 - `internal/tool/builtin/env.go`：内置工具环境变量读取 helper；优先读 OS env，缺失时读取配置目录 `.env`，用于 Tavily/Jina API key。
@@ -157,11 +158,11 @@
 
 ### 平台适配
 
-- `internal/platform/platform.go`：平台抽象；定义 `PlatformAdapter`、`PlatformHandler`、统一 `SendChat`/`SendNotice` 的 message sender、发送 receipt、平台 `MessageSegment`（text/image/file）和每条入站消息的 Actor/Scope/发送目标上下文；上下文可携带平台解析出的 fork 来源消息与多模态消息段。
+- `internal/platform/platform.go`：平台抽象；定义 `PlatformAdapter`、`PlatformHandler`、统一 `SendChat`/`SendNotice` 的 message sender、发送 receipt、平台 `MessageSegment`（text/image/file/at）和每条入站消息的 Actor/Scope/发送目标上下文；上下文可携带平台解析出的 fork 来源消息与多模态消息段。
 - `internal/platform/config.go`：平台配置辅助；把 `app.toml` 中 `[platform.<name>]` 原始 section 解码给适配器自有 Config，并提供关键词前缀剥离 helper。
 - `internal/platform/builtin/builtin.go`：内置平台装配；创建 CLI，并把各平台 raw config 交给对应适配器工厂解析，避免全局 config 知道具体平台字段。
 - `internal/platform/cli/cli.go`：CLI 平台实现；非 TTY 下读取 stdin，交互式终端下启动 Bubble Tea TUI，支持注入补全服务；实现统一 `SendChat`/`SendNotice`，聊天进主区，通知进 TUI 通知区或非 TTY `[notice]` fallback；当前 CLI 退出会结束前台应用，后续服务化可调整生命周期接口。
-- `internal/platform/qq-onebot/`：QQ OneBot v11 正向 WebSocket 适配；处理私聊/群聊文本、图片、@、reply、关键词触发、引用 fork、消息映射和富输出发送。引用 bot 历史消息会按本地映射/get_msg 解析，必要时自动 fork。
+- `internal/platform/qq-onebot/`：QQ OneBot v11 正向 WebSocket 适配；处理私聊/群聊文本、图片、@、reply、关键词触发、引用 fork、聊天历史入库、消息映射和富输出发送。引用 bot 历史消息会按本地映射/get_msg 解析，必要时自动 fork。
 - `internal/platform/cli/tui.go`：Bubble Tea TUI 主编排；提供聊天/通知/输入区、异步提交、历史、滚动、补全候选窗和样式渲染；聊天原文保持纯文本，显示时再用 lipgloss 美化。
 - `internal/platform/cli/tui_copy.go`：CLI TUI copy mode；支持鼠标分区滚动、Alt+h/Alt+l 进入聊天/通知复制模式、hjkl/v/V/y 和区域内 `/` 搜索；`clipboard.go` 默认用系统剪贴板并在 SSH/tmux 等场景走 OSC52 fallback。
 
@@ -183,6 +184,7 @@
 - `internal/storage/sqlite/migrations.go`：SQLite migration；维护 migration 列表、已应用版本查询和 migration 应用流程，包含 Fork session、tool call 与 cron job 表/索引。
 - `internal/storage/sqlite/session_repository.go`：Session repository SQLite 实现；负责 session CRUD、列表查询、归档过滤、按 `cron:` scope 查询同平台 cron session、pinned 置顶排序、过期硬删除、平台隔离查询条件和 summary 扫描。
 - `internal/storage/sqlite/message_repository.go`：Message repository SQLite 实现；负责消息追加、查询、按 session 列表、按 checkpoint 后列表、Fork 截止范围列表、平台消息映射和反查。
+- `internal/storage/sqlite/chat_history_repository.go`：ChatHistory repository SQLite 实现；负责平台聊天历史写入、搜索、上下文和清理。
 - `internal/storage/sqlite/cron_job_repository.go`：CronJob repository SQLite 实现；负责中央 Cron job 的 upsert、列表、按名称查询、禁用、删除和最近运行状态更新；upsert 在配置未变化时跳过写库，减少启动期无意义 SQLite 写入。
 - `internal/storage/sqlite/tool_call_repository.go`：ToolCallRecord repository SQLite 实现；负责每次工具调用记录写入，并按 Session 聚合工具调用次数供 `/status` 展示。
 

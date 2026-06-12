@@ -16,23 +16,25 @@ import (
 )
 
 type Service struct {
-	logs           *logging.Manager
-	store          storage.Store
-	sessionCleanup config.SessionCleanupConfig
-	artifactDir    string
-	artifactConfig config.ArtifactConfig
-	logger         *slog.Logger
+	logs               *logging.Manager
+	store              storage.Store
+	chatHistory        storage.ChatHistoryRepository
+	sessionCleanup     config.SessionCleanupConfig
+	chatHistoryCleanup config.ChatHistoryCleanupConfig
+	artifactDir        string
+	artifactConfig     config.ArtifactConfig
+	logger             *slog.Logger
 }
 
 func NewService(logs *logging.Manager, store storage.Store, sessionCleanup config.SessionCleanupConfig, logger *slog.Logger) *Service {
 	return &Service{logs: logs, store: store, sessionCleanup: sessionCleanup, logger: logger}
 }
 
-func NewServiceWithConfig(logs *logging.Manager, store storage.Store, cfg *config.Config, logger *slog.Logger) *Service {
+func NewServiceWithConfig(logs *logging.Manager, store storage.Store, chatHistory storage.ChatHistoryRepository, cfg *config.Config, logger *slog.Logger) *Service {
 	if cfg == nil {
 		return NewService(logs, store, config.SessionCleanupConfig{}, logger)
 	}
-	return &Service{logs: logs, store: store, sessionCleanup: cfg.Session.Cleanup, artifactDir: filepath.Join(cfg.Sandbox.Root, "artifact"), artifactConfig: cfg.Artifact, logger: logger}
+	return &Service{logs: logs, store: store, chatHistory: chatHistory, sessionCleanup: cfg.Session.Cleanup, chatHistoryCleanup: cfg.Maintenance.ChatHistoryCleanup, artifactDir: filepath.Join(cfg.Sandbox.Root, "artifact"), artifactConfig: cfg.Artifact, logger: logger}
 }
 
 func (s *Service) RegisterCronHandlers(manager *elcron.Manager) error {
@@ -54,6 +56,11 @@ func (s *Service) RegisterCronHandlers(manager *elcron.Manager) error {
 	}); err != nil {
 		return err
 	}
+	if err := manager.RegisterHandler("maintenance.chat_history_cleanup", func(ctx context.Context, job storage.CronJob) error {
+		return s.RunChatHistoryCleanup(ctx)
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -68,6 +75,9 @@ func SetupCron(ctx context.Context, manager *elcron.Manager, cfg *config.Config)
 		return err
 	}
 	if err := upsertOrDisable(ctx, manager, cfg.Maintenance.ArtifactCleanup.Enabled, "system.maintenance.artifact_cleanup", "maintenance.artifact_cleanup", cfg.Maintenance.ArtifactCleanup.Schedule); err != nil {
+		return err
+	}
+	if err := upsertOrDisable(ctx, manager, cfg.Maintenance.ChatHistoryCleanup.Enabled, "system.maintenance.chat_history_cleanup", "maintenance.chat_history_cleanup", cfg.Maintenance.ChatHistoryCleanup.Schedule); err != nil {
 		return err
 	}
 	return manager.Start(ctx)
@@ -103,6 +113,20 @@ func (s *Service) RunSessionCleanup(ctx context.Context) error {
 		return err
 	}
 	s.info("maintenance session cleanup completed", "deleted", deleted, "retention_days", s.sessionCleanup.RetentionDays)
+	return nil
+}
+
+func (s *Service) RunChatHistoryCleanup(ctx context.Context) error {
+	if !s.chatHistoryCleanup.Enabled || s.chatHistoryCleanup.RetentionDays <= 0 || s.chatHistory == nil {
+		return nil
+	}
+	cutoff := time.Now().AddDate(0, 0, -s.chatHistoryCleanup.RetentionDays)
+	deleted, err := s.chatHistory.DeleteBefore(ctx, cutoff)
+	if err != nil {
+		s.warn("maintenance chat history cleanup failed", "error", err, "retention_days", s.chatHistoryCleanup.RetentionDays)
+		return err
+	}
+	s.info("maintenance chat history cleanup completed", "deleted", deleted, "retention_days", s.chatHistoryCleanup.RetentionDays)
 	return nil
 }
 

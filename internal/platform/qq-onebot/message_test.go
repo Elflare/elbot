@@ -25,7 +25,7 @@ func TestNewFromPlatformConfig(t *testing.T) {
 		"enabled":          true,
 		"ws_url":           "ws://example",
 		"trigger_keywords": []any{"芙莉丝"},
-	}, nil, nil, nil)
+	}, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestNormalizePlainTextDoesNotParseMarkup(t *testing.T) {
 }
 
 func TestShouldHandleGroupMessage(t *testing.T) {
-	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil)
+	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil, nil)
 
 	event := Event{MessageType: "group"}
 	if adapter.shouldHandle(event, NormalizedMessage{Text: "hello"}) {
@@ -168,7 +168,7 @@ func TestShouldHandleGroupMessage(t *testing.T) {
 }
 
 func TestHandleEventStripsTriggerKeywordOnly(t *testing.T) {
-	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil)
+	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil, nil)
 	handler := &captureHandler{}
 	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, RawMessage: "芙莉丝，你好"})
 	if handler.text != "，你好" {
@@ -206,7 +206,7 @@ func TestCommandWithReferenceFork(t *testing.T) {
 		t.Fatalf("map platform message: %v", err)
 	}
 
-	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, store, nil)
+	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, store, nil, nil)
 	got := adapter.commandWithReference(Event{MessageType: "group", GroupID: 9}, "77", "/fork")
 	if got != "/fork "+assistant.ID {
 		t.Fatalf("command = %q", got)
@@ -250,7 +250,7 @@ func TestForkableReferenceMessageIDRequiresOwnAssistantSession(t *testing.T) {
 		}
 	}
 
-	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, store, nil)
+	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, store, nil, nil)
 	event := Event{MessageType: "group", GroupID: 9, UserID: 1}
 	if got := adapter.forkableReferenceMessageID(ctx, event, "first-assistant"); got != firstAssistant.ID {
 		t.Fatalf("historical assistant fork id = %q, want %q", got, firstAssistant.ID)
@@ -328,7 +328,7 @@ func TestIsBotReplyFallsBackToGetMessage(t *testing.T) {
 		}
 		return response{Status: "ok", Data: []byte(`{"user_id":1000}`), Echo: req.Echo}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
+	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
 	adapter.transport = transport
 
 	if !adapter.shouldHandle(Event{MessageType: "group", SelfID: 1000}, NormalizedMessage{ReplyID: "77", Text: "继续"}) {
@@ -359,7 +359,7 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	transport := newTestTransport(t, func(req request) response {
 		return response{Status: "ok", Data: []byte(`{"user_id":2,"sender":{"nickname":"用户"},"message":[{"type":"image","data":{"file":"a.jpg","url":"https://example.com/a.jpg"}}]}`), Echo: req.Echo}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL}, store, nil)
+	adapter := New(Config{Enabled: true, URL: transport.URL}, store, nil, nil)
 	adapter.transport = transport
 
 	got, segments := adapter.withReference(ctx, Event{MessageType: "group", SelfID: 1000, GroupID: 9}, "77", "继续")
@@ -440,7 +440,7 @@ func TestWithReferenceUsesShortFormat(t *testing.T) {
 		t.Fatalf("map platform message: %v", err)
 	}
 
-	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, store, nil)
+	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, store, nil, nil)
 	got, _ := adapter.withReference(ctx, Event{MessageType: "group", GroupID: 9}, "77", "继续")
 	if got != "[引用：bot]：answer\n\n继续" {
 		t.Fatalf("reference text = %q", got)

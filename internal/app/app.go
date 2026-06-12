@@ -101,7 +101,7 @@ func Run(ctx context.Context, opts Options) error {
 	profiler.Mark("config.Load")
 	ctx = builtin.WithConfigEnvDir(ctx, filepath.Dir(cfg.ConfigPath))
 
-	logs, err := logging.NewManager(cfg.Runtime.LogLevel, cfg.Storage.SQLitePath, cfg.Runtime.LogRetentionDays)
+	logs, err := logging.NewManager(cfg.Runtime.LogLevel, cfg.Storage.SessionsSQLitePath, cfg.Runtime.LogRetentionDays)
 	if err != nil {
 		return err
 	}
@@ -118,7 +118,8 @@ func Run(ctx context.Context, opts Options) error {
 		"chat_provider", cfg.ModeModels["chat"].Provider,
 		"chat_model", cfg.ModeModels["chat"].Model,
 		"soul_path", cfg.Soul.Path,
-		"sqlite_path", cfg.Storage.SQLitePath,
+		"sessions_sqlite_path", cfg.Storage.SessionsSQLitePath,
+		"chat_history_sqlite_path", cfg.Storage.ChatHistorySQLitePath,
 	)
 
 	workModel := cfg.ModeModels["work"]
@@ -132,14 +133,22 @@ func Run(ctx context.Context, opts Options) error {
 		return fmt.Errorf("provider %q not found in config", workModel.Provider)
 	}
 
-	store, err := sqlite.New(ctx, cfg.Storage.SQLitePath)
+	store, err := sqlite.New(ctx, cfg.Storage.SessionsSQLitePath)
 	if err != nil {
 		return err
 	}
 	profiler.Mark("sqlite.New")
 	defer store.Close()
 
-	maint := maintenance.NewServiceWithConfig(logs, store, cfg, logger)
+	chatHistoryStore, err := sqlite.NewChatHistory(ctx, cfg.Storage.ChatHistorySQLitePath)
+	if err != nil {
+		return err
+	}
+	profiler.Mark("chat history sqlite.New")
+	defer chatHistoryStore.Close()
+	chatHistory := chatHistoryStore.Repository()
+
+	maint := maintenance.NewServiceWithConfig(logs, store, chatHistory, cfg, logger)
 	cronManager := elcron.NewManager(store.CronJobs(), logger)
 	if err := maint.RegisterCronHandlers(cronManager); err != nil {
 		return err
@@ -168,7 +177,7 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 	profiler.Mark("llm adapters")
-	platforms, err := platformbuiltin.New(cfg, store, logger)
+	platforms, err := platformbuiltin.New(cfg, store, chatHistory, logger)
 	if err != nil {
 		return err
 	}
@@ -201,7 +210,7 @@ func Run(ctx context.Context, opts Options) error {
 	if err := cronManager.RegisterHandler(elcron.UserHandlerName, cronService.Handler); err != nil {
 		return err
 	}
-	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{ConfigDir: filepath.Dir(cfg.ConfigPath), CronService: cronService, SandboxRoot: cfg.Sandbox.Root, ArtifactConfig: cfg.Artifact})
+	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{ConfigDir: filepath.Dir(cfg.ConfigPath), DataDir: filepath.Dir(cfg.Storage.SessionsSQLitePath), CronService: cronService, ChatHistory: chatHistory, SandboxRoot: cfg.Sandbox.Root, ArtifactConfig: cfg.Artifact})
 	if err != nil {
 		return err
 	}

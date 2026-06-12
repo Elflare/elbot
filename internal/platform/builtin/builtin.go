@@ -16,14 +16,14 @@ type Bundle struct {
 	Runtimes []platform.Runtime
 }
 
-func New(cfg *config.Config, store storage.Store, logger *slog.Logger) (Bundle, error) {
+func New(cfg *config.Config, store storage.Store, chatHistory storage.ChatHistoryRepository, logger *slog.Logger) (Bundle, error) {
 	cliAdapter := cli.New()
 	bundle := Bundle{Primary: cliAdapter, Runtimes: []platform.Runtime{cliAdapter}}
 	if cfg == nil {
 		return bundle, nil
 	}
 	if raw, ok := cfg.Platform["qqonebot"]; ok {
-		adapter, err := qqonebot.NewFromPlatformConfig(raw, store, logger, cfg.Security.Superadmins["qqonebot"])
+		adapter, err := qqonebot.NewFromPlatformConfig(raw, store, chatHistory, logger, cfg.Security.Superadmins["qqonebot"], cfg.Commands.Prefixes)
 		if err != nil {
 			return Bundle{}, err
 		}

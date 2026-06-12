@@ -99,6 +99,42 @@ type CronJob struct {
 	UpdatedAt time.Time
 }
 
+type ChatMessage struct {
+	Seq                      int64
+	ID                       string
+	Platform                 string
+	PlatformScopeID          string
+	ScopeType                string
+	PlatformMessageID        string
+	SenderID                 string
+	SenderName               string
+	Text                     string
+	Raw                      string
+	ReplyToPlatformMessageID string
+	Metadata                 string
+	CreatedAt                time.Time
+}
+
+type ChatHistorySearchRequest struct {
+	Platform        string
+	PlatformScopeID string
+	QueryTerms      []string
+	QueryMode       string
+	SenderID        string
+	SenderNameQuery string
+	Since           *time.Time
+	Until           *time.Time
+	Limit           int
+}
+
+type ChatHistoryAroundRequest struct {
+	Platform          string
+	PlatformScopeID   string
+	PlatformMessageID string
+	Before            int
+	After             int
+}
+
 type CronJobRunState struct {
 	LastRunAt time.Time
 	NextRunAt *time.Time
@@ -132,16 +168,16 @@ type PlatformMessageMap struct {
 }
 
 type ListSessionsRequest struct {
-	ActorID                    string
-	Platform                   string
-	PlatformScopeID            string
-	IncludeAllPlatforms        bool
-	IncludeSamePlatformCron    bool
-	IncludeArchived            bool
-	ArchivedOnly               bool
-	Query                      string
-	Limit                      int
-	Offset                     int
+	ActorID                 string
+	Platform                string
+	PlatformScopeID         string
+	IncludeAllPlatforms     bool
+	IncludeSamePlatformCron bool
+	IncludeArchived         bool
+	ArchivedOnly            bool
+	Query                   string
+	Limit                   int
+	Offset                  int
 }
 
 type SessionSummary struct {
@@ -204,6 +240,14 @@ type CronJobRepository interface {
 	UpdateRunState(ctx context.Context, id string, state CronJobRunState) error
 	DisableByName(ctx context.Context, name string) error
 	DeleteByName(ctx context.Context, name string) error
+}
+
+type ChatHistoryRepository interface {
+	Append(ctx context.Context, message *ChatMessage) error
+	GetByPlatformMessage(ctx context.Context, platform, scopeID, platformMessageID string) (*ChatMessage, error)
+	Search(ctx context.Context, req ChatHistorySearchRequest) ([]ChatMessage, error)
+	Around(ctx context.Context, req ChatHistoryAroundRequest) ([]ChatMessage, error)
+	DeleteBefore(ctx context.Context, cutoff time.Time) (int, error)
 }
 
 type ContextSummaryRepository interface {

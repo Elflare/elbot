@@ -12,7 +12,7 @@ func TestNewRegistersEnabledQQOneBotOnly(t *testing.T) {
 			"qqonebot": map[string]any{"enabled": false},
 		},
 	}
-	bundle, err := New(cfg, nil, nil)
+	bundle, err := New(cfg, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("New disabled: %v", err)
 	}
@@ -21,7 +21,7 @@ func TestNewRegistersEnabledQQOneBotOnly(t *testing.T) {
 	}
 
 	cfg.Platform["qqonebot"]["enabled"] = true
-	bundle, err = New(cfg, nil, nil)
+	bundle, err = New(cfg, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("New enabled: %v", err)
 	}
