@@ -122,6 +122,11 @@ func (r *Router) CommandInfo(name string) (Info, bool) {
 	return info, true
 }
 
+func (r *Router) Handler(name string) (Handler, bool) {
+	h, ok := r.handlers[normalizeName(name)]
+	return h, ok
+}
+
 func (r *Router) Commands() []Info {
 	infos := make([]Info, 0, len(r.order))
 	for _, name := range r.order {

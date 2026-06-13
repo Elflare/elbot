@@ -1114,7 +1114,104 @@ func TestDiscoveredToolsAreInjectedIntoTopLevelTools(t *testing.T) {
 	}
 }
 
+func TestToolDirectiveInjectsAndStripsValidTools(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"done"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(builtin.NewWebSearchTool())
+	_ = registry.Register(builtin.NewWebExtractTool())
+	a.SetToolRuntime(registry, nil)
+
+	if err := a.HandleMessage(context.Background(), "查资料 @tool:web_search"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	if toolNames(requests[0].Tools) != "discover_tool,web_extract,web_search" {
+		t.Fatalf("tools = %s", toolNames(requests[0].Tools))
+	}
+	latest := requests[0].Messages[len(requests[0].Messages)-1]
+	if got := llm.SegmentsContentText(latest.Segments); got != "查资料" {
+		t.Fatalf("latest user content = %q", got)
+	}
+	sessions, err := store.Sessions().List(context.Background(), storage.ListSessionsRequest{ActorID: "cli:local", Platform: p.Name(), PlatformScopeID: "local"})
+	if err != nil || len(sessions) == 0 {
+		t.Fatalf("list sessions: %#v err=%v", sessions, err)
+	}
+	messages, err := store.Messages().ListBySession(context.Background(), sessions[0].ID)
+	if err != nil {
+		t.Fatalf("list messages: %v", err)
+	}
+	if len(messages) == 0 || messages[0].Content != "查资料" || strings.Contains(messages[0].Content, "@tool:web_search") {
+		t.Fatalf("stored user message = %#v", messages)
+	}
+}
+
+func TestToolDirectiveInvalidStaysAsText(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"done"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	a.SetToolRuntime(registry, nil)
+
+	if err := a.HandleMessage(context.Background(), "hello @tool:nope"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	latest := requests[0].Messages[len(requests[0].Messages)-1]
+	if got := llm.SegmentsContentText(latest.Segments); got != "hello @tool:nope" {
+		t.Fatalf("latest user content = %q", got)
+	}
+	if !strings.Contains(p.out.String(), "未找到或不可用的工具：nope") {
+		t.Fatalf("missing invalid tool notice: %q", p.out.String())
+	}
+}
+
+func TestToolDirectiveOnlyValidToolPreloadsNextTurn(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"done"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(builtin.NewWebExtractTool())
+	a.SetToolRuntime(registry, nil)
+
+	if err := a.HandleMessage(context.Background(), "@tool:web_extract"); err != nil {
+		t.Fatalf("HandleMessage preload: %v", err)
+	}
+	if got := len(f.chatRequests()); got != 0 {
+		t.Fatalf("chat requests after preload = %d", got)
+	}
+	if !strings.Contains(p.out.String(), "已注入工具：web_extract") {
+		t.Fatalf("missing inject notice: %q", p.out.String())
+	}
+	if err := a.HandleMessage(context.Background(), "现在读取网页"); err != nil {
+		t.Fatalf("HandleMessage chat: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	if toolNames(requests[0].Tools) != "discover_tool,web_extract" {
+		t.Fatalf("preloaded tools missing in next turn: %s", toolNames(requests[0].Tools))
+	}
+}
+
 func toolNames(schemas []llm.ToolSchema) string {
+
 	names := make([]string, 0, len(schemas))
 	for _, schema := range schemas {
 		names = append(names, schema.Function.Name)

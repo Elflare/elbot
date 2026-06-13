@@ -193,8 +193,14 @@ func NewWithOptions(p platform.PlatformAdapter, client llm.LLM, providerName str
 	a.completion = completion.NewService(
 		completion.RiskConfirmationSource{Router: a.commands, Sessions: a.sessions, Turns: a.turns, Scope: a.scope, CommandNames: riskConfirmationCommandNames()},
 		completion.ForkMessageSource{Router: a.commands, Sessions: a.sessions, Store: a.store, Scope: a.scope},
+		completion.ToolDirectiveSource{
+			Registry: func() *tool.Registry { return a.toolRegistry },
+			Actor:    a.actor,
+			Policy:   func() *security.Policy { return a.securityPolicy },
+		},
 		completion.RouterSource{Router: a.commands},
 	)
+
 	return a
 }
 

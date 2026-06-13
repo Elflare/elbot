@@ -5,14 +5,24 @@ import "context"
 // Item is a structured completion candidate that UI layers can render without
 // knowing where the candidate came from.
 type Item struct {
-	Text        string
-	Label       string
-	Description string
-	Kind        string
+	Text         string
+	Label        string
+	Description  string
+	Kind         string
+	ReplaceStart int
+	ReplaceEnd   int
 }
 
 type Request struct {
-	Text string
+	Text   string
+	Cursor int
+}
+
+func (r Request) CursorOrEnd() int {
+	if r.Cursor <= 0 || r.Cursor > len(r.Text) {
+		return len(r.Text)
+	}
+	return r.Cursor
 }
 
 type Source interface {

@@ -27,8 +27,9 @@
 ### Agent 编排
 
 - `internal/agent/core.go`：Agent 主结构与消息入口；装配核心依赖，分发 slash 命令和普通输入，处理 Actor/Scope fallback 与命令权限审计。
-- `internal/agent/input.go`：普通输入分发辅助；处理 idle 过期、平台引用 fork、归档拒聊、LLM 打断追加、工具 pending 输入和高风险工具确认命令。
-- `internal/agent/completion.go`：平台补全辅助；处理 CLI 命令、`/fork` 参数和风险确认阶段补全。TODO：后续抽成独立补全服务。
+- `internal/agent/input.go`：普通输入分发辅助；处理 idle 过期、平台引用 fork、归档拒聊、`@tool:<name>` 工具预载、LLM 打断追加、工具 pending 输入和高风险工具确认命令。
+- `internal/agent/completion.go`：平台补全辅助；暴露中央补全服务，兼容旧平台的文本补全入口。
+
 - `internal/agent/chat.go`：普通对话主流程；加载上下文、构建 Prompt、驱动 LLM/工具循环，最终平台输出先跑 `agent.turn.output.prepared`，流式输出用最终文本 replace，随后持久化本轮 transcript。
 - `internal/agent/hooks.go`：Agent Hook 与输出接入；生成事件上下文，运行 Hook，提供 assistant 输出预处理，并把 Hook/工具输出意图交给 Output Manager 发送。
 - `internal/agent/chat_llm.go`：LLM 调用与消息转换辅助；处理 Hook 后请求、流式响应、多模态转换、reasoning/usage/runtime 日志；流式最终 replace 由对话主流程在输出 Hook 后完成。
@@ -38,7 +39,9 @@
 - `internal/agent/cron_tools.go`：cron 工具确认特例；后台 cron shell 非 critical 自动确认，critical 直接回 tool message 提醒用相对路径/低风险命令且不等待用户。
 - `internal/agent/prompt.go`：Soul Prompt Builder；按文件状态缓存并加载 `SOUL.md`，合并常驻记忆、工具名称提示和压缩摘要，避免生成多条 system prompt。
 - `internal/agent/tools.go`：Agent Tool Runtime 注入与命令依赖实现；维护工具 Registry、skill scanner，并把工具 schema provider 和工具名称 provider 接入 Prompt Builder。
-- `internal/agent/tool_cache.go`：Session 级已发现工具 schema 缓存；discover 到的工具按 Session 保存，工具名持久化到 Session metadata，后续 work 请求用稳定顺序注入 top-level tools。
+- `internal/agent/tool_cache.go`：Session 级已发现工具 schema 缓存；discover 或有效 `@tool:` 预载到的工具按 Session 保存，工具名持久化到 Session metadata，后续 work 请求用稳定顺序注入 top-level tools。
+- `internal/agent/tool_directive.go`：聊天内联 `@tool:<name>` 预处理；仅普通可访问工具生效，剥离有效指令并持久化注入，不存在/不可用工具保留为普通文本并提示。
+
 - `internal/agent/session_metadata.go`：Session metadata 编解码辅助；当前用于保存已 discover 工具名和最近一次 LLM usage，使 `/status` 在 `/resume` 后仍可显示最近 token 状态。
 - `internal/agent/tool_transcript.go`：工具调用历史持久化辅助；保存 assistant tool_calls 与 tool result，提供 user 多模态 segments metadata helper，并在持久化 discover 结果时压缩 schema，避免未来上下文膨胀。
 - `internal/agent/context.go`：Agent 上下文压缩依赖实现；维护 context 配置、压缩模型、ContextLoader、WindowResolver、Compressor、最近 usage 和待压缩标记，并提供 `/compact` 与 `/status` 所需能力；最近 usage 会写入 Session metadata 供恢复会话后展示。
@@ -58,10 +61,13 @@
 
 ### 通用命令框架
 
-- `internal/command/types.go`：命令系统基础类型；定义 `Info`、`Request`、`Result` 和 `Handler` interface；`Info.Help` 用于命令级详细帮助。
+- `internal/command/types.go`：命令系统基础类型；定义 `Info`、`Request`、`Result`、`Handler` 和可选参数补全接口；`Info.Help` 用于命令级详细帮助。
+
 - `internal/command/handler.go`：函数式命令 handler 适配器；用 `NewFunc` 快速把函数包装成 `Handler`。
-- `internal/command/router.go`：命令 Router；处理 prefix 解析、注册冲突检测、alias、分发、命令列表、命令详情查找和基础命令名补全。
-- `internal/completion/`：平台补全服务；组合 Router、风险确认和 `/fork` message ID 等补全 source，app 层注入到支持补全的平台，Agent 仅保留兼容转发入口。
+- `internal/command/router.go`：命令 Router；处理 prefix 解析、注册冲突检测、alias、分发、命令列表、命令详情/handler 查找和基础命令名补全。
+- `internal/completion/`：平台补全服务；组合 Router、命令参数、风险确认、`/fork` message ID 和 `@tool:` 工具名等补全 source，支持局部替换，app 层注入到支持补全的平台。
+- `internal/directive/`：聊天内联指令解析小包；当前提供 `@tool:` 解析/剥离/补全 token 规则，共享给 Agent 预处理和补全 source。
+
 
 ### Request 与 Turn 运行态
 

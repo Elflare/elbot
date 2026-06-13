@@ -392,8 +392,9 @@ func (m tuiModel) completeInput() (tea.Model, tea.Cmd) {
 
 func (m tuiModel) complete(value string) []completion.Item {
 	if m.completion != nil {
-		return m.completion.Complete(m.ctx, completion.Request{Text: value})
+		return m.completion.Complete(m.ctx, completion.Request{Text: value, Cursor: m.input.Position()})
 	}
+
 	c, ok := m.handler.(legacyCompleter)
 	if !ok {
 		return nil
@@ -421,8 +422,18 @@ func (m *tuiModel) selectCompletion(delta int) {
 }
 
 func (m *tuiModel) applyCurrentCompletion() {
-	text := m.completionState.currentText()
+	if len(m.completionState.items) == 0 || m.completionState.index < 0 || m.completionState.index >= len(m.completionState.items) {
+		return
+	}
+	item := m.completionState.items[m.completionState.index]
+	text := item.Text
 	if text == "" {
+		return
+	}
+	value := m.completionState.base
+	if item.ReplaceStart >= 0 && item.ReplaceEnd >= item.ReplaceStart && item.ReplaceEnd <= len(value) && (item.ReplaceStart != 0 || item.ReplaceEnd != 0) {
+		m.input.SetValue(value[:item.ReplaceStart] + text + value[item.ReplaceEnd:])
+		m.input.SetCursor(item.ReplaceStart + len(text))
 		return
 	}
 	m.input.SetValue(text)
