@@ -78,6 +78,16 @@ retention_days = 30
 [platform.cli]
 enabled = true
 
+# [platform.qqofficial]
+# enabled = false
+# app_id = "your-app-id"
+# client_secret_env = "QQOFFICIAL_CLIENT_SECRET"
+# api_base_url = "https://api.sgroup.qq.com"
+# allow_proactive = true
+# markdown_by_default = true
+# enable_keyboard = true
+# enable_ark = false
+
 # [platform.qqonebot]
 # enabled = false
 # ws_url = "ws://127.0.0.1:6700/"

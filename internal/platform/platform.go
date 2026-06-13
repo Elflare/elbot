@@ -91,6 +91,7 @@ type MessageContext struct {
 	BufferAssistantOutput bool
 	ForkFromMessageID     string
 	Segments              []MessageSegment
+	Meta                  map[string]any
 }
 
 type messageContextKey struct{}

@@ -169,11 +169,12 @@
 
 ### 平台适配
 
-- `internal/platform/platform.go`：平台抽象；定义 `PlatformAdapter`、`PlatformHandler`、统一 `SendChat`/`SendNotice` 的 message sender、发送 receipt、平台 `MessageSegment`（text/image/file/at）和每条入站消息的 Actor/Scope/发送目标上下文；上下文可携带平台解析出的 fork 来源消息与多模态消息段。
+- `internal/platform/platform.go`：平台抽象；定义 `PlatformAdapter`、`PlatformHandler`、统一 `SendChat`/`SendNotice` 的 message sender、发送 receipt、平台 `MessageSegment`（text/image/file/at）和每条入站消息的 Actor/Scope/发送目标上下文；上下文可携带平台解析出的 fork 来源、多模态消息段和少量平台原生 metadata。
 - `internal/platform/config.go`：平台配置辅助；把 `app.toml` 中 `[platform.<name>]` 原始 section 解码给适配器自有 Config，并提供关键词前缀剥离 helper。
 - `internal/platform/builtin/builtin.go`：内置平台装配；创建 CLI，并把各平台 raw config 交给对应适配器工厂解析，避免全局 config 知道具体平台字段。
 - `internal/platform/cli/cli.go`：CLI 平台实现；非 TTY 下读取 stdin，交互式终端下启动 Bubble Tea TUI，支持注入补全服务；实现统一 `SendChat`/`SendNotice`，聊天进主区，通知进 TUI 通知区或非 TTY `[notice]` fallback；当前 CLI 退出会结束前台应用，后续服务化可调整生命周期接口。
 - `internal/platform/qq-onebot/`：QQ OneBot v11 正向 WebSocket 适配；处理私聊/群聊文本、图片、@、reply、关键词触发、引用 fork、聊天历史入库、消息映射和富输出发送。引用 bot 历史消息会按本地映射/get_msg 解析，必要时自动 fork。
+- `internal/platform/qqofficial/`：QQ 官方机器人 C2C 单聊适配；负责 access token、Gateway identify/heartbeat/resume（含 4009 连接过期重连）、默认 Markdown 文本发送、富媒体上传发送、Keyboard 确认按钮和 ARK 预留；配置来自 `[platform.qqofficial]`。
 - `internal/platform/cli/tui.go`：Bubble Tea TUI 主编排；提供聊天/通知/输入区、异步提交、历史、滚动、补全候选窗和样式渲染；聊天原文保持纯文本，显示时再用 lipgloss 美化。
 - `internal/platform/cli/tui_copy.go`：CLI TUI copy mode；支持鼠标分区滚动、Alt+h/Alt+l 进入聊天/通知复制模式、hjkl/v/V/y 和区域内 `/` 搜索；`clipboard.go` 默认用系统剪贴板并在 SSH/tmux 等场景走 OSC52 fallback。
 
