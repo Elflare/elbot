@@ -19,7 +19,7 @@ action = "append"
 field = "message.text"
 text = "!"
 `
-	if err := os.WriteFile(filepath.Join(dir, "rules.toml"), []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "hooks.toml"), []byte(content), 0o644); err != nil {
 		t.Fatalf("write rules config: %v", err)
 	}
 	manager := hook.NewManager()

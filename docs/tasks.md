@@ -323,7 +323,6 @@
 - [x] Prompt Builder 预留常驻记忆接口，后续由 Memory 插件提供。
 - [x] Prompt Builder 预留工具 schema 注入接口；工具发现不写入 System Prompt。
 - [x] Prompt Builder 支持注入当前 Session 上下文。
-- [ ] 后续通过独立上下文消息或专用 builder 字段注入平台与用户信息，不污染 Soul System Prompt。
 - [ ] 后续通过独立上下文消息或专用 builder 字段注入时间、环境等运行时信息，不污染 Soul System Prompt。
 
 ### `/work` 与 `/chat`
@@ -498,8 +497,8 @@
 - [ ] 支持网络错误重试。
 - [ ] 支持请求超时控制。
 - [ ] 支持不可重试错误识别。
-- [ ] 支持 API 错误信息提取。
-- [ ] 面向用户返回简洁错误提示。
+- [x] 支持 API 错误信息提取。
+- [x] 面向用户返回简洁错误提示。
 - [x] 工具调用结束后模型未给出总结时，提供兜底总结。
 
 ### Tool Call 解析
@@ -508,7 +507,7 @@
 - [ ] 将 tool calls 写入 `tool_calls` 表。
 - [x] 校验工具是否存在。
 - [x] 校验参数格式。
-- [ ] 支持用户在聊天中@工具直接把完整schema注入到prompt中
+- [x] 支持用户在聊天中@工具直接把完整schema注入到prompt中
 
 
 ### Tool 执行
@@ -541,7 +540,7 @@
 - [x] 工具执行期间普通用户消息不打断工具，进入 pending，并在下一次 LLM 调用前作为补充输入注入。
 - [x] CLI TUI 不再用手写 `---` 分隔 assistant 输出，换行不会自动结束同一轮回复。
 
-- [ ] 后续实现 CLI TUI 独立通知区，避免 preview 混入聊天 transcript。
+- [x] 后续实现 CLI TUI 独立通知区，避免 preview 混入聊天 transcript。
 
 ## Milestone 10：权限系统与危险确认
 
@@ -551,9 +550,9 @@
 
 - [x] 定义 `Actor`。
 - [x] 定义 `Role`。
-- [ ] 定义 `Action`。
-- [ ] 定义 `Resource`。
-- [ ] 实现 `Authorizer`。
+- [x] 定义 `Action`。
+- [x] 定义 `Resource`。
+- [x] 实现 `Authorizer`。
 - [x] 当前阶段默认只有超级管理员、普通用户。
 - [x] 给工具分级，超级管理员全部能用，普通用户只能用哪些级别的。
 
@@ -577,7 +576,7 @@
 
 - [ ] 创建 `confirmation_requests` 表。
 - [x] 支持确认单次操作。`/confirm`
-- [ ] 支持当前 Session 内自动确认同工具操作。
+- [x] 支持当前 Session 内自动确认同工具操作。
 - [x] 支持当前 Session 内自动确认所有操作。`/confirmall`
 - [x] `/reject <原因>` 拒绝操作并记录原因。原因可不填。
 - [x] `/stop` 取消并停止本次对话。前方已实现
@@ -628,7 +627,6 @@
 - [x] 支持基础命令自动补全能力。
 - [x] 将 CLI 补全改为独立补全服务或平台能力装配，不再通过 Agent 辅助方法暴露。
 - [x] 支持 fish/readline 风格的候选提示和上下选择；参数补全仍待后续 source 扩展。
-- [ ] 预留上下箭头选择 Session 能力。暂定不做。
 
 
 ## Milestone 12：审计与消耗统计
@@ -644,7 +642,7 @@
 - [x] 记录危险确认等待、确认、自动确认、拒绝和停止。
 - [x] 记录权限拒绝。
 - [x] 记录 Session 恢复与 Fork。
-- [ ] 记录记忆写入、修改和删除。
+- [x] 记录记忆写入、修改和删除。
 - [x] 记录关键错误与异常。
 
 ### 消耗统计

@@ -79,7 +79,7 @@
 
 ### 配置与日志
 
-配置约定：默认配置查找顺序为 `--config`、`ELBOT_CONFIG_FILE`、平台配置目录（Windows `%APPDATA%/ElBot/app.toml`；Linux XDG `~/.config/elbot/app.toml`）、最后回退源码目录 `config/app.toml`。静态配置在 `app.toml`，Provider 列表在同目录 `providers.toml`，运行时热切换状态在同目录 `state.toml`；Hook/插件配置固定放在同目录 `plugins/<plugin-name>.toml`，app 层不解析插件专属字段。Provider key 推荐用 `api_key_env`，读取优先级为系统环境变量 > 配置目录 `.env`。
+配置约定：默认配置查找顺序为 `--config`、`ELBOT_CONFIG_FILE`、平台配置目录（Windows `%APPDATA%/ElBot/app.toml`；Linux XDG `~/.config/elbot/app.toml`）、最后回退源码目录 `config/app.toml`。静态配置在 `app.toml`，Provider 列表在同目录 `providers.toml`，运行时热切换状态在同目录 `state.toml`；用户可编辑资产集中在配置目录：`memories.toml`、`long_memory/`、`skills/`、`plugins/`，SQLite/logs/sandbox 等运行数据仍按各自配置或默认数据目录存放。Hook/插件配置固定放在同目录 `plugins/<plugin-name>.toml`，规则 Hook 使用 `plugins/hooks.toml`，app 层不解析插件专属字段。Provider key 推荐用 `api_key_env`，读取优先级为系统环境变量 > 配置目录 `.env`。
 
 - `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录/source fallback 解析 `app.toml`，读取并合并 app/provider/state 配置，解析相对路径和 `api_key_env`，包含 sandbox/artifact 与 S3/R2 预留配置。
 - `internal/logging/logging.go`：日志地基；创建运行日志与审计日志的 `slog.Logger`，`Manager` 统一持有 `elbot-YYYY-MM-DD.log`、`audit-YYYY-MM-DD.log` 文件、暴露日志目录和可配置旧日志清理入口。
@@ -88,14 +88,14 @@
 - `config/providers.toml`：Provider 示例配置；保存供应商、模型列表、extra payload 和模型元信息，公开配置只写 `api_key_env` 不写真实 key。
 - `config/state.toml`：热切换状态；保存当前模型选择和默认新会话模式。
 - `config/SOUL.md`：System Prompt 来源文件；两种模式都从这里读取，不把工具发现、常驻记忆、时间或平台信息硬编码进 System Prompt。
-- `config/plugins/`：Hook/插件配置目录。
+- `config/plugins/`：Hook/插件配置目录，规则 Hook 配置文件为 `hooks.toml`。
 
 ### Hook Layer
 
 - `internal/hook/hook.go`：Hook 基础包；定义事件点、已知点校验、payload、Handler/Manager、注册模块、匹配规则和按优先级串行执行的事件流水线。
 
 - `internal/hook/builtin/register.go`：随程序发布的 Hook 插件注册入口；组合规则插件、表情插件和常驻记忆 Hook，app 层传配置目录、日志、安全策略、工具 Registry、resident memory store、审计和可选通知回调。
-- `internal/hook/rules/rules.go`：TOML Rule Hook 插件；支持优先级、文本改写、output 和低风险工具调用，配置错误会记录日志并尽量通知消息区。
+- `internal/hook/rules/rules.go`：TOML Rule Hook 插件，读取 `plugins/hooks.toml`；支持优先级、文本改写、output 和低风险工具调用，配置错误会记录日志并尽量通知消息区。
 - `internal/hook/plugins/emoticon/emoticon.go`：表情 Hook；匹配 LLM 输出中的 `[[表情名]]`，随机发送本地图片并删除 token。
 - `internal/hook/plugins/resident_memory/resident_memory.go`：常驻记忆 Hook；每 turn 注入当前 platform + actor 的常驻记忆和临时用户名。
 
@@ -134,7 +134,7 @@
 - `internal/tool/provider.go`：Tool Runtime 到 Agent Prompt/LLM schema 的 provider 适配；work 模式注入 `discover_tool` 和当前 Actor 可用且未隐藏的工具名称，chat 模式不注入。
 - `internal/tool/executor.go`：工具执行器；把模型产生的 `llm.ToolCallRequest` 转换为 Tool Runtime 调用，执行前按 Actor/Policy 做风险等级兜底校验，并把结果转换为 LLM tool message。
 
-- `internal/tool/builtin/runtime.go`：内置工具 Runtime；集中创建 Tool Registry、常驻记忆 store、Skill Manager、Artifact Manager 和内置工具私有路径，让 app 层不关心具体内置工具清单。
+- `internal/tool/builtin/runtime.go`：内置工具 Runtime；集中创建 Tool Registry、常驻记忆 store、Skill Manager、Artifact Manager 和内置工具私有路径；`memories.toml`、`long_memory/`、`skills/` 默认在配置目录下。
 - `internal/tool/builtin/register.go`：内置工具注册细节；由 builtin Runtime 调用，统一注册 `discover_tool`、常驻记忆、长期记忆、cron、`send_file`、聊天历史、web 搜索/提取、shell、skill 包装工具和 Go 元 skill。
 - `internal/tool/builtin/artifact.go`：artifact 文件暂存 helper；sandbox 内文件直接发送，外部文件复制到统一 sandbox 的 `artifact/` 子目录，做大小、文件名、MIME 和 Windows/MSYS 路径处理，未来可接 S3/R2。
 - `internal/tool/builtin/send_file.go`：内置发文件工具；仅超管可用，支持 `path`/`file` 参数，相对路径在 cron 中按 cron sandbox 解析，外部文件确认/自动处理后通过 output.File 发送。
@@ -157,7 +157,7 @@
 - `internal/tool/skill/go_modifier.go`：隐藏 Go skill 源码维护工具；`read_go_skill` 按行读取 `main.go`，`modify_go_skill` 覆盖/patch 源码后自动 `go build` 并 reload，作为 `create_el_skill` 依赖 schema 暴露。
 
 - `internal/tool/skill/descriptor.go`：skill 描述对象；让 py/go skill 可被 `discover_tool` 查到详情，ELyph skill detail 会按需前置短规则卡，Markdown skill 不注入；skill 本体不作为可直接调用 schema 暴露。
-- `internal/tool/skill/scanner.go`：skill 文件系统扫描与 reload；默认根目录为 Windows `%APPDATA%/ElBot/skills` 或 Linux XDG data `elbot/skills`；Go skill 必须使用 `go/<skill>/SKILL.elyph`，可选 binary；Python skill 优先读 `SKILL.elyph` 覆写 Agent 可读说明，否则回退 `SKILL.md`；同步新增/删除 skill 并更新 catalog。
+- `internal/tool/skill/scanner.go`：skill 文件系统扫描与 reload；主程序默认根目录为配置目录下 `skills/`；Go skill 必须使用 `go/<skill>/SKILL.elyph`，可选 binary；Python skill 优先读 `SKILL.elyph` 覆写 Agent 可读说明，否则回退 `SKILL.md`；同步新增/删除 skill 并更新 catalog。
 - `internal/tool/skill/runner.go`：隐藏包装工具实现；`python_skill_run` 固定在 py skill 目录用 `uv run python` 执行脚本，`go_skill_run` 选择 Go skill binary 并把必填 `payload` 对象 JSON 写入 stdin；执行错误会区分启动/超时/进程失败并回传 stdout/stderr，风险按目标 skill 的 `risk` 评估。
 
 ### Tool 约定

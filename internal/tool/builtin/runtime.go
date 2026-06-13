@@ -21,7 +21,6 @@ type Runtime struct {
 
 type RuntimeOptions struct {
 	ConfigDir      string
-	DataDir        string
 	CronService    *elcron.Service
 	ChatHistory    storage.ChatHistoryRepository
 	SandboxRoot    string
@@ -34,7 +33,7 @@ func NewRuntime(opts RuntimeOptions) (*Runtime, error) {
 	}
 	registry := tool.NewRegistry()
 	residentStore := resident.NewStore(filepath.Join(opts.ConfigDir, "memories.toml"))
-	skillManager := skill.NewManager("", registry)
+	skillManager := skill.NewManager(filepath.Join(opts.ConfigDir, "skills"), registry)
 	artifactManager := NewArtifactManager(opts.SandboxRoot, opts.ArtifactConfig)
 	runtime := &Runtime{Registry: registry, ResidentMemoryStore: residentStore, SkillManager: skillManager, ArtifactManager: artifactManager}
 	if err := RegisterAll(registry, RegisterOptions{
@@ -42,7 +41,7 @@ func NewRuntime(opts RuntimeOptions) (*Runtime, error) {
 		SkillManager:        skillManager,
 		CronService:         opts.CronService,
 		ChatHistory:         opts.ChatHistory,
-		LongMemoryDir:       filepath.Join(opts.DataDir, "long_memory"),
+		LongMemoryDir:       filepath.Join(opts.ConfigDir, "long_memory"),
 		ArtifactManager:     artifactManager,
 	}); err != nil {
 		return nil, err

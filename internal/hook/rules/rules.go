@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	ConfigFile      = "rules.toml"
+	ConfigFile      = "hooks.toml"
 	DefaultPriority = 1000
 )
 
