@@ -92,6 +92,7 @@ func webSearchBuilder() *tool.Builder {
 	return tool.NewBuilder("web_search").
 		Description("执行网页搜索，返回简洁答案、来源链接和摘要；需要完整网页内容时继续调用 web_extract。").
 		Risk(tool.RiskLow).
+		Tags("web").
 		DependsOn("web_extract").
 		String("query", "搜索查询。", tool.Required()).
 		Integer("max_results", "最大结果数，默认 5，范围 1 到 20。").

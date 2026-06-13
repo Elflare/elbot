@@ -185,6 +185,51 @@ func TestCreateLLMCronRequiresElyphTask(t *testing.T) {
 
 }
 
+func TestCreateAndUpdateLLMCronToolListNames(t *testing.T) {
+	repo := newFakeCronRepo()
+	svc := NewService(Options{Store: fakeCronStore{cron: repo}})
+	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:04:30") }
+	actor := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
+	job, err := svc.Create(context.Background(), UpsertRequest{Name: "tools", Title: "tools", ScheduleMode: ScheduleOnce, RunAt: "2026-01-02 03:05:00", TriggerMode: TriggerLLM, Message: testElyphTask("tools"), ToolListNames: []string{" web_search ", "web_search", "shell"}, Enabled: true, Actor: actor, SourcePlatform: "cli"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	meta := mustDecodeTestMetadata(t, job.Metadata)
+	if got := strings.Join(meta.LLM.ToolListNames, ","); got != "web_search,shell" {
+		t.Fatalf("created tool_list_names = %q", got)
+	}
+	title := "renamed"
+	if _, err := svc.Update(context.Background(), PatchRequest{Name: "tools", Title: &title, Actor: actor}); err != nil {
+		t.Fatalf("update title: %v", err)
+	}
+	meta = mustDecodeTestMetadata(t, repo.jobs["user.cron.tools"].Metadata)
+	if got := strings.Join(meta.LLM.ToolListNames, ","); got != "web_search,shell" {
+		t.Fatalf("tool_list_names should be preserved = %q", got)
+	}
+	empty := []string{}
+	if _, err := svc.Update(context.Background(), PatchRequest{Name: "tools", ToolListNames: &empty, Actor: actor}); err != nil {
+		t.Fatalf("clear tool names: %v", err)
+	}
+	meta = mustDecodeTestMetadata(t, repo.jobs["user.cron.tools"].Metadata)
+	if len(meta.LLM.ToolListNames) != 0 {
+		t.Fatalf("tool_list_names should be cleared = %#v", meta.LLM.ToolListNames)
+	}
+}
+
+func TestRunLLMReportPassesToolListNames(t *testing.T) {
+	repo := newFakeCronRepo()
+	runner := &fakeCronRunner{text: `{"completed":true,"need_report":false,"report":"ok"}`}
+	svc := NewService(Options{Store: fakeCronStore{cron: repo}, Runner: runner})
+	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}, LLM: CronLLMMetadata{ToolListNames: []string{"web_search"}}})
+	meta := mustDecodeTestMetadata(t, job.Metadata)
+	if _, _, err := svc.runLLMReport(context.Background(), *job, meta); err != nil {
+		t.Fatalf("runLLMReport: %v", err)
+	}
+	if len(runner.requests) != 1 || strings.Join(runner.requests[0].ToolListNames, ",") != "web_search" {
+		t.Fatalf("runner request = %#v", runner.requests)
+	}
+}
+
 func TestCreateDirectCronDoesNotRequireElyphTask(t *testing.T) {
 	svc := NewService(Options{Store: fakeCronStore{cron: newFakeCronRepo()}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:04:30") }

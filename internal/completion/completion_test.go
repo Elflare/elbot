@@ -44,7 +44,8 @@ func TestRouterSourceCompletesCommands(t *testing.T) {
 func TestToolDirectiveSourceCompletesOnlyPlainTools(t *testing.T) {
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
-	_ = registry.Register(completionTestTool{name: "web_search", description: "search"})
+	_ = registry.Register(completionTestTool{name: "web_search", description: "search", tags: []string{"web"}})
+	_ = registry.Register(completionTestTool{name: "web_extract", description: "extract", tags: []string{"web"}})
 	_ = registry.Register(completionTestTool{name: "shell", description: "shell"})
 	_ = registry.Register(completionTestTool{name: "hidden_tool", hidden: true})
 	_ = registry.Register(completionTestSkill{completionTestTool: completionTestTool{name: "docx"}})
@@ -54,7 +55,7 @@ func TestToolDirectiveSourceCompletesOnlyPlainTools(t *testing.T) {
 	}
 
 	items := source.Complete(context.Background(), Request{Text: "查 @tool:we", Cursor: len("查 @tool:we")})
-	if len(items) != 1 || items[0].Text != "@tool:web_search" || items[0].ReplaceStart != len("查 ") || items[0].ReplaceEnd != len("查 @tool:we") {
+	if len(items) != 3 || items[0].Text != "@tool:web" || items[0].Label != "web <tag>" || items[0].Kind != KindToolTagDirective || items[1].Text != "@tool:web_extract" || items[2].Text != "@tool:web_search" || items[0].ReplaceStart != len("查 ") || items[0].ReplaceEnd != len("查 @tool:we") {
 		t.Fatalf("Complete @tool prefix = %#v", items)
 	}
 	items = source.Complete(context.Background(), Request{Text: "查 @t", Cursor: len("查 @t")})
@@ -85,11 +86,12 @@ type completionTestTool struct {
 	name        string
 	description string
 	hidden      bool
+	tags        []string
 }
 
 func (t completionTestTool) Name() string { return t.name }
 func (t completionTestTool) Info() tool.Info {
-	return tool.Info{Name: t.name, Description: t.description, Risk: tool.RiskLow, Hidden: t.hidden}
+	return tool.Info{Name: t.name, Description: t.description, Risk: tool.RiskLow, Hidden: t.hidden, Tags: t.tags}
 }
 func (t completionTestTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: t.name}}

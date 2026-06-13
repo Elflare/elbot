@@ -47,6 +47,7 @@ type RunCronMessageRequest struct {
 	ModelProvider string
 	Model         string
 	Prompt        string
+	ToolListNames []string
 }
 
 type RunCronMessageResult struct {
@@ -128,7 +129,8 @@ type CronTarget struct {
 }
 
 type CronLLMMetadata struct {
-	SessionID string `json:"session_id,omitempty"`
+	SessionID     string   `json:"session_id,omitempty"`
+	ToolListNames []string `json:"tool_list_names,omitempty"`
 }
 
 type CronDeliveryMetadata struct {
@@ -145,10 +147,12 @@ type UpsertRequest struct {
 	CronExpr            string
 	TriggerMode         TriggerMode
 	Message             string
+	ToolListNames       []string
 	AllEnabledPlatforms bool
-	Enabled             bool
-	Actor               security.Actor
-	SourcePlatform      string
+
+	Enabled        bool
+	Actor          security.Actor
+	SourcePlatform string
 }
 
 type PatchRequest struct {
@@ -159,9 +163,11 @@ type PatchRequest struct {
 	CronExpr            *string
 	TriggerMode         *TriggerMode
 	Message             *string
+	ToolListNames       *[]string
 	AllEnabledPlatforms *bool
-	Enabled             *bool
-	Actor               security.Actor
+
+	Enabled *bool
+	Actor   security.Actor
 }
 
 type JobView struct {
@@ -220,7 +226,8 @@ func (s *Service) Create(ctx context.Context, req UpsertRequest) (*storage.CronJ
 		s.auditEvent("cron.permission_denied", "operation", "create", "actor_id", req.Actor.ID, "reason", err.Error())
 		return nil, err
 	}
-	meta := Metadata{Kind: metadataKind, Version: 1, Title: strings.TrimSpace(req.Title), CreatedBy: actorMetadata(req.Actor), Schedule: CronSchedule{Mode: req.ScheduleMode, RunAt: strings.TrimSpace(req.RunAt), CronExpr: strings.TrimSpace(req.CronExpr)}, Trigger: CronTrigger{Mode: req.TriggerMode, Message: strings.TrimSpace(req.Message)}, Target: CronTarget{AllEnabledPlatforms: req.AllEnabledPlatforms, SourcePlatform: firstNonEmpty(req.SourcePlatform, req.Actor.Platform)}}
+	meta := Metadata{Kind: metadataKind, Version: 1, Title: strings.TrimSpace(req.Title), CreatedBy: actorMetadata(req.Actor), Schedule: CronSchedule{Mode: req.ScheduleMode, RunAt: strings.TrimSpace(req.RunAt), CronExpr: strings.TrimSpace(req.CronExpr)}, Trigger: CronTrigger{Mode: req.TriggerMode, Message: strings.TrimSpace(req.Message)}, Target: CronTarget{AllEnabledPlatforms: req.AllEnabledPlatforms, SourcePlatform: firstNonEmpty(req.SourcePlatform, req.Actor.Platform)}, LLM: CronLLMMetadata{ToolListNames: normalizeToolListNames(req.ToolListNames)}}
+
 	if err := validateElyphCronTask(meta); err != nil {
 		return nil, err
 	}
@@ -269,7 +276,11 @@ func (s *Service) Update(ctx context.Context, req PatchRequest) (*storage.CronJo
 	if req.Message != nil {
 		meta.Trigger.Message = strings.TrimSpace(*req.Message)
 	}
+	if req.ToolListNames != nil {
+		meta.LLM.ToolListNames = normalizeToolListNames(*req.ToolListNames)
+	}
 	if req.AllEnabledPlatforms != nil {
+
 		meta.Target.AllEnabledPlatforms = *req.AllEnabledPlatforms
 	}
 	enabled := job.Enabled
@@ -625,7 +636,8 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 	}
 	actor := security.Actor{ID: meta.CreatedBy.ActorID, Platform: meta.CreatedBy.Platform, PlatformUserID: meta.CreatedBy.PlatformUserID, DisplayName: meta.CreatedBy.DisplayName, Role: security.RoleSuperadmin}
 	prompt := cronPrompt(meta.Trigger.Message)
-	result, err := s.runner.RunCronMessage(ctx, RunCronMessageRequest{JobName: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), SessionID: meta.LLM.SessionID, Prompt: prompt})
+	result, err := s.runner.RunCronMessage(ctx, RunCronMessageRequest{JobName: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), SessionID: meta.LLM.SessionID, Prompt: prompt, ToolListNames: meta.LLM.ToolListNames})
+
 	if err != nil {
 		return meta, "", err
 	}
@@ -849,7 +861,22 @@ func requireSuperadmin(actor security.Actor) error {
 	return nil
 }
 
+func normalizeToolListNames(names []string) []string {
+	out := make([]string, 0, len(names))
+	seen := map[string]bool{}
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	return out
+}
+
 func cronPrompt(message string) string {
+
 	return `[系统 Cron 后台任务]
 
 ` + elyph.RuleCard() + `

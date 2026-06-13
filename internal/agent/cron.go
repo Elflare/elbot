@@ -69,7 +69,11 @@ func (a *Agent) RunCronMessage(ctx context.Context, req elcron.RunCronMessageReq
 	if err != nil {
 		return elcron.RunCronMessageResult{}, err
 	}
+	if injected := a.preloadToolNames(ctx, cronSession, req.ToolListNames); len(injected) > 0 {
+		a.audit("cron_tool_preloaded", "session_id", cronSession.ID, "job", req.JobName, "tools", injected)
+	}
 	if err := a.startChat(ctx, cronSession, req.Prompt); err != nil {
+
 		return elcron.RunCronMessageResult{}, err
 	}
 	text, err := a.latestAssistantText(ctx, cronSession.ID)

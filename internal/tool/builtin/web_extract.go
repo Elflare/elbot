@@ -104,6 +104,7 @@ func webExtractBuilder() *tool.Builder {
 	return tool.NewBuilder("web_extract").
 		Description("提取网页正文；默认返回前 8000 字符，可用同一 URL 加 offset 继续读取后续内容。").
 		Risk(tool.RiskLow).
+		Tags("web").
 		DependsOn("web_search").
 		String("url", "要提取的网页 URL。", tool.Required()).
 		Integer("offset", "从第几个字符开始返回，默认 0；用于继续读取缓存中的后续内容。").

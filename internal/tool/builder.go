@@ -9,6 +9,7 @@ type Builder struct {
 	risk           RiskLevel
 	superadminOnly bool
 	hidden         bool
+	tags           []string
 	dependsOn      []string
 	properties     map[string]any
 	required       []string
@@ -42,6 +43,11 @@ func (b *Builder) Risk(risk RiskLevel) *Builder {
 
 func (b *Builder) Hidden() *Builder {
 	b.hidden = true
+	return b
+}
+
+func (b *Builder) Tags(tags ...string) *Builder {
+	b.tags = append(b.tags, tags...)
 	return b
 }
 
@@ -80,7 +86,7 @@ func (b *Builder) StringArray(name, description string, opts ...ParamOption) *Bu
 }
 
 func (b *Builder) BuildInfo() Info {
-	return Info{Name: b.name, Description: b.description, Source: b.source, Risk: normalizeRisk(b.risk, RiskLow), SuperadminOnly: b.superadminOnly, Hidden: b.hidden, DependsOn: normalizeNames(b.dependsOn)}
+	return Info{Name: b.name, Description: b.description, Source: b.source, Risk: normalizeRisk(b.risk, RiskLow), SuperadminOnly: b.superadminOnly, Hidden: b.hidden, Tags: normalizeTags(b.tags), DependsOn: normalizeNames(b.dependsOn)}
 }
 
 func (b *Builder) BuildSchema() llm.ToolSchema {

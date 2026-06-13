@@ -2,6 +2,7 @@ package completion
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"elbot/internal/directive"
@@ -10,6 +11,7 @@ import (
 )
 
 const KindToolDirective = "tool_directive"
+const KindToolTagDirective = "tool_tag_directive"
 
 type ToolRegistryFunc func() *tool.Registry
 type ActorFunc func(context.Context) security.Actor
@@ -42,17 +44,21 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) []Item {
 	if s.Policy != nil && s.Policy() != nil {
 		policy = s.Policy()
 	}
+	tags := s.matchingTags(registry, actor, policy, token.Query)
 	infos := s.matchingTools(registry, actor, policy, token.Query)
-	out := make([]Item, 0, len(infos))
+	out := make([]Item, 0, len(tags)+len(infos))
+	seenText := map[string]bool{}
+	for _, tag := range tags {
+		text := directive.ToolPrefix + tag
+		seenText[text] = true
+		out = append(out, Item{Text: text, Label: tag + " <tag>", Description: s.tagDescription(registry, actor, policy, tag), Kind: KindToolTagDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
+	}
 	for _, info := range infos {
-		out = append(out, Item{
-			Text:         directive.ToolPrefix + info.Name,
-			Label:        info.Name,
-			Description:  info.Description,
-			Kind:         KindToolDirective,
-			ReplaceStart: token.Start,
-			ReplaceEnd:   cursor,
-		})
+		text := directive.ToolPrefix + info.Name
+		if seenText[text] {
+			continue
+		}
+		out = append(out, Item{Text: text, Label: info.Name, Description: info.Description, Kind: KindToolDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
 	}
 	return out
 
@@ -63,6 +69,11 @@ func (s ToolDirectiveSource) registry() *tool.Registry {
 		return nil
 	}
 	return s.Registry()
+}
+
+func (s ToolDirectiveSource) matchingTags(registry *tool.Registry, actor security.Actor, policy *security.Policy, query string) []string {
+	candidates := s.allowedTags(registry, actor, policy)
+	return matchStrings(candidates, query)
 }
 
 func (s ToolDirectiveSource) matchingTools(registry *tool.Registry, actor security.Actor, policy *security.Policy, query string) []tool.Info {
@@ -94,15 +105,60 @@ func (s ToolDirectiveSource) allowedPlainTools(registry *tool.Registry, actor se
 			continue
 		}
 		candidate, ok := registry.Get(info.Name)
-		if !ok || !tool.CanAccessTool(actor, policy, info) {
-			continue
-		}
-		if _, isSkillLike := candidate.(tool.DetailProvider); isSkillLike {
+		if !ok || !isPlainAllowedTool(candidate, actor, policy) {
 			continue
 		}
 		out = append(out, info)
 	}
 	return out
+}
+
+func (s ToolDirectiveSource) allowedTags(registry *tool.Registry, actor security.Actor, policy *security.Policy) []string {
+	out := []string{}
+	for _, tag := range registry.Tags() {
+		if len(registry.NamesByTag(tag, func(candidate tool.Tool) bool { return isPlainAllowedTool(candidate, actor, policy) })) > 0 {
+			out = append(out, tag)
+		}
+	}
+	return out
+}
+
+func (s ToolDirectiveSource) tagDescription(registry *tool.Registry, actor security.Actor, policy *security.Policy, tag string) string {
+	count := len(registry.NamesByTag(tag, func(candidate tool.Tool) bool { return isPlainAllowedTool(candidate, actor, policy) }))
+	if count == 1 {
+		return "1 tool"
+	}
+	return strconv.Itoa(count) + " tools"
+}
+
+func matchStrings(candidates []string, query string) []string {
+	if query == "" {
+		return candidates
+	}
+	prefix := []string{}
+	fuzzy := []string{}
+	for _, candidate := range candidates {
+		if strings.HasPrefix(candidate, query) {
+			prefix = append(prefix, candidate)
+			continue
+		}
+		if fuzzyMatch(candidate, query) {
+			fuzzy = append(fuzzy, candidate)
+		}
+	}
+	if len(prefix) > 0 {
+		return prefix
+	}
+	return fuzzy
+}
+
+func isPlainAllowedTool(candidate tool.Tool, actor security.Actor, policy *security.Policy) bool {
+	info := candidate.Info()
+	if info.Name == "discover_tool" || info.Hidden || !tool.CanAccessTool(actor, policy, info) {
+		return false
+	}
+	_, isSkillLike := candidate.(tool.DetailProvider)
+	return !isSkillLike
 }
 
 func fuzzyMatch(value, query string) bool {

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"elbot/internal/config"
+	elcron "elbot/internal/cron"
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
 	"elbot/internal/llm"
@@ -1153,6 +1154,31 @@ func TestToolDirectiveInjectsAndStripsValidTools(t *testing.T) {
 	}
 }
 
+func TestToolDirectiveInjectsTaggedTools(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"done"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(agentWrapperTool{name: "alpha", tags: []string{"web"}})
+	_ = registry.Register(agentWrapperTool{name: "beta", tags: []string{"web"}})
+	_ = registry.Register(agentDetailTool{name: "skill_web", source: tool.SourceSkillPy, detail: "# skill", activate: []string{"python_skill_run"}})
+	a.SetToolRuntime(registry, nil)
+
+	if err := a.HandleMessage(context.Background(), "查资料 @tool:web"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	if toolNames(requests[0].Tools) != "discover_tool,alpha,beta" {
+		t.Fatalf("tools = %s", toolNames(requests[0].Tools))
+	}
+}
+
 func TestToolDirectiveInvalidStaysAsText(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
@@ -1232,7 +1258,7 @@ func TestSkillDiscoveryActivatesHiddenWrapperInSameTurn(t *testing.T) {
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(agentDetailTool{name: "docx", source: tool.SourceSkillPy, detail: "# DOCX", activate: []string{"python_skill_run"}})
-	_ = registry.Register(agentWrapperTool{name: "python_skill_run"})
+	_ = registry.Register(agentWrapperTool{name: "python_skill_run", hidden: true})
 	a.SetToolRuntime(registry, nil)
 
 	if err := a.HandleMessage(context.Background(), "处理 docx"); err != nil {
@@ -1282,11 +1308,15 @@ func (t agentDetailTool) Call(context.Context, tool.CallRequest) (*tool.Result, 
 func (t agentDetailTool) Detail() string          { return t.detail }
 func (t agentDetailTool) ActivateTools() []string { return t.activate }
 
-type agentWrapperTool struct{ name string }
+type agentWrapperTool struct {
+	name   string
+	hidden bool
+	tags   []string
+}
 
 func (t agentWrapperTool) Name() string { return t.name }
 func (t agentWrapperTool) Info() tool.Info {
-	return tool.Info{Name: t.name, Description: t.name, Source: tool.SourceBuiltin, Risk: tool.RiskLow, Hidden: true}
+	return tool.Info{Name: t.name, Description: t.name, Source: tool.SourceBuiltin, Risk: tool.RiskLow, Hidden: t.hidden, Tags: t.tags}
 }
 func (t agentWrapperTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}}
@@ -1983,6 +2013,31 @@ func TestSoulPromptAndToolsByMode(t *testing.T) {
 	}
 	if tools.calls != 1 {
 		t.Fatalf("tool provider calls = %d", tools.calls)
+	}
+}
+
+func TestRunCronMessagePreloadsToolListNames(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
+	a := New(&fakePlatform{}, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(builtin.NewWebSearchTool())
+	_ = registry.Register(builtin.NewWebExtractTool())
+	a.SetToolRuntime(registry, nil)
+
+	_, err := a.RunCronMessage(ctx, elcron.RunCronMessageRequest{JobName: "test", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"web_search", "web"}})
+	if err != nil {
+		t.Fatalf("RunCronMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	if toolNames(requests[0].Tools) != "discover_tool,web_extract,web_search" {
+		t.Fatalf("tools = %s", toolNames(requests[0].Tools))
 	}
 }
 

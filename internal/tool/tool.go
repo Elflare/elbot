@@ -37,7 +37,10 @@ type Info struct {
 	Risk           RiskLevel
 	SuperadminOnly bool
 	// Hidden controls prompt/list exposure only. It is not a security boundary.
-	Hidden    bool
+	Hidden bool
+	// Tags are user-facing grouping labels for completion and manual preloading.
+	// They are not a security boundary and are not exposed through discover_tool.
+	Tags      []string
 	DependsOn []string
 }
 
@@ -193,6 +196,43 @@ func (r *Registry) ToolNames() []string {
 	return names
 }
 
+func (r *Registry) Tags() []string {
+	seen := map[string]bool{}
+	for _, info := range r.List() {
+		for _, tag := range info.Tags {
+			tag = normalizeTag(tag)
+			if tag != "" {
+				seen[tag] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for tag := range seen {
+		out = append(out, tag)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (r *Registry) NamesByTag(tag string, allowed func(Tool) bool) []string {
+	tag = normalizeTag(tag)
+	if tag == "" {
+		return nil
+	}
+	if allowed == nil {
+		allowed = func(Tool) bool { return true }
+	}
+	names := []string{}
+	for _, info := range r.List() {
+		candidate, ok := r.Get(info.Name)
+		if !ok || !allowed(candidate) || !hasTag(info.Tags, tag) {
+			continue
+		}
+		names = append(names, info.Name)
+	}
+	return names
+}
+
 func CanAccessTool(actor security.Actor, policy *security.Policy, info Info) bool {
 	if info.SuperadminOnly && actor.Role != security.RoleSuperadmin {
 		return false
@@ -281,6 +321,44 @@ func normalizeNames(names []string) []string {
 		out = append(out, name)
 	}
 	return out
+}
+
+func normalizeTags(tags []string) []string {
+	out := make([]string, 0, len(tags))
+	seen := map[string]bool{}
+	for _, tag := range tags {
+		tag = normalizeTag(tag)
+		if tag == "" || seen[tag] {
+			continue
+		}
+		seen[tag] = true
+		out = append(out, tag)
+	}
+	return out
+}
+
+func normalizeTag(tag string) string {
+	tag = strings.ToLower(strings.TrimSpace(tag))
+	for i := 0; i < len(tag); i++ {
+		c := tag[i]
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.') {
+			return ""
+		}
+	}
+	return tag
+}
+
+func hasTag(tags []string, want string) bool {
+	want = normalizeTag(want)
+	if want == "" {
+		return false
+	}
+	for _, tag := range tags {
+		if normalizeTag(tag) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func publicInfo(info Info) PublicInfo {

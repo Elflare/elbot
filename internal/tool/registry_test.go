@@ -18,6 +18,7 @@ type fakeTool struct {
 	risk           RiskLevel
 	hidden         bool
 	superadminOnly bool
+	tags           []string
 	dependsOn      []string
 }
 
@@ -28,7 +29,7 @@ func (t fakeTool) Info() Info {
 	if risk == "" {
 		risk = RiskLow
 	}
-	return Info{Name: t.name, Description: "fake " + t.name, Source: t.source, Risk: risk, Hidden: t.hidden, SuperadminOnly: t.superadminOnly, DependsOn: t.dependsOn}
+	return Info{Name: t.name, Description: "fake " + t.name, Source: t.source, Risk: risk, Hidden: t.hidden, SuperadminOnly: t.superadminOnly, Tags: normalizeTags(t.tags), DependsOn: t.dependsOn}
 }
 
 func (t fakeTool) Schema() llm.ToolSchema {
@@ -73,6 +74,27 @@ func TestRegistryRegisterListDiscover(t *testing.T) {
 	}
 	if _, err := registry.Discover("missing"); err == nil {
 		t.Fatal("expected missing tool error")
+	}
+}
+
+func TestBuilderNormalizesTags(t *testing.T) {
+	info := NewBuilder("x").Tags("web", " WEB ", "bad tag", "chat").BuildInfo()
+	if got := strings.Join(info.Tags, ","); got != "web,chat" {
+		t.Fatalf("tags = %#v", info.Tags)
+	}
+}
+
+func TestRegistryTagsAndNamesByTag(t *testing.T) {
+	registry := NewRegistry()
+	_ = registry.Register(fakeTool{name: "web_extract", tags: []string{"web"}})
+	_ = registry.Register(fakeTool{name: "web_search", tags: []string{"web"}})
+	_ = registry.Register(fakeTool{name: "chat", tags: []string{"chat"}})
+	if got := strings.Join(registry.Tags(), ","); got != "chat,web" {
+		t.Fatalf("tags = %q", got)
+	}
+	allowed := func(t Tool) bool { return t.Info().Name != "web_extract" }
+	if got := strings.Join(registry.NamesByTag("WEB", allowed), ","); got != "web_search" {
+		t.Fatalf("NamesByTag = %q", got)
 	}
 }
 

@@ -83,6 +83,7 @@ func searchChatHistoryBuilder() *tool.Builder {
 	return tool.NewBuilder("search_chat_history").
 		Description("查询当前平台当前群聊或私聊的聊天历史，可按关键词、用户和时间过滤；返回的 #message_id 可继续查看上下文或引用回复。").
 		Risk(tool.RiskLow).
+		Tags("chat").
 		DependsOn("get_chat_history_around", "reply_to_chat_history_message").
 		String("query", "按消息正文搜索的关键词；可传多个搜索词，用空格、逗号、中文逗号、竖线或换行分隔；留空表示不过滤。").
 		String("query_mode", "多个搜索词的匹配规则：or 或 and；默认 or。").
@@ -98,6 +99,7 @@ func aroundChatHistoryBuilder() *tool.Builder {
 	return tool.NewBuilder("get_chat_history_around").
 		Description("根据 search_chat_history 返回的 #message_id 查询当前聊天中该条消息附近的上下文。").
 		Risk(tool.RiskLow).
+		Tags("chat").
 		DependsOn("reply_to_chat_history_message").
 		String("message_id", "search_chat_history 返回结果中的平台消息 ID，可传 # 开头或纯 ID。", tool.Required()).
 		Integer("before", "向该消息之前查询多少条当前聊天记录，默认 10，最大 50。").
@@ -108,6 +110,7 @@ func replyChatHistoryBuilder() *tool.Builder {
 	return tool.NewBuilder("reply_to_chat_history_message").
 		Description("引用当前聊天历史中的某条平台消息，并发送回复到当前群聊或私聊。调用成功后不要重复发送相同内容。").
 		Risk(tool.RiskLow).
+		Tags("chat").
 		String("message_id", "search_chat_history 或 get_chat_history_around 返回结果中的平台消息 ID，可传 # 开头或纯 ID。", tool.Required()).
 		String("message", "引用该历史消息时要发送到当前聊天的回复内容。", tool.Required())
 }

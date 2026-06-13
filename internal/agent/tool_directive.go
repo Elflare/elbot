@@ -35,14 +35,7 @@ func (a *Agent) applyToolDirectives(ctx context.Context, session *storage.Sessio
 			result.Invalid = append(result.Invalid, name)
 			continue
 		}
-		a.rememberDiscoveredTools(ctx, session, discovery)
-		for _, discovered := range discovery.Tools {
-			if discovered.Schema == nil || discovered.Info.Name == "" || seenInjected[discovered.Info.Name] {
-				continue
-			}
-			seenInjected[discovered.Info.Name] = true
-			result.Injected = append(result.Injected, discovered.Info.Name)
-		}
+		result.Injected = append(result.Injected, a.rememberPreloadedDiscovery(ctx, session, discovery, seenInjected)...)
 		remove[i] = true
 	}
 	if len(result.Injected) == 0 {
@@ -52,16 +45,9 @@ func (a *Agent) applyToolDirectives(ctx context.Context, session *storage.Sessio
 	return result
 }
 
-func (a *Agent) discoveryForToolDirective(ctx context.Context, name string) (*tool.DiscoveryResult, bool) {
-	name = strings.TrimSpace(name)
-	if name == "" || a.toolRegistry == nil {
-		return nil, false
-	}
-	root, ok := a.toolRegistry.Get(name)
-	if !ok || root.Info().Hidden || name == "discover_tool" {
-		return nil, false
-	}
-	if _, isSkillLike := root.(tool.DetailProvider); isSkillLike {
+func (a *Agent) discoveryForToolDirective(ctx context.Context, value string) (*tool.DiscoveryResult, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" || a.toolRegistry == nil {
 		return nil, false
 	}
 	policy := a.securityPolicy
@@ -69,7 +55,76 @@ func (a *Agent) discoveryForToolDirective(ctx context.Context, name string) (*to
 		policy = security.DefaultPolicy()
 	}
 	actor := a.actor(ctx)
-	details, _ := a.toolRegistry.DiscoverDetails([]string{name}, func(candidate tool.Tool) bool {
+	if root, ok := a.toolRegistry.Get(value); ok {
+		if !a.canPreloadToolRoot(actor, policy, root) {
+			return nil, false
+		}
+		return a.discoveryForToolNames([]string{value}, actor, policy)
+	}
+	names := a.toolRegistry.NamesByTag(value, func(candidate tool.Tool) bool {
+		return a.canPreloadToolRoot(actor, policy, candidate)
+	})
+	if len(names) == 0 {
+		return nil, false
+	}
+	return a.discoveryForToolNames(names, actor, policy)
+}
+
+func (a *Agent) preloadToolNames(ctx context.Context, session *storage.Session, names []string) []string {
+	if session == nil || session.Mode != storage.SessionModeWork || a.toolRegistry == nil {
+		return nil
+	}
+	policy := a.securityPolicy
+	if policy == nil {
+		policy = security.DefaultPolicy()
+	}
+	actor := a.actor(ctx)
+	seenInjected := map[string]bool{}
+	injected := []string{}
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		root, ok := a.toolRegistry.Get(name)
+		if !ok || !a.canPreloadToolRoot(actor, policy, root) {
+			a.audit("tool_preload_skipped", "session_id", session.ID, "tool", name, "reason", "not_found_or_not_allowed")
+			continue
+		}
+		discovery, ok := a.discoveryForToolNames([]string{name}, actor, policy)
+		if !ok || discovery == nil || len(discovery.Tools) == 0 {
+			a.audit("tool_preload_skipped", "session_id", session.ID, "tool", name, "reason", "no_schema")
+			continue
+		}
+		injected = append(injected, a.rememberPreloadedDiscovery(ctx, session, discovery, seenInjected)...)
+	}
+	return injected
+}
+
+func (a *Agent) rememberPreloadedDiscovery(ctx context.Context, session *storage.Session, discovery *tool.DiscoveryResult, seen map[string]bool) []string {
+	a.rememberDiscoveredTools(ctx, session, discovery)
+	injected := []string{}
+	for _, discovered := range discovery.Tools {
+		if discovered.Schema == nil || discovered.Info.Name == "" || seen[discovered.Info.Name] {
+			continue
+		}
+		seen[discovered.Info.Name] = true
+		injected = append(injected, discovered.Info.Name)
+	}
+	return injected
+}
+
+func (a *Agent) canPreloadToolRoot(actor security.Actor, policy *security.Policy, candidate tool.Tool) bool {
+	info := candidate.Info()
+	if info.Name == "discover_tool" || info.Hidden || !tool.CanAccessTool(actor, policy, info) {
+		return false
+	}
+	_, isSkillLike := candidate.(tool.DetailProvider)
+	return !isSkillLike
+}
+
+func (a *Agent) discoveryForToolNames(names []string, actor security.Actor, policy *security.Policy) (*tool.DiscoveryResult, bool) {
+	details, _ := a.toolRegistry.DiscoverDetails(names, func(candidate tool.Tool) bool {
 		return tool.CanAccessTool(actor, policy, candidate.Info())
 	})
 	if len(details) == 0 {

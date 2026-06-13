@@ -23,37 +23,39 @@ type CronGetTool struct{ service *elcron.Service }
 type CronListTool struct{ service *elcron.Service }
 
 type cronCreateArgs struct {
-	Name                string `json:"name"`
-	Title               string `json:"title"`
-	ScheduleMode        string `json:"schedule_mode"`
-	RunAt               string `json:"run_at"`
-	CronExpr            string `json:"cron_expr"`
-	RunAfterMinutes     int    `json:"run_after_minutes"`
-	RunAfterHours       int    `json:"run_after_hours"`
-	RunAfterDays        int    `json:"run_after_days"`
-	RunAfterWeeks       int    `json:"run_after_weeks"`
-	RunAfterMonths      int    `json:"run_after_months"`
-	TriggerMode         string `json:"trigger_mode"`
-	Message             string `json:"message"`
-	AllEnabledPlatforms bool   `json:"all_enabled_platforms"`
-	Enabled             *bool  `json:"enabled"`
+	Name                string   `json:"name"`
+	Title               string   `json:"title"`
+	ScheduleMode        string   `json:"schedule_mode"`
+	RunAt               string   `json:"run_at"`
+	CronExpr            string   `json:"cron_expr"`
+	RunAfterMinutes     int      `json:"run_after_minutes"`
+	RunAfterHours       int      `json:"run_after_hours"`
+	RunAfterDays        int      `json:"run_after_days"`
+	RunAfterWeeks       int      `json:"run_after_weeks"`
+	RunAfterMonths      int      `json:"run_after_months"`
+	TriggerMode         string   `json:"trigger_mode"`
+	Message             string   `json:"message"`
+	ToolListNames       []string `json:"tool_list_names"`
+	AllEnabledPlatforms bool     `json:"all_enabled_platforms"`
+	Enabled             *bool    `json:"enabled"`
 }
 
 type cronUpdateArgs struct {
-	Name                string  `json:"name"`
-	Title               *string `json:"title"`
-	ScheduleMode        *string `json:"schedule_mode"`
-	RunAt               *string `json:"run_at"`
-	CronExpr            *string `json:"cron_expr"`
-	RunAfterMinutes     *int    `json:"run_after_minutes"`
-	RunAfterHours       *int    `json:"run_after_hours"`
-	RunAfterDays        *int    `json:"run_after_days"`
-	RunAfterWeeks       *int    `json:"run_after_weeks"`
-	RunAfterMonths      *int    `json:"run_after_months"`
-	TriggerMode         *string `json:"trigger_mode"`
-	Message             *string `json:"message"`
-	AllEnabledPlatforms *bool   `json:"all_enabled_platforms"`
-	Enabled             *bool   `json:"enabled"`
+	Name                string    `json:"name"`
+	Title               *string   `json:"title"`
+	ScheduleMode        *string   `json:"schedule_mode"`
+	RunAt               *string   `json:"run_at"`
+	CronExpr            *string   `json:"cron_expr"`
+	RunAfterMinutes     *int      `json:"run_after_minutes"`
+	RunAfterHours       *int      `json:"run_after_hours"`
+	RunAfterDays        *int      `json:"run_after_days"`
+	RunAfterWeeks       *int      `json:"run_after_weeks"`
+	RunAfterMonths      *int      `json:"run_after_months"`
+	TriggerMode         *string   `json:"trigger_mode"`
+	Message             *string   `json:"message"`
+	ToolListNames       *[]string `json:"tool_list_names"`
+	AllEnabledPlatforms *bool     `json:"all_enabled_platforms"`
+	Enabled             *bool     `json:"enabled"`
 }
 
 type cronNameArgs struct {
@@ -98,6 +100,7 @@ func (t CronCreateTool) Schema() llm.ToolSchema {
 		Integer("run_after_months", "一次性任务相对当前时间的日历月偏移。\n** 用户说几个月后时优先使用\n~ run_at 同时传").
 		String("trigger_mode", "触发模式：direct 或 llm。direct 直接发消息；llm 后台运行 LLM 处理复杂任务。", tool.Required()).
 		String("message", "trigger_mode=direct：使用普通自然语言通知文本。\ntrigger_mode=llm：使用 ELyph #task <name> - 描述 任务文本。", tool.Required()).
+		StringArray("tool_list_names", "trigger_mode=llm 时预注入的工具名列表；只传工具名。 ").
 		Boolean("all_enabled_platforms", "是否发送给所有平台超级管理员。 ").
 		Boolean("enabled", "创建后是否启用，默认 true。 ").
 		BuildSchema()
@@ -116,7 +119,8 @@ func (t CronCreateTool) Call(ctx context.Context, req tool.CallRequest) (*tool.R
 	if err != nil {
 		return nil, err
 	}
-	job, err := t.service.Create(ctx, elcron.UpsertRequest{Name: args.Name, Title: args.Title, ScheduleMode: elcron.ScheduleMode(args.ScheduleMode), RunAt: runAt, CronExpr: args.CronExpr, TriggerMode: elcron.TriggerMode(args.TriggerMode), Message: args.Message, AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: enabled, Actor: actor, SourcePlatform: actor.Platform})
+	job, err := t.service.Create(ctx, elcron.UpsertRequest{Name: args.Name, Title: args.Title, ScheduleMode: elcron.ScheduleMode(args.ScheduleMode), RunAt: runAt, CronExpr: args.CronExpr, TriggerMode: elcron.TriggerMode(args.TriggerMode), Message: args.Message, ToolListNames: args.ToolListNames, AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: enabled, Actor: actor, SourcePlatform: actor.Platform})
+
 	if err != nil {
 		return nil, err
 	}
@@ -141,6 +145,7 @@ func (t CronUpdateTool) Schema() llm.ToolSchema {
 		Integer("run_after_months", "一次性任务相对当前时间的日历月偏移。\n** 用户说几个月后时优先使用\n~ run_at 同时传").
 		String("trigger_mode", "触发模式：direct 或 llm。direct 直接发消息；llm 后台运行 LLM 处理复杂任务。 ").
 		String("message", "trigger_mode=direct：使用普通自然语言通知文本。\ntrigger_mode=llm：使用 ELyph #task <name> - 描述 任务文本。").
+		StringArray("tool_list_names", "替换预注入工具名列表；只传工具名。传空数组表示清空。 ").
 		Boolean("all_enabled_platforms", "是否广播到所有 enabled 平台超级管理员。 ").
 		Boolean("enabled", "是否启用。false 表示停用但保留记录。 ").
 		BuildSchema()
@@ -154,7 +159,8 @@ func (t CronUpdateTool) Call(ctx context.Context, req tool.CallRequest) (*tool.R
 	if err != nil {
 		return nil, err
 	}
-	patch := elcron.PatchRequest{Name: args.Name, Title: args.Title, RunAt: runAt, CronExpr: args.CronExpr, Message: args.Message, AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: args.Enabled, Actor: actorFromContext(ctx)}
+	patch := elcron.PatchRequest{Name: args.Name, Title: args.Title, RunAt: runAt, CronExpr: args.CronExpr, Message: args.Message, ToolListNames: args.ToolListNames, AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: args.Enabled, Actor: actorFromContext(ctx)}
+
 	if args.ScheduleMode != nil {
 		v := elcron.ScheduleMode(*args.ScheduleMode)
 		patch.ScheduleMode = &v

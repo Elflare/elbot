@@ -53,7 +53,11 @@ func formatTools(deps Deps) string {
 	var sb strings.Builder
 	sb.WriteString("tools:\n")
 	for _, info := range infos {
-		sb.WriteString(fmt.Sprintf("  %s [%s] %s\n", info.Name, info.Source, info.Description))
+		tags := ""
+		if len(info.Tags) > 0 {
+			tags = " tags=" + strings.Join(info.Tags, ",")
+		}
+		sb.WriteString(fmt.Sprintf("  %s [%s]%s %s\n", info.Name, info.Source, tags, info.Description))
 	}
 	return sb.String()
 }
