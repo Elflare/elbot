@@ -96,7 +96,7 @@
 
 - `internal/hook/builtin/register.go`：随程序发布的 Hook 插件注册入口；组合规则插件、表情插件和常驻记忆 Hook，app 层传配置目录、日志、安全策略、工具 Registry、resident memory store、审计和可选通知回调。
 - `internal/hook/rules/rules.go`：TOML Rule Hook 插件，读取 `plugins/hooks.toml`。
-- `internal/hook/plugins/emoticon/emoticon.go`：表情 Hook；匹配 LLM 输出中的 `[[表情名]]`，删除 token，并把本地随机表情图延后到最终回复后发送。
+- `internal/hook/plugins/emoticon/emoticon.go`：表情 Hook；匹配 LLM 输出中的 `[[表情名]]`，发送本地随机表情图。
 - `internal/hook/plugins/resident_memory/resident_memory.go`：常驻记忆 Hook；每 turn 注入当前 platform + actor 的常驻记忆和临时用户名。
 
 ### Hook/插件约定

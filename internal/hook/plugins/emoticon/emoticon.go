@@ -33,6 +33,7 @@ type Config struct {
 	Enabled  *bool  `toml:"enabled"`
 	Priority int    `toml:"priority"`
 	RootDir  string `toml:"root_dir"`
+	Timing   string `toml:"timing"`
 }
 
 // Module extracts LLM emoticon tokens into separate output intents.
@@ -89,9 +90,9 @@ func (m Module) rewriteLLMEmoticons(_ context.Context, event hook.Event) (hook.E
 		}
 		changed = true
 		if path := pickImage(m.Config.RootDir, name); path != "" {
-			event.Outputs = append(event.Outputs, output.WithDeliveryTiming(output.EmoticonPath(name, path), output.DeliveryAfterAssistant))
+			event.Outputs = append(event.Outputs, output.WithDeliveryTiming(output.EmoticonPath(name, path), m.Config.timing()))
 		} else {
-			event.Outputs = append(event.Outputs, output.WithDeliveryTiming(output.Emoticon(name), output.DeliveryAfterAssistant))
+			event.Outputs = append(event.Outputs, output.WithDeliveryTiming(output.Emoticon(name), m.Config.timing()))
 		}
 		return ""
 	})
@@ -118,6 +119,9 @@ func loadConfig(configDir string) (Config, string, error) {
 	if err := toml.Unmarshal(data, &cfg); err != nil {
 		return Config{}, path, fmt.Errorf("parse emoticon config %q: %w", path, err)
 	}
+	if err := validateTiming(cfg.Timing); err != nil {
+		return Config{}, path, fmt.Errorf("parse emoticon config %q: %w", path, err)
+	}
 	return cfg, path, nil
 }
 
@@ -130,6 +134,23 @@ func (c Config) priority() int {
 		return DefaultPriority
 	}
 	return c.Priority
+}
+
+func (c Config) timing() string {
+	timing := strings.TrimSpace(c.Timing)
+	if timing == "" {
+		return output.DeliveryImmediate
+	}
+	return timing
+}
+
+func validateTiming(timing string) error {
+	switch strings.TrimSpace(timing) {
+	case "", output.DeliveryImmediate, output.DeliveryAfterAssistant:
+		return nil
+	default:
+		return fmt.Errorf("unsupported timing %q", timing)
+	}
 }
 
 func emoticonDirExists(rootDir, name string) bool {

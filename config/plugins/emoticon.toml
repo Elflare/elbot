@@ -1,8 +1,8 @@
 # Code Hook plugin: emoticon.
 # This plugin handles complex logic that is not suitable for declarative rules.
 # It runs on llm.response.received, extracts tokens like [[微笑]], removes them from
-# llm.text, and appends emoticon outputs after the final assistant text. The
-# assistant raw text remains unchanged.
+# llm.text, and appends emoticon outputs according to timing. The assistant raw
+# text remains unchanged.
 
 
 # Optional. Defaults to true.
@@ -10,6 +10,11 @@ enabled = true
 
 # Optional. Defaults to 1000. Smaller priority runs earlier at the same hook point.
 priority = 1000
+
+# Optional. Defaults to immediate when omitted. Keep this explicit so emoticon
+# uses the same delivery timing field as hooks.toml send actions.
+# Values: immediate, after_assistant.
+timing = "after_assistant"
 
 # Parent directory of emoticon categories. For token [[微笑]], the plugin randomly
 # picks an image from root_dir/微笑/. Supported extensions: jpg, jpeg, png, gif, webp.

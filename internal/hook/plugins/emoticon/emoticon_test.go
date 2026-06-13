@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"elbot/internal/hook"
@@ -47,8 +48,8 @@ func TestModuleExtractsOutputsAndCleansContent(t *testing.T) {
 		if event.Outputs[i].Kind != output.KindEmoticon || event.Outputs[i].Name != want {
 			t.Fatalf("output[%d] = %#v, want emoticon %q", i, event.Outputs[i], want)
 		}
-		if got := output.DeliveryTiming(event.Outputs[i]); got != output.DeliveryAfterAssistant {
-			t.Fatalf("output[%d] timing = %q, want %q", i, got, output.DeliveryAfterAssistant)
+		if got := output.DeliveryTiming(event.Outputs[i]); got != output.DeliveryImmediate {
+			t.Fatalf("output[%d] timing = %q, want %q", i, got, output.DeliveryImmediate)
 		}
 	}
 }
@@ -91,6 +92,37 @@ func TestModuleOnlyConsumesKnownTokens(t *testing.T) {
 	}
 }
 
+func TestModuleUsesConfiguredTiming(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "微笑"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	module := Module{Config: Config{RootDir: root, Timing: output.DeliveryAfterAssistant}}
+	event, err := module.rewriteLLMEmoticons(context.Background(), hook.Event{
+		Point: hook.PointLLMResponseReceived,
+		LLM:   hook.LLMPayload{Text: "你好 [[微笑]]"},
+	})
+	if err != nil {
+		t.Fatalf("rewrite: %v", err)
+	}
+	if len(event.Outputs) != 1 {
+		t.Fatalf("outputs = %#v", event.Outputs)
+	}
+	if got := output.DeliveryTiming(event.Outputs[0]); got != output.DeliveryAfterAssistant {
+		t.Fatalf("timing = %q, want %q", got, output.DeliveryAfterAssistant)
+	}
+}
+
+func TestLoadConfigRejectsUnsupportedTiming(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(`timing = "later"`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if _, _, err := loadConfig(dir); err == nil || !strings.Contains(err.Error(), `unsupported timing "later"`) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestLoadConfigInvalidTOML(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte("root_dir ="), 0o644); err != nil {
@@ -127,8 +159,8 @@ func TestModulePicksImage(t *testing.T) {
 	if got.Kind != output.KindEmoticon || got.Name != "滑稽" || got.Source.Path != path {
 		t.Fatalf("output = %#v", got)
 	}
-	if timing := output.DeliveryTiming(got); timing != output.DeliveryAfterAssistant {
-		t.Fatalf("timing = %q, want %q", timing, output.DeliveryAfterAssistant)
+	if timing := output.DeliveryTiming(got); timing != output.DeliveryImmediate {
+		t.Fatalf("timing = %q, want %q", timing, output.DeliveryImmediate)
 	}
 }
 
