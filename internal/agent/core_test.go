@@ -1412,11 +1412,16 @@ func TestChatExecutesAllToolCallsInSameRound(t *testing.T) {
 
 func TestChatToolMaxRoundsPerTurnRequestsSummary(t *testing.T) {
 	p := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_2", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
-		{{DeltaContent: "summary"}},
-	}}
+	secondStarted := make(chan struct{})
+	secondRelease := make(chan struct{})
+	f := &fakeLLM{
+		chunks: [][]llm.StreamChunk{
+			{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
+			{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_2", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
+			{{DeltaContent: "summary"}},
+		},
+		chatBlocks: []fakeLLMBlock{{}, {started: secondStarted, release: secondRelease}},
+	}
 	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	a.SetToolConfig(config.ToolsConfig{MaxRoundsPerTurn: 1})
@@ -1424,9 +1429,26 @@ func TestChatToolMaxRoundsPerTurnRequestsSummary(t *testing.T) {
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
 	a.SetToolRuntime(registry, nil)
+	ctx := context.Background()
 
-	if err := a.HandleMessage(context.Background(), "看看目录"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
+	done := make(chan error, 1)
+	go func() { done <- a.HandleMessage(ctx, "看看目录") }()
+	select {
+	case <-secondStarted:
+	case <-time.After(time.Second):
+		t.Fatal("second LLM request did not start")
+	}
+	if err := a.HandleMessage(ctx, "这是追加"); err != nil {
+		t.Fatalf("pending HandleMessage: %v", err)
+	}
+	close(secondRelease)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("HandleMessage: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("tool flow did not finish")
 	}
 	requests := f.chatRequests()
 	if len(requests) != 3 {
@@ -1436,17 +1458,27 @@ func TestChatToolMaxRoundsPerTurnRequestsSummary(t *testing.T) {
 	if len(summaryReq.Tools) != 0 {
 		t.Fatalf("summary request should not include tools: %#v", summaryReq.Tools)
 	}
-	var skipped, summaryPrompt bool
-	for _, msg := range summaryReq.Messages {
-		if msg.ToolCallID == "call_2" && strings.Contains(llm.SegmentsContentText(msg.Segments), "max_rounds_per_turn") {
-			skipped = true
+	assistantIdx, skippedIdx, pendingIdx, summaryPromptIdx := -1, -1, -1, -1
+	for i, msg := range summaryReq.Messages {
+		text := llm.SegmentsContentText(msg.Segments)
+		if len(msg.ToolCalls) > 0 && msg.ToolCalls[0].ID == "call_2" {
+			assistantIdx = i
 		}
-		if msg.Role == llm.RoleUser && strings.Contains(llm.SegmentsContentText(msg.Segments), "总结当前进度") {
-			summaryPrompt = true
+		if msg.ToolCallID == "call_2" && strings.Contains(text, "max_rounds_per_turn") {
+			skippedIdx = i
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(text, "这是追加") {
+			pendingIdx = i
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(text, "总结当前进度") {
+			summaryPromptIdx = i
 		}
 	}
-	if !skipped || !summaryPrompt {
-		t.Fatalf("missing skipped tool message or summary prompt: %#v", summaryReq.Messages)
+	if assistantIdx < 0 || skippedIdx < 0 || pendingIdx < 0 || summaryPromptIdx < 0 {
+		t.Fatalf("missing assistant/skipped/pending/summary message: %#v", summaryReq.Messages)
+	}
+	if !(assistantIdx < skippedIdx && skippedIdx < pendingIdx && pendingIdx < summaryPromptIdx) {
+		t.Fatalf("invalid summary message order: assistant=%d skipped=%d pending=%d summary=%d messages=%#v", assistantIdx, skippedIdx, pendingIdx, summaryPromptIdx, summaryReq.Messages)
 	}
 	if !strings.Contains(p.out.String(), "summary") {
 		t.Fatalf("missing summary output: %q", p.out.String())

@@ -234,8 +234,8 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleAssistant, Segments: llm.TextSegments(assistantRawText), ToolCalls: result.ToolCalls})
 		if toolRounds >= a.maxToolRoundsPerTurn() {
 			a.sendPreview(ctx, fmt.Sprintf("已达到 max_rounds_per_turn=%d，后续工具调用未执行，正在请求模型总结当前进度。", a.maxToolRoundsPerTurn()))
-			llmMessages = a.drainPendingUserInput(session.ID, llmMessages, &turnMessages)
 			llmMessages = append(llmMessages, skippedToolMessages(result.ToolCalls, a.maxToolRoundsPerTurn())...)
+			llmMessages = a.drainPendingUserInput(session.ID, llmMessages, &turnMessages)
 			llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("工具调用轮次已达到上限，请基于已有工具结果和当前上下文总结当前进度，不要继续调用工具。")})
 			tools = nil
 			stream := a.startMessageStream(reqCtx)
