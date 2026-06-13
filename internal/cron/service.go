@@ -487,11 +487,6 @@ func (s *Service) deliverMissedOnce(ctx context.Context, job storage.CronJob, me
 	} else if meta.Trigger.Mode == TriggerLLM {
 		generatedLLM := false
 		if !meta.Delivery.Completed {
-			// LLM missed once 的报告只生成一次，并优先由 cli 补跑生成后缓存到 metadata。
-			// 其他平台稍后复用同一份 report，避免多平台重连时重复消耗 LLM 和生成不一致报告。
-			if platformName != "cli" {
-				return nil
-			}
 			updated, llmReport, err := s.runLLMReport(ctx, job, meta)
 			meta = updated
 			report = strings.TrimSpace(llmReport)

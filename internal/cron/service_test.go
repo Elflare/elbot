@@ -92,7 +92,7 @@ func TestNotifyPlatformConnectedDeliversMissedDirectCronPerPlatform(t *testing.T
 	}
 }
 
-func TestNotifyPlatformConnectedUsesCachedLLMReportForLaterPlatforms(t *testing.T) {
+func TestNotifyPlatformConnectedGeneratesLLMReportForFirstConnectedTarget(t *testing.T) {
 	repo := newFakeCronRepo()
 	store := fakeCronStore{cron: repo}
 	runner := &fakeCronRunner{text: `{"completed":true,"need_report":true,"report":"报告内容"}`}
@@ -107,18 +107,26 @@ func TestNotifyPlatformConnectedUsesCachedLLMReportForLaterPlatforms(t *testing.
 		},
 	})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
-	upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "总结", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
+	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "总结", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
 
 	svc.NotifyPlatformConnected(context.Background(), "qqonebot")
-	if runner.calls != 0 || len(sent) != 0 {
-		t.Fatalf("qq before cli should not run/send: calls=%d sent=%#v", runner.calls, sent)
+	if runner.calls != 1 {
+		t.Fatalf("runner calls after qq = %d", runner.calls)
 	}
+	if len(sent) != 1 || sent[0] != "qqonebot:报告内容" {
+		t.Fatalf("sent after qq = %#v", sent)
+	}
+	meta := mustDecodeTestMetadata(t, repo.jobs[job.Name].Metadata)
+	if !meta.Delivery.Completed || meta.Delivery.Report != "报告内容" || !hasDeliveredPlatform(meta, "qqonebot") {
+		t.Fatalf("metadata after qq = %#v", meta.Delivery)
+	}
+
 	svc.NotifyPlatformConnected(context.Background(), "cli")
 	if runner.calls != 1 {
-		t.Fatalf("runner calls = %d", runner.calls)
+		t.Fatalf("runner should reuse cached report, calls = %d", runner.calls)
 	}
-	if len(sent) != 2 || sent[0] != "cli:报告内容" || sent[1] != "qqonebot:报告内容" {
-		t.Fatalf("sent = %#v", sent)
+	if len(sent) != 2 || sent[1] != "cli:报告内容" {
+		t.Fatalf("sent after cli = %#v", sent)
 	}
 	svc.NotifyPlatformConnected(context.Background(), "qqonebot")
 	if runner.calls != 1 || len(sent) != 2 {

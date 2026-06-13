@@ -21,7 +21,7 @@
 ### Cron 与维护任务
 
 - `internal/cron/manager.go`：中央 Cron Runtime；基于 `robfig/cron/v3` 调度持久化 job，提供 handler 注册、job upsert/disable/delete、启动加载、执行日志、运行状态更新、同 job 防并发和未启动 Stop 的安全返回。
-- `internal/cron/service.go`：LLM 可编排 cron 服务；管理用户 cron metadata，支持 once/周期、direct/LLM 触发、missed once 补投递、LLM cron `tool_list_names` 预注入配置、LLM cron JSON 结果解析与失败通知。
+- `internal/cron/service.go`：LLM 可编排 cron 服务；管理用户 cron metadata，支持 once/周期、direct/LLM 触发、missed once 按平台补投递，LLM once 可由首个已连接目标平台生成并缓存报告，后续平台复用；支持 LLM cron `tool_list_names` 预注入、JSON 结果解析与失败通知。
 
 - `internal/maintenance/maintenance.go`：系统维护任务；集中注册维护类 Cron，提供日志、Session、artifact 和聊天历史清理。
 
