@@ -8,7 +8,7 @@ ElBot is a lightweight Agent/Chatbot framework written in Go. It aims to keep ex
 
 ### 0. Lightweight and efficient Go implementation
 
-ElBot is implemented in Go, with fast startup, simple deployment, and low resource usage. In the current local environment, startup takes about 2ms and resident memory is about 20MB. It is suitable for long-running use on personal computers, small servers, or lightweight containers. Compared with large Agent frameworks that depend on complex runtimes, ElBot focuses more on controllability, stability, and maintainability.
+ElBot is implemented in Go, startup takes about 2ms and resident memory is about 30MB.
 
 ### 1. Token-efficient tool discovery
 
