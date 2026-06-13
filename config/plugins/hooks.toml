@@ -25,10 +25,13 @@
 # Single action:
 # action = "send"        # send/prepend/append/replace/delete/tool
 # text = "..."
+# timing = "after_assistant" # optional for send outputs; default immediate.
+#                            # Use after_assistant to send after the final assistant text.
 #
 # Multiple actions run in order:
 # actions = [
 #   { type = "replace", field = "message.text", pattern = "猫", replace = "狗", all = true },
+#   { type = "send", kind = "text", text = "检测到关键词", timing = "after_assistant" },
 #   { type = "append", field = "message.text", text = "!" },
 # ]
 #

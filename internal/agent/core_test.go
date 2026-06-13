@@ -374,6 +374,30 @@ func TestNonStreamingPlatformSendsOnlyHookText(t *testing.T) {
 	}
 }
 
+func TestAfterAssistantOutputsAreSentAfterFinalText(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final text"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	if err := manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "test.outputs", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		event.Outputs = append(event.Outputs,
+			output.Text("immediate"),
+			output.WithDeliveryTiming(output.Text("after"), output.DeliveryAfterAssistant),
+		)
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register response hook: %v", err)
+	}
+	a.SetHookManager(manager)
+
+	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if got, want := p.out.String(), "immediate\nfinal text\nafter\n"; got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
+
 func TestCompleteForkMessageID(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{}

@@ -56,6 +56,7 @@ type Rule struct {
 	Replace  string           `toml:"replace"`
 	Kind     string           `toml:"kind"`
 	Path     string           `toml:"path"`
+	Timing   string           `toml:"timing"`
 	Tool     string           `toml:"tool"`
 	Args     string           `toml:"arguments"`
 	All      bool             `toml:"all"`
@@ -72,6 +73,7 @@ type Action struct {
 	Replace   string `toml:"replace"`
 	Kind      string `toml:"kind"`
 	Path      string `toml:"path"`
+	Timing    string `toml:"timing"`
 	Tool      string `toml:"tool"`
 	Arguments string `toml:"arguments"`
 	All       bool   `toml:"all"`
@@ -236,6 +238,7 @@ func (r Rule) inlineAction() Action {
 		Replace:   r.Replace,
 		Kind:      r.Kind,
 		Path:      r.Path,
+		Timing:    r.Timing,
 		Tool:      r.Tool,
 		Arguments: r.Args,
 		All:       r.All,
@@ -277,8 +280,20 @@ func validateRule(rule Rule) error {
 		if strings.TrimSpace(action.Type) == "" {
 			return fmt.Errorf("hook rule %q has action without type", rule.Name)
 		}
+		if err := validateActionTiming(action.Timing); err != nil {
+			return fmt.Errorf("hook rule %q action %q: %w", rule.Name, firstNonEmpty(action.Name, action.Type), err)
+		}
 	}
 	return nil
+}
+
+func validateActionTiming(timing string) error {
+	switch strings.TrimSpace(timing) {
+	case "", output.DeliveryImmediate, output.DeliveryAfterAssistant:
+		return nil
+	default:
+		return fmt.Errorf("unsupported timing %q", timing)
+	}
 }
 
 func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.Event, error) {
@@ -503,6 +518,7 @@ func makeOutput(action Action, event hook.Event, state state) (output.Output, er
 		GroupID:       render(action.Target.GroupID, event, state),
 		Superadmins:   action.Target.Superadmins,
 	}
+	out = output.WithDeliveryTiming(out, render(action.Timing, event, state))
 	if strings.TrimSpace(out.Target.Platform) == "" && event.Point == hook.PointPlatformConnected {
 		out.Target.Platform = event.Platform.Name
 	}

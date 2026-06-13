@@ -1,7 +1,8 @@
 # Code Hook plugin: emoticon.
 # This plugin handles complex logic that is not suitable for declarative rules.
 # It runs on llm.response.received, extracts tokens like [[微笑]], removes them from
-# llm.text, and appends emoticon outputs. The assistant raw text remains unchanged.
+# llm.text, and appends emoticon outputs after the final assistant text. The
+# assistant raw text remains unchanged.
 
 
 # Optional. Defaults to true.

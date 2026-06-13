@@ -9,6 +9,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/output"
 	"elbot/internal/platform"
 	"elbot/internal/request"
 	"elbot/internal/storage"
@@ -39,6 +40,22 @@ func (a *Agent) replaceAndFinishStream(ctx context.Context, streamCtx context.Co
 	}
 	_, err := stream.Finish(streamCtx)
 	return err
+}
+
+func splitOutputsByDeliveryTiming(outputs []output.Output) ([]output.Output, []output.Output) {
+	if len(outputs) == 0 {
+		return nil, nil
+	}
+	immediate := make([]output.Output, 0, len(outputs))
+	deferred := make([]output.Output, 0)
+	for _, out := range outputs {
+		if output.DeliveryTiming(out) == output.DeliveryAfterAssistant {
+			deferred = append(deferred, out)
+			continue
+		}
+		immediate = append(immediate, out)
+	}
+	return immediate, deferred
 }
 
 func (a *Agent) replaceStreamOutput(ctx context.Context, streamCtx context.Context, stream platform.MessageStream, text string) error {
@@ -171,6 +188,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	var finalRawText string
 	var platformFinalText string
 	var finalStream platform.MessageStream
+	var deferredOutputs []output.Output
 	var usage *llm.Usage
 	turnMessages := []storage.Message{}
 	toolRounds := 0
@@ -201,7 +219,9 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		if result.Usage != nil {
 			usage = result.Usage
 		}
-		if err := a.sendOutputs(ctx, result.Outputs); err != nil {
+		immediateOutputs, laterOutputs := splitOutputsByDeliveryTiming(result.Outputs)
+		deferredOutputs = append(deferredOutputs, laterOutputs...)
+		if err := a.sendOutputs(ctx, immediateOutputs); err != nil {
 			return err
 		}
 		if len(result.ToolCalls) == 0 {
@@ -247,7 +267,9 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 				// TODO: 后续支持强制 tool_choice=none；当前总结请求已不传 tools，若仍返回工具调用则忽略。
 				a.sendPreview(ctx, "总结请求仍返回了工具调用，已忽略。")
 			}
-			if err := a.sendOutputs(ctx, summary.Outputs); err != nil {
+			immediateOutputs, laterOutputs := splitOutputsByDeliveryTiming(summary.Outputs)
+			deferredOutputs = append(deferredOutputs, laterOutputs...)
+			if err := a.sendOutputs(ctx, immediateOutputs); err != nil {
 				return err
 			}
 			summaryText := summary.Text
@@ -300,6 +322,12 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		}
 	}
 
+	if !bufferOutput {
+		if err := a.sendOutputs(ctx, deferredOutputs); err != nil {
+			return err
+		}
+	}
+
 	// 工具调用消息按 OpenAI messages 形态保存；discover 结果持久化时会压缩 schema，避免历史上下文膨胀。
 	assistantMessage := &storage.Message{
 		SessionID: session.ID,
@@ -325,13 +353,18 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		a.audit("persistence_error", "session_id", session.ID, "operation", "append_assistant_message", "error", err.Error())
 		return err
 	}
-	if bufferOutput && strings.TrimSpace(platformOutputText) != "" {
-		receipt, err := a.sendChatWithReceipt(ctx, platformOutputText)
-		if err != nil {
-			a.audit("platform_send_error", "session_id", session.ID, "operation", "send_assistant_message", "error", err.Error())
+	if bufferOutput {
+		if strings.TrimSpace(platformOutputText) != "" {
+			receipt, err := a.sendChatWithReceipt(ctx, platformOutputText)
+			if err != nil {
+				a.audit("platform_send_error", "session_id", session.ID, "operation", "send_assistant_message", "error", err.Error())
+				return err
+			}
+			a.mapSentAssistantMessage(ctx, session.ID, assistantMessage.ID, receipt)
+		}
+		if err := a.sendOutputs(ctx, deferredOutputs); err != nil {
 			return err
 		}
-		a.mapSentAssistantMessage(ctx, session.ID, assistantMessage.ID, receipt)
 	}
 	if err := a.sessions.Touch(ctx, session); err != nil {
 		a.audit("persistence_error", "session_id", session.ID, "operation", "touch_session", "error", err.Error())

@@ -27,9 +27,15 @@ type Target struct {
 }
 
 const (
-	MetaHookPoint = "hook.point"
-	MetaHookName  = "hook.name"
-	MetaHookMode  = "hook.mode"
+	MetaHookPoint      = "hook.point"
+	MetaHookName       = "hook.name"
+	MetaHookMode       = "hook.mode"
+	MetaDeliveryTiming = "delivery.timing"
+)
+
+const (
+	DeliveryImmediate      = "immediate"
+	DeliveryAfterAssistant = "after_assistant"
 )
 
 func (t Target) Empty() bool {
@@ -52,6 +58,26 @@ type Output struct {
 	Source                   Source
 	Target                   Target
 	Meta                     map[string]any
+}
+
+func WithDeliveryTiming(out Output, timing string) Output {
+	timing = strings.TrimSpace(timing)
+	if timing == "" || timing == DeliveryImmediate {
+		return out
+	}
+	if out.Meta == nil {
+		out.Meta = map[string]any{}
+	}
+	out.Meta[MetaDeliveryTiming] = timing
+	return out
+}
+
+func DeliveryTiming(out Output) string {
+	timing := outputMetaString(out, MetaDeliveryTiming)
+	if timing == "" {
+		return DeliveryImmediate
+	}
+	return timing
 }
 
 func Text(text string) Output {

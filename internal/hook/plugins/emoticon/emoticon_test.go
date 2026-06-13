@@ -47,6 +47,9 @@ func TestModuleExtractsOutputsAndCleansContent(t *testing.T) {
 		if event.Outputs[i].Kind != output.KindEmoticon || event.Outputs[i].Name != want {
 			t.Fatalf("output[%d] = %#v, want emoticon %q", i, event.Outputs[i], want)
 		}
+		if got := output.DeliveryTiming(event.Outputs[i]); got != output.DeliveryAfterAssistant {
+			t.Fatalf("output[%d] timing = %q, want %q", i, got, output.DeliveryAfterAssistant)
+		}
 	}
 }
 
@@ -123,6 +126,9 @@ func TestModulePicksImage(t *testing.T) {
 	got := event.Outputs[0]
 	if got.Kind != output.KindEmoticon || got.Name != "滑稽" || got.Source.Path != path {
 		t.Fatalf("output = %#v", got)
+	}
+	if timing := output.DeliveryTiming(got); timing != output.DeliveryAfterAssistant {
+		t.Fatalf("timing = %q, want %q", timing, output.DeliveryAfterAssistant)
 	}
 }
 

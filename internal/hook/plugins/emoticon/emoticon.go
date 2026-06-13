@@ -89,9 +89,9 @@ func (m Module) rewriteLLMEmoticons(_ context.Context, event hook.Event) (hook.E
 		}
 		changed = true
 		if path := pickImage(m.Config.RootDir, name); path != "" {
-			event.Outputs = append(event.Outputs, output.EmoticonPath(name, path))
+			event.Outputs = append(event.Outputs, output.WithDeliveryTiming(output.EmoticonPath(name, path), output.DeliveryAfterAssistant))
 		} else {
-			event.Outputs = append(event.Outputs, output.Emoticon(name))
+			event.Outputs = append(event.Outputs, output.WithDeliveryTiming(output.Emoticon(name), output.DeliveryAfterAssistant))
 		}
 		return ""
 	})
