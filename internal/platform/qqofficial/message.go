@@ -2,9 +2,10 @@ package qqofficial
 
 import (
 	"context"
-	"path"
+	"fmt"
 	"strings"
 
+	"elbot/internal/output"
 	"elbot/internal/platform"
 )
 
@@ -21,7 +22,8 @@ func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.Platfor
 		return
 	}
 	text := strings.TrimSpace(msg.Content)
-	segments := c2cSegments(text, msg.Attachments)
+	saved := a.saveInboundAttachments(ctx, openID, msg.ID, msg.Attachments)
+	segments := c2cSegments(text, saved)
 	if text == "" && len(segments) == 0 {
 		return
 	}
@@ -42,28 +44,49 @@ func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.Platfor
 	}
 	msgCtx := platform.WithMessageContext(ctx, messageCtx)
 	msgCtx = context.WithValue(msgCtx, targetKey{}, sendTarget{OpenID: openID, MsgID: msg.ID})
+	if text == "" && len(saved) > 0 {
+		if _, err := a.SendChat(msgCtx, platformSavedAttachmentsOutput(saved)); err != nil {
+			a.logWarn(ctx, "send qqofficial attachment saved notice failed", "error", err, "message_id", msg.ID)
+		}
+		return
+	}
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
 		a.logWarn(ctx, "handle qqofficial message failed", "error", err, "message_id", msg.ID)
 	}
 }
 
-func c2cSegments(text string, attachments []messageAttachment) []platform.MessageSegment {
+func c2cSegments(text string, attachments []savedAttachment) []platform.MessageSegment {
 	segments := make([]platform.MessageSegment, 0, 1+len(attachments))
 	if strings.TrimSpace(text) != "" {
 		segments = append(segments, platform.MessageSegment{Type: platform.SegmentText, Text: text})
 	}
 	for _, attachment := range attachments {
 		url := strings.TrimSpace(attachment.URL)
-		if url == "" {
+		if url == "" && attachment.Path == "" {
 			continue
 		}
 		segmentType := platform.SegmentFile
-		if isImageURL(url) {
+		if isImageURL(url) || isImageURL(attachment.Path) {
 			segmentType = platform.SegmentImage
 		}
-		segments = append(segments, platform.MessageSegment{Type: segmentType, URL: url, Name: path.Base(url)})
+		segments = append(segments, platform.MessageSegment{Type: segmentType, URL: url, Name: attachment.Path})
 	}
 	return segments
+}
+
+func platformSavedAttachmentsOutput(attachments []savedAttachment) output.Output {
+	var sb strings.Builder
+	for _, attachment := range attachments {
+		if attachment.Path == "" {
+			continue
+		}
+		name := attachment.Name
+		if name == "" {
+			name = attachment.Path
+		}
+		sb.WriteString(fmt.Sprintf("已保存附件：%s\n路径：%s\n", name, attachment.Path))
+	}
+	return output.Text(sb.String())
 }
 
 func isImageURL(value string) bool {

@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"log/slog"
+	"path/filepath"
 
 	"elbot/internal/config"
 	"elbot/internal/platform"
@@ -24,7 +25,8 @@ func New(cfg *config.Config, store storage.Store, chatHistory storage.ChatHistor
 		return bundle, nil
 	}
 	if raw, ok := cfg.Platform["qqofficial"]; ok {
-		adapter, err := qqofficial.NewFromPlatformConfig(raw, logger, cfg.Security.Superadmins["qqofficial"])
+		artifactDir := filepath.Join(cfg.Sandbox.Root, "artifact")
+		adapter, err := qqofficial.NewFromPlatformConfig(raw, logger, cfg.Security.Superadmins["qqofficial"], artifactDir)
 		if err != nil {
 			return Bundle{}, err
 		}
