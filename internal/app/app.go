@@ -163,13 +163,13 @@ func Run(ctx context.Context, opts Options) error {
 		<-cronManager.Stop().Done()
 	}()
 
-	adapter := openai.NewWithModelExtraPayloads(provider.BaseURL, provider.APIKey, provider.ExtraPayload, modelExtraPayloads(provider.ModelConfigs))
+	adapter := openai.NewWithOptions(provider.BaseURL, provider.APIKey, provider.ExtraPayload, modelExtraPayloads(provider.ModelConfigs), appLLMRequestOptions(cfg.LLMRequest))
 	adapter.SetLogger(logger)
 	namingAdapter := adapter
 	namingModel := ""
 	if cfg.NamingModel.Provider != "" && cfg.NamingModel.Model != "" {
 		if namingProvider, ok := cfg.Providers[cfg.NamingModel.Provider]; ok {
-			namingAdapter = openai.NewWithModelExtraPayloads(namingProvider.BaseURL, namingProvider.APIKey, namingProvider.ExtraPayload, modelExtraPayloads(namingProvider.ModelConfigs))
+			namingAdapter = openai.NewWithOptions(namingProvider.BaseURL, namingProvider.APIKey, namingProvider.ExtraPayload, modelExtraPayloads(namingProvider.ModelConfigs), appLLMRequestOptions(cfg.LLMRequest))
 			namingAdapter.SetLogger(logger)
 			namingModel = cfg.NamingModel.Model
 		} else {
@@ -244,7 +244,7 @@ func Run(ctx context.Context, opts Options) error {
 		notifyHookIssue(context.Background(), fmt.Sprintf("Cron Hook 注册失败：%v", err))
 	}
 	profiler.Mark("hook register")
-	agt = agent.NewWithOptions(platforms.Primary, adapter, workModel.Provider, cfg.ModeModels, cfg.Providers, cfg.StateConfigPath, store, cfg.Commands.Prefixes, session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode}, cfg.NamingModel, namingAdapter, namingModel, namingLogger{logger: logger}, cfg.Soul.Path)
+	agt = agent.NewWithRequestConfig(platforms.Primary, adapter, workModel.Provider, cfg.ModeModels, cfg.Providers, cfg.StateConfigPath, store, cfg.Commands.Prefixes, session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode}, cfg.NamingModel, namingAdapter, namingModel, namingLogger{logger: logger}, cfg.Soul.Path, cfg.LLMRequest)
 	agt.SetHookManager(hooks)
 	agt.SetOutputManager(output.NewManager(nil, logger))
 	agt.SetSessionListPageSize(cfg.View.SessionListPageSize)
@@ -420,6 +420,14 @@ func platformConfigEnabled(raw map[string]any) bool {
 	}
 	enabled, ok := value.(bool)
 	return ok && enabled
+}
+
+func appLLMRequestOptions(cfg config.LLMRequestConfig) openai.RequestOptions {
+	return openai.RequestOptions{
+		Timeout:           time.Duration(cfg.TimeoutSeconds) * time.Second,
+		MaxRetries:        cfg.MaxRetries,
+		RetryInitialDelay: time.Duration(cfg.RetryInitialDelaySeconds) * time.Second,
+	}
 }
 
 func modelExtraPayloads(modelConfigs map[string]config.ModelConfig) map[string]map[string]any {

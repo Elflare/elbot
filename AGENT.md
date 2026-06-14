@@ -81,10 +81,12 @@
 
 配置约定：默认配置查找顺序为 `--config`、`ELBOT_CONFIG_FILE`、平台配置目录（Windows `%APPDATA%/ElBot/app.toml`；Linux XDG `~/.config/elbot/app.toml`）、最后回退源码目录 `config/app.toml`。静态配置在 `app.toml`，Provider 列表在同目录 `providers.toml`，运行时热切换状态在同目录 `state.toml`；用户可编辑资产集中在配置目录：`memories.toml`、`long_memory/`、`skills/`、`plugins/`，SQLite/logs/sandbox 等运行数据仍按各自配置或默认数据目录存放。Hook/插件配置固定放在同目录 `plugins/<plugin-name>.toml`，规则 Hook 使用 `plugins/hooks.toml`，app 层不解析插件专属字段。Provider key 推荐用 `api_key_env`，读取优先级为系统环境变量 > 配置目录 `.env`。
 
-- `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录/source fallback 解析 `app.toml`，读取并合并 app/provider/state 配置，解析相对路径和 `api_key_env`，包含 sandbox/artifact 与 S3/R2 预留配置。
+- `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录/source fallback 解析 `app.toml`，读取并合并 app/provider/state 配置，解析相对路径和 `api_key_env`，包含 LLM 请求超时/重试、sandbox/artifact 与 S3/R2 预留配置。
+
 - `internal/logging/logging.go`：日志地基；创建运行日志与审计日志的 `slog.Logger`，`Manager` 统一持有 `elbot-YYYY-MM-DD.log`、`audit-YYYY-MM-DD.log` 文件、暴露日志目录和可配置旧日志清理入口。
 - `internal/logging/reader.go`：结构化文本日志读取器；解析 `slog.TextHandler` 输出，支持 `/log`、`/audit` 的时间、等级、字段、msg、latest message 文本和条数过滤，并放宽单行读取上限以支持较大的 Debug 请求体。
-- `config/app.toml`：应用主配置；保存 storage、runtime、context、commands、tools、security、session cleanup、view、platform、soul 等静态设置。
+- `config/app.toml`：应用主配置；保存 storage、runtime、llm_request、context、commands、tools、security、session cleanup、view、platform、soul 等静态设置。
+
 - `config/providers.toml`：Provider 示例配置；保存供应商、模型列表、extra payload 和模型元信息，公开配置只写 `api_key_env` 不写真实 key。
 - `config/state.toml`：热切换状态；保存当前模型选择和默认新会话模式。
 - `config/SOUL.md`：System Prompt 来源文件；两种模式都从这里读取，不把工具发现、常驻记忆、时间或平台信息硬编码进 System Prompt。
@@ -121,7 +123,8 @@
 
 - `internal/llm/llm.go`：LLM 抽象类型；定义带稳定 JSON descriptor 的 `MessageSegment`（text/image/file）、消息、请求、流式 chunk、reasoning delta、usage、模型 metadata、tool call、tool schema 和 `LLM` interface。
 - `internal/llm/segment.go`：内部统一 MessageSegment 工具；区分 `SegmentsTextOnly` 与 `SegmentsContentText`，提供 text segment 原位 prepend/append/regex replace、图片/文件提取、latest user 和 system message helper。
-- `internal/llm/openai/openai.go`：OpenAI-compatible adapter；实现流式 chat completions、多模态转换、模型列表、SSE、usage/reasoning/tool call delta 和错误解析。
+- `internal/llm/openai/openai.go`：OpenAI-compatible adapter；实现流式 chat completions、多模态转换、模型列表、SSE、usage/reasoning/tool call delta、请求超时/重试和错误解析。
+
 
 
 ### Tool Runtime

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/llm"
 )
@@ -526,8 +527,48 @@ func TestChatStream_OmitsEmptyToolsPayload(t *testing.T) {
 	}
 }
 
+func TestRetryDelay(t *testing.T) {
+	initial := 2 * time.Second
+	want := []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second}
+	for attempt, expected := range want {
+		if got := retryDelay(initial, attempt); got != expected {
+			t.Fatalf("attempt %d delay = %s, want %s", attempt, got, expected)
+		}
+	}
+}
+
+func TestChatStream_RetriesRetryableHTTPStatus(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 3 {
+			w.WriteHeader(http.StatusBadGateway)
+			io.WriteString(w, `{"error":{"message":"temporary upstream error"}}`)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: [DONE]\n\n")
+		w.(http.Flusher).Flush()
+	}))
+	defer srv.Close()
+
+	adapter := NewWithOptions(srv.URL, "test-key", nil, nil, RequestOptions{MaxRetries: 3, RetryInitialDelay: time.Millisecond})
+	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "test",
+		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
+	})
+	if err != nil {
+		t.Fatalf("ChatStream: %v", err)
+	}
+	for range ch {
+	}
+	if attempts != 3 {
+		t.Fatalf("attempts = %d, want 3", attempts)
+	}
+}
 func TestChatStream_HTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
 		w.WriteHeader(http.StatusUnauthorized)
 		io.WriteString(w, `{"error":{"message":"invalid api key","type":"auth_error"}}`)
 	}))

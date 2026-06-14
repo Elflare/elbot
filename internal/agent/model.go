@@ -298,7 +298,8 @@ func (a *Agent) clientForProvider(providerName string) llm.LLM {
 		return client
 	}
 	provider := a.providers[providerName]
-	client := openai.NewWithModelExtraPayloads(provider.BaseURL, provider.APIKey, provider.ExtraPayload, agentModelExtraPayloads(provider.ModelConfigs))
+	client := openai.NewWithOptions(provider.BaseURL, provider.APIKey, provider.ExtraPayload, agentModelExtraPayloads(provider.ModelConfigs), llmRequestOptions(a.llmRequestConfig))
+
 	client.SetLogger(a.logger)
 	a.clientsByProvider[providerName] = client
 	return client
@@ -321,8 +322,17 @@ func joinModelMatches(matches []agentcommands.ModelOption) string {
 	return strings.Join(parts, ", ")
 }
 
+func llmRequestOptions(cfg config.LLMRequestConfig) openai.RequestOptions {
+	return openai.RequestOptions{
+		Timeout:           time.Duration(cfg.TimeoutSeconds) * time.Second,
+		MaxRetries:        cfg.MaxRetries,
+		RetryInitialDelay: time.Duration(cfg.RetryInitialDelaySeconds) * time.Second,
+	}
+}
+
 func agentModelExtraPayloads(modelConfigs map[string]config.ModelConfig) map[string]map[string]any {
 	out := map[string]map[string]any{}
+
 	for model, cfg := range modelConfigs {
 		if cfg.ExtraPayload != nil {
 			out[model] = cfg.ExtraPayload

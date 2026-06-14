@@ -34,6 +34,7 @@ type Config struct {
 	View                ViewConfig                `toml:"view"`
 	Security            SecurityConfig            `toml:"security"`
 	Session             SessionConfig             `toml:"session"`
+	LLMRequest          LLMRequestConfig          `toml:"llm_request"`
 	Maintenance         MaintenanceConfig         `toml:"maintenance"`
 	Sandbox             SandboxConfig             `toml:"sandbox"`
 	Artifact            ArtifactConfig            `toml:"artifact"`
@@ -77,6 +78,12 @@ type GlobalDefaultConfig struct {
 type ModelMetadataConfig struct {
 	DefaultContextWindow int            `toml:"default_context_window"`
 	ContextWindows       map[string]int `toml:"context_windows"`
+}
+
+type LLMRequestConfig struct {
+	TimeoutSeconds           int `toml:"timeout_seconds"`
+	MaxRetries               int `toml:"max_retries"`
+	RetryInitialDelaySeconds int `toml:"retry_initial_delay_seconds"`
 }
 
 type StorageConfig struct {
@@ -394,6 +401,15 @@ func (c *Config) applyAppDefaults() {
 	}
 	if c.Tools.MaxRoundsPerTurn <= 0 {
 		c.Tools.MaxRoundsPerTurn = 2
+	}
+	if c.LLMRequest.TimeoutSeconds <= 0 {
+		c.LLMRequest.TimeoutSeconds = 60
+	}
+	if c.LLMRequest.MaxRetries <= 0 {
+		c.LLMRequest.MaxRetries = 3
+	}
+	if c.LLMRequest.RetryInitialDelaySeconds <= 0 {
+		c.LLMRequest.RetryInitialDelaySeconds = 2
 	}
 	if c.View.SessionListPageSize <= 0 {
 		c.View.SessionListPageSize = 10

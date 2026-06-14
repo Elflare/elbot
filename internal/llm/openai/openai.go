@@ -7,15 +7,42 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"elbot/internal/llm"
 )
+
+const (
+	defaultRequestTimeout = 60 * time.Second
+	defaultMaxRetries     = 3
+	defaultRetryDelay     = 2 * time.Second
+)
+
+type RequestOptions struct {
+	Timeout           time.Duration
+	MaxRetries        int
+	RetryInitialDelay time.Duration
+}
+
+func (o RequestOptions) withDefaults() RequestOptions {
+	if o.Timeout <= 0 {
+		o.Timeout = defaultRequestTimeout
+	}
+	if o.MaxRetries <= 0 {
+		o.MaxRetries = defaultMaxRetries
+	}
+	if o.RetryInitialDelay <= 0 {
+		o.RetryInitialDelay = defaultRetryDelay
+	}
+	return o
+}
 
 // Adapter implements llm.LLM for OpenAI-compatible APIs.
 type Adapter struct {
@@ -24,9 +51,12 @@ type Adapter struct {
 	extraPayload       map[string]any
 	modelExtraPayloads map[string]map[string]any
 	client             *http.Client
-	logger             *slog.Logger
-	loggedSystemMu     sync.Mutex
-	loggedSystem       map[string]bool
+	maxRetries         int
+	retryInitialDelay  time.Duration
+
+	logger         *slog.Logger
+	loggedSystemMu sync.Mutex
+	loggedSystem   map[string]bool
 }
 
 // New creates a new OpenAI-compatible adapter.
@@ -35,16 +65,20 @@ func New(baseURL, apiKey string, extraPayload map[string]any) *Adapter {
 }
 
 func NewWithModelExtraPayloads(baseURL, apiKey string, extraPayload map[string]any, modelExtraPayloads map[string]map[string]any) *Adapter {
-	if baseURL == "" {
-		baseURL = "https://api.openai.com/v1"
-	}
+	return NewWithOptions(baseURL, apiKey, extraPayload, modelExtraPayloads, RequestOptions{})
+}
+
+func NewWithOptions(baseURL, apiKey string, extraPayload map[string]any, modelExtraPayloads map[string]map[string]any, opts RequestOptions) *Adapter {
 	baseURL = strings.TrimRight(baseURL, "/")
+	opts = opts.withDefaults()
 	return &Adapter{
 		baseURL:            baseURL,
 		apiKey:             apiKey,
 		extraPayload:       extraPayload,
 		modelExtraPayloads: modelExtraPayloads,
-		client:             &http.Client{},
+		client:             &http.Client{Timeout: opts.Timeout},
+		maxRetries:         opts.MaxRetries,
+		retryInitialDelay:  opts.RetryInitialDelay,
 		loggedSystem:       map[string]bool{},
 	}
 }
@@ -57,8 +91,19 @@ func (a *Adapter) endpoint() string {
 	return strings.TrimRight(a.baseURL, "/") + "/chat/completions"
 }
 
+func (a *Adapter) validateBaseURL() error {
+	if strings.TrimSpace(a.baseURL) == "" {
+		return errors.New("openai base_url is required")
+	}
+	return nil
+}
+
 // ChatStream sends a chat request and returns a channel of streaming chunks.
 func (a *Adapter) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	if err := a.validateBaseURL(); err != nil {
+		return nil, err
+	}
+
 	body := map[string]any{
 		"model":    req.Model,
 		"messages": toOpenAIMessages(req.Messages),
@@ -96,16 +141,17 @@ func (a *Adapter) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan l
 
 	a.logChatRequest(req, bodyBytes)
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, a.endpoint(), bytes.NewReader(bodyBytes))
+	resp, err := a.doWithRetry(ctx, func(ctx context.Context) (*http.Request, error) {
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, a.endpoint(), bytes.NewReader(bodyBytes))
+		if err != nil {
+			return nil, fmt.Errorf("create request: %w", err)
+		}
+		httpReq.Header.Set("Authorization", "Bearer "+a.apiKey)
+		httpReq.Header.Set("Content-Type", "application/json")
+		return httpReq, nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	httpReq.Header.Set("Authorization", "Bearer "+a.apiKey)
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := a.client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("http request: %w", err)
+		return nil, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -116,6 +162,69 @@ func (a *Adapter) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan l
 	ch := make(chan llm.StreamChunk)
 	go a.readStream(ctx, resp.Body, ch)
 	return ch, nil
+}
+
+func (a *Adapter) doWithRetry(ctx context.Context, newRequest func(context.Context) (*http.Request, error)) (*http.Response, error) {
+	var lastErr error
+	for attempt := 0; attempt <= a.maxRetries; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		req, err := newRequest(ctx)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := a.client.Do(req)
+		if err == nil && !isRetryableStatus(resp.StatusCode) {
+			return resp, nil
+		}
+
+		if err != nil {
+			lastErr = fmt.Errorf("http request: %w", err)
+		} else {
+			lastErr = retryableStatusError(resp)
+		}
+
+		if attempt == a.maxRetries {
+			return nil, lastErr
+		}
+		if err := waitRetryDelay(ctx, retryDelay(a.retryInitialDelay, attempt)); err != nil {
+			return nil, err
+		}
+	}
+	return nil, lastErr
+}
+
+func retryDelay(initial time.Duration, attempt int) time.Duration {
+	return initial << attempt
+}
+
+func waitRetryDelay(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func isRetryableStatus(status int) bool {
+	return status == http.StatusRequestTimeout ||
+		status == http.StatusConflict ||
+		status == http.StatusTooEarly ||
+		status == http.StatusTooManyRequests ||
+		status >= http.StatusInternalServerError
+}
+
+func retryableStatusError(resp *http.Response) error {
+	defer resp.Body.Close()
+	if err := parseError(resp); err != nil {
+		return err
+	}
+	return fmt.Errorf("HTTP %d", resp.StatusCode)
 }
 
 func (a *Adapter) logChatRequest(req llm.ChatRequest, bodyBytes []byte) {
@@ -267,16 +376,21 @@ func (a *Adapter) ListModelMetadata(ctx context.Context) ([]llm.ModelMetadata, e
 }
 
 func (a *Adapter) fetchModels(ctx context.Context) (*openAIModelList, error) {
-	url := strings.TrimRight(a.baseURL, "/") + "/models"
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+	if err := a.validateBaseURL(); err != nil {
+		return nil, err
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+a.apiKey)
+	url := strings.TrimRight(a.baseURL, "/") + "/models"
 
-	resp, err := a.client.Do(httpReq)
+	resp, err := a.doWithRetry(ctx, func(ctx context.Context) (*http.Request, error) {
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("create request: %w", err)
+		}
+		httpReq.Header.Set("Authorization", "Bearer "+a.apiKey)
+		return httpReq, nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("http request: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 

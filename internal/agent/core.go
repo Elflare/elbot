@@ -44,6 +44,7 @@ type Agent struct {
 	model                       string
 	providerName                string
 	provider                    config.ProviderConfig
+	llmRequestConfig            config.LLMRequestConfig
 	providers                   map[string]config.ProviderConfig
 	modeModels                  map[string]config.ModelSelection
 	clientsByProvider           map[string]llm.LLM
@@ -109,6 +110,10 @@ func NewWithPrefixes(p platform.PlatformAdapter, client llm.LLM, modeModels map[
 }
 
 func NewWithOptions(p platform.PlatformAdapter, client llm.LLM, providerName string, modeModels map[string]config.ModelSelection, providers map[string]config.ProviderConfig, statePath string, store storage.Store, prefixes []string, sessionCfg session.Config, namingSelection config.ModelSelection, namingClient llm.LLM, namingModel string, namingNotifier session.NamingNotifier, soulPath string) *Agent {
+	return NewWithRequestConfig(p, client, providerName, modeModels, providers, statePath, store, prefixes, sessionCfg, namingSelection, namingClient, namingModel, namingNotifier, soulPath, config.Default().LLMRequest)
+}
+
+func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerName string, modeModels map[string]config.ModelSelection, providers map[string]config.ProviderConfig, statePath string, store storage.Store, prefixes []string, sessionCfg session.Config, namingSelection config.ModelSelection, namingClient llm.LLM, namingModel string, namingNotifier session.NamingNotifier, soulPath string, llmRequestConfig config.LLMRequestConfig) *Agent {
 	workModel := modeModels[storage.SessionModeWork]
 	if workModel.Provider == "" || workModel.Model == "" {
 		panic("mode_models.work provider/model is required")
@@ -130,6 +135,7 @@ func NewWithOptions(p platform.PlatformAdapter, client llm.LLM, providerName str
 		model:                  workModel.Model,
 		providerName:           workModel.Provider,
 		provider:               provider,
+		llmRequestConfig:       llmRequestConfig,
 		providers:              providers,
 		modeModels:             cloneModeModels(modeModels),
 		clientsByProvider:      clients,

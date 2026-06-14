@@ -42,7 +42,13 @@ s3_access_key_env = "ELBOT_S3_ACCESS_KEY_ID"
 s3_secret_key_env = "ELBOT_S3_SECRET_ACCESS_KEY"
 s3_public_base_url = ""
 
+[llm_request]
+timeout_seconds = 60
+max_retries = 3
+retry_initial_delay_seconds = 2
+
 [context]
+
 compact_enabled = true
 compact_trigger_ratio = 0.8
 
