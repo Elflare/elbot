@@ -179,10 +179,21 @@ func (a *Adapter) SendChat(ctx context.Context, out output.Output) (platform.Rec
 }
 
 func (a *Adapter) SendNotice(ctx context.Context, outTarget output.Target, out output.Output) (platform.Receipt, error) {
+	if outTarget.Empty() && isGroupToolPreviewNotice(ctx, out) {
+		return platform.Receipt{}, nil
+	}
 	if outTarget.Empty() {
 		return a.SendChat(ctx, out)
 	}
 	return a.sendTarget(ctx, outTarget, out)
+}
+
+func isGroupToolPreviewNotice(ctx context.Context, out output.Output) bool {
+	if out.Kind != output.KindText || !strings.HasPrefix(strings.TrimSpace(out.Text), "[tool]") {
+		return false
+	}
+	t, ok := ctx.Value(targetKey{}).(target)
+	return ok && t.MessageType == "group"
 }
 
 func (a *Adapter) sendContextText(ctx context.Context, text string) (platform.Receipt, error) {
