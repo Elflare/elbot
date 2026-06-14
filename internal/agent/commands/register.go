@@ -50,6 +50,10 @@ type ModelProviderError struct {
 	Err      error
 }
 
+type ModelListOptions struct {
+	Fresh bool
+}
+
 type ModelListResult struct {
 	Options []ModelOption
 	Errors  []ModelProviderError
@@ -67,7 +71,7 @@ type ModelService interface {
 	SelectCompactModel(arg string) (ModelOption, error)
 	SelectNamingModel(arg string) (ModelOption, error)
 	Models(query string) []ModelOption
-	ModelList(query string) ModelListResult
+	ModelList(query string, opts ModelListOptions) ModelListResult
 }
 
 type ContextStatusService interface {

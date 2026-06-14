@@ -48,14 +48,16 @@
 - `internal/agent/tool_transcript.go`：工具调用历史持久化辅助；保存 assistant tool_calls 与 tool result，提供 user 多模态 segments metadata helper，并在持久化 discover 结果时压缩 schema，避免未来上下文膨胀。
 - `internal/agent/context.go`：Agent 上下文压缩依赖实现；维护 context 配置、压缩模型、ContextLoader、WindowResolver、Compressor、最近 usage 和待压缩标记，并提供 `/compact` 与 `/status` 所需能力；最近 usage 会写入 Session metadata 供恢复会话后展示。
 
-- `internal/agent/model.go`：模型命令依赖实现；维护 chat/work、compact、naming 模型状态，支持模型切换、搜索、列表拉取，并写入 `state.toml`。
+- `internal/agent/model.go`：模型命令依赖实现；集中维护模型运行态、provider client 缓存、`/models` 运行期列表缓存、chat/work/compact/naming 模型切换与 `state.toml` 写入。
 
 ### Agent 内置命令
 
+
 - `internal/agent/commands/register.go`：命令注册地基；定义 `Registrar`、`Module`、`Deps`、命令工厂/命令组、默认模块列表、额外模块注入入口和可选审计回调。未来内置插件可实现 `Module` 注册命令。
 - `internal/agent/commands/help.go`：`/help` 命令；无参从 Router 生成命令列表，`/help <command>` 展示命令详细参数说明。
-- `internal/agent/commands/model.go`：模型命令；实现 `/model`、`/checkmodel`、`/models`，支持 chat/work/compact/naming 模型查看与切换。
+- `internal/agent/commands/model.go`：模型命令；实现 `/model`、`/checkmodel`、`/models`，支持 chat/work/compact/naming 模型查看与切换，`/models --fresh` 可强制刷新模型列表缓存。
 - `internal/agent/commands/compact.go`：`/compact` 命令；触发当前 Session 主动上下文压缩。
+
 - `internal/agent/commands/session.go`：Session 命令；组合注册列表、生命周期、恢复、Fork、模式切换和 `/status` 等会话命令。
 - `internal/agent/commands/request.go`：请求管理命令；实现 `/requests`、`/stop` 和 `/stopall`。
 - `internal/agent/commands/log.go`：日志查看命令；实现 `/log`、`/audit`，支持常用过滤条件和 Debug 原始日志展示。

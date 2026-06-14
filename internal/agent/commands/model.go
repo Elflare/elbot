@@ -72,15 +72,20 @@ Examples:
 func NewCheckModel(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:        "checkmodel",
-		Usage:       "/checkmodel [query]",
+		Usage:       "/checkmodel [--fresh] [query]",
 		Description: "List or search available models.",
 		Aliases:     []string{"models"},
+		Help: strings.TrimSpace(`Options:
+  --fresh    Refresh provider model lists before showing results.
+
+Examples:
+  /models
+  /models claude
+  /models --fresh`),
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
-		args, _, err := parseModelArgs(req.Args)
-		if err != nil {
-			return nil, err
-		}
-		result := deps.Models.ModelList(args)
+		args, fresh := parseModelListArgs(req.Args)
+		result := deps.Models.ModelList(args, ModelListOptions{Fresh: fresh})
+
 		models := result.Options
 		if len(models) == 0 {
 			var sb strings.Builder
@@ -147,6 +152,20 @@ func modelSuffix(m ModelOption) string {
 		return ""
 	}
 	return " (" + strings.Join(marks, ", ") + ")"
+}
+
+func parseModelListArgs(args string) (string, bool) {
+	fields := strings.Fields(args)
+	out := []string{}
+	fresh := false
+	for _, field := range fields {
+		if field == "--fresh" {
+			fresh = true
+			continue
+		}
+		out = append(out, field)
+	}
+	return strings.Join(out, " "), fresh
 }
 
 type modelTarget string

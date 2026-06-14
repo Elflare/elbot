@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	agentcommands "elbot/internal/agent/commands"
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
 	"elbot/internal/hook"
@@ -653,6 +654,37 @@ func TestModelOptionsFetchesProvidersInParallel(t *testing.T) {
 	want := []string{"a/configured-a", "a/remote-a", "b/configured-b", "b/remote-b", "local/local-model"}
 	if !containsAll(got, want) {
 		t.Fatalf("models = %#v, want to contain %#v", got, want)
+	}
+}
+
+func TestModelOptionsCachesProviderModelsUntilFresh(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"data":[{"id":"remote-%d"}]}`, requests)
+	}))
+	defer srv.Close()
+
+	providers := map[string]config.ProviderConfig{
+		"local":  {Models: []string{"local-model"}},
+		"remote": {BaseURL: srv.URL, APIKey: "test-key"},
+	}
+	modeModels := map[string]config.ModelSelection{
+		storage.SessionModeWork: {Provider: "local", Model: "local-model"},
+		storage.SessionModeChat: {Provider: "local", Model: "local-model"},
+	}
+	a := NewWithOptions(&fakePlatform{}, &fakeLLM{models: []string{"local-model"}}, "local", modeModels, providers, "", newTestStore(t), []string{"/"}, session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}, config.ModelSelection{}, nil, "", nil, "")
+
+	first := a.ModelList("", agentcommands.ModelListOptions{})
+	second := a.ModelList("", agentcommands.ModelListOptions{})
+	fresh := a.ModelList("", agentcommands.ModelListOptions{Fresh: true})
+
+	if requests != 2 {
+		t.Fatalf("provider model requests = %d, want 2", requests)
+	}
+	if first.Options[0].Model != "local-model" || second.Options[0].Model != "local-model" || fresh.Options[0].Model != "local-model" {
+		t.Fatalf("unexpected cached models: first=%#v second=%#v fresh=%#v", first.Options, second.Options, fresh.Options)
 	}
 }
 

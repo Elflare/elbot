@@ -16,6 +16,44 @@ import (
 	"elbot/internal/storage"
 )
 
+type modelRuntimeState struct {
+	llmClient        llm.LLM
+	model            string
+	providerName     string
+	provider         config.ProviderConfig
+	llmRequestConfig config.LLMRequestConfig
+	providers        map[string]config.ProviderConfig
+	modeModels       map[string]config.ModelSelection
+	clients          map[string]llm.LLM
+	clientsMu        sync.Mutex
+	allModels        []string
+	modelListCache   map[string]modelListCacheEntry
+	modelListMu      sync.Mutex
+}
+
+type modelListCacheEntry struct {
+	models []string
+	err    error
+}
+
+type modelListOptions struct {
+	Fresh bool
+}
+
+func newModelRuntimeState(client llm.LLM, model, providerName string, provider config.ProviderConfig, llmRequestConfig config.LLMRequestConfig, providers map[string]config.ProviderConfig, modeModels map[string]config.ModelSelection, clients map[string]llm.LLM) modelRuntimeState {
+	return modelRuntimeState{
+		llmClient:        client,
+		model:            model,
+		providerName:     providerName,
+		provider:         provider,
+		llmRequestConfig: llmRequestConfig,
+		providers:        providers,
+		modeModels:       cloneModeModels(modeModels),
+		clients:          clients,
+		modelListCache:   map[string]modelListCacheEntry{},
+	}
+}
+
 func (a *Agent) CurrentModel() string {
 	return a.CurrentModeModel().Model
 }
@@ -125,7 +163,7 @@ func (a *Agent) selectModelOption(arg string) (agentcommands.ModelOption, error)
 		return agentcommands.ModelOption{}, fmt.Errorf("usage: /model <name or number>")
 	}
 
-	models := a.modelOptions("").Options
+	models := a.modelOptions("", modelListOptions{}).Options
 	if len(models) == 0 {
 		return agentcommands.ModelOption{}, fmt.Errorf("no models available")
 	}
@@ -164,17 +202,17 @@ func (a *Agent) selectModelOption(arg string) (agentcommands.ModelOption, error)
 }
 
 func (a *Agent) Models(query string) []agentcommands.ModelOption {
-	return a.ModelList(query).Options
+	return a.ModelList(query, agentcommands.ModelListOptions{}).Options
 }
 
-func (a *Agent) ModelList(query string) agentcommands.ModelListResult {
-	return a.modelOptions(query)
+func (a *Agent) ModelList(query string, opts agentcommands.ModelListOptions) agentcommands.ModelListResult {
+	return a.modelOptions(query, modelListOptions{Fresh: opts.Fresh})
 }
 
-func (a *Agent) modelOptions(query string) agentcommands.ModelListResult {
+func (a *Agent) modelOptions(query string, opts modelListOptions) agentcommands.ModelListResult {
 	query = strings.ToLower(strings.TrimSpace(query))
-	providers := make([]string, 0, len(a.providers))
-	for provider := range a.providers {
+	providers := make([]string, 0, len(a.modelRuntime.providers))
+	for provider := range a.modelRuntime.providers {
 		providers = append(providers, provider)
 	}
 	sort.Strings(providers)
@@ -187,7 +225,7 @@ func (a *Agent) modelOptions(query string) agentcommands.ModelListResult {
 		i, provider := i, provider
 		go func() {
 			defer wg.Done()
-			modelsByProvider[i], errorsByProvider[i] = a.sortedProviderModels(provider)
+			modelsByProvider[i], errorsByProvider[i] = a.cachedProviderModels(provider, opts.Fresh)
 		}()
 	}
 	wg.Wait()
@@ -217,9 +255,9 @@ func (a *Agent) modelOptions(query string) agentcommands.ModelListResult {
 			options = append(options, option)
 		}
 	}
-	a.allModels = make([]string, 0, len(options))
+	a.modelRuntime.allModels = make([]string, 0, len(options))
 	for _, option := range options {
-		a.allModels = append(a.allModels, option.Model)
+		a.modelRuntime.allModels = append(a.modelRuntime.allModels, option.Model)
 	}
 	errors := []agentcommands.ModelProviderError{}
 	for i, provider := range providers {
@@ -230,15 +268,31 @@ func (a *Agent) modelOptions(query string) agentcommands.ModelListResult {
 	return agentcommands.ModelListResult{Options: options, Errors: errors}
 }
 
+func (a *Agent) cachedProviderModels(providerName string, fresh bool) ([]string, error) {
+	if !fresh {
+		a.modelRuntime.modelListMu.Lock()
+		entry, ok := a.modelRuntime.modelListCache[providerName]
+		a.modelRuntime.modelListMu.Unlock()
+		if ok {
+			return append([]string(nil), entry.models...), entry.err
+		}
+	}
+	models, err := a.sortedProviderModels(providerName)
+	a.modelRuntime.modelListMu.Lock()
+	a.modelRuntime.modelListCache[providerName] = modelListCacheEntry{models: append([]string(nil), models...), err: err}
+	a.modelRuntime.modelListMu.Unlock()
+	return models, err
+}
+
 func (a *Agent) sortedProviderModels(providerName string) ([]string, error) {
-	provider, ok := a.providers[providerName]
+	provider, ok := a.modelRuntime.providers[providerName]
 	if !ok {
 		return nil, nil
 	}
 	set := map[string]struct{}{}
 
 	client := a.clientForProvider(providerName)
-	fetchFromAPI := providerName == a.providerName || (provider.BaseURL != "" && provider.APIKey != "")
+	fetchFromAPI := providerName == a.modelRuntime.providerName || (provider.BaseURL != "" && provider.APIKey != "")
 	var fetchErr error
 	if strings.TrimSpace(provider.APIKey) == "" && strings.TrimSpace(provider.APIKeyEnv) != "" && strings.TrimSpace(provider.BaseURL) != "" {
 		fetchErr = fmt.Errorf("api_key_env %q is not set", provider.APIKeyEnv)
@@ -267,48 +321,48 @@ func (a *Agent) sortedProviderModels(providerName string) ([]string, error) {
 }
 
 func (a *Agent) applyModeModelSelection(mode, providerName, model string) error {
-	provider, ok := a.providers[providerName]
+	provider, ok := a.modelRuntime.providers[providerName]
 	if !ok {
 		return fmt.Errorf("provider %q not found", providerName)
 	}
-	a.modeModels[mode] = config.ModelSelection{Provider: providerName, Model: model}
-	a.providerName = providerName
-	a.provider = provider
-	a.model = model
-	a.llmClient = a.clientForProvider(providerName)
+	a.modelRuntime.modeModels[mode] = config.ModelSelection{Provider: providerName, Model: model}
+	a.modelRuntime.providerName = providerName
+	a.modelRuntime.provider = provider
+	a.modelRuntime.model = model
+	a.modelRuntime.llmClient = a.clientForProvider(providerName)
 	if a.titleGen != nil && mode == storage.SessionModeWork {
-		a.titleGen.primary = a.llmClient
+		a.titleGen.primary = a.modelRuntime.llmClient
 		a.titleGen.primaryModel = model
 	}
 	return nil
 }
 
 func (a *Agent) modelForMode(mode string) config.ModelSelection {
-	selected := a.modeModels[mode]
+	selected := a.modelRuntime.modeModels[mode]
 	if selected.Provider == "" || selected.Model == "" {
-		return a.modeModels[storage.SessionModeWork]
+		return a.modelRuntime.modeModels[storage.SessionModeWork]
 	}
 	return selected
 }
 
 func (a *Agent) clientForProvider(providerName string) llm.LLM {
-	a.clientsMu.Lock()
-	defer a.clientsMu.Unlock()
-	if client := a.clientsByProvider[providerName]; client != nil {
+	a.modelRuntime.clientsMu.Lock()
+	defer a.modelRuntime.clientsMu.Unlock()
+	if client := a.modelRuntime.clients[providerName]; client != nil {
 		return client
 	}
-	provider := a.providers[providerName]
-	client := openai.NewWithOptions(provider.BaseURL, provider.APIKey, provider.ExtraPayload, agentModelExtraPayloads(provider.ModelConfigs), llmRequestOptions(a.llmRequestConfig))
+	provider := a.modelRuntime.providers[providerName]
+	client := openai.NewWithOptions(provider.BaseURL, provider.APIKey, provider.ExtraPayload, agentModelExtraPayloads(provider.ModelConfigs), llmRequestOptions(a.modelRuntime.llmRequestConfig))
 
 	client.SetLogger(a.logger)
-	a.clientsByProvider[providerName] = client
+	a.modelRuntime.clients[providerName] = client
 	return client
 }
 
 func (a *Agent) saveRuntimeState() error {
 	return config.SaveState(a.statePath, config.StateConfig{
 		Session:      config.StateSessionConfig{DefaultMode: a.sessions.DefaultMode()},
-		ModeModels:   cloneModeModels(a.modeModels),
+		ModeModels:   cloneModeModels(a.modelRuntime.modeModels),
 		CompactModel: a.compactModel,
 		NamingModel:  a.namingModel,
 	})

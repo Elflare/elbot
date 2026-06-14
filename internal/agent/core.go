@@ -40,17 +40,8 @@ type LogManager interface {
 type Agent struct {
 	platform                    platform.PlatformAdapter
 	platformSenders             map[string]platform.MessageSender
-	llmClient                   llm.LLM
-	model                       string
-	providerName                string
-	provider                    config.ProviderConfig
-	llmRequestConfig            config.LLMRequestConfig
-	providers                   map[string]config.ProviderConfig
-	modeModels                  map[string]config.ModelSelection
-	clientsByProvider           map[string]llm.LLM
-	clientsMu                   sync.Mutex
+	modelRuntime                modelRuntimeState
 	statePath                   string
-	allModels                   []string // merged and sorted model list
 	store                       storage.Store
 	sessions                    *session.Service
 	requests                    *request.Manager
@@ -131,14 +122,7 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 	a := &Agent{
 		platform:               p,
 		platformSenders:        map[string]platform.MessageSender{},
-		llmClient:              client,
-		model:                  workModel.Model,
-		providerName:           workModel.Provider,
-		provider:               provider,
-		llmRequestConfig:       llmRequestConfig,
-		providers:              providers,
-		modeModels:             cloneModeModels(modeModels),
-		clientsByProvider:      clients,
+		modelRuntime:           newModelRuntimeState(client, workModel.Model, workModel.Provider, provider, llmRequestConfig, providers, modeModels, clients),
 		statePath:              statePath,
 		store:                  store,
 		sessions:               session.NewServiceWithConfig(store, sessionCfg, titleGen, namingNotifier),
