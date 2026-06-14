@@ -50,7 +50,7 @@ func appendAssistantTextMessage(messages []llm.LLMMessage, content, rawContent s
 func (a *Agent) executeToolCalls(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string) ([]llm.LLMMessage, string, []storage.Message, bool) {
 	sessionID := session.ID
 
-	executor := tool.Executor{Registry: a.toolRegistry, Actor: a.actor(ctx), Policy: a.securityPolicy}
+	executor := tool.Executor{Registry: a.toolRuntime.registry, Actor: a.actor(ctx), Policy: a.securityPolicy}
 	messages := make([]llm.LLMMessage, 0, len(calls))
 	preparedCalls := make([]llm.ToolCallRequest, 0, len(calls))
 	transcript := []storage.Message{}
@@ -150,11 +150,11 @@ func toolMessage(name, id, content string) llm.LLMMessage {
 
 func (a *Agent) confirmToolCallIfNeeded(ctx context.Context, sessionID string, call llm.ToolCallRequest) (bool, string, llm.LLMMessage, bool) {
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
-	if a.toolRegistry == nil {
+	if a.toolRuntime.registry == nil {
 		message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: tool registry is not configured", call.Name))
 		return false, "", message, false
 	}
-	t, ok := a.toolRegistry.Get(call.Name)
+	t, ok := a.toolRuntime.registry.Get(call.Name)
 	if !ok {
 		message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: tool not found", call.Name))
 		return false, "", message, false
@@ -268,10 +268,10 @@ func (a *Agent) setToolAutoConfirmed(sessionID, toolName string) {
 }
 
 func (a *Agent) maxToolRoundsPerTurn() int {
-	if a.toolConfig.MaxRoundsPerTurn <= 0 {
+	if a.toolRuntime.config.MaxRoundsPerTurn <= 0 {
 		return 2
 	}
-	return a.toolConfig.MaxRoundsPerTurn
+	return a.toolRuntime.config.MaxRoundsPerTurn
 }
 
 func skippedToolMessages(calls []llm.ToolCallRequest, maxRounds int) []llm.LLMMessage {
@@ -288,10 +288,10 @@ func skippedToolMessages(calls []llm.ToolCallRequest, maxRounds int) []llm.LLMMe
 }
 
 func (a *Agent) toolCallRisk(ctx context.Context, call llm.ToolCallRequest) string {
-	if a.toolRegistry == nil {
+	if a.toolRuntime.registry == nil {
 		return "unknown"
 	}
-	t, ok := a.toolRegistry.Get(call.Name)
+	t, ok := a.toolRuntime.registry.Get(call.Name)
 	if !ok {
 		return "unknown"
 	}
@@ -439,10 +439,10 @@ func previewArguments(args string) string {
 }
 
 func (a *Agent) toolsForSession(ctx context.Context, session *storage.Session) ([]llm.ToolSchema, error) {
-	if session == nil || session.Mode != storage.SessionModeWork || a.tools == nil {
+	if session == nil || session.Mode != storage.SessionModeWork || a.toolRuntime.provider == nil {
 		return nil, nil
 	}
-	base, err := a.tools.Schemas(ctx, session.Mode, session, a.scope(ctx))
+	base, err := a.toolRuntime.provider.Schemas(ctx, session.Mode, session, a.scope(ctx))
 	if err != nil {
 		return nil, err
 	}

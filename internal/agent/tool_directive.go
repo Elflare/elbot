@@ -18,7 +18,7 @@ type toolDirectiveResult struct {
 
 func (a *Agent) applyToolDirectives(ctx context.Context, session *storage.Session, text string) toolDirectiveResult {
 	result := toolDirectiveResult{Text: text}
-	if session == nil || session.Mode != storage.SessionModeWork || a.toolRegistry == nil || !strings.Contains(text, directive.ToolPrefix) {
+	if session == nil || session.Mode != storage.SessionModeWork || a.toolRuntime.registry == nil || !strings.Contains(text, directive.ToolPrefix) {
 		return result
 	}
 	matches := directive.ToolMatches(text)
@@ -47,7 +47,7 @@ func (a *Agent) applyToolDirectives(ctx context.Context, session *storage.Sessio
 
 func (a *Agent) discoveryForToolDirective(ctx context.Context, value string) (*tool.DiscoveryResult, bool) {
 	value = strings.TrimSpace(value)
-	if value == "" || a.toolRegistry == nil {
+	if value == "" || a.toolRuntime.registry == nil {
 		return nil, false
 	}
 	policy := a.securityPolicy
@@ -55,13 +55,13 @@ func (a *Agent) discoveryForToolDirective(ctx context.Context, value string) (*t
 		policy = security.DefaultPolicy()
 	}
 	actor := a.actor(ctx)
-	if root, ok := a.toolRegistry.Get(value); ok {
+	if root, ok := a.toolRuntime.registry.Get(value); ok {
 		if !a.canPreloadToolRoot(actor, policy, root) {
 			return nil, false
 		}
 		return a.discoveryForToolNames([]string{value}, actor, policy)
 	}
-	names := a.toolRegistry.NamesByTag(value, func(candidate tool.Tool) bool {
+	names := a.toolRuntime.registry.NamesByTag(value, func(candidate tool.Tool) bool {
 		return a.canPreloadToolRoot(actor, policy, candidate)
 	})
 	if len(names) == 0 {
@@ -71,7 +71,7 @@ func (a *Agent) discoveryForToolDirective(ctx context.Context, value string) (*t
 }
 
 func (a *Agent) preloadToolNames(ctx context.Context, session *storage.Session, names []string) []string {
-	if session == nil || session.Mode != storage.SessionModeWork || a.toolRegistry == nil {
+	if session == nil || session.Mode != storage.SessionModeWork || a.toolRuntime.registry == nil {
 		return nil
 	}
 	policy := a.securityPolicy
@@ -86,7 +86,7 @@ func (a *Agent) preloadToolNames(ctx context.Context, session *storage.Session, 
 		if name == "" {
 			continue
 		}
-		root, ok := a.toolRegistry.Get(name)
+		root, ok := a.toolRuntime.registry.Get(name)
 		if !ok || !a.canPreloadToolRoot(actor, policy, root) {
 			a.audit("tool_preload_skipped", "session_id", session.ID, "tool", name, "reason", "not_found_or_not_allowed")
 			continue
@@ -124,7 +124,7 @@ func (a *Agent) canPreloadToolRoot(actor security.Actor, policy *security.Policy
 }
 
 func (a *Agent) discoveryForToolNames(names []string, actor security.Actor, policy *security.Policy) (*tool.DiscoveryResult, bool) {
-	details, _ := a.toolRegistry.DiscoverDetails(names, func(candidate tool.Tool) bool {
+	details, _ := a.toolRuntime.registry.DiscoverDetails(names, func(candidate tool.Tool) bool {
 		return tool.CanAccessTool(actor, policy, candidate.Info())
 	})
 	if len(details) == 0 {

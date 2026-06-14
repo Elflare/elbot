@@ -58,7 +58,7 @@ func (a *Agent) discoveredToolSchemas(session *storage.Session) []llm.ToolSchema
 }
 
 func (a *Agent) restoreDiscoveredToolsFromMetadata(session *storage.Session) {
-	if session == nil || a.toolRegistry == nil {
+	if session == nil || a.toolRuntime.registry == nil {
 		return
 	}
 	metadata := decodeSessionMetadata(session.Metadata)
@@ -77,7 +77,7 @@ func (a *Agent) restoreDiscoveredToolsFromMetadata(session *storage.Session) {
 		if _, ok := a.discoveredTools[session.ID][name]; ok {
 			continue
 		}
-		if tool, ok := a.toolRegistry.Get(name); ok {
+		if tool, ok := a.toolRuntime.registry.Get(name); ok {
 			a.discoveredTools[session.ID][name] = tool.Schema()
 		}
 	}

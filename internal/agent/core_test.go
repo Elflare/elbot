@@ -2064,7 +2064,7 @@ func TestSoulPromptAndToolsByMode(t *testing.T) {
 	a := New(p, f, "test-model", config.ProviderConfig{}, store)
 	a.promptBuilder.Soul = staticSoulProvider{Prompt: "SOUL ONLY"}
 	tools := &recordingToolProvider{tools: []llm.ToolSchema{{Function: llm.ToolFunctionSchema{Name: "discover_tool", Description: "discover tools", Parameters: map[string]any{"type": "object"}}}}}
-	a.tools = tools
+	a.SetToolProvider(tools)
 	ctx := context.Background()
 
 	if err := a.HandleMessage(ctx, "hello work"); err != nil {

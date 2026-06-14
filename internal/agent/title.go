@@ -18,6 +18,9 @@ type titleGenerator struct {
 }
 
 func (g *titleGenerator) GenerateTitle(ctx context.Context, messages []storage.Message) (session.TitleResult, error) {
+	if g == nil {
+		return session.TitleResult{}, fmt.Errorf("no title model available")
+	}
 	if g.naming != nil && g.namingModel != "" {
 		if title, err := g.generate(ctx, g.naming, g.namingModel, messages); err == nil {
 			return session.TitleResult{RawTitle: title}, nil

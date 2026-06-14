@@ -99,7 +99,7 @@ func (a *Agent) rememberDiscoveryResult(ctx context.Context, session *storage.Se
 }
 
 func (a *Agent) rememberActivatedTools(ctx context.Context, session *storage.Session, metadata map[string]any) {
-	if len(metadata) == 0 || session == nil || a.toolRegistry == nil {
+	if len(metadata) == 0 || session == nil || a.toolRuntime.registry == nil {
 		return
 	}
 	names := metadataToolNames(metadata[tool.MetadataActivateTools])
@@ -113,7 +113,7 @@ func (a *Agent) rememberActivatedTools(ctx context.Context, session *storage.Ses
 	actor := a.actor(ctx)
 	discovery := &tool.DiscoveryResult{}
 	for _, name := range names {
-		if t, ok := a.toolRegistry.Get(name); ok {
+		if t, ok := a.toolRuntime.registry.Get(name); ok {
 			risk := t.Info().Risk
 			if risk == "" {
 				risk = tool.RiskHigh

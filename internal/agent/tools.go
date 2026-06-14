@@ -8,11 +8,25 @@ import (
 	"elbot/internal/tool/skill"
 )
 
+type toolRuntimeState struct {
+	provider ToolSchemaProvider
+	registry *tool.Registry
+	scanner  skill.Scanner
+	config   config.ToolsConfig
+}
+
+func newToolRuntimeState() toolRuntimeState {
+	return toolRuntimeState{
+		provider: noopToolSchemaProvider{},
+		config:   config.Default().Tools,
+	}
+}
+
 func (a *Agent) SetToolProvider(provider ToolSchemaProvider) {
 	if provider == nil {
 		provider = noopToolSchemaProvider{}
 	}
-	a.tools = provider
+	a.toolRuntime.provider = provider
 	if nameProvider, ok := provider.(ToolNameProvider); ok {
 		a.promptBuilder.Tools = nameProvider
 	} else {
@@ -21,8 +35,8 @@ func (a *Agent) SetToolProvider(provider ToolSchemaProvider) {
 }
 
 func (a *Agent) SetToolRuntime(registry *tool.Registry, scanner skill.Scanner) {
-	a.toolRegistry = registry
-	a.skillScanner = scanner
+	a.toolRuntime.registry = registry
+	a.toolRuntime.scanner = scanner
 	if registry != nil {
 		a.SetToolProvider(tool.SchemaProvider{Registry: registry, Policy: a.securityPolicy})
 	}
@@ -32,38 +46,38 @@ func (a *Agent) SetToolConfig(cfg config.ToolsConfig) {
 	if cfg.MaxRoundsPerTurn <= 0 {
 		cfg.MaxRoundsPerTurn = 2
 	}
-	a.toolConfig = cfg
+	a.toolRuntime.config = cfg
 }
 
 func (a *Agent) List() []tool.Info {
-	if a.toolRegistry == nil {
+	if a.toolRuntime.registry == nil {
 		return nil
 	}
-	return a.toolRegistry.List()
+	return a.toolRuntime.registry.List()
 }
 
 func (a *Agent) Unregister(name string) error {
-	if a.toolRegistry == nil {
+	if a.toolRuntime.registry == nil {
 		return nil
 	}
-	return a.toolRegistry.Unregister(name)
+	return a.toolRuntime.registry.Unregister(name)
 }
 
 func (a *Agent) Remove(ctx context.Context, name string) error {
-	if a.skillScanner == nil || a.toolRegistry == nil {
+	if a.toolRuntime.scanner == nil || a.toolRuntime.registry == nil {
 		return a.Unregister(name)
 	}
-	if remover, ok := a.skillScanner.(interface {
+	if remover, ok := a.toolRuntime.scanner.(interface {
 		Remove(context.Context, *tool.Registry, string) error
 	}); ok {
-		return remover.Remove(ctx, a.toolRegistry, name)
+		return remover.Remove(ctx, a.toolRuntime.registry, name)
 	}
 	return a.Unregister(name)
 }
 
 func (a *Agent) Reload(ctx context.Context) error {
-	if a.skillScanner == nil || a.toolRegistry == nil {
+	if a.toolRuntime.scanner == nil || a.toolRuntime.registry == nil {
 		return nil
 	}
-	return a.skillScanner.Reload(ctx, a.toolRegistry)
+	return a.toolRuntime.scanner.Reload(ctx, a.toolRuntime.registry)
 }

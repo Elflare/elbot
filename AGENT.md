@@ -40,7 +40,8 @@
 
 - `internal/agent/cron_tools.go`：cron 工具确认特例；后台 cron shell 非 critical 自动确认，critical 直接回 tool message 提醒用相对路径/低风险命令且不等待用户。
 - `internal/agent/prompt.go`：Soul Prompt Builder；按文件状态缓存并加载 `SOUL.md`，合并常驻记忆、工具名称提示和压缩摘要，避免生成多条 system prompt。
-- `internal/agent/tools.go`：Agent Tool Runtime 注入与命令依赖实现；维护工具 Registry、skill scanner，并把工具 schema provider 和工具名称 provider 接入 Prompt Builder。
+- `internal/agent/tools.go`：Agent 工具运行态与命令依赖适配；集中维护工具 provider、tool Registry、skill scanner 和工具配置，并把 schema provider 接入 Prompt Builder。
+
 - `internal/agent/tool_cache.go`：Session 级已发现工具 schema 缓存；discover 或有效 `@tool:` 预载到的工具按 Session 保存，工具名持久化到 Session metadata，后续 work 请求用稳定顺序注入 top-level tools。
 - `internal/agent/tool_directive.go`：聊天内联 `@tool:<name-or-tag>` 预处理；仅普通可访问工具/用户侧 tag 生效，剥离有效指令并持久化注入，不存在/不可用值保留为普通文本并提示。
 

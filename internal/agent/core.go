@@ -24,7 +24,6 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
-	"elbot/internal/tool/skill"
 	"elbot/internal/turn"
 )
 
@@ -50,10 +49,7 @@ type Agent struct {
 	completion                  *completion.Service
 	titleGen                    *titleGenerator
 	promptBuilder               PromptBuilder
-	tools                       ToolSchemaProvider
-	toolRegistry                *tool.Registry
-	skillScanner                skill.Scanner
-	toolConfig                  config.ToolsConfig
+	toolRuntime                 toolRuntimeState
 	securityPolicy              *security.Policy
 	contextLoader               contextmgr.Loader
 	windowResolver              *contextmgr.WindowResolver
@@ -129,10 +125,7 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 		requests:               request.NewManager(defaultRequestTimeout),
 		turns:                  turn.NewManager(),
 		commands:               command.NewRouter(prefixes),
-		titleGen:               titleGen,
 		promptBuilder:          PromptBuilder{Soul: promptSoul, Tools: noopToolSchemaProvider{}},
-		tools:                  noopToolSchemaProvider{},
-		toolConfig:             config.Default().Tools,
 		securityPolicy:         security.DefaultPolicy(),
 		contextLoader:          contextmgr.Loader{Store: store},
 		contextConfig:          config.Default().Context,
@@ -184,7 +177,7 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 		completion.RiskConfirmationSource{Router: a.commands, Sessions: a.sessions, Turns: a.turns, Scope: a.scope, CommandNames: riskConfirmationCommandNames()},
 		completion.ForkMessageSource{Router: a.commands, Sessions: a.sessions, Store: a.store, Scope: a.scope},
 		completion.ToolDirectiveSource{
-			Registry: func() *tool.Registry { return a.toolRegistry },
+			Registry: func() *tool.Registry { return a.toolRuntime.registry },
 			Actor:    a.actor,
 			Policy:   func() *security.Policy { return a.securityPolicy },
 		},
