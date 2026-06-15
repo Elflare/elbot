@@ -65,13 +65,13 @@
 
 
 - `internal/agent/commands/register.go`：命令注册地基；定义 `Registrar`、`Module`、`Deps`、命令工厂/命令组、默认模块列表、额外模块注入入口和可选审计回调。未来内置插件可实现 `Module` 注册命令。
-- `internal/agent/commands/help.go`：`/help` 命令；无参从 Router 生成命令列表，`/help <command>` 展示命令详细参数说明。
+- `internal/agent/commands/help.go`：`/help` 命令；无参从 Router 生成命令列表，`/help <command>` 展示命令详细参数说明并支持命令名参数补全。
 - `internal/agent/commands/model.go`：模型命令；实现 `/model`、`/checkmodel`、`/models`，支持 chat/work/compact/naming 模型查看、切换和 `/model` 参数补全，`/models --fresh` 可强制刷新模型列表缓存。
 - `internal/agent/commands/compact.go`：`/compact` 命令；触发当前 Session 主动上下文压缩。
-- `internal/agent/commands/session.go`：Session 命令；组合注册列表、生命周期、恢复、Fork、模式切换等会话命令。
-- `internal/agent/commands/request.go`：请求管理命令；实现 `/requests`、`/stop` 和 `/stopall`。
-- `internal/agent/commands/log.go`：日志查看命令；实现 `/log`、`/audit`，支持常用过滤条件和 Debug 原始日志展示。
-- `internal/agent/commands/tool.go`：工具命令；实现 `/tools` 查看已注册工具，并预留 external skill 的 reload/uninstall/remove 入口。
+- `internal/agent/commands/session.go`：Session 命令；组合注册列表、生命周期、恢复、Fork、模式切换等会话命令，并为恢复、归档、置顶、删除、清理确认和重命名目标提供保守参数补全。
+- `internal/agent/commands/request.go`：请求管理命令；实现 `/requests`、`/stop` 和 `/stopall`，`/stop` 支持 active request ID 参数补全。
+- `internal/agent/commands/log.go`：日志查看命令；实现 `/log`、`/audit`，支持常用过滤条件、Debug 原始日志展示，以及常用选项/等级/风险/事件/tool 参数补全。
+- `internal/agent/commands/tool.go`：工具命令；实现 `/tools` 查看已注册工具、external skill reload/uninstall/remove，并补全子命令、工具名和确认参数。
 
 ### 通用命令框架
 

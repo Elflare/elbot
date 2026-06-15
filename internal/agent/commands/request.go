@@ -33,30 +33,50 @@ func NewRequests(deps Deps) command.Handler {
 }
 
 func NewStop(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{
+	return stopCommand{deps: deps}
+}
+
+type stopCommand struct {
+	deps Deps
+}
+
+func (c stopCommand) Info() command.Info {
+	return command.Info{
 		Name:        "stop",
 		Usage:       "/stop [request_id]",
 		Description: "Stop a request or all requests in current session.",
-	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
-		arg := strings.TrimSpace(req.Args)
-		if arg != "" {
-			if !deps.Requests.Cancel(arg) {
-				return &command.Result{Content: fmt.Sprintf("request not found: %s\n", arg)}, nil
-			}
-			for _, snapshot := range deps.Turns.SnapshotAll() {
-				deps.Turns.StopSession(snapshot.SessionID)
-			}
-			return &command.Result{Content: "stopped 1 request\n"}, nil
-		}
+	}
+}
 
-		current, err := deps.Sessions.Current(ctx, deps.Scope(ctx))
-		if err != nil {
-			return nil, err
+func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+	deps := c.deps
+	arg := strings.TrimSpace(req.Args)
+	if arg != "" {
+		if !deps.Requests.Cancel(arg) {
+			return &command.Result{Content: fmt.Sprintf("request not found: %s\n", arg)}, nil
 		}
-		count := deps.Requests.CancelSession(current.ID)
-		deps.Turns.StopSession(current.ID)
-		return &command.Result{Content: fmt.Sprintf("stopped %d request%s\n", count, plural(count))}, nil
-	})
+		for _, snapshot := range deps.Turns.SnapshotAll() {
+			deps.Turns.StopSession(snapshot.SessionID)
+		}
+		return &command.Result{Content: "stopped 1 request\n"}, nil
+	}
+
+	current, err := deps.Sessions.Current(ctx, deps.Scope(ctx))
+	if err != nil {
+		return nil, err
+	}
+	count := deps.Requests.CancelSession(current.ID)
+	deps.Turns.StopSession(current.ID)
+	return &command.Result{Content: fmt.Sprintf("stopped %d request%s\n", count, plural(count))}, nil
+}
+
+func (c stopCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
+	_ = ctx
+	token := currentCompletionToken(req)
+	if !isFirstArg(req, token) {
+		return nil
+	}
+	return completeRequestIDs(c.deps, token.Text, token.Start, token.End)
 }
 
 func NewStopAll(deps Deps) command.Handler {

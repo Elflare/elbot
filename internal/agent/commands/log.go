@@ -45,17 +45,7 @@ Examples:
 }
 
 func NewAudit(deps Deps) command.Handler {
-	info := auditInfo()
-	return command.NewFunc(info, func(ctx context.Context, req command.Request) (*command.Result, error) {
-		if wantsCommandHelp(req.Args) {
-			return formatCommandHelp(req.Prefix, info), nil
-		}
-		query, err := parseAuditQuery(req.Args)
-		if err != nil {
-			return nil, err
-		}
-		return queryLogs(ctx, deps, query, formatAuditEntries(query.Raw))
-	})
+	return logCommand{deps: deps, info: auditInfo(), audit: true}
 }
 
 func logInfo() command.Info {
@@ -84,17 +74,98 @@ Examples:
 }
 
 func NewLog(deps Deps) command.Handler {
-	info := logInfo()
-	return command.NewFunc(info, func(ctx context.Context, req command.Request) (*command.Result, error) {
-		if wantsCommandHelp(req.Args) {
-			return formatCommandHelp(req.Prefix, info), nil
-		}
-		query, err := parseRuntimeLogQuery(req.Args)
+	return logCommand{deps: deps, info: logInfo()}
+}
+
+type logCommand struct {
+	deps  Deps
+	info  command.Info
+	audit bool
+}
+
+func (c logCommand) Info() command.Info { return c.info }
+
+func (c logCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+	if wantsCommandHelp(req.Args) {
+		return formatCommandHelp(req.Prefix, c.info), nil
+	}
+	if c.audit {
+		query, err := parseAuditQuery(req.Args)
 		if err != nil {
 			return nil, err
 		}
-		return queryLogs(ctx, deps, query, formatRuntimeLogEntries(query.Raw))
-	})
+		return queryLogs(ctx, c.deps, query, formatAuditEntries(query.Raw))
+	}
+	query, err := parseRuntimeLogQuery(req.Args)
+	if err != nil {
+		return nil, err
+	}
+	return queryLogs(ctx, c.deps, query, formatRuntimeLogEntries(query.Raw))
+}
+
+func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
+	_ = ctx
+	token := currentCompletionToken(req)
+	previous := previousLogToken(req.Raw, token.Start)
+	if previous == "--level" {
+		return completeStringOptions([]string{"debug", "info", "warn", "error"}, token.Text, token.Start, token.End, "log_level")
+	}
+	if c.audit && previous == "--risk" {
+		return completeStringOptions([]string{"low", "medium", "high", "critical"}, token.Text, token.Start, token.End, "risk")
+	}
+	if c.audit && previous == "--event" {
+		return completeStringOptions([]string{"user_input", "assistant_output", "llm_usage", "tool_call", "permission_denied", "session_resume", "session_fork", "hook"}, token.Text, token.Start, token.End, "audit_event")
+	}
+	if c.audit && previous == "--tool" {
+		return completeToolNames(c.deps, token.Text, token.Start, token.End)
+	}
+	if strings.HasPrefix(token.Text, "-") || token.Text == "" {
+		return completeStaticOptions(logCompletionOptions(c.audit), token.Text, token.Start, token.End, "option")
+	}
+	return nil
+}
+
+func logCompletionOptions(audit bool) []completionOption {
+	options := []completionOption{
+		{Text: "-n", Description: "Number of entries"},
+		{Text: "--limit", Description: "Number of entries"},
+		{Text: "--days", Description: "Read logs from recent days"},
+		{Text: "--level", Description: "Minimum level"},
+		{Text: "-d", Description: "Debug level and raw entries"},
+		{Text: "-i", Description: "Info level"},
+		{Text: "-w", Description: "Warn level"},
+		{Text: "-e", Description: "Error level"},
+		{Text: "-u", Description: "User events"},
+		{Text: "-a", Description: "Assistant events"},
+		{Text: "-t", Description: "Tool events"},
+		{Text: "--hook", Description: "Hook events"},
+		{Text: "--since", Description: "Show entries after time"},
+		{Text: "--until", Description: "Show entries before time"},
+		{Text: "--msg", Description: "Filter msg field"},
+		{Text: "--contains", Description: "Filter text fields"},
+	}
+	if audit {
+		options = append(options,
+			completionOption{Text: "--event", Description: "Filter audit event"},
+			completionOption{Text: "--risk", Description: "Filter risk level"},
+			completionOption{Text: "--actor", Description: "Filter actor ID"},
+			completionOption{Text: "--session", Description: "Filter session ID"},
+			completionOption{Text: "--tool", Description: "Filter tool name"},
+		)
+	}
+	return options
+}
+
+func previousLogToken(raw string, tokenStart int) string {
+	before := strings.TrimSpace(raw[:tokenStart])
+	if before == "" {
+		return ""
+	}
+	fields := strings.Fields(before)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[len(fields)-1]
 }
 
 func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, formatter func([]logging.LogEntry) string) (*command.Result, error) {

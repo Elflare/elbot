@@ -8,6 +8,7 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/logging"
+	"elbot/internal/tool"
 )
 
 type fakeLogService struct {
@@ -142,6 +143,28 @@ func TestAuditCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 	}
 	if service.query.Fields["event"] != "hook" {
 		t.Fatalf("query = %#v", service.query)
+	}
+}
+
+func TestLogAndAuditCommandsCompleteOptionsAndValues(t *testing.T) {
+	logCmd := NewLog(Deps{}).(command.Completer)
+	got := logCmd.Complete(context.Background(), command.CompletionRequest{Raw: "/log --le", Prefix: "/", Name: "log", Args: "--le", Cursor: len("/log --le")})
+	if len(got) != 1 || got[0].Text != "--level" {
+		t.Fatalf("log option Complete = %#v", got)
+	}
+	got = logCmd.Complete(context.Background(), command.CompletionRequest{Raw: "/log --level w", Prefix: "/", Name: "log", Args: "--level w", Cursor: len("/log --level w")})
+	if len(got) != 1 || got[0].Text != "warn" || got[0].Kind != "log_level" {
+		t.Fatalf("log level Complete = %#v", got)
+	}
+
+	auditCmd := NewAudit(Deps{Tools: &fakeToolService{infos: []tool.Info{{Name: "shell"}, {Name: "web_search"}}}}).(command.Completer)
+	got = auditCmd.Complete(context.Background(), command.CompletionRequest{Raw: "/audit --risk h", Prefix: "/", Name: "audit", Args: "--risk h", Cursor: len("/audit --risk h")})
+	if len(got) != 1 || got[0].Text != "high" {
+		t.Fatalf("audit risk Complete = %#v", got)
+	}
+	got = auditCmd.Complete(context.Background(), command.CompletionRequest{Raw: "/audit --tool sh", Prefix: "/", Name: "audit", Args: "--tool sh", Cursor: len("/audit --tool sh")})
+	if len(got) != 1 || got[0].Text != "shell" {
+		t.Fatalf("audit tool Complete = %#v", got)
 	}
 }
 

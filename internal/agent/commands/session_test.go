@@ -160,6 +160,57 @@ func TestResumeCommandCompletesSessionIDs(t *testing.T) {
 	}
 }
 
+func TestSessionTargetCommandsCompleteSessionIDsAndConfirm(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "elbot.db"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer store.Close()
+
+	svc := session.NewService(store)
+	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	first, err := svc.Create(ctx, scope, "first")
+	if err != nil {
+		t.Fatalf("create first: %v", err)
+	}
+	archived, err := svc.Create(ctx, scope, "archived")
+	if err != nil {
+		t.Fatalf("create archived: %v", err)
+	}
+	if _, err := svc.Archive(ctx, scope, archived.ID); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	deps := Deps{Sessions: svc, Scope: func(context.Context) session.Scope { return scope }, SessionListPageSize: func() int { return 10 }}
+
+	deleteCmd := NewDelete(deps).(command.Completer)
+	prefix := first.ID[:8]
+	got := deleteCmd.Complete(ctx, command.CompletionRequest{Raw: "/delete " + prefix, Prefix: "/", Name: "delete", Args: prefix, Cursor: len("/delete ") + len(prefix)})
+	if len(got) != 1 || got[0].Text != first.ID || got[0].Kind != "session_id" {
+		t.Fatalf("delete session Complete = %#v", got)
+	}
+	got = deleteCmd.Complete(ctx, command.CompletionRequest{Raw: "/delete " + first.ID + " --", Prefix: "/", Name: "delete", Args: first.ID + " --", Cursor: len("/delete ") + len(first.ID) + len(" --")})
+	if len(got) != 1 || got[0].Text != "--confirm" {
+		t.Fatalf("delete confirm Complete = %#v", got)
+	}
+
+	unarchiveCmd := NewUnarchive(deps).(command.Completer)
+	got = unarchiveCmd.Complete(ctx, command.CompletionRequest{Raw: "/unarchive " + archived.ID[:8], Prefix: "/", Name: "unarchive", Args: archived.ID[:8], Cursor: len("/unarchive ") + 8})
+	if len(got) != 1 || got[0].Text != archived.ID {
+		t.Fatalf("unarchive Complete = %#v", got)
+	}
+
+	renameCmd := NewRename(deps).(command.Completer)
+	got = renameCmd.Complete(ctx, command.CompletionRequest{Raw: "/rename " + prefix, Prefix: "/", Name: "rename", Args: prefix, Cursor: len("/rename ") + len(prefix)})
+	if len(got) != 1 || got[0].Text != first.ID {
+		t.Fatalf("rename target Complete = %#v", got)
+	}
+	got = renameCmd.Complete(ctx, command.CompletionRequest{Raw: "/rename " + first.ID + " new", Prefix: "/", Name: "rename", Args: first.ID + " new", Cursor: len("/rename ") + len(first.ID) + len(" new")})
+	if len(got) != 0 {
+		t.Fatalf("rename title should not complete = %#v", got)
+	}
+}
+
 func TestResumeCommandEmitsAudit(t *testing.T) {
 	ctx := context.Background()
 	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "elbot.db"))
