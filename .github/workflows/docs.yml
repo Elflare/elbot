@@ -1,0 +1,50 @@
+name: Docs
+
+on:
+  pull_request:
+    paths:
+      - "**/*.md"
+      - "docs.en/**/*.md"
+      - ".github/workflows/docs.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "**/*.md"
+      - "docs.en/**/*.md"
+      - ".github/workflows/docs.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  links:
+    name: Check Markdown links
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Collect Markdown files
+        id: markdown-files
+        run: |
+          files=$({
+            echo "README.md"
+            echo "README.zh-CN.md"
+            find docs devdocs -name '*.md' -print
+            if [ -d docs.en ]; then
+              find docs.en -name '*.md' -print
+            fi
+          } | tr '\n' ' ')
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+
+      - name: Check links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --no-progress
+            --exclude-mail
+            --exclude "^<your-elbot-repo-url>$"
+            --exclude "^https://api\.sgroup\.qq\.com"
+            ${{ steps.markdown-files.outputs.files }}
+          fail: true

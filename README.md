@@ -66,9 +66,31 @@ ElBot's tool system includes risk levels, permission checks, and high-risk confi
 
 ## Usage
 
-TODO
+During development, you can run the CLI directly from source:
+
+```bash
+go run ./cmd/elbot --config config/app.toml
+```
+
+Minimal setup flow:
+
+1. Configure an OpenAI-compatible provider in `config/providers.toml`.
+2. Set the API key through the OS environment or a `.env` file in the config directory.
+3. Select the default `chat` / `work` mode and models in `config/state.toml`.
+4. Start ElBot, run `/help`, or begin chatting directly.
+
+Documentation:
+
+- [Getting Started](docs/getting-started.md)
+- [Configuration](docs/configuration.md)
+- [Commands](docs/commands.md)
+- [Concepts](docs/concepts.md)
+
+Development planning and task tracking live in [devdocs](devdocs/).
 
 ## Development status
 
-ElBot is still under active development. APIs, configuration, and internal implementation may continue to change. It is currently best suited for experimentation as a personal Agent or bot framework. Installation instructions, configuration examples, plugin development docs, and deployment guides will be improved later.
+ElBot is still under active development. APIs, configuration, and internal implementation may continue to change. It is currently best suited for experimentation as a personal Agent or bot framework.
+
+Documentation policy: README files should stay focused on entry points and the minimal startup path. User-facing documentation lives in `docs/`, while planning and implementation notes live in `devdocs/`.
 

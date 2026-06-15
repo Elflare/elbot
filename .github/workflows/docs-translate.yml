@@ -1,0 +1,47 @@
+name: Translate user docs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**/*.md"
+      - "scripts/translate_docs.py"
+      - ".github/workflows/docs-translate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docs-translate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  translate:
+    name: Translate docs to English
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Translate changed docs
+        env:
+          TRANSLATE_LLM_API_KEY: ${{ secrets.TRANSLATE_LLM_API_KEY }}
+          TRANSLATE_LLM_BASE_URL: ${{ secrets.TRANSLATE_LLM_BASE_URL }}
+          TRANSLATE_LLM_MODEL: ${{ secrets.TRANSLATE_LLM_MODEL }}
+        run: python scripts/translate_docs.py
+
+      - name: Commit translated docs
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: auto-translate user docs"
+          file_pattern: "docs.en/**/*.md docs.en/.translation-cache.json"

@@ -2,11 +2,21 @@
 
 ## docs 文档速查
 
-- `docs/plan.md`：总体规划，写愿景、原则、路线和待决策问题；不写实现细节。
-- `docs/mvp.md`：MVP 范围，写首版交付边界、暂不实现内容和验收标准。
-- `docs/architecture.md`：架构设计，写分层、模块职责、目录结构和核心流程。
-- `docs/interfaces.md`：Go 内部接口草案，写 LLM、Tool、Agent、Storage、Platform、Security、Hook 等边界。
-- `docs/tasks.md`：实现任务，按里程碑拆分任务、状态和后续事项。
+- `docs/README.md`：用户文档首页，写阅读顺序和文档维护约定。
+- `docs/getting-started.md`：快速开始，写环境、配置 API Key、启动 CLI 和首次对话。
+- `docs/configuration.md`：配置说明，写配置文件职责、路径规则、Provider、密钥、数据目录和平台配置。
+- `docs/commands.md`：命令速查，写常用 slash 命令、参数和示例。
+- `docs/concepts.md`：核心概念，写 Chat/Work、工具发现、Session、Hook、Cron、Skill、安全等用户需要理解的概念。
+- `docs.en/`：英文用户文档镜像，由 GitHub Actions 根据 `docs/` 自动翻译生成；不要手动修改。
+- `scripts/translate_docs.py`：用户文档增量翻译脚本；按 Markdown 片段 hash 缓存，只翻译变化片段。
+
+## devdocs 开发文档速查
+
+- `devdocs/README.md`：开发文档索引。
+- `devdocs/plan.md`：总体规划，写愿景、原则、路线和待决策问题；不写实现细节。
+- `devdocs/tasks.md`：实现任务，按里程碑拆分任务、状态和后续事项。
+- `devdocs/` 是开发资料，只给维护者/Agent 看，不走自动翻译。
+- 未来若补架构或接口草案，放在 `devdocs/architecture.md`、`devdocs/interfaces.md` 等文件中。
 
 
 ## Go 文件速查
