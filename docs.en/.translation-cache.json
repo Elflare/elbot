@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "0728af4feb0fd1e2d0cce401142cafdaaac2d8811da5b26cc3b10c2b0bd82036",
+      "source_hash": "f24872b49a8756af05fa3d23e8eacb0e55a894888b6526ccda2a438a7d525b2a",
       "target": "README.md",
-      "updated_at": 1781519017
+      "updated_at": 1781519182
     },
     "docs/README.md": {
       "source_hash": "ece79e589e6219920d295c5ead264549fe40fe58ac5824ffef69da1b840702cf",
@@ -599,6 +599,14 @@
       "source_hash": "efcf45b883dbcebe2a68cb0e0a20aa48d816fe4957018b1a54172aa86b951946",
       "translation": "ElBot does not inject the full schema of all tools by default in every round of conversation, but only exposes __ELBOT_CODE_0__ and the names of currently available tools.",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:f46bac1c99a4efda93ed74ed213c06bfffd909d7973518739715c2ae4a7276cb": {
+      "kind": "paragraph",
+      "source": "ElBot 抽象了平台层与输出层，目前支持 CLI 、QQ OneBot 和 QQ Official，并预留扩展其他平台的空间。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "f46bac1c99a4efda93ed74ed213c06bfffd909d7973518739715c2ae4a7276cb",
+      "translation": "ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, and QQ Official, and reserves space for extending to other platforms.\n",
+      "updated_at": 1781519182
     },
     "README.zh-CN.md:paragraph:f66a9a3fb1f4bef973c7b512706158ebf2a1e4a7d8e4e59d3331eebfcc9bacd4": {
       "kind": "paragraph",
