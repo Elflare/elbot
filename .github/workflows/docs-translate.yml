@@ -38,7 +38,7 @@ jobs:
           TRANSLATE_LLM_API_KEY: ${{ secrets.TRANSLATE_LLM_API_KEY }}
           TRANSLATE_LLM_BASE_URL: ${{ secrets.TRANSLATE_LLM_BASE_URL }}
           TRANSLATE_LLM_MODEL: ${{ secrets.TRANSLATE_LLM_MODEL }}
-        run: python scripts/translate_docs.py
+        run: python scripts/translate_docs.py --batch-size 8 --batch-delay 5 --retries 5 --timeout 240
 
       - name: Commit translated docs
         uses: stefanzweifel/git-auto-commit-action@v5

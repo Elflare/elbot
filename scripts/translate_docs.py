@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -402,10 +403,23 @@ class TranslationClient:
                 parsed = json.loads(body)
                 content = parsed["choices"][0]["message"]["content"]
                 return self.parse_batch_response(str(content), segments)
-            except (urllib.error.URLError, urllib.error.HTTPError, KeyError, IndexError, json.JSONDecodeError, ValueError) as exc:
+            except (
+                urllib.error.URLError,
+                urllib.error.HTTPError,
+                http.client.HTTPException,
+                TimeoutError,
+                ConnectionResetError,
+                OSError,
+                KeyError,
+                IndexError,
+                json.JSONDecodeError,
+                ValueError,
+            ) as exc:
                 last_error = exc
                 if attempt < self.retries:
-                    time.sleep(2**attempt)
+                    delay = min(2**attempt, 30)
+                    log(f"    batch failed, retrying {attempt + 1}/{self.retries} after {delay}s: {exc}")
+                    time.sleep(delay)
                     continue
         raise RuntimeError(f"batch translation failed: {last_error}")
 
@@ -514,6 +528,9 @@ def translate_pending(
             translation = translations[item.segment.key]
             rendered = rendered.replace(item.placeholder, unmask_inline_code(translation, item.masks))
             cache_entries[item.segment.key] = cache_entry(item, translation)
+        if args.batch_delay > 0 and index < len(batches):
+            log(f"  waiting {args.batch_delay:g}s before next batch")
+            time.sleep(args.batch_delay)
     return rendered
 
 
@@ -596,12 +613,15 @@ def run(args: argparse.Namespace) -> int:
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Incrementally translate docs/ to docs.en/.")
     parser.add_argument("--dry-run", action="store_true", help="Do not call the LLM; copy source text for changed segments.")
-    parser.add_argument("--timeout", type=int, default=90, help="HTTP timeout in seconds.")
-    parser.add_argument("--retries", type=int, default=2, help="Retry count per batch.")
-    parser.add_argument("--batch-size", type=int, default=12, help="Changed segment count per translation request.")
+    parser.add_argument("--timeout", type=int, default=240, help="HTTP timeout in seconds.")
+    parser.add_argument("--retries", type=int, default=5, help="Retry count per batch.")
+    parser.add_argument("--batch-size", type=int, default=8, help="Changed segment count per translation request.")
+    parser.add_argument("--batch-delay", type=float, default=5.0, help="Delay between translation batches in seconds.")
     args = parser.parse_args(argv)
     if args.batch_size < 1:
         parser.error("--batch-size must be at least 1")
+    if args.batch_delay < 0:
+        parser.error("--batch-delay must not be negative")
     return args
 
 
