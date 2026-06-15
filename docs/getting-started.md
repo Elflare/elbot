@@ -11,7 +11,7 @@
 ## 获取代码
 
 ```bash
-git clone <your-elbot-repo-url>
+git clone https://github.com/Elflare/elbot/
 cd elbot
 ```
 
@@ -45,7 +45,7 @@ OPENAI_API_KEY=your-api-key
 
 ## 选择默认模型
 
-默认运行态模型写在 `config/state.toml`：
+默认运行态模型写在 `config/state.toml` ：
 
 ```toml
 [session]
@@ -61,6 +61,7 @@ model = "deepseek-chat"
 ```
 
 如果使用其他 Provider，需要同步修改 `provider` 和 `model`。
+default_mode 手动设置，其他设置可以在cli中使用命令设置。
 
 ## 启动 CLI
 
@@ -82,7 +83,7 @@ go run ./cmd/elbot --config config/app.toml
 go build -o elbot ./cmd/elbot
 ```
 
-Windows 下如果使用 Git Bash，构建出的文件可能需要命名为 `elbot.exe`：
+Windows 下：
 
 ```bash
 go build -o elbot.exe ./cmd/elbot
