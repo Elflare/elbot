@@ -504,7 +504,6 @@
 ### Tool Call 解析
 
 - [x] 从 LLM response 中解析 tool calls。
-- [ ] 将 tool calls 写入 `tool_calls` 表。
 - [x] 校验工具是否存在。
 - [x] 校验参数格式。
 - [x] 支持用户在聊天中@工具直接把完整schema注入到prompt中
@@ -561,7 +560,6 @@
 - [x] 控制平台命令访问。
 - [x] 控制工具发现与工具调用。
 - [x] 控制危险操作确认。
-
 
 ### 风险等级
 
@@ -621,13 +619,11 @@
 - [x] pinned Session 在列表中置顶。
 - [x] `/sessions` 列表显示 archived/pinned 状态。
 
-
 ### CLI 体验预留
 
 - [x] 支持基础命令自动补全能力。
 - [x] 将 CLI 补全改为独立补全服务或平台能力装配，不再通过 Agent 辅助方法暴露。
 - [x] 支持 fish/readline 风格的候选提示和上下选择；参数补全仍待后续 source 扩展。
-
 
 ## Milestone 12：审计与消耗统计
 
@@ -685,7 +681,6 @@
 - [x] 方案 1：Go 内置 Hook Module 注册。新增 Hook Module/Registrar 地基，内置 Hook 通过 Go 代码显式注册到 HookManager，适合稳定、可测试、随程序发布的扩展。
 - [X] 方案 2：外部 Hook 。目录 `config/plugins/HOOK.toml。
 - [ ] 临时hook
-
 
 ## Milestone 14：QQ 适配
 
