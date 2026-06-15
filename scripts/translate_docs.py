@@ -448,7 +448,7 @@ class TranslationClient:
     def endpoint(self) -> str:
         return self.base_url + "/chat/completions"
 
-    def translate_batch(self, segments: list[PendingSegment]) -> dict[str, str]:
+    def translate_batch(self, segments: list[PendingSegment], label: str = "batch") -> dict[str, str]:
         payload = {
             "model": self.model,
             "temperature": 0.2,
@@ -490,10 +490,10 @@ class TranslationClient:
                 last_error = exc
                 if attempt < self.retries:
                     delay = min(2**attempt, 30)
-                    log(f"    batch failed, retrying {attempt + 1}/{self.retries} after {delay}s: {exc}")
+                    log(f"    {label} failed, retrying {attempt + 1}/{self.retries} after {delay}s: {exc}")
                     time.sleep(delay)
                     continue
-        raise RuntimeError(f"batch translation failed: {last_error}")
+        raise RuntimeError(f"{label} translation failed: {last_error}")
 
     @staticmethod
     def batch_payload(segments: list[PendingSegment]) -> dict:
@@ -610,6 +610,7 @@ def prune_deleted_sources(cache: dict, current_sources: set[str]) -> list[Path]:
     for rel in stale_sources:
         target = target_for_deleted_source(rel)
         if target is not None and target.exists() and target != README_TARGET:
+            ensure_generated_path(target)
             target.unlink()
             deleted_targets.append(target)
     return deleted_targets
@@ -623,14 +624,18 @@ def translate_batch_parallel(
     out: dict[str, str] = {}
     workers = min(args.parallel_batches, len(batches))
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = []
+        futures = {}
         for index, batch in enumerate(batches, start=1):
             log(f"  scheduling batch {index}/{len(batches)} ({len(batch)} segment(s))")
-            futures.append(executor.submit(client.translate_batch, batch))
+            label = f"batch {index}/{len(batches)}"
+            future = executor.submit(client.translate_batch, batch, label)
+            futures[future] = index
             if args.batch_delay > 0 and index < len(batches):
                 time.sleep(args.batch_delay)
         for future in as_completed(futures):
+            index = futures[future]
             out.update(future.result())
+            log(f"  completed batch {index}/{len(batches)}")
     return out
 
 
@@ -662,7 +667,7 @@ def translate_pending(
     else:
         for index, batch in enumerate(batches, start=1):
             log(f"  translating batch {index}/{len(batches)} ({len(batch)} segment(s))")
-            translations.update(client.translate_batch(batch))
+            translations.update(client.translate_batch(batch, f"batch {index}/{len(batches)}"))
             if args.batch_delay > 0 and index < len(batches):
                 log(f"  waiting {args.batch_delay:g}s before next batch")
                 time.sleep(args.batch_delay)
@@ -698,24 +703,43 @@ def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", *args], cwd=ROOT, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
-def has_staged_changes() -> bool:
-    result = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=ROOT)
+def has_staged_changes(paths: list[Path]) -> bool:
+    rel_paths = [path.relative_to(ROOT).as_posix() for path in paths]
+    result = subprocess.run(["git", "diff", "--cached", "--quiet", "--", *rel_paths], cwd=ROOT)
     return result.returncode == 1
 
 
+def is_allowed_generated_path(path: Path) -> bool:
+    resolved = path.resolve()
+    target_root = TARGET_DIR.resolve()
+    return resolved == README_TARGET.resolve() or resolved == CACHE_PATH.resolve() or resolved == target_root or target_root in resolved.parents
+
+
+def ensure_generated_path(path: Path) -> None:
+    if not is_allowed_generated_path(path):
+        rel = path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else str(path)
+        raise ValueError(f"refusing to write non-generated path: {rel}")
+
+
 def write_text_file(path: Path, content: str) -> None:
+    ensure_generated_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="\n") as f:
         f.write(content)
 
 
 def commit_translation(paths: list[Path], message: str) -> None:
+    for path in paths:
+        ensure_generated_path(path)
     rel_paths = [path.relative_to(ROOT).as_posix() for path in paths]
+    log(f"  staging: {', '.join(rel_paths)}")
     run_git(["add", *rel_paths])
-    if not has_staged_changes():
+    if not has_staged_changes(paths):
         log("  no git changes to commit")
         return
-    run_git(["commit", "-m", message])
+    log(f"  committing: {message}")
+    run_git(["commit", "-m", message, "--", *rel_paths])
+    log("  pushing translated output")
     run_git(["push"])
     log(f"  committed: {message}")
 
@@ -753,7 +777,7 @@ def run(args: argparse.Namespace) -> int:
 
     for source_index, doc in enumerate(sources, start=1):
         rel = doc.source_rel
-        log(f"[{source_index}/{len(sources)}] rendering {rel}")
+        log(f"[{source_index}/{len(sources)}] rendering {rel} -> {doc.target_rel}")
         renderer = MarkdownRenderer(cache=cache)
         result = renderer.render_file(doc.source)
         total_pending += len(result.pending)
