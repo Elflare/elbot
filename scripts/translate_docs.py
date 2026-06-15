@@ -18,16 +18,20 @@ import http.client
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "docs"
 TARGET_DIR = ROOT / "docs.en"
+README_SOURCE = ROOT / "README.zh-CN.md"
+README_TARGET = ROOT / "README.md"
 CACHE_PATH = TARGET_DIR / ".translation-cache.json"
 AUTO_HEADER_TEMPLATE = "<!-- This file is auto-translated from {source}. Do not edit manually. -->\n\n"
 PLACEHOLDER_TEMPLATE = "\ue000ELBOT_SEGMENT_{index}\ue000"
@@ -84,6 +88,20 @@ class Segment:
     @property
     def hash(self) -> str:
         return sha256_text(self.text)
+
+
+@dataclass(frozen=True)
+class SourceDoc:
+    source: Path
+    target: Path
+
+    @property
+    def source_rel(self) -> str:
+        return self.source.relative_to(ROOT).as_posix()
+
+    @property
+    def target_rel(self) -> str:
+        return self.target.relative_to(ROOT).as_posix()
 
 
 @dataclass
@@ -179,16 +197,20 @@ def write_json(path: Path, data: dict) -> None:
         f.write("\n")
 
 
-def source_files() -> list[Path]:
-    return sorted(SOURCE_DIR.glob("**/*.md"))
+def all_source_docs() -> list[SourceDoc]:
+    docs = [SourceDoc(path, TARGET_DIR / path.relative_to(SOURCE_DIR)) for path in sorted(SOURCE_DIR.glob("**/*.md"))]
+    if README_SOURCE.exists():
+        docs.insert(0, SourceDoc(README_SOURCE, README_TARGET))
+    return docs
 
 
-def source_rel(path: Path) -> str:
-    return path.relative_to(ROOT).as_posix()
-
-
-def target_for_source(path: Path) -> Path:
-    return TARGET_DIR / path.relative_to(SOURCE_DIR)
+def target_for_deleted_source(rel: str) -> Path | None:
+    if rel == "README.zh-CN.md":
+        return README_TARGET
+    prefix = "docs/"
+    if rel.startswith(prefix) and rel.endswith(".md"):
+        return TARGET_DIR / rel.removeprefix(prefix)
+    return None
 
 
 def should_translate_text(text: str) -> bool:
@@ -275,7 +297,7 @@ class MarkdownRenderer:
         self.skipped_count = 0
 
     def render_file(self, source: Path) -> RenderResult:
-        rel = source_rel(source)
+        rel = source.relative_to(ROOT).as_posix()
         lines = source.read_text(encoding="utf-8").splitlines(keepends=True)
         rendered: list[str] = [AUTO_HEADER_TEMPLATE.format(source=rel)]
         in_code = False
@@ -538,16 +560,78 @@ class TranslationClient:
         return out
 
 
-def prune_deleted_sources(cache: dict, current_sources: set[str]) -> None:
+def is_zero_ref(ref: str) -> bool:
+    ref = ref.strip()
+    return bool(ref) and set(ref) == {"0"}
+
+
+def changed_source_names(args: argparse.Namespace) -> set[str] | None:
+    if not args.changed_only:
+        return None
+    if not CACHE_PATH.exists():
+        log("translation cache is missing; falling back to full scan")
+        return None
+    if not args.base_ref or not args.head_ref or is_zero_ref(args.base_ref):
+        log("changed-only requested but git refs are incomplete; falling back to full scan")
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", args.base_ref, args.head_ref, "--", "README.zh-CN.md", "docs"],
+            cwd=ROOT,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        log(f"git diff failed; falling back to full scan: {exc}")
+        return None
+    changed = {line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()}
+    return {name for name in changed if name == "README.zh-CN.md" or (name.startswith("docs/") and name.endswith(".md"))}
+
+
+def select_source_docs(args: argparse.Namespace) -> tuple[list[SourceDoc], set[str], set[str] | None]:
+    docs = all_source_docs()
+    current_sources = {doc.source_rel for doc in docs}
+    changed = changed_source_names(args)
+    if changed is None:
+        return docs, current_sources, None
+    selected = [doc for doc in docs if doc.source_rel in changed]
+    return selected, current_sources, changed
+
+
+def prune_deleted_sources(cache: dict, current_sources: set[str]) -> list[Path]:
+    deleted_targets: list[Path] = []
+    stale_sources = set(cache.get("files", {})) - current_sources
     cache["files"] = {k: v for k, v in cache.get("files", {}).items() if k in current_sources}
     cache["segments"] = {
         k: v for k, v in cache.get("segments", {}).items() if v.get("source_file") in current_sources
     }
-    if TARGET_DIR.exists():
-        for target in TARGET_DIR.glob("**/*.md"):
-            rel = target.relative_to(TARGET_DIR).as_posix()
-            if f"docs/{rel}" not in current_sources:
-                target.unlink()
+    for rel in stale_sources:
+        target = target_for_deleted_source(rel)
+        if target is not None and target.exists() and target != README_TARGET:
+            target.unlink()
+            deleted_targets.append(target)
+    return deleted_targets
+
+
+def translate_batch_parallel(
+    client: TranslationClient,
+    batches: list[list[PendingSegment]],
+    args: argparse.Namespace,
+) -> dict[str, str]:
+    out: dict[str, str] = {}
+    workers = min(args.parallel_batches, len(batches))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = []
+        for index, batch in enumerate(batches, start=1):
+            log(f"  scheduling batch {index}/{len(batches)} ({len(batch)} segment(s))")
+            futures.append(executor.submit(client.translate_batch, batch))
+            if args.batch_delay > 0 and index < len(batches):
+                time.sleep(args.batch_delay)
+        for future in as_completed(futures):
+            out.update(future.result())
+    return out
 
 
 def translate_pending(
@@ -572,16 +656,20 @@ def translate_pending(
         raise ValueError("translation client is not configured")
 
     batches = chunked(pending, args.batch_size)
-    for index, batch in enumerate(batches, start=1):
-        log(f"  translating batch {index}/{len(batches)} ({len(batch)} segment(s))")
-        translations = client.translate_batch(batch)
-        for item in batch:
-            translation = translations[item.segment.key]
-            rendered = rendered.replace(item.placeholder, unmask_inline_code(translation, item.masks))
-            cache_entries[item.segment.key] = cache_entry(item, translation)
-        if args.batch_delay > 0 and index < len(batches):
-            log(f"  waiting {args.batch_delay:g}s before next batch")
-            time.sleep(args.batch_delay)
+    translations: dict[str, str] = {}
+    if args.parallel_batches > 1 and len(batches) > 1:
+        translations = translate_batch_parallel(client, batches, args)
+    else:
+        for index, batch in enumerate(batches, start=1):
+            log(f"  translating batch {index}/{len(batches)} ({len(batch)} segment(s))")
+            translations.update(client.translate_batch(batch))
+            if args.batch_delay > 0 and index < len(batches):
+                log(f"  waiting {args.batch_delay:g}s before next batch")
+                time.sleep(args.batch_delay)
+    for item in pending:
+        translation = translations[item.segment.key]
+        rendered = rendered.replace(item.placeholder, unmask_inline_code(translation, item.masks))
+        cache_entries[item.segment.key] = cache_entry(item, translation)
     return rendered
 
 
@@ -606,25 +694,68 @@ def make_client(args: argparse.Namespace) -> TranslationClient:
     )
 
 
+def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", *args], cwd=ROOT, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+
+def has_staged_changes() -> bool:
+    result = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=ROOT)
+    return result.returncode == 1
+
+
+def write_text_file(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="\n") as f:
+        f.write(content)
+
+
+def commit_translation(paths: list[Path], message: str) -> None:
+    rel_paths = [path.relative_to(ROOT).as_posix() for path in paths]
+    run_git(["add", *rel_paths])
+    if not has_staged_changes():
+        log("  no git changes to commit")
+        return
+    run_git(["commit", "-m", message])
+    run_git(["push"])
+    log(f"  committed: {message}")
+
+
+def rewrite_readme_links(rendered: str) -> str:
+    return re.sub(r"\((docs/[^)\s]+\.md(?:#[^)\s]+)?)\)", r"(docs.en/\1)", rendered).replace("docs.en/docs/", "docs.en/")
+
+
+def finalize_rendered(doc: SourceDoc, rendered: str) -> str:
+    if doc.target == README_TARGET:
+        return rewrite_readme_links(rendered)
+    return rendered
+
+
 def run(args: argparse.Namespace) -> int:
     cache = read_json(CACHE_PATH)
-    sources = source_files()
-    current_source_names = {source_rel(path) for path in sources}
-    prune_deleted_sources(cache, current_source_names)
+    sources, current_source_names, changed_names = select_source_docs(args)
+    deleted_targets = prune_deleted_sources(cache, current_source_names)
+    if deleted_targets:
+        write_json(CACHE_PATH, cache)
+        if args.commit_each and not args.dry_run:
+            commit_translation([*deleted_targets, CACHE_PATH], "docs: remove translated deleted sources")
 
-    log(f"found {len(sources)} source doc file(s)")
+    if changed_names is not None:
+        deleted = sorted(changed_names - current_source_names)
+        if deleted:
+            log(f"deleted source file(s): {', '.join(deleted)}")
+    log(f"found {len(sources)} source doc file(s) to process")
     client: TranslationClient | None = None
     staged_outputs: dict[Path, str] = {}
     all_new_segments: dict[str, dict] = {}
-    file_entries: dict[str, dict] = {}
+    file_entries: dict[str, dict] = dict(cache.get("files", {}))
     total_pending = 0
     total_reused = 0
 
-    for source_index, source in enumerate(sources, start=1):
-        rel = source_rel(source)
+    for source_index, doc in enumerate(sources, start=1):
+        rel = doc.source_rel
         log(f"[{source_index}/{len(sources)}] rendering {rel}")
         renderer = MarkdownRenderer(cache=cache)
-        result = renderer.render_file(source)
+        result = renderer.render_file(doc.source)
         total_pending += len(result.pending)
         total_reused += result.reused_count
         log(
@@ -635,23 +766,29 @@ def run(args: argparse.Namespace) -> int:
         if result.pending and not args.dry_run and client is None:
             client = make_client(args)
         rendered = translate_pending(result.text, result.pending, result.cache_entries, client, args, rel)
-        staged_outputs[target_for_source(source)] = rendered
+        rendered = finalize_rendered(doc, rendered)
+        staged_outputs[doc.target] = rendered
         all_new_segments.update(result.cache_entries)
         file_entries[rel] = {
-            "source_hash": sha256_text(source.read_text(encoding="utf-8")),
-            "target": target_for_source(source).relative_to(ROOT).as_posix(),
+            "source_hash": sha256_text(doc.source.read_text(encoding="utf-8")),
+            "target": doc.target_rel,
             "updated_at": int(time.time()),
         }
+        if args.commit_each and not args.dry_run:
+            write_text_file(doc.target, rendered)
+            cache.setdefault("segments", {}).update(result.cache_entries)
+            cache["files"] = file_entries
+            write_json(CACHE_PATH, cache)
+            commit_translation([doc.target, CACHE_PATH], f"docs: auto-translate {rel}")
 
-    TARGET_DIR.mkdir(parents=True, exist_ok=True)
-    for target, rendered in staged_outputs.items():
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with target.open("w", encoding="utf-8", newline="\n") as f:
-            f.write(rendered)
+    if not args.commit_each or args.dry_run:
+        TARGET_DIR.mkdir(parents=True, exist_ok=True)
+        for target, rendered in staged_outputs.items():
+            write_text_file(target, rendered)
 
-    cache.setdefault("segments", {}).update(all_new_segments)
-    cache["files"] = file_entries
-    write_json(CACHE_PATH, cache)
+        cache.setdefault("segments", {}).update(all_new_segments)
+        cache["files"] = file_entries
+        write_json(CACHE_PATH, cache)
 
     if args.dry_run:
         log("dry run completed; changed segments were copied from source text")
@@ -664,13 +801,20 @@ def run(args: argparse.Namespace) -> int:
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Incrementally translate docs/ to docs.en/.")
     parser.add_argument("--dry-run", action="store_true", help="Do not call the LLM; copy source text for changed segments.")
+    parser.add_argument("--changed-only", action="store_true", help="Use git diff to process only changed source files.")
+    parser.add_argument("--commit-each", action="store_true", help="Commit and push each translated source document immediately.")
+    parser.add_argument("--base-ref", default="", help="Base git ref for --changed-only.")
+    parser.add_argument("--head-ref", default="", help="Head git ref for --changed-only.")
     parser.add_argument("--timeout", type=int, default=240, help="HTTP timeout in seconds.")
     parser.add_argument("--retries", type=int, default=5, help="Retry count per batch.")
     parser.add_argument("--batch-size", type=int, default=8, help="Changed segment count per translation request.")
+    parser.add_argument("--parallel-batches", type=int, default=1, help="Concurrent translation batches per source document.")
     parser.add_argument("--batch-delay", type=float, default=5.0, help="Delay between translation batches in seconds.")
     args = parser.parse_args(argv)
     if args.batch_size < 1:
         parser.error("--batch-size must be at least 1")
+    if args.parallel_batches < 1:
+        parser.error("--parallel-batches must be at least 1")
     if args.batch_delay < 0:
         parser.error("--batch-delay must not be negative")
     return args

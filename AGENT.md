@@ -7,8 +7,8 @@
 - `docs/configuration.md`：配置说明，写配置文件职责、路径规则、Provider、密钥、数据目录和平台配置。
 - `docs/commands.md`：命令速查，写常用 slash 命令、参数和示例。
 - `docs/concepts.md`：核心概念，写 Chat/Work、工具发现、Session、Hook、Cron、Skill、安全等用户需要理解的概念。
-- `docs.en/`：英文用户文档镜像，由 GitHub Actions 根据 `docs/` 自动翻译生成；不要手动修改。
-- `scripts/translate_docs.py`：用户文档增量翻译脚本；按 Markdown 片段 hash 缓存，只翻译变化片段。
+- `docs.en/` / `README.md`：英文用户文档镜像，由 GitHub Actions 根据 `docs/` 和 `README.zh-CN.md` 自动翻译生成；不要手动修改。
+- `scripts/translate_docs.py`：用户文档增量翻译脚本；用 git diff 筛变更源文件，再按 Markdown 片段 hash 缓存只翻译变化片段；workflow 中每完成一个源文档就提交一次产物和缓存，单文档内可并行翻译 batch，生成英文 README 时会把用户文档链接改到 `docs.en/`。
 
 ## devdocs 开发文档速查
 

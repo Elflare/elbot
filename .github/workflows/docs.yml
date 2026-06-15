@@ -3,14 +3,18 @@ name: Docs
 on:
   pull_request:
     paths:
-      - "**/*.md"
+      - "README.md"
+      - "README.zh-CN.md"
+      - "docs/**/*.md"
       - "docs.en/**/*.md"
       - ".github/workflows/docs.yml"
   push:
     branches:
       - main
     paths:
-      - "**/*.md"
+      - "README.md"
+      - "README.zh-CN.md"
+      - "docs/**/*.md"
       - "docs.en/**/*.md"
       - ".github/workflows/docs.yml"
 

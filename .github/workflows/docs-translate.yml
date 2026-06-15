@@ -5,9 +5,8 @@ on:
     branches:
       - main
     paths:
+      - "README.zh-CN.md"
       - "docs/**/*.md"
-      - "scripts/translate_docs.py"
-      - ".github/workflows/docs-translate.yml"
   workflow_dispatch:
 
 permissions:
@@ -33,15 +32,25 @@ jobs:
         with:
           python-version: "3.x"
 
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Translate changed docs
         env:
           TRANSLATE_LLM_API_KEY: ${{ secrets.TRANSLATE_LLM_API_KEY }}
           TRANSLATE_LLM_BASE_URL: ${{ secrets.TRANSLATE_LLM_BASE_URL }}
           TRANSLATE_LLM_MODEL: ${{ secrets.TRANSLATE_LLM_MODEL }}
-        run: python scripts/translate_docs.py --batch-size 8 --batch-delay 5 --retries 5 --timeout 240
+        run: >-
+          python scripts/translate_docs.py
+          --changed-only
+          --commit-each
+          --base-ref "${{ github.event.before }}"
+          --head-ref "${{ github.sha }}"
+          --batch-size 8
+          --parallel-batches 2
+          --batch-delay 1
+          --retries 5
+          --timeout 240
 
-      - name: Commit translated docs
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "docs: auto-translate user docs"
-          file_pattern: "docs.en/**/*.md docs.en/.translation-cache.json"
