@@ -21,7 +21,7 @@ func TestCompleteInputCyclesCandidates(t *testing.T) {
 	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, width: 80, height: 20}
 	m.input.SetValue("/c")
 
-	updated, _ := m.completeInput()
+	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
 	if got := m.input.Value(); got != "/chat" {
 		t.Fatalf("first completion = %q", got)
@@ -33,13 +33,13 @@ func TestCompleteInputCyclesCandidates(t *testing.T) {
 		t.Fatalf("completion candidates should not be printed to transcript: %q", m.content)
 	}
 
-	updated, _ = m.completeInput()
+	updated, _ = m.completeInput(1)
 	m = updated.(tuiModel)
 	if got := m.input.Value(); got != "/checkmodel" {
 		t.Fatalf("second completion = %q", got)
 	}
 
-	updated, _ = m.completeInput()
+	updated, _ = m.completeInput(1)
 	m = updated.(tuiModel)
 	if got := m.input.Value(); got != "/chat" {
 		t.Fatalf("cycled completion = %q", got)
@@ -49,7 +49,7 @@ func TestCompleteInputCyclesCandidates(t *testing.T) {
 func TestCompletionSelectionUsesArrowKeysWhenPopupVisible(t *testing.T) {
 	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, width: 80, height: 20}
 	m.input.SetValue("/c")
-	updated, _ := m.completeInput()
+	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -69,17 +69,43 @@ func TestCompletionServicePreferredOverLegacyHandler(t *testing.T) {
 	service := completion.NewService(staticCompletionSource{{Text: "/service"}, {Text: "/service2"}})
 	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/legacy"}}, completion: service, width: 80, height: 20}
 	m.input.SetValue("/s")
-	updated, _ := m.completeInput()
+	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
 	if got := m.input.Value(); got != "/service" {
 		t.Fatalf("completion = %q", got)
 	}
 }
 
+func TestCompletionShiftTabSelectsPreviousCandidate(t *testing.T) {
+	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, width: 80, height: 20}
+	m.input.SetValue("/c")
+	updated, _ := m.completeInput(1)
+	m = updated.(tuiModel)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = updated.(tuiModel)
+	if got := m.input.Value(); got != "/checkmodel" {
+		t.Fatalf("shift+tab completion = %q", got)
+	}
+}
+
+func TestCompletionSingleItemUsesReplaceRange(t *testing.T) {
+	service := completion.NewService(staticCompletionSource{{Text: "openai/gpt-4o", ReplaceStart: len("/model "), ReplaceEnd: len("/model gp")}})
+	m := tuiModel{completion: service, width: 80, height: 20}
+	m.input.SetValue("/model gp")
+	m.input.CursorEnd()
+
+	updated, _ := m.completeInput(1)
+	m = updated.(tuiModel)
+	if got := m.input.Value(); got != "/model openai/gpt-4o" {
+		t.Fatalf("single completion = %q", got)
+	}
+}
+
 func TestCancelKeyClearsCompletionOrInputBeforeQuit(t *testing.T) {
 	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, width: 80, height: 20}
 	m.input.SetValue("/c")
-	updated, _ := m.completeInput()
+	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})

@@ -209,7 +209,9 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.GotoBottom()
 			return m, nil
 		case "tab", "ctrl+i":
-			return m.completeInput()
+			return m.completeInput(1)
+		case "shift+tab", "backtab":
+			return m.completeInput(-1)
 		case "up":
 			if m.completionState.visible() {
 				m.selectCompletion(-1)
@@ -368,9 +370,9 @@ func (m tuiModel) layoutWidths() (int, int) {
 	return chatWidth, noticeWidth
 }
 
-func (m tuiModel) completeInput() (tea.Model, tea.Cmd) {
-	if m.completionState.visible() && m.input.Value() == m.completionState.currentText() {
-		m.selectCompletion(1)
+func (m tuiModel) completeInput(delta int) (tea.Model, tea.Cmd) {
+	if m.completionState.visible() {
+		m.selectCompletion(delta)
 		return m, nil
 	}
 	items := m.complete(m.input.Value())
@@ -380,10 +382,13 @@ func (m tuiModel) completeInput() (tea.Model, tea.Cmd) {
 		return m, nil
 	case 1:
 		m.clearCompletion()
-		m.input.SetValue(items[0].Text)
-		m.input.CursorEnd()
+		m.applyCompletionItem(items[0], m.input.Value())
 	default:
-		m.completionState = completionState{base: m.input.Value(), items: append([]completion.Item(nil), items...), index: 0}
+		index := 0
+		if delta < 0 {
+			index = len(items) - 1
+		}
+		m.completionState = completionState{base: m.input.Value(), items: append([]completion.Item(nil), items...), index: index}
 		m.applyCurrentCompletion()
 		m.resizeViewports()
 	}
@@ -425,12 +430,14 @@ func (m *tuiModel) applyCurrentCompletion() {
 	if len(m.completionState.items) == 0 || m.completionState.index < 0 || m.completionState.index >= len(m.completionState.items) {
 		return
 	}
-	item := m.completionState.items[m.completionState.index]
+	m.applyCompletionItem(m.completionState.items[m.completionState.index], m.completionState.base)
+}
+
+func (m *tuiModel) applyCompletionItem(item completion.Item, value string) {
 	text := item.Text
 	if text == "" {
 		return
 	}
-	value := m.completionState.base
 	if item.ReplaceStart >= 0 && item.ReplaceEnd >= item.ReplaceStart && item.ReplaceEnd <= len(value) && (item.ReplaceStart != 0 || item.ReplaceEnd != 0) {
 		m.input.SetValue(value[:item.ReplaceStart] + text + value[item.ReplaceEnd:])
 		m.input.SetCursor(item.ReplaceStart + len(text))
