@@ -11,7 +11,7 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 
 ### 0. Lightweight and Efficient Go Implementation
 
-ElBot currently takes about 2ms to start locally, with resident memory of about 30MB.
+ElBot's current local startup time is approximately 2ms (N5105, SATA SSD), with resident memory of about 30MB.
 
 ### 1. Token-Efficient Tool Discovery Mechanism
 
@@ -25,6 +25,8 @@ For personal daily use, token consumption per request:
 work mode: <1000
 
 chat mode: <500
+
+Cache hit: >90%
 
 ### 2. Chat / Work Dual Mode
 

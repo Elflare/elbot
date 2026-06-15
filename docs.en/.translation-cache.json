@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "f24872b49a8756af05fa3d23e8eacb0e55a894888b6526ccda2a438a7d525b2a",
+      "source_hash": "3c796dd1eea13396d6d1996ca6d88a10884153ba3c01041a3d81618aef697509",
       "target": "README.md",
-      "updated_at": 1781519182
+      "updated_at": 1781529729
     },
     "docs/README.md": {
       "source_hash": "ece79e589e6219920d295c5ead264549fe40fe58ac5824ffef69da1b840702cf",
@@ -352,6 +352,14 @@
       "translation": "During development, you can start the CLI directly from the source code:\n",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:4d0f34b8c51d151e656e34cc2351ee05d6a4456f0d92c3768a63adfce6efab28": {
+      "kind": "paragraph",
+      "source": "ElBot 当前本地启动耗时约 2ms（N5105，sata固态），常驻内存约 30MB。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "4d0f34b8c51d151e656e34cc2351ee05d6a4456f0d92c3768a63adfce6efab28",
+      "translation": "ElBot's current local startup time is approximately 2ms (N5105, SATA SSD), with resident memory of about 30MB.\n",
+      "updated_at": 1781529729
+    },
     "README.zh-CN.md:paragraph:4eabc2be664f502a71ced8d345299cb1d273ef7647ed905d9b4f64eeacde4b8a": {
       "kind": "paragraph",
       "source": "普通日志用于定位运行问题，审计日志用于追踪工具调用等关键行为。\n",
@@ -431,6 +439,14 @@
       "source_hash": "7c4b0ace7fcd5820edfa12d6bde79fa5adb682a88d641dc1e3b42a60203c654f",
       "translation": "ElBot currently takes about 2ms to start locally, with resident memory of about 30MB.\n",
       "updated_at": 1781519017
+    },
+    "README.zh-CN.md:paragraph:7edd16f0cb0d24f42eb680e350e6cab6f70ef8ed07815943e91dea63799afd8a": {
+      "kind": "paragraph",
+      "source": "缓存命中： >90%\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "7edd16f0cb0d24f42eb680e350e6cab6f70ef8ed07815943e91dea63799afd8a",
+      "translation": "Cache hit: >90%\n",
+      "updated_at": 1781529729
     },
     "README.zh-CN.md:paragraph:7f448437c71676019182a1592917cf3ec3d00b63036317611a3a92b7d6b4b266": {
       "kind": "paragraph",
