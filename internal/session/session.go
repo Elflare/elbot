@@ -311,6 +311,44 @@ func (s *Service) Status(ctx context.Context, scope Scope) (*Status, error) {
 	return status, nil
 }
 
+func (s *Service) Rename(ctx context.Context, scope Scope, sessionID, title string) (*storage.Session, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return nil, fmt.Errorf("title is required")
+	}
+	session, err := s.targetSession(ctx, scope, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	metadata, err := renameMetadata(session.Metadata)
+	if err != nil {
+		return nil, err
+	}
+	session.Title = title
+	session.Metadata = metadata
+	session.UpdatedAt = storage.Now()
+	if err := s.store.Sessions().Update(ctx, session); err != nil {
+		return nil, err
+	}
+	return session, nil
+}
+
+func renameMetadata(raw string) (string, error) {
+	metadata := map[string]any{}
+	if strings.TrimSpace(raw) != "" {
+		if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
+			return "", fmt.Errorf("decode session metadata: %w", err)
+		}
+	}
+	metadata["title_renamed"] = true
+	metadata["title_source"] = "manual"
+	encoded, err := json.Marshal(metadata)
+	if err != nil {
+		return "", fmt.Errorf("encode session metadata: %w", err)
+	}
+	return string(encoded), nil
+}
+
 func (s *Service) Archive(ctx context.Context, scope Scope, sessionID string) (*storage.Session, error) {
 	session, err := s.targetSession(ctx, scope, sessionID)
 	if err != nil {

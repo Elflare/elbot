@@ -277,7 +277,7 @@
 - [x] 优先使用专门的命名 LLM 生成 Session 标题。
 - [x] 未配置命名 LLM 时，使用主 LLM 生成标题。
 - [x] 命名 LLM 不可用时，使用首条用户消息截断作为默认标题。
-- [ ] 支持 `/rename <session编号|或者标题或者sessionid> <title>` 手动重命名 Session，并避免后台自动命名覆盖用户标题。标题若有重复的则弹出提示，让用户换成编号或者id
+- [x] 支持 `/rename <session编号|或者标题或者sessionid> <title>` 手动重命名 Session，并避免后台自动命名覆盖用户标题。标题若有重复的则弹出提示，让用户换成编号或者id
 
 ## Milestone 4.1：请求管理基础
 

@@ -288,6 +288,25 @@ func NewUnpin(deps Deps) command.Handler {
 	})
 }
 
+func NewRename(deps Deps) command.Handler {
+	return command.NewFunc(command.Info{
+		Name:        "rename",
+		Usage:       "/rename [number|session_id|current_title] <title>",
+		Description: "Rename current or selected session.",
+		Help:        "Usage:\n  /rename <title>\n  /rename <number|session_id|current_title> <title>\n\nIf current_title matches more than one visible session, use /sessions and rename by number or session id.",
+	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+		sessionID, title, err := parseRenameArgs(ctx, deps, req.Args)
+		if err != nil {
+			return nil, err
+		}
+		session, err := deps.Sessions.Rename(ctx, deps.Scope(ctx), sessionID, title)
+		if err != nil {
+			return nil, err
+		}
+		return &command.Result{Content: fmt.Sprintf("renamed session:\n  id: %s\n  title: %s\n", session.ID, session.Title)}, nil
+	})
+}
+
 func NewDelete(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:        "delete",
@@ -466,6 +485,59 @@ func cleanupRetentionDays(deps Deps) int {
 		return 30
 	}
 	return days
+}
+
+func parseRenameArgs(ctx context.Context, deps Deps, args string) (string, string, error) {
+	fields := strings.Fields(args)
+	if len(fields) == 0 {
+		return "", "", fmt.Errorf("usage: /rename [number|session_id|current_title] <title>")
+	}
+	if len(fields) == 1 {
+		return "", fields[0], nil
+	}
+	if sessionID, ok, err := resolveRenameTarget(ctx, deps, fields[0]); err != nil {
+		return "", "", err
+	} else if ok {
+		return sessionID, strings.Join(fields[1:], " "), nil
+	}
+	return "", strings.Join(fields, " "), nil
+}
+
+func resolveRenameTarget(ctx context.Context, deps Deps, target string) (string, bool, error) {
+	if idx, err := strconv.Atoi(target); err == nil {
+		ids := deps.LastSessions()
+		if idx < 1 || idx > len(ids) {
+			return "", true, fmt.Errorf("session index %d out of range; run /sessions or /archives first", idx)
+		}
+		return ids[idx-1], true, nil
+	}
+	if deps.Store == nil {
+		return "", false, nil
+	}
+	if session, err := deps.Store.Sessions().Get(ctx, target); err == nil {
+		return session.ID, true, nil
+	} else if !errors.Is(err, storage.ErrNotFound) {
+		return "", true, err
+	}
+
+	sessions, err := deps.Sessions.List(ctx, deps.Scope(ctx), target, sessionPageSize(deps))
+	if err != nil {
+		return "", true, err
+	}
+	matches := []string{}
+	for _, session := range sessions {
+		if session.Title == target {
+			matches = append(matches, session.ID)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", false, nil
+	case 1:
+		return matches[0], true, nil
+	default:
+		return "", true, fmt.Errorf("session title %q matches multiple sessions; use /sessions and rename by number or session id", target)
+	}
 }
 
 func parseSessionsArgs(args string) (int, string, error) {
@@ -811,6 +883,7 @@ func (SessionLifecycleModule) RegisterCommands(registrar Registrar, deps Deps) e
 		NewUnarchive,
 		NewPin,
 		NewUnpin,
+		NewRename,
 		NewDelete,
 		NewClean,
 	)

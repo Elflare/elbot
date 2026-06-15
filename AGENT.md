@@ -187,7 +187,7 @@
 ### Session 服务
 
 
-- `internal/session/session.go`：Session 业务服务；管理当前 session、创建、恢复、Fork、分页列表、状态、模式切换、归档/置顶/删除、过期清理、平台隔离、按 `cron:` scope 识别的同平台 cron session 可见性和 CLI 全平台全 owner 列表可见性。
+- `internal/session/session.go`：Session 业务服务；管理当前 session、创建、恢复、Fork、分页列表、状态、模式切换、手动重命名、归档/置顶/删除、过期清理、平台隔离、按 `cron:` scope 识别的同平台 cron session 可见性和 CLI 全平台全 owner 列表可见性。
 
 ### Storage 抽象
 

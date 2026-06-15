@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -95,6 +96,70 @@ func ensureNoGeneratorCall(t *testing.T, ch <-chan []storage.Message) {
 		t.Fatalf("unexpected title generator call: %#v", messages)
 	case <-time.After(50 * time.Millisecond):
 	}
+}
+
+func TestServiceRenameMarksManualTitleAndPreservesMetadata(t *testing.T) {
+	svc, store := newTestService(t)
+	ctx := context.Background()
+	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+
+	session, err := svc.Create(ctx, scope, "old title")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	session.Metadata = `{"discovered_tools":["web_search"]}`
+	if err := store.Sessions().Update(ctx, session); err != nil {
+		t.Fatalf("update metadata: %v", err)
+	}
+
+	renamed, err := svc.Rename(ctx, scope, session.ID, "new title")
+	if err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+	if renamed.Title != "new title" {
+		t.Fatalf("title = %q", renamed.Title)
+	}
+
+	var metadata struct {
+		DiscoveredTools []string `json:"discovered_tools"`
+		TitleRenamed    bool     `json:"title_renamed"`
+		TitleSource     string   `json:"title_source"`
+	}
+	if err := json.Unmarshal([]byte(renamed.Metadata), &metadata); err != nil {
+		t.Fatalf("decode metadata: %v", err)
+	}
+	if len(metadata.DiscoveredTools) != 1 || metadata.DiscoveredTools[0] != "web_search" {
+		t.Fatalf("discovered_tools not preserved: %#v", metadata.DiscoveredTools)
+	}
+	if !metadata.TitleRenamed || metadata.TitleSource != "manual" {
+		t.Fatalf("manual rename metadata missing: %#v", metadata)
+	}
+}
+
+func TestServiceRenameSkipsAutomaticNaming(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "elbot_sessions.db"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	generator := &fakeTitleGenerator{calls: make(chan []storage.Message, 1)}
+	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, generator, nil)
+	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	session, err := svc.Create(ctx, scope, "old title")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := svc.Rename(ctx, scope, session.ID, "manual title"); err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+	if err := store.Messages().Append(ctx, &storage.Message{SessionID: session.ID, Role: storage.RoleUser, Content: "hello"}); err != nil {
+		t.Fatalf("append message: %v", err)
+	}
+
+	svc.MaybeScheduleNaming(ctx, session.ID)
+	ensureNoGeneratorCall(t, generator.calls)
 }
 
 func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
