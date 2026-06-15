@@ -175,7 +175,7 @@ func editFileBuilder() *tool.Builder {
 		Integer("start_line", "起始行号，1-based。replace/delete 需要；insert_before/insert_after 表示插入位置。", tool.Required()).
 		String("end_line", "结束行号，1-based 且包含该行；也可传 end 表示文件末尾；replace/delete 默认等于 start_line。").
 		String("content", "replace/insert 写入的文本；delete 会忽略该字段。").
-		String("expected_sha256", "可选，编辑前文件 sha256；若当前文件不一致则拒绝编辑。")
+		String("expected_sha256", "可选，编辑前文件 sha256")
 }
 
 func (EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
