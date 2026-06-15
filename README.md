@@ -1,96 +1,100 @@
+<!-- This file is auto-translated from README.zh-CN.md. Do not edit manually. -->
+
 # ElBot
 
-[中文](README.zh-CN.md) | English
+Chinese | [English](README.md)
 
-ElBot is a lightweight Agent/Chatbot framework written in Go. It aims to keep extensibility while reducing runtime cost, context cost, and maintenance complexity. It supports normal chat, tool calling, hooks, scheduled tasks, persistent sessions, and context compaction, making it suitable for personal assistants, platform bots, and programmable automation agents.
+ElBot is a lightweight Agent/Chatbot framework written in Go, aiming to minimize operating costs, context costs, and maintenance complexity while preserving extensibility.
+ It supports general chat, tool calling, Hook extensions, long-term task scheduling, persistent Sessions, and context compaction, making it suitable for scenarios such as personal assistants, platform bots, and orchestratable automation assistants.
 
-## Highlights
+## Features
 
-### 0. Lightweight and efficient Go implementation
+### 0. Lightweight and Efficient Go Implementation
 
-ElBot is implemented in Go, startup takes about 2ms and resident memory is about 30MB.
+ElBot currently takes about 2ms for local startup and uses approximately 20MB of resident memory.
 
-### 1. Token-efficient tool discovery
+### 1. Token-Efficient Tool Discovery Mechanism
 
-Studies suggest that many everyday users still use ChatGPT-like systems mainly as advanced search engines, writing assistants, and conversational listeners; frequent tool calling is not the default pattern for every conversation. ElBot therefore does not inject full schemas for all tools into every turn. Instead, it exposes only `discover_tool` and available tool names. When the model needs a tool, it discovers the details on demand, and the Agent then injects the corresponding schema. This design avoids unnecessary context overhead in ordinary conversations.
+Research shows that many average users still primarily use ChatGPT-like products as advanced search engines, writing assistants, and listening partners; frequent tool calling is not the norm for all conversations. ElBot does not inject the full schema of all tools by default in every round of conversation, but only exposes `discover_tool` and the names of currently available tools. When the model needs to use a tool, it first discovers the tool details on demand, and then the Agent injects the corresponding schema. This design reduces the invalid context overhead in the vast majority of ordinary chats.
 
-References: Chatterji et al., *How People Use ChatGPT*, NBER, 2025; Yan et al., *ShareChat: A Dataset of Chatbot Conversations in the Wild*, arXiv:2512.17843, 2025.
+Reference: Chatterji et al., *How People Use ChatGPT*, NBER, 2025;Yan et al., *ShareChat: A Dataset of Chatbot Conversations in the Wild*, arXiv:2512.17843, 2025。
 
-### 2. Separate Chat and Work modes
+### 2. Chat / Work Dual Mode
 
-ElBot separates chat mode from work mode. Chat mode removes tools entirely, making it better suited for casual conversation, companionship, lightweight Q&A, and low-cost interaction. Work mode enables tool discovery and tool calling for search, command execution, task creation, and skill operations. The two modes can use different models, so inexpensive models can handle chat while stronger models focus on complex tasks.
+ElBot distinguishes between chat mode and work mode. chat mode completely removes tools, making it more suitable for daily chatting, companionship, lightweight Q&A, and low-cost conversations; work mode enables tool discovery and tool calling capabilities for complex tasks.
+ The two modes can be configured with models independently, allowing low-cost models to handle casual chat and powerful models to focus on complex tasks.
 
-### 3. Extensible hook system
+### 3. Extensible Hook System
 
-ElBot includes a Hook Layer that can extend key event points such as Agent input, LLM request preparation, LLM responses, platform sending, and platform connection. Hooks can modify messages, append output intents, call low-risk tools, or inject resident memory. Built-in hooks include rule hooks, emoticon hooks, and resident memory hooks, while additional plugins can evolve independently from the core logic.
+ElBot has a built-in Hook Layer, allowing extension logic to be inserted at key event points such as Agent input, LLM request, LLM response, platform sending, and platform connection.
+ Hooks can modify messages, append output intents, call low-risk tools, or inject resident memory. Built-in rule Hooks, emoji Hooks, and resident memory Hooks are provided, with support for extending independent plugins in the future.
 
-### 4. Logging and audit system
+### 4. Comprehensive Log and Audit System
 
-ElBot separates runtime logs from audit logs. It supports structured fields, log queries, audit queries, request status inspection, and runtime debugging. Runtime logs help diagnose operational issues, while audit logs track command denial, tool calls, Cron delivery, persistence errors, and other important events. For long-running bots, this reduces troubleshooting cost and makes high-risk operations easier to trace.
+ElBot distinguishes between runtime logs and audit logs, supporting structured field recording, log queries, audit queries, request status viewing, and runtime debugging. Runtime logs are used to locate operational issues, while audit logs are used to track key behaviors such as tool calls.
 
-### 5. Resident memory and long-term memory
+### 5. Resident Memory and Long-term Memory Layering
 
-ElBot separates memory into resident memory and long-term memory. Resident memory only stores short, stable information that is truly useful in every turn, reducing token usage. Longer and more complex memory is not automatically injected; instead, the LLM actively discovers and queries it through the `long_memory` tool when needed.
+ElBot is divided into resident memory and long-term memory. Resident memory only saves short, stable information that truly needs to be injected into every round, reducing token consumption; Longer and more complex memories are not forcibly auto-injected; instead, the LLM actively discovers and queries them via the `long_memory` tool when needed.
 
-Long-term memory uses human-readable Markdown files as the source data, with SQLite FTS as a rebuildable search index. This balances transparency with retrieval efficiency.
+Long-term memory uses human-readable Markdown files as source data, while using SQLite FTS as a reconstructible search index, balancing transparency and retrieval efficiency.
 
-Compared with fully automatic RAG or graph-based long-term memory, ElBot's memory design is more explicit and controllable.
+Compared to fully automated RAG or graph-based long-term memory retrieval, ElBot's memory design is more explicit and controllable.
 
-### 6. Direct Cron and LLM Cron
+### 6. Standard Cron and LLM Cron
 
-ElBot includes both a central Cron runtime and an LLM-orchestrated Cron service. Direct Cron sends fixed content on schedule, while LLM Cron lets a model execute tasks from task descriptions.
+ElBot has a built-in Cron Runtime and an LLM-orchestratable Cron service. Standard Cron can send fixed content directly according to a schedule; LLM Cron allows the model to be driven by task descriptions.
 
-### 7. ELyph: task notation for LLM collaboration
+### 7. ELyph: Task Representation for LLM Collaboration
 
-ElBot introduces ELyph Task Notation for LLM Cron and native skills. ELyph is designed to reduce ambiguity in natural-language task descriptions and express inputs, outputs, steps, conditions, and constraints in a shorter and more stable structure. Compared with free-form Markdown, ELyph is better suited for task reuse and communication between LLMs, and it is easier to lint, audit, and process with tools.
+ElBot introduces ELyph Task Notation to describe LLM Cron and native Skills. The goal of ELyph is to reduce ambiguity in natural language task descriptions, using shorter and more stable structures to express inputs, outputs, steps, conditions, and constraints. Compared to arbitrary Markdown, ELyph is better suited for reusing and passing tasks between LLMs, and is also easier for linting, auditing, and subsequent tooling.
 
-### 8. LLM-created El Skills
+### 8. El Skills that can be created by LLMs
 
-ElBot provides the `create_el_skill` meta tool, allowing the LLM to turn reusable experience into El Skills.
+ElBot has a built-in `create_el_skill` meta-tool, allowing LLMs to crystallize reusable experience into El Skills.
 
-### 9. Compatible with Python skills from the web
+### 9. Compatible with Internet Python Skills
 
-Besides native El Skills, ElBot is also compatible with common external Python skill structures. It automatically scans `SKILL.md` or `SKILL.elyph`, reads the skill name, description, use cases, and risk level, then executes the skill through hidden wrapper tools.
+In addition to native El Skills, ElBot is also compatible with common external Python skill structures. Automatically scan the `SKILL.md` or `SKILL.elyph` of Python skills, read the name, description, applicable scenarios, and risk level, and execute them through hidden wrapper tools.
 
-### 10. Multi-platform and rich output abstraction
+### 10. Multi-platform and Rich Output Abstraction
 
-ElBot abstracts platform and output layers. It currently supports CLI and QQ OneBot, with room for more platforms.
+ElBot abstracts the platform and output layers, supporting CLI and QQ OneBot, with space reserved for extending to other platforms.
 
-### 11. Sessions, forks, and context compaction
+### 11. Session, Fork, and Context Compaction
 
-ElBot includes a persistent Session service with session resume, archive, pin, fork, delete, pagination, and platform isolation.
+ElBot has a built-in persistent Session service, supporting Session recovery, archiving, pinning, forking, deletion, paginated viewing, and platform isolation.
 
-### 12. Security policy and risk confirmation
+### 12. Security Policies and Risk Confirmation
 
-ElBot's tool system includes risk levels, permission checks, and high-risk confirmation. Normal users can only discover and call tools within their allowed risk level, and superadmins must also confirm high-risk tool calls.
+ElBot's tool system has built-in risk levels, permission judgments, and high-risk confirmation processes. Regular users can only discover and call tools within the low-risk range, and superadmins also need confirmation when calling high-risk tools.
 
 ## Usage
 
-During development, you can run the CLI directly from source:
+During development, you can start the CLI directly from the source code:
 
 ```bash
 go run ./cmd/elbot --config config/app.toml
 ```
 
-Minimal setup flow:
+Minimum usage flow:
 
-1. Configure an OpenAI-compatible provider in `config/providers.toml`.
-2. Set the API key through the OS environment or a `.env` file in the config directory.
-3. Select the default `chat` / `work` mode and models in `config/state.toml`.
-4. Start ElBot, run `/help`, or begin chatting directly.
+1. Configure the OpenAI-compatible Provider in `config/providers.toml`.
+2. Set the API Key corresponding to `api_key_env` via system environment variables or the configuration directory `.env`.
+3. Select the default `chat` / `work` mode and model in `config/state.toml`.
+4. After starting, enter `/help` to view commands, or start a conversation directly.
 
-Documentation:
+For detailed instructions, see:
 
-- [Getting Started](docs/getting-started.md)
-- [Configuration](docs/configuration.md)
-- [Commands](docs/commands.md)
-- [Concepts](docs/concepts.md)
+- [Quick Start](docs.en/getting-started.md)
+- [Configuration Guide](docs.en/configuration.md)
+- [Command Cheat Sheet](docs.en/commands.md)
+- [Core Concepts](docs.en/concepts.md)
 
-Development planning and task tracking live in [devdocs](devdocs/).
+Development plans and task breakdowns have been moved to [devdocs](devdocs/).
 
-## Development status
+## Development Status
 
-ElBot is still under active development. APIs, configuration, and internal implementation may continue to change. It is currently best suited for experimentation as a personal Agent or bot framework.
+ElBot is still under rapid development; interfaces, configurations, and internal implementations may continue to be adjusted. It is currently more suitable for exploration as a personal Agent/bot framework.
 
-Documentation policy: README files should stay focused on entry points and the minimal startup path. User-facing documentation lives in `docs/`, while planning and implementation notes live in `devdocs/`.
-
+Documentation maintenance strategy: The README only retains the project entry point and the minimum startup path; User documentation is located in `docs/`, and development plans and internal materials are located in `devdocs/`. When adding user-visible features, prioritize updating the corresponding topic documentation.
