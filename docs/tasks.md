@@ -228,7 +228,7 @@
 - [x] 实现 `Create`。
 - [x] 实现 `Resume`。
 - [x] 实现 `List`。
-- [ ] 实现 `SetMode`。
+- [x] 实现 `SetMode`。
 
 ### `/new`
 
@@ -302,8 +302,6 @@
 - [x] CLI TUI 支持 Tab 补全候选窗、上下选择候选，且 Esc/Ctrl+C 会先关闭候选窗或清空输入，再次按才退出。
 - [x] CLI TUI 支持鼠标分区滚动和 Vim-like copy mode：Alt+h/Alt+l 进入聊天/通知复制模式，hjkl/v/V/y 选择复制，`/` 在当前区域搜索。
 - [ ] CLI TUI 后续支持 Markdown 渲染，可考虑接入 Glamour。后续能配置用户名和助手名配置
-
-
 
 
 ## Milestone 5：会话模式与 Prompt Builder
@@ -479,7 +477,8 @@
 ### 内置工具
 
 - [x] 实现受限 `shell` 工具，接口保留通用 `cmd`，当前代码只允许执行 `ls`，后续接入权限确认后再开放更多命令。
-- [ ] send_file 工具暂时先支持base64发送，未来更新s3/r2上传发送
+- [x] send_file 工具支持base64发送
+ - [ ] 未来更新s3/r2上传发送
 
 ### Prompt 接入
 
@@ -661,7 +660,6 @@
 - [x] 在任意平台，管理员都可以通过 `/audit` 查看。
 - [x] 支持参数，如最近几条、按风险筛选、按用户 ID 筛选等。
 
-
 ## Milestone 13：Hook 基础
 
 目标：关键流程可扩展，并为后续平台接入提供统一 Hook 点。
@@ -684,8 +682,7 @@
 ### Hook 扩展注册方案
 
 - [x] 方案 1：Go 内置 Hook Module 注册。新增 Hook Module/Registrar 地基，内置 Hook 通过 Go 代码显式注册到 HookManager，适合稳定、可测试、随程序发布的扩展。
-- [ ] 方案 2：外部 Hook 目录扫描（预留，可能不做）。目录暂定 `hooks/<name>/HOOK.toml + command`，通过 stdin/stdout JSON 协议收发 Hook Event；用于未来用户免编译扩展，但存在安全、调试、跨平台和性能成本，是否实现后续再定。
-- [ ] 方案 2：若未来实现，外部 Hook 默认应显式启用、限制超时，并复用 Hook priority 顺序；不使用 Go plugin，避免 Windows/Linux 兼容和动态加载维护成本。
+- [X] 方案 2：外部 Hook 。目录 `config/plugins/HOOK.toml。
 - [ ] 临时hook
 
 
@@ -745,7 +742,6 @@
 - [x] 实现长期记忆更新工具。
 - [x] 实现长期记忆删除工具。
 
-
 ## Milestone 16：后续扩展
 
 ### ELyph 与原生 skill
@@ -780,11 +776,10 @@
 
 ### 工具组
 
-- [ ] 定义工具组配置。
-- [ ] 支持按工具组 discover。
-- [ ] 支持工具组权限。
+- [X] 定义工具组配置。
+- [x] 支持按工具组主动注入。
 - [ ] 支持子 Agent 限定工具组。
-- [ ] 支持用户在聊天中@工具组直接把完整schema注入到prompt中
+- [x] 支持用户在聊天中@工具组直接把完整schema注入到prompt中
 
 ### 子 Agent
 
