@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "16e96476d75e7f044c165eab3906e7aaa39fe6dc175fd549d16a97a2050711ac",
+      "source_hash": "0728af4feb0fd1e2d0cce401142cafdaaac2d8811da5b26cc3b10c2b0bd82036",
       "target": "README.md",
-      "updated_at": 1781514456
+      "updated_at": 1781519017
     },
     "docs/README.md": {
       "source_hash": "ece79e589e6219920d295c5ead264549fe40fe58ac5824ffef69da1b840702cf",
@@ -240,6 +240,14 @@
       "translation": "Compared to fully automated RAG or graph-based long-term memory retrieval, ElBot's memory design is more explicit and controllable.\n",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:07abf0e35f4b7225b51900d300b623b17b6a9e32e449ba7f242cb238517d5d4d": {
+      "kind": "paragraph",
+      "source": "work模式：<1000\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "07abf0e35f4b7225b51900d300b623b17b6a9e32e449ba7f242cb238517d5d4d",
+      "translation": "work mode: <1000\n",
+      "updated_at": 1781519017
+    },
     "README.zh-CN.md:paragraph:0f92def088eb83446c5a7650f5eaf7cd2d2415b189c381f92f19cb15d1de8525": {
       "kind": "paragraph",
       "source": "开发计划和任务拆分已移到 [devdocs](devdocs/)。\n",
@@ -319,6 +327,22 @@
       "source_hash": "48b0675c73d0ad3cbda893569be96fef52b83c23adb41dec509e36735438afc3",
       "translation": "Longer and more complex memories are not forcibly auto-injected; instead, the LLM actively discovers and queries them via the __ELBOT_CODE_0__ tool when needed.\n",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:4a974fe62b0f35bb6b8471ae02a95727ec56255f3ae4f25c828a5548f67b49a6": {
+      "kind": "paragraph",
+      "source": "个人日常使用，一次请求token消耗：\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "4a974fe62b0f35bb6b8471ae02a95727ec56255f3ae4f25c828a5548f67b49a6",
+      "translation": "For personal daily use, token consumption per request:\n",
+      "updated_at": 1781519017
+    },
+    "README.zh-CN.md:paragraph:4b9cf5f63267c6e07defc2a03c22e10911ddba97f33d3e925503687b4e60b179": {
+      "kind": "paragraph",
+      "source": "研究表明，许多普通用户仍主要将 LLM 类产品用作更高级的搜索引擎、写作助手和倾听对象，频繁工具调用并不是所有对话的常态。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "4b9cf5f63267c6e07defc2a03c22e10911ddba97f33d3e925503687b4e60b179",
+      "translation": "Research shows that many ordinary users still primarily use LLM-like products as advanced search engines, writing assistants, and listeners; frequent tool calls are not the norm for all conversations.\n",
+      "updated_at": 1781519017
     },
     "README.zh-CN.md:paragraph:4c6ea51c7992ac52b29611005d3f20079c36fb3424891a135ade26a358715210": {
       "kind": "paragraph",
@@ -400,6 +424,14 @@
       "translation": "Minimum usage flow:\n",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:7c4b0ace7fcd5820edfa12d6bde79fa5adb682a88d641dc1e3b42a60203c654f": {
+      "kind": "paragraph",
+      "source": "ElBot 当前本地启动耗时约 2ms，常驻内存约 30MB。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "7c4b0ace7fcd5820edfa12d6bde79fa5adb682a88d641dc1e3b42a60203c654f",
+      "translation": "ElBot currently takes about 2ms to start locally, with resident memory of about 30MB.\n",
+      "updated_at": 1781519017
+    },
     "README.zh-CN.md:paragraph:7f448437c71676019182a1592917cf3ec3d00b63036317611a3a92b7d6b4b266": {
       "kind": "paragraph",
       "source": "两种模式可以独立配置模型，让低成本模型承担闲聊，让强模型专注处理复杂任务。\n",
@@ -415,6 +447,14 @@
       "source_hash": "91fbaa7b4dcef9a9a24bd7d258789c3d6ac6a079c29420024a31df6c0099f5ac",
       "translation": "Long-term memory uses human-readable Markdown files as source data, while using SQLite FTS as a reconstructible search index, balancing transparency and retrieval efficiency.\n",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:92efcf80f645ea9b7ceff244c09704c7b89b79aac33b8cbae4222badf8811d31": {
+      "kind": "paragraph",
+      "source": "chat模式：<500\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "92efcf80f645ea9b7ceff244c09704c7b89b79aac33b8cbae4222badf8811d31",
+      "translation": "chat mode: <500\n",
+      "updated_at": 1781519017
     },
     "README.zh-CN.md:paragraph:92f8aa93cf8d3615c2d061ae8faae21a2235a81f786bed9378206a31a3bb3108": {
       "kind": "paragraph",
@@ -495,6 +535,14 @@
       "source_hash": "b99aceb5fee1d1349b739b352b4276f2f6b8bb22a01ead79344466184b1a36a7",
       "translation": "ElBot has a built-in persistent Session service, supporting Session recovery, archiving, pinning, forking, deletion, paginated viewing, and platform isolation.\n",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:bba5fe1a79db2ae2eda5ac90c6f8cbbe49298bcc1ba9f71f385c5dc9875006dc": {
+      "kind": "paragraph",
+      "source": "极大程度减少无效上下文开销。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "bba5fe1a79db2ae2eda5ac90c6f8cbbe49298bcc1ba9f71f385c5dc9875006dc",
+      "translation": "Greatly reduces invalid context overhead.\n",
+      "updated_at": 1781519017
     },
     "README.zh-CN.md:paragraph:bccc72c4ad7f5f02c400be388c8552650edd7681bf211a2ddb2d98f5b58a51f9": {
       "kind": "paragraph",
