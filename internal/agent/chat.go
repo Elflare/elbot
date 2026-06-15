@@ -182,6 +182,9 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	if updatedUserContent := llm.LatestUserSegmentContentText(llmMessages); updatedUserContent != "" {
 		userMessage.Content = updatedUserContent
 	}
+	if err := a.persistTurnMessage(ctx, userMessage, "append_user_message"); err != nil {
+		return err
+	}
 
 	bufferOutput := bufferAssistantOutput(ctx)
 	var finalText string
@@ -197,6 +200,10 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	for {
 		if inToolPhase {
 			llmMessages = a.drainPendingUserInput(session.ID, llmMessages, &turnMessages)
+			if err := a.persistTurnMessages(ctx, session.ID, "append_pending_user_message", turnMessages); err != nil {
+				return err
+			}
+			turnMessages = turnMessages[:0]
 		}
 		stream := a.startMessageStream(reqCtx)
 		result, updatedUserContent, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, latestUserContent, stream)
@@ -256,6 +263,10 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			a.sendPreview(ctx, fmt.Sprintf("已达到 max_rounds_per_turn=%d，后续工具调用未执行，正在请求模型总结当前进度。", a.maxToolRoundsPerTurn()))
 			llmMessages = append(llmMessages, skippedToolMessages(result.ToolCalls, a.maxToolRoundsPerTurn())...)
 			llmMessages = a.drainPendingUserInput(session.ID, llmMessages, &turnMessages)
+			if err := a.persistTurnMessages(ctx, session.ID, "append_pending_user_message", turnMessages); err != nil {
+				return err
+			}
+			turnMessages = turnMessages[:0]
 			llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("工具调用轮次已达到上限，请基于已有工具结果和当前上下文总结当前进度，不要继续调用工具。")})
 			tools = nil
 			stream := a.startMessageStream(reqCtx)
@@ -291,11 +302,13 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		}
 		toolRounds++
 		toolMessages, confirmationExtra, transcriptMessages, stopped := a.executeToolCalls(reqCtx, session, result.ToolCalls, assistantRawText, assistantRawText)
+		llmMessages = append(llmMessages, toolMessages...)
+		if err := a.persistTurnMessages(ctx, session.ID, "append_tool_transcript", transcriptMessages); err != nil {
+			return err
+		}
 		if stopped {
 			return nil
 		}
-		llmMessages = append(llmMessages, toolMessages...)
-		turnMessages = append(turnMessages, transcriptMessages...)
 		tools, err = a.toolsForSession(ctx, session)
 		if err != nil {
 			return err
@@ -338,19 +351,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	if !a.turns.CompleteLLM(session.ID) {
 		return nil
 	}
-	if err := a.store.Messages().Append(ctx, userMessage); err != nil {
-		a.audit("persistence_error", "session_id", session.ID, "operation", "append_user_message", "error", err.Error())
-		return err
-	}
-	for i := range turnMessages {
-		turnMessages[i].SessionID = session.ID
-		if err := a.store.Messages().Append(ctx, &turnMessages[i]); err != nil {
-			a.audit("persistence_error", "session_id", session.ID, "operation", "append_tool_transcript", "error", err.Error())
-			return err
-		}
-	}
-	if err := a.store.Messages().Append(ctx, assistantMessage); err != nil {
-		a.audit("persistence_error", "session_id", session.ID, "operation", "append_assistant_message", "error", err.Error())
+	if err := a.persistTurnMessage(ctx, assistantMessage, "append_assistant_message"); err != nil {
 		return err
 	}
 	if bufferOutput {

@@ -1068,6 +1068,50 @@ func TestChatExecutesToolAndFollowsUp(t *testing.T) {
 	}
 }
 
+func TestToolTranscriptPersistsWhenFollowupLLMFails(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{
+		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo saved"}`}}, FinishReason: "tool_calls"}},
+		{{Error: fmt.Errorf("followup failed")}},
+	}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(newAgentShellTool())
+	a.SetToolRuntime(registry, nil)
+	ctx := context.Background()
+
+	err := a.HandleMessage(ctx, "run and save")
+	if err == nil || !strings.Contains(err.Error(), "followup failed") {
+		t.Fatalf("HandleMessage err = %v", err)
+	}
+	sessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "cli:local", Platform: p.Name(), PlatformScopeID: "local"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("sessions = %#v", sessions)
+	}
+	messages, err := store.Messages().ListBySession(ctx, sessions[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 3 {
+		t.Fatalf("messages = %#v", messages)
+	}
+	if messages[0].Role != storage.RoleUser || messages[0].Content != "run and save" {
+		t.Fatalf("user message not persisted: %#v", messages[0])
+	}
+	if messages[1].Role != storage.RoleAssistant || !strings.Contains(messages[1].Metadata, "call_1") {
+		t.Fatalf("assistant tool call not persisted: %#v", messages[1])
+	}
+	if messages[2].Role != storage.RoleTool || messages[2].ToolCallID != "call_1" || !strings.Contains(messages[2].Content, "stdout") {
+		t.Fatalf("tool result not persisted: %#v", messages[2])
+	}
+}
+
 func TestTurnHookDoesNotRepeatDuringToolFollowup(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{

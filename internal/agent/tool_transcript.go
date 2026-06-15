@@ -145,6 +145,24 @@ func metadataToolNames(value any) []string {
 	}
 }
 
+func (a *Agent) persistTurnMessage(ctx context.Context, message *storage.Message, operation string) error {
+	if err := a.store.Messages().Append(ctx, message); err != nil {
+		a.audit("persistence_error", "session_id", message.SessionID, "operation", operation, "error", err.Error())
+		return err
+	}
+	return nil
+}
+
+func (a *Agent) persistTurnMessages(ctx context.Context, sessionID, operation string, messages []storage.Message) error {
+	for i := range messages {
+		messages[i].SessionID = sessionID
+		if err := a.persistTurnMessage(ctx, &messages[i], operation); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func joinNames(names []string) string {
 	if len(names) == 0 {
 		return "none"
