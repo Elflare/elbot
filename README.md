@@ -5,7 +5,7 @@
 [中文](README.zh-CN.md) | English
 
 ElBot is a lightweight Agent/Chatbot framework written in Go, aiming to minimize operating costs, context costs, and maintenance complexity while preserving extensibility.
- It supports general chat, tool calling, Hook extensions, long-term task scheduling, persistent Sessions, and context compaction, making it suitable for scenarios such as personal assistants, platform bots, and orchestratable automation assistants.
+It supports general chat, tool calling, Hook extensions, long-term task scheduling, persistent Sessions, and context compaction, making it suitable for scenarios such as personal assistants, platform bots, and orchestratable automation assistants.
 
 ## Features
 
@@ -22,12 +22,12 @@ Reference: Chatterji et al., *How People Use ChatGPT*, NBER, 2025;Yan et al., *S
 ### 2. Chat / Work Dual Mode
 
 ElBot distinguishes between chat mode and work mode. chat mode completely removes tools, making it more suitable for daily chatting, companionship, lightweight Q&A, and low-cost conversations; work mode enables tool discovery and tool calling capabilities for complex tasks.
- The two modes can be configured with models independently, allowing low-cost models to handle casual chat and powerful models to focus on complex tasks.
+The two modes can be configured with models independently, allowing low-cost models to handle casual chat and powerful models to focus on complex tasks.
 
 ### 3. Extensible Hook System
 
 ElBot has a built-in Hook Layer, allowing extension logic to be inserted at key event points such as Agent input, LLM request, LLM response, platform sending, and platform connection.
- Hooks can modify messages, append output intents, call low-risk tools, or inject resident memory. Built-in rule Hooks, emoji Hooks, and resident memory Hooks are provided, with support for extending independent plugins in the future.
+Hooks can modify messages, append output intents, call low-risk tools, or inject resident memory. Built-in rule Hooks, emoji Hooks, and resident memory Hooks are provided, with support for extending independent plugins in the future.
 
 ### 4. Comprehensive Log and Audit System
 
