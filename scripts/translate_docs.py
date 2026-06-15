@@ -744,8 +744,20 @@ def commit_translation(paths: list[Path], message: str) -> None:
     log(f"  committed: {message}")
 
 
+def rewrite_readme_language_switcher(rendered: str) -> str:
+    lines = rendered.splitlines()
+    for index, line in enumerate(lines[:8]):
+        normalized = line.strip().lower()
+        if normalized in {"chinese | [english](readme.md)", "中文 | [english](readme.md)"}:
+            lines[index] = "[中文](README.zh-CN.md) | English"
+            return "\n".join(lines) + ("\n" if rendered.endswith("\n") else "")
+    return rendered
+
+
 def rewrite_readme_links(rendered: str) -> str:
+    rendered = rewrite_readme_language_switcher(rendered)
     return re.sub(r"\((docs/[^)\s]+\.md(?:#[^)\s]+)?)\)", r"(docs.en/\1)", rendered).replace("docs.en/docs/", "docs.en/")
+
 
 
 def finalize_rendered(doc: SourceDoc, rendered: str) -> str:

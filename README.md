@@ -2,7 +2,7 @@
 
 # ElBot
 
-Chinese | [English](README.md)
+[中文](README.zh-CN.md) | English
 
 ElBot is a lightweight Agent/Chatbot framework written in Go, aiming to minimize operating costs, context costs, and maintenance complexity while preserving extensibility.
  It supports general chat, tool calling, Hook extensions, long-term task scheduling, persistent Sessions, and context compaction, making it suitable for scenarios such as personal assistants, platform bots, and orchestratable automation assistants.
