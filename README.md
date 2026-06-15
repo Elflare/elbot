@@ -11,13 +11,18 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 
 ### 0. Lightweight and Efficient Go Implementation
 
-ElBot currently takes about 2ms for local startup and uses approximately 20MB of resident memory.
+ElBot currently takes about 2ms to start locally, with resident memory of about 30MB.
 
 ### 1. Token-Efficient Tool Discovery Mechanism
 
-Research shows that many average users still primarily use ChatGPT-like products as advanced search engines, writing assistants, and listening partners; frequent tool calling is not the norm for all conversations. ElBot does not inject the full schema of all tools by default in every round of conversation, but only exposes `discover_tool` and the names of currently available tools. When the model needs to use a tool, it first discovers the tool details on demand, and then the Agent injects the corresponding schema. This design reduces the invalid context overhead in the vast majority of ordinary chats.
+Research shows that many ordinary users still primarily use LLM-like products as advanced search engines, writing assistants, and listeners; frequent tool calls are not the norm for all conversations.
+ Reference: Chatterji et al., *How People Use ChatGPT*, NBER, 2025;Yan et al., *ShareChat: A Dataset of Chatbot Conversations in the Wild*, arXiv:2512.17843, 2025。
 
-Reference: Chatterji et al., *How People Use ChatGPT*, NBER, 2025;Yan et al., *ShareChat: A Dataset of Chatbot Conversations in the Wild*, arXiv:2512.17843, 2025。
+ElBot does not inject the full schema of all tools by default in every round of conversation, but only exposes `discover_tool` and the names of currently available tools. When the model needs to use a tool, it first discovers the tool details on demand, and then the Agent injects the corresponding schema. Greatly reduces invalid context overhead.
+
+For personal daily use, token consumption per request:
+ work mode: <1000
+ chat mode: <500
 
 ### 2. Chat / Work Dual Mode
 
