@@ -565,8 +565,21 @@ def is_zero_ref(ref: str) -> bool:
     return bool(ref) and set(ref) == {"0"}
 
 
-def changed_source_names(args: argparse.Namespace) -> set[str] | None:
+def missing_generated_targets(docs: list[SourceDoc], cache: dict) -> list[str]:
+    cached_files = cache.get("files", {})
+    missing: list[str] = []
+    for doc in docs:
+        if doc.source_rel not in cached_files or not doc.target.exists():
+            missing.append(doc.source_rel)
+    return missing
+
+
+def changed_source_names(args: argparse.Namespace, docs: list[SourceDoc], cache: dict) -> set[str] | None:
     if not args.changed_only:
+        return None
+    missing = missing_generated_targets(docs, cache)
+    if missing:
+        log(f"generated docs are incomplete; falling back to full scan: {', '.join(missing)}")
         return None
     if not CACHE_PATH.exists():
         log("translation cache is missing; falling back to full scan")
@@ -590,10 +603,10 @@ def changed_source_names(args: argparse.Namespace) -> set[str] | None:
     return {name for name in changed if name == "README.zh-CN.md" or (name.startswith("docs/") and name.endswith(".md"))}
 
 
-def select_source_docs(args: argparse.Namespace) -> tuple[list[SourceDoc], set[str], set[str] | None]:
+def select_source_docs(args: argparse.Namespace, cache: dict) -> tuple[list[SourceDoc], set[str], set[str] | None]:
     docs = all_source_docs()
     current_sources = {doc.source_rel for doc in docs}
-    changed = changed_source_names(args)
+    changed = changed_source_names(args, docs, cache)
     if changed is None:
         return docs, current_sources, None
     selected = [doc for doc in docs if doc.source_rel in changed]
@@ -768,7 +781,7 @@ def finalize_rendered(doc: SourceDoc, rendered: str) -> str:
 
 def run(args: argparse.Namespace) -> int:
     cache = read_json(CACHE_PATH)
-    sources, current_source_names, changed_names = select_source_docs(args)
+    sources, current_source_names, changed_names = select_source_docs(args, cache)
     deleted_targets = prune_deleted_sources(cache, current_source_names)
     if deleted_targets:
         write_json(CACHE_PATH, cache)
