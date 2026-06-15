@@ -19,6 +19,11 @@
       "source_hash": "78e86ab872abafb0c43e66a5d172635d9aabb53845d864a75791d48ef10f2a8d",
       "target": "docs.en/concepts.md",
       "updated_at": 1781515483
+    },
+    "docs/configuration.md": {
+      "source_hash": "c0b729a1772748437f9ae1fe961af680b3f046b6165f734279f4abb0dcad2ded",
+      "target": "docs.en/configuration.md",
+      "updated_at": 1781515756
     }
   },
   "segments": {
@@ -2565,6 +2570,630 @@
       "source_hash": "fc08fa260979279586861e2e1faba0e21b6b0438048afa9c98b134660d3fbe3d",
       "translation": "runtime log",
       "updated_at": 1781515483
+    },
+    "docs/configuration.md:heading:18435419f154847b5c43eb9cab4abe202ecbcc94ec576c694119656d75e9f609": {
+      "kind": "heading",
+      "source": "命令前缀",
+      "source_file": "docs/configuration.md",
+      "source_hash": "18435419f154847b5c43eb9cab4abe202ecbcc94ec576c694119656d75e9f609",
+      "translation": "Command Prefix",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:heading:1df9f73d5d541d4fa51e2dccab5458cb62cd08b633f06be0b6dc1e48b5161253": {
+      "kind": "heading",
+      "source": "相对路径规则",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1df9f73d5d541d4fa51e2dccab5458cb62cd08b633f06be0b6dc1e48b5161253",
+      "translation": "Relative Path Rules",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:heading:25ee378242f618e2a0cad9601657bca1275985be4f802d19c4e53dcac3737c5e": {
+      "kind": "heading",
+      "source": "API Key 与 __ELBOT_CODE_0__",
+      "source_file": "docs/configuration.md",
+      "source_hash": "25ee378242f618e2a0cad9601657bca1275985be4f802d19c4e53dcac3737c5e",
+      "translation": "API Key and __ELBOT_CODE_0__",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:heading:3c00a5ebfe834864604e4404c946c7385c677f7a4936eb513ccce615e516c279": {
+      "kind": "heading",
+      "source": "存储与运行数据",
+      "source_file": "docs/configuration.md",
+      "source_hash": "3c00a5ebfe834864604e4404c946c7385c677f7a4936eb513ccce615e516c279",
+      "translation": "Storage and Runtime Data",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:heading:66d047a76b2b47960e4735109c58f717c3ae4ba351dbdac904db65bef047b717": {
+      "kind": "heading",
+      "source": "建议的维护方式",
+      "source_file": "docs/configuration.md",
+      "source_hash": "66d047a76b2b47960e4735109c58f717c3ae4ba351dbdac904db65bef047b717",
+      "translation": "Recommended Maintenance Method",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:heading:72c69872707cc8a9248577f0ebc329d42be835ee9e232b4a5e546f1c8c888661": {
+      "kind": "heading",
+      "source": "Provider 配置",
+      "source_file": "docs/configuration.md",
+      "source_hash": "72c69872707cc8a9248577f0ebc329d42be835ee9e232b4a5e546f1c8c888661",
+      "translation": "Provider Configuration",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:heading:89c9324699db4d4506ecd8b16b087116fdc710f076438d0276ef7d856f6b2f03": {
+      "kind": "heading",
+      "source": "Context 与压缩",
+      "source_file": "docs/configuration.md",
+      "source_hash": "89c9324699db4d4506ecd8b16b087116fdc710f076438d0276ef7d856f6b2f03",
+      "translation": "Context and Compaction",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:heading:929f0d5782c953427e17fc7f4bf781114d0e43e5bb4184bcf089047569ca4d68": {
+      "kind": "heading",
+      "source": "模型状态配置",
+      "source_file": "docs/configuration.md",
+      "source_hash": "929f0d5782c953427e17fc7f4bf781114d0e43e5bb4184bcf089047569ca4d68",
+      "translation": "Model Status Configuration",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:heading:a2b93d872ece1c48db572c8d468d36cc8a9e8cb99f9771e2b8a21820ffd73377": {
+      "kind": "heading",
+      "source": "平台配置",
+      "source_file": "docs/configuration.md",
+      "source_hash": "a2b93d872ece1c48db572c8d468d36cc8a9e8cb99f9771e2b8a21820ffd73377",
+      "translation": "Platform Configuration",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:heading:a63f4c00b90759ddc55776b08d57dc77ecc5d2ea99b080c27e165cd81a2df530": {
+      "kind": "heading",
+      "source": "主配置查找顺序",
+      "source_file": "docs/configuration.md",
+      "source_hash": "a63f4c00b90759ddc55776b08d57dc77ecc5d2ea99b080c27e165cd81a2df530",
+      "translation": "Main configuration lookup order",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:heading:aeba4c095159e4cb21dba5f26332f8ff81715f335b4b1211d4b0ebb30caaf743": {
+      "kind": "heading",
+      "source": "配置文件职责",
+      "source_file": "docs/configuration.md",
+      "source_hash": "aeba4c095159e4cb21dba5f26332f8ff81715f335b4b1211d4b0ebb30caaf743",
+      "translation": "Configuration File Responsibilities",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:heading:c1490c52e7217e77ad897def1336f64488cd0ffad776976e00264b624e14ccf5": {
+      "kind": "heading",
+      "source": "配置说明",
+      "source_file": "docs/configuration.md",
+      "source_hash": "c1490c52e7217e77ad897def1336f64488cd0ffad776976e00264b624e14ccf5",
+      "translation": "Configuration Guide",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:heading:cfbc40d05a6544e2ce5785bc042c18083cdc997bd1941b779bad82baba491968": {
+      "kind": "heading",
+      "source": "插件和 Hook 配置",
+      "source_file": "docs/configuration.md",
+      "source_hash": "cfbc40d05a6544e2ce5785bc042c18083cdc997bd1941b779bad82baba491968",
+      "translation": "Plugin and Hook Configuration",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:heading:d81850505bb720b6da2477587242acb8ba6bbb6377be3bcb867bdd9258ce5717": {
+      "kind": "heading",
+      "source": "工具与安全",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d81850505bb720b6da2477587242acb8ba6bbb6377be3bcb867bdd9258ce5717",
+      "translation": "Tools and Security",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:heading:e3f25be706484952acdb4e98fe76ae28bdfb03f9936abd75c415a71fa85c31a8": {
+      "kind": "heading",
+      "source": "日志与维护任务",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e3f25be706484952acdb4e98fe76ae28bdfb03f9936abd75c415a71fa85c31a8",
+      "translation": "Logs and Maintenance Tasks",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:005872fed21e156f096a6909121afe58a97417df3614ea9c7aa6f806120ea3ff": {
+      "kind": "list",
+      "source": "压缩只影响发给 LLM 的上下文视图，不删除原始历史。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "005872fed21e156f096a6909121afe58a97417df3614ea9c7aa6f806120ea3ff",
+      "translation": "Compression only affects the context view sent to the LLM and does not delete the original history.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:0a7e2661c09f9163f6350d4f83d5ae5b7fe261948c814ae7159a1037a301cf68": {
+      "kind": "list",
+      "source": "Linux：__ELBOT_CODE_0__ 或 __ELBOT_CODE_1__",
+      "source_file": "docs/configuration.md",
+      "source_hash": "0a7e2661c09f9163f6350d4f83d5ae5b7fe261948c814ae7159a1037a301cf68",
+      "translation": "Linux: __ELBOT_CODE_0__ or __ELBOT_CODE_1__",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:121deebefceaedb2063599a1af3d2f33d8500ca15c12cf33792cc72508392792": {
+      "kind": "list",
+      "source": "超级管理员调用高风险工具时也需要确认。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "121deebefceaedb2063599a1af3d2f33d8500ca15c12cf33792cc72508392792",
+      "translation": "Superadmins also need confirmation when calling high-risk tools.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:19873491cd420fec6a40558a8e05ed0c16f7bba136bdc485d731d09201462afc": {
+      "kind": "list",
+      "source": "配置目录下的 __ELBOT_CODE_0__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "19873491cd420fec6a40558a8e05ed0c16f7bba136bdc485d731d09201462afc",
+      "translation": "__ELBOT_CODE_0__ in the configuration directory.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:2e202f83cb7bc886d1a67c0336e50c3b0c0fcc8f96e398dbb62e601787b67984": {
+      "kind": "list",
+      "source": "改变默认路径或启动行为时同步更新 [快速开始](getting-started.md) 和 README。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "2e202f83cb7bc886d1a67c0336e50c3b0c0fcc8f96e398dbb62e601787b67984",
+      "translation": "Update [Quick Start](getting-started.md) and README synchronously when changing default paths or startup behavior.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:31940ce8c4e1ead3f58f17d6c27474110f15d1b8824556d5cba94165e71cea16": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：插件专属配置。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "31940ce8c4e1ead3f58f17d6c27474110f15d1b8824556d5cba94165e71cea16",
+      "translation": "__ELBOT_CODE_0__: Plugin-specific configuration.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:374dfb411ea8aaa45f6e24fa01a3492da8c73121e562888a8d21e45bfd5c66c2": {
+      "kind": "list",
+      "source": "源码目录 __ELBOT_CODE_0__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "374dfb411ea8aaa45f6e24fa01a3492da8c73121e562888a8d21e45bfd5c66c2",
+      "translation": "Source code directory __ELBOT_CODE_0__.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:52eda2e5ea44f3efc3f902b206dc88f827294699e84a9dd2700075ce38fc7c61": {
+      "kind": "list",
+      "source": "环境变量 __ELBOT_CODE_0__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "52eda2e5ea44f3efc3f902b206dc88f827294699e84a9dd2700075ce38fc7c61",
+      "translation": "Environment variable __ELBOT_CODE_0__.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:5835750295f3c1081c1bec90105e092281976076963efb99aad106abccb93607": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 使用 Provider 的 OpenAI-compatible API 地址。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "5835750295f3c1081c1bec90105e092281976076963efb99aad106abccb93607",
+      "translation": "__ELBOT_CODE_0__ uses the Provider's OpenAI-compatible API address.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:59d573568621c8ed4aaed31f9d245b7e23317f015f5318b432cc263061779516": {
+      "kind": "list",
+      "source": "也可以通过 __ELBOT_CODE_0__ 手动压缩当前 Session。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "59d573568621c8ed4aaed31f9d245b7e23317f015f5318b432cc263061779516",
+      "translation": "You can also manually compress the current Session via __ELBOT_CODE_0__.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:5c04e7dfd5181188f463c61041eb1f0f5017d1b34bb7afc8defe7353fde3fd2f": {
+      "kind": "list",
+      "source": "命令行 __ELBOT_CODE_0__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "5c04e7dfd5181188f463c61041eb1f0f5017d1b34bb7afc8defe7353fde3fd2f",
+      "translation": "Command line __ELBOT_CODE_0__.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:68f0985d08a4da92051a3ef3eff3ede6f486abb1dd90c649cd47f873f6adca4a": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 模式不注入工具，适合闲聊和低成本对话。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "68f0985d08a4da92051a3ef3eff3ede6f486abb1dd90c649cd47f873f6adca4a",
+      "translation": "__ELBOT_CODE_0__ mode does not inject tools, making it suitable for casual chatting and low-cost conversations.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:826c019d3d4694805a7bafdcfa232b73d5ca05192f673a07a18bbc62fcf2de40": {
+      "kind": "list",
+      "source": "用户可编辑配置集中放在平台配置目录，避免直接改源码示例。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "826c019d3d4694805a7bafdcfa232b73d5ca05192f673a07a18bbc62fcf2de40",
+      "translation": "User-editable configurations should be centralized in the platform configuration directory to avoid directly modifying source code examples.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:8282f9bd1ed78f6be33d5f3aaa9b6e3faabe3d617a3a789097dd6d27809372f5": {
+      "kind": "list",
+      "source": "运行时使用 __ELBOT_CODE_0__ 切换模型后，状态会写回 __ELBOT_CODE_1__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "8282f9bd1ed78f6be33d5f3aaa9b6e3faabe3d617a3a789097dd6d27809372f5",
+      "translation": "After switching models using __ELBOT_CODE_0__ at runtime, the state will be written back to __ELBOT_CODE_1__.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:84c93946cf545fae1951c7289ee42f3a15050cfb4421a7d0eaa993e615e974d9": {
+      "kind": "list",
+      "source": "系统环境变量。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "84c93946cf545fae1951c7289ee42f3a15050cfb4421a7d0eaa993e615e974d9",
+      "translation": "System environment variables.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:90e6137fb9fd83c4400b10a9dc2d2d0e2d3cee941af29b1fa4d2e53d8e9e62d5": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 可手动补充模型列表；也可以通过 Provider 的模型列表接口获取。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "90e6137fb9fd83c4400b10a9dc2d2d0e2d3cee941af29b1fa4d2e53d8e9e62d5",
+      "translation": "__ELBOT_CODE_0__ can be used to manually supplement the model list, or it can be obtained via the Provider's model list interface.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:9356104be7e2173190aa205667e9f6013e011e4a85c8913418c49f5f0a5a2eb8": {
+      "kind": "list",
+      "source": "普通用户只能发现和调用允许风险范围内的工具。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "9356104be7e2173190aa205667e9f6013e011e4a85c8913418c49f5f0a5a2eb8",
+      "translation": "Regular users can only discover and call tools within the allowed risk range.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:95285e9503bccb972a08755eb4929deaee9bb4e2ece730a32ef8333457d35fe8": {
+      "kind": "list",
+      "source": "CLI 默认本地用户 __ELBOT_CODE_0__ 是超级管理员。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "95285e9503bccb972a08755eb4929deaee9bb4e2ece730a32ef8333457d35fe8",
+      "translation": "The default local CLI user __ELBOT_CODE_0__ is a superadmin.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:99014d75e582623e4c8d937cc0349a0a4206c08e2974ae44db5a67cf5e13b631": {
+      "kind": "list",
+      "source": "真实密钥放系统环境变量或 __ELBOT_CODE_0__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "99014d75e582623e4c8d937cc0349a0a4206c08e2974ae44db5a67cf5e13b631",
+      "translation": "Place actual keys in system environment variables or __ELBOT_CODE_0__.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:9af77c14a8c47b4df868d03fa3bb40b0979b2d8361cd2fdc6bd4ce3469846031": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 指向环境变量名，推荐用这种方式保存密钥。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "9af77c14a8c47b4df868d03fa3bb40b0979b2d8361cd2fdc6bd4ce3469846031",
+      "translation": "__ELBOT_CODE_0__ points to an environment variable name; this method is recommended for saving keys.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:aaf8e5247d2c1a38fa5fdb79bdbb0ae6bff12c66e02df9913eabd278d9055efb": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 提供默认请求参数。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "aaf8e5247d2c1a38fa5fdb79bdbb0ae6bff12c66e02df9913eabd278d9055efb",
+      "translation": "__ELBOT_CODE_0__ provides default request parameters.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:b71f94dcfb7ea11b76bcea9f8c8312063a3ff3106d4a04324afc84f4a71eb05d": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 决定新 Session 默认进入 __ELBOT_CODE_1__ 还是 __ELBOT_CODE_2__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "b71f94dcfb7ea11b76bcea9f8c8312063a3ff3106d4a04324afc84f4a71eb05d",
+      "translation": "__ELBOT_CODE_0__ determines whether a new Session defaults to __ELBOT_CODE_1__ or __ELBOT_CODE_2__.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:c95ef3dd8d5beb79e4ec2cee7690f3ec93630a5b9f443f63be575fa98fd3f86d": {
+      "kind": "list",
+      "source": "开启后，Session 上下文接近窗口上限时会触发压缩。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "c95ef3dd8d5beb79e4ec2cee7690f3ec93630a5b9f443f63be575fa98fd3f86d",
+      "translation": "When enabled, compaction will be triggered when the Session context approaches the window limit.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:cb73e0f2b874464a2ffa6a5b345d0b0c0b2f28d34a219af24e2ce824f6997095": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 模式启用工具发现和工具调用。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "cb73e0f2b874464a2ffa6a5b345d0b0c0b2f28d34a219af24e2ce824f6997095",
+      "translation": "__ELBOT_CODE_0__ mode enables tool discovery and tool calling.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:cf7eddd7a224ea51aed16f2d053820de607268d3e15169de46e6dc74feeb25a3": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：规则 Hook 配置。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "cf7eddd7a224ea51aed16f2d053820de607268d3e15169de46e6dc74feeb25a3",
+      "translation": "__ELBOT_CODE_0__: Rule Hook configuration.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:d3e9e843be1337f3ce26c3c204ade00db4610967bfc61f7fd42a1f4f03ff6336": {
+      "kind": "list",
+      "source": "平台配置目录：Windows __ELBOT_CODE_0__；Linux 使用 XDG 配置目录。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d3e9e843be1337f3ce26c3c204ade00db4610967bfc61f7fd42a1f4f03ff6336",
+      "translation": "Platform configuration directory: Windows __ELBOT_CODE_0__; Linux uses the XDG configuration directory.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:d8c137111531834c012e9adc26eaccd2ef5e5bb6fb213e9b902666567b2d6207": {
+      "kind": "list",
+      "source": "新增配置项时同步更新本文档。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d8c137111531834c012e9adc26eaccd2ef5e5bb6fb213e9b902666567b2d6207",
+      "translation": "Update this document synchronously when adding new configuration items.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:0d9a547d7e83c28e7048dbfd9ad0070bb0895ed095b23ff87363e5561167b584": {
+      "kind": "paragraph",
+      "source": "这些路径都会解析到 __ELBOT_CODE_0__ 目录下。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "0d9a547d7e83c28e7048dbfd9ad0070bb0895ed095b23ff87363e5561167b584",
+      "translation": "These paths will all resolve to the __ELBOT_CODE_0__ directory.\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:1feaca43453e4d561393b74ffa970d1046385242029d7b8497a5857cdfb9f54b": {
+      "kind": "paragraph",
+      "source": "默认使用 __ELBOT_CODE_0__。如果要支持其他命令前缀，可以在这里添加。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1feaca43453e4d561393b74ffa970d1046385242029d7b8497a5857cdfb9f54b",
+      "translation": "__ELBOT_CODE_0__ is used by default. If you want to support other command prefixes, you can add them here.\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:26d74004845c90cbea41fed21d81414f7b75d6ff9021cc368e727e3d6f325411": {
+      "kind": "paragraph",
+      "source": "ElBot 使用一个主配置入口加载应用配置、Provider 配置和运行态状态。开发期不考虑旧配置兼容，建议直接按当前 __ELBOT_CODE_0__ 示例维护。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "26d74004845c90cbea41fed21d81414f7b75d6ff9021cc368e727e3d6f325411",
+      "translation": "ElBot uses a main configuration entry to load application configurations, Provider configurations, and runtime states. Backward compatibility for old configurations is not considered during the development phase; it is recommended to maintain them directly according to the current __ELBOT_CODE_0__ example.\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:304abf8fc3c1c8984391bce6f8338aa0b34d02b1689baa7605446eedb1a6d54f": {
+      "kind": "paragraph",
+      "source": "模型窗口可以在 __ELBOT_CODE_0__ 中补充：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "304abf8fc3c1c8984391bce6f8338aa0b34d02b1689baa7605446eedb1a6d54f",
+      "translation": "The model window can be supplemented in __ELBOT_CODE_0__:\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:323f549485c3d3dd2ff5049a006e5b5e4a587f798db38ba90b3fbef6eca2e930": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 中 storage 相关配置：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "323f549485c3d3dd2ff5049a006e5b5e4a587f798db38ba90b3fbef6eca2e930",
+      "translation": "Storage-related configurations in __ELBOT_CODE_0__:\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:3f6a9abcaf07c698521efe9e43023b0404d046d87936822dd4083fce5be6cabf": {
+      "kind": "paragraph",
+      "source": "维护任务示例：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "3f6a9abcaf07c698521efe9e43023b0404d046d87936822dd4083fce5be6cabf",
+      "translation": "Maintenance task examples:\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:43f65ea8b10c98a1a9ec935655dcc044c466fe3a4a631dea581dd302888489fa": {
+      "kind": "paragraph",
+      "source": "密钥读取优先级：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "43f65ea8b10c98a1a9ec935655dcc044c466fe3a4a631dea581dd302888489fa",
+      "translation": "Key reading priority:\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:4415bbd95e886ca661a316be3165162ebe5eba80a2d4bc50a605000d946720db": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 保存运行态模型选择：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "4415bbd95e886ca661a316be3165162ebe5eba80a2d4bc50a605000d946720db",
+      "translation": "__ELBOT_CODE_0__ saves the runtime model selection:\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:48feb0d802388154b442421a14fc3a9baf92dc20fb8d95b1abfad8dfd5e74204": {
+      "kind": "paragraph",
+      "source": "插件配置固定放在配置目录的 __ELBOT_CODE_0__ 下：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "48feb0d802388154b442421a14fc3a9baf92dc20fb8d95b1abfad8dfd5e74204",
+      "translation": "Plugin configurations are fixed under __ELBOT_CODE_0__ in the configuration directory:\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:66a831d2bac726e8d0c866ca5765616b3e231b318802ce5b6b8da222732d9746": {
+      "kind": "paragraph",
+      "source": "Provider 写在 __ELBOT_CODE_0__：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "66a831d2bac726e8d0c866ca5765616b3e231b318802ce5b6b8da222732d9746",
+      "translation": "Provider is written in __ELBOT_CODE_0__:\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:6f5fa3c39a4a50dd289886cf6c4f34e0b97770a2cf578e7a81f76adfd7334ed3": {
+      "kind": "paragraph",
+      "source": "相对路径默认基于主配置文件所在目录解析。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "6f5fa3c39a4a50dd289886cf6c4f34e0b97770a2cf578e7a81f76adfd7334ed3",
+      "translation": "Relative paths are resolved based on the directory of the main configuration file by default.\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:727cff03098042c367dd9f6f735d8ce42e73e95f9181c739d06db45c4742c6d9": {
+      "kind": "paragraph",
+      "source": "推荐方式：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "727cff03098042c367dd9f6f735d8ce42e73e95f9181c739d06db45c4742c6d9",
+      "translation": "Recommended method:\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:736ad932be33f3aaa3a38a8fc0d3fbaa0a0f88014c865257e61cb21c06fe9b9e": {
+      "kind": "paragraph",
+      "source": "QQ 官方机器人和 QQ OneBot 配置在示例中默认注释。启用时需要补齐平台自己的认证信息、连接地址或触发关键词。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "736ad932be33f3aaa3a38a8fc0d3fbaa0a0f88014c865257e61cb21c06fe9b9e",
+      "translation": "Configurations for the official QQ bot and QQ OneBot are commented out by default in the examples. When enabling them, you need to provide the platform's own authentication information, connection address, or trigger keywords.\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:764d85255caea7854ea163538429dadf782cc6b076d052916bdf4ef1622e85c8": {
+      "kind": "paragraph",
+      "source": "说明：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "764d85255caea7854ea163538429dadf782cc6b076d052916bdf4ef1622e85c8",
+      "translation": "Note:\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:8af22db26d8bb6ec1271742300d562b1cf4a554c6c05a448a6740478b64f340c": {
+      "kind": "paragraph",
+      "source": "留空时使用平台默认数据目录：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "8af22db26d8bb6ec1271742300d562b1cf4a554c6c05a448a6740478b64f340c",
+      "translation": "When left blank, the platform's default data directory is used:\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:a2895e4a8d949bd72122ce5bec4e3015134baadd20cf6573170522255b198d2d": {
+      "kind": "paragraph",
+      "source": "例如使用 __ELBOT_CODE_0__ 时：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "a2895e4a8d949bd72122ce5bec4e3015134baadd20cf6573170522255b198d2d",
+      "translation": "For example, when using __ELBOT_CODE_0__:\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:af00c8f9cf411e48f6a22c9a7b231eb240ba73e6a3d2411797bc8996c3a450f5": {
+      "kind": "paragraph",
+      "source": "默认源码配置目录包含：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "af00c8f9cf411e48f6a22c9a7b231eb240ba73e6a3d2411797bc8996c3a450f5",
+      "translation": "The default source configuration directory contains:\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:be766c22f4947d5d7e93ef58bac57b008c8c60eff96e5c43fb99fed53ee121b4": {
+      "kind": "paragraph",
+      "source": "CLI 默认启用：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "be766c22f4947d5d7e93ef58bac57b008c8c60eff96e5c43fb99fed53ee121b4",
+      "translation": "CLI enabled by default:\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:c409a2adc182e829412b676b2c5eef0ba96295f6fd7d021efae6bacc9f5c44d5": {
+      "kind": "paragraph",
+      "source": "运行日志、SQLite、sandbox、artifact 等运行数据也会按配置或默认数据目录存放。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "c409a2adc182e829412b676b2c5eef0ba96295f6fd7d021efae6bacc9f5c44d5",
+      "translation": "Runtime logs, SQLite, sandbox, artifacts, and other runtime data will also be stored according to the configuration or the default data directory.\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:cce0681b233c3afc06096fb1c291b6ecb3768ecb605772fd205f738b4c58d4f1": {
+      "kind": "paragraph",
+      "source": "启动时主配置按以下顺序查找：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "cce0681b233c3afc06096fb1c291b6ecb3768ecb605772fd205f738b4c58d4f1",
+      "translation": "The main configuration is searched in the following order upon startup:\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:e012d5bd70975db65cf5e7a4cedfe0ab37dd4d7faba5b2855774194f2f6f3979": {
+      "kind": "paragraph",
+      "source": "运行日志配置：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e012d5bd70975db65cf5e7a4cedfe0ab37dd4d7faba5b2855774194f2f6f3979",
+      "translation": "Runtime log configuration:\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:e24623b4cd00ed49724d8c9b2cdef9235d7ea6be2e9995d80af7736c42be5fb1": {
+      "kind": "paragraph",
+      "source": "不要把真实 Key 提交到仓库。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e24623b4cd00ed49724d8c9b2cdef9235d7ea6be2e9995d80af7736c42be5fb1",
+      "translation": "Do not commit actual keys to the repository.\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:e43dcfdef81c4360e55eba6e94f3a6b7c16cef437e505abb9507f77b75c5d1c0": {
+      "kind": "paragraph",
+      "source": "Cron 表达式由内部 Cron Runtime 调度。默认维护任务包含日志、artifact 和聊天历史清理。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e43dcfdef81c4360e55eba6e94f3a6b7c16cef437e505abb9507f77b75c5d1c0",
+      "translation": "Cron expressions are scheduled by the internal Cron Runtime. Default maintenance tasks include the cleanup of logs, artifacts, and chat history.\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:f59d5b9ca6bd8410f5f15e31fc887bdb406865c2f6957ae945f34623a447bdaf": {
+      "kind": "paragraph",
+      "source": "Hook 和插件不要直接发平台消息，应返回输出意图，由 Agent 统一交给 Output Manager 发送。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "f59d5b9ca6bd8410f5f15e31fc887bdb406865c2f6957ae945f34623a447bdaf",
+      "translation": "Hooks and plugins should not send platform messages directly; they should return an output intent, which the Agent then passes to the Output Manager for sending.\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f": {
+      "kind": "paragraph",
+      "source": "示例：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f",
+      "translation": "Example:\n",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:table:1608a14fd5a85c38e26b4527642824cc1dddcf759d7dc7c69f567a2b134a793a": {
+      "kind": "table",
+      "source": "LLM Provider、模型列表、默认请求参数和模型 metadata。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1608a14fd5a85c38e26b4527642824cc1dddcf759d7dc7c69f567a2b134a793a",
+      "translation": "LLM Provider, model list, default request parameters, and model metadata.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:table:36e0613f17513857d328b7df8c7edd74fda4403b18c450fab3a6e6d813f31569": {
+      "kind": "table",
+      "source": "文件或目录",
+      "source_file": "docs/configuration.md",
+      "source_hash": "36e0613f17513857d328b7df8c7edd74fda4403b18c450fab3a6e6d813f31569",
+      "translation": "File or Directory",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:table:3a03f1cb6734754c1f34ab0394569d3189e8497ec0193d319888889641875321": {
+      "kind": "table",
+      "source": "Agent 的 System Prompt 来源文件。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "3a03f1cb6734754c1f34ab0394569d3189e8497ec0193d319888889641875321",
+      "translation": "The System Prompt source file for the Agent.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:table:4dc9aa3e26abcdcf000d88af3835884cb3cf5db95f591375beaf66011cb6a729": {
+      "kind": "table",
+      "source": "长期记忆 Markdown 源数据目录，默认位于配置目录下。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "4dc9aa3e26abcdcf000d88af3835884cb3cf5db95f591375beaf66011cb6a729",
+      "translation": "Long-term memory Markdown source data directory, located in the configuration directory by default.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:table:5392c14a64df5d2428dcfb2dce58c94e4c2787bcf276993cc6ac9ef7847dad2f": {
+      "kind": "table",
+      "source": "常驻记忆文件，默认位于配置目录下。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "5392c14a64df5d2428dcfb2dce58c94e4c2787bcf276993cc6ac9ef7847dad2f",
+      "translation": "Resident memory file, located in the configuration directory by default.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:table:6d513de90d1e4639027c03fcd0c9f206dd8be3568ce60d8a686e98bc92c8dd7f": {
+      "kind": "table",
+      "source": "职责",
+      "source_file": "docs/configuration.md",
+      "source_hash": "6d513de90d1e4639027c03fcd0c9f206dd8be3568ce60d8a686e98bc92c8dd7f",
+      "translation": "Responsibility",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:table:76c42e5a9bc0085614667a7788075f895ff4e3204abed2895c721645f0d6e4a1": {
+      "kind": "table",
+      "source": "Hook 和插件配置目录。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "76c42e5a9bc0085614667a7788075f895ff4e3204abed2895c721645f0d6e4a1",
+      "translation": "Hook and plugin configuration directory.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:table:867df37d3bf95e185c1ed50af3316f1a31b64d6923cb89c4e8958f6b0284428d": {
+      "kind": "table",
+      "source": "可选，本地密钥文件，不建议提交。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "867df37d3bf95e185c1ed50af3316f1a31b64d6923cb89c4e8958f6b0284428d",
+      "translation": "Optional, local key file; not recommended to be committed.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:table:c3f46fad0461a0a9936ef7e70532a382b5d79c6460486a7191e25e1103642cf1": {
+      "kind": "table",
+      "source": "运行态状态，例如默认 Session 模式、chat/work/compact/naming 模型选择。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "c3f46fad0461a0a9936ef7e70532a382b5d79c6460486a7191e25e1103642cf1",
+      "translation": "Runtime state, e.g., default Session mode, chat/work/compact/naming model selection.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:table:e60b9d9487f22074340403f7da3d9274afae05b1c3a56e28c20cf7cac98d5414": {
+      "kind": "table",
+      "source": "用户侧 Skill 目录，默认位于配置目录下。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e60b9d9487f22074340403f7da3d9274afae05b1c3a56e28c20cf7cac98d5414",
+      "translation": "User-side Skill directory, located in the configuration directory by default.",
+      "updated_at": 1781515756
+    },
+    "docs/configuration.md:table:feadb5db00a4c25043aba57675abb1270384de8f8152b53c90d49003e200b4af": {
+      "kind": "table",
+      "source": "主配置入口，保存 storage、runtime、context、commands、tools、security、platform 等应用级配置。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "feadb5db00a4c25043aba57675abb1270384de8f8152b53c90d49003e200b4af",
+      "translation": "Main configuration entry, saving application-level configurations such as storage, runtime, context, commands, tools, security, and platform.",
+      "updated_at": 1781515756
     }
   },
   "version": 1
