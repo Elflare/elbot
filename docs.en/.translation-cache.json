@@ -24,6 +24,11 @@
       "source_hash": "c0b729a1772748437f9ae1fe961af680b3f046b6165f734279f4abb0dcad2ded",
       "target": "docs.en/configuration.md",
       "updated_at": 1781515756
+    },
+    "docs/getting-started.md": {
+      "source_hash": "b66663d7c9c069cb3abd01af51fc344d43c36a0acc300123b61f2bc6fd576a2d",
+      "target": "docs.en/getting-started.md",
+      "updated_at": 1781515975
     }
   },
   "segments": {
@@ -3194,6 +3199,414 @@
       "source_hash": "feadb5db00a4c25043aba57675abb1270384de8f8152b53c90d49003e200b4af",
       "translation": "Main configuration entry, saving application-level configurations such as storage, runtime, context, commands, tools, security, and platform.",
       "updated_at": 1781515756
+    },
+    "docs/getting-started.md:heading:0fbaf458404701ef07bf35dff2e7913db36f4d7ea17cbeca7432daf490415204": {
+      "kind": "heading",
+      "source": "模型不可用或名称不对",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "0fbaf458404701ef07bf35dff2e7913db36f4d7ea17cbeca7432daf490415204",
+      "translation": "Model unavailable or incorrect name",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:heading:297f385572d8b6fec16c3fc651ac8a789355306e8236edcf3f5281a0062175fb": {
+      "kind": "heading",
+      "source": "选择默认模型",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "297f385572d8b6fec16c3fc651ac8a789355306e8236edcf3f5281a0062175fb",
+      "translation": "Select Default Model",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:heading:334c20e1a48091b99e3c1293f15034a77d5cc639f1fe02da93ecab0ce0e9440d": {
+      "kind": "heading",
+      "source": "快速开始",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "334c20e1a48091b99e3c1293f15034a77d5cc639f1fe02da93ecab0ce0e9440d",
+      "translation": "Quick Start",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:heading:45a6d115fdfb29bf65d7fd24429a38776f94cf198bcf6f50130a723d5a723ade": {
+      "kind": "heading",
+      "source": "常见问题",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "45a6d115fdfb29bf65d7fd24429a38776f94cf198bcf6f50130a723d5a723ade",
+      "translation": "FAQ",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:heading:6dd21bda24393b81404af9c149cc3612dce41100ea68ae6a4c57e82570b0ea54": {
+      "kind": "heading",
+      "source": "环境要求",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "6dd21bda24393b81404af9c149cc3612dce41100ea68ae6a4c57e82570b0ea54",
+      "translation": "Environment Requirements",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:heading:85d7e1b72989d1fa70e30d7c80d4266b7a5942f868458637157436987551a3ec": {
+      "kind": "heading",
+      "source": "配置 Provider",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "85d7e1b72989d1fa70e30d7c80d4266b7a5942f868458637157436987551a3ec",
+      "translation": "Configure Provider",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:heading:9808a3cc6cee6379804dc9d5961ca82c522f75436f6b895b7a063f4b56c83c3f": {
+      "kind": "heading",
+      "source": "配置目录和数据目录",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "9808a3cc6cee6379804dc9d5961ca82c522f75436f6b895b7a063f4b56c83c3f",
+      "translation": "Configuration Directory and Data Directory",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:heading:ae18eba80cb9f512c280608e42c4a081ce20f1c0ebd3038dc627f1fd25601fde": {
+      "kind": "heading",
+      "source": "不想默认启用工具",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "ae18eba80cb9f512c280608e42c4a081ce20f1c0ebd3038dc627f1fd25601fde",
+      "translation": "Do not want to enable tools by default",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:heading:bf7d120fbb02e2fa0e44c19045b4ab92ddb4ad273f43aa9267920721f7500fb2": {
+      "kind": "heading",
+      "source": "获取代码",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "bf7d120fbb02e2fa0e44c19045b4ab92ddb4ad273f43aa9267920721f7500fb2",
+      "translation": "Get the Code",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:heading:de078e428c6028468a255aca9d971a4a797a13c243064a356e361ab033ed7d62": {
+      "kind": "heading",
+      "source": "启动 CLI",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "de078e428c6028468a255aca9d971a4a797a13c243064a356e361ab033ed7d62",
+      "translation": "Start CLI",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:heading:eb7300efb1b8c7ff200a24f29e2115eb3ac3a697745e43dbec68f085a7ccd59e": {
+      "kind": "heading",
+      "source": "启动时报 API Key 缺失",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "eb7300efb1b8c7ff200a24f29e2115eb3ac3a697745e43dbec68f085a7ccd59e",
+      "translation": "API Key missing error during startup",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:heading:f872070918524e28c775a2b3e683249e0505de336d0443a54bc3954585620ea6": {
+      "kind": "heading",
+      "source": "第一次对话",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "f872070918524e28c775a2b3e683249e0505de336d0443a54bc3954585620ea6",
+      "translation": "First Conversation",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:03f23bf71005b97dc0de2f80114892fe77616fa554227c539d318cae4a26ad45": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 切换模型。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "03f23bf71005b97dc0de2f80114892fe77616fa554227c539d318cae4a26ad45",
+      "translation": "__ELBOT_CODE_0__ Switch models.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:0a7039e0c4db3a2223f53953ebf9c904b16150654e781ccb68eafa133c61a4fa": {
+      "kind": "list",
+      "source": "可以启动后用 __ELBOT_CODE_0__ 刷新模型列表。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "0a7039e0c4db3a2223f53953ebf9c904b16150654e781ccb68eafa133c61a4fa",
+      "translation": "You can use __ELBOT_CODE_0__ to refresh the model list after starting.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:1a12b3e94a4d4ea9d8fec655f81c012d9b412b3614c3f937620b96b94cec6273": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 切到低成本聊天模式。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "1a12b3e94a4d4ea9d8fec655f81c012d9b412b3614c3f937620b96b94cec6273",
+      "translation": "__ELBOT_CODE_0__ Switch to low-cost chat mode.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:1c58540749edfc0c2f4a9e4b1fcc1d980357a0015b51fe3564b79fd675439524": {
+      "kind": "list",
+      "source": "系统环境变量或配置目录 __ELBOT_CODE_0__ 是否包含对应 Key。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "1c58540749edfc0c2f4a9e4b1fcc1d980357a0015b51fe3564b79fd675439524",
+      "translation": "Whether the system environment variables or the configuration directory __ELBOT_CODE_0__ contain the corresponding Key.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:2ceebaa4be6d81b2e457d69046e3fa2eac2b5b6ef7106b6e1799a406f497d253": {
+      "kind": "list",
+      "source": "当前 shell 是否能读取这些环境变量。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "2ceebaa4be6d81b2e457d69046e3fa2eac2b5b6ef7106b6e1799a406f497d253",
+      "translation": "Whether the current shell can read these environment variables.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:374dfb411ea8aaa45f6e24fa01a3492da8c73121e562888a8d21e45bfd5c66c2": {
+      "kind": "list",
+      "source": "源码目录 __ELBOT_CODE_0__。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "374dfb411ea8aaa45f6e24fa01a3492da8c73121e562888a8d21e45bfd5c66c2",
+      "translation": "Source code directory __ELBOT_CODE_0__.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:43c75801d01df665811feb330700c7712c87b6d89a9afea15bf8ffe290ad5e08": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 查看可用模型列表。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "43c75801d01df665811feb330700c7712c87b6d89a9afea15bf8ffe290ad5e08",
+      "translation": "__ELBOT_CODE_0__ View the list of available models.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:47d21cada652323c14884225b24ffb1055d586fbbf55c29f5b404b1d3ed02c8c": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 中的 __ELBOT_CODE_1__ 是否写对。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "47d21cada652323c14884225b24ffb1055d586fbbf55c29f5b404b1d3ed02c8c",
+      "translation": "Whether __ELBOT_CODE_1__ in __ELBOT_CODE_0__ is written correctly.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:5c1ee4efcb90e0999f77fda34e78d255e8abdc071f7d846f7782569067269cc0": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 查看可用命令。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "5c1ee4efcb90e0999f77fda34e78d255e8abdc071f7d846f7782569067269cc0",
+      "translation": "__ELBOT_CODE_0__ View available commands.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:674118ffe7bacd1c25f1ae67f8d8943386b45e66844b34eca75b84a12b2b1032": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 切到可使用工具的工作模式。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "674118ffe7bacd1c25f1ae67f8d8943386b45e66844b34eca75b84a12b2b1032",
+      "translation": "__ELBOT_CODE_0__ Switch to work mode where tools can be used.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:7616042ea6e05162fae6dd4fe360bba1503a7c888297476e0182f5d8f0bf2b34": {
+      "kind": "list",
+      "source": "平台配置目录，例如 Windows __ELBOT_CODE_0__，Linux XDG 配置目录。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "7616042ea6e05162fae6dd4fe360bba1503a7c888297476e0182f5d8f0bf2b34",
+      "translation": "Platform configuration directory, such as Windows __ELBOT_CODE_0__ or Linux XDG configuration directory.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:82450adf1eba38f68cb8b3513e63984b30423e719aff68888a09d8aabcdfa99b": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 指定的路径。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "82450adf1eba38f68cb8b3513e63984b30423e719aff68888a09d8aabcdfa99b",
+      "translation": "The path specified by __ELBOT_CODE_0__.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:87c2c9b3c3208542c76ef117cc755d1027d2869c9f801c15480ad9bde7ed697f": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 查看当前 Session、模型、上下文和请求状态。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "87c2c9b3c3208542c76ef117cc755d1027d2869c9f801c15480ad9bde7ed697f",
+      "translation": "__ELBOT_CODE_0__ View current Session, model, context, and request status.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:87eb21292291e36f411ef02c73fd182f76f6cd486aa406d51980016fab8916ca": {
+      "kind": "list",
+      "source": "一个 OpenAI-compatible LLM 服务，例如 DeepSeek、OpenAI 或其他兼容 __ELBOT_CODE_0__ 的服务。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "87eb21292291e36f411ef02c73fd182f76f6cd486aa406d51980016fab8916ca",
+      "translation": "An OpenAI-compatible LLM service, such as DeepSeek, OpenAI, or other services compatible with __ELBOT_CODE_0__.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:ab0f21e0de018659604ea9bb26f07d46d5bb0d6c0d1df2fcaa6c819113e2a58f": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 中的 __ELBOT_CODE_1__ 是否存在于 __ELBOT_CODE_2__。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "ab0f21e0de018659604ea9bb26f07d46d5bb0d6c0d1df2fcaa6c819113e2a58f",
+      "translation": "Whether __ELBOT_CODE_1__ in __ELBOT_CODE_0__ exists in __ELBOT_CODE_2__.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:da055f600dde151737e1dc8af0a47d237857c8e042d39efdd7fb4091b0c75e1c": {
+      "kind": "list",
+      "source": "Go 1.26 或更新版本。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "da055f600dde151737e1dc8af0a47d237857c8e042d39efdd7fb4091b0c75e1c",
+      "translation": "Go 1.26 or a newer version.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:e1ec1575bc49350a0fe1fc39ad8c49f38572ade712b11cb8270e3febcae20b8b": {
+      "kind": "list",
+      "source": "至少一个可用 API Key。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "e1ec1575bc49350a0fe1fc39ad8c49f38572ade712b11cb8270e3febcae20b8b",
+      "translation": "At least one available API Key.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:e43ea7f2daae3599784c448c6d24f55d4706e8b1c2e9c948c67db0afd3df9a3c": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 环境变量。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "e43ea7f2daae3599784c448c6d24f55d4706e8b1c2e9c948c67db0afd3df9a3c",
+      "translation": "__ELBOT_CODE_0__ environment variable.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:fc54b80a3237d2ff4ea96a5af6943f5c3f1a0ce8327d8b6c40671153f194c41c": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 名称是否被 Provider 支持。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "fc54b80a3237d2ff4ea96a5af6943f5c3f1a0ce8327d8b6c40671153f194c41c",
+      "translation": "Whether the name __ELBOT_CODE_0__ is supported by the Provider.",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:04e83af1e2857c30347a0be056a64578c131a82ec257e5edd445a00ecf974805": {
+      "kind": "paragraph",
+      "source": "把 __ELBOT_CODE_0__ 中的默认模式改为 chat：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "04e83af1e2857c30347a0be056a64578c131a82ec257e5edd445a00ecf974805",
+      "translation": "Change the default mode in __ELBOT_CODE_0__ to chat:\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:0e7bd9360c41c6a11a926847b588ae4570f032fe648c81f273155f629f7fea46": {
+      "kind": "paragraph",
+      "source": "默认运行态模型写在 __ELBOT_CODE_0__：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "0e7bd9360c41c6a11a926847b588ae4570f032fe648c81f273155f629f7fea46",
+      "translation": "The default runtime model is specified in __ELBOT_CODE_0__:\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:101973e91c104135121a751d01e1715126d62715c3741e886f94ab3245daf7b8": {
+      "kind": "paragraph",
+      "source": "开发期可以直接运行：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "101973e91c104135121a751d01e1715126d62715c3741e886f94ab3245daf7b8",
+      "translation": "During development, you can run it directly:\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:1204a3eb9a309b78062a73635764e483c9f4b7cddb4a3d9bf30c737306f1d5fd": {
+      "kind": "paragraph",
+      "source": "如果使用其他 Provider，需要同步修改 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "1204a3eb9a309b78062a73635764e483c9f4b7cddb4a3d9bf30c737306f1d5fd",
+      "translation": "If using other Providers, you need to synchronously modify __ELBOT_CODE_0__ and __ELBOT_CODE_1__.\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:254c2606edcbea8190615ab0c0a866bc3564d419e10c7b2bccef05290b768bc6": {
+      "kind": "paragraph",
+      "source": "推荐把密钥放在系统环境变量，或放在配置目录下的 __ELBOT_CODE_0__ 文件中，不要直接写进 __ELBOT_CODE_1__。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "254c2606edcbea8190615ab0c0a866bc3564d419e10c7b2bccef05290b768bc6",
+      "translation": "It is recommended to place keys in system environment variables or in the __ELBOT_CODE_0__ file under the configuration directory, rather than writing them directly into __ELBOT_CODE_1__.\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:447a0b6ec8d5e3e1886ee9faff3b1dc56b70d4acc72769b0d3e5f0fac2e92d21": {
+      "kind": "paragraph",
+      "source": "需要工具时再输入 __ELBOT_CODE_0__。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "447a0b6ec8d5e3e1886ee9faff3b1dc56b70d4acc72769b0d3e5f0fac2e92d21",
+      "translation": "Enter __ELBOT_CODE_0__ when tools are needed.\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:4831bf39673556ec91c61f9c25206fbe06f77b28f69e443aa0dcf502bfeafc2c": {
+      "kind": "paragraph",
+      "source": "运行数据默认进入平台数据目录，例如 SQLite、日志、sandbox 和 artifact。具体规则见 [配置说明](configuration.md)。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "4831bf39673556ec91c61f9c25206fbe06f77b28f69e443aa0dcf502bfeafc2c",
+      "translation": "Runtime data is stored in the platform data directory by default, such as SQLite, logs, sandbox, and artifacts. For detailed rules, see [Configuration Instructions](configuration.md).\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:5e17c2b7fa9b36c07ee9a36ed44ee4f76bf8f18e249fb7adc302b070d69deda7": {
+      "kind": "paragraph",
+      "source": "Windows 下如果使用 Git Bash，构建出的文件可能需要命名为 __ELBOT_CODE_0__：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "5e17c2b7fa9b36c07ee9a36ed44ee4f76bf8f18e249fb7adc302b070d69deda7",
+      "translation": "On Windows, if using Git Bash, the built file may need to be named __ELBOT_CODE_0__:\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:668f85eedc833cfdf7697834c50974a51ef705a26a872517292edd68f8461513": {
+      "kind": "paragraph",
+      "source": "指定配置文件：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "668f85eedc833cfdf7697834c50974a51ef705a26a872517292edd68f8461513",
+      "translation": "Specify a configuration file:\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:677dc524b18997db20af48951f31a90ce14092a70ff4a3b51f85cbe1499389ce": {
+      "kind": "paragraph",
+      "source": "ElBot 默认读取 __ELBOT_CODE_0__，并通过其中的 __ELBOT_CODE_1__ 加载 __ELBOT_CODE_2__ 和 __ELBOT_CODE_3__。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "677dc524b18997db20af48951f31a90ce14092a70ff4a3b51f85cbe1499389ce",
+      "translation": "ElBot reads __ELBOT_CODE_0__ by default, and loads __ELBOT_CODE_2__ and __ELBOT_CODE_3__ via __ELBOT_CODE_1__ within it.\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:68d560c5bd914873c5becf526acf5148658b37581a10f1b69fbd54ea3e975f23": {
+      "kind": "paragraph",
+      "source": "检查：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "68d560c5bd914873c5becf526acf5148658b37581a10f1b69fbd54ea3e975f23",
+      "translation": "Check:\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:84e2b7f0aded1d7c0715409f35b94fbc2d27dc6b7e4f457cc990a3be5c42b2fd": {
+      "kind": "paragraph",
+      "source": "本文档用于把 ElBot 跑起来，并完成第一次 CLI 对话。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "84e2b7f0aded1d7c0715409f35b94fbc2d27dc6b7e4f457cc990a3be5c42b2fd",
+      "translation": "This document is used to get ElBot up and running and complete your first CLI conversation.\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:b542c9d7ce8593d0cfb5a79002986f5e89617f64f638eea577bd7871bbaaebe1": {
+      "kind": "paragraph",
+      "source": "默认配置查找顺序：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "b542c9d7ce8593d0cfb5a79002986f5e89617f64f638eea577bd7871bbaaebe1",
+      "translation": "Default configuration lookup order:\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:ca06fb90bcd4b3e173b5bd045a6bf8bbe420d845cff54311c73e663f331ba48b": {
+      "kind": "paragraph",
+      "source": "启动后直接输入消息即可。默认示例中 __ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 是 __ELBOT_CODE_2__，会启用工具发现能力。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "ca06fb90bcd4b3e173b5bd045a6bf8bbe420d845cff54311c73e663f331ba48b",
+      "translation": "After starting, simply enter your message. In the default example, the __ELBOT_CODE_1__ of __ELBOT_CODE_0__ is __ELBOT_CODE_2__, which enables tool discovery capabilities.\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:e55c71d36598475911251b8545437070b1d7782a93c573053181d0ff71177a2a": {
+      "kind": "paragraph",
+      "source": "常用起步命令：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "e55c71d36598475911251b8545437070b1d7782a93c573053181d0ff71177a2a",
+      "translation": "Common getting started commands:\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:f3f9d35759ef03c1c5349e0c85f3b9e88684f3f7f00d9f25cb2092778a9e28c1": {
+      "kind": "paragraph",
+      "source": "如果已经在本仓库内，可以直接继续下一步。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "f3f9d35759ef03c1c5349e0c85f3b9e88684f3f7f00d9f25cb2092778a9e28c1",
+      "translation": "If you are already in this repository, you can proceed directly to the next step.\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:f61e63ed3a3f556ca6c37c5f4846f38b7d76c04fe1bc672058525c98c1f69b91": {
+      "kind": "paragraph",
+      "source": "示例 __ELBOT_CODE_0__：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "f61e63ed3a3f556ca6c37c5f4846f38b7d76c04fe1bc672058525c98c1f69b91",
+      "translation": "Example __ELBOT_CODE_0__:\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:fa23d8d2e29b75722536b04eeacd94ec43d829c1b10455d58703350f2b9a992e": {
+      "kind": "paragraph",
+      "source": "默认示例已经包含 DeepSeek 和 OpenAI Provider：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "fa23d8d2e29b75722536b04eeacd94ec43d829c1b10455d58703350f2b9a992e",
+      "translation": "The default example already includes DeepSeek and OpenAI Providers:\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:fd742b0b560cb65dd498330ec208c73674264e043698b3e3b640fe9a3670af10": {
+      "kind": "paragraph",
+      "source": "构建二进制：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "fd742b0b560cb65dd498330ec208c73674264e043698b3e3b640fe9a3670af10",
+      "translation": "Build binary:\n",
+      "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:fed7a442b26b25e49722931ec5018c736e073e140a318ea752f5d02d3150341d": {
+      "kind": "paragraph",
+      "source": "更多命令见 [命令速查](commands.md)。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "fed7a442b26b25e49722931ec5018c736e073e140a318ea752f5d02d3150341d",
+      "translation": "For more commands, see [Command Quick Reference](commands.md).\n",
+      "updated_at": 1781515975
     }
   },
   "version": 1
