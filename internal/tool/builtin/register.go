@@ -63,6 +63,12 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 	if err := registry.Register(NewWebExtractTool()); err != nil {
 		return err
 	}
+	if err := registry.Register(NewReadFileTool()); err != nil {
+		return err
+	}
+	if err := registry.Register(NewEditFileTool()); err != nil {
+		return err
+	}
 	if err := registry.Register(NewShellTool()); err != nil {
 		return err
 	}

@@ -150,6 +150,7 @@
 - `internal/tool/builtin/env.go`：内置工具环境变量读取 helper；优先读 OS env，缺失时读取配置目录 `.env`，用于 Tavily/Jina API key。
 - `internal/tool/builtin/web_search.go`：Tavily 搜索工具；返回 answer、来源链接和摘要，并依赖 `web_extract`，用户侧 tag 为 `web`。
 - `internal/tool/builtin/web_extract.go`：Jina Reader/标准库网页提取工具；支持代理、分段读取和进程内缓存，用户侧 tag 为 `web`。
+- `internal/tool/builtin/file_tools.go`：文件读写工具；`read_file` 返回带行号文本和文件哈希，`edit_file` 按行支持替换/插入/删除并返回 unified diff；两者都打 `files` tag，`edit_file` 在 cron 后台只允许 sandbox 内路径。
 
 - `internal/tool/builtin/shell.go`：内置 shell 工具；接口保留通用 `cmd`，可执行任意 shell 命令，调用前通过风险评估与高风险确认流程拦截；cron sandbox context 下会创建目录并把 shell cwd 固定到 sandbox。
 - `internal/tool/builtin/shell_risk.go`：shell/bash 命令风险分类器；使用 `mvdan.cc/sh/v3/syntax` 解析 AST，识别管道、重定向、命令替换、动态命令、删除、提权、下载即执行等风险并返回风险原因。
