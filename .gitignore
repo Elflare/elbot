@@ -2,6 +2,10 @@
 .codecompanion-plan/
 .serena/
 
+# Python cache
+__pycache__/
+*.py[cod]
+
 # Local secrets and runtime data
 .env
 config/.env

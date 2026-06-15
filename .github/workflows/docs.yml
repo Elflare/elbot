@@ -43,7 +43,6 @@ jobs:
         with:
           args: >-
             --no-progress
-            --exclude-mail
             --exclude "^<your-elbot-repo-url>$"
             --exclude "^https://api\.sgroup\.qq\.com"
             ${{ steps.markdown-files.outputs.files }}

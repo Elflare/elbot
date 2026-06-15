@@ -6,7 +6,8 @@ mirror under docs.en/ and stores per-segment translation cache in
 `docs.en/.translation-cache.json`.
 
 Only changed Markdown segments are sent to an OpenAI-compatible chat completions
-API. Code blocks are copied verbatim.
+API. Code blocks are copied verbatim. Changed segments are translated in batches
+so the first run does not make one HTTP request per sentence.
 """
 
 from __future__ import annotations
@@ -22,13 +23,13 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "docs"
 TARGET_DIR = ROOT / "docs.en"
 CACHE_PATH = TARGET_DIR / ".translation-cache.json"
 AUTO_HEADER_TEMPLATE = "<!-- This file is auto-translated from {source}. Do not edit manually. -->\n\n"
+PLACEHOLDER_TEMPLATE = "\ue000ELBOT_SEGMENT_{index}\ue000"
 
 DEFAULT_GLOSSARY = {
     "ElBot": "ElBot",
@@ -60,7 +61,6 @@ LIST_RE = re.compile(r"^(\s*(?:[-+*]|\d+[.)])\s+)(.*)$")
 QUOTE_RE = re.compile(r"^(\s*>\s?)(.*)$")
 HTML_COMMENT_RE = re.compile(r"^\s*<!--.*-->\s*$")
 TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$")
-LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 INLINE_CODE_RE = re.compile(r"`[^`]+`")
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[。！？；])")
 
@@ -75,15 +75,33 @@ class Segment:
 
     @property
     def key(self) -> str:
-        # Do not include line number or segment index here. If a sentence is
-        # inserted near the top of a document, later unchanged segments should
-        # still reuse their cached translations.
-        digest = sha256_text(self.text)
-        return f"{self.source_file}:{self.kind}:{digest}"
+        # Keep keys independent from line number or segment order. If a sentence
+        # is inserted near the top, later unchanged segments still reuse cache.
+        return f"{self.source_file}:{self.kind}:{sha256_text(self.text)}"
 
     @property
     def hash(self) -> str:
         return sha256_text(self.text)
+
+
+@dataclass
+class PendingSegment:
+    segment: Segment
+    masks: dict[str, str]
+    placeholder: str
+
+
+@dataclass
+class RenderResult:
+    text: str
+    pending: list[PendingSegment]
+    cache_entries: dict[str, dict]
+    reused_count: int
+    skipped_count: int
+
+
+def log(message: str) -> None:
+    print(message, flush=True)
 
 
 def sha256_text(text: str) -> str:
@@ -128,20 +146,14 @@ def should_translate_text(text: str) -> bool:
         return False
     if HTML_COMMENT_RE.match(stripped):
         return False
-    # Pure commands, paths, separators, numbers, or punctuation do not need LLM.
-    if not re.search(r"[\u4e00-\u9fff]", stripped):
-        return False
-    return True
+    return bool(re.search(r"[\u4e00-\u9fff]", stripped))
 
 
 def split_sentences(text: str) -> list[str]:
-    """Split Chinese prose into sentence-sized chunks while preserving whitespace."""
+    """Split Chinese prose into small chunks while preserving line breaks."""
     if "\n" in text:
-        # Keep line-oriented Markdown stable. Split the content without the line
-        # break, then append the original line break to the last chunk.
         parts: list[str] = []
-        lines = text.splitlines(keepends=True)
-        for line in lines:
+        for line in text.splitlines(keepends=True):
             line_body = line[:-1] if line.endswith("\n") else line
             line_break = "\n" if line.endswith("\n") else ""
             if line_body.strip():
@@ -153,7 +165,7 @@ def split_sentences(text: str) -> list[str]:
                 parts.append(line)
         return parts
 
-    if len(text.strip()) <= 60:
+    if len(text.strip()) <= 80:
         return [text]
 
     out: list[str] = []
@@ -170,7 +182,6 @@ def split_sentences(text: str) -> list[str]:
 def split_table_row(line: str) -> list[str]:
     if "|" not in line:
         return [line]
-    # str.split preserves empty leading/trailing cells for pipe tables.
     return line.split("|")
 
 
@@ -191,25 +202,28 @@ def unmask_inline_code(text: str, masks: dict[str, str]) -> str:
     return text
 
 
-def collect_heading_context(lines: Iterable[str]) -> str:
-    headings = []
-    for line in lines:
-        match = HEADING_RE.match(line.rstrip("\n"))
-        if match:
-            headings.append(match.group(2).strip())
-    return " > ".join(headings[-3:])
+def append_translated_piece(parts: list[str], piece: str) -> None:
+    if parts and piece and not parts[-1].endswith((" ", "\n")) and not piece.startswith((" ", "\n")):
+        parts.append(" ")
+    parts.append(piece)
 
 
-class MarkdownTranslator:
-    def __init__(self, cache: dict, client: "TranslationClient", dry_run: bool = False) -> None:
+def chunked(items: list[PendingSegment], size: int) -> list[list[PendingSegment]]:
+    return [items[i : i + size] for i in range(0, len(items), size)]
+
+
+class MarkdownRenderer:
+    def __init__(self, cache: dict) -> None:
         self.cache = cache
-        self.client = client
-        self.dry_run = dry_run
         self.segment_index = 0
-        self.new_segments: dict[str, dict] = {}
+        self.placeholder_index = 0
         self.current_headings: list[str] = []
+        self.pending: list[PendingSegment] = []
+        self.cache_entries: dict[str, dict] = {}
+        self.reused_count = 0
+        self.skipped_count = 0
 
-    def translate_file(self, source: Path) -> str:
+    def render_file(self, source: Path) -> RenderResult:
         rel = source_rel(source)
         lines = source.read_text(encoding="utf-8").splitlines(keepends=True)
         rendered: list[str] = [AUTO_HEADER_TEMPLATE.format(source=rel)]
@@ -220,14 +234,14 @@ class MarkdownTranslator:
         def flush_paragraph() -> None:
             if not paragraph:
                 return
-            text = "".join(paragraph)
-            rendered.append(self.translate_plain_text(rel, "paragraph", text))
+            rendered.append(self.render_plain_text(rel, "paragraph", "".join(paragraph)))
             paragraph.clear()
 
         for line in lines:
-            if CODE_FENCE_RE.match(line):
+            fence_match = CODE_FENCE_RE.match(line)
+            if fence_match:
                 flush_paragraph()
-                fence = CODE_FENCE_RE.match(line).group(1)  # type: ignore[union-attr]
+                fence = fence_match.group(1)
                 if not in_code:
                     in_code = True
                     code_fence = fence
@@ -258,9 +272,8 @@ class MarkdownTranslator:
             if heading:
                 flush_paragraph()
                 prefix, body, suffix = heading.group(1), heading.group(2), heading.group(3) or ""
-                translated = self.translate_plain_text(rel, "heading", body)
+                rendered.append(f"{prefix}{self.render_plain_text(rel, 'heading', body).strip()}{suffix}{newline}")
                 self.current_headings.append(body.strip())
-                rendered.append(f"{prefix}{translated.strip()}{suffix}{newline}")
                 continue
 
             if TABLE_SEPARATOR_RE.match(stripped):
@@ -270,55 +283,60 @@ class MarkdownTranslator:
 
             if stripped.lstrip().startswith("|") or ("|" in stripped and stripped.rstrip().endswith("|")):
                 flush_paragraph()
-                rendered.append(self.translate_table_line(rel, stripped) + newline)
+                rendered.append(self.render_table_line(rel, stripped) + newline)
                 continue
 
             list_match = LIST_RE.match(stripped)
             if list_match:
                 flush_paragraph()
                 prefix, body = list_match.group(1), list_match.group(2)
-                rendered.append(prefix + self.translate_plain_text(rel, "list", body).strip() + newline)
+                rendered.append(prefix + self.render_plain_text(rel, "list", body).strip() + newline)
                 continue
 
             quote_match = QUOTE_RE.match(stripped)
             if quote_match:
                 flush_paragraph()
                 prefix, body = quote_match.group(1), quote_match.group(2)
-                rendered.append(prefix + self.translate_plain_text(rel, "quote", body).strip() + newline)
+                rendered.append(prefix + self.render_plain_text(rel, "quote", body).strip() + newline)
                 continue
 
             paragraph.append(line)
 
         flush_paragraph()
-        return "".join(rendered)
+        return RenderResult(
+            text="".join(rendered),
+            pending=self.pending,
+            cache_entries=self.cache_entries,
+            reused_count=self.reused_count,
+            skipped_count=self.skipped_count,
+        )
 
-    def translate_table_line(self, rel: str, line: str) -> str:
-        cells = split_table_row(line)
+    def render_table_line(self, rel: str, line: str) -> str:
         out: list[str] = []
-        for cell in cells:
+        for cell in split_table_row(line):
             if cell.strip():
                 leading = cell[: len(cell) - len(cell.lstrip())]
                 trailing = cell[len(cell.rstrip()) :]
                 body = cell.strip()
-                out.append(leading + self.translate_plain_text(rel, "table", body).strip() + trailing)
+                out.append(leading + self.render_plain_text(rel, "table", body).strip() + trailing)
             else:
                 out.append(cell)
         return "|".join(out)
 
-    def translate_plain_text(self, rel: str, kind: str, text: str) -> str:
+    def render_plain_text(self, rel: str, kind: str, text: str) -> str:
         if not should_translate_text(text):
+            self.skipped_count += 1
             return text
 
-        pieces = split_sentences(text)
-        translated: list[str] = []
-        for piece in pieces:
+        rendered: list[str] = []
+        for piece in split_sentences(text):
             if not should_translate_text(piece):
-                translated.append(piece)
+                rendered.append(piece)
                 continue
-            translated.append(self.translate_segment(rel, kind, piece))
-        return "".join(translated)
+            append_translated_piece(rendered, self.render_segment(rel, kind, piece))
+        return "".join(rendered)
 
-    def translate_segment(self, rel: str, kind: str, text: str) -> str:
+    def render_segment(self, rel: str, kind: str, text: str) -> str:
         self.segment_index += 1
         masked, masks = mask_inline_code(text)
         segment = Segment(
@@ -330,21 +348,13 @@ class MarkdownTranslator:
         )
         cached = self.cache.get("segments", {}).get(segment.key)
         if cached and cached.get("source_hash") == segment.hash:
+            self.reused_count += 1
             return unmask_inline_code(cached["translation"], masks)
 
-        if self.dry_run:
-            translation = masked
-        else:
-            translation = self.client.translate(masked, segment.context, rel, kind)
-        self.new_segments[segment.key] = {
-            "source_hash": segment.hash,
-            "source": masked,
-            "translation": translation,
-            "kind": kind,
-            "source_file": rel,
-            "updated_at": int(time.time()),
-        }
-        return unmask_inline_code(translation, masks)
+        placeholder = PLACEHOLDER_TEMPLATE.format(index=self.placeholder_index)
+        self.placeholder_index += 1
+        self.pending.append(PendingSegment(segment=segment, masks=masks, placeholder=placeholder))
+        return placeholder
 
 
 class TranslationClient:
@@ -365,24 +375,13 @@ class TranslationClient:
     def endpoint(self) -> str:
         return self.base_url + "/chat/completions"
 
-    def translate(self, text: str, context: str, source_file: str, kind: str) -> str:
+    def translate_batch(self, segments: list[PendingSegment]) -> dict[str, str]:
         payload = {
             "model": self.model,
             "temperature": 0.2,
             "messages": [
                 {"role": "system", "content": self.system_prompt()},
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        {
-                            "source_file": source_file,
-                            "markdown_kind": kind,
-                            "heading_context": context,
-                            "text": text,
-                        },
-                        ensure_ascii=False,
-                    ),
-                },
+                {"role": "user", "content": json.dumps(self.batch_payload(segments), ensure_ascii=False)},
             ],
         }
         data = json.dumps(payload).encode("utf-8")
@@ -402,39 +401,76 @@ class TranslationClient:
                     body = resp.read().decode("utf-8")
                 parsed = json.loads(body)
                 content = parsed["choices"][0]["message"]["content"]
-                return self.clean_translation(str(content), text)
-            except (urllib.error.URLError, urllib.error.HTTPError, KeyError, IndexError, json.JSONDecodeError) as exc:
+                return self.parse_batch_response(str(content), segments)
+            except (urllib.error.URLError, urllib.error.HTTPError, KeyError, IndexError, json.JSONDecodeError, ValueError) as exc:
                 last_error = exc
                 if attempt < self.retries:
                     time.sleep(2**attempt)
                     continue
-        raise RuntimeError(f"translation failed for segment: {last_error}")
+        raise RuntimeError(f"batch translation failed: {last_error}")
+
+    @staticmethod
+    def batch_payload(segments: list[PendingSegment]) -> dict:
+        return {
+            "instruction": "Translate each item from Simplified Chinese to English. Return JSON only.",
+            "items": [
+                {
+                    "key": item.segment.key,
+                    "source_file": item.segment.source_file,
+                    "markdown_kind": item.segment.kind,
+                    "heading_context": item.segment.context,
+                    "text": item.segment.text,
+                }
+                for item in segments
+            ],
+            "response_format": [{"key": "same key", "translation": "translated text"}],
+        }
 
     @staticmethod
     def system_prompt() -> str:
         glossary = "\n".join(f"- {src} -> {dst}" for src, dst in DEFAULT_GLOSSARY.items())
         return (
             "You translate ElBot user documentation from Simplified Chinese to English.\n"
-            "Return only the translated Markdown segment, with no explanations.\n"
+            "Return only a JSON array. Each item must be {\"key\": string, \"translation\": string}.\n"
             "Rules:\n"
-            "- Preserve Markdown syntax.\n"
+            "- Preserve Markdown syntax inside each segment.\n"
             "- Preserve inline code placeholders like __ELBOT_CODE_0__ exactly.\n"
             "- Preserve commands, paths, config keys, environment variable names, URLs, and product names.\n"
             "- Do not translate fenced code blocks; they are not sent to you.\n"
             "- Keep links and link targets unchanged unless only the visible Chinese label needs translation.\n"
+            "- Do not add explanations or extra keys.\n"
             "- Keep terminology consistent with this glossary:\n"
             f"{glossary}\n"
         )
 
     @staticmethod
-    def clean_translation(content: str, source: str) -> str:
-        content = content.strip("\n")
-        # Some models wrap short answers in quotes when the user content is JSON.
-        if (content.startswith('"') and content.endswith('"')) or (content.startswith("'") and content.endswith("'")):
-            content = content[1:-1]
-        if source.endswith("\n"):
-            content += "\n"
-        return content
+    def parse_batch_response(content: str, segments: list[PendingSegment]) -> dict[str, str]:
+        content = content.strip()
+        if content.startswith("```json"):
+            content = content.removeprefix("```json").removesuffix("```").strip()
+        elif content.startswith("```"):
+            content = content.removeprefix("```").removesuffix("```").strip()
+        parsed = json.loads(content)
+        if not isinstance(parsed, list):
+            raise ValueError("model response is not a JSON array")
+        expected = {item.segment.key: item.segment.text for item in segments}
+        out: dict[str, str] = {}
+        for item in parsed:
+            if not isinstance(item, dict):
+                raise ValueError("model response item is not an object")
+            key = str(item.get("key", ""))
+            translation = str(item.get("translation", ""))
+            if key not in expected:
+                raise ValueError(f"unexpected translation key: {key}")
+            source = expected[key]
+            translation = translation.strip("\n")
+            if source.endswith("\n"):
+                translation += "\n"
+            out[key] = translation
+        missing = set(expected) - set(out)
+        if missing:
+            raise ValueError(f"missing translation key(s): {', '.join(sorted(missing)[:3])}")
+        return out
 
 
 def prune_deleted_sources(cache: dict, current_sources: set[str]) -> None:
@@ -449,54 +485,96 @@ def prune_deleted_sources(cache: dict, current_sources: set[str]) -> None:
                 target.unlink()
 
 
+def translate_pending(
+    rendered: str,
+    pending: list[PendingSegment],
+    cache_entries: dict[str, dict],
+    client: TranslationClient | None,
+    args: argparse.Namespace,
+    rel: str,
+) -> str:
+    if not pending:
+        return rendered
+
+    if args.dry_run:
+        for item in pending:
+            translation = item.segment.text
+            rendered = rendered.replace(item.placeholder, unmask_inline_code(translation, item.masks))
+            cache_entries[item.segment.key] = cache_entry(item, translation)
+        return rendered
+
+    if client is None:
+        raise ValueError("translation client is not configured")
+
+    batches = chunked(pending, args.batch_size)
+    for index, batch in enumerate(batches, start=1):
+        log(f"  translating batch {index}/{len(batches)} ({len(batch)} segment(s))")
+        translations = client.translate_batch(batch)
+        for item in batch:
+            translation = translations[item.segment.key]
+            rendered = rendered.replace(item.placeholder, unmask_inline_code(translation, item.masks))
+            cache_entries[item.segment.key] = cache_entry(item, translation)
+    return rendered
+
+
+def cache_entry(item: PendingSegment, translation: str) -> dict:
+    return {
+        "source_hash": item.segment.hash,
+        "source": item.segment.text,
+        "translation": translation,
+        "kind": item.segment.kind,
+        "source_file": item.segment.source_file,
+        "updated_at": int(time.time()),
+    }
+
+
+def make_client(args: argparse.Namespace) -> TranslationClient:
+    return TranslationClient(
+        api_key=os.environ.get("TRANSLATE_LLM_API_KEY", ""),
+        base_url=os.environ.get("TRANSLATE_LLM_BASE_URL", ""),
+        model=os.environ.get("TRANSLATE_LLM_MODEL", ""),
+        timeout=args.timeout,
+        retries=args.retries,
+    )
+
+
 def run(args: argparse.Namespace) -> int:
     cache = read_json(CACHE_PATH)
     sources = source_files()
     current_source_names = {source_rel(path) for path in sources}
     prune_deleted_sources(cache, current_source_names)
 
-    needs_api = False
-    for source in sources:
-        text = source.read_text(encoding="utf-8")
-        if re.search(r"[\u4e00-\u9fff]", text):
-            source_hash = sha256_text(text)
-            file_entry = cache.get("files", {}).get(source_rel(source), {})
-            target = target_for_source(source)
-            if file_entry.get("source_hash") != source_hash or not target.exists():
-                needs_api = True
-                break
-
-    client: TranslationClient
-    if args.dry_run:
-        client = None  # type: ignore[assignment]
-    elif needs_api:
-        client = TranslationClient(
-            api_key=os.environ.get("TRANSLATE_LLM_API_KEY", ""),
-            base_url=os.environ.get("TRANSLATE_LLM_BASE_URL", ""),
-            model=os.environ.get("TRANSLATE_LLM_MODEL", ""),
-            timeout=args.timeout,
-            retries=args.retries,
-        )
-    else:
-        client = None  # type: ignore[assignment]
-
+    log(f"found {len(sources)} source doc file(s)")
+    client: TranslationClient | None = None
     staged_outputs: dict[Path, str] = {}
     all_new_segments: dict[str, dict] = {}
     file_entries: dict[str, dict] = {}
+    total_pending = 0
+    total_reused = 0
 
-    for source in sources:
+    for source_index, source in enumerate(sources, start=1):
         rel = source_rel(source)
-        translator = MarkdownTranslator(cache=cache, client=client, dry_run=args.dry_run)
-        rendered = translator.translate_file(source)
+        log(f"[{source_index}/{len(sources)}] rendering {rel}")
+        renderer = MarkdownRenderer(cache=cache)
+        result = renderer.render_file(source)
+        total_pending += len(result.pending)
+        total_reused += result.reused_count
+        log(
+            f"  segments: reused={result.reused_count}, "
+            f"changed={len(result.pending)}, skipped={result.skipped_count}"
+        )
+
+        if result.pending and not args.dry_run and client is None:
+            client = make_client(args)
+        rendered = translate_pending(result.text, result.pending, result.cache_entries, client, args, rel)
         staged_outputs[target_for_source(source)] = rendered
-        all_new_segments.update(translator.new_segments)
+        all_new_segments.update(result.cache_entries)
         file_entries[rel] = {
             "source_hash": sha256_text(source.read_text(encoding="utf-8")),
             "target": target_for_source(source).relative_to(ROOT).as_posix(),
             "updated_at": int(time.time()),
         }
 
-    # All translations succeeded. Now write outputs atomically enough for CI use.
     TARGET_DIR.mkdir(parents=True, exist_ok=True)
     for target, rendered in staged_outputs.items():
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -508,11 +586,10 @@ def run(args: argparse.Namespace) -> int:
     write_json(CACHE_PATH, cache)
 
     if args.dry_run:
-        print("dry run completed; source text was copied for changed segments")
+        log("dry run completed; changed segments were copied from source text")
     else:
-        print(f"translated {len(staged_outputs)} file(s); updated {len(all_new_segments)} segment(s)")
-    if needs_api and args.dry_run:
-        print("dry run detected source changes that would require API translation")
+        log(f"translated {len(staged_outputs)} file(s); updated {len(all_new_segments)} segment(s)")
+    log(f"summary: reused={total_reused}, changed={total_pending}, batch_size={args.batch_size}")
     return 0
 
 
@@ -520,8 +597,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Incrementally translate docs/ to docs.en/.")
     parser.add_argument("--dry-run", action="store_true", help="Do not call the LLM; copy source text for changed segments.")
     parser.add_argument("--timeout", type=int, default=90, help="HTTP timeout in seconds.")
-    parser.add_argument("--retries", type=int, default=2, help="Retry count per segment.")
-    return parser.parse_args(argv)
+    parser.add_argument("--retries", type=int, default=2, help="Retry count per batch.")
+    parser.add_argument("--batch-size", type=int, default=12, help="Changed segment count per translation request.")
+    args = parser.parse_args(argv)
+    if args.batch_size < 1:
+        parser.error("--batch-size must be at least 1")
+    return args
 
 
 def main(argv: list[str]) -> int:
