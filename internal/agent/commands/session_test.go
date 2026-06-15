@@ -129,6 +129,37 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 	_ = second
 }
 
+func TestResumeCommandCompletesSessionIDs(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "elbot.db"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer store.Close()
+
+	svc := session.NewService(store)
+	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	first, err := svc.Create(ctx, scope, "first")
+	if err != nil {
+		t.Fatalf("create first: %v", err)
+	}
+	second, err := svc.Create(ctx, scope, "second")
+	if err != nil {
+		t.Fatalf("create second: %v", err)
+	}
+	cmd := NewResume(Deps{Sessions: svc, Scope: func(context.Context) session.Scope { return scope }, SessionListPageSize: func() int { return 10 }}).(command.Completer)
+
+	got := cmd.Complete(ctx, command.CompletionRequest{Raw: "/resume ", Prefix: "/", Name: "resume", Args: "", Cursor: len("/resume ")})
+	if len(got) != 2 {
+		t.Fatalf("Complete empty = %#v", got)
+	}
+	prefix := first.ID[:8]
+	got = cmd.Complete(ctx, command.CompletionRequest{Raw: "/resume " + prefix, Prefix: "/", Name: "resume", Args: prefix, Cursor: len("/resume ") + len(prefix)})
+	if len(got) != 1 || got[0].Text != first.ID || got[0].Kind != "session_id" || got[0].Description != "first" {
+		t.Fatalf("Complete prefix = %#v, first=%s second=%s", got, first.ID, second.ID)
+	}
+}
+
 func TestResumeCommandEmitsAudit(t *testing.T) {
 	ctx := context.Background()
 	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "elbot.db"))
@@ -144,16 +175,20 @@ func TestResumeCommandEmitsAudit(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 	var events []string
+	lastSessions := []string{created.ID}
 	deps := Deps{
 		Sessions: svc,
 		Store:    store,
 		Scope:    func(context.Context) session.Scope { return scope },
+		LastSessions: func() []string {
+			return lastSessions
+		},
 		Audit: func(event string, attrs ...any) {
 			events = append(events, event)
 		},
 	}
 
-	if _, err := NewResume(deps).Handle(ctx, command.Request{Args: created.ID}); err != nil {
+	if _, err := NewResume(deps).Handle(ctx, command.Request{Args: "1"}); err != nil {
 		t.Fatalf("resume: %v", err)
 	}
 	if len(events) != 1 || events[0] != "session_resume" {

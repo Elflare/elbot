@@ -58,8 +58,7 @@
 - `internal/agent/commands/help.go`：`/help` 命令；无参从 Router 生成命令列表，`/help <command>` 展示命令详细参数说明。
 - `internal/agent/commands/model.go`：模型命令；实现 `/model`、`/checkmodel`、`/models`，支持 chat/work/compact/naming 模型查看、切换和 `/model` 参数补全，`/models --fresh` 可强制刷新模型列表缓存。
 - `internal/agent/commands/compact.go`：`/compact` 命令；触发当前 Session 主动上下文压缩。
-
-- `internal/agent/commands/session.go`：Session 命令；组合注册列表、生命周期、恢复、Fork、模式切换和 `/status` 等会话命令。
+- `internal/agent/commands/session.go`：Session 命令；组合注册列表、生命周期、恢复、Fork、模式切换等会话命令。
 - `internal/agent/commands/request.go`：请求管理命令；实现 `/requests`、`/stop` 和 `/stopall`。
 - `internal/agent/commands/log.go`：日志查看命令；实现 `/log`、`/audit`，支持常用过滤条件和 Debug 原始日志展示。
 - `internal/agent/commands/tool.go`：工具命令；实现 `/tools` 查看已注册工具，并预留 external skill 的 reload/uninstall/remove 入口。

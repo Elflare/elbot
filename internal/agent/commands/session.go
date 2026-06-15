@@ -129,59 +129,102 @@ func NewSessions(deps Deps) command.Handler {
 }
 
 func NewResume(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{
+	return resumeCommand{deps: deps}
+}
+
+type resumeCommand struct {
+	deps Deps
+}
+
+func (c resumeCommand) Info() command.Info {
+	return command.Info{
 		Name:        "resume",
 		Usage:       "/resume [number|session_id]",
 		Description: "Resume a previous session.",
-	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
-		arg := strings.TrimSpace(req.Args)
-		if strings.HasPrefix(arg, "--page") {
-			page, err := parseResumePageArg(arg)
-			if err != nil {
-				return nil, err
-			}
-			pageSize := sessionPageSize(deps)
-			sessions, hasNext, err := listSessionPage(ctx, deps, "", page, pageSize, false)
-			if err != nil {
-				return nil, err
-			}
-			currentID := currentSessionID(ctx, deps)
-			deps.SetLastSessions(sessions)
-			if len(sessions) == 0 {
-				return &command.Result{Content: "no sessions found\n"}, nil
-			}
-			return &command.Result{Content: formatSessionsPage(sessions, currentID, page, "", hasNext, "/resume --page")}, nil
-		}
-		if arg == "" {
-			pageSize := sessionPageSize(deps)
-			sessions, hasNext, err := listSessionPage(ctx, deps, "", 1, pageSize, false)
-			if err != nil {
-				return nil, err
-			}
-			currentID := currentSessionID(ctx, deps)
-			deps.SetLastSessions(sessions)
-			if len(sessions) == 0 {
-				return &command.Result{Content: "no sessions found\n"}, nil
-			}
-			return &command.Result{Content: formatSessionsPage(sessions, currentID, 1, "", hasNext, "/resume --page")}, nil
-		}
+	}
+}
 
-		sessionID := arg
-		if idx, err := strconv.Atoi(arg); err == nil {
-			ids := deps.LastSessions()
-			if idx < 1 || idx > len(ids) {
-				return nil, fmt.Errorf("session index %d out of range; run /sessions first", idx)
-			}
-			sessionID = ids[idx-1]
-		}
-
-		session, err := deps.Sessions.Resume(ctx, deps.Scope(ctx), sessionID)
+func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+	deps := c.deps
+	arg := strings.TrimSpace(req.Args)
+	if strings.HasPrefix(arg, "--page") {
+		page, err := parseResumePageArg(arg)
 		if err != nil {
 			return nil, err
 		}
-		auditCommand(deps, "session_resume", "session_id", session.ID, "title", session.Title)
-		return &command.Result{Content: formatResumeResult(ctx, deps, session)}, nil
-	})
+		pageSize := sessionPageSize(deps)
+		sessions, hasNext, err := listSessionPage(ctx, deps, "", page, pageSize, false)
+		if err != nil {
+			return nil, err
+		}
+		currentID := currentSessionID(ctx, deps)
+		deps.SetLastSessions(sessions)
+		if len(sessions) == 0 {
+			return &command.Result{Content: "no sessions found\n"}, nil
+		}
+		return &command.Result{Content: formatSessionsPage(sessions, currentID, page, "", hasNext, "/resume --page")}, nil
+	}
+	if arg == "" {
+		pageSize := sessionPageSize(deps)
+		sessions, hasNext, err := listSessionPage(ctx, deps, "", 1, pageSize, false)
+		if err != nil {
+			return nil, err
+		}
+		currentID := currentSessionID(ctx, deps)
+		deps.SetLastSessions(sessions)
+		if len(sessions) == 0 {
+			return &command.Result{Content: "no sessions found\n"}, nil
+		}
+		return &command.Result{Content: formatSessionsPage(sessions, currentID, 1, "", hasNext, "/resume --page")}, nil
+	}
+
+	sessionID := arg
+	if idx, err := strconv.Atoi(arg); err == nil {
+		ids := deps.LastSessions()
+		if idx < 1 || idx > len(ids) {
+			return nil, fmt.Errorf("session index %d out of range; run /sessions first", idx)
+		}
+		sessionID = ids[idx-1]
+	}
+
+	session, err := deps.Sessions.Resume(ctx, deps.Scope(ctx), sessionID)
+	if err != nil {
+		return nil, err
+	}
+	auditCommand(deps, "session_resume", "session_id", session.ID, "title", session.Title)
+	return &command.Result{Content: formatResumeResult(ctx, deps, session)}, nil
+}
+
+func (c resumeCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
+	deps := c.deps
+	if deps.Sessions == nil || deps.Scope == nil {
+		return nil
+	}
+	cursor := req.Cursor
+	if cursor <= 0 || cursor > len(req.Raw) {
+		cursor = len(req.Raw)
+	}
+	tokenStart := cursor
+	for tokenStart > 0 && req.Raw[tokenStart-1] != ' ' && req.Raw[tokenStart-1] != '\t' {
+		tokenStart--
+	}
+	query := strings.TrimSpace(req.Raw[tokenStart:cursor])
+	if query == "--page" || strings.HasPrefix(query, "--") {
+		return nil
+	}
+
+	sessions, _, err := listSessionPage(ctx, deps, "", 1, sessionPageSize(deps), false)
+	if err != nil {
+		return nil
+	}
+	out := []command.Completion{}
+	for _, session := range sessions {
+		if query != "" && !strings.HasPrefix(session.ID, query) {
+			continue
+		}
+		out = append(out, command.Completion{Text: session.ID, Label: session.ID, Description: emptyTitle(session.Title), Kind: "session_id", ReplaceStart: tokenStart, ReplaceEnd: cursor})
+	}
+	return out
 }
 
 func NewArchives(deps Deps) command.Handler {

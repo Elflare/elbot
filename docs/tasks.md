@@ -219,7 +219,7 @@
 - [x] CLI 支持简单命令名 Tab 补全，当前补全来源为已注册命令和 alias。
 - [x] 后续用更模块化的补全服务替代当前 Agent 辅助方法，由 app 层装配并注入具体平台。
 - [ ] 后续支持命令参数补全，例如 `/model` 补全模型名、`/resume` 补全会话编号。
-  - [x] `/model` 支持补全目标选项和模型名。
+  - [x] `/model` 支持补全目标选项和模型名；`/resume` 支持补全 Session ID。
 - [ ] 后续支持普通用户能使用/sessions /new /fork /messages /resume 处理自己的sessiosn
 
 ### Session Service 基础
