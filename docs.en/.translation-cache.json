@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "3c796dd1eea13396d6d1996ca6d88a10884153ba3c01041a3d81618aef697509",
+      "source_hash": "d61248c47b93afea981efa9c0cfbe0e24607cf5f0fe39db59277e96d4886dd33",
       "target": "README.md",
-      "updated_at": 1781529729
+      "updated_at": 1781534424
     },
     "docs/README.md": {
       "source_hash": "ece79e589e6219920d295c5ead264549fe40fe58ac5824ffef69da1b840702cf",
@@ -119,6 +119,14 @@
       "source_hash": "91915b9e6bd2f4a7c8768b85875e6ba0e7839ecdcad423b147865ee2470c3911",
       "translation": "Features",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:heading:96c76c11cea7d7bf6480c8d98db9d026785e7f4f4aff660a0e481ea80735d471": {
+      "kind": "heading",
+      "source": "8. 可由 LLM 创建的 EL Skill",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "96c76c11cea7d7bf6480c8d98db9d026785e7f4f4aff660a0e481ea80735d471",
+      "translation": "8. EL Skills that can be created by LLM",
+      "updated_at": 1781534424
     },
     "README.zh-CN.md:heading:9ef3590906f0d0449ea68d6f16eba412253cf49bccd868b0b5626819c69d5637": {
       "kind": "heading",
@@ -543,6 +551,14 @@
       "source_hash": "a3916d70b9cc79e8dc86d3f5757be04b53eef73d8fd7944f39daf9f56fe1f845",
       "translation": "ElBot distinguishes between runtime logs and audit logs, supporting structured field recording, log queries, audit queries, request status viewing, and runtime debugging.",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:b63d179f310361b60bf43e8269e0cee54a11bafb10e3401a6b4fe1fa4d68f5f4": {
+      "kind": "paragraph",
+      "source": "ElBot 内置 __ELBOT_CODE_0__ 元工具，允许 LLM 将可复用经验沉淀为 EL Skill。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "b63d179f310361b60bf43e8269e0cee54a11bafb10e3401a6b4fe1fa4d68f5f4",
+      "translation": "ElBot features a built-in __ELBOT_CODE_0__ meta-tool, allowing LLMs to crystallize reusable experience into EL Skills.\n",
+      "updated_at": 1781534424
     },
     "README.zh-CN.md:paragraph:b99aceb5fee1d1349b739b352b4276f2f6b8bb22a01ead79344466184b1a36a7": {
       "kind": "paragraph",

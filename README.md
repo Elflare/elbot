@@ -58,9 +58,9 @@ ElBot has a built-in Cron Runtime and an LLM-orchestratable Cron service. Standa
 
 ElBot introduces ELyph Task Notation to describe LLM Cron and native Skills. The goal of ELyph is to reduce ambiguity in natural language task descriptions, using shorter and more stable structures to express inputs, outputs, steps, conditions, and constraints. Compared to arbitrary Markdown, ELyph is better suited for reusing and passing tasks between LLMs, and is also easier for linting, auditing, and subsequent tooling.
 
-### 8. El Skills that can be created by LLMs
+### 8. EL Skills that can be created by LLM
 
-ElBot has a built-in `create_el_skill` meta-tool, allowing LLMs to crystallize reusable experience into El Skills.
+ElBot features a built-in `create_el_skill` meta-tool, allowing LLMs to crystallize reusable experience into EL Skills.
 
 ### 9. Compatible with Internet Python Skills
 
