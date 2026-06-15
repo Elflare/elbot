@@ -64,6 +64,7 @@ HTML_COMMENT_RE = re.compile(r"^\s*<!--.*-->\s*$")
 TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$")
 INLINE_CODE_RE = re.compile(r"`[^`]+`")
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[。！？；])")
+THINKING_BLOCK_RE = re.compile(r"<\s*(think|thought|thinking)\s*>.*?<\s*/\s*\1\s*>", re.IGNORECASE | re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -107,6 +108,55 @@ def log(message: str) -> None:
 
 def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def response_preview(content: str, limit: int = 800) -> str:
+    content = content.replace("\r", "\\r").replace("\n", "\\n")
+    if len(content) > limit:
+        return content[:limit] + "..."
+    return content
+
+
+def normalize_json_response(content: str) -> str:
+    content = THINKING_BLOCK_RE.sub("", content).strip()
+    if content.startswith("```json"):
+        content = content.removeprefix("```json").removesuffix("```").strip()
+    elif content.startswith("```"):
+        content = content.removeprefix("```").removesuffix("```").strip()
+    if content.startswith("["):
+        return content
+    extracted = extract_first_json_array(content)
+    if extracted is not None:
+        return extracted
+    return content
+
+
+def extract_first_json_array(content: str) -> str | None:
+    start = content.find("[")
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for index in range(start, len(content)):
+        char = content[index]
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "[":
+            depth += 1
+        elif char == "]":
+            depth -= 1
+            if depth == 0:
+                return content[start : index + 1]
+    return None
 
 
 def read_json(path: Path) -> dict:
@@ -459,14 +509,15 @@ class TranslationClient:
 
     @staticmethod
     def parse_batch_response(content: str, segments: list[PendingSegment]) -> dict[str, str]:
-        content = content.strip()
-        if content.startswith("```json"):
-            content = content.removeprefix("```json").removesuffix("```").strip()
-        elif content.startswith("```"):
-            content = content.removeprefix("```").removesuffix("```").strip()
-        parsed = json.loads(content)
+        original = content
+        content = normalize_json_response(content)
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as exc:
+            preview = response_preview(original)
+            raise ValueError(f"invalid JSON response: {exc}; preview={preview}") from exc
         if not isinstance(parsed, list):
-            raise ValueError("model response is not a JSON array")
+            raise ValueError(f"model response is not a JSON array; preview={response_preview(original)}")
         expected = {item.segment.key: item.segment.text for item in segments}
         out: dict[str, str] = {}
         for item in parsed:
