@@ -26,9 +26,9 @@
       "updated_at": 1781515756
     },
     "docs/getting-started.md": {
-      "source_hash": "b66663d7c9c069cb3abd01af51fc344d43c36a0acc300123b61f2bc6fd576a2d",
+      "source_hash": "b0156cc43a4e089e5ce49c79cc14b3f5ae098ff0ad9b0c651c92dfadea42fb79",
       "target": "docs.en/getting-started.md",
-      "updated_at": 1781515975
+      "updated_at": 1781534482
     }
   },
   "segments": {
@@ -3568,6 +3568,14 @@
       "translation": "If using other Providers, you need to synchronously modify __ELBOT_CODE_0__ and __ELBOT_CODE_1__.\n",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:paragraph:1cd2a61a3475c406a1a17b9d721ffca75eca0831ee63ddbdf0529006d09d2c9c": {
+      "kind": "paragraph",
+      "source": "default_mode 手动设置，其他设置可以在cli中使用命令设置。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "1cd2a61a3475c406a1a17b9d721ffca75eca0831ee63ddbdf0529006d09d2c9c",
+      "translation": "`default_mode` is set manually; other settings can be configured using commands in the CLI.\n",
+      "updated_at": 1781534482
+    },
     "docs/getting-started.md:paragraph:254c2606edcbea8190615ab0c0a866bc3564d419e10c7b2bccef05290b768bc6": {
       "kind": "paragraph",
       "source": "推荐把密钥放在系统环境变量，或放在配置目录下的 __ELBOT_CODE_0__ 文件中，不要直接写进 __ELBOT_CODE_1__。\n",
@@ -3624,6 +3632,14 @@
       "translation": "Check:\n",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:paragraph:7e7e1b1c7266bfbce08d2fd3423fabee8a7671917b9e7a5c8d62e427957e8c9b": {
+      "kind": "paragraph",
+      "source": "默认运行态模型写在 __ELBOT_CODE_0__ ：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "7e7e1b1c7266bfbce08d2fd3423fabee8a7671917b9e7a5c8d62e427957e8c9b",
+      "translation": "The default runtime model is specified in __ELBOT_CODE_0__:\n",
+      "updated_at": 1781534482
+    },
     "docs/getting-started.md:paragraph:84e2b7f0aded1d7c0715409f35b94fbc2d27dc6b7e4f457cc990a3be5c42b2fd": {
       "kind": "paragraph",
       "source": "本文档用于把 ElBot 跑起来，并完成第一次 CLI 对话。\n",
@@ -3631,6 +3647,14 @@
       "source_hash": "84e2b7f0aded1d7c0715409f35b94fbc2d27dc6b7e4f457cc990a3be5c42b2fd",
       "translation": "This document is used to get ElBot up and running and complete your first CLI conversation.\n",
       "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:a611d499cca4918706780e022d66f0e1543051cc10c1a4b98af5341d36626dc7": {
+      "kind": "paragraph",
+      "source": "Windows 下：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "a611d499cca4918706780e022d66f0e1543051cc10c1a4b98af5341d36626dc7",
+      "translation": "On Windows:\n",
+      "updated_at": 1781534482
     },
     "docs/getting-started.md:paragraph:b542c9d7ce8593d0cfb5a79002986f5e89617f64f638eea577bd7871bbaaebe1": {
       "kind": "paragraph",

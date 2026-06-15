@@ -13,7 +13,7 @@ This document is used to get ElBot up and running and complete your first CLI co
 ## Get the Code
 
 ```bash
-git clone <your-elbot-repo-url>
+git clone https://github.com/Elflare/elbot/
 cd elbot
 ```
 
@@ -63,6 +63,7 @@ model = "deepseek-chat"
 ```
 
 If using other Providers, you need to synchronously modify `provider` and `model`.
+`default_mode` is set manually; other settings can be configured using commands in the CLI.
 
 ## Start CLI
 
@@ -84,7 +85,7 @@ Build binary:
 go build -o elbot ./cmd/elbot
 ```
 
-On Windows, if using Git Bash, the built file may need to be named `elbot.exe`:
+On Windows:
 
 ```bash
 go build -o elbot.exe ./cmd/elbot
