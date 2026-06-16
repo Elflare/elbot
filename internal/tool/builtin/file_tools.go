@@ -75,13 +75,22 @@ type readFileArgs struct {
 }
 
 type editFileArgs struct {
-	Path           string     `json:"path"`
-	Encoding       string     `json:"encoding"`
-	Operation      string     `json:"operation"`
-	StartLine      int        `json:"start_line"`
-	EndLine        lineNumber `json:"end_line"`
-	Content        string     `json:"content"`
-	ExpectedSHA256 string     `json:"expected_sha256"`
+	Path           string          `json:"path"`
+	Encoding       string          `json:"encoding"`
+	ExpectedSHA256 string          `json:"expected_sha256"`
+	DryRun         bool            `json:"dry_run"`
+	ContextLines   int             `json:"context_lines"`
+	Edits          []editOperation `json:"edits"`
+}
+
+type editOperation struct {
+	Operation       string     `json:"operation"`
+	StartLine       int        `json:"start_line"`
+	EndLine         lineNumber `json:"end_line"`
+	Content         string     `json:"content"`
+	ExpectedContent *string    `json:"expected_content"`
+	OldContent      string     `json:"old_content"`
+	Anchor          string     `json:"anchor"`
 }
 
 type decodedFile struct {
@@ -172,17 +181,25 @@ func (t EditFileTool) Schema() llm.ToolSchema {
 }
 
 func editFileBuilder() *tool.Builder {
+	editProperties := map[string]any{
+		"operation":        map[string]any{"type": "string", "description": "编辑操作：replace、delete、insert_before、insert_after、replace_match、delete_match、insert_before_match、insert_after_match。edits 按顺序应用，后一步基于前一步结果；工具不会重排序或补偿行号。"},
+		"start_line":       map[string]any{"type": "integer", "description": "行号操作的起始行号，1-based。"},
+		"end_line":         map[string]any{"type": "string", "description": "行号 replace/delete 的结束行号，1-based 且包含该行；也可传 end；默认等于 start_line。"},
+		"content":          map[string]any{"type": "string", "description": "replace/insert 写入的文本；delete/delete_match 会忽略该字段。工具不自动格式化或补空行。"},
+		"expected_content": map[string]any{"type": "string", "description": "replace/delete 前校验目标行范围原始文本；换行符按 \\n 规范化比较，用于防止行号漂移误改。"},
+		"old_content":      map[string]any{"type": "string", "description": "replace_match/delete_match 要唯一匹配的原始文本；找不到或多处匹配都会失败。"},
+		"anchor":           map[string]any{"type": "string", "description": "insert_before_match/insert_after_match 要唯一匹配的锚点文本；找不到或多处匹配都会失败。"},
+	}
 	return tool.NewBuilder("edit_file").
-		Description("按行编辑文本文件，支持替换、插入和删除；成功后返回 unified diff。编辑前应先用 read_file 确认行号。").
+		Description("批量编辑文本文件；使用 edits 一次提交多个修改，支持行号编辑、目标内容校验、唯一文本匹配、锚点插入和 dry-run；成功后返回 unified diff。任一 edit 失败则不写文件。").
 		Risk(tool.RiskHigh).
 		Tags("files", "agent").
 		String("path", "要编辑的文件路径。", tool.Required()).
 		String("encoding", "文本编码，默认 auto；非 UTF-8 文件应显式传入 gb18030、gbk、big5、shift_jis 等。").
-		String("operation", "编辑操作：replace、insert_before、insert_after、delete。", tool.Required()).
-		Integer("start_line", "起始行号，1-based。replace/delete 需要；insert_before/insert_after 表示插入位置。", tool.Required()).
-		String("end_line", "结束行号，1-based 且包含该行；也可传 end 表示文件末尾；replace/delete 默认等于 start_line。").
-		String("content", "replace/insert 写入的文本；delete 会忽略该字段。").
-		String("expected_sha256", "可选，编辑前文件 sha256")
+		String("expected_sha256", "可选，编辑前文件 sha256；用于防止外部并发修改。").
+		Boolean("dry_run", "为 true 时只执行校验并返回 diff，不写入文件。").
+		Integer("context_lines", "diff 上下文行数，默认 3，范围 0-20。").
+		ObjectArray("edits", "批量编辑列表，按顺序应用；连续编辑同一文件时优先使用 match/anchor 操作，行号 replace/delete 建议提供 expected_content。", editProperties, []string{"operation"}, tool.Required())
 }
 
 func (EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
@@ -219,18 +236,24 @@ func (EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 	if expected := strings.TrimSpace(args.ExpectedSHA256); expected != "" && !strings.EqualFold(expected, sha256Hex(file.Bytes)) {
 		return nil, fmt.Errorf("file sha256 mismatch: current %s", sha256Hex(file.Bytes))
 	}
-	oldLines := splitLines(file.Text)
-	newLines, err := applyLineEdit(oldLines, args)
+	oldText := normalizeEditText(file.Text)
+	newText, err := applyEdits(oldText, args.Edits)
 	if err != nil {
 		return nil, err
 	}
-	newText := joinLines(newLines, file.LineEnding, file.EndsNewline)
-	if newText == file.Text {
+	if newText == oldText {
 		return nil, fmt.Errorf("edit produced no changes")
 	}
-	newBytes, err := encodeText(newText, file.Encoding, file.BOM)
+	outputText := restoreLineEndings(newText, file.LineEnding)
+	newBytes, err := encodeText(outputText, file.Encoding, file.BOM)
 	if err != nil {
 		return nil, err
+	}
+	contextLines := normalizeContextLines(args.ContextLines)
+	diff := unifiedDiff(file.Path, splitLines(oldText), splitLines(newText), contextLines)
+	content := fmt.Sprintf("dry_run: %t\nedited: %s\nencoding: %s\nsha256_before: %s\nsha256_after: %s\ndiff:\n%s", args.DryRun, file.Path, file.Encoding, sha256Hex(file.Bytes), sha256Hex(newBytes), diff)
+	if args.DryRun {
+		return &tool.Result{Content: content}, nil
 	}
 	info, err := os.Stat(path)
 	if err != nil {
@@ -239,8 +262,6 @@ func (EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 	if err := os.WriteFile(path, newBytes, info.Mode()); err != nil {
 		return nil, fmt.Errorf("write file: %w", err)
 	}
-	diff := unifiedDiff(file.Path, oldLines, newLines, file.LineEnding)
-	content := fmt.Sprintf("edited: %s\nencoding: %s\nsha256_before: %s\nsha256_after: %s\ndiff:\n%s", file.Path, file.Encoding, sha256Hex(file.Bytes), sha256Hex(newBytes), diff)
 	return &tool.Result{Content: content}, nil
 }
 
@@ -470,44 +491,151 @@ func normalizeReadRange(total, start int, endLine lineNumber) (int, int, bool, e
 	return start, end, truncated, nil
 }
 
-func applyLineEdit(lines []string, args editFileArgs) ([]string, error) {
-	operation := strings.ToLower(strings.TrimSpace(args.Operation))
-	if operation == "" {
-		return nil, fmt.Errorf("operation is required")
+func applyEdits(text string, edits []editOperation) (string, error) {
+	if len(edits) == 0 {
+		return "", fmt.Errorf("edits is required")
 	}
-	start := args.StartLine
-	end := args.EndLine.Value
-	if args.EndLine.End {
+	current := normalizeEditText(text)
+	for i, edit := range edits {
+		next, err := applyEdit(current, edit)
+		if err != nil {
+			return "", fmt.Errorf("edit %d: %w", i+1, err)
+		}
+		current = next
+	}
+	return current, nil
+}
+
+func applyEdit(text string, edit editOperation) (string, error) {
+	operation := strings.ToLower(strings.TrimSpace(edit.Operation))
+	if operation == "" {
+		return "", fmt.Errorf("operation is required")
+	}
+	switch operation {
+	case "replace", "delete", "insert_before", "insert_after":
+		return applyLineEdit(text, edit)
+	case "replace_match":
+		start, end, err := findUniqueMatch(text, edit.OldContent, "old_content")
+		if err != nil {
+			return "", err
+		}
+		return text[:start] + normalizeEditText(edit.Content) + text[end:], nil
+	case "delete_match":
+		start, end, err := findUniqueMatch(text, edit.OldContent, "old_content")
+		if err != nil {
+			return "", err
+		}
+		return text[:start] + text[end:], nil
+	case "insert_before_match", "insert_after_match":
+		start, end, err := findUniqueMatch(text, edit.Anchor, "anchor")
+		if err != nil {
+			return "", err
+		}
+		index := start
+		if operation == "insert_after_match" {
+			index = end
+		}
+		return text[:index] + normalizeEditText(edit.Content) + text[index:], nil
+	default:
+		return "", fmt.Errorf("unsupported operation %q", edit.Operation)
+	}
+}
+
+func applyLineEdit(text string, edit editOperation) (string, error) {
+	lines := splitLines(text)
+	endsNewline := strings.HasSuffix(text, "\n")
+	operation := strings.ToLower(strings.TrimSpace(edit.Operation))
+	start := edit.StartLine
+	end := edit.EndLine.Value
+	if edit.EndLine.End {
 		end = len(lines)
 	} else if end == 0 {
 		end = start
 	}
-	contentLines := splitLines(args.Content)
+	contentLines := splitLines(edit.Content)
 	out := append([]string{}, lines...)
 	switch operation {
 	case "replace":
 		if err := validateLineRange(len(lines), start, end); err != nil {
-			return nil, err
+			return "", err
 		}
-		return replaceLines(out, start, end, contentLines), nil
+		if err := validateExpectedContent(lines, start, end, edit.ExpectedContent); err != nil {
+			return "", err
+		}
+		out = replaceLines(out, start, end, contentLines)
 	case "delete":
 		if err := validateLineRange(len(lines), start, end); err != nil {
-			return nil, err
+			return "", err
 		}
-		return replaceLines(out, start, end, nil), nil
+		if err := validateExpectedContent(lines, start, end, edit.ExpectedContent); err != nil {
+			return "", err
+		}
+		out = replaceLines(out, start, end, nil)
 	case "insert_before", "insert_after":
 		if err := validateInsertLine(len(lines), start); err != nil {
-			return nil, err
+			return "", err
 		}
 		index := start - 1
 		if operation == "insert_after" {
 			index = start
 		}
 		out = append(out[:index], append(contentLines, out[index:]...)...)
-		return out, nil
 	default:
-		return nil, fmt.Errorf("unsupported operation %q", args.Operation)
+		return "", fmt.Errorf("unsupported operation %q", edit.Operation)
 	}
+	return joinLines(out, "\n", endsNewline), nil
+}
+
+func validateExpectedContent(lines []string, start, end int, expected *string) error {
+	if expected == nil {
+		return nil
+	}
+	actual := strings.Join(lines[start-1:end], "\n")
+	want := strings.TrimSuffix(normalizeEditText(*expected), "\n")
+	if actual != want {
+		return fmt.Errorf("target content mismatch at lines %d-%d", start, end)
+	}
+	return nil
+}
+
+func findUniqueMatch(text, rawNeedle, label string) (int, int, error) {
+	needle := normalizeEditText(rawNeedle)
+	if needle == "" {
+		return 0, 0, fmt.Errorf("%s is required", label)
+	}
+	first := strings.Index(text, needle)
+	if first < 0 {
+		return 0, 0, fmt.Errorf("%s not found", label)
+	}
+	if next := strings.Index(text[first+len(needle):], needle); next >= 0 {
+		return 0, 0, fmt.Errorf("%s matched multiple locations; provide longer %s", label, label)
+	}
+	return first, first + len(needle), nil
+}
+
+func normalizeEditText(text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	return strings.ReplaceAll(text, "\r", "\n")
+}
+
+func restoreLineEndings(text, lineEnding string) string {
+	if lineEnding == "" || lineEnding == "\n" {
+		return text
+	}
+	return strings.ReplaceAll(text, "\n", lineEnding)
+}
+
+func normalizeContextLines(value int) int {
+	if value < 0 {
+		return 0
+	}
+	if value == 0 {
+		return 3
+	}
+	if value > 20 {
+		return 20
+	}
+	return value
 }
 
 func validateLineRange(total, start, end int) error {
@@ -596,14 +724,21 @@ func sha256Hex(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func unifiedDiff(path string, oldLines, newLines []string, lineEnding string) string {
+type diffHunk struct {
+	ops      []diffOp
+	oldStart int
+	newStart int
+}
+
+func unifiedDiff(path string, oldLines, newLines []string, contextLines int) string {
 	ops := diffLines(oldLines, newLines)
+	hunk := trimDiffContext(ops, contextLines)
 	var b strings.Builder
 	fmt.Fprintf(&b, "--- %s\n", path)
 	fmt.Fprintf(&b, "+++ %s\n", path)
-	oldStart, oldCount, newStart, newCount := diffHunkRange(ops)
-	fmt.Fprintf(&b, "@@ -%d,%d +%d,%d @@\n", oldStart, oldCount, newStart, newCount)
-	for _, op := range ops {
+	oldCount, newCount := diffHunkCounts(hunk.ops)
+	fmt.Fprintf(&b, "@@ -%d,%d +%d,%d @@\n", hunk.oldStart, oldCount, hunk.newStart, newCount)
+	for _, op := range hunk.ops {
 		switch op.kind {
 		case diffEqual:
 			fmt.Fprintf(&b, " %s\n", op.text)
@@ -661,10 +796,10 @@ func diffLines(a, b []string) []diffOp {
 			j++
 		}
 	}
-	return trimDiffContext(ops, 3)
+	return ops
 }
 
-func trimDiffContext(ops []diffOp, contextLines int) []diffOp {
+func trimDiffContext(ops []diffOp, contextLines int) diffHunk {
 	first, last := -1, -1
 	for i, op := range ops {
 		if op.kind != diffEqual {
@@ -675,7 +810,7 @@ func trimDiffContext(ops []diffOp, contextLines int) []diffOp {
 		}
 	}
 	if first == -1 {
-		return nil
+		return diffHunk{ops: nil, oldStart: 1, newStart: 1}
 	}
 	start := first - contextLines
 	if start < 0 {
@@ -685,11 +820,22 @@ func trimDiffContext(ops []diffOp, contextLines int) []diffOp {
 	if end > len(ops) {
 		end = len(ops)
 	}
-	return ops[start:end]
+	oldStart, newStart := 1, 1
+	for _, op := range ops[:start] {
+		switch op.kind {
+		case diffEqual:
+			oldStart++
+			newStart++
+		case diffDelete:
+			oldStart++
+		case diffInsert:
+			newStart++
+		}
+	}
+	return diffHunk{ops: ops[start:end], oldStart: oldStart, newStart: newStart}
 }
 
-func diffHunkRange(ops []diffOp) (int, int, int, int) {
-	oldStart, newStart := 1, 1
+func diffHunkCounts(ops []diffOp) (int, int) {
 	oldCount, newCount := 0, 0
 	for _, op := range ops {
 		switch op.kind {
@@ -702,5 +848,5 @@ func diffHunkRange(ops []diffOp) (int, int, int, int) {
 			newCount++
 		}
 	}
-	return oldStart, oldCount, newStart, newCount
+	return oldCount, newCount
 }

@@ -29,12 +29,33 @@ func TestReadFileToolReturnsLineNumbersAndEndRange(t *testing.T) {
 	}
 }
 
-func TestEditFileToolReplacesLinesAndReturnsDiff(t *testing.T) {
+func TestEditFileToolRequiresEdits(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path})
+	_, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "edits is required") {
+		t.Fatalf("expected edits error, got %v", err)
+	}
+}
+
+func TestEditFileToolBatchReplacesLinesAndReturnsDiff(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
 	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	args, _ := json.Marshal(map[string]any{"path": path, "operation": "replace", "start_line": 2, "end_line": 2, "content": "BETA\nDELTA"})
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation":        "replace",
+			"start_line":       2,
+			"end_line":         2,
+			"expected_content": "beta",
+			"content":          "BETA\nDELTA",
+		}},
+	})
 	result, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +67,7 @@ func TestEditFileToolReplacesLinesAndReturnsDiff(t *testing.T) {
 	if got := string(content); got != "alpha\nBETA\nDELTA\ngamma\n" {
 		t.Fatalf("file content = %q", got)
 	}
-	if !strings.Contains(result.Content, "-beta") || !strings.Contains(result.Content, "+BETA") || !strings.Contains(result.Content, "+DELTA") {
+	if !strings.Contains(result.Content, "dry_run: false") || !strings.Contains(result.Content, "-beta") || !strings.Contains(result.Content, "+BETA") || !strings.Contains(result.Content, "+DELTA") {
 		t.Fatalf("unexpected diff:\n%s", result.Content)
 	}
 }
@@ -56,7 +77,15 @@ func TestEditFileToolAcceptsStringLineNumbers(t *testing.T) {
 	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	args, _ := json.Marshal(map[string]any{"path": path, "operation": "replace", "start_line": 2, "end_line": "2", "content": "BETA"})
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation":  "replace",
+			"start_line": 2,
+			"end_line":   "2",
+			"content":    "BETA",
+		}},
+	})
 	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
@@ -69,12 +98,47 @@ func TestEditFileToolAcceptsStringLineNumbers(t *testing.T) {
 	}
 }
 
+func TestEditFileToolExpectedContentMismatchDoesNotWrite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	original := "alpha\nbeta\ngamma\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation":        "replace",
+			"start_line":       2,
+			"expected_content": "wrong",
+			"content":          "BETA",
+		}},
+	})
+	_, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "target content mismatch") {
+		t.Fatalf("expected mismatch error, got %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != original {
+		t.Fatalf("file changed to %q", string(content))
+	}
+}
+
 func TestEditFileToolDeletesThroughEnd(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
 	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	args, _ := json.Marshal(map[string]any{"path": path, "operation": "delete", "start_line": 2, "end_line": "end"})
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation":  "delete",
+			"start_line": 2,
+			"end_line":   "end",
+		}},
+	})
 	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
@@ -84,6 +148,190 @@ func TestEditFileToolDeletesThroughEnd(t *testing.T) {
 	}
 	if got := string(content); got != "alpha\n" {
 		t.Fatalf("file content = %q", got)
+	}
+}
+
+func TestEditFileToolReplaceMatch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation":   "replace_match",
+			"old_content": "beta\ngamma",
+			"content":     "BETA\nGAMMA",
+		}},
+	})
+	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != "alpha\nBETA\nGAMMA\n" {
+		t.Fatalf("file content = %q", got)
+	}
+}
+
+func TestEditFileToolReplaceMatchRequiresUniqueMatch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	original := "alpha\nbeta\nbeta\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation":   "replace_match",
+			"old_content": "beta",
+			"content":     "BETA",
+		}},
+	})
+	_, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "matched multiple locations") {
+		t.Fatalf("expected duplicate match error, got %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != original {
+		t.Fatalf("file changed to %q", string(content))
+	}
+}
+
+func TestEditFileToolDeleteMatch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation":   "delete_match",
+			"old_content": "beta\n",
+		}},
+	})
+	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != "alpha\ngamma\n" {
+		t.Fatalf("file content = %q", got)
+	}
+}
+
+func TestEditFileToolInsertBeforeAfterMatch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\ngamma\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{
+			{"operation": "insert_before_match", "anchor": "gamma", "content": "beta\n"},
+			{"operation": "insert_after_match", "anchor": "gamma", "content": "\ndelta"},
+		},
+	})
+	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != "alpha\nbeta\ngamma\ndelta\n" {
+		t.Fatalf("file content = %q", got)
+	}
+}
+
+func TestEditFileToolDryRunDoesNotWrite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	original := "alpha\nbeta\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path":    path,
+		"dry_run": true,
+		"edits": []map[string]any{{
+			"operation":   "replace_match",
+			"old_content": "beta",
+			"content":     "BETA",
+		}},
+	})
+	result, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "dry_run: true") || !strings.Contains(result.Content, "+BETA") {
+		t.Fatalf("unexpected dry-run result:\n%s", result.Content)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != original {
+		t.Fatalf("file changed to %q", string(content))
+	}
+}
+
+func TestEditFileToolBatchFailureIsAtomic(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	original := "alpha\nbeta\ngamma\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{
+			{"operation": "replace_match", "old_content": "beta", "content": "BETA"},
+			{"operation": "replace_match", "old_content": "missing", "content": "MISSING"},
+		},
+	})
+	_, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "old_content not found") {
+		t.Fatalf("expected missing match error, got %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != original {
+		t.Fatalf("file changed to %q", string(content))
+	}
+}
+
+func TestEditFileToolContextLinesAndHunkHeader(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	original := strings.Join([]string{"one", "two", "three", "four", "five", "six"}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path":          path,
+		"context_lines": 1,
+		"edits": []map[string]any{{
+			"operation":  "replace",
+			"start_line": 4,
+			"content":    "FOUR",
+		}},
+	})
+	result, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "@@ -3,3 +3,3 @@") {
+		t.Fatalf("expected real hunk header, got:\n%s", result.Content)
+	}
+	if strings.Contains(result.Content, " one\n") || strings.Contains(result.Content, " six\n") {
+		t.Fatalf("diff context was not trimmed:\n%s", result.Content)
 	}
 }
 
@@ -97,7 +345,14 @@ func TestEditFileToolCronRiskAndSandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Dir: sandbox, CronBackground: true})
-	args, _ := json.Marshal(map[string]any{"path": "sample.txt", "operation": "insert_after", "start_line": 1, "content": "beta"})
+	args, _ := json.Marshal(map[string]any{
+		"path": "sample.txt",
+		"edits": []map[string]any{{
+			"operation":  "insert_after",
+			"start_line": 1,
+			"content":    "beta",
+		}},
+	})
 	assessment, err := NewEditFileTool().AssessRisk(ctx, tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
@@ -117,7 +372,7 @@ func TestEditFileToolCronRiskAndSandbox(t *testing.T) {
 	}
 
 	outside := filepath.Join(t.TempDir(), "outside.txt")
-	outsideArgs, _ := json.Marshal(map[string]any{"path": outside, "operation": "delete", "start_line": 1})
+	outsideArgs, _ := json.Marshal(map[string]any{"path": outside, "edits": []map[string]any{{"operation": "delete", "start_line": 1}}})
 	if _, err := NewEditFileTool().AssessRisk(ctx, tool.CallRequest{Arguments: outsideArgs}); err == nil {
 		t.Fatal("expected sandbox escape error")
 	}
