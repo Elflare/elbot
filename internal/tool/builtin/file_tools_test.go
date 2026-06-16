@@ -51,6 +51,24 @@ func TestEditFileToolReplacesLinesAndReturnsDiff(t *testing.T) {
 	}
 }
 
+func TestEditFileToolAcceptsStringLineNumbers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path, "operation": "replace", "start_line": 2, "end_line": "2", "content": "BETA"})
+	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != "alpha\nBETA\ngamma\n" {
+		t.Fatalf("file content = %q", got)
+	}
+}
+
 func TestEditFileToolDeletesThroughEnd(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
 	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0644); err != nil {
