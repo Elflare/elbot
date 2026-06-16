@@ -26,9 +26,9 @@
       "updated_at": 1781515756
     },
     "docs/getting-started.md": {
-      "source_hash": "b0156cc43a4e089e5ce49c79cc14b3f5ae098ff0ad9b0c651c92dfadea42fb79",
+      "source_hash": "6c751529aeebdbcf5ab788a5f83471305797c96b090bbce11d78b171b0f37c76",
       "target": "docs.en/getting-started.md",
-      "updated_at": 1781534482
+      "updated_at": 1781575108
     }
   },
   "segments": {
@@ -3312,6 +3312,14 @@
       "translation": "Main configuration entry, saving application-level configurations such as storage, runtime, context, commands, tools, security, and platform.",
       "updated_at": 1781515756
     },
+    "docs/getting-started.md:heading:0145e05322af8916973a09edb901f7397904a227aa495af8a41a2bf1f0d4fd23": {
+      "kind": "heading",
+      "source": "Shell 补全",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "0145e05322af8916973a09edb901f7397904a227aa495af8a41a2bf1f0d4fd23",
+      "translation": "Shell Completion",
+      "updated_at": 1781575108
+    },
     "docs/getting-started.md:heading:0fbaf458404701ef07bf35dff2e7913db36f4d7ea17cbeca7432daf490415204": {
       "kind": "heading",
       "source": "模型不可用或名称不对",
@@ -3351,6 +3359,14 @@
       "source_hash": "6dd21bda24393b81404af9c149cc3612dce41100ea68ae6a4c57e82570b0ea54",
       "translation": "Environment Requirements",
       "updated_at": 1781515975
+    },
+    "docs/getting-started.md:heading:734b0c430c1eb7ae6771592403486ad3daa887e46217bd7effafaf3194cc7d3b": {
+      "kind": "heading",
+      "source": "启动 ElBot",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "734b0c430c1eb7ae6771592403486ad3daa887e46217bd7effafaf3194cc7d3b",
+      "translation": "Start ElBot",
+      "updated_at": 1781575108
     },
     "docs/getting-started.md:heading:85d7e1b72989d1fa70e30d7c80d4266b7a5942f868458637157436987551a3ec": {
       "kind": "heading",
@@ -3608,6 +3624,14 @@
       "translation": "It is recommended to place keys in system environment variables or in the __ELBOT_CODE_0__ file under the configuration directory, rather than writing them directly into __ELBOT_CODE_1__.\n",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:paragraph:3e97c8a4c9446e8764d1ca5d0c848311f5ab7e560adbbb4cad042f9ff066e804": {
+      "kind": "paragraph",
+      "source": "需要继续历史会话时，可用 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "3e97c8a4c9446e8764d1ca5d0c848311f5ab7e560adbbb4cad042f9ff066e804",
+      "translation": "When you need to continue a historical Session, you can use __ELBOT_CODE_0__ and __ELBOT_CODE_1__.\n",
+      "updated_at": 1781575108
+    },
     "docs/getting-started.md:paragraph:447a0b6ec8d5e3e1886ee9faff3b1dc56b70d4acc72769b0d3e5f0fac2e92d21": {
       "kind": "paragraph",
       "source": "需要工具时再输入 __ELBOT_CODE_0__。\n",
@@ -3624,6 +3648,14 @@
       "translation": "Runtime data is stored in the platform data directory by default, such as SQLite, logs, sandbox, and artifacts. For detailed rules, see [Configuration Instructions](configuration.md).\n",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:paragraph:4b95664aa48d143632330cf84d78b59ad4c131df148633d0a3a5e384a3840a0f": {
+      "kind": "paragraph",
+      "source": "自动模式下，Linux 如果检测到当前用户已有 __ELBOT_CODE_0__ 在运行，会进入本地 CLI-only，避免重复连接平台或重复运行 Cron；",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "4b95664aa48d143632330cf84d78b59ad4c131df148633d0a3a5e384a3840a0f",
+      "translation": "In automatic mode, if Linux detects that the current user already has __ELBOT_CODE_0__ running, it will enter local CLI-only mode to avoid duplicate platform connections or duplicate Cron executions;",
+      "updated_at": 1781575108
+    },
     "docs/getting-started.md:paragraph:5e17c2b7fa9b36c07ee9a36ed44ee4f76bf8f18e249fb7adc302b070d69deda7": {
       "kind": "paragraph",
       "source": "Windows 下如果使用 Git Bash，构建出的文件可能需要命名为 __ELBOT_CODE_0__：\n",
@@ -3631,6 +3663,14 @@
       "source_hash": "5e17c2b7fa9b36c07ee9a36ed44ee4f76bf8f18e249fb7adc302b070d69deda7",
       "translation": "On Windows, if using Git Bash, the built file may need to be named __ELBOT_CODE_0__:\n",
       "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:6338ef010b6ba9a7bd197c70d3cb2b663ee751e9b8aff60004d449e3f6264688": {
+      "kind": "paragraph",
+      "source": "否则进入完整前台模式。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "6338ef010b6ba9a7bd197c70d3cb2b663ee751e9b8aff60004d449e3f6264688",
+      "translation": "Otherwise, it will enter full foreground mode.",
+      "updated_at": 1781575108
     },
     "docs/getting-started.md:paragraph:668f85eedc833cfdf7697834c50974a51ef705a26a872517292edd68f8461513": {
       "kind": "paragraph",
@@ -3656,6 +3696,22 @@
       "translation": "Check:\n",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:paragraph:744e3cd370ff77c3f4325fc5f0da6ded94bd37526832f5063a08be3cf8df4728": {
+      "kind": "paragraph",
+      "source": "常用运行模式：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "744e3cd370ff77c3f4325fc5f0da6ded94bd37526832f5063a08be3cf8df4728",
+      "translation": "Common running modes:\n",
+      "updated_at": 1781575108
+    },
+    "docs/getting-started.md:paragraph:7bd09adb76891246e11b404932655ad4bd07eae98fdc9861dbf8ca409ea2ce9d": {
+      "kind": "paragraph",
+      "source": "示例：nushell\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "7bd09adb76891246e11b404932655ad4bd07eae98fdc9861dbf8ca409ea2ce9d",
+      "translation": "Example: nushell\n",
+      "updated_at": 1781575108
+    },
     "docs/getting-started.md:paragraph:7e7e1b1c7266bfbce08d2fd3423fabee8a7671917b9e7a5c8d62e427957e8c9b": {
       "kind": "paragraph",
       "source": "默认运行态模型写在 __ELBOT_CODE_0__ ：\n",
@@ -3672,6 +3728,22 @@
       "translation": "This document is used to get ElBot up and running and complete your first CLI conversation.\n",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:paragraph:9b0c1147a651a1dbbb1367c6e9951c9f39626a4f42c34d0952eb5d63cfcf94f9": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 是独立本地进程，会使用同一套配置和 SQLite 数据，但不会接管 service 进程中的当前请求、确认状态或内存里的当前 Session。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "9b0c1147a651a1dbbb1367c6e9951c9f39626a4f42c34d0952eb5d63cfcf94f9",
+      "translation": "__ELBOT_CODE_0__ is an independent local process that uses the same set of configurations and SQLite data, but it will not take over current requests, confirmation states, or the current Session in memory from the service process.",
+      "updated_at": 1781575108
+    },
+    "docs/getting-started.md:paragraph:a1357110505dfc6d287ed82eaac5edfdf671117418ac7a389cf161e7f3977de8": {
+      "kind": "paragraph",
+      "source": "示例：fish\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "a1357110505dfc6d287ed82eaac5edfdf671117418ac7a389cf161e7f3977de8",
+      "translation": "Example: fish\n",
+      "updated_at": 1781575108
+    },
     "docs/getting-started.md:paragraph:a611d499cca4918706780e022d66f0e1543051cc10c1a4b98af5341d36626dc7": {
       "kind": "paragraph",
       "source": "Windows 下：\n",
@@ -3679,6 +3751,14 @@
       "source_hash": "a611d499cca4918706780e022d66f0e1543051cc10c1a4b98af5341d36626dc7",
       "translation": "On Windows:\n",
       "updated_at": 1781534482
+    },
+    "docs/getting-started.md:paragraph:b43f86dd2955d50c5f39b7cda8a09189740b1bedf8b93c3310e37c3b792eb211": {
+      "kind": "paragraph",
+      "source": "也可以用 __ELBOT_CODE_0__ 按当前环境变量猜测 shell：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "b43f86dd2955d50c5f39b7cda8a09189740b1bedf8b93c3310e37c3b792eb211",
+      "translation": "You can also use __ELBOT_CODE_0__ to guess the shell based on current environment variables:\n",
+      "updated_at": 1781575108
     },
     "docs/getting-started.md:paragraph:b542c9d7ce8593d0cfb5a79002986f5e89617f64f638eea577bd7871bbaaebe1": {
       "kind": "paragraph",
@@ -3688,6 +3768,14 @@
       "translation": "Default configuration lookup order:\n",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:paragraph:b5f919c700ebb2b4dfb9cf4225fdc50cd0d3c2d566fd689f490dd37b1281ef02": {
+      "kind": "paragraph",
+      "source": "Windows 不做 service 检测，默认完整前台启动。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "b5f919c700ebb2b4dfb9cf4225fdc50cd0d3c2d566fd689f490dd37b1281ef02",
+      "translation": "Windows does not perform service detection and starts in full foreground mode by default.\n",
+      "updated_at": 1781575108
+    },
     "docs/getting-started.md:paragraph:ca06fb90bcd4b3e173b5bd045a6bf8bbe420d845cff54311c73e663f331ba48b": {
       "kind": "paragraph",
       "source": "启动后直接输入消息即可。默认示例中 __ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 是 __ELBOT_CODE_2__，会启用工具发现能力。\n",
@@ -3695,6 +3783,14 @@
       "source_hash": "ca06fb90bcd4b3e173b5bd045a6bf8bbe420d845cff54311c73e663f331ba48b",
       "translation": "After starting, simply enter your message. In the default example, the __ELBOT_CODE_1__ of __ELBOT_CODE_0__ is __ELBOT_CODE_2__, which enables tool discovery capabilities.\n",
       "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:ccadb6024e5c66db566b18d85e16f45021630c35aa5184b90fb336f178114d57": {
+      "kind": "paragraph",
+      "source": "ElBot 可以生成常见 shell 的补全脚本：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "ccadb6024e5c66db566b18d85e16f45021630c35aa5184b90fb336f178114d57",
+      "translation": "ElBot can generate completion scripts for common shells:\n",
+      "updated_at": 1781575108
     },
     "docs/getting-started.md:paragraph:e55c71d36598475911251b8545437070b1d7782a93c573053181d0ff71177a2a": {
       "kind": "paragraph",
@@ -3719,6 +3815,14 @@
       "source_hash": "f61e63ed3a3f556ca6c37c5f4846f38b7d76c04fe1bc672058525c98c1f69b91",
       "translation": "Example __ELBOT_CODE_0__:\n",
       "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:f7a7174e218a8ec25f40398ccb02bbc8193da66940c02bdac78225072f4dd4f9": {
+      "kind": "paragraph",
+      "source": "然后在 Nushell 配置中 source 该文件。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "f7a7174e218a8ec25f40398ccb02bbc8193da66940c02bdac78225072f4dd4f9",
+      "translation": "Then source this file in your Nushell configuration.\n",
+      "updated_at": 1781575108
     },
     "docs/getting-started.md:paragraph:fa23d8d2e29b75722536b04eeacd94ec43d829c1b10455d58703350f2b9a992e": {
       "kind": "paragraph",
