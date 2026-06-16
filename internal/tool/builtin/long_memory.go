@@ -136,7 +136,7 @@ func newLongMemoryStore(rootDir string) *longMemoryStore {
 
 func (LongMemoryTool) Name() string { return longMemoryToolName }
 func (t LongMemoryTool) Info() tool.Info {
-	return longMemoryBuilder(t.Name(), "Long Memory 长期记忆入口。用于检索、保存、更新、删除全局长期记忆；本工具仅为入口，发现后请调用注入的 long_memory_search 或 long_memory_write。").DependsOn(longMemorySearchToolName, longMemoryWriteToolName).BuildInfo()
+	return longMemoryBuilder(t.Name(), "Long Memory 长期记忆入口。用于检索、保存、更新、删除全局长期记忆").DependsOn(longMemorySearchToolName, longMemoryWriteToolName).BuildInfo()
 }
 func (t LongMemoryTool) Schema() llm.ToolSchema {
 	return longMemoryBuilder(t.Name(), t.Info().Description).BuildSchema()
@@ -203,7 +203,7 @@ func (t LongMemoryWriteTool) Call(ctx context.Context, req tool.CallRequest) (*t
 		if err != nil {
 			return nil, err
 		}
-		return textResult(fmt.Sprintf("记忆写入成功！\n【记忆ID】：%d\n【分类】：%s\n【标题】：%s\n【文件】：%s\n可通过 long_memory_search 检索，或用 long_memory_write 更新/删除。", record.ID, record.Category, record.Title, record.FilePath)), nil
+		return textResult(fmt.Sprintf("记忆写入成功！\nID：%d\n分类：%s\n标题：%s\n文件：%s\n可通过 long_memory_search 检索，或用 long_memory_write 更新/删除。", record.ID, record.Category, record.Title, record.FilePath)), nil
 	case "update":
 		update := longMemoryUpdateArgs{ID: args.ID}
 		if args.Category != "" {
@@ -225,13 +225,13 @@ func (t LongMemoryWriteTool) Call(ctx context.Context, req tool.CallRequest) (*t
 		if err != nil {
 			return nil, err
 		}
-		return textResult(fmt.Sprintf("记忆【ID：%d】更新成功！\n【分类】：%s\n【标题】：%s\n【文件】：%s", record.ID, record.Category, record.Title, record.FilePath)), nil
+		return textResult(fmt.Sprintf("ID：%d 更新成功！\n分类：%s\n标题：%s\n文件：%s", record.ID, record.Category, record.Title, record.FilePath)), nil
 	case "delete":
 		path, err := t.store.delete(ctx, args.ID)
 		if err != nil {
 			return nil, err
 		}
-		return textResult(fmt.Sprintf("记忆【ID：%d】已永久删除。\n【文件】：%s", args.ID, path)), nil
+		return textResult(fmt.Sprintf("记忆ID：%d已永久删除。\n文件：%s", args.ID, path)), nil
 	default:
 		return nil, fmt.Errorf("operation must be save, update, or delete")
 	}
@@ -334,7 +334,7 @@ func (s *longMemoryStore) categories(ctx context.Context) (string, error) {
 		out.WriteString("当前长期记忆库为空，尚未建立任何分类。你可以自由创建新的分类。")
 		return out.String(), nil
 	}
-	out.WriteString("【当前可用的长期记忆分类目录】\n")
+	out.WriteString("当前可用的长期记忆分类目录\n")
 	out.WriteString(overview)
 	return strings.TrimSpace(out.String()), nil
 }
@@ -713,7 +713,7 @@ func (s *longMemoryStore) categoryOverviewLocked(ctx context.Context) (string, e
 		if err := rows.Scan(&category, &count); err != nil {
 			return "", err
 		}
-		out.WriteString(fmt.Sprintf("-【%s】（共%d条记录）\n", category, count))
+		out.WriteString(fmt.Sprintf("-%s（共%d条记录）\n", category, count))
 	}
 	return strings.TrimSpace(out.String()), rows.Err()
 }
@@ -783,9 +783,9 @@ func (s *longMemoryStore) formatSearchResult(ctx context.Context, invalids []lon
 	var out strings.Builder
 	writeInvalidLongMemoryWarning(&out, invalids)
 	if overview == "" {
-		out.WriteString("【全库分类概览】：当前长期记忆库为空，尚未建立任何分类。\n")
+		out.WriteString("全库分类概览：当前长期记忆库为空，尚未建立任何分类。\n")
 	} else {
-		out.WriteString("【全库分类概览】\n")
+		out.WriteString("全库分类概览\n")
 		out.WriteString(overview)
 		out.WriteString("\n")
 	}
@@ -795,23 +795,23 @@ func (s *longMemoryStore) formatSearchResult(ctx context.Context, invalids []lon
 		out.WriteString("长期记忆库中未找到相关内容。建议检查关键词是否过于严格，尝试 match_mode=OR，或参考分类概览调整分类。")
 		return strings.TrimSpace(out.String())
 	}
-	out.WriteString(fmt.Sprintf("【成功检索到%d条记录】\n", len(records)))
+	out.WriteString(fmt.Sprintf("成功检索到%d条记录\n", len(records)))
 	invalidSet := map[string]bool{}
 	for _, invalid := range invalids {
 		invalidSet[invalid.FilePath] = true
 	}
 	for _, record := range records {
-		out.WriteString(fmt.Sprintf("\n【记忆ID】：%d\n【分类】：%s\n【标题】：%s\n【摘要】：%s\n【创建时间】：%s\n【更新时间】：%s\n【文件】：%s\n", record.ID, record.Category, record.Title, record.Summary, record.CreatedAt, record.UpdatedAt, record.FilePath))
+		out.WriteString(fmt.Sprintf("\n记忆ID：%d\n分类：%s\n标题：%s\n摘要：%s\n创建时间：%s\n更新时间：%s\n文件：%s\n", record.ID, record.Category, record.Title, record.Summary, record.CreatedAt, record.UpdatedAt, record.FilePath))
 		if invalidSet[record.FilePath] {
-			out.WriteString("【注意】：该文件当前格式损坏，以上元数据可能来自上次成功索引。\n")
+			out.WriteString("注意：该文件当前格式损坏，以上元数据可能来自上次成功索引。\n")
 		}
 		if !briefOnly {
 			if parsed, err := parseLongMemoryFile(record.FilePath); err == nil {
-				out.WriteString("【详细内容】：\n")
+				out.WriteString("详细内容：\n")
 				out.WriteString(parsed.Content)
 				out.WriteString("\n")
 			} else {
-				out.WriteString("【详细内容】：文件格式损坏，无法安全读取正文。请按格式警告修复。\n")
+				out.WriteString("详细内容：文件格式损坏，无法安全读取正文。请按格式警告修复。\n")
 			}
 		}
 	}
@@ -921,7 +921,7 @@ func writeInvalidLongMemoryWarning(out *strings.Builder, invalids []longMemoryIn
 	if len(invalids) == 0 {
 		return
 	}
-	out.WriteString("【长期记忆格式警告】\n以下文件无法同步到索引，请手动修复：\n")
+	out.WriteString("长期记忆格式警告\n以下文件无法同步到索引，请手动修复：\n")
 	for _, invalid := range invalids {
 		out.WriteString(fmt.Sprintf("- %s\n  原因：%s\n  建议：修复 +++ 之间的 TOML 元数据；若无法修复，可用 long_memory_write 新建记忆，然后从原文件手动复制正文。\n", invalid.FilePath, invalid.Error))
 	}
@@ -930,7 +930,7 @@ func writeInvalidLongMemoryWarning(out *strings.Builder, invalids []longMemoryIn
 }
 
 func longMemoryRepairAdvice(path string, err error) string {
-	return fmt.Sprintf("【损坏文件】：%s\n【原因】：%v\n【处理建议】：请修复文件开头 +++ 到结束 +++ 之间的 TOML 元数据；如果无法修复，请用 long_memory_write 新建记忆，再从原文件手动复制正文。原文件未被修改。", path, err)
+	return fmt.Sprintf("损坏文件：%s\n原因：%v\n处理建议：请修复文件开头 +++ 到结束 +++ 之间的 TOML 元数据；如果无法修复，请用 long_memory_write 新建记忆，再从原文件手动复制正文。原文件未被修改。", path, err)
 }
 
 func normalizeLongMemoryLimit(limit int) int {
