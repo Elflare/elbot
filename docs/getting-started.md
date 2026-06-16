@@ -63,7 +63,7 @@ model = "deepseek-chat"
 如果使用其他 Provider，需要同步修改 `provider` 和 `model`。
 default_mode 手动设置，其他设置可以在cli中使用命令设置。
 
-## 启动 CLI
+## 启动 ElBot
 
 开发期可以直接运行：
 
@@ -77,6 +77,19 @@ go run ./cmd/elbot
 go run ./cmd/elbot --config config/app.toml
 ```
 
+常用运行模式：
+
+```bash
+elbot              # 自动模式
+elbot run          # 完整前台：CLI + 已启用平台 + Cron
+elbot cli          # 本地 CLI-only：只启动 CLI，不启动平台和 Cron
+elbot service run  # Linux/headless 服务模式：不启动 CLI，启动已启用平台和 Cron
+```
+
+自动模式下，Linux 如果检测到当前用户已有 `elbot service run` 在运行，会进入本地 CLI-only，避免重复连接平台或重复运行 Cron；否则进入完整前台模式。Windows 不做 service 检测，默认完整前台启动。
+
+`elbot cli` 是独立本地进程，会使用同一套配置和 SQLite 数据，但不会接管 service 进程中的当前请求、确认状态或内存里的当前 Session。需要继续历史会话时，可用 `/list` 和 `/resume`。
+
 构建二进制：
 
 ```bash
@@ -88,6 +101,38 @@ Windows 下：
 ```bash
 go build -o elbot.exe ./cmd/elbot
 ```
+
+## Shell 补全
+
+ElBot 可以生成常见 shell 的补全脚本：
+
+```bash
+elbot completion bash
+elbot completion zsh
+elbot completion fish
+elbot completion nushell
+elbot completion powershell
+```
+
+也可以用 `auto` 按当前环境变量猜测 shell：
+
+```bash
+elbot completion auto
+```
+
+示例：fish
+
+```bash
+elbot completion fish > ~/.config/fish/completions/elbot.fish
+```
+
+示例：nushell
+
+```bash
+elbot completion nushell > ~/.config/nushell/completions/elbot.nu
+```
+
+然后在 Nushell 配置中 source 该文件。
 
 ## 第一次对话
 
