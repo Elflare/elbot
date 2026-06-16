@@ -61,7 +61,7 @@
 - `internal/agent/tool_transcript.go`：工具调用历史持久化辅助；保存 assistant tool_calls 与 tool result，提供 user 多模态 segments metadata 和 turn message 落库 helper，并在持久化 discover 结果时压缩 schema，避免未来上下文膨胀。
 - `internal/agent/context.go`：Agent 上下文压缩依赖实现；维护 context 配置、压缩模型、ContextLoader、WindowResolver、Compressor、最近 usage 和待压缩标记，并提供 `/compact` 与 `/status` 所需能力；最近 usage 会写入 Session metadata 供恢复会话后展示。
 
-- `internal/agent/model.go`：模型命令依赖实现；集中维护模型运行态、provider client 缓存、`/models` 运行期列表缓存、chat/work/compact/naming 模型切换与 `state.toml` 写入。
+- `internal/agent/model.go`：模型命令依赖实现；集中维护模型运行态、provider client 缓存、`/models` 运行期列表缓存、chat/work/compact/naming 模型切换与 `state.toml` 写入；`/model` 默认按消息上下文对应 Session mode 选择 chat/work 目标，但设置全平台共享。
 
 ### Agent 内置命令
 

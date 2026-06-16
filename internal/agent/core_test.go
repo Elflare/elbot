@@ -732,6 +732,57 @@ func TestDynamicProviderClientUsesAgentLogger(t *testing.T) {
 	}
 }
 
+func TestModelSwitchUsesMessagePlatformCurrentModeForGlobalState(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	statePath := filepath.Join(t.TempDir(), "state.toml")
+	providers := map[string]config.ProviderConfig{
+		"deepseek": {Models: []string{"deepseek-chat"}},
+		"zhipu":    {Models: []string{"glm-4-flash"}},
+	}
+	modeModels := map[string]config.ModelSelection{
+		storage.SessionModeWork: {Provider: "deepseek", Model: "deepseek-chat"},
+		storage.SessionModeChat: {Provider: "deepseek", Model: "deepseek-chat"},
+	}
+	a := NewWithOptions(p, &fakeLLM{models: []string{"deepseek-chat"}}, "deepseek", modeModels, providers, statePath, store, []string{"/"}, session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}, config.ModelSelection{}, nil, "", nil, "")
+	a.RegisterPlatformSender("qq", p)
+	qqCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qq", PlatformUserID: "admin", ScopeID: "group:9"})
+	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"qq": {"admin"}}))
+
+	qqSession, err := a.sessions.Create(qqCtx, a.scope(qqCtx), "qq chat")
+	if err != nil {
+		t.Fatalf("create qq session: %v", err)
+	}
+	qqSession.Mode = storage.SessionModeChat
+	if err := store.Sessions().Update(qqCtx, qqSession); err != nil {
+		t.Fatalf("update qq session mode: %v", err)
+	}
+
+	if err := a.HandleMessage(qqCtx, "/model zhipu/glm-4-flash"); err != nil {
+		t.Fatalf("model switch: %v", err)
+	}
+	if !strings.Contains(p.out.String(), "switched to model: zhipu/glm-4-flash") {
+		t.Fatalf("unexpected switch output: %q", p.out.String())
+	}
+	if got := a.CurrentModelForMode(storage.SessionModeChat); got.Provider != "zhipu" || got.Model != "glm-4-flash" {
+		t.Fatalf("chat model = %#v", got)
+	}
+	if got := a.CurrentModelForMode(storage.SessionModeWork); got.Provider != "deepseek" || got.Model != "deepseek-chat" {
+		t.Fatalf("work model = %#v", got)
+	}
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read state: %v", err)
+	}
+	state := string(data)
+	if !strings.Contains(state, `[mode_models.chat]`) || !strings.Contains(state, `provider = 'zhipu'`) || !strings.Contains(state, `model = 'glm-4-flash'`) {
+		t.Fatalf("chat model not persisted globally: %s", state)
+	}
+	if !strings.Contains(state, `[mode_models.work]`) || !strings.Contains(state, `provider = 'deepseek'`) || !strings.Contains(state, `model = 'deepseek-chat'`) {
+		t.Fatalf("work model should stay unchanged: %s", state)
+	}
+}
+
 func TestUnknownCommandDoesNotCallLLM(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{}

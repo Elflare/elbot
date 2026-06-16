@@ -63,7 +63,7 @@ func (a *Agent) CurrentProvider() string {
 }
 
 func (a *Agent) CurrentModeModel() agentcommands.ModelOption {
-	selected := a.CurrentModelForMode(a.currentMode())
+	selected := a.CurrentModelForMode(a.currentMode(context.Background()))
 	selected.Current = true
 	return selected
 }
@@ -79,8 +79,8 @@ func (a *Agent) CurrentCompactModel() agentcommands.ModelOption {
 	return agentcommands.ModelOption{Provider: selected.Provider, Model: selected.Model, Compact: true}
 }
 
-func (a *Agent) currentMode() string {
-	current, err := a.sessions.Current(context.Background(), a.scope(context.Background()))
+func (a *Agent) currentMode(ctx context.Context) string {
+	current, err := a.sessions.Current(ctx, a.scope(ctx))
 	if err != nil || current.Mode == "" {
 		return a.sessions.DefaultMode()
 	}
@@ -129,8 +129,8 @@ func (a *Agent) SelectNamingModel(arg string) (agentcommands.ModelOption, error)
 	return selected, nil
 }
 
-func (a *Agent) SelectModel(arg string) (agentcommands.ModelOption, error) {
-	return a.SelectModelForMode(a.currentMode(), arg)
+func (a *Agent) SelectModel(ctx context.Context, arg string) (agentcommands.ModelOption, error) {
+	return a.SelectModelForMode(a.currentMode(ctx), arg)
 }
 
 func (a *Agent) SelectModelForMode(mode, arg string) (agentcommands.ModelOption, error) {

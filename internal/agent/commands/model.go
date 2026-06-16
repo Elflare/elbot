@@ -65,7 +65,7 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 	case modelTargetNaming:
 		selected, err = deps.Models.SelectNamingModel(args)
 	default:
-		selected, err = deps.Models.SelectModel(args)
+		selected, err = deps.Models.SelectModel(ctx, args)
 	}
 	if err != nil {
 		return nil, err

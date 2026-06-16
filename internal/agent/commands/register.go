@@ -66,7 +66,7 @@ type ModelService interface {
 	CurrentModelForMode(mode string) ModelOption
 	CurrentCompactModel() ModelOption
 	CurrentNamingModel() ModelOption
-	SelectModel(arg string) (ModelOption, error)
+	SelectModel(ctx context.Context, arg string) (ModelOption, error)
 	SelectModelForMode(mode, arg string) (ModelOption, error)
 	SelectCompactModel(arg string) (ModelOption, error)
 	SelectNamingModel(arg string) (ModelOption, error)
