@@ -6,8 +6,9 @@ mirror under docs.en/ and stores per-segment translation cache in
 `docs.en/.translation-cache.json`.
 
 Only changed Markdown segments are sent to an OpenAI-compatible chat completions
-API. Code blocks are copied verbatim. Changed segments are translated in batches
-so the first run does not make one HTTP request per sentence.
+API. Code blocks are copied verbatim except selected documentation comments.
+Changed segments are translated in batches so the first run does not make one
+HTTP request per sentence.
 """
 
 from __future__ import annotations
@@ -60,7 +61,7 @@ DEFAULT_GLOSSARY = {
     "技能": "Skill",
 }
 
-CODE_FENCE_RE = re.compile(r"^\s*(```|~~~)")
+CODE_FENCE_RE = re.compile(r"^\s*(```|~~~)(.*)$")
 HEADING_RE = re.compile(r"^(\s{0,3}#{1,6}\s+)(.*?)(\s+#+\s*)?$")
 LIST_RE = re.compile(r"^(\s*(?:[-+*]|\d+[.)])\s+)(.*)$")
 QUOTE_RE = re.compile(r"^(\s*>\s?)(.*)$")
@@ -258,6 +259,51 @@ def split_table_row(line: str) -> list[str]:
     return line.split("|")
 
 
+def code_language(info: str) -> str:
+    return info.strip().split(maxsplit=1)[0].lower()
+
+
+def supports_code_comment_translation(language: str) -> bool:
+    return language in {"bash", "sh", "shell", "toml", "yaml", "yml"}
+
+
+def find_unquoted_hash(text: str) -> int:
+    quote = ""
+    escaped = False
+    for index, char in enumerate(text):
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if quote:
+            if char == quote:
+                quote = ""
+            continue
+        if char in {'"', "'"}:
+            quote = char
+            continue
+        if char == "#":
+            return index
+    return -1
+
+
+def split_code_comment(line: str) -> tuple[str, str, str, str] | None:
+    newline = "\n" if line.endswith("\n") else ""
+    body = line[:-1] if newline else line
+    hash_index = find_unquoted_hash(body)
+    if hash_index < 0:
+        return None
+    prefix = body[:hash_index]
+    comment = body[hash_index + 1 :]
+    spacing = comment[: len(comment) - len(comment.lstrip())]
+    text = comment[len(spacing) :]
+    if not should_translate_text(text):
+        return None
+    return prefix, spacing, text, newline
+
+
 def mask_inline_code(text: str) -> tuple[str, dict[str, str]]:
     masks: dict[str, str] = {}
 
@@ -302,6 +348,7 @@ class MarkdownRenderer:
         rendered: list[str] = [AUTO_HEADER_TEMPLATE.format(source=rel)]
         in_code = False
         code_fence = ""
+        code_lang = ""
         paragraph: list[str] = []
 
         def flush_paragraph() -> None:
@@ -314,18 +361,17 @@ class MarkdownRenderer:
             fence_match = CODE_FENCE_RE.match(line)
             if fence_match:
                 flush_paragraph()
-                fence = fence_match.group(1)
-                if not in_code:
-                    in_code = True
-                    code_fence = fence
-                elif fence == code_fence:
-                    in_code = False
-                    code_fence = ""
+                in_code, code_fence, code_lang = self.next_code_state(
+                    fence_match,
+                    in_code,
+                    code_fence,
+                    code_lang,
+                )
                 rendered.append(line)
                 continue
 
             if in_code:
-                rendered.append(line)
+                rendered.append(self.render_code_line(rel, code_lang, line))
                 continue
 
             if not line.strip():
@@ -384,6 +430,25 @@ class MarkdownRenderer:
             skipped_count=self.skipped_count,
         )
 
+    @staticmethod
+    def next_code_state(
+        fence_match: re.Match[str],
+        in_code: bool,
+        code_fence: str,
+        code_lang: str,
+    ) -> tuple[bool, str, str]:
+        fence = fence_match.group(1)
+        if not in_code:
+            return True, fence, code_language(fence_match.group(2))
+        if fence == code_fence:
+            return False, "", ""
+        return in_code, code_fence, code_lang
+
+    def render_code_line(self, rel: str, language: str, line: str) -> str:
+        if not supports_code_comment_translation(language):
+            return line
+        return self.render_code_comment_line(rel, language, line)
+
     def render_table_line(self, rel: str, line: str) -> str:
         out: list[str] = []
         for cell in split_table_row(line):
@@ -395,6 +460,14 @@ class MarkdownRenderer:
             else:
                 out.append(cell)
         return "|".join(out)
+
+    def render_code_comment_line(self, rel: str, language: str, line: str) -> str:
+        parts = split_code_comment(line)
+        if parts is None:
+            return line
+        prefix, spacing, text, newline = parts
+        kind = f"code-comment:{language}"
+        return f"{prefix}#{spacing}{self.render_plain_text(rel, kind, text).strip()}{newline}"
 
     def render_plain_text(self, rel: str, kind: str, text: str) -> str:
         if not should_translate_text(text):
