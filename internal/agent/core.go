@@ -261,7 +261,7 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 		}
 		if actor.Role != security.RoleSuperadmin {
 			a.audit("permission_denied", "actor_id", actor.ID, "command", text, "reason", "slash_command_requires_superadmin")
-			a.sendChat(ctx, "普通用户不能使用斜杠命令。\n")
+			// a.sendChat(ctx, "普通用户不能使用斜杠命令。\n")
 			return nil
 		}
 		result, dispatchErr := a.commands.Dispatch(ctx, text)
