@@ -7,10 +7,23 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/platform"
 	"elbot/internal/platform/cli"
+	"elbot/internal/platform/headless"
 	qqonebot "elbot/internal/platform/qq-onebot"
-	qqofficial "elbot/internal/platform/qqofficial"
+	"elbot/internal/platform/qqofficial"
 	"elbot/internal/storage"
 )
+
+type Mode string
+
+const (
+	ModeFull    Mode = "full"
+	ModeCLIOnly Mode = "cli"
+	ModeService Mode = "service"
+)
+
+type Options struct {
+	Mode Mode
+}
 
 // Bundle contains platform adapters created from application config.
 type Bundle struct {
@@ -18,10 +31,21 @@ type Bundle struct {
 	Runtimes []platform.Runtime
 }
 
-func New(cfg *config.Config, store storage.Store, chatHistory storage.ChatHistoryRepository, logger *slog.Logger) (Bundle, error) {
-	cliAdapter := cli.New()
-	bundle := Bundle{Primary: cliAdapter, Runtimes: []platform.Runtime{cliAdapter}}
-	if cfg == nil {
+func New(opts Options, cfg *config.Config, store storage.Store, chatHistory storage.ChatHistoryRepository, logger *slog.Logger) (Bundle, error) {
+	mode := opts.Mode
+	if mode == "" {
+		mode = ModeFull
+	}
+
+	var bundle Bundle
+	if mode == ModeService {
+		bundle.Primary = headless.New()
+	} else {
+		cliAdapter := cli.New()
+		bundle.Primary = cliAdapter
+		bundle.Runtimes = append(bundle.Runtimes, cliAdapter)
+	}
+	if cfg == nil || mode == ModeCLIOnly {
 		return bundle, nil
 	}
 	if raw, ok := cfg.Platform["qqofficial"]; ok {

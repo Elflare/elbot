@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -29,10 +30,20 @@ import (
 	"elbot/internal/tool/builtin"
 )
 
+type RunMode string
+
+const (
+	RunModeAuto    RunMode = "auto"
+	RunModeFull    RunMode = "full"
+	RunModeCLIOnly RunMode = "cli"
+	RunModeService RunMode = "service"
+)
+
 type Options struct {
 	ConfigPath string
 	Version    string
 	StartedAt  time.Time
+	Mode       RunMode
 }
 
 type startupProfiler struct {
@@ -85,9 +96,53 @@ func startupProfileEnabled(level string) bool {
 	return strings.EqualFold(strings.TrimSpace(level), "debug")
 }
 
+func resolveRunMode(mode RunMode) (RunMode, error) {
+	switch mode {
+	case "", RunModeAuto:
+		if runtime.GOOS != "windows" && serviceMarkerRunning() {
+			fmt.Fprintln(os.Stderr, "ElBot service detected, starting local CLI-only mode. Use `elbot run` to force full foreground mode.")
+			return RunModeCLIOnly, nil
+		}
+		fmt.Fprintln(os.Stderr, "No ElBot service detected, starting full foreground mode. Use `elbot cli` to start local CLI only.")
+		return RunModeFull, nil
+	case RunModeFull, RunModeCLIOnly, RunModeService:
+		return mode, nil
+	default:
+		return "", fmt.Errorf("unknown run mode %q", mode)
+	}
+}
+
+func platformMode(mode RunMode) platformbuiltin.Mode {
+	switch mode {
+	case RunModeCLIOnly:
+		return platformbuiltin.ModeCLIOnly
+	case RunModeService:
+		return platformbuiltin.ModeService
+	default:
+		return platformbuiltin.ModeFull
+	}
+}
+
+func shouldStartCron(mode RunMode) bool {
+	return mode != RunModeCLIOnly
+}
+
 func Run(ctx context.Context, opts Options) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+
+	mode, err := resolveRunMode(opts.Mode)
+	if err != nil {
+		return err
+	}
+	var marker *serviceMarker
+	if mode == RunModeService {
+		marker, err = claimServiceMarker()
+		if err != nil {
+			return err
+		}
+		defer marker.Close()
 	}
 
 	configPath := opts.ConfigPath
@@ -177,7 +232,7 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 	profiler.Mark("llm adapters")
-	platforms, err := platformbuiltin.New(cfg, store, chatHistory, logger)
+	platforms, err := platformbuiltin.New(platformbuiltin.Options{Mode: platformMode(mode)}, cfg, store, chatHistory, logger)
 	if err != nil {
 		return err
 	}
@@ -267,10 +322,14 @@ func Run(ctx context.Context, opts Options) error {
 	profiler.Mark("platform hooks")
 	startupDuration := profiler.Flush()
 	logger.Info("elbot startup completed", "startup_duration", startupDuration.String())
-	return runPlatforms(ctx, agt, logger, platforms.Runtimes, func(ctx context.Context) {
-		cronStartupScheduled = true
-		startCronAsync(ctx, cronManager, cronService, cfg, logger, cronStartupDone)
-	})
+	var afterStart func(context.Context)
+	if shouldStartCron(mode) {
+		afterStart = func(ctx context.Context) {
+			cronStartupScheduled = true
+			startCronAsync(ctx, cronManager, cronService, cfg, logger, cronStartupDone)
+		}
+	}
+	return runPlatforms(ctx, agt, logger, platforms.Runtimes, afterStart)
 }
 
 type platformRuntime = platform.Runtime

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -11,22 +10,43 @@ import (
 	"time"
 
 	"elbot/internal/app"
+	"elbot/internal/launcher"
 )
 
 const version = "dev"
 
 func main() {
 	startedAt := time.Now()
-	configPath := flag.String("config", "", "path to TOML config file; empty uses ELBOT_CONFIG_FILE, platform config dir, then config/app.toml")
-	flag.Parse()
+	opts, err := launcher.ParseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "elbot: %v\n\n", err)
+		launcher.WriteUsage(os.Stderr)
+		os.Exit(2)
+	}
+	if opts.Help {
+		launcher.WriteUsage(os.Stdout)
+		return
+	}
+	if opts.Version {
+		fmt.Fprintf(os.Stdout, "elbot %s\n", version)
+		return
+	}
+	if opts.Command == launcher.CommandCompletion {
+		if err := launcher.WriteCompletion(os.Stdout, opts.Completion); err != nil {
+			fmt.Fprintf(os.Stderr, "elbot: %v\n", err)
+			os.Exit(2)
+		}
+		return
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	if err := app.Run(ctx, app.Options{
-		ConfigPath: *configPath,
+		ConfigPath: opts.ConfigPath,
 		Version:    version,
 		StartedAt:  startedAt,
+		Mode:       opts.Mode,
 	}); err != nil {
 		if errors.Is(err, context.Canceled) {
 			return
