@@ -88,7 +88,7 @@
 ### Request 与 Turn 运行态
 
 - `internal/request/manager.go`：active request 管理器；登记 LLM、工具、压缩和子 Agent 请求，支持列表、按请求取消、按 Session 取消、全局取消、超时和完成清理。
-- `internal/turn/manager.go`：当前 turn 协调器；记录 Session 运行阶段、原始用户输入、pending 追加消息、确认/取消 token、工具使用计数、compact 阶段和高风险工具确认等待状态；工具阶段普通输入不打断工具，会进入 pending 并在下一次 LLM 调用前注入。
+- `internal/turn/manager.go`：当前 turn 协调器；记录 Session 运行阶段、原始用户输入、pending 追加消息、确认/取消 token、工具使用计数、compact 阶段和高风险工具确认等待状态；工具阶段普通输入不打断工具，会进入 pending 并在下一次 LLM 调用前注入；请求异常结束时清理非确认追加状态，避免残留 tool pending。
 
 
 ### 配置与日志

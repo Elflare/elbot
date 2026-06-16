@@ -211,6 +211,17 @@ func (m *Manager) CompleteLLM(sessionID string) bool {
 	return true
 }
 
+func (m *Manager) FinishRequest(sessionID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	turn, ok := m.turns[sessionID]
+	if !ok || turn.phase == PhaseAwaitAppendConfirm {
+		return
+	}
+	stopTurn(turn)
+	delete(m.turns, sessionID)
+}
+
 func (m *Manager) StopSession(sessionID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

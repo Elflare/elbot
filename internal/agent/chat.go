@@ -109,6 +109,7 @@ func (a *Agent) startChat(ctx context.Context, session *storage.Session, text st
 	if !a.turns.StartLLM(session.ID, text) {
 		return nil
 	}
+	defer a.turns.FinishRequest(session.ID)
 	if err := a.runChat(ctx, session, text); err != nil {
 		a.turns.StopSession(session.ID)
 		return err
