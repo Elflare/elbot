@@ -123,11 +123,11 @@ func TestEditFileToolCronRiskAndSandbox(t *testing.T) {
 	}
 }
 
-func TestFileToolsHaveFilesTag(t *testing.T) {
-	if got := strings.Join(NewReadFileTool().Info().Tags, ","); got != "files" {
+func TestFileToolsHaveFilesAndAgentTags(t *testing.T) {
+	if got := strings.Join(NewReadFileTool().Info().Tags, ","); got != "files,agent" {
 		t.Fatalf("read_file tags = %q", got)
 	}
-	if got := strings.Join(NewEditFileTool().Info().Tags, ","); got != "files" {
+	if got := strings.Join(NewEditFileTool().Info().Tags, ","); got != "files,agent" {
 		t.Fatalf("edit_file tags = %q", got)
 	}
 }

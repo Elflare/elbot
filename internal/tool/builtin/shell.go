@@ -54,6 +54,7 @@ func shellBuilder() *tool.Builder {
 	return tool.NewBuilder("shell").
 		Description("执行 shell 命令。命令会按当前平台通过系统 shell 运行。").
 		Risk(tool.RiskHigh).
+		Tags("agent").
 		String("cmd", "要执行的 shell 命令。", tool.Required()).
 		Integer("timeout_ms", "可选，命令超时时间，默认 10000。")
 }

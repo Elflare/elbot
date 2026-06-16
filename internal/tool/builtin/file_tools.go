@@ -114,7 +114,7 @@ func readFileBuilder() *tool.Builder {
 	return tool.NewBuilder("read_file").
 		Description("读取文本文件并返回带行号的内容；编辑前应先用它确认行号和文件哈希。").
 		Risk(tool.RiskLow).
-		Tags("files").
+		Tags("files", "agent").
 		String("path", "要读取的文件路径", tool.Required()).
 		String("encoding", "文本编码，默认 auto；可选 utf-8、utf-8-bom、utf-16le、utf-16be、gbk、gb18030、big5、shift_jis 等。").
 		Integer("start_line", "起始行号，1-based；默认 1。").
@@ -175,7 +175,7 @@ func editFileBuilder() *tool.Builder {
 	return tool.NewBuilder("edit_file").
 		Description("按行编辑文本文件，支持替换、插入和删除；成功后返回 unified diff。编辑前应先用 read_file 确认行号。").
 		Risk(tool.RiskHigh).
-		Tags("files").
+		Tags("files", "agent").
 		String("path", "要编辑的文件路径。", tool.Required()).
 		String("encoding", "文本编码，默认 auto；非 UTF-8 文件应显式传入 gb18030、gbk、big5、shift_jis 等。").
 		String("operation", "编辑操作：replace、insert_before、insert_after、delete。", tool.Required()).

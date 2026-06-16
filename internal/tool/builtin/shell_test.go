@@ -24,6 +24,12 @@ func TestShellToolMissingCmdHintsExpectedArgument(t *testing.T) {
 	}
 }
 
+func TestShellToolHasAgentTag(t *testing.T) {
+	if got := strings.Join(NewShellTool().Info().Tags, ","); got != "agent" {
+		t.Fatalf("shell tags = %q", got)
+	}
+}
+
 func TestShellToolRunsArbitraryCommand(t *testing.T) {
 	shell := NewShellTool()
 	args, _ := json.Marshal(map[string]any{"cmd": "echo elbot-shell-test"})
