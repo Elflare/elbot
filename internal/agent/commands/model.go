@@ -183,16 +183,17 @@ func optionOnlyModelArgs(args string) bool {
 func NewCheckModel(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:        "checkmodel",
-		Usage:       "/checkmodel [--fresh] [query]",
+		Usage:       "/checkmodel [--fresh|--refresh] [query]",
 		Description: "List or search available models.",
 		Aliases:     []string{"models"},
 		Help: strings.TrimSpace(`Options:
-  --fresh    Refresh provider model lists before showing results.
+  --fresh, --refresh    Refresh provider model lists before showing results.
 
 Examples:
   /models
   /models claude
-  /models --fresh`),
+  /models --fresh
+  /models --refresh`),
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		args, fresh := parseModelListArgs(req.Args)
 		result := deps.Models.ModelList(args, ModelListOptions{Fresh: fresh})
@@ -270,7 +271,7 @@ func parseModelListArgs(args string) (string, bool) {
 	out := []string{}
 	fresh := false
 	for _, field := range fields {
-		if field == "--fresh" {
+		if field == "--fresh" || field == "--refresh" {
 			fresh = true
 			continue
 		}

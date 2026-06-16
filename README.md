@@ -80,11 +80,22 @@ ElBot's tool system has built-in risk levels, permission judgments, and high-ris
 
 ## Usage
 
-During development, you can start the CLI directly from the source code:
+During the development phase, you can start directly from the source code:
 
 ```bash
 go run ./cmd/elbot --config config/app.toml
 ```
+
+Common startup methods:
+
+```bash
+elbot              # 自动模式：Linux 检测到 service 时进入本地 CLI-only，否则完整前台启动
+elbot run          # 完整前台：CLI + 已启用平台 + Cron
+elbot cli          # 本地 CLI-only：只启动 CLI，不启动平台和 Cron
+elbot service run  # Linux/headless 服务模式：不启动 CLI，启动已启用平台和 Cron
+```
+
+Shell completion can be generated via `elbot completion <shell>`, supporting `bash`, `zsh`, `fish`, `nushell`, `powershell`, and `auto`.
 
 Minimum usage flow:
 

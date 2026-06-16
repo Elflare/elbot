@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -49,7 +50,13 @@ func (n *lineNumber) UnmarshalJSON(data []byte) error {
 			n.Value = 0
 			return nil
 		}
-		return fmt.Errorf("line number string must be \"end\"")
+		value, err := strconv.Atoi(str)
+		if err != nil {
+			return fmt.Errorf("line number string must be integer or \"end\"")
+		}
+		n.Value = value
+		n.End = false
+		return nil
 	}
 	var value int
 	if err := json.Unmarshal(data, &value); err != nil {

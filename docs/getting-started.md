@@ -185,7 +185,7 @@ elbot completion nushell > ~/.config/nushell/completions/elbot.nu
 
 - `state.toml` 中的 `provider` 是否存在于 `providers.toml`。
 - `model` 名称是否被 Provider 支持。
-- 可以启动后用 `/models --fresh` 刷新模型列表。
+- 可以启动后用 `/models --fresh` 或 `/models --refresh` 刷新模型列表。
 
 ### 不想默认启用工具
 
