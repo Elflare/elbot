@@ -162,7 +162,7 @@
 - `internal/tool/builtin/env.go`：内置工具环境变量读取 helper；优先读 OS env，缺失时读取配置目录 `.env`，用于 Tavily/Jina API key。
 - `internal/tool/builtin/web_search.go`：Tavily 搜索工具；返回 answer、来源链接和摘要，并依赖 `web_extract`，用户侧 tag 为 `web`。
 - `internal/tool/builtin/web_extract.go`：Jina Reader/标准库网页提取工具；支持代理、分段读取和进程内缓存，用户侧 tag 为 `web`。
-- `internal/tool/builtin/file_tools.go`：文件读写工具；`read_file` 返回带行号文本和文件哈希，`edit_file` 按行支持替换、插入、删除、创建新文件、整行 append/prepend 并返回 unified diff；两者都打 `files`/`agent` tag，`edit_file` 在 cron 后台只允许 sandbox 内路径。
+- `internal/tool/builtin/file_tools.go`：文件读写工具；`read_file` 返回带行号文本和文件哈希，支持 grep 子串搜索；`edit_file` 按行支持替换、删除、整行插入、创建新文件、整行 append/prepend 并返回 unified diff；两者都打 `files`/`agent` tag，`edit_file` 在 cron 后台只允许 sandbox 内路径。
 - `internal/tool/builtin/atomic_write*.go`：文件工具原子写入 helper；普通文件用同目录临时文件替换，Windows 走 `MoveFileExW`，符号链接回退 `os.WriteFile` 保持旧语义。
 
 - `internal/tool/builtin/shell.go`：内置 shell 工具；接口保留通用 `cmd`，可执行任意 shell 命令，用户侧 tag 为 `agent`，调用前通过风险评估与高风险确认流程拦截；cron sandbox context 下会创建目录并把 shell cwd 固定到 sandbox。

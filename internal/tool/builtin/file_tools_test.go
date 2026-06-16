@@ -29,6 +29,22 @@ func TestReadFileToolReturnsLineNumbersAndEndRange(t *testing.T) {
 	}
 }
 
+func TestReadFileToolGrepReturnsMatchesWithContext(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	content := strings.Join([]string{"one", "alpha", "two", "three", "beta", "four"}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path, "grep": "beta", "context_lines": 1})
+	result, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "grep: \"beta\"") || !strings.Contains(result.Content, "> 5 | beta") || !strings.Contains(result.Content, "  4 | three") || !strings.Contains(result.Content, "  6 | four") {
+		t.Fatalf("unexpected grep output:\n%s", result.Content)
+	}
+}
+
 func TestEditFileToolRequiresEdits(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
 	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
@@ -94,6 +110,32 @@ func TestEditFileToolAcceptsStringLineNumbers(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := string(content); got != "alpha\nBETA\ngamma\n" {
+		t.Fatalf("file content = %q", got)
+	}
+}
+
+func TestEditFileToolEmptyExpectedContentMeansNoCheck(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation":        "replace",
+			"start_line":       1,
+			"expected_content": "",
+			"content":          "ALPHA",
+		}},
+	})
+	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != "ALPHA\n" {
 		t.Fatalf("file content = %q", got)
 	}
 }
@@ -348,7 +390,7 @@ func TestEditFileToolCronRiskAndSandbox(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": "sample.txt",
 		"edits": []map[string]any{{
-			"operation":  "insert_after",
+			"operation":  "insert_line_after",
 			"start_line": 1,
 			"content":    "beta",
 		}},

@@ -70,10 +70,13 @@ func (n *lineNumber) UnmarshalJSON(data []byte) error {
 }
 
 type readFileArgs struct {
-	Path      string     `json:"path"`
-	Encoding  string     `json:"encoding"`
-	StartLine int        `json:"start_line"`
-	EndLine   lineNumber `json:"end_line"`
+	Path         string     `json:"path"`
+	Encoding     string     `json:"encoding"`
+	StartLine    int        `json:"start_line"`
+	EndLine      lineNumber `json:"end_line"`
+	Grep         string     `json:"grep"`
+	ContextLines int        `json:"context_lines"`
+	MaxMatches   int        `json:"max_matches"`
 }
 
 type editFileArgs struct {
@@ -130,7 +133,10 @@ func readFileBuilder() *tool.Builder {
 		String("path", "要读取的文件路径", tool.Required()).
 		String("encoding", "文本编码，默认 auto；可选 utf-8、utf-8-bom、utf-16le、utf-16be、gbk、gb18030、big5、shift_jis 等。").
 		Integer("start_line", "起始行号，1-based；默认 1。").
-		String("end_line", "结束行号，1-based 且包含该行；也可传 end 表示文件末尾；默认最多返回 200 行。")
+		String("end_line", "结束行号，1-based 且包含该行；也可传 end 表示文件末尾；默认最多返回 200 行。").
+		String("grep", "可选，按子串搜索匹配行；提供后返回匹配行及上下文，而不是普通行范围读取。").
+		Integer("context_lines", "grep 上下文行数，默认 2，范围 0-20。").
+		Integer("max_matches", "grep 最大匹配数，默认 20，范围 1-100。")
 }
 
 func (ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
@@ -149,6 +155,9 @@ func (ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 		return nil, err
 	}
 	lines := splitLines(file.Text)
+	if strings.TrimSpace(args.Grep) != "" {
+		return readFileGrepResult(file, lines, args.Grep, args.ContextLines, args.MaxMatches)
+	}
 	start, end, truncated, err := normalizeReadRange(len(lines), args.StartLine, args.EndLine)
 	if err != nil {
 		return nil, err
@@ -175,6 +184,62 @@ func (ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 	return &tool.Result{Content: b.String()}, nil
 }
 
+func readFileGrepResult(file decodedFile, lines []string, grep string, contextLines, maxMatches int) (*tool.Result, error) {
+	query := strings.TrimSpace(grep)
+	if query == "" {
+		return nil, fmt.Errorf("grep is required")
+	}
+	contextLines = normalizeGrepContextLines(contextLines)
+	maxMatches = normalizeMaxMatches(maxMatches)
+	matches := make([]int, 0)
+	for i, line := range lines {
+		if strings.Contains(line, query) {
+			matches = append(matches, i+1)
+			if len(matches) >= maxMatches {
+				break
+			}
+		}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "file: %s\n", file.Path)
+	fmt.Fprintf(&b, "encoding: %s\n", file.Encoding)
+	fmt.Fprintf(&b, "sha256: %s\n", sha256Hex(file.Bytes))
+	fmt.Fprintf(&b, "grep: %q\n", query)
+	fmt.Fprintf(&b, "matches: %d\n", len(matches))
+	fmt.Fprintf(&b, "context_lines: %d\n", contextLines)
+	b.WriteString("content:\n")
+	if len(matches) == 0 || len(lines) == 0 {
+		return &tool.Result{Content: b.String()}, nil
+	}
+	width := len(fmt.Sprintf("%d", len(lines)))
+	lastPrinted := 0
+	for _, matchLine := range matches {
+		start := matchLine - contextLines
+		if start < 1 {
+			start = 1
+		}
+		end := matchLine + contextLines
+		if end > len(lines) {
+			end = len(lines)
+		}
+		if lastPrinted > 0 && start > lastPrinted+1 {
+			b.WriteString("--\n")
+		}
+		if start <= lastPrinted {
+			start = lastPrinted + 1
+		}
+		for i := start; i <= end; i++ {
+			marker := " "
+			if i == matchLine {
+				marker = ">"
+			}
+			fmt.Fprintf(&b, "%s %*d | %s\n", marker, width, i, lines[i-1])
+		}
+		lastPrinted = end
+	}
+	return &tool.Result{Content: b.String()}, nil
+}
+
 func NewEditFileTool() EditFileTool {
 	return EditFileTool{}
 }
@@ -193,11 +258,11 @@ func (t EditFileTool) Schema() llm.ToolSchema {
 
 func editFileBuilder() *tool.Builder {
 	editProperties := map[string]any{
-		"operation":        map[string]any{"type": "string", "description": "编辑操作：replace、delete、insert_before、insert_after、insert_line_before、insert_line_after、prepend、append、replace_match、delete_match、insert_before_match、insert_after_match。edits 按顺序应用，后一步基于前一步结果；工具不会重排序或补偿行号。"},
+		"operation":        map[string]any{"type": "string", "description": "编辑操作：replace、delete、insert_line_before、insert_line_after、prepend、append、replace_match、delete_match、insert_before_match、insert_after_match。edits 按顺序应用，后一步基于前一步结果；工具不会重排序或补偿行号。"},
 		"start_line":       map[string]any{"type": "integer", "description": "行号操作的起始行号，1-based。"},
 		"end_line":         map[string]any{"type": "string", "description": "行号 replace/delete 的结束行号，1-based 且包含该行；也可传 end；默认等于 start_line。"},
 		"content":          map[string]any{"type": "string", "description": "replace/insert 写入的文本；delete/delete_match 会忽略该字段。insert_line_before/insert_line_after/prepend/append 会按整行插入，自动补末尾换行。"},
-		"expected_content": map[string]any{"type": "string", "description": "replace/delete 前校验目标行范围原始文本；换行符按 \\n 规范化比较，用于防止行号漂移误改。"},
+		"expected_content": map[string]any{"type": "string", "description": "replace/delete 前校验目标行范围原始文本；换行符按 \\n 规范化比较，用于防止行号漂移误改；不需要校验时请省略该字段，不要传空字符串。"},
 		"old_content":      map[string]any{"type": "string", "description": "replace_match/delete_match 要唯一匹配的原始文本；找不到或多处匹配都会失败。"},
 		"anchor":           map[string]any{"type": "string", "description": "insert_before_match/insert_after_match 要唯一匹配的锚点文本；找不到或多处匹配都会失败。"},
 	}
@@ -549,7 +614,7 @@ func applyEdit(text string, edit editOperation) (string, error) {
 		return "", fmt.Errorf("operation is required")
 	}
 	switch operation {
-	case "replace", "delete", "insert_before", "insert_after", "insert_line_before", "insert_line_after", "prepend", "append":
+	case "replace", "delete", "insert_line_before", "insert_line_after", "prepend", "append":
 		return applyLineEdit(text, edit)
 	case "replace_match":
 		start, end, err := findUniqueMatch(text, edit.OldContent, "old_content")
@@ -609,15 +674,6 @@ func applyLineEdit(text string, edit editOperation) (string, error) {
 			return "", err
 		}
 		out = replaceLines(out, start, end, nil)
-	case "insert_before", "insert_after":
-		if err := validateInsertLine(len(lines), start); err != nil {
-			return "", err
-		}
-		index := start - 1
-		if operation == "insert_after" {
-			index = start
-		}
-		out = append(out[:index], append(contentLines, out[index:]...)...)
 	case "insert_line_before", "insert_line_after":
 		if err := validateInsertLine(len(lines), start); err != nil {
 			return "", err
@@ -641,7 +697,7 @@ func applyLineEdit(text string, edit editOperation) (string, error) {
 }
 
 func validateExpectedContent(lines []string, start, end int, expected *string) error {
-	if expected == nil {
+	if expected == nil || *expected == "" {
 		return nil
 	}
 	actual := strings.Join(lines[start-1:end], "\n")
@@ -685,6 +741,29 @@ func restoreLineEndings(text, lineEnding string) string {
 		return text
 	}
 	return strings.ReplaceAll(text, "\n", lineEnding)
+}
+
+func normalizeGrepContextLines(value int) int {
+	if value < 0 {
+		return 0
+	}
+	if value == 0 {
+		return 2
+	}
+	if value > 20 {
+		return 20
+	}
+	return value
+}
+
+func normalizeMaxMatches(value int) int {
+	if value <= 0 {
+		return 20
+	}
+	if value > 100 {
+		return 100
+	}
+	return value
 }
 
 func normalizeContextLines(value int) int {
