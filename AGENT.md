@@ -195,7 +195,7 @@
 - `internal/platform/cli/cli.go`：CLI 平台实现；非 TTY 下读取 stdin，交互式终端下启动 Bubble Tea TUI，支持注入补全服务；实现统一 `SendChat`/`SendNotice`。
 - `internal/platform/qq-onebot/`：QQ OneBot v11 正向 WebSocket 适配；处理私聊/群聊文本、图片、@、reply、关键词触发、引用 fork、聊天历史入库、消息映射和富输出发送。引用 bot 历史消息会按本地映射/get_msg 解析，必要时自动 fork。
 - `internal/platform/qqofficial/`：QQ 官方机器人 C2C 单聊适配；负责 access token、Gateway identify/heartbeat/resume（含 4009 连接过期重连）、默认 Markdown 文本发送、富媒体上传发送、入站附件下载到 artifact、Keyboard 确认按钮和 ARK 预留；配置来自 `[platform.qqofficial]`。
-- `internal/platform/cli/tui.go`：Bubble Tea TUI 主编排；提供聊天/通知/输入区、异步提交、历史、滚动、补全候选窗和样式渲染；聊天原文保持纯文本，显示时再用 lipgloss 美化。
+- `internal/platform/cli/tui.go`：Bubble Tea TUI 主编排；提供聊天/通知/输入区、历史、滚动、补全候选窗、reasoning 与正文分离显示和样式渲染。
 - `internal/platform/cli/tui_copy.go`：CLI TUI copy mode；支持鼠标分区滚动、Alt+h/Alt+l 进入聊天/通知复制模式、hjkl/v/V/y 和区域内 `/` 搜索；`clipboard.go` 默认用系统剪贴板并在 SSH/tmux 等场景走 OSC52 fallback。
 
 ### Session 服务

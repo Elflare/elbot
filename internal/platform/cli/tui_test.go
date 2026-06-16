@@ -165,6 +165,30 @@ func TestReplaceAssistantContentReplacesCurrentBlock(t *testing.T) {
 	}
 }
 
+func TestReasoningContentIsSeparateFromAssistantReplace(t *testing.T) {
+	m := &tuiModel{userName: "user", assistantName: "assistant"}
+	m.appendUserContent("hello")
+	m.appendReasoningContent("[thinking] ")
+	m.appendReasoningContent("先分析")
+	m.appendReasoningContent("[/thinking]\n\n")
+	m.appendAssistantContent("raw")
+	m.replaceAssistantContent("final text")
+
+	got := m.content
+	if !strings.Contains(got, "thinking: 先分析") {
+		t.Fatalf("missing reasoning content: %q", got)
+	}
+	if !strings.Contains(got, "assistant: final text") {
+		t.Fatalf("missing final assistant content: %q", got)
+	}
+	if strings.Contains(got, "[thinking]") || strings.Contains(got, "[/thinking]") {
+		t.Fatalf("thinking markers should not be displayed: %q", got)
+	}
+	if strings.Contains(got, "assistant: raw") {
+		t.Fatalf("raw assistant content was not replaced: %q", got)
+	}
+}
+
 func TestFinishAssistantContentStartsNextAssistantBlock(t *testing.T) {
 	m := &tuiModel{assistantName: "assistant"}
 	m.appendAssistantContent("first")

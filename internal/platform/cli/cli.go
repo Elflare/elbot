@@ -146,6 +146,14 @@ func (s cliMessageStream) Finish(ctx context.Context) (platform.Receipt, error) 
 	return platform.Receipt{}, nil
 }
 
+func (a *Adapter) SendReasoning(ctx context.Context, text string) error {
+	if text == "" {
+		return nil
+	}
+	a.sendTUIMessage(tuiReasoningMsg(text), text)
+	return nil
+}
+
 func (a *Adapter) SendChat(ctx context.Context, out output.Output) (platform.Receipt, error) {
 	text := chatText(out)
 	if text != "" {

@@ -243,16 +243,23 @@ func (a *Agent) shouldShowCLIReasoning(ctx context.Context) bool {
 	return a.isCLIContext(ctx)
 }
 
+type cliReasoningSender interface {
+	SendReasoning(context.Context, string) error
+}
+
 func (a *Agent) sendCLIReasoning(ctx context.Context, text string) {
 	if !a.shouldShowCLIReasoning(ctx) || text == "" {
 		return
 	}
-	manager := a.outputs
-	manager.Sender = agentOutputSender{agent: a, ctx: ctx}
-	if manager.Logger == nil {
-		manager.Logger = a.logger
+	if msg, ok := platform.MessageContextFrom(ctx); ok {
+		if sender, ok := msg.Sender.(cliReasoningSender); ok {
+			_ = sender.SendReasoning(ctx, text)
+			return
+		}
 	}
-	_ = manager.SendChat(ctx, output.Text(text))
+	if sender, ok := a.platform.(cliReasoningSender); ok {
+		_ = sender.SendReasoning(ctx, text)
+	}
 }
 
 func (a *Agent) auditUsage(sessionID string, selection config.ModelSelection, usage *llm.Usage, elapsedMs int64) {

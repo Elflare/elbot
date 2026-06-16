@@ -18,6 +18,7 @@ import (
 type tuiOutputMsg string
 type tuiReplaceAssistantMsg string
 type tuiFinishAssistantMsg struct{}
+type tuiReasoningMsg string
 type tuiNoticeMsg string
 
 type tuiProgramSetter func(*tea.Program)
@@ -37,6 +38,7 @@ var (
 	tuiStatusStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	tuiUserStyle               = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
 	tuiAssistantStyle          = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("217"))
+	tuiReasoningStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 	tuiNoticeStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 	tuiSeparatorStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	tuiPanelStyle              = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).BorderForeground(lipgloss.Color("8")).PaddingLeft(1)
@@ -82,6 +84,7 @@ type tuiModel struct {
 	assistantName   string
 	assistantOpen   bool
 	assistantStart  int
+	reasoningOpen   bool
 	viewport        viewport.Model
 	noticeViewport  viewport.Model
 	input           textinput.Model
@@ -144,6 +147,9 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, waitTUIOutput(m.output)
 	case tuiFinishAssistantMsg:
 		m.finishAssistantContent()
+		return m, waitTUIOutput(m.output)
+	case tuiReasoningMsg:
+		m.appendReasoningContent(string(msg))
 		return m, waitTUIOutput(m.output)
 	case tuiNoticeMsg:
 		m.appendNotice(string(msg))
@@ -482,6 +488,7 @@ func (m *tuiModel) appendUserContent(text string) {
 	}
 	m.content += m.userName + ": " + text + "\n"
 	m.assistantOpen = false
+	m.reasoningOpen = false
 	m.refreshContent()
 }
 
@@ -496,12 +503,34 @@ func (m tuiModel) separatorLine() string {
 	return strings.Repeat("─", max(8, width))
 }
 
+func (m *tuiModel) appendReasoningContent(text string) {
+	text = strings.ReplaceAll(text, "[thinking] ", "")
+	text = strings.ReplaceAll(text, "[thinking]", "")
+	text = strings.ReplaceAll(text, "[/thinking]\n\n", "")
+	text = strings.ReplaceAll(text, "[/thinking]", "")
+	if text == "" {
+		return
+	}
+	if !m.reasoningOpen {
+		if strings.TrimSpace(m.content) != "" {
+			m.content += "\n"
+		}
+		m.content += "thinking: "
+		m.reasoningOpen = true
+	}
+	m.content += text
+	m.refreshContent()
+}
+
 func (m *tuiModel) appendAssistantContent(text string) {
 	if text == "" {
 		return
 	}
 	if !m.assistantOpen {
-		if strings.TrimSpace(m.content) != "" {
+		if m.reasoningOpen {
+			m.content += "\n\n"
+			m.reasoningOpen = false
+		} else if strings.TrimSpace(m.content) != "" {
 			m.content += "\n"
 		}
 		m.assistantStart = len(m.content)
@@ -527,6 +556,7 @@ func (m *tuiModel) replaceAssistantContent(text string) {
 func (m *tuiModel) finishAssistantContent() {
 	m.assistantOpen = false
 	m.assistantStart = 0
+	m.reasoningOpen = false
 	m.refreshContent()
 }
 
@@ -606,14 +636,25 @@ func (m tuiModel) renderContent(content string) string {
 		return tuiTitleMutedStyle.Render("还没有消息。输入内容后按 Enter 发送。")
 	}
 	lines := strings.Split(content, "\n")
+	inReasoning := false
 	for i, line := range lines {
 		switch {
 		case strings.HasPrefix(line, m.userName+": "):
+			inReasoning = false
 			lines[i] = renderSpeakerLine(line, m.userName, tuiUserStyle)
 		case strings.HasPrefix(line, m.assistantName+": "):
+			inReasoning = false
 			lines[i] = renderSpeakerLine(line, m.assistantName, tuiAssistantStyle)
+		case strings.HasPrefix(line, "thinking: "):
+			inReasoning = true
+			lines[i] = tuiReasoningStyle.Render(line)
 		case isSeparatorLine(line):
+			inReasoning = false
 			lines[i] = tuiSeparatorStyle.Render(line)
+		case strings.TrimSpace(line) == "":
+			inReasoning = false
+		case inReasoning:
+			lines[i] = tuiReasoningStyle.Render(line)
 		}
 	}
 	return strings.Join(lines, "\n")
