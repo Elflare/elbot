@@ -26,9 +26,9 @@
       "updated_at": 1781515756
     },
     "docs/getting-started.md": {
-      "source_hash": "6c751529aeebdbcf5ab788a5f83471305797c96b090bbce11d78b171b0f37c76",
+      "source_hash": "03eb8aa561aca703b7e764c8129596c4b45c9089405fb354f913006859b7cb3e",
       "target": "docs.en/getting-started.md",
-      "updated_at": 1781575108
+      "updated_at": 1781580008
     }
   },
   "segments": {
@@ -3551,6 +3551,14 @@
       "source_hash": "ab0f21e0de018659604ea9bb26f07d46d5bb0d6c0d1df2fcaa6c819113e2a58f",
       "translation": "Whether __ELBOT_CODE_1__ in __ELBOT_CODE_0__ exists in __ELBOT_CODE_2__.",
       "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:cf8e65e5c3131db0a92f17cc70c72fde24253e12242164ff3955f59aaa8c3f0c": {
+      "kind": "list",
+      "source": "可以启动后用 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 刷新模型列表。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "cf8e65e5c3131db0a92f17cc70c72fde24253e12242164ff3955f59aaa8c3f0c",
+      "translation": "After starting, you can use __ELBOT_CODE_0__ or __ELBOT_CODE_1__ to refresh the model list.",
+      "updated_at": 1781580008
     },
     "docs/getting-started.md:list:da055f600dde151737e1dc8af0a47d237857c8e042d39efdd7fb4091b0c75e1c": {
       "kind": "list",
