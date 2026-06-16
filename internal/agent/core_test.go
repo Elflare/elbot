@@ -2040,7 +2040,7 @@ func TestRiskConfirmationDetailShowsFullArgumentsWithoutResolving(t *testing.T) 
 	if got := a.turns.Snapshot(session.ID).Phase; got != turn.PhaseAwaitRiskConfirm {
 		t.Fatalf("phase = %s, want await risk confirm", got)
 	}
-	if err := a.HandleMessage(ctx, "/confirm"); err != nil {
+	if err := a.HandleMessage(ctx, "/y"); err != nil {
 		t.Fatalf("confirm: %v", err)
 	}
 	select {
@@ -2452,5 +2452,76 @@ func TestEmoticonHookSendsSeparateOutputAndCleansPersistedContent(t *testing.T) 
 	got := messages[len(messages)-1].Content
 	if got != "[[微笑]] 像这样~" {
 		t.Fatalf("assistant content = %q, want raw text", got)
+	}
+}
+
+func TestUserYesCommandAllowedForAppendConfirm(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"ok"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{}))
+	ctx := context.Background()
+	session, err := a.sessions.Create(ctx, a.scope(ctx), "append confirm")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if !a.turns.StartLLM(session.ID, "原消息") || !a.turns.InterruptLLM(session.ID, "追加消息") {
+		t.Fatal("failed to enter append confirmation phase")
+	}
+
+	if err := a.HandleMessage(ctx, "/y"); err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+	if got := a.turns.Snapshot(session.ID).Phase; got != turn.PhaseIdle {
+		t.Fatalf("turn phase = %s", got)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d, want 1", len(requests))
+	}
+	content := llm.SegmentsContentText(requests[0].Messages[len(requests[0].Messages)-1].Segments)
+	if !strings.Contains(content, "原消息") || !strings.Contains(content, "追加消息") {
+		t.Fatalf("merged content = %q", content)
+	}
+}
+
+func TestUserNoCommandAllowedForAppendConfirm(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{}))
+	ctx := context.Background()
+	session, err := a.sessions.Create(ctx, a.scope(ctx), "append cancel")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if !a.turns.StartLLM(session.ID, "原消息") || !a.turns.InterruptLLM(session.ID, "追加消息") {
+		t.Fatal("failed to enter append confirmation phase")
+	}
+
+	if err := a.HandleMessage(ctx, "/n"); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	if got := a.turns.Snapshot(session.ID).Phase; got != turn.PhaseIdle {
+		t.Fatalf("turn phase = %s", got)
+	}
+	if requests := f.chatRequests(); len(requests) != 0 {
+		t.Fatalf("chat requests = %d, want 0", len(requests))
+	}
+	if !strings.Contains(p.out.String(), "已取消追加") {
+		t.Fatalf("missing cancel output: %q", p.out.String())
+	}
+}
+
+func TestUserYesCommandWithoutPendingTurnIsNotPermissionDenied(t *testing.T) {
+	p := &fakePlatform{}
+	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{}))
+
+	if err := a.HandleMessage(context.Background(), "/y"); err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+	if !strings.Contains(p.out.String(), "当前没有等待确认") {
+		t.Fatalf("output = %q", p.out.String())
 	}
 }

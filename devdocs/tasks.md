@@ -574,6 +574,7 @@
 
 - [ ] 创建 `confirmation_requests` 表。
 - [x] 支持确认单次操作。`/confirm`
+- [x] 支持普通用户用 `/y`、`/yes`、`/n`、`/no` 处理等待中的追加确认。
 - [x] 支持当前 Session 内自动确认同工具操作。
 - [x] 支持当前 Session 内自动确认所有操作。`/confirmall`
 - [x] `/reject <原因>` 拒绝操作并记录原因。原因可不填。

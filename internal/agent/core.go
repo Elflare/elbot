@@ -255,6 +255,9 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 	ctx = withInboundSegments(ctx, segments)
 	text = llm.SegmentsTextOnly(segments)
 	if a.commands.IsCommand(text) {
+		if parsed := a.commands.Parse(text); parsed.OK && isUserConfirmationCommandName(parsed.Name) {
+			return a.handleUserConfirmationCommand(ctx, parsed)
+		}
 		session, sessionErr := a.sessions.Current(ctx, a.scope(ctx))
 		if sessionErr == nil && a.turns.Snapshot(session.ID).Phase == turn.PhaseAwaitRiskConfirm && isRiskConfirmationCommand(text, a.commands) {
 			return a.handleRiskConfirmationInput(ctx, session.ID, text)
