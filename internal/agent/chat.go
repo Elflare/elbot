@@ -272,7 +272,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 				return err
 			}
 			turnMessages = turnMessages[:0]
-			llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("工具调用轮次已达到上限，请基于已有工具结果和当前上下文总结当前进度，不要继续调用工具。")})
+			llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("工具调用轮次已达到上限，可以询问用户是否继续或者基于已有工具结果和当前上下文总结当前进度。")})
 			tools = nil
 			stream := a.startMessageStream(reqCtx)
 			summary, _, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, "", stream)
