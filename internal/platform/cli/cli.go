@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mattn/go-isatty"
@@ -14,6 +15,7 @@ import (
 	"elbot/internal/completion"
 	"elbot/internal/output"
 	"elbot/internal/platform"
+	runtimestatus "elbot/internal/runtime"
 )
 
 // Adapter is a CLI platform adapter that reads from stdin.
@@ -144,6 +146,11 @@ func (s cliMessageStream) Replace(ctx context.Context, text string) (platform.Re
 func (s cliMessageStream) Finish(ctx context.Context) (platform.Receipt, error) {
 	s.adapter.sendTUIMessage(tuiFinishAssistantMsg{}, "\n")
 	return platform.Receipt{}, nil
+}
+
+func (a *Adapter) SetRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
+	a.sendTUIMessage(tuiStatusMsg(snapshot), runtimestatus.FormatCompact(snapshot, time.Now(), 0))
+	return nil
 }
 
 func (a *Adapter) SendReasoning(ctx context.Context, text string) error {

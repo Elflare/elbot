@@ -20,6 +20,7 @@ import (
 	"elbot/internal/output"
 	"elbot/internal/platform"
 	"elbot/internal/request"
+	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -62,6 +63,8 @@ type Agent struct {
 	namingModel                 config.ModelSelection
 	usageMu                     sync.Mutex
 	lastUsage                   map[string]*llm.Usage
+	statusMu                    sync.Mutex
+	runtimeStatus               map[string]runtimestatus.Snapshot
 	pendingCompact              map[string]bool
 	lastSessionIDs              []string
 	sessionListPageSize         int
@@ -134,6 +137,7 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 		compactModel:           config.ModelSelection{},
 		namingModel:            namingSelection,
 		lastUsage:              map[string]*llm.Usage{},
+		runtimeStatus:          map[string]runtimestatus.Snapshot{},
 		pendingCompact:         map[string]bool{},
 		autoConfirmSession:     map[string]bool{},
 		autoConfirmTools:       map[string]map[string]bool{},

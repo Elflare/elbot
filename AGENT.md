@@ -57,6 +57,7 @@
 - `internal/agent/tool_cache.go`：Session 级已发现工具 schema 缓存；discover 或有效 `@tool:` 预载到的工具按 Session 保存，工具名持久化到 Session metadata，后续 work 请求用稳定顺序注入 top-level tools。
 - `internal/agent/tool_directive.go`：聊天内联 `@tool:<name-or-tag>` 预处理；仅普通可访问工具/用户侧 tag 生效，剥离有效指令并持久化注入，不存在/不可用值保留为普通文本并提示。
 
+- `internal/agent/status.go`：Agent 运行状态发布 helper；保存每个 Session 最新 runtime snapshot，并通过平台可选接口推送给 CLI TUI 等状态展示层。
 - `internal/agent/session_metadata.go`：Session metadata 编解码辅助；当前用于保存已 discover 工具名和最近一次 LLM usage，使 `/status` 在 `/resume` 后仍可显示最近 token 状态。
 - `internal/agent/tool_transcript.go`：工具调用历史持久化辅助；保存 assistant tool_calls 与 tool result，提供 user 多模态 segments metadata 和 turn message 落库 helper，并在持久化 discover 结果时压缩 schema，避免未来上下文膨胀。
 - `internal/agent/context.go`：Agent 上下文压缩依赖实现；维护 context 配置、压缩模型、ContextLoader、WindowResolver、Compressor、最近 usage 和待压缩标记，并提供 `/compact` 与 `/status` 所需能力；最近 usage 会写入 Session metadata 供恢复会话后展示。
@@ -88,6 +89,7 @@
 ### Request 与 Turn 运行态
 
 - `internal/request/manager.go`：active request 管理器；登记 LLM、工具、压缩和子 Agent 请求，支持列表、按请求取消、按 Session 取消、全局取消、超时和完成清理。
+- `internal/runtime/status.go`：运行状态快照与格式化 helper；描述阶段、usage等结构化状态，供 CLI 状态栏和未来日志/命令复用。
 - `internal/turn/manager.go`：当前 turn 协调器；记录 Session 运行阶段、原始用户输入、pending 追加消息、确认/取消 token、工具使用计数、compact 阶段和高风险工具确认等待状态；工具阶段普通输入不打断工具，会进入 pending 并在下一次 LLM 调用前注入；请求异常结束时清理非确认追加状态，避免残留 tool pending。
 
 
@@ -192,11 +194,11 @@
 - `internal/platform/config.go`：平台配置辅助；把 `app.toml` 中 `[platform.<name>]` 原始 section 解码给适配器自有 Config，并提供关键词前缀剥离 helper。
 - `internal/platform/builtin/builtin.go`：内置平台装配；按运行模式组合 CLI、headless 和 enabled 外部平台。
 - `internal/platform/headless/headless.go`：service 模式的非交互 primary platform。
-- `internal/platform/cli/cli.go`：CLI 平台实现；非 TTY 下读取 stdin，交互式终端下启动 Bubble Tea TUI，支持注入补全服务；实现统一 `SendChat`/`SendNotice`。
-- `internal/platform/qq-onebot/`：QQ OneBot v11 正向 WebSocket 适配；处理私聊/群聊文本、图片、@、reply、关键词触发、引用 fork、聊天历史入库、消息映射和富输出发送。引用 bot 历史消息会按本地映射/get_msg 解析，必要时自动 fork。
+- `internal/platform/cli/cli.go`：CLI 平台实现；非 TTY 下读取 stdin，交互式终端下启动 Bubble Tea TUI，支持注入补全服务；实现统一 `SendChat`/`SendNotice`，并向 TUI 推送 reasoning 与 runtime status。
+- `internal/platform/qq-onebot/`：QQ OneBot v11 正向 WebSocket 适配。
 - `internal/platform/qqofficial/`：QQ 官方机器人 C2C 单聊适配；负责 access token、Gateway identify/heartbeat/resume（含 4009 连接过期重连）、默认 Markdown 文本发送、富媒体上传发送、入站附件下载到 artifact、Keyboard 确认按钮和 ARK 预留；配置来自 `[platform.qqofficial]`。
-- `internal/platform/cli/tui.go`：Bubble Tea TUI 主编排；提供聊天/通知/输入区、历史、滚动、补全候选窗、reasoning 与正文分离显示和样式渲染。
-- `internal/platform/cli/tui_copy.go`：CLI TUI copy mode；支持鼠标分区滚动、Alt+h/Alt+l 进入聊天/通知复制模式、hjkl/v/V/y 和区域内 `/` 搜索；`clipboard.go` 默认用系统剪贴板并在 SSH/tmux 等场景走 OSC52 fallback。
+- `internal/platform/cli/tui.go`：Bubble Tea TUI 主编排；提供聊天/通知/输入区、历史、滚动、补全候选窗、reasoning 与正文分离显示、状态栏。
+- `internal/platform/cli/tui_copy.go`：CLI TUI copy mode；支持鼠标分区滚动、vim模式复制和搜索；`clipboard.go` 默认用系统剪贴板并在 SSH/tmux 等场景走 OSC52 fallback。
 
 ### Session 服务
 
@@ -231,8 +233,8 @@
 
 
 **注**：
-1. 每次更新代码后，若有go文件修改或者新增，务必在此文档更新说明，以方便快速了解项目。注意不能让agent.md文档无脑变长，应当精简，如果有让人容易搞混、看不明白的、必要解释的，应写在代码注释里。
-2. 写代码时，暂时不实现的，但是未来可能会有的，要考虑留出接口或者搭好地基，然后注释写个TODO，免得后期一改又全部大改。
+1. 每次更新代码后，若有go文件修改或者新增，有必要的话在此文档更新说明，以方便快速了解项目。注意不能让agent.md文档无脑变长，应当精简，如果有让人容易搞混、看不明白的、必要解释的，应写在代码注释里。
+2. 写代码时，暂时不实现的，但是未来可能会有的，要考虑留出接口或者搭好地基，然后注释写个TODO。
 3. 开发中不应该考虑兼容，导致代码复杂或者冗余。
 4. 若有新功能或者修改旧功能，需要更新对应readme（用户侧）
 5. 整体语言用简体中文。

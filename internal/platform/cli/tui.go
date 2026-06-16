@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -13,12 +14,15 @@ import (
 
 	"elbot/internal/completion"
 	"elbot/internal/platform"
+	runtimestatus "elbot/internal/runtime"
 )
 
 type tuiOutputMsg string
 type tuiReplaceAssistantMsg string
 type tuiFinishAssistantMsg struct{}
 type tuiReasoningMsg string
+type tuiStatusMsg runtimestatus.Snapshot
+type tuiStatusTickMsg time.Time
 type tuiNoticeMsg string
 
 type tuiProgramSetter func(*tea.Program)
@@ -85,6 +89,8 @@ type tuiModel struct {
 	assistantOpen   bool
 	assistantStart  int
 	reasoningOpen   bool
+	runtimeStatus   runtimestatus.Snapshot
+	statusNow       time.Time
 	viewport        viewport.Model
 	noticeViewport  viewport.Model
 	input           textinput.Model
@@ -127,7 +133,7 @@ func runTUI(ctx context.Context, handler platform.PlatformHandler, completion *c
 }
 
 func (m tuiModel) Init() tea.Cmd {
-	return waitTUIOutput(m.output)
+	return tea.Batch(waitTUIOutput(m.output), tickTUIStatus())
 }
 
 func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -151,6 +157,15 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tuiReasoningMsg:
 		m.appendReasoningContent(string(msg))
 		return m, waitTUIOutput(m.output)
+	case tuiStatusMsg:
+		m.runtimeStatus = runtimestatus.Snapshot(msg)
+		if m.statusNow.IsZero() {
+			m.statusNow = time.Now()
+		}
+		return m, waitTUIOutput(m.output)
+	case tuiStatusTickMsg:
+		m.statusNow = time.Time(msg)
+		return m, tickTUIStatus()
 	case tuiNoticeMsg:
 		m.appendNotice(string(msg))
 		return m, waitTUIOutput(m.output)
@@ -350,11 +365,17 @@ func (m tuiModel) statusView() string {
 	if m.copyState.active() {
 		return tuiStatusStyle.Render(m.copyStatusText())
 	}
-	status := "Alt+h chat copy · Alt+l notices copy · Esc clear · Ctrl+C exit · C-k/C-j chat · C-u/C-d notices"
-	if m.completionState.visible() {
-		status += " · completion " + strconv.Itoa(m.completionState.index+1) + "/" + strconv.Itoa(len(m.completionState.items))
+	status := m.runtimeStatusText()
+	keys := "Alt+h copy · Ctrl+C exit"
+	if status == "" {
+		keys = "Alt+h chat copy · Alt+l notices copy · Esc clear · Ctrl+C exit · C-k/C-j chat · C-u/C-d notices"
+	} else {
+		status += "     "
 	}
-	return tuiStatusStyle.Render(status)
+	if m.completionState.visible() {
+		keys += " · completion " + strconv.Itoa(m.completionState.index+1) + "/" + strconv.Itoa(len(m.completionState.items))
+	}
+	return tuiStatusStyle.Render(status + keys)
 }
 
 func (m tuiModel) bodyView() string {
@@ -561,6 +582,15 @@ func (m *tuiModel) finishAssistantContent() {
 }
 
 func (m *tuiModel) appendContent(text string) {
+	if text == "" {
+		return
+	}
+	if m.reasoningOpen {
+		if !strings.HasSuffix(m.content, "\n") {
+			m.content += "\n"
+		}
+		m.reasoningOpen = false
+	}
 	m.content += text
 	m.refreshContent()
 }
@@ -651,7 +681,7 @@ func (m tuiModel) renderContent(content string) string {
 		case isSeparatorLine(line):
 			inReasoning = false
 			lines[i] = tuiSeparatorStyle.Render(line)
-		case strings.TrimSpace(line) == "":
+		case strings.HasPrefix(line, "[notice] "):
 			inReasoning = false
 		case inReasoning:
 			lines[i] = tuiReasoningStyle.Render(line)
@@ -697,6 +727,21 @@ func wrapDisplayWidth(text string, width int) string {
 	return sb.String()
 }
 
+func (m tuiModel) runtimeStatusText() string {
+	if m.runtimeStatus.SessionID == "" && m.runtimeStatus.Provider == "" && m.runtimeStatus.Model == "" && m.runtimeStatus.Phase == "" {
+		return ""
+	}
+	now := m.statusNow
+	if now.IsZero() {
+		now = time.Now()
+	}
+	width := m.width
+	if width > 24 {
+		width -= 24
+	}
+	return runtimestatus.FormatCompact(m.runtimeStatus, now, width)
+}
+
 func waitTUIOutput(output <-chan tea.Msg) tea.Cmd {
 	return func() tea.Msg {
 		msg, ok := <-output
@@ -705,4 +750,10 @@ func waitTUIOutput(output <-chan tea.Msg) tea.Cmd {
 		}
 		return msg
 	}
+}
+
+func tickTUIStatus() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return tuiStatusTickMsg(t)
+	})
 }

@@ -34,9 +34,11 @@ func TestLongMemoryToolSetIsCompact(t *testing.T) {
 }
 
 func TestLongMemorySearchAndWriteTools(t *testing.T) {
+	store := newLongMemoryStore(t.TempDir())
+	t.Cleanup(func() { _ = store.close() })
 	var searchTool *LongMemorySearchTool
 	var writeTool *LongMemoryWriteTool
-	for _, memoryTool := range NewLongMemoryTools(t.TempDir()) {
+	for _, memoryTool := range []tool.Tool{LongMemoryTool{store: store}, LongMemorySearchTool{store: store}, LongMemoryWriteTool{store: store}} {
 		switch typed := memoryTool.(type) {
 		case LongMemorySearchTool:
 			searchTool = &typed

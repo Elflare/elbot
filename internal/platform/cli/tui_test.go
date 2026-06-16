@@ -4,10 +4,13 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"elbot/internal/completion"
+	"elbot/internal/llm"
+	runtimestatus "elbot/internal/runtime"
 )
 
 type fakeCompletingHandler struct {
@@ -130,6 +133,41 @@ func TestCancelKeyClearsCompletionOrInputBeforeQuit(t *testing.T) {
 	}
 }
 
+func TestRuntimeStatusTextShowsElapsedAndUsage(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	m := tuiModel{
+		width:     100,
+		statusNow: start.Add(8 * time.Second),
+		runtimeStatus: runtimestatus.Snapshot{
+			SessionID:      "s1",
+			Phase:          runtimestatus.PhaseLLM,
+			Provider:       "deepseek",
+			Model:          "reasoner",
+			TurnStartedAt:  start,
+			StageStartedAt: start,
+			Usage:          &llm.Usage{TotalTokens: 18240, CacheHitTokens: 12100},
+		},
+	}
+	got := m.runtimeStatusText()
+	for _, want := range []string{"llm", "00:08", "deepseek/reasoner", "tokens 18,240", "cache 12,100"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("status %q missing %q", got, want)
+		}
+	}
+}
+
+func TestRuntimeStatusTickUpdatesElapsed(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	m := tuiModel{width: 80, statusNow: start.Add(time.Second), runtimeStatus: runtimestatus.Snapshot{SessionID: "s1", Phase: runtimestatus.PhaseLLM, TurnStartedAt: start, StageStartedAt: start}}
+	before := m.runtimeStatusText()
+	updated, _ := m.Update(tuiStatusTickMsg(start.Add(2 * time.Second)))
+	m = updated.(tuiModel)
+	after := m.runtimeStatusText()
+	if before == after || !strings.Contains(after, "00:02") {
+		t.Fatalf("status did not update, before=%q after=%q", before, after)
+	}
+}
+
 type staticCompletionSource []completion.Item
 
 func (s staticCompletionSource) Complete(context.Context, completion.Request) []completion.Item {
@@ -183,6 +221,36 @@ func TestReasoningContentIsSeparateFromAssistantReplace(t *testing.T) {
 	}
 	if strings.Contains(got, "[thinking]") || strings.Contains(got, "[/thinking]") {
 		t.Fatalf("thinking markers should not be displayed: %q", got)
+	}
+	if strings.Contains(got, "assistant: raw") {
+		t.Fatalf("raw assistant content was not replaced: %q", got)
+	}
+}
+
+func TestReasoningRenderKeepsContentAcrossBlankLines(t *testing.T) {
+	m := &tuiModel{assistantName: "assistant"}
+	m.appendReasoningContent("[thinking] 第一段\n\n第二段")
+	rendered := m.renderContent(m.content)
+	if !strings.Contains(rendered, "thinking: 第一段\n\n第二段") {
+		t.Fatalf("reasoning paragraphs were not preserved: %q", rendered)
+	}
+	if strings.Contains(rendered, "[thinking]") || strings.Contains(rendered, "[/thinking]") {
+		t.Fatalf("thinking markers should not be displayed: %q", rendered)
+	}
+}
+
+func TestReasoningSurvivesNoticeFallbackAndAssistantReplace(t *testing.T) {
+	m := &tuiModel{assistantName: "assistant"}
+	m.appendReasoningContent("[thinking] 先想\n\n再想")
+	m.appendContent("[notice] [tool] 正在调用 web_search\n")
+	m.appendAssistantContent("raw")
+	m.replaceAssistantContent("final text")
+
+	got := m.content
+	for _, want := range []string{"thinking: 先想", "再想", "[notice] [tool] 正在调用 web_search", "assistant: final text"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("content %q missing %q", got, want)
+		}
 	}
 	if strings.Contains(got, "assistant: raw") {
 		t.Fatalf("raw assistant content was not replaced: %q", got)

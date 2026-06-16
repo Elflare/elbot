@@ -12,6 +12,7 @@ import (
 	"elbot/internal/output"
 	"elbot/internal/platform"
 	"elbot/internal/request"
+	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/storage"
 )
 
@@ -112,6 +113,11 @@ func (a *Agent) startChat(ctx context.Context, session *storage.Session, text st
 	defer a.turns.FinishRequest(session.ID)
 	if err := a.runChat(ctx, session, text); err != nil {
 		a.turns.StopSession(session.ID)
+		status := a.runtimeStatusForSession(session.ID)
+		status.Phase = runtimestatus.PhaseError
+		status.FinishedAt = storage.Now()
+		status.Error = err.Error()
+		a.updateRuntimeStatus(ctx, status)
 		return err
 	}
 	return nil
@@ -154,6 +160,8 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			selection.Model = override.Model
 		}
 	}
+	turnStartedAt := storage.Now()
+	a.updateRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
 	llmMessages, err := a.promptBuilder.Build(ctx, PromptBuildRequest{Session: session, Scope: a.scope(ctx), Messages: messages, Summary: loaded.Summary})
 	if err != nil {
 		return err
@@ -180,6 +188,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	selection.Model = turnEvent.LLM.Model
 	llmMessages = turnEvent.LLM.Messages
 	tools = turnEvent.LLM.Tools
+	a.updateRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
 	if updatedUserContent := llm.LatestUserSegmentContentText(llmMessages); updatedUserContent != "" {
 		userMessage.Content = updatedUserContent
 	}
@@ -207,6 +216,8 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			turnMessages = turnMessages[:0]
 		}
 		stream := a.startMessageStream(reqCtx)
+		llmStageStartedAt := storage.Now()
+		a.updateRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseLLM, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindLLM, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: llmStageStartedAt, Usage: usage})
 		result, updatedUserContent, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, latestUserContent, stream)
 		latestUserContent = ""
 		if len(result.Messages) > 0 {
@@ -227,6 +238,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		if result.Usage != nil {
 			usage = result.Usage
 		}
+		a.updateRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseLLM, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindLLM, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: llmStageStartedAt, Usage: usage})
 		immediateOutputs, laterOutputs := splitOutputsByDeliveryTiming(result.Outputs)
 		if len(result.ToolCalls) == 0 {
 			deferredOutputs = append(deferredOutputs, laterOutputs...)
@@ -378,6 +390,8 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		return err
 	}
 	a.recordUsage(session.ID, usage)
+	doneStatus := runtimeDoneStatus(runtimestatus.Snapshot{SessionID: session.ID, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt, Usage: usage}, storage.Now())
+	a.updateRuntimeStatus(ctx, doneStatus)
 	if a.markPendingCompact(ctx, session, usage) {
 		a.sendChat(ctx, "compact status: will compact before next request\n")
 	}

@@ -434,6 +434,19 @@ func (s *longMemoryStore) delete(ctx context.Context, id int64) (string, error) 
 	return record.FilePath, nil
 }
 
+func (s *longMemoryStore) close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.db == nil {
+		return nil
+	}
+	err := s.db.Close()
+	s.db = nil
+	s.initialized = false
+	s.ftsAvailable = false
+	return err
+}
+
 func (s *longMemoryStore) ensureLocked(ctx context.Context) error {
 	if s.initialized {
 		return nil
