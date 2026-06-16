@@ -67,6 +67,9 @@ func TestResolveUpdateRunAtReturnsPointerForRelativeOffset(t *testing.T) {
 
 func TestCronToolsRiskAndVisibility(t *testing.T) {
 	tools := NewCronTools(&elcron.Service{})
+	if len(tools) != 3 {
+		t.Fatalf("tool count = %d", len(tools))
+	}
 	infos := map[string]tool.Info{}
 	for _, cronTool := range tools {
 		infos[cronTool.Name()] = cronTool.Info()
@@ -74,16 +77,15 @@ func TestCronToolsRiskAndVisibility(t *testing.T) {
 	if !infos["cron"].SuperadminOnly || infos["cron"].Hidden || infos["cron"].Risk != tool.RiskMedium {
 		t.Fatalf("cron info = %#v", infos["cron"])
 	}
-	for _, name := range []string{"cron_get", "cron_list"} {
-		info := infos[name]
-		if !info.SuperadminOnly || !info.Hidden || info.Risk != tool.RiskMedium {
-			t.Fatalf("%s info = %#v", name, info)
-		}
+	if deps := strings.Join(infos["cron"].DependsOn, ","); deps != "cron_query,cron_write" {
+		t.Fatalf("cron dependencies = %q", deps)
 	}
-	for _, name := range []string{"cron_create", "cron_update", "cron_delete", "cron_disable"} {
-		info := infos[name]
-		if !info.SuperadminOnly || !info.Hidden || info.Risk != tool.RiskHigh {
-			t.Fatalf("%s info = %#v", name, info)
-		}
+	info := infos["cron_query"]
+	if !info.SuperadminOnly || !info.Hidden || info.Risk != tool.RiskMedium {
+		t.Fatalf("cron_query info = %#v", info)
+	}
+	info = infos["cron_write"]
+	if !info.SuperadminOnly || !info.Hidden || info.Risk != tool.RiskHigh {
+		t.Fatalf("cron_write info = %#v", info)
 	}
 }

@@ -156,15 +156,15 @@
 - `internal/tool/builtin/artifact.go`：artifact 文件暂存 helper；sandbox 内文件直接发送，外部文件复制到统一 sandbox 的 `artifact/` 子目录，做大小、文件名、MIME 和 Windows/MSYS 路径处理，未来可接 S3/R2。
 - `internal/tool/builtin/send_file.go`：内置发文件工具；仅超管可用，支持 `path`/`file` 参数，相对路径在 cron 中按 cron sandbox 解析，外部文件确认/自动处理后通过 output.File 发送。
 - `internal/tool/builtin/chat_history.go`：内置聊天历史工具；按当前 platform/scope 搜索、查看上下文和引用回复平台聊天记录，用户侧 tag 为 `chat`。
-- `internal/tool/builtin/long_memory.go`：全局长期记忆工具组；可见入口 `long_memory` 依赖隐藏 CRUD/Search 工具，仅超管可用；Markdown 文件是源数据，SQLite FTS 是可重建索引，搜索/分类前会轻量同步并提示手改格式损坏文件。
-- `internal/tool/builtin/cron.go`：内置 cron 工具组；可见主工具 `cron` 依赖隐藏 CRUD 工具，查询为 medium 风险，增删改停用为 high 风险，全部仅超级管理员可用；`cron_create`/`cron_update` 的 LLM cron 可传 `tool_list_names` 预注入工具；`cron_list` 默认隐藏已完成 cron，传 `include_completed=true` 才显示历史完成项。
+- `internal/tool/builtin/long_memory.go`：全局长期记忆工具组；可见入口 `long_memory` 依赖隐藏的 `long_memory_search`/`long_memory_write`，仅超管可用；Markdown 文件是源数据，SQLite FTS 是可重建索引，搜索/分类前会轻量同步并提示手改格式损坏文件。
+- `internal/tool/builtin/cron.go`：内置 cron 工具组；可见主工具 `cron` 依赖隐藏的 `cron_query`/`cron_write`，查询为 medium 风险，写操作为 high 风险，全部仅超级管理员可用；LLM cron 可传 `tool_list_names` 预注入工具；列表默认隐藏已完成 cron，传 `include_completed=true` 才显示历史完成项。
 
 - `internal/tool/builtin/env.go`：内置工具环境变量读取 helper；优先读 OS env，缺失时读取配置目录 `.env`，用于 Tavily/Jina API key。
 - `internal/tool/builtin/web_search.go`：Tavily 搜索工具；返回 answer、来源链接和摘要，并依赖 `web_extract`，用户侧 tag 为 `web`。
 - `internal/tool/builtin/web_extract.go`：Jina Reader/标准库网页提取工具；支持代理、分段读取和进程内缓存，用户侧 tag 为 `web`。
-- `internal/tool/builtin/file_tools.go`：文件读写工具；`read_file` 返回带行号文本和文件哈希，`edit_file` 按行支持替换/插入/删除并返回 unified diff；两者都打 `files` tag，`edit_file` 在 cron 后台只允许 sandbox 内路径。
+- `internal/tool/builtin/file_tools.go`：文件读写工具；`read_file` 返回带行号文本和文件哈希，`edit_file` 按行支持替换/插入/删除并返回 unified diff；两者都打 `files`/`agent` tag，`edit_file` 在 cron 后台只允许 sandbox 内路径。
 
-- `internal/tool/builtin/shell.go`：内置 shell 工具；接口保留通用 `cmd`，可执行任意 shell 命令，调用前通过风险评估与高风险确认流程拦截；cron sandbox context 下会创建目录并把 shell cwd 固定到 sandbox。
+- `internal/tool/builtin/shell.go`：内置 shell 工具；接口保留通用 `cmd`，可执行任意 shell 命令，用户侧 tag 为 `agent`，调用前通过风险评估与高风险确认流程拦截；cron sandbox context 下会创建目录并把 shell cwd 固定到 sandbox。
 - `internal/tool/builtin/shell_risk.go`：shell/bash 命令风险分类器；使用 `mvdan.cc/sh/v3/syntax` 解析 AST，识别管道、重定向、命令替换、动态命令、删除、提权、下载即执行等风险并返回风险原因。
 - `internal/tool/builtin/shell_sandbox.go`：cron shell 轻沙盒 AST 校验；检查重定向和常见路径参数中的绝对路径、`..` 逃逸、动态路径与 `cd`，违规时把风险提升为 critical。
 - `internal/elyph/`：ELyph Task Notation 语言层；提供规则卡、AST/diagnostic、parser/linter，供原生 skill 创建、扫描和 LLM cron 任务复用。
