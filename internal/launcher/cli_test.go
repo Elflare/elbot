@@ -23,6 +23,7 @@ func TestParseArgs(t *testing.T) {
 		{name: "service run", args: []string{"service", "run"}, wantMode: app.RunModeService, wantCmd: CommandRun},
 		{name: "completion fish", args: []string{"completion", "fish"}, wantMode: app.RunModeAuto, wantCmd: CommandCompletion},
 		{name: "completion bash", args: []string{"completion", "bash"}, wantMode: app.RunModeAuto, wantCmd: CommandCompletion},
+		{name: "completion nushell", args: []string{"completion", "nushell"}, wantMode: app.RunModeAuto, wantCmd: CommandCompletion},
 		{name: "go run separator", args: []string{"--", "completion", "fish"}, wantMode: app.RunModeAuto, wantCmd: CommandCompletion},
 		{name: "config before command", args: []string{"--config", "config/app.toml", "run"}, wantMode: app.RunModeFull, wantCmd: CommandRun, wantConfig: "config/app.toml"},
 		{name: "config after command", args: []string{"cli", "--config=config/app.toml"}, wantMode: app.RunModeCLIOnly, wantCmd: CommandRun, wantConfig: "config/app.toml"},
@@ -57,7 +58,7 @@ func TestParseArgs(t *testing.T) {
 }
 
 func TestWriteCompletionShells(t *testing.T) {
-	for _, shell := range []string{"bash", "zsh", "fish", "powershell", "pwsh"} {
+	for _, shell := range []string{"bash", "zsh", "fish", "nu", "nushell", "powershell", "pwsh"} {
 		t.Run(shell, func(t *testing.T) {
 			var buf bytes.Buffer
 			if err := WriteCompletion(&buf, shell); err != nil {

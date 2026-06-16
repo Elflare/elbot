@@ -26,7 +26,7 @@
 ### 入口与启动
 
 - `cmd/elbot/main.go`：程序入口；调用 `internal/launcher` 解析命令，创建根 context 并调用 `internal/app.Run`。
-- `internal/launcher/cli.go`：手写解析 `run`、`cli`、`service run`、`completion`，并生成 bash/zsh/fish/powershell 补全。
+- `internal/launcher/cli.go`：手写解析 `run`、`cli`、`service run`、`completion`，并生成 bash/zsh/fish/nushell/powershell 补全。
 - `internal/app/app.go`：应用装配入口；加载配置、日志、SQLite、LLM、Agent、Tool、Platform、Hook、Output、Cron 等依赖，并按运行模式启动平台 runtime/Cron。
 - `internal/app/service_marker.go`：Linux service pid marker；供默认启动判断是否切到 CLI-only。
 
