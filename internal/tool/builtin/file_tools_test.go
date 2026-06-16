@@ -378,6 +378,112 @@ func TestEditFileToolCronRiskAndSandbox(t *testing.T) {
 	}
 }
 
+func TestReadFileToolEmptyFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "empty.txt")
+	if err := os.WriteFile(path, nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path})
+	result, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "lines: 0/0") || !strings.Contains(result.Content, "empty: true") {
+		t.Fatalf("unexpected empty file output:\n%s", result.Content)
+	}
+}
+
+func TestEditFileToolCreateAndAppend(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "created.txt")
+	args, _ := json.Marshal(map[string]any{
+		"path":   path,
+		"create": true,
+		"edits": []map[string]any{{
+			"operation": "append",
+			"content":   "alpha",
+		}},
+	})
+	result, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "created: true") {
+		t.Fatalf("expected created result, got:\n%s", result.Content)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != "alpha\n" {
+		t.Fatalf("file content = %q", got)
+	}
+}
+
+func TestEditFileToolCreateWithExpectedSHARequiresExistingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.txt")
+	args, _ := json.Marshal(map[string]any{
+		"path":            path,
+		"create":          true,
+		"expected_sha256": "deadbeef",
+		"edits":           []map[string]any{{"operation": "append", "content": "alpha"}},
+	})
+	_, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "stat file") {
+		t.Fatalf("expected stat error, got %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("file should not be created, stat err = %v", err)
+	}
+}
+
+func TestEditFileToolInsertLineAvoidsJoinedLines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\ngamma\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation":  "insert_line_after",
+			"start_line": 1,
+			"content":    "beta",
+		}},
+	})
+	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != "alpha\nbeta\ngamma\n" {
+		t.Fatalf("file content = %q", got)
+	}
+}
+
+func TestEditFileToolMultiHunkDiff(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	original := strings.Join([]string{"one", "two", "three", "four", "five", "six", "seven"}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path":          path,
+		"context_lines": 1,
+		"edits": []map[string]any{
+			{"operation": "replace", "start_line": 1, "content": "ONE"},
+			{"operation": "replace", "start_line": 7, "content": "SEVEN"},
+		},
+	})
+	result, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(result.Content, "@@ ") != 2 {
+		t.Fatalf("expected two diff hunks, got:\n%s", result.Content)
+	}
+}
+
 func TestFileToolsHaveFilesAndAgentTags(t *testing.T) {
 	if got := strings.Join(NewReadFileTool().Info().Tags, ","); got != "files,agent" {
 		t.Fatalf("read_file tags = %q", got)
