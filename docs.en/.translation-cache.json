@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "d61248c47b93afea981efa9c0cfbe0e24607cf5f0fe39db59277e96d4886dd33",
+      "source_hash": "b656aa69370a35f5f15bf71dc2f73ae246e23bb41be2a6a9565d0366c6d34084",
       "target": "README.md",
-      "updated_at": 1781534424
+      "updated_at": 1781575057
     },
     "docs/README.md": {
       "source_hash": "ece79e589e6219920d295c5ead264549fe40fe58ac5824ffef69da1b840702cf",
@@ -416,6 +416,14 @@
       "translation": "LLM Cron allows the model to be driven by task descriptions.\n",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:6fd699dc570c91d9bc38beec10e68819809609303f989983867dd04d0618c38d": {
+      "kind": "paragraph",
+      "source": "常用启动方式：\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "6fd699dc570c91d9bc38beec10e68819809609303f989983867dd04d0618c38d",
+      "translation": "Common startup methods:\n",
+      "updated_at": 1781575057
+    },
     "README.zh-CN.md:paragraph:71a065ff8e8a27f625377cdbae79b8a64f5e0d8d4b2c2ce34d3395a150d0ee4e": {
       "kind": "paragraph",
       "source": "用户文档放在 __ELBOT_CODE_0__，开发计划和内部资料放在 __ELBOT_CODE_1__。",
@@ -584,6 +592,14 @@
       "translation": "Documentation maintenance strategy: The README only retains the project entry point and the minimum startup path;",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:c1ad810b75707a64b3105a222bc789f975647f49706e1474861b0ef102ee1201": {
+      "kind": "paragraph",
+      "source": "开发期可以直接从源码启动：\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "c1ad810b75707a64b3105a222bc789f975647f49706e1474861b0ef102ee1201",
+      "translation": "During the development phase, you can start directly from the source code:\n",
+      "updated_at": 1781575057
+    },
     "README.zh-CN.md:paragraph:c32a98b0b84290a491fc8b1384d5edf9a8db4cde0d4dc50d24a60796a4f8a514": {
       "kind": "paragraph",
       "source": "相比随意 Markdown，ELyph 更适合 LLM 之间复用和传递任务，也便于 lint、审计和后续工具化处理。\n",
@@ -591,6 +607,14 @@
       "source_hash": "c32a98b0b84290a491fc8b1384d5edf9a8db4cde0d4dc50d24a60796a4f8a514",
       "translation": "Compared to arbitrary Markdown, ELyph is better suited for reusing and passing tasks between LLMs, and is also easier for linting, auditing, and subsequent tooling.\n",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:c6eb08a7f05ed52c309c1b39b3001e3fac4d234facd0d1ef61dd6aff35279be6": {
+      "kind": "paragraph",
+      "source": "Shell 补全可通过 __ELBOT_CODE_0__ 生成，支持 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__ 和 __ELBOT_CODE_6__。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "c6eb08a7f05ed52c309c1b39b3001e3fac4d234facd0d1ef61dd6aff35279be6",
+      "translation": "Shell completion can be generated via __ELBOT_CODE_0__, supporting __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, __ELBOT_CODE_5__, and __ELBOT_CODE_6__.\n",
+      "updated_at": 1781575057
     },
     "README.zh-CN.md:paragraph:cc0bd55b55ce7f0683fd77e6194a4774726f6e8b3ec816dbf0180c8fc152774f": {
       "kind": "paragraph",
