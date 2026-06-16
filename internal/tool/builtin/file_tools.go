@@ -108,7 +108,7 @@ func readFileBuilder() *tool.Builder {
 		Description("读取文本文件并返回带行号的内容；编辑前应先用它确认行号和文件哈希。").
 		Risk(tool.RiskLow).
 		Tags("files").
-		String("path", "要读取的文件路径，可为相对路径或绝对路径。", tool.Required()).
+		String("path", "要读取的文件路径", tool.Required()).
 		String("encoding", "文本编码，默认 auto；可选 utf-8、utf-8-bom、utf-16le、utf-16be、gbk、gb18030、big5、shift_jis 等。").
 		Integer("start_line", "起始行号，1-based；默认 1。").
 		String("end_line", "结束行号，1-based 且包含该行；也可传 end 表示文件末尾；默认最多返回 200 行。")
@@ -169,7 +169,7 @@ func editFileBuilder() *tool.Builder {
 		Description("按行编辑文本文件，支持替换、插入和删除；成功后返回 unified diff。编辑前应先用 read_file 确认行号。").
 		Risk(tool.RiskHigh).
 		Tags("files").
-		String("path", "要编辑的文件路径，可为相对路径或绝对路径；cron 后台只能编辑 sandbox 内文件。", tool.Required()).
+		String("path", "要编辑的文件路径。", tool.Required()).
 		String("encoding", "文本编码，默认 auto；非 UTF-8 文件应显式传入 gb18030、gbk、big5、shift_jis 等。").
 		String("operation", "编辑操作：replace、insert_before、insert_after、delete。", tool.Required()).
 		Integer("start_line", "起始行号，1-based。replace/delete 需要；insert_before/insert_after 表示插入位置。", tool.Required()).
@@ -242,6 +242,10 @@ func resolveFileToolPath(ctx context.Context, rawPath string, forWrite bool) (st
 	if rawPath == "" {
 		return "", fmt.Errorf("path is required")
 	}
+	expandedPath, err := expandHomePath(rawPath)
+	if err != nil {
+		return "", err
+	}
 	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.CronBackground {
 		root := strings.TrimSpace(sandbox.Dir)
 		if root == "" {
@@ -250,9 +254,9 @@ func resolveFileToolPath(ctx context.Context, rawPath string, forWrite bool) (st
 		if root == "" {
 			return "", fmt.Errorf("cron sandbox is not configured")
 		}
-		return resolveInsideRoot(rawPath, root)
+		return resolveInsideRoot(expandedPath, root)
 	}
-	path := filepath.Clean(rawPath)
+	path := filepath.Clean(expandedPath)
 	if !filepath.IsAbs(path) {
 		abs, err := filepath.Abs(path)
 		if err != nil {
@@ -268,6 +272,23 @@ func resolveFileToolPath(ctx context.Context, rawPath string, forWrite bool) (st
 		}
 	}
 	return path, nil
+}
+
+func expandHomePath(path string) (string, error) {
+	if path != "~" && !strings.HasPrefix(path, "~/") && !strings.HasPrefix(path, `~\`) {
+		return path, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home directory: %w", err)
+	}
+	if strings.TrimSpace(home) == "" {
+		return "", fmt.Errorf("home directory is not configured")
+	}
+	if path == "~" {
+		return home, nil
+	}
+	return filepath.Join(home, path[2:]), nil
 }
 
 func resolveInsideRoot(rawPath, root string) (string, error) {
