@@ -15,12 +15,8 @@ import (
 )
 
 type CronTool struct{ service *elcron.Service }
-type CronCreateTool struct{ service *elcron.Service }
-type CronUpdateTool struct{ service *elcron.Service }
-type CronDeleteTool struct{ service *elcron.Service }
-type CronDisableTool struct{ service *elcron.Service }
-type CronGetTool struct{ service *elcron.Service }
-type CronListTool struct{ service *elcron.Service }
+type CronQueryTool struct{ service *elcron.Service }
+type CronWriteTool struct{ service *elcron.Service }
 
 type cronCreateArgs struct {
 	Name                string   `json:"name"`
@@ -40,208 +36,69 @@ type cronCreateArgs struct {
 	Enabled             *bool    `json:"enabled"`
 }
 
-type cronUpdateArgs struct {
-	Name                string    `json:"name"`
-	Title               *string   `json:"title"`
-	ScheduleMode        *string   `json:"schedule_mode"`
-	RunAt               *string   `json:"run_at"`
-	CronExpr            *string   `json:"cron_expr"`
-	RunAfterMinutes     *int      `json:"run_after_minutes"`
-	RunAfterHours       *int      `json:"run_after_hours"`
-	RunAfterDays        *int      `json:"run_after_days"`
-	RunAfterWeeks       *int      `json:"run_after_weeks"`
-	RunAfterMonths      *int      `json:"run_after_months"`
-	TriggerMode         *string   `json:"trigger_mode"`
-	Message             *string   `json:"message"`
-	ToolListNames       *[]string `json:"tool_list_names"`
-	AllEnabledPlatforms *bool     `json:"all_enabled_platforms"`
-	Enabled             *bool     `json:"enabled"`
+type cronQueryArgs struct {
+	Name             string `json:"name"`
+	IncludeDisabled  bool   `json:"include_disabled"`
+	IncludeCompleted bool   `json:"include_completed"`
 }
 
-type cronNameArgs struct {
-	Name string `json:"name"`
-}
-type cronListArgs struct {
-	IncludeDisabled  bool `json:"include_disabled"`
-	IncludeCompleted bool `json:"include_completed"`
+type cronWriteArgs struct {
+	Operation           string   `json:"operation"`
+	Name                string   `json:"name"`
+	Title               string   `json:"title"`
+	ScheduleMode        string   `json:"schedule_mode"`
+	RunAt               string   `json:"run_at"`
+	CronExpr            string   `json:"cron_expr"`
+	RunAfterMinutes     int      `json:"run_after_minutes"`
+	RunAfterHours       int      `json:"run_after_hours"`
+	RunAfterDays        int      `json:"run_after_days"`
+	RunAfterWeeks       int      `json:"run_after_weeks"`
+	RunAfterMonths      int      `json:"run_after_months"`
+	TriggerMode         string   `json:"trigger_mode"`
+	Message             string   `json:"message"`
+	ToolListNames       []string `json:"tool_list_names"`
+	AllEnabledPlatforms *bool    `json:"all_enabled_platforms"`
+	Enabled             *bool    `json:"enabled"`
 }
 
 func NewCronTools(service *elcron.Service) []tool.Tool {
-	return []tool.Tool{CronTool{service}, CronCreateTool{service}, CronUpdateTool{service}, CronDeleteTool{service}, CronDisableTool{service}, CronGetTool{service}, CronListTool{service}}
+	return []tool.Tool{CronTool{service}, CronQueryTool{service}, CronWriteTool{service}}
 }
 
 func (t CronTool) Name() string { return "cron" }
 func (t CronTool) Info() tool.Info {
-	return tool.NewBuilder(t.Name()).Description("管理系统 Cron 定时任务。本工具仅为入口").Risk(tool.RiskMedium).SuperadminOnly().DependsOn("cron_create", "cron_update", "cron_delete", "cron_disable", "cron_get", "cron_list").BuildInfo()
+	return tool.NewBuilder(t.Name()).Description("管理系统 Cron 定时任务。本工具仅为入口").Risk(tool.RiskMedium).SuperadminOnly().DependsOn("cron_query", "cron_write").BuildInfo()
 }
 func (t CronTool) Schema() llm.ToolSchema {
 	return cronBuilder(t.Name(), t.Info().Description).BuildSchema()
 }
 func (t CronTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
 	now := time.Now().Format("2006-01-02 15:04:05")
-	return textResult("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_create、cron_update、cron_delete、cron_disable、cron_get 或 cron_list。"), nil
+	return textResult("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。"), nil
 }
 
-func (t CronCreateTool) Name() string { return "cron_create" }
-func (t CronCreateTool) Info() tool.Info {
-	return hiddenCronInfo(t.Name(), "创建一次性或周期 cron。", tool.RiskHigh)
+func (t CronQueryTool) Name() string { return "cron_query" }
+func (t CronQueryTool) Info() tool.Info {
+	return hiddenCronInfo(t.Name(), "查询单个 cron 或列出 cron。不传 name 时列出；传 name 时查询单个。", tool.RiskMedium)
 }
-func (t CronCreateTool) Schema() llm.ToolSchema {
-	return cronBuilder(t.Name(), cronCreateDescription()).
-		String("name", "任务短名，只允许字母、数字、下划线、点和横线。", tool.Required()).
-		String("title", "cron session 标题。为空时使用 name。", tool.Required()).
-		String("schedule_mode", "触发计划类型：once 或 cron。", tool.Required()).
-		String("run_at", "一次性任务绝对时间，格式 YYYY-MM-DD HH:MM:SS。schedule_mode=once 且未使用 run_after_* 时填写。\n~ 任意 run_after_* 同时传").
-		String("cron_expr", "5 字段 cron 表达式。schedule_mode=cron 时填写。").
-		Integer("run_after_minutes", "一次性任务相对当前时间的分钟偏移。\n** 用户说几分钟后时优先使用\n~ run_at 同时传").
-		Integer("run_after_hours", "一次性任务相对当前时间的小时偏移。\n** 用户说几小时后时优先使用\n~ run_at 同时传").
-		Integer("run_after_days", "一次性任务相对当前时间的天数偏移。\n** 用户说几天后时优先使用\n~ run_at 同时传").
-		Integer("run_after_weeks", "一次性任务相对当前时间的周数偏移，1周按7天。\n** 用户说几周后时优先使用\n~ run_at 同时传").
-		Integer("run_after_months", "一次性任务相对当前时间的日历月偏移。\n** 用户说几个月后时优先使用\n~ run_at 同时传").
-		String("trigger_mode", "触发模式：direct 或 llm。direct 直接发消息；llm 后台运行 LLM 处理复杂任务。", tool.Required()).
-		String("message", "trigger_mode=direct：使用普通自然语言通知文本。\ntrigger_mode=llm：使用 ELyph #task <name> - 描述 任务文本。", tool.Required()).
-		StringArray("tool_list_names", "trigger_mode=llm 时预注入的工具名列表；只传工具名。 ").
-		Boolean("all_enabled_platforms", "是否发送给所有平台超级管理员。 ").
-		Boolean("enabled", "创建后是否启用，默认 true。 ").
+func (t CronQueryTool) Schema() llm.ToolSchema {
+	return cronBuilder(t.Name(), "查询单个 cron 或列出 cron。 ").
+		String("name", "任务短名。留空则列出 cron。").
+		Boolean("include_disabled", "列出 cron 时是否包含已停用 cron。默认 false。 ").
+		Boolean("include_completed", "列出 cron 时是否显示已完成的 cron。默认 false；想查看历史一次性任务时设为 true。 ").
 		BuildSchema()
 }
-func (t CronCreateTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	var args cronCreateArgs
+func (t CronQueryTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+	var args cronQueryArgs
 	if err := decodeArgs(req.Arguments, &args); err != nil {
 		return nil, err
 	}
-	enabled := true
-	if args.Enabled != nil {
-		enabled = *args.Enabled
-	}
-	actor := actorFromContext(ctx)
-	runAt, err := resolveCreateRunAt(args)
-	if err != nil {
-		return nil, err
-	}
-	job, err := t.service.Create(ctx, elcron.UpsertRequest{Name: args.Name, Title: args.Title, ScheduleMode: elcron.ScheduleMode(args.ScheduleMode), RunAt: runAt, CronExpr: args.CronExpr, TriggerMode: elcron.TriggerMode(args.TriggerMode), Message: args.Message, ToolListNames: args.ToolListNames, AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: enabled, Actor: actor, SourcePlatform: actor.Platform})
-
-	if err != nil {
-		return nil, err
-	}
-	return jsonResult(map[string]any{"ok": true, "job": job})
-}
-
-func (t CronUpdateTool) Name() string { return "cron_update" }
-func (t CronUpdateTool) Info() tool.Info {
-	return hiddenCronInfo(t.Name(), "Patch 更新 cron。", tool.RiskHigh)
-}
-func (t CronUpdateTool) Schema() llm.ToolSchema {
-	return cronBuilder(t.Name(), cronUpdateDescription()).
-		String("name", "任务短名。", tool.Required()).
-		String("title", "新标题。 ").
-		String("schedule_mode", "触发计划类型：once 或 cron。 ").
-		String("run_at", "一次性任务绝对时间，格式 YYYY-MM-DD HH:MM:SS。\n~ 任意 run_after_* 同时传").
-		String("cron_expr", "5 字段 cron 表达式。schedule_mode=cron 时填写。 ").
-		Integer("run_after_minutes", "一次性任务相对当前时间的分钟偏移。\n** 用户说几分钟后时优先使用\n~ run_at 同时传").
-		Integer("run_after_hours", "一次性任务相对当前时间的小时偏移。\n** 用户说几小时后时优先使用\n~ run_at 同时传").
-		Integer("run_after_days", "一次性任务相对当前时间的天数偏移。\n** 用户说几天后时优先使用\n~ run_at 同时传").
-		Integer("run_after_weeks", "一次性任务相对当前时间的周数偏移，1周按7天。\n** 用户说几周后时优先使用\n~ run_at 同时传").
-		Integer("run_after_months", "一次性任务相对当前时间的日历月偏移。\n** 用户说几个月后时优先使用\n~ run_at 同时传").
-		String("trigger_mode", "触发模式：direct 或 llm。direct 直接发消息；llm 后台运行 LLM 处理复杂任务。 ").
-		String("message", "trigger_mode=direct：使用普通自然语言通知文本。\ntrigger_mode=llm：使用 ELyph #task <name> - 描述 任务文本。").
-		StringArray("tool_list_names", "替换预注入工具名列表；只传工具名。传空数组表示清空。 ").
-		Boolean("all_enabled_platforms", "是否广播到所有 enabled 平台超级管理员。 ").
-		Boolean("enabled", "是否启用。false 表示停用但保留记录。 ").
-		BuildSchema()
-}
-func (t CronUpdateTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	var args cronUpdateArgs
-	if err := decodeArgs(req.Arguments, &args); err != nil {
-		return nil, err
-	}
-	runAt, err := resolveUpdateRunAt(args.RunAt, relativeOffset{Minutes: intValue(args.RunAfterMinutes), Hours: intValue(args.RunAfterHours), Days: intValue(args.RunAfterDays), Weeks: intValue(args.RunAfterWeeks), Months: intValue(args.RunAfterMonths)})
-	if err != nil {
-		return nil, err
-	}
-	patch := elcron.PatchRequest{Name: args.Name, Title: args.Title, RunAt: runAt, CronExpr: args.CronExpr, Message: args.Message, ToolListNames: args.ToolListNames, AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: args.Enabled, Actor: actorFromContext(ctx)}
-
-	if args.ScheduleMode != nil {
-		v := elcron.ScheduleMode(*args.ScheduleMode)
-		patch.ScheduleMode = &v
-	}
-	if args.TriggerMode != nil {
-		v := elcron.TriggerMode(*args.TriggerMode)
-		patch.TriggerMode = &v
-	}
-	job, err := t.service.Update(ctx, patch)
-	if err != nil {
-		return nil, err
-	}
-	return jsonResult(map[string]any{"ok": true, "job": job})
-}
-
-func (t CronDeleteTool) Name() string { return "cron_delete" }
-func (t CronDeleteTool) Info() tool.Info {
-	return hiddenCronInfo(t.Name(), "硬删除 cron。", tool.RiskHigh)
-}
-func (t CronDeleteTool) Schema() llm.ToolSchema {
-	return cronBuilder(t.Name(), "硬删除 cron，不保留调度记录。用户只想暂停时优先用 cron_disable。 ").String("name", "任务短名", tool.Required()).BuildSchema()
-}
-func (t CronDeleteTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	var args cronNameArgs
-	if err := decodeArgs(req.Arguments, &args); err != nil {
-		return nil, err
-	}
-	if err := t.service.Delete(ctx, args.Name, actorFromContext(ctx)); err != nil {
-		return nil, err
-	}
-	return jsonResult(map[string]any{"ok": true})
-}
-
-func (t CronDisableTool) Name() string { return "cron_disable" }
-func (t CronDisableTool) Info() tool.Info {
-	return hiddenCronInfo(t.Name(), "停用 cron 但保留记录。", tool.RiskHigh)
-}
-func (t CronDisableTool) Schema() llm.ToolSchema {
-	return cronBuilder(t.Name(), "停用 cron 但保留记录").String("name", "任务短名", tool.Required()).BuildSchema()
-}
-func (t CronDisableTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	var args cronNameArgs
-	if err := decodeArgs(req.Arguments, &args); err != nil {
-		return nil, err
-	}
-	if err := t.service.Disable(ctx, args.Name, actorFromContext(ctx)); err != nil {
-		return nil, err
-	}
-	return jsonResult(map[string]any{"ok": true})
-}
-
-func (t CronGetTool) Name() string { return "cron_get" }
-func (t CronGetTool) Info() tool.Info {
-	return hiddenCronInfo(t.Name(), "查询单个 cron。", tool.RiskMedium)
-}
-func (t CronGetTool) Schema() llm.ToolSchema {
-	return cronBuilder(t.Name(), "查询单个 cron。 ").String("name", "任务短名。", tool.Required()).BuildSchema()
-}
-func (t CronGetTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	var args cronNameArgs
-	if err := decodeArgs(req.Arguments, &args); err != nil {
-		return nil, err
-	}
-	view, err := t.service.Get(ctx, args.Name, actorFromContext(ctx))
-	if err != nil {
-		return nil, err
-	}
-	return jsonResult(view)
-}
-
-func (t CronListTool) Name() string { return "cron_list" }
-func (t CronListTool) Info() tool.Info {
-	return hiddenCronInfo(t.Name(), "列出 cron。", tool.RiskMedium)
-}
-func (t CronListTool) Schema() llm.ToolSchema {
-	return cronBuilder(t.Name(), "列出 cron。 ").Boolean("include_disabled", "是否包含已停用 cron。默认 false。 ").Boolean("include_completed", "是否显示已完成的 cron。默认 false；想查看历史一次性任务时设为 true。 ").BuildSchema()
-}
-func (t CronListTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	var args cronListArgs
-	if err := decodeArgs(req.Arguments, &args); err != nil {
-		return nil, err
+	if strings.TrimSpace(args.Name) != "" {
+		view, err := t.service.Get(ctx, args.Name, actorFromContext(ctx))
+		if err != nil {
+			return nil, err
+		}
+		return jsonResult(view)
 	}
 	views, err := t.service.List(ctx, args.IncludeDisabled, args.IncludeCompleted, actorFromContext(ctx))
 	if err != nil {
@@ -250,28 +107,99 @@ func (t CronListTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	return jsonResult(views)
 }
 
-func cronCreateDescription() string {
-	return "创建一次性或周期 cron。\n\n" + elyph.RuleCard() + `
-
-#task cron_create_desc - cron_create 总规则
-** trigger_mode=direct 时，message 使用普通自然语言通知文本
-** trigger_mode=llm 时，message 使用 ELyph #task <name> - 描述 任务文本
-** 用户说几分钟/几小时/几天/几周/几个月后时，优先使用对应 run_after_*
-** enabled 缺省为 true
-~ 自己计算用户相对时间对应的 run_at
-~ 同时传 run_at 和任意 run_after_*`
+func (t CronWriteTool) Name() string { return "cron_write" }
+func (t CronWriteTool) Info() tool.Info {
+	return hiddenCronInfo(t.Name(), "创建、Patch 更新、停用或硬删除 cron。operation 为 create、update、disable 或 delete。", tool.RiskHigh)
+}
+func (t CronWriteTool) Schema() llm.ToolSchema {
+	return cronBuilder(t.Name(), cronWriteDescription()).
+		String("operation", "写操作：create、update、disable、delete。", tool.Required()).
+		String("name", "任务短名，只允许字母、数字、下划线、点和横线。", tool.Required()).
+		String("title", "create 需要；update 可选。cron session 标题。为空时使用 name。").
+		String("schedule_mode", "create 需要；update 可选。触发计划类型：once 或 cron。 ").
+		String("run_at", "一次性任务绝对时间，格式 YYYY-MM-DD HH:MM:SS。schedule_mode=once 且未使用 run_after_* 时填写。\n~ 任意 run_after_* 同时传").
+		String("cron_expr", "5 字段 cron 表达式。schedule_mode=cron 时填写。 ").
+		Integer("run_after_minutes", "一次性任务相对当前时间的分钟偏移。\n** 用户说几分钟后时优先使用\n~ run_at 同时传").
+		Integer("run_after_hours", "一次性任务相对当前时间的小时偏移。\n** 用户说几小时后时优先使用\n~ run_at 同时传").
+		Integer("run_after_days", "一次性任务相对当前时间的天数偏移。\n** 用户说几天后时优先使用\n~ run_at 同时传").
+		Integer("run_after_weeks", "一次性任务相对当前时间的周数偏移，1周按7天。\n** 用户说几周后时优先使用\n~ run_at 同时传").
+		Integer("run_after_months", "一次性任务相对当前时间的日历月偏移。\n** 用户说几个月后时优先使用\n~ run_at 同时传").
+		String("trigger_mode", "create 需要；update 可选。触发模式：direct 或 llm。direct 直接发消息；llm 后台运行 LLM 处理复杂任务。 ").
+		String("message", "create 需要；update 可选。trigger_mode=direct：使用普通自然语言通知文本。trigger_mode=llm：使用 ELyph #task <name> - 描述 任务文本。").
+		StringArray("tool_list_names", "trigger_mode=llm 时预注入的工具名列表；只传工具名。update 传空数组表示清空。 ").
+		Boolean("all_enabled_platforms", "是否发送/广播到所有 enabled 平台超级管理员。 ").
+		Boolean("enabled", "create：创建后是否启用，默认 true；update：是否启用。false 表示停用但保留记录。 ").
+		BuildSchema()
+}
+func (t CronWriteTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+	var args cronWriteArgs
+	if err := decodeArgs(req.Arguments, &args); err != nil {
+		return nil, err
+	}
+	switch strings.ToLower(strings.TrimSpace(args.Operation)) {
+	case "create":
+		return t.create(ctx, args)
+	case "update":
+		return t.update(ctx, args)
+	case "disable":
+		if err := t.service.Disable(ctx, args.Name, actorFromContext(ctx)); err != nil {
+			return nil, err
+		}
+		return jsonResult(map[string]any{"ok": true})
+	case "delete":
+		if err := t.service.Delete(ctx, args.Name, actorFromContext(ctx)); err != nil {
+			return nil, err
+		}
+		return jsonResult(map[string]any{"ok": true})
+	default:
+		return nil, fmt.Errorf("operation must be create, update, disable, or delete")
+	}
 }
 
-func cronUpdateDescription() string {
-	return "Patch 更新 cron。\n\n" + elyph.RuleCard() + `
+func (t CronWriteTool) create(ctx context.Context, args cronWriteArgs) (*tool.Result, error) {
+	enabled := true
+	if args.Enabled != nil {
+		enabled = *args.Enabled
+	}
+	actor := actorFromContext(ctx)
+	allEnabledPlatforms := false
+	if args.AllEnabledPlatforms != nil {
+		allEnabledPlatforms = *args.AllEnabledPlatforms
+	}
+	createArgs := cronCreateArgs{Name: args.Name, Title: args.Title, ScheduleMode: args.ScheduleMode, RunAt: args.RunAt, CronExpr: args.CronExpr, RunAfterMinutes: args.RunAfterMinutes, RunAfterHours: args.RunAfterHours, RunAfterDays: args.RunAfterDays, RunAfterWeeks: args.RunAfterWeeks, RunAfterMonths: args.RunAfterMonths, TriggerMode: args.TriggerMode, Message: args.Message, ToolListNames: args.ToolListNames, AllEnabledPlatforms: allEnabledPlatforms, Enabled: args.Enabled}
+	runAt, err := resolveCreateRunAt(createArgs)
+	if err != nil {
+		return nil, err
+	}
+	job, err := t.service.Create(ctx, elcron.UpsertRequest{Name: args.Name, Title: args.Title, ScheduleMode: elcron.ScheduleMode(args.ScheduleMode), RunAt: runAt, CronExpr: args.CronExpr, TriggerMode: elcron.TriggerMode(args.TriggerMode), Message: args.Message, ToolListNames: args.ToolListNames, AllEnabledPlatforms: allEnabledPlatforms, Enabled: enabled, Actor: actor, SourcePlatform: actor.Platform})
+	if err != nil {
+		return nil, err
+	}
+	return jsonResult(map[string]any{"ok": true, "job": job})
+}
 
-#task cron_update_desc - cron_update 总规则
-** 只修改传入字段
-** trigger_mode=direct 时，message 使用普通自然语言通知文本
-** trigger_mode=llm 时，message 使用 ELyph #task <name> - 描述 任务文本
-** 用户说几分钟/几小时/几天/几周/几个月后时，优先使用对应 run_after_*
-~ 自己计算用户相对时间对应的 run_at
-~ 同时传 run_at 和任意 run_after_*`
+func (t CronWriteTool) update(ctx context.Context, args cronWriteArgs) (*tool.Result, error) {
+	runAt, err := resolveUpdateRunAt(stringPtrIfNotEmpty(args.RunAt), relativeOffset{Minutes: args.RunAfterMinutes, Hours: args.RunAfterHours, Days: args.RunAfterDays, Weeks: args.RunAfterWeeks, Months: args.RunAfterMonths})
+	if err != nil {
+		return nil, err
+	}
+	patch := elcron.PatchRequest{Name: args.Name, Title: stringPtrIfNotEmpty(args.Title), RunAt: runAt, CronExpr: stringPtrIfNotEmpty(args.CronExpr), Message: stringPtrIfNotEmpty(args.Message), AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: args.Enabled, Actor: actorFromContext(ctx)}
+	if args.ScheduleMode != "" {
+		v := elcron.ScheduleMode(args.ScheduleMode)
+		patch.ScheduleMode = &v
+	}
+	if args.TriggerMode != "" {
+		v := elcron.TriggerMode(args.TriggerMode)
+		patch.TriggerMode = &v
+	}
+	if args.ToolListNames != nil {
+		patch.ToolListNames = &args.ToolListNames
+	}
+	job, err := t.service.Update(ctx, patch)
+	if err != nil {
+		return nil, err
+	}
+	return jsonResult(map[string]any{"ok": true, "job": job})
 }
 
 func resolveCreateRunAt(args cronCreateArgs) (string, error) {
@@ -324,11 +252,27 @@ func resolveRunAt(runAt string, offset relativeOffset) (string, error) {
 	return run.Format("2006-01-02 15:04:05"), nil
 }
 
-func intValue(value *int) int {
-	if value == nil {
-		return 0
+func cronWriteDescription() string {
+	return "创建、Patch 更新、停用或硬删除 cron。\n\n" + elyph.RuleCard() + `
+
+#task cron_write_desc - cron_write 总规则
+** operation=create 时创建一次性或周期 cron；title、schedule_mode、trigger_mode、message 通常需要填写
+** operation=update 时只修改传入字段
+** operation=disable 时停用 cron 但保留记录
+** operation=delete 时硬删除 cron，不保留调度记录；用户只想暂停时优先用 disable
+** trigger_mode=direct 时，message 使用普通自然语言通知文本
+** trigger_mode=llm 时，message 使用 ELyph #task <name> - 描述 任务文本
+** 用户说几分钟/几小时/几天/几周/几个月后时，优先使用对应 run_after_*
+** create 时 enabled 缺省为 true
+~ 自己计算用户相对时间对应的 run_at
+~ 同时传 run_at 和任意 run_after_*`
+}
+
+func stringPtrIfNotEmpty(value string) *string {
+	if value == "" {
+		return nil
 	}
-	return *value
+	return &value
 }
 
 func hiddenCronInfo(name, description string, risk tool.RiskLevel) tool.Info {

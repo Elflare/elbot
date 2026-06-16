@@ -85,6 +85,28 @@ func (b *Builder) StringArray(name, description string, opts ...ParamOption) *Bu
 	return b.param(name, "array", description, append(opts, Items("string"))...)
 }
 
+func (b *Builder) ObjectArray(name, description string, properties map[string]any, required []string, opts ...ParamOption) *Builder {
+	cfg := paramConfig{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&cfg)
+		}
+	}
+	items := map[string]any{"type": "object", "properties": properties}
+	if len(required) > 0 {
+		items["required"] = append([]string(nil), required...)
+	}
+	property := map[string]any{"type": "array", "description": description, "items": items}
+	if b.properties == nil {
+		b.properties = map[string]any{}
+	}
+	b.properties[name] = property
+	if cfg.required {
+		b.required = appendUnique(b.required, name)
+	}
+	return b
+}
+
 func (b *Builder) BuildInfo() Info {
 	return Info{Name: b.name, Description: b.description, Source: b.source, Risk: normalizeRisk(b.risk, RiskLow), SuperadminOnly: b.superadminOnly, Hidden: b.hidden, Tags: normalizeTags(b.tags), DependsOn: normalizeNames(b.dependsOn)}
 }
