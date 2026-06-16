@@ -227,7 +227,9 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			usage = result.Usage
 		}
 		immediateOutputs, laterOutputs := splitOutputsByDeliveryTiming(result.Outputs)
-		deferredOutputs = append(deferredOutputs, laterOutputs...)
+		if len(result.ToolCalls) == 0 {
+			deferredOutputs = append(deferredOutputs, laterOutputs...)
+		}
 		if err := a.sendOutputs(ctx, immediateOutputs); err != nil {
 			return err
 		}
@@ -250,6 +252,9 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			break
 		}
 		if err := a.finishIntermediateOutput(ctx, reqCtx, result.Stream, assistantText, streaming); err != nil {
+			return err
+		}
+		if err := a.sendOutputs(ctx, laterOutputs); err != nil {
 			return err
 		}
 		if !inToolPhase {

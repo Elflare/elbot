@@ -1477,6 +1477,72 @@ func TestNonCLIChatToolCallWithAssistantTextSkipsToolArgumentPreview(t *testing.
 	}
 }
 
+func TestToolCallAssistantEmoticonSendsBeforeFinalResponse(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{
+		{{DeltaContent: "我先查一下[[微笑]]"}, {ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
+		{{DeltaContent: "查完了"}},
+	}}
+	store := newTestStore(t)
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(newAgentShellTool())
+	a.SetToolRuntime(registry, nil)
+	manager := hook.NewManager()
+	configDir := t.TempDir()
+	rootDir := filepath.Join(configDir, "emotions")
+	if err := os.MkdirAll(filepath.Join(rootDir, "微笑"), 0o755); err != nil {
+		t.Fatalf("mkdir emoticon dir: %v", err)
+	}
+	cfg := fmt.Sprintf("root_dir = %q\ntiming = %q\n", rootDir, output.DeliveryAfterAssistant)
+	if err := os.WriteFile(filepath.Join(configDir, "emoticon.toml"), []byte(cfg), 0o644); err != nil {
+		t.Fatalf("write emoticon config: %v", err)
+	}
+	if err := hookbuiltin.RegisterAll(manager, hookbuiltin.Options{ConfigDir: configDir}); err != nil {
+		t.Fatalf("RegisterAll: %v", err)
+	}
+	a.SetHookManager(manager)
+
+	if err := a.HandleMessage(context.Background(), "看看目录"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	out := p.out.String()
+	textIdx := strings.Index(out, "我先查一下")
+	emoticonIdx := strings.Index(out, "[表情: 微笑]\n")
+	finalIdx := strings.Index(out, "查完了")
+	if textIdx < 0 || emoticonIdx < 0 || finalIdx < 0 {
+		t.Fatalf("platform output = %q, want intermediate text, emoticon, and final text", out)
+	}
+	if !(textIdx < emoticonIdx && emoticonIdx < finalIdx) {
+		t.Fatalf("invalid output order: %q", out)
+	}
+	if strings.Contains(out, "[[微笑]]") {
+		t.Fatalf("platform output still contains raw token: %q", out)
+	}
+	session, err := a.sessions.Current(context.Background(), a.scope(context.Background()))
+	if err != nil {
+		t.Fatalf("current session: %v", err)
+	}
+	messages, err := store.Messages().ListBySession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatalf("list messages: %v", err)
+	}
+	var foundRawIntermediate bool
+	for _, msg := range messages {
+		if msg.Role == storage.RoleAssistant && msg.Content == "我先查一下[[微笑]]" {
+			foundRawIntermediate = true
+		}
+	}
+	if !foundRawIntermediate {
+		t.Fatalf("messages = %#v, want raw intermediate assistant text", messages)
+	}
+	if got := messages[len(messages)-1].Content; got != "查完了" {
+		t.Fatalf("final assistant content = %q, want final response", got)
+	}
+}
+
 func TestChatExecutesAllToolCallsInSameRound(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{
