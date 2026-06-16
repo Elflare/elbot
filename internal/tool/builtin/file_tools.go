@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +24,7 @@ import (
 const (
 	defaultReadLineLimit = 200
 	maxFileToolSize      = 2 * 1024 * 1024
+	maxDiffCells         = 2_000_000
 )
 
 type ReadFileTool struct{}
@@ -68,16 +70,20 @@ func (n *lineNumber) UnmarshalJSON(data []byte) error {
 }
 
 type readFileArgs struct {
-	Path      string     `json:"path"`
-	Encoding  string     `json:"encoding"`
-	StartLine int        `json:"start_line"`
-	EndLine   lineNumber `json:"end_line"`
+	Path         string     `json:"path"`
+	Encoding     string     `json:"encoding"`
+	StartLine    int        `json:"start_line"`
+	EndLine      lineNumber `json:"end_line"`
+	Grep         string     `json:"grep"`
+	ContextLines int        `json:"context_lines"`
+	MaxMatches   int        `json:"max_matches"`
 }
 
 type editFileArgs struct {
 	Path           string          `json:"path"`
 	Encoding       string          `json:"encoding"`
 	ExpectedSHA256 string          `json:"expected_sha256"`
+	Create         bool            `json:"create"`
 	DryRun         bool            `json:"dry_run"`
 	ContextLines   int             `json:"context_lines"`
 	Edits          []editOperation `json:"edits"`
@@ -127,7 +133,10 @@ func readFileBuilder() *tool.Builder {
 		String("path", "要读取的文件路径", tool.Required()).
 		String("encoding", "文本编码，默认 auto；可选 utf-8、utf-8-bom、utf-16le、utf-16be、gbk、gb18030、big5、shift_jis 等。").
 		Integer("start_line", "起始行号，1-based；默认 1。").
-		String("end_line", "结束行号，1-based 且包含该行；也可传 end 表示文件末尾；默认最多返回 200 行。")
+		String("end_line", "结束行号，1-based 且包含该行；也可传 end 表示文件末尾；默认最多返回 200 行。").
+		String("grep", "可选，按子串搜索匹配行；提供后返回匹配行及上下文，而不是普通行范围读取。").
+		Integer("context_lines", "grep 上下文行数，默认 2，范围 0-20。").
+		Integer("max_matches", "grep 最大匹配数，默认 20，范围 1-100。")
 }
 
 func (ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
@@ -146,6 +155,9 @@ func (ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 		return nil, err
 	}
 	lines := splitLines(file.Text)
+	if strings.TrimSpace(args.Grep) != "" {
+		return readFileGrepResult(file, lines, args.Grep, args.ContextLines, args.MaxMatches)
+	}
 	start, end, truncated, err := normalizeReadRange(len(lines), args.StartLine, args.EndLine)
 	if err != nil {
 		return nil, err
@@ -154,12 +166,76 @@ func (ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 	fmt.Fprintf(&b, "file: %s\n", file.Path)
 	fmt.Fprintf(&b, "encoding: %s\n", file.Encoding)
 	fmt.Fprintf(&b, "sha256: %s\n", sha256Hex(file.Bytes))
+	if len(lines) == 0 {
+		fmt.Fprintf(&b, "lines: 0/0\n")
+		fmt.Fprintf(&b, "empty: true\n")
+		fmt.Fprintf(&b, "truncated: %t\n", truncated)
+		b.WriteString("content:\n")
+		return &tool.Result{Content: b.String()}, nil
+	}
+
 	fmt.Fprintf(&b, "lines: %d-%d/%d\n", start, end, len(lines))
 	fmt.Fprintf(&b, "truncated: %t\n", truncated)
 	b.WriteString("content:\n")
 	width := len(fmt.Sprintf("%d", end))
 	for i := start; i <= end; i++ {
 		fmt.Fprintf(&b, "%*d | %s\n", width, i, lines[i-1])
+	}
+	return &tool.Result{Content: b.String()}, nil
+}
+
+func readFileGrepResult(file decodedFile, lines []string, grep string, contextLines, maxMatches int) (*tool.Result, error) {
+	query := strings.TrimSpace(grep)
+	if query == "" {
+		return nil, fmt.Errorf("grep is required")
+	}
+	contextLines = normalizeGrepContextLines(contextLines)
+	maxMatches = normalizeMaxMatches(maxMatches)
+	matches := make([]int, 0)
+	for i, line := range lines {
+		if strings.Contains(line, query) {
+			matches = append(matches, i+1)
+			if len(matches) >= maxMatches {
+				break
+			}
+		}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "file: %s\n", file.Path)
+	fmt.Fprintf(&b, "encoding: %s\n", file.Encoding)
+	fmt.Fprintf(&b, "sha256: %s\n", sha256Hex(file.Bytes))
+	fmt.Fprintf(&b, "grep: %q\n", query)
+	fmt.Fprintf(&b, "matches: %d\n", len(matches))
+	fmt.Fprintf(&b, "context_lines: %d\n", contextLines)
+	b.WriteString("content:\n")
+	if len(matches) == 0 || len(lines) == 0 {
+		return &tool.Result{Content: b.String()}, nil
+	}
+	width := len(fmt.Sprintf("%d", len(lines)))
+	lastPrinted := 0
+	for _, matchLine := range matches {
+		start := matchLine - contextLines
+		if start < 1 {
+			start = 1
+		}
+		end := matchLine + contextLines
+		if end > len(lines) {
+			end = len(lines)
+		}
+		if lastPrinted > 0 && start > lastPrinted+1 {
+			b.WriteString("--\n")
+		}
+		if start <= lastPrinted {
+			start = lastPrinted + 1
+		}
+		for i := start; i <= end; i++ {
+			marker := " "
+			if i == matchLine {
+				marker = ">"
+			}
+			fmt.Fprintf(&b, "%s %*d | %s\n", marker, width, i, lines[i-1])
+		}
+		lastPrinted = end
 	}
 	return &tool.Result{Content: b.String()}, nil
 }
@@ -182,11 +258,11 @@ func (t EditFileTool) Schema() llm.ToolSchema {
 
 func editFileBuilder() *tool.Builder {
 	editProperties := map[string]any{
-		"operation":        map[string]any{"type": "string", "description": "编辑操作：replace、delete、insert_before、insert_after、replace_match、delete_match、insert_before_match、insert_after_match。edits 按顺序应用，后一步基于前一步结果；工具不会重排序或补偿行号。"},
+		"operation":        map[string]any{"type": "string", "description": "编辑操作：replace、delete、insert_line_before、insert_line_after、prepend、append、replace_match、delete_match、insert_before_match、insert_after_match。edits 按顺序应用，后一步基于前一步结果；工具不会重排序或补偿行号。"},
 		"start_line":       map[string]any{"type": "integer", "description": "行号操作的起始行号，1-based。"},
 		"end_line":         map[string]any{"type": "string", "description": "行号 replace/delete 的结束行号，1-based 且包含该行；也可传 end；默认等于 start_line。"},
-		"content":          map[string]any{"type": "string", "description": "replace/insert 写入的文本；delete/delete_match 会忽略该字段。工具不自动格式化或补空行。"},
-		"expected_content": map[string]any{"type": "string", "description": "replace/delete 前校验目标行范围原始文本；换行符按 \\n 规范化比较，用于防止行号漂移误改。"},
+		"content":          map[string]any{"type": "string", "description": "replace/insert 写入的文本；delete/delete_match 会忽略该字段。insert_line_before/insert_line_after/prepend/append 会按整行插入，自动补末尾换行。"},
+		"expected_content": map[string]any{"type": "string", "description": "replace/delete 前校验目标行范围原始文本；换行符按 \\n 规范化比较，用于防止行号漂移误改；不需要校验时请省略该字段，不要传空字符串。"},
 		"old_content":      map[string]any{"type": "string", "description": "replace_match/delete_match 要唯一匹配的原始文本；找不到或多处匹配都会失败。"},
 		"anchor":           map[string]any{"type": "string", "description": "insert_before_match/insert_after_match 要唯一匹配的锚点文本；找不到或多处匹配都会失败。"},
 	}
@@ -197,6 +273,7 @@ func editFileBuilder() *tool.Builder {
 		String("path", "要编辑的文件路径。", tool.Required()).
 		String("encoding", "文本编码，默认 auto；非 UTF-8 文件应显式传入 gb18030、gbk、big5、shift_jis 等。").
 		String("expected_sha256", "可选，编辑前文件 sha256；用于防止外部并发修改。").
+		Boolean("create", "为 true 时允许创建不存在的文本文件；提供 expected_sha256 时仍要求文件已存在。").
 		Boolean("dry_run", "为 true 时只执行校验并返回 diff，不写入文件。").
 		Integer("context_lines", "diff 上下文行数，默认 3，范围 0-20。").
 		ObjectArray("edits", "批量编辑列表，按顺序应用；连续编辑同一文件时优先使用 match/anchor 操作，行号 replace/delete 建议提供 expected_content。", editProperties, []string{"operation"}, tool.Required())
@@ -209,7 +286,7 @@ func (EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.
 			return tool.RiskAssessment{}, fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
-	if _, err := resolveFileToolPath(ctx, args.Path, true); err != nil {
+	if _, err := resolveFileToolPath(ctx, args.Path, args.Create); err != nil {
 		return tool.RiskAssessment{}, err
 	}
 	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.CronBackground {
@@ -225,11 +302,11 @@ func (EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 			return nil, fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
-	path, err := resolveFileToolPath(ctx, args.Path, true)
+	path, err := resolveFileToolPath(ctx, args.Path, args.Create)
 	if err != nil {
 		return nil, err
 	}
-	file, err := readDecodedFile(path, args.Encoding)
+	file, created, err := readOrCreateDecodedFile(path, args.Encoding, args.Create, strings.TrimSpace(args.ExpectedSHA256) != "")
 	if err != nil {
 		return nil, err
 	}
@@ -251,21 +328,23 @@ func (EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 	}
 	contextLines := normalizeContextLines(args.ContextLines)
 	diff := unifiedDiff(file.Path, splitLines(oldText), splitLines(newText), contextLines)
-	content := fmt.Sprintf("dry_run: %t\nedited: %s\nencoding: %s\nsha256_before: %s\nsha256_after: %s\ndiff:\n%s", args.DryRun, file.Path, file.Encoding, sha256Hex(file.Bytes), sha256Hex(newBytes), diff)
+	content := fmt.Sprintf("dry_run: %t\nedited: %s\ncreated: %t\nencoding: %s\nsha256_before: %s\nsha256_after: %s\ndiff:\n%s", args.DryRun, file.Path, created, file.Encoding, sha256Hex(file.Bytes), sha256Hex(newBytes), diff)
 	if args.DryRun {
 		return &tool.Result{Content: content}, nil
 	}
-	info, err := os.Stat(path)
-	if err != nil {
+	mode := os.FileMode(0644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode()
+	} else if !created {
 		return nil, fmt.Errorf("stat file: %w", err)
 	}
-	if err := os.WriteFile(path, newBytes, info.Mode()); err != nil {
+	if err := atomicWriteFile(path, newBytes, mode); err != nil {
 		return nil, fmt.Errorf("write file: %w", err)
 	}
 	return &tool.Result{Content: content}, nil
 }
 
-func resolveFileToolPath(ctx context.Context, rawPath string, forWrite bool) (string, error) {
+func resolveFileToolPath(ctx context.Context, rawPath string, allowCreate bool) (string, error) {
 	rawPath = strings.TrimSpace(rawPath)
 	if rawPath == "" {
 		return "", fmt.Errorf("path is required")
@@ -292,12 +371,12 @@ func resolveFileToolPath(ctx context.Context, rawPath string, forWrite bool) (st
 		}
 		path = abs
 	}
-	if forWrite {
-		if info, err := os.Stat(path); err != nil {
+	if info, err := os.Stat(path); err != nil {
+		if !allowCreate || !os.IsNotExist(err) {
 			return "", fmt.Errorf("stat file: %w", err)
-		} else if info.IsDir() {
-			return "", fmt.Errorf("path is a directory")
 		}
+	} else if info.IsDir() {
+		return "", fmt.Errorf("path is a directory")
 	}
 	return path, nil
 }
@@ -344,6 +423,29 @@ func resolveInsideRoot(rawPath, root string) (string, error) {
 		return "", fmt.Errorf("path escapes cron sandbox")
 	}
 	return candidateAbs, nil
+}
+
+func readOrCreateDecodedFile(path, requestedEncoding string, create bool, hasExpectedSHA bool) (decodedFile, bool, error) {
+	file, err := readDecodedFile(path, requestedEncoding)
+	if err == nil {
+		return file, false, nil
+	}
+	if !create || hasExpectedSHA || !errors.Is(err, os.ErrNotExist) {
+		return decodedFile{}, false, err
+	}
+	encodingName := strings.ToLower(strings.TrimSpace(requestedEncoding))
+	if encodingName == "" || encodingName == "auto" || encodingName == "utf8" {
+		encodingName = "utf-8"
+	}
+	if encodingName == "utf-8-bom" {
+		return decodedFile{Path: path, Encoding: "utf-8-bom", BOM: []byte{0xEF, 0xBB, 0xBF}, LineEnding: "\n"}, true, nil
+	}
+	if encodingName != "utf-8" {
+		if _, err := lookupEncoding(encodingName); err != nil {
+			return decodedFile{}, false, err
+		}
+	}
+	return decodedFile{Path: path, Encoding: encodingName, LineEnding: "\n"}, true, nil
 }
 
 func readDecodedFile(path, requestedEncoding string) (decodedFile, error) {
@@ -512,7 +614,7 @@ func applyEdit(text string, edit editOperation) (string, error) {
 		return "", fmt.Errorf("operation is required")
 	}
 	switch operation {
-	case "replace", "delete", "insert_before", "insert_after":
+	case "replace", "delete", "insert_line_before", "insert_line_after", "prepend", "append":
 		return applyLineEdit(text, edit)
 	case "replace_match":
 		start, end, err := findUniqueMatch(text, edit.OldContent, "old_content")
@@ -553,6 +655,7 @@ func applyLineEdit(text string, edit editOperation) (string, error) {
 		end = start
 	}
 	contentLines := splitLines(edit.Content)
+	lineContentLines := splitLines(ensureTrailingNewline(edit.Content))
 	out := append([]string{}, lines...)
 	switch operation {
 	case "replace":
@@ -571,15 +674,22 @@ func applyLineEdit(text string, edit editOperation) (string, error) {
 			return "", err
 		}
 		out = replaceLines(out, start, end, nil)
-	case "insert_before", "insert_after":
+	case "insert_line_before", "insert_line_after":
 		if err := validateInsertLine(len(lines), start); err != nil {
 			return "", err
 		}
 		index := start - 1
-		if operation == "insert_after" {
+		if operation == "insert_line_after" {
 			index = start
 		}
-		out = append(out[:index], append(contentLines, out[index:]...)...)
+		out = append(out[:index], append(lineContentLines, out[index:]...)...)
+		endsNewline = true
+	case "prepend":
+		out = append(lineContentLines, out...)
+		endsNewline = true
+	case "append":
+		out = append(out, lineContentLines...)
+		endsNewline = true
 	default:
 		return "", fmt.Errorf("unsupported operation %q", edit.Operation)
 	}
@@ -587,7 +697,7 @@ func applyLineEdit(text string, edit editOperation) (string, error) {
 }
 
 func validateExpectedContent(lines []string, start, end int, expected *string) error {
-	if expected == nil {
+	if expected == nil || *expected == "" {
 		return nil
 	}
 	actual := strings.Join(lines[start-1:end], "\n")
@@ -613,6 +723,14 @@ func findUniqueMatch(text, rawNeedle, label string) (int, int, error) {
 	return first, first + len(needle), nil
 }
 
+func ensureTrailingNewline(text string) string {
+	text = normalizeEditText(text)
+	if text == "" || strings.HasSuffix(text, "\n") {
+		return text
+	}
+	return text + "\n"
+}
+
 func normalizeEditText(text string) string {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	return strings.ReplaceAll(text, "\r", "\n")
@@ -623,6 +741,29 @@ func restoreLineEndings(text, lineEnding string) string {
 		return text
 	}
 	return strings.ReplaceAll(text, "\n", lineEnding)
+}
+
+func normalizeGrepContextLines(value int) int {
+	if value < 0 {
+		return 0
+	}
+	if value == 0 {
+		return 2
+	}
+	if value > 20 {
+		return 20
+	}
+	return value
+}
+
+func normalizeMaxMatches(value int) int {
+	if value <= 0 {
+		return 20
+	}
+	if value > 100 {
+		return 100
+	}
+	return value
 }
 
 func normalizeContextLines(value int) int {
@@ -731,24 +872,36 @@ type diffHunk struct {
 }
 
 func unifiedDiff(path string, oldLines, newLines []string, contextLines int) string {
+	if diffTooLarge(oldLines, newLines) {
+		return fmt.Sprintf("--- %s\n+++ %s\n# diff omitted: too many line comparisons (%d x %d)\n", path, path, len(oldLines), len(newLines))
+	}
 	ops := diffLines(oldLines, newLines)
-	hunk := trimDiffContext(ops, contextLines)
+	hunks := buildDiffHunks(ops, contextLines)
 	var b strings.Builder
 	fmt.Fprintf(&b, "--- %s\n", path)
 	fmt.Fprintf(&b, "+++ %s\n", path)
-	oldCount, newCount := diffHunkCounts(hunk.ops)
-	fmt.Fprintf(&b, "@@ -%d,%d +%d,%d @@\n", hunk.oldStart, oldCount, hunk.newStart, newCount)
-	for _, op := range hunk.ops {
-		switch op.kind {
-		case diffEqual:
-			fmt.Fprintf(&b, " %s\n", op.text)
-		case diffDelete:
-			fmt.Fprintf(&b, "-%s\n", op.text)
-		case diffInsert:
-			fmt.Fprintf(&b, "+%s\n", op.text)
+	for _, hunk := range hunks {
+		oldCount, newCount := diffHunkCounts(hunk.ops)
+		fmt.Fprintf(&b, "@@ -%d,%d +%d,%d @@\n", hunk.oldStart, oldCount, hunk.newStart, newCount)
+		for _, op := range hunk.ops {
+			switch op.kind {
+			case diffEqual:
+				fmt.Fprintf(&b, " %s\n", op.text)
+			case diffDelete:
+				fmt.Fprintf(&b, "-%s\n", op.text)
+			case diffInsert:
+				fmt.Fprintf(&b, "+%s\n", op.text)
+			}
 		}
 	}
 	return b.String()
+}
+
+func diffTooLarge(oldLines, newLines []string) bool {
+	if len(oldLines) == 0 || len(newLines) == 0 {
+		return false
+	}
+	return len(oldLines) > maxDiffCells/len(newLines)
 }
 
 type diffKind int
@@ -799,19 +952,51 @@ func diffLines(a, b []string) []diffOp {
 	return ops
 }
 
-func trimDiffContext(ops []diffOp, contextLines int) diffHunk {
-	first, last := -1, -1
+func buildDiffHunks(ops []diffOp, contextLines int) []diffHunk {
+	firstChange, lastChange := -1, -1
 	for i, op := range ops {
 		if op.kind != diffEqual {
-			if first == -1 {
-				first = i
+			if firstChange == -1 {
+				firstChange = i
 			}
-			last = i
+			lastChange = i
 		}
 	}
-	if first == -1 {
-		return diffHunk{ops: nil, oldStart: 1, newStart: 1}
+	if firstChange == -1 {
+		return nil
 	}
+	var ranges [][2]int
+	start := firstChange
+	last := firstChange
+	for i := firstChange + 1; i <= lastChange; i++ {
+		if ops[i].kind == diffEqual {
+			continue
+		}
+		if equalOpsBetween(ops, last+1, i) > contextLines*2 {
+			ranges = append(ranges, [2]int{start, last})
+			start = i
+		}
+		last = i
+	}
+	ranges = append(ranges, [2]int{start, last})
+	hunks := make([]diffHunk, 0, len(ranges))
+	for _, r := range ranges {
+		hunks = append(hunks, trimDiffContextRange(ops, r[0], r[1], contextLines))
+	}
+	return hunks
+}
+
+func equalOpsBetween(ops []diffOp, start, end int) int {
+	count := 0
+	for i := start; i < end; i++ {
+		if ops[i].kind == diffEqual {
+			count++
+		}
+	}
+	return count
+}
+
+func trimDiffContextRange(ops []diffOp, first, last, contextLines int) diffHunk {
 	start := first - contextLines
 	if start < 0 {
 		start = 0
