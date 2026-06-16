@@ -83,6 +83,46 @@ func TestNormalizeArrayMessage(t *testing.T) {
 	}
 }
 
+func TestNormalizeSelfAtDropsBridgeTextPrefix(t *testing.T) {
+	msg := normalizeMessage([]byte(`[
+		{"type":"text","data":{"text":"🟨 κόσμος: "}},
+		{"type":"at","data":{"qq":"1000"}},
+		{"type":"text","data":{"text":" y"}}
+	]`), "", 1000)
+	if !msg.AtSelf || msg.Text != "y" {
+		t.Fatalf("message = %#v", msg)
+	}
+	if len(msg.Segments) != 1 || msg.Segments[0].Type != "text" || msg.Segments[0].Text != " y" {
+		t.Fatalf("segments = %#v", msg.Segments)
+	}
+}
+
+func TestNormalizeSelfAtPreservesOrdinaryTextPrefix(t *testing.T) {
+	msg := normalizeMessage([]byte(`[
+		{"type":"text","data":{"text":"please "}},
+		{"type":"at","data":{"qq":"1000"}},
+		{"type":"text","data":{"text":" y"}}
+	]`), "", 1000)
+	if !msg.AtSelf || msg.Text != "please y" {
+		t.Fatalf("message = %#v", msg)
+	}
+}
+
+func TestHandleEventSelfAtDropsBridgeTextPrefix(t *testing.T) {
+	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, nil, nil, nil)
+	handler := &captureHandler{}
+	adapter.handleEvent(context.Background(), handler, Event{
+		MessageType: "group",
+		SelfID:      1000,
+		UserID:      1,
+		GroupID:     9,
+		Message:     []byte(`[{"type":"text","data":{"text":"🟨 κόσμος: "}},{"type":"at","data":{"qq":"1000"}},{"type":"text","data":{"text":" y"}}]`),
+	})
+	if handler.text != "y" {
+		t.Fatalf("handled text = %q", handler.text)
+	}
+}
+
 func TestNormalizeImageFileURL(t *testing.T) {
 	msg := normalizeMessage([]byte(`[{"type":"image","data":{"file":"https://example.com/a.jpg"}}]`), "", 1000)
 	if len(msg.Segments) != 1 || msg.Segments[0].URL != "https://example.com/a.jpg" {

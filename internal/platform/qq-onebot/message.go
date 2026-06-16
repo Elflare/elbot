@@ -90,6 +90,13 @@ func normalizeSegments(segments []Segment, selfID int64) NormalizedMessage {
 			out.Mentioned = true
 			if qq == self {
 				out.AtSelf = true
+				// Some bridges prepend the original sender as plain text before
+				// the native at-self segment, e.g. "Alice: [at self] y".
+				// The sender prefix is routing metadata, not user input for the bot.
+				if isBridgeSenderPrefix(parts) {
+					parts = nil
+					out.Segments = nil
+				}
 			} else if qq != "" && qq != "all" {
 				text := "[at qq:" + qq + "]"
 				parts = append(parts, text)
@@ -123,6 +130,11 @@ func normalizeSegments(segments []Segment, selfID int64) NormalizedMessage {
 		out.Segments = append(out.Segments, platform.MessageSegment{Type: platform.SegmentText, Text: out.Text})
 	}
 	return out
+}
+
+func isBridgeSenderPrefix(parts []string) bool {
+	text := strings.TrimSpace(strings.Join(parts, ""))
+	return text != "" && (strings.HasSuffix(text, ":") || strings.HasSuffix(text, "："))
 }
 
 func normalizePlainText(text string) NormalizedMessage {
