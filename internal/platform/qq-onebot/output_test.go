@@ -25,7 +25,7 @@ func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
-	if receipt.PlatformMessageID != "" {
+	if len(receipt.PlatformMessageIDs) != 0 {
 		t.Fatalf("receipt = %#v", receipt)
 	}
 	if got := calls.Load(); got != 0 {
@@ -47,7 +47,7 @@ func TestSendNoticeKeepsPrivateToolPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
-	if receipt.PlatformMessageID != "88" {
+	if len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "88" {
 		t.Fatalf("receipt = %#v", receipt)
 	}
 	if action != "send_private_msg" {

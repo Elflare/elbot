@@ -191,21 +191,27 @@ func bufferAssistantOutput(ctx context.Context) bool {
 }
 
 func (a *Agent) mapSentAssistantMessage(ctx context.Context, sessionID, messageID string, receipt platform.Receipt) {
-	if receipt.PlatformMessageID == "" || a.store == nil || a.store.Messages() == nil {
+	if len(receipt.PlatformMessageIDs) == 0 || a.store == nil || a.store.Messages() == nil {
 		return
 	}
 	scope := a.scope(ctx)
-	mapping := storage.PlatformMessageMap{
-		Platform:          scope.Platform,
-		PlatformScopeID:   scope.PlatformScopeID,
-		PlatformMessageID: receipt.PlatformMessageID,
-		MessageID:         messageID,
-		SessionID:         sessionID,
-	}
-	if err := a.store.Messages().MapPlatformMessage(ctx, mapping); err != nil {
-		a.audit("persistence_error", "session_id", sessionID, "operation", "map_platform_message", "platform_message_id", receipt.PlatformMessageID, "error", err.Error())
-		if a.logger != nil {
-			a.logger.WarnContext(ctx, "map platform message failed", "session_id", sessionID, "platform_message_id", receipt.PlatformMessageID, "error", err.Error())
+	for _, platformMessageID := range receipt.PlatformMessageIDs {
+		platformMessageID = strings.TrimSpace(platformMessageID)
+		if platformMessageID == "" {
+			continue
+		}
+		mapping := storage.PlatformMessageMap{
+			Platform:          scope.Platform,
+			PlatformScopeID:   scope.PlatformScopeID,
+			PlatformMessageID: platformMessageID,
+			MessageID:         messageID,
+			SessionID:         sessionID,
+		}
+		if err := a.store.Messages().MapPlatformMessage(ctx, mapping); err != nil {
+			a.audit("persistence_error", "session_id", sessionID, "operation", "map_platform_message", "platform_message_id", platformMessageID, "error", err.Error())
+			if a.logger != nil {
+				a.logger.WarnContext(ctx, "map platform message failed", "session_id", sessionID, "platform_message_id", platformMessageID, "error", err.Error())
+			}
 		}
 	}
 }

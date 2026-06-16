@@ -732,6 +732,32 @@ func TestDynamicProviderClientUsesAgentLogger(t *testing.T) {
 	}
 }
 
+func TestMapSentAssistantMessageMapsAllReceiptIDs(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qqonebot", PlatformUserID: "1", ScopeID: "group:9"})
+	session, err := a.sessions.Create(ctx, a.scope(ctx), "mapped")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	assistant := &storage.Message{SessionID: session.ID, Role: storage.RoleAssistant, Content: "long answer"}
+	if err := store.Messages().Append(ctx, assistant); err != nil {
+		t.Fatalf("append assistant: %v", err)
+	}
+
+	a.mapSentAssistantMessage(ctx, session.ID, assistant.ID, platform.Receipt{PlatformMessageIDs: []string{"101", "", "102"}})
+	for _, platformMessageID := range []string{"101", "102"} {
+		got, err := store.Messages().FindByPlatformMessage(ctx, "qqonebot", "group:9", platformMessageID)
+		if err != nil {
+			t.Fatalf("find platform message %s: %v", platformMessageID, err)
+		}
+		if got.ID != assistant.ID {
+			t.Fatalf("platform message %s mapped to %s, want %s", platformMessageID, got.ID, assistant.ID)
+		}
+	}
+}
+
 func TestModelSwitchUsesMessagePlatformCurrentModeForGlobalState(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
