@@ -11,9 +11,9 @@
       "updated_at": 1781514457
     },
     "docs/commands.md": {
-      "source_hash": "4032482da4adfcc49c7b52a42e0b55f9b12a92c2ada9cfa68eac4727ee113dcf",
+      "source_hash": "e793e4e8d4077b6549d37764bb329230fbab0a179eb0666b1d857984144ab461",
       "target": "docs.en/commands.md",
-      "updated_at": 1781514917
+      "updated_at": 1781579991
     },
     "docs/concepts.md": {
       "source_hash": "78e86ab872abafb0c43e66a5d172635d9aabb53845d864a75791d48ef10f2a8d",
@@ -1375,6 +1375,14 @@
       "source_hash": "ca6795333e107043315d42c99107f4f2e9f121a204257f74c494d3fcc49e1c6b",
       "translation": "Equivalent to remove.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:cd080a6bf2eae38dc7053224321e2f995fb1f02f11293b6e327a08acf1842747": {
+      "kind": "table",
+      "source": "__ELBOT_CODE_0__ 或 __ELBOT_CODE_1__",
+      "source_file": "docs/commands.md",
+      "source_hash": "cd080a6bf2eae38dc7053224321e2f995fb1f02f11293b6e327a08acf1842747",
+      "translation": "__ELBOT_CODE_0__ or __ELBOT_CODE_1__",
+      "updated_at": 1781579991
     },
     "docs/commands.md:table:d505c882b0c2631f371e7ed87bcf24e60f84a23b8aa1774d3fa7dbffd7c8208f": {
       "kind": "table",

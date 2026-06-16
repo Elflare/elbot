@@ -24,7 +24,7 @@ Example:
 | Command | Function |
 | --- | --- |
 | `/models` | View the model list. |
-| `/models --fresh` | Force refresh the model list cache. |
+| `/models --fresh` or `/models --refresh` | Force refresh the model list cache. |
 | `/model <编号或名称>` | Switch the model used in the current Session mode. |
 | `/model --chat <模型>` | Switch the chat mode model. |
 | `/model --work <模型>` | Switch the work mode model. |
@@ -39,6 +39,7 @@ Example:
 ```text
 /models
 /models --fresh
+/models --refresh
 /model 2
 /model --work deepseek/deepseek-chat
 /model --chat openai/gpt-4o-mini
