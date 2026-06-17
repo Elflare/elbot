@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "e261001da11103220889a6e6847782a2930eb1723362ab8626a78da813fbdd93",
+      "source_hash": "1bf75096a6b0416619e54aaa18280d82dcfcfb39b0ac8782ceb041d4766b845e",
       "target": "README.md",
-      "updated_at": 1781664867
+      "updated_at": 1781709186
     },
     "docs/README.md": {
       "source_hash": "ece79e589e6219920d295c5ead264549fe40fe58ac5824ffef69da1b840702cf",
@@ -64,6 +64,14 @@
       "translation": "Automatic mode: enters local CLI-only when Linux detects a service, otherwise starts in full foreground",
       "updated_at": 1781664867
     },
+    "README.zh-CN.md:heading:151014f34e3e814539037852eeaa064d0e0794cd94179679b1177dd7ff54420d": {
+      "kind": "heading",
+      "source": "13. 安全策略与风险确认",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "151014f34e3e814539037852eeaa064d0e0794cd94179679b1177dd7ff54420d",
+      "translation": "13. Security Policy and Risk Confirmation",
+      "updated_at": 1781709186
+    },
     "README.zh-CN.md:heading:1fc2974b566433076bf4c1c52828a0e572e65ad6f8c7c93c7aeb59d608aad2c4": {
       "kind": "heading",
       "source": "4. 完善的日志与审计系统",
@@ -95,6 +103,14 @@
       "source_hash": "3302e39a516ddb0c2b8bd35256c038910cb388895cb7bc190b149d0ad1230ce3",
       "translation": "3. Extensible Hook System",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:heading:3f35dcda8c25c6c037afdec3f0501adb87043c48d84ee864b37d12dfd343c275": {
+      "kind": "heading",
+      "source": "12. 会话、Fork 与上下文压缩",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "3f35dcda8c25c6c037afdec3f0501adb87043c48d84ee864b37d12dfd343c275",
+      "translation": "12. Session, Fork and Context Compaction",
+      "updated_at": 1781709186
     },
     "README.zh-CN.md:heading:41b0cffa20874010ca3704ba5d537cbb49ceea9d54265a482829e5a17f34d0a5": {
       "kind": "heading",
@@ -128,6 +144,14 @@
       "translation": "10. Multi-platform and Rich Output Abstraction",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:heading:7b5072b5c485c65ff42dd8d89bd0f28fd39cf47ed907d642166274e3477ebedf": {
+      "kind": "heading",
+      "source": "10. 兼容互联网 Python Skill",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "7b5072b5c485c65ff42dd8d89bd0f28fd39cf47ed907d642166274e3477ebedf",
+      "translation": "10. Compatible with Internet Python Skills",
+      "updated_at": 1781709186
+    },
     "README.zh-CN.md:heading:7ff2d49c1e43f8d8120a55180233d1c9a1650be2d023a4ffc81398b8a75074b8": {
       "kind": "heading",
       "source": "7. ELyph：面向 LLM 协作的任务表示",
@@ -136,6 +160,14 @@
       "translation": "7. ELyph: Task Representation for LLM Collaboration",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:heading:87bf1a455f2b60ab54d807108b767c5dcb9069aed5bd2924402a96ffc6f06221": {
+      "kind": "heading",
+      "source": "8. Elnis / Elwisp / Elvena：让 ElBot 掌控一切",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "87bf1a455f2b60ab54d807108b767c5dcb9069aed5bd2924402a96ffc6f06221",
+      "translation": "8. Elnis / Elwisp / Elvena: Let ElBot Control Everything",
+      "updated_at": 1781709186
+    },
     "README.zh-CN.md:heading:895b4bc8797990b2ee53ffc7bc26d84adfbca18000a2915e0ba95033f968f395": {
       "kind": "heading",
       "source": "9. 兼容互联网 Python Skill",
@@ -143,6 +175,14 @@
       "source_hash": "895b4bc8797990b2ee53ffc7bc26d84adfbca18000a2915e0ba95033f968f395",
       "translation": "9. Compatible with Internet Python Skills",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:heading:8993ba5257172db507a79bc97c6f3c3d55f1b678d97e95c1ca2d6f4c46a4a471": {
+      "kind": "heading",
+      "source": "9. 可由 LLM 创建的 EL Skill",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "8993ba5257172db507a79bc97c6f3c3d55f1b678d97e95c1ca2d6f4c46a4a471",
+      "translation": "9. EL Skills that can be created by LLMs",
+      "updated_at": 1781709186
     },
     "README.zh-CN.md:heading:91915b9e6bd2f4a7c8768b85875e6ba0e7839ecdcad423b147865ee2470c3911": {
       "kind": "heading",
@@ -159,6 +199,14 @@
       "source_hash": "96c76c11cea7d7bf6480c8d98db9d026785e7f4f4aff660a0e481ea80735d471",
       "translation": "8. EL Skills that can be created by LLM",
       "updated_at": 1781534424
+    },
+    "README.zh-CN.md:heading:97f586e970b41af53a2e6fcebb092ff10eab95044938b310c0824518b4c42477": {
+      "kind": "heading",
+      "source": "11. 多平台与富输出抽象",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "97f586e970b41af53a2e6fcebb092ff10eab95044938b310c0824518b4c42477",
+      "translation": "11. Multi-platform and Rich Output Abstraction",
+      "updated_at": 1781709186
     },
     "README.zh-CN.md:heading:9ef3590906f0d0449ea68d6f16eba412253cf49bccd868b0b5626819c69d5637": {
       "kind": "heading",
@@ -200,6 +248,14 @@
       "translation": "11. Session, Fork, and Context Compaction",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:list:113d5c6c3a8591768ce4e14350d57601329232ba840bc27e3305a75d1757f3eb": {
+      "kind": "list",
+      "source": "[Elnis 监听枢纽](docs/elnis.md)",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "113d5c6c3a8591768ce4e14350d57601329232ba840bc27e3305a75d1757f3eb",
+      "translation": "[Elnis Listening Hub](docs/elnis.md)",
+      "updated_at": 1781709186
+    },
     "README.zh-CN.md:list:1c8a896e97426f53447dd006915a8bbbaa2c8fa15eaf34c8304ac8e8ba9e7314": {
       "kind": "list",
       "source": "在 __ELBOT_CODE_0__ 选择默认 __ELBOT_CODE_1__ / __ELBOT_CODE_2__ 模式和模型。",
@@ -240,6 +296,14 @@
       "translation": "Configure the OpenAI-compatible Provider in __ELBOT_CODE_0__.",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:list:b401bffca8cad93248852a7976d6d917a32e1345a4a2134d081c420d7123c489": {
+      "kind": "list",
+      "source": "[Elnis 配置与使用](docs/elnis-usage.md)",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "b401bffca8cad93248852a7976d6d917a32e1345a4a2134d081c420d7123c489",
+      "translation": "[Elnis Configuration and Usage](docs/elnis-usage.md)",
+      "updated_at": 1781709186
+    },
     "README.zh-CN.md:list:d8e6836fadf4090ff0e9e90570ff830bf2306d13feb2c34b0633e1624bf209d4": {
       "kind": "list",
       "source": "启动后输入 __ELBOT_CODE_0__ 查看命令，或直接开始对话。",
@@ -263,6 +327,14 @@
       "source_hash": "de66a81bf5bf9dfb8d96bf909844ce411cc1008a05f739a97df2ff4f859ed9dd",
       "translation": "Set the API Key corresponding to __ELBOT_CODE_1__ via system environment variables or the configuration directory __ELBOT_CODE_0__.",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:044b1197e356e6d82c78f9e8f153cb5b1d345e90012c0ee665c2184cdbefcca9": {
+      "kind": "paragraph",
+      "source": "传统 Agent 通常只会等待用户输入；Cron 只能响应时间。Elnis 让 ElBot 多了一种触发方式：外部事件。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "044b1197e356e6d82c78f9e8f153cb5b1d345e90012c0ee665c2184cdbefcca9",
+      "translation": "Traditional Agents usually only wait for user input; Cron can only respond to time. Elnis provides ElBot with another trigger method: external events.\n",
+      "updated_at": 1781709186
     },
     "README.zh-CN.md:paragraph:056ad2dcfd51e45dfe8b5ca173800233faa5e26d530a9b570aeb7f9fc32080b2": {
       "kind": "paragraph",
@@ -295,6 +367,14 @@
       "source_hash": "0f92def088eb83446c5a7650f5eaf7cd2d2415b189c381f92f19cb15d1de8525",
       "translation": "Development plans and task breakdowns have been moved to [devdocs](devdocs/).\n",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:11714de60718b7493a0db48d369f8c225bcb655760c52410681045746b3f9446": {
+      "kind": "paragraph",
+      "source": "ElBot 引入 ELyph Task Notation（任务表示法），用于描述 LLM Cron 与原生 skill。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "11714de60718b7493a0db48d369f8c225bcb655760c52410681045746b3f9446",
+      "translation": "ElBot introduces ELyph Task Notation (Task Notation) to describe LLM Cron and native skills.",
+      "updated_at": 1781709186
     },
     "README.zh-CN.md:paragraph:167044ec2caf4bbc18752e0d66a96a00bdf2030a28b53edb09a0c04087f44865": {
       "kind": "paragraph",
@@ -456,6 +536,14 @@
       "translation": "Common startup methods:\n",
       "updated_at": 1781575057
     },
+    "README.zh-CN.md:paragraph:71716173a994c716064aab27f2eb11ffb606db48a2e4ad253e5ae1ac5d29792a": {
+      "kind": "paragraph",
+      "source": "服务器变化、RSS 更新、Webhook 告警、日志变化、游戏事件、本地脚本甚至其他计算机设备，都可以由 Elwisp 转成 Elvena 事件送入 Elnis。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "71716173a994c716064aab27f2eb11ffb606db48a2e4ad253e5ae1ac5d29792a",
+      "translation": "Server changes, RSS updates, Webhook alerts, log changes, game events, local scripts, or even other computing devices can all be converted by Elwisp into Elvena events and sent to Elnis.",
+      "updated_at": 1781709186
+    },
     "README.zh-CN.md:paragraph:71a065ff8e8a27f625377cdbae79b8a64f5e0d8d4b2c2ce34d3395a150d0ee4e": {
       "kind": "paragraph",
       "source": "用户文档放在 __ELBOT_CODE_0__，开发计划和内部资料放在 __ELBOT_CODE_1__。",
@@ -503,6 +591,14 @@
       "source_hash": "7f448437c71676019182a1592917cf3ec3d00b63036317611a3a92b7d6b4b266",
       "translation": "The two modes can be configured with models independently, allowing low-cost models to handle casual chat and powerful models to focus on complex tasks.\n",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:90976270a62231cee42e41f492310f401224fae18769df0411c892a7635d38a1": {
+      "kind": "paragraph",
+      "source": "Elnis 是 ElBot 的监听枢纽；Elwisp 是分布在各处的监听器，负责观世界。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "90976270a62231cee42e41f492310f401224fae18769df0411c892a7635d38a1",
+      "translation": "Elnis is the listening hub of ElBot; Elwisp consists of listeners distributed everywhere, responsible for observing the world.\n",
+      "updated_at": 1781709186
     },
     "README.zh-CN.md:paragraph:90c8fdff1ad2f57b923c85e4227d71bf3ecf04e4978d175fcf69f2ce6316a9f9": {
       "kind": "paragraph",
@@ -655,6 +751,14 @@
       "source_hash": "c6eb08a7f05ed52c309c1b39b3001e3fac4d234facd0d1ef61dd6aff35279be6",
       "translation": "Shell completion can be generated via __ELBOT_CODE_0__, supporting __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, __ELBOT_CODE_5__, and __ELBOT_CODE_6__.\n",
       "updated_at": 1781575057
+    },
+    "README.zh-CN.md:paragraph:c7e57799914c883f1e809d402143e4a30de4b07c9bc71f9761da548314126b60": {
+      "kind": "paragraph",
+      "source": "ElBot 再统一决定是否记录、调用 LLM 分析或执行后台任务，最终通知用户。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "c7e57799914c883f1e809d402143e4a30de4b07c9bc71f9761da548314126b60",
+      "translation": "ElBot then centrally decides whether to record, call an LLM for analysis, or execute background tasks, and finally notify the user.\n",
+      "updated_at": 1781709186
     },
     "README.zh-CN.md:paragraph:cc0bd55b55ce7f0683fd77e6194a4774726f6e8b3ec816dbf0180c8fc152774f": {
       "kind": "paragraph",

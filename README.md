@@ -56,25 +56,33 @@ ElBot has a built-in Cron Runtime and an LLM-orchestratable Cron service. Standa
 
 ### 7. ELyph: Task Representation for LLM Collaboration
 
-ElBot introduces ELyph Task Notation to describe LLM Cron and native Skills. The goal of ELyph is to reduce ambiguity in natural language task descriptions, using shorter and more stable structures to express inputs, outputs, steps, conditions, and constraints. Compared to arbitrary Markdown, ELyph is better suited for reusing and passing tasks between LLMs, and is also easier for linting, auditing, and subsequent tooling.
+ElBot introduces ELyph Task Notation (Task Notation) to describe LLM Cron and native skills. The goal of ELyph is to reduce ambiguity in natural language task descriptions, using shorter and more stable structures to express inputs, outputs, steps, conditions, and constraints. Compared to arbitrary Markdown, ELyph is better suited for reusing and passing tasks between LLMs, and is also easier for linting, auditing, and subsequent tooling.
 
-### 8. EL Skills that can be created by LLM
+### 8. Elnis / Elwisp / Elvena: Let ElBot Control Everything
+
+Traditional Agents usually only wait for user input; Cron can only respond to time. Elnis provides ElBot with another trigger method: external events.
+
+Elnis is the listening hub of ElBot; Elwisp consists of listeners distributed everywhere, responsible for observing the world.
+
+Server changes, RSS updates, Webhook alerts, log changes, game events, local scripts, or even other computing devices can all be converted by Elwisp into Elvena events and sent to Elnis. ElBot then centrally decides whether to record, call an LLM for analysis, or execute background tasks, and finally notify the user.
+
+### 9. EL Skills that can be created by LLMs
 
 ElBot features a built-in `create_el_skill` meta-tool, allowing LLMs to crystallize reusable experience into EL Skills.
 
-### 9. Compatible with Internet Python Skills
+### 10. Compatible with Internet Python Skills
 
 In addition to native El Skills, ElBot is also compatible with common external Python skill structures. Automatically scan the `SKILL.md` or `SKILL.elyph` of Python skills, read the name, description, applicable scenarios, and risk level, and execute them through hidden wrapper tools.
 
-### 10. Multi-platform and Rich Output Abstraction
+### 11. Multi-platform and Rich Output Abstraction
 
 ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, and QQ Official, and reserves space for extending to other platforms.
 
-### 11. Session, Fork, and Context Compaction
+### 12. Session, Fork and Context Compaction
 
 ElBot has a built-in persistent Session service, supporting Session recovery, archiving, pinning, forking, deletion, paginated viewing, and platform isolation.
 
-### 12. Security Policies and Risk Confirmation
+### 13. Security Policy and Risk Confirmation
 
 ElBot's tool system has built-in risk levels, permission judgments, and high-risk confirmation processes. Regular users can only discover and call tools within the low-risk range, and superadmins also need confirmation when calling high-risk tools.
 
@@ -110,6 +118,8 @@ For detailed instructions, see:
 - [Configuration Guide](docs.en/configuration.md)
 - [Command Cheat Sheet](docs.en/commands.md)
 - [Core Concepts](docs.en/concepts.md)
+- [Elnis Listening Hub](docs.en/elnis.md)
+- [Elnis Configuration and Usage](docs.en/elnis-usage.md)
 
 Development plans and task breakdowns have been moved to [devdocs](devdocs/).
 
