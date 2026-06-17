@@ -15,7 +15,7 @@
 - `devdocs/README.md`：开发文档索引。
 - `devdocs/plan.md`：总体规划，写愿景、原则、路线和待决策问题；不写实现细节。
 - `devdocs/tasks.md`：实现任务，按里程碑拆分任务、状态和后续事项。
-- `devdocs/elnis-elwisp.md`：Elnis/ELwisp 监听中台架构、ELvena 协议草案和分阶段实现规划。
+- `devdocs/elnis-elwisp.md`：Elnis/Elwisp 监听中台架构、Elvena 协议草案和分阶段实现规划。
 - `devdocs/` 是开发资料，只给维护者/Agent 看，不走自动翻译。
 - 未来若补架构或接口草案，放在 `devdocs/architecture.md`、`devdocs/interfaces.md` 等文件中。
 
@@ -101,8 +101,8 @@
 
 - `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录/source fallback 解析 `app.toml`，读取并合并 app/provider/state 配置，解析相对路径和 `api_key_env`，包含 LLM 请求超时/重试、sandbox/artifact、Elnis 与 S3/R2 预留配置。
 
-- `internal/elnis/types.go`：Elnis/ELvena 协议类型；定义 ELwisp 请求、目标、响应、事件模式和状态。
-- `internal/elnis/service.go`：Elnis 接收服务；处理 token 鉴权、协议校验、ELwisp 授权、持久化去重、record/direct 分发和目标裁决。
+- `internal/elnis/types.go`：Elnis/Elvena 协议类型；定义 Elwisp 请求、目标、响应、事件模式和状态。
+- `internal/elnis/service.go`：Elnis 接收服务；处理 token 鉴权、协议校验、Elwisp 授权、持久化去重、record/direct 分发和目标裁决。
 - `internal/elnis/http.go`：Elnis HTTP runtime；提供 `POST /elvena/v1/events` 和 `GET /healthz`，支持 body 限制、token 提取和 JSON 响应。
 
 - `internal/logging/logging.go`：日志地基；创建运行日志、审计日志和 Elnis 日志的 `slog.Logger`，`Manager` 统一持有按日期懒轮转的 `elbot-YYYY-MM-DD.log`、`audit-YYYY-MM-DD.log`、`elnis-YYYY-MM-DD.log` writer，暴露日志目录和可配置旧日志清理入口。
@@ -157,7 +157,7 @@
 - `internal/tool/builder.go`：Go Tool Builder；用于声明工具描述、风险、隐藏、superadmin-only、用户侧 tags、依赖和常用参数 schema，Object 参数默认允许任意 JSON 字段，减少内置工具与包装工具手写 schema 的成本。
 - `internal/tool/discover.go`：`discover_tool` 内置工具；无参列出可见工具/skill 简介，有 `name`/`names` 时普通工具仅返回“已发现工具”文本并把完整 schema 留在结构化 Data 供 Agent 注入 top-level tools，外置 skill 返回 markdown/ELyph detail；查询 py/go skill 会通过内部 metadata 激活隐藏包装工具 `python_skill_run`/`go_skill_run`。
 - `internal/tool/provider.go`：Tool Runtime 到 Agent Prompt/LLM schema 的旧 provider 适配；保留给显式外部 provider 兼容，默认工具视图由 `internal/toolrun` 提供。
-- `internal/toolrun/`：工具调用中间层；维护 session 工具缓存、native/ELwisp 工具视图、命名解析、权限风险确认、tool call 生命周期编排和失效提示。
+- `internal/toolrun/`：工具调用中间层；维护 session 工具缓存、native/Elwisp 工具视图、命名解析、权限风险确认、tool call 生命周期编排和失效提示。
 - `internal/tool/executor.go`：工具执行器；把模型产生的 `llm.ToolCallRequest` 转换为 Tool Runtime 调用，执行前按 Actor/Policy 做风险等级兜底校验，并把结果转换为 LLM tool message。
 
 - `internal/tool/builtin/runtime.go`：内置工具 Runtime；集中创建 Tool Registry、常驻记忆 store、Skill Manager、Artifact Manager 和内置工具私有路径；`memories.toml`、`long_memory/`、`skills/` 默认在配置目录下。
@@ -227,7 +227,7 @@
 - `internal/storage/sqlite/message_repository.go`：Message repository SQLite 实现；负责消息追加、查询、按 session 列表、按 checkpoint 后列表、Fork 截止范围列表、平台消息映射和反查。
 - `internal/storage/sqlite/chat_history_repository.go`：ChatHistory repository SQLite 实现；负责平台聊天历史写入、搜索、上下文和清理。
 - `internal/storage/sqlite/cron_job_repository.go`：CronJob repository SQLite 实现；负责中央 Cron job 的 upsert、列表、按名称查询、禁用、删除和最近运行状态更新；upsert 在配置未变化时跳过写库，减少启动期无意义 SQLite 写入。
-- `internal/storage/sqlite/elnis_event_repository.go`：ElnisEvent repository SQLite 实现；负责 ELwisp 事件创建、按来源 key 去重查询和状态更新。
+- `internal/storage/sqlite/elnis_event_repository.go`：ElnisEvent repository SQLite 实现；负责 Elwisp 事件创建、按来源 key 去重查询和状态更新。
 - `internal/storage/sqlite/tool_call_repository.go`：ToolCallRecord repository SQLite 实现；负责每次工具调用记录写入，并按 Session 聚合工具调用次数供 `/status` 展示。
 
 

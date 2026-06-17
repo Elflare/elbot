@@ -810,23 +810,23 @@
 - [ ] TODO：评估 CLI C/S 拆分与本地服务连接协议。
 - [ ] cli和服务分离
 
-## Milestone Elnis：ELwisp 监听中台
+## Milestone Elnis：Elwisp 监听中台
 
-目标：新增 Elnis 作为 ElBot 内部监听中台，接收 ELwisp 通过 ELvena 协议投递的外部事件，并支持 record/direct/llm 三种处理模式。
+目标：新增 Elnis 作为 ElBot 内部监听中台，接收 Elwisp 通过 Elvena 协议投递的外部事件，并支持 record/direct/llm 三种处理模式。
 
 详细设计见 [`elnis-elwisp.md`](elnis-elwisp.md)。
 
 ### Phase 1：Ingress 与 direct/record
 
 - [x] 定义 Elnis 配置结构，支持启停、HTTP 地址、队列、worker、token 和投递策略；`elwisps` 为可选项，可临时留空或按需启用。
-- [x] 定义 ELvena v1 JSON 请求/响应类型与校验逻辑。
+- [x] 定义 Elvena v1 JSON 请求/响应类型与校验逻辑。
 - [x] 实现 Elnis HTTP runtime，首期提供 `POST /elvena/v1/events` 和 `GET /healthz`。
-- [x] 实现 token 鉴权，token name 只用于日志与审计，不作为 ELwisp 身份；`token_env` 支持多个候选环境变量。
+- [x] 实现 token 鉴权，token name 只用于日志与审计，不作为 Elwisp 身份；`token_env` 支持多个候选环境变量。
 - [x] 新增 Elnis 事件 SQLite 表和 repository。
 - [x] 基于 `elwisp.name + source + id` 实现持久化去重。
 - [x] 增加 `elnis-YYYY-MM-DD.log` 独立日志。
 - [x] 实现 `record` 模式，仅记录事件。
-- [x] 实现 `direct` 模式，按 ELwisp 期望目标和 Elnis 配置裁决后发送文本通知。
+- [x] 实现 `direct` 模式，按 Elwisp 期望目标和 Elnis 配置裁决后发送文本通知。
 
 ### Phase 2：Background 抽象与 LLM 模式
 
@@ -836,12 +836,12 @@
 - [ ] 实现 Elnis LLM prompt，支持 ELyph/text 主体和事件 metadata。
 - [ ] 实现 Elnis LLM 最终 JSON result 解析与格式重试。
 - [ ] 实现 Elnis worker 队列，维护 queued/running/completed/failed 状态。
-- [ ] 扩展 ELvena 请求，支持 ELwisp 随事件声明 `tools`。
-- [ ] 持久化 ELwisp 工具声明和声明 hash，便于重放、审计和重复事件排查。
-- [x] 抽象 ToolRun 中间层地基，聚合 ElBot native 工具与 ELwisp 工具声明缓存，并统一 tool call 生命周期编排。
+- [ ] 扩展 Elvena 请求，支持 Elwisp 随事件声明 `tools`。
+- [ ] 持久化 Elwisp 工具声明和声明 hash，便于重放、审计和重复事件排查。
+- [x] 抽象 ToolRun 中间层地基，聚合 ElBot native 工具与 Elwisp 工具声明缓存，并统一 tool call 生命周期编排。
 - [x] 将工具命名空间、Schema 注入、缓存恢复和可见性过滤从 LLM Prompt 组装中拆出到 ToolRun 视图。
 - [x] 明确 ToolRun、Tool Runtime 和 Prompt Builder 的职责边界，避免把来源身份和执行路由写进 Prompt。
-- [ ] 校验 ELwisp 工具 schema、超时和调用端点，拒绝不可信或越权工具；ELwisp 工具风险由 ELwisp 自身负责，Elnis 侧默认 low。
+- [ ] 校验 Elwisp 工具 schema、超时和调用端点，拒绝不可信或越权工具；Elwisp 工具风险由 Elwisp 自身负责，Elnis 侧默认 low。
 - [ ] 复用工具预加载、Tool Runtime、Security Policy 和后台 sandbox，但由 ToolRun 统一入口管理。
 - [ ] 按 LLM result 的 `need_report` 和 Elnis 目标裁决发送报告。
 
@@ -857,5 +857,5 @@
 - [ ] 功能实现后更新用户侧配置文档和命令文档。
 - [ ] 更新 `AGENT.md` 中新增/修改 Go 文件职责速查。
 - [ ] 增加 Elnis 事件查询、失败重试或禁用能力。
-- [ ] TODO：设计 Elnis 与 ELwisp 多轮通信协议。
+- [ ] TODO：设计 Elnis 与 Elwisp 多轮通信协议。
 - [ ] TODO：评估 stdio/pipe transport。

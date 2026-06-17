@@ -203,7 +203,7 @@ cli = ["local"]
 
 ## Elnis 监听中台
 
-Elnis 默认关闭。启用后，ElBot 会启动本地 HTTP ingress，接收 ELwisp 按 ELvena 协议投递的事件。
+Elnis 默认关闭。启用后，ElBot 会启动本地 HTTP ingress，接收 Elwisp 按 Elvena 协议投递的事件。
 
 ```toml
 [elnis]
@@ -233,7 +233,7 @@ allow_superadmins = true
 
 说明：
 
-- `elnis.elwisps` 可不配置；留空表示当前不启用任何 ELwisp。
+- `elnis.elwisps` 可不配置；留空表示当前不启用任何 Elwisp。
 - token 从系统环境变量或配置目录 `.env` 读取，日志只记录 token name，不记录 token 原文。
 - `token_env` 支持写成列表，按顺序尝试多个环境变量名；适合临时切换 token 或做多环境兼容。
 - 首期支持 `record` 和 `direct` 模式；`llm` 模式预留给后续 background runner。
