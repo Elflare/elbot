@@ -15,6 +15,7 @@
 - `devdocs/README.md`：开发文档索引。
 - `devdocs/plan.md`：总体规划，写愿景、原则、路线和待决策问题；不写实现细节。
 - `devdocs/tasks.md`：实现任务，按里程碑拆分任务、状态和后续事项。
+- `devdocs/elnis-elwisp.md`：Elnis/ELwisp 监听中台架构、ELvena 协议草案和分阶段实现规划。
 - `devdocs/` 是开发资料，只给维护者/Agent 看，不走自动翻译。
 - 未来若补架构或接口草案，放在 `devdocs/architecture.md`、`devdocs/interfaces.md` 等文件中。
 

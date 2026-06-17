@@ -4,5 +4,6 @@
 
 - [`plan.md`](plan.md)：总体规划、路线和待决策问题。
 - [`tasks.md`](tasks.md)：实现任务拆分与里程碑状态。
+- [`elnis-elwisp.md`](elnis-elwisp.md)：Elnis/ELwisp 监听中台架构、ELvena 协议草案和分阶段实现规划。
 
 用户文档请看 [`../docs/`](../docs/)。

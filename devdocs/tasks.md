@@ -807,4 +807,49 @@
 
 ### cli和服务分离
 
+- [ ] TODO：评估 CLI C/S 拆分与本地服务连接协议。
 - [ ] cli和服务分离
+
+## Milestone Elnis：ELwisp 监听中台
+
+目标：新增 Elnis 作为 ElBot 内部监听中台，接收 ELwisp 通过 ELvena 协议投递的外部事件，并支持 record/direct/llm 三种处理模式。
+
+详细设计见 [`elnis-elwisp.md`](elnis-elwisp.md)。
+
+### Phase 1：Ingress 与 direct/record
+
+- [ ] 定义 Elnis 配置结构，支持启停、HTTP 地址、队列、worker、token 和投递策略。
+- [ ] 定义 ELvena v1 JSON 请求/响应类型与校验逻辑。
+- [ ] 实现 Elnis HTTP runtime，首期提供 `POST /elvena/v1/events` 和 `GET /healthz`。
+- [ ] 实现 token 鉴权，token name 只用于日志与审计，不作为 ELwisp 身份。
+- [ ] 新增 Elnis 事件 SQLite 表和 repository。
+- [ ] 基于 `elwisp.name + source + id` 实现持久化去重。
+- [ ] 增加 `elnis-YYYY-MM-DD.log` 独立日志。
+- [ ] 实现 `record` 模式，仅记录事件。
+- [ ] 实现 `direct` 模式，按 ELwisp 期望目标和 Elnis 配置裁决后发送文本通知。
+
+### Phase 2：Background 抽象与 LLM 模式
+
+- [ ] 抽象 cron/Elnis 共用的后台 Session runner。
+- [ ] 将 cron LLM 执行迁移到公共 background runner，并保持现有行为不变。
+- [ ] 泛化后台 sandbox 标记，避免 `CronBackground` 语义被 Elnis 复用污染。
+- [ ] 实现 Elnis LLM prompt，支持 ELyph/text 主体和事件 metadata。
+- [ ] 实现 Elnis LLM 最终 JSON result 解析与格式重试。
+- [ ] 实现 Elnis worker 队列，维护 queued/running/completed/failed 状态。
+- [ ] 复用工具预加载、Tool Runtime、Security Policy 和后台 sandbox。
+- [ ] 按 LLM result 的 `need_report` 和 Elnis 目标裁决发送报告。
+
+### Phase 3：模型槽位
+
+- [ ] 支持 `elwisp1`、`elwisp2`、`elwisp3` 模型槽位，配置保存在 `state.toml` 的 `mode_models`。
+- [ ] `/model` 支持 `--elwisp1`、`--elwisp2`、`--elwisp3`。
+- [ ] `/models` 展示 Elnis 槽位当前模型标记。
+- [ ] Elnis payload 的 `model_slot` 使用对应模型，未配置时 fallback 到 `work`。
+
+### Phase 4：文档、运维与后续预留
+
+- [ ] 功能实现后更新用户侧配置文档和命令文档。
+- [ ] 更新 `AGENT.md` 中新增/修改 Go 文件职责速查。
+- [ ] 增加 Elnis 事件查询、失败重试或禁用能力。
+- [ ] TODO：设计 Elnis 与 ELwisp 多轮通信协议。
+- [ ] TODO：评估 stdio/pipe transport。
