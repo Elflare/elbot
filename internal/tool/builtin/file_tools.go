@@ -267,7 +267,7 @@ func editFileBuilder() *tool.Builder {
 		"anchor":           map[string]any{"type": "string", "description": "insert_before_match/insert_after_match 要唯一匹配的锚点文本；找不到或多处匹配都会失败。"},
 	}
 	return tool.NewBuilder("edit_file").
-		Description("批量编辑文本文件；使用 edits 一次提交多个修改，支持行号编辑、目标内容校验、唯一文本匹配、锚点插入和 dry-run；成功后返回 unified diff。任一 edit 失败则不写文件。").
+		Description("批量编辑文本文件；使用 edits 一次提交多个修改，支持多种方式；成功后返回 unified diff。任一 edit 失败则不写文件。").
 		Risk(tool.RiskHigh).
 		Tags("files", "agent").
 		String("path", "要编辑的文件路径。", tool.Required()).
