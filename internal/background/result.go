@@ -25,5 +25,5 @@ func ParseJSONResult(text string) (JSONResult, error) {
 }
 
 func DefaultJSONRetryPrompt() string {
-	return "你返回的格式有误，请严格使用 JSON 格式。不能包含 Markdown 代码块，不能包含 JSON 外的任何文字。格式：{\"completed\":true,\"need_report\":false,\"report\":\"\"}"
+	return "你返回的格式有误，请严格使用 JSON 格式。不能包含 Markdown 代码块，不能包含 JSON 外的任何文字。格式：{\"completed\":true,\"need_report\":false,\"report\":\"\"}。need_report 表示是否需要向目标平台汇报；成功、失败或阻塞都可以请求汇报。"
 }

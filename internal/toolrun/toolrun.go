@@ -27,10 +27,11 @@ type Manager struct {
 }
 
 type Context struct {
-	Mode    string
-	Session *storage.Session
-	Scope   session.Scope
-	Actor   security.Actor
+	Mode             string
+	Session          *storage.Session
+	Scope            session.Scope
+	Actor            security.Actor
+	DisableBaseTools bool
 }
 
 type CachedTool struct {
@@ -67,7 +68,7 @@ func (m *Manager) ToolNames(ctx context.Context, view Context) ([]string, error)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if view.Mode != storage.SessionModeWork || m == nil || m.Native == nil {
+	if view.DisableBaseTools || view.Mode != storage.SessionModeWork || m == nil || m.Native == nil {
 		return nil, nil
 	}
 	return m.Native.ToolNames(actorForView(ctx, view), policyForManager(ctx, m.Policy)), nil
@@ -77,7 +78,7 @@ func (m *Manager) BaseSchemas(ctx context.Context, view Context) ([]llm.ToolSche
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if view.Mode != storage.SessionModeWork || m == nil || m.Native == nil {
+	if view.DisableBaseTools || view.Mode != storage.SessionModeWork || m == nil || m.Native == nil {
 		return nil, nil
 	}
 	return m.Native.BaseSchemas(), nil
@@ -96,7 +97,7 @@ func (m *Manager) Schemas(ctx context.Context, view Context, cached []CachedTool
 			return
 		}
 		seen[name] = true
-		out = append(out, schema)
+		out = append(out, schemaForContext(ctx, schema))
 	}
 	for _, schema := range base {
 		appendSchema(schema)
@@ -105,6 +106,18 @@ func (m *Manager) Schemas(ctx context.Context, view Context, cached []CachedTool
 		appendSchema(cachedTool.Schema)
 	}
 	return out, nil
+}
+
+func schemaForContext(ctx context.Context, schema llm.ToolSchema) llm.ToolSchema {
+	if schema.Function.Name != "shell" {
+		return schema
+	}
+	sandbox, ok := tool.SandboxContextFromContext(ctx)
+	if !ok || !sandbox.Background {
+		return schema
+	}
+	schema.Function.Description = strings.TrimSpace(schema.Function.Description + " 后台运行时涉及文件路径请使用相对路径；文件读写默认相对当前工具工作目录；不要使用绝对路径或 .. 逃逸。")
+	return schema
 }
 
 func (m *Manager) Resolve(ctx context.Context, name string, cached []CachedTool) ResolvedTool {

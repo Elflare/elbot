@@ -18,6 +18,7 @@ import (
 	"time"
 
 	agentcommands "elbot/internal/agent/commands"
+	"elbot/internal/background"
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
 	"elbot/internal/hook"
@@ -1716,6 +1717,86 @@ func TestChatExecutesAllToolCallsInSameRound(t *testing.T) {
 	}
 }
 
+func TestRunBackgroundPreloadsShellWithContextActorAndAutoConfirmsSandboxShell(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{
+		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo 'ok' > ./elnis_shell_tool_test.txt"}`}}, FinishReason: "tool_calls"}},
+		{{DeltaContent: `{"completed":true,"need_report":true,"report":"done"}`}},
+	}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a.SetToolConfig(config.ToolsConfig{MaxRoundsPerTurn: 2})
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(newAgentShellTool())
+	a.SetToolRuntime(registry, nil)
+
+	_, err := a.RunBackground(context.Background(), background.RunRequest{
+		Kind:          background.KindElnis,
+		Name:          "home/curl/event-1",
+		Title:         "Elnis shell test",
+		Platform:      "qqonebot",
+		Actor:         security.Actor{ID: "elnis:home", Platform: "elnis", PlatformUserID: "home", Role: security.RoleSuperadmin},
+		ScopeID:       "elnis:home/curl/event-1",
+		Prompt:        "create a file",
+		ToolListNames: []string{"discover_tool", "shell"},
+		SandboxSubdir: "elnis/home",
+	})
+	if err != nil {
+		t.Fatalf("RunBackground: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) < 2 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	var shellSchema llm.ToolSchema
+	for _, schema := range requests[0].Tools {
+		if schema.Function.Name == "discover_tool" {
+			t.Fatalf("background request should not include discover_tool: %#v", requests[0].Tools)
+		}
+		if schema.Function.Name == "shell" {
+			shellSchema = schema
+		}
+	}
+	if shellSchema.Function.Name == "" {
+		t.Fatalf("first request tools did not include preloaded shell: %#v", requests[0].Tools)
+	}
+	if !strings.Contains(shellSchema.Function.Description, "相对路径") {
+		t.Fatalf("background shell schema description should mention relative paths: %q", shellSchema.Function.Description)
+	}
+	var shellResult string
+	for _, msg := range requests[1].Messages {
+		if msg.Role == llm.RoleTool && msg.Name == "shell" {
+			shellResult = llm.SegmentsContentText(msg.Segments)
+		}
+	}
+	if !strings.Contains(shellResult, "agent test shell stdout") {
+		t.Fatalf("shell was not executed after background auto confirmation, result = %q", shellResult)
+	}
+}
+
+func TestWorkSessionKeepsDiscoverTool(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"ok"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	a.SetToolRuntime(registry, nil)
+
+	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) == 0 {
+		t.Fatal("no chat requests")
+	}
+	for _, schema := range requests[0].Tools {
+		if schema.Function.Name == "discover_tool" {
+			return
+		}
+	}
+	t.Fatalf("ordinary work session should include discover_tool: %#v", requests[0].Tools)
+}
+
 func TestChatToolMaxRoundsPerTurnRequestsSummary(t *testing.T) {
 	p := &fakePlatform{}
 	secondStarted := make(chan struct{})
@@ -2354,7 +2435,7 @@ func TestSoulPromptAndToolsByMode(t *testing.T) {
 	}
 }
 
-func TestRunCronMessagePreloadsToolListNames(t *testing.T) {
+func TestRunCronMessagePreloadsToolListNamesWithoutDiscoverTool(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
@@ -2375,7 +2456,7 @@ func TestRunCronMessagePreloadsToolListNames(t *testing.T) {
 	if len(requests) != 1 {
 		t.Fatalf("chat requests = %d", len(requests))
 	}
-	if toolNames(requests[0].Tools) != "discover_tool,web_extract,web_search" {
+	if toolNames(requests[0].Tools) != "web_extract,web_search" {
 		t.Fatalf("tools = %s", toolNames(requests[0].Tools))
 	}
 	if got := platform.out.String(); got != "" {

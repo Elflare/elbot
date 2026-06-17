@@ -843,7 +843,9 @@
 - [x] 明确 ToolRun、Tool Runtime 和 Prompt Builder 的职责边界，避免把来源身份和执行路由写进 Prompt。
 - [ ] 校验 Elwisp 工具 schema、超时和调用端点，拒绝不可信或越权工具；Elwisp 工具风险由 Elwisp 自身负责，Elnis 侧默认 low。
 - [x] 复用工具预加载、Tool Runtime、Security Policy 和后台 sandbox，但由 ToolRun 统一入口管理。
-- [x] 按 LLM result 的 `need_report` 和 Elnis 目标裁决发送报告。
+- [x] 按 LLM result 的 `need_report` 和 Elnis 目标裁决发送报告，失败/阻塞报告也可投递。
+- [x] 后台任务禁用 `discover_tool` 默认注入，`tool_list_names` 中的 `discover_tool` 静默忽略。
+- [x] Elnis `targets.platforms` 支持 `"all"` 哨兵值，表示投递到策略允许的全部平台。
 
 ### Phase 3：模型槽位
 

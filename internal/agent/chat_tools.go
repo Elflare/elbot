@@ -258,5 +258,12 @@ func (a *Agent) toolsForSession(ctx context.Context, session *storage.Session) (
 	if a.toolRuntime.provider != nil && !a.toolRuntime.defaultProvider {
 		return a.toolRuntime.provider.Schemas(ctx, session.Mode, session, a.scope(ctx))
 	}
-	return a.toolRunManager().Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: a.scope(ctx), Actor: a.actor(ctx)}, a.cachedToolsForSession(session))
+	return a.toolRunManager().Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: a.scope(ctx), Actor: a.actor(ctx), DisableBaseTools: isBackgroundSession(session)}, a.cachedToolsForSession(session))
+}
+
+func isBackgroundSession(session *storage.Session) bool {
+	if session == nil {
+		return false
+	}
+	return strings.TrimSpace(decodeSessionMetadata(session.Metadata).BackgroundKind) != ""
 }

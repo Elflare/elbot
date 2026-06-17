@@ -12,6 +12,7 @@ type sessionMetadata struct {
 	DiscoveredTools []string             `json:"discovered_tools,omitempty"`
 	ToolCache       []toolrun.CachedTool `json:"tool_cache,omitempty"`
 	LastUsage       *llm.Usage           `json:"last_usage,omitempty"`
+	BackgroundKind  string               `json:"background_kind,omitempty"`
 }
 
 func decodeSessionMetadata(raw string) sessionMetadata {

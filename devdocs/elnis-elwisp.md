@@ -2,9 +2,9 @@
 
 ## 目标
 
-Elnis（艾露妮斯）是 ElBot 内部的通用监听中台，负责接收外部监听消息、执行 Elvena 协议、做鉴权、规范化、去重、审计和分发。Elwisp（艾露维斯）是外部子监听器集群，负责观察具体世界，例如服务器状态、系统事件、RSS、Webhook、日志、脚本输出等。
+Elnis（艾露妮丝）是 ElBot 内部的通用监听中台，负责接收外部监听消息、执行 Elvena 协议、做鉴权、规范化、去重、审计和分发。Elwisp（艾露维丝）是外部子监听器集群，负责观察具体世界，例如服务器状态、系统事件、RSS、Webhook、日志、脚本输出等。
 
-核心目标是：ElBot 掌控最终执行与投递；Elwisp 只按协议投递事件；Elnis 不预设事件类型，也不把复杂业务规则写死在核心里。
+核心目标是：ElBot 掌控最终执行与投递；Elwisp 只按 Elvena（艾露维娜）协议投递事件；Elnis 不预设事件类型，也不把复杂业务规则写死在核心里。
 
 ## 非目标
 
@@ -138,7 +138,7 @@ background runner 的输入应同时携带：
 | `format` | 否 | `elyph` 或 `text`，默认 `text`。 |
 | `content` | 是 | 事件主体。LLM 模式推荐使用 ELyph `#task`。 |
 | `model_slot` | 否 | 模型槽位，例如 `elwisp1`、`elwisp2`、`elwisp3`。 |
-| `tool_list_names` | 否 | 请求预加载的工具名。实际可用性仍由 Elnis/ToolRun/Security 裁决。 |
+| `tool_list_names` | 否 | 请求预加载的工具名。实际可用性仍由 Elnis/ToolRun/Security 裁决；`discover_tool` 会被静默忽略，后台任务不注入发现入口。 |
 | `tools` | 否 | Elwisp 额外声明的工具信息，包含名称、描述、Schema、调用端点或执行方式、风险与超时等。 |
 | `targets` | 否 | Elwisp 期望投递目标。最终投递目标由 Elnis 配置裁决。 |
 | `meta` | 否 | 原始补充数据，只做记录与 prompt 附加，不让核心理解事件类型。 |
@@ -227,8 +227,8 @@ LLM 最终 JSON：
 语义：
 
 - `completed` 表示后台任务是否完成。
-- `need_report` 只有 `completed=true` 时有效。
-- `report` 是需要发给目标平台的汇报；未完成时填写失败或阻塞原因。
+- `need_report` 表示是否需要向目标平台汇报；成功、失败或阻塞都可以请求汇报。
+- `report` 是需要发给目标平台的自然语言汇报，可填写处理结果、失败原因或阻塞原因。
 
 ## 投递目标控制
 
@@ -248,7 +248,7 @@ Elwisp 可以声明它希望发给谁，但 Elnis 必须拥有最终控制权。
 
 首期建议只支持：
 
-- `platforms`：期望平台列表。
+- `platforms`：期望平台列表；包含 `"all"` 时表示投递到 Elnis 策略允许的全部平台，其它平台项忽略。
 - `superadmins`：是否发给目标平台超管。
 
 暂不支持任意 user/group scope 投递，除非后续安全模型明确，否则容易让外部监听器变成任意消息发送器。
@@ -390,7 +390,7 @@ data/sandbox/elnis/<elwisp-name>/
 
 风险策略建议：
 
-- native 工具继续使用 ElBot 的 Security Policy、风险评估、高风险确认和 cron 后台 sandbox 特例。
+- native 工具继续使用 ElBot 的 Security Policy、风险评估和高风险确认；cron/Elnis 后台 sandbox 中的 shell 非 critical 自动确认，critical 会提示改用相对路径并限制在 sandbox 内。
 - Elwisp 工具在 Elnis 侧按无人值守外部工具处理，默认视为 low，不触发 ElBot 高风险确认；执行影响由 Elwisp 所在环境自行负责。
 - 恢复历史 Elwisp session 时，即使原 Elwisp 工具已不可用，ToolRun 仍保留缓存 schema；若 LLM 再调用，应返回工具已失效或当前不可用提示。
 - 工具结果、拒绝原因、风险等级、source 和 canonical name 继续进入工具调用记录与审计。

@@ -94,7 +94,7 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 	if err != nil {
 		return background.RunResult{}, err
 	}
-	if injected := a.preloadToolNames(ctx, bgSession, req.ToolListNames); len(injected) > 0 {
+	if injected := a.preloadToolNames(ctx, bgSession, backgroundToolListNames(req.ToolListNames)); len(injected) > 0 {
 		a.audit("background_tool_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "tools", injected)
 	}
 	if err := a.startBackgroundChat(ctx, bgSession, req.Prompt); err != nil {
@@ -172,6 +172,20 @@ func backgroundTitle(kind background.Kind, name string) string {
 		return strings.ToUpper(kindText[:1]) + kindText[1:]
 	}
 	return strings.ToUpper(kindText[:1]) + kindText[1:] + ": " + name
+}
+
+func backgroundToolListNames(names []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" || name == "discover_tool" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	return out
 }
 
 func toolBackgroundKind(kind background.Kind) tool.BackgroundKind {

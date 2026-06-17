@@ -875,13 +875,15 @@ func cronPrompt(message string) string {
 
 ** “Cron 任务内容”必须是 ELyph #task <name> - 描述 任务文本
 ** 按“Cron 任务内容”中的 ELyph 任务自主执行
+** Cron 任务内容不需要包含最终 JSON 格式或汇报字段要求
 ** 信息不足时，在最终 JSON 的 report 填写失败或阻塞原因
 ** 需要使用工具时直接使用工具
+** 有投递目标、任务要求通知或产生需要目标知道的结果/失败/阻塞原因时，应设置 need_report=true 并在 report 写自然语言汇报
 ** 最终回复必须是严格 JSON
 ** JSON 格式：{"completed":true,"need_report":false,"report":""}
 ** completed 表示是否完成任务
-** need_report 只有 completed=true 时有效
-** report 为需要发给用户的汇报，未完成时填写失败或阻塞原因
+** need_report 表示是否需要向目标平台汇报；成功、失败或阻塞都可以请求汇报
+** report 为需要发给用户的汇报，可填写处理结果、失败原因或阻塞原因
 ~ 把任务当作前台用户对话
 ~ 闲聊
 ~ 向用户提问

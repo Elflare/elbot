@@ -71,7 +71,7 @@ func (t ShellTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.R
 		return tool.RiskAssessment{}, fmt.Errorf(shellCmdRequired)
 	}
 	assessment := classifyShellCommand(cmdText)
-	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.BackgroundKind == tool.BackgroundKindCron {
+	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.Background {
 		assessment = applyShellSandboxRisk(cmdText, assessment)
 	}
 	if assessment.Level == "" {

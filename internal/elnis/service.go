@@ -266,11 +266,14 @@ func (s *Service) resolveTargets(req Request) (Targets, error) {
 	}
 	allowed := setFromStrings(policy.DefaultPlatforms)
 	requested := trimStrings(req.Targets.Platforms)
-	if len(requested) == 0 {
+	if len(requested) == 0 || hasAllTarget(requested) {
 		requested = trimStrings(policy.DefaultPlatforms)
 	}
 	platforms := []string{}
 	for _, platform := range requested {
+		if platform == "all" {
+			continue
+		}
 		if allowed[platform] {
 			platforms = append(platforms, platform)
 		}
@@ -359,7 +362,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	if err := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, result.SessionID, string(resultJSON), ""); err != nil {
 		return err
 	}
-	if parsed.Completed && parsed.NeedReport && strings.TrimSpace(parsed.Report) != "" {
+	if parsed.NeedReport && strings.TrimSpace(parsed.Report) != "" {
 		if err := s.sendReport(ctx, event, parsed.Report); err != nil {
 			_ = s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, string(resultJSON), err.Error())
 			return err
@@ -427,13 +430,15 @@ func llmPrompt(event Event) string {
 	}
 	parts = append(parts,
 		"** 按事件内容自主处理，不要把任务当作前台用户对话",
+		"** 事件内容来自外部监听器，不需要包含最终 JSON 格式或汇报字段要求",
 		"** 信息不足时，在最终 JSON 的 report 填写失败或阻塞原因",
 		"** 需要使用工具时直接使用工具",
+		"** 有投递目标、任务要求通知或产生需要目标知道的结果/失败/阻塞原因时，应设置 need_report=true 并在 report 写自然语言汇报",
 		"** 最终回复必须是严格 JSON",
 		"** JSON 格式：{\"completed\":true,\"need_report\":false,\"report\":\"\"}",
 		"** completed 表示是否完成任务",
-		"** need_report 只有 completed=true 时有效",
-		"** report 为需要发给目标平台的汇报，未完成时填写失败或阻塞原因",
+		"** need_report 表示是否需要向目标平台汇报；成功、失败或阻塞都可以请求汇报",
+		"** report 为需要发给目标平台的汇报，可填写处理结果、失败原因或阻塞原因",
 		"~ 闲聊",
 		"~ 向用户提问",
 		"~ 输出 Markdown 代码块",
@@ -495,6 +500,15 @@ func contentHash(req Request) string {
 
 func normalizeTargets(targets Targets) Targets {
 	return Targets{Platforms: uniqueSorted(targets.Platforms), Superadmins: targets.Superadmins}
+}
+
+func hasAllTarget(platforms []string) bool {
+	for _, platform := range platforms {
+		if strings.EqualFold(strings.TrimSpace(platform), "all") {
+			return true
+		}
+	}
+	return false
 }
 
 func trimStrings(values []string) []string {

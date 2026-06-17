@@ -111,7 +111,7 @@ func (d agentToolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string,
 
 func (d agentToolRunDeps) ConfirmBackgroundTool(ctx context.Context, sessionID string, call llm.ToolCallRequest, resolved toolrun.ResolvedTool, assessment tool.RiskAssessment) (toolrun.ConfirmResult, bool) {
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
-	allowed, handled := d.agent.confirmCronSandboxShell(ctx, sessionID, call, assessment.Level, &message)
+	allowed, handled := d.agent.confirmBackgroundSandboxShell(ctx, sessionID, call, assessment.Level, &message)
 	if !handled {
 		return toolrun.ConfirmResult{}, false
 	}
@@ -166,8 +166,18 @@ func (a *Agent) cachedToolsForSession(session *storage.Session) []toolrun.Cached
 		return nil
 	}
 	metadata := decodeSessionMetadata(session.Metadata)
-	cached := metadata.ToolCache
+	backgroundSession := strings.TrimSpace(metadata.BackgroundKind) != ""
+	cached := []toolrun.CachedTool{}
+	for _, item := range metadata.ToolCache {
+		if backgroundSession && item.Name == "discover_tool" {
+			continue
+		}
+		cached = append(cached, item)
+	}
 	for _, name := range metadata.DiscoveredTools {
+		if backgroundSession && name == "discover_tool" {
+			continue
+		}
 		if a.toolRuntime.registry == nil {
 			continue
 		}

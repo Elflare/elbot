@@ -40,7 +40,7 @@
 
 ### Agent 编排
 
-- `internal/agent/core.go`：Agent 主结构与消息入口；装配核心依赖，分发 slash 命令和普通输入，处理 Actor/Scope fallback 与命令权限审计。
+- `internal/agent/core.go`：Agent 主结构与消息入口；装配核心依赖，分发 slash 命令和普通输入，处理 context Actor/Scope fallback 与命令权限审计。
 - `internal/agent/input.go`：普通输入分发辅助；处理 idle 过期、平台引用 fork、归档拒聊、`@tool:<name>` 工具预载、LLM 打断追加、工具 pending 输入和高风险工具确认命令。
 - `internal/agent/completion.go`：平台补全辅助；暴露中央补全服务，兼容旧平台的文本补全入口。
 
@@ -51,7 +51,7 @@
 - `internal/agent/risk_confirmation.go`：风险确认阶段命令定义与文案；统一生成 `/detail`、`/confirm`、`/confirmtool`、`/confirmall`、`/reject`、`/stop` 及别名的提示、补全和识别。
 - `internal/agent/cron.go`：Agent 通用后台 runner；绕过 slash 命令解析，使用 discard sender 静默运行后台 LLM，按 background kind 注入 sandbox、预加载工具并写入后台 Session metadata；保留 `RunCronMessage` 薄适配。
 
-- `internal/agent/cron_tools.go`：cron 工具确认特例；后台 cron shell 非 critical 自动确认，critical 直接回 tool message 提醒用相对路径/低风险命令且不等待用户。
+- `internal/agent/cron_tools.go`：后台工具确认特例；cron/Elnis sandbox shell 非 critical 自动确认，critical 直接回 tool message 提醒用相对路径/低风险命令且不等待用户。
 - `internal/agent/prompt.go`：Soul Prompt Builder；按文件状态缓存并加载 `SOUL.md`，合并常驻记忆、工具名称提示和压缩摘要，避免生成多条 system prompt。
 - `internal/agent/tools.go`：Agent 工具运行态与命令依赖适配；集中维护 ToolRun manager、tool Registry、skill scanner 和工具配置，并把默认工具视图接入 Prompt Builder。
 - `internal/agent/toolrun_adapter.go`：Agent 到 ToolRun 的能力适配；提供 Hook、Request、确认、输出、审计、工具记录和 session 缓存桥接。
@@ -102,7 +102,7 @@
 - `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录/source fallback 解析 `app.toml`，读取并合并 app/provider/state 配置，解析相对路径和 `api_key_env`，包含 LLM 请求超时/重试、sandbox/artifact、Elnis 与 S3/R2 预留配置。
 
 - `internal/elnis/types.go`：Elnis/Elvena 协议类型；定义 Elwisp 请求、目标、响应、事件模式和状态。
-- `internal/elnis/service.go`：Elnis 接收服务；处理 token 鉴权、协议校验、Elwisp 授权、持久化去重、record/direct 分发、目标裁决和 LLM 事件后台执行/结果报告。
+- `internal/elnis/service.go`：Elnis 接收服务；处理 token 鉴权、协议校验、Elwisp 授权、持久化去重、record/direct 分发、目标裁决（含 `platforms=["all"]`）和 LLM 事件后台执行/结果报告，失败报告也可按目标投递。
 - `internal/elnis/http.go`：Elnis HTTP runtime；提供 `POST /elvena/v1/events` 和 `GET /healthz`，支持 body 限制、token 提取、JSON 响应和 LLM 事件队列 worker。
 
 - `internal/logging/logging.go`：日志地基；创建运行日志、审计日志和 Elnis 日志的 `slog.Logger`，`Manager` 统一持有按日期懒轮转的 `elbot-YYYY-MM-DD.log`、`audit-YYYY-MM-DD.log`、`elnis-YYYY-MM-DD.log` writer，暴露日志目录和可配置旧日志清理入口。
@@ -130,7 +130,7 @@
 
 ### Output Layer
 
-- `internal/background/`：后台 LLM 执行公共类型与结果 helper；定义 cron/Elnis 共用 `RunRequest`、`RunResult`、background kind 和最终 JSON 结果解析/格式重试文案。
+- `internal/background/`：后台 LLM 执行公共类型与结果 helper；定义 cron/Elnis 共用 `RunRequest`、`RunResult`、background kind 和最终 JSON 结果解析/格式重试文案，失败或阻塞也可通过 report 汇报。
 
 - `internal/output/output.go`：平台无关输出意图与发送管理；定义 text/image/file/at/reply/emoticon 等输出类型、fallback 文本、统一发送入口和 delivery timing 元数据。
 
@@ -159,7 +159,7 @@
 - `internal/tool/builder.go`：Go Tool Builder；用于声明工具描述、风险、隐藏、superadmin-only、用户侧 tags、依赖和常用参数 schema，Object 参数默认允许任意 JSON 字段，减少内置工具与包装工具手写 schema 的成本。
 - `internal/tool/discover.go`：`discover_tool` 内置工具；无参列出可见工具/skill 简介，有 `name`/`names` 时普通工具仅返回“已发现工具”文本并把完整 schema 留在结构化 Data 供 Agent 注入 top-level tools，外置 skill 返回 markdown/ELyph detail；查询 py/go skill 会通过内部 metadata 激活隐藏包装工具 `python_skill_run`/`go_skill_run`。
 - `internal/tool/provider.go`：Tool Runtime 到 Agent Prompt/LLM schema 的旧 provider 适配；保留给显式外部 provider 兼容，默认工具视图由 `internal/toolrun` 提供。
-- `internal/toolrun/`：工具调用中间层；维护 session 工具缓存、native/Elwisp 工具视图、命名解析、权限风险确认、tool call 生命周期编排和失效提示。
+- `internal/toolrun/`：工具调用中间层；维护 session 工具缓存、native/Elwisp 工具视图、命名解析、权限风险确认、tool call 生命周期编排和失效提示；后台 session 不注入默认 `discover_tool`，后台 shell schema 会提示使用相对路径。
 - `internal/tool/executor.go`：工具执行器；把模型产生的 `llm.ToolCallRequest` 转换为 Tool Runtime 调用，执行前按 Actor/Policy 做风险等级兜底校验，并把结果转换为 LLM tool message。
 
 - `internal/tool/builtin/runtime.go`：内置工具 Runtime；集中创建 Tool Registry、常驻记忆 store、Skill Manager、Artifact Manager 和内置工具私有路径；`memories.toml`、`long_memory/`、`skills/` 默认在配置目录下。
@@ -176,9 +176,9 @@
 - `internal/tool/builtin/file_tools.go`：文件读写工具；`read_file` 返回带行号文本和文件哈希，支持 grep 子串搜索；`edit_file` 按行支持替换、删除、整行插入、创建新文件、整行 append/prepend 并返回 unified diff；两者都打 `files`/`agent` tag，`edit_file` 在 cron 后台只允许 sandbox 内路径。
 - `internal/tool/builtin/atomic_write*.go`：文件工具原子写入 helper；普通文件用同目录临时文件替换，Windows 走 `MoveFileExW`，符号链接回退 `os.WriteFile` 保持旧语义。
 
-- `internal/tool/builtin/shell.go`：内置 shell 工具；接口保留通用 `cmd`，可执行任意 shell 命令，用户侧 tag 为 `agent`，调用前通过风险评估与高风险确认流程拦截；cron sandbox context 下会创建目录并把 shell cwd 固定到 sandbox。
+- `internal/tool/builtin/shell.go`：内置 shell 工具；接口保留通用 `cmd`，可执行任意 shell 命令，用户侧 tag 为 `agent`，调用前通过风险评估与高风险确认流程拦截；后台 sandbox context 下会创建目录并把 shell cwd 固定到 sandbox。
 - `internal/tool/builtin/shell_risk.go`：shell/bash 命令风险分类器；使用 `mvdan.cc/sh/v3/syntax` 解析 AST，识别管道、重定向、命令替换、动态命令、删除、提权、下载即执行等风险并返回风险原因。
-- `internal/tool/builtin/shell_sandbox.go`：cron shell 轻沙盒 AST 校验；检查重定向和常见路径参数中的绝对路径、`..` 逃逸、动态路径与 `cd`，违规时把风险提升为 critical。
+- `internal/tool/builtin/shell_sandbox.go`：后台 shell 轻沙盒 AST 校验；检查重定向和常见路径参数中的绝对路径、`..` 逃逸、动态路径与 `cd`，违规时把风险提升为 critical。
 - `internal/elyph/`：ELyph Task Notation 语言层；提供规则卡、AST/diagnostic、parser/linter，供原生 skill 创建、扫描和 LLM cron 任务复用。
 - `internal/tool/skill/parser.go`：通用 `SKILL.md` 解析器；兼容 Python 外置 skill 常见 YAML front matter 的 `name`、`description`、`when_to_use`、`risk`，并提供目录名和正文首段 fallback；未写 risk 时默认 high。
 - `internal/tool/skill/catalog.go`：skill catalog；记录 py/go skill 的名称、详情格式、风险、根目录和 Go binary 路径，供隐藏包装工具按名称查找。

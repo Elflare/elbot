@@ -311,6 +311,9 @@ func (a *Agent) scope(ctx context.Context) session.Scope {
 }
 
 func (a *Agent) actor(ctx context.Context) security.Actor {
+	if actor, ok := security.ActorFromContext(ctx); ok && (actor.ID != "" || actor.Role != "") {
+		return actor
+	}
 	platformName := a.platform.Name()
 	platformUserID := a.actorID
 	displayName := ""

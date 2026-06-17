@@ -140,6 +140,49 @@ func TestRunLLMEventCompletesAndReports(t *testing.T) {
 	}
 }
 
+func TestRunLLMEventReportsFailedResultWhenRequested(t *testing.T) {
+	runner := &fakeBackgroundRunner{text: `{"completed":false,"need_report":true,"report":"创建失败：工具权限不足"}`}
+	sent := []string{}
+	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target output.Target, out output.Output) error {
+		sent = append(sent, target.Platform+":"+out.Text)
+		return nil
+	})
+	defer cleanup()
+	var queued QueuedLLMEvent
+	service.SetLLMEnqueuer(func(ctx context.Context, event QueuedLLMEvent) error {
+		queued = event
+		return nil
+	})
+
+	req := testRequest(ModeLLM)
+	req.Targets = Targets{Platforms: []string{"cli"}, Superadmins: true}
+	if _, err := service.Handle(context.Background(), "secret", req); err != nil {
+		t.Fatalf("Handle llm: %v", err)
+	}
+	if err := service.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err != nil {
+		t.Fatalf("RunLLMEvent: %v", err)
+	}
+	if len(sent) != 1 || sent[0] != "cli:创建失败：工具权限不足" {
+		t.Fatalf("sent = %#v", sent)
+	}
+}
+
+func TestResolveTargetsAllUsesAllowedPlatforms(t *testing.T) {
+	service, cleanup := newTestService(t, nil)
+	defer cleanup()
+	service.cfg.Delivery.DefaultPlatforms = []string{"cli", "qqonebot"}
+
+	req := testRequest(ModeDirect)
+	req.Targets = Targets{Platforms: []string{"all", "missing"}, Superadmins: true}
+	resolved, err := service.resolveTargets(req)
+	if err != nil {
+		t.Fatalf("resolveTargets: %v", err)
+	}
+	if got := strings.Join(resolved.Platforms, ","); got != "cli,qqonebot" {
+		t.Fatalf("platforms = %q", got)
+	}
+}
+
 func TestHandleDirectSendsToResolvedSuperadmins(t *testing.T) {
 	sent := []string{}
 	service, cleanup := newTestService(t, func(ctx context.Context, target output.Target, out output.Output) error {
