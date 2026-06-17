@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "b656aa69370a35f5f15bf71dc2f73ae246e23bb41be2a6a9565d0366c6d34084",
+      "source_hash": "e261001da11103220889a6e6847782a2930eb1723362ab8626a78da813fbdd93",
       "target": "README.md",
-      "updated_at": 1781575057
+      "updated_at": 1781664867
     },
     "docs/README.md": {
       "source_hash": "ece79e589e6219920d295c5ead264549fe40fe58ac5824ffef69da1b840702cf",
@@ -32,6 +32,38 @@
     }
   },
   "segments": {
+    "README.zh-CN.md:code-comment:bash:130bae2a285a534300c83d222710f7341b2f89c66a2de9a3e1f6c70185cb6e0f": {
+      "kind": "code-comment:bash",
+      "source": "本地 CLI-only：只启动 CLI，不启动平台和 Cron",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "130bae2a285a534300c83d222710f7341b2f89c66a2de9a3e1f6c70185cb6e0f",
+      "translation": "Local CLI-only: only starts CLI, does not start platforms and Cron",
+      "updated_at": 1781664867
+    },
+    "README.zh-CN.md:code-comment:bash:a2a87c263e0793e87dca8c128652941282fc018fff6c8c4cb6c97aba1c8f9798": {
+      "kind": "code-comment:bash",
+      "source": "Linux/headless 服务模式：不启动 CLI，启动已启用平台和 Cron",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "a2a87c263e0793e87dca8c128652941282fc018fff6c8c4cb6c97aba1c8f9798",
+      "translation": "Linux/headless service mode: does not start CLI, starts enabled platforms and Cron",
+      "updated_at": 1781664867
+    },
+    "README.zh-CN.md:code-comment:bash:b54868ef2af099400e62256a9a8ee4d862a5c3f4e49f37f45332426bd2d4e5ba": {
+      "kind": "code-comment:bash",
+      "source": "完整前台：CLI + 已启用平台 + Cron",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "b54868ef2af099400e62256a9a8ee4d862a5c3f4e49f37f45332426bd2d4e5ba",
+      "translation": "Full foreground: CLI + enabled platforms + Cron",
+      "updated_at": 1781664867
+    },
+    "README.zh-CN.md:code-comment:bash:bba1213101e04941144c9bfef5bf741548f4ef3fd24e04611c535bf8f6d80b77": {
+      "kind": "code-comment:bash",
+      "source": "自动模式：Linux 检测到 service 时进入本地 CLI-only，否则完整前台启动",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "bba1213101e04941144c9bfef5bf741548f4ef3fd24e04611c535bf8f6d80b77",
+      "translation": "Automatic mode: enters local CLI-only when Linux detects a service, otherwise starts in full foreground",
+      "updated_at": 1781664867
+    },
     "README.zh-CN.md:heading:1fc2974b566433076bf4c1c52828a0e572e65ad6f8c7c93c7aeb59d608aad2c4": {
       "kind": "heading",
       "source": "4. 完善的日志与审计系统",
@@ -471,6 +503,14 @@
       "source_hash": "7f448437c71676019182a1592917cf3ec3d00b63036317611a3a92b7d6b4b266",
       "translation": "The two modes can be configured with models independently, allowing low-cost models to handle casual chat and powerful models to focus on complex tasks.\n",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:90c8fdff1ad2f57b923c85e4227d71bf3ecf04e4978d175fcf69f2ce6316a9f9": {
+      "kind": "paragraph",
+      "source": "ElBot 当前本地启动耗时 <10ms（N5105，sata固态），常驻内存约 30MB。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "90c8fdff1ad2f57b923c85e4227d71bf3ecf04e4978d175fcf69f2ce6316a9f9",
+      "translation": "ElBot currently takes <10ms for local startup (N5105, SATA SSD), with resident memory of about 30MB.\n",
+      "updated_at": 1781664867
     },
     "README.zh-CN.md:paragraph:91fbaa7b4dcef9a9a24bd7d258789c3d6ac6a079c29420024a31df6c0099f5ac": {
       "kind": "paragraph",
