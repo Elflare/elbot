@@ -188,6 +188,40 @@ SET platform = 'qqonebot'
 WHERE platform = 'qq';
 `,
 	},
+	{
+		version: 7,
+		name:    "create_elnis_events",
+		sql: `
+CREATE TABLE elnis_events (
+    id TEXT PRIMARY KEY,
+    event_key TEXT NOT NULL,
+    token_name TEXT NOT NULL,
+    elwisp_name TEXT NOT NULL,
+    source TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    tags TEXT NULL,
+    mode TEXT NOT NULL,
+    model_slot TEXT NULL,
+    content_hash TEXT NOT NULL,
+    requested_targets TEXT NULL,
+    resolved_targets TEXT NULL,
+    status TEXT NOT NULL,
+    session_id TEXT NULL,
+    result TEXT NULL,
+    error TEXT NULL,
+    received_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(elwisp_name, source, source_id)
+);
+
+CREATE INDEX idx_elnis_events_status_updated_at
+ON elnis_events(status, updated_at);
+
+CREATE INDEX idx_elnis_events_elwisp_received_at
+ON elnis_events(elwisp_name, received_at);
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

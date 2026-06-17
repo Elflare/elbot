@@ -16,6 +16,7 @@ const DefaultRetentionDays = 30
 type Manager struct {
 	runtime       *slog.Logger
 	audit         *slog.Logger
+	elnis         *slog.Logger
 	logDir        string
 	retentionDays int
 	writers       []*dailyFileWriter
@@ -33,7 +34,13 @@ func NewManager(level, sqlitePath string, retentionDays int) (*Manager, error) {
 		_ = runtimeWriter.Close()
 		return nil, err
 	}
-	return &Manager{runtime: runtime, audit: audit, logDir: logDir, retentionDays: retentionDays, writers: []*dailyFileWriter{runtimeWriter, auditWriter}}, nil
+	elnis, elnisWriter, err := newPrefixedFile(level, sqlitePath, "elnis")
+	if err != nil {
+		_ = runtimeWriter.Close()
+		_ = auditWriter.Close()
+		return nil, err
+	}
+	return &Manager{runtime: runtime, audit: audit, elnis: elnis, logDir: logDir, retentionDays: retentionDays, writers: []*dailyFileWriter{runtimeWriter, auditWriter, elnisWriter}}, nil
 }
 
 func (m *Manager) Runtime() *slog.Logger {
@@ -48,6 +55,13 @@ func (m *Manager) Audit() *slog.Logger {
 		return nil
 	}
 	return m.audit
+}
+
+func (m *Manager) Elnis() *slog.Logger {
+	if m == nil {
+		return nil
+	}
+	return m.elnis
 }
 
 func (m *Manager) LogDir() string {

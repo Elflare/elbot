@@ -67,6 +67,14 @@ type RunRequest struct {
 
 Cron 可包装为 `Kind=cron`，Elnis 可包装为 `Kind=elwisp`。Session metadata 应记录各自来源，避免以后 `/sessions`、审计和排错混淆。
 
+background runner 的输入应同时携带：
+
+- 当前会话可见的 ElBot 内置工具。
+- ELwisp 注入的额外工具声明。
+- 由 ToolRun 过滤后的最终工具视图。
+
+这样 LLM 看到的是“当前上下文可用工具”，而不是“某个平台提供的工具”。
+
 ## ELvena v1 协议草案
 
 首期协议使用 JSON 外壳，主体内容支持 ELyph 或自然语言文本。
@@ -87,6 +95,21 @@ Cron 可包装为 `Kind=cron`，Elnis 可包装为 `Kind=elwisp`。Session metad
   "content": "#task investigate_cpu_alert - 检查服务器 CPU 异常并判断是否需要通知",
   "model_slot": "elwisp2",
   "tool_list_names": ["shell"],
+  "tools": [
+    {
+      "name": "server_status",
+      "description": "查询 minecraft-main 当前服务状态和最近错误摘要",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "detail": {"type": "boolean"}
+        }
+      },
+      "risk": "low",
+      "timeout_seconds": 10,
+      "endpoint": "http://127.0.0.1:32171/tools/server_status"
+    }
+  ],
   "targets": {
     "platforms": ["cli"],
     "superadmins": true
@@ -113,7 +136,8 @@ Cron 可包装为 `Kind=cron`，Elnis 可包装为 `Kind=elwisp`。Session metad
 | `format` | 否 | `elyph` 或 `text`，默认 `text`。 |
 | `content` | 是 | 事件主体。LLM 模式推荐使用 ELyph `#task`。 |
 | `model_slot` | 否 | 模型槽位，例如 `elwisp1`、`elwisp2`、`elwisp3`。 |
-| `tool_list_names` | 否 | 请求预加载的工具名。实际可用性仍由 Elnis/Agent/Security 裁决。 |
+| `tool_list_names` | 否 | 请求预加载的工具名。实际可用性仍由 Elnis/ToolRun/Security 裁决。 |
+| `tools` | 否 | ELwisp 额外声明的工具信息，包含名称、描述、Schema、调用端点或执行方式、风险与超时等。 |
 | `targets` | 否 | ELwisp 期望投递目标。最终投递目标由 Elnis 配置裁决。 |
 | `meta` | 否 | 原始补充数据，只做记录与 prompt 附加，不让核心理解事件类型。 |
 
@@ -144,7 +168,7 @@ elwisp.name + source + id
 - 支持 `Authorization: Bearer <token>`。
 - 可兼容 `X-Elnis-Token: <token>`。
 - token 原文不写日志，只记录 token name。
-- token 可从系统环境变量或配置目录 `.env` 读取。
+- `token_env` 支持列表，按顺序尝试多个环境变量名；先读系统环境变量，再读配置目录 `.env`。
 
 ## 模式语义
 
@@ -181,9 +205,9 @@ direct 内容默认使用 `title + content` 组合为通知文本。未来可扩
 1. 事件状态置为 `queued`。
 2. worker 将状态置为 `running`。
 3. 根据 `model_slot` 选择模型，未配置则 fallback 到 `work`。
-4. 生成 Elnis background prompt。
-5. 预加载 `tool_list_names`。
-6. 使用 Elnis sandbox 子目录运行工具。
+4. 生成不暴露来源身份的 background prompt。
+5. 将 `tool_list_names` 和 `tools` 交给 ToolRun 做工具聚合、命名空间解析、可见性过滤和 schema 注入。
+6. 使用 Elnis sandbox 子目录运行 ElBot 内置工具；ELwisp 工具由 ToolRun 路由到对应 ELwisp 调用端点或后续多轮通道。
 7. 要求 LLM 最终输出严格 JSON。
 8. 解析结果并更新事件状态。
 9. 若需要报告，按 Elnis 裁决后的目标发送通知。
@@ -227,17 +251,27 @@ ELwisp 可以声明它希望发给谁，但 Elnis 必须拥有最终控制权。
 
 暂不支持任意 user/group scope 投递，除非后续安全模型明确，否则容易让外部监听器变成任意消息发送器。
 
-Elnis 配置应支持 allowlist：
+Elnis 配置应支持 allowlist，且 `elwisps` 是可选项：
 
 ```toml
 [elnis.delivery]
 default_platforms = ["cli"]
 allow_superadmins = true
 
+[elnis.elwisps.server-watchdog]
+enabled = true
+allowed_tokens = ["server"]
+
 [elnis.elwisps.server-watchdog.delivery]
 allowed_platforms = ["cli", "qqofficial"]
 allow_superadmins = true
 ```
+
+说明：
+
+- `elnis.elwisps` 整体可为空，未配置时表示暂不启用任何 ELwisp。
+- 单个 ELwisp 只有在显式启用时才参与接收、鉴权和投递。
+- 配置层面可以临时禁用某个 ELwisp，而不需要删除整套 Elnis 配置。
 
 最终目标计算：
 
@@ -278,7 +312,58 @@ model = "gpt-4.1"
 
 更通用的 `/model --mode elwisp2 <model>` 可作为后续扩展。首期先做固定槽位，避免命令解析过度复杂。
 
-## Sandbox 与工具风险
+## ToolRun 中间层
+
+Elnis 不应直接把 ELwisp 工具和 ElBot 内置工具混在同一个扁平列表里，也不应让 LLM 感知工具来自哪里。LLM 只接触被注入到当前上下文中的工具描述和少量运行态信息；它不知道这些工具来自 CLI、消息平台、cron、ELwisp 还是其他 transport。
+
+建议引入专门的 `ToolRun` 中间层或 manager，位于 LLM 与具体工具执行器之间，职责包括：
+
+- 聚合当前上下文可见的工具。
+- 区分 ElBot 内置工具命名空间与 ELwisp 工具命名空间。
+- 处理工具 schema 注入、去重、冲突和可见性过滤。
+- 根据当前 session、actor、source、background kind 和 tool metadata 路由到对应执行器。
+- 统一做权限、风险、超时、审计和结果回灌。
+
+推荐的命名空间策略：
+
+- `builtin.*` 或空前缀：ElBot 内置工具。
+- `elwisp.<name>`：ELwisp 注入工具。
+- 后续若有平台私有工具，可再独立 namespace，但不要和业务工具共享一个无前缀平面。
+
+工具路由原则：
+
+- LLM 只做“要调用哪个工具”的决策，不关心工具来源。
+- ToolRun 根据当前对话来源、会话模式、Actor、security policy 和工具声明选择实际执行器。
+- 若工具名冲突，优先使用当前上下文显式注入的命名空间解析结果，不允许静默串台。
+- ELwisp 工具和 ElBot 工具可以同时注入，但必须经过可见性和风险过滤后再进入 prompt。
+
+实现上，ToolRun 可以把多来源工具汇总成一份统一的 LLM tool view，但这份 view 只是当前会话上下文的投影，不是全局工具真相表。
+
+ELwisp 工具声明首期建议字段：
+
+| 字段 | 必填 | 说明 |
+|---|---:|---|
+| `name` | 是 | ELwisp 内工具名，进入 ToolRun 后会绑定到 `elwisp.<elwisp-name>.<name>`。 |
+| `description` | 是 | 给 LLM 看的工具用途说明，不包含 ELwisp 身份叙述。 |
+| `schema` | 是 | JSON Schema 参数结构，必须通过 Elnis 校验后才能注入。 |
+| `risk` | 否 | ELwisp 声明的风险等级，只能作为下限；Elnis/ToolRun 可提升风险。 |
+| `timeout_seconds` | 否 | 单次调用超时。 |
+| `endpoint` | 否 | HTTP 调用端点；后续也可支持 stdio/pipe/多轮通道。 |
+
+安全边界：
+
+- ELwisp提供的工具，应是ELwisp所在平台的工具（如ELwisp所在计算机的终端）
+- ELwisp 提供的 schema 不等于可信工具；ToolRun 必须按 token、ELwisp policy、risk policy 和当前 background context 决定是否注入。
+- ELwisp 工具执行结果必须走统一 tool result 回灌，不允许直接写 assistant 消息。
+- ELwisp 工具不能绕过 Output Manager 直接发平台消息；若需要通知，返回结构化结果，由 Elnis/Agent 决定是否发送。
+- ELwisp工具的多轮调用可能需要配合多轮通信
+- ToolRun 审计必须记录逻辑工具名、实际执行命名空间、ELwisp 名、source、event id、风险、耗时和错误。
+
+ToolRun 不是 Tool Runtime 的重命名，也不是 Prompt Builder 的一部分：
+
+- Tool Runtime 负责工具注册、权限、风险评估和执行器封装。
+- ToolRun 负责把当前对话可见工具整理成 LLM 可用视图，并把 tool call 路由到正确的执行器。
+- Prompt Builder 只消费 ToolRun 给出的最终工具视图，不自己拼来源规则。
 
 Elnis LLM 模式必须复用现有 Tool Runtime、Security Policy 和工具风险评估，不允许绕过安全层。
 
@@ -327,6 +412,8 @@ Elnis 事件需要持久化，避免重启后重复处理。
 | `content_hash` | 事件内容 hash。 |
 | `requested_targets` | JSON。 |
 | `resolved_targets` | JSON。 |
+| `tool_declarations` | ELwisp 随事件声明的工具 JSON，供重放、审计和失败排查。 |
+| `tool_declarations_hash` | 工具声明 hash，用于重复事件和 schema 变化排查。 |
 | `status` | accepted/queued/running/completed/failed/duplicate。 |
 | `session_id` | LLM Session ID。 |
 | `result` | LLM JSON result。 |
@@ -396,10 +483,10 @@ queue_size = 128
 workers = 2
 
 [elnis.tokens.home]
-token_env = "ELNIS_HOME_TOKEN"
+token_env = ["ELNIS_HOME_TOKEN", "ELNIS_HOME_TOKEN_ALT"]
 
 [elnis.tokens.server]
-token_env = "ELNIS_SERVER_TOKEN"
+token_env = ["ELNIS_SERVER_TOKEN"]
 
 [elnis.delivery]
 default_platforms = ["cli"]

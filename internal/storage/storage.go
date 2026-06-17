@@ -99,6 +99,28 @@ type CronJob struct {
 	UpdatedAt time.Time
 }
 
+type ElnisEvent struct {
+	ID               string
+	EventKey         string
+	TokenName        string
+	ElwispName       string
+	Source           string
+	SourceID         string
+	Tags             string
+	Mode             string
+	ModelSlot        string
+	ContentHash      string
+	RequestedTargets string
+	ResolvedTargets  string
+	Status           string
+	SessionID        string
+	Result           string
+	Error            string
+	ReceivedAt       time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
 type ChatMessage struct {
 	Seq                      int64
 	ID                       string
@@ -150,6 +172,34 @@ type UpsertCronJobRequest struct {
 	Schedule string
 	Enabled  bool
 	Metadata string
+}
+
+type CreateElnisEventRequest struct {
+	EventKey         string
+	TokenName        string
+	ElwispName       string
+	Source           string
+	SourceID         string
+	Tags             string
+	Mode             string
+	ModelSlot        string
+	ContentHash      string
+	RequestedTargets string
+	ResolvedTargets  string
+	Status           string
+	Result           string
+	Error            string
+	ReceivedAt       time.Time
+	CreatedAt        time.Time
+}
+
+type UpdateElnisEventRequest struct {
+	ID              string
+	ResolvedTargets string
+	Status          string
+	SessionID       string
+	Result          string
+	Error           string
 }
 
 type ToolUsageSummary struct {
@@ -204,6 +254,7 @@ type Store interface {
 	ContextSummaries() ContextSummaryRepository
 	ToolCalls() ToolCallRepository
 	CronJobs() CronJobRepository
+	ElnisEvents() ElnisEventRepository
 	Close() error
 }
 
@@ -240,6 +291,12 @@ type CronJobRepository interface {
 	UpdateRunState(ctx context.Context, id string, state CronJobRunState) error
 	DisableByName(ctx context.Context, name string) error
 	DeleteByName(ctx context.Context, name string) error
+}
+
+type ElnisEventRepository interface {
+	Create(ctx context.Context, req CreateElnisEventRequest) (*ElnisEvent, error)
+	GetByKey(ctx context.Context, elwispName, source, sourceID string) (*ElnisEvent, error)
+	Update(ctx context.Context, req UpdateElnisEventRequest) error
 }
 
 type ChatHistoryRepository interface {

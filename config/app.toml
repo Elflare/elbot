@@ -81,6 +81,33 @@ trigger_step = 3
 enabled = false
 retention_days = 30
 
+# [elnis]
+# enabled = false
+#
+# [elnis.http]
+# addr = "127.0.0.1:32170"
+# max_body_bytes = 1048576
+# queue_size = 128
+# workers = 2
+#
+# [elnis.tokens.home]
+# token_env = ["ELNIS_HOME_TOKEN", "ELNIS_HOME_TOKEN_ALT"]
+#
+# [elnis.delivery]
+# default_platforms = ["cli"]
+# allow_superadmins = true
+#
+# [elnis.elwisps.server-watchdog]
+# enabled = true
+# allowed_tokens = ["home"]
+#
+# [elnis.elwisps.server-watchdog.delivery]
+# default_platforms = ["cli"]
+# allow_superadmins = true
+#
+# [elnis.elwisps.spike-checker]
+# enabled = false
+
 [platform.cli]
 enabled = true
 

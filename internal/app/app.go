@@ -16,6 +16,7 @@ import (
 	"elbot/internal/completion"
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
+	"elbot/internal/elnis"
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
 	"elbot/internal/llm/openai"
@@ -317,6 +318,31 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	profiler.Mark("agent init")
 
+	if cfg.Elnis.Enabled {
+		elnisTokens, err := resolveElnisTokens(cfg)
+		if err != nil {
+			return err
+		}
+		elnisService, err := elnis.NewService(elnis.Options{
+			Config: cfg.Elnis,
+			Tokens: elnisTokens,
+			Store:  store,
+			Logger: logs.Elnis(),
+			Audit: func(event string, attrs ...any) {
+				logs.Audit().Log(context.Background(), slog.LevelInfo, "audit event", append([]any{"event", event}, attrs...)...)
+			},
+			Send: func(ctx context.Context, target output.Target, out output.Output) error {
+				_, err := agt.SendNoticeOutput(ctx, target, out)
+				return err
+			},
+		})
+		if err != nil {
+			return err
+		}
+		platforms.Runtimes = append(platforms.Runtimes, elnisRuntimeAdapter{runtime: elnis.NewRuntime(cfg.Elnis.HTTP, elnisService)})
+		profiler.Mark("elnis init")
+	}
+
 	registerCompletionPlatforms(agt, platforms.Runtimes)
 	registerPlatformHooks(agt, platforms.Runtimes)
 	profiler.Mark("platform hooks")
@@ -333,6 +359,24 @@ func Run(ctx context.Context, opts Options) error {
 }
 
 type platformRuntime = platform.Runtime
+
+type elnisRuntimeAdapter struct {
+	runtime *elnis.Runtime
+}
+
+func (a elnisRuntimeAdapter) Name() string { return "elnis" }
+
+func (a elnisRuntimeAdapter) Run(ctx context.Context, handler platform.PlatformHandler) error {
+	return a.runtime.Run(ctx)
+}
+
+func (a elnisRuntimeAdapter) SendChat(ctx context.Context, out output.Output) (platform.Receipt, error) {
+	return platform.Receipt{}, fmt.Errorf("elnis cannot send chat output")
+}
+
+func (a elnisRuntimeAdapter) SendNotice(ctx context.Context, target output.Target, out output.Output) (platform.Receipt, error) {
+	return platform.Receipt{}, fmt.Errorf("elnis cannot send notice output")
+}
 
 type platformLifecycle interface {
 	StopAppOnExit() bool
@@ -456,6 +500,32 @@ func runPlatforms(ctx context.Context, handler platform.PlatformHandler, logger 
 	case <-done:
 		return nil
 	}
+}
+
+func resolveElnisTokens(cfg *config.Config) (map[string]string, error) {
+	out := map[string]string{}
+	configDir := filepath.Dir(cfg.ConfigPath)
+	for name, tokenCfg := range cfg.Elnis.Tokens {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		for _, envName := range tokenCfg.TokenEnv {
+			envName = strings.TrimSpace(envName)
+			if envName == "" {
+				continue
+			}
+			value, ok, err := config.ConfigEnv(envName, configDir)
+			if err != nil {
+				return nil, fmt.Errorf("resolve elnis token %q from %s: %w", name, envName, err)
+			}
+			if ok && strings.TrimSpace(value) != "" {
+				out[name] = strings.TrimSpace(value)
+				break
+			}
+		}
+	}
+	return out, nil
 }
 
 func enabledCronPlatforms(cfg *config.Config) []elcron.PlatformTarget {

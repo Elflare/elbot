@@ -39,6 +39,7 @@ type Config struct {
 	Sandbox             SandboxConfig             `toml:"sandbox"`
 	Artifact            ArtifactConfig            `toml:"artifact"`
 	Platform            PlatformConfig            `toml:"platform"`
+	Elnis               ElnisConfig               `toml:"elnis"`
 	Soul                SoulConfig                `toml:"soul"`
 	ConfigPath          string                    `toml:"-"`
 	ProvidersConfigPath string                    `toml:"-"`
@@ -153,6 +154,36 @@ type ArtifactConfig struct {
 }
 
 type PlatformConfig map[string]map[string]any
+
+type ElnisConfig struct {
+	Enabled  bool                         `toml:"enabled"`
+	HTTP     ElnisHTTPConfig              `toml:"http"`
+	Tokens   map[string]ElnisTokenConfig  `toml:"tokens"`
+	Delivery ElnisDeliveryConfig          `toml:"delivery"`
+	Elwisps  map[string]ElnisElwispConfig `toml:"elwisps"`
+}
+
+type ElnisHTTPConfig struct {
+	Addr         string `toml:"addr"`
+	MaxBodyBytes int64  `toml:"max_body_bytes"`
+	QueueSize    int    `toml:"queue_size"`
+	Workers      int    `toml:"workers"`
+}
+
+type ElnisTokenConfig struct {
+	TokenEnv []string `toml:"token_env"`
+}
+
+type ElnisDeliveryConfig struct {
+	DefaultPlatforms []string `toml:"default_platforms"`
+	AllowSuperadmins bool     `toml:"allow_superadmins"`
+}
+
+type ElnisElwispConfig struct {
+	Enabled       bool                `toml:"enabled"`
+	AllowedTokens []string            `toml:"allowed_tokens"`
+	Delivery      ElnisDeliveryConfig `toml:"delivery"`
+}
 
 type CronTaskConfig struct {
 	Enabled  bool   `toml:"enabled"`
@@ -433,6 +464,24 @@ func (c *Config) applyAppDefaults() {
 	}
 	if c.Platform == nil {
 		c.Platform = PlatformConfig{}
+	}
+	if c.Elnis.HTTP.Addr == "" {
+		c.Elnis.HTTP.Addr = "127.0.0.1:32170"
+	}
+	if c.Elnis.HTTP.MaxBodyBytes <= 0 {
+		c.Elnis.HTTP.MaxBodyBytes = 1024 * 1024
+	}
+	if c.Elnis.HTTP.QueueSize <= 0 {
+		c.Elnis.HTTP.QueueSize = 128
+	}
+	if c.Elnis.HTTP.Workers <= 0 {
+		c.Elnis.HTTP.Workers = 2
+	}
+	if c.Elnis.Tokens == nil {
+		c.Elnis.Tokens = map[string]ElnisTokenConfig{}
+	}
+	if c.Elnis.Elwisps == nil {
+		c.Elnis.Elwisps = map[string]ElnisElwispConfig{}
 	}
 	if c.Session.NonSuperadminIdleTTLMinutes < 0 {
 		c.Session.NonSuperadminIdleTTLMinutes = 0
