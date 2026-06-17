@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "1bf75096a6b0416619e54aaa18280d82dcfcfb39b0ac8782ceb041d4766b845e",
+      "source_hash": "f5a56182272f342d7fb0b4e6ec354932f124b3310026acaeb1061c759751d94f",
       "target": "README.md",
-      "updated_at": 1781709186
+      "updated_at": 1781710342
     },
     "docs/README.md": {
       "source_hash": "b40f5d1519dbd52e73aeee1fad99f614728052e3ae821add12de6ea4f9d69a7c",
@@ -581,6 +581,14 @@
       "translation": "ElBot currently takes about 2ms to start locally, with resident memory of about 30MB.\n",
       "updated_at": 1781519017
     },
+    "README.zh-CN.md:paragraph:7e4782cedab501faad5bc1a1134cd921ef25f2bd0c99a1c00b233663f2ee027d": {
+      "kind": "paragraph",
+      "source": "服务器变化、RSS 更新、Webhook 告警、日志变化、游戏事件、本地脚本甚至其他计算机设备，都可以送入 Elnis。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "7e4782cedab501faad5bc1a1134cd921ef25f2bd0c99a1c00b233663f2ee027d",
+      "translation": "Server changes, RSS updates, Webhook alerts, log changes, game events, local scripts, and even other computing devices can all be sent to Elnis.",
+      "updated_at": 1781710342
+    },
     "README.zh-CN.md:paragraph:7edd16f0cb0d24f42eb680e350e6cab6f70ef8ed07815943e91dea63799afd8a": {
       "kind": "paragraph",
       "source": "缓存命中： >90%\n",
@@ -796,6 +804,14 @@
       "source_hash": "e95e02407bc3d819712c44ac05dad400bc146f5201f91a26f17ca31f5a45f9e9",
       "translation": "Chinese | [English](README.md)\n",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:edc5a3a14ea83b79544cea556feafd1cdcd5878d04de8caad274d1e2783149b3": {
+      "kind": "paragraph",
+      "source": "Elnis 是 ElBot 的监听枢纽；Elwisp 是分布在各处的监听器，负责观测世界。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "edc5a3a14ea83b79544cea556feafd1cdcd5878d04de8caad274d1e2783149b3",
+      "translation": "Elnis is the listening hub of ElBot; Elwisp consists of listeners distributed everywhere, responsible for observing the world.\n",
+      "updated_at": 1781710342
     },
     "README.zh-CN.md:paragraph:efcf45b883dbcebe2a68cb0e0a20aa48d816fe4957018b1a54172aa86b951946": {
       "kind": "paragraph",

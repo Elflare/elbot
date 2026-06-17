@@ -64,7 +64,7 @@ Traditional Agents usually only wait for user input; Cron can only respond to ti
 
 Elnis is the listening hub of ElBot; Elwisp consists of listeners distributed everywhere, responsible for observing the world.
 
-Server changes, RSS updates, Webhook alerts, log changes, game events, local scripts, or even other computing devices can all be converted by Elwisp into Elvena events and sent to Elnis. ElBot then centrally decides whether to record, call an LLM for analysis, or execute background tasks, and finally notify the user.
+Server changes, RSS updates, Webhook alerts, log changes, game events, local scripts, and even other computing devices can all be sent to Elnis. ElBot then centrally decides whether to record, call an LLM for analysis, or execute background tasks, and finally notify the user.
 
 ### 9. EL Skills that can be created by LLMs
 
