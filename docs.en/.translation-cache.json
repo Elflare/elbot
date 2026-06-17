@@ -25,6 +25,11 @@
       "target": "docs.en/configuration.md",
       "updated_at": 1781709336
     },
+    "docs/elnis-usage.md": {
+      "source_hash": "1b1d0ef3aa3bc8a0610622e70833c3152696071174307c2e28026a2e52085a9b",
+      "target": "docs.en/elnis-usage.md",
+      "updated_at": 1781709646
+    },
     "docs/getting-started.md": {
       "source_hash": "03eb8aa561aca703b7e764c8129596c4b45c9089405fb354f913006859b7cb3e",
       "target": "docs.en/getting-started.md",
@@ -3647,6 +3652,486 @@
       "source_hash": "feadb5db00a4c25043aba57675abb1270384de8f8152b53c90d49003e200b4af",
       "translation": "Main configuration entry, saving application-level configurations such as storage, runtime, context, commands, tools, security, and platform.",
       "updated_at": 1781515756
+    },
+    "docs/elnis-usage.md:code-comment:toml:175e7d57456d5f083fa73a59c78034edb15dc79ceeb54a38b1096c1566c5e47e": {
+      "kind": "code-comment:toml",
+      "source": "只有显式 enabled=false 才禁用该 Elwisp。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "175e7d57456d5f083fa73a59c78034edb15dc79ceeb54a38b1096c1566c5e47e",
+      "translation": "This Elwisp is disabled only when enabled=false is explicitly set.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:code-comment:toml:3c23ea131d1df5e2d5318b9317ca57d0b1fa269169d01dcb7591bc050def97ff": {
+      "kind": "code-comment:toml",
+      "source": "Elnis 总开关；false 时不启动 HTTP runtime。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "3c23ea131d1df5e2d5318b9317ca57d0b1fa269169d01dcb7591bc050def97ff",
+      "translation": "Elnis master switch; if false, the HTTP runtime will not start.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:code-comment:toml:3e85ed311e762904b9e1c040649b9d0f0c7194d74116cd63d202bf4e8b4ae33e": {
+      "kind": "code-comment:toml",
+      "source": "llm 模式后台 worker 数。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "3e85ed311e762904b9e1c040649b9d0f0c7194d74116cd63d202bf4e8b4ae33e",
+      "translation": "Number of background workers in LLM mode.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:code-comment:toml:46491d92cfd2daf8c7a4696375d9d797d3b774d9de71ac80985bec46a445d29d": {
+      "kind": "code-comment:toml",
+      "source": "Elwisp 默认启用；只有需要限制 token、覆盖投递策略或禁用时才配置。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "46491d92cfd2daf8c7a4696375d9d797d3b774d9de71ac80985bec46a445d29d",
+      "translation": "Elwisp is enabled by default; configure it only when you need to limit tokens, override delivery policies, or disable it.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:code-comment:toml:5186e4e27e78f5786ba0338c6b75b83603a60654661e12df15a04669744918f7": {
+      "kind": "code-comment:toml",
+      "source": "建议先绑定本地地址，需要暴露时再用反代或内网转发。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "5186e4e27e78f5786ba0338c6b75b83603a60654661e12df15a04669744918f7",
+      "translation": "It is recommended to bind to a local address first, and use a reverse proxy or intranet forwarding when exposure is needed.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:code-comment:toml:566030379a6bb52262aa2b44a8f0b4627acc000592a55a121d844e3f4d501016": {
+      "kind": "code-comment:toml",
+      "source": "Elnis 策略允许的默认投递平台。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "566030379a6bb52262aa2b44a8f0b4627acc000592a55a121d844e3f4d501016",
+      "translation": "Default delivery platforms allowed by Elnis policies.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:code-comment:toml:7f541d3e77ddb085d91bc83bfe18d8c3c82368754296162eb9600aab54ff54bd": {
+      "kind": "code-comment:toml",
+      "source": "单个 Elvena 请求 body 上限。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "7f541d3e77ddb085d91bc83bfe18d8c3c82368754296162eb9600aab54ff54bd",
+      "translation": "Request body limit for a single Elvena request.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:code-comment:toml:a2d205d02911e79cd86af53c1ae1fb5c8ed7bf6168aebe9d054159b205da22cb": {
+      "kind": "code-comment:toml",
+      "source": "llm 模式后台队列长度。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "a2d205d02911e79cd86af53c1ae1fb5c8ed7bf6168aebe9d054159b205da22cb",
+      "translation": "Background queue length for LLM mode.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:code-comment:toml:bcc2fde744ef3dbab565d7ddbff5a5847a54f6cd4fcb7db3f5fdd3fd8a4ed0e4": {
+      "kind": "code-comment:toml",
+      "source": "是否允许投递给目标平台超级管理员。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "bcc2fde744ef3dbab565d7ddbff5a5847a54f6cd4fcb7db3f5fdd3fd8a4ed0e4",
+      "translation": "Whether delivery to the target platform's superadmin is allowed.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:code-comment:toml:c2ef86d5900a07f72fc8bb5bce6305e2030e5baff114a859d434d5eaf0da866d": {
+      "kind": "code-comment:toml",
+      "source": "从系统环境变量或配置目录 .env 读取。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "c2ef86d5900a07f72fc8bb5bce6305e2030e5baff114a859d434d5eaf0da866d",
+      "translation": "Read from system environment variables or the .env file in the configuration directory.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:heading:2f7603758467fcaf2efd9765d55509df69a9386873489f36b2160fdf3eb99d7c": {
+      "kind": "heading",
+      "source": "Elvena 请求示例",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "2f7603758467fcaf2efd9765d55509df69a9386873489f36b2160fdf3eb99d7c",
+      "translation": "Elvena Request Example",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:heading:334c20e1a48091b99e3c1293f15034a77d5cc639f1fe02da93ecab0ce0e9440d": {
+      "kind": "heading",
+      "source": "快速开始",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "334c20e1a48091b99e3c1293f15034a77d5cc639f1fe02da93ecab0ce0e9440d",
+      "translation": "Quick Start",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:heading:91a5a8f0d3e32a60d2bba181cb8e8bba4413dbc08a2c20d26b0e4ac0eb0bad0d": {
+      "kind": "heading",
+      "source": "Elnis 配置与使用",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "91a5a8f0d3e32a60d2bba181cb8e8bba4413dbc08a2c20d26b0e4ac0eb0bad0d",
+      "translation": "Elnis Configuration and Usage",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:heading:a702afffbf1a9126bbd28cde21f1a0a32d2a4a7d2c660c1469e10278bf462299": {
+      "kind": "heading",
+      "source": "投递目标与安全边界",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "a702afffbf1a9126bbd28cde21f1a0a32d2a4a7d2c660c1469e10278bf462299",
+      "translation": "Delivery Target and Security Boundary",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:1cd550c5433eab93b1dbcf6f69b2470f93dab7f746b21fccbd73e7fc287adf76": {
+      "kind": "list",
+      "source": "token 原文不写日志。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "1cd550c5433eab93b1dbcf6f69b2470f93dab7f746b21fccbd73e7fc287adf76",
+      "translation": "The original token text is not written to logs.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:386db06d0684ed7ac73a889e5b7c7fc1e835f120711930993d4b657f142817f2": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 表示允许投递给目标平台超级管理员。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "386db06d0684ed7ac73a889e5b7c7fc1e835f120711930993d4b657f142817f2",
+      "translation": "__ELBOT_CODE_0__ indicates that delivery to the target platform's superadmin is allowed.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:43e4e906b591abaf7006bf4ee6a67e28cd109c453f8a9e885264ad23eaa65cec": {
+      "kind": "list",
+      "source": "Elwisp 不能绕过 Tool Runtime 和 Security Policy 调用 ElBot 工具。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "43e4e906b591abaf7006bf4ee6a67e28cd109c453f8a9e885264ad23eaa65cec",
+      "translation": "Elwisp cannot bypass the Tool Runtime and Security Policy to call ElBot tools.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:4d0d28105262232a2583176de44f8d40bcdeb869488bc9a8e358a35df93cf9b2": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 限制哪些 token 可以代表该 Elwisp 投递事件；不写则允许任意已认证 token。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "4d0d28105262232a2583176de44f8d40bcdeb869488bc9a8e358a35df93cf9b2",
+      "translation": "__ELBOT_CODE_0__ restricts which tokens can represent the Elwisp to deliver events; if not specified, any authenticated token is allowed.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:72f74d2a2cdd5caf8ef124febb51d2ce5a60e9564d67a1cd7ec35871ca7661a1": {
+      "kind": "list",
+      "source": "Elwisp 默认启用；没写 __ELBOT_CODE_0__、写了但没写 __ELBOT_CODE_1__、或写了 __ELBOT_CODE_2__ 都会接收。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "72f74d2a2cdd5caf8ef124febb51d2ce5a60e9564d67a1cd7ec35871ca7661a1",
+      "translation": "Elwisp is enabled by default; it will receive events if __ELBOT_CODE_0__ is not specified, if it is specified but __ELBOT_CODE_1__ is not, or if __ELBOT_CODE_2__ is specified.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:73d5fe9665af132d24d5010a2c870f7754dfda9a78cd5d5d727efb1d882bebb4": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是 Elnis 策略允许的默认投递平台。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "73d5fe9665af132d24d5010a2c870f7754dfda9a78cd5d5d727efb1d882bebb4",
+      "translation": "__ELBOT_CODE_0__ is the default delivery platform allowed by the Elnis policy.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:93d6cff528647d84f62ea43b4ae8b3c7e3f8643633a16d2db0416cdb46fcf0df": {
+      "kind": "list",
+      "source": "Elwisp 声明的 __ELBOT_CODE_0__ 当前仍是开发中能力，不应作为稳定接口依赖。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "93d6cff528647d84f62ea43b4ae8b3c7e3f8643633a16d2db0416cdb46fcf0df",
+      "translation": "The __ELBOT_CODE_0__ declared by Elwisp is currently still under development and should not be relied upon as a stable interface.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:9e77000334927a8e945950daf4b18a4aa82e44af4538c00aba364926ae4b7f88": {
+      "kind": "list",
+      "source": "只有显式 __ELBOT_CODE_0__ 才会禁用对应 Elwisp。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "9e77000334927a8e945950daf4b18a4aa82e44af4538c00aba364926ae4b7f88",
+      "translation": "Only explicit __ELBOT_CODE_0__ will disable the corresponding Elwisp.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:b402ea8c3ed8917b33f57e8cd9f2f161481b5029d5fdc46fff2ba6e4b877ad8a": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 时不启动 Elnis HTTP runtime。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "b402ea8c3ed8917b33f57e8cd9f2f161481b5029d5fdc46fff2ba6e4b877ad8a",
+      "translation": "__ELBOT_CODE_0__ will not start the Elnis HTTP runtime.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:bc6075397e81dcaebc13a3b8fa3e1afd108f7e511562a3a6909d8a4c28de3257": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 可以写多个环境变量名，按顺序尝试。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "bc6075397e81dcaebc13a3b8fa3e1afd108f7e511562a3a6909d8a4c28de3257",
+      "translation": "__ELBOT_CODE_0__ can contain multiple environment variable names, which will be tried in order.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:d627a0566699b39e88111dc901fa4f867b1c710a873ce3bd52b2c7b1645262b3": {
+      "kind": "list",
+      "source": "Elwisp 不能直接发送平台消息。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "d627a0566699b39e88111dc901fa4f867b1c710a873ce3bd52b2c7b1645262b3",
+      "translation": "Elwisp cannot send platform messages directly.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:ec3ddb6e6198fb83988d8b2321b34657d5388640d5b1502ba486bc5d442d7056": {
+      "kind": "list",
+      "source": "token 名只用于日志和审计，不等同于 Elwisp 身份。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "ec3ddb6e6198fb83988d8b2321b34657d5388640d5b1502ba486bc5d442d7056",
+      "translation": "The token name is used only for logs and audit logs, and is not equivalent to the Elwisp identity.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:f37c91ec3dffafe934f5bce843a93dc68030d8aacf7bc7f31680545522c164c8": {
+      "kind": "list",
+      "source": "token 原文不写入配置，推荐放在系统环境变量或配置目录 __ELBOT_CODE_0__。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "f37c91ec3dffafe934f5bce843a93dc68030d8aacf7bc7f31680545522c164c8",
+      "translation": "Do not write the token plaintext into the configuration; it is recommended to place it in system environment variables or the configuration directory __ELBOT_CODE_0__.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:164dc12a20c5f77e4831ecc3dc9452ef0b001cc78cd2abb73983e4398560321f": {
+      "kind": "paragraph",
+      "source": "HTTP 响应只表示 Elnis 已接收或拒绝请求，不等待 LLM 完成。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "164dc12a20c5f77e4831ecc3dc9452ef0b001cc78cd2abb73983e4398560321f",
+      "translation": "The HTTP response only indicates that Elnis has received or rejected the request, and does not wait for the LLM to complete.\n",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:3a19b861be8a99d9fa2420f650b59094617f0be69eaf90224754eaa8411fb027": {
+      "kind": "paragraph",
+      "source": "当前建议只使用：\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "3a19b861be8a99d9fa2420f650b59094617f0be69eaf90224754eaa8411fb027",
+      "translation": "Currently, it is recommended to only use:\n",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:4624f2dadcd59445162f5733cd19d8e71f1ad1220021c014692e0ba2bdd2393a": {
+      "kind": "paragraph",
+      "source": "Elnis 仍会结合全局配置、Elwisp 配置和平台可用性计算最终目标。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "4624f2dadcd59445162f5733cd19d8e71f1ad1220021c014692e0ba2bdd2393a",
+      "translation": "Elnis will still calculate the final target based on global configuration, Elwisp configuration, and platform availability.\n",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:515207d38c35cf9ff2a06be56e52c81117b9ccb1cde3b5ab88bf3301d820f5cb": {
+      "kind": "paragraph",
+      "source": "常用字段：\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "515207d38c35cf9ff2a06be56e52c81117b9ccb1cde3b5ab88bf3301d820f5cb",
+      "translation": "Common fields:\n",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:5a9b0b92870dff0d3baafc1289ce15699f51e7c4b592c4cf901add78963c5153": {
+      "kind": "paragraph",
+      "source": "本文承接 [Elnis 监听枢纽](elnis.md)，讲如何启用 Elnis、配置 Elwisp 策略，并用 Elvena 投递事件。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "5a9b0b92870dff0d3baafc1289ce15699f51e7c4b592c4cf901add78963c5153",
+      "translation": "This article follows [Elnis listening hub](elnis.md) and explains how to enable Elnis, configure Elwisp policies, and use Elvena to deliver events.\n",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:5b139ef7730d98138a9e853bebe3587b213e71a09b9e8db43c1d9ed1f6d5249e": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 示例：\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "5b139ef7730d98138a9e853bebe3587b213e71a09b9e8db43c1d9ed1f6d5249e",
+      "translation": "__ELBOT_CODE_0__ example:\n",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:69507ad87dd69e3fdec856cb4b561370796eb5f36d4ad0b515f9c77eb8d03934": {
+      "kind": "paragraph",
+      "source": "Elnis 默认关闭。启用时在 __ELBOT_CODE_0__ 中配置：\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "69507ad87dd69e3fdec856cb4b561370796eb5f36d4ad0b515f9c77eb8d03934",
+      "translation": "Elnis is disabled by default. To enable it, configure it in __ELBOT_CODE_0__:\n",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:a0c0277789aa15ef006e25e7a5ffb166f33bd5f0daf653a4e5196858ffc70643": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 可以包含 __ELBOT_CODE_1__，表示请求投递到 Elnis 策略允许的全部平台。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "a0c0277789aa15ef006e25e7a5ffb166f33bd5f0daf653a4e5196858ffc70643",
+      "translation": "__ELBOT_CODE_0__ can contain __ELBOT_CODE_1__, indicating that the request is delivered to all platforms allowed by the Elnis policy.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:a8dc9343283716b3826795b35c2c6108372daa8ec4a48d786007f07ffe37139a": {
+      "kind": "paragraph",
+      "source": "Elwisp 可以在 __ELBOT_CODE_0__ 中声明期望目标，但最终目标由 Elnis 裁决。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "a8dc9343283716b3826795b35c2c6108372daa8ec4a48d786007f07ffe37139a",
+      "translation": "Elwisp can declare the expected target in __ELBOT_CODE_0__, but the final target is decided by Elnis.\n",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:c27cc1f6d3025a62def12020ac133eb90c50017434a5b3536f308348f0dafe1b": {
+      "kind": "paragraph",
+      "source": "如果同一个 __ELBOT_CODE_0__ 再次发送，Elnis 会返回 duplicate，不重复分发。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "c27cc1f6d3025a62def12020ac133eb90c50017434a5b3536f308348f0dafe1b",
+      "translation": "If the same __ELBOT_CODE_0__ is sent again, Elnis will return duplicate and will not redistribute it.\n",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:c3e71f7573943e14226f45ffd59896921e75528e331666c76325596d457d84e0": {
+      "kind": "paragraph",
+      "source": "安全约定：\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "c3e71f7573943e14226f45ffd59896921e75528e331666c76325596d457d84e0",
+      "translation": "Security Conventions:\n",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:ddac502e5a9bf6effe2c663d9791e9d17620364e413cc20355177083ec692c93": {
+      "kind": "paragraph",
+      "source": "启动 ElBot 后，可以用 curl 测试一个 __ELBOT_CODE_0__ 事件：\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "ddac502e5a9bf6effe2c663d9791e9d17620364e413cc20355177083ec692c93",
+      "translation": "After starting ElBot, you can use curl to test a __ELBOT_CODE_0__ event:\n",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:e9b088a20b3196f9c15eb69e11284b94638f0c0538ada2b9e49a0112519d875e": {
+      "kind": "paragraph",
+      "source": "配置说明：\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "e9b088a20b3196f9c15eb69e11284b94638f0c0538ada2b9e49a0112519d875e",
+      "translation": "Configuration description:\n",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:05a363aa4f244abaff4fcea17940f12ab23dc582a574ba43df7b47246ad7d47a": {
+      "kind": "table",
+      "source": "具体事件源，例如服务名、脚本名、RSS 名。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "05a363aa4f244abaff4fcea17940f12ab23dc582a574ba43df7b47246ad7d47a",
+      "translation": "Specific event source, such as service name, script name, or RSS name.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:0c70665b6eb65f1aebf3b59f684ce52ed3473b2443ed4b4e0b815e2e9d66b8c2": {
+      "kind": "table",
+      "source": "否",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "0c70665b6eb65f1aebf3b59f684ce52ed3473b2443ed4b4e0b815e2e9d66b8c2",
+      "translation": "No",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:11da9dc4428537c43ec205e68dcd8e12c23e84fda2f14d84b5bf16f54d3ed3a8": {
+      "kind": "table",
+      "source": "必填",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "11da9dc4428537c43ec205e68dcd8e12c23e84fda2f14d84b5bf16f54d3ed3a8",
+      "translation": "Required",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:1b1efc4c8947139785108253c00ade50f0a742410448ca28aad89a809dc99cb4": {
+      "kind": "table",
+      "source": "协议版本，当前为 __ELBOT_CODE_0__。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "1b1efc4c8947139785108253c00ade50f0a742410448ca28aad89a809dc99cb4",
+      "translation": "Protocol version, currently __ELBOT_CODE_0__.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:2da44f750570a91eb5b2500cacfcba892fd2ebc9c31d77f3fd4ccf67f5ee966c": {
+      "kind": "table",
+      "source": "Elwisp 标签，用于日志和统计。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "2da44f750570a91eb5b2500cacfcba892fd2ebc9c31d77f3fd4ccf67f5ee966c",
+      "translation": "Elwisp tag, used for logs and statistics.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:2fb33550734c99013b73f7cc5dd42888366478c1f52d7bb1dcac10748eda6899": {
+      "kind": "table",
+      "source": "source 内唯一事件 ID。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "2fb33550734c99013b73f7cc5dd42888366478c1f52d7bb1dcac10748eda6899",
+      "translation": "Unique event ID within the source.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:4262c45dc797bb0cd5008331ef25b684413859f55b73c71fb4e2c01b645dbbb7": {
+      "kind": "table",
+      "source": "说明",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "4262c45dc797bb0cd5008331ef25b684413859f55b73c71fb4e2c01b645dbbb7",
+      "translation": "Description",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:49ecd0e342d6d23bd00d67094e2ad0e9859dd17d7337b809300a7c912ccea764": {
+      "kind": "table",
+      "source": "字段",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "49ecd0e342d6d23bd00d67094e2ad0e9859dd17d7337b809300a7c912ccea764",
+      "translation": "Field",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:516544f0c088baf14a036d2198457d349644010cf6925358374a6de276a09df5": {
+      "kind": "table",
+      "source": "后台任务预加载的 ElBot 工具名；__ELBOT_CODE_0__ 会被忽略。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "516544f0c088baf14a036d2198457d349644010cf6925358374a6de276a09df5",
+      "translation": "ElBot tool name preloaded for background tasks; __ELBOT_CODE_0__ will be ignored.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:5987659b238c1f1aac592d6cafb930df2714663e9fc71d08a8a7001b14c0fc45": {
+      "kind": "table",
+      "source": "Elwisp 名称，也是来源身份之一。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "5987659b238c1f1aac592d6cafb930df2714663e9fc71d08a8a7001b14c0fc45",
+      "translation": "Elwisp name, which is also one of the source identities.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:5b40a5e36cd7355bab5ef54ebd3e9f12527f23e667114160e6f82f6af2bc40e9": {
+      "kind": "table",
+      "source": "事件主体。LLM 模式推荐使用 ELyph Task Notation（任务表示法）__ELBOT_CODE_0__。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "5b40a5e36cd7355bab5ef54ebd3e9f12527f23e667114160e6f82f6af2bc40e9",
+      "translation": "Event body. For LLM mode, using ELyph Task Notation __ELBOT_CODE_0__ is recommended.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:672005ad6ac25d04760587a5a950be307eb00c1c17e4ff9813a8d360c25b6ae4": {
+      "kind": "table",
+      "source": "模型槽位，后续用于 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "672005ad6ac25d04760587a5a950be307eb00c1c17e4ff9813a8d360c25b6ae4",
+      "translation": "Model slot, used subsequently for __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:7b08217f016550a28a058a031d71902aa4bd28a2ad09fd2f69adad392a9a1045": {
+      "kind": "table",
+      "source": "Elwisp 期望投递目标，最终仍由 Elnis 裁决。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "7b08217f016550a28a058a031d71902aa4bd28a2ad09fd2f69adad392a9a1045",
+      "translation": "The delivery target expected by Elwisp; the final decision is still made by Elnis.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:83a2d7711543602d30459aca1b3d3ebd1d64e741b347dce3be1d85f8966baf36": {
+      "kind": "table",
+      "source": "外部事件发生时间；缺失时使用接收时间。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "83a2d7711543602d30459aca1b3d3ebd1d64e741b347dce3be1d85f8966baf36",
+      "translation": "Occurrence time of the external event; the reception time is used if missing.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:852eac6691046a6701aab4e1ae8888f3d7d4c0003c7bb0cee25f9fb53f8997b3": {
+      "kind": "table",
+      "source": "原始补充数据，只做记录和 prompt 附加。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "852eac6691046a6701aab4e1ae8888f3d7d4c0003c7bb0cee25f9fb53f8997b3",
+      "translation": "Original supplementary data, used only for recording and prompt attachment.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:9100ffc0032ef1bbc8e59bb6f3ee8e9764396cf848914a4d1f67347d2461dc77": {
+      "kind": "table",
+      "source": "Elwisp 随事件声明的工具。当前仍是开发中能力，不建议依赖。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "9100ffc0032ef1bbc8e59bb6f3ee8e9764396cf848914a4d1f67347d2461dc77",
+      "translation": "Tools declared by Elwisp along with the event. This is currently a capability under development and is not recommended for reliance.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:acc72006426637ac2646a5b62adf4ab0cde7b909e968ff3cdf8453c89e08951b": {
+      "kind": "table",
+      "source": "__ELBOT_CODE_0__、__ELBOT_CODE_1__ 或 __ELBOT_CODE_2__。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "acc72006426637ac2646a5b62adf4ab0cde7b909e968ff3cdf8453c89e08951b",
+      "translation": "__ELBOT_CODE_0__, __ELBOT_CODE_1__, or __ELBOT_CODE_2__.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:b5141d3d19e9a04855acdb2dd5218b0924254b73d3cb663557ed0f9f73403750": {
+      "kind": "table",
+      "source": "是",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "b5141d3d19e9a04855acdb2dd5218b0924254b73d3cb663557ed0f9f73403750",
+      "translation": "Yes",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:b9b16d252007ede4f448bbca8f6da0ec9071652d73c770c6c5974e505d7aecee": {
+      "kind": "table",
+      "source": "事件标题，用于通知和后台 Session 标题。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "b9b16d252007ede4f448bbca8f6da0ec9071652d73c770c6c5974e505d7aecee",
+      "translation": "Event title, used for notifications and background Session titles.",
+      "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:be9fdd2903da258dff0e542337882cc8ec983f46cca39e608ac944b9ab3d2c47": {
+      "kind": "table",
+      "source": "__ELBOT_CODE_0__ 或 __ELBOT_CODE_1__，默认 __ELBOT_CODE_2__。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "be9fdd2903da258dff0e542337882cc8ec983f46cca39e608ac944b9ab3d2c47",
+      "translation": "__ELBOT_CODE_0__ or __ELBOT_CODE_1__, default __ELBOT_CODE_2__.",
+      "updated_at": 1781709646
     },
     "docs/getting-started.md:heading:0145e05322af8916973a09edb901f7397904a227aa495af8a41a2bf1f0d4fd23": {
       "kind": "heading",
