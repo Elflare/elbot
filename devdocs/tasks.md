@@ -810,9 +810,9 @@
 - [ ] TODO：评估 CLI C/S 拆分与本地服务连接协议。
 - [ ] cli和服务分离
 
-## Milestone Elnis：Elwisp 监听中台
+## Milestone Elnis：Elwisp 监听枢纽
 
-目标：新增 Elnis 作为 ElBot 内部监听中台，接收 Elwisp 通过 Elvena 协议投递的外部事件，并支持 record/direct/llm 三种处理模式。
+目标：新增 Elnis 作为 ElBot 内部监听枢纽，接收 Elwisp 通过 Elvena 协议投递的外部事件，并支持 record/direct/llm 三种处理模式。
 
 详细设计见 [`elnis-elwisp.md`](elnis-elwisp.md)。
 
@@ -856,8 +856,8 @@
 
 ### Phase 4：文档、运维与后续预留
 
-- [ ] 功能实现后更新用户侧配置文档和命令文档。
-- [ ] 更新 `AGENT.md` 中新增/修改 Go 文件职责速查。
 - [ ] 增加 Elnis 事件查询、失败重试或禁用能力。
-- [ ] TODO：设计 Elnis 与 Elwisp 多轮通信协议。
-- [ ] TODO：评估 stdio/pipe transport。
+- [ ] 内置“创建 Elwisp”的 Skill/工具，帮助用户生成 Elwisp 配置、事件模板和最小监听器脚手架。
+- [ ] 支持多种消息segment
+- [ ] 待定：设计 Elnis 与 Elwisp 多轮通信协议。
+- [ ] 待定：评估 stdio/pipe transport。

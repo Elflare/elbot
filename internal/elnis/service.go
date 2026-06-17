@@ -239,7 +239,7 @@ func (s *Service) authorizeElwisp(event Event) error {
 	if !ok {
 		return nil
 	}
-	if !policy.Enabled {
+	if policy.Enabled != nil && !*policy.Enabled {
 		return fmt.Errorf("elwisp %q is disabled", event.Request.Elwisp.Name)
 	}
 	allowedTokens := trimStrings(policy.AllowedTokens)

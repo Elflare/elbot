@@ -180,7 +180,7 @@ type ElnisDeliveryConfig struct {
 }
 
 type ElnisElwispConfig struct {
-	Enabled       bool                `toml:"enabled"`
+	Enabled       *bool               `toml:"enabled"`
 	AllowedTokens []string            `toml:"allowed_tokens"`
 	Delivery      ElnisDeliveryConfig `toml:"delivery"`
 }

@@ -7,6 +7,8 @@
 - `docs/configuration.md`：配置说明，写配置文件职责、路径规则、Provider、密钥、数据目录和平台配置。
 - `docs/commands.md`：命令速查，写常用 slash 命令、参数和示例。
 - `docs/concepts.md`：核心概念，写 Chat/Work、工具发现、Session、Hook、Cron、Skill、安全等用户需要理解的概念。
+- `docs/elnis.md`：Elnis 监听枢纽介绍，写 Elnis、Elwisp、Elvena、事件模式和能力边界。
+- `docs/elnis-usage.md`：Elnis 配置与使用，写启用配置、curl 示例、Elvena 字段和投递安全边界。
 - `docs.en/` / `README.md`：英文用户文档镜像，由 GitHub Actions 根据 `docs/` 和 `README.zh-CN.md` 自动翻译生成；不要手动修改。
 - `scripts/translate_docs.py`：用户文档增量翻译脚本。
 
@@ -15,7 +17,7 @@
 - `devdocs/README.md`：开发文档索引。
 - `devdocs/plan.md`：总体规划，写愿景、原则、路线和待决策问题；不写实现细节。
 - `devdocs/tasks.md`：实现任务，按里程碑拆分任务、状态和后续事项。
-- `devdocs/elnis-elwisp.md`：Elnis/Elwisp 监听中台架构、Elvena 协议草案和分阶段实现规划。
+- `devdocs/elnis-elwisp.md`：Elnis/Elwisp 监听枢纽架构、Elvena 协议草案和分阶段实现规划。
 - `devdocs/` 是开发资料，只给维护者/Agent 看，不走自动翻译。
 - 未来若补架构或接口草案，放在 `devdocs/architecture.md`、`devdocs/interfaces.md` 等文件中。
 

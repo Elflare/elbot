@@ -8,6 +8,8 @@
 2. [配置说明](configuration.md)：了解配置文件、路径规则、Provider、运行数据和插件目录。
 3. [命令速查](commands.md)：查看常用 slash 命令和会话管理方式。
 4. [核心概念](concepts.md)：理解 Chat / Work 模式、工具发现、Session、Hook、Cron、Skill 和安全策略。
+5. [Elnis 监听枢纽](elnis.md)：了解 Elnis、Elwisp、Elvena 和外部事件接入。
+6. [Elnis 配置与使用](elnis-usage.md)：启用 Elnis、配置 Elwisp，并用 Elvena 投递事件。
 
 ## 文档维护约定
 

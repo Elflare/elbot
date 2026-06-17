@@ -2,7 +2,7 @@
 
 ## 目标
 
-Elnis（艾露妮丝）是 ElBot 内部的通用监听中台，负责接收外部监听消息、执行 Elvena 协议、做鉴权、规范化、去重、审计和分发。Elwisp（艾露维丝）是外部子监听器集群，负责观察具体世界，例如服务器状态、系统事件、RSS、Webhook、日志、脚本输出等。
+Elnis（艾露妮斯）是 ElBot 内部的通用监听枢纽，负责接收外部监听消息、执行 Elvena 协议、做鉴权、规范化、去重、审计和分发。Elwisp（艾露维丝）是外部子监听器集群，负责观察具体世界，例如服务器状态、系统事件、RSS、Webhook、日志、脚本输出等。
 
 核心目标是：ElBot 掌控最终执行与投递；Elwisp 只按 Elvena（艾露维娜）协议投递事件；Elnis 不预设事件类型，也不把复杂业务规则写死在核心里。
 
@@ -253,7 +253,7 @@ Elwisp 可以声明它希望发给谁，但 Elnis 必须拥有最终控制权。
 
 暂不支持任意 user/group scope 投递，除非后续安全模型明确，否则容易让外部监听器变成任意消息发送器。
 
-Elnis 配置应支持 allowlist，且 `elwisps` 是可选项：
+Elnis 配置应支持按 Elwisp 设置额外策略，且 `elwisps` 是可选项：
 
 ```toml
 [elnis.delivery]
@@ -261,19 +261,21 @@ default_platforms = ["cli"]
 allow_superadmins = true
 
 [elnis.elwisps.server-watchdog]
-enabled = true
 allowed_tokens = ["server"]
 
 [elnis.elwisps.server-watchdog.delivery]
-allowed_platforms = ["cli", "qqofficial"]
+default_platforms = ["cli", "qqofficial"]
 allow_superadmins = true
+
+[elnis.elwisps.spike-checker]
+enabled = false
 ```
 
 说明：
 
-- `elnis.elwisps` 整体可为空，未配置时表示暂不启用任何 Elwisp。
-- 单个 Elwisp 只有在显式启用时才参与接收、鉴权和投递。
-- 配置层面可以临时禁用某个 Elwisp，而不需要删除整套 Elnis 配置。
+- Elwisp 默认启用；未配置单个 Elwisp 时，也会接收通过 Elnis token 认证的事件。
+- 单个 Elwisp 配置只用于限制 token、覆盖投递策略或显式禁用。
+- 只有显式 `enabled=false` 才会禁用某个 Elwisp。
 
 最终目标计算：
 
@@ -496,20 +498,22 @@ default_platforms = ["cli"]
 allow_superadmins = true
 
 [elnis.elwisps.server-watchdog]
-enabled = true
 allowed_tokens = ["server"]
 
 [elnis.elwisps.server-watchdog.delivery]
-allowed_platforms = ["cli"]
+default_platforms = ["cli"]
 allow_superadmins = true
+
+[elnis.elwisps.spike-checker]
+enabled = false
 ```
 
 配置原则：
 
 - `enabled=false` 时不启动 Elnis runtime。
 - `tokens` 只保存 token 名和读取方式，不保存 token 明文。
-- `elwisps.<name>` 可按 Elwisp 名做 allowlist。
-- 未配置的 Elwisp 默认拒绝还是默认允许，需要首期实现前明确；推荐默认拒绝，减少误接入。
+- `elwisps.<name>` 可按 Elwisp 名限制 token、覆盖投递策略或显式禁用。
+- Elwisp 默认启用；只有显式 `enabled=false` 才会禁用对应 Elwisp。
 
 ## HTTP Runtime
 

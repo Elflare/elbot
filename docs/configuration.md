@@ -201,7 +201,7 @@ cli = ["local"]
 - 超级管理员调用高风险工具时也需要确认。
 - CLI 默认本地用户 `local` 是超级管理员。
 
-## Elnis 监听中台
+## Elnis 监听枢纽
 
 Elnis 默认关闭。启用后，ElBot 会启动本地 HTTP ingress，接收 Elwisp 按 Elvena 协议投递的事件。
 
@@ -221,23 +221,18 @@ token_env = ["ELNIS_HOME_TOKEN", "ELNIS_HOME_TOKEN_ALT"]
 [elnis.delivery]
 default_platforms = ["cli"]
 allow_superadmins = true
-
-[elnis.elwisps.server-watchdog]
-enabled = true
-allowed_tokens = ["home"]
-
-[elnis.elwisps.server-watchdog.delivery]
-default_platforms = ["cli"]
-allow_superadmins = true
 ```
 
 说明：
 
-- `elnis.elwisps` 可不配置；留空表示当前不启用任何 Elwisp。
 - token 从系统环境变量或配置目录 `.env` 读取，日志只记录 token name，不记录 token 原文。
 - `token_env` 支持写成列表，按顺序尝试多个环境变量名；适合临时切换 token 或做多环境兼容。
-- 首期支持 `record` 和 `direct` 模式；`llm` 模式预留给后续 background runner。
-- `direct` 模式只支持按 Elnis 裁决后的平台发送给 superadmins，不支持任意 user/group 目标。
+- Elwisp 默认启用；只有显式配置 `enabled=false` 才会禁用对应 Elwisp。
+- 当前支持 `record`、`direct` 和 `llm` 模式；`llm` 模式使用后台 Session runner 执行。
+- `direct` 和 `llm` 报告只支持按 Elnis 裁决后的平台发送给 superadmins，不支持任意 user/group 目标。
+- Elvena 请求中的 `tools` 声明仍是开发中能力，不建议作为稳定接口依赖。
+
+更多说明见 [Elnis 配置与使用](elnis-usage.md)。
 
 ## 平台配置
 
