@@ -27,7 +27,11 @@ func formatCommandHelp(prefix string, info command.Info) *command.Result {
 		sb.WriteString(strings.TrimSpace(info.Help))
 		sb.WriteString("\n")
 	}
-	return &command.Result{Content: sb.String()}
+	return &command.Result{Content: trimTrailingNewlines(sb.String())}
+}
+
+func trimTrailingNewlines(text string) string {
+	return strings.TrimRight(text, "\n")
 }
 
 func commandUsage(prefix string, info command.Info) string {

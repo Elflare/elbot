@@ -133,6 +133,34 @@ func TestCancelKeyClearsCompletionOrInputBeforeQuit(t *testing.T) {
 	}
 }
 
+func TestAppendNoticeContentUsesSeparator(t *testing.T) {
+	m := tuiModel{width: 80}
+	m.appendUserContent("hello")
+	m.appendNotice("notice one")
+
+	if !strings.Contains(m.content, "\n"+m.separatorLine()+"\n[notice] notice one") {
+		t.Fatalf("notice content not separated:\n%s", m.content)
+	}
+	if strings.HasSuffix(m.content, "\n") {
+		t.Fatalf("notice content should not end with newline: %q", m.content)
+	}
+}
+
+func TestRefreshNoticesUsesSeparator(t *testing.T) {
+	m := tuiModel{width: 120, height: 20}
+	m.resizeViewports()
+	m.notices = []string{"notice one", "notice two"}
+	m.refreshNotices()
+
+	got := m.noticeViewport.View()
+	if !strings.Contains(got, "notice one") || !strings.Contains(got, "notice two") {
+		t.Fatalf("notice view missing notices:\n%s", got)
+	}
+	if !strings.Contains(got, strings.Repeat("─", 8)) {
+		t.Fatalf("notice view missing separator:\n%s", got)
+	}
+}
+
 func TestRuntimeStatusTextShowsElapsedAndUsage(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	m := tuiModel{

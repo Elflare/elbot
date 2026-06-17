@@ -26,7 +26,7 @@ func NewRequests(deps Deps) command.Handler {
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		requests := deps.Requests.List()
 		if len(requests) == 0 {
-			return &command.Result{Content: "no active requests\n"}, nil
+			return &command.Result{Content: "no active requests"}, nil
 		}
 		return &command.Result{Content: formatRequests(ctx, deps, requests)}, nil
 	})
@@ -53,12 +53,12 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 	arg := strings.TrimSpace(req.Args)
 	if arg != "" {
 		if !deps.Requests.Cancel(arg) {
-			return &command.Result{Content: fmt.Sprintf("request not found: %s\n", arg)}, nil
+			return &command.Result{Content: fmt.Sprintf("request not found: %s", arg)}, nil
 		}
 		for _, snapshot := range deps.Turns.SnapshotAll() {
 			deps.Turns.StopSession(snapshot.SessionID)
 		}
-		return &command.Result{Content: "stopped 1 request\n"}, nil
+		return &command.Result{Content: "stopped 1 request"}, nil
 	}
 
 	current, err := deps.Sessions.Current(ctx, deps.Scope(ctx))
@@ -67,7 +67,7 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 	}
 	count := deps.Requests.CancelSession(current.ID)
 	deps.Turns.StopSession(current.ID)
-	return &command.Result{Content: fmt.Sprintf("stopped %d request%s\n", count, plural(count))}, nil
+	return &command.Result{Content: fmt.Sprintf("stopped %d request%s", count, plural(count))}, nil
 }
 
 func (c stopCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -87,7 +87,7 @@ func NewStopAll(deps Deps) command.Handler {
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		count := deps.Requests.CancelAll()
 		deps.Turns.StopAll()
-		return &command.Result{Content: fmt.Sprintf("stopped %d request%s\n", count, plural(count))}, nil
+		return &command.Result{Content: fmt.Sprintf("stopped %d request%s", count, plural(count))}, nil
 	})
 }
 
@@ -109,22 +109,23 @@ func formatRequests(ctx context.Context, deps Deps, requests []request.Request) 
 		sb.WriteString(fmt.Sprintf("    session: %s\n", title))
 		sb.WriteString(fmt.Sprintf("    mode: %s\n", mode))
 		if tools := turn.ToolsString(snapshot.Tools); tools != "" {
-			sb.WriteString(fmt.Sprintf("    tools: %s\n", tools))
+			sb.WriteString(fmt.Sprintf("    tools: %s", tools))
 		}
+		sb.WriteString("\n")
 	}
-	return sb.String()
+	return trimTrailingNewlines(sb.String())
 }
 
 func formatActiveRequests(requests []request.Request) string {
 	if len(requests) == 0 {
-		return "active requests: none\n"
+		return "active requests: none"
 	}
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("active requests: %d\n", len(requests)))
 	for _, req := range requests {
 		sb.WriteString(fmt.Sprintf("  %s %s %s %s\n", req.ID, req.Kind, req.Label, formatDuration(time.Since(req.StartedAt))))
 	}
-	return sb.String()
+	return trimTrailingNewlines(sb.String())
 }
 
 func formatDuration(d time.Duration) string {

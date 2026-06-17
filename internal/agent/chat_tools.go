@@ -193,7 +193,7 @@ func (a *Agent) confirmToolCallIfNeeded(ctx context.Context, sessionID string, c
 	fullArgs := compactArguments(call.Arguments)
 	previewArgs := previewArguments(fullArgs)
 	a.logRiskConfirmationWait(sessionID, call, risk, assessment.Reasons)
-	a.sendChat(ctx, fmt.Sprintf("高风险工具调用等待确认\n工具：%s\n风险：%s\n参数：%s%s\n%s。\n", call.Name, risk, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText()))
+	a.sendChat(ctx, fmt.Sprintf("高风险工具调用等待确认\n工具：%s\n风险：%s\n参数：%s%s\n%s。", call.Name, risk, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText()))
 	resp, ok := a.turns.AwaitRiskConfirmation(sessionID, turn.RiskConfirmation{ID: call.ID, ToolName: call.Name, Arguments: fullArgs, Risk: string(risk), Summary: fmt.Sprintf("%s %s", call.Name, previewArgs)})
 	if !ok || resp.Stopped {
 		a.logRiskConfirmationResult(sessionID, call, risk, "stop", resp.Extra, "")
@@ -201,11 +201,11 @@ func (a *Agent) confirmToolCallIfNeeded(ctx context.Context, sessionID string, c
 	}
 	if resp.ConfirmTool {
 		a.setToolAutoConfirmed(sessionID, call.Name)
-		a.sendChat(ctx, fmt.Sprintf("已为当前 Session 自动确认后续 %s 工具调用。\n", call.Name))
+		a.sendChat(ctx, fmt.Sprintf("已为当前 Session 自动确认后续 %s 工具调用。", call.Name))
 	}
 	if resp.ConfirmAll {
 		a.setSessionAutoConfirmed(sessionID)
-		a.sendChat(ctx, "已为当前 Session 自动确认后续高风险工具调用。\n")
+		a.sendChat(ctx, "已为当前 Session 自动确认后续高风险工具调用。")
 	}
 	if resp.Rejected {
 		reason := strings.TrimSpace(resp.Reason)

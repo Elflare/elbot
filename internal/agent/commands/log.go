@@ -170,14 +170,14 @@ func previousLogToken(raw string, tokenStart int) string {
 
 func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, formatter func([]logging.LogEntry) string) (*command.Result, error) {
 	if deps.Logs == nil {
-		return &command.Result{Content: "log reader is not configured\n"}, nil
+		return &command.Result{Content: "log reader is not configured"}, nil
 	}
 	entries, err := deps.Logs.QueryLogs(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 	if len(entries) == 0 {
-		return &command.Result{Content: "no log entries found\n"}, nil
+		return &command.Result{Content: "no log entries found"}, nil
 	}
 	return &command.Result{Content: formatter(entries)}, nil
 }
@@ -423,7 +423,10 @@ func formatAuditEntries(raw bool) func([]logging.LogEntry) string {
 
 		var sb strings.Builder
 		sb.WriteString("audit events:\n")
-		for _, entry := range entries {
+		for i, entry := range entries {
+			if i > 0 {
+				sb.WriteString("\n")
+			}
 			f := entry.Fields
 			sb.WriteString(fmt.Sprintf("  %s %s", formatLogEntryTime(entry), fieldOr(f, "event", entry.Message)))
 			appendField(&sb, "session", f["session_id"])
@@ -440,7 +443,6 @@ func formatAuditEntries(raw bool) func([]logging.LogEntry) string {
 			appendField(&sb, "text", f["text"])
 			appendField(&sb, "reason", f["reason"])
 			appendField(&sb, "error", f["error"])
-			sb.WriteString("\n")
 		}
 		return sb.String()
 	}
@@ -454,10 +456,12 @@ func formatRuntimeLogEntries(raw bool) func([]logging.LogEntry) string {
 
 		var sb strings.Builder
 		sb.WriteString("runtime logs:\n")
-		for _, entry := range entries {
+		for i, entry := range entries {
+			if i > 0 {
+				sb.WriteString("\n")
+			}
 			sb.WriteString(fmt.Sprintf("  %s %s %s", formatLogEntryTime(entry), strings.ToLower(entry.Level), entry.Message))
 			appendRuntimeLogFields(&sb, entry.Fields)
-			sb.WriteString("\n")
 		}
 		return sb.String()
 	}
@@ -517,10 +521,12 @@ func formatRawLogEntries(title string, entries []logging.LogEntry) string {
 	var sb strings.Builder
 	sb.WriteString(title)
 	sb.WriteString(":\n")
-	for _, entry := range entries {
+	for i, entry := range entries {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
 		sb.WriteString("  ")
 		sb.WriteString(formatDebugLogEntry(entry))
-		sb.WriteString("\n")
 	}
 	return sb.String()
 }

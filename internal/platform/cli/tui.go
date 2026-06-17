@@ -263,7 +263,7 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			go func() {
 				if err := m.handler.HandleMessage(m.ctx, text); err != nil {
 					select {
-					case m.output <- tuiNoticeMsg("error: " + err.Error() + "\n"):
+					case m.output <- tuiNoticeMsg("error: " + err.Error()):
 					case <-m.ctx.Done():
 					}
 				}
@@ -608,7 +608,17 @@ func (m *tuiModel) appendNotice(text string) {
 		m.refreshNotices()
 		return
 	}
-	m.appendContent("[notice] " + text + "\n")
+	m.appendNoticeContent(text)
+}
+
+func (m *tuiModel) appendNoticeContent(text string) {
+	if strings.TrimSpace(m.content) != "" {
+		m.content += "\n" + m.separatorLine() + "\n"
+	}
+	m.content += "[notice] " + text
+	m.assistantOpen = false
+	m.reasoningOpen = false
+	m.refreshContent()
 }
 
 func (m tuiModel) layoutNoticeVisible() bool {
@@ -633,8 +643,11 @@ func (m *tuiModel) refreshNotices() {
 		m.noticeViewport.SetContent(sb.String())
 		return
 	}
+	separator := tuiSeparatorStyle.Render(strings.Repeat("─", max(8, contentWidth)))
 	for _, notice := range m.notices {
-		sb.WriteString("\n\n")
+		sb.WriteString("\n")
+		sb.WriteString(separator)
+		sb.WriteString("\n")
 		sb.WriteString(tuiNoticeStyle.Render("• "))
 		sb.WriteString(wrapDisplayWidth(notice, contentWidth))
 	}

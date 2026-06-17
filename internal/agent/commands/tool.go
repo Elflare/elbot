@@ -27,7 +27,7 @@ func (c toolsCommand) Info() command.Info {
 func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
 	deps := c.deps
 	if deps.Tools == nil {
-		return &command.Result{Content: "tool runtime is not configured\n"}, nil
+		return &command.Result{Content: "tool runtime is not configured"}, nil
 	}
 	fields := strings.Fields(req.Args)
 	if len(fields) == 0 {
@@ -38,21 +38,21 @@ func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command
 		if err := deps.Tools.Reload(ctx); err != nil {
 			return nil, err
 		}
-		return &command.Result{Content: "skill reload completed\n"}, nil
+		return &command.Result{Content: "skill reload completed"}, nil
 	case "uninstall", "remove":
 		if len(fields) < 2 {
-			return &command.Result{Content: "usage: /tools remove <name> --confirm\n"}, nil
+			return &command.Result{Content: "usage: /tools remove <name> --confirm"}, nil
 		}
 		name := fields[1]
 		if !hasFlag(fields[2:], "--confirm") {
-			return &command.Result{Content: fmt.Sprintf("将删除外置 skill %q 及其目录。确认请执行：/tools remove %s --confirm\n", name, name)}, nil
+			return &command.Result{Content: fmt.Sprintf("将删除外置 skill %q 及其目录。确认请执行：/tools remove %s --confirm", name, name)}, nil
 		}
 		if err := deps.Tools.Remove(ctx, name); err != nil {
-			return &command.Result{Content: fmt.Sprintf("remove failed: %v\n", err)}, nil
+			return &command.Result{Content: fmt.Sprintf("remove failed: %v", err)}, nil
 		}
-		return &command.Result{Content: fmt.Sprintf("removed skill: %s\n", name)}, nil
+		return &command.Result{Content: fmt.Sprintf("removed skill: %s", name)}, nil
 	default:
-		return &command.Result{Content: "usage: /tools [reload|uninstall|remove] [name]\n"}, nil
+		return &command.Result{Content: "usage: /tools [reload|uninstall|remove] [name]"}, nil
 	}
 }
 
@@ -79,7 +79,7 @@ func (c toolsCommand) Complete(ctx context.Context, req command.CompletionReques
 func formatTools(deps Deps) string {
 	infos := deps.Tools.List()
 	if len(infos) == 0 {
-		return "tools: none\n"
+		return "tools: none"
 	}
 	var sb strings.Builder
 	sb.WriteString("tools:\n")
@@ -90,7 +90,7 @@ func formatTools(deps Deps) string {
 		}
 		sb.WriteString(fmt.Sprintf("  %s [%s]%s %s\n", info.Name, info.Source, tags, info.Description))
 	}
-	return sb.String()
+	return trimTrailingNewlines(sb.String())
 }
 
 func hasFlag(fields []string, flag string) bool {

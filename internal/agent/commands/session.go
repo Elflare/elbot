@@ -28,7 +28,7 @@ func NewNew(deps Deps) command.Handler {
 		if err != nil {
 			return nil, err
 		}
-		return &command.Result{Content: fmt.Sprintf("created new session:\n  id: %s\n  title: %s\n  mode: %s\n", session.ID, session.Title, session.Mode)}, nil
+		return &command.Result{Content: fmt.Sprintf("created new session:\n  id: %s\n  title: %s\n  mode: %s", session.ID, session.Title, session.Mode)}, nil
 	})
 }
 
@@ -122,7 +122,7 @@ func NewSessions(deps Deps) command.Handler {
 		currentID := currentSessionID(ctx, deps)
 		deps.SetLastSessions(sessions)
 		if len(sessions) == 0 {
-			return &command.Result{Content: "no sessions found\n"}, nil
+			return &command.Result{Content: "no sessions found"}, nil
 		}
 		return &command.Result{Content: formatSessionsPage(sessions, currentID, page, query, hasNext, "/sessions")}, nil
 	})
@@ -160,7 +160,7 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 		currentID := currentSessionID(ctx, deps)
 		deps.SetLastSessions(sessions)
 		if len(sessions) == 0 {
-			return &command.Result{Content: "no sessions found\n"}, nil
+			return &command.Result{Content: "no sessions found"}, nil
 		}
 		return &command.Result{Content: formatSessionsPage(sessions, currentID, page, "", hasNext, "/resume --page")}, nil
 	}
@@ -173,7 +173,7 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 		currentID := currentSessionID(ctx, deps)
 		deps.SetLastSessions(sessions)
 		if len(sessions) == 0 {
-			return &command.Result{Content: "no sessions found\n"}, nil
+			return &command.Result{Content: "no sessions found"}, nil
 		}
 		return &command.Result{Content: formatSessionsPage(sessions, currentID, 1, "", hasNext, "/resume --page")}, nil
 	}
@@ -245,7 +245,7 @@ func NewArchives(deps Deps) command.Handler {
 		currentID := currentSessionID(ctx, deps)
 		deps.SetLastSessions(sessions)
 		if len(sessions) == 0 {
-			return &command.Result{Content: "no archived sessions found\n"}, nil
+			return &command.Result{Content: "no archived sessions found"}, nil
 		}
 		return &command.Result{Content: formatSessionsPage(sessions, currentID, page, query, hasNext, "/archives")}, nil
 	})
@@ -275,7 +275,7 @@ func NewArchive(deps Deps) command.Handler {
 			if err != nil {
 				return nil, err
 			}
-			return &command.Result{Content: fmt.Sprintf("archived session:\n  id: %s\n  title: %s\n", session.ID, session.Title)}, nil
+			return &command.Result{Content: fmt.Sprintf("archived session:\n  id: %s\n  title: %s", session.ID, session.Title)}, nil
 		},
 	}
 }
@@ -296,7 +296,7 @@ func NewUnarchive(deps Deps) command.Handler {
 			if err != nil {
 				return nil, err
 			}
-			return &command.Result{Content: fmt.Sprintf("unarchived session:\n  id: %s\n  title: %s\n", session.ID, session.Title)}, nil
+			return &command.Result{Content: fmt.Sprintf("unarchived session:\n  id: %s\n  title: %s", session.ID, session.Title)}, nil
 		},
 	}
 }
@@ -316,7 +316,7 @@ func NewPin(deps Deps) command.Handler {
 			if err != nil {
 				return nil, err
 			}
-			return &command.Result{Content: fmt.Sprintf("pinned session:\n  id: %s\n  title: %s\n", session.ID, session.Title)}, nil
+			return &command.Result{Content: fmt.Sprintf("pinned session:\n  id: %s\n  title: %s", session.ID, session.Title)}, nil
 		},
 	}
 }
@@ -336,7 +336,7 @@ func NewUnpin(deps Deps) command.Handler {
 			if err != nil {
 				return nil, err
 			}
-			return &command.Result{Content: fmt.Sprintf("unpinned session:\n  id: %s\n  title: %s\n", session.ID, session.Title)}, nil
+			return &command.Result{Content: fmt.Sprintf("unpinned session:\n  id: %s\n  title: %s", session.ID, session.Title)}, nil
 		},
 	}
 }
@@ -368,7 +368,7 @@ func (c renameCommand) Handle(ctx context.Context, req command.Request) (*comman
 	if err != nil {
 		return nil, err
 	}
-	return &command.Result{Content: fmt.Sprintf("renamed session:\n  id: %s\n  title: %s\n", session.ID, session.Title)}, nil
+	return &command.Result{Content: fmt.Sprintf("renamed session:\n  id: %s\n  title: %s", session.ID, session.Title)}, nil
 }
 
 func (c renameCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -405,7 +405,7 @@ func NewDelete(deps Deps) command.Handler {
 			if err := deps.Sessions.Delete(ctx, deps.Scope(ctx), sessionID); err != nil {
 				return nil, err
 			}
-			return &command.Result{Content: fmt.Sprintf("deleted session:\n  id: %s\n", sessionID)}, nil
+			return &command.Result{Content: fmt.Sprintf("deleted session:\n  id: %s", sessionID)}, nil
 		},
 	}
 }
@@ -430,13 +430,13 @@ func (c cleanCommand) Handle(ctx context.Context, req command.Request) (*command
 	deps := c.deps
 	_, confirmed := parseTargetConfirm(req.Args)
 	if !confirmed {
-		return &command.Result{Content: "clean will permanently delete expired sessions that are not archived or pinned. Run /clean --confirm to continue.\n"}, nil
+		return &command.Result{Content: "clean will permanently delete expired sessions that are not archived or pinned. Run /clean --confirm to continue."}, nil
 	}
 	deleted, err := deps.Sessions.CleanupExpired(ctx, storage.Now().AddDate(0, 0, -cleanupRetentionDays(deps)))
 	if err != nil {
 		return nil, err
 	}
-	return &command.Result{Content: fmt.Sprintf("cleaned expired sessions: %d\n", deleted)}, nil
+	return &command.Result{Content: fmt.Sprintf("cleaned expired sessions: %d", deleted)}, nil
 }
 
 func (c cleanCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -473,7 +473,7 @@ func NewMessages(deps Deps) command.Handler {
 		}
 		assistants := assistantMessages(loaded.Messages)
 		if len(assistants) == 0 {
-			return &command.Result{Content: "no assistant messages found\n"}, nil
+			return &command.Result{Content: "no assistant messages found"}, nil
 		}
 		content, err := formatMessagePage(assistants, page, messageListPageSize)
 		if err != nil {
@@ -524,7 +524,7 @@ func NewWork(deps Deps) command.Handler {
 				return nil, err
 			}
 		}
-		return &command.Result{Content: fmt.Sprintf("work mode active:\n  id: %s\n  mode: %s\n  tools: will apply from next message\n", session.ID, session.Mode)}, nil
+		return &command.Result{Content: fmt.Sprintf("work mode active:\n  id: %s\n  mode: %s\n  tools: will apply from next message", session.ID, session.Mode)}, nil
 	})
 }
 
@@ -542,25 +542,25 @@ func NewChat(deps Deps) command.Handler {
 				if err != nil {
 					return nil, err
 				}
-				return &command.Result{Content: fmt.Sprintf("chat mode active:\n  id: %s\n  mode: %s\n", session.ID, session.Mode)}, nil
+				return &command.Result{Content: fmt.Sprintf("chat mode active:\n  id: %s\n  mode: %s", session.ID, session.Mode)}, nil
 			}
 			return nil, err
 		}
 		if session.Mode == storage.SessionModeChat {
-			return &command.Result{Content: fmt.Sprintf("already in chat mode:\n  id: %s\n", session.ID)}, nil
+			return &command.Result{Content: fmt.Sprintf("already in chat mode:\n  id: %s", session.ID)}, nil
 		}
 		messages, err := deps.Store.Messages().ListBySession(ctx, session.ID)
 		if err != nil {
 			return nil, err
 		}
 		if len(messages) > 0 {
-			return &command.Result{Content: "current work session has history; run /new then /chat to start a clean chat session\n"}, nil
+			return &command.Result{Content: "current work session has history; run /new then /chat to start a clean chat session"}, nil
 		}
 		session, err = deps.Sessions.SetMode(ctx, scope, storage.SessionModeChat)
 		if err != nil {
 			return nil, err
 		}
-		return &command.Result{Content: fmt.Sprintf("chat mode active:\n  id: %s\n  mode: %s\n", session.ID, session.Mode)}, nil
+		return &command.Result{Content: fmt.Sprintf("chat mode active:\n  id: %s\n  mode: %s", session.ID, session.Mode)}, nil
 	})
 }
 
@@ -722,9 +722,9 @@ func confirmCommandMessage(ctx context.Context, deps Deps, name, target string) 
 	}
 	confirmTarget := strings.TrimSpace(target)
 	if confirmTarget == "" {
-		return fmt.Sprintf("%s will modify current session:\n  title: %s\n  id: %s\nRun /%s --confirm to continue.\n", name, emptyTitle(session.Title), session.ID, name), nil
+		return fmt.Sprintf("%s will modify current session:\n  title: %s\n  id: %s\nRun /%s --confirm to continue.", name, emptyTitle(session.Title), session.ID, name), nil
 	}
-	return fmt.Sprintf("%s will modify session:\n  title: %s\n  id: %s\nRun /%s %s --confirm to continue.\n", name, emptyTitle(session.Title), session.ID, name, confirmTarget), nil
+	return fmt.Sprintf("%s will modify session:\n  title: %s\n  id: %s\nRun /%s %s --confirm to continue.", name, emptyTitle(session.Title), session.ID, name, confirmTarget), nil
 }
 
 func emptyTitle(title string) string {
@@ -788,6 +788,9 @@ func formatSessionsPage(sessions []storage.SessionSummary, currentID string, pag
 	content := formatSessions(sessions, currentID)
 	var sb strings.Builder
 	sb.WriteString(content)
+	if content != "" {
+		sb.WriteString("\n")
+	}
 	sb.WriteString(fmt.Sprintf("page: %d\n", page))
 	if page > 1 {
 		sb.WriteString(fmt.Sprintf("prev: %s\n", nextPageCommand(commandPrefix, page-1, query)))
@@ -795,7 +798,7 @@ func formatSessionsPage(sessions []storage.SessionSummary, currentID string, pag
 	if hasNext {
 		sb.WriteString(fmt.Sprintf("next: %s\n", nextPageCommand(commandPrefix, page+1, query)))
 	}
-	return sb.String()
+	return trimTrailingNewlines(sb.String())
 }
 
 func nextPageCommand(commandPrefix string, page int, query string) string {
@@ -817,14 +820,14 @@ func formatResumeResult(ctx context.Context, deps Deps, session *storage.Session
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("resumed session:\n  id: %s\n  title: %s\n", session.ID, session.Title))
 	appendRecentMessages(&sb, ctx, deps, session.ID)
-	return sb.String()
+	return trimTrailingNewlines(sb.String())
 }
 
 func formatForkResult(ctx context.Context, deps Deps, session *storage.Session) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("forked session:\n  id: %s\n  parent: %s\n  from message: %s\n  mode: %s\n", session.ID, session.ParentSessionID, session.ForkFromMessageID, session.Mode))
 	appendRecentMessages(&sb, ctx, deps, session.ID)
-	return sb.String()
+	return trimTrailingNewlines(sb.String())
 }
 
 func appendRecentMessages(sb *strings.Builder, ctx context.Context, deps Deps, sessionID string) {
@@ -896,7 +899,7 @@ func formatMessagePage(messages []storage.Message, page, pageSize int) (string, 
 	for _, message := range messages[start:end] {
 		sb.WriteString(fmt.Sprintf("  %s: %s\n", message.ID, messagePreview(message.Content)))
 	}
-	return sb.String(), nil
+	return trimTrailingNewlines(sb.String()), nil
 }
 
 func messagePreview(text string) string {
@@ -925,7 +928,7 @@ func formatSessions(sessions []storage.SessionSummary, currentID string) string 
 			sb.WriteString(fmt.Sprintf("      preview: %s\n", s.MessagePreview))
 		}
 	}
-	return sb.String()
+	return trimTrailingNewlines(sb.String())
 }
 
 func sessionMarkers(s storage.SessionSummary, currentID string) string {
@@ -951,7 +954,7 @@ func formatEmptyStatus(ctx context.Context, deps Deps) string {
 	modeModel := deps.Models.CurrentModeModel()
 	compactModel := deps.Models.CurrentCompactModel()
 	active := formatActiveRequests(deps.Requests.List())
-	return fmt.Sprintf(`session status:
+	return trimTrailingNewlines(fmt.Sprintf(`session status:
   current session: none
   default mode: %s
   current mode model: %s/%s
@@ -960,7 +963,7 @@ func formatEmptyStatus(ctx context.Context, deps Deps) string {
 %s  turn phase: %s
   pending input: %s
   tools: available in work mode
-`, deps.Sessions.DefaultMode(), modeModel.Provider, modeModel.Model, compactModel.Provider, compactModel.Model, scope.Platform, scope.PlatformScopeID, indentStatusBlock(active), "idle", "none")
+`, deps.Sessions.DefaultMode(), modeModel.Provider, modeModel.Model, compactModel.Provider, compactModel.Model, scope.Platform, scope.PlatformScopeID, indentStatusBlock(active), "idle", "none"))
 }
 
 func indentStatusBlock(text string) string {

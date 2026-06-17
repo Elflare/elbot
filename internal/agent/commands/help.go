@@ -43,7 +43,7 @@ func (h helpCommand) Handle(ctx context.Context, req command.Request) (*command.
 		usage := commandUsage(req.Prefix, info)
 		sb.WriteString(fmt.Sprintf("  %-24s %s\n", usage, info.Description))
 	}
-	sb.WriteString("\nUse /help <command> for details.\n")
+	sb.WriteString("\nUse /help <command> for details.")
 	return &command.Result{Content: sb.String()}, nil
 }
 
@@ -71,7 +71,7 @@ func (h helpCommand) Complete(ctx context.Context, req command.CompletionRequest
 func detailedHelp(prefix string, deps Deps, name string) (*command.Result, error) {
 	info, ok := deps.Router.CommandInfo(name)
 	if !ok {
-		return &command.Result{Content: fmt.Sprintf("unknown command: %s\n", strings.TrimSpace(name))}, nil
+		return &command.Result{Content: fmt.Sprintf("unknown command: %s", strings.TrimSpace(name))}, nil
 	}
 	return formatCommandHelp(prefix, info), nil
 }

@@ -151,5 +151,5 @@ func (a *Agent) notifyToolDirectiveResult(ctx context.Context, result toolDirect
 	if len(parts) == 0 {
 		return
 	}
-	a.sendChat(ctx, strings.Join(parts, "\n")+"\n")
+	a.sendChat(ctx, strings.Join(parts, "\n"))
 }

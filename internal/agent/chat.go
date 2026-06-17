@@ -393,7 +393,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	doneStatus := runtimeDoneStatus(runtimestatus.Snapshot{SessionID: session.ID, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt, Usage: usage}, storage.Now())
 	a.updateRuntimeStatus(ctx, doneStatus)
 	if a.markPendingCompact(ctx, session, usage) {
-		a.sendChat(ctx, "compact status: will compact before next request\n")
+		a.sendChat(ctx, "compact status: will compact before next request")
 	}
 	a.sessions.MaybeScheduleNaming(ctx, session.ID)
 	return nil

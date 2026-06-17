@@ -247,7 +247,7 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 		if err != nil {
 			a.notifyHookError(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}}, err)
 			if shouldNotifyUserError(err) {
-				a.sendChat(ctx, "请求失败："+err.Error()+"\n")
+				a.sendChat(ctx, "请求失败："+err.Error())
 			}
 		}
 	}()
@@ -265,7 +265,7 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 		}
 		if actor.Role != security.RoleSuperadmin {
 			a.audit("permission_denied", "actor_id", actor.ID, "command", text, "reason", "slash_command_requires_superadmin")
-			// a.sendChat(ctx, "普通用户不能使用斜杠命令。\n")
+			// a.sendChat(ctx, "普通用户不能使用斜杠命令。")
 			return nil
 		}
 		result, dispatchErr := a.commands.Dispatch(ctx, text)

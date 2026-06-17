@@ -185,7 +185,7 @@ func (a *Agent) notifyVisionFallbackOnce(ctx context.Context, sessionID string) 
 	}
 	a.visionFallbackNotified[sessionID] = true
 	a.visionFallbackMu.Unlock()
-	a.sendChat(ctx, "当前模型似乎不支持视觉，图片已按文本描述处理。\n")
+	a.sendChat(ctx, "当前模型似乎不支持视觉，图片已按文本描述处理。")
 }
 
 func (a *Agent) userMessageSegments(ctx context.Context, text string) []llm.MessageSegment {

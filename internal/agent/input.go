@@ -32,7 +32,7 @@ func (a *Agent) handleInput(ctx context.Context, text string) error {
 	text = llm.SegmentsTextOnly(event.Message.Segments)
 
 	if session.ArchivedAt != nil {
-		a.sendChat(ctx, "当前会话已归档，不能继续聊天。若要继续，请先使用 /unarchive。\n")
+		a.sendChat(ctx, "当前会话已归档，不能继续聊天。若要继续，请先使用 /unarchive。")
 		return nil
 	}
 
@@ -68,7 +68,7 @@ func (a *Agent) handleInput(ctx context.Context, text string) error {
 			return a.startChat(ctx, session, merged)
 		case turn.IsCancel(text):
 			a.turns.CancelAppend(session.ID)
-			a.sendChat(ctx, "已取消追加，本轮处理已停止。\n")
+			a.sendChat(ctx, "已取消追加，本轮处理已停止。")
 			return nil
 		default:
 			a.turns.AppendPending(session.ID, text)
@@ -77,14 +77,14 @@ func (a *Agent) handleInput(ctx context.Context, text string) error {
 	case turn.PhaseLLM:
 		a.requests.CancelSession(session.ID)
 		a.turns.InterruptLLM(session.ID, text)
-		a.sendChat(ctx, "已停止当前处理。是否追加这条消息并重新发送？\n发送 $ / 是 / y / yes 确认；发送 取消 / 否 / n / no 放弃。\n也可以继续发送内容，发送完后再确认。\n")
+		a.sendChat(ctx, "已停止当前处理。是否追加这条消息并重新发送？\n发送 $ / 是 / y / yes 确认；发送 取消 / 否 / n / no 放弃。\n也可以继续发送内容，发送完后再确认。")
 		return nil
 	case turn.PhaseTool:
 		a.turns.AppendPending(session.ID, text)
-		a.sendChat(ctx, "已追加，将在当前流程下一次模型调用时带上。发送 /stop 可打断当前流程。\n")
+		a.sendChat(ctx, "已追加，将在当前流程下一次模型调用时带上。发送 /stop 可打断当前流程。")
 		return nil
 	case turn.PhaseCompact:
-		a.sendChat(ctx, "正在压缩上下文，请稍后再发送。可使用 /stop 取消当前请求。\n")
+		a.sendChat(ctx, "正在压缩上下文，请稍后再发送。可使用 /stop 取消当前请求。")
 		return nil
 	default:
 		return a.startChat(ctx, session, text)
@@ -160,7 +160,7 @@ func (a *Agent) handleRiskConfirmationInput(ctx context.Context, sessionID, text
 		a.logRiskConfirmationAction(sessionID, "stop", confirmation, "")
 		a.requests.CancelSession(sessionID)
 		a.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Stopped: true})
-		a.sendChat(ctx, "stopped\n")
+		a.sendChat(ctx, "stopped")
 	default:
 		if hasConfirmation {
 			a.logRiskConfirmationAction(sessionID, "invalid_command", confirmation, parsed.Name)

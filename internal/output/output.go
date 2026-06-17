@@ -214,11 +214,11 @@ func outputMetaString(out Output, key string) string {
 
 func FallbackText(out Output) string {
 	if out.AltText != "" {
-		return ensureTrailingNewline(out.AltText)
+		return out.AltText
 	}
 	switch out.Kind {
 	case KindText:
-		return ensureTrailingNewline(out.Text)
+		return out.Text
 	case KindEmoticon:
 		name := strings.TrimSpace(out.Name)
 		if name == "" {
@@ -227,7 +227,7 @@ func FallbackText(out Output) string {
 		if name == "" {
 			return ""
 		}
-		return fmt.Sprintf("[表情: %s]\n", name)
+		return fmt.Sprintf("[表情: %s]", name)
 	case KindAt:
 		name := strings.TrimSpace(out.Name)
 		if name == "" {
@@ -236,35 +236,28 @@ func FallbackText(out Output) string {
 		if name == "" {
 			return ""
 		}
-		return fmt.Sprintf("@%s\n", name)
+		return fmt.Sprintf("@%s", name)
 	case KindReply:
 		replyID := strings.TrimSpace(out.ReplyToPlatformMessageID)
 		if replyID == "" {
-			return ensureTrailingNewline(out.Text)
+			return out.Text
 		}
-		return fmt.Sprintf("[引用消息 %s]\n%s", replyID, ensureTrailingNewline(out.Text))
+		return fmt.Sprintf("[引用消息 %s]\n%s", replyID, out.Text)
 	case KindImage:
 		label := firstNonEmpty(out.Name, out.Source.URL, out.Source.Path, out.Text)
 		if label == "" {
-			return "[图片]\n"
+			return "[图片]"
 		}
-		return fmt.Sprintf("[图片: %s]\n", label)
+		return fmt.Sprintf("[图片: %s]", label)
 	case KindFile:
 		label := firstNonEmpty(out.Name, out.Source.URL, out.Source.Path, out.Text)
 		if label == "" {
-			return "[文件]\n"
+			return "[文件]"
 		}
-		return fmt.Sprintf("[文件: %s]\n", label)
+		return fmt.Sprintf("[文件: %s]", label)
 	default:
-		return ensureTrailingNewline(firstNonEmpty(out.Text, out.Name, out.AltText))
+		return firstNonEmpty(out.Text, out.Name, out.AltText)
 	}
-}
-
-func ensureTrailingNewline(text string) string {
-	if text == "" || strings.HasSuffix(text, "\n") {
-		return text
-	}
-	return text + "\n"
 }
 
 func firstNonEmpty(values ...string) string {

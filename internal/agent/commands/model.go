@@ -72,15 +72,15 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 	}
 	switch target {
 	case modelTargetChat:
-		return &command.Result{Content: fmt.Sprintf("switched chat model: %s/%s\n", selected.Provider, selected.Model)}, nil
+		return &command.Result{Content: fmt.Sprintf("switched chat model: %s/%s", selected.Provider, selected.Model)}, nil
 	case modelTargetWork:
-		return &command.Result{Content: fmt.Sprintf("switched work model: %s/%s\n", selected.Provider, selected.Model)}, nil
+		return &command.Result{Content: fmt.Sprintf("switched work model: %s/%s", selected.Provider, selected.Model)}, nil
 	case modelTargetCompact:
-		return &command.Result{Content: fmt.Sprintf("switched compact model: %s/%s\n", selected.Provider, selected.Model)}, nil
+		return &command.Result{Content: fmt.Sprintf("switched compact model: %s/%s", selected.Provider, selected.Model)}, nil
 	case modelTargetNaming:
-		return &command.Result{Content: fmt.Sprintf("switched naming model: %s/%s\n", selected.Provider, selected.Model)}, nil
+		return &command.Result{Content: fmt.Sprintf("switched naming model: %s/%s", selected.Provider, selected.Model)}, nil
 	default:
-		return &command.Result{Content: fmt.Sprintf("switched to model: %s/%s\n", selected.Provider, selected.Model)}, nil
+		return &command.Result{Content: fmt.Sprintf("switched to model: %s/%s", selected.Provider, selected.Model)}, nil
 	}
 }
 
@@ -202,12 +202,12 @@ Examples:
 		if len(models) == 0 {
 			var sb strings.Builder
 			if strings.TrimSpace(args) != "" {
-				sb.WriteString(fmt.Sprintf("no models matching %q\n", strings.TrimSpace(args)))
+				sb.WriteString(fmt.Sprintf("no models matching %q", strings.TrimSpace(args)))
 			} else {
-				sb.WriteString("no models available\n")
+				sb.WriteString("no models available")
 			}
 			appendModelProviderErrors(&sb, result.Errors)
-			return &command.Result{Content: sb.String()}, nil
+			return &command.Result{Content: trimTrailingNewlines(sb.String())}, nil
 		}
 
 		var sb strings.Builder
@@ -226,23 +226,27 @@ Examples:
 				marker = "*"
 			}
 			suffix := modelSuffix(m)
-			sb.WriteString(fmt.Sprintf("  %s [%d] %s%s\n", marker, m.Index, m.Model, suffix))
+			if !strings.HasSuffix(sb.String(), "\n") {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(fmt.Sprintf("  %s [%d] %s%s", marker, m.Index, m.Model, suffix))
 		}
 		appendModelProviderErrors(&sb, result.Errors)
-		return &command.Result{Content: sb.String()}, nil
+		return &command.Result{Content: trimTrailingNewlines(sb.String())}, nil
 	})
 }
 
 func appendModelProviderErrors(sb *strings.Builder, errors []ModelProviderError) {
-	if len(errors) == 0 {
-		return
-	}
-	sb.WriteString("\nmodel provider errors:\n")
+	hasError := false
 	for _, providerErr := range errors {
 		if providerErr.Err == nil {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("  - %s: %v\n", providerErr.Provider, providerErr.Err))
+		if !hasError {
+			sb.WriteString("\nmodel provider errors:")
+			hasError = true
+		}
+		sb.WriteString(fmt.Sprintf("\n  - %s: %v", providerErr.Provider, providerErr.Err))
 	}
 }
 

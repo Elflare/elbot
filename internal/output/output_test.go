@@ -32,14 +32,21 @@ func (s *fakeSender) SendNotice(ctx context.Context, target Target, out Output) 
 
 func TestFallbackTextForEmoticon(t *testing.T) {
 	got := FallbackText(Emoticon("微笑"))
-	if got != "[表情: 微笑]\n" {
+	if got != "[表情: 微笑]" {
 		t.Fatalf("FallbackText = %q", got)
 	}
 }
 
 func TestFallbackTextForAt(t *testing.T) {
 	got := FallbackText(At("123456"))
-	if got != "@123456\n" {
+	if got != "@123456" {
+		t.Fatalf("FallbackText = %q", got)
+	}
+}
+
+func TestFallbackTextForTextKeepsContent(t *testing.T) {
+	got := FallbackText(Text("hello"))
+	if got != "hello" {
 		t.Fatalf("FallbackText = %q", got)
 	}
 }

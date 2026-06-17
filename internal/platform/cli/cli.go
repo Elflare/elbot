@@ -188,8 +188,9 @@ func (a *Adapter) SendNotice(ctx context.Context, target output.Target, out outp
 }
 
 func (a *Adapter) SendToolNotice(text string) {
-	if !strings.HasSuffix(text, "\n") {
-		text += "\n"
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
 	}
 	_, _ = a.SendNotice(context.Background(), output.Target{}, output.Text("[tool] "+text))
 }
@@ -200,7 +201,7 @@ func (a *Adapter) sendTUIMessage(msg tea.Msg, fallback string) {
 	program := a.program
 	a.mu.Unlock()
 	if output == nil || !isatty.IsTerminal(os.Stdin.Fd()) {
-		fmt.Print(fallback)
+		printLine(fallback)
 		return
 	}
 	if program != nil {
@@ -210,6 +211,16 @@ func (a *Adapter) sendTUIMessage(msg tea.Msg, fallback string) {
 	select {
 	case output <- msg:
 	default:
-		fmt.Print(fallback)
+		printLine(fallback)
+	}
+}
+
+func printLine(text string) {
+	if text == "" {
+		return
+	}
+	fmt.Print(text)
+	if !strings.HasSuffix(text, "\n") {
+		fmt.Println()
 	}
 }
