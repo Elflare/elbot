@@ -38,7 +38,7 @@
     "docs/getting-started.md": {
       "source_hash": "03eb8aa561aca703b7e764c8129596c4b45c9089405fb354f913006859b7cb3e",
       "target": "docs.en/getting-started.md",
-      "updated_at": 1781580008
+      "updated_at": 1781710779
     }
   },
   "segments": {
@@ -4825,6 +4825,38 @@
       "source_hash": "f65dfca21fa9f0474ec6b213dff06887b240535fea1723dbb4372eb9da0cd829",
       "translation": "Directly send text notifications to the target determined by Elnis.",
       "updated_at": 1781710746
+    },
+    "docs/getting-started.md:code-comment:bash:130bae2a285a534300c83d222710f7341b2f89c66a2de9a3e1f6c70185cb6e0f": {
+      "kind": "code-comment:bash",
+      "source": "本地 CLI-only：只启动 CLI，不启动平台和 Cron",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "130bae2a285a534300c83d222710f7341b2f89c66a2de9a3e1f6c70185cb6e0f",
+      "translation": "Local CLI-only: start CLI only, without platforms and Cron",
+      "updated_at": 1781710779
+    },
+    "docs/getting-started.md:code-comment:bash:a2a87c263e0793e87dca8c128652941282fc018fff6c8c4cb6c97aba1c8f9798": {
+      "kind": "code-comment:bash",
+      "source": "Linux/headless 服务模式：不启动 CLI，启动已启用平台和 Cron",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "a2a87c263e0793e87dca8c128652941282fc018fff6c8c4cb6c97aba1c8f9798",
+      "translation": "Linux/headless service mode: do not start CLI, start enabled platforms and Cron",
+      "updated_at": 1781710779
+    },
+    "docs/getting-started.md:code-comment:bash:b54868ef2af099400e62256a9a8ee4d862a5c3f4e49f37f45332426bd2d4e5ba": {
+      "kind": "code-comment:bash",
+      "source": "完整前台：CLI + 已启用平台 + Cron",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "b54868ef2af099400e62256a9a8ee4d862a5c3f4e49f37f45332426bd2d4e5ba",
+      "translation": "Full foreground: CLI + enabled platforms + Cron",
+      "updated_at": 1781710779
+    },
+    "docs/getting-started.md:code-comment:bash:f7eacc50afd54a954c71b74c18b88f32f76cb820eae39b8ac749c37a64b02c0a": {
+      "kind": "code-comment:bash",
+      "source": "自动模式",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "f7eacc50afd54a954c71b74c18b88f32f76cb820eae39b8ac749c37a64b02c0a",
+      "translation": "Automatic mode",
+      "updated_at": 1781710779
     },
     "docs/getting-started.md:heading:0145e05322af8916973a09edb901f7397904a227aa495af8a41a2bf1f0d4fd23": {
       "kind": "heading",

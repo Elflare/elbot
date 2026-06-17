@@ -82,10 +82,10 @@ go run ./cmd/elbot --config config/app.toml
 Common running modes:
 
 ```bash
-elbot              # 自动模式
-elbot run          # 完整前台：CLI + 已启用平台 + Cron
-elbot cli          # 本地 CLI-only：只启动 CLI，不启动平台和 Cron
-elbot service run  # Linux/headless 服务模式：不启动 CLI，启动已启用平台和 Cron
+elbot              # Automatic mode
+elbot run          # Full foreground: CLI + enabled platforms + Cron
+elbot cli          # Local CLI-only: start CLI only, without platforms and Cron
+elbot service run  # Linux/headless service mode: do not start CLI, start enabled platforms and Cron
 ```
 
 In automatic mode, if Linux detects that the current user already has `elbot service run` running, it will enter local CLI-only mode to avoid duplicate platform connections or duplicate Cron executions; Otherwise, it will enter full foreground mode. Windows does not perform service detection and starts in full foreground mode by default.
