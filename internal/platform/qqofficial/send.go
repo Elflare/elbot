@@ -19,6 +19,14 @@ const (
 	fileTypeFile  = 4
 )
 
+func receiptWithMessageID(id string) platform.Receipt {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return platform.Receipt{}
+	}
+	return platform.Receipt{PlatformMessageIDs: []string{id}}
+}
+
 func (a *Adapter) sendContextOutput(ctx context.Context, out output.Output) (platform.Receipt, error) {
 	t, err := a.contextTarget(ctx)
 	if err != nil {
@@ -72,7 +80,7 @@ func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) 
 		}
 		resp, err := a.client.sendMessage(ctx, target.OpenID, msg)
 		if err == nil {
-			return platform.Receipt{PlatformMessageID: resp.ID}, nil
+			return receiptWithMessageID(resp.ID), nil
 		}
 		a.logWarn(ctx, "qqofficial markdown send failed, fallback to text", "error", err)
 	}
@@ -83,7 +91,7 @@ func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) 
 	if err != nil {
 		return platform.Receipt{}, err
 	}
-	return platform.Receipt{PlatformMessageID: resp.ID}, nil
+	return receiptWithMessageID(resp.ID), nil
 }
 
 func (a *Adapter) sendMedia(ctx context.Context, target sendTarget, out output.Output, fileType int) (platform.Receipt, error) {
@@ -105,7 +113,7 @@ func (a *Adapter) sendMedia(ctx context.Context, target sendTarget, out output.O
 	if err != nil {
 		return platform.Receipt{}, err
 	}
-	return platform.Receipt{PlatformMessageID: resp.ID}, nil
+	return receiptWithMessageID(resp.ID), nil
 }
 
 func (a *Adapter) baseMessage(target sendTarget) messageToCreate {
@@ -130,7 +138,7 @@ func (a *Adapter) sendArk(ctx context.Context, target sendTarget, ark messageArk
 	if err != nil {
 		return platform.Receipt{}, err
 	}
-	return platform.Receipt{PlatformMessageID: resp.ID}, nil
+	return receiptWithMessageID(resp.ID), nil
 }
 
 func metaString(meta map[string]any, key string) string {

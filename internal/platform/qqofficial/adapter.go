@@ -95,9 +95,7 @@ func (a *Adapter) SendNotice(ctx context.Context, target output.Target, out outp
 		if err != nil {
 			return platform.Receipt{}, err
 		}
-		if receipt.PlatformMessageID == "" {
-			receipt = sent
-		}
+		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 	}
 	return receipt, nil
 }

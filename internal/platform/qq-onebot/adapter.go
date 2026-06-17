@@ -210,8 +210,8 @@ func (a *Adapter) sendContextText(ctx context.Context, text string) (platform.Re
 		if err != nil {
 			return platform.Receipt{}, err
 		}
-		if receipt.PlatformMessageID == "" {
-			receipt.PlatformMessageID = id
+		if strings.TrimSpace(id) != "" {
+			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, id)
 		}
 	}
 	return receipt, nil
@@ -229,10 +229,10 @@ func (a *Adapter) sendContextOutput(ctx context.Context, out output.Output) (pla
 	switch t.MessageType {
 	case "private":
 		id, err := a.transport.SendPrivateSegments(ctx, t.UserID, segments)
-		return platform.Receipt{PlatformMessageID: id}, err
+		return receiptWithMessageID(id), err
 	case "group":
 		id, err := a.transport.SendGroupSegments(ctx, t.GroupID, segments)
-		return platform.Receipt{PlatformMessageID: id}, err
+		return receiptWithMessageID(id), err
 	default:
 		return platform.Receipt{}, fmt.Errorf("unsupported message target %q", t.MessageType)
 	}
@@ -258,9 +258,7 @@ func (a *Adapter) sendTarget(ctx context.Context, outTarget output.Target, out o
 			if err != nil {
 				return platform.Receipt{}, err
 			}
-			if receipt.PlatformMessageID == "" {
-				receipt = sent
-			}
+			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 		}
 		return receipt, nil
 	}
@@ -273,6 +271,14 @@ func (a *Adapter) sendTarget(ctx context.Context, outTarget output.Target, out o
 		return a.sendContextText(targetCtx, out.Text)
 	}
 	return a.sendContextOutput(targetCtx, out)
+}
+
+func receiptWithMessageID(id string) platform.Receipt {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return platform.Receipt{}
+	}
+	return platform.Receipt{PlatformMessageIDs: []string{id}}
 }
 
 func targetToQQ(outTarget output.Target) (target, error) {

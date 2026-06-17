@@ -31,9 +31,9 @@ type Runtime interface {
 	MessageSender
 }
 
-// Receipt describes a platform message produced by a send operation.
+// Receipt describes platform messages produced by a send operation.
 type Receipt struct {
-	PlatformMessageID string
+	PlatformMessageIDs []string
 }
 
 // StreamingMessageSender is an optional platform capability for editable streaming output.

@@ -12,13 +12,15 @@ type fakeModelService struct {
 	models []ModelOption
 }
 
-func (s fakeModelService) CurrentModel() string                           { return "" }
-func (s fakeModelService) CurrentProvider() string                        { return "" }
-func (s fakeModelService) CurrentModeModel() ModelOption                  { return ModelOption{} }
-func (s fakeModelService) CurrentModelForMode(string) ModelOption         { return ModelOption{} }
-func (s fakeModelService) CurrentCompactModel() ModelOption               { return ModelOption{} }
-func (s fakeModelService) CurrentNamingModel() ModelOption                { return ModelOption{} }
-func (s fakeModelService) SelectModel(string) (ModelOption, error)        { return ModelOption{}, nil }
+func (s fakeModelService) CurrentModel() string                   { return "" }
+func (s fakeModelService) CurrentProvider() string                { return "" }
+func (s fakeModelService) CurrentModeModel() ModelOption          { return ModelOption{} }
+func (s fakeModelService) CurrentModelForMode(string) ModelOption { return ModelOption{} }
+func (s fakeModelService) CurrentCompactModel() ModelOption       { return ModelOption{} }
+func (s fakeModelService) CurrentNamingModel() ModelOption        { return ModelOption{} }
+func (s fakeModelService) SelectModel(context.Context, string) (ModelOption, error) {
+	return ModelOption{}, nil
+}
 func (s fakeModelService) SelectCompactModel(string) (ModelOption, error) { return ModelOption{}, nil }
 func (s fakeModelService) SelectNamingModel(string) (ModelOption, error)  { return ModelOption{}, nil }
 func (s fakeModelService) SelectModelForMode(string, string) (ModelOption, error) {
