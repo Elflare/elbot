@@ -21,9 +21,9 @@
       "updated_at": 1781515483
     },
     "docs/configuration.md": {
-      "source_hash": "c0b729a1772748437f9ae1fe961af680b3f046b6165f734279f4abb0dcad2ded",
+      "source_hash": "fd0ec842b698d8204cf3397c80e9dd71ac738be81719c209de4d1d0bb1b6b217",
       "target": "docs.en/configuration.md",
-      "updated_at": 1781515756
+      "updated_at": 1781694515
     },
     "docs/getting-started.md": {
       "source_hash": "03eb8aa561aca703b7e764c8129596c4b45c9089405fb354f913006859b7cb3e",
@@ -2800,6 +2800,14 @@
       "translation": "Model Status Configuration",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:heading:9a3c41f7667f4ba544f78e9981c0ee6c626359db051108c607df3c309d81faba": {
+      "kind": "heading",
+      "source": "Elnis 监听中台",
+      "source_file": "docs/configuration.md",
+      "source_hash": "9a3c41f7667f4ba544f78e9981c0ee6c626359db051108c607df3c309d81faba",
+      "translation": "Elnis Middle Platform Listener",
+      "updated_at": 1781694515
+    },
     "docs/configuration.md:heading:a2b93d872ece1c48db572c8d468d36cc8a9e8cb99f9771e2b8a21820ffd73377": {
       "kind": "heading",
       "source": "平台配置",
@@ -2880,6 +2888,14 @@
       "translation": "Superadmins also need confirmation when calling high-risk tools.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:154128536f0d497a217d968f566dc2a7520aa93f7207da9892e952ab59b3a177": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 可不配置；留空表示当前不启用任何 Elwisp。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "154128536f0d497a217d968f566dc2a7520aa93f7207da9892e952ab59b3a177",
+      "translation": "__ELBOT_CODE_0__ is optional; leaving it empty indicates that no Elwisp is currently enabled.",
+      "updated_at": 1781694515
+    },
     "docs/configuration.md:list:19873491cd420fec6a40558a8e05ed0c16f7bba136bdc485d731d09201462afc": {
       "kind": "list",
       "source": "配置目录下的 __ELBOT_CODE_0__。",
@@ -2904,6 +2920,14 @@
       "translation": "__ELBOT_CODE_0__: Plugin-specific configuration.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:3300e1f18cd9839d63d3977ca550ab227b1c6bd7a977f08669a9d33b1ff13242": {
+      "kind": "list",
+      "source": "token 从系统环境变量或配置目录 __ELBOT_CODE_0__ 读取，日志只记录 token name，不记录 token 原文。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "3300e1f18cd9839d63d3977ca550ab227b1c6bd7a977f08669a9d33b1ff13242",
+      "translation": "The token is read from system environment variables or the configuration directory __ELBOT_CODE_0__. Logs only record the token name, not the raw token.",
+      "updated_at": 1781694515
+    },
     "docs/configuration.md:list:374dfb411ea8aaa45f6e24fa01a3492da8c73121e562888a8d21e45bfd5c66c2": {
       "kind": "list",
       "source": "源码目录 __ELBOT_CODE_0__。",
@@ -2919,6 +2943,14 @@
       "source_hash": "52eda2e5ea44f3efc3f902b206dc88f827294699e84a9dd2700075ce38fc7c61",
       "translation": "Environment variable __ELBOT_CODE_0__.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:57546c6a4ffe364b6870cb08d4c2368579a6a8071ee17c64e373d9cc6f4eea5f": {
+      "kind": "list",
+      "source": "首期支持 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 模式；__ELBOT_CODE_2__ 模式预留给后续 background runner。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "57546c6a4ffe364b6870cb08d4c2368579a6a8071ee17c64e373d9cc6f4eea5f",
+      "translation": "The initial phase supports __ELBOT_CODE_0__ and __ELBOT_CODE_1__ modes; the __ELBOT_CODE_2__ mode is reserved for the subsequent background runner.",
+      "updated_at": 1781694515
     },
     "docs/configuration.md:list:5835750295f3c1081c1bec90105e092281976076963efb99aad106abccb93607": {
       "kind": "list",
@@ -2976,6 +3008,14 @@
       "translation": "System environment variables.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:90a1769dc5a38bae3a3e24655279a05067bee71c64716dad285ccdcf87cb0c0a": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 模式只支持按 Elnis 裁决后的平台发送给 superadmins，不支持任意 user/group 目标。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "90a1769dc5a38bae3a3e24655279a05067bee71c64716dad285ccdcf87cb0c0a",
+      "translation": "__ELBOT_CODE_0__ mode only supports sending to superadmins via the platform after Elnis adjudication; it does not support arbitrary user/group targets.",
+      "updated_at": 1781694515
+    },
     "docs/configuration.md:list:90e6137fb9fd83c4400b10a9dc2d2d0e2d3cee941af29b1fa4d2e53d8e9e62d5": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 可手动补充模型列表；也可以通过 Provider 的模型列表接口获取。",
@@ -3031,6 +3071,14 @@
       "source_hash": "b71f94dcfb7ea11b76bcea9f8c8312063a3ff3106d4a04324afc84f4a71eb05d",
       "translation": "__ELBOT_CODE_0__ determines whether a new Session defaults to __ELBOT_CODE_1__ or __ELBOT_CODE_2__.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:bfa0df2dd496c9cdda4a014f316e6d436af150a4da3a6a28569036ca86cf92a1": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 支持写成列表，按顺序尝试多个环境变量名；适合临时切换 token 或做多环境兼容。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "bfa0df2dd496c9cdda4a014f316e6d436af150a4da3a6a28569036ca86cf92a1",
+      "translation": "__ELBOT_CODE_0__ can be written as a list to try multiple environment variable names in order; this is suitable for temporarily switching tokens or achieving multi-environment compatibility.",
+      "updated_at": 1781694515
     },
     "docs/configuration.md:list:c95ef3dd8d5beb79e4ec2cee7690f3ec93630a5b9f443f63be575fa98fd3f86d": {
       "kind": "list",
@@ -3151,6 +3199,14 @@
       "source_hash": "66a831d2bac726e8d0c866ca5765616b3e231b318802ce5b6b8da222732d9746",
       "translation": "Provider is written in __ELBOT_CODE_0__:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:6b461f3d732dc965d2a2a15c349b7ce548c9361dfa508cfcd5640af31dfc14ee": {
+      "kind": "paragraph",
+      "source": "Elnis 默认关闭。启用后，ElBot 会启动本地 HTTP ingress，接收 Elwisp 按 Elvena 协议投递的事件。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "6b461f3d732dc965d2a2a15c349b7ce548c9361dfa508cfcd5640af31dfc14ee",
+      "translation": "Elnis is disabled by default. Once enabled, ElBot will start a local HTTP ingress to receive events delivered by Elwisp according to the Elvena protocol.\n",
+      "updated_at": 1781694515
     },
     "docs/configuration.md:paragraph:6f5fa3c39a4a50dd289886cf6c4f34e0b97770a2cf578e7a81f76adfd7334ed3": {
       "kind": "paragraph",
