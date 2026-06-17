@@ -335,6 +335,7 @@ func Run(ctx context.Context, opts Options) error {
 				_, err := agt.SendNoticeOutput(ctx, target, out)
 				return err
 			},
+			Runner: agt,
 		})
 		if err != nil {
 			return err

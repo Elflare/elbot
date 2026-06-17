@@ -9,7 +9,7 @@ import (
 
 func (a *Agent) confirmCronSandboxShell(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, message *llm.LLMMessage) (bool, bool) {
 	sandbox, ok := tool.SandboxContextFromContext(ctx)
-	if !ok || !sandbox.CronBackground || call.Name != "shell" {
+	if !ok || sandbox.BackgroundKind != tool.BackgroundKindCron || call.Name != "shell" {
 		return false, false
 	}
 	if risk == tool.RiskCritical {

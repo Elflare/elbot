@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/background"
 	"elbot/internal/output"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -393,17 +394,17 @@ type fakeCronRunner struct {
 	text     string
 	texts    []string
 	calls    int
-	requests []RunCronMessageRequest
+	requests []background.RunRequest
 }
 
-func (r *fakeCronRunner) RunCronMessage(ctx context.Context, req RunCronMessageRequest) (RunCronMessageResult, error) {
+func (r *fakeCronRunner) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
 	r.requests = append(r.requests, req)
 	text := r.text
 	if r.calls < len(r.texts) {
 		text = r.texts[r.calls]
 	}
 	r.calls++
-	return RunCronMessageResult{SessionID: "cron-session", Text: text}, nil
+	return background.RunResult{SessionID: "cron-session", Text: text}, nil
 }
 
 func testElyphTask(name string) string {

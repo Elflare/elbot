@@ -33,7 +33,7 @@ func TestSendFileAssessRiskCronExternalPath(t *testing.T) {
 	manager := NewArtifactManager(root, config.ArtifactConfig{})
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"path": filepath.Join(t.TempDir(), "report.txt")})
-	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Root: root, Dir: filepath.Join(root, "cron"), ArtifactDir: filepath.Join(root, "artifact"), CronBackground: true})
+	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Root: root, Dir: filepath.Join(root, "cron"), ArtifactDir: filepath.Join(root, "artifact"), Background: true, BackgroundKind: tool.BackgroundKindCron})
 	assessment, err := sendFile.AssessRisk(ctx, tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +56,7 @@ func TestSendFileSendsSandboxFileWithoutCopying(t *testing.T) {
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"file": "report.txt"})
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qqonebot"})
-	ctx = tool.WithSandboxContext(ctx, tool.SandboxContext{Root: root, Dir: cronDir, ArtifactDir: filepath.Join(root, "artifact"), CronBackground: true})
+	ctx = tool.WithSandboxContext(ctx, tool.SandboxContext{Root: root, Dir: cronDir, ArtifactDir: filepath.Join(root, "artifact"), Background: true, BackgroundKind: tool.BackgroundKindCron})
 	result, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)

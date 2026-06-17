@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 
+	"elbot/internal/background"
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
 	"elbot/internal/output"
@@ -29,6 +31,25 @@ func (discardSender) SendNotice(ctx context.Context, target output.Target, out o
 }
 
 func (a *Agent) RunCronMessage(ctx context.Context, req elcron.RunCronMessageRequest) (elcron.RunCronMessageResult, error) {
+	result, err := a.RunBackground(ctx, background.RunRequest{
+		Kind:          background.KindCron,
+		Name:          req.JobName,
+		Title:         req.Title,
+		Platform:      req.Platform,
+		Actor:         req.Actor,
+		ScopeID:       req.ScopeID,
+		SessionID:     req.SessionID,
+		ModelProvider: req.ModelProvider,
+		Model:         req.Model,
+		Prompt:        req.Prompt,
+		ToolListNames: req.ToolListNames,
+		SandboxSubdir: string(background.KindCron),
+		Metadata:      map[string]string{"cron_job_name": req.JobName},
+	})
+	return elcron.RunCronMessageResult{SessionID: result.SessionID, Text: result.Text}, err
+}
+
+func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
 	actor := req.Actor
 	if actor.Role == "" {
 		actor.Role = security.RoleSuperadmin
@@ -42,14 +63,11 @@ func (a *Agent) RunCronMessage(ctx context.Context, req elcron.RunCronMessageReq
 	}
 	scopeID := req.ScopeID
 	if scopeID == "" {
-		scopeID = "cron:" + req.JobName
+		scopeID = backgroundScopeID(req.Kind, req.Name)
 	}
-	// cron 后台运行没有真实前台会话，使用 discardSender 吃掉普通聊天输出；
-	// 最终报告由 cron service 解析 LLM 返回 JSON 后再投递到目标平台。
-	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Platform: platformName, ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, DisplayName: actor.DisplayName, ScopeID: scopeID, Sender: discardSender{}, BufferAssistantOutput: true})
+	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Platform: platformName, ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, DisplayName: actor.DisplayName, ScopeID: scopeID, Sender: discardSender{}})
 	ctx = security.WithPolicy(security.WithActor(ctx, actor), a.securityPolicy)
-	// 后台 cron shell 使用统一 sandbox 下的 cron 子目录，上下文只在本次执行传播，
-	// 不写入 Session，避免影响普通对话工具调用。
+
 	sandboxRoot := a.sandboxRoot
 	if sandboxRoot == "" {
 		sandboxRoot = filepath.Join("data", "sandbox")
@@ -58,44 +76,50 @@ func (a *Agent) RunCronMessage(ctx context.Context, req elcron.RunCronMessageReq
 	if artifactDir == "" {
 		artifactDir = filepath.Join(sandboxRoot, "artifact")
 	}
-	ctx = tool.WithSandboxContext(ctx, tool.SandboxContext{Root: sandboxRoot, Dir: filepath.Join(sandboxRoot, "cron"), ArtifactDir: artifactDir, CronBackground: true})
+	sandboxSubdir := strings.TrimSpace(req.SandboxSubdir)
+	if sandboxSubdir == "" {
+		sandboxSubdir = strings.TrimSpace(string(req.Kind))
+	}
+	if sandboxSubdir == "" {
+		sandboxSubdir = "background"
+	}
+	ctx = tool.WithSandboxContext(ctx, tool.SandboxContext{Root: sandboxRoot, Dir: filepath.Join(sandboxRoot, filepath.FromSlash(sandboxSubdir)), ArtifactDir: artifactDir, Background: true, BackgroundKind: toolBackgroundKind(req.Kind)})
 
 	if req.ModelProvider != "" || req.Model != "" {
 		ctx = context.WithValue(ctx, cronModelSelectionKey{}, config.ModelSelection{Provider: req.ModelProvider, Model: req.Model})
 	}
 
-	cronScope := session.Scope{ActorID: actor.ID, Platform: platformName, PlatformScopeID: scopeID, IsCLI: platformName == "cli"}
-	cronSession, err := a.cronSession(ctx, req, cronScope)
+	scope := session.Scope{ActorID: actor.ID, Platform: platformName, PlatformScopeID: scopeID, IsCLI: platformName == "cli"}
+	bgSession, err := a.backgroundSession(ctx, req, scope)
 	if err != nil {
-		return elcron.RunCronMessageResult{}, err
+		return background.RunResult{}, err
 	}
-	if injected := a.preloadToolNames(ctx, cronSession, req.ToolListNames); len(injected) > 0 {
-		a.audit("cron_tool_preloaded", "session_id", cronSession.ID, "job", req.JobName, "tools", injected)
+	if injected := a.preloadToolNames(ctx, bgSession, req.ToolListNames); len(injected) > 0 {
+		a.audit("background_tool_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "tools", injected)
 	}
-	if err := a.startChat(ctx, cronSession, req.Prompt); err != nil {
-
-		return elcron.RunCronMessageResult{}, err
+	if err := a.startBackgroundChat(ctx, bgSession, req.Prompt); err != nil {
+		return background.RunResult{}, err
 	}
-	text, err := a.latestAssistantText(ctx, cronSession.ID)
+	text, err := a.latestAssistantText(ctx, bgSession.ID)
 	if err != nil {
-		return elcron.RunCronMessageResult{}, err
+		return background.RunResult{}, err
 	}
-	return elcron.RunCronMessageResult{SessionID: cronSession.ID, Text: text}, nil
+	return background.RunResult{SessionID: bgSession.ID, Text: text}, nil
 }
 
-func (a *Agent) cronSession(ctx context.Context, req elcron.RunCronMessageRequest, scope session.Scope) (*storage.Session, error) {
+func (a *Agent) backgroundSession(ctx context.Context, req background.RunRequest, scope session.Scope) (*storage.Session, error) {
 	if req.SessionID != "" {
 		return a.store.Sessions().Get(ctx, req.SessionID)
 	}
-	title := req.Title
+	title := strings.TrimSpace(req.Title)
 	if title == "" {
-		title = "Cron: " + req.JobName
+		title = backgroundTitle(req.Kind, req.Name)
 	}
-	cronSession := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID, Mode: a.sessions.DefaultMode(), Title: title, Status: storage.SessionStatusActive, Metadata: cronSessionMetadata(req.JobName, "", false)}
-	if err := a.store.Sessions().Create(ctx, cronSession); err != nil {
+	bgSession := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID, Mode: a.sessions.DefaultMode(), Title: title, Status: storage.SessionStatusActive, Metadata: backgroundSessionMetadata(req)}
+	if err := a.store.Sessions().Create(ctx, bgSession); err != nil {
 		return nil, err
 	}
-	return cronSession, nil
+	return bgSession, nil
 }
 
 func (a *Agent) latestAssistantText(ctx context.Context, sessionID string) (string, error) {
@@ -112,7 +136,7 @@ func (a *Agent) latestAssistantText(ctx context.Context, sessionID string) (stri
 		}
 		return messages[i].Content, nil
 	}
-	return "", fmt.Errorf("cron session %s has no assistant message", sessionID)
+	return "", fmt.Errorf("background session %s has no assistant message", sessionID)
 }
 
 func assistantRawTextFromMetadata(raw string) string {
@@ -126,9 +150,53 @@ func assistantRawTextFromMetadata(raw string) string {
 	return metadata.RawText
 }
 
+func backgroundScopeID(kind background.Kind, name string) string {
+	kindText := strings.TrimSpace(string(kind))
+	name = strings.TrimSpace(name)
+	if kindText == "" {
+		kindText = "background"
+	}
+	if name == "" {
+		return kindText + ":default"
+	}
+	return kindText + ":" + name
+}
+
+func backgroundTitle(kind background.Kind, name string) string {
+	kindText := strings.TrimSpace(string(kind))
+	name = strings.TrimSpace(name)
+	if kindText == "" {
+		kindText = "Background"
+	}
+	if name == "" {
+		return strings.ToUpper(kindText[:1]) + kindText[1:]
+	}
+	return strings.ToUpper(kindText[:1]) + kindText[1:] + ": " + name
+}
+
+func toolBackgroundKind(kind background.Kind) tool.BackgroundKind {
+	switch kind {
+	case background.KindCron:
+		return tool.BackgroundKindCron
+	case background.KindElnis:
+		return tool.BackgroundKindElnis
+	default:
+		return tool.BackgroundKind(strings.TrimSpace(string(kind)))
+	}
+}
+
+func backgroundSessionMetadata(req background.RunRequest) string {
+	data := map[string]any{"title_renamed": true, "title_source": req.Kind, "background_kind": req.Kind, "background_name": req.Name}
+	for key, value := range req.Metadata {
+		if strings.TrimSpace(key) != "" {
+			data[key] = value
+		}
+	}
+	encoded, _ := json.Marshal(data)
+	return string(encoded)
+}
+
 func cronSessionMetadata(jobName, sourceSessionID string, copied bool) string {
-	// cron session 使用固定任务语义，不希望被普通对话自动命名覆盖，
-	// 因此标记 title_renamed=true，让命名流程认为标题已经稳定。
-	data, _ := json.Marshal(map[string]any{"title_renamed": true, "title_source": "cron", "cron_job_name": jobName, "cron_source_session_id": sourceSessionID, "cron_broadcast_copy": copied})
+	data, _ := json.Marshal(map[string]any{"title_renamed": true, "title_source": background.KindCron, "background_kind": background.KindCron, "background_name": jobName, "cron_job_name": jobName, "cron_source_session_id": sourceSessionID, "cron_broadcast_copy": copied})
 	return string(data)
 }

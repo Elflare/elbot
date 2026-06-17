@@ -46,7 +46,7 @@ func TestShellToolUsesSandboxDir(t *testing.T) {
 	sandboxDir := filepath.Join(t.TempDir(), "sandbox", "cron")
 	shell := NewShellTool()
 	args, _ := json.Marshal(map[string]any{"cmd": "pwd > cwd.txt"})
-	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Dir: sandboxDir, CronBackground: true})
+	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Dir: sandboxDir, Background: true, BackgroundKind: tool.BackgroundKindCron})
 	if _, err := shell.Call(ctx, tool.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}

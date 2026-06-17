@@ -24,7 +24,7 @@ type llmCallResult struct {
 	Stream    platform.MessageStream
 }
 
-func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.ModelSelection, messages []llm.LLMMessage, tools []llm.ToolSchema, latestUserContent string, stream platform.MessageStream) (llmCallResult, string, error) {
+func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.ModelSelection, messages []llm.LLMMessage, tools []llm.ToolSchema, latestUserContent string, stream platform.MessageStream, out turnOutput) (llmCallResult, string, error) {
 	startedAt := time.Now()
 	baseMessages := append([]llm.LLMMessage(nil), messages...)
 	requestMessages := messages
@@ -55,8 +55,8 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 	ch, err := a.clientForProvider(selection.Provider).ChatStream(ctx, req)
 	if err != nil {
 		if shouldFallbackVision(requestMessages, err) {
-			a.notifyVisionFallbackOnce(ctx, sessionID)
-			return a.callLLM(ctx, sessionID, selection, fallbackVisionMessages(baseMessages), tools, latestUserContent, stream)
+			a.notifyVisionFallbackOnce(ctx, sessionID, out)
+			return a.callLLM(ctx, sessionID, selection, fallbackVisionMessages(baseMessages), tools, latestUserContent, stream, out)
 		}
 		a.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", err.Error())
 		a.notifyHookError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, ElapsedMS: elapsedMillis(startedAt)}}, err)
@@ -74,8 +74,8 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 				return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages, Stream: stream}, latestUserContent, nil
 			}
 			if shouldFallbackVision(requestMessages, chunk.Error) {
-				a.notifyVisionFallbackOnce(ctx, sessionID)
-				return a.callLLM(ctx, sessionID, selection, fallbackVisionMessages(baseMessages), tools, latestUserContent, stream)
+				a.notifyVisionFallbackOnce(ctx, sessionID, out)
+				return a.callLLM(ctx, sessionID, selection, fallbackVisionMessages(baseMessages), tools, latestUserContent, stream, out)
 			}
 			a.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", chunk.Error.Error())
 			a.notifyHookError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, RawText: assistant.String(), Text: assistant.String(), ToolCalls: toolCalls, Usage: usage, ElapsedMS: elapsedMillis(startedAt)}}, chunk.Error)
@@ -87,10 +87,10 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 		}
 		if chunk.DeltaReasoningContent != "" && showReasoning {
 			if !reasoningOpen {
-				a.sendCLIReasoning(ctx, "[thinking] ")
+				out.SendReasoning(ctx, "[thinking] ")
 				reasoningOpen = true
 			}
-			a.sendCLIReasoning(ctx, chunk.DeltaReasoningContent)
+			out.SendReasoning(ctx, chunk.DeltaReasoningContent)
 		}
 		for _, delta := range chunk.ToolCallDeltas {
 			toolCalls = append(toolCalls, llm.ToolCallRequest{ID: delta.ID, Name: delta.Name, Arguments: delta.Args})
@@ -104,7 +104,7 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 		}
 	}
 	if reasoningOpen {
-		a.sendCLIReasoning(ctx, "[/thinking]\n\n")
+		out.SendReasoning(ctx, "[/thinking]\n\n")
 	}
 	elapsedMs := elapsedMillis(startedAt)
 	content := assistant.String()
@@ -174,7 +174,7 @@ func fallbackVisionMessages(messages []llm.LLMMessage) []llm.LLMMessage {
 	return out
 }
 
-func (a *Agent) notifyVisionFallbackOnce(ctx context.Context, sessionID string) {
+func (a *Agent) notifyVisionFallbackOnce(ctx context.Context, sessionID string, out turnOutput) {
 	if !a.shouldShowCLIReasoning(ctx) {
 		return
 	}
@@ -185,7 +185,7 @@ func (a *Agent) notifyVisionFallbackOnce(ctx context.Context, sessionID string) 
 	}
 	a.visionFallbackNotified[sessionID] = true
 	a.visionFallbackMu.Unlock()
-	a.sendChat(ctx, "当前模型似乎不支持视觉，图片已按文本描述处理。")
+	_, _ = out.SendAssistant(ctx, "当前模型似乎不支持视觉，图片已按文本描述处理。")
 }
 
 func (a *Agent) userMessageSegments(ctx context.Context, text string) []llm.MessageSegment {

@@ -386,7 +386,7 @@ func TestEditFileToolCronRiskAndSandbox(t *testing.T) {
 	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Dir: sandbox, CronBackground: true})
+	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Dir: sandbox, Background: true, BackgroundKind: tool.BackgroundKindCron})
 	args, _ := json.Marshal(map[string]any{
 		"path": "sample.txt",
 		"edits": []map[string]any{{

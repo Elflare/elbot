@@ -25,6 +25,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/output"
 	"elbot/internal/platform"
+	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -35,8 +36,11 @@ import (
 )
 
 type fakePlatform struct {
-	out     strings.Builder
-	preview strings.Builder
+	out         strings.Builder
+	preview     strings.Builder
+	reasoning   strings.Builder
+	statusCount int
+	lastStatus  runtimestatus.Snapshot
 }
 
 func (p *fakePlatform) Name() string { return "cli" }
@@ -53,6 +57,17 @@ func (p *fakePlatform) SendNotice(ctx context.Context, target output.Target, out
 	p.out.WriteString(text)
 	p.preview.WriteString(text)
 	return platform.Receipt{}, nil
+}
+
+func (p *fakePlatform) SendReasoning(ctx context.Context, text string) error {
+	p.reasoning.WriteString(text)
+	return nil
+}
+
+func (p *fakePlatform) SetRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
+	p.statusCount++
+	p.lastStatus = snapshot
+	return nil
 }
 
 type fakeStreamingPlatform struct {
@@ -2343,7 +2358,8 @@ func TestRunCronMessagePreloadsToolListNames(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
-	a := New(&fakePlatform{}, f, "test-model", config.ProviderConfig{}, store)
+	platform := &fakePlatform{}
+	a := New(platform, f, "test-model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -2361,6 +2377,42 @@ func TestRunCronMessagePreloadsToolListNames(t *testing.T) {
 	}
 	if toolNames(requests[0].Tools) != "discover_tool,web_extract,web_search" {
 		t.Fatalf("tools = %s", toolNames(requests[0].Tools))
+	}
+	if got := platform.out.String(); got != "" {
+		t.Fatalf("background cron wrote platform output: %q", got)
+	}
+	if got := platform.reasoning.String(); got != "" {
+		t.Fatalf("background cron wrote reasoning output: %q", got)
+	}
+	if platform.statusCount != 0 {
+		t.Fatalf("background cron published runtime status: count=%d last=%#v", platform.statusCount, platform.lastStatus)
+	}
+}
+
+func TestRunCronMessageToolPhaseDoesNotPublishRuntimeStatus(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+	platform := &fakePlatform{}
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{
+		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call-1", Name: "discover_tool", Args: `{"name":"web_search"}`}}}},
+		{{DeltaContent: `{"completed":true,"need_report":false,"report":"ok"}`}},
+	}}
+	a := New(platform, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(builtin.NewWebSearchTool())
+	a.SetToolRuntime(registry, nil)
+
+	_, err := a.RunCronMessage(ctx, elcron.RunCronMessageRequest{JobName: "tool-status", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run"})
+	if err != nil {
+		t.Fatalf("RunCronMessage: %v", err)
+	}
+	if got := platform.out.String(); got != "" {
+		t.Fatalf("background cron tool phase wrote platform output: %q", got)
+	}
+	if platform.statusCount != 0 {
+		t.Fatalf("background cron tool phase published runtime status: count=%d last=%#v", platform.statusCount, platform.lastStatus)
 	}
 }
 

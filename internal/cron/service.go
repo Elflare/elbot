@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"elbot/internal/background"
 	"elbot/internal/elyph"
 	"elbot/internal/output"
 	"elbot/internal/security"
@@ -34,7 +35,7 @@ type PlatformTarget struct {
 }
 
 type LLMRunner interface {
-	RunCronMessage(ctx context.Context, req RunCronMessageRequest) (RunCronMessageResult, error)
+	background.Runner
 }
 
 type RunCronMessageRequest struct {
@@ -175,11 +176,7 @@ type JobView struct {
 	Metadata Metadata        `json:"metadata"`
 }
 
-type CronLLMResult struct {
-	Completed  bool   `json:"completed"`
-	NeedReport bool   `json:"need_report"`
-	Report     string `json:"report"`
-}
+type CronLLMResult = background.JSONResult
 
 func NewService(opts Options) *Service {
 	s := &Service{manager: opts.Manager, store: opts.Store, logger: opts.Logger, audit: opts.Audit, sendTarget: opts.SendTarget, runner: opts.Runner, now: time.Now, connectedPlatforms: map[string]bool{}}
@@ -631,7 +628,7 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 	}
 	actor := security.Actor{ID: meta.CreatedBy.ActorID, Platform: meta.CreatedBy.Platform, PlatformUserID: meta.CreatedBy.PlatformUserID, DisplayName: meta.CreatedBy.DisplayName, Role: security.RoleSuperadmin}
 	prompt := cronPrompt(meta.Trigger.Message)
-	result, err := s.runner.RunCronMessage(ctx, RunCronMessageRequest{JobName: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), SessionID: meta.LLM.SessionID, Prompt: prompt, ToolListNames: meta.LLM.ToolListNames})
+	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), SessionID: meta.LLM.SessionID, Prompt: prompt, ToolListNames: meta.LLM.ToolListNames, SandboxSubdir: string(background.KindCron), Metadata: map[string]string{"cron_job_name": job.Name}})
 
 	if err != nil {
 		return meta, "", err
@@ -680,8 +677,8 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 	return meta, report, nil
 }
 
-func (s *Service) retryLLMResultFormat(ctx context.Context, job storage.CronJob, meta Metadata, actor security.Actor, sessionID string) (RunCronMessageResult, CronLLMResult, error) {
-	result, err := s.runner.RunCronMessage(ctx, RunCronMessageRequest{JobName: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), SessionID: firstNonEmpty(sessionID, meta.LLM.SessionID), Prompt: cronFormatRetryPrompt()})
+func (s *Service) retryLLMResultFormat(ctx context.Context, job storage.CronJob, meta Metadata, actor security.Actor, sessionID string) (background.RunResult, CronLLMResult, error) {
+	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), SessionID: firstNonEmpty(sessionID, meta.LLM.SessionID), Prompt: cronFormatRetryPrompt(), SandboxSubdir: string(background.KindCron), Metadata: map[string]string{"cron_job_name": job.Name}})
 	if err != nil {
 		return result, CronLLMResult{}, err
 	}
@@ -896,25 +893,11 @@ Cron 任务内容：
 }
 
 func cronFormatRetryPrompt() string {
-	return "你返回的格式有误，请严格使用 JSON 格式。不能包含 Markdown 代码块，不能包含 JSON 外的任何文字。格式：{\"completed\":true,\"need_report\":false,\"report\":\"\"}"
+	return background.DefaultJSONRetryPrompt()
 }
 
 func parseLLMResult(text string) (CronLLMResult, error) {
-	text = strings.TrimSpace(text)
-	text = strings.TrimPrefix(text, "```json")
-	text = strings.TrimPrefix(text, "```")
-	text = strings.TrimSuffix(text, "```")
-	text = strings.TrimSpace(text)
-	start := strings.Index(text, "{")
-	end := strings.LastIndex(text, "}")
-	if start < 0 || end < start {
-		return CronLLMResult{}, fmt.Errorf("json object not found")
-	}
-	var result CronLLMResult
-	if err := json.Unmarshal([]byte(text[start:end+1]), &result); err != nil {
-		return CronLLMResult{}, err
-	}
-	return result, nil
+	return background.ParseJSONResult(text)
 }
 
 func normalizePlatformTargets(targets []PlatformTarget) []PlatformTarget {

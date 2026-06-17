@@ -12,14 +12,24 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/background"
 	"elbot/internal/config"
+	"elbot/internal/elyph"
 	"elbot/internal/output"
+	"elbot/internal/security"
 	"elbot/internal/storage"
 )
 
 type SenderFunc func(ctx context.Context, target output.Target, out output.Output) error
 
 type AuditFunc func(event string, attrs ...any)
+
+type QueuedLLMEvent struct {
+	Event   Event
+	EventID string
+}
+
+type EnqueueLLMFunc func(ctx context.Context, event QueuedLLMEvent) error
 
 type Options struct {
 	Config config.ElnisConfig
@@ -28,15 +38,18 @@ type Options struct {
 	Logger *slog.Logger
 	Audit  AuditFunc
 	Send   SenderFunc
+	Runner background.Runner
 }
 
 type Service struct {
-	cfg    config.ElnisConfig
-	tokens map[string]string
-	store  storage.Store
-	logger *slog.Logger
-	audit  AuditFunc
-	send   SenderFunc
+	cfg        config.ElnisConfig
+	tokens     map[string]string
+	store      storage.Store
+	logger     *slog.Logger
+	audit      AuditFunc
+	send       SenderFunc
+	runner     background.Runner
+	enqueueLLM EnqueueLLMFunc
 }
 
 func NewService(opts Options) (*Service, error) {
@@ -46,7 +59,11 @@ func NewService(opts Options) (*Service, error) {
 	if opts.Config.Enabled && len(opts.Tokens) == 0 {
 		return nil, fmt.Errorf("elnis enabled but no tokens are configured")
 	}
-	return &Service{cfg: opts.Config, tokens: opts.Tokens, store: opts.Store, logger: opts.Logger, audit: opts.Audit, send: opts.Send}, nil
+	return &Service{cfg: opts.Config, tokens: opts.Tokens, store: opts.Store, logger: opts.Logger, audit: opts.Audit, send: opts.Send, runner: opts.Runner}, nil
+}
+
+func (s *Service) SetLLMEnqueuer(enqueue EnqueueLLMFunc) {
+	s.enqueueLLM = enqueue
 }
 
 func (s *Service) Handle(ctx context.Context, token string, req Request) (Response, error) {
@@ -77,8 +94,7 @@ func (s *Service) Handle(ctx context.Context, token string, req Request) (Respon
 	result := ""
 	eventErr := ""
 	if req.Mode == ModeLLM {
-		status = StatusUnsupported
-		eventErr = "llm mode is not implemented in Elnis phase 1"
+		status = StatusQueued
 	}
 	record, err := s.store.ElnisEvents().Create(ctx, storage.CreateElnisEventRequest{
 		EventKey:         event.EventKey,
@@ -122,8 +138,14 @@ func (s *Service) Handle(ctx context.Context, token string, req Request) (Respon
 		s.auditEvent("elnis.direct_completed", attrs...)
 		return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusCompleted}, nil
 	case ModeLLM:
-		s.auditEvent("elnis.llm_unsupported", append(attrs, "error", eventErr)...)
-		return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusUnsupported, Error: eventErr}, nil
+		s.auditEvent("elnis.llm_queued", attrs...)
+		if s.enqueueLLM != nil {
+			if err := s.enqueueLLM(ctx, QueuedLLMEvent{Event: event, EventID: record.ID}); err != nil {
+				_ = s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusFailed, "", err.Error())
+				return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
+			}
+		}
+		return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusQueued}, nil
 	default:
 		return Response{}, fmt.Errorf("unsupported mode %q", req.Mode)
 	}
@@ -290,8 +312,170 @@ func (s *Service) runDirect(ctx context.Context, event Event, eventID string) er
 	return s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusCompleted, "", "")
 }
 
+func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) error {
+	attrs := s.eventAttrs(event)
+	if s.runner == nil {
+		err := fmt.Errorf("elnis background runner is not configured")
+		_ = s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
+		return err
+	}
+	if err := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusRunning, "", ""); err != nil {
+		return err
+	}
+	s.auditEvent("elnis.llm_started", append(attrs, "event_id", eventID)...)
+	result, err := s.runner.RunBackground(ctx, background.RunRequest{
+		Kind:          background.KindElnis,
+		Name:          event.EventKey,
+		Title:         firstNonEmpty(event.Request.Title, "Elnis: "+event.Request.Source),
+		Platform:      firstPlatform(event.ResolvedTargets),
+		Actor:         elnisActor(event),
+		ScopeID:       "elnis:" + event.EventKey,
+		Prompt:        llmPrompt(event),
+		ToolListNames: event.Request.ToolListNames,
+		SandboxSubdir: "elnis/" + event.Request.Elwisp.Name,
+		Metadata: map[string]string{
+			"elnis_event_key": event.EventKey,
+			"elwisp_name":     event.Request.Elwisp.Name,
+			"elnis_source":    event.Request.Source,
+			"elnis_source_id": event.Request.ID,
+		},
+	})
+	if err != nil {
+		_ = s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
+		s.auditEvent("elnis.llm_failed", append(attrs, "event_id", eventID, "error", err.Error())...)
+		return err
+	}
+	parsed, parseErr := background.ParseJSONResult(result.Text)
+	if parseErr != nil {
+		result, parsed, parseErr = s.retryLLMResultFormat(ctx, event, result.SessionID)
+	}
+	if parseErr != nil {
+		message := fmt.Sprintf("Elnis 事件 %s 解析格式失败，请查看后台 session。\nsession: %s\n错误：%v", event.EventKey, result.SessionID, parseErr)
+		_ = s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, message, parseErr.Error())
+		s.auditEvent("elnis.llm_failed", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", parseErr.Error())...)
+		return parseErr
+	}
+	resultJSON, _ := json.Marshal(parsed)
+	if err := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, result.SessionID, string(resultJSON), ""); err != nil {
+		return err
+	}
+	if parsed.Completed && parsed.NeedReport && strings.TrimSpace(parsed.Report) != "" {
+		if err := s.sendReport(ctx, event, parsed.Report); err != nil {
+			_ = s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, string(resultJSON), err.Error())
+			return err
+		}
+	}
+	s.auditEvent("elnis.llm_completed", append(attrs, "event_id", eventID, "session_id", result.SessionID)...)
+	return nil
+}
+
+func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, sessionID string) (background.RunResult, background.JSONResult, error) {
+	result, err := s.runner.RunBackground(ctx, background.RunRequest{
+		Kind:          background.KindElnis,
+		Name:          event.EventKey,
+		Title:         firstNonEmpty(event.Request.Title, "Elnis: "+event.Request.Source),
+		Platform:      firstPlatform(event.ResolvedTargets),
+		Actor:         elnisActor(event),
+		ScopeID:       "elnis:" + event.EventKey,
+		SessionID:     sessionID,
+		Prompt:        background.DefaultJSONRetryPrompt(),
+		SandboxSubdir: "elnis/" + event.Request.Elwisp.Name,
+		Metadata:      map[string]string{"elnis_event_key": event.EventKey, "elwisp_name": event.Request.Elwisp.Name},
+	})
+	if err != nil {
+		return result, background.JSONResult{}, err
+	}
+	parsed, err := background.ParseJSONResult(result.Text)
+	return result, parsed, err
+}
+
+func (s *Service) sendReport(ctx context.Context, event Event, report string) error {
+	if s.send == nil {
+		return fmt.Errorf("elnis sender is not configured")
+	}
+	resolved := Targets{}
+	if err := json.Unmarshal([]byte(event.ResolvedTargets), &resolved); err != nil {
+		return err
+	}
+	if !resolved.Superadmins {
+		return nil
+	}
+	for _, platformName := range resolved.Platforms {
+		if err := s.send(ctx, output.Target{Platform: platformName, Superadmins: true}, output.Text(report)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Service) completeEvent(ctx context.Context, id, resolvedTargets, status, result, eventErr string) error {
-	return s.store.ElnisEvents().Update(ctx, storage.UpdateElnisEventRequest{ID: id, ResolvedTargets: resolvedTargets, Status: status, Result: result, Error: eventErr})
+	return s.completeEventWithSession(ctx, id, resolvedTargets, status, "", result, eventErr)
+}
+
+func (s *Service) completeEventWithSession(ctx context.Context, id, resolvedTargets, status, sessionID, result, eventErr string) error {
+	return s.store.ElnisEvents().Update(ctx, storage.UpdateElnisEventRequest{ID: id, ResolvedTargets: resolvedTargets, Status: status, SessionID: sessionID, Result: result, Error: eventErr})
+}
+
+func llmPrompt(event Event) string {
+	format := strings.TrimSpace(event.Request.Format)
+	if format == "" {
+		format = "text"
+	}
+	parts := []string{"[系统 Elnis 后台事件任务]", ""}
+	if format == "elyph" {
+		parts = append(parts, elyph.RuleCard(), "")
+	}
+	parts = append(parts,
+		"** 按事件内容自主处理，不要把任务当作前台用户对话",
+		"** 信息不足时，在最终 JSON 的 report 填写失败或阻塞原因",
+		"** 需要使用工具时直接使用工具",
+		"** 最终回复必须是严格 JSON",
+		"** JSON 格式：{\"completed\":true,\"need_report\":false,\"report\":\"\"}",
+		"** completed 表示是否完成任务",
+		"** need_report 只有 completed=true 时有效",
+		"** report 为需要发给目标平台的汇报，未完成时填写失败或阻塞原因",
+		"~ 闲聊",
+		"~ 向用户提问",
+		"~ 输出 Markdown 代码块",
+		"~ 输出 JSON 外的任何文字",
+		"",
+		"事件标题："+strings.TrimSpace(event.Request.Title),
+		"事件来源："+event.Request.Source,
+		"事件 ID："+event.Request.ID,
+		"事件格式："+format,
+	)
+	if len(event.Request.Meta) > 0 {
+		if data, err := json.Marshal(event.Request.Meta); err == nil {
+			parts = append(parts, "事件 metadata："+string(data))
+		}
+	}
+	parts = append(parts, "", "事件内容：", strings.TrimSpace(event.Request.Content))
+	return strings.Join(parts, "\n")
+}
+
+func elnisActor(event Event) security.Actor {
+	id := security.ActorID("elnis", event.TokenName)
+	return security.Actor{ID: id, Platform: "elnis", PlatformUserID: event.TokenName, DisplayName: event.Request.Elwisp.Name, Role: security.RoleSuperadmin}
+}
+
+func firstPlatform(rawTargets string) string {
+	var targets Targets
+	if err := json.Unmarshal([]byte(rawTargets), &targets); err != nil {
+		return ""
+	}
+	if len(targets.Platforms) == 0 {
+		return ""
+	}
+	return targets.Platforms[0]
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func directText(req Request) string {

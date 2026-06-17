@@ -8,6 +8,8 @@ const (
 	ModeLLM    = "llm"
 
 	StatusAccepted    = "accepted"
+	StatusQueued      = "queued"
+	StatusRunning     = "running"
 	StatusCompleted   = "completed"
 	StatusFailed      = "failed"
 	StatusDuplicate   = "duplicate"

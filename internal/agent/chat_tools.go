@@ -8,9 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/output"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
@@ -45,8 +43,8 @@ func appendAssistantTextMessage(messages []llm.LLMMessage, content, rawContent s
 	return append(messages, llm.LLMMessage{Role: llm.RoleAssistant, Segments: llm.TextSegments(rawContent)})
 }
 
-func (a *Agent) executeToolCalls(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string) ([]llm.LLMMessage, string, []storage.Message, bool) {
-	result := a.toolRunManager().Run(ctx, agentToolRunDeps{agent: a}, toolrun.RunRequest{
+func (a *Agent) executeToolCalls(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string, out turnOutput) ([]llm.LLMMessage, string, []storage.Message, bool) {
+	result := a.toolRunManager().Run(ctx, agentToolRunDeps{agent: a, output: out}, toolrun.RunRequest{
 		Session:          session,
 		Calls:            calls,
 		AssistantText:    assistantText,
@@ -181,24 +179,6 @@ func (a *Agent) recordToolCall(ctx context.Context, sessionID string, call llm.T
 		"elapsed_ms", record.FinishedAt.Sub(record.StartedAt).Milliseconds(),
 		"error", record.Error,
 	)
-}
-
-func (a *Agent) sendPreview(ctx context.Context, text string) {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return
-	}
-	event, err := a.runHook(ctx, hook.Event{Point: hook.PointAgentOutputPrepared, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(text)}})
-	if err != nil {
-		return
-	}
-	body := strings.TrimSpace(llm.SegmentsTextOnly(event.Message.Segments))
-	if body == "" {
-		return
-	}
-	preview := "[tool] " + body
-	_ = a.sendNoticeOutput(ctx, output.Target{}, output.Text(preview))
-	a.notifyHook(ctx, hook.Event{Point: hook.PointPlatformMessageSent, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(preview)}})
 }
 
 func (a *Agent) logRiskConfirmationWait(sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reasons []string) {

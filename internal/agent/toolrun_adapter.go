@@ -18,7 +18,8 @@ import (
 )
 
 type agentToolRunDeps struct {
-	agent *Agent
+	agent  *Agent
+	output turnOutput
 }
 
 func (d agentToolRunDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error) {
@@ -60,7 +61,7 @@ func (d agentToolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolN
 	if err != nil {
 		return ctx, time.Time{}, func() {}, err
 	}
-	d.agent.updateRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: sessionID, Phase: runtimestatus.PhaseTool, RequestID: toolReq.ID, Kind: request.KindTool, Label: toolName, ToolName: toolName, StageStartedAt: toolReq.StartedAt})
+	d.output.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: sessionID, Phase: runtimestatus.PhaseTool, RequestID: toolReq.ID, Kind: request.KindTool, Label: toolName, ToolName: toolName, StageStartedAt: toolReq.StartedAt})
 	return toolCtx, toolReq.StartedAt, done, nil
 }
 
@@ -118,11 +119,11 @@ func (d agentToolRunDeps) ConfirmBackgroundTool(ctx context.Context, sessionID s
 }
 
 func (d agentToolRunDeps) SendPreview(ctx context.Context, text string) {
-	d.agent.sendPreview(ctx, text)
+	d.output.SendPreview(ctx, text)
 }
 
 func (d agentToolRunDeps) SendOutputs(ctx context.Context, outputs []output.Output) error {
-	return d.agent.sendOutputs(ctx, outputs)
+	return d.output.SendOutputs(ctx, outputs)
 }
 
 func (d agentToolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) {

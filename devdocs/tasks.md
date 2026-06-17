@@ -830,20 +830,20 @@
 
 ### Phase 2：Background 抽象与 LLM 模式
 
-- [ ] 抽象 cron/Elnis 共用的后台 Session runner。
-- [ ] 将 cron LLM 执行迁移到公共 background runner，并保持现有行为不变。
-- [ ] 泛化后台 sandbox 标记，避免 `CronBackground` 语义被 Elnis 复用污染。
-- [ ] 实现 Elnis LLM prompt，支持 ELyph/text 主体和事件 metadata。
-- [ ] 实现 Elnis LLM 最终 JSON result 解析与格式重试。
-- [ ] 实现 Elnis worker 队列，维护 queued/running/completed/failed 状态。
+- [x] 抽象 cron/Elnis 共用的后台 Session runner。
+- [x] 将 cron LLM 执行迁移到公共 background runner，并保持现有行为不变。
+- [x] 泛化后台 sandbox 标记，避免 `CronBackground` 语义被 Elnis 复用污染。
+- [x] 实现 Elnis LLM prompt，支持 ELyph/text 主体和事件 metadata。
+- [x] 实现 Elnis LLM 最终 JSON result 解析与格式重试。
+- [x] 实现 Elnis worker 队列，维护 queued/running/completed/failed 状态。
 - [ ] 扩展 Elvena 请求，支持 Elwisp 随事件声明 `tools`。
 - [ ] 持久化 Elwisp 工具声明和声明 hash，便于重放、审计和重复事件排查。
 - [x] 抽象 ToolRun 中间层地基，聚合 ElBot native 工具与 Elwisp 工具声明缓存，并统一 tool call 生命周期编排。
 - [x] 将工具命名空间、Schema 注入、缓存恢复和可见性过滤从 LLM Prompt 组装中拆出到 ToolRun 视图。
 - [x] 明确 ToolRun、Tool Runtime 和 Prompt Builder 的职责边界，避免把来源身份和执行路由写进 Prompt。
 - [ ] 校验 Elwisp 工具 schema、超时和调用端点，拒绝不可信或越权工具；Elwisp 工具风险由 Elwisp 自身负责，Elnis 侧默认 low。
-- [ ] 复用工具预加载、Tool Runtime、Security Policy 和后台 sandbox，但由 ToolRun 统一入口管理。
-- [ ] 按 LLM result 的 `need_report` 和 Elnis 目标裁决发送报告。
+- [x] 复用工具预加载、Tool Runtime、Security Policy 和后台 sandbox，但由 ToolRun 统一入口管理。
+- [x] 按 LLM result 的 `need_report` 和 Elnis 目标裁决发送报告。
 
 ### Phase 3：模型槽位
 

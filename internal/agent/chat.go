@@ -16,33 +16,6 @@ import (
 	"elbot/internal/storage"
 )
 
-func (a *Agent) finishIntermediateOutput(ctx context.Context, streamCtx context.Context, stream platform.MessageStream, text string, streaming bool) error {
-	if streaming {
-		if strings.TrimSpace(text) != "" {
-			if err := a.replaceStreamOutput(ctx, streamCtx, stream, text); err != nil {
-				return err
-			}
-		}
-		_, err := stream.Finish(streamCtx)
-		return err
-	}
-	if strings.TrimSpace(text) == "" {
-		return nil
-	}
-	if _, err := a.sendChatWithReceipt(ctx, text); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (a *Agent) replaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream platform.MessageStream, text string) error {
-	if err := a.replaceStreamOutput(ctx, streamCtx, stream, text); err != nil {
-		return err
-	}
-	_, err := stream.Finish(streamCtx)
-	return err
-}
-
 func splitOutputsByDeliveryTiming(outputs []output.Output) ([]output.Output, []output.Output) {
 	if len(outputs) == 0 {
 		return nil, nil
@@ -59,38 +32,6 @@ func splitOutputsByDeliveryTiming(outputs []output.Output) ([]output.Output, []o
 	return immediate, deferred
 }
 
-func (a *Agent) replaceStreamOutput(ctx context.Context, streamCtx context.Context, stream platform.MessageStream, text string) error {
-	prepared, err := a.prepareAssistantOutput(ctx, hook.PointAgentOutputPrepared, text)
-	if err != nil {
-		return err
-	}
-	if _, err := stream.Replace(streamCtx, prepared); err != nil {
-		return fmt.Errorf("stream replace: %w", err)
-	}
-	return nil
-}
-
-func (a *Agent) startMessageStream(ctx context.Context) platform.MessageStream {
-	if bufferAssistantOutput(ctx) {
-		return nil
-	}
-	if msg, ok := platform.MessageContextFrom(ctx); ok && msg.Sender != nil {
-		if sender, ok := msg.Sender.(platform.StreamingMessageSender); ok {
-			stream, err := sender.StartStream(ctx)
-			if err == nil {
-				return stream
-			}
-		}
-	}
-	if sender, ok := a.platform.(platform.StreamingMessageSender); ok {
-		stream, err := sender.StartStream(ctx)
-		if err == nil {
-			return stream
-		}
-	}
-	return nil
-}
-
 func (a *Agent) handleChat(ctx context.Context, text string) error {
 	session, err := a.sessions.GetOrCreateCurrent(ctx, a.scope(ctx), text)
 	if err != nil {
@@ -100,30 +41,38 @@ func (a *Agent) handleChat(ctx context.Context, text string) error {
 }
 
 func (a *Agent) startChat(ctx context.Context, session *storage.Session, text string) error {
+	return a.startChatWithOutput(ctx, session, text, foregroundTurnOutput{agent: a})
+}
+
+func (a *Agent) startBackgroundChat(ctx context.Context, session *storage.Session, text string) error {
+	return a.startChatWithOutput(ctx, session, text, backgroundTurnOutput{agent: a})
+}
+
+func (a *Agent) startChatWithOutput(ctx context.Context, session *storage.Session, text string, out turnOutput) error {
 	if a.shouldCompact(session.ID) {
 		content, err := a.compactSession(ctx, session, "auto")
 		if err != nil {
 			return err
 		}
-		a.sendChat(ctx, content)
+		_, _ = out.SendAssistant(ctx, content)
 	}
 	if !a.turns.StartLLM(session.ID, text) {
 		return nil
 	}
 	defer a.turns.FinishRequest(session.ID)
-	if err := a.runChat(ctx, session, text); err != nil {
+	if err := a.runChat(ctx, session, text, out); err != nil {
 		a.turns.StopSession(session.ID)
 		status := a.runtimeStatusForSession(session.ID)
 		status.Phase = runtimestatus.PhaseError
 		status.FinishedAt = storage.Now()
 		status.Error = err.Error()
-		a.updateRuntimeStatus(ctx, status)
+		out.PublishRuntimeStatus(ctx, status)
 		return err
 	}
 	return nil
 }
 
-func (a *Agent) runChat(ctx context.Context, session *storage.Session, text string) error {
+func (a *Agent) runChat(ctx context.Context, session *storage.Session, text string, out turnOutput) error {
 	userSegments := a.userMessageSegments(ctx, text)
 	userContent := llm.SegmentsContentText(userSegments)
 
@@ -161,7 +110,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		}
 	}
 	turnStartedAt := storage.Now()
-	a.updateRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
+	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
 	llmMessages, err := a.promptBuilder.Build(ctx, PromptBuildRequest{Session: session, Scope: a.scope(ctx), Messages: messages, Summary: loaded.Summary})
 	if err != nil {
 		return err
@@ -188,7 +137,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	selection.Model = turnEvent.LLM.Model
 	llmMessages = turnEvent.LLM.Messages
 	tools = turnEvent.LLM.Tools
-	a.updateRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
+	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
 	if updatedUserContent := llm.LatestUserSegmentContentText(llmMessages); updatedUserContent != "" {
 		userMessage.Content = updatedUserContent
 	}
@@ -215,10 +164,10 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			}
 			turnMessages = turnMessages[:0]
 		}
-		stream := a.startMessageStream(reqCtx)
+		stream := out.StartStream(reqCtx)
 		llmStageStartedAt := storage.Now()
-		a.updateRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseLLM, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindLLM, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: llmStageStartedAt, Usage: usage})
-		result, updatedUserContent, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, latestUserContent, stream)
+		out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseLLM, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindLLM, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: llmStageStartedAt, Usage: usage})
+		result, updatedUserContent, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, latestUserContent, stream, out)
 		latestUserContent = ""
 		if len(result.Messages) > 0 {
 			llmMessages = result.Messages
@@ -238,12 +187,12 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		if result.Usage != nil {
 			usage = result.Usage
 		}
-		a.updateRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseLLM, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindLLM, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: llmStageStartedAt, Usage: usage})
+		out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseLLM, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindLLM, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: llmStageStartedAt, Usage: usage})
 		immediateOutputs, laterOutputs := splitOutputsByDeliveryTiming(result.Outputs)
 		if len(result.ToolCalls) == 0 {
 			deferredOutputs = append(deferredOutputs, laterOutputs...)
 		}
-		if err := a.sendOutputs(ctx, immediateOutputs); err != nil {
+		if err := out.SendOutputs(ctx, immediateOutputs); err != nil {
 			return err
 		}
 		if len(result.ToolCalls) == 0 {
@@ -252,7 +201,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			if inToolPhase {
 				if pending := a.turns.DrainMerged(session.ID); pending != "" {
 					// 用户可能在后续 LLM 响应期间补充输入；继续同一轮请求，避免 pending 被结束流程丢弃。
-					if err := a.finishIntermediateOutput(ctx, reqCtx, result.Stream, assistantText, streaming); err != nil {
+					if err := out.FinishIntermediate(ctx, reqCtx, result.Stream, assistantText, streaming); err != nil {
 						return err
 					}
 					llmMessages = appendAssistantTextMessage(llmMessages, assistantRawText, assistantRawText)
@@ -264,10 +213,10 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			finalStream = result.Stream
 			break
 		}
-		if err := a.finishIntermediateOutput(ctx, reqCtx, result.Stream, assistantText, streaming); err != nil {
+		if err := out.FinishIntermediate(ctx, reqCtx, result.Stream, assistantText, streaming); err != nil {
 			return err
 		}
-		if err := a.sendOutputs(ctx, laterOutputs); err != nil {
+		if err := out.SendOutputs(ctx, laterOutputs); err != nil {
 			return err
 		}
 		if !inToolPhase {
@@ -278,7 +227,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		}
 		llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleAssistant, Segments: llm.TextSegments(assistantRawText), ToolCalls: result.ToolCalls})
 		if toolRounds >= a.maxToolRoundsPerTurn() {
-			a.sendPreview(ctx, fmt.Sprintf("已达到 max_rounds_per_turn=%d，后续工具调用未执行，正在请求模型总结当前进度。", a.maxToolRoundsPerTurn()))
+			out.SendPreview(ctx, fmt.Sprintf("已达到 max_rounds_per_turn=%d，后续工具调用未执行，正在请求模型总结当前进度。", a.maxToolRoundsPerTurn()))
 			llmMessages = append(llmMessages, skippedToolMessages(result.ToolCalls, a.maxToolRoundsPerTurn())...)
 			llmMessages = a.drainPendingUserInput(session.ID, llmMessages, &turnMessages)
 			if err := a.persistTurnMessages(ctx, session.ID, "append_pending_user_message", turnMessages); err != nil {
@@ -287,18 +236,18 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			turnMessages = turnMessages[:0]
 			llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("工具调用轮次已达到上限，可以询问用户是否继续或者基于已有工具结果和当前上下文总结当前进度。")})
 			tools = nil
-			stream := a.startMessageStream(reqCtx)
-			summary, _, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, "", stream)
+			stream := out.StartStream(reqCtx)
+			summary, _, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, "", stream, out)
 			if err != nil {
 				return err
 			}
 			if len(summary.ToolCalls) > 0 {
 				// TODO: 后续支持强制 tool_choice=none；当前总结请求已不传 tools，若仍返回工具调用则忽略。
-				a.sendPreview(ctx, "总结请求仍返回了工具调用，已忽略。")
+				out.SendPreview(ctx, "总结请求仍返回了工具调用，已忽略。")
 			}
 			immediateOutputs, laterOutputs := splitOutputsByDeliveryTiming(summary.Outputs)
 			deferredOutputs = append(deferredOutputs, laterOutputs...)
-			if err := a.sendOutputs(ctx, immediateOutputs); err != nil {
+			if err := out.SendOutputs(ctx, immediateOutputs); err != nil {
 				return err
 			}
 			summaryText := summary.Text
@@ -319,7 +268,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			break
 		}
 		toolRounds++
-		toolMessages, confirmationExtra, transcriptMessages, stopped := a.executeToolCalls(reqCtx, session, result.ToolCalls, assistantRawText, assistantRawText)
+		toolMessages, confirmationExtra, transcriptMessages, stopped := a.executeToolCalls(reqCtx, session, result.ToolCalls, assistantRawText, assistantRawText, out)
 		llmMessages = append(llmMessages, toolMessages...)
 		if err := a.persistTurnMessages(ctx, session.ID, "append_tool_transcript", transcriptMessages); err != nil {
 			return err
@@ -344,17 +293,17 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		}
 		if !bufferOutput {
 			if finalStream != nil {
-				if err := a.replaceAndFinishStream(ctx, reqCtx, finalStream, platformOutputText); err != nil {
+				if err := out.ReplaceAndFinishStream(ctx, reqCtx, finalStream, platformOutputText); err != nil {
 					return err
 				}
-			} else if _, err := a.sendChatWithReceipt(ctx, platformOutputText); err != nil {
+			} else if _, err := out.SendAssistant(ctx, platformOutputText); err != nil {
 				return err
 			}
 		}
 	}
 
 	if !bufferOutput {
-		if err := a.sendOutputs(ctx, deferredOutputs); err != nil {
+		if err := out.SendOutputs(ctx, deferredOutputs); err != nil {
 			return err
 		}
 	}
@@ -374,14 +323,14 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	}
 	if bufferOutput {
 		if strings.TrimSpace(platformOutputText) != "" {
-			receipt, err := a.sendChatWithReceipt(ctx, platformOutputText)
+			receipt, err := out.SendAssistant(ctx, platformOutputText)
 			if err != nil {
 				a.audit("platform_send_error", "session_id", session.ID, "operation", "send_assistant_message", "error", err.Error())
 				return err
 			}
 			a.mapSentAssistantMessage(ctx, session.ID, assistantMessage.ID, receipt)
 		}
-		if err := a.sendOutputs(ctx, deferredOutputs); err != nil {
+		if err := out.SendOutputs(ctx, deferredOutputs); err != nil {
 			return err
 		}
 	}
@@ -391,9 +340,9 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	}
 	a.recordUsage(session.ID, usage)
 	doneStatus := runtimeDoneStatus(runtimestatus.Snapshot{SessionID: session.ID, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt, Usage: usage}, storage.Now())
-	a.updateRuntimeStatus(ctx, doneStatus)
+	out.PublishRuntimeStatus(ctx, doneStatus)
 	if a.markPendingCompact(ctx, session, usage) {
-		a.sendChat(ctx, "compact status: will compact before next request")
+		_, _ = out.SendAssistant(ctx, "compact status: will compact before next request")
 	}
 	a.sessions.MaybeScheduleNaming(ctx, session.ID)
 	return nil

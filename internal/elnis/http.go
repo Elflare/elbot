@@ -7,18 +7,31 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"elbot/internal/config"
 )
 
 type Runtime struct {
-	server *http.Server
+	server  *http.Server
+	service *Service
+	queue   chan QueuedLLMEvent
+	workers int
 }
 
 func NewRuntime(cfg config.ElnisHTTPConfig, service *Service) *Runtime {
 	mux := http.NewServeMux()
-	r := &Runtime{}
+	queueSize := cfg.QueueSize
+	if queueSize <= 0 {
+		queueSize = 128
+	}
+	workers := cfg.Workers
+	if workers <= 0 {
+		workers = 1
+	}
+	r := &Runtime{service: service, queue: make(chan QueuedLLMEvent, queueSize), workers: workers}
+	service.SetLLMEnqueuer(r.enqueueLLM)
 	maxBodyBytes := cfg.MaxBodyBytes
 	if maxBodyBytes <= 0 {
 		maxBodyBytes = 1024 * 1024
@@ -56,7 +69,28 @@ func NewRuntime(cfg config.ElnisHTTPConfig, service *Service) *Runtime {
 	return r
 }
 
+func (r *Runtime) enqueueLLM(ctx context.Context, event QueuedLLMEvent) error {
+	select {
+	case r.queue <- event:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return fmt.Errorf("elnis llm queue is full")
+	}
+}
+
 func (r *Runtime) Run(ctx context.Context) error {
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var wg sync.WaitGroup
+	for i := 0; i < r.workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r.worker(runCtx)
+		}()
+	}
 	errCh := make(chan error, 1)
 	go func() {
 		if err := r.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -67,12 +101,29 @@ func (r *Runtime) Run(ctx context.Context) error {
 	}()
 	select {
 	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
 		_ = r.server.Shutdown(shutdownCtx)
+		cancel()
+		wg.Wait()
 		return ctx.Err()
 	case err := <-errCh:
+		cancel()
+		wg.Wait()
 		return err
+	}
+}
+
+func (r *Runtime) worker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event := <-r.queue:
+			if r.service != nil {
+				_ = r.service.RunLLMEvent(ctx, event.Event, event.EventID)
+			}
+		}
 	}
 }
 

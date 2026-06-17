@@ -34,7 +34,7 @@
 ### Cron 与维护任务
 
 - `internal/cron/manager.go`：中央 Cron Runtime；基于 `robfig/cron/v3` 调度持久化 job，提供 handler 注册、job upsert/disable/delete、启动加载、执行日志、运行状态更新、同 job 防并发和未启动 Stop 的安全返回。
-- `internal/cron/service.go`：LLM 可编排 cron 服务；管理用户 cron metadata，支持 once/周期、direct/LLM 触发、missed once 按平台补投递，LLM once 可由首个已连接目标平台生成并缓存报告，后续平台复用；支持 LLM cron `tool_list_names` 预注入、JSON 结果解析与失败通知。
+- `internal/cron/service.go`：LLM 可编排 cron 服务；管理用户 cron metadata，支持 once/周期、direct/LLM 触发、missed once 按平台补投递，LLM once 可由首个已连接目标平台生成并缓存报告，后续平台复用；通过 `internal/background` 执行后台 LLM，保留 cron prompt、投递和任务生命周期语义。
 
 - `internal/maintenance/maintenance.go`：系统维护任务；集中注册维护类 Cron，提供日志、Session、artifact 和聊天历史清理。
 
@@ -49,7 +49,7 @@
 - `internal/agent/chat_llm.go`：LLM 调用与消息转换辅助；处理 Hook 后请求、流式响应、多模态转换、reasoning/usage/runtime 日志；流式最终 replace 由对话主流程在输出 Hook 后完成。
 - `internal/agent/chat_tools.go`：工具执行与确认辅助；处理工具调用、风险确认、transcript、工具调用记录和 schema 注入。
 - `internal/agent/risk_confirmation.go`：风险确认阶段命令定义与文案；统一生成 `/detail`、`/confirm`、`/confirmtool`、`/confirmall`、`/reject`、`/stop` 及别名的提示、补全和识别。
-- `internal/agent/cron.go`：Agent 后台 cron runner；绕过 slash 命令解析，使用 cron 专用 session 静默运行 LLM，注入统一 sandbox 下的 `cron/` 工具 context（默认 `data/sandbox/cron`），执行前按 LLM cron metadata 的 `tool_list_names` 预注入工具，要求最终 JSON 由 cron service 解析；cron session 写 `title_renamed=true` 避免自动命名覆盖。
+- `internal/agent/cron.go`：Agent 通用后台 runner；绕过 slash 命令解析，使用 discard sender 静默运行后台 LLM，按 background kind 注入 sandbox、预加载工具并写入后台 Session metadata；保留 `RunCronMessage` 薄适配。
 
 - `internal/agent/cron_tools.go`：cron 工具确认特例；后台 cron shell 非 critical 自动确认，critical 直接回 tool message 提醒用相对路径/低风险命令且不等待用户。
 - `internal/agent/prompt.go`：Soul Prompt Builder；按文件状态缓存并加载 `SOUL.md`，合并常驻记忆、工具名称提示和压缩摘要，避免生成多条 system prompt。
@@ -102,8 +102,8 @@
 - `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录/source fallback 解析 `app.toml`，读取并合并 app/provider/state 配置，解析相对路径和 `api_key_env`，包含 LLM 请求超时/重试、sandbox/artifact、Elnis 与 S3/R2 预留配置。
 
 - `internal/elnis/types.go`：Elnis/Elvena 协议类型；定义 Elwisp 请求、目标、响应、事件模式和状态。
-- `internal/elnis/service.go`：Elnis 接收服务；处理 token 鉴权、协议校验、Elwisp 授权、持久化去重、record/direct 分发和目标裁决。
-- `internal/elnis/http.go`：Elnis HTTP runtime；提供 `POST /elvena/v1/events` 和 `GET /healthz`，支持 body 限制、token 提取和 JSON 响应。
+- `internal/elnis/service.go`：Elnis 接收服务；处理 token 鉴权、协议校验、Elwisp 授权、持久化去重、record/direct 分发、目标裁决和 LLM 事件后台执行/结果报告。
+- `internal/elnis/http.go`：Elnis HTTP runtime；提供 `POST /elvena/v1/events` 和 `GET /healthz`，支持 body 限制、token 提取、JSON 响应和 LLM 事件队列 worker。
 
 - `internal/logging/logging.go`：日志地基；创建运行日志、审计日志和 Elnis 日志的 `slog.Logger`，`Manager` 统一持有按日期懒轮转的 `elbot-YYYY-MM-DD.log`、`audit-YYYY-MM-DD.log`、`elnis-YYYY-MM-DD.log` writer，暴露日志目录和可配置旧日志清理入口。
 - `internal/logging/reader.go`：结构化文本日志读取器；解析 `slog.TextHandler` 输出，支持 `/log`、`/audit` 的时间、等级、字段、msg、latest message 文本和条数过滤，并放宽单行读取上限以支持较大的 Debug 请求体。
@@ -130,6 +130,8 @@
 
 ### Output Layer
 
+- `internal/background/`：后台 LLM 执行公共类型与结果 helper；定义 cron/Elnis 共用 `RunRequest`、`RunResult`、background kind 和最终 JSON 结果解析/格式重试文案。
+
 - `internal/output/output.go`：平台无关输出意图与发送管理；定义 text/image/file/at/reply/emoticon 等输出类型、fallback 文本、统一发送入口和 delivery timing 元数据。
 
 ### Security Layer
@@ -153,7 +155,7 @@
 
 - `internal/tool/tool.go`：Tool Runtime 核心类型与 Registry；管理工具注册、查询、schema、权限、风险评估、用户侧 tags 和执行结果结构。
 
-- `internal/tool/sandbox.go`：工具执行轻量 sandbox context；传递统一 sandbox root、当前工作目录、artifact 目录和 cron 后台状态，只随本次 context 传播，不写入 Session。
+- `internal/tool/sandbox.go`：工具执行轻量 sandbox context；传递统一 sandbox root、当前工作目录、artifact 目录和后台运行 kind，只随本次 context 传播，不写入 Session。
 - `internal/tool/builder.go`：Go Tool Builder；用于声明工具描述、风险、隐藏、superadmin-only、用户侧 tags、依赖和常用参数 schema，Object 参数默认允许任意 JSON 字段，减少内置工具与包装工具手写 schema 的成本。
 - `internal/tool/discover.go`：`discover_tool` 内置工具；无参列出可见工具/skill 简介，有 `name`/`names` 时普通工具仅返回“已发现工具”文本并把完整 schema 留在结构化 Data 供 Agent 注入 top-level tools，外置 skill 返回 markdown/ELyph detail；查询 py/go skill 会通过内部 metadata 激活隐藏包装工具 `python_skill_run`/`go_skill_run`。
 - `internal/tool/provider.go`：Tool Runtime 到 Agent Prompt/LLM schema 的旧 provider 适配；保留给显式外部 provider 兼容，默认工具视图由 `internal/toolrun` 提供。

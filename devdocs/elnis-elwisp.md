@@ -65,7 +65,7 @@ type RunRequest struct {
 }
 ```
 
-Cron 可包装为 `Kind=cron`，Elnis 可包装为 `Kind=elwisp`。Session metadata 应记录各自来源，避免以后 `/sessions`、审计和排错混淆。
+Cron 可包装为 `Kind=cron`，Elnis 可包装为 `Kind=elnis`。Session metadata 应记录各自来源，避免以后 `/sessions`、审计和排错混淆。
 
 background runner 的输入应同时携带：
 
@@ -74,6 +74,8 @@ background runner 的输入应同时携带：
 - 由 ToolRun 过滤后的最终工具视图。
 
 这样 LLM 看到的是“当前上下文可用工具”，而不是“某个平台提供的工具”。
+
+当前实现中已新增 `internal/background` 作为公共后台执行类型与 JSON 结果解析层；Agent 提供通用 `RunBackground`，cron 通过薄适配继续保持原行为，Elnis HTTP runtime 通过队列 worker 调用同一后台 runner。
 
 ## Elvena v1 协议草案
 

@@ -13,15 +13,26 @@ type runtimeStatusSender interface {
 }
 
 func (a *Agent) updateRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) {
+	foregroundTurnOutput{agent: a}.PublishRuntimeStatus(ctx, snapshot)
+}
+
+func (a *Agent) recordRuntimeStatus(snapshot runtimestatus.Snapshot) runtimestatus.Snapshot {
 	if snapshot.SessionID == "" {
-		return
+		return snapshot
 	}
 	a.statusMu.Lock()
 	previous := a.runtimeStatus[snapshot.SessionID]
 	snapshot = mergeRuntimeStatus(previous, snapshot)
 	a.runtimeStatus[snapshot.SessionID] = snapshot
 	a.statusMu.Unlock()
+	return snapshot
+}
 
+func (a *Agent) publishRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) {
+	snapshot = a.recordRuntimeStatus(snapshot)
+	if snapshot.SessionID == "" {
+		return
+	}
 	if sender := a.runtimeStatusSender(ctx); sender != nil {
 		_ = sender.SetRuntimeStatus(ctx, snapshot)
 	}

@@ -3,8 +3,10 @@ package elnis
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"elbot/internal/background"
 	"elbot/internal/config"
 	"elbot/internal/output"
 	"elbot/internal/storage/sqlite"
@@ -75,6 +77,69 @@ func TestHandleRejectsDisabledElwisp(t *testing.T) {
 	}
 }
 
+func TestHandleLLMQueuesEvent(t *testing.T) {
+	service, cleanup := newTestService(t, nil)
+	defer cleanup()
+	var queued QueuedLLMEvent
+	service.SetLLMEnqueuer(func(ctx context.Context, event QueuedLLMEvent) error {
+		queued = event
+		return nil
+	})
+
+	req := testRequest(ModeLLM)
+	resp, err := service.Handle(context.Background(), "secret", req)
+	if err != nil {
+		t.Fatalf("Handle llm: %v", err)
+	}
+	if resp.Status != StatusQueued || queued.EventID == "" || queued.Event.EventKey == "" {
+		t.Fatalf("response = %#v queued = %#v", resp, queued)
+	}
+	record, err := service.store.ElnisEvents().GetByKey(context.Background(), req.Elwisp.Name, req.Source, req.ID)
+	if err != nil {
+		t.Fatalf("GetByKey: %v", err)
+	}
+	if record.Status != StatusQueued {
+		t.Fatalf("status = %q", record.Status)
+	}
+}
+
+func TestRunLLMEventCompletesAndReports(t *testing.T) {
+	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"处理完成"}`}
+	sent := []string{}
+	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target output.Target, out output.Output) error {
+		sent = append(sent, target.Platform+":"+out.Text)
+		return nil
+	})
+	defer cleanup()
+	var queued QueuedLLMEvent
+	service.SetLLMEnqueuer(func(ctx context.Context, event QueuedLLMEvent) error {
+		queued = event
+		return nil
+	})
+
+	req := testRequest(ModeLLM)
+	req.Targets = Targets{Platforms: []string{"cli"}, Superadmins: true}
+	if _, err := service.Handle(context.Background(), "secret", req); err != nil {
+		t.Fatalf("Handle llm: %v", err)
+	}
+	if err := service.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err != nil {
+		t.Fatalf("RunLLMEvent: %v", err)
+	}
+	record, err := service.store.ElnisEvents().GetByKey(context.Background(), req.Elwisp.Name, req.Source, req.ID)
+	if err != nil {
+		t.Fatalf("GetByKey: %v", err)
+	}
+	if record.Status != StatusCompleted || record.SessionID != "bg-session" || !strings.Contains(record.Result, "处理完成") {
+		t.Fatalf("record = %#v", record)
+	}
+	if len(sent) != 1 || sent[0] != "cli:处理完成" {
+		t.Fatalf("sent = %#v", sent)
+	}
+	if len(runner.requests) != 1 || runner.requests[0].Kind != background.KindElnis || runner.requests[0].SandboxSubdir != "elnis/watcher" {
+		t.Fatalf("requests = %#v", runner.requests)
+	}
+}
+
 func TestHandleDirectSendsToResolvedSuperadmins(t *testing.T) {
 	sent := []string{}
 	service, cleanup := newTestService(t, func(ctx context.Context, target output.Target, out output.Output) error {
@@ -100,6 +165,10 @@ func TestHandleDirectSendsToResolvedSuperadmins(t *testing.T) {
 }
 
 func newTestService(t *testing.T, send SenderFunc) (*Service, func()) {
+	return newTestServiceWithRunner(t, nil, send)
+}
+
+func newTestServiceWithRunner(t *testing.T, runner background.Runner, send SenderFunc) (*Service, func()) {
 	t.Helper()
 	store, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -123,11 +192,22 @@ func newTestService(t *testing.T, send SenderFunc) (*Service, func()) {
 		Tokens: map[string]string{"home": "secret"},
 		Store:  store,
 		Send:   send,
+		Runner: runner,
 	})
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
 	return service, func() { _ = store.Close() }
+}
+
+type fakeBackgroundRunner struct {
+	text     string
+	requests []background.RunRequest
+}
+
+func (r *fakeBackgroundRunner) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
+	r.requests = append(r.requests, req)
+	return background.RunResult{SessionID: "bg-session", Text: r.text}, nil
 }
 
 func testRequest(mode string) Request {

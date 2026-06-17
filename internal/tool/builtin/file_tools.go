@@ -289,7 +289,7 @@ func (EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.
 	if _, err := resolveFileToolPath(ctx, args.Path, args.Create); err != nil {
 		return tool.RiskAssessment{}, err
 	}
-	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.CronBackground {
+	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.BackgroundKind == tool.BackgroundKindCron {
 		return tool.RiskAssessment{Level: tool.RiskMedium, Reasons: []string{"cron 后台文件编辑限制在 sandbox 内"}}, nil
 	}
 	return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"文件内容写入操作需要确认"}}, nil
@@ -353,13 +353,13 @@ func resolveFileToolPath(ctx context.Context, rawPath string, allowCreate bool) 
 	if err != nil {
 		return "", err
 	}
-	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.CronBackground {
+	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.Background {
 		root := strings.TrimSpace(sandbox.Dir)
 		if root == "" {
 			root = strings.TrimSpace(sandbox.Root)
 		}
 		if root == "" {
-			return "", fmt.Errorf("cron sandbox is not configured")
+			return "", fmt.Errorf("background sandbox is not configured")
 		}
 		return resolveInsideRoot(expandedPath, root)
 	}
