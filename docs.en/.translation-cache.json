@@ -21,9 +21,9 @@
       "updated_at": 1781709276
     },
     "docs/configuration.md": {
-      "source_hash": "fd0ec842b698d8204cf3397c80e9dd71ac738be81719c209de4d1d0bb1b6b217",
+      "source_hash": "4ef970a47056daefeca4876781ee4e298759618125498817ee804ff115cdc39e",
       "target": "docs.en/configuration.md",
-      "updated_at": 1781694515
+      "updated_at": 1781709336
     },
     "docs/getting-started.md": {
       "source_hash": "03eb8aa561aca703b7e764c8129596c4b45c9089405fb354f913006859b7cb3e",
@@ -2968,6 +2968,14 @@
       "translation": "Provider Configuration",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:heading:73a15cdd2349b3f4387dd75c70c8b5213b133fb426b0959ddd583d1801751908": {
+      "kind": "heading",
+      "source": "Elnis 监听枢纽",
+      "source_file": "docs/configuration.md",
+      "source_hash": "73a15cdd2349b3f4387dd75c70c8b5213b133fb426b0959ddd583d1801751908",
+      "translation": "Elnis listening hub",
+      "updated_at": 1781709336
+    },
     "docs/configuration.md:heading:89c9324699db4d4506ecd8b16b087116fdc710f076438d0276ef7d856f6b2f03": {
       "kind": "heading",
       "source": "Context 与压缩",
@@ -3080,6 +3088,14 @@
       "translation": "__ELBOT_CODE_0__ is optional; leaving it empty indicates that no Elwisp is currently enabled.",
       "updated_at": 1781694515
     },
+    "docs/configuration.md:list:18256ba1fd771528c3947e5b2fa9b4e8383d0801007b0520a3fc264cb301209e": {
+      "kind": "list",
+      "source": "Elvena 请求中的 __ELBOT_CODE_0__ 声明仍是开发中能力，不建议作为稳定接口依赖。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "18256ba1fd771528c3947e5b2fa9b4e8383d0801007b0520a3fc264cb301209e",
+      "translation": "The __ELBOT_CODE_0__ declaration in Elvena requests is still a feature under development and is not recommended as a stable interface dependency.",
+      "updated_at": 1781709336
+    },
     "docs/configuration.md:list:19873491cd420fec6a40558a8e05ed0c16f7bba136bdc485d731d09201462afc": {
       "kind": "list",
       "source": "配置目录下的 __ELBOT_CODE_0__。",
@@ -3127,6 +3143,14 @@
       "source_hash": "52eda2e5ea44f3efc3f902b206dc88f827294699e84a9dd2700075ce38fc7c61",
       "translation": "Environment variable __ELBOT_CODE_0__.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:53ad1130823970cb05b8bac3ceee473da5c98747cd5ac563b8819c74cb22a1ef": {
+      "kind": "list",
+      "source": "Elwisp 默认启用；只有显式配置 __ELBOT_CODE_0__ 才会禁用对应 Elwisp。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "53ad1130823970cb05b8bac3ceee473da5c98747cd5ac563b8819c74cb22a1ef",
+      "translation": "Elwisp is enabled by default; the corresponding Elwisp will only be disabled if __ELBOT_CODE_0__ is explicitly configured.",
+      "updated_at": 1781709336
     },
     "docs/configuration.md:list:57546c6a4ffe364b6870cb08d4c2368579a6a8071ee17c64e373d9cc6f4eea5f": {
       "kind": "list",
@@ -3280,6 +3304,14 @@
       "translation": "__ELBOT_CODE_0__ mode enables tool discovery and tool calling.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:cc75aaac10c3a8171e9c53b24ffa015448c0dc277993c4269232c1c6b9c3ca65": {
+      "kind": "list",
+      "source": "当前支持 __ELBOT_CODE_0__、__ELBOT_CODE_1__ 和 __ELBOT_CODE_2__ 模式；__ELBOT_CODE_3__ 模式使用后台 Session runner 执行。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "cc75aaac10c3a8171e9c53b24ffa015448c0dc277993c4269232c1c6b9c3ca65",
+      "translation": "Currently, __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__ modes are supported; __ELBOT_CODE_3__ mode is executed using a background Session runner.",
+      "updated_at": 1781709336
+    },
     "docs/configuration.md:list:cf7eddd7a224ea51aed16f2d053820de607268d3e15169de46e6dc74feeb25a3": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__：规则 Hook 配置。",
@@ -3303,6 +3335,14 @@
       "source_hash": "d8c137111531834c012e9adc26eaccd2ef5e5bb6fb213e9b902666567b2d6207",
       "translation": "Update this document synchronously when adding new configuration items.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:ed50dc150a4230720d402deb43ae704be8f7442ddee17ea9dd496d780716e42b": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 报告只支持按 Elnis 裁决后的平台发送给 superadmins，不支持任意 user/group 目标。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "ed50dc150a4230720d402deb43ae704be8f7442ddee17ea9dd496d780716e42b",
+      "translation": "__ELBOT_CODE_0__ and __ELBOT_CODE_1__ reports only support sending to superadmins via the platform decided by Elnis, and do not support arbitrary user/group targets.",
+      "updated_at": 1781709336
     },
     "docs/configuration.md:paragraph:0d9a547d7e83c28e7048dbfd9ad0070bb0895ed095b23ff87363e5561167b584": {
       "kind": "paragraph",
@@ -3375,6 +3415,14 @@
       "source_hash": "48feb0d802388154b442421a14fc3a9baf92dc20fb8d95b1abfad8dfd5e74204",
       "translation": "Plugin configurations are fixed under __ELBOT_CODE_0__ in the configuration directory:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:5aeb7fbf1f153f54353359dccc9852cfe83a928d764929990cfde5ecd023c911": {
+      "kind": "paragraph",
+      "source": "更多说明见 [Elnis 配置与使用](elnis-usage.md)。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "5aeb7fbf1f153f54353359dccc9852cfe83a928d764929990cfde5ecd023c911",
+      "translation": "For more information, see [Elnis Configuration and Usage](elnis-usage.md).\n",
+      "updated_at": 1781709336
     },
     "docs/configuration.md:paragraph:66a831d2bac726e8d0c866ca5765616b3e231b318802ce5b6b8da222732d9746": {
       "kind": "paragraph",
