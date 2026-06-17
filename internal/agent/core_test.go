@@ -556,6 +556,50 @@ func TestModelsGroupsProvidersAndSwitchPersistsState(t *testing.T) {
 	}
 }
 
+func TestAgentRefreshesRuntimeStateFromStateFile(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	statePath := filepath.Join(t.TempDir(), "state.toml")
+	providers := map[string]config.ProviderConfig{
+		"deepseek": {Models: []string{"deepseek-chat"}},
+		"zhipu":    {Models: []string{"glm-4-flash"}},
+	}
+	modeModels := map[string]config.ModelSelection{
+		storage.SessionModeWork: {Provider: "deepseek", Model: "deepseek-chat"},
+		storage.SessionModeChat: {Provider: "deepseek", Model: "deepseek-chat"},
+	}
+	a := NewWithOptions(p, &fakeLLM{models: []string{"deepseek-chat"}}, "deepseek", modeModels, providers, statePath, store, []string{"/"}, session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}, config.ModelSelection{}, nil, "", nil, "")
+
+	if err := config.SaveState(statePath, config.StateConfig{ModeModels: modeModels}); err != nil {
+		t.Fatalf("save initial state: %v", err)
+	}
+	a.stateModTime = initialStateModTime(statePath)
+	time.Sleep(10 * time.Millisecond)
+	if err := config.SaveState(statePath, config.StateConfig{
+		ModeModels: map[string]config.ModelSelection{
+			storage.SessionModeWork: {Provider: "zhipu", Model: "glm-4-flash"},
+			storage.SessionModeChat: {Provider: "deepseek", Model: "deepseek-chat"},
+		},
+		CompactModel: config.ModelSelection{Provider: "zhipu", Model: "glm-4-flash"},
+		NamingModel:  config.ModelSelection{Provider: "zhipu", Model: "glm-4-flash"},
+	}); err != nil {
+		t.Fatalf("save updated state: %v", err)
+	}
+
+	if err := a.HandleMessage(context.Background(), "/status"); err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if got := a.CurrentModelForMode(storage.SessionModeWork); got.Provider != "zhipu" || got.Model != "glm-4-flash" {
+		t.Fatalf("work model = %s/%s", got.Provider, got.Model)
+	}
+	if got := a.CurrentCompactModel(); got.Provider != "zhipu" || got.Model != "glm-4-flash" {
+		t.Fatalf("compact model = %s/%s", got.Provider, got.Model)
+	}
+	if got := a.CurrentNamingModel(); got.Provider != "zhipu" || got.Model != "glm-4-flash" {
+		t.Fatalf("naming model = %s/%s", got.Provider, got.Model)
+	}
+}
+
 func TestModelsShowsMissingAPIKeyEnv(t *testing.T) {
 	p := &fakePlatform{}
 	providers := map[string]config.ProviderConfig{

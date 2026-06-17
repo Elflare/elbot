@@ -42,6 +42,7 @@ type Agent struct {
 	platformSenders             map[string]platform.MessageSender
 	modelRuntime                modelRuntimeState
 	statePath                   string
+	stateModTime                time.Time
 	store                       storage.Store
 	sessions                    *session.Service
 	requests                    *request.Manager
@@ -118,11 +119,13 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 	if soulPath != "" {
 		promptSoul = &FileSoulProvider{Path: soulPath}
 	}
+	stateModTime := initialStateModTime(statePath)
 	a := &Agent{
 		platform:               p,
 		platformSenders:        map[string]platform.MessageSender{},
 		modelRuntime:           newModelRuntimeState(client, workModel.Model, workModel.Provider, provider, llmRequestConfig, providers, modeModels, clients),
 		statePath:              statePath,
+		stateModTime:           stateModTime,
 		store:                  store,
 		sessions:               session.NewServiceWithConfig(store, sessionCfg, titleGen, namingNotifier),
 		requests:               request.NewManager(defaultRequestTimeout),
@@ -240,6 +243,7 @@ func llmSegmentsToPlatform(segments []llm.MessageSegment) []platform.MessageSegm
 }
 
 func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
+	a.refreshRuntimeState()
 	actor := a.actor(ctx)
 	ctx = security.WithPolicy(security.WithActor(ctx, actor), a.securityPolicy)
 	segments := inboundSegments(ctx, text)

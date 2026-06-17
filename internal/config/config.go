@@ -333,6 +333,14 @@ type StateSessionConfig struct {
 	DefaultMode string `toml:"default_mode"`
 }
 
+func LoadState(path string) (*StateConfig, error) {
+	state := &StateConfig{}
+	if err := loadTOML(path, state); err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
 func SaveState(path string, state StateConfig) error {
 	data, err := toml.Marshal(state)
 	if err != nil {

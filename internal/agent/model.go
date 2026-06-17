@@ -2,7 +2,9 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -359,13 +361,99 @@ func (a *Agent) clientForProvider(providerName string) llm.LLM {
 	return client
 }
 
+func initialStateModTime(path string) time.Time {
+	if path == "" {
+		return time.Time{}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}
+	}
+	return info.ModTime()
+}
+
+func (a *Agent) refreshRuntimeState() {
+	if a.statePath == "" {
+		return
+	}
+	info, err := os.Stat(a.statePath)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) && a.logger != nil {
+			a.logger.Warn("check state config", "path", a.statePath, "error", err.Error())
+		}
+		return
+	}
+	modTime := info.ModTime()
+	if !a.stateModTime.IsZero() && !modTime.After(a.stateModTime) {
+		return
+	}
+	state, err := config.LoadState(a.statePath)
+	if err != nil {
+		if a.logger != nil {
+			a.logger.Warn("load state config", "path", a.statePath, "error", err.Error())
+		}
+		return
+	}
+	if err := a.applyRuntimeState(state); err != nil {
+		if a.logger != nil {
+			a.logger.Warn("apply state config", "path", a.statePath, "error", err.Error())
+		}
+		return
+	}
+	a.stateModTime = modTime
+}
+
+func (a *Agent) applyRuntimeState(state *config.StateConfig) error {
+	for _, selection := range state.ModeModels {
+		if selection.Provider == "" || selection.Model == "" {
+			continue
+		}
+		if _, ok := a.modelRuntime.providers[selection.Provider]; !ok {
+			return fmt.Errorf("provider %q not found", selection.Provider)
+		}
+	}
+	if state.CompactModel.Provider != "" && state.CompactModel.Model != "" {
+		if _, ok := a.modelRuntime.providers[state.CompactModel.Provider]; !ok {
+			return fmt.Errorf("provider %q not found", state.CompactModel.Provider)
+		}
+	}
+	if state.NamingModel.Provider != "" && state.NamingModel.Model != "" {
+		if _, ok := a.modelRuntime.providers[state.NamingModel.Provider]; !ok {
+			return fmt.Errorf("provider %q not found", state.NamingModel.Provider)
+		}
+	}
+	for mode, selection := range state.ModeModels {
+		if selection.Provider == "" || selection.Model == "" {
+			continue
+		}
+		if err := a.applyModeModelSelection(mode, selection.Provider, selection.Model); err != nil {
+			return err
+		}
+	}
+	if state.CompactModel.Provider != "" && state.CompactModel.Model != "" {
+		a.compactModel = state.CompactModel
+	}
+	if state.NamingModel.Provider != "" && state.NamingModel.Model != "" {
+		a.namingModel = state.NamingModel
+		if a.titleGen != nil {
+			a.titleGen.naming = a.clientForProvider(state.NamingModel.Provider)
+			a.titleGen.namingModel = state.NamingModel.Model
+		}
+	}
+	return nil
+}
+
 func (a *Agent) saveRuntimeState() error {
-	return config.SaveState(a.statePath, config.StateConfig{
+	if err := config.SaveState(a.statePath, config.StateConfig{
 		Session:      config.StateSessionConfig{DefaultMode: a.sessions.DefaultMode()},
 		ModeModels:   cloneModeModels(a.modelRuntime.modeModels),
 		CompactModel: a.compactModel,
 		NamingModel:  a.namingModel,
-	})
+	}); err != nil {
+		return err
+	}
+	a.stateModTime = initialStateModTime(a.statePath)
+	return nil
 }
 
 func joinModelMatches(matches []agentcommands.ModelOption) string {
