@@ -10,6 +10,8 @@ This is the user-facing ElBot documentation. Development plans, task breakdowns,
 2. [Configuration Guide](configuration.md): Learn about configuration files, path rules, Providers, runtime data, and plugin directories.
 3. [Command Cheat Sheet](commands.md): View common slash commands and Session management methods.
 4. [Core Concepts](concepts.md): Understand Chat / Work modes, tool discovery, Session, Hook, Cron, Skill, and security policies.
+5. [Elnis Listening Hub](elnis.md): Learn about Elnis, Elwisp, Elvena, and external event access.
+6. [Elnis Configuration and Usage](elnis-usage.md): Enable Elnis, configure Elwisp, and deliver events using Elvena.
 
 ## Documentation Maintenance Conventions
 

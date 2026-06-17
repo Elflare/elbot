@@ -203,7 +203,7 @@ cli = ["local"]
 - Superadmins also need confirmation when calling high-risk tools.
 - The default local CLI user `local` is a superadmin.
 
-## Elnis Middle Platform Listener
+## Elnis listening hub
 
 Elnis is disabled by default. Once enabled, ElBot will start a local HTTP ingress to receive events delivered by Elwisp according to the Elvena protocol.
 
@@ -223,23 +223,18 @@ token_env = ["ELNIS_HOME_TOKEN", "ELNIS_HOME_TOKEN_ALT"]
 [elnis.delivery]
 default_platforms = ["cli"]
 allow_superadmins = true
-
-[elnis.elwisps.server-watchdog]
-enabled = true
-allowed_tokens = ["home"]
-
-[elnis.elwisps.server-watchdog.delivery]
-default_platforms = ["cli"]
-allow_superadmins = true
 ```
 
 Note:
 
-- `elnis.elwisps` is optional; leaving it empty indicates that no Elwisp is currently enabled.
 - The token is read from system environment variables or the configuration directory `.env`. Logs only record the token name, not the raw token.
 - `token_env` can be written as a list to try multiple environment variable names in order; this is suitable for temporarily switching tokens or achieving multi-environment compatibility.
-- The initial phase supports `record` and `direct` modes; the `llm` mode is reserved for the subsequent background runner.
-- `direct` mode only supports sending to superadmins via the platform after Elnis adjudication; it does not support arbitrary user/group targets.
+- Elwisp is enabled by default; the corresponding Elwisp will only be disabled if `enabled=false` is explicitly configured.
+- Currently, `record`, `direct`, and `llm` modes are supported; `llm` mode is executed using a background Session runner.
+- `direct` and `llm` reports only support sending to superadmins via the platform decided by Elnis, and do not support arbitrary user/group targets.
+- The `tools` declaration in Elvena requests is still a feature under development and is not recommended as a stable interface dependency.
+
+For more information, see [Elnis Configuration and Usage](elnis-usage.md).
 
 ## Platform Configuration
 

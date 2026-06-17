@@ -200,6 +200,14 @@ ElBot includes two layers of Cron capabilities:
 
 Background Cron has independent Session and sandbox constraints. LLM Cron can pre-inject tool names, allowing the model to stably use specified tools in background tasks.
 
+## Elnis / Elwisp / Elvena
+
+Elnis is ElBot's listening hub, used for receiving external events. Elwisp is an external sub-listener responsible for observing the external world, such as servers, Webhooks, RSS, logs, or script outputs. Elvena is the event protocol used by Elwisp to deliver events to Elnis.
+
+Their division of labor is: Elwisp observes everything, Elnis manages everything, and ElBot controls the final execution and delivery.
+
+Elnis does not serve as a chat platform, nor does it replace Cron. Cron handles "time-triggered" tasks, while Elnis handles "external event-triggered" tasks. For a full introduction, see [Elnis Listening Hub](elnis.md); for configuration and request examples, see [Elnis Configuration and Usage](elnis-usage.md).
+
 ## Skill and ELyph
 
 ElBot supports Skill extensions and introduces ELyph Task Notation to describe reusable tasks.
