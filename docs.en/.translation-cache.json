@@ -16,9 +16,9 @@
       "updated_at": 1781709223
     },
     "docs/concepts.md": {
-      "source_hash": "78e86ab872abafb0c43e66a5d172635d9aabb53845d864a75791d48ef10f2a8d",
+      "source_hash": "4d9436b79e92c5a42cd17afbcc88fd263d153f017164c01075d18c85f828f068",
       "target": "docs.en/concepts.md",
-      "updated_at": 1781515483
+      "updated_at": 1781709276
     },
     "docs/configuration.md": {
       "source_hash": "fd0ec842b698d8204cf3397c80e9dd71ac738be81719c209de4d1d0bb1b6b217",
@@ -2336,6 +2336,14 @@
       "translation": "CLI is a local high-privilege entry point that allows viewing Sessions across platforms; other platforms, by default, only see Sessions under the current platform and scope.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:024673ee2a5e18f2afcd0ed47801e43d3689ef254e037db5dd8869dc406e425a": {
+      "kind": "paragraph",
+      "source": "完整介绍见 [Elnis 监听枢纽](elnis.md)，配置和请求示例见 [Elnis 配置与使用](elnis-usage.md)。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "024673ee2a5e18f2afcd0ed47801e43d3689ef254e037db5dd8869dc406e425a",
+      "translation": "For a full introduction, see [Elnis Listening Hub](elnis.md); for configuration and request examples, see [Elnis Configuration and Usage](elnis-usage.md).\n",
+      "updated_at": 1781709276
+    },
     "docs/concepts.md:paragraph:0d6b95b570a7304641f104f51ec7415bd807f9f23e61033129a7f5318d0a3563": {
       "kind": "paragraph",
       "source": "长对话会逐渐接近模型上下文窗口。ElBot 支持上下文压缩：\n",
@@ -2584,6 +2592,14 @@
       "translation": "Tool Runtime manages the registration, discovery, permissions, risk assessment, and execution of tools.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:9d72fee0bac8d3e0bd366e8b276b2c944b115d3ebe308c447ec57620fdab98e0": {
+      "kind": "paragraph",
+      "source": "Elnis 不作为聊天平台，也不替代 Cron。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "9d72fee0bac8d3e0bd366e8b276b2c944b115d3ebe308c447ec57620fdab98e0",
+      "translation": "Elnis does not serve as a chat platform, nor does it replace Cron.",
+      "updated_at": 1781709276
+    },
     "docs/concepts.md:paragraph:9e49f557aef34ca8beaa5f228481819327a48168953b97b7491a573d801d2926": {
       "kind": "paragraph",
       "source": "ElBot 把对话分成两种模式：\n",
@@ -2608,6 +2624,14 @@
       "translation": "ElBot divides memory into two categories:\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:b190195feaad582d83de6b3ef9e4bc9cde0d9c94214478d32b4c87775a956263": {
+      "kind": "paragraph",
+      "source": "ElBot 支持 Skill 扩展，并引入 ELyph Task Notation（任务表示法）描述可复用任务。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "b190195feaad582d83de6b3ef9e4bc9cde0d9c94214478d32b4c87775a956263",
+      "translation": "ElBot supports Skill extensions and introduces ELyph Task Notation to describe reusable tasks.\n",
+      "updated_at": 1781709276
+    },
     "docs/concepts.md:paragraph:bba7fced0f9c1143a23c84ff8aafe31b0724948cccece90fd16c05d218fce7a6": {
       "kind": "paragraph",
       "source": "ElBot 包含两层 Cron 能力：\n",
@@ -2616,6 +2640,14 @@
       "translation": "ElBot includes two layers of Cron capabilities:\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:bc1ef24d4bdb1e2ef259e8fe4592d4295216efe8cd5d4dd798acf5ec31aae6e9": {
+      "kind": "paragraph",
+      "source": "Elvena 是 Elwisp 向 Elnis 投递事件的协议。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "bc1ef24d4bdb1e2ef259e8fe4592d4295216efe8cd5d4dd798acf5ec31aae6e9",
+      "translation": "Elvena is the event protocol used by Elwisp to deliver events to Elnis.\n",
+      "updated_at": 1781709276
+    },
     "docs/concepts.md:paragraph:bde0c0ecdce573cc895878def30938e78e9467573a60e3f7ad1411f495f3cde4": {
       "kind": "paragraph",
       "source": "可以用 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 在运行时查询。\n",
@@ -2623,6 +2655,14 @@
       "source_hash": "bde0c0ecdce573cc895878def30938e78e9467573a60e3f7ad1411f495f3cde4",
       "translation": "You can use __ELBOT_CODE_0__ and __ELBOT_CODE_1__ to query at runtime.\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:bde9adb0e488c905794f325be7c2f2b11d99f68c474121515ef0a009c5c5280b": {
+      "kind": "paragraph",
+      "source": "Elnis 是 ElBot 的监听枢纽，用于接收外部事件。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "bde9adb0e488c905794f325be7c2f2b11d99f68c474121515ef0a009c5c5280b",
+      "translation": "Elnis is ElBot's listening hub, used for receiving external events.",
+      "updated_at": 1781709276
     },
     "docs/concepts.md:paragraph:c6097edaa165e063e833bc0c310d26c83898f14e42fa47839288a89c49281128": {
       "kind": "paragraph",
@@ -2648,6 +2688,14 @@
       "translation": "Fork is used to create a new conversation branch from a historical assistant message.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:e8d962a2e596e5704aeaccf370fdfb895302d70a8975e1b6e0811c0c7769ab4b": {
+      "kind": "paragraph",
+      "source": "Cron 处理“按时间触发”的任务，Elnis 处理“按外部事件触发”的任务。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "e8d962a2e596e5704aeaccf370fdfb895302d70a8975e1b6e0811c0c7769ab4b",
+      "translation": "Cron handles \"time-triggered\" tasks, while Elnis handles \"external event-triggered\" tasks.",
+      "updated_at": 1781709276
+    },
     "docs/concepts.md:paragraph:ed9272f16a95db5abf9cd5b1bacc3e85baa2063b2488cfd3e56fc18e1261270f": {
       "kind": "paragraph",
       "source": "核心规则：\n",
@@ -2655,6 +2703,22 @@
       "source_hash": "ed9272f16a95db5abf9cd5b1bacc3e85baa2063b2488cfd3e56fc18e1261270f",
       "translation": "Core rules:\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:ef0042c9b2a0794284af7d02eb33592633dc63c6625e47cddc55a0bcc2af7f4d": {
+      "kind": "paragraph",
+      "source": "Elwisp 是外部子监听器，负责观察服务器、Webhook、RSS、日志或脚本输出等外部世界。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "ef0042c9b2a0794284af7d02eb33592633dc63c6625e47cddc55a0bcc2af7f4d",
+      "translation": "Elwisp is an external sub-listener responsible for observing the external world, such as servers, Webhooks, RSS, logs, or script outputs.",
+      "updated_at": 1781709276
+    },
+    "docs/concepts.md:paragraph:f63c44a9c3da8282192aae7a2c14d84859f006e9b4fc9ba29c14679c3a2ab041": {
+      "kind": "paragraph",
+      "source": "它们的分工是：Elwisp 观测一切，Elnis 管理一切，ElBot 掌控最终执行与投递。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "f63c44a9c3da8282192aae7a2c14d84859f006e9b4fc9ba29c14679c3a2ab041",
+      "translation": "Their division of labor is: Elwisp observes everything, Elnis manages everything, and ElBot controls the final execution and delivery.\n",
+      "updated_at": 1781709276
     },
     "docs/concepts.md:paragraph:f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f": {
       "kind": "paragraph",
