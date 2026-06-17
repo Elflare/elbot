@@ -99,7 +99,7 @@
 
 - `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录/source fallback 解析 `app.toml`，读取并合并 app/provider/state 配置，解析相对路径和 `api_key_env`，包含 LLM 请求超时/重试、sandbox/artifact 与 S3/R2 预留配置。
 
-- `internal/logging/logging.go`：日志地基；创建运行日志与审计日志的 `slog.Logger`，`Manager` 统一持有 `elbot-YYYY-MM-DD.log`、`audit-YYYY-MM-DD.log` 文件、暴露日志目录和可配置旧日志清理入口。
+- `internal/logging/logging.go`：日志地基；创建运行日志与审计日志的 `slog.Logger`，`Manager` 统一持有按日期懒轮转的 `elbot-YYYY-MM-DD.log`、`audit-YYYY-MM-DD.log` writer，暴露日志目录和可配置旧日志清理入口。
 - `internal/logging/reader.go`：结构化文本日志读取器；解析 `slog.TextHandler` 输出，支持 `/log`、`/audit` 的时间、等级、字段、msg、latest message 文本和条数过滤，并放宽单行读取上限以支持较大的 Debug 请求体。
 - `config/app.toml`：应用主配置；保存 storage、runtime、llm_request、context、commands、tools、security、session cleanup、view、platform、soul 等静态设置。
 

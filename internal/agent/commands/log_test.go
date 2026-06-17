@@ -146,6 +146,25 @@ func TestAuditCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 	}
 }
 
+func TestAuditCommandMapsOldMessageEventAliases(t *testing.T) {
+	service := &fakeLogService{entries: []logging.LogEntry{{Message: "audit event", Fields: map[string]string{"event": "user_message"}}}}
+	_, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `--event user_input`})
+	if err != nil {
+		t.Fatalf("audit handle user_input: %v", err)
+	}
+	if service.query.Fields["event"] != "user_message" {
+		t.Fatalf("query = %#v", service.query)
+	}
+
+	_, err = NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `--event assistant_output`})
+	if err != nil {
+		t.Fatalf("audit handle assistant_output: %v", err)
+	}
+	if service.query.Fields["event"] != "assistant_message" {
+		t.Fatalf("query = %#v", service.query)
+	}
+}
+
 func TestLogAndAuditCommandsCompleteOptionsAndValues(t *testing.T) {
 	logCmd := NewLog(Deps{}).(command.Completer)
 	got := logCmd.Complete(context.Background(), command.CompletionRequest{Raw: "/log --le", Prefix: "/", Name: "log", Args: "--le", Cursor: len("/log --le")})

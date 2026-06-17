@@ -3,9 +3,55 @@ package logging
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestDailyFileWriterRotatesWhenDateChanges(t *testing.T) {
+	dir := t.TempDir()
+	current := time.Date(2026, 6, 16, 23, 59, 0, 0, time.Local)
+	writer, err := newDailyFileWriter(filepath.Join(dir, "logs"), "elbot", func() time.Time { return current })
+	if err != nil {
+		t.Fatalf("newDailyFileWriter: %v", err)
+	}
+	logger := New("info", writer)
+
+	logger.Info("before midnight")
+	current = time.Date(2026, 6, 17, 0, 1, 0, 0, time.Local)
+	logger.Info("after midnight")
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	oldData, err := os.ReadFile(filepath.Join(dir, "logs", "elbot-2026-06-16.log"))
+	if err != nil {
+		t.Fatalf("read old log: %v", err)
+	}
+	newData, err := os.ReadFile(filepath.Join(dir, "logs", "elbot-2026-06-17.log"))
+	if err != nil {
+		t.Fatalf("read new log: %v", err)
+	}
+	if !strings.Contains(string(oldData), "before midnight") || strings.Contains(string(oldData), "after midnight") {
+		t.Fatalf("old log content = %q", oldData)
+	}
+	if !strings.Contains(string(newData), "after midnight") || strings.Contains(string(newData), "before midnight") {
+		t.Fatalf("new log content = %q", newData)
+	}
+}
+
+func TestDailyFileWriterClosePreventsFurtherWrites(t *testing.T) {
+	writer, err := newDailyFileWriter(filepath.Join(t.TempDir(), "logs"), "elbot", nil)
+	if err != nil {
+		t.Fatalf("newDailyFileWriter: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+	if _, err := writer.Write([]byte("after close")); err == nil {
+		t.Fatal("Write after Close should fail")
+	}
+}
 
 func TestManagerCreatesRuntimeAndAuditLogs(t *testing.T) {
 	dir := t.TempDir()

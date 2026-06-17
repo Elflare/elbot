@@ -205,12 +205,13 @@ func parseAuditQuery(args string) (logging.LogQuery, error) {
 	}); err != nil {
 		return query, err
 	}
-	if fields["event"] == "user_message" {
-		fields["event"] = "user_input"
+	if fields["event"] == "user_input" {
+		fields["event"] = "user_message"
 	}
-	if fields["event"] == "assistant_message" {
-		fields["event"] = "assistant_output"
+	if fields["event"] == "assistant_output" {
+		fields["event"] = "assistant_message"
 	}
+
 	if len(query.FieldExists) > 0 {
 		query.FieldExists = nil
 		fields["event"] = "hook"
