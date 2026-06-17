@@ -6,13 +6,16 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/tool"
 	"elbot/internal/tool/skill"
+	"elbot/internal/toolrun"
 )
 
 type toolRuntimeState struct {
-	provider ToolSchemaProvider
-	registry *tool.Registry
-	scanner  skill.Scanner
-	config   config.ToolsConfig
+	provider        ToolSchemaProvider
+	manager         *toolrun.Manager
+	registry        *tool.Registry
+	scanner         skill.Scanner
+	config          config.ToolsConfig
+	defaultProvider bool
 }
 
 func newToolRuntimeState() toolRuntimeState {
@@ -27,6 +30,7 @@ func (a *Agent) SetToolProvider(provider ToolSchemaProvider) {
 		provider = noopToolSchemaProvider{}
 	}
 	a.toolRuntime.provider = provider
+	a.toolRuntime.defaultProvider = false
 	if nameProvider, ok := provider.(ToolNameProvider); ok {
 		a.promptBuilder.Tools = nameProvider
 	} else {
@@ -37,8 +41,11 @@ func (a *Agent) SetToolProvider(provider ToolSchemaProvider) {
 func (a *Agent) SetToolRuntime(registry *tool.Registry, scanner skill.Scanner) {
 	a.toolRuntime.registry = registry
 	a.toolRuntime.scanner = scanner
+	a.toolRuntime.manager = toolrun.NewManager(registry, a.securityPolicy)
 	if registry != nil {
-		a.SetToolProvider(tool.SchemaProvider{Registry: registry, Policy: a.securityPolicy})
+		a.toolRuntime.provider = toolRunPromptProvider{agent: a}
+		a.toolRuntime.defaultProvider = true
+		a.promptBuilder.Tools = toolRunPromptProvider{agent: a}
 	}
 }
 

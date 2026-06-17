@@ -7,13 +7,20 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
+	"elbot/internal/toolrun"
 )
 
 func (a *Agent) rememberDiscoveredTools(ctx context.Context, session *storage.Session, result *tool.DiscoveryResult) {
 	if result == nil || session == nil || session.ID == "" {
 		return
 	}
-	names := make([]string, 0, len(result.Tools))
+	a.rememberCachedTools(ctx, session, toolrun.NativeCachedToolsFromDiscovery(result))
+}
+
+func (a *Agent) rememberCachedTools(ctx context.Context, session *storage.Session, cached []toolrun.CachedTool) {
+	if session == nil || session.ID == "" || len(cached) == 0 {
+		return
+	}
 	a.autoConfirmMu.Lock()
 	if a.discoveredTools == nil {
 		a.discoveredTools = map[string]map[string]llm.ToolSchema{}
@@ -21,17 +28,19 @@ func (a *Agent) rememberDiscoveredTools(ctx context.Context, session *storage.Se
 	if a.discoveredTools[session.ID] == nil {
 		a.discoveredTools[session.ID] = map[string]llm.ToolSchema{}
 	}
-	for _, discovered := range result.Tools {
-		if discovered.Schema == nil || discovered.Info.Name == "" {
-			continue
+	if a.toolRuntime.manager == nil {
+		a.toolRuntime.manager = toolrun.NewManager(a.toolRuntime.registry, a.securityPolicy)
+	}
+	if a.toolRuntime.manager != nil {
+		for _, item := range cached {
+			if item.Name == "" {
+				continue
+			}
+			a.discoveredTools[session.ID][item.Name] = item.Schema
 		}
-		a.discoveredTools[session.ID][discovered.Info.Name] = *discovered.Schema
-		names = append(names, discovered.Info.Name)
 	}
 	a.autoConfirmMu.Unlock()
-	if len(names) > 0 {
-		a.persistDiscoveredToolNames(ctx, session, names)
-	}
+	a.persistCachedTools(ctx, session, cached)
 }
 
 func (a *Agent) discoveredToolSchemas(session *storage.Session) []llm.ToolSchema {
@@ -58,41 +67,57 @@ func (a *Agent) discoveredToolSchemas(session *storage.Session) []llm.ToolSchema
 }
 
 func (a *Agent) restoreDiscoveredToolsFromMetadata(session *storage.Session) {
-	if session == nil || a.toolRuntime.registry == nil {
+	if session == nil {
 		return
 	}
 	metadata := decodeSessionMetadata(session.Metadata)
-	if len(metadata.DiscoveredTools) == 0 {
+	if len(metadata.ToolCache) == 0 && len(metadata.DiscoveredTools) == 0 {
 		return
 	}
 	a.autoConfirmMu.Lock()
-	defer a.autoConfirmMu.Unlock()
 	if a.discoveredTools == nil {
 		a.discoveredTools = map[string]map[string]llm.ToolSchema{}
 	}
 	if a.discoveredTools[session.ID] == nil {
 		a.discoveredTools[session.ID] = map[string]llm.ToolSchema{}
 	}
+	if a.toolRuntime.manager == nil {
+		a.toolRuntime.manager = toolrun.NewManager(a.toolRuntime.registry, a.securityPolicy)
+	}
 	for _, name := range metadata.DiscoveredTools {
 		if _, ok := a.discoveredTools[session.ID][name]; ok {
 			continue
 		}
-		if tool, ok := a.toolRuntime.registry.Get(name); ok {
-			a.discoveredTools[session.ID][name] = tool.Schema()
+		if a.toolRuntime.registry == nil {
+			continue
+		}
+		if t, ok := a.toolRuntime.registry.Get(name); ok {
+			a.discoveredTools[session.ID][name] = t.Schema()
 		}
 	}
+	for _, item := range metadata.ToolCache {
+		if item.Name == "" || item.Source == toolrun.SourceKindELwisp {
+			continue
+		}
+		if _, ok := a.discoveredTools[session.ID][item.Name]; ok {
+			continue
+		}
+		a.discoveredTools[session.ID][item.Name] = item.Schema
+	}
+	a.autoConfirmMu.Unlock()
 }
 
-func (a *Agent) persistDiscoveredToolNames(ctx context.Context, session *storage.Session, names []string) {
+func (a *Agent) persistCachedTools(ctx context.Context, session *storage.Session, cached []toolrun.CachedTool) {
 	latest, err := a.store.Sessions().Get(ctx, session.ID)
 	if err != nil {
 		if a.logger != nil {
-			a.logger.Warn("load session for discovered tools failed", "session_id", session.ID, "error", err)
+			a.logger.Warn("load session for cached tools failed", "session_id", session.ID, "error", err)
 		}
 		return
 	}
 	metadata := decodeSessionMetadata(latest.Metadata)
-	metadata.DiscoveredTools = sortedUnique(append(metadata.DiscoveredTools, names...))
+	metadata.ToolCache = toolrun.MergeCachedTools(metadata.ToolCache, cached)
+	metadata.DiscoveredTools = sortedUnique(append(metadata.DiscoveredTools, cachedToolNames(cached)...))
 	encoded := encodeSessionMetadata(metadata)
 	if encoded == latest.Metadata {
 		session.Metadata = latest.Metadata
@@ -101,8 +126,18 @@ func (a *Agent) persistDiscoveredToolNames(ctx context.Context, session *storage
 	latest.Metadata = encoded
 	latest.UpdatedAt = storage.Now()
 	if err := a.store.Sessions().Update(ctx, latest); err != nil && a.logger != nil {
-		a.logger.Warn("persist discovered tools failed", "session_id", session.ID, "error", err)
+		a.logger.Warn("persist cached tools failed", "session_id", session.ID, "error", err)
 		return
 	}
 	session.Metadata = encoded
+}
+
+func cachedToolNames(items []toolrun.CachedTool) []string {
+	names := make([]string, 0, len(items))
+	for _, item := range items {
+		if item.Name != "" {
+			names = append(names, item.Name)
+		}
+	}
+	return names
 }

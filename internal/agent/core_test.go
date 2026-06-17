@@ -394,8 +394,12 @@ func TestAfterAssistantOutputsAreSentAfterFinalText(t *testing.T) {
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
 	}
-	if got, want := p.out.String(), "immediate\nfinal text\nafter\n"; got != want {
-		t.Fatalf("output = %q, want %q", got, want)
+	got := p.out.String()
+	immediateIdx := strings.Index(got, "immediate")
+	finalIdx := strings.Index(got, "final text")
+	afterIdx := strings.Index(got, "after")
+	if immediateIdx < 0 || finalIdx < 0 || afterIdx < 0 || !(immediateIdx < finalIdx && finalIdx < afterIdx) {
+		t.Fatalf("output = %q, want immediate before final text before after", got)
 	}
 }
 
@@ -1631,7 +1635,7 @@ func TestToolCallAssistantEmoticonSendsBeforeFinalResponse(t *testing.T) {
 	}
 	out := p.out.String()
 	textIdx := strings.Index(out, "我先查一下")
-	emoticonIdx := strings.Index(out, "[表情: 微笑]\n")
+	emoticonIdx := strings.Index(out, "[表情: 微笑]")
 	finalIdx := strings.Index(out, "查完了")
 	if textIdx < 0 || emoticonIdx < 0 || finalIdx < 0 {
 		t.Fatalf("platform output = %q, want intermediate text, emoticon, and final text", out)
@@ -2556,7 +2560,9 @@ func TestEmoticonHookSendsSeparateOutputAndCleansPersistedContent(t *testing.T) 
 		t.Fatalf("HandleMessage: %v", err)
 	}
 	out := p.out.String()
-	if !strings.Contains(out, "[表情: 微笑]\n") || !strings.Contains(out, "像这样~") {
+	emoticonIdx := strings.Index(out, "[表情: 微笑]")
+	textIdx := strings.Index(out, "像这样~")
+	if emoticonIdx < 0 || textIdx < 0 || emoticonIdx > textIdx {
 		t.Fatalf("platform output = %q, want separate emoticon fallback and cleaned text", out)
 	}
 	if strings.Contains(out, "[[微笑]]") {

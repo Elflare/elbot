@@ -53,7 +53,9 @@
 
 - `internal/agent/cron_tools.go`：cron 工具确认特例；后台 cron shell 非 critical 自动确认，critical 直接回 tool message 提醒用相对路径/低风险命令且不等待用户。
 - `internal/agent/prompt.go`：Soul Prompt Builder；按文件状态缓存并加载 `SOUL.md`，合并常驻记忆、工具名称提示和压缩摘要，避免生成多条 system prompt。
-- `internal/agent/tools.go`：Agent 工具运行态与命令依赖适配；集中维护工具 provider、tool Registry、skill scanner 和工具配置，并把 schema provider 接入 Prompt Builder。
+- `internal/agent/tools.go`：Agent 工具运行态与命令依赖适配；集中维护 ToolRun manager、tool Registry、skill scanner 和工具配置，并把默认工具视图接入 Prompt Builder。
+- `internal/agent/toolrun_adapter.go`：Agent 到 ToolRun 的能力适配；提供 Hook、Request、确认、输出、审计、工具记录和 session 缓存桥接。
+- `internal/agent/toolrun_prompt_provider.go`：ToolRun 到 Prompt Builder 的工具名称/schema provider 适配。
 
 - `internal/agent/tool_cache.go`：Session 级已发现工具 schema 缓存；discover 或有效 `@tool:` 预载到的工具按 Session 保存，工具名持久化到 Session metadata，后续 work 请求用稳定顺序注入 top-level tools。
 - `internal/agent/tool_directive.go`：聊天内联 `@tool:<name-or-tag>` 预处理；仅普通可访问工具/用户侧 tag 生效，剥离有效指令并持久化注入，不存在/不可用值保留为普通文本并提示。
@@ -154,7 +156,8 @@
 - `internal/tool/sandbox.go`：工具执行轻量 sandbox context；传递统一 sandbox root、当前工作目录、artifact 目录和 cron 后台状态，只随本次 context 传播，不写入 Session。
 - `internal/tool/builder.go`：Go Tool Builder；用于声明工具描述、风险、隐藏、superadmin-only、用户侧 tags、依赖和常用参数 schema，Object 参数默认允许任意 JSON 字段，减少内置工具与包装工具手写 schema 的成本。
 - `internal/tool/discover.go`：`discover_tool` 内置工具；无参列出可见工具/skill 简介，有 `name`/`names` 时普通工具仅返回“已发现工具”文本并把完整 schema 留在结构化 Data 供 Agent 注入 top-level tools，外置 skill 返回 markdown/ELyph detail；查询 py/go skill 会通过内部 metadata 激活隐藏包装工具 `python_skill_run`/`go_skill_run`。
-- `internal/tool/provider.go`：Tool Runtime 到 Agent Prompt/LLM schema 的 provider 适配；work 模式注入 `discover_tool` 和当前 Actor 可用且未隐藏的工具名称，chat 模式不注入。
+- `internal/tool/provider.go`：Tool Runtime 到 Agent Prompt/LLM schema 的旧 provider 适配；保留给显式外部 provider 兼容，默认工具视图由 `internal/toolrun` 提供。
+- `internal/toolrun/`：工具调用中间层；维护 session 工具缓存、native/ELwisp 工具视图、命名解析、权限风险确认、tool call 生命周期编排和失效提示。
 - `internal/tool/executor.go`：工具执行器；把模型产生的 `llm.ToolCallRequest` 转换为 Tool Runtime 调用，执行前按 Actor/Policy 做风险等级兜底校验，并把结果转换为 LLM tool message。
 
 - `internal/tool/builtin/runtime.go`：内置工具 Runtime；集中创建 Tool Registry、常驻记忆 store、Skill Manager、Artifact Manager 和内置工具私有路径；`memories.toml`、`long_memory/`、`skills/` 默认在配置目录下。

@@ -838,10 +838,10 @@
 - [ ] 实现 Elnis worker 队列，维护 queued/running/completed/failed 状态。
 - [ ] 扩展 ELvena 请求，支持 ELwisp 随事件声明 `tools`。
 - [ ] 持久化 ELwisp 工具声明和声明 hash，便于重放、审计和重复事件排查。
-- [ ] 抽象 ToolRun 中间层，聚合 ElBot 内置工具与 ELwisp 工具声明并完成路由。
-- [ ] 将工具命名空间、Schema 注入、冲突处理和可见性过滤从 LLM Prompt 组装中拆出来。
-- [ ] 明确 ToolRun、Tool Runtime 和 Prompt Builder 的职责边界，避免把来源身份和执行路由写进 Prompt。
-- [ ] 校验 ELwisp 工具 schema、风险声明、超时和调用端点，拒绝不可信或越权工具。
+- [x] 抽象 ToolRun 中间层地基，聚合 ElBot native 工具与 ELwisp 工具声明缓存，并统一 tool call 生命周期编排。
+- [x] 将工具命名空间、Schema 注入、缓存恢复和可见性过滤从 LLM Prompt 组装中拆出到 ToolRun 视图。
+- [x] 明确 ToolRun、Tool Runtime 和 Prompt Builder 的职责边界，避免把来源身份和执行路由写进 Prompt。
+- [ ] 校验 ELwisp 工具 schema、超时和调用端点，拒绝不可信或越权工具；ELwisp 工具风险由 ELwisp 自身负责，Elnis 侧默认 low。
 - [ ] 复用工具预加载、Tool Runtime、Security Policy 和后台 sandbox，但由 ToolRun 统一入口管理。
 - [ ] 按 LLM result 的 `need_report` 和 Elnis 目标裁决发送报告。
 

@@ -5,11 +5,13 @@ import (
 	"sort"
 
 	"elbot/internal/llm"
+	"elbot/internal/toolrun"
 )
 
 type sessionMetadata struct {
-	DiscoveredTools []string   `json:"discovered_tools,omitempty"`
-	LastUsage       *llm.Usage `json:"last_usage,omitempty"`
+	DiscoveredTools []string             `json:"discovered_tools,omitempty"`
+	ToolCache       []toolrun.CachedTool `json:"tool_cache,omitempty"`
+	LastUsage       *llm.Usage           `json:"last_usage,omitempty"`
 }
 
 func decodeSessionMetadata(raw string) sessionMetadata {
@@ -19,11 +21,13 @@ func decodeSessionMetadata(raw string) sessionMetadata {
 	var metadata sessionMetadata
 	_ = json.Unmarshal([]byte(raw), &metadata)
 	metadata.DiscoveredTools = sortedUnique(metadata.DiscoveredTools)
+	metadata.ToolCache = toolCacheItemsNormalized(metadata.ToolCache)
 	return metadata
 }
 
 func encodeSessionMetadata(metadata sessionMetadata) string {
 	metadata.DiscoveredTools = sortedUnique(metadata.DiscoveredTools)
+	metadata.ToolCache = toolCacheItemsNormalized(metadata.ToolCache)
 	if metadata.LastUsage != nil && metadata.LastUsage.TotalTokens <= 0 && metadata.LastUsage.CacheHitTokens <= 0 && metadata.LastUsage.PromptTokens <= 0 && metadata.LastUsage.CompletionTokens <= 0 {
 		metadata.LastUsage = nil
 	}
@@ -46,4 +50,8 @@ func sortedUnique(values []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func toolCacheItemsNormalized(items []toolrun.CachedTool) []toolrun.CachedTool {
+	return toolrun.NormalizeCachedTools(items)
 }

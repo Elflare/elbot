@@ -8,6 +8,7 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
+	"elbot/internal/toolrun"
 )
 
 type toolDirectiveResult struct {
@@ -102,7 +103,7 @@ func (a *Agent) preloadToolNames(ctx context.Context, session *storage.Session, 
 }
 
 func (a *Agent) rememberPreloadedDiscovery(ctx context.Context, session *storage.Session, discovery *tool.DiscoveryResult, seen map[string]bool) []string {
-	a.rememberDiscoveredTools(ctx, session, discovery)
+	a.rememberCachedTools(ctx, session, toolrun.NativeCachedToolsFromDiscovery(discovery))
 	injected := []string{}
 	for _, discovered := range discovery.Tools {
 		if discovered.Schema == nil || discovered.Info.Name == "" || seen[discovered.Info.Name] {
