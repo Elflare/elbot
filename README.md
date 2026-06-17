@@ -11,7 +11,7 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 
 ### 0. Lightweight and Efficient Go Implementation
 
-ElBot's current local startup time is approximately 2ms (N5105, SATA SSD), with resident memory of about 30MB.
+ElBot currently takes <10ms for local startup (N5105, SATA SSD), with resident memory of about 30MB.
 
 ### 1. Token-Efficient Tool Discovery Mechanism
 
@@ -89,10 +89,10 @@ go run ./cmd/elbot --config config/app.toml
 Common startup methods:
 
 ```bash
-elbot              # 自动模式：Linux 检测到 service 时进入本地 CLI-only，否则完整前台启动
-elbot run          # 完整前台：CLI + 已启用平台 + Cron
-elbot cli          # 本地 CLI-only：只启动 CLI，不启动平台和 Cron
-elbot service run  # Linux/headless 服务模式：不启动 CLI，启动已启用平台和 Cron
+elbot              # Automatic mode: enters local CLI-only when Linux detects a service, otherwise starts in full foreground
+elbot run          # Full foreground: CLI + enabled platforms + Cron
+elbot cli          # Local CLI-only: only starts CLI, does not start platforms and Cron
+elbot service run  # Linux/headless service mode: does not start CLI, starts enabled platforms and Cron
 ```
 
 Shell completion can be generated via `elbot completion <shell>`, supporting `bash`, `zsh`, `fish`, `nushell`, `powershell`, and `auto`.
