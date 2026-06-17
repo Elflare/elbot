@@ -6,9 +6,9 @@
       "updated_at": 1781709186
     },
     "docs/README.md": {
-      "source_hash": "ece79e589e6219920d295c5ead264549fe40fe58ac5824ffef69da1b840702cf",
+      "source_hash": "b40f5d1519dbd52e73aeee1fad99f614728052e3ae821add12de6ea4f9d69a7c",
       "target": "docs.en/README.md",
-      "updated_at": 1781514457
+      "updated_at": 1781709222
     },
     "docs/commands.md": {
       "source_hash": "e793e4e8d4077b6549d37764bb329230fbab0a179eb0666b1d857984144ab461",
@@ -896,6 +896,14 @@
       "translation": "__ELBOT_CODE_0__ only retains the project introduction, quick entry points, and the minimum startup path.",
       "updated_at": 1781513067
     },
+    "docs/README.md:list:c5b48b30108c9b1ff727cb06136bdc6abdf81c236153b4ac1fffb965c336f4e9": {
+      "kind": "list",
+      "source": "[Elnis 配置与使用](elnis-usage.md)：启用 Elnis、配置 Elwisp，并用 Elvena 投递事件。",
+      "source_file": "docs/README.md",
+      "source_hash": "c5b48b30108c9b1ff727cb06136bdc6abdf81c236153b4ac1fffb965c336f4e9",
+      "translation": "[Elnis Configuration and Usage](elnis-usage.md): Enable Elnis, configure Elwisp, and deliver events using Elvena.",
+      "updated_at": 1781709222
+    },
     "docs/README.md:list:deca1c32aca61b193dde733ab68c892046776bff5b6e5b72f3b270fb39e8e7f1": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 放开发计划、任务拆分、架构草案和接口草案。",
@@ -903,6 +911,14 @@
       "source_hash": "deca1c32aca61b193dde733ab68c892046776bff5b6e5b72f3b270fb39e8e7f1",
       "translation": "__ELBOT_CODE_0__ contains development plans, task breakdowns, architecture drafts, and interface drafts.",
       "updated_at": 1781513067
+    },
+    "docs/README.md:list:ebd53d55610920fa20e00927343cd31ec185b469e23dc58c066954943fab97d0": {
+      "kind": "list",
+      "source": "[Elnis 监听枢纽](elnis.md)：了解 Elnis、Elwisp、Elvena 和外部事件接入。",
+      "source_file": "docs/README.md",
+      "source_hash": "ebd53d55610920fa20e00927343cd31ec185b469e23dc58c066954943fab97d0",
+      "translation": "[Elnis Listening Hub](elnis.md): Learn about Elnis, Elwisp, Elvena, and external event access.",
+      "updated_at": 1781709222
     },
     "docs/README.md:list:eefedc6adaeda98a1b7a2dd9cb099adfee795e53d6cf7dfae14c9d9582157b8b": {
       "kind": "list",
