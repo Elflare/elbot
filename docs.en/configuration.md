@@ -203,6 +203,44 @@ cli = ["local"]
 - Superadmins also need confirmation when calling high-risk tools.
 - The default local CLI user `local` is a superadmin.
 
+## Elnis Middle Platform Listener
+
+Elnis is disabled by default. Once enabled, ElBot will start a local HTTP ingress to receive events delivered by Elwisp according to the Elvena protocol.
+
+```toml
+[elnis]
+enabled = true
+
+[elnis.http]
+addr = "127.0.0.1:32170"
+max_body_bytes = 1048576
+queue_size = 128
+workers = 2
+
+[elnis.tokens.home]
+token_env = ["ELNIS_HOME_TOKEN", "ELNIS_HOME_TOKEN_ALT"]
+
+[elnis.delivery]
+default_platforms = ["cli"]
+allow_superadmins = true
+
+[elnis.elwisps.server-watchdog]
+enabled = true
+allowed_tokens = ["home"]
+
+[elnis.elwisps.server-watchdog.delivery]
+default_platforms = ["cli"]
+allow_superadmins = true
+```
+
+Note:
+
+- `elnis.elwisps` is optional; leaving it empty indicates that no Elwisp is currently enabled.
+- The token is read from system environment variables or the configuration directory `.env`. Logs only record the token name, not the raw token.
+- `token_env` can be written as a list to try multiple environment variable names in order; this is suitable for temporarily switching tokens or achieving multi-environment compatibility.
+- The initial phase supports `record` and `direct` modes; the `llm` mode is reserved for the subsequent background runner.
+- `direct` mode only supports sending to superadmins via the platform after Elnis adjudication; it does not support arbitrary user/group targets.
+
 ## Platform Configuration
 
 CLI enabled by default:
