@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "fd22da91b37511f79d9706cedb18719550dbd05e68df6ac4f13dbd54cb4c400f",
+      "source_hash": "a4b3e4e416bddc039a95483c47649f2511592f77fbc9951cee0c437e0fb298a0",
       "target": "README.md",
-      "updated_at": 1781753711
+      "updated_at": 1781779200
     },
     "docs/README.md": {
       "source_hash": "b40f5d1519dbd52e73aeee1fad99f614728052e3ae821add12de6ea4f9d69a7c",
@@ -410,6 +410,14 @@
       "translation": "**Security policies and risk confirmation.** The tool system has built-in risk levels, role permission judgments, and high-risk confirmation workflows. Ordinary users can only discover and call low-risk tools; superadmins must also confirm each item when calling high-risk tools.\n",
       "updated_at": 1781749522
     },
+    "README.zh-CN.md:paragraph:034b3aa1227601c0ec15c5be9a773e32f9bb074f7c1bad2ee507d122e623c048": {
+      "kind": "paragraph",
+      "source": "**会话、Fork 与上下文压缩**： 内置持久化 Session 服务，支持会话恢复、归档、置顶、Fork、删除、分页查看和平台隔离。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "034b3aa1227601c0ec15c5be9a773e32f9bb074f7c1bad2ee507d122e623c048",
+      "translation": "**Session, Fork, and Context Compaction**: Built-in persistent Session service, supporting Session recovery, archiving, pinning, Forking, deletion, paginated viewing, and platform isolation.",
+      "updated_at": 1781779200
+    },
     "README.zh-CN.md:paragraph:044b1197e356e6d82c78f9e8f153cb5b1d345e90012c0ee665c2184cdbefcca9": {
       "kind": "paragraph",
       "source": "传统 Agent 通常只会等待用户输入；Cron 只能响应时间。Elnis 让 ElBot 多了一种触发方式：外部事件。\n",
@@ -521,6 +529,22 @@
       "source_hash": "1bdab4d2b580edd10d22ddf3333de9a4e4ca5b54aa46fd5740b5e65b60174e02",
       "translation": "**Layered resident memory and long-term memory.",
       "updated_at": 1781749522
+    },
+    "README.zh-CN.md:paragraph:1f060a9dccfc97e6c41d42e6fda0cd16dd0922e73bfe62bb14521c2f144ff1c6": {
+      "kind": "paragraph",
+      "source": "**安全策略与风险确认**： 工具系统内置风险等级、角色权限判断和高风险确认流程。普通用户只能发现和调用低风险工具；超级管理员调用高风险工具时也需逐项确认。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "1f060a9dccfc97e6c41d42e6fda0cd16dd0922e73bfe62bb14521c2f144ff1c6",
+      "translation": "**Security Policies and Risk Confirmation**: The tool system has built-in risk levels, role permission checks, and high-risk confirmation processes. Regular users can only discover and invoke low-risk tools; even superadmins must confirm each item when invoking high-risk tools.\n",
+      "updated_at": 1781779200
+    },
+    "README.zh-CN.md:paragraph:21da0415c7211d8579b633e9c31933484c1966c7e388698d1ec43b676e5e4017": {
+      "kind": "paragraph",
+      "source": "**可扩展的 Hook 系统**： ElBot 内置 Hook Layer，可在 Agent 输入、LLM 请求、LLM 响应、平台发送、平台连接等关键事件点插入扩展逻辑。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "21da0415c7211d8579b633e9c31933484c1966c7e388698d1ec43b676e5e4017",
+      "translation": "**Extensible Hook system**: ElBot has a built-in Hook Layer, allowing extension logic to be inserted at key event points such as Agent input, LLM request, LLM response, platform sending, and platform connection.",
+      "updated_at": 1781779200
     },
     "README.zh-CN.md:paragraph:246ec34cebfa3d58e4281c888ed0f5bd0e8b872a25b26a3073cd4e0598295569": {
       "kind": "paragraph",
@@ -650,6 +674,14 @@
       "translation": "Longer and more complex memories are not forcibly auto-injected; instead, the LLM actively discovers and queries them via the __ELBOT_CODE_0__ tool when needed.\n",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:4996a28a2e7696c0635c86d047a25968806fa182c6ab064c2cfdc0fab0d08a61": {
+      "kind": "paragraph",
+      "source": "**常驻记忆与长期记忆分层**： 常驻记忆只保存短小、稳定、真正需要每轮注入的信息，减少 token 消耗；",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "4996a28a2e7696c0635c86d047a25968806fa182c6ab064c2cfdc0fab0d08a61",
+      "translation": "**Resident memory and long-term memory layering**: Resident memory only saves short, stable information that truly needs to be injected into every round, reducing token consumption;",
+      "updated_at": 1781779200
+    },
     "README.zh-CN.md:paragraph:4a14644e23461cae85fdc34b969247d018d912dc911a9891c207c17a69de467c": {
       "kind": "paragraph",
       "source": "**会话、Fork 与上下文压缩。",
@@ -778,6 +810,14 @@
       "translation": "LLM Cron allows the model to be driven by task descriptions.\n",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:6caefb847385d0861ca2ea3d92e08658802daa5c3e39f97d9a8de4eb587cae4f": {
+      "kind": "paragraph",
+      "source": "**普通 Cron 与 LLM Cron**： ElBot 内置 Cron Runtime 和 LLM 可编排 Cron 服务。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "6caefb847385d0861ca2ea3d92e08658802daa5c3e39f97d9a8de4eb587cae4f",
+      "translation": "**Standard Cron and LLM Cron**: ElBot features a built-in Cron Runtime and an LLM-orchestratable Cron service.",
+      "updated_at": 1781779200
+    },
     "README.zh-CN.md:paragraph:6d72238647ebcb0065b9362a3420e268935c5bf82a04c492dc6a3f5eca2c1e80": {
       "kind": "paragraph",
       "source": "** ElBot 区分 chat 模式与 work 模式。",
@@ -858,6 +898,14 @@
       "translation": "Longer and more complex memories are not forcibly auto-injected; instead, the LLM actively queries them via the __ELBOT_CODE_0__ tool when needed.",
       "updated_at": 1781749522
     },
+    "README.zh-CN.md:paragraph:79ea45cf53f010cfbf696194143efe2857daf813672b9191a00e3006eb0cd7e8": {
+      "kind": "paragraph",
+      "source": "**多平台与富输出抽象**： ElBot 抽象了平台层与输出层，目前支持 CLI、QQ OneBot 和 QQ Official，并预留扩展其他平台的空间。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "79ea45cf53f010cfbf696194143efe2857daf813672b9191a00e3006eb0cd7e8",
+      "translation": "**Multi-platform and Rich Output Abstraction**: ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, and QQ Official, with room for extending to other platforms.\n",
+      "updated_at": 1781779200
+    },
     "README.zh-CN.md:paragraph:7c4b0ace7fcd5820edfa12d6bde79fa5adb682a88d641dc1e3b42a60203c654f": {
       "kind": "paragraph",
       "source": "ElBot 当前本地启动耗时约 2ms，常驻内存约 30MB。\n",
@@ -889,6 +937,14 @@
       "source_hash": "7f448437c71676019182a1592917cf3ec3d00b63036317611a3a92b7d6b4b266",
       "translation": "The two modes can be configured with models independently, allowing low-cost models to handle casual chat and powerful models to focus on complex tasks.\n",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:89ef7423f590ffac359e2972257e664320bab70aba96a4618ccce7b85d880437": {
+      "kind": "paragraph",
+      "source": "**极致轻量的 Go 实现**： ElBot 当前本地启动耗时 <10ms（N5105，sata固态），常驻内存约 30MB。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "89ef7423f590ffac359e2972257e664320bab70aba96a4618ccce7b85d880437",
+      "translation": "**Ultra-lightweight Go implementation**: ElBot's current local startup time is <10ms (N5105, SATA SSD), with resident memory of about 30MB.\n",
+      "updated_at": 1781779200
     },
     "README.zh-CN.md:paragraph:90976270a62231cee42e41f492310f401224fae18769df0411c892a7635d38a1": {
       "kind": "paragraph",
@@ -994,6 +1050,14 @@
       "translation": "ElBot abstracts the platform and output layers, supporting CLI and QQ OneBot, with space reserved for extending to other platforms.\n",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:a31cd2d091db4ab3d28dd684cbc40b62ff6d679d75682532e29553b19c566f24": {
+      "kind": "paragraph",
+      "source": "**可由 LLM 创建的 EL Skill**： ElBot 内置 __ELBOT_CODE_0__ 元工具，允许 LLM 将可复用经验沉淀为 EL Skill。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "a31cd2d091db4ab3d28dd684cbc40b62ff6d679d75682532e29553b19c566f24",
+      "translation": "**EL Skills creatable by LLM**: ElBot has a built-in __ELBOT_CODE_0__ meta-tool, allowing the LLM to crystallize reusable experience into EL Skills.",
+      "updated_at": 1781779200
+    },
     "README.zh-CN.md:paragraph:a3916d70b9cc79e8dc86d3f5757be04b53eef73d8fd7944f39daf9f56fe1f845": {
       "kind": "paragraph",
       "source": "ElBot 区分普通运行日志与审计日志，支持结构化字段记录、日志查询、审计查询、请求状态查看和运行期调试。",
@@ -1074,6 +1138,22 @@
       "translation": "Documentation maintenance strategy: The README only retains the project entry point and the minimum startup path;",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:bd5b8229918b5ece1025466f0be78687159ac8ec8a2bf810e21fcaf407aa97a8": {
+      "kind": "paragraph",
+      "source": "**完善的日志与审计**： 区分运行日志、Elwisp 日志与审计日志，支持结构化字段、日志查询、审计查询和运行期调试。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "bd5b8229918b5ece1025466f0be78687159ac8ec8a2bf810e21fcaf407aa97a8",
+      "translation": "**Comprehensive Logging and Auditing**: Distinguishes between runtime logs, Elwisp logs, and audit logs, supporting structured fields, log queries, audit queries, and runtime debugging.\n",
+      "updated_at": 1781779200
+    },
+    "README.zh-CN.md:paragraph:bddeb4da9510d672972960ebc1df3084200f3d8773d9b8a3f1281b2095fce3d3": {
+      "kind": "paragraph",
+      "source": "**Chat / Work 双模式**： ElBot 区分 chat 模式与 work 模式。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "bddeb4da9510d672972960ebc1df3084200f3d8773d9b8a3f1281b2095fce3d3",
+      "translation": "**Chat / Work dual mode**: ElBot distinguishes between chat mode and work mode.",
+      "updated_at": 1781779200
+    },
     "README.zh-CN.md:paragraph:c0b23da239318e28178f414e20a748a070bf1133d5ff3bacc55a2f04e47f3256": {
       "kind": "paragraph",
       "source": "内置规则 Hook、表情 Hook 和常驻记忆 Hook，支持后续扩展独立插件。\n",
@@ -1089,6 +1169,14 @@
       "source_hash": "c14d4e025e205cbe752e5c9b8288c5680b90f7c088572f3ece18a02d10734147",
       "translation": "Working together, these three allow any signal from the external world—such as server alerts, RSS updates, Webhooks, game events, or even external computer information—to be sent to Elnis, then processed and returned by ElBot.\n",
       "updated_at": 1781749522
+    },
+    "README.zh-CN.md:paragraph:c19a2747fd4b87817b15979b1bb273013dab9ce5040b773915ca4ee4942d1ed1": {
+      "kind": "paragraph",
+      "source": "**兼容互联网 Python Skill**： 除了原生 EL Skill，ElBot 也兼容常见的 Python 外置 skill 结构。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "c19a2747fd4b87817b15979b1bb273013dab9ce5040b773915ca4ee4942d1ed1",
+      "translation": "**Compatible with Internet Python Skills**: In addition to native EL Skills, ElBot is also compatible with common external Python skill structures.",
+      "updated_at": 1781779200
     },
     "README.zh-CN.md:paragraph:c1ad810b75707a64b3105a222bc789f975647f49706e1474861b0ef102ee1201": {
       "kind": "paragraph",
@@ -1178,6 +1266,14 @@
       "translation": "**Compatible with internet Python Skills.",
       "updated_at": 1781749522
     },
+    "README.zh-CN.md:paragraph:df29046950117f7f324af7e2058feb2877acfda208d1db41735bc93b4127f073": {
+      "kind": "paragraph",
+      "source": "**轻量沙盒隔离**： 后台 Shell 执行受到 AST 级沙盒约束。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "df29046950117f7f324af7e2058feb2877acfda208d1db41735bc93b4127f073",
+      "translation": "**Lightweight Sandbox Isolation**: Background Shell execution is subject to AST-level sandbox constraints.",
+      "updated_at": 1781779200
+    },
     "README.zh-CN.md:paragraph:e6f4153f1349157870738be3a4746bbd3c9f49dfc4ff4e8ae577e585a858eec5": {
       "kind": "paragraph",
       "source": "模型需要使用工具时，先按需发现工具详情，再由 Agent 注入对应 schema。",
@@ -1218,6 +1314,14 @@
       "translation": "ElBot does not inject the full schema of all tools by default in every round of conversation, but only exposes __ELBOT_CODE_0__ and the names of currently available tools.",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:f2ead8a344911defe004a651de9652ed19f79a5e23fdbdf642fefbc62a578fe5": {
+      "kind": "paragraph",
+      "source": "**极致节省 Token 的工具发现**： 研究表明，许多普通用户仍主要将 LLM 类产品用作更高级的搜索引擎、写作助手和倾听对象，频繁工具调用并不是所有对话的常态。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "f2ead8a344911defe004a651de9652ed19f79a5e23fdbdf642fefbc62a578fe5",
+      "translation": "**Token-efficient tool discovery**: Research shows that many ordinary users still primarily use LLM-like products as advanced search engines, writing assistants, and listening objects; frequent tool calls are not the norm for all conversations.\n",
+      "updated_at": 1781779200
+    },
     "README.zh-CN.md:paragraph:f46bac1c99a4efda93ed74ed213c06bfffd909d7973518739715c2ae4a7276cb": {
       "kind": "paragraph",
       "source": "ElBot 抽象了平台层与输出层，目前支持 CLI 、QQ OneBot 和 QQ Official，并预留扩展其他平台的空间。\n",
@@ -1233,6 +1337,14 @@
       "source_hash": "f66a9a3fb1f4bef973c7b512706158ebf2a1e4a7d8e4e59d3331eebfcc9bacd4",
       "translation": "This design reduces the invalid context overhead in the vast majority of ordinary chats.\n",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:f8e466ac367698634bd0af1045c7e3fc8de4a192358d3b74a5b2008248cc9478": {
+      "kind": "paragraph",
+      "source": "**ELyph 任务表示法**： ELyph 用于描述 LLM Cron 与原生 Skill。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "f8e466ac367698634bd0af1045c7e3fc8de4a192358d3b74a5b2008248cc9478",
+      "translation": "**ELyph Task Notation**: ELyph is used to describe LLM Cron and native skills.",
+      "updated_at": 1781779200
     },
     "README.zh-CN.md:paragraph:fa3db717aba99b1acfe0c33feacf67d4d130a349f374fdcf553f44c5edc0d657": {
       "kind": "paragraph",
