@@ -21,9 +21,9 @@ If you are already in this repository, you can proceed directly to the next step
 
 ## Configure Provider
 
-ElBot reads `config/app.toml` by default, and loads `config/providers.toml` and `config/state.toml` via `[config_files]` within it.
+ElBot reads the main configuration by default according to the configuration lookup order. When running from source directly, `config/app.toml` will be used; If the compiled binary cannot find the platform configuration or source example configuration, it will automatically generate `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `elnis.toml`, and `.env.example` in the platform configuration directory.
 
-The default example already includes DeepSeek and OpenAI Providers:
+The default configuration already includes DeepSeek and OpenAI Providers:
 
 ```toml
 [providers.deepseek]
@@ -36,7 +36,7 @@ api_key_env = "OPENAI_API_KEY"
 models = ["gpt-4o-mini"]
 ```
 
-It is recommended to place keys in system environment variables or in the `.env` file under the configuration directory, rather than writing them directly into `providers.toml`.
+It is recommended to place the keys in system environment variables, or copy the automatically generated `.env.example` to `.env` in the configuration directory before filling it in; do not write them directly into `providers.toml`.
 
 Example `.env`:
 
@@ -168,6 +168,7 @@ Default configuration lookup order:
 2. `ELBOT_CONFIG_FILE` environment variable.
 3. Platform configuration directory, such as Windows `%APPDATA%/ElBot/app.toml` or Linux XDG configuration directory.
 4. Source code directory `config/app.toml`.
+5. If neither the platform configuration nor the source example configuration exists, the platform default configuration will be automatically generated.
 
 Runtime data is stored in the platform data directory by default, such as SQLite, logs, sandbox, and artifacts. For detailed rules, see [Configuration Instructions](configuration.md).
 

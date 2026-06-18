@@ -41,9 +41,9 @@
       "updated_at": 1781786413
     },
     "docs/getting-started.md": {
-      "source_hash": "03eb8aa561aca703b7e764c8129596c4b45c9089405fb354f913006859b7cb3e",
+      "source_hash": "b2dcc8b0fdf13d77d8bb6b64ffcb51f5bbc66c3ba219ed5e25e55ba7bcf70d1b",
       "target": "docs.en/getting-started.md",
-      "updated_at": 1781710779
+      "updated_at": 1781786456
     }
   },
   "segments": {
@@ -7039,6 +7039,14 @@
       "translation": "Whether __ELBOT_CODE_1__ in __ELBOT_CODE_0__ exists in __ELBOT_CODE_2__.",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:list:b850706754b92e6cf28f2fb82f9cac672089a61d4b932834cfb65d6f56b37414": {
+      "kind": "list",
+      "source": "如果平台配置和源码示例配置都不存在，则自动生成平台默认配置。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "b850706754b92e6cf28f2fb82f9cac672089a61d4b932834cfb65d6f56b37414",
+      "translation": "If neither the platform configuration nor the source example configuration exists, the platform default configuration will be automatically generated.",
+      "updated_at": 1781786456
+    },
     "docs/getting-started.md:list:cf8e65e5c3131db0a92f17cc70c72fde24253e12242164ff3955f59aaa8c3f0c": {
       "kind": "list",
       "source": "可以启动后用 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 刷新模型列表。",
@@ -7127,6 +7135,14 @@
       "translation": "It is recommended to place keys in system environment variables or in the __ELBOT_CODE_0__ file under the configuration directory, rather than writing them directly into __ELBOT_CODE_1__.\n",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:paragraph:3b938d48e4d0455f65d1bee6d1dde01d1cebb8f322f193eecbc0127951cbe9fb": {
+      "kind": "paragraph",
+      "source": "编译后的二进制如果找不到平台配置和源码示例配置，会在平台配置目录自动生成 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__ 和 __ELBOT_CODE_5__。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "3b938d48e4d0455f65d1bee6d1dde01d1cebb8f322f193eecbc0127951cbe9fb",
+      "translation": "If the compiled binary cannot find the platform configuration or source example configuration, it will automatically generate __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, and __ELBOT_CODE_5__ in the platform configuration directory.\n",
+      "updated_at": 1781786456
+    },
     "docs/getting-started.md:paragraph:3e97c8a4c9446e8764d1ca5d0c848311f5ab7e560adbbb4cad042f9ff066e804": {
       "kind": "paragraph",
       "source": "需要继续历史会话时，可用 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__。\n",
@@ -7158,6 +7174,14 @@
       "source_hash": "4b95664aa48d143632330cf84d78b59ad4c131df148633d0a3a5e384a3840a0f",
       "translation": "In automatic mode, if Linux detects that the current user already has __ELBOT_CODE_0__ running, it will enter local CLI-only mode to avoid duplicate platform connections or duplicate Cron executions;",
       "updated_at": 1781575108
+    },
+    "docs/getting-started.md:paragraph:505a7062154b873accdbf8004e08acd6b3df87e1a5f849898258ece38123fde7": {
+      "kind": "paragraph",
+      "source": "直接运行源码时会使用 __ELBOT_CODE_0__；",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "505a7062154b873accdbf8004e08acd6b3df87e1a5f849898258ece38123fde7",
+      "translation": "When running from source directly, __ELBOT_CODE_0__ will be used;",
+      "updated_at": 1781786456
     },
     "docs/getting-started.md:paragraph:5e17c2b7fa9b36c07ee9a36ed44ee4f76bf8f18e249fb7adc302b070d69deda7": {
       "kind": "paragraph",
@@ -7239,6 +7263,14 @@
       "translation": "__ELBOT_CODE_0__ is an independent local process that uses the same set of configurations and SQLite data, but it will not take over current requests, confirmation states, or the current Session in memory from the service process.",
       "updated_at": 1781575108
     },
+    "docs/getting-started.md:paragraph:9c79075c1d42ffa41b8f0a6ac4efe5e40520193862e33bbf95520baa73dd4b14": {
+      "kind": "paragraph",
+      "source": "默认配置已经包含 DeepSeek 和 OpenAI Provider：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "9c79075c1d42ffa41b8f0a6ac4efe5e40520193862e33bbf95520baa73dd4b14",
+      "translation": "The default configuration already includes DeepSeek and OpenAI Providers:\n",
+      "updated_at": 1781786456
+    },
     "docs/getting-started.md:paragraph:a1357110505dfc6d287ed82eaac5edfdf671117418ac7a389cf161e7f3977de8": {
       "kind": "paragraph",
       "source": "示例：fish\n",
@@ -7254,6 +7286,14 @@
       "source_hash": "a611d499cca4918706780e022d66f0e1543051cc10c1a4b98af5341d36626dc7",
       "translation": "On Windows:\n",
       "updated_at": 1781534482
+    },
+    "docs/getting-started.md:paragraph:aaa55b4b19d9e20affdff31c06781a5f9d0cad453afbc7950bc1c9127dfb9bc6": {
+      "kind": "paragraph",
+      "source": "推荐把密钥放在系统环境变量，或把自动生成的 __ELBOT_CODE_0__ 复制为配置目录下的 __ELBOT_CODE_1__ 后填写，不要直接写进 __ELBOT_CODE_2__。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "aaa55b4b19d9e20affdff31c06781a5f9d0cad453afbc7950bc1c9127dfb9bc6",
+      "translation": "It is recommended to place the keys in system environment variables, or copy the automatically generated __ELBOT_CODE_0__ to __ELBOT_CODE_1__ in the configuration directory before filling it in; do not write them directly into __ELBOT_CODE_2__.\n",
+      "updated_at": 1781786456
     },
     "docs/getting-started.md:paragraph:b43f86dd2955d50c5f39b7cda8a09189740b1bedf8b93c3310e37c3b792eb211": {
       "kind": "paragraph",
@@ -7302,6 +7342,14 @@
       "source_hash": "e55c71d36598475911251b8545437070b1d7782a93c573053181d0ff71177a2a",
       "translation": "Common getting started commands:\n",
       "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:f1ff6debe01f55961aed661e0b289339794a13da0ec5c2cff27e70d3c331b48d": {
+      "kind": "paragraph",
+      "source": "ElBot 默认按配置查找顺序读取主配置。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "f1ff6debe01f55961aed661e0b289339794a13da0ec5c2cff27e70d3c331b48d",
+      "translation": "ElBot reads the main configuration by default according to the configuration lookup order.",
+      "updated_at": 1781786456
     },
     "docs/getting-started.md:paragraph:f3f9d35759ef03c1c5349e0c85f3b9e88684f3f7f00d9f25cb2092778a9e28c1": {
       "kind": "paragraph",
