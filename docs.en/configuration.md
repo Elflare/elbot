@@ -105,9 +105,38 @@ OPENAI_API_KEY=your-api-key
 
 Do not commit actual keys to the repository.
 
+## Go Skill Compiler Path
+
+After modifying the `code_source` of the Go Skill, ElBot will automatically execute `gofmt`, `go build`, and reload. If ElBot is running as a Linux service, the service environment may not have loaded the `PATH` of the interactive shell, causing the `go` available in the terminal to be invisible to ElBot.
+
+It is recommended to specify the Go executable in the configuration directory `.env`:
+
+```dotenv
+ELBOT_GO_BINARY=/usr/local/go/bin/go
+```
+
+Lookup order:
+
+1. System environment variable `ELBOT_GO_BINARY`.
+2. `ELBOT_GO_BINARY` in the configuration directory `.env`.
+3. `GOROOT/bin/go`, if `GOROOT` is configured in the service environment.
+4. `go` in the ElBot process `PATH`.
+
+If using asdf, mise, Nix, Linuxbrew, Snap, or a custom installation path, it is recommended to write the actual `go` path directly into `ELBOT_GO_BINARY`, rather than relying on the initialization scripts of an interactive shell.
+
+After modifying `.env` or the systemd environment, the ElBot service needs to be restarted.
+
+For advanced deployments, this can also be specified in the systemd service:
+
+```ini
+[Service]
+Environment=ELBOT_GO_BINARY=/usr/local/go/bin/go
+```
+
 ## Model Status Configuration
 
 `state.toml` saves the runtime model selection:
+
 
 ```toml
 [session]
