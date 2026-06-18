@@ -11,9 +11,9 @@
       "updated_at": 1781710343
     },
     "docs/commands.md": {
-      "source_hash": "e793e4e8d4077b6549d37764bb329230fbab0a179eb0666b1d857984144ab461",
+      "source_hash": "5570b18e312883d039fc09d8c24f28f5b60112ab9b4956b57ce83fbfd4b6eec6",
       "target": "docs.en/commands.md",
-      "updated_at": 1781710344
+      "updated_at": 1781752948
     },
     "docs/concepts.md": {
       "source_hash": "4d9436b79e92c5a42cd17afbcc88fd263d153f017164c01075d18c85f828f068",
@@ -1554,6 +1554,14 @@
       "translation": "Model parameters can be a list number, model name, or __ELBOT_CODE_0__.\n",
       "updated_at": 1781514917
     },
+    "docs/commands.md:paragraph:9cfc23ef97546ba454e69b31ea4aa508069e0043bb886c750dfb05372b197d92": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 查询 __ELBOT_CODE_1__，额外支持：\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "9cfc23ef97546ba454e69b31ea4aa508069e0043bb886c750dfb05372b197d92",
+      "translation": "__ELBOT_CODE_0__ queries __ELBOT_CODE_1__, with additional support for:\n",
+      "updated_at": 1781752948
+    },
     "docs/commands.md:paragraph:b14afe6a70f51142e0bae242dcc2ce09ddf662a9e7ffc2fc3edc636f27af2569": {
       "kind": "paragraph",
       "source": "当工具调用触发高风险确认时，Agent 会提示可用确认命令，例如：\n",
@@ -1601,6 +1609,14 @@
       "source_hash": "03af39065d441408d43be4c157c84c77736fa517eedfac00caa9a31d9f4fa872",
       "translation": "Query audit logs.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:0471409581d7be81dd90d022be7bfb6949ad4652768d4d3ac31d15474571bc0b": {
+      "kind": "table",
+      "source": "按外部事件 ID 过滤。",
+      "source_file": "docs/commands.md",
+      "source_hash": "0471409581d7be81dd90d022be7bfb6949ad4652768d4d3ac31d15474571bc0b",
+      "translation": "Filter by external event ID.",
+      "updated_at": 1781752948
     },
     "docs/commands.md:table:06e7e45ba949e7988c0f1952bbfdcb8f6eb88d9a4698d12ddf2f31dc99662815": {
       "kind": "table",
@@ -1674,6 +1690,14 @@
       "translation": "Switch the Session auto-naming model.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:2c095d2b79ab255430bee5337067f6cfb12acf47bbdb09e38792aee29cf74421": {
+      "kind": "table",
+      "source": "查询 Elnis/Elwisp 事件日志。",
+      "source_file": "docs/commands.md",
+      "source_hash": "2c095d2b79ab255430bee5337067f6cfb12acf47bbdb09e38792aee29cf74421",
+      "translation": "Query Elnis/Elwisp event logs.",
+      "updated_at": 1781752948
+    },
     "docs/commands.md:table:2df6a3479a526ae79904a23bada7e97fc626bd345951c046e415f026b92dab02": {
       "kind": "table",
       "source": "确认当前工具。",
@@ -1681,6 +1705,22 @@
       "source_hash": "2df6a3479a526ae79904a23bada7e97fc626bd345951c046e415f026b92dab02",
       "translation": "Confirm the current tool.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:315d4f29d42ddb97732491d1df02b84065560501b4251beb55b9bc330423aa56": {
+      "kind": "table",
+      "source": "按 Elnis event key 过滤。",
+      "source_file": "docs/commands.md",
+      "source_hash": "315d4f29d42ddb97732491d1df02b84065560501b4251beb55b9bc330423aa56",
+      "translation": "Filter by Elnis event key.",
+      "updated_at": 1781752948
+    },
+    "docs/commands.md:table:3638a4c91c9acad148e26b0e79bd50766ca7688e1d59e23c29e03b2276ba38be": {
+      "kind": "table",
+      "source": "按事件来源过滤。",
+      "source_file": "docs/commands.md",
+      "source_hash": "3638a4c91c9acad148e26b0e79bd50766ca7688e1d59e23c29e03b2276ba38be",
+      "translation": "Filter by event source.",
+      "updated_at": 1781752948
     },
     "docs/commands.md:table:366c25fdadebbf52d9a66986535cebdbd54027047b6f83fcd06538f1f3a141b6": {
       "kind": "table",
@@ -1714,6 +1754,14 @@
       "translation": "Filter by Session ID.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:3f3d8ce0088716f032043c947b9b4799a81341326a882ce04ca8ea14ee85a0d9": {
+      "kind": "table",
+      "source": "按 Elwisp 名称过滤。",
+      "source_file": "docs/commands.md",
+      "source_hash": "3f3d8ce0088716f032043c947b9b4799a81341326a882ce04ca8ea14ee85a0d9",
+      "translation": "Filter by Elwisp name.",
+      "updated_at": 1781752948
+    },
     "docs/commands.md:table:3f9fecb21d39652b4ef8a125296143351fc35b334e14fd66b86fed212842af8b": {
       "kind": "table",
       "source": "列出或搜索可见 Session。",
@@ -1745,6 +1793,14 @@
       "source_hash": "4bd446dad6f63c8747e4059afda66d8a4c0244850b7df2a76d203661bdbbfd45",
       "translation": "Number of entries to return, default is 5.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:4f5d8f215ee70aac504ec360d2a91a33c83c6a22dbbb8bf01086927acad28926": {
+      "kind": "table",
+      "source": "按内部 Elnis event ID 过滤。",
+      "source_file": "docs/commands.md",
+      "source_hash": "4f5d8f215ee70aac504ec360d2a91a33c83c6a22dbbb8bf01086927acad28926",
+      "translation": "Filter by internal Elnis event ID.",
+      "updated_at": 1781752948
     },
     "docs/commands.md:table:56375112941485fecc695a61d05b78314279a7909c81077498d2177a2947318c": {
       "kind": "table",
@@ -1818,6 +1874,14 @@
       "translation": "View the list of available commands.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:82e0f62db1cb3e8d92ec3f80bfea13ec3c0d59793cab60b55a20a94d98740684": {
+      "kind": "table",
+      "source": "按 Elwisp 名称过滤，等同于 __ELBOT_CODE_0__。",
+      "source_file": "docs/commands.md",
+      "source_hash": "82e0f62db1cb3e8d92ec3f80bfea13ec3c0d59793cab60b55a20a94d98740684",
+      "translation": "Filter by Elwisp name, equivalent to __ELBOT_CODE_0__.",
+      "updated_at": 1781752948
+    },
     "docs/commands.md:table:853bc4da4cdf1e293de2636d0005b22ab2c12ec9b33dfaaf47f7791e462da938": {
       "kind": "table",
       "source": "按风险等级过滤。",
@@ -1833,6 +1897,14 @@
       "source_hash": "87a813e678b72821f2359565ff6088aafe2e7812e32767a9cb113453dc836873",
       "translation": "Reject the current pending tool call.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:89ecb328e1b26ec437f984697b66da85607a590050992eb503f702272a848295": {
+      "kind": "table",
+      "source": "按事件模式过滤。",
+      "source_file": "docs/commands.md",
+      "source_hash": "89ecb328e1b26ec437f984697b66da85607a590050992eb503f702272a848295",
+      "translation": "Filter by event mode.",
+      "updated_at": 1781752948
     },
     "docs/commands.md:table:928f87d4507bf9a0085474e308949fb1f089a3baa288fddbdc1087927fbcdfba": {
       "kind": "table",
@@ -2041,6 +2113,14 @@
       "source_hash": "f68452c447fd532444e28a4bdf3b590ebe3adc00ef11558ab941271dc21a7885",
       "translation": "Permanently delete the Session.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:f6eb857febf40519774a0de0c9594d357bd87a91cbad5d845ec9963109f7145b": {
+      "kind": "table",
+      "source": "按 token name 过滤，不包含 token 原文。",
+      "source_file": "docs/commands.md",
+      "source_hash": "f6eb857febf40519774a0de0c9594d357bd87a91cbad5d845ec9963109f7145b",
+      "translation": "Filter by token name, excluding the original token text.",
+      "updated_at": 1781752948
     },
     "docs/commands.md:table:f74053733f24d09d61fda4fb031ee0d3f09e999b8efdc580f3802250cd5c9422": {
       "kind": "table",
