@@ -50,6 +50,7 @@ type Agent struct {
 	commands                    *command.Router
 	completion                  *completion.Service
 	titleGen                    *titleGenerator
+	soul                        SoulProvider
 	promptBuilder               PromptBuilder
 	toolRuntime                 toolRuntimeState
 	securityPolicy              *security.Policy
@@ -131,7 +132,7 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 		requests:               request.NewManager(defaultRequestTimeout),
 		turns:                  turn.NewManager(),
 		commands:               command.NewRouter(prefixes),
-		promptBuilder:          PromptBuilder{Soul: promptSoul, Tools: noopToolSchemaProvider{}},
+		soul:                   promptSoul,
 		securityPolicy:         security.DefaultPolicy(),
 		contextLoader:          contextmgr.Loader{Store: store},
 		contextConfig:          config.Default().Context,
@@ -156,6 +157,7 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 		actorID:                     "cli:local",
 		scopeID:                     "local",
 	}
+	a.rebuildSystemPrompt()
 	if p != nil {
 		a.platformSenders[p.Name()] = p
 	}
@@ -184,9 +186,11 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 		completion.RiskConfirmationSource{Router: a.commands, Sessions: a.sessions, Turns: a.turns, Scope: a.scope, CommandNames: riskConfirmationCommandNames()},
 		completion.ForkMessageSource{Router: a.commands, Sessions: a.sessions, Store: a.store, Scope: a.scope},
 		completion.ToolDirectiveSource{
-			Registry: func() *tool.Registry { return a.toolRuntime.registry },
-			Actor:    a.actor,
-			Policy:   func() *security.Policy { return a.securityPolicy },
+			Registry:       func() *tool.Registry { return a.toolRuntime.registry },
+			Actor:          a.actor,
+			Policy:         func() *security.Policy { return a.securityPolicy },
+			Tags:           a.completionToolTags,
+			ToolNamesByTag: a.completionToolNamesByTag,
 		},
 		completion.RouterSource{Router: a.commands},
 	)

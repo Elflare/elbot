@@ -1420,6 +1420,100 @@ func TestToolDirectiveInjectsTaggedTools(t *testing.T) {
 	}
 }
 
+func TestToolDirectiveInjectsConfiguredTagPrompt(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"done"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(agentWrapperTool{name: "alpha"})
+	a.SetToolRuntime(registry, nil)
+	a.SetToolTagConfig("", config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
+		"worker": {Tools: []string{"alpha"}, Prompt: "Use alpha carefully."},
+	}})
+
+	if err := a.HandleMessage(context.Background(), "处理 @tool:worker"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	if toolNames(requests[0].Tools) != "discover_tool,alpha" {
+		t.Fatalf("tools = %s", toolNames(requests[0].Tools))
+	}
+	system := llm.SegmentsContentText(requests[0].Messages[0].Segments)
+	if !strings.Contains(system, "Use alpha carefully.") {
+		t.Fatalf("missing tag prompt: %q", system)
+	}
+	if strings.Contains(system, "worker") {
+		t.Fatalf("tag name leaked into system prompt: %q", system)
+	}
+	sessions, err := store.Sessions().List(context.Background(), storage.ListSessionsRequest{ActorID: "cli:local", Platform: p.Name(), PlatformScopeID: "local"})
+	if err != nil || len(sessions) == 0 {
+		t.Fatalf("list sessions: %#v err=%v", sessions, err)
+	}
+	sessionRecord, err := store.Sessions().Get(context.Background(), sessions[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := decodeSessionMetadata(sessionRecord.Metadata)
+	if len(metadata.ToolTags) != 1 || metadata.ToolTags[0] != "worker" {
+		t.Fatalf("tool tags metadata = %#v", metadata.ToolTags)
+	}
+}
+
+func TestToolDirectiveDirectToolDoesNotActivateConfiguredTagPrompt(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"done"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(agentWrapperTool{name: "alpha"})
+	a.SetToolRuntime(registry, nil)
+	a.SetToolTagConfig("", config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
+		"worker": {Tools: []string{"alpha"}, Prompt: "Use alpha carefully."},
+	}})
+
+	if err := a.HandleMessage(context.Background(), "处理 @tool:alpha"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	system := llm.SegmentsContentText(requests[0].Messages[0].Segments)
+	if strings.Contains(system, "Use alpha carefully.") {
+		t.Fatalf("direct tool should not activate tag prompt: %q", system)
+	}
+}
+
+func TestToolDirectiveReportsExistingTools(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"done"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(agentWrapperTool{name: "alpha"})
+	a.SetToolRuntime(registry, nil)
+
+	if err := a.HandleMessage(context.Background(), "先处理 @tool:alpha"); err != nil {
+		t.Fatalf("HandleMessage first: %v", err)
+	}
+	if err := a.HandleMessage(context.Background(), "继续 @tool:alpha"); err != nil {
+		t.Fatalf("HandleMessage second: %v", err)
+	}
+	if !strings.Contains(p.out.String(), "已存在工具：alpha") {
+		t.Fatalf("missing existing notice: %q", p.out.String())
+	}
+}
+
 func TestToolDirectiveInvalidStaysAsText(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
@@ -2393,7 +2487,8 @@ func TestSoulPromptAndToolsByMode(t *testing.T) {
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"work reply", "chat reply"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	a.promptBuilder.Soul = staticSoulProvider{Prompt: "SOUL ONLY"}
+	a.soul = staticSoulProvider{Prompt: "SOUL ONLY"}
+	a.rebuildSystemPrompt()
 	tools := &recordingToolProvider{tools: []llm.ToolSchema{{Function: llm.ToolFunctionSchema{Name: "discover_tool", Description: "discover tools", Parameters: map[string]any{"type": "object"}}}}}
 	a.SetToolProvider(tools)
 	ctx := context.Background()

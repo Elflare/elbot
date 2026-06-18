@@ -41,10 +41,12 @@ func TestLoadSplitConfig(t *testing.T) {
 	appPath := filepath.Join(configDir, "app.toml")
 	providersPath := filepath.Join(configDir, "providers.toml")
 	statePath := filepath.Join(configDir, "state.toml")
+	toolTagsPath := filepath.Join(configDir, "tool_tags.toml")
 	writeFile(t, appPath, `
 [config_files]
 providers = "providers.toml"
 state = "state.toml"
+tool_tags = "tool_tags.toml"
 
 [soul]
 path = "SOUL.md"
@@ -148,6 +150,15 @@ model = "deepseek-title"
 provider = "deepseek"
 model = "deepseek-compact"
 `)
+	writeFile(t, toolTagsPath, `
+[tags.web]
+tools = ["web_search", "web_extract"]
+prompt = "Use web tools."
+
+[tags.agent]
+tools = ["read_file", "shell"]
+prompt = "Use agent tools."
+`)
 
 	cfg, err := Load(appPath)
 	if err != nil {
@@ -162,6 +173,16 @@ model = "deepseek-compact"
 	}
 	if cfg.StateConfigPath != filepath.Clean(statePath) {
 		t.Fatalf("StateConfigPath = %q, want %q", cfg.StateConfigPath, filepath.Clean(statePath))
+	}
+	if cfg.ToolTagsConfigPath != filepath.Clean(toolTagsPath) {
+		t.Fatalf("ToolTagsConfigPath = %q, want %q", cfg.ToolTagsConfigPath, filepath.Clean(toolTagsPath))
+	}
+	wantToolTags := ToolTagsConfig{Tags: map[string]ToolTagConfig{
+		"web":   {Tools: []string{"web_search", "web_extract"}, Prompt: "Use web tools."},
+		"agent": {Tools: []string{"read_file", "shell"}, Prompt: "Use agent tools."},
+	}}
+	if !reflect.DeepEqual(cfg.ToolTags, wantToolTags) {
+		t.Fatalf("ToolTags = %#v, want %#v", cfg.ToolTags, wantToolTags)
 	}
 	wantDB := filepath.Clean(filepath.Join(configDir, "../data/elbot_sessions.db"))
 	if cfg.Storage.SessionsSQLitePath != wantDB {

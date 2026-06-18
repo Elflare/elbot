@@ -94,8 +94,7 @@ func (noopToolSchemaProvider) ToolNames(context.Context, string, *storage.Sessio
 }
 
 type PromptBuilder struct {
-	Soul  SoulProvider
-	Tools ToolNameProvider
+	System SystemPromptManager
 }
 
 type PromptBuildRequest struct {
@@ -106,29 +105,18 @@ type PromptBuildRequest struct {
 }
 
 func (b PromptBuilder) Build(ctx context.Context, req PromptBuildRequest) ([]llm.LLMMessage, error) {
-	if b.Soul == nil {
-		return nil, fmt.Errorf("soul provider is required")
-	}
 	mode := storage.SessionModeWork
 	if req.Session != nil && req.Session.Mode != "" {
 		mode = req.Session.Mode
 	}
-	systemPrompt, err := b.Soul.SystemPrompt(ctx, mode)
+	systemPrompt, err := b.System.Build(ctx, SystemPromptRequest{Mode: mode, Session: req.Session, Scope: req.Scope})
 	if err != nil {
 		return nil, err
 	}
-
-	systemParts := []string{systemPrompt}
-	if b.Tools != nil && req.Session != nil {
-		names, err := b.Tools.ToolNames(ctx, mode, req.Session, req.Scope)
-		if err != nil {
-			return nil, err
-		}
-		if len(names) > 0 {
-			systemParts = append(systemParts, toolNamesText(names))
-		}
+	if strings.TrimSpace(systemPrompt) == "" {
+		return nil, fmt.Errorf("system prompt is required")
 	}
-	out := []llm.LLMMessage{{Role: llm.RoleSystem, Segments: llm.TextSegments(joinSystemParts(systemParts))}}
+	out := []llm.LLMMessage{{Role: llm.RoleSystem, Segments: llm.TextSegments(systemPrompt)}}
 	for i, message := range req.Messages {
 		role := llm.MessageRole(message.Role)
 		if role != llm.RoleUser && role != llm.RoleAssistant && role != llm.RoleTool && role != llm.RoleSystem {
@@ -206,17 +194,6 @@ func toolNameFromMetadata(metadata string) string {
 
 func toolNamesText(names []string) string {
 	return fmt.Sprintf("当前可用工具名称：%s。需要了解工具用途或参数时，先调用 discover_tool。", strings.Join(names, ", "))
-}
-
-func joinSystemParts(parts []string) string {
-	clean := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			clean = append(clean, part)
-		}
-	}
-	return strings.Join(clean, "\n\n")
 }
 
 func summaryUserPrefix(summary string) string {

@@ -11,6 +11,7 @@ import (
 type sessionMetadata struct {
 	DiscoveredTools []string             `json:"discovered_tools,omitempty"`
 	ToolCache       []toolrun.CachedTool `json:"tool_cache,omitempty"`
+	ToolTags        []string             `json:"tool_tags,omitempty"`
 	LastUsage       *llm.Usage           `json:"last_usage,omitempty"`
 	BackgroundKind  string               `json:"background_kind,omitempty"`
 }
@@ -23,12 +24,14 @@ func decodeSessionMetadata(raw string) sessionMetadata {
 	_ = json.Unmarshal([]byte(raw), &metadata)
 	metadata.DiscoveredTools = sortedUnique(metadata.DiscoveredTools)
 	metadata.ToolCache = toolCacheItemsNormalized(metadata.ToolCache)
+	metadata.ToolTags = sortedUnique(metadata.ToolTags)
 	return metadata
 }
 
 func encodeSessionMetadata(metadata sessionMetadata) string {
 	metadata.DiscoveredTools = sortedUnique(metadata.DiscoveredTools)
 	metadata.ToolCache = toolCacheItemsNormalized(metadata.ToolCache)
+	metadata.ToolTags = sortedUnique(metadata.ToolTags)
 	if metadata.LastUsage != nil && metadata.LastUsage.TotalTokens <= 0 && metadata.LastUsage.CacheHitTokens <= 0 && metadata.LastUsage.PromptTokens <= 0 && metadata.LastUsage.CompletionTokens <= 0 {
 		metadata.LastUsage = nil
 	}

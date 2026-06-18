@@ -71,6 +71,30 @@ func TestToolDirectiveSourceCompletesOnlyPlainTools(t *testing.T) {
 	}
 }
 
+func TestToolDirectiveSourceCompletesConfiguredTags(t *testing.T) {
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(completionTestTool{name: "alpha", description: "alpha"})
+	source := ToolDirectiveSource{
+		Registry: func() *tool.Registry { return registry },
+		Actor:    func(context.Context) security.Actor { return security.Actor{Role: security.RoleSuperadmin} },
+		Tags: func(context.Context, *tool.Registry, security.Actor, *security.Policy) []string {
+			return []string{"agent"}
+		},
+		ToolNamesByTag: func(_ context.Context, _ *tool.Registry, tag string, _ func(tool.Tool) bool) []string {
+			if tag == "agent" {
+				return []string{"alpha"}
+			}
+			return nil
+		},
+	}
+
+	items := source.Complete(context.Background(), Request{Text: "@tool:ag", Cursor: len("@tool:ag")})
+	if len(items) != 1 || items[0].Text != "@tool:agent" || items[0].Description != "1 tool" {
+		t.Fatalf("Complete configured tag = %#v", items)
+	}
+}
+
 func TestRouterSourceCompletesCommandArgs(t *testing.T) {
 	router := command.NewRouter([]string{"/"})
 	if err := router.Register(commandArgCompleter{}); err != nil {

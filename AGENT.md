@@ -54,16 +54,19 @@
 - `internal/agent/cron.go`：Agent 通用后台 runner；绕过 slash 命令解析，使用 discard sender 静默运行后台 LLM，按 background kind 注入 sandbox、预加载工具并写入后台 Session metadata；保留 `RunCronMessage` 薄适配。
 
 - `internal/agent/cron_tools.go`：后台工具确认特例；cron/Elnis sandbox shell 非 critical 自动确认，critical 直接回 tool message 提醒用相对路径/低风险命令且不等待用户。
-- `internal/agent/prompt.go`：Soul Prompt Builder；按文件状态缓存并加载 `SOUL.md`，合并常驻记忆、工具名称提示和压缩摘要，避免生成多条 system prompt。
-- `internal/agent/tools.go`：Agent 工具运行态与命令依赖适配；集中维护 ToolRun manager、tool Registry、skill scanner 和工具配置，并把默认工具视图接入 Prompt Builder。
+- `internal/agent/prompt.go`：Prompt Builder；通过 System Prompt Manager 生成单条 system prompt，并处理历史消息、工具 transcript、多模态 metadata 和压缩摘要。
+- `internal/agent/system_prompt.go`：System Prompt Manager；按优先级收集 Soul、工具名称和 tag prompt 等内建 system prompt 片段。
+- `internal/agent/system_prompt_sources.go`：内建 system prompt source；提供 Soul 和工具名称提示片段。
+- `internal/agent/tools.go`：Agent 工具运行态与命令依赖适配；集中维护 ToolRun manager、tool Registry、skill scanner、工具配置和 tool tag 配置入口。
 - `internal/agent/toolrun_adapter.go`：Agent 到 ToolRun 的能力适配；提供 Hook、Request、确认、输出、审计、工具记录和 session 缓存桥接。
 - `internal/agent/toolrun_prompt_provider.go`：ToolRun 到 Prompt Builder 的工具名称/schema provider 适配。
 
-- `internal/agent/tool_cache.go`：Session 级已发现工具 schema 缓存；discover 或有效 `@tool:` 预载到的工具按 Session 保存，工具名持久化到 Session metadata，后续 work 请求用稳定顺序注入 top-level tools。
+- `internal/agent/tool_cache.go`：Session 级已发现工具 schema 缓存；discover 或有效 `@tool:` 预载到的工具按 Session 保存，工具名和激活 tag 持久化到 Session metadata，后续 work 请求用稳定顺序注入 top-level tools。
 - `internal/agent/tool_directive.go`：聊天内联 `@tool:<name-or-tag>` 预处理；仅普通可访问工具/用户侧 tag 生效，剥离有效指令并持久化注入，不存在/不可用值保留为普通文本并提示。
+- `internal/agent/tool_tag_config.go`：工具 tag 配置 source；按文件状态缓存读取 `tool_tags.toml`，合并内置 tag 与配置 tag，并为已激活 tag 提供 system prompt 片段。
 
 - `internal/agent/status.go`：Agent 运行状态发布 helper；保存每个 Session 最新 runtime snapshot，并通过平台可选接口推送给 CLI TUI 等状态展示层。
-- `internal/agent/session_metadata.go`：Session metadata 编解码辅助；当前用于保存已 discover 工具名和最近一次 LLM usage，使 `/status` 在 `/resume` 后仍可显示最近 token 状态。
+- `internal/agent/session_metadata.go`：Session metadata 编解码辅助；当前用于保存已 discover 工具名、已激活 tool tag 和最近一次 LLM usage，使 `/status` 在 `/resume` 后仍可显示最近 token 状态。
 - `internal/agent/tool_transcript.go`：工具调用历史持久化辅助；保存 assistant tool_calls 与 tool result，提供 user 多模态 segments metadata 和 turn message 落库 helper，并在持久化 discover 结果时压缩 schema，避免未来上下文膨胀。
 - `internal/agent/context.go`：Agent 上下文压缩依赖实现；维护 context 配置、压缩模型、ContextLoader、WindowResolver、Compressor、最近 usage 和待压缩标记，并提供 `/compact` 与 `/status` 所需能力；最近 usage 会写入 Session metadata 供恢复会话后展示。
 
@@ -99,9 +102,9 @@
 
 ### 配置与日志
 
-配置约定：默认配置查找顺序为 `--config`、`ELBOT_CONFIG_FILE`、平台配置目录（Windows `%APPDATA%/ElBot/app.toml`；Linux XDG `~/.config/elbot/app.toml`）、最后回退源码目录 `config/app.toml`。静态配置在 `app.toml`，Provider 列表在同目录 `providers.toml`，运行时热切换状态在同目录 `state.toml`；用户可编辑资产集中在配置目录：`memories.toml`、`long_memory/`、`skills/`、`plugins/`，SQLite/logs/sandbox 等运行数据仍按各自配置或默认数据目录存放。Hook/插件配置固定放在同目录 `plugins/<plugin-name>.toml`，规则 Hook 使用 `plugins/hooks.toml`，app 层不解析插件专属字段。Provider key 推荐用 `api_key_env`，读取优先级为系统环境变量 > 配置目录 `.env`。
+配置约定：默认配置查找顺序为 `--config`、`ELBOT_CONFIG_FILE`、平台配置目录（Windows `%APPDATA%/ElBot/app.toml`；Linux XDG `~/.config/elbot/app.toml`）、最后回退源码目录 `config/app.toml`。静态配置在 `app.toml`，Provider 列表在同目录 `providers.toml`，运行时热切换状态在同目录 `state.toml`，工具 tag 配置在同目录 `tool_tags.toml`；用户可编辑资产集中在配置目录：`memories.toml`、`long_memory/`、`skills/`、`plugins/`，SQLite/logs/sandbox 等运行数据仍按各自配置或默认数据目录存放。Hook/插件配置固定放在同目录 `plugins/<plugin-name>.toml`，规则 Hook 使用 `plugins/hooks.toml`，app 层不解析插件专属字段。Provider key 推荐用 `api_key_env`，读取优先级为系统环境变量 > 配置目录 `.env`。
 
-- `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录/source fallback 解析 `app.toml`，读取并合并 app/provider/state 配置，解析相对路径和 `api_key_env`，包含 LLM 请求超时/重试、sandbox/artifact、Elnis 与 S3/R2 预留配置。
+- `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录/source fallback 解析 `app.toml`，读取并合并 app/provider/state/tool_tags 配置，解析相对路径和 `api_key_env`，包含 LLM 请求超时/重试、sandbox/artifact、Elnis 与 S3/R2 预留配置。
 
 - `internal/elnis/types.go`：Elnis/Elvena 协议类型；定义 Elwisp 请求、目标、响应、事件模式、状态和随事件声明的外部工具。
 - `internal/elnis/service.go`：Elnis 接收服务；处理 token 鉴权、协议校验、Elwisp 授权、内部工具 allowed_tools 裁决、外部工具声明校验/禁用、持久化去重、record/direct 分发、目标裁决和 LLM 事件后台执行/结果报告。
@@ -110,6 +113,7 @@
 - `internal/logging/logging.go`：日志地基；创建运行日志、审计日志和 Elnis 日志的 `slog.Logger`，`Manager` 统一持有按日期懒轮转的 `elbot-YYYY-MM-DD.log`、`audit-YYYY-MM-DD.log`、`elnis-YYYY-MM-DD.log` writer，暴露日志目录和可配置旧日志清理入口。
 - `internal/logging/reader.go`：结构化文本日志读取器；解析 `slog.TextHandler` 输出，支持 `/log`、`/audit` 的时间、等级、字段、msg、latest message 文本和条数过滤，并放宽单行读取上限以支持较大的 Debug 请求体。
 - `config/app.toml`：应用主配置；保存 storage、runtime、llm_request、context、commands、tools、security、session cleanup、view、platform、soul 和 config_files 等静态设置。
+- `config/tool_tags.toml`：工具 tag 示例配置；保存 `@tool:<tag>` 对应工具列表和 tag 激活后追加到 system prompt 的工具使用策略。
 - `config/elnis.toml`：Elnis 示例配置；保存 enabled、HTTP、token、delivery、内部工具 `allowed_tools` 和单 Elwisp 策略，外部 Elwisp 工具默认允许且可按 Elwisp 禁用。
 
 - `config/providers.toml`：Provider 示例配置；保存供应商、模型列表、extra payload 和模型元信息，公开配置只写 `api_key_env` 不写真实 key。

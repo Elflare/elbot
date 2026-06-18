@@ -39,7 +39,7 @@ func (a *Agent) handleInput(ctx context.Context, text string) error {
 	snapshot := a.turns.Snapshot(session.ID)
 	if snapshot.Phase != turn.PhaseAwaitRiskConfirm {
 		directives := a.applyToolDirectives(ctx, session, text)
-		if len(directives.Injected) > 0 || len(directives.Invalid) > 0 {
+		if len(directives.Injected) > 0 || len(directives.Existing) > 0 || len(directives.Invalid) > 0 {
 			a.notifyToolDirectiveResult(ctx, directives)
 		}
 		text = directives.Text

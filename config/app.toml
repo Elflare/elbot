@@ -4,6 +4,7 @@
 providers = "providers.toml"
 state = "state.toml"
 elnis = "elnis.toml"
+tool_tags = "tool_tags.toml"
 
 [storage]
 # 留空使用平台默认数据目录：Windows %APPDATA%/ElBot/data；Linux $XDG_DATA_HOME/elbot 或 ~/.local/share/elbot。

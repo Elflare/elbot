@@ -14,6 +14,7 @@ import (
 type toolDirectiveResult struct {
 	Text     string
 	Injected []string
+	Existing []string
 	Invalid  []string
 }
 
@@ -31,25 +32,30 @@ func (a *Agent) applyToolDirectives(ctx context.Context, session *storage.Sessio
 	seenInjected := map[string]bool{}
 	for i, match := range matches {
 		name := match.Name
-		discovery, ok := a.discoveryForToolDirective(ctx, name)
+		discovery, tagName, ok := a.discoveryForToolDirective(ctx, name)
 		if !ok || discovery == nil || len(discovery.Tools) == 0 {
 			result.Invalid = append(result.Invalid, name)
 			continue
 		}
-		result.Injected = append(result.Injected, a.rememberPreloadedDiscovery(ctx, session, discovery, seenInjected)...)
+		injected, existing := a.rememberPreloadedDiscovery(ctx, session, discovery, seenInjected)
+		result.Injected = append(result.Injected, injected...)
+		result.Existing = append(result.Existing, existing...)
+		if tagName != "" {
+			a.persistToolTags(ctx, session, []string{tagName})
+		}
 		remove[i] = true
 	}
-	if len(result.Injected) == 0 {
+	if len(result.Injected) == 0 && len(result.Existing) == 0 {
 		return result
 	}
 	result.Text = directive.StripToolMatches(text, matches, remove)
 	return result
 }
 
-func (a *Agent) discoveryForToolDirective(ctx context.Context, value string) (*tool.DiscoveryResult, bool) {
+func (a *Agent) discoveryForToolDirective(ctx context.Context, value string) (*tool.DiscoveryResult, string, bool) {
 	value = strings.TrimSpace(value)
 	if value == "" || a.toolRuntime.registry == nil {
-		return nil, false
+		return nil, "", false
 	}
 	policy := a.securityPolicy
 	if policy == nil {
@@ -58,17 +64,20 @@ func (a *Agent) discoveryForToolDirective(ctx context.Context, value string) (*t
 	actor := a.actor(ctx)
 	if root, ok := a.toolRuntime.registry.Get(value); ok {
 		if !a.canPreloadToolRoot(actor, policy, root) {
-			return nil, false
+			return nil, "", false
 		}
-		return a.discoveryForToolNames([]string{value}, actor, policy)
+		discovery, ok := a.discoveryForToolNames([]string{value}, actor, policy)
+		return discovery, "", ok
 	}
-	names := a.toolRuntime.registry.NamesByTag(value, func(candidate tool.Tool) bool {
+	tagName := normalizeToolTag(value)
+	names := a.namesByToolTag(ctx, tagName, func(candidate tool.Tool) bool {
 		return a.canPreloadToolRoot(actor, policy, candidate)
 	})
 	if len(names) == 0 {
-		return nil, false
+		return nil, "", false
 	}
-	return a.discoveryForToolNames(names, actor, policy)
+	discovery, ok := a.discoveryForToolNames(names, actor, policy)
+	return discovery, tagName, ok
 }
 
 func (a *Agent) preloadToolNames(ctx context.Context, session *storage.Session, names []string) []string {
@@ -97,22 +106,29 @@ func (a *Agent) preloadToolNames(ctx context.Context, session *storage.Session, 
 			a.audit("tool_preload_skipped", "session_id", session.ID, "tool", name, "reason", "no_schema")
 			continue
 		}
-		injected = append(injected, a.rememberPreloadedDiscovery(ctx, session, discovery, seenInjected)...)
+		newTools, _ := a.rememberPreloadedDiscovery(ctx, session, discovery, seenInjected)
+		injected = append(injected, newTools...)
 	}
 	return injected
 }
 
-func (a *Agent) rememberPreloadedDiscovery(ctx context.Context, session *storage.Session, discovery *tool.DiscoveryResult, seen map[string]bool) []string {
+func (a *Agent) rememberPreloadedDiscovery(ctx context.Context, session *storage.Session, discovery *tool.DiscoveryResult, seen map[string]bool) ([]string, []string) {
+	cachedBefore := a.cachedToolNameSet(ctx, session)
 	a.rememberCachedTools(ctx, session, toolrun.NativeCachedToolsFromDiscovery(discovery))
 	injected := []string{}
+	existing := []string{}
 	for _, discovered := range discovery.Tools {
 		if discovered.Schema == nil || discovered.Info.Name == "" || seen[discovered.Info.Name] {
 			continue
 		}
 		seen[discovered.Info.Name] = true
-		injected = append(injected, discovered.Info.Name)
+		if cachedBefore[discovered.Info.Name] {
+			existing = append(existing, discovered.Info.Name)
+		} else {
+			injected = append(injected, discovered.Info.Name)
+		}
 	}
-	return injected
+	return injected, existing
 }
 
 func (a *Agent) canPreloadToolRoot(actor security.Actor, policy *security.Policy, candidate tool.Tool) bool {
@@ -145,6 +161,9 @@ func (a *Agent) notifyToolDirectiveResult(ctx context.Context, result toolDirect
 	parts := []string{}
 	if len(result.Injected) > 0 {
 		parts = append(parts, "已注入工具："+strings.Join(sortedUnique(result.Injected), ", "))
+	}
+	if len(result.Existing) > 0 {
+		parts = append(parts, "已存在工具："+strings.Join(sortedUnique(result.Existing), ", "))
 	}
 	if len(result.Invalid) > 0 {
 		parts = append(parts, "未找到或不可用的工具："+strings.Join(sortedUnique(result.Invalid), ", "))

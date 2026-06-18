@@ -15,6 +15,7 @@ type toolRuntimeState struct {
 	registry        *tool.Registry
 	scanner         skill.Scanner
 	config          config.ToolsConfig
+	toolTags        *toolTagConfigSource
 	defaultProvider bool
 }
 
@@ -25,17 +26,24 @@ func newToolRuntimeState() toolRuntimeState {
 	}
 }
 
+func (a *Agent) rebuildSystemPrompt() {
+	manager := NewSystemPromptManager(soulSystemPromptSource{Soul: a.soul})
+	if nameProvider, ok := a.toolRuntime.provider.(ToolNameProvider); ok {
+		manager.AddSource(toolNamesSystemPromptSource{Tools: nameProvider})
+	}
+	if a.toolRuntime.toolTags != nil {
+		manager.AddSource(a.toolRuntime.toolTags)
+	}
+	a.promptBuilder.System = manager
+}
+
 func (a *Agent) SetToolProvider(provider ToolSchemaProvider) {
 	if provider == nil {
 		provider = noopToolSchemaProvider{}
 	}
 	a.toolRuntime.provider = provider
 	a.toolRuntime.defaultProvider = false
-	if nameProvider, ok := provider.(ToolNameProvider); ok {
-		a.promptBuilder.Tools = nameProvider
-	} else {
-		a.promptBuilder.Tools = noopToolSchemaProvider{}
-	}
+	a.rebuildSystemPrompt()
 }
 
 func (a *Agent) SetToolRuntime(registry *tool.Registry, scanner skill.Scanner) {
@@ -45,8 +53,8 @@ func (a *Agent) SetToolRuntime(registry *tool.Registry, scanner skill.Scanner) {
 	if registry != nil {
 		a.toolRuntime.provider = toolRunPromptProvider{agent: a}
 		a.toolRuntime.defaultProvider = true
-		a.promptBuilder.Tools = toolRunPromptProvider{agent: a}
 	}
+	a.rebuildSystemPrompt()
 }
 
 func (a *Agent) SetToolConfig(cfg config.ToolsConfig) {
@@ -54,6 +62,11 @@ func (a *Agent) SetToolConfig(cfg config.ToolsConfig) {
 		cfg.MaxRoundsPerTurn = 2
 	}
 	a.toolRuntime.config = cfg
+}
+
+func (a *Agent) SetToolTagConfig(path string, cfg config.ToolTagsConfig) {
+	a.toolRuntime.toolTags = newToolTagConfigSource(path, cfg)
+	a.rebuildSystemPrompt()
 }
 
 func (a *Agent) List() []tool.Info {

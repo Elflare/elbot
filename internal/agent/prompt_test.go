@@ -67,10 +67,7 @@ func TestFileSoulProviderReloadsWhenFileChanges(t *testing.T) {
 }
 
 func TestPromptBuilderMergesToolNamesIntoSingleSystemMessage(t *testing.T) {
-	builder := PromptBuilder{
-		Soul:  staticSoulProvider{Prompt: "SOUL"},
-		Tools: staticToolNames{names: []string{"shell"}},
-	}
+	builder := newTestPromptBuilder("SOUL", "shell")
 	messages, err := builder.Build(context.Background(), PromptBuildRequest{Session: &storage.Session{Mode: storage.SessionModeWork}})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
@@ -84,7 +81,7 @@ func TestPromptBuilderMergesToolNamesIntoSingleSystemMessage(t *testing.T) {
 }
 
 func TestPromptBuilderUsesAssistantRawTextFromMetadata(t *testing.T) {
-	builder := PromptBuilder{Soul: staticSoulProvider{Prompt: "SOUL"}}
+	builder := newTestPromptBuilder("SOUL")
 	messages, err := builder.Build(context.Background(), PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
@@ -103,7 +100,7 @@ func TestPromptBuilderUsesAssistantRawTextFromMetadata(t *testing.T) {
 }
 
 func TestPromptBuilderRestoresAssistantRawTextAndToolCalls(t *testing.T) {
-	builder := PromptBuilder{Soul: staticSoulProvider{Prompt: "SOUL"}}
+	builder := newTestPromptBuilder("SOUL")
 	calls := []llm.ToolCallRequest{{ID: "call-1", Name: "shell", Arguments: `{"cmd":"pwd"}`}}
 	stored := toolCallStorageMessage("session-1", "visible", "raw [[smile]]", calls)
 	messages, err := builder.Build(context.Background(), PromptBuildRequest{
@@ -146,7 +143,7 @@ func TestUserSegmentsMetadataUsesStableLightweightJSON(t *testing.T) {
 }
 
 func TestPromptBuilderRestoresUserSegmentsFromMetadata(t *testing.T) {
-	builder := PromptBuilder{Soul: staticSoulProvider{Prompt: "SOUL"}}
+	builder := newTestPromptBuilder("SOUL")
 	segments := []llm.MessageSegment{
 		{Type: llm.SegmentText, Text: "看图"},
 		{Type: llm.SegmentImage, URL: "https://example.com/a.png", MIMEType: "image/png"},
@@ -170,7 +167,7 @@ func TestPromptBuilderRestoresUserSegmentsFromMetadata(t *testing.T) {
 }
 
 func TestPromptBuilderSummaryPreservesUserImageSegment(t *testing.T) {
-	builder := PromptBuilder{Soul: staticSoulProvider{Prompt: "SOUL"}}
+	builder := newTestPromptBuilder("SOUL")
 	segments := []llm.MessageSegment{{Type: llm.SegmentImage, URL: "https://example.com/a.png"}}
 	messages, err := builder.Build(context.Background(), PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
@@ -209,6 +206,14 @@ type staticToolNames struct {
 	names []string
 }
 
+func newTestPromptBuilder(soul string, names ...string) PromptBuilder {
+	manager := NewSystemPromptManager(soulSystemPromptSource{Soul: staticSoulProvider{Prompt: soul}})
+	if len(names) > 0 {
+		manager.AddSource(toolNamesSystemPromptSource{Tools: staticToolNames{names: names}})
+	}
+	return PromptBuilder{System: manager}
+}
+
 func (p staticToolNames) ToolNames(context.Context, string, *storage.Session, session.Scope) ([]string, error) {
 	return p.names, nil
 }
@@ -219,7 +224,7 @@ func (p *recordingToolProvider) Schemas(context.Context, string, *storage.Sessio
 }
 
 func TestPromptBuilderInjectsSummaryIntoCurrentUserMessage(t *testing.T) {
-	builder := PromptBuilder{Soul: staticSoulProvider{Prompt: "SOUL"}}
+	builder := newTestPromptBuilder("SOUL")
 	messages, err := builder.Build(context.Background(), PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{

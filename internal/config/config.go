@@ -41,16 +41,19 @@ type Config struct {
 	Platform            PlatformConfig            `toml:"platform"`
 	Elnis               ElnisConfig               `toml:"elnis"`
 	Soul                SoulConfig                `toml:"soul"`
+	ToolTags            ToolTagsConfig            `toml:"-"`
 	ConfigPath          string                    `toml:"-"`
 	ProvidersConfigPath string                    `toml:"-"`
 	StateConfigPath     string                    `toml:"-"`
 	ElnisConfigPath     string                    `toml:"-"`
+	ToolTagsConfigPath  string                    `toml:"-"`
 }
 
 type ConfigFilesConfig struct {
 	Providers string `toml:"providers"`
 	State     string `toml:"state"`
 	Elnis     string `toml:"elnis"`
+	ToolTags  string `toml:"tool_tags"`
 }
 
 type ModelSelection struct {
@@ -96,6 +99,15 @@ type StorageConfig struct {
 
 type SoulConfig struct {
 	Path string `toml:"path"`
+}
+
+type ToolTagsConfig struct {
+	Tags map[string]ToolTagConfig `toml:"tags"`
+}
+
+type ToolTagConfig struct {
+	Tools  []string `toml:"tools"`
+	Prompt string   `toml:"prompt"`
 }
 
 type RuntimeConfig struct {
@@ -347,6 +359,16 @@ func Load(path string) (*Config, error) {
 	}
 	cfg.applyElnisDefaults()
 
+	toolTagsPath := resolveRelative(configPath, cfg.ConfigFiles.ToolTags)
+	toolTagsCfg := &ToolTagsConfig{}
+	if err := loadTOML(toolTagsPath, toolTagsCfg); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+	} else {
+		cfg.ToolTags = *toolTagsCfg
+	}
+
 	if err := cfg.validateModeModels(); err != nil {
 		return nil, err
 	}
@@ -358,6 +380,7 @@ func Load(path string) (*Config, error) {
 	cfg.ProvidersConfigPath = providersPath
 	cfg.StateConfigPath = statePath
 	cfg.ElnisConfigPath = elnisPath
+	cfg.ToolTagsConfigPath = toolTagsPath
 	return cfg, nil
 }
 
@@ -436,6 +459,9 @@ func (c *Config) applyAppDefaults() {
 	}
 	if c.ConfigFiles.Elnis == "" {
 		c.ConfigFiles.Elnis = "elnis.toml"
+	}
+	if c.ConfigFiles.ToolTags == "" {
+		c.ConfigFiles.ToolTags = "tool_tags.toml"
 	}
 	if c.Storage.SessionsSQLitePath == "" {
 		c.Storage.SessionsSQLitePath = filepath.Join(platformDefaultDataDir(), "elbot_sessions.db")

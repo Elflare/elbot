@@ -141,3 +141,64 @@ func cachedToolNames(items []toolrun.CachedTool) []string {
 	}
 	return names
 }
+
+func (a *Agent) cachedToolNameSet(ctx context.Context, session *storage.Session) map[string]bool {
+	out := map[string]bool{}
+	if session == nil {
+		return out
+	}
+	metadataRaw := session.Metadata
+	if session.ID != "" {
+		if latest, err := a.store.Sessions().Get(ctx, session.ID); err == nil {
+			metadataRaw = latest.Metadata
+		}
+	}
+	metadata := decodeSessionMetadata(metadataRaw)
+	for _, name := range metadata.DiscoveredTools {
+		if name != "" {
+			out[name] = true
+		}
+	}
+	for _, item := range metadata.ToolCache {
+		if item.Name != "" {
+			out[item.Name] = true
+		}
+	}
+	a.autoConfirmMu.Lock()
+	for name := range a.discoveredTools[session.ID] {
+		if name != "" {
+			out[name] = true
+		}
+	}
+	a.autoConfirmMu.Unlock()
+	return out
+}
+
+func (a *Agent) persistToolTags(ctx context.Context, session *storage.Session, tags []string) {
+	if session == nil || session.ID == "" || len(tags) == 0 {
+		return
+	}
+	latest, err := a.store.Sessions().Get(ctx, session.ID)
+	if err != nil {
+		if a.logger != nil {
+			a.logger.Warn("load session for tool tags failed", "session_id", session.ID, "error", err)
+		}
+		return
+	}
+	metadata := decodeSessionMetadata(latest.Metadata)
+	metadata.ToolTags = sortedUnique(append(metadata.ToolTags, tags...))
+	encoded := encodeSessionMetadata(metadata)
+	if encoded == latest.Metadata {
+		session.Metadata = latest.Metadata
+		return
+	}
+	latest.Metadata = encoded
+	latest.UpdatedAt = storage.Now()
+	if err := a.store.Sessions().Update(ctx, latest); err != nil {
+		if a.logger != nil {
+			a.logger.Warn("persist tool tags failed", "session_id", session.ID, "error", err)
+		}
+		return
+	}
+	session.Metadata = encoded
+}

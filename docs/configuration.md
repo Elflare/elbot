@@ -188,6 +188,9 @@ prefixes = ["/"]
 ## 工具与安全
 
 ```toml
+[config_files]
+tool_tags = "tool_tags.toml"
+
 [tools]
 max_rounds_per_turn = 10
 
@@ -202,6 +205,56 @@ cli = ["local"]
 - 普通用户只能发现和调用允许风险范围内的工具。
 - 超级管理员调用高风险工具时也需要确认。
 - CLI 默认本地用户 `local` 是超级管理员。
+- `tool_tags.toml` 用来配置 `@tool:<tag>` 可注入的工具组，以及 tag 激活后追加到 system prompt 的工具使用策略。
+
+### `tool_tags.toml`
+
+`tool_tags.toml` 是独立配置文件，路径由 `[config_files].tool_tags` 指定。相对路径以 `app.toml` 所在目录为基准：
+
+```toml
+[config_files]
+tool_tags = "tool_tags.toml"
+```
+
+文件格式以 tag 为入口：
+
+```toml
+[tags.agent]
+tools = ["read_file", "edit_file", "shell"]
+prompt = """
+ROLE:
+- The goal is to complete the user's task safely and accurately.
+
+MUST:
+- Inspect relevant files before editing.
+- Prefer minimal, verifiable changes.
+- Evaluate command safety before running shell commands.
+"""
+```
+
+字段说明：
+
+- `[tags.<tag-name>]`：定义一个可在聊天里使用的 tag，例如 `[tags.agent]` 对应 `@tool:agent`。
+- `tools`：这个 tag 会预载的工具名列表。工具名必须是已注册且当前用户有权限访问的工具。
+- `prompt`：这个 tag 成功激活后追加到 system prompt 的工具使用策略。内容会直接给模型看，不会自动添加 tag 名标题。
+
+使用方式：
+
+```text
+@tool:agent 帮我检查这个项目的问题
+```
+
+这会把 `agent` 下配置的工具预载到当前 Session。如果 `prompt` 非空，也会从本轮开始追加到 system prompt。
+
+注意事项：
+
+- 配置 tag 会追加到内置 tag，不覆盖内置 tag。
+- 只有 `@tool:<tag>` 成功命中至少一个工具后，当前 Session 才会激活该 tag 的 prompt。
+- 直接 `@tool:<tool-name>` 只预载指定工具，不激活 tag prompt。
+- 激活的 tag 会写入 Session metadata，`/resume` 后仍生效。
+- prompt 文本从 `tool_tags.toml` 动态读取；文件变更后影响后续请求，行为类似 `SOUL.md`。
+- 重复预载已经存在的工具时不会重复添加，平台会提示 `已存在工具：<name>`。
+- 建议把 `prompt` 写成具体工具使用策略，不要写“当前 tag 是 xxx”这类模型不需要知道的配置机制。
 
 ## Elnis 监听枢纽
 
@@ -244,7 +297,7 @@ disabled_external_tools = ["danger_tool"]
 - Elwisp 默认启用；只有显式配置 `enabled=false` 才会禁用对应 Elwisp。
 - 当前支持 `record`、`direct` 和 `llm` 模式；`llm` 模式使用后台 Session runner 执行。
 - `direct` 和 `llm` 报告只支持按 Elnis 裁决后的平台发送给 superadmins，不支持任意 user/group 目标。
-- Elvena 请求中的 `tools` 声明是开发中能力，但已进入校验、持久化和执行链路；外部工具名仍需由单个 Elwisp 的禁用列表控制。
+- Elvena 请求中的 `tools` 进入校验、持久化和执行链路；外部工具名仍需由单个 Elwisp 的禁用列表控制。
 
 更多说明见 [Elnis 配置与使用](elnis-usage.md)。
 

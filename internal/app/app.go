@@ -311,6 +311,7 @@ func Run(ctx context.Context, opts Options) error {
 	agt.SetLogManager(logs)
 	agt.SetToolRuntime(toolRegistry, skillManager.Scanner)
 	agt.SetToolConfig(cfg.Tools)
+	agt.SetToolTagConfig(cfg.ToolTagsConfigPath, cfg.ToolTags)
 	agt.SetSecurityPolicy(securityPolicy)
 	agt.SetContextOptions(cfg.Context, cfg.ModelMetadata, cfg.CompactModel)
 	cronService.SetRunner(agt)

@@ -16,11 +16,15 @@ const KindToolTagDirective = "tool_tag_directive"
 type ToolRegistryFunc func() *tool.Registry
 type ActorFunc func(context.Context) security.Actor
 type PolicyFunc func() *security.Policy
+type ToolTagsFunc func(context.Context, *tool.Registry, security.Actor, *security.Policy) []string
+type ToolNamesByTagFunc func(context.Context, *tool.Registry, string, func(tool.Tool) bool) []string
 
 type ToolDirectiveSource struct {
-	Registry ToolRegistryFunc
-	Actor    ActorFunc
-	Policy   PolicyFunc
+	Registry       ToolRegistryFunc
+	Actor          ActorFunc
+	Policy         PolicyFunc
+	Tags           ToolTagsFunc
+	ToolNamesByTag ToolNamesByTagFunc
 }
 
 func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) []Item {
@@ -44,14 +48,14 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) []Item {
 	if s.Policy != nil && s.Policy() != nil {
 		policy = s.Policy()
 	}
-	tags := s.matchingTags(registry, actor, policy, token.Query)
+	tags := s.matchingTags(ctx, registry, actor, policy, token.Query)
 	infos := s.matchingTools(registry, actor, policy, token.Query)
 	out := make([]Item, 0, len(tags)+len(infos))
 	seenText := map[string]bool{}
 	for _, tag := range tags {
 		text := directive.ToolPrefix + tag
 		seenText[text] = true
-		out = append(out, Item{Text: text, Label: tag + " <tag>", Description: s.tagDescription(registry, actor, policy, tag), Kind: KindToolTagDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
+		out = append(out, Item{Text: text, Label: tag + " <tag>", Description: s.tagDescription(ctx, registry, actor, policy, tag), Kind: KindToolTagDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
 	}
 	for _, info := range infos {
 		text := directive.ToolPrefix + info.Name
@@ -71,8 +75,8 @@ func (s ToolDirectiveSource) registry() *tool.Registry {
 	return s.Registry()
 }
 
-func (s ToolDirectiveSource) matchingTags(registry *tool.Registry, actor security.Actor, policy *security.Policy, query string) []string {
-	candidates := s.allowedTags(registry, actor, policy)
+func (s ToolDirectiveSource) matchingTags(ctx context.Context, registry *tool.Registry, actor security.Actor, policy *security.Policy, query string) []string {
+	candidates := s.allowedTags(ctx, registry, actor, policy)
 	return matchStrings(candidates, query)
 }
 
@@ -113,22 +117,32 @@ func (s ToolDirectiveSource) allowedPlainTools(registry *tool.Registry, actor se
 	return out
 }
 
-func (s ToolDirectiveSource) allowedTags(registry *tool.Registry, actor security.Actor, policy *security.Policy) []string {
+func (s ToolDirectiveSource) allowedTags(ctx context.Context, registry *tool.Registry, actor security.Actor, policy *security.Policy) []string {
+	if s.Tags != nil {
+		return s.Tags(ctx, registry, actor, policy)
+	}
 	out := []string{}
 	for _, tag := range registry.Tags() {
-		if len(registry.NamesByTag(tag, func(candidate tool.Tool) bool { return isPlainAllowedTool(candidate, actor, policy) })) > 0 {
+		if len(s.namesByTag(ctx, registry, tag, func(candidate tool.Tool) bool { return isPlainAllowedTool(candidate, actor, policy) })) > 0 {
 			out = append(out, tag)
 		}
 	}
 	return out
 }
 
-func (s ToolDirectiveSource) tagDescription(registry *tool.Registry, actor security.Actor, policy *security.Policy, tag string) string {
-	count := len(registry.NamesByTag(tag, func(candidate tool.Tool) bool { return isPlainAllowedTool(candidate, actor, policy) }))
+func (s ToolDirectiveSource) tagDescription(ctx context.Context, registry *tool.Registry, actor security.Actor, policy *security.Policy, tag string) string {
+	count := len(s.namesByTag(ctx, registry, tag, func(candidate tool.Tool) bool { return isPlainAllowedTool(candidate, actor, policy) }))
 	if count == 1 {
 		return "1 tool"
 	}
 	return strconv.Itoa(count) + " tools"
+}
+
+func (s ToolDirectiveSource) namesByTag(ctx context.Context, registry *tool.Registry, tag string, allowed func(tool.Tool) bool) []string {
+	if s.ToolNamesByTag != nil {
+		return s.ToolNamesByTag(ctx, registry, tag, allowed)
+	}
+	return registry.NamesByTag(tag, allowed)
 }
 
 func matchStrings(candidates []string, query string) []string {
