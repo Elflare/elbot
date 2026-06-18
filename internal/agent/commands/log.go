@@ -48,6 +48,43 @@ func NewAudit(deps Deps) command.Handler {
 	return logCommand{deps: deps, info: auditInfo(), audit: true}
 }
 
+func elwispInfo() command.Info {
+	return command.Info{
+		Name:        "elwisp",
+		Usage:       "/elwisp [name] [options]",
+		Description: "Show recent Elnis/Elwisp logs.",
+		Help: strings.TrimSpace(`Options:
+  [name]                Filter by Elwisp name. Equivalent to --name.
+  -n, --limit <n>       Number of log lines to show. Default: 5.
+  --days <n>            Read logs from the last n days. Default: 1.
+  --level <level>       Minimum level: debug, info, warn, error. Default: debug.
+  -d, -i, -w, -e       Shorthand for --level debug/info/warn/error. -d also shows raw entries.
+  --since <time>        Show logs after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
+  --until <time>        Show logs before a time.
+  --name <name>         Filter by Elwisp name.
+  --elwisp <name>       Alias of --name.
+  --source <source>     Filter by event source.
+  --id <id>             Filter by external source id.
+  --source-id <id>      Alias of --id.
+  --mode <mode>         Filter by mode: record, direct, llm.
+  --event-key <key>     Filter by Elnis event key.
+  --event-id <id>       Filter by internal Elnis event id.
+  --token <name>        Filter by Elnis token name.
+  --msg <text>          Filter by msg field.
+  --contains <text>     Filter by text/arguments/result/raw fields.
+
+Examples:
+  /elwisp
+  /elwisp server-watchdog -n 20
+  /elwisp --name server-watchdog --since 2h
+  /elwisp --source minecraft-main --mode llm -w`),
+	}
+}
+
+func NewElwisp(deps Deps) command.Handler {
+	return logCommand{deps: deps, info: elwispInfo(), elwisp: true}
+}
+
 func logInfo() command.Info {
 	return command.Info{
 		Name:        "log",
@@ -78,9 +115,10 @@ func NewLog(deps Deps) command.Handler {
 }
 
 type logCommand struct {
-	deps  Deps
-	info  command.Info
-	audit bool
+	deps   Deps
+	info   command.Info
+	audit  bool
+	elwisp bool
 }
 
 func (c logCommand) Info() command.Info { return c.info }
@@ -95,6 +133,13 @@ func (c logCommand) Handle(ctx context.Context, req command.Request) (*command.R
 			return nil, err
 		}
 		return queryLogs(ctx, c.deps, query, formatAuditEntries(query.Raw))
+	}
+	if c.elwisp {
+		query, err := parseElwispLogQuery(req.Args)
+		if err != nil {
+			return nil, err
+		}
+		return queryLogs(ctx, c.deps, query, formatElwispLogEntries(query.Raw))
 	}
 	query, err := parseRuntimeLogQuery(req.Args)
 	if err != nil {
@@ -119,13 +164,16 @@ func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest)
 	if c.audit && previous == "--tool" {
 		return completeToolNames(c.deps, token.Text, token.Start, token.End)
 	}
+	if c.elwisp && previous == "--mode" {
+		return completeStringOptions([]string{"record", "direct", "llm"}, token.Text, token.Start, token.End, "elnis_mode")
+	}
 	if strings.HasPrefix(token.Text, "-") || token.Text == "" {
-		return completeStaticOptions(logCompletionOptions(c.audit), token.Text, token.Start, token.End, "option")
+		return completeStaticOptions(logCompletionOptions(c.audit, c.elwisp), token.Text, token.Start, token.End, "option")
 	}
 	return nil
 }
 
-func logCompletionOptions(audit bool) []completionOption {
+func logCompletionOptions(audit, elwisp bool) []completionOption {
 	options := []completionOption{
 		{Text: "-n", Description: "Number of entries"},
 		{Text: "--limit", Description: "Number of entries"},
@@ -135,14 +183,18 @@ func logCompletionOptions(audit bool) []completionOption {
 		{Text: "-i", Description: "Info level"},
 		{Text: "-w", Description: "Warn level"},
 		{Text: "-e", Description: "Error level"},
-		{Text: "-u", Description: "User events"},
-		{Text: "-a", Description: "Assistant events"},
-		{Text: "-t", Description: "Tool events"},
-		{Text: "--hook", Description: "Hook events"},
 		{Text: "--since", Description: "Show entries after time"},
 		{Text: "--until", Description: "Show entries before time"},
 		{Text: "--msg", Description: "Filter msg field"},
 		{Text: "--contains", Description: "Filter text fields"},
+	}
+	if !elwisp {
+		options = append(options,
+			completionOption{Text: "-u", Description: "User events"},
+			completionOption{Text: "-a", Description: "Assistant events"},
+			completionOption{Text: "-t", Description: "Tool events"},
+			completionOption{Text: "--hook", Description: "Hook events"},
+		)
 	}
 	if audit {
 		options = append(options,
@@ -151,6 +203,19 @@ func logCompletionOptions(audit bool) []completionOption {
 			completionOption{Text: "--actor", Description: "Filter actor ID"},
 			completionOption{Text: "--session", Description: "Filter session ID"},
 			completionOption{Text: "--tool", Description: "Filter tool name"},
+		)
+	}
+	if elwisp {
+		options = append(options,
+			completionOption{Text: "--name", Description: "Filter Elwisp name"},
+			completionOption{Text: "--elwisp", Description: "Filter Elwisp name"},
+			completionOption{Text: "--source", Description: "Filter event source"},
+			completionOption{Text: "--id", Description: "Filter source event ID"},
+			completionOption{Text: "--source-id", Description: "Filter source event ID"},
+			completionOption{Text: "--mode", Description: "Filter Elnis mode"},
+			completionOption{Text: "--event-key", Description: "Filter event key"},
+			completionOption{Text: "--event-id", Description: "Filter internal event ID"},
+			completionOption{Text: "--token", Description: "Filter token name"},
 		)
 	}
 	return options
@@ -233,11 +298,58 @@ func parseRuntimeLogQuery(args string) (logging.LogQuery, error) {
 	return query, nil
 }
 
+func parseElwispLogQuery(args string) (logging.LogQuery, error) {
+	query := baseLogQuery("elnis")
+	query.MinLevel = "debug"
+	fields := map[string]string{}
+	setElwispName := func(value string) error {
+		if fields["elwisp_name"] != "" {
+			return fmt.Errorf("elwisp name specified more than once")
+		}
+		fields["elwisp_name"] = value
+		return nil
+	}
+	if err := parseLogArgsWithOptions(args, &query, fields, func(name, value string) error {
+		switch name {
+		case "name", "elwisp":
+			return setElwispName(value)
+		case "source":
+			fields["source"] = value
+		case "id", "source-id":
+			fields["source_id"] = value
+		case "mode":
+			fields["mode"] = value
+		case "event-key":
+			fields["event_key"] = value
+		case "event-id":
+			fields["event_id"] = value
+		case "token":
+			fields["token_name"] = value
+		default:
+			return fmt.Errorf("unknown option: --%s", name)
+		}
+		return nil
+	}, logArgOptions{positional: setElwispName}); err != nil {
+		return query, err
+	}
+	query.Fields = fields
+	return query, nil
+}
+
 func baseLogQuery(prefix string) logging.LogQuery {
 	return logging.LogQuery{Prefix: prefix, Limit: defaultLogListLimit, Days: 1}
 }
 
 func parseLogArgs(args string, query *logging.LogQuery, fields map[string]string, extra func(name, value string) error) error {
+	return parseLogArgsWithOptions(args, query, fields, extra, logArgOptions{eventFilters: true})
+}
+
+type logArgOptions struct {
+	eventFilters bool
+	positional   func(value string) error
+}
+
+func parseLogArgsWithOptions(args string, query *logging.LogQuery, fields map[string]string, extra func(name, value string) error, opts logArgOptions) error {
 	parts, err := splitLogArgs(args)
 	if err != nil {
 		return err
@@ -302,12 +414,24 @@ func parseLogArgs(args string, query *logging.LogQuery, fields map[string]string
 		case "-e":
 			query.MinLevel = "error"
 		case "-u":
+			if !opts.eventFilters {
+				return fmt.Errorf("unknown option: %s", name)
+			}
 			fields["event"] = "user_message"
 		case "-a":
+			if !opts.eventFilters {
+				return fmt.Errorf("unknown option: %s", name)
+			}
 			fields["event"] = "assistant_message"
 		case "-t":
+			if !opts.eventFilters {
+				return fmt.Errorf("unknown option: %s", name)
+			}
 			fields["event"] = "tool_call"
 		case "--hook":
+			if !opts.eventFilters {
+				return fmt.Errorf("unknown option: %s", name)
+			}
 			query.FieldExists = append(query.FieldExists, "hook")
 		case "--msg":
 			value, err := nextArg(parts, &i, name)
@@ -328,6 +452,15 @@ func parseLogArgs(args string, query *logging.LogQuery, fields map[string]string
 					return err
 				}
 				if err := extra(strings.TrimPrefix(name, "--"), value); err != nil {
+					return err
+				}
+				continue
+			}
+			if strings.HasPrefix(name, "-") {
+				return fmt.Errorf("unknown option: %s", name)
+			}
+			if opts.positional != nil {
+				if err := opts.positional(name); err != nil {
 					return err
 				}
 				continue
@@ -467,6 +600,34 @@ func formatRuntimeLogEntries(raw bool) func([]logging.LogEntry) string {
 	}
 }
 
+func formatElwispLogEntries(raw bool) func([]logging.LogEntry) string {
+	return func(entries []logging.LogEntry) string {
+		if raw {
+			return formatRawLogEntries("elwisp logs", entries)
+		}
+
+		var sb strings.Builder
+		sb.WriteString("elwisp logs:\n")
+		for i, entry := range entries {
+			if i > 0 {
+				sb.WriteString("\n")
+			}
+			f := entry.Fields
+			sb.WriteString(fmt.Sprintf("  %s %s %s", formatLogEntryTime(entry), strings.ToLower(entry.Level), entry.Message))
+			appendField(&sb, "elwisp", f["elwisp_name"])
+			appendField(&sb, "source", f["source"])
+			appendField(&sb, "id", f["source_id"])
+			appendField(&sb, "mode", f["mode"])
+			appendField(&sb, "event_key", f["event_key"])
+			appendField(&sb, "event_id", f["event_id"])
+			appendField(&sb, "token", f["token_name"])
+			appendField(&sb, "session", f["session_id"])
+			appendField(&sb, "error", f["error"])
+		}
+		return sb.String()
+	}
+}
+
 func appendLLMUsageFields(sb *strings.Builder, fields map[string]string) {
 	prompt := strings.TrimSpace(fields["prompt_tokens"])
 	completion := strings.TrimSpace(fields["completion_tokens"])
@@ -583,5 +744,6 @@ func (LogModule) RegisterCommands(registrar Registrar, deps Deps) error {
 	return RegisterFactories(registrar, deps,
 		NewLog,
 		NewAudit,
+		NewElwisp,
 	)
 }

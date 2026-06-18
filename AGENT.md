@@ -77,7 +77,7 @@
 - `internal/agent/commands/compact.go`：`/compact` 命令；触发当前 Session 主动上下文压缩。
 - `internal/agent/commands/session.go`：Session 命令；组合注册列表、生命周期、恢复、Fork、模式切换等会话命令。
 - `internal/agent/commands/request.go`：请求管理命令；实现 `/requests`、`/stop` 和 `/stopall`。
-- `internal/agent/commands/log.go`：日志查看命令；实现 `/log`、`/audit`，支持常用过滤条件和 Debug 原始日志展示。
+- `internal/agent/commands/log.go`：日志查看命令；实现 `/log`、`/audit`、`/elwisp`，支持常用过滤条件和 Debug 原始日志展示。
 - `internal/agent/commands/tool.go`：工具命令；实现 `/tools` 查看已注册工具，并预留 external skill 的 reload/uninstall/remove 入口。
 
 ### 通用命令框架

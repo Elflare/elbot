@@ -153,9 +153,11 @@ func (s *Service) Handle(ctx context.Context, token string, req Request) (Respon
 		return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusCompleted}, nil
 	case ModeLLM:
 		s.auditEvent("elnis.llm_queued", attrs...)
+		s.logInfo("elnis llm queued", attrs...)
 		if s.enqueueLLM != nil {
 			if err := s.enqueueLLM(ctx, QueuedLLMEvent{Event: event, EventID: record.ID}); err != nil {
 				_ = s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusFailed, "", err.Error())
+				s.logWarn("elnis llm enqueue failed", append(attrs, "error", err.Error())...)
 				return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
 			}
 		}
@@ -406,12 +408,14 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	if s.runner == nil {
 		err := fmt.Errorf("elnis background runner is not configured")
 		_ = s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
+		s.logWarn("elnis llm failed", append(attrs, "event_id", eventID, "error", err.Error())...)
 		return err
 	}
 	if err := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusRunning, "", ""); err != nil {
 		return err
 	}
 	s.auditEvent("elnis.llm_started", append(attrs, "event_id", eventID)...)
+	s.logInfo("elnis llm started", append(attrs, "event_id", eventID)...)
 	result, err := s.runner.RunBackground(ctx, background.RunRequest{
 		Kind:          background.KindElnis,
 		Name:          event.EventKey,
@@ -433,6 +437,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	if err != nil {
 		_ = s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
 		s.auditEvent("elnis.llm_failed", append(attrs, "event_id", eventID, "error", err.Error())...)
+		s.logWarn("elnis llm failed", append(attrs, "event_id", eventID, "error", err.Error())...)
 		return err
 	}
 	parsed, parseErr := background.ParseJSONResult(result.Text)
@@ -443,6 +448,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		message := fmt.Sprintf("Elnis 事件 %s 解析格式失败，请查看后台 session。\nsession: %s\n错误：%v", event.EventKey, result.SessionID, parseErr)
 		_ = s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, message, parseErr.Error())
 		s.auditEvent("elnis.llm_failed", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", parseErr.Error())...)
+		s.logWarn("elnis llm format failed", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", parseErr.Error())...)
 		return parseErr
 	}
 	resultJSON, _ := json.Marshal(parsed)
@@ -452,10 +458,12 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	if parsed.NeedReport && strings.TrimSpace(parsed.Report) != "" {
 		if err := s.sendReport(ctx, event, parsed.Report); err != nil {
 			_ = s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, string(resultJSON), err.Error())
+			s.logWarn("elnis llm report failed", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", err.Error())...)
 			return err
 		}
 	}
 	s.auditEvent("elnis.llm_completed", append(attrs, "event_id", eventID, "session_id", result.SessionID)...)
+	s.logInfo("elnis llm completed", append(attrs, "event_id", eventID, "session_id", result.SessionID)...)
 	return nil
 }
 

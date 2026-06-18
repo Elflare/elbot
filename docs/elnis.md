@@ -157,6 +157,18 @@ Elnis 收到事件后，会按 `mode` 决定处理方式。
 
 `need_report=true` 时，Elnis 会按裁决后的目标发送 `report`。
 
+## 查看 Elwisp 日志
+
+可以用 `/elwisp` 查看 Elnis/Elwisp 事件日志。它读取 `elnis-YYYY-MM-DD.log`，支持按 Elwisp 名称、事件来源、事件 ID、模式和时间范围过滤。
+
+示例：
+
+```text
+/elwisp
+/elwisp server-watchdog -n 20
+/elwisp --source minecraft-main --mode llm --since 2h
+```
+
 ## 与 Cron、ELyph 和 Skill 的关系
 
 | 能力 | 触发来源 | 作用 |
