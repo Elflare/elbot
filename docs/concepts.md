@@ -216,7 +216,7 @@ Skill 类型：
 - Python Skill：兼容常见外部 Python skill 目录结构。
 - Go Skill：可通过二进制执行，并从 stdin 接收 JSON payload。
 
-ELyph 的目标是用更短、更稳定的结构表达输入、输出、步骤、条件和约束，减少自然语言任务描述的歧义。
+ELyph 的目标是用更短、更稳定的结构表达输入、输出、步骤、条件和约束，减少自然语言任务描述的歧义。完整语法见 [ELyph 任务表示法](elyph.md)。
 
 ## 平台适配
 
