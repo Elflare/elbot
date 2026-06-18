@@ -146,7 +146,11 @@ Common fields:
 | `targets` | No | The delivery target expected by Elwisp; the final decision is still made by Elnis. |
 | `meta` | No | Original supplementary data, used only for recording and prompt attachment. |
 
+
+> **Note:** Elvena is based on JSON, and the content must be UTF-8 encoded.
+
 The HTTP response only indicates that Elnis has received or rejected the request, and does not wait for the LLM to complete.
+
 
 ```json
 {

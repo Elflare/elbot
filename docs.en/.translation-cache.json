@@ -26,9 +26,9 @@
       "updated_at": 1781749596
     },
     "docs/elnis-usage.md": {
-      "source_hash": "165a676f44b8a23586dd26d026bd9abb76d7cb18903c3be8e0c8311efae808c7",
+      "source_hash": "3714438d2c228aa66c8f030e69473d1cca2730d81bd88069f8abb9e6cedd5c5f",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1781749660
+      "updated_at": 1781752966
     },
     "docs/elnis.md": {
       "source_hash": "3a0c1b74d7554f2f80b194e4f58bb5933d130d860d3278535318c421e0777238",
@@ -4641,6 +4641,14 @@
       "source_hash": "e9b088a20b3196f9c15eb69e11284b94638f0c0538ada2b9e49a0112519d875e",
       "translation": "Configuration description:\n",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:quote:d15d6054f2b4a4a772616da1214df94308e7a3fd040856a3ca2ffcbccb7bd536": {
+      "kind": "quote",
+      "source": "**注：**：Elvena 基于 JSON，内容必须使用 UTF-8 编码。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "d15d6054f2b4a4a772616da1214df94308e7a3fd040856a3ca2ffcbccb7bd536",
+      "translation": "**Note:** Elvena is based on JSON, and the content must be UTF-8 encoded.",
+      "updated_at": 1781752966
     },
     "docs/elnis-usage.md:table:05a363aa4f244abaff4fcea17940f12ab23dc582a574ba43df7b47246ad7d47a": {
       "kind": "table",
