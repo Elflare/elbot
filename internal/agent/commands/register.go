@@ -41,6 +41,7 @@ type ModelOption struct {
 	Current     bool
 	ChatCurrent bool
 	WorkCurrent bool
+	ModeMarks   []string
 	Compact     bool
 	Naming      bool
 }

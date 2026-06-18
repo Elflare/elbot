@@ -849,10 +849,10 @@
 
 ### Phase 3：模型槽位
 
-- [ ] 支持 `elwisp1`、`elwisp2`、`elwisp3` 模型槽位，配置保存在 `state.toml` 的 `mode_models`。
-- [ ] `/model` 支持 `--elwisp1`、`--elwisp2`、`--elwisp3`。
-- [ ] `/models` 展示 Elnis 槽位当前模型标记。
-- [ ] Elnis payload 的 `model_slot` 使用对应模型，未配置时 fallback 到 `work`。
+- [x] 支持 `elwisp1`、`elwisp2`、`elwisp3` 模型槽位，配置保存在 `state.toml` 的 `mode_models`。
+- [x] `/model` 支持 `--elwisp1`、`--elwisp2`、`--elwisp3`。
+- [x] `/models` 展示 Elnis 槽位当前模型标记。
+- [x] Elnis payload 的 `model_slot` 使用对应模型，未配置时 fallback 到 `work`。
 
 ### Phase 4：文档、运维与后续预留
 

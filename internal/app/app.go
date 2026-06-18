@@ -338,6 +338,10 @@ func Run(ctx context.Context, opts Options) error {
 				return err
 			},
 			Runner: agt,
+			ResolveModel: func(slot string) config.ModelSelection {
+				selected := agt.CurrentModelForMode(slot)
+				return config.ModelSelection{Provider: selected.Provider, Model: selected.Model}
+			},
 		})
 		if err != nil {
 			return err

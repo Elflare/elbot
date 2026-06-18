@@ -215,6 +215,95 @@ func TestHandleRejectsDisabledExternalTool(t *testing.T) {
 	}
 }
 
+func TestRunLLMEventUsesModelSlot(t *testing.T) {
+	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":false,"report":""}`}
+	service, cleanup := newTestServiceWithRunner(t, runner, nil)
+	defer cleanup()
+	var queued QueuedLLMEvent
+	service.SetLLMEnqueuer(func(ctx context.Context, event QueuedLLMEvent) error {
+		queued = event
+		return nil
+	})
+
+	req := testRequest(ModeLLM)
+	req.ModelSlot = "elwisp2"
+	if _, err := service.Handle(context.Background(), "secret", req); err != nil {
+		t.Fatalf("Handle llm: %v", err)
+	}
+	if err := service.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err != nil {
+		t.Fatalf("RunLLMEvent: %v", err)
+	}
+	if len(runner.requests) != 1 || runner.requests[0].ModelProvider != "provider-elwisp2" || runner.requests[0].Model != "model-elwisp2" {
+		t.Fatalf("requests = %#v", runner.requests)
+	}
+}
+
+func TestRunLLMEventFallsBackToWorkModel(t *testing.T) {
+	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":false,"report":""}`}
+	service, cleanup := newTestServiceWithRunner(t, runner, nil)
+	defer cleanup()
+	var queued QueuedLLMEvent
+	service.SetLLMEnqueuer(func(ctx context.Context, event QueuedLLMEvent) error {
+		queued = event
+		return nil
+	})
+
+	req := testRequest(ModeLLM)
+	if _, err := service.Handle(context.Background(), "secret", req); err != nil {
+		t.Fatalf("Handle llm: %v", err)
+	}
+	if err := service.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err != nil {
+		t.Fatalf("RunLLMEvent: %v", err)
+	}
+	if len(runner.requests) != 1 || runner.requests[0].ModelProvider != "provider-work" || runner.requests[0].Model != "model-work" {
+		t.Fatalf("requests = %#v", runner.requests)
+	}
+}
+
+func TestRunLLMEventFallsBackWhenSlotUnconfigured(t *testing.T) {
+	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":false,"report":""}`}
+	service, cleanup := newTestServiceWithRunner(t, runner, nil)
+	defer cleanup()
+	service.resolveModel = func(slot string) config.ModelSelection {
+		if slot == "work" {
+			return config.ModelSelection{Provider: "provider-work", Model: "model-work"}
+		}
+		return config.ModelSelection{}
+	}
+	var queued QueuedLLMEvent
+	service.SetLLMEnqueuer(func(ctx context.Context, event QueuedLLMEvent) error {
+		queued = event
+		return nil
+	})
+
+	req := testRequest(ModeLLM)
+	req.ModelSlot = "elwisp3"
+	if _, err := service.Handle(context.Background(), "secret", req); err != nil {
+		t.Fatalf("Handle llm: %v", err)
+	}
+	if err := service.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err != nil {
+		t.Fatalf("RunLLMEvent: %v", err)
+	}
+	if len(runner.requests) != 1 || runner.requests[0].ModelProvider != "provider-work" || runner.requests[0].Model != "model-work" {
+		t.Fatalf("requests = %#v", runner.requests)
+	}
+}
+
+func TestHandleRejectsInvalidModelSlot(t *testing.T) {
+	service, cleanup := newTestService(t, nil)
+	defer cleanup()
+
+	req := testRequest(ModeLLM)
+	req.ModelSlot = "chat"
+	resp, err := service.Handle(context.Background(), "secret", req)
+	if err == nil {
+		t.Fatal("expected invalid model_slot error")
+	}
+	if resp.Accepted || !strings.Contains(resp.Error, "unsupported model_slot") {
+		t.Fatalf("response = %#v", resp)
+	}
+}
+
 func TestRunLLMEventCompletesAndReports(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"处理完成"}`}
 	sent := []string{}
@@ -351,6 +440,9 @@ func newTestServiceWithRunner(t *testing.T, runner background.Runner, send Sende
 		Store:  store,
 		Send:   send,
 		Runner: runner,
+		ResolveModel: func(slot string) config.ModelSelection {
+			return config.ModelSelection{Provider: "provider-" + slot, Model: "model-" + slot}
+		},
 	})
 	if err != nil {
 		t.Fatalf("NewService: %v", err)

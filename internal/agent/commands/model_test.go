@@ -44,11 +44,22 @@ func (s fakeModelService) ModelList(query string, opts ModelListOptions) ModelLi
 func TestModelCommandCompletesOptions(t *testing.T) {
 	completer := NewModel(Deps{Models: fakeModelService{}}).(command.Completer)
 	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model --", Prefix: "/", Name: "model", Args: "--", Cursor: len("/model --")})
-	if len(got) < 4 {
+	if len(got) < 7 {
 		t.Fatalf("Complete options = %#v", got)
 	}
 	if got[0].Text != "--chat" || got[0].Kind != "model_option" || got[0].ReplaceStart != len("/model ") {
 		t.Fatalf("first option = %#v", got[0])
+	}
+}
+
+func TestModelCommandCompletesElwispOptions(t *testing.T) {
+	completer := NewModel(Deps{Models: fakeModelService{}}).(command.Completer)
+	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model --elw", Prefix: "/", Name: "model", Args: "--elw", Cursor: len("/model --elw")})
+	if len(got) != 3 {
+		t.Fatalf("Complete elwisp options = %#v", got)
+	}
+	if got[0].Text != "--elwisp1" || got[1].Text != "--elwisp2" || got[2].Text != "--elwisp3" {
+		t.Fatalf("elwisp options = %#v", got)
 	}
 }
 
@@ -95,4 +106,37 @@ func TestModelCommandDoesNotCompleteModelImmediatelyAfterOption(t *testing.T) {
 	if len(got) != 1 || got[0].Text != "--chat" {
 		t.Fatalf("Complete option token = %#v", got)
 	}
+}
+
+func TestModelCommandSwitchesElwispSlot(t *testing.T) {
+	models := &recordingModelService{}
+	result, err := NewModel(Deps{Models: models}).Handle(context.Background(), command.Request{Prefix: "/", Name: "model", Args: "--elwisp2 openai/gpt-4.1"})
+	if err != nil {
+		t.Fatalf("Handle elwisp model: %v", err)
+	}
+	if models.mode != "elwisp2" || models.arg != "openai/gpt-4.1" {
+		t.Fatalf("selected mode=%q arg=%q", models.mode, models.arg)
+	}
+	if result == nil || !strings.Contains(result.Content, "switched elwisp2 model") {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestModelSuffixUsesModeMarks(t *testing.T) {
+	got := modelSuffix(ModelOption{ModeMarks: []string{"work", "elwisp2"}, Compact: true})
+	if got != " (work, elwisp2, compact)" {
+		t.Fatalf("modelSuffix = %q", got)
+	}
+}
+
+type recordingModelService struct {
+	fakeModelService
+	mode string
+	arg  string
+}
+
+func (s *recordingModelService) SelectModelForMode(mode, arg string) (ModelOption, error) {
+	s.mode = mode
+	s.arg = arg
+	return ModelOption{Provider: "openai", Model: "gpt-4.1"}, nil
 }

@@ -111,11 +111,24 @@ model = "deepseek-chat"
 [mode_models.chat]
 provider = "deepseek"
 model = "deepseek-chat"
+
+[mode_models.elwisp1]
+provider = "deepseek"
+model = "deepseek-chat"
+
+[mode_models.elwisp2]
+provider = "deepseek"
+model = "deepseek-chat"
+
+[mode_models.elwisp3]
+provider = "deepseek"
+model = "deepseek-chat"
 ```
 
 - `default_mode` 决定新 Session 默认进入 `chat` 还是 `work`。
 - `work` 模式启用工具发现和工具调用。
 - `chat` 模式不注入工具，适合闲聊和低成本对话。
+- `elwisp1`、`elwisp2`、`elwisp3` 是 Elnis LLM 事件可选模型槽位；Elvena 请求可通过 `model_slot` 指定，未配置时回退到 `work`。
 - 运行时使用 `/model` 切换模型后，状态会写回 `state.toml`。
 
 ## 存储与运行数据
@@ -297,6 +310,7 @@ disabled_external_tools = ["danger_tool"]
 - `token_env` 支持写成列表，按顺序尝试多个环境变量名；适合临时切换 token 或做多环境兼容。
 - Elwisp 默认启用；只有显式配置 `enabled=false` 才会禁用对应 Elwisp。
 - 当前支持 `record`、`direct` 和 `llm` 模式；`llm` 模式使用后台 Session runner 执行。
+- `llm` 模式可在 Elvena 请求中指定 `model_slot` 为 `elwisp1`、`elwisp2` 或 `elwisp3`；未指定或对应槽位未配置时回退到 `work` 模型。
 - `direct` 和 `llm` 报告只支持按 Elnis 裁决后的平台发送给 superadmins，不支持任意 user/group 目标。
 - Elvena 请求中的 `tools` 进入校验、持久化和执行链路；外部工具名仍需由单个 Elwisp 的禁用列表控制。
 

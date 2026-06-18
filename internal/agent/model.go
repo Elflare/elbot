@@ -234,6 +234,7 @@ func (a *Agent) modelOptions(query string, opts modelListOptions) agentcommands.
 
 	chat := a.modelForMode(storage.SessionModeChat)
 	work := a.modelForMode(storage.SessionModeWork)
+	modeMarks := a.modelModeMarks([]string{storage.SessionModeChat, storage.SessionModeWork, "elwisp1", "elwisp2", "elwisp3"})
 	compact := a.compactSelectionForSession(nil)
 	naming := a.namingModel
 	options := []agentcommands.ModelOption{}
@@ -246,10 +247,11 @@ func (a *Agent) modelOptions(query string, opts modelListOptions) agentcommands.
 				Model:       model,
 				ChatCurrent: provider == chat.Provider && model == chat.Model,
 				WorkCurrent: provider == work.Provider && model == work.Model,
+				ModeMarks:   modeMarks[modelSelectionKey(provider, model)],
 				Compact:     provider == compact.Provider && model == compact.Model,
 				Naming:      provider == naming.Provider && model == naming.Model,
 			}
-			option.Current = option.ChatCurrent || option.WorkCurrent
+			option.Current = len(option.ModeMarks) > 0
 			idx++
 			if query != "" && !strings.Contains(strings.ToLower(provider), query) && !strings.Contains(strings.ToLower(model), query) {
 				continue
@@ -345,6 +347,29 @@ func (a *Agent) modelForMode(mode string) config.ModelSelection {
 		return a.modelRuntime.modeModels[storage.SessionModeWork]
 	}
 	return selected
+}
+
+func (a *Agent) modelModeMarks(modes []string) map[string][]string {
+	marks := map[string][]string{}
+	seen := map[string]bool{}
+	for _, mode := range modes {
+		selected := a.modelForMode(mode)
+		if selected.Provider == "" || selected.Model == "" {
+			continue
+		}
+		key := modelSelectionKey(selected.Provider, selected.Model)
+		markKey := key + "\x00" + mode
+		if seen[markKey] {
+			continue
+		}
+		seen[markKey] = true
+		marks[key] = append(marks[key], mode)
+	}
+	return marks
+}
+
+func modelSelectionKey(provider, model string) string {
+	return provider + "\x00" + model
 }
 
 func (a *Agent) clientForProvider(providerName string) llm.LLM {

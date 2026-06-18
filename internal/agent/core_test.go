@@ -456,7 +456,7 @@ func TestCheckModelMarksCurrent(t *testing.T) {
 	}
 
 	got := p.out.String()
-	if !strings.Contains(got, "default:\n") || !strings.Contains(got, "* [2] beta (chat, work, compact)") {
+	if !strings.Contains(got, "default:\n") || !strings.Contains(got, "* [2] beta (chat, work, elwisp1, elwisp2, elwisp3, compact)") {
 		t.Fatalf("model marker missing from output:\n%s", got)
 	}
 }

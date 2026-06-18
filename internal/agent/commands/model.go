@@ -24,11 +24,14 @@ func (c modelCommand) Info() command.Info {
 func modelCommandInfo() command.Info {
 	return command.Info{
 		Name:        "model",
-		Usage:       "/model [--chat|--work|--compact|--naming] <name or number>",
+		Usage:       "/model [--chat|--work|--elwisp1|--elwisp2|--elwisp3|--compact|--naming] <name or number>",
 		Description: "Switch model for current or specified mode.",
 		Help: strings.TrimSpace(`Options:
   --chat <model>       Switch chat mode model.
   --work <model>       Switch work mode model.
+  --elwisp1 <model>    Switch Elnis elwisp1 model slot.
+  --elwisp2 <model>    Switch Elnis elwisp2 model slot.
+  --elwisp3 <model>    Switch Elnis elwisp3 model slot.
   --compact <model>    Switch context compact model.
   --naming <model>     Switch session naming model.
 
@@ -39,6 +42,7 @@ Examples:
   /model 2
   /model --chat gpt-4o
   /model --work openai/gpt-4.1
+  /model --elwisp2 openai/gpt-4.1
   /model --compact claude-3-5-haiku
   /model --naming gpt-4o-mini`),
 	}
@@ -60,6 +64,8 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 		selected, err = deps.Models.SelectModelForMode(storage.SessionModeChat, args)
 	case modelTargetWork:
 		selected, err = deps.Models.SelectModelForMode(storage.SessionModeWork, args)
+	case modelTargetElwisp1, modelTargetElwisp2, modelTargetElwisp3:
+		selected, err = deps.Models.SelectModelForMode(string(target), args)
 	case modelTargetCompact:
 		selected, err = deps.Models.SelectCompactModel(args)
 	case modelTargetNaming:
@@ -75,6 +81,8 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 		return &command.Result{Content: fmt.Sprintf("switched chat model: %s/%s", selected.Provider, selected.Model)}, nil
 	case modelTargetWork:
 		return &command.Result{Content: fmt.Sprintf("switched work model: %s/%s", selected.Provider, selected.Model)}, nil
+	case modelTargetElwisp1, modelTargetElwisp2, modelTargetElwisp3:
+		return &command.Result{Content: fmt.Sprintf("switched %s model: %s/%s", target, selected.Provider, selected.Model)}, nil
 	case modelTargetCompact:
 		return &command.Result{Content: fmt.Sprintf("switched compact model: %s/%s", selected.Provider, selected.Model)}, nil
 	case modelTargetNaming:
@@ -157,6 +165,9 @@ func completeModelOptions(query string, start, end int) []command.Completion {
 	}{
 		{"--chat", "Switch chat mode model"},
 		{"--work", "Switch work mode model"},
+		{"--elwisp1", "Switch Elnis elwisp1 model slot"},
+		{"--elwisp2", "Switch Elnis elwisp2 model slot"},
+		{"--elwisp3", "Switch Elnis elwisp3 model slot"},
 		{"--compact", "Switch context compact model"},
 		{"--naming", "Switch session naming model"},
 		{"-c", "Switch context compact model"},
@@ -177,7 +188,7 @@ func optionOnlyModelArgs(args string) bool {
 		return false
 	}
 	last := fields[len(fields)-1]
-	return last == "--chat" || last == "--work" || last == "--compact" || last == "--naming" || last == "-c" || last == "-n"
+	return last == "--chat" || last == "--work" || last == "--elwisp1" || last == "--elwisp2" || last == "--elwisp3" || last == "--compact" || last == "--naming" || last == "-c" || last == "-n"
 }
 
 func NewCheckModel(deps Deps) command.Handler {
@@ -251,12 +262,14 @@ func appendModelProviderErrors(sb *strings.Builder, errors []ModelProviderError)
 }
 
 func modelSuffix(m ModelOption) string {
-	marks := []string{}
-	if m.ChatCurrent {
-		marks = append(marks, "chat")
-	}
-	if m.WorkCurrent {
-		marks = append(marks, "work")
+	marks := append([]string{}, m.ModeMarks...)
+	if len(marks) == 0 {
+		if m.ChatCurrent {
+			marks = append(marks, "chat")
+		}
+		if m.WorkCurrent {
+			marks = append(marks, "work")
+		}
 	}
 	if m.Compact {
 		marks = append(marks, "compact")
@@ -290,6 +303,9 @@ const (
 	modelTargetCurrent modelTarget = "current"
 	modelTargetChat    modelTarget = "chat"
 	modelTargetWork    modelTarget = "work"
+	modelTargetElwisp1 modelTarget = "elwisp1"
+	modelTargetElwisp2 modelTarget = "elwisp2"
+	modelTargetElwisp3 modelTarget = "elwisp3"
 	modelTargetCompact modelTarget = "compact"
 	modelTargetNaming  modelTarget = "naming"
 )
@@ -305,6 +321,12 @@ func parseModelArgs(args string) (string, modelTarget, error) {
 			nextTarget = modelTargetChat
 		case "--work":
 			nextTarget = modelTargetWork
+		case "--elwisp1":
+			nextTarget = modelTargetElwisp1
+		case "--elwisp2":
+			nextTarget = modelTargetElwisp2
+		case "--elwisp3":
+			nextTarget = modelTargetElwisp3
 		case "--compact", "-c":
 			nextTarget = modelTargetCompact
 		case "--naming", "-n":

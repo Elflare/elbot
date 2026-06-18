@@ -8,3 +8,17 @@ model = "deepseek-chat"
 [mode_models.chat]
 provider = "deepseek"
 model = "deepseek-chat"
+
+# Optional Elnis LLM model slots. If omitted, each slot falls back to work.
+[mode_models.elwisp1]
+provider = "deepseek"
+model = "deepseek-chat"
+
+[mode_models.elwisp2]
+provider = "deepseek"
+model = "deepseek-chat"
+
+[mode_models.elwisp3]
+provider = "deepseek"
+model = "deepseek-chat"
+

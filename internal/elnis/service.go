@@ -33,25 +33,29 @@ type QueuedLLMEvent struct {
 
 type EnqueueLLMFunc func(ctx context.Context, event QueuedLLMEvent) error
 
+type ModelResolverFunc func(slot string) config.ModelSelection
+
 type Options struct {
-	Config config.ElnisConfig
-	Tokens map[string]string
-	Store  storage.Store
-	Logger *slog.Logger
-	Audit  AuditFunc
-	Send   SenderFunc
-	Runner background.Runner
+	Config       config.ElnisConfig
+	Tokens       map[string]string
+	Store        storage.Store
+	Logger       *slog.Logger
+	Audit        AuditFunc
+	Send         SenderFunc
+	Runner       background.Runner
+	ResolveModel ModelResolverFunc
 }
 
 type Service struct {
-	cfg        config.ElnisConfig
-	tokens     map[string]string
-	store      storage.Store
-	logger     *slog.Logger
-	audit      AuditFunc
-	send       SenderFunc
-	runner     background.Runner
-	enqueueLLM EnqueueLLMFunc
+	cfg          config.ElnisConfig
+	tokens       map[string]string
+	store        storage.Store
+	logger       *slog.Logger
+	audit        AuditFunc
+	send         SenderFunc
+	runner       background.Runner
+	resolveModel ModelResolverFunc
+	enqueueLLM   EnqueueLLMFunc
 }
 
 func NewService(opts Options) (*Service, error) {
@@ -61,7 +65,7 @@ func NewService(opts Options) (*Service, error) {
 	if opts.Config.Enabled && len(opts.Tokens) == 0 {
 		return nil, fmt.Errorf("elnis enabled but no tokens are configured")
 	}
-	return &Service{cfg: opts.Config, tokens: opts.Tokens, store: opts.Store, logger: opts.Logger, audit: opts.Audit, send: opts.Send, runner: opts.Runner}, nil
+	return &Service{cfg: opts.Config, tokens: opts.Tokens, store: opts.Store, logger: opts.Logger, audit: opts.Audit, send: opts.Send, runner: opts.Runner, resolveModel: opts.ResolveModel}, nil
 }
 
 func (s *Service) SetLLMEnqueuer(enqueue EnqueueLLMFunc) {
@@ -212,6 +216,9 @@ func (s *Service) prepareEvent(tokenName string, req Request) (Event, error) {
 	}
 	if req.Mode != ModeRecord && req.Mode != ModeDirect && req.Mode != ModeLLM {
 		return Event{}, fmt.Errorf("unsupported mode %q", req.Mode)
+	}
+	if req.ModelSlot != "" && !isElnisModelSlot(req.ModelSlot) {
+		return Event{}, fmt.Errorf("unsupported model_slot %q", req.ModelSlot)
 	}
 	createdAt := time.Now()
 	if strings.TrimSpace(req.CreatedAt) != "" {
@@ -416,6 +423,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	}
 	s.auditEvent("elnis.llm_started", append(attrs, "event_id", eventID)...)
 	s.logInfo("elnis llm started", append(attrs, "event_id", eventID)...)
+	model := s.modelForEvent(event)
 	result, err := s.runner.RunBackground(ctx, background.RunRequest{
 		Kind:          background.KindElnis,
 		Name:          event.EventKey,
@@ -423,6 +431,8 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		Platform:      firstPlatform(event.ResolvedTargets),
 		Actor:         elnisActor(event),
 		ScopeID:       "elnis:" + event.EventKey,
+		ModelProvider: model.Provider,
+		Model:         model.Model,
 		Prompt:        llmPrompt(event),
 		ToolListNames: event.Request.ToolListNames,
 		CachedTools:   s.elwispCachedTools(event),
@@ -442,7 +452,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	}
 	parsed, parseErr := background.ParseJSONResult(result.Text)
 	if parseErr != nil {
-		result, parsed, parseErr = s.retryLLMResultFormat(ctx, event, result.SessionID)
+		result, parsed, parseErr = s.retryLLMResultFormat(ctx, event, result.SessionID, model)
 	}
 	if parseErr != nil {
 		message := fmt.Sprintf("Elnis 事件 %s 解析格式失败，请查看后台 session。\nsession: %s\n错误：%v", event.EventKey, result.SessionID, parseErr)
@@ -467,7 +477,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	return nil
 }
 
-func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, sessionID string) (background.RunResult, background.JSONResult, error) {
+func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, sessionID string, model config.ModelSelection) (background.RunResult, background.JSONResult, error) {
 	result, err := s.runner.RunBackground(ctx, background.RunRequest{
 		Kind:          background.KindElnis,
 		Name:          event.EventKey,
@@ -476,6 +486,8 @@ func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, session
 		Actor:         elnisActor(event),
 		ScopeID:       "elnis:" + event.EventKey,
 		SessionID:     sessionID,
+		ModelProvider: model.Provider,
+		Model:         model.Model,
 		Prompt:        background.DefaultJSONRetryPrompt(),
 		SandboxSubdir: "elnis/" + event.Request.Elwisp.Name,
 		Metadata:      map[string]string{"elnis_event_key": event.EventKey, "elwisp_name": event.Request.Elwisp.Name},
@@ -551,6 +563,30 @@ func llmPrompt(event Event) string {
 	}
 	parts = append(parts, "", "事件内容：", strings.TrimSpace(event.Request.Content))
 	return strings.Join(parts, "\n")
+}
+
+func (s *Service) modelForEvent(event Event) config.ModelSelection {
+	slot := strings.TrimSpace(event.Request.ModelSlot)
+	if slot == "" {
+		slot = "work"
+	}
+	if s.resolveModel == nil {
+		return config.ModelSelection{}
+	}
+	selected := s.resolveModel(slot)
+	if (selected.Provider == "" || selected.Model == "") && slot != "work" {
+		selected = s.resolveModel("work")
+	}
+	return selected
+}
+
+func isElnisModelSlot(slot string) bool {
+	switch strings.TrimSpace(slot) {
+	case "elwisp1", "elwisp2", "elwisp3":
+		return true
+	default:
+		return false
+	}
 }
 
 func elnisActor(event Event) security.Actor {
