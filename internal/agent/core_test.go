@@ -1405,7 +1405,7 @@ func TestToolDirectiveInjectsTaggedTools(t *testing.T) {
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(agentWrapperTool{name: "alpha", tags: []string{"web"}})
 	_ = registry.Register(agentWrapperTool{name: "beta", tags: []string{"web"}})
-	_ = registry.Register(agentDetailTool{name: "skill_web", source: tool.SourceSkillPy, detail: "# skill", activate: []string{"python_skill_run"}})
+	_ = registry.Register(agentDetailTool{name: "skill_web", source: tool.SourceSkillAgent, detail: "# skill", activate: []string{"python_skill_run"}})
 	a.SetToolRuntime(registry, nil)
 
 	if err := a.HandleMessage(context.Background(), "查资料 @tool:web"); err != nil {
@@ -1592,7 +1592,7 @@ func TestSkillDiscoveryActivatesHiddenWrapperInSameTurn(t *testing.T) {
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
-	_ = registry.Register(agentDetailTool{name: "docx", source: tool.SourceSkillPy, detail: "# DOCX", activate: []string{"python_skill_run"}})
+	_ = registry.Register(agentDetailTool{name: "docx", source: tool.SourceSkillAgent, detail: "# DOCX", activate: []string{"python_skill_run"}})
 	_ = registry.Register(agentWrapperTool{name: "python_skill_run", hidden: true})
 	a.SetToolRuntime(registry, nil)
 
@@ -2527,6 +2527,68 @@ func TestSoulPromptAndToolsByMode(t *testing.T) {
 	}
 	if tools.calls != 1 {
 		t.Fatalf("tool provider calls = %d", tools.calls)
+	}
+}
+
+func TestRunBackgroundPreloadsSkillDetailAndActivatedHiddenWrapper(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
+	platform := &fakePlatform{}
+	a := New(platform, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(agentDetailTool{name: "docx", source: tool.SourceSkillAgent, detail: "# DOCX\n\nUse scripts/convert.py", activate: []string{"python_skill_run"}})
+	_ = registry.Register(agentWrapperTool{name: "python_skill_run", hidden: true})
+	a.SetToolRuntime(registry, nil)
+
+	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "skill-test", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"docx"}})
+	if err != nil {
+		t.Fatalf("RunBackground: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	if got := toolNames(requests[0].Tools); got != "python_skill_run" {
+		t.Fatalf("tools = %s", got)
+	}
+	latest := requests[0].Messages[len(requests[0].Messages)-1]
+	content := llm.SegmentsContentText(latest.Segments)
+	if !strings.Contains(content, "[系统预加载 Skill]") || !strings.Contains(content, "# DOCX") || !strings.Contains(content, "[后台任务]") || !strings.Contains(content, "run") {
+		t.Fatalf("skill prompt missing content: %q", content)
+	}
+}
+
+func TestRunBackgroundPreloadsMixedToolAndSkillWithoutSkillSchema(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
+	platform := &fakePlatform{}
+	a := New(platform, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(builtin.NewWebExtractTool())
+	_ = registry.Register(agentDetailTool{name: "docx", source: tool.SourceSkillAgent, detail: "# DOCX", activate: []string{"python_skill_run"}})
+	_ = registry.Register(agentWrapperTool{name: "python_skill_run", hidden: true})
+	a.SetToolRuntime(registry, nil)
+
+	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "mixed-test", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"web_extract", "docx"}})
+	if err != nil {
+		t.Fatalf("RunBackground: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	gotTools := toolNames(requests[0].Tools)
+	if !strings.Contains(gotTools, "web_extract") || !strings.Contains(gotTools, "python_skill_run") {
+		t.Fatalf("tools = %s", gotTools)
+	}
+	if strings.Contains(gotTools, "docx") {
+		t.Fatalf("skill itself should not be top-level schema: %s", gotTools)
 	}
 }
 

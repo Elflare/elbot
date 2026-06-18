@@ -11,8 +11,8 @@ import (
 type Kind string
 
 const (
-	KindPython Kind = "python"
-	KindGo     Kind = "go"
+	KindAgent Kind = "agent"
+	KindGo    Kind = "go"
 )
 
 type Record struct {
@@ -81,5 +81,5 @@ func SourceForKind(kind Kind) tool.Source {
 	if kind == KindGo {
 		return tool.SourceSkillGo
 	}
-	return tool.SourceSkillPy
+	return tool.SourceSkillAgent
 }

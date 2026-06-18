@@ -11,15 +11,15 @@ import (
 	"elbot/internal/tool"
 )
 
-func TestFilesystemScannerScansPythonSkill(t *testing.T) {
+func TestFilesystemScannerScansAgentSkill(t *testing.T) {
 	root := t.TempDir()
-	writeSkill(t, filepath.Join(root, "py", "docx"), "---\nname: docx\ndescription: DOCX skill\nrisk: low\n---\n\n# DOCX\n\nUse scripts.")
+	writeSkill(t, filepath.Join(root, "agent", "docx"), "---\nname: docx\ndescription: DOCX skill\nrisk: low\n---\n\n# DOCX\n\nUse scripts.")
 	scanner := NewFilesystemScanner(root)
 	tools, err := scanner.Scan(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 1 || tools[0].Name() != "docx" || tools[0].Info().Source != tool.SourceSkillPy || tools[0].Info().Risk != tool.RiskLow {
+	if len(tools) != 1 || tools[0].Name() != "docx" || tools[0].Info().Source != tool.SourceSkillAgent || tools[0].Info().Risk != tool.RiskLow {
 		t.Fatalf("tools = %#v", tools)
 	}
 }
@@ -65,7 +65,7 @@ func TestFilesystemScannerScansGoTextSkillWithoutBinary(t *testing.T) {
 
 func TestFilesystemScannerReloadRemovesDeletedExternalSkill(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, "py", "docx")
+	dir := filepath.Join(root, "agent", "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# DOCX")
 	scanner := NewFilesystemScanner(root)
 	registry := tool.NewRegistry()
@@ -88,7 +88,7 @@ func TestFilesystemScannerReloadRemovesDeletedExternalSkill(t *testing.T) {
 
 func TestFilesystemScannerRemoveDeletesDirectoryAndReloads(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, "py", "docx")
+	dir := filepath.Join(root, "agent", "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\nrisk: low\n---\n\n# DOCX")
 	scanner := NewFilesystemScanner(root)
 	registry := tool.NewRegistry()
@@ -106,9 +106,9 @@ func TestFilesystemScannerRemoveDeletesDirectoryAndReloads(t *testing.T) {
 	}
 }
 
-func TestPythonDescriptorDetailAddsUvConstraint(t *testing.T) {
-	d := NewDescriptor(Record{Name: "docx", Detail: "# DOCX", Kind: KindPython})
-	if !strings.Contains(d.Detail(), "uv run python") || len(d.ActivateTools()) != 1 || d.ActivateTools()[0] != PythonRunnerName {
+func TestAgentDescriptorDetailAddsUvConstraint(t *testing.T) {
+	d := NewDescriptor(Record{Name: "docx", Detail: "# DOCX", Kind: KindAgent})
+	if !strings.Contains(d.Detail(), "uv run python") || len(d.ActivateTools()) != 1 || d.ActivateTools()[0] != AgentScriptRunnerName {
 		t.Fatalf("detail=%q activate=%#v", d.Detail(), d.ActivateTools())
 	}
 }

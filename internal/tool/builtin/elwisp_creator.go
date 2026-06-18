@@ -80,7 +80,7 @@ ELyph is ElBot's lightweight task notation. In Elnis llm mode, use ELyph content
 4. Decide target request:
    - platforms: normally ["cli"] or ["all"].
    - superadmins: normally true.
-5. Decide whether the background task needs ElBot internal tools with tool_list_names.
+5. Decide whether the background task needs ElBot internal tools or Skills with tool_list_names.
 6. Decide whether the Elwisp needs to declare external tools in tools.
 7. Inspect existing config with read_file before editing app.toml or elnis.toml.
 8. Use edit_file to create listener code, config snippets, and tests.
@@ -122,7 +122,7 @@ Common optional fields:
 - title: notification/session title.
 - format: "text" or "elyph". Default is text.
 - model_slot: llm mode slot, one of elwisp1, elwisp2, elwisp3. Falls back to work when unset or unconfigured.
-- tool_list_names: ElBot internal tools requested for background llm mode. Elnis allowed_tools still decides final availability. discover_tool is ignored in background.
+- tool_list_names: ElBot internal tool names or Skill names requested for background llm mode. Tools inject schemas; Skills inject task instructions and activate their runner. Elnis allowed_tools still decides final availability. discover_tool is ignored in background.
 - tools: external tool declarations supplied by Elwisp for this event.
 - targets: desired delivery target. Elnis still resolves final target.
 - meta: original extra metadata; useful for host, severity, URL, path, commit id, etc.

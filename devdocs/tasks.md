@@ -453,7 +453,8 @@
 - [x] 维护工具元信息，包括名称、简介、参数定义、调用约束和风险等级。
 - [x] 工具调用应支持参数校验、超时控制、错误处理和结果回传。
 - [x] 工具调用结果应进入上下文，供后续 LLM 请求使用。
-- [x] Tool Runtime 为后续 MCP、skill 工具接入预留扩展点。skill 放 `skills/` 文件夹，目录约定为 Python 外置 skill 使用 `skills/py/<skill>/SKILL.md`，可选 `SKILL.elyph` 覆写 Agent 可读说明；Go skill 使用 ElBot 原生 `skills/go/<skill>/SKILL.elyph`，可选 Go binary。
+- [x] Tool Runtime 为后续 MCP、skill 工具接入预留扩展点。skill 放 `skills/` 文件夹，目录约定为 AgentSkill 使用 `skills/agent/<skill>/SKILL.md`，可选 `SKILL.elyph` 覆写 Agent 可读说明；Go skill 使用 ElBot 原生 `skills/go/<skill>/SKILL.elyph`，可选 Go binary。
+
 - [x] 发现工具能一次传多个，返回值统一使用 `tools` 数组。
 - [x] 增加 Go Tool Builder，降低内置工具和未来 Go 插件的 schema 编写成本。
 - [x] 工具元信息支持默认隐藏和依赖工具声明，隐藏只控制 Prompt 暴露，不作为安全边界。
@@ -756,8 +757,9 @@
 
 ### 外置 Skill 
 
-- [x] 实现 `skills/py/<skill>/SKILL.md` 扫描，兼容网上常见 md + py skill；Python skill 作为文档型 skill 通过 `discover_tool` 返回 markdown 详情，脚本执行由隐藏包装工具 `python_skill_run` 统一使用 `uv run python`；外置 skill 可在 front matter 写 `risk`，缺省为 high。
-- [x] 支持 `skills/py/<skill>/SKILL.elyph` 覆写 Python skill 的 Agent 可读说明；存在 `SKILL.elyph` 时 discover 优先返回 ELyph detail，不存在时回退 `SKILL.md`。
+- [x] 实现 `skills/agent/<skill>/SKILL.md` 扫描，兼容 agentskills.io 风格文档型 AgentSkill；AgentSkill 通过 `discover_tool` 返回 markdown 详情，当前附带 Python 脚本执行由隐藏包装工具 `python_skill_run` 统一使用 `uv run python`；外置 skill 可在 front matter 写 `risk`，缺省为 high。
+- [x] 支持 `skills/agent/<skill>/SKILL.elyph` 覆写 AgentSkill 的 Agent 可读说明；存在 `SKILL.elyph` 时 discover 优先返回 ELyph detail，不存在时回退 `SKILL.md`。
+
 - [x] Go skill 只作为 ElBot 原生 skill 扫描：必须存在 `skills/go/<skill>/SKILL.elyph`，可选存在 binary；执行仍由隐藏包装工具 `go_skill_run` 选择 skill 并把 arguments JSON 写入 stdin。
 - [x] 实现 `/tools reload` 热扫描，把新增/删除的外置 skill 同步到 Registry，并保留内置工具和隐藏包装工具。
 - [x] 实现 `/tools uninstall <name>` / `/tools remove <name>` 删除外置工具，内置工具不可卸载。

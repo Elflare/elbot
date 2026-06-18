@@ -42,7 +42,7 @@ func (t fakeTool) Call(context.Context, CallRequest) (*Result, error) {
 
 func TestRegistryRegisterListDiscover(t *testing.T) {
 	registry := NewRegistry()
-	if err := registry.Register(fakeTool{name: "b", source: SourceSkillPy}); err != nil {
+	if err := registry.Register(fakeTool{name: "b", source: SourceSkillAgent}); err != nil {
 		t.Fatal(err)
 	}
 	if err := registry.Register(fakeTool{name: "a", source: SourceBuiltin}); err != nil {
@@ -214,7 +214,7 @@ func TestDiscoverToolHidesHiddenToolsFromList(t *testing.T) {
 
 func TestDiscoverToolSkillDetailDoesNotReturnSchemaAndActivatesWrapper(t *testing.T) {
 	registry := NewRegistry()
-	if err := registry.Register(fakeDetailTool{name: "docx", source: SourceSkillPy, detail: "# DOCX", activate: []string{"python_skill_run"}}); err != nil {
+	if err := registry.Register(fakeDetailTool{name: "docx", source: SourceSkillAgent, detail: "# DOCX", activate: []string{"python_skill_run"}}); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "docx"})

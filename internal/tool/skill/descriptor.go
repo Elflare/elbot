@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	PythonRunnerName = "python_skill_run"
-	GoRunnerName     = "go_skill_run"
+	AgentScriptRunnerName = "python_skill_run"
+	GoRunnerName          = "go_skill_run"
 )
 
 type DetailProvider interface {
@@ -39,7 +39,7 @@ func (d Descriptor) Info() tool.Info {
 }
 
 func (d Descriptor) Schema() llm.ToolSchema {
-	// Skill 本体是 markdown 说明，不是可直接调用的 function schema。
+	// Skill 本体是说明文档，不是可直接调用的 function schema。
 	return llm.ToolSchema{}
 }
 
@@ -52,16 +52,18 @@ func (d Descriptor) Detail() string {
 	if d.Record.Format == elyph.Format {
 		detail = elyph.RuleCard() + "\n\n" + detail
 	}
-	if d.Record.Kind == KindPython {
-		detail = detail + pythonConstraint()
+	if d.Record.Kind == KindAgent {
+		detail = detail + agentSkillPythonConstraint()
 	}
+
 	return detail
 }
 
 func (d Descriptor) ActivateTools() []string {
 	switch d.Record.Kind {
-	case KindPython:
-		return []string{PythonRunnerName}
+	case KindAgent:
+		// TODO: 根据 AgentSkill 声明的脚本类型选择 wrapper；当前仅支持 Python 脚本。
+		return []string{AgentScriptRunnerName}
 	case KindGo:
 		if d.Record.BinaryPath != "" {
 			return []string{GoRunnerName}
@@ -72,10 +74,10 @@ func (d Descriptor) ActivateTools() []string {
 	}
 }
 
-func pythonConstraint() string {
-	return "\n\n---\n\nElBot Python skill 运行约束：\n" +
-		"- 如果需要执行此 skill 附带的 Python 脚本，请使用 python_skill_run。\n" +
-		"- python_skill_run 会在 skill 目录下通过 uv run python 执行脚本。\n" +
+func agentSkillPythonConstraint() string {
+	return "\n\n---\n\nElBot AgentSkill Python 脚本运行约束：\n" +
+		"- 如果需要执行此 AgentSkill 附带的 Python 脚本，请使用 python_skill_run。\n" +
+		"- python_skill_run 会在 AgentSkill 目录下通过 uv run python 执行脚本。\n" +
 		"- 不要照抄原文中的 python、pip、venv、conda 环境命令。\n" +
-		"- 若原说明确实要求 bash/系统命令，可使用 shell 工具并遵守风险确认流程。"
+		"- 不要用 shell 猜测或访问 AgentSkill 安装目录；shell 仅用于当前任务 sandbox 内普通命令。"
 }

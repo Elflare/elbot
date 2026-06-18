@@ -126,7 +126,7 @@ func (t CronWriteTool) Schema() llm.ToolSchema {
 		Integer("run_after_months", "一次性任务相对当前时间的日历月偏移。\n** 用户说几个月后时优先使用\n~ run_at 同时传").
 		String("trigger_mode", "create 需要；update 可选。触发模式：direct 或 llm。direct 直接发消息；llm 后台运行 LLM 处理复杂任务。 ").
 		String("message", "create 需要；update 可选。trigger_mode=direct：使用普通自然语言通知文本。trigger_mode=llm：使用 ELyph #task <name> - 描述 任务文本。").
-		StringArray("tool_list_names", "trigger_mode=llm 时预注入的工具名列表；只传工具名。update 传空数组表示清空。 ").
+		StringArray("tool_list_names", "trigger_mode=llm 时预注入的工具名或 Skill 名列表；普通工具会注入 schema，Skill 会注入任务说明并自动注入对应 runner。update 传空数组表示清空。 ").
 		Boolean("all_enabled_platforms", "是否发送/广播到所有 enabled 平台超级管理员。 ").
 		Boolean("enabled", "create：创建后是否启用，默认 true；update：是否启用。false 表示停用但保留记录。 ").
 		BuildSchema()

@@ -79,7 +79,7 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 	if opts.SkillManager != nil {
 		catalog = opts.SkillManager.Catalog
 	}
-	if err := registry.Register(skill.NewPythonRunner(catalog)); err != nil {
+	if err := registry.Register(skill.NewAgentScriptRunner(catalog)); err != nil {
 		return err
 	}
 	if err := registry.Register(skill.NewGoRunner(catalog)); err != nil {

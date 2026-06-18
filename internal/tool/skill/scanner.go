@@ -79,14 +79,14 @@ func (s FilesystemScanner) Reload(ctx context.Context, registry *tool.Registry) 
 		seen[record.Name] = true
 	}
 	for _, info := range registry.List() {
-		if (info.Source == tool.SourceSkillPy || info.Source == tool.SourceSkillGo) && !seen[info.Name] {
+		if (info.Source == tool.SourceSkillAgent || info.Source == tool.SourceSkillGo) && !seen[info.Name] {
 			_ = registry.Unregister(info.Name)
 		}
 	}
 	registered := make([]Record, 0, len(records))
 	for _, record := range records {
 		if existing, ok := registry.Get(record.Name); ok {
-			if existing.Info().Source == tool.SourceSkillPy || existing.Info().Source == tool.SourceSkillGo {
+			if existing.Info().Source == tool.SourceSkillAgent || existing.Info().Source == tool.SourceSkillGo {
 				_ = registry.Unregister(record.Name)
 			} else {
 				continue
@@ -125,11 +125,11 @@ func (s FilesystemScanner) Remove(ctx context.Context, registry *tool.Registry, 
 
 func (s FilesystemScanner) scanRecords(ctx context.Context) ([]Record, error) {
 	records := []Record{}
-	py, err := s.scanKind(ctx, KindPython)
+	agentRecords, err := s.scanKind(ctx, KindAgent)
 	if err != nil {
 		return nil, err
 	}
-	records = append(records, py...)
+	records = append(records, agentRecords...)
 	goRecords, err := s.scanKind(ctx, KindGo)
 	if err != nil {
 		return nil, err
@@ -181,7 +181,7 @@ func (s FilesystemScanner) readRecord(root, dirName string, kind Kind) (Record, 
 	if kind == KindGo {
 		return s.readGoRecord(root, dirName)
 	}
-	return s.readPythonRecord(root, dirName)
+	return s.readAgentRecord(root, dirName)
 }
 
 func (s FilesystemScanner) readGoRecord(root, dirName string) (Record, bool, error) {
@@ -205,14 +205,14 @@ func (s FilesystemScanner) readGoRecord(root, dirName string) (Record, bool, err
 	return record, true, nil
 }
 
-func (s FilesystemScanner) readPythonRecord(root, dirName string) (Record, bool, error) {
+func (s FilesystemScanner) readAgentRecord(root, dirName string) (Record, bool, error) {
 	if data, err := os.ReadFile(filepath.Join(root, elyph.SkillFileName)); err == nil {
 		doc, err := elyph.ParseSkill(string(data), dirName)
 		if err != nil {
 			return Record{}, false, fmt.Errorf("parse %s in %q: %w", elyph.SkillFileName, root, err)
 		}
 		detail := strings.TrimSpace(string(data))
-		return Record{Name: doc.Name, Description: firstElyphDescription(detail, doc.Name), Detail: detail, Format: elyph.Format, Risk: elyphRisk(detail), Kind: KindPython, Root: root}, true, nil
+		return Record{Name: doc.Name, Description: firstElyphDescription(detail, doc.Name), Detail: detail, Format: elyph.Format, Risk: elyphRisk(detail), Kind: KindAgent, Root: root}, true, nil
 	} else if !os.IsNotExist(err) {
 		return Record{}, false, fmt.Errorf("read %s in %q: %w", elyph.SkillFileName, root, err)
 	}
@@ -227,7 +227,7 @@ func (s FilesystemScanner) readPythonRecord(root, dirName string) (Record, bool,
 	if err != nil {
 		return Record{}, false, fmt.Errorf("parse SKILL.md in %q: %w", root, err)
 	}
-	record := Record{Name: def.Name, Description: def.Description, Detail: def.Detail, Format: def.Format, Risk: def.Risk, Kind: KindPython, Root: root}
+	record := Record{Name: def.Name, Description: def.Description, Detail: def.Detail, Format: def.Format, Risk: def.Risk, Kind: KindAgent, Root: root}
 	return record, true, nil
 }
 
@@ -260,7 +260,7 @@ func dirNameForKind(kind Kind) string {
 	if kind == KindGo {
 		return "go"
 	}
-	return "py"
+	return "agent"
 }
 
 func findGoBinary(root, dirName, skillName string) (string, bool, error) {

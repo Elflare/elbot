@@ -54,7 +54,7 @@ func TestResolvePathGeneratesPlatformDefaultsWhenNoConfigExists(t *testing.T) {
 			t.Fatalf("expected generated file %s: %v", rel, err)
 		}
 	}
-	for _, rel := range []string{filepath.Join("skills", "py"), filepath.Join("skills", "go"), "plugins", "long_memory"} {
+	for _, rel := range []string{filepath.Join("skills", "agent"), filepath.Join("skills", "go"), "plugins", "long_memory"} {
 		info, err := os.Stat(filepath.Join(filepath.Dir(want), rel))
 		if err != nil {
 			t.Fatalf("expected generated dir %s: %v", rel, err)

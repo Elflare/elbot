@@ -98,10 +98,15 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 		a.rememberCachedTools(ctx, bgSession, req.CachedTools)
 		a.audit("background_external_tools_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "tools", cachedToolNames(req.CachedTools))
 	}
-	if injected := a.preloadToolNames(ctx, bgSession, backgroundToolListNames(req.ToolListNames)); len(injected) > 0 {
-		a.audit("background_tool_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "tools", injected)
+	preloaded := a.preloadBackgroundResources(ctx, bgSession, backgroundToolListNames(req.ToolListNames))
+	if len(preloaded.Tools) > 0 {
+		a.audit("background_tool_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "tools", preloaded.Tools)
 	}
-	if err := a.startBackgroundChat(ctx, bgSession, req.Prompt); err != nil {
+	if len(preloaded.Skills) > 0 {
+		a.audit("background_skill_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "skills", preloaded.Skills)
+	}
+	prompt := backgroundPromptWithSkills(req.Prompt, preloaded.SkillPrompt)
+	if err := a.startBackgroundChat(ctx, bgSession, prompt); err != nil {
 		return background.RunResult{}, err
 	}
 	text, err := a.latestAssistantText(ctx, bgSession.ID)
@@ -176,6 +181,120 @@ func backgroundTitle(kind background.Kind, name string) string {
 		return strings.ToUpper(kindText[:1]) + kindText[1:]
 	}
 	return strings.ToUpper(kindText[:1]) + kindText[1:] + ": " + name
+}
+
+type backgroundPreloadResult struct {
+	Tools       []string
+	Skills      []string
+	SkillPrompt string
+}
+
+func (a *Agent) preloadBackgroundResources(ctx context.Context, session *storage.Session, names []string) backgroundPreloadResult {
+	result := backgroundPreloadResult{}
+	if session == nil || session.Mode != storage.SessionModeWork || a.toolRuntime.registry == nil {
+		return result
+	}
+	policy := a.securityPolicy
+	if policy == nil {
+		policy = security.DefaultPolicy()
+	}
+	actor := a.actor(ctx)
+	seenInjected := map[string]bool{}
+	seenSkills := map[string]bool{}
+	var skillSections []string
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		candidate, ok := a.toolRuntime.registry.Get(name)
+		if !ok || !tool.CanAccessTool(actor, policy, candidate.Info()) {
+			a.audit("background_preload_skipped", "session_id", session.ID, "name", name, "reason", "not_found_or_not_allowed")
+			continue
+		}
+		if detailer, ok := candidate.(tool.DetailProvider); ok {
+			if candidate.Info().Hidden {
+				a.audit("background_preload_skipped", "session_id", session.ID, "name", name, "reason", "hidden_skill")
+				continue
+			}
+			detail := strings.TrimSpace(detailer.Detail())
+			if detail == "" {
+				a.audit("background_preload_skipped", "session_id", session.ID, "name", name, "reason", "empty_skill_detail")
+				continue
+			}
+			if !seenSkills[name] {
+				seenSkills[name] = true
+				result.Skills = append(result.Skills, name)
+				skillSections = append(skillSections, "## Skill: "+name+"\n\n"+detail)
+			}
+			for _, wrapper := range detailer.ActivateTools() {
+				result.Tools = append(result.Tools, a.preloadBackgroundTool(ctx, session, wrapper, actor, policy, seenInjected, true)...)
+			}
+			continue
+		}
+		result.Tools = append(result.Tools, a.preloadBackgroundTool(ctx, session, name, actor, policy, seenInjected, false)...)
+	}
+	if len(skillSections) > 0 {
+		result.SkillPrompt = strings.Join(skillSections, "\n\n---\n\n")
+	}
+	return result
+}
+
+func (a *Agent) preloadBackgroundTool(ctx context.Context, session *storage.Session, name string, actor security.Actor, policy *security.Policy, seen map[string]bool, allowHidden bool) []string {
+	name = strings.TrimSpace(name)
+	if name == "" || name == "discover_tool" {
+		return nil
+	}
+	candidate, ok := a.toolRuntime.registry.Get(name)
+	if !ok || !tool.CanAccessTool(actor, policy, candidate.Info()) || (!allowHidden && candidate.Info().Hidden) {
+		a.audit("background_preload_skipped", "session_id", session.ID, "name", name, "reason", "not_found_or_not_allowed")
+		return nil
+	}
+	if _, isSkill := candidate.(tool.DetailProvider); isSkill {
+		a.audit("background_preload_skipped", "session_id", session.ID, "name", name, "reason", "skill_has_no_schema")
+		return nil
+	}
+	var discovery *tool.DiscoveryResult
+	discovered := false
+	if allowHidden && candidate.Info().Hidden {
+		schema := candidate.Schema()
+		info := candidate.Info()
+		discovery = &tool.DiscoveryResult{Tools: []tool.DiscoveredTool{{Info: tool.PublicInfo{Name: info.Name, Description: info.Description, Source: string(info.Source)}, Schema: &schema}}}
+		discovered = true
+	} else {
+		discovery, discovered = a.discoveryForBackgroundToolNames([]string{name}, actor, policy)
+	}
+	if !discovered || discovery == nil || len(discovery.Tools) == 0 {
+		a.audit("background_preload_skipped", "session_id", session.ID, "name", name, "reason", "no_schema")
+		return nil
+	}
+	newTools, _ := a.rememberPreloadedDiscovery(ctx, session, discovery, seen)
+	return newTools
+}
+
+func (a *Agent) discoveryForBackgroundToolNames(names []string, actor security.Actor, policy *security.Policy) (*tool.DiscoveryResult, bool) {
+	details, _ := a.toolRuntime.registry.DiscoverDetails(names, func(candidate tool.Tool) bool {
+		return tool.CanAccessTool(actor, policy, candidate.Info())
+	})
+	if len(details) == 0 {
+		return nil, false
+	}
+	out := &tool.DiscoveryResult{}
+	for _, discovered := range details {
+		if discovered.Schema == nil || discovered.Info.Name == "" || discovered.Detail != "" {
+			continue
+		}
+		out.Tools = append(out.Tools, discovered)
+	}
+	return out, len(out.Tools) > 0
+}
+
+func backgroundPromptWithSkills(prompt, skillPrompt string) string {
+	skillPrompt = strings.TrimSpace(skillPrompt)
+	if skillPrompt == "" {
+		return prompt
+	}
+	return "[系统预加载 Skill]\n\n以下 Skill 已由系统预加载。Skill 本体不是 top-level tool schema；如需执行 AgentSkill 附带的 Python 脚本，请使用已注入的 python_skill_run；如需执行 Go Skill，请使用已注入的 go_skill_run。不要用 shell 猜测或访问 Skill 安装目录，shell 仅用于当前后台 sandbox 内普通命令。\n\n" + skillPrompt + "\n\n[后台任务]\n\n" + strings.TrimSpace(prompt)
 }
 
 func backgroundToolListNames(names []string) []string {

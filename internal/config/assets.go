@@ -22,7 +22,7 @@ var defaultConfigAssets = []defaultAsset{
 
 var defaultConfigDirs = []string{
 	"skills",
-	filepath.Join("skills", "py"),
+	filepath.Join("skills", "agent"),
 	filepath.Join("skills", "go"),
 	"plugins",
 	"long_memory",

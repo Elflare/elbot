@@ -20,11 +20,11 @@ const (
 	maxRunnerOutput      = 16 * 1024
 )
 
-type PythonRunner struct {
+type AgentScriptRunner struct {
 	Catalog *Catalog
 }
 
-type pythonRunnerArgs struct {
+type agentScriptRunnerArgs struct {
 	Skill     string   `json:"skill"`
 	Script    string   `json:"script"`
 	Args      []string `json:"args"`
@@ -32,35 +32,35 @@ type pythonRunnerArgs struct {
 	TimeoutMS int      `json:"timeout_ms"`
 }
 
-func NewPythonRunner(catalog *Catalog) PythonRunner {
-	return PythonRunner{Catalog: catalog}
+func NewAgentScriptRunner(catalog *Catalog) AgentScriptRunner {
+	return AgentScriptRunner{Catalog: catalog}
 }
 
-func (PythonRunner) Name() string { return PythonRunnerName }
+func (AgentScriptRunner) Name() string { return AgentScriptRunnerName }
 
-func (PythonRunner) Info() tool.Info {
-	return tool.NewBuilder(PythonRunnerName).
-		Description("在指定 Python skill 目录内用 uv run python 执行脚本。").
+func (AgentScriptRunner) Info() tool.Info {
+	return tool.NewBuilder(AgentScriptRunnerName).
+		Description("执行指定 AgentSkill 附带的 Python 脚本。").
 		Source(tool.SourceBuiltin).
 		Risk(tool.RiskLow).
 		Hidden().
 		BuildInfo()
 }
 
-func (PythonRunner) Schema() llm.ToolSchema {
-	return tool.NewBuilder(PythonRunnerName).
-		Description("在指定 Python skill 目录内用 uv run python 执行脚本。").
-		String("skill", "Python skill 名称。", tool.Required()).
-		String("script", "相对 skill 目录的 Python 脚本路径，例如 scripts/accept_changes.py。", tool.Required()).
+func (AgentScriptRunner) Schema() llm.ToolSchema {
+	return tool.NewBuilder(AgentScriptRunnerName).
+		Description("执行指定 AgentSkill 附带的 Python 脚本，会在 AgentSkill 目录内用 uv run python 运行。不要用 shell 猜测或访问 AgentSkill 安装目录。").
+		String("skill", "AgentSkill 名称。", tool.Required()).
+		String("script", "相对 AgentSkill 目录的 Python 脚本路径，例如 scripts/accept_changes.py。", tool.Required()).
 		StringArray("args", "传给脚本的命令行参数数组。").
 		String("stdin", "可选，写入脚本标准输入的文本。").
 		Integer("timeout_ms", "可选，超时时间，默认 30000。").
 		BuildSchema()
 }
 
-func (r PythonRunner) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
+func (r AgentScriptRunner) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
 	_ = ctx
-	var args pythonRunnerArgs
+	var args agentScriptRunnerArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
 			return tool.RiskAssessment{}, fmt.Errorf("parse python_skill_run arguments: %w", err)
@@ -70,14 +70,14 @@ func (r PythonRunner) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 		return tool.RiskAssessment{Level: tool.RiskHigh}, nil
 	}
 	record, ok := r.Catalog.Get(strings.TrimSpace(args.Skill))
-	if !ok || record.Kind != KindPython {
+	if !ok || record.Kind != KindAgent {
 		return tool.RiskAssessment{Level: tool.RiskHigh}, nil
 	}
 	return tool.RiskAssessment{Level: record.Risk}, nil
 }
 
-func (r PythonRunner) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	var args pythonRunnerArgs
+func (r AgentScriptRunner) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+	var args agentScriptRunnerArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
 			return nil, fmt.Errorf("parse python_skill_run arguments: %w", err)
@@ -87,8 +87,8 @@ func (r PythonRunner) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		return nil, fmt.Errorf("skill catalog is not configured")
 	}
 	record, ok := r.Catalog.Get(strings.TrimSpace(args.Skill))
-	if !ok || record.Kind != KindPython {
-		return nil, fmt.Errorf("python skill %q not found", args.Skill)
+	if !ok || record.Kind != KindAgent {
+		return nil, fmt.Errorf("AgentSkill %q not found", args.Skill)
 	}
 	script, err := safeRelativePath(record.Root, args.Script)
 	if err != nil {
@@ -102,7 +102,7 @@ func (r PythonRunner) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	if args.Stdin != "" {
 		cmd.Stdin = strings.NewReader(args.Stdin)
 	}
-	return runCommand(runCtx, "python skill", cmd)
+	return runCommand(runCtx, "AgentSkill Python script", cmd)
 }
 
 type GoRunner struct {

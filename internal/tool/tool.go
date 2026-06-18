@@ -15,9 +15,9 @@ import (
 type Source string
 
 const (
-	SourceBuiltin Source = "builtin"
-	SourceSkillPy Source = "skill_py"
-	SourceSkillGo Source = "skill_go"
+	SourceBuiltin    Source = "builtin"
+	SourceSkillAgent Source = "skill_agent"
+	SourceSkillGo    Source = "skill_go"
 )
 
 type RiskLevel = security.RiskLevel
