@@ -21,9 +21,9 @@
       "updated_at": 1781786062
     },
     "docs/configuration.md": {
-      "source_hash": "bda99903b77adc2ab0c74a396e80030bea94a336d711d2c037fc426501a72f90",
+      "source_hash": "86bc21a3e169ccda3f9bef6cc20e6ce61074fd3b8c80e3926f67f2a2d68dfec3",
       "target": "docs.en/configuration.md",
-      "updated_at": 1781786063
+      "updated_at": 1781790272
     },
     "docs/elnis-usage.md": {
       "source_hash": "addac05926a5ef7d6ccae3d13c789cb978d6a3973f1210bc29e776f2ede856f7",
@@ -3775,6 +3775,14 @@
       "translation": "Main configuration lookup order",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:heading:a6c3c3f0d0a9a810b65f83cbb8c34f9b39a1abde2fa1b97c8a598a7387d70658": {
+      "kind": "heading",
+      "source": "Go Skill 编译器路径",
+      "source_file": "docs/configuration.md",
+      "source_hash": "a6c3c3f0d0a9a810b65f83cbb8c34f9b39a1abde2fa1b97c8a598a7387d70658",
+      "translation": "Go Skill Compiler Path",
+      "updated_at": 1781790272
+    },
     "docs/configuration.md:heading:aeba4c095159e4cb21dba5f26332f8ff81715f335b4b1211d4b0ebb30caaf743": {
       "kind": "heading",
       "source": "配置文件职责",
@@ -3991,6 +3999,14 @@
       "translation": "__ELBOT_CODE_0__ uses the Provider's OpenAI-compatible API address.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:58543b52b0496f6a1dda7a50795edce80efa187265ba2f6f845f79f89854d8dd": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__，如果 service 环境配置了 __ELBOT_CODE_1__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "58543b52b0496f6a1dda7a50795edce80efa187265ba2f6f845f79f89854d8dd",
+      "translation": "__ELBOT_CODE_0__, if __ELBOT_CODE_1__ is configured in the service environment.",
+      "updated_at": 1781790272
+    },
     "docs/configuration.md:list:59d573568621c8ed4aaed31f9d245b7e23317f015f5318b432cc263061779516": {
       "kind": "list",
       "source": "也可以通过 __ELBOT_CODE_0__ 手动压缩当前 Session。",
@@ -4039,6 +4055,14 @@
       "translation": "When preloading tools that already exist, they will not be added again, and the platform will prompt __ELBOT_CODE_0__.",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:list:68af7370138931ab9cffe624cbbdff4223e39b53389c28b02571e59434ccc579": {
+      "kind": "list",
+      "source": "ElBot 进程 __ELBOT_CODE_0__ 中的 __ELBOT_CODE_1__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "68af7370138931ab9cffe624cbbdff4223e39b53389c28b02571e59434ccc579",
+      "translation": "__ELBOT_CODE_1__ in the ElBot process __ELBOT_CODE_0__.",
+      "updated_at": 1781790272
+    },
     "docs/configuration.md:list:68f0985d08a4da92051a3ef3eff3ede6f486abb1dd90c649cd47f873f6adca4a": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 模式不注入工具，适合闲聊和低成本对话。",
@@ -4054,6 +4078,14 @@
       "source_hash": "6cd89da7557c0fa722138f493974d997fc40799da25b45c8695cb5083a9c6888",
       "translation": "External tools are allowed by default; specified external tools are only disabled when a single Elwisp configures __ELBOT_CODE_0__.",
       "updated_at": 1781749596
+    },
+    "docs/configuration.md:list:72423cc57bde405f585d34927e4d4075aa51e7d13b0e3be4914c2e4fdae9530c": {
+      "kind": "list",
+      "source": "配置目录 __ELBOT_CODE_0__ 中的 __ELBOT_CODE_1__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "72423cc57bde405f585d34927e4d4075aa51e7d13b0e3be4914c2e4fdae9530c",
+      "translation": "__ELBOT_CODE_1__ in the configuration directory __ELBOT_CODE_0__.",
+      "updated_at": 1781790272
     },
     "docs/configuration.md:list:7cc26368a77adcbf24f1f6fa9179b3153c2ad5f8f6668088265c08c40cca1f01": {
       "kind": "list",
@@ -4183,6 +4215,14 @@
       "translation": "Directly using __ELBOT_CODE_0__ only preloads the specified tools and does not activate the tag prompt.",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:list:a3724151823acbd1eeb900dbab50b61aa4c0141d1bb75eb932c0681d17155861": {
+      "kind": "list",
+      "source": "系统环境变量 __ELBOT_CODE_0__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "a3724151823acbd1eeb900dbab50b61aa4c0141d1bb75eb932c0681d17155861",
+      "translation": "System environment variable __ELBOT_CODE_0__.",
+      "updated_at": 1781790272
+    },
     "docs/configuration.md:list:aaf8e5247d2c1a38fa5fdb79bdbb0ae6bff12c66e02df9913eabd278d9055efb": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 提供默认请求参数。",
@@ -4303,6 +4343,14 @@
       "translation": "Relative paths are based on the directory where __ELBOT_CODE_0__ is located:\n",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:paragraph:1b1d63f6451566b1447a2aaaf1cdca290b9ce605850c0452d71f600b3239679f": {
+      "kind": "paragraph",
+      "source": "查找顺序：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1b1d63f6451566b1447a2aaaf1cdca290b9ce605850c0452d71f600b3239679f",
+      "translation": "Lookup order:\n",
+      "updated_at": 1781790272
+    },
     "docs/configuration.md:paragraph:1feaca43453e4d561393b74ffa970d1046385242029d7b8497a5857cdfb9f54b": {
       "kind": "paragraph",
       "source": "默认使用 __ELBOT_CODE_0__。如果要支持其他命令前缀，可以在这里添加。\n",
@@ -4407,6 +4455,14 @@
       "translation": "For more information, see [Elnis Configuration and Usage](elnis-usage.md).\n",
       "updated_at": 1781709336
     },
+    "docs/configuration.md:paragraph:5ca11ebfa295a5155452a61039620780dcf3d6a509d813eb67880f2227ac8f31": {
+      "kind": "paragraph",
+      "source": "推荐在配置目录 __ELBOT_CODE_0__ 中指定 Go 可执行文件：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "5ca11ebfa295a5155452a61039620780dcf3d6a509d813eb67880f2227ac8f31",
+      "translation": "It is recommended to specify the Go executable in the configuration directory __ELBOT_CODE_0__:\n",
+      "updated_at": 1781790272
+    },
     "docs/configuration.md:paragraph:66a831d2bac726e8d0c866ca5765616b3e231b318802ce5b6b8da222732d9746": {
       "kind": "paragraph",
       "source": "Provider 写在 __ELBOT_CODE_0__：\n",
@@ -4414,6 +4470,14 @@
       "source_hash": "66a831d2bac726e8d0c866ca5765616b3e231b318802ce5b6b8da222732d9746",
       "translation": "Provider is written in __ELBOT_CODE_0__:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:66e45300179d82b6aab7f062e92517acf747d44ecb3697bc9d0c5b5f0e09beb4": {
+      "kind": "paragraph",
+      "source": "高级部署也可以在 systemd service 中指定：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "66e45300179d82b6aab7f062e92517acf747d44ecb3697bc9d0c5b5f0e09beb4",
+      "translation": "For advanced deployments, this can also be specified in the systemd service:\n",
+      "updated_at": 1781790272
     },
     "docs/configuration.md:paragraph:69e3746328812ea9a732113b9e6a00f9c1d475183b13d67db330339fde4cc06d": {
       "kind": "paragraph",
@@ -4487,6 +4551,14 @@
       "translation": "Usage:\n",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:paragraph:9ebb7813a2367838f3a2a32cfb794592d00c5860d3ebc93bd43cf87a4e43bca7": {
+      "kind": "paragraph",
+      "source": "如果使用 asdf、mise、Nix、Linuxbrew、Snap 或自定义安装路径，推荐直接把实际 __ELBOT_CODE_0__ 路径写入 __ELBOT_CODE_1__，不要依赖交互 shell 的初始化脚本。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "9ebb7813a2367838f3a2a32cfb794592d00c5860d3ebc93bd43cf87a4e43bca7",
+      "translation": "If using asdf, mise, Nix, Linuxbrew, Snap, or a custom installation path, it is recommended to write the actual __ELBOT_CODE_0__ path directly into __ELBOT_CODE_1__, rather than relying on the initialization scripts of an interactive shell.\n",
+      "updated_at": 1781790272
+    },
     "docs/configuration.md:paragraph:a2895e4a8d949bd72122ce5bec4e3015134baadd20cf6573170522255b198d2d": {
       "kind": "paragraph",
       "source": "例如使用 __ELBOT_CODE_0__ 时：\n",
@@ -4535,6 +4607,14 @@
       "translation": "CLI enabled by default:\n",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:paragraph:c0bca0b32b56fe82176ebf53c4b76b9ebc30b75a5411ed053b394d97a6687970": {
+      "kind": "paragraph",
+      "source": "若 ElBot 以 Linux service 运行，service 环境可能没有加载交互 shell 的 __ELBOT_CODE_0__，导致终端里可用的 __ELBOT_CODE_1__ 在 ElBot 中不可见。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "c0bca0b32b56fe82176ebf53c4b76b9ebc30b75a5411ed053b394d97a6687970",
+      "translation": "If ElBot is running as a Linux service, the service environment may not have loaded the __ELBOT_CODE_0__ of the interactive shell, causing the __ELBOT_CODE_1__ available in the terminal to be invisible to ElBot.\n",
+      "updated_at": 1781790272
+    },
     "docs/configuration.md:paragraph:c409a2adc182e829412b676b2c5eef0ba96295f6fd7d021efae6bacc9f5c44d5": {
       "kind": "paragraph",
       "source": "运行日志、SQLite、sandbox、artifact 等运行数据也会按配置或默认数据目录存放。\n",
@@ -4567,6 +4647,14 @@
       "translation": "Runtime log configuration:\n",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:paragraph:e22cf630d0292279ea1fa4a44f62d7b84ff8d3d9cf0d26c6866584375c9e6344": {
+      "kind": "paragraph",
+      "source": "修改 __ELBOT_CODE_0__ 或 systemd 环境后，需要重启 ElBot service。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e22cf630d0292279ea1fa4a44f62d7b84ff8d3d9cf0d26c6866584375c9e6344",
+      "translation": "After modifying __ELBOT_CODE_0__ or the systemd environment, the ElBot service needs to be restarted.\n",
+      "updated_at": 1781790272
+    },
     "docs/configuration.md:paragraph:e24623b4cd00ed49724d8c9b2cdef9235d7ea6be2e9995d80af7736c42be5fb1": {
       "kind": "paragraph",
       "source": "不要把真实 Key 提交到仓库。\n",
@@ -4590,6 +4678,14 @@
       "source_hash": "f33bc6cac2bc75cd57b4cd0b8212ed73fd5e9478e974b82e2ee770b6aebd09a0",
       "translation": "__ELBOT_CODE_0__ is a standalone configuration file, with its path specified by __ELBOT_CODE_1__.",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:paragraph:f4c36dd02c77c9c190a88bdf433e7e661555136114b8a894373853b20a7e0e54": {
+      "kind": "paragraph",
+      "source": "修改 Go skill 的 __ELBOT_CODE_0__ 后，ElBot 会自动执行 __ELBOT_CODE_1__、__ELBOT_CODE_2__ 并 reload。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "f4c36dd02c77c9c190a88bdf433e7e661555136114b8a894373853b20a7e0e54",
+      "translation": "After modifying the __ELBOT_CODE_0__ of the Go Skill, ElBot will automatically execute __ELBOT_CODE_1__, __ELBOT_CODE_2__, and reload.",
+      "updated_at": 1781790272
     },
     "docs/configuration.md:paragraph:f59d5b9ca6bd8410f5f15e31fc887bdb406865c2f6957ae945f34623a447bdaf": {
       "kind": "paragraph",
