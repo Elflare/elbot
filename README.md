@@ -14,7 +14,7 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 **Ultra-lightweight Go implementation.** ElBot currently takes <10ms to start locally (N5105, SATA SSD), with resident memory of approximately 30MB.
 
 **Ultra-token-efficient tool discovery. ** Research shows that many ordinary users still primarily use LLM-based products as advanced search engines, writing assistants, and listening partners; frequent tool calls are not the norm for all conversations.
- Reference: Chatterji et al., *How People Use ChatGPT*, NBER, 2025;Yan et al., *ShareChat: A Dataset of Chatbot Conversations in the Wild*, arXiv:2512.17843, 2025。
+Reference: Chatterji et al., *How People Use ChatGPT*, NBER, 2025;Yan et al., *ShareChat: A Dataset of Chatbot Conversations in the Wild*, arXiv:2512.17843, 2025。
 
 ElBot does not inject the full schema of all tools by default in every round of conversation, but only exposes `discover_tool` and the names of currently available tools. When the model needs to use a tool, it first discovers the tool details on demand, and then the Agent injects the corresponding schema. Greatly reduces invalid context overhead.
 
