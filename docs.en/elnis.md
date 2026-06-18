@@ -182,12 +182,14 @@ Example:
 
 Simply put: Cron is responsible for "when to do it", Elnis is responsible for "what happened outside", ELyph is responsible for "how the task is described", and Skill is responsible for "how capabilities are reused".
 
+## Creating Elwisp Auxiliary Tools
+
+In work mode, the superadmin can let ElBot use the built-in tool `elwisp_creator` to assist in creating Elwisp. This tool returns creation guides, Elvena event templates, Elnis configuration snippets, listener scaffolds, curl test commands, and security checklists; The actual writing of files or execution of commands is still handled by the file tool and shell tool.
+
 ## Current Limitations and Future Directions
 
-Currently, Elnis supports record, direct, and llm modes. The following capabilities are still under development or planning:
+Currently, Elnis supports record, direct, and llm modes, as well as Elwisp declaring external tools along with events. The following capabilities are still under development or planning:
 
-- Elwisp declares tools along with events and is called securely by Elnis.
-- Built-in Skills or tools for "creating Elwisp".
 - Multiple message segments.
 - Multi-turn communication between Elnis and Elwisp.
 - Non-HTTP transports such as stdio, pipe, etc.

@@ -31,9 +31,9 @@
       "updated_at": 1781779450
     },
     "docs/elnis.md": {
-      "source_hash": "e37fb285d10ac6630a3a92232fed75abf8c888a91bea7c064cb84202bc7ef6f8",
+      "source_hash": "f3b807a95e78c9ad3016c72ccef8a5e22b6d559d0baf59c3fdab4a5d3db37391",
       "target": "docs.en/elnis.md",
-      "updated_at": 1781753746
+      "updated_at": 1781779501
     },
     "docs/getting-started.md": {
       "source_hash": "03eb8aa561aca703b7e764c8129596c4b45c9089405fb354f913006859b7cb3e",
@@ -5306,6 +5306,14 @@
       "translation": "Elvena: event protocol",
       "updated_at": 1781710746
     },
+    "docs/elnis.md:heading:5fb05e70fd529683471e8ea101f323fcfec09de231f533f42d7b61b732eda8ea": {
+      "kind": "heading",
+      "source": "创建 Elwisp 辅助工具",
+      "source_file": "docs/elnis.md",
+      "source_hash": "5fb05e70fd529683471e8ea101f323fcfec09de231f533f42d7b61b732eda8ea",
+      "translation": "Creating Elwisp Auxiliary Tools",
+      "updated_at": 1781779501
+    },
     "docs/elnis.md:heading:73a15cdd2349b3f4387dd75c70c8b5213b133fb426b0959ddd583d1801751908": {
       "kind": "heading",
       "source": "Elnis 监听枢纽",
@@ -5730,6 +5738,22 @@
       "translation": "It uniformly receives external events and routes them to logs, notifications, or the background LLM; like a star, all signals from Elwisp converge around it, but the final energy is controlled by ElBot.\n",
       "updated_at": 1781710746
     },
+    "docs/elnis.md:paragraph:553a11fc1053ba214de0c4f60cba055a78bfb071ece2965f544711b0d008de7d": {
+      "kind": "paragraph",
+      "source": "工作模式下，超级管理员可以让 ElBot 使用内置工具 __ELBOT_CODE_0__ 辅助创建 Elwisp。",
+      "source_file": "docs/elnis.md",
+      "source_hash": "553a11fc1053ba214de0c4f60cba055a78bfb071ece2965f544711b0d008de7d",
+      "translation": "In work mode, the superadmin can let ElBot use the built-in tool __ELBOT_CODE_0__ to assist in creating Elwisp.",
+      "updated_at": 1781779501
+    },
+    "docs/elnis.md:paragraph:695148bdd3a5cccf1382ef265c97fe80863c1b0b09aa2727b1b892fc67855062": {
+      "kind": "paragraph",
+      "source": "该工具会返回创建指南、Elvena 事件模板、Elnis 配置片段、监听器脚手架、curl 测试命令和安全检查清单；",
+      "source_file": "docs/elnis.md",
+      "source_hash": "695148bdd3a5cccf1382ef265c97fe80863c1b0b09aa2727b1b892fc67855062",
+      "translation": "This tool returns creation guides, Elvena event templates, Elnis configuration snippets, listener scaffolds, curl test commands, and security checklists;",
+      "updated_at": 1781779501
+    },
     "docs/elnis.md:paragraph:7ff9d0ef9e57e4c67efc6620f4d2c83e0d1d68c8430e82eb68b1057fd5e7968d": {
       "kind": "paragraph",
       "source": "简单说，Elnis 把 ElBot 从“等用户说话的机器人”扩展成“能感知外部世界的 Agent 枢纽”。\n",
@@ -5745,6 +5769,14 @@
       "source_hash": "96d4257f00bcf65b25e342c089f87d68e4284fdc28ec1e9d3bade76a082d916a",
       "translation": "Elwisp is like a probe scattered across the external world, and also like the eyes of ElBot. They can be numerous, small, and dispersed; they have only one responsibility: to tell Elnis what is happening in the external world.\n",
       "updated_at": 1781710746
+    },
+    "docs/elnis.md:paragraph:9986537e133dc0f6ed3dffddebe35416063688bd89421f1028b57d137f2261a9": {
+      "kind": "paragraph",
+      "source": "真正写文件或运行命令仍由文件工具和 shell 工具处理。\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "9986537e133dc0f6ed3dffddebe35416063688bd89421f1028b57d137f2261a9",
+      "translation": "The actual writing of files or execution of commands is still handled by the file tool and shell tool.\n",
+      "updated_at": 1781779501
     },
     "docs/elnis.md:paragraph:aaea27431774bcd2c2b77ff06bfc1295f948331b590d2808f2bb0e72aace31d5": {
       "kind": "paragraph",
@@ -5841,6 +5873,14 @@
       "source_hash": "e8ed8ec34748c1b2669ebd41ac9693b4a8ad42b4d79dd6520d28147f0ab44a25",
       "translation": "Elnis is responsible for:\n",
       "updated_at": 1781710746
+    },
+    "docs/elnis.md:paragraph:e977c070f63dd3f5a23520ead48425b7148e2707c6f2da04b324e79af71b903d": {
+      "kind": "paragraph",
+      "source": "当前 Elnis 已支持 record、direct、llm 模式和 Elwisp 随事件声明外部工具。以下能力仍在开发或规划中：\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "e977c070f63dd3f5a23520ead48425b7148e2707c6f2da04b324e79af71b903d",
+      "translation": "Currently, Elnis supports record, direct, and llm modes, as well as Elwisp declaring external tools along with events. The following capabilities are still under development or planning:\n",
+      "updated_at": 1781779501
     },
     "docs/elnis.md:paragraph:f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f": {
       "kind": "paragraph",
