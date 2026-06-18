@@ -16,9 +16,9 @@
       "updated_at": 1781786015
     },
     "docs/concepts.md": {
-      "source_hash": "0276e4a0d81dfb514cf3be786c483988f366293d34d4233702d34902fa36d6ce",
+      "source_hash": "d59a520b2ffb138df4d7e6b292cc137b57f1336de3c2c1510d5236ef34a737c2",
       "target": "docs.en/concepts.md",
-      "updated_at": 1781779265
+      "updated_at": 1781786062
     },
     "docs/configuration.md": {
       "source_hash": "b1555d6a0df93b718a3898124489898fba76afa2ed56cb60dbe20254befd323e",
@@ -2562,6 +2562,14 @@
       "translation": "User documentation prioritizes stable usage paths.",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:list:3b660d6678002691ee52c4f1cb1d1371bbb4cfad28564a5020bd546a3511f5b3": {
+      "kind": "list",
+      "source": "Go Skill：放在 __ELBOT_CODE_0__，使用 __ELBOT_CODE_1__ 描述任务；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "3b660d6678002691ee52c4f1cb1d1371bbb4cfad28564a5020bd546a3511f5b3",
+      "translation": "Go Skill: placed in __ELBOT_CODE_0__, using __ELBOT_CODE_1__ to describe the task;",
+      "updated_at": 1781786062
+    },
     "docs/concepts.md:list:3be86768dbb450ee413da4e18fa1b25952714f7fd794ee8af4f8a5f381ff9f22": {
       "kind": "list",
       "source": "新 Session 使用 fork 截止点之前的上下文继续对话。",
@@ -2858,6 +2866,14 @@
       "translation": "LLM response processing.",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:list:bbabfa8d04a6cf8ab92aeb284818397c8b13b83ccd64e8554be179766128c2f8": {
+      "kind": "list",
+      "source": "AgentSkill：放在 __ELBOT_CODE_0__，遵从或兼容 agentskills.io 风格 __ELBOT_CODE_1__，也可用 __ELBOT_CODE_2__ 覆写 Agent 可读说明；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "bbabfa8d04a6cf8ab92aeb284818397c8b13b83ccd64e8554be179766128c2f8",
+      "translation": "AgentSkill: placed in __ELBOT_CODE_0__, following or compatible with the agentskills.io style __ELBOT_CODE_1__, and __ELBOT_CODE_2__ can also be used to override the Agent-readable description;",
+      "updated_at": 1781786062
+    },
     "docs/concepts.md:list:be296bb45981b5a3b534e93b86d54fa3a5d8614cc31e13b457ca0d363301cd3e": {
       "kind": "list",
       "source": "普通聊天不为工具 schema 支付上下文成本。",
@@ -2962,6 +2978,14 @@
       "translation": "Managing Session context.",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:list:e64ab0282b075a88d556f02e9db0f0016e1eeb70dbd9ecfbf0791ef9f839006d": {
+      "kind": "list",
+      "source": "存在二进制时可通过 __ELBOT_CODE_0__ 执行，并从 stdin 接收 JSON payload。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "e64ab0282b075a88d556f02e9db0f0016e1eeb70dbd9ecfbf0791ef9f839006d",
+      "translation": "When a binary exists, it can be executed via __ELBOT_CODE_0__ and receive a JSON payload from stdin.",
+      "updated_at": 1781786062
+    },
     "docs/concepts.md:list:e6db1b39c6a6cd1d5cc71ae969e7f6cb7071728fe6964001196433e62b27d48b": {
       "kind": "list",
       "source": "平台连接事件。",
@@ -2969,6 +2993,14 @@
       "source_hash": "e6db1b39c6a6cd1d5cc71ae969e7f6cb7071728fe6964001196433e62b27d48b",
       "translation": "Platform connection events.",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:list:fb74e513893a20c4789ff5c16e1a981f7aa13804c005acca45b4bfa8e0bf8bdb": {
+      "kind": "list",
+      "source": "当前可通过 __ELBOT_CODE_0__ 执行附带 Python 脚本。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "fb74e513893a20c4789ff5c16e1a981f7aa13804c005acca45b4bfa8e0bf8bdb",
+      "translation": "Currently, attached Python scripts can be executed via __ELBOT_CODE_0__.",
+      "updated_at": 1781786062
     },
     "docs/concepts.md:list:fb985af310c951984a92a2800b0b830c6ab52d8991287de67415aff67d104cc5": {
       "kind": "list",
@@ -3050,6 +3082,14 @@
       "translation": "Long conversations will gradually approach the model's context window. ElBot supports context compaction:\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:123b7121147734576156f871abfd10a68162d2875cb75f9abec22cd68c30a07a": {
+      "kind": "paragraph",
+      "source": "LLM Cron 可以通过 __ELBOT_CODE_0__ 预注入工具名或 Skill 名：普通工具会注入 schema，Skill 会把说明注入后台任务 prompt，并自动注入对应 runner。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "123b7121147734576156f871abfd10a68162d2875cb75f9abec22cd68c30a07a",
+      "translation": "LLM Cron can pre-inject tool names or Skill names via __ELBOT_CODE_0__: ordinary tools will inject the schema, while Skills will inject the description into the background task prompt and automatically inject the corresponding runner.\n",
+      "updated_at": 1781786062
+    },
     "docs/concepts.md:paragraph:13bb391f8e5dc72f473509a59f545d1ec862167a569706c05be36b78f83ffc5d": {
       "kind": "paragraph",
       "source": "当前内置能力包括：\n",
@@ -3121,6 +3161,14 @@
       "source_hash": "3e1fc867acd7396d4e6660134fb1232a9f9a2b98541513dbd0b7a974188012f4",
       "translation": "The platform adapter layer is responsible for:\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:41dc92661a4b0ec79f087871e9b6f2981527d0891efc528c14420aba61a89077": {
+      "kind": "paragraph",
+      "source": "后台 Cron 有独立 Session 和 sandbox 约束。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "41dc92661a4b0ec79f087871e9b6f2981527d0891efc528c14420aba61a89077",
+      "translation": "Background Cron has an independent Session and sandbox constraints.",
+      "updated_at": 1781786062
     },
     "docs/concepts.md:paragraph:427e01fa6bb52dee0bbffe7719a857ec4ebb1c0814df276f60d3579c86506ae2": {
       "kind": "paragraph",
