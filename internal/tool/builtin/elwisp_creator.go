@@ -123,6 +123,9 @@ func loadElwispCreatorConfig() elwispCreatorConfigSnapshot {
 	if len(snapshot.TokenEnvNames) == 0 {
 		snapshot.Warnings = append(snapshot.Warnings, "当前未配置 Elnis token_env。请提示用户配置 token_env，并在系统环境变量或配置目录 .env 中保存 token。")
 	}
+	if len(snapshot.DefaultPlatforms) == 0 {
+		snapshot.Warnings = append(snapshot.Warnings, "当前未配置 Elnis delivery.default_platforms。请提示用户确认要投递的平台，或让用户配置 elnis.toml 的 [delivery].default_platforms。")
+	}
 	return snapshot
 }
 
@@ -195,11 +198,13 @@ func buildElwispCreatorGuide(cfg elwispCreatorConfigSnapshot) string {
 ** Elwisp 只上报事件，由 Elnis/ElBot 决定记录、通知、分析或调用工具。
 ** 真实文件修改使用 edit_file；本地检查、curl 或脚本测试使用 shell。
 ** token 值由用户设置到系统环境变量或配置目录 .env；Elwisp 代码只读取环境变量。
+** 投递平台优先参考 current_elnis.default_platforms；为空或用户目标不明确时，先询问用户要推送到哪些平台。
 ** tool_list_names 请求 ElBot 内部工具或 Skill，最终可用性由 elnis.toml allowed_tools、ToolRun 和 Security Policy 裁决。
 ** tools 是 Elwisp 随事件声明的外部工具，适合查询 Elwisp 所在环境的状态、日志或详情。
 ** Elwisp 外部工具 endpoint 默认绑定 127.0.0.1，除非用户明确需要远程访问。
 ~ 硬编码 token
 ~ 记录 token
+~ 直接读取系统环境变量或配置目录 .env 中的 token/key 值
 ~ 编造 endpoint/token
 ~ 让 Elwisp 直接向聊天平台发消息
 > 创建或修改 Elwisp 后，简要说明设计、文件路径、配置项、环境变量、测试命令和安全注意事项。
