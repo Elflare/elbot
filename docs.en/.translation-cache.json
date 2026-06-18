@@ -26,9 +26,9 @@
       "updated_at": 1781786063
     },
     "docs/elnis-usage.md": {
-      "source_hash": "4328a8dd1058cc4c21ce2c161efc561416dcef36da6ae73e8a73641c6376516a",
+      "source_hash": "addac05926a5ef7d6ccae3d13c789cb978d6a3973f1210bc29e776f2ede856f7",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1781779450
+      "updated_at": 1781786110
     },
     "docs/elnis.md": {
       "source_hash": "f3b807a95e78c9ad3016c72ccef8a5e22b6d559d0baf59c3fdab4a5d3db37391",
@@ -5002,6 +5002,14 @@
       "translation": "The top-level __ELBOT_CODE_0__ is the default whitelist for ElBot internal tools; it is overridden when __ELBOT_CODE_1__ of an individual Elwisp exists.",
       "updated_at": 1781749660
     },
+    "docs/elnis-usage.md:list:ca55d61a6160292c9353d353d50f67c47d4b7b9386e07b1724c9cba2335e5889": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 中的工具名或 Skill 名都会经过 Elnis __ELBOT_CODE_1__ 裁决。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "ca55d61a6160292c9353d353d50f67c47d4b7b9386e07b1724c9cba2335e5889",
+      "translation": "Tool names or Skill names in __ELBOT_CODE_0__ will all undergo Elnis __ELBOT_CODE_1__ adjudication.",
+      "updated_at": 1781786110
+    },
     "docs/elnis-usage.md:list:d627a0566699b39e88111dc901fa4f867b1c710a873ce3bd52b2c7b1645262b3": {
       "kind": "list",
       "source": "Elwisp 不能直接发送平台消息。",
@@ -5298,6 +5306,22 @@
       "translation": "Model slot, used subsequently for __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:table:6a72a3285b0a6bdd0068edaba9381b50a6dc3ab780a5f5119c35ca1e9964e753": {
+      "kind": "table",
+      "source": "后台任务预加载的 ElBot 内部工具名或 Skill 名；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "6a72a3285b0a6bdd0068edaba9381b50a6dc3ab780a5f5119c35ca1e9964e753",
+      "translation": "The ElBot internal tool name or Skill name preloaded for background tasks;",
+      "updated_at": 1781786110
+    },
+    "docs/elnis-usage.md:table:7089fc7221c896c86d69abfdcb07634f8effef765c40882d6360ee222a06f478": {
+      "kind": "table",
+      "source": "普通工具注入 schema，Skill 注入任务说明并自动注入对应 runner；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "7089fc7221c896c86d69abfdcb07634f8effef765c40882d6360ee222a06f478",
+      "translation": "Ordinary tools inject the schema, while Skills inject task descriptions and automatically inject the corresponding runner;",
+      "updated_at": 1781786110
+    },
     "docs/elnis-usage.md:table:7b08217f016550a28a058a031d71902aa4bd28a2ad09fd2f69adad392a9a1045": {
       "kind": "table",
       "source": "Elwisp 期望投递目标，最终仍由 Elnis 裁决。",
@@ -5369,6 +5393,14 @@
       "source_hash": "be9fdd2903da258dff0e542337882cc8ec983f46cca39e608ac944b9ab3d2c47",
       "translation": "__ELBOT_CODE_0__ or __ELBOT_CODE_1__, default __ELBOT_CODE_2__.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:f094dbde8ffe18ca235d3232a572599a2c843f7f457b8892cf5bb6b2cdcf39fd": {
+      "kind": "table",
+      "source": "必须在 Elnis __ELBOT_CODE_0__ 裁决范围内，__ELBOT_CODE_1__ 会被忽略。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "f094dbde8ffe18ca235d3232a572599a2c843f7f457b8892cf5bb6b2cdcf39fd",
+      "translation": "Must be within the Elnis __ELBOT_CODE_0__ adjudication range; __ELBOT_CODE_1__ will be ignored.",
+      "updated_at": 1781786110
     },
     "docs/elnis.md:heading:4664cab7fa8df45e53b78d62ec243093287a3d7b64d5fd21af6a77b18d872ffc": {
       "kind": "heading",
