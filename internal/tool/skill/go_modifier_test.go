@@ -156,6 +156,65 @@ func TestModifyGoSkillReturnsBuildOutput(t *testing.T) {
 	}
 }
 
+func TestResolveGoExecutableReadsConfigEnv(t *testing.T) {
+	configDir := t.TempDir()
+	skillRoot := filepath.Join(configDir, "skills", "go", "resolver")
+	if err := os.MkdirAll(skillRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fakeGo := filepath.Join(configDir, "fake-go")
+	if err := os.WriteFile(fakeGo, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, ".env"), []byte("ELBOT_GO_BINARY="+fakeGo+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(goBinaryEnv, "")
+
+	path, err := resolveGoExecutable(skillRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != fakeGo {
+		t.Fatalf("go path = %q, want %q", path, fakeGo)
+	}
+}
+
+func TestResolveGoExecutableUsesGOROOT(t *testing.T) {
+	root := t.TempDir()
+	goBin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(goBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fakeGo := filepath.Join(goBin, executableName("go"))
+	if err := os.WriteFile(fakeGo, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(goBinaryEnv, "")
+	t.Setenv("GOROOT", root)
+
+	path, err := resolveGoExecutable(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != fakeGo {
+		t.Fatalf("go path = %q, want %q", path, fakeGo)
+	}
+}
+
+func TestResolveGoExecutableReportsInvalidConfiguredPath(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing-go")
+	t.Setenv(goBinaryEnv, missing)
+
+	_, err := resolveGoExecutable(t.TempDir())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if text := err.Error(); !strings.Contains(text, goBinaryEnv) || !strings.Contains(text, missing) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestCreateElSkillDiscoversGoSourceMaintenanceTools(t *testing.T) {
 	registry := tool.NewRegistry()
 	manager := NewManager(t.TempDir(), registry)

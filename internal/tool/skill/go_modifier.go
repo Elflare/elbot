@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/config"
 	"elbot/internal/elyph"
 	"elbot/internal/llm"
 	"elbot/internal/tool"
@@ -28,6 +29,7 @@ const (
 
 	goSkillTargetElyph      = "skill_elyph"
 	goSkillTargetCodeSource = "code_source"
+	goBinaryEnv             = "ELBOT_GO_BINARY"
 )
 
 type ReadGoSkillTool struct {
@@ -331,10 +333,76 @@ func validateGoMainSource(source string) error {
 	return nil
 }
 
-func buildGoSkill(ctx context.Context, root, name string, timeoutMS int) error {
-	goPath, err := exec.LookPath("go")
+func resolveGoExecutable(skillRoot string) (string, error) {
+	configDir := goSkillConfigDir(skillRoot)
+	if value, ok, err := config.ConfigEnv(goBinaryEnv, configDir); err != nil {
+		return "", err
+	} else if ok {
+		return validateGoExecutable(value, goBinaryEnv)
+	}
+	if goroot := strings.TrimSpace(os.Getenv("GOROOT")); goroot != "" {
+		candidate := filepath.Join(goroot, "bin", executableName("go"))
+		if path, ok := existingExecutable(candidate); ok {
+			return path, nil
+		}
+		return "", fmt.Errorf("GOROOT is set but go executable is unavailable at %q; set %s=/path/to/go in system environment or config .env", candidate, goBinaryEnv)
+	}
+	if goPath, err := exec.LookPath("go"); err == nil {
+		return goPath, nil
+	}
+	return "", fmt.Errorf("go executable not found in ElBot service PATH; set %s=/path/to/go in system environment or config .env, or configure service PATH/GOROOT, then restart ElBot", goBinaryEnv)
+}
+
+func validateGoExecutable(path, source string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", fmt.Errorf("%s is empty", source)
+	}
+	info, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("system go executable not found; install Go and ensure it is in PATH before rebuilding Go skill")
+		return "", fmt.Errorf("%s points to unavailable go executable %q: %w", source, path, err)
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("%s points to a directory, not go executable: %q", source, path)
+	}
+	return path, nil
+}
+
+func goSkillConfigDir(skillRoot string) string {
+	root := filepath.Clean(strings.TrimSpace(skillRoot))
+	if filepath.Base(root) == "skills" {
+		return filepath.Dir(root)
+	}
+	parent := filepath.Dir(root)
+	if filepath.Base(parent) == "go" && filepath.Base(filepath.Dir(parent)) == "skills" {
+		return filepath.Dir(filepath.Dir(parent))
+	}
+	return filepath.Dir(root)
+}
+
+func existingExecutable(path string) (string, bool) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", false
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return "", false
+	}
+	return path, true
+}
+
+func executableName(name string) string {
+	if runtime.GOOS == "windows" {
+		return name + ".exe"
+	}
+	return name
+}
+
+func buildGoSkill(ctx context.Context, root, name string, timeoutMS int) error {
+	goPath, err := resolveGoExecutable(root)
+	if err != nil {
+		return err
 	}
 	binary := name
 	if runtime.GOOS == "windows" {

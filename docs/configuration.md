@@ -103,9 +103,38 @@ OPENAI_API_KEY=your-api-key
 
 不要把真实 Key 提交到仓库。
 
+## Go Skill 编译器路径
+
+修改 Go skill 的 `code_source` 后，ElBot 会自动执行 `gofmt`、`go build` 并 reload。若 ElBot 以 Linux service 运行，service 环境可能没有加载交互 shell 的 `PATH`，导致终端里可用的 `go` 在 ElBot 中不可见。
+
+推荐在配置目录 `.env` 中指定 Go 可执行文件：
+
+```dotenv
+ELBOT_GO_BINARY=/usr/local/go/bin/go
+```
+
+查找顺序：
+
+1. 系统环境变量 `ELBOT_GO_BINARY`。
+2. 配置目录 `.env` 中的 `ELBOT_GO_BINARY`。
+3. `GOROOT/bin/go`，如果 service 环境配置了 `GOROOT`。
+4. ElBot 进程 `PATH` 中的 `go`。
+
+如果使用 asdf、mise、Nix、Linuxbrew、Snap 或自定义安装路径，推荐直接把实际 `go` 路径写入 `ELBOT_GO_BINARY`，不要依赖交互 shell 的初始化脚本。
+
+修改 `.env` 或 systemd 环境后，需要重启 ElBot service。
+
+高级部署也可以在 systemd service 中指定：
+
+```ini
+[Service]
+Environment=ELBOT_GO_BINARY=/usr/local/go/bin/go
+```
+
 ## 模型状态配置
 
 `state.toml` 保存运行态模型选择：
+
 
 ```toml
 [session]
