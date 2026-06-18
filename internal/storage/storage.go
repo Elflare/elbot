@@ -110,6 +110,8 @@ type ElnisEvent struct {
 	Mode             string
 	ModelSlot        string
 	ContentHash      string
+	ToolDeclarations string
+	ToolHash         string
 	RequestedTargets string
 	ResolvedTargets  string
 	Status           string
@@ -184,6 +186,8 @@ type CreateElnisEventRequest struct {
 	Mode             string
 	ModelSlot        string
 	ContentHash      string
+	ToolDeclarations string
+	ToolHash         string
 	RequestedTargets string
 	ResolvedTargets  string
 	Status           string

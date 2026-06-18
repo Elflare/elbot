@@ -1,0 +1,33 @@
+# Elnis listening hub config example. Loaded from app.toml [config_files].elnis.
+
+enabled = false
+# 默认允许 Elwisp 预加载的 ElBot 内部工具；未单独配置的 Elwisp 继承这里。
+allowed_tools = ["web_search", "web_extract"]
+[http]
+addr = "127.0.0.1:32170"
+max_body_bytes = 1048576
+queue_size = 128
+workers = 2
+
+[tokens.home]
+# 从系统环境变量或配置目录 .env 读取。
+token_env = ["ELNIS_HOME_TOKEN", "ELNIS_HOME_TOKEN_ALT"]
+
+[delivery]
+default_platforms = ["cli"]
+allow_superadmins = true
+
+# Elwisp 默认启用；只有需要限制 token、覆盖策略或禁用时才配置。
+[elwisps.server-watchdog]
+allowed_tokens = ["home"]
+# 存在时覆盖顶层 allowed_tools；未配置时继承顶层默认。
+allowed_tools = ["shell", "web_search"]
+# 外部工具默认允许；这里可禁用该 Elwisp 声明的指定外部工具。
+disabled_external_tools = ["danger_tool"]
+
+[elwisps.server-watchdog.delivery]
+default_platforms = ["cli"]
+allow_superadmins = true
+
+[elwisps.spike-checker]
+enabled = false

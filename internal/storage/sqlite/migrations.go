@@ -222,6 +222,14 @@ CREATE INDEX idx_elnis_events_elwisp_received_at
 ON elnis_events(elwisp_name, received_at);
 `,
 	},
+	{
+		version: 8,
+		name:    "add_elnis_tool_declarations",
+		sql: `
+ALTER TABLE elnis_events ADD COLUMN tool_declarations TEXT NULL;
+ALTER TABLE elnis_events ADD COLUMN tool_hash TEXT NULL;
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

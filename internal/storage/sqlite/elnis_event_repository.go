@@ -34,6 +34,8 @@ func (r *ElnisEventRepository) Create(ctx context.Context, req storage.CreateEln
 		Mode:             req.Mode,
 		ModelSlot:        req.ModelSlot,
 		ContentHash:      req.ContentHash,
+		ToolDeclarations: req.ToolDeclarations,
+		ToolHash:         req.ToolHash,
 		RequestedTargets: req.RequestedTargets,
 		ResolvedTargets:  req.ResolvedTargets,
 		Status:           req.Status,
@@ -46,9 +48,9 @@ func (r *ElnisEventRepository) Create(ctx context.Context, req storage.CreateEln
 	_, err := r.db.ExecContext(ctx, `
 INSERT INTO elnis_events (
     id, event_key, token_name, elwisp_name, source, source_id, tags, mode,
-    model_slot, content_hash, requested_targets, resolved_targets, status,
+    model_slot, content_hash, tool_declarations, tool_hash, requested_targets, resolved_targets, status,
     session_id, result, error, received_at, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		event.ID,
 		event.EventKey,
 		event.TokenName,
@@ -59,6 +61,8 @@ INSERT INTO elnis_events (
 		event.Mode,
 		nullString(event.ModelSlot),
 		event.ContentHash,
+		nullString(event.ToolDeclarations),
+		nullString(event.ToolHash),
 		nullString(event.RequestedTargets),
 		nullString(event.ResolvedTargets),
 		event.Status,
@@ -78,7 +82,7 @@ INSERT INTO elnis_events (
 func (r *ElnisEventRepository) GetByKey(ctx context.Context, elwispName, source, sourceID string) (*storage.ElnisEvent, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT id, event_key, token_name, elwisp_name, source, source_id, tags, mode,
-       model_slot, content_hash, requested_targets, resolved_targets, status,
+       model_slot, content_hash, tool_declarations, tool_hash, requested_targets, resolved_targets, status,
        session_id, result, error, received_at, created_at, updated_at
 FROM elnis_events
 WHERE elwisp_name = ? AND source = ? AND source_id = ?`, elwispName, source, sourceID)
@@ -116,7 +120,7 @@ WHERE id = ?`,
 
 func scanElnisEvent(row interface{ Scan(dest ...any) error }) (*storage.ElnisEvent, error) {
 	var event storage.ElnisEvent
-	var tags, modelSlot, requestedTargets, resolvedTargets, sessionID, result, eventErr sql.NullString
+	var tags, modelSlot, toolDeclarations, toolHash, requestedTargets, resolvedTargets, sessionID, result, eventErr sql.NullString
 	var receivedAt, createdAt, updatedAt string
 	if err := row.Scan(
 		&event.ID,
@@ -129,6 +133,8 @@ func scanElnisEvent(row interface{ Scan(dest ...any) error }) (*storage.ElnisEve
 		&event.Mode,
 		&modelSlot,
 		&event.ContentHash,
+		&toolDeclarations,
+		&toolHash,
 		&requestedTargets,
 		&resolvedTargets,
 		&event.Status,
@@ -143,6 +149,8 @@ func scanElnisEvent(row interface{ Scan(dest ...any) error }) (*storage.ElnisEve
 	}
 	event.Tags = tags.String
 	event.ModelSlot = modelSlot.String
+	event.ToolDeclarations = toolDeclarations.String
+	event.ToolHash = toolHash.String
 	event.RequestedTargets = requestedTargets.String
 	event.ResolvedTargets = resolvedTargets.String
 	event.SessionID = sessionID.String

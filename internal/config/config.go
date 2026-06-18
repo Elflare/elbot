@@ -44,11 +44,13 @@ type Config struct {
 	ConfigPath          string                    `toml:"-"`
 	ProvidersConfigPath string                    `toml:"-"`
 	StateConfigPath     string                    `toml:"-"`
+	ElnisConfigPath     string                    `toml:"-"`
 }
 
 type ConfigFilesConfig struct {
 	Providers string `toml:"providers"`
 	State     string `toml:"state"`
+	Elnis     string `toml:"elnis"`
 }
 
 type ModelSelection struct {
@@ -156,11 +158,12 @@ type ArtifactConfig struct {
 type PlatformConfig map[string]map[string]any
 
 type ElnisConfig struct {
-	Enabled  bool                         `toml:"enabled"`
-	HTTP     ElnisHTTPConfig              `toml:"http"`
-	Tokens   map[string]ElnisTokenConfig  `toml:"tokens"`
-	Delivery ElnisDeliveryConfig          `toml:"delivery"`
-	Elwisps  map[string]ElnisElwispConfig `toml:"elwisps"`
+	Enabled      bool                         `toml:"enabled"`
+	AllowedTools []string                     `toml:"allowed_tools"`
+	HTTP         ElnisHTTPConfig              `toml:"http"`
+	Tokens       map[string]ElnisTokenConfig  `toml:"tokens"`
+	Delivery     ElnisDeliveryConfig          `toml:"delivery"`
+	Elwisps      map[string]ElnisElwispConfig `toml:"elwisps"`
 }
 
 type ElnisHTTPConfig struct {
@@ -180,9 +183,11 @@ type ElnisDeliveryConfig struct {
 }
 
 type ElnisElwispConfig struct {
-	Enabled       *bool               `toml:"enabled"`
-	AllowedTokens []string            `toml:"allowed_tokens"`
-	Delivery      ElnisDeliveryConfig `toml:"delivery"`
+	Enabled               *bool               `toml:"enabled"`
+	AllowedTokens         []string            `toml:"allowed_tokens"`
+	AllowedTools          []string            `toml:"allowed_tools"`
+	DisabledExternalTools []string            `toml:"disabled_external_tools"`
+	Delivery              ElnisDeliveryConfig `toml:"delivery"`
 }
 
 type CronTaskConfig struct {
@@ -331,6 +336,17 @@ func Load(path string) (*Config, error) {
 		cfg.applyState(stateCfg)
 	}
 
+	elnisPath := resolveRelative(configPath, cfg.ConfigFiles.Elnis)
+	elnisCfg := &ElnisConfig{}
+	if err := loadTOML(elnisPath, elnisCfg); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+	} else {
+		cfg.Elnis = *elnisCfg
+	}
+	cfg.applyElnisDefaults()
+
 	if err := cfg.validateModeModels(); err != nil {
 		return nil, err
 	}
@@ -341,6 +357,7 @@ func Load(path string) (*Config, error) {
 	cfg.ConfigPath = configPath
 	cfg.ProvidersConfigPath = providersPath
 	cfg.StateConfigPath = statePath
+	cfg.ElnisConfigPath = elnisPath
 	return cfg, nil
 }
 
@@ -417,6 +434,9 @@ func (c *Config) applyAppDefaults() {
 	if c.ConfigFiles.State == "" {
 		c.ConfigFiles.State = "state.toml"
 	}
+	if c.ConfigFiles.Elnis == "" {
+		c.ConfigFiles.Elnis = "elnis.toml"
+	}
 	if c.Storage.SessionsSQLitePath == "" {
 		c.Storage.SessionsSQLitePath = filepath.Join(platformDefaultDataDir(), "elbot_sessions.db")
 	}
@@ -465,24 +485,7 @@ func (c *Config) applyAppDefaults() {
 	if c.Platform == nil {
 		c.Platform = PlatformConfig{}
 	}
-	if c.Elnis.HTTP.Addr == "" {
-		c.Elnis.HTTP.Addr = "127.0.0.1:32170"
-	}
-	if c.Elnis.HTTP.MaxBodyBytes <= 0 {
-		c.Elnis.HTTP.MaxBodyBytes = 1024 * 1024
-	}
-	if c.Elnis.HTTP.QueueSize <= 0 {
-		c.Elnis.HTTP.QueueSize = 128
-	}
-	if c.Elnis.HTTP.Workers <= 0 {
-		c.Elnis.HTTP.Workers = 2
-	}
-	if c.Elnis.Tokens == nil {
-		c.Elnis.Tokens = map[string]ElnisTokenConfig{}
-	}
-	if c.Elnis.Elwisps == nil {
-		c.Elnis.Elwisps = map[string]ElnisElwispConfig{}
-	}
+	c.applyElnisDefaults()
 	if c.Session.NonSuperadminIdleTTLMinutes < 0 {
 		c.Session.NonSuperadminIdleTTLMinutes = 0
 	}
@@ -518,6 +521,27 @@ func (c *Config) applyAppDefaults() {
 	}
 	if c.Session.Naming.TriggerStep <= 0 {
 		c.Session.Naming.TriggerStep = 1
+	}
+}
+
+func (c *Config) applyElnisDefaults() {
+	if c.Elnis.HTTP.Addr == "" {
+		c.Elnis.HTTP.Addr = "127.0.0.1:32170"
+	}
+	if c.Elnis.HTTP.MaxBodyBytes <= 0 {
+		c.Elnis.HTTP.MaxBodyBytes = 1024 * 1024
+	}
+	if c.Elnis.HTTP.QueueSize <= 0 {
+		c.Elnis.HTTP.QueueSize = 128
+	}
+	if c.Elnis.HTTP.Workers <= 0 {
+		c.Elnis.HTTP.Workers = 2
+	}
+	if c.Elnis.Tokens == nil {
+		c.Elnis.Tokens = map[string]ElnisTokenConfig{}
+	}
+	if c.Elnis.Elwisps == nil {
+		c.Elnis.Elwisps = map[string]ElnisElwispConfig{}
 	}
 }
 
@@ -578,6 +602,9 @@ func (c *Config) validateModeModels() error {
 	}
 	if c.Session.DefaultMode != "work" && c.Session.DefaultMode != "chat" {
 		return fmt.Errorf("session.default_mode must be work or chat, got %q", c.Session.DefaultMode)
+	}
+	if c.ModeModels == nil {
+		c.ModeModels = map[string]ModelSelection{}
 	}
 	for _, mode := range []string{"work", "chat"} {
 		selected := c.ModeModels[mode]

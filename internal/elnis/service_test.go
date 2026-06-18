@@ -10,6 +10,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/toolrun"
 )
 
 func TestHandleRecordCreatesEventAndRejectsDuplicate(t *testing.T) {
@@ -147,6 +148,73 @@ func TestHandleLLMQueuesEvent(t *testing.T) {
 	}
 }
 
+func TestHandleAllowsConfiguredInternalTool(t *testing.T) {
+	service, cleanup := newTestService(t, nil)
+	defer cleanup()
+
+	req := testRequest(ModeLLM)
+	req.ToolListNames = []string{"shell"}
+	resp, err := service.Handle(context.Background(), "secret", req)
+	if err != nil {
+		t.Fatalf("Handle allowed tool: %v", err)
+	}
+	if resp.Status != StatusQueued {
+		t.Fatalf("response = %#v", resp)
+	}
+}
+
+func TestHandleRejectsDisallowedInternalTool(t *testing.T) {
+	service, cleanup := newTestService(t, nil)
+	defer cleanup()
+
+	req := testRequest(ModeLLM)
+	req.ToolListNames = []string{"cron"}
+	resp, err := service.Handle(context.Background(), "secret", req)
+	if err == nil {
+		t.Fatal("expected disallowed internal tool error")
+	}
+	if resp.Accepted || !strings.Contains(resp.Error, "not allowed") {
+		t.Fatalf("response = %#v", resp)
+	}
+}
+
+func TestHandleAllowsExternalToolsByDefault(t *testing.T) {
+	service, cleanup := newTestService(t, nil)
+	defer cleanup()
+
+	req := testRequest(ModeLLM)
+	req.Tools = []toolrun.ELwispToolDeclaration{testExternalTool("server_status")}
+	resp, err := service.Handle(context.Background(), "secret", req)
+	if err != nil {
+		t.Fatalf("Handle external tool: %v", err)
+	}
+	if resp.Status != StatusQueued {
+		t.Fatalf("response = %#v", resp)
+	}
+	record, err := service.store.ElnisEvents().GetByKey(context.Background(), req.Elwisp.Name, req.Source, req.ID)
+	if err != nil {
+		t.Fatalf("GetByKey: %v", err)
+	}
+	if record.ToolDeclarations == "" || record.ToolHash == "" {
+		t.Fatalf("tool declaration not persisted: %#v", record)
+	}
+}
+
+func TestHandleRejectsDisabledExternalTool(t *testing.T) {
+	service, cleanup := newTestService(t, nil)
+	defer cleanup()
+
+	req := testRequest(ModeLLM)
+	req.Tools = []toolrun.ELwispToolDeclaration{testExternalTool("danger_tool")}
+	resp, err := service.Handle(context.Background(), "secret", req)
+	if err == nil {
+		t.Fatal("expected disabled external tool error")
+	}
+	if resp.Accepted || !strings.Contains(resp.Error, "disabled") {
+		t.Fatalf("response = %#v", resp)
+	}
+}
+
 func TestRunLLMEventCompletesAndReports(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"处理完成"}`}
 	sent := []string{}
@@ -266,13 +334,14 @@ func newTestServiceWithRunner(t *testing.T, runner background.Runner, send Sende
 	}
 	service, err := NewService(Options{
 		Config: config.ElnisConfig{
-			Enabled: true,
+			Enabled:      true,
+			AllowedTools: []string{"web_search"},
 			Delivery: config.ElnisDeliveryConfig{
 				DefaultPlatforms: []string{"cli"},
 				AllowSuperadmins: true,
 			},
 			Elwisps: map[string]config.ElnisElwispConfig{
-				"watcher":    {AllowedTokens: []string{"home"}},
+				"watcher":    {AllowedTokens: []string{"home"}, AllowedTools: []string{"shell"}, DisabledExternalTools: []string{"danger_tool"}},
 				"configured": {},
 				"enabled":    {Enabled: boolPtr(true)},
 				"disabled":   {Enabled: boolPtr(false)},
@@ -291,6 +360,16 @@ func newTestServiceWithRunner(t *testing.T, runner background.Runner, send Sende
 
 func boolPtr(value bool) *bool {
 	return &value
+}
+
+func testExternalTool(name string) toolrun.ELwispToolDeclaration {
+	return toolrun.ELwispToolDeclaration{
+		Name:           name,
+		Description:    "test external tool",
+		Endpoint:       "http://127.0.0.1:32171/tools/" + name,
+		TimeoutSeconds: 5,
+		Schema:         map[string]any{"type": "object", "properties": map[string]any{"detail": map[string]any{"type": "boolean"}}},
+	}
 }
 
 type fakeBackgroundRunner struct {

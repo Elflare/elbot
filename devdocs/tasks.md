@@ -836,12 +836,12 @@
 - [x] 实现 Elnis LLM prompt，支持 ELyph/text 主体和事件 metadata。
 - [x] 实现 Elnis LLM 最终 JSON result 解析与格式重试。
 - [x] 实现 Elnis worker 队列，维护 queued/running/completed/failed 状态。
-- [ ] 扩展 Elvena 请求，支持 Elwisp 随事件声明 `tools`。
-- [ ] 持久化 Elwisp 工具声明和声明 hash，便于重放、审计和重复事件排查。
+- [x] 扩展 Elvena 请求，支持 Elwisp 随事件声明 `tools`。
+- [x] 持久化 Elwisp 工具声明和声明 hash，便于重放、审计和重复事件排查。
 - [x] 抽象 ToolRun 中间层地基，聚合 ElBot native 工具与 Elwisp 工具声明缓存，并统一 tool call 生命周期编排。
 - [x] 将工具命名空间、Schema 注入、缓存恢复和可见性过滤从 LLM Prompt 组装中拆出到 ToolRun 视图。
 - [x] 明确 ToolRun、Tool Runtime 和 Prompt Builder 的职责边界，避免把来源身份和执行路由写进 Prompt。
-- [ ] 校验 Elwisp 工具 schema、超时和调用端点，拒绝不可信或越权工具；Elwisp 工具风险由 Elwisp 自身负责，Elnis 侧默认 low。
+- [x] 校验 Elwisp 工具 schema、超时和调用端点；ElBot 内部工具由 `elnis.toml` 顶层 `allowed_tools` 和单 Elwisp 覆盖配置裁决，Elwisp 外部工具默认允许且可由单 Elwisp `disabled_external_tools` 禁用；Elwisp 工具风险由 Elwisp 自身负责，Elnis 侧默认 low。
 - [x] 复用工具预加载、Tool Runtime、Security Policy 和后台 sandbox，但由 ToolRun 统一入口管理。
 - [x] 按 LLM result 的 `need_report` 和 Elnis 目标裁决发送报告，失败/阻塞报告也可投递。
 - [x] 后台任务禁用 `discover_tool` 默认注入，`tool_list_names` 中的 `discover_tool` 静默忽略。

@@ -2,10 +2,13 @@ package toolrun
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"elbot/internal/llm"
 )
+
+var elwispToolNameReplacer = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
 
 type ELwispToolDeclaration struct {
 	Name           string         `json:"name"`
@@ -32,20 +35,24 @@ func CachedToolsFromELwisp(injection ELwispInjection) []CachedTool {
 		if name == "" {
 			continue
 		}
-		canonical := fmt.Sprintf("elwisp.%s.%s", elwispName, name)
+		canonical := elwispToolName(elwispName, name)
 		out = append(out, CachedTool{
-			Name:          name,
-			CanonicalName: canonical,
-			Source:        SourceKindELwisp,
-			Description:   declared.Description,
-			Schema: llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{
-				Name:        canonical,
-				Description: declared.Description,
-				Parameters:  declared.Schema,
-			}},
-			ELwispName: elwispName,
-			EventKey:   injection.EventKey,
+			Name:           name,
+			CanonicalName:  canonical,
+			Source:         SourceKindELwisp,
+			Description:    declared.Description,
+			Schema:         llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: canonical, Description: declared.Description, Parameters: declared.Schema}},
+			ELwispName:     elwispName,
+			EventKey:       injection.EventKey,
+			Endpoint:       strings.TrimSpace(declared.Endpoint),
+			TimeoutSeconds: declared.TimeoutSeconds,
 		})
 	}
 	return NormalizeCachedTools(out)
+}
+
+func elwispToolName(elwispName, name string) string {
+	elwispName = elwispToolNameReplacer.ReplaceAllString(strings.TrimSpace(elwispName), "_")
+	name = elwispToolNameReplacer.ReplaceAllString(strings.TrimSpace(name), "_")
+	return fmt.Sprintf("elwisp_%s_%s", elwispName, name)
 }

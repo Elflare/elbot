@@ -253,21 +253,25 @@ Elwisp 可以声明它希望发给谁，但 Elnis 必须拥有最终控制权。
 
 暂不支持任意 user/group scope 投递，除非后续安全模型明确，否则容易让外部监听器变成任意消息发送器。
 
-Elnis 配置应支持按 Elwisp 设置额外策略，且 `elwisps` 是可选项：
+Elnis 配置独立放在 `elnis.toml`，支持按 Elwisp 设置额外策略，且 `elwisps` 是可选项：
 
 ```toml
-[elnis.delivery]
+allowed_tools = ["web_search", "web_extract"]
+
+[delivery]
 default_platforms = ["cli"]
 allow_superadmins = true
 
-[elnis.elwisps.server-watchdog]
+[elwisps.server-watchdog]
 allowed_tokens = ["server"]
+allowed_tools = ["shell", "web_search"]
+disabled_external_tools = ["danger_tool"]
 
-[elnis.elwisps.server-watchdog.delivery]
+[elwisps.server-watchdog.delivery]
 default_platforms = ["cli", "qqofficial"]
 allow_superadmins = true
 
-[elnis.elwisps.spike-checker]
+[elwisps.spike-checker]
 enabled = false
 ```
 
@@ -478,33 +482,35 @@ elnis.llm_failed
 ## 配置草案
 
 ```toml
-[elnis]
 enabled = true
+allowed_tools = ["web_search", "web_extract"]
 
-[elnis.http]
+[http]
 addr = "127.0.0.1:32170"
 max_body_bytes = 1048576
 queue_size = 128
 workers = 2
 
-[elnis.tokens.home]
+[tokens.home]
 token_env = ["ELNIS_HOME_TOKEN", "ELNIS_HOME_TOKEN_ALT"]
 
-[elnis.tokens.server]
+[tokens.server]
 token_env = ["ELNIS_SERVER_TOKEN"]
 
-[elnis.delivery]
+[delivery]
 default_platforms = ["cli"]
 allow_superadmins = true
 
-[elnis.elwisps.server-watchdog]
+[elwisps.server-watchdog]
 allowed_tokens = ["server"]
+allowed_tools = ["shell", "web_search"]
+disabled_external_tools = ["danger_tool"]
 
-[elnis.elwisps.server-watchdog.delivery]
+[elwisps.server-watchdog.delivery]
 default_platforms = ["cli"]
 allow_superadmins = true
 
-[elnis.elwisps.spike-checker]
+[elwisps.spike-checker]
 enabled = false
 ```
 
@@ -512,6 +518,8 @@ enabled = false
 
 - `enabled=false` 时不启动 Elnis runtime。
 - `tokens` 只保存 token 名和读取方式，不保存 token 明文。
+- 顶层 `allowed_tools` 是 ElBot 内部工具默认白名单；单 Elwisp `allowed_tools` 存在时覆盖默认值。
+- Elwisp 外部工具默认允许；单 Elwisp `disabled_external_tools` 可禁用指定外部工具。
 - `elwisps.<name>` 可按 Elwisp 名限制 token、覆盖投递策略或显式禁用。
 - Elwisp 默认启用；只有显式 `enabled=false` 才会禁用对应 Elwisp。
 

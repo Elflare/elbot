@@ -3,6 +3,7 @@
 [config_files]
 providers = "providers.toml"
 state = "state.toml"
+elnis = "elnis.toml"
 
 [storage]
 # 留空使用平台默认数据目录：Windows %APPDATA%/ElBot/data；Linux $XDG_DATA_HOME/elbot 或 ~/.local/share/elbot。
@@ -80,33 +81,6 @@ trigger_step = 3
 [session.cleanup]
 enabled = false
 retention_days = 30
-
-# [elnis]
-# enabled = false # Elnis 总开关；false 时不启动 HTTP runtime。
-#
-# [elnis.http]
-# addr = "127.0.0.1:32170" # 建议先绑定本地地址，需要暴露时再用反代或内网转发。
-# max_body_bytes = 1048576 # 单个 Elvena 请求 body 上限。
-# queue_size = 128 # llm 模式后台队列长度。
-# workers = 2 # llm 模式后台 worker 数。
-#
-# [elnis.tokens.home]
-# token_env = ["ELNIS_HOME_TOKEN", "ELNIS_HOME_TOKEN_ALT"] # 从系统环境变量或配置目录 .env 读取。
-#
-# [elnis.delivery]
-# default_platforms = ["cli"] # Elnis 策略允许的默认投递平台。
-# allow_superadmins = true # 是否允许投递给目标平台超级管理员。
-#
-# Elwisp 默认启用；只有需要限制 token、覆盖投递策略或禁用时才配置。
-# [elnis.elwisps.server-watchdog]
-# allowed_tokens = ["home"]
-#
-# [elnis.elwisps.server-watchdog.delivery]
-# default_platforms = ["cli"]
-# allow_superadmins = true
-#
-# [elnis.elwisps.spike-checker]
-# enabled = false # 只有显式 enabled=false 才禁用该 Elwisp。
 
 [platform.cli]
 enabled = true

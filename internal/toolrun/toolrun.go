@@ -35,13 +35,15 @@ type Context struct {
 }
 
 type CachedTool struct {
-	Name          string         `json:"name"`
-	CanonicalName string         `json:"canonical_name,omitempty"`
-	Source        SourceKind     `json:"source"`
-	Description   string         `json:"description,omitempty"`
-	Schema        llm.ToolSchema `json:"schema"`
-	ELwispName    string         `json:"elwisp_name,omitempty"`
-	EventKey      string         `json:"event_key,omitempty"`
+	Name           string         `json:"name"`
+	CanonicalName  string         `json:"canonical_name,omitempty"`
+	Source         SourceKind     `json:"source"`
+	Description    string         `json:"description,omitempty"`
+	Schema         llm.ToolSchema `json:"schema"`
+	ELwispName     string         `json:"elwisp_name,omitempty"`
+	EventKey       string         `json:"event_key,omitempty"`
+	Endpoint       string         `json:"endpoint,omitempty"`
+	TimeoutSeconds int            `json:"timeout_seconds,omitempty"`
 }
 
 type ResolvedTool struct {
@@ -135,7 +137,10 @@ func (m *Manager) Resolve(ctx context.Context, name string, cached []CachedTool)
 			source = SourceKindNative
 		}
 		if source == SourceKindELwisp {
-			return ResolvedTool{Name: name, Source: source, Cached: &cachedCopy, Available: false, Reason: "ELwisp tool is no longer available for this resumed session"}
+			if cachedCopy.Endpoint == "" {
+				return ResolvedTool{Name: name, Source: source, Cached: &cachedCopy, Available: false, Reason: "ELwisp tool endpoint is missing"}
+			}
+			return ResolvedTool{Name: cachedCopy.CanonicalName, Source: source, Cached: &cachedCopy, Available: true}
 		}
 		if m != nil && m.Native != nil {
 			if nativeTool, ok := m.Native.Get(cachedCopy.Name); ok {
@@ -168,7 +173,7 @@ func (m *Manager) Execute(ctx context.Context, call llm.ToolCallRequest, resolve
 		return executionError(call, message, fmt.Errorf("%s", resolved.Reason))
 	}
 	if resolved.Source == SourceKindELwisp {
-		return executionError(call, message, fmt.Errorf("ELwisp tool execution is not available yet"))
+		return executeELwispTool(ctx, call, resolved)
 	}
 	registry := (*tool.Registry)(nil)
 	if m != nil && m.Native != nil {

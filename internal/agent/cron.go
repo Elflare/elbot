@@ -94,6 +94,10 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 	if err != nil {
 		return background.RunResult{}, err
 	}
+	if len(req.CachedTools) > 0 {
+		a.rememberCachedTools(ctx, bgSession, req.CachedTools)
+		a.audit("background_external_tools_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "tools", cachedToolNames(req.CachedTools))
+	}
 	if injected := a.preloadToolNames(ctx, bgSession, backgroundToolListNames(req.ToolListNames)); len(injected) > 0 {
 		a.audit("background_tool_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "tools", injected)
 	}
@@ -205,6 +209,9 @@ func backgroundSessionMetadata(req background.RunRequest) string {
 		if strings.TrimSpace(key) != "" {
 			data[key] = value
 		}
+	}
+	if len(req.CachedTools) > 0 {
+		data["tool_cache"] = req.CachedTools
 	}
 	encoded, _ := json.Marshal(data)
 	return string(encoded)

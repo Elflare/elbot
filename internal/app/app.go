@@ -169,6 +169,7 @@ func Run(ctx context.Context, opts Options) error {
 		"config_path", cfg.ConfigPath,
 		"providers_config_path", cfg.ProvidersConfigPath,
 		"state_config_path", cfg.StateConfigPath,
+		"elnis_config_path", cfg.ElnisConfigPath,
 		"work_provider", cfg.ModeModels["work"].Provider,
 		"work_model", cfg.ModeModels["work"].Model,
 		"chat_provider", cfg.ModeModels["chat"].Provider,

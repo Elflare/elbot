@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"elbot/internal/elyph"
 	"elbot/internal/security"
 	"elbot/internal/storage"
+	"elbot/internal/toolrun"
 )
 
 type SenderFunc func(ctx context.Context, target delivery.Target, out delivery.Output) error
@@ -83,6 +85,16 @@ func (s *Service) Handle(ctx context.Context, token string, req Request) (Respon
 		s.logWarn("elnis permission denied", append(attrs, "error", err.Error())...)
 		return Response{Accepted: false, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
 	}
+	if err := s.authorizeInternalTools(event); err != nil {
+		s.auditEvent("elnis.tool_denied", append(attrs, "error", err.Error())...)
+		s.logWarn("elnis internal tool denied", append(attrs, "error", err.Error())...)
+		return Response{Accepted: false, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
+	}
+	if err := s.authorizeExternalTools(event); err != nil {
+		s.auditEvent("elnis.external_tool_denied", append(attrs, "error", err.Error())...)
+		s.logWarn("elnis external tool denied", append(attrs, "error", err.Error())...)
+		return Response{Accepted: false, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
+	}
 	if existing, err := s.store.ElnisEvents().GetByKey(ctx, req.Elwisp.Name, req.Source, req.ID); err == nil {
 		s.handleDuplicate(event, existing)
 		return Response{Accepted: true, Duplicate: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusDuplicate}, nil
@@ -106,6 +118,8 @@ func (s *Service) Handle(ctx context.Context, token string, req Request) (Respon
 		Mode:             req.Mode,
 		ModelSlot:        req.ModelSlot,
 		ContentHash:      event.ContentHash,
+		ToolDeclarations: event.ToolDeclarations,
+		ToolHash:         event.ToolHash,
 		RequestedTargets: event.RequestedTargets,
 		ResolvedTargets:  event.ResolvedTargets,
 		Status:           status,
@@ -221,11 +235,17 @@ func (s *Service) prepareEvent(tokenName string, req Request) (Event, error) {
 	if err != nil {
 		return Event{}, err
 	}
+	toolDeclarations, err := normalizedToolDeclarations(req.Tools)
+	if err != nil {
+		return Event{}, err
+	}
 	return Event{
 		Request:          req,
 		TokenName:        tokenName,
 		EventKey:         req.Elwisp.Name + "/" + req.Source + "/" + req.ID,
 		ContentHash:      contentHash(req),
+		ToolDeclarations: toolDeclarations,
+		ToolHash:         hashText(toolDeclarations),
 		TagsJSON:         string(tagsJSON),
 		RequestedTargets: string(requestedTargets),
 		ResolvedTargets:  string(resolvedTargets),
@@ -252,6 +272,72 @@ func (s *Service) authorizeElwisp(event Event) error {
 		}
 	}
 	return fmt.Errorf("token %q is not allowed for elwisp %q", event.TokenName, event.Request.Elwisp.Name)
+}
+
+func (s *Service) authorizeInternalTools(event Event) error {
+	allowed := s.allowedInternalTools(event.Request.Elwisp.Name)
+	for _, name := range backgroundToolNames(event.Request.ToolListNames) {
+		if name == "discover_tool" {
+			continue
+		}
+		if !allowed[name] {
+			return fmt.Errorf("tool %q is not allowed for elwisp %q", name, event.Request.Elwisp.Name)
+		}
+	}
+	return nil
+}
+
+func (s *Service) allowedInternalTools(elwispName string) map[string]bool {
+	allowedTools := s.cfg.AllowedTools
+	if policy, ok := s.cfg.Elwisps[elwispName]; ok && policy.AllowedTools != nil {
+		allowedTools = policy.AllowedTools
+	}
+	return setFromStrings(allowedTools)
+}
+
+func (s *Service) authorizeExternalTools(event Event) error {
+	disabled := map[string]bool{}
+	if policy, ok := s.cfg.Elwisps[event.Request.Elwisp.Name]; ok {
+		disabled = setFromStrings(policy.DisabledExternalTools)
+	}
+	seen := map[string]bool{}
+	for _, declared := range event.Request.Tools {
+		name := strings.TrimSpace(declared.Name)
+		if name == "" {
+			return fmt.Errorf("external tool name is required")
+		}
+		if seen[name] {
+			return fmt.Errorf("external tool %q is duplicated", name)
+		}
+		seen[name] = true
+		if disabled[name] {
+			return fmt.Errorf("external tool %q is disabled for elwisp %q", name, event.Request.Elwisp.Name)
+		}
+		if strings.ContainsAny(name, ". /\\") {
+			return fmt.Errorf("external tool %q has invalid name", name)
+		}
+		if strings.TrimSpace(declared.Endpoint) == "" {
+			return fmt.Errorf("external tool %q endpoint is required", name)
+		}
+		parsed, err := url.Parse(strings.TrimSpace(declared.Endpoint))
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+			return fmt.Errorf("external tool %q endpoint must be http or https URL", name)
+		}
+		if declared.TimeoutSeconds < 0 || declared.TimeoutSeconds > 60 {
+			return fmt.Errorf("external tool %q timeout_seconds must be between 0 and 60", name)
+		}
+		if len(declared.Schema) == 0 {
+			return fmt.Errorf("external tool %q schema is required", name)
+		}
+		if schemaType, _ := declared.Schema["type"].(string); schemaType != "object" {
+			return fmt.Errorf("external tool %q schema.type must be object", name)
+		}
+	}
+	return nil
+}
+
+func (s *Service) elwispCachedTools(event Event) []toolrun.CachedTool {
+	return toolrun.CachedToolsFromELwisp(toolrun.ELwispInjection{ELwispName: event.Request.Elwisp.Name, EventKey: event.EventKey, Tools: event.Request.Tools})
 }
 
 func (s *Service) resolveTargets(req Request) (Targets, error) {
@@ -335,6 +421,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		ScopeID:       "elnis:" + event.EventKey,
 		Prompt:        llmPrompt(event),
 		ToolListNames: event.Request.ToolListNames,
+		CachedTools:   s.elwispCachedTools(event),
 		SandboxSubdir: "elnis/" + event.Request.Elwisp.Name,
 		Metadata: map[string]string{
 			"elnis_event_key": event.EventKey,
@@ -494,6 +581,28 @@ func directText(req Request) string {
 
 func contentHash(req Request) string {
 	data, _ := json.Marshal(req)
+	return hashBytes(data)
+}
+
+func normalizedToolDeclarations(tools []toolrun.ELwispToolDeclaration) (string, error) {
+	if len(tools) == 0 {
+		return "", nil
+	}
+	data, err := json.Marshal(tools)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func hashText(value string) string {
+	if value == "" {
+		return ""
+	}
+	return hashBytes([]byte(value))
+}
+
+func hashBytes(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
@@ -540,6 +649,19 @@ func setFromStrings(values []string) map[string]bool {
 	out := map[string]bool{}
 	for _, value := range trimStrings(values) {
 		out[value] = true
+	}
+	return out
+}
+
+func backgroundToolNames(values []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, value := range trimStrings(values) {
+		if seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
 	}
 	return out
 }
