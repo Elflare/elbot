@@ -199,7 +199,8 @@ ElBot includes two layers of Cron capabilities:
 | Direct Cron | Send fixed content directly according to a schedule. |
 | LLM Cron | Drive model execution based on task descriptions, with the ability to use tools. |
 
-Background Cron has independent Session and sandbox constraints. LLM Cron can pre-inject tool names, allowing the model to stably use specified tools in background tasks.
+Background Cron has an independent Session and sandbox constraints. LLM Cron can pre-inject tool names or Skill names via `tool_list_names`: ordinary tools will inject the schema, while Skills will inject the description into the background task prompt and automatically inject the corresponding runner.
+
 
 ## Elnis / Elwisp / Elvena
 
@@ -215,9 +216,9 @@ ElBot supports Skill extensions and introduces ELyph Task Notation to describe r
 
 Skill types:
 
-- Native El Skill: uses `SKILL.elyph` to describe tasks, with optional Go source code implementation.
-- Python Skill: compatible with common external Python skill directory structures.
-- Go Skill: can be executed via binary and receives JSON payloads from stdin.
+- AgentSkill: placed in `skills/agent/<skill>/`, following or compatible with the agentskills.io style `SKILL.md`, and `SKILL.elyph` can also be used to override the Agent-readable description; Currently, attached Python scripts can be executed via `python_skill_run`.
+- Go Skill: placed in `skills/go/<skill>/`, using `SKILL.elyph` to describe the task; When a binary exists, it can be executed via `go_skill_run` and receive a JSON payload from stdin.
+
 
 The goal of ELyph is to express inputs, outputs, steps, conditions, and constraints using a shorter and more stable structure, reducing the ambiguity of natural language task descriptions. For the complete syntax, see [ELyph Task Notation](elyph.md).
 

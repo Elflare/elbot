@@ -18,7 +18,8 @@ The default source configuration directory contains:
 | `config/SOUL.md` | The System Prompt source file for the Agent. |
 | `config/.env` | Optional, local key file, not recommended for submission; the one automatically generated the first time is `.env.example`, and `.env` will not be generated directly. |
 | `config/plugins/` | Hook and plugin configuration directory. |
-| `config/skills/` | User-side Skill directory, located in the configuration directory by default; current subdirectories are `skills/py/` and `skills/go/`. |
+| `config/skills/` | User-side Skill directory, located in the configuration directory by default; current subdirectories are `skills/agent/` and `skills/go/`. |
+
 | `config/memories.toml` | Resident memory file, located in the configuration directory by default. |
 | `config/long_memory/` | Long-term memory Markdown source data directory, located in the configuration directory by default. |
 
@@ -34,7 +35,8 @@ The main configuration is searched in the following order upon startup:
 
 Automatic generation is only triggered when there are no explicit `--config` and `ELBOT_CONFIG_FILE`. If the explicitly specified configuration path does not exist, ElBot will report an error instead of silently generating it, to avoid masking path spelling errors.
 
-Files automatically generated for the first time include: `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `elnis.toml`, and `.env.example`; At the same time, the directories `skills/`, `skills/py/`, `skills/go/`, `plugins/`, and `long_memory/` will be created. Existing files will not be overwritten. `elnis.toml` defaults to `enabled=false`, and HTTP listening will not be started on the first run.
+Files automatically generated for the first time include: `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `elnis.toml`, and `.env.example`; At the same time, the directories `skills/`, `skills/agent/`, `skills/go/`, `plugins/`, and `long_memory/` will be created. Existing files will not be overwritten. `elnis.toml` defaults to `enabled=false`, and HTTP listening will not be started on the first run.
+
 
 Example:
 

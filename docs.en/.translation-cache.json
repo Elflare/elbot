@@ -1,44 +1,49 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "a4b3e4e416bddc039a95483c47649f2511592f77fbc9951cee0c437e0fb298a0",
+      "source_hash": "7e5b2be06612e3cf56fd93f76b85c59cd0a2f507b84e7abbc29eaf35d3138473",
       "target": "README.md",
-      "updated_at": 1781779200
+      "updated_at": 1781786013
     },
     "docs/README.md": {
       "source_hash": "b40f5d1519dbd52e73aeee1fad99f614728052e3ae821add12de6ea4f9d69a7c",
       "target": "docs.en/README.md",
-      "updated_at": 1781779202
+      "updated_at": 1781786014
     },
     "docs/commands.md": {
       "source_hash": "84b3e7ae632abd7edd07e0153f933dbda5935cc22213f108d34c70174097adc3",
       "target": "docs.en/commands.md",
-      "updated_at": 1781779244
+      "updated_at": 1781786015
     },
     "docs/concepts.md": {
-      "source_hash": "0276e4a0d81dfb514cf3be786c483988f366293d34d4233702d34902fa36d6ce",
+      "source_hash": "d59a520b2ffb138df4d7e6b292cc137b57f1336de3c2c1510d5236ef34a737c2",
       "target": "docs.en/concepts.md",
-      "updated_at": 1781779265
+      "updated_at": 1781786062
     },
     "docs/configuration.md": {
-      "source_hash": "b1555d6a0df93b718a3898124489898fba76afa2ed56cb60dbe20254befd323e",
+      "source_hash": "bda99903b77adc2ab0c74a396e80030bea94a336d711d2c037fc426501a72f90",
       "target": "docs.en/configuration.md",
-      "updated_at": 1781779407
+      "updated_at": 1781786063
     },
     "docs/elnis-usage.md": {
-      "source_hash": "4328a8dd1058cc4c21ce2c161efc561416dcef36da6ae73e8a73641c6376516a",
+      "source_hash": "addac05926a5ef7d6ccae3d13c789cb978d6a3973f1210bc29e776f2ede856f7",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1781779450
+      "updated_at": 1781786110
     },
     "docs/elnis.md": {
       "source_hash": "f3b807a95e78c9ad3016c72ccef8a5e22b6d559d0baf59c3fdab4a5d3db37391",
       "target": "docs.en/elnis.md",
-      "updated_at": 1781779501
+      "updated_at": 1781786111
+    },
+    "docs/elyph.md": {
+      "source_hash": "1143022b6f7a7792b0f1aa8118af618014b6ac359776d6a7cd21cc484f28a6bc",
+      "target": "docs.en/elyph.md",
+      "updated_at": 1781786413
     },
     "docs/getting-started.md": {
-      "source_hash": "03eb8aa561aca703b7e764c8129596c4b45c9089405fb354f913006859b7cb3e",
+      "source_hash": "b2dcc8b0fdf13d77d8bb6b64ffcb51f5bbc66c3ba219ed5e25e55ba7bcf70d1b",
       "target": "docs.en/getting-started.md",
-      "updated_at": 1781710779
+      "updated_at": 1781786456
     }
   },
   "segments": {
@@ -569,6 +574,14 @@
       "source_hash": "269ef0efed1d38bab7ed21495376e4a5ad88047208ba8d2cb29453a775d334b1",
       "translation": "ElBot is still under rapid development; interfaces, configurations, and internal implementations may continue to be adjusted. It is currently more suitable for exploration as a personal Agent/bot framework.\n",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:2b63699a68e31f81c59d9343adaa0639790597fcbb5a66581043c8382d03edb5": {
+      "kind": "paragraph",
+      "source": "**兼容外置 AgentSkill**： 除了原生 Go Skill，ElBot 也兼容遵从 agentskills.io 风格的外置 AgentSkill。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "2b63699a68e31f81c59d9343adaa0639790597fcbb5a66581043c8382d03edb5",
+      "translation": "**Compatible with external AgentSkills**: In addition to native Go Skills, ElBot is also compatible with external AgentSkills that follow the agentskills.io style.",
+      "updated_at": 1781786013
     },
     "README.zh-CN.md:paragraph:2c7ff69b18ae8ba8a963b8a006f6cd47ef56adfe3c3691d434457fade72754bd": {
       "kind": "paragraph",
@@ -1138,6 +1151,14 @@
       "translation": "Documentation maintenance strategy: The README only retains the project entry point and the minimum startup path;",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:bd2d7a0747df8671b9039976585d9ad7eecf85e1e12257929c2a2972c934f9ee": {
+      "kind": "paragraph",
+      "source": "当前可通过隐藏包装工具执行附带 Python 脚本。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "bd2d7a0747df8671b9039976585d9ad7eecf85e1e12257929c2a2972c934f9ee",
+      "translation": "Currently, bundled Python scripts can be executed via hidden wrapper tools.\n",
+      "updated_at": 1781786013
+    },
     "README.zh-CN.md:paragraph:bd5b8229918b5ece1025466f0be78687159ac8ec8a2bf810e21fcaf407aa97a8": {
       "kind": "paragraph",
       "source": "**完善的日志与审计**： 区分运行日志、Elwisp 日志与审计日志，支持结构化字段、日志查询、审计查询和运行期调试。\n",
@@ -1265,6 +1286,14 @@
       "source_hash": "d60d315ec395c30662322d8e14182689fd314a069f56555dd0f873ec78636831",
       "translation": "**Compatible with internet Python Skills.",
       "updated_at": 1781749522
+    },
+    "README.zh-CN.md:paragraph:deaf166c031ac95885bc0b635833883bf7e195c723c637a2535aad2dc9cc0a20": {
+      "kind": "paragraph",
+      "source": "自动扫描 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__，读取名称、描述、适用场景和风险等级；",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "deaf166c031ac95885bc0b635833883bf7e195c723c637a2535aad2dc9cc0a20",
+      "translation": "Automatically scan __ELBOT_CODE_0__ or __ELBOT_CODE_1__ to read the name, description, applicable scenarios, and risk level;",
+      "updated_at": 1781786013
     },
     "README.zh-CN.md:paragraph:df29046950117f7f324af7e2058feb2877acfda208d1db41735bc93b4127f073": {
       "kind": "paragraph",
@@ -2538,6 +2567,14 @@
       "translation": "User documentation prioritizes stable usage paths.",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:list:3b660d6678002691ee52c4f1cb1d1371bbb4cfad28564a5020bd546a3511f5b3": {
+      "kind": "list",
+      "source": "Go Skill：放在 __ELBOT_CODE_0__，使用 __ELBOT_CODE_1__ 描述任务；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "3b660d6678002691ee52c4f1cb1d1371bbb4cfad28564a5020bd546a3511f5b3",
+      "translation": "Go Skill: placed in __ELBOT_CODE_0__, using __ELBOT_CODE_1__ to describe the task;",
+      "updated_at": 1781786062
+    },
     "docs/concepts.md:list:3be86768dbb450ee413da4e18fa1b25952714f7fd794ee8af4f8a5f381ff9f22": {
       "kind": "list",
       "source": "新 Session 使用 fork 截止点之前的上下文继续对话。",
@@ -2834,6 +2871,14 @@
       "translation": "LLM response processing.",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:list:bbabfa8d04a6cf8ab92aeb284818397c8b13b83ccd64e8554be179766128c2f8": {
+      "kind": "list",
+      "source": "AgentSkill：放在 __ELBOT_CODE_0__，遵从或兼容 agentskills.io 风格 __ELBOT_CODE_1__，也可用 __ELBOT_CODE_2__ 覆写 Agent 可读说明；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "bbabfa8d04a6cf8ab92aeb284818397c8b13b83ccd64e8554be179766128c2f8",
+      "translation": "AgentSkill: placed in __ELBOT_CODE_0__, following or compatible with the agentskills.io style __ELBOT_CODE_1__, and __ELBOT_CODE_2__ can also be used to override the Agent-readable description;",
+      "updated_at": 1781786062
+    },
     "docs/concepts.md:list:be296bb45981b5a3b534e93b86d54fa3a5d8614cc31e13b457ca0d363301cd3e": {
       "kind": "list",
       "source": "普通聊天不为工具 schema 支付上下文成本。",
@@ -2938,6 +2983,14 @@
       "translation": "Managing Session context.",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:list:e64ab0282b075a88d556f02e9db0f0016e1eeb70dbd9ecfbf0791ef9f839006d": {
+      "kind": "list",
+      "source": "存在二进制时可通过 __ELBOT_CODE_0__ 执行，并从 stdin 接收 JSON payload。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "e64ab0282b075a88d556f02e9db0f0016e1eeb70dbd9ecfbf0791ef9f839006d",
+      "translation": "When a binary exists, it can be executed via __ELBOT_CODE_0__ and receive a JSON payload from stdin.",
+      "updated_at": 1781786062
+    },
     "docs/concepts.md:list:e6db1b39c6a6cd1d5cc71ae969e7f6cb7071728fe6964001196433e62b27d48b": {
       "kind": "list",
       "source": "平台连接事件。",
@@ -2945,6 +2998,14 @@
       "source_hash": "e6db1b39c6a6cd1d5cc71ae969e7f6cb7071728fe6964001196433e62b27d48b",
       "translation": "Platform connection events.",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:list:fb74e513893a20c4789ff5c16e1a981f7aa13804c005acca45b4bfa8e0bf8bdb": {
+      "kind": "list",
+      "source": "当前可通过 __ELBOT_CODE_0__ 执行附带 Python 脚本。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "fb74e513893a20c4789ff5c16e1a981f7aa13804c005acca45b4bfa8e0bf8bdb",
+      "translation": "Currently, attached Python scripts can be executed via __ELBOT_CODE_0__.",
+      "updated_at": 1781786062
     },
     "docs/concepts.md:list:fb985af310c951984a92a2800b0b830c6ab52d8991287de67415aff67d104cc5": {
       "kind": "list",
@@ -3026,6 +3087,14 @@
       "translation": "Long conversations will gradually approach the model's context window. ElBot supports context compaction:\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:123b7121147734576156f871abfd10a68162d2875cb75f9abec22cd68c30a07a": {
+      "kind": "paragraph",
+      "source": "LLM Cron 可以通过 __ELBOT_CODE_0__ 预注入工具名或 Skill 名：普通工具会注入 schema，Skill 会把说明注入后台任务 prompt，并自动注入对应 runner。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "123b7121147734576156f871abfd10a68162d2875cb75f9abec22cd68c30a07a",
+      "translation": "LLM Cron can pre-inject tool names or Skill names via __ELBOT_CODE_0__: ordinary tools will inject the schema, while Skills will inject the description into the background task prompt and automatically inject the corresponding runner.\n",
+      "updated_at": 1781786062
+    },
     "docs/concepts.md:paragraph:13bb391f8e5dc72f473509a59f545d1ec862167a569706c05be36b78f83ffc5d": {
       "kind": "paragraph",
       "source": "当前内置能力包括：\n",
@@ -3097,6 +3166,14 @@
       "source_hash": "3e1fc867acd7396d4e6660134fb1232a9f9a2b98541513dbd0b7a974188012f4",
       "translation": "The platform adapter layer is responsible for:\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:41dc92661a4b0ec79f087871e9b6f2981527d0891efc528c14420aba61a89077": {
+      "kind": "paragraph",
+      "source": "后台 Cron 有独立 Session 和 sandbox 约束。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "41dc92661a4b0ec79f087871e9b6f2981527d0891efc528c14420aba61a89077",
+      "translation": "Background Cron has an independent Session and sandbox constraints.",
+      "updated_at": 1781786062
     },
     "docs/concepts.md:paragraph:427e01fa6bb52dee0bbffe7719a857ec4ebb1c0814df276f60d3579c86506ae2": {
       "kind": "paragraph",
@@ -4930,6 +5007,14 @@
       "translation": "The top-level __ELBOT_CODE_0__ is the default whitelist for ElBot internal tools; it is overridden when __ELBOT_CODE_1__ of an individual Elwisp exists.",
       "updated_at": 1781749660
     },
+    "docs/elnis-usage.md:list:ca55d61a6160292c9353d353d50f67c47d4b7b9386e07b1724c9cba2335e5889": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 中的工具名或 Skill 名都会经过 Elnis __ELBOT_CODE_1__ 裁决。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "ca55d61a6160292c9353d353d50f67c47d4b7b9386e07b1724c9cba2335e5889",
+      "translation": "Tool names or Skill names in __ELBOT_CODE_0__ will all undergo Elnis __ELBOT_CODE_1__ adjudication.",
+      "updated_at": 1781786110
+    },
     "docs/elnis-usage.md:list:d627a0566699b39e88111dc901fa4f867b1c710a873ce3bd52b2c7b1645262b3": {
       "kind": "list",
       "source": "Elwisp 不能直接发送平台消息。",
@@ -5226,6 +5311,22 @@
       "translation": "Model slot, used subsequently for __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:table:6a72a3285b0a6bdd0068edaba9381b50a6dc3ab780a5f5119c35ca1e9964e753": {
+      "kind": "table",
+      "source": "后台任务预加载的 ElBot 内部工具名或 Skill 名；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "6a72a3285b0a6bdd0068edaba9381b50a6dc3ab780a5f5119c35ca1e9964e753",
+      "translation": "The ElBot internal tool name or Skill name preloaded for background tasks;",
+      "updated_at": 1781786110
+    },
+    "docs/elnis-usage.md:table:7089fc7221c896c86d69abfdcb07634f8effef765c40882d6360ee222a06f478": {
+      "kind": "table",
+      "source": "普通工具注入 schema，Skill 注入任务说明并自动注入对应 runner；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "7089fc7221c896c86d69abfdcb07634f8effef765c40882d6360ee222a06f478",
+      "translation": "Ordinary tools inject the schema, while Skills inject task descriptions and automatically inject the corresponding runner;",
+      "updated_at": 1781786110
+    },
     "docs/elnis-usage.md:table:7b08217f016550a28a058a031d71902aa4bd28a2ad09fd2f69adad392a9a1045": {
       "kind": "table",
       "source": "Elwisp 期望投递目标，最终仍由 Elnis 裁决。",
@@ -5297,6 +5398,14 @@
       "source_hash": "be9fdd2903da258dff0e542337882cc8ec983f46cca39e608ac944b9ab3d2c47",
       "translation": "__ELBOT_CODE_0__ or __ELBOT_CODE_1__, default __ELBOT_CODE_2__.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:f094dbde8ffe18ca235d3232a572599a2c843f7f457b8892cf5bb6b2cdcf39fd": {
+      "kind": "table",
+      "source": "必须在 Elnis __ELBOT_CODE_0__ 裁决范围内，__ELBOT_CODE_1__ 会被忽略。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "f094dbde8ffe18ca235d3232a572599a2c843f7f457b8892cf5bb6b2cdcf39fd",
+      "translation": "Must be within the Elnis __ELBOT_CODE_0__ adjudication range; __ELBOT_CODE_1__ will be ignored.",
+      "updated_at": 1781786110
     },
     "docs/elnis.md:heading:4664cab7fa8df45e53b78d62ec243093287a3d7b64d5fd21af6a77b18d872ffc": {
       "kind": "heading",
@@ -6042,6 +6151,630 @@
       "translation": "Directly send text notifications to the target determined by Elnis.",
       "updated_at": 1781710746
     },
+    "docs/elyph.md:heading:17f6772604d9ee52459db6289740cdf1e875d31327c96623a7941caa349b137e": {
+      "kind": "heading",
+      "source": "__ELBOT_CODE_0__ 输入",
+      "source_file": "docs/elyph.md",
+      "source_hash": "17f6772604d9ee52459db6289740cdf1e875d31327c96623a7941caa349b137e",
+      "translation": "__ELBOT_CODE_0__ Input",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:30121593ceb0ef2e3c96acd89474f7961a5e855830117e3db61e74469cdfe066": {
+      "kind": "heading",
+      "source": "__ELBOT_CODE_0__ 限次循环",
+      "source_file": "docs/elyph.md",
+      "source_hash": "30121593ceb0ef2e3c96acd89474f7961a5e855830117e3db61e74469cdfe066",
+      "translation": "__ELBOT_CODE_0__ Limited Loop",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:48ac167cdd64c75ae9a17ef590746de4b321def772ca713688642032e2bdf292": {
+      "kind": "heading",
+      "source": "__ELBOT_CODE_0__ 闭块",
+      "source_file": "docs/elyph.md",
+      "source_hash": "48ac167cdd64c75ae9a17ef590746de4b321def772ca713688642032e2bdf292",
+      "translation": "__ELBOT_CODE_0__ closing block",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:4cedb5f8be31f9b493b19f1e5b69d382d20183a110834d6bd3ade92eac5e4673": {
+      "kind": "heading",
+      "source": "基本规则",
+      "source_file": "docs/elyph.md",
+      "source_hash": "4cedb5f8be31f9b493b19f1e5b69d382d20183a110834d6bd3ade92eac5e4673",
+      "translation": "Basic Rules",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:57c24a54f9a654f3e0f2b3f90a1d47d1c30f4b4c17bc1ea6d564b10561242986": {
+      "kind": "heading",
+      "source": "__ELBOT_CODE_0__ 约束",
+      "source_file": "docs/elyph.md",
+      "source_hash": "57c24a54f9a654f3e0f2b3f90a1d47d1c30f4b4c17bc1ea6d564b10561242986",
+      "translation": "__ELBOT_CODE_0__ Constraint",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:6e60ef5fd4ba8ce4f39a6320f8fadfcc19a867f9f0b400c79d07e9c483ff58ed": {
+      "kind": "heading",
+      "source": "示例一：天气查询 skill",
+      "source_file": "docs/elyph.md",
+      "source_hash": "6e60ef5fd4ba8ce4f39a6320f8fadfcc19a867f9f0b400c79d07e9c483ff58ed",
+      "translation": "Example 1: Weather Query Skill",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:71c88d6f868aaafd75f82822c8265dfd8346ee3bd6c6f6001d51bd96ea24b9f2": {
+      "kind": "heading",
+      "source": "__ELBOT_CODE_0__ / __ELBOT_CODE_1__ 条件分支",
+      "source_file": "docs/elyph.md",
+      "source_hash": "71c88d6f868aaafd75f82822c8265dfd8346ee3bd6c6f6001d51bd96ea24b9f2",
+      "translation": "__ELBOT_CODE_0__ / __ELBOT_CODE_1__ Conditional Branching",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:72b41bc956cf52e4d90b57ace8f9100bd031b00a14abf57b6bc84334347207e2": {
+      "kind": "heading",
+      "source": "ELyph 任务表示法",
+      "source_file": "docs/elyph.md",
+      "source_hash": "72b41bc956cf52e4d90b57ace8f9100bd031b00a14abf57b6bc84334347207e2",
+      "translation": "ELyph Task Notation",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:7759d004bc26bd36a620dc630f76b56038cb3cc9f1fc180c20bcb0b3b48fe69b": {
+      "kind": "heading",
+      "source": "__ELBOT_CODE_0__ 禁止",
+      "source_file": "docs/elyph.md",
+      "source_hash": "7759d004bc26bd36a620dc630f76b56038cb3cc9f1fc180c20bcb0b3b48fe69b",
+      "translation": "__ELBOT_CODE_0__ Prohibition",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:82fe3df9727866c0c848f8e1450128a510eb68a31fed341221a547b686d59001": {
+      "kind": "heading",
+      "source": "__ELBOT_CODE_0__ / __ELBOT_CODE_1__ 工具调用",
+      "source_file": "docs/elyph.md",
+      "source_hash": "82fe3df9727866c0c848f8e1450128a510eb68a31fed341221a547b686d59001",
+      "translation": "__ELBOT_CODE_0__ / __ELBOT_CODE_1__ tool call",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:83d651b3a7dda6cf0e4ed8374f8d2737c9e8a630c231ed0f7def0bd651794536": {
+      "kind": "heading",
+      "source": "语法速查",
+      "source_file": "docs/elyph.md",
+      "source_hash": "83d651b3a7dda6cf0e4ed8374f8d2737c9e8a630c231ed0f7def0bd651794536",
+      "translation": "Syntax Quick Reference",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:8a0199a01373f3f2d6033f8e822b964f4bc252d8486d8fbd357991f6d8e05652": {
+      "kind": "heading",
+      "source": "与 Cron 的关系",
+      "source_file": "docs/elyph.md",
+      "source_hash": "8a0199a01373f3f2d6033f8e822b964f4bc252d8486d8fbd357991f6d8e05652",
+      "translation": "Relationship with Cron",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:8b31eba049a08a8ae2da2b86f8613e5151e9de176a3f66dcd969ad10721c5800": {
+      "kind": "heading",
+      "source": "完整示例",
+      "source_file": "docs/elyph.md",
+      "source_hash": "8b31eba049a08a8ae2da2b86f8613e5151e9de176a3f66dcd969ad10721c5800",
+      "translation": "Complete Examples",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:92cbf1404831d9a0fbce648f36e5bc87cdb566901f0c37031a31c08b1c4d9b64": {
+      "kind": "heading",
+      "source": "ELyph 用在哪",
+      "source_file": "docs/elyph.md",
+      "source_hash": "92cbf1404831d9a0fbce648f36e5bc87cdb566901f0c37031a31c08b1c4d9b64",
+      "translation": "Where to use ELyph",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:97d39f2bc0fcdd76168f314bcf3ab0e8c7a9a737a79c8fb4d683713666d6705e": {
+      "kind": "heading",
+      "source": "语法演进",
+      "source_file": "docs/elyph.md",
+      "source_hash": "97d39f2bc0fcdd76168f314bcf3ab0e8c7a9a737a79c8fb4d683713666d6705e",
+      "translation": "Syntax Evolution",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:bb70bdb98e0ed590a6bf875d6aa02829660204c603e9aefb3977058a62d4cc20": {
+      "kind": "heading",
+      "source": "__ELBOT_CODE_0__ 注释",
+      "source_file": "docs/elyph.md",
+      "source_hash": "bb70bdb98e0ed590a6bf875d6aa02829660204c603e9aefb3977058a62d4cc20",
+      "translation": "__ELBOT_CODE_0__ comment",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:c41b9f207b51a532bdd41bd812420b1c829dd7c5b04429bdc089d620509ee8ad": {
+      "kind": "heading",
+      "source": "Header（文档头）",
+      "source_file": "docs/elyph.md",
+      "source_hash": "c41b9f207b51a532bdd41bd812420b1c829dd7c5b04429bdc089d620509ee8ad",
+      "translation": "Header",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:d40dfb069cc3ee09ea82279cd8431aae75302efbc4d3c6d56dc64c3c17730481": {
+      "kind": "heading",
+      "source": "__ELBOT_CODE_0__ 输出文本",
+      "source_file": "docs/elyph.md",
+      "source_hash": "d40dfb069cc3ee09ea82279cd8431aae75302efbc4d3c6d56dc64c3c17730481",
+      "translation": "__ELBOT_CODE_0__ Output Text",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:d8d555a6d708f882a9ea8aeee8c1477efd75f4e9a7e19f8687bc18211e98e724": {
+      "kind": "heading",
+      "source": "为什么需要 ELyph",
+      "source_file": "docs/elyph.md",
+      "source_hash": "d8d555a6d708f882a9ea8aeee8c1477efd75f4e9a7e19f8687bc18211e98e724",
+      "translation": "Why ELyph is Needed",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:df6f58273bc97f8907df87be3b5d7d7c4ef285f86692f2d1d479b540e9b0eba4": {
+      "kind": "heading",
+      "source": "示例二：多城市天气查询",
+      "source_file": "docs/elyph.md",
+      "source_hash": "df6f58273bc97f8907df87be3b5d7d7c4ef285f86692f2d1d479b540e9b0eba4",
+      "translation": "Example 2: Multi-city Weather Query",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:ea819854ec104eba140854147733aa16dd6424cc442becfa6b62a742180996e2": {
+      "kind": "heading",
+      "source": "__ELBOT_CODE_0__ 输出",
+      "source_file": "docs/elyph.md",
+      "source_hash": "ea819854ec104eba140854147733aa16dd6424cc442becfa6b62a742180996e2",
+      "translation": "__ELBOT_CODE_0__ Output",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:f10ddf3a2aeafc76c9f6128341ae40a856a12fd968490554b9f2b66bcf8bab7d": {
+      "kind": "heading",
+      "source": "与 Skill 的关系",
+      "source_file": "docs/elyph.md",
+      "source_hash": "f10ddf3a2aeafc76c9f6128341ae40a856a12fd968490554b9f2b66bcf8bab7d",
+      "translation": "Relationship with Skill",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:f75076bc343f27ae0d2cd7fb9bd785d751d1ae788aee6f318d4cbf9ee5cdaa86": {
+      "kind": "heading",
+      "source": "__ELBOT_CODE_0__ 推导赋值",
+      "source_file": "docs/elyph.md",
+      "source_hash": "f75076bc343f27ae0d2cd7fb9bd785d751d1ae788aee6f318d4cbf9ee5cdaa86",
+      "translation": "__ELBOT_CODE_0__ Derived Assignment",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:heading:ff2a6b86ec4d94b1a82a8a3422f87930c587db0d6709ae191a18a9df8431d58c": {
+      "kind": "heading",
+      "source": "__ELBOT_CODE_0__ 直接赋值",
+      "source_file": "docs/elyph.md",
+      "source_hash": "ff2a6b86ec4d94b1a82a8a3422f87930c587db0d6709ae191a18a9df8431d58c",
+      "translation": "__ELBOT_CODE_0__ Direct Assignment",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:1ebc5d1035cad30fba0bc097300b8cc672cd959cdedef5ae610d24e5d2d5120d": {
+      "kind": "list",
+      "source": "空行和 __ELBOT_CODE_0__ 开头的注释行会被忽略。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "1ebc5d1035cad30fba0bc097300b8cc672cd959cdedef5ae610d24e5d2d5120d",
+      "translation": "Empty lines and comment lines starting with __ELBOT_CODE_0__ will be ignored.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:1fc205852ac12938a9f951ed8c711e58169f0904be674efb184318789b9c2ba9": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 表示该输入必填。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "1fc205852ac12938a9f951ed8c711e58169f0904be674efb184318789b9c2ba9",
+      "translation": "__ELBOT_CODE_0__ indicates that this input is required.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:2c92935a5ec82d1b95a5a44380c100528cf2de97b5643f23accd6c4abc29cd5a": {
+      "kind": "list",
+      "source": "无标记表示普通输入。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "2c92935a5ec82d1b95a5a44380c100528cf2de97b5643f23accd6c4abc29cd5a",
+      "translation": "No marker indicates a regular input.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:2f951aa30a493be98b7388ef86903259087a84f0c0d2d8b6c331926f0e16f8b2": {
+      "kind": "list",
+      "source": "如果同一 AgentSkill 同时存在 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__，ELyph 文件的描述会优先被 Agent 使用。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "2f951aa30a493be98b7388ef86903259087a84f0c0d2d8b6c331926f0e16f8b2",
+      "translation": "If the same AgentSkill has both __ELBOT_CODE_0__ and __ELBOT_CODE_1__, the description in the ELyph file will be prioritized for use by the Agent.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:3e7a9b86d568729eea4efb461cce45d71f448e7bfba64c33c4bcdafe8f177e07": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 表示该输入可选。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "3e7a9b86d568729eea4efb461cce45d71f448e7bfba64c33c4bcdafe8f177e07",
+      "translation": "__ELBOT_CODE_0__ indicates that this input is optional.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:41b81e5f8305e4ce753bd6bd0157624fc1123cddb58a74eb03f120fc09803f23": {
+      "kind": "list",
+      "source": "Go Skill 放在 __ELBOT_CODE_0__，必须使用 __ELBOT_CODE_1__，可选 Go 二进制用于执行。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "41b81e5f8305e4ce753bd6bd0157624fc1123cddb58a74eb03f120fc09803f23",
+      "translation": "Go Skill is placed in __ELBOT_CODE_0__, must use __ELBOT_CODE_1__, and an optional Go binary can be used for execution.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:4589028e0f75527c8a0e6caa653151cff261bf397a59a111ad4fba91fba377b4": {
+      "kind": "list",
+      "source": "变量以 __ELBOT_CODE_0__ 开头，后跟字母、数字或下划线。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "4589028e0f75527c8a0e6caa653151cff261bf397a59a111ad4fba91fba377b4",
+      "translation": "Variables start with __ELBOT_CODE_0__, followed by letters, numbers, or underscores.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:5ac1ceb3f06e794becb141f059c4d653c19b13c8441bf54b2d1667b92f71f8e7": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：简短的自然语言描述，可选。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "5ac1ceb3f06e794becb141f059c4d653c19b13c8441bf54b2d1667b92f71f8e7",
+      "translation": "__ELBOT_CODE_0__: A short natural language description, optional.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:5d8ca3035260b3ed3a7fcd6d046c861bff81381c8d4e67220e7bc3c5ea612592": {
+      "kind": "list",
+      "source": "循环内可以调用 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "5d8ca3035260b3ed3a7fcd6d046c861bff81381c8d4e67220e7bc3c5ea612592",
+      "translation": "__ELBOT_CODE_0__ or __ELBOT_CODE_1__ can be called within the loop.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:687c4a569b138cd248804c8f0217ecad17177a714fce34255f4747b5da8bfaf2": {
+      "kind": "list",
+      "source": "**复用性差**：每次都要重新描述相似流程，写法可能不一致。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "687c4a569b138cd248804c8f0217ecad17177a714fce34255f4747b5da8bfaf2",
+      "translation": "**Poor reusability**: Similar processes must be described every time, and the wording may be inconsistent.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:6c2f946bf772ab80bee8937b2abcd9df268e1e02cf4eacab4ad6730780a33155": {
+      "kind": "list",
+      "source": "条件用自然语言或引用变量，由 LLM 在执行时理解。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "6c2f946bf772ab80bee8937b2abcd9df268e1e02cf4eacab4ad6730780a33155",
+      "translation": "Conditions are written in natural language or by referencing variables, which are understood by the LLM during execution.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:6c464eb20cb270c19aadf5f8c7dfde04315f7d639b5cb4712c6ae7cb24459371": {
+      "kind": "list",
+      "source": "**歧义多**：同一句话可能被理解成不同步骤。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "6c464eb20cb270c19aadf5f8c7dfde04315f7d639b5cb4712c6ae7cb24459371",
+      "translation": "**High ambiguity**: The same sentence may be interpreted as different steps.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:72179fd69b6f8d1d81f3ec61015875f2f8423ec675e6370d7c0542da93b0eb5f": {
+      "kind": "list",
+      "source": "Skill 的 __ELBOT_CODE_0__ 文件使用 __ELBOT_CODE_1__ header。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "72179fd69b6f8d1d81f3ec61015875f2f8423ec675e6370d7c0542da93b0eb5f",
+      "translation": "The __ELBOT_CODE_0__ file of a Skill uses the __ELBOT_CODE_1__ header.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:7664f2501282f96284ad9a87f1d1db958c74c4a74ce70be3aed6ba3a74475458": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：小写字母开头，只能包含小写字母、数字、__ELBOT_CODE_1__ 和 __ELBOT_CODE_2__，最长 64 字符。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "7664f2501282f96284ad9a87f1d1db958c74c4a74ce70be3aed6ba3a74475458",
+      "translation": "__ELBOT_CODE_0__: Starts with a lowercase letter and can only contain lowercase letters, numbers, __ELBOT_CODE_1__, and __ELBOT_CODE_2__, with a maximum length of 64 characters.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:77d827aff2bf1c8ea61b177d9456d04499193c071a01b4f8699b8204f6a1e360": {
+      "kind": "list",
+      "source": "AgentSkill 放在 __ELBOT_CODE_0__，可用 __ELBOT_CODE_1__ 覆写 __ELBOT_CODE_2__ 的 Agent 可读说明。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "77d827aff2bf1c8ea61b177d9456d04499193c071a01b4f8699b8204f6a1e360",
+      "translation": "AgentSkill is placed in __ELBOT_CODE_0__, and __ELBOT_CODE_1__ can be used to override the Agent-readable description of __ELBOT_CODE_2__.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:90a4417aaa7065b42aaa1b958fad43be3367e1ad7311c2f98a635f190352d0bd": {
+      "kind": "list",
+      "source": "非空行必须以合法的 ELyph token 开头。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "90a4417aaa7065b42aaa1b958fad43be3367e1ad7311c2f98a635f190352d0bd",
+      "translation": "Non-empty lines must start with a valid ELyph token.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:9871d602368a8a49574df22640d61f887d0b5967403287f80d312f1e5734d8ed": {
+      "kind": "list",
+      "source": "类型标注用 __ELBOT_CODE_0__，类型名同变量命名规则。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "9871d602368a8a49574df22640d61f887d0b5967403287f80d312f1e5734d8ed",
+      "translation": "Type annotations use __ELBOT_CODE_0__, and type names follow the same naming rules as variables.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:ba478d6543ff18f0c29d7c1d76020e2a46955ed0d7070a0e89882bd87e83c427": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 必须是正整数。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "ba478d6543ff18f0c29d7c1d76020e2a46955ed0d7070a0e89882bd87e83c427",
+      "translation": "__ELBOT_CODE_0__ must be a positive integer.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:bedb46a901046f0c51ea914c538dbd1e708678b40f41a7aaf472da9b35ace4d2": {
+      "kind": "list",
+      "source": "代码块用 __ELBOT_CODE_0__ 开始，__ELBOT_CODE_1__ 独占一行结束。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "bedb46a901046f0c51ea914c538dbd1e708678b40f41a7aaf472da9b35ace4d2",
+      "translation": "Code blocks start with __ELBOT_CODE_0__ and end with __ELBOT_CODE_1__ on a line by itself.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:eec5fc5aa3a7673f0e55384df4a8477d30859b373450ce21e81e443556bdbd0c": {
+      "kind": "list",
+      "source": "**上下文长**：用自然语言把步骤、分支、约束写清楚需要大量文字。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "eec5fc5aa3a7673f0e55384df4a8477d30859b373450ce21e81e443556bdbd0c",
+      "translation": "**Long context**: Using natural language to clearly describe steps, branches, and constraints requires a large amount of text.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:fd64bf549fea3a76e0ea8df19195474b5d7c34ab2ce5f2e2440bac5f42c1bf8d": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 必须紧跟 __ELBOT_CODE_1__ 块的 __ELBOT_CODE_2__ 之后。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "fd64bf549fea3a76e0ea8df19195474b5d7c34ab2ce5f2e2440bac5f42c1bf8d",
+      "translation": "__ELBOT_CODE_0__ must immediately follow the __ELBOT_CODE_2__ of the __ELBOT_CODE_1__ block.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:0e0beef4888302321e65724497611f77ae19e3dab861a259d4614bf136d91e32": {
+      "kind": "paragraph",
+      "source": "自然语言描述任务虽然灵活，但在以下场景存在明显弱点：\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "0e0beef4888302321e65724497611f77ae19e3dab861a259d4614bf136d91e32",
+      "translation": "While describing tasks in natural language is flexible, it has obvious weaknesses in the following scenarios:\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:0ef03f65aaf01d4bad07c12b80eff6150759c19e4b705358bbdb1c5fd7c02363": {
+      "kind": "paragraph",
+      "source": "给变量赋值。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "0ef03f65aaf01d4bad07c12b80eff6150759c19e4b705358bbdb1c5fd7c02363",
+      "translation": "Assign a value to a variable.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:117ce9d7a497a57a753d7b48f28c2949a4743f1f6e90bffe28327061c6569b22": {
+      "kind": "paragraph",
+      "source": "参数使用 __ELBOT_CODE_0__ 格式，多个参数用 __ELBOT_CODE_1__ 分隔。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "117ce9d7a497a57a753d7b48f28c2949a4743f1f6e90bffe28327061c6569b22",
+      "translation": "Parameters use the __ELBOT_CODE_0__ format, and multiple parameters are separated by __ELBOT_CODE_1__.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:28c7f01a7d1db0df7a75fee1afa1a5859f481e229055d04d4d6d456b3800bc49": {
+      "kind": "paragraph",
+      "source": "声明任务需要接收的输入。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "28c7f01a7d1db0df7a75fee1afa1a5859f481e229055d04d4d6d456b3800bc49",
+      "translation": "Declare the input that the task needs to receive.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:2d60fe68e4deddebcbbc0a4ad949941c9723776399adda025720dec8ec9e2f2b": {
+      "kind": "paragraph",
+      "source": "ELyph 用固定的语法替代冗长的自然语言说明，让任务描述更短、更稳定、更可预测。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "2d60fe68e4deddebcbbc0a4ad949941c9723776399adda025720dec8ec9e2f2b",
+      "translation": "ELyph replaces verbose natural language descriptions with a fixed syntax, making task descriptions shorter, more stable, and more predictable.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:3ef359032b5033766055df8ae9b7831bd6192b5d15d863c89c7122ee8e15e964": {
+      "kind": "paragraph",
+      "source": "文档的第一条有效语句必须是 header，且只能出现一次。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "3ef359032b5033766055df8ae9b7831bd6192b5d15d863c89c7122ee8e15e964",
+      "translation": "The first valid statement of the document must be a header, and it can only appear once.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:3f0998a646208c7915cfbe92c070bf5d6b5bb124b22a760108f84a7beea4de3b": {
+      "kind": "paragraph",
+      "source": "**保留变量**：__ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 不能被重新赋值。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "3f0998a646208c7915cfbe92c070bf5d6b5bb124b22a760108f84a7beea4de3b",
+      "translation": "**Reserved Variables**: __ELBOT_CODE_0__ and __ELBOT_CODE_1__ cannot be reassigned.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:432e1f471712f13bf6514c7765bc8786bd9e0c2d3a72c3aada3ba1d937ad4534": {
+      "kind": "paragraph",
+      "source": "写出任务执行时需要遵守的约束条件。内容使用肯定形式。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "432e1f471712f13bf6514c7765bc8786bd9e0c2d3a72c3aada3ba1d937ad4534",
+      "translation": "Specify the constraints that must be followed during task execution. Content should be written in affirmative form.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:454b2684213f283ce0eaf2c5a599e75303c151486bcee941a916fd4c7b45d4f6": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 运算符按左侧类型决定行为：__ELBOT_CODE_1__/__ELBOT_CODE_2__ 类型做数值相加，__ELBOT_CODE_3__ 类型做字符串拼接。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "454b2684213f283ce0eaf2c5a599e75303c151486bcee941a916fd4c7b45d4f6",
+      "translation": "The __ELBOT_CODE_0__ operator determines its behavior based on the type of the left operand: __ELBOT_CODE_1__/__ELBOT_CODE_2__ types perform numeric addition, while __ELBOT_CODE_3__ types perform string concatenation.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:607f367f664f78027db92c790bff5cfa84f91e32d040c8fa0ed738d6681c69b2": {
+      "kind": "paragraph",
+      "source": "声明任务产生的输出。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "607f367f664f78027db92c790bff5cfa84f91e32d040c8fa0ed738d6681c69b2",
+      "translation": "Declare the output produced by the task.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:62eca756c22d3e4e2dc88e32283ea87b174478713fd2f378f60dfcd95b87f68a": {
+      "kind": "paragraph",
+      "source": "ELyph（ELYph Task Notation）是 ElBot 的轻量任务表示法。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "62eca756c22d3e4e2dc88e32283ea87b174478713fd2f378f60dfcd95b87f68a",
+      "translation": "ELyph (ELyph Task Notation) is ElBot's lightweight task notation.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:6c02a9131d407c509db5c629f4e6f97ba39bc2d80dd12f8d077dfa69fcb91275": {
+      "kind": "paragraph",
+      "source": "三元表达式的三个部分都不能为空，条件部分通常引用上一步工具调用的结果。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "6c02a9131d407c509db5c629f4e6f97ba39bc2d80dd12f8d077dfa69fcb91275",
+      "translation": "All three parts of a ternary expression must be non-empty; the condition part typically references the result of the previous tool call.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:71e16561324de2ee77ad7f15e726bd7709d85a7f0bad349a0bc83d3ef8c19842": {
+      "kind": "paragraph",
+      "source": "写出任务执行时不能做的事。内容不使用否定形式，直接描述禁止的行为本身。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "71e16561324de2ee77ad7f15e726bd7709d85a7f0bad349a0bc83d3ef8c19842",
+      "translation": "Specify things that must not be done during task execution. Do not use negative forms; describe the forbidden behavior directly.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:7319979ebc38588835411af9349c660f726b24fd35a567c549b9bf6fb32600ea": {
+      "kind": "paragraph",
+      "source": "ELyph 当前是 v0.2，语法可能在未来版本中扩展。写 __ELBOT_CODE_0__ 或任务条时，建议保持结构简洁，避免依赖未在本文档中列出的实验性写法。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "7319979ebc38588835411af9349c660f726b24fd35a567c549b9bf6fb32600ea",
+      "translation": "ELyph is currently v0.2, and the syntax may be expanded in future versions. When writing __ELBOT_CODE_0__ or task entries, it is recommended to keep the structure concise and avoid relying on experimental notations not listed in this document.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:94eb0a10c3bb71d8a8102aaa5c2b0b1ed58d8ca5caf835cd0c5b17bc20d4765a": {
+      "kind": "paragraph",
+      "source": "它的目标是用简短、稳定的结构化语法描述任务的输入、输出、步骤、条件和约束，减少自然语言任务描述的歧义，同时人类易读。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "94eb0a10c3bb71d8a8102aaa5c2b0b1ed58d8ca5caf835cd0c5b17bc20d4765a",
+      "translation": "Its goal is to describe the input, output, steps, conditions, and constraints of a task using a short, stable, and structured syntax, reducing the ambiguity of natural language task descriptions while remaining human-readable.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:97162150f9e815fa148760ccc61e7870f70ad56350f4de3791858127b303fa81": {
+      "kind": "paragraph",
+      "source": "更多 skill 管理操作见 [命令速查](commands.md) 的 __ELBOT_CODE_0__ 部分。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "97162150f9e815fa148760ccc61e7870f70ad56350f4de3791858127b303fa81",
+      "translation": "For more Skill management operations, see the __ELBOT_CODE_0__ section of [Command Quick Reference](commands.md).\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:c7ad2d1f9f6ba7f528495b40f4f028edddc72e90dabffb7c7103a09f77971c3e": {
+      "kind": "paragraph",
+      "source": "LLM Cron 任务可以用 __ELBOT_CODE_0__ header 写任务条，语法与 __ELBOT_CODE_1__ 完全相同。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "c7ad2d1f9f6ba7f528495b40f4f028edddc72e90dabffb7c7103a09f77971c3e",
+      "translation": "LLM Cron tasks can use the __ELBOT_CODE_0__ header to write task entries, and the syntax is identical to __ELBOT_CODE_1__.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:caeb3aaaee55207b213412d77368085ab91475c0825a2015a95e7bd1f60e4339": {
+      "kind": "paragraph",
+      "source": "当前版本：**v0.2**。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "caeb3aaaee55207b213412d77368085ab91475c0825a2015a95e7bd1f60e4339",
+      "translation": "Current version: **v0.2**.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:dbf982d246ad7277bec0c58d7fd94cc340769faaee850e90c6284016108212fb": {
+      "kind": "paragraph",
+      "source": "用表达式推导变量值，支持三元条件。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "dbf982d246ad7277bec0c58d7fd94cc340769faaee850e90c6284016108212fb",
+      "translation": "Derive variable values using expressions, with support for ternary conditions.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:e07bf3091d2c59397bbb456562a20b271c0a5ad8b3a053dabceef95153d9c137": {
+      "kind": "paragraph",
+      "source": "输出一段文本。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "e07bf3091d2c59397bbb456562a20b271c0a5ad8b3a053dabceef95153d9c137",
+      "translation": "Output a piece of text.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:e10e108960c3c266054c4b035f61b1b60c10f0ef8b8983263a56fa3d808dd0ef": {
+      "kind": "paragraph",
+      "source": "整行注释，会被忽略。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "e10e108960c3c266054c4b035f61b1b60c10f0ef8b8983263a56fa3d808dd0ef",
+      "translation": "Full-line comment, which will be ignored.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:e866f8f5c766ee2106ca5249f0f52f07e6b54d8c057aadd638c7bc2b7c5cf4ec": {
+      "kind": "paragraph",
+      "source": "调用 ElBot 工具或子 skill。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "e866f8f5c766ee2106ca5249f0f52f07e6b54d8c057aadd638c7bc2b7c5cf4ec",
+      "translation": "Call an ElBot tool or sub-skill.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:eea315ab512eeab676a4e57686bda4a3d76f1ea6d70d640a745f0b0671be66a0": {
+      "kind": "paragraph",
+      "source": "结束一个代码块，独占一行。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "eea315ab512eeab676a4e57686bda4a3d76f1ea6d70d640a745f0b0671be66a0",
+      "translation": "Ends a code block, occupying its own line.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:f857d7d7b952ee1fb55cd39ad17cdb45a4985f8a7af2be76a5e6173fd8db88e4": {
+      "kind": "paragraph",
+      "source": "Cron 按计划驱动 LLM 执行任务条中的步骤，并使用指定的工具。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "f857d7d7b952ee1fb55cd39ad17cdb45a4985f8a7af2be76a5e6173fd8db88e4",
+      "translation": "Cron drives the LLM to execute the steps in the task entry according to a schedule, using the specified tools.\n",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:table:39932f24fe11a6baf55145a8ea05e1abd8f773d4a98a0785ca27183f2ececedb": {
+      "kind": "table",
+      "source": "文件",
+      "source_file": "docs/elyph.md",
+      "source_hash": "39932f24fe11a6baf55145a8ea05e1abd8f773d4a98a0785ca27183f2ececedb",
+      "translation": "File",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:table:4262c45dc797bb0cd5008331ef25b684413859f55b73c71fb4e2c01b645dbbb7": {
+      "kind": "table",
+      "source": "说明",
+      "source_file": "docs/elyph.md",
+      "source_hash": "4262c45dc797bb0cd5008331ef25b684413859f55b73c71fb4e2c01b645dbbb7",
+      "translation": "Description",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:table:63926cf21c9d281bf3c113a750bae852c691d7e09dcf087cd965ffbab0ef0f49": {
+      "kind": "table",
+      "source": "外置文档型 Skill；__ELBOT_CODE_0__ 会覆写 Agent 可读说明，__ELBOT_CODE_1__ 兼容 agentskills.io 风格说明。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "63926cf21c9d281bf3c113a750bae852c691d7e09dcf087cd965ffbab0ef0f49",
+      "translation": "External documentation-based Skill; __ELBOT_CODE_0__ overwrites the Agent-readable description, and __ELBOT_CODE_1__ is compatible with agentskills.io style descriptions.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:table:6e108c84309d4fbd8782d01c48034b836b7cae109bb2f21617691109a2b5a851": {
+      "kind": "table",
+      "source": "任务条",
+      "source_file": "docs/elyph.md",
+      "source_hash": "6e108c84309d4fbd8782d01c48034b836b7cae109bb2f21617691109a2b5a851",
+      "translation": "Task entry",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:table:7f1843088bb710dcd853583a6d2799c2831d1965db48f7dd5521aa4765e26fdf": {
+      "kind": "table",
+      "source": "LLM Cron 任务",
+      "source_file": "docs/elyph.md",
+      "source_hash": "7f1843088bb710dcd853583a6d2799c2831d1965db48f7dd5521aa4765e26fdf",
+      "translation": "LLM Cron task",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:table:7f72f06a88779b5a006749b25767cd11395e7e3ae869db274637b7f051ca7774": {
+      "kind": "table",
+      "source": "场景",
+      "source_file": "docs/elyph.md",
+      "source_hash": "7f72f06a88779b5a006749b25767cd11395e7e3ae869db274637b7f051ca7774",
+      "translation": "Scenario",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:table:85efd7dae19bc910cc88f90f69d84fdf6404b50027d41b708727d188c5105a71": {
+      "kind": "table",
+      "source": "在 __ELBOT_CODE_0__ 中用 __ELBOT_CODE_1__ 头描述后台任务。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "85efd7dae19bc910cc88f90f69d84fdf6404b50027d41b708727d188c5105a71",
+      "translation": "Describe background tasks in __ELBOT_CODE_0__ using the __ELBOT_CODE_1__ header.",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:table:cd080a6bf2eae38dc7053224321e2f995fb1f02f11293b6e327a08acf1842747": {
+      "kind": "table",
+      "source": "__ELBOT_CODE_0__ 或 __ELBOT_CODE_1__",
+      "source_file": "docs/elyph.md",
+      "source_hash": "cd080a6bf2eae38dc7053224321e2f995fb1f02f11293b6e327a08acf1842747",
+      "translation": "__ELBOT_CODE_0__ or __ELBOT_CODE_1__",
+      "updated_at": 1781786413
+    },
+    "docs/elyph.md:table:e36e9fb9e73a692a4260edccffa5cf88d3b2abdd3ea4f8bcb7f4ace69a8de940": {
+      "kind": "table",
+      "source": "ElBot 原生 Skill；可选 Go 二进制用于执行。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "e36e9fb9e73a692a4260edccffa5cf88d3b2abdd3ea4f8bcb7f4ace69a8de940",
+      "translation": "ElBot native skill; optional Go binary for execution.",
+      "updated_at": 1781786413
+    },
     "docs/getting-started.md:code-comment:bash:130bae2a285a534300c83d222710f7341b2f89c66a2de9a3e1f6c70185cb6e0f": {
       "kind": "code-comment:bash",
       "source": "本地 CLI-only：只启动 CLI，不启动平台和 Cron",
@@ -6306,6 +7039,14 @@
       "translation": "Whether __ELBOT_CODE_1__ in __ELBOT_CODE_0__ exists in __ELBOT_CODE_2__.",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:list:b850706754b92e6cf28f2fb82f9cac672089a61d4b932834cfb65d6f56b37414": {
+      "kind": "list",
+      "source": "如果平台配置和源码示例配置都不存在，则自动生成平台默认配置。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "b850706754b92e6cf28f2fb82f9cac672089a61d4b932834cfb65d6f56b37414",
+      "translation": "If neither the platform configuration nor the source example configuration exists, the platform default configuration will be automatically generated.",
+      "updated_at": 1781786456
+    },
     "docs/getting-started.md:list:cf8e65e5c3131db0a92f17cc70c72fde24253e12242164ff3955f59aaa8c3f0c": {
       "kind": "list",
       "source": "可以启动后用 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 刷新模型列表。",
@@ -6394,6 +7135,14 @@
       "translation": "It is recommended to place keys in system environment variables or in the __ELBOT_CODE_0__ file under the configuration directory, rather than writing them directly into __ELBOT_CODE_1__.\n",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:paragraph:3b938d48e4d0455f65d1bee6d1dde01d1cebb8f322f193eecbc0127951cbe9fb": {
+      "kind": "paragraph",
+      "source": "编译后的二进制如果找不到平台配置和源码示例配置，会在平台配置目录自动生成 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__ 和 __ELBOT_CODE_5__。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "3b938d48e4d0455f65d1bee6d1dde01d1cebb8f322f193eecbc0127951cbe9fb",
+      "translation": "If the compiled binary cannot find the platform configuration or source example configuration, it will automatically generate __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, and __ELBOT_CODE_5__ in the platform configuration directory.\n",
+      "updated_at": 1781786456
+    },
     "docs/getting-started.md:paragraph:3e97c8a4c9446e8764d1ca5d0c848311f5ab7e560adbbb4cad042f9ff066e804": {
       "kind": "paragraph",
       "source": "需要继续历史会话时，可用 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__。\n",
@@ -6425,6 +7174,14 @@
       "source_hash": "4b95664aa48d143632330cf84d78b59ad4c131df148633d0a3a5e384a3840a0f",
       "translation": "In automatic mode, if Linux detects that the current user already has __ELBOT_CODE_0__ running, it will enter local CLI-only mode to avoid duplicate platform connections or duplicate Cron executions;",
       "updated_at": 1781575108
+    },
+    "docs/getting-started.md:paragraph:505a7062154b873accdbf8004e08acd6b3df87e1a5f849898258ece38123fde7": {
+      "kind": "paragraph",
+      "source": "直接运行源码时会使用 __ELBOT_CODE_0__；",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "505a7062154b873accdbf8004e08acd6b3df87e1a5f849898258ece38123fde7",
+      "translation": "When running from source directly, __ELBOT_CODE_0__ will be used;",
+      "updated_at": 1781786456
     },
     "docs/getting-started.md:paragraph:5e17c2b7fa9b36c07ee9a36ed44ee4f76bf8f18e249fb7adc302b070d69deda7": {
       "kind": "paragraph",
@@ -6506,6 +7263,14 @@
       "translation": "__ELBOT_CODE_0__ is an independent local process that uses the same set of configurations and SQLite data, but it will not take over current requests, confirmation states, or the current Session in memory from the service process.",
       "updated_at": 1781575108
     },
+    "docs/getting-started.md:paragraph:9c79075c1d42ffa41b8f0a6ac4efe5e40520193862e33bbf95520baa73dd4b14": {
+      "kind": "paragraph",
+      "source": "默认配置已经包含 DeepSeek 和 OpenAI Provider：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "9c79075c1d42ffa41b8f0a6ac4efe5e40520193862e33bbf95520baa73dd4b14",
+      "translation": "The default configuration already includes DeepSeek and OpenAI Providers:\n",
+      "updated_at": 1781786456
+    },
     "docs/getting-started.md:paragraph:a1357110505dfc6d287ed82eaac5edfdf671117418ac7a389cf161e7f3977de8": {
       "kind": "paragraph",
       "source": "示例：fish\n",
@@ -6521,6 +7286,14 @@
       "source_hash": "a611d499cca4918706780e022d66f0e1543051cc10c1a4b98af5341d36626dc7",
       "translation": "On Windows:\n",
       "updated_at": 1781534482
+    },
+    "docs/getting-started.md:paragraph:aaa55b4b19d9e20affdff31c06781a5f9d0cad453afbc7950bc1c9127dfb9bc6": {
+      "kind": "paragraph",
+      "source": "推荐把密钥放在系统环境变量，或把自动生成的 __ELBOT_CODE_0__ 复制为配置目录下的 __ELBOT_CODE_1__ 后填写，不要直接写进 __ELBOT_CODE_2__。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "aaa55b4b19d9e20affdff31c06781a5f9d0cad453afbc7950bc1c9127dfb9bc6",
+      "translation": "It is recommended to place the keys in system environment variables, or copy the automatically generated __ELBOT_CODE_0__ to __ELBOT_CODE_1__ in the configuration directory before filling it in; do not write them directly into __ELBOT_CODE_2__.\n",
+      "updated_at": 1781786456
     },
     "docs/getting-started.md:paragraph:b43f86dd2955d50c5f39b7cda8a09189740b1bedf8b93c3310e37c3b792eb211": {
       "kind": "paragraph",
@@ -6569,6 +7342,14 @@
       "source_hash": "e55c71d36598475911251b8545437070b1d7782a93c573053181d0ff71177a2a",
       "translation": "Common getting started commands:\n",
       "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:f1ff6debe01f55961aed661e0b289339794a13da0ec5c2cff27e70d3c331b48d": {
+      "kind": "paragraph",
+      "source": "ElBot 默认按配置查找顺序读取主配置。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "f1ff6debe01f55961aed661e0b289339794a13da0ec5c2cff27e70d3c331b48d",
+      "translation": "ElBot reads the main configuration by default according to the configuration lookup order.",
+      "updated_at": 1781786456
     },
     "docs/getting-started.md:paragraph:f3f9d35759ef03c1c5349e0c85f3b9e88684f3f7f00d9f25cb2092778a9e28c1": {
       "kind": "paragraph",

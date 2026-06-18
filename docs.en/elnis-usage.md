@@ -150,7 +150,8 @@ Common fields:
 | `format` | No | `text` or `elyph`, default `text`. |
 | `content` | Yes | Event body. For LLM mode, using ELyph Task Notation `#task` is recommended. |
 | `model_slot` | No | Elnis LLM model slot, only supporting `elwisp1`, `elwisp2`, and `elwisp3`; if left blank or the corresponding slot is not configured, it will fall back to `work`. |
-| `tool_list_names` | No | The name of the ElBot internal tool preloaded by the background task; it must be within the adjudication range of Elnis `allowed_tools`, and `discover_tool` will be ignored. |
+| `tool_list_names` | No | The ElBot internal tool name or Skill name preloaded for background tasks; Ordinary tools inject the schema, while Skills inject task descriptions and automatically inject the corresponding runner; Must be within the Elnis `allowed_tools` adjudication range; `discover_tool` will be ignored. |
+
 | `tools` | No | External tools declared by Elwisp with events; allowed by default, rejected when hitting the `disabled_external_tools` of that Elwisp. |
 | `targets` | No | The delivery target expected by Elwisp; the final decision is still made by Elnis. |
 | `meta` | No | Original supplementary data, used only for recording and prompt attachment. |
@@ -194,6 +195,7 @@ Security Conventions:
 - The original token text is not written to logs.
 - `model_slot` can only choose `elwisp1`, `elwisp2`, or `elwisp3`, and cannot specify an arbitrary internal mode name.
 - Elwisp cannot send platform messages directly.
-- Elwisp cannot bypass Tool Runtime and Security Policy to call ElBot internal tools; `tool_list_names` will be adjudicated by Elnis `allowed_tools`.
+- Elwisp cannot bypass Tool Runtime and Security Policy to call ElBot internal tools; Tool names or Skill names in `tool_list_names` will all undergo Elnis `allowed_tools` adjudication.
+
 - External `tools` declared by Elwisp are allowed by default and are injected as model-callable function names in the form of `elwisp_<elwisp>_<tool>` via ToolRun; A single Elwisp can use `disabled_external_tools` to disable specific tools.
 - External tool calls are initiated by Elnis as HTTP JSON POST requests to the declared endpoint; the external tool itself is responsible for the actual risk boundary, and Elnis handles it as low-risk.
