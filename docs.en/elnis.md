@@ -30,39 +30,40 @@ Simply put, Elnis expands ElBot from a "bot that waits for users to speak" into 
 
 ```mermaid
 flowchart LR
-    subgraph sources[外部世界 + Elwisp]
+    subgraph sources[External World + Elwisp]
         direction TB
-        server[服务器 / 日志<br/>Elwisp]
-        rss[RSS / 网页<br/>Elwisp]
-        webhook[Webhook / 业务告警<br/>Elwisp]
-        game[游戏事件<br/>Elwisp]
-        script[本地脚本 / 设备<br/>Elwisp]
+        server[Server / Log<br/>Elwisp]
+        rss[RSS / Webpage<br/>Elwisp]
+        webhook[Webhook / Business Alert<br/>Elwisp]
+        game[Game Event<br/>Elwisp]
+        script[Local Script / Device<br/>Elwisp]
+        other[Other Computer Devices<br/>Elwisp]
         more[More ...<br/>Elwisp]
     end
 
-    elvena[Elvena<br/>事件内容 / 目标期望 / 工具声明]
+    elvena[Elvena<br/>Event Content / Goal Expectation / Tool Declaration]
 
-    subgraph elnis[Elnis 监听枢纽]
+    subgraph elnis[Elnis Listening Hub]
         ingress[HTTP Ingress]
-        auth[Token 鉴权<br/>协议校验]
-        dedupe[事件去重<br/>审计与日志]
-        route[目标裁决<br/>模式分发]
+        auth[Token Auth<br/>Protocol Check]
+        dedupe[Event Dedup<br/>Audit & Log]
+        route[Goal Judgment<br/>Mode Dispatch]
     end
 
-    record[record<br/>只记录事件]
-    direct[direct<br/>直接通知]
-    llm[llm<br/>后台 LLM Session]
+    record[record<br/>Log Event Only]
+    direct[direct<br/>Direct Notification]
+    llm[llm<br/>Background LLM Session]
 
-    subgraph elbot[ElBot 控制层]
+    subgraph elbot[ElBot Control Layer]
         agent[Agent]
-        toolrun[ToolRun<br/>工具视图 / 风险确认 / 调用记录]
-        internalTools[ElBot 内置工具]
-        externalTools[Elwisp 外部工具]
+        toolrun[ToolRun<br/>Tool View / Risk Confirmation / Call Record]
+        internalTools[ElBot Built-in Tools]
+        externalTools[Elwisp External Tools]
         security[Security Policy]
         output[Output Layer]
     end
 
-    platforms[目标平台<br/>CLI / QQ / 其他平台]
+    platforms[Target Platforms<br/>CLI / QQ / Other Platforms]
 
     server --> elvena
     rss --> elvena
@@ -75,7 +76,7 @@ flowchart LR
     route --> direct --> output
     route --> llm --> agent
 
-    elvena -. 工具声明 / 预加载工具名 .-> toolrun
+    elvena -. Tool Declaration / Preload Tool Names .-> toolrun
     agent -->|tool calls| toolrun
     toolrun -->|tool results| agent
     toolrun --> security
@@ -152,7 +153,7 @@ HTTP requests in `llm` mode will return quickly, and the actual processing is ex
 {
   "completed": true,
   "need_report": true,
-  "report": "处理结果"
+  "report": "result"
 }
 ```
 
