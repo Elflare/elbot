@@ -90,7 +90,7 @@ flowchart LR
 
 Elnis 是 ElBot 内部的事件入口 runtime，和平台 runtime、Cron runtime 同级装配。
 
-它统一接收外部事件，把事件接到记录、通知或后台 LLM；也像恒星，所有 Elwisp 的信号都围绕它汇聚，但最终能量由 ElBot 控制。
+它统一接收外部事件，把事件接到记录、通知或后台 LLM；它像一颗恒星，所有 Elwisp 的信号都围绕它汇聚，但最终能量由 ElBot 控制。
 
 Elnis 负责：
 
@@ -118,7 +118,7 @@ Elwisp 是外部子监听器。它可以是一个 shell 脚本、一个常驻进
 - 设备、传感器或本地脚本输出。
 - 任何计算机能接收、读取、监听或生成的内容。
 
-Elwisp 像散布在外部世界的探机，也像 ElBot 的眼睛。它们可以很多、很小、很分散；职责只有一个：把外部世界发生了什么告诉 Elnis。
+Elwisp 是 ElBot 的眼睛，也像散布在外部世界的探机。它们可以很多、很小、很分散；职责只有一个：把外部世界发生了什么告诉 Elnis。
 
 Elwisp 只负责“看见并上报”。它不直接控制 ElBot，不直接向聊天平台发消息，也不决定最终是否调用 LLM 或工具。
 
@@ -191,11 +191,8 @@ Elnis 收到事件后，会按 `mode` 决定处理方式。
 - 多种消息 segment。
 - Elnis 与 Elwisp 多轮通信。
 - stdio、pipe 等非 HTTP transport。
-- Elnis 事件查询、失败重试或禁用能力。
 
 ## 下一步：配置与使用
-
-看完这里，就可以开始了解配置和投递事件。
 
 - [Elnis 配置与使用](elnis-usage.md)：启用 Elnis、配置 Elwisp 策略、发送 Elvena 请求，并了解请求字段和投递边界。
 
