@@ -279,7 +279,10 @@ def split_table_row(line: str) -> list[str]:
 
 
 def code_language(info: str) -> str:
-    return info.strip().split(maxsplit=1)[0].lower()
+    parts = info.strip().split(maxsplit=1)
+    if not parts:
+        return ""
+    return parts[0].lower()
 
 
 def supports_code_comment_translation(language: str) -> bool:

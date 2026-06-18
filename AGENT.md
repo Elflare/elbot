@@ -187,7 +187,7 @@
 - `internal/tool/builtin/file_tools.go`：文件读写工具；`read_file` 返回带行号文本和文件哈希，支持 grep 子串搜索；`edit_file` 按行支持替换、删除、整行插入、创建新文件、整行 append/prepend 并返回 unified diff；两者都打 `files`/`agent` tag，`edit_file` 在 cron 后台只允许 sandbox 内路径。
 - `internal/tool/builtin/atomic_write*.go`：文件工具原子写入 helper；普通文件用同目录临时文件替换，Windows 走 `MoveFileExW`，符号链接回退 `os.WriteFile` 保持旧语义。
 
-- `internal/tool/builtin/elwisp_creator.go`：内置 Elwisp 创建指南工具；无参数返回 Elnis/Elvena/ELyph 说明、配置片段、监听器脚手架、测试命令和安全检查清单，并依赖 read_file/edit_file/shell。
+- `internal/tool/builtin/elwisp_creator.go`：内置 Elwisp 创建指南工具；无参数返回配置感知的精简 Elnis/Elvena/ELyph 任务卡，提示 LLM 创建 Elwisp 所需协议、约束和配置注意事项，并依赖 read_file/edit_file/shell。
 - `internal/tool/builtin/shell.go`：内置 shell 工具；接口保留通用 `cmd`，可执行任意 shell 命令，用户侧 tag 为 `agent`，调用前通过风险评估与高风险确认流程拦截；后台 sandbox context 下会创建目录并把 shell cwd 固定到 sandbox。
 
 - `internal/tool/builtin/shell_risk.go`：shell/bash 命令风险分类器；使用 `mvdan.cc/sh/v3/syntax` 解析 AST，识别管道、重定向、命令替换、动态命令、删除、提权、下载即执行等风险并返回风险原因。
