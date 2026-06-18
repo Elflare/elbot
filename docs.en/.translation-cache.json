@@ -16,9 +16,9 @@
       "updated_at": 1781779244
     },
     "docs/concepts.md": {
-      "source_hash": "1e607ef098015549da70d9d24216747ecb1e1e4e3210a4eb6a8e2ca278f63000",
+      "source_hash": "0276e4a0d81dfb514cf3be786c483988f366293d34d4233702d34902fa36d6ce",
       "target": "docs.en/concepts.md",
-      "updated_at": 1781753743
+      "updated_at": 1781779265
     },
     "docs/configuration.md": {
       "source_hash": "3995353ba165fa39cfbdfb0cd7f7b00a0720908bff5f2bc6e733eded71a93a51",
@@ -2481,6 +2481,14 @@
       "source_hash": "14ed2cd270bd634c13016d0a53ad3d0c70b55b68d3daa4bebf7052eae71bd5d8",
       "translation": "__ELBOT_CODE_0__ Create a new Session.",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:list:21777a8c2cc1bc938885105589cf3b98ac06151d5eafd34b71f35841c0b59c4f": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：为超级管理员返回创建 Elwisp 的协议说明、配置片段、脚手架和测试清单。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "21777a8c2cc1bc938885105589cf3b98ac06151d5eafd34b71f35841c0b59c4f",
+      "translation": "__ELBOT_CODE_0__: Returns protocol specifications, configuration snippets, scaffolding, and test checklists for creating Elwisp for the superadmin.",
+      "updated_at": 1781779265
     },
     "docs/concepts.md:list:22aa6e0fcf07afec98371ffac07c49f3128766c6f0c28cd023bea15e62da7687": {
       "kind": "list",

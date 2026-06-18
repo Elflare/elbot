@@ -146,6 +146,7 @@ Current built-in capabilities include:
 - Cron management.
 - File sending.
 - Skill creation, reading, modification, and execution.
+- `elwisp_creator`: Returns protocol specifications, configuration snippets, scaffolding, and test checklists for creating Elwisp for the superadmin.
 
 Tool results can be fed back to the LLM, or return platform-independent output intents, which are sent uniformly by the Agent.
 
