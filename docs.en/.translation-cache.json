@@ -16,9 +16,9 @@
       "updated_at": 1781753713
     },
     "docs/concepts.md": {
-      "source_hash": "4d9436b79e92c5a42cd17afbcc88fd263d153f017164c01075d18c85f828f068",
+      "source_hash": "1e607ef098015549da70d9d24216747ecb1e1e4e3210a4eb6a8e2ca278f63000",
       "target": "docs.en/concepts.md",
-      "updated_at": 1781710345
+      "updated_at": 1781753743
     },
     "docs/configuration.md": {
       "source_hash": "3995353ba165fa39cfbdfb0cd7f7b00a0720908bff5f2bc6e733eded71a93a51",
@@ -2850,6 +2850,14 @@
       "translation": "For a full introduction, see [Elnis Listening Hub](elnis.md); for configuration and request examples, see [Elnis Configuration and Usage](elnis-usage.md).\n",
       "updated_at": 1781709276
     },
+    "docs/concepts.md:paragraph:0acac4d5bcfa9d70bcb616c433eb69659d0a9f1cd6f57001bce019a3179a5084": {
+      "kind": "paragraph",
+      "source": "ELyph 的目标是用更短、更稳定的结构表达输入、输出、步骤、条件和约束，减少自然语言任务描述的歧义。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "0acac4d5bcfa9d70bcb616c433eb69659d0a9f1cd6f57001bce019a3179a5084",
+      "translation": "The goal of ELyph is to express inputs, outputs, steps, conditions, and constraints using a shorter and more stable structure, reducing the ambiguity of natural language task descriptions.",
+      "updated_at": 1781753743
+    },
     "docs/concepts.md:paragraph:0d6b95b570a7304641f104f51ec7415bd807f9f23e61033129a7f5318d0a3563": {
       "kind": "paragraph",
       "source": "长对话会逐渐接近模型上下文窗口。ElBot 支持上下文压缩：\n",
@@ -2969,6 +2977,14 @@
       "source_hash": "5920982e3b2aa9950b0dff04425cfa7662f4a1dbf00e078041f5d8cbfe78edff",
       "translation": "ElBot does not inject the full schema of all tools by default in every round of work conversation.\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:5c1934d62e9349e26fd3dbe0d80f72a350593ff544fe117c01a0ef6253ec7477": {
+      "kind": "paragraph",
+      "source": "完整语法见 [ELyph 任务表示法](elyph.md)。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "5c1934d62e9349e26fd3dbe0d80f72a350593ff544fe117c01a0ef6253ec7477",
+      "translation": "For the complete syntax, see [ELyph Task Notation](elyph.md).\n",
+      "updated_at": 1781753743
     },
     "docs/concepts.md:paragraph:5d9e5b4fed321781baa2e556dc7444c6deac16c37287361a7077d5095a431cee": {
       "kind": "paragraph",

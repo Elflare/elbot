@@ -218,7 +218,7 @@ Skill types:
 - Python Skill: compatible with common external Python skill directory structures.
 - Go Skill: can be executed via binary and receives JSON payloads from stdin.
 
-The goal of ELyph is to express inputs, outputs, steps, conditions, and constraints using shorter and more stable structures, reducing ambiguity in natural language task descriptions.
+The goal of ELyph is to express inputs, outputs, steps, conditions, and constraints using a shorter and more stable structure, reducing the ambiguity of natural language task descriptions. For the complete syntax, see [ELyph Task Notation](elyph.md).
 
 ## Platform Adapter
 
