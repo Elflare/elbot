@@ -17,7 +17,7 @@ func TestReadGoSkillReadsLineRanges(t *testing.T) {
 	writeTestGoSkill(t, root, "reader", "package main\n\nfunc main() {}\n")
 	reader := NewReadGoSkillTool(NewManager(root, tool.NewRegistry()))
 
-	result, err := reader.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"reader","start_line":1,"end_line":3}`)})
+	result, err := reader.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"reader","target":"code_source","start_line":1,"end_line":3}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,8 @@ func TestModifyGoSkillPatchesBuildsAndReloads(t *testing.T) {
 	registry := tool.NewRegistry()
 	modifier := NewModifyGoSkillTool(NewManager(root, registry))
 	args, _ := json.Marshal(map[string]any{
-		"name": "patcher",
+		"name":   "patcher",
+		"target": "code_source",
 		"patches": []map[string]any{
 			{"start_line": 3, "end_line": 3, "new_lines": []string{"func main() { println(\"ok\") }"}},
 		},
@@ -58,9 +59,9 @@ func TestModifyGoSkillRejectsInvalidArgumentsWithoutWriting(t *testing.T) {
 	modifier := NewModifyGoSkillTool(NewManager(root, tool.NewRegistry()))
 	cases := []string{
 		`{"name":"guarded"}`,
-		`{"name":"guarded","content":"package main\nfunc main() {}","patches":[{"start_line":1,"end_line":1,"new_lines":["package main"]}]}`,
-		`{"name":"guarded","content":"package other\nfunc main() {}"}`,
-		`{"name":"guarded","patches":[{"start_line":9,"end_line":9,"new_lines":["// x"]}]}`,
+		`{"name":"guarded","target":"code_source","content":"package main\nfunc main() {}","patches":[{"start_line":1,"end_line":1,"new_lines":["package main"]}]}`,
+		`{"name":"guarded","target":"code_source","content":"package other\nfunc main() {}"}`,
+		`{"name":"guarded","target":"code_source","patches":[{"start_line":9,"end_line":9,"new_lines":["// x"]}]}`,
 	}
 	for _, raw := range cases {
 		if _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: []byte(raw)}); err == nil {
@@ -72,13 +73,74 @@ func TestModifyGoSkillRejectsInvalidArgumentsWithoutWriting(t *testing.T) {
 	}
 }
 
+func TestReadGoSkillReadsElyphTarget(t *testing.T) {
+	root := t.TempDir()
+	writeTestGoSkill(t, root, "readerelyph", "package main\n\nfunc main() {}\n")
+	reader := NewReadGoSkillTool(NewManager(root, tool.NewRegistry()))
+
+	result, err := reader.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"readerelyph","target":"skill_elyph","start_line":1,"end_line":2}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Content != "1: #skill readerelyph - Test.\n2: ** risk low" {
+		t.Fatalf("content = %q", result.Content)
+	}
+}
+
+func TestModifyGoSkillUpdatesElyphAndReloads(t *testing.T) {
+	root := t.TempDir()
+	writeTestGoSkill(t, root, "elyphmod", "package main\n\nfunc main() {}\n")
+	registry := tool.NewRegistry()
+	modifier := NewModifyGoSkillTool(NewManager(root, registry))
+	content := "#skill elyphmod - Updated.\n** risk low\n<- $payload:object!\n-> $result:str\n"
+	args, _ := json.Marshal(map[string]string{
+		"name":    "elyphmod",
+		"target":  "skill_elyph",
+		"content": content,
+	})
+
+	result, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := readTestGoSkillElyph(t, root, "elyphmod"); got != content {
+		t.Fatalf("elyph = %q", got)
+	}
+	if !strings.Contains(result.Content, "target skill_elyph") || !strings.Contains(result.Content, "Updated") {
+		t.Fatalf("result = %q", result.Content)
+	}
+	registered, ok := registry.Get("elyphmod")
+	if !ok || registered.Info().Description != "Updated." {
+		t.Fatalf("registered=%#v ok=%v", registered, ok)
+	}
+}
+
+func TestModifyGoSkillFormatsSourceContent(t *testing.T) {
+	root := t.TempDir()
+	writeTestGoSkill(t, root, "formatter", "package main\n\nfunc main() {}\n")
+	modifier := NewModifyGoSkillTool(NewManager(root, tool.NewRegistry()))
+	args, _ := json.Marshal(map[string]string{
+		"name":    "formatter",
+		"target":  "code_source",
+		"content": "package main\nfunc main(){println(\"ok\")}\n",
+	})
+
+	if _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	if got := readTestGoSource(t, root, "formatter"); got != "package main\n\nfunc main() { println(\"ok\") }\n" {
+		t.Fatalf("formatted source = %q", got)
+	}
+}
+
 func TestModifyGoSkillReturnsBuildOutput(t *testing.T) {
 	root := t.TempDir()
 	writeTestGoSkill(t, root, "broken", "package main\n\nfunc main() {}\n")
 	modifier := NewModifyGoSkillTool(NewManager(root, tool.NewRegistry()))
 	args, _ := json.Marshal(map[string]string{
 		"name":    "broken",
-		"content": "package main\n\nfunc main() {\n",
+		"target":  "code_source",
+		"content": "package main\n\nfunc main() { missing() }\n",
 	})
 
 	_, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args})
@@ -88,6 +150,9 @@ func TestModifyGoSkillReturnsBuildOutput(t *testing.T) {
 	text := err.Error()
 	if !strings.Contains(text, "go build failed") || !strings.Contains(text, "stderr:") {
 		t.Fatalf("err = %v", err)
+	}
+	if got := readTestGoSource(t, root, "broken"); got != "package main\n\nfunc main() {}\n" {
+		t.Fatalf("source was not restored: %q", got)
 	}
 }
 
@@ -138,6 +203,15 @@ func writeTestGoSkill(t *testing.T, root, name, source string) {
 func readTestGoSource(t *testing.T, root, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(root, "go", name, "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+func readTestGoSkillElyph(t *testing.T, root, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, "go", name, elyph.SkillFileName))
 	if err != nil {
 		t.Fatal(err)
 	}

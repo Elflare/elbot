@@ -184,8 +184,8 @@
 - `internal/tool/builtin/env.go`：内置工具环境变量读取 helper；优先读 OS env，缺失时读取配置目录 `.env`，用于 Tavily/Jina API key。
 - `internal/tool/builtin/web_search.go`：Tavily 搜索工具；返回 answer、来源链接和摘要，并依赖 `web_extract`，用户侧 tag 为 `web`。
 - `internal/tool/builtin/web_extract.go`：Jina Reader/标准库网页提取工具；支持代理、分段读取和进程内缓存，用户侧 tag 为 `web`。
-- `internal/tool/builtin/file_tools.go`：文件读写工具；`read_file` 返回带行号文本和文件哈希，支持 grep 子串搜索；`edit_file` 按行支持替换、删除、整行插入、创建新文件、整行 append/prepend 并返回 unified diff；两者都打 `files`/`agent` tag，`edit_file` 在 cron 后台只允许 sandbox 内路径。
-- `internal/tool/builtin/atomic_write*.go`：文件工具原子写入 helper；普通文件用同目录临时文件替换，Windows 走 `MoveFileExW`，符号链接回退 `os.WriteFile` 保持旧语义。
+- `internal/tool/builtin/file_tools.go`：文件读写工具包装层；`read_file` 返回带行号文本和文件哈希，支持 grep 子串搜索；`edit_file` 支持行编辑、match/anchor、创建新文件和 unified diff；底层读写编辑能力来自 `internal/utils/fileops`。
+
 
 - `internal/tool/builtin/elwisp_creator.go`：内置 Elwisp 创建指南工具；无参数返回配置感知的精简 Elnis/Elvena/ELyph 任务卡，提示 LLM 创建 Elwisp 所需协议、约束和配置注意事项，并依赖 read_file/edit_file/shell。
 - `internal/tool/builtin/shell.go`：内置 shell 工具；接口保留通用 `cmd`，可执行任意 shell 命令，用户侧 tag 为 `agent`，调用前通过风险评估与高风险确认流程拦截；后台 sandbox context 下会创建目录并把 shell cwd 固定到 sandbox。
@@ -199,13 +199,16 @@
 
 - `internal/tool/skill/creator.go`：`create_el_skill` 内置元工具；用结构化参数 `name/description/risk/elyph/go_source` 创建 ElBot 原生 skill，写入 `SKILL.elyph`，可选写入 `main.go` 并编译，创建前用 ELyph parser/linter 校验，成功后自动 reload；不再要求 LLM 拼 `SKILL.md` front matter，未提供源码时创建纯 ELyph 文本 skill。
 - `internal/tool/skill/elyph_modifier.go`：`read_el_skill`/`modify_el_skill` 内置元工具；按行读取 `SKILL.elyph`，并支持完整 `content` 覆盖或 1-based 行 patch 修改，写入前严格校验 ELyph 语法并 reload。
-- `internal/tool/skill/go_modifier.go`：隐藏 Go skill 源码维护工具；`read_go_skill` 按行读取 `main.go`，`modify_go_skill` 覆盖/patch 源码后自动 `go build` 并 reload，作为 `create_el_skill` 依赖 schema 暴露。
+- `internal/tool/skill/go_modifier.go`：隐藏 Go skill 维护工具；`read_go_skill`/`modify_go_skill` 按 `target` 读写 `skill_elyph` 或 `code_source`，技能定义校验 ELyph 并 reload，源码自动 gofmt、go build 并 reload。
+
 
 - `internal/tool/skill/descriptor.go`：skill 描述对象；让 AgentSkill/Go skill 可被 `discover_tool` 查到详情，ELyph skill detail 会按需前置短规则卡，Markdown skill 不注入；skill 本体不作为可直接调用 schema 暴露。
 
 - `internal/tool/skill/scanner.go`：skill 文件系统扫描与 reload；主程序默认根目录为配置目录下 `skills/`；AgentSkill 使用 `agent/<skill>/SKILL.md`，可选 `SKILL.elyph` 覆写 Agent 可读说明；Go skill 必须使用 `go/<skill>/SKILL.elyph`，可选 binary；同步新增/删除 skill 并更新 catalog。
 
 - `internal/tool/skill/runner.go`：隐藏包装工具实现；`python_skill_run` 固定在 AgentSkill 目录用 `uv run python` 执行附带 Python 脚本，`go_skill_run` 选择 Go skill binary 并把必填 `payload` 对象 JSON 写入 stdin；执行错误会区分启动/超时/进程失败并回传 stdout/stderr，风险按目标 skill 的 `risk` 评估。
+
+- `internal/utils/fileops/`：公共文本文件辅助包；提供编码识别、文本读写、行编辑、match/anchor 编辑、diff、sha256 和原子写入，供文件工具和 skill 维护工具复用。
 
 
 ### Tool 约定

@@ -1,30 +1,17 @@
 package builtin
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"elbot/internal/llm"
 	"elbot/internal/tool"
-	"golang.org/x/text/encoding"
-	"golang.org/x/text/encoding/htmlindex"
-	"golang.org/x/text/transform"
-)
-
-const (
-	defaultReadLineLimit = 200
-	maxFileToolSize      = 2 * 1024 * 1024
-	maxDiffCells         = 2_000_000
+	"elbot/internal/utils/fileops"
 )
 
 type ReadFileTool struct{}
@@ -69,6 +56,10 @@ func (n *lineNumber) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (n lineNumber) fileops() fileops.LineNumber {
+	return fileops.LineNumber{Value: n.Value, End: n.End}
+}
+
 type readFileArgs struct {
 	Path         string     `json:"path"`
 	Encoding     string     `json:"encoding"`
@@ -99,14 +90,16 @@ type editOperation struct {
 	Anchor          string     `json:"anchor"`
 }
 
-type decodedFile struct {
-	Path        string
-	Bytes       []byte
-	Text        string
-	Encoding    string
-	BOM         []byte
-	LineEnding  string
-	EndsNewline bool
+func (e editOperation) fileops() fileops.Edit {
+	return fileops.Edit{
+		Operation:       e.Operation,
+		StartLine:       e.StartLine,
+		EndLine:         e.EndLine.fileops(),
+		Content:         e.Content,
+		ExpectedContent: e.ExpectedContent,
+		OldContent:      e.OldContent,
+		Anchor:          e.Anchor,
+	}
 }
 
 func NewReadFileTool() ReadFileTool {
@@ -150,22 +143,22 @@ func (ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 	if err != nil {
 		return nil, err
 	}
-	file, err := readDecodedFile(path, args.Encoding)
+	file, err := fileops.ReadFile(path, args.Encoding)
 	if err != nil {
 		return nil, err
 	}
-	lines := splitLines(file.Text)
+	lines := fileops.SplitLines(file.Text)
 	if strings.TrimSpace(args.Grep) != "" {
 		return readFileGrepResult(file, lines, args.Grep, args.ContextLines, args.MaxMatches)
 	}
-	start, end, truncated, err := normalizeReadRange(len(lines), args.StartLine, args.EndLine)
+	start, end, truncated, err := fileops.NormalizeReadRange(len(lines), args.StartLine, args.EndLine.fileops())
 	if err != nil {
 		return nil, err
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "file: %s\n", file.Path)
 	fmt.Fprintf(&b, "encoding: %s\n", file.Encoding)
-	fmt.Fprintf(&b, "sha256: %s\n", sha256Hex(file.Bytes))
+	fmt.Fprintf(&b, "sha256: %s\n", fileops.SHA256Hex(file.Bytes))
 	if len(lines) == 0 {
 		fmt.Fprintf(&b, "lines: 0/0\n")
 		fmt.Fprintf(&b, "empty: true\n")
@@ -184,13 +177,13 @@ func (ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 	return &tool.Result{Content: b.String()}, nil
 }
 
-func readFileGrepResult(file decodedFile, lines []string, grep string, contextLines, maxMatches int) (*tool.Result, error) {
+func readFileGrepResult(file fileops.File, lines []string, grep string, contextLines, maxMatches int) (*tool.Result, error) {
 	query := strings.TrimSpace(grep)
 	if query == "" {
 		return nil, fmt.Errorf("grep is required")
 	}
-	contextLines = normalizeGrepContextLines(contextLines)
-	maxMatches = normalizeMaxMatches(maxMatches)
+	contextLines = fileops.NormalizeGrepContextLines(contextLines)
+	maxMatches = fileops.NormalizeMaxMatches(maxMatches)
 	matches := make([]int, 0)
 	for i, line := range lines {
 		if strings.Contains(line, query) {
@@ -203,7 +196,7 @@ func readFileGrepResult(file decodedFile, lines []string, grep string, contextLi
 	var b strings.Builder
 	fmt.Fprintf(&b, "file: %s\n", file.Path)
 	fmt.Fprintf(&b, "encoding: %s\n", file.Encoding)
-	fmt.Fprintf(&b, "sha256: %s\n", sha256Hex(file.Bytes))
+	fmt.Fprintf(&b, "sha256: %s\n", fileops.SHA256Hex(file.Bytes))
 	fmt.Fprintf(&b, "grep: %q\n", query)
 	fmt.Fprintf(&b, "matches: %d\n", len(matches))
 	fmt.Fprintf(&b, "context_lines: %d\n", contextLines)
@@ -306,41 +299,15 @@ func (EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 	if err != nil {
 		return nil, err
 	}
-	file, created, err := readOrCreateDecodedFile(path, args.Encoding, args.Create, strings.TrimSpace(args.ExpectedSHA256) != "")
+	edits := make([]fileops.Edit, 0, len(args.Edits))
+	for _, edit := range args.Edits {
+		edits = append(edits, edit.fileops())
+	}
+	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedSHA256, args.Create, args.DryRun, args.ContextLines, edits)
 	if err != nil {
 		return nil, err
 	}
-	if expected := strings.TrimSpace(args.ExpectedSHA256); expected != "" && !strings.EqualFold(expected, sha256Hex(file.Bytes)) {
-		return nil, fmt.Errorf("file sha256 mismatch: current %s", sha256Hex(file.Bytes))
-	}
-	oldText := normalizeEditText(file.Text)
-	newText, err := applyEdits(oldText, args.Edits)
-	if err != nil {
-		return nil, err
-	}
-	if newText == oldText {
-		return nil, fmt.Errorf("edit produced no changes")
-	}
-	outputText := restoreLineEndings(newText, file.LineEnding)
-	newBytes, err := encodeText(outputText, file.Encoding, file.BOM)
-	if err != nil {
-		return nil, err
-	}
-	contextLines := normalizeContextLines(args.ContextLines)
-	diff := unifiedDiff(file.Path, splitLines(oldText), splitLines(newText), contextLines)
-	content := fmt.Sprintf("dry_run: %t\nedited: %s\ncreated: %t\nencoding: %s\nsha256_before: %s\nsha256_after: %s\ndiff:\n%s", args.DryRun, file.Path, created, file.Encoding, sha256Hex(file.Bytes), sha256Hex(newBytes), diff)
-	if args.DryRun {
-		return &tool.Result{Content: content}, nil
-	}
-	mode := os.FileMode(0644)
-	if info, err := os.Stat(path); err == nil {
-		mode = info.Mode()
-	} else if !created {
-		return nil, fmt.Errorf("stat file: %w", err)
-	}
-	if err := atomicWriteFile(path, newBytes, mode); err != nil {
-		return nil, fmt.Errorf("write file: %w", err)
-	}
+	content := fmt.Sprintf("dry_run: %t\nedited: %s\ncreated: %t\nencoding: %s\nsha256_before: %s\nsha256_after: %s\ndiff:\n%s", result.DryRun, result.Path, result.Created, result.Encoding, result.SHA256Before, result.SHA256After, result.Diff)
 	return &tool.Result{Content: content}, nil
 }
 
@@ -423,615 +390,4 @@ func resolveInsideRoot(rawPath, root string) (string, error) {
 		return "", fmt.Errorf("path escapes cron sandbox")
 	}
 	return candidateAbs, nil
-}
-
-func readOrCreateDecodedFile(path, requestedEncoding string, create bool, hasExpectedSHA bool) (decodedFile, bool, error) {
-	file, err := readDecodedFile(path, requestedEncoding)
-	if err == nil {
-		return file, false, nil
-	}
-	if !create || hasExpectedSHA || !errors.Is(err, os.ErrNotExist) {
-		return decodedFile{}, false, err
-	}
-	encodingName := strings.ToLower(strings.TrimSpace(requestedEncoding))
-	if encodingName == "" || encodingName == "auto" || encodingName == "utf8" {
-		encodingName = "utf-8"
-	}
-	if encodingName == "utf-8-bom" {
-		return decodedFile{Path: path, Encoding: "utf-8-bom", BOM: []byte{0xEF, 0xBB, 0xBF}, LineEnding: "\n"}, true, nil
-	}
-	if encodingName != "utf-8" {
-		if _, err := lookupEncoding(encodingName); err != nil {
-			return decodedFile{}, false, err
-		}
-	}
-	return decodedFile{Path: path, Encoding: encodingName, LineEnding: "\n"}, true, nil
-}
-
-func readDecodedFile(path, requestedEncoding string) (decodedFile, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return decodedFile{}, fmt.Errorf("stat file: %w", err)
-	}
-	if info.IsDir() {
-		return decodedFile{}, fmt.Errorf("path is a directory")
-	}
-	if info.Size() > maxFileToolSize {
-		return decodedFile{}, fmt.Errorf("file too large: %d bytes exceeds %d", info.Size(), maxFileToolSize)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return decodedFile{}, fmt.Errorf("read file: %w", err)
-	}
-	if looksBinary(data) {
-		return decodedFile{}, fmt.Errorf("file appears to be binary")
-	}
-	text, encName, bom, err := decodeBytes(data, requestedEncoding)
-	if err != nil {
-		return decodedFile{}, err
-	}
-	return decodedFile{Path: path, Bytes: data, Text: text, Encoding: encName, BOM: bom, LineEnding: detectLineEnding(text), EndsNewline: strings.HasSuffix(text, "\n")}, nil
-}
-
-func decodeBytes(data []byte, requested string) (string, string, []byte, error) {
-	name := strings.ToLower(strings.TrimSpace(requested))
-	if name == "" || name == "auto" {
-		switch {
-		case bytes.HasPrefix(data, []byte{0xEF, 0xBB, 0xBF}):
-			return string(data[3:]), "utf-8-bom", []byte{0xEF, 0xBB, 0xBF}, nil
-		case bytes.HasPrefix(data, []byte{0xFF, 0xFE}):
-			return decodeWithEncoding(data[2:], "utf-16le", []byte{0xFF, 0xFE})
-		case bytes.HasPrefix(data, []byte{0xFE, 0xFF}):
-			return decodeWithEncoding(data[2:], "utf-16be", []byte{0xFE, 0xFF})
-		default:
-			if !utf8.Valid(data) {
-				return "", "", nil, fmt.Errorf("file is not valid UTF-8; pass encoding explicitly")
-			}
-			return string(data), "utf-8", nil, nil
-		}
-	}
-	if name == "utf8" {
-		name = "utf-8"
-	}
-	if name == "utf-8-bom" {
-		if bytes.HasPrefix(data, []byte{0xEF, 0xBB, 0xBF}) {
-			data = data[3:]
-		}
-		if !utf8.Valid(data) {
-			return "", "", nil, fmt.Errorf("file is not valid UTF-8")
-		}
-		return string(data), "utf-8-bom", []byte{0xEF, 0xBB, 0xBF}, nil
-	}
-	if name == "utf-8" {
-		if bytes.HasPrefix(data, []byte{0xEF, 0xBB, 0xBF}) {
-			data = data[3:]
-		}
-		if !utf8.Valid(data) {
-			return "", "", nil, fmt.Errorf("file is not valid UTF-8")
-		}
-		return string(data), "utf-8", nil, nil
-	}
-	return decodeWithEncoding(data, name, nil)
-}
-
-func decodeWithEncoding(data []byte, name string, bom []byte) (string, string, []byte, error) {
-	enc, err := lookupEncoding(name)
-	if err != nil {
-		return "", "", nil, err
-	}
-	decoded, _, err := transform.Bytes(enc.NewDecoder(), data)
-	if err != nil {
-		return "", "", nil, fmt.Errorf("decode %s: %w", name, err)
-	}
-	return string(decoded), name, bom, nil
-}
-
-func encodeText(text, name string, bom []byte) ([]byte, error) {
-	if name == "utf-8" {
-		return []byte(text), nil
-	}
-	if name == "utf-8-bom" {
-		return append(append([]byte{}, bom...), []byte(text)...), nil
-	}
-	enc, err := lookupEncoding(name)
-	if err != nil {
-		return nil, err
-	}
-	encoded, _, err := transform.Bytes(enc.NewEncoder(), []byte(text))
-	if err != nil {
-		return nil, fmt.Errorf("encode %s: %w", name, err)
-	}
-	if len(bom) > 0 {
-		encoded = append(append([]byte{}, bom...), encoded...)
-	}
-	return encoded, nil
-}
-
-func lookupEncoding(name string) (encoding.Encoding, error) {
-	name = strings.ToLower(strings.TrimSpace(name))
-	switch name {
-	case "gbk", "gb2312":
-		name = "gb18030"
-	case "shift_jis", "sjis":
-		name = "shift-jis"
-	}
-	enc, err := htmlindex.Get(name)
-	if err != nil || enc == nil {
-		return nil, fmt.Errorf("unsupported encoding %q", name)
-	}
-	return enc, nil
-}
-
-func normalizeReadRange(total, start int, endLine lineNumber) (int, int, bool, error) {
-	if total == 0 {
-		return 1, 0, false, nil
-	}
-	if start <= 0 {
-		start = 1
-	}
-	if start > total {
-		return 0, 0, false, fmt.Errorf("start_line %d exceeds total lines %d", start, total)
-	}
-	truncated := false
-	end := endLine.Value
-	if endLine.End {
-		end = total
-	} else if end <= 0 {
-		end = start + defaultReadLineLimit - 1
-		truncated = end < total
-	}
-	if end > total {
-		end = total
-	}
-	if end < start {
-		return 0, 0, false, fmt.Errorf("end_line must be >= start_line")
-	}
-	if !endLine.End && end-start+1 > defaultReadLineLimit {
-		end = start + defaultReadLineLimit - 1
-		truncated = true
-	}
-	return start, end, truncated, nil
-}
-
-func applyEdits(text string, edits []editOperation) (string, error) {
-	if len(edits) == 0 {
-		return "", fmt.Errorf("edits is required")
-	}
-	current := normalizeEditText(text)
-	for i, edit := range edits {
-		next, err := applyEdit(current, edit)
-		if err != nil {
-			return "", fmt.Errorf("edit %d: %w", i+1, err)
-		}
-		current = next
-	}
-	return current, nil
-}
-
-func applyEdit(text string, edit editOperation) (string, error) {
-	operation := strings.ToLower(strings.TrimSpace(edit.Operation))
-	if operation == "" {
-		return "", fmt.Errorf("operation is required")
-	}
-	switch operation {
-	case "replace", "delete", "insert_line_before", "insert_line_after", "prepend", "append":
-		return applyLineEdit(text, edit)
-	case "replace_match":
-		start, end, err := findUniqueMatch(text, edit.OldContent, "old_content")
-		if err != nil {
-			return "", err
-		}
-		return text[:start] + normalizeEditText(edit.Content) + text[end:], nil
-	case "delete_match":
-		start, end, err := findUniqueMatch(text, edit.OldContent, "old_content")
-		if err != nil {
-			return "", err
-		}
-		return text[:start] + text[end:], nil
-	case "insert_before_match", "insert_after_match":
-		start, end, err := findUniqueMatch(text, edit.Anchor, "anchor")
-		if err != nil {
-			return "", err
-		}
-		index := start
-		if operation == "insert_after_match" {
-			index = end
-		}
-		return text[:index] + normalizeEditText(edit.Content) + text[index:], nil
-	default:
-		return "", fmt.Errorf("unsupported operation %q", edit.Operation)
-	}
-}
-
-func applyLineEdit(text string, edit editOperation) (string, error) {
-	lines := splitLines(text)
-	endsNewline := strings.HasSuffix(text, "\n")
-	operation := strings.ToLower(strings.TrimSpace(edit.Operation))
-	start := edit.StartLine
-	end := edit.EndLine.Value
-	if edit.EndLine.End {
-		end = len(lines)
-	} else if end == 0 {
-		end = start
-	}
-	contentLines := splitLines(edit.Content)
-	lineContentLines := splitLines(ensureTrailingNewline(edit.Content))
-	out := append([]string{}, lines...)
-	switch operation {
-	case "replace":
-		if err := validateLineRange(len(lines), start, end); err != nil {
-			return "", err
-		}
-		if err := validateExpectedContent(lines, start, end, edit.ExpectedContent); err != nil {
-			return "", err
-		}
-		out = replaceLines(out, start, end, contentLines)
-	case "delete":
-		if err := validateLineRange(len(lines), start, end); err != nil {
-			return "", err
-		}
-		if err := validateExpectedContent(lines, start, end, edit.ExpectedContent); err != nil {
-			return "", err
-		}
-		out = replaceLines(out, start, end, nil)
-	case "insert_line_before", "insert_line_after":
-		if err := validateInsertLine(len(lines), start); err != nil {
-			return "", err
-		}
-		index := start - 1
-		if operation == "insert_line_after" {
-			index = start
-		}
-		out = append(out[:index], append(lineContentLines, out[index:]...)...)
-		endsNewline = true
-	case "prepend":
-		out = append(lineContentLines, out...)
-		endsNewline = true
-	case "append":
-		out = append(out, lineContentLines...)
-		endsNewline = true
-	default:
-		return "", fmt.Errorf("unsupported operation %q", edit.Operation)
-	}
-	return joinLines(out, "\n", endsNewline), nil
-}
-
-func validateExpectedContent(lines []string, start, end int, expected *string) error {
-	if expected == nil || *expected == "" {
-		return nil
-	}
-	actual := strings.Join(lines[start-1:end], "\n")
-	want := strings.TrimSuffix(normalizeEditText(*expected), "\n")
-	if actual != want {
-		return fmt.Errorf("target content mismatch at lines %d-%d", start, end)
-	}
-	return nil
-}
-
-func findUniqueMatch(text, rawNeedle, label string) (int, int, error) {
-	needle := normalizeEditText(rawNeedle)
-	if needle == "" {
-		return 0, 0, fmt.Errorf("%s is required", label)
-	}
-	first := strings.Index(text, needle)
-	if first < 0 {
-		return 0, 0, fmt.Errorf("%s not found", label)
-	}
-	if next := strings.Index(text[first+len(needle):], needle); next >= 0 {
-		return 0, 0, fmt.Errorf("%s matched multiple locations; provide longer %s", label, label)
-	}
-	return first, first + len(needle), nil
-}
-
-func ensureTrailingNewline(text string) string {
-	text = normalizeEditText(text)
-	if text == "" || strings.HasSuffix(text, "\n") {
-		return text
-	}
-	return text + "\n"
-}
-
-func normalizeEditText(text string) string {
-	text = strings.ReplaceAll(text, "\r\n", "\n")
-	return strings.ReplaceAll(text, "\r", "\n")
-}
-
-func restoreLineEndings(text, lineEnding string) string {
-	if lineEnding == "" || lineEnding == "\n" {
-		return text
-	}
-	return strings.ReplaceAll(text, "\n", lineEnding)
-}
-
-func normalizeGrepContextLines(value int) int {
-	if value < 0 {
-		return 0
-	}
-	if value == 0 {
-		return 2
-	}
-	if value > 20 {
-		return 20
-	}
-	return value
-}
-
-func normalizeMaxMatches(value int) int {
-	if value <= 0 {
-		return 20
-	}
-	if value > 100 {
-		return 100
-	}
-	return value
-}
-
-func normalizeContextLines(value int) int {
-	if value < 0 {
-		return 0
-	}
-	if value == 0 {
-		return 3
-	}
-	if value > 20 {
-		return 20
-	}
-	return value
-}
-
-func validateLineRange(total, start, end int) error {
-	if start <= 0 {
-		return fmt.Errorf("start_line must be >= 1")
-	}
-	if end < start {
-		return fmt.Errorf("end_line must be >= start_line")
-	}
-	if total == 0 {
-		return fmt.Errorf("file has no lines")
-	}
-	if start > total || end > total {
-		return fmt.Errorf("line range %d-%d exceeds total lines %d", start, end, total)
-	}
-	return nil
-}
-
-func validateInsertLine(total, line int) error {
-	if total == 0 {
-		if line == 1 {
-			return nil
-		}
-		return fmt.Errorf("empty file only supports insert at line 1")
-	}
-	if line < 1 || line > total {
-		return fmt.Errorf("insert line %d exceeds total lines %d", line, total)
-	}
-	return nil
-}
-
-func replaceLines(lines []string, start, end int, replacement []string) []string {
-	out := make([]string, 0, len(lines)-(end-start+1)+len(replacement))
-	out = append(out, lines[:start-1]...)
-	out = append(out, replacement...)
-	out = append(out, lines[end:]...)
-	return out
-}
-
-func splitLines(text string) []string {
-	text = strings.ReplaceAll(text, "\r\n", "\n")
-	text = strings.ReplaceAll(text, "\r", "\n")
-	if text == "" {
-		return nil
-	}
-	if strings.HasSuffix(text, "\n") {
-		text = strings.TrimSuffix(text, "\n")
-	}
-	if text == "" {
-		return []string{""}
-	}
-	return strings.Split(text, "\n")
-}
-
-func joinLines(lines []string, lineEnding string, endsNewline bool) string {
-	if lineEnding == "" {
-		lineEnding = "\n"
-	}
-	text := strings.Join(lines, lineEnding)
-	if endsNewline && len(lines) > 0 {
-		text += lineEnding
-	}
-	return text
-}
-
-func detectLineEnding(text string) string {
-	if strings.Contains(text, "\r\n") {
-		return "\r\n"
-	}
-	if strings.Contains(text, "\r") {
-		return "\r"
-	}
-	return "\n"
-}
-
-func looksBinary(data []byte) bool {
-	limit := len(data)
-	if limit > 4096 {
-		limit = 4096
-	}
-	return bytes.Contains(data[:limit], []byte{0})
-}
-
-func sha256Hex(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
-}
-
-type diffHunk struct {
-	ops      []diffOp
-	oldStart int
-	newStart int
-}
-
-func unifiedDiff(path string, oldLines, newLines []string, contextLines int) string {
-	if diffTooLarge(oldLines, newLines) {
-		return fmt.Sprintf("--- %s\n+++ %s\n# diff omitted: too many line comparisons (%d x %d)\n", path, path, len(oldLines), len(newLines))
-	}
-	ops := diffLines(oldLines, newLines)
-	hunks := buildDiffHunks(ops, contextLines)
-	var b strings.Builder
-	fmt.Fprintf(&b, "--- %s\n", path)
-	fmt.Fprintf(&b, "+++ %s\n", path)
-	for _, hunk := range hunks {
-		oldCount, newCount := diffHunkCounts(hunk.ops)
-		fmt.Fprintf(&b, "@@ -%d,%d +%d,%d @@\n", hunk.oldStart, oldCount, hunk.newStart, newCount)
-		for _, op := range hunk.ops {
-			switch op.kind {
-			case diffEqual:
-				fmt.Fprintf(&b, " %s\n", op.text)
-			case diffDelete:
-				fmt.Fprintf(&b, "-%s\n", op.text)
-			case diffInsert:
-				fmt.Fprintf(&b, "+%s\n", op.text)
-			}
-		}
-	}
-	return b.String()
-}
-
-func diffTooLarge(oldLines, newLines []string) bool {
-	if len(oldLines) == 0 || len(newLines) == 0 {
-		return false
-	}
-	return len(oldLines) > maxDiffCells/len(newLines)
-}
-
-type diffKind int
-
-const (
-	diffEqual diffKind = iota
-	diffDelete
-	diffInsert
-)
-
-type diffOp struct {
-	kind diffKind
-	text string
-}
-
-func diffLines(a, b []string) []diffOp {
-	n, m := len(a), len(b)
-	dp := make([][]int, n+1)
-	for i := range dp {
-		dp[i] = make([]int, m+1)
-	}
-	for i := n - 1; i >= 0; i-- {
-		for j := m - 1; j >= 0; j-- {
-			if a[i] == b[j] {
-				dp[i][j] = dp[i+1][j+1] + 1
-			} else if dp[i+1][j] >= dp[i][j+1] {
-				dp[i][j] = dp[i+1][j]
-			} else {
-				dp[i][j] = dp[i][j+1]
-			}
-		}
-	}
-	ops := []diffOp{}
-	for i, j := 0, 0; i < n || j < m; {
-		switch {
-		case i < n && j < m && a[i] == b[j]:
-			ops = append(ops, diffOp{kind: diffEqual, text: a[i]})
-			i++
-			j++
-		case j >= m || i < n && dp[i+1][j] >= dp[i][j+1]:
-			ops = append(ops, diffOp{kind: diffDelete, text: a[i]})
-			i++
-		default:
-			ops = append(ops, diffOp{kind: diffInsert, text: b[j]})
-			j++
-		}
-	}
-	return ops
-}
-
-func buildDiffHunks(ops []diffOp, contextLines int) []diffHunk {
-	firstChange, lastChange := -1, -1
-	for i, op := range ops {
-		if op.kind != diffEqual {
-			if firstChange == -1 {
-				firstChange = i
-			}
-			lastChange = i
-		}
-	}
-	if firstChange == -1 {
-		return nil
-	}
-	var ranges [][2]int
-	start := firstChange
-	last := firstChange
-	for i := firstChange + 1; i <= lastChange; i++ {
-		if ops[i].kind == diffEqual {
-			continue
-		}
-		if equalOpsBetween(ops, last+1, i) > contextLines*2 {
-			ranges = append(ranges, [2]int{start, last})
-			start = i
-		}
-		last = i
-	}
-	ranges = append(ranges, [2]int{start, last})
-	hunks := make([]diffHunk, 0, len(ranges))
-	for _, r := range ranges {
-		hunks = append(hunks, trimDiffContextRange(ops, r[0], r[1], contextLines))
-	}
-	return hunks
-}
-
-func equalOpsBetween(ops []diffOp, start, end int) int {
-	count := 0
-	for i := start; i < end; i++ {
-		if ops[i].kind == diffEqual {
-			count++
-		}
-	}
-	return count
-}
-
-func trimDiffContextRange(ops []diffOp, first, last, contextLines int) diffHunk {
-	start := first - contextLines
-	if start < 0 {
-		start = 0
-	}
-	end := last + contextLines + 1
-	if end > len(ops) {
-		end = len(ops)
-	}
-	oldStart, newStart := 1, 1
-	for _, op := range ops[:start] {
-		switch op.kind {
-		case diffEqual:
-			oldStart++
-			newStart++
-		case diffDelete:
-			oldStart++
-		case diffInsert:
-			newStart++
-		}
-	}
-	return diffHunk{ops: ops[start:end], oldStart: oldStart, newStart: newStart}
-}
-
-func diffHunkCounts(ops []diffOp) (int, int) {
-	oldCount, newCount := 0, 0
-	for _, op := range ops {
-		switch op.kind {
-		case diffEqual:
-			oldCount++
-			newCount++
-		case diffDelete:
-			oldCount++
-		case diffInsert:
-			newCount++
-		}
-	}
-	return oldCount, newCount
 }

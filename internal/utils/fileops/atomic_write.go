@@ -1,4 +1,4 @@
-package builtin
+package fileops
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
+func AtomicWriteFile(path string, data []byte, mode os.FileMode) error {
 	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
 		return os.WriteFile(path, data, mode)
 	}

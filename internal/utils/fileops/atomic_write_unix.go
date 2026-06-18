@@ -1,6 +1,6 @@
 //go:build !windows
 
-package builtin
+package fileops
 
 import (
 	"fmt"
