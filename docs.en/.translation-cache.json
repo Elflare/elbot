@@ -11,9 +11,9 @@
       "updated_at": 1781779202
     },
     "docs/commands.md": {
-      "source_hash": "5570b18e312883d039fc09d8c24f28f5b60112ab9b4956b57ce83fbfd4b6eec6",
+      "source_hash": "84b3e7ae632abd7edd07e0153f933dbda5935cc22213f108d34c70174097adc3",
       "target": "docs.en/commands.md",
-      "updated_at": 1781753713
+      "updated_at": 1781779244
     },
     "docs/concepts.md": {
       "source_hash": "1e607ef098015549da70d9d24216747ecb1e1e4e3210a4eb6a8e2ca278f63000",
@@ -1666,6 +1666,14 @@
       "translation": "Model parameters can be a list number, model name, or __ELBOT_CODE_0__.\n",
       "updated_at": 1781514917
     },
+    "docs/commands.md:paragraph:898e1bc0f9ce70981765d22f71d5a0fb6e75efed2623547dbe0b4d1bf0d239f0": {
+      "kind": "paragraph",
+      "source": "内置工具 __ELBOT_CODE_0__ 可帮助超级管理员生成 Elwisp 配置、Elvena 事件模板、监听器脚手架和测试命令；",
+      "source_file": "docs/commands.md",
+      "source_hash": "898e1bc0f9ce70981765d22f71d5a0fb6e75efed2623547dbe0b4d1bf0d239f0",
+      "translation": "The built-in tool __ELBOT_CODE_0__ helps superadmins generate Elwisp configurations, Elvena event templates, listener scaffolds, and test commands;",
+      "updated_at": 1781779244
+    },
     "docs/commands.md:paragraph:9cfc23ef97546ba454e69b31ea4aa508069e0043bb886c750dfb05372b197d92": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 查询 __ELBOT_CODE_1__，额外支持：\n",
@@ -1705,6 +1713,14 @@
       "source_hash": "f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f",
       "translation": "Example:\n",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:paragraph:f8d019b11ba9dd9b0e8e9c0f4ecbc784290f10108e0b0e58d7c80177eb7c9dc6": {
+      "kind": "paragraph",
+      "source": "它本身无参数、无副作用，实际写文件或运行命令仍会继续使用文件工具和 shell 工具并走对应风险确认。\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "f8d019b11ba9dd9b0e8e9c0f4ecbc784290f10108e0b0e58d7c80177eb7c9dc6",
+      "translation": "It has no parameters or side effects itself; actually writing files or running commands will still use the file tool and shell tool and go through the corresponding risk confirmation.\n",
+      "updated_at": 1781779244
     },
     "docs/commands.md:paragraph:fd46fc8739d3b03d73dfe9915fef257fe25c994f1c6fd3bf1a96e95fddc2d0d6": {
       "kind": "paragraph",
@@ -1954,6 +1970,14 @@
       "translation": "Filter by tool name.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:728eaabcc986c4ad0233956bdc9a114bfd7535939ad93dcdf246187fb960856a": {
+      "kind": "table",
+      "source": "切换 Elnis elwisp3 模型槽位。",
+      "source_file": "docs/commands.md",
+      "source_hash": "728eaabcc986c4ad0233956bdc9a114bfd7535939ad93dcdf246187fb960856a",
+      "translation": "Switch to Elnis elwisp3 model slot.",
+      "updated_at": 1781779244
+    },
     "docs/commands.md:table:762ff456176827ed2cb36527236ebbe56de90776d6705b642fa1680962a27d6f": {
       "kind": "table",
       "source": "最低等级：__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__。",
@@ -2049,6 +2073,14 @@
       "source_hash": "975ce60f0128b5777bf462ac960b0e5c410ec7fe5527cfabad230ea591c94730",
       "translation": "Switch the context compaction model.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:99fcf954149006d2eeb8bcb2e5a869876cc6a9da83592f06d5ef09cfb81195c2": {
+      "kind": "table",
+      "source": "切换 Elnis elwisp2 模型槽位。",
+      "source_file": "docs/commands.md",
+      "source_hash": "99fcf954149006d2eeb8bcb2e5a869876cc6a9da83592f06d5ef09cfb81195c2",
+      "translation": "Switch to Elnis elwisp2 model slot.",
+      "updated_at": 1781779244
     },
     "docs/commands.md:table:9c8296ef5a7163e244dc82750aac5e3abf13641df0937fa27a79a8eb1da6ed31": {
       "kind": "table",
@@ -2257,6 +2289,14 @@
       "source_hash": "f8facc8e7be39a3d834ceb2608a87bf847ce19a79fb0b5c50be89b28b76108b4",
       "translation": "Manually compact the current Session context.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:f9616901b1b52bbb684e9e074f1ab622ac2394801070193c93ad723a54a56951": {
+      "kind": "table",
+      "source": "切换 Elnis elwisp1 模型槽位。",
+      "source_file": "docs/commands.md",
+      "source_hash": "f9616901b1b52bbb684e9e074f1ab622ac2394801070193c93ad723a54a56951",
+      "translation": "Switch to Elnis elwisp1 model slot.",
+      "updated_at": 1781779244
     },
     "docs/commands.md:table:f9c1352e4733a42ee68b763377496585a444cf7aa6d4798d88ff9700921ac903": {
       "kind": "table",

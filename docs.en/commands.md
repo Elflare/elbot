@@ -28,6 +28,9 @@ Example:
 | `/model <编号或名称>` | Switch the model used in the current Session mode. |
 | `/model --chat <模型>` | Switch the chat mode model. |
 | `/model --work <模型>` | Switch the work mode model. |
+| `/model --elwisp1 <模型>` | Switch to Elnis elwisp1 model slot. |
+| `/model --elwisp2 <模型>` | Switch to Elnis elwisp2 model slot. |
+| `/model --elwisp3 <模型>` | Switch to Elnis elwisp3 model slot. |
 | `/model --compact <模型>` | Switch the context compaction model. |
 | `/model --naming <模型>` | Switch the Session auto-naming model. |
 | `/checkmodel [关键词]` | View or search for models. |
@@ -43,6 +46,7 @@ Example:
 /model 2
 /model --work deepseek/deepseek-chat
 /model --chat openai/gpt-4o-mini
+/model --elwisp2 openai/gpt-4.1
 /checkmodel deepseek
 ```
 
@@ -157,6 +161,8 @@ Example:
 ```
 
 In work mode, the LLM can discover tool details on demand via `discover_tool`. In chat, `@tool:<name-or-tag>` can also be used to preload tools.
+
+The built-in tool `elwisp_creator` helps superadmins generate Elwisp configurations, Elvena event templates, listener scaffolds, and test commands; It has no parameters or side effects itself; actually writing files or running commands will still use the file tool and shell tool and go through the corresponding risk confirmation.
 
 ## Logs and Audit
 
