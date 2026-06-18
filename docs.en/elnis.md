@@ -159,6 +159,18 @@ HTTP requests in `llm` mode will return quickly, and the actual processing is ex
 
 During `need_report=true`, Elnis will send `report` according to the adjudicated target.
 
+## View Elwisp logs
+
+You can use `/elwisp` to view Elnis/Elwisp event logs. It reads `elnis-YYYY-MM-DD.log` and supports filtering by Elwisp name, event source, event ID, mode, and time range.
+
+Example:
+
+```text
+/elwisp
+/elwisp server-watchdog -n 20
+/elwisp --source minecraft-main --mode llm --since 2h
+```
+
 ## Relationship with Cron, ELyph, and Skill
 
 | Capability | Trigger Source | Function |

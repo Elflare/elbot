@@ -11,9 +11,9 @@
       "updated_at": 1781710343
     },
     "docs/commands.md": {
-      "source_hash": "e793e4e8d4077b6549d37764bb329230fbab0a179eb0666b1d857984144ab461",
+      "source_hash": "5570b18e312883d039fc09d8c24f28f5b60112ab9b4956b57ce83fbfd4b6eec6",
       "target": "docs.en/commands.md",
-      "updated_at": 1781710344
+      "updated_at": 1781752948
     },
     "docs/concepts.md": {
       "source_hash": "4d9436b79e92c5a42cd17afbcc88fd263d153f017164c01075d18c85f828f068",
@@ -26,14 +26,14 @@
       "updated_at": 1781749596
     },
     "docs/elnis-usage.md": {
-      "source_hash": "165a676f44b8a23586dd26d026bd9abb76d7cb18903c3be8e0c8311efae808c7",
+      "source_hash": "3714438d2c228aa66c8f030e69473d1cca2730d81bd88069f8abb9e6cedd5c5f",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1781749660
+      "updated_at": 1781752966
     },
     "docs/elnis.md": {
-      "source_hash": "3a0c1b74d7554f2f80b194e4f58bb5933d130d860d3278535318c421e0777238",
+      "source_hash": "e37fb285d10ac6630a3a92232fed75abf8c888a91bea7c064cb84202bc7ef6f8",
       "target": "docs.en/elnis.md",
-      "updated_at": 1781744939
+      "updated_at": 1781753001
     },
     "docs/getting-started.md": {
       "source_hash": "03eb8aa561aca703b7e764c8129596c4b45c9089405fb354f913006859b7cb3e",
@@ -1554,6 +1554,14 @@
       "translation": "Model parameters can be a list number, model name, or __ELBOT_CODE_0__.\n",
       "updated_at": 1781514917
     },
+    "docs/commands.md:paragraph:9cfc23ef97546ba454e69b31ea4aa508069e0043bb886c750dfb05372b197d92": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 查询 __ELBOT_CODE_1__，额外支持：\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "9cfc23ef97546ba454e69b31ea4aa508069e0043bb886c750dfb05372b197d92",
+      "translation": "__ELBOT_CODE_0__ queries __ELBOT_CODE_1__, with additional support for:\n",
+      "updated_at": 1781752948
+    },
     "docs/commands.md:paragraph:b14afe6a70f51142e0bae242dcc2ce09ddf662a9e7ffc2fc3edc636f27af2569": {
       "kind": "paragraph",
       "source": "当工具调用触发高风险确认时，Agent 会提示可用确认命令，例如：\n",
@@ -1601,6 +1609,14 @@
       "source_hash": "03af39065d441408d43be4c157c84c77736fa517eedfac00caa9a31d9f4fa872",
       "translation": "Query audit logs.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:0471409581d7be81dd90d022be7bfb6949ad4652768d4d3ac31d15474571bc0b": {
+      "kind": "table",
+      "source": "按外部事件 ID 过滤。",
+      "source_file": "docs/commands.md",
+      "source_hash": "0471409581d7be81dd90d022be7bfb6949ad4652768d4d3ac31d15474571bc0b",
+      "translation": "Filter by external event ID.",
+      "updated_at": 1781752948
     },
     "docs/commands.md:table:06e7e45ba949e7988c0f1952bbfdcb8f6eb88d9a4698d12ddf2f31dc99662815": {
       "kind": "table",
@@ -1674,6 +1690,14 @@
       "translation": "Switch the Session auto-naming model.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:2c095d2b79ab255430bee5337067f6cfb12acf47bbdb09e38792aee29cf74421": {
+      "kind": "table",
+      "source": "查询 Elnis/Elwisp 事件日志。",
+      "source_file": "docs/commands.md",
+      "source_hash": "2c095d2b79ab255430bee5337067f6cfb12acf47bbdb09e38792aee29cf74421",
+      "translation": "Query Elnis/Elwisp event logs.",
+      "updated_at": 1781752948
+    },
     "docs/commands.md:table:2df6a3479a526ae79904a23bada7e97fc626bd345951c046e415f026b92dab02": {
       "kind": "table",
       "source": "确认当前工具。",
@@ -1681,6 +1705,22 @@
       "source_hash": "2df6a3479a526ae79904a23bada7e97fc626bd345951c046e415f026b92dab02",
       "translation": "Confirm the current tool.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:315d4f29d42ddb97732491d1df02b84065560501b4251beb55b9bc330423aa56": {
+      "kind": "table",
+      "source": "按 Elnis event key 过滤。",
+      "source_file": "docs/commands.md",
+      "source_hash": "315d4f29d42ddb97732491d1df02b84065560501b4251beb55b9bc330423aa56",
+      "translation": "Filter by Elnis event key.",
+      "updated_at": 1781752948
+    },
+    "docs/commands.md:table:3638a4c91c9acad148e26b0e79bd50766ca7688e1d59e23c29e03b2276ba38be": {
+      "kind": "table",
+      "source": "按事件来源过滤。",
+      "source_file": "docs/commands.md",
+      "source_hash": "3638a4c91c9acad148e26b0e79bd50766ca7688e1d59e23c29e03b2276ba38be",
+      "translation": "Filter by event source.",
+      "updated_at": 1781752948
     },
     "docs/commands.md:table:366c25fdadebbf52d9a66986535cebdbd54027047b6f83fcd06538f1f3a141b6": {
       "kind": "table",
@@ -1714,6 +1754,14 @@
       "translation": "Filter by Session ID.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:3f3d8ce0088716f032043c947b9b4799a81341326a882ce04ca8ea14ee85a0d9": {
+      "kind": "table",
+      "source": "按 Elwisp 名称过滤。",
+      "source_file": "docs/commands.md",
+      "source_hash": "3f3d8ce0088716f032043c947b9b4799a81341326a882ce04ca8ea14ee85a0d9",
+      "translation": "Filter by Elwisp name.",
+      "updated_at": 1781752948
+    },
     "docs/commands.md:table:3f9fecb21d39652b4ef8a125296143351fc35b334e14fd66b86fed212842af8b": {
       "kind": "table",
       "source": "列出或搜索可见 Session。",
@@ -1745,6 +1793,14 @@
       "source_hash": "4bd446dad6f63c8747e4059afda66d8a4c0244850b7df2a76d203661bdbbfd45",
       "translation": "Number of entries to return, default is 5.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:4f5d8f215ee70aac504ec360d2a91a33c83c6a22dbbb8bf01086927acad28926": {
+      "kind": "table",
+      "source": "按内部 Elnis event ID 过滤。",
+      "source_file": "docs/commands.md",
+      "source_hash": "4f5d8f215ee70aac504ec360d2a91a33c83c6a22dbbb8bf01086927acad28926",
+      "translation": "Filter by internal Elnis event ID.",
+      "updated_at": 1781752948
     },
     "docs/commands.md:table:56375112941485fecc695a61d05b78314279a7909c81077498d2177a2947318c": {
       "kind": "table",
@@ -1818,6 +1874,14 @@
       "translation": "View the list of available commands.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:82e0f62db1cb3e8d92ec3f80bfea13ec3c0d59793cab60b55a20a94d98740684": {
+      "kind": "table",
+      "source": "按 Elwisp 名称过滤，等同于 __ELBOT_CODE_0__。",
+      "source_file": "docs/commands.md",
+      "source_hash": "82e0f62db1cb3e8d92ec3f80bfea13ec3c0d59793cab60b55a20a94d98740684",
+      "translation": "Filter by Elwisp name, equivalent to __ELBOT_CODE_0__.",
+      "updated_at": 1781752948
+    },
     "docs/commands.md:table:853bc4da4cdf1e293de2636d0005b22ab2c12ec9b33dfaaf47f7791e462da938": {
       "kind": "table",
       "source": "按风险等级过滤。",
@@ -1833,6 +1897,14 @@
       "source_hash": "87a813e678b72821f2359565ff6088aafe2e7812e32767a9cb113453dc836873",
       "translation": "Reject the current pending tool call.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:89ecb328e1b26ec437f984697b66da85607a590050992eb503f702272a848295": {
+      "kind": "table",
+      "source": "按事件模式过滤。",
+      "source_file": "docs/commands.md",
+      "source_hash": "89ecb328e1b26ec437f984697b66da85607a590050992eb503f702272a848295",
+      "translation": "Filter by event mode.",
+      "updated_at": 1781752948
     },
     "docs/commands.md:table:928f87d4507bf9a0085474e308949fb1f089a3baa288fddbdc1087927fbcdfba": {
       "kind": "table",
@@ -2041,6 +2113,14 @@
       "source_hash": "f68452c447fd532444e28a4bdf3b590ebe3adc00ef11558ab941271dc21a7885",
       "translation": "Permanently delete the Session.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:f6eb857febf40519774a0de0c9594d357bd87a91cbad5d845ec9963109f7145b": {
+      "kind": "table",
+      "source": "按 token name 过滤，不包含 token 原文。",
+      "source_file": "docs/commands.md",
+      "source_hash": "f6eb857febf40519774a0de0c9594d357bd87a91cbad5d845ec9963109f7145b",
+      "translation": "Filter by token name, excluding the original token text.",
+      "updated_at": 1781752948
     },
     "docs/commands.md:table:f74053733f24d09d61fda4fb031ee0d3f09e999b8efdc580f3802250cd5c9422": {
       "kind": "table",
@@ -4562,6 +4642,14 @@
       "translation": "Configuration description:\n",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:quote:d15d6054f2b4a4a772616da1214df94308e7a3fd040856a3ca2ffcbccb7bd536": {
+      "kind": "quote",
+      "source": "**注：**：Elvena 基于 JSON，内容必须使用 UTF-8 编码。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "d15d6054f2b4a4a772616da1214df94308e7a3fd040856a3ca2ffcbccb7bd536",
+      "translation": "**Note:** Elvena is based on JSON, and the content must be UTF-8 encoded.",
+      "updated_at": 1781752966
+    },
     "docs/elnis-usage.md:table:05a363aa4f244abaff4fcea17940f12ab23dc582a574ba43df7b47246ad7d47a": {
       "kind": "table",
       "source": "具体事件源，例如服务名、脚本名、RSS 名。",
@@ -4769,6 +4857,14 @@
       "source_hash": "7f1dc02e6e98f119f6b1c6c3719205f2024a25fce5d92c5e3725f90678b92d49",
       "translation": "Architecture Diagram",
       "updated_at": 1781710746
+    },
+    "docs/elnis.md:heading:98fa01cd580d047e89c8340614298ab37f6ff30e29c5b72b43bc8da64336947d": {
+      "kind": "heading",
+      "source": "查看 Elwisp 日志",
+      "source_file": "docs/elnis.md",
+      "source_hash": "98fa01cd580d047e89c8340614298ab37f6ff30e29c5b72b43bc8da64336947d",
+      "translation": "View Elwisp logs",
+      "updated_at": 1781753001
     },
     "docs/elnis.md:heading:a43c34eead0953dedbd1109557677e5a64c8095ca120bf437d80c357dfe77308": {
       "kind": "heading",
@@ -5090,6 +5186,14 @@
       "translation": "Elvena is the JSON over HTTP protocol used by Elwisp to deliver events to Elnis.\n",
       "updated_at": 1781710746
     },
+    "docs/elnis.md:paragraph:1588d1f607689f56671a35b3db8a2be89f4f22231d7e282053c9f3c62b6e5401": {
+      "kind": "paragraph",
+      "source": "它读取 __ELBOT_CODE_0__，支持按 Elwisp 名称、事件来源、事件 ID、模式和时间范围过滤。\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "1588d1f607689f56671a35b3db8a2be89f4f22231d7e282053c9f3c62b6e5401",
+      "translation": "It reads __ELBOT_CODE_0__ and supports filtering by Elwisp name, event source, event ID, mode, and time range.\n",
+      "updated_at": 1781753001
+    },
     "docs/elnis.md:paragraph:1ff5ad7a790c585c4083e66c874fd07f1d57a76721909ae15dbd178cd77e554d": {
       "kind": "paragraph",
       "source": "例如：\n",
@@ -5169,6 +5273,14 @@
       "source_hash": "96d4257f00bcf65b25e342c089f87d68e4284fdc28ec1e9d3bade76a082d916a",
       "translation": "Elwisp is like a probe scattered across the external world, and also like the eyes of ElBot. They can be numerous, small, and dispersed; they have only one responsibility: to tell Elnis what is happening in the external world.\n",
       "updated_at": 1781710746
+    },
+    "docs/elnis.md:paragraph:aaea27431774bcd2c2b77ff06bfc1295f948331b590d2808f2bb0e72aace31d5": {
+      "kind": "paragraph",
+      "source": "可以用 __ELBOT_CODE_0__ 查看 Elnis/Elwisp 事件日志。",
+      "source_file": "docs/elnis.md",
+      "source_hash": "aaea27431774bcd2c2b77ff06bfc1295f948331b590d2808f2bb0e72aace31d5",
+      "translation": "You can use __ELBOT_CODE_0__ to view Elnis/Elwisp event logs.",
+      "updated_at": 1781753001
     },
     "docs/elnis.md:paragraph:adef3d9013f4f87cbcd06bb22cf5a2535a1649b89d32a882c4fd4aa22aea893d": {
       "kind": "paragraph",
@@ -5257,6 +5369,14 @@
       "source_hash": "e8ed8ec34748c1b2669ebd41ac9693b4a8ad42b4d79dd6520d28147f0ab44a25",
       "translation": "Elnis is responsible for:\n",
       "updated_at": 1781710746
+    },
+    "docs/elnis.md:paragraph:f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f": {
+      "kind": "paragraph",
+      "source": "示例：\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f",
+      "translation": "Example:\n",
+      "updated_at": 1781753001
     },
     "docs/elnis.md:table:047563285d4d325d5023f47c22f5c5f3e14100d30d569d73c91946b0524815e0": {
       "kind": "table",

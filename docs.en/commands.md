@@ -164,6 +164,7 @@ In work mode, the LLM can discover tool details on demand via `discover_tool`. I
 | --- | --- |
 | `/log [options]` | Query runtime logs. |
 | `/audit [options]` | Query audit logs. |
+| `/elwisp [name] [options]` | Query Elnis/Elwisp event logs. |
 
 Common options:
 
@@ -188,6 +189,19 @@ Common options:
 | `--session <id>` | Filter by Session ID. |
 | `--tool <name>` | Filter by tool name. |
 
+`/elwisp` queries `elnis-YYYY-MM-DD.log`, with additional support for:
+
+| Option | Function |
+| --- | --- |
+| `[name]` | Filter by Elwisp name, equivalent to `--name`. |
+| `--name <name>` or `--elwisp <name>` | Filter by Elwisp name. |
+| `--source <source>` | Filter by event source. |
+| `--id <id>` or `--source-id <id>` | Filter by external event ID. |
+| `--mode <record|direct|llm>` | Filter by event mode. |
+| `--event-key <key>` | Filter by Elnis event key. |
+| `--event-id <id>` | Filter by internal Elnis event ID. |
+| `--token <name>` | Filter by token name, excluding the original token text. |
+
 Example:
 
 ```text
@@ -196,6 +210,9 @@ Example:
 /log --msg startup --days 3
 /audit --event tool_call --risk high -n 10
 /audit --actor cli:local --since 24h
+/elwisp
+/elwisp server-watchdog -n 20
+/elwisp --source minecraft-main --mode llm --since 2h
 ```
 
 ## High-risk Tool Confirmation
