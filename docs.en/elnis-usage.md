@@ -6,34 +6,43 @@ This article follows [Elnis listening hub](elnis.md) and explains how to enable 
 
 ## Quick Start
 
-Elnis is disabled by default. To enable it, configure it in `app.toml`:
+Elnis is disabled by default. When enabling it, first declare the configuration file entry in `app.toml`:
 
 ```toml
-[elnis]
-enabled = true # Elnis master switch; if false, the HTTP runtime will not start.
+[config_files]
+elnis = "elnis.toml"
+```
 
-[elnis.http]
+Then configure it in `elnis.toml`:
+
+```toml
+enabled = true # Elnis master switch; if false, the HTTP runtime will not start.
+allowed_tools = ["web_search", "web_extract"] # By default, ElBot internal tools preloaded by Elwisp are allowed.
+
+[http]
 addr = "127.0.0.1:32170" # It is recommended to bind to a local address first, and use a reverse proxy or intranet forwarding when exposure is needed.
 max_body_bytes = 1048576 # Request body limit for a single Elvena request.
 queue_size = 128 # Background queue length for LLM mode.
 workers = 2 # Number of background workers in LLM mode.
 
-[elnis.tokens.home]
+[tokens.home]
 token_env = ["ELNIS_HOME_TOKEN"] # Read from system environment variables or the .env file in the configuration directory.
 
-[elnis.delivery]
+[delivery]
 default_platforms = ["cli"] # Default delivery platforms allowed by Elnis policies.
 allow_superadmins = true # Whether delivery to the target platform's superadmin is allowed.
 
 # Elwisp is enabled by default; configure it only when you need to limit tokens, override delivery policies, or disable it.
-[elnis.elwisps.server-watchdog]
+[elwisps.server-watchdog]
 allowed_tokens = ["home"]
+allowed_tools = ["shell", "web_search"] # Overrides the top-level allowed_tools when present.
+disabled_external_tools = ["danger_tool"] # External tools are allowed by default; only specified tools are disabled here.
 
-[elnis.elwisps.server-watchdog.delivery]
+[elwisps.server-watchdog.delivery]
 default_platforms = ["cli"]
 allow_superadmins = true
 
-[elnis.elwisps.spike-checker]
+[elwisps.spike-checker]
 enabled = false # This Elwisp is disabled only when enabled=false is explicitly set.
 ```
 
@@ -45,12 +54,14 @@ ELNIS_HOME_TOKEN=change-me
 
 Configuration description:
 
-- `[elnis].enabled=false` will not start the Elnis HTTP runtime.
+- `enabled=false` will not start the Elnis HTTP runtime.
 - Do not write the token plaintext into the configuration; it is recommended to place it in system environment variables or the configuration directory `.env`.
 - `token_env` can contain multiple environment variable names, which will be tried in order.
-- Elwisp is enabled by default; it will receive events if `[elnis.elwisps.<name>]` is not specified, if it is specified but `enabled` is not, or if `enabled=true` is specified.
+- Elwisp is enabled by default; it will receive events if `[elwisps.<name>]` is not specified, if it is specified but `enabled` is not, or if `enabled=true` is specified.
 - Only explicit `enabled=false` will disable the corresponding Elwisp.
 - `allowed_tokens` restricts which tokens can represent the Elwisp to deliver events; if not specified, any authenticated token is allowed.
+- The top-level `allowed_tools` is the default whitelist for ElBot internal tools; it is overridden when `allowed_tools` of an individual Elwisp exists.
+- External tools are allowed by default; an individual Elwisp can use `disabled_external_tools` to disable specific external tools.
 - `default_platforms` is the default delivery platform allowed by the Elnis policy.
 - `allow_superadmins=true` indicates that delivery to the target platform's superadmin is allowed.
 
@@ -90,6 +101,20 @@ If the same `elwisp.name + source + id` is sent again, Elnis will return duplica
   "format": "elyph",
   "content": "#task investigate_cpu_alert - 检查服务器 CPU 异常并判断是否需要通知",
   "tool_list_names": ["shell"],
+  "tools": [
+    {
+      "name": "server_status",
+      "description": "查询 minecraft-main 当前服务状态和最近错误摘要",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "detail": {"type": "boolean"}
+        }
+      },
+      "timeout_seconds": 10,
+      "endpoint": "http://127.0.0.1:32171/tools/server_status"
+    }
+  ],
   "targets": {
     "platforms": ["cli"],
     "superadmins": true
@@ -116,8 +141,8 @@ Common fields:
 | `format` | No | `text` or `elyph`, default `text`. |
 | `content` | Yes | Event body. For LLM mode, using ELyph Task Notation `#task` is recommended. |
 | `model_slot` | No | Model slot, used subsequently for `elwisp1`, `elwisp2`, and `elwisp3`. |
-| `tool_list_names` | No | ElBot tool name preloaded for background tasks; `discover_tool` will be ignored. |
-| `tools` | No | Tools declared by Elwisp along with the event. This is currently a capability under development and is not recommended for reliance. |
+| `tool_list_names` | No | The name of the ElBot internal tool preloaded by the background task; it must be within the adjudication range of Elnis `allowed_tools`, and `discover_tool` will be ignored. |
+| `tools` | No | External tools declared by Elwisp with events; allowed by default, rejected when hitting the `disabled_external_tools` of that Elwisp. |
 | `targets` | No | The delivery target expected by Elwisp; the final decision is still made by Elnis. |
 | `meta` | No | Original supplementary data, used only for recording and prompt attachment. |
 
@@ -155,5 +180,6 @@ Security Conventions:
 - The token name is used only for logs and audit logs, and is not equivalent to the Elwisp identity.
 - The original token text is not written to logs.
 - Elwisp cannot send platform messages directly.
-- Elwisp cannot bypass the Tool Runtime and Security Policy to call ElBot tools.
-- The `tools` declared by Elwisp is currently still under development and should not be relied upon as a stable interface.
+- Elwisp cannot bypass Tool Runtime and Security Policy to call ElBot internal tools; `tool_list_names` will be adjudicated by Elnis `allowed_tools`.
+- External `tools` declared by Elwisp are allowed by default and are injected as model-callable function names in the form of `elwisp_<elwisp>_<tool>` via ToolRun; A single Elwisp can use `disabled_external_tools` to disable specific tools.
+- External tool calls are initiated by Elnis as HTTP JSON POST requests to the declared endpoint; the external tool itself is responsible for the actual risk boundary, and Elnis handles it as low-risk.

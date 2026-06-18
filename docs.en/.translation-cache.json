@@ -26,9 +26,9 @@
       "updated_at": 1781749596
     },
     "docs/elnis-usage.md": {
-      "source_hash": "1b1d0ef3aa3bc8a0610622e70833c3152696071174307c2e28026a2e52085a9b",
+      "source_hash": "165a676f44b8a23586dd26d026bd9abb76d7cb18903c3be8e0c8311efae808c7",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1781710347
+      "updated_at": 1781749660
     },
     "docs/elnis.md": {
       "source_hash": "3a0c1b74d7554f2f80b194e4f58bb5933d130d860d3278535318c421e0777238",
@@ -4202,6 +4202,22 @@
       "translation": "Request body limit for a single Elvena request.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:code-comment:toml:906797bec5011c94fcbe67b99f49ad48e6b6e32ab8891d42e90fd72d71b22c03": {
+      "kind": "code-comment:toml",
+      "source": "外部工具默认允许，此处只禁用指定工具。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "906797bec5011c94fcbe67b99f49ad48e6b6e32ab8891d42e90fd72d71b22c03",
+      "translation": "External tools are allowed by default; only specified tools are disabled here.",
+      "updated_at": 1781749660
+    },
+    "docs/elnis-usage.md:code-comment:toml:92fb121c89858e8c4f62a7eedc662ab0f638b89135b19c23d26333a000460cd2": {
+      "kind": "code-comment:toml",
+      "source": "默认允许 Elwisp 预加载的 ElBot 内部工具。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "92fb121c89858e8c4f62a7eedc662ab0f638b89135b19c23d26333a000460cd2",
+      "translation": "By default, ElBot internal tools preloaded by Elwisp are allowed.",
+      "updated_at": 1781749660
+    },
     "docs/elnis-usage.md:code-comment:toml:a2d205d02911e79cd86af53c1ae1fb5c8ed7bf6168aebe9d054159b205da22cb": {
       "kind": "code-comment:toml",
       "source": "llm 模式后台队列长度。",
@@ -4225,6 +4241,14 @@
       "source_hash": "c2ef86d5900a07f72fc8bb5bce6305e2030e5baff114a859d434d5eaf0da866d",
       "translation": "Read from system environment variables or the .env file in the configuration directory.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:code-comment:toml:e2387e326cb33176309e98026e53ed52661a0a08046d9dd7e698d5a009128dcb": {
+      "kind": "code-comment:toml",
+      "source": "存在时覆盖顶层 allowed_tools。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "e2387e326cb33176309e98026e53ed52661a0a08046d9dd7e698d5a009128dcb",
+      "translation": "Overrides the top-level allowed_tools when present.",
+      "updated_at": 1781749660
     },
     "docs/elnis-usage.md:heading:2f7603758467fcaf2efd9765d55509df69a9386873489f36b2160fdf3eb99d7c": {
       "kind": "heading",
@@ -4258,6 +4282,14 @@
       "translation": "Delivery Target and Security Boundary",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:list:003001043952716bc303b80bfd3876bb1876f20cf3575a96f0764ded0dd581f6": {
+      "kind": "list",
+      "source": "Elwisp 不能绕过 Tool Runtime 和 Security Policy 调用 ElBot 内部工具；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "003001043952716bc303b80bfd3876bb1876f20cf3575a96f0764ded0dd581f6",
+      "translation": "Elwisp cannot bypass Tool Runtime and Security Policy to call ElBot internal tools;",
+      "updated_at": 1781749660
+    },
     "docs/elnis-usage.md:list:1cd550c5433eab93b1dbcf6f69b2470f93dab7f746b21fccbd73e7fc287adf76": {
       "kind": "list",
       "source": "token 原文不写日志。",
@@ -4290,6 +4322,14 @@
       "translation": "__ELBOT_CODE_0__ restricts which tokens can represent the Elwisp to deliver events; if not specified, any authenticated token is allowed.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:list:5c6d736596b8e683ecb7c0de019d1bd69420c0838b38ad750c5ac86bcc5a8451": {
+      "kind": "list",
+      "source": "外部工具调用由 Elnis 对声明的 endpoint 发起 HTTP JSON POST；外部工具自身负责实际风险边界，Elnis 侧按 low 风险处理。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "5c6d736596b8e683ecb7c0de019d1bd69420c0838b38ad750c5ac86bcc5a8451",
+      "translation": "External tool calls are initiated by Elnis as HTTP JSON POST requests to the declared endpoint; the external tool itself is responsible for the actual risk boundary, and Elnis handles it as low-risk.",
+      "updated_at": 1781749660
+    },
     "docs/elnis-usage.md:list:72f74d2a2cdd5caf8ef124febb51d2ce5a60e9564d67a1cd7ec35871ca7661a1": {
       "kind": "list",
       "source": "Elwisp 默认启用；没写 __ELBOT_CODE_0__、写了但没写 __ELBOT_CODE_1__、或写了 __ELBOT_CODE_2__ 都会接收。",
@@ -4305,6 +4345,22 @@
       "source_hash": "73d5fe9665af132d24d5010a2c870f7754dfda9a78cd5d5d727efb1d882bebb4",
       "translation": "__ELBOT_CODE_0__ is the default delivery platform allowed by the Elnis policy.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:8ae9e28aae0d922c05e2318b6bef3dc28c9ae1ac81151aa3bed6a8c15bc16bc5": {
+      "kind": "list",
+      "source": "单个 Elwisp 可用 __ELBOT_CODE_0__ 禁用指定工具。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "8ae9e28aae0d922c05e2318b6bef3dc28c9ae1ac81151aa3bed6a8c15bc16bc5",
+      "translation": "A single Elwisp can use __ELBOT_CODE_0__ to disable specific tools.",
+      "updated_at": 1781749660
+    },
+    "docs/elnis-usage.md:list:8eb172baff6cb1bb82bd64459b2ec69b086133de62fadd4749234e7458a26eb0": {
+      "kind": "list",
+      "source": "Elwisp 声明的外部 __ELBOT_CODE_0__ 默认允许，并通过 ToolRun 以 __ELBOT_CODE_1__ 形式注入为模型可调用函数名；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "8eb172baff6cb1bb82bd64459b2ec69b086133de62fadd4749234e7458a26eb0",
+      "translation": "External __ELBOT_CODE_0__ declared by Elwisp are allowed by default and are injected as model-callable function names in the form of __ELBOT_CODE_1__ via ToolRun;",
+      "updated_at": 1781749660
     },
     "docs/elnis-usage.md:list:93d6cff528647d84f62ea43b4ae8b3c7e3f8643633a16d2db0416cdb46fcf0df": {
       "kind": "list",
@@ -4338,6 +4394,14 @@
       "translation": "__ELBOT_CODE_0__ can contain multiple environment variable names, which will be tried in order.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:list:c29df2c57475853231da13768368ce4696ea745b6bf979e548e40969b7289e27": {
+      "kind": "list",
+      "source": "顶层 __ELBOT_CODE_0__ 是 ElBot 内部工具默认白名单，单个 Elwisp 的 __ELBOT_CODE_1__ 存在时覆盖它。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "c29df2c57475853231da13768368ce4696ea745b6bf979e548e40969b7289e27",
+      "translation": "The top-level __ELBOT_CODE_0__ is the default whitelist for ElBot internal tools; it is overridden when __ELBOT_CODE_1__ of an individual Elwisp exists.",
+      "updated_at": 1781749660
+    },
     "docs/elnis-usage.md:list:d627a0566699b39e88111dc901fa4f867b1c710a873ce3bd52b2c7b1645262b3": {
       "kind": "list",
       "source": "Elwisp 不能直接发送平台消息。",
@@ -4345,6 +4409,14 @@
       "source_hash": "d627a0566699b39e88111dc901fa4f867b1c710a873ce3bd52b2c7b1645262b3",
       "translation": "Elwisp cannot send platform messages directly.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:da7abcd05a78fdef779330080f2fe07cc83d7ca4ceb1aae961bd45a602608302": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 会经过 Elnis __ELBOT_CODE_1__ 裁决。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "da7abcd05a78fdef779330080f2fe07cc83d7ca4ceb1aae961bd45a602608302",
+      "translation": "__ELBOT_CODE_0__ will be adjudicated by Elnis __ELBOT_CODE_1__.",
+      "updated_at": 1781749660
     },
     "docs/elnis-usage.md:list:ec3ddb6e6198fb83988d8b2321b34657d5388640d5b1502ba486bc5d442d7056": {
       "kind": "list",
@@ -4361,6 +4433,14 @@
       "source_hash": "f37c91ec3dffafe934f5bce843a93dc68030d8aacf7bc7f31680545522c164c8",
       "translation": "Do not write the token plaintext into the configuration; it is recommended to place it in system environment variables or the configuration directory __ELBOT_CODE_0__.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:f5a5eaccc2efc4c25367a39660d97dd2324e67b011c21aa0f6cbef9a3bc5ddf5": {
+      "kind": "list",
+      "source": "外部工具默认允许；单个 Elwisp 可以用 __ELBOT_CODE_0__ 禁用指定外部工具。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "f5a5eaccc2efc4c25367a39660d97dd2324e67b011c21aa0f6cbef9a3bc5ddf5",
+      "translation": "External tools are allowed by default; an individual Elwisp can use __ELBOT_CODE_0__ to disable specific external tools.",
+      "updated_at": 1781749660
     },
     "docs/elnis-usage.md:paragraph:164dc12a20c5f77e4831ecc3dc9452ef0b001cc78cd2abb73983e4398560321f": {
       "kind": "paragraph",
@@ -4385,6 +4465,14 @@
       "source_hash": "4624f2dadcd59445162f5733cd19d8e71f1ad1220021c014692e0ba2bdd2393a",
       "translation": "Elnis will still calculate the final target based on global configuration, Elwisp configuration, and platform availability.\n",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:4bf90b5417558aae2406941f208517a0bfd1d806a442885bb7502d4e09c665a9": {
+      "kind": "paragraph",
+      "source": "Elnis 默认关闭。启用时先在 __ELBOT_CODE_0__ 中声明配置文件入口：\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "4bf90b5417558aae2406941f208517a0bfd1d806a442885bb7502d4e09c665a9",
+      "translation": "Elnis is disabled by default. When enabling it, first declare the configuration file entry in __ELBOT_CODE_0__:\n",
+      "updated_at": 1781749660
     },
     "docs/elnis-usage.md:paragraph:515207d38c35cf9ff2a06be56e52c81117b9ccb1cde3b5ab88bf3301d820f5cb": {
       "kind": "paragraph",
@@ -4425,6 +4513,14 @@
       "source_hash": "a0c0277789aa15ef006e25e7a5ffb166f33bd5f0daf653a4e5196858ffc70643",
       "translation": "__ELBOT_CODE_0__ can contain __ELBOT_CODE_1__, indicating that the request is delivered to all platforms allowed by the Elnis policy.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:a2dca25f17e2b2eef59e03722a30cc45068c8a43cd0217058c50a1e0ba6e78b0": {
+      "kind": "paragraph",
+      "source": "然后在 __ELBOT_CODE_0__ 中配置：\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "a2dca25f17e2b2eef59e03722a30cc45068c8a43cd0217058c50a1e0ba6e78b0",
+      "translation": "Then configure it in __ELBOT_CODE_0__:\n",
+      "updated_at": 1781749660
     },
     "docs/elnis-usage.md:paragraph:a8dc9343283716b3826795b35c2c6108372daa8ec4a48d786007f07ffe37139a": {
       "kind": "paragraph",
@@ -4497,6 +4593,14 @@
       "source_hash": "1b1efc4c8947139785108253c00ade50f0a742410448ca28aad89a809dc99cb4",
       "translation": "Protocol version, currently __ELBOT_CODE_0__.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:2cb9d988869c02ef5c567ce28e299b343d67b138d4f8d22d515bb8302ff9c409": {
+      "kind": "table",
+      "source": "Elwisp 随事件声明的外部工具；默认允许，命中该 Elwisp 的 __ELBOT_CODE_0__ 时拒绝。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "2cb9d988869c02ef5c567ce28e299b343d67b138d4f8d22d515bb8302ff9c409",
+      "translation": "External tools declared by Elwisp with events; allowed by default, rejected when hitting the __ELBOT_CODE_0__ of that Elwisp.",
+      "updated_at": 1781749660
     },
     "docs/elnis-usage.md:table:2da44f750570a91eb5b2500cacfcba892fd2ebc9c31d77f3fd4ccf67f5ee966c": {
       "kind": "table",
@@ -4593,6 +4697,14 @@
       "source_hash": "9100ffc0032ef1bbc8e59bb6f3ee8e9764396cf848914a4d1f67347d2461dc77",
       "translation": "Tools declared by Elwisp along with the event. This is currently a capability under development and is not recommended for reliance.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:a3bb081cc5dfaf475764d163a336df883c20aadd5c83eb3aa2699b74bd4693bb": {
+      "kind": "table",
+      "source": "后台任务预加载的 ElBot 内部工具名；必须在 Elnis __ELBOT_CODE_0__ 裁决范围内，__ELBOT_CODE_1__ 会被忽略。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "a3bb081cc5dfaf475764d163a336df883c20aadd5c83eb3aa2699b74bd4693bb",
+      "translation": "The name of the ElBot internal tool preloaded by the background task; it must be within the adjudication range of Elnis __ELBOT_CODE_0__, and __ELBOT_CODE_1__ will be ignored.",
+      "updated_at": 1781749660
     },
     "docs/elnis-usage.md:table:acc72006426637ac2646a5b62adf4ab0cde7b909e968ff3cdf8453c89e08951b": {
       "kind": "table",
