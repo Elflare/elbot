@@ -26,9 +26,9 @@
       "updated_at": 1781779407
     },
     "docs/elnis-usage.md": {
-      "source_hash": "3714438d2c228aa66c8f030e69473d1cca2730d81bd88069f8abb9e6cedd5c5f",
+      "source_hash": "4328a8dd1058cc4c21ce2c161efc561416dcef36da6ae73e8a73641c6376516a",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1781753745
+      "updated_at": 1781779450
     },
     "docs/elnis.md": {
       "source_hash": "e37fb285d10ac6630a3a92232fed75abf8c888a91bea7c064cb84202bc7ef6f8",
@@ -4850,6 +4850,14 @@
       "translation": "External tool calls are initiated by Elnis as HTTP JSON POST requests to the declared endpoint; the external tool itself is responsible for the actual risk boundary, and Elnis handles it as low-risk.",
       "updated_at": 1781749660
     },
+    "docs/elnis-usage.md:list:660911e77f107b6d094a4303be8d11e07fd3abca675e7313c9c4caeaad5a9edd": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 只能选择 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__，不能指定任意内部模式名。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "660911e77f107b6d094a4303be8d11e07fd3abca675e7313c9c4caeaad5a9edd",
+      "translation": "__ELBOT_CODE_0__ can only choose __ELBOT_CODE_1__, __ELBOT_CODE_2__, or __ELBOT_CODE_3__, and cannot specify an arbitrary internal mode name.",
+      "updated_at": 1781779450
+    },
     "docs/elnis-usage.md:list:72f74d2a2cdd5caf8ef124febb51d2ce5a60e9564d67a1cd7ec35871ca7661a1": {
       "kind": "list",
       "source": "Elwisp 默认启用；没写 __ELBOT_CODE_0__、写了但没写 __ELBOT_CODE_1__、或写了 __ELBOT_CODE_2__ 都会接收。",
@@ -4970,6 +4978,14 @@
       "translation": "The HTTP response only indicates that Elnis has received or rejected the request, and does not wait for the LLM to complete.\n",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:paragraph:3992a8029e30f39041102d37033acf1f8f97cc62e58323fc3fd801ddc6f4ab09": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 会提供协议说明、配置片段、事件模板、代码脚手架和测试命令；真正写文件或运行命令仍会继续使用对应工具。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "3992a8029e30f39041102d37033acf1f8f97cc62e58323fc3fd801ddc6f4ab09",
+      "translation": "__ELBOT_CODE_0__ will provide protocol descriptions, configuration snippets, event templates, code scaffolding, and test commands; actually writing files or running commands will still continue to use the corresponding tools.\n",
+      "updated_at": 1781779450
+    },
     "docs/elnis-usage.md:paragraph:3a19b861be8a99d9fa2420f650b59094617f0be69eaf90224754eaa8411fb027": {
       "kind": "paragraph",
       "source": "当前建议只使用：\n",
@@ -5025,6 +5041,14 @@
       "source_hash": "69507ad87dd69e3fdec856cb4b561370796eb5f36d4ad0b515f9c77eb8d03934",
       "translation": "Elnis is disabled by default. To enable it, configure it in __ELBOT_CODE_0__:\n",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:6bedfd1be38f4429ef585d0cc5ca46ae9a4ec68731e48cedc6e0ef4e50fc3d08": {
+      "kind": "paragraph",
+      "source": "如果想让 ElBot 帮你生成 Elwisp 监听器，可以在 work 模式下向超级管理员会话提出需求，例如：\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "6bedfd1be38f4429ef585d0cc5ca46ae9a4ec68731e48cedc6e0ef4e50fc3d08",
+      "translation": "If you want ElBot to help you generate an Elwisp listener, you can submit a request to the superadmin Session in work mode, for example:\n",
+      "updated_at": 1781779450
     },
     "docs/elnis-usage.md:paragraph:a0c0277789aa15ef006e25e7a5ffb166f33bd5f0daf653a4e5196858ffc70643": {
       "kind": "paragraph",
@@ -5089,6 +5113,14 @@
       "source_hash": "d15d6054f2b4a4a772616da1214df94308e7a3fd040856a3ca2ffcbccb7bd536",
       "translation": "**Note:** Elvena is based on JSON, and the content must be UTF-8 encoded.",
       "updated_at": 1781752966
+    },
+    "docs/elnis-usage.md:table:0250510547f02dc95c376267491814c698dc8f9b58256d5afe9f10609b16ddb4": {
+      "kind": "table",
+      "source": "Elnis LLM 模型槽位，仅支持 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__；未填写或对应槽位未配置时回退到 __ELBOT_CODE_3__。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "0250510547f02dc95c376267491814c698dc8f9b58256d5afe9f10609b16ddb4",
+      "translation": "Elnis LLM model slot, only supporting __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__; if left blank or the corresponding slot is not configured, it will fall back to __ELBOT_CODE_3__.",
+      "updated_at": 1781779450
     },
     "docs/elnis-usage.md:table:05a363aa4f244abaff4fcea17940f12ab23dc582a574ba43df7b47246ad7d47a": {
       "kind": "table",
