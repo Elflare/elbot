@@ -11,16 +11,16 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 
 ### 1. Lightweight and Efficient
 
-**Ultra-lightweight Go implementation.** ElBot currently takes <10ms to start locally (N5105, SATA SSD), with resident memory of approximately 30MB.
+**Ultra-lightweight Go implementation**: ElBot's current local startup time is <10ms (N5105, SATA SSD), with resident memory of about 30MB.
 
-**Ultra-token-efficient tool discovery. ** Research shows that many ordinary users still primarily use LLM-based products as advanced search engines, writing assistants, and listening partners; frequent tool calls are not the norm for all conversations.
-Reference: Chatterji et al., *How People Use ChatGPT*, NBER, 2025;Yan et al., *ShareChat: A Dataset of Chatbot Conversations in the Wild*, arXiv:2512.17843, 2025。
+**Token-efficient tool discovery**: Research shows that many ordinary users still primarily use LLM-like products as advanced search engines, writing assistants, and listening objects; frequent tool calls are not the norm for all conversations.
+ Reference: Chatterji et al., *How People Use ChatGPT*, NBER, 2025;Yan et al., *ShareChat: A Dataset of Chatbot Conversations in the Wild*, arXiv:2512.17843, 2025。
 
 ElBot does not inject the full schema of all tools by default in every round of conversation, but only exposes `discover_tool` and the names of currently available tools. When the model needs to use a tool, it first discovers the tool details on demand, and then the Agent injects the corresponding schema. Greatly reduces invalid context overhead.
 
-**Chat / Work dual mode. ** ElBot distinguishes between chat mode and work mode. chat mode completely removes tools, making it more suitable for daily chatting, companionship, lightweight Q&A, and low-cost conversations; Work mode enables tool discovery and tool calling capabilities for complex tasks. The two modes can be configured with models independently, allowing low-cost models to handle casual chat and powerful models to focus on complex tasks.
+**Chat / Work dual mode**: ElBot distinguishes between chat mode and work mode. chat mode completely removes tools, making it more suitable for daily chatting, companionship, lightweight Q&A, and low-cost conversations; Work mode enables tool discovery and tool calling capabilities for complex tasks. The two modes can be configured with models independently, allowing low-cost models to handle casual chat and powerful models to focus on complex tasks.
 
-**Layered resident memory and long-term memory. ** Resident memory only saves short, stable information that truly needs to be injected in each round, reducing token consumption; Longer and more complex memories are not forcibly auto-injected; instead, the LLM actively queries them via the `long_memory` tool when needed. Long-term memory uses human-readable Markdown files as source data, while using SQLite FTS as a reconstructible search index, balancing transparency and retrieval efficiency.
+**Resident memory and long-term memory layering**: Resident memory only saves short, stable information that truly needs to be injected into every round, reducing token consumption; Longer and more complex memories are not forcibly auto-injected; instead, the LLM actively queries them via the `long_memory` tool when needed. Long-term memory uses human-readable Markdown files as source data, while using SQLite FTS as a reconstructible search index, balancing transparency and retrieval efficiency.
 
 For personal daily use, token consumption per request:
 
@@ -30,15 +30,15 @@ For personal daily use, token consumption per request:
 
 ### II. Powerful and Extensible
 
-**Extensible Hook system. ** ElBot features a built-in Hook Layer, allowing extension logic to be inserted at key event points such as Agent input, LLM request, LLM response, platform sending, and platform connection. Hooks can modify messages, append output intents, call low-risk tools, or inject resident memory. Built-in rule Hooks, emoji Hooks, and resident memory Hooks are provided, with support for extending independent plugins in the future.
+**Extensible Hook system**: ElBot has a built-in Hook Layer, allowing extension logic to be inserted at key event points such as Agent input, LLM request, LLM response, platform sending, and platform connection. Hooks can modify messages, append output intents, call low-risk tools, or inject resident memory. Built-in rule Hooks, emoji Hooks, and resident memory Hooks are provided, with support for extending independent plugins in the future.
 
-**Standard Cron and LLM Cron. ** ElBot features a built-in Cron Runtime and an LLM-orchestratable Cron service. Standard Cron sends fixed content directly according to a schedule; LLM Cron drives model execution using task descriptions, making it suitable for scheduled tasks that require analysis, summarization, or the use of tools.
+**Standard Cron and LLM Cron**: ElBot features a built-in Cron Runtime and an LLM-orchestratable Cron service. Standard Cron sends fixed content directly according to a schedule; LLM Cron drives model execution using task descriptions, making it suitable for scheduled tasks that require analysis, summarization, or the use of tools.
 
-**ELyph Task Notation. ** ELyph is used to describe LLM Cron and native Skills. The goal is to reduce ambiguity in natural language task descriptions and use a shorter, more stable structure to express inputs, outputs, steps, conditions, and constraints. Compared to arbitrary Markdown, ELyph is better suited for reusing and passing tasks between LLMs, and is also easier to lint, audit, and process with tools.
+**ELyph Task Notation**: ELyph is used to describe LLM Cron and native skills. The goal is to reduce ambiguity in natural language task descriptions and use a shorter, more stable structure to express inputs, outputs, steps, conditions, and constraints. Compared to arbitrary Markdown, ELyph is better suited for reusing and passing tasks between LLMs, and is also easier to lint, audit, and process with tools.
 
-**EL Skills that can be created by LLMs. ** ElBot has a built-in `create_el_skill` meta-tool, allowing LLMs to crystallize reusable experience into EL Skills. ELyph syntax is automatically validated upon creation, with the option to include and compile Go source code.
+**EL Skills creatable by LLM**: ElBot has a built-in `create_el_skill` meta-tool, allowing the LLM to crystallize reusable experience into EL Skills. ELyph syntax is automatically validated upon creation, with the option to include and compile Go source code.
 
-**Compatible with internet Python Skills. ** In addition to native EL Skills, ElBot is also compatible with common external Python skill structures. Automatically scan `SKILL.md` or `SKILL.elyph`, read the name, description, applicable scenarios, and risk level, and execute them via hidden wrapper tools.
+**Compatible with Internet Python Skills**: In addition to native EL Skills, ElBot is also compatible with common external Python skill structures. Automatically scan `SKILL.md` or `SKILL.elyph`, read the name, description, applicable scenarios, and risk level, and execute them via hidden wrapper tools.
 
 ### III. Elnis Event Perception System
 
@@ -50,17 +50,17 @@ For detailed information, see [Elnis Listening Hub](docs.en/elnis.md).
 
 ### IV. Flexible Deployment and Enhanced Sessions
 
-**Multi-platform and rich output abstraction.** ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, and QQ Official, with space reserved for extending to other platforms.
+**Multi-platform and Rich Output Abstraction**: ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, and QQ Official, with room for extending to other platforms.
 
-**Session, Fork, and context compaction. ** Built-in persistent Session service, supporting Session recovery, archiving, pinning, Forking, deletion, paginated viewing, and platform isolation. Long conversations automatically trigger context compaction to keep the window controllable; normal conversation can continue after compaction.
+**Session, Fork, and Context Compaction**: Built-in persistent Session service, supporting Session recovery, archiving, pinning, Forking, deletion, paginated viewing, and platform isolation. Long conversations automatically trigger context compaction to keep the window controllable; normal conversation can continue after compaction.
 
 ### V. Secure and Reliable
 
-**Security policies and risk confirmation.** The tool system has built-in risk levels, role permission judgments, and high-risk confirmation workflows. Ordinary users can only discover and call low-risk tools; superadmins must also confirm each item when calling high-risk tools.
+**Security Policies and Risk Confirmation**: The tool system has built-in risk levels, role permission checks, and high-risk confirmation processes. Regular users can only discover and invoke low-risk tools; even superadmins must confirm each item when invoking high-risk tools.
 
-**Lightweight sandbox isolation. ** Background Shell execution is constrained by AST-level sandboxing. Tool execution comes with its own sandbox context, and artifact files are temporarily stored in an isolated directory to avoid affecting system files.
+**Lightweight Sandbox Isolation**: Background Shell execution is subject to AST-level sandbox constraints. Tool execution comes with its own sandbox context, and artifact files are temporarily stored in an isolated directory to avoid affecting system files.
 
-**Comprehensive logging and auditing.** Distinguishes between runtime logs, Elwisp logs, and audit logs, supporting structured fields, log queries, audit queries, and runtime debugging.
+**Comprehensive Logging and Auditing**: Distinguishes between runtime logs, Elwisp logs, and audit logs, supporting structured fields, log queries, audit queries, and runtime debugging.
 
 ## Usage
 

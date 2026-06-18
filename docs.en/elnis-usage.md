@@ -65,6 +65,14 @@ Configuration description:
 - `default_platforms` is the default delivery platform allowed by the Elnis policy.
 - `allow_superadmins=true` indicates that delivery to the target platform's superadmin is allowed.
 
+If you want ElBot to help you generate an Elwisp listener, you can submit a request to the superadmin Session in work mode, for example:
+
+```text
+@tool:elwisp_creator 帮我创建一个监听 RSS 更新并通过 Elnis 投递摘要的 Elwisp
+```
+
+`elwisp_creator` will provide protocol descriptions, configuration snippets, event templates, code scaffolding, and test commands; actually writing files or running commands will still continue to use the corresponding tools.
+
 After starting ElBot, you can use curl to test a `direct` event:
 
 ```bash
@@ -100,6 +108,7 @@ If the same `elwisp.name + source + id` is sent again, Elnis will return duplica
   "title": "服务器 CPU 异常",
   "format": "elyph",
   "content": "#task investigate_cpu_alert - 检查服务器 CPU 异常并判断是否需要通知",
+  "model_slot": "elwisp2",
   "tool_list_names": ["shell"],
   "tools": [
     {
@@ -140,7 +149,7 @@ Common fields:
 | `title` | No | Event title, used for notifications and background Session titles. |
 | `format` | No | `text` or `elyph`, default `text`. |
 | `content` | Yes | Event body. For LLM mode, using ELyph Task Notation `#task` is recommended. |
-| `model_slot` | No | Model slot, used subsequently for `elwisp1`, `elwisp2`, and `elwisp3`. |
+| `model_slot` | No | Elnis LLM model slot, only supporting `elwisp1`, `elwisp2`, and `elwisp3`; if left blank or the corresponding slot is not configured, it will fall back to `work`. |
 | `tool_list_names` | No | The name of the ElBot internal tool preloaded by the background task; it must be within the adjudication range of Elnis `allowed_tools`, and `discover_tool` will be ignored. |
 | `tools` | No | External tools declared by Elwisp with events; allowed by default, rejected when hitting the `disabled_external_tools` of that Elwisp. |
 | `targets` | No | The delivery target expected by Elwisp; the final decision is still made by Elnis. |
@@ -183,6 +192,7 @@ Security Conventions:
 
 - The token name is used only for logs and audit logs, and is not equivalent to the Elwisp identity.
 - The original token text is not written to logs.
+- `model_slot` can only choose `elwisp1`, `elwisp2`, or `elwisp3`, and cannot specify an arbitrary internal mode name.
 - Elwisp cannot send platform messages directly.
 - Elwisp cannot bypass Tool Runtime and Security Policy to call ElBot internal tools; `tool_list_names` will be adjudicated by Elnis `allowed_tools`.
 - External `tools` declared by Elwisp are allowed by default and are injected as model-callable function names in the form of `elwisp_<elwisp>_<tool>` via ToolRun; A single Elwisp can use `disabled_external_tools` to disable specific tools.
