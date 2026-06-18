@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "a4b3e4e416bddc039a95483c47649f2511592f77fbc9951cee0c437e0fb298a0",
+      "source_hash": "7e5b2be06612e3cf56fd93f76b85c59cd0a2f507b84e7abbc29eaf35d3138473",
       "target": "README.md",
-      "updated_at": 1781779200
+      "updated_at": 1781786013
     },
     "docs/README.md": {
       "source_hash": "b40f5d1519dbd52e73aeee1fad99f614728052e3ae821add12de6ea4f9d69a7c",
@@ -569,6 +569,14 @@
       "source_hash": "269ef0efed1d38bab7ed21495376e4a5ad88047208ba8d2cb29453a775d334b1",
       "translation": "ElBot is still under rapid development; interfaces, configurations, and internal implementations may continue to be adjusted. It is currently more suitable for exploration as a personal Agent/bot framework.\n",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:2b63699a68e31f81c59d9343adaa0639790597fcbb5a66581043c8382d03edb5": {
+      "kind": "paragraph",
+      "source": "**兼容外置 AgentSkill**： 除了原生 Go Skill，ElBot 也兼容遵从 agentskills.io 风格的外置 AgentSkill。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "2b63699a68e31f81c59d9343adaa0639790597fcbb5a66581043c8382d03edb5",
+      "translation": "**Compatible with external AgentSkills**: In addition to native Go Skills, ElBot is also compatible with external AgentSkills that follow the agentskills.io style.",
+      "updated_at": 1781786013
     },
     "README.zh-CN.md:paragraph:2c7ff69b18ae8ba8a963b8a006f6cd47ef56adfe3c3691d434457fade72754bd": {
       "kind": "paragraph",
@@ -1138,6 +1146,14 @@
       "translation": "Documentation maintenance strategy: The README only retains the project entry point and the minimum startup path;",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:bd2d7a0747df8671b9039976585d9ad7eecf85e1e12257929c2a2972c934f9ee": {
+      "kind": "paragraph",
+      "source": "当前可通过隐藏包装工具执行附带 Python 脚本。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "bd2d7a0747df8671b9039976585d9ad7eecf85e1e12257929c2a2972c934f9ee",
+      "translation": "Currently, bundled Python scripts can be executed via hidden wrapper tools.\n",
+      "updated_at": 1781786013
+    },
     "README.zh-CN.md:paragraph:bd5b8229918b5ece1025466f0be78687159ac8ec8a2bf810e21fcaf407aa97a8": {
       "kind": "paragraph",
       "source": "**完善的日志与审计**： 区分运行日志、Elwisp 日志与审计日志，支持结构化字段、日志查询、审计查询和运行期调试。\n",
@@ -1265,6 +1281,14 @@
       "source_hash": "d60d315ec395c30662322d8e14182689fd314a069f56555dd0f873ec78636831",
       "translation": "**Compatible with internet Python Skills.",
       "updated_at": 1781749522
+    },
+    "README.zh-CN.md:paragraph:deaf166c031ac95885bc0b635833883bf7e195c723c637a2535aad2dc9cc0a20": {
+      "kind": "paragraph",
+      "source": "自动扫描 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__，读取名称、描述、适用场景和风险等级；",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "deaf166c031ac95885bc0b635833883bf7e195c723c637a2535aad2dc9cc0a20",
+      "translation": "Automatically scan __ELBOT_CODE_0__ or __ELBOT_CODE_1__ to read the name, description, applicable scenarios, and risk level;",
+      "updated_at": 1781786013
     },
     "README.zh-CN.md:paragraph:df29046950117f7f324af7e2058feb2877acfda208d1db41735bc93b4127f073": {
       "kind": "paragraph",

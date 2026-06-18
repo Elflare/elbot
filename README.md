@@ -14,7 +14,7 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 **Ultra-lightweight Go implementation**: ElBot's current local startup time is <10ms (N5105, SATA SSD), with resident memory of about 30MB.
 
 **Token-efficient tool discovery**: Research shows that many ordinary users still primarily use LLM-like products as advanced search engines, writing assistants, and listening objects; frequent tool calls are not the norm for all conversations.
- Reference: Chatterji et al., *How People Use ChatGPT*, NBER, 2025;Yan et al., *ShareChat: A Dataset of Chatbot Conversations in the Wild*, arXiv:2512.17843, 2025。
+Reference: Chatterji et al., *How People Use ChatGPT*, NBER, 2025;Yan et al., *ShareChat: A Dataset of Chatbot Conversations in the Wild*, arXiv:2512.17843, 2025。
 
 ElBot does not inject the full schema of all tools by default in every round of conversation, but only exposes `discover_tool` and the names of currently available tools. When the model needs to use a tool, it first discovers the tool details on demand, and then the Agent injects the corresponding schema. Greatly reduces invalid context overhead.
 
@@ -38,7 +38,8 @@ For personal daily use, token consumption per request:
 
 **EL Skills creatable by LLM**: ElBot has a built-in `create_el_skill` meta-tool, allowing the LLM to crystallize reusable experience into EL Skills. ELyph syntax is automatically validated upon creation, with the option to include and compile Go source code.
 
-**Compatible with Internet Python Skills**: In addition to native EL Skills, ElBot is also compatible with common external Python skill structures. Automatically scan `SKILL.md` or `SKILL.elyph`, read the name, description, applicable scenarios, and risk level, and execute them via hidden wrapper tools.
+**Compatible with external AgentSkills**: In addition to native Go Skills, ElBot is also compatible with external AgentSkills that follow the agentskills.io style. Automatically scan `skills/agent/<skill>/SKILL.md` or `SKILL.elyph` to read the name, description, applicable scenarios, and risk level; Currently, bundled Python scripts can be executed via hidden wrapper tools.
+
 
 ### III. Elnis Event Perception System
 
