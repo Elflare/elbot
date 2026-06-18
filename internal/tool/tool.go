@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
-	"elbot/internal/output"
 	"elbot/internal/security"
 )
 
@@ -86,7 +86,7 @@ type Result struct {
 	// use Content or Segments instead.
 	Data     json.RawMessage
 	Metadata map[string]any
-	Outputs  []output.Output
+	Outputs  []delivery.Output
 }
 
 func (r *Result) LLMSegments() []llm.MessageSegment {

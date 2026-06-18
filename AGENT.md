@@ -134,7 +134,7 @@
 
 - `internal/background/`：后台 LLM 执行公共类型与结果 helper；定义 cron/Elnis 共用 `RunRequest`、`RunResult`、background kind 和最终 JSON 结果解析/格式重试文案，失败或阻塞也可通过 report 汇报。
 
-- `internal/output/output.go`：平台无关输出意图与发送管理；定义 text/image/file/at/reply/emoticon 等输出类型、fallback 文本、统一发送入口和 delivery timing 元数据。
+- `internal/delivery/delivery.go`：平台无关输出意图与发送管理；统一定义 text/image/file/at/reply/emoticon 等输出类型、fallback 文本、delivery timing 元数据，以及发送回执、流式发送和发送入口。
 
 ### Security Layer
 

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"elbot/internal/background"
-	"elbot/internal/output"
+	"elbot/internal/delivery"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 )
@@ -60,7 +60,7 @@ func TestNotifyPlatformConnectedDeliversMissedDirectCronPerPlatform(t *testing.T
 	svc := NewService(Options{
 		Store:            store,
 		EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}},
-		SendTarget: func(ctx context.Context, target output.Target, out output.Output) error {
+		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) error {
 			sent = append(sent, target.Platform+":"+out.Text)
 			return nil
 		},
@@ -102,7 +102,7 @@ func TestNotifyPlatformConnectedGeneratesLLMReportForFirstConnectedTarget(t *tes
 		Store:            store,
 		Runner:           runner,
 		EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}},
-		SendTarget: func(ctx context.Context, target output.Target, out output.Output) error {
+		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) error {
 			sent = append(sent, target.Platform+":"+out.Text)
 			return nil
 		},
@@ -301,7 +301,7 @@ func TestRunLLMSendsAdminNoticeWhenRetryStillInvalid(t *testing.T) {
 	svc := NewService(Options{
 		Store:  fakeCronStore{cron: repo},
 		Runner: runner,
-		SendTarget: func(ctx context.Context, target output.Target, out output.Output) error {
+		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) error {
 			sent = append(sent, target.Platform+":"+out.Text)
 			return nil
 		},
@@ -326,7 +326,7 @@ func TestNotifyPlatformConnectedSkipsAlreadyDeliveredPlatform(t *testing.T) {
 	var sent []string
 	svc := NewService(Options{
 		Store: store,
-		SendTarget: func(ctx context.Context, target output.Target, out output.Output) error {
+		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) error {
 			sent = append(sent, target.Platform+":"+out.Text)
 			return nil
 		},
@@ -369,7 +369,7 @@ func TestCronSendAuditIncludesPlatform(t *testing.T) {
 		Audit: func(event string, attrs ...any) {
 			events = append(events, event+":"+attrsString(attrs, "platform"))
 		},
-		SendTarget: func(ctx context.Context, target output.Target, out output.Output) error { return nil },
+		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) error { return nil },
 	})
 	if err := svc.sendToPlatforms(context.Background(), "user.cron.audit", []string{"cli"}, "hello"); err != nil {
 		t.Fatalf("sendToPlatforms: %v", err)

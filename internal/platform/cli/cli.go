@@ -13,7 +13,7 @@ import (
 	"github.com/mattn/go-isatty"
 
 	"elbot/internal/completion"
-	"elbot/internal/output"
+	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 )
@@ -117,7 +117,7 @@ func (a *Adapter) notifyConnected(ctx context.Context) {
 	}
 }
 
-func (a *Adapter) StartStream(ctx context.Context) (platform.MessageStream, error) {
+func (a *Adapter) StartStream(ctx context.Context) (delivery.MessageStream, error) {
 	if !isatty.IsTerminal(os.Stdin.Fd()) {
 		return nil, fmt.Errorf("cli streaming output requires interactive TUI")
 	}
@@ -138,14 +138,14 @@ func (s cliMessageStream) Append(ctx context.Context, text string) error {
 	return nil
 }
 
-func (s cliMessageStream) Replace(ctx context.Context, text string) (platform.Receipt, error) {
+func (s cliMessageStream) Replace(ctx context.Context, text string) (delivery.Receipt, error) {
 	s.adapter.sendTUIMessage(tuiReplaceAssistantMsg(text), text)
-	return platform.Receipt{}, nil
+	return delivery.Receipt{}, nil
 }
 
-func (s cliMessageStream) Finish(ctx context.Context) (platform.Receipt, error) {
+func (s cliMessageStream) Finish(ctx context.Context) (delivery.Receipt, error) {
 	s.adapter.sendTUIMessage(tuiFinishAssistantMsg{}, "\n")
-	return platform.Receipt{}, nil
+	return delivery.Receipt{}, nil
 }
 
 func (a *Adapter) SetRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
@@ -161,30 +161,30 @@ func (a *Adapter) SendReasoning(ctx context.Context, text string) error {
 	return nil
 }
 
-func (a *Adapter) SendChat(ctx context.Context, out output.Output) (platform.Receipt, error) {
+func (a *Adapter) SendChat(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
 	text := chatText(out)
 	if text != "" {
 		a.sendTUIMessage(tuiOutputMsg(text), text)
 	}
-	return platform.Receipt{}, nil
+	return delivery.Receipt{}, nil
 }
 
-func chatText(out output.Output) string {
-	if out.Kind == output.KindText {
+func chatText(out delivery.Output) string {
+	if out.Kind == delivery.KindText {
 		return out.Text
 	}
-	return output.FallbackText(out)
+	return delivery.FallbackText(out)
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, target output.Target, out output.Output) (platform.Receipt, error) {
+func (a *Adapter) SendNotice(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
 	if platformName := strings.TrimSpace(target.Platform); platformName != "" && platformName != a.Name() {
-		return platform.Receipt{}, fmt.Errorf("cli cannot send to platform %q", platformName)
+		return delivery.Receipt{}, fmt.Errorf("cli cannot send to platform %q", platformName)
 	}
-	text := output.FallbackText(out)
+	text := delivery.FallbackText(out)
 	if text != "" {
 		a.sendTUIMessage(tuiNoticeMsg(text), "[notice] "+text)
 	}
-	return platform.Receipt{}, nil
+	return delivery.Receipt{}, nil
 }
 
 func (a *Adapter) SendToolNotice(text string) {
@@ -192,7 +192,7 @@ func (a *Adapter) SendToolNotice(text string) {
 	if text == "" {
 		return
 	}
-	_, _ = a.SendNotice(context.Background(), output.Target{}, output.Text("[tool] "+text))
+	_, _ = a.SendNotice(context.Background(), delivery.Target{}, delivery.Text("[tool] "+text))
 }
 
 func (a *Adapter) sendTUIMessage(msg tea.Msg, fallback string) {

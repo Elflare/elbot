@@ -3,15 +3,14 @@ package platform
 import (
 	"context"
 
-	"elbot/internal/output"
+	"elbot/internal/delivery"
 )
 
 // PlatformAdapter is the interface for message platform adapters (CLI, QQ, etc.).
 type PlatformAdapter interface {
 	Name() string
 	Run(ctx context.Context, handler PlatformHandler) error
-	SendChat(ctx context.Context, out output.Output) (Receipt, error)
-	SendNotice(ctx context.Context, target output.Target, out output.Output) (Receipt, error)
+	delivery.MessageSender
 }
 
 // PlatformHandler processes incoming messages from a platform.
@@ -28,37 +27,7 @@ type ConnectNotifier interface {
 type Runtime interface {
 	Name() string
 	Run(ctx context.Context, handler PlatformHandler) error
-	MessageSender
-}
-
-// Receipt describes platform messages produced by a send operation.
-type Receipt struct {
-	PlatformMessageIDs []string
-}
-
-// StreamingMessageSender is an optional platform capability for editable streaming output.
-// Platforms can implement it with terminal replacement, message editing, or any equivalent mechanism.
-type StreamingMessageSender interface {
-	StartStream(ctx context.Context) (MessageStream, error)
-}
-
-// MessageStream represents one assistant message that can be appended while streaming
-// and replaced with the final post-hook content.
-type MessageStream interface {
-	Append(ctx context.Context, text string) error
-	Replace(ctx context.Context, text string) (Receipt, error)
-	Finish(ctx context.Context) (Receipt, error)
-}
-
-// MessageSender sends chat messages and notifications through a platform.
-type MessageSender interface {
-	SendChat(ctx context.Context, out output.Output) (Receipt, error)
-	SendNotice(ctx context.Context, target output.Target, out output.Output) (Receipt, error)
-}
-
-// ContextSender can send a reply using routing information carried by ctx.
-type ContextSender interface {
-	MessageSender
+	delivery.MessageSender
 }
 
 type MessageSegmentType string
@@ -87,7 +56,7 @@ type MessageContext struct {
 	PlatformUserID        string
 	DisplayName           string
 	ScopeID               string
-	Sender                ContextSender
+	Sender                delivery.ContextSender
 	BufferAssistantOutput bool
 	ForkFromMessageID     string
 	Segments              []MessageSegment

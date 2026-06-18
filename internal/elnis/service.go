@@ -14,13 +14,13 @@ import (
 
 	"elbot/internal/background"
 	"elbot/internal/config"
+	"elbot/internal/delivery"
 	"elbot/internal/elyph"
-	"elbot/internal/output"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 )
 
-type SenderFunc func(ctx context.Context, target output.Target, out output.Output) error
+type SenderFunc func(ctx context.Context, target delivery.Target, out delivery.Output) error
 
 type AuditFunc func(event string, attrs ...any)
 
@@ -308,7 +308,7 @@ func (s *Service) runDirect(ctx context.Context, event Event, eventID string) er
 		return fmt.Errorf("direct delivery only supports superadmins in phase 1")
 	}
 	for _, platformName := range resolved.Platforms {
-		if err := s.send(ctx, output.Target{Platform: platformName, Superadmins: true}, output.Text(text)); err != nil {
+		if err := s.send(ctx, delivery.Target{Platform: platformName, Superadmins: true}, delivery.Text(text)); err != nil {
 			return err
 		}
 	}
@@ -404,7 +404,7 @@ func (s *Service) sendReport(ctx context.Context, event Event, report string) er
 		return nil
 	}
 	for _, platformName := range resolved.Platforms {
-		if err := s.send(ctx, output.Target{Platform: platformName, Superadmins: true}, output.Text(report)); err != nil {
+		if err := s.send(ctx, delivery.Target{Platform: platformName, Superadmins: true}, delivery.Text(report)); err != nil {
 			return err
 		}
 	}

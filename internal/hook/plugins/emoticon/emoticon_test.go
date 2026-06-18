@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/output"
 )
 
 func TestModuleExtractsOutputsAndCleansContent(t *testing.T) {
@@ -45,11 +45,11 @@ func TestModuleExtractsOutputsAndCleansContent(t *testing.T) {
 	}
 	wantNames := []string{"微笑", "开心"}
 	for i, want := range wantNames {
-		if event.Outputs[i].Kind != output.KindEmoticon || event.Outputs[i].Name != want {
+		if event.Outputs[i].Kind != delivery.KindEmoticon || event.Outputs[i].Name != want {
 			t.Fatalf("output[%d] = %#v, want emoticon %q", i, event.Outputs[i], want)
 		}
-		if got := output.DeliveryTiming(event.Outputs[i]); got != output.DeliveryImmediate {
-			t.Fatalf("output[%d] timing = %q, want %q", i, got, output.DeliveryImmediate)
+		if got := delivery.DeliveryTiming(event.Outputs[i]); got != delivery.DeliveryImmediate {
+			t.Fatalf("output[%d] timing = %q, want %q", i, got, delivery.DeliveryImmediate)
 		}
 	}
 }
@@ -97,7 +97,7 @@ func TestModuleUsesConfiguredTiming(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "微笑"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	module := Module{Config: Config{RootDir: root, Timing: output.DeliveryAfterAssistant}}
+	module := Module{Config: Config{RootDir: root, Timing: delivery.DeliveryAfterAssistant}}
 	event, err := module.rewriteLLMEmoticons(context.Background(), hook.Event{
 		Point: hook.PointLLMResponseReceived,
 		LLM:   hook.LLMPayload{Text: "你好 [[微笑]]"},
@@ -108,8 +108,8 @@ func TestModuleUsesConfiguredTiming(t *testing.T) {
 	if len(event.Outputs) != 1 {
 		t.Fatalf("outputs = %#v", event.Outputs)
 	}
-	if got := output.DeliveryTiming(event.Outputs[0]); got != output.DeliveryAfterAssistant {
-		t.Fatalf("timing = %q, want %q", got, output.DeliveryAfterAssistant)
+	if got := delivery.DeliveryTiming(event.Outputs[0]); got != delivery.DeliveryAfterAssistant {
+		t.Fatalf("timing = %q, want %q", got, delivery.DeliveryAfterAssistant)
 	}
 }
 
@@ -156,11 +156,11 @@ func TestModulePicksImage(t *testing.T) {
 		t.Fatalf("outputs = %#v", event.Outputs)
 	}
 	got := event.Outputs[0]
-	if got.Kind != output.KindEmoticon || got.Name != "滑稽" || got.Source.Path != path {
+	if got.Kind != delivery.KindEmoticon || got.Name != "滑稽" || got.Source.Path != path {
 		t.Fatalf("output = %#v", got)
 	}
-	if timing := output.DeliveryTiming(got); timing != output.DeliveryImmediate {
-		t.Fatalf("timing = %q, want %q", timing, output.DeliveryImmediate)
+	if timing := delivery.DeliveryTiming(got); timing != delivery.DeliveryImmediate {
+		t.Fatalf("timing = %q, want %q", timing, delivery.DeliveryImmediate)
 	}
 }
 

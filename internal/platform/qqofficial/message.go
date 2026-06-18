@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/output"
+	"elbot/internal/delivery"
 	"elbot/internal/platform"
 )
 
@@ -74,7 +74,7 @@ func c2cSegments(text string, attachments []savedAttachment) []platform.MessageS
 	return segments
 }
 
-func platformSavedAttachmentsOutput(attachments []savedAttachment) output.Output {
+func platformSavedAttachmentsOutput(attachments []savedAttachment) delivery.Output {
 	var sb strings.Builder
 	for _, attachment := range attachments {
 		if attachment.Path == "" {
@@ -86,7 +86,7 @@ func platformSavedAttachmentsOutput(attachments []savedAttachment) output.Output
 		}
 		sb.WriteString(fmt.Sprintf("已保存附件：%s\n路径：%s\n", name, attachment.Path))
 	}
-	return output.Text(sb.String())
+	return delivery.Text(sb.String())
 }
 
 func isImageURL(value string) bool {

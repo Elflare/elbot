@@ -21,10 +21,10 @@ import (
 	"elbot/internal/background"
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
+	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
 	"elbot/internal/llm"
-	"elbot/internal/output"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/security"
@@ -48,16 +48,16 @@ func (p *fakePlatform) Name() string { return "cli" }
 
 func (p *fakePlatform) Run(context.Context, platform.PlatformHandler) error { return nil }
 
-func (p *fakePlatform) SendChat(ctx context.Context, out output.Output) (platform.Receipt, error) {
-	p.out.WriteString(output.FallbackText(out))
-	return platform.Receipt{}, nil
+func (p *fakePlatform) SendChat(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
+	p.out.WriteString(delivery.FallbackText(out))
+	return delivery.Receipt{}, nil
 }
 
-func (p *fakePlatform) SendNotice(ctx context.Context, target output.Target, out output.Output) (platform.Receipt, error) {
-	text := output.FallbackText(out)
+func (p *fakePlatform) SendNotice(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+	text := delivery.FallbackText(out)
 	p.out.WriteString(text)
 	p.preview.WriteString(text)
-	return platform.Receipt{}, nil
+	return delivery.Receipt{}, nil
 }
 
 func (p *fakePlatform) SendReasoning(ctx context.Context, text string) error {
@@ -82,7 +82,7 @@ type fakeMessageStream struct {
 	finished int
 }
 
-func (p *fakeStreamingPlatform) StartStream(ctx context.Context) (platform.MessageStream, error) {
+func (p *fakeStreamingPlatform) StartStream(ctx context.Context) (delivery.MessageStream, error) {
 	return &p.stream, nil
 }
 
@@ -91,14 +91,14 @@ func (s *fakeMessageStream) Append(ctx context.Context, text string) error {
 	return nil
 }
 
-func (s *fakeMessageStream) Replace(ctx context.Context, text string) (platform.Receipt, error) {
+func (s *fakeMessageStream) Replace(ctx context.Context, text string) (delivery.Receipt, error) {
 	s.replaces = append(s.replaces, text)
-	return platform.Receipt{}, nil
+	return delivery.Receipt{}, nil
 }
 
-func (s *fakeMessageStream) Finish(ctx context.Context) (platform.Receipt, error) {
+func (s *fakeMessageStream) Finish(ctx context.Context) (delivery.Receipt, error) {
 	s.finished++
-	return platform.Receipt{}, nil
+	return delivery.Receipt{}, nil
 }
 
 type fakeLLMBlock struct {
@@ -398,8 +398,8 @@ func TestAfterAssistantOutputsAreSentAfterFinalText(t *testing.T) {
 	manager := hook.NewManager()
 	if err := manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "test.outputs", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 		event.Outputs = append(event.Outputs,
-			output.Text("immediate"),
-			output.WithDeliveryTiming(output.Text("after"), output.DeliveryAfterAssistant),
+			delivery.Text("immediate"),
+			delivery.WithDeliveryTiming(delivery.Text("after"), delivery.DeliveryAfterAssistant),
 		)
 		return event, nil
 	})}); err != nil {
@@ -810,7 +810,7 @@ func TestMapSentAssistantMessageMapsAllReceiptIDs(t *testing.T) {
 		t.Fatalf("append assistant: %v", err)
 	}
 
-	a.mapSentAssistantMessage(ctx, session.ID, assistant.ID, platform.Receipt{PlatformMessageIDs: []string{"101", "", "102"}})
+	a.mapSentAssistantMessage(ctx, session.ID, assistant.ID, delivery.Receipt{PlatformMessageIDs: []string{"101", "", "102"}})
 	for _, platformMessageID := range []string{"101", "102"} {
 		got, err := store.Messages().FindByPlatformMessage(ctx, "qqonebot", "group:9", platformMessageID)
 		if err != nil {
@@ -1637,7 +1637,7 @@ func TestToolCallAssistantEmoticonSendsBeforeFinalResponse(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(rootDir, "微笑"), 0o755); err != nil {
 		t.Fatalf("mkdir emoticon dir: %v", err)
 	}
-	cfg := fmt.Sprintf("root_dir = %q\ntiming = %q\n", rootDir, output.DeliveryAfterAssistant)
+	cfg := fmt.Sprintf("root_dir = %q\ntiming = %q\n", rootDir, delivery.DeliveryAfterAssistant)
 	if err := os.WriteFile(filepath.Join(configDir, "emoticon.toml"), []byte(cfg), 0o644); err != nil {
 		t.Fatalf("write emoticon config: %v", err)
 	}

@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"strings"
 
+	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/output"
 	"elbot/internal/platform"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -50,13 +50,13 @@ func (a *Agent) notifyHookError(ctx context.Context, source hook.Event, err erro
 	a.notifyHook(ctx, event)
 }
 
-func (a *Agent) sendOutputs(ctx context.Context, outputs []output.Output) error {
+func (a *Agent) sendOutputs(ctx context.Context, outputs []delivery.Output) error {
 	manager := a.outputs
 	manager.Sender = agentOutputSender{agent: a, ctx: ctx}
 	if manager.Logger == nil {
 		manager.Logger = a.logger
 	}
-	return manager.SendAll(ctx, outputs)
+	return manager.SendNotices(ctx, outputs)
 }
 
 type agentOutputSender struct {
@@ -64,33 +64,30 @@ type agentOutputSender struct {
 	ctx   context.Context
 }
 
-func (s agentOutputSender) SendChat(ctx context.Context, out output.Output) error {
+func (s agentOutputSender) SendChat(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
 	if s.agent == nil {
-		return fmt.Errorf("agent output sender is not configured")
+		return delivery.Receipt{}, fmt.Errorf("agent output sender is not configured")
 	}
 	// 优先使用本轮 message context 携带的 sender。
 	// QQ 等平台的发送目标可能依赖入站消息解析出的上下文，
 	// 退回全局 sender 可能导致通知丢失或发到错误会话。
 	if msg, ok := platform.MessageContextFrom(s.ctx); ok && msg.Sender != nil {
-		_, err := msg.Sender.SendChat(s.ctx, out)
-		return err
+		return msg.Sender.SendChat(s.ctx, out)
 	}
 	if s.agent.platform == nil {
-		return fmt.Errorf("chat output sender is not configured")
+		return delivery.Receipt{}, fmt.Errorf("chat output sender is not configured")
 	}
-	_, err := s.agent.platform.SendChat(s.ctx, out)
-	return err
+	return s.agent.platform.SendChat(s.ctx, out)
 }
 
-func (s agentOutputSender) SendNotice(ctx context.Context, target output.Target, out output.Output) error {
+func (s agentOutputSender) SendNotice(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
 	if s.agent == nil {
-		return fmt.Errorf("agent output sender is not configured")
+		return delivery.Receipt{}, fmt.Errorf("agent output sender is not configured")
 	}
 	if target.Empty() {
 		// 空 target 表示沿用当前会话，必须优先走 message context 的 sender。
 		if msg, ok := platform.MessageContextFrom(s.ctx); ok && msg.Sender != nil {
-			_, err := msg.Sender.SendNotice(s.ctx, target, out)
-			return err
+			return msg.Sender.SendNotice(s.ctx, target, out)
 		}
 	}
 	platformName := strings.TrimSpace(target.Platform)
@@ -107,47 +104,45 @@ func (s agentOutputSender) SendNotice(ctx context.Context, target output.Target,
 	}
 	sender := s.agent.platformSenders[platformName]
 	if sender == nil {
-		return fmt.Errorf("target platform %q is not configured", platformName)
+		return delivery.Receipt{}, fmt.Errorf("target platform %q is not configured", platformName)
 	}
 	target.Platform = platformName
-	_, err := sender.SendNotice(ctx, target, out)
-	return err
+	return sender.SendNotice(ctx, target, out)
 }
 
 type contextTextSender struct {
 	ctx    context.Context
-	sender platform.ContextSender
+	sender delivery.ContextSender
 }
 
-func (s contextTextSender) SendChat(ctx context.Context, out output.Output) error {
-	_, err := s.sender.SendChat(s.ctx, out)
-	return err
+func (s contextTextSender) SendChat(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
+	return s.sender.SendChat(s.ctx, out)
 }
 
-func (s contextTextSender) SendNotice(ctx context.Context, target output.Target, out output.Output) error {
-	_, err := s.sender.SendNotice(s.ctx, target, out)
-	return err
+func (s contextTextSender) SendNotice(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+	return s.sender.SendNotice(s.ctx, target, out)
 }
 
 func (a *Agent) sendChat(ctx context.Context, text string) {
 	_, _ = a.sendChatWithReceipt(ctx, text)
 }
 
-func (a *Agent) sendOutput(ctx context.Context, out output.Output) error {
-	return a.sendNoticeOutput(ctx, output.Target{}, out)
+func (a *Agent) sendOutput(ctx context.Context, out delivery.Output) error {
+	return a.sendNoticeOutput(ctx, delivery.Target{}, out)
 }
 
 func (a *Agent) sendTextOutput(ctx context.Context, text string) error {
-	return a.sendNoticeOutput(ctx, output.Target{}, output.Text(text))
+	return a.sendNoticeOutput(ctx, delivery.Target{}, delivery.Text(text))
 }
 
-func (a *Agent) sendNoticeOutput(ctx context.Context, target output.Target, out output.Output) error {
+func (a *Agent) sendNoticeOutput(ctx context.Context, target delivery.Target, out delivery.Output) error {
 	manager := a.outputs
 	manager.Sender = agentOutputSender{agent: a, ctx: ctx}
 	if manager.Logger == nil {
 		manager.Logger = a.logger
 	}
-	return manager.SendNotice(ctx, target, out)
+	_, err := manager.SendNotice(ctx, target, out)
+	return err
 }
 
 func (a *Agent) prepareAssistantOutput(ctx context.Context, point hook.Point, text string) (string, error) {
@@ -158,13 +153,13 @@ func (a *Agent) prepareAssistantOutput(ctx context.Context, point hook.Point, te
 	return llm.SegmentsTextOnly(event.Message.Segments), nil
 }
 
-func (a *Agent) sendChatWithReceipt(ctx context.Context, text string) (platform.Receipt, error) {
+func (a *Agent) sendChatWithReceipt(ctx context.Context, text string) (delivery.Receipt, error) {
 	if strings.TrimSpace(text) == "" && bufferAssistantOutput(ctx) {
-		return platform.Receipt{}, nil
+		return delivery.Receipt{}, nil
 	}
 	preparedText, err := a.prepareAssistantOutput(ctx, hook.PointAgentOutputPrepared, text)
 	if err != nil {
-		return platform.Receipt{}, err
+		return delivery.Receipt{}, err
 	}
 	manager := a.outputs
 
@@ -172,17 +167,17 @@ func (a *Agent) sendChatWithReceipt(ctx context.Context, text string) (platform.
 	if manager.Logger == nil {
 		manager.Logger = a.logger
 	}
-	err = manager.SendChat(ctx, output.Text(preparedText))
+	receipt, err := manager.SendChat(ctx, delivery.Text(preparedText))
 
 	if err != nil {
 		if a.logger != nil {
 			a.logger.WarnContext(ctx, "chat send failed", "error", err.Error())
 		}
-		return platform.Receipt{}, err
+		return delivery.Receipt{}, err
 	}
 	a.notifyHook(ctx, hook.Event{Point: hook.PointPlatformMessageSent, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(preparedText)}})
 
-	return platform.Receipt{}, nil
+	return receipt, nil
 }
 
 func bufferAssistantOutput(ctx context.Context) bool {
@@ -190,7 +185,7 @@ func bufferAssistantOutput(ctx context.Context) bool {
 	return ok && msg.BufferAssistantOutput
 }
 
-func (a *Agent) mapSentAssistantMessage(ctx context.Context, sessionID, messageID string, receipt platform.Receipt) {
+func (a *Agent) mapSentAssistantMessage(ctx context.Context, sessionID, messageID string, receipt delivery.Receipt) {
 	if len(receipt.PlatformMessageIDs) == 0 || a.store == nil || a.store.Messages() == nil {
 		return
 	}
@@ -216,22 +211,24 @@ func (a *Agent) mapSentAssistantMessage(ctx context.Context, sessionID, messageI
 	}
 }
 
-func (a *Agent) RegisterPlatformSender(name string, sender platform.MessageSender) {
+func (a *Agent) RegisterPlatformSender(name string, sender delivery.MessageSender) {
 	name = strings.TrimSpace(name)
 	if name == "" || sender == nil {
 		return
 	}
 	if a.platformSenders == nil {
-		a.platformSenders = map[string]platform.MessageSender{}
+		a.platformSenders = map[string]delivery.MessageSender{}
 	}
 	a.platformSenders[name] = sender
 }
 
-func (a *Agent) SendNoticeOutput(ctx context.Context, target output.Target, out output.Output) (platform.Receipt, error) {
-	if err := a.sendNoticeOutput(ctx, target, out); err != nil {
-		return platform.Receipt{}, err
+func (a *Agent) SendNoticeOutput(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+	manager := a.outputs
+	manager.Sender = agentOutputSender{agent: a, ctx: ctx}
+	if manager.Logger == nil {
+		manager.Logger = a.logger
 	}
-	return platform.Receipt{}, nil
+	return manager.SendNotice(ctx, target, out)
 }
 
 func (a *Agent) NotifyPlatformConnected(ctx context.Context, platformName string) {

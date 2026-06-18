@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"elbot/internal/config"
+	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/output"
 	"elbot/internal/platform"
 )
 
@@ -19,12 +19,12 @@ type llmCallResult struct {
 	RawText   string
 	Usage     *llm.Usage
 	ToolCalls []llm.ToolCallRequest
-	Outputs   []output.Output
+	Outputs   []delivery.Output
 	Messages  []llm.LLMMessage
-	Stream    platform.MessageStream
+	Stream    delivery.MessageStream
 }
 
-func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.ModelSelection, messages []llm.LLMMessage, tools []llm.ToolSchema, latestUserContent string, stream platform.MessageStream, out turnOutput) (llmCallResult, string, error) {
+func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.ModelSelection, messages []llm.LLMMessage, tools []llm.ToolSchema, latestUserContent string, stream delivery.MessageStream, out turnOutput) (llmCallResult, string, error) {
 	startedAt := time.Now()
 	baseMessages := append([]llm.LLMMessage(nil), messages...)
 	requestMessages := messages

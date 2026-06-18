@@ -1,4 +1,4 @@
-package output
+package delivery
 
 import (
 	"context"
@@ -80,6 +80,31 @@ func DeliveryTiming(out Output) string {
 	return timing
 }
 
+func ValidateDeliveryTiming(timing string) error {
+	switch strings.TrimSpace(timing) {
+	case "", DeliveryImmediate, DeliveryAfterAssistant:
+		return nil
+	default:
+		return fmt.Errorf("unsupported timing %q", timing)
+	}
+}
+
+func SplitByDeliveryTiming(outputs []Output) ([]Output, []Output) {
+	if len(outputs) == 0 {
+		return nil, nil
+	}
+	immediate := make([]Output, 0, len(outputs))
+	deferred := make([]Output, 0)
+	for _, out := range outputs {
+		if DeliveryTiming(out) == DeliveryAfterAssistant {
+			deferred = append(deferred, out)
+			continue
+		}
+		immediate = append(immediate, out)
+	}
+	return immediate, deferred
+}
+
 func Text(text string) Output {
 	return Output{Kind: KindText, Text: text}
 }
@@ -120,9 +145,39 @@ func Reply(platformMessageID, text string) Output {
 	return Output{Kind: KindReply, Text: text, ReplyToPlatformMessageID: strings.TrimSpace(platformMessageID)}
 }
 
+// Receipt describes platform messages produced by a send operation.
+type Receipt struct {
+	PlatformMessageIDs []string
+}
+
+// StreamingMessageSender is an optional platform capability for editable streaming delivery.
+// Platforms can implement it with terminal replacement, message editing, or any equivalent mechanism.
+type StreamingMessageSender interface {
+	StartStream(ctx context.Context) (MessageStream, error)
+}
+
+// MessageStream represents one assistant message that can be appended while streaming
+// and replaced with the final post-hook content.
+type MessageStream interface {
+	Append(ctx context.Context, text string) error
+	Replace(ctx context.Context, text string) (Receipt, error)
+	Finish(ctx context.Context) (Receipt, error)
+}
+
+// MessageSender sends chat messages and notifications through a platform.
+type MessageSender interface {
+	SendChat(ctx context.Context, out Output) (Receipt, error)
+	SendNotice(ctx context.Context, target Target, out Output) (Receipt, error)
+}
+
+// ContextSender can send a reply using routing information carried by ctx.
+type ContextSender interface {
+	MessageSender
+}
+
 type Sender interface {
-	SendChat(ctx context.Context, output Output) error
-	SendNotice(ctx context.Context, target Target, output Output) error
+	SendChat(ctx context.Context, output Output) (Receipt, error)
+	SendNotice(ctx context.Context, target Target, output Output) (Receipt, error)
 }
 
 type Manager struct {
@@ -134,45 +189,46 @@ func NewManager(sender Sender, logger *slog.Logger) Manager {
 	return Manager{Sender: sender, Logger: logger}
 }
 
-func (m Manager) SendAll(ctx context.Context, outputs []Output) error {
+func (m Manager) SendNotices(ctx context.Context, outputs []Output) error {
 	for _, out := range outputs {
-		if err := m.SendNotice(ctx, out.Target, out); err != nil {
+		if _, err := m.SendNotice(ctx, out.Target, out); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (m Manager) SendChat(ctx context.Context, out Output) error {
+func (m Manager) SendChat(ctx context.Context, out Output) (Receipt, error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return Receipt{}, err
 	}
 	if m.Sender == nil {
-		return fmt.Errorf("output sender is not configured")
+		return Receipt{}, fmt.Errorf("output sender is not configured")
 	}
 	return m.Sender.SendChat(ctx, out)
 }
 
-func (m Manager) SendNotice(ctx context.Context, target Target, out Output) error {
+func (m Manager) SendNotice(ctx context.Context, target Target, out Output) (Receipt, error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return Receipt{}, err
 	}
 	if m.Sender == nil {
-		return fmt.Errorf("output sender is not configured")
+		return Receipt{}, fmt.Errorf("output sender is not configured")
 	}
 	if !target.Empty() {
 		out.Target = target
 	} else if !out.Target.Empty() {
 		target = out.Target
 	}
-	if err := m.Sender.SendNotice(ctx, target, out); err != nil {
+	receipt, err := m.Sender.SendNotice(ctx, target, out)
+	if err != nil {
 		if m.Logger != nil {
 			attrs := outputLogAttrs(out, "kind", out.Kind, "name", out.Name, "platform", target.Platform, "error", err.Error())
 			m.Logger.WarnContext(ctx, "notice output failed", attrs...)
 		}
-		return wrapOutputSourceError(out, err)
+		return Receipt{}, wrapOutputSourceError(out, err)
 	}
-	return nil
+	return receipt, nil
 }
 
 func outputLogAttrs(out Output, attrs ...any) []any {

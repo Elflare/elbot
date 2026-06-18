@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
-	"elbot/internal/output"
 )
 
 // Point names a stable boundary where hooks may inspect or update an event.
@@ -68,7 +68,7 @@ type Event struct {
 	Message  MessagePayload
 	LLM      LLMPayload
 	Tool     ToolPayload
-	Outputs  []output.Output
+	Outputs  []delivery.Output
 	Error    error
 }
 
@@ -526,9 +526,9 @@ func markHookOutputs(event Event, start int, reg registration, mode string) Even
 		if meta == nil {
 			meta = map[string]any{}
 		}
-		setOutputMeta(meta, output.MetaHookPoint, string(event.Point))
-		setOutputMeta(meta, output.MetaHookName, reg.name)
-		setOutputMeta(meta, output.MetaHookMode, mode)
+		setOutputMeta(meta, delivery.MetaHookPoint, string(event.Point))
+		setOutputMeta(meta, delivery.MetaHookName, reg.name)
+		setOutputMeta(meta, delivery.MetaHookMode, mode)
 		event.Outputs[i].Meta = meta
 	}
 	return event

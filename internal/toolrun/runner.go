@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
-	"elbot/internal/output"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -23,7 +23,7 @@ type RunnerDeps interface {
 	StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error)
 	CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, result string, callErr error) (string, error)
 	SendPreview(ctx context.Context, text string)
-	SendOutputs(ctx context.Context, outputs []output.Output) error
+	SendOutputs(ctx context.Context, outputs []delivery.Output) error
 	RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error)
 	AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string)
 	RememberDiscoveryResult(ctx context.Context, session *storage.Session, result *tool.Result)

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/output"
 )
 
 func TestRuleNormalizeFlatConditionAndAction(t *testing.T) {
@@ -19,7 +19,7 @@ func TestRuleNormalizeFlatConditionAndAction(t *testing.T) {
 		Value:  "qqonebot",
 		Action: "send",
 		Text:   "connected",
-		Timing: output.DeliveryAfterAssistant,
+		Timing: delivery.DeliveryAfterAssistant,
 		Target: Target{Superadmins: true},
 	}
 	if err := rule.normalize(); err != nil {
@@ -28,7 +28,7 @@ func TestRuleNormalizeFlatConditionAndAction(t *testing.T) {
 	if len(rule.Match) != 1 || rule.Match[0].Field != "platform.name" || rule.Match[0].Op != hook.MatchFull {
 		t.Fatalf("match = %#v", rule.Match)
 	}
-	if len(rule.Actions) != 1 || rule.Actions[0].Type != "send" || rule.Actions[0].Text != "connected" || rule.Actions[0].Timing != output.DeliveryAfterAssistant {
+	if len(rule.Actions) != 1 || rule.Actions[0].Type != "send" || rule.Actions[0].Text != "connected" || rule.Actions[0].Timing != delivery.DeliveryAfterAssistant {
 		t.Fatalf("actions = %#v", rule.Actions)
 	}
 }
@@ -102,15 +102,15 @@ func TestValidateRuleRejectsUnknownHookPoint(t *testing.T) {
 func TestSendActionSetsDeliveryTiming(t *testing.T) {
 	module := Module{}
 	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "done"}}
-	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "send", Text: "later", Timing: output.DeliveryAfterAssistant}}}, event)
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "send", Text: "later", Timing: delivery.DeliveryAfterAssistant}}}, event)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
 	if len(got.Outputs) != 1 || got.Outputs[0].Text != "later" {
 		t.Fatalf("outputs = %#v", got.Outputs)
 	}
-	if timing := output.DeliveryTiming(got.Outputs[0]); timing != output.DeliveryAfterAssistant {
-		t.Fatalf("timing = %q, want %q", timing, output.DeliveryAfterAssistant)
+	if timing := delivery.DeliveryTiming(got.Outputs[0]); timing != delivery.DeliveryAfterAssistant {
+		t.Fatalf("timing = %q, want %q", timing, delivery.DeliveryAfterAssistant)
 	}
 }
 

@@ -7,30 +7,13 @@ import (
 	"strings"
 
 	"elbot/internal/config"
+	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/output"
-	"elbot/internal/platform"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/storage"
 )
-
-func splitOutputsByDeliveryTiming(outputs []output.Output) ([]output.Output, []output.Output) {
-	if len(outputs) == 0 {
-		return nil, nil
-	}
-	immediate := make([]output.Output, 0, len(outputs))
-	deferred := make([]output.Output, 0)
-	for _, out := range outputs {
-		if output.DeliveryTiming(out) == output.DeliveryAfterAssistant {
-			deferred = append(deferred, out)
-			continue
-		}
-		immediate = append(immediate, out)
-	}
-	return immediate, deferred
-}
 
 func (a *Agent) handleChat(ctx context.Context, text string) error {
 	session, err := a.sessions.GetOrCreateCurrent(ctx, a.scope(ctx), text)
@@ -149,8 +132,8 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	var finalText string
 	var finalRawText string
 	var platformFinalText string
-	var finalStream platform.MessageStream
-	var deferredOutputs []output.Output
+	var finalStream delivery.MessageStream
+	var deferredOutputs []delivery.Output
 	var usage *llm.Usage
 	turnMessages := []storage.Message{}
 	toolRounds := 0
@@ -188,7 +171,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			usage = result.Usage
 		}
 		out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseLLM, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindLLM, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: llmStageStartedAt, Usage: usage})
-		immediateOutputs, laterOutputs := splitOutputsByDeliveryTiming(result.Outputs)
+		immediateOutputs, laterOutputs := delivery.SplitByDeliveryTiming(result.Outputs)
 		if len(result.ToolCalls) == 0 {
 			deferredOutputs = append(deferredOutputs, laterOutputs...)
 		}
@@ -245,7 +228,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 				// TODO: 后续支持强制 tool_choice=none；当前总结请求已不传 tools，若仍返回工具调用则忽略。
 				out.SendPreview(ctx, "总结请求仍返回了工具调用，已忽略。")
 			}
-			immediateOutputs, laterOutputs := splitOutputsByDeliveryTiming(summary.Outputs)
+			immediateOutputs, laterOutputs := delivery.SplitByDeliveryTiming(summary.Outputs)
 			deferredOutputs = append(deferredOutputs, laterOutputs...)
 			if err := out.SendOutputs(ctx, immediateOutputs); err != nil {
 				return err

@@ -16,7 +16,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"elbot/internal/output"
+	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
 )
@@ -171,16 +171,16 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 	}
 }
 
-func (a *Adapter) SendChat(ctx context.Context, out output.Output) (platform.Receipt, error) {
-	if out.Kind == output.KindText {
+func (a *Adapter) SendChat(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
+	if out.Kind == delivery.KindText {
 		return a.sendContextText(ctx, out.Text)
 	}
 	return a.sendContextOutput(ctx, out)
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, outTarget output.Target, out output.Output) (platform.Receipt, error) {
+func (a *Adapter) SendNotice(ctx context.Context, outTarget delivery.Target, out delivery.Output) (delivery.Receipt, error) {
 	if outTarget.Empty() && isGroupToolPreviewNotice(ctx, out) {
-		return platform.Receipt{}, nil
+		return delivery.Receipt{}, nil
 	}
 	if outTarget.Empty() {
 		return a.SendChat(ctx, out)
@@ -188,27 +188,27 @@ func (a *Adapter) SendNotice(ctx context.Context, outTarget output.Target, out o
 	return a.sendTarget(ctx, outTarget, out)
 }
 
-func isGroupToolPreviewNotice(ctx context.Context, out output.Output) bool {
-	if out.Kind != output.KindText || !strings.HasPrefix(strings.TrimSpace(out.Text), "[tool]") {
+func isGroupToolPreviewNotice(ctx context.Context, out delivery.Output) bool {
+	if out.Kind != delivery.KindText || !strings.HasPrefix(strings.TrimSpace(out.Text), "[tool]") {
 		return false
 	}
 	t, ok := ctx.Value(targetKey{}).(target)
 	return ok && t.MessageType == "group"
 }
 
-func (a *Adapter) sendContextText(ctx context.Context, text string) (platform.Receipt, error) {
+func (a *Adapter) sendContextText(ctx context.Context, text string) (delivery.Receipt, error) {
 	if strings.TrimSpace(text) == "" {
-		return platform.Receipt{}, nil
+		return delivery.Receipt{}, nil
 	}
 	t, ok := ctx.Value(targetKey{}).(target)
 	if !ok {
-		return platform.Receipt{}, fmt.Errorf("qq send target missing")
+		return delivery.Receipt{}, fmt.Errorf("qq send target missing")
 	}
-	var receipt platform.Receipt
+	var receipt delivery.Receipt
 	for _, page := range qqTextPages(text) {
 		id, err := a.sendQQText(ctx, t, page)
 		if err != nil {
-			return platform.Receipt{}, err
+			return delivery.Receipt{}, err
 		}
 		if strings.TrimSpace(id) != "" {
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, id)
@@ -217,14 +217,14 @@ func (a *Adapter) sendContextText(ctx context.Context, text string) (platform.Re
 	return receipt, nil
 }
 
-func (a *Adapter) sendContextOutput(ctx context.Context, out output.Output) (platform.Receipt, error) {
+func (a *Adapter) sendContextOutput(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
 	t, ok := ctx.Value(targetKey{}).(target)
 	if !ok {
-		return platform.Receipt{}, fmt.Errorf("qq send target missing")
+		return delivery.Receipt{}, fmt.Errorf("qq send target missing")
 	}
 	segments, err := outputSegments(out)
 	if err != nil {
-		return platform.Receipt{}, err
+		return delivery.Receipt{}, err
 	}
 	switch t.MessageType {
 	case "private":
@@ -234,16 +234,16 @@ func (a *Adapter) sendContextOutput(ctx context.Context, out output.Output) (pla
 		id, err := a.transport.SendGroupSegments(ctx, t.GroupID, segments)
 		return receiptWithMessageID(id), err
 	default:
-		return platform.Receipt{}, fmt.Errorf("unsupported message target %q", t.MessageType)
+		return delivery.Receipt{}, fmt.Errorf("unsupported message target %q", t.MessageType)
 	}
 }
 
-func (a *Adapter) sendTarget(ctx context.Context, outTarget output.Target, out output.Output) (platform.Receipt, error) {
+func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, out delivery.Output) (delivery.Receipt, error) {
 	if outTarget.Superadmins {
 		if len(a.cfg.Superadmins) == 0 {
-			return platform.Receipt{}, fmt.Errorf("qqonebot superadmins are not configured")
+			return delivery.Receipt{}, fmt.Errorf("qqonebot superadmins are not configured")
 		}
-		var receipt platform.Receipt
+		var receipt delivery.Receipt
 		for _, id := range a.cfg.Superadmins {
 			id = strings.TrimSpace(id)
 			if id == "" {
@@ -256,7 +256,7 @@ func (a *Adapter) sendTarget(ctx context.Context, outTarget output.Target, out o
 			copyTarget.ScopeID = ""
 			sent, err := a.sendTarget(ctx, copyTarget, out)
 			if err != nil {
-				return platform.Receipt{}, err
+				return delivery.Receipt{}, err
 			}
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 		}
@@ -264,24 +264,24 @@ func (a *Adapter) sendTarget(ctx context.Context, outTarget output.Target, out o
 	}
 	t, err := targetToQQ(outTarget)
 	if err != nil {
-		return platform.Receipt{}, err
+		return delivery.Receipt{}, err
 	}
 	targetCtx := context.WithValue(ctx, targetKey{}, t)
-	if out.Kind == output.KindText {
+	if out.Kind == delivery.KindText {
 		return a.sendContextText(targetCtx, out.Text)
 	}
 	return a.sendContextOutput(targetCtx, out)
 }
 
-func receiptWithMessageID(id string) platform.Receipt {
+func receiptWithMessageID(id string) delivery.Receipt {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return platform.Receipt{}
+		return delivery.Receipt{}
 	}
-	return platform.Receipt{PlatformMessageIDs: []string{id}}
+	return delivery.Receipt{PlatformMessageIDs: []string{id}}
 }
 
-func targetToQQ(outTarget output.Target) (target, error) {
+func targetToQQ(outTarget delivery.Target) (target, error) {
 	if strings.TrimSpace(outTarget.PrivateUserID) == "" && strings.TrimSpace(outTarget.GroupID) == "" {
 		scope := strings.TrimSpace(outTarget.ScopeID)
 		if strings.HasPrefix(scope, "private:") {
@@ -307,9 +307,9 @@ func targetToQQ(outTarget output.Target) (target, error) {
 	return target{}, fmt.Errorf("qqonebot target missing private_user_id, group_id or scope_id")
 }
 
-func outputSegments(out output.Output) ([]Segment, error) {
+func outputSegments(out delivery.Output) ([]Segment, error) {
 	switch out.Kind {
-	case output.KindReply:
+	case delivery.KindReply:
 		replyID := strings.TrimSpace(out.ReplyToPlatformMessageID)
 		if replyID == "" {
 			return nil, fmt.Errorf("reply target message id is empty")
@@ -318,13 +318,13 @@ func outputSegments(out output.Output) ([]Segment, error) {
 			{Type: "reply", Data: map[string]any{"id": replyID}},
 			{Type: "text", Data: map[string]any{"text": out.Text}},
 		}, nil
-	case output.KindEmoticon, output.KindImage:
+	case delivery.KindEmoticon, delivery.KindImage:
 		file, err := base64SourceFile(out.Source, "image")
 		if err != nil {
 			return nil, err
 		}
 		return []Segment{{Type: "image", Data: map[string]any{"file": file}}}, nil
-	case output.KindFile:
+	case delivery.KindFile:
 		file, err := base64SourceFile(out.Source, "file")
 		if err != nil {
 			return nil, err
@@ -334,7 +334,7 @@ func outputSegments(out output.Output) ([]Segment, error) {
 			data["name"] = name
 		}
 		return []Segment{{Type: "file", Data: data}}, nil
-	case output.KindAt:
+	case delivery.KindAt:
 		qq := strings.TrimSpace(out.Name)
 		if qq == "" {
 			qq = strings.TrimSpace(out.Text)
@@ -348,7 +348,7 @@ func outputSegments(out output.Output) ([]Segment, error) {
 	}
 }
 
-func base64SourceFile(source output.Source, label string) (string, error) {
+func base64SourceFile(source delivery.Source, label string) (string, error) {
 	if len(source.Data) > 0 {
 		return "base64://" + base64.StdEncoding.EncodeToString(source.Data), nil
 	}

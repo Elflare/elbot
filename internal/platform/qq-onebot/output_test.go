@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"elbot/internal/output"
+	"elbot/internal/delivery"
 )
 
 func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
@@ -21,7 +21,7 @@ func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
 	adapter.transport = transport
 	ctx := context.WithValue(context.Background(), targetKey{}, target{MessageType: "group", GroupID: 9})
 
-	receipt, err := adapter.SendNotice(ctx, output.Target{}, output.Text("[tool] 正在调用 shell：{}"))
+	receipt, err := adapter.SendNotice(ctx, delivery.Target{}, delivery.Text("[tool] 正在调用 shell：{}"))
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestSendNoticeKeepsPrivateToolPreview(t *testing.T) {
 	adapter.transport = transport
 	ctx := context.WithValue(context.Background(), targetKey{}, target{MessageType: "private", UserID: 1})
 
-	receipt, err := adapter.SendNotice(ctx, output.Target{}, output.Text("[tool] 正在调用 shell：{}"))
+	receipt, err := adapter.SendNotice(ctx, delivery.Target{}, delivery.Text("[tool] 正在调用 shell：{}"))
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestOutputSegmentsFileUsesBase64(t *testing.T) {
 	if err := os.WriteFile(path, []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out := output.FilePath(path)
+	out := delivery.FilePath(path)
 	out.Name = "report.txt"
 	segments, err := outputSegments(out)
 	if err != nil {

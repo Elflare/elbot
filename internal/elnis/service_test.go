@@ -8,7 +8,7 @@ import (
 
 	"elbot/internal/background"
 	"elbot/internal/config"
-	"elbot/internal/output"
+	"elbot/internal/delivery"
 	"elbot/internal/storage/sqlite"
 )
 
@@ -150,7 +150,7 @@ func TestHandleLLMQueuesEvent(t *testing.T) {
 func TestRunLLMEventCompletesAndReports(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"处理完成"}`}
 	sent := []string{}
-	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target output.Target, out output.Output) error {
+	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, out delivery.Output) error {
 		sent = append(sent, target.Platform+":"+out.Text)
 		return nil
 	})
@@ -187,7 +187,7 @@ func TestRunLLMEventCompletesAndReports(t *testing.T) {
 func TestRunLLMEventReportsFailedResultWhenRequested(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: `{"completed":false,"need_report":true,"report":"创建失败：工具权限不足"}`}
 	sent := []string{}
-	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target output.Target, out output.Output) error {
+	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, out delivery.Output) error {
 		sent = append(sent, target.Platform+":"+out.Text)
 		return nil
 	})
@@ -229,7 +229,7 @@ func TestResolveTargetsAllUsesAllowedPlatforms(t *testing.T) {
 
 func TestHandleDirectSendsToResolvedSuperadmins(t *testing.T) {
 	sent := []string{}
-	service, cleanup := newTestService(t, func(ctx context.Context, target output.Target, out output.Output) error {
+	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, out delivery.Output) error {
 		sent = append(sent, target.Platform+":"+out.Text)
 		return nil
 	})
@@ -262,7 +262,7 @@ func newTestServiceWithRunner(t *testing.T, runner background.Runner, send Sende
 		t.Fatalf("sqlite.New: %v", err)
 	}
 	if send == nil {
-		send = func(ctx context.Context, target output.Target, out output.Output) error { return nil }
+		send = func(ctx context.Context, target delivery.Target, out delivery.Output) error { return nil }
 	}
 	service, err := NewService(Options{
 		Config: config.ElnisConfig{

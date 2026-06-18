@@ -13,8 +13,8 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
+	"elbot/internal/delivery"
 	"elbot/internal/hook"
-	"elbot/internal/output"
 )
 
 const (
@@ -90,9 +90,9 @@ func (m Module) rewriteLLMEmoticons(_ context.Context, event hook.Event) (hook.E
 		}
 		changed = true
 		if path := pickImage(m.Config.RootDir, name); path != "" {
-			event.Outputs = append(event.Outputs, output.WithDeliveryTiming(output.EmoticonPath(name, path), m.Config.timing()))
+			event.Outputs = append(event.Outputs, delivery.WithDeliveryTiming(delivery.EmoticonPath(name, path), m.Config.timing()))
 		} else {
-			event.Outputs = append(event.Outputs, output.WithDeliveryTiming(output.Emoticon(name), m.Config.timing()))
+			event.Outputs = append(event.Outputs, delivery.WithDeliveryTiming(delivery.Emoticon(name), m.Config.timing()))
 		}
 		return ""
 	})
@@ -139,18 +139,13 @@ func (c Config) priority() int {
 func (c Config) timing() string {
 	timing := strings.TrimSpace(c.Timing)
 	if timing == "" {
-		return output.DeliveryImmediate
+		return delivery.DeliveryImmediate
 	}
 	return timing
 }
 
 func validateTiming(timing string) error {
-	switch strings.TrimSpace(timing) {
-	case "", output.DeliveryImmediate, output.DeliveryAfterAssistant:
-		return nil
-	default:
-		return fmt.Errorf("unsupported timing %q", timing)
-	}
+	return delivery.ValidateDeliveryTiming(timing)
 }
 
 func emoticonDirExists(rootDir, name string) bool {

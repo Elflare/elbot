@@ -13,9 +13,9 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
+	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/output"
 	"elbot/internal/security"
 	"elbot/internal/tool"
 )
@@ -288,12 +288,7 @@ func validateRule(rule Rule) error {
 }
 
 func validateActionTiming(timing string) error {
-	switch strings.TrimSpace(timing) {
-	case "", output.DeliveryImmediate, output.DeliveryAfterAssistant:
-		return nil
-	default:
-		return fmt.Errorf("unsupported timing %q", timing)
-	}
+	return delivery.ValidateDeliveryTiming(timing)
 }
 
 func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.Event, error) {
@@ -486,39 +481,39 @@ func allowField(event hook.Event, field string) error {
 	return fmt.Errorf("field %q cannot be edited at hook point %q", field, event.Point)
 }
 
-func makeOutput(action Action, event hook.Event, state state) (output.Output, error) {
-	kind := output.Kind(strings.TrimSpace(action.Kind))
+func makeOutput(action Action, event hook.Event, state state) (delivery.Output, error) {
+	kind := delivery.Kind(strings.TrimSpace(action.Kind))
 	if kind == "" {
-		kind = output.KindText
+		kind = delivery.KindText
 	}
 	text := render(action.Text, event, state)
 	path := render(action.Path, event, state)
-	var out output.Output
+	var out delivery.Output
 	switch kind {
-	case output.KindText:
-		out = output.Text(text)
-	case output.KindImage:
-		out = output.ImagePath(path)
+	case delivery.KindText:
+		out = delivery.Text(text)
+	case delivery.KindImage:
+		out = delivery.ImagePath(path)
 		out.Text = text
-	case output.KindFile:
-		out = output.FilePath(path)
+	case delivery.KindFile:
+		out = delivery.FilePath(path)
 		out.Text = text
-	case output.KindEmoticon:
-		out = output.Emoticon(text)
+	case delivery.KindEmoticon:
+		out = delivery.Emoticon(text)
 		out.Source.Path = path
-	case output.KindAt:
-		out = output.At(text)
+	case delivery.KindAt:
+		out = delivery.At(text)
 	default:
-		return output.Output{}, fmt.Errorf("unsupported output kind %q", kind)
+		return delivery.Output{}, fmt.Errorf("unsupported output kind %q", kind)
 	}
-	out.Target = output.Target{
+	out.Target = delivery.Target{
 		Platform:      render(action.Target.Platform, event, state),
 		ScopeID:       render(action.Target.ScopeID, event, state),
 		PrivateUserID: render(action.Target.PrivateUserID, event, state),
 		GroupID:       render(action.Target.GroupID, event, state),
 		Superadmins:   action.Target.Superadmins,
 	}
-	out = output.WithDeliveryTiming(out, render(action.Timing, event, state))
+	out = delivery.WithDeliveryTiming(out, render(action.Timing, event, state))
 	if strings.TrimSpace(out.Target.Platform) == "" && event.Point == hook.PointPlatformConnected {
 		out.Target.Platform = event.Platform.Name
 	}

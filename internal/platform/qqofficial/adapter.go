@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"elbot/internal/output"
+	"elbot/internal/delivery"
 	"elbot/internal/platform"
 )
 
@@ -76,31 +76,31 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 	}
 }
 
-func (a *Adapter) SendChat(ctx context.Context, out output.Output) (platform.Receipt, error) {
+func (a *Adapter) SendChat(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
 	return a.sendContextOutput(ctx, out)
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, target output.Target, out output.Output) (platform.Receipt, error) {
+func (a *Adapter) SendNotice(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
 	if target.Empty() {
 		return a.SendChat(ctx, out)
 	}
 	openIDs, err := a.targetOpenIDs(target)
 	if err != nil {
-		return platform.Receipt{}, err
+		return delivery.Receipt{}, err
 	}
-	var receipt platform.Receipt
+	var receipt delivery.Receipt
 	for _, openID := range openIDs {
 		ctx := context.WithValue(ctx, targetKey{}, sendTarget{OpenID: openID, Proactive: true})
 		sent, err := a.sendContextOutput(ctx, out)
 		if err != nil {
-			return platform.Receipt{}, err
+			return delivery.Receipt{}, err
 		}
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 	}
 	return receipt, nil
 }
 
-func (a *Adapter) targetOpenIDs(target output.Target) ([]string, error) {
+func (a *Adapter) targetOpenIDs(target delivery.Target) ([]string, error) {
 	if platformName := strings.TrimSpace(target.Platform); platformName != "" && platformName != a.Name() {
 		return nil, fmt.Errorf("qqofficial cannot send to platform %q", platformName)
 	}

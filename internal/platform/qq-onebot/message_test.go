@@ -14,7 +14,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
-	"elbot/internal/output"
+	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -293,7 +293,7 @@ func TestOutputSegments(t *testing.T) {
 	if err := os.WriteFile(path, image, 0o644); err != nil {
 		t.Fatalf("write image: %v", err)
 	}
-	segments, err := outputSegments(output.EmoticonPath("滑稽", path))
+	segments, err := outputSegments(delivery.EmoticonPath("滑稽", path))
 	if err != nil {
 		t.Fatalf("outputSegments image: %v", err)
 	}
@@ -312,7 +312,7 @@ func TestOutputSegments(t *testing.T) {
 		t.Fatalf("decoded image = %q", decoded)
 	}
 
-	segments, err = outputSegments(output.At("123456"))
+	segments, err = outputSegments(delivery.At("123456"))
 	if err != nil {
 		t.Fatalf("outputSegments at: %v", err)
 	}

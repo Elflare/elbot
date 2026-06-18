@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"elbot/internal/background"
+	"elbot/internal/delivery"
 	"elbot/internal/elyph"
-	"elbot/internal/output"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 )
@@ -27,7 +27,7 @@ const (
 
 type AuditFunc func(event string, attrs ...any)
 
-type TargetSenderFunc func(ctx context.Context, target output.Target, out output.Output) error
+type TargetSenderFunc func(ctx context.Context, target delivery.Target, out delivery.Output) error
 
 type PlatformTarget struct {
 	Name          string
@@ -712,7 +712,7 @@ func (s *Service) sendToPlatforms(ctx context.Context, jobName string, platforms
 		attrs := []any{"job", jobName, "platform", platformName, "target", "superadmins"}
 		s.auditEvent("cron.send_started", attrs...)
 		s.logInfo("cron send started", attrs...)
-		err := s.sendTarget(ctx, output.Target{Platform: platformName, Superadmins: true}, output.Text(text))
+		err := s.sendTarget(ctx, delivery.Target{Platform: platformName, Superadmins: true}, delivery.Text(text))
 		if err != nil {
 			err = fmt.Errorf("send %s: %w", platformName, err)
 			errs = append(errs, err)

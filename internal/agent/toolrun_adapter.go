@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/output"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/storage"
@@ -122,7 +122,7 @@ func (d agentToolRunDeps) SendPreview(ctx context.Context, text string) {
 	d.output.SendPreview(ctx, text)
 }
 
-func (d agentToolRunDeps) SendOutputs(ctx context.Context, outputs []output.Output) error {
+func (d agentToolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
 	return d.output.SendOutputs(ctx, outputs)
 }
 

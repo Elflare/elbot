@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/output"
+	"elbot/internal/delivery"
 	"elbot/internal/platform"
 )
 
@@ -19,31 +19,31 @@ const (
 	fileTypeFile  = 4
 )
 
-func receiptWithMessageID(id string) platform.Receipt {
+func receiptWithMessageID(id string) delivery.Receipt {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return platform.Receipt{}
+		return delivery.Receipt{}
 	}
-	return platform.Receipt{PlatformMessageIDs: []string{id}}
+	return delivery.Receipt{PlatformMessageIDs: []string{id}}
 }
 
-func (a *Adapter) sendContextOutput(ctx context.Context, out output.Output) (platform.Receipt, error) {
+func (a *Adapter) sendContextOutput(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
 	t, err := a.contextTarget(ctx)
 	if err != nil {
-		return platform.Receipt{}, err
+		return delivery.Receipt{}, err
 	}
 	switch out.Kind {
-	case output.KindText:
+	case delivery.KindText:
 		return a.sendText(ctx, t, out.Text)
-	case output.KindReply:
-		text := output.FallbackText(out)
+	case delivery.KindReply:
+		text := delivery.FallbackText(out)
 		return a.sendText(ctx, t, text)
-	case output.KindImage, output.KindEmoticon:
+	case delivery.KindImage, delivery.KindEmoticon:
 		return a.sendMedia(ctx, t, out, fileTypeImage)
-	case output.KindFile:
+	case delivery.KindFile:
 		return a.sendMedia(ctx, t, out, fileTypeFile)
 	default:
-		return a.sendText(ctx, t, output.FallbackText(out))
+		return a.sendText(ctx, t, delivery.FallbackText(out))
 	}
 }
 
@@ -63,13 +63,13 @@ func (a *Adapter) contextTarget(ctx context.Context) (sendTarget, error) {
 	return sendTarget{}, fmt.Errorf("qqofficial send target missing")
 }
 
-func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) (platform.Receipt, error) {
+func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) (delivery.Receipt, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return platform.Receipt{}, nil
+		return delivery.Receipt{}, nil
 	}
 	if target.Proactive && !a.cfg.allowProactive() {
-		return platform.Receipt{}, fmt.Errorf("qqofficial proactive messages are disabled")
+		return delivery.Receipt{}, fmt.Errorf("qqofficial proactive messages are disabled")
 	}
 	if a.cfg.markdownByDefault() {
 		msg := a.baseMessage(target)
@@ -89,29 +89,29 @@ func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) 
 	msg.Content = text
 	resp, err := a.client.sendMessage(ctx, target.OpenID, msg)
 	if err != nil {
-		return platform.Receipt{}, err
+		return delivery.Receipt{}, err
 	}
 	return receiptWithMessageID(resp.ID), nil
 }
 
-func (a *Adapter) sendMedia(ctx context.Context, target sendTarget, out output.Output, fileType int) (platform.Receipt, error) {
+func (a *Adapter) sendMedia(ctx context.Context, target sendTarget, out delivery.Output, fileType int) (delivery.Receipt, error) {
 	if target.Proactive && !a.cfg.allowProactive() {
-		return platform.Receipt{}, fmt.Errorf("qqofficial proactive messages are disabled")
+		return delivery.Receipt{}, fmt.Errorf("qqofficial proactive messages are disabled")
 	}
 	source, err := prepareSource(out.Source.URL, out.Source.Path, out.Source.Data)
 	if err != nil {
-		return platform.Receipt{}, err
+		return delivery.Receipt{}, err
 	}
 	uploaded, err := a.client.uploadFile(ctx, target.OpenID, fileType, source)
 	if err != nil {
-		return platform.Receipt{}, err
+		return delivery.Receipt{}, err
 	}
 	msg := a.baseMessage(target)
 	msg.MsgType = msgTypeMedia
 	msg.Media = &messageMedia{FileInfo: uploaded.FileInfo}
 	resp, err := a.client.sendMessage(ctx, target.OpenID, msg)
 	if err != nil {
-		return platform.Receipt{}, err
+		return delivery.Receipt{}, err
 	}
 	return receiptWithMessageID(resp.ID), nil
 }
@@ -127,16 +127,16 @@ func (a *Adapter) baseMessage(target sendTarget) messageToCreate {
 	return msg
 }
 
-func (a *Adapter) sendArk(ctx context.Context, target sendTarget, ark messageArk) (platform.Receipt, error) {
+func (a *Adapter) sendArk(ctx context.Context, target sendTarget, ark messageArk) (delivery.Receipt, error) {
 	if !a.cfg.EnableArk {
-		return platform.Receipt{}, fmt.Errorf("qqofficial ark is disabled")
+		return delivery.Receipt{}, fmt.Errorf("qqofficial ark is disabled")
 	}
 	msg := a.baseMessage(target)
 	msg.MsgType = msgTypeArk
 	msg.Ark = &ark
 	resp, err := a.client.sendMessage(ctx, target.OpenID, msg)
 	if err != nil {
-		return platform.Receipt{}, err
+		return delivery.Receipt{}, err
 	}
 	return receiptWithMessageID(resp.ID), nil
 }

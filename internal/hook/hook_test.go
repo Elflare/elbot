@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
-	"elbot/internal/output"
 )
 
 func TestNoopManagerRunPreparesEvent(t *testing.T) {
@@ -188,7 +188,7 @@ func TestManagerRejectsRegistrationWithoutExplicitMatch(t *testing.T) {
 func TestManagerMarksHookOutputs(t *testing.T) {
 	manager := NewManager()
 	if err := manager.Register(Registration{Point: PointPlatformConnected, Priority: 0, Name: "notify.connected", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
-		event.Outputs = append(event.Outputs, output.Text("connected"))
+		event.Outputs = append(event.Outputs, delivery.Text("connected"))
 		return event, nil
 	})}); err != nil {
 		t.Fatalf("Register: %v", err)
@@ -202,7 +202,7 @@ func TestManagerMarksHookOutputs(t *testing.T) {
 		t.Fatalf("outputs = %d, want 1", len(event.Outputs))
 	}
 	meta := event.Outputs[0].Meta
-	if meta[output.MetaHookName] != "notify.connected" || meta[output.MetaHookPoint] != string(PointPlatformConnected) || meta[output.MetaHookMode] != "run" {
+	if meta[delivery.MetaHookName] != "notify.connected" || meta[delivery.MetaHookPoint] != string(PointPlatformConnected) || meta[delivery.MetaHookMode] != "run" {
 		t.Fatalf("output meta = %#v", meta)
 	}
 }
