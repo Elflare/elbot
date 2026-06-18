@@ -13,11 +13,12 @@ The default source configuration directory contains:
 | `config/app.toml` | Main configuration entry, saving storage, runtime, context, commands, tools, security, platform, and configuration file paths. |
 | `config/providers.toml` | LLM Provider, model list, default request parameters, and model metadata. |
 | `config/state.toml` | Runtime state, e.g., default Session mode, chat/work/compact/naming model selection. |
+| `config/tool_tags.md` | Configuration file for adding tags and prompts to tools. |
 | `config/elnis.toml` | Elnis listening hub configuration, saving HTTP, token, delivery, allowed_tools, and Elwisp policies. |
 | `config/SOUL.md` | The System Prompt source file for the Agent. |
-| `config/.env` | Optional, local key file; not recommended to be committed. |
+| `config/.env` | Optional, local key file, not recommended for submission; the one automatically generated the first time is `.env.example`, and `.env` will not be generated directly. |
 | `config/plugins/` | Hook and plugin configuration directory. |
-| `config/skills/` | User-side Skill directory, located in the configuration directory by default. |
+| `config/skills/` | User-side Skill directory, located in the configuration directory by default; current subdirectories are `skills/py/` and `skills/go/`. |
 | `config/memories.toml` | Resident memory file, located in the configuration directory by default. |
 | `config/long_memory/` | Long-term memory Markdown source data directory, located in the configuration directory by default. |
 
@@ -29,6 +30,11 @@ The main configuration is searched in the following order upon startup:
 2. Environment variable `ELBOT_CONFIG_FILE`.
 3. Platform configuration directory: Windows `%APPDATA%/ElBot/app.toml`; Linux uses the XDG configuration directory.
 4. Source code directory `config/app.toml`.
+5. If neither the platform configuration nor the source code example configuration exists, a default configuration file will be automatically generated in the platform configuration directory.
+
+Automatic generation is only triggered when there are no explicit `--config` and `ELBOT_CONFIG_FILE`. If the explicitly specified configuration path does not exist, ElBot will report an error instead of silently generating it, to avoid masking path spelling errors.
+
+Files automatically generated for the first time include: `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `elnis.toml`, and `.env.example`; At the same time, the directories `skills/`, `skills/py/`, `skills/go/`, `plugins/`, and `long_memory/` will be created. Existing files will not be overwritten. `elnis.toml` defaults to `enabled=false`, and HTTP listening will not be started on the first run.
 
 Example:
 
@@ -112,11 +118,24 @@ model = "deepseek-chat"
 [mode_models.chat]
 provider = "deepseek"
 model = "deepseek-chat"
+
+[mode_models.elwisp1]
+provider = "deepseek"
+model = "deepseek-chat"
+
+[mode_models.elwisp2]
+provider = "deepseek"
+model = "deepseek-chat"
+
+[mode_models.elwisp3]
+provider = "deepseek"
+model = "deepseek-chat"
 ```
 
 - `default_mode` determines whether a new Session defaults to `chat` or `work`.
 - `work` mode enables tool discovery and tool calling.
 - `chat` mode does not inject tools, making it suitable for casual chatting and low-cost conversations.
+- `elwisp1`, `elwisp2`, and `elwisp3` are optional model slots for Elnis LLM events; Elvena requests can be specified via `model_slot`, falling back to `work` when not configured.
 - After switching models using `/model` at runtime, the state will be written back to `state.toml`.
 
 ## Storage and Runtime Data
@@ -190,6 +209,9 @@ prefixes = ["/"]
 ## Tools and Security
 
 ```toml
+[config_files]
+tool_tags = "tool_tags.toml"
+
 [tools]
 max_rounds_per_turn = 10
 
@@ -204,6 +226,56 @@ cli = ["local"]
 - Regular users can only discover and call tools within the allowed risk range.
 - Superadmins also need confirmation when calling high-risk tools.
 - The default local CLI user `local` is a superadmin.
+- `tool_tags.toml` is used to configure the tool groups that can be injected into `@tool:<tag>`, as well as the tool usage strategies appended to the system prompt after a tag is activated.
+
+### `tool_tags.toml`
+
+`tool_tags.toml` is a standalone configuration file, with its path specified by `[config_files].tool_tags`. Relative paths are based on the directory where `app.toml` is located:
+
+```toml
+[config_files]
+tool_tags = "tool_tags.toml"
+```
+
+The file format uses tags as entry points:
+
+```toml
+[tags.agent]
+tools = ["read_file", "edit_file", "shell"]
+prompt = """
+ROLE:
+- The goal is to complete the user's task safely and accurately.
+
+MUST:
+- Inspect relevant files before editing.
+- Prefer minimal, verifiable changes.
+- Evaluate command safety before running shell commands.
+"""
+```
+
+Field descriptions:
+
+- `[tags.<tag-name>]`: Defines a tag that can be used in chat, for example, `[tags.agent]` corresponds to `@tool:agent`.
+- `tools`: A list of tool names that this tag will preload. Tool names must be registered tools that the current user has permission to access.
+- `prompt`: The tool usage strategy appended to the system prompt after this tag is successfully activated. The content will be presented directly to the model without automatically adding a tag name header.
+
+Usage:
+
+```text
+@tool:agent 帮我检查这个项目的问题
+```
+
+This will preload the tools configured under `agent` into the current Session. If `prompt` is not empty, it will also be appended to the system prompt starting from this round.
+
+Notes:
+
+- Configured tags will be appended to built-in tags, not overwrite them.
+- Only after `@tool:<tag>` successfully hits at least one tool will the current Session activate the prompt for that tag.
+- Directly using `@tool:<tool-name>` only preloads the specified tools and does not activate the tag prompt.
+- Activated tags are written to the Session metadata and remain effective after `/resume`.
+- Prompt text is dynamically read from `tool_tags.toml`; changes to the file affect subsequent requests, behaving similarly to `SOUL.md`.
+- When preloading tools that already exist, they will not be added again, and the platform will prompt `已存在工具：<name>`.
+- It is recommended to write `prompt` as a specific tool usage strategy, rather than configuration mechanisms that the model does not need to know, such as "the current tag is xxx".
 
 ## Elnis listening hub
 
@@ -245,8 +317,9 @@ Note:
 - `token_env` can be written as a list to try multiple environment variable names in order; this is suitable for temporarily switching tokens or achieving multi-environment compatibility.
 - Elwisp is enabled by default; the corresponding Elwisp will only be disabled if `enabled=false` is explicitly configured.
 - Currently, `record`, `direct`, and `llm` modes are supported; `llm` mode is executed using a background Session runner.
+- In `llm` mode, `model_slot` can be specified as `elwisp1`, `elwisp2`, or `elwisp3` in Elvena requests; If not specified or if the corresponding slot is not configured, it will fall back to the `work` model.
 - `direct` and `llm` reports only support sending to superadmins via the platform decided by Elnis, and do not support arbitrary user/group targets.
-- The `tools` declaration in Elvena requests is a capability under development, but it has already entered the validation, persistence, and execution pipelines; external tool names still need to be controlled by the denylist of an individual Elwisp.
+- `tools` in Elvena requests enters the validation, persistence, and execution chain; external tool names are still controlled by the denylist of individual Elwisps.
 
 For more information, see [Elnis Configuration and Usage](elnis-usage.md).
 
