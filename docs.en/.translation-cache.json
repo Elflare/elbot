@@ -31,9 +31,9 @@
       "updated_at": 1781752966
     },
     "docs/elnis.md": {
-      "source_hash": "3a0c1b74d7554f2f80b194e4f58bb5933d130d860d3278535318c421e0777238",
+      "source_hash": "e37fb285d10ac6630a3a92232fed75abf8c888a91bea7c064cb84202bc7ef6f8",
       "target": "docs.en/elnis.md",
-      "updated_at": 1781744939
+      "updated_at": 1781753001
     },
     "docs/getting-started.md": {
       "source_hash": "03eb8aa561aca703b7e764c8129596c4b45c9089405fb354f913006859b7cb3e",
@@ -4858,6 +4858,14 @@
       "translation": "Architecture Diagram",
       "updated_at": 1781710746
     },
+    "docs/elnis.md:heading:98fa01cd580d047e89c8340614298ab37f6ff30e29c5b72b43bc8da64336947d": {
+      "kind": "heading",
+      "source": "查看 Elwisp 日志",
+      "source_file": "docs/elnis.md",
+      "source_hash": "98fa01cd580d047e89c8340614298ab37f6ff30e29c5b72b43bc8da64336947d",
+      "translation": "View Elwisp logs",
+      "updated_at": 1781753001
+    },
     "docs/elnis.md:heading:a43c34eead0953dedbd1109557677e5a64c8095ca120bf437d80c357dfe77308": {
       "kind": "heading",
       "source": "Elnis（艾露妮斯）",
@@ -5178,6 +5186,14 @@
       "translation": "Elvena is the JSON over HTTP protocol used by Elwisp to deliver events to Elnis.\n",
       "updated_at": 1781710746
     },
+    "docs/elnis.md:paragraph:1588d1f607689f56671a35b3db8a2be89f4f22231d7e282053c9f3c62b6e5401": {
+      "kind": "paragraph",
+      "source": "它读取 __ELBOT_CODE_0__，支持按 Elwisp 名称、事件来源、事件 ID、模式和时间范围过滤。\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "1588d1f607689f56671a35b3db8a2be89f4f22231d7e282053c9f3c62b6e5401",
+      "translation": "It reads __ELBOT_CODE_0__ and supports filtering by Elwisp name, event source, event ID, mode, and time range.\n",
+      "updated_at": 1781753001
+    },
     "docs/elnis.md:paragraph:1ff5ad7a790c585c4083e66c874fd07f1d57a76721909ae15dbd178cd77e554d": {
       "kind": "paragraph",
       "source": "例如：\n",
@@ -5257,6 +5273,14 @@
       "source_hash": "96d4257f00bcf65b25e342c089f87d68e4284fdc28ec1e9d3bade76a082d916a",
       "translation": "Elwisp is like a probe scattered across the external world, and also like the eyes of ElBot. They can be numerous, small, and dispersed; they have only one responsibility: to tell Elnis what is happening in the external world.\n",
       "updated_at": 1781710746
+    },
+    "docs/elnis.md:paragraph:aaea27431774bcd2c2b77ff06bfc1295f948331b590d2808f2bb0e72aace31d5": {
+      "kind": "paragraph",
+      "source": "可以用 __ELBOT_CODE_0__ 查看 Elnis/Elwisp 事件日志。",
+      "source_file": "docs/elnis.md",
+      "source_hash": "aaea27431774bcd2c2b77ff06bfc1295f948331b590d2808f2bb0e72aace31d5",
+      "translation": "You can use __ELBOT_CODE_0__ to view Elnis/Elwisp event logs.",
+      "updated_at": 1781753001
     },
     "docs/elnis.md:paragraph:adef3d9013f4f87cbcd06bb22cf5a2535a1649b89d32a882c4fd4aa22aea893d": {
       "kind": "paragraph",
@@ -5345,6 +5369,14 @@
       "source_hash": "e8ed8ec34748c1b2669ebd41ac9693b4a8ad42b4d79dd6520d28147f0ab44a25",
       "translation": "Elnis is responsible for:\n",
       "updated_at": 1781710746
+    },
+    "docs/elnis.md:paragraph:f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f": {
+      "kind": "paragraph",
+      "source": "示例：\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f",
+      "translation": "Example:\n",
+      "updated_at": 1781753001
     },
     "docs/elnis.md:table:047563285d4d325d5023f47c22f5c5f3e14100d30d569d73c91946b0524815e0": {
       "kind": "table",
