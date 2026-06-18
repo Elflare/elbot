@@ -21,9 +21,9 @@
       "updated_at": 1781710345
     },
     "docs/configuration.md": {
-      "source_hash": "4ef970a47056daefeca4876781ee4e298759618125498817ee804ff115cdc39e",
+      "source_hash": "3995353ba165fa39cfbdfb0cd7f7b00a0720908bff5f2bc6e733eded71a93a51",
       "target": "docs.en/configuration.md",
-      "updated_at": 1781710346
+      "updated_at": 1781749596
     },
     "docs/elnis-usage.md": {
       "source_hash": "1b1d0ef3aa3bc8a0610622e70833c3152696071174307c2e28026a2e52085a9b",
@@ -3530,6 +3530,14 @@
       "translation": "__ELBOT_CODE_0__ in the configuration directory.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:1e4e61ce9aa1d8fda4581e885e0d5e284d8b4c6b9fa9280cde3422c4c39b50fd": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是 Elnis 内部工具白名单；未单独配置的 Elwisp 继承全局默认。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1e4e61ce9aa1d8fda4581e885e0d5e284d8b4c6b9fa9280cde3422c4c39b50fd",
+      "translation": "__ELBOT_CODE_0__ is the Elnis internal tool whitelist; Elwisps without separate configurations inherit the global default.",
+      "updated_at": 1781749596
+    },
     "docs/configuration.md:list:2e202f83cb7bc886d1a67c0336e50c3b0c0fcc8f96e398dbb62e601787b67984": {
       "kind": "list",
       "source": "改变默认路径或启动行为时同步更新 [快速开始](getting-started.md) 和 README。",
@@ -3561,6 +3569,14 @@
       "source_hash": "374dfb411ea8aaa45f6e24fa01a3492da8c73121e562888a8d21e45bfd5c66c2",
       "translation": "Source code directory __ELBOT_CODE_0__.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:37929a359e1a2b750bde2f110d3400a37ede64745d390665984cf3d267d9024f": {
+      "kind": "list",
+      "source": "单个 Elwisp 若配置 __ELBOT_CODE_0__，会覆盖全局默认。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "37929a359e1a2b750bde2f110d3400a37ede64745d390665984cf3d267d9024f",
+      "translation": "If a single Elwisp configures __ELBOT_CODE_0__, it will override the global default.",
+      "updated_at": 1781749596
     },
     "docs/configuration.md:list:52eda2e5ea44f3efc3f902b206dc88f827294699e84a9dd2700075ce38fc7c61": {
       "kind": "list",
@@ -3618,6 +3634,14 @@
       "translation": "__ELBOT_CODE_0__ mode does not inject tools, making it suitable for casual chatting and low-cost conversations.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:6cd89da7557c0fa722138f493974d997fc40799da25b45c8695cb5083a9c6888": {
+      "kind": "list",
+      "source": "外部工具默认允许；只有单个 Elwisp 配置 __ELBOT_CODE_0__ 时才禁用指定外部工具。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "6cd89da7557c0fa722138f493974d997fc40799da25b45c8695cb5083a9c6888",
+      "translation": "External tools are allowed by default; specified external tools are only disabled when a single Elwisp configures __ELBOT_CODE_0__.",
+      "updated_at": 1781749596
+    },
     "docs/configuration.md:list:826c019d3d4694805a7bafdcfa232b73d5ca05192f673a07a18bbc62fcf2de40": {
       "kind": "list",
       "source": "用户可编辑配置集中放在平台配置目录，避免直接改源码示例。",
@@ -3641,6 +3665,14 @@
       "source_hash": "84c93946cf545fae1951c7289ee42f3a15050cfb4421a7d0eaa993e615e974d9",
       "translation": "System environment variables.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:86ccc30cbfdb0743eee67ae6433aa4731a8b5fcd7b89faceaeaba66665a9c6a3": {
+      "kind": "list",
+      "source": "Elvena 请求中的 __ELBOT_CODE_0__ 声明是开发中能力，但已进入校验、持久化和执行链路；外部工具名仍需由单个 Elwisp 的禁用列表控制。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "86ccc30cbfdb0743eee67ae6433aa4731a8b5fcd7b89faceaeaba66665a9c6a3",
+      "translation": "The __ELBOT_CODE_0__ declaration in Elvena requests is a capability under development, but it has already entered the validation, persistence, and execution pipelines; external tool names still need to be controlled by the denylist of an individual Elwisp.",
+      "updated_at": 1781749596
     },
     "docs/configuration.md:list:90a1769dc5a38bae3a3e24655279a05067bee71c64716dad285ccdcf87cb0c0a": {
       "kind": "list",
@@ -3770,6 +3802,14 @@
       "translation": "__ELBOT_CODE_0__ and __ELBOT_CODE_1__ reports only support sending to superadmins via the platform decided by Elnis, and do not support arbitrary user/group targets.",
       "updated_at": 1781709336
     },
+    "docs/configuration.md:paragraph:09ee1cae2b678d97bc9906680269b4382b3ec23d437053e096c9b03d02da55c5": {
+      "kind": "paragraph",
+      "source": "启用后，ElBot 会启动本地 HTTP ingress，接收 Elwisp 按 Elvena 协议投递的事件。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "09ee1cae2b678d97bc9906680269b4382b3ec23d437053e096c9b03d02da55c5",
+      "translation": "Once enabled, ElBot will start a local HTTP ingress to receive events delivered by Elwisp according to the Elvena protocol.",
+      "updated_at": 1781749596
+    },
     "docs/configuration.md:paragraph:0d9a547d7e83c28e7048dbfd9ad0070bb0895ed095b23ff87363e5561167b584": {
       "kind": "paragraph",
       "source": "这些路径都会解析到 __ELBOT_CODE_0__ 目录下。\n",
@@ -3793,6 +3833,14 @@
       "source_hash": "26d74004845c90cbea41fed21d81414f7b75d6ff9021cc368e727e3d6f325411",
       "translation": "ElBot uses a main configuration entry to load application configurations, Provider configurations, and runtime states. Backward compatibility for old configurations is not considered during the development phase; it is recommended to maintain them directly according to the current __ELBOT_CODE_0__ example.\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:2bf74e9588b05b9f87e7965ec384c8d2c2757bbf7e47e90ceca0eee9c8403a70": {
+      "kind": "paragraph",
+      "source": "Elnis 配置建议拆到独立 __ELBOT_CODE_0__，__ELBOT_CODE_1__ 只保留入口路径。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "2bf74e9588b05b9f87e7965ec384c8d2c2757bbf7e47e90ceca0eee9c8403a70",
+      "translation": "It is recommended to split the Elnis configuration into a separate __ELBOT_CODE_0__, while __ELBOT_CODE_1__ only retains the entry path.\n",
+      "updated_at": 1781749596
     },
     "docs/configuration.md:paragraph:304abf8fc3c1c8984391bce6f8338aa0b34d02b1689baa7605446eedb1a6d54f": {
       "kind": "paragraph",
@@ -3857,6 +3905,14 @@
       "source_hash": "66a831d2bac726e8d0c866ca5765616b3e231b318802ce5b6b8da222732d9746",
       "translation": "Provider is written in __ELBOT_CODE_0__:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:69e3746328812ea9a732113b9e6a00f9c1d475183b13d67db330339fde4cc06d": {
+      "kind": "paragraph",
+      "source": "Elnis 默认关闭。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "69e3746328812ea9a732113b9e6a00f9c1d475183b13d67db330339fde4cc06d",
+      "translation": "Elnis is disabled by default.",
+      "updated_at": 1781749596
     },
     "docs/configuration.md:paragraph:6b461f3d732dc965d2a2a15c349b7ce548c9361dfa508cfcd5640af31dfc14ee": {
       "kind": "paragraph",
@@ -4049,6 +4105,22 @@
       "source_hash": "867df37d3bf95e185c1ed50af3316f1a31b64d6923cb89c4e8958f6b0284428d",
       "translation": "Optional, local key file; not recommended to be committed.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:table:890fd7c4192538b494d49ac4a41796afb5416fcb53b1d75c4c12daeb6b4d0469": {
+      "kind": "table",
+      "source": "主配置入口，保存 storage、runtime、context、commands、tools、security、platform 和配置文件路径。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "890fd7c4192538b494d49ac4a41796afb5416fcb53b1d75c4c12daeb6b4d0469",
+      "translation": "Main configuration entry, saving storage, runtime, context, commands, tools, security, platform, and configuration file paths.",
+      "updated_at": 1781749596
+    },
+    "docs/configuration.md:table:8914e6c509e492547ebc47db0e6604fefba3e3047a7a50587625692c489d742c": {
+      "kind": "table",
+      "source": "Elnis 监听枢纽配置，保存 HTTP、token、delivery、allowed_tools 和 Elwisp 策略。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "8914e6c509e492547ebc47db0e6604fefba3e3047a7a50587625692c489d742c",
+      "translation": "Elnis listening hub configuration, saving HTTP, token, delivery, allowed_tools, and Elwisp policies.",
+      "updated_at": 1781749596
     },
     "docs/configuration.md:table:c3f46fad0461a0a9936ef7e70532a382b5d79c6460486a7191e25e1103642cf1": {
       "kind": "table",
