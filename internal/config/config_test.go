@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -28,6 +29,78 @@ func TestResolvePathUsesEnvConfigFile(t *testing.T) {
 	}
 	if resolved != filepath.Clean(path) {
 		t.Fatalf("resolved path = %q, want %q", resolved, filepath.Clean(path))
+	}
+}
+
+func TestResolvePathGeneratesPlatformDefaultsWhenNoConfigExists(t *testing.T) {
+	configHome := t.TempDir()
+	setUserConfigDirEnv(t, configHome)
+	t.Setenv(EnvConfigFile, "")
+	t.Chdir(t.TempDir())
+
+	resolved, err := ResolvePath("")
+	if err != nil {
+		t.Fatalf("ResolvePath: %v", err)
+	}
+	want, ok := platformDefaultConfigPath()
+	if !ok {
+		t.Fatal("platform default config path unavailable")
+	}
+	if resolved != filepath.Clean(want) {
+		t.Fatalf("resolved path = %q, want %q", resolved, filepath.Clean(want))
+	}
+	for _, rel := range []string{"app.toml", "providers.toml", "state.toml", "SOUL.md", "elnis.toml", ".env.example"} {
+		if _, err := os.Stat(filepath.Join(filepath.Dir(want), rel)); err != nil {
+			t.Fatalf("expected generated file %s: %v", rel, err)
+		}
+	}
+	for _, rel := range []string{filepath.Join("skills", "py"), filepath.Join("skills", "go"), "plugins", "long_memory"} {
+		info, err := os.Stat(filepath.Join(filepath.Dir(want), rel))
+		if err != nil {
+			t.Fatalf("expected generated dir %s: %v", rel, err)
+		}
+		if !info.IsDir() {
+			t.Fatalf("%s is not a directory", rel)
+		}
+	}
+	cfg, err := Load(resolved)
+	if err != nil {
+		t.Fatalf("Load generated config: %v", err)
+	}
+	if cfg.ConfigPath != filepath.Clean(want) {
+		t.Fatalf("generated ConfigPath = %q, want %q", cfg.ConfigPath, filepath.Clean(want))
+	}
+	if cfg.Elnis.Enabled {
+		t.Fatal("generated Elnis config should be disabled")
+	}
+}
+
+func TestEnsurePlatformDefaultsDoesNotOverwriteExistingFiles(t *testing.T) {
+	configHome := t.TempDir()
+	setUserConfigDirEnv(t, configHome)
+	configPath, ok := platformDefaultConfigPath()
+	if !ok {
+		t.Fatal("platform default config path unavailable")
+	}
+	custom := "# custom app\n"
+	writeFile(t, configPath, custom)
+
+	generated, err := EnsurePlatformDefaults()
+	if err != nil {
+		t.Fatalf("EnsurePlatformDefaults: %v", err)
+	}
+	if generated != configPath {
+		t.Fatalf("generated path = %q, want %q", generated, configPath)
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != custom {
+		t.Fatalf("existing app.toml was overwritten: %q", string(data))
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(configPath), "elnis.toml")); err != nil {
+		t.Fatalf("expected missing assets to be created: %v", err)
 	}
 }
 
@@ -536,7 +609,20 @@ model = "deepseek-chat"
 
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir for %s: %v", path, err)
+	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
+}
+
+func setUserConfigDirEnv(t *testing.T, dir string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Setenv("AppData", dir)
+		t.Setenv("APPDATA", dir)
+		return
+	}
+	t.Setenv("XDG_CONFIG_HOME", dir)
 }

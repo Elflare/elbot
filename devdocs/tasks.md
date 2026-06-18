@@ -858,7 +858,7 @@
 
 - [x] 增加 `/elwisp` 命令查询 Elnis/Elwisp 事件日志，支持按 Elwisp、source、事件 ID、模式、时间和等级过滤。
 - [ ] 增加 Elnis 事件查询、失败重试或禁用能力。
-- [ ] 内置“创建 Elwisp”的 Skill/工具，帮助用户生成 Elwisp 配置、事件模板和最小监听器脚手架。
+- [x] 内置 `elwisp_creator` 工具，帮助用户生成 Elwisp 配置、事件模板、监听器脚手架和测试命令。
 - [ ] 支持多种消息segment
 - [ ] 可指定平台指定群聊或私聊
 - [ ] 待定：设计 Elnis 与 Elwisp 多轮通信协议。

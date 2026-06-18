@@ -63,6 +63,14 @@ ELNIS_HOME_TOKEN=change-me
 - `default_platforms` 是 Elnis 策略允许的默认投递平台。
 - `allow_superadmins=true` 表示允许投递给目标平台超级管理员。
 
+如果想让 ElBot 帮你生成 Elwisp 监听器，可以在 work 模式下向超级管理员会话提出需求，例如：
+
+```text
+@tool:elwisp_creator 帮我创建一个监听 RSS 更新并通过 Elnis 投递摘要的 Elwisp
+```
+
+`elwisp_creator` 会提供协议说明、配置片段、事件模板、代码脚手架和测试命令；真正写文件或运行命令仍会继续使用对应工具。
+
 启动 ElBot 后，可以用 curl 测试一个 `direct` 事件：
 
 ```bash

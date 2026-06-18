@@ -180,12 +180,14 @@ Elnis 收到事件后，会按 `mode` 决定处理方式。
 
 简单说：Cron 负责“什么时候做”，Elnis 负责“外面发生了什么”，ELyph 负责“任务怎么描述”，Skill 负责“能力怎么复用”。
 
+## 创建 Elwisp 辅助工具
+
+工作模式下，超级管理员可以让 ElBot 使用内置工具 `elwisp_creator` 辅助创建 Elwisp。该工具会返回创建指南、Elvena 事件模板、Elnis 配置片段、监听器脚手架、curl 测试命令和安全检查清单；真正写文件或运行命令仍由文件工具和 shell 工具处理。
+
 ## 当前限制与后续方向
 
-当前 Elnis 已支持 record、direct 和 llm 模式。以下能力仍在开发或规划中：
+当前 Elnis 已支持 record、direct、llm 模式和 Elwisp 随事件声明外部工具。以下能力仍在开发或规划中：
 
-- Elwisp 随事件声明工具并由 Elnis 安全调用。
-- 内置“创建 Elwisp”的 Skill 或工具。
 - 多种消息 segment。
 - Elnis 与 Elwisp 多轮通信。
 - stdio、pipe 等非 HTTP transport。

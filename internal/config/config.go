@@ -236,7 +236,18 @@ func ResolvePath(path string) (string, error) {
 			return "", fmt.Errorf("stat default config %q: %w", defaultPath, err)
 		}
 	}
-	return filepath.Clean(DefaultPath), nil
+	sourcePath := filepath.Clean(DefaultPath)
+	if _, err := os.Stat(sourcePath); err == nil {
+		return sourcePath, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("stat source config %q: %w", sourcePath, err)
+	}
+	if generatedPath, err := EnsurePlatformDefaults(); err == nil {
+		return generatedPath, nil
+	} else if _, ok := platformDefaultConfigPath(); ok {
+		return "", err
+	}
+	return sourcePath, nil
 }
 
 func platformDefaultConfigPath() (string, bool) {

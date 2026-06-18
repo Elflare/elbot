@@ -19,9 +19,9 @@ cd elbot
 
 ## 配置 Provider
 
-ElBot 默认读取 `config/app.toml`，并通过其中的 `[config_files]` 加载 `config/providers.toml` 和 `config/state.toml`。
+ElBot 默认按配置查找顺序读取主配置。直接运行源码时会使用 `config/app.toml`；编译后的二进制如果找不到平台配置和源码示例配置，会在平台配置目录自动生成 `app.toml`、`providers.toml`、`state.toml`、`SOUL.md`、`elnis.toml` 和 `.env.example`。
 
-默认示例已经包含 DeepSeek 和 OpenAI Provider：
+默认配置已经包含 DeepSeek 和 OpenAI Provider：
 
 ```toml
 [providers.deepseek]
@@ -34,7 +34,7 @@ api_key_env = "OPENAI_API_KEY"
 models = ["gpt-4o-mini"]
 ```
 
-推荐把密钥放在系统环境变量，或放在配置目录下的 `.env` 文件中，不要直接写进 `providers.toml`。
+推荐把密钥放在系统环境变量，或把自动生成的 `.env.example` 复制为配置目录下的 `.env` 后填写，不要直接写进 `providers.toml`。
 
 示例 `.env`：
 
@@ -166,6 +166,7 @@ elbot completion nushell > ~/.config/nushell/completions/elbot.nu
 2. `ELBOT_CONFIG_FILE` 环境变量。
 3. 平台配置目录，例如 Windows `%APPDATA%/ElBot/app.toml`，Linux XDG 配置目录。
 4. 源码目录 `config/app.toml`。
+5. 如果平台配置和源码示例配置都不存在，则自动生成平台默认配置。
 
 运行数据默认进入平台数据目录，例如 SQLite、日志、sandbox 和 artifact。具体规则见 [配置说明](configuration.md)。
 
