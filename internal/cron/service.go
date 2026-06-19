@@ -130,7 +130,6 @@ type CronTarget struct {
 }
 
 type CronLLMMetadata struct {
-	SessionID     string   `json:"session_id,omitempty"`
 	ToolListNames []string `json:"tool_list_names,omitempty"`
 }
 
@@ -628,20 +627,14 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 	}
 	actor := security.Actor{ID: meta.CreatedBy.ActorID, Platform: meta.CreatedBy.Platform, PlatformUserID: meta.CreatedBy.PlatformUserID, DisplayName: meta.CreatedBy.DisplayName, Role: security.RoleSuperadmin}
 	prompt := cronPrompt(meta.Trigger.Message)
-	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), SessionID: meta.LLM.SessionID, Prompt: prompt, ToolListNames: meta.LLM.ToolListNames, SandboxSubdir: string(background.KindCron), Metadata: map[string]string{"cron_job_name": job.Name}})
+	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), Prompt: prompt, ToolListNames: meta.LLM.ToolListNames, SandboxSubdir: string(background.KindCron), Metadata: map[string]string{"cron_job_name": job.Name}})
 
 	if err != nil {
 		return meta, "", err
 	}
-	if result.SessionID != "" && result.SessionID != meta.LLM.SessionID {
-		meta.LLM.SessionID = result.SessionID
-	}
 	parsed, err := parseLLMResult(result.Text)
 	if err != nil {
 		result, parsed, err = s.retryLLMResultFormat(ctx, job, meta, actor, result.SessionID)
-		if result.SessionID != "" && result.SessionID != meta.LLM.SessionID {
-			meta.LLM.SessionID = result.SessionID
-		}
 	}
 	if err != nil {
 		message := cronParseFailedMessage(meta.Title, result.SessionID, err)
@@ -678,12 +671,12 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 }
 
 func (s *Service) retryLLMResultFormat(ctx context.Context, job storage.CronJob, meta Metadata, actor security.Actor, sessionID string) (background.RunResult, CronLLMResult, error) {
-	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), SessionID: firstNonEmpty(sessionID, meta.LLM.SessionID), Prompt: cronFormatRetryPrompt(), SandboxSubdir: string(background.KindCron), Metadata: map[string]string{"cron_job_name": job.Name}})
+	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), SessionID: sessionID, Prompt: cronFormatRetryPrompt(), ToolListNames: meta.LLM.ToolListNames, SandboxSubdir: string(background.KindCron), Metadata: map[string]string{"cron_job_name": job.Name}})
 	if err != nil {
 		return result, CronLLMResult{}, err
 	}
 	if result.SessionID == "" {
-		result.SessionID = firstNonEmpty(sessionID, meta.LLM.SessionID)
+		result.SessionID = sessionID
 	}
 	parsed, err := parseLLMResult(result.Text)
 	return result, parsed, err

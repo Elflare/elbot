@@ -239,6 +239,43 @@ func TestRunLLMReportPassesToolListNames(t *testing.T) {
 	}
 }
 
+func TestRunLLMReportStartsFreshSessionEachCronTrigger(t *testing.T) {
+	repo := newFakeCronRepo()
+	runner := &fakeCronRunner{text: `{"completed":true,"need_report":false,"report":"ok"}`, sessionIDs: []string{"cron-session-1", "cron-session-2"}}
+	svc := NewService(Options{Store: fakeCronStore{cron: repo}, Runner: runner})
+	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleCron, CronExpr: "*/5 * * * *"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}, LLM: CronLLMMetadata{ToolListNames: []string{"web_search"}}})
+	meta := mustDecodeTestMetadata(t, job.Metadata)
+	updated, _, err := svc.runLLMReport(context.Background(), *job, meta)
+	if err != nil {
+		t.Fatalf("first runLLMReport: %v", err)
+	}
+	updated, _, err = svc.runLLMReport(context.Background(), *job, updated)
+	if err != nil {
+		t.Fatalf("second runLLMReport: %v", err)
+	}
+	if len(runner.requests) != 2 {
+		t.Fatalf("runner requests = %d", len(runner.requests))
+	}
+	if runner.requests[0].SessionID != "" || runner.requests[1].SessionID != "" {
+		t.Fatalf("cron triggers should start fresh sessions: %#v", runner.requests)
+	}
+}
+
+func TestRunLLMReportIgnoresLegacySessionIDMetadata(t *testing.T) {
+	repo := newFakeCronRepo()
+	runner := &fakeCronRunner{text: `{"completed":true,"need_report":false,"report":"ok"}`}
+	svc := NewService(Options{Store: fakeCronStore{cron: repo}, Runner: runner})
+	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleCron, CronExpr: "*/5 * * * *"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
+	job.Metadata = strings.Replace(job.Metadata, `"llm":{}`, `"llm":{"session_id":"legacy-session"}`, 1)
+	meta := mustDecodeTestMetadata(t, job.Metadata)
+	if _, _, err := svc.runLLMReport(context.Background(), *job, meta); err != nil {
+		t.Fatalf("runLLMReport: %v", err)
+	}
+	if len(runner.requests) != 1 || runner.requests[0].SessionID != "" {
+		t.Fatalf("legacy session id should be ignored: %#v", runner.requests)
+	}
+}
+
 func TestCreateDirectCronDoesNotRequireElyphTask(t *testing.T) {
 	svc := NewService(Options{Store: fakeCronStore{cron: newFakeCronRepo()}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:04:30") }
@@ -273,7 +310,7 @@ func TestRunLLMReportRetriesInvalidJSONOnce(t *testing.T) {
 	repo := newFakeCronRepo()
 	runner := &fakeCronRunner{texts: []string{"不是 JSON", `{"completed":true,"need_report":true,"report":"修正后报告"}`}}
 	svc := NewService(Options{Store: fakeCronStore{cron: repo}, Runner: runner})
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
+	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}, LLM: CronLLMMetadata{ToolListNames: []string{"web_search"}}})
 
 	meta := mustDecodeTestMetadata(t, job.Metadata)
 	updated, report, err := svc.runLLMReport(context.Background(), *job, meta)
@@ -285,6 +322,9 @@ func TestRunLLMReportRetriesInvalidJSONOnce(t *testing.T) {
 	}
 	if runner.requests[1].SessionID != "cron-session" {
 		t.Fatalf("retry session id = %q", runner.requests[1].SessionID)
+	}
+	if strings.Join(runner.requests[1].ToolListNames, ",") != "web_search" {
+		t.Fatalf("retry tool list = %#v", runner.requests[1].ToolListNames)
 	}
 	if !strings.Contains(runner.requests[1].Prompt, "你返回的格式有误") {
 		t.Fatalf("retry prompt = %q", runner.requests[1].Prompt)
@@ -391,10 +431,11 @@ func (s fakeCronStore) ElnisEvents() storage.ElnisEventRepository          { ret
 func (s fakeCronStore) Close() error                                       { return nil }
 
 type fakeCronRunner struct {
-	text     string
-	texts    []string
-	calls    int
-	requests []background.RunRequest
+	text       string
+	texts      []string
+	sessionIDs []string
+	calls      int
+	requests   []background.RunRequest
 }
 
 func (r *fakeCronRunner) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
@@ -403,8 +444,12 @@ func (r *fakeCronRunner) RunBackground(ctx context.Context, req background.RunRe
 	if r.calls < len(r.texts) {
 		text = r.texts[r.calls]
 	}
+	sessionID := "cron-session"
+	if r.calls < len(r.sessionIDs) {
+		sessionID = r.sessionIDs[r.calls]
+	}
 	r.calls++
-	return background.RunResult{SessionID: "cron-session", Text: text}, nil
+	return background.RunResult{SessionID: sessionID, Text: text}, nil
 }
 
 func testElyphTask(name string) string {
