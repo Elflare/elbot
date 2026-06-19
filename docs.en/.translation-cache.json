@@ -21,9 +21,9 @@
       "updated_at": 1781786062
     },
     "docs/configuration.md": {
-      "source_hash": "824fe6dcbb3290cc9e41a5ed02594c0a9a43332b74c2d35e0b4bf635fc2074ca",
+      "source_hash": "793eb655525538317880c4fd8513f7d03d74dddfbd9567734e64b2a6bdf7c4af",
       "target": "docs.en/configuration.md",
-      "updated_at": 1781839376
+      "updated_at": 1781840032
     },
     "docs/elnis-usage.md": {
       "source_hash": "e74fe6cd41df7456a27c3a86598a17eb5e42d517523b142befac00602681d371",
@@ -4814,6 +4814,14 @@
       "source_hash": "f5f2a4ac963437cb5716c00aeb5cab004352ecebf41fd1061a2e7cdb8594076b",
       "translation": "The file format uses tags as entry points:\n",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:paragraph:f607f5c568e31510e62e24b98ec56099e91a23a325bce1a52f2b16d0a6f9d45e": {
+      "kind": "paragraph",
+      "source": "QQ 官方机器人、QQ OneBot 和 Telegram 配置在示例中默认注释。启用时需要补齐平台自己的认证信息和触发关键词。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "f607f5c568e31510e62e24b98ec56099e91a23a325bce1a52f2b16d0a6f9d45e",
+      "translation": "QQ Official Bot, QQ OneBot, and Telegram configurations are commented out by default in the examples. When enabling them, you need to provide the platform's own authentication information and trigger keywords.\n",
+      "updated_at": 1781840032
     },
     "docs/configuration.md:paragraph:f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f": {
       "kind": "paragraph",

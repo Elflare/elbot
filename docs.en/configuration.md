@@ -363,7 +363,7 @@ CLI enabled by default:
 enabled = true
 ```
 
-QQ Official Bot, QQ OneBot, and Telegram configurations are commented out by default in the examples. When enabling them, you need to complete the platform's own authentication information, connection address, or trigger keywords.
+QQ Official Bot, QQ OneBot, and Telegram configurations are commented out by default in the examples. When enabling them, you need to provide the platform's own authentication information and trigger keywords.
 
 Telegram uses Bot API long polling. Minimum configuration example:
 
