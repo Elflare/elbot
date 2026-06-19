@@ -76,12 +76,12 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	messages := append([]storage.Message{}, loaded.Messages...)
 	messages = append(messages, *userMessage)
 
-	reqCtxInfo, reqCtx, done, err := a.requests.Start(ctx, request.StartRequest{SessionID: session.ID, Kind: request.KindLLM, Label: "chat"})
+	reqCtxInfo, reqCtx, done, err := a.requests.Start(ctx, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat"})
 	if err != nil {
 		return err
 	}
 	defer done()
-	_ = reqCtxInfo
+	reqCtx = withTurnRequestID(reqCtx, reqCtxInfo.ID)
 
 	selection := a.modelForMode(session.Mode)
 	if override, ok := ctx.Value(cronModelSelectionKey{}).(config.ModelSelection); ok {
@@ -150,7 +150,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		}
 		stream := out.StartStream(reqCtx)
 		llmStageStartedAt := storage.Now()
-		out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseLLM, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindLLM, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: llmStageStartedAt, Usage: usage})
+		out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseLLM, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindTurn, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: llmStageStartedAt, Usage: usage})
 		result, updatedUserContent, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, latestUserContent, stream, out)
 		latestUserContent = ""
 		if len(result.Messages) > 0 {
@@ -171,7 +171,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		if result.Usage != nil {
 			usage = result.Usage
 		}
-		out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseLLM, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindLLM, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: llmStageStartedAt, Usage: usage})
+		out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseLLM, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindTurn, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: llmStageStartedAt, Usage: usage})
 		immediateOutputs, laterOutputs := delivery.SplitByDeliveryTiming(result.Outputs)
 		if len(result.ToolCalls) == 0 {
 			deferredOutputs = append(deferredOutputs, laterOutputs...)
@@ -253,12 +253,12 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		}
 		toolRounds++
 		toolMessages, confirmationExtra, transcriptMessages, stopped := a.executeToolCalls(reqCtx, session, result.ToolCalls, assistantRawText, assistantRawText, out)
+		if stopped {
+			return nil
+		}
 		llmMessages = append(llmMessages, toolMessages...)
 		if err := a.persistTurnMessages(ctx, session.ID, "append_tool_transcript", transcriptMessages); err != nil {
 			return err
-		}
-		if stopped {
-			return nil
 		}
 		tools, err = a.toolsForSession(ctx, session)
 		if err != nil {

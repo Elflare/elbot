@@ -34,6 +34,10 @@ func TestManagerCancel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
+	got, ok := m.Get(req.ID)
+	if !ok || got.ID != req.ID {
+		t.Fatalf("Get = %#v, %v; want request %s", got, ok, req.ID)
+	}
 
 	if !m.Cancel(req.ID) {
 		t.Fatal("Cancel returned false")
@@ -49,9 +53,12 @@ func TestManagerCancel(t *testing.T) {
 
 func TestManagerCancelSession(t *testing.T) {
 	m := NewManager(time.Minute)
-	_, ctx1, _, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
-	_, ctx2, _, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindTool})
+	parent, ctx1, _, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindTurn})
+	child, ctx2, _, _ := m.Start(ctx1, StartRequest{ParentID: parent.ID, SessionID: "s1", Kind: KindTool})
 	_, ctx3, _, _ := m.Start(context.Background(), StartRequest{SessionID: "s2", Kind: KindLLM})
+	if child.ParentID != parent.ID {
+		t.Fatalf("child parent = %q, want %q", child.ParentID, parent.ID)
+	}
 
 	if got := m.CancelSession("s1"); got != 2 {
 		t.Fatalf("CancelSession = %d, want 2", got)

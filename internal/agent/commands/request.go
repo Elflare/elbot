@@ -3,6 +3,8 @@ package commands
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +18,16 @@ type RequestInfo struct {
 	SessionTitle string
 	SessionMode  string
 	Tools        map[string]int
+}
+
+type requestTree struct {
+	Roots    []requestNode
+	ByNumber map[string]request.Request
+}
+
+type requestNode struct {
+	Request  request.Request
+	Children []request.Request
 }
 
 func NewRequests(deps Deps) command.Handler {
@@ -43,8 +55,8 @@ type stopCommand struct {
 func (c stopCommand) Info() command.Info {
 	return command.Info{
 		Name:        "stop",
-		Usage:       "/stop [request_id]",
-		Description: "Stop a request or all requests in current session.",
+		Usage:       "/stop [request_id|number]",
+		Description: "Stop a request or all requests in current session. Use /requests to see numbers like 1 or 1.1.",
 	}
 }
 
@@ -52,11 +64,18 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 	deps := c.deps
 	arg := strings.TrimSpace(req.Args)
 	if arg != "" {
-		if !deps.Requests.Cancel(arg) {
+		id, ok := resolveRequestArg(deps, arg)
+		if !ok {
 			return &command.Result{Content: fmt.Sprintf("request not found: %s", arg)}, nil
 		}
-		for _, snapshot := range deps.Turns.SnapshotAll() {
-			deps.Turns.StopSession(snapshot.SessionID)
+		stopped, _ := deps.Requests.Get(id)
+		if stopped.Kind == request.KindTurn {
+			count := deps.Requests.CancelSession(stopped.SessionID)
+			deps.Turns.StopSession(stopped.SessionID)
+			return &command.Result{Content: fmt.Sprintf("stopped %d request%s", count, plural(count))}, nil
+		}
+		if !deps.Requests.Cancel(id) {
+			return &command.Result{Content: fmt.Sprintf("request not found: %s", arg)}, nil
 		}
 		return &command.Result{Content: "stopped 1 request"}, nil
 	}
@@ -92,10 +111,33 @@ func NewStopAll(deps Deps) command.Handler {
 }
 
 func formatRequests(ctx context.Context, deps Deps, requests []request.Request) string {
+	tree := buildRequestTree(requests)
 	var sb strings.Builder
 	sb.WriteString("active requests:\n")
-	for _, req := range requests {
-		snapshot := deps.Turns.Snapshot(req.SessionID)
+	for i, root := range tree.Roots {
+		number := strconv.Itoa(i + 1)
+		writeRequestLine(&sb, ctx, deps, number, "", root.Request)
+		for j, child := range root.Children {
+			childNumber := fmt.Sprintf("%s.%d", number, j+1)
+			writeRequestLine(&sb, ctx, deps, childNumber, "└── ", child)
+		}
+	}
+	return trimTrailingNewlines(sb.String())
+}
+
+func writeRequestLine(sb *strings.Builder, ctx context.Context, deps Deps, number, prefix string, req request.Request) {
+	kind := string(req.Kind)
+	label := strings.TrimSpace(req.Label)
+	if req.Kind == request.KindTurn {
+		if label == "" {
+			label = "chat"
+		}
+		kind = "turn"
+	} else if label == "" {
+		label = "request"
+	}
+	sb.WriteString(fmt.Sprintf("  %s[%s] %s %s request %s\n", prefix, number, label, kind, formatDuration(time.Since(req.StartedAt))))
+	if prefix == "" {
 		session, _ := deps.Store.Sessions().Get(ctx, req.SessionID)
 		title := "(unknown)"
 		mode := "(unknown)"
@@ -105,15 +147,71 @@ func formatRequests(ctx context.Context, deps Deps, requests []request.Request) 
 			}
 			mode = session.Mode
 		}
-		sb.WriteString(fmt.Sprintf("  %s %s %s %s\n", req.ID, req.Kind, req.Label, formatDuration(time.Since(req.StartedAt))))
-		sb.WriteString(fmt.Sprintf("    session: %s\n", title))
-		sb.WriteString(fmt.Sprintf("    mode: %s\n", mode))
-		if tools := turn.ToolsString(snapshot.Tools); tools != "" {
-			sb.WriteString(fmt.Sprintf("    tools: %s", tools))
+		sb.WriteString(fmt.Sprintf("      session: %s\n", title))
+		sb.WriteString(fmt.Sprintf("      mode: %s\n", mode))
+		if tools := turn.ToolsString(deps.Turns.Snapshot(req.SessionID).Tools); tools != "" {
+			sb.WriteString(fmt.Sprintf("      tools: %s\n", tools))
 		}
-		sb.WriteString("\n")
+		return
 	}
-	return trimTrailingNewlines(sb.String())
+	if req.Kind == request.KindTool {
+		sb.WriteString(fmt.Sprintf("      tool: %s\n", label))
+	}
+}
+
+func resolveRequestArg(deps Deps, arg string) (string, bool) {
+	if deps.Requests == nil {
+		return "", false
+	}
+	if req, ok := deps.Requests.Get(arg); ok {
+		return req.ID, true
+	}
+	tree := buildRequestTree(deps.Requests.List())
+	req, ok := tree.ByNumber[arg]
+	if !ok {
+		return "", false
+	}
+	return req.ID, true
+}
+
+func buildRequestTree(requests []request.Request) requestTree {
+	byID := map[string]request.Request{}
+	children := map[string][]request.Request{}
+	for _, req := range requests {
+		byID[req.ID] = req
+		if req.ParentID != "" {
+			children[req.ParentID] = append(children[req.ParentID], req)
+		}
+	}
+	roots := []requestNode{}
+	for _, req := range requests {
+		if req.ParentID != "" {
+			if _, ok := byID[req.ParentID]; ok {
+				continue
+			}
+		}
+		roots = append(roots, requestNode{Request: req})
+	}
+	sort.Slice(roots, func(i, j int) bool { return requestLess(roots[i].Request, roots[j].Request) })
+	byNumber := map[string]request.Request{}
+	for i := range roots {
+		root := &roots[i]
+		root.Children = append([]request.Request(nil), children[root.Request.ID]...)
+		sort.Slice(root.Children, func(i, j int) bool { return requestLess(root.Children[i], root.Children[j]) })
+		number := strconv.Itoa(i + 1)
+		byNumber[number] = root.Request
+		for j, child := range root.Children {
+			byNumber[fmt.Sprintf("%s.%d", number, j+1)] = child
+		}
+	}
+	return requestTree{Roots: roots, ByNumber: byNumber}
+}
+
+func requestLess(left, right request.Request) bool {
+	if !left.StartedAt.Equal(right.StartedAt) {
+		return left.StartedAt.Before(right.StartedAt)
+	}
+	return left.ID < right.ID
 }
 
 func formatActiveRequests(requests []request.Request) string {

@@ -50,6 +50,7 @@
 - `internal/agent/hooks.go`：Agent Hook 与输出接入；生成事件上下文，运行 Hook，提供 assistant 输出预处理，并把 Hook/工具输出意图交给 Output Manager 发送。
 - `internal/agent/chat_llm.go`：LLM 调用与消息转换辅助；处理 Hook 后请求、流式响应、多模态转换、reasoning/usage/runtime 日志；流式最终 replace 由对话主流程在输出 Hook 后完成。
 - `internal/agent/chat_tools.go`：工具执行与确认辅助；处理工具调用、风险确认、transcript、工具调用记录和 schema 注入。
+- `internal/agent/request_context.go`：Agent request context helper；在当前 turn context 中传递父 request ID，供工具 request 建立父子关系。
 - `internal/agent/risk_confirmation.go`：风险确认阶段命令定义与文案；统一生成 `/detail`、`/confirm`、`/confirmtool`、`/confirmall`、`/reject`、`/stop` 及别名的提示、补全和识别。
 - `internal/agent/cron.go`：Agent 通用后台 runner；绕过 slash 命令解析，使用 discard sender 静默运行后台 LLM，按 background kind 注入 sandbox、预加载工具并写入后台 Session metadata；保留 `RunCronMessage` 薄适配。
 
@@ -94,7 +95,7 @@
 
 ### Request 与 Turn 运行态
 
-- `internal/request/manager.go`：active request 管理器；登记 LLM、工具、压缩和子 Agent 请求，支持列表、按请求取消、按 Session 取消、全局取消、超时和完成清理。
+- `internal/request/manager.go`：active request 管理器；登记 turn、LLM、工具、压缩和子 Agent 请求，记录父子 request 关系，支持列表、查询、按请求取消、按 Session 取消、全局取消、超时和完成清理。
 - `internal/runtime/status.go`：运行状态快照与格式化 helper；描述阶段、usage等结构化状态，供 CLI 状态栏和未来日志/命令复用。
 - `internal/turn/manager.go`：当前 turn 协调器；记录 Session 运行阶段、原始用户输入、pending 追加消息、确认/取消 token、工具使用计数、compact 阶段和高风险工具确认等待状态；工具阶段普通输入不打断工具，会进入 pending 并在下一次 LLM 调用前注入；请求异常结束时清理非确认追加状态，避免残留 tool pending。
 

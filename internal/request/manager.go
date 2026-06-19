@@ -11,6 +11,7 @@ import (
 type Kind string
 
 const (
+	KindTurn     Kind = "turn"
 	KindLLM      Kind = "llm"
 	KindTool     Kind = "tool"
 	KindCompress Kind = "compress"
@@ -19,6 +20,7 @@ const (
 
 type Request struct {
 	ID        string
+	ParentID  string
 	SessionID string
 	Kind      Kind
 	Label     string
@@ -27,6 +29,7 @@ type Request struct {
 }
 
 type StartRequest struct {
+	ParentID  string
 	SessionID string
 	Kind      Kind
 	Label     string
@@ -77,6 +80,7 @@ func (m *Manager) Start(parent context.Context, start StartRequest) (Request, co
 
 	req := Request{
 		ID:        storage.NewID(),
+		ParentID:  start.ParentID,
 		SessionID: start.SessionID,
 		Kind:      start.Kind,
 		Label:     start.Label,
@@ -122,6 +126,16 @@ func (m *Manager) ListBySession(sessionID string) []Request {
 		}
 	}
 	return out
+}
+
+func (m *Manager) Get(id string) (Request, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	active, ok := m.active[id]
+	if !ok {
+		return Request{}, false
+	}
+	return active.request, true
 }
 
 func (m *Manager) Cancel(id string) bool {

@@ -109,7 +109,19 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			continue
 		}
 		result := m.Execute(toolCtx, call, resolved, req.Actor)
-		defer done()
+		toolErr := toolCtx.Err()
+		done()
+		if err := toolErr; err != nil {
+			if ctx.Err() != nil {
+				return RunResult{Messages: messages, ConfirmationExtra: confirmationExtra, Transcript: transcript, Stopped: true}
+			}
+			message := toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s canceled by user", call.Name))
+			content := llm.SegmentsContentText(message.Segments)
+			deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, content, err)
+			messages = append(messages, message)
+			transcript = append(transcript, deps.ToolResultMessage(sessionID, message))
+			continue
+		}
 		resultText := llm.SegmentsContentText(result.Message.Segments)
 		completedText, hookErr := deps.CompleteToolCall(ctx, req.Session, call, riskText, resultText, result.Err)
 		if hookErr != nil {

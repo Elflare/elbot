@@ -57,7 +57,7 @@ func (d agentToolRunDeps) CompleteToolCall(ctx context.Context, session *storage
 }
 
 func (d agentToolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error) {
-	toolReq, toolCtx, done, err := d.agent.requests.Start(ctx, request.StartRequest{SessionID: sessionID, Kind: request.KindTool, Label: toolName})
+	toolReq, toolCtx, done, err := d.agent.requests.Start(ctx, request.StartRequest{ParentID: turnRequestIDFromContext(ctx), SessionID: sessionID, Kind: request.KindTool, Label: toolName})
 	if err != nil {
 		return ctx, time.Time{}, func() {}, err
 	}
