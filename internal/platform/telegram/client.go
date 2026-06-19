@@ -113,7 +113,7 @@ func (c *apiClient) downloadFile(ctx context.Context, filePath string) ([]byte, 
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, redactTelegramError(err, c.token)
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
@@ -173,7 +173,7 @@ func callTelegram[T any](c *apiClient, ctx context.Context, method string, in an
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return zero, err
+		return zero, redactTelegramError(err, c.token)
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
@@ -194,7 +194,7 @@ func (c *apiClient) doMultipart(ctx context.Context, method string, body *bytes.
 	req.Header.Set("Content-Type", contentType)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return sentMessage{}, err
+		return sentMessage{}, redactTelegramError(err, c.token)
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
@@ -202,6 +202,31 @@ func (c *apiClient) doMultipart(ctx context.Context, method string, body *bytes.
 		return sentMessage{}, err
 	}
 	return decodeTelegramResponse[sentMessage](method, resp.StatusCode, data)
+}
+
+type redactedTelegramError struct {
+	text string
+	err  error
+}
+
+func (e redactedTelegramError) Error() string { return e.text }
+
+func (e redactedTelegramError) Unwrap() error { return e.err }
+
+func redactTelegramError(err error, token string) error {
+	if err == nil {
+		return nil
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return err
+	}
+	text := strings.ReplaceAll(err.Error(), "/bot"+token+"/", "/bot<redacted>/")
+	text = strings.ReplaceAll(text, token, "<redacted>")
+	if text == err.Error() {
+		return err
+	}
+	return redactedTelegramError{text: text, err: err}
 }
 
 func decodeTelegramResponse[T any](method string, status int, data []byte) (T, error) {

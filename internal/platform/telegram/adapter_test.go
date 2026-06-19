@@ -3,6 +3,8 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -98,6 +100,20 @@ func TestTelegramInvalidProxyURLFromPlatformConfig(t *testing.T) {
 	}, nil, nil, nil, nil, nil, "")
 	if err == nil || !strings.Contains(err.Error(), "invalid telegram proxy_url") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRedactTelegramErrorHidesTokenAndPreservesUnwrap(t *testing.T) {
+	baseErr := fmt.Errorf(`Post "https://api.telegram.org/botsecret-token/getUpdates": unexpected EOF`)
+	err := redactTelegramError(baseErr, "secret-token")
+	if strings.Contains(err.Error(), "secret-token") {
+		t.Fatalf("redacted error leaked token: %v", err)
+	}
+	if !strings.Contains(err.Error(), "/bot<redacted>/getUpdates") {
+		t.Fatalf("redacted error lost request context: %v", err)
+	}
+	if !errors.Is(err, baseErr) {
+		t.Fatalf("redacted error does not unwrap base error")
 	}
 }
 
