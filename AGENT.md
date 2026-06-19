@@ -227,7 +227,7 @@
 - `internal/platform/cli/cli.go`：CLI 平台实现；非 TTY 下读取 stdin，交互式终端下启动 Bubble Tea TUI，支持注入补全服务；实现统一 `SendChat`/`SendNotice`，并向 TUI 推送 reasoning 与 runtime status。
 - `internal/platform/qq-onebot/`：QQ OneBot v11 正向 WebSocket 适配。
 - `internal/platform/qqofficial/`：QQ 官方机器人 C2C 单聊适配；负责 access token、Gateway identify/heartbeat/resume（含 4009 连接过期重连）、默认 Markdown 文本发送、富媒体上传发送、入站附件下载到 artifact、Keyboard 确认按钮和 ARK 预留；配置来自 `[platform.qqofficial]`。
-- `internal/platform/telegram/`：Telegram Bot API long polling 适配；负责文本/图片/文件收发、默认 HTML 格式化、可选 Rich Message 实验模式、editMessageText 伪流式输出、引用上下文、聊天历史记录、inline keyboard 风险确认按钮和 bot commands 同步；配置来自 `[platform.telegram]`。
+- `internal/platform/telegram/`：Telegram Bot API long polling 适配；负责文本/图片/文件收发、HTTP 代理、默认 HTML 格式化、可选 Rich Message 实验模式、editMessageText 伪流式输出、引用上下文、聊天历史记录、inline keyboard 风险确认按钮和 bot commands 同步；配置来自 `[platform.telegram]`。
 - `internal/platform/cli/tui.go`：Bubble Tea TUI 主编排；提供聊天/通知/输入区、历史、滚动、补全候选窗、reasoning 与正文分离显示、状态栏。
 - `internal/platform/cli/tui_copy.go`：CLI TUI copy mode；支持鼠标分区滚动、vim模式复制和搜索；`clipboard.go` 默认用系统剪贴板并在 SSH/tmux 等场景走 OSC52 fallback。
 

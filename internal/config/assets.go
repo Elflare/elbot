@@ -152,6 +152,7 @@ enabled = true
 # [platform.telegram]
 # enabled = false
 # bot_token_env = "TELEGRAM_BOT_TOKEN"
+# proxy_url_env = "TELEGRAM_PROXY_URL" # optional; read OS env first, then config .env
 # trigger_keywords = ["bot"]
 # format = "html" # html/plain/rich
 # stream_edit_interval_milliseconds = 250
@@ -249,6 +250,10 @@ const defaultEnvExample = `# Copy this file to .env or set these variables in yo
 # Provider API keys
 DEEPSEEK_API_KEY=
 OPENAI_API_KEY=
+
+# Platform secrets
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_PROXY_URL=
 
 # Elnis tokens
 ELNIS_HOME_TOKEN=

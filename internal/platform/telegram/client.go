@@ -29,7 +29,17 @@ type mediaSource struct {
 }
 
 func newAPIClient(cfg Config) *apiClient {
-	return &apiClient{cfg: cfg, http: &http.Client{}, token: cfg.token()}
+	return &apiClient{cfg: cfg, http: newHTTPClient(cfg), token: cfg.token()}
+}
+
+func newHTTPClient(cfg Config) *http.Client {
+	proxyURL, _ := cfg.proxyURL()
+	if proxyURL == nil {
+		return &http.Client{}
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = http.ProxyURL(proxyURL)
+	return &http.Client{Transport: transport}
 }
 
 func (c *apiClient) getMe(ctx context.Context) (user, error) {

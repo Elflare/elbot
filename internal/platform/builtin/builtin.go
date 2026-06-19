@@ -69,7 +69,7 @@ func New(opts Options, cfg *config.Config, store storage.Store, chatHistory stor
 		}
 	}
 	if raw, ok := cfg.Platform["telegram"]; ok {
-		adapter, err := telegram.NewFromPlatformConfig(raw, store, chatHistory, logger, cfg.Security.Superadmins["telegram"], cfg.Commands.Prefixes)
+		adapter, err := telegram.NewFromPlatformConfig(raw, store, chatHistory, logger, cfg.Security.Superadmins["telegram"], cfg.Commands.Prefixes, filepath.Dir(cfg.ConfigPath))
 		if err != nil {
 			return Bundle{}, err
 		}

@@ -2,10 +2,11 @@ package telegram
 
 import (
 	"fmt"
-	"os"
+	"net/url"
 	"strings"
 	"time"
 
+	appconfig "elbot/internal/config"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
 )
@@ -33,6 +34,8 @@ type Config struct {
 	Enabled                        bool     `toml:"enabled"`
 	BotToken                       string   `toml:"bot_token"`
 	BotTokenEnv                    string   `toml:"bot_token_env"`
+	ProxyURL                       string   `toml:"proxy_url"`
+	ProxyURLEnv                    string   `toml:"proxy_url_env"`
 	APIBaseURL                     string   `toml:"api_base_url"`
 	FileBaseURL                    string   `toml:"file_base_url"`
 	APITimeoutSeconds              int      `toml:"api_timeout_seconds"`
@@ -43,18 +46,29 @@ type Config struct {
 	TriggerKeywords                []string `toml:"trigger_keywords"`
 	Superadmins                    []string `toml:"-"`
 	CommandPrefixes                []string `toml:"-"`
+	ConfigEnvDir                   string   `toml:"-"`
 }
 
-func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, logger Logger, superadmins []string, commandPrefixes []string) (*Adapter, error) {
+func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, logger Logger, superadmins []string, commandPrefixes []string, configEnvDir string) (*Adapter, error) {
 	var cfg Config
 	if err := platform.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode telegram config: %w", err)
 	}
 	cfg.Superadmins = append([]string(nil), superadmins...)
 	cfg.CommandPrefixes = append([]string(nil), commandPrefixes...)
+	cfg.ConfigEnvDir = configEnvDir
 	applyDefaults(&cfg)
-	if cfg.Enabled && strings.TrimSpace(cfg.token()) == "" {
-		return nil, fmt.Errorf("telegram bot_token or bot_token_env is required")
+	if cfg.Enabled {
+		token, err := cfg.tokenValue()
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(token) == "" {
+			return nil, fmt.Errorf("telegram bot_token or bot_token_env is required")
+		}
+		if _, err := cfg.proxyURL(); err != nil {
+			return nil, err
+		}
 	}
 	return New(cfg, store, chatHistory, logger), nil
 }
@@ -85,13 +99,55 @@ func applyDefaults(cfg *Config) {
 }
 
 func (c Config) token() string {
+	value, _ := c.tokenValue()
+	return value
+}
+
+func (c Config) tokenValue() (string, error) {
 	if value := strings.TrimSpace(c.BotToken); value != "" {
-		return value
+		return value, nil
 	}
-	if env := strings.TrimSpace(c.BotTokenEnv); env != "" {
-		return strings.TrimSpace(os.Getenv(env))
+	return c.envValue(c.BotTokenEnv)
+}
+
+func (c Config) proxyURL() (*url.URL, error) {
+	value, err := c.proxyValue()
+	if err != nil {
+		return nil, err
 	}
-	return ""
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		if err == nil {
+			err = fmt.Errorf("missing scheme or host")
+		}
+		return nil, fmt.Errorf("invalid telegram proxy_url: %w", err)
+	}
+	return parsed, nil
+}
+
+func (c Config) proxyValue() (string, error) {
+	if value, err := c.envValue(c.ProxyURLEnv); err != nil || value != "" {
+		return value, err
+	}
+	return strings.TrimSpace(c.ProxyURL), nil
+}
+
+func (c Config) envValue(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", nil
+	}
+	value, ok, err := appconfig.ConfigEnv(name, c.ConfigEnvDir)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", nil
+	}
+	return strings.TrimSpace(value), nil
 }
 
 func (c Config) apiTimeout() time.Duration {

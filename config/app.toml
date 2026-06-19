@@ -104,6 +104,7 @@ enabled = true
 # [platform.telegram]
 # enabled = false
 # bot_token_env = "TELEGRAM_BOT_TOKEN"
+# proxy_url_env = "TELEGRAM_PROXY_URL" # optional; read OS env first, then config .env
 # trigger_keywords = ["bot"]
 # format = "html" # html/plain/rich
 # stream_edit_interval_milliseconds = 250

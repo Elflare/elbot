@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -34,6 +37,67 @@ func TestDefaultStreamEditInterval(t *testing.T) {
 	applyDefaults(&cfg)
 	if got := cfg.StreamEditIntervalMilliseconds; got != 250 {
 		t.Fatalf("stream interval = %d", got)
+	}
+}
+
+func TestTelegramTokenEnvReadsConfigDotEnv(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("TELEGRAM_BOT_TOKEN=from-dotenv\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{BotTokenEnv: "TELEGRAM_BOT_TOKEN", ConfigEnvDir: dir}
+	if got := cfg.token(); got != "from-dotenv" {
+		t.Fatalf("token = %q", got)
+	}
+}
+
+func TestTelegramProxyEnvPrefersOSEnvOverConfigDotEnv(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("TELEGRAM_PROXY_URL=http://127.0.0.1:8080\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TELEGRAM_PROXY_URL", "http://127.0.0.1:9090")
+	cfg := Config{ProxyURLEnv: "TELEGRAM_PROXY_URL", ConfigEnvDir: dir}
+	proxyURL, err := cfg.proxyURL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proxyURL.String() != "http://127.0.0.1:9090" {
+		t.Fatalf("proxy url = %q", proxyURL.String())
+	}
+}
+
+func TestTelegramHTTPClientWithoutProxyUsesDefaultTransport(t *testing.T) {
+	client := newHTTPClient(Config{})
+	if client.Transport != nil {
+		t.Fatalf("transport = %#v", client.Transport)
+	}
+}
+
+func TestTelegramHTTPClientUsesProxyURL(t *testing.T) {
+	client := newHTTPClient(Config{ProxyURL: "http://127.0.0.1:8080"})
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport = %#v", client.Transport)
+	}
+	req := &http.Request{URL: &url.URL{Scheme: "https", Host: "api.telegram.org"}}
+	proxyURL, err := transport.Proxy(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proxyURL.String() != "http://127.0.0.1:8080" {
+		t.Fatalf("proxy url = %q", proxyURL.String())
+	}
+}
+
+func TestTelegramInvalidProxyURLFromPlatformConfig(t *testing.T) {
+	_, err := NewFromPlatformConfig(map[string]any{
+		"enabled":   true,
+		"bot_token": "token",
+		"proxy_url": "://bad",
+	}, nil, nil, nil, nil, nil, "")
+	if err == nil || !strings.Contains(err.Error(), "invalid telegram proxy_url") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
