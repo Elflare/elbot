@@ -375,6 +375,7 @@ telegram = ["123456789"]
 [platform.telegram]
 enabled = true
 bot_token_env = "TELEGRAM_BOT_TOKEN"
+proxy_url_env = "TELEGRAM_PROXY_URL" # Optional; reads system environment variables first, then the .env file in the configuration directory
 trigger_keywords = ["bot"]
 format = "html" # html/plain/rich
 stream_edit_interval_milliseconds = 250
@@ -382,7 +383,8 @@ stream_edit_interval_milliseconds = 250
 
 Note:
 
-- `bot_token_env` points to the Bot Token in the system environment variables; you can also use `bot_token` to write it directly into the configuration, but it is not recommended to commit real tokens.
+- `bot_token_env` is the variable name pointing to the Bot Token; the reading order is system environment variables, then the configuration directory `.env`; You can also use `bot_token` to write the configuration directly, but it is not recommended to commit actual tokens.
+- `proxy_url_env` is the variable name pointing to the proxy address; the reading order is likewise system environment variables, then the configuration directory `.env`; You can also use `proxy_url` to write the configuration directly. Proxy address examples: `http://127.0.0.1:7890`, `socks5://127.0.0.1:1080`.
 - `format="html"` is the default value: uses standard `sendMessage` + `parse_mode="HTML"`, and performs a lightweight conversion of common Markdown to Telegram HTML; Supports readable rendering of headings, quotes, horizontal rules, code blocks, and tables, with automatic plain text retry upon failure.
 - `format="plain"` disables formatting and sends only plain text.
 - `format="rich"` is an experimental mode: uses `sendRichMessage` / private chat `sendRichMessageDraft`, and automatically falls back to HTML if Rich Message fails; Some clients may not be able to view Rich Messages.
