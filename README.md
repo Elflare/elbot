@@ -51,7 +51,7 @@ For detailed information, see [Elnis Listening Hub](docs.en/elnis.md).
 
 ### IV. Flexible Deployment and Enhanced Sessions
 
-**Multi-platform and Rich Output Abstraction**: ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, and QQ Official, with room for extending to other platforms.
+**Multi-platform and Rich Output Abstraction**: ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, QQ Official, and Telegram, while reserving space for extending to other platforms.
 
 **Session, Fork, and Context Compaction**: Built-in persistent Session service, supporting Session recovery, archiving, pinning, Forking, deletion, paginated viewing, and platform isolation. Long conversations automatically trigger context compaction to keep the window controllable; normal conversation can continue after compaction.
 

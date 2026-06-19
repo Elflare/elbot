@@ -363,7 +363,35 @@ CLI enabled by default:
 enabled = true
 ```
 
-Configurations for the official QQ bot and QQ OneBot are commented out by default in the examples. When enabling them, you need to provide the platform's own authentication information, connection address, or trigger keywords.
+QQ Official Bot, QQ OneBot, and Telegram configurations are commented out by default in the examples. When enabling them, you need to complete the platform's own authentication information, connection address, or trigger keywords.
+
+Telegram uses Bot API long polling. Minimum configuration example:
+
+```toml
+[security.superadmins]
+cli = ["local"]
+telegram = ["123456789"]
+
+[platform.telegram]
+enabled = true
+bot_token_env = "TELEGRAM_BOT_TOKEN"
+trigger_keywords = ["bot"]
+format = "html" # html/plain/rich
+stream_edit_interval_milliseconds = 250
+```
+
+Note:
+
+- `bot_token_env` points to the Bot Token in the system environment variables; you can also use `bot_token` to write it directly into the configuration, but it is not recommended to commit real tokens.
+- `format="html"` is the default value: uses standard `sendMessage` + `parse_mode="HTML"`, and performs a lightweight conversion of common Markdown to Telegram HTML; Supports readable rendering of headings, quotes, horizontal rules, code blocks, and tables, with automatic plain text retry upon failure.
+- `format="plain"` disables formatting and sends only plain text.
+- `format="rich"` is an experimental mode: uses `sendRichMessage` / private chat `sendRichMessageDraft`, and automatically falls back to HTML if Rich Message fails; Some clients may not be able to view Rich Messages.
+- `stream_edit_interval_milliseconds` controls the streaming refresh throttle interval, defaulting to 250ms, to avoid triggering platform rate limits.
+- After the connection is successfully established, ElBot will synchronize built-in slash commands to the Telegram bot command menu; only main command names are synchronized, not aliases.
+- In group chats/supergroups, command prefixes, trigger keywords, `@bot_username`, or replying to bot messages will all trigger processing. Private chats are processed by default.
+- Confirmation messages for high-risk tools will be accompanied by a Telegram inline keyboard; clicking buttons will convert them into existing confirmation commands such as `/confirm` and `/reject`.
+- Fill `security.superadmins.telegram` with a Telegram user ID or a private chat ID that can be sent to directly, used for superadmin permissions and notification delivery.
+
 
 ## Plugin and Hook Configuration
 
