@@ -21,9 +21,9 @@
       "updated_at": 1781786062
     },
     "docs/configuration.md": {
-      "source_hash": "9183867c569d5f3e3ab53b20ba4cec89ff89eb297f66c7ce527bfaf62c2b5a02",
+      "source_hash": "58f6b7471635475dc7c4986ee2d2392629c5035787ed1d2387b59ff05dee6daf",
       "target": "docs.en/configuration.md",
-      "updated_at": 1781846628
+      "updated_at": 1781854884
     },
     "docs/elnis-usage.md": {
       "source_hash": "e74fe6cd41df7456a27c3a86598a17eb5e42d517523b142befac00602681d371",
@@ -3967,6 +3967,14 @@
       "translation": "__ELBOT_CODE_0__ is the Elnis internal tool whitelist; Elwisps without separate configurations inherit the global default.",
       "updated_at": 1781749596
     },
+    "docs/configuration.md:list:29a04e1e2026ec6733e05ebd19b93fa50b0d011081ff01756a5cf3e72d539244": {
+      "kind": "list",
+      "source": "若平台配置不存在，则自动在平台配置目录生成默认配置文件。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "29a04e1e2026ec6733e05ebd19b93fa50b0d011081ff01756a5cf3e72d539244",
+      "translation": "If the platform configuration does not exist, a default configuration file will be automatically generated in the platform configuration directory.",
+      "updated_at": 1781854884
+    },
     "docs/configuration.md:list:2e202f83cb7bc886d1a67c0336e50c3b0c0fcc8f96e398dbb62e601787b67984": {
       "kind": "list",
       "source": "改变默认路径或启动行为时同步更新 [快速开始](getting-started.md) 和 README。",
@@ -4495,6 +4503,14 @@
       "translation": "Once enabled, ElBot will start a local HTTP ingress to receive events delivered by Elwisp according to the Elvena protocol.",
       "updated_at": 1781749596
     },
+    "docs/configuration.md:paragraph:0c5d3130dc3976cd6ede004b60eb7533c6a08baa5146ec02d3792b5086b44133": {
+      "kind": "paragraph",
+      "source": "如需使用临时配置文件，也可以显式指定 __ELBOT_CODE_0__。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "0c5d3130dc3976cd6ede004b60eb7533c6a08baa5146ec02d3792b5086b44133",
+      "translation": "If you need to use a temporary configuration file, you can also explicitly specify __ELBOT_CODE_0__.\n",
+      "updated_at": 1781854884
+    },
     "docs/configuration.md:paragraph:0d9a547d7e83c28e7048dbfd9ad0070bb0895ed095b23ff87363e5561167b584": {
       "kind": "paragraph",
       "source": "这些路径都会解析到 __ELBOT_CODE_0__ 目录下。\n",
@@ -4663,6 +4679,22 @@
       "translation": "Elnis is disabled by default. Once enabled, ElBot will start a local HTTP ingress to receive events delivered by Elwisp according to the Elvena protocol.\n",
       "updated_at": 1781694515
     },
+    "docs/configuration.md:paragraph:6b98f7f3e2952ac1c8e7251fc98146d4d672a8db85baa398c0d5b83fb3e082c7": {
+      "kind": "paragraph",
+      "source": "开发期直接运行即可使用平台配置目录；首次运行会自动生成默认配置：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "6b98f7f3e2952ac1c8e7251fc98146d4d672a8db85baa398c0d5b83fb3e082c7",
+      "translation": "During the development phase, you can run it directly to use the platform configuration directory; default configurations will be automatically generated upon the first run:\n",
+      "updated_at": 1781854884
+    },
+    "docs/configuration.md:paragraph:6dcbe64fd6653f8a2a51ee3e967add4ea922670a0be7bbf963206f3c04206e4c": {
+      "kind": "paragraph",
+      "source": "默认维护任务包含日志、artifact 和聊天历史清理，例如聊天历史默认每天 04:35 执行：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "6dcbe64fd6653f8a2a51ee3e967add4ea922670a0be7bbf963206f3c04206e4c",
+      "translation": "Default maintenance tasks include the cleanup of logs, artifacts, and chat history; for example, chat history cleanup is executed daily at 04:35 by default:\n",
+      "updated_at": 1781854884
+    },
     "docs/configuration.md:paragraph:6f5fa3c39a4a50dd289886cf6c4f34e0b97770a2cf578e7a81f76adfd7334ed3": {
       "kind": "paragraph",
       "source": "相对路径默认基于主配置文件所在目录解析。\n",
@@ -4719,6 +4751,14 @@
       "translation": "When left blank, the platform's default data directory is used:\n",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:paragraph:92e9ae62f8c6aafa6fd87f93ae3d06c46477e883a5b9962f7acb0ea1fd0419b6": {
+      "kind": "paragraph",
+      "source": "ElBot 使用一个主配置入口加载应用配置、Provider 配置和运行态状态。默认配置由程序内置 assets 生成到平台配置目录；已有配置文件不会被覆盖。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "92e9ae62f8c6aafa6fd87f93ae3d06c46477e883a5b9962f7acb0ea1fd0419b6",
+      "translation": "ElBot uses a main configuration entry to load application configuration, Provider configuration, and runtime state. Default configurations are generated from the program's built-in assets into the platform configuration directory; existing configuration files will not be overwritten.\n",
+      "updated_at": 1781854884
+    },
     "docs/configuration.md:paragraph:9b5878230e34a540b3bc2f4b759f21a0bf924ce76763874851dd26916e8f921b": {
       "kind": "paragraph",
       "source": "使用方式：\n",
@@ -4734,6 +4774,22 @@
       "source_hash": "9ebb7813a2367838f3a2a32cfb794592d00c5860d3ebc93bd43cf87a4e43bca7",
       "translation": "If using asdf, mise, Nix, Linuxbrew, Snap, or a custom installation path, it is recommended to write the actual __ELBOT_CODE_0__ path directly into __ELBOT_CODE_1__, rather than relying on the initialization scripts of an interactive shell.\n",
       "updated_at": 1781790272
+    },
+    "docs/configuration.md:paragraph:a09a6a292ecdf93b446713171e074b39ad603ce3b20d526cc00df1009962c1c3": {
+      "kind": "paragraph",
+      "source": "Cron 表达式由内部 Cron Runtime 调度，使用 Linux crontab 风格的 5 字段格式：__ELBOT_CODE_0__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "a09a6a292ecdf93b446713171e074b39ad603ce3b20d526cc00df1009962c1c3",
+      "translation": "Cron expressions are scheduled by the internal Cron Runtime, using the Linux crontab-style 5-field format: __ELBOT_CODE_0__.",
+      "updated_at": 1781854884
+    },
+    "docs/configuration.md:paragraph:a273c4a8d144a3443e3467920f35d01b3a9d1c89d9612c6b95849064f8025c23": {
+      "kind": "paragraph",
+      "source": "这些路径都会解析到主配置文件所在目录下；默认情况下就是平台配置目录。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "a273c4a8d144a3443e3467920f35d01b3a9d1c89d9612c6b95849064f8025c23",
+      "translation": "These paths will all be resolved to the directory where the main configuration file is located; by default, this is the platform configuration directory.\n",
+      "updated_at": 1781854884
     },
     "docs/configuration.md:paragraph:a2895e4a8d949bd72122ce5bec4e3015134baadd20cf6573170522255b198d2d": {
       "kind": "paragraph",
@@ -4807,6 +4863,14 @@
       "translation": "Runtime logs, SQLite, sandbox, artifacts, and other runtime data will also be stored according to the configuration or the default data directory.\n",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:paragraph:c74858812ff04da3be7f272e7bcefd762a521226fb6cdf4adfd0a5b1d2beef3a": {
+      "kind": "paragraph",
+      "source": "例如平台配置目录下的 __ELBOT_CODE_0__ 写入：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "c74858812ff04da3be7f272e7bcefd762a521226fb6cdf4adfd0a5b1d2beef3a",
+      "translation": "For example, writing __ELBOT_CODE_0__ under the platform configuration directory:\n",
+      "updated_at": 1781854884
+    },
     "docs/configuration.md:paragraph:cce0681b233c3afc06096fb1c291b6ecb3768ecb605772fd205f738b4c58d4f1": {
       "kind": "paragraph",
       "source": "启动时主配置按以下顺序查找：\n",
@@ -4854,6 +4918,22 @@
       "source_hash": "e43dcfdef81c4360e55eba6e94f3a6b7c16cef437e505abb9507f77b75c5d1c0",
       "translation": "Cron expressions are scheduled by the internal Cron Runtime. Default maintenance tasks include the cleanup of logs, artifacts, and chat history.\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:eebb435604aee56dccc960079c087d80d49ec3fc8e0c57fc651c71dbde35ddf0": {
+      "kind": "paragraph",
+      "source": "自动生成的默认配置内容来自程序内置 assets，且已有文件不会被覆盖。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "eebb435604aee56dccc960079c087d80d49ec3fc8e0c57fc651c71dbde35ddf0",
+      "translation": "The content of the automatically generated default configuration comes from the program's built-in assets, and existing files will not be overwritten.",
+      "updated_at": 1781854884
+    },
+    "docs/configuration.md:paragraph:f273c79bfdc15b5dd33d13b98853ccc65b6a50bfd1e0e8b423dfb54d2599ecbc": {
+      "kind": "paragraph",
+      "source": "源码中的 __ELBOT_CODE_0__ 目录只保留可独立维护的示例/辅助配置文件；主配置 __ELBOT_CODE_1__ 首次运行时由程序内置 assets 生成到平台配置目录。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "f273c79bfdc15b5dd33d13b98853ccc65b6a50bfd1e0e8b423dfb54d2599ecbc",
+      "translation": "The __ELBOT_CODE_0__ directory in the source code only retains example/auxiliary configuration files that can be maintained independently; the main configuration __ELBOT_CODE_1__ is generated from the program's built-in assets into the platform configuration directory upon the first run.\n",
+      "updated_at": 1781854884
     },
     "docs/configuration.md:paragraph:f33bc6cac2bc75cd57b4cd0b8212ed73fd5e9478e974b82e2ee770b6aebd09a0": {
       "kind": "paragraph",

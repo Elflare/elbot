@@ -2,15 +2,14 @@
 
 # Configuration Guide
 
-ElBot uses a main configuration entry to load application configurations, Provider configurations, and runtime states. Backward compatibility for old configurations is not considered during the development phase; it is recommended to maintain them directly according to the current `config/` example.
+ElBot uses a main configuration entry to load application configuration, Provider configuration, and runtime state. Default configurations are generated from the program's built-in assets into the platform configuration directory; existing configuration files will not be overwritten.
 
 ## Configuration File Responsibilities
 
-The default source configuration directory contains:
+The `config/` directory in the source code only retains example/auxiliary configuration files that can be maintained independently; the main configuration `app.toml` is generated from the program's built-in assets into the platform configuration directory upon the first run.
 
 | File or Directory | Responsibility |
 | --- | --- |
-| `config/app.toml` | Main configuration entry, saving storage, runtime, context, commands, tools, security, platform, and configuration file paths. |
 | `config/providers.toml` | LLM Provider, model list, default request parameters, and model metadata. |
 | `config/state.toml` | Runtime state, e.g., default Session mode, chat/work/compact/naming model selection. |
 | `config/tool_tags.md` | Configuration file for adding tags and prompts to tools. |
@@ -19,7 +18,6 @@ The default source configuration directory contains:
 | `config/.env` | Optional, local key file, not recommended for submission; the one automatically generated the first time is `.env.example`, and `.env` will not be generated directly. |
 | `config/plugins/` | Hook and plugin configuration directory. |
 | `config/skills/` | User-side Skill directory, located in the configuration directory by default; current subdirectories are `skills/agent/` and `skills/go/`. |
-
 | `config/memories.toml` | Resident memory file, located in the configuration directory by default. |
 | `config/long_memory/` | Long-term memory Markdown source data directory, located in the configuration directory by default. |
 
@@ -30,25 +28,26 @@ The main configuration is searched in the following order upon startup:
 1. Command line `--config`.
 2. Environment variable `ELBOT_CONFIG_FILE`.
 3. Platform configuration directory: Windows `%APPDATA%/ElBot/app.toml`; Linux uses the XDG configuration directory.
-4. Source code directory `config/app.toml`.
-5. If neither the platform configuration nor the source code example configuration exists, a default configuration file will be automatically generated in the platform configuration directory.
+4. If the platform configuration does not exist, a default configuration file will be automatically generated in the platform configuration directory.
 
-Automatic generation is only triggered when there are no explicit `--config` and `ELBOT_CONFIG_FILE`. If the explicitly specified configuration path does not exist, ElBot will report an error instead of silently generating it, to avoid masking path spelling errors.
+The content of the automatically generated default configuration comes from the program's built-in assets, and existing files will not be overwritten. Automatic generation is only triggered when there are no explicit `--config` and `ELBOT_CONFIG_FILE`. If the explicitly specified configuration path does not exist, ElBot will report an error instead of silently generating it, to avoid masking path spelling errors.
 
 Files automatically generated for the first time include: `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `elnis.toml`, and `.env.example`; At the same time, the directories `skills/`, `skills/agent/`, `skills/go/`, `plugins/`, and `long_memory/` will be created. Existing files will not be overwritten. `elnis.toml` defaults to `enabled=false`, and HTTP listening will not be started on the first run.
 
 
-Example:
+During the development phase, you can run it directly to use the platform configuration directory; default configurations will be automatically generated upon the first run:
 
 ```bash
-go run ./cmd/elbot --config config/app.toml
+go run ./cmd/elbot
 ```
+
+If you need to use a temporary configuration file, you can also explicitly specify `--config`.
 
 ## Relative Path Rules
 
 Relative paths are resolved based on the directory of the main configuration file by default.
 
-For example, when using `config/app.toml`:
+For example, writing `app.toml` under the platform configuration directory:
 
 ```toml
 [config_files]
@@ -60,7 +59,7 @@ elnis = "elnis.toml"
 path = "SOUL.md"
 ```
 
-These paths will all resolve to the `config/` directory.
+These paths will all be resolved to the directory where the main configuration file is located; by default, this is the platform configuration directory.
 
 ## Provider Configuration
 
@@ -204,7 +203,14 @@ enabled = true
 schedule = "0 3 * * *"
 ```
 
-Cron expressions are scheduled by the internal Cron Runtime. Default maintenance tasks include the cleanup of logs, artifacts, and chat history.
+Cron expressions are scheduled by the internal Cron Runtime, using the Linux crontab-style 5-field format: `分钟 小时 日 月 星期`. Default maintenance tasks include the cleanup of logs, artifacts, and chat history; for example, chat history cleanup is executed daily at 04:35 by default:
+
+```toml
+[maintenance.chat_history_cleanup]
+enabled = true
+schedule = "35 4 * * *"
+retention_days = 180
+```
 
 ## Context and Compaction
 
