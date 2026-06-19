@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "7e5b2be06612e3cf56fd93f76b85c59cd0a2f507b84e7abbc29eaf35d3138473",
+      "source_hash": "f64d649b851b66e0f9b9ce0836a6c2aa1cab1a9cc878d391fd6e76439eff5a04",
       "target": "README.md",
-      "updated_at": 1781786013
+      "updated_at": 1781839316
     },
     "docs/README.md": {
       "source_hash": "b40f5d1519dbd52e73aeee1fad99f614728052e3ae821add12de6ea4f9d69a7c",
@@ -606,6 +606,14 @@
       "source_hash": "3164cb215e8119df32ceeedfa8e6313fd1fd5785b32aaa0e7195d48460896507",
       "translation": "Long-term memory uses human-readable Markdown files as source data, while using SQLite FTS as a reconstructible search index, balancing transparency and retrieval efficiency.\n",
       "updated_at": 1781749522
+    },
+    "README.zh-CN.md:paragraph:336c271da8fa594093a784cde0b062ba64994ff1a31e2949ea1d89cce7f72f73": {
+      "kind": "paragraph",
+      "source": "**多平台与富输出抽象**： ElBot 抽象了平台层与输出层，目前支持 CLI、QQ OneBot、QQ Official 和 Telegram，并预留扩展其他平台的空间。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "336c271da8fa594093a784cde0b062ba64994ff1a31e2949ea1d89cce7f72f73",
+      "translation": "**Multi-platform and Rich Output Abstraction**: ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, QQ Official, and Telegram, while reserving space for extending to other platforms.\n",
+      "updated_at": 1781839316
     },
     "README.zh-CN.md:paragraph:358ee39ee1b300f360519600e728207e5f953088ba7ee1faee935613e185e421": {
       "kind": "paragraph",
