@@ -285,6 +285,23 @@ func TestHandleMessageSendsLLMErrorToPlatform(t *testing.T) {
 	}
 }
 
+func TestHandleMessageSendsFallbackForEmptyLLMResponse(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{{}}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qq-onebot", ScopeID: "private:test", Sender: p, BufferAssistantOutput: true})
+
+	if err := a.HandleMessage(ctx, "hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if got := p.out.String(); !strings.Contains(got, "模型这次没有返回可见内容") {
+		t.Fatalf("platform output missing empty response fallback: %q", got)
+	}
+	if got := len(f.chatRequests()); got != 1 {
+		t.Fatalf("chat requests = %d, want 1", got)
+	}
+}
+
 func TestStreamingOutputAppendsRawAndReplacesHookText(t *testing.T) {
 	p := &fakeStreamingPlatform{}
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{

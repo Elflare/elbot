@@ -269,6 +269,11 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		}
 	}
 	platformOutputText := platformFinalText
+	_, backgroundOutput := out.(backgroundTurnOutput)
+	emptyAssistantResponse := strings.TrimSpace(platformOutputText) == "" && strings.TrimSpace(finalText) == "" && len(deferredOutputs) == 0
+	if emptyAssistantResponse && !backgroundOutput {
+		platformOutputText = "模型这次没有返回可见内容，请重试或切换模型。"
+	}
 	if strings.TrimSpace(platformOutputText) != "" {
 		var err error
 		platformOutputText, err = a.prepareAssistantOutput(ctx, hook.PointAgentTurnOutputPrepared, platformOutputText)
@@ -306,8 +311,12 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	if !a.turns.CompleteLLM(session.ID) {
 		return nil
 	}
-	if err := a.persistTurnMessage(ctx, assistantMessage, "append_assistant_message"); err != nil {
-		return err
+	persistedAssistant := false
+	if !emptyAssistantResponse {
+		if err := a.persistTurnMessage(ctx, assistantMessage, "append_assistant_message"); err != nil {
+			return err
+		}
+		persistedAssistant = true
 	}
 	if bufferOutput {
 		if strings.TrimSpace(platformOutputText) != "" {
@@ -316,12 +325,14 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 				a.audit("platform_send_error", "session_id", session.ID, "operation", "send_assistant_message", "error", err.Error())
 				return err
 			}
-			a.mapSentAssistantMessage(ctx, session.ID, assistantMessage.ID, receipt)
+			if persistedAssistant {
+				a.mapSentAssistantMessage(ctx, session.ID, assistantMessage.ID, receipt)
+			}
 		}
 		if err := out.SendOutputs(ctx, deferredOutputs); err != nil {
 			return err
 		}
-	} else {
+	} else if persistedAssistant {
 		a.mapSentAssistantMessage(ctx, session.ID, assistantMessage.ID, finalReceipt)
 	}
 	if err := a.sessions.Touch(ctx, session); err != nil {
