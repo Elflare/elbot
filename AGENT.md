@@ -197,9 +197,8 @@
 - `internal/tool/skill/catalog.go`：skill catalog；记录 AgentSkill/Go skill 的名称、详情格式、风险、根目录和 Go binary 路径，供隐藏包装工具按名称查找。
 
 - `internal/tool/skill/creator.go`：`create_el_skill` 内置元工具；用结构化参数 `name/description/risk/elyph/go_source` 创建 ElBot 原生 skill，写入 `SKILL.elyph`，可选写入 `main.go` 并编译，创建前用 ELyph parser/linter 校验，成功后自动 reload；不再要求 LLM 拼 `SKILL.md` front matter，未提供源码时创建纯 ELyph 文本 skill。
-- `internal/tool/skill/elyph_modifier.go`：`read_el_skill`/`modify_el_skill` 内置元工具；按行读取 `SKILL.elyph`，并支持完整 `content` 覆盖或 1-based 行 patch 修改，写入前严格校验 ELyph 语法并 reload。
-- `internal/tool/skill/go_modifier.go`：隐藏 Go skill 维护工具；`read_go_skill`/`modify_go_skill` 按 `target` 读写 `skill_elyph` 或 `code_source`，技能定义校验 ELyph 并 reload，源码自动 gofmt、go build 并 reload。
-
+- `internal/tool/skill/elyph_modifier.go`：`read_el_skill`/`modify_el_skill` 内置元工具；按 `target` 读写原生 EL Skill 的 `SKILL.elyph` 或 `main.go`，支持完整 `content` 覆盖或 1-based 行 patch；技能定义校验 ELyph 并 reload，源码自动 gofmt、go build 并 reload。
+- `internal/tool/skill/go_modifier.go`：原生 Go skill 源码维护 helper；提供 gofmt、`package main` 校验、Go 可执行文件解析和 `go build` 编译能力，供 `modify_el_skill` 复用。
 
 - `internal/tool/skill/descriptor.go`：skill 描述对象；让 AgentSkill/Go skill 可被 `discover_tool` 查到详情，ELyph skill detail 会按需前置短规则卡，Markdown skill 不注入；skill 本体不作为可直接调用 schema 暴露。
 

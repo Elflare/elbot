@@ -46,7 +46,7 @@ func (CreateElSkillTool) Info() tool.Info {
 		Description("创建 ElBot 原生 ELyph skill。只有可复用经验、固定流程或稳定能力才应创建 skill；一次性任务不要创建。可只写 SKILL.elyph，也可附带 Go 源码并通过 go_skill_run 调用。").
 		Source(tool.SourceBuiltin).
 		Risk(tool.RiskHigh).
-		DependsOn(ReadGoSkillName, ModifyGoSkillName).
+		DependsOn(ReadElSkillName, ModifyElSkillName).
 		BuildInfo()
 }
 

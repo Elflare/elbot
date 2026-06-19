@@ -166,3 +166,26 @@ func TestCreateElSkillDoesNotOverwriteRegistryTool(t *testing.T) {
 		t.Fatal("expected registry conflict error")
 	}
 }
+
+func TestCreateElSkillDiscoversMaintenanceTools(t *testing.T) {
+	registry := tool.NewRegistry()
+	manager := NewManager(t.TempDir(), registry)
+	for _, item := range []tool.Tool{NewCreateElSkillTool(manager), NewReadElSkillTool(manager), NewModifyElSkillTool(manager)} {
+		if err := registry.Register(item); err != nil {
+			t.Fatal(err)
+		}
+	}
+	details, errors := registry.DiscoverDetails([]string{CreateElSkillName}, func(tool.Tool) bool { return true })
+	if len(errors) > 0 {
+		t.Fatalf("errors = %#v", errors)
+	}
+	found := map[string]bool{}
+	for _, detail := range details {
+		found[detail.Info.Name] = detail.Schema != nil
+	}
+	for _, name := range []string{CreateElSkillName, ReadElSkillName, ModifyElSkillName} {
+		if !found[name] {
+			t.Fatalf("missing schema for %s in %#v", name, details)
+		}
+	}
+}
