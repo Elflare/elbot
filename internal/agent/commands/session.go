@@ -54,7 +54,7 @@ func NewStatus(deps Deps) command.Handler {
 		if s.PinnedAt != nil {
 			pinned = formatTime(*s.PinnedAt)
 		}
-		active := formatActiveRequests(deps.Requests.ListBySession(s.ID))
+		active := formatActiveRequests(ctx, deps, deps.Requests.ListBySession(s.ID))
 		turnSnapshot := deps.Turns.Snapshot(s.ID)
 		pendingInput := "none"
 		if turnSnapshot.PendingCount > 0 {
@@ -953,7 +953,7 @@ func formatEmptyStatus(ctx context.Context, deps Deps) string {
 	scope := deps.Scope(ctx)
 	modeModel := deps.Models.CurrentModeModel()
 	compactModel := deps.Models.CurrentCompactModel()
-	active := formatActiveRequests(deps.Requests.List())
+	active := formatActiveRequests(ctx, deps, deps.Requests.List())
 	return trimTrailingNewlines(fmt.Sprintf(`session status:
   current session: none
   default mode: %s

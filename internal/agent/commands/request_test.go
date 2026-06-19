@@ -64,6 +64,33 @@ func assertCommandTestCanceled(t *testing.T, ctx context.Context) {
 	}
 }
 
+func TestFormatActiveRequestsUsesTree(t *testing.T) {
+	ctx := context.Background()
+	store := newCommandTestStore(t)
+	sessionRow := &storage.Session{ID: "s1", Title: "状态会话", Mode: storage.SessionModeWork, OwnerID: "cli:local", Platform: "cli", PlatformScopeID: "local", CreatedAt: storage.Now(), UpdatedAt: storage.Now()}
+	if err := store.Sessions().Create(ctx, sessionRow); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	manager := request.NewManager(time.Minute)
+	turnReq, _, turnDone, err := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
+	if err != nil {
+		t.Fatalf("start turn: %v", err)
+	}
+	defer turnDone()
+	_, _, toolDone, err := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
+	if err != nil {
+		t.Fatalf("start tool: %v", err)
+	}
+	defer toolDone()
+
+	got := formatActiveRequests(ctx, Deps{Requests: manager, Store: store, Turns: turn.NewManager()}, manager.ListBySession("s1"))
+	for _, want := range []string{"[1] chat turn request", "└── [1.1] shell tool request"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("active requests output missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestStopCommandCancelsNumberedChildRequest(t *testing.T) {
 	ctx := context.Background()
 	manager := request.NewManager(time.Minute)

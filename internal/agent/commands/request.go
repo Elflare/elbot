@@ -111,9 +111,19 @@ func NewStopAll(deps Deps) command.Handler {
 }
 
 func formatRequests(ctx context.Context, deps Deps, requests []request.Request) string {
+	return formatRequestTree(ctx, deps, requests, false)
+}
+
+func formatRequestTree(ctx context.Context, deps Deps, requests []request.Request, showNone bool) string {
+	if len(requests) == 0 && showNone {
+		return "active requests: none"
+	}
 	tree := buildRequestTree(requests)
 	var sb strings.Builder
-	sb.WriteString("active requests:\n")
+	sb.WriteString("active requests:")
+	if len(requests) > 0 {
+		sb.WriteString("\n")
+	}
 	for i, root := range tree.Roots {
 		number := strconv.Itoa(i + 1)
 		writeRequestLine(&sb, ctx, deps, number, "", root.Request)
@@ -214,16 +224,8 @@ func requestLess(left, right request.Request) bool {
 	return left.ID < right.ID
 }
 
-func formatActiveRequests(requests []request.Request) string {
-	if len(requests) == 0 {
-		return "active requests: none"
-	}
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("active requests: %d\n", len(requests)))
-	for _, req := range requests {
-		sb.WriteString(fmt.Sprintf("  %s %s %s %s\n", req.ID, req.Kind, req.Label, formatDuration(time.Since(req.StartedAt))))
-	}
-	return trimTrailingNewlines(sb.String())
+func formatActiveRequests(ctx context.Context, deps Deps, requests []request.Request) string {
+	return formatRequestTree(ctx, deps, requests, true)
 }
 
 func formatDuration(d time.Duration) string {

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/tool"
 )
@@ -56,6 +57,28 @@ func TestShellToolUsesSandboxDir(t *testing.T) {
 	}
 	if strings.TrimSpace(string(content)) == "" {
 		t.Fatal("expected sandbox command to write cwd.txt")
+	}
+}
+
+func TestShellToolCancelReturnsQuickly(t *testing.T) {
+	shell := NewShellTool()
+	ctx, cancel := context.WithCancel(context.Background())
+	args, _ := json.Marshal(map[string]any{"cmd": "sleep 5", "timeout_ms": 10000})
+	done := make(chan error, 1)
+	started := time.Now()
+	go func() {
+		_, err := shell.Call(ctx, tool.CallRequest{Arguments: args})
+		done <- err
+	}()
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	select {
+	case <-done:
+		if elapsed := time.Since(started); elapsed > time.Second {
+			t.Fatalf("shell cancel took %s, want under 1s", elapsed)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("shell cancel did not return within 1s")
 	}
 }
 

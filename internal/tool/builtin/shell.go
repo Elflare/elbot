@@ -100,6 +100,7 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result
 	defer cancel()
 
 	cmd := shellCommand(runCtx, cmdText)
+	configureShellProcess(cmd)
 	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && strings.TrimSpace(sandbox.Dir) != "" {
 		if err := os.MkdirAll(sandbox.Dir, 0755); err != nil {
 			return nil, fmt.Errorf("create shell sandbox: %w", err)
@@ -110,7 +111,7 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	err := cmd.Run()
+	err := runShellCommand(runCtx, cmd)
 	data := shellData{Stdout: truncate(stdout.String()), Stderr: truncate(stderr.String())}
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		data.ExitCode = exitErr.ExitCode()
@@ -125,6 +126,25 @@ func shellCommand(ctx context.Context, cmdText string) *exec.Cmd {
 		return exec.CommandContext(ctx, "bash", "-lc", cmdText)
 	}
 	return exec.CommandContext(ctx, "sh", "-lc", cmdText)
+}
+
+func runShellCommand(ctx context.Context, cmd *exec.Cmd) error {
+	errCh := make(chan error, 1)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() { errCh <- cmd.Wait() }()
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		killShellProcessTree(cmd)
+		err := <-errCh
+		if err != nil {
+			return err
+		}
+		return ctx.Err()
+	}
 }
 
 func formatShellContent(data shellData) string {
