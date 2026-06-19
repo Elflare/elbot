@@ -21,9 +21,9 @@
       "updated_at": 1781786062
     },
     "docs/configuration.md": {
-      "source_hash": "793eb655525538317880c4fd8513f7d03d74dddfbd9567734e64b2a6bdf7c4af",
+      "source_hash": "9183867c569d5f3e3ab53b20ba4cec89ff89eb297f66c7ce527bfaf62c2b5a02",
       "target": "docs.en/configuration.md",
-      "updated_at": 1781840032
+      "updated_at": 1781846628
     },
     "docs/elnis-usage.md": {
       "source_hash": "e74fe6cd41df7456a27c3a86598a17eb5e42d517523b142befac00602681d371",
@@ -3687,6 +3687,14 @@
       "translation": "runtime log",
       "updated_at": 1781515483
     },
+    "docs/configuration.md:code-comment:toml:ad5778daa0f232080c47303c35957dc43afb0286e6e54db5c0d104903fa92523": {
+      "kind": "code-comment:toml",
+      "source": "可选；先读系统环境变量，再读配置目录 .env",
+      "source_file": "docs/configuration.md",
+      "source_hash": "ad5778daa0f232080c47303c35957dc43afb0286e6e54db5c0d104903fa92523",
+      "translation": "Optional; reads system environment variables first, then the .env file in the configuration directory",
+      "updated_at": 1781846628
+    },
     "docs/configuration.md:heading:18435419f154847b5c43eb9cab4abe202ecbcc94ec576c694119656d75e9f609": {
       "kind": "heading",
       "source": "命令前缀",
@@ -3854,6 +3862,14 @@
       "source_hash": "02bc072cdf9df5e4bd3aa6a4fbb4ac5c8fc4460d528cdd1925861489f48d4ff8",
       "translation": "__ELBOT_CODE_0__ in Elvena requests enters the validation, persistence, and execution chain; external tool names are still controlled by the denylist of individual Elwisps.",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:list:069c4c956592e665a411ced0802d1064d13169e473546dae1f9b42f11b84fbb1": {
+      "kind": "list",
+      "source": "也可以用 __ELBOT_CODE_0__ 直接写入配置。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "069c4c956592e665a411ced0802d1064d13169e473546dae1f9b42f11b84fbb1",
+      "translation": "You can also use __ELBOT_CODE_0__ to write the configuration directly.",
+      "updated_at": 1781846628
     },
     "docs/configuration.md:list:0a7e2661c09f9163f6350d4f83d5ae5b7fe261948c814ae7159a1037a301cf68": {
       "kind": "list",
@@ -4118,6 +4134,14 @@
       "source_hash": "68f0985d08a4da92051a3ef3eff3ede6f486abb1dd90c649cd47f873f6adca4a",
       "translation": "__ELBOT_CODE_0__ mode does not inject tools, making it suitable for casual chatting and low-cost conversations.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:6bb103b7558715a6df73bb64f6957f641f077f0e117e7d3966bf4bfa63d88657": {
+      "kind": "list",
+      "source": "代理地址示例：__ELBOT_CODE_0__、__ELBOT_CODE_1__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "6bb103b7558715a6df73bb64f6957f641f077f0e117e7d3966bf4bfa63d88657",
+      "translation": "Proxy address examples: __ELBOT_CODE_0__, __ELBOT_CODE_1__.",
+      "updated_at": 1781846628
     },
     "docs/configuration.md:list:6cd89da7557c0fa722138f493974d997fc40799da25b45c8695cb5083a9c6888": {
       "kind": "list",
@@ -4391,6 +4415,22 @@
       "translation": "Supports readable rendering of headings, quotes, horizontal rules, code blocks, and tables, with automatic plain text retry upon failure.",
       "updated_at": 1781839376
     },
+    "docs/configuration.md:list:e1c0fc91408142a68c3b54e1cdcf458498effcde753e1836d2395b3123a284a0": {
+      "kind": "list",
+      "source": "也可以用 __ELBOT_CODE_0__ 直接写入配置，但不建议提交真实 token。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e1c0fc91408142a68c3b54e1cdcf458498effcde753e1836d2395b3123a284a0",
+      "translation": "You can also use __ELBOT_CODE_0__ to write the configuration directly, but it is not recommended to commit actual tokens.",
+      "updated_at": 1781846628
+    },
+    "docs/configuration.md:list:ebeb56a48082d767b02e47f06df0086ea8bd0345a7f3ad17f034a236a00a1975": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 指向 Bot Token 的变量名，读取顺序为系统环境变量、配置目录 __ELBOT_CODE_1__；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "ebeb56a48082d767b02e47f06df0086ea8bd0345a7f3ad17f034a236a00a1975",
+      "translation": "__ELBOT_CODE_0__ is the variable name pointing to the Bot Token; the reading order is system environment variables, then the configuration directory __ELBOT_CODE_1__;",
+      "updated_at": 1781846628
+    },
     "docs/configuration.md:list:ed50dc150a4230720d402deb43ae704be8f7442ddee17ea9dd496d780716e42b": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 报告只支持按 Elnis 裁决后的平台发送给 superadmins，不支持任意 user/group 目标。",
@@ -4406,6 +4446,14 @@
       "source_hash": "f31646a8be06d4f780c4c5e2e465aa83cfc7dac48d114fae5c53de76cf7571be",
       "translation": "__ELBOT_CODE_0__ points to the Bot Token in the system environment variables; you can also use __ELBOT_CODE_1__ to write it directly into the configuration, but it is not recommended to commit real tokens.",
       "updated_at": 1781839376
+    },
+    "docs/configuration.md:list:ff5524722281e39bb8652d7ead7019fef72e2b66d2011735561778369a621f16": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 指向代理地址的变量名，读取顺序同样为系统环境变量、配置目录 __ELBOT_CODE_1__；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "ff5524722281e39bb8652d7ead7019fef72e2b66d2011735561778369a621f16",
+      "translation": "__ELBOT_CODE_0__ is the variable name pointing to the proxy address; the reading order is likewise system environment variables, then the configuration directory __ELBOT_CODE_1__;",
+      "updated_at": 1781846628
     },
     "docs/configuration.md:paragraph:00f557986b604234cdc9f87589bd18b3660b84279742586e06312e9be8be1d2f": {
       "kind": "paragraph",
