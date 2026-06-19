@@ -92,7 +92,7 @@ flowchart LR
 
 Elnis is the event entry runtime within ElBot, assembled at the same level as the platform runtime and Cron runtime.
 
-It uniformly receives external events and routes them to logs, notifications, or the background LLM; like a star, all signals from Elwisp converge around it, but the final energy is controlled by ElBot.
+It uniformly receives external events and routes them to logs, notifications, or the background LLM; it is like a star around which all Elwisp signals converge, but the ultimate energy is controlled by ElBot.
 
 Elnis is responsible for:
 
@@ -120,7 +120,7 @@ The "world" it observes is not limited by type, including but not limited to:
 - Devices, sensors, or local script outputs.
 - Any content that a computer can receive, read, listen to, or generate.
 
-Elwisp is like a probe scattered across the external world, and also like the eyes of ElBot. They can be numerous, small, and dispersed; they have only one responsibility: to tell Elnis what is happening in the external world.
+Elwisp is the eyes of ElBot, acting like probes scattered across the external world. They can be numerous, small, and dispersed; they have only one responsibility: to tell Elnis what is happening in the external world.
 
 Elwisp is only responsible for "seeing and reporting." It does not directly control ElBot, does not send messages directly to chat platforms, and does not decide whether to ultimately call an LLM or a tool.
 
@@ -193,11 +193,8 @@ Currently, Elnis supports record, direct, and llm modes, as well as Elwisp decla
 - Multiple message segments.
 - Multi-turn communication between Elnis and Elwisp.
 - Non-HTTP transports such as stdio, pipe, etc.
-- Elnis event querying, failure retry, or disabling capabilities.
 
 ## Next Step: Configuration and Usage
-
-After reading this, you can start learning about configuration and delivering events.
 
 - [Elnis Configuration and Usage](elnis-usage.md): Enable Elnis, configure Elwisp policies, send Elvena requests, and understand request fields and delivery boundaries.
 

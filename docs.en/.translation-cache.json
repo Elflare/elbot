@@ -26,14 +26,14 @@
       "updated_at": 1781790272
     },
     "docs/elnis-usage.md": {
-      "source_hash": "addac05926a5ef7d6ccae3d13c789cb978d6a3973f1210bc29e776f2ede856f7",
+      "source_hash": "e74fe6cd41df7456a27c3a86598a17eb5e42d517523b142befac00602681d371",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1781786110
+      "updated_at": 1781794476
     },
     "docs/elnis.md": {
-      "source_hash": "f3b807a95e78c9ad3016c72ccef8a5e22b6d559d0baf59c3fdab4a5d3db37391",
+      "source_hash": "4735dd174a667d92bd3fb59e8a6d1de41d114f168eec2b6022ac7733b37c9534",
       "target": "docs.en/elnis.md",
-      "updated_at": 1781786111
+      "updated_at": 1781794504
     },
     "docs/elyph.md": {
       "source_hash": "1143022b6f7a7792b0f1aa8118af618014b6ac359776d6a7cd21cc484f28a6bc",
@@ -5919,6 +5919,14 @@
       "translation": "Elnis is the event listening hub of ElBot. Like a star, it catches signals from the constellation of Elwisps, and ElBot then decides whether to record, notify, analyze, or execute background tasks.\n",
       "updated_at": 1781710746
     },
+    "docs/elnis.md:paragraph:45c5a49b04ad6e8abccf04c1709b8b0f82d03c12b794e3ed5b876e7fb40128aa": {
+      "kind": "paragraph",
+      "source": "它统一接收外部事件，把事件接到记录、通知或后台 LLM；它像一颗恒星，所有 Elwisp 的信号都围绕它汇聚，但最终能量由 ElBot 控制。\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "45c5a49b04ad6e8abccf04c1709b8b0f82d03c12b794e3ed5b876e7fb40128aa",
+      "translation": "It uniformly receives external events and routes them to logs, notifications, or the background LLM; it is like a star around which all Elwisp signals converge, but the ultimate energy is controlled by ElBot.\n",
+      "updated_at": 1781794504
+    },
     "docs/elnis.md:paragraph:47e7546b41374642462c6ef6b9692408285bca851b34aa07d22f6416f6aa2628": {
       "kind": "paragraph",
       "source": "看完这里，就可以开始了解配置和投递事件。\n",
@@ -6094,6 +6102,14 @@
       "source_hash": "f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f",
       "translation": "Example:\n",
       "updated_at": 1781753001
+    },
+    "docs/elnis.md:paragraph:fc6b6e2ffe62b78a01706f31174bc10ba0d391abd6b5f337ec4b25057ab65e0f": {
+      "kind": "paragraph",
+      "source": "Elwisp 是 ElBot 的眼睛，也像散布在外部世界的探机。它们可以很多、很小、很分散；职责只有一个：把外部世界发生了什么告诉 Elnis。\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "fc6b6e2ffe62b78a01706f31174bc10ba0d391abd6b5f337ec4b25057ab65e0f",
+      "translation": "Elwisp is the eyes of ElBot, acting like probes scattered across the external world. They can be numerous, small, and dispersed; they have only one responsibility: to tell Elnis what is happening in the external world.\n",
+      "updated_at": 1781794504
     },
     "docs/elnis.md:table:047563285d4d325d5023f47c22f5c5f3e14100d30d569d73c91946b0524815e0": {
       "kind": "table",
