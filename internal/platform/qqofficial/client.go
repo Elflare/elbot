@@ -26,9 +26,6 @@ func newAPIClient(cfg Config) *apiClient {
 }
 
 func (c *apiClient) gateway(ctx context.Context) (string, error) {
-	if value := strings.TrimSpace(c.cfg.GatewayURL); value != "" {
-		return value, nil
-	}
 	var out gatewayResponse
 	if err := c.doJSON(ctx, http.MethodGet, "/gateway", nil, &out); err != nil {
 		return "", err
@@ -81,7 +78,7 @@ func (c *apiClient) doJSONWithRetry(ctx context.Context, method, path string, in
 		}
 		body = bytes.NewReader(data)
 	}
-	reqURL := strings.TrimRight(c.cfg.APIBaseURL, "/") + path
+	reqURL := strings.TrimRight(defaultAPIBaseURL, "/") + path
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
 	if err != nil {
 		return err

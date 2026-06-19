@@ -90,7 +90,6 @@ enabled = true
 # enabled = false
 # app_id = "your-app-id"
 # client_secret_env = "QQOFFICIAL_CLIENT_SECRET"
-# api_base_url = "https://api.sgroup.qq.com"
 # allow_proactive = true
 # markdown_by_default = true
 # enable_keyboard = true

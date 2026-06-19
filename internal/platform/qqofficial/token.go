@@ -47,7 +47,7 @@ func (s *tokenSource) refresh(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSpace(s.cfg.TokenURL), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, defaultTokenURL, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}

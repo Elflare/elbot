@@ -361,7 +361,7 @@ CLI 默认启用：
 enabled = true
 ```
 
-QQ 官方机器人、QQ OneBot 和 Telegram 配置在示例中默认注释。启用时需要补齐平台自己的认证信息、连接地址或触发关键词。
+QQ 官方机器人、QQ OneBot 和 Telegram 配置在示例中默认注释。启用时需要补齐平台自己的认证信息和触发关键词。
 
 Telegram 使用 Bot API long polling。最小配置示例：
 

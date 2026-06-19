@@ -21,9 +21,6 @@ type Config struct {
 	AppID                    string `toml:"app_id"`
 	ClientSecret             string `toml:"client_secret"`
 	ClientSecretEnv          string `toml:"client_secret_env"`
-	APIBaseURL               string `toml:"api_base_url"`
-	TokenURL                 string `toml:"token_url"`
-	GatewayURL               string `toml:"gateway_url"`
 	AllowProactive           *bool  `toml:"allow_proactive"`
 	MarkdownByDefault        *bool  `toml:"markdown_by_default"`
 	EnableKeyboard           *bool  `toml:"enable_keyboard"`
@@ -54,12 +51,6 @@ func NewFromPlatformConfig(raw map[string]any, logger Logger, superadmins []stri
 }
 
 func applyDefaults(cfg *Config) {
-	if cfg.APIBaseURL == "" {
-		cfg.APIBaseURL = defaultAPIBaseURL
-	}
-	if cfg.TokenURL == "" {
-		cfg.TokenURL = defaultTokenURL
-	}
 	if cfg.HTTPTimeoutSeconds <= 0 {
 		cfg.HTTPTimeoutSeconds = int(defaultHTTPTimeout / time.Second)
 	}
