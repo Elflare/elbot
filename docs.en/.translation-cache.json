@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "f64d649b851b66e0f9b9ce0836a6c2aa1cab1a9cc878d391fd6e76439eff5a04",
+      "source_hash": "6cd0d13fce84142e713deb07a058fc5bdb2635780bb5da0fdc0f11ae18f4d2b4",
       "target": "README.md",
-      "updated_at": 1781839316
+      "updated_at": 1781854820
     },
     "docs/README.md": {
       "source_hash": "b40f5d1519dbd52e73aeee1fad99f614728052e3ae821add12de6ea4f9d69a7c",
@@ -623,6 +623,14 @@
       "translation": "Development plan and task decomposition: [devdocs](devdocs/).\n",
       "updated_at": 1781749522
     },
+    "README.zh-CN.md:paragraph:35d217cb7dfb314566d4ad9ad2285f2317f16390fb41e0ae45097497f4b7633b": {
+      "kind": "paragraph",
+      "source": "开发期可以直接从源码启动；首次运行会在平台配置目录自动生成默认配置，已有配置不会被覆盖：\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "35d217cb7dfb314566d4ad9ad2285f2317f16390fb41e0ae45097497f4b7633b",
+      "translation": "During the development phase, it can be started directly from the source code; the first run will automatically generate a default configuration in the platform configuration directory, and existing configurations will not be overwritten:\n",
+      "updated_at": 1781854820
+    },
     "README.zh-CN.md:paragraph:3690ca895eb13311ce75890bd0478d5c6dabcfe2a60314fff8a96bb8edb957ce": {
       "kind": "paragraph",
       "source": "** 除了原生 EL Skill，ElBot 也兼容常见的 Python 外置 skill 结构。",
@@ -959,6 +967,14 @@
       "translation": "The two modes can be configured with models independently, allowing low-cost models to handle casual chat and powerful models to focus on complex tasks.\n",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:84a016717918133589e182198ef927755a46b9080663c97bdefc483967017651": {
+      "kind": "paragraph",
+      "source": "创建时自动校验 ELyph 语法，可选附带 Go 源码并编译；",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "84a016717918133589e182198ef927755a46b9080663c97bdefc483967017651",
+      "translation": "Automatically validate ELyph syntax upon creation, with optional Go source code attachment and compilation;",
+      "updated_at": 1781854820
+    },
     "README.zh-CN.md:paragraph:89ef7423f590ffac359e2972257e664320bab70aba96a4618ccce7b85d880437": {
       "kind": "paragraph",
       "source": "**极致轻量的 Go 实现**： ElBot 当前本地启动耗时 <10ms（N5105，sata固态），常驻内存约 30MB。\n",
@@ -1182,6 +1198,14 @@
       "source_hash": "bddeb4da9510d672972960ebc1df3084200f3d8773d9b8a3f1281b2095fce3d3",
       "translation": "**Chat / Work dual mode**: ElBot distinguishes between chat mode and work mode.",
       "updated_at": 1781779200
+    },
+    "README.zh-CN.md:paragraph:bfa7ab109008d04e8c4d9a1359b037d12052c05b062f69e58ab7b1005bae48cb": {
+      "kind": "paragraph",
+      "source": "创建后的纯 ELyph 文本或 Go 源码由统一的 __ELBOT_CODE_0__ / __ELBOT_CODE_1__ 维护。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "bfa7ab109008d04e8c4d9a1359b037d12052c05b062f69e58ab7b1005bae48cb",
+      "translation": "Pure ELyph text or Go source code created is maintained by a unified __ELBOT_CODE_0__ / __ELBOT_CODE_1__.\n",
+      "updated_at": 1781854820
     },
     "README.zh-CN.md:paragraph:c0b23da239318e28178f414e20a748a070bf1133d5ff3bacc55a2f04e47f3256": {
       "kind": "paragraph",

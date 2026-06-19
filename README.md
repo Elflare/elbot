@@ -36,7 +36,7 @@ For personal daily use, token consumption per request:
 
 **ELyph Task Notation**: ELyph is used to describe LLM Cron and native skills. The goal is to reduce ambiguity in natural language task descriptions and use a shorter, more stable structure to express inputs, outputs, steps, conditions, and constraints. Compared to arbitrary Markdown, ELyph is better suited for reusing and passing tasks between LLMs, and is also easier to lint, audit, and process with tools.
 
-**EL Skills creatable by LLM**: ElBot has a built-in `create_el_skill` meta-tool, allowing the LLM to crystallize reusable experience into EL Skills. ELyph syntax is automatically validated upon creation, with the option to include and compile Go source code.
+**EL Skills creatable by LLM**: ElBot has a built-in `create_el_skill` meta-tool, allowing the LLM to crystallize reusable experience into EL Skills. Automatically validate ELyph syntax upon creation, with optional Go source code attachment and compilation; Pure ELyph text or Go source code created is maintained by a unified `read_el_skill` / `modify_el_skill`.
 
 **Compatible with external AgentSkills**: In addition to native Go Skills, ElBot is also compatible with external AgentSkills that follow the agentskills.io style. Automatically scan `skills/agent/<skill>/SKILL.md` or `SKILL.elyph` to read the name, description, applicable scenarios, and risk level; Currently, bundled Python scripts can be executed via hidden wrapper tools.
 
@@ -65,10 +65,10 @@ For detailed information, see [Elnis Listening Hub](docs.en/elnis.md).
 
 ## Usage
 
-During the development phase, you can start directly from the source code:
+During the development phase, it can be started directly from the source code; the first run will automatically generate a default configuration in the platform configuration directory, and existing configurations will not be overwritten:
 
 ```bash
-go run ./cmd/elbot --config config/app.toml
+go run ./cmd/elbot
 ```
 
 Common startup methods:
