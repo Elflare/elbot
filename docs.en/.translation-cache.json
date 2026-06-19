@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "6cd0d13fce84142e713deb07a058fc5bdb2635780bb5da0fdc0f11ae18f4d2b4",
+      "source_hash": "fe6d61982722161db84cfbb7577ac3bab8a29e054675fd3ede2af7f70c31d1b9",
       "target": "README.md",
-      "updated_at": 1781854820
+      "updated_at": 1781857840
     },
     "docs/README.md": {
       "source_hash": "b40f5d1519dbd52e73aeee1fad99f614728052e3ae821add12de6ea4f9d69a7c",
@@ -1254,6 +1254,14 @@
       "source_hash": "c41849141b744677c52027f9eae83a2d0153aef23e1c97814157e02b636a5960",
       "translation": "** Background Shell execution is constrained by AST-level sandboxing.",
       "updated_at": 1781749522
+    },
+    "README.zh-CN.md:paragraph:c56b8a5a9b5bc5f3ab0486242d39ad547143893cd039cb25c56edde3ea795424": {
+      "kind": "paragraph",
+      "source": "创建后的纯 ELyph 文本或 Go 源码由统一的 __ELBOT_CODE_0__ / __ELBOT_CODE_1__ 维护，源码改完后通过 __ELBOT_CODE_2__ 统一格式化、编译并返回检查结果。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "c56b8a5a9b5bc5f3ab0486242d39ad547143893cd039cb25c56edde3ea795424",
+      "translation": "The pure ELyph text or Go source code created is maintained by a unified __ELBOT_CODE_0__ / __ELBOT_CODE_1__; after the source code is modified, it is uniformly formatted and compiled via __ELBOT_CODE_2__, and the check results are returned.\n",
+      "updated_at": 1781857840
     },
     "README.zh-CN.md:paragraph:c6eb08a7f05ed52c309c1b39b3001e3fac4d234facd0d1ef61dd6aff35279be6": {
       "kind": "paragraph",
