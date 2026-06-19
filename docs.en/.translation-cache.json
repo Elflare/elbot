@@ -21,9 +21,9 @@
       "updated_at": 1781786062
     },
     "docs/configuration.md": {
-      "source_hash": "86bc21a3e169ccda3f9bef6cc20e6ce61074fd3b8c80e3926f67f2a2d68dfec3",
+      "source_hash": "824fe6dcbb3290cc9e41a5ed02594c0a9a43332b74c2d35e0b4bf635fc2074ca",
       "target": "docs.en/configuration.md",
-      "updated_at": 1781790272
+      "updated_at": 1781839376
     },
     "docs/elnis-usage.md": {
       "source_hash": "e74fe6cd41df7456a27c3a86598a17eb5e42d517523b142befac00602681d371",
@@ -3863,6 +3863,14 @@
       "translation": "Linux: __ELBOT_CODE_0__ or __ELBOT_CODE_1__",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:0afcd43ab1b9538c96528fb64a351c7d3a02e93f850d0117aafc676121bc9162": {
+      "kind": "list",
+      "source": "群聊/超级群组中，命令前缀、触发关键词、__ELBOT_CODE_0__ 或回复 bot 消息都会触发处理。私聊默认处理。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "0afcd43ab1b9538c96528fb64a351c7d3a02e93f850d0117aafc676121bc9162",
+      "translation": "In group chats/supergroups, command prefixes, trigger keywords, __ELBOT_CODE_0__, or replying to bot messages will all trigger processing. Private chats are processed by default.",
+      "updated_at": 1781839376
+    },
     "docs/configuration.md:list:121deebefceaedb2063599a1af3d2f33d8500ca15c12cf33792cc72508392792": {
       "kind": "list",
       "source": "超级管理员调用高风险工具时也需要确认。",
@@ -3895,6 +3903,14 @@
       "translation": "__ELBOT_CODE_0__ in the configuration directory.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:1a6e36e8d42f899d43589df5ed311be8dabbbfc5061bdd6df1732cb9eebd2d8e": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是默认值：使用普通 __ELBOT_CODE_1__ + __ELBOT_CODE_2__，并把常见 Markdown 轻量转换成 Telegram HTML；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1a6e36e8d42f899d43589df5ed311be8dabbbfc5061bdd6df1732cb9eebd2d8e",
+      "translation": "__ELBOT_CODE_0__ is the default value: uses standard __ELBOT_CODE_1__ + __ELBOT_CODE_2__, and performs a lightweight conversion of common Markdown to Telegram HTML;",
+      "updated_at": 1781839376
+    },
     "docs/configuration.md:list:1d33334f232d69671a32942f10509023fa5abe3cea531de73fd8a8a6929c014c": {
       "kind": "list",
       "source": "未指定或对应槽位未配置时回退到 __ELBOT_CODE_0__ 模型。",
@@ -3918,6 +3934,14 @@
       "source_hash": "2e202f83cb7bc886d1a67c0336e50c3b0c0fcc8f96e398dbb62e601787b67984",
       "translation": "Update [Quick Start](getting-started.md) and README synchronously when changing default paths or startup behavior.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:30840ca097b9cdde0e25dcc1ab09335ae09bbf78b2df6bfe23d6f1e77bdf781f": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 关闭格式化，只发送纯文本。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "30840ca097b9cdde0e25dcc1ab09335ae09bbf78b2df6bfe23d6f1e77bdf781f",
+      "translation": "__ELBOT_CODE_0__ disables formatting and sends only plain text.",
+      "updated_at": 1781839376
     },
     "docs/configuration.md:list:31940ce8c4e1ead3f58f17d6c27474110f15d1b8824556d5cba94165e71cea16": {
       "kind": "list",
@@ -3951,6 +3975,14 @@
       "translation": "If a single Elwisp configures __ELBOT_CODE_0__, it will override the global default.",
       "updated_at": 1781749596
     },
+    "docs/configuration.md:list:380a6a0590e121b23028e7c567f8e0f52d64440b5a953ebef80abf235b6b90ae": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是实验模式：使用 __ELBOT_CODE_1__ / 私聊 __ELBOT_CODE_2__，Rich Message 失败时会自动退回 HTML；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "380a6a0590e121b23028e7c567f8e0f52d64440b5a953ebef80abf235b6b90ae",
+      "translation": "__ELBOT_CODE_0__ is an experimental mode: uses __ELBOT_CODE_1__ / private chat __ELBOT_CODE_2__, and automatically falls back to HTML if Rich Message fails;",
+      "updated_at": 1781839376
+    },
     "docs/configuration.md:list:3bde83cd85506c356fb56701e1e038418254cd3b12742b16d236087b00ea9f5f": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 用来配置 __ELBOT_CODE_1__ 可注入的工具组，以及 tag 激活后追加到 system prompt 的工具使用策略。",
@@ -3974,6 +4006,14 @@
       "source_hash": "4bcbc0d124768f5d48ea15575767dd38516ab3d76725cdf9ed434ab7b2142dcf",
       "translation": "Configured tags will be appended to built-in tags, not overwrite them.",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:list:52166eb639a551aa259dab28c37789e19834e2dc049e5644ee07aac35c9d4d93": {
+      "kind": "list",
+      "source": "启动连接成功后，ElBot 会把内置 slash 命令同步到 Telegram bot 命令菜单；只同步主命令名，不同步 alias。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "52166eb639a551aa259dab28c37789e19834e2dc049e5644ee07aac35c9d4d93",
+      "translation": "After the connection is successfully established, ElBot will synchronize built-in slash commands to the Telegram bot command menu; only main command names are synchronized, not aliases.",
+      "updated_at": 1781839376
     },
     "docs/configuration.md:list:52eda2e5ea44f3efc3f902b206dc88f827294699e84a9dd2700075ce38fc7c61": {
       "kind": "list",
@@ -4119,6 +4159,14 @@
       "translation": "After switching models using __ELBOT_CODE_0__ at runtime, the state will be written back to __ELBOT_CODE_1__.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:82e581473bd3a6ee5421d5b83f622f08445287fb8013d3044c0992c6a2efdbbf": {
+      "kind": "list",
+      "source": "高风险工具确认消息会附带 Telegram inline keyboard，点击按钮会转换为 __ELBOT_CODE_0__、__ELBOT_CODE_1__ 等现有确认命令。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "82e581473bd3a6ee5421d5b83f622f08445287fb8013d3044c0992c6a2efdbbf",
+      "translation": "Confirmation messages for high-risk tools will be accompanied by a Telegram inline keyboard; clicking buttons will convert them into existing confirmation commands such as __ELBOT_CODE_0__ and __ELBOT_CODE_1__.",
+      "updated_at": 1781839376
+    },
     "docs/configuration.md:list:84c93946cf545fae1951c7289ee42f3a15050cfb4421a7d0eaa993e615e974d9": {
       "kind": "list",
       "source": "系统环境变量。",
@@ -4255,6 +4303,22 @@
       "translation": "__ELBOT_CODE_0__ can be written as a list to try multiple environment variable names in order; this is suitable for temporarily switching tokens or achieving multi-environment compatibility.",
       "updated_at": 1781694515
     },
+    "docs/configuration.md:list:c40d77868f8382ac990b08960ae1398e27b8aff1517076c93f9edc84a154ec81": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 填 Telegram 用户 ID 或可直接发送的私聊 chat ID，用于超级管理员权限与通知投递。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "c40d77868f8382ac990b08960ae1398e27b8aff1517076c93f9edc84a154ec81",
+      "translation": "Fill __ELBOT_CODE_0__ with a Telegram user ID or a private chat ID that can be sent to directly, used for superadmin permissions and notification delivery.",
+      "updated_at": 1781839376
+    },
+    "docs/configuration.md:list:c62e1f3b1a43d4cafa3316254544cdcf711aa4ca039ccde826170f9b036183cb": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 控制流式刷新节流间隔，默认 250ms，避免触发平台限频。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "c62e1f3b1a43d4cafa3316254544cdcf711aa4ca039ccde826170f9b036183cb",
+      "translation": "__ELBOT_CODE_0__ controls the streaming refresh throttle interval, defaulting to 250ms, to avoid triggering platform rate limits.",
+      "updated_at": 1781839376
+    },
     "docs/configuration.md:list:c95ef3dd8d5beb79e4ec2cee7690f3ec93630a5b9f443f63be575fa98fd3f86d": {
       "kind": "list",
       "source": "开启后，Session 上下文接近窗口上限时会触发压缩。",
@@ -4295,6 +4359,14 @@
       "translation": "Platform configuration directory: Windows __ELBOT_CODE_0__; Linux uses the XDG configuration directory.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:d7c3bc1bddbe670e97da17432d835414d5e3c43e72affbf708fa4532cb2bb129": {
+      "kind": "list",
+      "source": "部分客户端可能无法查看 Rich Message。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d7c3bc1bddbe670e97da17432d835414d5e3c43e72affbf708fa4532cb2bb129",
+      "translation": "Some clients may not be able to view Rich Messages.",
+      "updated_at": 1781839376
+    },
     "docs/configuration.md:list:d7d77ed548b2b5da4ef356034fba9c269596292503fc2222ae6e4e412e38607e": {
       "kind": "list",
       "source": "只有 __ELBOT_CODE_0__ 成功命中至少一个工具后，当前 Session 才会激活该 tag 的 prompt。",
@@ -4311,6 +4383,14 @@
       "translation": "Update this document synchronously when adding new configuration items.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:e00e58dc6a9eeaacae6b0b301501c5cce0cf41a69b86653f42487b9c9db59918": {
+      "kind": "list",
+      "source": "支持标题、引用、分割线、代码块和表格的可读渲染，失败时自动纯文本重试。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e00e58dc6a9eeaacae6b0b301501c5cce0cf41a69b86653f42487b9c9db59918",
+      "translation": "Supports readable rendering of headings, quotes, horizontal rules, code blocks, and tables, with automatic plain text retry upon failure.",
+      "updated_at": 1781839376
+    },
     "docs/configuration.md:list:ed50dc150a4230720d402deb43ae704be8f7442ddee17ea9dd496d780716e42b": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 报告只支持按 Elnis 裁决后的平台发送给 superadmins，不支持任意 user/group 目标。",
@@ -4318,6 +4398,14 @@
       "source_hash": "ed50dc150a4230720d402deb43ae704be8f7442ddee17ea9dd496d780716e42b",
       "translation": "__ELBOT_CODE_0__ and __ELBOT_CODE_1__ reports only support sending to superadmins via the platform decided by Elnis, and do not support arbitrary user/group targets.",
       "updated_at": 1781709336
+    },
+    "docs/configuration.md:list:f31646a8be06d4f780c4c5e2e465aa83cfc7dac48d114fae5c53de76cf7571be": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 指向系统环境变量中的 Bot Token；也可以用 __ELBOT_CODE_1__ 直接写入配置，但不建议提交真实 token。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "f31646a8be06d4f780c4c5e2e465aa83cfc7dac48d114fae5c53de76cf7571be",
+      "translation": "__ELBOT_CODE_0__ points to the Bot Token in the system environment variables; you can also use __ELBOT_CODE_1__ to write it directly into the configuration, but it is not recommended to commit real tokens.",
+      "updated_at": 1781839376
     },
     "docs/configuration.md:paragraph:00f557986b604234cdc9f87589bd18b3660b84279742586e06312e9be8be1d2f": {
       "kind": "paragraph",
@@ -4543,6 +4631,14 @@
       "translation": "Note:\n",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:paragraph:853cfdeab0dd75da5628a469411c7c90563a481ae0074e2e1e3d9d2620284dc2": {
+      "kind": "paragraph",
+      "source": "QQ 官方机器人、QQ OneBot 和 Telegram 配置在示例中默认注释。启用时需要补齐平台自己的认证信息、连接地址或触发关键词。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "853cfdeab0dd75da5628a469411c7c90563a481ae0074e2e1e3d9d2620284dc2",
+      "translation": "QQ Official Bot, QQ OneBot, and Telegram configurations are commented out by default in the examples. When enabling them, you need to complete the platform's own authentication information, connection address, or trigger keywords.\n",
+      "updated_at": 1781839376
+    },
     "docs/configuration.md:paragraph:8af22db26d8bb6ec1271742300d562b1cf4a554c6c05a448a6740478b64f340c": {
       "kind": "paragraph",
       "source": "留空时使用平台默认数据目录：\n",
@@ -4598,6 +4694,14 @@
       "source_hash": "af2ed8d7797ba5d4a3513302777996f98df6bb7907561ad4aee246925d257513",
       "translation": "__ELBOT_CODE_0__ defaults to __ELBOT_CODE_1__, and HTTP listening will not be started on the first run.\n",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:paragraph:b39ab7bb7e5dd45a5aa587eead2f035d20350e7c3ad0c4e6a3a592305ad20637": {
+      "kind": "paragraph",
+      "source": "Telegram 使用 Bot API long polling。最小配置示例：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "b39ab7bb7e5dd45a5aa587eead2f035d20350e7c3ad0c4e6a3a592305ad20637",
+      "translation": "Telegram uses Bot API long polling. Minimum configuration example:\n",
+      "updated_at": 1781839376
     },
     "docs/configuration.md:paragraph:b5677d6b75b2703b9b64bea53a2215425d90ca4cd4d3970d802782ede5df8de8": {
       "kind": "paragraph",
