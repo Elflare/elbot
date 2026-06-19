@@ -148,6 +148,13 @@ retention_days = 30
 
 [platform.cli]
 enabled = true
+
+# [platform.telegram]
+# enabled = false
+# bot_token_env = "TELEGRAM_BOT_TOKEN"
+# trigger_keywords = ["bot"]
+# format = "html" # html/plain/rich
+# stream_edit_interval_milliseconds = 250
 `
 
 const defaultProvidersTOML = `# Provider/model config. Do not commit real API keys.

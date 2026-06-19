@@ -101,3 +101,11 @@ enabled = true
 # ws_url = "ws://127.0.0.1:6700/"
 # access_token = "change-me"
 # trigger_keywords = ["bot"]
+
+# [platform.telegram]
+# enabled = false
+# bot_token_env = "TELEGRAM_BOT_TOKEN"
+# trigger_keywords = ["bot"]
+# format = "html" # html/plain/rich
+# stream_edit_interval_milliseconds = 250
+

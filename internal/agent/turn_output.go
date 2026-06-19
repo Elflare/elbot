@@ -15,7 +15,7 @@ import (
 type turnOutput interface {
 	StartStream(ctx context.Context) delivery.MessageStream
 	FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string, streaming bool) error
-	ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) error
+	ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, error)
 	SendAssistant(ctx context.Context, text string) (delivery.Receipt, error)
 	SendOutputs(ctx context.Context, outputs []delivery.Output) error
 	SendPreview(ctx context.Context, text string)
@@ -35,7 +35,7 @@ func (o foregroundTurnOutput) FinishIntermediate(ctx context.Context, streamCtx 
 	return o.agent.finishIntermediateOutput(ctx, streamCtx, stream, text, streaming)
 }
 
-func (o foregroundTurnOutput) ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) error {
+func (o foregroundTurnOutput) ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, error) {
 	return o.agent.replaceAndFinishStream(ctx, streamCtx, stream, text)
 }
 
@@ -65,8 +65,8 @@ func (o backgroundTurnOutput) FinishIntermediate(ctx context.Context, streamCtx 
 	return nil
 }
 
-func (o backgroundTurnOutput) ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) error {
-	return nil
+func (o backgroundTurnOutput) ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, error) {
+	return delivery.Receipt{}, nil
 }
 
 func (o backgroundTurnOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, error) {
@@ -122,12 +122,23 @@ func (a *Agent) finishIntermediateOutput(ctx context.Context, streamCtx context.
 	return nil
 }
 
-func (a *Agent) replaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) error {
-	if err := a.replaceStreamOutput(ctx, streamCtx, stream, text); err != nil {
-		return err
+func (a *Agent) replaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, error) {
+	prepared, err := a.prepareAssistantOutput(ctx, hook.PointAgentOutputPrepared, text)
+	if err != nil {
+		return delivery.Receipt{}, err
 	}
-	_, err := stream.Finish(streamCtx)
-	return err
+	receipt, err := stream.Replace(streamCtx, prepared)
+	if err != nil {
+		return delivery.Receipt{}, fmt.Errorf("stream replace: %w", err)
+	}
+	finishReceipt, err := stream.Finish(streamCtx)
+	if err != nil {
+		return delivery.Receipt{}, err
+	}
+	if len(receipt.PlatformMessageIDs) == 0 {
+		receipt = finishReceipt
+	}
+	return receipt, nil
 }
 
 func (a *Agent) replaceStreamOutput(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) error {

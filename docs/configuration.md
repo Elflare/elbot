@@ -361,7 +361,35 @@ CLI 默认启用：
 enabled = true
 ```
 
-QQ 官方机器人和 QQ OneBot 配置在示例中默认注释。启用时需要补齐平台自己的认证信息、连接地址或触发关键词。
+QQ 官方机器人、QQ OneBot 和 Telegram 配置在示例中默认注释。启用时需要补齐平台自己的认证信息、连接地址或触发关键词。
+
+Telegram 使用 Bot API long polling。最小配置示例：
+
+```toml
+[security.superadmins]
+cli = ["local"]
+telegram = ["123456789"]
+
+[platform.telegram]
+enabled = true
+bot_token_env = "TELEGRAM_BOT_TOKEN"
+trigger_keywords = ["bot"]
+format = "html" # html/plain/rich
+stream_edit_interval_milliseconds = 250
+```
+
+说明：
+
+- `bot_token_env` 指向系统环境变量中的 Bot Token；也可以用 `bot_token` 直接写入配置，但不建议提交真实 token。
+- `format="html"` 是默认值：使用普通 `sendMessage` + `parse_mode="HTML"`，并把常见 Markdown 轻量转换成 Telegram HTML；支持标题、引用、分割线、代码块和表格的可读渲染，失败时自动纯文本重试。
+- `format="plain"` 关闭格式化，只发送纯文本。
+- `format="rich"` 是实验模式：使用 `sendRichMessage` / 私聊 `sendRichMessageDraft`，Rich Message 失败时会自动退回 HTML；部分客户端可能无法查看 Rich Message。
+- `stream_edit_interval_milliseconds` 控制流式刷新节流间隔，默认 250ms，避免触发平台限频。
+- 启动连接成功后，ElBot 会把内置 slash 命令同步到 Telegram bot 命令菜单；只同步主命令名，不同步 alias。
+- 群聊/超级群组中，命令前缀、触发关键词、`@bot_username` 或回复 bot 消息都会触发处理。私聊默认处理。
+- 高风险工具确认消息会附带 Telegram inline keyboard，点击按钮会转换为 `/confirm`、`/reject` 等现有确认命令。
+- `security.superadmins.telegram` 填 Telegram 用户 ID 或可直接发送的私聊 chat ID，用于超级管理员权限与通知投递。
+
 
 ## 插件和 Hook 配置
 

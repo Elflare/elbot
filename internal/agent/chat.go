@@ -133,6 +133,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	var finalRawText string
 	var platformFinalText string
 	var finalStream delivery.MessageStream
+	var finalReceipt delivery.Receipt
 	var deferredOutputs []delivery.Output
 	var usage *llm.Usage
 	turnMessages := []storage.Message{}
@@ -276,11 +277,15 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		}
 		if !bufferOutput {
 			if finalStream != nil {
-				if err := out.ReplaceAndFinishStream(ctx, reqCtx, finalStream, platformOutputText); err != nil {
+				receipt, err := out.ReplaceAndFinishStream(ctx, reqCtx, finalStream, platformOutputText)
+				if err != nil {
 					return err
 				}
-			} else if _, err := out.SendAssistant(ctx, platformOutputText); err != nil {
+				finalReceipt = receipt
+			} else if receipt, err := out.SendAssistant(ctx, platformOutputText); err != nil {
 				return err
+			} else {
+				finalReceipt = receipt
 			}
 		}
 	}
@@ -316,6 +321,8 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		if err := out.SendOutputs(ctx, deferredOutputs); err != nil {
 			return err
 		}
+	} else {
+		a.mapSentAssistantMessage(ctx, session.ID, assistantMessage.ID, finalReceipt)
 	}
 	if err := a.sessions.Touch(ctx, session); err != nil {
 		a.audit("persistence_error", "session_id", session.ID, "operation", "touch_session", "error", err.Error())

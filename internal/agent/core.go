@@ -246,6 +246,13 @@ func llmSegmentsToPlatform(segments []llm.MessageSegment) []platform.MessageSegm
 	return out
 }
 
+func (a *Agent) CommandInfos() []command.Info {
+	if a == nil || a.commands == nil {
+		return nil
+	}
+	return a.commands.Commands()
+}
+
 func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 	a.refreshRuntimeState()
 	actor := a.actor(ctx)

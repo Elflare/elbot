@@ -10,6 +10,7 @@ import (
 	"elbot/internal/platform/headless"
 	qqonebot "elbot/internal/platform/qq-onebot"
 	"elbot/internal/platform/qqofficial"
+	"elbot/internal/platform/telegram"
 	"elbot/internal/storage"
 )
 
@@ -60,6 +61,15 @@ func New(opts Options, cfg *config.Config, store storage.Store, chatHistory stor
 	}
 	if raw, ok := cfg.Platform["qqonebot"]; ok {
 		adapter, err := qqonebot.NewFromPlatformConfig(raw, store, chatHistory, logger, cfg.Security.Superadmins["qqonebot"], cfg.Commands.Prefixes)
+		if err != nil {
+			return Bundle{}, err
+		}
+		if adapter.Enabled() {
+			bundle.Runtimes = append(bundle.Runtimes, adapter)
+		}
+	}
+	if raw, ok := cfg.Platform["telegram"]; ok {
+		adapter, err := telegram.NewFromPlatformConfig(raw, store, chatHistory, logger, cfg.Security.Superadmins["telegram"], cfg.Commands.Prefixes)
 		if err != nil {
 			return Bundle{}, err
 		}
