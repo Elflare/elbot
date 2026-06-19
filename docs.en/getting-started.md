@@ -21,7 +21,7 @@ If you are already in this repository, you can proceed directly to the next step
 
 ## Configure Provider
 
-ElBot reads the main configuration by default according to the configuration lookup order. When running from source directly, `config/app.toml` will be used; If the compiled binary cannot find the platform configuration or source example configuration, it will automatically generate `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `elnis.toml`, and `.env.example` in the platform configuration directory.
+ElBot reads the main configuration by default according to the configuration lookup order. During the first run, if `app.toml` does not exist in the platform configuration directory, `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `elnis.toml`, and `.env.example` will be automatically generated in the platform configuration directory; Existing configuration files will not be overwritten.
 
 The default configuration already includes DeepSeek and OpenAI Providers:
 
@@ -47,7 +47,7 @@ OPENAI_API_KEY=your-api-key
 
 ## Select Default Model
 
-The default runtime model is specified in `config/state.toml`:
+The default runtime model is specified in `state.toml` of the configuration directory:
 
 ```toml
 [session]
@@ -73,10 +73,10 @@ During development, you can run it directly:
 go run ./cmd/elbot
 ```
 
-Specify a configuration file:
+To use a temporary configuration file, you can specify it explicitly:
 
 ```bash
-go run ./cmd/elbot --config config/app.toml
+go run ./cmd/elbot --config path/to/app.toml
 ```
 
 Common running modes:
@@ -167,8 +167,7 @@ Default configuration lookup order:
 1. The path specified by `--config`.
 2. `ELBOT_CONFIG_FILE` environment variable.
 3. Platform configuration directory, such as Windows `%APPDATA%/ElBot/app.toml` or Linux XDG configuration directory.
-4. Source code directory `config/app.toml`.
-5. If neither the platform configuration nor the source example configuration exists, the platform default configuration will be automatically generated.
+4. If the platform configuration does not exist, the platform default configuration will be automatically generated.
 
 Runtime data is stored in the platform data directory by default, such as SQLite, logs, sandbox, and artifacts. For detailed rules, see [Configuration Instructions](configuration.md).
 

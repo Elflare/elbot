@@ -41,9 +41,9 @@
       "updated_at": 1781786413
     },
     "docs/getting-started.md": {
-      "source_hash": "b2dcc8b0fdf13d77d8bb6b64ffcb51f5bbc66c3ba219ed5e25e55ba7bcf70d1b",
+      "source_hash": "adc99cfd21a097bc4e345227ef000dc453e461b53b1441ddc28eed13e9def556",
       "target": "docs.en/getting-started.md",
-      "updated_at": 1781786456
+      "updated_at": 1781854929
     }
   },
   "segments": {
@@ -7463,6 +7463,14 @@
       "translation": "__ELBOT_CODE_0__ environment variable.",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:list:f4a5e6e2757a9f3ae2bb7cc4b22383fb40ac9b38a4224629546f3629d9a29b15": {
+      "kind": "list",
+      "source": "如果平台配置不存在，则自动生成平台默认配置。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "f4a5e6e2757a9f3ae2bb7cc4b22383fb40ac9b38a4224629546f3629d9a29b15",
+      "translation": "If the platform configuration does not exist, the platform default configuration will be automatically generated.",
+      "updated_at": 1781854929
+    },
     "docs/getting-started.md:list:fc54b80a3237d2ff4ea96a5af6943f5c3f1a0ce8327d8b6c40671153f194c41c": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 名称是否被 Provider 支持。",
@@ -7502,6 +7510,14 @@
       "source_hash": "1204a3eb9a309b78062a73635764e483c9f4b7cddb4a3d9bf30c737306f1d5fd",
       "translation": "If using other Providers, you need to synchronously modify __ELBOT_CODE_0__ and __ELBOT_CODE_1__.\n",
       "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:196b8190cdc27860f073549b9b80c13718beb92ba249e8313b93b64fe256b364": {
+      "kind": "paragraph",
+      "source": "如需使用临时配置文件，可以显式指定：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "196b8190cdc27860f073549b9b80c13718beb92ba249e8313b93b64fe256b364",
+      "translation": "To use a temporary configuration file, you can specify it explicitly:\n",
+      "updated_at": 1781854929
     },
     "docs/getting-started.md:paragraph:1cd2a61a3475c406a1a17b9d721ffca75eca0831ee63ddbdf0529006d09d2c9c": {
       "kind": "paragraph",
@@ -7567,6 +7583,14 @@
       "translation": "When running from source directly, __ELBOT_CODE_0__ will be used;",
       "updated_at": 1781786456
     },
+    "docs/getting-started.md:paragraph:56825f21d0020609b6800ca52ac2da0e9f6bd8d80f29875e20a63f7d62fb1ccf": {
+      "kind": "paragraph",
+      "source": "已有配置文件不会被覆盖。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "56825f21d0020609b6800ca52ac2da0e9f6bd8d80f29875e20a63f7d62fb1ccf",
+      "translation": "Existing configuration files will not be overwritten.\n",
+      "updated_at": 1781854929
+    },
     "docs/getting-started.md:paragraph:5e17c2b7fa9b36c07ee9a36ed44ee4f76bf8f18e249fb7adc302b070d69deda7": {
       "kind": "paragraph",
       "source": "Windows 下如果使用 Git Bash，构建出的文件可能需要命名为 __ELBOT_CODE_0__：\n",
@@ -7606,6 +7630,14 @@
       "source_hash": "68d560c5bd914873c5becf526acf5148658b37581a10f1b69fbd54ea3e975f23",
       "translation": "Check:\n",
       "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:6a372b0655fa5e7026bfb1ed14677ec22d9ca28c038bcdb85610c303a26c1c90": {
+      "kind": "paragraph",
+      "source": "默认运行态模型写在配置目录的 __ELBOT_CODE_0__：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "6a372b0655fa5e7026bfb1ed14677ec22d9ca28c038bcdb85610c303a26c1c90",
+      "translation": "The default runtime model is specified in __ELBOT_CODE_0__ of the configuration directory:\n",
+      "updated_at": 1781854929
     },
     "docs/getting-started.md:paragraph:744e3cd370ff77c3f4325fc5f0da6ded94bd37526832f5063a08be3cf8df4728": {
       "kind": "paragraph",
@@ -7662,6 +7694,14 @@
       "source_hash": "a1357110505dfc6d287ed82eaac5edfdf671117418ac7a389cf161e7f3977de8",
       "translation": "Example: fish\n",
       "updated_at": 1781575108
+    },
+    "docs/getting-started.md:paragraph:a18886edfbefc7fdb7a8a2ee214bc38c9b5854fde15969e995574e2fae1102a8": {
+      "kind": "paragraph",
+      "source": "首次运行且平台配置目录没有 __ELBOT_CODE_0__ 时，会在平台配置目录自动生成 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__ 和 __ELBOT_CODE_6__；",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "a18886edfbefc7fdb7a8a2ee214bc38c9b5854fde15969e995574e2fae1102a8",
+      "translation": "During the first run, if __ELBOT_CODE_0__ does not exist in the platform configuration directory, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, __ELBOT_CODE_5__, and __ELBOT_CODE_6__ will be automatically generated in the platform configuration directory;",
+      "updated_at": 1781854929
     },
     "docs/getting-started.md:paragraph:a611d499cca4918706780e022d66f0e1543051cc10c1a4b98af5341d36626dc7": {
       "kind": "paragraph",
