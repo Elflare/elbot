@@ -63,10 +63,10 @@ Elnis 是 ElBot 的监听枢纽，Elwisp 是分布在各地的外部监听器，
 
 ## 使用方法
 
-开发期可以直接从源码启动：
+开发期可以直接从源码启动；首次运行会在平台配置目录自动生成默认配置，已有配置不会被覆盖：
 
 ```bash
-go run ./cmd/elbot --config config/app.toml
+go run ./cmd/elbot
 ```
 
 常用启动方式：

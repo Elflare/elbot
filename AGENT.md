@@ -101,10 +101,10 @@
 
 ### 配置与日志
 
-配置约定：默认配置查找顺序为 `--config`、`ELBOT_CONFIG_FILE`、平台配置目录（Windows `%APPDATA%/ElBot/app.toml`；Linux XDG `~/.config/elbot/app.toml`）、源码目录 `config/app.toml`，都不存在时自动生成平台默认配置。静态配置在 `app.toml`，Provider 列表在同目录 `providers.toml`，运行时热切换状态在同目录 `state.toml`，工具 tag 配置在同目录 `tool_tags.toml`；用户可编辑资产集中在配置目录：`memories.toml`、`long_memory/`、`skills/`、`plugins/`，SQLite/logs/sandbox 等运行数据仍按各自配置或默认数据目录存放。Hook/插件配置固定放在同目录 `plugins/<plugin-name>.toml`，规则 Hook 使用 `plugins/hooks.toml`，app 层不解析插件专属字段。Provider key 推荐用 `api_key_env`，读取优先级为系统环境变量 > 配置目录 `.env`。
+配置约定：默认配置查找顺序为 `--config`、`ELBOT_CONFIG_FILE`、平台配置目录（Windows `%APPDATA%/ElBot/app.toml`；Linux XDG `~/.config/elbot/app.toml`）；平台配置不存在时由内置 assets 自动生成，已有配置不覆盖。静态配置在 `app.toml`，Provider 列表在同目录 `providers.toml`，运行时热切换状态在同目录 `state.toml`，工具 tag 配置在同目录 `tool_tags.toml`；用户可编辑资产集中在配置目录：`memories.toml`、`long_memory/`、`skills/`、`plugins/`，SQLite/logs/sandbox 等运行数据仍按各自配置或默认数据目录存放。Hook/插件配置固定放在同目录 `plugins/<plugin-name>.toml`，规则 Hook 使用 `plugins/hooks.toml`，app 层不解析插件专属字段。Provider key 推荐用 `api_key_env`，读取优先级为系统环境变量 > 配置目录 `.env`。
 
-- `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录/source fallback 解析 `app.toml`，读取并合并 app/provider/state/tool_tags 配置，解析相对路径和 `api_key_env`，包含 LLM 请求超时/重试、sandbox/artifact、Elnis 与 S3/R2 预留配置。
-- `internal/config/assets.go`：首次运行默认配置资产；在无显式配置、无平台配置且无源码示例配置时生成 app/providers/state/SOUL/elnis/.env.example 和基础目录。
+- `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录解析 `app.toml`，读取并合并 app/provider/state/tool_tags 配置，解析相对路径和 `api_key_env`，包含 LLM 请求超时/重试、sandbox/artifact、Elnis 与 S3/R2 预留配置。
+- `internal/config/assets.go`：首次运行默认配置资产；在无显式配置且无平台配置时生成 app/providers/state/SOUL/elnis/.env.example 和基础目录。
 
 
 - `internal/elnis/types.go`：Elnis/Elvena 协议类型；定义 Elwisp 请求、目标、响应、事件模式、状态和随事件声明的外部工具。
@@ -113,7 +113,6 @@
 
 - `internal/logging/logging.go`：日志地基；创建运行日志、审计日志和 Elnis 日志的 `slog.Logger`，`Manager` 统一持有按日期懒轮转的 `elbot-YYYY-MM-DD.log`、`audit-YYYY-MM-DD.log`、`elnis-YYYY-MM-DD.log` writer，暴露日志目录和可配置旧日志清理入口。
 - `internal/logging/reader.go`：结构化文本日志读取器；解析 `slog.TextHandler` 输出，支持 `/log`、`/audit` 的时间、等级、字段、msg、latest message 文本和条数过滤，并放宽单行读取上限以支持较大的 Debug 请求体。
-- `config/app.toml`：应用主配置；保存 storage、runtime、llm_request、context、commands、tools、security、session cleanup、view、platform、soul 和 config_files 等静态设置。
 - `config/tool_tags.toml`：工具 tag 示例配置；保存 `@tool:<tag>` 对应工具列表和 tag 激活后追加到 system prompt 的工具使用策略。
 - `config/elnis.toml`：Elnis 示例配置；保存 enabled、HTTP、token、delivery、内部工具 `allowed_tools` 和单 Elwisp 策略，外部 Elwisp 工具默认允许且可按 Elwisp 禁用。
 
@@ -133,7 +132,7 @@
 
 ### Hook/插件约定
 
-- 插件配置固定在 `config/plugins/<plugin-name>.toml`，相对 `config/app.toml`。
+- 插件配置固定在配置目录的 `plugins/<plugin-name>.toml`，相对当前 `app.toml`。
 - Hook/Tool/插件不要直接发平台消息，统一返回 `output.Output` 意图，由 Agent 交给 Output Manager。
 
 ### Output Layer

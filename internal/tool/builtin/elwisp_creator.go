@@ -143,9 +143,6 @@ func findElwispCreatorAppConfigPath() (string, bool) {
 			return path, true
 		}
 	}
-	if fileExists(config.DefaultPath) {
-		return filepath.Clean(config.DefaultPath), true
-	}
 	return "", false
 }
 

@@ -91,7 +91,7 @@ schedule = "0 4 * * *"
 
 [maintenance.chat_history_cleanup]
 enabled = true
-schedule = "0 35 4 * * *"
+schedule = "35 4 * * *"
 retention_days = 180
 
 [sandbox]

@@ -12,7 +12,6 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-const DefaultPath = "config/app.toml"
 const EnvConfigFile = "ELBOT_CONFIG_FILE"
 const AppDirName = "ElBot"
 const XDGAppDirName = "elbot"
@@ -236,18 +235,12 @@ func ResolvePath(path string) (string, error) {
 			return "", fmt.Errorf("stat default config %q: %w", defaultPath, err)
 		}
 	}
-	sourcePath := filepath.Clean(DefaultPath)
-	if _, err := os.Stat(sourcePath); err == nil {
-		return sourcePath, nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("stat source config %q: %w", sourcePath, err)
-	}
 	if generatedPath, err := EnsurePlatformDefaults(); err == nil {
 		return generatedPath, nil
 	} else if _, ok := platformDefaultConfigPath(); ok {
 		return "", err
 	}
-	return sourcePath, nil
+	return "", fmt.Errorf("platform config dir is unavailable")
 }
 
 func platformDefaultConfigPath() (string, bool) {
@@ -399,7 +392,9 @@ func PluginConfigDir(configPath string) string {
 	// 插件专属配置不进入 Config 模型。
 	// app 层只提供 plugins 目录，具体字段由插件自行解析，避免核心配置结构随插件膨胀。
 	if configPath == "" {
-		configPath = DefaultPath
+		if defaultPath, ok := platformDefaultConfigPath(); ok {
+			configPath = defaultPath
+		}
 	}
 	return filepath.Join(filepath.Dir(filepath.Clean(configPath)), PluginConfigDirName)
 }
@@ -536,7 +531,7 @@ func (c *Config) applyAppDefaults() {
 		c.Maintenance.ArtifactCleanup.Schedule = "0 4 * * *"
 	}
 	if c.Maintenance.ChatHistoryCleanup.Schedule == "" {
-		c.Maintenance.ChatHistoryCleanup.Schedule = "0 35 4 * * *"
+		c.Maintenance.ChatHistoryCleanup.Schedule = "35 4 * * *"
 	}
 	if c.Maintenance.ChatHistoryCleanup.RetentionDays == 0 {
 		c.Maintenance.ChatHistoryCleanup.RetentionDays = 180

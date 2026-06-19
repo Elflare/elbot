@@ -36,7 +36,6 @@ func TestResolvePathGeneratesPlatformDefaultsWhenNoConfigExists(t *testing.T) {
 	configHome := t.TempDir()
 	setUserConfigDirEnv(t, configHome)
 	t.Setenv(EnvConfigFile, "")
-	t.Chdir(t.TempDir())
 
 	resolved, err := ResolvePath("")
 	if err != nil {
@@ -293,7 +292,7 @@ prompt = "Use agent tools."
 	wantMaintenance := MaintenanceConfig{
 		LogCleanup:         CronTaskConfig{Enabled: true, Schedule: "0 4 * * *"},
 		ArtifactCleanup:    CronTaskConfig{Enabled: true, Schedule: "0 5 * * *"},
-		ChatHistoryCleanup: ChatHistoryCleanupConfig{Schedule: "0 35 4 * * *", RetentionDays: 180},
+		ChatHistoryCleanup: ChatHistoryCleanupConfig{Schedule: "35 4 * * *", RetentionDays: 180},
 	}
 	if !reflect.DeepEqual(cfg.Maintenance, wantMaintenance) {
 		t.Fatalf("maintenance = %#v, want %#v", cfg.Maintenance, wantMaintenance)

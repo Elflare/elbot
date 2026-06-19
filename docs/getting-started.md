@@ -19,7 +19,7 @@ cd elbot
 
 ## 配置 Provider
 
-ElBot 默认按配置查找顺序读取主配置。直接运行源码时会使用 `config/app.toml`；编译后的二进制如果找不到平台配置和源码示例配置，会在平台配置目录自动生成 `app.toml`、`providers.toml`、`state.toml`、`SOUL.md`、`elnis.toml` 和 `.env.example`。
+ElBot 默认按配置查找顺序读取主配置。首次运行且平台配置目录没有 `app.toml` 时，会在平台配置目录自动生成 `app.toml`、`providers.toml`、`state.toml`、`SOUL.md`、`elnis.toml` 和 `.env.example`；已有配置文件不会被覆盖。
 
 默认配置已经包含 DeepSeek 和 OpenAI Provider：
 
@@ -45,7 +45,7 @@ OPENAI_API_KEY=your-api-key
 
 ## 选择默认模型
 
-默认运行态模型写在 `config/state.toml` ：
+默认运行态模型写在配置目录的 `state.toml`：
 
 ```toml
 [session]
@@ -71,10 +71,10 @@ default_mode 手动设置，其他设置可以在cli中使用命令设置。
 go run ./cmd/elbot
 ```
 
-指定配置文件：
+如需使用临时配置文件，可以显式指定：
 
 ```bash
-go run ./cmd/elbot --config config/app.toml
+go run ./cmd/elbot --config path/to/app.toml
 ```
 
 常用运行模式：
@@ -165,8 +165,7 @@ elbot completion nushell > ~/.config/nushell/completions/elbot.nu
 1. `--config` 指定的路径。
 2. `ELBOT_CONFIG_FILE` 环境变量。
 3. 平台配置目录，例如 Windows `%APPDATA%/ElBot/app.toml`，Linux XDG 配置目录。
-4. 源码目录 `config/app.toml`。
-5. 如果平台配置和源码示例配置都不存在，则自动生成平台默认配置。
+4. 如果平台配置不存在，则自动生成平台默认配置。
 
 运行数据默认进入平台数据目录，例如 SQLite、日志、sandbox 和 artifact。具体规则见 [配置说明](configuration.md)。
 
