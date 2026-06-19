@@ -118,14 +118,35 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 
 func (a *Agent) backgroundSession(ctx context.Context, req background.RunRequest, scope session.Scope) (*storage.Session, error) {
 	if req.SessionID != "" {
-		return a.store.Sessions().Get(ctx, req.SessionID)
+		bgSession, err := a.store.Sessions().Get(ctx, req.SessionID)
+		if err != nil {
+			return nil, err
+		}
+		return a.ensureBackgroundSession(ctx, bgSession, req)
 	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
 		title = backgroundTitle(req.Kind, req.Name)
 	}
-	bgSession := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID, Mode: a.sessions.DefaultMode(), Title: title, Status: storage.SessionStatusActive, Metadata: backgroundSessionMetadata(req)}
+	bgSession := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID, Mode: storage.SessionModeWork, Title: title, Status: storage.SessionStatusActive, Metadata: backgroundSessionMetadata(req)}
 	if err := a.store.Sessions().Create(ctx, bgSession); err != nil {
+		return nil, err
+	}
+	return bgSession, nil
+}
+
+func (a *Agent) ensureBackgroundSession(ctx context.Context, bgSession *storage.Session, req background.RunRequest) (*storage.Session, error) {
+	if bgSession == nil {
+		return nil, storage.ErrNotFound
+	}
+	metadata := mergeBackgroundSessionMetadata(bgSession.Metadata, req)
+	if bgSession.Mode == storage.SessionModeWork && bgSession.Metadata == metadata {
+		return bgSession, nil
+	}
+	bgSession.Mode = storage.SessionModeWork
+	bgSession.Metadata = metadata
+	bgSession.UpdatedAt = storage.Now()
+	if err := a.store.Sessions().Update(ctx, bgSession); err != nil {
 		return nil, err
 	}
 	return bgSession, nil
@@ -294,7 +315,7 @@ func backgroundPromptWithSkills(prompt, skillPrompt string) string {
 	if skillPrompt == "" {
 		return prompt
 	}
-	return "[系统预加载 Skill]\n\n以下 Skill 已由系统预加载。Skill 本体不是 top-level tool schema；如需执行 AgentSkill 附带的 Python 脚本，请使用已注入的 python_skill_run；如需执行 Go Skill，请使用已注入的 go_skill_run。不要用 shell 猜测或访问 Skill 安装目录，shell 仅用于当前后台 sandbox 内普通命令。\n\n" + skillPrompt + "\n\n[后台任务]\n\n" + strings.TrimSpace(prompt)
+	return "[系统预加载 Skill]\n\n以下 Skill 说明已由系统预加载。Skill 本体不是 top-level tool schema；可调用能力只以本次请求注入的 top-level tool schema 为准。\n\n" + skillPrompt + "\n\n[后台任务]\n\n" + strings.TrimSpace(prompt)
 }
 
 func backgroundToolListNames(names []string) []string {
@@ -323,6 +344,24 @@ func toolBackgroundKind(kind background.Kind) tool.BackgroundKind {
 }
 
 func backgroundSessionMetadata(req background.RunRequest) string {
+	data := backgroundMetadataMap(req)
+	encoded, _ := json.Marshal(data)
+	return string(encoded)
+}
+
+func mergeBackgroundSessionMetadata(raw string, req background.RunRequest) string {
+	data := map[string]any{}
+	if strings.TrimSpace(raw) != "" {
+		_ = json.Unmarshal([]byte(raw), &data)
+	}
+	for key, value := range backgroundMetadataMap(req) {
+		data[key] = value
+	}
+	encoded, _ := json.Marshal(data)
+	return string(encoded)
+}
+
+func backgroundMetadataMap(req background.RunRequest) map[string]any {
 	data := map[string]any{"title_renamed": true, "title_source": req.Kind, "background_kind": req.Kind, "background_name": req.Name}
 	for key, value := range req.Metadata {
 		if strings.TrimSpace(key) != "" {
@@ -332,8 +371,7 @@ func backgroundSessionMetadata(req background.RunRequest) string {
 	if len(req.CachedTools) > 0 {
 		data["tool_cache"] = req.CachedTools
 	}
-	encoded, _ := json.Marshal(data)
-	return string(encoded)
+	return data
 }
 
 func cronSessionMetadata(jobName, sourceSessionID string, copied bool) string {

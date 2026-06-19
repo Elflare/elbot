@@ -118,7 +118,7 @@ func (a *Agent) persistCachedTools(ctx context.Context, session *storage.Session
 	metadata := decodeSessionMetadata(latest.Metadata)
 	metadata.ToolCache = toolrun.MergeCachedTools(metadata.ToolCache, cached)
 	metadata.DiscoveredTools = sortedUnique(append(metadata.DiscoveredTools, cachedToolNames(cached)...))
-	encoded := encodeSessionMetadata(metadata)
+	encoded := encodeSessionMetadataInto(latest.Metadata, metadata)
 	if encoded == latest.Metadata {
 		session.Metadata = latest.Metadata
 		return
@@ -187,7 +187,7 @@ func (a *Agent) persistToolTags(ctx context.Context, session *storage.Session, t
 	}
 	metadata := decodeSessionMetadata(latest.Metadata)
 	metadata.ToolTags = sortedUnique(append(metadata.ToolTags, tags...))
-	encoded := encodeSessionMetadata(metadata)
+	encoded := encodeSessionMetadataInto(latest.Metadata, metadata)
 	if encoded == latest.Metadata {
 		session.Metadata = latest.Metadata
 		return

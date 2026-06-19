@@ -167,7 +167,7 @@ func (a *Agent) persistUsage(ctx context.Context, sessionID string, usage *llm.U
 	}
 	metadata := decodeSessionMetadata(session.Metadata)
 	metadata.LastUsage = usage
-	encoded := encodeSessionMetadata(metadata)
+	encoded := encodeSessionMetadataInto(session.Metadata, metadata)
 	if encoded == session.Metadata {
 		return
 	}

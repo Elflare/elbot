@@ -2554,10 +2554,96 @@ func TestRunBackgroundPreloadsSkillDetailAndActivatedHiddenWrapper(t *testing.T)
 	if got := toolNames(requests[0].Tools); got != "python_skill_run" {
 		t.Fatalf("tools = %s", got)
 	}
+	systemPrompt := llm.SegmentsContentText(requests[0].Messages[0].Segments)
+	if strings.Contains(systemPrompt, "当前可用工具名称") || strings.Contains(systemPrompt, "discover_tool") {
+		t.Fatalf("background system prompt should not list tool names: %q", systemPrompt)
+	}
 	latest := requests[0].Messages[len(requests[0].Messages)-1]
 	content := llm.SegmentsContentText(latest.Segments)
 	if !strings.Contains(content, "[系统预加载 Skill]") || !strings.Contains(content, "# DOCX") || !strings.Contains(content, "[后台任务]") || !strings.Contains(content, "run") {
 		t.Fatalf("skill prompt missing content: %q", content)
+	}
+	if strings.Contains(content, "shell") || strings.Contains(content, "discover_tool") {
+		t.Fatalf("skill prompt should not mention unavailable tools: %q", content)
+	}
+}
+
+func TestRunBackgroundUsesWorkModeWhenDefaultModeIsChat(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":false,"report":"ok"}`}}}}
+	platform := &fakePlatform{}
+	modeModels := map[string]config.ModelSelection{
+		storage.SessionModeWork: {Provider: "default", Model: "test-model"},
+		storage.SessionModeChat: {Provider: "default", Model: "test-model"},
+	}
+	a := NewWithOptions(platform, f, "default", modeModels, map[string]config.ProviderConfig{"default": {}}, "", store, []string{"/"}, session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeChat}, config.ModelSelection{}, nil, "", nil, "")
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(builtin.NewWebExtractTool())
+	a.SetToolRuntime(registry, nil)
+
+	result, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "chat-default", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"web_extract"}})
+	if err != nil {
+		t.Fatalf("RunBackground: %v", err)
+	}
+	sessionRecord, err := store.Sessions().Get(ctx, result.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sessionRecord.Mode != storage.SessionModeWork {
+		t.Fatalf("background mode = %q", sessionRecord.Mode)
+	}
+	if !strings.Contains(sessionRecord.Metadata, `"background_kind":"cron"`) {
+		t.Fatalf("background metadata = %q", sessionRecord.Metadata)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	if got := toolNames(requests[0].Tools); got != "web_extract" {
+		t.Fatalf("tools = %s", got)
+	}
+	systemPrompt := llm.SegmentsContentText(requests[0].Messages[0].Segments)
+	if strings.Contains(systemPrompt, "当前可用工具名称") || strings.Contains(systemPrompt, "discover_tool") {
+		t.Fatalf("background system prompt should not list tool names: %q", systemPrompt)
+	}
+}
+
+func TestRunBackgroundRepairsReusedSessionModeAndMetadata(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+	oldSession := &storage.Session{OwnerID: "cli:local", Platform: "cli", PlatformScopeID: "cron:old", Mode: storage.SessionModeChat, Title: "old", Status: storage.SessionStatusActive, Metadata: `{"title_renamed":true}`}
+	if err := store.Sessions().Create(ctx, oldSession); err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":false,"report":"ok"}`}}}}
+	platform := &fakePlatform{}
+	a := New(platform, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(builtin.NewWebExtractTool())
+	a.SetToolRuntime(registry, nil)
+
+	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "old", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, ScopeID: "cron:old", SessionID: oldSession.ID, Prompt: "run", ToolListNames: []string{"web_extract"}, Metadata: map[string]string{"cron_job_name": "old"}})
+	if err != nil {
+		t.Fatalf("RunBackground: %v", err)
+	}
+	repaired, err := store.Sessions().Get(ctx, oldSession.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repaired.Mode != storage.SessionModeWork {
+		t.Fatalf("repaired mode = %q", repaired.Mode)
+	}
+	if !strings.Contains(repaired.Metadata, `"background_kind":"cron"`) || !strings.Contains(repaired.Metadata, `"cron_job_name":"old"`) {
+		t.Fatalf("repaired metadata = %q", repaired.Metadata)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 || toolNames(requests[0].Tools) != "web_extract" {
+		t.Fatalf("requests=%d tools=%q", len(requests), toolNames(requests[0].Tools))
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"elbot/internal/storage"
+	"elbot/internal/tool"
 )
 
 const (
@@ -36,6 +37,9 @@ type toolNamesSystemPromptSource struct {
 
 func (s toolNamesSystemPromptSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
 	if s.Tools == nil || req.Session == nil {
+		return nil, nil
+	}
+	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.Background {
 		return nil, nil
 	}
 	names, err := s.Tools.ToolNames(ctx, req.Mode, req.Session, req.Scope)

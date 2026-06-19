@@ -29,17 +29,59 @@ func decodeSessionMetadata(raw string) sessionMetadata {
 }
 
 func encodeSessionMetadata(metadata sessionMetadata) string {
+	return encodeSessionMetadataInto("", metadata)
+}
+
+func encodeSessionMetadataInto(raw string, metadata sessionMetadata) string {
 	metadata.DiscoveredTools = sortedUnique(metadata.DiscoveredTools)
 	metadata.ToolCache = toolCacheItemsNormalized(metadata.ToolCache)
 	metadata.ToolTags = sortedUnique(metadata.ToolTags)
 	if metadata.LastUsage != nil && metadata.LastUsage.TotalTokens <= 0 && metadata.LastUsage.CacheHitTokens <= 0 && metadata.LastUsage.PromptTokens <= 0 && metadata.LastUsage.CompletionTokens <= 0 {
 		metadata.LastUsage = nil
 	}
-	data, _ := json.Marshal(metadata)
+	base := map[string]any{}
+	if raw != "" {
+		_ = json.Unmarshal([]byte(raw), &base)
+	}
+	setMetadataField(base, "discovered_tools", metadata.DiscoveredTools)
+	setMetadataField(base, "tool_cache", metadata.ToolCache)
+	setMetadataField(base, "tool_tags", metadata.ToolTags)
+	setMetadataField(base, "last_usage", metadata.LastUsage)
+	setMetadataField(base, "background_kind", metadata.BackgroundKind)
+	data, _ := json.Marshal(base)
 	if string(data) == "{}" {
 		return ""
 	}
 	return string(data)
+}
+
+func setMetadataField(data map[string]any, key string, value any) {
+	switch typed := value.(type) {
+	case string:
+		if typed == "" {
+			delete(data, key)
+			return
+		}
+	case []string:
+		if len(typed) == 0 {
+			delete(data, key)
+			return
+		}
+	case []toolrun.CachedTool:
+		if len(typed) == 0 {
+			delete(data, key)
+			return
+		}
+	case *llm.Usage:
+		if typed == nil {
+			delete(data, key)
+			return
+		}
+	case nil:
+		delete(data, key)
+		return
+	}
+	data[key] = value
 }
 
 func sortedUnique(values []string) []string {
