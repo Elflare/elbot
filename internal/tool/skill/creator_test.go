@@ -170,7 +170,7 @@ func TestCreateElSkillDoesNotOverwriteRegistryTool(t *testing.T) {
 func TestCreateElSkillDiscoversMaintenanceTools(t *testing.T) {
 	registry := tool.NewRegistry()
 	manager := NewManager(t.TempDir(), registry)
-	for _, item := range []tool.Tool{NewCreateElSkillTool(manager), NewReadElSkillTool(manager), NewModifyElSkillTool(manager)} {
+	for _, item := range []tool.Tool{NewCreateElSkillTool(manager), NewReadElSkillTool(manager), NewModifyElSkillTool(manager), NewFinalizeElSkillTool(manager)} {
 		if err := registry.Register(item); err != nil {
 			t.Fatal(err)
 		}
@@ -183,7 +183,7 @@ func TestCreateElSkillDiscoversMaintenanceTools(t *testing.T) {
 	for _, detail := range details {
 		found[detail.Info.Name] = detail.Schema != nil
 	}
-	for _, name := range []string{CreateElSkillName, ReadElSkillName, ModifyElSkillName} {
+	for _, name := range []string{CreateElSkillName, ReadElSkillName, ModifyElSkillName, FinalizeElSkillName} {
 		if !found[name] {
 			t.Fatalf("missing schema for %s in %#v", name, details)
 		}

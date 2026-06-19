@@ -85,51 +85,32 @@ func TestModifyElSkillPatchesLines(t *testing.T) {
 	}
 }
 
-func TestModifyElSkillPatchesCodeSourceBuildsAndReloads(t *testing.T) {
+func TestModifyElSkillPatchesCodeSourceWithoutBuild(t *testing.T) {
 	root := t.TempDir()
 	writeTestGoSkill(t, root, "patcher_code", "package main\n\nfunc main() {}\n")
-	registry := tool.NewRegistry()
-	modifier := NewModifyElSkillTool(NewManager(root, registry))
+	modifier := NewModifyElSkillTool(NewManager(root, tool.NewRegistry()))
 	args, _ := json.Marshal(map[string]any{
 		"name":   "patcher_code",
 		"target": "code_source",
 		"patches": []map[string]any{
-			{"start_line": 3, "end_line": 3, "new_lines": []string{"func main() { println(\"ok\") }"}},
+			{"start_line": 3, "end_line": 3, "new_lines": []string{"func main(){ missing() }"}},
 		},
 	})
 
-	if _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	result, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
 		t.Fatal(err)
 	}
 	content := readTestGoSource(t, root, "patcher_code")
-	if !strings.Contains(content, `println("ok")`) || !strings.HasSuffix(content, "\n") {
+	if !strings.Contains(content, "missing()") || strings.Contains(content, "func main() { missing() }") {
 		t.Fatalf("content = %q", content)
 	}
-	registered, ok := registry.Get("patcher_code")
-	if !ok || registered.Info().Source != tool.SourceSkillGo {
-		t.Fatalf("registered=%#v ok=%v", registered, ok)
+	if !strings.Contains(result.Content, "finalize_el_skill") {
+		t.Fatalf("result = %q", result.Content)
 	}
 }
 
-func TestModifyElSkillFormatsCodeSourceContent(t *testing.T) {
-	root := t.TempDir()
-	writeTestGoSkill(t, root, "formatter", "package main\n\nfunc main() {}\n")
-	modifier := NewModifyElSkillTool(NewManager(root, tool.NewRegistry()))
-	args, _ := json.Marshal(map[string]string{
-		"name":    "formatter",
-		"target":  "code_source",
-		"content": "package main\nfunc main(){println(\"ok\")}\n",
-	})
-
-	if _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
-		t.Fatal(err)
-	}
-	if got := readTestGoSource(t, root, "formatter"); got != "package main\n\nfunc main() { println(\"ok\") }\n" {
-		t.Fatalf("formatted source = %q", got)
-	}
-}
-
-func TestModifyElSkillRestoresCodeSourceAfterBuildFailure(t *testing.T) {
+func TestModifyElSkillWritesInvalidCodeSourceWithoutBuild(t *testing.T) {
 	root := t.TempDir()
 	writeTestGoSkill(t, root, "broken", "package main\n\nfunc main() {}\n")
 	modifier := NewModifyElSkillTool(NewManager(root, tool.NewRegistry()))
@@ -139,16 +120,11 @@ func TestModifyElSkillRestoresCodeSourceAfterBuildFailure(t *testing.T) {
 		"content": "package main\n\nfunc main() { missing() }\n",
 	})
 
-	_, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args})
-	if err == nil {
-		t.Fatal("expected build error")
+	if _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
 	}
-	text := err.Error()
-	if !strings.Contains(text, "go build failed") || !strings.Contains(text, "stderr:") {
-		t.Fatalf("err = %v", err)
-	}
-	if got := readTestGoSource(t, root, "broken"); got != "package main\n\nfunc main() {}\n" {
-		t.Fatalf("source was not restored: %q", got)
+	if got := readTestGoSource(t, root, "broken"); !strings.Contains(got, "missing()") {
+		t.Fatalf("source was not written: %q", got)
 	}
 }
 

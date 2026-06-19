@@ -95,6 +95,9 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 		if err := registry.Register(skill.NewModifyElSkillTool(opts.SkillManager)); err != nil {
 			return err
 		}
+		if err := registry.Register(skill.NewFinalizeElSkillTool(opts.SkillManager)); err != nil {
+			return err
+		}
 	}
 
 	return nil

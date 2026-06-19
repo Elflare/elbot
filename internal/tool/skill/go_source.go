@@ -109,10 +109,27 @@ func executableName(name string) string {
 	return name
 }
 
+type goBuildResult struct {
+	Stdout string
+	Stderr string
+	Err    error
+}
+
 func buildGoSkill(ctx context.Context, root, name string, timeoutMS int) error {
-	goPath, err := resolveGoExecutable(root)
+	result, err := runGoBuild(ctx, root, name, timeoutMS)
 	if err != nil {
 		return err
+	}
+	if result.Err != nil {
+		return fmt.Errorf("go build failed: %w\nstdout:\n%s\nstderr:\n%s", result.Err, truncateOutput(result.Stdout), truncateOutput(result.Stderr))
+	}
+	return nil
+}
+
+func runGoBuild(ctx context.Context, root, name string, timeoutMS int) (goBuildResult, error) {
+	goPath, err := resolveGoExecutable(root)
+	if err != nil {
+		return goBuildResult{}, err
 	}
 	binary := name
 	if runtime.GOOS == "windows" {
@@ -130,8 +147,6 @@ func buildGoSkill(ctx context.Context, root, name string, timeoutMS int) error {
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("go build failed: %w\nstdout:\n%s\nstderr:\n%s", err, truncateOutput(stdout.String()), truncateOutput(stderr.String()))
-	}
-	return nil
+	err = cmd.Run()
+	return goBuildResult{Stdout: stdout.String(), Stderr: stderr.String(), Err: err}, nil
 }

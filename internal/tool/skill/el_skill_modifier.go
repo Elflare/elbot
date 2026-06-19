@@ -39,11 +39,10 @@ type readElSkillArgs struct {
 }
 
 type modifyElSkillArgs struct {
-	Name      string            `json:"name"`
-	Target    string            `json:"target"`
-	Content   string            `json:"content"`
-	Patches   []modifyLinePatch `json:"patches"`
-	TimeoutMS int               `json:"timeout_ms"`
+	Name    string            `json:"name"`
+	Target  string            `json:"target"`
+	Content string            `json:"content"`
+	Patches []modifyLinePatch `json:"patches"`
 }
 
 type modifyLinePatch struct {
@@ -128,7 +127,8 @@ func (ModifyElSkillTool) Name() string { return ModifyElSkillName }
 
 func (ModifyElSkillTool) Info() tool.Info {
 	return tool.NewBuilder(ModifyElSkillName).
-		Description("修改 ElBot 原生 EL Skill 的 SKILL.elyph 或 main.go；技能定义会校验 ELyph 并 reload，源码会 gofmt、go build 并 reload。").
+		Description("修改 ElBot 原生 EL Skill 的 SKILL.elyph 或 main.go；技能定义会校验 ELyph 并 reload，源码只写入文件，完成后用 finalize_el_skill 格式化和编译。").
+		DependsOn(FinalizeElSkillName).
 		Source(tool.SourceBuiltin).
 		Risk(tool.RiskHigh).
 		BuildInfo()
@@ -137,14 +137,13 @@ func (ModifyElSkillTool) Info() tool.Info {
 func (ModifyElSkillTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{
 		Name:        ModifyElSkillName,
-		Description: "修改 ElBot 原生 EL Skill 文件。target 可选：skill_elyph 修改 SKILL.elyph；code_source 修改 main.go；默认 skill_elyph。content 用于全量写入；patches 用原文件 1-based 行号替换整行范围。content 与 patches 必须二选一。code_source 会自动 gofmt、go build 并 reload；skill_elyph 会校验 ELyph 并 reload。",
+		Description: "修改 ElBot 原生 EL Skill 文件。target 可选：skill_elyph 修改 SKILL.elyph；code_source 修改 main.go；默认 skill_elyph。content 用于全量写入；patches 用原文件 1-based 行号替换整行范围。content 与 patches 必须二选一。code_source 只写源码并返回 diff，不会格式化、编译或 reload；完成后调用 finalize_el_skill 检查。skill_elyph 会校验 ELyph 并 reload。",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"name":       map[string]any{"type": "string", "description": "skill 名称。"},
-				"target":     map[string]any{"type": "string", "enum": []string{elSkillTargetElyph, elSkillTargetCodeSource}, "description": "修改目标：skill_elyph 表示 SKILL.elyph；code_source 表示 main.go。默认 skill_elyph。"},
-				"content":    map[string]any{"type": "string", "description": "可选，完整新的文件内容。"},
-				"timeout_ms": map[string]any{"type": "integer", "description": "可选，仅 code_source 编译超时时间，默认 60000。"},
+				"name":    map[string]any{"type": "string", "description": "skill 名称。"},
+				"target":  map[string]any{"type": "string", "enum": []string{elSkillTargetElyph, elSkillTargetCodeSource}, "description": "修改目标：skill_elyph 表示 SKILL.elyph；code_source 表示 main.go。默认 skill_elyph。"},
+				"content": map[string]any{"type": "string", "description": "可选，完整新的文件内容。"},
 				"patches": map[string]any{"type": "array", "description": "可选，按原文件行号替换整行范围；new_lines 为空数组表示删除。", "items": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
@@ -192,7 +191,7 @@ func (t ModifyElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*too
 	case elSkillTargetElyph:
 		return t.modifyElyph(ctx, name, path, file, next)
 	case elSkillTargetCodeSource:
-		return t.modifyCodeSource(ctx, name, path, file, next, args.TimeoutMS)
+		return t.modifyCodeSource(name, path, file, next)
 	default:
 		return nil, fmt.Errorf("unsupported target %q", target)
 	}
@@ -213,28 +212,13 @@ func (t ModifyElSkillTool) modifyElyph(ctx context.Context, name, path string, f
 	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\ndiff:\n%s", name, elSkillTargetElyph, diff)}, nil
 }
 
-func (t ModifyElSkillTool) modifyCodeSource(ctx context.Context, name, path string, file fileops.File, next string, timeoutMS int) (*tool.Result, error) {
-	formatted, err := formatGoSource(next)
-	if err != nil {
+func (t ModifyElSkillTool) modifyCodeSource(name, path string, file fileops.File, next string) (*tool.Result, error) {
+	next = normalizeSkillContent(next)
+	diff := fileops.UnifiedDiff(path, fileops.SplitLines(fileops.NormalizeEditText(file.Text)), fileops.SplitLines(fileops.NormalizeEditText(next)), 3)
+	if _, err := fileops.WriteTextFile(path, file, next); err != nil {
 		return nil, err
 	}
-	if err := validateGoMainSource(formatted); err != nil {
-		return nil, err
-	}
-	diff := fileops.UnifiedDiff(path, fileops.SplitLines(fileops.NormalizeEditText(file.Text)), fileops.SplitLines(fileops.NormalizeEditText(formatted)), 3)
-	if _, err := fileops.WriteTextFile(path, file, formatted); err != nil {
-		return nil, err
-	}
-	if err := buildGoSkill(ctx, filepath.Dir(path), name, timeoutMS); err != nil {
-		if _, restoreErr := fileops.WriteTextFile(path, file, file.Text); restoreErr != nil {
-			return nil, fmt.Errorf("%w\nrestore original source failed: %v", err, restoreErr)
-		}
-		return nil, err
-	}
-	if err := t.Manager.Reload(ctx); err != nil {
-		return nil, fmt.Errorf("EL skill Go source rebuilt but reload failed: %w", err)
-	}
-	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\ndiff:\n%s", name, elSkillTargetCodeSource, diff)}, nil
+	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\ndiff:\n%s\n\n源码已写入但尚未格式化/编译；完成修改后调用 finalize_el_skill。", name, elSkillTargetCodeSource, diff)}, nil
 }
 
 func elSkillTargetPath(manager *Manager, name, target string) (string, string, error) {
