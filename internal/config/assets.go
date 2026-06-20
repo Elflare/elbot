@@ -230,6 +230,10 @@ token_env = ["ELNIS_HOME_TOKEN", "ELNIS_HOME_TOKEN_ALT"]
 default_platforms = ["cli"]
 allow_superadmins = true
 
+[segment]
+max_file_bytes = 104857600  # 100MB, max per image/file segment
+download_timeout_secs = 60
+
 # Elwisp is enabled by default. Configure a named Elwisp only when you need
 # token restrictions, tool overrides, delivery overrides, or explicit disable.
 # [elwisps.server-watchdog]

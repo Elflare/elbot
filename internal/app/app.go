@@ -327,8 +327,9 @@ func Run(ctx context.Context, opts Options) error {
 			return err
 		}
 		elnisService, err := elnis.NewService(elnis.Options{
-			Config: cfg.Elnis,
-			Tokens: elnisTokens,
+			Config:      cfg.Elnis,
+			SandboxRoot: cfg.Sandbox.Root,
+			Tokens:      elnisTokens,
 			Store:  store,
 			Logger: logs.Elnis(),
 			Audit: func(event string, attrs ...any) {

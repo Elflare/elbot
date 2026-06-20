@@ -133,6 +133,67 @@ curl -sS http://127.0.0.1:32170/elvena/v1/events \
 }
 ```
 
+## Segments（多模态消息段）
+
+Elvena v1 支持通过 `segments` 字段发送图片和文件。`content` 保留为纯文本 fallback，与旧 Elwisp 完全兼容。
+
+`segments` 为空时行为不变，非空时优先 segments 渲染，content 作为附加文本。
+
+### Segment 字段
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | ---: | :---: | --- |
+| `kind` | string | 是 | `text`、`image`、`file`。 |
+| `text` | string | text 必填 | 纯文本内容，不落盘。 |
+| `url` | string | image/file 必填 | `http://`、`https://` 或 `data:` base64 URI。 |
+| `name` | string | 否 | 文件名，用于下载保存和展示。 |
+| `mime_type` | string | 否 | MIME 类型提示。 |
+
+### 下载与存储
+
+- Elnis 接收后自动下载到 `sandbox/elnis/<elwisp名>/<事件id>/`。
+- 发送到 LLM 时使用原始 URL（多模态模型可直接看图），沙盒保留副本。
+- direct 模式同样支持 image/file 输出，平台不支持时自动降级为文字描述。
+- 文件大小受 `elnis.toml` 的 `[segment].max_file_bytes` 限制（默认 100MB）。
+- `data:` URI 仅支持 base64 编码，解码后同样受限。
+- `file://` 等本地协议禁止。
+
+### 示例
+
+```json
+{
+  "version": "elvena.v1",
+  "elwisp": {"name": "monitor"},
+  "source": "prod-server",
+  "id": "cpu-chart-002",
+  "mode": "direct",
+  "title": "CPU 异常",
+  "content": "CPU 飙到 90%",
+  "segments": [
+    {"kind": "text",  "text": "服务器 CPU 飙到 90%，详见附图。"},
+    {"kind": "image", "url": "https://monitor.example.com/chart.png", "name": "cpu_chart.png"},
+    {"kind": "file",  "url": "https://logs.example.com/dump.txt", "name": "cpu_dump.txt"}
+  ],
+  "targets": {"platforms": ["cli"], "superadmins": true}
+}
+```
+
+### LLM 结果中的 report_segments
+
+后台 LLM 处理事件后，`JSONResult` 的 `report_segments` 可附带图片/文件路径，Elnis 会在报告发送时一并投递。
+
+```json
+{
+  "completed": true,
+  "need_report": true,
+  "report": "分析完成，见截图。",
+  "report_segments": [
+    {"type": "image", "url": "/data/sandbox/elnis/monitor/evt-001/chart.png"}
+  ]
+}
+```
+
+
 常用字段：
 
 | 字段 | 必填 | 说明 |
