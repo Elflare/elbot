@@ -31,9 +31,9 @@
       "updated_at": 1781929269
     },
     "docs/elnis.md": {
-      "source_hash": "4735dd174a667d92bd3fb59e8a6d1de41d114f168eec2b6022ac7733b37c9534",
+      "source_hash": "3a596f4b6431111170c40d585b756e710b4859cba276cf015e2ed390a4aa2015",
       "target": "docs.en/elnis.md",
-      "updated_at": 1781794504
+      "updated_at": 1781929296
     },
     "docs/elyph.md": {
       "source_hash": "1143022b6f7a7792b0f1aa8118af618014b6ac359776d6a7cd21cc484f28a6bc",
@@ -6335,6 +6335,14 @@
       "translation": "For example:\n",
       "updated_at": 1781710746
     },
+    "docs/elnis.md:paragraph:2bc3b5bba831d8de50edd49ad30f9381523e646e9d05fe08f8e7352bbaeb7576": {
+      "kind": "paragraph",
+      "source": "以下能力仍在开发或规划中：\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "2bc3b5bba831d8de50edd49ad30f9381523e646e9d05fe08f8e7352bbaeb7576",
+      "translation": "The following capabilities are still under development or planning:\n",
+      "updated_at": 1781929296
+    },
     "docs/elnis.md:paragraph:2d715a6c4fb79cb27aa82fff2dbdf7154788a9b1c684315dceb99fef2850e289": {
       "kind": "paragraph",
       "source": "外部事件不能绕过 Agent、Tool Runtime、Security Policy 和 Output Layer。\n",
@@ -6358,6 +6366,14 @@
       "source_hash": "3b4147c19d3df8615e65debb1dd498801d850b87456b1e73e93259afccbc2964",
       "translation": "Ordinary chatbots usually only respond to user messages. Cron can respond to time, but it doesn't know what is happening in the outside world.\n",
       "updated_at": 1781710746
+    },
+    "docs/elnis.md:paragraph:3f24d1d9a69f093031b0110677ea5248bcc48d3400b2934ee0d37c57cf203367": {
+      "kind": "paragraph",
+      "source": "当前 Elnis 已支持 record、direct、llm 模式、Elwisp 随事件声明外部工具以及多模态消息段（text/image/file）。",
+      "source_file": "docs/elnis.md",
+      "source_hash": "3f24d1d9a69f093031b0110677ea5248bcc48d3400b2934ee0d37c57cf203367",
+      "translation": "Currently, Elnis supports record, direct, and llm modes, Elwisp declaring external tools with events, and multimodal message segments (text/image/file).",
+      "updated_at": 1781929296
     },
     "docs/elnis.md:paragraph:45c5931b1d976a6f207d4ef77b3f374398031cd36dcae8068a6986b3d5a5b83e": {
       "kind": "paragraph",
