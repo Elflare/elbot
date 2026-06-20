@@ -183,7 +183,8 @@ When left blank, the platform's default data directory is used:
 - Windows：`%APPDATA%/ElBot/data`
 - Linux: `$XDG_DATA_HOME/elbot` or `~/.local/share/elbot`
 
-Runtime logs, SQLite, sandbox, artifacts, and other runtime data will also be stored according to the configuration or the default data directory.
+Runtime logs, SQLite, sandbox, and other runtime data will also be stored according to the configuration or the default data directory.
+
 
 ## Logs and Maintenance Tasks
 
@@ -203,7 +204,14 @@ enabled = true
 schedule = "0 3 * * *"
 ```
 
-Cron expressions are scheduled by the internal Cron Runtime, using the Linux crontab-style 5-field format: `分钟 小时 日 月 星期`. Default maintenance tasks include the cleanup of logs, artifacts, and chat history; for example, chat history cleanup is executed daily at 04:35 by default:
+Cron expressions are scheduled by the internal Cron Runtime, using the Linux crontab-style 5-field format: `分钟 小时 日 月 星期`. Default maintenance tasks include the cleanup of logs, sandbox, and chat history. For example, the sandbox defaults to cleaning up content older than 7 days every day at 04:00, and chat history cleanup is executed every day at 04:35 by default:
+
+```toml
+[maintenance.sandbox_cleanup]
+enabled = true
+schedule = "0 4 * * *"
+retention_days = 7
+```
 
 ```toml
 [maintenance.chat_history_cleanup]

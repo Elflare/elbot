@@ -21,9 +21,9 @@
       "updated_at": 1781949019
     },
     "docs/configuration.md": {
-      "source_hash": "58f6b7471635475dc7c4986ee2d2392629c5035787ed1d2387b59ff05dee6daf",
+      "source_hash": "39639b9950e79bd0ddd33d10d4d21c638babb3a6a4adb5c7b30c8136c0f59d0d",
       "target": "docs.en/configuration.md",
-      "updated_at": 1781854884
+      "updated_at": 1781949050
     },
     "docs/elnis-usage.md": {
       "source_hash": "11860a47194b89e73540a0329875819ecddee15272df4804b8151255dcd0114f",
@@ -4575,6 +4575,14 @@
       "translation": "Lookup order:\n",
       "updated_at": 1781790272
     },
+    "docs/configuration.md:paragraph:1faa263becb315d9218e99ec661dcdd56c855d92c1c32eef3ecaed5fe176cad4": {
+      "kind": "paragraph",
+      "source": "运行日志、SQLite、sandbox 等运行数据也会按配置或默认数据目录存放。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1faa263becb315d9218e99ec661dcdd56c855d92c1c32eef3ecaed5fe176cad4",
+      "translation": "Runtime logs, SQLite, sandbox, and other runtime data will also be stored according to the configuration or the default data directory.\n",
+      "updated_at": 1781949050
+    },
     "docs/configuration.md:paragraph:1feaca43453e4d561393b74ffa970d1046385242029d7b8497a5857cdfb9f54b": {
       "kind": "paragraph",
       "source": "默认使用 __ELBOT_CODE_0__。如果要支持其他命令前缀，可以在这里添加。\n",
@@ -5022,6 +5030,14 @@
       "source_hash": "f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f",
       "translation": "Example:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:fc1e54ad6fecf7488ed8d0808836934a04ddcaace9d5987114a2382683724bd9": {
+      "kind": "paragraph",
+      "source": "默认维护任务包含日志、sandbox 和聊天历史清理，例如 sandbox 默认每天 04:00 清理 7 天前内容，聊天历史默认每天 04:35 执行：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "fc1e54ad6fecf7488ed8d0808836934a04ddcaace9d5987114a2382683724bd9",
+      "translation": "Default maintenance tasks include the cleanup of logs, sandbox, and chat history. For example, the sandbox defaults to cleaning up content older than 7 days every day at 04:00, and chat history cleanup is executed every day at 04:35 by default:\n",
+      "updated_at": 1781949050
     },
     "docs/configuration.md:table:016626e41f18a4b100b8eeee715dba8c89fdea7bfa91eac4efb6f0149d490adf": {
       "kind": "table",
