@@ -408,7 +408,7 @@ func (s *Service) runDirect(ctx context.Context, event Event, eventID string) er
 	}
 	req := event.Request
 	// Download segments to sandbox
-	_, err := s.downloadSegments(ctx, req.Elwisp.Name, req.ID, req.Segments)
+	paths, err := s.downloadSegments(ctx, req.Elwisp.Name, req.ID, req.Segments)
 	if err != nil {
 		return fmt.Errorf("download segments: %w", err)
 	}
@@ -420,7 +420,7 @@ func (s *Service) runDirect(ctx context.Context, event Event, eventID string) er
 		return fmt.Errorf("direct delivery only supports superadmins in phase 1")
 	}
 	// Build outputs: segments first, content as fallback
-	outputs := buildDirectOutputs(req)
+	outputs := buildDirectOutputs(req, paths)
 	for _, platformName := range resolved.Platforms {
 		for _, out := range outputs {
 			if err := s.send(ctx, delivery.Target{Platform: platformName, Superadmins: true}, out); err != nil {
@@ -872,18 +872,20 @@ func segmentsContentText(segments []Segment) string {
 	return strings.TrimSpace(b.String())
 }
 
-func segmentsOutputs(segments []Segment) []delivery.Output {
+func segmentsOutputs(segments []Segment, paths map[string]string) []delivery.Output {
 	var out []delivery.Output
-	for _, seg := range segments {
+	for i, seg := range segments {
 		switch seg.Kind {
 		case SegmentKindText:
 			out = append(out, delivery.Text(seg.Text))
 		case SegmentKindImage:
-			o := delivery.ImagePath(seg.URL)
+			localPath := pathForSeg(i, seg, paths)
+			o := delivery.ImagePath(localPath)
 			o.Name = seg.Name
 			out = append(out, o)
 		case SegmentKindFile:
-			o := delivery.FilePath(seg.URL)
+			localPath := pathForSeg(i, seg, paths)
+			o := delivery.FilePath(localPath)
 			o.Name = seg.Name
 			out = append(out, o)
 		}
@@ -906,6 +908,15 @@ func segmentsLLM(segments []Segment) []llm.MessageSegment {
 	return out
 }
 
+func pathForSeg(i int, seg Segment, paths map[string]string) string {
+	if paths != nil {
+		if p, ok := paths[segKey(i, seg)]; ok && p != "" {
+			return p
+		}
+	}
+	return seg.URL
+}
+
 func firstNonEmptyStr(values ...string) string {
 	for _, v := range values {
 		if strings.TrimSpace(v) != "" {
@@ -915,12 +926,12 @@ func firstNonEmptyStr(values ...string) string {
 	return ""
 }
 
-func buildDirectOutputs(req Request) []delivery.Output {
+func buildDirectOutputs(req Request, paths map[string]string) []delivery.Output {
 	segs := req.Segments
 	if len(segs) == 0 {
 		return []delivery.Output{delivery.Text(directText(req))}
 	}
-	out := segmentsOutputs(segs)
+	out := segmentsOutputs(segs, paths)
 	// Append text fallback if content exists
 	if content := strings.TrimSpace(req.Content); content != "" {
 		out = append(out, delivery.Text(content))
