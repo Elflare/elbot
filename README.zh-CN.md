@@ -51,6 +51,8 @@ Elnis 是 ElBot 的监听枢纽，Elwisp 是分布在各地的外部监听器，
 
 **多平台与富输出抽象**： ElBot 抽象了平台层与输出层，目前支持 CLI、QQ OneBot、QQ Official 和 Telegram，并预留扩展其他平台的空间。
 
+**CLI 客户端/服务端分离**： 支持任何电脑使用 ElBot 作为客户端连接 ElBot 服务端。
+
 **会话、Fork 与上下文压缩**： 内置持久化 Session 服务，支持会话恢复、归档、置顶、Fork、删除、分页查看和平台隔离。长对话自动触发上下文压缩，保持窗口可控，压缩后可继续正常对话。
 
 ### 五、安全可靠
@@ -59,24 +61,19 @@ Elnis 是 ElBot 的监听枢纽，Elwisp 是分布在各地的外部监听器，
 
 **轻量沙盒隔离**： 后台 Shell 执行受到 AST 级沙盒约束。后台任务拥有独立 sandbox 工作目录，降低误操作影响。
 
-
 **完善的日志与审计**： 区分运行日志、Elwisp 日志与审计日志，支持结构化字段、日志查询、审计查询和运行期调试。
 
 ## 使用方法
 
-开发期可以直接从源码启动；首次运行会在平台配置目录自动生成默认配置，已有配置不会被覆盖：
-
-```bash
-go run ./cmd/elbot
-```
 
 常用启动方式：
 
 ```bash
-elbot              # 自动模式：Linux 检测到 service 时进入本地 CLI-only，否则完整前台启动
-elbot run          # 完整前台：CLI + 已启用平台 + Cron
-elbot cli          # 本地 CLI-only：只启动 CLI，不启动平台和 Cron
-elbot service run  # Linux/headless 服务模式：不启动 CLI，启动已启用平台和 Cron
+elbot              # 自动模式：优先尝试默认远程 CLI client；本地不可达时回退完整前台启动
+elbot run          # 完整前台：本地 CLI + 已启用平台 + Cron
+elbot cli [-c 名称] # 远程 CLI 客户端：连接常驻 ElBot 服务端
+elbot -c 名称      # 直接用指定 CLI client profile 连接服务端
+elbot service run  # Linux/headless 服务模式：不启动本地 CLI，可启用远程 CLI server、平台和 Cron
 ```
 
 Shell 补全可通过 `elbot completion <shell>` 生成，支持 `bash`、`zsh`、`fish`、`nushell`、`powershell` 和 `auto`。
