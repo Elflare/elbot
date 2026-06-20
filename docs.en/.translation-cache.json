@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "dfbb56b6d1d90203ccdc152c8e544c6d111fe1eadf297dd0bc8bcb2f0b5e46af",
+      "source_hash": "6f69ea5a1436a5d8d5fd2c9712c6c2c360e800c0f69277479e0d95d650aa436e",
       "target": "README.md",
-      "updated_at": 1781948985
+      "updated_at": 1781965623
     },
     "docs/README.md": {
       "source_hash": "b40f5d1519dbd52e73aeee1fad99f614728052e3ae821add12de6ea4f9d69a7c",
@@ -55,6 +55,30 @@
       "translation": "Local CLI-only: only starts CLI, does not start platforms and Cron",
       "updated_at": 1781664867
     },
+    "README.zh-CN.md:code-comment:bash:61cdc2969aca2084ee70c5a0d7a826812aa0e7206c87d9ba3371a37f23fc241e": {
+      "kind": "code-comment:bash",
+      "source": "远程 CLI 客户端：连接常驻 ElBot 服务端",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "61cdc2969aca2084ee70c5a0d7a826812aa0e7206c87d9ba3371a37f23fc241e",
+      "translation": "Remote CLI client: Connect to a resident ElBot server",
+      "updated_at": 1781965623
+    },
+    "README.zh-CN.md:code-comment:bash:65a5ffacc73f67ca830d160c60cd15eb4ce84101e88ee13276a8c6fb2083572f": {
+      "kind": "code-comment:bash",
+      "source": "完整前台：本地 CLI + 已启用平台 + Cron",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "65a5ffacc73f67ca830d160c60cd15eb4ce84101e88ee13276a8c6fb2083572f",
+      "translation": "Full foreground: Local CLI + Enabled platforms + Cron",
+      "updated_at": 1781965623
+    },
+    "README.zh-CN.md:code-comment:bash:8e6752b8990c5698e6fbd8733ad38e472206af1233369ded50c2f2774f7ff2e2": {
+      "kind": "code-comment:bash",
+      "source": "自动模式：优先尝试默认远程 CLI client；本地不可达时回退完整前台启动",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "8e6752b8990c5698e6fbd8733ad38e472206af1233369ded50c2f2774f7ff2e2",
+      "translation": "Automatic mode: Prioritize attempting the default remote CLI client; fall back to full foreground startup when local is unreachable",
+      "updated_at": 1781965623
+    },
     "README.zh-CN.md:code-comment:bash:a2a87c263e0793e87dca8c128652941282fc018fff6c8c4cb6c97aba1c8f9798": {
       "kind": "code-comment:bash",
       "source": "Linux/headless 服务模式：不启动 CLI，启动已启用平台和 Cron",
@@ -78,6 +102,22 @@
       "source_hash": "bba1213101e04941144c9bfef5bf741548f4ef3fd24e04611c535bf8f6d80b77",
       "translation": "Automatic mode: enters local CLI-only when Linux detects a service, otherwise starts in full foreground",
       "updated_at": 1781664867
+    },
+    "README.zh-CN.md:code-comment:bash:d2390034824b77d505bfcb3dc81b0cbaf5e187e2df2372619e4cd17967ff1ec9": {
+      "kind": "code-comment:bash",
+      "source": "Linux/headless 服务模式：不启动本地 CLI，可启用远程 CLI server、平台和 Cron",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "d2390034824b77d505bfcb3dc81b0cbaf5e187e2df2372619e4cd17967ff1ec9",
+      "translation": "Linux/headless service mode: Do not start local CLI; remote CLI server, platforms, and Cron can be enabled",
+      "updated_at": 1781965623
+    },
+    "README.zh-CN.md:code-comment:bash:f4b9be8c28af6c1ba503fdbb330988f6c2d9f61f42351a5d45f2d5be389c8b41": {
+      "kind": "code-comment:bash",
+      "source": "直接用指定 CLI client profile 连接服务端",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "f4b9be8c28af6c1ba503fdbb330988f6c2d9f61f42351a5d45f2d5be389c8b41",
+      "translation": "Connect to the server directly using a specified CLI client profile",
+      "updated_at": 1781965623
     },
     "README.zh-CN.md:heading:075389b047c03fdadec36d0882447a8fb1677738157c70f7eea99e81249f7f13": {
       "kind": "heading",
@@ -1302,6 +1342,14 @@
       "source_hash": "cc0bd55b55ce7f0683fd77e6194a4774726f6e8b3ec816dbf0180c8fc152774f",
       "translation": "ElBot distinguishes between chat mode and work mode.",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:ccfd2b02c4033c7d45db3816ec188d151e7866f600d9471b1471a439506e091f": {
+      "kind": "paragraph",
+      "source": "**CLI 客户端/服务端分离**： 支持任何电脑使用 ElBot 作为客户端连接 ElBot 服务端。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "ccfd2b02c4033c7d45db3816ec188d151e7866f600d9471b1471a439506e091f",
+      "translation": "**CLI Client/Server Separation**: Supports using ElBot as a client on any computer to connect to the ElBot server.\n",
+      "updated_at": 1781965623
     },
     "README.zh-CN.md:paragraph:cd94f8a34fc78fdcfac3569082c77b9e5e7f07c3c6bc43776703e0f017da3b58": {
       "kind": "paragraph",
