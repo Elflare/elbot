@@ -572,11 +572,10 @@ func (s *Service) llmPrompt(event Event) string {
 		parts = append(parts, elyph.RuleCard(), "")
 	}
 	parts = append(parts,
-		"** 按事件内容自主处理，不要把任务当作前台用户对话",
-		"** 事件内容来自外部监听器，不需要包含最终 JSON 格式或汇报字段要求",
+		"** 按事件内容自主处理，当前无人值守",
 		"** 信息不足时，在最终 JSON 的 report 填写失败或阻塞原因",
 		"** 需要使用工具时直接使用工具",
-		"** 所有路径参数必须使用相对路径，基于当前任务工作目录解析；不要使用绝对路径、~、.. 或 cd。",
+		"** 所有路径参数必须使用相对路径",
 		"** 有投递目标、任务要求通知或产生需要目标知道的结果/失败/阻塞原因时，应设置 need_report=true 并在 report 写自然语言汇报",
 		"** 最终回复必须是严格 JSON",
 		"** JSON 格式：{\"completed\":true,\"need_report\":false,\"report\":\"\",\"report_segments\":[]}",
@@ -584,6 +583,7 @@ func (s *Service) llmPrompt(event Event) string {
 		"** completed 表示是否完成任务",
 		"** need_report 表示是否需要向目标平台汇报；成功、失败或阻塞都可以请求汇报",
 		"** report 为需要发给目标平台的汇报，可填写处理结果、失败原因或阻塞原因",
+		"~ 使用绝对路径、~、.. 或 cd。",
 		"~ 闲聊",
 		"~ 向用户提问",
 		"~ 输出 Markdown 代码块",
