@@ -53,6 +53,8 @@ ELNIS_HOME_TOKEN=change-me
 配置说明：
 
 - `enabled=false` 时不启动 Elnis HTTP runtime。
+- `elbot cli` 是 CLI-only 模式，即使 `enabled=true` 也不会启动 Elnis HTTP runtime；需要接收 Elvena 事件时请使用 `elbot run` 或 `elbot service run`。
+- 当前 `targets.platforms=["cli"]` 只适用于 Elnis 与 CLI 同处一个 `elbot run` 前台进程的场景；`elbot service run` 暂不能把消息投递到另一个独立 `elbot cli` 进程。
 - token 原文不写入配置，推荐放在系统环境变量或配置目录 `.env`。
 - `token_env` 可以写多个环境变量名，按顺序尝试。
 - Elwisp 默认启用；没写 `[elwisps.<name>]`、写了但没写 `enabled`、或写了 `enabled=true` 都会接收。

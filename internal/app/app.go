@@ -322,7 +322,10 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	profiler.Mark("agent init")
 
-	if cfg.Elnis.Enabled {
+	// if cfg.Elnis.Enabled && mode == RunModeCLIOnly {
+	// 	logger.Info("elnis disabled in cli-only mode")
+	// }
+	if cfg.Elnis.Enabled && mode != RunModeCLIOnly {
 		elnisTokens, err := resolveElnisTokens(cfg)
 		if err != nil {
 			return err
