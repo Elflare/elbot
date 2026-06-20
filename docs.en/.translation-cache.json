@@ -41,9 +41,9 @@
       "updated_at": 1781786413
     },
     "docs/getting-started.md": {
-      "source_hash": "adc99cfd21a097bc4e345227ef000dc453e461b53b1441ddc28eed13e9def556",
+      "source_hash": "e8c05543043f74e4df379b1cc902661fd9d50fcecab392cb1a77f3cc334cd881",
       "target": "docs.en/getting-started.md",
-      "updated_at": 1781854929
+      "updated_at": 1781949103
     }
   },
   "segments": {
@@ -7926,6 +7926,14 @@
       "source_hash": "7e7e1b1c7266bfbce08d2fd3423fabee8a7671917b9e7a5c8d62e427957e8c9b",
       "translation": "The default runtime model is specified in __ELBOT_CODE_0__:\n",
       "updated_at": 1781534482
+    },
+    "docs/getting-started.md:paragraph:8429e5040d047904b63a1e7135a5b45e7348f29018bd9dd79f6cb7deca6c39bd": {
+      "kind": "paragraph",
+      "source": "运行数据默认进入平台数据目录，例如 SQLite、日志和 sandbox。具体规则见 [配置说明](configuration.md)。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "8429e5040d047904b63a1e7135a5b45e7348f29018bd9dd79f6cb7deca6c39bd",
+      "translation": "Runtime data is stored in the platform data directory by default, such as SQLite, logs, and sandbox. For specific rules, see [Configuration Instructions](configuration.md).\n",
+      "updated_at": 1781949103
     },
     "docs/getting-started.md:paragraph:84e2b7f0aded1d7c0715409f35b94fbc2d27dc6b7e4f457cc990a3be5c42b2fd": {
       "kind": "paragraph",
