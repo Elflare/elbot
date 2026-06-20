@@ -156,6 +156,16 @@ retention_days = 9
 [sandbox]
 root = "../data/sandbox"
 
+[file_delivery]
+max_direct_base64_bytes = 123456
+backend = "base64"
+s3_endpoint = "https://r2.example"
+s3_region = "auto"
+s3_bucket = "elbot-files"
+s3_access_key_env = "ELBOT_TEST_S3_ACCESS"
+s3_secret_key_env = "ELBOT_TEST_S3_SECRET"
+s3_public_base_url = "https://files.example"
+
 [platform.qqonebot]
 enabled = true
 ws_url = "ws://example"
@@ -290,6 +300,10 @@ prompt = "Use agent tools."
 	if cfg.Sandbox.Root != filepath.Clean(filepath.Join(configDir, "../data/sandbox")) {
 		t.Fatalf("sandbox root = %q", cfg.Sandbox.Root)
 	}
+	wantFileDelivery := FileDeliveryConfig{MaxDirectBase64Bytes: 123456, Backend: "base64", S3Endpoint: "https://r2.example", S3Region: "auto", S3Bucket: "elbot-files", S3AccessKeyEnv: "ELBOT_TEST_S3_ACCESS", S3SecretKeyEnv: "ELBOT_TEST_S3_SECRET", S3PublicBaseURL: "https://files.example"}
+	if !reflect.DeepEqual(cfg.FileDelivery, wantFileDelivery) {
+		t.Fatalf("file_delivery = %#v, want %#v", cfg.FileDelivery, wantFileDelivery)
+	}
 	wantNaming := SessionNamingConfig{TriggerStep: 3}
 	if !reflect.DeepEqual(cfg.Session.Naming, wantNaming) {
 		t.Fatalf("naming = %#v, want %#v", cfg.Session.Naming, wantNaming)
@@ -402,6 +416,10 @@ model = "deepseek-chat"
 	}
 	if cfg.Sandbox.Root != filepath.Clean(filepath.Join(platformDefaultDataDir(), "sandbox")) {
 		t.Fatalf("sandbox root default = %q", cfg.Sandbox.Root)
+	}
+	wantFileDelivery := FileDeliveryConfig{MaxDirectBase64Bytes: 8 * 1024 * 1024, Backend: "base64", S3Region: "auto"}
+	if !reflect.DeepEqual(cfg.FileDelivery, wantFileDelivery) {
+		t.Fatalf("file_delivery defaults = %#v, want %#v", cfg.FileDelivery, wantFileDelivery)
 	}
 	if cfg.Session.Naming.TriggerStep != 1 {
 		t.Fatalf("naming trigger step = %d", cfg.Session.Naming.TriggerStep)

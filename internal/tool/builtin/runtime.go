@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"elbot/internal/config"
 	elcron "elbot/internal/cron"
 	"elbot/internal/memory/resident"
 	"elbot/internal/storage"
@@ -19,10 +20,11 @@ type Runtime struct {
 }
 
 type RuntimeOptions struct {
-	ConfigDir   string
-	CronService *elcron.Service
-	ChatHistory storage.ChatHistoryRepository
-	SandboxRoot string
+	ConfigDir    string
+	CronService  *elcron.Service
+	ChatHistory  storage.ChatHistoryRepository
+	SandboxRoot  string
+	FileDelivery config.FileDeliveryConfig
 }
 
 func NewRuntime(opts RuntimeOptions) (*Runtime, error) {
@@ -32,7 +34,7 @@ func NewRuntime(opts RuntimeOptions) (*Runtime, error) {
 	registry := tool.NewRegistry()
 	residentStore := resident.NewStore(filepath.Join(opts.ConfigDir, "memories.toml"))
 	skillManager := skill.NewManager(filepath.Join(opts.ConfigDir, "skills"), registry)
-	fileManager := NewFileManager(opts.SandboxRoot)
+	fileManager := NewFileManager(opts.SandboxRoot, opts.FileDelivery)
 	runtime := &Runtime{Registry: registry, ResidentMemoryStore: residentStore, SkillManager: skillManager, FileManager: fileManager}
 	if err := RegisterAll(registry, RegisterOptions{
 		ResidentMemoryStore: residentStore,

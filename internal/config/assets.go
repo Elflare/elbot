@@ -98,6 +98,16 @@ retention_days = 180
 [sandbox]
 root = ""
 
+[file_delivery]
+max_direct_base64_bytes = 8388608
+backend = "base64"
+s3_endpoint = ""
+s3_region = "auto"
+s3_bucket = ""
+s3_access_key_env = "ELBOT_S3_ACCESS_KEY_ID"
+s3_secret_key_env = "ELBOT_S3_SECRET_ACCESS_KEY"
+s3_public_base_url = ""
+
 [llm_request]
 timeout_seconds = 60
 max_retries = 3

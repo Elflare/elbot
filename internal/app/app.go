@@ -269,7 +269,7 @@ func Run(ctx context.Context, opts Options) error {
 	if err := cronManager.RegisterHandler(elcron.UserHandlerName, cronService.Handler); err != nil {
 		return err
 	}
-	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{ConfigDir: filepath.Dir(cfg.ConfigPath), CronService: cronService, ChatHistory: chatHistory, SandboxRoot: cfg.Sandbox.Root})
+	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{ConfigDir: filepath.Dir(cfg.ConfigPath), CronService: cronService, ChatHistory: chatHistory, SandboxRoot: cfg.Sandbox.Root, FileDelivery: cfg.FileDelivery})
 	if err != nil {
 		return err
 	}

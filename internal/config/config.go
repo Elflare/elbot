@@ -36,6 +36,7 @@ type Config struct {
 	LLMRequest          LLMRequestConfig          `toml:"llm_request"`
 	Maintenance         MaintenanceConfig         `toml:"maintenance"`
 	Sandbox             SandboxConfig             `toml:"sandbox"`
+	FileDelivery        FileDeliveryConfig        `toml:"file_delivery"`
 	Platform            PlatformConfig            `toml:"platform"`
 	Elnis               ElnisConfig               `toml:"elnis"`
 	Soul                SoulConfig                `toml:"soul"`
@@ -157,6 +158,17 @@ type MaintenanceCleanupConfig struct {
 	Enabled       bool   `toml:"enabled"`
 	Schedule      string `toml:"schedule"`
 	RetentionDays int    `toml:"retention_days"`
+}
+
+type FileDeliveryConfig struct {
+	MaxDirectBase64Bytes int64  `toml:"max_direct_base64_bytes"`
+	Backend              string `toml:"backend"`
+	S3Endpoint           string `toml:"s3_endpoint"`
+	S3Region             string `toml:"s3_region"`
+	S3Bucket             string `toml:"s3_bucket"`
+	S3AccessKeyEnv       string `toml:"s3_access_key_env"`
+	S3SecretKeyEnv       string `toml:"s3_secret_key_env"`
+	S3PublicBaseURL      string `toml:"s3_public_base_url"`
 }
 
 type PlatformConfig map[string]map[string]any
@@ -545,6 +557,15 @@ func (c *Config) applyAppDefaults() {
 	}
 	if c.Sandbox.Root == "" {
 		c.Sandbox.Root = filepath.Join(platformDefaultDataDir(), "sandbox")
+	}
+	if c.FileDelivery.MaxDirectBase64Bytes <= 0 {
+		c.FileDelivery.MaxDirectBase64Bytes = 8 * 1024 * 1024
+	}
+	if c.FileDelivery.Backend == "" {
+		c.FileDelivery.Backend = "base64"
+	}
+	if c.FileDelivery.S3Region == "" {
+		c.FileDelivery.S3Region = "auto"
 	}
 	if c.Session.Naming.TriggerStep <= 0 {
 		c.Session.Naming.TriggerStep = 1

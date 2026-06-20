@@ -9,13 +9,14 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/tool"
 )
 
 func TestSendFileAssessRiskExternalPath(t *testing.T) {
-	manager := NewFileManager(filepath.Join(t.TempDir(), "sandbox"))
+	manager := NewFileManager(filepath.Join(t.TempDir(), "sandbox"), config.FileDeliveryConfig{})
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"path": filepath.Join(t.TempDir(), "report.txt")})
 	assessment, err := sendFile.AssessRisk(context.Background(), tool.CallRequest{Arguments: args})
@@ -29,7 +30,7 @@ func TestSendFileAssessRiskExternalPath(t *testing.T) {
 
 func TestSendFileAssessRiskBackgroundAbsolutePath(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "sandbox")
-	manager := NewFileManager(root)
+	manager := NewFileManager(root, config.FileDeliveryConfig{})
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"path": filepath.Join(t.TempDir(), "report.txt")})
 	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Root: root, Dir: filepath.Join(root, "cron"), Background: true, BackgroundKind: tool.BackgroundKindCron})
@@ -51,7 +52,7 @@ func TestSendFileSendsSandboxFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cronDir, "report.txt"), []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewFileManager(root)
+	manager := NewFileManager(root, config.FileDeliveryConfig{})
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"file": "report.txt"})
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qqonebot"})
@@ -85,7 +86,7 @@ func TestSendFileSendsExternalFileDirectly(t *testing.T) {
 	if err := os.WriteFile(source, []byte("outside"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewFileManager(root)
+	manager := NewFileManager(root, config.FileDeliveryConfig{})
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"file": source})
 	result, err := sendFile.Call(context.Background(), tool.CallRequest{Arguments: args})
@@ -114,7 +115,7 @@ func TestSendFileBackgroundSendsAbsolutePath(t *testing.T) {
 	if err := os.WriteFile(file, []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	sendFile := NewSendFileTool(NewFileManager(root))
+	sendFile := NewSendFileTool(NewFileManager(root, config.FileDeliveryConfig{}))
 	args, _ := json.Marshal(map[string]any{"path": file})
 	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Root: root, Dir: filepath.Join(root, "cron"), Background: true, BackgroundKind: tool.BackgroundKindCron})
 	result, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
@@ -123,5 +124,20 @@ func TestSendFileBackgroundSendsAbsolutePath(t *testing.T) {
 	}
 	if result.Outputs[0].Source.Path != file {
 		t.Fatalf("sent path = %q, want %q", result.Outputs[0].Source.Path, file)
+	}
+}
+
+func TestSendFileRejectsOversizedBase64File(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "sandbox")
+	file := filepath.Join(t.TempDir(), "large.txt")
+	if err := os.WriteFile(file, []byte("12345"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewFileManager(root, config.FileDeliveryConfig{MaxDirectBase64Bytes: 4, Backend: "base64"})
+	sendFile := NewSendFileTool(manager)
+	args, _ := json.Marshal(map[string]any{"path": file})
+	_, err := sendFile.Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil {
+		t.Fatal("expected oversized file error")
 	}
 }
