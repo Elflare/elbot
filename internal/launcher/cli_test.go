@@ -15,6 +15,7 @@ func TestParseArgs(t *testing.T) {
 		wantMode   app.RunMode
 		wantCmd    Command
 		wantConfig string
+		wantClient string
 		wantErr    bool
 	}{
 		{name: "default auto", wantMode: app.RunModeAuto, wantCmd: CommandRun},
@@ -27,6 +28,9 @@ func TestParseArgs(t *testing.T) {
 		{name: "go run separator", args: []string{"--", "completion", "fish"}, wantMode: app.RunModeAuto, wantCmd: CommandCompletion},
 		{name: "config before command", args: []string{"--config", "custom/app.toml", "run"}, wantMode: app.RunModeFull, wantCmd: CommandRun, wantConfig: "custom/app.toml"},
 		{name: "config after command", args: []string{"cli", "--config=custom/app.toml"}, wantMode: app.RunModeCLIOnly, wantCmd: CommandRun, wantConfig: "custom/app.toml"},
+		{name: "client before command", args: []string{"-c", "local", "cli"}, wantMode: app.RunModeCLIOnly, wantCmd: CommandRun, wantClient: "local"},
+		{name: "client equals", args: []string{"--client=windows"}, wantMode: app.RunModeAuto, wantCmd: CommandRun, wantClient: "windows"},
+		{name: "name unsupported", args: []string{"--name", "local"}, wantErr: true},
 		{name: "unknown command", args: []string{"wat"}, wantErr: true},
 		{name: "unknown service action", args: []string{"service", "stop"}, wantErr: true},
 		{name: "unknown completion shell", args: []string{"completion", "csh"}, wantErr: true},
@@ -52,6 +56,9 @@ func TestParseArgs(t *testing.T) {
 			}
 			if got.ConfigPath != tt.wantConfig {
 				t.Fatalf("ConfigPath = %q, want %q", got.ConfigPath, tt.wantConfig)
+			}
+			if got.ClientName != tt.wantClient {
+				t.Fatalf("ClientName = %q, want %q", got.ClientName, tt.wantClient)
 			}
 		})
 	}

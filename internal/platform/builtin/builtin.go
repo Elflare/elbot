@@ -46,6 +46,19 @@ func New(opts Options, cfg *config.Config, store storage.Store, chatHistory stor
 		bundle.Primary = cliAdapter
 		bundle.Runtimes = append(bundle.Runtimes, cliAdapter)
 	}
+	if cfg != nil && mode == ModeService {
+		cliCfg, err := cli.NewConfigFromPlatformConfig(cfg.Platform["cli"])
+		if err != nil {
+			return Bundle{}, err
+		}
+		if cliCfg.Enabled && cliCfg.Server.Enabled {
+			adapter, err := cli.NewRemoteServer(cli.RemoteServerOptions{Config: cliCfg, ConfigDir: filepath.Dir(cfg.ConfigPath), Superadmins: cfg.Security.Superadmins["cli"]})
+			if err != nil {
+				return Bundle{}, err
+			}
+			bundle.Runtimes = append(bundle.Runtimes, adapter)
+		}
+	}
 	if cfg == nil || mode == ModeCLIOnly {
 		return bundle, nil
 	}

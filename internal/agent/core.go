@@ -252,7 +252,6 @@ func (a *Agent) CommandInfos() []command.Info {
 }
 
 func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
-	a.refreshRuntimeState()
 	actor := a.actor(ctx)
 	ctx = security.WithPolicy(security.WithActor(ctx, actor), a.securityPolicy)
 	segments := inboundSegments(ctx, text)

@@ -28,9 +28,10 @@
 
 ### 入口与启动
 
-- `cmd/elbot/main.go`：程序入口；调用 `internal/launcher` 解析命令，创建根 context 并调用 `internal/app.Run`。
-- `internal/launcher/cli.go`：手写解析 `run`、`cli`、`service run`、`completion`，并生成 bash/zsh/fish/nushell/powershell 补全。
+- `cmd/elbot/main.go`：程序入口；调用 `internal/launcher` 解析命令，创建根 context；`elbot cli` 或 `elbot -c` 进入远程 CLI 客户端，其余模式调用 `internal/app.Run`。
+- `internal/launcher/cli.go`：手写解析 `run`、`cli`、`service run`、`completion` 和远程 CLI `-c/--client`，并生成 bash/zsh/fish/nushell/powershell 补全。
 - `internal/app/app.go`：应用装配入口；加载配置、日志、SQLite、LLM、Agent、Tool、Platform、Hook、Output、Cron 等依赖，并按运行模式启动平台 runtime/Cron。
+- `internal/app/cli_client.go`：远程 CLI 客户端启动入口；加载配置，解析 CLI client profile/token，并连接服务端复用 TUI。
 - `internal/app/service_marker.go`：Linux service pid marker；供默认启动判断是否切到 CLI-only。
 
 ### Cron 与维护任务
@@ -71,7 +72,7 @@
 - `internal/agent/session_metadata.go`：Session metadata 编解码辅助；当前用于保存已 discover 工具名、已激活 tool tag 和最近一次 LLM usage，使 `/status` 在 `/resume` 后仍可显示最近 token 状态。
 - `internal/agent/tool_transcript.go`：工具调用历史持久化辅助；保存 assistant tool_calls 与 tool result，提供 user 多模态 segments metadata 和 turn message 落库 helper，并在持久化 discover 结果时压缩 schema，避免未来上下文膨胀。
 - `internal/agent/context.go`：Agent 上下文压缩依赖实现；维护 context 配置、压缩模型、ContextLoader、WindowResolver、Compressor、最近 usage 和待压缩标记，并提供 `/compact` 与 `/status` 所需能力；最近 usage 会写入 Session metadata 供恢复会话后展示。
-- `internal/agent/model.go`：模型命令依赖实现；集中维护模型运行态、provider client 缓存、`/models` 运行期列表缓存、模型切换、`state.toml` 写入与输入触发热加载；`/model` 默认按消息上下文对应 Session mode 选择目标，但设置全平台共享。
+- `internal/agent/model.go`：模型命令依赖实现；集中维护模型运行态、provider client 缓存、`/models` 运行期列表缓存、模型切换和 `state.toml` 写入；`/model` 默认按消息上下文对应 Session mode 选择目标，但设置全平台共享。
 
 ### Agent 内置命令
 
@@ -230,11 +231,15 @@
 - `internal/platform/config.go`：平台配置辅助；把 `app.toml` 中 `[platform.<name>]` 原始 section 解码给适配器自有 Config，并提供关键词前缀剥离 helper。
 - `internal/platform/builtin/builtin.go`：内置平台装配；按运行模式组合 CLI、headless 和 enabled 外部平台。
 - `internal/platform/headless/headless.go`：service 模式的非交互 primary platform。
-- `internal/platform/cli/cli.go`：CLI 平台实现；非 TTY 下读取 stdin，交互式终端下启动 Bubble Tea TUI，支持注入补全服务；实现统一 `SendChat`/`SendNotice`，并向 TUI 推送 reasoning 与 runtime status。
+- `internal/platform/cli/cli.go`：CLI 平台实现；本地交互模式下读取 stdin/TUI，支持注入补全服务；实现统一 `SendChat`/`SendNotice`，并向 TUI 推送 reasoning 与 runtime status。
+- `internal/platform/cli/config.go`：CLI 远程连接配置；解析 `[platform.cli]` 下服务端监听、客户端 profile、默认客户端和 token env。
+- `internal/platform/cli/remote_protocol.go`：远程 CLI WebSocket 协议类型；定义 hello/input/completion/output/status/stream/error 等消息。
+- `internal/platform/cli/remote_server.go`：服务端侧远程 CLI Adapter；service 模式注册为 `cli` 平台，鉴权并管理多个 CLI client，支持输入、补全、notice/chat/status/reasoning/stream 推送。
+- `internal/platform/cli/remote_client.go`：客户端侧远程 CLI runner；`elbot cli`/`elbot -c` 连接服务端，复用 TUI，将输入和补全请求转发到服务端。
+- `internal/platform/cli/tui.go`：Bubble Tea TUI 主编排；提供聊天/通知/输入区、历史、滚动、补全候选窗、reasoning 与正文分离显示、状态栏。
 - `internal/platform/qq-onebot/`：QQ OneBot v11 正向 WebSocket 适配。
 - `internal/platform/qqofficial/`：QQ 官方机器人 C2C 单聊适配；负责 access token、Gateway identify/heartbeat/resume（含 4009 连接过期重连）、默认 Markdown 文本发送、富媒体上传发送、入站附件下载到 sandbox 平台目录、Keyboard 确认按钮和 ARK 预留；配置来自 `[platform.qqofficial]`。
 - `internal/platform/telegram/`：Telegram Bot API long polling 适配；负责文本/图片/文件收发、HTTP 代理、默认 HTML 格式化、可选 Rich Message 实验模式、editMessageText 伪流式输出、引用上下文、聊天历史记录、inline keyboard 风险确认按钮和 bot commands 同步；配置来自 `[platform.telegram]`。
-- `internal/platform/cli/tui.go`：Bubble Tea TUI 主编排；提供聊天/通知/输入区、历史、滚动、补全候选窗、reasoning 与正文分离显示、状态栏。
 - `internal/platform/cli/tui_copy.go`：CLI TUI copy mode；支持鼠标分区滚动、vim模式复制和搜索；`clipboard.go` 默认用系统剪贴板并在 SSH/tmux 等场景走 OSC52 fallback。
 
 ### Session 服务

@@ -450,6 +450,11 @@ func loadTOML(path string, out any) error {
 		return fmt.Errorf("read config %q: %w", path, err)
 	}
 	if err := toml.Unmarshal(data, out); err != nil {
+		var decodeErr *toml.DecodeError
+		if errors.As(err, &decodeErr) {
+			row, col := decodeErr.Position()
+			return fmt.Errorf("parse config %q at line %d, column %d: %w", path, row, col, err)
+		}
 		return fmt.Errorf("parse config %q: %w", path, err)
 	}
 	return nil

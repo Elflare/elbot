@@ -235,7 +235,42 @@ HTTP 响应只表示 Elnis 已接收或拒绝请求，不等待 LLM 完成。
 }
 ```
 
+## CLI 远程连接
+
+`platform.cli` 同时保存 CLI 服务端和客户端配置。`server` 是当前 ElBot 作为服务端时读取的配置，`clients` 是当前命令作为 CLI 客户端连接服务端时读取的配置。
+
+```toml
+[platform.cli]
+enabled = true
+default_client = "local"
+default_url = "ws://127.0.0.1:32172/cli/v1/ws"
+
+[platform.cli.server]
+enabled = false
+listen = "127.0.0.1:32172"
+
+[platform.cli.server.tokens]
+local = ["ELBOT_CLI_LOCAL_TOKEN"]
+windows = ["ELBOT_CLI_WINDOWS_TOKEN"]
+
+[platform.cli.clients.local]
+token_env = ["ELBOT_CLI_LOCAL_TOKEN"]
+
+[platform.cli.clients.windows]
+url = "ws://192.168.1.10:32172/cli/v1/ws"
+token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
+```
+
+- `server.enabled=true` 时，`elbot service run` 会启动本地 CLI WebSocket 服务端。
+- `server.listen` 是服务端监听地址。
+- `default_url` 是客户端默认连接地址；连接其他机器时在 `clients.<name>.url` 写远程 WebSocket 地址。
+- `server.tokens` 是服务端允许登录的 CLI client id 与 token 环境变量列表。
+- `clients.<name>` 是客户端 profile；`id` 可省略，默认等于 `<name>`；`url` 可省略，默认使用 `default_url`。
+- token 与 Provider/Elnis 一样，优先读系统环境变量，再读配置目录 `.env`。
+- `elbot cli -c <name>` 使用指定客户端 profile 连接服务端；只有一个默认客户端时可省略 `-c`。
+
 ## 投递目标与安全边界
+
 
 Elwisp 可以在 `targets` 中声明期望目标，但最终目标由 Elnis 裁决。
 
