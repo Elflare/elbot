@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "fe6d61982722161db84cfbb7577ac3bab8a29e054675fd3ede2af7f70c31d1b9",
+      "source_hash": "dfbb56b6d1d90203ccdc152c8e544c6d111fe1eadf297dd0bc8bcb2f0b5e46af",
       "target": "README.md",
-      "updated_at": 1781857840
+      "updated_at": 1781948985
     },
     "docs/README.md": {
       "source_hash": "b40f5d1519dbd52e73aeee1fad99f614728052e3ae821add12de6ea4f9d69a7c",
@@ -16,19 +16,19 @@
       "updated_at": 1781786015
     },
     "docs/concepts.md": {
-      "source_hash": "d59a520b2ffb138df4d7e6b292cc137b57f1336de3c2c1510d5236ef34a737c2",
+      "source_hash": "b2964160150cf20d866e56679d9bfdb5e7265973686a3e3eeceb9dadd8252eca",
       "target": "docs.en/concepts.md",
-      "updated_at": 1781786062
+      "updated_at": 1781949019
     },
     "docs/configuration.md": {
-      "source_hash": "58f6b7471635475dc7c4986ee2d2392629c5035787ed1d2387b59ff05dee6daf",
+      "source_hash": "39639b9950e79bd0ddd33d10d4d21c638babb3a6a4adb5c7b30c8136c0f59d0d",
       "target": "docs.en/configuration.md",
-      "updated_at": 1781854884
+      "updated_at": 1781949050
     },
     "docs/elnis-usage.md": {
-      "source_hash": "11860a47194b89e73540a0329875819ecddee15272df4804b8151255dcd0114f",
+      "source_hash": "cd3aeecce1b6390065374099b293f92c343fe2739acceb0187776bfc32560781",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1781929269
+      "updated_at": 1781949084
     },
     "docs/elnis.md": {
       "source_hash": "3a596f4b6431111170c40d585b756e710b4859cba276cf015e2ed390a4aa2015",
@@ -41,9 +41,9 @@
       "updated_at": 1781786413
     },
     "docs/getting-started.md": {
-      "source_hash": "adc99cfd21a097bc4e345227ef000dc453e461b53b1441ddc28eed13e9def556",
+      "source_hash": "e8c05543043f74e4df379b1cc902661fd9d50fcecab392cb1a77f3cc334cd881",
       "target": "docs.en/getting-started.md",
-      "updated_at": 1781854929
+      "updated_at": 1781949103
     }
   },
   "segments": {
@@ -918,6 +918,14 @@
       "source_hash": "743bf0c193274ad3c8ad8db88068cf1d27a05e7f04ac90efdfb0acab7baa73cd",
       "translation": "Minimum usage flow:\n",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:75661f29eac1a03c6d0192bd7b07416c6b61d14e6938f18f907fdd6cc86f5143": {
+      "kind": "paragraph",
+      "source": "**轻量沙盒隔离**： 后台 Shell 执行受到 AST 级沙盒约束。后台任务拥有独立 sandbox 工作目录，降低误操作影响。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "75661f29eac1a03c6d0192bd7b07416c6b61d14e6938f18f907fdd6cc86f5143",
+      "translation": "**Lightweight Sandbox Isolation**: Background Shell execution is subject to AST-level sandbox constraints. Background tasks have an independent sandbox working directory, reducing the impact of misoperations.\n",
+      "updated_at": 1781948985
     },
     "README.zh-CN.md:paragraph:799adfce4feb71edf7bd6c91c9acf3b3ce1e8f20f575bee6ed0b012706c9f875": {
       "kind": "paragraph",
@@ -3255,6 +3263,14 @@
       "translation": "ElBot does not inject the full schema of all tools by default in every round of work conversation.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:5a88c641964bc83c1dbc931f229ac3a1d486b9625661eba04d4f9722b43dce96": {
+      "kind": "paragraph",
+      "source": "LLM Cron 可以通过 __ELBOT_CODE_0__ 预注入工具名或 Skill 名：普通工具会注入 schema，Skill 会把说明注入后台任务 prompt，并自动注入对应 runner。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "5a88c641964bc83c1dbc931f229ac3a1d486b9625661eba04d4f9722b43dce96",
+      "translation": "LLM Cron can pre-inject tool names or Skill names via __ELBOT_CODE_0__: ordinary tools will inject the schema, while Skills will inject the description into the background task prompt and automatically inject the corresponding runner.",
+      "updated_at": 1781949019
+    },
     "docs/concepts.md:paragraph:5c1934d62e9349e26fd3dbe0d80f72a350593ff544fe117c01a0ef6253ec7477": {
       "kind": "paragraph",
       "source": "完整语法见 [ELyph 任务表示法](elyph.md)。\n",
@@ -3286,6 +3302,14 @@
       "source_hash": "6614c3bc4ac4b18dba931bd7a6bcaa90ecbec01f7884e1fe656489af11e38f70",
       "translation": "ElBot's tool system includes risk levels and permission control.\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:66434b0faf95d01acb9504c41cc8421256e0ed6b7a6fab6c11c186bad01a8d48": {
+      "kind": "paragraph",
+      "source": "LLM Cron 的最终 JSON 可通过 __ELBOT_CODE_0__ 附带当前任务工作目录内的图片或文件相对路径。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "66434b0faf95d01acb9504c41cc8421256e0ed6b7a6fab6c11c186bad01a8d48",
+      "translation": "The final JSON of LLM Cron can attach relative paths of images or files within the current task working directory via __ELBOT_CODE_0__.\n",
+      "updated_at": 1781949019
     },
     "docs/concepts.md:paragraph:6e42cc2f1a5cddf15b21787db94f70824aef56dc96fc8d4ad0d88ec625fe1b5a": {
       "kind": "paragraph",
@@ -3342,6 +3366,14 @@
       "source_hash": "7ffa11ff072aa87fc6a8264d5a02d4c6f13b6f50944062c424fc660b113f8914",
       "translation": "Long-term memory uses Markdown files as human-readable source data and SQLite FTS as a reconstructible search index.\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:864086a84543bbd2414a750721374355d5f246b144642cd0950725c05241128d": {
+      "kind": "paragraph",
+      "source": "后台任务中的所有路径参数都应使用当前任务工作目录内的相对路径；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "864086a84543bbd2414a750721374355d5f246b144642cd0950725c05241128d",
+      "translation": "All path parameters in background tasks should use relative paths within the current task working directory;",
+      "updated_at": 1781949019
     },
     "docs/concepts.md:paragraph:89b0e88796be28cfc196e216b8571c966e19f576bfc0f38e4336823a1181fa5a": {
       "kind": "paragraph",
@@ -4543,6 +4575,14 @@
       "translation": "Lookup order:\n",
       "updated_at": 1781790272
     },
+    "docs/configuration.md:paragraph:1faa263becb315d9218e99ec661dcdd56c855d92c1c32eef3ecaed5fe176cad4": {
+      "kind": "paragraph",
+      "source": "运行日志、SQLite、sandbox 等运行数据也会按配置或默认数据目录存放。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1faa263becb315d9218e99ec661dcdd56c855d92c1c32eef3ecaed5fe176cad4",
+      "translation": "Runtime logs, SQLite, sandbox, and other runtime data will also be stored according to the configuration or the default data directory.\n",
+      "updated_at": 1781949050
+    },
     "docs/configuration.md:paragraph:1feaca43453e4d561393b74ffa970d1046385242029d7b8497a5857cdfb9f54b": {
       "kind": "paragraph",
       "source": "默认使用 __ELBOT_CODE_0__。如果要支持其他命令前缀，可以在这里添加。\n",
@@ -4990,6 +5030,14 @@
       "source_hash": "f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f",
       "translation": "Example:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:fc1e54ad6fecf7488ed8d0808836934a04ddcaace9d5987114a2382683724bd9": {
+      "kind": "paragraph",
+      "source": "默认维护任务包含日志、sandbox 和聊天历史清理，例如 sandbox 默认每天 04:00 清理 7 天前内容，聊天历史默认每天 04:35 执行：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "fc1e54ad6fecf7488ed8d0808836934a04ddcaace9d5987114a2382683724bd9",
+      "translation": "Default maintenance tasks include the cleanup of logs, sandbox, and chat history. For example, the sandbox defaults to cleaning up content older than 7 days every day at 04:00, and chat history cleanup is executed every day at 04:35 by default:\n",
+      "updated_at": 1781949050
     },
     "docs/configuration.md:table:016626e41f18a4b100b8eeee715dba8c89fdea7bfa91eac4efb6f0149d490adf": {
       "kind": "table",
@@ -5519,6 +5567,22 @@
       "translation": "File size is limited by __ELBOT_CODE_1__ of __ELBOT_CODE_0__ (default 100MB).",
       "updated_at": 1781929269
     },
+    "docs/elnis-usage.md:paragraph:01132ca445e606d3dc2b64170c994478f851cadcbeec4629803a075ed810887e": {
+      "kind": "paragraph",
+      "source": "后台 LLM 处理事件后，__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 可附带图片/文件路径，Elnis 会在报告发送时一并投递。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "01132ca445e606d3dc2b64170c994478f851cadcbeec4629803a075ed810887e",
+      "translation": "After the background LLM processes the event, the __ELBOT_CODE_1__ of __ELBOT_CODE_0__ can include image/file paths, which Elnis will deliver together when the report is sent.",
+      "updated_at": 1781949084
+    },
+    "docs/elnis-usage.md:paragraph:143cb8eb95395e1b1f5410bb1ed4ec3407281333e667515d9b872e8f2fbd04c9": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 必须是当前任务工作目录内的相对路径，不能使用绝对路径、__ELBOT_CODE_1__ 或 __ELBOT_CODE_2__。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "143cb8eb95395e1b1f5410bb1ed4ec3407281333e667515d9b872e8f2fbd04c9",
+      "translation": "__ELBOT_CODE_0__ must be a relative path within the current task working directory; absolute paths, __ELBOT_CODE_1__, or __ELBOT_CODE_2__ cannot be used.\n",
+      "updated_at": 1781949084
+    },
     "docs/elnis-usage.md:paragraph:164dc12a20c5f77e4831ecc3dc9452ef0b001cc78cd2abb73983e4398560321f": {
       "kind": "paragraph",
       "source": "HTTP 响应只表示 Elnis 已接收或拒绝请求，不等待 LLM 完成。\n",
@@ -5718,6 +5782,14 @@
       "source_hash": "0c70665b6eb65f1aebf3b59f684ce52ed3473b2443ed4b4e0b815e2e9d66b8c2",
       "translation": "No",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:0e88874c152f1e1e17c22df0682e08c33246f3d18a6633594dbd7cbfa437de81": {
+      "kind": "table",
+      "source": "Elwisp 名称，也是来源身份之一；仅允许英文字母、数字、__ELBOT_CODE_0__、__ELBOT_CODE_1__，不允许点号。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "0e88874c152f1e1e17c22df0682e08c33246f3d18a6633594dbd7cbfa437de81",
+      "translation": "Elwisp name, which is also one of the source identities; only English letters, numbers, __ELBOT_CODE_0__, and __ELBOT_CODE_1__ are allowed; dots are not allowed.",
+      "updated_at": 1781949084
     },
     "docs/elnis-usage.md:table:11da9dc4428537c43ec205e68dcd8e12c23e84fda2f14d84b5bf16f54d3ed3a8": {
       "kind": "table",
@@ -7854,6 +7926,14 @@
       "source_hash": "7e7e1b1c7266bfbce08d2fd3423fabee8a7671917b9e7a5c8d62e427957e8c9b",
       "translation": "The default runtime model is specified in __ELBOT_CODE_0__:\n",
       "updated_at": 1781534482
+    },
+    "docs/getting-started.md:paragraph:8429e5040d047904b63a1e7135a5b45e7348f29018bd9dd79f6cb7deca6c39bd": {
+      "kind": "paragraph",
+      "source": "运行数据默认进入平台数据目录，例如 SQLite、日志和 sandbox。具体规则见 [配置说明](configuration.md)。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "8429e5040d047904b63a1e7135a5b45e7348f29018bd9dd79f6cb7deca6c39bd",
+      "translation": "Runtime data is stored in the platform data directory by default, such as SQLite, logs, and sandbox. For specific rules, see [Configuration Instructions](configuration.md).\n",
+      "updated_at": 1781949103
     },
     "docs/getting-started.md:paragraph:84e2b7f0aded1d7c0715409f35b94fbc2d27dc6b7e4f457cc990a3be5c42b2fd": {
       "kind": "paragraph",

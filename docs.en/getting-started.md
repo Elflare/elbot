@@ -169,7 +169,8 @@ Default configuration lookup order:
 3. Platform configuration directory, such as Windows `%APPDATA%/ElBot/app.toml` or Linux XDG configuration directory.
 4. If the platform configuration does not exist, the platform default configuration will be automatically generated.
 
-Runtime data is stored in the platform data directory by default, such as SQLite, logs, sandbox, and artifacts. For detailed rules, see [Configuration Instructions](configuration.md).
+Runtime data is stored in the platform data directory by default, such as SQLite, logs, and sandbox. For specific rules, see [Configuration Instructions](configuration.md).
+
 
 ## FAQ
 
