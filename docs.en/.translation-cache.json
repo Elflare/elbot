@@ -26,9 +26,9 @@
       "updated_at": 1781949050
     },
     "docs/elnis-usage.md": {
-      "source_hash": "11860a47194b89e73540a0329875819ecddee15272df4804b8151255dcd0114f",
+      "source_hash": "cd3aeecce1b6390065374099b293f92c343fe2739acceb0187776bfc32560781",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1781929269
+      "updated_at": 1781949084
     },
     "docs/elnis.md": {
       "source_hash": "3a596f4b6431111170c40d585b756e710b4859cba276cf015e2ed390a4aa2015",
@@ -5567,6 +5567,22 @@
       "translation": "File size is limited by __ELBOT_CODE_1__ of __ELBOT_CODE_0__ (default 100MB).",
       "updated_at": 1781929269
     },
+    "docs/elnis-usage.md:paragraph:01132ca445e606d3dc2b64170c994478f851cadcbeec4629803a075ed810887e": {
+      "kind": "paragraph",
+      "source": "后台 LLM 处理事件后，__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 可附带图片/文件路径，Elnis 会在报告发送时一并投递。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "01132ca445e606d3dc2b64170c994478f851cadcbeec4629803a075ed810887e",
+      "translation": "After the background LLM processes the event, the __ELBOT_CODE_1__ of __ELBOT_CODE_0__ can include image/file paths, which Elnis will deliver together when the report is sent.",
+      "updated_at": 1781949084
+    },
+    "docs/elnis-usage.md:paragraph:143cb8eb95395e1b1f5410bb1ed4ec3407281333e667515d9b872e8f2fbd04c9": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 必须是当前任务工作目录内的相对路径，不能使用绝对路径、__ELBOT_CODE_1__ 或 __ELBOT_CODE_2__。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "143cb8eb95395e1b1f5410bb1ed4ec3407281333e667515d9b872e8f2fbd04c9",
+      "translation": "__ELBOT_CODE_0__ must be a relative path within the current task working directory; absolute paths, __ELBOT_CODE_1__, or __ELBOT_CODE_2__ cannot be used.\n",
+      "updated_at": 1781949084
+    },
     "docs/elnis-usage.md:paragraph:164dc12a20c5f77e4831ecc3dc9452ef0b001cc78cd2abb73983e4398560321f": {
       "kind": "paragraph",
       "source": "HTTP 响应只表示 Elnis 已接收或拒绝请求，不等待 LLM 完成。\n",
@@ -5766,6 +5782,14 @@
       "source_hash": "0c70665b6eb65f1aebf3b59f684ce52ed3473b2443ed4b4e0b815e2e9d66b8c2",
       "translation": "No",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:0e88874c152f1e1e17c22df0682e08c33246f3d18a6633594dbd7cbfa437de81": {
+      "kind": "table",
+      "source": "Elwisp 名称，也是来源身份之一；仅允许英文字母、数字、__ELBOT_CODE_0__、__ELBOT_CODE_1__，不允许点号。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "0e88874c152f1e1e17c22df0682e08c33246f3d18a6633594dbd7cbfa437de81",
+      "translation": "Elwisp name, which is also one of the source identities; only English letters, numbers, __ELBOT_CODE_0__, and __ELBOT_CODE_1__ are allowed; dots are not allowed.",
+      "updated_at": 1781949084
     },
     "docs/elnis-usage.md:table:11da9dc4428537c43ec205e68dcd8e12c23e84fda2f14d84b5bf16f54d3ed3a8": {
       "kind": "table",

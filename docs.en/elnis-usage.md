@@ -182,7 +182,8 @@ Behavior remains unchanged when `segments` is empty; when not empty, segments ar
 
 ### report_segments in LLM results
 
-After the background LLM processes an event, the `report_segments` of `JSONResult` can include image/file paths, which Elnis will deliver together when the report is sent.
+After the background LLM processes the event, the `report_segments` of `JSONResult` can include image/file paths, which Elnis will deliver together when the report is sent. `url` must be a relative path within the current task working directory; absolute paths, `~`, or `..` cannot be used.
+
 
 ```json
 {
@@ -190,8 +191,9 @@ After the background LLM processes an event, the `report_segments` of `JSONResul
   "need_report": true,
   "report": "分析完成，见截图。",
   "report_segments": [
-    {"type": "image", "url": "/data/sandbox/elnis/monitor/evt-001/chart.png"}
+    {"type": "image", "url": "chart.png"}
   ]
+
 }
 ```
 
@@ -201,7 +203,8 @@ Common fields:
 | Field | Required | Description |
 | --- | ---: | --- |
 | `version` | Yes | Protocol version, currently `elvena.v1`. |
-| `elwisp.name` | Yes | Elwisp name, which is also one of the source identities. |
+| `elwisp.name` | Yes | Elwisp name, which is also one of the source identities; only English letters, numbers, `_`, and `-` are allowed; dots are not allowed. |
+
 | `elwisp.tags` | No | Elwisp tag, used for logs and statistics. |
 | `source` | Yes | Specific event source, such as service name, script name, or RSS name. |
 | `id` | Yes | Unique event ID within the source. |
