@@ -33,6 +33,7 @@ type Request struct {
 	ModelSlot     string                          `json:"model_slot"`
 	ToolListNames []string                        `json:"tool_list_names"`
 	Tools         []toolrun.ELwispToolDeclaration `json:"tools"`
+	Segments     []Segment                       `json:"segments,omitempty"`
 	Targets       Targets                         `json:"targets"`
 	Meta          map[string]any                  `json:"meta"`
 }
@@ -40,6 +41,24 @@ type Request struct {
 type Elwisp struct {
 	Name string   `json:"name"`
 	Tags []string `json:"tags"`
+}
+
+// SegmentKind is the type of an Elvena message segment.
+type SegmentKind string
+
+const (
+	SegmentKindText  SegmentKind = "text"
+	SegmentKindImage SegmentKind = "image"
+	SegmentKindFile  SegmentKind = "file"
+)
+
+// Segment is a typed content segment in an Elvena event.
+type Segment struct {
+	Kind     SegmentKind `json:"kind"`
+	Text     string      `json:"text,omitempty"`
+	URL      string      `json:"url,omitempty"`
+	Name     string      `json:"name,omitempty"`
+	MIMEType string      `json:"mime_type,omitempty"`
 }
 
 type Targets struct {
@@ -66,6 +85,7 @@ type Event struct {
 	TagsJSON         string
 	RequestedTargets string
 	ResolvedTargets  string
+	SegmentPaths    map[string]string
 	CreatedAt        time.Time
 	ReceivedAt       time.Time
 }
