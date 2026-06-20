@@ -21,9 +21,9 @@
       "updated_at": 1781949019
     },
     "docs/configuration.md": {
-      "source_hash": "39639b9950e79bd0ddd33d10d4d21c638babb3a6a4adb5c7b30c8136c0f59d0d",
+      "source_hash": "529735ef49801cc9ab29b4471c673ecc2a1437950a3a0bf750919924cc5ba42a",
       "target": "docs.en/configuration.md",
-      "updated_at": 1781949050
+      "updated_at": 1781962094
     },
     "docs/elnis-usage.md": {
       "source_hash": "cd3aeecce1b6390065374099b293f92c343fe2739acceb0187776bfc32560781",
@@ -3903,6 +3903,14 @@
       "translation": "Logs and Maintenance Tasks",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:heading:f86ec151cedd4402c6834b0fee95458e6c3825802557b84ce74918205e90d5da": {
+      "kind": "heading",
+      "source": "CLI 远程配置",
+      "source_file": "docs/configuration.md",
+      "source_hash": "f86ec151cedd4402c6834b0fee95458e6c3825802557b84ce74918205e90d5da",
+      "translation": "CLI Remote Configuration",
+      "updated_at": 1781962094
+    },
     "docs/configuration.md:list:005872fed21e156f096a6909121afe58a97417df3614ea9c7aa6f806120ea3ff": {
       "kind": "list",
       "source": "压缩只影响发给 LLM 的上下文视图，不删除原始历史。",
@@ -4087,6 +4095,14 @@
       "translation": "Activated tags are written to the Session metadata and remain effective after __ELBOT_CODE_0__.",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:list:455dd27c5413f3cc87b796d44da3029f5da92c1f738c013af8acd2c4ac008c18": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 可省略，默认等于 __ELBOT_CODE_1__；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "455dd27c5413f3cc87b796d44da3029f5da92c1f738c013af8acd2c4ac008c18",
+      "translation": "__ELBOT_CODE_0__ can be omitted, defaulting to __ELBOT_CODE_1__;",
+      "updated_at": 1781962094
+    },
     "docs/configuration.md:list:4bcbc0d124768f5d48ea15575767dd38516ab3d76725cdf9ed434ab7b2142dcf": {
       "kind": "list",
       "source": "配置 tag 会追加到内置 tag，不覆盖内置 tag。",
@@ -4175,6 +4191,14 @@
       "translation": "Prompt text is dynamically read from __ELBOT_CODE_0__; changes to the file affect subsequent requests, behaving similarly to __ELBOT_CODE_1__.",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:list:64d5a689eabebecd644020d716354af55e7446738a77524f221206f612f9eed4": {
+      "kind": "list",
+      "source": "CLI token 与 Provider API Key 一样，优先读系统环境变量，再读配置目录 __ELBOT_CODE_0__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "64d5a689eabebecd644020d716354af55e7446738a77524f221206f612f9eed4",
+      "translation": "Similar to the Provider API Key, the CLI token prioritizes system environment variables, then reads the configuration directory __ELBOT_CODE_0__.",
+      "updated_at": 1781962094
+    },
     "docs/configuration.md:list:64f41c4e2701006c0fb47027437a0b34edcc825f2edabf3bc780508f4220b2aa": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__：这个 tag 成功激活后追加到 system prompt 的工具使用策略。内容会直接给模型看，不会自动添加 tag 名标题。",
@@ -4182,6 +4206,22 @@
       "source_hash": "64f41c4e2701006c0fb47027437a0b34edcc825f2edabf3bc780508f4220b2aa",
       "translation": "__ELBOT_CODE_0__: The tool usage strategy appended to the system prompt after this tag is successfully activated. The content will be presented directly to the model without automatically adding a tag name header.",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:list:6554fbd6b74ffac0ef52dfed6cbae70371d846e87f3c89402ce7cee2e45c6acb": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 使用指定客户端 profile；未指定时使用 __ELBOT_CODE_1__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "6554fbd6b74ffac0ef52dfed6cbae70371d846e87f3c89402ce7cee2e45c6acb",
+      "translation": "__ELBOT_CODE_0__ uses the specified client profile; if not specified, __ELBOT_CODE_1__ is used.",
+      "updated_at": 1781962094
+    },
+    "docs/configuration.md:list:658171a951c593cf5d5abf56cc58e2bf029412d826921ec1fc017ae33b331d1c": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 时，__ELBOT_CODE_1__ 会启动 CLI WebSocket 服务端。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "658171a951c593cf5d5abf56cc58e2bf029412d826921ec1fc017ae33b331d1c",
+      "translation": "When __ELBOT_CODE_0__, __ELBOT_CODE_1__ will start the CLI WebSocket server.",
+      "updated_at": 1781962094
     },
     "docs/configuration.md:list:673c5146aa00df1efd0aefc0b603d0d3d887faf7d0f610f1a5c63ec35dab6767": {
       "kind": "list",
@@ -4335,6 +4375,14 @@
       "translation": "If neither the platform configuration nor the source code example configuration exists, a default configuration file will be automatically generated in the platform configuration directory.",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:list:94b781836317d2424e94b1acf367fd5879f8587f7092dc91d030c29077eb4e7f": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是服务端允许登录的 CLI client id 与 token 环境变量列表。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "94b781836317d2424e94b1acf367fd5879f8587f7092dc91d030c29077eb4e7f",
+      "translation": "__ELBOT_CODE_0__ is the list of CLI client ID and token environment variables allowed to log in to the server.",
+      "updated_at": 1781962094
+    },
     "docs/configuration.md:list:95285e9503bccb972a08755eb4929deaee9bb4e2ece730a32ef8333457d35fe8": {
       "kind": "list",
       "source": "CLI 默认本地用户 __ELBOT_CODE_0__ 是超级管理员。",
@@ -4342,6 +4390,14 @@
       "source_hash": "95285e9503bccb972a08755eb4929deaee9bb4e2ece730a32ef8333457d35fe8",
       "translation": "The default local CLI user __ELBOT_CODE_0__ is a superadmin.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:95f0425bb70f8437ec10e7b2e3709d2dc2719eb94905fd761872378df243720c": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 可省略，默认使用 __ELBOT_CODE_1__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "95f0425bb70f8437ec10e7b2e3709d2dc2719eb94905fd761872378df243720c",
+      "translation": "__ELBOT_CODE_0__ can be omitted, defaulting to __ELBOT_CODE_1__.",
+      "updated_at": 1781962094
     },
     "docs/configuration.md:list:99014d75e582623e4c8d937cc0349a0a4206c08e2974ae44db5a67cf5e13b631": {
       "kind": "list",
@@ -4375,6 +4431,14 @@
       "translation": "System environment variable __ELBOT_CODE_0__.",
       "updated_at": 1781790272
     },
+    "docs/configuration.md:list:a8cc1dc35863df7c0a345c5282b86da0271caa0ead8fb71b7bb41eee9807ac24": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是客户端默认连接地址；连接其他机器时在 __ELBOT_CODE_1__ 写远程 WebSocket 地址。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "a8cc1dc35863df7c0a345c5282b86da0271caa0ead8fb71b7bb41eee9807ac24",
+      "translation": "__ELBOT_CODE_0__ is the default client connection address; when connecting to other machines, enter the remote WebSocket address in __ELBOT_CODE_1__.",
+      "updated_at": 1781962094
+    },
     "docs/configuration.md:list:aaf8e5247d2c1a38fa5fdb79bdbb0ae6bff12c66e02df9913eabd278d9055efb": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 提供默认请求参数。",
@@ -4390,6 +4454,14 @@
       "source_hash": "b71f94dcfb7ea11b76bcea9f8c8312063a3ff3106d4a04324afc84f4a71eb05d",
       "translation": "__ELBOT_CODE_0__ determines whether a new Session defaults to __ELBOT_CODE_1__ or __ELBOT_CODE_2__.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:babcc563711a41279f1925397dbd2af3d7680faabe2a01a61bb5ac33cff3fc6e": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是客户端 profile；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "babcc563711a41279f1925397dbd2af3d7680faabe2a01a61bb5ac33cff3fc6e",
+      "translation": "__ELBOT_CODE_0__ is the client profile;",
+      "updated_at": 1781962094
     },
     "docs/configuration.md:list:bfa0df2dd496c9cdda4a014f316e6d436af150a4da3a6a28569036ca86cf92a1": {
       "kind": "list",
@@ -4511,6 +4583,14 @@
       "translation": "__ELBOT_CODE_0__ and __ELBOT_CODE_1__ reports only support sending to superadmins via the platform decided by Elnis, and do not support arbitrary user/group targets.",
       "updated_at": 1781709336
     },
+    "docs/configuration.md:list:ef1cac3cf7d4384fd3b43cb37f9efa8744f73a39760280b77e27ed0c6174b59a": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是服务端监听地址。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "ef1cac3cf7d4384fd3b43cb37f9efa8744f73a39760280b77e27ed0c6174b59a",
+      "translation": "__ELBOT_CODE_0__ is the server listening address.",
+      "updated_at": 1781962094
+    },
     "docs/configuration.md:list:f31646a8be06d4f780c4c5e2e465aa83cfc7dac48d114fae5c53de76cf7571be": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 指向系统环境变量中的 Bot Token；也可以用 __ELBOT_CODE_1__ 直接写入配置，但不建议提交真实 token。",
@@ -4526,6 +4606,14 @@
       "source_hash": "ff5524722281e39bb8652d7ead7019fef72e2b66d2011735561778369a621f16",
       "translation": "__ELBOT_CODE_0__ is the variable name pointing to the proxy address; the reading order is likewise system environment variables, then the configuration directory __ELBOT_CODE_1__;",
       "updated_at": 1781846628
+    },
+    "docs/configuration.md:paragraph:001e68adb30512aef5a23329a648a9e804678ff97a1473526953f8aae4ab2781": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 同时保存 CLI 服务端和客户端配置。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "001e68adb30512aef5a23329a648a9e804678ff97a1473526953f8aae4ab2781",
+      "translation": "__ELBOT_CODE_0__ stores both CLI server and client configurations.",
+      "updated_at": 1781962094
     },
     "docs/configuration.md:paragraph:00f557986b604234cdc9f87589bd18b3660b84279742586e06312e9be8be1d2f": {
       "kind": "paragraph",
@@ -4910,6 +4998,14 @@
       "source_hash": "c409a2adc182e829412b676b2c5eef0ba96295f6fd7d021efae6bacc9f5c44d5",
       "translation": "Runtime logs, SQLite, sandbox, artifacts, and other runtime data will also be stored according to the configuration or the default data directory.\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:c6184922d0b4486d752dd6cc799531d14e3d8046b9aff952d4613836b7a53995": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 是当前 ElBot 作为服务端运行时读取的配置，__ELBOT_CODE_1__ 是当前命令作为 CLI 客户端连接服务端时读取的配置。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "c6184922d0b4486d752dd6cc799531d14e3d8046b9aff952d4613836b7a53995",
+      "translation": "__ELBOT_CODE_0__ is the configuration read when the current ElBot runs as a server, and __ELBOT_CODE_1__ is the configuration read when the current command connects to the server as a CLI client.\n",
+      "updated_at": 1781962094
     },
     "docs/configuration.md:paragraph:c74858812ff04da3be7f272e7bcefd762a521226fb6cdf4adfd0a5b1d2beef3a": {
       "kind": "paragraph",

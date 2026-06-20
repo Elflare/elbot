@@ -104,6 +104,40 @@ OPENAI_API_KEY=your-api-key
 
 Do not commit actual keys to the repository.
 
+## CLI Remote Configuration
+
+`[platform.cli]` stores both CLI server and client configurations. `server` is the configuration read when the current ElBot runs as a server, and `clients` is the configuration read when the current command connects to the server as a CLI client.
+
+```toml
+[platform.cli]
+enabled = true
+default_client = "local"
+default_url = "ws://127.0.0.1:32172/cli/v1/ws"
+
+[platform.cli.server]
+enabled = false
+listen = "127.0.0.1:32172"
+
+[platform.cli.server.tokens]
+local = ["ELBOT_CLI_LOCAL_TOKEN"]
+windows = ["ELBOT_CLI_WINDOWS_TOKEN"]
+
+[platform.cli.clients.local]
+token_env = ["ELBOT_CLI_LOCAL_TOKEN"]
+
+[platform.cli.clients.windows]
+url = "ws://192.168.1.10:32172/cli/v1/ws"
+token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
+```
+
+- When `server.enabled=true`, `elbot service run` will start the CLI WebSocket server.
+- `server.listen` is the server listening address.
+- `default_url` is the default client connection address; when connecting to other machines, enter the remote WebSocket address in `clients.<name>.url`.
+- `server.tokens` is the list of CLI client ID and token environment variables allowed to log in to the server.
+- `clients.<name>` is the client profile; `id` can be omitted, defaulting to `<name>`; `url` can be omitted, defaulting to `default_url`.
+- `elbot cli -c <name>` uses the specified client profile; if not specified, `default_client` is used.
+- Similar to the Provider API Key, the CLI token prioritizes system environment variables, then reads the configuration directory `.env`.
+
 ## Go Skill Compiler Path
 
 After modifying the `code_source` of the Go Skill, ElBot will automatically execute `gofmt`, `go build`, and reload. If ElBot is running as a Linux service, the service environment may not have loaded the `PATH` of the interactive shell, causing the `go` available in the terminal to be invisible to ElBot.
