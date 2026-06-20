@@ -55,6 +55,8 @@ ELNIS_HOME_TOKEN=change-me
 Configuration description:
 
 - `enabled=false` will not start the Elnis HTTP runtime.
+- `elbot cli` is CLI-only mode; even with `enabled=true`, the Elnis HTTP runtime will not start; Please use `elbot run` or `elbot service run` when you need to receive Elvena events.
+- Currently, `targets.platforms=["cli"]` is only applicable to scenarios where Elnis and the CLI are in the same `elbot run` foreground process; `elbot service run` cannot currently deliver messages to another independent `elbot cli` process.
 - Do not write the token plaintext into the configuration; it is recommended to place it in system environment variables or the configuration directory `.env`.
 - `token_env` can contain multiple environment variable names, which will be tried in order.
 - Elwisp is enabled by default; it will receive events if `[elwisps.<name>]` is not specified, if it is specified but `enabled` is not, or if `enabled=true` is specified.
@@ -235,7 +237,42 @@ The HTTP response only indicates that Elnis has received or rejected the request
 }
 ```
 
+## CLI Remote Connection
+
+`platform.cli` saves both CLI server and client configurations. `server` is the configuration read when ElBot acts as the server, and `clients` is the configuration read when the current command connects to the server as a CLI client.
+
+```toml
+[platform.cli]
+enabled = true
+default_client = "local"
+default_url = "ws://127.0.0.1:32172/cli/v1/ws"
+
+[platform.cli.server]
+enabled = false
+listen = "127.0.0.1:32172"
+
+[platform.cli.server.tokens]
+local = ["ELBOT_CLI_LOCAL_TOKEN"]
+windows = ["ELBOT_CLI_WINDOWS_TOKEN"]
+
+[platform.cli.clients.local]
+token_env = ["ELBOT_CLI_LOCAL_TOKEN"]
+
+[platform.cli.clients.windows]
+url = "ws://192.168.1.10:32172/cli/v1/ws"
+token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
+```
+
+- When `server.enabled=true`, `elbot service run` will start a local CLI WebSocket server.
+- `server.listen` is the server listening address.
+- `default_url` is the default connection address for the client; when connecting to other machines, specify the remote WebSocket address in `clients.<name>.url`.
+- `server.tokens` is the list of CLI client ID and token environment variables allowed for server login.
+- `clients.<name>` is the client profile; `id` can be omitted, defaulting to `<name>`; `url` can be omitted, defaulting to `default_url`.
+- Similar to Provider/Elnis, the token is read from system environment variables first, and then from the configuration directory `.env`.
+- `elbot cli -c <name>` uses a specified client profile to connect to the server; `-c` can be omitted when there is only one default client.
+
 ## Delivery Target and Security Boundary
+
 
 Elwisp can declare the expected target in `targets`, but the final target is decided by Elnis.
 

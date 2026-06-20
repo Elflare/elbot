@@ -26,9 +26,9 @@
       "updated_at": 1781962094
     },
     "docs/elnis-usage.md": {
-      "source_hash": "cd3aeecce1b6390065374099b293f92c343fe2739acceb0187776bfc32560781",
+      "source_hash": "5379abea6f7c2022e9b38441a74e8e20d38139f969cdddb272d9b0a3b3ef1d0e",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1781949084
+      "updated_at": 1781962160
     },
     "docs/elnis.md": {
       "source_hash": "3a596f4b6431111170c40d585b756e710b4859cba276cf015e2ed390a4aa2015",
@@ -5423,6 +5423,14 @@
       "translation": "Download and Storage",
       "updated_at": 1781929269
     },
+    "docs/elnis-usage.md:heading:8be1122ed0dab1593bf3527d46934f07ffad89ad57c8cbe312016ac6b287749f": {
+      "kind": "heading",
+      "source": "CLI 远程连接",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "8be1122ed0dab1593bf3527d46934f07ffad89ad57c8cbe312016ac6b287749f",
+      "translation": "CLI Remote Connection",
+      "updated_at": 1781962160
+    },
     "docs/elnis-usage.md:heading:91a5a8f0d3e32a60d2bba181cb8e8bba4413dbc08a2c20d26b0e4ac0eb0bad0d": {
       "kind": "heading",
       "source": "Elnis 配置与使用",
@@ -5455,6 +5463,14 @@
       "translation": "The original token text is not written to logs.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:list:2e54ae6e5d79891c5bc982f9d1c528f056e91023dc0a49c2f520de35cd2a0a26": {
+      "kind": "list",
+      "source": "当前 __ELBOT_CODE_0__ 只适用于 Elnis 与 CLI 同处一个 __ELBOT_CODE_1__ 前台进程的场景；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "2e54ae6e5d79891c5bc982f9d1c528f056e91023dc0a49c2f520de35cd2a0a26",
+      "translation": "Currently, __ELBOT_CODE_0__ is only applicable to scenarios where Elnis and the CLI are in the same __ELBOT_CODE_1__ foreground process;",
+      "updated_at": 1781962160
+    },
     "docs/elnis-usage.md:list:386db06d0684ed7ac73a889e5b7c7fc1e835f120711930993d4b657f142817f2": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 表示允许投递给目标平台超级管理员。",
@@ -5462,6 +5478,14 @@
       "source_hash": "386db06d0684ed7ac73a889e5b7c7fc1e835f120711930993d4b657f142817f2",
       "translation": "__ELBOT_CODE_0__ indicates that delivery to the target platform's superadmin is allowed.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:3b53bcdbdd90365797eb25258a6133a5a821c9ec32009ca06f4935f68ddebbd0": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 使用指定客户端 profile 连接服务端；只有一个默认客户端时可省略 __ELBOT_CODE_1__。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "3b53bcdbdd90365797eb25258a6133a5a821c9ec32009ca06f4935f68ddebbd0",
+      "translation": "__ELBOT_CODE_0__ uses a specified client profile to connect to the server; __ELBOT_CODE_1__ can be omitted when there is only one default client.",
+      "updated_at": 1781962160
     },
     "docs/elnis-usage.md:list:43e4e906b591abaf7006bf4ee6a67e28cd109c453f8a9e885264ad23eaa65cec": {
       "kind": "list",
@@ -5471,6 +5495,14 @@
       "translation": "Elwisp cannot bypass the Tool Runtime and Security Policy to call ElBot tools.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:list:455dd27c5413f3cc87b796d44da3029f5da92c1f738c013af8acd2c4ac008c18": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 可省略，默认等于 __ELBOT_CODE_1__；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "455dd27c5413f3cc87b796d44da3029f5da92c1f738c013af8acd2c4ac008c18",
+      "translation": "__ELBOT_CODE_0__ can be omitted, defaulting to __ELBOT_CODE_1__;",
+      "updated_at": 1781962160
+    },
     "docs/elnis-usage.md:list:4d0d28105262232a2583176de44f8d40bcdeb869488bc9a8e358a35df93cf9b2": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 限制哪些 token 可以代表该 Elwisp 投递事件；不写则允许任意已认证 token。",
@@ -5478,6 +5510,14 @@
       "source_hash": "4d0d28105262232a2583176de44f8d40bcdeb869488bc9a8e358a35df93cf9b2",
       "translation": "__ELBOT_CODE_0__ restricts which tokens can represent the Elwisp to deliver events; if not specified, any authenticated token is allowed.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:4fdcb65d6e8a1c2ae5296dbb9ad69f435621e65c335c62c8615dd71057ae0924": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 暂不能把消息投递到另一个独立 __ELBOT_CODE_1__ 进程。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "4fdcb65d6e8a1c2ae5296dbb9ad69f435621e65c335c62c8615dd71057ae0924",
+      "translation": "__ELBOT_CODE_0__ cannot currently deliver messages to another independent __ELBOT_CODE_1__ process.",
+      "updated_at": 1781962160
     },
     "docs/elnis-usage.md:list:5c6d736596b8e683ecb7c0de019d1bd69420c0838b38ad750c5ac86bcc5a8451": {
       "kind": "list",
@@ -5519,6 +5559,14 @@
       "translation": "__ELBOT_CODE_0__ is the default delivery platform allowed by the Elnis policy.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:list:758b64310e1f465c83a9beb1bb80785cf67ebcd8376da863b374ed1de6f92bf2": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 时，__ELBOT_CODE_1__ 会启动本地 CLI WebSocket 服务端。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "758b64310e1f465c83a9beb1bb80785cf67ebcd8376da863b374ed1de6f92bf2",
+      "translation": "When __ELBOT_CODE_0__, __ELBOT_CODE_1__ will start a local CLI WebSocket server.",
+      "updated_at": 1781962160
+    },
     "docs/elnis-usage.md:list:8ae9e28aae0d922c05e2318b6bef3dc28c9ae1ac81151aa3bed6a8c15bc16bc5": {
       "kind": "list",
       "source": "单个 Elwisp 可用 __ELBOT_CODE_0__ 禁用指定工具。",
@@ -5551,6 +5599,30 @@
       "translation": "Direct mode also supports image/file output; it automatically degrades to a text description if the platform does not support it.",
       "updated_at": 1781929269
     },
+    "docs/elnis-usage.md:list:94b781836317d2424e94b1acf367fd5879f8587f7092dc91d030c29077eb4e7f": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是服务端允许登录的 CLI client id 与 token 环境变量列表。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "94b781836317d2424e94b1acf367fd5879f8587f7092dc91d030c29077eb4e7f",
+      "translation": "__ELBOT_CODE_0__ is the list of CLI client ID and token environment variables allowed for server login.",
+      "updated_at": 1781962160
+    },
+    "docs/elnis-usage.md:list:95f0425bb70f8437ec10e7b2e3709d2dc2719eb94905fd761872378df243720c": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 可省略，默认使用 __ELBOT_CODE_1__。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "95f0425bb70f8437ec10e7b2e3709d2dc2719eb94905fd761872378df243720c",
+      "translation": "__ELBOT_CODE_0__ can be omitted, defaulting to __ELBOT_CODE_1__.",
+      "updated_at": 1781962160
+    },
+    "docs/elnis-usage.md:list:99267342faabbf97989dd67144b49b108747bb74c3bb997c45ee2cbe8cdc8d7f": {
+      "kind": "list",
+      "source": "需要接收 Elvena 事件时请使用 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "99267342faabbf97989dd67144b49b108747bb74c3bb997c45ee2cbe8cdc8d7f",
+      "translation": "Please use __ELBOT_CODE_0__ or __ELBOT_CODE_1__ when you need to receive Elvena events.",
+      "updated_at": 1781962160
+    },
     "docs/elnis-usage.md:list:9e77000334927a8e945950daf4b18a4aa82e44af4538c00aba364926ae4b7f88": {
       "kind": "list",
       "source": "只有显式 __ELBOT_CODE_0__ 才会禁用对应 Elwisp。",
@@ -5559,6 +5631,14 @@
       "translation": "Only explicit __ELBOT_CODE_0__ will disable the corresponding Elwisp.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:list:a8cc1dc35863df7c0a345c5282b86da0271caa0ead8fb71b7bb41eee9807ac24": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是客户端默认连接地址；连接其他机器时在 __ELBOT_CODE_1__ 写远程 WebSocket 地址。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "a8cc1dc35863df7c0a345c5282b86da0271caa0ead8fb71b7bb41eee9807ac24",
+      "translation": "__ELBOT_CODE_0__ is the default connection address for the client; when connecting to other machines, specify the remote WebSocket address in __ELBOT_CODE_1__.",
+      "updated_at": 1781962160
+    },
     "docs/elnis-usage.md:list:b402ea8c3ed8917b33f57e8cd9f2f161481b5029d5fdc46fff2ba6e4b877ad8a": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 时不启动 Elnis HTTP runtime。",
@@ -5566,6 +5646,14 @@
       "source_hash": "b402ea8c3ed8917b33f57e8cd9f2f161481b5029d5fdc46fff2ba6e4b877ad8a",
       "translation": "__ELBOT_CODE_0__ will not start the Elnis HTTP runtime.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:babcc563711a41279f1925397dbd2af3d7680faabe2a01a61bb5ac33cff3fc6e": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是客户端 profile；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "babcc563711a41279f1925397dbd2af3d7680faabe2a01a61bb5ac33cff3fc6e",
+      "translation": "__ELBOT_CODE_0__ is the client profile;",
+      "updated_at": 1781962160
     },
     "docs/elnis-usage.md:list:bc6075397e81dcaebc13a3b8fa3e1afd108f7e511562a3a6909d8a4c28de3257": {
       "kind": "list",
@@ -5639,6 +5727,14 @@
       "translation": "The original URL is used when sending to the LLM (multimodal models can view images directly), and a copy is kept in the sandbox.",
       "updated_at": 1781929269
     },
+    "docs/elnis-usage.md:list:ef1cac3cf7d4384fd3b43cb37f9efa8744f73a39760280b77e27ed0c6174b59a": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是服务端监听地址。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "ef1cac3cf7d4384fd3b43cb37f9efa8744f73a39760280b77e27ed0c6174b59a",
+      "translation": "__ELBOT_CODE_0__ is the server listening address.",
+      "updated_at": 1781962160
+    },
     "docs/elnis-usage.md:list:f37c91ec3dffafe934f5bce843a93dc68030d8aacf7bc7f31680545522c164c8": {
       "kind": "list",
       "source": "token 原文不写入配置，推荐放在系统环境变量或配置目录 __ELBOT_CODE_0__。",
@@ -5662,6 +5758,30 @@
       "source_hash": "fc0f75611e8b81fa9006003c7882ff4ace26509acabd98b92bead6e2864ffe66",
       "translation": "File size is limited by __ELBOT_CODE_1__ of __ELBOT_CODE_0__ (default 100MB).",
       "updated_at": 1781929269
+    },
+    "docs/elnis-usage.md:list:fc9a2a279e2ae3e5754cfcd2df0c9082730e4a684e2f707447b7b24379253645": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是 CLI-only 模式，即使 __ELBOT_CODE_1__ 也不会启动 Elnis HTTP runtime；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "fc9a2a279e2ae3e5754cfcd2df0c9082730e4a684e2f707447b7b24379253645",
+      "translation": "__ELBOT_CODE_0__ is CLI-only mode; even with __ELBOT_CODE_1__, the Elnis HTTP runtime will not start;",
+      "updated_at": 1781962160
+    },
+    "docs/elnis-usage.md:list:fd9d46e2a018693b541b56800a83e5e72cdcc48747da8347f1f7a301c94120ab": {
+      "kind": "list",
+      "source": "token 与 Provider/Elnis 一样，优先读系统环境变量，再读配置目录 __ELBOT_CODE_0__。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "fd9d46e2a018693b541b56800a83e5e72cdcc48747da8347f1f7a301c94120ab",
+      "translation": "Similar to Provider/Elnis, the token is read from system environment variables first, and then from the configuration directory __ELBOT_CODE_0__.",
+      "updated_at": 1781962160
+    },
+    "docs/elnis-usage.md:paragraph:001e68adb30512aef5a23329a648a9e804678ff97a1473526953f8aae4ab2781": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 同时保存 CLI 服务端和客户端配置。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "001e68adb30512aef5a23329a648a9e804678ff97a1473526953f8aae4ab2781",
+      "translation": "__ELBOT_CODE_0__ saves both CLI server and client configurations.",
+      "updated_at": 1781962160
     },
     "docs/elnis-usage.md:paragraph:01132ca445e606d3dc2b64170c994478f851cadcbeec4629803a075ed810887e": {
       "kind": "paragraph",
@@ -5694,6 +5814,14 @@
       "source_hash": "1f7cad2a0b32403b701ce5e2db1e52b154887906b79080818cf2965a01b2605a",
       "translation": "Behavior remains unchanged when __ELBOT_CODE_0__ is empty; when not empty, segments are rendered preferentially, and content serves as additional text.\n",
       "updated_at": 1781929269
+    },
+    "docs/elnis-usage.md:paragraph:24ba7ec8ced33886d73d535cdfa1d3b861e9182c3b181516a9ad8ae55b722df5": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 是当前 ElBot 作为服务端时读取的配置，__ELBOT_CODE_1__ 是当前命令作为 CLI 客户端连接服务端时读取的配置。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "24ba7ec8ced33886d73d535cdfa1d3b861e9182c3b181516a9ad8ae55b722df5",
+      "translation": "__ELBOT_CODE_0__ is the configuration read when ElBot acts as the server, and __ELBOT_CODE_1__ is the configuration read when the current command connects to the server as a CLI client.\n",
+      "updated_at": 1781962160
     },
     "docs/elnis-usage.md:paragraph:3992a8029e30f39041102d37033acf1f8f97cc62e58323fc3fd801ddc6f4ab09": {
       "kind": "paragraph",
