@@ -455,7 +455,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		ModelProvider: model.Provider,
 		Model:         model.Model,
 		PromptSegments: segmentsLLM(event.Request.Segments),
-		Prompt:        llmPrompt(event),
+		Prompt:        s.llmPrompt(event),
 		ToolListNames: event.Request.ToolListNames,
 		CachedTools:   s.elwispCachedTools(event),
 		SandboxSubdir: "elnis/" + event.Request.Elwisp.Name,
@@ -565,7 +565,7 @@ func (s *Service) completeEventWithSession(ctx context.Context, id, resolvedTarg
 	return s.store.ElnisEvents().Update(ctx, storage.UpdateElnisEventRequest{ID: id, ResolvedTargets: resolvedTargets, Status: status, SessionID: sessionID, Result: result, Error: eventErr})
 }
 
-func llmPrompt(event Event) string {
+func (s *Service) llmPrompt(event Event) string {
 	format := strings.TrimSpace(event.Request.Format)
 	if format == "" {
 		format = "text"
@@ -581,7 +581,9 @@ func llmPrompt(event Event) string {
 		"** 需要使用工具时直接使用工具",
 		"** 有投递目标、任务要求通知或产生需要目标知道的结果/失败/阻塞原因时，应设置 need_report=true 并在 report 写自然语言汇报",
 		"** 最终回复必须是严格 JSON",
-		"** JSON 格式：{\"completed\":true,\"need_report\":false,\"report\":\"\"}",
+		"** JSON 格式：{\"completed\":true,\"need_report\":false,\"report\":\"\",\"report_segments\":[]}",
+		"** report_segments 可选数组，元素为 {\"type\":\"image|file\",\"url\":\"沙盒绝对路径\"}，用于附带图片或文件。图片/文件须先保存在沙盒内",
+		"** 沙盒根目录：" + s.sandboxRoot,
 		"** completed 表示是否完成任务",
 		"** need_report 表示是否需要向目标平台汇报；成功、失败或阻塞都可以请求汇报",
 		"** report 为需要发给目标平台的汇报，可填写处理结果、失败原因或阻塞原因",
