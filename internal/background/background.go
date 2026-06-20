@@ -1,6 +1,7 @@
 package background
 
 import (
+	"elbot/internal/llm"
 	"context"
 
 	"elbot/internal/security"
@@ -28,6 +29,7 @@ type RunRequest struct {
 	SessionID     string
 	ModelProvider string
 	Model         string
+	PromptSegments []llm.MessageSegment
 	Prompt        string
 	RetryPrompt   string
 	ToolListNames []string
@@ -46,5 +48,6 @@ type RunResult struct {
 type JSONResult struct {
 	Completed  bool   `json:"completed"`
 	NeedReport bool   `json:"need_report"`
+	ReportSegments []llm.MessageSegment `json:"report_segments,omitempty"`
 	Report     string `json:"report"`
 }

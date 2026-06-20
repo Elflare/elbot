@@ -13,6 +13,13 @@ import (
 	"strings"
 	"time"
 
+	"encoding/base64"
+	"io"
+	"mime"
+	"net/http"
+	"os"
+	"path/filepath"
+	"elbot/internal/llm"
 	"elbot/internal/background"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
@@ -37,6 +44,7 @@ type ModelResolverFunc func(slot string) config.ModelSelection
 
 type Options struct {
 	Config       config.ElnisConfig
+	SandboxRoot  string
 	Tokens       map[string]string
 	Store        storage.Store
 	Logger       *slog.Logger
@@ -48,6 +56,7 @@ type Options struct {
 
 type Service struct {
 	cfg          config.ElnisConfig
+	sandboxRoot  string
 	tokens       map[string]string
 	store        storage.Store
 	logger       *slog.Logger
@@ -59,13 +68,16 @@ type Service struct {
 }
 
 func NewService(opts Options) (*Service, error) {
+	if opts.SandboxRoot == "" {
+		opts.SandboxRoot = filepath.Join("data", "sandbox")
+	}
 	if opts.Store == nil || opts.Store.ElnisEvents() == nil {
 		return nil, fmt.Errorf("elnis event store is not configured")
 	}
 	if opts.Config.Enabled && len(opts.Tokens) == 0 {
 		return nil, fmt.Errorf("elnis enabled but no tokens are configured")
 	}
-	return &Service{cfg: opts.Config, tokens: opts.Tokens, store: opts.Store, logger: opts.Logger, audit: opts.Audit, send: opts.Send, runner: opts.Runner, resolveModel: opts.ResolveModel}, nil
+	return &Service{cfg: opts.Config, sandboxRoot: opts.SandboxRoot, tokens: opts.Tokens, store: opts.Store, logger: opts.Logger, audit: opts.Audit, send: opts.Send, runner: opts.Runner, resolveModel: opts.ResolveModel}, nil
 }
 
 func (s *Service) SetLLMEnqueuer(enqueue EnqueueLLMFunc) {
@@ -394,7 +406,12 @@ func (s *Service) runDirect(ctx context.Context, event Event, eventID string) er
 	if s.send == nil {
 		return fmt.Errorf("elnis sender is not configured")
 	}
-	text := directText(event.Request)
+	req := event.Request
+	// Download segments to sandbox
+	paths, err := s.downloadSegments(ctx, req.Elwisp.Name, req.ID, req.Segments)
+	if err != nil {
+		return fmt.Errorf("download segments: %w", err)
+	}
 	resolved := Targets{}
 	if err := json.Unmarshal([]byte(event.ResolvedTargets), &resolved); err != nil {
 		return err
@@ -402,9 +419,13 @@ func (s *Service) runDirect(ctx context.Context, event Event, eventID string) er
 	if !resolved.Superadmins {
 		return fmt.Errorf("direct delivery only supports superadmins in phase 1")
 	}
+	// Build outputs: segments first, content as fallback
+	outputs := buildDirectOutputs(req, paths)
 	for _, platformName := range resolved.Platforms {
-		if err := s.send(ctx, delivery.Target{Platform: platformName, Superadmins: true}, delivery.Text(text)); err != nil {
-			return err
+		for _, out := range outputs {
+			if err := s.send(ctx, delivery.Target{Platform: platformName, Superadmins: true}, out); err != nil {
+				return err
+			}
 		}
 	}
 	return s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusCompleted, "", "")
@@ -433,7 +454,8 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		ScopeID:       "elnis:" + event.EventKey,
 		ModelProvider: model.Provider,
 		Model:         model.Model,
-		Prompt:        llmPrompt(event),
+		PromptSegments: segmentsLLM(event.Request.Segments),
+		Prompt:        s.llmPrompt(event),
 		ToolListNames: event.Request.ToolListNames,
 		CachedTools:   s.elwispCachedTools(event),
 		SandboxSubdir: "elnis/" + event.Request.Elwisp.Name,
@@ -466,7 +488,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		return err
 	}
 	if parsed.NeedReport && strings.TrimSpace(parsed.Report) != "" {
-		if err := s.sendReport(ctx, event, parsed.Report); err != nil {
+		if err := s.sendReport(ctx, event, parsed.Report, parsed.ReportSegments); err != nil {
 			_ = s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, string(resultJSON), err.Error())
 			s.logWarn("elnis llm report failed", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", err.Error())...)
 			return err
@@ -499,7 +521,7 @@ func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, session
 	return result, parsed, err
 }
 
-func (s *Service) sendReport(ctx context.Context, event Event, report string) error {
+func (s *Service) sendReport(ctx context.Context, event Event, report string, reportSegments []llm.MessageSegment) error {
 	if s.send == nil {
 		return fmt.Errorf("elnis sender is not configured")
 	}
@@ -510,9 +532,34 @@ func (s *Service) sendReport(ctx context.Context, event Event, report string) er
 	if !resolved.Superadmins {
 		return nil
 	}
+	// Send report text first
+	outputs := []delivery.Output{delivery.Text(report)}
+	// Append segment outputs, auto-resolving relative paths
+	workDir := filepath.Join(s.sandboxRoot, "elnis", sanitizeName(event.Request.Elwisp.Name))
+	for _, seg := range reportSegments {
+		if seg.URL == "" {
+			continue
+		}
+		path := seg.URL
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(workDir, path)
+		}
+		if _, err := os.Stat(path); err != nil {
+			s.logWarn("elnis report segment path missing, skipping", append(s.eventAttrs(event), "path", path)...)
+			continue
+		}
+		switch seg.Type {
+		case llm.SegmentImage:
+			outputs = append(outputs, delivery.ImagePath(path))
+		case llm.SegmentFile:
+			outputs = append(outputs, delivery.FilePath(path))
+		}
+	}
 	for _, platformName := range resolved.Platforms {
-		if err := s.send(ctx, delivery.Target{Platform: platformName, Superadmins: true}, delivery.Text(report)); err != nil {
-			return err
+		for _, out := range outputs {
+			if err := s.send(ctx, delivery.Target{Platform: platformName, Superadmins: true}, out); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -526,7 +573,7 @@ func (s *Service) completeEventWithSession(ctx context.Context, id, resolvedTarg
 	return s.store.ElnisEvents().Update(ctx, storage.UpdateElnisEventRequest{ID: id, ResolvedTargets: resolvedTargets, Status: status, SessionID: sessionID, Result: result, Error: eventErr})
 }
 
-func llmPrompt(event Event) string {
+func (s *Service) llmPrompt(event Event) string {
 	format := strings.TrimSpace(event.Request.Format)
 	if format == "" {
 		format = "text"
@@ -542,7 +589,9 @@ func llmPrompt(event Event) string {
 		"** 需要使用工具时直接使用工具",
 		"** 有投递目标、任务要求通知或产生需要目标知道的结果/失败/阻塞原因时，应设置 need_report=true 并在 report 写自然语言汇报",
 		"** 最终回复必须是严格 JSON",
-		"** JSON 格式：{\"completed\":true,\"need_report\":false,\"report\":\"\"}",
+		"** JSON 格式：{\"completed\":true,\"need_report\":false,\"report\":\"\",\"report_segments\":[]}",
+		"** report_segments 可选数组，元素为 {\"type\":\"image|file\",\"url\":\"沙盒绝对路径\"}，用于附带图片或文件。图片/文件须先保存在沙盒内",
+		"** 你的 shell 工作目录是 " + s.sandboxRoot + "/elnis/" + event.Request.Elwisp.Name + " ，文件直接存这里",
 		"** completed 表示是否完成任务",
 		"** need_report 表示是否需要向目标平台汇报；成功、失败或阻塞都可以请求汇报",
 		"** report 为需要发给目标平台的汇报，可填写处理结果、失败原因或阻塞原因",
@@ -612,6 +661,292 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+
+
+// --- segment download and output helpers ---
+
+func (s *Service) downloadSegments(ctx context.Context, elwispName, eventID string, segments []Segment) (map[string]string, error) {
+	if len(segments) == 0 {
+		return nil, nil
+	}
+	dir := filepath.Join(s.sandboxRoot, "elnis", sanitizeName(elwispName), sanitizeName(eventID))
+	paths := make(map[string]string, len(segments))
+	for i, seg := range segments {
+		if seg.Kind == SegmentKindText {
+			continue
+		}
+		if err := validateSegmentURL(seg.URL); err != nil {
+			return nil, fmt.Errorf("segment %d: %w", i, err)
+		}
+		resolvedPath, err := s.resolveSegment(ctx, dir, seg)
+		if err != nil {
+			return nil, fmt.Errorf("segment %d: %w", i, err)
+		}
+		key := segKey(i, seg)
+		paths[key] = resolvedPath
+	}
+	return paths, nil
+}
+
+func validateSegmentURL(rawURL string) error {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return fmt.Errorf("url is required for image/file segments")
+	}
+	if strings.HasPrefix(rawURL, "data:") {
+		return nil
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid url: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("url scheme must be http or https, got %q", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("url host is empty")
+	}
+	return nil
+}
+
+func (s *Service) resolveSegment(ctx context.Context, dir string, seg Segment) (string, error) {
+	maxBytes := s.cfg.Segment.MaxFileBytes
+	timeout := time.Duration(s.cfg.Segment.DownloadTimeoutSecs) * time.Second
+	if timeout <= 0 {
+		timeout = 60 * time.Second
+	}
+
+	if strings.HasPrefix(seg.URL, "data:") {
+		return s.decodeDataURI(dir, seg, maxBytes)
+	}
+	return s.downloadURL(ctx, dir, seg, maxBytes, timeout)
+}
+
+func (s *Service) decodeDataURI(dir string, seg Segment, maxBytes int64) (string, error) {
+	// data:[<mediatype>][;base64],<data>
+	raw := strings.TrimSpace(seg.URL)
+	if !strings.HasPrefix(raw, "data:") {
+		return "", fmt.Errorf("not a data URI")
+	}
+	commaIdx := strings.Index(raw, ",")
+	if commaIdx < 0 {
+		return "", fmt.Errorf("invalid data URI: missing comma")
+	}
+	header := raw[5:commaIdx]
+	data := raw[commaIdx+1:]
+	isBase64 := strings.HasSuffix(header, ";base64")
+
+	var decoded []byte
+	var err error
+	if isBase64 {
+		decoded, err = base64.StdEncoding.DecodeString(data)
+	} else {
+		return "", fmt.Errorf("data URI without base64 encoding is not supported")
+	}
+	if err != nil {
+		return "", fmt.Errorf("base64 decode failed: %w", err)
+	}
+	if maxBytes > 0 && int64(len(decoded)) > maxBytes {
+		return "", fmt.Errorf("decoded data size %d exceeds max_file_bytes %d", len(decoded), maxBytes)
+	}
+
+	ext := filepath.Ext(strings.TrimSpace(seg.Name))
+	if ext == "" && isBase64 {
+		mediaType := strings.TrimSuffix(header, ";base64")
+		if exts, _ := mime.ExtensionsByType(mediaType); len(exts) > 0 {
+			ext = exts[0]
+		}
+	}
+	if ext == "" {
+		if seg.Kind == SegmentKindImage {
+			ext = ".png"
+		} else {
+			ext = ".bin"
+		}
+	}
+
+	name := strings.TrimSpace(seg.Name)
+	if name == "" {
+		name = storage.NewID()
+	}
+	filename := name + ext
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("create segment dir: %w", err)
+	}
+	path := filepath.Join(dir, filename)
+	if err := os.WriteFile(path, decoded, 0644); err != nil {
+		return "", fmt.Errorf("write segment file: %w", err)
+	}
+	return path, nil
+}
+
+func (s *Service) downloadURL(ctx context.Context, dir string, seg Segment, maxBytes int64, timeout time.Duration) (string, error) {
+	dlCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	// HEAD to check size
+	headReq, err := http.NewRequestWithContext(dlCtx, http.MethodHead, seg.URL, nil)
+	if err != nil {
+		return "", fmt.Errorf("create HEAD request: %w", err)
+	}
+	headResp, err := http.DefaultClient.Do(headReq)
+	if err != nil {
+		return "", fmt.Errorf("HEAD request failed: %w", err)
+	}
+	headResp.Body.Close()
+	if headResp.ContentLength > 0 && maxBytes > 0 && headResp.ContentLength > maxBytes {
+		return "", fmt.Errorf("file size %d exceeds max_file_bytes %d", headResp.ContentLength, maxBytes)
+	}
+
+	// GET to download
+	getReq, err := http.NewRequestWithContext(dlCtx, http.MethodGet, seg.URL, nil)
+	if err != nil {
+		return "", fmt.Errorf("create GET request: %w", err)
+	}
+	getResp, err := http.DefaultClient.Do(getReq)
+	if err != nil {
+		return "", fmt.Errorf("GET request failed: %w", err)
+	}
+	defer getResp.Body.Close()
+	if getResp.StatusCode < 200 || getResp.StatusCode >= 300 {
+		return "", fmt.Errorf("download returned HTTP %d", getResp.StatusCode)
+	}
+
+	var limitReader io.Reader = getResp.Body
+	if maxBytes > 0 {
+		limitReader = io.LimitReader(getResp.Body, maxBytes+1)
+	}
+	data, err := io.ReadAll(limitReader)
+	if err != nil {
+		return "", fmt.Errorf("read download body: %w", err)
+	}
+	if maxBytes > 0 && int64(len(data)) > maxBytes {
+		return "", fmt.Errorf("downloaded size %d exceeds max_file_bytes %d", len(data), maxBytes)
+	}
+
+	// Determine filename
+	name := strings.TrimSpace(seg.Name)
+	if name == "" {
+		name = storage.NewID()
+		if seg.Kind == SegmentKindImage {
+			name += ".png"
+		} else {
+			name += ".bin"
+		}
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("create segment dir: %w", err)
+	}
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return "", fmt.Errorf("write segment file: %w", err)
+	}
+	return path, nil
+}
+
+func segKey(i int, seg Segment) string {
+	return fmt.Sprintf("%d:%s", i, seg.Kind)
+}
+
+func sanitizeName(name string) string {
+	name = strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
+			return r
+		}
+		return '_'
+	}, name)
+	if name == "" {
+		return "_"
+	}
+	return name
+}
+
+func segmentsContentText(segments []Segment) string {
+	var b strings.Builder
+	for _, seg := range segments {
+		switch seg.Kind {
+		case SegmentKindText:
+			b.WriteString(seg.Text)
+		case SegmentKindImage:
+			label := firstNonEmptyStr(seg.Name, seg.URL)
+			if label == "" {
+				label = "[图片]"
+			}
+			b.WriteString(fmt.Sprintf("[图片: %s]", label))
+		case SegmentKindFile:
+			label := firstNonEmptyStr(seg.Name, seg.URL)
+			if label == "" {
+				label = "[文件]"
+			}
+			b.WriteString(fmt.Sprintf("[文件: %s]", label))
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func segmentsOutputs(segments []Segment, paths map[string]string) []delivery.Output {
+	var out []delivery.Output
+	for i, seg := range segments {
+		switch seg.Kind {
+		case SegmentKindText:
+			out = append(out, delivery.Text(seg.Text))
+		case SegmentKindImage:
+			localPath := pathForSeg(i, seg, paths)
+			o := delivery.ImagePath(localPath)
+			o.Name = seg.Name
+			out = append(out, o)
+		case SegmentKindFile:
+			localPath := pathForSeg(i, seg, paths)
+			o := delivery.FilePath(localPath)
+			o.Name = seg.Name
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
+func segmentsLLM(segments []Segment) []llm.MessageSegment {
+	var out []llm.MessageSegment
+	for _, seg := range segments {
+		switch seg.Kind {
+		case SegmentKindText:
+			out = append(out, llm.MessageSegment{Type: llm.SegmentText, Text: seg.Text})
+		case SegmentKindImage:
+			out = append(out, llm.MessageSegment{Type: llm.SegmentImage, URL: seg.URL, Name: seg.Name})
+		case SegmentKindFile:
+			out = append(out, llm.MessageSegment{Type: llm.SegmentFile, URL: seg.URL, Name: seg.Name})
+		}
+	}
+	return out
+}
+
+func pathForSeg(i int, seg Segment, paths map[string]string) string {
+	if paths != nil {
+		if p, ok := paths[segKey(i, seg)]; ok && p != "" {
+			return p
+		}
+	}
+	return seg.URL
+}
+
+func firstNonEmptyStr(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+func buildDirectOutputs(req Request, paths map[string]string) []delivery.Output {
+	segs := req.Segments
+	if len(segs) == 0 {
+		return []delivery.Output{delivery.Text(directText(req))}
+	}
+	out := segmentsOutputs(segs, paths)
+	return out
 }
 
 func directText(req Request) string {

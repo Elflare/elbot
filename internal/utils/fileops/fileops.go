@@ -312,6 +312,9 @@ func applyEdit(text string, edit Edit) (string, error) {
 	}
 	switch operation {
 	case "replace", "delete", "insert_line_before", "insert_line_after", "prepend", "append":
+		if strings.TrimSpace(edit.Anchor) != "" {
+			return "", fmt.Errorf("operation %q uses line numbers, not anchor; did you mean replace_match, delete_match, insert_before_match or insert_after_match?", edit.Operation)
+		}
 		return applyLineEdit(text, edit)
 	case "replace_match":
 		start, end, err := findUniqueMatch(text, edit.OldContent, "old_content")

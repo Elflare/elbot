@@ -174,7 +174,13 @@ type ElnisConfig struct {
 	HTTP         ElnisHTTPConfig              `toml:"http"`
 	Tokens       map[string]ElnisTokenConfig  `toml:"tokens"`
 	Delivery     ElnisDeliveryConfig          `toml:"delivery"`
+	Segment      ElnisSegmentConfig           `toml:"segment"`
 	Elwisps      map[string]ElnisElwispConfig `toml:"elwisps"`
+}
+
+type ElnisSegmentConfig struct {
+	MaxFileBytes        int64 `toml:"max_file_bytes"`
+	DownloadTimeoutSecs int   `toml:"download_timeout_secs"`
 }
 
 type ElnisHTTPConfig struct {
@@ -571,6 +577,12 @@ func (c *Config) applyElnisDefaults() {
 	}
 	if c.Elnis.Tokens == nil {
 		c.Elnis.Tokens = map[string]ElnisTokenConfig{}
+	}
+	if c.Elnis.Segment.MaxFileBytes <= 0 {
+		c.Elnis.Segment.MaxFileBytes = 100 * 1024 * 1024
+	}
+	if c.Elnis.Segment.DownloadTimeoutSecs <= 0 {
+		c.Elnis.Segment.DownloadTimeoutSecs = 60
 	}
 	if c.Elnis.Elwisps == nil {
 		c.Elnis.Elwisps = map[string]ElnisElwispConfig{}
