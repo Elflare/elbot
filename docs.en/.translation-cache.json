@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "fe6d61982722161db84cfbb7577ac3bab8a29e054675fd3ede2af7f70c31d1b9",
+      "source_hash": "dfbb56b6d1d90203ccdc152c8e544c6d111fe1eadf297dd0bc8bcb2f0b5e46af",
       "target": "README.md",
-      "updated_at": 1781857840
+      "updated_at": 1781948985
     },
     "docs/README.md": {
       "source_hash": "b40f5d1519dbd52e73aeee1fad99f614728052e3ae821add12de6ea4f9d69a7c",
@@ -918,6 +918,14 @@
       "source_hash": "743bf0c193274ad3c8ad8db88068cf1d27a05e7f04ac90efdfb0acab7baa73cd",
       "translation": "Minimum usage flow:\n",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:75661f29eac1a03c6d0192bd7b07416c6b61d14e6938f18f907fdd6cc86f5143": {
+      "kind": "paragraph",
+      "source": "**轻量沙盒隔离**： 后台 Shell 执行受到 AST 级沙盒约束。后台任务拥有独立 sandbox 工作目录，降低误操作影响。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "75661f29eac1a03c6d0192bd7b07416c6b61d14e6938f18f907fdd6cc86f5143",
+      "translation": "**Lightweight Sandbox Isolation**: Background Shell execution is subject to AST-level sandbox constraints. Background tasks have an independent sandbox working directory, reducing the impact of misoperations.\n",
+      "updated_at": 1781948985
     },
     "README.zh-CN.md:paragraph:799adfce4feb71edf7bd6c91c9acf3b3ce1e8f20f575bee6ed0b012706c9f875": {
       "kind": "paragraph",
