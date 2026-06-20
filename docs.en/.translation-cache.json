@@ -16,9 +16,9 @@
       "updated_at": 1781786015
     },
     "docs/concepts.md": {
-      "source_hash": "d59a520b2ffb138df4d7e6b292cc137b57f1336de3c2c1510d5236ef34a737c2",
+      "source_hash": "b2964160150cf20d866e56679d9bfdb5e7265973686a3e3eeceb9dadd8252eca",
       "target": "docs.en/concepts.md",
-      "updated_at": 1781786062
+      "updated_at": 1781949019
     },
     "docs/configuration.md": {
       "source_hash": "58f6b7471635475dc7c4986ee2d2392629c5035787ed1d2387b59ff05dee6daf",
@@ -3263,6 +3263,14 @@
       "translation": "ElBot does not inject the full schema of all tools by default in every round of work conversation.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:5a88c641964bc83c1dbc931f229ac3a1d486b9625661eba04d4f9722b43dce96": {
+      "kind": "paragraph",
+      "source": "LLM Cron 可以通过 __ELBOT_CODE_0__ 预注入工具名或 Skill 名：普通工具会注入 schema，Skill 会把说明注入后台任务 prompt，并自动注入对应 runner。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "5a88c641964bc83c1dbc931f229ac3a1d486b9625661eba04d4f9722b43dce96",
+      "translation": "LLM Cron can pre-inject tool names or Skill names via __ELBOT_CODE_0__: ordinary tools will inject the schema, while Skills will inject the description into the background task prompt and automatically inject the corresponding runner.",
+      "updated_at": 1781949019
+    },
     "docs/concepts.md:paragraph:5c1934d62e9349e26fd3dbe0d80f72a350593ff544fe117c01a0ef6253ec7477": {
       "kind": "paragraph",
       "source": "完整语法见 [ELyph 任务表示法](elyph.md)。\n",
@@ -3294,6 +3302,14 @@
       "source_hash": "6614c3bc4ac4b18dba931bd7a6bcaa90ecbec01f7884e1fe656489af11e38f70",
       "translation": "ElBot's tool system includes risk levels and permission control.\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:66434b0faf95d01acb9504c41cc8421256e0ed6b7a6fab6c11c186bad01a8d48": {
+      "kind": "paragraph",
+      "source": "LLM Cron 的最终 JSON 可通过 __ELBOT_CODE_0__ 附带当前任务工作目录内的图片或文件相对路径。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "66434b0faf95d01acb9504c41cc8421256e0ed6b7a6fab6c11c186bad01a8d48",
+      "translation": "The final JSON of LLM Cron can attach relative paths of images or files within the current task working directory via __ELBOT_CODE_0__.\n",
+      "updated_at": 1781949019
     },
     "docs/concepts.md:paragraph:6e42cc2f1a5cddf15b21787db94f70824aef56dc96fc8d4ad0d88ec625fe1b5a": {
       "kind": "paragraph",
@@ -3350,6 +3366,14 @@
       "source_hash": "7ffa11ff072aa87fc6a8264d5a02d4c6f13b6f50944062c424fc660b113f8914",
       "translation": "Long-term memory uses Markdown files as human-readable source data and SQLite FTS as a reconstructible search index.\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:864086a84543bbd2414a750721374355d5f246b144642cd0950725c05241128d": {
+      "kind": "paragraph",
+      "source": "后台任务中的所有路径参数都应使用当前任务工作目录内的相对路径；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "864086a84543bbd2414a750721374355d5f246b144642cd0950725c05241128d",
+      "translation": "All path parameters in background tasks should use relative paths within the current task working directory;",
+      "updated_at": 1781949019
     },
     "docs/concepts.md:paragraph:89b0e88796be28cfc196e216b8571c966e19f576bfc0f38e4336823a1181fa5a": {
       "kind": "paragraph",
