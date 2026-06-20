@@ -536,15 +536,18 @@ func (s *Service) sendReport(ctx context.Context, event Event, report string, re
 	outputs := []delivery.Output{delivery.Text(report)}
 	// Append segment outputs using sandbox paths
 	for _, seg := range reportSegments {
+		if seg.URL == "" {
+			continue
+		}
+		if _, err := os.Stat(seg.URL); err != nil {
+			s.logWarn("elnis report segment path missing, skipping", append(s.eventAttrs(event), "path", seg.URL)...)
+			continue
+		}
 		switch seg.Type {
 		case llm.SegmentImage:
-			if seg.URL != "" {
-				outputs = append(outputs, delivery.ImagePath(seg.URL))
-			}
+			outputs = append(outputs, delivery.ImagePath(seg.URL))
 		case llm.SegmentFile:
-			if seg.URL != "" {
-				outputs = append(outputs, delivery.FilePath(seg.URL))
-			}
+			outputs = append(outputs, delivery.FilePath(seg.URL))
 		}
 	}
 	for _, platformName := range resolved.Platforms {
@@ -582,8 +585,9 @@ func (s *Service) llmPrompt(event Event) string {
 		"** 有投递目标、任务要求通知或产生需要目标知道的结果/失败/阻塞原因时，应设置 need_report=true 并在 report 写自然语言汇报",
 		"** 最终回复必须是严格 JSON",
 		"** JSON 格式：{\"completed\":true,\"need_report\":false,\"report\":\"\",\"report_segments\":[]}",
-		"** report_segments 可选数组，元素为 {\"type\":\"image|file\",\"url\":\"沙盒绝对路径\"}，用于附带图片或文件。图片/文件须先保存在沙盒内",
-		"** 沙盒根目录：" + s.sandboxRoot,
+		"** report_segments 可选数组，元素为 {\"type\":\"image|file\",\"url\":\"绝对路径\"}，用于附带图片或文件",
+		"** 你的工作目录是 " + s.sandboxRoot + "/elnis/" + event.Request.Elwisp.Name + " ，shell 的当前目录就在这里。文件请直接存取此目录下",
+		"** report_segments 的 url 必须是绝对路径，例如 " + s.sandboxRoot + "/elnis/" + event.Request.Elwisp.Name + "/cat.jpg",
 		"** completed 表示是否完成任务",
 		"** need_report 表示是否需要向目标平台汇报；成功、失败或阻塞都可以请求汇报",
 		"** report 为需要发给目标平台的汇报，可填写处理结果、失败原因或阻塞原因",
