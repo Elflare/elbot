@@ -91,6 +91,9 @@ func (m *ArtifactManager) resolveSource(ctxSandbox tool.SandboxContext, sourcePa
 	if sourcePath == "" {
 		return "", fmt.Errorf("path is required")
 	}
+	if ctxSandbox.Background {
+		return tool.ResolveSandboxRelativePath(ctxSandbox, sourcePath)
+	}
 	if filepath.IsAbs(sourcePath) {
 		return filepath.Clean(sourcePath), nil
 	}

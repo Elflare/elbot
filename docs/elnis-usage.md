@@ -180,7 +180,8 @@ Elvena v1 支持通过 `segments` 字段发送图片和文件。`content` 保留
 
 ### LLM 结果中的 report_segments
 
-后台 LLM 处理事件后，`JSONResult` 的 `report_segments` 可附带图片/文件路径，Elnis 会在报告发送时一并投递。
+后台 LLM 处理事件后，`JSONResult` 的 `report_segments` 可附带图片/文件路径，Elnis 会在报告发送时一并投递。`url` 必须是当前任务工作目录内的相对路径，不能使用绝对路径、`~` 或 `..`。
+
 
 ```json
 {
@@ -188,8 +189,9 @@ Elvena v1 支持通过 `segments` 字段发送图片和文件。`content` 保留
   "need_report": true,
   "report": "分析完成，见截图。",
   "report_segments": [
-    {"type": "image", "url": "/data/sandbox/elnis/monitor/evt-001/chart.png"}
+    {"type": "image", "url": "chart.png"}
   ]
+
 }
 ```
 
@@ -199,7 +201,8 @@ Elvena v1 支持通过 `segments` 字段发送图片和文件。`content` 保留
 | 字段 | 必填 | 说明 |
 | --- | ---: | --- |
 | `version` | 是 | 协议版本，当前为 `elvena.v1`。 |
-| `elwisp.name` | 是 | Elwisp 名称，也是来源身份之一。 |
+| `elwisp.name` | 是 | Elwisp 名称，也是来源身份之一；仅允许英文字母、数字、`_`、`-`，不允许点号。 |
+
 | `elwisp.tags` | 否 | Elwisp 标签，用于日志和统计。 |
 | `source` | 是 | 具体事件源，例如服务名、脚本名、RSS 名。 |
 | `id` | 是 | source 内唯一事件 ID。 |

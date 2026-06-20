@@ -3,6 +3,8 @@ package cron
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -236,6 +238,41 @@ func TestRunLLMReportPassesToolListNames(t *testing.T) {
 	}
 	if len(runner.requests) != 1 || strings.Join(runner.requests[0].ToolListNames, ",") != "web_search" {
 		t.Fatalf("runner request = %#v", runner.requests)
+	}
+	if runner.requests[0].SandboxSubdir != "cron/test" {
+		t.Fatalf("sandbox subdir = %q", runner.requests[0].SandboxSubdir)
+	}
+}
+
+func TestRunLLMSendsReportSegments(t *testing.T) {
+	repo := newFakeCronRepo()
+	root := filepath.Join(t.TempDir(), "sandbox")
+	if err := os.MkdirAll(filepath.Join(root, "cron", "test"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "cron", "test", "chart.png"), []byte("png"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeCronRunner{text: `{"completed":true,"need_report":true,"report":"见图","report_segments":[{"type":"image","url":"chart.png"}]}`}
+	sent := []delivery.Kind{}
+	svc := NewService(Options{Store: fakeCronStore{cron: repo}, Runner: runner, SandboxRoot: root, SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) error {
+		sent = append(sent, out.Kind)
+		if out.Kind == delivery.KindImage && out.Source.Path != filepath.Join(root, "cron", "test", "chart.png") {
+			t.Fatalf("image path = %q", out.Source.Path)
+		}
+		return nil
+	}})
+	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
+	meta := mustDecodeTestMetadata(t, job.Metadata)
+	if err := svc.runLLM(context.Background(), *job, meta); err != nil {
+		t.Fatalf("runLLM: %v", err)
+	}
+	if len(sent) != 2 || sent[0] != delivery.KindText || sent[1] != delivery.KindImage {
+		t.Fatalf("sent kinds = %#v", sent)
+	}
+	updated := mustDecodeTestMetadata(t, repo.jobs["user.cron.test"].Metadata)
+	if len(updated.Delivery.ReportSegments) != 1 || updated.Delivery.ReportSegments[0].URL != "chart.png" {
+		t.Fatalf("persisted report segments = %#v", updated.Delivery.ReportSegments)
 	}
 }
 

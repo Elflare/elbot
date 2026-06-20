@@ -38,7 +38,8 @@ func TestClassifyShellCommand(t *testing.T) {
 	}
 }
 
-func TestShellToolAssessRiskAppliesCronSandbox(t *testing.T) {
+func TestShellToolAssessRiskAppliesBackgroundSandbox(t *testing.T) {
+
 	shell := NewShellTool()
 	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Root: "data/sandbox", Dir: "data/sandbox/cron", ArtifactDir: "data/sandbox/artifact", Background: true, BackgroundKind: tool.BackgroundKindCron})
 	tests := []struct {
@@ -48,7 +49,8 @@ func TestShellToolAssessRiskAppliesCronSandbox(t *testing.T) {
 		reasonPart string
 	}{
 		{name: "relative redirect", cmd: "echo hi > report.txt", want: tool.RiskHigh, reasonPart: "写入重定向"},
-		{name: "parent redirect", cmd: "echo hi > ../report.txt", want: tool.RiskCritical, reasonPart: "逃逸 cron sandbox"},
+		{name: "parent redirect", cmd: "echo hi > ../report.txt", want: tool.RiskCritical, reasonPart: "逃逸 background sandbox"},
+
 		{name: "absolute read", cmd: "cat /etc/passwd", want: tool.RiskCritical, reasonPart: "使用绝对路径"},
 		{name: "dynamic redirect", cmd: "echo hi > \"$file\"", want: tool.RiskCritical, reasonPart: "动态结构"},
 		{name: "cd parent", cmd: "cd ..", want: tool.RiskCritical, reasonPart: "不允许 cd"},

@@ -1,9 +1,9 @@
 package builtin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -283,8 +283,8 @@ func (EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.
 	if _, err := resolveFileToolPath(ctx, args.Path, args.Create); err != nil {
 		return tool.RiskAssessment{}, err
 	}
-	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.BackgroundKind == tool.BackgroundKindCron {
-		return tool.RiskAssessment{Level: tool.RiskMedium, Reasons: []string{"cron 后台文件编辑限制在 sandbox 内"}}, nil
+	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.Background {
+		return tool.RiskAssessment{Level: tool.RiskMedium, Reasons: []string{"后台文件编辑限制在当前任务工作目录内"}}, nil
 	}
 	return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"文件内容写入操作需要确认"}}, nil
 }
@@ -331,14 +331,18 @@ func resolveFileToolPath(ctx context.Context, rawPath string, allowCreate bool) 
 		return "", err
 	}
 	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.Background {
-		root := strings.TrimSpace(sandbox.Dir)
-		if root == "" {
-			root = strings.TrimSpace(sandbox.Root)
+		path, err := tool.ResolveSandboxRelativePath(sandbox, rawPath)
+		if err != nil {
+			return "", err
 		}
-		if root == "" {
-			return "", fmt.Errorf("background sandbox is not configured")
+		if info, err := os.Stat(path); err != nil {
+			if !allowCreate || !os.IsNotExist(err) {
+				return "", fmt.Errorf("stat file: %w", err)
+			}
+		} else if info.IsDir() {
+			return "", fmt.Errorf("path is a directory")
 		}
-		return resolveInsideRoot(expandedPath, root)
+		return path, nil
 	}
 	path := filepath.Clean(expandedPath)
 	if !filepath.IsAbs(path) {
@@ -373,31 +377,4 @@ func expandHomePath(path string) (string, error) {
 		return home, nil
 	}
 	return filepath.Join(home, path[2:]), nil
-}
-
-func resolveInsideRoot(rawPath, root string) (string, error) {
-	root = filepath.Clean(root)
-	if !filepath.IsAbs(root) {
-		abs, err := filepath.Abs(root)
-		if err != nil {
-			return "", fmt.Errorf("resolve sandbox root: %w", err)
-		}
-		root = abs
-	}
-	candidate := filepath.Clean(rawPath)
-	if !filepath.IsAbs(candidate) {
-		candidate = filepath.Join(root, candidate)
-	}
-	candidateAbs, err := filepath.Abs(candidate)
-	if err != nil {
-		return "", fmt.Errorf("resolve path: %w", err)
-	}
-	rel, err := filepath.Rel(root, candidateAbs)
-	if err != nil {
-		return "", fmt.Errorf("check sandbox path: %w", err)
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
-		return "", fmt.Errorf("path escapes cron sandbox")
-	}
-	return candidateAbs, nil
 }

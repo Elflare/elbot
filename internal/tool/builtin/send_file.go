@@ -56,8 +56,8 @@ func (t SendFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 	}
 	sandbox, hasSandbox := tool.SandboxContextFromContext(ctx)
 	if t.isExternalPath(sandbox, hasSandbox, path) {
-		if hasSandbox && sandbox.BackgroundKind == tool.BackgroundKindCron {
-			return tool.RiskAssessment{Level: tool.RiskMedium, Reasons: []string{"cron 后台发送外部文件会自动复制到 artifact 后发送"}}, nil
+		if hasSandbox && sandbox.Background {
+			return tool.RiskAssessment{Level: tool.RiskMedium, Reasons: []string{"后台发送文件限制在当前任务工作目录内"}}, nil
 		}
 		return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"发送外部文件需要确认，确认后会复制到 artifact 再发送"}}, nil
 	}

@@ -111,15 +111,21 @@ func (m *Manager) Schemas(ctx context.Context, view Context, cached []CachedTool
 }
 
 func schemaForContext(ctx context.Context, schema llm.ToolSchema) llm.ToolSchema {
-	if schema.Function.Name != "shell" {
-		return schema
-	}
 	sandbox, ok := tool.SandboxContextFromContext(ctx)
-	if !ok || !sandbox.Background {
+	if !ok || !sandbox.Background || !backgroundPathSchema(schema.Function.Name) {
 		return schema
 	}
-	schema.Function.Description = strings.TrimSpace(schema.Function.Description + " 后台运行时涉及文件路径请使用相对路径；文件读写默认相对当前工具工作目录；不要使用绝对路径或 .. 逃逸。")
+	schema.Function.Description = strings.TrimSpace(schema.Function.Description + " " + tool.BackgroundPathInstruction())
 	return schema
+}
+
+func backgroundPathSchema(name string) bool {
+	switch name {
+	case "shell", "read_file", "edit_file", "send_file":
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *Manager) Resolve(ctx context.Context, name string, cached []CachedTool) ResolvedTool {
