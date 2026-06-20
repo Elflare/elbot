@@ -59,7 +59,8 @@ For detailed information, see [Elnis Listening Hub](docs.en/elnis.md).
 
 **Security Policies and Risk Confirmation**: The tool system has built-in risk levels, role permission checks, and high-risk confirmation processes. Regular users can only discover and invoke low-risk tools; even superadmins must confirm each item when invoking high-risk tools.
 
-**Lightweight Sandbox Isolation**: Background Shell execution is subject to AST-level sandbox constraints. Tool execution comes with its own sandbox context, and artifact files are temporarily stored in an isolated directory to avoid affecting system files.
+**Lightweight Sandbox Isolation**: Background Shell execution is subject to AST-level sandbox constraints. Background tasks have dedicated sandbox workspaces to reduce accidental impact.
+
 
 **Comprehensive Logging and Auditing**: Distinguishes between runtime logs, Elwisp logs, and audit logs, supporting structured fields, log queries, audit queries, and runtime debugging.
 

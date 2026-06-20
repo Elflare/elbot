@@ -85,9 +85,10 @@ log_retention_days = 30
 enabled = true
 schedule = "0 3 * * *"
 
-[maintenance.artifact_cleanup]
+[maintenance.sandbox_cleanup]
 enabled = true
 schedule = "0 4 * * *"
+retention_days = 7
 
 [maintenance.chat_history_cleanup]
 enabled = true
@@ -96,17 +97,6 @@ retention_days = 180
 
 [sandbox]
 root = ""
-
-[artifact]
-retention_days = 7
-max_direct_base64_bytes = 8388608
-backend = "base64"
-s3_endpoint = ""
-s3_region = "auto"
-s3_bucket = ""
-s3_access_key_env = "ELBOT_S3_ACCESS_KEY_ID"
-s3_secret_key_env = "ELBOT_S3_SECRET_ACCESS_KEY"
-s3_public_base_url = ""
 
 [llm_request]
 timeout_seconds = 60

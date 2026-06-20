@@ -269,7 +269,7 @@ func Run(ctx context.Context, opts Options) error {
 	if err := cronManager.RegisterHandler(elcron.UserHandlerName, cronService.Handler); err != nil {
 		return err
 	}
-	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{ConfigDir: filepath.Dir(cfg.ConfigPath), CronService: cronService, ChatHistory: chatHistory, SandboxRoot: cfg.Sandbox.Root, ArtifactConfig: cfg.Artifact})
+	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{ConfigDir: filepath.Dir(cfg.ConfigPath), CronService: cronService, ChatHistory: chatHistory, SandboxRoot: cfg.Sandbox.Root})
 	if err != nil {
 		return err
 	}
@@ -309,7 +309,7 @@ func Run(ctx context.Context, opts Options) error {
 	agt.SetSessionListPageSize(cfg.View.SessionListPageSize)
 	agt.SetCleanupRetentionDays(cfg.Session.Cleanup.RetentionDays)
 	agt.SetNonSuperadminIdleTTLMinutes(cfg.Session.NonSuperadminIdleTTLMinutes)
-	agt.SetSandboxPaths(cfg.Sandbox.Root, filepath.Join(cfg.Sandbox.Root, "artifact"))
+	agt.SetSandboxRoot(cfg.Sandbox.Root)
 	agt.SetLogManager(logs)
 	agt.SetToolRuntime(toolRegistry, skillManager.Scanner)
 	agt.SetToolConfig(cfg.Tools)

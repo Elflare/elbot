@@ -21,7 +21,6 @@ const (
 type SandboxContext struct {
 	Root           string
 	Dir            string
-	ArtifactDir    string
 	Background     bool
 	BackgroundKind BackgroundKind
 }

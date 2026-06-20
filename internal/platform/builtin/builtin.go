@@ -50,8 +50,8 @@ func New(opts Options, cfg *config.Config, store storage.Store, chatHistory stor
 		return bundle, nil
 	}
 	if raw, ok := cfg.Platform["qqofficial"]; ok {
-		artifactDir := filepath.Join(cfg.Sandbox.Root, "artifact")
-		adapter, err := qqofficial.NewFromPlatformConfig(raw, logger, cfg.Security.Superadmins["qqofficial"], artifactDir)
+		attachmentDir := filepath.Join(cfg.Sandbox.Root, "platform", "qqofficial")
+		adapter, err := qqofficial.NewFromPlatformConfig(raw, logger, cfg.Security.Superadmins["qqofficial"], attachmentDir)
 		if err != nil {
 			return Bundle{}, err
 		}

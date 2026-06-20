@@ -8,10 +8,12 @@ import (
 	"time"
 )
 
-func TestCleanupArtifactsDeletesOldFilesAndEmptyDirs(t *testing.T) {
+func TestCleanupSandboxDeletesOldFilesAndEmptyDirs(t *testing.T) {
+
 	root := t.TempDir()
-	oldDir := filepath.Join(root, "old")
-	newDir := filepath.Join(root, "new")
+	oldDir := filepath.Join(root, "cron", "old")
+	newDir := filepath.Join(root, "elnis", "new")
+
 	if err := os.MkdirAll(oldDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +32,8 @@ func TestCleanupArtifactsDeletesOldFilesAndEmptyDirs(t *testing.T) {
 	if err := os.Chtimes(oldFile, oldTime, oldTime); err != nil {
 		t.Fatal(err)
 	}
-	deleted, err := cleanupArtifacts(context.Background(), root, time.Now().AddDate(0, 0, -7))
+	deleted, err := cleanupSandbox(context.Background(), root, time.Now().AddDate(0, 0, -7))
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +46,11 @@ func TestCleanupArtifactsDeletesOldFilesAndEmptyDirs(t *testing.T) {
 	if _, err := os.Stat(oldDir); !os.IsNotExist(err) {
 		t.Fatalf("old dir still exists or stat failed unexpectedly: %v", err)
 	}
+	if _, err := os.Stat(root); err != nil {
+		t.Fatalf("sandbox root missing: %v", err)
+	}
 	if _, err := os.Stat(newFile); err != nil {
+
 		t.Fatalf("new file missing: %v", err)
 	}
 }

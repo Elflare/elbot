@@ -73,7 +73,6 @@ type Agent struct {
 	cleanupRetentionDays        int
 	nonSuperadminIdleTTLMinutes int
 	sandboxRoot                 string
-	artifactDir                 string
 	logger                      *slog.Logger
 	auditLogger                 *slog.Logger
 	logReader                   logging.Reader
@@ -153,7 +152,6 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 		cleanupRetentionDays:        30,
 		nonSuperadminIdleTTLMinutes: config.Default().Session.NonSuperadminIdleTTLMinutes,
 		sandboxRoot:                 config.Default().Sandbox.Root,
-		artifactDir:                 filepath.Join(config.Default().Sandbox.Root, "artifact"),
 		actorID:                     "cli:local",
 		scopeID:                     "local",
 	}
@@ -377,16 +375,12 @@ func (a *Agent) SetNonSuperadminIdleTTLMinutes(minutes int) {
 	a.nonSuperadminIdleTTLMinutes = minutes
 }
 
-func (a *Agent) SetSandboxPaths(root, artifactDir string) {
+func (a *Agent) SetSandboxRoot(root string) {
 	root = filepath.Clean(root)
 	if root == "." || root == "" {
 		root = config.Default().Sandbox.Root
 	}
-	if artifactDir == "" {
-		artifactDir = filepath.Join(root, "artifact")
-	}
 	a.sandboxRoot = root
-	a.artifactDir = filepath.Clean(artifactDir)
 }
 
 func (a *Agent) retentionDays() int {

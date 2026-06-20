@@ -121,7 +121,7 @@ func schemaForContext(ctx context.Context, schema llm.ToolSchema) llm.ToolSchema
 
 func backgroundPathSchema(name string) bool {
 	switch name {
-	case "shell", "read_file", "edit_file", "send_file":
+	case "shell", "read_file", "edit_file":
 		return true
 	default:
 		return false

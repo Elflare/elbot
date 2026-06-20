@@ -167,7 +167,8 @@ elbot completion nushell > ~/.config/nushell/completions/elbot.nu
 3. 平台配置目录，例如 Windows `%APPDATA%/ElBot/app.toml`，Linux XDG 配置目录。
 4. 如果平台配置不存在，则自动生成平台默认配置。
 
-运行数据默认进入平台数据目录，例如 SQLite、日志、sandbox 和 artifact。具体规则见 [配置说明](configuration.md)。
+运行数据默认进入平台数据目录，例如 SQLite、日志和 sandbox。具体规则见 [配置说明](configuration.md)。
+
 
 ## 常见问题
 

@@ -181,7 +181,8 @@ chat_history_sqlite_path = ""
 - Windows：`%APPDATA%/ElBot/data`
 - Linux：`$XDG_DATA_HOME/elbot` 或 `~/.local/share/elbot`
 
-运行日志、SQLite、sandbox、artifact 等运行数据也会按配置或默认数据目录存放。
+运行日志、SQLite、sandbox 等运行数据也会按配置或默认数据目录存放。
+
 
 ## 日志与维护任务
 
@@ -201,7 +202,14 @@ enabled = true
 schedule = "0 3 * * *"
 ```
 
-Cron 表达式由内部 Cron Runtime 调度，使用 Linux crontab 风格的 5 字段格式：`分钟 小时 日 月 星期`。默认维护任务包含日志、artifact 和聊天历史清理，例如聊天历史默认每天 04:35 执行：
+Cron 表达式由内部 Cron Runtime 调度，使用 Linux crontab 风格的 5 字段格式：`分钟 小时 日 月 星期`。默认维护任务包含日志、sandbox 和聊天历史清理，例如 sandbox 默认每天 04:00 清理 7 天前内容，聊天历史默认每天 04:35 执行：
+
+```toml
+[maintenance.sandbox_cleanup]
+enabled = true
+schedule = "0 4 * * *"
+retention_days = 7
+```
 
 ```toml
 [maintenance.chat_history_cleanup]

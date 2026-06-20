@@ -73,10 +73,6 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 	if sandboxRoot == "" {
 		sandboxRoot = filepath.Join("data", "sandbox")
 	}
-	artifactDir := a.artifactDir
-	if artifactDir == "" {
-		artifactDir = filepath.Join(sandboxRoot, "artifact")
-	}
 	sandboxSubdir := strings.TrimSpace(req.SandboxSubdir)
 	if sandboxSubdir == "" {
 		sandboxSubdir = strings.TrimSpace(string(req.Kind))
@@ -84,7 +80,7 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 	if sandboxSubdir == "" {
 		sandboxSubdir = "background"
 	}
-	ctx = tool.WithSandboxContext(ctx, tool.SandboxContext{Root: sandboxRoot, Dir: filepath.Join(sandboxRoot, filepath.FromSlash(sandboxSubdir)), ArtifactDir: artifactDir, Background: true, BackgroundKind: toolBackgroundKind(req.Kind)})
+	ctx = tool.WithSandboxContext(ctx, tool.SandboxContext{Root: sandboxRoot, Dir: filepath.Join(sandboxRoot, filepath.FromSlash(sandboxSubdir)), Background: true, BackgroundKind: toolBackgroundKind(req.Kind)})
 
 	if req.ModelProvider != "" || req.Model != "" {
 		ctx = context.WithValue(ctx, cronModelSelectionKey{}, config.ModelSelection{Provider: req.ModelProvider, Model: req.Model})

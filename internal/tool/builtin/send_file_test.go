@@ -9,14 +9,13 @@ import (
 	"strings"
 	"testing"
 
-	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/tool"
 )
 
 func TestSendFileAssessRiskExternalPath(t *testing.T) {
-	manager := NewArtifactManager(filepath.Join(t.TempDir(), "sandbox"), config.ArtifactConfig{})
+	manager := NewFileManager(filepath.Join(t.TempDir(), "sandbox"))
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"path": filepath.Join(t.TempDir(), "report.txt")})
 	assessment, err := sendFile.AssessRisk(context.Background(), tool.CallRequest{Arguments: args})
@@ -28,12 +27,12 @@ func TestSendFileAssessRiskExternalPath(t *testing.T) {
 	}
 }
 
-func TestSendFileAssessRiskCronExternalPath(t *testing.T) {
+func TestSendFileAssessRiskBackgroundAbsolutePath(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "sandbox")
-	manager := NewArtifactManager(root, config.ArtifactConfig{})
+	manager := NewFileManager(root)
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"path": filepath.Join(t.TempDir(), "report.txt")})
-	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Root: root, Dir: filepath.Join(root, "cron"), ArtifactDir: filepath.Join(root, "artifact"), Background: true, BackgroundKind: tool.BackgroundKindCron})
+	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Root: root, Dir: filepath.Join(root, "cron"), Background: true, BackgroundKind: tool.BackgroundKindCron})
 	assessment, err := sendFile.AssessRisk(ctx, tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
@@ -43,7 +42,7 @@ func TestSendFileAssessRiskCronExternalPath(t *testing.T) {
 	}
 }
 
-func TestSendFileSendsSandboxFileWithoutCopying(t *testing.T) {
+func TestSendFileSendsSandboxFile(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "sandbox")
 	cronDir := filepath.Join(root, "cron")
 	if err := os.MkdirAll(cronDir, 0o755); err != nil {
@@ -52,11 +51,11 @@ func TestSendFileSendsSandboxFileWithoutCopying(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cronDir, "report.txt"), []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewArtifactManager(root, config.ArtifactConfig{})
+	manager := NewFileManager(root)
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"file": "report.txt"})
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qqonebot"})
-	ctx = tool.WithSandboxContext(ctx, tool.SandboxContext{Root: root, Dir: cronDir, ArtifactDir: filepath.Join(root, "artifact"), Background: true, BackgroundKind: tool.BackgroundKindCron})
+	ctx = tool.WithSandboxContext(ctx, tool.SandboxContext{Root: root, Dir: cronDir, Background: true, BackgroundKind: tool.BackgroundKindCron})
 	result, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
@@ -67,38 +66,35 @@ func TestSendFileSendsSandboxFileWithoutCopying(t *testing.T) {
 	if result.Outputs[0].Target.Platform != "qqonebot" || !result.Outputs[0].Target.Superadmins {
 		t.Fatalf("target = %#v", result.Outputs[0].Target)
 	}
-	artifactPath := result.Outputs[0].Source.Path
-	if artifactPath != filepath.Join(cronDir, "report.txt") {
-		t.Fatalf("sent path = %q, want cron file", artifactPath)
+	sentPath := result.Outputs[0].Source.Path
+	if sentPath != filepath.Join(cronDir, "report.txt") {
+		t.Fatalf("sent path = %q, want cron file", sentPath)
 	}
-	data, err := os.ReadFile(artifactPath)
+	data, err := os.ReadFile(sentPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(data) != "hello" {
-		t.Fatalf("artifact content = %q", data)
+		t.Fatalf("file content = %q", data)
 	}
 }
 
-func TestSendFileCopiesExternalFileToArtifact(t *testing.T) {
+func TestSendFileSendsExternalFileDirectly(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "sandbox")
 	source := filepath.Join(t.TempDir(), "external.txt")
 	if err := os.WriteFile(source, []byte("outside"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewArtifactManager(root, config.ArtifactConfig{})
+	manager := NewFileManager(root)
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"file": source})
 	result, err := sendFile.Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
-	artifactPath := result.Outputs[0].Source.Path
-	if !isPathWithin(artifactPath, filepath.Join(root, "artifact")) {
-		t.Fatalf("artifact path %q is outside artifact dir", artifactPath)
-	}
-	if artifactPath == source {
-		t.Fatal("external file was not copied")
+	sentPath := result.Outputs[0].Source.Path
+	if sentPath != source {
+		t.Fatalf("sent path = %q, want source", sentPath)
 	}
 }
 
@@ -112,17 +108,20 @@ func TestNormalizeLocalPathConvertsMSYSWindowsPath(t *testing.T) {
 	}
 }
 
-func TestSendFileRejectsOversizedBase64File(t *testing.T) {
+func TestSendFileBackgroundSendsAbsolutePath(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "sandbox")
-	file := filepath.Join(t.TempDir(), "large.txt")
-	if err := os.WriteFile(file, []byte("12345"), 0o644); err != nil {
+	file := filepath.Join(t.TempDir(), "external.txt")
+	if err := os.WriteFile(file, []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewArtifactManager(root, config.ArtifactConfig{MaxDirectBase64Bytes: 4, Backend: "base64"})
-	sendFile := NewSendFileTool(manager)
+	sendFile := NewSendFileTool(NewFileManager(root))
 	args, _ := json.Marshal(map[string]any{"path": file})
-	_, err := sendFile.Call(context.Background(), tool.CallRequest{Arguments: args})
-	if err == nil {
-		t.Fatal("expected oversized file error")
+	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Root: root, Dir: filepath.Join(root, "cron"), Background: true, BackgroundKind: tool.BackgroundKindCron})
+	result, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Outputs[0].Source.Path != file {
+		t.Fatalf("sent path = %q, want %q", result.Outputs[0].Source.Path, file)
 	}
 }

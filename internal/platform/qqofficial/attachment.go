@@ -41,13 +41,13 @@ func (a *Adapter) saveInboundAttachments(ctx context.Context, openID, messageID 
 }
 
 func (a *Adapter) downloadInboundAttachment(ctx context.Context, openID, messageID string, index int, urlValue string) (savedAttachment, error) {
-	artifactDir := strings.TrimSpace(a.cfg.ArtifactDir)
-	if artifactDir == "" {
-		return savedAttachment{}, fmt.Errorf("artifact dir is not configured")
+	attachmentDir := strings.TrimSpace(a.cfg.AttachmentDir)
+	if attachmentDir == "" {
+		return savedAttachment{}, fmt.Errorf("attachment dir is not configured")
 	}
-	absArtifactDir, err := filepath.Abs(artifactDir)
+	absAttachmentDir, err := filepath.Abs(attachmentDir)
 	if err != nil {
-		return savedAttachment{}, fmt.Errorf("resolve artifact dir: %w", err)
+		return savedAttachment{}, fmt.Errorf("resolve attachment dir: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlValue, nil)
@@ -63,10 +63,10 @@ func (a *Adapter) downloadInboundAttachment(ctx context.Context, openID, message
 		return savedAttachment{}, fmt.Errorf("download attachment http %d", resp.StatusCode)
 	}
 	name := inboundAttachmentName(urlValue, resp.Header, index)
-	if err := os.MkdirAll(absArtifactDir, 0o755); err != nil {
-		return savedAttachment{}, fmt.Errorf("create artifact dir: %w", err)
+	if err := os.MkdirAll(absAttachmentDir, 0o755); err != nil {
+		return savedAttachment{}, fmt.Errorf("create attachment dir: %w", err)
 	}
-	path := uniquePath(filepath.Join(absArtifactDir, name))
+	path := uniquePath(filepath.Join(absAttachmentDir, name))
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
 		return savedAttachment{}, fmt.Errorf("create attachment file: %w", err)

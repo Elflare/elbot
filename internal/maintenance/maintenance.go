@@ -21,8 +21,8 @@ type Service struct {
 	chatHistory        storage.ChatHistoryRepository
 	sessionCleanup     config.SessionCleanupConfig
 	chatHistoryCleanup config.ChatHistoryCleanupConfig
-	artifactDir        string
-	artifactConfig     config.ArtifactConfig
+	sandboxRoot        string
+	sandboxCleanup     config.MaintenanceCleanupConfig
 	logger             *slog.Logger
 }
 
@@ -34,7 +34,7 @@ func NewServiceWithConfig(logs *logging.Manager, store storage.Store, chatHistor
 	if cfg == nil {
 		return NewService(logs, store, config.SessionCleanupConfig{}, logger)
 	}
-	return &Service{logs: logs, store: store, chatHistory: chatHistory, sessionCleanup: cfg.Session.Cleanup, chatHistoryCleanup: cfg.Maintenance.ChatHistoryCleanup, artifactDir: filepath.Join(cfg.Sandbox.Root, "artifact"), artifactConfig: cfg.Artifact, logger: logger}
+	return &Service{logs: logs, store: store, chatHistory: chatHistory, sessionCleanup: cfg.Session.Cleanup, chatHistoryCleanup: cfg.Maintenance.ChatHistoryCleanup, sandboxRoot: cfg.Sandbox.Root, sandboxCleanup: cfg.Maintenance.SandboxCleanup, logger: logger}
 }
 
 func (s *Service) RegisterCronHandlers(manager *elcron.Manager) error {
@@ -51,8 +51,8 @@ func (s *Service) RegisterCronHandlers(manager *elcron.Manager) error {
 	}); err != nil {
 		return err
 	}
-	if err := manager.RegisterHandler("maintenance.artifact_cleanup", func(ctx context.Context, job storage.CronJob) error {
-		return s.RunArtifactCleanup(ctx)
+	if err := manager.RegisterHandler("maintenance.sandbox_cleanup", func(ctx context.Context, job storage.CronJob) error {
+		return s.RunSandboxCleanup(ctx)
 	}); err != nil {
 		return err
 	}
@@ -74,7 +74,7 @@ func SetupCron(ctx context.Context, manager *elcron.Manager, cfg *config.Config)
 	if err := upsertOrDisable(ctx, manager, cfg.Session.Cleanup.Enabled, "system.maintenance.session_cleanup", "maintenance.session_cleanup", cfg.Maintenance.LogCleanup.Schedule); err != nil {
 		return err
 	}
-	if err := upsertOrDisable(ctx, manager, cfg.Maintenance.ArtifactCleanup.Enabled, "system.maintenance.artifact_cleanup", "maintenance.artifact_cleanup", cfg.Maintenance.ArtifactCleanup.Schedule); err != nil {
+	if err := upsertOrDisable(ctx, manager, cfg.Maintenance.SandboxCleanup.Enabled, "system.maintenance.sandbox_cleanup", "maintenance.sandbox_cleanup", cfg.Maintenance.SandboxCleanup.Schedule); err != nil {
 		return err
 	}
 	if err := upsertOrDisable(ctx, manager, cfg.Maintenance.ChatHistoryCleanup.Enabled, "system.maintenance.chat_history_cleanup", "maintenance.chat_history_cleanup", cfg.Maintenance.ChatHistoryCleanup.Schedule); err != nil {
@@ -130,21 +130,21 @@ func (s *Service) RunChatHistoryCleanup(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) RunArtifactCleanup(ctx context.Context) error {
-	if s.artifactDir == "" || s.artifactConfig.RetentionDays <= 0 {
+func (s *Service) RunSandboxCleanup(ctx context.Context) error {
+	if s.sandboxRoot == "" || s.sandboxCleanup.RetentionDays <= 0 {
 		return nil
 	}
-	cutoff := time.Now().AddDate(0, 0, -s.artifactConfig.RetentionDays)
-	deleted, err := cleanupArtifacts(ctx, s.artifactDir, cutoff)
+	cutoff := time.Now().AddDate(0, 0, -s.sandboxCleanup.RetentionDays)
+	deleted, err := cleanupSandbox(ctx, s.sandboxRoot, cutoff)
 	if err != nil {
-		s.warn("maintenance artifact cleanup failed", "error", err, "retention_days", s.artifactConfig.RetentionDays)
+		s.warn("maintenance sandbox cleanup failed", "error", err, "retention_days", s.sandboxCleanup.RetentionDays)
 		return err
 	}
-	s.info("maintenance artifact cleanup completed", "deleted", deleted, "retention_days", s.artifactConfig.RetentionDays)
+	s.info("maintenance sandbox cleanup completed", "deleted", deleted, "retention_days", s.sandboxCleanup.RetentionDays)
 	return nil
 }
 
-func cleanupArtifacts(ctx context.Context, dir string, cutoff time.Time) (int, error) {
+func cleanupSandbox(ctx context.Context, dir string, cutoff time.Time) (int, error) {
 	deleted := 0
 	if _, err := os.Stat(dir); err != nil {
 		if os.IsNotExist(err) {

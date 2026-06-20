@@ -41,7 +41,7 @@ func TestClassifyShellCommand(t *testing.T) {
 func TestShellToolAssessRiskAppliesBackgroundSandbox(t *testing.T) {
 
 	shell := NewShellTool()
-	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Root: "data/sandbox", Dir: "data/sandbox/cron", ArtifactDir: "data/sandbox/artifact", Background: true, BackgroundKind: tool.BackgroundKindCron})
+	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Root: "data/sandbox", Dir: "data/sandbox/cron", Background: true, BackgroundKind: tool.BackgroundKindCron})
 	tests := []struct {
 		name       string
 		cmd        string
