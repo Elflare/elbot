@@ -932,10 +932,6 @@ func buildDirectOutputs(req Request, paths map[string]string) []delivery.Output 
 		return []delivery.Output{delivery.Text(directText(req))}
 	}
 	out := segmentsOutputs(segs, paths)
-	// Append text fallback if content exists
-	if content := strings.TrimSpace(req.Content); content != "" {
-		out = append(out, delivery.Text(content))
-	}
 	return out
 }
 
