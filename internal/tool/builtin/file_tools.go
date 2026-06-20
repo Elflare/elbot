@@ -3,6 +3,7 @@ package builtin
 import (
 	"context"
 	"encoding/json"
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -275,7 +276,7 @@ func editFileBuilder() *tool.Builder {
 func (EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
-		if err := json.Unmarshal(req.Arguments, &args); err != nil {
+		if err := decodeEditArgs(req.Arguments, &args); err != nil {
 			return tool.RiskAssessment{}, fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
@@ -291,7 +292,7 @@ func (EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.
 func (EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
-		if err := json.Unmarshal(req.Arguments, &args); err != nil {
+		if err := decodeEditArgs(req.Arguments, &args); err != nil {
 			return nil, fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
@@ -309,6 +310,15 @@ func (EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 	}
 	content := fmt.Sprintf("dry_run: %t\nedited: %s\ncreated: %t\nencoding: %s\nsha256_before: %s\nsha256_after: %s\ndiff:\n%s", result.DryRun, result.Path, result.Created, result.Encoding, result.SHA256Before, result.SHA256After, result.Diff)
 	return &tool.Result{Content: content}, nil
+}
+
+func decodeEditArgs(raw json.RawMessage, args *editFileArgs) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	return dec.Decode(args)
 }
 
 func resolveFileToolPath(ctx context.Context, rawPath string, allowCreate bool) (string, error) {
