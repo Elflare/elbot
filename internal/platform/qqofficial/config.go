@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"elbot/internal/platform"
+	"elbot/internal/storage"
 )
 
 const (
@@ -31,7 +32,7 @@ type Config struct {
 	Superadmins              []string
 }
 
-func NewFromPlatformConfig(raw map[string]any, logger Logger, superadmins []string, artifactDir string) (*Adapter, error) {
+func NewFromPlatformConfig(raw map[string]any, store storage.Store, logger Logger, superadmins []string, artifactDir string) (*Adapter, error) {
 	var cfg Config
 	if err := platform.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode qqofficial config: %w", err)
@@ -47,7 +48,7 @@ func NewFromPlatformConfig(raw map[string]any, logger Logger, superadmins []stri
 			return nil, fmt.Errorf("qqofficial client_secret or client_secret_env is required")
 		}
 	}
-	return New(cfg, logger), nil
+	return New(cfg, store, logger), nil
 }
 
 func applyDefaults(cfg *Config) {

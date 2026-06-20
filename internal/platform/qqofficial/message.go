@@ -7,6 +7,7 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
+	"elbot/internal/platform/refcontext"
 )
 
 const (
@@ -22,6 +23,7 @@ func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.Platfor
 		return
 	}
 	text := strings.TrimSpace(msg.Content)
+	replyID := c2cReplyID(msg)
 	saved := a.saveInboundAttachments(ctx, openID, msg.ID, msg.Attachments)
 	segments := c2cSegments(text, saved)
 	if text == "" && len(segments) == 0 {
@@ -44,6 +46,22 @@ func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.Platfor
 	}
 	msgCtx := platform.WithMessageContext(ctx, messageCtx)
 	msgCtx = context.WithValue(msgCtx, targetKey{}, sendTarget{OpenID: openID, MsgID: msg.ID})
+	if replyID != "" {
+		ref := refcontext.Apply(msgCtx, refcontext.Options{
+			Store:    a.store,
+			Platform: a.Name(),
+			ScopeID:  messageCtx.ScopeID,
+			ActorID:  a.Name() + ":" + openID,
+			ReplyID:  replyID,
+			Text:     text,
+			Fetch:    c2cReferenceFetcher(msg),
+		})
+		text = ref.Text
+		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
+		messageCtx.Segments = finalMessageSegments(text, segments, ref.ReferenceSegments)
+		msgCtx = platform.WithMessageContext(ctx, messageCtx)
+		msgCtx = context.WithValue(msgCtx, targetKey{}, sendTarget{OpenID: openID, MsgID: msg.ID})
+	}
 	if text == "" && len(saved) > 0 {
 		if _, err := a.SendChat(msgCtx, platformSavedAttachmentsOutput(saved)); err != nil {
 			a.logWarn(ctx, "send qqofficial attachment saved notice failed", "error", err, "message_id", msg.ID)
@@ -52,6 +70,26 @@ func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.Platfor
 	}
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
 		a.logWarn(ctx, "handle qqofficial message failed", "error", err, "message_id", msg.ID)
+	}
+}
+
+func c2cReplyID(msg c2cMessage) string {
+	if msg.MessageReference == nil {
+		return ""
+	}
+	return strings.TrimSpace(msg.MessageReference.MessageID)
+}
+
+func c2cReferenceFetcher(msg c2cMessage) func(context.Context, string) (refcontext.ReferencedMessage, bool) {
+	return func(context.Context, string) (refcontext.ReferencedMessage, bool) {
+		if msg.MessageReference == nil {
+			return refcontext.ReferencedMessage{}, false
+		}
+		text := strings.TrimSpace(msg.MessageReference.Content)
+		if text == "" {
+			return refcontext.ReferencedMessage{}, false
+		}
+		return refcontext.ReferencedMessage{Label: "引用", Text: text, Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: text}}}, true
 	}
 }
 
@@ -72,6 +110,25 @@ func c2cSegments(text string, attachments []savedAttachment) []platform.MessageS
 		segments = append(segments, platform.MessageSegment{Type: segmentType, URL: url, Name: attachment.Path})
 	}
 	return segments
+}
+
+func finalMessageSegments(text string, current, referenced []platform.MessageSegment) []platform.MessageSegment {
+	out := make([]platform.MessageSegment, 0, 1+len(current)+len(referenced))
+	if strings.TrimSpace(text) != "" {
+		out = append(out, platform.MessageSegment{Type: platform.SegmentText, Text: text})
+	}
+	out = appendNonTextSegments(out, current)
+	out = appendNonTextSegments(out, referenced)
+	return out
+}
+
+func appendNonTextSegments(out []platform.MessageSegment, segments []platform.MessageSegment) []platform.MessageSegment {
+	for _, segment := range segments {
+		if segment.Type != platform.SegmentText {
+			out = append(out, segment)
+		}
+	}
+	return out
 }
 
 func platformSavedAttachmentsOutput(attachments []savedAttachment) delivery.Output {
