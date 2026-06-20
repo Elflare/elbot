@@ -757,7 +757,11 @@ func (s *Service) decodeDataURI(dir string, seg Segment, maxBytes int64) (string
 		}
 	}
 
-	filename := storage.NewID() + ext
+	name := strings.TrimSpace(seg.Name)
+	if name == "" {
+		name = storage.NewID()
+	}
+	filename := name + ext
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", fmt.Errorf("create segment dir: %w", err)
 	}
