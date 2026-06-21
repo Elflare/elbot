@@ -205,7 +205,6 @@ Elvena v2 支持通过 `segments` 字段发送图片和文件。`content` 保留
 | --- | ---: | --- |
 | `version` | 是 | 协议版本，当前为 `elvena.v2`。 |
 | `elwisp.name` | 是 | Elwisp 名称，也是来源身份之一；仅允许英文字母、数字、`_`、`-`，不允许点号。 |
-
 | `elwisp.tags` | 否 | Elwisp 标签，用于日志和统计。 |
 | `source` | 是 | 具体事件源，例如服务名、脚本名、RSS 名。 |
 | `id` | 是 | source 内唯一事件 ID。 |
