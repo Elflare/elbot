@@ -26,9 +26,9 @@
       "updated_at": 1782033039
     },
     "docs/elnis-usage.md": {
-      "source_hash": "5379abea6f7c2022e9b38441a74e8e20d38139f969cdddb272d9b0a3b3ef1d0e",
+      "source_hash": "b119437f76df01ac428c1fb4a4e7ad6eb6960b81913b6fbd92cc0a15ff4caa1a",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1781962160
+      "updated_at": 1782033114
     },
     "docs/elnis.md": {
       "source_hash": "3a596f4b6431111170c40d585b756e710b4859cba276cf015e2ed390a4aa2015",
@@ -5407,6 +5407,14 @@
       "translation": "Background queue length for LLM mode.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:code-comment:toml:b04a032f443a5ddd3938323e0e69f974544617f95e5f172ad62e97fa60debbd1": {
+      "kind": "code-comment:toml",
+      "source": "{ platform = \"telegram\" }, # 禁用 telegram 整个平台所有投递。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "b04a032f443a5ddd3938323e0e69f974544617f95e5f172ad62e97fa60debbd1",
+      "translation": "{ platform = \"telegram\" }, # Disable all deliveries for the entire telegram platform.",
+      "updated_at": 1782033114
+    },
     "docs/elnis-usage.md:code-comment:toml:bcc2fde744ef3dbab565d7ddbff5a5847a54f6cd4fcb7db3f5fdd3fd8a4ed0e4": {
       "kind": "code-comment:toml",
       "source": "是否允许投递给目标平台超级管理员。",
@@ -5543,6 +5551,14 @@
       "translation": "__ELBOT_CODE_0__ indicates that delivery to the target platform's superadmin is allowed.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:list:39d59267ebaab21e07dc512b5809024eda04a12d8a8151c63be19fe6532a4450": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：投递到指定平台群聊。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "39d59267ebaab21e07dc512b5809024eda04a12d8a8151c63be19fe6532a4450",
+      "translation": "__ELBOT_CODE_0__: deliver to a specified platform group chat.",
+      "updated_at": 1782033114
+    },
     "docs/elnis-usage.md:list:3b53bcdbdd90365797eb25258a6133a5a821c9ec32009ca06f4935f68ddebbd0": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 使用指定客户端 profile 连接服务端；只有一个默认客户端时可省略 __ELBOT_CODE_1__。",
@@ -5631,6 +5647,14 @@
       "translation": "When __ELBOT_CODE_0__, __ELBOT_CODE_1__ will start a local CLI WebSocket server.",
       "updated_at": 1781962160
     },
+    "docs/elnis-usage.md:list:807392aba7b653e590780106329588417c79b084974f2aeba3f6b3f6c3e4e534": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：投递到所有已启用平台超级管理员，不能同时写 __ELBOT_CODE_1__ 或 __ELBOT_CODE_2__。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "807392aba7b653e590780106329588417c79b084974f2aeba3f6b3f6c3e4e534",
+      "translation": "__ELBOT_CODE_0__: deliver to the superadmins of all enabled platforms; __ELBOT_CODE_1__ or __ELBOT_CODE_2__ cannot be written at the same time.",
+      "updated_at": 1782033114
+    },
     "docs/elnis-usage.md:list:8ae9e28aae0d922c05e2318b6bef3dc28c9ae1ac81151aa3bed6a8c15bc16bc5": {
       "kind": "list",
       "source": "单个 Elwisp 可用 __ELBOT_CODE_0__ 禁用指定工具。",
@@ -5638,6 +5662,14 @@
       "source_hash": "8ae9e28aae0d922c05e2318b6bef3dc28c9ae1ac81151aa3bed6a8c15bc16bc5",
       "translation": "A single Elwisp can use __ELBOT_CODE_0__ to disable specific tools.",
       "updated_at": 1781749660
+    },
+    "docs/elnis-usage.md:list:8e10903c1c241907a109ea2991f0ecee90e4156346762acc425a4a89f389fe9b": {
+      "kind": "list",
+      "source": "Elnis 默认允许投递；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "8e10903c1c241907a109ea2991f0ecee90e4156346762acc425a4a89f389fe9b",
+      "translation": "Elnis allows delivery by default;",
+      "updated_at": 1782033114
     },
     "docs/elnis-usage.md:list:8eb172baff6cb1bb82bd64459b2ec69b086133de62fadd4749234e7458a26eb0": {
       "kind": "list",
@@ -5695,6 +5727,14 @@
       "translation": "Only explicit __ELBOT_CODE_0__ will disable the corresponding Elwisp.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:list:a02dcfcfc7aeb5a6e833513344f30b45c5887e51cadfc5db7277eb9799148354": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：投递到指定平台私聊。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "a02dcfcfc7aeb5a6e833513344f30b45c5887e51cadfc5db7277eb9799148354",
+      "translation": "__ELBOT_CODE_0__: deliver to a specified platform private chat.",
+      "updated_at": 1782033114
+    },
     "docs/elnis-usage.md:list:a8cc1dc35863df7c0a345c5282b86da0271caa0ead8fb71b7bb41eee9807ac24": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 是客户端默认连接地址；连接其他机器时在 __ELBOT_CODE_1__ 写远程 WebSocket 地址。",
@@ -5702,6 +5742,14 @@
       "source_hash": "a8cc1dc35863df7c0a345c5282b86da0271caa0ead8fb71b7bb41eee9807ac24",
       "translation": "__ELBOT_CODE_0__ is the default connection address for the client; when connecting to other machines, specify the remote WebSocket address in __ELBOT_CODE_1__.",
       "updated_at": 1781962160
+    },
+    "docs/elnis-usage.md:list:af47283fd76be050a545cda7087ca9242c13b79f076f52db918a16278d532267": {
+      "kind": "list",
+      "source": "当前 __ELBOT_CODE_0__ 只适用于 Elnis 与 CLI 同处一个 __ELBOT_CODE_1__ 前台进程，或 service 模式启用 CLI 远程服务端的场景；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "af47283fd76be050a545cda7087ca9242c13b79f076f52db918a16278d532267",
+      "translation": "Currently, __ELBOT_CODE_0__ only applies to scenarios where Elnis and the CLI are in the same __ELBOT_CODE_1__ foreground process, or when the CLI remote server is enabled in service mode;",
+      "updated_at": 1782033114
     },
     "docs/elnis-usage.md:list:b402ea8c3ed8917b33f57e8cd9f2f161481b5029d5fdc46fff2ba6e4b877ad8a": {
       "kind": "list",
@@ -5751,6 +5799,14 @@
       "translation": "Tool names or Skill names in __ELBOT_CODE_0__ will all undergo Elnis __ELBOT_CODE_1__ adjudication.",
       "updated_at": 1781786110
     },
+    "docs/elnis-usage.md:list:ce044b9ed5ef1d04dbc189f7ba2766c17143936cc94b757331e828a255cd56a2": {
+      "kind": "list",
+      "source": "独立 __ELBOT_CODE_0__ 进程需连接服务端后才能收到通知。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "ce044b9ed5ef1d04dbc189f7ba2766c17143936cc94b757331e828a255cd56a2",
+      "translation": "Independent __ELBOT_CODE_0__ processes must connect to the server before they can receive notifications.",
+      "updated_at": 1782033114
+    },
     "docs/elnis-usage.md:list:d627a0566699b39e88111dc901fa4f867b1c710a873ce3bd52b2c7b1645262b3": {
       "kind": "list",
       "source": "Elwisp 不能直接发送平台消息。",
@@ -5758,6 +5814,14 @@
       "source_hash": "d627a0566699b39e88111dc901fa4f867b1c710a873ce3bd52b2c7b1645262b3",
       "translation": "Elwisp cannot send platform messages directly.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:list:d705c8398c10672228f9d969285389749b29e3c26b7ef4e70f9ea0e09cbac170": {
+      "kind": "list",
+      "source": "只有 __ELBOT_CODE_0__ 或单 Elwisp __ELBOT_CODE_1__ 显式列出的目标会被禁止。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "d705c8398c10672228f9d969285389749b29e3c26b7ef4e70f9ea0e09cbac170",
+      "translation": "Only targets explicitly listed in __ELBOT_CODE_0__ or a single Elwisp __ELBOT_CODE_1__ will be prohibited.",
+      "updated_at": 1782033114
     },
     "docs/elnis-usage.md:list:da7abcd05a78fdef779330080f2fe07cc83d7ca4ceb1aae961bd45a602608302": {
       "kind": "list",
@@ -5798,6 +5862,14 @@
       "source_hash": "ef1cac3cf7d4384fd3b43cb37f9efa8744f73a39760280b77e27ed0c6174b59a",
       "translation": "__ELBOT_CODE_0__ is the server listening address.",
       "updated_at": 1781962160
+    },
+    "docs/elnis-usage.md:list:f05de9594a7ea188ef802e22bb502f897346bf330b88ce6c87f1beb1ad71184a": {
+      "kind": "list",
+      "source": "只写 __ELBOT_CODE_0__：投递到该平台超级管理员。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "f05de9594a7ea188ef802e22bb502f897346bf330b88ce6c87f1beb1ad71184a",
+      "translation": "Only write __ELBOT_CODE_0__: deliver to the superadmin of that platform.",
+      "updated_at": 1782033114
     },
     "docs/elnis-usage.md:list:f37c91ec3dffafe934f5bce843a93dc68030d8aacf7bc7f31680545522c164c8": {
       "kind": "list",
@@ -5887,6 +5959,14 @@
       "translation": "__ELBOT_CODE_0__ is the configuration read when ElBot acts as the server, and __ELBOT_CODE_1__ is the configuration read when the current command connects to the server as a CLI client.\n",
       "updated_at": 1781962160
     },
+    "docs/elnis-usage.md:paragraph:2eb6f568947717cb848a96384dd26bafddb4d4ae5c4b36b613316263572b2ae5": {
+      "kind": "paragraph",
+      "source": "Elvena v2 支持通过 __ELBOT_CODE_0__ 字段发送图片和文件。__ELBOT_CODE_1__ 保留为纯文本 fallback，与旧 Elwisp 完全兼容。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "2eb6f568947717cb848a96384dd26bafddb4d4ae5c4b36b613316263572b2ae5",
+      "translation": "Elvena v2 supports sending images and files via the __ELBOT_CODE_0__ field. __ELBOT_CODE_1__ is reserved as a plain text fallback and is fully compatible with the old Elwisp.\n",
+      "updated_at": 1782033114
+    },
     "docs/elnis-usage.md:paragraph:3992a8029e30f39041102d37033acf1f8f97cc62e58323fc3fd801ddc6f4ab09": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 会提供协议说明、配置片段、事件模板、代码脚手架和测试命令；真正写文件或运行命令仍会继续使用对应工具。\n",
@@ -5902,6 +5982,22 @@
       "source_hash": "3a19b861be8a99d9fa2420f650b59094617f0be69eaf90224754eaa8411fb027",
       "translation": "Currently, it is recommended to only use:\n",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:3b1511c0edd535e3768b0a7d61f5000101faa79e542fa624ebd9969acc78668b": {
+      "kind": "paragraph",
+      "source": "命中 __ELBOT_CODE_0__ 或单 Elwisp __ELBOT_CODE_1__ 时才禁止。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "3b1511c0edd535e3768b0a7d61f5000101faa79e542fa624ebd9969acc78668b",
+      "translation": "It is only prohibited when __ELBOT_CODE_0__ or a single Elwisp __ELBOT_CODE_1__ is hit.",
+      "updated_at": 1782033114
+    },
+    "docs/elnis-usage.md:paragraph:3d3b1d1dc773f2101d9a89af07f7f426bb8961ede2af061019faf51b50e95caa": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 必须是数组：\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "3d3b1d1dc773f2101d9a89af07f7f426bb8961ede2af061019faf51b50e95caa",
+      "translation": "__ELBOT_CODE_0__ must be an array:\n",
+      "updated_at": 1782033114
     },
     "docs/elnis-usage.md:paragraph:4624f2dadcd59445162f5733cd19d8e71f1ad1220021c014692e0ba2bdd2393a": {
       "kind": "paragraph",
@@ -5967,6 +6063,22 @@
       "translation": "If you want ElBot to help you generate an Elwisp listener, you can submit a request to the superadmin Session in work mode, for example:\n",
       "updated_at": 1781779450
     },
+    "docs/elnis-usage.md:paragraph:74d9bfb1c1843b09c07c3521eb60ae7ad1d9ff7cc263f9e9782db377598fd539": {
+      "kind": "paragraph",
+      "source": "禁用配置中的 __ELBOT_CODE_0__ 表示禁用该平台所有投递。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "74d9bfb1c1843b09c07c3521eb60ae7ad1d9ff7cc263f9e9782db377598fd539",
+      "translation": "Setting __ELBOT_CODE_0__ in the disable configuration means disabling all deliveries for this platform.\n",
+      "updated_at": 1782033114
+    },
+    "docs/elnis-usage.md:paragraph:8e10903c1c241907a109ea2991f0ecee90e4156346762acc425a4a89f389fe9b": {
+      "kind": "paragraph",
+      "source": "Elnis 默认允许投递；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "8e10903c1c241907a109ea2991f0ecee90e4156346762acc425a4a89f389fe9b",
+      "translation": "Elnis allows delivery by default;",
+      "updated_at": 1782033114
+    },
     "docs/elnis-usage.md:paragraph:a0c0277789aa15ef006e25e7a5ffb166f33bd5f0daf653a4e5196858ffc70643": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 可以包含 __ELBOT_CODE_1__，表示请求投递到 Elnis 策略允许的全部平台。",
@@ -6015,6 +6127,14 @@
       "translation": "Security Conventions:\n",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:paragraph:c4d8b65b953274a6f55a14e458f1692b0c1a4c266202db3f4cb38edcb2f173c2": {
+      "kind": "paragraph",
+      "source": "语义：\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "c4d8b65b953274a6f55a14e458f1692b0c1a4c266202db3f4cb38edcb2f173c2",
+      "translation": "Semantics:\n",
+      "updated_at": 1782033114
+    },
     "docs/elnis-usage.md:paragraph:ddac502e5a9bf6effe2c663d9791e9d17620364e413cc20355177083ec692c93": {
       "kind": "paragraph",
       "source": "启动 ElBot 后，可以用 curl 测试一个 __ELBOT_CODE_0__ 事件：\n",
@@ -6046,6 +6166,14 @@
       "source_hash": "0250510547f02dc95c376267491814c698dc8f9b58256d5afe9f10609b16ddb4",
       "translation": "Elnis LLM model slot, only supporting __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__; if left blank or the corresponding slot is not configured, it will fall back to __ELBOT_CODE_3__.",
       "updated_at": 1781779450
+    },
+    "docs/elnis-usage.md:table:045a16d4324315f2e9ec137640e1107a761785bccf49bfc96839d95ea75661ad": {
+      "kind": "table",
+      "source": "最终仍由 Elnis 裁决。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "045a16d4324315f2e9ec137640e1107a761785bccf49bfc96839d95ea75661ad",
+      "translation": "The final decision is still made by Elnis.",
+      "updated_at": 1782033114
     },
     "docs/elnis-usage.md:table:05a363aa4f244abaff4fcea17940f12ab23dc582a574ba43df7b47246ad7d47a": {
       "kind": "table",
@@ -6302,6 +6430,14 @@
       "source_hash": "e3b263ee01e2d8e405062e5af39f642d31bf63d459a6481f15b74b15d53ec7d3",
       "translation": "Plain text content, not persisted to disk.",
       "updated_at": 1781929269
+    },
+    "docs/elnis-usage.md:table:e45776f2e59354db4b227cd1b2ffd48797ec268a40d1353b5dcbe20797bb74dc": {
+      "kind": "table",
+      "source": "Elwisp 期望投递目标数组，__ELBOT_CODE_0__ 表示发给平台超级管理员，__ELBOT_CODE_1__ 且带 __ELBOT_CODE_2__ 时发指定私聊/群聊，__ELBOT_CODE_3__ 表示所有已启用平台超级管理员。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "e45776f2e59354db4b227cd1b2ffd48797ec268a40d1353b5dcbe20797bb74dc",
+      "translation": "Elwisp expects a delivery target array: __ELBOT_CODE_0__ indicates sending to the platform superadmin, __ELBOT_CODE_1__ with __ELBOT_CODE_2__ indicates sending to a specified private chat/group chat, and __ELBOT_CODE_3__ indicates all enabled platform superadmins.",
+      "updated_at": 1782033114
     },
     "docs/elnis-usage.md:table:f094dbde8ffe18ca235d3232a572599a2c843f7f457b8892cf5bb6b2cdcf39fd": {
       "kind": "table",
