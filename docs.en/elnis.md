@@ -188,7 +188,9 @@ In work mode, the superadmin can let ElBot use the built-in tool `elwisp_creator
 
 ## Current Limitations and Future Directions
 
-Currently, Elnis supports record, direct, and llm modes, Elwisp declaring external tools with events, and multimodal message segments (text/image/file). The following capabilities are still under development or planning:
+Currently, Elnis supports record, direct, and llm modes, Elwisp declaring external tools with events, and multimodal message segments (text/image/file). When a superadmin quotes and replies to an Elnis LLM report notification within the platform, it will automatically resume to the corresponding background Session to continue the conversation; When a regular user quotes it, it will only be processed as ordinary quoted text.
+
+The following capabilities are still under development or planning:
 
 - Multi-turn communication between Elnis and Elwisp.
 - Non-HTTP transports such as stdio, pipe, etc.

@@ -31,9 +31,9 @@
       "updated_at": 1782034814
     },
     "docs/elnis.md": {
-      "source_hash": "7dbfa37c166c9ef5eedffe895e2d15aaaf5e5ffea903db7fe6a661e66f18ed18",
+      "source_hash": "b542deeecb1f600c997e482baedad0a3ff6e9ffa06150a209ca0bab351fbfe52",
       "target": "docs.en/elnis.md",
-      "updated_at": 1782033115
+      "updated_at": 1782039286
     },
     "docs/elyph.md": {
       "source_hash": "1143022b6f7a7792b0f1aa8118af618014b6ac359776d6a7cd21cc484f28a6bc",
@@ -6991,6 +6991,14 @@
       "translation": "Elnis allows ElBot to respond to the external world.\n",
       "updated_at": 1781710746
     },
+    "docs/elnis.md:paragraph:afa7d04616c71399fcd939fd81170dc64911e3820fba22bcabd71cfa76ab63f4": {
+      "kind": "paragraph",
+      "source": "超级管理员在平台里引用回复 Elnis LLM 报告通知时，会自动 resume 到对应后台 Session 继续对话；",
+      "source_file": "docs/elnis.md",
+      "source_hash": "afa7d04616c71399fcd939fd81170dc64911e3820fba22bcabd71cfa76ab63f4",
+      "translation": "When a superadmin quotes and replies to an Elnis LLM report notification within the platform, it will automatically resume to the corresponding background Session to continue the conversation;",
+      "updated_at": 1782039286
+    },
     "docs/elnis.md:paragraph:b3a11302390f0fe1b098f268e2c006c8c6fcfd2397c7cf6a18dae3609c3980c5": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 时，Elnis 会按裁决后的目标发送 __ELBOT_CODE_1__。\n",
@@ -6998,6 +7006,14 @@
       "source_hash": "b3a11302390f0fe1b098f268e2c006c8c6fcfd2397c7cf6a18dae3609c3980c5",
       "translation": "During __ELBOT_CODE_0__, Elnis will send __ELBOT_CODE_1__ according to the adjudicated target.\n",
       "updated_at": 1781710746
+    },
+    "docs/elnis.md:paragraph:be686882804206dc8baf58a45f5512013a83eea607a21bba995c1a01103817ee": {
+      "kind": "paragraph",
+      "source": "普通用户引用时只会作为普通引用文本处理。\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "be686882804206dc8baf58a45f5512013a83eea607a21bba995c1a01103817ee",
+      "translation": "When a regular user quotes it, it will only be processed as ordinary quoted text.\n",
+      "updated_at": 1782039286
     },
     "docs/elnis.md:paragraph:c235f80b7fef92338972f15c874cba0d2e2410167f4ef2eb2e6db6e4ec5ce465": {
       "kind": "paragraph",
