@@ -18,6 +18,7 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
+	"elbot/internal/platform/refcontext"
 	"elbot/internal/storage"
 )
 
@@ -410,18 +411,19 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 
 	var referenceSegments []platform.MessageSegment
 	if normalized.ReplyID != "" {
-		trimmed := strings.TrimSpace(text)
-		if platform.HasCommandPrefix(trimmed, a.cfg.CommandPrefixes) {
-			text = a.commandWithReference(event, normalized.ReplyID, trimmed)
-		} else if a.isLatestOwnAssistantReference(msgCtx, event, normalized.ReplyID) {
-			// 用户常会引用机器人最后一条消息来继续说话；这种情况不需要 fork，也不需要重复塞引用内容。
-		} else if forkFromMessageID := a.forkableReferenceMessageID(msgCtx, event, normalized.ReplyID); forkFromMessageID != "" {
-			messageCtx.ForkFromMessageID = forkFromMessageID
-			msgCtx = platform.WithMessageContext(ctx, messageCtx)
-			msgCtx = context.WithValue(msgCtx, targetKey{}, target{MessageType: event.MessageType, UserID: event.UserID, GroupID: event.GroupID})
-		} else {
-			text, referenceSegments = a.withReference(msgCtx, event, normalized.ReplyID, text)
-		}
+		ref := refcontext.Apply(msgCtx, refcontext.Options{
+			Store:           a.store,
+			Platform:        a.Name(),
+			ScopeID:         messageCtx.ScopeID,
+			ActorID:         a.Name() + ":" + strconv.FormatInt(event.UserID, 10),
+			ReplyID:         normalized.ReplyID,
+			Text:            text,
+			CommandPrefixes: a.cfg.CommandPrefixes,
+			Fetch:           a.referenceFetcher(event),
+		})
+		text = ref.Text
+		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
+		referenceSegments = ref.ReferenceSegments
 	}
 	if strings.TrimSpace(text) == "" {
 		return
@@ -504,103 +506,22 @@ func (a *Adapter) isBotReply(event Event, replyID string) bool {
 	return err == nil && data.UserID == event.SelfID
 }
 
-func (a *Adapter) commandWithReference(event Event, replyID, text string) string {
-	name, ok := platform.CommandName(text, a.cfg.CommandPrefixes)
-	if !ok || name != "fork" || a.store == nil {
-		return text
-	}
-	msg, err := a.store.Messages().FindByPlatformMessage(context.Background(), a.Name(), scopeID(event), replyID)
-	if err != nil || msg.Role != storage.RoleAssistant {
-		return text
-	}
-	return "/fork " + msg.ID
-}
-
-func (a *Adapter) forkableReferenceMessageID(ctx context.Context, event Event, replyID string) string {
-	msg, ok := a.ownReferenceAssistant(ctx, event, replyID)
-	if !ok || a.isLatestAssistantMessage(ctx, msg) {
-		return ""
-	}
-	return msg.ID
-}
-
-func (a *Adapter) isLatestOwnAssistantReference(ctx context.Context, event Event, replyID string) bool {
-	msg, ok := a.ownReferenceAssistant(ctx, event, replyID)
-	return ok && a.isLatestAssistantMessage(ctx, msg)
-}
-
-func (a *Adapter) ownReferenceAssistant(ctx context.Context, event Event, replyID string) (*storage.Message, bool) {
-	msg, err := a.referenceAssistantMessage(ctx, event, replyID)
-	if err != nil {
-		return nil, false
-	}
-	session, err := a.store.Sessions().Get(ctx, msg.SessionID)
-	if err != nil {
-		return nil, false
-	}
-	actorID := a.Name() + ":" + strconv.FormatInt(event.UserID, 10)
-	if session.OwnerID != actorID || session.Platform != a.Name() || session.PlatformScopeID != scopeID(event) {
-		return nil, false
-	}
-	return msg, true
-}
-
-func (a *Adapter) referenceAssistantMessage(ctx context.Context, event Event, replyID string) (*storage.Message, error) {
-	if a.store == nil {
-		return nil, storage.ErrNotFound
-	}
-	msg, err := a.store.Messages().FindByPlatformMessage(ctx, a.Name(), scopeID(event), replyID)
-	if err != nil || msg.Role != storage.RoleAssistant {
-		return nil, storage.ErrNotFound
-	}
-	return msg, nil
-}
-
-func (a *Adapter) isLatestAssistantMessage(ctx context.Context, msg *storage.Message) bool {
-	messages, err := a.store.Messages().ListBySession(ctx, msg.SessionID)
-	if err != nil {
-		return true
-	}
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == storage.RoleAssistant {
-			return messages[i].ID == msg.ID
+func (a *Adapter) referenceFetcher(event Event) func(context.Context, string) (refcontext.ReferencedMessage, bool) {
+	return func(ctx context.Context, replyID string) (refcontext.ReferencedMessage, bool) {
+		if a.transport == nil {
+			return refcontext.ReferencedMessage{}, false
 		}
-	}
-	return true
-}
-
-func (a *Adapter) withReference(ctx context.Context, event Event, replyID, text string) (string, []platform.MessageSegment) {
-	label := "引用"
-	content := ""
-	var segments []platform.MessageSegment
-	if a.transport != nil {
-		if data, err := a.transport.GetMessage(ctx, replyID); err == nil {
-			ref := normalizeMessage(data.Message, data.RawMessage, event.SelfID)
-			content = ref.Text
-			segments = a.resolveImageSegments(ctx, ref.Segments)
-			if data.UserID != 0 {
-				label = "引用：" + displayName(data.Sender, data.UserID)
-			}
+		data, err := a.transport.GetMessage(ctx, replyID)
+		if err != nil {
+			return refcontext.ReferencedMessage{}, false
 		}
-	}
-	if a.store != nil {
-		if msg, err := a.store.Messages().FindByPlatformMessage(ctx, a.Name(), scopeID(event), replyID); err == nil {
-			if msg.Role == storage.RoleAssistant && label == "引用" {
-				label = "引用：bot"
-			}
-			if strings.TrimSpace(msg.Content) != "" {
-				content = msg.Content
-			}
+		ref := normalizeMessage(data.Message, data.RawMessage, event.SelfID)
+		label := "引用"
+		if data.UserID != 0 {
+			label = "引用：" + displayName(data.Sender, data.UserID)
 		}
+		return refcontext.ReferencedMessage{Label: label, Text: ref.Text, Segments: a.resolveImageSegments(ctx, ref.Segments)}, true
 	}
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return text, segments
-	}
-	if strings.TrimSpace(text) == "" {
-		return fmt.Sprintf("[%s]：%s", label, content), segments
-	}
-	return fmt.Sprintf("[%s]：%s\n\n%s", label, content, text), segments
 }
 
 func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized NormalizedMessage) {

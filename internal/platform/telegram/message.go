@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"elbot/internal/platform"
+	"elbot/internal/platform/refcontext"
 	"elbot/internal/storage"
 )
 
@@ -139,101 +140,18 @@ func (a *Adapter) shouldHandle(msg message, normalized normalizedMessage) bool {
 	return normalized.MentionedBot
 }
 
-func (a *Adapter) commandWithReference(msg message, replyID, text string) string {
-	name, ok := platform.CommandName(text, a.cfg.CommandPrefixes)
-	if !ok || name != "fork" || a.store == nil {
-		return text
-	}
-	stored, err := a.store.Messages().FindByPlatformMessage(context.Background(), a.Name(), scopeID(msg.Chat), replyID)
-	if err != nil || stored.Role != storage.RoleAssistant {
-		return text
-	}
-	return "/fork " + stored.ID
-}
-
-func (a *Adapter) forkableReferenceMessageID(ctx context.Context, msg message, replyID string) string {
-	stored, ok := a.ownReferenceAssistant(ctx, msg, replyID)
-	if !ok || a.isLatestAssistantMessage(ctx, stored) {
-		return ""
-	}
-	return stored.ID
-}
-
-func (a *Adapter) isLatestOwnAssistantReference(ctx context.Context, msg message, replyID string) bool {
-	stored, ok := a.ownReferenceAssistant(ctx, msg, replyID)
-	return ok && a.isLatestAssistantMessage(ctx, stored)
-}
-
-func (a *Adapter) ownReferenceAssistant(ctx context.Context, msg message, replyID string) (*storage.Message, bool) {
-	stored, err := a.referenceAssistantMessage(ctx, msg, replyID)
-	if err != nil {
-		return nil, false
-	}
-	session, err := a.store.Sessions().Get(ctx, stored.SessionID)
-	if err != nil {
-		return nil, false
-	}
-	actorID := a.Name() + ":" + userIDString(msg.From)
-	if session.OwnerID != actorID || session.Platform != a.Name() || session.PlatformScopeID != scopeID(msg.Chat) {
-		return nil, false
-	}
-	return stored, true
-}
-
-func (a *Adapter) referenceAssistantMessage(ctx context.Context, msg message, replyID string) (*storage.Message, error) {
-	if a.store == nil {
-		return nil, storage.ErrNotFound
-	}
-	stored, err := a.store.Messages().FindByPlatformMessage(ctx, a.Name(), scopeID(msg.Chat), replyID)
-	if err != nil || stored.Role != storage.RoleAssistant {
-		return nil, storage.ErrNotFound
-	}
-	return stored, nil
-}
-
-func (a *Adapter) isLatestAssistantMessage(ctx context.Context, msg *storage.Message) bool {
-	messages, err := a.store.Messages().ListBySession(ctx, msg.SessionID)
-	if err != nil {
-		return true
-	}
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == storage.RoleAssistant {
-			return messages[i].ID == msg.ID
+func (a *Adapter) referenceFetcher(msg message, normalized normalizedMessage) func(context.Context, string) (refcontext.ReferencedMessage, bool) {
+	return func(ctx context.Context, replyID string) (refcontext.ReferencedMessage, bool) {
+		if normalized.ReplyMessage == nil || normalized.ReplyID != strings.TrimSpace(replyID) {
+			return refcontext.ReferencedMessage{}, false
 		}
-	}
-	return true
-}
-
-func (a *Adapter) withReference(ctx context.Context, msg message, normalized normalizedMessage, text string) (string, []platform.MessageSegment) {
-	label := "引用"
-	content := ""
-	var segments []platform.MessageSegment
-	if normalized.ReplyMessage != nil {
 		ref := normalizeMessage(ctx, a.client, *normalized.ReplyMessage, a.botUsername)
-		content = ref.Text
-		segments = appendNonTextSegments(nil, ref.Segments)
+		label := "引用"
 		if normalized.ReplyMessage.From != nil {
 			label = "引用：" + displayName(*normalized.ReplyMessage.From)
 		}
+		return refcontext.ReferencedMessage{Label: label, Text: ref.Text, Segments: appendNonTextSegments(nil, ref.Segments)}, true
 	}
-	if a.store != nil && normalized.ReplyID != "" {
-		if stored, err := a.store.Messages().FindByPlatformMessage(ctx, a.Name(), scopeID(msg.Chat), normalized.ReplyID); err == nil {
-			if stored.Role == storage.RoleAssistant && label == "引用" {
-				label = "引用：bot"
-			}
-			if strings.TrimSpace(stored.Content) != "" {
-				content = stored.Content
-			}
-		}
-	}
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return text, segments
-	}
-	if strings.TrimSpace(text) == "" {
-		return fmt.Sprintf("[%s]：%s", label, content), segments
-	}
-	return fmt.Sprintf("[%s]：%s\n\n%s", label, content, text), segments
 }
 
 func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized normalizedMessage) {

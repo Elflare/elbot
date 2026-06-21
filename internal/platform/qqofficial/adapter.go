@@ -11,6 +11,7 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
+	"elbot/internal/storage"
 )
 
 type Logger interface {
@@ -22,6 +23,7 @@ type Logger interface {
 
 type Adapter struct {
 	cfg    Config
+	store  storage.Store
 	client *apiClient
 	logger Logger
 
@@ -32,9 +34,9 @@ type Adapter struct {
 	wsWriteMu sync.Mutex
 }
 
-func New(cfg Config, logger Logger) *Adapter {
+func New(cfg Config, store storage.Store, logger Logger) *Adapter {
 	applyDefaults(&cfg)
-	return &Adapter{cfg: cfg, client: newAPIClient(cfg), logger: logger, seqByID: map[string]int{}}
+	return &Adapter{cfg: cfg, store: store, client: newAPIClient(cfg), logger: logger, seqByID: map[string]int{}}
 }
 
 func (a *Adapter) Name() string { return platformName }
