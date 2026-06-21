@@ -207,7 +207,6 @@ Common fields:
 | --- | ---: | --- |
 | `version` | Yes | Protocol version, currently `elvena.v2`. |
 | `elwisp.name` | Yes | Elwisp name, which is also one of the source identities; only English letters, numbers, `_`, and `-` are allowed; dots are not allowed. |
-
 | `elwisp.tags` | No | Elwisp tag, used for logs and statistics. |
 | `source` | Yes | Specific event source, such as service name, script name, or RSS name. |
 | `id` | Yes | Unique event ID within the source. |
