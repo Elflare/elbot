@@ -17,17 +17,18 @@ const (
 )
 
 type LogQuery struct {
-	Prefix      string
-	Limit       int
-	Days        int
-	MinLevel    string
-	Since       *time.Time
-	Until       *time.Time
-	Fields      map[string]string
-	FieldExists []string
-	Contains    string
-	MsgContains string
-	Raw         bool
+	Prefix        string
+	Limit         int
+	Days          int
+	MinLevel      string
+	Since         *time.Time
+	Until         *time.Time
+	Fields        map[string]string
+	FieldExists   []string
+	FieldContains map[string][]string
+	Contains      string
+	MsgContains   string
+	Raw           bool
 }
 
 type LogEntry struct {
@@ -83,6 +84,9 @@ func normalizeLogQuery(query LogQuery) LogQuery {
 	query.MinLevel = strings.ToUpper(strings.TrimSpace(query.MinLevel))
 	if query.Fields == nil {
 		query.Fields = map[string]string{}
+	}
+	if query.FieldContains == nil {
+		query.FieldContains = map[string][]string{}
 	}
 	return query
 }
@@ -206,6 +210,14 @@ func matchLogEntry(entry LogEntry, query LogQuery) bool {
 	for _, key := range query.FieldExists {
 		if strings.TrimSpace(entry.Fields[key]) == "" {
 			return false
+		}
+	}
+	for key, needles := range query.FieldContains {
+		fieldValue := entry.Fields[key]
+		for _, needle := range needles {
+			if strings.TrimSpace(needle) != "" && !containsFold(fieldValue, needle) {
+				return false
+			}
 		}
 	}
 	if query.Contains != "" && !logEntryContains(entry, query.Contains) {

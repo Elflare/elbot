@@ -135,6 +135,26 @@ func TestElwispCommandParsesFiltersAndPositionalName(t *testing.T) {
 	}
 }
 
+func TestElwispCommandParsesTagFilters(t *testing.T) {
+	service := &fakeLogService{entries: []logging.LogEntry{{
+		Time:    time.Date(2026, 6, 18, 12, 0, 0, 0, time.Local),
+		Level:   "INFO",
+		Message: "elnis event accepted",
+		Fields:  map[string]string{"elwisp_name": "watcher", "tags": "[\"windows\",\"onedrive\",\"watchdog\"]"},
+	}}}
+	result, err := NewElwisp(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `--tag onedrive --tag watchdog`})
+	if err != nil {
+		t.Fatalf("elwisp handle: %v", err)
+	}
+	wants := service.query.FieldContains["tags"]
+	if len(wants) != 2 || wants[0] != "\"onedrive\"" || wants[1] != "\"watchdog\"" || service.query.Contains != "" {
+		t.Fatalf("query = %#v", service.query)
+	}
+	if !strings.Contains(result.Content, `tags=["windows","onedrive","watchdog"]`) {
+		t.Fatalf("content = %q", result.Content)
+	}
+}
+
 func TestLogCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{Message: "user input", Fields: map[string]string{"event": "user_message", "text": "hello world"}}}}
 	_, err := NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `-u --contains "hello world"`})

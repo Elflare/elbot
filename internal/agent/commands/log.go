@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -70,6 +71,7 @@ func elwispInfo() command.Info {
   --event-key <key>     Filter by Elnis event key.
   --event-id <id>       Filter by internal Elnis event id.
   --token <name>        Filter by Elnis token name.
+  --tag <tag>           Filter by Elwisp tag. Can be repeated.
   --msg <text>          Filter by msg field.
   --contains <text>     Filter by text/arguments/result/raw fields.
 
@@ -325,6 +327,8 @@ func parseElwispLogQuery(args string) (logging.LogQuery, error) {
 			fields["event_id"] = value
 		case "token":
 			fields["token_name"] = value
+		case "tag":
+			query.FieldContains["tags"] = append(query.FieldContains["tags"], jsonQuotedLogValue(value))
 		default:
 			return fmt.Errorf("unknown option: --%s", name)
 		}
@@ -337,7 +341,15 @@ func parseElwispLogQuery(args string) (logging.LogQuery, error) {
 }
 
 func baseLogQuery(prefix string) logging.LogQuery {
-	return logging.LogQuery{Prefix: prefix, Limit: defaultLogListLimit, Days: 1}
+	return logging.LogQuery{Prefix: prefix, Limit: defaultLogListLimit, Days: 1, FieldContains: map[string][]string{}}
+}
+
+func jsonQuotedLogValue(value string) string {
+	data, err := json.Marshal(strings.TrimSpace(value))
+	if err != nil {
+		return strings.TrimSpace(value)
+	}
+	return string(data)
 }
 
 func parseLogArgs(args string, query *logging.LogQuery, fields map[string]string, extra func(name, value string) error) error {
@@ -618,6 +630,7 @@ func formatElwispLogEntries(raw bool) func([]logging.LogEntry) string {
 			appendField(&sb, "source", f["source"])
 			appendField(&sb, "id", f["source_id"])
 			appendField(&sb, "mode", f["mode"])
+			appendField(&sb, "tags", f["tags"])
 			appendField(&sb, "event_key", f["event_key"])
 			appendField(&sb, "event_id", f["event_id"])
 			appendField(&sb, "token", f["token_name"])

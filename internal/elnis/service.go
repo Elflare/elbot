@@ -1149,6 +1149,7 @@ func (s *Service) eventAttrs(event Event, attrs ...any) []any {
 		"source_id", event.Request.ID,
 		"event_key", event.EventKey,
 		"mode", event.Request.Mode,
+		"tags", event.TagsJSON,
 	)
 	return attrs
 }

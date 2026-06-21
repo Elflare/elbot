@@ -36,6 +36,24 @@ func TestHandleRecordCreatesEventAndRejectsDuplicate(t *testing.T) {
 	}
 }
 
+func TestEventAttrsIncludeTags(t *testing.T) {
+	service, cleanup := newTestService(t, nil)
+	defer cleanup()
+
+	req := testRequest(ModeRecord)
+	event, err := service.prepareEvent("home", req)
+	if err != nil {
+		t.Fatalf("prepareEvent: %v", err)
+	}
+	attrs := service.eventAttrs(event)
+	for i := 0; i+1 < len(attrs); i += 2 {
+		if attrs[i] == "tags" && attrs[i+1] == `["test"]` {
+			return
+		}
+	}
+	t.Fatalf("tags missing from attrs: %#v", attrs)
+}
+
 func TestHandleRejectsUnauthorizedToken(t *testing.T) {
 	service, cleanup := newTestService(t, nil)
 	defer cleanup()
