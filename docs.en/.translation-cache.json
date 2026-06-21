@@ -16,9 +16,9 @@
       "updated_at": 1781786015
     },
     "docs/concepts.md": {
-      "source_hash": "b2964160150cf20d866e56679d9bfdb5e7265973686a3e3eeceb9dadd8252eca",
+      "source_hash": "9856bbd2991e18e4702a64756021e65cafbcd3e825fa27c61dbcc218127e79d7",
       "target": "docs.en/concepts.md",
-      "updated_at": 1781949019
+      "updated_at": 1782039257
     },
     "docs/configuration.md": {
       "source_hash": "fb5896473f316132f026504ecc61f5677e8805bad756d41002f6a717882b1b80",
@@ -3199,6 +3199,14 @@
       "translation": "Current built-in capabilities include:\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:1b542b4cbaa66bc6f48398cbb53e786fc24cdd6f98a04b4531b03e973beb4432": {
+      "kind": "paragraph",
+      "source": "超级管理员在平台里引用回复 LLM Cron 的通知消息时，会自动 resume 到对应后台 Session 继续对话；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "1b542b4cbaa66bc6f48398cbb53e786fc24cdd6f98a04b4531b03e973beb4432",
+      "translation": "When a superadmin quotes and replies to an LLM Cron notification message in the platform, it will automatically resume to the corresponding background Session to continue the conversation;",
+      "updated_at": 1782039257
+    },
     "docs/concepts.md:paragraph:1df5dc371257b756171ec07b38f43712789bc326abae18b6ddb6b140e6361626": {
       "kind": "paragraph",
       "source": "Fork 不会删除或修改原 Session。\n",
@@ -3334,6 +3342,14 @@
       "source_hash": "5d9e5b4fed321781baa2e556dc7444c6deac16c37287361a7077d5095a431cee",
       "translation": "The Hook Layer is used to extend behavior before and after critical processes, for example:\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:61d630cd91ce09573f821ab2900e2b39584727ce05ef9c44a572c90b7342bd7e": {
+      "kind": "paragraph",
+      "source": "LLM Cron 的最终 JSON 可通过 __ELBOT_CODE_0__ 附带当前任务工作目录内的图片或文件相对路径。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "61d630cd91ce09573f821ab2900e2b39584727ce05ef9c44a572c90b7342bd7e",
+      "translation": "The final JSON of LLM Cron can attach relative paths of images or files within the current task working directory via __ELBOT_CODE_0__.",
+      "updated_at": 1782039257
     },
     "docs/concepts.md:paragraph:65fc08efe1525d3283def94b462a784ec30f2f0c9a8b39088d092edb4f54399d": {
       "kind": "paragraph",
@@ -3542,6 +3558,14 @@
       "source_hash": "bde9adb0e488c905794f325be7c2f2b11d99f68c474121515ef0a009c5c5280b",
       "translation": "Elnis is ElBot's listening hub, used for receiving external events.",
       "updated_at": 1781709276
+    },
+    "docs/concepts.md:paragraph:be686882804206dc8baf58a45f5512013a83eea607a21bba995c1a01103817ee": {
+      "kind": "paragraph",
+      "source": "普通用户引用时只会作为普通引用文本处理。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "be686882804206dc8baf58a45f5512013a83eea607a21bba995c1a01103817ee",
+      "translation": "When a regular user quotes it, it will only be processed as ordinary quoted text.\n",
+      "updated_at": 1782039257
     },
     "docs/concepts.md:paragraph:c6097edaa165e063e833bc0c310d26c83898f14e42fa47839288a89c49281128": {
       "kind": "paragraph",
