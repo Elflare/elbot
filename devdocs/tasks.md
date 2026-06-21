@@ -810,8 +810,7 @@
 
 ### cli和服务分离
 
-- [ ] TODO：评估 CLI C/S 拆分与本地服务连接协议。
-- [ ] cli和服务分离
+- [X] cli和服务分离
 
 ## Milestone Elnis：Elwisp 监听枢纽
 
@@ -864,5 +863,6 @@
 - [x] 内置 `elwisp_creator` 工具，帮助用户生成 Elwisp 配置、事件模板、监听器脚手架和测试命令。
 - [x] 支持多种消息segment
 - [x] 可通过扁平 `targets` 指定平台超级管理员、指定私聊或指定群聊，并支持 disabled target 禁止项。
+- [ ] 引用回复llm elwisp的消息，自动切换到那个session或者fork
 - [ ] 待定：设计 Elnis 与 Elwisp 多轮通信协议。
 - [ ] 待定：评估 stdio/pipe transport。
