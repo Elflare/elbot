@@ -331,11 +331,12 @@ func Run(ctx context.Context, opts Options) error {
 			return err
 		}
 		elnisService, err := elnis.NewService(elnis.Options{
-			Config:      cfg.Elnis,
-			SandboxRoot: cfg.Sandbox.Root,
-			Tokens:      elnisTokens,
-			Store:       store,
-			Logger:      logs.Elnis(),
+			Config:           cfg.Elnis,
+			SandboxRoot:      cfg.Sandbox.Root,
+			Tokens:           elnisTokens,
+			Store:            store,
+			Logger:           logs.Elnis(),
+			EnabledPlatforms: runtimeNames(platforms.Runtimes),
 			Audit: func(event string, attrs ...any) {
 				logs.Audit().Log(context.Background(), slog.LevelInfo, "audit event", append([]any{"event", event}, attrs...)...)
 			},
@@ -559,6 +560,20 @@ func resolveElnisTokens(cfg *config.Config) (map[string]string, error) {
 		}
 	}
 	return out, nil
+}
+
+func runtimeNames(runtimes []platformRuntime) []string {
+	out := []string{}
+	for _, runtime := range runtimes {
+		if runtime == nil {
+			continue
+		}
+		name := strings.TrimSpace(runtime.Name())
+		if name != "" && name != "elnis" {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 func enabledCronPlatforms(cfg *config.Config) []elcron.PlatformTarget {

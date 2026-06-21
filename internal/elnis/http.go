@@ -39,7 +39,7 @@ func NewRuntime(cfg config.ElnisHTTPConfig, service *Service) *Runtime {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
-	mux.HandleFunc("/elvena/v1/events", func(w http.ResponseWriter, req *http.Request) {
+	mux.HandleFunc("/elvena/v2/events", func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, Response{Accepted: false, Status: StatusFailed, Error: "method not allowed"})
 			return

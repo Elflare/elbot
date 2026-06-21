@@ -78,13 +78,13 @@ background runner 的输入应同时携带：
 
 当前实现中已新增 `internal/background` 作为公共后台执行类型与 JSON 结果解析层；Agent 提供通用 `RunBackground`，cron 通过薄适配继续保持原行为，Elnis HTTP runtime 通过队列 worker 调用同一后台 runner。
 
-## Elvena v1 协议草案
+## Elvena v2 协议草案
 
 首期协议使用 JSON 外壳，主体内容支持 ELyph 或自然语言文本。
 
 ```json
 {
-  "version": "elvena.v1",
+  "version": "elvena.v2",
   "elwisp": {
     "name": "server-watchdog",
     "tags": ["server", "prod"]
@@ -113,10 +113,10 @@ background runner 的输入应同时携带：
       "endpoint": "http://127.0.0.1:32171/tools/server_status"
     }
   ],
-  "targets": {
-    "platforms": ["cli"],
-    "superadmins": true
-  },
+  "targets": [
+    {"platform": "cli"},
+    {"platform": "telegram", "type": "private", "id": "123456789"}
+  ],
   "meta": {
     "severity": "warning",
     "host": "mc-main-01"
@@ -128,7 +128,7 @@ background runner 的输入应同时携带：
 
 | 字段 | 必填 | 说明 |
 |---|---:|---|
-| `version` | 是 | 协议版本，首期固定 `elvena.v1`。 |
+| `version` | 是 | 协议版本，首期固定 `elvena.v2`。 |
 | `elwisp.name` | 是 | Elwisp 唯一名称，是主要来源身份。 |
 | `elwisp.tags` | 否 | 分类标签，用于日志、统计和目标策略。 |
 | `source` | 是 | 具体事件源，例如服务名、RSS 名、脚本名。 |
@@ -142,7 +142,7 @@ background runner 的输入应同时携带：
 | `tool_list_names` | 否 | 请求预加载的工具名或 Skill 名。普通工具注入 schema，Skill 注入后台任务 prompt 并自动注入对应 runner；实际可用性仍由 Elnis/ToolRun/Security 裁决；`discover_tool` 会被静默忽略，后台任务不注入发现入口。 |
 
 | `tools` | 否 | Elwisp 额外声明的工具信息，包含名称、描述、Schema、调用端点或执行方式、风险与超时等。 |
-| `targets` | 否 | Elwisp 期望投递目标。最终投递目标由 Elnis 配置裁决。 |
+| `targets` | 是 | Elwisp 期望投递目标数组。只写 `platform` 表示投递到该平台超级管理员；`type=private/group` 且带 `id` 表示指定私聊/群聊；`platform=all` 表示所有已启用平台超级管理员。最终投递目标由 Elnis 配置裁决。 |
 | `meta` | 否 | 原始补充数据，只做记录与 prompt 附加，不让核心理解事件类型。 |
 
 HTTP 响应只表示接收状态，不等待 LLM 完成：
@@ -194,8 +194,8 @@ elwisp.name + source + id
 
 示例裁决规则：
 
-- Elwisp 请求 `targets.platforms=["cli", "qqofficial"]`。
-- Elnis 配置只允许该 token 或该 Elwisp 投递到 `cli`。
+- Elwisp 请求 `targets=[{"platform":"cli"},{"platform":"qqofficial"},{"platform":"telegram","type":"private","id":"123456789"}]`。
+- Elnis 全局或单 Elwisp 配置显式禁用了 `qqofficial` 和该 Telegram 私聊。
 - 最终只发送到 `cli`。
 
 direct 内容默认使用 `title + content` 组合为通知文本。未来可扩展 typed output，但首期只做文本，避免让外部事件绕开 Output 与安全边界。
@@ -241,38 +241,43 @@ Elwisp 可以声明它希望发给谁，但 Elnis 必须拥有最终控制权。
 
 ```json
 {
-  "targets": {
-    "platforms": ["cli"],
-    "superadmins": true,
-    "scopes": ["group:123456"]
-  }
+  "targets": [
+    {"platform": "cli"},
+    {"platform": "telegram", "type": "private", "id": "123456789"},
+    {"platform": "qqonebot", "type": "group", "id": "987654321"},
+    {"platform": "all"}
+  ]
 }
 ```
 
-首期建议只支持：
+首期支持扁平 target 数组：
 
-- `platforms`：期望平台列表；包含 `"all"` 时表示投递到 Elnis 策略允许的全部平台，其它平台项忽略。
-- `superadmins`：是否发给目标平台超管。
+- `{ "platform": "telegram" }`：投递到指定平台超级管理员。
+- `{ "platform": "telegram", "type": "private", "id": "123456789" }`：投递到指定平台私聊。
+- `{ "platform": "qqonebot", "type": "group", "id": "987654321" }`：投递到指定平台群聊。
+- `{ "platform": "all" }`：投递到所有已启用平台超级管理员，不能同时写 `type` 或 `id`。
 
-暂不支持任意 user/group scope 投递，除非后续安全模型明确，否则容易让外部监听器变成任意消息发送器。
+Elnis 默认允许投递；只有命中全局或单 Elwisp 的 disabled target 时才阻止。配置中的 platform-only disabled target 表示禁用整个平台所有投递。外部 Elwisp 不能绕过 Elnis 配置与平台 runtime 可用性裁决。
 
 Elnis 配置独立放在 `elnis.toml`，支持按 Elwisp 设置额外策略，且 `elwisps` 是可选项：
 
 ```toml
 allowed_tools = ["web_search", "web_extract"]
 
-[delivery]
-default_platforms = ["cli"]
-allow_superadmins = true
+[delivery_disabled]
+targets = [
+  # { platform = "telegram" },
+  # { platform = "telegram", type = "private", id = "123456789" },
+  # { platform = "qqonebot", type = "group", id = "987654321" },
+]
 
 [elwisps.server-watchdog]
 allowed_tokens = ["server"]
 allowed_tools = ["shell", "web_search"]
 disabled_external_tools = ["danger_tool"]
-
-[elwisps.server-watchdog.delivery]
-default_platforms = ["cli", "qqofficial"]
-allow_superadmins = true
+disabled_targets = [
+  # { platform = "qqonebot", type = "group", id = "987654321" },
+]
 
 [elwisps.spike-checker]
 enabled = false
@@ -502,18 +507,20 @@ token_env = ["ELNIS_HOME_TOKEN", "ELNIS_HOME_TOKEN_ALT"]
 [tokens.server]
 token_env = ["ELNIS_SERVER_TOKEN"]
 
-[delivery]
-default_platforms = ["cli"]
-allow_superadmins = true
+[delivery_disabled]
+targets = [
+  # { platform = "telegram" },
+  # { platform = "telegram", type = "private", id = "123456789" },
+  # { platform = "qqonebot", type = "group", id = "987654321" },
+]
 
 [elwisps.server-watchdog]
 allowed_tokens = ["server"]
 allowed_tools = ["shell", "web_search"]
 disabled_external_tools = ["danger_tool"]
-
-[elwisps.server-watchdog.delivery]
-default_platforms = ["cli"]
-allow_superadmins = true
+disabled_targets = [
+  # { platform = "qqonebot", type = "group", id = "987654321" },
+]
 
 [elwisps.spike-checker]
 enabled = false
@@ -525,7 +532,8 @@ enabled = false
 - `tokens` 只保存 token 名和读取方式，不保存 token 明文。
 - 顶层 `allowed_tools` 是 ElBot 内部工具默认白名单；单 Elwisp `allowed_tools` 存在时覆盖默认值。
 - Elwisp 外部工具默认允许；单 Elwisp `disabled_external_tools` 可禁用指定外部工具。
-- `elwisps.<name>` 可按 Elwisp 名限制 token、覆盖投递策略或显式禁用。
+- Elnis 投递默认允许；全局 `[delivery_disabled].targets` 和单 Elwisp `disabled_targets` 用于显式禁止平台、私聊或群聊，配置中的 platform-only 表示禁用整个平台所有投递。
+- `elwisps.<name>` 可按 Elwisp 名限制 token、增加投递禁用项或显式禁用。
 - Elwisp 默认启用；只有显式 `enabled=false` 才会禁用对应 Elwisp。
 
 ## HTTP Runtime
@@ -533,7 +541,7 @@ enabled = false
 首期 endpoint：
 
 ```text
-POST /elvena/v1/events
+POST /elvena/v2/events
 GET  /healthz
 ```
 
@@ -563,7 +571,7 @@ GET  /healthz
 ### Phase 1：Ingress 与 direct/record
 
 - 增加 Elnis config。
-- 增加 Elvena v1 类型与校验。
+- 增加 Elvena v2 类型与校验。
 - 增加 HTTP server。
 - 增加 token 鉴权。
 - 增加 Elnis 事件表与 repository。

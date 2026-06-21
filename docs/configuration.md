@@ -375,14 +375,20 @@ workers = 2
 [tokens.home]
 token_env = ["ELNIS_HOME_TOKEN", "ELNIS_HOME_TOKEN_ALT"]
 
-[delivery]
-default_platforms = ["cli"]
-allow_superadmins = true
+[delivery_disabled]
+targets = [
+  # { platform = "telegram" },
+  # { platform = "telegram", type = "private", id = "123456789" },
+  # { platform = "qqonebot", type = "group", id = "987654321" },
+]
 
 [elwisps.server-watchdog]
 allowed_tokens = ["home"]
 allowed_tools = ["shell"]
 disabled_external_tools = ["danger_tool"]
+disabled_targets = [
+  # { platform = "qqonebot", type = "group", id = "987654321" },
+]
 ```
 
 说明：
@@ -390,6 +396,7 @@ disabled_external_tools = ["danger_tool"]
 - `allowed_tools` 是 Elnis 内部工具白名单；未单独配置的 Elwisp 继承全局默认。
 - 单个 Elwisp 若配置 `allowed_tools`，会覆盖全局默认。
 - 外部工具默认允许；只有单个 Elwisp 配置 `disabled_external_tools` 时才禁用指定外部工具。
+- Elnis 投递默认允许；`[delivery_disabled].targets` 和单 Elwisp `disabled_targets` 用于显式禁止平台、私聊或群聊，配置中的 platform-only 表示禁用整个平台所有投递。
 - token 从系统环境变量或配置目录 `.env` 读取，日志只记录 token name，不记录 token 原文。
 - `token_env` 支持写成列表，按顺序尝试多个环境变量名；适合临时切换 token 或做多环境兼容。
 - Elwisp 默认启用；只有显式配置 `enabled=false` 才会禁用对应 Elwisp。

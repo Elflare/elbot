@@ -33,8 +33,8 @@ type Request struct {
 	ModelSlot     string                          `json:"model_slot"`
 	ToolListNames []string                        `json:"tool_list_names"`
 	Tools         []toolrun.ELwispToolDeclaration `json:"tools"`
-	Segments     []Segment                       `json:"segments,omitempty"`
-	Targets       Targets                         `json:"targets"`
+	Segments      []Segment                       `json:"segments,omitempty"`
+	Targets       []Target                        `json:"targets"`
 	Meta          map[string]any                  `json:"meta"`
 }
 
@@ -61,9 +61,10 @@ type Segment struct {
 	MIMEType string      `json:"mime_type,omitempty"`
 }
 
-type Targets struct {
-	Platforms   []string `json:"platforms"`
-	Superadmins bool     `json:"superadmins"`
+type Target struct {
+	Platform string `json:"platform" toml:"platform"`
+	Type     string `json:"type,omitempty" toml:"type"`
+	ID       string `json:"id,omitempty" toml:"id"`
 }
 
 type Response struct {
@@ -85,7 +86,7 @@ type Event struct {
 	TagsJSON         string
 	RequestedTargets string
 	ResolvedTargets  string
-	SegmentPaths    map[string]string
+	SegmentPaths     map[string]string
 	CreatedAt        time.Time
 	ReceivedAt       time.Time
 }

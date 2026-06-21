@@ -822,8 +822,8 @@
 ### Phase 1：Ingress 与 direct/record
 
 - [x] 定义 Elnis 配置结构，支持启停、HTTP 地址、队列、worker、token 和投递策略；`elwisps` 为可选项，可临时留空或按需启用。
-- [x] 定义 Elvena v1 JSON 请求/响应类型与校验逻辑。
-- [x] 实现 Elnis HTTP runtime，首期提供 `POST /elvena/v1/events` 和 `GET /healthz`。
+- [x] 定义 Elvena v2 JSON 请求/响应类型与校验逻辑
+- [x] 实现 Elnis HTTP runtime，首期提供 `POST /elvena/v2/events` 和 `GET /healthz`。
 - [x] 实现 token 鉴权，token name 只用于日志与审计，不作为 Elwisp 身份；`token_env` 支持多个候选环境变量。
 - [x] 新增 Elnis 事件 SQLite 表和 repository。
 - [x] 基于 `elwisp.name + source + id` 实现持久化去重。
@@ -848,7 +848,7 @@
 - [x] 复用工具预加载、Tool Runtime、Security Policy 和后台 sandbox，但由 ToolRun 统一入口管理。
 - [x] 按 LLM result 的 `need_report` 和 Elnis 目标裁决发送报告，失败/阻塞报告也可投递。
 - [x] 后台任务禁用 `discover_tool` 默认注入，`tool_list_names` 中的 `discover_tool` 静默忽略。
-- [x] Elnis `targets.platforms` 支持 `"all"` 哨兵值，表示投递到策略允许的全部平台。
+- [x] Elnis `targets` 支持 `{platform="all"}` 哨兵值，表示投递到所有已启用平台的超级管理员。
 
 ### Phase 3：模型槽位
 
@@ -863,6 +863,6 @@
 - [ ] 增加 Elnis 事件查询、失败重试或禁用能力。
 - [x] 内置 `elwisp_creator` 工具，帮助用户生成 Elwisp 配置、事件模板、监听器脚手架和测试命令。
 - [x] 支持多种消息segment
-- [ ] 可指定平台指定群聊或私聊
+- [x] 可通过扁平 `targets` 指定平台超级管理员、指定私聊或指定群聊，并支持 disabled target 禁止项。
 - [ ] 待定：设计 Elnis 与 Elwisp 多轮通信协议。
 - [ ] 待定：评估 stdio/pipe transport。

@@ -174,13 +174,13 @@ type FileDeliveryConfig struct {
 type PlatformConfig map[string]map[string]any
 
 type ElnisConfig struct {
-	Enabled      bool                         `toml:"enabled"`
-	AllowedTools []string                     `toml:"allowed_tools"`
-	HTTP         ElnisHTTPConfig              `toml:"http"`
-	Tokens       map[string]ElnisTokenConfig  `toml:"tokens"`
-	Delivery     ElnisDeliveryConfig          `toml:"delivery"`
-	Segment      ElnisSegmentConfig           `toml:"segment"`
-	Elwisps      map[string]ElnisElwispConfig `toml:"elwisps"`
+	Enabled          bool                         `toml:"enabled"`
+	AllowedTools     []string                     `toml:"allowed_tools"`
+	HTTP             ElnisHTTPConfig              `toml:"http"`
+	Tokens           map[string]ElnisTokenConfig  `toml:"tokens"`
+	DeliveryDisabled ElnisDeliveryDisabledConfig  `toml:"delivery_disabled"`
+	Segment          ElnisSegmentConfig           `toml:"segment"`
+	Elwisps          map[string]ElnisElwispConfig `toml:"elwisps"`
 }
 
 type ElnisSegmentConfig struct {
@@ -199,9 +199,14 @@ type ElnisTokenConfig struct {
 	TokenEnv []string `toml:"token_env"`
 }
 
-type ElnisDeliveryConfig struct {
-	DefaultPlatforms []string `toml:"default_platforms"`
-	AllowSuperadmins bool     `toml:"allow_superadmins"`
+type ElnisDeliveryDisabledConfig struct {
+	Targets []ElnisTargetConfig `toml:"targets"`
+}
+
+type ElnisTargetConfig struct {
+	Platform string `toml:"platform"`
+	Type     string `toml:"type"`
+	ID       string `toml:"id"`
 }
 
 type ElnisElwispConfig struct {
@@ -209,7 +214,7 @@ type ElnisElwispConfig struct {
 	AllowedTokens         []string            `toml:"allowed_tokens"`
 	AllowedTools          []string            `toml:"allowed_tools"`
 	DisabledExternalTools []string            `toml:"disabled_external_tools"`
-	Delivery              ElnisDeliveryConfig `toml:"delivery"`
+	DisabledTargets       []ElnisTargetConfig `toml:"disabled_targets"`
 }
 
 type CronTaskConfig struct {

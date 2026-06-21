@@ -26,19 +26,21 @@ workers = 2 # llm 模式后台 worker 数。
 [tokens.home]
 token_env = ["ELNIS_HOME_TOKEN"] # 从系统环境变量或配置目录 .env 读取。
 
-[delivery]
-default_platforms = ["cli"] # Elnis 策略允许的默认投递平台。
-allow_superadmins = true # 是否允许投递给目标平台超级管理员。
+[delivery_disabled]
+targets = [
+  # { platform = "telegram" }, # 禁用 telegram 整个平台所有投递。
+  # { platform = "telegram", type = "private", id = "123456789" },
+  # { platform = "qqonebot", type = "group", id = "987654321" },
+]
 
 # Elwisp 默认启用；只有需要限制 token、覆盖投递策略或禁用时才配置。
 [elwisps.server-watchdog]
 allowed_tokens = ["home"]
 allowed_tools = ["shell", "web_search"] # 存在时覆盖顶层 allowed_tools。
 disabled_external_tools = ["danger_tool"] # 外部工具默认允许，此处只禁用指定工具。
-
-[elwisps.server-watchdog.delivery]
-default_platforms = ["cli"]
-allow_superadmins = true
+disabled_targets = [
+  # { platform = "qqonebot", type = "group", id = "987654321" },
+]
 
 [elwisps.spike-checker]
 enabled = false # 只有显式 enabled=false 才禁用该 Elwisp。
@@ -54,7 +56,7 @@ ELNIS_HOME_TOKEN=change-me
 
 - `enabled=false` 时不启动 Elnis HTTP runtime。
 - `elbot cli` 是 CLI-only 模式，即使 `enabled=true` 也不会启动 Elnis HTTP runtime；需要接收 Elvena 事件时请使用 `elbot run` 或 `elbot service run`。
-- 当前 `targets.platforms=["cli"]` 只适用于 Elnis 与 CLI 同处一个 `elbot run` 前台进程的场景；`elbot service run` 暂不能把消息投递到另一个独立 `elbot cli` 进程。
+- 当前 `targets=[{"platform":"cli"}]` 只适用于 Elnis 与 CLI 同处一个 `elbot run` 前台进程，或 service 模式启用 CLI 远程服务端的场景；独立 `elbot cli` 进程需连接服务端后才能收到通知。
 - token 原文不写入配置，推荐放在系统环境变量或配置目录 `.env`。
 - `token_env` 可以写多个环境变量名，按顺序尝试。
 - Elwisp 默认启用；没写 `[elwisps.<name>]`、写了但没写 `enabled`、或写了 `enabled=true` 都会接收。
@@ -62,8 +64,7 @@ ELNIS_HOME_TOKEN=change-me
 - `allowed_tokens` 限制哪些 token 可以代表该 Elwisp 投递事件；不写则允许任意已认证 token。
 - 顶层 `allowed_tools` 是 ElBot 内部工具默认白名单，单个 Elwisp 的 `allowed_tools` 存在时覆盖它。
 - 外部工具默认允许；单个 Elwisp 可以用 `disabled_external_tools` 禁用指定外部工具。
-- `default_platforms` 是 Elnis 策略允许的默认投递平台。
-- `allow_superadmins=true` 表示允许投递给目标平台超级管理员。
+- Elnis 默认允许投递；只有 `[delivery_disabled].targets` 或单 Elwisp `disabled_targets` 显式列出的目标会被禁止。
 
 如果想让 ElBot 帮你生成 Elwisp 监听器，可以在 work 模式下向超级管理员会话提出需求，例如：
 
@@ -76,18 +77,18 @@ ELNIS_HOME_TOKEN=change-me
 启动 ElBot 后，可以用 curl 测试一个 `direct` 事件：
 
 ```bash
-curl -sS http://127.0.0.1:32170/elvena/v1/events \
+curl -sS http://127.0.0.1:32170/elvena/v2/events \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer change-me' \
   -d '{
-    "version":"elvena.v1",
+    "version":"elvena.v2",
     "elwisp":{"name":"server-watchdog"},
     "source":"minecraft-main",
     "id":"cpu-alert-001",
     "mode":"direct",
     "title":"服务器 CPU 异常",
     "content":"minecraft-main CPU 使用率超过阈值。",
-    "targets":{"platforms":["cli"],"superadmins":true}
+    "targets":[{"platform":"cli"}]
   }'
 ```
 
@@ -97,7 +98,7 @@ curl -sS http://127.0.0.1:32170/elvena/v1/events \
 
 ```json
 {
-  "version": "elvena.v1",
+  "version": "elvena.v2",
   "elwisp": {
     "name": "server-watchdog",
     "tags": ["server", "prod"]
@@ -124,10 +125,10 @@ curl -sS http://127.0.0.1:32170/elvena/v1/events \
       "endpoint": "http://127.0.0.1:32171/tools/server_status"
     }
   ],
-  "targets": {
-    "platforms": ["cli"],
-    "superadmins": true
-  },
+  "targets": [
+    {"platform": "cli"},
+    {"platform": "telegram", "type": "private", "id": "123456789"}
+  ],
   "meta": {
     "severity": "warning",
     "host": "mc-main-01"
@@ -137,7 +138,7 @@ curl -sS http://127.0.0.1:32170/elvena/v1/events \
 
 ## Segments（多模态消息段）
 
-Elvena v1 支持通过 `segments` 字段发送图片和文件。`content` 保留为纯文本 fallback，与旧 Elwisp 完全兼容。
+Elvena v2 支持通过 `segments` 字段发送图片和文件。`content` 保留为纯文本 fallback，与旧 Elwisp 完全兼容。
 
 `segments` 为空时行为不变，非空时优先 segments 渲染，content 作为附加文本。
 
@@ -164,7 +165,7 @@ Elvena v1 支持通过 `segments` 字段发送图片和文件。`content` 保留
 
 ```json
 {
-  "version": "elvena.v1",
+  "version": "elvena.v2",
   "elwisp": {"name": "monitor"},
   "source": "prod-server",
   "id": "cpu-chart-002",
@@ -176,7 +177,7 @@ Elvena v1 支持通过 `segments` 字段发送图片和文件。`content` 保留
     {"kind": "image", "url": "https://monitor.example.com/chart.png", "name": "cpu_chart.png"},
     {"kind": "file",  "url": "https://logs.example.com/dump.txt", "name": "cpu_dump.txt"}
   ],
-  "targets": {"platforms": ["cli"], "superadmins": true}
+  "targets": [{"platform": "cli"}]
 }
 ```
 
@@ -202,7 +203,7 @@ Elvena v1 支持通过 `segments` 字段发送图片和文件。`content` 保留
 
 | 字段 | 必填 | 说明 |
 | --- | ---: | --- |
-| `version` | 是 | 协议版本，当前为 `elvena.v1`。 |
+| `version` | 是 | 协议版本，当前为 `elvena.v2`。 |
 | `elwisp.name` | 是 | Elwisp 名称，也是来源身份之一；仅允许英文字母、数字、`_`、`-`，不允许点号。 |
 
 | `elwisp.tags` | 否 | Elwisp 标签，用于日志和统计。 |
@@ -216,7 +217,7 @@ Elvena v1 支持通过 `segments` 字段发送图片和文件。`content` 保留
 | `model_slot` | 否 | Elnis LLM 模型槽位，仅支持 `elwisp1`、`elwisp2`、`elwisp3`；未填写或对应槽位未配置时回退到 `work`。 |
 | `tool_list_names` | 否 | 后台任务预加载的 ElBot 内部工具名或 Skill 名；普通工具注入 schema，Skill 注入任务说明并自动注入对应 runner；必须在 Elnis `allowed_tools` 裁决范围内，`discover_tool` 会被忽略。 |
 | `tools` | 否 | Elwisp 随事件声明的外部工具；默认允许，命中该 Elwisp 的 `disabled_external_tools` 时拒绝。 |
-| `targets` | 否 | Elwisp 期望投递目标，最终仍由 Elnis 裁决。 |
+| `targets` | 是 | Elwisp 期望投递目标数组，`{"platform":"telegram"}` 表示发给平台超级管理员，`type=private/group` 且带 `id` 时发指定私聊/群聊，`{"platform":"all"}` 表示所有已启用平台超级管理员。最终仍由 Elnis 裁决。 |
 | `meta` | 否 | 原始补充数据，只做记录和 prompt 附加。 |
 
 
@@ -274,18 +275,27 @@ token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
 
 Elwisp 可以在 `targets` 中声明期望目标，但最终目标由 Elnis 裁决。
 
-当前建议只使用：
+`targets` 必须是数组：
 
 ```json
 {
-  "targets": {
-    "platforms": ["cli"],
-    "superadmins": true
-  }
+  "targets": [
+    {"platform": "telegram"},
+    {"platform": "telegram", "type": "private", "id": "123456789"},
+    {"platform": "qqonebot", "type": "group", "id": "987654321"},
+    {"platform": "all"}
+  ]
 }
 ```
 
-`platforms` 可以包含 `"all"`，表示请求投递到 Elnis 策略允许的全部平台。Elnis 仍会结合全局配置、Elwisp 配置和平台可用性计算最终目标。
+语义：
+
+- 只写 `platform`：投递到该平台超级管理员。
+- `type=private`：投递到指定平台私聊。
+- `type=group`：投递到指定平台群聊。
+- `platform=all`：投递到所有已启用平台超级管理员，不能同时写 `type` 或 `id`。
+
+Elnis 默认允许投递；命中 `[delivery_disabled].targets` 或单 Elwisp `disabled_targets` 时才禁止。禁用配置中的 `{ platform = "telegram" }` 表示禁用该平台所有投递。
 
 安全约定：
 

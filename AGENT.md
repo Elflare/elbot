@@ -110,14 +110,14 @@
 - `internal/config/assets.go`：首次运行默认配置资产；在无显式配置且无平台配置时生成 app/providers/state/SOUL/elnis/.env.example 和基础目录。
 
 
-- `internal/elnis/types.go`：Elnis/Elvena 协议类型；定义 Elwisp 请求、目标、响应、事件模式、状态和随事件声明的外部工具。
-- `internal/elnis/service.go`：Elnis 接收服务；处理 token 鉴权、协议校验、Elwisp 授权、内部工具 allowed_tools 裁决、外部工具声明校验/禁用、持久化去重、record/direct 分发、目标裁决和 LLM 事件后台执行/结果报告。
-- `internal/elnis/http.go`：Elnis HTTP runtime；提供 `POST /elvena/v1/events` 和 `GET /healthz`，支持 body 限制、token 提取、JSON 响应和 LLM 事件队列 worker。
+- `internal/elnis/types.go`：Elnis/Elvena 协议类型；定义 Elwisp 请求、扁平投递目标、响应、事件模式、状态和随事件声明的外部工具。
+- `internal/elnis/service.go`：Elnis 接收服务；处理 token 鉴权、协议校验、Elwisp 授权、内部工具 allowed_tools 裁决、外部工具声明校验/禁用、持久化去重、record/direct 分发、默认允许加 disabled target 的目标裁决和 LLM 事件后台执行/结果报告。
+- `internal/elnis/http.go`：Elnis HTTP runtime；提供 `POST /elvena/v2/events` 和 `GET /healthz`，支持 body 限制、token 提取、JSON 响应和 LLM 事件队列 worker。
 
 - `internal/logging/logging.go`：日志地基；创建运行日志、审计日志和 Elnis 日志的 `slog.Logger`，`Manager` 统一持有按日期懒轮转的 `elbot-YYYY-MM-DD.log`、`audit-YYYY-MM-DD.log`、`elnis-YYYY-MM-DD.log` writer，暴露日志目录和可配置旧日志清理入口。
 - `internal/logging/reader.go`：结构化文本日志读取器；解析 `slog.TextHandler` 输出，支持 `/log`、`/audit` 的时间、等级、字段、msg、latest message 文本和条数过滤，并放宽单行读取上限以支持较大的 Debug 请求体。
 - `config/tool_tags.toml`：工具 tag 示例配置；保存 `@tool:<tag>` 对应工具列表和 tag 激活后追加到 system prompt 的工具使用策略。
-- `config/elnis.toml`：Elnis 示例配置；保存 enabled、HTTP、token、delivery、内部工具 `allowed_tools` 和单 Elwisp 策略，外部 Elwisp 工具默认允许且可按 Elwisp 禁用。
+- `config/elnis.toml`：Elnis 示例配置；保存 enabled、HTTP、token、delivery_disabled、内部工具 `allowed_tools` 和单 Elwisp 策略，投递与外部 Elwisp 工具默认允许且可按 Elwisp 禁用。
 
 - `config/providers.toml`：Provider 示例配置；保存供应商、模型列表、extra payload 和模型元信息，公开配置只写 `api_key_env` 不写真实 key。
 - `config/state.toml`：热切换状态；保存当前模型选择和默认新会话模式。

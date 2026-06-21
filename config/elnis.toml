@@ -13,9 +13,14 @@ workers = 2
 # 从系统环境变量或配置目录 .env 读取。
 token_env = ["ELNIS_HOME_TOKEN", "ELNIS_HOME_TOKEN_ALT"]
 
-[delivery]
-default_platforms = ["cli"]
-allow_superadmins = true
+# 默认允许投递；只有这里显式列出的目标会被禁止。
+# 配置中的 platform-only 表示禁用整个平台所有投递。
+[delivery_disabled]
+targets = [
+  # { platform = "telegram" },
+  # { platform = "telegram", type = "private", id = "123456789" },
+  # { platform = "qqonebot", type = "group", id = "987654321" },
+]
 
 # Elwisp 默认启用；只有需要限制 token、覆盖策略或禁用时才配置。
 [elwisps.server-watchdog]
@@ -24,10 +29,10 @@ allowed_tokens = ["home"]
 allowed_tools = ["shell", "web_search"]
 # 外部工具默认允许；这里可禁用该 Elwisp 声明的指定外部工具。
 disabled_external_tools = ["danger_tool"]
-
-[elwisps.server-watchdog.delivery]
-default_platforms = ["cli"]
-allow_superadmins = true
+# 单个 Elwisp 的额外投递禁止项；语义同 delivery_disabled.targets。
+disabled_targets = [
+  # { platform = "qqonebot", type = "group", id = "987654321" },
+]
 
 [elwisps.spike-checker]
 enabled = false

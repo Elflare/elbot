@@ -48,28 +48,30 @@ type EnqueueLLMFunc func(ctx context.Context, event QueuedLLMEvent) error
 type ModelResolverFunc func(slot string) config.ModelSelection
 
 type Options struct {
-	Config       config.ElnisConfig
-	SandboxRoot  string
-	Tokens       map[string]string
-	Store        storage.Store
-	Logger       *slog.Logger
-	Audit        AuditFunc
-	Send         SenderFunc
-	Runner       background.Runner
-	ResolveModel ModelResolverFunc
+	Config           config.ElnisConfig
+	SandboxRoot      string
+	Tokens           map[string]string
+	Store            storage.Store
+	Logger           *slog.Logger
+	Audit            AuditFunc
+	Send             SenderFunc
+	Runner           background.Runner
+	ResolveModel     ModelResolverFunc
+	EnabledPlatforms []string
 }
 
 type Service struct {
-	cfg          config.ElnisConfig
-	sandboxRoot  string
-	tokens       map[string]string
-	store        storage.Store
-	logger       *slog.Logger
-	audit        AuditFunc
-	send         SenderFunc
-	runner       background.Runner
-	resolveModel ModelResolverFunc
-	enqueueLLM   EnqueueLLMFunc
+	cfg              config.ElnisConfig
+	sandboxRoot      string
+	tokens           map[string]string
+	store            storage.Store
+	logger           *slog.Logger
+	audit            AuditFunc
+	send             SenderFunc
+	runner           background.Runner
+	resolveModel     ModelResolverFunc
+	enabledPlatforms []string
+	enqueueLLM       EnqueueLLMFunc
 }
 
 func NewService(opts Options) (*Service, error) {
@@ -82,7 +84,8 @@ func NewService(opts Options) (*Service, error) {
 	if opts.Config.Enabled && len(opts.Tokens) == 0 {
 		return nil, fmt.Errorf("elnis enabled but no tokens are configured")
 	}
-	return &Service{cfg: opts.Config, sandboxRoot: opts.SandboxRoot, tokens: opts.Tokens, store: opts.Store, logger: opts.Logger, audit: opts.Audit, send: opts.Send, runner: opts.Runner, resolveModel: opts.ResolveModel}, nil
+	enabledPlatforms := uniqueSorted(opts.EnabledPlatforms)
+	return &Service{cfg: opts.Config, sandboxRoot: opts.SandboxRoot, tokens: opts.Tokens, store: opts.Store, logger: opts.Logger, audit: opts.Audit, send: opts.Send, runner: opts.Runner, resolveModel: opts.ResolveModel, enabledPlatforms: enabledPlatforms}, nil
 }
 
 func (s *Service) SetLLMEnqueuer(enqueue EnqueueLLMFunc) {
@@ -210,7 +213,7 @@ func (s *Service) prepareEvent(tokenName string, req Request) (Event, error) {
 	req.Format = strings.TrimSpace(req.Format)
 	req.ModelSlot = strings.TrimSpace(req.ModelSlot)
 	req.Content = strings.TrimSpace(req.Content)
-	if req.Version != "elvena.v1" {
+	if req.Version != "elvena.v2" {
 		return Event{}, fmt.Errorf("unsupported ELvena version %q", req.Version)
 	}
 	if req.Elwisp.Name == "" {
@@ -252,7 +255,12 @@ func (s *Service) prepareEvent(tokenName string, req Request) (Event, error) {
 	if err != nil {
 		return Event{}, err
 	}
-	requestedTargets, err := json.Marshal(normalizeTargets(req.Targets))
+	targets, err := normalizeTargets(req.Targets)
+	if err != nil {
+		return Event{}, err
+	}
+	req.Targets = targets
+	requestedTargets, err := json.Marshal(targets)
 	if err != nil {
 		return Event{}, err
 	}
@@ -369,35 +377,65 @@ func (s *Service) elwispCachedTools(event Event) []toolrun.CachedTool {
 	return toolrun.CachedToolsFromELwisp(toolrun.ELwispInjection{ELwispName: event.Request.Elwisp.Name, EventKey: event.EventKey, Tools: event.Request.Tools})
 }
 
-func (s *Service) resolveTargets(req Request) (Targets, error) {
-	policy := s.cfg.Delivery
-	if elwispPolicy, ok := s.cfg.Elwisps[req.Elwisp.Name]; ok {
-		if len(elwispPolicy.Delivery.DefaultPlatforms) > 0 {
-			policy.DefaultPlatforms = elwispPolicy.Delivery.DefaultPlatforms
-		}
-		if elwispPolicy.Delivery.AllowSuperadmins {
-			policy.AllowSuperadmins = true
-		}
-	}
-	allowed := setFromStrings(policy.DefaultPlatforms)
-	requested := trimStrings(req.Targets.Platforms)
-	if len(requested) == 0 || hasAllTarget(requested) {
-		requested = trimStrings(policy.DefaultPlatforms)
-	}
-	platforms := []string{}
-	for _, platform := range requested {
-		if platform == "all" {
+func (s *Service) resolveTargets(req Request) ([]Target, error) {
+	resolved := []Target{}
+	for _, target := range req.Targets {
+		if target.Platform == "all" {
+			for _, platformName := range s.enabledTargetPlatforms() {
+				candidate := Target{Platform: platformName}
+				if !s.targetDisabled(req.Elwisp.Name, candidate) {
+					resolved = append(resolved, candidate)
+				}
+			}
 			continue
 		}
-		if allowed[platform] {
-			platforms = append(platforms, platform)
+		if !s.targetDisabled(req.Elwisp.Name, target) {
+			resolved = append(resolved, target)
 		}
 	}
-	platforms = uniqueSorted(platforms)
-	if len(platforms) == 0 && req.Mode == ModeDirect {
-		return Targets{}, fmt.Errorf("no allowed delivery platforms")
+	resolved = uniqueTargets(resolved)
+	if len(resolved) == 0 && req.Mode == ModeDirect {
+		return nil, fmt.Errorf("no allowed delivery targets")
 	}
-	return Targets{Platforms: platforms, Superadmins: policy.AllowSuperadmins && (req.Targets.Superadmins || req.Mode == ModeDirect)}, nil
+	return resolved, nil
+}
+
+func (s *Service) enabledTargetPlatforms() []string {
+	return s.enabledPlatforms
+}
+
+func (s *Service) targetDisabled(elwispName string, target Target) bool {
+	for _, disabled := range configTargetsToElnis(s.cfg.DeliveryDisabled.Targets) {
+		if disabledTargetMatches(disabled, target) {
+			return true
+		}
+	}
+	if policy, ok := s.cfg.Elwisps[elwispName]; ok {
+		for _, disabled := range configTargetsToElnis(policy.DisabledTargets) {
+			if disabledTargetMatches(disabled, target) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func disabledTargetMatches(disabled, target Target) bool {
+	if disabled.Platform != target.Platform {
+		return false
+	}
+	if disabled.Type == "" && disabled.ID == "" {
+		return true
+	}
+	return disabled.Type == target.Type && disabled.ID == target.ID
+}
+
+func configTargetsToElnis(targets []config.ElnisTargetConfig) []Target {
+	out := make([]Target, 0, len(targets))
+	for _, target := range targets {
+		out = append(out, Target{Platform: strings.TrimSpace(target.Platform), Type: strings.TrimSpace(target.Type), ID: strings.TrimSpace(target.ID)})
+	}
+	return out
 }
 
 func (s *Service) handleDuplicate(event Event, existing *storage.ElnisEvent) {
@@ -420,21 +458,14 @@ func (s *Service) runDirect(ctx context.Context, event Event, eventID string) er
 	if err != nil {
 		return fmt.Errorf("download segments: %w", err)
 	}
-	resolved := Targets{}
-	if err := json.Unmarshal([]byte(event.ResolvedTargets), &resolved); err != nil {
+	resolved, err := decodeResolvedTargets(event.ResolvedTargets)
+	if err != nil {
 		return err
-	}
-	if !resolved.Superadmins {
-		return fmt.Errorf("direct delivery only supports superadmins in phase 1")
 	}
 	// Build outputs: segments first, content as fallback
 	outputs := buildDirectOutputs(req, paths)
-	for _, platformName := range resolved.Platforms {
-		for _, out := range outputs {
-			if err := s.send(ctx, delivery.Target{Platform: platformName, Superadmins: true}, out); err != nil {
-				return err
-			}
-		}
+	if err := s.sendOutputsToTargets(ctx, resolved, outputs); err != nil {
+		return err
 	}
 	return s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusCompleted, "", "")
 }
@@ -533,25 +564,51 @@ func (s *Service) sendReport(ctx context.Context, event Event, report string, re
 	if s.send == nil {
 		return fmt.Errorf("elnis sender is not configured")
 	}
-	resolved := Targets{}
-	if err := json.Unmarshal([]byte(event.ResolvedTargets), &resolved); err != nil {
+	resolved, err := decodeResolvedTargets(event.ResolvedTargets)
+	if err != nil {
 		return err
 	}
-	if !resolved.Superadmins {
+	if len(resolved) == 0 {
 		return nil
 	}
 	outputs, err := background.BuildReportOutputs(report, reportSegments, tool.SandboxContext{Dir: filepath.Join(s.sandboxRoot, filepath.FromSlash(elnisSandboxSubdir(event.Request.Elwisp.Name))), Background: true, BackgroundKind: tool.BackgroundKindElnis})
 	if err != nil {
 		return err
 	}
-	for _, platformName := range resolved.Platforms {
+	return s.sendOutputsToTargets(ctx, resolved, outputs)
+}
+
+func (s *Service) sendOutputsToTargets(ctx context.Context, targets []Target, outputs []delivery.Output) error {
+	for _, target := range targets {
+		deliveryTarget := target.toDeliveryTarget()
 		for _, out := range outputs {
-			if err := s.send(ctx, delivery.Target{Platform: platformName, Superadmins: true}, out); err != nil {
+			if err := s.send(ctx, deliveryTarget, out); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+func (t Target) toDeliveryTarget() delivery.Target {
+	out := delivery.Target{Platform: t.Platform}
+	switch t.Type {
+	case "private":
+		out.PrivateUserID = t.ID
+	case "group":
+		out.GroupID = t.ID
+	default:
+		out.Superadmins = true
+	}
+	return out
+}
+
+func decodeResolvedTargets(raw string) ([]Target, error) {
+	var targets []Target
+	if err := json.Unmarshal([]byte(raw), &targets); err != nil {
+		return nil, err
+	}
+	return targets, nil
 }
 
 func (s *Service) completeEvent(ctx context.Context, id, resolvedTargets, status, result, eventErr string) error {
@@ -637,14 +694,16 @@ func elnisActor(event Event) security.Actor {
 }
 
 func firstPlatform(rawTargets string) string {
-	var targets Targets
+	var targets []Target
 	if err := json.Unmarshal([]byte(rawTargets), &targets); err != nil {
 		return ""
 	}
-	if len(targets.Platforms) == 0 {
-		return ""
+	for _, target := range targets {
+		if strings.TrimSpace(target.Platform) != "" {
+			return target.Platform
+		}
 	}
-	return targets.Platforms[0]
+	return ""
 }
 
 func firstNonEmpty(values ...string) string {
@@ -977,17 +1036,63 @@ func hashBytes(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func normalizeTargets(targets Targets) Targets {
-	return Targets{Platforms: uniqueSorted(targets.Platforms), Superadmins: targets.Superadmins}
+func normalizeTargets(targets []Target) ([]Target, error) {
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("targets is required")
+	}
+	out := make([]Target, 0, len(targets))
+	for _, target := range targets {
+		target.Platform = strings.TrimSpace(target.Platform)
+		target.Type = strings.TrimSpace(target.Type)
+		target.ID = strings.TrimSpace(target.ID)
+		if target.Platform == "" {
+			return nil, fmt.Errorf("targets.platform is required")
+		}
+		if target.Platform == "all" {
+			if target.Type != "" || target.ID != "" {
+				return nil, fmt.Errorf("targets with platform all cannot set type or id")
+			}
+			out = append(out, target)
+			continue
+		}
+		switch target.Type {
+		case "":
+			if target.ID != "" {
+				return nil, fmt.Errorf("targets.id requires type")
+			}
+		case "private", "group":
+			if target.ID == "" {
+				return nil, fmt.Errorf("targets.id is required for %s target", target.Type)
+			}
+		default:
+			return nil, fmt.Errorf("unsupported target type %q", target.Type)
+		}
+		out = append(out, target)
+	}
+	return uniqueTargets(out), nil
 }
 
-func hasAllTarget(platforms []string) bool {
-	for _, platform := range platforms {
-		if strings.EqualFold(strings.TrimSpace(platform), "all") {
-			return true
+func uniqueTargets(targets []Target) []Target {
+	seen := map[string]bool{}
+	out := []Target{}
+	for _, target := range targets {
+		key := target.Platform + "\x00" + target.Type + "\x00" + target.ID
+		if seen[key] {
+			continue
 		}
+		seen[key] = true
+		out = append(out, target)
 	}
-	return false
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Platform != out[j].Platform {
+			return out[i].Platform < out[j].Platform
+		}
+		if out[i].Type != out[j].Type {
+			return out[i].Type < out[j].Type
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out
 }
 
 func trimStrings(values []string) []string {

@@ -54,7 +54,7 @@ func TestElwispCreatorToolCallReturnsGuide(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result == nil || !strings.Contains(result.Content, "#task create_elwisp") || !strings.Contains(result.Content, "Elvena v1") || !strings.Contains(result.Content, "elyph_rule_card") {
+	if result == nil || !strings.Contains(result.Content, "#task create_elwisp") || !strings.Contains(result.Content, "Elvena v2") || !strings.Contains(result.Content, "elyph_rule_card") {
 		t.Fatalf("unexpected guide content: %#v", result)
 	}
 	if _, err := elyph.ParseTask(result.Content, "create_elwisp"); err != nil {
@@ -106,9 +106,6 @@ addr = "127.0.0.1:45678"
 [tokens.home]
 token_env = ["ELNIS_HOME_TOKEN"]
 
-[delivery]
-default_platforms = ["cli"]
-allow_superadmins = true
 `)
 	t.Setenv(config.EnvConfigFile, appPath)
 
@@ -117,7 +114,7 @@ allow_superadmins = true
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"endpoint: http://127.0.0.1:45678/elvena/v1/events",
+		"endpoint: http://127.0.0.1:45678/elvena/v2/events",
 		"token_env: [ELNIS_HOME_TOKEN]",
 		"allowed_tools: [web_extract, web_search]",
 	} {

@@ -335,7 +335,7 @@ func TestRunLLMEventCompletesAndReports(t *testing.T) {
 	})
 
 	req := testRequest(ModeLLM)
-	req.Targets = Targets{Platforms: []string{"cli"}, Superadmins: true}
+	req.Targets = []Target{{Platform: "cli"}}
 	if _, err := service.Handle(context.Background(), "secret", req); err != nil {
 		t.Fatalf("Handle llm: %v", err)
 	}
@@ -377,7 +377,7 @@ func TestRunLLMEventReportsSegmentsByRelativePath(t *testing.T) {
 		return nil
 	})
 	req := testRequest(ModeLLM)
-	req.Targets = Targets{Platforms: []string{"cli"}, Superadmins: true}
+	req.Targets = []Target{{Platform: "cli"}}
 	if _, err := service.Handle(context.Background(), "secret", req); err != nil {
 		t.Fatalf("Handle llm: %v", err)
 	}
@@ -399,7 +399,7 @@ func TestRunLLMEventRejectsAbsoluteReportSegmentPath(t *testing.T) {
 		return nil
 	})
 	req := testRequest(ModeLLM)
-	req.Targets = Targets{Platforms: []string{"cli"}, Superadmins: true}
+	req.Targets = []Target{{Platform: "cli"}}
 	if _, err := service.Handle(context.Background(), "secret", req); err != nil {
 		t.Fatalf("Handle llm: %v", err)
 	}
@@ -423,7 +423,7 @@ func TestRunLLMEventReportsFailedResultWhenRequested(t *testing.T) {
 	})
 
 	req := testRequest(ModeLLM)
-	req.Targets = Targets{Platforms: []string{"cli"}, Superadmins: true}
+	req.Targets = []Target{{Platform: "cli"}}
 	if _, err := service.Handle(context.Background(), "secret", req); err != nil {
 		t.Fatalf("Handle llm: %v", err)
 	}
@@ -435,23 +435,111 @@ func TestRunLLMEventReportsFailedResultWhenRequested(t *testing.T) {
 	}
 }
 
-func TestResolveTargetsAllUsesAllowedPlatforms(t *testing.T) {
+func TestResolveTargetsAllUsesEnabledPlatforms(t *testing.T) {
 	service, cleanup := newTestService(t, nil)
 	defer cleanup()
-	service.cfg.Delivery.DefaultPlatforms = []string{"cli", "qqonebot"}
 
 	req := testRequest(ModeDirect)
-	req.Targets = Targets{Platforms: []string{"all", "missing"}, Superadmins: true}
+	req.Targets = []Target{{Platform: "all"}}
 	resolved, err := service.resolveTargets(req)
 	if err != nil {
 		t.Fatalf("resolveTargets: %v", err)
 	}
-	if got := strings.Join(resolved.Platforms, ","); got != "cli,qqonebot" {
-		t.Fatalf("platforms = %q", got)
+	if got := targetSummary(resolved); got != "cli,qqonebot" {
+		t.Fatalf("targets = %q", got)
 	}
 }
 
-func TestHandleDirectSendsToResolvedSuperadmins(t *testing.T) {
+func TestHandleRejectsMissingTargets(t *testing.T) {
+	service, cleanup := newTestService(t, nil)
+	defer cleanup()
+
+	req := testRequest(ModeDirect)
+	req.Targets = nil
+	resp, err := service.Handle(context.Background(), "secret", req)
+	if err == nil {
+		t.Fatal("expected missing targets error")
+	}
+	if resp.Accepted || !strings.Contains(resp.Error, "targets is required") {
+		t.Fatalf("response = %#v", resp)
+	}
+}
+
+func TestHandleRejectsInvalidAllTarget(t *testing.T) {
+	service, cleanup := newTestService(t, nil)
+	defer cleanup()
+
+	req := testRequest(ModeDirect)
+	req.Targets = []Target{{Platform: "all", Type: "group", ID: "123"}}
+	resp, err := service.Handle(context.Background(), "secret", req)
+	if err == nil {
+		t.Fatal("expected invalid all target error")
+	}
+	if resp.Accepted || !strings.Contains(resp.Error, "platform all") {
+		t.Fatalf("response = %#v", resp)
+	}
+}
+
+func TestResolveTargetsDisabledPlatformBlocksAllTargetTypes(t *testing.T) {
+	service, cleanup := newTestService(t, nil)
+	defer cleanup()
+	service.cfg.DeliveryDisabled.Targets = []config.ElnisTargetConfig{{Platform: "telegram"}}
+
+	req := testRequest(ModeLLM)
+	req.Targets = []Target{{Platform: "telegram"}, {Platform: "telegram", Type: "private", ID: "1"}, {Platform: "telegram", Type: "group", ID: "2"}, {Platform: "cli"}}
+	resolved, err := service.resolveTargets(req)
+	if err != nil {
+		t.Fatalf("resolveTargets: %v", err)
+	}
+	if got := targetSummary(resolved); got != "cli" {
+		t.Fatalf("targets = %q", got)
+	}
+}
+
+func TestResolveTargetsDisabledElwispPrivateChat(t *testing.T) {
+	service, cleanup := newTestService(t, nil)
+	defer cleanup()
+	policy := service.cfg.Elwisps["watcher"]
+	policy.DisabledTargets = []config.ElnisTargetConfig{{Platform: "telegram", Type: "private", ID: "1"}}
+	service.cfg.Elwisps["watcher"] = policy
+
+	req := testRequest(ModeLLM)
+	req.Targets = []Target{{Platform: "telegram", Type: "private", ID: "1"}, {Platform: "telegram", Type: "group", ID: "2"}}
+	resolved, err := service.resolveTargets(req)
+	if err != nil {
+		t.Fatalf("resolveTargets: %v", err)
+	}
+	if got := targetSummary(resolved); got != "telegram:group:2" {
+		t.Fatalf("targets = %q", got)
+	}
+}
+
+func TestHandleDirectSendsToPrivateAndGroupTargets(t *testing.T) {
+	sent := []string{}
+	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, out delivery.Output) error {
+		sent = append(sent, target.Platform+":"+target.PrivateUserID+":"+target.GroupID+":"+out.Text)
+		return nil
+	})
+	defer cleanup()
+
+	req := testRequest(ModeDirect)
+	req.Title = "警告"
+	req.Content = "服务器异常"
+	req.Targets = []Target{{Platform: "telegram", Type: "private", ID: "123"}, {Platform: "qqonebot", Type: "group", ID: "456"}}
+	resp, err := service.Handle(context.Background(), "secret", req)
+	if err != nil {
+		t.Fatalf("Handle direct: %v", err)
+	}
+	if resp.Status != StatusCompleted {
+		t.Fatalf("response = %#v", resp)
+	}
+	want := []string{"qqonebot::456:警告\n服务器异常", "telegram:123::警告\n服务器异常"}
+	if strings.Join(sent, "|") != strings.Join(want, "|") {
+		t.Fatalf("sent = %#v", sent)
+	}
+}
+
+func TestHandleDirectSendsToResolvedSuperadminTargets(t *testing.T) {
 	sent := []string{}
 	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, out delivery.Output) error {
 		sent = append(sent, target.Platform+":"+out.Text)
@@ -462,7 +550,7 @@ func TestHandleDirectSendsToResolvedSuperadmins(t *testing.T) {
 	req := testRequest(ModeDirect)
 	req.Title = "警告"
 	req.Content = "服务器异常"
-	req.Targets = Targets{Platforms: []string{"cli", "qqofficial"}}
+	req.Targets = []Target{{Platform: "cli"}, {Platform: "qqofficial"}}
 	resp, err := service.Handle(context.Background(), "secret", req)
 	if err != nil {
 		t.Fatalf("Handle direct: %v", err)
@@ -470,7 +558,8 @@ func TestHandleDirectSendsToResolvedSuperadmins(t *testing.T) {
 	if resp.Status != StatusCompleted {
 		t.Fatalf("response = %#v", resp)
 	}
-	if len(sent) != 1 || sent[0] != "cli:警告\n服务器异常" {
+	want := []string{"cli:警告\n服务器异常", "qqofficial:警告\n服务器异常"}
+	if strings.Join(sent, "|") != strings.Join(want, "|") {
 		t.Fatalf("sent = %#v", sent)
 	}
 }
@@ -492,10 +581,6 @@ func newTestServiceWithRunner(t *testing.T, runner background.Runner, send Sende
 		Config: config.ElnisConfig{
 			Enabled:      true,
 			AllowedTools: []string{"web_search"},
-			Delivery: config.ElnisDeliveryConfig{
-				DefaultPlatforms: []string{"cli"},
-				AllowSuperadmins: true,
-			},
 			Elwisps: map[string]config.ElnisElwispConfig{
 				"watcher":    {AllowedTokens: []string{"home"}, AllowedTools: []string{"shell"}, DisabledExternalTools: []string{"danger_tool"}},
 				"configured": {},
@@ -503,11 +588,12 @@ func newTestServiceWithRunner(t *testing.T, runner background.Runner, send Sende
 				"disabled":   {Enabled: boolPtr(false)},
 			},
 		},
-		SandboxRoot: filepath.Join(t.TempDir(), "sandbox"),
-		Tokens:      map[string]string{"home": "secret", "alt": "alt-secret"},
-		Store:       store,
-		Send:        send,
-		Runner:      runner,
+		SandboxRoot:      filepath.Join(t.TempDir(), "sandbox"),
+		Tokens:           map[string]string{"home": "secret", "alt": "alt-secret"},
+		Store:            store,
+		Send:             send,
+		Runner:           runner,
+		EnabledPlatforms: []string{"cli", "qqonebot"},
 		ResolveModel: func(slot string) config.ModelSelection {
 			return config.ModelSelection{Provider: "provider-" + slot, Model: "model-" + slot}
 		},
@@ -516,6 +602,14 @@ func newTestServiceWithRunner(t *testing.T, runner background.Runner, send Sende
 		t.Fatalf("NewService: %v", err)
 	}
 	return service, func() { _ = store.Close() }
+}
+
+func targetSummary(targets []Target) string {
+	parts := make([]string, 0, len(targets))
+	for _, target := range targets {
+		parts = append(parts, strings.Trim(target.Platform+":"+target.Type+":"+target.ID, ":"))
+	}
+	return strings.Join(parts, ",")
 }
 
 func boolPtr(value bool) *bool {
@@ -544,12 +638,13 @@ func (r *fakeBackgroundRunner) RunBackground(ctx context.Context, req background
 
 func testRequest(mode string) Request {
 	return Request{
-		Version: "elvena.v1",
+		Version: "elvena.v2",
 		Elwisp:  Elwisp{Name: "watcher", Tags: []string{"test"}},
 		Source:  "source",
 		ID:      "event-1",
 		Mode:    mode,
 		Format:  "text",
 		Content: "hello",
+		Targets: []Target{{Platform: "cli"}},
 	}
 }

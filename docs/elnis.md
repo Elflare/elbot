@@ -131,7 +131,7 @@ Elvena 是 Elwisp 向 Elnis 投递事件的 JSON over HTTP 协议。
 首期 endpoint：
 
 ```text
-POST /elvena/v1/events
+POST /elvena/v2/events
 GET  /healthz
 ```
 
