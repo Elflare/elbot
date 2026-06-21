@@ -99,6 +99,7 @@ retention_days = 180
 root = ""
 
 [file_delivery]
+# base64 will increase the file size by about 33%.
 max_direct_base64_bytes = 8388608
 backend = "base64"
 s3_endpoint = ""
