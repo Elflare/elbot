@@ -28,19 +28,21 @@ workers = 2 # Number of background workers in LLM mode.
 [tokens.home]
 token_env = ["ELNIS_HOME_TOKEN"] # Read from system environment variables or the .env file in the configuration directory.
 
-[delivery]
-default_platforms = ["cli"] # Default delivery platforms allowed by Elnis policies.
-allow_superadmins = true # Whether delivery to the target platform's superadmin is allowed.
+[delivery_disabled]
+targets = [
+  # { platform = "telegram" }, # Disable all deliveries for the entire telegram platform.
+  # { platform = "telegram", type = "private", id = "123456789" },
+  # { platform = "qqonebot", type = "group", id = "987654321" },
+]
 
 # Elwisp is enabled by default; configure it only when you need to limit tokens, override delivery policies, or disable it.
 [elwisps.server-watchdog]
 allowed_tokens = ["home"]
 allowed_tools = ["shell", "web_search"] # Overrides the top-level allowed_tools when present.
 disabled_external_tools = ["danger_tool"] # External tools are allowed by default; only specified tools are disabled here.
-
-[elwisps.server-watchdog.delivery]
-default_platforms = ["cli"]
-allow_superadmins = true
+disabled_targets = [
+  # { platform = "qqonebot", type = "group", id = "987654321" },
+]
 
 [elwisps.spike-checker]
 enabled = false # This Elwisp is disabled only when enabled=false is explicitly set.
@@ -56,7 +58,7 @@ Configuration description:
 
 - `enabled=false` will not start the Elnis HTTP runtime.
 - `elbot cli` is CLI-only mode; even with `enabled=true`, the Elnis HTTP runtime will not start; Please use `elbot run` or `elbot service run` when you need to receive Elvena events.
-- Currently, `targets.platforms=["cli"]` is only applicable to scenarios where Elnis and the CLI are in the same `elbot run` foreground process; `elbot service run` cannot currently deliver messages to another independent `elbot cli` process.
+- Currently, `targets=[{"platform":"cli"}]` only applies to scenarios where Elnis and the CLI are in the same `elbot run` foreground process, or when the CLI remote server is enabled in service mode; Independent `elbot cli` processes must connect to the server before they can receive notifications.
 - Do not write the token plaintext into the configuration; it is recommended to place it in system environment variables or the configuration directory `.env`.
 - `token_env` can contain multiple environment variable names, which will be tried in order.
 - Elwisp is enabled by default; it will receive events if `[elwisps.<name>]` is not specified, if it is specified but `enabled` is not, or if `enabled=true` is specified.
@@ -64,8 +66,7 @@ Configuration description:
 - `allowed_tokens` restricts which tokens can represent the Elwisp to deliver events; if not specified, any authenticated token is allowed.
 - The top-level `allowed_tools` is the default whitelist for ElBot internal tools; it is overridden when `allowed_tools` of an individual Elwisp exists.
 - External tools are allowed by default; an individual Elwisp can use `disabled_external_tools` to disable specific external tools.
-- `default_platforms` is the default delivery platform allowed by the Elnis policy.
-- `allow_superadmins=true` indicates that delivery to the target platform's superadmin is allowed.
+- Elnis allows delivery by default; Only targets explicitly listed in `[delivery_disabled].targets` or a single Elwisp `disabled_targets` will be prohibited.
 
 If you want ElBot to help you generate an Elwisp listener, you can submit a request to the superadmin Session in work mode, for example:
 
@@ -78,18 +79,18 @@ If you want ElBot to help you generate an Elwisp listener, you can submit a requ
 After starting ElBot, you can use curl to test a `direct` event:
 
 ```bash
-curl -sS http://127.0.0.1:32170/elvena/v1/events \
+curl -sS http://127.0.0.1:32170/elvena/v2/events \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer change-me' \
   -d '{
-    "version":"elvena.v1",
+    "version":"elvena.v2",
     "elwisp":{"name":"server-watchdog"},
     "source":"minecraft-main",
     "id":"cpu-alert-001",
     "mode":"direct",
     "title":"服务器 CPU 异常",
     "content":"minecraft-main CPU 使用率超过阈值。",
-    "targets":{"platforms":["cli"],"superadmins":true}
+    "targets":[{"platform":"cli"}]
   }'
 ```
 
@@ -99,7 +100,7 @@ If the same `elwisp.name + source + id` is sent again, Elnis will return duplica
 
 ```json
 {
-  "version": "elvena.v1",
+  "version": "elvena.v2",
   "elwisp": {
     "name": "server-watchdog",
     "tags": ["server", "prod"]
@@ -126,10 +127,10 @@ If the same `elwisp.name + source + id` is sent again, Elnis will return duplica
       "endpoint": "http://127.0.0.1:32171/tools/server_status"
     }
   ],
-  "targets": {
-    "platforms": ["cli"],
-    "superadmins": true
-  },
+  "targets": [
+    {"platform": "cli"},
+    {"platform": "telegram", "type": "private", "id": "123456789"}
+  ],
   "meta": {
     "severity": "warning",
     "host": "mc-main-01"
@@ -139,7 +140,7 @@ If the same `elwisp.name + source + id` is sent again, Elnis will return duplica
 
 ## Segments (Multimodal Message Segments)
 
-Elvena v1 supports sending images and files via the `segments` field. `content` is retained as a plain text fallback, fully compatible with the old Elwisp.
+Elvena v2 supports sending images and files via the `segments` field. `content` is reserved as a plain text fallback and is fully compatible with the old Elwisp.
 
 Behavior remains unchanged when `segments` is empty; when not empty, segments are rendered preferentially, and content serves as additional text.
 
@@ -166,7 +167,7 @@ Behavior remains unchanged when `segments` is empty; when not empty, segments ar
 
 ```json
 {
-  "version": "elvena.v1",
+  "version": "elvena.v2",
   "elwisp": {"name": "monitor"},
   "source": "prod-server",
   "id": "cpu-chart-002",
@@ -178,7 +179,7 @@ Behavior remains unchanged when `segments` is empty; when not empty, segments ar
     {"kind": "image", "url": "https://monitor.example.com/chart.png", "name": "cpu_chart.png"},
     {"kind": "file",  "url": "https://logs.example.com/dump.txt", "name": "cpu_dump.txt"}
   ],
-  "targets": {"platforms": ["cli"], "superadmins": true}
+  "targets": [{"platform": "cli"}]
 }
 ```
 
@@ -204,7 +205,7 @@ Common fields:
 
 | Field | Required | Description |
 | --- | ---: | --- |
-| `version` | Yes | Protocol version, currently `elvena.v1`. |
+| `version` | Yes | Protocol version, currently `elvena.v2`. |
 | `elwisp.name` | Yes | Elwisp name, which is also one of the source identities; only English letters, numbers, `_`, and `-` are allowed; dots are not allowed. |
 
 | `elwisp.tags` | No | Elwisp tag, used for logs and statistics. |
@@ -218,7 +219,7 @@ Common fields:
 | `model_slot` | No | Elnis LLM model slot, only supporting `elwisp1`, `elwisp2`, and `elwisp3`; if left blank or the corresponding slot is not configured, it will fall back to `work`. |
 | `tool_list_names` | No | The ElBot internal tool name or Skill name preloaded for background tasks; Ordinary tools inject the schema, while Skills inject task descriptions and automatically inject the corresponding runner; Must be within the Elnis `allowed_tools` adjudication range; `discover_tool` will be ignored. |
 | `tools` | No | External tools declared by Elwisp with events; allowed by default, rejected when hitting the `disabled_external_tools` of that Elwisp. |
-| `targets` | No | The delivery target expected by Elwisp; the final decision is still made by Elnis. |
+| `targets` | Yes | Elwisp expects a delivery target array: `{"platform":"telegram"}` indicates sending to the platform superadmin, `type=private/group` with `id` indicates sending to a specified private chat/group chat, and `{"platform":"all"}` indicates all enabled platform superadmins. The final decision is still made by Elnis. |
 | `meta` | No | Original supplementary data, used only for recording and prompt attachment. |
 
 
@@ -276,18 +277,27 @@ token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
 
 Elwisp can declare the expected target in `targets`, but the final target is decided by Elnis.
 
-Currently, it is recommended to only use:
+`targets` must be an array:
 
 ```json
 {
-  "targets": {
-    "platforms": ["cli"],
-    "superadmins": true
-  }
+  "targets": [
+    {"platform": "telegram"},
+    {"platform": "telegram", "type": "private", "id": "123456789"},
+    {"platform": "qqonebot", "type": "group", "id": "987654321"},
+    {"platform": "all"}
+  ]
 }
 ```
 
-`platforms` can contain `"all"`, indicating that the request is delivered to all platforms allowed by the Elnis policy. Elnis will still calculate the final target based on global configuration, Elwisp configuration, and platform availability.
+Semantics:
+
+- Only write `platform`: deliver to the superadmin of that platform.
+- `type=private`: deliver to a specified platform private chat.
+- `type=group`: deliver to a specified platform group chat.
+- `platform=all`: deliver to the superadmins of all enabled platforms; `type` or `id` cannot be written at the same time.
+
+Elnis allows delivery by default; It is only prohibited when `[delivery_disabled].targets` or a single Elwisp `disabled_targets` is hit. Setting `{ platform = "telegram" }` in the disable configuration means disabling all deliveries for this platform.
 
 Security Conventions:
 
