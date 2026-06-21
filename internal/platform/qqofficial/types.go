@@ -80,11 +80,12 @@ type apiErrorResponse struct {
 }
 
 type c2cMessage struct {
-	ID          string              `json:"id"`
-	Author      c2cAuthor           `json:"author"`
-	Content     string              `json:"content"`
-	Timestamp   string              `json:"timestamp"`
-	Attachments []messageAttachment `json:"attachments"`
+	ID               string              `json:"id"`
+	Author           c2cAuthor           `json:"author"`
+	Content          string              `json:"content"`
+	Timestamp        string              `json:"timestamp"`
+	Attachments      []messageAttachment `json:"attachments"`
+	MessageReference *messageReference   `json:"message_reference,omitempty"`
 }
 
 type c2cAuthor struct {
@@ -93,6 +94,11 @@ type c2cAuthor struct {
 
 type messageAttachment struct {
 	URL string `json:"url"`
+}
+
+type messageReference struct {
+	MessageID string `json:"message_id,omitempty"`
+	Content   string `json:"content,omitempty"`
 }
 
 type messageToCreate struct {

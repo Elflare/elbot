@@ -177,40 +177,14 @@ func TestHandleEventStripsTriggerKeywordOnly(t *testing.T) {
 }
 
 type captureHandler struct {
+	ctx  context.Context
 	text string
 }
 
 func (h *captureHandler) HandleMessage(ctx context.Context, text string) error {
+	h.ctx = ctx
 	h.text = text
 	return nil
-}
-
-func TestCommandWithReferenceFork(t *testing.T) {
-	ctx := context.Background()
-
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "elbot.db"))
-	if err != nil {
-		t.Fatalf("new store: %v", err)
-	}
-	defer store.Close()
-
-	session := &storage.Session{OwnerID: "qqonebot:1", Platform: "qqonebot", PlatformScopeID: "group:9", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "s"}
-	if err := store.Sessions().Create(ctx, session); err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	assistant := &storage.Message{SessionID: session.ID, Role: storage.RoleAssistant, Content: "answer"}
-	if err := store.Messages().Append(ctx, assistant); err != nil {
-		t.Fatalf("append assistant: %v", err)
-	}
-	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: "qqonebot", PlatformScopeID: "group:9", PlatformMessageID: "77", MessageID: assistant.ID, SessionID: session.ID}); err != nil {
-		t.Fatalf("map platform message: %v", err)
-	}
-
-	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, store, nil, nil)
-	got := adapter.commandWithReference(Event{MessageType: "group", GroupID: 9}, "77", "/fork")
-	if got != "/fork "+assistant.ID {
-		t.Fatalf("command = %q", got)
-	}
 }
 
 func TestForkableReferenceMessageIDRequiresOwnAssistantSession(t *testing.T) {
@@ -251,23 +225,44 @@ func TestForkableReferenceMessageIDRequiresOwnAssistantSession(t *testing.T) {
 	}
 
 	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, store, nil, nil)
-	event := Event{MessageType: "group", GroupID: 9, UserID: 1}
-	if got := adapter.forkableReferenceMessageID(ctx, event, "first-assistant"); got != firstAssistant.ID {
-		t.Fatalf("historical assistant fork id = %q, want %q", got, firstAssistant.ID)
-	}
-	if got := adapter.forkableReferenceMessageID(ctx, event, "latest-assistant"); got != "" {
-		t.Fatalf("latest assistant should continue current conversation, got fork id %q", got)
-	}
-	if got := adapter.forkableReferenceMessageID(ctx, event, "other-assistant"); got != "" {
-		t.Fatalf("other assistant should not fork, got %q", got)
-	}
-	if got := adapter.forkableReferenceMessageID(ctx, event, "own-user"); got != "" {
-		t.Fatalf("user message should not fork, got %q", got)
-	}
+
 	handler := &captureHandler{}
+	adapter.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: []byte(`[{"type":"reply","data":{"id":"first-assistant"}},{"type":"text","data":{"text":"继续"}}]`)})
+	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	if msgCtx.ForkFromMessageID != firstAssistant.ID {
+		t.Fatalf("historical assistant fork id = %q, want %q", msgCtx.ForkFromMessageID, firstAssistant.ID)
+	}
+	if handler.text != "继续" {
+		t.Fatalf("historical assistant reference text = %q, want original", handler.text)
+	}
+
+	handler = &captureHandler{}
 	adapter.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: []byte(`[{"type":"reply","data":{"id":"latest-assistant"}},{"type":"text","data":{"text":"继续"}}]`)})
+	msgCtx, ok = platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	if msgCtx.ForkFromMessageID != "" {
+		t.Fatalf("latest assistant should continue current conversation, got fork id %q", msgCtx.ForkFromMessageID)
+	}
 	if handler.text != "继续" {
 		t.Fatalf("latest assistant reference text = %q, want direct continuation", handler.text)
+	}
+
+	handler = &captureHandler{}
+	adapter.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: []byte(`[{"type":"reply","data":{"id":"other-assistant"}},{"type":"text","data":{"text":"继续"}}]`)})
+	if handler.text != "[引用：bot]：other answer\n\n继续" {
+		t.Fatalf("other assistant reference text = %q", handler.text)
+	}
+
+	handler = &captureHandler{}
+	adapter.cfg.TriggerKeywords = []string{"芙莉丝"}
+	adapter.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: []byte(`[{"type":"reply","data":{"id":"own-user"}},{"type":"text","data":{"text":"芙莉丝 继续"}}]`)})
+	if handler.text != "[引用]：own user\n\n继续" {
+		t.Fatalf("user reference text = %q", handler.text)
 	}
 }
 
@@ -362,12 +357,15 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	adapter := New(Config{Enabled: true, URL: transport.URL}, store, nil, nil)
 	adapter.transport = transport
 
-	got, segments := adapter.withReference(ctx, Event{MessageType: "group", SelfID: 1000, GroupID: 9}, "77", "继续")
-	if got != "[引用：用户(qq:2)]：stored answer\n\n继续" {
-		t.Fatalf("reference text = %q", got)
+	ref, ok := adapter.referenceFetcher(Event{MessageType: "group", SelfID: 1000, GroupID: 9})(ctx, "77")
+	if !ok {
+		t.Fatal("missing reference")
 	}
-	if len(segments) != 1 || segments[0].Type != platform.SegmentImage || segments[0].URL != "https://example.com/a.jpg" {
-		t.Fatalf("reference segments = %#v", segments)
+	if ref.Label != "引用：用户(qq:2)" {
+		t.Fatalf("reference label = %q", ref.Label)
+	}
+	if len(ref.Segments) != 1 || ref.Segments[0].Type != platform.SegmentImage || ref.Segments[0].URL != "https://example.com/a.jpg" {
+		t.Fatalf("reference segments = %#v", ref.Segments)
 	}
 }
 
@@ -418,31 +416,4 @@ func newTestTransport(t *testing.T, handle func(request) response) *Transport {
 		transport.Close(websocket.StatusNormalClosure, "test done")
 	})
 	return transport
-}
-
-func TestWithReferenceUsesShortFormat(t *testing.T) {
-	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "elbot.db"))
-	if err != nil {
-		t.Fatalf("new store: %v", err)
-	}
-	defer store.Close()
-
-	session := &storage.Session{OwnerID: "qqonebot:1", Platform: "qqonebot", PlatformScopeID: "group:9", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "s"}
-	if err := store.Sessions().Create(ctx, session); err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	assistant := &storage.Message{SessionID: session.ID, Role: storage.RoleAssistant, Content: "answer"}
-	if err := store.Messages().Append(ctx, assistant); err != nil {
-		t.Fatalf("append assistant: %v", err)
-	}
-	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: "qqonebot", PlatformScopeID: "group:9", PlatformMessageID: "77", MessageID: assistant.ID, SessionID: session.ID}); err != nil {
-		t.Fatalf("map platform message: %v", err)
-	}
-
-	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, store, nil, nil)
-	got, _ := adapter.withReference(ctx, Event{MessageType: "group", GroupID: 9}, "77", "继续")
-	if got != "[引用：bot]：answer\n\n继续" {
-		t.Fatalf("reference text = %q", got)
-	}
 }
