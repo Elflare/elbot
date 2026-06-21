@@ -950,6 +950,37 @@ func TestSuperadminIdleTTLKeepsCurrentSession(t *testing.T) {
 	}
 }
 
+func TestMessageContextResumeStartsTargetSession(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"resume reply"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "group:9"})
+
+	bg := &storage.Session{OwnerID: "qq:1", Platform: "qq", PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "cron"}
+	if err := store.Sessions().Create(ctx, bg); err != nil {
+		t.Fatalf("create background session: %v", err)
+	}
+	resumeCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "group:9", ResumeSessionID: bg.ID})
+	if err := a.HandleMessage(resumeCtx, "continue here"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	current, err := a.sessions.Current(resumeCtx, a.scope(resumeCtx))
+	if err != nil {
+		t.Fatalf("current session: %v", err)
+	}
+	if current.ID != bg.ID {
+		t.Fatalf("current = %s, want %s", current.ID, bg.ID)
+	}
+	messages, err := store.Messages().ListBySession(resumeCtx, bg.ID)
+	if err != nil {
+		t.Fatalf("list messages: %v", err)
+	}
+	if len(messages) != 2 || messages[0].Content != "continue here" || messages[1].Content != "resume reply" {
+		t.Fatalf("messages = %#v", messages)
+	}
+}
+
 func TestMessageContextForkStartsForkSession(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
@@ -2835,9 +2866,13 @@ func TestRunCronMessageReturnsRawAssistantTextForJSONParsing(t *testing.T) {
 	if err := store.Messages().Append(ctx, &storage.Message{SessionID: cronSession.ID, Role: storage.RoleAssistant, Content: "可见文本", Metadata: assistantRawTextMetadata("可见文本", `{"completed":true,"need_report":true,"report":"ok"}`)}); err != nil {
 		t.Fatalf("append assistant: %v", err)
 	}
-	text, err := a.latestAssistantText(ctx, cronSession.ID)
+	message, err := a.latestAssistantMessage(ctx, cronSession.ID)
 	if err != nil {
-		t.Fatalf("latestAssistantText: %v", err)
+		t.Fatalf("latestAssistantMessage: %v", err)
+	}
+	text := message.Content
+	if rawText := assistantRawTextFromMetadata(message.Metadata); rawText != "" {
+		text = rawText
 	}
 	if text != `{"completed":true,"need_report":true,"report":"ok"}` {
 		t.Fatalf("text = %q", text)

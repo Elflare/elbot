@@ -34,7 +34,7 @@ import (
 
 var elwispNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
-type SenderFunc func(ctx context.Context, target delivery.Target, out delivery.Output) error
+type SenderFunc func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error)
 
 type AuditFunc func(event string, attrs ...any)
 
@@ -527,7 +527,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		return err
 	}
 	if parsed.NeedReport && strings.TrimSpace(parsed.Report) != "" {
-		if err := s.sendReport(ctx, event, parsed.Report, parsed.ReportSegments); err != nil {
+		if err := s.sendReport(ctx, event, parsed.Report, parsed.ReportSegments, result.SessionID, result.MessageID); err != nil {
 			_ = s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, string(resultJSON), err.Error())
 			s.logWarn("elnis llm report failed", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", err.Error())...)
 			return err
@@ -560,7 +560,7 @@ func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, session
 	return result, parsed, err
 }
 
-func (s *Service) sendReport(ctx context.Context, event Event, report string, reportSegments []llm.MessageSegment) error {
+func (s *Service) sendReport(ctx context.Context, event Event, report string, reportSegments []llm.MessageSegment, sessionID, messageID string) error {
 	if s.send == nil {
 		return fmt.Errorf("elnis sender is not configured")
 	}
@@ -575,19 +575,46 @@ func (s *Service) sendReport(ctx context.Context, event Event, report string, re
 	if err != nil {
 		return err
 	}
-	return s.sendOutputsToTargets(ctx, resolved, outputs)
+	return s.sendOutputsToTargetsMapped(ctx, event.EventKey, resolved, outputs, sessionID, messageID)
 }
 
 func (s *Service) sendOutputsToTargets(ctx context.Context, targets []Target, outputs []delivery.Output) error {
+	return s.sendOutputsToTargetsMapped(ctx, "", targets, outputs, "", "")
+}
+
+func (s *Service) sendOutputsToTargetsMapped(ctx context.Context, eventKey string, targets []Target, outputs []delivery.Output, sessionID, messageID string) error {
 	for _, target := range targets {
 		deliveryTarget := target.toDeliveryTarget()
 		for _, out := range outputs {
-			if err := s.send(ctx, deliveryTarget, out); err != nil {
+			receipt, err := s.send(ctx, deliveryTarget, out)
+			if err != nil {
 				return err
 			}
+			s.mapReportReceipt(ctx, eventKey, target, sessionID, messageID, receipt)
 		}
 	}
 	return nil
+}
+
+func (s *Service) mapReportReceipt(ctx context.Context, eventKey string, target Target, sessionID, messageID string, receipt delivery.Receipt) {
+	if sessionID == "" || messageID == "" || s.store == nil || s.store.Messages() == nil {
+		return
+	}
+	scopeID := targetScopeID(target)
+	if scopeID == "" {
+		return
+	}
+	for _, platformMessageID := range receipt.PlatformMessageIDs {
+		platformMessageID = strings.TrimSpace(platformMessageID)
+		if platformMessageID == "" {
+			continue
+		}
+		mapping := storage.PlatformMessageMap{Platform: target.Platform, PlatformScopeID: scopeID, PlatformMessageID: platformMessageID, SessionID: sessionID, MessageID: messageID}
+		if err := s.store.Messages().MapPlatformMessage(ctx, mapping); err != nil {
+			s.auditEvent("elnis.report_map_failed", "event_key", eventKey, "platform", target.Platform, "scope_id", scopeID, "platform_message_id", platformMessageID, "session_id", sessionID, "message_id", messageID, "error", err.Error())
+			s.logWarn("map elnis report message failed", "event_key", eventKey, "platform", target.Platform, "scope_id", scopeID, "platform_message_id", platformMessageID, "session_id", sessionID, "message_id", messageID, "error", err.Error())
+		}
+	}
 }
 
 func (t Target) toDeliveryTarget() delivery.Target {
@@ -601,6 +628,27 @@ func (t Target) toDeliveryTarget() delivery.Target {
 		out.Superadmins = true
 	}
 	return out
+}
+
+func targetScopeID(target Target) string {
+	id := strings.TrimSpace(target.ID)
+	switch strings.TrimSpace(target.Type) {
+	case "private":
+		if id == "" {
+			return ""
+		}
+		if strings.TrimSpace(target.Platform) == "qqofficial" {
+			return "c2c:" + id
+		}
+		return "private:" + id
+	case "group":
+		if id == "" {
+			return ""
+		}
+		return "group:" + id
+	default:
+		return ""
+	}
 }
 
 func decodeResolvedTargets(raw string) ([]Target, error) {

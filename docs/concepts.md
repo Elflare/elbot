@@ -197,7 +197,7 @@ ElBot 包含两层 Cron 能力：
 | Direct Cron | 按计划直接发送固定内容。 |
 | LLM Cron | 按任务描述驱动模型执行，并可使用工具。 |
 
-后台 Cron 有独立 Session 和 sandbox 约束。LLM Cron 可以通过 `tool_list_names` 预注入工具名或 Skill 名：普通工具会注入 schema，Skill 会把说明注入后台任务 prompt，并自动注入对应 runner。后台任务中的所有路径参数都应使用当前任务工作目录内的相对路径；LLM Cron 的最终 JSON 可通过 `report_segments` 附带当前任务工作目录内的图片或文件相对路径。
+后台 Cron 有独立 Session 和 sandbox 约束。LLM Cron 可以通过 `tool_list_names` 预注入工具名或 Skill 名：普通工具会注入 schema，Skill 会把说明注入后台任务 prompt，并自动注入对应 runner。后台任务中的所有路径参数都应使用当前任务工作目录内的相对路径；LLM Cron 的最终 JSON 可通过 `report_segments` 附带当前任务工作目录内的图片或文件相对路径。超级管理员在平台里引用回复 LLM Cron 的通知消息时，会自动 resume 到对应后台 Session 继续对话；普通用户引用时只会作为普通引用文本处理。
 
 
 ## Elnis / Elwisp / Elvena

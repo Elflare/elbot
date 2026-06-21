@@ -416,6 +416,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 			Platform:        a.Name(),
 			ScopeID:         messageCtx.ScopeID,
 			ActorID:         a.Name() + ":" + strconv.FormatInt(event.UserID, 10),
+			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, strconv.FormatInt(event.UserID, 10)),
 			ReplyID:         normalized.ReplyID,
 			Text:            text,
 			CommandPrefixes: a.cfg.CommandPrefixes,
@@ -423,6 +424,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		})
 		text = ref.Text
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
+		messageCtx.ResumeSessionID = ref.ResumeSessionID
 		referenceSegments = ref.ReferenceSegments
 	}
 	if strings.TrimSpace(text) == "" {
@@ -588,6 +590,20 @@ func sleepContext(ctx context.Context, d time.Duration) bool {
 	case <-timer.C:
 		return true
 	}
+}
+
+func isConfiguredSuperadmin(superadmins []string, id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false
+	}
+	for _, candidate := range superadmins {
+		candidate = strings.TrimSpace(strings.TrimPrefix(candidate, "qqonebot:"))
+		if candidate == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *Adapter) logInfo(msg string, args ...any) {

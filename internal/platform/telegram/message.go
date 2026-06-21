@@ -217,6 +217,20 @@ func userIDString(u *user) string {
 	return strconv.FormatInt(u.ID, 10)
 }
 
+func isConfiguredSuperadmin(superadmins []string, id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false
+	}
+	for _, candidate := range superadmins {
+		candidate = strings.TrimSpace(strings.TrimPrefix(candidate, "telegram:"))
+		if candidate == id {
+			return true
+		}
+	}
+	return false
+}
+
 func formatMessageID(id int64) string {
 	if id == 0 {
 		return ""

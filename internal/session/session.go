@@ -693,11 +693,15 @@ func (s *Service) canAccess(scope Scope, session *storage.Session) bool {
 	if session.OwnerID != scope.ActorID || session.Platform != scope.Platform {
 		return false
 	}
-	return session.PlatformScopeID == scope.PlatformScopeID || isCronSession(session)
+	return session.PlatformScopeID == scope.PlatformScopeID || isBackgroundSession(session)
 }
 
-func isCronSession(session *storage.Session) bool {
-	return session != nil && strings.HasPrefix(session.PlatformScopeID, "cron:")
+func isBackgroundSession(session *storage.Session) bool {
+	if session == nil {
+		return false
+	}
+	scopeID := strings.TrimSpace(session.PlatformScopeID)
+	return strings.HasPrefix(scopeID, "cron:") || strings.HasPrefix(scopeID, "elnis:")
 }
 
 func forkTitle(title string) string {

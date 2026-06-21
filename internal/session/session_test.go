@@ -259,8 +259,15 @@ func TestPlatformScopeCanListAndResumeSamePlatformCronSessions(t *testing.T) {
 	if _, err := svc.Resume(ctx, scope, cronSession.ID); err != nil {
 		t.Fatalf("Resume cron: %v", err)
 	}
+	elnisSession := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: "elnis:event-1", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "elnis"}
+	if err := store.Sessions().Create(ctx, elnisSession); err != nil {
+		t.Fatalf("Create elnis: %v", err)
+	}
+	if _, err := svc.Resume(ctx, scope, elnisSession.ID); err != nil {
+		t.Fatalf("Resume elnis: %v", err)
+	}
 	if _, err := svc.Resume(ctx, scope, otherFront.ID); err == nil {
-		t.Fatal("expected other scope non-cron session to be denied")
+		t.Fatal("expected other scope non-background session to be denied")
 	}
 }
 

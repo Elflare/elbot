@@ -167,6 +167,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 			Platform:        a.Name(),
 			ScopeID:         messageCtx.ScopeID,
 			ActorID:         messageCtx.ActorID,
+			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, userIDString(msg.From)),
 			ReplyID:         normalized.ReplyID,
 			Text:            text,
 			CommandPrefixes: a.cfg.CommandPrefixes,
@@ -174,6 +175,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 		})
 		text = ref.Text
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
+		messageCtx.ResumeSessionID = ref.ResumeSessionID
 		referenceSegments = ref.ReferenceSegments
 	}
 	if strings.TrimSpace(text) == "" {

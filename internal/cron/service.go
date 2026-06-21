@@ -30,7 +30,7 @@ const (
 
 type AuditFunc func(event string, attrs ...any)
 
-type TargetSenderFunc func(ctx context.Context, target delivery.Target, out delivery.Output) error
+type TargetSenderFunc func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error)
 
 type PlatformTarget struct {
 	Name          string
@@ -142,6 +142,8 @@ type CronDeliveryMetadata struct {
 	Completed          bool                 `json:"completed,omitempty"`
 	Report             string               `json:"report,omitempty"`
 	ReportSegments     []llm.MessageSegment `json:"report_segments,omitempty"`
+	ReportSessionID    string               `json:"report_session_id,omitempty"`
+	ReportMessageID    string               `json:"report_message_id,omitempty"`
 	DeliveredPlatforms []string             `json:"delivered_platforms,omitempty"`
 }
 
@@ -657,6 +659,8 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 			meta.Delivery.Completed = true
 			meta.Delivery.Report = message
 			meta.Delivery.ReportSegments = nil
+			meta.Delivery.ReportSessionID = result.SessionID
+			meta.Delivery.ReportMessageID = result.MessageID
 		}
 		return meta, message, err
 	}
@@ -674,6 +678,8 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 		if reusable {
 			meta.Delivery.Report = report
 			meta.Delivery.ReportSegments = parsed.ReportSegments
+			meta.Delivery.ReportSessionID = result.SessionID
+			meta.Delivery.ReportMessageID = result.MessageID
 		}
 		return meta, report, nil
 	}
@@ -685,6 +691,8 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 	if reusable {
 		meta.Delivery.Report = report
 		meta.Delivery.ReportSegments = parsed.ReportSegments
+		meta.Delivery.ReportSessionID = result.SessionID
+		meta.Delivery.ReportMessageID = result.MessageID
 	}
 	return meta, report, nil
 }
@@ -707,9 +715,13 @@ func cronParseFailedMessage(title, sessionID string, err error) string {
 
 func (s *Service) sendReportToTargets(ctx context.Context, jobName string, meta Metadata, text string, segments []llm.MessageSegment) error {
 	if meta.Target.AllEnabledPlatforms {
-		return s.sendReportToPlatforms(ctx, jobName, s.enabledPlatformNames(), text, segments)
+		return s.sendReportToPlatformTargets(ctx, jobName, s.enabledPlatforms, text, segments, meta.Delivery.ReportSessionID, meta.Delivery.ReportMessageID)
 	}
-	return s.sendReportToPlatforms(ctx, jobName, []string{meta.Target.SourcePlatform}, text, segments)
+	target := PlatformTarget{Name: meta.Target.SourcePlatform}
+	if id := strings.TrimSpace(meta.CreatedBy.PlatformUserID); id != "" {
+		target.SuperadminIDs = []string{id}
+	}
+	return s.sendReportToPlatformTargets(ctx, jobName, []PlatformTarget{target}, text, segments, meta.Delivery.ReportSessionID, meta.Delivery.ReportMessageID)
 }
 
 func (s *Service) sendReportToPlatforms(ctx context.Context, jobName string, platforms []string, text string, segments []llm.MessageSegment) error {
@@ -718,6 +730,22 @@ func (s *Service) sendReportToPlatforms(ctx context.Context, jobName string, pla
 		return err
 	}
 	return s.sendOutputsToPlatforms(ctx, jobName, platforms, outputs)
+}
+
+func (s *Service) sendReportToPlatformsMapped(ctx context.Context, jobName string, platforms []string, text string, segments []llm.MessageSegment, sessionID, messageID string) error {
+	outputs, err := background.BuildReportOutputs(text, segments, tool.SandboxContext{Dir: filepath.Join(s.sandboxRoot, filepath.FromSlash(cronSandboxSubdir(jobName))), Background: true, BackgroundKind: tool.BackgroundKindCron})
+	if err != nil {
+		return err
+	}
+	return s.sendOutputsToPlatformsMapped(ctx, jobName, platforms, outputs, sessionID, messageID)
+}
+
+func (s *Service) sendReportToPlatformTargets(ctx context.Context, jobName string, platforms []PlatformTarget, text string, segments []llm.MessageSegment, sessionID, messageID string) error {
+	outputs, err := background.BuildReportOutputs(text, segments, tool.SandboxContext{Dir: filepath.Join(s.sandboxRoot, filepath.FromSlash(cronSandboxSubdir(jobName))), Background: true, BackgroundKind: tool.BackgroundKindCron})
+	if err != nil {
+		return err
+	}
+	return s.sendOutputsToPlatformTargets(ctx, jobName, platforms, outputs, sessionID, messageID)
 }
 
 func (s *Service) sendToTargets(ctx context.Context, jobName string, meta Metadata, text string) error {
@@ -732,6 +760,58 @@ func (s *Service) sendToPlatforms(ctx context.Context, jobName string, platforms
 }
 
 func (s *Service) sendOutputsToPlatforms(ctx context.Context, jobName string, platforms []string, outputs []delivery.Output) error {
+	return s.sendOutputsToPlatformsMapped(ctx, jobName, platforms, outputs, "", "")
+}
+
+func (s *Service) sendOutputsToPlatformTargets(ctx context.Context, jobName string, platforms []PlatformTarget, outputs []delivery.Output, sessionID, messageID string) error {
+	if s.sendTarget == nil {
+		return fmt.Errorf("cron target sender is not configured")
+	}
+	var errs []error
+	for _, platform := range platforms {
+		platformName := strings.TrimSpace(platform.Name)
+		if platformName == "" {
+			continue
+		}
+		ids := uniqueStrings(platform.SuperadminIDs)
+		if len(ids) == 0 {
+			errs = append(errs, s.sendOutputsToPlatformTarget(ctx, jobName, platformName, delivery.Target{Platform: platformName, Superadmins: true}, outputs, sessionID, messageID, cronScopeID(jobName)))
+			continue
+		}
+		for _, id := range ids {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			target := delivery.Target{Platform: platformName, PrivateUserID: id}
+			errs = append(errs, s.sendOutputsToPlatformTarget(ctx, jobName, platformName, target, outputs, sessionID, messageID, privateScopeID(platformName, id)))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, platformName string, target delivery.Target, outputs []delivery.Output, sessionID, messageID, mapScopeID string) error {
+	var errs []error
+	for _, out := range outputs {
+		attrs := []any{"job", jobName, "platform", platformName, "target", cronTargetLabel(target), "kind", out.Kind}
+		s.auditEvent("cron.send_started", attrs...)
+		s.logInfo("cron send started", attrs...)
+		receipt, err := s.sendTarget(ctx, target, out)
+		if err != nil {
+			err = fmt.Errorf("send %s: %w", platformName, err)
+			errs = append(errs, err)
+			s.auditEvent("cron.send_failed", append(attrs, "error", err.Error())...)
+			s.logWarn("cron send failed", append(attrs, "error", err.Error())...)
+			continue
+		}
+		s.mapReportReceipt(ctx, jobName, platformName, mapScopeID, sessionID, messageID, receipt)
+		s.auditEvent("cron.send_completed", attrs...)
+		s.logInfo("cron send completed", attrs...)
+	}
+	return errors.Join(errs...)
+}
+
+func (s *Service) sendOutputsToPlatformsMapped(ctx context.Context, jobName string, platforms []string, outputs []delivery.Output, sessionID, messageID string) error {
 	if s.sendTarget == nil {
 		return fmt.Errorf("cron target sender is not configured")
 	}
@@ -744,7 +824,7 @@ func (s *Service) sendOutputsToPlatforms(ctx context.Context, jobName string, pl
 			attrs := []any{"job", jobName, "platform", platformName, "target", "superadmins", "kind", out.Kind}
 			s.auditEvent("cron.send_started", attrs...)
 			s.logInfo("cron send started", attrs...)
-			err := s.sendTarget(ctx, delivery.Target{Platform: platformName, Superadmins: true}, out)
+			receipt, err := s.sendTarget(ctx, delivery.Target{Platform: platformName, Superadmins: true}, out)
 			if err != nil {
 				err = fmt.Errorf("send %s: %w", platformName, err)
 				errs = append(errs, err)
@@ -752,11 +832,57 @@ func (s *Service) sendOutputsToPlatforms(ctx context.Context, jobName string, pl
 				s.logWarn("cron send failed", "job", jobName, "platform", platformName, "target", "superadmins", "kind", out.Kind, "error", err.Error())
 				continue
 			}
+			s.mapReportReceipt(ctx, jobName, platformName, cronScopeID(jobName), sessionID, messageID, receipt)
 			s.auditEvent("cron.send_completed", attrs...)
 			s.logInfo("cron send completed", attrs...)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func (s *Service) mapReportReceipt(ctx context.Context, jobName, platformName, scopeID, sessionID, messageID string, receipt delivery.Receipt) {
+	if sessionID == "" || messageID == "" || s.store == nil || s.store.Messages() == nil {
+		return
+	}
+	scopeID = strings.TrimSpace(scopeID)
+	if scopeID == "" {
+		scopeID = cronScopeID(jobName)
+	}
+	for _, platformMessageID := range receipt.PlatformMessageIDs {
+		platformMessageID = strings.TrimSpace(platformMessageID)
+		if platformMessageID == "" {
+			continue
+		}
+		mapping := storage.PlatformMessageMap{Platform: platformName, PlatformScopeID: scopeID, PlatformMessageID: platformMessageID, SessionID: sessionID, MessageID: messageID}
+		if err := s.store.Messages().MapPlatformMessage(ctx, mapping); err != nil {
+			s.auditEvent("cron.report_map_failed", "job", jobName, "platform", platformName, "scope_id", scopeID, "platform_message_id", platformMessageID, "session_id", sessionID, "message_id", messageID, "error", err.Error())
+			s.logWarn("map cron report message failed", "job", jobName, "platform", platformName, "scope_id", scopeID, "platform_message_id", platformMessageID, "session_id", sessionID, "message_id", messageID, "error", err.Error())
+		}
+	}
+}
+
+func cronTargetLabel(target delivery.Target) string {
+	if target.Superadmins {
+		return "superadmins"
+	}
+	if target.PrivateUserID != "" {
+		return "private"
+	}
+	if target.GroupID != "" {
+		return "group"
+	}
+	return "unknown"
+}
+
+func privateScopeID(platformName, id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ""
+	}
+	if strings.TrimSpace(platformName) == "qqofficial" {
+		return "c2c:" + id
+	}
+	return "private:" + id
 }
 
 func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessionID string, meta Metadata, jobName string) error {

@@ -258,12 +258,11 @@ func Run(ctx context.Context, opts Options) error {
 		Audit: func(event string, attrs ...any) {
 			logs.Audit().Log(context.Background(), slog.LevelInfo, "audit event", append([]any{"event", event}, attrs...)...)
 		},
-		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) error {
+		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
 			if agt == nil {
-				return fmt.Errorf("agent is not ready")
+				return delivery.Receipt{}, fmt.Errorf("agent is not ready")
 			}
-			_, err := agt.SendNoticeOutput(ctx, target, out)
-			return err
+			return agt.SendNoticeOutput(ctx, target, out)
 		},
 	})
 	if err := cronManager.RegisterHandler(elcron.UserHandlerName, cronService.Handler); err != nil {
@@ -340,9 +339,8 @@ func Run(ctx context.Context, opts Options) error {
 			Audit: func(event string, attrs ...any) {
 				logs.Audit().Log(context.Background(), slog.LevelInfo, "audit event", append([]any{"event", event}, attrs...)...)
 			},
-			Send: func(ctx context.Context, target delivery.Target, out delivery.Output) error {
-				_, err := agt.SendNoticeOutput(ctx, target, out)
-				return err
+			Send: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+				return agt.SendNoticeOutput(ctx, target, out)
 			},
 			Runner: agt,
 			ResolveModel: func(slot string) config.ModelSelection {

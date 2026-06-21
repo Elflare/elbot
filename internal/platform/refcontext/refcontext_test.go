@@ -60,6 +60,53 @@ func TestApplyLatestOwnAssistantReferenceContinues(t *testing.T) {
 	}
 }
 
+func TestApplySuperadminBackgroundReferenceResumes(t *testing.T) {
+	ctx := context.Background()
+	store := newRefTestStore(t)
+	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	bg := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: "elnis:event-1", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "elnis"}
+	if err := store.Sessions().Create(ctx, bg); err != nil {
+		t.Fatalf("create background session: %v", err)
+	}
+	msg := &storage.Message{ID: storage.NewID(), SessionID: bg.ID, Role: storage.RoleAssistant, Content: "report"}
+	if err := store.Messages().Append(ctx, msg); err != nil {
+		t.Fatalf("append assistant: %v", err)
+	}
+	mapPlatformMessage(t, ctx, store, scope, "p-bg", msg)
+
+	result := Apply(ctx, Options{Store: store, Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, IsSuperadmin: true, ReplyID: "p-bg", Text: "继续"})
+	if result.ResumeSessionID != bg.ID {
+		t.Fatalf("resume = %q, want %q", result.ResumeSessionID, bg.ID)
+	}
+	if result.ForkFromMessageID != "" || result.Text != "继续" {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestApplyUserBackgroundReferenceFallsBack(t *testing.T) {
+	ctx := context.Background()
+	store := newRefTestStore(t)
+	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	bg := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "cron"}
+	if err := store.Sessions().Create(ctx, bg); err != nil {
+		t.Fatalf("create background session: %v", err)
+	}
+	msg := &storage.Message{ID: storage.NewID(), SessionID: bg.ID, Role: storage.RoleAssistant, Content: "report"}
+	if err := store.Messages().Append(ctx, msg); err != nil {
+		t.Fatalf("append assistant: %v", err)
+	}
+	mapPlatformMessage(t, ctx, store, scope, "p-bg-user", msg)
+
+	result := Apply(ctx, Options{Store: store, Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-bg-user", Text: "继续"})
+	want := "[引用：bot]：report\n\n继续"
+	if result.Text != want {
+		t.Fatalf("text = %q, want %q", result.Text, want)
+	}
+	if result.ResumeSessionID != "" || result.ForkFromMessageID != "" {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
 func TestApplyOtherSessionAssistantReferenceFallsBack(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)

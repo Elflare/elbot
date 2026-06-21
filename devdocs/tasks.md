@@ -798,7 +798,7 @@
 - [x] 启动后补跑 missed 的 enabled 一次性 cron，失败写日志并提示 CLI。
 - [ ] 可以指定模型，默认使用当前主模型。（暂时是固定主模型，以后配置在state.toml中）
 - [ ] 周期cron也支持过期时间
-- [ ] 引用回复cron的消息，自动切换到那个session或者fork
+- [x] 超级管理员引用回复 cron LLM 通知时，自动 resume 到对应后台 session 继续对话；普通用户仍 fallback 为普通引用文本。
 
 ### 多模态
 
@@ -863,6 +863,6 @@
 - [x] 内置 `elwisp_creator` 工具，帮助用户生成 Elwisp 配置、事件模板、监听器脚手架和测试命令。
 - [x] 支持多种消息segment
 - [x] 可通过扁平 `targets` 指定平台超级管理员、指定私聊或指定群聊，并支持 disabled target 禁止项。
-- [ ] 引用回复llm elwisp的消息，自动切换到那个session或者fork
+- [x] 超级管理员引用回复 LLM Elwisp 通知时，自动 resume 到对应后台 session 继续对话；普通用户仍 fallback 为普通引用文本。
 - [ ] 待定：设计 Elnis 与 Elwisp 多轮通信协议。
 - [ ] 待定：评估 stdio/pipe transport。

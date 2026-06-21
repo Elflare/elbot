@@ -106,11 +106,15 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 	if err := a.startBackgroundChat(ctx, bgSession, prompt); err != nil {
 		return background.RunResult{}, err
 	}
-	text, err := a.latestAssistantText(ctx, bgSession.ID)
+	message, err := a.latestAssistantMessage(ctx, bgSession.ID)
 	if err != nil {
 		return background.RunResult{}, err
 	}
-	return background.RunResult{SessionID: bgSession.ID, Text: text}, nil
+	text := message.Content
+	if rawText := assistantRawTextFromMetadata(message.Metadata); rawText != "" {
+		text = rawText
+	}
+	return background.RunResult{SessionID: bgSession.ID, MessageID: message.ID, Text: text}, nil
 }
 
 func (a *Agent) backgroundSession(ctx context.Context, req background.RunRequest, scope session.Scope) (*storage.Session, error) {
@@ -149,21 +153,17 @@ func (a *Agent) ensureBackgroundSession(ctx context.Context, bgSession *storage.
 	return bgSession, nil
 }
 
-func (a *Agent) latestAssistantText(ctx context.Context, sessionID string) (string, error) {
+func (a *Agent) latestAssistantMessage(ctx context.Context, sessionID string) (storage.Message, error) {
 	messages, err := a.store.Messages().ListBySession(ctx, sessionID)
 	if err != nil {
-		return "", err
+		return storage.Message{}, err
 	}
 	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role != storage.RoleAssistant {
-			continue
+		if messages[i].Role == storage.RoleAssistant {
+			return messages[i], nil
 		}
-		if rawText := assistantRawTextFromMetadata(messages[i].Metadata); rawText != "" {
-			return rawText, nil
-		}
-		return messages[i].Content, nil
 	}
-	return "", fmt.Errorf("background session %s has no assistant message", sessionID)
+	return storage.Message{}, fmt.Errorf("background session %s has no assistant message", sessionID)
 }
 
 func assistantRawTextFromMetadata(raw string) string {

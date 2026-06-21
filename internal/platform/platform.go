@@ -59,6 +59,7 @@ type MessageContext struct {
 	Sender                delivery.ContextSender
 	BufferAssistantOutput bool
 	ForkFromMessageID     string
+	ResumeSessionID       string
 	Segments              []MessageSegment
 	Meta                  map[string]any
 }

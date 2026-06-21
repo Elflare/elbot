@@ -37,7 +37,7 @@
 ### Cron 与维护任务
 
 - `internal/cron/manager.go`：中央 Cron Runtime；基于 `robfig/cron/v3` 调度持久化 job，提供 handler 注册、job upsert/disable/delete、启动加载、执行日志、运行状态更新、同 job 防并发和未启动 Stop 的安全返回。
-- `internal/cron/service.go`：LLM 可编排 cron 服务；管理用户 cron metadata，支持 once/周期、direct/LLM 触发、missed once 按平台补投递，LLM once 可由首个已连接目标平台生成并缓存报告，后续平台复用；通过 `internal/background` 执行后台 LLM，保留 cron prompt、投递和任务生命周期语义。
+- `internal/cron/service.go`：LLM 可编排 cron 服务；管理用户 cron metadata，支持 once/周期、direct/LLM 触发、missed once 按平台补投递，LLM once 可由首个已连接目标平台生成并缓存报告，后续平台复用；通过 `internal/background` 执行后台 LLM，保留 cron prompt、投递、引用通知 resume 后台 session 和任务生命周期语义。
 
 - `internal/maintenance/maintenance.go`：系统维护任务；集中注册维护类 Cron，提供日志、Session、sandbox 和聊天历史清理。
 
@@ -111,7 +111,7 @@
 
 
 - `internal/elnis/types.go`：Elnis/Elvena 协议类型；定义 Elwisp 请求、扁平投递目标、响应、事件模式、状态和随事件声明的外部工具。
-- `internal/elnis/service.go`：Elnis 接收服务；处理 token 鉴权、协议校验、Elwisp 授权、内部工具 allowed_tools 裁决、外部工具声明校验/禁用、持久化去重、record/direct 分发、默认允许加 disabled target 的目标裁决和 LLM 事件后台执行/结果报告。
+- `internal/elnis/service.go`：Elnis 接收服务；处理 token 鉴权、协议校验、Elwisp 授权、内部工具 allowed_tools 裁决、外部工具声明校验/禁用、持久化去重、record/direct 分发、默认允许加 disabled target 的目标裁决、LLM 事件后台执行/结果报告和引用通知 resume 后台 session。
 - `internal/elnis/http.go`：Elnis HTTP runtime；提供 `POST /elvena/v2/events` 和 `GET /healthz`，支持 body 限制、token 提取、JSON 响应和 LLM 事件队列 worker。
 
 - `internal/logging/logging.go`：日志地基；创建运行日志、审计日志和 Elnis 日志的 `slog.Logger`，`Manager` 统一持有按日期懒轮转的 `elbot-YYYY-MM-DD.log`、`audit-YYYY-MM-DD.log`、`elnis-YYYY-MM-DD.log` writer，暴露日志目录和可配置旧日志清理入口。

@@ -13,6 +13,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/security"
 	"elbot/internal/storage"
+	"elbot/internal/storage/sqlite"
 )
 
 func TestScheduleExprOnceUsesMinutePrecision(t *testing.T) {
@@ -62,9 +63,9 @@ func TestNotifyPlatformConnectedDeliversMissedDirectCronPerPlatform(t *testing.T
 	svc := NewService(Options{
 		Store:            store,
 		EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}},
-		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) error {
+		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
 			sent = append(sent, target.Platform+":"+out.Text)
-			return nil
+			return delivery.Receipt{}, nil
 		},
 	})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
@@ -104,9 +105,9 @@ func TestNotifyPlatformConnectedGeneratesLLMReportForFirstConnectedTarget(t *tes
 		Store:            store,
 		Runner:           runner,
 		EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}},
-		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) error {
+		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
 			sent = append(sent, target.Platform+":"+out.Text)
-			return nil
+			return delivery.Receipt{}, nil
 		},
 	})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
@@ -244,6 +245,45 @@ func TestRunLLMReportPassesToolListNames(t *testing.T) {
 	}
 }
 
+func TestRunLLMMapsReportNoticeToBackgroundMessage(t *testing.T) {
+	ctx := context.Background()
+	store := newCronSQLiteStore(t)
+	runner := &fakeCronRunner{text: `{"completed":true,"need_report":true,"report":"报告内容"}`}
+	svc := NewService(Options{
+		Store:            store,
+		Runner:           runner,
+		EnabledPlatforms: []PlatformTarget{{Name: "qq-onebot", SuperadminIDs: []string{"1001"}}},
+		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+			if target.Platform == "qq-onebot" && target.PrivateUserID == "1001" {
+				return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}}, nil
+			}
+			return delivery.Receipt{}, nil
+		},
+	})
+	bgSession := &storage.Session{ID: "cron-session", OwnerID: "cli:local", Platform: "cli", PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "cron"}
+	if err := store.Sessions().Create(ctx, bgSession); err != nil {
+		t.Fatalf("create background session: %v", err)
+	}
+	if err := store.Messages().Append(ctx, &storage.Message{ID: "cron-message", SessionID: bgSession.ID, Role: storage.RoleAssistant, Content: "报告内容"}); err != nil {
+		t.Fatalf("append background message: %v", err)
+	}
+	job, err := store.CronJobs().Upsert(ctx, storage.UpsertCronJobRequest{Name: "user.cron.test", Handler: UserHandlerName, Schedule: "4 3 2 1 *", Enabled: true, Metadata: mustMarshalTestMetadata(t, Metadata{Kind: metadataKind, Version: 1, Title: "总结", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})})
+	if err != nil {
+		t.Fatalf("upsert job: %v", err)
+	}
+	meta := mustDecodeTestMetadata(t, job.Metadata)
+	if err := svc.runLLM(ctx, *job, meta); err != nil {
+		t.Fatalf("runLLM: %v", err)
+	}
+	msg, err := store.Messages().FindByPlatformMessage(ctx, "qq-onebot", "private:1001", "notice-1")
+	if err != nil {
+		t.Fatalf("FindByPlatformMessage: %v", err)
+	}
+	if msg.ID != "cron-message" || msg.SessionID != "cron-session" {
+		t.Fatalf("mapped message = %#v", msg)
+	}
+}
+
 func TestRunLLMSendsReportSegments(t *testing.T) {
 	repo := newFakeCronRepo()
 	root := filepath.Join(t.TempDir(), "sandbox")
@@ -255,12 +295,12 @@ func TestRunLLMSendsReportSegments(t *testing.T) {
 	}
 	runner := &fakeCronRunner{text: `{"completed":true,"need_report":true,"report":"见图","report_segments":[{"type":"image","url":"chart.png"}]}`}
 	sent := []delivery.Kind{}
-	svc := NewService(Options{Store: fakeCronStore{cron: repo}, Runner: runner, SandboxRoot: root, SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) error {
+	svc := NewService(Options{Store: fakeCronStore{cron: repo}, Runner: runner, SandboxRoot: root, SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
 		sent = append(sent, out.Kind)
 		if out.Kind == delivery.KindImage && out.Source.Path != filepath.Join(root, "cron", "test", "chart.png") {
 			t.Fatalf("image path = %q", out.Source.Path)
 		}
-		return nil
+		return delivery.Receipt{}, nil
 	}})
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
 	meta := mustDecodeTestMetadata(t, job.Metadata)
@@ -378,9 +418,9 @@ func TestRunLLMSendsAdminNoticeWhenRetryStillInvalid(t *testing.T) {
 	svc := NewService(Options{
 		Store:  fakeCronStore{cron: repo},
 		Runner: runner,
-		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) error {
+		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
 			sent = append(sent, target.Platform+":"+out.Text)
-			return nil
+			return delivery.Receipt{}, nil
 		},
 	})
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
@@ -403,9 +443,9 @@ func TestNotifyPlatformConnectedSkipsAlreadyDeliveredPlatform(t *testing.T) {
 	var sent []string
 	svc := NewService(Options{
 		Store: store,
-		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) error {
+		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
 			sent = append(sent, target.Platform+":"+out.Text)
-			return nil
+			return delivery.Receipt{}, nil
 		},
 	})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
@@ -446,7 +486,9 @@ func TestCronSendAuditIncludesPlatform(t *testing.T) {
 		Audit: func(event string, attrs ...any) {
 			events = append(events, event+":"+attrsString(attrs, "platform"))
 		},
-		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) error { return nil },
+		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+			return delivery.Receipt{}, nil
+		},
 	})
 	if err := svc.sendToPlatforms(context.Background(), "user.cron.audit", []string{"cli"}, "hello"); err != nil {
 		t.Fatalf("sendToPlatforms: %v", err)
@@ -486,7 +528,7 @@ func (r *fakeCronRunner) RunBackground(ctx context.Context, req background.RunRe
 		sessionID = r.sessionIDs[r.calls]
 	}
 	r.calls++
-	return background.RunResult{SessionID: sessionID, Text: text}, nil
+	return background.RunResult{SessionID: sessionID, MessageID: "cron-message", Text: text}, nil
 }
 
 func testElyphTask(name string) string {
@@ -513,6 +555,25 @@ func mustDecodeTestMetadata(t *testing.T, raw string) Metadata {
 		t.Fatalf("decode metadata: %v", err)
 	}
 	return meta
+}
+
+func mustMarshalTestMetadata(t *testing.T, meta Metadata) string {
+	t.Helper()
+	data, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatalf("marshal metadata: %v", err)
+	}
+	return string(data)
+}
+
+func newCronSQLiteStore(t *testing.T) storage.Store {
+	t.Helper()
+	store, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	return store
 }
 
 func mustParseTestTime(t *testing.T, value string) time.Time {

@@ -52,6 +52,7 @@ func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.Platfor
 			Platform:        a.Name(),
 			ScopeID:         messageCtx.ScopeID,
 			ActorID:         a.Name() + ":" + openID,
+			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, openID),
 			ReplyID:         replyID,
 			Text:            text,
 			CommandPrefixes: a.cfg.CommandPrefixes,
@@ -59,6 +60,7 @@ func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.Platfor
 		})
 		text = ref.Text
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
+		messageCtx.ResumeSessionID = ref.ResumeSessionID
 		messageCtx.Segments = finalMessageSegments(text, segments, ref.ReferenceSegments)
 		msgCtx = platform.WithMessageContext(ctx, messageCtx)
 		msgCtx = context.WithValue(msgCtx, targetKey{}, sendTarget{OpenID: openID, MsgID: msg.ID})
@@ -79,6 +81,20 @@ func c2cReplyID(msg c2cMessage) string {
 		return ""
 	}
 	return strings.TrimSpace(msg.MessageReference.MessageID)
+}
+
+func isConfiguredSuperadmin(superadmins []string, id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false
+	}
+	for _, candidate := range superadmins {
+		candidate = strings.TrimSpace(strings.TrimPrefix(candidate, "qqofficial:"))
+		if candidate == id {
+			return true
+		}
+	}
+	return false
 }
 
 func c2cReferenceFetcher(msg c2cMessage) func(context.Context, string) (refcontext.ReferencedMessage, bool) {

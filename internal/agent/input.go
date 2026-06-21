@@ -121,8 +121,13 @@ func hasForkFromMessage(ctx context.Context) bool {
 }
 
 func (a *Agent) sessionForInput(ctx context.Context, text string) (*storage.Session, error) {
-	if msg, ok := platform.MessageContextFrom(ctx); ok && msg.ForkFromMessageID != "" {
-		return a.sessions.Fork(ctx, a.scope(ctx), msg.ForkFromMessageID)
+	if msg, ok := platform.MessageContextFrom(ctx); ok {
+		if msg.ResumeSessionID != "" {
+			return a.sessions.Resume(ctx, a.scope(ctx), msg.ResumeSessionID)
+		}
+		if msg.ForkFromMessageID != "" {
+			return a.sessions.Fork(ctx, a.scope(ctx), msg.ForkFromMessageID)
+		}
 	}
 	return a.sessions.GetOrCreateCurrent(ctx, a.scope(ctx), text)
 }

@@ -1,8 +1,8 @@
 package background
 
 import (
-	"elbot/internal/llm"
 	"context"
+	"elbot/internal/llm"
 
 	"elbot/internal/security"
 	"elbot/internal/toolrun"
@@ -20,34 +20,35 @@ type Runner interface {
 }
 
 type RunRequest struct {
-	Kind          Kind
-	Name          string
-	Title         string
-	Platform      string
-	Actor         security.Actor
-	ScopeID       string
-	SessionID     string
-	ModelProvider string
-	Model         string
+	Kind           Kind
+	Name           string
+	Title          string
+	Platform       string
+	Actor          security.Actor
+	ScopeID        string
+	SessionID      string
+	ModelProvider  string
+	Model          string
 	PromptSegments []llm.MessageSegment
-	Prompt        string
-	RetryPrompt   string
-	ToolListNames []string
-	CachedTools   []toolrun.CachedTool
-	SandboxSubdir string
-	Metadata      map[string]string
+	Prompt         string
+	RetryPrompt    string
+	ToolListNames  []string
+	CachedTools    []toolrun.CachedTool
+	SandboxSubdir  string
+	Metadata       map[string]string
 }
 
 type RunResult struct {
 	SessionID string
+	MessageID string
 	Text      string
 	Parsed    JSONResult
 	ParseErr  error
 }
 
 type JSONResult struct {
-	Completed  bool   `json:"completed"`
-	NeedReport bool   `json:"need_report"`
+	Completed      bool                 `json:"completed"`
+	NeedReport     bool                 `json:"need_report"`
 	ReportSegments []llm.MessageSegment `json:"report_segments,omitempty"`
-	Report     string `json:"report"`
+	Report         string               `json:"report"`
 }

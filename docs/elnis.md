@@ -186,7 +186,9 @@ Elnis 收到事件后，会按 `mode` 决定处理方式。
 
 ## 当前限制与后续方向
 
-当前 Elnis 已支持 record、direct、llm 模式、Elwisp 随事件声明外部工具以及多模态消息段（text/image/file）。以下能力仍在开发或规划中：
+当前 Elnis 已支持 record、direct、llm 模式、Elwisp 随事件声明外部工具以及多模态消息段（text/image/file）。超级管理员在平台里引用回复 Elnis LLM 报告通知时，会自动 resume 到对应后台 Session 继续对话；普通用户引用时只会作为普通引用文本处理。
+
+以下能力仍在开发或规划中：
 
 - Elnis 与 Elwisp 多轮通信。
 - stdio、pipe 等非 HTTP transport。
