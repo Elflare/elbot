@@ -377,14 +377,20 @@ workers = 2
 [tokens.home]
 token_env = ["ELNIS_HOME_TOKEN", "ELNIS_HOME_TOKEN_ALT"]
 
-[delivery]
-default_platforms = ["cli"]
-allow_superadmins = true
+[delivery_disabled]
+targets = [
+  # { platform = "telegram" },
+  # { platform = "telegram", type = "private", id = "123456789" },
+  # { platform = "qqonebot", type = "group", id = "987654321" },
+]
 
 [elwisps.server-watchdog]
 allowed_tokens = ["home"]
 allowed_tools = ["shell"]
 disabled_external_tools = ["danger_tool"]
+disabled_targets = [
+  # { platform = "qqonebot", type = "group", id = "987654321" },
+]
 ```
 
 Note:
@@ -392,6 +398,7 @@ Note:
 - `allowed_tools` is the Elnis internal tool whitelist; Elwisps without separate configurations inherit the global default.
 - If a single Elwisp configures `allowed_tools`, it will override the global default.
 - External tools are allowed by default; specified external tools are only disabled when a single Elwisp configures `disabled_external_tools`.
+- Elnis delivery is allowed by default; `[delivery_disabled].targets` and single Elwisp `disabled_targets` are used to explicitly prohibit platforms, private chats, or group chats; `platform-only` in the configuration indicates that all deliveries for the entire platform are disabled.
 - The token is read from system environment variables or the configuration directory `.env`. Logs only record the token name, not the raw token.
 - `token_env` can be written as a list to try multiple environment variable names in order; this is suitable for temporarily switching tokens or achieving multi-environment compatibility.
 - Elwisp is enabled by default; the corresponding Elwisp will only be disabled if `enabled=false` is explicitly configured.

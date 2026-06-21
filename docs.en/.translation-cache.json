@@ -21,9 +21,9 @@
       "updated_at": 1781949019
     },
     "docs/configuration.md": {
-      "source_hash": "529735ef49801cc9ab29b4471c673ecc2a1437950a3a0bf750919924cc5ba42a",
+      "source_hash": "fb5896473f316132f026504ecc61f5677e8805bad756d41002f6a717882b1b80",
       "target": "docs.en/configuration.md",
-      "updated_at": 1781962094
+      "updated_at": 1782033039
     },
     "docs/elnis-usage.md": {
       "source_hash": "5379abea6f7c2022e9b38441a74e8e20d38139f969cdddb272d9b0a3b3ef1d0e",
@@ -4183,6 +4183,14 @@
       "translation": "Elwisp is enabled by default; the corresponding Elwisp will only be disabled if __ELBOT_CODE_0__ is explicitly configured.",
       "updated_at": 1781709336
     },
+    "docs/configuration.md:list:545838f4da5c128c37e91d77964c4010b4da5672e695331aff8f125f14bf4519": {
+      "kind": "list",
+      "source": "Elnis 投递默认允许；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "545838f4da5c128c37e91d77964c4010b4da5672e695331aff8f125f14bf4519",
+      "translation": "Elnis delivery is allowed by default;",
+      "updated_at": 1782033039
+    },
     "docs/configuration.md:list:57546c6a4ffe364b6870cb08d4c2368579a6a8071ee17c64e373d9cc6f4eea5f": {
       "kind": "list",
       "source": "首期支持 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 模式；__ELBOT_CODE_2__ 模式预留给后续 background runner。",
@@ -4326,6 +4334,14 @@
       "source_hash": "7cc26368a77adcbf24f1f6fa9179b3153c2ad5f8f6668088265c08c40cca1f01",
       "translation": "It is recommended to write __ELBOT_CODE_0__ as a specific tool usage strategy, rather than configuration mechanisms that the model does not need to know, such as \"the current tag is xxx\".",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:list:7f34133b5869a70f57d503c31ad434050ea803efb1c486f3b639c8779e7e4794": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 和单 Elwisp __ELBOT_CODE_1__ 用于显式禁止平台、私聊或群聊，配置中的 platform-only 表示禁用整个平台所有投递。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "7f34133b5869a70f57d503c31ad434050ea803efb1c486f3b639c8779e7e4794",
+      "translation": "__ELBOT_CODE_0__ and single Elwisp __ELBOT_CODE_1__ are used to explicitly prohibit platforms, private chats, or group chats; `platform-only` in the configuration indicates that all deliveries for the entire platform are disabled.",
+      "updated_at": 1782033039
     },
     "docs/configuration.md:list:826c019d3d4694805a7bafdcfa232b73d5ca05192f673a07a18bbc62fcf2de40": {
       "kind": "list",
