@@ -28,9 +28,10 @@
 
 ### 入口与启动
 
-- `cmd/elbot/main.go`：程序入口；调用 `internal/launcher` 解析命令，创建根 context 并调用 `internal/app.Run`。
-- `internal/launcher/cli.go`：手写解析 `run`、`cli`、`service run`、`completion`，并生成 bash/zsh/fish/nushell/powershell 补全。
+- `cmd/elbot/main.go`：程序入口；调用 `internal/launcher` 解析命令，创建根 context；`elbot cli` 或 `elbot -c` 进入远程 CLI 客户端，其余模式调用 `internal/app.Run`。
+- `internal/launcher/cli.go`：手写解析 `run`、`cli`、`service run`、`completion` 和远程 CLI `-c/--client`，并生成 bash/zsh/fish/nushell/powershell 补全。
 - `internal/app/app.go`：应用装配入口；加载配置、日志、SQLite、LLM、Agent、Tool、Platform、Hook、Output、Cron 等依赖，并按运行模式启动平台 runtime/Cron。
+- `internal/app/cli_client.go`：远程 CLI 客户端启动入口；加载配置，解析 CLI client profile/token，并连接服务端复用 TUI。
 - `internal/app/service_marker.go`：Linux service pid marker；供默认启动判断是否切到 CLI-only。
 
 ### Cron 与维护任务
@@ -38,7 +39,8 @@
 - `internal/cron/manager.go`：中央 Cron Runtime；基于 `robfig/cron/v3` 调度持久化 job，提供 handler 注册、job upsert/disable/delete、启动加载、执行日志、运行状态更新、同 job 防并发和未启动 Stop 的安全返回。
 - `internal/cron/service.go`：LLM 可编排 cron 服务；管理用户 cron metadata，支持 once/周期、direct/LLM 触发、missed once 按平台补投递，LLM once 可由首个已连接目标平台生成并缓存报告，后续平台复用；通过 `internal/background` 执行后台 LLM，保留 cron prompt、投递和任务生命周期语义。
 
-- `internal/maintenance/maintenance.go`：系统维护任务；集中注册维护类 Cron，提供日志、Session、artifact 和聊天历史清理。
+- `internal/maintenance/maintenance.go`：系统维护任务；集中注册维护类 Cron，提供日志、Session、sandbox 和聊天历史清理。
+
 
 ### Agent 编排
 
@@ -70,7 +72,7 @@
 - `internal/agent/session_metadata.go`：Session metadata 编解码辅助；当前用于保存已 discover 工具名、已激活 tool tag 和最近一次 LLM usage，使 `/status` 在 `/resume` 后仍可显示最近 token 状态。
 - `internal/agent/tool_transcript.go`：工具调用历史持久化辅助；保存 assistant tool_calls 与 tool result，提供 user 多模态 segments metadata 和 turn message 落库 helper，并在持久化 discover 结果时压缩 schema，避免未来上下文膨胀。
 - `internal/agent/context.go`：Agent 上下文压缩依赖实现；维护 context 配置、压缩模型、ContextLoader、WindowResolver、Compressor、最近 usage 和待压缩标记，并提供 `/compact` 与 `/status` 所需能力；最近 usage 会写入 Session metadata 供恢复会话后展示。
-- `internal/agent/model.go`：模型命令依赖实现；集中维护模型运行态、provider client 缓存、`/models` 运行期列表缓存、模型切换、`state.toml` 写入与输入触发热加载；`/model` 默认按消息上下文对应 Session mode 选择目标，但设置全平台共享。
+- `internal/agent/model.go`：模型命令依赖实现；集中维护模型运行态、provider client 缓存、`/models` 运行期列表缓存、模型切换和 `state.toml` 写入；`/model` 默认按消息上下文对应 Session mode 选择目标，但设置全平台共享。
 
 ### Agent 内置命令
 
@@ -104,7 +106,7 @@
 
 配置约定：默认配置查找顺序为 `--config`、`ELBOT_CONFIG_FILE`、平台配置目录（Windows `%APPDATA%/ElBot/app.toml`；Linux XDG `~/.config/elbot/app.toml`）；平台配置不存在时由内置 assets 自动生成，已有配置不覆盖。静态配置在 `app.toml`，Provider 列表在同目录 `providers.toml`，运行时热切换状态在同目录 `state.toml`，工具 tag 配置在同目录 `tool_tags.toml`；用户可编辑资产集中在配置目录：`memories.toml`、`long_memory/`、`skills/`、`plugins/`，SQLite/logs/sandbox 等运行数据仍按各自配置或默认数据目录存放。Hook/插件配置固定放在同目录 `plugins/<plugin-name>.toml`，规则 Hook 使用 `plugins/hooks.toml`，app 层不解析插件专属字段。Provider key 推荐用 `api_key_env`，读取优先级为系统环境变量 > 配置目录 `.env`。
 
-- `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录解析 `app.toml`，读取并合并 app/provider/state/tool_tags 配置，解析相对路径和 `api_key_env`，包含 LLM 请求超时/重试、sandbox/artifact、Elnis 与 S3/R2 预留配置。
+- `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录解析 `app.toml`，读取并合并 app/provider/state/tool_tags 配置，解析相对路径和 `api_key_env`，包含 LLM 请求超时/重试、sandbox、Elnis 配置。
 - `internal/config/assets.go`：首次运行默认配置资产；在无显式配置且无平台配置时生成 app/providers/state/SOUL/elnis/.env.example 和基础目录。
 
 
@@ -138,7 +140,8 @@
 
 ### Output Layer
 
-- `internal/background/`：后台 LLM 执行公共类型与结果 helper；定义 cron/Elnis 共用 `RunRequest`、`RunResult`、background kind 和最终 JSON 结果解析/格式重试文案，失败或阻塞也可通过 report 汇报。
+- `internal/background/`：后台 LLM 执行公共类型与结果 helper；定义 cron/Elnis 共用 `RunRequest`、`RunResult`、background kind、最终 JSON 结果解析/格式重试文案和 report segment 输出构建。
+
 
 - `internal/delivery/delivery.go`：平台无关输出意图与发送管理；统一定义 text/image/file/at/reply/emoticon 等输出类型、fallback 文本、delivery timing 元数据，以及发送回执、流式发送和发送入口。
 
@@ -163,7 +166,8 @@
 
 - `internal/tool/tool.go`：Tool Runtime 核心类型与 Registry；管理工具注册、查询、schema、权限、风险评估、用户侧 tags 和执行结果结构。
 
-- `internal/tool/sandbox.go`：工具执行轻量 sandbox context；传递统一 sandbox root、当前工作目录、artifact 目录和后台运行 kind，只随本次 context 传播，不写入 Session。
+- `internal/tool/sandbox.go`：工具执行轻量 sandbox context；传递统一 sandbox root、当前工作目录和后台运行 kind，提供后台相对路径解析，只随本次 context 传播，不写入 Session。
+
 - `internal/tool/builder.go`：Go Tool Builder；用于声明工具描述、风险、隐藏、superadmin-only、用户侧 tags、依赖和常用参数 schema，Object 参数默认允许任意 JSON 字段，减少内置工具与包装工具手写 schema 的成本。
 - `internal/tool/discover.go`：`discover_tool` 内置工具；无参列出可见工具/skill 简介，有 `name`/`names` 时普通工具仅返回“已发现工具”文本并把完整 schema 留在结构化 Data 供 Agent 注入 top-level tools，外置 AgentSkill/Go skill 返回 markdown/ELyph detail；查询 AgentSkill/Go skill 会通过内部 metadata 激活隐藏包装工具 `python_skill_run`/`go_skill_run`。
 
@@ -171,11 +175,14 @@
 - `internal/toolrun/`：工具调用中间层；维护 session 工具缓存、native/Elwisp 工具视图、命名解析、权限风险确认、tool call 生命周期编排和失效提示；后台 session 不注入默认 `discover_tool`，后台 shell schema 会提示使用相对路径，Elwisp 外部工具通过 HTTP JSON POST 执行。
 - `internal/tool/executor.go`：工具执行器；把模型产生的 `llm.ToolCallRequest` 转换为 Tool Runtime 调用，执行前按 Actor/Policy 做风险等级兜底校验，并把结果转换为 LLM tool message。
 
-- `internal/tool/builtin/runtime.go`：内置工具 Runtime；集中创建 Tool Registry、常驻记忆 store、Skill Manager、Artifact Manager 和内置工具私有路径；`memories.toml`、`long_memory/`、`skills/` 默认在配置目录下。
+- `internal/tool/builtin/runtime.go`：内置工具 Runtime；集中创建 Tool Registry、常驻记忆 store、Skill Manager、文件发送 helper 和内置工具私有路径；`memories.toml`、`long_memory/`、`skills/` 默认在配置目录下。
+
 - `internal/tool/builtin/register.go`：内置工具注册细节；由 builtin Runtime 调用，统一注册 `discover_tool`、常驻记忆、长期记忆、cron、`send_file`、聊天历史、web 搜索/提取、shell、`elwisp_creator`、skill 包装工具和 Go 元 skill。
 
-- `internal/tool/builtin/artifact.go`：artifact 文件暂存 helper；sandbox 内文件直接发送，外部文件复制到统一 sandbox 的 `artifact/` 子目录，做大小、文件名、MIME 和 Windows/MSYS 路径处理，未来可接 S3/R2。
-- `internal/tool/builtin/send_file.go`：内置发文件工具；仅超管可用，支持 `path`/`file` 参数，相对路径在 cron 中按 cron sandbox 解析，外部文件确认/自动处理后通过 output.File 发送。
+- `internal/tool/builtin/file_manager.go`：本地文件发送准备 helper；解析本地路径、文件名、MIME 和 Windows/MSYS 路径，不复制文件。
+- `internal/tool/builtin/send_file.go`：内置发文件工具；仅超管可用，支持 `path`/`file` 参数，后台和前台都直接发送解析后的本地文件路径。
+
+
 - `internal/tool/builtin/chat_history.go`：内置聊天历史工具；按当前 platform/scope 搜索、查看上下文和引用回复平台聊天记录，用户侧 tag 为 `chat`。
 - `internal/tool/builtin/long_memory.go`：全局长期记忆工具组；可见入口 `long_memory` 依赖隐藏的 `long_memory_search`/`long_memory_write`，仅超管可用；Markdown 文件是源数据，SQLite FTS 是可重建索引，搜索/分类前会轻量同步并提示手改格式损坏文件。
 - `internal/tool/builtin/cron.go`：内置 cron 工具组；可见主工具 `cron` 依赖隐藏的 `cron_query`/`cron_write`，查询为 medium 风险，写操作为 high 风险，全部仅超级管理员可用；LLM cron 可传 `tool_list_names` 预注入工具或 Skill；列表默认隐藏已完成 cron，传 `include_completed=true` 才显示历史完成项。
@@ -224,11 +231,15 @@
 - `internal/platform/config.go`：平台配置辅助；把 `app.toml` 中 `[platform.<name>]` 原始 section 解码给适配器自有 Config，并提供关键词前缀剥离 helper。
 - `internal/platform/builtin/builtin.go`：内置平台装配；按运行模式组合 CLI、headless 和 enabled 外部平台。
 - `internal/platform/headless/headless.go`：service 模式的非交互 primary platform。
-- `internal/platform/cli/cli.go`：CLI 平台实现；非 TTY 下读取 stdin，交互式终端下启动 Bubble Tea TUI，支持注入补全服务；实现统一 `SendChat`/`SendNotice`，并向 TUI 推送 reasoning 与 runtime status。
-- `internal/platform/qq-onebot/`：QQ OneBot v11 正向 WebSocket 适配。
-- `internal/platform/qqofficial/`：QQ 官方机器人 C2C 单聊适配；负责 access token、Gateway identify/heartbeat/resume（含 4009 连接过期重连）、默认 Markdown 文本发送、富媒体上传发送、入站附件下载到 artifact、Keyboard 确认按钮和 ARK 预留；配置来自 `[platform.qqofficial]`。
-- `internal/platform/telegram/`：Telegram Bot API long polling 适配；负责文本/图片/文件收发、HTTP 代理、默认 HTML 格式化、可选 Rich Message 实验模式、editMessageText 伪流式输出、引用上下文、聊天历史记录、inline keyboard 风险确认按钮和 bot commands 同步；配置来自 `[platform.telegram]`。
+- `internal/platform/cli/cli.go`：CLI 平台实现；本地交互模式下读取 stdin/TUI，支持注入补全服务；实现统一 `SendChat`/`SendNotice`，并向 TUI 推送 reasoning 与 runtime status。
+- `internal/platform/cli/config.go`：CLI 远程连接配置；解析 `[platform.cli]` 下服务端监听、客户端 profile、默认客户端和 token env。
+- `internal/platform/cli/remote_protocol.go`：远程 CLI WebSocket 协议类型；定义 hello/input/completion/output/status/stream/error 等消息。
+- `internal/platform/cli/remote_server.go`：服务端侧远程 CLI Adapter；service 模式注册为 `cli` 平台，鉴权并管理多个 CLI client，支持输入、补全、notice/chat/status/reasoning/stream 推送。
+- `internal/platform/cli/remote_client.go`：客户端侧远程 CLI runner；`elbot cli`/`elbot -c` 连接服务端，复用 TUI，将输入和补全请求转发到服务端。
 - `internal/platform/cli/tui.go`：Bubble Tea TUI 主编排；提供聊天/通知/输入区、历史、滚动、补全候选窗、reasoning 与正文分离显示、状态栏。
+- `internal/platform/qq-onebot/`：QQ OneBot v11 正向 WebSocket 适配。
+- `internal/platform/qqofficial/`：QQ 官方机器人 C2C 单聊适配；负责 access token、Gateway identify/heartbeat/resume（含 4009 连接过期重连）、默认 Markdown 文本发送、富媒体上传发送、入站附件下载到 sandbox 平台目录、Keyboard 确认按钮和 ARK 预留；配置来自 `[platform.qqofficial]`。
+- `internal/platform/telegram/`：Telegram Bot API long polling 适配；负责文本/图片/文件收发、HTTP 代理、默认 HTML 格式化、可选 Rich Message 实验模式、editMessageText 伪流式输出、引用上下文、聊天历史记录、inline keyboard 风险确认按钮和 bot commands 同步；配置来自 `[platform.telegram]`。
 - `internal/platform/cli/tui_copy.go`：CLI TUI copy mode；支持鼠标分区滚动、vim模式复制和搜索；`clipboard.go` 默认用系统剪贴板并在 SSH/tmux 等场景走 OSC52 fallback。
 
 ### Session 服务

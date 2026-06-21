@@ -42,6 +42,29 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	if opts.Mode == app.RunModeCLIOnly {
+		if err := app.RunCLIClient(ctx, app.CLIClientOptions{ConfigPath: opts.ConfigPath, ClientName: opts.ClientName}); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			fmt.Fprintf(os.Stderr, "elbot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if opts.Mode == app.RunModeAuto {
+		if err := app.TryRunCLIClient(ctx, app.CLIClientOptions{ConfigPath: opts.ConfigPath, ClientName: opts.ClientName}); err == nil {
+			return
+		} else if !errors.Is(err, app.ErrCLIClientFallback) {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			fmt.Fprintf(os.Stderr, "elbot: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
 	if err := app.Run(ctx, app.Options{
 		ConfigPath: opts.ConfigPath,
 		Version:    version,

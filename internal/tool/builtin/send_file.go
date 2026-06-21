@@ -14,7 +14,7 @@ import (
 )
 
 type SendFileTool struct {
-	artifacts *ArtifactManager
+	files *FileManager
 }
 
 type sendFileArgs struct {
@@ -24,8 +24,8 @@ type sendFileArgs struct {
 	MIMEType string `json:"mime_type"`
 }
 
-func NewSendFileTool(artifacts *ArtifactManager) SendFileTool {
-	return SendFileTool{artifacts: artifacts}
+func NewSendFileTool(files *FileManager) SendFileTool {
+	return SendFileTool{files: files}
 }
 
 func (t SendFileTool) Name() string { return "send_file" }
@@ -54,12 +54,11 @@ func (t SendFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 	if strings.TrimSpace(path) == "" {
 		return tool.RiskAssessment{}, fmt.Errorf("path or file is required")
 	}
-	sandbox, hasSandbox := tool.SandboxContextFromContext(ctx)
-	if t.isExternalPath(sandbox, hasSandbox, path) {
-		if hasSandbox && sandbox.BackgroundKind == tool.BackgroundKindCron {
-			return tool.RiskAssessment{Level: tool.RiskMedium, Reasons: []string{"cron 后台发送外部文件会自动复制到 artifact 后发送"}}, nil
-		}
-		return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"发送外部文件需要确认，确认后会复制到 artifact 再发送"}}, nil
+	if _, hasSandbox := tool.SandboxContextFromContext(ctx); hasSandbox {
+		return tool.RiskAssessment{Level: tool.RiskMedium}, nil
+	}
+	if filepath.IsAbs(normalizeLocalPath(path)) {
+		return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"发送外部文件需要确认"}}, nil
 	}
 	return tool.RiskAssessment{Level: tool.RiskMedium}, nil
 }
@@ -70,7 +69,7 @@ func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		return nil, err
 	}
 	sandbox, _ := tool.SandboxContextFromContext(ctx)
-	prepared, err := t.artifacts.Prepare(sandbox, args.sourcePath(), args.Name, args.MIMEType)
+	prepared, err := t.files.Prepare(sandbox, args.sourcePath(), args.Name, args.MIMEType)
 	if err != nil {
 		return nil, err
 	}
@@ -83,29 +82,6 @@ func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		}
 	}
 	return &tool.Result{Content: fmt.Sprintf("已发送文件：%s", prepared.Name), Outputs: []delivery.Output{out}}, nil
-}
-
-func (t SendFileTool) isExternalPath(sandbox tool.SandboxContext, hasSandbox bool, path string) bool {
-	path = normalizeLocalPath(strings.TrimSpace(path))
-	if path == "" {
-		return false
-	}
-	if !filepath.IsAbs(path) && hasSandbox && strings.TrimSpace(sandbox.Dir) != "" {
-		return false
-	}
-	resolved := path
-	if !filepath.IsAbs(resolved) {
-		abs, err := filepath.Abs(resolved)
-		if err == nil {
-			resolved = abs
-		}
-	}
-	if t.artifacts != nil {
-		if isPathWithin(resolved, t.artifacts.ArtifactDir) || isPathWithin(resolved, t.artifacts.SandboxRoot) {
-			return false
-		}
-	}
-	return true
 }
 
 func (args sendFileArgs) sourcePath() string {

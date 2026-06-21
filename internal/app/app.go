@@ -254,6 +254,7 @@ func Run(ctx context.Context, opts Options) error {
 		Store:            store,
 		Logger:           logger,
 		EnabledPlatforms: enabledCronPlatforms(cfg),
+		SandboxRoot:      cfg.Sandbox.Root,
 		Audit: func(event string, attrs ...any) {
 			logs.Audit().Log(context.Background(), slog.LevelInfo, "audit event", append([]any{"event", event}, attrs...)...)
 		},
@@ -268,7 +269,7 @@ func Run(ctx context.Context, opts Options) error {
 	if err := cronManager.RegisterHandler(elcron.UserHandlerName, cronService.Handler); err != nil {
 		return err
 	}
-	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{ConfigDir: filepath.Dir(cfg.ConfigPath), CronService: cronService, ChatHistory: chatHistory, SandboxRoot: cfg.Sandbox.Root, ArtifactConfig: cfg.Artifact})
+	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{ConfigDir: filepath.Dir(cfg.ConfigPath), CronService: cronService, ChatHistory: chatHistory, SandboxRoot: cfg.Sandbox.Root, FileDelivery: cfg.FileDelivery})
 	if err != nil {
 		return err
 	}
@@ -308,7 +309,7 @@ func Run(ctx context.Context, opts Options) error {
 	agt.SetSessionListPageSize(cfg.View.SessionListPageSize)
 	agt.SetCleanupRetentionDays(cfg.Session.Cleanup.RetentionDays)
 	agt.SetNonSuperadminIdleTTLMinutes(cfg.Session.NonSuperadminIdleTTLMinutes)
-	agt.SetSandboxPaths(cfg.Sandbox.Root, filepath.Join(cfg.Sandbox.Root, "artifact"))
+	agt.SetSandboxRoot(cfg.Sandbox.Root)
 	agt.SetLogManager(logs)
 	agt.SetToolRuntime(toolRegistry, skillManager.Scanner)
 	agt.SetToolConfig(cfg.Tools)
@@ -321,7 +322,10 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	profiler.Mark("agent init")
 
-	if cfg.Elnis.Enabled {
+	// if cfg.Elnis.Enabled && mode == RunModeCLIOnly {
+	// 	logger.Info("elnis disabled in cli-only mode")
+	// }
+	if cfg.Elnis.Enabled && mode != RunModeCLIOnly {
 		elnisTokens, err := resolveElnisTokens(cfg)
 		if err != nil {
 			return err
@@ -330,8 +334,8 @@ func Run(ctx context.Context, opts Options) error {
 			Config:      cfg.Elnis,
 			SandboxRoot: cfg.Sandbox.Root,
 			Tokens:      elnisTokens,
-			Store:  store,
-			Logger: logs.Elnis(),
+			Store:       store,
+			Logger:      logs.Elnis(),
 			Audit: func(event string, attrs ...any) {
 				logs.Audit().Log(context.Background(), slog.LevelInfo, "audit event", append([]any{"event", event}, attrs...)...)
 			},

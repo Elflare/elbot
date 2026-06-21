@@ -11,6 +11,7 @@ import (
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
 	"elbot/internal/delivery"
+	"elbot/internal/llm"
 	"elbot/internal/platform"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -65,16 +66,12 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 	if scopeID == "" {
 		scopeID = backgroundScopeID(req.Kind, req.Name)
 	}
-	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Platform: platformName, ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, DisplayName: actor.DisplayName, ScopeID: scopeID, Sender: discardSender{}})
+	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Platform: platformName, ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, DisplayName: actor.DisplayName, ScopeID: scopeID, Sender: discardSender{}, Segments: backgroundPromptSegments(req.PromptSegments)})
 	ctx = security.WithPolicy(security.WithActor(ctx, actor), a.securityPolicy)
 
 	sandboxRoot := a.sandboxRoot
 	if sandboxRoot == "" {
 		sandboxRoot = filepath.Join("data", "sandbox")
-	}
-	artifactDir := a.artifactDir
-	if artifactDir == "" {
-		artifactDir = filepath.Join(sandboxRoot, "artifact")
 	}
 	sandboxSubdir := strings.TrimSpace(req.SandboxSubdir)
 	if sandboxSubdir == "" {
@@ -83,7 +80,7 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 	if sandboxSubdir == "" {
 		sandboxSubdir = "background"
 	}
-	ctx = tool.WithSandboxContext(ctx, tool.SandboxContext{Root: sandboxRoot, Dir: filepath.Join(sandboxRoot, filepath.FromSlash(sandboxSubdir)), ArtifactDir: artifactDir, Background: true, BackgroundKind: toolBackgroundKind(req.Kind)})
+	ctx = tool.WithSandboxContext(ctx, tool.SandboxContext{Root: sandboxRoot, Dir: filepath.Join(sandboxRoot, filepath.FromSlash(sandboxSubdir)), Background: true, BackgroundKind: toolBackgroundKind(req.Kind)})
 
 	if req.ModelProvider != "" || req.Model != "" {
 		ctx = context.WithValue(ctx, cronModelSelectionKey{}, config.ModelSelection{Provider: req.ModelProvider, Model: req.Model})
@@ -178,6 +175,21 @@ func assistantRawTextFromMetadata(raw string) string {
 		return ""
 	}
 	return metadata.RawText
+}
+
+func backgroundPromptSegments(segments []llm.MessageSegment) []platform.MessageSegment {
+	out := make([]platform.MessageSegment, 0, len(segments))
+	for _, segment := range segments {
+		switch segment.Type {
+		case llm.SegmentText:
+			out = append(out, platform.MessageSegment{Type: platform.SegmentText, Text: segment.Text, MIMEType: segment.MIMEType, Name: segment.Name})
+		case llm.SegmentImage:
+			out = append(out, platform.MessageSegment{Type: platform.SegmentImage, Text: segment.Text, URL: segment.URL, MIMEType: segment.MIMEType, Name: segment.Name})
+		case llm.SegmentFile:
+			out = append(out, platform.MessageSegment{Type: platform.SegmentFile, Text: segment.Text, URL: segment.URL, MIMEType: segment.MIMEType, Name: segment.Name})
+		}
+	}
+	return out
 }
 
 func backgroundScopeID(kind background.Kind, name string) string {

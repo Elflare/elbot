@@ -46,12 +46,25 @@ func New(opts Options, cfg *config.Config, store storage.Store, chatHistory stor
 		bundle.Primary = cliAdapter
 		bundle.Runtimes = append(bundle.Runtimes, cliAdapter)
 	}
+	if cfg != nil && mode == ModeService {
+		cliCfg, err := cli.NewConfigFromPlatformConfig(cfg.Platform["cli"])
+		if err != nil {
+			return Bundle{}, err
+		}
+		if cliCfg.Enabled && cliCfg.Server.Enabled {
+			adapter, err := cli.NewRemoteServer(cli.RemoteServerOptions{Config: cliCfg, ConfigDir: filepath.Dir(cfg.ConfigPath), Superadmins: cfg.Security.Superadmins["cli"]})
+			if err != nil {
+				return Bundle{}, err
+			}
+			bundle.Runtimes = append(bundle.Runtimes, adapter)
+		}
+	}
 	if cfg == nil || mode == ModeCLIOnly {
 		return bundle, nil
 	}
 	if raw, ok := cfg.Platform["qqofficial"]; ok {
-		artifactDir := filepath.Join(cfg.Sandbox.Root, "artifact")
-		adapter, err := qqofficial.NewFromPlatformConfig(raw, store, logger, cfg.Security.Superadmins["qqofficial"], artifactDir)
+		attachmentDir := filepath.Join(cfg.Sandbox.Root, "platform", "qqofficial")
+		adapter, err := qqofficial.NewFromPlatformConfig(raw, store, logger, cfg.Security.Superadmins["qqofficial"], cfg.Commands.Prefixes, attachmentDir)
 		if err != nil {
 			return Bundle{}, err
 		}

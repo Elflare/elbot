@@ -82,6 +82,52 @@ func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
 	}
 }
 
+func TestHandleC2CMessageContinuesLatestAssistantReference(t *testing.T) {
+	ctx := context.Background()
+	store := newQQOfficialTestStore(t)
+	adapter := New(Config{}, store, nil)
+	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: platformName, PlatformScopeID: "c2c:user-1"}
+	_, latest := createQQOfficialAssistantMessages(t, ctx, store, scope)
+	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: platformName, PlatformScopeID: scope.PlatformScopeID, PlatformMessageID: "platform-latest", MessageID: latest.ID, SessionID: latest.SessionID}); err != nil {
+		t.Fatalf("map latest: %v", err)
+	}
+
+	handler := &captureHandler{}
+	adapter.handleC2CMessage(ctx, handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, c2cMessage{
+		ID:               "msg-1",
+		Author:           c2cAuthor{UserOpenID: "user-1"},
+		Content:          "继续",
+		MessageReference: &messageReference{MessageID: "platform-latest"},
+	})
+	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	if msgCtx.ForkFromMessageID != "" {
+		t.Fatalf("fork = %q, want empty", msgCtx.ForkFromMessageID)
+	}
+	if handler.text != "继续" {
+		t.Fatalf("text = %q, want original", handler.text)
+	}
+}
+
+func createQQOfficialAssistantMessages(t *testing.T, ctx context.Context, store storage.Store, scope session.Scope) (*storage.Message, *storage.Message) {
+	t.Helper()
+	s, err := session.NewService(store).Create(ctx, scope, "source")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	first := &storage.Message{ID: storage.NewID(), SessionID: s.ID, Role: storage.RoleAssistant, Content: "old answer"}
+	latest := &storage.Message{ID: storage.NewID(), SessionID: s.ID, Role: storage.RoleAssistant, Content: "latest answer"}
+	if err := store.Messages().Append(ctx, first); err != nil {
+		t.Fatalf("append first: %v", err)
+	}
+	if err := store.Messages().Append(ctx, latest); err != nil {
+		t.Fatalf("append latest: %v", err)
+	}
+	return first, latest
+}
+
 func newQQOfficialTestStore(t *testing.T) storage.Store {
 	t.Helper()
 	store, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "test.db"))

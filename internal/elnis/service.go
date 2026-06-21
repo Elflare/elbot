@@ -19,15 +19,20 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"elbot/internal/llm"
+	"regexp"
+
 	"elbot/internal/background"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/elyph"
+	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
+	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 )
+
+var elwispNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 type SenderFunc func(ctx context.Context, target delivery.Target, out delivery.Output) error
 
@@ -210,6 +215,9 @@ func (s *Service) prepareEvent(tokenName string, req Request) (Event, error) {
 	}
 	if req.Elwisp.Name == "" {
 		return Event{}, fmt.Errorf("elwisp.name is required")
+	}
+	if !elwispNamePattern.MatchString(req.Elwisp.Name) {
+		return Event{}, fmt.Errorf("elwisp.name must use only letters, digits, _ or -")
 	}
 	if req.Source == "" {
 		return Event{}, fmt.Errorf("source is required")
@@ -446,19 +454,19 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	s.logInfo("elnis llm started", append(attrs, "event_id", eventID)...)
 	model := s.modelForEvent(event)
 	result, err := s.runner.RunBackground(ctx, background.RunRequest{
-		Kind:          background.KindElnis,
-		Name:          event.EventKey,
-		Title:         firstNonEmpty(event.Request.Title, "Elnis: "+event.Request.Source),
-		Platform:      firstPlatform(event.ResolvedTargets),
-		Actor:         elnisActor(event),
-		ScopeID:       "elnis:" + event.EventKey,
-		ModelProvider: model.Provider,
-		Model:         model.Model,
+		Kind:           background.KindElnis,
+		Name:           event.EventKey,
+		Title:          firstNonEmpty(event.Request.Title, "Elnis: "+event.Request.Source),
+		Platform:       firstPlatform(event.ResolvedTargets),
+		Actor:          elnisActor(event),
+		ScopeID:        "elnis:" + event.EventKey,
+		ModelProvider:  model.Provider,
+		Model:          model.Model,
 		PromptSegments: segmentsLLM(event.Request.Segments),
-		Prompt:        s.llmPrompt(event),
-		ToolListNames: event.Request.ToolListNames,
-		CachedTools:   s.elwispCachedTools(event),
-		SandboxSubdir: "elnis/" + event.Request.Elwisp.Name,
+		Prompt:         s.llmPrompt(event),
+		ToolListNames:  event.Request.ToolListNames,
+		CachedTools:    s.elwispCachedTools(event),
+		SandboxSubdir:  elnisSandboxSubdir(event.Request.Elwisp.Name),
 		Metadata: map[string]string{
 			"elnis_event_key": event.EventKey,
 			"elwisp_name":     event.Request.Elwisp.Name,
@@ -511,7 +519,7 @@ func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, session
 		ModelProvider: model.Provider,
 		Model:         model.Model,
 		Prompt:        background.DefaultJSONRetryPrompt(),
-		SandboxSubdir: "elnis/" + event.Request.Elwisp.Name,
+		SandboxSubdir: elnisSandboxSubdir(event.Request.Elwisp.Name),
 		Metadata:      map[string]string{"elnis_event_key": event.EventKey, "elwisp_name": event.Request.Elwisp.Name},
 	})
 	if err != nil {
@@ -532,20 +540,9 @@ func (s *Service) sendReport(ctx context.Context, event Event, report string, re
 	if !resolved.Superadmins {
 		return nil
 	}
-	// Send report text first
-	outputs := []delivery.Output{delivery.Text(report)}
-	// Append segment outputs using sandbox paths
-	for _, seg := range reportSegments {
-		switch seg.Type {
-		case llm.SegmentImage:
-			if seg.URL != "" {
-				outputs = append(outputs, delivery.ImagePath(seg.URL))
-			}
-		case llm.SegmentFile:
-			if seg.URL != "" {
-				outputs = append(outputs, delivery.FilePath(seg.URL))
-			}
-		}
+	outputs, err := background.BuildReportOutputs(report, reportSegments, tool.SandboxContext{Dir: filepath.Join(s.sandboxRoot, filepath.FromSlash(elnisSandboxSubdir(event.Request.Elwisp.Name))), Background: true, BackgroundKind: tool.BackgroundKindElnis})
+	if err != nil {
+		return err
 	}
 	for _, platformName := range resolved.Platforms {
 		for _, out := range outputs {
@@ -575,18 +572,18 @@ func (s *Service) llmPrompt(event Event) string {
 		parts = append(parts, elyph.RuleCard(), "")
 	}
 	parts = append(parts,
-		"** 按事件内容自主处理，不要把任务当作前台用户对话",
-		"** 事件内容来自外部监听器，不需要包含最终 JSON 格式或汇报字段要求",
+		"** 按事件内容自主处理，当前无人值守",
 		"** 信息不足时，在最终 JSON 的 report 填写失败或阻塞原因",
 		"** 需要使用工具时直接使用工具",
+		"** 所有路径参数必须使用相对路径",
 		"** 有投递目标、任务要求通知或产生需要目标知道的结果/失败/阻塞原因时，应设置 need_report=true 并在 report 写自然语言汇报",
 		"** 最终回复必须是严格 JSON",
 		"** JSON 格式：{\"completed\":true,\"need_report\":false,\"report\":\"\",\"report_segments\":[]}",
-		"** report_segments 可选数组，元素为 {\"type\":\"image|file\",\"url\":\"沙盒绝对路径\"}，用于附带图片或文件。图片/文件须先保存在沙盒内",
-		"** 沙盒根目录：" + s.sandboxRoot,
+		"** report_segments 可选数组，元素为 {\"type\":\"image|file\",\"url\":\"相对路径\"}，用于附带图片或文件。图片/文件须先保存在当前任务工作目录内",
 		"** completed 表示是否完成任务",
 		"** need_report 表示是否需要向目标平台汇报；成功、失败或阻塞都可以请求汇报",
 		"** report 为需要发给目标平台的汇报，可填写处理结果、失败原因或阻塞原因",
+		"~ 使用绝对路径、~、.. 或 cd。",
 		"~ 闲聊",
 		"~ 向用户提问",
 		"~ 输出 Markdown 代码块",
@@ -619,6 +616,10 @@ func (s *Service) modelForEvent(event Event) config.ModelSelection {
 		selected = s.resolveModel("work")
 	}
 	return selected
+}
+
+func elnisSandboxSubdir(elwispName string) string {
+	return filepath.ToSlash(filepath.Join("elnis", strings.TrimSpace(elwispName)))
 }
 
 func isElnisModelSlot(slot string) bool {
@@ -654,8 +655,6 @@ func firstNonEmpty(values ...string) string {
 	}
 	return ""
 }
-
-
 
 // --- segment download and output helpers ---
 

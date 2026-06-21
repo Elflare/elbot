@@ -53,6 +53,8 @@ ELNIS_HOME_TOKEN=change-me
 配置说明：
 
 - `enabled=false` 时不启动 Elnis HTTP runtime。
+- `elbot cli` 是 CLI-only 模式，即使 `enabled=true` 也不会启动 Elnis HTTP runtime；需要接收 Elvena 事件时请使用 `elbot run` 或 `elbot service run`。
+- 当前 `targets.platforms=["cli"]` 只适用于 Elnis 与 CLI 同处一个 `elbot run` 前台进程的场景；`elbot service run` 暂不能把消息投递到另一个独立 `elbot cli` 进程。
 - token 原文不写入配置，推荐放在系统环境变量或配置目录 `.env`。
 - `token_env` 可以写多个环境变量名，按顺序尝试。
 - Elwisp 默认启用；没写 `[elwisps.<name>]`、写了但没写 `enabled`、或写了 `enabled=true` 都会接收。
@@ -180,7 +182,8 @@ Elvena v1 支持通过 `segments` 字段发送图片和文件。`content` 保留
 
 ### LLM 结果中的 report_segments
 
-后台 LLM 处理事件后，`JSONResult` 的 `report_segments` 可附带图片/文件路径，Elnis 会在报告发送时一并投递。
+后台 LLM 处理事件后，`JSONResult` 的 `report_segments` 可附带图片/文件路径，Elnis 会在报告发送时一并投递。`url` 必须是当前任务工作目录内的相对路径，不能使用绝对路径、`~` 或 `..`。
+
 
 ```json
 {
@@ -188,8 +191,9 @@ Elvena v1 支持通过 `segments` 字段发送图片和文件。`content` 保留
   "need_report": true,
   "report": "分析完成，见截图。",
   "report_segments": [
-    {"type": "image", "url": "/data/sandbox/elnis/monitor/evt-001/chart.png"}
+    {"type": "image", "url": "chart.png"}
   ]
+
 }
 ```
 
@@ -199,7 +203,8 @@ Elvena v1 支持通过 `segments` 字段发送图片和文件。`content` 保留
 | 字段 | 必填 | 说明 |
 | --- | ---: | --- |
 | `version` | 是 | 协议版本，当前为 `elvena.v1`。 |
-| `elwisp.name` | 是 | Elwisp 名称，也是来源身份之一。 |
+| `elwisp.name` | 是 | Elwisp 名称，也是来源身份之一；仅允许英文字母、数字、`_`、`-`，不允许点号。 |
+
 | `elwisp.tags` | 否 | Elwisp 标签，用于日志和统计。 |
 | `source` | 是 | 具体事件源，例如服务名、脚本名、RSS 名。 |
 | `id` | 是 | source 内唯一事件 ID。 |
@@ -230,7 +235,42 @@ HTTP 响应只表示 Elnis 已接收或拒绝请求，不等待 LLM 完成。
 }
 ```
 
+## CLI 远程连接
+
+`platform.cli` 同时保存 CLI 服务端和客户端配置。`server` 是当前 ElBot 作为服务端时读取的配置，`clients` 是当前命令作为 CLI 客户端连接服务端时读取的配置。
+
+```toml
+[platform.cli]
+enabled = true
+default_client = "local"
+default_url = "ws://127.0.0.1:32172/cli/v1/ws"
+
+[platform.cli.server]
+enabled = false
+listen = "127.0.0.1:32172"
+
+[platform.cli.server.tokens]
+local = ["ELBOT_CLI_LOCAL_TOKEN"]
+windows = ["ELBOT_CLI_WINDOWS_TOKEN"]
+
+[platform.cli.clients.local]
+token_env = ["ELBOT_CLI_LOCAL_TOKEN"]
+
+[platform.cli.clients.windows]
+url = "ws://192.168.1.10:32172/cli/v1/ws"
+token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
+```
+
+- `server.enabled=true` 时，`elbot service run` 会启动本地 CLI WebSocket 服务端。
+- `server.listen` 是服务端监听地址。
+- `default_url` 是客户端默认连接地址；连接其他机器时在 `clients.<name>.url` 写远程 WebSocket 地址。
+- `server.tokens` 是服务端允许登录的 CLI client id 与 token 环境变量列表。
+- `clients.<name>` 是客户端 profile；`id` 可省略，默认等于 `<name>`；`url` 可省略，默认使用 `default_url`。
+- token 与 Provider/Elnis 一样，优先读系统环境变量，再读配置目录 `.env`。
+- `elbot cli -c <name>` 使用指定客户端 profile 连接服务端；只有一个默认客户端时可省略 `-c`。
+
 ## 投递目标与安全边界
+
 
 Elwisp 可以在 `targets` 中声明期望目标，但最终目标由 Elnis 裁决。
 

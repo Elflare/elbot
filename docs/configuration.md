@@ -102,6 +102,40 @@ OPENAI_API_KEY=your-api-key
 
 不要把真实 Key 提交到仓库。
 
+## CLI 远程配置
+
+`[platform.cli]` 同时保存 CLI 服务端和客户端配置。`server` 是当前 ElBot 作为服务端运行时读取的配置，`clients` 是当前命令作为 CLI 客户端连接服务端时读取的配置。
+
+```toml
+[platform.cli]
+enabled = true
+default_client = "local"
+default_url = "ws://127.0.0.1:32172/cli/v1/ws"
+
+[platform.cli.server]
+enabled = false
+listen = "127.0.0.1:32172"
+
+[platform.cli.server.tokens]
+local = ["ELBOT_CLI_LOCAL_TOKEN"]
+windows = ["ELBOT_CLI_WINDOWS_TOKEN"]
+
+[platform.cli.clients.local]
+token_env = ["ELBOT_CLI_LOCAL_TOKEN"]
+
+[platform.cli.clients.windows]
+url = "ws://192.168.1.10:32172/cli/v1/ws"
+token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
+```
+
+- `server.enabled=true` 时，`elbot service run` 会启动 CLI WebSocket 服务端。
+- `server.listen` 是服务端监听地址。
+- `default_url` 是客户端默认连接地址；连接其他机器时在 `clients.<name>.url` 写远程 WebSocket 地址。
+- `server.tokens` 是服务端允许登录的 CLI client id 与 token 环境变量列表。
+- `clients.<name>` 是客户端 profile；`id` 可省略，默认等于 `<name>`；`url` 可省略，默认使用 `default_url`。
+- `elbot cli -c <name>` 使用指定客户端 profile；未指定时使用 `default_client`。
+- CLI token 与 Provider API Key 一样，优先读系统环境变量，再读配置目录 `.env`。
+
 ## Go Skill 编译器路径
 
 修改 Go skill 的 `code_source` 后，ElBot 会自动执行 `gofmt`、`go build` 并 reload。若 ElBot 以 Linux service 运行，service 环境可能没有加载交互 shell 的 `PATH`，导致终端里可用的 `go` 在 ElBot 中不可见。
@@ -181,7 +215,8 @@ chat_history_sqlite_path = ""
 - Windows：`%APPDATA%/ElBot/data`
 - Linux：`$XDG_DATA_HOME/elbot` 或 `~/.local/share/elbot`
 
-运行日志、SQLite、sandbox、artifact 等运行数据也会按配置或默认数据目录存放。
+运行日志、SQLite、sandbox 等运行数据也会按配置或默认数据目录存放。
+
 
 ## 日志与维护任务
 
@@ -201,7 +236,14 @@ enabled = true
 schedule = "0 3 * * *"
 ```
 
-Cron 表达式由内部 Cron Runtime 调度，使用 Linux crontab 风格的 5 字段格式：`分钟 小时 日 月 星期`。默认维护任务包含日志、artifact 和聊天历史清理，例如聊天历史默认每天 04:35 执行：
+Cron 表达式由内部 Cron Runtime 调度，使用 Linux crontab 风格的 5 字段格式：`分钟 小时 日 月 星期`。默认维护任务包含日志、sandbox 和聊天历史清理，例如 sandbox 默认每天 04:00 清理 7 天前内容，聊天历史默认每天 04:35 执行：
+
+```toml
+[maintenance.sandbox_cleanup]
+enabled = true
+schedule = "0 4 * * *"
+retention_days = 7
+```
 
 ```toml
 [maintenance.chat_history_cleanup]

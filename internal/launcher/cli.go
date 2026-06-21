@@ -18,6 +18,7 @@ const (
 
 type Options struct {
 	ConfigPath string
+	ClientName string
 	Mode       app.RunMode
 	Command    Command
 	Completion string
@@ -37,6 +38,14 @@ func ParseArgs(args []string) (Options, error) {
 			opts.Help = true
 		case arg == "--version":
 			opts.Version = true
+		case arg == "--client" || arg == "-c":
+			if i+1 >= len(args) {
+				return Options{}, fmt.Errorf("%s requires a value", arg)
+			}
+			i++
+			opts.ClientName = args[i]
+		case strings.HasPrefix(arg, "--client="):
+			opts.ClientName = strings.TrimPrefix(arg, "--client=")
 		case arg == "--config" || arg == "-config":
 			if i+1 >= len(args) {
 				return Options{}, fmt.Errorf("%s requires a value", arg)
@@ -98,9 +107,9 @@ func SupportedCompletionShell(shell string) bool {
 
 func WriteUsage(w io.Writer) {
 	fmt.Fprint(w, `Usage:
-  elbot [--config path]
+  elbot [--config path] [-c client]
   elbot run [--config path]
-  elbot cli [--config path]
+  elbot cli [--config path] [-c client]
   elbot service run [--config path]
   elbot completion [auto|bash|zsh|fish|nushell|powershell]
 
@@ -111,7 +120,8 @@ Commands:
   completion   Generate shell completion scripts.
 
 Options:
-  --config path  Path to TOML config file.
+  -c, --client name  CLI client profile name.
+  --config path       Path to TOML config file.
   --help         Show this help.
   --version      Show version.
 `)

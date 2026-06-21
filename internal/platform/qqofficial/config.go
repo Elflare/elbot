@@ -28,17 +28,19 @@ type Config struct {
 	EnableArk                bool   `toml:"enable_ark"`
 	HTTPTimeoutSeconds       int    `toml:"http_timeout_seconds"`
 	ReconnectIntervalSeconds int    `toml:"reconnect_interval_seconds"`
-	ArtifactDir              string `toml:"-"`
+	AttachmentDir            string `toml:"-"`
+	CommandPrefixes          []string
 	Superadmins              []string
 }
 
-func NewFromPlatformConfig(raw map[string]any, store storage.Store, logger Logger, superadmins []string, artifactDir string) (*Adapter, error) {
+func NewFromPlatformConfig(raw map[string]any, store storage.Store, logger Logger, superadmins []string, commandPrefixes []string, attachmentDir string) (*Adapter, error) {
 	var cfg Config
 	if err := platform.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode qqofficial config: %w", err)
 	}
 	cfg.Superadmins = append([]string(nil), superadmins...)
-	cfg.ArtifactDir = strings.TrimSpace(artifactDir)
+	cfg.CommandPrefixes = append([]string(nil), commandPrefixes...)
+	cfg.AttachmentDir = strings.TrimSpace(attachmentDir)
 	applyDefaults(&cfg)
 	if cfg.Enabled {
 		if strings.TrimSpace(cfg.AppID) == "" {

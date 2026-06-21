@@ -36,7 +36,7 @@ type Config struct {
 	LLMRequest          LLMRequestConfig          `toml:"llm_request"`
 	Maintenance         MaintenanceConfig         `toml:"maintenance"`
 	Sandbox             SandboxConfig             `toml:"sandbox"`
-	Artifact            ArtifactConfig            `toml:"artifact"`
+	FileDelivery        FileDeliveryConfig        `toml:"file_delivery"`
 	Platform            PlatformConfig            `toml:"platform"`
 	Elnis               ElnisConfig               `toml:"elnis"`
 	Soul                SoulConfig                `toml:"soul"`
@@ -146,7 +146,7 @@ type SessionConfig struct {
 
 type MaintenanceConfig struct {
 	LogCleanup         CronTaskConfig           `toml:"log_cleanup"`
-	ArtifactCleanup    CronTaskConfig           `toml:"artifact_cleanup"`
+	SandboxCleanup     MaintenanceCleanupConfig `toml:"sandbox_cleanup"`
 	ChatHistoryCleanup ChatHistoryCleanupConfig `toml:"chat_history_cleanup"`
 }
 
@@ -154,8 +154,13 @@ type SandboxConfig struct {
 	Root string `toml:"root"`
 }
 
-type ArtifactConfig struct {
-	RetentionDays        int    `toml:"retention_days"`
+type MaintenanceCleanupConfig struct {
+	Enabled       bool   `toml:"enabled"`
+	Schedule      string `toml:"schedule"`
+	RetentionDays int    `toml:"retention_days"`
+}
+
+type FileDeliveryConfig struct {
 	MaxDirectBase64Bytes int64  `toml:"max_direct_base64_bytes"`
 	Backend              string `toml:"backend"`
 	S3Endpoint           string `toml:"s3_endpoint"`
@@ -457,6 +462,11 @@ func loadTOML(path string, out any) error {
 		return fmt.Errorf("read config %q: %w", path, err)
 	}
 	if err := toml.Unmarshal(data, out); err != nil {
+		var decodeErr *toml.DecodeError
+		if errors.As(err, &decodeErr) {
+			row, col := decodeErr.Position()
+			return fmt.Errorf("parse config %q at line %d, column %d: %w", path, row, col, err)
+		}
 		return fmt.Errorf("parse config %q: %w", path, err)
 	}
 	return nil
@@ -533,8 +543,11 @@ func (c *Config) applyAppDefaults() {
 	if c.Maintenance.LogCleanup.Schedule == "" {
 		c.Maintenance.LogCleanup.Schedule = "0 3 * * *"
 	}
-	if c.Maintenance.ArtifactCleanup.Schedule == "" {
-		c.Maintenance.ArtifactCleanup.Schedule = "0 4 * * *"
+	if c.Maintenance.SandboxCleanup.Schedule == "" {
+		c.Maintenance.SandboxCleanup.Schedule = "0 4 * * *"
+	}
+	if c.Maintenance.SandboxCleanup.RetentionDays == 0 {
+		c.Maintenance.SandboxCleanup.RetentionDays = 7
 	}
 	if c.Maintenance.ChatHistoryCleanup.Schedule == "" {
 		c.Maintenance.ChatHistoryCleanup.Schedule = "35 4 * * *"
@@ -545,17 +558,14 @@ func (c *Config) applyAppDefaults() {
 	if c.Sandbox.Root == "" {
 		c.Sandbox.Root = filepath.Join(platformDefaultDataDir(), "sandbox")
 	}
-	if c.Artifact.RetentionDays == 0 {
-		c.Artifact.RetentionDays = 7
+	if c.FileDelivery.MaxDirectBase64Bytes <= 0 {
+		c.FileDelivery.MaxDirectBase64Bytes = 8 * 1024 * 1024
 	}
-	if c.Artifact.MaxDirectBase64Bytes <= 0 {
-		c.Artifact.MaxDirectBase64Bytes = 8 * 1024 * 1024
+	if c.FileDelivery.Backend == "" {
+		c.FileDelivery.Backend = "base64"
 	}
-	if c.Artifact.Backend == "" {
-		c.Artifact.Backend = "base64"
-	}
-	if c.Artifact.S3Region == "" {
-		c.Artifact.S3Region = "auto"
+	if c.FileDelivery.S3Region == "" {
+		c.FileDelivery.S3Region = "auto"
 	}
 	if c.Session.Naming.TriggerStep <= 0 {
 		c.Session.Naming.TriggerStep = 1

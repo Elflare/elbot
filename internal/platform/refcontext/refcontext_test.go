@@ -31,9 +31,69 @@ func TestApplyFallsBackToReferencedText(t *testing.T) {
 func TestApplyForksOwnOlderAssistantReference(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	svc := session.NewService(store)
 	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
-	s, err := svc.Create(ctx, scope, "source")
+	first, _ := createAssistantMessages(t, ctx, store, scope)
+	mapPlatformMessage(t, ctx, store, scope, "p-old", first)
+
+	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-old", Text: "继续"})
+	if result.ForkFromMessageID != first.ID {
+		t.Fatalf("fork = %q, want %q", result.ForkFromMessageID, first.ID)
+	}
+	if result.Text != "继续" {
+		t.Fatalf("text = %q, want original", result.Text)
+	}
+}
+
+func TestApplyLatestOwnAssistantReferenceContinues(t *testing.T) {
+	ctx := context.Background()
+	store := newRefTestStore(t)
+	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	_, latest := createAssistantMessages(t, ctx, store, scope)
+	mapPlatformMessage(t, ctx, store, scope, "p-latest", latest)
+
+	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-latest", Text: "继续"})
+	if result.ForkFromMessageID != "" {
+		t.Fatalf("fork = %q, want empty", result.ForkFromMessageID)
+	}
+	if result.Text != "继续" {
+		t.Fatalf("text = %q, want original", result.Text)
+	}
+}
+
+func TestApplyOtherSessionAssistantReferenceFallsBack(t *testing.T) {
+	ctx := context.Background()
+	store := newRefTestStore(t)
+	otherScope := session.Scope{ActorID: "qqofficial:user-2", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	msg, _ := createAssistantMessages(t, ctx, store, otherScope)
+	mapPlatformMessage(t, ctx, store, otherScope, "p-other", msg)
+
+	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: otherScope.PlatformScopeID, ActorID: "qqofficial:user-1", ReplyID: "p-other", Text: "继续"})
+	want := "[引用：bot]：old\n\n继续"
+	if result.Text != want {
+		t.Fatalf("text = %q, want %q", result.Text, want)
+	}
+	if result.ForkFromMessageID != "" {
+		t.Fatalf("fork = %q, want empty", result.ForkFromMessageID)
+	}
+}
+
+func TestApplyForkCommandUsesReferencedAssistantID(t *testing.T) {
+	ctx := context.Background()
+	store := newRefTestStore(t)
+	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	msg, _ := createAssistantMessages(t, ctx, store, scope)
+	mapPlatformMessage(t, ctx, store, scope, "p-old", msg)
+
+	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-old", Text: "/fork", CommandPrefixes: []string{"/"}})
+	want := "/fork " + msg.ID
+	if result.Text != want {
+		t.Fatalf("text = %q, want %q", result.Text, want)
+	}
+}
+
+func createAssistantMessages(t *testing.T, ctx context.Context, store storage.Store, scope session.Scope) (*storage.Message, *storage.Message) {
+	t.Helper()
+	s, err := session.NewService(store).Create(ctx, scope, "source")
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -45,16 +105,13 @@ func TestApplyForksOwnOlderAssistantReference(t *testing.T) {
 	if err := store.Messages().Append(ctx, latest); err != nil {
 		t.Fatalf("append latest: %v", err)
 	}
-	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: "qqofficial", PlatformScopeID: scope.PlatformScopeID, PlatformMessageID: "p-old", MessageID: first.ID, SessionID: s.ID}); err != nil {
-		t.Fatalf("map first: %v", err)
-	}
+	return first, latest
+}
 
-	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-old", Text: "继续"})
-	if result.ForkFromMessageID != first.ID {
-		t.Fatalf("fork = %q, want %q", result.ForkFromMessageID, first.ID)
-	}
-	if result.Text != "继续" {
-		t.Fatalf("text = %q, want original", result.Text)
+func mapPlatformMessage(t *testing.T, ctx context.Context, store storage.Store, scope session.Scope, platformMessageID string, msg *storage.Message) {
+	t.Helper()
+	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID, PlatformMessageID: platformMessageID, MessageID: msg.ID, SessionID: msg.SessionID}); err != nil {
+		t.Fatalf("map message: %v", err)
 	}
 }
 

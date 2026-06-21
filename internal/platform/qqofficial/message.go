@@ -48,13 +48,14 @@ func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.Platfor
 	msgCtx = context.WithValue(msgCtx, targetKey{}, sendTarget{OpenID: openID, MsgID: msg.ID})
 	if replyID != "" {
 		ref := refcontext.Apply(msgCtx, refcontext.Options{
-			Store:    a.store,
-			Platform: a.Name(),
-			ScopeID:  messageCtx.ScopeID,
-			ActorID:  a.Name() + ":" + openID,
-			ReplyID:  replyID,
-			Text:     text,
-			Fetch:    c2cReferenceFetcher(msg),
+			Store:           a.store,
+			Platform:        a.Name(),
+			ScopeID:         messageCtx.ScopeID,
+			ActorID:         a.Name() + ":" + openID,
+			ReplyID:         replyID,
+			Text:            text,
+			CommandPrefixes: a.cfg.CommandPrefixes,
+			Fetch:           c2cReferenceFetcher(msg),
 		})
 		text = ref.Text
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
@@ -81,8 +82,8 @@ func c2cReplyID(msg c2cMessage) string {
 }
 
 func c2cReferenceFetcher(msg c2cMessage) func(context.Context, string) (refcontext.ReferencedMessage, bool) {
-	return func(context.Context, string) (refcontext.ReferencedMessage, bool) {
-		if msg.MessageReference == nil {
+	return func(_ context.Context, replyID string) (refcontext.ReferencedMessage, bool) {
+		if msg.MessageReference == nil || strings.TrimSpace(msg.MessageReference.MessageID) != strings.TrimSpace(replyID) {
 			return refcontext.ReferencedMessage{}, false
 		}
 		text := strings.TrimSpace(msg.MessageReference.Content)

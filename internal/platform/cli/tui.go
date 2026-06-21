@@ -78,7 +78,7 @@ type tuiModel struct {
 
 	copyState       copyModeState
 	clipboard       clipboardWriter
-	completion      *completion.Service
+	completion      completionProvider
 	completionState completionState
 	content         string
 	notices         []string
@@ -98,7 +98,11 @@ type tuiModel struct {
 	height          int
 }
 
-func runTUI(ctx context.Context, handler platform.PlatformHandler, completion *completion.Service, output chan tea.Msg, setProgram tuiProgramSetter, userName, assistantName string) error {
+type completionProvider interface {
+	Complete(context.Context, completion.Request) []completion.Item
+}
+
+func runTUI(ctx context.Context, handler platform.PlatformHandler, completion completionProvider, output chan tea.Msg, setProgram tuiProgramSetter, userName, assistantName string) error {
 	input := textinput.New()
 	input.Focus()
 	input.Prompt = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81")).Render("❯ ")

@@ -14,7 +14,7 @@ type RegisterOptions struct {
 	CronService         *elcron.Service
 	ChatHistory         storage.ChatHistoryRepository
 	LongMemoryDir       string
-	ArtifactManager     *ArtifactManager
+	FileManager         *FileManager
 }
 
 func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
@@ -41,8 +41,8 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 			}
 		}
 	}
-	if opts.ArtifactManager != nil {
-		if err := registry.Register(NewSendFileTool(opts.ArtifactManager)); err != nil {
+	if opts.FileManager != nil {
+		if err := registry.Register(NewSendFileTool(opts.FileManager)); err != nil {
 			return err
 		}
 	}

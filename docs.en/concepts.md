@@ -199,7 +199,7 @@ ElBot includes two layers of Cron capabilities:
 | Direct Cron | Send fixed content directly according to a schedule. |
 | LLM Cron | Drive model execution based on task descriptions, with the ability to use tools. |
 
-Background Cron has an independent Session and sandbox constraints. LLM Cron can pre-inject tool names or Skill names via `tool_list_names`: ordinary tools will inject the schema, while Skills will inject the description into the background task prompt and automatically inject the corresponding runner.
+Background Cron has an independent Session and sandbox constraints. LLM Cron can pre-inject tool names or Skill names via `tool_list_names`: ordinary tools will inject the schema, while Skills will inject the description into the background task prompt and automatically inject the corresponding runner. All path parameters in background tasks should use relative paths within the current task working directory; The final JSON of LLM Cron can attach relative paths of images or files within the current task working directory via `report_segments`.
 
 
 ## Elnis / Elwisp / Elvena

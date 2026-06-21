@@ -38,23 +38,27 @@ func Apply(ctx context.Context, opts Options) Result {
 	if replyID == "" {
 		return result
 	}
+
+	stored, hasStored := referencedMessage(ctx, opts, replyID)
 	trimmed := strings.TrimSpace(opts.Text)
 	if platform.HasCommandPrefix(trimmed, opts.CommandPrefixes) {
-		if id := referencedAssistantID(ctx, opts, replyID); id != "" {
+		if stored != nil && stored.Role == storage.RoleAssistant {
 			if name, ok := platform.CommandName(trimmed, opts.CommandPrefixes); ok && name == "fork" {
-				result.Text = "/fork " + id
+				result.Text = "/fork " + stored.ID
 			}
 		}
 		return result
 	}
-	if msg, ok := ownReferencedAssistant(ctx, opts, replyID); ok {
-		if isLatestAssistant(ctx, opts.Store, msg) {
+
+	if stored != nil && stored.Role == storage.RoleAssistant && isOwnCurrentSession(ctx, opts, stored) {
+		if isLatestAssistant(ctx, opts.Store, stored) {
 			return result
 		}
-		result.ForkFromMessageID = msg.ID
+		result.ForkFromMessageID = stored.ID
 		return result
 	}
-	text, segments := fallbackReferenceText(ctx, opts, replyID)
+
+	text, segments := fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
 	if strings.TrimSpace(text) != "" {
 		result.Text = text
 		result.ReferenceSegments = segments
@@ -62,38 +66,26 @@ func Apply(ctx context.Context, opts Options) Result {
 	return result
 }
 
-func referencedAssistantID(ctx context.Context, opts Options, replyID string) string {
-	msg, err := referencedAssistant(ctx, opts, replyID)
-	if err != nil {
-		return ""
-	}
-	return msg.ID
-}
-
-func ownReferencedAssistant(ctx context.Context, opts Options, replyID string) (*storage.Message, bool) {
-	msg, err := referencedAssistant(ctx, opts, replyID)
-	if err != nil || opts.Store == nil {
+func referencedMessage(ctx context.Context, opts Options, replyID string) (*storage.Message, bool) {
+	if opts.Store == nil {
 		return nil, false
 	}
-	session, err := opts.Store.Sessions().Get(ctx, msg.SessionID)
+	msg, err := opts.Store.Messages().FindByPlatformMessage(ctx, strings.TrimSpace(opts.Platform), strings.TrimSpace(opts.ScopeID), replyID)
 	if err != nil {
-		return nil, false
-	}
-	if session.OwnerID != strings.TrimSpace(opts.ActorID) || session.Platform != strings.TrimSpace(opts.Platform) || session.PlatformScopeID != strings.TrimSpace(opts.ScopeID) {
 		return nil, false
 	}
 	return msg, true
 }
 
-func referencedAssistant(ctx context.Context, opts Options, replyID string) (*storage.Message, error) {
-	if opts.Store == nil {
-		return nil, storage.ErrNotFound
+func isOwnCurrentSession(ctx context.Context, opts Options, msg *storage.Message) bool {
+	if opts.Store == nil || msg == nil {
+		return false
 	}
-	msg, err := opts.Store.Messages().FindByPlatformMessage(ctx, strings.TrimSpace(opts.Platform), strings.TrimSpace(opts.ScopeID), replyID)
-	if err != nil || msg.Role != storage.RoleAssistant {
-		return nil, storage.ErrNotFound
+	session, err := opts.Store.Sessions().Get(ctx, msg.SessionID)
+	if err != nil {
+		return false
 	}
-	return msg, nil
+	return session.OwnerID == strings.TrimSpace(opts.ActorID) && session.Platform == strings.TrimSpace(opts.Platform) && session.PlatformScopeID == strings.TrimSpace(opts.ScopeID)
 }
 
 func isLatestAssistant(ctx context.Context, store storage.Store, msg *storage.Message) bool {
@@ -112,7 +104,7 @@ func isLatestAssistant(ctx context.Context, store storage.Store, msg *storage.Me
 	return true
 }
 
-func fallbackReferenceText(ctx context.Context, opts Options, replyID string) (string, []platform.MessageSegment) {
+func fallbackReferenceText(ctx context.Context, opts Options, replyID string, stored *storage.Message, hasStored bool) (string, []platform.MessageSegment) {
 	label := "引用"
 	content := ""
 	var segments []platform.MessageSegment
@@ -125,14 +117,12 @@ func fallbackReferenceText(ctx context.Context, opts Options, replyID string) (s
 			segments = ref.Segments
 		}
 	}
-	if opts.Store != nil {
-		if msg, err := opts.Store.Messages().FindByPlatformMessage(ctx, strings.TrimSpace(opts.Platform), strings.TrimSpace(opts.ScopeID), replyID); err == nil {
-			if msg.Role == storage.RoleAssistant && label == "引用" {
-				label = "引用：bot"
-			}
-			if strings.TrimSpace(msg.Content) != "" {
-				content = msg.Content
-			}
+	if hasStored {
+		if stored.Role == storage.RoleAssistant && label == "引用" {
+			label = "引用：bot"
+		}
+		if strings.TrimSpace(stored.Content) != "" {
+			content = stored.Content
 		}
 	}
 	content = strings.TrimSpace(content)

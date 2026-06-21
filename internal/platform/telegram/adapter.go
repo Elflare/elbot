@@ -12,6 +12,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
+	"elbot/internal/platform/refcontext"
 	"elbot/internal/storage"
 )
 
@@ -161,18 +162,19 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 
 	var referenceSegments []platform.MessageSegment
 	if normalized.ReplyID != "" {
-		trimmed := strings.TrimSpace(text)
-		if platform.HasCommandPrefix(trimmed, a.cfg.CommandPrefixes) {
-			text = a.commandWithReference(msg, normalized.ReplyID, trimmed)
-		} else if a.isLatestOwnAssistantReference(msgCtx, msg, normalized.ReplyID) {
-			// 回复当前最新 assistant 消息时视为继续对话，不重复塞引用内容。
-		} else if forkFromMessageID := a.forkableReferenceMessageID(msgCtx, msg, normalized.ReplyID); forkFromMessageID != "" {
-			messageCtx.ForkFromMessageID = forkFromMessageID
-			msgCtx = platform.WithMessageContext(ctx, messageCtx)
-			msgCtx = context.WithValue(msgCtx, targetKey{}, target{ChatID: msg.Chat.ID, ScopeID: scopeID(msg.Chat)})
-		} else {
-			text, referenceSegments = a.withReference(msgCtx, msg, normalized, text)
-		}
+		ref := refcontext.Apply(msgCtx, refcontext.Options{
+			Store:           a.store,
+			Platform:        a.Name(),
+			ScopeID:         messageCtx.ScopeID,
+			ActorID:         messageCtx.ActorID,
+			ReplyID:         normalized.ReplyID,
+			Text:            text,
+			CommandPrefixes: a.cfg.CommandPrefixes,
+			Fetch:           a.referenceFetcher(msg, normalized),
+		})
+		text = ref.Text
+		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
+		referenceSegments = ref.ReferenceSegments
 	}
 	if strings.TrimSpace(text) == "" {
 		return
