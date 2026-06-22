@@ -21,9 +21,9 @@
       "updated_at": 1782039257
     },
     "docs/configuration.md": {
-      "source_hash": "fb5896473f316132f026504ecc61f5677e8805bad756d41002f6a717882b1b80",
+      "source_hash": "23da18b8b148546611f13433bde762c5910d462f305adb61a512227d14c69515",
       "target": "docs.en/configuration.md",
-      "updated_at": 1782033039
+      "updated_at": 1782117127
     },
     "docs/elnis-usage.md": {
       "source_hash": "44ce1a506eb2b3bbb56e1f5fb0a2db765de12756ce8aa9a7db42f56fd652166b",
@@ -4103,6 +4103,14 @@
       "translation": "Update [Quick Start](getting-started.md) and README synchronously when changing default paths or startup behavior.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:2f1302efd12983dfc10ba7a648d1182d52a68ef1ae5481edcd752c3cbff3ef4c": {
+      "kind": "list",
+      "source": "超级管理员配置按平台分组填写平台原生用户 ID，例如 __ELBOT_CODE_0__；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "2f1302efd12983dfc10ba7a648d1182d52a68ef1ae5481edcd752c3cbff3ef4c",
+      "translation": "The superadmin configuration should be filled in by platform group using the platform's native user ID, for example __ELBOT_CODE_0__;",
+      "updated_at": 1782117127
+    },
     "docs/configuration.md:list:30840ca097b9cdde0e25dcc1ab09335ae09bbf78b2df6bfe23d6f1e77bdf781f": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 关闭格式化，只发送纯文本。",
@@ -4686,6 +4694,14 @@
       "source_hash": "f31646a8be06d4f780c4c5e2e465aa83cfc7dac48d114fae5c53de76cf7571be",
       "translation": "__ELBOT_CODE_0__ points to the Bot Token in the system environment variables; you can also use __ELBOT_CODE_1__ to write it directly into the configuration, but it is not recommended to commit real tokens.",
       "updated_at": 1781839376
+    },
+    "docs/configuration.md:list:ff0bb46d8c01020c512aaf0281ff62576ae04556c98f5f77ba781c26e7a1193c": {
+      "kind": "list",
+      "source": "运行期 actor ID 会统一显示为 __ELBOT_CODE_0__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "ff0bb46d8c01020c512aaf0281ff62576ae04556c98f5f77ba781c26e7a1193c",
+      "translation": "The runtime actor ID will be uniformly displayed as __ELBOT_CODE_0__.",
+      "updated_at": 1782117127
     },
     "docs/configuration.md:list:ff5524722281e39bb8652d7ead7019fef72e2b66d2011735561778369a621f16": {
       "kind": "list",
