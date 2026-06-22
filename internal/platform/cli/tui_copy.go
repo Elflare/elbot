@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -94,6 +95,15 @@ func (m tuiModel) updateCopyMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "k", "up":
 		m.moveCopyCursor(0, -1)
+		return m, nil
+	case "w":
+		m.moveCopyCursorWordForward()
+		return m, nil
+	case "e":
+		m.moveCopyCursorWordEnd()
+		return m, nil
+	case "b":
+		m.moveCopyCursorWordBackward()
 		return m, nil
 	case "pgdown", "ctrl+d":
 		m.pageCopy(1)
@@ -251,7 +261,7 @@ func (m tuiModel) copyStatusText() string {
 	if m.copyState.Mode == modeCopySearch {
 		return "SEARCH " + regionName(m.copyState.Region) + " /" + m.copyState.SearchInput + " · Enter jump · Esc cancel"
 	}
-	status := strings.ToUpper(modeName(m.copyState.Mode)) + " " + regionName(m.copyState.Region) + " · hjkl move · v/V select · y copy · / search · i input · Esc"
+	status := strings.ToUpper(modeName(m.copyState.Mode)) + " " + regionName(m.copyState.Region) + " · hjkl/w e b move · v/V select · y copy · / search · i input · Esc"
 	if m.copyState.Status != "" {
 		status += " · " + m.copyState.Status
 	}
@@ -330,6 +340,105 @@ func (m *tuiModel) moveCopyCursor(dx, dy int) {
 	m.copyState.Cursor = cursor
 	m.ensureCopyCursorVisible()
 	m.refreshCopyRegion()
+}
+
+func (m *tuiModel) moveCopyCursorWordForward() {
+	lines := m.copyLines(m.copyState.Region)
+	cursor, ok := nextWordStart(lines, clampCursor(m.copyState.Cursor, lines))
+	if !ok {
+		return
+	}
+	m.copyState.Cursor = cursor
+	m.ensureCopyCursorVisible()
+	m.refreshCopyRegion()
+}
+
+func (m *tuiModel) moveCopyCursorWordEnd() {
+	lines := m.copyLines(m.copyState.Region)
+	cursor, ok := nextWordEnd(lines, clampCursor(m.copyState.Cursor, lines))
+	if !ok {
+		return
+	}
+	m.copyState.Cursor = cursor
+	m.ensureCopyCursorVisible()
+	m.refreshCopyRegion()
+}
+
+func (m *tuiModel) moveCopyCursorWordBackward() {
+	lines := m.copyLines(m.copyState.Region)
+	cursor, ok := previousWordStart(lines, clampCursor(m.copyState.Cursor, lines))
+	if !ok {
+		return
+	}
+	m.copyState.Cursor = cursor
+	m.ensureCopyCursorVisible()
+	m.refreshCopyRegion()
+}
+
+func nextWordStart(lines []string, cursor copyCursor) (copyCursor, bool) {
+	for line := cursor.Line; line < len(lines); line++ {
+		runes := []rune(lines[line])
+		start := 0
+		if line == cursor.Line {
+			start = min(cursor.Col+1, len(runes))
+		}
+		for col := start; col < len(runes); col++ {
+			if isCopyWordRune(runes[col]) && (col == 0 || !isCopyWordRune(runes[col-1])) {
+				return copyCursor{Line: line, Col: col}, true
+			}
+		}
+	}
+	return copyCursor{}, false
+}
+
+func nextWordEnd(lines []string, cursor copyCursor) (copyCursor, bool) {
+	for line := cursor.Line; line < len(lines); line++ {
+		runes := []rune(lines[line])
+		start := 0
+		if line == cursor.Line {
+			start = clampInt(cursor.Col, 0, len(runes))
+		}
+		for col := start; col < len(runes); col++ {
+			if !isCopyWordRune(runes[col]) {
+				continue
+			}
+			if col > cursor.Col || line != cursor.Line || col == 0 || !isCopyWordRune(runes[col-1]) {
+				return copyCursor{Line: line, Col: wordEndCol(runes, col)}, true
+			}
+		}
+	}
+	return copyCursor{}, false
+}
+
+func previousWordStart(lines []string, cursor copyCursor) (copyCursor, bool) {
+	if len(lines) == 0 {
+		return copyCursor{}, false
+	}
+	for line := cursor.Line; line >= 0; line-- {
+		runes := []rune(lines[line])
+		start := len(runes) - 1
+		if line == cursor.Line {
+			start = min(cursor.Col-1, len(runes)-1)
+		}
+		for col := start; col >= 0; col-- {
+			if isCopyWordRune(runes[col]) && (col == 0 || !isCopyWordRune(runes[col-1])) {
+				return copyCursor{Line: line, Col: col}, true
+			}
+		}
+	}
+	return copyCursor{}, false
+}
+
+func wordEndCol(runes []rune, start int) int {
+	end := start
+	for end+1 < len(runes) && isCopyWordRune(runes[end+1]) {
+		end++
+	}
+	return end
+}
+
+func isCopyWordRune(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
 }
 
 func (m *tuiModel) ensureCopyCursorVisible() {

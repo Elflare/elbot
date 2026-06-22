@@ -202,6 +202,81 @@ func TestCopySearchJumpsAndRepeats(t *testing.T) {
 	}
 }
 
+func TestCopyWordMotionsMoveWithinLine(t *testing.T) {
+	m := newCopyTestModel()
+	m.content = "alpha beta gamma\n"
+	m.refreshContent()
+	m.enterCopyMode(regionChat)
+	m.copyState.Cursor = copyCursor{Line: 0, Col: 0}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	m = updated.(tuiModel)
+	if m.copyState.Cursor != (copyCursor{Line: 0, Col: 6}) {
+		t.Fatalf("w cursor = %#v", m.copyState.Cursor)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	m = updated.(tuiModel)
+	if m.copyState.Cursor != (copyCursor{Line: 0, Col: 9}) {
+		t.Fatalf("e cursor = %#v", m.copyState.Cursor)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	m = updated.(tuiModel)
+	if m.copyState.Cursor != (copyCursor{Line: 0, Col: 6}) {
+		t.Fatalf("b cursor = %#v", m.copyState.Cursor)
+	}
+}
+
+func TestCopyWordMotionsCrossLinesAndUnicode(t *testing.T) {
+	m := newCopyTestModel()
+	m.content = "alpha beta\n\n助手 冰火_test 42!\n"
+	m.refreshContent()
+	m.enterCopyMode(regionChat)
+	m.copyState.Cursor = copyCursor{Line: 0, Col: 6}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	m = updated.(tuiModel)
+	if m.copyState.Cursor != (copyCursor{Line: 2, Col: 0}) {
+		t.Fatalf("cross-line w cursor = %#v", m.copyState.Cursor)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	m = updated.(tuiModel)
+	if m.copyState.Cursor != (copyCursor{Line: 2, Col: 3}) {
+		t.Fatalf("unicode w cursor = %#v", m.copyState.Cursor)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	m = updated.(tuiModel)
+	if m.copyState.Cursor != (copyCursor{Line: 2, Col: 9}) {
+		t.Fatalf("unicode e cursor = %#v", m.copyState.Cursor)
+	}
+}
+
+func TestVisualCharWordMotionExtendsSelection(t *testing.T) {
+	m := newCopyTestModel()
+	clip := m.clipboard.(*fakeClipboard)
+	m.content = "alpha beta gamma\n"
+	m.refreshContent()
+	m.enterCopyMode(regionChat)
+	m.copyState.Cursor = copyCursor{Line: 0, Col: 0}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
+	m = updated.(tuiModel)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	m = updated.(tuiModel)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	m = updated.(tuiModel)
+
+	if clip.text != "alpha" {
+		t.Fatalf("copied = %q", clip.text)
+	}
+	if m.copyState.Mode != modeCopyNormal {
+		t.Fatalf("after y mode = %v", m.copyState.Mode)
+	}
+}
+
 func TestMouseWheelScrollsRegionUnderPointer(t *testing.T) {
 	m := newCopyTestModel()
 	m.content = ""
