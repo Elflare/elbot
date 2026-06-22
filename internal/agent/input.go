@@ -43,8 +43,8 @@ func (a *Agent) handleInput(ctx context.Context, text string) error {
 			a.notifyToolDirectiveResult(ctx, directives)
 		}
 		text = directives.Text
-		ctx = withInboundSegments(ctx, llm.TextSegments(text))
-		if strings.TrimSpace(text) == "" {
+		ctx = withInboundSegments(ctx, replaceInboundTextSegments(ctx, text))
+		if strings.TrimSpace(text) == "" && !hasInboundNonTextSegment(ctx) {
 			if len(directives.Injected) > 0 {
 				if latest, err := a.store.Sessions().Get(ctx, session.ID); err == nil {
 					*session = *latest

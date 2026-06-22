@@ -229,6 +229,35 @@ func withInboundSegments(ctx context.Context, segments []llm.MessageSegment) con
 	return platform.WithMessageContext(ctx, msg)
 }
 
+func replaceInboundTextSegments(ctx context.Context, text string) []llm.MessageSegment {
+	segments := inboundSegments(ctx, text)
+	out := make([]llm.MessageSegment, 0, len(segments)+1)
+	textAdded := false
+	for _, segment := range segments {
+		if segment.Type == llm.SegmentText {
+			if !textAdded && strings.TrimSpace(text) != "" {
+				out = append(out, llm.MessageSegment{Type: llm.SegmentText, Text: text})
+				textAdded = true
+			}
+			continue
+		}
+		out = append(out, segment)
+	}
+	if !textAdded && strings.TrimSpace(text) != "" {
+		out = append([]llm.MessageSegment{{Type: llm.SegmentText, Text: text}}, out...)
+	}
+	return out
+}
+
+func hasInboundNonTextSegment(ctx context.Context) bool {
+	for _, segment := range inboundSegments(ctx, "") {
+		if segment.Type != llm.SegmentText {
+			return true
+		}
+	}
+	return false
+}
+
 func llmSegmentsToPlatform(segments []llm.MessageSegment) []platform.MessageSegment {
 	out := make([]platform.MessageSegment, 0, len(segments))
 	for _, segment := range segments {

@@ -285,6 +285,48 @@ func TestHandleMessageSendsLLMErrorToPlatform(t *testing.T) {
 	}
 }
 
+func TestHandleMessageImageOnlyInputReachesLLM(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"ok"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform: "qqofficial",
+		ScopeID:  "c2c:user-1",
+		Sender:   p,
+		Segments: []platform.MessageSegment{{Type: platform.SegmentImage, URL: "data:image/png;base64,abc", MIMEType: "image/png", Name: "image.png"}},
+	})
+
+	if err := a.HandleMessage(ctx, ""); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d, want 1", len(requests))
+	}
+	latest := llm.LatestUserSegments(requests[0].Messages)
+	if len(latest) != 1 || latest[0].Type != llm.SegmentImage {
+		t.Fatalf("latest user segments = %#v, want image only", latest)
+	}
+}
+
+func TestReplaceInboundTextSegmentsPreservesImage(t *testing.T) {
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Segments: []platform.MessageSegment{
+		{Type: platform.SegmentText, Text: "@tool:web 看看"},
+		{Type: platform.SegmentImage, URL: "data:image/png;base64,abc", MIMEType: "image/png"},
+	}})
+
+	segments := replaceInboundTextSegments(ctx, "看看")
+	if len(segments) != 2 {
+		t.Fatalf("segments len = %d, want 2", len(segments))
+	}
+	if segments[0].Type != llm.SegmentText || segments[0].Text != "看看" {
+		t.Fatalf("text segment = %#v, want replaced text", segments[0])
+	}
+	if segments[1].Type != llm.SegmentImage || segments[1].URL == "" {
+		t.Fatalf("image segment = %#v, want preserved image", segments[1])
+	}
+}
+
 func TestHandleMessageSendsFallbackForEmptyLLMResponse(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{}}}

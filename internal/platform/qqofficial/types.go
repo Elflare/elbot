@@ -93,7 +93,13 @@ type c2cAuthor struct {
 }
 
 type messageAttachment struct {
-	URL string `json:"url"`
+	URL         string `json:"url"`
+	Content     string `json:"content,omitempty"`
+	ContentType string `json:"content_type,omitempty"`
+	Filename    string `json:"filename,omitempty"`
+	Height      int    `json:"height,omitempty"`
+	Width       int    `json:"width,omitempty"`
+	Size        int64  `json:"size,omitempty"`
 }
 
 type messageReference struct {

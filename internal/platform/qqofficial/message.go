@@ -3,6 +3,7 @@ package qqofficial
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"elbot/internal/delivery"
@@ -16,16 +17,18 @@ const (
 	metaEventType = "qqofficial.event_type"
 )
 
+var qqOfficialFaceFallbackPattern = regexp.MustCompile(`<faceType=[^>]*>`)
+
 func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.PlatformHandler, p payload, msg c2cMessage) {
 	openID := strings.TrimSpace(msg.Author.UserOpenID)
 	if openID == "" {
 		a.logWarn(ctx, "qqofficial c2c message missing user_openid", "message_id", msg.ID)
 		return
 	}
-	text := strings.TrimSpace(msg.Content)
+	text := normalizedC2CText(msg)
 	replyID := c2cReplyID(msg)
-	saved := a.saveInboundAttachments(ctx, openID, msg.ID, msg.Attachments)
-	segments := c2cSegments(text, saved)
+	attachments := a.prepareInboundAttachments(ctx, msg.Attachments)
+	segments := c2cSegments(text, attachments.Segments)
 	if text == "" && len(segments) == 0 {
 		return
 	}
@@ -65,8 +68,8 @@ func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.Platfor
 		msgCtx = platform.WithMessageContext(ctx, messageCtx)
 		msgCtx = context.WithValue(msgCtx, targetKey{}, sendTarget{OpenID: openID, MsgID: msg.ID})
 	}
-	if text == "" && len(saved) > 0 {
-		if _, err := a.SendChat(msgCtx, platformSavedAttachmentsOutput(saved)); err != nil {
+	if text == "" && len(attachments.Saved) > 0 && !hasPlatformImageSegment(attachments.Segments) {
+		if _, err := a.SendChat(msgCtx, platformSavedAttachmentsOutput(attachments.Saved)); err != nil {
 			a.logWarn(ctx, "send qqofficial attachment saved notice failed", "error", err, "message_id", msg.ID)
 		}
 		return
@@ -74,6 +77,20 @@ func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.Platfor
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
 		a.logWarn(ctx, "handle qqofficial message failed", "error", err, "message_id", msg.ID)
 	}
+}
+
+func normalizedC2CText(msg c2cMessage) string {
+	text := qqOfficialFaceFallbackPattern.ReplaceAllString(msg.Content, "")
+	return strings.TrimSpace(text)
+}
+
+func hasPlatformImageSegment(segments []platform.MessageSegment) bool {
+	for _, segment := range segments {
+		if segment.Type == platform.SegmentImage {
+			return true
+		}
+	}
+	return false
 }
 
 func c2cReplyID(msg c2cMessage) string {
@@ -110,22 +127,12 @@ func c2cReferenceFetcher(msg c2cMessage) func(context.Context, string) (refconte
 	}
 }
 
-func c2cSegments(text string, attachments []savedAttachment) []platform.MessageSegment {
+func c2cSegments(text string, attachments []platform.MessageSegment) []platform.MessageSegment {
 	segments := make([]platform.MessageSegment, 0, 1+len(attachments))
 	if strings.TrimSpace(text) != "" {
 		segments = append(segments, platform.MessageSegment{Type: platform.SegmentText, Text: text})
 	}
-	for _, attachment := range attachments {
-		url := strings.TrimSpace(attachment.URL)
-		if url == "" && attachment.Path == "" {
-			continue
-		}
-		segmentType := platform.SegmentFile
-		if isImageURL(url) || isImageURL(attachment.Path) {
-			segmentType = platform.SegmentImage
-		}
-		segments = append(segments, platform.MessageSegment{Type: segmentType, URL: url, Name: attachment.Path})
-	}
+	segments = append(segments, attachments...)
 	return segments
 }
 
