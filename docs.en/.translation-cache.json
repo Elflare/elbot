@@ -21,9 +21,9 @@
       "updated_at": 1782039257
     },
     "docs/configuration.md": {
-      "source_hash": "fb5896473f316132f026504ecc61f5677e8805bad756d41002f6a717882b1b80",
+      "source_hash": "23da18b8b148546611f13433bde762c5910d462f305adb61a512227d14c69515",
       "target": "docs.en/configuration.md",
-      "updated_at": 1782033039
+      "updated_at": 1782117127
     },
     "docs/elnis-usage.md": {
       "source_hash": "44ce1a506eb2b3bbb56e1f5fb0a2db765de12756ce8aa9a7db42f56fd652166b",
@@ -41,9 +41,9 @@
       "updated_at": 1781786413
     },
     "docs/getting-started.md": {
-      "source_hash": "e8c05543043f74e4df379b1cc902661fd9d50fcecab392cb1a77f3cc334cd881",
+      "source_hash": "7ced3eb46f9fe365a2512cd7a31a734a7e46382eba4b9065f307ff4ba49b38bc",
       "target": "docs.en/getting-started.md",
-      "updated_at": 1781949103
+      "updated_at": 1782117183
     }
   },
   "segments": {
@@ -4103,6 +4103,14 @@
       "translation": "Update [Quick Start](getting-started.md) and README synchronously when changing default paths or startup behavior.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:2f1302efd12983dfc10ba7a648d1182d52a68ef1ae5481edcd752c3cbff3ef4c": {
+      "kind": "list",
+      "source": "超级管理员配置按平台分组填写平台原生用户 ID，例如 __ELBOT_CODE_0__；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "2f1302efd12983dfc10ba7a648d1182d52a68ef1ae5481edcd752c3cbff3ef4c",
+      "translation": "The superadmin configuration should be filled in by platform group using the platform's native user ID, for example __ELBOT_CODE_0__;",
+      "updated_at": 1782117127
+    },
     "docs/configuration.md:list:30840ca097b9cdde0e25dcc1ab09335ae09bbf78b2df6bfe23d6f1e77bdf781f": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 关闭格式化，只发送纯文本。",
@@ -4686,6 +4694,14 @@
       "source_hash": "f31646a8be06d4f780c4c5e2e465aa83cfc7dac48d114fae5c53de76cf7571be",
       "translation": "__ELBOT_CODE_0__ points to the Bot Token in the system environment variables; you can also use __ELBOT_CODE_1__ to write it directly into the configuration, but it is not recommended to commit real tokens.",
       "updated_at": 1781839376
+    },
+    "docs/configuration.md:list:ff0bb46d8c01020c512aaf0281ff62576ae04556c98f5f77ba781c26e7a1193c": {
+      "kind": "list",
+      "source": "运行期 actor ID 会统一显示为 __ELBOT_CODE_0__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "ff0bb46d8c01020c512aaf0281ff62576ae04556c98f5f77ba781c26e7a1193c",
+      "translation": "The runtime actor ID will be uniformly displayed as __ELBOT_CODE_0__.",
+      "updated_at": 1782117127
     },
     "docs/configuration.md:list:ff5524722281e39bb8652d7ead7019fef72e2b66d2011735561778369a621f16": {
       "kind": "list",
@@ -8039,6 +8055,22 @@
       "translation": "__ELBOT_CODE_0__ Switch models.",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:list:04cc698eb3c37791224ae21f8bd2d3297627f1b080868b7cb47faddb41a7f268": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ / __ELBOT_CODE_1__：小幅滚动聊天输出；__ELBOT_CODE_2__ / __ELBOT_CODE_3__ 滚动通知区。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "04cc698eb3c37791224ae21f8bd2d3297627f1b080868b7cb47faddb41a7f268",
+      "translation": "__ELBOT_CODE_0__ / __ELBOT_CODE_1__: Scroll chat output slightly; __ELBOT_CODE_2__ / __ELBOT_CODE_3__: Scroll notification area.",
+      "updated_at": 1782117183
+    },
+    "docs/getting-started.md:list:09d2cb5594775ab88930d126283fa7afdaf5eee91cfef93a806cf9f77133b418": {
+      "kind": "list",
+      "source": "copy mode 中可用 __ELBOT_CODE_0__ 与 __ELBOT_CODE_1__ 移动，__ELBOT_CODE_2__ / __ELBOT_CODE_3__ 选择，__ELBOT_CODE_4__ 复制，__ELBOT_CODE_5__ 搜索，__ELBOT_CODE_6__ 或 __ELBOT_CODE_7__ 返回输入。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "09d2cb5594775ab88930d126283fa7afdaf5eee91cfef93a806cf9f77133b418",
+      "translation": "In copy mode, use __ELBOT_CODE_0__ and __ELBOT_CODE_1__ to move, __ELBOT_CODE_2__ / __ELBOT_CODE_3__ to select, __ELBOT_CODE_4__ to copy, __ELBOT_CODE_5__ to search, and __ELBOT_CODE_6__ or __ELBOT_CODE_7__ to return to input.",
+      "updated_at": 1782117183
+    },
     "docs/getting-started.md:list:0a7039e0c4db3a2223f53953ebf9c904b16150654e781ccb68eafa133c61a4fa": {
       "kind": "list",
       "source": "可以启动后用 __ELBOT_CODE_0__ 刷新模型列表。",
@@ -8119,6 +8151,14 @@
       "translation": "Platform configuration directory, such as Windows __ELBOT_CODE_0__ or Linux XDG configuration directory.",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:list:7dd7ed525047ee8728fc6e0dac6680e223e8396e8769fa1648eee8e6c923ea06": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ / __ELBOT_CODE_1__：进入聊天区 / 通知区 copy mode。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "7dd7ed525047ee8728fc6e0dac6680e223e8396e8769fa1648eee8e6c923ea06",
+      "translation": "__ELBOT_CODE_0__ / __ELBOT_CODE_1__: Enter copy mode for chat area / notification area.",
+      "updated_at": 1782117183
+    },
     "docs/getting-started.md:list:82450adf1eba38f68cb8b3513e63984b30423e719aff68888a09d8aabcdfa99b": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 指定的路径。",
@@ -8150,6 +8190,14 @@
       "source_hash": "ab0f21e0de018659604ea9bb26f07d46d5bb0d6c0d1df2fcaa6c819113e2a58f",
       "translation": "Whether __ELBOT_CODE_1__ in __ELBOT_CODE_0__ exists in __ELBOT_CODE_2__.",
       "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:ad2fbc4224ef34bbd570cdf3d780d40e7eaf4cf9dcaad5895b4b3eaf22f59ae6": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ / __ELBOT_CODE_1__ / __ELBOT_CODE_2__ / __ELBOT_CODE_3__：滚动聊天输出。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "ad2fbc4224ef34bbd570cdf3d780d40e7eaf4cf9dcaad5895b4b3eaf22f59ae6",
+      "translation": "__ELBOT_CODE_0__ / __ELBOT_CODE_1__ / __ELBOT_CODE_2__ / __ELBOT_CODE_3__: Scroll chat output.",
+      "updated_at": 1782117183
     },
     "docs/getting-started.md:list:b850706754b92e6cf28f2fb82f9cac672089a61d4b932834cfb65d6f56b37414": {
       "kind": "list",
@@ -8494,6 +8542,14 @@
       "source_hash": "ccadb6024e5c66db566b18d85e16f45021630c35aa5184b90fb336f178114d57",
       "translation": "ElBot can generate completion scripts for common shells:\n",
       "updated_at": 1781575108
+    },
+    "docs/getting-started.md:paragraph:e192922e01b47e51032fd06b39048ef3f82aa6c4b551a3fa3f1950e62ac0ff52": {
+      "kind": "paragraph",
+      "source": "CLI TUI 常用按键：\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "e192922e01b47e51032fd06b39048ef3f82aa6c4b551a3fa3f1950e62ac0ff52",
+      "translation": "Common CLI TUI keys:\n",
+      "updated_at": 1782117183
     },
     "docs/getting-started.md:paragraph:e55c71d36598475911251b8545437070b1d7782a93c573053181d0ff71177a2a": {
       "kind": "paragraph",

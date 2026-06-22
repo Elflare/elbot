@@ -305,6 +305,7 @@ cli = ["local"]
 - Regular users can only discover and call tools within the allowed risk range.
 - Superadmins also need confirmation when calling high-risk tools.
 - The default local CLI user `local` is a superadmin.
+- The superadmin configuration should be filled in by platform group using the platform's native user ID, for example `qqofficial = ["xxx"]`; The runtime actor ID will be uniformly displayed as `qqofficial:xxx`.
 - `tool_tags.toml` is used to configure the tool groups that can be injected into `@tool:<tag>`, as well as the tool usage strategies appended to the system prompt after a tag is activated.
 
 ### `tool_tags.toml`

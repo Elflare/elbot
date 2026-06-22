@@ -92,6 +92,13 @@ In automatic mode, if Linux detects that the current user already has `elbot ser
 
 `elbot cli` is an independent local process that uses the same set of configurations and SQLite data, but it will not take over current requests, confirmation states, or the current Session in memory from the service process. When you need to continue a historical Session, you can use `/list` and `/resume`.
 
+Common CLI TUI keys:
+
+- `PgUp` / `PgDn` / `Home` / `End`: Scroll chat output.
+- `Ctrl+K` / `Ctrl+J`: Scroll chat output slightly; `Ctrl+U` / `Ctrl+D`: Scroll notification area.
+- `Alt+h` / `Alt+l`: Enter copy mode for chat area / notification area.
+- In copy mode, use `h/j/k/l` and `w/e/b` to move, `v` / `V` to select, `y` to copy, `/` to search, and `i` or `Esc` to return to input.
+
 Build binary:
 
 ```bash
