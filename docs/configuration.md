@@ -303,6 +303,7 @@ cli = ["local"]
 - 普通用户只能发现和调用允许风险范围内的工具。
 - 超级管理员调用高风险工具时也需要确认。
 - CLI 默认本地用户 `local` 是超级管理员。
+- 超级管理员配置按平台分组填写平台原生用户 ID，例如 `qqofficial = ["xxx"]`；运行期 actor ID 会统一显示为 `qqofficial:xxx`。
 - `tool_tags.toml` 用来配置 `@tool:<tag>` 可注入的工具组，以及 tag 激活后追加到 system prompt 的工具使用策略。
 
 ### `tool_tags.toml`

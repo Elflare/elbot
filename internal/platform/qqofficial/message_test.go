@@ -26,6 +26,26 @@ func (h *captureHandler) HandleMessage(ctx context.Context, text string) error {
 	return nil
 }
 
+func TestHandleC2CMessageUsesCanonicalActorID(t *testing.T) {
+	adapter := New(Config{}, nil, nil)
+	handler := &captureHandler{}
+	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, c2cMessage{
+		ID:      "msg-1",
+		Author:  c2cAuthor{UserOpenID: "user-1"},
+		Content: "你好",
+	})
+	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	if msgCtx.ActorID != "qqofficial:user-1" {
+		t.Fatalf("actor id = %q, want qqofficial:user-1", msgCtx.ActorID)
+	}
+	if msgCtx.PlatformUserID != "user-1" {
+		t.Fatalf("platform user id = %q, want user-1", msgCtx.PlatformUserID)
+	}
+}
+
 func TestHandleC2CMessageAddsFallbackReferenceText(t *testing.T) {
 	adapter := New(Config{}, nil, nil)
 	handler := &captureHandler{}

@@ -13,6 +13,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
+	"elbot/internal/security"
 	"elbot/internal/storage"
 )
 
@@ -144,10 +145,11 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 	if strings.TrimSpace(text) == "" {
 		return
 	}
+	platformUserID := userIDString(msg.From)
 	messageCtx := platform.MessageContext{
 		Platform:       a.Name(),
-		ActorID:        a.Name() + ":" + userIDString(msg.From),
-		PlatformUserID: userIDString(msg.From),
+		ActorID:        security.ActorID(a.Name(), platformUserID),
+		PlatformUserID: platformUserID,
 		DisplayName:    displayNamePtr(msg.From, userIDString(msg.From)),
 		ScopeID:        scopeID(msg.Chat),
 		Sender:         a,

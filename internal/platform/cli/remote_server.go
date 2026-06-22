@@ -17,6 +17,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
+	"elbot/internal/security"
 )
 
 type CompletionProvider interface {
@@ -219,7 +220,7 @@ func (s remoteMessageStream) Finish(ctx context.Context) (delivery.Receipt, erro
 func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientConn) context.Context {
 	msg := platform.MessageContext{
 		Platform:       s.Name(),
-		ActorID:        s.Name() + ":" + client.id,
+		ActorID:        security.ActorID(s.Name(), client.id),
 		PlatformUserID: client.id,
 		DisplayName:    client.id,
 		ScopeID:        client.id,

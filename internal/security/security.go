@@ -72,10 +72,11 @@ func ParseRisk(value string, fallback RiskLevel) RiskLevel {
 
 func (p *Policy) Actor(id, platform, platformUserID, displayName string) Actor {
 	platform = normalize(platform)
-	platformUserID = strings.TrimSpace(platformUserID)
-	if id == "" {
-		id = ActorID(platform, platformUserID)
+	platformUserID = canonicalPlatformUserID(platform, platformUserID)
+	if platformUserID == "" {
+		platformUserID = canonicalPlatformUserID(platform, id)
 	}
+	id = ActorID(platform, platformUserID)
 	role := RoleUser
 	if p != nil && p.IsSuperadmin(platform, platformUserID) {
 		role = RoleSuperadmin
@@ -85,7 +86,7 @@ func (p *Policy) Actor(id, platform, platformUserID, displayName string) Actor {
 
 func ActorID(platform, platformUserID string) string {
 	platform = normalize(platform)
-	platformUserID = strings.TrimSpace(platformUserID)
+	platformUserID = canonicalPlatformUserID(platform, platformUserID)
 	if platform == "" {
 		platform = "unknown"
 	}
@@ -93,6 +94,15 @@ func ActorID(platform, platformUserID string) string {
 		platformUserID = "unknown"
 	}
 	return platform + ":" + platformUserID
+}
+
+func canonicalPlatformUserID(platform, value string) string {
+	value = strings.TrimSpace(value)
+	prefix := normalize(platform) + ":"
+	if prefix != ":" && strings.HasPrefix(value, prefix) {
+		return strings.TrimSpace(strings.TrimPrefix(value, prefix))
+	}
+	return value
 }
 
 func (p *Policy) IsSuperadmin(platform, platformUserID string) bool {

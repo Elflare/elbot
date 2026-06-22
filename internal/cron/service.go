@@ -642,7 +642,7 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 	if s.runner == nil {
 		return meta, "", fmt.Errorf("cron llm runner is not configured")
 	}
-	actor := security.Actor{ID: meta.CreatedBy.ActorID, Platform: meta.CreatedBy.Platform, PlatformUserID: meta.CreatedBy.PlatformUserID, DisplayName: meta.CreatedBy.DisplayName, Role: security.RoleSuperadmin}
+	actor := security.Actor{ID: security.ActorID(meta.CreatedBy.Platform, meta.CreatedBy.PlatformUserID), Platform: meta.CreatedBy.Platform, PlatformUserID: meta.CreatedBy.PlatformUserID, DisplayName: meta.CreatedBy.DisplayName, Role: security.RoleSuperadmin}
 	prompt := cronPrompt(meta.Trigger.Message)
 	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), Prompt: prompt, ToolListNames: meta.LLM.ToolListNames, SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}})
 
