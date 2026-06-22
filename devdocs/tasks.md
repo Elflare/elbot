@@ -573,7 +573,6 @@
 
 ### 确认流程
 
-- [ ] 创建 `confirmation_requests` 表。
 - [x] 支持确认单次操作。`/confirm`
 - [x] 支持当前 Session 内自动确认同工具操作。
 - [x] 支持当前 Session 内自动确认所有操作。`/confirmall`
@@ -859,7 +858,7 @@
 ### Phase 4：文档、运维与后续预留
 
 - [x] 增加 `/elwisp` 命令查询 Elnis/Elwisp 事件日志，支持按 Elwisp、source、事件 ID、模式、时间和等级过滤。
-- [ ] 增加 Elnis 事件查询、失败重试或禁用能力。
+- [x] 增加 Elnis 事件查询、失败重试或禁用能力。
 - [x] 内置 `elwisp_creator` 工具，帮助用户生成 Elwisp 配置、事件模板、监听器脚手架和测试命令。
 - [x] 支持多种消息segment
 - [x] 可通过扁平 `targets` 指定平台超级管理员、指定私聊或指定群聊，并支持 disabled target 禁止项。
