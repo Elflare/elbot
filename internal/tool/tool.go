@@ -116,14 +116,25 @@ type PublicInfo struct {
 }
 
 type DiscoveredTool struct {
-	Info   PublicInfo      `json:"info"`
-	Schema *llm.ToolSchema `json:"schema,omitempty"`
-	Detail string          `json:"detail,omitempty"`
+	Info        PublicInfo      `json:"info"`
+	Schema      *llm.ToolSchema `json:"schema,omitempty"`
+	Detail      string          `json:"detail,omitempty"`
+	DetailBlock DetailBlock     `json:"-"`
+}
+
+type DetailBlock struct {
+	Content  string
+	Format   string
+	RuleCard string
 }
 
 type DetailProvider interface {
 	Detail() string
 	ActivateTools() []string
+}
+
+type StructuredDetailProvider interface {
+	DetailBlock() DetailBlock
 }
 
 const MetadataActivateTools = "activate_tools"
@@ -296,7 +307,13 @@ func (r *Registry) addDiscoveryDetail(name string, root bool, allowed func(Tool)
 	info := tool.Info()
 	discovered := DiscoveredTool{Info: publicInfo(info)}
 	if detailer, ok := tool.(DetailProvider); ok {
-		discovered.Detail = detailer.Detail()
+		if structured, ok := tool.(StructuredDetailProvider); ok {
+			discovered.DetailBlock = structured.DetailBlock()
+			discovered.Detail = RenderDetailBlocks([]DetailBlock{discovered.DetailBlock})
+		} else {
+			discovered.Detail = detailer.Detail()
+			discovered.DetailBlock = DetailBlock{Content: discovered.Detail}
+		}
 	} else {
 		schema := tool.Schema()
 		discovered.Schema = &schema

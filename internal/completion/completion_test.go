@@ -71,6 +71,29 @@ func TestToolDirectiveSourceCompletesOnlyPlainTools(t *testing.T) {
 	}
 }
 
+func TestToolDirectiveSourceCompletesSkillsSeparately(t *testing.T) {
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(completionTestTool{name: "doc_tool", description: "plain"})
+	_ = registry.Register(completionTestSkill{completionTestTool: completionTestTool{name: "docx", description: "skill"}})
+	source := ToolDirectiveSource{
+		Registry: func() *tool.Registry { return registry },
+		Actor:    func(context.Context) security.Actor { return security.Actor{Role: security.RoleSuperadmin} },
+	}
+
+	items := source.Complete(context.Background(), Request{Text: "查 @skill:do", Cursor: len("查 @skill:do")})
+	if len(items) != 1 || items[0].Text != "@skill:docx" || items[0].Kind != KindSkillDirective || items[0].ReplaceStart != len("查 ") || items[0].ReplaceEnd != len("查 @skill:do") {
+		t.Fatalf("Complete @skill prefix = %#v", items)
+	}
+	items = source.Complete(context.Background(), Request{Text: "查 @s", Cursor: len("查 @s")})
+	if len(items) != 1 || items[0].Text != "@skill:" {
+		t.Fatalf("Complete @s prefix = %#v", items)
+	}
+	if got := source.Complete(context.Background(), Request{Text: "@skill:doc_", Cursor: len("@skill:doc_")}); len(got) != 0 {
+		t.Fatalf("plain tool should not complete as skill: %#v", got)
+	}
+}
+
 func TestToolDirectiveSourceCompletesConfiguredTags(t *testing.T) {
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))

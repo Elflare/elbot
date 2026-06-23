@@ -238,6 +238,27 @@ func TestDiscoverToolSkillDetailDoesNotReturnSchemaAndActivatesWrapper(t *testin
 	}
 }
 
+func TestDiscoverToolDeduplicatesStructuredRuleCards(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeDetailTool{name: "alpha", source: SourceSkillAgent, detail: "#skill alpha", activate: []string{"python_skill_run"}, format: "elyph", ruleCard: "ELyph RULE"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(fakeDetailTool{name: "beta", source: SourceSkillAgent, detail: "#skill beta", activate: []string{"python_skill_run"}, format: "elyph", ruleCard: "ELyph RULE"}); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string][]string{"names": []string{"alpha", "beta"}})
+	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(result.Content, "ELyph RULE") != 1 {
+		t.Fatalf("rule card should appear once: %q", result.Content)
+	}
+	if strings.Contains(result.Content, "Skill alpha") || strings.Contains(result.Content, "Skill beta") {
+		t.Fatalf("discover should not add synthetic skill headers: %q", result.Content)
+	}
+}
+
 func TestDiscoverToolCannotQueryHiddenRootTool(t *testing.T) {
 	registry := NewRegistry()
 	if err := registry.Register(fakeTool{name: "hidden", source: SourceBuiltin, hidden: true}); err != nil {
@@ -294,6 +315,8 @@ type fakeDetailTool struct {
 	name     string
 	source   Source
 	detail   string
+	format   string
+	ruleCard string
 	activate []string
 }
 
@@ -305,7 +328,10 @@ func (t fakeDetailTool) Schema() llm.ToolSchema { return llm.ToolSchema{} }
 func (t fakeDetailTool) Call(context.Context, CallRequest) (*Result, error) {
 	return &Result{Content: t.detail}, nil
 }
-func (t fakeDetailTool) Detail() string          { return t.detail }
+func (t fakeDetailTool) Detail() string { return RenderDetailBlocks([]DetailBlock{t.DetailBlock()}) }
+func (t fakeDetailTool) DetailBlock() DetailBlock {
+	return DetailBlock{Content: t.detail, Format: t.format, RuleCard: t.ruleCard}
+}
 func (t fakeDetailTool) ActivateTools() []string { return t.activate }
 
 func TestDiscoverDependenciesHandleCycles(t *testing.T) {

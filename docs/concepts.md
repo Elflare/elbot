@@ -47,22 +47,27 @@ ElBot 不会在每轮 work 对话中默认注入所有工具的完整 schema。
 
 这种机制可以减少普通任务中的无效上下文开销，也能降低无关工具干扰。
 
-## `@tool:` 预载
+## 内联预载
 
-用户可以在普通输入中用 `@tool:<name-or-tag>` 提前指定工具或工具 tag。
+用户可以在普通输入中提前指定本轮要用的工具或 Skill。
+
+- `@tool:<name-or-tag>`：提前注入工具或工具 tag 的 schema。
+- `@skill:<name>`：把指定 Skill 文档内容加入本轮用户消息，并注入该 Skill 需要的运行 wrapper。Skill 本体不是 top-level tool schema。
 
 示例：
 
 ```text
 @tool:web 帮我查一下今天的新闻摘要
 @tool:files 读取这个配置并解释
+按这个技能处理文件 @skill:docx
 ```
 
-有效指令会被剥离并持久化到当前 Session 的工具缓存；无效值会保留为普通文本并提示。
+有效指令会被剥离；工具 schema 和 Skill wrapper 会持久化到当前 Session 的工具缓存。无效值会保留为普通文本并提示。多个 ELyph Skill 同时注入时，ELyph 规则说明只会加入一次。
 
 ## Session
 
 Session 是 ElBot 的持久化会话单位。它保存：
+
 
 - 会话标题和模式。
 - 用户消息与 assistant 回复。

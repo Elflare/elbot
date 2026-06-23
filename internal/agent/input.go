@@ -43,9 +43,14 @@ func (a *Agent) handleInput(ctx context.Context, text string) error {
 			a.notifyToolDirectiveResult(ctx, directives)
 		}
 		text = directives.Text
+		skillDirectives := a.applySkillDirectives(ctx, session, text)
+		if len(skillDirectives.Skills) > 0 || len(skillDirectives.InjectedWrappers) > 0 || len(skillDirectives.ExistingWrappers) > 0 || len(skillDirectives.Invalid) > 0 {
+			a.notifySkillDirectiveResult(ctx, skillDirectives)
+		}
+		text = skillDirectives.Text
 		ctx = withInboundSegments(ctx, replaceInboundTextSegments(ctx, text))
 		if strings.TrimSpace(text) == "" && !hasInboundNonTextSegment(ctx) {
-			if len(directives.Injected) > 0 {
+			if len(directives.Injected) > 0 || len(skillDirectives.InjectedWrappers) > 0 {
 				if latest, err := a.store.Sessions().Get(ctx, session.ID); err == nil {
 					*session = *latest
 				}

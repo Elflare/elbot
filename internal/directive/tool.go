@@ -5,15 +5,23 @@ import (
 	"strings"
 )
 
-const ToolPrefix = "@tool:"
+const (
+	ToolPrefix  = "@tool:"
+	SkillPrefix = "@skill:"
+)
 
-var toolPattern = regexp.MustCompile(`@tool:([A-Za-z0-9_.-]+)`)
+var (
+	toolPattern  = regexp.MustCompile(`@tool:([A-Za-z0-9_.-]+)`)
+	skillPattern = regexp.MustCompile(`@skill:([A-Za-z0-9_.-]+)`)
+)
 
 type ToolMatch struct {
 	Start int
 	End   int
 	Name  string
 }
+
+type SkillMatch = ToolMatch
 
 type ToolCompletionToken struct {
 	Start      int
@@ -22,8 +30,18 @@ type ToolCompletionToken struct {
 	OK         bool
 }
 
+type SkillCompletionToken = ToolCompletionToken
+
 func ToolMatches(text string) []ToolMatch {
-	indexes := toolPattern.FindAllStringSubmatchIndex(text, -1)
+	return matches(text, toolPattern)
+}
+
+func SkillMatches(text string) []SkillMatch {
+	return matches(text, skillPattern)
+}
+
+func matches(text string, pattern *regexp.Regexp) []ToolMatch {
+	indexes := pattern.FindAllStringSubmatchIndex(text, -1)
 	out := make([]ToolMatch, 0, len(indexes))
 	for _, index := range indexes {
 		out = append(out, ToolMatch{Start: index[0], End: index[1], Name: text[index[2]:index[3]]})
@@ -46,6 +64,14 @@ func StripToolMatches(text string, matches []ToolMatch, remove []bool) string {
 }
 
 func ParseToolCompletionToken(text string, cursor int) ToolCompletionToken {
+	return parseCompletionToken(text, cursor, ToolPrefix)
+}
+
+func ParseSkillCompletionToken(text string, cursor int) SkillCompletionToken {
+	return parseCompletionToken(text, cursor, SkillPrefix)
+}
+
+func parseCompletionToken(text string, cursor int, prefix string) ToolCompletionToken {
 	if cursor < 0 || cursor > len(text) {
 		cursor = len(text)
 	}
@@ -60,13 +86,13 @@ func ParseToolCompletionToken(text string, cursor int) ToolCompletionToken {
 	if token == "" || token[0] != '@' {
 		return ToolCompletionToken{}
 	}
-	if token != ToolPrefix && strings.HasPrefix(ToolPrefix, token) {
+	if token != prefix && strings.HasPrefix(prefix, token) {
 		return ToolCompletionToken{Start: start, PrefixOnly: true, OK: true}
 	}
-	if !strings.HasPrefix(token, ToolPrefix) {
+	if !strings.HasPrefix(token, prefix) {
 		return ToolCompletionToken{}
 	}
-	query := strings.TrimPrefix(token, ToolPrefix)
+	query := strings.TrimPrefix(token, prefix)
 	for i := 0; i < len(query); i++ {
 		if !IsToolNameByte(query[i]) {
 			return ToolCompletionToken{}

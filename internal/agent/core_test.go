@@ -1626,6 +1626,122 @@ func toolNames(schemas []llm.ToolSchema) string {
 	return strings.Join(names, ",")
 }
 
+func TestSkillDirectiveInjectsDetailAndWrapper(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"done"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(agentDetailTool{name: "docx", source: tool.SourceSkillAgent, detail: "# DOCX", activate: []string{"python_skill_run"}})
+	_ = registry.Register(agentWrapperTool{name: "python_skill_run", hidden: true})
+	a.SetToolRuntime(registry, nil)
+
+	if err := a.HandleMessage(context.Background(), "处理这个 @skill:docx"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	if toolNames(requests[0].Tools) != "discover_tool,python_skill_run" {
+		t.Fatalf("tools = %s", toolNames(requests[0].Tools))
+	}
+	latest := requests[0].Messages[len(requests[0].Messages)-1]
+	content := llm.SegmentsContentText(latest.Segments)
+	if content != "处理这个\n\n# DOCX" {
+		t.Fatalf("latest user content = %q", content)
+	}
+	if strings.Contains(content, "系统预加载") || strings.Contains(content, "Skill: docx") {
+		t.Fatalf("skill directive should not add synthetic headers: %q", content)
+	}
+}
+
+func TestSkillDirectiveDeduplicatesElyphRuleCards(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"done"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(agentDetailTool{name: "alpha", source: tool.SourceSkillAgent, detail: "#skill alpha - A", format: "elyph", ruleCard: "ELyph RULE"})
+	_ = registry.Register(agentDetailTool{name: "beta", source: tool.SourceSkillAgent, detail: "#skill beta - B", format: "elyph", ruleCard: "ELyph RULE"})
+	a.SetToolRuntime(registry, nil)
+
+	if err := a.HandleMessage(context.Background(), "处理这个 @skill:alpha @skill:beta"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	content := llm.SegmentsContentText(requests[0].Messages[len(requests[0].Messages)-1].Segments)
+	if strings.Count(content, "ELyph RULE") != 1 {
+		t.Fatalf("rule card should appear once: %q", content)
+	}
+	if !strings.Contains(content, "#skill alpha - A") || !strings.Contains(content, "#skill beta - B") {
+		t.Fatalf("missing skill content: %q", content)
+	}
+}
+
+func TestSkillDirectiveInvalidStaysAsText(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"done"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	a.SetToolRuntime(registry, nil)
+
+	if err := a.HandleMessage(context.Background(), "hello @skill:nope"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	content := llm.SegmentsContentText(requests[0].Messages[len(requests[0].Messages)-1].Segments)
+	if content != "hello @skill:nope" {
+		t.Fatalf("latest user content = %q", content)
+	}
+	if !strings.Contains(p.out.String(), "未找到或不可用的 Skill：nope") {
+		t.Fatalf("missing invalid skill notice: %q", p.out.String())
+	}
+}
+
+func TestSkillDirectiveOnlySkillSendsDetailAsUserMessage(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"done"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(agentDetailTool{name: "docx", source: tool.SourceSkillAgent, detail: "# DOCX", activate: []string{"python_skill_run"}})
+	_ = registry.Register(agentWrapperTool{name: "python_skill_run", hidden: true})
+	a.SetToolRuntime(registry, nil)
+
+	if err := a.HandleMessage(context.Background(), "@skill:docx"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	if toolNames(requests[0].Tools) != "discover_tool,python_skill_run" {
+		t.Fatalf("tools = %s", toolNames(requests[0].Tools))
+	}
+	content := llm.SegmentsContentText(requests[0].Messages[len(requests[0].Messages)-1].Segments)
+	if content != "# DOCX" {
+		t.Fatalf("latest user content = %q", content)
+	}
+	if !strings.Contains(p.out.String(), "已注入 Skill：docx") {
+		t.Fatalf("missing skill notice: %q", p.out.String())
+	}
+}
+
 func TestSkillDiscoveryActivatesHiddenWrapperInSameTurn(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
@@ -1675,6 +1791,8 @@ type agentDetailTool struct {
 	name     string
 	source   tool.Source
 	detail   string
+	format   string
+	ruleCard string
 	activate []string
 }
 
@@ -1686,7 +1804,12 @@ func (t agentDetailTool) Schema() llm.ToolSchema { return llm.ToolSchema{} }
 func (t agentDetailTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
 	return &tool.Result{Content: t.detail}, nil
 }
-func (t agentDetailTool) Detail() string          { return t.detail }
+func (t agentDetailTool) Detail() string {
+	return tool.RenderDetailBlocks([]tool.DetailBlock{t.DetailBlock()})
+}
+func (t agentDetailTool) DetailBlock() tool.DetailBlock {
+	return tool.DetailBlock{Content: t.detail, Format: t.format, RuleCard: t.ruleCard}
+}
 func (t agentDetailTool) ActivateTools() []string { return t.activate }
 
 type agentWrapperTool struct {

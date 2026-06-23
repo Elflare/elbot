@@ -121,14 +121,15 @@ func discoveryContent(result *DiscoveryResult) string {
 	}
 	parts := []string{}
 	foundTools := []string{}
+	detailBlocks := []DetailBlock{}
 	for _, discovered := range result.Tools {
 		name := strings.TrimSpace(discovered.Info.Name)
 		if discovered.Detail != "" {
-			header := "Skill"
-			if name != "" {
-				header += " " + name
+			block := discovered.DetailBlock
+			if strings.TrimSpace(block.Content) == "" {
+				block = DetailBlock{Content: discovered.Detail}
 			}
-			parts = append(parts, header+":\n"+discovered.Detail)
+			detailBlocks = append(detailBlocks, block)
 			continue
 		}
 		if discovered.Schema != nil && name != "" {
@@ -141,6 +142,9 @@ func discoveryContent(result *DiscoveryResult) string {
 	}
 	if len(foundTools) > 0 {
 		parts = append([]string{fmt.Sprintf("已发现工具：%s。后续可直接调用。", strings.Join(foundTools, ", "))}, parts...)
+	}
+	if detailText := RenderDetailBlocks(detailBlocks); detailText != "" {
+		parts = append(parts, detailText)
 	}
 	if len(result.Errors) > 0 {
 		errors := make([]string, 0, len(result.Errors))
