@@ -32,7 +32,7 @@ The main configuration is searched in the following order upon startup:
 
 The content of the automatically generated default configuration comes from the program's built-in assets, and existing files will not be overwritten. Automatic generation is only triggered when there are no explicit `--config` and `ELBOT_CONFIG_FILE`. If the explicitly specified configuration path does not exist, ElBot will report an error instead of silently generating it, to avoid masking path spelling errors.
 
-Files automatically generated for the first time include: `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `elnis.toml`, and `.env.example`; At the same time, the directories `skills/`, `skills/agent/`, `skills/go/`, `plugins/`, and `long_memory/` will be created. Existing files will not be overwritten. `elnis.toml` defaults to `enabled=false`, and HTTP listening will not be started on the first run.
+Files automatically generated for the first time include: `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `memories.toml`, `elnis.toml`, and `.env.example`; At the same time, the directories `skills/`, `skills/agent/`, `skills/go/`, `plugins/`, and `long_memory/` will be created. Existing files will not be overwritten. `elnis.toml` defaults to `enabled=false`, and HTTP listening will not be started on the first run.
 
 
 During the development phase, you can run it directly to use the platform configuration directory; default configurations will be automatically generated upon the first run:
@@ -60,6 +60,18 @@ path = "SOUL.md"
 ```
 
 These paths will all be resolved to the directory where the main configuration file is located; by default, this is the platform configuration directory.
+
+## Resident Memory Configuration
+
+Resident memory data is saved by default in `memories.toml` of the configuration directory, and the file is generated when the program runs for the first time. The length limits for the two resident memory segments, core and normal, can be set in the main configuration:
+
+```toml
+[resident_memory]
+core_max_units = 200
+normal_max_units = 300
+```
+
+The length unit `units` can be roughly understood as "Chinese by character count, English by word count": CJK characters are counted individually, and continuous segments of English/numbers are counted as one word. core is used for core memories that require high-risk confirmation, and normal is used for ordinary memories that can be organized; When injecting the Prompt, the two segments will be merged into a single piece of natural text.
 
 ## Provider Configuration
 

@@ -21,9 +21,9 @@
       "updated_at": 1782205988
     },
     "docs/configuration.md": {
-      "source_hash": "23da18b8b148546611f13433bde762c5910d462f305adb61a512227d14c69515",
+      "source_hash": "63ac24bf09e0616affbb07e13f0958d7afbe836d10952089b7ed1a450a0f6245",
       "target": "docs.en/configuration.md",
-      "updated_at": 1782117127
+      "updated_at": 1782206047
     },
     "docs/elnis-usage.md": {
       "source_hash": "44ce1a506eb2b3bbb56e1f5fb0a2db765de12756ce8aa9a7db42f56fd652166b",
@@ -4079,6 +4079,14 @@
       "translation": "Configuration File Responsibilities",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:heading:bd250e3bd29a75c588395e02957d84980efdd7c7f8bccc0c3fb8717c21e7bc21": {
+      "kind": "heading",
+      "source": "常驻记忆配置",
+      "source_file": "docs/configuration.md",
+      "source_hash": "bd250e3bd29a75c588395e02957d84980efdd7c7f8bccc0c3fb8717c21e7bc21",
+      "translation": "Resident Memory Configuration",
+      "updated_at": 1782206047
+    },
     "docs/configuration.md:heading:c1490c52e7217e77ad897def1336f64488cd0ffad776976e00264b624e14ccf5": {
       "kind": "heading",
       "source": "配置说明",
@@ -4895,6 +4903,14 @@
       "translation": "Relative paths are based on the directory where __ELBOT_CODE_0__ is located:\n",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:paragraph:168a6216e54f678c691c9d70050aebdb1a90cbd52d6c163e1d2300a219accbe5": {
+      "kind": "paragraph",
+      "source": "首次自动生成的文件包括：__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__ 和 __ELBOT_CODE_6__；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "168a6216e54f678c691c9d70050aebdb1a90cbd52d6c163e1d2300a219accbe5",
+      "translation": "Files automatically generated for the first time include: __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, __ELBOT_CODE_5__, and __ELBOT_CODE_6__;",
+      "updated_at": 1782206047
+    },
     "docs/configuration.md:paragraph:1b1d63f6451566b1447a2aaaf1cdca290b9ce605850c0452d71f600b3239679f": {
       "kind": "paragraph",
       "source": "查找顺序：\n",
@@ -4974,6 +4990,14 @@
       "source_hash": "409f4189f5a82cca3fb7edbf93119e885d6623f8fd1991e99189082102f46061",
       "translation": "Automatic generation is only triggered when there are no explicit __ELBOT_CODE_0__ and __ELBOT_CODE_1__.",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:paragraph:42c35c3587db8bb5ceb55e6f1424c1a05e469844e3b3ea7b08dd60bd29d2650b": {
+      "kind": "paragraph",
+      "source": "长度单位 __ELBOT_CODE_0__ 可以近似理解为“中文按字数、英文按单词”：中日韩字符按单字计数，英文/数字连续片段按一个词计数。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "42c35c3587db8bb5ceb55e6f1424c1a05e469844e3b3ea7b08dd60bd29d2650b",
+      "translation": "The length unit __ELBOT_CODE_0__ can be roughly understood as \"Chinese by character count, English by word count\": CJK characters are counted individually, and continuous segments of English/numbers are counted as one word.",
+      "updated_at": 1782206047
     },
     "docs/configuration.md:paragraph:43f65ea8b10c98a1a9ec935655dcc044c466fe3a4a631dea581dd302888489fa": {
       "kind": "paragraph",
@@ -5127,6 +5151,14 @@
       "translation": "When left blank, the platform's default data directory is used:\n",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:paragraph:8b93dd73a21f53da48f4a2f3a619552dde5ad0a618598e7182579ebef7c77363": {
+      "kind": "paragraph",
+      "source": "常驻记忆数据默认保存在配置目录的 __ELBOT_CODE_0__，文件由程序首次运行时生成。主配置中可以设置 core/normal 两段常驻记忆的长度上限：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "8b93dd73a21f53da48f4a2f3a619552dde5ad0a618598e7182579ebef7c77363",
+      "translation": "Resident memory data is saved by default in __ELBOT_CODE_0__ of the configuration directory, and the file is generated when the program runs for the first time. The length limits for the two resident memory segments, core and normal, can be set in the main configuration:\n",
+      "updated_at": 1782206047
+    },
     "docs/configuration.md:paragraph:92e9ae62f8c6aafa6fd87f93ae3d06c46477e883a5b9962f7acb0ea1fd0419b6": {
       "kind": "paragraph",
       "source": "ElBot 使用一个主配置入口加载应用配置、Provider 配置和运行态状态。默认配置由程序内置 assets 生成到平台配置目录；已有配置文件不会被覆盖。\n",
@@ -5214,6 +5246,14 @@
       "source_hash": "b5677d6b75b2703b9b64bea53a2215425d90ca4cd4d3970d802782ede5df8de8",
       "translation": "Files automatically generated for the first time include: __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, and __ELBOT_CODE_5__;",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:paragraph:b8c38345807cb2a9bdca16d42f3f1f696ba0bac6a1d5daf6f3f4d64318e8d037": {
+      "kind": "paragraph",
+      "source": "注入 Prompt 时两段会合并成一段自然文本。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "b8c38345807cb2a9bdca16d42f3f1f696ba0bac6a1d5daf6f3f4d64318e8d037",
+      "translation": "When injecting the Prompt, the two segments will be merged into a single piece of natural text.\n",
+      "updated_at": 1782206047
     },
     "docs/configuration.md:paragraph:be766c22f4947d5d7e93ef58bac57b008c8c60eff96e5c43fb99fed53ee121b4": {
       "kind": "paragraph",
@@ -5374,6 +5414,14 @@
       "source_hash": "fc1e54ad6fecf7488ed8d0808836934a04ddcaace9d5987114a2382683724bd9",
       "translation": "Default maintenance tasks include the cleanup of logs, sandbox, and chat history. For example, the sandbox defaults to cleaning up content older than 7 days every day at 04:00, and chat history cleanup is executed every day at 04:35 by default:\n",
       "updated_at": 1781949050
+    },
+    "docs/configuration.md:paragraph:ffb80c4c463a0d4bcf6ebf5f1b9c4b3f84dda3528faeba688d0d7dcc41e5d78d": {
+      "kind": "paragraph",
+      "source": "core 用于需要高风险确认的核心记忆，normal 用于可整理的普通记忆；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "ffb80c4c463a0d4bcf6ebf5f1b9c4b3f84dda3528faeba688d0d7dcc41e5d78d",
+      "translation": "core is used for core memories that require high-risk confirmation, and normal is used for ordinary memories that can be organized;",
+      "updated_at": 1782206047
     },
     "docs/configuration.md:table:016626e41f18a4b100b8eeee715dba8c89fdea7bfa91eac4efb6f0149d490adf": {
       "kind": "table",
