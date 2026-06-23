@@ -21,9 +21,9 @@
       "updated_at": 1782205988
     },
     "docs/configuration.md": {
-      "source_hash": "63ac24bf09e0616affbb07e13f0958d7afbe836d10952089b7ed1a450a0f6245",
+      "source_hash": "41a6c3cec4479a8f753bc6cea0462b7bd8d3e9fcc4139628d8ad574f92731384",
       "target": "docs.en/configuration.md",
-      "updated_at": 1782206047
+      "updated_at": 1782226057
     },
     "docs/elnis-usage.md": {
       "source_hash": "44ce1a506eb2b3bbb56e1f5fb0a2db765de12756ce8aa9a7db42f56fd652166b",
@@ -5166,6 +5166,14 @@
       "source_hash": "92e9ae62f8c6aafa6fd87f93ae3d06c46477e883a5b9962f7acb0ea1fd0419b6",
       "translation": "ElBot uses a main configuration entry to load application configuration, Provider configuration, and runtime state. Default configurations are generated from the program's built-in assets into the platform configuration directory; existing configuration files will not be overwritten.\n",
       "updated_at": 1781854884
+    },
+    "docs/configuration.md:paragraph:98eb7743b6382d1927f6e0c8096646fef84bd7543d6a077816680a510239c6c1": {
+      "kind": "paragraph",
+      "source": "默认维护任务包含日志、Session、sandbox 和聊天历史清理，例如 Session 清理默认保留 30 天，sandbox 默认每天 04:00 清理 7 天前内容，聊天历史默认每天 04:35 执行：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "98eb7743b6382d1927f6e0c8096646fef84bd7543d6a077816680a510239c6c1",
+      "translation": "Default maintenance tasks include the cleanup of logs, Sessions, sandboxes, and chat history. For example, Session cleanup defaults to a 30-day retention period, sandbox content older than 7 days is cleaned up daily at 04:00 by default, and chat history cleanup is executed daily at 04:35 by default:\n",
+      "updated_at": 1782226057
     },
     "docs/configuration.md:paragraph:9b5878230e34a540b3bc2f4b759f21a0bf924ce76763874851dd26916e8f921b": {
       "kind": "paragraph",

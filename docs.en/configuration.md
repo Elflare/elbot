@@ -250,7 +250,14 @@ enabled = true
 schedule = "0 3 * * *"
 ```
 
-Cron expressions are scheduled by the internal Cron Runtime, using the Linux crontab-style 5-field format: `分钟 小时 日 月 星期`. Default maintenance tasks include the cleanup of logs, sandbox, and chat history. For example, the sandbox defaults to cleaning up content older than 7 days every day at 04:00, and chat history cleanup is executed every day at 04:35 by default:
+Cron expressions are scheduled by the internal Cron Runtime, using the Linux crontab-style 5-field format: `分钟 小时 日 月 星期`. Default maintenance tasks include the cleanup of logs, Sessions, sandboxes, and chat history. For example, Session cleanup defaults to a 30-day retention period, sandbox content older than 7 days is cleaned up daily at 04:00 by default, and chat history cleanup is executed daily at 04:35 by default:
+
+```toml
+[maintenance.session_cleanup]
+enabled = false
+schedule = "15 3 * * *"
+retention_days = 30
+```
 
 ```toml
 [maintenance.sandbox_cleanup]
@@ -317,7 +324,6 @@ cli = ["local"]
 - Regular users can only discover and call tools within the allowed risk range.
 - Superadmins also need confirmation when calling high-risk tools.
 - The default local CLI user `local` is a superadmin.
-- The superadmin configuration should be filled in by platform group using the platform's native user ID, for example `qqofficial = ["xxx"]`; The runtime actor ID will be uniformly displayed as `qqofficial:xxx`.
 - `tool_tags.toml` is used to configure the tool groups that can be injected into `@tool:<tag>`, as well as the tool usage strategies appended to the system prompt after a tag is activated.
 
 ### `tool_tags.toml`
