@@ -160,7 +160,7 @@ Example:
 /tools remove my_skill --confirm
 ```
 
-In work mode, the LLM can discover tool details on demand via `discover_tool`. In chat, `@tool:<name-or-tag>` can also be used to preload tools.
+In work mode, the LLM can discover tool details on demand via `discover_tool`. In chat, you can also use `@tool:<name-or-tag>` to preload tools, or use `@skill:<name>` to add Skill documentation to the current round of messages and preload the corresponding runtime wrapper.
 
 The built-in tool `elwisp_creator` helps superadmins generate Elwisp configurations, Elvena event templates, listener scaffolds, and test commands; It has no parameters or side effects itself; actually writing files or running commands will still use the file tool and shell tool and go through the corresponding risk confirmation.
 

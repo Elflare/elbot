@@ -11,9 +11,9 @@
       "updated_at": 1781786014
     },
     "docs/commands.md": {
-      "source_hash": "84b3e7ae632abd7edd07e0153f933dbda5935cc22213f108d34c70174097adc3",
+      "source_hash": "da88effce2439eca033f3cef874bd6e034fdcec15d1376bdbcb576491b8f38bf",
       "target": "docs.en/commands.md",
-      "updated_at": 1781786015
+      "updated_at": 1782205939
     },
     "docs/concepts.md": {
       "source_hash": "9856bbd2991e18e4702a64756021e65cafbcd3e825fa27c61dbcc218127e79d7",
@@ -1783,6 +1783,14 @@
       "translation": "Common options:\n",
       "updated_at": 1781514917
     },
+    "docs/commands.md:paragraph:1632ad5994e509cb72b89875baee7e6d2c278fe2d83588aac7a40b6ba94ee105": {
+      "kind": "paragraph",
+      "source": "LLM 在 work 模式下可以通过 __ELBOT_CODE_0__ 按需发现工具详情。",
+      "source_file": "docs/commands.md",
+      "source_hash": "1632ad5994e509cb72b89875baee7e6d2c278fe2d83588aac7a40b6ba94ee105",
+      "translation": "In work mode, the LLM can discover tool details on demand via __ELBOT_CODE_0__.",
+      "updated_at": 1782205939
+    },
     "docs/commands.md:paragraph:19caab5401a0b047fafa861b656e5e6a9f3ed168c17ed61c83d61b63eaaa5289": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 额外支持：\n",
@@ -1798,6 +1806,14 @@
       "source_hash": "1b0f8169cc843fbcc717ad34f25992cf43f83d997f96080f5f99ba6afe1824d0",
       "translation": "Specific prompts are subject to the runtime output.\n",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:paragraph:5b9cabfff69460916096d38fb82201e002fbcb5568abd8509ff01023e3949fb3": {
+      "kind": "paragraph",
+      "source": "聊天中也可以用 __ELBOT_CODE_0__ 预载工具，或用 __ELBOT_CODE_1__ 把 Skill 文档加入本轮消息并预载对应运行 wrapper。\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "5b9cabfff69460916096d38fb82201e002fbcb5568abd8509ff01023e3949fb3",
+      "translation": "In chat, you can also use __ELBOT_CODE_0__ to preload tools, or use __ELBOT_CODE_1__ to add Skill documentation to the current round of messages and preload the corresponding runtime wrapper.\n",
+      "updated_at": 1782205939
     },
     "docs/commands.md:paragraph:764d85255caea7854ea163538429dadf782cc6b076d052916bdf4ef1622e85c8": {
       "kind": "paragraph",
