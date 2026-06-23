@@ -31,7 +31,7 @@
 - [x] 支持日志等级配置。
 - [x] 启动时打印版本、配置路径、数据库路径。
 - [x] 日志写入固定文件目录，并默认清理 30 天前日志。
-- [ ] 后续支持配置日志保留天数。
+- [x] 后续支持配置日志保留天数。
 
 ## Milestone 1：LLM Adapter
 
@@ -135,7 +135,7 @@
 - [x] `config/app.toml` 中保留 `[config_files]` 示例，指向 `providers.toml`。
 - [x] `config/app.toml` 中保留 `[storage]` 示例，说明 SQLite 相对路径基于主配置文件所在目录解析。
 - [x] `config/app.toml` 中保留 `[context]` 示例，包含压缩开关、触发比例、目标比例、压缩模型和默认 context window。
-- [x] `config/app.toml` 中保留 `[session.cleanup]` 示例，包含自动清理开关、保留天数和启动时清理开关。
+- [x] `config/app.toml` 中保留 `[maintenance.session_cleanup]` 示例，包含自动清理开关、调度表达式和保留天数。
 - [x] `config/state.toml` 中保留 `[session] default_mode`、`[mode_models]` 和 `[naming_model]` 示例，用于运行态热切换。
 - [x] `config/providers.toml` 中保留 `[model_metadata.context_windows]` 示例，用于 API 或 metadata 无法提供窗口信息时手动配置。
 
@@ -218,7 +218,7 @@
 - [x] 平台侧可根据自身能力提供补全、按钮、引用消息等交互增强，并映射到统一命令或内部请求。
 - [x] CLI 支持简单命令名 Tab 补全，当前补全来源为已注册命令和 alias。
 - [x] 后续用更模块化的补全服务替代当前 Agent 辅助方法，由 app 层装配并注入具体平台。
-- [ ] 后续支持命令参数补全，例如 `/model` 补全模型名、`/resume` 补全会话编号。
+- [x] 后续支持命令参数补全，例如 `/model` 补全模型名、`/resume` 补全会话编号。
   - [x] `/model` 支持补全目标选项和模型名；`/resume` 支持补全 Session ID。
 - [ ] 后续支持普通用户能使用/sessions /new /fork /messages /resume 处理自己的sessiosn
 

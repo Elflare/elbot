@@ -144,14 +144,14 @@ type SecurityConfig struct {
 }
 
 type SessionConfig struct {
-	DefaultMode                 string               `toml:"default_mode"`
-	NonSuperadminIdleTTLMinutes int                  `toml:"non_superadmin_idle_ttl_minutes"`
-	Cleanup                     SessionCleanupConfig `toml:"cleanup"`
-	Naming                      SessionNamingConfig  `toml:"naming"`
+	DefaultMode                 string              `toml:"default_mode"`
+	NonSuperadminIdleTTLMinutes int                 `toml:"non_superadmin_idle_ttl_minutes"`
+	Naming                      SessionNamingConfig `toml:"naming"`
 }
 
 type MaintenanceConfig struct {
 	LogCleanup         CronTaskConfig           `toml:"log_cleanup"`
+	SessionCleanup     MaintenanceCleanupConfig `toml:"session_cleanup"`
 	SandboxCleanup     MaintenanceCleanupConfig `toml:"sandbox_cleanup"`
 	ChatHistoryCleanup ChatHistoryCleanupConfig `toml:"chat_history_cleanup"`
 }
@@ -236,11 +236,6 @@ type ChatHistoryCleanupConfig struct {
 
 type SessionNamingConfig struct {
 	TriggerStep int `toml:"trigger_step"`
-}
-
-type SessionCleanupConfig struct {
-	Enabled       bool `toml:"enabled"`
-	RetentionDays int  `toml:"retention_days"`
 }
 
 func ResolvePath(path string) (string, error) {
@@ -554,11 +549,14 @@ func (c *Config) applyAppDefaults() {
 	if c.Session.NonSuperadminIdleTTLMinutes < 0 {
 		c.Session.NonSuperadminIdleTTLMinutes = 0
 	}
-	if c.Session.Cleanup.RetentionDays == 0 {
-		c.Session.Cleanup.RetentionDays = 30
-	}
 	if c.Maintenance.LogCleanup.Schedule == "" {
 		c.Maintenance.LogCleanup.Schedule = "0 3 * * *"
+	}
+	if c.Maintenance.SessionCleanup.Schedule == "" {
+		c.Maintenance.SessionCleanup.Schedule = "15 3 * * *"
+	}
+	if c.Maintenance.SessionCleanup.RetentionDays == 0 {
+		c.Maintenance.SessionCleanup.RetentionDays = 30
 	}
 	if c.Maintenance.SandboxCleanup.Schedule == "" {
 		c.Maintenance.SandboxCleanup.Schedule = "0 4 * * *"

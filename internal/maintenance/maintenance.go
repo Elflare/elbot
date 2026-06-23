@@ -19,22 +19,22 @@ type Service struct {
 	logs               *logging.Manager
 	store              storage.Store
 	chatHistory        storage.ChatHistoryRepository
-	sessionCleanup     config.SessionCleanupConfig
+	sessionCleanup     config.MaintenanceCleanupConfig
 	chatHistoryCleanup config.ChatHistoryCleanupConfig
 	sandboxRoot        string
 	sandboxCleanup     config.MaintenanceCleanupConfig
 	logger             *slog.Logger
 }
 
-func NewService(logs *logging.Manager, store storage.Store, sessionCleanup config.SessionCleanupConfig, logger *slog.Logger) *Service {
+func NewService(logs *logging.Manager, store storage.Store, sessionCleanup config.MaintenanceCleanupConfig, logger *slog.Logger) *Service {
 	return &Service{logs: logs, store: store, sessionCleanup: sessionCleanup, logger: logger}
 }
 
 func NewServiceWithConfig(logs *logging.Manager, store storage.Store, chatHistory storage.ChatHistoryRepository, cfg *config.Config, logger *slog.Logger) *Service {
 	if cfg == nil {
-		return NewService(logs, store, config.SessionCleanupConfig{}, logger)
+		return NewService(logs, store, config.MaintenanceCleanupConfig{}, logger)
 	}
-	return &Service{logs: logs, store: store, chatHistory: chatHistory, sessionCleanup: cfg.Session.Cleanup, chatHistoryCleanup: cfg.Maintenance.ChatHistoryCleanup, sandboxRoot: cfg.Sandbox.Root, sandboxCleanup: cfg.Maintenance.SandboxCleanup, logger: logger}
+	return &Service{logs: logs, store: store, chatHistory: chatHistory, sessionCleanup: cfg.Maintenance.SessionCleanup, chatHistoryCleanup: cfg.Maintenance.ChatHistoryCleanup, sandboxRoot: cfg.Sandbox.Root, sandboxCleanup: cfg.Maintenance.SandboxCleanup, logger: logger}
 }
 
 func (s *Service) RegisterCronHandlers(manager *elcron.Manager) error {
@@ -71,7 +71,7 @@ func SetupCron(ctx context.Context, manager *elcron.Manager, cfg *config.Config)
 	if err := upsertOrDisable(ctx, manager, cfg.Maintenance.LogCleanup.Enabled, "system.maintenance.log_cleanup", "maintenance.log_cleanup", cfg.Maintenance.LogCleanup.Schedule); err != nil {
 		return err
 	}
-	if err := upsertOrDisable(ctx, manager, cfg.Session.Cleanup.Enabled, "system.maintenance.session_cleanup", "maintenance.session_cleanup", cfg.Maintenance.LogCleanup.Schedule); err != nil {
+	if err := upsertOrDisable(ctx, manager, cfg.Maintenance.SessionCleanup.Enabled, "system.maintenance.session_cleanup", "maintenance.session_cleanup", cfg.Maintenance.SessionCleanup.Schedule); err != nil {
 		return err
 	}
 	if err := upsertOrDisable(ctx, manager, cfg.Maintenance.SandboxCleanup.Enabled, "system.maintenance.sandbox_cleanup", "maintenance.sandbox_cleanup", cfg.Maintenance.SandboxCleanup.Schedule); err != nil {

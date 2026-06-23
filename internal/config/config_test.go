@@ -148,6 +148,11 @@ max_rounds_per_turn = 3
 enabled = true
 schedule = "0 4 * * *"
 
+[maintenance.session_cleanup]
+enabled = true
+schedule = "15 3 * * *"
+retention_days = 14
+
 [maintenance.sandbox_cleanup]
 enabled = true
 schedule = "0 5 * * *"
@@ -176,10 +181,6 @@ non_superadmin_idle_ttl_minutes = 0
 
 [session.naming]
 trigger_step = 3
-
-[session.cleanup]
-enabled = true
-retention_days = 14
 `)
 	writeFile(t, providersPath, `
 [global_default]
@@ -285,12 +286,9 @@ prompt = "Use agent tools."
 	if cfg.Tools.MaxRoundsPerTurn != 3 {
 		t.Fatalf("max tool rounds per turn = %d", cfg.Tools.MaxRoundsPerTurn)
 	}
-	wantCleanup := SessionCleanupConfig{Enabled: true, RetentionDays: 14}
-	if !reflect.DeepEqual(cfg.Session.Cleanup, wantCleanup) {
-		t.Fatalf("cleanup = %#v, want %#v", cfg.Session.Cleanup, wantCleanup)
-	}
 	wantMaintenance := MaintenanceConfig{
 		LogCleanup:         CronTaskConfig{Enabled: true, Schedule: "0 4 * * *"},
+		SessionCleanup:     MaintenanceCleanupConfig{Enabled: true, Schedule: "15 3 * * *", RetentionDays: 14},
 		SandboxCleanup:     MaintenanceCleanupConfig{Enabled: true, Schedule: "0 5 * * *", RetentionDays: 9},
 		ChatHistoryCleanup: ChatHistoryCleanupConfig{Schedule: "35 4 * * *", RetentionDays: 180},
 	}
@@ -407,11 +405,7 @@ model = "deepseek-chat"
 	if cfg.View.SessionListPageSize != 10 {
 		t.Fatalf("default session list page size = %d", cfg.View.SessionListPageSize)
 	}
-	wantCleanup := SessionCleanupConfig{RetentionDays: 30}
-	if !reflect.DeepEqual(cfg.Session.Cleanup, wantCleanup) {
-		t.Fatalf("cleanup = %#v, want %#v", cfg.Session.Cleanup, wantCleanup)
-	}
-	if cfg.Maintenance.LogCleanup.Schedule != "0 3 * * *" || cfg.Maintenance.SandboxCleanup.Schedule != "0 4 * * *" || cfg.Maintenance.SandboxCleanup.RetentionDays != 7 {
+	if cfg.Maintenance.LogCleanup.Schedule != "0 3 * * *" || cfg.Maintenance.SessionCleanup.Schedule != "15 3 * * *" || cfg.Maintenance.SessionCleanup.RetentionDays != 30 || cfg.Maintenance.SandboxCleanup.Schedule != "0 4 * * *" || cfg.Maintenance.SandboxCleanup.RetentionDays != 7 {
 		t.Fatalf("maintenance defaults = %#v", cfg.Maintenance)
 	}
 	if cfg.Sandbox.Root != filepath.Clean(filepath.Join(platformDefaultDataDir(), "sandbox")) {

@@ -86,6 +86,11 @@ log_retention_days = 30
 enabled = true
 schedule = "0 3 * * *"
 
+[maintenance.session_cleanup]
+enabled = false
+schedule = "15 3 * * *"
+retention_days = 30
+
 [maintenance.sandbox_cleanup]
 enabled = true
 schedule = "0 4 * * *"
@@ -148,10 +153,6 @@ non_superadmin_idle_ttl_minutes = 10
 
 [session.naming]
 trigger_step = 3
-
-[session.cleanup]
-enabled = false
-retention_days = 30
 
 [platform.cli]
 enabled = true
