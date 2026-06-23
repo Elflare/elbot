@@ -53,11 +53,14 @@ func (m Module) inject(ctx context.Context, event hook.Event) (hook.Event, error
 	if event.Point != hook.PointLLMTurnPrepared || m.Store == nil {
 		return event, nil
 	}
-	content, err := m.Store.Read(ctx, scopeFromEvent(event))
+	memory, err := m.Store.Read(ctx, scopeFromEvent(event))
+	content := ""
 	if errors.Is(err, resident.ErrNotFound) {
 		content = defaultUserNameMemory(event)
 	} else if err != nil {
 		return event, err
+	} else {
+		content = memory.Text()
 	}
 	content = strings.TrimSpace(content)
 	if content == "" {

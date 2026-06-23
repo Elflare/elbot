@@ -48,7 +48,7 @@ func TestResolvePathGeneratesPlatformDefaultsWhenNoConfigExists(t *testing.T) {
 	if resolved != filepath.Clean(want) {
 		t.Fatalf("resolved path = %q, want %q", resolved, filepath.Clean(want))
 	}
-	for _, rel := range []string{"app.toml", "providers.toml", "state.toml", "SOUL.md", "elnis.toml", ".env.example"} {
+	for _, rel := range []string{"app.toml", "providers.toml", "state.toml", "SOUL.md", "memories.toml", "elnis.toml", ".env.example"} {
 		if _, err := os.Stat(filepath.Join(filepath.Dir(want), rel)); err != nil {
 			t.Fatalf("expected generated file %s: %v", rel, err)
 		}

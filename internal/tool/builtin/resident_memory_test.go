@@ -16,115 +16,107 @@ func raw(text string) json.RawMessage {
 	return json.RawMessage(text)
 }
 
-func TestResidentMemoryToolUsesActorScope(t *testing.T) {
+func TestResidentMemoryToolsUseActorScope(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	tm := NewResidentMemoryTool(store)
+	coreTool := ResidentMemoryCoreTool{Store: store}
+	normalTool := ResidentMemoryNormalTool{Store: store}
+	readTool := ResidentMemoryReadTool{Store: store}
 	ctx := security.WithActor(context.Background(), security.Actor{ID: "qqonebot:1", Platform: "qqonebot", PlatformUserID: "1", Role: security.RoleUser})
 
-	if _, err := tm.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"write","content":"用户喜欢短回复。"}`)}); err != nil {
-		t.Fatalf("write: %v", err)
+	if _, err := coreTool.Call(ctx, tool.CallRequest{Arguments: raw(`{"content":"用户喜欢被称为娅娅。"}`)}); err != nil {
+		t.Fatalf("write core: %v", err)
 	}
-	result, err := tm.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"read"}`)})
+	if _, err := normalTool.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"write","content":"用户喜欢短回复。"}`)}); err != nil {
+		t.Fatalf("write normal: %v", err)
+	}
+	result, err := readTool.Call(ctx, tool.CallRequest{Arguments: raw(`{"section":"all"}`)})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	if result.Content != "用户喜欢短回复。" {
+	if !strings.Contains(result.Content, "用户喜欢被称为娅娅。") || !strings.Contains(result.Content, "用户喜欢短回复。") {
 		t.Fatalf("content = %q", result.Content)
 	}
 
 	otherCtx := security.WithActor(context.Background(), security.Actor{ID: "qqonebot:2", Platform: "qqonebot", PlatformUserID: "2", Role: security.RoleUser})
-	result, err = tm.Call(otherCtx, tool.CallRequest{Arguments: raw(`{"action":"read"}`)})
+	result, err = readTool.Call(otherCtx, tool.CallRequest{Arguments: raw(`{"section":"all"}`)})
 	if err != nil {
 		t.Fatalf("read other: %v", err)
 	}
-	if result.Content != "常驻记忆为空。" {
+	if strings.Contains(result.Content, "用户喜欢短回复。") {
 		t.Fatalf("other content = %q", result.Content)
 	}
 }
 
-func TestResidentMemoryToolAppend(t *testing.T) {
+func TestResidentMemoryNormalAppendWriteDelete(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	tm := NewResidentMemoryTool(store)
+	normalTool := ResidentMemoryNormalTool{Store: store}
 	ctx := security.WithActor(context.Background(), security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin})
 
-	result, err := tm.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"append","content":"第一条"}`)})
+	result, err := normalTool.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"append","content":"第一条"}`)})
 	if err != nil {
 		t.Fatalf("append empty: %v", err)
 	}
-	if result.Content != "已更新常驻记忆。" {
+	if result.Content != "已追加普通常驻记忆。" {
 		t.Fatalf("append empty content = %q", result.Content)
 	}
-	stored, err := store.Read(ctx, resident.ActorScope(security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}))
-	if err != nil || stored != "第一条" {
-		t.Fatalf("stored = %q err=%v", stored, err)
+	memory, err := store.Read(ctx, resident.ActorScope(security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}))
+	if err != nil || memory.Normal != "第一条" {
+		t.Fatalf("memory = %#v err=%v", memory, err)
 	}
 
-	result, err = tm.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"append","content":"第二条"}`)})
-	if err != nil {
+	if _, err := normalTool.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"append","content":"第二条"}`)}); err != nil {
 		t.Fatalf("append existing: %v", err)
 	}
-	if result.Content != "已追加常驻记忆。" {
-		t.Fatalf("append existing content = %q", result.Content)
+	memory, err = store.Read(ctx, resident.ActorScope(security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}))
+	if err != nil || memory.Normal != "第一条 第二条" {
+		t.Fatalf("memory = %#v err=%v", memory, err)
 	}
-	stored, err = store.Read(ctx, resident.ActorScope(security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}))
-	if err != nil || stored != "第一条\n第二条" {
-		t.Fatalf("stored = %q err=%v", stored, err)
-	}
-}
-
-func TestResidentMemoryToolAppendTooLongDoesNotWrite(t *testing.T) {
-	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	store.MaxChars = 8
-	tm := NewResidentMemoryTool(store)
-	ctx := security.WithActor(context.Background(), security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin})
-
-	if _, err := tm.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"write","content":"1234"}`)}); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-	result, err := tm.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"append","content":"5678"}`)})
-	if err != nil {
-		t.Fatalf("append too long: %v", err)
-	}
-	if !strings.Contains(result.Content, "先 read 当前记忆") {
-		t.Fatalf("too long content=%q", result.Content)
-	}
-	readResult, err := tm.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"read"}`)})
-	if err != nil {
-		t.Fatalf("read after too long: %v", err)
-	}
-	if readResult.Content != "1234" {
-		t.Fatalf("memory was changed: %q", readResult.Content)
-	}
-}
-
-func TestResidentMemoryToolDeleteAndValidation(t *testing.T) {
-	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	tm := NewResidentMemoryTool(store)
-	ctx := security.WithActor(context.Background(), security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin})
-
-	if _, err := tm.Call(context.Background(), tool.CallRequest{Arguments: raw(`{"action":"read"}`)}); err == nil {
-		t.Fatalf("expected missing actor error")
-	}
-	if _, err := tm.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"write"}`)}); err == nil {
-		t.Fatalf("expected missing content error")
-	}
-	if _, err := tm.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"unknown"}`)}); err == nil {
-		t.Fatalf("expected invalid action error")
-	}
-	if _, err := tm.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"write","content":"记住这个。"}`)}); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-	result, err := tm.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"delete"}`)})
-	if err != nil {
+	if _, err := normalTool.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"delete"}`)}); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	if result.Content != "已删除常驻记忆。" {
-		t.Fatalf("delete content = %q", result.Content)
+	if _, err := store.Read(ctx, resident.ActorScope(security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin})); err != resident.ErrNotFound {
+		t.Fatalf("expected empty after delete, err=%v", err)
 	}
 }
 
-func TestResidentMemoryToolSchemaDoesNotExposeIdentity(t *testing.T) {
-	schema := NewResidentMemoryTool(resident.NewStore("unused.toml")).Schema()
+func TestResidentMemoryCoreAllowsEmptyString(t *testing.T) {
+	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	coreTool := ResidentMemoryCoreTool{Store: store}
+	ctx := security.WithActor(context.Background(), security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin})
+
+	if _, err := coreTool.Call(ctx, tool.CallRequest{Arguments: raw(`{"content":"核心"}`)}); err != nil {
+		t.Fatalf("write core: %v", err)
+	}
+	if _, err := coreTool.Call(ctx, tool.CallRequest{Arguments: raw(`{"content":""}`)}); err != nil {
+		t.Fatalf("clear core: %v", err)
+	}
+	if _, err := store.Read(ctx, resident.ActorScope(security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin})); err != resident.ErrNotFound {
+		t.Fatalf("expected empty after clear, err=%v", err)
+	}
+	if _, err := coreTool.Call(ctx, tool.CallRequest{Arguments: raw(`{}`)}); err == nil {
+		t.Fatalf("expected missing content error")
+	}
+}
+
+func TestResidentMemoryToolRisksAndSchema(t *testing.T) {
+	store := resident.NewStoreWithLimits("unused.toml", resident.Limits{Core: 200, Normal: 300})
+	entry := NewResidentMemoryTool(store)
+	if entry.Info().Risk != tool.RiskLow || len(entry.Info().DependsOn) != 3 {
+		t.Fatalf("entry info = %#v", entry.Info())
+	}
+	readTool := ResidentMemoryReadTool{Store: store}
+	normalTool := ResidentMemoryNormalTool{Store: store}
+	coreTool := ResidentMemoryCoreTool{Store: store}
+	if readTool.Info().Risk != tool.RiskLow {
+		t.Fatalf("read risk not low")
+	}
+	if normalTool.Info().Risk != tool.RiskLow {
+		t.Fatalf("normal risk not low")
+	}
+	if coreTool.Info().Risk != tool.RiskHigh {
+		t.Fatalf("core risk not high")
+	}
+	schema := coreTool.Schema()
 	props, ok := schema.Function.Parameters["properties"].(map[string]any)
 	if !ok {
 		t.Fatalf("properties = %#v", schema.Function.Parameters["properties"])
@@ -134,14 +126,30 @@ func TestResidentMemoryToolSchemaDoesNotExposeIdentity(t *testing.T) {
 			t.Fatalf("schema exposes %s: %#v", name, props)
 		}
 	}
-	action, ok := props["action"].(map[string]any)
-	if !ok {
-		t.Fatalf("schema missing action: %#v", props)
+	if !strings.Contains(schema.Function.Description, "200 units") {
+		t.Fatalf("core description = %q", schema.Function.Description)
 	}
-	if description, _ := action["description"].(string); !strings.Contains(description, "append") {
-		t.Fatalf("action description does not mention append: %q", description)
+	if !strings.Contains(normalTool.Schema().Function.Description, "300 units") {
+		t.Fatalf("normal description = %q", normalTool.Schema().Function.Description)
 	}
-	if _, ok := props["content"]; !ok {
-		t.Fatalf("schema missing content: %#v", props)
+}
+
+func TestResidentMemoryValidation(t *testing.T) {
+	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	readTool := ResidentMemoryReadTool{Store: store}
+	normalTool := ResidentMemoryNormalTool{Store: store}
+	ctx := security.WithActor(context.Background(), security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin})
+
+	if _, err := readTool.Call(context.Background(), tool.CallRequest{Arguments: raw(`{"section":"all"}`)}); err == nil {
+		t.Fatalf("expected missing actor error")
+	}
+	if _, err := readTool.Call(ctx, tool.CallRequest{Arguments: raw(`{"section":"bad"}`)}); err == nil {
+		t.Fatalf("expected invalid section error")
+	}
+	if _, err := normalTool.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"append"}`)}); err == nil {
+		t.Fatalf("expected missing content error")
+	}
+	if _, err := normalTool.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"unknown"}`)}); err == nil {
+		t.Fatalf("expected invalid action error")
 	}
 }

@@ -20,11 +20,12 @@ type Runtime struct {
 }
 
 type RuntimeOptions struct {
-	ConfigDir    string
-	CronService  *elcron.Service
-	ChatHistory  storage.ChatHistoryRepository
-	SandboxRoot  string
-	FileDelivery config.FileDeliveryConfig
+	ConfigDir              string
+	CronService            *elcron.Service
+	ChatHistory            storage.ChatHistoryRepository
+	SandboxRoot            string
+	FileDelivery           config.FileDeliveryConfig
+	ResidentMemoryMaxUnits resident.Limits
 }
 
 func NewRuntime(opts RuntimeOptions) (*Runtime, error) {
@@ -32,7 +33,7 @@ func NewRuntime(opts RuntimeOptions) (*Runtime, error) {
 		return nil, fmt.Errorf("builtin runtime config dir is required")
 	}
 	registry := tool.NewRegistry()
-	residentStore := resident.NewStore(filepath.Join(opts.ConfigDir, "memories.toml"))
+	residentStore := resident.NewStoreWithLimits(filepath.Join(opts.ConfigDir, "memories.toml"), opts.ResidentMemoryMaxUnits)
 	skillManager := skill.NewManager(filepath.Join(opts.ConfigDir, "skills"), registry)
 	fileManager := NewFileManager(opts.SandboxRoot, opts.FileDelivery)
 	runtime := &Runtime{Registry: registry, ResidentMemoryStore: residentStore, SkillManager: skillManager, FileManager: fileManager}

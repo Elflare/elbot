@@ -30,6 +30,7 @@ type Config struct {
 	Context             ContextConfig             `toml:"context"`
 	Commands            CommandsConfig            `toml:"commands"`
 	Tools               ToolsConfig               `toml:"tools"`
+	ResidentMemory      ResidentMemoryConfig      `toml:"resident_memory"`
 	View                ViewConfig                `toml:"view"`
 	Security            SecurityConfig            `toml:"security"`
 	Session             SessionConfig             `toml:"session"`
@@ -125,6 +126,11 @@ type CommandsConfig struct {
 
 type ToolsConfig struct {
 	MaxRoundsPerTurn int `toml:"max_rounds_per_turn"`
+}
+
+type ResidentMemoryConfig struct {
+	CoreMaxUnits   int `toml:"core_max_units"`
+	NormalMaxUnits int `toml:"normal_max_units"`
 }
 
 type ViewConfig struct {
@@ -513,6 +519,12 @@ func (c *Config) applyAppDefaults() {
 	}
 	if c.Tools.MaxRoundsPerTurn <= 0 {
 		c.Tools.MaxRoundsPerTurn = 2
+	}
+	if c.ResidentMemory.CoreMaxUnits <= 0 {
+		c.ResidentMemory.CoreMaxUnits = 200
+	}
+	if c.ResidentMemory.NormalMaxUnits <= 0 {
+		c.ResidentMemory.NormalMaxUnits = 300
 	}
 	if c.LLMRequest.TimeoutSeconds <= 0 {
 		c.LLMRequest.TimeoutSeconds = 60

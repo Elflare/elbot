@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/pelletier/go-toml/v2"
 
@@ -17,14 +18,43 @@ import (
 	"elbot/internal/storage"
 )
 
-const DefaultMaxChars = 400
+const (
+	DefaultCoreMaxUnits   = 200
+	DefaultNormalMaxUnits = 300
+)
 
 var ErrNotFound = errors.New("resident memory not found")
+
+type Limits struct {
+	Core   int
+	Normal int
+}
+
+type Memory struct {
+	Core   string `json:"core"`
+	Normal string `json:"normal"`
+}
+
+func (m Memory) Empty() bool {
+	return strings.TrimSpace(m.Core) == "" && strings.TrimSpace(m.Normal) == ""
+}
+
+func (m Memory) Text() string {
+	parts := []string{}
+	for _, part := range []string{m.Core, m.Normal} {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			parts = append(parts, part)
+		}
+	}
+	return strings.Join(parts, " ")
+}
 
 type ResidentMemory struct {
 	Platform  string `toml:"platform"`
 	ActorID   string `toml:"actor_id"`
-	Content   string `toml:"content"`
+	Core      string `toml:"core"`
+	Normal    string `toml:"normal"`
 	CreatedAt string `toml:"created_at"`
 	UpdatedAt string `toml:"updated_at"`
 }
@@ -34,10 +64,10 @@ type tomlFile struct {
 }
 
 type Store struct {
-	Path     string
-	MaxChars int
-	mu       sync.Mutex
-	cache    storeCache
+	Path   string
+	Limits Limits
+	mu     sync.Mutex
+	cache  storeCache
 }
 
 type storeCache struct {
@@ -53,44 +83,73 @@ type fileState struct {
 }
 
 func NewStore(path string) *Store {
-	return &Store{Path: path, MaxChars: DefaultMaxChars}
+	return NewStoreWithLimits(path, Limits{})
+}
+
+func NewStoreWithLimits(path string, limits Limits) *Store {
+	return &Store{Path: path, Limits: normalizeLimits(limits)}
 }
 
 func ActorScope(actor security.Actor) session.Scope {
 	return session.Scope{ActorID: actor.ID, Platform: actor.Platform}
 }
 
-func (s *Store) Read(ctx context.Context, scope session.Scope) (string, error) {
+func (s *Store) Read(ctx context.Context, scope session.Scope) (Memory, error) {
 	if err := ctx.Err(); err != nil {
-		return "", err
+		return Memory{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	file, err := s.loadLocked()
 	if err != nil {
-		return "", err
+		return Memory{}, err
 	}
 	idx := findMemory(file.ResidentMemories, scope)
 	if idx < 0 {
-		return "", ErrNotFound
+		return Memory{}, ErrNotFound
 	}
-	return file.ResidentMemories[idx].Content, nil
+	memory := file.ResidentMemories[idx]
+	return Memory{Core: strings.TrimSpace(memory.Core), Normal: strings.TrimSpace(memory.Normal)}, nil
 }
 
-func (s *Store) Write(ctx context.Context, scope session.Scope, content string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
+func (s *Store) WriteCore(ctx context.Context, scope session.Scope, content string) error {
+	return s.update(ctx, scope, func(memory *ResidentMemory) {
+		memory.Core = strings.TrimSpace(content)
+	})
+}
+
+func (s *Store) WriteNormal(ctx context.Context, scope session.Scope, content string) error {
+	return s.update(ctx, scope, func(memory *ResidentMemory) {
+		memory.Normal = strings.TrimSpace(content)
+	})
+}
+
+func (s *Store) AppendNormal(ctx context.Context, scope session.Scope, content string) error {
 	content = strings.TrimSpace(content)
 	if content == "" {
-		return fmt.Errorf("resident memory content is required")
+		return fmt.Errorf("resident memory normal content is required")
 	}
-	maxChars := s.MaxChars
-	if maxChars <= 0 {
-		maxChars = DefaultMaxChars
-	}
-	if len([]rune(content)) > maxChars {
-		return fmt.Errorf("resident memory is too long: %d/%d chars", len([]rune(content)), maxChars)
+	return s.update(ctx, scope, func(memory *ResidentMemory) {
+		existing := strings.TrimSpace(memory.Normal)
+		if existing == "" {
+			memory.Normal = content
+		} else {
+			memory.Normal = existing + " " + content
+		}
+	})
+}
+
+func (s *Store) DeleteNormal(ctx context.Context, scope session.Scope) error {
+	return s.WriteNormal(ctx, scope, "")
+}
+
+func (s *Store) LimitsOrDefault() Limits {
+	return normalizeLimits(s.Limits)
+}
+
+func (s *Store) update(ctx context.Context, scope session.Scope, update func(*ResidentMemory)) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if err := validateScope(scope); err != nil {
 		return err
@@ -105,37 +164,65 @@ func (s *Store) Write(ctx context.Context, scope session.Scope, content string) 
 	now := storage.FormatTime(storage.Now())
 	idx := findMemory(file.ResidentMemories, scope)
 	if idx < 0 {
-		file.ResidentMemories = append(file.ResidentMemories, ResidentMemory{Platform: scope.Platform, ActorID: scope.ActorID, Content: content, CreatedAt: now, UpdatedAt: now})
+		file.ResidentMemories = append(file.ResidentMemories, ResidentMemory{Platform: scope.Platform, ActorID: scope.ActorID, CreatedAt: now})
+		idx = len(file.ResidentMemories) - 1
+	}
+	memory := file.ResidentMemories[idx]
+	update(&memory)
+	memory.Core = strings.TrimSpace(memory.Core)
+	memory.Normal = strings.TrimSpace(memory.Normal)
+	if err := s.validateMemory(memory); err != nil {
+		return err
+	}
+	if memory.Core == "" && memory.Normal == "" {
+		file.ResidentMemories = append(file.ResidentMemories[:idx], file.ResidentMemories[idx+1:]...)
 	} else {
-		file.ResidentMemories[idx].Content = content
-		file.ResidentMemories[idx].UpdatedAt = now
-		if file.ResidentMemories[idx].CreatedAt == "" {
-			file.ResidentMemories[idx].CreatedAt = now
+		memory.UpdatedAt = now
+		if memory.CreatedAt == "" {
+			memory.CreatedAt = now
 		}
+		file.ResidentMemories[idx] = memory
 	}
 	return s.saveLocked(file)
 }
 
-func (s *Store) Delete(ctx context.Context, scope session.Scope) error {
-	if err := ctx.Err(); err != nil {
-		return err
+func (s *Store) validateMemory(memory ResidentMemory) error {
+	limits := s.LimitsOrDefault()
+	if units := CountUnits(memory.Core); units > limits.Core {
+		return fmt.Errorf("resident memory core is too long: %d/%d units", units, limits.Core)
 	}
-	if err := validateScope(scope); err != nil {
-		return err
+	if units := CountUnits(memory.Normal); units > limits.Normal {
+		return fmt.Errorf("resident memory normal is too long: %d/%d units", units, limits.Normal)
 	}
+	return nil
+}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	file, err := s.loadLocked()
-	if err != nil {
-		return err
+func CountUnits(content string) int {
+	units := 0
+	inWord := false
+	for _, r := range content {
+		switch {
+		case isCJK(r):
+			units++
+			inWord = false
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			if !inWord {
+				units++
+				inWord = true
+			}
+		default:
+			inWord = false
+		}
 	}
-	idx := findMemory(file.ResidentMemories, scope)
-	if idx < 0 {
-		return ErrNotFound
-	}
-	file.ResidentMemories = append(file.ResidentMemories[:idx], file.ResidentMemories[idx+1:]...)
-	return s.saveLocked(file)
+	return units
+}
+
+func isCJK(r rune) bool {
+	return (r >= 0x3400 && r <= 0x4DBF) ||
+		(r >= 0x4E00 && r <= 0x9FFF) ||
+		(r >= 0xF900 && r <= 0xFAFF) ||
+		(r >= 0x3040 && r <= 0x30FF) ||
+		(r >= 0xAC00 && r <= 0xD7AF)
 }
 
 func (s *Store) loadLocked() (tomlFile, error) {
@@ -232,4 +319,14 @@ func validateScope(scope session.Scope) error {
 		return fmt.Errorf("resident memory actor scope is required")
 	}
 	return nil
+}
+
+func normalizeLimits(limits Limits) Limits {
+	if limits.Core <= 0 {
+		limits.Core = DefaultCoreMaxUnits
+	}
+	if limits.Normal <= 0 {
+		limits.Normal = DefaultNormalMaxUnits
+	}
+	return limits
 }

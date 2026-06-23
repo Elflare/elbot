@@ -1,5 +1,0 @@
-# Resident memory example. Keep this file empty for public defaults.
-# [[resident_memories]]
-# platform = "cli"
-# actor_id = "cli:local"
-# content = "Remember useful long-term preferences here."

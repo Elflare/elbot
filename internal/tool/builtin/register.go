@@ -22,8 +22,10 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 		return err
 	}
 	if opts.ResidentMemoryStore != nil {
-		if err := registry.Register(NewResidentMemoryTool(opts.ResidentMemoryStore)); err != nil {
-			return err
+		for _, memoryTool := range NewResidentMemoryTools(opts.ResidentMemoryStore) {
+			if err := registry.Register(memoryTool); err != nil {
+				return err
+			}
 		}
 	}
 	if longMemoryDir := opts.LongMemoryDir; longMemoryDir != "" {

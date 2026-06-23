@@ -15,8 +15,11 @@ import (
 
 func TestModuleInjectsSavedResidentMemory(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	if err := store.Write(context.Background(), residentScope("qqonebot", "qqonebot:1"), "用户喜欢简短回答。"); err != nil {
-		t.Fatalf("Write: %v", err)
+	if err := store.WriteCore(context.Background(), residentScope("qqonebot", "qqonebot:1"), "用户喜欢被称为娅娅。"); err != nil {
+		t.Fatalf("WriteCore: %v", err)
+	}
+	if err := store.WriteNormal(context.Background(), residentScope("qqonebot", "qqonebot:1"), "用户喜欢简短回答。"); err != nil {
+		t.Fatalf("WriteNormal: %v", err)
 	}
 	event := hook.Event{
 		Point:    hook.PointLLMTurnPrepared,
@@ -28,8 +31,12 @@ func TestModuleInjectsSavedResidentMemory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("inject: %v", err)
 	}
-	if got := llm.SegmentsContentText(updated.LLM.Messages[0].Segments); !strings.Contains(got, "SOUL") || !strings.Contains(got, "用户喜欢简短回答。") {
+	got := llm.SegmentsContentText(updated.LLM.Messages[0].Segments)
+	if !strings.Contains(got, "SOUL") || !strings.Contains(got, "用户喜欢被称为娅娅。 用户喜欢简短回答。") {
 		t.Fatalf("system content = %q", got)
+	}
+	if strings.Contains(got, "core") || strings.Contains(got, "normal") || strings.Contains(got, "核心") || strings.Contains(got, "普通") {
+		t.Fatalf("system content exposes memory sections = %q", got)
 	}
 }
 
