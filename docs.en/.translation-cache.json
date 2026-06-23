@@ -1,9 +1,9 @@
 {
   "files": {
     "README.zh-CN.md": {
-      "source_hash": "6f69ea5a1436a5d8d5fd2c9712c6c2c360e800c0f69277479e0d95d650aa436e",
+      "source_hash": "9316c5d17a1626acb11825ef7a899024d5fdbeb48152c9d6b02ad0deed5b49c5",
       "target": "README.md",
-      "updated_at": 1781965623
+      "updated_at": 1782205909
     },
     "docs/README.md": {
       "source_hash": "b40f5d1519dbd52e73aeee1fad99f614728052e3ae821add12de6ea4f9d69a7c",
@@ -679,6 +679,14 @@
       "translation": "** In addition to native EL Skills, ElBot is also compatible with common external Python skill structures.",
       "updated_at": 1781749522
     },
+    "README.zh-CN.md:paragraph:370c85a2d427150f9775022f40ffc3fdd03fe918b5c162e5180fcb88115d70f6": {
+      "kind": "paragraph",
+      "source": "长期记忆使用 Markdown 源数据和 SQLite FTS，兼顾透明性和检索效率。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "370c85a2d427150f9775022f40ffc3fdd03fe918b5c162e5180fcb88115d70f6",
+      "translation": "Long-term memory uses Markdown source data and SQLite FTS, balancing transparency and retrieval efficiency.\n",
+      "updated_at": 1782205909
+    },
     "README.zh-CN.md:paragraph:3994d127a7032f745b8a2ad3e41c00cef12355067b2c1313e600372029733dca": {
       "kind": "paragraph",
       "source": "目标是减少自然语言任务描述中的歧义，用更短、更稳定的结构表达输入、输出、步骤、条件和约束。",
@@ -1015,6 +1023,14 @@
       "translation": "The two modes can be configured with models independently, allowing low-cost models to handle casual chat and powerful models to focus on complex tasks.\n",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:841704ee27fb54bf0e5b022401e9109bea7b1b825c1ac07abd6b1af0087fa8d9": {
+      "kind": "paragraph",
+      "source": "**常驻记忆与长期记忆分层**： 常驻记忆只保存短小、稳定、真正需要每轮注入的信息，并在内部区分需确认修改的 core 与可整理的 normal；",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "841704ee27fb54bf0e5b022401e9109bea7b1b825c1ac07abd6b1af0087fa8d9",
+      "translation": "**Layering of resident memory and long-term memory**: Resident memory only saves short, stable information that truly needs to be injected into every round, and internally distinguishes between 'core' (requiring confirmation for modification) and 'normal' (organizable);",
+      "updated_at": 1782205909
+    },
     "README.zh-CN.md:paragraph:84a016717918133589e182198ef927755a46b9080663c97bdefc483967017651": {
       "kind": "paragraph",
       "source": "创建时自动校验 ELyph 语法，可选附带 Go 源码并编译；",
@@ -1166,6 +1182,14 @@
       "source_hash": "a9d1c30ca58e93ee99f368ede8684ad43de13c28c3f67179a758039008b6c690",
       "translation": "** ElBot has a built-in __ELBOT_CODE_0__ meta-tool, allowing LLMs to crystallize reusable experience into EL Skills.",
       "updated_at": 1781749522
+    },
+    "README.zh-CN.md:paragraph:ae06f8efb42f6986fd37876867ad012905b49d2b55e3bd9fca3aec513a859ba0": {
+      "kind": "paragraph",
+      "source": "更长、更复杂的记忆由 LLM 按需通过 __ELBOT_CODE_0__ 查询。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "ae06f8efb42f6986fd37876867ad012905b49d2b55e3bd9fca3aec513a859ba0",
+      "translation": "Longer and more complex memories are queried by the LLM on demand via __ELBOT_CODE_0__.",
+      "updated_at": 1782205909
     },
     "README.zh-CN.md:paragraph:b00812fdabf37501873f8196b9915c43dd09f61f4e0e7a29ef9f7ab09edfede0": {
       "kind": "paragraph",
