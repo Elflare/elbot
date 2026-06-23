@@ -49,22 +49,27 @@ The default process is:
 
 This mechanism can reduce invalid context overhead in ordinary tasks and also lower interference from irrelevant tools.
 
-## `@tool:` Preloading
+## Inline Preloading
 
-Users can use `@tool:<name-or-tag>` in ordinary input to specify tools or tool tags in advance.
+Users can specify the tools or Skills to be used in the current round in advance within a normal input.
+
+- `@tool:<name-or-tag>`: Pre-inject the schema of a tool or tool tag.
+- `@skill:<name>`: Add the content of the specified Skill document to the current user message and inject the runtime wrapper required by that Skill. The Skill entity itself is not a top-level tool schema.
 
 Example:
 
 ```text
 @tool:web 帮我查一下今天的新闻摘要
 @tool:files 读取这个配置并解释
+按这个技能处理文件 @skill:docx
 ```
 
-Valid commands will be stripped and persisted to the tool cache of the current Session; invalid values will be kept as ordinary text and a prompt will be shown.
+Valid commands will be stripped; Tool schemas and Skill wrappers will be persisted to the tool cache of the current Session. Invalid values will be kept as plain text and a prompt will be shown. When multiple ELyph Skills are injected simultaneously, the ELyph rule description will only be added once.
 
 ## Session
 
 A Session is the persistent session unit of ElBot. It saves:
+
 
 - Session title and mode.
 - User messages and assistant replies.
@@ -129,6 +134,8 @@ ElBot divides memory into two categories:
 | --- | --- |
 | Resident memory | Short, stable information that may be useful in every round will be injected into the Prompt. |
 | Long-term memory | Longer and more complex information, using Markdown as source data, searched on-demand via tools. |
+
+Resident memory is internally saved as two segments, core and normal: core is used for core information, and modifications require high-risk confirmation; normal is used for general information and can be appended, overwritten, or cleared. When injecting the Prompt, segment headings will not be exposed; instead, they will be merged into a single piece of natural text.
 
 Long-term memory uses Markdown files as human-readable source data and SQLite FTS as a reconstructible search index.
 

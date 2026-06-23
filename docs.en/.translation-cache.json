@@ -16,9 +16,9 @@
       "updated_at": 1782205939
     },
     "docs/concepts.md": {
-      "source_hash": "9856bbd2991e18e4702a64756021e65cafbcd3e825fa27c61dbcc218127e79d7",
+      "source_hash": "681b39fad094716a2ab7d8ed33ad8efa81cff412c55f88468f5f296e8567d0c2",
       "target": "docs.en/concepts.md",
-      "updated_at": 1782039257
+      "updated_at": 1782205988
     },
     "docs/configuration.md": {
       "source_hash": "23da18b8b148546611f13433bde762c5910d462f305adb61a512227d14c69515",
@@ -2543,6 +2543,14 @@
       "translation": "Prompt and Soul",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:heading:a367bb528991762cc6ae6d044584bb18b474d4527b8cd7686532bf34eb06a48b": {
+      "kind": "heading",
+      "source": "内联预载",
+      "source_file": "docs/concepts.md",
+      "source_hash": "a367bb528991762cc6ae6d044584bb18b474d4527b8cd7686532bf34eb06a48b",
+      "translation": "Inline Preloading",
+      "updated_at": 1782205988
+    },
     "docs/concepts.md:heading:bddc29ad011a93a6b759956ea0d2a466da6736646dab9d52091b568085c9d84c": {
       "kind": "heading",
       "source": "上下文压缩",
@@ -2847,6 +2855,14 @@
       "translation": "Context compaction checkpoint.",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:list:66dd458322c5a6fccfc333481450253fce35490ebf158a796d1848cc0333aa9d": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：提前注入工具或工具 tag 的 schema。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "66dd458322c5a6fccfc333481450253fce35490ebf158a796d1848cc0333aa9d",
+      "translation": "__ELBOT_CODE_0__: Pre-inject the schema of a tool or tool tag.",
+      "updated_at": 1782205988
+    },
     "docs/concepts.md:list:6d5a194bb4e647e499249eca6372897e3d14713a79ca63d6304091c6197428c0": {
       "kind": "list",
       "source": "用 __ELBOT_CODE_0__ 找到可 fork 的 assistant message ID。",
@@ -2918,6 +2934,14 @@
       "source_hash": "951c289f84e5b27b24292a741f9cbc00d5873730a4928d035c6a29a3b2291f06",
       "translation": "Session history.",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:list:975324ab4d286e6b083bb3053e6ffa8dc9ff5f797a1507b96041bbaf48949ce7": {
+      "kind": "list",
+      "source": "Skill 本体不是 top-level tool schema。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "975324ab4d286e6b083bb3053e6ffa8dc9ff5f797a1507b96041bbaf48949ce7",
+      "translation": "The Skill entity itself is not a top-level tool schema.",
+      "updated_at": 1782205988
     },
     "docs/concepts.md:list:9ca3756b3137c74669cc338ebae6fe372dde2b280c4bf4f6c242d947312dc12f": {
       "kind": "list",
@@ -3014,6 +3038,14 @@
       "source_hash": "bbabfa8d04a6cf8ab92aeb284818397c8b13b83ccd64e8554be179766128c2f8",
       "translation": "AgentSkill: placed in __ELBOT_CODE_0__, following or compatible with the agentskills.io style __ELBOT_CODE_1__, and __ELBOT_CODE_2__ can also be used to override the Agent-readable description;",
       "updated_at": 1781786062
+    },
+    "docs/concepts.md:list:be2027d1ee84f7071d68bfd372714088c84210ecf1a1fb2d6481cdbb602c2beb": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：把指定 Skill 文档内容加入本轮用户消息，并注入该 Skill 需要的运行 wrapper。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "be2027d1ee84f7071d68bfd372714088c84210ecf1a1fb2d6481cdbb602c2beb",
+      "translation": "__ELBOT_CODE_0__: Add the content of the specified Skill document to the current user message and inject the runtime wrapper required by that Skill.",
+      "updated_at": 1782205988
     },
     "docs/concepts.md:list:be296bb45981b5a3b534e93b86d54fa3a5d8614cc31e13b457ca0d363301cd3e": {
       "kind": "list",
@@ -3263,6 +3295,14 @@
       "translation": "ElBot distinguishes between:\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:2a9fb0af3158e0743ceaeaefde5222089ceb0644e43176c2d52bfd24fca3ffb5": {
+      "kind": "paragraph",
+      "source": "工具 schema 和 Skill wrapper 会持久化到当前 Session 的工具缓存。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "2a9fb0af3158e0743ceaeaefde5222089ceb0644e43176c2d52bfd24fca3ffb5",
+      "translation": "Tool schemas and Skill wrappers will be persisted to the tool cache of the current Session.",
+      "updated_at": 1782205988
+    },
     "docs/concepts.md:paragraph:2f5c3e0bfec728dc6fedd2e10704f6a1093976fe47f514f6be311b3c9d285010": {
       "kind": "paragraph",
       "source": "运行时可以使用 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 切换模式。\n",
@@ -3447,6 +3487,14 @@
       "translation": "Skill types:\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:7cc0ee085179b41b3f1c7a1239383154c224d55f091599c0c93076952e957db0": {
+      "kind": "paragraph",
+      "source": "常驻记忆内部保存为 core 和 normal 两段：core 用于核心信息，修改需要高风险确认；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "7cc0ee085179b41b3f1c7a1239383154c224d55f091599c0c93076952e957db0",
+      "translation": "Resident memory is internally saved as two segments, core and normal: core is used for core information, and modifications require high-risk confirmation;",
+      "updated_at": 1782205988
+    },
     "docs/concepts.md:paragraph:7e6c40c9794ac187211f3bdb67b40edf47996562b4632e0f2cb9b644361e6c21": {
       "kind": "paragraph",
       "source": "流程：\n",
@@ -3494,6 +3542,14 @@
       "source_hash": "8d8868f4841964e4aea90eb53af567667489ade4a7e2da48f9a3dbd8a04d4adf",
       "translation": "The purpose of doing this:\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:8dfd7329621fb9d11458b38782908536d2c8848b9bd39f812140109e131fe625": {
+      "kind": "paragraph",
+      "source": "用户可以在普通输入中提前指定本轮要用的工具或 Skill。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "8dfd7329621fb9d11458b38782908536d2c8848b9bd39f812140109e131fe625",
+      "translation": "Users can specify the tools or Skills to be used in the current round in advance within a normal input.\n",
+      "updated_at": 1782205988
     },
     "docs/concepts.md:paragraph:91c51d1136ba7fcfe4855cd914315a29c613b58aab7375e1802975193b910509": {
       "kind": "paragraph",
@@ -3607,6 +3663,14 @@
       "translation": "When a regular user quotes it, it will only be processed as ordinary quoted text.\n",
       "updated_at": 1782039257
     },
+    "docs/concepts.md:paragraph:c10f293d07ac3083b84f15d2ccc2de36508a9a99335aa62bbbeb8640d75d225c": {
+      "kind": "paragraph",
+      "source": "无效值会保留为普通文本并提示。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "c10f293d07ac3083b84f15d2ccc2de36508a9a99335aa62bbbeb8640d75d225c",
+      "translation": "Invalid values will be kept as plain text and a prompt will be shown.",
+      "updated_at": 1782205988
+    },
     "docs/concepts.md:paragraph:c6097edaa165e063e833bc0c310d26c83898f14e42fa47839288a89c49281128": {
       "kind": "paragraph",
       "source": "Agent Core 是 ElBot 的对话与编排中心，负责：\n",
@@ -3631,6 +3695,22 @@
       "translation": "Fork is used to create a new conversation branch from a historical assistant message.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:d676127be7402ea48121c3258eaebdd24b877db4d6bcf7ae93371b5cb456b96d": {
+      "kind": "paragraph",
+      "source": "有效指令会被剥离；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "d676127be7402ea48121c3258eaebdd24b877db4d6bcf7ae93371b5cb456b96d",
+      "translation": "Valid commands will be stripped;",
+      "updated_at": 1782205988
+    },
+    "docs/concepts.md:paragraph:e6fa4b3e4e8561b4408e3d10235ffa134cf3cfba44aa742d73a6c318a9a718c2": {
+      "kind": "paragraph",
+      "source": "注入 Prompt 时不会暴露分段标题，而是合并成一段自然文本。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "e6fa4b3e4e8561b4408e3d10235ffa134cf3cfba44aa742d73a6c318a9a718c2",
+      "translation": "When injecting the Prompt, segment headings will not be exposed; instead, they will be merged into a single piece of natural text.\n",
+      "updated_at": 1782205988
+    },
     "docs/concepts.md:paragraph:e8d962a2e596e5704aeaccf370fdfb895302d70a8975e1b6e0811c0c7769ab4b": {
       "kind": "paragraph",
       "source": "Cron 处理“按时间触发”的任务，Elnis 处理“按外部事件触发”的任务。",
@@ -3639,6 +3719,14 @@
       "translation": "Cron handles \"time-triggered\" tasks, while Elnis handles \"external event-triggered\" tasks.",
       "updated_at": 1781709276
     },
+    "docs/concepts.md:paragraph:eb28bc34b1889f07f968893640bdc245d652141617176e239f37de1fd8524508": {
+      "kind": "paragraph",
+      "source": "多个 ELyph Skill 同时注入时，ELyph 规则说明只会加入一次。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "eb28bc34b1889f07f968893640bdc245d652141617176e239f37de1fd8524508",
+      "translation": "When multiple ELyph Skills are injected simultaneously, the ELyph rule description will only be added once.\n",
+      "updated_at": 1782205988
+    },
     "docs/concepts.md:paragraph:ed9272f16a95db5abf9cd5b1bacc3e85baa2063b2488cfd3e56fc18e1261270f": {
       "kind": "paragraph",
       "source": "核心规则：\n",
@@ -3646,6 +3734,14 @@
       "source_hash": "ed9272f16a95db5abf9cd5b1bacc3e85baa2063b2488cfd3e56fc18e1261270f",
       "translation": "Core rules:\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:eea78ccedc04acb1f1261025ce39ab59e300cbfb94a41e39046d907e1d4dca34": {
+      "kind": "paragraph",
+      "source": "normal 用于普通信息，可追加、覆盖或清空。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "eea78ccedc04acb1f1261025ce39ab59e300cbfb94a41e39046d907e1d4dca34",
+      "translation": "normal is used for general information and can be appended, overwritten, or cleared.",
+      "updated_at": 1782205988
     },
     "docs/concepts.md:paragraph:ef0042c9b2a0794284af7d02eb33592633dc63c6625e47cddc55a0bcc2af7f4d": {
       "kind": "paragraph",
