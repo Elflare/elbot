@@ -578,6 +578,8 @@ func (s *Service) handleNamingFailure(ctx context.Context, session *storage.Sess
 	if shouldFallback {
 		event.FallbackTitle = fallbackTitle(messages)
 		event.FallbackApplied = event.FallbackTitle != ""
+		// 手动命名后应避免后台自动命名覆盖。
+		s.markNamingDone(session.ID)
 	}
 	s.notifyNamingFailed(ctx, event)
 	if !shouldFallback {
@@ -592,8 +594,6 @@ func (s *Service) handleNamingFailure(ctx context.Context, session *storage.Sess
 			return
 		}
 	}
-	// TODO: 后续添加 /rename <title> 命令；手动命名后应避免后台自动命名覆盖。
-	s.markNamingDone(session.ID)
 }
 
 func (s *Service) notifyNamingScheduled(ctx context.Context, event NamingScheduledEvent) {
