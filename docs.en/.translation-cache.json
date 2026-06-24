@@ -31,14 +31,14 @@
       "updated_at": 1782270515
     },
     "docs/elnis-usage.md": {
-      "source_hash": "44ce1a506eb2b3bbb56e1f5fb0a2db765de12756ce8aa9a7db42f56fd652166b",
+      "source_hash": "22bb51d0de15eb569820fa2b7027a12907eba6587ad87ef6b3ab1447d6ab503e",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1782270516
+      "updated_at": 1782289606
     },
     "docs/elnis.md": {
-      "source_hash": "b542deeecb1f600c997e482baedad0a3ff6e9ffa06150a209ca0bab351fbfe52",
+      "source_hash": "52e93376c5239090db3a2c6cb63b274561c2cc3ac0ebfd9f3eeddb3f84abd229",
       "target": "docs.en/elnis.md",
-      "updated_at": 1782270517
+      "updated_at": 1782288638
     },
     "docs/elyph.md": {
       "source_hash": "1143022b6f7a7792b0f1aa8118af618014b6ac359776d6a7cd21cc484f28a6bc",
@@ -7371,6 +7371,14 @@
       "source_hash": "b3a11302390f0fe1b098f268e2c006c8c6fcfd2397c7cf6a18dae3609c3980c5",
       "translation": "During __ELBOT_CODE_0__, Elnis will send __ELBOT_CODE_1__ according to the adjudicated target.\n",
       "updated_at": 1781710746
+    },
+    "docs/elnis.md:paragraph:b6a7786f7bade05cc424e23f71fbffde88e8dd767455f668ea54c1aa0fb87d08": {
+      "kind": "paragraph",
+      "source": "如需参考现成的 Elwisp 示例、协议文档和模板，可查看 [Elwisp Showcase](https://github.com/Elfreese/elwisp-showcase)。\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "b6a7786f7bade05cc424e23f71fbffde88e8dd767455f668ea54c1aa0fb87d08",
+      "translation": "For ready-made Elwisp examples, protocol documentation, and templates, please refer to [Elwisp Showcase](https://github.com/Elfreese/elwisp-showcase).\n",
+      "updated_at": 1782288638
     },
     "docs/elnis.md:paragraph:be686882804206dc8baf58a45f5512013a83eea607a21bba995c1a01103817ee": {
       "kind": "paragraph",
