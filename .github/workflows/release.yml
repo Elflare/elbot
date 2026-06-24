@@ -83,11 +83,20 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          merge-multiple: true
 
       - name: Collect assets
         run: |
           mkdir -p release-assets
-          find dist -type f \( -name '*.tar.gz' -o -name '*.zip' \) -exec cp {} release-assets/ \;
+          echo "--- dist contents ---"
+          ls -la dist 2>/dev/null || echo "(dist missing)"
+          find dist -type f \( -name '*.tar.gz' -o -name '*.zip' \) -exec cp {} release-assets/ \; 2>/dev/null || true
+          echo "--- release-assets contents ---"
+          ls -la release-assets
+          if [ -z "$(ls -A release-assets 2>/dev/null)" ]; then
+            echo "ERROR: no artifacts found in dist" >&2
+            exit 1
+          fi
 
       - name: Generate checksums
         run: |
