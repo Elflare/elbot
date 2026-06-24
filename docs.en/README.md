@@ -19,6 +19,7 @@ This is the user-facing ElBot documentation. Development plans, task breakdowns,
 - `docs/` contains user documentation, avoiding the inclusion of development task logs.
 - `devdocs/` contains development plans, task breakdowns, architecture drafts, and interface drafts.
 - When adding user-visible features, prioritize updating the corresponding topic documentation instead of stuffing all details into the README.
+- `CHANGELOG.md` is the Chinese source file, and `CHANGELOG.en.md` is automatically translated by GitHub Actions; do not edit it manually; Using versions (tags) as nodes, regular changes should be written into `## [Unreleased]`; when releasing, change it to `## [vX.Y.Z] - YYYY-MM-DD` and create a new empty Unreleased.
 
 ## Current Status
 

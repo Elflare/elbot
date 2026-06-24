@@ -11,9 +11,9 @@
       "updated_at": 1782270512
     },
     "docs/README.md": {
-      "source_hash": "b40f5d1519dbd52e73aeee1fad99f614728052e3ae821add12de6ea4f9d69a7c",
+      "source_hash": "f8f61f06e99034edbc0f88b640920f5ecd10b765a2d4714e1c0ccbe977e7cee4",
       "target": "docs.en/README.md",
-      "updated_at": 1782270513
+      "updated_at": 1782298662
     },
     "docs/commands.md": {
       "source_hash": "da88effce2439eca033f3cef874bd6e034fdcec15d1376bdbcb576491b8f38bf",
@@ -1708,6 +1708,14 @@
       "translation": "[Command Cheat Sheet](commands.md): View common slash commands and Session management methods.",
       "updated_at": 1781513067
     },
+    "docs/README.md:list:3e17b235a2be478b21e7c5ed0c0a7b830cecd1e686205ea1f09bb2bc3afdba80": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 为中文源文件，__ELBOT_CODE_1__ 由 GitHub Actions 自动翻译，请勿手改；",
+      "source_file": "docs/README.md",
+      "source_hash": "3e17b235a2be478b21e7c5ed0c0a7b830cecd1e686205ea1f09bb2bc3afdba80",
+      "translation": "__ELBOT_CODE_0__ is the Chinese source file, and __ELBOT_CODE_1__ is automatically translated by GitHub Actions; do not edit it manually;",
+      "updated_at": 1782298662
+    },
     "docs/README.md:list:4fa3148d2e12ea4a699a24a6f81fe0a78efa8110dbcf583995d8273b16a21bb8": {
       "kind": "list",
       "source": "新增用户可见功能时，优先更新对应专题文档，而不是把细节全部塞进 README。",
@@ -1723,6 +1731,14 @@
       "source_hash": "676cf7b537a528e8e0ec9bc31620a6db216298e58571b5f4b350a181b7bd9617",
       "translation": "__ELBOT_CODE_0__ contains user documentation, avoiding the inclusion of development task logs.",
       "updated_at": 1781513067
+    },
+    "docs/README.md:list:6e38716289e341fef6345a2dc8255855033d895c2798f65d2b4ebb06e0738fa0": {
+      "kind": "list",
+      "source": "以版本（tag）为节点，平时改动写进 __ELBOT_CODE_0__，发版时将其改为 __ELBOT_CODE_1__ 并新建空 Unreleased。",
+      "source_file": "docs/README.md",
+      "source_hash": "6e38716289e341fef6345a2dc8255855033d895c2798f65d2b4ebb06e0738fa0",
+      "translation": "Using versions (tags) as nodes, regular changes should be written into __ELBOT_CODE_0__; when releasing, change it to __ELBOT_CODE_1__ and create a new empty Unreleased.",
+      "updated_at": 1782298662
     },
     "docs/README.md:list:b458ca24b5d56f6ca819edecdeb2187c244d62e454f97d58ee1dab9466165afe": {
       "kind": "list",
