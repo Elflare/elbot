@@ -233,7 +233,7 @@ func TestEditFileToolReplaceMatchRequiresUniqueMatch(t *testing.T) {
 		}},
 	})
 	_, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "matched multiple locations") {
+	if err == nil || !strings.Contains(err.Error(), "matched multiple locations") && !strings.Contains(err.Error(), "matched 2 locations") {
 		t.Fatalf("expected duplicate match error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
@@ -532,5 +532,187 @@ func TestFileToolsHaveFilesAndAgentTags(t *testing.T) {
 	}
 	if got := strings.Join(NewEditFileTool().Info().Tags, ","); got != "files,agent" {
 		t.Fatalf("edit_file tags = %q", got)
+	}
+}
+
+func TestEditFileToolLineModeReplacePrefix(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation":   "replace_match",
+			"match_mode":  "line",
+			"old_content": "be",
+			"content":     "BETA",
+		}},
+	})
+	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != "alpha\nBETA\ngamma\n" {
+		t.Fatalf("file content = %q", got)
+	}
+}
+
+func TestEditFileToolLineModeToleratesIndent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	original := "func main() {\n\tbeta := 1\n\tgamma := 2\n}\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation":   "replace_match",
+			"match_mode":  "line",
+			"old_content": "beta",
+			"content":     "\tbeta := 10",
+		}},
+	})
+	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != "func main() {\n\tbeta := 10\n\tgamma := 2\n}\n" {
+		t.Fatalf("file content = %q", got)
+	}
+}
+
+func TestEditFileToolLineModeMultiLineContentExpand(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation":   "replace_match",
+			"match_mode":  "line",
+			"old_content": "beta",
+			"content":     "BETA1\nBETA2",
+		}},
+	})
+	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != "alpha\nBETA1\nBETA2\ngamma\n" {
+		t.Fatalf("file content = %q", got)
+	}
+}
+
+func TestEditFileToolLineModeMultipleMatchesWithIndex(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\nbeta\nbeta\ngamma\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation":   "replace_match",
+			"match_mode":  "line",
+			"old_content": "beta",
+			"content":     "BETA",
+			"index":       2,
+		}},
+	})
+	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != "alpha\nbeta\nBETA\ngamma\n" {
+		t.Fatalf("file content = %q", got)
+	}
+}
+
+func TestEditFileToolLineModeMultipleMatchesNoIndexError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	original := "alpha\nbeta\nbeta\ngamma\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation":   "replace_match",
+			"match_mode":  "line",
+			"old_content": "beta",
+			"content":     "BETA",
+		}},
+	})
+	_, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "matched 2 locations") {
+		t.Fatalf("expected matched 2 locations error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "#1") || !strings.Contains(err.Error(), "#2") {
+		t.Fatalf("expected index hints in error, got %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != original {
+		t.Fatalf("file changed to %q", string(content))
+	}
+}
+
+func TestEditFileToolLineModeDeleteAndInsert(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\ngamma\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{
+			{"operation": "insert_before_match", "match_mode": "line", "anchor": "ga", "content": "beta"},
+			{"operation": "insert_after_match", "match_mode": "line", "anchor": "ga", "content": "delta"},
+		},
+	})
+	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != "alpha\nbeta\ngamma\ndelta\n" {
+		t.Fatalf("file content = %q", got)
+	}
+}
+
+func TestEditFileToolLineModeNeedleWithNewlineFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	original := "alpha\nbeta\ngamma\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation":   "replace_match",
+			"match_mode":  "line",
+			"old_content": "beta\ngamma",
+			"content":     "X",
+		}},
+	})
+	_, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "single-line prefix") {
+		t.Fatalf("expected single-line prefix error, got %v", err)
 	}
 }

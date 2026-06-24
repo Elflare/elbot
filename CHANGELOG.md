@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - LLM 建连/HTTP 可重试失败时通过 Notice 显示当前重试次数。
 - `finalize_el_skill` 工具风险等级由 high 降为 medium。
+- `edit_file` 的 `*_match` 操作新增 `match_mode` 与 `index` 参数：`match_mode=line` 时按单行前缀匹配整行（容忍行首缩进，规避换行符匹配出错），`content`（默认）保持精确子串语义；多处匹配时可通过 `index` 选择第几处，未传 `index` 报错并列出所有匹配位置。
 
 ## [v0.1.0-alpha] - 2026-06-24
 

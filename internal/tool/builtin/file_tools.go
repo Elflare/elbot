@@ -89,6 +89,8 @@ type editOperation struct {
 	ExpectedContent *string    `json:"expected_content"`
 	OldContent      string     `json:"old_content"`
 	Anchor          string     `json:"anchor"`
+	MatchMode       string     `json:"match_mode"`
+	Index           *int       `json:"index"`
 }
 
 func (e editOperation) fileops() fileops.Edit {
@@ -100,6 +102,8 @@ func (e editOperation) fileops() fileops.Edit {
 		ExpectedContent: e.ExpectedContent,
 		OldContent:      e.OldContent,
 		Anchor:          e.Anchor,
+		MatchMode:       e.MatchMode,
+		Index:           e.Index,
 	}
 }
 
@@ -255,10 +259,12 @@ func editFileBuilder() *tool.Builder {
 		"operation":        map[string]any{"type": "string", "description": "编辑操作：replace、delete、insert_line_before、insert_line_after、prepend、append、replace_match、delete_match、insert_before_match、insert_after_match。edits 按顺序应用，后一步基于前一步结果；工具不会重排序或补偿行号。"},
 		"start_line":       map[string]any{"type": "integer", "description": "行号操作的起始行号，1-based。"},
 		"end_line":         map[string]any{"type": "string", "description": "行号 replace/delete 的结束行号，1-based 且包含该行；也可传 end；默认等于 start_line。"},
-		"content":          map[string]any{"type": "string", "description": "replace/insert 写入的文本；delete/delete_match 会忽略该字段。insert_line_before/insert_line_after/prepend/append 会按整行插入，自动补末尾换行。"},
+		"content":          map[string]any{"type": "string", "description": "replace/insert 写入的文本；delete/delete_match 忽略此字段。insert_line_*、prepend、append 及 line 模式 insert_*_match 按整行插入并自动补换行，无需自加换行符；content 模式 insert_*_match 为字面插入，不自动加换行符。"},
 		"expected_content": map[string]any{"type": "string", "description": "replace/delete 前校验目标行范围原始文本；换行符按 \\n 规范化比较，用于防止行号漂移误改；不需要校验时请省略该字段，不要传空字符串。"},
-		"old_content":      map[string]any{"type": "string", "description": "replace_match/delete_match 要唯一匹配的原始文本；找不到或多处匹配都会失败。"},
-		"anchor":           map[string]any{"type": "string", "description": "insert_before_match/insert_after_match 要唯一匹配的锚点文本；找不到或多处匹配都会失败。"},
+		"old_content":      map[string]any{"type": "string", "description": "replace_match/delete_match 的匹配文本。match_mode=content（默认）时为精确子串，写多少匹配/替换多少；match_mode=line 时为单行前缀，匹配并操作整行，无需写完整行内容。"},
+		"anchor":           map[string]any{"type": "string", "description": "insert_before_match/insert_after_match 的匹配文本，语义同 old_content，受 match_mode 控制。"},
+		"match_mode":       map[string]any{"type": "string", "enum": []string{"content", "line"}, "description": "*_match 的匹配方式。content（默认）：精确子串，写多少替换多少，insert 为字面插入不自动加换行符。line：单行前缀匹配整行，容忍行首缩进，needle 不得含换行；操作整行，insert 按整行插入自动补换行，content 可多行展开。仅对 *_match 操作有效。"},
+		"index":            map[string]any{"type": "integer", "description": "当 old_content/anchor 匹配到多处时，用 index 选择第几处，1-based。默认不填：唯一匹配时直接命中，多处匹配时报错并列出所有匹配位置供你更精准匹配或传入 index。仅对 *_match 操作有效。"},
 	}
 	return tool.NewBuilder("edit_file").
 		Description("批量编辑文本文件；使用 edits 一次提交多个修改，支持多种方式；成功后返回 unified diff。任一 edit 失败则不写文件。").

@@ -179,7 +179,7 @@
 - `internal/tool/builtin/env.go`：内置工具环境变量读取 helper；优先读 OS env，缺失时读取配置目录 `.env`，用于 Tavily/Jina API key。
 - `internal/tool/builtin/web_search.go`：Tavily 搜索工具；返回 answer、来源链接和摘要，并依赖 `web_extract`，用户侧 tag 为 `web`。
 - `internal/tool/builtin/web_extract.go`：Jina Reader/标准库网页提取工具；支持代理、分段读取和进程内缓存，用户侧 tag 为 `web`。
-- `internal/tool/builtin/file_tools.go`：文件读写工具包装层；`read_file` 返回带行号文本和文件哈希，支持 grep 子串搜索；`edit_file` 支持行编辑、match/anchor、创建新文件和 unified diff；底层读写编辑能力来自 `internal/utils/fileops`。
+- `internal/tool/builtin/file_tools.go`：文件读写工具包装层；`read_file` 返回带行号文本和文件哈希，支持 grep 子串搜索；`edit_file` 支持行编辑、match/anchor（`match_mode` 区分 content 精确子串与 line 行前缀整行，`index` 选择多处匹配）、创建新文件和 unified diff；底层读写编辑能力来自 `internal/utils/fileops`。
 - `internal/tool/builtin/elwisp_creator.go`：内置 Elwisp 创建指南工具；无参数返回配置感知的精简 Elnis/Elvena/ELyph 任务卡，提示 LLM 创建 Elwisp 所需协议、约束和配置注意事项，并依赖 read_file/edit_file/shell。
 - `internal/tool/builtin/shell.go`：内置 shell 工具；接口保留通用 `cmd`，可执行任意 shell 命令，用户侧 tag 为 `agent`，调用前通过风险评估与高风险确认流程拦截；后台 sandbox context 下会创建目录并把 shell cwd 固定到 sandbox。
 
@@ -200,7 +200,7 @@
 - `internal/tool/skill/runner.go`：隐藏包装工具实现；`python_skill_run` 固定在 AgentSkill 目录用 `uv run python` 执行附带 Python 脚本，`go_skill_run` 选择 Go skill binary 并把必填 `payload` 对象 JSON 写入 stdin；执行错误会区分启动/超时/进程失败并回传 stdout/stderr，风险按目标 skill 的 `risk` 评估。
 
 
-- `internal/utils/fileops/`：公共文本文件辅助包；提供编码识别、文本读写、行编辑、match/anchor 编辑、diff、sha256 和原子写入，供文件工具和 skill 维护工具复用。
+- `internal/utils/fileops/`：公共文本文件辅助包；提供编码识别、文本读写、行编辑、match/anchor 编辑（content 精确子串与 line 行前缀两种模式，支持 index 选择多处匹配）、diff、sha256 和原子写入，供文件工具和 skill 维护工具复用。
 
 
 ### Tool 约定

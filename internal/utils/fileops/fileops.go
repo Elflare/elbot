@@ -19,6 +19,10 @@ const (
 	DefaultReadLineLimit = 200
 	MaxFileSize          = 2 * 1024 * 1024
 	maxDiffCells         = 2_000_000
+	matchModeContent     = "content"
+	matchModeLine        = "line"
+	matchPreviewLimit    = 5
+	matchPreviewWidth    = 40
 )
 
 type LineNumber struct {
@@ -44,6 +48,8 @@ type Edit struct {
 	ExpectedContent *string
 	OldContent      string
 	Anchor          string
+	MatchMode       string
+	Index           *int
 }
 
 type EditResult struct {
@@ -315,32 +321,222 @@ func applyEdit(text string, edit Edit) (string, error) {
 		if strings.TrimSpace(edit.Anchor) != "" {
 			return "", fmt.Errorf("operation %q uses line numbers, not anchor; did you mean replace_match, delete_match, insert_before_match or insert_after_match?", edit.Operation)
 		}
+		if strings.TrimSpace(edit.MatchMode) != "" && !isMatchMode(edit.MatchMode) {
+			return "", fmt.Errorf("operation %q does not support match_mode", edit.Operation)
+		}
+		if edit.Index != nil {
+			return "", fmt.Errorf("operation %q does not support index", edit.Operation)
+		}
 		return applyLineEdit(text, edit)
-	case "replace_match":
-		start, end, err := findUniqueMatch(text, edit.OldContent, "old_content")
-		if err != nil {
-			return "", err
-		}
-		return text[:start] + NormalizeEditText(edit.Content) + text[end:], nil
-	case "delete_match":
-		start, end, err := findUniqueMatch(text, edit.OldContent, "old_content")
-		if err != nil {
-			return "", err
-		}
-		return text[:start] + text[end:], nil
-	case "insert_before_match", "insert_after_match":
-		start, end, err := findUniqueMatch(text, edit.Anchor, "anchor")
-		if err != nil {
-			return "", err
-		}
-		index := start
-		if operation == "insert_after_match" {
-			index = end
-		}
-		return text[:index] + NormalizeEditText(edit.Content) + text[index:], nil
+	case "replace_match", "delete_match", "insert_before_match", "insert_after_match":
+		return applyMatchEdit(text, edit)
 	default:
 		return "", fmt.Errorf("unsupported operation %q", edit.Operation)
 	}
+}
+
+func applyMatchEdit(text string, edit Edit) (string, error) {
+	operation := strings.ToLower(strings.TrimSpace(edit.Operation))
+	mode := strings.ToLower(strings.TrimSpace(edit.MatchMode))
+	if mode == "" {
+		mode = matchModeContent
+	}
+	if mode != matchModeContent && mode != matchModeLine {
+		return "", fmt.Errorf("match_mode must be %q or %q", matchModeContent, matchModeLine)
+	}
+	if mode == matchModeLine {
+		return applyLineMatchEdit(text, edit, operation)
+	}
+	return applyContentMatchEdit(text, edit, operation)
+}
+
+func applyContentMatchEdit(text string, edit Edit, operation string) (string, error) {
+	needle, label := matchNeedle(edit, operation)
+	matches := findContentMatches(text, needle)
+	loc, err := selectMatch(matches, edit.Index, label)
+	if err != nil {
+		return "", err
+	}
+	switch operation {
+	case "replace_match":
+		return text[:loc.byteStart] + NormalizeEditText(edit.Content) + text[loc.byteEnd:], nil
+	case "delete_match":
+		return text[:loc.byteStart] + text[loc.byteEnd:], nil
+	case "insert_before_match", "insert_after_match":
+		index := loc.byteStart
+		if operation == "insert_after_match" {
+			index = loc.byteEnd
+		}
+		return text[:index] + NormalizeEditText(edit.Content) + text[index:], nil
+	}
+	return "", fmt.Errorf("unsupported operation %q", operation)
+}
+
+func applyLineMatchEdit(text string, edit Edit, operation string) (string, error) {
+	needle, label := matchNeedle(edit, operation)
+	needleNorm := NormalizeEditText(needle)
+	if needleNorm == "" {
+		return "", fmt.Errorf("%s is required", label)
+	}
+	if strings.Contains(needleNorm, "\n") {
+		return "", fmt.Errorf("%s in line mode must be a single-line prefix; for multi-line matches use content mode", label)
+	}
+	lines := SplitLines(text)
+	endsNewline := strings.HasSuffix(text, "\n")
+	matches := findLineMatches(lines, needleNorm)
+	loc, err := selectMatch(matches, edit.Index, label)
+	if err != nil {
+		return "", err
+	}
+	targetLine := loc.startLine
+	switch operation {
+	case "replace_match":
+		contentLines := SplitLines(edit.Content)
+		out := append([]string{}, lines...)
+		out = ReplaceLines(out, targetLine, targetLine, contentLines)
+		return JoinLines(out, "\n", endsNewline), nil
+	case "delete_match":
+		out := append([]string{}, lines...)
+		out = ReplaceLines(out, targetLine, targetLine, nil)
+		return JoinLines(out, "\n", endsNewline), nil
+	case "insert_before_match", "insert_after_match":
+		lineContentLines := SplitLines(EnsureTrailingNewline(edit.Content))
+		out := append([]string{}, lines...)
+		index := targetLine - 1
+		if operation == "insert_after_match" {
+			index = targetLine
+		}
+		out = append(out[:index], append(lineContentLines, out[index:]...)...)
+		return JoinLines(out, "\n", endsNewline || len(lineContentLines) > 0), nil
+	}
+	return "", fmt.Errorf("unsupported operation %q", operation)
+}
+
+func isMatchMode(mode string) bool {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	return mode == matchModeContent || mode == matchModeLine
+}
+
+func matchNeedle(edit Edit, operation string) (string, string) {
+	if operation == "insert_before_match" || operation == "insert_after_match" {
+		return edit.Anchor, "anchor"
+	}
+	return edit.OldContent, "old_content"
+}
+
+type matchLocation struct {
+	byteStart int
+	byteEnd   int
+	startLine int
+	endLine   int
+	preview   string
+}
+
+func findContentMatches(text, needle string) []matchLocation {
+	needleNorm := NormalizeEditText(needle)
+	if needleNorm == "" {
+		return nil
+	}
+	var locations []matchLocation
+	offset := 0
+	for {
+		idx := strings.Index(text[offset:], needleNorm)
+		if idx < 0 {
+			break
+		}
+		start := offset + idx
+		end := start + len(needleNorm)
+		locations = append(locations, matchLocation{
+			byteStart: start,
+			byteEnd:   end,
+			startLine: byteOffsetToLine(text, start),
+			endLine:   byteOffsetToLine(text, end-1),
+			preview:   matchPreview(text, start, end),
+		})
+		offset = end
+	}
+	return locations
+}
+
+func findLineMatches(lines []string, needle string) []matchLocation {
+	var locations []matchLocation
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimLeft(line, " \t"), needle) {
+			locations = append(locations, matchLocation{
+				startLine: i + 1,
+				endLine:   i + 1,
+				preview:   truncateLine(strings.TrimLeft(line, " \t")),
+			})
+		}
+	}
+	return locations
+}
+
+func selectMatch(locations []matchLocation, index *int, label string) (matchLocation, error) {
+	n := len(locations)
+	if n == 0 {
+		return matchLocation{}, fmt.Errorf("%s not found", label)
+	}
+	if n == 1 {
+		return locations[0], nil
+	}
+	if index == nil {
+		return matchLocation{}, fmt.Errorf("%s matched %d locations; provide longer %s or pass index:\n%s", label, n, label, formatMatchLocations(locations))
+	}
+	i := *index
+	if i < 1 || i > n {
+		return matchLocation{}, fmt.Errorf("index %d out of range: %d %s found, use 1-%d", i, n, label, n)
+	}
+	return locations[i-1], nil
+}
+
+func formatMatchLocations(locations []matchLocation) string {
+	var b strings.Builder
+	limit := len(locations)
+	if limit > matchPreviewLimit {
+		limit = matchPreviewLimit
+	}
+	for i := 0; i < limit; i++ {
+		loc := locations[i]
+		fmt.Fprintf(&b, "  #%d %s %q\n", i+1, formatLineRange(loc), loc.preview)
+	}
+	if len(locations) > limit {
+		fmt.Fprintf(&b, "  ...and %d more\n", len(locations)-limit)
+	}
+	return b.String()
+}
+
+func formatLineRange(loc matchLocation) string {
+	if loc.startLine == loc.endLine {
+		return fmt.Sprintf("L%d", loc.startLine)
+	}
+	return fmt.Sprintf("L%d-%d", loc.startLine, loc.endLine)
+}
+
+func byteOffsetToLine(text string, offset int) int {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(text) {
+		offset = len(text)
+	}
+	return strings.Count(text[:offset], "\n") + 1
+}
+
+func matchPreview(text string, start, end int) string {
+	lineStart := start
+	for lineStart > 0 && text[lineStart-1] != '\n' {
+		lineStart--
+	}
+	return truncateLine(text[lineStart:end])
+}
+
+func truncateLine(s string) string {
+	s = strings.ReplaceAll(s, "\n", "\\n")
+	if len(s) > matchPreviewWidth {
+		return s[:matchPreviewWidth] + "..."
+	}
+	return s
 }
 
 func applyLineEdit(text string, edit Edit) (string, error) {
@@ -406,21 +602,6 @@ func validateExpectedContent(lines []string, start, end int, expected *string) e
 		return fmt.Errorf("target content mismatch at lines %d-%d", start, end)
 	}
 	return nil
-}
-
-func findUniqueMatch(text, rawNeedle, label string) (int, int, error) {
-	needle := NormalizeEditText(rawNeedle)
-	if needle == "" {
-		return 0, 0, fmt.Errorf("%s is required", label)
-	}
-	first := strings.Index(text, needle)
-	if first < 0 {
-		return 0, 0, fmt.Errorf("%s not found", label)
-	}
-	if next := strings.Index(text[first+len(needle):], needle); next >= 0 {
-		return 0, 0, fmt.Errorf("%s matched multiple locations; provide longer %s", label, label)
-	}
-	return first, first + len(needle), nil
 }
 
 func EnsureTrailingNewline(text string) string {
