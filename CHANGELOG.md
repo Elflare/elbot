@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `finalize_el_skill` 工具风险等级由 high 降为 medium。
+
 ## [v0.1.0-alpha] - 2026-06-24
 
 ElBot 的首个预发布版本。轻量 Agent/Chatbot 框架，目标是个人助手、平台机器人与可编排的自动化助手。
