@@ -25,10 +25,18 @@ const (
 	defaultRetryDelay     = 2 * time.Second
 )
 
+type RetryEvent struct {
+	Attempt    int
+	MaxRetries int
+	Delay      time.Duration
+	Err        error
+}
+
 type RequestOptions struct {
 	Timeout           time.Duration
 	MaxRetries        int
 	RetryInitialDelay time.Duration
+	OnRetry           func(context.Context, RetryEvent)
 }
 
 func (o RequestOptions) withDefaults() RequestOptions {
@@ -53,6 +61,7 @@ type Adapter struct {
 	client             *http.Client
 	maxRetries         int
 	retryInitialDelay  time.Duration
+	onRetry            func(context.Context, RetryEvent)
 
 	logger         *slog.Logger
 	loggedSystemMu sync.Mutex
@@ -79,12 +88,17 @@ func NewWithOptions(baseURL, apiKey string, extraPayload map[string]any, modelEx
 		client:             &http.Client{Timeout: opts.Timeout},
 		maxRetries:         opts.MaxRetries,
 		retryInitialDelay:  opts.RetryInitialDelay,
+		onRetry:            opts.OnRetry,
 		loggedSystem:       map[string]bool{},
 	}
 }
 
 func (a *Adapter) SetLogger(logger *slog.Logger) {
 	a.logger = logger
+}
+
+func (a *Adapter) SetRetryNotifier(onRetry func(context.Context, RetryEvent)) {
+	a.onRetry = onRetry
 }
 
 func (a *Adapter) endpoint() string {
@@ -189,7 +203,11 @@ func (a *Adapter) doWithRetry(ctx context.Context, newRequest func(context.Conte
 		if attempt == a.maxRetries {
 			return nil, lastErr
 		}
-		if err := waitRetryDelay(ctx, retryDelay(a.retryInitialDelay, attempt)); err != nil {
+		delay := retryDelay(a.retryInitialDelay, attempt)
+		if a.onRetry != nil {
+			a.onRetry(ctx, RetryEvent{Attempt: attempt + 1, MaxRetries: a.maxRetries, Delay: delay, Err: lastErr})
+		}
+		if err := waitRetryDelay(ctx, delay); err != nil {
 			return nil, err
 		}
 	}
@@ -622,6 +640,7 @@ func (a *Adapter) readStream(ctx context.Context, body io.ReadCloser, ch chan<- 
 
 	scanner := bufio.NewScanner(body)
 	accums := map[int]*accumToolCall{}
+	seenDone := false
 
 	for scanner.Scan() {
 		select {
@@ -639,6 +658,7 @@ func (a *Adapter) readStream(ctx context.Context, body io.ReadCloser, ch chan<- 
 
 		// Check for stream end.
 		if line == "data: [DONE]" {
+			seenDone = true
 			return
 		}
 
@@ -712,6 +732,10 @@ func (a *Adapter) readStream(ctx context.Context, body io.ReadCloser, ch chan<- 
 
 	if err := scanner.Err(); err != nil {
 		ch <- llm.StreamChunk{Error: fmt.Errorf("read stream: %w", err)}
+		return
+	}
+	if !seenDone {
+		ch <- llm.StreamChunk{Error: fmt.Errorf("read stream: %w", io.ErrUnexpectedEOF)}
 	}
 }
 

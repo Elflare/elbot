@@ -281,7 +281,7 @@ func TestHandleMessageSendsLLMErrorToPlatform(t *testing.T) {
 		t.Fatalf("HandleMessage err = %v", err)
 	}
 	got := p.out.String()
-	if !strings.Contains(got, "请求失败：") || !strings.Contains(got, "fake stream error") {
+	if !strings.Contains(got, "LLM 响应中断：") || !strings.Contains(got, "fake stream error") {
 		t.Fatalf("platform output missing error: %q", got)
 	}
 }

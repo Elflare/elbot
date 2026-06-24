@@ -79,8 +79,9 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 			}
 			a.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", chunk.Error.Error())
 			a.notifyHookError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, RawText: assistant.String(), Text: assistant.String(), ToolCalls: toolCalls, Usage: usage, ElapsedMS: elapsedMillis(startedAt)}}, chunk.Error)
+			out.SendNotice(ctx, fmt.Sprintf("LLM 响应中断：%v", chunk.Error))
 
-			return llmCallResult{}, latestUserContent, fmt.Errorf("chat stream: %w", chunk.Error)
+			return llmCallResult{}, latestUserContent, markUserNotified(fmt.Errorf("chat stream: %w", chunk.Error))
 		}
 		if chunk.Usage != nil {
 			usage = chunk.Usage

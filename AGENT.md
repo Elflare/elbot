@@ -46,7 +46,8 @@
 
 - `internal/agent/chat.go`：普通对话主流程；加载上下文、构建 Prompt、驱动 LLM/工具循环；user 与已完成工具 transcript 会阶段性落库，最终平台输出先跑 `agent.turn.output.prepared`，流式输出用最终文本 replace，正常完成后保存最终 assistant。
 - `internal/agent/hooks.go`：Agent Hook 与输出接入；生成事件上下文，运行 Hook，提供 assistant 输出预处理，并把 Hook/工具输出意图交给 Output Manager 发送。
-- `internal/agent/chat_llm.go`：LLM 调用与消息转换辅助；处理 Hook 后请求、流式响应、多模态转换、reasoning/usage/runtime 日志；流式最终 replace 由对话主流程在输出 Hook 后完成。
+- `internal/agent/chat_llm.go`：LLM 调用与消息转换辅助；处理 Hook 后请求、流式响应错误通知、多模态转换、reasoning/usage/runtime 日志；流式最终 replace 由对话主流程在输出 Hook 后完成。
+- `internal/agent/turn_output.go`：Agent turn 输出适配；区分前台/后台的流式输出、中间输出、Notice、reasoning 和 runtime status 发布。
 - `internal/agent/chat_tools.go`：工具执行与确认辅助；处理工具调用、风险确认、transcript、工具调用记录和 schema 注入。
 - `internal/agent/request_context.go`：Agent request context helper；在当前 turn context 中传递父 request ID，供工具 request 建立父子关系。
 - `internal/agent/risk_confirmation.go`：风险确认阶段命令定义与文案；统一生成 `/detail`、`/confirm`、`/confirmtool`、`/confirmall`、`/reject`、`/stop` 及别名的提示、补全和识别。
@@ -153,7 +154,7 @@
 
 - `internal/llm/llm.go`：LLM 抽象类型；定义带稳定 JSON descriptor 的 `MessageSegment`（text/image/file）、消息、请求、流式 chunk、reasoning delta、usage、模型 metadata、tool call、tool schema 和 `LLM` interface。
 - `internal/llm/segment.go`：内部统一 MessageSegment 工具；区分 `SegmentsTextOnly` 与 `SegmentsContentText`，提供 text segment 原位 prepend/append/regex replace、图片/文件提取、latest user 和 system message helper。
-- `internal/llm/openai/openai.go`：OpenAI-compatible adapter；实现流式 chat completions、多模态转换、模型列表、SSE、usage/reasoning/tool call delta、请求超时/重试和错误解析。
+- `internal/llm/openai/openai.go`：OpenAI-compatible adapter；实现流式 chat completions、多模态转换、模型列表、SSE、usage/reasoning/tool call delta、请求超时/重试通知、缺失 `[DONE]` 的断流检测和错误解析。
 
 
 ### Tool Runtime

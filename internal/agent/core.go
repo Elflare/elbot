@@ -157,6 +157,10 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 		scopeID:                     "local",
 	}
 	a.rebuildSystemPrompt()
+	a.attachLLMRetryNotifier(client, workModel.Provider)
+	if namingClient != nil && namingClient != client {
+		a.attachLLMRetryNotifier(namingClient, namingSelection.Provider)
+	}
 	if p != nil {
 		a.platformSenders[p.Name()] = p
 	}
@@ -330,7 +334,23 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 }
 
 func shouldNotifyUserError(err error) bool {
-	return err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
+	var notified userNotifiedError
+	return err != nil && !errors.As(err, &notified) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
+}
+
+type userNotifiedError struct {
+	err error
+}
+
+func (e userNotifiedError) Error() string { return e.err.Error() }
+
+func (e userNotifiedError) Unwrap() error { return e.err }
+
+func markUserNotified(err error) error {
+	if err == nil {
+		return nil
+	}
+	return userNotifiedError{err: err}
 }
 
 func (a *Agent) scope(ctx context.Context) session.Scope {

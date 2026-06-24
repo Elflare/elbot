@@ -18,6 +18,7 @@ type turnOutput interface {
 	ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, error)
 	SendAssistant(ctx context.Context, text string) (delivery.Receipt, error)
 	SendOutputs(ctx context.Context, outputs []delivery.Output) error
+	SendNotice(ctx context.Context, text string)
 	SendPreview(ctx context.Context, text string)
 	SendReasoning(ctx context.Context, text string)
 	PublishRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot)
@@ -45,6 +46,10 @@ func (o foregroundTurnOutput) SendAssistant(ctx context.Context, text string) (d
 
 func (o foregroundTurnOutput) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
 	return o.agent.sendOutputs(ctx, outputs)
+}
+
+func (o foregroundTurnOutput) SendNotice(ctx context.Context, text string) {
+	o.agent.sendNotice(ctx, text)
 }
 
 func (o foregroundTurnOutput) SendPreview(ctx context.Context, text string) {
@@ -77,12 +82,22 @@ func (o backgroundTurnOutput) SendOutputs(ctx context.Context, outputs []deliver
 	return nil
 }
 
+func (o backgroundTurnOutput) SendNotice(ctx context.Context, text string) {}
+
 func (o backgroundTurnOutput) SendPreview(ctx context.Context, text string) {}
 
 func (o backgroundTurnOutput) SendReasoning(ctx context.Context, text string) {}
 
 func (o backgroundTurnOutput) PublishRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) {
 	o.agent.recordRuntimeStatus(snapshot)
+}
+
+func (a *Agent) sendNotice(ctx context.Context, text string) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	_, _ = a.SendNoticeOutput(ctx, delivery.Target{}, delivery.Text(text))
 }
 
 func (a *Agent) sendPreview(ctx context.Context, text string) {

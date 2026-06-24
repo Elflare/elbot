@@ -13,6 +13,7 @@ import (
 
 	agentcommands "elbot/internal/agent/commands"
 	"elbot/internal/config"
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/llm/openai"
 	"elbot/internal/storage"
@@ -382,8 +383,26 @@ func (a *Agent) clientForProvider(providerName string) llm.LLM {
 	client := openai.NewWithOptions(provider.BaseURL, provider.APIKey, provider.ExtraPayload, agentModelExtraPayloads(provider.ModelConfigs), llmRequestOptions(a.modelRuntime.llmRequestConfig))
 
 	client.SetLogger(a.logger)
+	a.attachLLMRetryNotifier(client, providerName)
 	a.modelRuntime.clients[providerName] = client
 	return client
+}
+
+func (a *Agent) attachLLMRetryNotifier(client llm.LLM, providerName string) {
+	adapter, ok := client.(*openai.Adapter)
+	if !ok {
+		return
+	}
+	adapter.SetRetryNotifier(func(ctx context.Context, event openai.RetryEvent) {
+		if event.Err == nil || errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return
+		}
+		text := fmt.Sprintf("LLM 请求失败，正在重试 %d/%d（%s 后）：%v", event.Attempt, event.MaxRetries, event.Delay.Round(time.Millisecond), event.Err)
+		if providerName != "" {
+			text = fmt.Sprintf("LLM 请求失败，正在重试 %d/%d（provider=%s，%s 后）：%v", event.Attempt, event.MaxRetries, providerName, event.Delay.Round(time.Millisecond), event.Err)
+		}
+		_, _ = a.SendNoticeOutput(ctx, delivery.Target{}, delivery.Text(text))
+	})
 }
 
 func initialStateModTime(path string) time.Time {

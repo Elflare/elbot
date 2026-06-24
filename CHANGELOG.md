@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- 修复 OpenAI-compatible 流式响应中途断开但缺失 `[DONE]` 时被当作正常结束的问题；现在会明确通知 LLM 响应中断。
+
 ### Changed
+- LLM 建连/HTTP 可重试失败时通过 Notice 显示当前重试次数。
 - `finalize_el_skill` 工具风险等级由 high 降为 medium。
 
 ## [v0.1.0-alpha] - 2026-06-24

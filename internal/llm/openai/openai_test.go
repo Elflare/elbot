@@ -539,6 +539,7 @@ func TestRetryDelay(t *testing.T) {
 
 func TestChatStream_RetriesRetryableHTTPStatus(t *testing.T) {
 	attempts := 0
+	retryEvents := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
 		if attempts < 3 {
@@ -552,7 +553,22 @@ func TestChatStream_RetriesRetryableHTTPStatus(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := NewWithOptions(srv.URL, "test-key", nil, nil, RequestOptions{MaxRetries: 3, RetryInitialDelay: time.Millisecond})
+	adapter := NewWithOptions(srv.URL, "test-key", nil, nil, RequestOptions{
+		MaxRetries:        3,
+		RetryInitialDelay: time.Millisecond,
+		OnRetry: func(ctx context.Context, event RetryEvent) {
+			retryEvents++
+			if event.Attempt != retryEvents {
+				t.Fatalf("retry attempt = %d, want %d", event.Attempt, retryEvents)
+			}
+			if event.MaxRetries != 3 {
+				t.Fatalf("max retries = %d, want 3", event.MaxRetries)
+			}
+			if event.Err == nil {
+				t.Fatal("expected retry error")
+			}
+		},
+	})
 	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
@@ -564,6 +580,44 @@ func TestChatStream_RetriesRetryableHTTPStatus(t *testing.T) {
 	}
 	if attempts != 3 {
 		t.Fatalf("attempts = %d, want 3", attempts)
+	}
+	if retryEvents != 2 {
+		t.Fatalf("retry events = %d, want 2", retryEvents)
+	}
+}
+
+func TestChatStream_ReportsMissingDoneAsInterrupted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, `data: {"choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}`+"\n\n")
+		w.(http.Flusher).Flush()
+	}))
+	defer srv.Close()
+
+	adapter := NewWithOptions(srv.URL, "test-key", nil, nil, RequestOptions{MaxRetries: 1, RetryInitialDelay: time.Millisecond})
+	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "test",
+		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
+	})
+	if err != nil {
+		t.Fatalf("ChatStream: %v", err)
+	}
+	var gotText string
+	var gotErr error
+	for chunk := range ch {
+		gotText += chunk.DeltaContent
+		if chunk.Error != nil {
+			gotErr = chunk.Error
+		}
+	}
+	if gotText != "partial" {
+		t.Fatalf("text = %q, want partial", gotText)
+	}
+	if gotErr == nil {
+		t.Fatal("expected missing [DONE] error")
+	}
+	if !strings.Contains(gotErr.Error(), "unexpected EOF") {
+		t.Fatalf("error = %v, want unexpected EOF", gotErr)
 	}
 }
 func TestChatStream_HTTPError(t *testing.T) {
