@@ -26,9 +26,9 @@
       "updated_at": 1782270514
     },
     "docs/configuration.md": {
-      "source_hash": "41a6c3cec4479a8f753bc6cea0462b7bd8d3e9fcc4139628d8ad574f92731384",
+      "source_hash": "e6125221db0f9372162c436d13230aa4b384060b143b87d3e0786a8a19088de1",
       "target": "docs.en/configuration.md",
-      "updated_at": 1782270515
+      "updated_at": 1782312356
     },
     "docs/elnis-usage.md": {
       "source_hash": "22bb51d0de15eb569820fa2b7027a12907eba6587ad87ef6b3ab1447d6ab503e",
@@ -4172,6 +4172,30 @@
       "translation": "runtime log",
       "updated_at": 1781515483
     },
+    "docs/configuration.md:code-comment:toml:4d2380e350c5b825b8290b38675e36e385481e1218ee92712655df3c414fe32b": {
+      "kind": "code-comment:toml",
+      "source": "手动补充模型列表（API 获取不到时使用）",
+      "source_file": "docs/configuration.md",
+      "source_hash": "4d2380e350c5b825b8290b38675e36e385481e1218ee92712655df3c414fe32b",
+      "translation": "Manually supplemented model list (used when the API cannot retrieve them)",
+      "updated_at": 1782312356
+    },
+    "docs/configuration.md:code-comment:toml:7296b2cd1c3a958a2308be6556465ad8a8ef8c2deee8d2eccf925d7cbd8ace97": {
+      "kind": "code-comment:toml",
+      "source": "可选，HTTP/SOCKS5 代理地址",
+      "source_file": "docs/configuration.md",
+      "source_hash": "7296b2cd1c3a958a2308be6556465ad8a8ef8c2deee8d2eccf925d7cbd8ace97",
+      "translation": "Optional, HTTP/SOCKS5 proxy address",
+      "updated_at": 1782312356
+    },
+    "docs/configuration.md:code-comment:toml:9b50dae0a3179ae39256c7fefa1defda7e0447886631dbc5020c8ae10a9391ea": {
+      "kind": "code-comment:toml",
+      "source": "可选：为特定模型配置 context_window 或 extra_payload",
+      "source_file": "docs/configuration.md",
+      "source_hash": "9b50dae0a3179ae39256c7fefa1defda7e0447886631dbc5020c8ae10a9391ea",
+      "translation": "Optional: configure context_window or extra_payload for specific models",
+      "updated_at": 1782312356
+    },
     "docs/configuration.md:code-comment:toml:ad5778daa0f232080c47303c35957dc43afb0286e6e54db5c0d104903fa92523": {
       "kind": "code-comment:toml",
       "source": "可选；先读系统环境变量，再读配置目录 .env",
@@ -4179,6 +4203,14 @@
       "source_hash": "ad5778daa0f232080c47303c35957dc43afb0286e6e54db5c0d104903fa92523",
       "translation": "Optional; reads system environment variables first, then the .env file in the configuration directory",
       "updated_at": 1781846628
+    },
+    "docs/configuration.md:code-comment:toml:b141049379487ceedebc21ca56b9f2afde25977cc023afad68525da478357c8f": {
+      "kind": "code-comment:toml",
+      "source": "可选，Provider 级 extra payload",
+      "source_file": "docs/configuration.md",
+      "source_hash": "b141049379487ceedebc21ca56b9f2afde25977cc023afad68525da478357c8f",
+      "translation": "Optional, Provider-level extra payload",
+      "updated_at": 1782312356
     },
     "docs/configuration.md:heading:18435419f154847b5c43eb9cab4abe202ecbcc94ec576c694119656d75e9f609": {
       "kind": "heading",
@@ -4492,6 +4524,14 @@
       "translation": "The token is read from system environment variables or the configuration directory __ELBOT_CODE_0__. Logs only record the token name, not the raw token.",
       "updated_at": 1781694515
     },
+    "docs/configuration.md:list:33bfeb03b05e6473bd052e077674f03762cd60be81dbf214f1724b8dfedb168e": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 为特定模型配置 __ELBOT_CODE_1__ 和 __ELBOT_CODE_2__，两者都是可选的。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "33bfeb03b05e6473bd052e077674f03762cd60be81dbf214f1724b8dfedb168e",
+      "translation": "__ELBOT_CODE_0__ configures __ELBOT_CODE_1__ and __ELBOT_CODE_2__ for specific models; both are optional.",
+      "updated_at": 1782312356
+    },
     "docs/configuration.md:list:374dfb411ea8aaa45f6e24fa01a3492da8c73121e562888a8d21e45bfd5c66c2": {
       "kind": "list",
       "source": "源码目录 __ELBOT_CODE_0__。",
@@ -4515,6 +4555,14 @@
       "source_hash": "380a6a0590e121b23028e7c567f8e0f52d64440b5a953ebef80abf235b6b90ae",
       "translation": "__ELBOT_CODE_0__ is an experimental mode: uses __ELBOT_CODE_1__ / private chat __ELBOT_CODE_2__, and automatically falls back to HTML if Rich Message fails;",
       "updated_at": 1781839376
+    },
+    "docs/configuration.md:list:3a9949395a8eab9b5578b2f1b3b2ac69d75f36ac87e1b7dd26baf0cde5087c73": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 是全局回退值，没有在 __ELBOT_CODE_2__ 里配 __ELBOT_CODE_3__ 时使用。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "3a9949395a8eab9b5578b2f1b3b2ac69d75f36ac87e1b7dd26baf0cde5087c73",
+      "translation": "The __ELBOT_CODE_1__ of __ELBOT_CODE_0__ is a global fallback value, used when __ELBOT_CODE_3__ is not configured in __ELBOT_CODE_2__.",
+      "updated_at": 1782312356
     },
     "docs/configuration.md:list:3bde83cd85506c356fb56701e1e038418254cd3b12742b16d236087b00ea9f5f": {
       "kind": "list",
@@ -4692,6 +4740,14 @@
       "translation": "__ELBOT_CODE_0__ mode does not inject tools, making it suitable for casual chatting and low-cost conversations.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:6a1d42f9c081979697fff85a2623adec4e90aa54a333dabb4a834b4c9d57c4c6": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是手动补充的模型名列表，当 Provider 的模型列表接口获取不到某些模型时使用。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "6a1d42f9c081979697fff85a2623adec4e90aa54a333dabb4a834b4c9d57c4c6",
+      "translation": "__ELBOT_CODE_0__ is a manually supplemented list of model names, used when the Provider's model list interface cannot retrieve certain models.",
+      "updated_at": 1782312356
+    },
     "docs/configuration.md:list:6bb103b7558715a6df73bb64f6957f641f077f0e117e7d3966bf4bfa63d88657": {
       "kind": "list",
       "source": "代理地址示例：__ELBOT_CODE_0__、__ELBOT_CODE_1__。",
@@ -4700,6 +4756,14 @@
       "translation": "Proxy address examples: __ELBOT_CODE_0__, __ELBOT_CODE_1__.",
       "updated_at": 1781846628
     },
+    "docs/configuration.md:list:6ccdb54bf6f5af6fa987fee2c896e9dd72e7c5c9ff88f423ae98867fb5a5770e": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是全局回退值，模型块里没配 __ELBOT_CODE_1__ 时使用。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "6ccdb54bf6f5af6fa987fee2c896e9dd72e7c5c9ff88f423ae98867fb5a5770e",
+      "translation": "__ELBOT_CODE_0__ is a global fallback value, used when __ELBOT_CODE_1__ is not configured in the model block.",
+      "updated_at": 1782312356
+    },
     "docs/configuration.md:list:6cd89da7557c0fa722138f493974d997fc40799da25b45c8695cb5083a9c6888": {
       "kind": "list",
       "source": "外部工具默认允许；只有单个 Elwisp 配置 __ELBOT_CODE_0__ 时才禁用指定外部工具。",
@@ -4707,6 +4771,14 @@
       "source_hash": "6cd89da7557c0fa722138f493974d997fc40799da25b45c8695cb5083a9c6888",
       "translation": "External tools are allowed by default; specified external tools are only disabled when a single Elwisp configures __ELBOT_CODE_0__.",
       "updated_at": 1781749596
+    },
+    "docs/configuration.md:list:6f70babf7b66d9b8d82f95e9c84fa764ec3da3bac41bf99e1c162cd074a8553a": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 会合并到 LLM 请求 JSON 中，模型级覆盖 Provider 级。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "6f70babf7b66d9b8d82f95e9c84fa764ec3da3bac41bf99e1c162cd074a8553a",
+      "translation": "__ELBOT_CODE_0__ will be merged into the LLM request JSON, with model-level settings overriding provider-level settings.",
+      "updated_at": 1782312356
     },
     "docs/configuration.md:list:72423cc57bde405f585d34927e4d4075aa51e7d13b0e3be4914c2e4fdae9530c": {
       "kind": "list",
@@ -4972,6 +5044,14 @@
       "translation": "__ELBOT_CODE_0__: Rule Hook configuration.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:d2b7fd98cacdd8bd2d7fabd7965dca11833689ad25e978acd14a409df88af236": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 可选，支持 __ELBOT_CODE_1__ 和 __ELBOT_CODE_2__ 代理地址。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d2b7fd98cacdd8bd2d7fabd7965dca11833689ad25e978acd14a409df88af236",
+      "translation": "__ELBOT_CODE_0__ is optional and supports __ELBOT_CODE_1__ and __ELBOT_CODE_2__ proxy addresses.",
+      "updated_at": 1782312356
+    },
     "docs/configuration.md:list:d3e9e843be1337f3ce26c3c204ade00db4610967bfc61f7fd42a1f4f03ff6336": {
       "kind": "list",
       "source": "平台配置目录：Windows __ELBOT_CODE_0__；Linux 使用 XDG 配置目录。",
@@ -5187,6 +5267,14 @@
       "source_hash": "323f549485c3d3dd2ff5049a006e5b5e4a587f798db38ba90b3fbef6eca2e930",
       "translation": "Storage-related configurations in __ELBOT_CODE_0__:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:3ec24d449c7a33eb474c1fe8d8afbd73b0b7db98587e8214c7d884a64f1b6f6e": {
+      "kind": "paragraph",
+      "source": "模型窗口在 __ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 中配置：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "3ec24d449c7a33eb474c1fe8d8afbd73b0b7db98587e8214c7d884a64f1b6f6e",
+      "translation": "The model window is configured in __ELBOT_CODE_1__ of __ELBOT_CODE_0__:\n",
+      "updated_at": 1782312356
     },
     "docs/configuration.md:paragraph:3f6a9abcaf07c698521efe9e43023b0404d046d87936822dd4083fce5be6cabf": {
       "kind": "paragraph",
@@ -5667,6 +5755,14 @@
       "source_hash": "1d9bbbf49720f5a314a300f76dec18e33dbf3f2ea4e56a6ac235ed1e6f2f6b34",
       "translation": "Optional, local key file, not recommended for submission; the one automatically generated the first time is __ELBOT_CODE_0__, and __ELBOT_CODE_1__ will not be generated directly.",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:table:3058f980475c8cc418aa7ce8d788d4ea9ddcba5efc2370d16553c50168d90c10": {
+      "kind": "table",
+      "source": "给工具添加 tag 和 prompt 的配置文件。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "3058f980475c8cc418aa7ce8d788d4ea9ddcba5efc2370d16553c50168d90c10",
+      "translation": "Configuration file for adding tags and prompts to tools.",
+      "updated_at": 1782312356
     },
     "docs/configuration.md:table:36e0613f17513857d328b7df8c7edd74fda4403b18c450fab3a6e6d813f31569": {
       "kind": "table",

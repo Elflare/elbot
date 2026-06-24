@@ -10,10 +10,9 @@ The `config/` directory in the source code only retains example/auxiliary config
 
 | File or Directory | Responsibility |
 | --- | --- |
-| `config/providers.toml` | LLM Provider, model list, default request parameters, and model metadata. |
-| `config/state.toml` | Runtime state, e.g., default Session mode, chat/work/compact/naming model selection. |
-| `config/tool_tags.md` | Configuration file for adding tags and prompts to tools. |
 | `config/elnis.toml` | Elnis listening hub configuration, saving HTTP, token, delivery, allowed_tools, and Elwisp policies. |
+| `config/state.toml` | Runtime state, e.g., default Session mode, chat/work/compact/naming model selection. |
+| `config/tool_tags.toml` | Configuration file for adding tags and prompts to tools. |
 | `config/SOUL.md` | The System Prompt source file for the Agent. |
 | `config/.env` | Optional, local key file, not recommended for submission; the one automatically generated the first time is `.env.example`, and `.env` will not be generated directly. |
 | `config/plugins/` | Hook and plugin configuration directory. |
@@ -78,27 +77,37 @@ The length unit `units` can be roughly understood as "Chinese by character count
 Provider is written in `providers.toml`:
 
 ```toml
-[global_default]
-stream = true
-temperature = 1.0
-max_tokens = 4096
-
 [providers.deepseek]
 base_url = "https://api.deepseek.com"
 api_key_env = "DEEPSEEK_API_KEY"
+proxy = ""                          # Optional, HTTP/SOCKS5 proxy address
+extra_payload = { provider_field = "xxx" }  # Optional, Provider-level extra payload
 
 [providers.openai]
 base_url = "https://api.openai.com/v1"
 api_key_env = "OPENAI_API_KEY"
-models = ["gpt-4o-mini"]
+models = ["gpt-4o-mini"]             # Manually supplemented model list (used when the API cannot retrieve them)
+
+# Optional: configure context_window or extra_payload for specific models
+# [providers.openai.model_configs."gpt-4o-mini"]
+# context_window = 128000
+# extra_payload = { }
+
+[model_metadata]
+default_context_window = 256000
 ```
 
 Note:
 
 - `base_url` uses the Provider's OpenAI-compatible API address.
 - `api_key_env` points to an environment variable name; this method is recommended for saving keys.
-- `models` can be used to manually supplement the model list, or it can be obtained via the Provider's model list interface.
-- `[global_default]` provides default request parameters.
+- `proxy` is optional and supports `http://` and `socks5://` proxy addresses.
+- `models` is a manually supplemented list of model names, used when the Provider's model list interface cannot retrieve certain models.
+- `[providers.<name>.model_configs."<model>"]` configures `context_window` and `extra_payload` for specific models; both are optional.
+- `extra_payload` will be merged into the LLM request JSON, with model-level settings overriding provider-level settings.
+- The `default_context_window` of `[model_metadata]` is a global fallback value, used when `context_window` is not configured in `model_configs`.
+
+
 
 ## API Key and `.env`
 
@@ -285,15 +294,17 @@ compact_trigger_ratio = 0.8
 - You can also manually compress the current Session via `/compact`.
 - Compression only affects the context view sent to the LLM and does not delete the original history.
 
-The model window can be supplemented in `providers.toml`:
+The model window is configured in `model_configs` of `providers.toml`:
 
 ```toml
+[providers.deepseek.model_configs."deepseek-chat"]
+context_window = 64000
+
 [model_metadata]
 default_context_window = 256000
-
-[model_metadata.context_windows]
-# "deepseek-chat" = 64000
 ```
+
+- `[model_metadata].default_context_window` is a global fallback value, used when `context_window` is not configured in the model block.
 
 ## Command Prefix
 
