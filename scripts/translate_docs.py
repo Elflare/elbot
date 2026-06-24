@@ -33,6 +33,8 @@ SOURCE_DIR = ROOT / "docs"
 TARGET_DIR = ROOT / "docs.en"
 README_SOURCE = ROOT / "README.zh-CN.md"
 README_TARGET = ROOT / "README.md"
+CHANGELOG_SOURCE = ROOT / "CHANGELOG.md"
+CHANGELOG_TARGET = ROOT / "CHANGELOG.en.md"
 CACHE_PATH = TARGET_DIR / ".translation-cache.json"
 AUTO_HEADER_TEMPLATE = "<!-- This file is auto-translated from {source}. Do not edit manually. -->\n\n"
 PLACEHOLDER_TEMPLATE = "\ue000ELBOT_SEGMENT_{index}\ue000"
@@ -221,12 +223,16 @@ def all_source_docs() -> list[SourceDoc]:
     docs = [SourceDoc(path, TARGET_DIR / path.relative_to(SOURCE_DIR)) for path in sorted(SOURCE_DIR.glob("**/*.md"))]
     if README_SOURCE.exists():
         docs.insert(0, SourceDoc(README_SOURCE, README_TARGET))
+    if CHANGELOG_SOURCE.exists():
+        docs.append(SourceDoc(CHANGELOG_SOURCE, CHANGELOG_TARGET))
     return docs
 
 
 def target_for_deleted_source(rel: str) -> Path | None:
     if rel == "README.zh-CN.md":
         return README_TARGET
+    if rel == "CHANGELOG.md":
+        return CHANGELOG_TARGET
     prefix = "docs/"
     if rel.startswith(prefix) and rel.endswith(".md"):
         return TARGET_DIR / rel.removeprefix(prefix)
@@ -684,7 +690,7 @@ def changed_source_names(args: argparse.Namespace, docs: list[SourceDoc], cache:
         return None
     try:
         result = subprocess.run(
-            ["git", "diff", "--name-only", args.base_ref, args.head_ref, "--", "README.zh-CN.md", "docs"],
+            ["git", "diff", "--name-only", args.base_ref, args.head_ref, "--", "README.zh-CN.md", "CHANGELOG.md", "docs"],
             cwd=ROOT,
             check=True,
             text=True,
@@ -695,7 +701,7 @@ def changed_source_names(args: argparse.Namespace, docs: list[SourceDoc], cache:
         log(f"git diff failed; falling back to full scan: {exc}")
         return None
     changed = {line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()}
-    return {name for name in changed if name == "README.zh-CN.md" or (name.startswith("docs/") and name.endswith(".md"))}
+    return {name for name in changed if name == "README.zh-CN.md" or name == "CHANGELOG.md" or (name.startswith("docs/") and name.endswith(".md"))}
 
 
 def select_source_docs(args: argparse.Namespace, cache: dict) -> tuple[list[SourceDoc], set[str], set[str] | None]:
@@ -820,7 +826,13 @@ def has_staged_changes(paths: list[Path]) -> bool:
 def is_allowed_generated_path(path: Path) -> bool:
     resolved = path.resolve()
     target_root = TARGET_DIR.resolve()
-    return resolved == README_TARGET.resolve() or resolved == CACHE_PATH.resolve() or resolved == target_root or target_root in resolved.parents
+    return (
+        resolved == README_TARGET.resolve()
+        or resolved == CHANGELOG_TARGET.resolve()
+        or resolved == CACHE_PATH.resolve()
+        or resolved == target_root
+        or target_root in resolved.parents
+    )
 
 
 def ensure_generated_path(path: Path) -> None:

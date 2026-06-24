@@ -106,20 +106,33 @@ jobs:
             | xargs -0 sha256sum \
             | sed 's|  \./|  |' > SHA256SUMS
 
-      - name: Extract release notes from CHANGELOG.md
+      - name: Extract release notes from CHANGELOG
         run: |
           tag="${GITHUB_REF_NAME}"
-          awk -v tag="$tag" '
-            /^## \[/ {
-              header=$0
-              sub(/^## \[/, "", header)
-              sub(/\].*/, "", header)
-              f = (header == tag)
-            }
-            f { print }
-          ' CHANGELOG.md > release-notes.md
+          extract_section() {
+            local file="$1"
+            awk -v tag="$tag" '
+              /^## \[/ {
+                header=$0
+                sub(/^## \[/, "", header)
+                sub(/\].*/, "", header)
+                f = (header == tag)
+              }
+              f { print }
+            ' "$file"
+          }
+          extract_section CHANGELOG.md > release-notes.md
+          if [ -f CHANGELOG.en.md ]; then
+            en_notes=$(extract_section CHANGELOG.en.md)
+            if [ -n "$en_notes" ]; then
+              printf '\n---\n\n' >> release-notes.md
+              printf '%s\n' "$en_notes" >> release-notes.md
+            fi
+          else
+            echo "WARNING: CHANGELOG.en.md missing; release notes will be Chinese-only." >&2
+          fi
           if [ ! -s release-notes.md ]; then
-            echo "No CHANGELOG.md section for ${tag}; using tag name as fallback." >&2
+            echo "No CHANGELOG section for ${tag}; using tag name as fallback." >&2
             echo "Release ${tag}." > release-notes.md
           fi
 

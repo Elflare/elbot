@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "README.zh-CN.md"
+      - "CHANGELOG.md"
       - "docs/**/*.md"
   workflow_dispatch:
 
