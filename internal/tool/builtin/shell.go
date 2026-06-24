@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"elbot/internal/llm"
@@ -123,9 +124,37 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result
 
 func shellCommand(ctx context.Context, cmdText string) *exec.Cmd {
 	if runtime.GOOS == "windows" {
-		return exec.CommandContext(ctx, "bash", "-lc", cmdText)
+		name, args := resolveWindowsShell()
+		return exec.CommandContext(ctx, name, append(args, cmdText)...)
 	}
 	return exec.CommandContext(ctx, "sh", "-lc", cmdText)
+}
+
+type windowsShell struct {
+	name string
+	args []string
+}
+
+var (
+	windowsShellOnce     sync.Once
+	windowsShellResolved windowsShell
+)
+
+func resolveWindowsShell() (string, []string) {
+	windowsShellOnce.Do(func() {
+		windowsShellResolved = detectWindowsShell()
+	})
+	return windowsShellResolved.name, windowsShellResolved.args
+}
+
+func detectWindowsShell() windowsShell {
+	if _, err := exec.LookPath("bash"); err == nil {
+		return windowsShell{name: "bash", args: []string{"-lc"}}
+	}
+	if _, err := exec.LookPath("pwsh"); err == nil {
+		return windowsShell{name: "pwsh", args: []string{"-NoProfile", "-Command"}}
+	}
+	return windowsShell{name: "powershell.exe", args: []string{"-NoProfile", "-Command"}}
 }
 
 func runShellCommand(ctx context.Context, cmd *exec.Cmd) error {

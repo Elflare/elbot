@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -92,5 +93,32 @@ func TestShellToolRunsLS(t *testing.T) {
 	}
 	if result == nil {
 		t.Fatal("expected shell result")
+	}
+}
+
+func TestResolveWindowsShellCachedAndValid(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows only")
+	}
+	name1, args1 := resolveWindowsShell()
+	name2, _ := resolveWindowsShell()
+	if name1 != name2 {
+		t.Fatalf("resolveWindowsShell not cached: %q vs %q", name1, name2)
+	}
+	if name1 == "" {
+		t.Fatal("expected non-empty shell name")
+	}
+	if len(args1) == 0 {
+		t.Fatal("expected non-empty shell args")
+	}
+	if name1 == "pwsh" || name1 == "powershell.exe" {
+		if len(args1) < 2 || args1[0] != "-NoProfile" || args1[1] != "-Command" {
+			t.Fatalf("unexpected powershell args: %v", args1)
+		}
+	}
+	if name1 == "bash" {
+		if len(args1) != 1 || args1[0] != "-lc" {
+			t.Fatalf("unexpected bash args: %v", args1)
+		}
 	}
 }
