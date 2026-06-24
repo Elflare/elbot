@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "1fb28ecc6b53530e366d9b6d3a3359c7ce79bddd3a948b0a799524a64a385a5f",
+      "source_hash": "7831a7129af8332c69220eaec60726abd12b163c5d0e9fd02009803cfa85736f",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782298716
+      "updated_at": 1782312399
     },
     "README.zh-CN.md": {
       "source_hash": "9316c5d17a1626acb11825ef7a899024d5fdbeb48152c9d6b02ad0deed5b49c5",
@@ -76,6 +76,14 @@
       "translation": "Interfaces, configurations, and internal implementations may still be adjusted; it is more suitable for exploratory use as a personal Agent/bot framework.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:18f8686c3e2512c85d4545e776b64d44967ba9ce78170d168c2be40eff28fa31": {
+      "kind": "list",
+      "source": "Provider 新增 __ELBOT_CODE_0__ 字段，支持 HTTP/SOCKS5 代理。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "18f8686c3e2512c85d4545e776b64d44967ba9ce78170d168c2be40eff28fa31",
+      "translation": "Added __ELBOT_CODE_0__ field to Provider, supporting HTTP/SOCKS5 proxies.",
+      "updated_at": 1782312399
+    },
     "CHANGELOG.md:list:280823f9e19a44bcbfe92547cc46408bbcf2b93e26cd0cfcf98c3d26afaa1c3e": {
       "kind": "list",
       "source": "**工具发现机制**：默认只暴露 __ELBOT_CODE_0__ 与工具名，按需注入完整 schema，减少无效上下文开销。",
@@ -83,6 +91,14 @@
       "source_hash": "280823f9e19a44bcbfe92547cc46408bbcf2b93e26cd0cfcf98c3d26afaa1c3e",
       "translation": "**Tool Discovery Mechanism**: By default, only __ELBOT_CODE_0__ and the tool name are exposed, with the full schema injected on demand to reduce unnecessary context overhead.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:31e1b19552361d185e88961542f7ecdbf799d5e3cc7d6a34196458c6ff69f3bc": {
+      "kind": "list",
+      "source": "Provider 配置重构：删除未使用的 __ELBOT_CODE_0__，删除 __ELBOT_CODE_1__ 全局模型窗口表；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "31e1b19552361d185e88961542f7ecdbf799d5e3cc7d6a34196458c6ff69f3bc",
+      "translation": "Provider configuration refactoring: removed unused __ELBOT_CODE_0__, removed __ELBOT_CODE_1__ global model window table;",
+      "updated_at": 1782312399
     },
     "CHANGELOG.md:list:36d8eefabd86733235aa7765b21ab8353754de23bae489203434cee8a682113b": {
       "kind": "list",
@@ -171,6 +187,14 @@
       "source_hash": "83aa655090903e728d1214292cfd1dd5bdd99b5ae467bc2329b6108a14d1a622",
       "translation": "**Native and External Skills**: The __ELBOT_CODE_0__ meta-tool supports LLMs in creating native EL Skills (pure ELyph or accompanied by Go source code and compiled);",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:8e240be846787f791774d6c36787606f8337042e10aac541f8b36ece490e981d": {
+      "kind": "list",
+      "source": "模型级 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 统一收到 __ELBOT_CODE_2__ 下，按 __ELBOT_CODE_3__ 查找，避免跨 provider 同名模型冲突。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "8e240be846787f791774d6c36787606f8337042e10aac541f8b36ece490e981d",
+      "translation": "Model-level __ELBOT_CODE_0__ and __ELBOT_CODE_1__ are now unified under __ELBOT_CODE_2__ and looked up by __ELBOT_CODE_3__, avoiding conflicts between models with the same name across providers.",
+      "updated_at": 1782312399
     },
     "CHANGELOG.md:list:92385f55b6d2a02dc7846f955909efbbdcebe6cd99af4be8ab209faab39b449b": {
       "kind": "list",
