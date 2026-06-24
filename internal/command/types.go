@@ -1,6 +1,10 @@
 package command
 
-import "context"
+import (
+	"context"
+
+	"elbot/internal/security"
+)
 
 type Info struct {
 	Name        string
@@ -8,6 +12,9 @@ type Info struct {
 	Description string
 	Aliases     []string
 	Help        string
+	// MinRole controls slash-command access. RoleUser allows regular users;
+	// empty defaults to RoleSuperadmin for backward compatibility.
+	MinRole security.Role
 }
 
 type Request struct {

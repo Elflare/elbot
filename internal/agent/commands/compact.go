@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"elbot/internal/command"
+	"elbot/internal/security"
 )
 
 func NewCompact(deps Deps) command.Handler {
@@ -11,6 +12,7 @@ func NewCompact(deps Deps) command.Handler {
 		Name:        "compact",
 		Usage:       "/compact",
 		Description: "Compact current session context.",
+		MinRole:     security.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		content, err := deps.Compact.CompactCurrent(ctx, "manual")
 		if err != nil {

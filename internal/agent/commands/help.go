@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"elbot/internal/command"
+	"elbot/internal/security"
 )
 
 func NewHelp(deps Deps) command.Handler {
@@ -21,6 +22,7 @@ func (h helpCommand) Info() command.Info {
 		Name:        "help",
 		Usage:       "/help [command]",
 		Description: "Show available commands or detailed command help.",
+		MinRole:     security.RoleUser,
 		Help: strings.TrimSpace(`Usage:
   /help
   /help <command>

@@ -126,10 +126,10 @@ func TestResidentMemoryToolRisksAndSchema(t *testing.T) {
 			t.Fatalf("schema exposes %s: %#v", name, props)
 		}
 	}
-	if !strings.Contains(schema.Function.Description, "200 units") {
+	if !strings.Contains(schema.Function.Description, "200 字数或单词") {
 		t.Fatalf("core description = %q", schema.Function.Description)
 	}
-	if !strings.Contains(normalTool.Schema().Function.Description, "300 units") {
+	if !strings.Contains(normalTool.Schema().Function.Description, "300 字数或单词") {
 		t.Fatalf("normal description = %q", normalTool.Schema().Function.Description)
 	}
 }

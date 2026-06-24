@@ -546,7 +546,7 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 	if policy == nil {
 		policy = security.DefaultPolicy()
 	}
-	if !policy.CanUseTool(actor, assessment.Level) {
+	if !policy.CanUseTool(actor, assessment.Level, t.Info().OwnerScoped) {
 		err := fmt.Errorf("risk %s is above allowed tool level", assessment.Level)
 		m.audit("hook_tool_denied", "tool", name, "risk", assessment.Level, "reason", err.Error())
 		return actionResult{Error: err.Error()}, err

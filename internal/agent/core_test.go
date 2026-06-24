@@ -25,6 +25,7 @@ import (
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
 	"elbot/internal/llm"
+	"elbot/internal/memory/resident"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/security"
@@ -3239,5 +3240,152 @@ func TestEmoticonHookSendsSeparateOutputAndCleansPersistedContent(t *testing.T) 
 	got := messages[len(messages)-1].Content
 	if got != "[[微笑]] 像这样~" {
 		t.Fatalf("assistant content = %q, want raw text", got)
+	}
+}
+
+func TestRegularUserCanUseOwnDataSlashCommands(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"ok"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "regular", ScopeID: "regular"})
+
+	if err := a.HandleMessage(ctx, "/new"); err != nil {
+		t.Fatalf("/new: %v", err)
+	}
+	if !strings.Contains(p.out.String(), "created new session") {
+		t.Fatalf("/new output = %q", p.out.String())
+	}
+	p.out.Reset()
+
+	if _, err := a.sessions.Create(ctx, a.scope(ctx), "mine"); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := a.HandleMessage(ctx, "/sessions"); err != nil {
+		t.Fatalf("/sessions: %v", err)
+	}
+	out := p.out.String()
+	if !strings.Contains(out, "sessions:") {
+		t.Fatalf("/sessions output = %q", out)
+	}
+	if strings.Contains(out, "platform: cli/local") && strings.Contains(out, "regular") == false {
+		t.Fatalf("regular user should only see own sessions: %q", out)
+	}
+}
+
+func TestRegularUserCannotUseSuperadminSlashCommands(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"ok"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "regular", ScopeID: "regular"})
+
+	for _, cmd := range []string{"/model", "/requests", "/audit", "/log", "/tools", "/clean"} {
+		p.out.Reset()
+		if err := a.HandleMessage(ctx, cmd); err != nil {
+			t.Fatalf("%s: %v", cmd, err)
+		}
+		if !strings.Contains(p.out.String(), "需要超级管理员权限") {
+			t.Fatalf("%s should be denied for regular user, got %q", cmd, p.out.String())
+		}
+	}
+}
+
+func TestRegularUserCanCallOwnerScopedTool(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{
+		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "resident_memory_core", Args: `{"content":"我喜欢咖啡"}`}}, FinishReason: "tool_calls"}},
+		{{DeltaContent: "已记下"}},
+	}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
+		t.Fatal(err)
+	}
+	memStore := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	for _, tl := range builtin.NewResidentMemoryTools(memStore) {
+		if err := registry.Register(tl); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.SetToolRuntime(registry, nil)
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "regular", ScopeID: "regular"})
+
+	if err := a.HandleMessage(ctx, "更新我的核心记忆为：我喜欢咖啡"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if !strings.Contains(p.out.String(), "已记下") {
+		t.Fatalf("owner-scoped tool should succeed for regular user, output = %q", p.out.String())
+	}
+	scope := resident.ActorScope(security.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: security.RoleUser})
+	mem, err := memStore.Read(ctx, scope)
+	if err != nil {
+		t.Fatalf("read memory: %v", err)
+	}
+	if mem.Core != "我喜欢咖啡" {
+		t.Fatalf("core memory = %q, want 我喜欢咖啡", mem.Core)
+	}
+}
+
+func TestRegularUserCannotCallSuperadminOnlyTool(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{
+		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "long_memory_write", Args: `{"category":"x","title":"t","summary":"s","content":"c"}`}}, FinishReason: "tool_calls"}},
+		{{DeltaContent: "fallback"}},
+	}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
+		t.Fatal(err)
+	}
+	for _, tl := range builtin.NewLongMemoryTools(t.TempDir()) {
+		if err := registry.Register(tl); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.SetToolRuntime(registry, nil)
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "regular", ScopeID: "regular"})
+
+	if err := a.HandleMessage(ctx, "写长期记忆"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) < 2 {
+		t.Fatalf("expected followup LLM request with tool result, got %d requests", len(requests))
+	}
+	followup := requests[1]
+	var toolMsg string
+	for _, m := range followup.Messages {
+		if m.Role == llm.RoleTool && m.Name == "long_memory_write" {
+			toolMsg = llm.SegmentsContentText(m.Segments)
+		}
+	}
+	if toolMsg == "" {
+		t.Fatalf("missing tool result message in followup: %#v", followup.Messages)
+	}
+	if !strings.Contains(toolMsg, "superadmin") {
+		t.Fatalf("superadmin-only tool should be denied for regular user, tool message = %q", toolMsg)
+	}
+}
+
+func TestSuperadminStillGetsConfirmationForHighRiskOwnerScopedTool(t *testing.T) {
+	policy := security.DefaultPolicy()
+	if !policy.NeedsToolConfirmation(security.Actor{Role: security.RoleSuperadmin}, security.RiskHigh) {
+		t.Fatalf("superadmin should need confirmation for high risk")
+	}
+	if policy.NeedsToolConfirmation(security.Actor{Role: security.RoleUser}, security.RiskHigh) {
+		t.Fatalf("regular user should never be prompted")
+	}
+	if !policy.CanUseTool(security.Actor{Role: security.RoleUser}, security.RiskHigh, true) {
+		t.Fatalf("regular user should be allowed for owner-scoped high risk")
+	}
+	if policy.CanUseTool(security.Actor{Role: security.RoleUser}, security.RiskHigh, false) {
+		t.Fatalf("regular user should be denied for non-owner high risk")
 	}
 }

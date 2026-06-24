@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -304,10 +305,15 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 		if sessionErr == nil && a.turns.Snapshot(session.ID).Phase == turn.PhaseAwaitRiskConfirm && isRiskConfirmationCommand(text, a.commands) {
 			return a.handleRiskConfirmationInput(ctx, session.ID, text)
 		}
-		if actor.Role != security.RoleSuperadmin {
-			a.audit("permission_denied", "actor_id", actor.ID, "command", text, "reason", "slash_command_requires_superadmin")
-			// a.sendChat(ctx, "普通用户不能使用斜杠命令。")
-			return nil
+		parsed := a.commands.Parse(text)
+		if parsed.OK && parsed.Name != "" {
+			if info, ok := a.commands.CommandInfo(parsed.Name); ok {
+				if info.MinRole != security.RoleUser && actor.Role != security.RoleSuperadmin {
+					a.audit("permission_denied", "actor_id", actor.ID, "command", text, "reason", "slash_command_requires_superadmin")
+					a.sendChat(ctx, fmt.Sprintf("命令 %s%s 需要超级管理员权限。", parsed.Prefix, parsed.Name))
+					return nil
+				}
+			}
 		}
 		result, dispatchErr := a.commands.Dispatch(ctx, text)
 		if dispatchErr != nil {
@@ -343,7 +349,7 @@ func (a *Agent) scope(ctx context.Context) session.Scope {
 		ActorID:         actor.ID,
 		Platform:        platformName,
 		PlatformScopeID: scopeID,
-		IsCLI:           platformName == "cli",
+		IsCLI:           platformName == "cli" && actor.Role == security.RoleSuperadmin,
 	}
 }
 

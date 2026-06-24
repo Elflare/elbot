@@ -10,6 +10,7 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/contextmgr"
+	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -23,6 +24,7 @@ func NewNew(deps Deps) command.Handler {
 		Name:        "new",
 		Usage:       "/new",
 		Description: "Create and switch to a new session.",
+		MinRole:     security.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		session, err := deps.Sessions.Create(ctx, deps.Scope(ctx), "New session")
 		if err != nil {
@@ -37,6 +39,7 @@ func NewStatus(deps Deps) command.Handler {
 		Name:        "status",
 		Usage:       "/status",
 		Description: "Show current session status.",
+		MinRole:     security.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		status, err := deps.Sessions.Status(ctx, deps.Scope(ctx))
 		if errors.Is(err, storage.ErrNotFound) {
@@ -109,6 +112,7 @@ func NewSessions(deps Deps) command.Handler {
 		Name:        "sessions",
 		Usage:       "/sessions [keyword]",
 		Description: "List or search sessions.",
+		MinRole:     security.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page, query, err := parseSessionsArgs(req.Args)
 		if err != nil {
@@ -141,6 +145,7 @@ func (c resumeCommand) Info() command.Info {
 		Name:        "resume",
 		Usage:       "/resume [number|session_id]",
 		Description: "Resume a previous session.",
+		MinRole:     security.RoleUser,
 	}
 }
 
@@ -232,6 +237,7 @@ func NewArchives(deps Deps) command.Handler {
 		Name:        "archives",
 		Usage:       "/archives [page] [keyword]",
 		Description: "List archived sessions.",
+		MinRole:     security.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page, query, err := parseSessionsArgs(req.Args)
 		if err != nil {
@@ -354,6 +360,7 @@ func (c renameCommand) Info() command.Info {
 		Name:        "rename",
 		Usage:       "/rename [number|session_id|current_title] <title>",
 		Description: "Rename current or selected session.",
+		MinRole:     security.RoleUser,
 		Help:        "Usage:\n  /rename <title>\n  /rename <number|session_id|current_title> <title>\n\nIf current_title matches more than one visible session, use /sessions and rename by number or session id.",
 	}
 }
@@ -453,6 +460,7 @@ func NewMessages(deps Deps) command.Handler {
 		Name:        "messages",
 		Usage:       "/messages [page]",
 		Description: "List assistant message IDs in current session for fork.",
+		MinRole:     security.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page := 1
 		arg := strings.TrimSpace(req.Args)
@@ -488,6 +496,7 @@ func NewFork(deps Deps) command.Handler {
 		Name:        "fork",
 		Usage:       "/fork <message_id>",
 		Description: "Fork current conversation from an assistant message.",
+		MinRole:     security.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		messageID := strings.TrimSpace(req.Args)
 		if messageID == "" {
@@ -508,6 +517,7 @@ func NewWork(deps Deps) command.Handler {
 		Name:        "work",
 		Usage:       "/work",
 		Description: "Switch current session to work mode.",
+		MinRole:     security.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		scope := deps.Scope(ctx)
 		session, err := deps.Sessions.Current(ctx, scope)
@@ -533,6 +543,7 @@ func NewChat(deps Deps) command.Handler {
 		Name:        "chat",
 		Usage:       "/chat",
 		Description: "Switch an empty session to chat mode, or create a chat session.",
+		MinRole:     security.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		scope := deps.Scope(ctx)
 		session, err := deps.Sessions.Current(ctx, scope)
@@ -575,7 +586,7 @@ type sessionTargetCommand struct {
 }
 
 func (c sessionTargetCommand) Info() command.Info {
-	return command.Info{Name: c.name, Usage: c.usage, Description: c.description}
+	return command.Info{Name: c.name, Usage: c.usage, Description: c.description, MinRole: security.RoleUser}
 }
 
 func (c sessionTargetCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {

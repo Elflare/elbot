@@ -114,15 +114,16 @@ func (a *Agent) rememberActivatedTools(ctx context.Context, session *storage.Ses
 	discovery := &tool.DiscoveryResult{}
 	for _, name := range names {
 		if t, ok := a.toolRuntime.registry.Get(name); ok {
-			risk := t.Info().Risk
+			info := t.Info()
+			risk := info.Risk
 			if risk == "" {
 				risk = tool.RiskHigh
 			}
-			if !policy.CanUseTool(actor, risk) {
+			if !policy.CanUseTool(actor, risk, info.OwnerScoped) {
 				continue
 			}
 			schema := t.Schema()
-			discovery.Tools = append(discovery.Tools, tool.DiscoveredTool{Info: tool.PublicInfo{Name: name, Description: t.Info().Description, Source: string(t.Info().Source)}, Schema: &schema})
+			discovery.Tools = append(discovery.Tools, tool.DiscoveredTool{Info: tool.PublicInfo{Name: name, Description: info.Description, Source: string(info.Source)}, Schema: &schema})
 		}
 	}
 	a.rememberDiscoveredTools(ctx, session, discovery)

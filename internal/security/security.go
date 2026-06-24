@@ -113,8 +113,11 @@ func (p *Policy) IsSuperadmin(platform, platformUserID string) bool {
 	return ids != nil && ids[strings.TrimSpace(platformUserID)]
 }
 
-func (p *Policy) CanUseTool(actor Actor, risk RiskLevel) bool {
+func (p *Policy) CanUseTool(actor Actor, risk RiskLevel, ownerScoped bool) bool {
 	if actor.Role == RoleSuperadmin {
+		return true
+	}
+	if ownerScoped {
 		return true
 	}
 	maxRisk := RiskLow

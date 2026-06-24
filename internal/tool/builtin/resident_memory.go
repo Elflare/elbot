@@ -80,8 +80,7 @@ func (t ResidentMemoryTool) Call(ctx context.Context, req tool.CallRequest) (*to
 	if err := validateMemoryStore(t.Store); err != nil {
 		return nil, err
 	}
-	limits := t.Store.LimitsOrDefault()
-	return &tool.Result{Content: fmt.Sprintf("resident_memory 是常驻记忆管理入口。请调用 resident_memory_read、resident_memory_normal 或 resident_memory_core。", limits.Core, limits.Normal)}, nil
+	return &tool.Result{Content: "resident_memory 是常驻记忆管理入口。请调用 resident_memory_read、resident_memory_normal 或 resident_memory_core。"}, nil
 }
 
 func (t ResidentMemoryReadTool) Name() string { return ResidentMemoryReadToolName }
@@ -199,7 +198,7 @@ func (t ResidentMemoryCoreTool) Call(ctx context.Context, req tool.CallRequest) 
 }
 
 func memoryBuilder(name, description string, risk tool.RiskLevel) *tool.Builder {
-	return tool.NewBuilder(name).Description(description).Risk(risk)
+	return tool.NewBuilder(name).Description(description).Risk(risk).OwnerScoped()
 }
 
 func normalDescription(store *resident.Store) string {

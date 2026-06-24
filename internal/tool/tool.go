@@ -38,6 +38,10 @@ type Info struct {
 	SuperadminOnly bool
 	// Hidden controls prompt/list exposure only. It is not a security boundary.
 	Hidden bool
+	// OwnerScoped marks tools that only read/write the calling actor's own data.
+	// When true, Policy.CanUseTool allows regular users regardless of risk level.
+	// The tool handler is responsible for scoping access by actor.
+	OwnerScoped bool
 	// Tags are user-facing grouping labels for completion and manual preloading.
 	// They are not a security boundary and are not exposed through discover_tool.
 	Tags      []string
@@ -251,7 +255,7 @@ func CanAccessTool(actor security.Actor, policy *security.Policy, info Info) boo
 	if policy == nil {
 		policy = security.DefaultPolicy()
 	}
-	return policy.CanUseTool(actor, normalizeRisk(info.Risk, RiskHigh))
+	return policy.CanUseTool(actor, normalizeRisk(info.Risk, RiskHigh), info.OwnerScoped)
 }
 
 func (r *Registry) Discover(name string) (*DiscoveryResult, error) {
