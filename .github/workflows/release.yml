@@ -59,17 +59,18 @@ jobs:
 
       - name: Archive
         run: |
+          mkdir -p assets
           archive="elbot-${GITHUB_REF_NAME}-${{ matrix.goos }}-${{ matrix.goarch }}"
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            zip "${archive}.zip" "elbot${{ matrix.ext }}"
+            zip "assets/${archive}.zip" "elbot${{ matrix.ext }}"
           else
-            tar czf "${archive}.tar.gz" elbot
+            tar czf "assets/${archive}.tar.gz" elbot
           fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: elbot-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: elbot-${GITHUB_REF_NAME}-*
+          path: assets
 
   release:
     name: Publish release
