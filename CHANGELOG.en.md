@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Fixed an issue where OpenAI-compatible streaming responses that disconnected midway but were missing `[DONE]` were treated as normal terminations; now it will explicitly notify that the LLM response was interrupted.
+
+### Changed
+- Display the current retry count via Notice when LLM connection/HTTP retriable requests fail.
+- The risk level of the `finalize_el_skill` tool has been downgraded from high to medium.
+- Added `match_mode` and `index` parameters to the `*_match` operation of `edit_file`: when `match_mode=line`, it matches the entire line by single-line prefix (tolerating leading indentation to avoid newline character matching errors); `content` (default) maintains exact substring semantics. When there are multiple matches, the specific match can be selected via `index`; if `index` is not provided, an error will be reported and all matching positions will be listed.
+
 ## [v0.1.0-alpha] - 2026-06-24
 
 The first pre-release version of ElBot. A lightweight Agent/Chatbot framework aimed at personal assistants, platform bots, and orchestratable automation assistants.

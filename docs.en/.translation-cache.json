@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "f34915377b2ae463489f257235f7d857052dc2dba5d2c6b0949f2a38bb6423ca",
+      "source_hash": "1fb28ecc6b53530e366d9b6d3a3359c7ce79bddd3a948b0a799524a64a385a5f",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782270601
+      "updated_at": 1782298716
     },
     "README.zh-CN.md": {
       "source_hash": "9316c5d17a1626acb11825ef7a899024d5fdbeb48152c9d6b02ad0deed5b49c5",
@@ -84,6 +84,14 @@
       "translation": "**Tool Discovery Mechanism**: By default, only __ELBOT_CODE_0__ and the tool name are exposed, with the full schema injected on demand to reduce unnecessary context overhead.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:36d8eefabd86733235aa7765b21ab8353754de23bae489203434cee8a682113b": {
+      "kind": "list",
+      "source": "多处匹配时可通过 __ELBOT_CODE_0__ 选择第几处，未传 __ELBOT_CODE_1__ 报错并列出所有匹配位置。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "36d8eefabd86733235aa7765b21ab8353754de23bae489203434cee8a682113b",
+      "translation": "When there are multiple matches, the specific match can be selected via __ELBOT_CODE_0__; if __ELBOT_CODE_1__ is not provided, an error will be reported and all matching positions will be listed.",
+      "updated_at": 1782298716
+    },
     "CHANGELOG.md:list:3bfc1afeffc284a26448c1c4b861effd798139382834e032c757e03c4de32170": {
       "kind": "list",
       "source": "**日志与审计**：运行日志、审计日志与 Elnis 日志分离，支持结构化字段与按日期轮转。",
@@ -108,6 +116,14 @@
       "translation": "Compatible with agentskills.io style external AgentSkills (accompanied by Python scripts).",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:714c6568883b5a6b6d519ae10020e60c5d54a73ae7f39b8f6636810137a32aeb": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 工具风险等级由 high 降为 medium。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "714c6568883b5a6b6d519ae10020e60c5d54a73ae7f39b8f6636810137a32aeb",
+      "translation": "The risk level of the __ELBOT_CODE_0__ tool has been downgraded from high to medium.",
+      "updated_at": 1782298716
+    },
     "CHANGELOG.md:list:74cc70f1fc05110e376f89105915e000dd86f27ff35078ec828df758295d929e": {
       "kind": "list",
       "source": "MCP 工具、子 Agent 与完整多模态（语音、视频、文件真实模型输入）尚未实现。",
@@ -115,6 +131,14 @@
       "source_hash": "74cc70f1fc05110e376f89105915e000dd86f27ff35078ec828df758295d929e",
       "translation": "MCP tools, sub-Agents, and full multimodality (actual model input for voice, video, and files) are not yet implemented.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:7500a6bebabf390101368282085b77b23e0a803832db24807d92874bbcf13f04": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 操作新增 __ELBOT_CODE_2__ 与 __ELBOT_CODE_3__ 参数：__ELBOT_CODE_4__ 时按单行前缀匹配整行（容忍行首缩进，规避换行符匹配出错），__ELBOT_CODE_5__（默认）保持精确子串语义；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "7500a6bebabf390101368282085b77b23e0a803832db24807d92874bbcf13f04",
+      "translation": "Added __ELBOT_CODE_2__ and __ELBOT_CODE_3__ parameters to the __ELBOT_CODE_1__ operation of __ELBOT_CODE_0__: when __ELBOT_CODE_4__, it matches the entire line by single-line prefix (tolerating leading indentation to avoid newline character matching errors); __ELBOT_CODE_5__ (default) maintains exact substring semantics.",
+      "updated_at": 1782298716
     },
     "CHANGELOG.md:list:7d4eb6c7f9421281249ea4260a8e00117bc3dc92316a27b354181c10219e5e5d": {
       "kind": "list",
@@ -156,6 +180,14 @@
       "translation": "**Chat/Work Dual Mode**: chat mode disables tools, suitable for daily chatting and low-cost conversations; work mode enables tool discovery and invocation; models can be configured independently for both modes.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:ada87970eec02cf839ea0c3ab0c573116bb30bcb71bac655bf9eaeb0c4d76173": {
+      "kind": "list",
+      "source": "LLM 建连/HTTP 可重试失败时通过 Notice 显示当前重试次数。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ada87970eec02cf839ea0c3ab0c573116bb30bcb71bac655bf9eaeb0c4d76173",
+      "translation": "Display the current retry count via Notice when LLM connection/HTTP retriable requests fail.",
+      "updated_at": 1782298716
+    },
     "CHANGELOG.md:list:b38bc9c4a4c1c59fabd0af61273ce28f1bda9c70b72de6986bc430d0e30f60aa": {
       "kind": "list",
       "source": "LLM Cron 用 ELyph 任务描述驱动模型执行，支持一次性与周期任务、missed 补跑与广播。",
@@ -163,6 +195,14 @@
       "source_hash": "b38bc9c4a4c1c59fabd0af61273ce28f1bda9c70b72de6986bc430d0e30f60aa",
       "translation": "LLM Cron uses ELyph task descriptions to drive model execution, supporting one-time and periodic tasks, missed run recovery, and broadcasting.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:b6c52e63dbdbc933d90f2fc0f1cfdd60ebce756de4f7acdf8ad3fbff5bceb9b7": {
+      "kind": "list",
+      "source": "修复 OpenAI-compatible 流式响应中途断开但缺失 __ELBOT_CODE_0__ 时被当作正常结束的问题；现在会明确通知 LLM 响应中断。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "b6c52e63dbdbc933d90f2fc0f1cfdd60ebce756de4f7acdf8ad3fbff5bceb9b7",
+      "translation": "Fixed an issue where OpenAI-compatible streaming responses that disconnected midway but were missing __ELBOT_CODE_0__ were treated as normal terminations; now it will explicitly notify that the LLM response was interrupted.",
+      "updated_at": 1782298716
     },
     "CHANGELOG.md:list:bd93eae9bd1763e2908b379364b1f9d9b2057b8941646314b5cf7d0e454e8ac8": {
       "kind": "list",
