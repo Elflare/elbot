@@ -13,7 +13,7 @@ import (
 	"elbot/internal/launcher"
 )
 
-const version = "dev"
+var version = "dev"
 
 func main() {
 	startedAt := time.Now()
