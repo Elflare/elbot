@@ -1,5 +1,10 @@
 {
   "files": {
+    "CHANGELOG.md": {
+      "source_hash": "f34915377b2ae463489f257235f7d857052dc2dba5d2c6b0949f2a38bb6423ca",
+      "target": "CHANGELOG.en.md",
+      "updated_at": 1782270601
+    },
     "README.zh-CN.md": {
       "source_hash": "9316c5d17a1626acb11825ef7a899024d5fdbeb48152c9d6b02ad0deed5b49c5",
       "target": "README.md",
@@ -47,6 +52,158 @@
     }
   },
   "segments": {
+    "CHANGELOG.md:list:11621501ea8bcfaddd39ec7e55a6251b636d07bf7fbcb7f3d2438f778362bf66": {
+      "kind": "list",
+      "source": "**记忆系统**：常驻记忆（core/normal 分层）按平台与 actor 注入；长期记忆基于 Markdown 源数据与 SQLite FTS 检索。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "11621501ea8bcfaddd39ec7e55a6251b636d07bf7fbcb7f3d2438f778362bf66",
+      "translation": "**Memory System**: Resident memory (core/normal layers) injected by platform and actor; long-term memory based on Markdown source data and SQLite FTS retrieval.",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:124caf0d7cc91f9b2ff6facd12a4ab06dd0cf07f8eaac37eb69f2f376660b75b": {
+      "kind": "list",
+      "source": "**多平台适配**：CLI（含 client/server 分离与远程连接）、QQ OneBot v11、QQ 官方机器人、Telegram Bot API。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "124caf0d7cc91f9b2ff6facd12a4ab06dd0cf07f8eaac37eb69f2f376660b75b",
+      "translation": "**Multi-platform adapter**: CLI (including client/server separation and remote connection), QQ OneBot v11, QQ Official Bot, Telegram Bot API.",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:14cd896f3e686f14895d68bac5e89d2420b4109ebf71e29785677cc89a68d1a8": {
+      "kind": "list",
+      "source": "接口、配置与内部实现仍可能调整，更适合作为个人 Agent/bot 框架探索使用。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "14cd896f3e686f14895d68bac5e89d2420b4109ebf71e29785677cc89a68d1a8",
+      "translation": "Interfaces, configurations, and internal implementations may still be adjusted; it is more suitable for exploratory use as a personal Agent/bot framework.",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:280823f9e19a44bcbfe92547cc46408bbcf2b93e26cd0cfcf98c3d26afaa1c3e": {
+      "kind": "list",
+      "source": "**工具发现机制**：默认只暴露 __ELBOT_CODE_0__ 与工具名，按需注入完整 schema，减少无效上下文开销。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "280823f9e19a44bcbfe92547cc46408bbcf2b93e26cd0cfcf98c3d26afaa1c3e",
+      "translation": "**Tool Discovery Mechanism**: By default, only __ELBOT_CODE_0__ and the tool name are exposed, with the full schema injected on demand to reduce unnecessary context overhead.",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:3bfc1afeffc284a26448c1c4b861effd798139382834e032c757e03c4de32170": {
+      "kind": "list",
+      "source": "**日志与审计**：运行日志、审计日志与 Elnis 日志分离，支持结构化字段与按日期轮转。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "3bfc1afeffc284a26448c1c4b861effd798139382834e032c757e03c4de32170",
+      "translation": "**Logs and Audit**: Runtime logs, audit logs, and Elnis logs are separated, supporting structured fields and date-based rotation.",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:5ba1e7bae3138806db3d563894180256e849e05fa7ca9dc5679e584ad9931382": {
+      "kind": "list",
+      "source": "**Hook Layer**：在 Agent 输入、LLM 请求/响应、平台发送等关键点插入扩展逻辑；内置规则 Hook、表情 Hook 与常驻记忆 Hook。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "5ba1e7bae3138806db3d563894180256e849e05fa7ca9dc5679e584ad9931382",
+      "translation": "**Hook Layer**: Insert extension logic at key points such as Agent input, LLM request/response, and platform sending; built-in rule Hooks, emoji Hooks, and resident memory Hooks.",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:6970168418b00124c98288e227a6831f798c18ed573c05cb7a6f07fd850812c6": {
+      "kind": "list",
+      "source": "兼容 agentskills.io 风格外置 AgentSkill（附带 Python 脚本）。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "6970168418b00124c98288e227a6831f798c18ed573c05cb7a6f07fd850812c6",
+      "translation": "Compatible with agentskills.io style external AgentSkills (accompanied by Python scripts).",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:74cc70f1fc05110e376f89105915e000dd86f27ff35078ec828df758295d929e": {
+      "kind": "list",
+      "source": "MCP 工具、子 Agent 与完整多模态（语音、视频、文件真实模型输入）尚未实现。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "74cc70f1fc05110e376f89105915e000dd86f27ff35078ec828df758295d929e",
+      "translation": "MCP tools, sub-Agents, and full multimodality (actual model input for voice, video, and files) are not yet implemented.",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:7d4eb6c7f9421281249ea4260a8e00117bc3dc92316a27b354181c10219e5e5d": {
+      "kind": "list",
+      "source": "**轻量内核**：Go 实现，本地启动 <10ms，常驻内存约 30MB。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "7d4eb6c7f9421281249ea4260a8e00117bc3dc92316a27b354181c10219e5e5d",
+      "translation": "**Lightweight Core**: Implemented in Go, local startup <10ms, resident memory approximately 30MB.",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:7d9ce7afaf8c80361c3a68a26281f59e6959a650964a79e2ca14f6746040e04e": {
+      "kind": "list",
+      "source": "**安全策略**：工具风险分级、角色权限校验、高风险确认流程与后台 shell 轻量沙盒。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "7d9ce7afaf8c80361c3a68a26281f59e6959a650964a79e2ca14f6746040e04e",
+      "translation": "**Security Policy**: Tool risk grading, role permission verification, high-risk confirmation workflows, and a lightweight background shell sandbox.",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:7efdca0726c1f3e11a9edd7c8226f6565a4f8de048ed6ca513259bf85f964e18": {
+      "kind": "list",
+      "source": "**ELyph Task Notation**：结构化任务描述语言，用于 LLM Cron 与原生 Skill，减少自然语言歧义。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "7efdca0726c1f3e11a9edd7c8226f6565a4f8de048ed6ca513259bf85f964e18",
+      "translation": "**ELyph Task Notation**: A structured task description language used for LLM Cron and native Skills to reduce natural language ambiguity.",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:83aa655090903e728d1214292cfd1dd5bdd99b5ae467bc2329b6108a14d1a622": {
+      "kind": "list",
+      "source": "**原生与外置 Skill**：__ELBOT_CODE_0__ 元工具支持 LLM 创建原生 EL Skill（纯 ELyph 或附带 Go 源码并编译）；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "83aa655090903e728d1214292cfd1dd5bdd99b5ae467bc2329b6108a14d1a622",
+      "translation": "**Native and External Skills**: The __ELBOT_CODE_0__ meta-tool supports LLMs in creating native EL Skills (pure ELyph or accompanied by Go source code and compiled);",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:92385f55b6d2a02dc7846f955909efbbdcebe6cd99af4be8ab209faab39b449b": {
+      "kind": "list",
+      "source": "**Chat/Work 双模式**：chat 模式关闭工具，适合日常聊天与低成本对话；work 模式启用工具发现与调用，两模式可独立配置模型。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "92385f55b6d2a02dc7846f955909efbbdcebe6cd99af4be8ab209faab39b449b",
+      "translation": "**Chat/Work Dual Mode**: chat mode disables tools, suitable for daily chatting and low-cost conversations; work mode enables tool discovery and invocation; models can be configured independently for both modes.",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:b38bc9c4a4c1c59fabd0af61273ce28f1bda9c70b72de6986bc430d0e30f60aa": {
+      "kind": "list",
+      "source": "LLM Cron 用 ELyph 任务描述驱动模型执行，支持一次性与周期任务、missed 补跑与广播。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "b38bc9c4a4c1c59fabd0af61273ce28f1bda9c70b72de6986bc430d0e30f60aa",
+      "translation": "LLM Cron uses ELyph task descriptions to drive model execution, supporting one-time and periodic tasks, missed run recovery, and broadcasting.",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:bd93eae9bd1763e2908b379364b1f9d9b2057b8941646314b5cf7d0e454e8ac8": {
+      "kind": "list",
+      "source": "**标准 Cron 与 LLM Cron**：标准 Cron 按计划直发固定内容；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "bd93eae9bd1763e2908b379364b1f9d9b2057b8941646314b5cf7d0e454e8ac8",
+      "translation": "**Standard Cron and LLM Cron**: Standard Cron sends fixed content directly according to a schedule;",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:cb42950d3097afb350e0270a9241489518a607d30bcc8c00f788f103348b188a": {
+      "kind": "list",
+      "source": "**SQLite 持久化**：Session、消息、上下文摘要、工具调用记录、Cron job、Elnis 事件统一存储。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "cb42950d3097afb350e0270a9241489518a607d30bcc8c00f788f103348b188a",
+      "translation": "**SQLite Persistence**: Unified storage for Sessions, messages, context summaries, tool call records, Cron jobs, and Elnis events.",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:ce3e9cc6dd15510c9cfe7dbcae094bd1f1cb641bc8875c00f0d3c95d4642854d": {
+      "kind": "list",
+      "source": "**Elnis 监听枢纽**：接收 Elwisp 通过 Elvena HTTP 协议投递的外部事件，支持 record/direct/llm 三种模式与多目标投递。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ce3e9cc6dd15510c9cfe7dbcae094bd1f1cb641bc8875c00f0d3c95d4642854d",
+      "translation": "**Elnis listening hub**: Receives external events delivered by Elwisp via the Elvena HTTP protocol, supporting three modes (record/direct/llm) and multi-target delivery.",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:e674fa7fc18af87b45660da3fff098ff0a482256ae0cdc7d64932ce221ad779c": {
+      "kind": "list",
+      "source": "**Session 服务**：持久化会话，支持恢复、归档、置顶、Fork、删除、分页与平台隔离；长对话自动上下文压缩。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "e674fa7fc18af87b45660da3fff098ff0a482256ae0cdc7d64932ce221ad779c",
+      "translation": "**Session Service**: Persistent sessions supporting recovery, archiving, pinning, Forking, deletion, pagination, and platform isolation; automatic context compaction for long conversations.",
+      "updated_at": 1782270601
+    },
+    "CHANGELOG.md:paragraph:f4fdd49cee5a8975381d265d52b666a936b8a0b8d696502ff7ac1ebdda67c23c": {
+      "kind": "paragraph",
+      "source": "ElBot 的首个预发布版本。轻量 Agent/Chatbot 框架，目标是个人助手、平台机器人与可编排的自动化助手。\n",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "f4fdd49cee5a8975381d265d52b666a936b8a0b8d696502ff7ac1ebdda67c23c",
+      "translation": "The first pre-release version of ElBot. A lightweight Agent/Chatbot framework aimed at personal assistants, platform bots, and orchestratable automation assistants.\n",
+      "updated_at": 1782270601
+    },
     "README.zh-CN.md:code-comment:bash:130bae2a285a534300c83d222710f7341b2f89c66a2de9a3e1f6c70185cb6e0f": {
       "kind": "code-comment:bash",
       "source": "本地 CLI-only：只启动 CLI，不启动平台和 Cron",
