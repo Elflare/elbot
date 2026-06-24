@@ -66,12 +66,12 @@ func (a *Agent) compactSession(ctx context.Context, session *storage.Session, tr
 	return sb.String(), nil
 }
 
-func (a *Agent) SetContextOptions(ctxCfg config.ContextConfig, metadata config.ModelMetadataConfig, compactModel config.ModelSelection) {
+func (a *Agent) SetContextOptions(ctxCfg config.ContextConfig, metadata config.ModelMetadataConfig, providers map[string]config.ProviderConfig, compactModel config.ModelSelection) {
 	a.contextConfig = ctxCfg
 	a.modelMetadata = metadata
 	a.compactModel = compactModel
 	a.contextLoader = contextmgr.Loader{Store: a.store}
-	a.windowResolver = contextmgr.NewWindowResolver(metadata, a.clientForProvider)
+	a.windowResolver = contextmgr.NewWindowResolver(metadata, providers, a.clientForProvider)
 	a.compressor = contextmgr.Compressor{Store: a.store, ClientFor: a.clientForProvider}
 }
 

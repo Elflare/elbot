@@ -380,7 +380,7 @@ func (a *Agent) clientForProvider(providerName string) llm.LLM {
 		return client
 	}
 	provider := a.modelRuntime.providers[providerName]
-	client := openai.NewWithOptions(provider.BaseURL, provider.APIKey, provider.ExtraPayload, agentModelExtraPayloads(provider.ModelConfigs), llmRequestOptions(a.modelRuntime.llmRequestConfig))
+	client := openai.NewWithOptions(provider.BaseURL, provider.APIKey, provider.ExtraPayload, agentModelExtraPayloads(provider.ModelConfigs), llmRequestOptions(a.modelRuntime.llmRequestConfig, provider.Proxy))
 
 	client.SetLogger(a.logger)
 	a.attachLLMRetryNotifier(client, providerName)
@@ -508,11 +508,12 @@ func joinModelMatches(matches []agentcommands.ModelOption) string {
 	return strings.Join(parts, ", ")
 }
 
-func llmRequestOptions(cfg config.LLMRequestConfig) openai.RequestOptions {
+func llmRequestOptions(cfg config.LLMRequestConfig, proxy string) openai.RequestOptions {
 	return openai.RequestOptions{
 		Timeout:           time.Duration(cfg.TimeoutSeconds) * time.Second,
 		MaxRetries:        cfg.MaxRetries,
 		RetryInitialDelay: time.Duration(cfg.RetryInitialDelaySeconds) * time.Second,
+		Proxy:             proxy,
 	}
 }
 

@@ -9,7 +9,7 @@
 - `docs/concepts.md`：核心概念，写 Chat/Work、工具发现、Session、Hook、Cron、Skill、安全等用户需要理解的概念。
 - `docs/elnis.md`：Elnis 监听枢纽介绍，写 Elnis、Elwisp、Elvena、事件模式和能力边界。
 - `docs/elnis-usage.md`：Elnis 配置与使用，写启用配置、curl 示例、Elvena 字段和投递安全边界。
-- `docs.en/` / `README.md`：英文用户文档镜像，由 GitHub Actions 根据 `docs/` 和 `README.zh-CN.md` 自动翻译生成；不要手动修改。
+- `docs.en/` / `README.md` / `CHANGLOG.en.md`：英文用户文档镜像，由 GitHub Actions 自动翻译生成；不要手动修改。
 - `scripts/translate_docs.py`：用户文档增量翻译脚本。
 
 ## devdocs 开发文档速查
@@ -104,7 +104,7 @@
 
 配置约定：默认配置查找顺序为 `--config`、`ELBOT_CONFIG_FILE`、平台配置目录（Windows `%APPDATA%/ElBot/app.toml`；Linux XDG `~/.config/elbot/app.toml`）；平台配置不存在时由内置 assets 自动生成，已有配置不覆盖。静态配置在 `app.toml`，Provider 列表在同目录 `providers.toml`，运行时热切换状态在同目录 `state.toml`，工具 tag 配置在同目录 `tool_tags.toml`；用户可编辑资产集中在配置目录：`memories.toml`、`long_memory/`、`skills/`、`plugins/`，SQLite/logs/sandbox 等运行数据仍按各自配置或默认数据目录存放。Hook/插件配置固定放在同目录 `plugins/<plugin-name>.toml`，规则 Hook 使用 `plugins/hooks.toml`，app 层不解析插件专属字段。Provider key 推荐用 `api_key_env`，读取优先级为系统环境变量 > 配置目录 `.env`。
 
-- `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录解析 `app.toml`，读取并合并 app/provider/state/tool_tags 配置，解析相对路径和 `api_key_env`，包含 LLM 请求超时/重试、sandbox、Elnis 配置。
+- `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录解析 `app.toml`，读取并合并 app/provider/state/tool_tags 配置，解析相对路径和 `api_key_env`，包含 LLM 请求超时/重试、sandbox、Elnis 配置；Provider 支持 proxy，`models` 补充模型列表，`model_configs` 配置模型的 context_window 和 extra_payload。
 - `internal/config/assets.go`：首次运行默认配置资产；在无显式配置且无平台配置时生成 app/providers/state/SOUL/elnis/.env.example 和基础目录。
 
 
@@ -117,7 +117,6 @@
 - `config/tool_tags.toml`：工具 tag 示例配置；保存 `@tool:<tag>` 对应工具列表和 tag 激活后追加到 system prompt 的工具使用策略。
 - `config/elnis.toml`：Elnis 示例配置；保存 enabled、HTTP、token、delivery_disabled、内部工具 `allowed_tools` 和单 Elwisp 策略，投递与外部 Elwisp 工具默认允许且可按 Elwisp 禁用。
 
-- `config/providers.toml`：Provider 示例配置；保存供应商、模型列表、extra payload 和模型元信息，公开配置只写 `api_key_env` 不写真实 key。
 - `config/state.toml`：热切换状态；保存当前模型选择和默认新会话模式。
 - `config/SOUL.md`：System Prompt 来源文件；两种模式都从这里读取，不把工具发现、常驻记忆、时间或平台信息硬编码进 System Prompt。
 - `config/plugins/`：Hook/插件配置目录，规则 Hook 配置文件为 `hooks.toml`。

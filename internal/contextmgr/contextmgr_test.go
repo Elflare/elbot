@@ -20,8 +20,15 @@ func (m metadataLLM) ListModelMetadata(context.Context) ([]llm.ModelMetadata, er
 }
 
 func TestWindowResolverPriority(t *testing.T) {
+	providers := map[string]config.ProviderConfig{
+		"p": {ModelConfigs: map[string]config.ModelConfig{
+			"manual":   {ContextWindow: 16000},
+			"fallback": {ContextWindow: 12000},
+		}},
+	}
 	resolver := NewWindowResolver(
-		config.ModelMetadataConfig{DefaultContextWindow: 8192, ContextWindows: map[string]int{"p/manual": 16000, "fallback": 12000}},
+		config.ModelMetadataConfig{DefaultContextWindow: 8192},
+		providers,
 		func(provider string) llm.LLM {
 			return metadataLLM{metadata: []llm.ModelMetadata{{ID: "api", ContextWindow: 32000}}}
 		},
@@ -34,7 +41,7 @@ func TestWindowResolverPriority(t *testing.T) {
 		t.Fatalf("manual provider/model window = %d", got)
 	}
 	if got := resolver.Resolve(context.Background(), "p", "fallback"); got != 12000 {
-		t.Fatalf("manual model window = %d", got)
+		t.Fatalf("fallback provider/model window = %d", got)
 	}
 	if got := resolver.Resolve(context.Background(), "p", "unknown"); got != 8192 {
 		t.Fatalf("default window = %d", got)

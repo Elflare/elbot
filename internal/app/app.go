@@ -222,13 +222,13 @@ func Run(ctx context.Context, opts Options) error {
 		<-cronManager.Stop().Done()
 	}()
 
-	adapter := openai.NewWithOptions(provider.BaseURL, provider.APIKey, provider.ExtraPayload, modelExtraPayloads(provider.ModelConfigs), appLLMRequestOptions(cfg.LLMRequest))
+	adapter := openai.NewWithOptions(provider.BaseURL, provider.APIKey, provider.ExtraPayload, modelExtraPayloads(provider.ModelConfigs), appLLMRequestOptions(cfg.LLMRequest, provider.Proxy))
 	adapter.SetLogger(logger)
 	namingAdapter := adapter
 	namingModel := ""
 	if cfg.NamingModel.Provider != "" && cfg.NamingModel.Model != "" {
 		if namingProvider, ok := cfg.Providers[cfg.NamingModel.Provider]; ok {
-			namingAdapter = openai.NewWithOptions(namingProvider.BaseURL, namingProvider.APIKey, namingProvider.ExtraPayload, modelExtraPayloads(namingProvider.ModelConfigs), appLLMRequestOptions(cfg.LLMRequest))
+			namingAdapter = openai.NewWithOptions(namingProvider.BaseURL, namingProvider.APIKey, namingProvider.ExtraPayload, modelExtraPayloads(namingProvider.ModelConfigs), appLLMRequestOptions(cfg.LLMRequest, namingProvider.Proxy))
 			namingAdapter.SetLogger(logger)
 			namingModel = cfg.NamingModel.Model
 		} else {
@@ -315,7 +315,7 @@ func Run(ctx context.Context, opts Options) error {
 	agt.SetToolConfig(cfg.Tools)
 	agt.SetToolTagConfig(cfg.ToolTagsConfigPath, cfg.ToolTags)
 	agt.SetSecurityPolicy(securityPolicy)
-	agt.SetContextOptions(cfg.Context, cfg.ModelMetadata, cfg.CompactModel)
+	agt.SetContextOptions(cfg.Context, cfg.ModelMetadata, cfg.Providers, cfg.CompactModel)
 	cronService.SetRunner(agt)
 	for _, notice := range startupHookNotices {
 		notifyHookIssue(context.Background(), notice)
@@ -598,11 +598,12 @@ func platformConfigEnabled(raw map[string]any) bool {
 	return ok && enabled
 }
 
-func appLLMRequestOptions(cfg config.LLMRequestConfig) openai.RequestOptions {
+func appLLMRequestOptions(cfg config.LLMRequestConfig, proxy string) openai.RequestOptions {
 	return openai.RequestOptions{
 		Timeout:           time.Duration(cfg.TimeoutSeconds) * time.Second,
 		MaxRetries:        cfg.MaxRetries,
 		RetryInitialDelay: time.Duration(cfg.RetryInitialDelaySeconds) * time.Second,
+		Proxy:             proxy,
 	}
 }
 

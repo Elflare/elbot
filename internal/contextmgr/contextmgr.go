@@ -146,10 +146,6 @@ func (r *WindowResolver) Resolve(ctx context.Context, provider, model string) in
 		r.cache[key] = value
 		return value
 	}
-	if value := r.ManualWindows[model]; value > 0 {
-		r.cache[key] = value
-		return value
-	}
 	if r.DefaultWindow > 0 {
 		return r.DefaultWindow
 	}
@@ -292,6 +288,14 @@ func compactPrompt(previous *storage.ContextSummary, messages []storage.Message)
 	return sb.String()
 }
 
-func NewWindowResolver(metadata config.ModelMetadataConfig, clientFor ClientProvider) *WindowResolver {
-	return &WindowResolver{DefaultWindow: metadata.DefaultContextWindow, ManualWindows: metadata.ContextWindows, ClientFor: clientFor}
+func NewWindowResolver(metadata config.ModelMetadataConfig, providers map[string]config.ProviderConfig, clientFor ClientProvider) *WindowResolver {
+	manual := map[string]int{}
+	for providerName, provider := range providers {
+	for modelName, modelCfg := range provider.ModelConfigs {
+		if modelCfg.ContextWindow > 0 {
+			manual[providerName+"/"+modelName] = modelCfg.ContextWindow
+		}
+		}
+	}
+	return &WindowResolver{DefaultWindow: metadata.DefaultContextWindow, ManualWindows: manual, ClientFor: clientFor}
 }

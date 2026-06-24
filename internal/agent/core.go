@@ -164,7 +164,7 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 	if p != nil {
 		a.platformSenders[p.Name()] = p
 	}
-	a.SetContextOptions(a.contextConfig, config.ModelMetadataConfig{}, config.ModelSelection{})
+	a.SetContextOptions(a.contextConfig, config.ModelMetadataConfig{}, providers, config.ModelSelection{})
 	if err := agentcommands.RegisterDefaultModules(a.commands, agentcommands.Deps{
 		Router:               a.commands,
 		Sessions:             a.sessions,

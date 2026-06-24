@@ -22,7 +22,6 @@ type Config struct {
 	ModeModels          map[string]ModelSelection `toml:"mode_models"`
 	NamingModel         ModelSelection            `toml:"naming_model"`
 	CompactModel        ModelSelection            `toml:"-"`
-	GlobalDefault       GlobalDefaultConfig       `toml:"global_default"`
 	Providers           map[string]ProviderConfig `toml:"providers"`
 	ModelMetadata       ModelMetadataConfig       `toml:"model_metadata"`
 	Storage             StorageConfig             `toml:"storage"`
@@ -67,23 +66,19 @@ type ProviderConfig struct {
 	APIKeyEnv    string                 `toml:"api_key_env"`
 	Proxy        string                 `toml:"proxy"`
 	Models       []string               `toml:"models"`
-	ExtraPayload map[string]any         `toml:"extra_payload"`
 	ModelConfigs map[string]ModelConfig `toml:"model_configs"`
+	ExtraPayload map[string]any         `toml:"extra_payload"`
 }
 
 type ModelConfig struct {
-	ExtraPayload map[string]any `toml:"extra_payload"`
+	ContextWindow int            `toml:"context_window"`
+	ExtraPayload  map[string]any `toml:"extra_payload"`
 }
 
-type GlobalDefaultConfig struct {
-	Stream      bool    `toml:"stream"`
-	MaxTokens   int     `toml:"max_tokens"`
-	Temperature float64 `toml:"temperature"`
-}
+type ModelConfigs map[string]ModelConfig
 
 type ModelMetadataConfig struct {
-	DefaultContextWindow int            `toml:"default_context_window"`
-	ContextWindows       map[string]int `toml:"context_windows"`
+	DefaultContextWindow int `toml:"default_context_window"`
 }
 
 type LLMRequestConfig struct {
@@ -621,9 +616,6 @@ func (c *Config) applyProviderDefaults() {
 	if c.ModelMetadata.DefaultContextWindow <= 0 {
 		c.ModelMetadata.DefaultContextWindow = 8192
 	}
-	if c.ModelMetadata.ContextWindows == nil {
-		c.ModelMetadata.ContextWindows = map[string]int{}
-	}
 }
 
 func (c *Config) applyState(state *StateConfig) {
@@ -685,7 +677,6 @@ func (c *Config) validateModeModels() error {
 }
 
 func (c *Config) mergeProviders(providerCfg *Config) {
-	c.GlobalDefault = providerCfg.GlobalDefault
 	c.Providers = providerCfg.Providers
 	c.ModelMetadata = providerCfg.ModelMetadata
 }
@@ -696,3 +687,4 @@ func resolveRelative(baseFile, path string) string {
 	}
 	return filepath.Clean(filepath.Join(filepath.Dir(baseFile), path))
 }
+

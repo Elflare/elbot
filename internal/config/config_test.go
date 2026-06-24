@@ -183,11 +183,6 @@ non_superadmin_idle_ttl_minutes = 0
 trigger_step = 3
 `)
 	writeFile(t, providersPath, `
-[global_default]
-stream = true
-temperature = 0.7
-max_tokens = 1024
-
 [providers.deepseek]
 base_url = "https://api.deepseek.com"
 api_key = "${DUMMY_API_KEY}"
@@ -195,13 +190,11 @@ models = ["deepseek-v4-flash"]
 extra_payload = { provider_field = "provider" }
 
 [providers.deepseek.model_configs."deepseek-v4-flash"]
+context_window = 64000
 extra_payload = { thinking = { type = "disabled" }, provider_field = "model" }
 
 [model_metadata]
 default_context_window = 12345
-
-[model_metadata.context_windows]
-deepseek-v4-flash = 64000
 `)
 	writeFile(t, statePath, `
 [session]
@@ -346,12 +339,12 @@ prompt = "Use agent tools."
 		t.Fatalf("provider extra payload = %#v", provider.ExtraPayload)
 	}
 	modelCfg := provider.ModelConfigs["deepseek-v4-flash"]
+	if modelCfg.ContextWindow != 64000 {
+		t.Fatalf("model context window = %d", modelCfg.ContextWindow)
+	}
 	thinking, ok := modelCfg.ExtraPayload["thinking"].(map[string]any)
 	if !ok || thinking["type"] != "disabled" || modelCfg.ExtraPayload["provider_field"] != "model" {
 		t.Fatalf("model config extra payload = %#v", modelCfg.ExtraPayload)
-	}
-	if cfg.ModelMetadata.ContextWindows["deepseek-v4-flash"] != 64000 {
-		t.Fatalf("context window = %d", cfg.ModelMetadata.ContextWindows["deepseek-v4-flash"])
 	}
 }
 
@@ -437,9 +430,6 @@ model = "deepseek-chat"
 	}
 	if cfg.Providers == nil {
 		t.Fatal("Providers map is nil")
-	}
-	if cfg.ModelMetadata.ContextWindows == nil {
-		t.Fatal("ContextWindows map is nil")
 	}
 }
 

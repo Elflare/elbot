@@ -12,6 +12,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +38,7 @@ type RequestOptions struct {
 	MaxRetries        int
 	RetryInitialDelay time.Duration
 	OnRetry           func(context.Context, RetryEvent)
+	Proxy             string
 }
 
 func (o RequestOptions) withDefaults() RequestOptions {
@@ -80,12 +82,20 @@ func NewWithModelExtraPayloads(baseURL, apiKey string, extraPayload map[string]a
 func NewWithOptions(baseURL, apiKey string, extraPayload map[string]any, modelExtraPayloads map[string]map[string]any, opts RequestOptions) *Adapter {
 	baseURL = strings.TrimRight(baseURL, "/")
 	opts = opts.withDefaults()
+	client := &http.Client{Timeout: opts.Timeout}
+	if strings.TrimSpace(opts.Proxy) != "" {
+		proxyURL, err := url.Parse(opts.Proxy)
+		if err != nil {
+			panic(fmt.Sprintf("invalid proxy URL %q: %v", opts.Proxy, err))
+		}
+		client.Transport = &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+	}
 	return &Adapter{
 		baseURL:            baseURL,
 		apiKey:             apiKey,
 		extraPayload:       extraPayload,
 		modelExtraPayloads: modelExtraPayloads,
-		client:             &http.Client{Timeout: opts.Timeout},
+		client:             client,
 		maxRetries:         opts.MaxRetries,
 		retryInitialDelay:  opts.RetryInitialDelay,
 		onRetry:            opts.OnRetry,
