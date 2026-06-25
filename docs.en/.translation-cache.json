@@ -11,9 +11,9 @@
       "updated_at": 1782376191
     },
     "docs/README.md": {
-      "source_hash": "f8f61f06e99034edbc0f88b640920f5ecd10b765a2d4714e1c0ccbe977e7cee4",
+      "source_hash": "1230f9ab00aa9ac08ec2f6adae707583f6b447e9e9f070de56c369f8f3b927ba",
       "target": "docs.en/README.md",
-      "updated_at": 1782298662
+      "updated_at": 1782376212
     },
     "docs/commands.md": {
       "source_hash": "da88effce2439eca033f3cef874bd6e034fdcec15d1376bdbcb576491b8f38bf",
@@ -1803,6 +1803,14 @@
       "source_hash": "6e38716289e341fef6345a2dc8255855033d895c2798f65d2b4ebb06e0738fa0",
       "translation": "Using versions (tags) as nodes, regular changes should be written into __ELBOT_CODE_0__; when releasing, change it to __ELBOT_CODE_1__ and create a new empty Unreleased.",
       "updated_at": 1782298662
+    },
+    "docs/README.md:list:97d2363c2991fa485e07be08a3757caa35e02dd1ae8b9530f0e0e3c3b7a556aa": {
+      "kind": "list",
+      "source": "[Hook](hooks.md)：规则 Hook 配置、action 类型、segments 多段输出、exec 脚本和表情提取示例。",
+      "source_file": "docs/README.md",
+      "source_hash": "97d2363c2991fa485e07be08a3757caa35e02dd1ae8b9530f0e0e3c3b7a556aa",
+      "translation": "[Hook](hooks.md): Rule Hook configuration, action types, segments multi-part output, exec scripts, and emoji extraction examples.",
+      "updated_at": 1782376212
     },
     "docs/README.md:list:b458ca24b5d56f6ca819edecdeb2187c244d62e454f97d58ee1dab9466165afe": {
       "kind": "list",
