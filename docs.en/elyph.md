@@ -196,7 +196,7 @@ Ends a code block, occupying its own line.
 
 ### `//` comment
 
-Full-line comment, which will be ignored.
+Only whole-line comments are allowed.
 
 ```
 // 这是注释

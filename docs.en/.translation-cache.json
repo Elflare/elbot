@@ -41,9 +41,9 @@
       "updated_at": 1782376420
     },
     "docs/elyph.md": {
-      "source_hash": "1143022b6f7a7792b0f1aa8118af618014b6ac359776d6a7cd21cc484f28a6bc",
+      "source_hash": "0374f117cd16d572c418d95b20943e3591b0fc04f10e8c2c4fec49c6412b4455",
       "target": "docs.en/elyph.md",
-      "updated_at": 1782376421
+      "updated_at": 1782379584
     },
     "docs/getting-started.md": {
       "source_hash": "be8df536298bfcae8caaf7f4a2932c844d168db3877fa150d2b96286d3d137b4",
@@ -8576,6 +8576,14 @@
       "source_hash": "dbf982d246ad7277bec0c58d7fd94cc340769faaee850e90c6284016108212fb",
       "translation": "Derive variable values using expressions, with support for ternary conditions.\n",
       "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:df92e0c42def00dce94722fc780e6f4064c10b7859746efd36c9ddd241e1b6b2": {
+      "kind": "paragraph",
+      "source": "只能整行注释。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "df92e0c42def00dce94722fc780e6f4064c10b7859746efd36c9ddd241e1b6b2",
+      "translation": "Only whole-line comments are allowed.\n",
+      "updated_at": 1782379584
     },
     "docs/elyph.md:paragraph:e07bf3091d2c59397bbb456562a20b271c0a5ad8b3a053dabceef95153d9c137": {
       "kind": "paragraph",
