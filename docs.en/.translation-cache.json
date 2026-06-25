@@ -26,9 +26,9 @@
       "updated_at": 1782270514
     },
     "docs/configuration.md": {
-      "source_hash": "e6125221db0f9372162c436d13230aa4b384060b143b87d3e0786a8a19088de1",
+      "source_hash": "a80e48822f72f3465a4c3b4fc4ebd2041827109647cb0460f84df9d948043a50",
       "target": "docs.en/configuration.md",
-      "updated_at": 1782312356
+      "updated_at": 1782353866
     },
     "docs/elnis-usage.md": {
       "source_hash": "22bb51d0de15eb569820fa2b7027a12907eba6587ad87ef6b3ab1447d6ab503e",
@@ -5635,6 +5635,14 @@
       "source_hash": "cce0681b233c3afc06096fb1c291b6ecb3768ecb605772fd205f738b4c58d4f1",
       "translation": "The main configuration is searched in the following order upon startup:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:d43f096208f1054da824c70c2f731293b37a7a8f539fd424033039d2d55c82d9": {
+      "kind": "paragraph",
+      "source": "所有配置文件均由程序内置 assets 首次运行时自动生成到平台配置目录，已有文件不会被覆盖；源码中不再保留 __ELBOT_CODE_0__ 目录。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d43f096208f1054da824c70c2f731293b37a7a8f539fd424033039d2d55c82d9",
+      "translation": "All configuration files are automatically generated from the program's built-in assets to the platform configuration directory upon the first run; existing files will not be overwritten, and the __ELBOT_CODE_0__ directory is no longer retained in the source code.\n",
+      "updated_at": 1782353866
     },
     "docs/configuration.md:paragraph:d4ce783a2526a9d747417ddb4fdc28255725027487b358e8d28942e05ef90dff": {
       "kind": "paragraph",

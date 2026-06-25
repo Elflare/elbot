@@ -6,19 +6,19 @@ ElBot uses a main configuration entry to load application configuration, Provide
 
 ## Configuration File Responsibilities
 
-The `config/` directory in the source code only retains example/auxiliary configuration files that can be maintained independently; the main configuration `app.toml` is generated from the program's built-in assets into the platform configuration directory upon the first run.
+All configuration files are automatically generated from the program's built-in assets to the platform configuration directory upon the first run; existing files will not be overwritten, and the `config/` directory is no longer retained in the source code.
 
 | File or Directory | Responsibility |
 | --- | --- |
-| `config/elnis.toml` | Elnis listening hub configuration, saving HTTP, token, delivery, allowed_tools, and Elwisp policies. |
-| `config/state.toml` | Runtime state, e.g., default Session mode, chat/work/compact/naming model selection. |
-| `config/tool_tags.toml` | Configuration file for adding tags and prompts to tools. |
-| `config/SOUL.md` | The System Prompt source file for the Agent. |
-| `config/.env` | Optional, local key file, not recommended for submission; the one automatically generated the first time is `.env.example`, and `.env` will not be generated directly. |
-| `config/plugins/` | Hook and plugin configuration directory. |
-| `config/skills/` | User-side Skill directory, located in the configuration directory by default; current subdirectories are `skills/agent/` and `skills/go/`. |
-| `config/memories.toml` | Resident memory file, located in the configuration directory by default. |
-| `config/long_memory/` | Long-term memory Markdown source data directory, located in the configuration directory by default. |
+| `elnis.toml` | Elnis listening hub configuration, saving HTTP, token, delivery, allowed_tools, and Elwisp policies. |
+| `state.toml` | Runtime state, e.g., default Session mode, chat/work/compact/naming model selection. |
+| `tool_tags.toml` | Configuration file for adding tags and prompts to tools. |
+| `SOUL.md` | The System Prompt source file for the Agent. |
+| `.env` | Optional, local key file, not recommended for submission; the one automatically generated the first time is `.env.example`, and `.env` will not be generated directly. |
+| `plugins/` | Hook and plugin configuration directory. |
+| `skills/` | User-side Skill directory, located in the configuration directory by default; current subdirectories are `skills/agent/` and `skills/go/`. |
+| `memories.toml` | Resident memory file, located in the configuration directory by default. |
+| `long_memory/` | Long-term memory Markdown source data directory, located in the configuration directory by default. |
 
 ## Main configuration lookup order
 
@@ -388,13 +388,13 @@ Notes:
 
 ## Elnis listening hub
 
-Elnis is disabled by default. Once enabled, ElBot will start a local HTTP ingress to receive events delivered by Elwisp according to the Elvena protocol. It is recommended to split the Elnis configuration into a separate `config/elnis.toml`, while `app.toml` only retains the entry path.
+Elnis is disabled by default. Once enabled, ElBot will start a local HTTP ingress to receive events delivered by Elwisp according to the Elvena protocol. It is recommended to split the Elnis configuration into a separate `elnis.toml`, while `app.toml` only retains the entry path.
 
 ```toml
 [config_files]
 elnis = "elnis.toml"
 
-# config/elnis.toml
+# elnis.toml
 enabled = true
 allowed_tools = ["shell", "web_search"]
 
