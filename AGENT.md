@@ -105,7 +105,7 @@
 配置约定：默认配置查找顺序为 `--config`、`ELBOT_CONFIG_FILE`、平台配置目录（Windows `%APPDATA%/ElBot/app.toml`；Linux XDG `~/.config/elbot/app.toml`）；平台配置不存在时由内置 assets 自动生成，已有配置不覆盖。静态配置在 `app.toml`，Provider 列表在同目录 `providers.toml`，运行时热切换状态在同目录 `state.toml`，工具 tag 配置在同目录 `tool_tags.toml`；用户可编辑资产集中在配置目录：`memories.toml`、`long_memory/`、`skills/`、`plugins/`，SQLite/logs/sandbox 等运行数据仍按各自配置或默认数据目录存放。Hook/插件配置固定放在同目录 `plugins/<plugin-name>.toml`，规则 Hook 使用 `plugins/hooks.toml`，app 层不解析插件专属字段。Provider key 推荐用 `api_key_env`，读取优先级为系统环境变量 > 配置目录 `.env`。
 
 - `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录解析 `app.toml`，读取并合并 app/provider/state/tool_tags 配置，解析相对路径和 `api_key_env`，包含 LLM 请求超时/重试、sandbox、Elnis 配置；Provider 支持 proxy，`models` 补充模型列表，`model_configs` 配置模型的 context_window 和 extra_payload。
-- `internal/config/assets.go`：首次运行默认配置资产；在无显式配置且无平台配置时生成 app/providers/state/SOUL/elnis/tool_tags/plugins/.env.example 和基础目录；所有示例配置统一由内置 assets 生成，源码中不再保留 `config/` 目录。
+- `internal/config/assets.go`：首次运行默认配置资产。
 
 
 - `internal/elnis/types.go`：Elnis/Elvena 协议类型；定义 Elwisp 请求、扁平投递目标、响应、事件模式、状态和随事件声明的外部工具。
