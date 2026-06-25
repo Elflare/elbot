@@ -31,9 +31,9 @@
       "updated_at": 1782376291
     },
     "docs/elnis-usage.md": {
-      "source_hash": "76fd654ef1a1c167c0d5d940aa3f29e6f098a6c8a84f46b55fdcb834be858ca3",
+      "source_hash": "4bf05ee00bac3af1917e4f1dabdd4fa01531cf9bcd1bc69c3d9aa02261f5adc9",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1782376360
+      "updated_at": 1782395349
     },
     "docs/elnis.md": {
       "source_hash": "a00509a199b063f3c4fdacc20355cb96addbe5a8e2b9a287026c3ecad904e9a1",
@@ -6241,6 +6241,14 @@
       "translation": "Quick Start",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:heading:3647ab635213fec7c3f773f3b1c6c38649a108fb5f73c5e2c454bc6a821b5963": {
+      "kind": "heading",
+      "source": "direct calls-only 示例",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "3647ab635213fec7c3f773f3b1c6c38649a108fb5f73c5e2c454bc6a821b5963",
+      "translation": "direct calls-only example",
+      "updated_at": 1782395349
+    },
     "docs/elnis-usage.md:heading:386963b8494c165ffef69ec6e89b2b3b6ed400898f9284e4f3192ce9ad116257": {
       "kind": "heading",
       "source": "Segment 字段",
@@ -6737,6 +6745,14 @@
       "translation": "Elvena v2 supports sending images and files via the __ELBOT_CODE_0__ field. __ELBOT_CODE_1__ is reserved as a plain text fallback and is fully compatible with the old Elwisp.\n",
       "updated_at": 1782033114
     },
+    "docs/elnis-usage.md:paragraph:2fe0efe6808e0e94fa09d078323e9dceee6d39f7ecb6c96fdcd155e2f49b8ab5": {
+      "kind": "paragraph",
+      "source": "direct/record 请求中 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 至少提供一个，LLM 模式仍必须提供 __ELBOT_CODE_3__。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "2fe0efe6808e0e94fa09d078323e9dceee6d39f7ecb6c96fdcd155e2f49b8ab5",
+      "translation": "In direct/record requests, at least one of __ELBOT_CODE_0__, __ELBOT_CODE_1__, or __ELBOT_CODE_2__ must be provided; LLM mode still requires __ELBOT_CODE_3__.\n",
+      "updated_at": 1782395349
+    },
     "docs/elnis-usage.md:paragraph:3992a8029e30f39041102d37033acf1f8f97cc62e58323fc3fd801ddc6f4ab09": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 会提供协议说明、配置片段、事件模板、代码脚手架和测试命令；真正写文件或运行命令仍会继续使用对应工具。\n",
@@ -6857,6 +6873,14 @@
       "translation": "For complete configuration details, see [Hook](hooks.md#hook-exec-投递-elvena).\n",
       "updated_at": 1782376360
     },
+    "docs/elnis-usage.md:paragraph:887cee93ce128c97c968309c6c38be8a5626e37ebe2e23944a36cc6213096140": {
+      "kind": "paragraph",
+      "source": "Elvena v3 支持通过 __ELBOT_CODE_0__ 字段发送图片和文件。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "887cee93ce128c97c968309c6c38be8a5626e37ebe2e23944a36cc6213096140",
+      "translation": "Elvena v3 supports sending images and files via the __ELBOT_CODE_0__ field.",
+      "updated_at": 1782395349
+    },
     "docs/elnis-usage.md:paragraph:8e10903c1c241907a109ea2991f0ecee90e4156346762acc425a4a89f389fe9b": {
       "kind": "paragraph",
       "source": "Elnis 默认允许投递；",
@@ -6864,6 +6888,14 @@
       "source_hash": "8e10903c1c241907a109ea2991f0ecee90e4156346762acc425a4a89f389fe9b",
       "translation": "Elnis allows delivery by default;",
       "updated_at": 1782033114
+    },
+    "docs/elnis-usage.md:paragraph:8f55f102370a6410dfe950545197422fe2c67de39001cd1035c1b5f6864d9726": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 保留为纯文本 fallback；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "8f55f102370a6410dfe950545197422fe2c67de39001cd1035c1b5f6864d9726",
+      "translation": "__ELBOT_CODE_0__ is reserved as a plain text fallback;",
+      "updated_at": 1782395349
     },
     "docs/elnis-usage.md:paragraph:a0c0277789aa15ef006e25e7a5ffb166f33bd5f0daf653a4e5196858ffc70643": {
       "kind": "paragraph",
@@ -6945,6 +6977,14 @@
       "translation": "**Note:** Elvena is based on JSON, and the content must be UTF-8 encoded.",
       "updated_at": 1781752966
     },
+    "docs/elnis-usage.md:table:01645b79e16b3beaf68b98d444ca557a81b6a51ca10c0e86a85d1c55ff233347": {
+      "kind": "table",
+      "source": "direct/record 模式可为空，但 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 至少提供一个。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "01645b79e16b3beaf68b98d444ca557a81b6a51ca10c0e86a85d1c55ff233347",
+      "translation": "Can be empty in direct/record mode, but at least one of __ELBOT_CODE_0__, __ELBOT_CODE_1__, or __ELBOT_CODE_2__ must be provided.",
+      "updated_at": 1782395349
+    },
     "docs/elnis-usage.md:table:0250510547f02dc95c376267491814c698dc8f9b58256d5afe9f10609b16ddb4": {
       "kind": "table",
       "source": "Elnis LLM 模型槽位，仅支持 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__；未填写或对应槽位未配置时回退到 __ELBOT_CODE_3__。",
@@ -7009,6 +7049,14 @@
       "translation": "Required",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:table:1464545cdc10d55fa672db6868e816b8786e9bad394258c417c154bde6539af8": {
+      "kind": "table",
+      "source": "事件主体。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "1464545cdc10d55fa672db6868e816b8786e9bad394258c417c154bde6539af8",
+      "translation": "Event body.",
+      "updated_at": 1782395349
+    },
     "docs/elnis-usage.md:table:1b1efc4c8947139785108253c00ade50f0a742410448ca28aad89a809dc99cb4": {
       "kind": "table",
       "source": "协议版本，当前为 __ELBOT_CODE_0__。",
@@ -7040,6 +7088,14 @@
       "source_hash": "2fb33550734c99013b73f7cc5dd42888366478c1f52d7bb1dcac10748eda6899",
       "translation": "Unique event ID within the source.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:40e396c8617fd43421871634487b47f815e6432202dac6a47fb80244375b2654": {
+      "kind": "table",
+      "source": "direct 请求只有 __ELBOT_CODE_0__ 且没有 __ELBOT_CODE_1__/__ELBOT_CODE_2__ 时只执行 API，不发送消息。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "40e396c8617fd43421871634487b47f815e6432202dac6a47fb80244375b2654",
+      "translation": "When a direct request only has __ELBOT_CODE_0__ and lacks __ELBOT_CODE_1__/__ELBOT_CODE_2__, it only executes the API and does not send a message.",
+      "updated_at": 1782395349
     },
     "docs/elnis-usage.md:table:4262c45dc797bb0cd5008331ef25b684413859f55b73c71fb4e2c01b645dbbb7": {
       "kind": "table",
@@ -7232,6 +7288,14 @@
       "source_hash": "d00344dac4eeef600985b6a509ba222c1d43c81c145dcc319b189730a57bf2ac",
       "translation": "MIME type hint.",
       "updated_at": 1781929269
+    },
+    "docs/elnis-usage.md:table:d1eef39ef655cc35d1c7fe72085075f944615b0421c377b885b63e1dc720b88c": {
+      "kind": "table",
+      "source": "LLM 模式必填，推荐使用 ELyph Task Notation（任务表示法）__ELBOT_CODE_0__；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "d1eef39ef655cc35d1c7fe72085075f944615b0421c377b885b63e1dc720b88c",
+      "translation": "Required for LLM mode; it is recommended to use ELyph Task Notation __ELBOT_CODE_0__;",
+      "updated_at": 1782395349
     },
     "docs/elnis-usage.md:table:e3b263ee01e2d8e405062e5af39f642d31bf63d459a6481f15b74b15d53ec7d3": {
       "kind": "table",
