@@ -11,9 +11,9 @@
       "updated_at": 1782395242
     },
     "docs/README.md": {
-      "source_hash": "1230f9ab00aa9ac08ec2f6adae707583f6b447e9e9f070de56c369f8f3b927ba",
+      "source_hash": "ed728bd89525ef6aff945fa9cddb8cce6716fce55e111830704ad5a15dd7f9e2",
       "target": "docs.en/README.md",
-      "updated_at": 1782376212
+      "updated_at": 1782395265
     },
     "docs/commands.md": {
       "source_hash": "da88effce2439eca033f3cef874bd6e034fdcec15d1376bdbcb576491b8f38bf",
@@ -1992,6 +1992,14 @@
       "source_hash": "eefedc6adaeda98a1b7a2dd9cb099adfee795e53d6cf7dfae14c9d9582157b8b",
       "translation": "[Quick Start](getting-started.md): From configuring the API Key to launching the CLI, complete your first conversation.",
       "updated_at": 1781513067
+    },
+    "docs/README.md:list:f411e881a9df45fba6904c37d1dcf9fa5d8ad81cf8e747cde422aef48ab5f31e": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 放开发计划、任务拆分、架构和接口。",
+      "source_file": "docs/README.md",
+      "source_hash": "f411e881a9df45fba6904c37d1dcf9fa5d8ad81cf8e747cde422aef48ab5f31e",
+      "translation": "__ELBOT_CODE_0__ is used for development plans, task breakdowns, architecture, and interfaces.",
+      "updated_at": 1782395265
     },
     "docs/README.md:paragraph:1dd32f9d7b7a52985e194349ce545d963940a5d449a9dd1aeeee23477222f304": {
       "kind": "paragraph",
