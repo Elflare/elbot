@@ -10,26 +10,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Elvena v3 action channel: Elnis supports `calls`, with initial support for raw platform APIs as well as `message.recall`, `member.mute`, and `chat.leave` capabilities; Hook rules can execute scripts via `exec` action, and use `stdout=elvena` to trigger Elnis direct/LLM/calls via the internal Elvena Bus.
-- Hook rules added role partitioning and control fields: `roles`, `actor_roles`, `group_roles`, `control.consume`, `control.stop_propagation`; Platform message Hook output will now be sent; `consume=true` can block subsequent command/LLM processing.
+- Elvena v3 action channel: Elnis supports `calls`, initially supporting raw platform APIs as well as `message.recall`, `member.mute`, and `chat.leave` capabilities; unsupported ones can directly call the messaging platform API. Hook rules can execute scripts via the `exec` action and use `stdout=elvena` to trigger Elnis direct/LLM/calls via the internal Elvena Bus. Direct calls-only requests will not send additional messages.
+- Added `match_mode` and `index` parameters to the `*_match` operation of `edit_file`: when `match_mode=line`, it matches the entire line by single-line prefix (tolerating leading indentation to avoid newline character matching errors); `content` (default) maintains exact substring semantics. When there are multiple matches, the specific match can be selected via `index`; if `index` is not provided, an error will be reported and all matching positions will be listed.
+- Hook rules added role partitioning and tiling control fields: `roles`, `actor_roles`, `group_roles`, `consume`, `stop_propagation`. Platform message Hook output will now be sent; `consume=true` can block subsequent command/LLM processing.
 - Hook rules `send` action added `segments` list, supporting multi-type multi-segment output (text/image/file/emoticon, including url/path/base64), with a format unified with Elvena segments.
 - Hook rules `exec` action added `outputs` stdout mode; script stdout is parsed as JSON to extract the `outputs` array and optional `text`; When `field` is set, `text` overwrites the corresponding fields; otherwise, the original text remains unchanged.
 - Platform inbound context added a unified group identity `owner/admin/member/unknown`; QQ OneBot and Telegram will map group owner/administrator/ordinary member.
+- Hook platform context now populates the current platform message ID `platform.message_id` and the referenced/reply target message ID `platform.reply_to_message_id`, facilitating the processing of referenced messages by rule Hooks, such as recalling a referenced message.
 
 ### Changed
 
 - Provider configuration refactoring: removed unused `[global_default]`, removed `[model_metadata.context_windows]` global model window table; Model-level `context_window` and `extra_payload` are now unified under `[providers.<name>.model_configs."<model>"]` and looked up by `provider/model`, avoiding conflicts between models with the same name across providers.
 - Added `proxy` field to Provider, supporting HTTP/SOCKS5 proxies.
 - Emoticon Hook changed from an embedded plugin to a rule Hook example; the emoticon plugin and `emoticon.toml` assets are no longer built-in.
+- Display the current retry count via Notice when LLM connection/HTTP retriable requests fail.
+- The risk level of the `finalize_el_skill` tool has been downgraded from high to medium.
 
 ### Fixed
+- Fixed an issue where the platform API caller was not injected when Elnis/Hook exec triggered Elvena `calls`, resulting in `platform api callers are not configured`.
 - Fixed an issue where OpenAI-compatible streaming responses that disconnected midway but were missing `[DONE]` were treated as normal terminations; now it will explicitly notify that the LLM response was interrupted.
 - Fixed an issue where Hook exec stdin JSON used Go's default capitalized field names, preventing external scripts from reading the event field using lowercase keys; Added JSON tags consistently to Hook event and related payload structs.
 
-### Changed
-- Display the current retry count via Notice when LLM connection/HTTP retriable requests fail.
-- The risk level of the `finalize_el_skill` tool has been downgraded from high to medium.
-- Added `match_mode` and `index` parameters to the `*_match` operation of `edit_file`: when `match_mode=line`, it matches the entire line by single-line prefix (tolerating leading indentation to avoid newline character matching errors); `content` (default) maintains exact substring semantics. When there are multiple matches, the specific match can be selected via `index`; if `index` is not provided, an error will be reported and all matching positions will be listed.
 
 ## [v0.1.0-alpha] - 2026-06-24
 
