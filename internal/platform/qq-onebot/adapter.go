@@ -240,6 +240,15 @@ func (a *Adapter) sendContextOutput(ctx context.Context, out delivery.Output) (d
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
+	receipt, err := a.sendSegments(ctx, t, segments)
+	if err == nil {
+		return receipt, nil
+	}
+	a.notifyOutputFailed(ctx, t, out, err)
+	return delivery.Receipt{}, err
+}
+
+func (a *Adapter) sendSegments(ctx context.Context, t target, segments []Segment) (delivery.Receipt, error) {
 	switch t.MessageType {
 	case "private":
 		id, err := a.transport.SendPrivateSegments(ctx, t.UserID, segments)
@@ -250,6 +259,34 @@ func (a *Adapter) sendContextOutput(ctx context.Context, out delivery.Output) (d
 	default:
 		return delivery.Receipt{}, fmt.Errorf("unsupported message target %q", t.MessageType)
 	}
+}
+
+func (a *Adapter) notifyOutputFailed(ctx context.Context, t target, out delivery.Output, sendErr error) {
+	text := qqOutputFailureText(out, sendErr)
+	if text == "" {
+		return
+	}
+	if _, err := a.sendQQText(ctx, t, text); err != nil {
+		a.logWarn("onebot output failure notify failed", "error", err)
+	}
+}
+
+func qqOutputFailureText(out delivery.Output, sendErr error) string {
+	if strings.TrimSpace(out.AltText) != "" {
+		return out.AltText
+	}
+	label := "输出"
+	switch out.Kind {
+	case delivery.KindEmoticon:
+		label = "表情"
+	case delivery.KindImage:
+		label = "图片"
+	case delivery.KindFile:
+		label = "文件"
+	default:
+		return ""
+	}
+	return fmt.Sprintf("[OneBot] %s发送失败：%v", label, sendErr)
 }
 
 func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, out delivery.Output) (delivery.Receipt, error) {

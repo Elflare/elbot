@@ -76,3 +76,32 @@ func TestOutputSegmentsFileUsesBase64(t *testing.T) {
 		t.Fatalf("name = %#v", segments[0].Data["name"])
 	}
 }
+
+func TestSendContextOutputNotifiesAfterSendFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "a.png")
+	if err := os.WriteFile(path, []byte("png"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var messages []any
+	transport := newTestTransport(t, func(req request) response {
+		messages = append(messages, req.Params["message"])
+		if len(messages) == 1 {
+			return response{Status: "failed", Retcode: 1, Data: []byte(`{}`), Echo: req.Echo}
+		}
+		return response{Status: "ok", Data: []byte(`{"message_id":89}`), Echo: req.Echo}
+	})
+	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
+	adapter.transport = transport
+	ctx := context.WithValue(context.Background(), targetKey{}, target{MessageType: "private", UserID: 1})
+
+	_, err := adapter.SendChat(ctx, delivery.EmoticonPath("开心", path))
+	if err == nil {
+		t.Fatal("SendChat error is nil")
+	}
+	if len(messages) != 2 {
+		t.Fatalf("transport messages = %#v", messages)
+	}
+	if messages[1] != "[表情: 开心]" {
+		t.Fatalf("notify message = %#v", messages[1])
+	}
+}

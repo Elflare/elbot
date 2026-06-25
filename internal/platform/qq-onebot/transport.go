@@ -175,11 +175,6 @@ func (t *Transport) sendMessage(ctx context.Context, action string, params map[s
 }
 
 func (t *Transport) call(ctx context.Context, action string, params map[string]any) (response, error) {
-	if t.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, t.Timeout)
-		defer cancel()
-	}
 	conn := t.currentConn()
 	if conn == nil {
 		return response{}, fmt.Errorf("onebot websocket is not connected")
@@ -200,9 +195,15 @@ func (t *Transport) call(ctx context.Context, action string, params map[string]a
 	if err != nil {
 		return response{}, fmt.Errorf("send onebot action %s: %w", action, err)
 	}
+	waitCtx := ctx
+	if t.Timeout > 0 {
+		var cancel context.CancelFunc
+		waitCtx, cancel = context.WithTimeout(ctx, t.Timeout)
+		defer cancel()
+	}
 	select {
-	case <-ctx.Done():
-		return response{}, ctx.Err()
+	case <-waitCtx.Done():
+		return response{}, waitCtx.Err()
 	case resp, ok := <-ch:
 		if !ok {
 			return response{}, fmt.Errorf("onebot websocket disconnected")

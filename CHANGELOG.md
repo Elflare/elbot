@@ -25,9 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `finalize_el_skill` 工具风险等级由 high 降为 medium。
 
 ### Fixed
-- 修复 Elnis/Hook exec 触发 Elvena `calls` 时未注入平台 API caller，导致 `platform api callers are not configured` 的问题。
+- 修复 QQ OneBot 发图片/表情/文件时 API 超时可能取消 WebSocket 写入并触发断线重连的问题；媒体发送失败时会尝试发送同目标文字提示。
 - 修复 OpenAI-compatible 流式响应中途断开但缺失 `[DONE]` 时被当作正常结束的问题；现在会明确通知 LLM 响应中断。
-- 修复 Hook exec stdin JSON 使用 Go 默认大写字段名导致外部脚本无法用小写 key 读取 event 字段的问题；Hook event 及相关 payload 结构体统一加 JSON tag。
 
 
 ## [v0.1.0-alpha] - 2026-06-24
