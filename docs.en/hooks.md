@@ -259,6 +259,7 @@ Text fields and exec command/stdin support `{{...}}` template rendering:
 
 ```
 {{platform.name}}          {{platform.scope_id}}      {{platform.user_id}}
+{{platform.message_id}}    {{platform.reply_to_message_id}}
 {{actor.id}}               {{actor.user_id}}          {{actor.role}}
 {{message.text}}           {{message.content_text}}
 {{llm.text}}               {{llm.raw_text}}           {{llm.latest_user_text}}
@@ -290,7 +291,6 @@ text = "仅管理员可见"
 ### Control Fields
 
 ```toml
-[control]
 consume = true              # Block subsequent slash commands and LLM processing
 stop_propagation = true      # Block subsequent rules at the same Hook point from continuing execution
 ```
@@ -318,6 +318,110 @@ stdout = "elvena"
 The script can output `mode = "direct"` notifications or `mode = "llm"` background tasks; Subsequent processing is still handled by Elnis's target arbitration, logging, deduplication, and background runner.
 
 Elvena is based on JSON, and the content must be UTF-8 encoded. For the complete Elvena request fields, see [Elnis Configuration and Usage](elnis-usage.md#elvena-请求示例).
+
+## Example of Recalling a Quoted Message
+
+The following example is used when a superadmin replies to a platform message and sends "recall this", calling the platform API via Elvena v3 `calls` to recall the quoted message.
+
+Prerequisite: The platform adapter must support raw API calls, and the current message must have a quote/reply relationship. In the Hook, the platform message ID of the quoted message can be read via `platform.reply_to_message_id`, and the message ID that triggered the current Hook can be read via `platform.message_id`.
+
+Telegram uses Bot API `deleteMessage`; the bot must have permission to delete the target message, and the target message must not exceed the deletion time limit allowed by the platform.
+
+### hooks.toml
+
+```toml
+[[rules]]
+name = "recall_quoted_message"
+on = "platform.message.received"
+roles = ["superadmin"]
+match = [
+  { field = "message.text", op = "fullmatch", value = "撤回这条" },
+  { field = "platform.reply_to_message_id", op = "exists" },
+]
+
+consume = true
+
+[[rules.actions]]
+type = "exec"
+name = "recall"
+command = "uv run recall_quoted_message.py"
+stdout = "elvena"
+timeout_seconds = 10
+```
+
+### recall_quoted_message.py
+
+The script reads the Hook event JSON from stdin and generates an Elvena v3 direct calls-only request based on the current platform. Elnis only executes `calls`, and no additional confirmation message will be sent if the request does not contain `content` or `segments`.
+
+```python
+#!/usr/bin/env python3
+import json
+import sys
+import time
+
+
+def numeric_scope_id(scope_id):
+    if ":" not in scope_id:
+        return scope_id
+    return scope_id.split(":", 1)[1]
+
+
+def main():
+    data = json.load(sys.stdin)
+    event = data.get("event", {})
+    platform = event.get("platform", {})
+    platform_name = platform.get("name", "")
+    scope_id = platform.get("scope_id", "")
+    reply_id = platform.get("reply_to_message_id", "")
+
+    if not reply_id:
+        raise SystemExit("missing platform.reply_to_message_id")
+
+    target = {"platform": platform_name}
+    scope_target_id = numeric_scope_id(scope_id)
+    if scope_id.startswith("group:") or scope_id.startswith("supergroup:"):
+        target.update({"type": "group", "id": scope_target_id})
+    elif scope_id.startswith("private:"):
+        target.update({"type": "private", "id": scope_target_id})
+
+    call = {
+        "kind": "capability",
+        "name": "message.recall",
+        "platform": platform_name,
+        "target": target,
+        "params": {"message_id": reply_id},
+    }
+
+    # Telegram deleteMessage 还需要 chat_id；message.recall 会从 target.id 映射。
+    if platform_name == "telegram":
+        call["params"]["chat_id"] = scope_target_id
+
+    req = {
+        "version": "elvena.v3",
+        "elwisp": {"name": "hook_recall"},
+        "source": "rules-hook",
+        "id": f"recall-{platform_name}-{reply_id}-{int(time.time() * 1000)}",
+        "mode": "direct",
+        "targets": [target],
+        "calls": [call],
+    }
+    json.dump(req, sys.stdout, ensure_ascii=False)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+OneBot can also perform a raw call directly without using capabilities:
+
+```json
+{
+  "kind": "raw",
+  "platform": "qqonebot",
+  "api": "delete_msg",
+  "params": {"message_id": "{{platform.reply_to_message_id}}"}
+}
+```
 
 ## Emoticon Extraction Example
 
@@ -409,6 +513,7 @@ $hook_config:str=~/.config/elbot/plugins/hooks.toml
 ** Hook 点：llm.response.received=LLM 响应收到后（改写 assistant 文本或提取标记）；tool.call.prepared=工具调用执行前（改写 tool.arguments）；tool.call.completed=工具调用完成后（改写 tool.result）
 ** Hook 点：agent.output.prepared=Agent 输出准备后（改写 assistant message.text）；agent.turn.output.prepared=本轮最终输出准备后（改写 assistant message.text）；platform.message.sent=平台消息发送后（记录或后处理）；error.occurred=发生错误时（记录或通知）
 ** 匹配字段——平台/消息：platform.name、scope_id、user_id、conversation_id、message_id、reply_to_message_id
+** 引用字段说明：platform.message_id 是当前入站平台消息 ID；platform.reply_to_message_id 是当前消息引用/回复的目标平台消息 ID，适合撤回引用消息、引用上下文判断和传给 Elvena calls
 ** 匹配字段——Actor：actor.id、actor.user_id、actor.role（superadmin/user）、actor.group_role（owner/admin/member）、actor.display_name
 ** 匹配字段——Session/Request：session.id/mode/status、request.id/kind/phase
 ** 匹配字段——Message：message.text（部分 Hook 点可编辑）、message.content_text（纯文本聚合，用于匹配）、message.role
@@ -425,8 +530,8 @@ $hook_config:str=~/.config/elbot/plugins/hooks.toml
 ** outputs JSON：outputs 数组每项格式同 send segments；text 可选，action 设 field 时用 text 覆写该字段
 ** elvena JSON：必须是完整 Elvena 请求，UTF-8 编码，经内部 Elvena Bus 投递
 ** 角色字段：roles 同时匹配内部角色和群身份；actor_roles 只匹配 superadmin/user；group_roles 只匹配 owner/admin/member
-** 控制字段：control.consume=true 阻止后续 slash 命令和 LLM 处理；control.stop_propagation=true 阻止同 Hook 点后续规则执行
-** 模板变量：platform.name/scope_id/user_id、actor.id/user_id/role、message.text/content_text、llm.text/raw_text/latest_user_text、tool.arguments/result、actions.<name>.result/error；regex 捕获组用 match.regex.0.group.1 或命名组 match.regex.0.<name>
+** 控制字段：consume=true 阻止后续 slash 命令和 LLM 处理；stop_propagation=true 阻止同 Hook 点后续规则执行，二者都与 on/name/match/actions 等字段平级
+** 模板变量：platform.name/scope_id/user_id/message_id/reply_to_message_id、actor.id/user_id/role、message.text/content_text、llm.text/raw_text/latest_user_text、tool.arguments/result、actions.<name>.result/error；regex 捕获组用 match.regex.0.group.1 或命名组 match.regex.0.<name>
 ** 先判断需求适合的 Hook 点，只使用本 Skill 列出的 Hook 点；选择 always、单条件 if/op/value 或 match 多条件，不混用互斥写法
 ** 只编辑当前 Hook 点允许修改的字段；需要发送消息时优先用 send action 产出 output 意图，不直接调用平台发送
 ** 需要多模态输出时使用 segments，字段格式必须使用本 Skill 列出的 segment 字段；需要本地脚本时使用 exec action 并明确 stdout 模式
@@ -438,7 +543,7 @@ $hook_config:str=~/.config/elbot/plugins/hooks.toml
 ~ 让 exec stdout 输出非 JSON 却声明 outputs 或 elvena 模式
 ~ 编造不存在的 action 类型、segment 字段、stdout 模式或模板变量
 ?if(需求需要拦截输入并阻止后续 LLM 处理) {
-  ** 在 platform.message.received Hook 上使用 control.consume = true
+  ** 在 platform.message.received Hook 上使用 consume = true
 }
 ?else {
   ** 不主动设置 consume，避免误拦截正常对话

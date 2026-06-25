@@ -51,9 +51,9 @@
       "updated_at": 1782376421
     },
     "docs/hooks.md": {
-      "source_hash": "24e6d23b80f1e776ad23be60c7e9bfacd8b6970fba34f71dc0cff6284ccb67c4",
+      "source_hash": "30814cc60bf57a9aedd8a9e0e4e890c3cc27090a8fa670ecf4c918b43c47673e",
       "target": "docs.en/hooks.md",
-      "updated_at": 1782379613
+      "updated_at": 1782395417
     }
   },
   "segments": {
@@ -9601,6 +9601,14 @@
       "translation": "Optional, defaults to true",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:heading:0dd7c61cd332731411f0eeefa3034058a8887399d0c8d30c947378822ba96918": {
+      "kind": "heading",
+      "source": "撤回引用消息示例",
+      "source_file": "docs/hooks.md",
+      "source_hash": "0dd7c61cd332731411f0eeefa3034058a8887399d0c8d30c947378822ba96918",
+      "translation": "Example of Recalling a Quoted Message",
+      "updated_at": 1782395417
+    },
     "docs/hooks.md:heading:2c1036d3361f29a6cad9e66d414b00647a25e47976277e6665d81b61fdeff39f": {
       "kind": "heading",
       "source": "规则结构",
@@ -9953,6 +9961,14 @@
       "translation": "Multi-segment output (segments):\n",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:paragraph:46f9a403d50755753281a8a8a5a2a68eaf3661d4dd1aaf838f94c4d387d81c0c": {
+      "kind": "paragraph",
+      "source": "脚本从 stdin 读取 Hook event JSON，按当前平台生成 Elvena v3 direct calls-only 请求。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "46f9a403d50755753281a8a8a5a2a68eaf3661d4dd1aaf838f94c4d387d81c0c",
+      "translation": "The script reads the Hook event JSON from stdin and generates an Elvena v3 direct calls-only request based on the current platform.",
+      "updated_at": 1782395417
+    },
     "docs/hooks.md:paragraph:47a85d5db591ec02400879a9218f1d0ee52ac5ed9b6c1163e489c2413ecb8f41": {
       "kind": "paragraph",
       "source": "多条件（AND）：\n",
@@ -10057,6 +10073,14 @@
       "translation": "The Emoji Hook has been changed from an embedded plugin to a Rule Hook example; see the [Emoji Extraction Example](#表情提取示例) in this document.\n",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:paragraph:8dc0b277889a46a8d15ef0d8920c3661a0bf63f7a82f5036a2250175c1a99b94": {
+      "kind": "paragraph",
+      "source": "Hook 里可通过 __ELBOT_CODE_0__ 读取被引用消息的平台消息 ID，通过 __ELBOT_CODE_1__ 读取当前触发 Hook 的消息 ID。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "8dc0b277889a46a8d15ef0d8920c3661a0bf63f7a82f5036a2250175c1a99b94",
+      "translation": "In the Hook, the platform message ID of the quoted message can be read via __ELBOT_CODE_0__, and the message ID that triggered the current Hook can be read via __ELBOT_CODE_1__.\n",
+      "updated_at": 1782395417
+    },
     "docs/hooks.md:paragraph:98c36d56db840c16e4706887a55f78b029ff7a4e2ecd3fcc349c8a4a161edcca": {
       "kind": "paragraph",
       "source": "调用已注册工具，结果存到 __ELBOT_CODE_0__ 供后续 action 使用。\n",
@@ -10072,6 +10096,14 @@
       "source_hash": "9bbf4f66c38587102c1d4ed9a3b054f10db85b8100acb225254aa6a6b8f6d298",
       "translation": "Single condition:\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:9f3766aa5347107aedd5a2b6f02d97aad91e94ec01788d099657a55d143997b2": {
+      "kind": "paragraph",
+      "source": "OneBot 也可以不用 capability，直接 raw 调用：\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "9f3766aa5347107aedd5a2b6f02d97aad91e94ec01788d099657a55d143997b2",
+      "translation": "OneBot can also perform a raw call directly without using capabilities:\n",
+      "updated_at": 1782395417
     },
     "docs/hooks.md:paragraph:a055762a1bdc069990bb9af4af439d81f9eeaba2bff7430fb546e910c3b4f7a5": {
       "kind": "paragraph",
@@ -10121,6 +10153,14 @@
       "translation": "__ELBOT_CODE_0__ and __ELBOT_CODE_1__ are inherited from the action to all segments.\n",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:paragraph:c67d8f37958ab0d6d0d643f07ee21dc728ff2e7b48845d008b2552f096750ec1": {
+      "kind": "paragraph",
+      "source": "Telegram 使用 Bot API __ELBOT_CODE_0__，机器人必须有删除目标消息的权限，且目标消息不能超过平台允许的删除时限。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "c67d8f37958ab0d6d0d643f07ee21dc728ff2e7b48845d008b2552f096750ec1",
+      "translation": "Telegram uses Bot API __ELBOT_CODE_0__; the bot must have permission to delete the target message, and the target message must not exceed the deletion time limit allowed by the platform.\n",
+      "updated_at": 1782395417
+    },
     "docs/hooks.md:paragraph:c95c0f38cb82a3a7e3cded2e96463a4fab49970fc76be43b3893973ee3ce4fb6": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 不能与 __ELBOT_CODE_1__ 或 __ELBOT_CODE_2__ 组合使用；__ELBOT_CODE_3__ 不能与 __ELBOT_CODE_4__ 组合使用。\n",
@@ -10144,6 +10184,30 @@
       "source_hash": "ce7cca2d4ea553bc687245fa20fc280515e61383dbaa6d692642c846218dc991",
       "translation": "__ELBOT_CODE_0__ can be used for conditional matching, but cannot be edited.\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:dfdbf51c88dad3b9e4fa7b915dfa47d7f167f2cf00664346e49d149b874b07a4": {
+      "kind": "paragraph",
+      "source": "以下示例用于超级管理员回复某条平台消息并发送“撤回这条”时，通过 Elvena v3 __ELBOT_CODE_0__ 调用平台 API 撤回被引用的消息。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "dfdbf51c88dad3b9e4fa7b915dfa47d7f167f2cf00664346e49d149b874b07a4",
+      "translation": "The following example is used when a superadmin replies to a platform message and sends \"recall this\", calling the platform API via Elvena v3 __ELBOT_CODE_0__ to recall the quoted message.\n",
+      "updated_at": 1782395417
+    },
+    "docs/hooks.md:paragraph:e78e5b98b027111516f5f8f4cefe1b74f9c832764e45ba4b9e57c84ffd2dbf89": {
+      "kind": "paragraph",
+      "source": "前提：平台适配器需要支持原始 API 调用，且本次消息必须带引用/回复关系。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "e78e5b98b027111516f5f8f4cefe1b74f9c832764e45ba4b9e57c84ffd2dbf89",
+      "translation": "Prerequisite: The platform adapter must support raw API calls, and the current message must have a quote/reply relationship.",
+      "updated_at": 1782395417
+    },
+    "docs/hooks.md:paragraph:ecc3e718db9355790e1dddbc52b22568879dc1321b7f142efb32f328c0b83c48": {
+      "kind": "paragraph",
+      "source": "Elnis 只执行 __ELBOT_CODE_0__，请求没有 __ELBOT_CODE_1__ 或 __ELBOT_CODE_2__ 时不会额外发送确认消息。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "ecc3e718db9355790e1dddbc52b22568879dc1321b7f142efb32f328c0b83c48",
+      "translation": "Elnis only executes __ELBOT_CODE_0__, and no additional confirmation message will be sent if the request does not contain __ELBOT_CODE_1__ or __ELBOT_CODE_2__.\n",
+      "updated_at": 1782395417
     },
     "docs/hooks.md:paragraph:f1d215abc88c942b8c1d4f06a3943c8c1ef497412bc9c74ceaec93392bc6b7ea": {
       "kind": "paragraph",
