@@ -1,19 +1,19 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "ebe7fe68b894e94faf1a8fcc3af2dc1a9b07cdc6dce913d308340c0ceafdb504",
+      "source_hash": "02383b07bab460551b79f0627c95f1630d6600e06a9f80af9eb225ee8b9b3f90",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782376912
+      "updated_at": 1782395477
     },
     "README.zh-CN.md": {
-      "source_hash": "0345aed66187e1630a640cfe36499783c1b159b3620e9b7814be2f66bd995a9d",
+      "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
       "target": "README.md",
-      "updated_at": 1782385711
+      "updated_at": 1782395242
     },
     "docs/README.md": {
-      "source_hash": "1230f9ab00aa9ac08ec2f6adae707583f6b447e9e9f070de56c369f8f3b927ba",
+      "source_hash": "ed728bd89525ef6aff945fa9cddb8cce6716fce55e111830704ad5a15dd7f9e2",
       "target": "docs.en/README.md",
-      "updated_at": 1782376212
+      "updated_at": 1782395265
     },
     "docs/commands.md": {
       "source_hash": "da88effce2439eca033f3cef874bd6e034fdcec15d1376bdbcb576491b8f38bf",
@@ -31,14 +31,14 @@
       "updated_at": 1782376291
     },
     "docs/elnis-usage.md": {
-      "source_hash": "76fd654ef1a1c167c0d5d940aa3f29e6f098a6c8a84f46b55fdcb834be858ca3",
+      "source_hash": "4bf05ee00bac3af1917e4f1dabdd4fa01531cf9bcd1bc69c3d9aa02261f5adc9",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1782376360
+      "updated_at": 1782395349
     },
     "docs/elnis.md": {
-      "source_hash": "a00509a199b063f3c4fdacc20355cb96addbe5a8e2b9a287026c3ecad904e9a1",
+      "source_hash": "6a98e527ada4f66e77dcc934156f440a4e43480c3c4a8d041a7a1a2b6786f5b1",
       "target": "docs.en/elnis.md",
-      "updated_at": 1782376420
+      "updated_at": 1782395350
     },
     "docs/elyph.md": {
       "source_hash": "0374f117cd16d572c418d95b20943e3591b0fc04f10e8c2c4fec49c6412b4455",
@@ -51,9 +51,9 @@
       "updated_at": 1782376421
     },
     "docs/hooks.md": {
-      "source_hash": "24e6d23b80f1e776ad23be60c7e9bfacd8b6970fba34f71dc0cff6284ccb67c4",
+      "source_hash": "30814cc60bf57a9aedd8a9e0e4e890c3cc27090a8fa670ecf4c918b43c47673e",
       "target": "docs.en/hooks.md",
-      "updated_at": 1782379613
+      "updated_at": 1782395417
     }
   },
   "segments": {
@@ -121,6 +121,14 @@
       "translation": "Hook rules __ELBOT_CODE_0__ action added __ELBOT_CODE_1__ list, supporting multi-type multi-segment output (text/image/file/emoticon, including url/path/base64), with a format unified with Elvena segments.",
       "updated_at": 1782376912
     },
+    "CHANGELOG.md:list:317c7d32a5e329ea22f1b69bc2b8231d35853cf1c43e347f9d558d23b403a0ed": {
+      "kind": "list",
+      "source": "direct calls-only 请求不会额外发送消息。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "317c7d32a5e329ea22f1b69bc2b8231d35853cf1c43e347f9d558d23b403a0ed",
+      "translation": "Direct calls-only requests will not send additional messages.",
+      "updated_at": 1782395477
+    },
     "CHANGELOG.md:list:31e1b19552361d185e88961542f7ecdbf799d5e3cc7d6a34196458c6ff69f3bc": {
       "kind": "list",
       "source": "Provider 配置重构：删除未使用的 __ELBOT_CODE_0__，删除 __ELBOT_CODE_1__ 全局模型窗口表；",
@@ -145,6 +153,14 @@
       "translation": "**Logs and Audit**: Runtime logs, audit logs, and Elnis logs are separated, supporting structured fields and date-based rotation.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:423439494f92faf1b2877f3d54114488603b875cb08f29295101899fef57e0a8": {
+      "kind": "list",
+      "source": "Elvena v3 动作通道：Elnis 支持 __ELBOT_CODE_0__，首批支持 raw 平台 API 以及 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ capability，未支持的可以直接调用消息平台api；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "423439494f92faf1b2877f3d54114488603b875cb08f29295101899fef57e0a8",
+      "translation": "Elvena v3 action channel: Elnis supports __ELBOT_CODE_0__, initially supporting raw platform APIs as well as __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ capabilities; unsupported ones can directly call the messaging platform API.",
+      "updated_at": 1782395477
+    },
     "CHANGELOG.md:list:5ba1e7bae3138806db3d563894180256e849e05fa7ca9dc5679e584ad9931382": {
       "kind": "list",
       "source": "**Hook Layer**：在 Agent 输入、LLM 请求/响应、平台发送等关键点插入扩展逻辑；内置规则 Hook、表情 Hook 与常驻记忆 Hook。",
@@ -152,6 +168,14 @@
       "source_hash": "5ba1e7bae3138806db3d563894180256e849e05fa7ca9dc5679e584ad9931382",
       "translation": "**Hook Layer**: Insert extension logic at key points such as Agent input, LLM request/response, and platform sending; built-in rule Hooks, emoji Hooks, and resident memory Hooks.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:5c0a5ce2e366d9d60822811bd14fe5f653c0e6db01d3e8451843f3a6008a8038": {
+      "kind": "list",
+      "source": "修复 Elnis/Hook exec 触发 Elvena __ELBOT_CODE_0__ 时未注入平台 API caller，导致 __ELBOT_CODE_1__ 的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "5c0a5ce2e366d9d60822811bd14fe5f653c0e6db01d3e8451843f3a6008a8038",
+      "translation": "Fixed an issue where the platform API caller was not injected when Elnis/Hook exec triggered Elvena __ELBOT_CODE_0__, resulting in __ELBOT_CODE_1__.",
+      "updated_at": 1782395477
     },
     "CHANGELOG.md:list:6970168418b00124c98288e227a6831f798c18ed573c05cb7a6f07fd850812c6": {
       "kind": "list",
@@ -208,6 +232,14 @@
       "source_hash": "7d9ce7afaf8c80361c3a68a26281f59e6959a650964a79e2ca14f6746040e04e",
       "translation": "**Security Policy**: Tool risk grading, role permission verification, high-risk confirmation workflows, and a lightweight background shell sandbox.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:7e1a21df16a8f78ec1bf9eb23adaceac9e7d12a1dc54ec2b8b8ed0e94c1c887c": {
+      "kind": "list",
+      "source": "Hook rules 新增角色分区与平铺控制字段：__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "7e1a21df16a8f78ec1bf9eb23adaceac9e7d12a1dc54ec2b8b8ed0e94c1c887c",
+      "translation": "Hook rules added role partitioning and tiling control fields: __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__.",
+      "updated_at": 1782395477
     },
     "CHANGELOG.md:list:7efdca0726c1f3e11a9edd7c8226f6565a4f8de048ed6ca513259bf85f964e18": {
       "kind": "list",
@@ -273,6 +305,14 @@
       "translation": "Elvena v3 action channel: Elnis supports __ELBOT_CODE_0__, with initial support for raw platform APIs as well as __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ capabilities;",
       "updated_at": 1782376912
     },
+    "CHANGELOG.md:list:a724226f267f5e72c8b1410dacff8844636ef381b46198c619c9c5003b3bf59a": {
+      "kind": "list",
+      "source": "Hook 平台上下文现在填充当前平台消息 ID __ELBOT_CODE_0__ 与引用/回复目标消息 ID __ELBOT_CODE_1__，便于规则 Hook 处理引用消息，例如撤回被引用消息。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a724226f267f5e72c8b1410dacff8844636ef381b46198c619c9c5003b3bf59a",
+      "translation": "Hook platform context now populates the current platform message ID __ELBOT_CODE_0__ and the referenced/reply target message ID __ELBOT_CODE_1__, facilitating the processing of referenced messages by rule Hooks, such as recalling a referenced message.",
+      "updated_at": 1782395477
+    },
     "CHANGELOG.md:list:ada87970eec02cf839ea0c3ab0c573116bb30bcb71bac655bf9eaeb0c4d76173": {
       "kind": "list",
       "source": "LLM 建连/HTTP 可重试失败时通过 Notice 显示当前重试次数。",
@@ -336,6 +376,14 @@
       "source_hash": "ce3e9cc6dd15510c9cfe7dbcae094bd1f1cb641bc8875c00f0d3c95d4642854d",
       "translation": "**Elnis listening hub**: Receives external events delivered by Elwisp via the Elvena HTTP protocol, supporting three modes (record/direct/llm) and multi-target delivery.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:d645cf77c4ee588c46e1393622a3b1673b35ad938b425f17eba22044d2bdc5a7": {
+      "kind": "list",
+      "source": "Hook rules 可通过 __ELBOT_CODE_0__ action 执行脚本，并用 __ELBOT_CODE_1__ 经内部 Elvena Bus 触发 Elnis direct/LLM/calls；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d645cf77c4ee588c46e1393622a3b1673b35ad938b425f17eba22044d2bdc5a7",
+      "translation": "Hook rules can execute scripts via the __ELBOT_CODE_0__ action and use __ELBOT_CODE_1__ to trigger Elnis direct/LLM/calls via the internal Elvena Bus.",
+      "updated_at": 1782395477
     },
     "CHANGELOG.md:list:e674fa7fc18af87b45660da3fff098ff0a482256ae0cdc7d64932ce221ad779c": {
       "kind": "list",
@@ -1313,6 +1361,14 @@
       "translation": "**Lightweight Sandbox Isolation**: Background Shell execution is subject to AST-level sandbox constraints. Background tasks have an independent sandbox working directory, reducing the impact of misoperations.\n",
       "updated_at": 1781948985
     },
+    "README.zh-CN.md:paragraph:75bea29986a4b5427d3c2316d72e7bbe94844cfac004775ae3c6cbbf2f7167f6": {
+      "kind": "paragraph",
+      "source": "Hook 可以修改消息、追加输出意图、调用脚本等。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "75bea29986a4b5427d3c2316d72e7bbe94844cfac004775ae3c6cbbf2f7167f6",
+      "translation": "Hooks can modify messages, append output intents, call scripts, and more.",
+      "updated_at": 1782395242
+    },
     "README.zh-CN.md:paragraph:799adfce4feb71edf7bd6c91c9acf3b3ce1e8f20f575bee6ed0b012706c9f875": {
       "kind": "paragraph",
       "source": "更长、更复杂的记忆不强制自动注入，而是由 LLM 在需要时通过 __ELBOT_CODE_0__ 工具主动查询。",
@@ -1984,6 +2040,14 @@
       "source_hash": "eefedc6adaeda98a1b7a2dd9cb099adfee795e53d6cf7dfae14c9d9582157b8b",
       "translation": "[Quick Start](getting-started.md): From configuring the API Key to launching the CLI, complete your first conversation.",
       "updated_at": 1781513067
+    },
+    "docs/README.md:list:f411e881a9df45fba6904c37d1dcf9fa5d8ad81cf8e747cde422aef48ab5f31e": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 放开发计划、任务拆分、架构和接口。",
+      "source_file": "docs/README.md",
+      "source_hash": "f411e881a9df45fba6904c37d1dcf9fa5d8ad81cf8e747cde422aef48ab5f31e",
+      "translation": "__ELBOT_CODE_0__ is used for development plans, task breakdowns, architecture, and interfaces.",
+      "updated_at": 1782395265
     },
     "docs/README.md:paragraph:1dd32f9d7b7a52985e194349ce545d963940a5d449a9dd1aeeee23477222f304": {
       "kind": "paragraph",
@@ -6225,6 +6289,14 @@
       "translation": "Quick Start",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:heading:3647ab635213fec7c3f773f3b1c6c38649a108fb5f73c5e2c454bc6a821b5963": {
+      "kind": "heading",
+      "source": "direct calls-only 示例",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "3647ab635213fec7c3f773f3b1c6c38649a108fb5f73c5e2c454bc6a821b5963",
+      "translation": "direct calls-only example",
+      "updated_at": 1782395349
+    },
     "docs/elnis-usage.md:heading:386963b8494c165ffef69ec6e89b2b3b6ed400898f9284e4f3192ce9ad116257": {
       "kind": "heading",
       "source": "Segment 字段",
@@ -6721,6 +6793,14 @@
       "translation": "Elvena v2 supports sending images and files via the __ELBOT_CODE_0__ field. __ELBOT_CODE_1__ is reserved as a plain text fallback and is fully compatible with the old Elwisp.\n",
       "updated_at": 1782033114
     },
+    "docs/elnis-usage.md:paragraph:2fe0efe6808e0e94fa09d078323e9dceee6d39f7ecb6c96fdcd155e2f49b8ab5": {
+      "kind": "paragraph",
+      "source": "direct/record 请求中 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 至少提供一个，LLM 模式仍必须提供 __ELBOT_CODE_3__。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "2fe0efe6808e0e94fa09d078323e9dceee6d39f7ecb6c96fdcd155e2f49b8ab5",
+      "translation": "In direct/record requests, at least one of __ELBOT_CODE_0__, __ELBOT_CODE_1__, or __ELBOT_CODE_2__ must be provided; LLM mode still requires __ELBOT_CODE_3__.\n",
+      "updated_at": 1782395349
+    },
     "docs/elnis-usage.md:paragraph:3992a8029e30f39041102d37033acf1f8f97cc62e58323fc3fd801ddc6f4ab09": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 会提供协议说明、配置片段、事件模板、代码脚手架和测试命令；真正写文件或运行命令仍会继续使用对应工具。\n",
@@ -6841,6 +6921,14 @@
       "translation": "For complete configuration details, see [Hook](hooks.md#hook-exec-投递-elvena).\n",
       "updated_at": 1782376360
     },
+    "docs/elnis-usage.md:paragraph:887cee93ce128c97c968309c6c38be8a5626e37ebe2e23944a36cc6213096140": {
+      "kind": "paragraph",
+      "source": "Elvena v3 支持通过 __ELBOT_CODE_0__ 字段发送图片和文件。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "887cee93ce128c97c968309c6c38be8a5626e37ebe2e23944a36cc6213096140",
+      "translation": "Elvena v3 supports sending images and files via the __ELBOT_CODE_0__ field.",
+      "updated_at": 1782395349
+    },
     "docs/elnis-usage.md:paragraph:8e10903c1c241907a109ea2991f0ecee90e4156346762acc425a4a89f389fe9b": {
       "kind": "paragraph",
       "source": "Elnis 默认允许投递；",
@@ -6848,6 +6936,14 @@
       "source_hash": "8e10903c1c241907a109ea2991f0ecee90e4156346762acc425a4a89f389fe9b",
       "translation": "Elnis allows delivery by default;",
       "updated_at": 1782033114
+    },
+    "docs/elnis-usage.md:paragraph:8f55f102370a6410dfe950545197422fe2c67de39001cd1035c1b5f6864d9726": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 保留为纯文本 fallback；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "8f55f102370a6410dfe950545197422fe2c67de39001cd1035c1b5f6864d9726",
+      "translation": "__ELBOT_CODE_0__ is reserved as a plain text fallback;",
+      "updated_at": 1782395349
     },
     "docs/elnis-usage.md:paragraph:a0c0277789aa15ef006e25e7a5ffb166f33bd5f0daf653a4e5196858ffc70643": {
       "kind": "paragraph",
@@ -6929,6 +7025,14 @@
       "translation": "**Note:** Elvena is based on JSON, and the content must be UTF-8 encoded.",
       "updated_at": 1781752966
     },
+    "docs/elnis-usage.md:table:01645b79e16b3beaf68b98d444ca557a81b6a51ca10c0e86a85d1c55ff233347": {
+      "kind": "table",
+      "source": "direct/record 模式可为空，但 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 至少提供一个。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "01645b79e16b3beaf68b98d444ca557a81b6a51ca10c0e86a85d1c55ff233347",
+      "translation": "Can be empty in direct/record mode, but at least one of __ELBOT_CODE_0__, __ELBOT_CODE_1__, or __ELBOT_CODE_2__ must be provided.",
+      "updated_at": 1782395349
+    },
     "docs/elnis-usage.md:table:0250510547f02dc95c376267491814c698dc8f9b58256d5afe9f10609b16ddb4": {
       "kind": "table",
       "source": "Elnis LLM 模型槽位，仅支持 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__；未填写或对应槽位未配置时回退到 __ELBOT_CODE_3__。",
@@ -6993,6 +7097,14 @@
       "translation": "Required",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:table:1464545cdc10d55fa672db6868e816b8786e9bad394258c417c154bde6539af8": {
+      "kind": "table",
+      "source": "事件主体。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "1464545cdc10d55fa672db6868e816b8786e9bad394258c417c154bde6539af8",
+      "translation": "Event body.",
+      "updated_at": 1782395349
+    },
     "docs/elnis-usage.md:table:1b1efc4c8947139785108253c00ade50f0a742410448ca28aad89a809dc99cb4": {
       "kind": "table",
       "source": "协议版本，当前为 __ELBOT_CODE_0__。",
@@ -7024,6 +7136,14 @@
       "source_hash": "2fb33550734c99013b73f7cc5dd42888366478c1f52d7bb1dcac10748eda6899",
       "translation": "Unique event ID within the source.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:40e396c8617fd43421871634487b47f815e6432202dac6a47fb80244375b2654": {
+      "kind": "table",
+      "source": "direct 请求只有 __ELBOT_CODE_0__ 且没有 __ELBOT_CODE_1__/__ELBOT_CODE_2__ 时只执行 API，不发送消息。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "40e396c8617fd43421871634487b47f815e6432202dac6a47fb80244375b2654",
+      "translation": "When a direct request only has __ELBOT_CODE_0__ and lacks __ELBOT_CODE_1__/__ELBOT_CODE_2__, it only executes the API and does not send a message.",
+      "updated_at": 1782395349
     },
     "docs/elnis-usage.md:table:4262c45dc797bb0cd5008331ef25b684413859f55b73c71fb4e2c01b645dbbb7": {
       "kind": "table",
@@ -7216,6 +7336,14 @@
       "source_hash": "d00344dac4eeef600985b6a509ba222c1d43c81c145dcc319b189730a57bf2ac",
       "translation": "MIME type hint.",
       "updated_at": 1781929269
+    },
+    "docs/elnis-usage.md:table:d1eef39ef655cc35d1c7fe72085075f944615b0421c377b885b63e1dc720b88c": {
+      "kind": "table",
+      "source": "LLM 模式必填，推荐使用 ELyph Task Notation（任务表示法）__ELBOT_CODE_0__；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "d1eef39ef655cc35d1c7fe72085075f944615b0421c377b885b63e1dc720b88c",
+      "translation": "Required for LLM mode; it is recommended to use ELyph Task Notation __ELBOT_CODE_0__;",
+      "updated_at": 1782395349
     },
     "docs/elnis-usage.md:table:e3b263ee01e2d8e405062e5af39f642d31bf63d459a6481f15b74b15d53ec7d3": {
       "kind": "table",
@@ -9521,6 +9649,14 @@
       "translation": "Optional, defaults to true",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:heading:0dd7c61cd332731411f0eeefa3034058a8887399d0c8d30c947378822ba96918": {
+      "kind": "heading",
+      "source": "撤回引用消息示例",
+      "source_file": "docs/hooks.md",
+      "source_hash": "0dd7c61cd332731411f0eeefa3034058a8887399d0c8d30c947378822ba96918",
+      "translation": "Example of Recalling a Quoted Message",
+      "updated_at": 1782395417
+    },
     "docs/hooks.md:heading:2c1036d3361f29a6cad9e66d414b00647a25e47976277e6665d81b61fdeff39f": {
       "kind": "heading",
       "source": "规则结构",
@@ -9873,6 +10009,14 @@
       "translation": "Multi-segment output (segments):\n",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:paragraph:46f9a403d50755753281a8a8a5a2a68eaf3661d4dd1aaf838f94c4d387d81c0c": {
+      "kind": "paragraph",
+      "source": "脚本从 stdin 读取 Hook event JSON，按当前平台生成 Elvena v3 direct calls-only 请求。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "46f9a403d50755753281a8a8a5a2a68eaf3661d4dd1aaf838f94c4d387d81c0c",
+      "translation": "The script reads the Hook event JSON from stdin and generates an Elvena v3 direct calls-only request based on the current platform.",
+      "updated_at": 1782395417
+    },
     "docs/hooks.md:paragraph:47a85d5db591ec02400879a9218f1d0ee52ac5ed9b6c1163e489c2413ecb8f41": {
       "kind": "paragraph",
       "source": "多条件（AND）：\n",
@@ -9977,6 +10121,14 @@
       "translation": "The Emoji Hook has been changed from an embedded plugin to a Rule Hook example; see the [Emoji Extraction Example](#表情提取示例) in this document.\n",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:paragraph:8dc0b277889a46a8d15ef0d8920c3661a0bf63f7a82f5036a2250175c1a99b94": {
+      "kind": "paragraph",
+      "source": "Hook 里可通过 __ELBOT_CODE_0__ 读取被引用消息的平台消息 ID，通过 __ELBOT_CODE_1__ 读取当前触发 Hook 的消息 ID。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "8dc0b277889a46a8d15ef0d8920c3661a0bf63f7a82f5036a2250175c1a99b94",
+      "translation": "In the Hook, the platform message ID of the quoted message can be read via __ELBOT_CODE_0__, and the message ID that triggered the current Hook can be read via __ELBOT_CODE_1__.\n",
+      "updated_at": 1782395417
+    },
     "docs/hooks.md:paragraph:98c36d56db840c16e4706887a55f78b029ff7a4e2ecd3fcc349c8a4a161edcca": {
       "kind": "paragraph",
       "source": "调用已注册工具，结果存到 __ELBOT_CODE_0__ 供后续 action 使用。\n",
@@ -9992,6 +10144,14 @@
       "source_hash": "9bbf4f66c38587102c1d4ed9a3b054f10db85b8100acb225254aa6a6b8f6d298",
       "translation": "Single condition:\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:9f3766aa5347107aedd5a2b6f02d97aad91e94ec01788d099657a55d143997b2": {
+      "kind": "paragraph",
+      "source": "OneBot 也可以不用 capability，直接 raw 调用：\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "9f3766aa5347107aedd5a2b6f02d97aad91e94ec01788d099657a55d143997b2",
+      "translation": "OneBot can also perform a raw call directly without using capabilities:\n",
+      "updated_at": 1782395417
     },
     "docs/hooks.md:paragraph:a055762a1bdc069990bb9af4af439d81f9eeaba2bff7430fb546e910c3b4f7a5": {
       "kind": "paragraph",
@@ -10041,6 +10201,14 @@
       "translation": "__ELBOT_CODE_0__ and __ELBOT_CODE_1__ are inherited from the action to all segments.\n",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:paragraph:c67d8f37958ab0d6d0d643f07ee21dc728ff2e7b48845d008b2552f096750ec1": {
+      "kind": "paragraph",
+      "source": "Telegram 使用 Bot API __ELBOT_CODE_0__，机器人必须有删除目标消息的权限，且目标消息不能超过平台允许的删除时限。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "c67d8f37958ab0d6d0d643f07ee21dc728ff2e7b48845d008b2552f096750ec1",
+      "translation": "Telegram uses Bot API __ELBOT_CODE_0__; the bot must have permission to delete the target message, and the target message must not exceed the deletion time limit allowed by the platform.\n",
+      "updated_at": 1782395417
+    },
     "docs/hooks.md:paragraph:c95c0f38cb82a3a7e3cded2e96463a4fab49970fc76be43b3893973ee3ce4fb6": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 不能与 __ELBOT_CODE_1__ 或 __ELBOT_CODE_2__ 组合使用；__ELBOT_CODE_3__ 不能与 __ELBOT_CODE_4__ 组合使用。\n",
@@ -10064,6 +10232,30 @@
       "source_hash": "ce7cca2d4ea553bc687245fa20fc280515e61383dbaa6d692642c846218dc991",
       "translation": "__ELBOT_CODE_0__ can be used for conditional matching, but cannot be edited.\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:dfdbf51c88dad3b9e4fa7b915dfa47d7f167f2cf00664346e49d149b874b07a4": {
+      "kind": "paragraph",
+      "source": "以下示例用于超级管理员回复某条平台消息并发送“撤回这条”时，通过 Elvena v3 __ELBOT_CODE_0__ 调用平台 API 撤回被引用的消息。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "dfdbf51c88dad3b9e4fa7b915dfa47d7f167f2cf00664346e49d149b874b07a4",
+      "translation": "The following example is used when a superadmin replies to a platform message and sends \"recall this\", calling the platform API via Elvena v3 __ELBOT_CODE_0__ to recall the quoted message.\n",
+      "updated_at": 1782395417
+    },
+    "docs/hooks.md:paragraph:e78e5b98b027111516f5f8f4cefe1b74f9c832764e45ba4b9e57c84ffd2dbf89": {
+      "kind": "paragraph",
+      "source": "前提：平台适配器需要支持原始 API 调用，且本次消息必须带引用/回复关系。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "e78e5b98b027111516f5f8f4cefe1b74f9c832764e45ba4b9e57c84ffd2dbf89",
+      "translation": "Prerequisite: The platform adapter must support raw API calls, and the current message must have a quote/reply relationship.",
+      "updated_at": 1782395417
+    },
+    "docs/hooks.md:paragraph:ecc3e718db9355790e1dddbc52b22568879dc1321b7f142efb32f328c0b83c48": {
+      "kind": "paragraph",
+      "source": "Elnis 只执行 __ELBOT_CODE_0__，请求没有 __ELBOT_CODE_1__ 或 __ELBOT_CODE_2__ 时不会额外发送确认消息。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "ecc3e718db9355790e1dddbc52b22568879dc1321b7f142efb32f328c0b83c48",
+      "translation": "Elnis only executes __ELBOT_CODE_0__, and no additional confirmation message will be sent if the request does not contain __ELBOT_CODE_1__ or __ELBOT_CODE_2__.\n",
+      "updated_at": 1782395417
     },
     "docs/hooks.md:paragraph:f1d215abc88c942b8c1d4f06a3943c8c1ef497412bc9c74ceaec93392bc6b7ea": {
       "kind": "paragraph",

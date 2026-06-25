@@ -79,11 +79,11 @@ If you want ElBot to help you generate an Elwisp listener, you can submit a requ
 After starting ElBot, you can use curl to test a `direct` event:
 
 ```bash
-curl -sS http://127.0.0.1:32170/elvena/v2/events \
+curl -sS http://127.0.0.1:32170/elvena/v3/events \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer change-me' \
   -d '{
-    "version":"elvena.v2",
+    "version":"elvena.v3",
     "elwisp":{"name":"server-watchdog"},
     "source":"minecraft-main",
     "id":"cpu-alert-001",
@@ -100,7 +100,7 @@ If the same `elwisp.name + source + id` is sent again, Elnis will return duplica
 
 ```json
 {
-  "version": "elvena.v2",
+  "version": "elvena.v3",
   "elwisp": {
     "name": "server-watchdog",
     "tags": ["server", "prod"]
@@ -138,9 +138,32 @@ If the same `elwisp.name + source + id` is sent again, Elnis will return duplica
 }
 ```
 
+### direct calls-only example
+
+```json
+{
+  "version": "elvena.v3",
+  "elwisp": {"name": "hook-recall"},
+  "source": "rules-hook",
+  "id": "recall-qqonebot-1024",
+  "mode": "direct",
+  "targets": [{"platform": "qqonebot", "type": "group", "id": "987654321"}],
+  "calls": [
+    {
+      "kind": "capability",
+      "name": "message.recall",
+      "platform": "qqonebot",
+      "target": {"platform": "qqonebot", "type": "group", "id": "987654321"},
+      "params": {"message_id": 1024}
+    }
+  ]
+}
+```
+
+
 ## Segments (Multimodal Message Segments)
 
-Elvena v2 supports sending images and files via the `segments` field. `content` is reserved as a plain text fallback and is fully compatible with the old Elwisp.
+Elvena v3 supports sending images and files via the `segments` field. `content` is reserved as a plain text fallback; In direct/record requests, at least one of `content`, `segments`, or `calls` must be provided; LLM mode still requires `content`.
 
 Behavior remains unchanged when `segments` is empty; when not empty, segments are rendered preferentially, and content serves as additional text.
 
@@ -167,7 +190,7 @@ Behavior remains unchanged when `segments` is empty; when not empty, segments ar
 
 ```json
 {
-  "version": "elvena.v2",
+  "version": "elvena.v3",
   "elwisp": {"name": "monitor"},
   "source": "prod-server",
   "id": "cpu-chart-002",
@@ -205,7 +228,7 @@ Common fields:
 
 | Field | Required | Description |
 | --- | ---: | --- |
-| `version` | Yes | Protocol version, currently `elvena.v2`. |
+| `version` | Yes | Protocol version, currently `elvena.v3`. |
 | `elwisp.name` | Yes | Elwisp name, which is also one of the source identities; only English letters, numbers, `_`, and `-` are allowed; dots are not allowed. |
 | `elwisp.tags` | No | Elwisp tag, used for logs and statistics. |
 | `source` | Yes | Specific event source, such as service name, script name, or RSS name. |
@@ -214,12 +237,12 @@ Common fields:
 | `mode` | Yes | `record`, `direct`, or `llm`. |
 | `title` | No | Event title, used for notifications and background Session titles. |
 | `format` | No | `text` or `elyph`, default `text`. |
-| `content` | Yes | Event body. For LLM mode, using ELyph Task Notation `#task` is recommended. |
+| `content` | No | Event body. Required for LLM mode; it is recommended to use ELyph Task Notation `#task`; Can be empty in direct/record mode, but at least one of `content`, `segments`, or `calls` must be provided. |
 | `model_slot` | No | Elnis LLM model slot, only supporting `elwisp1`, `elwisp2`, and `elwisp3`; if left blank or the corresponding slot is not configured, it will fall back to `work`. |
 | `tool_list_names` | No | The ElBot internal tool name or Skill name preloaded for background tasks; Ordinary tools inject the schema, while Skills inject task descriptions and automatically inject the corresponding runner; Must be within the Elnis `allowed_tools` adjudication range; `discover_tool` will be ignored. |
 | `tools` | No | External tools declared by Elwisp with events; allowed by default, rejected when hitting the `disabled_external_tools` of that Elwisp. |
 | `targets` | Yes | Elwisp expects a delivery target array: `{"platform":"telegram"}` indicates sending to the platform superadmin, `type=private/group` with `id` indicates sending to a specified private chat/group chat, and `{"platform":"all"}` indicates all enabled platform superadmins. The final decision is still made by Elnis. |
-| `calls` | No | Elvena v3 action call array. `kind="raw"` passes through the platform's original API, while `kind="capability"` uses a unified capability name; The first batch of capabilities includes `message.recall`, `member.mute`, and `chat.leave`. |
+| `calls` | No | Elvena v3 action call array. `kind="raw"` passes through the platform's original API, while `kind="capability"` uses a unified capability name; The first batch of capabilities includes `message.recall`, `member.mute`, and `chat.leave`. When a direct request only has `calls` and lacks `content`/`segments`, it only executes the API and does not send a message. |
 | `meta` | No | Original supplementary data, used only for recording and prompt attachment. |
 
 
