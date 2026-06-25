@@ -26,9 +26,9 @@
       "updated_at": 1782376269
     },
     "docs/configuration.md": {
-      "source_hash": "a80e48822f72f3465a4c3b4fc4ebd2041827109647cb0460f84df9d948043a50",
+      "source_hash": "9e64268a791d7a87a6ce881fd209287c085202fdb7db1043126822f7c084e19e",
       "target": "docs.en/configuration.md",
-      "updated_at": 1782353866
+      "updated_at": 1782376291
     },
     "docs/elnis-usage.md": {
       "source_hash": "22bb51d0de15eb569820fa2b7027a12907eba6587ad87ef6b3ab1447d6ab503e",
@@ -5587,6 +5587,14 @@
       "source_hash": "a728fb7fe1ecea412b0105ed9c33e4f287ba964cdfeb4efe7550a2682c580018",
       "translation": "If the explicitly specified configuration path does not exist, ElBot will report an error instead of silently generating it, to avoid masking path spelling errors.\n",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:paragraph:a7b5dadd94461348e8ce4007f1f51c7083535f8023a1827f1afb9f34a399590d": {
+      "kind": "paragraph",
+      "source": "规则 Hook 的完整配置说明（action 类型、segments 多段输出、exec stdout 模式、角色分区、控制字段）见 [Hook](hooks.md)。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "a7b5dadd94461348e8ce4007f1f51c7083535f8023a1827f1afb9f34a399590d",
+      "translation": "For full configuration instructions for Rule Hooks (action type, segments multi-segment output, exec stdout mode, role partitioning, control fields), see [Hook](hooks.md).\n",
+      "updated_at": 1782376291
     },
     "docs/configuration.md:paragraph:af00c8f9cf411e48f6a22c9a7b231eb240ba73e6a3d2411797bc8996c3a450f5": {
       "kind": "paragraph",
