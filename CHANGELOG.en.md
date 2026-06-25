@@ -9,12 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Elvena v3 action channel: Elnis supports `calls`, with initial support for raw platform APIs as well as `message.recall`, `member.mute`, and `chat.leave` capabilities; Hook rules can execute scripts via `exec` action, and use `stdout=elvena` to trigger Elnis direct/LLM/calls via the internal Elvena Bus.
+- Hook rules added role partitioning and control fields: `roles`, `actor_roles`, `group_roles`, `control.consume`, `control.stop_propagation`; Platform message Hook output will now be sent; `consume=true` can block subsequent command/LLM processing.
+- Hook rules `send` action added `segments` list, supporting multi-type multi-segment output (text/image/file/emoticon, including url/path/base64), with a format unified with Elvena segments.
+- Hook rules `exec` action added `outputs` stdout mode; script stdout is parsed as JSON to extract the `outputs` array and optional `text`; When `field` is set, `text` overwrites the corresponding fields; otherwise, the original text remains unchanged.
+- Platform inbound context added a unified group identity `owner/admin/member/unknown`; QQ OneBot and Telegram will map group owner/administrator/ordinary member.
+
 ### Changed
+
 - Provider configuration refactoring: removed unused `[global_default]`, removed `[model_metadata.context_windows]` global model window table; Model-level `context_window` and `extra_payload` are now unified under `[providers.<name>.model_configs."<model>"]` and looked up by `provider/model`, avoiding conflicts between models with the same name across providers.
 - Added `proxy` field to Provider, supporting HTTP/SOCKS5 proxies.
+- Emoticon Hook changed from an embedded plugin to a rule Hook example; the emoticon plugin and `emoticon.toml` assets are no longer built-in.
 
 ### Fixed
 - Fixed an issue where OpenAI-compatible streaming responses that disconnected midway but were missing `[DONE]` were treated as normal terminations; now it will explicitly notify that the LLM response was interrupted.
+- Fixed an issue where Hook exec stdin JSON used Go's default capitalized field names, preventing external scripts from reading the event field using lowercase keys; Added JSON tags consistently to Hook event and related payload structs.
 
 ### Changed
 - Display the current retry count via Notice when LLM connection/HTTP retriable requests fail.
@@ -31,7 +41,7 @@ The first pre-release version of ElBot. A lightweight Agent/Chatbot framework ai
 - **Chat/Work Dual Mode**: chat mode disables tools, suitable for daily chatting and low-cost conversations; work mode enables tool discovery and invocation; models can be configured independently for both modes.
 - **Tool Discovery Mechanism**: By default, only `discover_tool` and the tool name are exposed, with the full schema injected on demand to reduce unnecessary context overhead.
 - **Session Service**: Persistent sessions supporting recovery, archiving, pinning, Forking, deletion, pagination, and platform isolation; automatic context compaction for long conversations.
-- **Hook Layer**: Insert extension logic at key points such as Agent input, LLM request/response, and platform sending; built-in rule Hooks, emoji Hooks, and resident memory Hooks.
+- **Hook Layer**: Inserts extension logic at key points such as Agent input, LLM request/response, and platform sending; includes built-in rule Hooks and resident memory Hooks.
 - **Standard Cron and LLM Cron**: Standard Cron sends fixed content directly according to a schedule; LLM Cron uses ELyph task descriptions to drive model execution, supporting one-time and periodic tasks, missed run recovery, and broadcasting.
 - **ELyph Task Notation**: A structured task description language used for LLM Cron and native Skills to reduce natural language ambiguity.
 - **Native and External Skills**: The `create_el_skill` meta-tool supports LLMs in creating native EL Skills (pure ELyph or accompanied by Go source code and compiled); Compatible with agentskills.io style external AgentSkills (accompanied by Python scripts).

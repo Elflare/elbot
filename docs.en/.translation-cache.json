@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "7831a7129af8332c69220eaec60726abd12b163c5d0e9fd02009803cfa85736f",
+      "source_hash": "ebe7fe68b894e94faf1a8fcc3af2dc1a9b07cdc6dce913d308340c0ceafdb504",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782312399
+      "updated_at": 1782376912
     },
     "README.zh-CN.md": {
       "source_hash": "9316c5d17a1626acb11825ef7a899024d5fdbeb48152c9d6b02ad0deed5b49c5",
@@ -57,6 +57,14 @@
     }
   },
   "segments": {
+    "CHANGELOG.md:list:0cb9f5d55b3a2dc69256f4b4688cf35160155b719f6f9ed566a3a9cc1a4274d6": {
+      "kind": "list",
+      "source": "平台入站上下文新增统一群身份 __ELBOT_CODE_0__，QQ OneBot 和 Telegram 会映射群主/管理员/普通成员。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "0cb9f5d55b3a2dc69256f4b4688cf35160155b719f6f9ed566a3a9cc1a4274d6",
+      "translation": "Platform inbound context added a unified group identity __ELBOT_CODE_0__; QQ OneBot and Telegram will map group owner/administrator/ordinary member.",
+      "updated_at": 1782376912
+    },
     "CHANGELOG.md:list:11621501ea8bcfaddd39ec7e55a6251b636d07bf7fbcb7f3d2438f778362bf66": {
       "kind": "list",
       "source": "**记忆系统**：常驻记忆（core/normal 分层）按平台与 actor 注入；长期记忆基于 Markdown 源数据与 SQLite FTS 检索。",
@@ -72,6 +80,14 @@
       "source_hash": "124caf0d7cc91f9b2ff6facd12a4ab06dd0cf07f8eaac37eb69f2f376660b75b",
       "translation": "**Multi-platform adapter**: CLI (including client/server separation and remote connection), QQ OneBot v11, QQ Official Bot, Telegram Bot API.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:148fd2049ad883525735464ea60234f38932c41612530f7e14a9a1126210df3d": {
+      "kind": "list",
+      "source": "Hook rules 新增角色分区与控制字段：__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "148fd2049ad883525735464ea60234f38932c41612530f7e14a9a1126210df3d",
+      "translation": "Hook rules added role partitioning and control fields: __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__;",
+      "updated_at": 1782376912
     },
     "CHANGELOG.md:list:14cd896f3e686f14895d68bac5e89d2420b4109ebf71e29785677cc89a68d1a8": {
       "kind": "list",
@@ -96,6 +112,14 @@
       "source_hash": "280823f9e19a44bcbfe92547cc46408bbcf2b93e26cd0cfcf98c3d26afaa1c3e",
       "translation": "**Tool Discovery Mechanism**: By default, only __ELBOT_CODE_0__ and the tool name are exposed, with the full schema injected on demand to reduce unnecessary context overhead.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:2a124153d199af5892e2e21c29055db5ce8a7cc96679b697f9e27de92a335335": {
+      "kind": "list",
+      "source": "Hook rules __ELBOT_CODE_0__ action 新增 __ELBOT_CODE_1__ 列表，支持多类型多段输出（text/image/file/emoticon，含 url/path/base64），格式与 Elvena segment 统一。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "2a124153d199af5892e2e21c29055db5ce8a7cc96679b697f9e27de92a335335",
+      "translation": "Hook rules __ELBOT_CODE_0__ action added __ELBOT_CODE_1__ list, supporting multi-type multi-segment output (text/image/file/emoticon, including url/path/base64), with a format unified with Elvena segments.",
+      "updated_at": 1782376912
     },
     "CHANGELOG.md:list:31e1b19552361d185e88961542f7ecdbf799d5e3cc7d6a34196458c6ff69f3bc": {
       "kind": "list",
@@ -145,6 +169,14 @@
       "translation": "The risk level of the __ELBOT_CODE_0__ tool has been downgraded from high to medium.",
       "updated_at": 1782298716
     },
+    "CHANGELOG.md:list:7451bbf5a68e98a284488175db4e8df8fae0a4cc7c3d7b20b8c10878e7390e09": {
+      "kind": "list",
+      "source": "设 __ELBOT_CODE_0__ 时 __ELBOT_CODE_1__ 覆写对应字段，不设时不修改原文。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "7451bbf5a68e98a284488175db4e8df8fae0a4cc7c3d7b20b8c10878e7390e09",
+      "translation": "When __ELBOT_CODE_0__ is set, __ELBOT_CODE_1__ overwrites the corresponding fields; otherwise, the original text remains unchanged.",
+      "updated_at": 1782376912
+    },
     "CHANGELOG.md:list:74cc70f1fc05110e376f89105915e000dd86f27ff35078ec828df758295d929e": {
       "kind": "list",
       "source": "MCP 工具、子 Agent 与完整多模态（语音、视频、文件真实模型输入）尚未实现。",
@@ -193,6 +225,22 @@
       "translation": "**Native and External Skills**: The __ELBOT_CODE_0__ meta-tool supports LLMs in creating native EL Skills (pure ELyph or accompanied by Go source code and compiled);",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:851d612e3a059ffb21b2b3df00f732f7cd1723da278cd59e8fec0e979a56793d": {
+      "kind": "list",
+      "source": "修复 Hook exec stdin JSON 使用 Go 默认大写字段名导致外部脚本无法用小写 key 读取 event 字段的问题；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "851d612e3a059ffb21b2b3df00f732f7cd1723da278cd59e8fec0e979a56793d",
+      "translation": "Fixed an issue where Hook exec stdin JSON used Go's default capitalized field names, preventing external scripts from reading the event field using lowercase keys;",
+      "updated_at": 1782376912
+    },
+    "CHANGELOG.md:list:8d6665e1f8baef0f66221d9e8c96d04b826c0e292fbc65f9956b6159f7fe0d0c": {
+      "kind": "list",
+      "source": "Hook rules __ELBOT_CODE_0__ action 新增 __ELBOT_CODE_1__ stdout 模式，脚本 stdout 解析为 JSON 并提取 __ELBOT_CODE_2__ 数组和可选 __ELBOT_CODE_3__；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "8d6665e1f8baef0f66221d9e8c96d04b826c0e292fbc65f9956b6159f7fe0d0c",
+      "translation": "Hook rules __ELBOT_CODE_0__ action added __ELBOT_CODE_1__ stdout mode; script stdout is parsed as JSON to extract the __ELBOT_CODE_2__ array and optional __ELBOT_CODE_3__;",
+      "updated_at": 1782376912
+    },
     "CHANGELOG.md:list:8e240be846787f791774d6c36787606f8337042e10aac541f8b36ece490e981d": {
       "kind": "list",
       "source": "模型级 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 统一收到 __ELBOT_CODE_2__ 下，按 __ELBOT_CODE_3__ 查找，避免跨 provider 同名模型冲突。",
@@ -209,6 +257,22 @@
       "translation": "**Chat/Work Dual Mode**: chat mode disables tools, suitable for daily chatting and low-cost conversations; work mode enables tool discovery and invocation; models can be configured independently for both modes.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:94517b0f2275ae4197728d971ccfb2f1a1a20c60f53243383ab713f3cbd12b8b": {
+      "kind": "list",
+      "source": "**Hook Layer**：在 Agent 输入、LLM 请求/响应、平台发送等关键点插入扩展逻辑；内置规则 Hook 与常驻记忆 Hook。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "94517b0f2275ae4197728d971ccfb2f1a1a20c60f53243383ab713f3cbd12b8b",
+      "translation": "**Hook Layer**: Inserts extension logic at key points such as Agent input, LLM request/response, and platform sending; includes built-in rule Hooks and resident memory Hooks.",
+      "updated_at": 1782376912
+    },
+    "CHANGELOG.md:list:98e6593633bc9b68e06b9a76de0dfbe3f13ced9b3500785a4dd4c30c39f20666": {
+      "kind": "list",
+      "source": "Elvena v3 动作通道：Elnis 支持 __ELBOT_CODE_0__，首批支持 raw 平台 API 以及 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ capability；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "98e6593633bc9b68e06b9a76de0dfbe3f13ced9b3500785a4dd4c30c39f20666",
+      "translation": "Elvena v3 action channel: Elnis supports __ELBOT_CODE_0__, with initial support for raw platform APIs as well as __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ capabilities;",
+      "updated_at": 1782376912
+    },
     "CHANGELOG.md:list:ada87970eec02cf839ea0c3ab0c573116bb30bcb71bac655bf9eaeb0c4d76173": {
       "kind": "list",
       "source": "LLM 建连/HTTP 可重试失败时通过 Notice 显示当前重试次数。",
@@ -216,6 +280,14 @@
       "source_hash": "ada87970eec02cf839ea0c3ab0c573116bb30bcb71bac655bf9eaeb0c4d76173",
       "translation": "Display the current retry count via Notice when LLM connection/HTTP retriable requests fail.",
       "updated_at": 1782298716
+    },
+    "CHANGELOG.md:list:b25d3a78ad76a7e9f568addf9e30d0ac344415f9c084e850f2997f4c02617cad": {
+      "kind": "list",
+      "source": "平台消息 Hook 输出现在会发送，__ELBOT_CODE_0__ 可阻止后续命令/LLM 处理。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "b25d3a78ad76a7e9f568addf9e30d0ac344415f9c084e850f2997f4c02617cad",
+      "translation": "Platform message Hook output will now be sent; __ELBOT_CODE_0__ can block subsequent command/LLM processing.",
+      "updated_at": 1782376912
     },
     "CHANGELOG.md:list:b38bc9c4a4c1c59fabd0af61273ce28f1bda9c70b72de6986bc430d0e30f60aa": {
       "kind": "list",
@@ -241,6 +313,14 @@
       "translation": "**Standard Cron and LLM Cron**: Standard Cron sends fixed content directly according to a schedule;",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:c9b8f985f26ae2840c237c92f9163141ff2da581a519ff26340d57eb8120d0c4": {
+      "kind": "list",
+      "source": "Hook event 及相关 payload 结构体统一加 JSON tag。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "c9b8f985f26ae2840c237c92f9163141ff2da581a519ff26340d57eb8120d0c4",
+      "translation": "Added JSON tags consistently to Hook event and related payload structs.",
+      "updated_at": 1782376912
+    },
     "CHANGELOG.md:list:cb42950d3097afb350e0270a9241489518a607d30bcc8c00f788f103348b188a": {
       "kind": "list",
       "source": "**SQLite 持久化**：Session、消息、上下文摘要、工具调用记录、Cron job、Elnis 事件统一存储。",
@@ -264,6 +344,22 @@
       "source_hash": "e674fa7fc18af87b45660da3fff098ff0a482256ae0cdc7d64932ce221ad779c",
       "translation": "**Session Service**: Persistent sessions supporting recovery, archiving, pinning, Forking, deletion, pagination, and platform isolation; automatic context compaction for long conversations.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:e7510a5df400801c446ff0dd93100e5a836baef132edb73440540d3f81862d5c": {
+      "kind": "list",
+      "source": "表情 Hook 从内嵌插件改为规则 Hook 示例，不再内置 emoticon 插件和 __ELBOT_CODE_0__ 资产。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "e7510a5df400801c446ff0dd93100e5a836baef132edb73440540d3f81862d5c",
+      "translation": "Emoticon Hook changed from an embedded plugin to a rule Hook example; the emoticon plugin and __ELBOT_CODE_0__ assets are no longer built-in.",
+      "updated_at": 1782376912
+    },
+    "CHANGELOG.md:list:e81822b53b2270a9a2f78edb916b8ee9c970a516ec77a84dd14e91bb46b0c554": {
+      "kind": "list",
+      "source": "Hook rules 可通过 __ELBOT_CODE_0__ action 执行脚本，并用 __ELBOT_CODE_1__ 经内部 Elvena Bus 触发 Elnis direct/LLM/calls。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "e81822b53b2270a9a2f78edb916b8ee9c970a516ec77a84dd14e91bb46b0c554",
+      "translation": "Hook rules can execute scripts via __ELBOT_CODE_0__ action, and use __ELBOT_CODE_1__ to trigger Elnis direct/LLM/calls via the internal Elvena Bus.",
+      "updated_at": 1782376912
     },
     "CHANGELOG.md:paragraph:f4fdd49cee5a8975381d265d52b666a936b8a0b8d696502ff7ac1ebdda67c23c": {
       "kind": "paragraph",
