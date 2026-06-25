@@ -6,9 +6,9 @@
       "updated_at": 1782376912
     },
     "README.zh-CN.md": {
-      "source_hash": "9316c5d17a1626acb11825ef7a899024d5fdbeb48152c9d6b02ad0deed5b49c5",
+      "source_hash": "0345aed66187e1630a640cfe36499783c1b159b3620e9b7814be2f66bd995a9d",
       "target": "README.md",
-      "updated_at": 1782376191
+      "updated_at": 1782385711
     },
     "docs/README.md": {
       "source_hash": "1230f9ab00aa9ac08ec2f6adae707583f6b447e9e9f070de56c369f8f3b927ba",
@@ -817,6 +817,14 @@
       "translation": "Compared to fully automated RAG or graph-based long-term memory retrieval, ElBot's memory design is more explicit and controllable.\n",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:070b787123bc4cef31ef3ab5f0b8d3ec59384b8e5904f7bfba616753abbd6dd7": {
+      "kind": "paragraph",
+      "source": "配合 [Elwisp](docs/elnis.md) 可实现条件触发 LLM、外部事件接入等强大功能。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "070b787123bc4cef31ef3ab5f0b8d3ec59384b8e5904f7bfba616753abbd6dd7",
+      "translation": "Combined with [Elwisp](docs/elnis.md), it can implement powerful functions such as conditional LLM triggering and external event integration.\n",
+      "updated_at": 1782385711
+    },
     "README.zh-CN.md:paragraph:07abf0e35f4b7225b51900d300b623b17b6a9e32e449ba7f242cb238517d5d4d": {
       "kind": "paragraph",
       "source": "work模式：<1000\n",
@@ -1209,6 +1217,14 @@
       "translation": "LLM Cron allows the model to be driven by task descriptions.\n",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:68c3204602dcd0ccb63bb0c8d1e14e81c664b2d68a9bf424546a9267813c90ad": {
+      "kind": "paragraph",
+      "source": "内置规则 Hook、表情 Hook 和常驻记忆 Hook，支持后续扩展独立插件。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "68c3204602dcd0ccb63bb0c8d1e14e81c664b2d68a9bf424546a9267813c90ad",
+      "translation": "Built-in rule Hooks, emoji Hooks, and resident memory Hooks, supporting the subsequent extension of independent plugins.",
+      "updated_at": 1782385711
+    },
     "README.zh-CN.md:paragraph:6caefb847385d0861ca2ea3d92e08658802daa5c3e39f97d9a8de4eb587cae4f": {
       "kind": "paragraph",
       "source": "**普通 Cron 与 LLM Cron**： ElBot 内置 Cron Runtime 和 LLM 可编排 Cron 服务。",
@@ -1304,6 +1320,14 @@
       "source_hash": "799adfce4feb71edf7bd6c91c9acf3b3ce1e8f20f575bee6ed0b012706c9f875",
       "translation": "Longer and more complex memories are not forcibly auto-injected; instead, the LLM actively queries them via the __ELBOT_CODE_0__ tool when needed.",
       "updated_at": 1781749522
+    },
+    "README.zh-CN.md:paragraph:79c9a1bd92409202d23e898c634ef423930ae76fca4cc5f44e4ea9aee9a2201a": {
+      "kind": "paragraph",
+      "source": "规则 Hook 的 exec action 基于 stdio 通信，支持用任意语言或脚本编写插件；",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "79c9a1bd92409202d23e898c634ef423930ae76fca4cc5f44e4ea9aee9a2201a",
+      "translation": "The exec action of rule Hooks is based on stdio communication, supporting plugins written in any language or script;",
+      "updated_at": 1782385711
     },
     "README.zh-CN.md:paragraph:79ea45cf53f010cfbf696194143efe2857daf813672b9191a00e3006eb0cd7e8": {
       "kind": "paragraph",
