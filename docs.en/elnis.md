@@ -126,9 +126,10 @@ Elwisp is only responsible for "seeing and reporting." It does not directly cont
 
 ### Elvena: event protocol
 
-Elvena is the JSON over HTTP protocol used by Elwisp to deliver events to Elnis.
+Elvena is the JSON over HTTP protocol for Elwisp to deliver events to Elnis. Hook exec within ElBot can also submit Elvena requests via the same Elvena Bus; These requests do not go through an HTTP token, but instead carry a `hook` origin, and are executed by Elnis in a unified manner for direct, LLM, and calls.
 
-It is responsible for turning "what happened outside" into a unified event that Elnis can understand: who the source is, what the event ID is, what the content is, how it should be handled, and where it should be delivered.
+It is responsible for transforming "what happened outside" or "what the internal Hook wants to do" into a unified event that Elnis can understand: who the source is, what the event ID is, what the content is, how it should be handled, and where it should be delivered.
+
 
 Initial endpoint:
 
@@ -190,12 +191,16 @@ For ready-made Elwisp examples, protocol documentation, and templates, please re
 
 ## Current Limitations and Future Directions
 
-Currently, Elnis supports record, direct, and llm modes, Elwisp declaring external tools with events, and multimodal message segments (text/image/file). When a superadmin quotes and replies to an Elnis LLM report notification within the platform, it will automatically resume to the corresponding background Session to continue the conversation; When a regular user quotes it, it will only be processed as ordinary quoted text.
+Currently, Elnis supports record, direct, and llm modes, Elwisp declaring external tools with events, multimodal message segments (text/image/file), Elvena v3 calls (raw platform APIs and the first batch of capabilities), and Hook exec delivery via the internal Elvena Bus. When a superadmin quotes and replies to an Elnis LLM report notification within the platform, it will automatically resume to the corresponding background Session to continue the conversation; When a regular user quotes it, it will only be processed as ordinary quoted text.
+
 
 The following capabilities are still under development or planning:
 
 - Multi-turn communication between Elnis and Elwisp.
+- More unified capabilities: `member.kick`, `message.pin`, `member.unmute`, bot profile/avatar/name/commands, etc.
+- QQ Official raw API caller。
 - Non-HTTP transports such as stdio, pipe, etc.
+
 
 ## Next Step: Configuration and Usage
 

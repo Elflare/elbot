@@ -36,9 +36,9 @@
       "updated_at": 1782376360
     },
     "docs/elnis.md": {
-      "source_hash": "52e93376c5239090db3a2c6cb63b274561c2cc3ac0ebfd9f3eeddb3f84abd229",
+      "source_hash": "a00509a199b063f3c4fdacc20355cb96addbe5a8e2b9a287026c3ecad904e9a1",
       "target": "docs.en/elnis.md",
-      "updated_at": 1782288638
+      "updated_at": 1782376420
     },
     "docs/elyph.md": {
       "source_hash": "1143022b6f7a7792b0f1aa8118af618014b6ac359776d6a7cd21cc484f28a6bc",
@@ -7380,6 +7380,14 @@
       "translation": "Decide which platforms events can be delivered to.",
       "updated_at": 1781710746
     },
+    "docs/elnis.md:list:b66b8fa4d5e5963e02867077bc113b75e7fa9e1e266720dca16df4f94a3d3509": {
+      "kind": "list",
+      "source": "更多统一 capability：__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、bot profile/avatar/name/commands 等。",
+      "source_file": "docs/elnis.md",
+      "source_hash": "b66b8fa4d5e5963e02867077bc113b75e7fa9e1e266720dca16df4f94a3d3509",
+      "translation": "More unified capabilities: __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, bot profile/avatar/name/commands, etc.",
+      "updated_at": 1782376420
+    },
     "docs/elnis.md:list:ba33d5e79f175e2f0e007cb409211c4d0d8faa1128448d83f267e9aa15969f94": {
       "kind": "list",
       "source": "Elwisp 随事件声明工具并由 Elnis 安全调用。",
@@ -7492,6 +7500,14 @@
       "translation": "It reads __ELBOT_CODE_0__ and supports filtering by Elwisp name, event source, event ID, mode, and time range.\n",
       "updated_at": 1781753001
     },
+    "docs/elnis.md:paragraph:18cdbbb221760ae5f6fc3896b1b4cc8560190f2cd8e4896469a94f0e16ceef4f": {
+      "kind": "paragraph",
+      "source": "它负责把“外面发生了什么”或“内部 Hook 想做什么”变成 Elnis 能理解的统一事件：来源是谁、事件 ID 是什么、内容是什么、希望怎么处理、希望投递到哪里。\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "18cdbbb221760ae5f6fc3896b1b4cc8560190f2cd8e4896469a94f0e16ceef4f",
+      "translation": "It is responsible for transforming \"what happened outside\" or \"what the internal Hook wants to do\" into a unified event that Elnis can understand: who the source is, what the event ID is, what the content is, how it should be handled, and where it should be delivered.\n",
+      "updated_at": 1782376420
+    },
     "docs/elnis.md:paragraph:1ff5ad7a790c585c4083e66c874fd07f1d57a76721909ae15dbd178cd77e554d": {
       "kind": "paragraph",
       "source": "例如：\n",
@@ -7588,6 +7604,14 @@
       "translation": "In work mode, the superadmin can let ElBot use the built-in tool __ELBOT_CODE_0__ to assist in creating Elwisp.",
       "updated_at": 1781779501
     },
+    "docs/elnis.md:paragraph:66f48853ec205c7158c6ef88ea175b8aeda3b121cd998ddd217db989af24cf94": {
+      "kind": "paragraph",
+      "source": "当前 Elnis 已支持 record、direct、llm 模式、Elwisp 随事件声明外部工具、多模态消息段（text/image/file）、Elvena v3 calls（raw 平台 API 与首批 capability）以及 Hook exec 经内部 Elvena Bus 投递。",
+      "source_file": "docs/elnis.md",
+      "source_hash": "66f48853ec205c7158c6ef88ea175b8aeda3b121cd998ddd217db989af24cf94",
+      "translation": "Currently, Elnis supports record, direct, and llm modes, Elwisp declaring external tools with events, multimodal message segments (text/image/file), Elvena v3 calls (raw platform APIs and the first batch of capabilities), and Hook exec delivery via the internal Elvena Bus.",
+      "updated_at": 1782376420
+    },
     "docs/elnis.md:paragraph:695148bdd3a5cccf1382ef265c97fe80863c1b0b09aa2727b1b892fc67855062": {
       "kind": "paragraph",
       "source": "该工具会返回创建指南、Elvena 事件模板、Elnis 配置片段、监听器脚手架、curl 测试命令和安全检查清单；",
@@ -7595,6 +7619,14 @@
       "source_hash": "695148bdd3a5cccf1382ef265c97fe80863c1b0b09aa2727b1b892fc67855062",
       "translation": "This tool returns creation guides, Elvena event templates, Elnis configuration snippets, listener scaffolds, curl test commands, and security checklists;",
       "updated_at": 1781779501
+    },
+    "docs/elnis.md:paragraph:74dd4c5e1d128658da1f514639215f757e7790dfb996fbe3964a991bb2fcbdab": {
+      "kind": "paragraph",
+      "source": "Elvena 是 Elwisp 向 Elnis 投递事件的 JSON over HTTP 协议。",
+      "source_file": "docs/elnis.md",
+      "source_hash": "74dd4c5e1d128658da1f514639215f757e7790dfb996fbe3964a991bb2fcbdab",
+      "translation": "Elvena is the JSON over HTTP protocol for Elwisp to deliver events to Elnis.",
+      "updated_at": 1782376420
     },
     "docs/elnis.md:paragraph:7ff9d0ef9e57e4c67efc6620f4d2c83e0d1d68c8430e82eb68b1057fd5e7968d": {
       "kind": "paragraph",
@@ -7668,6 +7700,14 @@
       "translation": "When a regular user quotes it, it will only be processed as ordinary quoted text.\n",
       "updated_at": 1782039286
     },
+    "docs/elnis.md:paragraph:be7fb34b0e4f390173e4b6d7babb63f3cca8fdaae63a589a7e3898f4d681124b": {
+      "kind": "paragraph",
+      "source": "ElBot 内部的 Hook exec 也可以通过同一 Elvena Bus 提交 Elvena 请求；",
+      "source_file": "docs/elnis.md",
+      "source_hash": "be7fb34b0e4f390173e4b6d7babb63f3cca8fdaae63a589a7e3898f4d681124b",
+      "translation": "Hook exec within ElBot can also submit Elvena requests via the same Elvena Bus;",
+      "updated_at": 1782376420
+    },
     "docs/elnis.md:paragraph:c235f80b7fef92338972f15c874cba0d2e2410167f4ef2eb2e6db6e4ec5ce465": {
       "kind": "paragraph",
       "source": "Elwisp 是外部子监听器。",
@@ -7723,6 +7763,14 @@
       "source_hash": "d9720267703ebc0d4400e602eca4bff5f47d953919a5587b692952c84d177fb8",
       "translation": "Elnis is the event entry runtime within ElBot, assembled at the same level as the platform runtime and Cron runtime.\n",
       "updated_at": 1781710746
+    },
+    "docs/elnis.md:paragraph:dc779ba829405e8f3b9576669351c0fe9ae5073f84db85a454189cff3a16a870": {
+      "kind": "paragraph",
+      "source": "这类请求不经过 HTTP token，而是带 __ELBOT_CODE_0__ origin，由 Elnis 统一执行 direct、LLM 和 calls。\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "dc779ba829405e8f3b9576669351c0fe9ae5073f84db85a454189cff3a16a870",
+      "translation": "These requests do not go through an HTTP token, but instead carry a __ELBOT_CODE_0__ origin, and are executed by Elnis in a unified manner for direct, LLM, and calls.\n",
+      "updated_at": 1782376420
     },
     "docs/elnis.md:paragraph:e4dca4da13020e3b19785f32c8b200b0920a028bc4036a95fa5551faef12ce44": {
       "kind": "paragraph",
