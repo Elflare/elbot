@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Elvena v3 动作通道：Elnis 支持 `calls`，首批支持 raw 平台 API 以及 `message.recall`、`member.mute`、`chat.leave` capability；Hook rules 可通过 `exec` action 执行脚本，并用 `stdout=elvena` 经内部 Elvena Bus 触发 Elnis direct/LLM/calls。
+- Elvena v3 动作通道：Elnis 支持 `calls`，首批支持 raw 平台 API 以及 `message.recall`、`member.mute`、`chat.leave` capability，未支持的可以直接调用消息平台api；Hook rules 可通过 `exec` action 执行脚本，并用 `stdout=elvena` 经内部 Elvena Bus 触发 Elnis direct/LLM/calls。
+- `edit_file` 的 `*_match` 操作新增 `match_mode` 与 `index` 参数：`match_mode=line` 时按单行前缀匹配整行（容忍行首缩进，规避换行符匹配出错），`content`（默认）保持精确子串语义；多处匹配时可通过 `index` 选择第几处，未传 `index` 报错并列出所有匹配位置。
 - Hook rules 新增角色分区与控制字段：`roles`、`actor_roles`、`group_roles`、`control.consume`、`control.stop_propagation`；平台消息 Hook 输出现在会发送，`consume=true` 可阻止后续命令/LLM 处理。
 - Hook rules `send` action 新增 `segments` 列表，支持多类型多段输出（text/image/file/emoticon，含 url/path/base64），格式与 Elvena segment 统一。
 - Hook rules `exec` action 新增 `outputs` stdout 模式，脚本 stdout 解析为 JSON 并提取 `outputs` 数组和可选 `text`；设 `field` 时 `text` 覆写对应字段，不设时不修改原文。
@@ -19,15 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Provider 配置重构：删除未使用的 `[global_default]`，删除 `[model_metadata.context_windows]` 全局模型窗口表；模型级 `context_window` 和 `extra_payload` 统一收到 `[providers.<name>.model_configs."<model>"]` 下，按 `provider/model` 查找，避免跨 provider 同名模型冲突。
 - Provider 新增 `proxy` 字段，支持 HTTP/SOCKS5 代理。
 - 表情 Hook 从内嵌插件改为规则 Hook 示例，不再内置 emoticon 插件和 `emoticon.toml` 资产。
+- LLM 建连/HTTP 可重试失败时通过 Notice 显示当前重试次数。
+- `finalize_el_skill` 工具风险等级由 high 降为 medium。
 
 ### Fixed
 - 修复 OpenAI-compatible 流式响应中途断开但缺失 `[DONE]` 时被当作正常结束的问题；现在会明确通知 LLM 响应中断。
 - 修复 Hook exec stdin JSON 使用 Go 默认大写字段名导致外部脚本无法用小写 key 读取 event 字段的问题；Hook event 及相关 payload 结构体统一加 JSON tag。
 
-### Changed
-- LLM 建连/HTTP 可重试失败时通过 Notice 显示当前重试次数。
-- `finalize_el_skill` 工具风险等级由 high 降为 medium。
-- `edit_file` 的 `*_match` 操作新增 `match_mode` 与 `index` 参数：`match_mode=line` 时按单行前缀匹配整行（容忍行首缩进，规避换行符匹配出错），`content`（默认）保持精确子串语义；多处匹配时可通过 `index` 选择第几处，未传 `index` 报错并列出所有匹配位置。
 
 ## [v0.1.0-alpha] - 2026-06-24
 
