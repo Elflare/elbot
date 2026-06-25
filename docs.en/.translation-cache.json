@@ -21,9 +21,9 @@
       "updated_at": 1782376213
     },
     "docs/concepts.md": {
-      "source_hash": "681b39fad094716a2ab7d8ed33ad8efa81cff412c55f88468f5f296e8567d0c2",
+      "source_hash": "6de9b853dacd55de2bf2cfbdc483c32d723ca121b2805563c3444c333aaa995d",
       "target": "docs.en/concepts.md",
-      "updated_at": 1782270514
+      "updated_at": 1782376269
     },
     "docs/configuration.md": {
       "source_hash": "a80e48822f72f3465a4c3b4fc4ebd2041827109647cb0460f84df9d948043a50",
@@ -3484,6 +3484,14 @@
       "translation": "For a full introduction, see [Elnis Listening Hub](elnis.md); for configuration and request examples, see [Elnis Configuration and Usage](elnis-usage.md).\n",
       "updated_at": 1781709276
     },
+    "docs/concepts.md:paragraph:05632260512c093d088eaabd3dfd95893b34b7250f22bb140ffd0fb0d974e69f": {
+      "kind": "paragraph",
+      "source": "重要约定：Hook 不替代 Security Layer，安全判定仍以 Security Layer 为准。完整配置和示例见 [Hook](hooks.md)。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "05632260512c093d088eaabd3dfd95893b34b7250f22bb140ffd0fb0d974e69f",
+      "translation": "Important Convention: Hooks do not replace the Security Layer; security determinations are still based on the Security Layer. For full configuration and examples, see [Hook](hooks.md).\n",
+      "updated_at": 1782376269
+    },
     "docs/concepts.md:paragraph:0acac4d5bcfa9d70bcb616c433eb69659d0a9f1cd6f57001bce019a3179a5084": {
       "kind": "paragraph",
       "source": "ELyph 的目标是用更短、更稳定的结构表达输入、输出、步骤、条件和约束，减少自然语言任务描述的歧义。",
@@ -3532,6 +3540,14 @@
       "translation": "Forking does not delete or modify the original Session.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:235b53e6c5057f66399f65b783e99f21c2735917678a5066ee84feff3e802c14": {
+      "kind": "paragraph",
+      "source": "规则 Hook 支持条件匹配、多段输出、exec 脚本和角色分区。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "235b53e6c5057f66399f65b783e99f21c2735917678a5066ee84feff3e802c14",
+      "translation": "Rule Hooks support conditional matching, multi-segment output, exec scripts, and role partitioning.\n",
+      "updated_at": 1782376269
+    },
     "docs/concepts.md:paragraph:2629fde9657a9177cd946d5d0614870a4c64220d6593d16cbcbbf3a10c65f513": {
       "kind": "paragraph",
       "source": "ElBot 区分：\n",
@@ -3555,6 +3571,14 @@
       "source_hash": "2f5c3e0bfec728dc6fedd2e10704f6a1093976fe47f514f6be311b3c9d285010",
       "translation": "You can use __ELBOT_CODE_0__ and __ELBOT_CODE_1__ to switch modes at runtime.\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:2f765bdcde00bc2bd02f47ed15ffe10fa5f32703d7b26601b4005aa0d8d341c0": {
+      "kind": "paragraph",
+      "source": "Elvena 是 Elwisp 向 Elnis 投递事件的协议，也是 Hook exec 等内部触发源复用的动作协议。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "2f765bdcde00bc2bd02f47ed15ffe10fa5f32703d7b26601b4005aa0d8d341c0",
+      "translation": "Elvena is the protocol used by Elwisp to deliver events to Elnis, and it is also the action protocol reused by internal trigger sources such as Hook exec.\n",
+      "updated_at": 1782376269
     },
     "docs/concepts.md:paragraph:3152044b75de7cf948bd10cfe030322fb65344bebfd5a2335b15bccc879c11dc": {
       "kind": "paragraph",
@@ -3907,6 +3931,14 @@
       "source_hash": "be686882804206dc8baf58a45f5512013a83eea607a21bba995c1a01103817ee",
       "translation": "When a regular user quotes it, it will only be processed as ordinary quoted text.\n",
       "updated_at": 1782039257
+    },
+    "docs/concepts.md:paragraph:c07328894e2c47044ee8c480bc72c5ca6bfeee519cd2943d9cda1b3840afa157": {
+      "kind": "paragraph",
+      "source": "Hook Layer 用于在关键流程前后扩展行为，例如修改消息、追加输出意图、调用低风险工具或注入常驻记忆。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "c07328894e2c47044ee8c480bc72c5ca6bfeee519cd2943d9cda1b3840afa157",
+      "translation": "The Hook Layer is used to extend behavior before and after critical processes, such as modifying messages, appending output intents, calling low-risk tools, or injecting resident memory.",
+      "updated_at": 1782376269
     },
     "docs/concepts.md:paragraph:c10f293d07ac3083b84f15d2ccc2de36508a9a99335aa62bbbeb8640d75d225c": {
       "kind": "paragraph",

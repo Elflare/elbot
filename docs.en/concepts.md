@@ -172,17 +172,10 @@ The default local CLI user `local` is a superadmin.
 
 ## Hook
 
-The Hook Layer is used to extend behavior before and after critical processes, for example:
+The Hook Layer is used to extend behavior before and after critical processes, such as modifying messages, appending output intents, calling low-risk tools, or injecting resident memory. Rule Hooks support conditional matching, multi-segment output, exec scripts, and role partitioning.
 
-- Agent input processing.
-- LLM request preparation.
-- LLM response processing.
-- Before and after platform transmission.
-- Platform connection events.
+Important Convention: Hooks do not replace the Security Layer; security determinations are still based on the Security Layer. For full configuration and examples, see [Hook](hooks.md).
 
-Hooks can modify messages, append output intents, call low-risk tools, or inject resident memory.
-
-Important convention: Hooks do not replace the Security Layer; security determinations are still based on the Security Layer.
 
 ## Output Layer
 
@@ -211,7 +204,8 @@ Background Cron has an independent Session and sandbox constraints. LLM Cron can
 
 ## Elnis / Elwisp / Elvena
 
-Elnis is ElBot's listening hub, used for receiving external events. Elwisp is an external sub-listener responsible for observing the external world, such as servers, Webhooks, RSS, logs, or script outputs. Elvena is the event protocol used by Elwisp to deliver events to Elnis.
+Elnis is ElBot's listening hub, used for receiving external events. Elwisp is an external sub-listener responsible for observing the external world, such as servers, Webhooks, RSS, logs, or script outputs. Elvena is the protocol used by Elwisp to deliver events to Elnis, and it is also the action protocol reused by internal trigger sources such as Hook exec.
+
 
 Their division of labor is: Elwisp observes everything, Elnis manages everything, and ElBot controls the final execution and delivery.
 
