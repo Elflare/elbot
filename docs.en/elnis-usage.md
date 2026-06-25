@@ -219,10 +219,15 @@ Common fields:
 | `tool_list_names` | No | The ElBot internal tool name or Skill name preloaded for background tasks; Ordinary tools inject the schema, while Skills inject task descriptions and automatically inject the corresponding runner; Must be within the Elnis `allowed_tools` adjudication range; `discover_tool` will be ignored. |
 | `tools` | No | External tools declared by Elwisp with events; allowed by default, rejected when hitting the `disabled_external_tools` of that Elwisp. |
 | `targets` | Yes | Elwisp expects a delivery target array: `{"platform":"telegram"}` indicates sending to the platform superadmin, `type=private/group` with `id` indicates sending to a specified private chat/group chat, and `{"platform":"all"}` indicates all enabled platform superadmins. The final decision is still made by Elnis. |
+| `calls` | No | Elvena v3 action call array. `kind="raw"` passes through the platform's original API, while `kind="capability"` uses a unified capability name; The first batch of capabilities includes `message.recall`, `member.mute`, and `chat.leave`. |
 | `meta` | No | Original supplementary data, used only for recording and prompt attachment. |
 
 
-> **Note:** Elvena is based on JSON, and the content must be UTF-8 encoded.
+
+## Hook exec delivering to Elvena
+
+The `exec` action of a rule Hook can be set to `stdout = "elvena"`, where the script's stdout serves as an Elvena JSON request passed to Elnis via the internal Elvena Bus, bypassing HTTP token authentication. For complete configuration details, see [Hook](hooks.md#hook-exec-投递-elvena).
+
 
 The HTTP response only indicates that Elnis has received or rejected the request, and does not wait for the LLM to complete.
 

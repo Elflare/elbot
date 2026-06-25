@@ -489,7 +489,10 @@ Plugin configurations are fixed under `plugins/` in the configuration directory:
 
 Hooks and plugins should not send platform messages directly; they should return an output intent, which the Agent then passes to the Output Manager for sending.
 
+For full configuration instructions for Rule Hooks (action type, segments multi-segment output, exec stdout mode, role partitioning, control fields), see [Hook](hooks.md).
+
 ## Recommended Maintenance Method
+
 
 - User-editable configurations should be centralized in the platform configuration directory to avoid directly modifying source code examples.
 - Place actual keys in system environment variables or `.env`.
