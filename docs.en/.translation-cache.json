@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "02383b07bab460551b79f0627c95f1630d6600e06a9f80af9eb225ee8b9b3f90",
+      "source_hash": "c8e598cdd060e3487c3647e48977f1b224515f5105c248ea4c101fc1659c53a4",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782395477
+      "updated_at": 1782399367
     },
     "README.zh-CN.md": {
       "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
@@ -248,6 +248,14 @@
       "source_hash": "7efdca0726c1f3e11a9edd7c8226f6565a4f8de048ed6ca513259bf85f964e18",
       "translation": "**ELyph Task Notation**: A structured task description language used for LLM Cron and native Skills to reduce natural language ambiguity.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:804a20b9431dfd46cceb9e146447ae9d772bc44fb8be93b5eefe7498ef357e15": {
+      "kind": "list",
+      "source": "修复 QQ OneBot 发图片/表情/文件时 API 超时可能取消 WebSocket 写入并触发断线重连的问题；媒体发送失败时会尝试发送同目标文字提示。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "804a20b9431dfd46cceb9e146447ae9d772bc44fb8be93b5eefe7498ef357e15",
+      "translation": "Fixed an issue where API timeouts when sending images/emojis/files via QQ OneBot might cancel WebSocket writes and trigger disconnection and reconnection; a text notification will now be attempted to the same target when media sending fails.",
+      "updated_at": 1782399367
     },
     "CHANGELOG.md:list:83aa655090903e728d1214292cfd1dd5bdd99b5ae467bc2329b6108a14d1a622": {
       "kind": "list",

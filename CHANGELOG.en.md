@@ -27,9 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The risk level of the `finalize_el_skill` tool has been downgraded from high to medium.
 
 ### Fixed
-- Fixed an issue where the platform API caller was not injected when Elnis/Hook exec triggered Elvena `calls`, resulting in `platform api callers are not configured`.
+- Fixed an issue where API timeouts when sending images/emojis/files via QQ OneBot might cancel WebSocket writes and trigger disconnection and reconnection; a text notification will now be attempted to the same target when media sending fails.
 - Fixed an issue where OpenAI-compatible streaming responses that disconnected midway but were missing `[DONE]` were treated as normal terminations; now it will explicitly notify that the LLM response was interrupted.
-- Fixed an issue where Hook exec stdin JSON used Go's default capitalized field names, preventing external scripts from reading the event field using lowercase keys; Added JSON tags consistently to Hook event and related payload structs.
 
 
 ## [v0.1.0-alpha] - 2026-06-24
