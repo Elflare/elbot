@@ -155,6 +155,10 @@ func (t *Transport) GetImage(ctx context.Context, file string) (getImageData, er
 	return data, nil
 }
 
+func (t *Transport) Call(ctx context.Context, action string, params map[string]any) (response, error) {
+	return t.call(ctx, action, params)
+}
+
 func (t *Transport) sendMessage(ctx context.Context, action string, params map[string]any) (string, error) {
 	resp, err := t.call(ctx, action, params)
 	if err != nil {

@@ -7,6 +7,7 @@
 - `docs/configuration.md`：配置说明，写配置文件职责、路径规则、Provider、密钥、数据目录和平台配置。
 - `docs/commands.md`：命令速查，写常用 slash 命令、参数和示例。
 - `docs/concepts.md`：核心概念，写 Chat/Work、工具发现、Session、Hook、Cron、Skill、安全等用户需要理解的概念。
+- `docs/hooks.md`：Hook 文档，写规则 Hook 配置、action 类型、segments 多段输出、exec stdout 模式、角色分区、控制字段和表情提取示例。
 - `docs/elnis.md`：Elnis 监听枢纽介绍，写 Elnis、Elwisp、Elvena、事件模式和能力边界。
 - `docs/elnis-usage.md`：Elnis 配置与使用，写启用配置、curl 示例、Elvena 字段和投递安全边界。
 - `docs.en/` / `README.md` / `CHANGLOG.en.md`：英文用户文档镜像，由 GitHub Actions 自动翻译生成；不要手动修改。
@@ -108,20 +109,30 @@
 - `internal/config/assets.go`：首次运行默认配置资产。
 
 
-- `internal/elnis/types.go`：Elnis/Elvena 协议类型；定义 Elwisp 请求、扁平投递目标、响应、事件模式、状态和随事件声明的外部工具。
-- `internal/elnis/service.go`：Elnis 接收服务；处理 token 鉴权、协议校验、Elwisp 授权、内部工具 allowed_tools 裁决、外部工具声明校验/禁用、持久化去重、record/direct 分发、默认允许加 disabled target 的目标裁决、LLM 事件后台执行/结果报告和引用通知 resume 后台 session。
+- `internal/elvena/`：Elvena 公共协议层；定义 v2/v3 request/response、Origin、Dispatcher/Bus、direct 输出转换和 calls 能力映射，供 Elnis HTTP 与 Hook exec 共用。
+- `internal/elnis/types.go`：Elnis/Elvena 协议类型别名；复用 `internal/elvena` 请求、响应、事件模式、状态和 calls 类型。
+- `internal/elnis/service.go`：Elnis 接收服务主入口；实现 HTTP token Handle 与 Elvena Dispatcher，负责授权、去重后分发 record/direct/llm。
+- `internal/elnis/prepare.go`：Elnis 事件准备；校验 v2/v3 请求、规范化 target/tool/calls、生成事件 key/hash 和持久化字段。
+- `internal/elnis/auth.go`：Elnis token、Elwisp 和工具授权。
+- `internal/elnis/targets.go`：Elnis 投递目标解析、禁用规则和 enabled platform 展开。
+- `internal/elnis/direct.go`：Elnis direct 分发；发送 content/segments，执行 raw/capability calls，并记录回执映射。
+- `internal/elnis/llm.go`：Elnis LLM 后台任务、结果重试、报告投递和模型选择。
+- `internal/elnis/segments.go`：Elnis segment 下载、URL/data URI 校验和 LLM segment 转换。
+- `internal/elnis/store.go`：Elnis 重复事件、完成状态和事件日志属性 helper。
+- `internal/elnis/background.go`：Elnis 后台 actor、sandbox subdir 和平台辅助 helper。
 - `internal/elnis/http.go`：Elnis HTTP runtime；提供 `POST /elvena/v2/events` 和 `GET /healthz`，支持 body 限制、token 提取、JSON 响应和 LLM 事件队列 worker。
+
 
 - `internal/logging/logging.go`：日志地基；创建运行日志、审计日志和 Elnis 日志的 `slog.Logger`，`Manager` 统一持有按日期懒轮转的 `elbot-YYYY-MM-DD.log`、`audit-YYYY-MM-DD.log`、`elnis-YYYY-MM-DD.log` writer，暴露日志目录和可配置旧日志清理入口。
 - `internal/logging/reader.go`：结构化文本日志读取器；解析 `slog.TextHandler` 输出，支持 `/log`、`/audit` 的时间、等级、字段、msg、latest message 文本和条数过滤，并放宽单行读取上限以支持较大的 Debug 请求体。
 
 ### Hook Layer
 
-- `internal/hook/hook.go`：Hook 基础包；定义事件点、已知点校验、payload、Handler/Manager、注册模块、匹配规则和按优先级串行执行的事件流水线。
+- `internal/hook/hook.go`：Hook 基础包；定义事件点、已知点校验、payload、控制字段、正则捕获上下文、Handler/Manager、注册模块、匹配规则和按优先级串行执行的事件流水线。
 
-- `internal/hook/builtin/register.go`：随程序发布的 Hook 插件注册入口；组合规则插件、表情插件和常驻记忆 Hook，app 层传配置目录、日志、安全策略、工具 Registry、resident memory store、审计和可选通知回调。
-- `internal/hook/rules/rules.go`：TOML Rule Hook 插件，读取 `plugins/hooks.toml`。
-- `internal/hook/plugins/emoticon/emoticon.go`：表情 Hook；匹配 LLM 输出中的 `[[表情名]]`，发送本地随机表情图；`after_assistant` 跟随当前 assistant 片段，工具调用前的中间回复也会立即发送。
+- `internal/hook/builtin/register.go`：随程序发布的 Hook 插件注册入口；组合规则插件和常驻记忆 Hook，app 层传配置目录、日志、安全策略、工具 Registry、resident memory store、Elvena Dispatcher、审计和可选通知回调。
+- `internal/hook/rules/rules.go`：TOML Rule Hook 插件，读取 `plugins/hooks.toml`，支持角色分区、输出控制、文本/发送（含 segments 多段输出）/工具/exec action、模板渲染和字段覆写。
+- `internal/hook/rules/exec.go`：规则 Hook exec action；默认在 `plugins/` 目录执行 shell 命令，支持 stdin JSON payload、stdout capture/send/outputs/elvena/ignore。
 - `internal/hook/plugins/resident_memory/resident_memory.go`：常驻记忆 Hook；每 turn 注入当前 platform + actor 的常驻记忆和临时用户名。
 
 ### Hook/插件约定
@@ -136,7 +147,8 @@
 
 ### Security Layer
 
-- `internal/security/security.go`：安全层地基；定义 `Actor`、`Role`、`RiskLevel` 和 `Policy`，按平台超级管理员 ID 识别角色，按风险阈值判断工具可用性与超级管理员确认需求。
+- `internal/security/security.go`：安全层地基；定义 `Actor`、ElBot 内部 `Role`、平台群身份 `GroupRole`、`RiskLevel` 和 `Policy`，按平台超级管理员 ID 识别角色，按风险阈值判断工具可用性与超级管理员确认需求。
+
 - `internal/security/context.go`：在 context 中传递当前 Actor 与 Security Policy，供工具发现和执行风险评估使用。
 
 ### Context Management
@@ -205,7 +217,8 @@
 
 ### 平台适配
 
-- `internal/platform/platform.go`：平台抽象；定义 `PlatformAdapter`、`PlatformHandler`、统一 `SendChat`/`SendNotice` 的 message sender、可携带多条平台消息 ID 的发送 receipt、平台 `MessageSegment`（text/image/file/at）和每条入站消息的 Actor/Scope/发送目标上下文；上下文可携带平台解析出的 fork 来源、多模态消息段和少量平台原生 metadata。
+- `internal/platform/platform.go`：平台抽象；定义 `PlatformAdapter`、`PlatformHandler`、统一 `SendChat`/`SendNotice` 的 message sender、可携带多条平台消息 ID 的发送 receipt、平台 `MessageSegment`（text/image/file/at）和每条入站消息的 Actor/Scope/发送目标/平台群身份上下文；上下文可携带平台解析出的 fork 来源、多模态消息段和少量平台原生 metadata。
+
 - `internal/platform/config.go`：平台配置辅助；把 `app.toml` 中 `[platform.<name>]` 原始 section 解码给适配器自有 Config，并提供关键词前缀剥离 helper。
 - `internal/platform/builtin/builtin.go`：内置平台装配；按运行模式组合 CLI、headless 和 enabled 外部平台。
 - `internal/platform/headless/headless.go`：service 模式的非交互 primary platform。

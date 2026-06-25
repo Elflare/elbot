@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"elbot/internal/delivery"
+	"elbot/internal/elvena"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 )
@@ -226,6 +227,190 @@ func TestLLMResponseRawTextCanMatchButCannotBeEdited(t *testing.T) {
 	}
 }
 
+func TestRuleRegistrationsExpandRoles(t *testing.T) {
+	rule := Rule{
+		Match:      []hook.Condition{{Op: hook.MatchAlways}},
+		Roles:      []string{"superadmin", "admin"},
+		ActorRoles: []string{"user"},
+		GroupRoles: []string{"owner"},
+	}
+	registrations := ruleRegistrations(rule)
+	if len(registrations) != 4 {
+		t.Fatalf("registrations = %#v", registrations)
+	}
+	fields := map[string]bool{}
+	for _, reg := range registrations {
+		last := reg.Conditions[len(reg.Conditions)-1]
+		fields[last.Field+"="+last.Value] = true
+	}
+	for _, want := range []string{"actor.role=superadmin", "actor.group_role=admin", "actor.role=user", "actor.group_role=owner"} {
+		if !fields[want] {
+			t.Fatalf("missing %s in %#v", want, fields)
+		}
+	}
+}
+
+func TestRuleRoleGatesAndControl(t *testing.T) {
+	module := Module{}
+	event := hook.Event{
+		Point:   hook.PointAgentInputPrepared,
+		Actor:   hook.ActorContext{Role: "user", GroupRole: "admin"},
+		Message: hook.MessagePayload{Segments: llm.TextSegments("hello")},
+	}
+	got, err := module.runRule(context.Background(), Rule{
+		Roles:      []string{"admin"},
+		ActorRoles: []string{"user"},
+		GroupRoles: []string{"admin"},
+		Control:    Control{Consume: true, StopPropagation: true},
+		Actions:    []Action{{Type: "append", Field: "message.text", Text: "!"}},
+	}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if text := llm.SegmentsTextOnly(got.Message.Segments); text != "hello!" {
+		t.Fatalf("text = %q", text)
+	}
+	if !got.Control.Consume || !got.Control.StopPropagation {
+		t.Fatalf("control = %#v", got.Control)
+	}
+
+	blocked, err := module.runRule(context.Background(), Rule{GroupRoles: []string{"owner"}, Actions: []Action{{Type: "append", Field: "message.text", Text: "?"}}}, event)
+	if err != nil {
+		t.Fatalf("blocked runRule: %v", err)
+	}
+	if text := llm.SegmentsTextOnly(blocked.Message.Segments); text != "hello" {
+		t.Fatalf("blocked text = %q", text)
+	}
+}
+
+func TestRenderRegexCapture(t *testing.T) {
+	module := Module{}
+	match := hook.MatchContext{}
+	match.Regex = append(match.Regex, hook.RegexMatch{
+		Field:  "message.text",
+		Value:  `^mute (?P<target>\S+) (?P<minutes>\d+)$`,
+		Text:   "mute alice 10",
+		Groups: []string{"mute alice 10", "alice", "10"},
+		Named:  map[string]string{"target": "alice", "minutes": "10"},
+	})
+	event := hook.Event{
+		Point:    hook.PointAgentInputPrepared,
+		Message:  hook.MessagePayload{Segments: llm.TextSegments("mute alice 10")},
+		Metadata: map[string]any{"match": match},
+	}
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "send", Text: "{{match.regex.0.target}}/{{match.regex.0.group.2}}"}}}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 || got.Outputs[0].Text != "alice/10" {
+		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+}
+
+type fakeElvenaDispatcher struct {
+	origin elvena.Origin
+	req    elvena.Request
+}
+
+func (f *fakeElvenaDispatcher) DispatchElvena(ctx context.Context, origin elvena.Origin, req elvena.Request) (elvena.Response, error) {
+	f.origin = origin
+	f.req = req
+	return elvena.Response{Accepted: true, Status: elvena.StatusAccepted, EventKey: req.Elwisp.Name + "/" + req.Source + "/" + req.ID}, nil
+}
+
+func TestExecActionRunsFromPluginConfigDir(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "script.sh")
+	if err := os.WriteFile(script, []byte("printf plugin-dir"), 0o755); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+	module := Module{Opts: Options{ConfigDir: dir}}
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: `sh ./script.sh`, Stdout: "send"}}}, hook.Event{Point: hook.PointAgentInputPrepared})
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 || got.Outputs[0].Text != "plugin-dir" {
+		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+}
+
+func TestExecActionRelativeCwdUsesPluginConfigDir(t *testing.T) {
+	dir := t.TempDir()
+	subdir := filepath.Join(dir, "scripts")
+	if err := os.MkdirAll(subdir, 0o755); err != nil {
+		t.Fatalf("mkdir scripts: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(subdir, "script.sh"), []byte("printf relative-cwd"), 0o755); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+	module := Module{Opts: Options{ConfigDir: dir}}
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: `sh ./script.sh`, Cwd: "scripts", Stdout: "send"}}}, hook.Event{Point: hook.PointAgentInputPrepared})
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 || got.Outputs[0].Text != "relative-cwd" {
+		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+}
+
+func TestExecActionCaptureAndRender(t *testing.T) {
+	module := Module{}
+	event := hook.Event{Point: hook.PointAgentInputPrepared, Message: hook.MessagePayload{Segments: llm.TextSegments("hello")}}
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
+		{Name: "script", Type: "exec", Command: `printf 'ok'`, Stdout: "capture"},
+		{Type: "send", Text: "{{actions.script.result}}"},
+	}}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 || got.Outputs[0].Text != "ok" {
+		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+}
+
+func TestExecActionStdoutSend(t *testing.T) {
+	module := Module{}
+	event := hook.Event{Point: hook.PointAgentInputPrepared, Message: hook.MessagePayload{Segments: llm.TextSegments("hello")}}
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: `printf 'sent'`, Stdout: "send", Timing: delivery.DeliveryAfterAssistant}}}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 || got.Outputs[0].Text != "sent" {
+		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+	if timing := delivery.DeliveryTiming(got.Outputs[0]); timing != delivery.DeliveryAfterAssistant {
+		t.Fatalf("timing = %q", timing)
+	}
+}
+
+func TestExecActionStdoutElvena(t *testing.T) {
+	dispatcher := &fakeElvenaDispatcher{}
+	module := Module{Opts: Options{Elvena: dispatcher}}
+	stdout := `{"version":"elvena.v3","elwisp":{"name":"hook_rule"},"source":"hook","id":"1","mode":"direct","content":"hi","targets":[{"platform":"all"}]}`
+	_, err := module.runRule(context.Background(), Rule{Actions: []Action{{Name: "script", Type: "exec", Command: "printf '%s' '" + stdout + "'", Stdout: "elvena"}}}, hook.Event{Point: hook.PointAgentInputPrepared})
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if dispatcher.origin.Kind != elvena.OriginHook || dispatcher.origin.Name != "script" {
+		t.Fatalf("origin = %#v", dispatcher.origin)
+	}
+	if dispatcher.req.Version != elvena.VersionV3 || dispatcher.req.Elwisp.Name != "hook_rule" {
+		t.Fatalf("request = %#v", dispatcher.req)
+	}
+}
+
+func TestExecActionDefaultStdinIncludesEvent(t *testing.T) {
+	module := Module{}
+	event := hook.Event{Point: hook.PointAgentInputPrepared, Actor: hook.ActorContext{UserID: "alice"}}
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: `cat`, Stdout: "send"}}}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 || !strings.Contains(got.Outputs[0].Text, `"user_id":"alice"`) {
+		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+}
+
 func TestLatestUserTextActionWritesBackToMessages(t *testing.T) {
 	module := Module{}
 	event := hook.Event{
@@ -242,5 +427,156 @@ func TestLatestUserTextActionWritesBackToMessages(t *testing.T) {
 	segments := got.LLM.Messages[1].Segments
 	if segments[0].Type != llm.SegmentImage || segments[1].Text != "pre hello" {
 		t.Fatalf("latest user segments = %#v", segments)
+	}
+}
+
+func TestSendActionWithSegments(t *testing.T) {
+	module := Module{}
+	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "done"}}
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
+		{Type: "send", Timing: delivery.DeliveryAfterAssistant, Segments: []SegmentSpec{
+			{Kind: "text", Text: "检测到关键词"},
+			{Kind: "image", Path: "alert.png"},
+			{Kind: "emoticon", Name: "微笑", Path: "emoticons/微笑/01.png"},
+		}},
+	}}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 3 {
+		t.Fatalf("outputs len = %d, want 3", len(got.Outputs))
+	}
+	if got.Outputs[0].Kind != delivery.KindText || got.Outputs[0].Text != "检测到关键词" {
+		t.Fatalf("output[0] = %#v", got.Outputs[0])
+	}
+	if got.Outputs[1].Kind != delivery.KindImage || got.Outputs[1].Source.Path != "alert.png" {
+		t.Fatalf("output[1] = %#v", got.Outputs[1])
+	}
+	if got.Outputs[2].Kind != delivery.KindEmoticon || got.Outputs[2].Name != "微笑" || got.Outputs[2].Source.Path != "emoticons/微笑/01.png" {
+		t.Fatalf("output[2] = %#v", got.Outputs[2])
+	}
+	for i, out := range got.Outputs {
+		if timing := delivery.DeliveryTiming(out); timing != delivery.DeliveryAfterAssistant {
+			t.Fatalf("output[%d] timing = %q, want %q", i, timing, delivery.DeliveryAfterAssistant)
+		}
+	}
+}
+
+func TestSendActionWithSegmentsBase64(t *testing.T) {
+	module := Module{}
+	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "done"}}
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
+		{Type: "send", Segments: []SegmentSpec{
+			{Kind: "image", Base64: "aGVsbG8="}, // "hello" in base64
+		}},
+	}}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 || got.Outputs[0].Kind != delivery.KindImage {
+		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+	if string(got.Outputs[0].Source.Data) != "hello" {
+		t.Fatalf("base64 data = %q, want %q", string(got.Outputs[0].Source.Data), "hello")
+	}
+}
+
+func TestSendActionSegmentsFallbackToSingleOutput(t *testing.T) {
+	module := Module{}
+	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "done"}}
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
+		{Type: "send", Kind: "text", Text: "fallback"},
+	}}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 || got.Outputs[0].Text != "fallback" {
+		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+}
+
+func TestExecActionStdoutOutputs(t *testing.T) {
+	module := Module{}
+	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "[[微笑]] hello"}}
+	stdout := `{"outputs":[{"kind":"emoticon","name":"微笑","path":"emoticons/微笑/01.png"}],"text":"hello"}`
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
+		{Type: "exec", Command: "printf '%s' '" + stdout + "'", Stdout: "outputs", Field: "llm.text"},
+	}}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 || got.Outputs[0].Kind != delivery.KindEmoticon || got.Outputs[0].Name != "微笑" {
+		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+	if got.LLM.Text != "hello" {
+		t.Fatalf("llm.text = %q, want %q", got.LLM.Text, "hello")
+	}
+}
+
+func TestExecActionStdoutOutputsWithoutField(t *testing.T) {
+	module := Module{}
+	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "[[微笑]] hello"}}
+	stdout := `{"outputs":[{"kind":"emoticon","name":"微笑"}],"text":"hello"}`
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
+		{Type: "exec", Command: "printf '%s' '" + stdout + "'", Stdout: "outputs"},
+	}}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 || got.Outputs[0].Kind != delivery.KindEmoticon {
+		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+	if got.LLM.Text != "[[微笑]] hello" {
+		t.Fatalf("llm.text = %q, want unchanged", got.LLM.Text)
+	}
+}
+
+func TestSetTextField(t *testing.T) {
+	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "old"}}
+	got, err := setTextField(event, "llm.text", "new")
+	if err != nil {
+		t.Fatalf("setTextField: %v", err)
+	}
+	if got.LLM.Text != "new" {
+		t.Fatalf("llm.text = %q, want %q", got.LLM.Text, "new")
+	}
+}
+
+func TestSetTextFieldRejectsDisallowedField(t *testing.T) {
+	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "old", RawText: "raw"}}
+	_, err := setTextField(event, "llm.raw_text", "new")
+	if err == nil || !strings.Contains(err.Error(), `field "llm.raw_text" cannot be edited`) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestSetTextFieldMessageText(t *testing.T) {
+	event := hook.Event{
+		Point:   hook.PointAgentInputPrepared,
+		Message: hook.MessagePayload{Segments: llm.TextSegments("old text")},
+	}
+	got, err := setTextField(event, "message.text", "new text")
+	if err != nil {
+		t.Fatalf("setTextField: %v", err)
+	}
+	if text := llm.SegmentsTextOnly(got.Message.Segments); text != "new text" {
+		t.Fatalf("text = %q, want %q", text, "new text")
+	}
+}
+
+func TestSetTextFieldLatestUserText(t *testing.T) {
+	event := hook.Event{
+		Point: hook.PointLLMRequestPrepared,
+		LLM: hook.LLMPayload{Messages: []llm.LLMMessage{
+			{Role: llm.RoleSystem, Segments: llm.TextSegments("sys")},
+			{Role: llm.RoleUser, Segments: llm.TextSegments("old user")},
+		}},
+	}
+	got, err := setTextField(event, "llm.latest_user_text", "new user")
+	if err != nil {
+		t.Fatalf("setTextField: %v", err)
+	}
+	if text := llm.SegmentsTextOnly(got.LLM.Messages[1].Segments); text != "new user" {
+		t.Fatalf("text = %q, want %q", text, "new user")
 	}
 }

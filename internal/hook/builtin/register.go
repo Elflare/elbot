@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"elbot/internal/elvena"
 	"elbot/internal/hook"
-	"elbot/internal/hook/plugins/emoticon"
 	residentmemory "elbot/internal/hook/plugins/resident_memory"
 	"elbot/internal/hook/rules"
 	"elbot/internal/memory/resident"
@@ -23,6 +23,7 @@ type Options struct {
 	Logger              *slog.Logger
 	Audit               func(event string, attrs ...any)
 	Notify              func(context.Context, string)
+	Elvena              elvena.Dispatcher
 }
 
 func RegisterAll(registrar hook.Registrar, opts Options) error {
@@ -39,18 +40,12 @@ func RegisterAll(registrar hook.Registrar, opts Options) error {
 		Logger:    opts.Logger,
 		Audit:     opts.Audit,
 		Notify:    opts.Notify,
+		Elvena:    opts.Elvena,
 	})
 	if err == nil {
 		registerModule(registrar, opts, "rules", rulesModule)
 	} else {
 		reportPluginError(opts, "rules", err)
-	}
-
-	emoticonModule, err := emoticon.NewModule(emoticon.Options{ConfigDir: opts.ConfigDir, Logger: opts.Logger})
-	if err == nil {
-		registerModule(registrar, opts, "emoticon", emoticonModule)
-	} else {
-		reportPluginError(opts, "emoticon", err)
 	}
 	return nil
 }

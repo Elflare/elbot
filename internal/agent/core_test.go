@@ -328,6 +328,57 @@ func TestReplaceInboundTextSegmentsPreservesImage(t *testing.T) {
 	}
 }
 
+func TestPlatformMessageReceivedHookSendsOutputs(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.received.output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		event.Outputs = append(event.Outputs, delivery.Text("received output"))
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register received hook: %v", err)
+	}
+	a.SetHookManager(manager)
+
+	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	got := p.out.String()
+	if !strings.Contains(got, "received output") || !strings.Contains(got, "final") {
+		t.Fatalf("platform output = %q", got)
+	}
+}
+
+func TestPlatformMessageReceivedHookConsumeSkipsCommandAndLLM(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.received.consume", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		event.Outputs = append(event.Outputs, delivery.Text("consumed"))
+		event.Control.Consume = true
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register received hook: %v", err)
+	}
+	a.SetHookManager(manager)
+
+	if err := a.HandleMessage(context.Background(), "/help"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	got := p.out.String()
+	if !strings.Contains(got, "consumed") {
+		t.Fatalf("platform output = %q", got)
+	}
+	if strings.Contains(got, "可用命令") || strings.Contains(got, "final") {
+		t.Fatalf("consume should skip command and LLM, output = %q", got)
+	}
+	if got := len(f.chatRequests()); got != 0 {
+		t.Fatalf("chat requests = %d, want 0", got)
+	}
+}
+
 func TestHandleMessageSendsFallbackForEmptyLLMResponse(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{}}}
@@ -1897,13 +1948,37 @@ func TestToolCallAssistantEmoticonSendsBeforeFinalResponse(t *testing.T) {
 	a.SetToolRuntime(registry, nil)
 	manager := hook.NewManager()
 	configDir := t.TempDir()
-	rootDir := filepath.Join(configDir, "emotions")
-	if err := os.MkdirAll(filepath.Join(rootDir, "微笑"), 0o755); err != nil {
+	emoticonDir := filepath.Join(configDir, "emoticons", "微笑")
+	if err := os.MkdirAll(emoticonDir, 0o755); err != nil {
 		t.Fatalf("mkdir emoticon dir: %v", err)
 	}
-	cfg := fmt.Sprintf("root_dir = %q\ntiming = %q\n", rootDir, delivery.DeliveryAfterAssistant)
-	if err := os.WriteFile(filepath.Join(configDir, "emoticon.toml"), []byte(cfg), 0o644); err != nil {
-		t.Fatalf("write emoticon config: %v", err)
+	imgPath := filepath.Join(emoticonDir, "01.png")
+	if err := os.WriteFile(imgPath, []byte("fake"), 0o644); err != nil {
+		t.Fatalf("write emoticon image: %v", err)
+	}
+	// Shell script: read stdin JSON, extract [[微笑]], output JSON with emoticon output and cleaned text.
+	scriptPath := filepath.Join(configDir, "emoticon_extract.sh")
+	script := `#!/bin/sh
+img=$(ls emoticons/微笑/*.png 2>/dev/null | head -1)
+printf '{"outputs":[{"kind":"emoticon","name":"微笑","path":"'"$img"'"}],"text":"我先查一下"}'
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+	hooksTOML := fmt.Sprintf(`
+[[rules]]
+name = "emoticon_extract"
+on = "llm.response.received"
+priority = 1000
+if = "llm.text"
+op = "regex"
+value = "\\[\\[[^\\[\\]]+\\]\\]"
+actions = [
+  { type = "exec", command = "sh ./emoticon_extract.sh", stdout = "outputs", field = "llm.text", timing = "%s" },
+]
+`, delivery.DeliveryAfterAssistant)
+	if err := os.WriteFile(filepath.Join(configDir, "hooks.toml"), []byte(hooksTOML), 0o644); err != nil {
+		t.Fatalf("write hooks.toml: %v", err)
 	}
 	if err := hookbuiltin.RegisterAll(manager, hookbuiltin.Options{ConfigDir: configDir}); err != nil {
 		t.Fatalf("RegisterAll: %v", err)
@@ -3205,12 +3280,36 @@ func TestEmoticonHookSendsSeparateOutputAndCleansPersistedContent(t *testing.T) 
 	a := New(p, f, "m", config.ProviderConfig{}, store)
 	manager := hook.NewManager()
 	configDir := t.TempDir()
-	rootDir := filepath.Join(configDir, "emotions")
-	if err := os.MkdirAll(filepath.Join(rootDir, "微笑"), 0o755); err != nil {
+	emoticonDir := filepath.Join(configDir, "emoticons", "微笑")
+	if err := os.MkdirAll(emoticonDir, 0o755); err != nil {
 		t.Fatalf("mkdir emoticon dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, "emoticon.toml"), []byte("root_dir = "+fmt.Sprintf("%q", rootDir)), 0o644); err != nil {
-		t.Fatalf("write emoticon config: %v", err)
+	imgPath := filepath.Join(emoticonDir, "01.png")
+	if err := os.WriteFile(imgPath, []byte("fake"), 0o644); err != nil {
+		t.Fatalf("write emoticon image: %v", err)
+	}
+	scriptPath := filepath.Join(configDir, "emoticon_extract.sh")
+	script := `#!/bin/sh
+img=$(ls emoticons/微笑/*.png 2>/dev/null | head -1)
+printf '{"outputs":[{"kind":"emoticon","name":"微笑","path":"'"$img"'"}],"text":"像这样~"}'
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+	hooksTOML := `
+[[rules]]
+name = "emoticon_extract"
+on = "llm.response.received"
+priority = 1000
+if = "llm.text"
+op = "regex"
+value = "\\[\\[[^\\[\\]]+\\]\\]"
+actions = [
+  { type = "exec", command = "sh ./emoticon_extract.sh", stdout = "outputs", field = "llm.text" },
+]
+`
+	if err := os.WriteFile(filepath.Join(configDir, "hooks.toml"), []byte(hooksTOML), 0o644); err != nil {
+		t.Fatalf("write hooks.toml: %v", err)
 	}
 	if err := hookbuiltin.RegisterAll(manager, hookbuiltin.Options{ConfigDir: configDir}); err != nil {
 		t.Fatalf("RegisterAll: %v", err)

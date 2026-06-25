@@ -2,6 +2,7 @@ package rules
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"elbot/internal/delivery"
+	"elbot/internal/elvena"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/security"
@@ -32,6 +34,7 @@ type Options struct {
 	Logger    *slog.Logger
 	Audit     func(event string, attrs ...any)
 	Notify    func(context.Context, string)
+	Elvena    elvena.Dispatcher
 }
 
 type Config struct {
@@ -39,45 +42,75 @@ type Config struct {
 }
 
 type Rule struct {
-	Name     string           `toml:"name"`
-	On       string           `toml:"on"`
-	Priority int              `toml:"priority"`
-	Enabled  *bool            `toml:"enabled"`
-	If       string           `toml:"if"`
-	Op       string           `toml:"op"`
-	Value    string           `toml:"value"`
-	Always   bool             `toml:"always"`
-	Match    []hook.Condition `toml:"match"`
-	Action   string           `toml:"action"`
-	Actions  []Action         `toml:"actions"`
-	Field    string           `toml:"field"`
-	Text     string           `toml:"text"`
-	Pattern  string           `toml:"pattern"`
-	Replace  string           `toml:"replace"`
-	Kind     string           `toml:"kind"`
-	Path     string           `toml:"path"`
-	Timing   string           `toml:"timing"`
-	Tool     string           `toml:"tool"`
-	Args     string           `toml:"arguments"`
-	All      bool             `toml:"all"`
-	Target   Target           `toml:"target"`
+	Name           string           `toml:"name"`
+	On             string           `toml:"on"`
+	Priority       int              `toml:"priority"`
+	Enabled        *bool            `toml:"enabled"`
+	If             string           `toml:"if"`
+	Op             string           `toml:"op"`
+	Value          string           `toml:"value"`
+	Always         bool             `toml:"always"`
+	Match          []hook.Condition `toml:"match"`
+	Roles          []string         `toml:"roles"`
+	ActorRoles     []string         `toml:"actor_roles"`
+	GroupRoles     []string         `toml:"group_roles"`
+	Action         string           `toml:"action"`
+	Actions        []Action         `toml:"actions"`
+	Field          string           `toml:"field"`
+	Text           string           `toml:"text"`
+	Pattern        string           `toml:"pattern"`
+	Replace        string           `toml:"replace"`
+	Kind           string           `toml:"kind"`
+	Path           string           `toml:"path"`
+	Timing         string           `toml:"timing"`
+	Tool           string           `toml:"tool"`
+	Args           string           `toml:"arguments"`
+	Command        string           `toml:"command"`
+	Cwd            string           `toml:"cwd"`
+	Stdin          string           `toml:"stdin"`
+	Stdout         string           `toml:"stdout"`
+	TimeoutSeconds int              `toml:"timeout_seconds"`
+	All            bool             `toml:"all"`
+	Target         Target           `toml:"target"`
+	Control        Control          `toml:"control"`
 }
 
 type Action struct {
-	Name      string `toml:"name"`
-	Type      string `toml:"type"`
-	Field     string `toml:"field"`
-	Text      string `toml:"text"`
-	Pattern   string `toml:"pattern"`
-	Match     string `toml:"-"`
-	Replace   string `toml:"replace"`
-	Kind      string `toml:"kind"`
-	Path      string `toml:"path"`
-	Timing    string `toml:"timing"`
-	Tool      string `toml:"tool"`
-	Arguments string `toml:"arguments"`
-	All       bool   `toml:"all"`
-	Target    Target `toml:"target"`
+	Name           string `toml:"name"`
+	Type           string `toml:"type"`
+	Field          string `toml:"field"`
+	Text           string `toml:"text"`
+	Pattern        string `toml:"pattern"`
+	Match          string `toml:"-"`
+	Replace        string `toml:"replace"`
+	Kind           string `toml:"kind"`
+	Path           string `toml:"path"`
+	Timing         string `toml:"timing"`
+	Tool           string `toml:"tool"`
+	Arguments      string `toml:"arguments"`
+	All            bool   `toml:"all"`
+	Command        string        `toml:"command"`
+	Cwd            string        `toml:"cwd"`
+	Stdin          string        `toml:"stdin"`
+	Stdout         string        `toml:"stdout"`
+	TimeoutSeconds int           `toml:"timeout_seconds"`
+	Target         Target        `toml:"target"`
+	Segments       []SegmentSpec `toml:"segments"`
+}
+
+type SegmentSpec struct {
+	Kind     string `toml:"kind" json:"kind"`
+	Text     string `toml:"text" json:"text,omitempty"`
+	URL      string `toml:"url" json:"url,omitempty"`
+	Path     string `toml:"path" json:"path,omitempty"`
+	Base64   string `toml:"base64" json:"base64,omitempty"`
+	Name     string `toml:"name" json:"name,omitempty"`
+	MIMEType string `toml:"mime_type" json:"mime_type,omitempty"`
+}
+
+type Control struct {
+	Consume         bool `toml:"consume"`
+	StopPropagation bool `toml:"stop_propagation"`
 }
 
 type Target struct {
@@ -135,19 +168,85 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 		}
 
 		rule := rule
-		if err := registrar.Register(hook.Registration{
-			Point:    hook.Point(rule.On),
-			Priority: priority,
-			Name:     "rules." + name,
-			Match:    hook.Match{Conditions: rule.Match},
-			Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
-				return m.runRule(ctx, rule, event)
-			}),
-		}); err != nil {
-			return err
+		registrations := ruleRegistrations(rule)
+		for roleIndex, match := range registrations {
+			regName := "rules." + name
+			if len(registrations) > 1 {
+				regName = fmt.Sprintf("%s.role.%d", regName, roleIndex+1)
+			}
+			if err := registrar.Register(hook.Registration{
+				Point:    hook.Point(rule.On),
+				Priority: priority,
+				Name:     regName,
+				Match:    match,
+				Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+					return m.runRule(ctx, rule, event)
+				}),
+			}); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+func validateExecAction(action Action) error {
+	if strings.TrimSpace(action.Command) == "" {
+		return fmt.Errorf("command is required")
+	}
+	if action.TimeoutSeconds < 0 {
+		return fmt.Errorf("timeout_seconds cannot be negative")
+	}
+	return validateExecStdout(action.Stdout)
+}
+
+func ruleRegistrations(rule Rule) []hook.Match {
+	roleConditions := ruleRoleConditions(rule)
+	if len(roleConditions) == 0 {
+		return []hook.Match{{Conditions: rule.Match}}
+	}
+	out := make([]hook.Match, 0, len(roleConditions))
+	for _, condition := range roleConditions {
+		conditions := append([]hook.Condition{}, rule.Match...)
+		conditions = append(conditions, condition)
+		out = append(out, hook.Match{Conditions: conditions})
+	}
+	return out
+}
+
+func ruleRoleConditions(rule Rule) []hook.Condition {
+	seen := map[string]bool{}
+	var out []hook.Condition
+	add := func(field, role string) {
+		role = strings.TrimSpace(role)
+		if role == "" {
+			return
+		}
+		key := field + ":" + role
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, hook.Condition{Field: field, Op: hook.MatchFull, Value: role})
+	}
+	for _, role := range rule.Roles {
+		role = strings.TrimSpace(role)
+		switch security.Role(role) {
+		case security.RoleSuperadmin, security.RoleUser:
+			add("actor.role", role)
+		default:
+			if parsed := security.ParseGroupRole(role); parsed != security.GroupRoleUnknown || role == string(security.GroupRoleUnknown) {
+				add("actor.group_role", string(parsed))
+			}
+		}
+	}
+	for _, role := range rule.ActorRoles {
+		add("actor.role", role)
+	}
+	for _, role := range rule.GroupRoles {
+		add("actor.group_role", string(security.ParseGroupRole(role)))
+	}
+	return out
 }
 
 func loadConfig(configDir string) (Config, string, error) {
@@ -231,18 +330,23 @@ func (r Rule) conditions() ([]hook.Condition, error) {
 
 func (r Rule) inlineAction() Action {
 	action := Action{
-		Type:      r.Action,
-		Field:     r.Field,
-		Text:      r.Text,
-		Pattern:   r.Pattern,
-		Replace:   r.Replace,
-		Kind:      r.Kind,
-		Path:      r.Path,
-		Timing:    r.Timing,
-		Tool:      r.Tool,
-		Arguments: r.Args,
-		All:       r.All,
-		Target:    r.Target,
+		Type:           r.Action,
+		Field:          r.Field,
+		Text:           r.Text,
+		Pattern:        r.Pattern,
+		Replace:        r.Replace,
+		Kind:           r.Kind,
+		Path:           r.Path,
+		Timing:         r.Timing,
+		Tool:           r.Tool,
+		Arguments:      r.Args,
+		Command:        r.Command,
+		Cwd:            r.Cwd,
+		Stdin:          r.Stdin,
+		Stdout:         r.Stdout,
+		TimeoutSeconds: r.TimeoutSeconds,
+		All:            r.All,
+		Target:         r.Target,
 	}
 	action.normalize()
 	return action
@@ -276,12 +380,47 @@ func validateRule(rule Rule) error {
 		return fmt.Errorf("hook rule %q matches: %w", rule.Name, err)
 	}
 
+	if err := rule.validateRoles(); err != nil {
+		return fmt.Errorf("hook rule %q: %w", rule.Name, err)
+	}
+
 	for _, action := range rule.Actions {
 		if strings.TrimSpace(action.Type) == "" {
 			return fmt.Errorf("hook rule %q has action without type", rule.Name)
 		}
 		if err := validateActionTiming(action.Timing); err != nil {
 			return fmt.Errorf("hook rule %q action %q: %w", rule.Name, firstNonEmpty(action.Name, action.Type), err)
+		}
+		if strings.TrimSpace(action.Type) == "exec" {
+			if err := validateExecAction(action); err != nil {
+				return fmt.Errorf("hook rule %q action %q: %w", rule.Name, firstNonEmpty(action.Name, action.Type), err)
+			}
+		}
+	}
+	return nil
+}
+
+func (r Rule) validateRoles() error {
+	for _, role := range r.Roles {
+		role = strings.TrimSpace(role)
+		switch security.Role(role) {
+		case security.RoleSuperadmin, security.RoleUser:
+			continue
+		}
+		if security.ParseGroupRole(role) == security.GroupRoleUnknown && role != string(security.GroupRoleUnknown) {
+			return fmt.Errorf("unsupported role %q", role)
+		}
+	}
+	for _, role := range r.ActorRoles {
+		switch security.Role(strings.TrimSpace(role)) {
+		case security.RoleSuperadmin, security.RoleUser:
+		default:
+			return fmt.Errorf("unsupported actor role %q", role)
+		}
+	}
+	for _, role := range r.GroupRoles {
+		if security.ParseGroupRole(role) == security.GroupRoleUnknown && strings.TrimSpace(role) != string(security.GroupRoleUnknown) {
+			return fmt.Errorf("unsupported group role %q", role)
 		}
 	}
 	return nil
@@ -292,6 +431,15 @@ func validateActionTiming(timing string) error {
 }
 
 func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.Event, error) {
+	if !rule.matchRoles(event) {
+		return event, nil
+	}
+	if rule.Control.Consume {
+		event.Control.Consume = true
+	}
+	if rule.Control.StopPropagation {
+		event.Control.StopPropagation = true
+	}
 	state := state{Actions: map[string]actionResult{}}
 	var err error
 	for index, action := range rule.Actions {
@@ -301,6 +449,39 @@ func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.
 		}
 	}
 	return event, nil
+}
+
+func (r Rule) matchRoles(event hook.Event) bool {
+	if len(r.Roles) > 0 && !matchesUnifiedRole(r.Roles, event) {
+		return false
+	}
+	if len(r.ActorRoles) > 0 && !containsString(r.ActorRoles, event.Actor.Role) {
+		return false
+	}
+	if len(r.GroupRoles) > 0 && !containsString(r.GroupRoles, event.Actor.GroupRole) {
+		return false
+	}
+	return true
+}
+
+func matchesUnifiedRole(roles []string, event hook.Event) bool {
+	for _, role := range roles {
+		role = strings.TrimSpace(role)
+		if role == event.Actor.Role || role == event.Actor.GroupRole {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(values []string, target string) bool {
+	target = strings.TrimSpace(target)
+	for _, value := range values {
+		if strings.TrimSpace(value) == target {
+			return true
+		}
+	}
+	return false
 }
 
 type state struct {
@@ -317,12 +498,19 @@ func (m Module) runAction(ctx context.Context, event hook.Event, action Action, 
 	case "prepend", "append", "replace", "delete":
 		return applyTextAction(event, action, state)
 	case "send":
-		out, err := makeOutput(action, event, state)
+		outputs, err := makeOutputs(action, event, state)
 		if err != nil {
 			return event, err
 		}
-		event.Outputs = append(event.Outputs, out)
+		event.Outputs = append(event.Outputs, outputs...)
 		return event, nil
+	case "exec":
+		updated, result, err := m.runExec(ctx, event, action, state)
+		key := firstNonEmpty(strings.TrimSpace(action.Name), "exec")
+		if key != "" {
+			state.Actions[key] = result
+		}
+		return updated, err
 	case "tool":
 		result, err := m.callTool(ctx, event, action, state)
 		key := firstNonEmpty(strings.TrimSpace(action.Name), strings.TrimSpace(action.Tool))
@@ -481,7 +669,41 @@ func allowField(event hook.Event, field string) error {
 	return fmt.Errorf("field %q cannot be edited at hook point %q", field, event.Point)
 }
 
-func makeOutput(action Action, event hook.Event, state state) (delivery.Output, error) {
+func makeOutputs(action Action, event hook.Event, state state) ([]delivery.Output, error) {
+	target := delivery.Target{
+		Platform:      render(action.Target.Platform, event, state),
+		ScopeID:       render(action.Target.ScopeID, event, state),
+		PrivateUserID: render(action.Target.PrivateUserID, event, state),
+		GroupID:       render(action.Target.GroupID, event, state),
+		Superadmins:   action.Target.Superadmins,
+	}
+	if strings.TrimSpace(target.Platform) == "" && event.Point == hook.PointPlatformConnected {
+		target.Platform = event.Platform.Name
+	}
+	timing := render(action.Timing, event, state)
+
+	if len(action.Segments) > 0 {
+		outputs := make([]delivery.Output, 0, len(action.Segments))
+		for _, seg := range action.Segments {
+			seg := SegmentSpec{
+				Kind:     render(seg.Kind, event, state),
+				Text:     render(seg.Text, event, state),
+				URL:      render(seg.URL, event, state),
+				Path:     render(seg.Path, event, state),
+				Base64:   render(seg.Base64, event, state),
+				Name:     render(seg.Name, event, state),
+				MIMEType: render(seg.MIMEType, event, state),
+			}
+			out, err := buildSegmentOutput(seg, target, timing)
+			if err != nil {
+				return nil, err
+			}
+			outputs = append(outputs, out)
+		}
+		return outputs, nil
+	}
+
+	// Fallback: single output from kind/text/path.
 	kind := delivery.Kind(strings.TrimSpace(action.Kind))
 	if kind == "" {
 		kind = delivery.KindText
@@ -504,20 +726,11 @@ func makeOutput(action Action, event hook.Event, state state) (delivery.Output, 
 	case delivery.KindAt:
 		out = delivery.At(text)
 	default:
-		return delivery.Output{}, fmt.Errorf("unsupported output kind %q", kind)
+		return nil, fmt.Errorf("unsupported output kind %q", kind)
 	}
-	out.Target = delivery.Target{
-		Platform:      render(action.Target.Platform, event, state),
-		ScopeID:       render(action.Target.ScopeID, event, state),
-		PrivateUserID: render(action.Target.PrivateUserID, event, state),
-		GroupID:       render(action.Target.GroupID, event, state),
-		Superadmins:   action.Target.Superadmins,
-	}
-	out = delivery.WithDeliveryTiming(out, render(action.Timing, event, state))
-	if strings.TrimSpace(out.Target.Platform) == "" && event.Point == hook.PointPlatformConnected {
-		out.Target.Platform = event.Platform.Name
-	}
-	return out, nil
+	out.Target = target
+	out = delivery.WithDeliveryTiming(out, timing)
+	return []delivery.Output{out}, nil
 }
 
 func (m Module) callTool(ctx context.Context, event hook.Event, action Action, state state) (actionResult, error) {
@@ -579,6 +792,8 @@ func render(text string, event hook.Event, state state) string {
 		"{{platform.user_id}}":             event.Platform.UserID,
 		"{{actor.id}}":                     event.Actor.ID,
 		"{{actor.user_id}}":                event.Actor.UserID,
+		"{{actor.role}}":                   event.Actor.Role,
+		"{{actor.group_role}}":             event.Actor.GroupRole,
 		"{{message.text}}":                 llm.SegmentsTextOnly(event.Message.Segments),
 		"{{message.content_text}}":         llm.SegmentsContentText(event.Message.Segments),
 		"{{llm.text}}":                     event.LLM.Text,
@@ -587,6 +802,18 @@ func render(text string, event hook.Event, state state) string {
 		"{{llm.latest_user_content_text}}": llm.LatestUserSegmentContentText(event.LLM.Messages),
 		"{{tool.arguments}}":               event.Tool.Arguments,
 		"{{tool.result}}":                  event.Tool.Result,
+	}
+	for index, match := range eventMatchContext(event).Regex {
+		prefix := fmt.Sprintf("{{match.regex.%d", index)
+		replacements[prefix+".text}}"] = match.Text
+		replacements[prefix+".field}}"] = match.Field
+		replacements[prefix+".pattern}}"] = match.Value
+		for groupIndex, group := range match.Groups {
+			replacements[fmt.Sprintf("{{match.regex.%d.group.%d}}", index, groupIndex)] = group
+		}
+		for name, group := range match.Named {
+			replacements[fmt.Sprintf("{{match.regex.%d.%s}}", index, name)] = group
+		}
 	}
 	for name, result := range state.Actions {
 		replacements["{{actions."+name+".result}}"] = result.Result
@@ -598,6 +825,11 @@ func render(text string, event hook.Event, state state) string {
 	return text
 }
 
+func eventMatchContext(event hook.Event) hook.MatchContext {
+	match, _ := event.Metadata["match"].(hook.MatchContext)
+	return match
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if value != "" {
@@ -605,4 +837,86 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// buildSegmentOutput converts a SegmentSpec to a delivery.Output with the given target and timing.
+func buildSegmentOutput(spec SegmentSpec, target delivery.Target, timing string) (delivery.Output, error) {
+	spec.Kind = strings.TrimSpace(spec.Kind)
+	if spec.Kind == "" {
+		spec.Kind = string(delivery.KindText)
+	}
+	var out delivery.Output
+	switch spec.Kind {
+	case string(delivery.KindText):
+		out = delivery.Text(strings.TrimSpace(spec.Text))
+	case string(delivery.KindImage):
+		out = delivery.ImagePath(strings.TrimSpace(spec.Path))
+		out.Text = strings.TrimSpace(spec.Text)
+		out.Name = strings.TrimSpace(spec.Name)
+		out.Source.MIMEType = strings.TrimSpace(spec.MIMEType)
+		if u := strings.TrimSpace(spec.URL); u != "" {
+			out.Source.URL = u
+		}
+		if b := strings.TrimSpace(spec.Base64); b != "" {
+			data, err := base64.StdEncoding.DecodeString(b)
+			if err != nil {
+				return delivery.Output{}, fmt.Errorf("decode base64: %w", err)
+			}
+			out.Source.Data = data
+		}
+	case string(delivery.KindFile):
+		out = delivery.FilePath(strings.TrimSpace(spec.Path))
+		out.Text = strings.TrimSpace(spec.Text)
+		out.Name = strings.TrimSpace(spec.Name)
+		out.Source.MIMEType = strings.TrimSpace(spec.MIMEType)
+		if u := strings.TrimSpace(spec.URL); u != "" {
+			out.Source.URL = u
+		}
+		if b := strings.TrimSpace(spec.Base64); b != "" {
+			data, err := base64.StdEncoding.DecodeString(b)
+			if err != nil {
+				return delivery.Output{}, fmt.Errorf("decode base64: %w", err)
+			}
+			out.Source.Data = data
+		}
+	case string(delivery.KindEmoticon):
+		name := strings.TrimSpace(spec.Name)
+		if name == "" {
+			name = strings.TrimSpace(spec.Text)
+		}
+		path := strings.TrimSpace(spec.Path)
+		if path != "" {
+			out = delivery.EmoticonPath(name, path)
+		} else {
+			out = delivery.Emoticon(name)
+		}
+	default:
+		return delivery.Output{}, fmt.Errorf("unsupported segment kind %q", spec.Kind)
+	}
+	out.Target = target
+	out = delivery.WithDeliveryTiming(out, timing)
+	return out, nil
+}
+
+// setTextField overwrites a text field with the given value, using allowField for permission checks.
+func setTextField(event hook.Event, field, value string) (hook.Event, error) {
+	field = strings.TrimSpace(field)
+	if err := allowField(event, field); err != nil {
+		return event, err
+	}
+	switch field {
+	case "message.text":
+		event.Message.Segments = llm.TextSegments(value)
+	case "llm.latest_user_text":
+		event.LLM.Messages = llm.SetLatestUserSegments(event.LLM.Messages, llm.TextSegments(value))
+	case "llm.text":
+		event.LLM.Text = value
+	case "tool.arguments":
+		event.Tool.Arguments = value
+	case "tool.result":
+		event.Tool.Result = value
+	default:
+		return event, fmt.Errorf("unsupported set field %q", field)
+	}
+	return event, nil
 }

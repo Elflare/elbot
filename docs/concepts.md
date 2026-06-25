@@ -170,17 +170,10 @@ CLI 默认本地用户 `local` 是超级管理员。
 
 ## Hook
 
-Hook Layer 用于在关键流程前后扩展行为，例如：
+Hook Layer 用于在关键流程前后扩展行为，例如修改消息、追加输出意图、调用低风险工具或注入常驻记忆。规则 Hook 支持条件匹配、多段输出、exec 脚本和角色分区。
 
-- Agent 输入处理。
-- LLM 请求准备。
-- LLM 响应处理。
-- 平台发送前后。
-- 平台连接事件。
+重要约定：Hook 不替代 Security Layer，安全判定仍以 Security Layer 为准。完整配置和示例见 [Hook](hooks.md)。
 
-Hook 可以修改消息、追加输出意图、调用低风险工具或注入常驻记忆。
-
-重要约定：Hook 不替代 Security Layer，安全判定仍以 Security Layer 为准。
 
 ## Output Layer
 
@@ -209,7 +202,8 @@ ElBot 包含两层 Cron 能力：
 
 ## Elnis / Elwisp / Elvena
 
-Elnis 是 ElBot 的监听枢纽，用于接收外部事件。Elwisp 是外部子监听器，负责观察服务器、Webhook、RSS、日志或脚本输出等外部世界。Elvena 是 Elwisp 向 Elnis 投递事件的协议。
+Elnis 是 ElBot 的监听枢纽，用于接收外部事件。Elwisp 是外部子监听器，负责观察服务器、Webhook、RSS、日志或脚本输出等外部世界。Elvena 是 Elwisp 向 Elnis 投递事件的协议，也是 Hook exec 等内部触发源复用的动作协议。
+
 
 它们的分工是：Elwisp 观测一切，Elnis 管理一切，ElBot 掌控最终执行与投递。
 

@@ -3,6 +3,7 @@ package qqonebot
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -180,6 +181,17 @@ func (a *Adapter) SendChat(ctx context.Context, out delivery.Output) (delivery.R
 	return a.sendContextOutput(ctx, out)
 }
 
+func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[string]any) (json.RawMessage, error) {
+	if a.transport == nil {
+		return nil, fmt.Errorf("qqonebot transport is not configured")
+	}
+	resp, err := a.transport.Call(ctx, strings.TrimSpace(api), params)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
 func (a *Adapter) SendNotice(ctx context.Context, outTarget delivery.Target, out delivery.Output) (delivery.Receipt, error) {
 	if outTarget.Empty() && isGroupToolPreviewNotice(ctx, out) {
 		return delivery.Receipt{}, nil
@@ -350,6 +362,13 @@ func outputSegments(out delivery.Output) ([]Segment, error) {
 	}
 }
 
+func oneBotGroupRole(event Event) security.GroupRole {
+	if event.MessageType != "group" {
+		return security.GroupRoleUnknown
+	}
+	return security.ParseGroupRole(event.Sender.Role)
+}
+
 func base64SourceFile(source delivery.Source, label string) (string, error) {
 	if len(source.Data) > 0 {
 		return "base64://" + base64.StdEncoding.EncodeToString(source.Data), nil
@@ -402,10 +421,17 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		Platform:              a.Name(),
 		PlatformUserID:        strconv.FormatInt(event.UserID, 10),
 		DisplayName:           displayName(event.Sender, event.UserID),
+		GroupRole:             oneBotGroupRole(event),
 		ScopeID:               scopeID(event),
 		Sender:                a,
 		BufferAssistantOutput: true,
 		Segments:              finalMessageSegments(text, currentSegments, nil),
+		Meta: map[string]any{
+			"qq_onebot.message_id":   strconv.FormatInt(event.MessageID, 10),
+			"qq_onebot.message_type": event.MessageType,
+			"qq_onebot.group_id":     strconv.FormatInt(event.GroupID, 10),
+			"qq_onebot.user_id":      strconv.FormatInt(event.UserID, 10),
+		},
 	}
 	msgCtx := platform.WithMessageContext(ctx, messageCtx)
 	msgCtx = context.WithValue(msgCtx, targetKey{}, target{MessageType: event.MessageType, UserID: event.UserID, GroupID: event.GroupID})

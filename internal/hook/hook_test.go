@@ -185,6 +185,58 @@ func TestManagerRejectsRegistrationWithoutExplicitMatch(t *testing.T) {
 	}
 }
 
+func TestManagerPassesRegexMatchContext(t *testing.T) {
+	manager := NewManager()
+	var got MatchContext
+	if err := manager.Register(Registration{
+		Point: PointAgentInputPrepared,
+		Name:  "test.regex",
+		Match: Regex("message.text", `^mute (?P<target>\S+) (?P<minutes>\d+)$`),
+		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+			got, _ = event.Metadata["match"].(MatchContext)
+			return event, nil
+		}),
+	}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	if _, err := manager.Run(context.Background(), Event{Point: PointAgentInputPrepared, Message: MessagePayload{Segments: llm.TextSegments("mute alice 10")}}); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if len(got.Regex) != 1 {
+		t.Fatalf("regex matches = %#v", got.Regex)
+	}
+	match := got.Regex[0]
+	if match.Text != "mute alice 10" || match.Named["target"] != "alice" || match.Named["minutes"] != "10" {
+		t.Fatalf("match = %#v", match)
+	}
+}
+
+func TestManagerStopsPropagation(t *testing.T) {
+	manager := NewManager()
+	calls := 0
+	if err := manager.Register(Registration{Point: PointAgentInputPrepared, Name: "first", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+		calls++
+		event.Control.StopPropagation = true
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register first: %v", err)
+	}
+	if err := manager.Register(Registration{Point: PointAgentInputPrepared, Priority: 1, Name: "second", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+		calls++
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register second: %v", err)
+	}
+
+	got, err := manager.Run(context.Background(), Event{Point: PointAgentInputPrepared})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if calls != 1 || !got.Control.StopPropagation {
+		t.Fatalf("calls = %d, control = %#v", calls, got.Control)
+	}
+}
 func TestManagerMarksHookOutputs(t *testing.T) {
 	manager := NewManager()
 	if err := manager.Register(Registration{Point: PointPlatformConnected, Priority: 0, Name: "notify.connected", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {

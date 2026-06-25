@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -117,6 +118,27 @@ func (a *Adapter) handleUpdate(ctx context.Context, handler platform.PlatformHan
 	a.handleMessage(ctx, handler, *upd.Message)
 }
 
+func (a *Adapter) messageGroupRole(ctx context.Context, msg message) security.GroupRole {
+	if msg.From == nil || (msg.Chat.Type != "group" && msg.Chat.Type != "supergroup") {
+		return security.GroupRoleUnknown
+	}
+	member, err := a.client.getChatMember(ctx, msg.Chat.ID, msg.From.ID)
+	if err != nil {
+		a.logWarn("get telegram chat member failed", "error", err)
+		return security.GroupRoleUnknown
+	}
+	switch strings.TrimSpace(member.Status) {
+	case "creator":
+		return security.GroupRoleOwner
+	case "administrator":
+		return security.GroupRoleAdmin
+	case "member", "restricted":
+		return security.GroupRoleMember
+	default:
+		return security.GroupRoleUnknown
+	}
+}
+
 func (a *Adapter) handleCallbackQuery(ctx context.Context, handler platform.PlatformHandler, query callbackQuery) {
 	if strings.TrimSpace(query.ID) != "" {
 		if err := a.client.answerCallbackQuery(ctx, query.ID, "已收到"); err != nil {
@@ -146,14 +168,17 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 		return
 	}
 	platformUserID := userIDString(msg.From)
+	groupRole := a.messageGroupRole(ctx, msg)
 	messageCtx := platform.MessageContext{
 		Platform:       a.Name(),
 		ActorID:        security.ActorID(a.Name(), platformUserID),
 		PlatformUserID: platformUserID,
 		DisplayName:    displayNamePtr(msg.From, userIDString(msg.From)),
+		GroupRole:      groupRole,
 		ScopeID:        scopeID(msg.Chat),
-		Sender:         a,
-		Segments:       finalMessageSegments(text, normalized.Segments, nil),
+
+		Sender:   a,
+		Segments: finalMessageSegments(text, normalized.Segments, nil),
 		Meta: map[string]any{
 			"telegram.message_id": formatMessageID(msg.MessageID),
 			"telegram.chat_id":    strconv.FormatInt(msg.Chat.ID, 10),
@@ -193,6 +218,13 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 
 func (a *Adapter) SendChat(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
 	return a.sendContextOutput(ctx, out)
+}
+
+func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[string]any) (json.RawMessage, error) {
+	if a.client == nil {
+		return nil, fmt.Errorf("telegram api client is not configured")
+	}
+	return a.client.callRaw(ctx, strings.TrimSpace(api), params)
 }
 
 func (a *Adapter) SendNotice(ctx context.Context, outTarget delivery.Target, out delivery.Output) (delivery.Receipt, error) {

@@ -40,6 +40,15 @@ type chat struct {
 	LastName  string `json:"last_name"`
 }
 
+type chatMember struct {
+	Status string `json:"status"`
+}
+
+type getChatMemberRequest struct {
+	ChatID int64 `json:"chat_id"`
+	UserID int64 `json:"user_id"`
+}
+
 type message struct {
 	MessageID      int64       `json:"message_id"`
 	Date           int64       `json:"date"`

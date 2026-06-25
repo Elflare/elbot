@@ -42,6 +42,10 @@ func newHTTPClient(cfg Config) *http.Client {
 	return &http.Client{Transport: transport}
 }
 
+func (c *apiClient) callRaw(ctx context.Context, method string, params map[string]any) (json.RawMessage, error) {
+	return callTelegram[json.RawMessage](c, ctx, method, params, c.cfg.apiTimeout())
+}
+
 func (c *apiClient) getMe(ctx context.Context) (user, error) {
 	return callTelegram[user](c, ctx, "getMe", nil, c.cfg.apiTimeout())
 }
@@ -93,6 +97,10 @@ func (c *apiClient) sendRichMessageDraft(ctx context.Context, req sendRichMessag
 func (c *apiClient) answerCallbackQuery(ctx context.Context, id, text string) error {
 	_, err := callTelegram[bool](c, ctx, "answerCallbackQuery", answerCallbackQueryRequest{CallbackQueryID: id, Text: text}, c.cfg.apiTimeout())
 	return err
+}
+
+func (c *apiClient) getChatMember(ctx context.Context, chatID, userID int64) (chatMember, error) {
+	return callTelegram[chatMember](c, ctx, "getChatMember", getChatMemberRequest{ChatID: chatID, UserID: userID}, c.cfg.apiTimeout())
 }
 
 func (c *apiClient) getFile(ctx context.Context, fileID string) (fileInfo, error) {

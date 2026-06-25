@@ -19,7 +19,6 @@ var defaultConfigAssets = []defaultAsset{
 	{Path: "memories.toml", Content: defaultMemoriesTOML},
 	{Path: "elnis.toml", Content: defaultElnisTOML},
 	{Path: "tool_tags.toml", Content: defaultToolTagsTOML},
-	{Path: "plugins/emoticon.toml", Content: defaultEmoticonTOML},
 	{Path: "plugins/hooks.toml", Content: defaultHooksTOML},
 	{Path: ".env.example", Content: defaultEnvExample},
 }
@@ -279,6 +278,7 @@ download_timeout_secs = 60
 # disabled_targets = [
 #   { platform = "qqonebot", type = "group", id = "987654321" },
 # ]
+
 #
 # [elwisps.spike-checker]
 # enabled = false
@@ -317,25 +317,6 @@ MUST:
 """
 `
 
-const defaultEmoticonTOML = `# Code Hook plugin: emoticon.
-# It runs on llm.response.received, extracts tokens like [[smile]], removes them from
-# llm.text, and appends emoticon outputs according to timing.
-
-# Optional. Defaults to true.
-enabled = true
-
-# Optional. Defaults to 1000. Smaller priority runs earlier at the same hook point.
-priority = 1000
-
-# Optional. Defaults to immediate when omitted.
-# Values: immediate, after_assistant.
-timing = "after_assistant"
-
-# Parent directory of emoticon categories. For token [[smile]], the plugin randomly
-# picks an image from root_dir/smile/. Supported extensions: jpg, jpeg, png, gif, webp.
-root_dir = "emoticons"
-`
-
 const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # Complex logic should be implemented as a code plugin instead.
 #
@@ -370,6 +351,23 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 #   { type = "replace", field = "message.text", pattern = "猫", replace = "狗", all = true },
 #   { type = "send", kind = "text", text = "检测到关键词", timing = "after_assistant" },
 #   { type = "append", field = "message.text", text = "!" },
+# ]
+#
+# send action with segments (kind/text/url/path/base64/name/mime_type):
+# actions = [
+#   { type = "send", timing = "after_assistant", segments = [
+#     { kind = "text", text = "检测到关键词" },
+#     { kind = "image", path = "alert.png" },
+#     { kind = "emoticon", name = "微笑", path = "emoticons/微笑/01.png" },
+#   ] },
+# ]
+#
+# exec action with stdout = "outputs":
+# Script stdout must be JSON: {"outputs":[...],"text":"..."}
+# outputs items use the same segment spec as send segments.
+# text is written back to the field specified by the action's field setting.
+# actions = [
+#   { type = "exec", command = "uv run extract.py", stdout = "outputs", field = "llm.text", timing = "after_assistant" },
 # ]
 #
 # Supported hook points:
@@ -452,4 +450,18 @@ target.superadmins = true
 # pattern = "猫"
 # replace = "狗"
 # all = true
+#
+# Example: emoticon extraction via exec + outputs.
+# The script reads event JSON from stdin, extracts [[token]] tokens, picks a random
+# image from emoticons/<token>/, outputs JSON with emoticon outputs and cleaned text.
+# [[rules]]
+# name = "emoticon_extract"
+# on = "llm.response.received"
+# priority = 1000
+# if = "llm.text"
+# op = "regex"
+# value = "\\[\\[[^\\[\\]]+\\]\\]"
+# actions = [
+#   { type = "exec", command = "uv run emoticon_extract.py", stdout = "outputs", field = "llm.text", timing = "after_assistant" },
+# ]
 `

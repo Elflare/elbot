@@ -301,6 +301,14 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 	if err != nil {
 		return err
 	}
+	if len(event.Outputs) > 0 {
+		if err := a.sendOutputs(ctx, event.Outputs); err != nil {
+			return err
+		}
+	}
+	if event.Control.Consume {
+		return nil
+	}
 	segments = event.Message.Segments
 	ctx = withInboundSegments(ctx, segments)
 	text = llm.SegmentsTextOnly(segments)
@@ -381,6 +389,7 @@ func (a *Agent) actor(ctx context.Context) security.Actor {
 	platformUserID := a.actorID
 	displayName := ""
 	actorID := ""
+	groupRole := security.GroupRoleUnknown
 	if msg, ok := platform.MessageContextFrom(ctx); ok {
 		if msg.Platform != "" {
 			platformName = msg.Platform
@@ -390,6 +399,7 @@ func (a *Agent) actor(ctx context.Context) security.Actor {
 		}
 		actorID = msg.ActorID
 		displayName = msg.DisplayName
+		groupRole = security.ParseGroupRole(string(msg.GroupRole))
 	}
 	if prefix := platformName + ":"; strings.HasPrefix(platformUserID, prefix) {
 		platformUserID = strings.TrimPrefix(platformUserID, prefix)
@@ -398,7 +408,9 @@ func (a *Agent) actor(ctx context.Context) security.Actor {
 	if policy == nil {
 		policy = security.DefaultPolicy()
 	}
-	return policy.Actor(actorID, platformName, platformUserID, displayName)
+	actor := policy.Actor(actorID, platformName, platformUserID, displayName)
+	actor.GroupRole = groupRole
+	return actor
 }
 
 func (a *Agent) SetSessionListPageSize(size int) {

@@ -56,78 +56,99 @@ func KnownPoint(point Point) bool {
 // Event carries the context available at a hook point. Fields are populated
 // according to Point; hook handlers should only rely on fields relevant there.
 type Event struct {
-	ID       string
-	Point    Point
-	Time     time.Time
-	Metadata map[string]any
+	ID       string          `json:"id"`
+	Point    Point           `json:"point"`
+	Time     time.Time       `json:"time"`
+	Metadata map[string]any  `json:"metadata,omitempty"`
+	Control  Control         `json:"control"`
 
-	Platform PlatformContext
-	Actor    ActorContext
-	Session  SessionContext
-	Request  RequestContext
-	Message  MessagePayload
-	LLM      LLMPayload
-	Tool     ToolPayload
-	Outputs  []delivery.Output
-	Error    error
+	Platform PlatformContext `json:"platform"`
+	Actor    ActorContext    `json:"actor"`
+	Session  SessionContext  `json:"session"`
+	Request  RequestContext  `json:"request"`
+	Message  MessagePayload  `json:"message"`
+	LLM      LLMPayload      `json:"llm"`
+	Tool     ToolPayload     `json:"tool"`
+	Outputs  []delivery.Output `json:"outputs,omitempty"`
+	Error    error           `json:"error,omitempty"`
+}
+
+type Control struct {
+	Consume         bool `json:"consume"`
+	StopPropagation bool `json:"stop_propagation"`
 }
 
 type PlatformContext struct {
-	Name              string
-	ScopeID           string
-	UserID            string
-	ConversationID    string
-	PlatformMessageID string
-	ReplyToMessageID  string
+	Name              string `json:"name"`
+	ScopeID           string `json:"scope_id"`
+	UserID            string `json:"user_id"`
+	ConversationID    string `json:"conversation_id"`
+	PlatformMessageID string `json:"message_id"`
+	ReplyToMessageID  string `json:"reply_to_message_id"`
 }
 
 type ActorContext struct {
-	ID          string
-	Role        string
-	UserID      string
-	DisplayName string
+	ID          string `json:"id"`
+	Role        string `json:"role"`
+	GroupRole   string `json:"group_role"`
+	UserID      string `json:"user_id"`
+	DisplayName string `json:"display_name"`
 }
 
 type SessionContext struct {
-	ID     string
-	Mode   string
-	Title  string
-	Status string
+	ID     string `json:"id"`
+	Mode   string `json:"mode"`
+	Title  string `json:"title"`
+	Status string `json:"status"`
 }
 
 type RequestContext struct {
-	ID        string
-	Kind      string
-	SessionID string
-	Phase     string
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	SessionID string `json:"session_id"`
+	Phase     string `json:"phase"`
 }
 
 type MessagePayload struct {
-	ID       string
-	Role     string
-	Segments []llm.MessageSegment
-	Messages []llm.LLMMessage
+	ID       string              `json:"id"`
+	Role     string              `json:"role"`
+	Segments []llm.MessageSegment `json:"segments,omitempty"`
+	Messages []llm.LLMMessage     `json:"messages,omitempty"`
 }
 
 type LLMPayload struct {
-	Provider  string
-	Model     string
-	Messages  []llm.LLMMessage
-	Tools     []llm.ToolSchema
-	Usage     *llm.Usage
-	RawText   string
-	Text      string
-	ToolCalls []llm.ToolCallRequest
-	ElapsedMS int64
+	Provider  string             `json:"provider"`
+	Model     string             `json:"model"`
+	Messages  []llm.LLMMessage   `json:"messages,omitempty"`
+	Tools     []llm.ToolSchema   `json:"tools,omitempty"`
+	Usage     *llm.Usage         `json:"usage,omitempty"`
+	RawText   string             `json:"raw_text,omitempty"`
+	Text      string             `json:"text,omitempty"`
+	ToolCalls []llm.ToolCallRequest `json:"tool_calls,omitempty"`
+	ElapsedMS int64              `json:"elapsed_ms,omitempty"`
 }
 
 type ToolPayload struct {
-	ID        string
-	Name      string
-	Arguments string
-	Risk      string
-	Result    string
-	Error     error
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments,omitempty"`
+	Risk      string `json:"risk,omitempty"`
+	Result    string `json:"result,omitempty"`
+	Error     error `json:"error,omitempty"`
+}
+
+type RegexMatch struct {
+	Field  string   `json:"field"`
+	Value  string   `json:"value"`
+	Text   string   `json:"text"`
+	Groups []string `json:"groups"`
+	Named  map[string]string `json:"named,omitempty"`
+	Start  int      `json:"start"`
+	End    int      `json:"end"`
+}
+
+type MatchContext struct {
+	Regex []RegexMatch `json:"regex,omitempty"`
 }
 
 // Handler processes one hook event and may return an updated event.
@@ -203,12 +224,27 @@ func (m Match) Validate() error {
 }
 
 func (m Match) Matches(event Event) bool {
+	matched := m.MatchEvent(event)
+	return matched.OK
+}
+
+type MatchResult struct {
+	OK      bool
+	Context MatchContext
+}
+
+func (m Match) MatchEvent(event Event) MatchResult {
+	var ctx MatchContext
 	for _, cond := range m.Conditions {
-		if !cond.matches(event) {
-			return false
+		ok, capture := cond.match(event)
+		if !ok {
+			return MatchResult{}
+		}
+		if capture != nil {
+			ctx.Regex = append(ctx.Regex, *capture)
 		}
 	}
-	return true
+	return MatchResult{OK: true, Context: ctx}
 }
 
 func (c Condition) validate() error {
@@ -240,25 +276,64 @@ func (c Condition) validate() error {
 }
 
 func (c Condition) matches(event Event) bool {
+	ok, _ := c.match(event)
+	return ok
+}
+
+func (c Condition) match(event Event) (bool, *RegexMatch) {
+	fieldValue := matchField(event, c.Field)
 	switch strings.TrimSpace(c.Op) {
 	case MatchAlways:
-		return true
+		return true, nil
 	case MatchExists:
-		return matchField(event, c.Field) != ""
+		return fieldValue != "", nil
 	case MatchContains:
-		return strings.Contains(matchField(event, c.Field), c.Value)
+		return strings.Contains(fieldValue, c.Value), nil
 	case MatchFull:
-		return matchField(event, c.Field) == c.Value
+		return fieldValue == c.Value, nil
 	case MatchPrefix:
-		return strings.HasPrefix(matchField(event, c.Field), c.Value)
+		return strings.HasPrefix(fieldValue, c.Value), nil
 	case MatchSuffix:
-		return strings.HasSuffix(matchField(event, c.Field), c.Value)
+		return strings.HasSuffix(fieldValue, c.Value), nil
 	case MatchRegex:
-		ok, _ := regexp.MatchString(c.Value, matchField(event, c.Field))
-		return ok
+		capture, ok := regexMatchContext(c.Field, c.Value, fieldValue)
+		if !ok {
+			return false, nil
+		}
+		return true, &capture
 	default:
-		return false
+		return false, nil
 	}
+}
+
+func regexMatchContext(field, pattern, value string) (RegexMatch, bool) {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return RegexMatch{}, false
+	}
+	indexes := re.FindStringSubmatchIndex(value)
+	if indexes == nil {
+		return RegexMatch{}, false
+	}
+	names := re.SubexpNames()
+	groups := make([]string, 0, len(indexes)/2)
+	named := map[string]string{}
+	for i := 0; i < len(indexes); i += 2 {
+		start, end := indexes[i], indexes[i+1]
+		group := ""
+		if start >= 0 && end >= 0 {
+			group = value[start:end]
+		}
+		groups = append(groups, group)
+		nameIndex := i / 2
+		if nameIndex < len(names) && strings.TrimSpace(names[nameIndex]) != "" {
+			named[names[nameIndex]] = group
+		}
+	}
+	if len(named) == 0 {
+		named = nil
+	}
+	return RegexMatch{Field: field, Value: pattern, Text: groups[0], Groups: groups, Named: named, Start: indexes[0], End: indexes[1]}, true
 }
 
 func knownMatchOp(op string) bool {
@@ -285,7 +360,7 @@ func knownMatchField(field string) bool {
 		"message.text", "message.content_text", "message.role",
 		"llm.text", "llm.raw_text", "llm.latest_user_text", "llm.latest_user_content_text", "llm.provider", "llm.model",
 		"tool.name", "tool.arguments", "tool.result", "tool.risk",
-		"actor.id", "actor.user_id", "actor.role", "actor.display_name",
+		"actor.id", "actor.user_id", "actor.role", "actor.group_role", "actor.display_name",
 		"session.id", "session.mode", "session.status",
 		"request.id", "request.kind", "request.phase":
 		return true
@@ -340,6 +415,8 @@ func matchField(event Event, field string) string {
 		return event.Actor.UserID
 	case "actor.role":
 		return event.Actor.Role
+	case "actor.group_role":
+		return event.Actor.GroupRole
 	case "actor.display_name":
 		return event.Actor.DisplayName
 	case "session.id":
@@ -459,11 +536,14 @@ func validateRegistration(reg Registration) error {
 func (m *DefaultManager) Run(ctx context.Context, event Event) (Event, error) {
 	event = prepareEvent(event)
 	for _, reg := range m.handlersFor(event.Point) {
-		if !reg.match.Matches(event) {
+		matchResult := reg.match.MatchEvent(event)
+		if !matchResult.OK {
 			continue
 		}
+		event.Metadata["match"] = matchResult.Context
 		before := event
 		updated, err := reg.handler.HandleHook(ctx, event)
+		delete(event.Metadata, "match")
 		if err != nil {
 			m.logHook(ctx, "run", reg, before, before, err, true)
 			return event, wrapHookError(reg, err)
@@ -471,6 +551,9 @@ func (m *DefaultManager) Run(ctx context.Context, event Event) (Event, error) {
 		updated = markHookOutputs(updated, len(before.Outputs), reg, "run")
 		event = prepareEvent(updated)
 		m.logHook(ctx, "run", reg, before, event, nil, true)
+		if event.Control.StopPropagation {
+			break
+		}
 	}
 	return event, nil
 }
@@ -479,11 +562,14 @@ func (m *DefaultManager) Notify(ctx context.Context, event Event) error {
 	event = prepareEvent(event)
 	var joined error
 	for _, reg := range m.handlersFor(event.Point) {
-		if !reg.match.Matches(event) {
+		matchResult := reg.match.MatchEvent(event)
+		if !matchResult.OK {
 			continue
 		}
+		event.Metadata["match"] = matchResult.Context
 		before := event
 		updated, err := reg.handler.HandleHook(ctx, event)
+		delete(event.Metadata, "match")
 		if err != nil {
 			m.logHook(ctx, "notify", reg, before, before, err, true)
 			joined = errors.Join(joined, wrapHookError(reg, err))
@@ -491,6 +577,9 @@ func (m *DefaultManager) Notify(ctx context.Context, event Event) error {
 		}
 		_ = markHookOutputs(updated, len(before.Outputs), reg, "notify")
 		m.logHook(ctx, "notify", reg, before, before, nil, true)
+		if updated.Control.StopPropagation {
+			break
+		}
 	}
 	return joined
 }

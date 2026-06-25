@@ -19,6 +19,7 @@ import (
 	elcron "elbot/internal/cron"
 	"elbot/internal/delivery"
 	"elbot/internal/elnis"
+	"elbot/internal/elvena"
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
 	"elbot/internal/llm/openai"
@@ -282,6 +283,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	profiler.Mark("skill reload")
 	securityPolicy := security.NewPolicy(cfg.Security.UserMaxToolRisk, cfg.Security.SuperadminConfirmRisk, cfg.Security.Superadmins)
+	elvenaBus := elvena.NewBus()
 	hooks := hook.NewManager()
 	hooks.SetLogger(logger)
 	if err := hookbuiltin.RegisterAll(hooks, hookbuiltin.Options{
@@ -294,6 +296,7 @@ func Run(ctx context.Context, opts Options) error {
 			logs.Audit().Log(context.Background(), slog.LevelInfo, "audit event", append([]any{"event", event}, attrs...)...)
 		},
 		Notify: notifyHookIssue,
+		Elvena: elvenaBus,
 	}); err != nil {
 		logger.Error("hook registration failed", "error", err)
 		notifyHookIssue(context.Background(), fmt.Sprintf("Hook 注册失败：%v", err))
@@ -352,6 +355,7 @@ func Run(ctx context.Context, opts Options) error {
 		if err != nil {
 			return err
 		}
+		elvenaBus.SetDispatcher(elnisService)
 		platforms.Runtimes = append(platforms.Runtimes, elnisRuntimeAdapter{runtime: elnis.NewRuntime(cfg.Elnis.HTTP, elnisService)})
 		profiler.Mark("elnis init")
 	}

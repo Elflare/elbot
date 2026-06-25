@@ -10,6 +10,7 @@ import (
 	"elbot/internal/background"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
+	"elbot/internal/elvena"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/toolrun"
@@ -42,7 +43,7 @@ func TestEventAttrsIncludeTags(t *testing.T) {
 	defer cleanup()
 
 	req := testRequest(ModeRecord)
-	event, err := service.prepareEvent("home", req)
+	event, err := service.prepareEvent(elvena.Origin{Kind: elvena.OriginInternal, Name: "home"}, req)
 	if err != nil {
 		t.Fatalf("prepareEvent: %v", err)
 	}

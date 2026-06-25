@@ -865,3 +865,17 @@
 - [x] 超级管理员引用回复 LLM Elwisp 通知时，自动 resume 到对应后台 session 继续对话；普通用户仍 fallback 为普通引用文本。
 - [ ] 待定：设计 Elnis 与 Elwisp 多轮通信协议。
 - [ ] 待定：评估 stdio/pipe transport。
+
+### Phase 5：Elvena v3、Hook exec 与平台调用
+
+- [x] 抽出 `internal/elvena` 公共协议层，提供 Origin、Dispatcher/Bus、v2/v3 请求类型、direct 输出转换和 calls 类型。
+- [x] 拆分 Elnis service 职责文件，并让 Elnis 实现 Elvena Dispatcher。
+- [x] Elvena v3 支持 `calls`，首批支持 raw 平台 API 和 capability：`message.recall`、`member.mute`、`chat.leave`。
+- [x] QQ OneBot 和 Telegram 支持 raw API caller。
+- [x] Hook rules 支持角色分区、正则捕获上下文、`consume`、`stop_propagation`。
+- [x] Hook rules 支持 `exec` action，脚本默认在 `plugins/` 目录执行，stdout 可 `capture`、`send`、`elvena` 或 `ignore`。
+- [x] `platform.message.received` Hook outputs 会发送，`consume=true` 会阻止后续命令/LLM。
+- [x] app 层用 Elvena Bus 连接 Hook rules 与 Elnis，Hook 不直接依赖 Elnis。
+- [ ] 后续支持更多 capability：`member.kick`、`message.pin`、`member.unmute`、bot profile/avatar/name/commands。
+- [ ] 后续实现 QQ Official raw API caller。
+

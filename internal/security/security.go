@@ -9,6 +9,15 @@ const (
 	RoleUser       Role = "user"
 )
 
+type GroupRole string
+
+const (
+	GroupRoleUnknown GroupRole = "unknown"
+	GroupRoleOwner   GroupRole = "owner"
+	GroupRoleAdmin   GroupRole = "admin"
+	GroupRoleMember  GroupRole = "member"
+)
+
 type RiskLevel string
 
 const (
@@ -25,6 +34,7 @@ type Actor struct {
 	PlatformUserID string
 	DisplayName    string
 	Role           Role
+	GroupRole      GroupRole
 }
 
 type Policy struct {
@@ -81,7 +91,22 @@ func (p *Policy) Actor(id, platform, platformUserID, displayName string) Actor {
 	if p != nil && p.IsSuperadmin(platform, platformUserID) {
 		role = RoleSuperadmin
 	}
-	return Actor{ID: id, Platform: platform, PlatformUserID: platformUserID, DisplayName: displayName, Role: role}
+	return Actor{ID: id, Platform: platform, PlatformUserID: platformUserID, DisplayName: displayName, Role: role, GroupRole: GroupRoleUnknown}
+}
+
+func ParseGroupRole(value string) GroupRole {
+	switch normalize(value) {
+	case "owner", "group_owner", "creator":
+		return GroupRoleOwner
+	case "admin", "administrator", "group_admin":
+		return GroupRoleAdmin
+	case "member", "user", "group_member":
+		return GroupRoleMember
+	case "unknown", "":
+		return GroupRoleUnknown
+	default:
+		return GroupRoleUnknown
+	}
 }
 
 func ActorID(platform, platformUserID string) string {
