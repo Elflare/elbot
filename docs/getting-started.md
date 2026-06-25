@@ -143,7 +143,7 @@ elbot completion nushell > ~/.config/nushell/completions/elbot.nu
 
 ## 第一次对话
 
-启动后直接输入消息即可。默认示例中 `config/state.toml` 的 `default_mode` 是 `work`，会启用工具发现能力。
+启动后直接输入消息即可。默认示例中 `state.toml` 的 `default_mode` 是 `work`，会启用工具发现能力。
 
 常用起步命令：
 
@@ -197,7 +197,7 @@ elbot completion nushell > ~/.config/nushell/completions/elbot.nu
 
 ### 不想默认启用工具
 
-把 `config/state.toml` 中的默认模式改为 chat：
+把 `state.toml` 中的默认模式改为 chat：
 
 ```toml
 [session]

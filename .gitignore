@@ -8,7 +8,6 @@ __pycache__/
 
 # Local secrets and runtime data
 .env
-config/.env
 *.db
 *.sqlite
 *.sqlite3
