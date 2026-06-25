@@ -174,7 +174,8 @@ func (p *parser) parseIf(line string, lineNo int) {
 }
 
 func (p *parser) parseElse(line string, lineNo int) {
-	if line != "?else {" {
+	rest := strings.TrimSpace(strings.TrimPrefix(line, "?else"))
+	if rest != "{" {
 		p.add(lineNo, "?else must be ?else {")
 		return
 	}
