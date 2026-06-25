@@ -51,9 +51,9 @@
       "updated_at": 1782376421
     },
     "docs/hooks.md": {
-      "source_hash": "39895083e51607b8966c838202a9d7e3c39072c098d272cb40a41a841376a748",
+      "source_hash": "24e6d23b80f1e776ad23be60c7e9bfacd8b6970fba34f71dc0cff6284ccb67c4",
       "target": "docs.en/hooks.md",
-      "updated_at": 1782376842
+      "updated_at": 1782379613
     }
   },
   "segments": {
@@ -9521,6 +9521,14 @@
       "translation": "Emoticon Extraction Example",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:heading:4bfa3f4cf53b8d33a4fb04d359dd64c0ef4e8ab69de4701ace999e6f9c6e8427": {
+      "kind": "heading",
+      "source": "write_elbot_hook Skill 示例",
+      "source_file": "docs/hooks.md",
+      "source_hash": "4bfa3f4cf53b8d33a4fb04d359dd64c0ef4e8ab69de4701ace999e6f9c6e8427",
+      "translation": "write_elbot_hook Skill Example",
+      "updated_at": 1782379613
+    },
     "docs/hooks.md:heading:74c4e9513587632b88eefa79926c284b55f627bf20038257f90e4d5873773311": {
       "kind": "heading",
       "source": "Hook 点",
@@ -9912,6 +9920,14 @@
       "source_hash": "72951dfc6191226b7f93f65b5e11a3ccb3b42704be6a0eb4605842a9508e73e9",
       "translation": "Rules can use __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__ for permission partitioning:\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:756c7814a424497de394ec5ad5af74ec6c99f42eec8d13e422db3652524a2c84": {
+      "kind": "paragraph",
+      "source": "可以把下面内容保存为 __ELBOT_CODE_0__，用于让 LLM 按需求生成规则 Hook 配置和可选 exec 脚本。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "756c7814a424497de394ec5ad5af74ec6c99f42eec8d13e422db3652524a2c84",
+      "translation": "You can save the following content as __ELBOT_CODE_0__, which allows the LLM to generate rule Hook configurations and optional exec scripts as needed.\n",
+      "updated_at": 1782379613
     },
     "docs/hooks.md:paragraph:75d6020ac1f84dc2b0329d90826f94bc9d5a4707c94e8027e9002a9500c3db62": {
       "kind": "paragraph",
