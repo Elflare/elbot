@@ -16,7 +16,7 @@
 
 - `README` 只保留项目介绍、快速入口和最小启动路径。
 - `docs/` 放用户使用文档，避免混入开发任务流水账。
-- `devdocs/` 放开发计划、任务拆分、架构草案和接口草案。
+- `devdocs/` 放开发计划、任务拆分、架构和接口。
 - 新增用户可见功能时，优先更新对应专题文档，而不是把细节全部塞进 README。
 - `CHANGELOG.md` 为中文源文件，`CHANGELOG.en.md` 由 GitHub Actions 自动翻译，请勿手改；以版本（tag）为节点，平时改动写进 `## [Unreleased]`，发版时将其改为 `## [vX.Y.Z] - YYYY-MM-DD` 并新建空 Unreleased。
 

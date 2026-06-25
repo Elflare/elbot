@@ -38,8 +38,8 @@ func (s *Service) prepareEvent(origin elvena.Origin, req Request) (Event, error)
 	if req.ID == "" {
 		return Event{}, fmt.Errorf("id is required")
 	}
-	if req.Content == "" {
-		return Event{}, fmt.Errorf("content is required")
+	if req.Content == "" && len(req.Segments) == 0 && len(req.Calls) == 0 {
+		return Event{}, fmt.Errorf("content, segments or calls is required")
 	}
 	if req.Format == "" {
 		req.Format = "text"
@@ -49,6 +49,9 @@ func (s *Service) prepareEvent(origin elvena.Origin, req Request) (Event, error)
 	}
 	if req.Mode != ModeRecord && req.Mode != ModeDirect && req.Mode != ModeLLM {
 		return Event{}, fmt.Errorf("unsupported mode %q", req.Mode)
+	}
+	if req.Mode == ModeLLM && req.Content == "" {
+		return Event{}, fmt.Errorf("content is required for llm mode")
 	}
 	if req.ModelSlot != "" && !isElnisModelSlot(req.ModelSlot) {
 		return Event{}, fmt.Errorf("unsupported model_slot %q", req.ModelSlot)

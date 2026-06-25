@@ -258,11 +258,12 @@ func TestRuleRoleGatesAndControl(t *testing.T) {
 		Message: hook.MessagePayload{Segments: llm.TextSegments("hello")},
 	}
 	got, err := module.runRule(context.Background(), Rule{
-		Roles:      []string{"admin"},
-		ActorRoles: []string{"user"},
-		GroupRoles: []string{"admin"},
-		Control:    Control{Consume: true, StopPropagation: true},
-		Actions:    []Action{{Type: "append", Field: "message.text", Text: "!"}},
+		Roles:           []string{"admin"},
+		ActorRoles:      []string{"user"},
+		GroupRoles:      []string{"admin"},
+		Consume:         true,
+		StopPropagation: true,
+		Actions:         []Action{{Type: "append", Field: "message.text", Text: "!"}},
 	}, event)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)

@@ -30,9 +30,11 @@ func (s *Service) runDirect(ctx context.Context, event Event, eventID string) er
 	if err := s.executeCalls(ctx, resolved, req.Calls); err != nil {
 		return err
 	}
-	outputs := elvena.BuildDirectOutputs(req, paths)
-	if err := s.sendOutputsToTargets(ctx, resolved, outputs); err != nil {
-		return err
+	if strings.TrimSpace(req.Content) != "" || len(req.Segments) > 0 {
+		outputs := elvena.BuildDirectOutputs(req, paths)
+		if err := s.sendOutputsToTargets(ctx, resolved, outputs); err != nil {
+			return err
+		}
 	}
 	return s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusCompleted, "", "")
 }

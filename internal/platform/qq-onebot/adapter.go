@@ -423,6 +423,8 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		DisplayName:           displayName(event.Sender, event.UserID),
 		GroupRole:             oneBotGroupRole(event),
 		ScopeID:               scopeID(event),
+		PlatformMessageID:     strconv.FormatInt(event.MessageID, 10),
+		ReplyToMessageID:      normalized.ReplyID,
 		Sender:                a,
 		BufferAssistantOutput: true,
 		Segments:              finalMessageSegments(text, currentSegments, nil),

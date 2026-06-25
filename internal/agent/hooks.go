@@ -262,6 +262,12 @@ func (a *Agent) fillHookContext(ctx context.Context, event hook.Event) hook.Even
 		if msg.ScopeID != "" {
 			scopeID = msg.ScopeID
 		}
+		if event.Platform.PlatformMessageID == "" {
+			event.Platform.PlatformMessageID = msg.PlatformMessageID
+		}
+		if event.Platform.ReplyToMessageID == "" {
+			event.Platform.ReplyToMessageID = msg.ReplyToMessageID
+		}
 	}
 	if event.Platform.Name == "" {
 		event.Platform.Name = platformName

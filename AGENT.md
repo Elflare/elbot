@@ -17,7 +17,7 @@
 
 - `devdocs/` 是开发资料，只给维护者/Agent 看，不走自动翻译。
 - `devdocs/tasks.md`：实现任务，按里程碑拆分任务、状态和后续事项。
-- `devdocs/elnis-elwisp.md`：Elnis/Elwisp 监听枢纽架构、Elvena 协议草案和分阶段实现规划。
+- `devdocs/elnis-elwisp.md`：Elnis/Elwisp 监听枢纽架构、Elvena 协议和分阶段实现规划。
 
 ## Go 文件速查
 
@@ -120,9 +120,7 @@
 - `internal/elnis/segments.go`：Elnis segment 下载、URL/data URI 校验和 LLM segment 转换。
 - `internal/elnis/store.go`：Elnis 重复事件、完成状态和事件日志属性 helper。
 - `internal/elnis/background.go`：Elnis 后台 actor、sandbox subdir 和平台辅助 helper。
-- `internal/elnis/http.go`：Elnis HTTP runtime；提供 `POST /elvena/v2/events` 和 `GET /healthz`，支持 body 限制、token 提取、JSON 响应和 LLM 事件队列 worker。
-
-
+- `internal/elnis/http.go`：Elnis HTTP runtime；提供 `POST /elvena/v3/events` 和 `GET /healthz`，支持 body 限制、token 提取、JSON 响应和 LLM 事件队列 worker。
 - `internal/logging/logging.go`：日志地基；创建运行日志、审计日志和 Elnis 日志的 `slog.Logger`，`Manager` 统一持有按日期懒轮转的 `elbot-YYYY-MM-DD.log`、`audit-YYYY-MM-DD.log`、`elnis-YYYY-MM-DD.log` writer，暴露日志目录和可配置旧日志清理入口。
 - `internal/logging/reader.go`：结构化文本日志读取器；解析 `slog.TextHandler` 输出，支持 `/log`、`/audit` 的时间、等级、字段、msg、latest message 文本和条数过滤，并放宽单行读取上限以支持较大的 Debug 请求体。
 

@@ -170,12 +170,14 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 	platformUserID := userIDString(msg.From)
 	groupRole := a.messageGroupRole(ctx, msg)
 	messageCtx := platform.MessageContext{
-		Platform:       a.Name(),
-		ActorID:        security.ActorID(a.Name(), platformUserID),
-		PlatformUserID: platformUserID,
-		DisplayName:    displayNamePtr(msg.From, userIDString(msg.From)),
-		GroupRole:      groupRole,
-		ScopeID:        scopeID(msg.Chat),
+		Platform:          a.Name(),
+		ActorID:           security.ActorID(a.Name(), platformUserID),
+		PlatformUserID:    platformUserID,
+		DisplayName:       displayNamePtr(msg.From, userIDString(msg.From)),
+		GroupRole:         groupRole,
+		ScopeID:           scopeID(msg.Chat),
+		PlatformMessageID: formatMessageID(msg.MessageID),
+		ReplyToMessageID:  normalized.ReplyID,
 
 		Sender:   a,
 		Segments: finalMessageSegments(text, normalized.Segments, nil),

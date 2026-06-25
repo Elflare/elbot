@@ -2,6 +2,7 @@ package elnis
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -626,6 +627,36 @@ func TestHandleDirectSendsToResolvedSuperadminTargets(t *testing.T) {
 	}
 }
 
+func TestHandleDirectCallsOnlyDoesNotSendOutput(t *testing.T) {
+	sent := 0
+	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+		sent++
+		return delivery.Receipt{}, nil
+	})
+	defer cleanup()
+	caller := &fakePlatformCallerResolver{callers: map[string]*fakePlatformCaller{"qqonebot": {}}}
+	service.platformCallers = caller
+
+	req := testRequest(ModeDirect)
+	req.Content = ""
+	req.Title = ""
+	req.Calls = []Call{{Kind: elvena.CallKindCapability, Name: elvena.CapabilityMessageRecall, Platform: "qqonebot", Params: map[string]any{"message_id": 42}}}
+	resp, err := service.Handle(context.Background(), "secret", req)
+	if err != nil {
+		t.Fatalf("Handle direct calls-only: %v", err)
+	}
+	if resp.Status != StatusCompleted {
+		t.Fatalf("response = %#v", resp)
+	}
+	if sent != 0 {
+		t.Fatalf("sent outputs = %d, want 0", sent)
+	}
+	calls := caller.callers["qqonebot"].calls
+	if len(calls) != 1 || calls[0].api != "delete_msg" || calls[0].params["message_id"] != int64(42) {
+		t.Fatalf("calls = %#v", calls)
+	}
+}
+
 func newTestService(t *testing.T, send SenderFunc) (*Service, func()) {
 	return newTestServiceWithRunner(t, nil, send)
 }
@@ -688,6 +719,29 @@ func testExternalTool(name string) toolrun.ELwispToolDeclaration {
 		TimeoutSeconds: 5,
 		Schema:         map[string]any{"type": "object", "properties": map[string]any{"detail": map[string]any{"type": "boolean"}}},
 	}
+}
+
+type fakePlatformCall struct {
+	api    string
+	params map[string]any
+}
+
+type fakePlatformCaller struct {
+	calls []fakePlatformCall
+}
+
+func (c *fakePlatformCaller) CallPlatformAPI(ctx context.Context, api string, params map[string]any) (json.RawMessage, error) {
+	c.calls = append(c.calls, fakePlatformCall{api: api, params: params})
+	return json.RawMessage(`{}`), nil
+}
+
+type fakePlatformCallerResolver struct {
+	callers map[string]*fakePlatformCaller
+}
+
+func (r *fakePlatformCallerResolver) PlatformCaller(platform string) (elvena.PlatformAPICaller, bool) {
+	caller, ok := r.callers[platform]
+	return caller, ok
 }
 
 type fakeBackgroundRunner struct {

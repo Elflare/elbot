@@ -39,7 +39,7 @@ func NewRuntime(cfg config.ElnisHTTPConfig, service *Service) *Runtime {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
-	mux.HandleFunc("/elvena/v2/events", func(w http.ResponseWriter, req *http.Request) {
+	handler := func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, Response{Accepted: false, Status: StatusFailed, Error: "method not allowed"})
 			return
@@ -60,7 +60,9 @@ func NewRuntime(cfg config.ElnisHTTPConfig, service *Service) *Runtime {
 			}
 		}
 		writeJSON(w, status, resp)
-	})
+	}
+	mux.HandleFunc("/elvena/v2/events", handler)
+	mux.HandleFunc("/elvena/v3/events", handler)
 	addr := strings.TrimSpace(cfg.Addr)
 	if addr == "" {
 		addr = "127.0.0.1:32170"

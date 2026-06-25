@@ -40,6 +40,8 @@ func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.Platfor
 		PlatformUserID:        openID,
 		DisplayName:           openID,
 		ScopeID:               "c2c:" + openID,
+		PlatformMessageID:     strings.TrimSpace(msg.ID),
+		ReplyToMessageID:      replyID,
 		Sender:                a,
 		BufferAssistantOutput: true,
 		Segments:              segments,

@@ -58,6 +58,8 @@ type MessageContext struct {
 	DisplayName           string
 	GroupRole             security.GroupRole
 	ScopeID               string
+	PlatformMessageID     string
+	ReplyToMessageID      string
 	Sender                delivery.ContextSender
 	BufferAssistantOutput bool
 	ForkFromMessageID     string
