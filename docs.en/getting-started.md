@@ -145,7 +145,7 @@ Then source this file in your Nushell configuration.
 
 ## First Conversation
 
-After starting, simply enter your message. In the default example, the `default_mode` of `config/state.toml` is `work`, which enables tool discovery capabilities.
+After starting, simply enter your message. In the default example, the `default_mode` of `state.toml` is `work`, which enables tool discovery capabilities.
 
 Common getting started commands:
 
@@ -199,7 +199,7 @@ Check:
 
 ### Do not want to enable tools by default
 
-Change the default mode in `config/state.toml` to chat:
+Change the default mode in `state.toml` to chat:
 
 ```toml
 [session]
