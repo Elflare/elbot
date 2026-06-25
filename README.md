@@ -82,9 +82,9 @@ Shell completion can be generated via `elbot completion <shell>`, supporting `ba
 
 Minimum usage flow:
 
-1. Configure the OpenAI-compatible Provider in `config/providers.toml`.
+1. Configure the OpenAI-compatible Provider in the `providers.toml` generated in your platform config directory.
 2. Set the API Key corresponding to `api_key_env` via system environment variables or the configuration directory `.env`.
-3. Select the default `chat` / `work` mode and model in `config/state.toml`.
+3. Select the default `chat` / `work` mode and model in the `state.toml` generated in your platform config directory.
 4. After starting, enter `/help` to view commands, or start a conversation directly.
 
 For detailed instructions, see:

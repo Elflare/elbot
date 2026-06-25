@@ -18,6 +18,9 @@ var defaultConfigAssets = []defaultAsset{
 	{Path: "SOUL.md", Content: defaultSoulMD},
 	{Path: "memories.toml", Content: defaultMemoriesTOML},
 	{Path: "elnis.toml", Content: defaultElnisTOML},
+	{Path: "tool_tags.toml", Content: defaultToolTagsTOML},
+	{Path: "plugins/emoticon.toml", Content: defaultEmoticonTOML},
+	{Path: "plugins/hooks.toml", Content: defaultHooksTOML},
 	{Path: ".env.example", Content: defaultEnvExample},
 }
 
@@ -298,4 +301,155 @@ ELBOT_CLI_WINDOWS_TOKEN=
 # Elnis tokens
 ELNIS_HOME_TOKEN=
 ELNIS_HOME_TOKEN_ALT=
+`
+
+const defaultToolTagsTOML = `# Tool tag config. Prompts are appended to system prompt only after the tag is activated by @tool:<tag>.
+[tags.agent]
+tools = ["read_file", "edit_file", "shell", "long_memory", "long_memory_search", "long_memory_write"]
+prompt = """
+ROLE: Complete the user's task safely and accurately.
+MUST:
+- Inspect context first; do not make things up.
+- Use tools when possible; follow required syntax.
+- Plan before coding; ask if unclear or risky.
+- Touch only what must be changed; keep it simple.
+- Validate success criteria before and after implementation.
+"""
+`
+
+const defaultEmoticonTOML = `# Code Hook plugin: emoticon.
+# It runs on llm.response.received, extracts tokens like [[smile]], removes them from
+# llm.text, and appends emoticon outputs according to timing.
+
+# Optional. Defaults to true.
+enabled = true
+
+# Optional. Defaults to 1000. Smaller priority runs earlier at the same hook point.
+priority = 1000
+
+# Optional. Defaults to immediate when omitted.
+# Values: immediate, after_assistant.
+timing = "after_assistant"
+
+# Parent directory of emoticon categories. For token [[smile]], the plugin randomly
+# picks an image from root_dir/smile/. Supported extensions: jpg, jpeg, png, gif, webp.
+root_dir = "emoticons"
+`
+
+const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
+# Complex logic should be implemented as a code plugin instead.
+#
+# Rule shape:
+# [[rules]]
+# name = "stable_debug_name"
+# on = "hook.point"
+# enabled = true          # optional, default true
+# priority = 1000        # optional, smaller runs earlier
+#
+# Single condition:
+# if = "message.text"
+# op = "contains"
+# value = "hello"
+#
+# No condition:
+# always = true
+#
+# Multiple conditions are AND:
+# match = [
+#   { field = "platform.name", op = "fullmatch", value = "qqonebot" },
+#   { field = "message.text", op = "contains", value = "猫" },
+# ]
+#
+# Single action:
+# action = "send"        # send/prepend/append/replace/delete/tool
+# text = "..."
+# timing = "after_assistant" # optional for send outputs; default immediate.
+#
+# Multiple actions run in order:
+# actions = [
+#   { type = "replace", field = "message.text", pattern = "猫", replace = "狗", all = true },
+#   { type = "send", kind = "text", text = "检测到关键词", timing = "after_assistant" },
+#   { type = "append", field = "message.text", text = "!" },
+# ]
+#
+# Supported hook points:
+# platform.connected, platform.message.received, agent.input.prepared,
+# llm.request.prepared, llm.response.received, tool.call.prepared,
+# tool.call.completed, agent.output.prepared, agent.turn.output.prepared,
+# platform.message.sent, error.occurred
+#
+# Match ops: always, exists, contains, fullmatch, startswith, endswith, regex.
+# Common fields:
+# platform.name/scope_id/user_id/conversation_id/message_id/reply_to_message_id
+# actor.id/user_id/role/display_name
+# session.id/mode/status
+# request.id/kind/phase
+# message.text/content_text/role
+# llm.text/raw_text/latest_user_text/latest_user_content_text/provider/model
+# tool.name/arguments/result/risk
+#
+# Editable fields:
+# platform.message.received / agent.input.prepared: message.text
+# llm.request.prepared: llm.latest_user_text
+# llm.response.received: llm.text, llm.raw_text
+# tool.call.prepared: tool.arguments
+# tool.call.completed: tool.result
+# agent.output.prepared / platform.message.sent: assistant message.text
+#
+# Template variables include:
+# {{platform.name}}, {{platform.scope_id}}, {{platform.user_id}}
+# {{actor.id}}, {{actor.user_id}}
+# {{message.text}}, {{message.content_text}}
+# {{llm.text}}, {{llm.raw_text}}, {{llm.latest_user_text}}, {{llm.latest_user_content_text}}
+# {{tool.arguments}}, {{tool.result}}
+# {{actions.<name>.result}}, {{actions.<name>.error}} from earlier tool actions.
+
+# Notify qqonebot superadmins after OneBot connects.
+[[rules]]
+name = "notify_qqonebot_connected"
+on = "platform.connected"
+priority = 1000
+if = "platform.name"
+op = "fullmatch"
+value = "qqonebot"
+action = "send"
+kind = "text"
+text = "ElBot 已连接 QQ OneBot。"
+target.superadmins = true
+
+# Example: append a low-risk tool result to the same user message before the LLM request.
+# [[rules]]
+# name = "inject_web_search"
+# on = "llm.request.prepared"
+# priority = 1000
+# always = true
+# actions = [
+#   { name = "search", type = "tool", tool = "web_search", arguments = '{"query":"ElBot"}' },
+#   { type = "append", field = "llm.latest_user_text", text = "\n\nHook 工具结果：{{actions.search.result}}" },
+# ]
+#
+# Example: modify the final assistant output shown for one turn without changing LLM history.
+# [[rules]]
+# name = "cat_to_dog_final_output"
+# on = "agent.turn.output.prepared"
+# always = true
+# action = "replace"
+# field = "message.text"
+# pattern = "猫"
+# replace = "狗"
+# all = true
+#
+# Example: multiple conditions with one action.
+# [[rules]]
+# name = "cat_to_dog"
+# on = "agent.input.prepared"
+# match = [
+#   { field = "platform.name", op = "fullmatch", value = "qqonebot" },
+#   { field = "message.text", op = "contains", value = "猫" },
+# ]
+# action = "replace"
+# field = "message.text"
+# pattern = "猫"
+# replace = "狗"
+# all = true
 `
