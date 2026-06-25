@@ -31,9 +31,9 @@
       "updated_at": 1782376291
     },
     "docs/elnis-usage.md": {
-      "source_hash": "22bb51d0de15eb569820fa2b7027a12907eba6587ad87ef6b3ab1447d6ab503e",
+      "source_hash": "76fd654ef1a1c167c0d5d940aa3f29e6f098a6c8a84f46b55fdcb834be858ca3",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1782289606
+      "updated_at": 1782376360
     },
     "docs/elnis.md": {
       "source_hash": "52e93376c5239090db3a2c6cb63b274561c2cc3ac0ebfd9f3eeddb3f84abd229",
@@ -6140,6 +6140,14 @@
       "translation": "Delivery Target and Security Boundary",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:heading:cb117be5d70455201dba2088fd3c1ff52783dcec32bef7b9406bc5ef2ea25a5c": {
+      "kind": "heading",
+      "source": "Hook exec 投递 Elvena",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "cb117be5d70455201dba2088fd3c1ff52783dcec32bef7b9406bc5ef2ea25a5c",
+      "translation": "Hook exec delivering to Elvena",
+      "updated_at": 1782376360
+    },
     "docs/elnis-usage.md:list:003001043952716bc303b80bfd3876bb1876f20cf3575a96f0764ded0dd581f6": {
       "kind": "list",
       "source": "Elwisp 不能绕过 Tool Runtime 和 Security Policy 调用 ElBot 内部工具；",
@@ -6620,6 +6628,14 @@
       "translation": "__ELBOT_CODE_0__ must be an array:\n",
       "updated_at": 1782033114
     },
+    "docs/elnis-usage.md:paragraph:44e11ae1596b8a7059f76712343fc4e361cc827c18dae613cd86c567082dc0c1": {
+      "kind": "paragraph",
+      "source": "规则 Hook 的 __ELBOT_CODE_0__ action 可以设置 __ELBOT_CODE_1__，脚本 stdout 作为 Elvena JSON 请求经内部 Elvena Bus 交给 Elnis，不走 HTTP token 鉴权。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "44e11ae1596b8a7059f76712343fc4e361cc827c18dae613cd86c567082dc0c1",
+      "translation": "The __ELBOT_CODE_0__ action of a rule Hook can be set to __ELBOT_CODE_1__, where the script's stdout serves as an Elvena JSON request passed to Elnis via the internal Elvena Bus, bypassing HTTP token authentication.",
+      "updated_at": 1782376360
+    },
     "docs/elnis-usage.md:paragraph:4624f2dadcd59445162f5733cd19d8e71f1ad1220021c014692e0ba2bdd2393a": {
       "kind": "paragraph",
       "source": "Elnis 仍会结合全局配置、Elwisp 配置和平台可用性计算最终目标。\n",
@@ -6691,6 +6707,14 @@
       "source_hash": "74d9bfb1c1843b09c07c3521eb60ae7ad1d9ff7cc263f9e9782db377598fd539",
       "translation": "Setting __ELBOT_CODE_0__ in the disable configuration means disabling all deliveries for this platform.\n",
       "updated_at": 1782033114
+    },
+    "docs/elnis-usage.md:paragraph:7ad3b34deff9a95b5ee1adf533307e862a3cadb50558089cc9034e04cd5e2a80": {
+      "kind": "paragraph",
+      "source": "完整配置说明见 [Hook](hooks.md#hook-exec-投递-elvena)。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "7ad3b34deff9a95b5ee1adf533307e862a3cadb50558089cc9034e04cd5e2a80",
+      "translation": "For complete configuration details, see [Hook](hooks.md#hook-exec-投递-elvena).\n",
+      "updated_at": 1782376360
     },
     "docs/elnis-usage.md:paragraph:8e10903c1c241907a109ea2991f0ecee90e4156346762acc425a4a89f389fe9b": {
       "kind": "paragraph",
@@ -6804,6 +6828,14 @@
       "translation": "Specific event source, such as service name, script name, or RSS name.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:table:0748071790b55dd6b123f52b44f9540c9cc83eade6f63f1f0228d0accd080ff9": {
+      "kind": "table",
+      "source": "Elvena v3 动作调用数组。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "0748071790b55dd6b123f52b44f9540c9cc83eade6f63f1f0228d0accd080ff9",
+      "translation": "Elvena v3 action call array.",
+      "updated_at": 1782376360
+    },
     "docs/elnis-usage.md:table:0782411550e5e713d6079490c3887ebdb14aa8ab900e91ffc93ce83aeb497768": {
       "kind": "table",
       "source": "__ELBOT_CODE_0__、__ELBOT_CODE_1__ 或 __ELBOT_CODE_2__ base64 URI。",
@@ -6876,6 +6908,14 @@
       "translation": "Description",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:table:46bff1a1c1be1121c2ccf85556b8c74b154ae0f286953c2a9bdad0fcc2af8c83": {
+      "kind": "table",
+      "source": "__ELBOT_CODE_0__ 透传平台原始 API，__ELBOT_CODE_1__ 使用统一能力名；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "46bff1a1c1be1121c2ccf85556b8c74b154ae0f286953c2a9bdad0fcc2af8c83",
+      "translation": "__ELBOT_CODE_0__ passes through the platform's original API, while __ELBOT_CODE_1__ uses a unified capability name;",
+      "updated_at": 1782376360
+    },
     "docs/elnis-usage.md:table:49ecd0e342d6d23bd00d67094e2ad0e9859dd17d7337b809300a7c912ccea764": {
       "kind": "table",
       "source": "字段",
@@ -6915,6 +6955,14 @@
       "source_hash": "5b40a5e36cd7355bab5ef54ebd3e9f12527f23e667114160e6f82f6af2bc40e9",
       "translation": "Event body. For LLM mode, using ELyph Task Notation __ELBOT_CODE_0__ is recommended.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:5df1524716e01f35b94ffd9aa6099dc1a002b1b6dd451113c702b81a296e641f": {
+      "kind": "table",
+      "source": "首批 capability 包含 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "5df1524716e01f35b94ffd9aa6099dc1a002b1b6dd451113c702b81a296e641f",
+      "translation": "The first batch of capabilities includes __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__.",
+      "updated_at": 1782376360
     },
     "docs/elnis-usage.md:table:672005ad6ac25d04760587a5a950be307eb00c1c17e4ff9813a8d360c25b6ae4": {
       "kind": "table",
