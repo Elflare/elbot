@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - Elvena v3 action channel: Elnis supports `calls`, initially supporting raw platform APIs as well as `message.recall`, `member.mute`, and `chat.leave` capabilities; unsupported ones can directly call the messaging platform API. Hook rules can execute scripts via the `exec` action and use `stdout=elvena` to trigger Elnis direct/LLM/calls via the internal Elvena Bus. Direct calls-only requests will not send additional messages.
 - Added `match_mode` and `index` parameters to the `*_match` operation of `edit_file`: when `match_mode=line`, it matches the entire line by single-line prefix (tolerating leading indentation to avoid newline character matching errors); `content` (default) maintains exact substring semantics. When there are multiple matches, the specific match can be selected via `index`; if `index` is not provided, an error will be reported and all matching positions will be listed.
 - Hook rules added role partitioning and tiling control fields: `roles`, `actor_roles`, `group_roles`, `consume`, `stop_propagation`. Platform message Hook output will now be sent; `consume=true` can block subsequent command/LLM processing.
@@ -17,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hook rules `exec` action added `outputs` stdout mode; script stdout is parsed as JSON to extract the `outputs` array and optional `text`; When `field` is set, `text` overwrites the corresponding fields; otherwise, the original text remains unchanged.
 - Platform inbound context added a unified group identity `owner/admin/member/unknown`; QQ OneBot and Telegram will map group owner/administrator/ordinary member.
 - Hook platform context now populates the current platform message ID `platform.message_id` and the referenced/reply target message ID `platform.reply_to_message_id`, facilitating the processing of referenced messages by rule Hooks, such as recalling a referenced message.
+- `/hooks` command: list all registered Hooks, view detailed configuration of a specific Hook, and hot-reload all Hooks (takes effect after modifying `hooks.toml` without requiring a restart).
 
 ### Changed
 
@@ -27,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The risk level of the `finalize_el_skill` tool has been downgraded from high to medium.
 
 ### Fixed
+
 - Fixed an issue where API timeouts when sending images/emojis/files via QQ OneBot might cancel WebSocket writes and trigger disconnection and reconnection; a text notification will now be attempted to the same target when media sending fails.
 - Fixed an issue where OpenAI-compatible streaming responses that disconnected midway but were missing `[DONE]` were treated as normal terminations; now it will explicitly notify that the LLM response was interrupted.
 

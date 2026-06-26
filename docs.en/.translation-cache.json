@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "c8e598cdd060e3487c3647e48977f1b224515f5105c248ea4c101fc1659c53a4",
+      "source_hash": "1099f20b5dfb26894e29f6dc56d2637162d4c090444c3ffc13e9fb546cdc6a09",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782399367
+      "updated_at": 1782444302
     },
     "README.zh-CN.md": {
       "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
@@ -392,6 +392,14 @@
       "source_hash": "d645cf77c4ee588c46e1393622a3b1673b35ad938b425f17eba22044d2bdc5a7",
       "translation": "Hook rules can execute scripts via the __ELBOT_CODE_0__ action and use __ELBOT_CODE_1__ to trigger Elnis direct/LLM/calls via the internal Elvena Bus.",
       "updated_at": 1782395477
+    },
+    "CHANGELOG.md:list:d868e5b43fdd4b220f5103b4c130865608bd216aa604f67b556dc8d92822ecad": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 命令：列出所有已注册 Hook、查看某个 Hook 详细配置、热重载全部 Hook（修改 __ELBOT_CODE_1__ 后无需重启即可生效）。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d868e5b43fdd4b220f5103b4c130865608bd216aa604f67b556dc8d92822ecad",
+      "translation": "__ELBOT_CODE_0__ command: list all registered Hooks, view detailed configuration of a specific Hook, and hot-reload all Hooks (takes effect after modifying __ELBOT_CODE_1__ without requiring a restart).",
+      "updated_at": 1782444302
     },
     "CHANGELOG.md:list:e674fa7fc18af87b45660da3fff098ff0a482256ae0cdc7d64932ce221ad779c": {
       "kind": "list",
