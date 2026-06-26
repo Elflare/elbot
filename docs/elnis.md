@@ -187,11 +187,6 @@ Elnis 收到事件后，会按 `mode` 决定处理方式。
 
 如需参考现成的 Elwisp 示例、协议文档和模板，可查看 [Elwisp Showcase](https://github.com/Elfreese/elwisp-showcase)。
 
-## 当前限制与后续方向
-
-当前 Elnis 已支持 record、direct、llm 模式、Elwisp 随事件声明外部工具、多模态消息段（text/image/file）、Elvena v3 calls（raw 平台 API 与首批 capability）以及 Hook exec 经内部 Elvena Bus 投递。超级管理员在平台里引用回复 Elnis LLM 报告通知时，会自动 resume 到对应后台 Session 继续对话；普通用户引用时只会作为普通引用文本处理。
-
-
 ## 下一步：配置与使用
 
 - [Elnis 配置与使用](elnis-usage.md)：启用 Elnis、配置 Elwisp 策略、发送 Elvena 请求，并了解请求字段和投递边界。
