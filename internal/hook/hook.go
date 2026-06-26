@@ -443,6 +443,15 @@ type Registration struct {
 	Name     string
 	Match    Match
 	Handler  Handler
+	Detail   string
+}
+
+// Info describes a registered hook for inspection commands.
+type Info struct {
+	Name     string
+	Point    Point
+	Priority int
+	Detail   string
 }
 
 // Registrar registers hook handlers for modules.
@@ -460,6 +469,8 @@ type Manager interface {
 	Registrar
 	Run(ctx context.Context, event Event) (Event, error)
 	Notify(ctx context.Context, event Event) error
+	List() []Info
+	Reset()
 }
 
 // NoopManager is used when no hooks are configured.
@@ -472,6 +483,10 @@ func (NoopManager) Run(_ context.Context, event Event) (Event, error) {
 }
 
 func (NoopManager) Notify(context.Context, Event) error { return nil }
+
+func (NoopManager) List() []Info { return nil }
+
+func (NoopManager) Reset() {}
 
 type DefaultManager struct {
 	mu       sync.RWMutex
@@ -486,6 +501,7 @@ type registration struct {
 	name     string
 	match    Match
 	handler  Handler
+	detail   string
 }
 
 func NewManager() *DefaultManager {
@@ -505,7 +521,7 @@ func (m *DefaultManager) Register(reg Registration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.next++
-	m.handlers[reg.Point] = append(m.handlers[reg.Point], registration{priority: reg.Priority, order: m.next, name: reg.Name, match: reg.Match, handler: reg.Handler})
+	m.handlers[reg.Point] = append(m.handlers[reg.Point], registration{priority: reg.Priority, order: m.next, name: reg.Name, match: reg.Match, handler: reg.Handler, detail: reg.Detail})
 	sort.SliceStable(m.handlers[reg.Point], func(i, j int) bool {
 		left := m.handlers[reg.Point][i]
 		right := m.handlers[reg.Point][j]
@@ -591,6 +607,31 @@ func (m *DefaultManager) handlersFor(point Point) []registration {
 	out := make([]registration, len(items))
 	copy(out, items)
 	return out
+}
+
+func (m *DefaultManager) List() []Info {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var out []Info
+	for point, items := range m.handlers {
+		for _, reg := range items {
+			out = append(out, Info{Name: reg.name, Point: point, Priority: reg.priority, Detail: reg.detail})
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Point == out[j].Point {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].Point < out[j].Point
+	})
+	return out
+}
+
+func (m *DefaultManager) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.handlers = map[Point][]registration{}
+	m.next = 0
 }
 
 func wrapHookError(reg registration, err error) error {

@@ -86,6 +86,7 @@ type Agent struct {
 	discoveredTools        map[string]map[string]llm.ToolSchema
 	actorID                string
 	scopeID                string
+	hookReloader           func() error
 }
 
 // New creates a new Agent.
@@ -176,6 +177,7 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 		Compact:              a,
 		ContextStatus:        a,
 		Tools:                a,
+		Hooks:                a,
 		SetLastSessions:      a.setLastSessions,
 		LastSessions:         a.lastSessions,
 		SessionListPageSize:  a.sessionPageSize,
@@ -508,6 +510,21 @@ func (a *Agent) SetHookManager(manager hook.Manager) {
 		manager = hook.NoopManager{}
 	}
 	a.hooks = manager
+}
+
+func (a *Agent) SetHookReloader(fn func() error) {
+	a.hookReloader = fn
+}
+
+func (a *Agent) HookList() []hook.Info {
+	return a.hooks.List()
+}
+
+func (a *Agent) HookReload() error {
+	if a.hookReloader == nil {
+		return fmt.Errorf("hook reloader is not configured")
+	}
+	return a.hookReloader()
 }
 
 func (a *Agent) SetSecurityPolicy(policy *security.Policy) {

@@ -42,54 +42,53 @@ type Config struct {
 }
 
 type Rule struct {
-	Name            string           `toml:"name"`
-	On              string           `toml:"on"`
-	Priority        int              `toml:"priority"`
-	Enabled         *bool            `toml:"enabled"`
-	If              string           `toml:"if"`
-	Op              string           `toml:"op"`
-	Value           string           `toml:"value"`
-	Always          bool             `toml:"always"`
-	Match           []hook.Condition `toml:"match"`
-	Roles           []string         `toml:"roles"`
-	ActorRoles      []string         `toml:"actor_roles"`
-	GroupRoles      []string         `toml:"group_roles"`
-	Action          string           `toml:"action"`
-	Actions         []Action         `toml:"actions"`
-	Field           string           `toml:"field"`
-	Text            string           `toml:"text"`
-	Pattern         string           `toml:"pattern"`
-	Replace         string           `toml:"replace"`
-	Kind            string           `toml:"kind"`
-	Path            string           `toml:"path"`
-	Timing          string           `toml:"timing"`
-	Tool            string           `toml:"tool"`
-	Args            string           `toml:"arguments"`
-	Command         string           `toml:"command"`
-	Cwd             string           `toml:"cwd"`
-	Stdin           string           `toml:"stdin"`
-	Stdout          string           `toml:"stdout"`
-	TimeoutSeconds  int              `toml:"timeout_seconds"`
-	All             bool             `toml:"all"`
-	Target          Target           `toml:"target"`
-	Consume         bool             `toml:"consume"`
-	StopPropagation bool             `toml:"stop_propagation"`
+	Name           string           `toml:"name"`
+	On             string           `toml:"on"`
+	Priority       int              `toml:"priority"`
+	Enabled        *bool            `toml:"enabled"`
+	If             string           `toml:"if"`
+	Op             string           `toml:"op"`
+	Value          string           `toml:"value"`
+	Always         bool             `toml:"always"`
+	Match          []hook.Condition `toml:"match"`
+	Roles          []string         `toml:"roles"`
+	ActorRoles     []string         `toml:"actor_roles"`
+	GroupRoles     []string         `toml:"group_roles"`
+	Action         string           `toml:"action"`
+	Actions        []Action         `toml:"actions"`
+	Field          string           `toml:"field"`
+	Text           string           `toml:"text"`
+	Pattern        string           `toml:"pattern"`
+	Replace        string           `toml:"replace"`
+	Kind           string           `toml:"kind"`
+	Path           string           `toml:"path"`
+	Timing         string           `toml:"timing"`
+	Tool           string           `toml:"tool"`
+	Args           string           `toml:"arguments"`
+	Command        string           `toml:"command"`
+	Cwd            string           `toml:"cwd"`
+	Stdin          string           `toml:"stdin"`
+	Stdout         string           `toml:"stdout"`
+	TimeoutSeconds int              `toml:"timeout_seconds"`
+	All            bool             `toml:"all"`
+	Target         Target           `toml:"target"`
+	Control        Control          `toml:"control"`
 }
 
 type Action struct {
-	Name           string        `toml:"name"`
-	Type           string        `toml:"type"`
-	Field          string        `toml:"field"`
-	Text           string        `toml:"text"`
-	Pattern        string        `toml:"pattern"`
-	Match          string        `toml:"-"`
-	Replace        string        `toml:"replace"`
-	Kind           string        `toml:"kind"`
-	Path           string        `toml:"path"`
-	Timing         string        `toml:"timing"`
-	Tool           string        `toml:"tool"`
-	Arguments      string        `toml:"arguments"`
-	All            bool          `toml:"all"`
+	Name           string `toml:"name"`
+	Type           string `toml:"type"`
+	Field          string `toml:"field"`
+	Text           string `toml:"text"`
+	Pattern        string `toml:"pattern"`
+	Match          string `toml:"-"`
+	Replace        string `toml:"replace"`
+	Kind           string `toml:"kind"`
+	Path           string `toml:"path"`
+	Timing         string `toml:"timing"`
+	Tool           string `toml:"tool"`
+	Arguments      string `toml:"arguments"`
+	All            bool   `toml:"all"`
 	Command        string        `toml:"command"`
 	Cwd            string        `toml:"cwd"`
 	Stdin          string        `toml:"stdin"`
@@ -107,6 +106,11 @@ type SegmentSpec struct {
 	Base64   string `toml:"base64" json:"base64,omitempty"`
 	Name     string `toml:"name" json:"name,omitempty"`
 	MIMEType string `toml:"mime_type" json:"mime_type,omitempty"`
+}
+
+type Control struct {
+	Consume         bool `toml:"consume"`
+	StopPropagation bool `toml:"stop_propagation"`
 }
 
 type Target struct {
@@ -170,11 +174,16 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 			if len(registrations) > 1 {
 				regName = fmt.Sprintf("%s.role.%d", regName, roleIndex+1)
 			}
+			detail := formatRuleDetail(rule)
+			if len(registrations) > 1 {
+				detail = fmt.Sprintf("%s\n\n(role partition %d/%d)", detail, roleIndex+1, len(registrations))
+			}
 			if err := registrar.Register(hook.Registration{
 				Point:    hook.Point(rule.On),
 				Priority: priority,
 				Name:     regName,
 				Match:    match,
+				Detail:   detail,
 				Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 					return m.runRule(ctx, rule, event)
 				}),
@@ -430,10 +439,10 @@ func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.
 	if !rule.matchRoles(event) {
 		return event, nil
 	}
-	if rule.Consume {
+	if rule.Control.Consume {
 		event.Control.Consume = true
 	}
-	if rule.StopPropagation {
+	if rule.Control.StopPropagation {
 		event.Control.StopPropagation = true
 	}
 	state := state{Actions: map[string]actionResult{}}
@@ -786,8 +795,6 @@ func render(text string, event hook.Event, state state) string {
 		"{{platform.name}}":                event.Platform.Name,
 		"{{platform.scope_id}}":            event.Platform.ScopeID,
 		"{{platform.user_id}}":             event.Platform.UserID,
-		"{{platform.message_id}}":          event.Platform.PlatformMessageID,
-		"{{platform.reply_to_message_id}}": event.Platform.ReplyToMessageID,
 		"{{actor.id}}":                     event.Actor.ID,
 		"{{actor.user_id}}":                event.Actor.UserID,
 		"{{actor.role}}":                   event.Actor.Role,
@@ -913,8 +920,116 @@ func setTextField(event hook.Event, field, value string) (hook.Event, error) {
 		event.Tool.Arguments = value
 	case "tool.result":
 		event.Tool.Result = value
-	default:
+default:
 		return event, fmt.Errorf("unsupported set field %q", field)
 	}
 	return event, nil
+}
+
+func formatRuleDetail(rule Rule) string {
+	var sb strings.Builder
+	sb.WriteString("on: " + strings.TrimSpace(rule.On))
+
+	if rule.Always {
+		sb.WriteString("\nmatch: always")
+	} else if len(rule.Match) > 0 {
+		sb.WriteString("\nmatch:")
+		for _, cond := range rule.Match {
+			sb.WriteString("\n  " + cond.Field + " " + cond.Op + " " + strconvQuote(cond.Value))
+		}
+	} else if strings.TrimSpace(rule.If) != "" {
+		sb.WriteString("\nmatch: " + rule.If + " " + rule.Op + " " + strconvQuote(rule.Value))
+	}
+
+	if len(rule.Roles) > 0 {
+		sb.WriteString("\nroles: " + strings.Join(rule.Roles, ", "))
+	}
+	if len(rule.ActorRoles) > 0 {
+		sb.WriteString("\nactor_roles: " + strings.Join(rule.ActorRoles, ", "))
+	}
+	if len(rule.GroupRoles) > 0 {
+		sb.WriteString("\ngroup_roles: " + strings.Join(rule.GroupRoles, ", "))
+	}
+
+	for i, action := range rule.Actions {
+		sb.WriteString(fmt.Sprintf("\naction[%d]: %s", i+1, action.Type))
+		if action.Name != "" {
+			sb.WriteString(" (" + action.Name + ")")
+		}
+		if action.Field != "" {
+			sb.WriteString(" field=" + action.Field)
+		}
+		if action.Text != "" {
+			sb.WriteString(" text=" + strconvQuote(action.Text))
+		}
+		if action.Match != "" {
+			sb.WriteString(" pattern=" + strconvQuote(action.Match))
+		}
+		if action.Replace != "" {
+			sb.WriteString(" replace=" + strconvQuote(action.Replace))
+		}
+		if action.Tool != "" {
+			sb.WriteString(" tool=" + action.Tool)
+		}
+		if action.Arguments != "" {
+			sb.WriteString(" args=" + strconvQuote(action.Arguments))
+		}
+		if action.Command != "" {
+			sb.WriteString(" command=" + strconvQuote(action.Command))
+		}
+		if action.Stdout != "" {
+			sb.WriteString(" stdout=" + action.Stdout)
+		}
+		if action.Timing != "" {
+			sb.WriteString(" timing=" + action.Timing)
+		}
+		if action.Target.Platform != "" || action.Target.ScopeID != "" || action.Target.PrivateUserID != "" || action.Target.GroupID != "" {
+			sb.WriteString(" target=" + targetString(action.Target))
+		}
+		if action.All {
+			sb.WriteString(" all=true")
+		}
+		if len(action.Segments) > 0 {
+			sb.WriteString(fmt.Sprintf(" segments=%d", len(action.Segments)))
+		}
+	}
+
+	if rule.Control.Consume {
+		sb.WriteString("\nconsume: true")
+	}
+	if rule.Control.StopPropagation {
+		sb.WriteString("\nstop_propagation: true")
+	}
+	if rule.Priority != 0 {
+		sb.WriteString(fmt.Sprintf("\npriority: %d", rule.Priority))
+	}
+
+	return sb.String()
+}
+
+func targetString(t Target) string {
+	parts := []string{}
+	if t.Platform != "" {
+		parts = append(parts, "platform="+t.Platform)
+	}
+	if t.ScopeID != "" {
+		parts = append(parts, "scope_id="+t.ScopeID)
+	}
+	if t.PrivateUserID != "" {
+		parts = append(parts, "private_user_id="+t.PrivateUserID)
+	}
+	if t.GroupID != "" {
+		parts = append(parts, "group_id="+t.GroupID)
+	}
+	if t.Superadmins {
+		parts = append(parts, "superadmins=true")
+	}
+	return strings.Join(parts, ",")
+}
+
+func strconvQuote(s string) string {
+	if s == "" {
+		return "\"\""
+	}
+	return fmt.Sprintf("%q", s)
 }

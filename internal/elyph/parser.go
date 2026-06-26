@@ -88,8 +88,8 @@ func (p *parser) parseLine(trimmed string, lineNo int) {
 		p.parseIf(trimmed, lineNo)
 	case strings.HasPrefix(trimmed, "?else"):
 		p.parseElse(trimmed, lineNo)
-	case strings.HasPrefix(trimmed, "else"):
-		p.add(lineNo, "else must be ?else {")
+	case strings.HasPrefix(trimmed, "? else") || strings.HasPrefix(trimmed, "else"):
+		p.add(lineNo, "else must be ?else{")
 	case strings.HasPrefix(trimmed, "each"):
 		p.parseEach(trimmed, lineNo)
 	case strings.HasPrefix(trimmed, ">"):
@@ -176,7 +176,7 @@ func (p *parser) parseIf(line string, lineNo int) {
 func (p *parser) parseElse(line string, lineNo int) {
 	rest := strings.TrimSpace(strings.TrimPrefix(line, "?else"))
 	if rest != "{" {
-		p.add(lineNo, "?else must be ?else {")
+		p.add(lineNo, "?else must be ?else{")
 		return
 	}
 	if p.lastClosed != blockIf {

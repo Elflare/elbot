@@ -42,6 +42,7 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 		Priority: priority,
 		Name:     "plugins.resident_memory",
 		Match:    hook.Always(),
+		Detail:   "每 turn 注入当前 platform + actor 的常驻记忆和临时用户名",
 		Handler:  hook.HandlerFunc(m.inject),
 	}); err != nil {
 		return err

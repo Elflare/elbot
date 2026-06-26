@@ -111,7 +111,7 @@ func TestParseValidControlBlocks(t *testing.T) {
     > 不提醒
   }
 }
-?else {
+?else{
   each($day in $days, limit=3) {
     @skill weather_day(city=$city, day=$day)
   }
@@ -130,8 +130,9 @@ func TestParseRejectsInvalidIfElseSyntax(t *testing.T) {
 	}{
 		{name: "if missing paren", raw: "#task bad\n?if $rain {\n}\n", want: "line 2: ?if must be ?if(condition) {"},
 		{name: "if missing brace", raw: "#task bad\n?if($rain)\n", want: "line 2: ?if must be ?if(condition) {"},
-		{name: "else missing question", raw: "#task bad\nelse {\n}\n", want: "line 2: else must be ?else {"},
-		{name: "else trailing text", raw: "#task bad\n?else now {\n}\n", want: "line 2: ?else must be ?else {"},
+		{name: "else missing question", raw: "#task bad\nelse {\n}\n", want: "line 2: else must be ?else{"},
+		{name: "else spaced question", raw: "#task bad\n? else {\n}\n", want: "line 2: else must be ?else{"},
+		{name: "else trailing text", raw: "#task bad\n?else now {\n}\n", want: "line 2: ?else must be ?else{"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -327,6 +328,9 @@ func TestParseAssignmentBoundaries(t *testing.T) {
 }
 
 func TestParseControlBlockBoundaries(t *testing.T) {
+	if _, err := ParseTask("#task ok\n?if($x) {\n}\n?else{\n}\n", "ok"); err != nil {
+		t.Fatalf("?else without space should be valid: %v", err)
+	}
 	cases := []struct {
 		name string
 		raw  string
@@ -334,7 +338,7 @@ func TestParseControlBlockBoundaries(t *testing.T) {
 	}{
 		{name: "empty if", raw: "#task bad\n?if() {\n}\n", want: "line 2: ?if must be ?if(condition) {"},
 		{name: "if trailing text", raw: "#task bad\n?if($x) { text\n", want: "line 2: ?if must be ?if(condition) {"},
-		{name: "else no space", raw: "#task bad\n?else{\n}\n", want: "line 2: ?else must be ?else {"},
+		{name: "else spaced question", raw: "#task bad\n? else {\n}\n", want: "line 2: else must be ?else{"},
 		{name: "orphan else", raw: "#task bad\n?else {\n}\n", want: "line 2: ?else must immediately follow a closed ?if block"},
 		{name: "double else", raw: "#task bad\n?if($x) {\n}\n?else {\n}\n?else {\n}\n", want: "line 6: ?else must immediately follow a closed ?if block"},
 		{name: "else after output", raw: "#task bad\n?if($x) {\n}\n> done\n?else {\n}\n", want: "line 5: ?else must immediately follow a closed ?if block"},
