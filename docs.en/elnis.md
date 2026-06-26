@@ -189,11 +189,6 @@ In work mode, the superadmin can let ElBot use the built-in tool `elwisp_creator
 
 For ready-made Elwisp examples, protocol documentation, and templates, please refer to [Elwisp Showcase](https://github.com/Elfreese/elwisp-showcase).
 
-## Current Limitations and Future Directions
-
-Currently, Elnis supports record, direct, and llm modes, Elwisp declaring external tools with events, multimodal message segments (text/image/file), Elvena v3 calls (raw platform APIs and the first batch of capabilities), and Hook exec delivery via the internal Elvena Bus. When a superadmin quotes and replies to an Elnis LLM report notification within the platform, it will automatically resume to the corresponding background Session to continue the conversation; When a regular user quotes it, it will only be processed as ordinary quoted text.
-
-
 ## Next Step: Configuration and Usage
 
 - [Elnis Configuration and Usage](elnis-usage.md): Enable Elnis, configure Elwisp policies, send Elvena requests, and understand request fields and delivery boundaries.
