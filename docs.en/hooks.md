@@ -562,6 +562,7 @@ $hook_config:str=~/.config/elbot/plugins/hooks.toml
 > 脚本文件路径和完整脚本内容
 }
 > 把脚本和资源放在 plugins/ 下，并按需测试。
+> 完成后通知用户用/hooks reload重载
 ```
 
 
