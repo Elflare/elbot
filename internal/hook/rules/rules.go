@@ -42,53 +42,54 @@ type Config struct {
 }
 
 type Rule struct {
-	Name           string           `toml:"name"`
-	On             string           `toml:"on"`
-	Priority       int              `toml:"priority"`
-	Enabled        *bool            `toml:"enabled"`
-	If             string           `toml:"if"`
-	Op             string           `toml:"op"`
-	Value          string           `toml:"value"`
-	Always         bool             `toml:"always"`
-	Match          []hook.Condition `toml:"match"`
-	Roles          []string         `toml:"roles"`
-	ActorRoles     []string         `toml:"actor_roles"`
-	GroupRoles     []string         `toml:"group_roles"`
-	Action         string           `toml:"action"`
-	Actions        []Action         `toml:"actions"`
-	Field          string           `toml:"field"`
-	Text           string           `toml:"text"`
-	Pattern        string           `toml:"pattern"`
-	Replace        string           `toml:"replace"`
-	Kind           string           `toml:"kind"`
-	Path           string           `toml:"path"`
-	Timing         string           `toml:"timing"`
-	Tool           string           `toml:"tool"`
-	Args           string           `toml:"arguments"`
-	Command        string           `toml:"command"`
-	Cwd            string           `toml:"cwd"`
-	Stdin          string           `toml:"stdin"`
-	Stdout         string           `toml:"stdout"`
-	TimeoutSeconds int              `toml:"timeout_seconds"`
-	All            bool             `toml:"all"`
-	Target         Target           `toml:"target"`
-	Control        Control          `toml:"control"`
+	Name            string           `toml:"name"`
+	On              string           `toml:"on"`
+	Priority        int              `toml:"priority"`
+	Enabled         *bool            `toml:"enabled"`
+	If              string           `toml:"if"`
+	Op              string           `toml:"op"`
+	Value           string           `toml:"value"`
+	Always          bool             `toml:"always"`
+	Match           []hook.Condition `toml:"match"`
+	Roles           []string         `toml:"roles"`
+	ActorRoles      []string         `toml:"actor_roles"`
+	GroupRoles      []string         `toml:"group_roles"`
+	Action          string           `toml:"action"`
+	Actions         []Action         `toml:"actions"`
+	Field           string           `toml:"field"`
+	Text            string           `toml:"text"`
+	Pattern         string           `toml:"pattern"`
+	Replace         string           `toml:"replace"`
+	Kind            string           `toml:"kind"`
+	Path            string           `toml:"path"`
+	Timing          string           `toml:"timing"`
+	Tool            string           `toml:"tool"`
+	Args            string           `toml:"arguments"`
+	Command         string           `toml:"command"`
+	Cwd             string           `toml:"cwd"`
+	Stdin           string           `toml:"stdin"`
+	Stdout          string           `toml:"stdout"`
+	TimeoutSeconds  int              `toml:"timeout_seconds"`
+	All             bool             `toml:"all"`
+	Target          Target           `toml:"target"`
+	Consume         bool             `toml:"consume"`
+	StopPropagation bool             `toml:"stop_propagation"`
 }
 
 type Action struct {
-	Name           string `toml:"name"`
-	Type           string `toml:"type"`
-	Field          string `toml:"field"`
-	Text           string `toml:"text"`
-	Pattern        string `toml:"pattern"`
-	Match          string `toml:"-"`
-	Replace        string `toml:"replace"`
-	Kind           string `toml:"kind"`
-	Path           string `toml:"path"`
-	Timing         string `toml:"timing"`
-	Tool           string `toml:"tool"`
-	Arguments      string `toml:"arguments"`
-	All            bool   `toml:"all"`
+	Name           string        `toml:"name"`
+	Type           string        `toml:"type"`
+	Field          string        `toml:"field"`
+	Text           string        `toml:"text"`
+	Pattern        string        `toml:"pattern"`
+	Match          string        `toml:"-"`
+	Replace        string        `toml:"replace"`
+	Kind           string        `toml:"kind"`
+	Path           string        `toml:"path"`
+	Timing         string        `toml:"timing"`
+	Tool           string        `toml:"tool"`
+	Arguments      string        `toml:"arguments"`
+	All            bool          `toml:"all"`
 	Command        string        `toml:"command"`
 	Cwd            string        `toml:"cwd"`
 	Stdin          string        `toml:"stdin"`
@@ -106,11 +107,6 @@ type SegmentSpec struct {
 	Base64   string `toml:"base64" json:"base64,omitempty"`
 	Name     string `toml:"name" json:"name,omitempty"`
 	MIMEType string `toml:"mime_type" json:"mime_type,omitempty"`
-}
-
-type Control struct {
-	Consume         bool `toml:"consume"`
-	StopPropagation bool `toml:"stop_propagation"`
 }
 
 type Target struct {
@@ -439,10 +435,10 @@ func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.
 	if !rule.matchRoles(event) {
 		return event, nil
 	}
-	if rule.Control.Consume {
+	if rule.Consume {
 		event.Control.Consume = true
 	}
-	if rule.Control.StopPropagation {
+	if rule.StopPropagation {
 		event.Control.StopPropagation = true
 	}
 	state := state{Actions: map[string]actionResult{}}
@@ -920,7 +916,7 @@ func setTextField(event hook.Event, field, value string) (hook.Event, error) {
 		event.Tool.Arguments = value
 	case "tool.result":
 		event.Tool.Result = value
-default:
+	default:
 		return event, fmt.Errorf("unsupported set field %q", field)
 	}
 	return event, nil
@@ -994,10 +990,10 @@ func formatRuleDetail(rule Rule) string {
 		}
 	}
 
-	if rule.Control.Consume {
+	if rule.Consume {
 		sb.WriteString("\nconsume: true")
 	}
-	if rule.Control.StopPropagation {
+	if rule.StopPropagation {
 		sb.WriteString("\nstop_propagation: true")
 	}
 	if rule.Priority != 0 {

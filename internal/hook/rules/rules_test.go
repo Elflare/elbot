@@ -135,6 +135,31 @@ func TestTurnOutputPreparedAllowsMessageText(t *testing.T) {
 	}
 }
 
+func TestLoadConfigAcceptsFlatControlFields(t *testing.T) {
+	dir := t.TempDir()
+	content := `[[rules]]
+name = "flat_control"
+on = "platform.message.received"
+always = true
+consume = true
+stop_propagation = true
+
+[[rules.actions]]
+type = "send"
+text = "ok"
+`
+	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, _, err := loadConfig(dir)
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if len(cfg.Rules) != 1 || !cfg.Rules[0].Consume || !cfg.Rules[0].StopPropagation {
+		t.Fatalf("rules = %#v", cfg.Rules)
+	}
+}
+
 func TestLoadConfigRejectsUnknownLegacyField(t *testing.T) {
 	dir := t.TempDir()
 	content := `[[rules]]
@@ -258,11 +283,12 @@ func TestRuleRoleGatesAndControl(t *testing.T) {
 		Message: hook.MessagePayload{Segments: llm.TextSegments("hello")},
 	}
 	got, err := module.runRule(context.Background(), Rule{
-		Roles:      []string{"admin"},
-		ActorRoles: []string{"user"},
-		GroupRoles: []string{"admin"},
-		Control:    Control{Consume: true, StopPropagation: true},
-		Actions:    []Action{{Type: "append", Field: "message.text", Text: "!"}},
+		Roles:           []string{"admin"},
+		ActorRoles:      []string{"user"},
+		GroupRoles:      []string{"admin"},
+		Consume:         true,
+		StopPropagation: true,
+		Actions:         []Action{{Type: "append", Field: "message.text", Text: "!"}},
 	}, event)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
