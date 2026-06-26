@@ -164,6 +164,28 @@ In work mode, the LLM can discover tool details on demand via `discover_tool`. I
 
 The built-in tool `elwisp_creator` helps superadmins generate Elwisp configurations, Elvena event templates, listener scaffolds, and test commands; It has no parameters or side effects itself; actually writing files or running commands will still use the file tool and shell tool and go through the corresponding risk confirmation.
 
+## Hook
+
+| Command | Function |
+| --- | --- |
+| `/hooks` | List all registered Hooks. |
+| `/hooks <name>` | View the detailed configuration of a specific Hook. |
+| `/hooks reload` | Clear and re-register all Hooks (rule Hooks, resident memory, built-in Hooks). |
+
+Example:
+
+```text
+/hooks
+/hooks rules.greet
+/hooks reload
+```
+
+Note:
+
+- Hooks include rule Hooks (`plugins/hooks.toml`), resident memory Hooks, and built-in Cron Hooks.
+- `reload` will re-read `hooks.toml` and rebuild all Hook registrations, allowing configuration changes to take effect without a restart.
+- `/hooks` is a superadmin command.
+
 ## Logs and Audit
 
 | Command | Function |

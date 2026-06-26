@@ -16,9 +16,9 @@
       "updated_at": 1782395265
     },
     "docs/commands.md": {
-      "source_hash": "da88effce2439eca033f3cef874bd6e034fdcec15d1376bdbcb576491b8f38bf",
+      "source_hash": "92bcc12252608cc43cf14de5c123f8426d25c4cf867f9657c9c93072ad07fe8d",
       "target": "docs.en/commands.md",
-      "updated_at": 1782376213
+      "updated_at": 1782444282
     },
     "docs/concepts.md": {
       "source_hash": "6de9b853dacd55de2bf2cfbdc483c32d723ca121b2805563c3444c333aaa995d",
@@ -2145,6 +2145,14 @@
       "translation": "Request Management",
       "updated_at": 1781514917
     },
+    "docs/commands.md:list:05cb024aa6beed50922ae3ed4a2f174ca8610d56a81ca8e66b7aea7a4c0e7974": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 为超级管理员命令。",
+      "source_file": "docs/commands.md",
+      "source_hash": "05cb024aa6beed50922ae3ed4a2f174ca8610d56a81ca8e66b7aea7a4c0e7974",
+      "translation": "__ELBOT_CODE_0__ is a superadmin command.",
+      "updated_at": 1782444282
+    },
     "docs/commands.md:list:184cff66666bbc12475709d9a2de0e36a43d1f1430698bc732c362722f37a713": {
       "kind": "list",
       "source": "已有历史的 work Session 不能直接切到 chat；需要先 __ELBOT_CODE_0__，再 __ELBOT_CODE_1__。",
@@ -2152,6 +2160,14 @@
       "source_hash": "184cff66666bbc12475709d9a2de0e36a43d1f1430698bc732c362722f37a713",
       "translation": "A work Session with existing history cannot be switched directly to chat; you need to __ELBOT_CODE_0__ first, and then __ELBOT_CODE_1__.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:list:23f8c5838d6c120b2886e3ecb1b73f29c36197a8e11c71adc468372356e2e815": {
+      "kind": "list",
+      "source": "Hook 包括规则 Hook（__ELBOT_CODE_0__）、常驻记忆 Hook 和内置 Cron Hook。",
+      "source_file": "docs/commands.md",
+      "source_hash": "23f8c5838d6c120b2886e3ecb1b73f29c36197a8e11c71adc468372356e2e815",
+      "translation": "Hooks include rule Hooks (__ELBOT_CODE_0__), resident memory Hooks, and built-in Cron Hooks.",
+      "updated_at": 1782444282
     },
     "docs/commands.md:list:56f592b51f3e4db3f0574804db58561c5ce478a9a00b4737d840d1da8cc53ebf": {
       "kind": "list",
@@ -2168,6 +2184,14 @@
       "source_hash": "618c24a7386c36940053553ef820dc60e8388b7ae4241071f56b8e02ec097504",
       "translation": "CLI serves as a local high-privilege entry point and can view Sessions across platforms; non-CLI platforms view Sessions under the current platform and scope by default.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:list:90c8c1bfe6e267ecc3fefcb7a87133b98693bf3aebd34ab4340440f416f34a60": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 会重新读取 __ELBOT_CODE_1__ 并重建所有 Hook 注册，修改配置后无需重启即可生效。",
+      "source_file": "docs/commands.md",
+      "source_hash": "90c8c1bfe6e267ecc3fefcb7a87133b98693bf3aebd34ab4340440f416f34a60",
+      "translation": "__ELBOT_CODE_0__ will re-read __ELBOT_CODE_1__ and rebuild all Hook registrations, allowing configuration changes to take effect without a restart.",
+      "updated_at": 1782444282
     },
     "docs/commands.md:list:a0b5430c1b57bff3b15d0f05598d4fb48dd807a396c4627a0b3f97a23697a81c": {
       "kind": "list",
@@ -2368,6 +2392,14 @@
       "source_hash": "08155296f98306ae8ebbbe76922b1871c996e1188f2fc66068dd830f1c11ebc8",
       "translation": "Create and switch to a new Session.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:098c863a62343308d9dd84b26b88a4abf327bdd2d9b39363716e32227d747fc6": {
+      "kind": "table",
+      "source": "列出所有已注册 Hook。",
+      "source_file": "docs/commands.md",
+      "source_hash": "098c863a62343308d9dd84b26b88a4abf327bdd2d9b39363716e32227d747fc6",
+      "translation": "List all registered Hooks.",
+      "updated_at": 1782444282
     },
     "docs/commands.md:table:0ba7423e03b0426c37991378a8ba9034b7eec65b7c3fcb33a4b7c8c582e3deef": {
       "kind": "table",
@@ -2689,6 +2721,14 @@
       "translation": "Switch to Elnis elwisp2 model slot.",
       "updated_at": 1781779244
     },
+    "docs/commands.md:table:9c12162af64254ee6aa7edf3275557631df4aef36a8de59244e5c3112268b0a8": {
+      "kind": "table",
+      "source": "清空并重新注册所有 Hook（规则 Hook、常驻记忆、内置 Hook）。",
+      "source_file": "docs/commands.md",
+      "source_hash": "9c12162af64254ee6aa7edf3275557631df4aef36a8de59244e5c3112268b0a8",
+      "translation": "Clear and re-register all Hooks (rule Hooks, resident memory, built-in Hooks).",
+      "updated_at": 1782444282
+    },
     "docs/commands.md:table:9c8296ef5a7163e244dc82750aac5e3abf13641df0937fa27a79a8eb1da6ed31": {
       "kind": "table",
       "source": "列出已注册工具和外置 Skill。",
@@ -2792,6 +2832,14 @@
       "source_hash": "cd080a6bf2eae38dc7053224321e2f995fb1f02f11293b6e327a08acf1842747",
       "translation": "__ELBOT_CODE_0__ or __ELBOT_CODE_1__",
       "updated_at": 1781579991
+    },
+    "docs/commands.md:table:d48d38b3012ec2b0c8a31182dd5ed23a95b1e2bb7e57a9b8e0cf3f818ff82705": {
+      "kind": "table",
+      "source": "查看某个 Hook 的详细配置。",
+      "source_file": "docs/commands.md",
+      "source_hash": "d48d38b3012ec2b0c8a31182dd5ed23a95b1e2bb7e57a9b8e0cf3f818ff82705",
+      "translation": "View the detailed configuration of a specific Hook.",
+      "updated_at": 1782444282
     },
     "docs/commands.md:table:d505c882b0c2631f371e7ed87bcf24e60f84a23b8aa1774d3fa7dbffd7c8208f": {
       "kind": "table",
