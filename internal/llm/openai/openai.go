@@ -21,9 +21,10 @@ import (
 )
 
 const (
-	defaultRequestTimeout = 60 * time.Second
-	defaultMaxRetries     = 3
-	defaultRetryDelay     = 2 * time.Second
+	defaultFirstChunkTimeout = 180 * time.Second
+	defaultStreamIdleTimeout = 60 * time.Second
+	defaultMaxRetries        = 3
+	defaultRetryDelay        = 2 * time.Second
 )
 
 type RetryEvent struct {
@@ -34,7 +35,9 @@ type RetryEvent struct {
 }
 
 type RequestOptions struct {
-	Timeout           time.Duration
+	FirstChunkTimeout time.Duration
+	StreamIdleTimeout time.Duration
+	ResponseTimeout   time.Duration
 	MaxRetries        int
 	RetryInitialDelay time.Duration
 	OnRetry           func(context.Context, RetryEvent)
@@ -42,8 +45,11 @@ type RequestOptions struct {
 }
 
 func (o RequestOptions) withDefaults() RequestOptions {
-	if o.Timeout <= 0 {
-		o.Timeout = defaultRequestTimeout
+	if o.FirstChunkTimeout <= 0 {
+		o.FirstChunkTimeout = defaultFirstChunkTimeout
+	}
+	if o.StreamIdleTimeout <= 0 {
+		o.StreamIdleTimeout = defaultStreamIdleTimeout
 	}
 	if o.MaxRetries <= 0 {
 		o.MaxRetries = defaultMaxRetries
@@ -61,6 +67,9 @@ type Adapter struct {
 	extraPayload       map[string]any
 	modelExtraPayloads map[string]map[string]any
 	client             *http.Client
+	firstChunkTimeout  time.Duration
+	streamIdleTimeout  time.Duration
+	responseTimeout    time.Duration
 	maxRetries         int
 	retryInitialDelay  time.Duration
 	onRetry            func(context.Context, RetryEvent)
@@ -82,13 +91,15 @@ func NewWithModelExtraPayloads(baseURL, apiKey string, extraPayload map[string]a
 func NewWithOptions(baseURL, apiKey string, extraPayload map[string]any, modelExtraPayloads map[string]map[string]any, opts RequestOptions) *Adapter {
 	baseURL = strings.TrimRight(baseURL, "/")
 	opts = opts.withDefaults()
-	client := &http.Client{Timeout: opts.Timeout}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.ResponseHeaderTimeout = opts.FirstChunkTimeout
+	client := &http.Client{Transport: transport}
 	if strings.TrimSpace(opts.Proxy) != "" {
 		proxyURL, err := url.Parse(opts.Proxy)
 		if err != nil {
 			panic(fmt.Sprintf("invalid proxy URL %q: %v", opts.Proxy, err))
 		}
-		client.Transport = &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+		transport.Proxy = http.ProxyURL(proxyURL)
 	}
 	return &Adapter{
 		baseURL:            baseURL,
@@ -96,6 +107,9 @@ func NewWithOptions(baseURL, apiKey string, extraPayload map[string]any, modelEx
 		extraPayload:       extraPayload,
 		modelExtraPayloads: modelExtraPayloads,
 		client:             client,
+		firstChunkTimeout:  opts.FirstChunkTimeout,
+		streamIdleTimeout:  opts.StreamIdleTimeout,
+		responseTimeout:    opts.ResponseTimeout,
 		maxRetries:         opts.MaxRetries,
 		retryInitialDelay:  opts.RetryInitialDelay,
 		onRetry:            opts.OnRetry,
@@ -165,7 +179,9 @@ func (a *Adapter) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan l
 
 	a.logChatRequest(req, bodyBytes)
 
-	resp, err := a.doWithRetry(ctx, func(ctx context.Context) (*http.Request, error) {
+	responseCtx, cancel := context.WithCancel(ctx)
+
+	resp, err := a.doWithRetry(responseCtx, func(ctx context.Context) (*http.Request, error) {
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, a.endpoint(), bytes.NewReader(bodyBytes))
 		if err != nil {
 			return nil, fmt.Errorf("create request: %w", err)
@@ -175,16 +191,18 @@ func (a *Adapter) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan l
 		return httpReq, nil
 	})
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
+		cancel()
 		return nil, parseError(resp)
 	}
 
 	ch := make(chan llm.StreamChunk)
-	go a.readStream(ctx, resp.Body, ch)
+	go a.readStream(responseCtx, cancel, resp.Body, ch)
 	return ch, nil
 }
 
@@ -644,108 +662,161 @@ type accumToolCall struct {
 	args strings.Builder
 }
 
-func (a *Adapter) readStream(ctx context.Context, body io.ReadCloser, ch chan<- llm.StreamChunk) {
-	defer close(ch)
-	defer body.Close()
+type streamLine struct {
+	line string
+	err  error
+}
 
+func scanStreamLines(ctx context.Context, body io.ReadCloser, lines chan<- streamLine) {
+	defer close(lines)
 	scanner := bufio.NewScanner(body)
-	accums := map[int]*accumToolCall{}
-	seenDone := false
-
 	for scanner.Scan() {
 		select {
 		case <-ctx.Done():
 			return
+		case lines <- streamLine{line: scanner.Text()}:
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		select {
+		case <-ctx.Done():
+		case lines <- streamLine{err: err}:
+		}
+	}
+}
+
+func resetTimer(timer *time.Timer, timeout time.Duration) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
 		default:
 		}
+	}
+	timer.Reset(timeout)
+}
 
-		line := scanner.Text()
+func (a *Adapter) readStream(ctx context.Context, cancel context.CancelFunc, body io.ReadCloser, ch chan<- llm.StreamChunk) {
+	defer close(ch)
+	defer body.Close()
+	defer cancel()
 
-		// Skip empty lines and comments.
-		if line == "" || strings.HasPrefix(line, ":") {
-			continue
-		}
+	lines := make(chan streamLine, 1)
+	go scanStreamLines(ctx, body, lines)
 
-		// Check for stream end.
-		if line == "data: [DONE]" {
-			seenDone = true
-			return
-		}
-
-		// Parse data line.
-		const prefix = "data: "
-		if !strings.HasPrefix(line, prefix) {
-			continue
-		}
-		data := strings.TrimPrefix(line, prefix)
-
-		var raw openAIStreamChunk
-		if err := json.Unmarshal([]byte(data), &raw); err != nil {
-			ch <- llm.StreamChunk{Error: fmt.Errorf("parse stream chunk: %w", err)}
-			return
-		}
-
-		if raw.Usage != nil && len(raw.Choices) == 0 {
-			ch <- llm.StreamChunk{Usage: toUsage(raw.Usage)}
-			continue
-		}
-
-		if len(raw.Choices) == 0 {
-			continue
-		}
-		choice := raw.Choices[0]
-
-		sc := llm.StreamChunk{
-			DeltaContent:          choice.Delta.Content,
-			DeltaReasoningContent: choice.Delta.ReasoningContent,
-		}
-		if choice.FinishReason != nil {
-			sc.FinishReason = *choice.FinishReason
-		}
-		if raw.Usage != nil {
-			sc.Usage = toUsage(raw.Usage)
-		}
-
-		// Accumulate tool call deltas.
-		for _, tc := range choice.Delta.ToolCalls {
-			acc := accums[tc.Index]
-			if acc == nil {
-				acc = &accumToolCall{}
-				accums[tc.Index] = acc
-			}
-			if tc.ID != "" {
-				acc.id = tc.ID
-			}
-			if tc.Function.Name != "" {
-				acc.name = tc.Function.Name
-			}
-			acc.args.WriteString(tc.Function.Arguments)
-		}
-
-		// Emit accumulated tool calls when stream is finishing.
-		if sc.FinishReason != "" && len(accums) > 0 {
-			for idx, acc := range accums {
-				sc.ToolCallDeltas = append(sc.ToolCallDeltas, llm.ToolCallDelta{
-					Index: idx,
-					ID:    acc.id,
-					Name:  acc.name,
-					Args:  acc.args.String(),
-				})
-			}
-		}
-
-		ch <- sc
-
-		// Short-circuit: if we got the finish reason, we're done.
-		// (usage typically comes in the same chunk or the next, but [DONE] follows.)
+	accums := map[int]*accumToolCall{}
+	seenDone := false
+	seenData := false
+	timeout := a.firstChunkTimeout
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	var responseTimeout <-chan time.Time
+	var responseTimer *time.Timer
+	if a.responseTimeout > 0 {
+		responseTimer = time.NewTimer(a.responseTimeout)
+		responseTimeout = responseTimer.C
+		defer responseTimer.Stop()
 	}
 
-	if err := scanner.Err(); err != nil {
-		ch <- llm.StreamChunk{Error: fmt.Errorf("read stream: %w", err)}
-		return
-	}
-	if !seenDone {
-		ch <- llm.StreamChunk{Error: fmt.Errorf("read stream: %w", io.ErrUnexpectedEOF)}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-responseTimeout:
+			ch <- llm.StreamChunk{Error: fmt.Errorf("LLM response exceeded %s", a.responseTimeout)}
+			return
+		case <-timer.C:
+			if seenData {
+				ch <- llm.StreamChunk{Error: fmt.Errorf("LLM stream idle timeout after %s", a.streamIdleTimeout)}
+			} else {
+				ch <- llm.StreamChunk{Error: fmt.Errorf("LLM first stream chunk timeout after %s", a.firstChunkTimeout)}
+			}
+			return
+		case item, ok := <-lines:
+			if !ok {
+				if !seenDone {
+					ch <- llm.StreamChunk{Error: fmt.Errorf("read stream: %w", io.ErrUnexpectedEOF)}
+				}
+				return
+			}
+			if item.err != nil {
+				ch <- llm.StreamChunk{Error: fmt.Errorf("read stream: %w", item.err)}
+				return
+			}
+
+			line := item.line
+			if line == "" || strings.HasPrefix(line, ":") {
+				continue
+			}
+
+			if line == "data: [DONE]" {
+				seenDone = true
+				return
+			}
+
+			const prefix = "data: "
+			if !strings.HasPrefix(line, prefix) {
+				continue
+			}
+			data := strings.TrimPrefix(line, prefix)
+			seenData = true
+			timeout = a.streamIdleTimeout
+			resetTimer(timer, timeout)
+
+			var raw openAIStreamChunk
+			if err := json.Unmarshal([]byte(data), &raw); err != nil {
+				ch <- llm.StreamChunk{Error: fmt.Errorf("parse stream chunk: %w", err)}
+				return
+			}
+
+			if raw.Usage != nil && len(raw.Choices) == 0 {
+				ch <- llm.StreamChunk{Usage: toUsage(raw.Usage)}
+				continue
+			}
+
+			if len(raw.Choices) == 0 {
+				continue
+			}
+			choice := raw.Choices[0]
+
+			sc := llm.StreamChunk{
+				DeltaContent:          choice.Delta.Content,
+				DeltaReasoningContent: choice.Delta.ReasoningContent,
+			}
+			if choice.FinishReason != nil {
+				sc.FinishReason = *choice.FinishReason
+			}
+			if raw.Usage != nil {
+				sc.Usage = toUsage(raw.Usage)
+			}
+
+			for _, tc := range choice.Delta.ToolCalls {
+				acc := accums[tc.Index]
+				if acc == nil {
+					acc = &accumToolCall{}
+					accums[tc.Index] = acc
+				}
+				if tc.ID != "" {
+					acc.id = tc.ID
+				}
+				if tc.Function.Name != "" {
+					acc.name = tc.Function.Name
+				}
+				acc.args.WriteString(tc.Function.Arguments)
+			}
+
+			if sc.FinishReason != "" && len(accums) > 0 {
+				for idx, acc := range accums {
+					sc.ToolCallDeltas = append(sc.ToolCallDeltas, llm.ToolCallDelta{
+						Index: idx,
+						ID:    acc.id,
+						Name:  acc.name,
+						Args:  acc.args.String(),
+					})
+				}
+			}
+
+			ch <- sc
+		}
 	}
 }
 

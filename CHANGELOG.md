@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- LLM 请求超时配置改为 `first_chunk_timeout_seconds`、`stream_idle_timeout_seconds`、`response_timeout_seconds`，旧 `timeout_seconds` 已移除；默认首个流式事件等待 180 秒、流式 idle 60 秒、整次响应不限总时长。
 - Provider 配置重构：删除未使用的 `[global_default]`，删除 `[model_metadata.context_windows]` 全局模型窗口表；模型级 `context_window` 和 `extra_payload` 统一收到 `[providers.<name>.model_configs."<model>"]` 下，按 `provider/model` 查找，避免跨 provider 同名模型冲突。
 - Provider 新增 `proxy` 字段，支持 HTTP/SOCKS5 代理。
 - 表情 Hook 从内嵌插件改为规则 Hook 示例，不再内置 emoticon 插件和 `emoticon.toml` 资产。
@@ -30,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 修复 QQ OneBot 发图片/表情/文件时 API 超时可能取消 WebSocket 写入并触发断线重连的问题；媒体发送失败时会尝试发送同目标文字提示。
 - 修复 OpenAI-compatible 流式响应中途断开但缺失 `[DONE]` 时被当作正常结束的问题；现在会明确通知 LLM 响应中断。
+- 修复 OpenAI-compatible 流式请求使用单一 HTTP 超时导致模型首字慢或长输出超过 60 秒时被错误中断的问题。
 
 
 ## [v0.1.0-alpha] - 2026-06-24

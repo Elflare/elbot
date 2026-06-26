@@ -82,7 +82,9 @@ type ModelMetadataConfig struct {
 }
 
 type LLMRequestConfig struct {
-	TimeoutSeconds           int `toml:"timeout_seconds"`
+	FirstChunkTimeoutSeconds int `toml:"first_chunk_timeout_seconds"`
+	StreamIdleTimeoutSeconds int `toml:"stream_idle_timeout_seconds"`
+	ResponseTimeoutSeconds   int `toml:"response_timeout_seconds"`
 	MaxRetries               int `toml:"max_retries"`
 	RetryInitialDelaySeconds int `toml:"retry_initial_delay_seconds"`
 }
@@ -516,8 +518,14 @@ func (c *Config) applyAppDefaults() {
 	if c.ResidentMemory.NormalMaxUnits <= 0 {
 		c.ResidentMemory.NormalMaxUnits = 300
 	}
-	if c.LLMRequest.TimeoutSeconds <= 0 {
-		c.LLMRequest.TimeoutSeconds = 60
+	if c.LLMRequest.FirstChunkTimeoutSeconds <= 0 {
+		c.LLMRequest.FirstChunkTimeoutSeconds = 180
+	}
+	if c.LLMRequest.StreamIdleTimeoutSeconds <= 0 {
+		c.LLMRequest.StreamIdleTimeoutSeconds = 60
+	}
+	if c.LLMRequest.ResponseTimeoutSeconds < 0 {
+		c.LLMRequest.ResponseTimeoutSeconds = 0
 	}
 	if c.LLMRequest.MaxRetries <= 0 {
 		c.LLMRequest.MaxRetries = 3
@@ -687,4 +695,3 @@ func resolveRelative(baseFile, path string) string {
 	}
 	return filepath.Clean(filepath.Join(filepath.Dir(baseFile), path))
 }
-

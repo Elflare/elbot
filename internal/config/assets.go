@@ -118,7 +118,9 @@ s3_secret_key_env = "ELBOT_S3_SECRET_ACCESS_KEY"
 s3_public_base_url = ""
 
 [llm_request]
-timeout_seconds = 60
+first_chunk_timeout_seconds = 180
+stream_idle_timeout_seconds = 60
+response_timeout_seconds = 0
 max_retries = 3
 retry_initial_delay_seconds = 2
 

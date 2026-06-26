@@ -105,7 +105,25 @@ default_context_window = 256000
 - `extra_payload` 会合并到 LLM 请求 JSON 中，模型级覆盖 Provider 级。
 - `[model_metadata]` 的 `default_context_window` 是全局回退值，没有在 `model_configs` 里配 `context_window` 时使用。
 
+## LLM 请求超时
 
+`app.toml` 的 `[llm_request]` 控制 OpenAI-compatible 流式请求的超时与重试：
+
+```toml
+[llm_request]
+first_chunk_timeout_seconds = 180
+stream_idle_timeout_seconds = 60
+response_timeout_seconds = 0
+max_retries = 3
+retry_initial_delay_seconds = 2
+```
+
+- `first_chunk_timeout_seconds`：从响应开始到首个流式事件的等待上限，默认 180 秒，适合首字较慢的模型。
+- `stream_idle_timeout_seconds`：流式过程中两次事件之间的静默上限，默认 60 秒；每收到一个新事件都会重新计时。
+- `response_timeout_seconds`：整次响应总时长上限，默认 0 表示不限总时长；设置为正数时启用总时长限制。
+- `max_retries` 和 `retry_initial_delay_seconds` 用于建连或 HTTP 可重试失败，重试延迟按指数退避增长。
+
+旧版 `timeout_seconds` 已移除；已有配置需要改为上述三个新字段。
 
 ## API Key 与 `.env`
 

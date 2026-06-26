@@ -300,6 +300,167 @@ func TestChatStream_ToolMessagesPayload(t *testing.T) {
 	}
 }
 
+func TestChatStream_FirstChunkCanArriveAfterIdleTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.(http.Flusher).Flush()
+		time.Sleep(30 * time.Millisecond)
+		io.WriteString(w, `data: {"choices":[{"index":0,"delta":{"content":"late"},"finish_reason":null}]}`+"\n\n")
+		io.WriteString(w, "data: [DONE]\n\n")
+		w.(http.Flusher).Flush()
+	}))
+	defer srv.Close()
+
+	adapter := NewWithOptions(srv.URL, "test-key", nil, nil, RequestOptions{
+		FirstChunkTimeout: 100 * time.Millisecond,
+		StreamIdleTimeout: 10 * time.Millisecond,
+		MaxRetries:        1,
+		RetryInitialDelay: time.Millisecond,
+	})
+	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "test",
+		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
+	})
+	if err != nil {
+		t.Fatalf("ChatStream: %v", err)
+	}
+
+	var got strings.Builder
+	for chunk := range ch {
+		if chunk.Error != nil {
+			t.Fatalf("stream error: %v", chunk.Error)
+		}
+		got.WriteString(chunk.DeltaContent)
+	}
+	if got.String() != "late" {
+		t.Fatalf("content = %q, want late", got.String())
+	}
+}
+
+func TestChatStream_StreamIdleTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, `data: {"choices":[{"index":0,"delta":{"content":"start"},"finish_reason":null}]}`+"\n\n")
+		w.(http.Flusher).Flush()
+		time.Sleep(50 * time.Millisecond)
+	}))
+	defer srv.Close()
+
+	adapter := NewWithOptions(srv.URL, "test-key", nil, nil, RequestOptions{
+		FirstChunkTimeout: 100 * time.Millisecond,
+		StreamIdleTimeout: 10 * time.Millisecond,
+		MaxRetries:        1,
+		RetryInitialDelay: time.Millisecond,
+	})
+	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "test",
+		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
+	})
+	if err != nil {
+		t.Fatalf("ChatStream: %v", err)
+	}
+
+	var gotText string
+	var gotErr error
+	for chunk := range ch {
+		gotText += chunk.DeltaContent
+		if chunk.Error != nil {
+			gotErr = chunk.Error
+		}
+	}
+	if gotText != "start" {
+		t.Fatalf("text = %q, want start", gotText)
+	}
+	if gotErr == nil || !strings.Contains(gotErr.Error(), "idle timeout") {
+		t.Fatalf("error = %v, want idle timeout", gotErr)
+	}
+}
+
+func TestChatStream_StreamIdleResetsOnEachChunk(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		chunks := []string{
+			`data: {"choices":[{"index":0,"delta":{"content":"a"},"finish_reason":null}]}`,
+			`data: {"choices":[{"index":0,"delta":{"content":"b"},"finish_reason":null}]}`,
+			`data: {"choices":[{"index":0,"delta":{"content":"c"},"finish_reason":"stop"}]}`,
+			`data: [DONE]`,
+		}
+		for _, c := range chunks {
+			io.WriteString(w, c+"\n\n")
+			w.(http.Flusher).Flush()
+			time.Sleep(10 * time.Millisecond)
+		}
+	}))
+	defer srv.Close()
+
+	adapter := NewWithOptions(srv.URL, "test-key", nil, nil, RequestOptions{
+		FirstChunkTimeout: 100 * time.Millisecond,
+		StreamIdleTimeout: 30 * time.Millisecond,
+		MaxRetries:        1,
+		RetryInitialDelay: time.Millisecond,
+	})
+	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "test",
+		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
+	})
+	if err != nil {
+		t.Fatalf("ChatStream: %v", err)
+	}
+
+	var got strings.Builder
+	for chunk := range ch {
+		if chunk.Error != nil {
+			t.Fatalf("stream error: %v", chunk.Error)
+		}
+		got.WriteString(chunk.DeltaContent)
+	}
+	if got.String() != "abc" {
+		t.Fatalf("content = %q, want abc", got.String())
+	}
+}
+
+func TestChatStream_ResponseTimeoutOptional(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, c := range []string{
+			`data: {"choices":[{"index":0,"delta":{"content":"a"},"finish_reason":null}]}`,
+			`data: {"choices":[{"index":0,"delta":{"content":"b"},"finish_reason":null}]}`,
+			`data: [DONE]`,
+		} {
+			io.WriteString(w, c+"\n\n")
+			w.(http.Flusher).Flush()
+			time.Sleep(20 * time.Millisecond)
+		}
+	}))
+	defer srv.Close()
+
+	adapter := NewWithOptions(srv.URL, "test-key", nil, nil, RequestOptions{
+		FirstChunkTimeout: 100 * time.Millisecond,
+		StreamIdleTimeout: 50 * time.Millisecond,
+		ResponseTimeout:   0,
+		MaxRetries:        1,
+		RetryInitialDelay: time.Millisecond,
+	})
+	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "test",
+		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
+	})
+	if err != nil {
+		t.Fatalf("ChatStream: %v", err)
+	}
+
+	var got strings.Builder
+	for chunk := range ch {
+		if chunk.Error != nil {
+			t.Fatalf("stream error: %v", chunk.Error)
+		}
+		got.WriteString(chunk.DeltaContent)
+	}
+	if got.String() != "ab" {
+		t.Fatalf("content = %q, want ab", got.String())
+	}
+}
+
 func TestChatStream_UsageOnlyChunk(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

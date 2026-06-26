@@ -615,7 +615,9 @@ func platformConfigEnabled(raw map[string]any) bool {
 
 func appLLMRequestOptions(cfg config.LLMRequestConfig, proxy string) openai.RequestOptions {
 	return openai.RequestOptions{
-		Timeout:           time.Duration(cfg.TimeoutSeconds) * time.Second,
+		FirstChunkTimeout: time.Duration(cfg.FirstChunkTimeoutSeconds) * time.Second,
+		StreamIdleTimeout: time.Duration(cfg.StreamIdleTimeoutSeconds) * time.Second,
+		ResponseTimeout:   time.Duration(cfg.ResponseTimeoutSeconds) * time.Second,
 		MaxRetries:        cfg.MaxRetries,
 		RetryInitialDelay: time.Duration(cfg.RetryInitialDelaySeconds) * time.Second,
 		Proxy:             proxy,
