@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "1099f20b5dfb26894e29f6dc56d2637162d4c090444c3ffc13e9fb546cdc6a09",
+      "source_hash": "730a4cc493995101066c3b8847d45816456c07de903a4862e460ec62519e0638",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782444302
+      "updated_at": 1782461728
     },
     "README.zh-CN.md": {
       "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
@@ -145,6 +145,14 @@
       "translation": "When there are multiple matches, the specific match can be selected via __ELBOT_CODE_0__; if __ELBOT_CODE_1__ is not provided, an error will be reported and all matching positions will be listed.",
       "updated_at": 1782298716
     },
+    "CHANGELOG.md:list:37d1b3ce5330e9258be430381efb3099ba1542f542eae9d94fc0586ef335848b": {
+      "kind": "list",
+      "source": "修复 OpenAI-compatible 流式请求使用单一 HTTP 超时导致模型首字慢或长输出超过 60 秒时被错误中断的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "37d1b3ce5330e9258be430381efb3099ba1542f542eae9d94fc0586ef335848b",
+      "translation": "Fixed an issue where OpenAI-compatible streaming requests used a single HTTP timeout, causing them to be incorrectly interrupted when the model's first token was slow or long outputs exceeded 60 seconds.",
+      "updated_at": 1782461728
+    },
     "CHANGELOG.md:list:3bfc1afeffc284a26448c1c4b861effd798139382834e032c757e03c4de32170": {
       "kind": "list",
       "source": "**日志与审计**：运行日志、审计日志与 Elnis 日志分离，支持结构化字段与按日期轮转。",
@@ -160,6 +168,14 @@
       "source_hash": "423439494f92faf1b2877f3d54114488603b875cb08f29295101899fef57e0a8",
       "translation": "Elvena v3 action channel: Elnis supports __ELBOT_CODE_0__, initially supporting raw platform APIs as well as __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ capabilities; unsupported ones can directly call the messaging platform API.",
       "updated_at": 1782395477
+    },
+    "CHANGELOG.md:list:59aef5f6af2a0610f829cfbdab62ee2b1c7298f9546374f556496c5b31f1f2e1": {
+      "kind": "list",
+      "source": "LLM 请求超时配置改为 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__，旧 __ELBOT_CODE_3__ 已移除；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "59aef5f6af2a0610f829cfbdab62ee2b1c7298f9546374f556496c5b31f1f2e1",
+      "translation": "LLM request timeout configuration changed to __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__; the old __ELBOT_CODE_3__ has been removed;",
+      "updated_at": 1782461728
     },
     "CHANGELOG.md:list:5ba1e7bae3138806db3d563894180256e849e05fa7ca9dc5679e584ad9931382": {
       "kind": "list",
@@ -400,6 +416,14 @@
       "source_hash": "d868e5b43fdd4b220f5103b4c130865608bd216aa604f67b556dc8d92822ecad",
       "translation": "__ELBOT_CODE_0__ command: list all registered Hooks, view detailed configuration of a specific Hook, and hot-reload all Hooks (takes effect after modifying __ELBOT_CODE_1__ without requiring a restart).",
       "updated_at": 1782444302
+    },
+    "CHANGELOG.md:list:dc3765cc3b6cc516b17fb0be590317ce5a5fab8d064d6514066e8593e421b5eb": {
+      "kind": "list",
+      "source": "默认首个流式事件等待 180 秒、流式 idle 60 秒、整次响应不限总时长。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "dc3765cc3b6cc516b17fb0be590317ce5a5fab8d064d6514066e8593e421b5eb",
+      "translation": "By default, the wait time for the first streaming event is 180 seconds, streaming idle is 60 seconds, and there is no total duration limit for the entire response.",
+      "updated_at": 1782461728
     },
     "CHANGELOG.md:list:e674fa7fc18af87b45660da3fff098ff0a482256ae0cdc7d64932ce221ad779c": {
       "kind": "list",

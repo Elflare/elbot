@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- LLM request timeout configuration changed to `first_chunk_timeout_seconds`, `stream_idle_timeout_seconds`, and `response_timeout_seconds`; the old `timeout_seconds` has been removed; By default, the wait time for the first streaming event is 180 seconds, streaming idle is 60 seconds, and there is no total duration limit for the entire response.
 - Provider configuration refactoring: removed unused `[global_default]`, removed `[model_metadata.context_windows]` global model window table; Model-level `context_window` and `extra_payload` are now unified under `[providers.<name>.model_configs."<model>"]` and looked up by `provider/model`, avoiding conflicts between models with the same name across providers.
 - Added `proxy` field to Provider, supporting HTTP/SOCKS5 proxies.
 - Emoticon Hook changed from an embedded plugin to a rule Hook example; the emoticon plugin and `emoticon.toml` assets are no longer built-in.
@@ -32,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fixed an issue where API timeouts when sending images/emojis/files via QQ OneBot might cancel WebSocket writes and trigger disconnection and reconnection; a text notification will now be attempted to the same target when media sending fails.
 - Fixed an issue where OpenAI-compatible streaming responses that disconnected midway but were missing `[DONE]` were treated as normal terminations; now it will explicitly notify that the LLM response was interrupted.
+- Fixed an issue where OpenAI-compatible streaming requests used a single HTTP timeout, causing them to be incorrectly interrupted when the model's first token was slow or long outputs exceeded 60 seconds.
 
 
 ## [v0.1.0-alpha] - 2026-06-24
