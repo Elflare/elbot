@@ -26,9 +26,9 @@
       "updated_at": 1782376269
     },
     "docs/configuration.md": {
-      "source_hash": "9e64268a791d7a87a6ce881fd209287c085202fdb7db1043126822f7c084e19e",
+      "source_hash": "081d3420e6bc9e9003e668b9b2c9c54734909446dc9742ad7ae767b2f791ba9f",
       "target": "docs.en/configuration.md",
-      "updated_at": 1782376291
+      "updated_at": 1782461691
     },
     "docs/elnis-usage.md": {
       "source_hash": "4bf05ee00bac3af1917e4f1dabdd4fa01531cf9bcd1bc69c3d9aa02261f5adc9",
@@ -4561,6 +4561,14 @@
       "translation": "Storage and Runtime Data",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:heading:5f9b95eda72e8950f2b78789945c97fa9db6bc369a780a09574f36e046079c8c": {
+      "kind": "heading",
+      "source": "LLM 请求超时",
+      "source_file": "docs/configuration.md",
+      "source_hash": "5f9b95eda72e8950f2b78789945c97fa9db6bc369a780a09574f36e046079c8c",
+      "translation": "LLM Request Timeout",
+      "updated_at": 1782461691
+    },
     "docs/configuration.md:heading:66d047a76b2b47960e4735109c58f717c3ae4ba351dbdac904db65bef047b717": {
       "kind": "heading",
       "source": "建议的维护方式",
@@ -4792,6 +4800,14 @@
       "source_hash": "1e4e61ce9aa1d8fda4581e885e0d5e284d8b4c6b9fa9280cde3422c4c39b50fd",
       "translation": "__ELBOT_CODE_0__ is the Elnis internal tool whitelist; Elwisps without separate configurations inherit the global default.",
       "updated_at": 1781749596
+    },
+    "docs/configuration.md:list:22cc400819e351e6fb44fe0a36d9bcbb1d25f07798bf0f4ade71cb91c5ce685b": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：从响应开始到首个流式事件的等待上限，默认 180 秒，适合首字较慢的模型。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "22cc400819e351e6fb44fe0a36d9bcbb1d25f07798bf0f4ade71cb91c5ce685b",
+      "translation": "__ELBOT_CODE_0__: The maximum wait time from the start of the response to the first streaming event, defaulting to 180 seconds, suitable for models with slower first-token generation.",
+      "updated_at": 1782461691
     },
     "docs/configuration.md:list:29a04e1e2026ec6733e05ebd19b93fa50b0d011081ff01756a5cf3e72d539244": {
       "kind": "list",
@@ -5305,6 +5321,14 @@
       "translation": "__ELBOT_CODE_0__ is the client profile;",
       "updated_at": 1781962094
     },
+    "docs/configuration.md:list:bc8b019c627adc8fd01dd262f7dd9d54dd0c3d48c35d7930ad9f9d21d9c22291": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：流式过程中两次事件之间的静默上限，默认 60 秒；每收到一个新事件都会重新计时。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "bc8b019c627adc8fd01dd262f7dd9d54dd0c3d48c35d7930ad9f9d21d9c22291",
+      "translation": "__ELBOT_CODE_0__: The maximum silence duration between two events during streaming, defaulting to 60 seconds; the timer resets upon receiving each new event.",
+      "updated_at": 1782461691
+    },
     "docs/configuration.md:list:bfa0df2dd496c9cdda4a014f316e6d436af150a4da3a6a28569036ca86cf92a1": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 支持写成列表，按顺序尝试多个环境变量名；适合临时切换 token 或做多环境兼容。",
@@ -5369,6 +5393,14 @@
       "translation": "__ELBOT_CODE_0__ is optional and supports __ELBOT_CODE_1__ and __ELBOT_CODE_2__ proxy addresses.",
       "updated_at": 1782312356
     },
+    "docs/configuration.md:list:d331edccb8c6af201cbc6e5894d92be741f88d46055210432f2ad48a8a9cb15e": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 用于建连或 HTTP 可重试失败，重试延迟按指数退避增长。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d331edccb8c6af201cbc6e5894d92be741f88d46055210432f2ad48a8a9cb15e",
+      "translation": "__ELBOT_CODE_0__ and __ELBOT_CODE_1__ are used for connection failures or retryable HTTP failures, with retry delays increasing via exponential backoff.",
+      "updated_at": 1782461691
+    },
     "docs/configuration.md:list:d3e9e843be1337f3ce26c3c204ade00db4610967bfc61f7fd42a1f4f03ff6336": {
       "kind": "list",
       "source": "平台配置目录：Windows __ELBOT_CODE_0__；Linux 使用 XDG 配置目录。",
@@ -5424,6 +5456,14 @@
       "source_hash": "ebeb56a48082d767b02e47f06df0086ea8bd0345a7f3ad17f034a236a00a1975",
       "translation": "__ELBOT_CODE_0__ is the variable name pointing to the Bot Token; the reading order is system environment variables, then the configuration directory __ELBOT_CODE_1__;",
       "updated_at": 1781846628
+    },
+    "docs/configuration.md:list:ece2617809ee90280b70980a7992330ebcc9e6c1851fc4f59ac0d13fd9b78f6d": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：整次响应总时长上限，默认 0 表示不限总时长；设置为正数时启用总时长限制。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "ece2617809ee90280b70980a7992330ebcc9e6c1851fc4f59ac0d13fd9b78f6d",
+      "translation": "__ELBOT_CODE_0__: The maximum total duration for the entire response, where 0 by default indicates no limit; setting it to a positive number enables the total duration limit.",
+      "updated_at": 1782461691
     },
     "docs/configuration.md:list:ed50dc150a4230720d402deb43ae704be8f7442ddee17ea9dd496d780716e42b": {
       "kind": "list",
@@ -5641,6 +5681,14 @@
       "translation": "Plugin configurations are fixed under __ELBOT_CODE_0__ in the configuration directory:\n",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:paragraph:4b5ff490d2979da5b4e418f06a4ff2294a77c9d000fc68efcf47c900c15e4d50": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 控制 OpenAI-compatible 流式请求的超时与重试：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "4b5ff490d2979da5b4e418f06a4ff2294a77c9d000fc68efcf47c900c15e4d50",
+      "translation": "The __ELBOT_CODE_1__ of __ELBOT_CODE_0__ controls the timeout and retry of OpenAI-compatible streaming requests:\n",
+      "updated_at": 1782461691
+    },
     "docs/configuration.md:paragraph:4de595b7aa13aeb69b938039abf6a69e1eeff8ce9e2255558e463cba999e8d0a": {
       "kind": "paragraph",
       "source": "字段说明：\n",
@@ -5800,6 +5848,14 @@
       "source_hash": "9b5878230e34a540b3bc2f4b759f21a0bf924ce76763874851dd26916e8f921b",
       "translation": "Usage:\n",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:paragraph:9df1d86d01117e8f6e59299abf97ac21668c92aa8e8e67bc53e8cfaf0251f30c": {
+      "kind": "paragraph",
+      "source": "旧版 __ELBOT_CODE_0__ 已移除；已有配置需要改为上述三个新字段。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "9df1d86d01117e8f6e59299abf97ac21668c92aa8e8e67bc53e8cfaf0251f30c",
+      "translation": "The legacy __ELBOT_CODE_0__ has been removed; existing configurations should be updated to the three new fields mentioned above.\n",
+      "updated_at": 1782461691
     },
     "docs/configuration.md:paragraph:9ebb7813a2367838f3a2a32cfb794592d00c5860d3ebc93bd43cf87a4e43bca7": {
       "kind": "paragraph",
