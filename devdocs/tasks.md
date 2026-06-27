@@ -804,7 +804,6 @@
 - [x] 核心 LLM 请求改为 `MessageSegment`，支持文本、图片和文件占位。
 - [x] OpenAI-compatible adapter 支持图片 `image_url` 请求；模型不支持视觉时自动回滚为文本描述，CLI 同一 Session 只提示一次。
 - [x] QQ OneBot 解析图片 segment，并把语音、视频、普通文件统一作为 file segment 文本化处理。
-- [ ] 后续支持语音、视频和普通文件的真实处理，不再仅文本化。
 - [ ] 后续支持 CLI 图片输入，例如本地路径转图片 segment。
 
 ### cli和服务分离
@@ -863,7 +862,6 @@
 - [x] 支持多种消息segment
 - [x] 可通过扁平 `targets` 指定平台超级管理员、指定私聊或指定群聊，并支持 disabled target 禁止项。
 - [x] 超级管理员引用回复 LLM Elwisp 通知时，自动 resume 到对应后台 session 继续对话；普通用户仍 fallback 为普通引用文本。
-- [ ] 待定：设计 Elnis 与 Elwisp 多轮通信协议。
 - [ ] 待定：评估 stdio/pipe transport。
 
 ### Phase 5：Elvena v3、Hook exec 与平台调用
