@@ -272,6 +272,46 @@ func newTestStore(t *testing.T) storage.Store {
 	return store
 }
 
+func TestTurnResponseTimeoutNotifiesUser(t *testing.T) {
+	p := &fakePlatform{}
+	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
+	a := New(p, &fakeLLM{chatBlocks: []fakeLLMBlock{block}}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a.responseTimeout = 10 * time.Millisecond
+
+	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	got := p.out.String()
+	if !strings.Contains(got, "本轮处理已超时停止") {
+		t.Fatalf("platform output = %q, want timeout notice", got)
+	}
+}
+
+func TestTurnResponseTimeoutZeroAllowsLongTurn(t *testing.T) {
+	p := &fakePlatform{}
+	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
+	a := New(p, &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"done"}}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a.responseTimeout = 0
+
+	done := make(chan error, 1)
+	go func() { done <- a.HandleMessage(context.Background(), "hello") }()
+	<-block.started
+	time.Sleep(20 * time.Millisecond)
+	close(block.release)
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("HandleMessage: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("HandleMessage did not finish after release")
+	}
+	if got := p.out.String(); !strings.Contains(got, "done") {
+		t.Fatalf("platform output = %q, want final reply", got)
+	}
+}
+
 func TestHandleMessageSendsLLMErrorToPlatform(t *testing.T) {
 	p := &fakePlatform{}
 	a := New(p, &fakeLLM{replies: []string{"__ERR__"}}, "test-model", config.ProviderConfig{}, newTestStore(t))

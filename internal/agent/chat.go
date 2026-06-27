@@ -55,6 +55,18 @@ func (a *Agent) startChatWithOutput(ctx context.Context, session *storage.Sessio
 	return nil
 }
 
+func (a *Agent) handleTurnContextDone(ctx context.Context, sessionID string, err error, out turnOutput) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		message := "本轮处理已超时停止，可继续发送消息恢复或重试。"
+		if a.logger != nil {
+			a.logger.WarnContext(ctx, "turn response timeout", "session_id", sessionID, "error", err.Error())
+		}
+		a.audit("turn_response_timeout", "session_id", sessionID, "error", err.Error())
+		out.SendNotice(ctx, message)
+	}
+	return nil
+}
+
 func (a *Agent) runChat(ctx context.Context, session *storage.Session, text string, out turnOutput) error {
 	userSegments := a.userMessageSegments(ctx, text)
 	userContent := llm.SegmentsContentText(userSegments)
@@ -76,7 +88,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	messages := append([]storage.Message{}, loaded.Messages...)
 	messages = append(messages, *userMessage)
 
-	reqCtxInfo, reqCtx, done, err := a.requests.Start(ctx, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat"})
+	reqCtxInfo, reqCtx, done, err := a.requests.Start(ctx, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: a.responseTimeout})
 	if err != nil {
 		return err
 	}
@@ -163,8 +175,8 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			return err
 		}
 		streaming := result.Stream != nil
-		if errors.Is(reqCtx.Err(), context.Canceled) || errors.Is(reqCtx.Err(), context.DeadlineExceeded) {
-			return nil
+		if err := reqCtx.Err(); err != nil {
+			return a.handleTurnContextDone(ctx, session.ID, err, out)
 		}
 		assistantText := result.Text
 		assistantRawText := result.RawText

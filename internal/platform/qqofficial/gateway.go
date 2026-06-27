@@ -92,8 +92,8 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler platform.PlatformH
 			}
 		case opHeartbeat:
 			_ = a.writeGateway(ctx, conn, payload{Op: opHeartbeat, Data: mustJSON(state.seq)})
-		// case opHeartbeatACK:
-		// 	a.logDebug(ctx, "qqofficial heartbeat ack")
+		case opHeartbeatACK:
+			// a.logDebug(ctx, "qqofficial heartbeat ack")
 		case opReconnect:
 			state.resume = true
 			return reconnectReason{mode: reconnectResume}, nil

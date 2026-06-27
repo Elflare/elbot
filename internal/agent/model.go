@@ -512,7 +512,6 @@ func llmRequestOptions(cfg config.LLMRequestConfig, proxy string) openai.Request
 	return openai.RequestOptions{
 		FirstChunkTimeout: time.Duration(cfg.FirstChunkTimeoutSeconds) * time.Second,
 		StreamIdleTimeout: time.Duration(cfg.StreamIdleTimeoutSeconds) * time.Second,
-		ResponseTimeout:   time.Duration(cfg.ResponseTimeoutSeconds) * time.Second,
 		MaxRetries:        cfg.MaxRetries,
 		RetryInitialDelay: time.Duration(cfg.RetryInitialDelaySeconds) * time.Second,
 		Proxy:             proxy,

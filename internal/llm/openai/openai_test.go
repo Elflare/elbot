@@ -419,7 +419,7 @@ func TestChatStream_StreamIdleResetsOnEachChunk(t *testing.T) {
 	}
 }
 
-func TestChatStream_ResponseTimeoutOptional(t *testing.T) {
+func TestChatStream_ActiveStreamCompletesWithoutResponseTimeout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		for _, c := range []string{
@@ -437,7 +437,6 @@ func TestChatStream_ResponseTimeoutOptional(t *testing.T) {
 	adapter := NewWithOptions(srv.URL, "test-key", nil, nil, RequestOptions{
 		FirstChunkTimeout: 100 * time.Millisecond,
 		StreamIdleTimeout: 50 * time.Millisecond,
-		ResponseTimeout:   0,
 		MaxRetries:        1,
 		RetryInitialDelay: time.Millisecond,
 	})

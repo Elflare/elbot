@@ -37,7 +37,6 @@ type RetryEvent struct {
 type RequestOptions struct {
 	FirstChunkTimeout time.Duration
 	StreamIdleTimeout time.Duration
-	ResponseTimeout   time.Duration
 	MaxRetries        int
 	RetryInitialDelay time.Duration
 	OnRetry           func(context.Context, RetryEvent)
@@ -69,7 +68,6 @@ type Adapter struct {
 	client             *http.Client
 	firstChunkTimeout  time.Duration
 	streamIdleTimeout  time.Duration
-	responseTimeout    time.Duration
 	maxRetries         int
 	retryInitialDelay  time.Duration
 	onRetry            func(context.Context, RetryEvent)
@@ -109,7 +107,6 @@ func NewWithOptions(baseURL, apiKey string, extraPayload map[string]any, modelEx
 		client:             client,
 		firstChunkTimeout:  opts.FirstChunkTimeout,
 		streamIdleTimeout:  opts.StreamIdleTimeout,
-		responseTimeout:    opts.ResponseTimeout,
 		maxRetries:         opts.MaxRetries,
 		retryInitialDelay:  opts.RetryInitialDelay,
 		onRetry:            opts.OnRetry,
@@ -709,20 +706,9 @@ func (a *Adapter) readStream(ctx context.Context, cancel context.CancelFunc, bod
 	timeout := a.firstChunkTimeout
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
-	var responseTimeout <-chan time.Time
-	var responseTimer *time.Timer
-	if a.responseTimeout > 0 {
-		responseTimer = time.NewTimer(a.responseTimeout)
-		responseTimeout = responseTimer.C
-		defer responseTimer.Stop()
-	}
-
 	for {
 		select {
 		case <-ctx.Done():
-			return
-		case <-responseTimeout:
-			ch <- llm.StreamChunk{Error: fmt.Errorf("LLM response exceeded %s", a.responseTimeout)}
 			return
 		case <-timer.C:
 			if seenData {

@@ -29,8 +29,6 @@ import (
 	"elbot/internal/turn"
 )
 
-const defaultRequestTimeout = 5 * time.Minute
-
 type LogManager interface {
 	Runtime() *slog.Logger
 	Audit() *slog.Logger
@@ -83,6 +81,7 @@ type Agent struct {
 	visionFallbackMu            sync.Mutex
 
 	visionFallbackNotified map[string]bool
+	responseTimeout        time.Duration
 	discoveredTools        map[string]map[string]llm.ToolSchema
 	actorID                string
 	scopeID                string
@@ -104,6 +103,13 @@ func NewWithPrefixes(p platform.PlatformAdapter, client llm.LLM, modeModels map[
 
 func NewWithOptions(p platform.PlatformAdapter, client llm.LLM, providerName string, modeModels map[string]config.ModelSelection, providers map[string]config.ProviderConfig, statePath string, store storage.Store, prefixes []string, sessionCfg session.Config, namingSelection config.ModelSelection, namingClient llm.LLM, namingModel string, namingNotifier session.NamingNotifier, soulPath string) *Agent {
 	return NewWithRequestConfig(p, client, providerName, modeModels, providers, statePath, store, prefixes, sessionCfg, namingSelection, namingClient, namingModel, namingNotifier, soulPath, config.Default().LLMRequest)
+}
+
+func responseTimeout(cfg config.LLMRequestConfig) time.Duration {
+	if cfg.ResponseTimeoutSeconds <= 0 {
+		return 0
+	}
+	return time.Duration(cfg.ResponseTimeoutSeconds) * time.Second
 }
 
 func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerName string, modeModels map[string]config.ModelSelection, providers map[string]config.ProviderConfig, statePath string, store storage.Store, prefixes []string, sessionCfg session.Config, namingSelection config.ModelSelection, namingClient llm.LLM, namingModel string, namingNotifier session.NamingNotifier, soulPath string, llmRequestConfig config.LLMRequestConfig) *Agent {
@@ -130,7 +136,7 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 		stateModTime:           stateModTime,
 		store:                  store,
 		sessions:               session.NewServiceWithConfig(store, sessionCfg, titleGen, namingNotifier),
-		requests:               request.NewManager(defaultRequestTimeout),
+		requests:               request.NewManager(0),
 		turns:                  turn.NewManager(),
 		commands:               command.NewRouter(prefixes),
 		soul:                   promptSoul,
@@ -147,6 +153,7 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 		autoConfirmSession:     map[string]bool{},
 		autoConfirmTools:       map[string]map[string]bool{},
 		visionFallbackNotified: map[string]bool{},
+		responseTimeout:        responseTimeout(llmRequestConfig),
 
 		discoveredTools: map[string]map[string]llm.ToolSchema{},
 
