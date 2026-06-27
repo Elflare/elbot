@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "16dc2e26f635313f874135787192432fbf82ca0836a5d42a1786e0924c24467f",
+      "source_hash": "473b9c66645c8891129e26b56c6a8ebe7aa693c2e2e23045565e99c231f983d2",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782529943
+      "updated_at": 1782563804
     },
     "README.zh-CN.md": {
       "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
@@ -96,6 +96,14 @@
       "source_hash": "14cd896f3e686f14895d68bac5e89d2420b4109ebf71e29785677cc89a68d1a8",
       "translation": "Interfaces, configurations, and internal implementations may still be adjusted; it is more suitable for exploratory use as a personal Agent/bot framework.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:172ce4a2b47495feea66fd71dd0d868f23fcc3fbe8c9aa01a58362342daddd52": {
+      "kind": "list",
+      "source": "qq heartbeat ack 和 qqofficial gateway resumed 不再记录log",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "172ce4a2b47495feea66fd71dd0d868f23fcc3fbe8c9aa01a58362342daddd52",
+      "translation": "qq heartbeat ack and qqofficial gateway resumed are no longer logged",
+      "updated_at": 1782563804
     },
     "CHANGELOG.md:list:18f8686c3e2512c85d4545e776b64d44967ba9ce78170d168c2be40eff28fa31": {
       "kind": "list",
