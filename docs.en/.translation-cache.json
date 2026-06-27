@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "688ab35c5247c8a35b9a5758239b178c425879f3dbeca8909fd527f94263906f",
+      "source_hash": "fe32cb9911e33ae06bf138242f19437d5476822326409fadac3bbe483d8fd173",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782567776
+      "updated_at": 1782569783
     },
     "README.zh-CN.md": {
       "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
@@ -184,6 +184,14 @@
       "source_hash": "423439494f92faf1b2877f3d54114488603b875cb08f29295101899fef57e0a8",
       "translation": "Elvena v3 action channel: Elnis supports __ELBOT_CODE_0__, initially supporting raw platform APIs as well as __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ capabilities; unsupported ones can directly call the messaging platform API.",
       "updated_at": 1782395477
+    },
+    "CHANGELOG.md:list:48a9dbb08660f2dae754713aea25100d54b59eb98c8a3fea1d54df9cfb657b67": {
+      "kind": "list",
+      "source": "read_el_skill 现在依赖modify_el_skill，方便执行可能的修改",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "48a9dbb08660f2dae754713aea25100d54b59eb98c8a3fea1d54df9cfb657b67",
+      "translation": "read_el_skill now depends on modify_el_skill to facilitate possible modifications",
+      "updated_at": 1782569783
     },
     "CHANGELOG.md:list:59aef5f6af2a0610f829cfbdab62ee2b1c7298f9546374f556496c5b31f1f2e1": {
       "kind": "list",
