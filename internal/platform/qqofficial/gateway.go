@@ -92,8 +92,8 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler platform.PlatformH
 			}
 		case opHeartbeat:
 			_ = a.writeGateway(ctx, conn, payload{Op: opHeartbeat, Data: mustJSON(state.seq)})
-		case opHeartbeatACK:
-			a.logDebug(ctx, "qqofficial heartbeat ack")
+		// case opHeartbeatACK:
+		// 	a.logDebug(ctx, "qqofficial heartbeat ack")
 		case opReconnect:
 			state.resume = true
 			return reconnectReason{mode: reconnectResume}, nil
@@ -163,7 +163,7 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler platform.PlatformH
 		go a.notifyConnected(ctx)
 	case eventResumed:
 		state.resume = true
-		a.logInfo(ctx, "qqofficial gateway resumed")
+		// a.logDebug(ctx, "qqofficial gateway resumed")
 	case eventC2CMessageCreate:
 		var msg c2cMessage
 		if err := json.Unmarshal(p.Data, &msg); err != nil {
