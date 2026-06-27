@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "fe32cb9911e33ae06bf138242f19437d5476822326409fadac3bbe483d8fd173",
+      "source_hash": "51638754962df462a00e83f86ebc36930bbcf828054cfcba5c20304809aafa60",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782569783
+      "updated_at": 1782574901
     },
     "README.zh-CN.md": {
       "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
@@ -153,6 +153,14 @@
       "translation": "Provider configuration refactoring: removed unused __ELBOT_CODE_0__, removed __ELBOT_CODE_1__ global model window table;",
       "updated_at": 1782312399
     },
+    "CHANGELOG.md:list:33a2ed6142f63fac0076480da8ce2e21882df328c3016365afaea0d692d9c3b9": {
+      "kind": "list",
+      "source": "单次 LLM 流式请求只由首包和 idle 超时控制。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "33a2ed6142f63fac0076480da8ce2e21882df328c3016365afaea0d692d9c3b9",
+      "translation": "A single LLM streaming request is controlled only by the first packet and idle timeout.",
+      "updated_at": 1782574901
+    },
     "CHANGELOG.md:list:36d8eefabd86733235aa7765b21ab8353754de23bae489203434cee8a682113b": {
       "kind": "list",
       "source": "多处匹配时可通过 __ELBOT_CODE_0__ 选择第几处，未传 __ELBOT_CODE_1__ 报错并列出所有匹配位置。",
@@ -192,6 +200,14 @@
       "source_hash": "48a9dbb08660f2dae754713aea25100d54b59eb98c8a3fea1d54df9cfb657b67",
       "translation": "read_el_skill now depends on modify_el_skill to facilitate possible modifications",
       "updated_at": 1782569783
+    },
+    "CHANGELOG.md:list:572872f4348e759b46f65964708d6035ffe736d5c7f16bbeca3641f8458acd29": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 现在控制整轮用户请求总时长，默认 __ELBOT_CODE_1__ 表示不限时；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "572872f4348e759b46f65964708d6035ffe736d5c7f16bbeca3641f8458acd29",
+      "translation": "__ELBOT_CODE_0__ now controls the total duration of a full round of user requests; by default, __ELBOT_CODE_1__ indicates no time limit;",
+      "updated_at": 1782574901
     },
     "CHANGELOG.md:list:59aef5f6af2a0610f829cfbdab62ee2b1c7298f9546374f556496c5b31f1f2e1": {
       "kind": "list",
@@ -288,6 +304,14 @@
       "source_hash": "7efdca0726c1f3e11a9edd7c8226f6565a4f8de048ed6ca513259bf85f964e18",
       "translation": "**ELyph Task Notation**: A structured task description language used for LLM Cron and native Skills to reduce natural language ambiguity.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:7fe299a24d0dd37ffb215de8aee1f6068caf0d9c1a4e74ef554a7299256f3754": {
+      "kind": "list",
+      "source": "修复长工具链会被 Agent 内部 5 分钟默认请求超时静默停止的问题；整轮超时时现在会提示用户。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "7fe299a24d0dd37ffb215de8aee1f6068caf0d9c1a4e74ef554a7299256f3754",
+      "translation": "Fixed an issue where long tool chains would be silently stopped by the Agent's internal 5-minute default request timeout; users will now be notified upon a full round timeout.",
+      "updated_at": 1782574901
     },
     "CHANGELOG.md:list:804a20b9431dfd46cceb9e146447ae9d772bc44fb8be93b5eefe7498ef357e15": {
       "kind": "list",
