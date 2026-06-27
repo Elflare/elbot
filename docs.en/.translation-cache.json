@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "473b9c66645c8891129e26b56c6a8ebe7aa693c2e2e23045565e99c231f983d2",
+      "source_hash": "688ab35c5247c8a35b9a5758239b178c425879f3dbeca8909fd527f94263906f",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782563804
+      "updated_at": 1782567776
     },
     "README.zh-CN.md": {
       "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
@@ -112,6 +112,14 @@
       "source_hash": "18f8686c3e2512c85d4545e776b64d44967ba9ce78170d168c2be40eff28fa31",
       "translation": "Added __ELBOT_CODE_0__ field to Provider, supporting HTTP/SOCKS5 proxies.",
       "updated_at": 1782312399
+    },
+    "CHANGELOG.md:list:21bcff96ea97868ed7a73b08187eef3ce889b28e69c118b725a5783d07dcadc3": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 高风险工具调用详情现在会把 JSON 参数格式化成更易读的多行展示，字符串里的 __ELBOT_CODE_1__ 会显示为真实换行。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "21bcff96ea97868ed7a73b08187eef3ce889b28e69c118b725a5783d07dcadc3",
+      "translation": "__ELBOT_CODE_0__ High-risk tool invocation details now format JSON parameters into a more readable multi-line display, and __ELBOT_CODE_1__ within strings will be displayed as actual line breaks.",
+      "updated_at": 1782567776
     },
     "CHANGELOG.md:list:280823f9e19a44bcbfe92547cc46408bbcf2b93e26cd0cfcf98c3d26afaa1c3e": {
       "kind": "list",

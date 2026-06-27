@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `/detail` High-risk tool invocation details now format JSON parameters into a more readable multi-line display, and `\n` within strings will be displayed as actual line breaks.
 - qq heartbeat ack and qqofficial gateway resumed are no longer logged
 
 ## [v0.2.0-alpha - 2026-06-27]
