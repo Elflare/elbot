@@ -2700,8 +2700,14 @@ func TestRiskConfirmationDetailShowsFullArgumentsWithoutResolving(t *testing.T) 
 	if err := a.HandleMessage(ctx, "/detail"); err != nil {
 		t.Fatalf("detail: %v", err)
 	}
-	if !strings.Contains(p.out.String(), fullArgs) {
-		t.Fatalf("detail did not include full args: %q", p.out.String())
+	detailOutput := p.out.String()
+	if strings.Contains(detailOutput, fullArgs) {
+		t.Fatalf("detail should format args instead of raw JSON: %q", detailOutput)
+	}
+	for _, want := range []string{"cmd: ", "echo 1234567890", " > out.txt"} {
+		if !strings.Contains(detailOutput, want) {
+			t.Fatalf("detail missing %q: %q", want, detailOutput)
+		}
 	}
 	select {
 	case resp := <-done:
@@ -2721,6 +2727,48 @@ func TestRiskConfirmationDetailShowsFullArgumentsWithoutResolving(t *testing.T) 
 		}
 	case <-time.After(time.Second):
 		t.Fatal("confirm did not resolve")
+	}
+}
+
+func TestRiskConfirmationDetailFormatsEscapedNewlines(t *testing.T) {
+	p := &fakePlatform{}
+	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	ctx := context.Background()
+	session, err := a.sessions.Create(ctx, a.scope(context.Background()), "confirm detail newlines")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if !a.turns.StartLLM(session.ID, "run tool") || !a.turns.StartToolPhase(session.ID) {
+		t.Fatal("failed to enter tool phase")
+	}
+	done := make(chan turn.RiskConfirmationResponse, 1)
+	go func() {
+		resp, _ := a.turns.AwaitRiskConfirmation(session.ID, turn.RiskConfirmation{ID: "call_1", ToolName: "edit_file", Arguments: `{"path":"a.txt","content":"line 1\nline 2\nline 3"}`, Risk: "high"})
+		done <- resp
+	}()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) && a.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if a.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
+		t.Fatal("did not enter risk confirmation phase")
+	}
+	if err := a.HandleMessage(ctx, "/detail"); err != nil {
+		t.Fatalf("detail: %v", err)
+	}
+	out := p.out.String()
+	if strings.Contains(out, `line 1\nline 2`) {
+		t.Fatalf("detail still contains escaped newlines: %q", out)
+	}
+	for _, want := range []string{"content: |\n", "  line 1\n", "  line 2\n", "  line 3\n", "path: a.txt"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("detail missing %q: %q", want, out)
+		}
+	}
+	select {
+	case resp := <-done:
+		t.Fatalf("detail should not resolve confirmation: %#v", resp)
+	default:
 	}
 }
 

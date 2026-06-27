@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `/detail` 高风险工具调用详情现在会把 JSON 参数格式化成更易读的多行展示，字符串里的 `\n` 会显示为真实换行。
 - qq heartbeat ack 和 qqofficial gateway resumed 不再记录log
 
 ## [v0.2.0-alpha - 2026-06-27]
