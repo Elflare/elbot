@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
@@ -145,6 +146,11 @@ func EditFile(path, requestedEncoding, expectedSHA string, create, dryRun bool, 
 	}
 	if dryRun {
 		return result, nil
+	}
+	if created {
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return EditResult{}, fmt.Errorf("create parent directory: %w", err)
+		}
 	}
 	mode := os.FileMode(0644)
 	if info, err := os.Stat(path); err == nil {

@@ -526,6 +526,32 @@ func TestEditFileToolCreateAndAppend(t *testing.T) {
 	}
 }
 
+func TestEditFileToolCreateAndAppendCreatesParentDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing", "created.txt")
+	args, _ := json.Marshal(map[string]any{
+		"path":   path,
+		"create": true,
+		"edits": []map[string]any{{
+			"operation": "append",
+			"content":   "alpha",
+		}},
+	})
+	result, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "created: true") {
+		t.Fatalf("expected created result, got:\n%s", result.Content)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != "alpha\n" {
+		t.Fatalf("file content = %q", got)
+	}
+}
+
 func TestEditFileToolCreateWithExpectedSHARequiresExistingFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing.txt")
 	args, _ := json.Marshal(map[string]any{
