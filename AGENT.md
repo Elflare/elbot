@@ -196,8 +196,8 @@
 - `internal/tool/skill/catalog.go`：skill catalog；记录 AgentSkill/Go skill 的名称、详情格式、风险、根目录和 Go binary 路径，供隐藏包装工具按名称查找。
 
 - `internal/tool/skill/creator.go`：`create_el_skill` 内置元工具；用结构化参数 `name/description/risk/elyph/go_source` 创建 ElBot 原生 skill，写入 `SKILL.elyph`，可选写入 `main.go` 并编译，创建前用 ELyph parser/linter 校验，成功后自动 reload；不再要求 LLM 拼 `SKILL.md` front matter，未提供源码时创建纯 ELyph 文本 skill。
-- `internal/tool/skill/el_skill_modifier.go`：`read_el_skill`/`modify_el_skill` 内置元工具；按 `target` 读写原生 EL Skill 的 `SKILL.elyph` 或 `main.go`，支持完整 `content` 覆盖或 1-based 行 patch；技能定义修改会校验 ELyph 并 reload，源码修改只写文件并提示后续 finalize。
-- `internal/tool/skill/finalizer.go`：`finalize_el_skill` 内置元工具；完成原生 EL Skill 修改，校验 `SKILL.elyph`，对 `main.go` 执行 gofmt、`package main` 校验、`go build` 和 reload，并把格式化/编译错误作为结果返回给 LLM。
+- `internal/tool/skill/modify_el_skill.go`：`read_el_skill`/`modify_el_skill` 内置元工具；按 `target` 读写原生 EL Skill 的 `SKILL.elyph` 或 `main.go`，支持完整 `content` 覆盖或 1-based 行 patch；技能定义修改会校验 ELyph 并 reload，源码修改只写文件并提示后续 finalize。
+- `internal/tool/skill/finalize_el_skill.go`：`finalize_el_skill` 内置元工具；完成原生 EL Skill 修改，校验 `SKILL.elyph`，对 `main.go` 执行 gofmt、`package main` 校验、`go build` 和 reload，并把格式化/编译错误作为结果返回给 LLM。
 - `internal/tool/skill/go_source.go`：原生 Go skill 源码维护 helper；提供 gofmt、`package main` 校验、Go 可执行文件解析和 `go build` 编译能力，供 `finalize_el_skill` 和创建流程复用。
 - `internal/tool/skill/descriptor.go`：skill 描述对象；让 AgentSkill/Go skill 可被 `discover_tool` 查到详情，按结构化 detail 暴露内容、格式和规则卡；skill 本体不作为可直接调用 schema 暴露。
 - `internal/tool/skill/scanner.go`：skill 文件系统扫描与 reload；主程序默认根目录为配置目录下 `skills/`；AgentSkill 使用 `agent/<skill>/SKILL.md`，可选 `SKILL.elyph` 覆写 Agent 可读说明；Go skill 必须使用 `go/<skill>/SKILL.elyph`，可选 binary；同步新增/删除 skill 并更新 catalog。
