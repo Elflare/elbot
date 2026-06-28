@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -31,6 +33,39 @@ type LineNumber struct {
 	End   bool
 }
 
+func (n *LineNumber) UnmarshalJSON(data []byte) error {
+	text := strings.TrimSpace(string(data))
+	if text == "" || text == "null" {
+		return nil
+	}
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		str = strings.ToLower(strings.TrimSpace(str))
+		if str == "" {
+			return nil
+		}
+		if str == "end" {
+			n.End = true
+			n.Value = 0
+			return nil
+		}
+		value, err := strconv.Atoi(str)
+		if err != nil {
+			return fmt.Errorf("line number string must be integer or \"end\"")
+		}
+		n.Value = value
+		n.End = false
+		return nil
+	}
+	var value int
+	if err := json.Unmarshal(data, &value); err != nil {
+		return fmt.Errorf("line number must be integer or \"end\"")
+	}
+	n.Value = value
+	n.End = false
+	return nil
+}
+
 type File struct {
 	Path        string
 	Bytes       []byte
@@ -42,15 +77,15 @@ type File struct {
 }
 
 type Edit struct {
-	Operation       string
-	StartLine       int
-	EndLine         LineNumber
-	Content         string
-	ExpectedContent *string
-	OldContent      string
-	Anchor          string
-	MatchMode       string
-	Index           *int
+	Operation       string     `json:"operation"`
+	StartLine       int        `json:"start_line"`
+	EndLine         LineNumber `json:"end_line"`
+	Content         string     `json:"content"`
+	ExpectedContent *string    `json:"expected_content"`
+	OldContent      string     `json:"old_content"`
+	Anchor          string     `json:"anchor"`
+	MatchMode       string     `json:"match_mode"`
+	Index           *int       `json:"index"`
 }
 
 type EditResult struct {
@@ -62,6 +97,20 @@ type EditResult struct {
 	SHA256After  string
 	Diff         string
 	NewBytes     []byte
+}
+
+func EditOperationProperties() map[string]any {
+	return map[string]any{
+		"operation":        map[string]any{"type": "string", "description": "编辑操作：replace、delete、insert_line_before、insert_line_after、prepend、append、replace_match、delete_match、insert_before_match、insert_after_match。edits 按顺序应用，后一步基于前一步结果；工具不会重排序或补偿行号。"},
+		"start_line":       map[string]any{"type": "integer", "description": "行号操作的起始行号，1-based。"},
+		"end_line":         map[string]any{"type": "string", "description": "行号 replace/delete 的结束行号，1-based 且包含该行；也可传 end；默认等于 start_line。"},
+		"content":          map[string]any{"type": "string", "description": "replace/insert 写入的文本；delete/delete_match 忽略此字段。insert_line_*、prepend、append 及 line 模式 insert_*_match 按整行插入并自动补换行，无需自加换行符；content 模式 insert_*_match 为字面插入，不自动加换行符。"},
+		"expected_content": map[string]any{"type": "string", "description": "replace/delete 前校验目标行范围原始文本；换行符按 \\n 规范化比较，用于防止行号漂移误改；不需要校验时请省略该字段，不要传空字符串。"},
+		"old_content":      map[string]any{"type": "string", "description": "replace_match/delete_match 的匹配文本。match_mode=content（默认）时为精确子串，写多少匹配/替换多少；match_mode=line 时为单行前缀，匹配并操作整行。"},
+		"anchor":           map[string]any{"type": "string", "description": "insert_before_match/insert_after_match 的匹配文本，语义同 old_content，受 match_mode 控制。"},
+		"match_mode":       map[string]any{"type": "string", "enum": []string{"content", "line"}, "description": "*_match 的匹配方式。content（默认）：精确子串，写多少替换多少，insert 为字面插入不自动加换行符。line：单行前缀匹配整行，容忍行首缩进，needle 不得含换行；操作整行，insert 按整行插入自动补换行，content 可多行展开。仅对 *_match 操作有效。"},
+		"index":            map[string]any{"type": "integer", "description": "当 old_content/anchor 匹配到多处时，用 index 选择第几处，1-based。默认不填：唯一匹配时直接命中，多处匹配时报错并列出所有匹配位置供你更精准匹配或传入 index。仅对 *_match 操作有效。"},
+	}
 }
 
 func ReadFile(path, requestedEncoding string) (File, error) {

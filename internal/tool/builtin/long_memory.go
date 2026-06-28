@@ -18,6 +18,7 @@ import (
 
 	"elbot/internal/llm"
 	"elbot/internal/tool"
+	"elbot/internal/utils/fileops"
 
 	_ "modernc.org/sqlite"
 )
@@ -52,22 +53,33 @@ type longMemorySearchArgs struct {
 }
 
 type longMemoryUpdateArgs struct {
-	ID       int64   `json:"id"`
-	Category *string `json:"category"`
-	Title    *string `json:"title"`
-	Summary  *string `json:"summary"`
-	Keywords *string `json:"keywords"`
-	Content  *string `json:"content"`
+	ID           int64
+	Category     *string
+	Title        *string
+	Summary      *string
+	Keywords     *string
+	Content      *string
+	ContentEdits []fileops.Edit
 }
 
 type longMemoryWriteArgs struct {
-	Operation string `json:"operation"`
-	ID        int64  `json:"id"`
-	Category  string `json:"category"`
-	Title     string `json:"title"`
-	Summary   string `json:"summary"`
-	Keywords  string `json:"keywords"`
-	Content   string `json:"content"`
+	Operation    string         `json:"operation"`
+	ID           int64          `json:"id"`
+	Category     string         `json:"category"`
+	Title        string         `json:"title"`
+	Summary      string         `json:"summary"`
+	Keywords     string         `json:"keywords"`
+	Content      string         `json:"content"`
+	ContentEdits []fileops.Edit `json:"content_edits"`
+}
+
+type longMemoryUpdatePreview struct {
+	Before      longMemoryRecord
+	After       longMemoryRecord
+	File        fileops.File
+	FullContent string
+	Diff        string
+	Changes     []string
 }
 
 type longMemoryRecord struct {
@@ -185,16 +197,94 @@ func (t LongMemoryWriteTool) Schema() llm.ToolSchema {
 	return longMemoryBuilder(t.Name(), t.Info().Description).
 		String("operation", "写操作：save、update、delete。", tool.Required()).
 		Integer("id", "update/delete 需要的记忆 ID。").
-		String("category", "save 需要；update 可选。分类。优先复用已有分类，避免创建语义重叠的新分类。").
-		String("title", "save 需要；update 可选。标题。").
-		String("summary", "save 需要；update 可选。摘要，建议 50 字以内。").
-		String("keywords", "save 需要；update 可选。搜索关键词，用空格、逗号或换行分隔。").
-		String("content", "save 需要；update 可选。完整长期记忆内容。delete 会忽略。").
+		String("category", "save 需要；update 时不填表示保持不变，填写表示修改分类。优先复用已有分类，避免创建语义重叠的新分类。").
+		String("title", "save 需要；update 时不填表示保持不变，填写表示修改标题。").
+		String("summary", "save 需要；update 时不填表示保持不变，填写表示修改摘要，建议 50 字以内。").
+		String("keywords", "save 需要；update 时不填表示保持不变，填写表示修改搜索关键词；用空格、逗号或换行分隔。").
+		String("content", "save 需要；update 时不填表示保持不变，填写表示整段替换正文；delete 会忽略。update 时不能和 content_edits 同时填写。").
+		ObjectArray("content_edits", "仅 update 有效；不能和 content 同时填写。", fileops.EditOperationProperties(), []string{"operation"}).
 		BuildSchema()
 }
-func (t LongMemoryWriteTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+
+func (t LongMemoryWriteTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
+	args, err := t.decodeWriteArgs(req)
+	if err != nil {
+		return err
+	}
+	if strings.ToLower(strings.TrimSpace(args.Operation)) != "update" {
+		return nil
+	}
+	_, err = t.store.previewUpdate(ctx, longMemoryUpdateArgsFromWrite(args))
+	return err
+}
+
+func (t LongMemoryWriteTool) RiskDetail(ctx context.Context, req tool.CallRequest) (string, error) {
+	args, err := t.decodeWriteArgs(req)
+	if err != nil {
+		return "", err
+	}
+	if strings.ToLower(strings.TrimSpace(args.Operation)) != "update" {
+		return "", nil
+	}
+	preview, err := t.store.previewUpdate(ctx, longMemoryUpdateArgsFromWrite(args))
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "操作：更新长期记忆\n")
+	fmt.Fprintf(&b, "ID：%d\n", preview.After.ID)
+	fmt.Fprintf(&b, "文件：%s\n", preview.After.FilePath)
+	fmt.Fprintf(&b, "分类：%s\n", preview.After.Category)
+	fmt.Fprintf(&b, "标题：%s\n", preview.After.Title)
+	b.WriteString("模式：确认后写入；确认前已自动预检\n")
+	if len(args.ContentEdits) > 0 {
+		b.WriteString("正文编辑：content_edits 只作用于正文，行号从正文第 1 行开始\n")
+	}
+	if len(preview.Changes) > 0 {
+		b.WriteString("字段变化：\n")
+		for _, change := range preview.Changes {
+			fmt.Fprintf(&b, "- %s\n", change)
+		}
+	}
+	b.WriteString("预检 diff:\n")
+	b.WriteString(preview.Diff)
+	if !strings.HasSuffix(preview.Diff, "\n") {
+		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n"), nil
+}
+
+func (t LongMemoryWriteTool) decodeWriteArgs(req tool.CallRequest) (longMemoryWriteArgs, error) {
 	var args longMemoryWriteArgs
 	if err := lmDecodeArgs(req.Arguments, &args, t.Name()); err != nil {
+		return longMemoryWriteArgs{}, err
+	}
+	return args, nil
+}
+
+func longMemoryUpdateArgsFromWrite(args longMemoryWriteArgs) longMemoryUpdateArgs {
+	update := longMemoryUpdateArgs{ID: args.ID, ContentEdits: args.ContentEdits}
+	if args.Category != "" {
+		update.Category = &args.Category
+	}
+	if args.Title != "" {
+		update.Title = &args.Title
+	}
+	if args.Summary != "" {
+		update.Summary = &args.Summary
+	}
+	if args.Keywords != "" {
+		update.Keywords = &args.Keywords
+	}
+	if args.Content != "" {
+		update.Content = &args.Content
+	}
+	return update
+}
+
+func (t LongMemoryWriteTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+	args, err := t.decodeWriteArgs(req)
+	if err != nil {
 		return nil, err
 	}
 	switch strings.ToLower(strings.TrimSpace(args.Operation)) {
@@ -205,23 +295,7 @@ func (t LongMemoryWriteTool) Call(ctx context.Context, req tool.CallRequest) (*t
 		}
 		return textResult(fmt.Sprintf("记忆写入成功！\nID：%d\n分类：%s\n标题：%s\n文件：%s\n可通过 long_memory_search 检索，或用 long_memory_write 更新/删除。", record.ID, record.Category, record.Title, record.FilePath)), nil
 	case "update":
-		update := longMemoryUpdateArgs{ID: args.ID}
-		if args.Category != "" {
-			update.Category = &args.Category
-		}
-		if args.Title != "" {
-			update.Title = &args.Title
-		}
-		if args.Summary != "" {
-			update.Summary = &args.Summary
-		}
-		if args.Keywords != "" {
-			update.Keywords = &args.Keywords
-		}
-		if args.Content != "" {
-			update.Content = &args.Content
-		}
-		record, err := t.store.update(ctx, update)
+		record, err := t.store.update(ctx, longMemoryUpdateArgsFromWrite(args))
 		if err != nil {
 			return nil, err
 		}
@@ -343,61 +417,150 @@ func (s *longMemoryStore) update(ctx context.Context, args longMemoryUpdateArgs)
 	if err := ctx.Err(); err != nil {
 		return longMemoryRecord{}, err
 	}
-	if args.ID <= 0 {
-		return longMemoryRecord{}, fmt.Errorf("id is required")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	preview, err := s.previewUpdateLocked(ctx, args)
+	if err != nil {
+		return longMemoryRecord{}, err
+	}
+	if err := s.writeUpdatePreviewLocked(ctx, preview); err != nil {
+		return longMemoryRecord{}, err
+	}
+	if err := s.indexRecordLocked(ctx, preview.After); err != nil {
+		return longMemoryRecord{}, err
+	}
+	return preview.After, nil
+}
+
+func (s *longMemoryStore) previewUpdate(ctx context.Context, args longMemoryUpdateArgs) (longMemoryUpdatePreview, error) {
+	if err := ctx.Err(); err != nil {
+		return longMemoryUpdatePreview{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.previewUpdateLocked(ctx, args)
+}
+
+func (s *longMemoryStore) previewUpdateLocked(ctx context.Context, args longMemoryUpdateArgs) (longMemoryUpdatePreview, error) {
+	if args.ID <= 0 {
+		return longMemoryUpdatePreview{}, fmt.Errorf("id is required")
+	}
+	if args.Content != nil && len(args.ContentEdits) > 0 {
+		return longMemoryUpdatePreview{}, fmt.Errorf("content and content_edits cannot be used together")
+	}
+	if !args.hasChanges() {
+		return longMemoryUpdatePreview{}, fmt.Errorf("update requires at least one changed field or content_edits")
+	}
 	if err := s.ensureLocked(ctx); err != nil {
-		return longMemoryRecord{}, err
+		return longMemoryUpdatePreview{}, err
 	}
 	record, err := s.recordByIDLocked(ctx, args.ID)
 	if errors.Is(err, sql.ErrNoRows) {
 		if syncErr := s.syncLocked(ctx, true); syncErr != nil {
-			return longMemoryRecord{}, syncErr
+			return longMemoryUpdatePreview{}, syncErr
 		}
 		record, err = s.recordByIDLocked(ctx, args.ID)
 	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return longMemoryRecord{}, fmt.Errorf("未找到 ID 为 %d 的长期记忆", args.ID)
+			return longMemoryUpdatePreview{}, fmt.Errorf("未找到 ID 为 %d 的长期记忆", args.ID)
 		}
-		return longMemoryRecord{}, err
+		return longMemoryUpdatePreview{}, err
 	}
-	parsed, err := parseLongMemoryFile(record.FilePath)
+	file, err := fileops.ReadFile(record.FilePath, "")
 	if err != nil {
-		return longMemoryRecord{}, fmt.Errorf("无法更新：记忆文件格式损坏，工具不会覆盖原文件。\n%s", longMemoryRepairAdvice(record.FilePath, err))
+		return longMemoryUpdatePreview{}, err
 	}
-	record.Content = parsed.Content
+	parsed, err := parseLongMemoryText(file.Text)
+	if err != nil {
+		return longMemoryUpdatePreview{}, fmt.Errorf("无法更新：记忆文件格式损坏，工具不会覆盖原文件。\n%s", longMemoryRepairAdvice(record.FilePath, err))
+	}
+	record = recordFromParsedFile(record.FilePath, parsed, record.FileMTimeNS, record.FileSize)
+	next := record
+	changes := []string{}
 	if args.Category != nil {
-		record.Category = cleanLongMemoryText(*args.Category)
+		old := next.Category
+		next.Category = cleanLongMemoryText(*args.Category)
+		changes = appendLongMemoryChange(changes, "分类", old, next.Category)
 	}
 	if args.Title != nil {
-		record.Title = cleanLongMemoryText(*args.Title)
+		old := next.Title
+		next.Title = cleanLongMemoryText(*args.Title)
+		changes = appendLongMemoryChange(changes, "标题", old, next.Title)
 	}
 	if args.Summary != nil {
-		record.Summary = cleanLongMemoryText(*args.Summary)
+		old := next.Summary
+		next.Summary = cleanLongMemoryText(*args.Summary)
+		changes = appendLongMemoryChange(changes, "摘要", old, next.Summary)
 	}
 	if args.Keywords != nil {
-		record.Keywords = strings.Join(splitLongMemoryKeywords(*args.Keywords), " ")
+		old := next.Keywords
+		next.Keywords = strings.Join(splitLongMemoryKeywords(*args.Keywords), " ")
+		changes = appendLongMemoryChange(changes, "关键词", old, next.Keywords)
 	}
 	if args.Content != nil {
-		record.Content = strings.TrimSpace(*args.Content)
+		old := next.Content
+		next.Content = strings.TrimSpace(*args.Content)
+		changes = appendLongMemoryChange(changes, "正文", old, next.Content)
 	}
-	if err := validateLongMemoryRecord(record, true); err != nil {
-		return longMemoryRecord{}, err
+	if len(args.ContentEdits) > 0 {
+		content, err := fileops.ApplyEdits(next.Content, args.ContentEdits)
+		if err != nil {
+			return longMemoryUpdatePreview{}, err
+		}
+		old := next.Content
+		next.Content = strings.TrimSpace(content)
+		changes = appendLongMemoryChange(changes, "正文", old, next.Content)
 	}
-	record.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	if record.CreatedAt == "" {
-		record.CreatedAt = record.UpdatedAt
+	if err := validateLongMemoryRecord(next, true); err != nil {
+		return longMemoryUpdatePreview{}, err
 	}
-	if err := s.writeRecordFileLocked(record); err != nil {
-		return longMemoryRecord{}, err
+	if len(changes) == 0 {
+		return longMemoryUpdatePreview{}, fmt.Errorf("edit produced no changes")
 	}
-	if err := s.indexRecordLocked(ctx, record); err != nil {
-		return longMemoryRecord{}, err
+	next.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	if next.CreatedAt == "" {
+		next.CreatedAt = next.UpdatedAt
 	}
-	return record, nil
+	data, err := marshalLongMemoryFile(next)
+	if err != nil {
+		return longMemoryUpdatePreview{}, err
+	}
+	oldText := fileops.NormalizeEditText(file.Text)
+	newText := fileops.NormalizeEditText(string(data))
+	if oldText == newText {
+		return longMemoryUpdatePreview{}, fmt.Errorf("edit produced no changes")
+	}
+	return longMemoryUpdatePreview{Before: record, After: next, File: file, FullContent: string(data), Diff: fileops.UnifiedDiff(record.FilePath, fileops.SplitLines(oldText), fileops.SplitLines(newText), 3), Changes: changes}, nil
+}
+
+func (args longMemoryUpdateArgs) hasChanges() bool {
+	return args.Category != nil || args.Title != nil || args.Summary != nil || args.Keywords != nil || args.Content != nil || len(args.ContentEdits) > 0
+}
+
+func appendLongMemoryChange(changes []string, label, oldValue, newValue string) []string {
+	if oldValue == newValue {
+		return changes
+	}
+	return append(changes, fmt.Sprintf("%s：%s -> %s", label, longMemoryInlineValue(oldValue), longMemoryInlineValue(newValue)))
+}
+
+func longMemoryInlineValue(value string) string {
+	value = cleanLongMemoryText(value)
+	if value == "" {
+		return "(空)"
+	}
+	return value
+}
+
+func (s *longMemoryStore) writeUpdatePreviewLocked(ctx context.Context, preview longMemoryUpdatePreview) error {
+	expected := fileops.NormalizeEditText(preview.File.Text)
+	edit := fileops.Edit{Operation: "replace", StartLine: 1, EndLine: fileops.LineNumber{End: true}, Content: preview.FullContent, ExpectedContent: &expected}
+	_, err := fileops.EditFile(preview.After.FilePath, preview.File.Encoding, fileops.SHA256Hex(preview.File.Bytes), false, false, 3, []fileops.Edit{edit})
+	if err != nil {
+		return err
+	}
+	return ctx.Err()
 }
 
 func (s *longMemoryStore) delete(ctx context.Context, id int64) (string, error) {
@@ -820,9 +983,8 @@ func (s *longMemoryStore) formatSearchResult(ctx context.Context, invalids []lon
 		}
 		if !briefOnly {
 			if parsed, err := parseLongMemoryFile(record.FilePath); err == nil {
-				out.WriteString("详细内容：\n")
-				out.WriteString(parsed.Content)
-				out.WriteString("\n")
+				out.WriteString("详细内容（正文行号从 1 开始，可用于 content_edits）：\n")
+				writeNumberedLongMemoryContent(&out, parsed.Content)
 			} else {
 				out.WriteString("详细内容：文件格式损坏，无法安全读取正文。请按格式警告修复。\n")
 			}
@@ -850,7 +1012,10 @@ func parseLongMemoryFile(path string) (parsedLongMemoryFile, error) {
 	if err != nil {
 		return parsedLongMemoryFile{}, fmt.Errorf("read file: %w", err)
 	}
-	text := string(data)
+	return parseLongMemoryText(string(data))
+}
+
+func parseLongMemoryText(text string) (parsedLongMemoryFile, error) {
 	if !strings.HasPrefix(text, "+++") {
 		return parsedLongMemoryFile{}, fmt.Errorf("缺少开头 TOML front matter 分隔符 +++")
 	}
@@ -928,6 +1093,18 @@ func scanLongMemoryRecords(rows *sql.Rows) ([]longMemoryRecord, error) {
 		records = append(records, record)
 	}
 	return records, rows.Err()
+}
+
+func writeNumberedLongMemoryContent(out *strings.Builder, content string) {
+	lines := fileops.SplitLines(content)
+	if len(lines) == 0 {
+		out.WriteString("  (空)\n")
+		return
+	}
+	width := len(fmt.Sprintf("%d", len(lines)))
+	for i, line := range lines {
+		fmt.Fprintf(out, "%*d | %s\n", width, i+1, line)
+	}
 }
 
 func writeInvalidLongMemoryWarning(out *strings.Builder, invalids []longMemoryInvalidFile) {

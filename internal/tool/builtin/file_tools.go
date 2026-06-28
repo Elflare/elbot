@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"elbot/internal/llm"
@@ -19,91 +18,23 @@ type ReadFileTool struct{}
 
 type EditFileTool struct{}
 
-type lineNumber struct {
-	Value int
-	End   bool
-}
-
-func (n *lineNumber) UnmarshalJSON(data []byte) error {
-	text := strings.TrimSpace(string(data))
-	if text == "" || text == "null" {
-		return nil
-	}
-	var str string
-	if err := json.Unmarshal(data, &str); err == nil {
-		str = strings.ToLower(strings.TrimSpace(str))
-		if str == "" {
-			return nil
-		}
-		if str == "end" {
-			n.End = true
-			n.Value = 0
-			return nil
-		}
-		value, err := strconv.Atoi(str)
-		if err != nil {
-			return fmt.Errorf("line number string must be integer or \"end\"")
-		}
-		n.Value = value
-		n.End = false
-		return nil
-	}
-	var value int
-	if err := json.Unmarshal(data, &value); err != nil {
-		return fmt.Errorf("line number must be integer or \"end\"")
-	}
-	n.Value = value
-	n.End = false
-	return nil
-}
-
-func (n lineNumber) fileops() fileops.LineNumber {
-	return fileops.LineNumber{Value: n.Value, End: n.End}
-}
-
 type readFileArgs struct {
-	Path         string     `json:"path"`
-	Encoding     string     `json:"encoding"`
-	StartLine    int        `json:"start_line"`
-	EndLine      lineNumber `json:"end_line"`
-	Grep         string     `json:"grep"`
-	ContextLines int        `json:"context_lines"`
-	MaxMatches   int        `json:"max_matches"`
+	Path         string             `json:"path"`
+	Encoding     string             `json:"encoding"`
+	StartLine    int                `json:"start_line"`
+	EndLine      fileops.LineNumber `json:"end_line"`
+	Grep         string             `json:"grep"`
+	ContextLines int                `json:"context_lines"`
+	MaxMatches   int                `json:"max_matches"`
 }
 
 type editFileArgs struct {
-	Path           string          `json:"path"`
-	Encoding       string          `json:"encoding"`
-	ExpectedSHA256 string          `json:"expected_sha256"`
-	Create         bool            `json:"create"`
-	ContextLines   int             `json:"context_lines"`
-	Edits          []editOperation `json:"edits"`
-}
-
-type editOperation struct {
-	Operation       string     `json:"operation"`
-	StartLine       int        `json:"start_line"`
-	EndLine         lineNumber `json:"end_line"`
-	Content         string     `json:"content"`
-	ExpectedContent *string    `json:"expected_content"`
-	OldContent      string     `json:"old_content"`
-	Anchor          string     `json:"anchor"`
-	MatchMode       string     `json:"match_mode"`
-	Index           *int       `json:"index"`
-}
-
-func (e editOperation) fileops() fileops.Edit {
-	return fileops.Edit{
-		Operation:       e.Operation,
-		StartLine:       e.StartLine,
-		EndLine:         e.EndLine.fileops(),
-		Content:         e.Content,
-		ExpectedContent: e.ExpectedContent,
-		OldContent:      e.OldContent,
-		Anchor:          e.Anchor,
-		MatchMode:       e.MatchMode,
-		Index:           e.Index,
-	}
+	Path           string         `json:"path"`
+	Encoding       string         `json:"encoding"`
+	ExpectedSHA256 string         `json:"expected_sha256"`
+	Create         bool           `json:"create"`
+	ContextLines   int            `json:"context_lines"`
+	Edits          []fileops.Edit `json:"edits"`
 }
 
 func NewReadFileTool() ReadFileTool {
@@ -155,7 +86,7 @@ func (ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 	if strings.TrimSpace(args.Grep) != "" {
 		return readFileGrepResult(file, lines, args.Grep, args.ContextLines, args.MaxMatches)
 	}
-	start, end, truncated, err := fileops.NormalizeReadRange(len(lines), args.StartLine, args.EndLine.fileops())
+	start, end, truncated, err := fileops.NormalizeReadRange(len(lines), args.StartLine, args.EndLine)
 	if err != nil {
 		return nil, err
 	}
@@ -254,17 +185,7 @@ func (t EditFileTool) Schema() llm.ToolSchema {
 }
 
 func editFileBuilder() *tool.Builder {
-	editProperties := map[string]any{
-		"operation":        map[string]any{"type": "string", "description": "编辑操作：replace、delete、insert_line_before、insert_line_after、prepend、append、replace_match、delete_match、insert_before_match、insert_after_match。edits 按顺序应用，后一步基于前一步结果；工具不会重排序或补偿行号。"},
-		"start_line":       map[string]any{"type": "integer", "description": "行号操作的起始行号，1-based。"},
-		"end_line":         map[string]any{"type": "string", "description": "行号 replace/delete 的结束行号，1-based 且包含该行；也可传 end；默认等于 start_line。"},
-		"content":          map[string]any{"type": "string", "description": "replace/insert 写入的文本；delete/delete_match 忽略此字段。insert_line_*、prepend、append 及 line 模式 insert_*_match 按整行插入并自动补换行，无需自加换行符；content 模式 insert_*_match 为字面插入，不自动加换行符。"},
-		"expected_content": map[string]any{"type": "string", "description": "replace/delete 前校验目标行范围原始文本；换行符按 \\n 规范化比较，用于防止行号漂移误改；不需要校验时请省略该字段，不要传空字符串。"},
-		"old_content":      map[string]any{"type": "string", "description": "replace_match/delete_match 的匹配文本。match_mode=content（默认）时为精确子串，写多少匹配/替换多少；match_mode=line 时为单行前缀，匹配并操作整行。"},
-		"anchor":           map[string]any{"type": "string", "description": "insert_before_match/insert_after_match 的匹配文本，语义同 old_content，受 match_mode 控制。"},
-		"match_mode":       map[string]any{"type": "string", "enum": []string{"content", "line"}, "description": "*_match 的匹配方式。content（默认）：精确子串，写多少替换多少，insert 为字面插入不自动加换行符。line：单行前缀匹配整行，容忍行首缩进，needle 不得含换行；操作整行，insert 按整行插入自动补换行，content 可多行展开。仅对 *_match 操作有效。"},
-		"index":            map[string]any{"type": "integer", "description": "当 old_content/anchor 匹配到多处时，用 index 选择第几处，1-based。默认不填：唯一匹配时直接命中，多处匹配时报错并列出所有匹配位置供你更精准匹配或传入 index。仅对 *_match 操作有效。"},
-	}
+	editProperties := fileops.EditOperationProperties()
 	return tool.NewBuilder("edit_file").
 		Description("批量编辑文本文件；使用 edits 一次提交多个修改，系统会在确认前自动预检并生成 diff，确认后才写入；成功后返回 unified diff。任一 edit 失败则不写文件。").
 		Risk(tool.RiskHigh).
@@ -383,7 +304,7 @@ func editOperationTitle(operation string) string {
 	}
 }
 
-func writeEditLocation(b *strings.Builder, edit editOperation) {
+func writeEditLocation(b *strings.Builder, edit fileops.Edit) {
 	switch edit.Operation {
 	case "replace", "delete":
 		if edit.StartLine > 0 {
@@ -396,7 +317,7 @@ func writeEditLocation(b *strings.Builder, edit editOperation) {
 	}
 }
 
-func editLineRangeText(start int, end lineNumber) string {
+func editLineRangeText(start int, end fileops.LineNumber) string {
 	if end.End {
 		return fmt.Sprintf("%d-end", start)
 	}
@@ -406,7 +327,7 @@ func editLineRangeText(start int, end lineNumber) string {
 	return fmt.Sprintf("%d-%d", start, end.Value)
 }
 
-func writeEditMatchDetail(b *strings.Builder, edit editOperation) {
+func writeEditMatchDetail(b *strings.Builder, edit fileops.Edit) {
 	if !strings.Contains(edit.Operation, "_match") {
 		return
 	}
@@ -425,7 +346,7 @@ func writeEditMatchDetail(b *strings.Builder, edit editOperation) {
 	writeIndentedBlock(b, "匹配内容：", matchText)
 }
 
-func writeEditContentDetail(b *strings.Builder, edit editOperation) {
+func writeEditContentDetail(b *strings.Builder, edit fileops.Edit) {
 	switch edit.Operation {
 	case "delete", "delete_match":
 		return
@@ -468,7 +389,7 @@ func (EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 	if err != nil {
 		return nil, err
 	}
-	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedSHA256, args.Create, false, args.ContextLines, fileopsEdits(args.Edits))
+	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedSHA256, args.Create, false, args.ContextLines, args.Edits)
 	if err != nil {
 		return nil, err
 	}
@@ -481,19 +402,11 @@ func previewEditFile(ctx context.Context, args editFileArgs) (fileops.EditResult
 	if err != nil {
 		return fileops.EditResult{}, err
 	}
-	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedSHA256, args.Create, true, args.ContextLines, fileopsEdits(args.Edits))
+	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedSHA256, args.Create, true, args.ContextLines, args.Edits)
 	if err != nil {
 		return fileops.EditResult{}, fmt.Errorf("preflight edit_file: %w", err)
 	}
 	return result, nil
-}
-
-func fileopsEdits(edits []editOperation) []fileops.Edit {
-	out := make([]fileops.Edit, 0, len(edits))
-	for _, edit := range edits {
-		out = append(out, edit.fileops())
-	}
-	return out
 }
 
 func decodeEditArgs(raw json.RawMessage, args *editFileArgs) error {

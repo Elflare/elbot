@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `long_memory_write` 的 `update` 支持填字段更新 meta，并新增 `content_edits` 复用 `edit_file` 的编辑操作修改正文；确认前会自动预检并展示 diff。
 - 修复 `edit_file` 使用 `create=true` 创建新文件时，目标父目录不存在会在确认写入阶段失败的问题。
 - `response_timeout_seconds` 现在控制整轮用户请求总时长，默认 `0` 表示不限时；单次 LLM 流式请求只由首包和 idle 超时控制。
 
