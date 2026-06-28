@@ -107,9 +107,9 @@ Note:
 - `extra_payload` will be merged into the LLM request JSON, with model-level settings overriding provider-level settings.
 - The `default_context_window` of `[model_metadata]` is a global fallback value, used when `context_window` is not configured in `model_configs`.
 
-## LLM Request Timeout
+## LLM Request and Round Timeout
 
-The `[llm_request]` of `app.toml` controls the timeout and retry of OpenAI-compatible streaming requests:
+`app.toml`'s `[llm_request]` controls OpenAI-compatible streaming requests, round processing, and retries:
 
 ```toml
 [llm_request]
@@ -122,7 +122,7 @@ retry_initial_delay_seconds = 2
 
 - `first_chunk_timeout_seconds`: The maximum wait time from the start of the response to the first streaming event, defaulting to 180 seconds, suitable for models with slower first-token generation.
 - `stream_idle_timeout_seconds`: The maximum silence duration between two events during streaming, defaulting to 60 seconds; the timer resets upon receiving each new event.
-- `response_timeout_seconds`: The maximum total duration for the entire response, where 0 by default indicates no limit; setting it to a positive number enables the total duration limit.
+- `response_timeout_seconds`: The maximum total duration for a round of user requests, from receiving user input to the end of the final response; a default of 0 indicates no time limit; When set to a positive number, processing for this round will stop when the time is reached, and the user will be notified. A single LLM streaming request is not limited by this field.
 - `max_retries` and `retry_initial_delay_seconds` are used for connection failures or retryable HTTP failures, with retry delays increasing via exponential backoff.
 
 The legacy `timeout_seconds` has been removed; existing configurations should be updated to the three new fields mentioned above.

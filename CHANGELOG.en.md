@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/detail` High-risk tool invocation details now format JSON parameters into a more readable multi-line display, and `\n` within strings will be displayed as actual line breaks.
 - qq heartbeat ack and qqofficial gateway resumed are no longer logged
 - read_el_skill now depends on modify_el_skill to facilitate possible modifications
+- `response_timeout_seconds` now controls the total duration of a full round of user requests; by default, `0` indicates no time limit; A single LLM streaming request is controlled only by the first packet and idle timeout.
 
 ## [v0.2.0-alpha - 2026-06-27]
 
@@ -39,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed an issue where long tool chains would be silently stopped by the Agent's internal 5-minute default request timeout; users will now be notified upon a full round timeout.
 - Fixed an issue where API timeouts when sending images/emojis/files via QQ OneBot might cancel WebSocket writes and trigger disconnection and reconnection; a text notification will now be attempted to the same target when media sending fails.
 - Fixed an issue where OpenAI-compatible streaming responses that disconnected midway but were missing `[DONE]` were treated as normal terminations; now it will explicitly notify that the LLM response was interrupted.
 - Fixed an issue where OpenAI-compatible streaming requests used a single HTTP timeout, causing them to be incorrectly interrupted when the model's first token was slow or long outputs exceeded 60 seconds.

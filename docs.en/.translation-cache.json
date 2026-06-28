@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "fe32cb9911e33ae06bf138242f19437d5476822326409fadac3bbe483d8fd173",
+      "source_hash": "51638754962df462a00e83f86ebc36930bbcf828054cfcba5c20304809aafa60",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782569783
+      "updated_at": 1782574901
     },
     "README.zh-CN.md": {
       "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
@@ -26,9 +26,9 @@
       "updated_at": 1782376269
     },
     "docs/configuration.md": {
-      "source_hash": "081d3420e6bc9e9003e668b9b2c9c54734909446dc9742ad7ae767b2f791ba9f",
+      "source_hash": "db01881a125701b41b608e1f0ebaea702f0a72ad566da422a2e3b43873475d6f",
       "target": "docs.en/configuration.md",
-      "updated_at": 1782461691
+      "updated_at": 1782574866
     },
     "docs/elnis-usage.md": {
       "source_hash": "4bf05ee00bac3af1917e4f1dabdd4fa01531cf9bcd1bc69c3d9aa02261f5adc9",
@@ -153,6 +153,14 @@
       "translation": "Provider configuration refactoring: removed unused __ELBOT_CODE_0__, removed __ELBOT_CODE_1__ global model window table;",
       "updated_at": 1782312399
     },
+    "CHANGELOG.md:list:33a2ed6142f63fac0076480da8ce2e21882df328c3016365afaea0d692d9c3b9": {
+      "kind": "list",
+      "source": "单次 LLM 流式请求只由首包和 idle 超时控制。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "33a2ed6142f63fac0076480da8ce2e21882df328c3016365afaea0d692d9c3b9",
+      "translation": "A single LLM streaming request is controlled only by the first packet and idle timeout.",
+      "updated_at": 1782574901
+    },
     "CHANGELOG.md:list:36d8eefabd86733235aa7765b21ab8353754de23bae489203434cee8a682113b": {
       "kind": "list",
       "source": "多处匹配时可通过 __ELBOT_CODE_0__ 选择第几处，未传 __ELBOT_CODE_1__ 报错并列出所有匹配位置。",
@@ -192,6 +200,14 @@
       "source_hash": "48a9dbb08660f2dae754713aea25100d54b59eb98c8a3fea1d54df9cfb657b67",
       "translation": "read_el_skill now depends on modify_el_skill to facilitate possible modifications",
       "updated_at": 1782569783
+    },
+    "CHANGELOG.md:list:572872f4348e759b46f65964708d6035ffe736d5c7f16bbeca3641f8458acd29": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 现在控制整轮用户请求总时长，默认 __ELBOT_CODE_1__ 表示不限时；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "572872f4348e759b46f65964708d6035ffe736d5c7f16bbeca3641f8458acd29",
+      "translation": "__ELBOT_CODE_0__ now controls the total duration of a full round of user requests; by default, __ELBOT_CODE_1__ indicates no time limit;",
+      "updated_at": 1782574901
     },
     "CHANGELOG.md:list:59aef5f6af2a0610f829cfbdab62ee2b1c7298f9546374f556496c5b31f1f2e1": {
       "kind": "list",
@@ -288,6 +304,14 @@
       "source_hash": "7efdca0726c1f3e11a9edd7c8226f6565a4f8de048ed6ca513259bf85f964e18",
       "translation": "**ELyph Task Notation**: A structured task description language used for LLM Cron and native Skills to reduce natural language ambiguity.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:7fe299a24d0dd37ffb215de8aee1f6068caf0d9c1a4e74ef554a7299256f3754": {
+      "kind": "list",
+      "source": "修复长工具链会被 Agent 内部 5 分钟默认请求超时静默停止的问题；整轮超时时现在会提示用户。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "7fe299a24d0dd37ffb215de8aee1f6068caf0d9c1a4e74ef554a7299256f3754",
+      "translation": "Fixed an issue where long tool chains would be silently stopped by the Agent's internal 5-minute default request timeout; users will now be notified upon a full round timeout.",
+      "updated_at": 1782574901
     },
     "CHANGELOG.md:list:804a20b9431dfd46cceb9e146447ae9d772bc44fb8be93b5eefe7498ef357e15": {
       "kind": "list",
@@ -4609,6 +4633,14 @@
       "translation": "Storage and Runtime Data",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:heading:5df6c836420325b8f38db842707d47225d469f5db74b464699690dee14280ab1": {
+      "kind": "heading",
+      "source": "LLM 请求与整轮超时",
+      "source_file": "docs/configuration.md",
+      "source_hash": "5df6c836420325b8f38db842707d47225d469f5db74b464699690dee14280ab1",
+      "translation": "LLM Request and Round Timeout",
+      "updated_at": 1782574866
+    },
     "docs/configuration.md:heading:5f9b95eda72e8950f2b78789945c97fa9db6bc369a780a09574f36e046079c8c": {
       "kind": "heading",
       "source": "LLM 请求超时",
@@ -4856,6 +4888,14 @@
       "source_hash": "22cc400819e351e6fb44fe0a36d9bcbb1d25f07798bf0f4ade71cb91c5ce685b",
       "translation": "__ELBOT_CODE_0__: The maximum wait time from the start of the response to the first streaming event, defaulting to 180 seconds, suitable for models with slower first-token generation.",
       "updated_at": 1782461691
+    },
+    "docs/configuration.md:list:253675af53556b235e6784d99667083d22f4b660712adc9a46cf2024c2682e71": {
+      "kind": "list",
+      "source": "设置为正数时，到时会停止本轮处理并提示用户。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "253675af53556b235e6784d99667083d22f4b660712adc9a46cf2024c2682e71",
+      "translation": "When set to a positive number, processing for this round will stop when the time is reached, and the user will be notified.",
+      "updated_at": 1782574866
     },
     "docs/configuration.md:list:29a04e1e2026ec6733e05ebd19b93fa50b0d011081ff01756a5cf3e72d539244": {
       "kind": "list",
@@ -5169,6 +5209,14 @@
       "translation": "__ELBOT_CODE_1__ in the configuration directory __ELBOT_CODE_0__.",
       "updated_at": 1781790272
     },
+    "docs/configuration.md:list:75a4c5af06fd40f543549456b5ffc8311c622d2c85f949a8b1ce5c7b9be86b0f": {
+      "kind": "list",
+      "source": "单次 LLM 流式请求不受这个字段限制。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "75a4c5af06fd40f543549456b5ffc8311c622d2c85f949a8b1ce5c7b9be86b0f",
+      "translation": "A single LLM streaming request is not limited by this field.",
+      "updated_at": 1782574866
+    },
     "docs/configuration.md:list:7cc26368a77adcbf24f1f6fa9179b3153c2ad5f8f6668088265c08c40cca1f01": {
       "kind": "list",
       "source": "建议把 __ELBOT_CODE_0__ 写成具体工具使用策略，不要写“当前 tag 是 xxx”这类模型不需要知道的配置机制。",
@@ -5352,6 +5400,14 @@
       "source_hash": "aaf8e5247d2c1a38fa5fdb79bdbb0ae6bff12c66e02df9913eabd278d9055efb",
       "translation": "__ELBOT_CODE_0__ provides default request parameters.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:b5847dd8d53c0b3d3bc7c4904b65945340a8fbf2a39af41efe796d86a6e9cde6": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：整轮用户请求总时长上限，从收到用户输入到最终回复结束，默认 0 表示不限时；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "b5847dd8d53c0b3d3bc7c4904b65945340a8fbf2a39af41efe796d86a6e9cde6",
+      "translation": "__ELBOT_CODE_0__: The maximum total duration for a round of user requests, from receiving user input to the end of the final response; a default of 0 indicates no time limit;",
+      "updated_at": 1782574866
     },
     "docs/configuration.md:list:b71f94dcfb7ea11b76bcea9f8c8312063a3ff3106d4a04324afc84f4a71eb05d": {
       "kind": "list",
@@ -5848,6 +5904,14 @@
       "source_hash": "764d85255caea7854ea163538429dadf782cc6b076d052916bdf4ef1622e85c8",
       "translation": "Note:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:7ffeca05eb8a1c8e3d72e97c8edc57ae2ccad327917426b2e6fa11dd6a7875e9": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 控制 OpenAI-compatible 流式请求、整轮处理和重试：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "7ffeca05eb8a1c8e3d72e97c8edc57ae2ccad327917426b2e6fa11dd6a7875e9",
+      "translation": "__ELBOT_CODE_0__'s __ELBOT_CODE_1__ controls OpenAI-compatible streaming requests, round processing, and retries:\n",
+      "updated_at": 1782574866
     },
     "docs/configuration.md:paragraph:853cfdeab0dd75da5628a469411c7c90563a481ae0074e2e1e3d9d2620284dc2": {
       "kind": "paragraph",
