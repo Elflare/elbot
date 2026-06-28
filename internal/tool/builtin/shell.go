@@ -113,12 +113,13 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := runShellCommand(runCtx, cmd)
-	data := shellData{Stdout: truncate(stdout.String()), Stderr: truncate(stderr.String())}
+	exitCode := 0
 	if exitErr, ok := err.(*exec.ExitError); ok {
-		data.ExitCode = exitErr.ExitCode()
+		exitCode = exitErr.ExitCode()
 	} else if err != nil {
 		return nil, fmt.Errorf("run shell: %w", err)
 	}
+	data := shellData{Stdout: truncate(stdout.String()), Stderr: truncate(stderr.String()), ExitCode: exitCode}
 	return &tool.Result{Content: formatShellContent(data)}, nil
 }
 
@@ -167,12 +168,16 @@ func runShellCommand(ctx context.Context, cmd *exec.Cmd) error {
 	case err := <-errCh:
 		return err
 	case <-ctx.Done():
-		killShellProcessTree(cmd)
-		err := <-errCh
-		if err != nil {
-			return err
+		go killShellProcessTree(cmd)
+		select {
+		case err := <-errCh:
+			if err != nil {
+				return err
+			}
+			return ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+			return ctx.Err()
 		}
-		return ctx.Err()
 	}
 }
 
