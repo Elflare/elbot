@@ -16,9 +16,9 @@
       "updated_at": 1782395265
     },
     "docs/commands.md": {
-      "source_hash": "92bcc12252608cc43cf14de5c123f8426d25c4cf867f9657c9c93072ad07fe8d",
+      "source_hash": "f878d1cc48d39c901bf84eb99d9434fbf3ee98f50f62c6855f1b6a5a45b83b9c",
       "target": "docs.en/commands.md",
-      "updated_at": 1782444282
+      "updated_at": 1782630997
     },
     "docs/concepts.md": {
       "source_hash": "6de9b853dacd55de2bf2cfbdc483c32d723ca121b2805563c3444c333aaa995d",
@@ -2536,6 +2536,14 @@
       "source_hash": "26048c0dbde8ca8a2caddcf9458d313d95556cbe391d5d3f8485e42da4b94093",
       "translation": "Switch the Session auto-naming model.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:2615ae021ab7e211d5f15c5fbf5e7759a532e08c73044d061c386e47504f7d77": {
+      "kind": "table",
+      "source": "查看待确认工具调用详情；支持工具自定义纯文本详情，未自定义时显示格式化后的参数。",
+      "source_file": "docs/commands.md",
+      "source_hash": "2615ae021ab7e211d5f15c5fbf5e7759a532e08c73044d061c386e47504f7d77",
+      "translation": "View details of tool calls awaiting confirmation; supports custom plain-text details for tools, and displays formatted parameters if not customized.",
+      "updated_at": 1782630997
     },
     "docs/commands.md:table:2c095d2b79ab255430bee5337067f6cfb12acf47bbdb09e38792aee29cf74421": {
       "kind": "table",

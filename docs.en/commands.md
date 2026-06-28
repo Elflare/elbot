@@ -249,7 +249,7 @@ When a tool call triggers a high-risk confirmation, the Agent will prompt the av
 
 | Command | Function |
 | --- | --- |
-| `/detail` | View details of the tool call awaiting confirmation. |
+| `/detail` | View details of tool calls awaiting confirmation; supports custom plain-text details for tools, and displays formatted parameters if not customized. |
 | `/confirm` | Confirm the current tool call awaiting confirmation. |
 | `/confirmtool` | Confirm the current tool. |
 | `/confirmall` | Confirm all pending tools in the current batch. |
