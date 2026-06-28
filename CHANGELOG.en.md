@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed the issue where `edit_file` fails during the write confirmation stage when creating a new file using `create=true` if the target parent directory does not exist.
 - `response_timeout_seconds` now controls the total duration of a full round of user requests; by default, `0` indicates no time limit; A single LLM streaming request is controlled only by the first packet and idle timeout.
 
 ## [v0.2.0-alpha - 2026-06-27]

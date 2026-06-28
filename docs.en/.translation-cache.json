@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "23fe6d0027a942a525775d6c98292d03a56e7a1520be246404a87352ac7756d0",
+      "source_hash": "a9beee1751b68a2caee55ed1729f7ef427f15ae018cfcad5ee7404857ece8bb8",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782631048
+      "updated_at": 1782644646
     },
     "README.zh-CN.md": {
       "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
@@ -536,6 +536,14 @@
       "source_hash": "e81822b53b2270a9a2f78edb916b8ee9c970a516ec77a84dd14e91bb46b0c554",
       "translation": "Hook rules can execute scripts via __ELBOT_CODE_0__ action, and use __ELBOT_CODE_1__ to trigger Elnis direct/LLM/calls via the internal Elvena Bus.",
       "updated_at": 1782376912
+    },
+    "CHANGELOG.md:list:faa151eb2284bda7e4e6995ad15597fdaec9d9c2d87d2a98a3ab4a418ee37890": {
+      "kind": "list",
+      "source": "修复 __ELBOT_CODE_0__ 使用 __ELBOT_CODE_1__ 创建新文件时，目标父目录不存在会在确认写入阶段失败的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "faa151eb2284bda7e4e6995ad15597fdaec9d9c2d87d2a98a3ab4a418ee37890",
+      "translation": "Fixed the issue where __ELBOT_CODE_0__ fails during the write confirmation stage when creating a new file using __ELBOT_CODE_1__ if the target parent directory does not exist.",
+      "updated_at": 1782644646
     },
     "CHANGELOG.md:paragraph:f4fdd49cee5a8975381d265d52b666a936b8a0b8d696502ff7ac1ebdda67c23c": {
       "kind": "paragraph",
