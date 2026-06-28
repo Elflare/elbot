@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "51638754962df462a00e83f86ebc36930bbcf828054cfcba5c20304809aafa60",
+      "source_hash": "23fe6d0027a942a525775d6c98292d03a56e7a1520be246404a87352ac7756d0",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782574901
+      "updated_at": 1782631048
     },
     "README.zh-CN.md": {
       "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
@@ -57,6 +57,14 @@
     }
   },
   "segments": {
+    "CHANGELOG.md:list:05a9e4447fd45b2d4076875eef3c2a7bdf6a16a84f6e8b476b1080ff1cffd0dd": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 不再向 LLM 暴露 __ELBOT_CODE_1__ 参数；系统会在用户确认前自动预检并生成 diff，预检失败不会进入确认或写入文件。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "05a9e4447fd45b2d4076875eef3c2a7bdf6a16a84f6e8b476b1080ff1cffd0dd",
+      "translation": "__ELBOT_CODE_0__ no longer exposes the __ELBOT_CODE_1__ parameter to the LLM; the system will automatically pre-check and generate a diff before user confirmation, and if the pre-check fails, it will not proceed to confirmation or write to the file.",
+      "updated_at": 1782631048
+    },
     "CHANGELOG.md:list:0cb9f5d55b3a2dc69256f4b4688cf35160155b719f6f9ed566a3a9cc1a4274d6": {
       "kind": "list",
       "source": "平台入站上下文新增统一群身份 __ELBOT_CODE_0__，QQ OneBot 和 Telegram 会映射群主/管理员/普通成员。",
@@ -121,6 +129,14 @@
       "translation": "__ELBOT_CODE_0__ High-risk tool invocation details now format JSON parameters into a more readable multi-line display, and __ELBOT_CODE_1__ within strings will be displayed as actual line breaks.",
       "updated_at": 1782567776
     },
+    "CHANGELOG.md:list:2745a89844d91e4a2590b5284e77982521e997061f71c4ff1e8c3962563bc6e6": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 现在也会在确认前预检 patch/content、ELyph 语法和 no-op 修改，并在高风险确认详情中展示预检 diff。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "2745a89844d91e4a2590b5284e77982521e997061f71c4ff1e8c3962563bc6e6",
+      "translation": "__ELBOT_CODE_0__ now also pre-checks patch/content, ELyph syntax, and no-op modifications before confirmation, and displays the pre-check diff in the high-risk confirmation details.",
+      "updated_at": 1782631048
+    },
     "CHANGELOG.md:list:280823f9e19a44bcbfe92547cc46408bbcf2b93e26cd0cfcf98c3d26afaa1c3e": {
       "kind": "list",
       "source": "**工具发现机制**：默认只暴露 __ELBOT_CODE_0__ 与工具名，按需注入完整 schema，减少无效上下文开销。",
@@ -136,6 +152,14 @@
       "source_hash": "2a124153d199af5892e2e21c29055db5ce8a7cc96679b697f9e27de92a335335",
       "translation": "Hook rules __ELBOT_CODE_0__ action added __ELBOT_CODE_1__ list, supporting multi-type multi-segment output (text/image/file/emoticon, including url/path/base64), with a format unified with Elvena segments.",
       "updated_at": 1782376912
+    },
+    "CHANGELOG.md:list:2bb909666ed4394d5372eed10836df6b41d4ccbf9cd79b0348e9bf508f07d6bd": {
+      "kind": "list",
+      "source": "未自定义时仍会把 JSON 参数格式化成更易读的多行展示，字符串里的 __ELBOT_CODE_0__ 会显示为真实换行。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "2bb909666ed4394d5372eed10836df6b41d4ccbf9cd79b0348e9bf508f07d6bd",
+      "translation": "When not customized, JSON parameters will still be formatted into a more readable multi-line display, and __ELBOT_CODE_0__ within strings will be displayed as actual line breaks.",
+      "updated_at": 1782631048
     },
     "CHANGELOG.md:list:317c7d32a5e329ea22f1b69bc2b8231d35853cf1c43e347f9d558d23b403a0ed": {
       "kind": "list",
@@ -353,6 +377,14 @@
       "translation": "Model-level __ELBOT_CODE_0__ and __ELBOT_CODE_1__ are now unified under __ELBOT_CODE_2__ and looked up by __ELBOT_CODE_3__, avoiding conflicts between models with the same name across providers.",
       "updated_at": 1782312399
     },
+    "CHANGELOG.md:list:8ffa77eae1271a9d65560102a519441480c611c59382b37fe40218bdc1078f80": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 的高风险确认详情现在会按文件、模式和编辑步骤展示替换、新增、删除、匹配等操作。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "8ffa77eae1271a9d65560102a519441480c611c59382b37fe40218bdc1078f80",
+      "translation": "High-risk confirmation details for __ELBOT_CODE_0__ now display operations such as replace, add, delete, and match by file, mode, and editing step.",
+      "updated_at": 1782631048
+    },
     "CHANGELOG.md:list:92385f55b6d2a02dc7846f955909efbbdcebe6cd99af4be8ab209faab39b449b": {
       "kind": "list",
       "source": "**Chat/Work 双模式**：chat 模式关闭工具，适合日常聊天与低成本对话；work 模式启用工具发现与调用，两模式可独立配置模型。",
@@ -464,6 +496,14 @@
       "source_hash": "d868e5b43fdd4b220f5103b4c130865608bd216aa604f67b556dc8d92822ecad",
       "translation": "__ELBOT_CODE_0__ command: list all registered Hooks, view detailed configuration of a specific Hook, and hot-reload all Hooks (takes effect after modifying __ELBOT_CODE_1__ without requiring a restart).",
       "updated_at": 1782444302
+    },
+    "CHANGELOG.md:list:d971b1e15ca6ef3c526118949d459573c00208fcbd27337c54e1e83eecf01106": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 高风险工具调用详情支持工具自定义纯文本展示；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d971b1e15ca6ef3c526118949d459573c00208fcbd27337c54e1e83eecf01106",
+      "translation": "__ELBOT_CODE_0__ high-risk tool call details now support custom plain text display for tools;",
+      "updated_at": 1782631048
     },
     "CHANGELOG.md:list:dc3765cc3b6cc516b17fb0be590317ce5a5fab8d064d6514066e8593e421b5eb": {
       "kind": "list",
