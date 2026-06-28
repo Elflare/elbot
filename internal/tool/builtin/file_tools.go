@@ -76,7 +76,6 @@ type editFileArgs struct {
 	Encoding       string          `json:"encoding"`
 	ExpectedSHA256 string          `json:"expected_sha256"`
 	Create         bool            `json:"create"`
-	DryRun         bool            `json:"dry_run"`
 	ContextLines   int             `json:"context_lines"`
 	Edits          []editOperation `json:"edits"`
 }
@@ -267,15 +266,14 @@ func editFileBuilder() *tool.Builder {
 		"index":            map[string]any{"type": "integer", "description": "当 old_content/anchor 匹配到多处时，用 index 选择第几处，1-based。默认不填：唯一匹配时直接命中，多处匹配时报错并列出所有匹配位置供你更精准匹配或传入 index。仅对 *_match 操作有效。"},
 	}
 	return tool.NewBuilder("edit_file").
-		Description("批量编辑文本文件；使用 edits 一次提交多个修改，支持多种方式；成功后返回 unified diff。任一 edit 失败则不写文件。").
+		Description("批量编辑文本文件；使用 edits 一次提交多个修改，系统会在确认前自动预检并生成 diff，确认后才写入；成功后返回 unified diff。任一 edit 失败则不写文件。").
 		Risk(tool.RiskHigh).
 		Tags("files", "agent").
 		String("path", "要编辑的文件路径。", tool.Required()).
 		String("encoding", "文本编码，默认 auto；非 UTF-8 文件应显式传入 gb18030、gbk、big5、shift_jis 等。").
 		String("expected_sha256", "可选，编辑前文件 sha256；用于防止外部并发修改。").
 		Boolean("create", "为 true 时允许创建不存在的文本文件；提供 expected_sha256 时仍要求文件已存在。").
-		Boolean("dry_run", "为 true 时只执行校验并返回 diff，不写入文件。").
-		Integer("context_lines", "diff 上下文行数，默认 3，范围 0-20。").
+		Integer("context_lines", "diff 上下文行数，默认 3，范围 0-20。确认前自动预检和实际写入结果都会使用该上下文行数。").
 		ObjectArray("edits", "批量编辑列表，按顺序应用；连续编辑同一文件时优先使用 match/anchor 操作，行号 replace/delete 建议提供 expected_content。", editProperties, []string{"operation"}, tool.Required())
 }
 
@@ -286,13 +284,166 @@ func (EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.
 			return tool.RiskAssessment{}, fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
-	if _, err := resolveFileToolPath(ctx, args.Path, args.Create); err != nil {
+	if _, err := previewEditFile(ctx, args); err != nil {
 		return tool.RiskAssessment{}, err
 	}
 	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.Background {
 		return tool.RiskAssessment{Level: tool.RiskMedium, Reasons: []string{"后台文件编辑限制在当前任务工作目录内"}}, nil
 	}
 	return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"文件内容写入操作需要确认"}}, nil
+}
+
+func (EditFileTool) RiskDetail(ctx context.Context, req tool.CallRequest) (string, error) {
+	var args editFileArgs
+	if len(req.Arguments) > 0 {
+		if err := decodeEditArgs(req.Arguments, &args); err != nil {
+			return "", fmt.Errorf("parse edit_file arguments: %w", err)
+		}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "文件：%s\n", strings.TrimSpace(args.Path))
+	b.WriteString("模式：确认后写入；确认前已自动预检\n")
+	fmt.Fprintf(&b, "创建文件：%s\n", fileToolBoolText(args.Create))
+	if strings.TrimSpace(args.Encoding) != "" {
+		fmt.Fprintf(&b, "编码：%s\n", strings.TrimSpace(args.Encoding))
+	} else {
+		b.WriteString("编码：auto\n")
+	}
+	fmt.Fprintf(&b, "编辑数：%d\n", len(args.Edits))
+	if strings.TrimSpace(args.ExpectedSHA256) != "" {
+		b.WriteString("文件哈希校验：有\n")
+	}
+	for i, edit := range args.Edits {
+		fmt.Fprintf(&b, "\n编辑 %d/%d：%s\n", i+1, len(args.Edits), editOperationTitle(edit.Operation))
+		writeEditLocation(&b, edit)
+		if edit.ExpectedContent != nil {
+			b.WriteString("旧内容校验：有\n")
+			writeIndentedBlock(&b, "校验内容：", *edit.ExpectedContent)
+		}
+		writeEditMatchDetail(&b, edit)
+		writeEditContentDetail(&b, edit)
+	}
+	preview, err := previewEditFile(ctx, args)
+	if err != nil {
+		return "", err
+	}
+	b.WriteString("\n预检 diff:\n")
+	b.WriteString(preview.Diff)
+	if !strings.HasSuffix(preview.Diff, "\n") {
+		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n"), nil
+}
+
+func fileToolBoolText(value bool) string {
+	if value {
+		return "是"
+	}
+	return "否"
+}
+
+func editOperationTitle(operation string) string {
+	switch operation {
+	case "replace":
+		return "替换行"
+	case "delete":
+		return "删除行"
+	case "insert_line_before":
+		return "在指定行前插入"
+	case "insert_line_after":
+		return "在指定行后插入"
+	case "prepend":
+		return "插入到文件开头"
+	case "append":
+		return "追加到文件末尾"
+	case "replace_match":
+		return "按匹配替换"
+	case "delete_match":
+		return "按匹配删除"
+	case "insert_before_match":
+		return "按匹配插入到前面"
+	case "insert_after_match":
+		return "按匹配插入到后面"
+	default:
+		if strings.TrimSpace(operation) == "" {
+			return "未知操作"
+		}
+		return operation
+	}
+}
+
+func writeEditLocation(b *strings.Builder, edit editOperation) {
+	switch edit.Operation {
+	case "replace", "delete":
+		if edit.StartLine > 0 {
+			fmt.Fprintf(b, "位置：%s\n", editLineRangeText(edit.StartLine, edit.EndLine))
+		}
+	case "insert_line_before", "insert_line_after":
+		if edit.StartLine > 0 {
+			fmt.Fprintf(b, "位置：第 %d 行\n", edit.StartLine)
+		}
+	}
+}
+
+func editLineRangeText(start int, end lineNumber) string {
+	if end.End {
+		return fmt.Sprintf("%d-end", start)
+	}
+	if end.Value <= 0 || end.Value == start {
+		return fmt.Sprintf("%d", start)
+	}
+	return fmt.Sprintf("%d-%d", start, end.Value)
+}
+
+func writeEditMatchDetail(b *strings.Builder, edit editOperation) {
+	if !strings.Contains(edit.Operation, "_match") {
+		return
+	}
+	mode := strings.TrimSpace(edit.MatchMode)
+	if mode == "" {
+		mode = "content"
+	}
+	fmt.Fprintf(b, "匹配方式：%s\n", mode)
+	if edit.Index != nil {
+		fmt.Fprintf(b, "第几处匹配：%d\n", *edit.Index)
+	}
+	matchText := edit.OldContent
+	if edit.Operation == "insert_before_match" || edit.Operation == "insert_after_match" {
+		matchText = edit.Anchor
+	}
+	writeIndentedBlock(b, "匹配内容：", matchText)
+}
+
+func writeEditContentDetail(b *strings.Builder, edit editOperation) {
+	switch edit.Operation {
+	case "delete", "delete_match":
+		return
+	case "replace", "replace_match":
+		writeIndentedBlock(b, "新内容：", edit.Content)
+	case "insert_line_before", "insert_line_after", "insert_before_match", "insert_after_match":
+		writeIndentedBlock(b, "插入内容：", edit.Content)
+	case "prepend":
+		writeIndentedBlock(b, "开头新增内容：", edit.Content)
+	case "append":
+		writeIndentedBlock(b, "末尾追加内容：", edit.Content)
+	default:
+		if edit.Content != "" {
+			writeIndentedBlock(b, "内容：", edit.Content)
+		}
+	}
+}
+
+func writeIndentedBlock(b *strings.Builder, title, text string) {
+	b.WriteString(title + "\n")
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	if text == "" {
+		b.WriteString("  (空)\n")
+		return
+	}
+	for _, line := range strings.Split(text, "\n") {
+		b.WriteString("  " + line + "\n")
+	}
 }
 
 func (EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
@@ -306,16 +457,32 @@ func (EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 	if err != nil {
 		return nil, err
 	}
-	edits := make([]fileops.Edit, 0, len(args.Edits))
-	for _, edit := range args.Edits {
-		edits = append(edits, edit.fileops())
-	}
-	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedSHA256, args.Create, args.DryRun, args.ContextLines, edits)
+	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedSHA256, args.Create, false, args.ContextLines, fileopsEdits(args.Edits))
 	if err != nil {
 		return nil, err
 	}
 	content := fmt.Sprintf("dry_run: %t\nedited: %s\ncreated: %t\nencoding: %s\nsha256_before: %s\nsha256_after: %s\ndiff:\n%s", result.DryRun, result.Path, result.Created, result.Encoding, result.SHA256Before, result.SHA256After, result.Diff)
 	return &tool.Result{Content: content}, nil
+}
+
+func previewEditFile(ctx context.Context, args editFileArgs) (fileops.EditResult, error) {
+	path, err := resolveFileToolPath(ctx, args.Path, args.Create)
+	if err != nil {
+		return fileops.EditResult{}, err
+	}
+	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedSHA256, args.Create, true, args.ContextLines, fileopsEdits(args.Edits))
+	if err != nil {
+		return fileops.EditResult{}, fmt.Errorf("preflight edit_file: %w", err)
+	}
+	return result, nil
+}
+
+func fileopsEdits(edits []editOperation) []fileops.Edit {
+	out := make([]fileops.Edit, 0, len(edits))
+	for _, edit := range edits {
+		out = append(out, edit.fileops())
+	}
+	return out
 }
 
 func decodeEditArgs(raw json.RawMessage, args *editFileArgs) error {

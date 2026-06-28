@@ -18,7 +18,7 @@ import (
 type RunnerDeps interface {
 	PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error)
 	ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool
-	ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment) (ConfirmResult, error)
+	ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (ConfirmResult, error)
 	ConfirmBackgroundTool(ctx context.Context, sessionID string, call llm.ToolCallRequest, resolved ResolvedTool, assessment tool.RiskAssessment) (ConfirmResult, bool)
 	StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error)
 	CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, result string, callErr error) (string, error)
@@ -77,8 +77,16 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 		}
 		preparedCalls = append(preparedCalls, call)
 		resolved := m.Resolve(ctx, call.Name, req.CachedTools)
-		assessment, riskText := m.assessForRun(ctx, resolved, call)
+		assessment, riskText, assessErr := m.assessForRun(ctx, resolved, call)
 		deps.AddToolUse(sessionID, call.Name)
+		if assessErr != nil && resolved.Source == SourceKindNative && resolved.Native != nil && resolved.Native.Name() == "edit_file" {
+			message := toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s failed: %v", call.Name, assessErr))
+			content := llm.SegmentsContentText(message.Segments)
+			deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, content, assessErr)
+			messages = append(messages, message)
+			transcript = append(transcript, deps.ToolResultMessage(sessionID, message))
+			continue
+		}
 		if deps.ShouldSendPreview(ctx, req.Session, call, req.AssistantText) {
 			deps.SendPreview(ctx, fmt.Sprintf("正在调用 %s：%s", call.Name, previewArguments(call.Arguments)))
 		}
@@ -182,15 +190,15 @@ func (m *Manager) confirm(ctx context.Context, deps RunnerDeps, actor security.A
 	if !policy.NeedsToolConfirmation(actor, assessment.Level) {
 		return ConfirmResult{Allowed: true}, nil
 	}
-	return deps.ConfirmToolCall(ctx, sessionID, call, assessment)
+	return deps.ConfirmToolCall(ctx, sessionID, call, assessment, m.RiskDetail(ctx, resolved, call))
 }
 
-func (m *Manager) assessForRun(ctx context.Context, resolved ResolvedTool, call llm.ToolCallRequest) (tool.RiskAssessment, string) {
+func (m *Manager) assessForRun(ctx context.Context, resolved ResolvedTool, call llm.ToolCallRequest) (tool.RiskAssessment, string, error) {
 	assessment, err := m.AssessRisk(ctx, resolved, call.Arguments)
 	if err != nil || assessment.Level == "" {
-		return tool.RiskAssessment{Level: tool.RiskLow}, "unknown"
+		return tool.RiskAssessment{Level: tool.RiskLow}, "unknown", err
 	}
-	return assessment, string(assessment.Level)
+	return assessment, string(assessment.Level), nil
 }
 
 func toolMessage(name, id, content string) llm.LLMMessage {

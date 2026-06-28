@@ -47,7 +47,11 @@ func riskConfirmationWaitingText() string {
 }
 
 func riskConfirmationDetailText(confirmation turn.RiskConfirmation) string {
-	return fmt.Sprintf("高风险工具调用详情\n工具：%s\n风险：%s\n参数：\n%s\n", confirmation.ToolName, confirmation.Risk, formatRiskConfirmationArguments(confirmation.Arguments))
+	detail := strings.TrimSpace(confirmation.Detail)
+	if detail == "" {
+		detail = formatRiskConfirmationArguments(confirmation.Arguments)
+	}
+	return fmt.Sprintf("高风险工具调用详情\n工具：%s\n风险：%s\n参数：\n%s\n", confirmation.ToolName, confirmation.Risk, detail)
 }
 
 func formatRiskConfirmationArguments(args string) string {

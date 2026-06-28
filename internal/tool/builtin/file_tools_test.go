@@ -293,27 +293,92 @@ func TestEditFileToolInsertBeforeAfterMatch(t *testing.T) {
 	}
 }
 
-func TestEditFileToolDryRunDoesNotWrite(t *testing.T) {
+func TestEditFileToolRiskDetailFormatsEdits(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\nold line\nsecond old\n\tfunc main() {\nother\n\tfunc main() {\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path":     path,
+		"encoding": "utf-8",
+		"edits": []map[string]any{
+			{
+				"operation":        "replace",
+				"start_line":       2,
+				"end_line":         3,
+				"expected_content": "old line\nsecond old",
+				"content":          "new line 1\nnew line 2",
+			},
+			{
+				"operation":  "insert_after_match",
+				"match_mode": "line",
+				"anchor":     "func main()",
+				"index":      2,
+				"content":    "fmt.Println(\"hello\")",
+			},
+		},
+	})
+	detail, err := NewEditFileTool().RiskDetail(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"文件：" + path,
+		"模式：确认后写入；确认前已自动预检",
+		"编码：utf-8",
+		"编辑数：2",
+		"编辑 1/2：替换行",
+		"位置：2-3",
+		"旧内容校验：有",
+		"校验内容：\n  old line\n  second old\n",
+		"新内容：\n  new line 1\n  new line 2\n",
+		"编辑 2/2：按匹配插入到后面",
+		"匹配方式：line",
+		"第几处匹配：2",
+		"匹配内容：\n  func main()\n",
+		"插入内容：\n  fmt.Println(\"hello\")",
+		"预检 diff:\n",
+		"-old line",
+		"+new line 1",
+		"+fmt.Println(\"hello\")",
+	} {
+		if !strings.Contains(detail, want) {
+			t.Fatalf("detail missing %q:\n%s", want, detail)
+		}
+	}
+	if strings.Contains(detail, `new line 1\nnew line 2`) {
+		t.Fatalf("detail contains escaped newlines:\n%s", detail)
+	}
+}
+
+func TestEditFileToolSchemaOmitsDryRun(t *testing.T) {
+	schema := NewEditFileTool().Schema()
+	properties, ok := schema.Function.Parameters["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("schema properties missing: %#v", schema.Function.Parameters)
+	}
+	if _, ok := properties["dry_run"]; ok {
+		t.Fatalf("edit_file schema should not expose dry_run: %#v", properties["dry_run"])
+	}
+}
+
+func TestEditFileToolAssessRiskPreflightsEdits(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
 	original := "alpha\nbeta\n"
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{
-		"path":    path,
-		"dry_run": true,
+		"path": path,
 		"edits": []map[string]any{{
 			"operation":   "replace_match",
-			"old_content": "beta",
-			"content":     "BETA",
+			"old_content": "missing",
+			"content":     "MISSING",
 		}},
 	})
-	result, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(result.Content, "dry_run: true") || !strings.Contains(result.Content, "+BETA") {
-		t.Fatalf("unexpected dry-run result:\n%s", result.Content)
+	_, err := NewEditFileTool().AssessRisk(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "preflight edit_file") || !strings.Contains(err.Error(), "old_content not found") {
+		t.Fatalf("expected preflight match error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {

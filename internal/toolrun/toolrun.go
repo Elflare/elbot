@@ -173,6 +173,21 @@ func (m *Manager) AssessRisk(ctx context.Context, resolved ResolvedTool, argumen
 	return tool.AssessRisk(ctx, resolved.Native, tool.CallRequest{Name: resolved.Name, Arguments: json.RawMessage(arguments)})
 }
 
+func (m *Manager) RiskDetail(ctx context.Context, resolved ResolvedTool, call llm.ToolCallRequest) string {
+	if resolved.Source == SourceKindELwisp || !resolved.Available || resolved.Native == nil {
+		return ""
+	}
+	provider, ok := resolved.Native.(tool.RiskDetailProvider)
+	if !ok {
+		return ""
+	}
+	detail, err := provider.RiskDetail(ctx, tool.CallRequest{ID: call.ID, Name: resolved.Name, Arguments: json.RawMessage(call.Arguments)})
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(detail)
+}
+
 func (m *Manager) Execute(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, actor security.Actor) ExecutionResult {
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
 	if !resolved.Available {

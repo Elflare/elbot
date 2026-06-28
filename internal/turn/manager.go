@@ -24,6 +24,7 @@ type RiskConfirmation struct {
 	Arguments string
 	Risk      string
 	Summary   string
+	Detail    string
 }
 
 type RiskConfirmationResponse struct {

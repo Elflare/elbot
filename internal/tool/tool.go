@@ -64,6 +64,12 @@ type RiskAssessor interface {
 	AssessRisk(ctx context.Context, req CallRequest) (RiskAssessment, error)
 }
 
+// RiskDetailProvider lets a tool render human-readable arguments for risk confirmation.
+// It only affects user-facing confirmation detail text; tool execution results stay unchanged.
+type RiskDetailProvider interface {
+	RiskDetail(ctx context.Context, req CallRequest) (string, error)
+}
+
 func AssessRisk(ctx context.Context, tool Tool, req CallRequest) (RiskAssessment, error) {
 	if assessor, ok := tool.(RiskAssessor); ok {
 		assessment, err := assessor.AssessRisk(ctx, req)

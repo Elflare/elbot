@@ -2770,6 +2770,48 @@ func TestRiskConfirmationDetailShowsFullArgumentsWithoutResolving(t *testing.T) 
 	}
 }
 
+func TestRiskConfirmationDetailUsesToolProvidedDetail(t *testing.T) {
+	p := &fakePlatform{}
+	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	ctx := context.Background()
+	session, err := a.sessions.Create(ctx, a.scope(context.Background()), "confirm custom detail")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if !a.turns.StartLLM(session.ID, "run tool") || !a.turns.StartToolPhase(session.ID) {
+		t.Fatal("failed to enter tool phase")
+	}
+	done := make(chan turn.RiskConfirmationResponse, 1)
+	go func() {
+		resp, _ := a.turns.AwaitRiskConfirmation(session.ID, turn.RiskConfirmation{ID: "call_1", ToolName: "edit_file", Arguments: `{"path":"a.txt"}`, Risk: "high", Detail: "文件：a.txt\n编辑 1/1：替换行\n新内容：\n  line 1\n  line 2"})
+		done <- resp
+	}()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) && a.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if a.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
+		t.Fatal("did not enter risk confirmation phase")
+	}
+	if err := a.HandleMessage(ctx, "/detail"); err != nil {
+		t.Fatalf("detail: %v", err)
+	}
+	out := p.out.String()
+	for _, want := range []string{"文件：a.txt", "编辑 1/1：替换行", "  line 1\n", "  line 2"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("detail missing %q: %q", want, out)
+		}
+	}
+	if strings.Contains(out, "path: a.txt") {
+		t.Fatalf("detail should prefer tool detail over fallback: %q", out)
+	}
+	select {
+	case resp := <-done:
+		t.Fatalf("detail should not resolve confirmation: %#v", resp)
+	default:
+	}
+}
+
 func TestRiskConfirmationDetailFormatsEscapedNewlines(t *testing.T) {
 	p := &fakePlatform{}
 	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
