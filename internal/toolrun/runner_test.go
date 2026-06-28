@@ -77,23 +77,23 @@ func (d *runnerTestDeps) ToolCallMessage(sessionID, content, rawText string, cal
 
 func (d *runnerTestDeps) PersistedToolMessage(message llm.LLMMessage) llm.LLMMessage { return message }
 
-type runnerEditFilePreflightTool struct{}
+type runnerPreflightTool struct{}
 
-func (runnerEditFilePreflightTool) Name() string { return "edit_file" }
+func (runnerPreflightTool) Name() string { return "preflight_tool" }
 
-func (runnerEditFilePreflightTool) Info() tool.Info {
-	return tool.Info{Name: "edit_file", Risk: tool.RiskHigh}
+func (runnerPreflightTool) Info() tool.Info {
+	return tool.Info{Name: "preflight_tool", Risk: tool.RiskHigh}
 }
 
-func (runnerEditFilePreflightTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: "edit_file", Parameters: map[string]any{"type": "object"}}}
+func (runnerPreflightTool) Schema() llm.ToolSchema {
+	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: "preflight_tool", Parameters: map[string]any{"type": "object"}}}
 }
 
-func (runnerEditFilePreflightTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
-	return tool.RiskAssessment{}, fmt.Errorf("preflight edit_file: old_content not found")
+func (runnerPreflightTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
+	return fmt.Errorf("preflight rejected")
 }
 
-func (runnerEditFilePreflightTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (runnerPreflightTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
 	return &tool.Result{Content: "should not call"}, nil
 }
 
@@ -117,9 +117,9 @@ func (runnerRiskErrorTool) Call(ctx context.Context, req tool.CallRequest) (*too
 	return &tool.Result{Content: "called"}, nil
 }
 
-func TestRunSkipsConfirmationWhenEditFilePreflightFails(t *testing.T) {
+func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
 	registry := tool.NewRegistry()
-	if err := registry.Register(runnerEditFilePreflightTool{}); err != nil {
+	if err := registry.Register(runnerPreflightTool{}); err != nil {
 		t.Fatal(err)
 	}
 	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
@@ -129,18 +129,18 @@ func TestRunSkipsConfirmationWhenEditFilePreflightFails(t *testing.T) {
 		Actor:   security.Actor{Role: security.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
 			ID:        "call-1",
-			Name:      "edit_file",
-			Arguments: `{"path":"missing.txt","edits":[{"operation":"append","content":"x"}]}`,
+			Name:      "preflight_tool",
+			Arguments: `{}`,
 		}},
 	})
 	if deps.confirmed {
-		t.Fatal("edit_file preflight error should not ask for confirmation")
+		t.Fatal("preflight error should not ask for confirmation")
 	}
 	if len(result.Messages) != 1 {
 		t.Fatalf("messages = %d", len(result.Messages))
 	}
 	text := llm.SegmentsContentText(result.Messages[0].Segments)
-	if !strings.Contains(text, "tool call edit_file failed") || !strings.Contains(text, "preflight edit_file") {
+	if !strings.Contains(text, "tool call preflight_tool failed") || !strings.Contains(text, "preflight rejected") {
 		t.Fatalf("unexpected tool message: %s", text)
 	}
 	if len(deps.recorded) != 1 || deps.recorded[0].err == nil {

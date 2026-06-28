@@ -77,12 +77,12 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 		}
 		preparedCalls = append(preparedCalls, call)
 		resolved := m.Resolve(ctx, call.Name, req.CachedTools)
-		assessment, riskText, assessErr := m.assessForRun(ctx, resolved, call)
+		assessment, riskText := m.assessForRun(ctx, resolved, call)
 		deps.AddToolUse(sessionID, call.Name)
-		if assessErr != nil && resolved.Source == SourceKindNative && resolved.Native != nil && resolved.Native.Name() == "edit_file" {
-			message := toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s failed: %v", call.Name, assessErr))
+		if err := m.PreflightConfirmation(ctx, resolved, call); err != nil {
+			message := toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
 			content := llm.SegmentsContentText(message.Segments)
-			deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, content, assessErr)
+			deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, content, err)
 			messages = append(messages, message)
 			transcript = append(transcript, deps.ToolResultMessage(sessionID, message))
 			continue
@@ -193,12 +193,12 @@ func (m *Manager) confirm(ctx context.Context, deps RunnerDeps, actor security.A
 	return deps.ConfirmToolCall(ctx, sessionID, call, assessment, m.RiskDetail(ctx, resolved, call))
 }
 
-func (m *Manager) assessForRun(ctx context.Context, resolved ResolvedTool, call llm.ToolCallRequest) (tool.RiskAssessment, string, error) {
+func (m *Manager) assessForRun(ctx context.Context, resolved ResolvedTool, call llm.ToolCallRequest) (tool.RiskAssessment, string) {
 	assessment, err := m.AssessRisk(ctx, resolved, call.Arguments)
 	if err != nil || assessment.Level == "" {
-		return tool.RiskAssessment{Level: tool.RiskLow}, "unknown", err
+		return tool.RiskAssessment{Level: tool.RiskLow}, "unknown"
 	}
-	return assessment, string(assessment.Level), nil
+	return assessment, string(assessment.Level)
 }
 
 func toolMessage(name, id, content string) llm.LLMMessage {

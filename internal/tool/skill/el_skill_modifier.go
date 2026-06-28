@@ -51,6 +51,15 @@ type modifyLinePatch struct {
 	NewLines  []string `json:"new_lines"`
 }
 
+type modifyElSkillPreview struct {
+	Name   string
+	Target string
+	Path   string
+	File   fileops.File
+	Next   string
+	Diff   string
+}
+
 func NewReadElSkillTool(manager *Manager) ReadElSkillTool {
 	return ReadElSkillTool{Manager: manager}
 }
@@ -160,66 +169,111 @@ func (ModifyElSkillTool) Schema() llm.ToolSchema {
 	}}
 }
 
+func (t ModifyElSkillTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
+	_, err := t.preview(ctx, req)
+	return err
+}
+
+func (t ModifyElSkillTool) RiskDetail(ctx context.Context, req tool.CallRequest) (string, error) {
+	preview, err := t.preview(ctx, req)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "技能：%s\n", preview.Name)
+	fmt.Fprintf(&b, "目标：%s\n", preview.Target)
+	fmt.Fprintf(&b, "文件：%s\n", preview.Path)
+	b.WriteString("模式：确认后写入；确认前已自动预检\n")
+	b.WriteString("预检 diff:\n")
+	b.WriteString(preview.Diff)
+	if !strings.HasSuffix(preview.Diff, "\n") {
+		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n"), nil
+}
+
 func (t ModifyElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+	preview, err := t.preview(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	switch preview.Target {
+	case elSkillTargetElyph:
+		return t.modifyElyph(ctx, preview)
+	case elSkillTargetCodeSource:
+		return t.modifyCodeSource(preview)
+	default:
+		return nil, fmt.Errorf("unsupported target %q", preview.Target)
+	}
+}
+
+func (t ModifyElSkillTool) preview(ctx context.Context, req tool.CallRequest) (modifyElSkillPreview, error) {
+	if err := ctx.Err(); err != nil {
+		return modifyElSkillPreview{}, err
+	}
 	var args modifyElSkillArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse modify_el_skill arguments: %w", err)
+			return modifyElSkillPreview{}, fmt.Errorf("parse modify_el_skill arguments: %w", err)
 		}
 	}
 	name := strings.TrimSpace(args.Name)
 	path, target, err := elSkillTargetPath(t.Manager, name, strings.TrimSpace(args.Target))
 	if err != nil {
-		return nil, err
+		return modifyElSkillPreview{}, err
 	}
 	hasContent := args.Content != ""
 	hasPatches := len(args.Patches) > 0
 	if hasContent == hasPatches {
-		return nil, fmt.Errorf("provide exactly one of content or patches")
+		return modifyElSkillPreview{}, fmt.Errorf("provide exactly one of content or patches")
 	}
 	file, err := fileops.ReadFile(path, "")
 	if err != nil {
-		return nil, err
+		return modifyElSkillPreview{}, err
 	}
 	next := args.Content
 	if hasPatches {
 		next, err = applyLinePatches(fileops.SplitLines(file.Text), args.Patches)
 		if err != nil {
-			return nil, err
+			return modifyElSkillPreview{}, err
 		}
 	}
-	switch target {
-	case elSkillTargetElyph:
-		return t.modifyElyph(ctx, name, path, file, next)
-	case elSkillTargetCodeSource:
-		return t.modifyCodeSource(name, path, file, next)
-	default:
-		return nil, fmt.Errorf("unsupported target %q", target)
+	next = normalizeSkillContent(next)
+	oldText := fileops.NormalizeEditText(file.Text)
+	newText := fileops.NormalizeEditText(next)
+	if oldText == newText {
+		return modifyElSkillPreview{}, fmt.Errorf("edit produced no changes")
 	}
+	if target == elSkillTargetElyph {
+		if _, err := elyph.ParseSkill(next, name); err != nil {
+			return modifyElSkillPreview{}, err
+		}
+	}
+	return modifyElSkillPreview{
+		Name:   name,
+		Target: target,
+		Path:   path,
+		File:   file,
+		Next:   next,
+		Diff:   fileops.UnifiedDiff(path, fileops.SplitLines(oldText), fileops.SplitLines(newText), 3),
+	}, nil
 }
 
-func (t ModifyElSkillTool) modifyElyph(ctx context.Context, name, path string, file fileops.File, next string) (*tool.Result, error) {
-	next = normalizeSkillContent(next)
-	if _, err := elyph.ParseSkill(next, name); err != nil {
-		return nil, err
-	}
-	diff := fileops.UnifiedDiff(path, fileops.SplitLines(fileops.NormalizeEditText(file.Text)), fileops.SplitLines(fileops.NormalizeEditText(next)), 3)
-	if _, err := fileops.WriteTextFile(path, file, next); err != nil {
+func (t ModifyElSkillTool) modifyElyph(ctx context.Context, preview modifyElSkillPreview) (*tool.Result, error) {
+	if _, err := fileops.WriteTextFile(preview.Path, preview.File, preview.Next); err != nil {
 		return nil, err
 	}
 	if err := t.Manager.Reload(ctx); err != nil {
 		return nil, fmt.Errorf("EL skill modified but reload failed: %w", err)
 	}
-	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\ndiff:\n%s", name, elSkillTargetElyph, diff)}, nil
+	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\ndiff:\n%s", preview.Name, elSkillTargetElyph, preview.Diff)}, nil
 }
 
-func (t ModifyElSkillTool) modifyCodeSource(name, path string, file fileops.File, next string) (*tool.Result, error) {
-	next = normalizeSkillContent(next)
-	diff := fileops.UnifiedDiff(path, fileops.SplitLines(fileops.NormalizeEditText(file.Text)), fileops.SplitLines(fileops.NormalizeEditText(next)), 3)
-	if _, err := fileops.WriteTextFile(path, file, next); err != nil {
+func (t ModifyElSkillTool) modifyCodeSource(preview modifyElSkillPreview) (*tool.Result, error) {
+	if _, err := fileops.WriteTextFile(preview.Path, preview.File, preview.Next); err != nil {
 		return nil, err
 	}
-	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\ndiff:\n%s\n\n源码已写入但尚未格式化/编译；完成修改后调用 finalize_el_skill。", name, elSkillTargetCodeSource, diff)}, nil
+	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\ndiff:\n%s\n\n源码已写入但尚未格式化/编译；完成修改后调用 finalize_el_skill。", preview.Name, elSkillTargetCodeSource, preview.Diff)}, nil
 }
 
 func elSkillTargetPath(manager *Manager, name, target string) (string, string, error) {

@@ -362,7 +362,7 @@ func TestEditFileToolSchemaOmitsDryRun(t *testing.T) {
 	}
 }
 
-func TestEditFileToolAssessRiskPreflightsEdits(t *testing.T) {
+func TestEditFileToolPreflightRejectsInvalidEdits(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
 	original := "alpha\nbeta\n"
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
@@ -376,7 +376,7 @@ func TestEditFileToolAssessRiskPreflightsEdits(t *testing.T) {
 			"content":     "MISSING",
 		}},
 	})
-	_, err := NewEditFileTool().AssessRisk(context.Background(), tool.CallRequest{Arguments: args})
+	err := NewEditFileTool().PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "preflight edit_file") || !strings.Contains(err.Error(), "old_content not found") {
 		t.Fatalf("expected preflight match error, got %v", err)
 	}

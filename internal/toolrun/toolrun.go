@@ -173,6 +173,17 @@ func (m *Manager) AssessRisk(ctx context.Context, resolved ResolvedTool, argumen
 	return tool.AssessRisk(ctx, resolved.Native, tool.CallRequest{Name: resolved.Name, Arguments: json.RawMessage(arguments)})
 }
 
+func (m *Manager) PreflightConfirmation(ctx context.Context, resolved ResolvedTool, call llm.ToolCallRequest) error {
+	if resolved.Source == SourceKindELwisp || !resolved.Available || resolved.Native == nil {
+		return nil
+	}
+	provider, ok := resolved.Native.(tool.ConfirmationPreflightProvider)
+	if !ok {
+		return nil
+	}
+	return provider.PreflightConfirmation(ctx, tool.CallRequest{ID: call.ID, Name: resolved.Name, Arguments: json.RawMessage(call.Arguments)})
+}
+
 func (m *Manager) RiskDetail(ctx context.Context, resolved ResolvedTool, call llm.ToolCallRequest) string {
 	if resolved.Source == SourceKindELwisp || !resolved.Available || resolved.Native == nil {
 		return ""

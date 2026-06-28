@@ -70,6 +70,12 @@ type RiskDetailProvider interface {
 	RiskDetail(ctx context.Context, req CallRequest) (string, error)
 }
 
+// ConfirmationPreflightProvider lets a tool validate arguments and target state before user confirmation.
+// Returning an error prevents both confirmation and execution for that tool call.
+type ConfirmationPreflightProvider interface {
+	PreflightConfirmation(ctx context.Context, req CallRequest) error
+}
+
 func AssessRisk(ctx context.Context, tool Tool, req CallRequest) (RiskAssessment, error) {
 	if assessor, ok := tool.(RiskAssessor); ok {
 		assessment, err := assessor.AssessRisk(ctx, req)
