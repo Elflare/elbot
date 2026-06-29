@@ -153,7 +153,8 @@ Tool Runtime 管理工具的注册、发现、权限、风险评估和执行。
 - Skill 创建、读取、修改和运行。
 - `elwisp_creator`：为超级管理员返回创建 Elwisp 的协议说明、配置片段、脚手架和测试清单。
 
-工具结果可以回灌给 LLM，也可以返回平台无关的输出意图，由 Agent 统一发送。
+工具结果可以回灌给 LLM，也可以返回平台无关的输出意图，由 Agent 统一发送。工具结果中的 `Warnings` 会回灌给 LLM，用于提示后续优先使用更合适的工具，例如用 `read_file` 代替 shell `cat`。
+
 
 ## 安全策略
 
@@ -218,7 +219,8 @@ Skill 类型：
 - Go Skill：放在 `skills/go/<skill>/`，使用 `SKILL.elyph` 描述任务；存在二进制时可通过 `go_skill_run` 执行，并从 stdin 接收 JSON payload。
 
 
-ELyph 的目标是用更短、更稳定的结构表达输入、输出、步骤、条件和约束，减少自然语言任务描述的歧义。完整语法见 [ELyph 任务表示法](elyph.md)。
+ELyph 的目标是用更短、更稳定的结构表达输入、输出、步骤、条件和约束，减少自然语言任务描述的歧义。读取或修改 Go Skill 的 `SKILL.elyph` / `main.go` 应使用 `read_el_skill` / `modify_el_skill`；通用文件工具或 shell 直接修改这些文件会被拒绝。完整语法见 [ELyph 任务表示法](elyph.md)。
+
 
 ## 平台适配
 

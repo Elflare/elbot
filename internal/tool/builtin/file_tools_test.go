@@ -569,6 +569,77 @@ func TestEditFileToolCreateWithExpectedSHARequiresExistingFile(t *testing.T) {
 	}
 }
 
+func TestReadFileToolWarnsForElSkillFile(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "go", "reader", "SKILL.elyph")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("#skill reader - Reader.\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path})
+	result, err := NewReadFileTool(root).Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := tool.AppendWarnings(result.Content, result.Warnings)
+	if !strings.Contains(text, "Warnings:") || !strings.Contains(text, "read_el_skill") {
+		t.Fatalf("expected read_el_skill warning, got:\n%s", text)
+	}
+}
+
+func TestEditFileToolRejectsElSkillFileBeforeWrite(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "go", "writer", "SKILL.elyph")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	original := "#skill writer - Writer.\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "append", "content": "changed"}}})
+	edit := NewEditFileTool(root)
+	if err := edit.PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
+		t.Fatalf("expected preflight modify_el_skill error, got %v", err)
+	}
+	if _, err := edit.Call(context.Background(), tool.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
+		t.Fatalf("expected call modify_el_skill error, got %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != original {
+		t.Fatalf("file changed: %q", string(content))
+	}
+}
+
+func TestEditFileToolRejectsElSkillCodeSource(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "go", "writer_code", "main.go")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	original := "package main\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "append", "content": "func main() {}"}}})
+	_, err := NewEditFileTool(root).Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
+		t.Fatalf("expected modify_el_skill error, got %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != original {
+		t.Fatalf("file changed: %q", string(content))
+	}
+}
+
 func TestEditFileToolInsertLineAvoidsJoinedLines(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
 	if err := os.WriteFile(path, []byte("alpha\ngamma\n"), 0644); err != nil {

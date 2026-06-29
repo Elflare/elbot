@@ -97,6 +97,8 @@ type Result struct {
 	// Segments is the multimodal result returned to the LLM. Tools must use typed
 	// segments for images/files instead of relying on URL guessing.
 	Segments []llm.MessageSegment
+	// Warnings are appended to the LLM-visible tool result to nudge future tool use.
+	Warnings []string
 	// Data is reserved for discover_tool's DiscoveryResult, which Agent uses to
 	// inject discovered schemas as top-level tools. Normal tool call results must
 	// use Content or Segments instead.
@@ -110,9 +112,58 @@ func (r *Result) LLMSegments() []llm.MessageSegment {
 		return nil
 	}
 	if len(r.Segments) > 0 {
-		return r.Segments
+		return llm.AppendSegmentText(r.Segments, warningsSuffix(r.Warnings))
 	}
-	return llm.TextSegments(r.Content)
+	return llm.TextSegments(AppendWarnings(r.Content, r.Warnings))
+}
+
+func AppendWarnings(content string, warnings []string) string {
+	warningText := FormatWarnings(warnings)
+	if warningText == "" {
+		return content
+	}
+	content = strings.TrimRight(content, "\n")
+	if strings.TrimSpace(content) == "" {
+		return warningText
+	}
+	return content + "\n\n" + warningText
+}
+
+func FormatWarnings(warnings []string) string {
+	warnings = normalizeWarnings(warnings)
+	if len(warnings) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("Warnings:\n")
+	for _, warning := range warnings {
+		b.WriteString("- ")
+		b.WriteString(strings.ReplaceAll(warning, "\n", "\n  "))
+		b.WriteByte('\n')
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func warningsSuffix(warnings []string) string {
+	warningText := FormatWarnings(warnings)
+	if warningText == "" {
+		return ""
+	}
+	return "\n\n" + warningText
+}
+
+func normalizeWarnings(warnings []string) []string {
+	out := make([]string, 0, len(warnings))
+	seen := map[string]bool{}
+	for _, warning := range warnings {
+		warning = strings.TrimSpace(warning)
+		if warning == "" || seen[warning] {
+			continue
+		}
+		seen[warning] = true
+		out = append(out, warning)
+	}
+	return out
 }
 
 type DiscoveryResult struct {

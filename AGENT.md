@@ -163,7 +163,7 @@
 
 ### Tool Runtime
 
-- `internal/tool/tool.go`：Tool Runtime 核心类型与 Registry；管理工具注册、查询、schema、权限、风险评估、风险确认详情、用户侧 tags 和执行结果结构。
+- `internal/tool/tool.go`：Tool Runtime 核心类型与 Registry；管理工具注册、查询、schema、权限、风险评估、风险确认详情、用户侧 tags、工具结果和通用 warning 输出。
 - `internal/tool/detail.go`：工具/Skill detail 渲染 helper；按结构化格式去重共享规则卡并拼接 detail 内容。
 - `internal/tool/sandbox.go`：工具执行轻量 sandbox context；传递统一 sandbox root、当前工作目录和后台运行 kind，提供后台相对路径解析，只随本次 context 传播，不写入 Session。
 
@@ -182,10 +182,12 @@
 - `internal/tool/builtin/env.go`：内置工具环境变量读取 helper；优先读 OS env，缺失时读取配置目录 `.env`，用于 Tavily/Jina API key。
 - `internal/tool/builtin/web_search.go`：Tavily 搜索工具；返回 answer、来源链接和摘要，并依赖 `web_extract`，用户侧 tag 为 `web`。
 - `internal/tool/builtin/web_extract.go`：Jina Reader/标准库网页提取工具；支持代理、分段读取和进程内缓存，用户侧 tag 为 `web`。
-- `internal/tool/builtin/file_tools.go`：文件读写工具包装层；`read_file` 返回带行号文本和文件哈希，支持 grep 子串搜索；`edit_file` 支持行编辑、match/anchor（`match_mode` 区分 content 精确子串与 line 行前缀整行，`index` 选择多处匹配）、创建新文件、unified diff 和风险确认详情；底层读写编辑能力来自 `internal/utils/fileops`。
+- `internal/tool/builtin/file_tools.go`：文件读写工具包装层；`read_file` 返回带行号文本和文件哈希，支持 grep 子串搜索，读取 EL Skill 文件会提示用 `read_el_skill`；`edit_file` 支持行编辑、match/anchor、创建新文件、unified diff 和风险确认详情，直接修改 EL Skill 文件会被拒绝；底层读写编辑能力来自 `internal/utils/fileops`。
 - `internal/tool/builtin/elwisp_creator.go`：内置 Elwisp 创建指南工具；无参数返回配置感知的精简 Elnis/Elvena/ELyph 任务卡，提示 LLM 创建 Elwisp 所需协议、约束和配置注意事项，并依赖 read_file/edit_file/shell。
 - `internal/tool/builtin/shell.go`：内置 shell 工具；接口保留通用 `cmd`，可执行任意 shell 命令，用户侧 tag 为 `agent`，调用前通过风险评估与高风险确认流程拦截；后台 sandbox context 下会创建目录并把 shell cwd 固定到 sandbox。
 
+- `internal/tool/builtin/skill_file_guard.go`：EL Skill 文件识别与保护 helper；识别 `skills/go/<skill>/SKILL.elyph` 和 `main.go`，供文件工具和 shell 工具提示或拒绝绕过专用 Skill 工具的读写。
+- `internal/tool/builtin/shell_warnings.go`：shell 命令使用建议分析；识别 `cat`/`sed`/重定向等常见文件读写误用，返回工具 warning 或阻止直接修改 EL Skill 文件。
 - `internal/tool/builtin/shell_risk.go`：shell/bash 命令风险分类器；使用 `mvdan.cc/sh/v3/syntax` 解析 AST，识别管道、重定向、命令替换、动态命令、删除、提权、下载即执行等风险并返回风险原因。
 - `internal/tool/builtin/shell_sandbox.go`：后台 shell 轻沙盒 AST 校验；检查重定向和常见路径参数中的绝对路径、`..` 逃逸、动态路径与 `cd`，违规时把风险提升为 critical。
 - `internal/elyph/`：ELyph Task Notation 语言层；提供规则卡、AST/diagnostic、parser/linter，供原生 skill 创建、扫描和 LLM cron 任务复用。
@@ -196,7 +198,7 @@
 - `internal/tool/skill/creator.go`：`create_el_skill` 内置元工具；用结构化参数 `name/description/risk/elyph/go_source` 创建 ElBot 原生 skill，写入 `SKILL.elyph`，可选写入 `main.go` 并编译，创建前用 ELyph parser/linter 校验，成功后自动 reload；不再要求 LLM 拼 `SKILL.md` front matter，未提供源码时创建纯 ELyph 文本 skill。
 - `internal/tool/skill/modify_el_skill.go`：`read_el_skill`/`modify_el_skill` 。
 - `internal/tool/skill/finalize_el_skill.go`：`finalize_el_skill` 内置元工具；完成原生 EL Skill 修改，校验 `SKILL.elyph`，对 `main.go` 执行 gofmt、`package main` 校验、`go build` 和 reload，并把格式化/编译错误作为结果返回给 LLM。
-- `internal/tool/skill/elyph_warnings.go`：ELyph warning 结果拼接 helper；把非阻断诊断追加到 skill 工具成功结果。
+- `internal/tool/skill/elyph_warnings.go`：ELyph warning 结果拼接 helper；把非阻断诊断转为工具通用 warning。
 - `internal/tool/skill/go_source.go`：原生 Go skill 源码维护 helper；提供 gofmt、`package main` 校验、Go 可执行文件解析和 `go build` 编译能力，供 `finalize_el_skill` 和创建流程复用。
 - `internal/tool/skill/descriptor.go`：skill 描述对象；让 AgentSkill/Go skill 可被 `discover_tool` 查到详情，按结构化 detail 暴露内容、格式和规则卡；skill 本体不作为可直接调用 schema 暴露。
 - `internal/tool/skill/scanner.go`：skill 文件系统扫描与 reload；主程序默认根目录为配置目录下 `skills/`；AgentSkill 使用 `agent/<skill>/SKILL.md`，可选 `SKILL.elyph` 覆写 Agent 可读说明；Go skill 必须使用 `go/<skill>/SKILL.elyph`，可选 binary；同步新增/删除 skill 并更新 catalog。

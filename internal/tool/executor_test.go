@@ -49,6 +49,25 @@ func TestExecutorUsesResultSegments(t *testing.T) {
 	}
 }
 
+func TestResultWarningsAppendToContent(t *testing.T) {
+	result := (&Result{Content: "ok", Warnings: []string{"use read_file"}}).LLMSegments()
+	text := llm.SegmentsContentText(result)
+	if !strings.Contains(text, "ok") || !strings.Contains(text, "Warnings:") || !strings.Contains(text, "- use read_file") {
+		t.Fatalf("text = %q", text)
+	}
+}
+
+func TestResultWarningsAppendToSegments(t *testing.T) {
+	result := (&Result{Segments: []llm.MessageSegment{{Type: llm.SegmentText, Text: "text"}, {Type: llm.SegmentImage, URL: "https://example.com/a.png"}}, Warnings: []string{"use read_file"}}).LLMSegments()
+	if len(result) != 2 || result[1].Type != llm.SegmentImage {
+		t.Fatalf("segments = %#v", result)
+	}
+	text := llm.SegmentsContentText(result)
+	if !strings.Contains(text, "text") || !strings.Contains(text, "Warnings:") || !strings.Contains(text, "use read_file") {
+		t.Fatalf("text = %q", text)
+	}
+}
+
 func TestExecutorDeniesToolAboveUserRisk(t *testing.T) {
 	registry := NewRegistry()
 	if err := registry.Register(fakeTool{name: "danger", source: SourceBuiltin, risk: RiskHigh}); err != nil {

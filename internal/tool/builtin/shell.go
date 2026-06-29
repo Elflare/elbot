@@ -22,7 +22,9 @@ const (
 	shellCmdRequired    = `cmd is required; use {"cmd":"..."}`
 )
 
-type ShellTool struct{}
+type ShellTool struct {
+	SkillRoot string
+}
 
 type shellArgs struct {
 	Cmd       string `json:"cmd"`
@@ -35,8 +37,8 @@ type shellData struct {
 	ExitCode int    `json:"exit_code"`
 }
 
-func NewShellTool() ShellTool {
-	return ShellTool{}
+func NewShellTool(skillRoot ...string) ShellTool {
+	return ShellTool{SkillRoot: firstString(skillRoot)}
 }
 
 func (ShellTool) Name() string {
@@ -108,6 +110,18 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result
 		}
 		cmd.Dir = sandbox.Dir
 	}
+	workDir := cmd.Dir
+	if workDir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("resolve shell workdir: %w", err)
+		}
+		workDir = cwd
+	}
+	advice := analyzeShellAdvice(cmdText, workDir, t.SkillRoot)
+	if advice.blockErr != nil {
+		return nil, advice.blockErr
+	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -120,7 +134,7 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result
 		return nil, fmt.Errorf("run shell: %w", err)
 	}
 	data := shellData{Stdout: truncate(stdout.String()), Stderr: truncate(stderr.String()), ExitCode: exitCode}
-	return &tool.Result{Content: formatShellContent(data)}, nil
+	return &tool.Result{Content: formatShellContent(data), Warnings: advice.warnings}, nil
 }
 
 func shellCommand(ctx context.Context, cmdText string) *exec.Cmd {

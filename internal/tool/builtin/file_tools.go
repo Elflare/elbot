@@ -14,9 +14,13 @@ import (
 	"elbot/internal/utils/fileops"
 )
 
-type ReadFileTool struct{}
+type ReadFileTool struct {
+	SkillRoot string
+}
 
-type EditFileTool struct{}
+type EditFileTool struct {
+	SkillRoot string
+}
 
 type readFileArgs struct {
 	Path         string             `json:"path"`
@@ -37,8 +41,8 @@ type editFileArgs struct {
 	Edits          []fileops.Edit `json:"edits"`
 }
 
-func NewReadFileTool() ReadFileTool {
-	return ReadFileTool{}
+func NewReadFileTool(skillRoot ...string) ReadFileTool {
+	return ReadFileTool{SkillRoot: firstString(skillRoot)}
 }
 
 func (ReadFileTool) Name() string {
@@ -67,7 +71,7 @@ func readFileBuilder() *tool.Builder {
 		Integer("max_matches", "grep 最大匹配数，默认 20，范围 1-100。")
 }
 
-func (ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
 	var args readFileArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -83,8 +87,9 @@ func (ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 		return nil, err
 	}
 	lines := fileops.SplitLines(file.Text)
+	warnings := readFileWarnings(t.SkillRoot, path)
 	if strings.TrimSpace(args.Grep) != "" {
-		return readFileGrepResult(file, lines, args.Grep, args.ContextLines, args.MaxMatches)
+		return readFileGrepResult(file, lines, args.Grep, args.ContextLines, args.MaxMatches, warnings)
 	}
 	start, end, truncated, err := fileops.NormalizeReadRange(len(lines), args.StartLine, args.EndLine)
 	if err != nil {
@@ -99,7 +104,7 @@ func (ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 		fmt.Fprintf(&b, "empty: true\n")
 		fmt.Fprintf(&b, "truncated: %t\n", truncated)
 		b.WriteString("content:\n")
-		return &tool.Result{Content: b.String()}, nil
+		return &tool.Result{Content: b.String(), Warnings: warnings}, nil
 	}
 
 	fmt.Fprintf(&b, "lines: %d-%d/%d\n", start, end, len(lines))
@@ -109,10 +114,10 @@ func (ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 	for i := start; i <= end; i++ {
 		fmt.Fprintf(&b, "%*d | %s\n", width, i, lines[i-1])
 	}
-	return &tool.Result{Content: b.String()}, nil
+	return &tool.Result{Content: b.String(), Warnings: warnings}, nil
 }
 
-func readFileGrepResult(file fileops.File, lines []string, grep string, contextLines, maxMatches int) (*tool.Result, error) {
+func readFileGrepResult(file fileops.File, lines []string, grep string, contextLines, maxMatches int, warnings []string) (*tool.Result, error) {
 	query := strings.TrimSpace(grep)
 	if query == "" {
 		return nil, fmt.Errorf("grep is required")
@@ -137,7 +142,7 @@ func readFileGrepResult(file fileops.File, lines []string, grep string, contextL
 	fmt.Fprintf(&b, "context_lines: %d\n", contextLines)
 	b.WriteString("content:\n")
 	if len(matches) == 0 || len(lines) == 0 {
-		return &tool.Result{Content: b.String()}, nil
+		return &tool.Result{Content: b.String(), Warnings: warnings}, nil
 	}
 	width := len(fmt.Sprintf("%d", len(lines)))
 	lastPrinted := 0
@@ -165,11 +170,11 @@ func readFileGrepResult(file fileops.File, lines []string, grep string, contextL
 		}
 		lastPrinted = end
 	}
-	return &tool.Result{Content: b.String()}, nil
+	return &tool.Result{Content: b.String(), Warnings: warnings}, nil
 }
 
-func NewEditFileTool() EditFileTool {
-	return EditFileTool{}
+func NewEditFileTool(skillRoot ...string) EditFileTool {
+	return EditFileTool{SkillRoot: firstString(skillRoot)}
 }
 
 func (EditFileTool) Name() string {
@@ -198,14 +203,18 @@ func editFileBuilder() *tool.Builder {
 		ObjectArray("edits", "批量编辑列表，按顺序应用；连续编辑同一文件时优先使用 match/anchor 操作，行号 replace/delete 建议提供 expected_content。", editProperties, []string{"operation"}, tool.Required())
 }
 
-func (EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
+func (t EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
 		if err := decodeEditArgs(req.Arguments, &args); err != nil {
 			return tool.RiskAssessment{}, fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
-	if _, err := resolveFileToolPath(ctx, args.Path, args.Create); err != nil {
+	path, err := resolveFileToolPath(ctx, args.Path, args.Create)
+	if err != nil {
+		return tool.RiskAssessment{}, err
+	}
+	if err := rejectElSkillFileEdit(t.SkillRoot, path); err != nil {
 		return tool.RiskAssessment{}, err
 	}
 	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.Background {
@@ -214,18 +223,18 @@ func (EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.
 	return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"文件内容写入操作需要确认"}}, nil
 }
 
-func (EditFileTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
+func (t EditFileTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
 		if err := decodeEditArgs(req.Arguments, &args); err != nil {
 			return fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
-	_, err := previewEditFile(ctx, args)
+	_, err := previewEditFile(ctx, args, t.SkillRoot)
 	return err
 }
 
-func (EditFileTool) RiskDetail(ctx context.Context, req tool.CallRequest) (string, error) {
+func (t EditFileTool) RiskDetail(ctx context.Context, req tool.CallRequest) (string, error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
 		if err := decodeEditArgs(req.Arguments, &args); err != nil {
@@ -255,7 +264,7 @@ func (EditFileTool) RiskDetail(ctx context.Context, req tool.CallRequest) (strin
 		writeEditMatchDetail(&b, edit)
 		writeEditContentDetail(&b, edit)
 	}
-	preview, err := previewEditFile(ctx, args)
+	preview, err := previewEditFile(ctx, args, t.SkillRoot)
 	if err != nil {
 		return "", err
 	}
@@ -378,7 +387,7 @@ func writeIndentedBlock(b *strings.Builder, title, text string) {
 	}
 }
 
-func (EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
 		if err := decodeEditArgs(req.Arguments, &args); err != nil {
@@ -389,6 +398,9 @@ func (EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 	if err != nil {
 		return nil, err
 	}
+	if err := rejectElSkillFileEdit(t.SkillRoot, path); err != nil {
+		return nil, err
+	}
 	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedSHA256, args.Create, false, args.ContextLines, args.Edits)
 	if err != nil {
 		return nil, err
@@ -397,9 +409,12 @@ func (EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resul
 	return &tool.Result{Content: content}, nil
 }
 
-func previewEditFile(ctx context.Context, args editFileArgs) (fileops.EditResult, error) {
+func previewEditFile(ctx context.Context, args editFileArgs, skillRoot ...string) (fileops.EditResult, error) {
 	path, err := resolveFileToolPath(ctx, args.Path, args.Create)
 	if err != nil {
+		return fileops.EditResult{}, err
+	}
+	if err := rejectElSkillFileEdit(firstString(skillRoot), path); err != nil {
 		return fileops.EditResult{}, err
 	}
 	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedSHA256, args.Create, true, args.ContextLines, args.Edits)

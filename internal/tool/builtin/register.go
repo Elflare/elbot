@@ -65,13 +65,17 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 	if err := registry.Register(NewWebExtractTool()); err != nil {
 		return err
 	}
-	if err := registry.Register(NewReadFileTool()); err != nil {
+	skillRoot := ""
+	if opts.SkillManager != nil {
+		skillRoot = opts.SkillManager.Root
+	}
+	if err := registry.Register(NewReadFileTool(skillRoot)); err != nil {
 		return err
 	}
-	if err := registry.Register(NewEditFileTool()); err != nil {
+	if err := registry.Register(NewEditFileTool(skillRoot)); err != nil {
 		return err
 	}
-	if err := registry.Register(NewShellTool()); err != nil {
+	if err := registry.Register(NewShellTool(skillRoot)); err != nil {
 		return err
 	}
 	if err := registry.Register(NewElwispCreatorTool()); err != nil {

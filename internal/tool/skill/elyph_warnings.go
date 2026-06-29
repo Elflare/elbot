@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"elbot/internal/elyph"
+	"elbot/internal/tool"
 )
 
 func appendElyphWarnings(content string, diagnostics []elyph.Diagnostic) string {
@@ -11,5 +12,5 @@ func appendElyphWarnings(content string, diagnostics []elyph.Diagnostic) string 
 	if len(warnings) == 0 {
 		return content
 	}
-	return strings.TrimRight(content, "\n") + "\n\nWarnings:\n" + elyph.FormatDiagnostics(warnings)
+	return tool.AppendWarnings(content, []string{strings.TrimSpace(elyph.FormatDiagnostics(warnings))})
 }

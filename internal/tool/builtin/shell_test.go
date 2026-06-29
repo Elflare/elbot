@@ -44,6 +44,69 @@ func TestShellToolRunsArbitraryCommand(t *testing.T) {
 	}
 }
 
+func TestShellToolWarnsForCat(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	shell := NewShellTool()
+	args, _ := json.Marshal(map[string]any{"cmd": "cat " + filepath.ToSlash(path)})
+	result, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := tool.AppendWarnings(result.Content, result.Warnings)
+	if !strings.Contains(text, "alpha") || !strings.Contains(text, "read_file") {
+		t.Fatalf("expected cat output and read_file warning, got:\n%s", text)
+	}
+}
+
+func TestShellToolWarnsForCatElSkill(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "go", "reader", "SKILL.elyph")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("#skill reader - Reader.\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	shell := NewShellTool(root)
+	args, _ := json.Marshal(map[string]any{"cmd": "cat " + filepath.ToSlash(path)})
+	result, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := tool.AppendWarnings(result.Content, result.Warnings)
+	if !strings.Contains(text, "read_file") || !strings.Contains(text, "read_el_skill") {
+		t.Fatalf("expected read_file and read_el_skill warnings, got:\n%s", text)
+	}
+}
+
+func TestShellToolRejectsSedEditElSkill(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "go", "writer", "SKILL.elyph")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	original := "#skill writer - Writer.\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	shell := NewShellTool(root)
+	args, _ := json.Marshal(map[string]any{"cmd": "sed -i 's/Writer/Changed/' " + filepath.ToSlash(path)})
+	_, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
+		t.Fatalf("expected modify_el_skill error, got %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != original {
+		t.Fatalf("file changed: %q", string(content))
+	}
+}
+
 func TestShellToolUsesSandboxDir(t *testing.T) {
 	sandboxDir := filepath.Join(t.TempDir(), "sandbox", "cron")
 	shell := NewShellTool()

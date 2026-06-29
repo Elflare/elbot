@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 现在不在启动elbot的时候校验ELyph语法，免得拖慢启动速度
 - ELyph `**`/`~` 文本末尾冒号现在作为 warning 返回给 `create_el_skill`/`finalize_el_skill`，不再阻断创建或 finalize。
 - `modify_el_skill` 修改 `SKILL.elyph` 后不再自动 reload；修改完成后需调用 `finalize_el_skill` 生效。
+- 工具结果支持统一 `Warnings` 输出，用于提示 LLM 后续优先使用更合适的工具。
+- `read_file`/`shell` 读取 EL Skill 文件时会提示使用 `read_el_skill`；`edit_file` 或 shell 直接修改 EL Skill 文件会在确认或执行前被拒绝，需改用 `modify_el_skill`。
 
 ### Fixed
 
