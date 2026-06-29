@@ -21,9 +21,9 @@
       "updated_at": 1782630997
     },
     "docs/concepts.md": {
-      "source_hash": "36e3b707d8c8fdbe6f03ebd785cfd2882204b3308561d7a8f1f5043a7c12ffd2",
+      "source_hash": "b5468a152024af467a4ef5faac572e0cc5c5a4f4cb66fb35d8b1c2dd503628ab",
       "target": "docs.en/concepts.md",
-      "updated_at": 1782698966
+      "updated_at": 1782722490
     },
     "docs/configuration.md": {
       "source_hash": "db01881a125701b41b608e1f0ebaea702f0a72ad566da422a2e3b43873475d6f",
@@ -4025,6 +4025,14 @@
       "translation": "Background Cron has independent Session and sandbox constraints. LLM Cron can pre-inject tool names, allowing the model to stably use specified tools in background tasks.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:36da951501fcc6df52198e0168688f6a576b4a9a3aabd24f885af6abc44d0454": {
+      "kind": "paragraph",
+      "source": "工具结果可以回灌给 LLM，也可以返回平台无关的输出意图，由 Agent 统一发送。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "36da951501fcc6df52198e0168688f6a576b4a9a3aabd24f885af6abc44d0454",
+      "translation": "Tool results can be fed back to the LLM or return a platform-agnostic output intent, which is sent uniformly by the Agent.",
+      "updated_at": 1782722490
+    },
     "docs/concepts.md:paragraph:381a3f69f52ea9af8eddd07647addf266fc1229def56e09ab8663c9f9fd6e638": {
       "kind": "paragraph",
       "source": "平台适配层只负责把平台消息转换为统一输入，以及把输出意图发送回平台。Agent Core 不依赖具体平台。\n",
@@ -4241,6 +4249,14 @@
       "translation": "Valid commands will be stripped and persisted to the tool cache of the current Session; invalid values will be kept as ordinary text and a prompt will be shown.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:8ad804df2925c6835455adb91c4411a2cf2fc36c4bfca78ff706ef9b7d430a74": {
+      "kind": "paragraph",
+      "source": "读取或修改 Go Skill 的 __ELBOT_CODE_0__ / __ELBOT_CODE_1__ 应使用 __ELBOT_CODE_2__ / __ELBOT_CODE_3__；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "8ad804df2925c6835455adb91c4411a2cf2fc36c4bfca78ff706ef9b7d430a74",
+      "translation": "Reading or modifying the __ELBOT_CODE_0__ / __ELBOT_CODE_1__ of Go Skill should use __ELBOT_CODE_2__ / __ELBOT_CODE_3__;",
+      "updated_at": 1782722490
+    },
     "docs/concepts.md:paragraph:8d8868f4841964e4aea90eb53af567667489ade4a7e2da48f9a3dbd8a04d4adf": {
       "kind": "paragraph",
       "source": "这样做的目的：\n",
@@ -4281,6 +4297,14 @@
       "translation": "ElBot supports Skill extensions and introduces ELyph Task Notation to describe reusable tasks.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:9b2c54341f438c61bfbf1f51ed90dacece8a747aabe80f575bee5b58dab7170c": {
+      "kind": "paragraph",
+      "source": "通用文件工具或 shell 直接修改这些文件会被拒绝。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "9b2c54341f438c61bfbf1f51ed90dacece8a747aabe80f575bee5b58dab7170c",
+      "translation": "Direct modification of these files via general file tools or shell will be rejected.",
+      "updated_at": 1782722490
+    },
     "docs/concepts.md:paragraph:9d0fd6757d20ba131192002948c00af45f5542d65a626b612c0439ef7deb1853": {
       "kind": "paragraph",
       "source": "Tool Runtime 管理工具的注册、发现、权限、风险评估和执行。\n",
@@ -4304,6 +4328,14 @@
       "source_hash": "9e49f557aef34ca8beaa5f228481819327a48168953b97b7491a573d801d2926",
       "translation": "ElBot divides conversations into two modes:\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:a5ad325ffeaf78413fcee790ab6f4b058ade38f3693af55721daf87fe94d2185": {
+      "kind": "paragraph",
+      "source": "EL Skill、常驻记忆和长期记忆源文件由 FileGuard 保护：读取会提示使用对应专用工具，通用文件工具或 shell 直接写入会被拒绝。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "a5ad325ffeaf78413fcee790ab6f4b058ade38f3693af55721daf87fe94d2185",
+      "translation": "EL Skill, resident memory, and long-term memory source files are protected by FileGuard: reading will prompt the use of corresponding dedicated tools, and direct writing via general file tools or shell will be rejected.\n",
+      "updated_at": 1782722490
     },
     "docs/concepts.md:paragraph:a800da9d165f4210729342e742feb2f8c6c2b15841003da34b733f9c9335ec52": {
       "kind": "paragraph",
@@ -4448,6 +4480,14 @@
       "source_hash": "eb28bc34b1889f07f968893640bdc245d652141617176e239f37de1fd8524508",
       "translation": "When multiple ELyph Skills are injected simultaneously, the ELyph rule description will only be added once.\n",
       "updated_at": 1782205988
+    },
+    "docs/concepts.md:paragraph:eb4745aab2ac66401ac11150cb875685d3abeb26e87420ec3df5a8d3a326eaff": {
+      "kind": "paragraph",
+      "source": "工具结果中的 __ELBOT_CODE_0__ 会回灌给 LLM，用于提示后续优先使用更合适的工具，例如用 __ELBOT_CODE_1__ 代替 shell __ELBOT_CODE_2__。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "eb4745aab2ac66401ac11150cb875685d3abeb26e87420ec3df5a8d3a326eaff",
+      "translation": "The __ELBOT_CODE_0__ in tool results will be fed back to the LLM to suggest prioritizing more appropriate tools in the future, such as using __ELBOT_CODE_1__ instead of shell __ELBOT_CODE_2__.",
+      "updated_at": 1782722490
     },
     "docs/concepts.md:paragraph:ed9272f16a95db5abf9cd5b1bacc3e85baa2063b2488cfd3e56fc18e1261270f": {
       "kind": "paragraph",
