@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "e067751202fd203df368b5134341936afb95e606b06631fb134dce389fff58c7",
+      "source_hash": "b9bc16ea0a3648c689229196d8ed496dbca78df6496d5fdea9da08750dccf4f4",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782662506
+      "updated_at": 1782699038
     },
     "README.zh-CN.md": {
       "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
@@ -57,6 +57,14 @@
     }
   },
   "segments": {
+    "CHANGELOG.md:list:020bcf5591a825ef02d663682d6a9f0f7c5924e7e37d3d17923b4d07b4e8d595": {
+      "kind": "list",
+      "source": "同一轮多个工具调用的 __ELBOT_CODE_0__ 预览会合并为一条消息发送，减少平台刷屏。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "020bcf5591a825ef02d663682d6a9f0f7c5924e7e37d3d17923b4d07b4e8d595",
+      "translation": "__ELBOT_CODE_0__ previews for multiple tool calls in the same round will be merged into a single message to reduce platform spam.",
+      "updated_at": 1782699038
+    },
     "CHANGELOG.md:list:05a9e4447fd45b2d4076875eef3c2a7bdf6a16a84f6e8b476b1080ff1cffd0dd": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 不再向 LLM 暴露 __ELBOT_CODE_1__ 参数；系统会在用户确认前自动预检并生成 diff，预检失败不会进入确认或写入文件。",
@@ -417,6 +425,14 @@
       "translation": "**Hook Layer**: Inserts extension logic at key points such as Agent input, LLM request/response, and platform sending; includes built-in rule Hooks and resident memory Hooks.",
       "updated_at": 1782376912
     },
+    "CHANGELOG.md:list:982e715f6a8e303465255744e60589d5a93f784f31e748fbdb313c57f07a56e8": {
+      "kind": "list",
+      "source": "Elvena LLM 事件和 LLM Cron 支持 __ELBOT_CODE_0__ 选择后台 Session 模式，默认仍为 __ELBOT_CODE_1__。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "982e715f6a8e303465255744e60589d5a93f784f31e748fbdb313c57f07a56e8",
+      "translation": "Elvena LLM events and LLM Cron now support __ELBOT_CODE_0__ selecting background Session mode, with the default remaining __ELBOT_CODE_1__.",
+      "updated_at": 1782699038
+    },
     "CHANGELOG.md:list:98e6593633bc9b68e06b9a76de0dfbe3f13ced9b3500785a4dd4c30c39f20666": {
       "kind": "list",
       "source": "Elvena v3 动作通道：Elnis 支持 __ELBOT_CODE_0__，首批支持 raw 平台 API 以及 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ capability；",
@@ -432,6 +448,14 @@
       "source_hash": "a724226f267f5e72c8b1410dacff8844636ef381b46198c619c9c5003b3bf59a",
       "translation": "Hook platform context now populates the current platform message ID __ELBOT_CODE_0__ and the referenced/reply target message ID __ELBOT_CODE_1__, facilitating the processing of referenced messages by rule Hooks, such as recalling a referenced message.",
       "updated_at": 1782395477
+    },
+    "CHANGELOG.md:list:ac3afc51b6a800e97966f71f733c8b5c6a8ed82d2528465a388929465e7a17c6": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 现在复用 __ELBOT_CODE_1__ 的 __ELBOT_CODE_2__ 编辑说明与执行能力，并在确认前预检编辑、ELyph 语法和 no-op 修改，在高风险确认详情中展示预检 diff。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ac3afc51b6a800e97966f71f733c8b5c6a8ed82d2528465a388929465e7a17c6",
+      "translation": "__ELBOT_CODE_0__ now reuses the __ELBOT_CODE_2__ editing instructions and execution capabilities of __ELBOT_CODE_1__, and pre-checks edits, ELyph syntax, and no-op modifications before confirmation, displaying the pre-check diff in the high-risk confirmation details.",
+      "updated_at": 1782699038
     },
     "CHANGELOG.md:list:ada87970eec02cf839ea0c3ab0c573116bb30bcb71bac655bf9eaeb0c4d76173": {
       "kind": "list",
