@@ -4,7 +4,7 @@
 
 ELyph (ELyph Task Notation) is ElBot's lightweight task notation. Its goal is to describe the input, output, steps, conditions, and constraints of a task using a short, stable, and structured syntax, reducing the ambiguity of natural language task descriptions while remaining human-readable.
 
-Current version: **v0.2**.
+Current version: **v0.3**.
 
 ## Why ELyph is Needed
 
@@ -160,6 +160,24 @@ each($item in $items, limit=N) {
 
 ---
 
+### `step` Named Stage Block
+
+Split the process into named stages; the contents of the block remain ordinary statements. This is optional and not mandatory for all content; top-level bare statements can be mixed with `step` blocks.
+
+```
+step <name> {
+  ...statements...
+}
+```
+
+- `<name>`: The first character must be a lowercase letter or a digit, and the rest can contain lowercase letters, digits, `_`, and `-`, with a maximum length of 64. It can be purely numeric (e.g., `step 1 {`).
+- `step` blocks can only appear at the top level and **cannot be nested** `step`.
+- `step` blocks **cannot be empty** and must contain at least one valid statement.
+- `step` names **cannot be duplicated** within the same document.
+- Any statements such as `?if`/`?else`/`each`/`$`/`=>`/`@tool`/`@skill`/`>`/`**`/`~` can be used within the block.
+
+---
+
 ### `>` Output Text
 
 Output a piece of text.
@@ -216,14 +234,18 @@ Only whole-line comments are allowed.
 ** 根据查询结果判断
 ~ 编造天气数据
 
-$q:str = $city + 天气
-$w = @tool web_search(query=$q)
-=> $rain = $w 是否下雨 ? 是 : 否
-?if($rain) {
-  > 记得带伞
+step fetch {
+  $q:str = $city + 天气
+  $w = @tool web_search(query=$q)
 }
-?else {
-  > 今天不用带伞
+step decide {
+  => $rain = $w 是否下雨 ? 是 : 否
+  ?if($rain) {
+    > 记得带伞
+  }
+  ?else {
+    > 今天不用带伞
+  }
 }
 ```
 
@@ -263,4 +285,4 @@ LLM Cron tasks can use the `#task` header to write task entries, and the syntax 
 
 ## Syntax Evolution
 
-ELyph is currently v0.2, and the syntax may be expanded in future versions. When writing `SKILL.elyph` or task entries, it is recommended to keep the structure concise and avoid relying on experimental notations not listed in this document.
+ELyph is currently v0.3, and the syntax may be expanded in future versions. When writing `SKILL.elyph` or task entries, it is recommended to keep the structure concise and avoid relying on experimental notations not listed in this document.

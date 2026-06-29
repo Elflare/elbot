@@ -41,9 +41,9 @@
       "updated_at": 1782459210
     },
     "docs/elyph.md": {
-      "source_hash": "0374f117cd16d572c418d95b20943e3591b0fc04f10e8c2c4fec49c6412b4455",
+      "source_hash": "851512bfdd5539bd93160200c0f578fb0acce8819dd6afeeb4d9aaf8fab13e79",
       "target": "docs.en/elyph.md",
-      "updated_at": 1782379584
+      "updated_at": 1782704123
     },
     "docs/getting-started.md": {
       "source_hash": "be8df536298bfcae8caaf7f4a2932c844d168db3877fa150d2b96286d3d137b4",
@@ -8737,6 +8737,14 @@
       "translation": "Example 2: Multi-city Weather Query",
       "updated_at": 1781786413
     },
+    "docs/elyph.md:heading:ea6f48402215e8346075ef21dccbdba659ece5b1cbbd943d5cec7588e835a512": {
+      "kind": "heading",
+      "source": "__ELBOT_CODE_0__ 命名阶段块",
+      "source_file": "docs/elyph.md",
+      "source_hash": "ea6f48402215e8346075ef21dccbdba659ece5b1cbbd943d5cec7588e835a512",
+      "translation": "__ELBOT_CODE_0__ Named Stage Block",
+      "updated_at": 1782704123
+    },
     "docs/elyph.md:heading:ea819854ec104eba140854147733aa16dd6424cc442becfa6b62a742180996e2": {
       "kind": "heading",
       "source": "__ELBOT_CODE_0__ 输出",
@@ -8768,6 +8776,14 @@
       "source_hash": "ff2a6b86ec4d94b1a82a8a3422f87930c587db0d6709ae191a18a9df8431d58c",
       "translation": "__ELBOT_CODE_0__ Direct Assignment",
       "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:108a956fe41286ddb4c7280c008c955a9cba9fa5db95316f3048ad57b51da6ba": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 块**不能为空**，至少含一条有效语句。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "108a956fe41286ddb4c7280c008c955a9cba9fa5db95316f3048ad57b51da6ba",
+      "translation": "__ELBOT_CODE_0__ blocks **cannot be empty** and must contain at least one valid statement.",
+      "updated_at": 1782704123
     },
     "docs/elyph.md:list:1ebc5d1035cad30fba0bc097300b8cc672cd959cdedef5ae610d24e5d2d5120d": {
       "kind": "list",
@@ -8905,6 +8921,14 @@
       "translation": "Type annotations use __ELBOT_CODE_0__, and type names follow the same naming rules as variables.",
       "updated_at": 1781786413
     },
+    "docs/elyph.md:list:b4560835d0cb8f5c9e45df2b9d8a40dbe44f84e7836fb8cf6928931bced09a39": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：首字符是小写字母或数字，其余可含小写字母、数字、__ELBOT_CODE_1__、__ELBOT_CODE_2__，最长 64。可为纯数字（如 __ELBOT_CODE_3__）。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "b4560835d0cb8f5c9e45df2b9d8a40dbe44f84e7836fb8cf6928931bced09a39",
+      "translation": "__ELBOT_CODE_0__: The first character must be a lowercase letter or a digit, and the rest can contain lowercase letters, digits, __ELBOT_CODE_1__, and __ELBOT_CODE_2__, with a maximum length of 64. It can be purely numeric (e.g., __ELBOT_CODE_3__).",
+      "updated_at": 1782704123
+    },
     "docs/elyph.md:list:ba478d6543ff18f0c29d7c1d76020e2a46955ed0d7070a0e89882bd87e83c427": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 必须是正整数。",
@@ -8929,6 +8953,30 @@
       "translation": "**Long context**: Using natural language to clearly describe steps, branches, and constraints requires a large amount of text.",
       "updated_at": 1781786413
     },
+    "docs/elyph.md:list:ef448f3ea300eb1013593784793b567a2be879a093844d00fed1e78ad28107e6": {
+      "kind": "list",
+      "source": "块内可使用 __ELBOT_CODE_0__/__ELBOT_CODE_1__/__ELBOT_CODE_2__/__ELBOT_CODE_3__/__ELBOT_CODE_4__/__ELBOT_CODE_5__/__ELBOT_CODE_6__/__ELBOT_CODE_7__/__ELBOT_CODE_8__/__ELBOT_CODE_9__ 等任意语句。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "ef448f3ea300eb1013593784793b567a2be879a093844d00fed1e78ad28107e6",
+      "translation": "Any statements such as __ELBOT_CODE_0__/__ELBOT_CODE_1__/__ELBOT_CODE_2__/__ELBOT_CODE_3__/__ELBOT_CODE_4__/__ELBOT_CODE_5__/__ELBOT_CODE_6__/__ELBOT_CODE_7__/__ELBOT_CODE_8__/__ELBOT_CODE_9__ can be used within the block.",
+      "updated_at": 1782704123
+    },
+    "docs/elyph.md:list:f2abf33420ab1288eb89d4d6df419eb4b3af689a0ca9eb54d1a71a6d593a46f1": {
+      "kind": "list",
+      "source": "同一文档内 __ELBOT_CODE_0__ 名**不能重复**。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "f2abf33420ab1288eb89d4d6df419eb4b3af689a0ca9eb54d1a71a6d593a46f1",
+      "translation": "__ELBOT_CODE_0__ names **cannot be duplicated** within the same document.",
+      "updated_at": 1782704123
+    },
+    "docs/elyph.md:list:f5e6678183d42670fd2b4ca9450cfed733e5b2177cb38b2682dc658890a220c3": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 块只能出现在顶层，**不能嵌套** __ELBOT_CODE_1__。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "f5e6678183d42670fd2b4ca9450cfed733e5b2177cb38b2682dc658890a220c3",
+      "translation": "__ELBOT_CODE_0__ blocks can only appear at the top level and **cannot be nested** __ELBOT_CODE_1__.",
+      "updated_at": 1782704123
+    },
     "docs/elyph.md:list:fd64bf549fea3a76e0ea8df19195474b5d7c34ab2ce5f2e2440bac5f42c1bf8d": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 必须紧跟 __ELBOT_CODE_1__ 块的 __ELBOT_CODE_2__ 之后。",
@@ -8936,6 +8984,14 @@
       "source_hash": "fd64bf549fea3a76e0ea8df19195474b5d7c34ab2ce5f2e2440bac5f42c1bf8d",
       "translation": "__ELBOT_CODE_0__ must immediately follow the __ELBOT_CODE_2__ of the __ELBOT_CODE_1__ block.",
       "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:01fdedc212cfc93ab30dd51224dbd93c5462d70929e62a0cf933ef546e3d273a": {
+      "kind": "paragraph",
+      "source": "把流程拆成命名阶段，块内仍是普通语句。可选使用，不强制全包；顶层允许裸语句与 __ELBOT_CODE_0__ 块混用。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "01fdedc212cfc93ab30dd51224dbd93c5462d70929e62a0cf933ef546e3d273a",
+      "translation": "Split the process into named stages; the contents of the block remain ordinary statements. This is optional and not mandatory for all content; top-level bare statements can be mixed with __ELBOT_CODE_0__ blocks.\n",
+      "updated_at": 1782704123
     },
     "docs/elyph.md:paragraph:0e0beef4888302321e65724497611f77ae19e3dab861a259d4614bf136d91e32": {
       "kind": "paragraph",
@@ -8976,6 +9032,14 @@
       "source_hash": "2d60fe68e4deddebcbbc0a4ad949941c9723776399adda025720dec8ec9e2f2b",
       "translation": "ELyph replaces verbose natural language descriptions with a fixed syntax, making task descriptions shorter, more stable, and more predictable.\n",
       "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:2fb30a097fd4e3dfc89f3ca7b08eaf3d84a8a8b77b55c3bc12f5971cb3235af2": {
+      "kind": "paragraph",
+      "source": "ELyph 当前是 v0.3，语法可能在未来版本中扩展。写 __ELBOT_CODE_0__ 或任务条时，建议保持结构简洁，避免依赖未在本文档中列出的实验性写法。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "2fb30a097fd4e3dfc89f3ca7b08eaf3d84a8a8b77b55c3bc12f5971cb3235af2",
+      "translation": "ELyph is currently v0.3, and the syntax may be expanded in future versions. When writing __ELBOT_CODE_0__ or task entries, it is recommended to keep the structure concise and avoid relying on experimental notations not listed in this document.\n",
+      "updated_at": 1782704123
     },
     "docs/elyph.md:paragraph:3ef359032b5033766055df8ae9b7831bd6192b5d15d863c89c7122ee8e15e964": {
       "kind": "paragraph",
@@ -9048,6 +9112,14 @@
       "source_hash": "7319979ebc38588835411af9349c660f726b24fd35a567c549b9bf6fb32600ea",
       "translation": "ELyph is currently v0.2, and the syntax may be expanded in future versions. When writing __ELBOT_CODE_0__ or task entries, it is recommended to keep the structure concise and avoid relying on experimental notations not listed in this document.\n",
       "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:8d3985916c346e1c5fdeca63ba761ccbf9112bba44250e3d7467f69b0474eebf": {
+      "kind": "paragraph",
+      "source": "当前版本：**v0.3**。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "8d3985916c346e1c5fdeca63ba761ccbf9112bba44250e3d7467f69b0474eebf",
+      "translation": "Current version: **v0.3**.\n",
+      "updated_at": 1782704123
     },
     "docs/elyph.md:paragraph:94eb0a10c3bb71d8a8102aaa5c2b0b1ed58d8ca5caf835cd0c5b17bc20d4765a": {
       "kind": "paragraph",
