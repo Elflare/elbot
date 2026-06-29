@@ -160,9 +160,11 @@ each($item in $items, limit=N) {
 
 ---
 
-### `step` Named Stage Block
+### `step` Named Stages
 
-Split the process into named stages; the contents of the block remain ordinary statements. This is optional and not mandatory for all content; top-level bare statements can be mixed with `step` blocks.
+Split the process into named stages; this is optional and not required to wrap everything. Bare statements and `step` can be mixed at the top level.
+
+**Block form** (at least 2 statements):
 
 ```
 step <name> {
@@ -170,9 +172,17 @@ step <name> {
 }
 ```
 
-- `<name>`: The first character must be a lowercase letter or a digit, and the rest can contain lowercase letters, digits, `_`, and `-`, with a maximum length of 64. It can be purely numeric (e.g., `step 1 {`).
-- `step` blocks can only appear at the top level and **cannot be nested** `step`.
-- `step` blocks **cannot be empty** and must contain at least one valid statement.
+**Single-line form** (only 1 statement):
+
+```
+step <name>: <statement>
+```
+
+- `<name>`: The first character must be a lowercase letter or a digit, and the rest can contain lowercase letters, digits, `_`, and `-`, with a maximum length of 64. It can be purely numeric (e.g., `step 1`).
+- `step` can only appear at the top level and **cannot be nested** within `step`.
+- `step` **cannot be empty**.
+- **At least 2 statements within a block**; if there is only 1 statement, the single-line form `step name: 语句` must be used.
+- Statements in single-line form must be simple single-line statements (`$`/`=>`/`>`/`@tool`/`@skill`/`**`/`~`/`<-`/`->`) and cannot be `?if`/`?else`/`each`/`step`/`}`.
 - `step` names **cannot be duplicated** within the same document.
 - Any statements such as `?if`/`?else`/`each`/`$`/`=>`/`@tool`/`@skill`/`>`/`**`/`~` can be used within the block.
 
@@ -247,6 +257,7 @@ step decide {
     > 今天不用带伞
   }
 }
+step notify: > 已通知 $city
 ```
 
 ### Example 2: Multi-city Weather Query
