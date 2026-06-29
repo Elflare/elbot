@@ -11,10 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `[tool]` previews for multiple tool calls in the same round will be merged into a single message to reduce platform spam.
+- Elvena LLM events and LLM Cron now support `session_mode=chat|work` selecting background Session mode, with the default remaining `work`.
 - `/detail` high-risk tool call details now support custom plain text display for tools; When not customized, JSON parameters will still be formatted into a more readable multi-line display, and `\n` within strings will be displayed as actual line breaks.
 - High-risk confirmation details for `edit_file` now display operations such as replace, add, delete, and match by file, mode, and editing step.
 - `edit_file` no longer exposes the `dry_run` parameter to the LLM; the system will automatically pre-check and generate a diff before user confirmation, and if the pre-check fails, it will not proceed to confirmation or write to the file.
-- `modify_el_skill` now also pre-checks patch/content, ELyph syntax, and no-op modifications before confirmation, and displays the pre-check diff in the high-risk confirmation details.
+- `modify_el_skill` now reuses the `edits` editing instructions and execution capabilities of `edit_file`, and pre-checks edits, ELyph syntax, and no-op modifications before confirmation, displaying the pre-check diff in the high-risk confirmation details.
 - qq heartbeat ack and qqofficial gateway resumed are no longer logged
 - read_el_skill now depends on modify_el_skill to facilitate possible modifications
 

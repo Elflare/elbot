@@ -112,6 +112,7 @@ If the same `elwisp.name + source + id` is sent again, Elnis will return duplica
   "format": "elyph",
   "content": "#task investigate_cpu_alert - 检查服务器 CPU 异常并判断是否需要通知",
   "model_slot": "elwisp2",
+  "session_mode": "work",
   "tool_list_names": ["shell"],
   "tools": [
     {
@@ -239,6 +240,7 @@ Common fields:
 | `format` | No | `text` or `elyph`, default `text`. |
 | `content` | No | Event body. Required for LLM mode; it is recommended to use ELyph Task Notation `#task`; Can be empty in direct/record mode, but at least one of `content`, `segments`, or `calls` must be provided. |
 | `model_slot` | No | Elnis LLM model slot, only supporting `elwisp1`, `elwisp2`, and `elwisp3`; if left blank or the corresponding slot is not configured, it will fall back to `work`. |
+| `session_mode` | No | LLM background Session mode: `work` or `chat`, default `work`; `chat` does not inject tool schema, suitable for low-cost background processing that does not require tools. |
 | `tool_list_names` | No | The ElBot internal tool name or Skill name preloaded for background tasks; Ordinary tools inject the schema, while Skills inject task descriptions and automatically inject the corresponding runner; Must be within the Elnis `allowed_tools` adjudication range; `discover_tool` will be ignored. |
 | `tools` | No | External tools declared by Elwisp with events; allowed by default, rejected when hitting the `disabled_external_tools` of that Elwisp. |
 | `targets` | Yes | Elwisp expects a delivery target array: `{"platform":"telegram"}` indicates sending to the platform superadmin, `type=private/group` with `id` indicates sending to a specified private chat/group chat, and `{"platform":"all"}` indicates all enabled platform superadmins. The final decision is still made by Elnis. |
@@ -295,8 +297,7 @@ Security Conventions:
 
 - The token name is used only for logs and audit logs, and is not equivalent to the Elwisp identity.
 - The original token text is not written to logs.
-- `model_slot` can only choose `elwisp1`, `elwisp2`, or `elwisp3`, and cannot specify an arbitrary internal mode name.
+- `model_slot` can only choose `elwisp1`, `elwisp2`, or `elwisp3`, and cannot specify an arbitrary internal mode name; `session_mode` only allows `work` or `chat`, and does not affect model slots.
 - Elwisp cannot bypass Tool Runtime and Security Policy to call ElBot internal tools; Tool names or Skill names in `tool_list_names` will all undergo Elnis `allowed_tools` adjudication.
-
 - External `tools` declared by Elwisp are allowed by default and are injected as model-callable function names in the form of `elwisp_<elwisp>_<tool>` via ToolRun; A single Elwisp can use `disabled_external_tools` to disable specific tools.
 - External tool calls are initiated by Elnis as HTTP JSON POST requests to the declared endpoint; the external tool itself is responsible for the actual risk boundary, and Elnis handles it as low-risk.
