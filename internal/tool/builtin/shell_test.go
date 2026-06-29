@@ -70,7 +70,7 @@ func TestShellToolWarnsForCatElSkill(t *testing.T) {
 	if err := os.WriteFile(path, []byte("#skill reader - Reader.\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	shell := NewShellTool(root)
+	shell := NewShellTool(NewFileGuard(NewElSkillFileGuardRule(root)))
 	args, _ := json.Marshal(map[string]any{"cmd": "cat " + filepath.ToSlash(path)})
 	result, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
@@ -92,11 +92,49 @@ func TestShellToolRejectsSedEditElSkill(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	shell := NewShellTool(root)
+	shell := NewShellTool(NewFileGuard(NewElSkillFileGuardRule(root)))
 	args, _ := json.Marshal(map[string]any{"cmd": "sed -i 's/Writer/Changed/' " + filepath.ToSlash(path)})
 	_, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
 		t.Fatalf("expected modify_el_skill error, got %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != original {
+		t.Fatalf("file changed: %q", string(content))
+	}
+}
+
+func TestShellToolWarnsForCatResidentMemory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "memories.toml")
+	if err := os.WriteFile(path, []byte("[[resident_memories]]\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	shell := NewShellTool(NewFileGuard(NewResidentMemoryFileGuardRule(path)))
+	args, _ := json.Marshal(map[string]any{"cmd": "cat " + filepath.ToSlash(path)})
+	result, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := tool.AppendWarnings(result.Content, result.Warnings)
+	if !strings.Contains(text, "read_file") || !strings.Contains(text, "resident_memory_read") {
+		t.Fatalf("expected read_file and resident_memory_read warnings, got:\n%s", text)
+	}
+}
+
+func TestShellToolRejectsRedirectToResidentMemory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "memories.toml")
+	original := "[[resident_memories]]\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	shell := NewShellTool(NewFileGuard(NewResidentMemoryFileGuardRule(path)))
+	args, _ := json.Marshal(map[string]any{"cmd": "echo changed > " + filepath.ToSlash(path)})
+	_, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "resident_memory_normal") {
+		t.Fatalf("expected resident memory error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {

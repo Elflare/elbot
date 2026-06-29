@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `modify_el_skill` 修改 `SKILL.elyph` 后不再自动 reload；修改完成后需调用 `finalize_el_skill` 生效。
 - 工具结果支持统一 `Warnings` 输出，用于提示 LLM 后续优先使用更合适的工具。
 - `read_file`/`shell` 读取 EL Skill 文件时会提示使用 `read_el_skill`；`edit_file` 或 shell 直接修改 EL Skill 文件会在确认或执行前被拒绝，需改用 `modify_el_skill`。
+- 常驻记忆和长期记忆源文件纳入通用 FileGuard 保护；读取会提示使用记忆工具，通用文件工具或 shell 直接写入会被拒绝。
 
 ### Fixed
 

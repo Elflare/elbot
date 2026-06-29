@@ -579,7 +579,7 @@ func TestReadFileToolWarnsForElSkillFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path})
-	result, err := NewReadFileTool(root).Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, err := NewReadFileTool(NewFileGuard(NewElSkillFileGuardRule(root))).Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -600,7 +600,7 @@ func TestEditFileToolRejectsElSkillFileBeforeWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "append", "content": "changed"}}})
-	edit := NewEditFileTool(root)
+	edit := NewEditFileTool(NewFileGuard(NewElSkillFileGuardRule(root)))
 	if err := edit.PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
 		t.Fatalf("expected preflight modify_el_skill error, got %v", err)
 	}
@@ -627,9 +627,74 @@ func TestEditFileToolRejectsElSkillCodeSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "append", "content": "func main() {}"}}})
-	_, err := NewEditFileTool(root).Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, err := NewEditFileTool(NewFileGuard(NewElSkillFileGuardRule(root))).Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
 		t.Fatalf("expected modify_el_skill error, got %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != original {
+		t.Fatalf("file changed: %q", string(content))
+	}
+}
+
+func TestFileToolsProtectResidentMemoryFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "memories.toml")
+	original := "[[resident_memories]]\nplatform = \"cli\"\nactor_id = \"local\"\nnormal = \"alpha\"\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	guard := NewFileGuard(NewResidentMemoryFileGuardRule(path))
+	readArgs, _ := json.Marshal(map[string]any{"path": path})
+	readResult, err := NewReadFileTool(guard).Call(context.Background(), tool.CallRequest{Arguments: readArgs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := tool.AppendWarnings(readResult.Content, readResult.Warnings); !strings.Contains(text, "resident_memory_read") {
+		t.Fatalf("expected resident_memory_read warning, got:\n%s", text)
+	}
+	editArgs, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "append", "content": "changed"}}})
+	edit := NewEditFileTool(guard)
+	if err := edit.PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: editArgs}); err == nil || !strings.Contains(err.Error(), "resident_memory_normal") {
+		t.Fatalf("expected resident memory preflight error, got %v", err)
+	}
+	if _, err := edit.Call(context.Background(), tool.CallRequest{Arguments: editArgs}); err == nil || !strings.Contains(err.Error(), "resident_memory_normal") {
+		t.Fatalf("expected resident memory call error, got %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != original {
+		t.Fatalf("file changed: %q", string(content))
+	}
+}
+
+func TestFileToolsProtectLongMemoryMarkdown(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "memories", "notes", "alpha.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	original := "+++\nid = 1\n+++\nalpha\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	guard := NewFileGuard(NewLongMemoryFileGuardRule(root))
+	readArgs, _ := json.Marshal(map[string]any{"path": path})
+	readResult, err := NewReadFileTool(guard).Call(context.Background(), tool.CallRequest{Arguments: readArgs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := tool.AppendWarnings(readResult.Content, readResult.Warnings); !strings.Contains(text, "long_memory_search") {
+		t.Fatalf("expected long_memory_search warning, got:\n%s", text)
+	}
+	editArgs, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "append", "content": "changed"}}})
+	_, err = NewEditFileTool(guard).Call(context.Background(), tool.CallRequest{Arguments: editArgs})
+	if err == nil || !strings.Contains(err.Error(), "long_memory_write") {
+		t.Fatalf("expected long_memory_write error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {

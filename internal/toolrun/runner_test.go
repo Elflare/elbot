@@ -97,6 +97,30 @@ func (runnerPreflightTool) Call(ctx context.Context, req tool.CallRequest) (*too
 	return &tool.Result{Content: "should not call"}, nil
 }
 
+type runnerShellPreflightTool struct{}
+
+func (runnerShellPreflightTool) Name() string { return "shell" }
+
+func (runnerShellPreflightTool) Info() tool.Info {
+	return tool.Info{Name: "shell", Risk: tool.RiskHigh}
+}
+
+func (runnerShellPreflightTool) Schema() llm.ToolSchema {
+	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: "shell", Parameters: map[string]any{"type": "object"}}}
+}
+
+func (runnerShellPreflightTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
+	return tool.RiskAssessment{Level: tool.RiskHigh}, nil
+}
+
+func (runnerShellPreflightTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
+	return fmt.Errorf("protected file must use dedicated tool")
+}
+
+func (runnerShellPreflightTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+	return &tool.Result{Content: "should not call"}, nil
+}
+
 type runnerRiskErrorTool struct{}
 
 func (runnerRiskErrorTool) Name() string { return "risk_error" }
@@ -145,6 +169,37 @@ func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
 	}
 	if len(deps.recorded) != 1 || deps.recorded[0].err == nil {
 		t.Fatalf("expected recorded preflight error, got %#v", deps.recorded)
+	}
+}
+
+func TestRunSkipsConfirmationWhenShellPreflightFails(t *testing.T) {
+	registry := tool.NewRegistry()
+	if err := registry.Register(runnerShellPreflightTool{}); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+	deps := &runnerTestDeps{}
+	result := manager.Run(context.Background(), deps, RunRequest{
+		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
+		Actor:   security.Actor{Role: security.RoleSuperadmin},
+		Calls: []llm.ToolCallRequest{{
+			ID:        "call-1",
+			Name:      "shell",
+			Arguments: `{"cmd":"echo changed > memories.toml"}`,
+		}},
+	})
+	if deps.confirmed {
+		t.Fatal("shell preflight error should not ask for confirmation")
+	}
+	if len(result.Messages) != 1 {
+		t.Fatalf("messages = %d", len(result.Messages))
+	}
+	text := llm.SegmentsContentText(result.Messages[0].Segments)
+	if !strings.Contains(text, "tool call shell failed") || !strings.Contains(text, "dedicated tool") {
+		t.Fatalf("unexpected tool message: %s", text)
+	}
+	if len(deps.recorded) != 1 || deps.recorded[0].err == nil {
+		t.Fatalf("expected recorded shell preflight error, got %#v", deps.recorded)
 	}
 }
 

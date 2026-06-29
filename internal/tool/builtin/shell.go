@@ -23,7 +23,7 @@ const (
 )
 
 type ShellTool struct {
-	SkillRoot string
+	FileGuard *FileGuard
 }
 
 type shellArgs struct {
@@ -37,8 +37,8 @@ type shellData struct {
 	ExitCode int    `json:"exit_code"`
 }
 
-func NewShellTool(skillRoot ...string) ShellTool {
-	return ShellTool{SkillRoot: firstString(skillRoot)}
+func NewShellTool(fileGuard ...*FileGuard) ShellTool {
+	return ShellTool{FileGuard: firstFileGuard(fileGuard)}
 }
 
 func (ShellTool) Name() string {
@@ -63,15 +63,9 @@ func shellBuilder() *tool.Builder {
 }
 
 func (t ShellTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
-	var args shellArgs
-	if len(req.Arguments) > 0 {
-		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return tool.RiskAssessment{}, fmt.Errorf("parse shell arguments: %w", err)
-		}
-	}
-	cmdText := strings.TrimSpace(args.Cmd)
-	if cmdText == "" {
-		return tool.RiskAssessment{}, fmt.Errorf(shellCmdRequired)
+	_, cmdText, err := decodeShellArgs(req)
+	if err != nil {
+		return tool.RiskAssessment{}, err
 	}
 	assessment := classifyShellCommand(cmdText)
 	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.Background {
@@ -83,16 +77,22 @@ func (t ShellTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.R
 	return assessment, nil
 }
 
-func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	var args shellArgs
-	if len(req.Arguments) > 0 {
-		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse shell arguments: %w", err)
-		}
+func (t ShellTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
+	_, cmdText, err := decodeShellArgs(req)
+	if err != nil {
+		return err
 	}
-	cmdText := strings.TrimSpace(args.Cmd)
-	if cmdText == "" {
-		return nil, fmt.Errorf(shellCmdRequired)
+	workDir, err := shellWorkDir(ctx)
+	if err != nil {
+		return err
+	}
+	return analyzeShellAdvice(cmdText, workDir, t.FileGuard).blockErr
+}
+
+func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+	args, cmdText, err := decodeShellArgs(req)
+	if err != nil {
+		return nil, err
 	}
 
 	timeout := defaultShellTimeout
@@ -112,13 +112,12 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result
 	}
 	workDir := cmd.Dir
 	if workDir == "" {
-		cwd, err := os.Getwd()
+		workDir, err = shellWorkDir(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("resolve shell workdir: %w", err)
+			return nil, err
 		}
-		workDir = cwd
 	}
-	advice := analyzeShellAdvice(cmdText, workDir, t.SkillRoot)
+	advice := analyzeShellAdvice(cmdText, workDir, t.FileGuard)
 	if advice.blockErr != nil {
 		return nil, advice.blockErr
 	}
@@ -126,7 +125,7 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	err := runShellCommand(runCtx, cmd)
+	err = runShellCommand(runCtx, cmd)
 	exitCode := 0
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		exitCode = exitErr.ExitCode()
@@ -135,6 +134,31 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result
 	}
 	data := shellData{Stdout: truncate(stdout.String()), Stderr: truncate(stderr.String()), ExitCode: exitCode}
 	return &tool.Result{Content: formatShellContent(data), Warnings: advice.warnings}, nil
+}
+
+func decodeShellArgs(req tool.CallRequest) (shellArgs, string, error) {
+	var args shellArgs
+	if len(req.Arguments) > 0 {
+		if err := json.Unmarshal(req.Arguments, &args); err != nil {
+			return shellArgs{}, "", fmt.Errorf("parse shell arguments: %w", err)
+		}
+	}
+	cmdText := strings.TrimSpace(args.Cmd)
+	if cmdText == "" {
+		return shellArgs{}, "", fmt.Errorf(shellCmdRequired)
+	}
+	return args, cmdText, nil
+}
+
+func shellWorkDir(ctx context.Context) (string, error) {
+	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && strings.TrimSpace(sandbox.Dir) != "" {
+		return sandbox.Dir, nil
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("resolve shell workdir: %w", err)
+	}
+	return cwd, nil
 }
 
 func shellCommand(ctx context.Context, cmdText string) *exec.Cmd {

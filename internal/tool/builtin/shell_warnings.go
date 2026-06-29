@@ -1,7 +1,6 @@
 package builtin
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -13,7 +12,7 @@ type shellAdvice struct {
 	blockErr error
 }
 
-func analyzeShellAdvice(cmdText, workDir, skillRoot string) shellAdvice {
+func analyzeShellAdvice(cmdText, workDir string, fileGuard *FileGuard) shellAdvice {
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
 	file, err := parser.Parse(strings.NewReader(cmdText), "")
 	if err != nil {
@@ -28,16 +27,16 @@ func analyzeShellAdvice(cmdText, workDir, skillRoot string) shellAdvice {
 		case nil:
 			return true
 		case *syntax.CallExpr:
-			advice.inspectShellCall(n, workDir, skillRoot)
+			advice.inspectShellCall(n, workDir, fileGuard)
 		case *syntax.Redirect:
-			advice.inspectShellRedirect(n, workDir, skillRoot)
+			advice.inspectShellRedirect(n, workDir, fileGuard)
 		}
 		return true
 	})
 	return *advice
 }
 
-func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir, skillRoot string) {
+func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir string, fileGuard *FileGuard) {
 	if len(call.Args) == 0 {
 		return
 	}
@@ -50,47 +49,70 @@ func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir, skillRoot
 	switch name {
 	case "cat", "less", "more", "head", "tail", "grep", "rg":
 		a.addWarning(warnUseReadFile)
-		if hasElSkillPathArg(skillRoot, workDir, args) {
-			a.addWarning(warnUseReadElSkill)
-		}
+		a.addReadWarnings(fileGuard, workDir, args)
 	case "sed":
 		if hasArg(args, "-i") {
-			if path, ok := firstElSkillPathArg(skillRoot, workDir, args); ok {
-				a.blockErr = fmt.Errorf("EL Skill file %s must be modified with modify_el_skill", path)
+			if a.checkWriteArgs(fileGuard, workDir, args) {
 				return
 			}
 			a.addWarning(warnUseEditFile)
 		}
 	case "perl":
 		if hasArg(args, "-pi") || hasArg(args, "-pI") {
-			if path, ok := firstElSkillPathArg(skillRoot, workDir, args); ok {
-				a.blockErr = fmt.Errorf("EL Skill file %s must be modified with modify_el_skill", path)
+			if a.checkWriteArgs(fileGuard, workDir, args) {
 				return
 			}
 			a.addWarning(warnUseEditFile)
 		}
 	case "tee":
-		if path, ok := firstElSkillPathArg(skillRoot, workDir, args); ok {
-			a.blockErr = fmt.Errorf("EL Skill file %s must be modified with modify_el_skill", path)
+		if a.checkWriteArgs(fileGuard, workDir, args) {
 			return
 		}
 		a.addWarning(warnUseEditFile)
 	}
 }
 
-func (a *shellAdvice) inspectShellRedirect(redir *syntax.Redirect, workDir, skillRoot string) {
+func (a *shellAdvice) inspectShellRedirect(redir *syntax.Redirect, workDir string, fileGuard *FileGuard) {
 	op := redir.Op.String()
 	if !strings.Contains(op, ">") && !strings.Contains(op, "<>") {
 		return
 	}
 	path, ok := literalWord(redir.Word)
 	if ok {
-		if resolved, hit := resolveElSkillShellPath(skillRoot, workDir, path); hit {
-			a.blockErr = fmt.Errorf("EL Skill file %s must be modified with modify_el_skill", resolved)
-			return
+		if resolved, hit := resolveShellLiteralPath(workDir, path); hit {
+			if err := fileGuard.CheckWrite(resolved); err != nil {
+				a.blockErr = err
+				return
+			}
 		}
 	}
 	a.addWarning(warnUseEditFile)
+}
+
+func (a *shellAdvice) addReadWarnings(fileGuard *FileGuard, workDir string, args []string) {
+	for _, arg := range args {
+		path, ok := resolveShellLiteralPath(workDir, arg)
+		if !ok {
+			continue
+		}
+		for _, warning := range fileGuard.ReadWarnings(path) {
+			a.addWarning(warning)
+		}
+	}
+}
+
+func (a *shellAdvice) checkWriteArgs(fileGuard *FileGuard, workDir string, args []string) bool {
+	for _, arg := range args {
+		path, ok := resolveShellLiteralPath(workDir, arg)
+		if !ok {
+			continue
+		}
+		if err := fileGuard.CheckWrite(path); err != nil {
+			a.blockErr = err
+			return true
+		}
+	}
+	return false
 }
 
 func (a *shellAdvice) addWarning(warning string) {
@@ -104,32 +126,6 @@ func (a *shellAdvice) addWarning(warning string) {
 		}
 	}
 	a.warnings = append(a.warnings, warning)
-}
-
-func hasElSkillPathArg(skillRoot, workDir string, args []string) bool {
-	_, ok := firstElSkillPathArg(skillRoot, workDir, args)
-	return ok
-}
-
-func firstElSkillPathArg(skillRoot, workDir string, args []string) (string, bool) {
-	for _, arg := range args {
-		path, ok := resolveElSkillShellPath(skillRoot, workDir, arg)
-		if ok {
-			return path, true
-		}
-	}
-	return "", false
-}
-
-func resolveElSkillShellPath(skillRoot, workDir, raw string) (string, bool) {
-	path, ok := resolveShellLiteralPath(workDir, raw)
-	if !ok {
-		return "", false
-	}
-	if _, ok := detectElSkillFile(skillRoot, path); ok {
-		return path, true
-	}
-	return "", false
 }
 
 func resolveShellLiteralPath(workDir, raw string) (string, bool) {

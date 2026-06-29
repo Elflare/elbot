@@ -15,11 +15,11 @@ import (
 )
 
 type ReadFileTool struct {
-	SkillRoot string
+	FileGuard *FileGuard
 }
 
 type EditFileTool struct {
-	SkillRoot string
+	FileGuard *FileGuard
 }
 
 type readFileArgs struct {
@@ -41,8 +41,8 @@ type editFileArgs struct {
 	Edits          []fileops.Edit `json:"edits"`
 }
 
-func NewReadFileTool(skillRoot ...string) ReadFileTool {
-	return ReadFileTool{SkillRoot: firstString(skillRoot)}
+func NewReadFileTool(fileGuard ...*FileGuard) ReadFileTool {
+	return ReadFileTool{FileGuard: firstFileGuard(fileGuard)}
 }
 
 func (ReadFileTool) Name() string {
@@ -87,7 +87,7 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		return nil, err
 	}
 	lines := fileops.SplitLines(file.Text)
-	warnings := readFileWarnings(t.SkillRoot, path)
+	warnings := t.FileGuard.ReadWarnings(path)
 	if strings.TrimSpace(args.Grep) != "" {
 		return readFileGrepResult(file, lines, args.Grep, args.ContextLines, args.MaxMatches, warnings)
 	}
@@ -173,8 +173,8 @@ func readFileGrepResult(file fileops.File, lines []string, grep string, contextL
 	return &tool.Result{Content: b.String(), Warnings: warnings}, nil
 }
 
-func NewEditFileTool(skillRoot ...string) EditFileTool {
-	return EditFileTool{SkillRoot: firstString(skillRoot)}
+func NewEditFileTool(fileGuard ...*FileGuard) EditFileTool {
+	return EditFileTool{FileGuard: firstFileGuard(fileGuard)}
 }
 
 func (EditFileTool) Name() string {
@@ -214,7 +214,7 @@ func (t EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 	if err != nil {
 		return tool.RiskAssessment{}, err
 	}
-	if err := rejectElSkillFileEdit(t.SkillRoot, path); err != nil {
+	if err := t.FileGuard.CheckWrite(path); err != nil {
 		return tool.RiskAssessment{}, err
 	}
 	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.Background {
@@ -230,7 +230,7 @@ func (t EditFileTool) PreflightConfirmation(ctx context.Context, req tool.CallRe
 			return fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
-	_, err := previewEditFile(ctx, args, t.SkillRoot)
+	_, err := previewEditFile(ctx, args, t.FileGuard)
 	return err
 }
 
@@ -264,7 +264,7 @@ func (t EditFileTool) RiskDetail(ctx context.Context, req tool.CallRequest) (str
 		writeEditMatchDetail(&b, edit)
 		writeEditContentDetail(&b, edit)
 	}
-	preview, err := previewEditFile(ctx, args, t.SkillRoot)
+	preview, err := previewEditFile(ctx, args, t.FileGuard)
 	if err != nil {
 		return "", err
 	}
@@ -398,7 +398,7 @@ func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	if err != nil {
 		return nil, err
 	}
-	if err := rejectElSkillFileEdit(t.SkillRoot, path); err != nil {
+	if err := t.FileGuard.CheckWrite(path); err != nil {
 		return nil, err
 	}
 	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedSHA256, args.Create, false, args.ContextLines, args.Edits)
@@ -409,12 +409,12 @@ func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	return &tool.Result{Content: content}, nil
 }
 
-func previewEditFile(ctx context.Context, args editFileArgs, skillRoot ...string) (fileops.EditResult, error) {
+func previewEditFile(ctx context.Context, args editFileArgs, fileGuard *FileGuard) (fileops.EditResult, error) {
 	path, err := resolveFileToolPath(ctx, args.Path, args.Create)
 	if err != nil {
 		return fileops.EditResult{}, err
 	}
-	if err := rejectElSkillFileEdit(firstString(skillRoot), path); err != nil {
+	if err := fileGuard.CheckWrite(path); err != nil {
 		return fileops.EditResult{}, err
 	}
 	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedSHA256, args.Create, true, args.ContextLines, args.Edits)

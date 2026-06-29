@@ -182,12 +182,12 @@
 - `internal/tool/builtin/env.go`：内置工具环境变量读取 helper；优先读 OS env，缺失时读取配置目录 `.env`，用于 Tavily/Jina API key。
 - `internal/tool/builtin/web_search.go`：Tavily 搜索工具；返回 answer、来源链接和摘要，并依赖 `web_extract`，用户侧 tag 为 `web`。
 - `internal/tool/builtin/web_extract.go`：Jina Reader/标准库网页提取工具；支持代理、分段读取和进程内缓存，用户侧 tag 为 `web`。
-- `internal/tool/builtin/file_tools.go`：文件读写工具包装层；`read_file` 返回带行号文本和文件哈希，支持 grep 子串搜索，读取 EL Skill 文件会提示用 `read_el_skill`；`edit_file` 支持行编辑、match/anchor、创建新文件、unified diff 和风险确认详情，直接修改 EL Skill 文件会被拒绝；底层读写编辑能力来自 `internal/utils/fileops`。
+- `internal/tool/builtin/file_tools.go`：文件读写工具包装层；`read_file` 返回带行号文本和文件哈希，支持 grep 子串搜索，读取受保护文件会返回工具建议 warning；`edit_file` 支持行编辑、match/anchor、创建新文件、unified diff 和风险确认详情，直接修改受保护文件会被拒绝；底层读写编辑能力来自 `internal/utils/fileops`。
 - `internal/tool/builtin/elwisp_creator.go`：内置 Elwisp 创建指南工具；无参数返回配置感知的精简 Elnis/Elvena/ELyph 任务卡，提示 LLM 创建 Elwisp 所需协议、约束和配置注意事项，并依赖 read_file/edit_file/shell。
 - `internal/tool/builtin/shell.go`：内置 shell 工具；接口保留通用 `cmd`，可执行任意 shell 命令，用户侧 tag 为 `agent`，调用前通过风险评估与高风险确认流程拦截；后台 sandbox context 下会创建目录并把 shell cwd 固定到 sandbox。
 
-- `internal/tool/builtin/skill_file_guard.go`：EL Skill 文件识别与保护 helper；识别 `skills/go/<skill>/SKILL.elyph` 和 `main.go`，供文件工具和 shell 工具提示或拒绝绕过专用 Skill 工具的读写。
-- `internal/tool/builtin/shell_warnings.go`：shell 命令使用建议分析；识别 `cat`/`sed`/重定向等常见文件读写误用，返回工具 warning 或阻止直接修改 EL Skill 文件。
+- `internal/tool/builtin/file_guard.go`：受保护文件访问规则；识别 EL Skill、常驻记忆和长期记忆源文件，供文件工具和 shell 工具提示或拒绝绕过专用工具的读写。
+- `internal/tool/builtin/shell_warnings.go`：shell 命令使用建议分析；识别 `cat`/`sed`/重定向等常见文件读写误用，返回工具 warning 或阻止直接修改受保护文件。
 - `internal/tool/builtin/shell_risk.go`：shell/bash 命令风险分类器；使用 `mvdan.cc/sh/v3/syntax` 解析 AST，识别管道、重定向、命令替换、动态命令、删除、提权、下载即执行等风险并返回风险原因。
 - `internal/tool/builtin/shell_sandbox.go`：后台 shell 轻沙盒 AST 校验；检查重定向和常见路径参数中的绝对路径、`..` 逃逸、动态路径与 `cd`，违规时把风险提升为 critical。
 - `internal/elyph/`：ELyph Task Notation 语言层；提供规则卡、AST/diagnostic、parser/linter，供原生 skill 创建、扫描和 LLM cron 任务复用。

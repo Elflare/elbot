@@ -65,17 +65,23 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 	if err := registry.Register(NewWebExtractTool()); err != nil {
 		return err
 	}
-	skillRoot := ""
+	fileGuard := NewFileGuard()
 	if opts.SkillManager != nil {
-		skillRoot = opts.SkillManager.Root
+		fileGuard.AddRule(NewElSkillFileGuardRule(opts.SkillManager.Root))
 	}
-	if err := registry.Register(NewReadFileTool(skillRoot)); err != nil {
+	if opts.ResidentMemoryStore != nil {
+		fileGuard.AddRule(NewResidentMemoryFileGuardRule(opts.ResidentMemoryStore.Path))
+	}
+	if opts.LongMemoryDir != "" {
+		fileGuard.AddRule(NewLongMemoryFileGuardRule(opts.LongMemoryDir))
+	}
+	if err := registry.Register(NewReadFileTool(fileGuard)); err != nil {
 		return err
 	}
-	if err := registry.Register(NewEditFileTool(skillRoot)); err != nil {
+	if err := registry.Register(NewEditFileTool(fileGuard)); err != nil {
 		return err
 	}
-	if err := registry.Register(NewShellTool(skillRoot)); err != nil {
+	if err := registry.Register(NewShellTool(fileGuard)); err != nil {
 		return err
 	}
 	if err := registry.Register(NewElwispCreatorTool()); err != nil {
