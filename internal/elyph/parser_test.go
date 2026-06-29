@@ -475,12 +475,8 @@ step decide {
 
 func TestParseStepNumericName(t *testing.T) {
 	raw := `#task nums
-step 1 {
-  > first
-}
-step 2 {
-  > second
-}
+step 1: > first
+step 2: > second
 `
 	doc, err := ParseTask(raw, "nums")
 	if err != nil {
@@ -493,9 +489,7 @@ step 2 {
 
 func TestParseStepMixesWithBareStatements(t *testing.T) {
 	raw := `#task mix
-step fetch {
-  $w = @tool web_search(query=$q)
-}
+step fetch: $w = @tool web_search(query=$q)
 each($day in $days, limit=3) {
   @skill weather_day(city=$city, day=$day)
 }
@@ -584,5 +578,120 @@ step decide {
 `
 	if _, err := ParseTask(raw, "flow"); err != nil {
 		t.Fatalf("ParseTask: %v", err)
+	}
+}
+
+func TestParseStepSingleLine(t *testing.T) {
+	raw := `#skill weather - 查天气
+<- $city:str!
+-> $remind:str
+step fetch: $w = @tool web_search(query=$city)
+step notify: > 已通知 $city
+`
+	doc, err := ParseSkill(raw, "weather")
+	if err != nil {
+		t.Fatalf("ParseSkill: %v", err)
+	}
+	if len(doc.Steps) != 2 || doc.Steps[0].Name != "fetch" || doc.Steps[0].Line != 4 || doc.Steps[1].Name != "notify" || doc.Steps[1].Line != 5 {
+		t.Fatalf("doc.Steps = %#v", doc.Steps)
+	}
+}
+
+func TestParseStepSingleLineMixedWithBlock(t *testing.T) {
+	raw := `#task mix
+step fetch: $w = @tool web_search(query=$q)
+step decide {
+  => $rain = $w 是否下雨 ? 是 : 否
+  ?if($rain) {
+    > 带伞
+  }
+}
+`
+	if _, err := ParseTask(raw, "mix"); err != nil {
+		t.Fatalf("ParseTask: %v", err)
+	}
+}
+
+func TestParseRejectsStepBlockWithSingleStatement(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "single output", raw: "#task bad\nstep a {\n  > x\n}\n", want: "line 4: step block with single statement should use single-line form"},
+		{name: "single if", raw: "#task bad\nstep a {\n  ?if($x) {\n    > y\n  }\n}\n", want: "line 6: step block with single statement should use single-line form"},
+		{name: "single each", raw: "#task bad\nstep a {\n  each($x in $xs, limit=1) {\n    > y\n  }\n}\n", want: "line 6: step block with single statement should use single-line form"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseTask(tc.raw, "bad")
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want contains %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseRejectsStepSingleLineInvalidBody(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "empty body", raw: "#task bad\nstep a:\n", want: "line 2: step single-line body must not be empty"},
+		{name: "if body", raw: "#task bad\nstep a: ?if($x)\n", want: "line 2: step single-line body must be a simple statement"},
+		{name: "each body", raw: "#task bad\nstep a: each($x in $xs, limit=1)\n", want: "line 2: step single-line body must be a simple statement"},
+		{name: "step body", raw: "#task bad\nstep a: step b: > x\n", want: "line 2: step single-line body must be a simple statement"},
+		{name: "close body", raw: "#task bad\nstep a: }\n", want: "line 2: step single-line body must be a simple statement"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseTask(tc.raw, "bad")
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want contains %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseRejectsStepSingleLineDuplicateName(t *testing.T) {
+	raw := `#task bad
+step fetch: > a
+step fetch: > b
+`
+	_, err := ParseTask(raw, "bad")
+	if err == nil || !strings.Contains(err.Error(), "line 3: step name fetch already used") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestParseRejectsStepSingleLineBadName(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "empty name", raw: "#task bad\nstep : > x\n", want: "line 2: step must be step <name>"},
+		{name: "space name", raw: "#task bad\nstep a b: > x\n", want: "line 2: step must be step <name>"},
+		{name: "uppercase", raw: "#task bad\nstep Fetch: > x\n", want: "line 2: step name must be"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseTask(tc.raw, "bad")
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want contains %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestRuleCardExampleParses(t *testing.T) {
+	idx := strings.Index(RuleCard(), "例：\n")
+	if idx < 0 {
+		t.Fatal("RuleCard missing example marker")
+	}
+	example := strings.TrimSpace(RuleCard()[idx+len("例：\n"):])
+	if _, err := ParseSkill(example, "weather"); err != nil {
+		t.Fatalf("RuleCard example should parse: %v", err)
 	}
 }

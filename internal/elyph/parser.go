@@ -17,8 +17,8 @@ const (
 )
 
 type blockFrame struct {
-	kind      blockKind
-	startStmt int
+	kind        blockKind
+	directCount int
 }
 
 type parser struct {
@@ -29,7 +29,6 @@ type parser struct {
 	seenHeader   bool
 	blocks       []blockFrame
 	lastClosed   blockKind
-	stmtCount    int
 }
 
 // ParseSkill 解析并校验 ELyph skill 文档的基础结构；不执行或理解自然语言条件。
@@ -68,7 +67,6 @@ func (p *parser) parseLine(trimmed string, lineNo int) {
 		return
 	}
 	if !p.seenHeader {
-		p.stmtCount++
 		p.parseHeader(trimmed, lineNo)
 		return
 	}
@@ -80,7 +78,14 @@ func (p *parser) parseLine(trimmed string, lineNo int) {
 		p.closeBlock(lineNo)
 		return
 	}
-	p.stmtCount++
+	if len(p.blocks) > 0 {
+		p.blocks[len(p.blocks)-1].directCount++
+	}
+	p.parseStatementContent(trimmed, lineNo)
+}
+
+// parseStatementContent 分发一条非控制行（非空、非注释、非 header、非 }）的具体语法。
+func (p *parser) parseStatementContent(trimmed string, lineNo int) {
 	if !strings.HasPrefix(trimmed, "?else") {
 		p.lastClosed = ""
 	}
@@ -245,10 +250,18 @@ func (p *parser) parseEach(line string, lineNo int) {
 
 func (p *parser) parseStep(line string, lineNo int) {
 	rest := strings.TrimSpace(strings.TrimPrefix(line, "step"))
-	if !strings.HasSuffix(rest, "{") {
-		p.add(lineNo, "step must be step <name> {")
+	if strings.HasSuffix(rest, "{") {
+		p.parseStepBlock(rest, lineNo)
 		return
 	}
+	if idx := strings.Index(rest, ":"); idx > 0 {
+		p.parseStepSingle(rest[:idx], rest[idx+1:], lineNo)
+		return
+	}
+	p.add(lineNo, "step must be step <name> { or step <name>: <statement>")
+}
+
+func (p *parser) parseStepBlock(rest string, lineNo int) {
 	name := strings.TrimSpace(strings.TrimSuffix(rest, "{"))
 	if name == "" || strings.ContainsAny(name, " \t") {
 		p.add(lineNo, "step must be step <name> {")
@@ -258,20 +271,71 @@ func (p *parser) parseStep(line string, lineNo int) {
 		p.add(lineNo, "step name must be lowercase letter or digit followed by lowercase letters, digits, _ or -")
 		return
 	}
+	if p.rejectStepContext(name, lineNo) {
+		return
+	}
+	p.doc.Steps = append(p.doc.Steps, Step{Name: name, Line: lineNo})
+	p.openBlock(blockStep)
+}
+
+func (p *parser) parseStepSingle(name, after string, lineNo int) {
+	name = strings.TrimSpace(name)
+	after = strings.TrimSpace(after)
+	if name == "" || strings.ContainsAny(name, " \t") {
+		p.add(lineNo, "step must be step <name>: <statement>")
+		return
+	}
+	if !validStepName(name) {
+		p.add(lineNo, "step name must be lowercase letter or digit followed by lowercase letters, digits, _ or -")
+		return
+	}
+	if after == "" {
+		p.add(lineNo, "step single-line body must not be empty")
+		return
+	}
+	if !validStepSingleBody(after) {
+		p.add(lineNo, "step single-line body must be a simple statement")
+		return
+	}
+	if p.rejectStepContext(name, lineNo) {
+		return
+	}
+	p.doc.Steps = append(p.doc.Steps, Step{Name: name, Line: lineNo})
+	p.parseStatementContent(after, lineNo)
+}
+
+// rejectStepContext 检查 step 嵌套与重名；返回 true 表示已报错。
+func (p *parser) rejectStepContext(name string, lineNo int) bool {
 	for _, frame := range p.blocks {
 		if frame.kind == blockStep {
 			p.add(lineNo, "step blocks must not be nested")
-			return
+			return true
 		}
 	}
 	for _, s := range p.doc.Steps {
 		if s.Name == name {
 			p.add(lineNo, "step name "+name+" already used")
-			return
+			return true
 		}
 	}
-	p.doc.Steps = append(p.doc.Steps, Step{Name: name, Line: lineNo})
-	p.openBlock(blockStep)
+	return false
+}
+
+// validStepSingleBody 限定单行 step after 只能是简单单行语句，禁止控制流块与 }。
+func validStepSingleBody(after string) bool {
+	switch {
+	case strings.HasPrefix(after, "$"),
+		strings.HasPrefix(after, "=>"),
+		strings.HasPrefix(after, ">"),
+		strings.HasPrefix(after, "@tool"),
+		strings.HasPrefix(after, "@skill"),
+		strings.HasPrefix(after, "**"),
+		strings.HasPrefix(after, "~"),
+		strings.HasPrefix(after, "<-"),
+		strings.HasPrefix(after, "->"):
+		return true
+	}
+	return false
 }
 
 func (p *parser) parseOutput(line string, lineNo int) {
@@ -308,14 +372,19 @@ func (p *parser) closeBlock(lineNo int) {
 	}
 	frame := p.blocks[len(p.blocks)-1]
 	p.blocks = p.blocks[:len(p.blocks)-1]
-	if frame.kind == blockStep && p.stmtCount == frame.startStmt {
-		p.add(lineNo, "step block must not be empty")
+	if frame.kind == blockStep {
+		switch frame.directCount {
+		case 0:
+			p.add(lineNo, "step block must not be empty")
+		case 1:
+			p.add(lineNo, `step block with single statement should use single-line form: step <name>: <statement>`)
+		}
 	}
 	p.lastClosed = frame.kind
 }
 
 func (p *parser) openBlock(kind blockKind) {
-	p.blocks = append(p.blocks, blockFrame{kind: kind, startStmt: p.stmtCount})
+	p.blocks = append(p.blocks, blockFrame{kind: kind})
 	p.lastClosed = ""
 }
 
