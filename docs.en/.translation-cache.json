@@ -41,9 +41,9 @@
       "updated_at": 1782459210
     },
     "docs/elyph.md": {
-      "source_hash": "851512bfdd5539bd93160200c0f578fb0acce8819dd6afeeb4d9aaf8fab13e79",
+      "source_hash": "22e064ef6df7a3e6cca26ec9d11076b682979d1f61475af0c51782983c6a5efe",
       "target": "docs.en/elyph.md",
-      "updated_at": 1782704123
+      "updated_at": 1782710448
     },
     "docs/getting-started.md": {
       "source_hash": "be8df536298bfcae8caaf7f4a2932c844d168db3877fa150d2b96286d3d137b4",
@@ -8713,6 +8713,14 @@
       "translation": "__ELBOT_CODE_0__ comment",
       "updated_at": 1781786413
     },
+    "docs/elyph.md:heading:c243f4a0c6dbd20237e530cf4d06c97a87cb848b781ab1c67040b47bc05828f3": {
+      "kind": "heading",
+      "source": "__ELBOT_CODE_0__ 命名阶段",
+      "source_file": "docs/elyph.md",
+      "source_hash": "c243f4a0c6dbd20237e530cf4d06c97a87cb848b781ab1c67040b47bc05828f3",
+      "translation": "__ELBOT_CODE_0__ Named Stages",
+      "updated_at": 1782710448
+    },
     "docs/elyph.md:heading:c41b9f207b51a532bdd41bd812420b1c829dd7c5b04429bdc089d620509ee8ad": {
       "kind": "heading",
       "source": "Header（文档头）",
@@ -8785,6 +8793,14 @@
       "translation": "__ELBOT_CODE_0__ Direct Assignment",
       "updated_at": 1781786413
     },
+    "docs/elyph.md:list:0e9c6896d79124f74c08709cd6ac5abb05ce39e587a0384d5f7cce7f50cf68bd": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ **不能为空**。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "0e9c6896d79124f74c08709cd6ac5abb05ce39e587a0384d5f7cce7f50cf68bd",
+      "translation": "__ELBOT_CODE_0__ **cannot be empty**.",
+      "updated_at": 1782710448
+    },
     "docs/elyph.md:list:108a956fe41286ddb4c7280c008c955a9cba9fa5db95316f3048ad57b51da6ba": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 块**不能为空**，至少含一条有效语句。",
@@ -8824,6 +8840,14 @@
       "source_hash": "2f951aa30a493be98b7388ef86903259087a84f0c0d2d8b6c331926f0e16f8b2",
       "translation": "If the same AgentSkill has both __ELBOT_CODE_0__ and __ELBOT_CODE_1__, the description in the ELyph file will be prioritized for use by the Agent.",
       "updated_at": 1781786413
+    },
+    "docs/elyph.md:list:3896c7be36b7112991c9b8a6e4e084aa94fd39b10434df5906f81bd3b50c1983": {
+      "kind": "list",
+      "source": "单行形式的语句必须是简单单行语句（__ELBOT_CODE_0__/__ELBOT_CODE_1__/__ELBOT_CODE_2__/__ELBOT_CODE_3__/__ELBOT_CODE_4__/__ELBOT_CODE_5__/__ELBOT_CODE_6__/__ELBOT_CODE_7__/__ELBOT_CODE_8__），不能是 __ELBOT_CODE_9__/__ELBOT_CODE_10__/__ELBOT_CODE_11__/__ELBOT_CODE_12__/__ELBOT_CODE_13__。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "3896c7be36b7112991c9b8a6e4e084aa94fd39b10434df5906f81bd3b50c1983",
+      "translation": "Statements in single-line form must be simple single-line statements (__ELBOT_CODE_0__/__ELBOT_CODE_1__/__ELBOT_CODE_2__/__ELBOT_CODE_3__/__ELBOT_CODE_4__/__ELBOT_CODE_5__/__ELBOT_CODE_6__/__ELBOT_CODE_7__/__ELBOT_CODE_8__) and cannot be __ELBOT_CODE_9__/__ELBOT_CODE_10__/__ELBOT_CODE_11__/__ELBOT_CODE_12__/__ELBOT_CODE_13__.",
+      "updated_at": 1782710448
     },
     "docs/elyph.md:list:3e7a9b86d568729eea4efb461cce45d71f448e7bfba64c33c4bcdafe8f177e07": {
       "kind": "list",
@@ -8913,6 +8937,14 @@
       "translation": "AgentSkill is placed in __ELBOT_CODE_0__, and __ELBOT_CODE_1__ can be used to override the Agent-readable description of __ELBOT_CODE_2__.",
       "updated_at": 1781786413
     },
+    "docs/elyph.md:list:7cdb25feb242840c837ab79919be998d175f0955c3297f32bf021dd67f19422f": {
+      "kind": "list",
+      "source": "**块内至少 2 句**；只有 1 句时必须用单行形式 __ELBOT_CODE_0__。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "7cdb25feb242840c837ab79919be998d175f0955c3297f32bf021dd67f19422f",
+      "translation": "**At least 2 statements within a block**; if there is only 1 statement, the single-line form __ELBOT_CODE_0__ must be used.",
+      "updated_at": 1782710448
+    },
     "docs/elyph.md:list:90a4417aaa7065b42aaa1b958fad43be3367e1ad7311c2f98a635f190352d0bd": {
       "kind": "list",
       "source": "非空行必须以合法的 ELyph token 开头。",
@@ -8968,6 +9000,14 @@
       "source_hash": "ef448f3ea300eb1013593784793b567a2be879a093844d00fed1e78ad28107e6",
       "translation": "Any statements such as __ELBOT_CODE_0__/__ELBOT_CODE_1__/__ELBOT_CODE_2__/__ELBOT_CODE_3__/__ELBOT_CODE_4__/__ELBOT_CODE_5__/__ELBOT_CODE_6__/__ELBOT_CODE_7__/__ELBOT_CODE_8__/__ELBOT_CODE_9__ can be used within the block.",
       "updated_at": 1782704123
+    },
+    "docs/elyph.md:list:ef45cbb1178da9620c8baf1c2196bf42baccd53b25b4076bac385e747d6934bf": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 只能出现在顶层，**不能嵌套** __ELBOT_CODE_1__。",
+      "source_file": "docs/elyph.md",
+      "source_hash": "ef45cbb1178da9620c8baf1c2196bf42baccd53b25b4076bac385e747d6934bf",
+      "translation": "__ELBOT_CODE_0__ can only appear at the top level and **cannot be nested** within __ELBOT_CODE_1__.",
+      "updated_at": 1782710448
     },
     "docs/elyph.md:list:f2abf33420ab1288eb89d4d6df419eb4b3af689a0ca9eb54d1a71a6d593a46f1": {
       "kind": "list",
@@ -9080,6 +9120,22 @@
       "source_hash": "454b2684213f283ce0eaf2c5a599e75303c151486bcee941a916fd4c7b45d4f6",
       "translation": "The __ELBOT_CODE_0__ operator determines its behavior based on the type of the left operand: __ELBOT_CODE_1__/__ELBOT_CODE_2__ types perform numeric addition, while __ELBOT_CODE_3__ types perform string concatenation.\n",
       "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:5139f7eebd95bfb9c23ac71175f4e77f1ee40d915efa78a2c08464efea3b3d3e": {
+      "kind": "paragraph",
+      "source": "把流程拆成命名阶段，可选使用，不强制全包；顶层允许裸语句与 __ELBOT_CODE_0__ 混用。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "5139f7eebd95bfb9c23ac71175f4e77f1ee40d915efa78a2c08464efea3b3d3e",
+      "translation": "Split the process into named stages; this is optional and not required to wrap everything. Bare statements and __ELBOT_CODE_0__ can be mixed at the top level.\n",
+      "updated_at": 1782710448
+    },
+    "docs/elyph.md:paragraph:5af9e00efdd2c020e00ff9f920757f9564060914df95a11bef2032e1ea0491f8": {
+      "kind": "paragraph",
+      "source": "**单行形式**（仅 1 句）：\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "5af9e00efdd2c020e00ff9f920757f9564060914df95a11bef2032e1ea0491f8",
+      "translation": "**Single-line form** (only 1 statement):\n",
+      "updated_at": 1782710448
     },
     "docs/elyph.md:paragraph:607f367f664f78027db92c790bff5cfa84f91e32d040c8fa0ed738d6681c69b2": {
       "kind": "paragraph",
@@ -9208,6 +9264,14 @@
       "source_hash": "eea315ab512eeab676a4e57686bda4a3d76f1ea6d70d640a745f0b0671be66a0",
       "translation": "Ends a code block, occupying its own line.\n",
       "updated_at": 1781786413
+    },
+    "docs/elyph.md:paragraph:f41bc626cc6bea505a9b9ec43ba7818a840f553fda4901be0c30c56dda459397": {
+      "kind": "paragraph",
+      "source": "**块形式**（至少 2 句）：\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "f41bc626cc6bea505a9b9ec43ba7818a840f553fda4901be0c30c56dda459397",
+      "translation": "**Block form** (at least 2 statements):\n",
+      "updated_at": 1782710448
     },
     "docs/elyph.md:paragraph:f857d7d7b952ee1fb55cd39ad17cdb45a4985f8a7af2be76a5e6173fd8db88e4": {
       "kind": "paragraph",
