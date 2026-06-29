@@ -113,6 +113,22 @@ func TestAgentDescriptorDetailAddsUvConstraint(t *testing.T) {
 	}
 }
 
+func TestFilesystemScannerSkipsBrokenElyphWithoutFailing(t *testing.T) {
+	root := t.TempDir()
+	brokenDir := filepath.Join(root, "go", "broken")
+	goodDir := filepath.Join(root, "go", "good")
+	writeElyphSkill(t, brokenDir, "missing header\n> do\n")
+	writeElyphSkill(t, goodDir, "#skill good - Good skill\n** risk low\n")
+	scanner := NewFilesystemScanner(root)
+	tools, err := scanner.Scan(context.Background())
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(tools) != 1 || tools[0].Name() != "good" {
+		t.Fatalf("tools = %#v, want only good", tools)
+	}
+}
+
 func writeSkill(t *testing.T, dir, content string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {

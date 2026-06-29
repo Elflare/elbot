@@ -192,27 +192,27 @@ func (s FilesystemScanner) readGoRecord(root, dirName string) (Record, bool, err
 	if err != nil {
 		return Record{}, false, fmt.Errorf("read %s in %q: %w", elyph.SkillFileName, root, err)
 	}
-	doc, err := elyph.ParseSkill(string(data), dirName)
+	header, err := elyph.ParseHeader(string(data))
 	if err != nil {
-		return Record{}, false, fmt.Errorf("parse %s in %q: %w", elyph.SkillFileName, root, err)
+		return Record{}, false, nil
 	}
-	binary, _, err := findGoBinary(root, dirName, doc.Name)
+	binary, _, err := findGoBinary(root, dirName, header.Name)
 	if err != nil {
 		return Record{}, false, err
 	}
 	detail := strings.TrimSpace(string(data))
-	record := Record{Name: doc.Name, Description: firstElyphDescription(detail, doc.Name), Detail: detail, Format: elyph.Format, Risk: elyphRisk(detail), Kind: KindGo, Root: root, BinaryPath: binary}
+	record := Record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: elyphRisk(detail), Kind: KindGo, Root: root, BinaryPath: binary}
 	return record, true, nil
 }
 
 func (s FilesystemScanner) readAgentRecord(root, dirName string) (Record, bool, error) {
 	if data, err := os.ReadFile(filepath.Join(root, elyph.SkillFileName)); err == nil {
-		doc, err := elyph.ParseSkill(string(data), dirName)
+		header, err := elyph.ParseHeader(string(data))
 		if err != nil {
-			return Record{}, false, fmt.Errorf("parse %s in %q: %w", elyph.SkillFileName, root, err)
+			return Record{}, false, nil
 		}
 		detail := strings.TrimSpace(string(data))
-		return Record{Name: doc.Name, Description: firstElyphDescription(detail, doc.Name), Detail: detail, Format: elyph.Format, Risk: elyphRisk(detail), Kind: KindAgent, Root: root}, true, nil
+		return Record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: elyphRisk(detail), Kind: KindAgent, Root: root}, true, nil
 	} else if !os.IsNotExist(err) {
 		return Record{}, false, fmt.Errorf("read %s in %q: %w", elyph.SkillFileName, root, err)
 	}
@@ -229,19 +229,6 @@ func (s FilesystemScanner) readAgentRecord(root, dirName string) (Record, bool, 
 	}
 	record := Record{Name: def.Name, Description: def.Description, Detail: def.Detail, Format: def.Format, Risk: def.Risk, Kind: KindAgent, Root: root}
 	return record, true, nil
-}
-
-func firstElyphDescription(text, fallback string) string {
-	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "#skill ") {
-			if _, desc, ok := strings.Cut(trimmed, " - "); ok {
-				return strings.TrimSpace(desc)
-			}
-			break
-		}
-	}
-	return fallback
 }
 
 func elyphRisk(text string) tool.RiskLevel {

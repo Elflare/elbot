@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 更新 `ELyph` 版本至 v3
 - qq heartbeat ack 和 qqofficial gateway resumed 不再记录log
 - read_el_skill 现在依赖modify_el_skill，方便执行可能的修改
+- 现在不在启动elbot的时候校验ELyph语法，免得拖慢启动速度
 
 ### Fixed
 

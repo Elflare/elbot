@@ -695,3 +695,46 @@ func TestRuleCardExampleParses(t *testing.T) {
 		t.Fatalf("RuleCard example should parse: %v", err)
 	}
 }
+
+func TestParseHeader(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want Header
+	}{
+		{name: "skill with desc", raw: "#skill weather - 查天气\n<- $city:str!\n", want: Header{Kind: "skill", Name: "weather", Description: "查天气"}},
+		{name: "task with desc", raw: "// note\n#task daily - 每日天气\n> do\n", want: Header{Kind: "task", Name: "daily", Description: "每日天气"}},
+		{name: "no desc", raw: "#skill foo\n", want: Header{Kind: "skill", Name: "foo", Description: ""}},
+		{name: "blank lines before header", raw: "\n\n#skill foo - Foo\n", want: Header{Kind: "skill", Name: "foo", Description: "Foo"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ParseHeader(tc.raw)
+			if err != nil {
+				t.Fatalf("ParseHeader: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("got %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseHeaderErrors(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+	}{
+		{name: "empty", raw: "\n  \n"},
+		{name: "missing header", raw: ":desc x\n> do\n"},
+		{name: "invalid name", raw: "#skill BadName\n"},
+		{name: "only comments", raw: "// just a comment\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := ParseHeader(tc.raw); err == nil {
+				t.Fatalf("expected error for %q", tc.raw)
+			}
+		})
+	}
+}

@@ -7,6 +7,13 @@ type Document struct {
 	Steps []Step
 }
 
+// Header 是 ELyph 文档首行的轻量解析结果，仅供启动扫描快速登记技能使用，不做全文校验。
+type Header struct {
+	Kind        string
+	Name        string
+	Description string
+}
+
 // Step 记录一个 step 命名阶段块的元信息，供 scanner/descriptor 列出流程阶段。
 type Step struct {
 	Name string
