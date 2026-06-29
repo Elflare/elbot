@@ -189,7 +189,7 @@ func (t ModifyElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*too
 	}
 	switch preview.Target {
 	case elSkillTargetElyph:
-		return t.modifyElyph(ctx, preview)
+		return t.modifyElyph(preview)
 	case elSkillTargetCodeSource:
 		return t.modifyCodeSource(preview)
 	default:
@@ -224,21 +224,18 @@ func (t ModifyElSkillTool) preview(ctx context.Context, req tool.CallRequest) (m
 		return modifyElSkillPreview{}, err
 	}
 	if target == elSkillTargetElyph {
-		if _, err := elyph.ParseSkill(next, name); err != nil {
+		if _, _, err := elyph.ValidateSkill(next, name); err != nil {
 			return modifyElSkillPreview{}, err
 		}
 	}
 	return modifyElSkillPreview{Name: name, Target: target, Path: path, Result: result, Next: next, Diff: result.Diff}, nil
 }
 
-func (t ModifyElSkillTool) modifyElyph(ctx context.Context, preview modifyElSkillPreview) (*tool.Result, error) {
+func (t ModifyElSkillTool) modifyElyph(preview modifyElSkillPreview) (*tool.Result, error) {
 	if err := fileops.AtomicWriteFile(preview.Path, preview.Result.NewBytes, existingFileMode(preview.Path)); err != nil {
 		return nil, err
 	}
-	if err := t.Manager.Reload(ctx); err != nil {
-		return nil, fmt.Errorf("EL skill modified but reload failed: %w", err)
-	}
-	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\ndiff:\n%s", preview.Name, elSkillTargetElyph, preview.Diff)}, nil
+	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\ndiff:\n%s\n\nSKILL.elyph 已写入但尚未 reload；完成修改后调用 finalize_el_skill。", preview.Name, elSkillTargetElyph, preview.Diff)}, nil
 }
 
 func (t ModifyElSkillTool) modifyCodeSource(preview modifyElSkillPreview) (*tool.Result, error) {

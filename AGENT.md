@@ -51,7 +51,6 @@
 - `internal/agent/request_context.go`：Agent request context helper；在当前 turn context 中传递父 request ID，供工具 request 建立父子关系。
 - `internal/agent/risk_confirmation.go`：风险确认阶段命令定义与文案；统一生成 `/detail`、`/confirm`、`/confirmtool`、`/confirmall`、`/reject`、`/stop` 及别名的提示、补全和识别。
 - `internal/agent/cron.go`：Agent 通用后台 runner；绕过 slash 命令解析，使用 discard sender 静默运行后台 LLM，按 background kind 注入 sandbox、按 session_mode 创建/续跑后台 Session、预加载工具并写入 metadata；保留 `RunCronMessage` 薄适配。
-
 - `internal/agent/cron_tools.go`：后台工具确认特例；cron/Elnis sandbox shell 非 critical 自动确认，critical 直接回 tool message 提醒用相对路径/低风险命令且不等待用户。
 - `internal/agent/prompt.go`：Prompt Builder；通过 System Prompt Manager 生成单条 system prompt，并处理历史消息、工具 transcript、多模态 metadata 和压缩摘要。
 - `internal/agent/system_prompt.go`：System Prompt Manager；按优先级收集 Soul、工具名称和 tag prompt 等内建 system prompt 片段。
@@ -59,7 +58,6 @@
 - `internal/agent/tools.go`：Agent 工具运行态与命令依赖适配；集中维护 ToolRun manager、tool Registry、skill scanner、工具配置和 tool tag 配置入口。
 - `internal/agent/toolrun_adapter.go`：Agent 到 ToolRun 的能力适配；提供 Hook、Request、确认、输出、审计、工具记录和 session 缓存桥接。
 - `internal/agent/toolrun_prompt_provider.go`：ToolRun 到 Prompt Builder 的工具名称/schema provider 适配。
-
 - `internal/agent/tool_cache.go`：Session 级已发现工具 schema 缓存；discover 或有效 `@tool:` 预载到的工具按 Session 保存，工具名和激活 tag 持久化到 Session metadata，后续 work 请求用稳定顺序注入 top-level tools。
 - `internal/agent/tool_directive.go`：聊天内联 `@tool:<name-or-tag>`/`@skill:<name>` 预处理；工具/tag 持久化注入 schema，Skill 将文档内容加入本轮用户消息并注入运行 wrapper，不存在/不可用值保留为普通文本并提示。
 - `internal/agent/tool_tag_config.go`：工具 tag 配置 source；按文件状态缓存读取 `tool_tags.toml`，合并内置 tag 与配置 tag，并为已激活 tag 提供 system prompt 片段。
@@ -196,17 +194,14 @@
 - `internal/tool/skill/catalog.go`：skill catalog；记录 AgentSkill/Go skill 的名称、详情格式、风险、根目录和 Go binary 路径，供隐藏包装工具按名称查找。
 
 - `internal/tool/skill/creator.go`：`create_el_skill` 内置元工具；用结构化参数 `name/description/risk/elyph/go_source` 创建 ElBot 原生 skill，写入 `SKILL.elyph`，可选写入 `main.go` 并编译，创建前用 ELyph parser/linter 校验，成功后自动 reload；不再要求 LLM 拼 `SKILL.md` front matter，未提供源码时创建纯 ELyph 文本 skill。
-- `internal/tool/skill/modify_el_skill.go`：`read_el_skill`/`modify_el_skill` 内置元工具；按 `target` 读写原生 EL Skill 的 `SKILL.elyph` 或 `main.go`，`modify_el_skill` 复用 fileops edits；技能定义修改会校验 ELyph 并 reload，源码修改只写文件并提示后续 finalize。
+- `internal/tool/skill/modify_el_skill.go`：`read_el_skill`/`modify_el_skill` 。
 - `internal/tool/skill/finalize_el_skill.go`：`finalize_el_skill` 内置元工具；完成原生 EL Skill 修改，校验 `SKILL.elyph`，对 `main.go` 执行 gofmt、`package main` 校验、`go build` 和 reload，并把格式化/编译错误作为结果返回给 LLM。
+- `internal/tool/skill/elyph_warnings.go`：ELyph warning 结果拼接 helper；把非阻断诊断追加到 skill 工具成功结果。
 - `internal/tool/skill/go_source.go`：原生 Go skill 源码维护 helper；提供 gofmt、`package main` 校验、Go 可执行文件解析和 `go build` 编译能力，供 `finalize_el_skill` 和创建流程复用。
 - `internal/tool/skill/descriptor.go`：skill 描述对象；让 AgentSkill/Go skill 可被 `discover_tool` 查到详情，按结构化 detail 暴露内容、格式和规则卡；skill 本体不作为可直接调用 schema 暴露。
 - `internal/tool/skill/scanner.go`：skill 文件系统扫描与 reload；主程序默认根目录为配置目录下 `skills/`；AgentSkill 使用 `agent/<skill>/SKILL.md`，可选 `SKILL.elyph` 覆写 Agent 可读说明；Go skill 必须使用 `go/<skill>/SKILL.elyph`，可选 binary；同步新增/删除 skill 并更新 catalog。
-
 - `internal/tool/skill/runner.go`：隐藏包装工具实现；`python_skill_run` 固定在 AgentSkill 目录用 `uv run python` 执行附带 Python 脚本，`go_skill_run` 选择 Go skill binary 并把必填 `payload` 对象 JSON 写入 stdin；执行错误会区分启动/超时/进程失败并回传 stdout/stderr，风险按目标 skill 的 `risk` 评估。
-
-
 - `internal/utils/fileops/`：公共文本文件辅助包；提供编码识别、文本读写、行编辑、match/anchor 编辑（content 精确子串与 line 行前缀两种模式，支持 index 选择多处匹配）、diff、sha256 和原子写入，供文件工具和 skill 维护工具复用。
-
 
 ### Tool 约定
 
@@ -218,7 +213,6 @@
 ### 平台适配
 
 - `internal/platform/platform.go`：平台抽象；定义 `PlatformAdapter`、`PlatformHandler`、统一 `SendChat`/`SendNotice` 的 message sender、可携带多条平台消息 ID 的发送 receipt、平台 `MessageSegment`（text/image/file/at）和每条入站消息的 Actor/Scope/发送目标/平台群身份上下文；上下文可携带平台解析出的 fork 来源、多模态消息段和少量平台原生 metadata。
-
 - `internal/platform/config.go`：平台配置辅助；把 `app.toml` 中 `[platform.<name>]` 原始 section 解码给适配器自有 Config，并提供关键词前缀剥离 helper。
 - `internal/platform/builtin/builtin.go`：内置平台装配；按运行模式组合 CLI、headless 和 enabled 外部平台。
 - `internal/platform/headless/headless.go`：service 模式的非交互 primary platform。

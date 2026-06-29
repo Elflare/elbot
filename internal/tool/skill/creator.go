@@ -93,7 +93,8 @@ func (t CreateElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*too
 			return nil, err
 		}
 	}
-	if _, err := elyph.ParseSkill(args.Elyph, name); err != nil {
+	_, diagnostics, err := elyph.ValidateSkill(args.Elyph, name)
+	if err != nil {
 		return nil, err
 	}
 	args.Elyph = withElyphMetadata(args.Elyph, args.Description, args.Risk)
@@ -142,7 +143,7 @@ func (t CreateElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*too
 	if err := t.Manager.Reload(ctx); err != nil {
 		return nil, fmt.Errorf("ELyph skill written but reload failed: %w", err)
 	}
-	return &tool.Result{Content: fmt.Sprintf("created ELyph skill %s", name)}, nil
+	return &tool.Result{Content: appendElyphWarnings(fmt.Sprintf("created ELyph skill %s", name), diagnostics)}, nil
 }
 
 func detectGoModVersion(ctx context.Context) (string, error) {

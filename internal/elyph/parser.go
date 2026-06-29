@@ -33,12 +33,24 @@ type parser struct {
 
 // ParseSkill 解析并校验 ELyph skill 文档的基础结构；不执行或理解自然语言条件。
 func ParseSkill(raw string, expectedName string) (Document, error) {
-	return parseKind(raw, "skill", expectedName)
+	doc, _, err := ValidateSkill(raw, expectedName)
+	return doc, err
+}
+
+// ValidateSkill 解析 ELyph skill 文档并返回非阻断 warning；只有 error 级诊断会作为 error 返回。
+func ValidateSkill(raw string, expectedName string) (Document, []Diagnostic, error) {
+	return validateKind(raw, "skill", expectedName)
 }
 
 // ParseTask 解析并校验 ELyph task 文档的基础结构；用于 LLM cron 等任务纸条。
 func ParseTask(raw string, expectedName string) (Document, error) {
-	return parseKind(raw, "task", expectedName)
+	doc, _, err := ValidateTask(raw, expectedName)
+	return doc, err
+}
+
+// ValidateTask 解析 ELyph task 文档并返回非阻断 warning；只有 error 级诊断会作为 error 返回。
+func ValidateTask(raw string, expectedName string) (Document, []Diagnostic, error) {
+	return validateKind(raw, "task", expectedName)
 }
 
 // ParseHeader 只解析 ELyph 文档首行 header，返回 Kind/Name/Description，不做全文结构校验。
@@ -63,12 +75,13 @@ func ParseHeader(raw string) (Header, error) {
 	return Header{}, fmt.Errorf("elyph is required")
 }
 
-func parseKind(raw string, expectedKind string, expectedName string) (Document, error) {
+func validateKind(raw string, expectedKind string, expectedName string) (Document, []Diagnostic, error) {
 	doc, diagnostics := parseDocument(raw, expectedKind, expectedName)
-	if len(diagnostics) > 0 {
-		return Document{}, diagnosticsError(diagnostics)
+	errors := errorDiagnostics(diagnostics)
+	if len(errors) > 0 {
+		return Document{}, diagnostics, diagnosticsError(errors)
 	}
-	return doc, nil
+	return doc, diagnostics, nil
 }
 
 func parseDocument(raw string, expectedKind string, expectedName string) (Document, []Diagnostic) {
@@ -381,8 +394,13 @@ func (p *parser) parseCall(line string, lineNo int, prefix string) {
 }
 
 func (p *parser) parseTextSlot(line string, lineNo int, prefix string) {
-	if strings.TrimSpace(strings.TrimPrefix(line, prefix)) == "" {
+	text := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+	if text == "" {
 		p.add(lineNo, prefix+" must have text")
+		return
+	}
+	if strings.HasSuffix(text, ":") || strings.HasSuffix(text, "：") {
+		p.warn(lineNo, prefix+" text ends with a colon; this looks like a Markdown-style heading, use an atomic rule instead")
 	}
 }
 
@@ -448,7 +466,11 @@ func (p *parser) checkDeriveExpression(expr string, lineNo int) {
 }
 
 func (p *parser) add(line int, message string) {
-	p.diagnostics = append(p.diagnostics, Diagnostic{Line: line, Message: message})
+	p.diagnostics = append(p.diagnostics, Diagnostic{Line: line, Message: message, Severity: DiagnosticError})
+}
+
+func (p *parser) warn(line int, message string) {
+	p.diagnostics = append(p.diagnostics, Diagnostic{Line: line, Message: message, Severity: DiagnosticWarning})
 }
 
 func parseAssignmentParts(text string) (name string, typ string, marker string, rhs string, ok bool) {
@@ -593,7 +615,27 @@ func validIdent(value string) bool {
 	return true
 }
 
-func diagnosticsError(diagnostics []Diagnostic) error {
+func errorDiagnostics(diagnostics []Diagnostic) []Diagnostic {
+	errors := make([]Diagnostic, 0, len(diagnostics))
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Severity == "" || diagnostic.Severity == DiagnosticError {
+			errors = append(errors, diagnostic)
+		}
+	}
+	return errors
+}
+
+func WarningDiagnostics(diagnostics []Diagnostic) []Diagnostic {
+	warnings := make([]Diagnostic, 0, len(diagnostics))
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Severity == DiagnosticWarning {
+			warnings = append(warnings, diagnostic)
+		}
+	}
+	return warnings
+}
+
+func FormatDiagnostics(diagnostics []Diagnostic) string {
 	parts := make([]string, 0, len(diagnostics))
 	for _, diagnostic := range diagnostics {
 		if diagnostic.Line > 0 {
@@ -602,5 +644,9 @@ func diagnosticsError(diagnostics []Diagnostic) error {
 			parts = append(parts, diagnostic.Message)
 		}
 	}
-	return fmt.Errorf("invalid ELyph:\n- %s", strings.Join(parts, "\n- "))
+	return strings.Join(parts, "\n")
+}
+
+func diagnosticsError(diagnostics []Diagnostic) error {
+	return fmt.Errorf("invalid ELyph:\n- %s", strings.ReplaceAll(FormatDiagnostics(diagnostics), "\n", "\n- "))
 }

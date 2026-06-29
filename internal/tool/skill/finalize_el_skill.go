@@ -69,11 +69,17 @@ func (t FinalizeElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*t
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "finalize EL skill %s\n\n", name)
-	if _, err := elyph.ParseSkill(string(elyphData), name); err != nil {
+	_, diagnostics, err := elyph.ValidateSkill(string(elyphData), name)
+	if err != nil {
 		fmt.Fprintf(&b, "ELyph: failed\n%s\n", err)
 		return &tool.Result{Content: b.String()}, nil
 	}
 	b.WriteString("ELyph: ok\n")
+	if warnings := elyph.WarningDiagnostics(diagnostics); len(warnings) > 0 {
+		b.WriteString("ELyph warnings:\n")
+		b.WriteString(elyph.FormatDiagnostics(warnings))
+		b.WriteByte('\n')
+	}
 
 	sourcePath := filepath.Join(root, "main.go")
 	if _, err := os.Stat(sourcePath); os.IsNotExist(err) {

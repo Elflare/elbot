@@ -402,6 +402,30 @@ func TestParseOutputBoundaries(t *testing.T) {
 		})
 	}
 }
+func TestParseWarnsTextSlotEndingColon(t *testing.T) {
+	raw := `#skill headings
+** 清单：
+~ 禁止事项:
+`
+	if _, err := ParseSkill(raw, "headings"); err != nil {
+		t.Fatalf("ParseSkill should allow warnings: %v", err)
+	}
+	_, diagnostics, err := ValidateSkill(raw, "headings")
+	if err != nil {
+		t.Fatalf("ValidateSkill should allow warnings: %v", err)
+	}
+	warnings := WarningDiagnostics(diagnostics)
+	if len(warnings) != 2 {
+		t.Fatalf("warnings = %#v, want 2", warnings)
+	}
+	if warnings[0].Severity != DiagnosticWarning || warnings[0].Line != 2 || !strings.Contains(warnings[0].Message, "ends with a colon") {
+		t.Fatalf("warnings[0] = %#v", warnings[0])
+	}
+	if warnings[1].Severity != DiagnosticWarning || warnings[1].Line != 3 || !strings.Contains(warnings[1].Message, "ends with a colon") {
+		t.Fatalf("warnings[1] = %#v", warnings[1])
+	}
+}
+
 func TestParseRejectsEmptyConstraintAndForbid(t *testing.T) {
 	cases := []struct {
 		name string

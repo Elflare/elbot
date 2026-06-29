@@ -54,16 +54,45 @@ func TestModifyElSkillWritesFullContent(t *testing.T) {
 		}},
 	})
 
-	if _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	result, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "finalize_el_skill") {
+		t.Fatalf("result = %q", result.Content)
 	}
 	content := readTestSkill(t, root, "writer")
 	if !strings.Contains(content, "#skill writer - New.") || !strings.HasSuffix(content, "\n") {
 		t.Fatalf("content = %q", content)
 	}
-	registered, ok := registry.Get("writer")
-	if !ok || registered.Info().Risk != tool.RiskMedium {
-		t.Fatalf("registered=%#v ok=%v", registered, ok)
+	if _, ok := registry.Get("writer"); ok {
+		t.Fatal("modify_el_skill should not reload modified skill before finalize")
+	}
+}
+
+func TestModifyElSkillDefersElyphWarningsToFinalize(t *testing.T) {
+	root := t.TempDir()
+	writeTestSkill(t, root, "warn_patch", "#skill warn_patch - Old.\n** risk low\n")
+	modifier := NewModifyElSkillTool(NewManager(root, tool.NewRegistry()))
+	args, _ := json.Marshal(map[string]any{
+		"name": "warn_patch",
+		"edits": []map[string]any{{
+			"operation":  "replace",
+			"start_line": 2,
+			"end_line":   2,
+			"content":    "** 清单：",
+		}},
+	})
+
+	result, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "modified EL skill warn_patch") || !strings.Contains(result.Content, "finalize_el_skill") {
+		t.Fatalf("content = %q", result.Content)
+	}
+	if strings.Contains(result.Content, "Warnings:") || strings.Contains(result.Content, "line 2:") {
+		t.Fatalf("modify_el_skill should defer warnings to finalize, content = %q", result.Content)
 	}
 }
 

@@ -30,6 +30,20 @@ func TestFinalizeElSkillTextOnlyReloads(t *testing.T) {
 	}
 }
 
+func TestFinalizeElSkillReturnsElyphWarnings(t *testing.T) {
+	root := t.TempDir()
+	writeTestSkill(t, root, "warn_finalize", "#skill warn_finalize - Text.\n** 清单：\n")
+	finalizer := NewFinalizeElSkillTool(NewManager(root, tool.NewRegistry()))
+
+	result, err := finalizer.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"warn_finalize"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "ELyph: ok") || !strings.Contains(result.Content, "ELyph warnings:") || !strings.Contains(result.Content, "line 2:") {
+		t.Fatalf("result = %q", result.Content)
+	}
+}
+
 func TestFinalizeElSkillFormatsBuildsAndReloads(t *testing.T) {
 	root := t.TempDir()
 	writeTestGoSkill(t, root, "finalize", "package main\nfunc main(){println(\"ok\")}\n")

@@ -20,8 +20,16 @@ type Step struct {
 	Line int
 }
 
+type DiagnosticSeverity string
+
+const (
+	DiagnosticError   DiagnosticSeverity = "error"
+	DiagnosticWarning DiagnosticSeverity = "warning"
+)
+
 // Diagnostic 描述一条可反馈给 LLM 重写 ELyph 的格式问题。
 type Diagnostic struct {
-	Line    int
-	Message string
+	Line     int
+	Message  string
+	Severity DiagnosticSeverity
 }
