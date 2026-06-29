@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - High-risk confirmation details for `edit_file` now display operations such as replace, add, delete, and match by file, mode, and editing step.
 - `edit_file` no longer exposes the `dry_run` parameter to the LLM; the system will automatically pre-check and generate a diff before user confirmation, and if the pre-check fails, it will not proceed to confirmation or write to the file.
 - `modify_el_skill` now reuses the `edits` editing instructions and execution capabilities of `edit_file`, and pre-checks edits, ELyph syntax, and no-op modifications before confirmation, displaying the pre-check diff in the high-risk confirmation details.
+- Update `ELyph` version to v3
 - qq heartbeat ack and qqofficial gateway resumed are no longer logged
 - read_el_skill now depends on modify_el_skill to facilitate possible modifications
 

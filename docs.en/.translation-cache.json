@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "b9bc16ea0a3648c689229196d8ed496dbca78df6496d5fdea9da08750dccf4f4",
+      "source_hash": "c17f601ef6729ad00d0400d0638f1f0e29ccdd7bac215e181403176cdcdec640",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782699038
+      "updated_at": 1782704139
     },
     "README.zh-CN.md": {
       "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
@@ -448,6 +448,14 @@
       "source_hash": "a724226f267f5e72c8b1410dacff8844636ef381b46198c619c9c5003b3bf59a",
       "translation": "Hook platform context now populates the current platform message ID __ELBOT_CODE_0__ and the referenced/reply target message ID __ELBOT_CODE_1__, facilitating the processing of referenced messages by rule Hooks, such as recalling a referenced message.",
       "updated_at": 1782395477
+    },
+    "CHANGELOG.md:list:a9132ec799ad162e44f3624974b7fd5075c636df96835cdb8c1aec9d01061bbe": {
+      "kind": "list",
+      "source": "更新 __ELBOT_CODE_0__ 版本至 v3",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a9132ec799ad162e44f3624974b7fd5075c636df96835cdb8c1aec9d01061bbe",
+      "translation": "Update __ELBOT_CODE_0__ version to v3",
+      "updated_at": 1782704139
     },
     "CHANGELOG.md:list:ac3afc51b6a800e97966f71f733c8b5c6a8ed82d2528465a388929465e7a17c6": {
       "kind": "list",
