@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "c17f601ef6729ad00d0400d0638f1f0e29ccdd7bac215e181403176cdcdec640",
+      "source_hash": "7c242b15657019475bc4be6c3c245b63595b923b5dbd89fe3de37097631686a7",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782704139
+      "updated_at": 1782711341
     },
     "README.zh-CN.md": {
       "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
@@ -72,6 +72,14 @@
       "source_hash": "05a9e4447fd45b2d4076875eef3c2a7bdf6a16a84f6e8b476b1080ff1cffd0dd",
       "translation": "__ELBOT_CODE_0__ no longer exposes the __ELBOT_CODE_1__ parameter to the LLM; the system will automatically pre-check and generate a diff before user confirmation, and if the pre-check fails, it will not proceed to confirmation or write to the file.",
       "updated_at": 1782631048
+    },
+    "CHANGELOG.md:list:08a9f4bd4b91764404716cc4408cc3a4cebdbd94393d6470bde4721425c133b3": {
+      "kind": "list",
+      "source": "现在不在启动elbot的时候校验ELyph语法，免得拖慢启动速度",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "08a9f4bd4b91764404716cc4408cc3a4cebdbd94393d6470bde4721425c133b3",
+      "translation": "ELyph syntax is no longer validated during ElBot startup to avoid slowing down the startup speed.",
+      "updated_at": 1782711341
     },
     "CHANGELOG.md:list:0cb9f5d55b3a2dc69256f4b4688cf35160155b719f6f9ed566a3a9cc1a4274d6": {
       "kind": "list",

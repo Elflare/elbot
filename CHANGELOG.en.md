@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update `ELyph` version to v3
 - qq heartbeat ack and qqofficial gateway resumed are no longer logged
 - read_el_skill now depends on modify_el_skill to facilitate possible modifications
+- ELyph syntax is no longer validated during ElBot startup to avoid slowing down the startup speed.
 
 ### Fixed
 
