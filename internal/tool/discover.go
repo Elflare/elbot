@@ -30,7 +30,7 @@ func (t discoverTool) Name() string {
 
 func (t discoverTool) Info() Info {
 	return NewBuilder(t.Name()).
-		Description("发现可用工具。用任意工具前使用此工具获取使用方法。不传 name/names 时列出工具简介，传 name 或 names 时返回指定工具及其依赖工具的完整 schema。决定调用工具时，请先用一句简短自然语言告诉用户你在做什么。").
+		Description("发现可用工具。未知工具schema时使用此工具获取，已知不再次使用。不传 name/names 时列出工具简介，传 name/names 时返回指定工具及 schema。决定调用工具时，请先用一句简短自然语言告诉用户你在做什么。").
 		Risk(RiskSafe).
 		BuildInfo()
 }
