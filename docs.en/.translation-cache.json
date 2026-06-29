@@ -31,9 +31,9 @@
       "updated_at": 1782574866
     },
     "docs/elnis-usage.md": {
-      "source_hash": "4bf05ee00bac3af1917e4f1dabdd4fa01531cf9bcd1bc69c3d9aa02261f5adc9",
+      "source_hash": "c8d68d4fc76a453ea4008b304cc4d8243b8b2ebc634494f4fb92016b8040c782",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1782395349
+      "updated_at": 1782699001
     },
     "docs/elnis.md": {
       "source_hash": "64da4ee616a7573bb315be76264e9c48de8fec352c9aae5a4c11dd259a3fd277",
@@ -6729,6 +6729,14 @@
       "translation": "__ELBOT_CODE_0__ restricts which tokens can represent the Elwisp to deliver events; if not specified, any authenticated token is allowed.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:list:4df54398bc8b1532dafee25af6fb8c9f087ee72898883833b90a74e1de092cca": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 只允许 __ELBOT_CODE_1__ 或 __ELBOT_CODE_2__，不影响模型槽位。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "4df54398bc8b1532dafee25af6fb8c9f087ee72898883833b90a74e1de092cca",
+      "translation": "__ELBOT_CODE_0__ only allows __ELBOT_CODE_1__ or __ELBOT_CODE_2__, and does not affect model slots.",
+      "updated_at": 1782699001
+    },
     "docs/elnis-usage.md:list:4fdcb65d6e8a1c2ae5296dbb9ad69f435621e65c335c62c8615dd71057ae0924": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 暂不能把消息投递到另一个独立 __ELBOT_CODE_1__ 进程。",
@@ -6848,6 +6856,14 @@
       "source_hash": "95f0425bb70f8437ec10e7b2e3709d2dc2719eb94905fd761872378df243720c",
       "translation": "__ELBOT_CODE_0__ can be omitted, defaulting to __ELBOT_CODE_1__.",
       "updated_at": 1781962160
+    },
+    "docs/elnis-usage.md:list:962954418322bb5fe296423201c91aed6119c7c461caeb8235924a42019716a3": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 只能选择 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__，不能指定任意内部模式名；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "962954418322bb5fe296423201c91aed6119c7c461caeb8235924a42019716a3",
+      "translation": "__ELBOT_CODE_0__ can only choose __ELBOT_CODE_1__, __ELBOT_CODE_2__, or __ELBOT_CODE_3__, and cannot specify an arbitrary internal mode name;",
+      "updated_at": 1782699001
     },
     "docs/elnis-usage.md:list:99267342faabbf97989dd67144b49b108747bb74c3bb997c45ee2cbe8cdc8d7f": {
       "kind": "list",
@@ -7424,6 +7440,14 @@
       "source_hash": "1b1efc4c8947139785108253c00ade50f0a742410448ca28aad89a809dc99cb4",
       "translation": "Protocol version, currently __ELBOT_CODE_0__.",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:226a892571e4cbccbec33c7b0227dfb8014edc9948d9964da3cdae886ab1b2ab": {
+      "kind": "table",
+      "source": "LLM 后台 Session 模式：__ELBOT_CODE_0__ 或 __ELBOT_CODE_1__，默认 __ELBOT_CODE_2__；__ELBOT_CODE_3__ 不注入工具 schema，适合不需要工具的低成本后台处理。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "226a892571e4cbccbec33c7b0227dfb8014edc9948d9964da3cdae886ab1b2ab",
+      "translation": "LLM background Session mode: __ELBOT_CODE_0__ or __ELBOT_CODE_1__, default __ELBOT_CODE_2__; __ELBOT_CODE_3__ does not inject tool schema, suitable for low-cost background processing that does not require tools.",
+      "updated_at": 1782699001
     },
     "docs/elnis-usage.md:table:2cb9d988869c02ef5c567ce28e299b343d67b138d4f8d22d515bb8302ff9c409": {
       "kind": "table",
