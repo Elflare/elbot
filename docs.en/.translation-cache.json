@@ -21,9 +21,9 @@
       "updated_at": 1782630997
     },
     "docs/concepts.md": {
-      "source_hash": "6de9b853dacd55de2bf2cfbdc483c32d723ca121b2805563c3444c333aaa995d",
+      "source_hash": "36e3b707d8c8fdbe6f03ebd785cfd2882204b3308561d7a8f1f5043a7c12ffd2",
       "target": "docs.en/concepts.md",
-      "updated_at": 1782376269
+      "updated_at": 1782698966
     },
     "docs/configuration.md": {
       "source_hash": "db01881a125701b41b608e1f0ebaea702f0a72ad566da422a2e3b43873475d6f",
@@ -4288,6 +4288,14 @@
       "source_hash": "b190195feaad582d83de6b3ef9e4bc9cde0d9c94214478d32b4c87775a956263",
       "translation": "ElBot supports Skill extensions and introduces ELyph Task Notation to describe reusable tasks.\n",
       "updated_at": 1781709276
+    },
+    "docs/concepts.md:paragraph:b9724fcfa07d26ddbdeceb184f65cbc9e8e1050f74c6075f28f9c83d5748d3c6": {
+      "kind": "paragraph",
+      "source": "LLM Cron 可以通过 __ELBOT_CODE_0__ 选择后台 Session 模式：默认 __ELBOT_CODE_1__，传 __ELBOT_CODE_2__ 时不注入工具 schema，适合不需要工具的低成本任务。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "b9724fcfa07d26ddbdeceb184f65cbc9e8e1050f74c6075f28f9c83d5748d3c6",
+      "translation": "LLM Cron can select the background Session mode via __ELBOT_CODE_0__: the default is __ELBOT_CODE_1__, and when passing __ELBOT_CODE_2__, the tool schema is not injected, which is suitable for low-cost tasks that do not require tools.",
+      "updated_at": 1782698966
     },
     "docs/concepts.md:paragraph:bba7fced0f9c1143a23c84ff8aafe31b0724948cccece90fd16c05d218fce7a6": {
       "kind": "paragraph",
