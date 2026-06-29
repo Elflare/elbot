@@ -41,9 +41,9 @@
       "updated_at": 1782459210
     },
     "docs/elyph.md": {
-      "source_hash": "22e064ef6df7a3e6cca26ec9d11076b682979d1f61475af0c51782983c6a5efe",
+      "source_hash": "e38da277e0be51c104f94090b00368bf6b08a36c53cb8e5e127ae02005fa7e24",
       "target": "docs.en/elyph.md",
-      "updated_at": 1782710448
+      "updated_at": 1782722511
     },
     "docs/getting-started.md": {
       "source_hash": "be8df536298bfcae8caaf7f4a2932c844d168db3877fa150d2b96286d3d137b4",
@@ -9136,6 +9136,14 @@
       "source_hash": "2fb30a097fd4e3dfc89f3ca7b08eaf3d84a8a8b77b55c3bc12f5971cb3235af2",
       "translation": "ELyph is currently v0.3, and the syntax may be expanded in future versions. When writing __ELBOT_CODE_0__ or task entries, it is recommended to keep the structure concise and avoid relying on experimental notations not listed in this document.\n",
       "updated_at": 1782704123
+    },
+    "docs/elyph.md:paragraph:32f008fc631e0f21ca0266bdc1c7d4352dee9c858893b89ccf96f2a8fb40933a": {
+      "kind": "paragraph",
+      "source": "ELyph 当前是 v0.3，语法可能在未来版本中扩展。写 __ELBOT_CODE_0__ 或任务条时，建议保持结构简洁。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "32f008fc631e0f21ca0266bdc1c7d4352dee9c858893b89ccf96f2a8fb40933a",
+      "translation": "ELyph is currently v0.3, and the syntax may be expanded in future versions. When writing __ELBOT_CODE_0__ or task entries, it is recommended to keep the structure concise.\n",
+      "updated_at": 1782722511
     },
     "docs/elyph.md:paragraph:3ef359032b5033766055df8ae9b7831bd6192b5d15d863c89c7122ee8e15e964": {
       "kind": "paragraph",
