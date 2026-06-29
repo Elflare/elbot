@@ -438,3 +438,151 @@ each($x in $xs) {
 		}
 	}
 }
+
+func TestParseStepBlocks(t *testing.T) {
+	raw := `#skill weather - 查天气
+<- $city:str!
+-> $remind:str
+step fetch {
+  $q:str = $city + 天气
+  $w = @tool web_search(query=$q)
+}
+step decide {
+  => $rain = $w 是否下雨 ? 是 : 否
+  ?if($rain) {
+    > 记得带伞
+  }
+  ?else {
+    > 今天不用带伞
+  }
+}
+> 完成
+`
+	doc, err := ParseSkill(raw, "weather")
+	if err != nil {
+		t.Fatalf("ParseSkill: %v", err)
+	}
+	if len(doc.Steps) != 2 {
+		t.Fatalf("doc.Steps = %#v, want 2", doc.Steps)
+	}
+	if doc.Steps[0].Name != "fetch" || doc.Steps[0].Line != 4 {
+		t.Fatalf("doc.Steps[0] = %#v", doc.Steps[0])
+	}
+	if doc.Steps[1].Name != "decide" || doc.Steps[1].Line != 8 {
+		t.Fatalf("doc.Steps[1] = %#v", doc.Steps[1])
+	}
+}
+
+func TestParseStepNumericName(t *testing.T) {
+	raw := `#task nums
+step 1 {
+  > first
+}
+step 2 {
+  > second
+}
+`
+	doc, err := ParseTask(raw, "nums")
+	if err != nil {
+		t.Fatalf("ParseTask: %v", err)
+	}
+	if len(doc.Steps) != 2 || doc.Steps[0].Name != "1" || doc.Steps[1].Name != "2" {
+		t.Fatalf("doc.Steps = %#v", doc.Steps)
+	}
+}
+
+func TestParseStepMixesWithBareStatements(t *testing.T) {
+	raw := `#task mix
+step fetch {
+  $w = @tool web_search(query=$q)
+}
+each($day in $days, limit=3) {
+  @skill weather_day(city=$city, day=$day)
+}
+> done
+`
+	if _, err := ParseTask(raw, "mix"); err != nil {
+		t.Fatalf("ParseTask: %v", err)
+	}
+}
+
+func TestParseRejectsInvalidStepSyntax(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "missing brace", raw: "#task bad\nstep fetch\n", want: "line 2: step must be step <name> {"},
+		{name: "empty name", raw: "#task bad\nstep {\n}\n", want: "line 2: step must be step <name> {"},
+		{name: "space in name", raw: "#task bad\nstep a b {\n}\n", want: "line 2: step must be step <name> {"},
+		{name: "uppercase name", raw: "#task bad\nstep Fetch {\n}\n", want: "line 2: step name must be"},
+		{name: "dot in name", raw: "#task bad\nstep 1.2 {\n}\n", want: "line 2: step name must be"},
+		{name: "leading underscore", raw: "#task bad\nstep _x {\n}\n", want: "line 2: step name must be"},
+		{name: "leading dash", raw: "#task bad\nstep -x {\n}\n", want: "line 2: step name must be"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseTask(tc.raw, "bad")
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want contains %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseRejectsNestedStep(t *testing.T) {
+	raw := `#task bad
+step outer {
+  step inner {
+  }
+}
+`
+	_, err := ParseTask(raw, "bad")
+	if err == nil || !strings.Contains(err.Error(), "line 3: step blocks must not be nested") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestParseRejectsEmptyStepBlock(t *testing.T) {
+	raw := `#task bad
+step empty {
+}
+`
+	_, err := ParseTask(raw, "bad")
+	if err == nil || !strings.Contains(err.Error(), "line 3: step block must not be empty") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestParseRejectsDuplicateStepName(t *testing.T) {
+	raw := `#task bad
+step fetch {
+  > a
+}
+step fetch {
+  > b
+}
+`
+	_, err := ParseTask(raw, "bad")
+	if err == nil || !strings.Contains(err.Error(), "line 5: step name fetch already used") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestParseStepWithControlFlowInside(t *testing.T) {
+	raw := `#task flow
+step decide {
+  ?if($rain) {
+    each($d in $days, limit=2) {
+      > $d
+    }
+  }
+  ?else {
+    > skip
+  }
+}
+`
+	if _, err := ParseTask(raw, "flow"); err != nil {
+		t.Fatalf("ParseTask: %v", err)
+	}
+}

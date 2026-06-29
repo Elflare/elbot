@@ -13,7 +13,13 @@ const (
 	blockIf   blockKind = "if"
 	blockElse blockKind = "else"
 	blockEach blockKind = "each"
+	blockStep blockKind = "step"
 )
+
+type blockFrame struct {
+	kind      blockKind
+	startStmt int
+}
 
 type parser struct {
 	expectedKind string
@@ -21,8 +27,9 @@ type parser struct {
 	doc          Document
 	diagnostics  []Diagnostic
 	seenHeader   bool
-	blocks       []blockKind
+	blocks       []blockFrame
 	lastClosed   blockKind
+	stmtCount    int
 }
 
 // ParseSkill 解析并校验 ELyph skill 文档的基础结构；不执行或理解自然语言条件。
@@ -61,6 +68,7 @@ func (p *parser) parseLine(trimmed string, lineNo int) {
 		return
 	}
 	if !p.seenHeader {
+		p.stmtCount++
 		p.parseHeader(trimmed, lineNo)
 		return
 	}
@@ -72,6 +80,7 @@ func (p *parser) parseLine(trimmed string, lineNo int) {
 		p.closeBlock(lineNo)
 		return
 	}
+	p.stmtCount++
 	if !strings.HasPrefix(trimmed, "?else") {
 		p.lastClosed = ""
 	}
@@ -92,6 +101,8 @@ func (p *parser) parseLine(trimmed string, lineNo int) {
 		p.add(lineNo, "else must be ?else{")
 	case strings.HasPrefix(trimmed, "each"):
 		p.parseEach(trimmed, lineNo)
+	case strings.HasPrefix(trimmed, "step"):
+		p.parseStep(trimmed, lineNo)
 	case strings.HasPrefix(trimmed, ">"):
 		p.parseOutput(trimmed, lineNo)
 	case strings.HasPrefix(trimmed, "@tool"):
@@ -232,6 +243,37 @@ func (p *parser) parseEach(line string, lineNo int) {
 	p.openBlock(blockEach)
 }
 
+func (p *parser) parseStep(line string, lineNo int) {
+	rest := strings.TrimSpace(strings.TrimPrefix(line, "step"))
+	if !strings.HasSuffix(rest, "{") {
+		p.add(lineNo, "step must be step <name> {")
+		return
+	}
+	name := strings.TrimSpace(strings.TrimSuffix(rest, "{"))
+	if name == "" || strings.ContainsAny(name, " \t") {
+		p.add(lineNo, "step must be step <name> {")
+		return
+	}
+	if !validStepName(name) {
+		p.add(lineNo, "step name must be lowercase letter or digit followed by lowercase letters, digits, _ or -")
+		return
+	}
+	for _, frame := range p.blocks {
+		if frame.kind == blockStep {
+			p.add(lineNo, "step blocks must not be nested")
+			return
+		}
+	}
+	for _, s := range p.doc.Steps {
+		if s.Name == name {
+			p.add(lineNo, "step name "+name+" already used")
+			return
+		}
+	}
+	p.doc.Steps = append(p.doc.Steps, Step{Name: name, Line: lineNo})
+	p.openBlock(blockStep)
+}
+
 func (p *parser) parseOutput(line string, lineNo int) {
 	if line != ">" && !strings.HasPrefix(line, "> ") {
 		p.add(lineNo, "output must be > text")
@@ -264,12 +306,16 @@ func (p *parser) closeBlock(lineNo int) {
 		p.lastClosed = ""
 		return
 	}
-	p.lastClosed = p.blocks[len(p.blocks)-1]
+	frame := p.blocks[len(p.blocks)-1]
 	p.blocks = p.blocks[:len(p.blocks)-1]
+	if frame.kind == blockStep && p.stmtCount == frame.startStmt {
+		p.add(lineNo, "step block must not be empty")
+	}
+	p.lastClosed = frame.kind
 }
 
 func (p *parser) openBlock(kind blockKind) {
-	p.blocks = append(p.blocks, kind)
+	p.blocks = append(p.blocks, blockFrame{kind: kind, startStmt: p.stmtCount})
 	p.lastClosed = ""
 }
 
@@ -405,6 +451,24 @@ func validName(value string) bool {
 	for idx, r := range value {
 		if idx == 0 {
 			if r < 'a' || r > 'z' {
+				return false
+			}
+			continue
+		}
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '_' && r != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func validStepName(value string) bool {
+	if len(value) == 0 || len(value) > 64 {
+		return false
+	}
+	for idx, r := range value {
+		if idx == 0 {
+			if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
 				return false
 			}
 			continue

@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `edit_file` 的高风险确认详情现在会按文件、模式和编辑步骤展示替换、新增、删除、匹配等操作。
 - `edit_file` 不再向 LLM 暴露 `dry_run` 参数；系统会在用户确认前自动预检并生成 diff，预检失败不会进入确认或写入文件。
 - `modify_el_skill` 现在复用 `edit_file` 的 `edits` 编辑说明与执行能力，并在确认前预检编辑、ELyph 语法和 no-op 修改，在高风险确认详情中展示预检 diff。
+- 更新 `ELyph` 版本至 v3
 - qq heartbeat ack 和 qqofficial gateway resumed 不再记录log
 - read_el_skill 现在依赖modify_el_skill，方便执行可能的修改
 

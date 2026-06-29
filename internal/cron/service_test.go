@@ -374,7 +374,7 @@ func TestRunLLMReportSendsNonEmptyReportEvenWhenNeedReportFalse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runLLMReport: %v", err)
 	}
-	if !strings.Contains(runner.requests[0].Prompt, "ELyph v0.2规则") || !strings.Contains(runner.requests[0].Prompt, "#task test") || !strings.Contains(runner.requests[0].Prompt, "最终回复必须是严格 JSON") {
+	if !strings.Contains(runner.requests[0].Prompt, "ELyph v0.3规则") || !strings.Contains(runner.requests[0].Prompt, "#task test") || !strings.Contains(runner.requests[0].Prompt, "最终回复必须是严格 JSON") {
 
 		t.Fatalf("cron prompt missing ELyph rules/task/json protocol: %q", runner.requests[0].Prompt)
 	}
