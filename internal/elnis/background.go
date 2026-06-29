@@ -7,11 +7,21 @@ import (
 	"strings"
 
 	"elbot/internal/security"
+	"elbot/internal/storage"
 )
 
 func isElnisModelSlot(slot string) bool {
 	switch strings.TrimSpace(slot) {
 	case "elwisp1", "elwisp2", "elwisp3":
+		return true
+	default:
+		return false
+	}
+}
+
+func isElnisSessionMode(mode string) bool {
+	switch strings.TrimSpace(mode) {
+	case storage.SessionModeWork, storage.SessionModeChat:
 		return true
 	default:
 		return false

@@ -34,6 +34,7 @@ type Request struct {
 	Format        string                          `json:"format"`
 	Content       string                          `json:"content"`
 	ModelSlot     string                          `json:"model_slot"`
+	SessionMode   string                          `json:"session_mode"`
 	ToolListNames []string                        `json:"tool_list_names"`
 	Tools         []toolrun.ELwispToolDeclaration `json:"tools"`
 	Segments      []Segment                       `json:"segments,omitempty"`

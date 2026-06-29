@@ -34,7 +34,7 @@
 ### Cron 与维护任务
 
 - `internal/cron/manager.go`：中央 Cron Runtime；基于 `robfig/cron/v3` 调度持久化 job，提供 handler 注册、job upsert/disable/delete、启动加载、执行日志、运行状态更新、同 job 防并发和未启动 Stop 的安全返回。
-- `internal/cron/service.go`：LLM 可编排 cron 服务；管理用户 cron metadata，支持 once/周期、direct/LLM 触发、missed once 按平台补投递，LLM once 可由首个已连接目标平台生成并缓存报告，后续平台复用；通过 `internal/background` 执行后台 LLM，保留 cron prompt、投递、引用通知 resume 后台 session 和任务生命周期语义。
+- `internal/cron/service.go`：LLM 可编排 cron 服务。
 - `internal/maintenance/maintenance.go`：系统维护任务；集中注册维护类 Cron，提供日志、Session、sandbox 和聊天历史清理。
 
 ### Agent 编排
@@ -46,11 +46,11 @@
 - `internal/agent/chat.go`：普通对话主流程；加载上下文、构建 Prompt、驱动 LLM/工具循环；user 与已完成工具 transcript 会阶段性落库，最终平台输出先跑 `agent.turn.output.prepared`，流式输出用最终文本 replace，正常完成后保存最终 assistant。
 - `internal/agent/hooks.go`：Agent Hook 与输出接入；生成事件上下文，运行 Hook，提供 assistant 输出预处理，并把 Hook/工具输出意图交给 Output Manager 发送。
 - `internal/agent/chat_llm.go`：LLM 调用与消息转换辅助；处理 Hook 后请求、流式响应错误通知、多模态转换、reasoning/usage/runtime 日志；流式最终 replace 由对话主流程在输出 Hook 后完成。
-- `internal/agent/turn_output.go`：Agent turn 输出适配；区分前台/后台的流式输出、中间输出、Notice、reasoning 和 runtime status 发布。
+- `internal/agent/turn_output.go`：Agent turn 输出适配；区分前台/后台的流式输出、中间输出、工具预览、Notice、reasoning 和 runtime status 发布。
 - `internal/agent/chat_tools.go`：工具执行与确认辅助；处理工具调用、风险确认、transcript、工具调用记录和 schema 注入。
 - `internal/agent/request_context.go`：Agent request context helper；在当前 turn context 中传递父 request ID，供工具 request 建立父子关系。
 - `internal/agent/risk_confirmation.go`：风险确认阶段命令定义与文案；统一生成 `/detail`、`/confirm`、`/confirmtool`、`/confirmall`、`/reject`、`/stop` 及别名的提示、补全和识别。
-- `internal/agent/cron.go`：Agent 通用后台 runner；绕过 slash 命令解析，使用 discard sender 静默运行后台 LLM，按 background kind 注入 sandbox、预加载工具并写入后台 Session metadata；保留 `RunCronMessage` 薄适配。
+- `internal/agent/cron.go`：Agent 通用后台 runner；绕过 slash 命令解析，使用 discard sender 静默运行后台 LLM，按 background kind 注入 sandbox、按 session_mode 创建/续跑后台 Session、预加载工具并写入 metadata；保留 `RunCronMessage` 薄适配。
 
 - `internal/agent/cron_tools.go`：后台工具确认特例；cron/Elnis sandbox shell 非 critical 自动确认，critical 直接回 tool message 提醒用相对路径/低风险命令且不等待用户。
 - `internal/agent/prompt.go`：Prompt Builder；通过 System Prompt Manager 生成单条 system prompt，并处理历史消息、工具 transcript、多模态 metadata 和压缩摘要。
@@ -112,11 +112,11 @@
 - `internal/elvena/`：Elvena 公共协议层；定义 v2/v3 request/response、Origin、Dispatcher/Bus、direct 输出转换和 calls 能力映射，供 Elnis HTTP 与 Hook exec 共用。
 - `internal/elnis/types.go`：Elnis/Elvena 协议类型别名；复用 `internal/elvena` 请求、响应、事件模式、状态和 calls 类型。
 - `internal/elnis/service.go`：Elnis 接收服务主入口；实现 HTTP token Handle 与 Elvena Dispatcher，负责授权、去重后分发 record/direct/llm。
-- `internal/elnis/prepare.go`：Elnis 事件准备；校验 v2/v3 请求、规范化 target/tool/calls、生成事件 key/hash 和持久化字段。
+- `internal/elnis/prepare.go`：Elnis 事件准备；校验 v2/v3 请求、session_mode、规范化 target/tool/calls、生成事件 key/hash 和持久化字段。
 - `internal/elnis/auth.go`：Elnis token、Elwisp 和工具授权。
 - `internal/elnis/targets.go`：Elnis 投递目标解析、禁用规则和 enabled platform 展开。
 - `internal/elnis/direct.go`：Elnis direct 分发；发送 content/segments，执行 raw/capability calls，并记录回执映射。
-- `internal/elnis/llm.go`：Elnis LLM 后台任务、结果重试、报告投递和模型选择。
+- `internal/elnis/llm.go`：Elnis LLM 后台任务、session_mode 传递、结果重试、报告投递和模型选择。
 - `internal/elnis/segments.go`：Elnis segment 下载、URL/data URI 校验和 LLM segment 转换。
 - `internal/elnis/store.go`：Elnis 重复事件、完成状态和事件日志属性 helper。
 - `internal/elnis/background.go`：Elnis 后台 actor、sandbox subdir 和平台辅助 helper。
@@ -142,7 +142,7 @@
 
 ### Output Layer
 
-- `internal/background/`：后台 LLM 执行公共类型与结果 helper；定义 cron/Elnis 共用 `RunRequest`、`RunResult`、background kind、最终 JSON 结果解析/格式重试文案和 report segment 输出构建。
+- `internal/background/`：后台 LLM 执行公共类型与结果 helper；定义 cron/Elnis 共用 `RunRequest`、`RunResult`、background kind、session_mode、最终 JSON 结果解析/格式重试文案和 report segment 输出构建。
 - `internal/delivery/delivery.go`：平台无关输出意图与发送管理；统一定义 text/image/file/at/reply/emoticon 等输出类型、fallback 文本、delivery timing 元数据，以及发送回执、流式发送和发送入口。
 
 ### Security Layer
@@ -172,7 +172,7 @@
 - `internal/tool/builder.go`：Go Tool Builder；用于声明工具描述、风险、隐藏、superadmin-only、用户侧 tags、依赖和常用参数 schema，Object 参数默认允许任意 JSON 字段，减少内置工具与包装工具手写 schema 的成本。
 - `internal/tool/discover.go`：`discover_tool` 内置工具；无参列出可见工具/skill 简介，有 `name`/`names` 时普通工具仅返回“已发现工具”文本并把完整 schema 留在结构化 Data 供 Agent 注入 top-level tools，外置 AgentSkill/Go skill 返回 markdown/ELyph detail 且 ELyph 规则卡按格式去重；查询 AgentSkill/Go skill 会通过内部 metadata 激活隐藏包装工具 `python_skill_run`/`go_skill_run`。
 - `internal/tool/provider.go`：Tool Runtime 到 Agent Prompt/LLM schema 的旧 provider 适配；保留给显式外部 provider 兼容，默认工具视图由 `internal/toolrun` 提供。
-- `internal/toolrun/`：工具调用中间层；维护 session 工具缓存、native/Elwisp 工具视图、命名解析、权限风险确认、工具自定义确认详情、tool call 生命周期编排和失效提示；后台 session 不注入默认 `discover_tool`，后台 shell schema 使用相对路径，Elwisp 外部工具通过 HTTP JSON POST 执行。
+- `internal/toolrun/`：工具调用中间层；维护 session 工具缓存、native/Elwisp 工具视图、命名解析、权限风险确认、工具自定义确认详情、tool call 生命周期编排、批量工具预览和失效提示；后台 session 不注入默认 `discover_tool`，后台 shell schema 使用相对路径，Elwisp 外部工具通过 HTTP JSON POST 执行。
 - `internal/tool/executor.go`：工具执行器；把模型产生的 `llm.ToolCallRequest` 转换为 Tool Runtime 调用，执行前按 Actor/Policy 做风险等级兜底校验，并把结果转换为 LLM tool message。
 - `internal/tool/builtin/runtime.go`：内置工具 Runtime；集中创建 Tool Registry、常驻记忆 store、Skill Manager、文件发送 helper 和内置工具私有路径；`memories.toml`、`long_memory/`、`skills/` 默认在配置目录下。
 - `internal/tool/builtin/register.go`：内置工具注册细节；由 builtin Runtime 调用，统一注册 `discover_tool`、常驻记忆、长期记忆、cron、`send_file`、聊天历史、web 搜索/提取、shell、`elwisp_creator`、skill 包装工具和 Go 元 skill。
@@ -180,7 +180,7 @@
 - `internal/tool/builtin/send_file.go`：内置发文件工具；仅超管可用，支持 `path`/`file` 参数，后台和前台都直接发送解析后的本地文件路径。
 - `internal/tool/builtin/chat_history.go`：内置聊天历史工具；按当前 platform/scope 搜索、查看上下文和引用回复平台聊天记录，用户侧 tag 为 `chat`。
 - `internal/tool/builtin/long_memory.go`：全局长期记忆工具组；可见入口 `long_memory` 依赖隐藏的 `long_memory_search`/`long_memory_write`，仅超管可用；Markdown 文件是源数据，SQLite FTS 是可重建索引，搜索/分类前会轻量同步并提示手改格式损坏文件。
-- `internal/tool/builtin/cron.go`：内置 cron 工具组；可见主工具 `cron` 依赖隐藏的 `cron_query`/`cron_write`，查询为 medium 风险，写操作为 high 风险，全部仅超级管理员可用；LLM cron 可传 `tool_list_names` 预注入工具或 Skill；列表默认隐藏已完成 cron，传 `include_completed=true` 才显示历史完成项。
+- `internal/tool/builtin/cron.go`：内置 cron 工具组；可见主工具 `cron` 依赖隐藏的 `cron_query`/`cron_write`，查询为 medium 风险，写操作为 high 风险，全部仅超级管理员可用；LLM cron 可传 `tool_list_names` 和 `session_mode`；列表默认隐藏已完成 cron，传 `include_completed=true` 才显示历史完成项。
 - `internal/tool/builtin/env.go`：内置工具环境变量读取 helper；优先读 OS env，缺失时读取配置目录 `.env`，用于 Tavily/Jina API key。
 - `internal/tool/builtin/web_search.go`：Tavily 搜索工具；返回 answer、来源链接和摘要，并依赖 `web_extract`，用户侧 tag 为 `web`。
 - `internal/tool/builtin/web_extract.go`：Jina Reader/标准库网页提取工具；支持代理、分段读取和进程内缓存，用户侧 tag 为 `web`。
@@ -196,7 +196,7 @@
 - `internal/tool/skill/catalog.go`：skill catalog；记录 AgentSkill/Go skill 的名称、详情格式、风险、根目录和 Go binary 路径，供隐藏包装工具按名称查找。
 
 - `internal/tool/skill/creator.go`：`create_el_skill` 内置元工具；用结构化参数 `name/description/risk/elyph/go_source` 创建 ElBot 原生 skill，写入 `SKILL.elyph`，可选写入 `main.go` 并编译，创建前用 ELyph parser/linter 校验，成功后自动 reload；不再要求 LLM 拼 `SKILL.md` front matter，未提供源码时创建纯 ELyph 文本 skill。
-- `internal/tool/skill/modify_el_skill.go`：`read_el_skill`/`modify_el_skill` 内置元工具；按 `target` 读写原生 EL Skill 的 `SKILL.elyph` 或 `main.go`，支持完整 `content` 覆盖或 1-based 行 patch；技能定义修改会校验 ELyph 并 reload，源码修改只写文件并提示后续 finalize。
+- `internal/tool/skill/modify_el_skill.go`：`read_el_skill`/`modify_el_skill` 内置元工具；按 `target` 读写原生 EL Skill 的 `SKILL.elyph` 或 `main.go`，`modify_el_skill` 复用 fileops edits；技能定义修改会校验 ELyph 并 reload，源码修改只写文件并提示后续 finalize。
 - `internal/tool/skill/finalize_el_skill.go`：`finalize_el_skill` 内置元工具；完成原生 EL Skill 修改，校验 `SKILL.elyph`，对 `main.go` 执行 gofmt、`package main` 校验、`go build` 和 reload，并把格式化/编译错误作为结果返回给 LLM。
 - `internal/tool/skill/go_source.go`：原生 Go skill 源码维护 helper；提供 gofmt、`package main` 校验、Go 可执行文件解析和 `go build` 编译能力，供 `finalize_el_skill` 和创建流程复用。
 - `internal/tool/skill/descriptor.go`：skill 描述对象；让 AgentSkill/Go skill 可被 `discover_tool` 查到详情，按结构化 detail 暴露内容、格式和规则卡；skill 本体不作为可直接调用 schema 暴露。

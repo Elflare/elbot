@@ -136,6 +136,7 @@ type CronTarget struct {
 
 type CronLLMMetadata struct {
 	ToolListNames []string `json:"tool_list_names,omitempty"`
+	SessionMode   string   `json:"session_mode,omitempty"`
 }
 
 type CronDeliveryMetadata struct {
@@ -156,6 +157,7 @@ type UpsertRequest struct {
 	TriggerMode         TriggerMode
 	Message             string
 	ToolListNames       []string
+	SessionMode         string
 	AllEnabledPlatforms bool
 
 	Enabled        bool
@@ -172,6 +174,7 @@ type PatchRequest struct {
 	TriggerMode         *TriggerMode
 	Message             *string
 	ToolListNames       *[]string
+	SessionMode         *string
 	AllEnabledPlatforms *bool
 
 	Enabled *bool
@@ -239,7 +242,7 @@ func (s *Service) Create(ctx context.Context, req UpsertRequest) (*storage.CronJ
 		s.auditEvent("cron.permission_denied", "operation", "create", "actor_id", req.Actor.ID, "reason", err.Error())
 		return nil, err
 	}
-	meta := Metadata{Kind: metadataKind, Version: 1, Title: strings.TrimSpace(req.Title), CreatedBy: actorMetadata(req.Actor), Schedule: CronSchedule{Mode: req.ScheduleMode, RunAt: strings.TrimSpace(req.RunAt), CronExpr: strings.TrimSpace(req.CronExpr)}, Trigger: CronTrigger{Mode: req.TriggerMode, Message: strings.TrimSpace(req.Message)}, Target: CronTarget{AllEnabledPlatforms: req.AllEnabledPlatforms, SourcePlatform: firstNonEmpty(req.SourcePlatform, req.Actor.Platform)}, LLM: CronLLMMetadata{ToolListNames: normalizeToolListNames(req.ToolListNames)}}
+	meta := Metadata{Kind: metadataKind, Version: 1, Title: strings.TrimSpace(req.Title), CreatedBy: actorMetadata(req.Actor), Schedule: CronSchedule{Mode: req.ScheduleMode, RunAt: strings.TrimSpace(req.RunAt), CronExpr: strings.TrimSpace(req.CronExpr)}, Trigger: CronTrigger{Mode: req.TriggerMode, Message: strings.TrimSpace(req.Message)}, Target: CronTarget{AllEnabledPlatforms: req.AllEnabledPlatforms, SourcePlatform: firstNonEmpty(req.SourcePlatform, req.Actor.Platform)}, LLM: CronLLMMetadata{ToolListNames: normalizeToolListNames(req.ToolListNames), SessionMode: normalizeLLMSessionMode(req.SessionMode)}}
 
 	if err := validateElyphCronTask(meta); err != nil {
 		return nil, err
@@ -291,6 +294,13 @@ func (s *Service) Update(ctx context.Context, req PatchRequest) (*storage.CronJo
 	}
 	if req.ToolListNames != nil {
 		meta.LLM.ToolListNames = normalizeToolListNames(*req.ToolListNames)
+	}
+	if req.SessionMode != nil {
+		mode, err := validateLLMSessionMode(*req.SessionMode)
+		if err != nil {
+			return nil, err
+		}
+		meta.LLM.SessionMode = mode
 	}
 	if req.AllEnabledPlatforms != nil {
 
@@ -644,7 +654,7 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 	}
 	actor := security.Actor{ID: security.ActorID(meta.CreatedBy.Platform, meta.CreatedBy.PlatformUserID), Platform: meta.CreatedBy.Platform, PlatformUserID: meta.CreatedBy.PlatformUserID, DisplayName: meta.CreatedBy.DisplayName, Role: security.RoleSuperadmin}
 	prompt := cronPrompt(meta.Trigger.Message)
-	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), Prompt: prompt, ToolListNames: meta.LLM.ToolListNames, SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}})
+	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), Prompt: prompt, ToolListNames: meta.LLM.ToolListNames, SessionMode: meta.LLM.SessionMode, SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}})
 
 	if err != nil {
 		return meta, "", err
@@ -698,7 +708,7 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 }
 
 func (s *Service) retryLLMResultFormat(ctx context.Context, job storage.CronJob, meta Metadata, actor security.Actor, sessionID string) (background.RunResult, CronLLMResult, error) {
-	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), SessionID: sessionID, Prompt: cronFormatRetryPrompt(), ToolListNames: meta.LLM.ToolListNames, SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}})
+	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), SessionID: sessionID, Prompt: cronFormatRetryPrompt(), ToolListNames: meta.LLM.ToolListNames, SessionMode: meta.LLM.SessionMode, SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}})
 	if err != nil {
 		return result, CronLLMResult{}, err
 	}
@@ -1034,6 +1044,26 @@ func normalizeToolListNames(names []string) []string {
 		out = append(out, name)
 	}
 	return out
+}
+
+func validateLLMSessionMode(mode string) (string, error) {
+	mode = strings.TrimSpace(mode)
+	switch mode {
+	case "":
+		return "", nil
+	case storage.SessionModeWork, storage.SessionModeChat:
+		return mode, nil
+	default:
+		return "", fmt.Errorf("unsupported session_mode %q", mode)
+	}
+}
+
+func normalizeLLMSessionMode(mode string) string {
+	mode, err := validateLLMSessionMode(mode)
+	if err != nil || mode == "" {
+		return ""
+	}
+	return mode
 }
 
 func cronPrompt(message string) string {

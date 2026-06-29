@@ -9,10 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 同一轮多个工具调用的 `[tool]` 预览会合并为一条消息发送，减少平台刷屏。
+- Elvena LLM 事件和 LLM Cron 支持 `session_mode=chat|work` 选择后台 Session 模式，默认仍为 `work`。
 - `/detail` 高风险工具调用详情支持工具自定义纯文本展示；未自定义时仍会把 JSON 参数格式化成更易读的多行展示，字符串里的 `\n` 会显示为真实换行。
 - `edit_file` 的高风险确认详情现在会按文件、模式和编辑步骤展示替换、新增、删除、匹配等操作。
 - `edit_file` 不再向 LLM 暴露 `dry_run` 参数；系统会在用户确认前自动预检并生成 diff，预检失败不会进入确认或写入文件。
-- `modify_el_skill` 现在也会在确认前预检 patch/content、ELyph 语法和 no-op 修改，并在高风险确认详情中展示预检 diff。
+- `modify_el_skill` 现在复用 `edit_file` 的 `edits` 编辑说明与执行能力，并在确认前预检编辑、ELyph 语法和 no-op 修改，在高风险确认详情中展示预检 diff。
 - qq heartbeat ack 和 qqofficial gateway resumed 不再记录log
 - read_el_skill 现在依赖modify_el_skill，方便执行可能的修改
 

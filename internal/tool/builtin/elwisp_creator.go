@@ -178,6 +178,7 @@ func buildElwispCreatorGuide(cfg elwispCreatorConfigSnapshot) string {
 // direct_record_fields: content/segments/calls 至少提供一个；llm 模式仍需要 content
 // optional_fields: elwisp.tags, created_at, title, format, model_slot, tool_list_names, tools, segments, calls, meta
 // modes: record 只记录；direct 直接通知；llm 进入后台 LLM Session。
+// session_mode: 可选："work/chat"。默认work，不需要工具时设为chat
 // targets: 必填数组；{"platform":"cli"} 表示投递到 cli 超级管理员；{"platform":"telegram","type":"private","id":"123"} 表示指定私聊；{"platform":"all"} 表示所有已启用平台超级管理员。
 // model_slot: elwisp1 | elwisp2 | elwisp3；未配置时由 Elnis fallback。
 // minimal_direct_payload: {"version":"elvena.v3","elwisp":{"name":"example-elwisp","tags":["example"]},"source":"example-source","id":"stable-event-id","mode":"direct","title":"事件标题","content":"可直接通知给管理员的文本。","targets":[{"platform":"cli"}]}

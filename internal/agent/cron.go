@@ -129,7 +129,7 @@ func (a *Agent) backgroundSession(ctx context.Context, req background.RunRequest
 	if title == "" {
 		title = backgroundTitle(req.Kind, req.Name)
 	}
-	bgSession := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID, Mode: storage.SessionModeWork, Title: title, Status: storage.SessionStatusActive, Metadata: backgroundSessionMetadata(req)}
+	bgSession := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID, Mode: normalizeBackgroundSessionMode(req.SessionMode), Title: title, Status: storage.SessionStatusActive, Metadata: backgroundSessionMetadata(req)}
 	if err := a.store.Sessions().Create(ctx, bgSession); err != nil {
 		return nil, err
 	}
@@ -141,10 +141,11 @@ func (a *Agent) ensureBackgroundSession(ctx context.Context, bgSession *storage.
 		return nil, storage.ErrNotFound
 	}
 	metadata := mergeBackgroundSessionMetadata(bgSession.Metadata, req)
-	if bgSession.Mode == storage.SessionModeWork && bgSession.Metadata == metadata {
+	mode := normalizeBackgroundSessionMode(req.SessionMode)
+	if bgSession.Mode == mode && bgSession.Metadata == metadata {
 		return bgSession, nil
 	}
-	bgSession.Mode = storage.SessionModeWork
+	bgSession.Mode = mode
 	bgSession.Metadata = metadata
 	bgSession.UpdatedAt = storage.Now()
 	if err := a.store.Sessions().Update(ctx, bgSession); err != nil {
@@ -190,6 +191,15 @@ func backgroundPromptSegments(segments []llm.MessageSegment) []platform.MessageS
 		}
 	}
 	return out
+}
+
+func normalizeBackgroundSessionMode(mode string) string {
+	switch strings.TrimSpace(mode) {
+	case storage.SessionModeChat:
+		return storage.SessionModeChat
+	default:
+		return storage.SessionModeWork
+	}
 }
 
 func backgroundScopeID(kind background.Kind, name string) string {

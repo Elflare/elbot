@@ -29,6 +29,7 @@ type RunRequest struct {
 	SessionID      string
 	ModelProvider  string
 	Model          string
+	SessionMode    string
 	PromptSegments []llm.MessageSegment
 	Prompt         string
 	RetryPrompt    string

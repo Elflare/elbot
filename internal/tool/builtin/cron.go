@@ -32,6 +32,7 @@ type cronCreateArgs struct {
 	TriggerMode         string   `json:"trigger_mode"`
 	Message             string   `json:"message"`
 	ToolListNames       []string `json:"tool_list_names"`
+	SessionMode         string   `json:"session_mode"`
 	AllEnabledPlatforms bool     `json:"all_enabled_platforms"`
 	Enabled             *bool    `json:"enabled"`
 }
@@ -57,6 +58,7 @@ type cronWriteArgs struct {
 	TriggerMode         string   `json:"trigger_mode"`
 	Message             string   `json:"message"`
 	ToolListNames       []string `json:"tool_list_names"`
+	SessionMode         string   `json:"session_mode"`
 	AllEnabledPlatforms *bool    `json:"all_enabled_platforms"`
 	Enabled             *bool    `json:"enabled"`
 }
@@ -127,6 +129,7 @@ func (t CronWriteTool) Schema() llm.ToolSchema {
 		String("trigger_mode", "create 需要；update 可选。触发模式：direct 或 llm。direct 直接发消息；llm 后台运行 LLM 处理复杂任务。 ").
 		String("message", "create 需要；update 可选。trigger_mode=direct：使用普通自然语言通知文本。trigger_mode=llm：使用 ELyph #task <name> - 描述 任务文本。").
 		StringArray("tool_list_names", "trigger_mode=llm 时预注入的工具名或 Skill 名列表；普通工具会注入 schema，Skill 会注入任务说明并自动注入对应 runner。update 传空数组表示清空。 ").
+		String("session_mode", "trigger_mode=llm 时后台 Session 模式：work 或 chat；默认 work。不需要工具时选chat").
 		Boolean("all_enabled_platforms", "是否发送/广播到所有 enabled 平台超级管理员。 ").
 		Boolean("enabled", "create：创建后是否启用，默认 true；update：是否启用。false 表示停用但保留记录。 ").
 		BuildSchema()
@@ -166,12 +169,12 @@ func (t CronWriteTool) create(ctx context.Context, args cronWriteArgs) (*tool.Re
 	if args.AllEnabledPlatforms != nil {
 		allEnabledPlatforms = *args.AllEnabledPlatforms
 	}
-	createArgs := cronCreateArgs{Name: args.Name, Title: args.Title, ScheduleMode: args.ScheduleMode, RunAt: args.RunAt, CronExpr: args.CronExpr, RunAfterMinutes: args.RunAfterMinutes, RunAfterHours: args.RunAfterHours, RunAfterDays: args.RunAfterDays, RunAfterWeeks: args.RunAfterWeeks, RunAfterMonths: args.RunAfterMonths, TriggerMode: args.TriggerMode, Message: args.Message, ToolListNames: args.ToolListNames, AllEnabledPlatforms: allEnabledPlatforms, Enabled: args.Enabled}
+	createArgs := cronCreateArgs{Name: args.Name, Title: args.Title, ScheduleMode: args.ScheduleMode, RunAt: args.RunAt, CronExpr: args.CronExpr, RunAfterMinutes: args.RunAfterMinutes, RunAfterHours: args.RunAfterHours, RunAfterDays: args.RunAfterDays, RunAfterWeeks: args.RunAfterWeeks, RunAfterMonths: args.RunAfterMonths, TriggerMode: args.TriggerMode, Message: args.Message, ToolListNames: args.ToolListNames, SessionMode: args.SessionMode, AllEnabledPlatforms: allEnabledPlatforms, Enabled: args.Enabled}
 	runAt, err := resolveCreateRunAt(createArgs)
 	if err != nil {
 		return nil, err
 	}
-	job, err := t.service.Create(ctx, elcron.UpsertRequest{Name: args.Name, Title: args.Title, ScheduleMode: elcron.ScheduleMode(args.ScheduleMode), RunAt: runAt, CronExpr: args.CronExpr, TriggerMode: elcron.TriggerMode(args.TriggerMode), Message: args.Message, ToolListNames: args.ToolListNames, AllEnabledPlatforms: allEnabledPlatforms, Enabled: enabled, Actor: actor, SourcePlatform: actor.Platform})
+	job, err := t.service.Create(ctx, elcron.UpsertRequest{Name: args.Name, Title: args.Title, ScheduleMode: elcron.ScheduleMode(args.ScheduleMode), RunAt: runAt, CronExpr: args.CronExpr, TriggerMode: elcron.TriggerMode(args.TriggerMode), Message: args.Message, ToolListNames: args.ToolListNames, SessionMode: args.SessionMode, AllEnabledPlatforms: allEnabledPlatforms, Enabled: enabled, Actor: actor, SourcePlatform: actor.Platform})
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +186,7 @@ func (t CronWriteTool) update(ctx context.Context, args cronWriteArgs) (*tool.Re
 	if err != nil {
 		return nil, err
 	}
-	patch := elcron.PatchRequest{Name: args.Name, Title: stringPtrIfNotEmpty(args.Title), RunAt: runAt, CronExpr: stringPtrIfNotEmpty(args.CronExpr), Message: stringPtrIfNotEmpty(args.Message), AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: args.Enabled, Actor: actorFromContext(ctx)}
+	patch := elcron.PatchRequest{Name: args.Name, Title: stringPtrIfNotEmpty(args.Title), RunAt: runAt, CronExpr: stringPtrIfNotEmpty(args.CronExpr), Message: stringPtrIfNotEmpty(args.Message), SessionMode: stringPtrIfNotEmpty(args.SessionMode), AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: args.Enabled, Actor: actorFromContext(ctx)}
 	if args.ScheduleMode != "" {
 		v := elcron.ScheduleMode(args.ScheduleMode)
 		patch.ScheduleMode = &v

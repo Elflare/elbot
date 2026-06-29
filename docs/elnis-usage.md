@@ -110,6 +110,7 @@ curl -sS http://127.0.0.1:32170/elvena/v3/events \
   "format": "elyph",
   "content": "#task investigate_cpu_alert - 检查服务器 CPU 异常并判断是否需要通知",
   "model_slot": "elwisp2",
+  "session_mode": "work",
   "tool_list_names": ["shell"],
   "tools": [
     {
@@ -237,6 +238,7 @@ Elvena v3 支持通过 `segments` 字段发送图片和文件。`content` 保留
 | `format` | 否 | `text` 或 `elyph`，默认 `text`。 |
 | `content` | 否 | 事件主体。LLM 模式必填，推荐使用 ELyph Task Notation（任务表示法）`#task`；direct/record 模式可为空，但 `content`、`segments`、`calls` 至少提供一个。 |
 | `model_slot` | 否 | Elnis LLM 模型槽位，仅支持 `elwisp1`、`elwisp2`、`elwisp3`；未填写或对应槽位未配置时回退到 `work`。 |
+| `session_mode` | 否 | LLM 后台 Session 模式：`work` 或 `chat`，默认 `work`；`chat` 不注入工具 schema，适合不需要工具的低成本后台处理。 |
 | `tool_list_names` | 否 | 后台任务预加载的 ElBot 内部工具名或 Skill 名；普通工具注入 schema，Skill 注入任务说明并自动注入对应 runner；必须在 Elnis `allowed_tools` 裁决范围内，`discover_tool` 会被忽略。 |
 | `tools` | 否 | Elwisp 随事件声明的外部工具；默认允许，命中该 Elwisp 的 `disabled_external_tools` 时拒绝。 |
 | `targets` | 是 | Elwisp 期望投递目标数组，`{"platform":"telegram"}` 表示发给平台超级管理员，`type=private/group` 且带 `id` 时发指定私聊/群聊，`{"platform":"all"}` 表示所有已启用平台超级管理员。最终仍由 Elnis 裁决。 |
@@ -293,8 +295,7 @@ Elnis 默认允许投递；命中 `[delivery_disabled].targets` 或单 Elwisp `d
 
 - token 名只用于日志和审计，不等同于 Elwisp 身份。
 - token 原文不写日志。
-- `model_slot` 只能选择 `elwisp1`、`elwisp2`、`elwisp3`，不能指定任意内部模式名。
+- `model_slot` 只能选择 `elwisp1`、`elwisp2`、`elwisp3`，不能指定任意内部模式名；`session_mode` 只允许 `work` 或 `chat`，不影响模型槽位。
 - Elwisp 不能绕过 Tool Runtime 和 Security Policy 调用 ElBot 内部工具；`tool_list_names` 中的工具名或 Skill 名都会经过 Elnis `allowed_tools` 裁决。
-
 - Elwisp 声明的外部 `tools` 默认允许，并通过 ToolRun 以 `elwisp_<elwisp>_<tool>` 形式注入为模型可调用函数名；单个 Elwisp 可用 `disabled_external_tools` 禁用指定工具。
 - 外部工具调用由 Elnis 对声明的 endpoint 发起 HTTP JSON POST；外部工具自身负责实际风险边界，Elnis 侧按 low 风险处理。

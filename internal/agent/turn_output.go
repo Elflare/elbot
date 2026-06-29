@@ -113,9 +113,17 @@ func (a *Agent) sendPreview(ctx context.Context, text string) {
 	if body == "" {
 		return
 	}
-	preview := "[tool] " + body
+	preview := formatToolPreview(body)
 	_ = a.sendNoticeOutput(ctx, delivery.Target{}, delivery.Text(preview))
 	a.notifyHook(ctx, hook.Event{Point: hook.PointPlatformMessageSent, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(preview)}})
+}
+
+func formatToolPreview(text string) string {
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	for i, line := range lines {
+		lines[i] = "[tool] " + strings.TrimSpace(line)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (a *Agent) finishIntermediateOutput(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string, streaming bool) error {

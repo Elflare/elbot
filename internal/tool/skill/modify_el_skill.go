@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"elbot/internal/elyph"
@@ -39,23 +38,19 @@ type readElSkillArgs struct {
 }
 
 type modifyElSkillArgs struct {
-	Name    string            `json:"name"`
-	Target  string            `json:"target"`
-	Content string            `json:"content"`
-	Patches []modifyLinePatch `json:"patches"`
-}
-
-type modifyLinePatch struct {
-	StartLine int      `json:"start_line"`
-	EndLine   int      `json:"end_line"`
-	NewLines  []string `json:"new_lines"`
+	Name         string         `json:"name"`
+	Target       string         `json:"target"`
+	Encoding     string         `json:"encoding"`
+	ExpectedHash string         `json:"expected_sha256"`
+	ContextLines int            `json:"context_lines"`
+	Edits        []fileops.Edit `json:"edits"`
 }
 
 type modifyElSkillPreview struct {
 	Name   string
 	Target string
 	Path   string
-	File   fileops.File
+	Result fileops.EditResult
 	Next   string
 	Diff   string
 }
@@ -145,26 +140,21 @@ func (ModifyElSkillTool) Info() tool.Info {
 }
 
 func (ModifyElSkillTool) Schema() llm.ToolSchema {
+	editProperties := fileops.EditOperationProperties()
 	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{
 		Name:        ModifyElSkillName,
-		Description: "修改 ElBot 原生 EL Skill 文件。target 可选：skill_elyph 修改 SKILL.elyph；code_source 修改 main.go；默认 skill_elyph。content 用于全量写入；patches 用原文件 1-based 行号替换整行范围。content 与 patches 必须二选一。code_source 只写源码并返回 diff，不会格式化、编译或 reload；完成后调用 finalize_el_skill 检查。skill_elyph 会校验 ELyph 并 reload。",
+		Description: "修改 ElBot 原生 EL Skill 文件。target 可选：skill_elyph 修改 SKILL.elyph；code_source 修改 main.go；默认 skill_elyph。使用 edits 一次提交多个修改，按顺序应用；确认前自动预检并生成 diff。code_source 只写源码并返回 diff，不会格式化、编译或 reload；完成后调用 finalize_el_skill 检查。skill_elyph 会校验 ELyph 并 reload。",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"name":    map[string]any{"type": "string", "description": "skill 名称。"},
-				"target":  map[string]any{"type": "string", "enum": []string{elSkillTargetElyph, elSkillTargetCodeSource}, "description": "修改目标：skill_elyph 表示 SKILL.elyph；code_source 表示 main.go。默认 skill_elyph。"},
-				"content": map[string]any{"type": "string", "description": "可选，完整新的文件内容。"},
-				"patches": map[string]any{"type": "array", "description": "可选，按原文件行号替换整行范围；new_lines 为空数组表示删除。", "items": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"start_line": map[string]any{"type": "integer", "description": "1-based 起始行，包含。"},
-						"end_line":   map[string]any{"type": "integer", "description": "1-based 结束行，包含。"},
-						"new_lines":  map[string]any{"type": "array", "description": "替换后的行数组，每个元素不包含换行符。", "items": map[string]any{"type": "string"}},
-					},
-					"required": []string{"start_line", "end_line", "new_lines"},
-				}},
+				"name":            map[string]any{"type": "string", "description": "skill 名称。"},
+				"target":          map[string]any{"type": "string", "enum": []string{elSkillTargetElyph, elSkillTargetCodeSource}, "description": "修改目标：skill_elyph 表示 SKILL.elyph；code_source 表示 main.go。默认 skill_elyph。"},
+				"encoding":        map[string]any{"type": "string", "description": "文本编码，默认 auto；非 UTF-8 文件应显式传入 gb18030、gbk、big5、shift_jis 等。"},
+				"expected_sha256": map[string]any{"type": "string", "description": "可选，编辑前文件 sha256；用于防止外部并发修改。"},
+				"context_lines":   map[string]any{"type": "integer", "description": "diff 上下文行数，默认 3，范围 0-20。确认前自动预检和实际写入结果都会使用该上下文行数。"},
+				"edits":           map[string]any{"type": "array", "description": "批量编辑列表，按顺序应用；连续编辑同一文件时优先使用 match/anchor 操作，行号 replace/delete 建议提供 expected_content。", "items": map[string]any{"type": "object", "properties": editProperties, "required": []string{"operation"}}},
 			},
-			"required": []string{"name"},
+			"required": []string{"name", "edits"},
 		},
 	}}
 }
@@ -222,45 +212,27 @@ func (t ModifyElSkillTool) preview(ctx context.Context, req tool.CallRequest) (m
 	if err != nil {
 		return modifyElSkillPreview{}, err
 	}
-	hasContent := args.Content != ""
-	hasPatches := len(args.Patches) > 0
-	if hasContent == hasPatches {
-		return modifyElSkillPreview{}, fmt.Errorf("provide exactly one of content or patches")
+	if len(args.Edits) == 0 {
+		return modifyElSkillPreview{}, fmt.Errorf("edits is required")
 	}
-	file, err := fileops.ReadFile(path, "")
+	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedHash, false, true, args.ContextLines, args.Edits)
 	if err != nil {
 		return modifyElSkillPreview{}, err
 	}
-	next := args.Content
-	if hasPatches {
-		next, err = applyLinePatches(fileops.SplitLines(file.Text), args.Patches)
-		if err != nil {
-			return modifyElSkillPreview{}, err
-		}
-	}
-	next = normalizeSkillContent(next)
-	oldText := fileops.NormalizeEditText(file.Text)
-	newText := fileops.NormalizeEditText(next)
-	if oldText == newText {
-		return modifyElSkillPreview{}, fmt.Errorf("edit produced no changes")
+	next, _, _, err := fileops.DecodeBytes(result.NewBytes, result.Encoding)
+	if err != nil {
+		return modifyElSkillPreview{}, err
 	}
 	if target == elSkillTargetElyph {
 		if _, err := elyph.ParseSkill(next, name); err != nil {
 			return modifyElSkillPreview{}, err
 		}
 	}
-	return modifyElSkillPreview{
-		Name:   name,
-		Target: target,
-		Path:   path,
-		File:   file,
-		Next:   next,
-		Diff:   fileops.UnifiedDiff(path, fileops.SplitLines(oldText), fileops.SplitLines(newText), 3),
-	}, nil
+	return modifyElSkillPreview{Name: name, Target: target, Path: path, Result: result, Next: next, Diff: result.Diff}, nil
 }
 
 func (t ModifyElSkillTool) modifyElyph(ctx context.Context, preview modifyElSkillPreview) (*tool.Result, error) {
-	if _, err := fileops.WriteTextFile(preview.Path, preview.File, preview.Next); err != nil {
+	if err := fileops.AtomicWriteFile(preview.Path, preview.Result.NewBytes, existingFileMode(preview.Path)); err != nil {
 		return nil, err
 	}
 	if err := t.Manager.Reload(ctx); err != nil {
@@ -270,10 +242,17 @@ func (t ModifyElSkillTool) modifyElyph(ctx context.Context, preview modifyElSkil
 }
 
 func (t ModifyElSkillTool) modifyCodeSource(preview modifyElSkillPreview) (*tool.Result, error) {
-	if _, err := fileops.WriteTextFile(preview.Path, preview.File, preview.Next); err != nil {
+	if err := fileops.AtomicWriteFile(preview.Path, preview.Result.NewBytes, existingFileMode(preview.Path)); err != nil {
 		return nil, err
 	}
 	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\ndiff:\n%s\n\n源码已写入但尚未格式化/编译；完成修改后调用 finalize_el_skill。", preview.Name, elSkillTargetCodeSource, preview.Diff)}, nil
+}
+
+func existingFileMode(path string) os.FileMode {
+	if info, err := os.Stat(path); err == nil {
+		return info.Mode()
+	}
+	return 0644
 }
 
 func elSkillTargetPath(manager *Manager, name, target string) (string, string, error) {
@@ -302,49 +281,4 @@ func elSkillTargetPath(manager *Manager, name, target string) (string, string, e
 		return "", "", fmt.Errorf("stat %s: %w", filename, err)
 	}
 	return path, target, nil
-}
-
-func splitSkillLines(text string) []string {
-	text = strings.ReplaceAll(text, "\r\n", "\n")
-	text = strings.TrimSuffix(text, "\n")
-	if text == "" {
-		return []string{}
-	}
-	return strings.Split(text, "\n")
-}
-
-func applyLinePatches(lines []string, patches []modifyLinePatch) (string, error) {
-	sorted := append([]modifyLinePatch(nil), patches...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].StartLine < sorted[j].StartLine })
-	previousEnd := 0
-	for _, patch := range sorted {
-		if patch.StartLine < 1 || patch.EndLine < patch.StartLine || patch.EndLine > len(lines) {
-			return "", fmt.Errorf("invalid patch range %d-%d", patch.StartLine, patch.EndLine)
-		}
-		if patch.StartLine <= previousEnd {
-			return "", fmt.Errorf("patch ranges must not overlap")
-		}
-		for _, line := range patch.NewLines {
-			if strings.ContainsAny(line, "\r\n") {
-				return "", fmt.Errorf("new_lines must not contain line breaks")
-			}
-		}
-		previousEnd = patch.EndLine
-	}
-	for i := len(sorted) - 1; i >= 0; i-- {
-		patch := sorted[i]
-		start := patch.StartLine - 1
-		end := patch.EndLine
-		next := make([]string, 0, len(lines)-(end-start)+len(patch.NewLines))
-		next = append(next, lines[:start]...)
-		next = append(next, patch.NewLines...)
-		next = append(next, lines[end:]...)
-		lines = next
-	}
-	return strings.Join(lines, "\n"), nil
-}
-
-func normalizeSkillContent(text string) string {
-	text = strings.ReplaceAll(text, "\r\n", "\n")
-	return strings.TrimRight(text, "\n") + "\n"
 }

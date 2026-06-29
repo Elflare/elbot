@@ -65,6 +65,7 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 	preparedCalls := make([]llm.ToolCallRequest, 0, len(req.Calls))
 	transcript := []storage.Message{}
 	var confirmationExtra string
+	batchPreviewSent := sendBatchToolPreview(ctx, deps, req)
 	for _, original := range req.Calls {
 		startedAt := storage.Now()
 		call, err := deps.PrepareToolCall(ctx, req.Session, original)
@@ -87,7 +88,7 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			transcript = append(transcript, deps.ToolResultMessage(sessionID, message))
 			continue
 		}
-		if deps.ShouldSendPreview(ctx, req.Session, call, req.AssistantText) {
+		if !batchPreviewSent && deps.ShouldSendPreview(ctx, req.Session, call, req.AssistantText) {
 			deps.SendPreview(ctx, fmt.Sprintf("正在调用 %s：%s", call.Name, previewArguments(call.Arguments)))
 		}
 		confirm, err := m.confirm(ctx, deps, req.Actor, sessionID, call, resolved, assessment)
@@ -157,6 +158,18 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 	}
 	transcript = append([]storage.Message{deps.ToolCallMessage(sessionID, req.AssistantText, req.AssistantRawText, preparedCalls)}, transcript...)
 	return RunResult{Messages: messages, ConfirmationExtra: confirmationExtra, Transcript: transcript}
+}
+
+func sendBatchToolPreview(ctx context.Context, deps RunnerDeps, req RunRequest) bool {
+	if len(req.Calls) <= 1 || !deps.ShouldSendPreview(ctx, req.Session, llm.ToolCallRequest{}, req.AssistantText) {
+		return false
+	}
+	lines := make([]string, 0, len(req.Calls))
+	for _, call := range req.Calls {
+		lines = append(lines, fmt.Sprintf("正在调用 %s：%s", call.Name, previewArguments(call.Arguments)))
+	}
+	deps.SendPreview(ctx, strings.Join(lines, "\n"))
+	return true
 }
 
 func (m *Manager) confirm(ctx context.Context, deps RunnerDeps, actor security.Actor, sessionID string, call llm.ToolCallRequest, resolved ResolvedTool, assessment tool.RiskAssessment) (ConfirmResult, error) {
