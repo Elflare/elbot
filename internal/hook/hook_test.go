@@ -139,7 +139,7 @@ func TestManagerLogsNamedHook(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	logs := buf.String()
-	for _, want := range []string{"hook triggered", "hook event", "test.logger", "before_text=before", "after_text=after", "raw_text=raw"} {
+for _, want := range []string{"hook triggered", "test.logger", "before_text=before", "after_text=after", "raw_text=raw"} {
 		if !strings.Contains(logs, want) {
 			t.Fatalf("logs missing %q:\n%s", want, logs)
 		}

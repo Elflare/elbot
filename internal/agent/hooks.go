@@ -34,14 +34,11 @@ func (a *Agent) notifyHook(ctx context.Context, event hook.Event) {
 		manager = hook.NoopManager{}
 	}
 	event = a.fillHookContext(ctx, event)
-	if err := manager.Notify(ctx, event); err != nil {
-		a.logHookError(event.Point, err)
-	}
+	_ = manager.Notify(ctx, event)
 }
 
 func (a *Agent) notifyHookError(ctx context.Context, source hook.Event, err error) {
 	if source.Point == hook.PointErrorOccurred {
-		a.logHookError(source.Point, err)
 		return
 	}
 	event := source

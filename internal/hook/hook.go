@@ -561,12 +561,12 @@ func (m *DefaultManager) Run(ctx context.Context, event Event) (Event, error) {
 		updated, err := reg.handler.HandleHook(ctx, event)
 		delete(event.Metadata, "match")
 		if err != nil {
-			m.logHook(ctx, "run", reg, before, before, err, true)
+m.logHook(ctx, "run", reg, before, before, err)
 			return event, wrapHookError(reg, err)
 		}
 		updated = markHookOutputs(updated, len(before.Outputs), reg, "run")
 		event = prepareEvent(updated)
-		m.logHook(ctx, "run", reg, before, event, nil, true)
+m.logHook(ctx, "run", reg, before, event, nil)
 		if event.Control.StopPropagation {
 			break
 		}
@@ -587,12 +587,12 @@ func (m *DefaultManager) Notify(ctx context.Context, event Event) error {
 		updated, err := reg.handler.HandleHook(ctx, event)
 		delete(event.Metadata, "match")
 		if err != nil {
-			m.logHook(ctx, "notify", reg, before, before, err, true)
+m.logHook(ctx, "notify", reg, before, before, err)
 			joined = errors.Join(joined, wrapHookError(reg, err))
 			continue
 		}
 		_ = markHookOutputs(updated, len(before.Outputs), reg, "notify")
-		m.logHook(ctx, "notify", reg, before, before, nil, true)
+m.logHook(ctx, "notify", reg, before, before, nil)
 		if updated.Control.StopPropagation {
 			break
 		}
@@ -674,9 +674,9 @@ func setOutputMeta(meta map[string]any, key, value string) {
 	meta[key] = value
 }
 
-func (m *DefaultManager) logHook(ctx context.Context, mode string, reg registration, before, after Event, err error, completed bool) {
+func (m *DefaultManager) logHook(ctx context.Context, mode string, reg registration, before, after Event, err error) {
 	logger := m.loggerForLog()
-	if logger == nil || !completed {
+	if logger == nil {
 		return
 	}
 	attrs := []any{
@@ -688,19 +688,23 @@ func (m *DefaultManager) logHook(ctx context.Context, mode string, reg registrat
 	}
 	if err != nil {
 		attrs = append(attrs, "error", err.Error())
+		logger.WarnContext(ctx, "hook error", attrs...)
+		return
 	}
-	logger.InfoContext(ctx, "hook triggered", attrs...)
-	debugAttrs := append([]any{}, attrs...)
-	debugAttrs = append(debugAttrs,
-		"session_id", after.Session.ID,
-		"provider", after.LLM.Provider,
-		"model", after.LLM.Model,
-		"tool", after.Tool.Name,
-		"before_text", trimLogText(eventText(before)),
-		"after_text", trimLogText(eventText(after)),
-		"raw_text", trimLogText(after.LLM.RawText),
-	)
-	logger.DebugContext(ctx, "hook event", debugAttrs...)
+	if logger.Enabled(ctx, slog.LevelDebug) {
+		attrs = append(attrs,
+			"session_id", after.Session.ID,
+			"provider", after.LLM.Provider,
+			"model", after.LLM.Model,
+			"tool", after.Tool.Name,
+			"before_text", trimLogText(eventText(before)),
+			"after_text", trimLogText(eventText(after)),
+			"raw_text", trimLogText(after.LLM.RawText),
+		)
+		logger.DebugContext(ctx, "hook triggered", attrs...)
+	} else {
+		logger.InfoContext(ctx, "hook triggered", attrs...)
+	}
 }
 
 func (m *DefaultManager) loggerForLog() *slog.Logger {
