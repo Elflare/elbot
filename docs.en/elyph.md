@@ -296,4 +296,4 @@ LLM Cron tasks can use the `#task` header to write task entries, and the syntax 
 
 ## Syntax Evolution
 
-ELyph is currently v0.3, and the syntax may be expanded in future versions. When writing `SKILL.elyph` or task entries, it is recommended to keep the structure concise and avoid relying on experimental notations not listed in this document.
+ELyph is currently v0.3, and the syntax may be expanded in future versions. When writing `SKILL.elyph` or task entries, it is recommended to keep the structure concise.

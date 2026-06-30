@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - qq heartbeat ack and qqofficial gateway resumed are no longer logged
 - read_el_skill now depends on modify_el_skill to facilitate possible modifications
 - ELyph syntax is no longer validated during ElBot startup to avoid slowing down the startup speed.
+- Colons at the end of ELyph `**`/`~` text are now returned as warnings to `create_el_skill`/`finalize_el_skill`, and no longer block creation or finalization.
+- `modify_el_skill` no longer automatically reloads after modifying `SKILL.elyph`; `finalize_el_skill` must be called after modification to take effect.
+- Tool results now support unified `Warnings` output, used to prompt the LLM to prioritize more appropriate tools in the future.
+- `read_file`/`shell` will suggest using `read_el_skill` when reading EL Skill files; Direct modification of EL Skill files by `edit_file` or shell will be rejected before confirmation or execution; `modify_el_skill` should be used instead.
+- Source files for resident memory and long-term memory are now included in general FileGuard protection; reading will suggest using memory tools, and direct writing via general file tools or shell will be rejected.
 
 ### Fixed
 

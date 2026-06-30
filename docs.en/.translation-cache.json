@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "7c242b15657019475bc4be6c3c245b63595b923b5dbd89fe3de37097631686a7",
+      "source_hash": "dcd21eb1a1a4b0043fc460d723242e8c4ab7a76dbd78dd6cf852833dc5cd067c",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782711341
+      "updated_at": 1782722558
     },
     "README.zh-CN.md": {
       "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
@@ -21,9 +21,9 @@
       "updated_at": 1782630997
     },
     "docs/concepts.md": {
-      "source_hash": "36e3b707d8c8fdbe6f03ebd785cfd2882204b3308561d7a8f1f5043a7c12ffd2",
+      "source_hash": "b5468a152024af467a4ef5faac572e0cc5c5a4f4cb66fb35d8b1c2dd503628ab",
       "target": "docs.en/concepts.md",
-      "updated_at": 1782698966
+      "updated_at": 1782722490
     },
     "docs/configuration.md": {
       "source_hash": "db01881a125701b41b608e1f0ebaea702f0a72ad566da422a2e3b43873475d6f",
@@ -41,9 +41,9 @@
       "updated_at": 1782459210
     },
     "docs/elyph.md": {
-      "source_hash": "22e064ef6df7a3e6cca26ec9d11076b682979d1f61475af0c51782983c6a5efe",
+      "source_hash": "e38da277e0be51c104f94090b00368bf6b08a36c53cb8e5e127ae02005fa7e24",
       "target": "docs.en/elyph.md",
-      "updated_at": 1782710448
+      "updated_at": 1782722511
     },
     "docs/getting-started.md": {
       "source_hash": "be8df536298bfcae8caaf7f4a2932c844d168db3877fa150d2b96286d3d137b4",
@@ -233,6 +233,14 @@
       "translation": "**Logs and Audit**: Runtime logs, audit logs, and Elnis logs are separated, supporting structured fields and date-based rotation.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:3cac303e77d78b8a38bc8c513ad9c4a32a433a641f83783336fe7338f1f9c46c": {
+      "kind": "list",
+      "source": "常驻记忆和长期记忆源文件纳入通用 FileGuard 保护；读取会提示使用记忆工具，通用文件工具或 shell 直接写入会被拒绝。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "3cac303e77d78b8a38bc8c513ad9c4a32a433a641f83783336fe7338f1f9c46c",
+      "translation": "Source files for resident memory and long-term memory are now included in general FileGuard protection; reading will suggest using memory tools, and direct writing via general file tools or shell will be rejected.",
+      "updated_at": 1782722558
+    },
     "CHANGELOG.md:list:423439494f92faf1b2877f3d54114488603b875cb08f29295101899fef57e0a8": {
       "kind": "list",
       "source": "Elvena v3 动作通道：Elnis 支持 __ELBOT_CODE_0__，首批支持 raw 平台 API 以及 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ capability，未支持的可以直接调用消息平台api；",
@@ -248,6 +256,14 @@
       "source_hash": "48a9dbb08660f2dae754713aea25100d54b59eb98c8a3fea1d54df9cfb657b67",
       "translation": "read_el_skill now depends on modify_el_skill to facilitate possible modifications",
       "updated_at": 1782569783
+    },
+    "CHANGELOG.md:list:544848e58ddf58eb94be259c382c90eb3999f62714ca2674072b8102baa6631a": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 修改 __ELBOT_CODE_1__ 后不再自动 reload；修改完成后需调用 __ELBOT_CODE_2__ 生效。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "544848e58ddf58eb94be259c382c90eb3999f62714ca2674072b8102baa6631a",
+      "translation": "__ELBOT_CODE_0__ no longer automatically reloads after modifying __ELBOT_CODE_1__; __ELBOT_CODE_2__ must be called after modification to take effect.",
+      "updated_at": 1782722558
     },
     "CHANGELOG.md:list:572872f4348e759b46f65964708d6035ffe736d5c7f16bbeca3641f8458acd29": {
       "kind": "list",
@@ -393,6 +409,14 @@
       "translation": "Fixed an issue where Hook exec stdin JSON used Go's default capitalized field names, preventing external scripts from reading the event field using lowercase keys;",
       "updated_at": 1782376912
     },
+    "CHANGELOG.md:list:8c6db0749fc23bd2ae134ad376b9197d0f3c34d7c93e7d70e3767ccd889a12bc": {
+      "kind": "list",
+      "source": "ELyph __ELBOT_CODE_0__/__ELBOT_CODE_1__ 文本末尾冒号现在作为 warning 返回给 __ELBOT_CODE_2__/__ELBOT_CODE_3__，不再阻断创建或 finalize。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "8c6db0749fc23bd2ae134ad376b9197d0f3c34d7c93e7d70e3767ccd889a12bc",
+      "translation": "Colons at the end of ELyph __ELBOT_CODE_0__/__ELBOT_CODE_1__ text are now returned as warnings to __ELBOT_CODE_2__/__ELBOT_CODE_3__, and no longer block creation or finalization.",
+      "updated_at": 1782722558
+    },
     "CHANGELOG.md:list:8d6665e1f8baef0f66221d9e8c96d04b826c0e292fbc65f9956b6159f7fe0d0c": {
       "kind": "list",
       "source": "Hook rules __ELBOT_CODE_0__ action 新增 __ELBOT_CODE_1__ stdout 模式，脚本 stdout 解析为 JSON 并提取 __ELBOT_CODE_2__ 数组和可选 __ELBOT_CODE_3__；",
@@ -489,6 +513,14 @@
       "translation": "Platform message Hook output will now be sent; __ELBOT_CODE_0__ can block subsequent command/LLM processing.",
       "updated_at": 1782376912
     },
+    "CHANGELOG.md:list:b3437ec56a0380e39408a1e249d70dd1aa1ceb8b073ecf965ae300d13d3297d2": {
+      "kind": "list",
+      "source": "工具结果支持统一 __ELBOT_CODE_0__ 输出，用于提示 LLM 后续优先使用更合适的工具。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "b3437ec56a0380e39408a1e249d70dd1aa1ceb8b073ecf965ae300d13d3297d2",
+      "translation": "Tool results now support unified __ELBOT_CODE_0__ output, used to prompt the LLM to prioritize more appropriate tools in the future.",
+      "updated_at": 1782722558
+    },
     "CHANGELOG.md:list:b38bc9c4a4c1c59fabd0af61273ce28f1bda9c70b72de6986bc430d0e30f60aa": {
       "kind": "list",
       "source": "LLM Cron 用 ELyph 任务描述驱动模型执行，支持一次性与周期任务、missed 补跑与广播。",
@@ -512,6 +544,14 @@
       "source_hash": "bd93eae9bd1763e2908b379364b1f9d9b2057b8941646314b5cf7d0e454e8ac8",
       "translation": "**Standard Cron and LLM Cron**: Standard Cron sends fixed content directly according to a schedule;",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:c5677ef83020b6879bc81ba0896f3ae4a390a95cc8329831e1008ad10406bf25": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__/__ELBOT_CODE_1__ 读取 EL Skill 文件时会提示使用 __ELBOT_CODE_2__；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "c5677ef83020b6879bc81ba0896f3ae4a390a95cc8329831e1008ad10406bf25",
+      "translation": "__ELBOT_CODE_0__/__ELBOT_CODE_1__ will suggest using __ELBOT_CODE_2__ when reading EL Skill files;",
+      "updated_at": 1782722558
     },
     "CHANGELOG.md:list:c9b8f985f26ae2840c237c92f9163141ff2da581a519ff26340d57eb8120d0c4": {
       "kind": "list",
@@ -568,6 +608,14 @@
       "source_hash": "dc3765cc3b6cc516b17fb0be590317ce5a5fab8d064d6514066e8593e421b5eb",
       "translation": "By default, the wait time for the first streaming event is 180 seconds, streaming idle is 60 seconds, and there is no total duration limit for the entire response.",
       "updated_at": 1782461728
+    },
+    "CHANGELOG.md:list:e165546c948bdf490fc215f58e25acceb7984ceaf0f31ee3e8d974b08e43db4f": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 或 shell 直接修改 EL Skill 文件会在确认或执行前被拒绝，需改用 __ELBOT_CODE_1__。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "e165546c948bdf490fc215f58e25acceb7984ceaf0f31ee3e8d974b08e43db4f",
+      "translation": "Direct modification of EL Skill files by __ELBOT_CODE_0__ or shell will be rejected before confirmation or execution; __ELBOT_CODE_1__ should be used instead.",
+      "updated_at": 1782722558
     },
     "CHANGELOG.md:list:e674fa7fc18af87b45660da3fff098ff0a482256ae0cdc7d64932ce221ad779c": {
       "kind": "list",
@@ -4025,6 +4073,14 @@
       "translation": "Background Cron has independent Session and sandbox constraints. LLM Cron can pre-inject tool names, allowing the model to stably use specified tools in background tasks.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:36da951501fcc6df52198e0168688f6a576b4a9a3aabd24f885af6abc44d0454": {
+      "kind": "paragraph",
+      "source": "工具结果可以回灌给 LLM，也可以返回平台无关的输出意图，由 Agent 统一发送。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "36da951501fcc6df52198e0168688f6a576b4a9a3aabd24f885af6abc44d0454",
+      "translation": "Tool results can be fed back to the LLM or return a platform-agnostic output intent, which is sent uniformly by the Agent.",
+      "updated_at": 1782722490
+    },
     "docs/concepts.md:paragraph:381a3f69f52ea9af8eddd07647addf266fc1229def56e09ab8663c9f9fd6e638": {
       "kind": "paragraph",
       "source": "平台适配层只负责把平台消息转换为统一输入，以及把输出意图发送回平台。Agent Core 不依赖具体平台。\n",
@@ -4241,6 +4297,14 @@
       "translation": "Valid commands will be stripped and persisted to the tool cache of the current Session; invalid values will be kept as ordinary text and a prompt will be shown.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:8ad804df2925c6835455adb91c4411a2cf2fc36c4bfca78ff706ef9b7d430a74": {
+      "kind": "paragraph",
+      "source": "读取或修改 Go Skill 的 __ELBOT_CODE_0__ / __ELBOT_CODE_1__ 应使用 __ELBOT_CODE_2__ / __ELBOT_CODE_3__；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "8ad804df2925c6835455adb91c4411a2cf2fc36c4bfca78ff706ef9b7d430a74",
+      "translation": "Reading or modifying the __ELBOT_CODE_0__ / __ELBOT_CODE_1__ of Go Skill should use __ELBOT_CODE_2__ / __ELBOT_CODE_3__;",
+      "updated_at": 1782722490
+    },
     "docs/concepts.md:paragraph:8d8868f4841964e4aea90eb53af567667489ade4a7e2da48f9a3dbd8a04d4adf": {
       "kind": "paragraph",
       "source": "这样做的目的：\n",
@@ -4281,6 +4345,14 @@
       "translation": "ElBot supports Skill extensions and introduces ELyph Task Notation to describe reusable tasks.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:9b2c54341f438c61bfbf1f51ed90dacece8a747aabe80f575bee5b58dab7170c": {
+      "kind": "paragraph",
+      "source": "通用文件工具或 shell 直接修改这些文件会被拒绝。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "9b2c54341f438c61bfbf1f51ed90dacece8a747aabe80f575bee5b58dab7170c",
+      "translation": "Direct modification of these files via general file tools or shell will be rejected.",
+      "updated_at": 1782722490
+    },
     "docs/concepts.md:paragraph:9d0fd6757d20ba131192002948c00af45f5542d65a626b612c0439ef7deb1853": {
       "kind": "paragraph",
       "source": "Tool Runtime 管理工具的注册、发现、权限、风险评估和执行。\n",
@@ -4304,6 +4376,14 @@
       "source_hash": "9e49f557aef34ca8beaa5f228481819327a48168953b97b7491a573d801d2926",
       "translation": "ElBot divides conversations into two modes:\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:a5ad325ffeaf78413fcee790ab6f4b058ade38f3693af55721daf87fe94d2185": {
+      "kind": "paragraph",
+      "source": "EL Skill、常驻记忆和长期记忆源文件由 FileGuard 保护：读取会提示使用对应专用工具，通用文件工具或 shell 直接写入会被拒绝。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "a5ad325ffeaf78413fcee790ab6f4b058ade38f3693af55721daf87fe94d2185",
+      "translation": "EL Skill, resident memory, and long-term memory source files are protected by FileGuard: reading will prompt the use of corresponding dedicated tools, and direct writing via general file tools or shell will be rejected.\n",
+      "updated_at": 1782722490
     },
     "docs/concepts.md:paragraph:a800da9d165f4210729342e742feb2f8c6c2b15841003da34b733f9c9335ec52": {
       "kind": "paragraph",
@@ -4448,6 +4528,14 @@
       "source_hash": "eb28bc34b1889f07f968893640bdc245d652141617176e239f37de1fd8524508",
       "translation": "When multiple ELyph Skills are injected simultaneously, the ELyph rule description will only be added once.\n",
       "updated_at": 1782205988
+    },
+    "docs/concepts.md:paragraph:eb4745aab2ac66401ac11150cb875685d3abeb26e87420ec3df5a8d3a326eaff": {
+      "kind": "paragraph",
+      "source": "工具结果中的 __ELBOT_CODE_0__ 会回灌给 LLM，用于提示后续优先使用更合适的工具，例如用 __ELBOT_CODE_1__ 代替 shell __ELBOT_CODE_2__。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "eb4745aab2ac66401ac11150cb875685d3abeb26e87420ec3df5a8d3a326eaff",
+      "translation": "The __ELBOT_CODE_0__ in tool results will be fed back to the LLM to suggest prioritizing more appropriate tools in the future, such as using __ELBOT_CODE_1__ instead of shell __ELBOT_CODE_2__.",
+      "updated_at": 1782722490
     },
     "docs/concepts.md:paragraph:ed9272f16a95db5abf9cd5b1bacc3e85baa2063b2488cfd3e56fc18e1261270f": {
       "kind": "paragraph",
@@ -9096,6 +9184,14 @@
       "source_hash": "2fb30a097fd4e3dfc89f3ca7b08eaf3d84a8a8b77b55c3bc12f5971cb3235af2",
       "translation": "ELyph is currently v0.3, and the syntax may be expanded in future versions. When writing __ELBOT_CODE_0__ or task entries, it is recommended to keep the structure concise and avoid relying on experimental notations not listed in this document.\n",
       "updated_at": 1782704123
+    },
+    "docs/elyph.md:paragraph:32f008fc631e0f21ca0266bdc1c7d4352dee9c858893b89ccf96f2a8fb40933a": {
+      "kind": "paragraph",
+      "source": "ELyph 当前是 v0.3，语法可能在未来版本中扩展。写 __ELBOT_CODE_0__ 或任务条时，建议保持结构简洁。\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "32f008fc631e0f21ca0266bdc1c7d4352dee9c858893b89ccf96f2a8fb40933a",
+      "translation": "ELyph is currently v0.3, and the syntax may be expanded in future versions. When writing __ELBOT_CODE_0__ or task entries, it is recommended to keep the structure concise.\n",
+      "updated_at": 1782722511
     },
     "docs/elyph.md:paragraph:3ef359032b5033766055df8ae9b7831bd6192b5d15d863c89c7122ee8e15e964": {
       "kind": "paragraph",
