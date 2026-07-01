@@ -53,8 +53,7 @@ For detailed information, see [Elnis Listening Hub](docs.en/elnis.md).
 
 **Multi-platform and Rich Output Abstraction**: ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, QQ Official, and Telegram, while reserving space for extending to other platforms.
 
-**CLI Client/Server Separation**: Supports using ElBot as a client on any computer to connect to the ElBot server.
-**Fully Customizable Frontend**: ElBot separates the frontend and backend, allowing you to build any beautiful interface you like. The following screenshots demonstrate different frontend forms; except for the TUI, all are conceptual HTML mockups and do not represent the final UI.
+**CLI Client/Server Separation**: Supports using ElBot as a client on any computer to connect to the ElBot server.  **Free Frontend Customization**, allowing you to create any frontend interface you prefer. The following screenshots demonstrate different frontend forms; except for the TUI, all are conceptual HTML mockups and do not represent the final UI.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/main/frontend/assets/frontend_1.png" width="260" />
@@ -104,6 +103,7 @@ For detailed instructions, see:
 - [Core Concepts](docs.en/concepts.md)
 - [Elnis Listening Hub](docs.en/elnis.md)
 - [Elnis Configuration and Usage](docs.en/elnis-usage.md)
+- [Frontend API](docs.en/frontend-api.md)
 
 Development plan and task decomposition: [devdocs](devdocs/).
 
