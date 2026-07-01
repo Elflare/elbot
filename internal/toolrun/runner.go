@@ -21,6 +21,7 @@ type RunnerDeps interface {
 	ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (ConfirmResult, error)
 	ConfirmBackgroundTool(ctx context.Context, sessionID string, call llm.ToolCallRequest, resolved ResolvedTool, assessment tool.RiskAssessment) (ConfirmResult, bool)
 	StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error)
+	PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context
 	CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, result string, callErr error) (string, error)
 	SendPreview(ctx context.Context, text string)
 	SendOutputs(ctx context.Context, outputs []delivery.Output) error
@@ -78,9 +79,10 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 		}
 		preparedCalls = append(preparedCalls, call)
 		resolved := m.Resolve(ctx, call.Name, req.CachedTools)
-		assessment, riskText := m.assessForRun(ctx, resolved, call)
+		toolCtx := deps.PrepareToolContext(ctx, req.Session, call)
+		assessment, riskText := m.assessForRun(toolCtx, resolved, call)
 		deps.AddToolUse(sessionID, call.Name)
-		if err := m.PreflightConfirmation(ctx, resolved, call); err != nil {
+		if err := m.PreflightConfirmation(toolCtx, resolved, call); err != nil {
 			message := toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
 			content := llm.SegmentsContentText(message.Segments)
 			deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, content, err)
@@ -108,7 +110,7 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			continue
 		}
 		confirmationExtra = joinAssistantText(confirmationExtra, confirm.Extra)
-		toolCtx, _, done, err := deps.StartToolRequest(ctx, sessionID, call.Name)
+		runToolCtx, _, done, err := deps.StartToolRequest(ctx, sessionID, call.Name)
 		if err != nil {
 			content := fmt.Sprintf("tool call %s failed: %v", call.Name, err)
 			message := toolMessage(call.Name, call.ID, content)
@@ -117,8 +119,9 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			transcript = append(transcript, deps.ToolResultMessage(sessionID, message))
 			continue
 		}
-		result := m.Execute(toolCtx, call, resolved, req.Actor)
-		toolErr := toolCtx.Err()
+		runToolCtx = deps.PrepareToolContext(runToolCtx, req.Session, call)
+		result := m.Execute(runToolCtx, call, resolved, req.Actor)
+		toolErr := runToolCtx.Err()
 		done()
 		if err := toolErr; err != nil {
 			if ctx.Err() != nil {

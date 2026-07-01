@@ -65,6 +65,13 @@ func (d agentToolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolN
 	return toolCtx, toolReq.StartedAt, done, nil
 }
 
+func (d agentToolRunDeps) PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
+	if session == nil || call.Name != "shell" || isBackgroundSession(session) {
+		return ctx
+	}
+	return tool.WithShellCWDStore(ctx, sessionShellCWDStore{agent: d.agent, session: session})
+}
+
 func (d agentToolRunDeps) ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool {
 	return d.agent.isCLIContext(ctx) || strings.TrimSpace(assistantText) == ""
 }

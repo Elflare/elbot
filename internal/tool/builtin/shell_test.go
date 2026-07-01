@@ -145,6 +145,123 @@ func TestShellToolRejectsRedirectToResidentMemory(t *testing.T) {
 	}
 }
 
+type testShellCWDStore struct {
+	cwd string
+}
+
+func (s *testShellCWDStore) GetShellCWD(ctx context.Context) (string, error) {
+	return s.cwd, nil
+}
+
+func (s *testShellCWDStore) SetShellCWD(ctx context.Context, cwd string) error {
+	s.cwd = cwd
+	return nil
+}
+
+func TestShellToolUsesPathAndPersistsCWD(t *testing.T) {
+	root := t.TempDir()
+	subdir := filepath.Join(root, "work")
+	if err := os.MkdirAll(subdir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	store := &testShellCWDStore{}
+	ctx := tool.WithShellCWDStore(context.Background(), store)
+	shell := NewShellTool()
+	args, _ := json.Marshal(map[string]any{"cmd": "pwd", "path": subdir})
+	result, err := shell.Call(ctx, tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.cwd != filepath.Clean(subdir) {
+		t.Fatalf("persisted cwd = %q, want %q", store.cwd, filepath.Clean(subdir))
+	}
+	text := tool.AppendWarnings(result.Content, result.Warnings)
+	if !strings.Contains(text, "future shell calls in this session can omit path") {
+		t.Fatalf("expected path persistence hint, got:\n%s", text)
+	}
+
+	args, _ = json.Marshal(map[string]any{"cmd": "echo persisted > persisted.txt"})
+	if _, err = shell.Call(ctx, tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(subdir, "persisted.txt")); err != nil {
+		t.Fatalf("expected command to run in persisted cwd %q: %v", subdir, err)
+	}
+}
+
+func TestShellToolUsesRelativePathFromProcessCWD(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	subdir := filepath.Join(t.TempDir(), "relative-work")
+	if err := os.MkdirAll(subdir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	rel, err := filepath.Rel(cwd, subdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shell := NewShellTool()
+	args, _ := json.Marshal(map[string]any{"cmd": "echo relative > relative.txt", "path": rel})
+	if _, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(subdir, "relative.txt")); err != nil {
+		t.Fatalf("expected command to run in relative path %q: %v", rel, err)
+	}
+}
+
+func TestShellToolRejectsDirectoryChangeCommand(t *testing.T) {
+	shell := NewShellTool()
+	args, _ := json.Marshal(map[string]any{"cmd": "cd internal && pwd"})
+	_, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "path argument") {
+		t.Fatalf("expected cd rejection, got %v", err)
+	}
+}
+
+func TestShellToolUsesSandboxPathRelativeToSandboxDir(t *testing.T) {
+	sandboxDir := filepath.Join(t.TempDir(), "sandbox", "cron-job")
+	shell := NewShellTool()
+	args, _ := json.Marshal(map[string]any{"cmd": "pwd > cwd.txt", "path": "child"})
+	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Root: filepath.Dir(sandboxDir), Dir: sandboxDir, Background: true, BackgroundKind: tool.BackgroundKindCron})
+	if _, err := shell.Call(ctx, tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(sandboxDir, "child", "cwd.txt")); err != nil {
+		t.Fatalf("expected sandbox child cwd.txt: %v", err)
+	}
+}
+
+func TestShellToolRejectsAbsoluteSandboxPath(t *testing.T) {
+	sandboxDir := filepath.Join(t.TempDir(), "sandbox", "cron-job")
+	shell := NewShellTool()
+	args, _ := json.Marshal(map[string]any{"cmd": "pwd", "path": filepath.Join(t.TempDir(), "outside")})
+	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Root: filepath.Dir(sandboxDir), Dir: sandboxDir, Background: true, BackgroundKind: tool.BackgroundKindCron})
+	_, err := shell.Call(ctx, tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "background path must be relative") {
+		t.Fatalf("expected absolute sandbox path rejection, got %v", err)
+	}
+}
+
+func TestShellToolWarnsForCommandPathArgument(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	shell := NewShellTool()
+	args, _ := json.Marshal(map[string]any{"cmd": "cat " + filepath.ToSlash(path)})
+	result, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := tool.AppendWarnings(result.Content, result.Warnings)
+	if !strings.Contains(text, warnUseShellPath) {
+		t.Fatalf("expected path argument warning, got:\n%s", text)
+	}
+}
+
 func TestShellToolUsesSandboxDir(t *testing.T) {
 	sandboxDir := filepath.Join(t.TempDir(), "sandbox", "cron")
 	shell := NewShellTool()

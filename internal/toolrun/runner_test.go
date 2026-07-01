@@ -14,9 +14,12 @@ import (
 	"elbot/internal/tool"
 )
 
+type runnerContextKey struct{}
+
 type runnerTestDeps struct {
-	confirmed bool
-	recorded  []runnerTestRecord
+	confirmed      bool
+	recorded       []runnerTestRecord
+	prepareContext func(context.Context, *storage.Session, llm.ToolCallRequest) context.Context
 }
 
 type runnerTestRecord struct {
@@ -43,6 +46,13 @@ func (d *runnerTestDeps) ConfirmBackgroundTool(ctx context.Context, sessionID st
 
 func (d *runnerTestDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error) {
 	return ctx, time.Now(), func() {}, nil
+}
+
+func (d *runnerTestDeps) PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
+	if d.prepareContext != nil {
+		return d.prepareContext(ctx, session, call)
+	}
+	return ctx
 }
 
 func (d *runnerTestDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, result string, callErr error) (string, error) {
@@ -119,6 +129,32 @@ func (runnerShellPreflightTool) PreflightConfirmation(ctx context.Context, req t
 
 func (runnerShellPreflightTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
 	return &tool.Result{Content: "should not call"}, nil
+}
+
+type runnerContextPreflightTool struct{}
+
+func (runnerContextPreflightTool) Name() string { return "context_preflight" }
+
+func (runnerContextPreflightTool) Info() tool.Info {
+	return tool.Info{Name: "context_preflight", Risk: tool.RiskLow}
+}
+
+func (runnerContextPreflightTool) Schema() llm.ToolSchema {
+	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: "context_preflight", Parameters: map[string]any{"type": "object"}}}
+}
+
+func (runnerContextPreflightTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
+	if ctx.Value(runnerContextKey{}) != "prepared" {
+		return fmt.Errorf("missing prepared context")
+	}
+	return nil
+}
+
+func (runnerContextPreflightTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+	if ctx.Value(runnerContextKey{}) != "prepared" {
+		return nil, fmt.Errorf("missing prepared context during call")
+	}
+	return &tool.Result{Content: "called"}, nil
 }
 
 type runnerRiskErrorTool struct{}
@@ -200,6 +236,32 @@ func TestRunSkipsConfirmationWhenShellPreflightFails(t *testing.T) {
 	}
 	if len(deps.recorded) != 1 || deps.recorded[0].err == nil {
 		t.Fatalf("expected recorded shell preflight error, got %#v", deps.recorded)
+	}
+}
+
+func TestRunPreparesToolContextBeforePreflightAndExecution(t *testing.T) {
+	registry := tool.NewRegistry()
+	if err := registry.Register(runnerContextPreflightTool{}); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+	deps := &runnerTestDeps{prepareContext: func(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
+		return context.WithValue(ctx, runnerContextKey{}, "prepared")
+	}}
+	result := manager.Run(context.Background(), deps, RunRequest{
+		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
+		Actor:   security.Actor{Role: security.RoleSuperadmin},
+		Calls: []llm.ToolCallRequest{{
+			ID:        "call-1",
+			Name:      "context_preflight",
+			Arguments: `{}`,
+		}},
+	})
+	if len(result.Messages) != 1 {
+		t.Fatalf("messages = %d", len(result.Messages))
+	}
+	if got := llm.SegmentsContentText(result.Messages[0].Segments); got != "called" {
+		t.Fatalf("tool result = %q", got)
 	}
 }
 

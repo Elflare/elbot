@@ -64,7 +64,8 @@
 
 - `internal/agent/status.go`：Agent 运行状态发布 helper；保存每个 Session 最新 runtime snapshot，并通过平台可选接口推送给 CLI TUI 等状态展示层。
 
-- `internal/agent/session_metadata.go`：Session metadata 编解码辅助；当前用于保存已 discover 工具名、已激活 tool tag 和最近一次 LLM usage，使 `/status` 在 `/resume` 后仍可显示最近 token 状态。
+- `internal/agent/session_metadata.go`：Session metadata 编解码辅助；当前用于保存已 discover 工具名、已激活 tool tag、最近一次 LLM usage 和 shell cwd。
+- `internal/agent/shell_cwd.go`：Agent shell cwd 持久化适配；通过 Tool context 读写当前 Session metadata 中的 shell cwd。
 - `internal/agent/tool_transcript.go`：工具调用历史持久化辅助；保存 assistant tool_calls 与 tool result，提供 user 多模态 segments metadata 和 turn message 落库 helper，并在持久化 discover 结果时压缩 schema，避免未来上下文膨胀。
 - `internal/agent/context.go`：Agent 上下文压缩依赖实现；维护 context 配置、压缩模型、ContextLoader、WindowResolver、Compressor、最近 usage 和待压缩标记，并提供 `/compact` 与 `/status` 所需能力；最近 usage 会写入 Session metadata 供恢复会话后展示。
 - `internal/agent/model.go`：模型命令依赖实现；集中维护模型运行态、provider client 缓存、`/models` 运行期列表缓存、模型切换和 `state.toml` 写入；`/model` 默认按消息上下文对应 Session mode 选择目标，但设置全平台共享。
@@ -167,11 +168,12 @@
 - `internal/tool/tool.go`：Tool Runtime 核心类型与 Registry；管理工具注册、查询、schema、权限、风险评估、风险确认详情、用户侧 tags、工具结果和通用 warning 输出。
 - `internal/tool/detail.go`：工具/Skill detail 渲染 helper；按结构化格式去重共享规则卡并拼接 detail 内容。
 - `internal/tool/sandbox.go`：工具执行轻量 sandbox context；传递统一 sandbox root、当前工作目录和后台运行 kind，提供后台相对路径解析，只随本次 context 传播，不写入 Session。
+- `internal/tool/shell_cwd.go`：shell cwd context helper；让工具通过 context 读写前台 Session 的持久化 shell cwd。
 
 - `internal/tool/builder.go`：Go Tool Builder；用于声明工具描述、风险、隐藏、superadmin-only、用户侧 tags、依赖和常用参数 schema，Object 参数默认允许任意 JSON 字段，减少内置工具与包装工具手写 schema 的成本。
 - `internal/tool/discover.go`：`discover_tool` 内置工具；无参列出可见工具/skill 简介，有 `name`/`names` 时普通工具仅返回“已发现工具”文本并把完整 schema 留在结构化 Data 供 Agent 注入 top-level tools，外置 AgentSkill/Go skill 返回 markdown/ELyph detail 且 ELyph 规则卡按格式去重；查询 AgentSkill/Go skill 会通过内部 metadata 激活隐藏包装工具 `python_skill_run`/`go_skill_run`。
 - `internal/tool/provider.go`：Tool Runtime 到 Agent Prompt/LLM schema 的旧 provider 适配；保留给显式外部 provider 兼容，默认工具视图由 `internal/toolrun` 提供。
-- `internal/toolrun/`：工具调用中间层；维护 session 工具缓存、native/Elwisp 工具视图、命名解析、权限风险确认、工具自定义确认详情、tool call 生命周期编排、批量工具预览和失效提示；后台 session 不注入默认 `discover_tool`，后台 shell schema 使用相对路径，Elwisp 外部工具通过 HTTP JSON POST 执行。
+- `internal/toolrun/`：工具调用中间层；维护 session 工具缓存、native/Elwisp 工具视图、命名解析、权限风险确认、工具自定义确认详情、tool call 生命周期编排、批量工具预览和失效提示；后台 session 不注入默认 `discover_tool`，执行前可注入工具 context，Elwisp 外部工具通过 HTTP JSON POST 执行。
 - `internal/tool/executor.go`：工具执行器；把模型产生的 `llm.ToolCallRequest` 转换为 Tool Runtime 调用，执行前按 Actor/Policy 做风险等级兜底校验，并把结果转换为 LLM tool message。
 - `internal/tool/builtin/runtime.go`：内置工具 Runtime；集中创建 Tool Registry、常驻记忆 store、Skill Manager、文件发送 helper 和内置工具私有路径；`memories.toml`、`long_memory/`、`skills/` 默认在配置目录下。
 - `internal/tool/builtin/register.go`：内置工具注册细节；由 builtin Runtime 调用，统一注册 `discover_tool`、常驻记忆、长期记忆、cron、`send_file`、聊天历史、web 搜索/提取、shell、`elwisp_creator`、skill 包装工具和 Go 元 skill。
@@ -179,13 +181,13 @@
 - `internal/tool/builtin/send_file.go`：内置发文件工具；仅超管可用，支持 `path`/`file` 参数，后台和前台都直接发送解析后的本地文件路径。
 - `internal/tool/builtin/chat_history.go`：内置聊天历史工具；按当前 platform/scope 搜索、查看上下文和引用回复平台聊天记录，用户侧 tag 为 `chat`。
 - `internal/tool/builtin/long_memory.go`：全局长期记忆工具组；可见入口 `long_memory` 依赖隐藏的 `long_memory_search`/`long_memory_write`，仅超管可用；Markdown 文件是源数据，SQLite FTS 是可重建索引，搜索/分类前会轻量同步并提示手改格式损坏文件。
-- `internal/tool/builtin/cron.go`：内置 cron 工具组；可见主工具 `cron` 依赖隐藏的 `cron_query`/`cron_write`，查询为 medium 风险，写操作为 high 风险，全部仅超级管理员可用；LLM cron 可传 `tool_list_names` 和 `session_mode`；列表默认隐藏已完成 cron，传 `include_completed=true` 才显示历史完成项。
+- `internal/tool/builtin/cron.go`：内置 cron 工具组；可见主工具 `cron` 依赖隐藏的 `cron_query`/`cron_write`，查询为 medium 风险，写操作为 high 风险，全部仅超级管理员可用；LLM cron 可传 `tool_list_names` 预注入工具或 Skill；列表默认隐藏已完成 cron，传 `include_completed=true` 才显示历史完成项。
 - `internal/tool/builtin/env.go`：内置工具环境变量读取 helper；优先读 OS env，缺失时读取配置目录 `.env`，用于 Tavily/Jina API key。
 - `internal/tool/builtin/web_search.go`：Tavily 搜索工具；返回 answer、来源链接和摘要，并依赖 `web_extract`，用户侧 tag 为 `web`。
 - `internal/tool/builtin/web_extract.go`：Jina Reader/标准库网页提取工具；支持代理、分段读取和进程内缓存，用户侧 tag 为 `web`。
 - `internal/tool/builtin/file_tools.go`：文件读写工具包装层；`read_file` 返回带行号文本和文件哈希，支持 grep 子串搜索，读取受保护文件会返回工具建议 warning；`edit_file` 支持行编辑、match/anchor、创建新文件、unified diff 和风险确认详情，直接修改受保护文件会被拒绝；底层读写编辑能力来自 `internal/utils/fileops`。
 - `internal/tool/builtin/elwisp_creator.go`：内置 Elwisp 创建指南工具；无参数返回配置感知的精简 Elnis/Elvena/ELyph 任务卡，提示 LLM 创建 Elwisp 所需协议、约束和配置注意事项，并依赖 read_file/edit_file/shell。
-- `internal/tool/builtin/shell.go`：内置 shell 工具；接口保留通用 `cmd`，可执行任意 shell 命令，用户侧 tag 为 `agent`，调用前通过风险评估与高风险确认流程拦截；后台 sandbox context 下会创建目录并把 shell cwd 固定到 sandbox。
+- `internal/tool/builtin/shell.go`：内置 shell 工具；支持 `cmd`、`path` 和 `timeout_ms`，前台按 Session 记住 shell cwd，后台路径限制在当前任务 sandbox 内；禁止在 `cmd` 中切换目录。
 
 - `internal/tool/builtin/file_guard.go`：受保护文件访问规则；识别 EL Skill、常驻记忆和长期记忆源文件，供文件工具和 shell 工具提示或拒绝绕过专用工具的读写。
 - `internal/tool/builtin/shell_warnings.go`：shell 命令使用建议分析；识别 `cat`/`sed`/重定向等常见文件读写误用，返回工具 warning 或阻止直接修改受保护文件。
