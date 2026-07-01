@@ -273,7 +273,7 @@ func (a *Agent) auditUsage(sessionID string, selection config.ModelSelection, us
 			"cache_hit_tokens", usage.CacheHitTokens,
 		)
 	}
-	a.auditDebug("llm_usage", attrs...)
+	a.audit("llm_usage", attrs...)
 }
 
 func elapsedMillis(startedAt time.Time) int64 {

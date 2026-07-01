@@ -347,7 +347,7 @@ func TestLogCommandDebugShowsParsedBodyJSON(t *testing.T) {
 func TestAuditCommandFormatsLLMUsageTokens(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{
 		Time:    time.Date(2026, 6, 12, 10, 12, 57, 0, time.Local),
-		Level:   "DEBUG",
+		Level:   "INFO",
 		Message: "audit event",
 		Fields: map[string]string{
 			"event":             "llm_usage",

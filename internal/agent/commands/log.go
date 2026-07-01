@@ -758,5 +758,6 @@ func (LogModule) RegisterCommands(registrar Registrar, deps Deps) error {
 		NewLog,
 		NewAudit,
 		NewElwisp,
+		NewUsage,
 	)
 }

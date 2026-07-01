@@ -77,7 +77,8 @@
 - `internal/agent/commands/compact.go`：`/compact` 命令；触发当前 Session 主动上下文压缩。
 - `internal/agent/commands/session.go`：Session 命令；组合注册列表、生命周期、恢复、Fork、模式切换等会话命令。
 - `internal/agent/commands/request.go`：请求管理命令；实现 `/requests`、`/stop` 和 `/stopall`。
-- `internal/agent/commands/log.go`：日志查看命令；实现 `/log`、`/audit`、`/elwisp`，支持常用过滤条件和 Debug 原始日志展示。
+- `internal/agent/commands/log.go`：日志查看命令；实现 `/log`、`/audit`、`/elwisp`、`/usage`，支持常用过滤条件和 Debug 原始日志展示；`/usage` 从审计日志聚合 token 消耗，按模型/天/会话汇总。
+- `internal/agent/commands/usage.go`：`/usage` 命令实现；从审计日志拉取 `llm_usage` 事件并按模型/天/会话聚合 token 用量和耗时，支持快捷参数 `-d`/`-m`/`-s`。
 - `internal/agent/commands/tool.go`：工具命令；实现 `/tools` 查看已注册工具，并预留 external skill 的 reload/uninstall/remove 入口。
 - `internal/agent/commands/hook.go`：Hook 命令；实现 `/hooks` 列出已注册 Hook、查看某个 Hook 详情和 `/hooks reload` 热重载全部 Hook。
 
