@@ -13,6 +13,7 @@ This is the user-facing ElBot documentation. Development plans, task breakdowns,
 5. [Hook](hooks.md): Rule Hook configuration, action types, segments multi-part output, exec scripts, and emoji extraction examples.
 6. [Elnis Listening Hub](elnis.md): Learn about Elnis, Elwisp, Elvena, and external event access.
 7. [Elnis Configuration and Usage](elnis-usage.md): Enable Elnis, configure Elwisp, and deliver events using Elvena.
+8. [Frontend API](frontend-api.md): WebSocket protocol, message types, and completion interfaces, used for writing custom frontends.
 
 ## Documentation Maintenance Conventions
 
