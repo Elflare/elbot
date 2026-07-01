@@ -49,6 +49,7 @@ func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir string, fi
 	switch name {
 	case "cat", "less", "more", "head", "tail", "grep", "rg":
 		a.addWarning(warnUseReadFile)
+		a.addPathArgWarning(workDir, args)
 		a.addReadWarnings(fileGuard, workDir, args)
 	case "sed":
 		if hasArg(args, "-i") {
@@ -56,6 +57,7 @@ func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir string, fi
 				return
 			}
 			a.addWarning(warnUseEditFile)
+			a.addPathArgWarning(workDir, args)
 		}
 	case "perl":
 		if hasArg(args, "-pi") || hasArg(args, "-pI") {
@@ -63,12 +65,14 @@ func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir string, fi
 				return
 			}
 			a.addWarning(warnUseEditFile)
+			a.addPathArgWarning(workDir, args)
 		}
 	case "tee":
 		if a.checkWriteArgs(fileGuard, workDir, args) {
 			return
 		}
 		a.addWarning(warnUseEditFile)
+		a.addPathArgWarning(workDir, args)
 	}
 }
 
@@ -80,6 +84,7 @@ func (a *shellAdvice) inspectShellRedirect(redir *syntax.Redirect, workDir strin
 	path, ok := literalWord(redir.Word)
 	if ok {
 		if resolved, hit := resolveShellLiteralPath(workDir, path); hit {
+			a.addWarning(warnUseShellPath)
 			if err := fileGuard.CheckWrite(resolved); err != nil {
 				a.blockErr = err
 				return
@@ -87,6 +92,15 @@ func (a *shellAdvice) inspectShellRedirect(redir *syntax.Redirect, workDir strin
 		}
 	}
 	a.addWarning(warnUseEditFile)
+}
+
+func (a *shellAdvice) addPathArgWarning(workDir string, args []string) {
+	for _, arg := range args {
+		if _, ok := resolveShellLiteralPath(workDir, arg); ok {
+			a.addWarning(warnUseShellPath)
+			return
+		}
+	}
 }
 
 func (a *shellAdvice) addReadWarnings(fileGuard *FileGuard, workDir string, args []string) {
