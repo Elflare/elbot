@@ -6,9 +6,9 @@
       "updated_at": 1782892198
     },
     "README.zh-CN.md": {
-      "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
+      "source_hash": "81b47d4dbcb5ba9cc295d2cc305d3cf1cc26e5bb147dfa13f3e3aa06773df4ad",
       "target": "README.md",
-      "updated_at": 1782395242
+      "updated_at": 1782897875
     },
     "docs/README.md": {
       "source_hash": "ed728bd89525ef6aff945fa9cddb8cce6716fce55e111830704ad5a15dd7f9e2",
@@ -2065,6 +2065,14 @@
       "translation": "LLM Cron drives model execution using task descriptions, making it suitable for scheduled tasks that require analysis, summarization, or the use of tools.\n",
       "updated_at": 1781749522
     },
+    "README.zh-CN.md:paragraph:d251f9bd20b1dd674329afebc44e5cf506e6a1cc9ec0539e3f19d0e9d74dea59": {
+      "kind": "paragraph",
+      "source": "以下截图展示不同的前端形态，除 TUI 外均为概念性 HTML mockup，不代表最终 UI。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "d251f9bd20b1dd674329afebc44e5cf506e6a1cc9ec0539e3f19d0e9d74dea59",
+      "translation": "The following screenshots demonstrate different frontend forms; except for the TUI, all are conceptual HTML mockups and do not represent the final UI.\n",
+      "updated_at": 1782897875
+    },
     "README.zh-CN.md:paragraph:d57ea8e45d582d10e9ab866bd106bf79b902e64718236ae64837e2488e1bb3c4": {
       "kind": "paragraph",
       "source": "**可扩展的 Hook 系统。",
@@ -2080,6 +2088,14 @@
       "source_hash": "d60d315ec395c30662322d8e14182689fd314a069f56555dd0f873ec78636831",
       "translation": "**Compatible with internet Python Skills.",
       "updated_at": 1781749522
+    },
+    "README.zh-CN.md:paragraph:db3d6e47dde8ef07312a692916b05fe201a57fe55f61991aa308d05e80f5107e": {
+      "kind": "paragraph",
+      "source": "**前端完全可定制**： ElBot 前后端分离，想写什么好看的界面都行。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "db3d6e47dde8ef07312a692916b05fe201a57fe55f61991aa308d05e80f5107e",
+      "translation": "**Fully Customizable Frontend**: ElBot separates the frontend and backend, allowing you to build any beautiful interface you like.",
+      "updated_at": 1782897875
     },
     "README.zh-CN.md:paragraph:deaf166c031ac95885bc0b635833883bf7e195c723c637a2535aad2dc9cc0a20": {
       "kind": "paragraph",
@@ -2160,6 +2176,14 @@
       "source_hash": "f66a9a3fb1f4bef973c7b512706158ebf2a1e4a7d8e4e59d3331eebfcc9bacd4",
       "translation": "This design reduces the invalid context overhead in the vast majority of ordinary chats.\n",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:f81f3a44c49f80b39d0b7853c4fb04a1df918cc8c23985e5f712b7a9dc40fc82": {
+      "kind": "paragraph",
+      "source": "更多截图见 [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend)。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "f81f3a44c49f80b39d0b7853c4fb04a1df918cc8c23985e5f712b7a9dc40fc82",
+      "translation": "For more screenshots, see [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend).\n",
+      "updated_at": 1782897875
     },
     "README.zh-CN.md:paragraph:f8e466ac367698634bd0af1045c7e3fc8de4a192358d3b74a5b2008248cc9478": {
       "kind": "paragraph",
