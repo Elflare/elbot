@@ -6,9 +6,9 @@
       "updated_at": 1782892198
     },
     "README.zh-CN.md": {
-      "source_hash": "81b47d4dbcb5ba9cc295d2cc305d3cf1cc26e5bb147dfa13f3e3aa06773df4ad",
+      "source_hash": "4735bd7796bf2071e1d8029a86c07642894a2c7c62b774f5cda795527972dacb",
       "target": "README.md",
-      "updated_at": 1782897875
+      "updated_at": 1782901132
     },
     "docs/README.md": {
       "source_hash": "ed728bd89525ef6aff945fa9cddb8cce6716fce55e111830704ad5a15dd7f9e2",
@@ -1017,6 +1017,14 @@
       "translation": "[Configuration Guide](docs/configuration.md)",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:list:58b9587a85bc686c507050df6212fad9002fa0467df1c826dc9278c01415f74c": {
+      "kind": "list",
+      "source": "[前端 API](docs/frontend-api.md)",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "58b9587a85bc686c507050df6212fad9002fa0467df1c826dc9278c01415f74c",
+      "translation": "[Frontend API](docs/frontend-api.md)",
+      "updated_at": 1782901132
+    },
     "README.zh-CN.md:list:5bf495d7b87df8585cdf0a86eceae9eb540e378ab13d40221130953a26a726f5": {
       "kind": "list",
       "source": "[命令速查](docs/commands.md)",
@@ -1593,6 +1601,14 @@
       "translation": "Common startup methods:\n",
       "updated_at": 1781575057
     },
+    "README.zh-CN.md:paragraph:710cc4f6b7dd3239041b80feda9831c49887619e323c8cf3e0de600127d75227": {
+      "kind": "paragraph",
+      "source": " **前端自由定制**，可以随便制作自己喜欢的前端界面。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "710cc4f6b7dd3239041b80feda9831c49887619e323c8cf3e0de600127d75227",
+      "translation": " **Free Frontend Customization**, allowing you to create any frontend interface you prefer.",
+      "updated_at": 1782901132
+    },
     "README.zh-CN.md:paragraph:71716173a994c716064aab27f2eb11ffb606db48a2e4ad253e5ae1ac5d29792a": {
       "kind": "paragraph",
       "source": "服务器变化、RSS 更新、Webhook 告警、日志变化、游戏事件、本地脚本甚至其他计算机设备，都可以由 Elwisp 转成 Elvena 事件送入 Elnis。",
@@ -2072,6 +2088,14 @@
       "source_hash": "d251f9bd20b1dd674329afebc44e5cf506e6a1cc9ec0539e3f19d0e9d74dea59",
       "translation": "The following screenshots demonstrate different frontend forms; except for the TUI, all are conceptual HTML mockups and do not represent the final UI.\n",
       "updated_at": 1782897875
+    },
+    "README.zh-CN.md:paragraph:d529a380cb2ed49be41a36713291327ba40177fdee617fbc107124001522d271": {
+      "kind": "paragraph",
+      "source": "**CLI 客户端/服务端分离**： 支持任何电脑使用 ElBot 作为客户端连接 ElBot 服务端。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "d529a380cb2ed49be41a36713291327ba40177fdee617fbc107124001522d271",
+      "translation": "**CLI Client/Server Separation**: Supports using ElBot as a client on any computer to connect to the ElBot server.",
+      "updated_at": 1782901132
     },
     "README.zh-CN.md:paragraph:d57ea8e45d582d10e9ab866bd106bf79b902e64718236ae64837e2488e1bb3c4": {
       "kind": "paragraph",
