@@ -116,6 +116,7 @@ jobs:
                 header=$0
                 sub(/^## \[/, "", header)
                 sub(/\].*/, "", header)
+                sub(/ - .*/, "", header)
                 f = (header == tag)
               }
               f { print }
