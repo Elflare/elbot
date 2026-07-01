@@ -147,20 +147,21 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 		return nil
 	}
 	interval := time.Duration(a.cfg.ReconnectIntervalSeconds) * time.Second
-	if interval <= 0 {
-		interval = 3 * time.Second
-	}
+	backoff := platform.NewBackoff(interval, 10*time.Second)
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if err := a.transport.Connect(ctx); err != nil {
-			a.logWarn("onebot connect failed", "error", err)
-			if !sleepContext(ctx, interval) {
+			if backoff.ShouldWarn() {
+				a.logWarn("onebot connect failed", "error", err)
+			}
+			if !sleepContext(ctx, backoff.Delay()) {
 				return ctx.Err()
 			}
 			continue
 		}
+		backoff.Reset()
 		a.logInfo("onebot connected", "url", a.cfg.URL)
 		go a.notifyConnected(ctx)
 		err := a.readLoop(ctx, handler)
@@ -168,7 +169,7 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 		if err != nil && !errors.Is(err, context.Canceled) {
 			a.logWarn("onebot disconnected", "error", err)
 		}
-		if !sleepContext(ctx, interval) {
+		if !sleepContext(ctx, backoff.Delay()) {
 			return ctx.Err()
 		}
 	}

@@ -64,7 +64,7 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 	if !a.cfg.Enabled {
 		return nil
 	}
-	interval := a.cfg.reconnectInterval()
+	backoff := platform.NewBackoff(a.cfg.reconnectInterval(), 10*time.Second)
 	var offset int64
 	for {
 		if err := ctx.Err(); err != nil {
@@ -72,12 +72,15 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 		}
 		me, err := a.client.getMe(ctx)
 		if err != nil {
-			a.logWarn("telegram getMe failed", "error", err)
-			if !sleepContext(ctx, interval) {
+			if backoff.ShouldWarn() {
+				a.logWarn("telegram getMe failed", "error", err)
+			}
+			if !sleepContext(ctx, backoff.Delay()) {
 				return ctx.Err()
 			}
 			continue
 		}
+		backoff.Reset()
 		a.botID = me.ID
 		a.botUsername = strings.TrimSpace(me.Username)
 		if err := a.syncBotCommands(ctx); err != nil {
@@ -101,7 +104,7 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 				go a.handleUpdate(ctx, handler, upd)
 			}
 		}
-		if !sleepContext(ctx, interval) {
+		if !sleepContext(ctx, backoff.Delay()) {
 			return ctx.Err()
 		}
 	}

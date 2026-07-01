@@ -216,6 +216,7 @@
 ### 平台适配
 
 - `internal/platform/platform.go`：平台抽象；定义 `PlatformAdapter`、`PlatformHandler`、统一 `SendChat`/`SendNotice` 的 message sender、可携带多条平台消息 ID 的发送 receipt、平台 `MessageSegment`（text/image/file/at）和每条入站消息的 Actor/Scope/发送目标/平台群身份上下文；上下文可携带平台解析出的 fork 来源、多模态消息段和少量平台原生 metadata。
+- `internal/platform/backoff.go`：平台重连指数退避 helper；`Delay()` 翻倍封顶，`Reset()` 成功后重置，`ShouldWarn()` 控制首条 warn 日志降级，供 OneBot/Telegram/qqofficial 复用。
 - `internal/platform/config.go`：平台配置辅助；把 `app.toml` 中 `[platform.<name>]` 原始 section 解码给适配器自有 Config，并提供关键词前缀剥离 helper。
 - `internal/platform/builtin/builtin.go`：内置平台装配；按运行模式组合 CLI、headless 和 enabled 外部平台。
 - `internal/platform/headless/headless.go`：service 模式的非交互 primary platform。

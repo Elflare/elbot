@@ -58,13 +58,18 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 		return nil
 	}
 	state := gatewayState{}
+	backoff := platform.NewBackoff(a.cfg.reconnectInterval(), 10*time.Second)
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		reason, err := a.runGatewayOnce(ctx, handler, &state)
 		if err != nil && !errors.Is(err, context.Canceled) {
-			a.logWarn(ctx, "qqofficial gateway disconnected", "error", err, "reconnect_mode", reason.mode.String())
+			if backoff.ShouldWarn() {
+				a.logWarn(ctx, "qqofficial gateway disconnected", "error", err, "reconnect_mode", reason.mode.String())
+			}
+		} else {
+			backoff.Reset()
 		}
 		if reason.fatal {
 			if err != nil {
@@ -72,7 +77,7 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 			}
 			return fmt.Errorf("qqofficial gateway stopped")
 		}
-		if !sleepContext(ctx, a.cfg.reconnectInterval()) {
+		if !sleepContext(ctx, backoff.Delay()) {
 			return ctx.Err()
 		}
 	}
