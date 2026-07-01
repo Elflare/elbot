@@ -3,12 +3,12 @@
     "CHANGELOG.md": {
       "source_hash": "bb7e5927e015825f55e902c11284b00f9cf73480c2bb14ee564395b4dc532cb5",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782897697
+      "updated_at": 1782892198
     },
     "README.zh-CN.md": {
       "source_hash": "81b47d4dbcb5ba9cc295d2cc305d3cf1cc26e5bb147dfa13f3e3aa06773df4ad",
       "target": "README.md",
-      "updated_at": 1782897953
+      "updated_at": 1782897875
     },
     "docs/README.md": {
       "source_hash": "ed728bd89525ef6aff945fa9cddb8cce6716fce55e111830704ad5a15dd7f9e2",
@@ -18,22 +18,22 @@
     "docs/commands.md": {
       "source_hash": "f5ab387ffed7b6e7bb1bf599a86a7a1e90854f86a8670c04d587ec2fa719efd1",
       "target": "docs.en/commands.md",
-      "updated_at": 1782897691
+      "updated_at": 1782884118
     },
     "docs/concepts.md": {
       "source_hash": "b5468a152024af467a4ef5faac572e0cc5c5a4f4cb66fb35d8b1c2dd503628ab",
       "target": "docs.en/concepts.md",
-      "updated_at": 1782897692
+      "updated_at": 1782722490
     },
     "docs/configuration.md": {
       "source_hash": "db01881a125701b41b608e1f0ebaea702f0a72ad566da422a2e3b43873475d6f",
       "target": "docs.en/configuration.md",
-      "updated_at": 1782897693
+      "updated_at": 1782574866
     },
     "docs/elnis-usage.md": {
       "source_hash": "c8d68d4fc76a453ea4008b304cc4d8243b8b2ebc634494f4fb92016b8040c782",
       "target": "docs.en/elnis-usage.md",
-      "updated_at": 1782897695
+      "updated_at": 1782699001
     },
     "docs/elnis.md": {
       "source_hash": "64da4ee616a7573bb315be76264e9c48de8fec352c9aae5a4c11dd259a3fd277",
@@ -43,7 +43,7 @@
     "docs/elyph.md": {
       "source_hash": "e38da277e0be51c104f94090b00368bf6b08a36c53cb8e5e127ae02005fa7e24",
       "target": "docs.en/elyph.md",
-      "updated_at": 1782897696
+      "updated_at": 1782722511
     },
     "docs/getting-started.md": {
       "source_hash": "be8df536298bfcae8caaf7f4a2932c844d168db3877fa150d2b96286d3d137b4",
