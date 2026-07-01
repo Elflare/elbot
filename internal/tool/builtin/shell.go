@@ -64,7 +64,7 @@ func shellBuilder() *tool.Builder {
 		Risk(tool.RiskHigh).
 		Tags("agent").
 		String("cmd", "要执行的 shell 命令。", tool.Required()).
-		String("path", "可选，命令工作目录；传入后本次 shell 会在该目录执行。").
+		String("path", "可选，命令工作目录；传入后本次及之后 shell 都会在该目录执行。").
 		Integer("timeout_ms", "可选，命令超时时间，默认 10000。")
 }
 
