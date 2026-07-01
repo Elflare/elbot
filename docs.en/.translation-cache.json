@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "bb7e5927e015825f55e902c11284b00f9cf73480c2bb14ee564395b4dc532cb5",
+      "source_hash": "d30b0de766d35ca2a3d48812065fa603c58fe055fc50d34ad10c70751a67ad57",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782901462
+      "updated_at": 1782910722
     },
     "README.zh-CN.md": {
       "source_hash": "4735bd7796bf2071e1d8029a86c07642894a2c7c62b774f5cda795527972dacb",
@@ -16,9 +16,9 @@
       "updated_at": 1782901148
     },
     "docs/commands.md": {
-      "source_hash": "f5ab387ffed7b6e7bb1bf599a86a7a1e90854f86a8670c04d587ec2fa719efd1",
+      "source_hash": "d3bc41b337d723d9ca0724ad96e7e76847261468f282fff9d3a9a2221fdd252d",
       "target": "docs.en/commands.md",
-      "updated_at": 1782901149
+      "updated_at": 1782910698
     },
     "docs/concepts.md": {
       "source_hash": "b5468a152024af467a4ef5faac572e0cc5c5a4f4cb66fb35d8b1c2dd503628ab",
@@ -317,6 +317,14 @@
       "source_hash": "5c0a5ce2e366d9d60822811bd14fe5f653c0e6db01d3e8451843f3a6008a8038",
       "translation": "Fixed an issue where the platform API caller was not injected when Elnis/Hook exec triggered Elvena __ELBOT_CODE_0__, resulting in __ELBOT_CODE_1__.",
       "updated_at": 1782395477
+    },
+    "CHANGELOG.md:list:5dbdd806482b1e945ebebe2a1645201195d9e47466394536266d5fa8b0d4b681": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 工具新增 __ELBOT_CODE_1__ 参数，用于显式设置命令工作目录；前台会按 Session 记住最近一次工作目录，后台仍限制在各自 sandbox 内。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "5dbdd806482b1e945ebebe2a1645201195d9e47466394536266d5fa8b0d4b681",
+      "translation": "__ELBOT_CODE_0__ tool added __ELBOT_CODE_1__ parameter to explicitly set the command working directory; the foreground remembers the most recent working directory per Session, while the background remains restricted to its respective sandbox.",
+      "updated_at": 1782910722
     },
     "CHANGELOG.md:list:611aafc7e8d828767ae2b38b0e5c3d0fead2cde039834d37560cbe5b03c27491": {
       "kind": "list",
