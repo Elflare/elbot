@@ -217,11 +217,11 @@ default_mode = "work"
 
 [mode_models.work]
 provider = "deepseek"
-model = "deepseek-chat"
+model = "deepseek-v4-pro"
 
 [mode_models.chat]
 provider = "deepseek"
-model = "deepseek-chat"
+model = "deepseek-v4-flash"
 
 # Optional Elnis LLM model slots. If omitted, each slot falls back to work.
 [mode_models.elwisp1]
