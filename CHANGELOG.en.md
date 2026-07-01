@@ -7,6 +7,17 @@ All notable changes to ElBot will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## Unreleased
+
+### Added
+
+- Added `/usage` command: aggregates token consumption from the audit log, supporting summaries by model/day/Session, with shortcut parameters `-d` for days, `-m` for model, and `-s` for Session.
+
+### Changed
+
+- `llm_usage` audit events changed from debug level to info level; token consumption data can now be recorded by default with `log_level=info`.
+
 ## [v0.3.0-alpha - 2026-07-01]
 
 ### Changed
