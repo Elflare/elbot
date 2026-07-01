@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "b11d1011d7e3d1e30c806ed35720597a9eb56000eed5928e872f171d86f58f5d",
+      "source_hash": "4411eae7eaef87432e936c83f7263b4c19f2dc1984eb4fd501b5702e2a0de487",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782876150
+      "updated_at": 1782884148
     },
     "README.zh-CN.md": {
       "source_hash": "85788718a455bb4b8ade872f96eef235c9aae606a97b5369232830849bc37d7e",
@@ -144,6 +144,14 @@
       "source_hash": "18f8686c3e2512c85d4545e776b64d44967ba9ce78170d168c2be40eff28fa31",
       "translation": "Added __ELBOT_CODE_0__ field to Provider, supporting HTTP/SOCKS5 proxies.",
       "updated_at": 1782312399
+    },
+    "CHANGELOG.md:list:1945bb5d4629d8b9098d57e66a570df93853f28efd0ddb3064b15acd7b299c38": {
+      "kind": "list",
+      "source": "新增 __ELBOT_CODE_0__ 命令：从审计日志聚合 token 消耗，支持按模型/天/会话汇总，快捷参数 __ELBOT_CODE_1__ 天数、__ELBOT_CODE_2__ 模型、__ELBOT_CODE_3__ 会话。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "1945bb5d4629d8b9098d57e66a570df93853f28efd0ddb3064b15acd7b299c38",
+      "translation": "Added __ELBOT_CODE_0__ command: aggregates token consumption from the audit log, supporting summaries by model/day/Session, with shortcut parameters __ELBOT_CODE_1__ for days, __ELBOT_CODE_2__ for model, and __ELBOT_CODE_3__ for Session.",
+      "updated_at": 1782884148
     },
     "CHANGELOG.md:list:21bcff96ea97868ed7a73b08187eef3ce889b28e69c118b725a5783d07dcadc3": {
       "kind": "list",
@@ -296,6 +304,14 @@
       "source_hash": "5c0a5ce2e366d9d60822811bd14fe5f653c0e6db01d3e8451843f3a6008a8038",
       "translation": "Fixed an issue where the platform API caller was not injected when Elnis/Hook exec triggered Elvena __ELBOT_CODE_0__, resulting in __ELBOT_CODE_1__.",
       "updated_at": 1782395477
+    },
+    "CHANGELOG.md:list:611aafc7e8d828767ae2b38b0e5c3d0fead2cde039834d37560cbe5b03c27491": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 审计事件从 debug 级别改为 info 级别，默认 __ELBOT_CODE_1__ 即可记录 token 消耗数据。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "611aafc7e8d828767ae2b38b0e5c3d0fead2cde039834d37560cbe5b03c27491",
+      "translation": "__ELBOT_CODE_0__ audit events changed from debug level to info level; token consumption data can now be recorded by default with __ELBOT_CODE_1__.",
+      "updated_at": 1782884148
     },
     "CHANGELOG.md:list:6970168418b00124c98288e227a6831f798c18ed573c05cb7a6f07fd850812c6": {
       "kind": "list",
