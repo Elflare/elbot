@@ -16,9 +16,9 @@
       "updated_at": 1782395265
     },
     "docs/commands.md": {
-      "source_hash": "f878d1cc48d39c901bf84eb99d9434fbf3ee98f50f62c6855f1b6a5a45b83b9c",
+      "source_hash": "f5ab387ffed7b6e7bb1bf599a86a7a1e90854f86a8670c04d587ec2fa719efd1",
       "target": "docs.en/commands.md",
-      "updated_at": 1782630997
+      "updated_at": 1782884118
     },
     "docs/concepts.md": {
       "source_hash": "b5468a152024af467a4ef5faac572e0cc5c5a4f4cb66fb35d8b1c2dd503628ab",
@@ -2329,6 +2329,14 @@
       "translation": "Mode",
       "updated_at": 1781514917
     },
+    "docs/commands.md:heading:9deec561b4c96ddf3bb5f90c149e7d45f1eaf5a5beb3273d882344d7a00069ee": {
+      "kind": "heading",
+      "source": "Token 消耗统计",
+      "source_file": "docs/commands.md",
+      "source_hash": "9deec561b4c96ddf3bb5f90c149e7d45f1eaf5a5beb3273d882344d7a00069ee",
+      "translation": "Token Consumption Statistics",
+      "updated_at": 1782884118
+    },
     "docs/commands.md:heading:a57cfcb8428da4085ea1de04cb094d2cc158c1e63a5769e51056f0dc73f1d38a": {
       "kind": "heading",
       "source": "帮助",
@@ -2425,6 +2433,14 @@
       "translation": "CLI serves as a local high-privilege entry point and can view Sessions across platforms; non-CLI platforms view Sessions under the current platform and scope by default.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:list:86f4b0d40783395da1758f840cbcc66650a856e5369c4fedfbb386d7ef46feb4": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 从审计日志的 __ELBOT_CODE_1__ 事件聚合 token 用量，按模型/天/会话分组统计 prompt、completion、total、cache 和耗时。",
+      "source_file": "docs/commands.md",
+      "source_hash": "86f4b0d40783395da1758f840cbcc66650a856e5369c4fedfbb386d7ef46feb4",
+      "translation": "__ELBOT_CODE_0__ aggregates token usage from __ELBOT_CODE_1__ events in the audit log, calculating prompt, completion, total, cache, and duration grouped by model/day/Session.",
+      "updated_at": 1782884118
+    },
     "docs/commands.md:list:90c8c1bfe6e267ecc3fefcb7a87133b98693bf3aebd34ab4340440f416f34a60": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 会重新读取 __ELBOT_CODE_1__ 并重建所有 Hook 注册，修改配置后无需重启即可生效。",
@@ -2432,6 +2448,14 @@
       "source_hash": "90c8c1bfe6e267ecc3fefcb7a87133b98693bf3aebd34ab4340440f416f34a60",
       "translation": "__ELBOT_CODE_0__ will re-read __ELBOT_CODE_1__ and rebuild all Hook registrations, allowing configuration changes to take effect without a restart.",
       "updated_at": 1782444282
+    },
+    "docs/commands.md:list:9400f2f042628dd3abff85e3325458fa3f499931e3b3a94c0e520db1bfd12b52": {
+      "kind": "list",
+      "source": "仅超级管理员可用。",
+      "source_file": "docs/commands.md",
+      "source_hash": "9400f2f042628dd3abff85e3325458fa3f499931e3b3a94c0e520db1bfd12b52",
+      "translation": "Available to superadmins only.",
+      "updated_at": 1782884118
     },
     "docs/commands.md:list:a0b5430c1b57bff3b15d0f05598d4fb48dd807a396c4627a0b3f97a23697a81c": {
       "kind": "list",
@@ -2561,6 +2585,14 @@
       "translation": "When a tool call triggers a high-risk confirmation, the Agent will prompt the available confirmation commands, for example:\n",
       "updated_at": 1781514917
     },
+    "docs/commands.md:paragraph:d92add9bf20314c848464de8d5e45f4459a7b4a9041a4c845f46462c7d7b7bcb": {
+      "kind": "paragraph",
+      "source": "选项：\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "d92add9bf20314c848464de8d5e45f4459a7b4a9041a4c845f46462c7d7b7bcb",
+      "translation": "Options:\n",
+      "updated_at": 1782884118
+    },
     "docs/commands.md:paragraph:efbbd4966c0c303434edc3b217e6cfda57773255dffd9c245b854fa22e71165c": {
       "kind": "paragraph",
       "source": "ElBot 的 slash 命令由 Agent Core 统一处理，CLI、QQ、后续平台共享同一套语义。",
@@ -2681,6 +2713,14 @@
       "translation": "View the current Session status.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:16c88a2fd09b95832659aeeba703b5e8713e8f7a903ff5a9a8388eeb946057bf": {
+      "kind": "table",
+      "source": "查看最近 n 天，默认 1。",
+      "source_file": "docs/commands.md",
+      "source_hash": "16c88a2fd09b95832659aeeba703b5e8713e8f7a903ff5a9a8388eeb946057bf",
+      "translation": "View the last n days, default is 1.",
+      "updated_at": 1782884118
+    },
     "docs/commands.md:table:171f6e4fe2aacef03bf09f9c9a70f5fd3465cb82498eb3ace86243e8fd621f5e": {
       "kind": "table",
       "source": "按 actor ID 过滤。",
@@ -2704,6 +2744,14 @@
       "source_hash": "2615ae021ab7e211d5f15c5fbf5e7759a532e08c73044d061c386e47504f7d77",
       "translation": "View details of tool calls awaiting confirmation; supports custom plain-text details for tools, and displays formatted parameters if not customized.",
       "updated_at": 1782630997
+    },
+    "docs/commands.md:table:29759e8cff00540a86dad2c0b2ff4937238eac1b936822994fadc9593db64032": {
+      "kind": "table",
+      "source": "汇总审计日志中的 token 消耗数据。",
+      "source_file": "docs/commands.md",
+      "source_hash": "29759e8cff00540a86dad2c0b2ff4937238eac1b936822994fadc9593db64032",
+      "translation": "Summarize token consumption data in the audit log.",
+      "updated_at": 1782884118
     },
     "docs/commands.md:table:2c095d2b79ab255430bee5337067f6cfb12acf47bbdb09e38792aee29cf74421": {
       "kind": "table",
@@ -2929,6 +2977,14 @@
       "translation": "Filter by event mode.",
       "updated_at": 1781752948
     },
+    "docs/commands.md:table:8fa37aaa6c746fb53072b6f6a943149880a5a1c290cb57787c69e222e3cefaa4": {
+      "kind": "table",
+      "source": "按维度汇总：__ELBOT_CODE_0__（默认）、__ELBOT_CODE_1__、__ELBOT_CODE_2__。",
+      "source_file": "docs/commands.md",
+      "source_hash": "8fa37aaa6c746fb53072b6f6a943149880a5a1c290cb57787c69e222e3cefaa4",
+      "translation": "Summarize by dimension: __ELBOT_CODE_0__ (default), __ELBOT_CODE_1__, __ELBOT_CODE_2__.",
+      "updated_at": 1782884118
+    },
     "docs/commands.md:table:928f87d4507bf9a0085474e308949fb1f089a3baa288fddbdc1087927fbcdfba": {
       "kind": "table",
       "source": "命令",
@@ -3032,6 +3088,14 @@
       "source_hash": "bb7486f4410fd3705ba72e6b685d385b95da4a9d075b4d87aa39587fbb26c0e4",
       "translation": "Option",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:bd4ad57b9faa267a22bbe1c54a874a561e4bd90fbb98ac6c5221fe2ef3706a05": {
+      "kind": "table",
+      "source": "按模型名过滤。",
+      "source_file": "docs/commands.md",
+      "source_hash": "bd4ad57b9faa267a22bbe1c54a874a561e4bd90fbb98ac6c5221fe2ef3706a05",
+      "translation": "Filter by model name.",
+      "updated_at": 1782884118
     },
     "docs/commands.md:table:c138155e55d5651eb10f758b8fcd4c95b8aa5251b4a3634571a7722cc6ff12c7": {
       "kind": "table",

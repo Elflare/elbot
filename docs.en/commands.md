@@ -243,6 +243,39 @@ Example:
 /elwisp --source minecraft-main --mode llm --since 2h
 ```
 
+## Token Consumption Statistics
+
+| Command | Function |
+| --- | --- |
+| `/usage [options]` | Summarize token consumption data in the audit log. |
+
+Options:
+
+| Option | Function |
+| --- | --- |
+| `-d, --days <n>` | View the last n days, default is 1. |
+| `-m, --model <name>` | Filter by model name. |
+| `-s, --session <id>` | Filter by Session ID. |
+| `--by <key>` | Summarize by dimension: `model` (default), `day`, `session`. |
+| `--since <time>` | Only view entries after a certain time, e.g., `2h`, `30m`, `2026-06-03`. |
+| `--until <time>` | Only view entries before a certain time. |
+
+Example:
+
+```text
+/usage
+/usage -d 7
+/usage -m gpt-4o
+/usage -s sess-xxx
+/usage --by day -d 30
+/usage --since 2h
+```
+
+Note:
+
+- `/usage` aggregates token usage from `llm_usage` events in the audit log, calculating prompt, completion, total, cache, and duration grouped by model/day/Session.
+- Available to superadmins only.
+
 ## High-risk Tool Confirmation
 
 When a tool call triggers a high-risk confirmation, the Agent will prompt the available confirmation commands, for example:
