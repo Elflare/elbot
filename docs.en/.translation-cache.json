@@ -11,9 +11,9 @@
       "updated_at": 1782901132
     },
     "docs/README.md": {
-      "source_hash": "ed728bd89525ef6aff945fa9cddb8cce6716fce55e111830704ad5a15dd7f9e2",
+      "source_hash": "c9b034abef2aab701d3e0609800a6f9e55c86b4888558a4d9a0894eaffb74cf5",
       "target": "docs.en/README.md",
-      "updated_at": 1782395265
+      "updated_at": 1782901148
     },
     "docs/commands.md": {
       "source_hash": "f5ab387ffed7b6e7bb1bf599a86a7a1e90854f86a8670c04d587ec2fa719efd1",
@@ -2344,6 +2344,14 @@
       "source_hash": "deca1c32aca61b193dde733ab68c892046776bff5b6e5b72f3b270fb39e8e7f1",
       "translation": "__ELBOT_CODE_0__ contains development plans, task breakdowns, architecture drafts, and interface drafts.",
       "updated_at": 1781513067
+    },
+    "docs/README.md:list:dee52a67c99bffba7fdbf5cb7e86b8645e41df9b171ba60f8d4faf559c9ded67": {
+      "kind": "list",
+      "source": "[前端 API](frontend-api.md)：WebSocket 协议、消息类型和补全接口，用于编写自定义前端。",
+      "source_file": "docs/README.md",
+      "source_hash": "dee52a67c99bffba7fdbf5cb7e86b8645e41df9b171ba60f8d4faf559c9ded67",
+      "translation": "[Frontend API](frontend-api.md): WebSocket protocol, message types, and completion interfaces, used for writing custom frontends.",
+      "updated_at": 1782901148
     },
     "docs/README.md:list:ebd53d55610920fa20e00927343cd31ec185b469e23dc58c066954943fab97d0": {
       "kind": "list",
