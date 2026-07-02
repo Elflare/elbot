@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "d30b0de766d35ca2a3d48812065fa603c58fe055fc50d34ad10c70751a67ad57",
+      "source_hash": "7e8591190c7262d0c32e4576cfbb714185082f731c1ef0530ebef51a74368e96",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782910722
+      "updated_at": 1782952540
     },
     "README.zh-CN.md": {
       "source_hash": "4735bd7796bf2071e1d8029a86c07642894a2c7c62b774f5cda795527972dacb",
@@ -685,6 +685,14 @@
       "source_hash": "e81822b53b2270a9a2f78edb916b8ee9c970a516ec77a84dd14e91bb46b0c554",
       "translation": "Hook rules can execute scripts via __ELBOT_CODE_0__ action, and use __ELBOT_CODE_1__ to trigger Elnis direct/LLM/calls via the internal Elvena Bus.",
       "updated_at": 1782376912
+    },
+    "CHANGELOG.md:list:f191a10fa95a661a532ab05af86e47b4652486eaaadeac994e312f48821af516": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 命令现在展示每个 turn 的当前运行阶段（preparing/llm/tool/sending）和阶段耗时，可区分 LLM 慢还是平台发送卡住。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "f191a10fa95a661a532ab05af86e47b4652486eaaadeac994e312f48821af516",
+      "translation": "The __ELBOT_CODE_0__ command now displays the current execution stage (preparing/llm/tool/sending) and the duration of each stage for every turn, allowing you to distinguish whether the LLM is slow or the platform delivery is stuck.",
+      "updated_at": 1782952540
     },
     "CHANGELOG.md:list:faa151eb2284bda7e4e6995ad15597fdaec9d9c2d87d2a98a3ab4a418ee37890": {
       "kind": "list",
