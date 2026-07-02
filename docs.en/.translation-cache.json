@@ -16,9 +16,9 @@
       "updated_at": 1782901148
     },
     "docs/commands.md": {
-      "source_hash": "4eddf915d9ecb1b18e7cf4e6424b54424fca4075d4765af094cc70c70cc3e046",
+      "source_hash": "93a76aa671b8983ef155c70cf34132662501a92eb05d2d25a166d3f9f3d948fe",
       "target": "docs.en/commands.md",
-      "updated_at": 1782952514
+      "updated_at": 1782958886
     },
     "docs/concepts.md": {
       "source_hash": "b5468a152024af467a4ef5faac572e0cc5c5a4f4cb66fb35d8b1c2dd503628ab",
@@ -2662,6 +2662,14 @@
       "translation": "Model parameters can be a list number, model name, or __ELBOT_CODE_0__.\n",
       "updated_at": 1781514917
     },
+    "docs/commands.md:paragraph:812445d8702bbb42e10670c0dd7eef363e6983f1a595099f176f33f4147d637d": {
+      "kind": "paragraph",
+      "source": "设置后，所有需要路径的工具都会基于该目录解析相对路径；",
+      "source_file": "docs/commands.md",
+      "source_hash": "812445d8702bbb42e10670c0dd7eef363e6983f1a595099f176f33f4147d637d",
+      "translation": "Once set, all tools that require a path will resolve relative paths based on this directory;",
+      "updated_at": 1782958886
+    },
     "docs/commands.md:paragraph:898e1bc0f9ce70981765d22f71d5a0fb6e75efed2623547dbe0b4d1bf0d239f0": {
       "kind": "paragraph",
       "source": "内置工具 __ELBOT_CODE_0__ 可帮助超级管理员生成 Elwisp 配置、Elvena 事件模板、监听器脚手架和测试命令；",
@@ -2670,6 +2678,22 @@
       "translation": "The built-in tool __ELBOT_CODE_0__ helps superadmins generate Elwisp configurations, Elvena event templates, listener scaffolds, and test commands;",
       "updated_at": 1781779244
     },
+    "docs/commands.md:paragraph:8d384f75e84811811e30deb615414f9aa2af1c79133c70f7051c7632144f9501": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 工具用于设置当前 Session 的共享工作目录。",
+      "source_file": "docs/commands.md",
+      "source_hash": "8d384f75e84811811e30deb615414f9aa2af1c79133c70f7051c7632144f9501",
+      "translation": "__ELBOT_CODE_0__ tool is used to set the shared working directory of the current Session.",
+      "updated_at": 1782958886
+    },
+    "docs/commands.md:paragraph:93a121bb25dbf94d677d8ed7ff045ab92de7934c0a409c7ebcddaa4152346f1b": {
+      "kind": "paragraph",
+      "source": "cron/Elnis 后台任务不使用 workspace，仍限制在各自 sandbox 内。\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "93a121bb25dbf94d677d8ed7ff045ab92de7934c0a409c7ebcddaa4152346f1b",
+      "translation": "cron/Elnis background tasks do not use the workspace and remain restricted within their respective sandboxes.\n",
+      "updated_at": 1782958886
+    },
     "docs/commands.md:paragraph:9cfc23ef97546ba454e69b31ea4aa508069e0043bb886c750dfb05372b197d92": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 查询 __ELBOT_CODE_1__，额外支持：\n",
@@ -2677,6 +2701,14 @@
       "source_hash": "9cfc23ef97546ba454e69b31ea4aa508069e0043bb886c750dfb05372b197d92",
       "translation": "__ELBOT_CODE_0__ queries __ELBOT_CODE_1__, with additional support for:\n",
       "updated_at": 1781752948
+    },
+    "docs/commands.md:paragraph:ac2863acb3046269d4539cff1acca6f6344a808173250f85ddffd5e82acc2719": {
+      "kind": "paragraph",
+      "source": "不传参数时返回当前 workspace，__ELBOT_CODE_0__ 时重置为默认工作目录。",
+      "source_file": "docs/commands.md",
+      "source_hash": "ac2863acb3046269d4539cff1acca6f6344a808173250f85ddffd5e82acc2719",
+      "translation": "When no parameters are passed, it returns the current workspace; when __ELBOT_CODE_0__ is used, it resets to the default working directory.",
+      "updated_at": 1782958886
     },
     "docs/commands.md:paragraph:b14afe6a70f51142e0bae242dcc2ce09ddf662a9e7ffc2fc3edc636f27af2569": {
       "kind": "paragraph",

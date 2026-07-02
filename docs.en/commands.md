@@ -162,7 +162,10 @@ Example:
 
 In work mode, the LLM can discover tool details on demand via `discover_tool`. In chat, you can also use `@tool:<name-or-tag>` to preload tools, or use `@skill:<name>` to add Skill documentation to the current round of messages and preload the corresponding runtime wrapper.
 
+`workspace` tool is used to set the shared working directory of the current Session. Once set, all tools that require a path will resolve relative paths based on this directory; When no parameters are passed, it returns the current workspace; when `reset=true` is used, it resets to the default working directory. cron/Elnis background tasks do not use the workspace and remain restricted within their respective sandboxes.
+
 ## Hook
+
 
 | Command | Function |
 | --- | --- |
