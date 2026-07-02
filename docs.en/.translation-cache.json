@@ -16,9 +16,9 @@
       "updated_at": 1782901148
     },
     "docs/commands.md": {
-      "source_hash": "d3bc41b337d723d9ca0724ad96e7e76847261468f282fff9d3a9a2221fdd252d",
+      "source_hash": "4eddf915d9ecb1b18e7cf4e6424b54424fca4075d4765af094cc70c70cc3e046",
       "target": "docs.en/commands.md",
-      "updated_at": 1782910698
+      "updated_at": 1782952514
     },
     "docs/concepts.md": {
       "source_hash": "b5468a152024af467a4ef5faac572e0cc5c5a4f4cb66fb35d8b1c2dd503628ab",
@@ -2725,6 +2725,14 @@
       "source_hash": "fd46fc8739d3b03d73dfe9915fef257fe25c994f1c6fd3bf1a96e95fddc2d0d6",
       "translation": "The default command prefix is __ELBOT_CODE_0__, which can be configured in __ELBOT_CODE_2__ of __ELBOT_CODE_1__.\n",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:02c6d7d3fe6aba06a842a547d09d869f8c21c943fd74cabe9a1b0e00d972151f": {
+      "kind": "table",
+      "source": "查看当前进程中的 active request，包括每个 turn 的运行阶段（preparing/llm/tool/sending）和阶段耗时。",
+      "source_file": "docs/commands.md",
+      "source_hash": "02c6d7d3fe6aba06a842a547d09d869f8c21c943fd74cabe9a1b0e00d972151f",
+      "translation": "View active requests in the current process, including the execution stage (preparing/llm/tool/sending) and the duration of each stage for every turn.",
+      "updated_at": 1782952514
     },
     "docs/commands.md:table:03af39065d441408d43be4c157c84c77736fa517eedfac00caa9a31d9f4fa872": {
       "kind": "table",
