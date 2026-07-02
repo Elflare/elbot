@@ -182,7 +182,7 @@
 - `internal/tool/builtin/register.go`：内置工具注册细节；由 builtin Runtime 调用，统一注册 `discover_tool`、`workspace`、常驻记忆、长期记忆、cron、`send_file`、聊天历史、web 搜索/提取、shell、`elwisp_creator`、skill 包装工具和 Go 元 skill。
 - `internal/tool/builtin/workspace.go`：内置 workspace 工具；查询、设置或 reset 当前前台 Session 的共享工作目录。
 - `internal/tool/builtin/file_manager.go`：本地文件发送准备 helper；校验已解析的本地文件路径、文件名、MIME 和大小，不复制文件。
-- `internal/tool/builtin/send_file.go`：内置发文件工具；仅超管可用，支持 `path`/`file` 参数，路径基于 workspace 或后台 sandbox 解析。
+- `internal/tool/builtin/send_file.go`：内置发文件工具；仅超管可用，支持 `path` 参数，路径基于 workspace 或后台 sandbox 解析。
 
 - `internal/tool/builtin/chat_history.go`：内置聊天历史工具；按当前 platform/scope 搜索、查看上下文和引用回复平台聊天记录，用户侧 tag 为 `chat`。
 - `internal/tool/builtin/long_memory.go`：全局长期记忆工具组；可见入口 `long_memory` 依赖隐藏的 `long_memory_search`/`long_memory_write`，仅超管可用；Markdown 文件是源数据，SQLite FTS 是可重建索引，搜索/分类前会轻量同步并提示手改格式损坏文件。
