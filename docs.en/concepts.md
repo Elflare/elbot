@@ -146,16 +146,18 @@ Tool Runtime manages the registration, discovery, permissions, risk assessment, 
 Current built-in capabilities include:
 
 - Web search and webpage extraction.
+- Workspace: Sets the shared working directory for the current Session.
 - File read and write.
 - Shell commands.
 - Chat history query.
+
 - Resident memory and long-term memory.
 - Cron management.
 - File sending.
 - Skill creation, reading, modification, and execution.
 - `elwisp_creator`: Returns protocol specifications, configuration snippets, scaffolding, and test checklists for creating Elwisp for the superadmin.
 
-Tool results can be fed back to the LLM or return a platform-agnostic output intent, which is sent uniformly by the Agent. The `Warnings` in tool results will be fed back to the LLM to suggest prioritizing more appropriate tools in the future, such as using `read_file` instead of shell `cat`. EL Skill, resident memory, and long-term memory source files are protected by FileGuard: reading will prompt the use of corresponding dedicated tools, and direct writing via general file tools or shell will be rejected.
+Tool results can be fed back to the LLM or return a platform-agnostic output intent, which is sent uniformly by the Agent. The `Warnings` in tool results will be fed back to the LLM to suggest prioritizing more appropriate tools in the future, such as using `read_file` instead of shell `cat`. Foreground work Sessions can use `workspace` to set the shared working directory; all tools that require paths will resolve relative paths based on this directory; cron/Elnis background tasks still use their respective sandboxes. EL Skill, resident memory, and long-term memory source files are protected by FileGuard: reading will prompt the use of corresponding dedicated tools, and direct writing via general file tools or shell will be rejected.
 
 
 ## Security Policy

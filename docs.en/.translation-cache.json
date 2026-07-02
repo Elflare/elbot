@@ -21,9 +21,9 @@
       "updated_at": 1782958886
     },
     "docs/concepts.md": {
-      "source_hash": "b5468a152024af467a4ef5faac572e0cc5c5a4f4cb66fb35d8b1c2dd503628ab",
+      "source_hash": "7322b5c4a5e04c777a0f5f132e1478999edab0a14a921fca3785649aafd72622",
       "target": "docs.en/concepts.md",
-      "updated_at": 1782901150
+      "updated_at": 1782958923
     },
     "docs/configuration.md": {
       "source_hash": "db01881a125701b41b608e1f0ebaea702f0a72ad566da422a2e3b43873475d6f",
@@ -3630,6 +3630,14 @@
       "translation": "__ELBOT_CODE_0__ delete Session.",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:list:29d70f840536105bf13ff92f4696278d472bfd037a084db64a88df34ce15ee48": {
+      "kind": "list",
+      "source": "Workspace：设置当前 Session 的共享工作目录。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "29d70f840536105bf13ff92f4696278d472bfd037a084db64a88df34ce15ee48",
+      "translation": "Workspace: Sets the shared working directory for the current Session.",
+      "updated_at": 1782958923
+    },
     "docs/concepts.md:list:2a4d65592939def5c030ae50bddbd1f8fda2cced9c53825369394eb6fce4c690": {
       "kind": "list",
       "source": "Skill 创建、读取、修改和运行。",
@@ -4621,6 +4629,22 @@
       "source_hash": "b190195feaad582d83de6b3ef9e4bc9cde0d9c94214478d32b4c87775a956263",
       "translation": "ElBot supports Skill extensions and introduces ELyph Task Notation to describe reusable tasks.\n",
       "updated_at": 1781709276
+    },
+    "docs/concepts.md:paragraph:b48c95a0d904ffda94e30f4616f1bc95a460009765b32de2f37b7b4cd72c602b": {
+      "kind": "paragraph",
+      "source": "前台 work Session 可用 __ELBOT_CODE_0__ 设置共享工作目录，所有需要路径的工具会基于该目录解析相对路径；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "b48c95a0d904ffda94e30f4616f1bc95a460009765b32de2f37b7b4cd72c602b",
+      "translation": "Foreground work Sessions can use __ELBOT_CODE_0__ to set the shared working directory; all tools that require paths will resolve relative paths based on this directory;",
+      "updated_at": 1782958923
+    },
+    "docs/concepts.md:paragraph:b5e6a341dd130361aaca6c66ce3fb57fd3f2b6e648858dc5da752594c6f0a7c5": {
+      "kind": "paragraph",
+      "source": "cron/Elnis 后台任务仍使用各自 sandbox。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "b5e6a341dd130361aaca6c66ce3fb57fd3f2b6e648858dc5da752594c6f0a7c5",
+      "translation": "cron/Elnis background tasks still use their respective sandboxes.",
+      "updated_at": 1782958923
     },
     "docs/concepts.md:paragraph:b9724fcfa07d26ddbdeceb184f65cbc9e8e1050f74c6075f28f9c83d5748d3c6": {
       "kind": "paragraph",
