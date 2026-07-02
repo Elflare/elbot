@@ -119,7 +119,7 @@ Fork preserves the original Session and creates a new context branch from the sp
 
 | Command | Function |
 | --- | --- |
-| `/requests` | View active requests in the current process. |
+| `/requests` | View active requests in the current process, including the execution stage (preparing/llm/tool/sending) and the duration of each stage for every turn. |
 | `/stop [request_id]` | Stop a specified request; if no parameter is provided, stop the request of the current Session. |
 | `/stopall` | Stop all active requests in the current process. |
 
