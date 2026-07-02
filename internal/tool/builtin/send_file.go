@@ -18,7 +18,6 @@ type SendFileTool struct {
 
 type sendFileArgs struct {
 	Path     string `json:"path"`
-	File     string `json:"file"`
 	Name     string `json:"name"`
 	MIMEType string `json:"mime_type"`
 }
@@ -38,8 +37,7 @@ func sendFileBuilder() *tool.Builder {
 		Description("发送本地文件。").
 		Risk(tool.RiskMedium).
 		SuperadminOnly().
-		String("path", "要发送的文件路径。可用相对路径；path 和 file 至少填一个。").
-		String("file", "path 的别名，便于直接指定文件。path 和 file 至少填一个。").
+		String("path", "要发送的文件路径。可用相对路径。").
 		String("name", "可选，发送时展示的文件名。").
 		String("mime_type", "可选，文件 MIME 类型；不填时按扩展名推断。")
 }
@@ -51,7 +49,7 @@ func (t SendFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 	}
 	path := args.sourcePath()
 	if strings.TrimSpace(path) == "" {
-		return tool.RiskAssessment{}, fmt.Errorf("path or file is required")
+		return tool.RiskAssessment{}, fmt.Errorf("path is required")
 	}
 	resolved, err := tool.ResolveWorkspacePath(ctx, path, tool.PathResolveOptions{})
 	if err != nil {
@@ -89,10 +87,7 @@ func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 }
 
 func (args sendFileArgs) sourcePath() string {
-	if strings.TrimSpace(args.Path) != "" {
-		return args.Path
-	}
-	return args.File
+	return args.Path
 }
 
 func parseSendFileArgs(req tool.CallRequest) (sendFileArgs, error) {

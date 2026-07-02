@@ -54,7 +54,7 @@ func TestSendFileSendsSandboxFile(t *testing.T) {
 	}
 	manager := NewFileManager(root, config.FileDeliveryConfig{})
 	sendFile := NewSendFileTool(manager)
-	args, _ := json.Marshal(map[string]any{"file": "report.txt"})
+	args, _ := json.Marshal(map[string]any{"path": "report.txt"})
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qqonebot"})
 	ctx = tool.WithSandboxContext(ctx, tool.SandboxContext{Root: root, Dir: cronDir, Background: true, BackgroundKind: tool.BackgroundKindCron})
 	result, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
@@ -88,7 +88,7 @@ func TestSendFileUsesWorkspaceRelativePath(t *testing.T) {
 	}
 	manager := NewFileManager(root, config.FileDeliveryConfig{})
 	sendFile := NewSendFileTool(manager)
-	args, _ := json.Marshal(map[string]any{"file": "report.txt"})
+	args, _ := json.Marshal(map[string]any{"path": "report.txt"})
 	ctx := tool.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	result, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
 	if err != nil {
@@ -107,7 +107,7 @@ func TestSendFileSendsExternalFileDirectly(t *testing.T) {
 	}
 	manager := NewFileManager(root, config.FileDeliveryConfig{})
 	sendFile := NewSendFileTool(manager)
-	args, _ := json.Marshal(map[string]any{"file": source})
+	args, _ := json.Marshal(map[string]any{"path": source})
 	result, err := sendFile.Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
