@@ -13,11 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added `/usage` command: aggregates token consumption from the audit log, supporting summaries by model/day/Session, with shortcut parameters `-d` for days, `-m` for model, and `-s` for Session.
-- `shell` tool added `path` parameter to explicitly set the command working directory; the foreground remembers the most recent working directory per Session, while the background remains restricted to its respective sandbox.
+- Added ``workspace`` tool: sets the shared working directory of the current foreground Session; path-related tools will resolve relative paths based on this directory.
 - The `/requests` command now displays the current execution stage (preparing/llm/tool/sending) and the duration of each stage for every turn, allowing you to distinguish whether the LLM is slow or the platform delivery is stuck.
 
 ### Changed
 
+- ``shell`` tool removed the ``path`` parameter; commands are executed in the current workspace by default, while background tasks remain restricted to their respective sandboxes.
+- Relative paths for ``read_file``, ``edit_file``, and ``send_file`` are now resolved based on the current workspace; Absolute paths can still be used temporarily and will return a warning.
 - `llm_usage` audit events changed from debug level to info level; token consumption data can now be recorded by default with `log_level=info`.
 - Disconnection reconnection for QQ OneBot, QQ Official, and Telegram platforms has been changed to exponential backoff (starting at 3s, doubling, capped at 10s) with downgraded logging: consecutive failures are logged as 'warn' only on the first occurrence and 'info' upon recovery, preventing log flooding in every round.
 

@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "7e8591190c7262d0c32e4576cfbb714185082f731c1ef0530ebef51a74368e96",
+      "source_hash": "0dc2cadd8756ae8a8156871880ddec25ae2588172f01855d31fe1ab1db38dda9",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782952540
+      "updated_at": 1782958962
     },
     "README.zh-CN.md": {
       "source_hash": "4735bd7796bf2071e1d8029a86c07642894a2c7c62b774f5cda795527972dacb",
@@ -206,6 +206,14 @@
       "translation": "When not customized, JSON parameters will still be formatted into a more readable multi-line display, and __ELBOT_CODE_0__ within strings will be displayed as actual line breaks.",
       "updated_at": 1782631048
     },
+    "CHANGELOG.md:list:2f756ea7d8087b7077089523bb17dcc90b0b684370d97617d56618e4f644439c": {
+      "kind": "list",
+      "source": "绝对路径仍可临时使用并返回 warning。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "2f756ea7d8087b7077089523bb17dcc90b0b684370d97617d56618e4f644439c",
+      "translation": "Absolute paths can still be used temporarily and will return a warning.",
+      "updated_at": 1782958962
+    },
     "CHANGELOG.md:list:317c7d32a5e329ea22f1b69bc2b8231d35853cf1c43e347f9d558d23b403a0ed": {
       "kind": "list",
       "source": "direct calls-only 请求不会额外发送消息。",
@@ -221,6 +229,14 @@
       "source_hash": "31e1b19552361d185e88961542f7ecdbf799d5e3cc7d6a34196458c6ff69f3bc",
       "translation": "Provider configuration refactoring: removed unused __ELBOT_CODE_0__, removed __ELBOT_CODE_1__ global model window table;",
       "updated_at": 1782312399
+    },
+    "CHANGELOG.md:list:322925afc27ccaaa17f6692c9b9951f250d0b5e6db87c4d64a77931805186eb6": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 工具移除 __ELBOT_CODE_1__ 参数，命令默认在当前 workspace 下执行；后台任务仍限制在各自 sandbox 内。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "322925afc27ccaaa17f6692c9b9951f250d0b5e6db87c4d64a77931805186eb6",
+      "translation": "`__ELBOT_CODE_0__` tool removed the `__ELBOT_CODE_1__` parameter; commands are executed in the current workspace by default, while background tasks remain restricted to their respective sandboxes.",
+      "updated_at": 1782958962
     },
     "CHANGELOG.md:list:33a2ed6142f63fac0076480da8ce2e21882df328c3016365afaea0d692d9c3b9": {
       "kind": "list",
@@ -446,6 +462,14 @@
       "translation": "Fixed an issue where Hook exec stdin JSON used Go's default capitalized field names, preventing external scripts from reading the event field using lowercase keys;",
       "updated_at": 1782376912
     },
+    "CHANGELOG.md:list:853ae2250ec20c31453a70311204d8cc2a35abbca73df01d69a3e53005c936bb": {
+      "kind": "list",
+      "source": "新增 __ELBOT_CODE_0__ 工具：设置当前前台 Session 的共享工作目录，路径类工具会基于该目录解析相对路径。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "853ae2250ec20c31453a70311204d8cc2a35abbca73df01d69a3e53005c936bb",
+      "translation": "Added `__ELBOT_CODE_0__` tool: sets the shared working directory of the current foreground Session; path-related tools will resolve relative paths based on this directory.",
+      "updated_at": 1782958962
+    },
     "CHANGELOG.md:list:8c6db0749fc23bd2ae134ad376b9197d0f3c34d7c93e7d70e3767ccd889a12bc": {
       "kind": "list",
       "source": "ELyph __ELBOT_CODE_0__/__ELBOT_CODE_1__ 文本末尾冒号现在作为 warning 返回给 __ELBOT_CODE_2__/__ELBOT_CODE_3__，不再阻断创建或 finalize。",
@@ -461,6 +485,14 @@
       "source_hash": "8d6665e1f8baef0f66221d9e8c96d04b826c0e292fbc65f9956b6159f7fe0d0c",
       "translation": "Hook rules __ELBOT_CODE_0__ action added __ELBOT_CODE_1__ stdout mode; script stdout is parsed as JSON to extract the __ELBOT_CODE_2__ array and optional __ELBOT_CODE_3__;",
       "updated_at": 1782376912
+    },
+    "CHANGELOG.md:list:8e0ab49157feae455fcf1b6163cbac244a2681fe864dc1693b85069ef7615ff3": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 的相对路径改为基于当前 workspace 解析；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "8e0ab49157feae455fcf1b6163cbac244a2681fe864dc1693b85069ef7615ff3",
+      "translation": "Relative paths for `__ELBOT_CODE_0__`, `__ELBOT_CODE_1__`, and `__ELBOT_CODE_2__` are now resolved based on the current workspace;",
+      "updated_at": 1782958962
     },
     "CHANGELOG.md:list:8e240be846787f791774d6c36787606f8337042e10aac541f8b36ece490e981d": {
       "kind": "list",
