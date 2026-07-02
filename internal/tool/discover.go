@@ -65,14 +65,15 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, error
 		infos := t.registry.List()
 		out := make([]DiscoveredTool, 0, len(infos))
 		for _, info := range infos {
-			if !info.Hidden && (CanAccessTool(actor, policy, info) || info.Name == "discover_tool") {
+			if !info.Hidden && InfoAvailableInContext(ctx, info) && (CanAccessTool(actor, policy, info) || info.Name == "discover_tool") {
 				out = append(out, DiscoveredTool{Info: publicInfo(info)})
 			}
 		}
 		result = &DiscoveryResult{Tools: out}
 	} else {
-		details, errors := t.registry.DiscoverDetails(names, func(tool Tool) bool {
-			return CanAccessTool(actor, policy, tool.Info())
+		details, errors := t.registry.DiscoverDetails(names, func(candidate Tool) bool {
+			info := candidate.Info()
+			return InfoAvailableInContext(ctx, info) && CanAccessTool(actor, policy, info)
 		})
 		for _, discovered := range details {
 			if discovered.Detail == "" {

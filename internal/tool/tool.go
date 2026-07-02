@@ -42,6 +42,8 @@ type Info struct {
 	// When true, Policy.CanUseTool allows regular users regardless of risk level.
 	// The tool handler is responsible for scoping access by actor.
 	OwnerScoped bool
+	// ForegroundOnly marks tools that are only available in foreground sessions.
+	ForegroundOnly bool
 	// Tags are user-facing grouping labels for completion and manual preloading.
 	// They are not a security boundary and are not exposed through discover_tool.
 	Tags      []string
@@ -177,9 +179,10 @@ type DiscoveryError struct {
 }
 
 type PublicInfo struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Source      string `json:"source"`
+	Name           string `json:"name"`
+	Description    string `json:"description"`
+	Source         string `json:"source"`
+	ForegroundOnly bool   `json:"foreground_only,omitempty"`
 }
 
 type DiscoveredTool struct {
@@ -257,8 +260,14 @@ func (r *Registry) List() []Info {
 }
 
 func (r *Registry) Schemas() []llm.ToolSchema {
+	return r.SchemasForContext(nil)
+}
+
+func (r *Registry) SchemasForContext(allowed func(Info) bool) []llm.ToolSchema {
 	if tool, ok := r.Get("discover_tool"); ok {
-		return []llm.ToolSchema{tool.Schema()}
+		if allowed == nil || allowed(tool.Info()) {
+			return []llm.ToolSchema{tool.Schema()}
+		}
 	}
 	return nil
 }
@@ -446,7 +455,7 @@ func hasTag(tags []string, want string) bool {
 }
 
 func publicInfo(info Info) PublicInfo {
-	return PublicInfo{Name: info.Name, Description: info.Description, Source: string(info.Source)}
+	return PublicInfo{Name: info.Name, Description: info.Description, Source: string(info.Source), ForegroundOnly: info.ForegroundOnly}
 }
 
 func normalizeRisk(value, fallback RiskLevel) RiskLevel {

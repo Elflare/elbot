@@ -14,7 +14,7 @@ type sessionMetadata struct {
 	ToolTags        []string             `json:"tool_tags,omitempty"`
 	LastUsage       *llm.Usage           `json:"last_usage,omitempty"`
 	BackgroundKind  string               `json:"background_kind,omitempty"`
-	ShellCWD        string               `json:"shell_cwd,omitempty"`
+	WorkspaceDir    string               `json:"workspace_dir,omitempty"`
 }
 
 func decodeSessionMetadata(raw string) sessionMetadata {
@@ -49,7 +49,7 @@ func encodeSessionMetadataInto(raw string, metadata sessionMetadata) string {
 	setMetadataField(base, "tool_tags", metadata.ToolTags)
 	setMetadataField(base, "last_usage", metadata.LastUsage)
 	setMetadataField(base, "background_kind", metadata.BackgroundKind)
-	setMetadataField(base, "shell_cwd", metadata.ShellCWD)
+	setMetadataField(base, "workspace_dir", metadata.WorkspaceDir)
 	data, _ := json.Marshal(base)
 	if string(data) == "{}" {
 		return ""

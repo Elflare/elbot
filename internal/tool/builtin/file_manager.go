@@ -5,11 +5,9 @@ import (
 	"mime"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"elbot/internal/config"
-	"elbot/internal/tool"
 )
 
 type FileManager struct {
@@ -41,13 +39,13 @@ func NewFileManager(sandboxRoot string, cfg config.FileDeliveryConfig) *FileMana
 	return &FileManager{SandboxRoot: filepath.Clean(sandboxRoot), Config: cfg}
 }
 
-func (m *FileManager) Prepare(ctxSandbox tool.SandboxContext, sourcePath, name, mimeType string) (preparedFile, error) {
+func (m *FileManager) Prepare(sourcePath, name, mimeType string) (preparedFile, error) {
 	if m == nil {
 		return preparedFile{}, fmt.Errorf("file manager is not configured")
 	}
-	source, err := m.resolveSource(ctxSandbox, sourcePath)
-	if err != nil {
-		return preparedFile{}, err
+	source := filepath.Clean(strings.TrimSpace(sourcePath))
+	if source == "" {
+		return preparedFile{}, fmt.Errorf("path is required")
 	}
 	info, err := os.Stat(source)
 	if err != nil {
@@ -79,35 +77,6 @@ func (m *FileManager) checkSize(source string, info os.FileInfo) error {
 	default:
 		return fmt.Errorf("file delivery backend %q is not implemented yet", m.Config.Backend)
 	}
-}
-
-func (m *FileManager) resolveSource(ctxSandbox tool.SandboxContext, sourcePath string) (string, error) {
-	sourcePath = normalizeLocalPath(strings.TrimSpace(sourcePath))
-	if sourcePath == "" {
-		return "", fmt.Errorf("path is required")
-	}
-	if filepath.IsAbs(sourcePath) {
-		return filepath.Clean(sourcePath), nil
-	}
-	if strings.TrimSpace(ctxSandbox.Dir) != "" {
-		return filepath.Clean(filepath.Join(ctxSandbox.Dir, sourcePath)), nil
-	}
-	return filepath.Abs(sourcePath)
-}
-
-func normalizeLocalPath(path string) string {
-	if runtime.GOOS != "windows" {
-		return path
-	}
-	path = strings.ReplaceAll(path, "\\", "/")
-	if len(path) >= 3 && path[0] == '/' && path[2] == '/' && isASCIIAlpha(path[1]) {
-		return strings.ToUpper(string(path[1])) + ":" + filepath.FromSlash(path[2:])
-	}
-	return filepath.FromSlash(path)
-}
-
-func isASCIIAlpha(ch byte) bool {
-	return ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z'
 }
 
 func safeFileName(name string) string {

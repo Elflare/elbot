@@ -16,6 +16,7 @@ type ELwispToolDeclaration struct {
 	Schema         map[string]any `json:"schema,omitempty"`
 	TimeoutSeconds int            `json:"timeout_seconds,omitempty"`
 	Endpoint       string         `json:"endpoint,omitempty"`
+	ForegroundOnly bool           `json:"foreground_only,omitempty"`
 }
 
 type ELwispInjection struct {
@@ -46,6 +47,7 @@ func CachedToolsFromELwisp(injection ELwispInjection) []CachedTool {
 			EventKey:       injection.EventKey,
 			Endpoint:       strings.TrimSpace(declared.Endpoint),
 			TimeoutSeconds: declared.TimeoutSeconds,
+			ForegroundOnly: declared.ForegroundOnly,
 		})
 	}
 	return NormalizeCachedTools(out)

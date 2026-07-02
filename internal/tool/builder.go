@@ -10,6 +10,7 @@ type Builder struct {
 	superadminOnly bool
 	hidden         bool
 	ownerScoped    bool
+	foregroundOnly bool
 	tags           []string
 	dependsOn      []string
 	properties     map[string]any
@@ -59,6 +60,11 @@ func (b *Builder) SuperadminOnly() *Builder {
 
 func (b *Builder) OwnerScoped() *Builder {
 	b.ownerScoped = true
+	return b
+}
+
+func (b *Builder) ForegroundOnly() *Builder {
+	b.foregroundOnly = true
 	return b
 }
 
@@ -114,7 +120,7 @@ func (b *Builder) ObjectArray(name, description string, properties map[string]an
 }
 
 func (b *Builder) BuildInfo() Info {
-	return Info{Name: b.name, Description: b.description, Source: b.source, Risk: normalizeRisk(b.risk, RiskLow), SuperadminOnly: b.superadminOnly, Hidden: b.hidden, OwnerScoped: b.ownerScoped, Tags: normalizeTags(b.tags), DependsOn: normalizeNames(b.dependsOn)}
+	return Info{Name: b.name, Description: b.description, Source: b.source, Risk: normalizeRisk(b.risk, RiskLow), SuperadminOnly: b.superadminOnly, Hidden: b.hidden, OwnerScoped: b.ownerScoped, ForegroundOnly: b.foregroundOnly, Tags: normalizeTags(b.tags), DependsOn: normalizeNames(b.dependsOn)}
 }
 
 func (b *Builder) BuildSchema() llm.ToolSchema {

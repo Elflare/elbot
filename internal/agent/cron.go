@@ -251,7 +251,7 @@ func (a *Agent) preloadBackgroundResources(ctx context.Context, session *storage
 			continue
 		}
 		candidate, ok := a.toolRuntime.registry.Get(name)
-		if !ok || !tool.CanAccessTool(actor, policy, candidate.Info()) {
+		if !ok || !tool.InfoAvailableInContext(ctx, candidate.Info()) || !tool.CanAccessTool(actor, policy, candidate.Info()) {
 			a.audit("background_preload_skipped", "session_id", session.ID, "name", name, "reason", "not_found_or_not_allowed")
 			continue
 		}
@@ -289,7 +289,7 @@ func (a *Agent) preloadBackgroundTool(ctx context.Context, session *storage.Sess
 		return nil
 	}
 	candidate, ok := a.toolRuntime.registry.Get(name)
-	if !ok || !tool.CanAccessTool(actor, policy, candidate.Info()) || (!allowHidden && candidate.Info().Hidden) {
+	if !ok || !tool.InfoAvailableInContext(ctx, candidate.Info()) || !tool.CanAccessTool(actor, policy, candidate.Info()) || (!allowHidden && candidate.Info().Hidden) {
 		a.audit("background_preload_skipped", "session_id", session.ID, "name", name, "reason", "not_found_or_not_allowed")
 		return nil
 	}
@@ -302,10 +302,10 @@ func (a *Agent) preloadBackgroundTool(ctx context.Context, session *storage.Sess
 	if allowHidden && candidate.Info().Hidden {
 		schema := candidate.Schema()
 		info := candidate.Info()
-		discovery = &tool.DiscoveryResult{Tools: []tool.DiscoveredTool{{Info: tool.PublicInfo{Name: info.Name, Description: info.Description, Source: string(info.Source)}, Schema: &schema}}}
+		discovery = &tool.DiscoveryResult{Tools: []tool.DiscoveredTool{{Info: tool.PublicInfo{Name: info.Name, Description: info.Description, Source: string(info.Source), ForegroundOnly: info.ForegroundOnly}, Schema: &schema}}}
 		discovered = true
 	} else {
-		discovery, discovered = a.discoveryForBackgroundToolNames([]string{name}, actor, policy)
+		discovery, discovered = a.discoveryForBackgroundToolNames(ctx, []string{name}, actor, policy)
 	}
 	if !discovered || discovery == nil || len(discovery.Tools) == 0 {
 		a.audit("background_preload_skipped", "session_id", session.ID, "name", name, "reason", "no_schema")
@@ -315,9 +315,10 @@ func (a *Agent) preloadBackgroundTool(ctx context.Context, session *storage.Sess
 	return newTools
 }
 
-func (a *Agent) discoveryForBackgroundToolNames(names []string, actor security.Actor, policy *security.Policy) (*tool.DiscoveryResult, bool) {
+func (a *Agent) discoveryForBackgroundToolNames(ctx context.Context, names []string, actor security.Actor, policy *security.Policy) (*tool.DiscoveryResult, bool) {
 	details, _ := a.toolRuntime.registry.DiscoverDetails(names, func(candidate tool.Tool) bool {
-		return tool.CanAccessTool(actor, policy, candidate.Info())
+		info := candidate.Info()
+		return tool.InfoAvailableInContext(ctx, info) && tool.CanAccessTool(actor, policy, info)
 	})
 	if len(details) == 0 {
 		return nil, false

@@ -144,16 +144,18 @@ Tool Runtime 管理工具的注册、发现、权限、风险评估和执行。
 当前内置能力包括：
 
 - Web 搜索与网页提取。
+- Workspace：设置当前 Session 的共享工作目录。
 - 文件读写。
 - Shell 命令。
 - 聊天历史查询。
+
 - 常驻记忆和长期记忆。
 - Cron 管理。
 - 文件发送。
 - Skill 创建、读取、修改和运行。
 - `elwisp_creator`：为超级管理员返回创建 Elwisp 的协议说明、配置片段、脚手架和测试清单。
 
-工具结果可以回灌给 LLM，也可以返回平台无关的输出意图，由 Agent 统一发送。工具结果中的 `Warnings` 会回灌给 LLM，用于提示后续优先使用更合适的工具，例如用 `read_file` 代替 shell `cat`。EL Skill、常驻记忆和长期记忆源文件由 FileGuard 保护：读取会提示使用对应专用工具，通用文件工具或 shell 直接写入会被拒绝。
+工具结果可以回灌给 LLM，也可以返回平台无关的输出意图，由 Agent 统一发送。工具结果中的 `Warnings` 会回灌给 LLM，用于提示后续优先使用更合适的工具，例如用 `read_file` 代替 shell `cat`。前台 work Session 可用 `workspace` 设置共享工作目录，所有需要路径的工具会基于该目录解析相对路径；cron/Elnis 后台任务仍使用各自 sandbox。EL Skill、常驻记忆和长期记忆源文件由 FileGuard 保护：读取会提示使用对应专用工具，通用文件工具或 shell 直接写入会被拒绝。
 
 
 ## 安全策略

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -18,7 +17,11 @@ import (
 func TestSendFileAssessRiskExternalPath(t *testing.T) {
 	manager := NewFileManager(filepath.Join(t.TempDir(), "sandbox"), config.FileDeliveryConfig{})
 	sendFile := NewSendFileTool(manager)
-	args, _ := json.Marshal(map[string]any{"path": filepath.Join(t.TempDir(), "report.txt")})
+	path := filepath.Join(t.TempDir(), "report.txt")
+	if err := os.WriteFile(path, []byte("report"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path})
 	assessment, err := sendFile.AssessRisk(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
@@ -34,12 +37,9 @@ func TestSendFileAssessRiskBackgroundAbsolutePath(t *testing.T) {
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"path": filepath.Join(t.TempDir(), "report.txt")})
 	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Root: root, Dir: filepath.Join(root, "cron"), Background: true, BackgroundKind: tool.BackgroundKindCron})
-	assessment, err := sendFile.AssessRisk(ctx, tool.CallRequest{Arguments: args})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if assessment.Level != tool.RiskMedium {
-		t.Fatalf("risk = %s, want medium", assessment.Level)
+	_, err := sendFile.AssessRisk(ctx, tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "background path must be relative") {
+		t.Fatalf("expected background absolute path rejection, got %v", err)
 	}
 }
 
@@ -80,6 +80,25 @@ func TestSendFileSendsSandboxFile(t *testing.T) {
 	}
 }
 
+func TestSendFileUsesWorkspaceRelativePath(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "sandbox")
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "report.txt"), []byte("workspace"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewFileManager(root, config.FileDeliveryConfig{})
+	sendFile := NewSendFileTool(manager)
+	args, _ := json.Marshal(map[string]any{"file": "report.txt"})
+	ctx := tool.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
+	result, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result.Outputs[0].Source.Path; got != filepath.Join(workspace, "report.txt") {
+		t.Fatalf("sent path = %q", got)
+	}
+}
+
 func TestSendFileSendsExternalFileDirectly(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "sandbox")
 	source := filepath.Join(t.TempDir(), "external.txt")
@@ -99,17 +118,7 @@ func TestSendFileSendsExternalFileDirectly(t *testing.T) {
 	}
 }
 
-func TestNormalizeLocalPathConvertsMSYSWindowsPath(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("MSYS path conversion is Windows-only")
-	}
-	got := normalizeLocalPath("/c/Users/Cirno/dev/elbot/test.txt")
-	if !strings.HasPrefix(got, `C:\Users\Cirno\dev\elbot`) {
-		t.Fatalf("normalized path = %q", got)
-	}
-}
-
-func TestSendFileBackgroundSendsAbsolutePath(t *testing.T) {
+func TestSendFileBackgroundRejectsAbsolutePath(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "sandbox")
 	file := filepath.Join(t.TempDir(), "external.txt")
 	if err := os.WriteFile(file, []byte("hello"), 0o644); err != nil {
@@ -118,12 +127,9 @@ func TestSendFileBackgroundSendsAbsolutePath(t *testing.T) {
 	sendFile := NewSendFileTool(NewFileManager(root, config.FileDeliveryConfig{}))
 	args, _ := json.Marshal(map[string]any{"path": file})
 	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Root: root, Dir: filepath.Join(root, "cron"), Background: true, BackgroundKind: tool.BackgroundKindCron})
-	result, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Outputs[0].Source.Path != file {
-		t.Fatalf("sent path = %q, want %q", result.Outputs[0].Source.Path, file)
+	_, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "background path must be relative") {
+		t.Fatalf("expected background absolute path rejection, got %v", err)
 	}
 }
 

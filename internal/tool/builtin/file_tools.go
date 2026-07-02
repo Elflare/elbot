@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"elbot/internal/llm"
@@ -62,6 +60,7 @@ func readFileBuilder() *tool.Builder {
 		Description("读取文本文件并返回带行号的内容；编辑前应先用它确认行号和文件哈希。").
 		Risk(tool.RiskLow).
 		Tags("files", "agent").
+		DependsOn("workspace").
 		String("path", "要读取的文件路径", tool.Required()).
 		String("encoding", "文本编码，默认 auto；可选 utf-8、utf-8-bom、utf-16le、utf-16be、gbk、gb18030、big5、shift_jis 等。").
 		Integer("start_line", "起始行号，1-based；默认 1。").
@@ -78,16 +77,17 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 			return nil, fmt.Errorf("parse read_file arguments: %w", err)
 		}
 	}
-	path, err := resolveFileToolPath(ctx, args.Path, false)
+	resolved, err := resolveFileToolPath(ctx, args.Path, false)
 	if err != nil {
 		return nil, err
 	}
+	path := resolved.Path
 	file, err := fileops.ReadFile(path, args.Encoding)
 	if err != nil {
 		return nil, err
 	}
 	lines := fileops.SplitLines(file.Text)
-	warnings := t.FileGuard.ReadWarnings(path)
+	warnings := append(resolved.Warnings, t.FileGuard.ReadWarnings(path)...)
 	if strings.TrimSpace(args.Grep) != "" {
 		return readFileGrepResult(file, lines, args.Grep, args.ContextLines, args.MaxMatches, warnings)
 	}
@@ -194,6 +194,7 @@ func editFileBuilder() *tool.Builder {
 	return tool.NewBuilder("edit_file").
 		Description("批量编辑文本文件；使用 edits 一次提交多个修改，系统会在确认前自动预检并生成 diff，确认后才写入；成功后返回 unified diff。任一 edit 失败则不写文件。").
 		Risk(tool.RiskHigh).
+		DependsOn("workspace").
 		Tags("files", "agent").
 		String("path", "要编辑的文件路径。", tool.Required()).
 		String("encoding", "文本编码，默认 auto；非 UTF-8 文件应显式传入 gb18030、gbk、big5、shift_jis 等。").
@@ -210,11 +211,11 @@ func (t EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 			return tool.RiskAssessment{}, fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
-	path, err := resolveFileToolPath(ctx, args.Path, args.Create)
+	resolved, err := resolveFileToolPath(ctx, args.Path, args.Create)
 	if err != nil {
 		return tool.RiskAssessment{}, err
 	}
-	if err := t.FileGuard.CheckWrite(path); err != nil {
+	if err := t.FileGuard.CheckWrite(resolved.Path); err != nil {
 		return tool.RiskAssessment{}, err
 	}
 	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.Background {
@@ -394,30 +395,30 @@ func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 			return nil, fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
-	path, err := resolveFileToolPath(ctx, args.Path, args.Create)
+	resolved, err := resolveFileToolPath(ctx, args.Path, args.Create)
 	if err != nil {
 		return nil, err
 	}
-	if err := t.FileGuard.CheckWrite(path); err != nil {
+	if err := t.FileGuard.CheckWrite(resolved.Path); err != nil {
 		return nil, err
 	}
-	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedSHA256, args.Create, false, args.ContextLines, args.Edits)
+	result, err := fileops.EditFile(resolved.Path, args.Encoding, args.ExpectedSHA256, args.Create, false, args.ContextLines, args.Edits)
 	if err != nil {
 		return nil, err
 	}
 	content := fmt.Sprintf("dry_run: %t\nedited: %s\ncreated: %t\nencoding: %s\nsha256_before: %s\nsha256_after: %s\ndiff:\n%s", result.DryRun, result.Path, result.Created, result.Encoding, result.SHA256Before, result.SHA256After, result.Diff)
-	return &tool.Result{Content: content}, nil
+	return &tool.Result{Content: content, Warnings: resolved.Warnings}, nil
 }
 
 func previewEditFile(ctx context.Context, args editFileArgs, fileGuard *FileGuard) (fileops.EditResult, error) {
-	path, err := resolveFileToolPath(ctx, args.Path, args.Create)
+	resolved, err := resolveFileToolPath(ctx, args.Path, args.Create)
 	if err != nil {
 		return fileops.EditResult{}, err
 	}
-	if err := fileGuard.CheckWrite(path); err != nil {
+	if err := fileGuard.CheckWrite(resolved.Path); err != nil {
 		return fileops.EditResult{}, err
 	}
-	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedSHA256, args.Create, true, args.ContextLines, args.Edits)
+	result, err := fileops.EditFile(resolved.Path, args.Encoding, args.ExpectedSHA256, args.Create, true, args.ContextLines, args.Edits)
 	if err != nil {
 		return fileops.EditResult{}, fmt.Errorf("preflight edit_file: %w", err)
 	}
@@ -433,60 +434,6 @@ func decodeEditArgs(raw json.RawMessage, args *editFileArgs) error {
 	return dec.Decode(args)
 }
 
-func resolveFileToolPath(ctx context.Context, rawPath string, allowCreate bool) (string, error) {
-	rawPath = strings.TrimSpace(rawPath)
-	if rawPath == "" {
-		return "", fmt.Errorf("path is required")
-	}
-	expandedPath, err := expandHomePath(rawPath)
-	if err != nil {
-		return "", err
-	}
-	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.Background {
-		path, err := tool.ResolveSandboxRelativePath(sandbox, rawPath)
-		if err != nil {
-			return "", err
-		}
-		if info, err := os.Stat(path); err != nil {
-			if !allowCreate || !os.IsNotExist(err) {
-				return "", fmt.Errorf("stat file: %w", err)
-			}
-		} else if info.IsDir() {
-			return "", fmt.Errorf("path is a directory")
-		}
-		return path, nil
-	}
-	path := filepath.Clean(expandedPath)
-	if !filepath.IsAbs(path) {
-		abs, err := filepath.Abs(path)
-		if err != nil {
-			return "", fmt.Errorf("resolve path: %w", err)
-		}
-		path = abs
-	}
-	if info, err := os.Stat(path); err != nil {
-		if !allowCreate || !os.IsNotExist(err) {
-			return "", fmt.Errorf("stat file: %w", err)
-		}
-	} else if info.IsDir() {
-		return "", fmt.Errorf("path is a directory")
-	}
-	return path, nil
-}
-
-func expandHomePath(path string) (string, error) {
-	if path != "~" && !strings.HasPrefix(path, "~/") && !strings.HasPrefix(path, `~\`) {
-		return path, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve home directory: %w", err)
-	}
-	if strings.TrimSpace(home) == "" {
-		return "", fmt.Errorf("home directory is not configured")
-	}
-	if path == "~" {
-		return home, nil
-	}
-	return filepath.Join(home, path[2:]), nil
+func resolveFileToolPath(ctx context.Context, rawPath string, allowCreate bool) (tool.ResolvedPath, error) {
+	return tool.ResolveWorkspacePath(ctx, rawPath, tool.PathResolveOptions{AllowCreate: allowCreate})
 }

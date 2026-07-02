@@ -44,6 +44,7 @@ type CachedTool struct {
 	EventKey       string         `json:"event_key,omitempty"`
 	Endpoint       string         `json:"endpoint,omitempty"`
 	TimeoutSeconds int            `json:"timeout_seconds,omitempty"`
+	ForegroundOnly bool           `json:"foreground_only,omitempty"`
 }
 
 type ResolvedTool struct {
@@ -73,7 +74,7 @@ func (m *Manager) ToolNames(ctx context.Context, view Context) ([]string, error)
 	if view.DisableBaseTools || view.Mode != storage.SessionModeWork || m == nil || m.Native == nil {
 		return nil, nil
 	}
-	return m.Native.ToolNames(actorForView(ctx, view), policyForManager(ctx, m.Policy)), nil
+	return m.Native.ToolNames(ctx, actorForView(ctx, view), policyForManager(ctx, m.Policy)), nil
 }
 
 func (m *Manager) BaseSchemas(ctx context.Context, view Context) ([]llm.ToolSchema, error) {
@@ -83,7 +84,7 @@ func (m *Manager) BaseSchemas(ctx context.Context, view Context) ([]llm.ToolSche
 	if view.DisableBaseTools || view.Mode != storage.SessionModeWork || m == nil || m.Native == nil {
 		return nil, nil
 	}
-	return m.Native.BaseSchemas(), nil
+	return m.Native.BaseSchemas(ctx), nil
 }
 
 func (m *Manager) Schemas(ctx context.Context, view Context, cached []CachedTool) ([]llm.ToolSchema, error) {
@@ -105,6 +106,9 @@ func (m *Manager) Schemas(ctx context.Context, view Context, cached []CachedTool
 		appendSchema(schema)
 	}
 	for _, cachedTool := range cached {
+		if !cachedToolAvailable(ctx, cachedTool) {
+			continue
+		}
 		appendSchema(cachedTool.Schema)
 	}
 	return out, nil
@@ -121,11 +125,15 @@ func schemaForContext(ctx context.Context, schema llm.ToolSchema) llm.ToolSchema
 
 func backgroundPathSchema(name string) bool {
 	switch name {
-	case "shell", "read_file", "edit_file":
+	case "shell", "read_file", "edit_file", "send_file":
 		return true
 	default:
 		return false
 	}
+}
+
+func cachedToolAvailable(ctx context.Context, cached CachedTool) bool {
+	return AvailableInContext(ctx, tool.Info{ForegroundOnly: cached.ForegroundOnly})
 }
 
 func (m *Manager) Resolve(ctx context.Context, name string, cached []CachedTool) ResolvedTool {
@@ -138,6 +146,9 @@ func (m *Manager) Resolve(ctx context.Context, name string, cached []CachedTool)
 			continue
 		}
 		cachedCopy := cachedTool
+		if !cachedToolAvailable(ctx, cachedCopy) {
+			return ResolvedTool{Name: name, Source: cachedCopy.Source, Cached: &cachedCopy, Available: false, Reason: "tool is unavailable in this context"}
+		}
 		source := cachedCopy.Source
 		if source == "" {
 			source = SourceKindNative
@@ -157,6 +168,9 @@ func (m *Manager) Resolve(ctx context.Context, name string, cached []CachedTool)
 	}
 	if m != nil && m.Native != nil {
 		if nativeTool, ok := m.Native.Get(name); ok {
+			if !AvailableInContext(ctx, nativeTool.Info()) {
+				return ResolvedTool{Name: name, Source: SourceKindNative, Native: nativeTool, Available: false, Reason: unavailableReason(ctx, nativeTool.Info())}
+			}
 			return ResolvedTool{Name: name, Source: SourceKindNative, Native: nativeTool, Available: true}
 		}
 	}
@@ -224,7 +238,7 @@ func NativeCachedToolsFromDiscovery(result *tool.DiscoveryResult) []CachedTool {
 		if discovered.Schema == nil || discovered.Info.Name == "" {
 			continue
 		}
-		out = append(out, CachedTool{Name: discovered.Info.Name, Source: SourceKindNative, Description: discovered.Info.Description, Schema: *discovered.Schema})
+		out = append(out, CachedTool{Name: discovered.Info.Name, Source: SourceKindNative, Description: discovered.Info.Description, Schema: *discovered.Schema, ForegroundOnly: discovered.Info.ForegroundOnly})
 	}
 	return out
 }

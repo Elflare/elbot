@@ -21,6 +21,9 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
 		return err
 	}
+	if err := registry.Register(NewWorkspaceTool()); err != nil {
+		return err
+	}
 	if opts.ResidentMemoryStore != nil {
 		for _, memoryTool := range NewResidentMemoryTools(opts.ResidentMemoryStore) {
 			if err := registry.Register(memoryTool); err != nil {

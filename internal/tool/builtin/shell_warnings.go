@@ -84,7 +84,7 @@ func (a *shellAdvice) inspectShellRedirect(redir *syntax.Redirect, workDir strin
 	path, ok := literalWord(redir.Word)
 	if ok {
 		if resolved, hit := resolveShellLiteralPath(workDir, path); hit {
-			a.addWarning(warnUseShellPath)
+			a.addWarning(warnUseWorkspace)
 			if err := fileGuard.CheckWrite(resolved); err != nil {
 				a.blockErr = err
 				return
@@ -97,7 +97,7 @@ func (a *shellAdvice) inspectShellRedirect(redir *syntax.Redirect, workDir strin
 func (a *shellAdvice) addPathArgWarning(workDir string, args []string) {
 	for _, arg := range args {
 		if _, ok := resolveShellLiteralPath(workDir, arg); ok {
-			a.addWarning(warnUseShellPath)
+			a.addWarning(warnUseWorkspace)
 			return
 		}
 	}

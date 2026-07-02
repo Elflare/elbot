@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"elbot/internal/delivery"
@@ -54,10 +53,11 @@ func (t SendFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 	if strings.TrimSpace(path) == "" {
 		return tool.RiskAssessment{}, fmt.Errorf("path or file is required")
 	}
-	if _, hasSandbox := tool.SandboxContextFromContext(ctx); hasSandbox {
-		return tool.RiskAssessment{Level: tool.RiskMedium}, nil
+	resolved, err := tool.ResolveWorkspacePath(ctx, path, tool.PathResolveOptions{})
+	if err != nil {
+		return tool.RiskAssessment{}, err
 	}
-	if filepath.IsAbs(normalizeLocalPath(path)) {
+	if resolved.WasAbs {
 		return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"发送外部文件需要确认"}}, nil
 	}
 	return tool.RiskAssessment{Level: tool.RiskMedium}, nil
@@ -69,7 +69,11 @@ func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		return nil, err
 	}
 	sandbox, _ := tool.SandboxContextFromContext(ctx)
-	prepared, err := t.files.Prepare(sandbox, args.sourcePath(), args.Name, args.MIMEType)
+	resolved, err := tool.ResolveWorkspacePath(ctx, args.sourcePath(), tool.PathResolveOptions{})
+	if err != nil {
+		return nil, err
+	}
+	prepared, err := t.files.Prepare(resolved.Path, args.Name, args.MIMEType)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +85,7 @@ func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 			out.Target = delivery.Target{Platform: msg.Platform, Superadmins: true}
 		}
 	}
-	return &tool.Result{Content: fmt.Sprintf("已发送文件：%s", prepared.Name), Outputs: []delivery.Output{out}}, nil
+	return &tool.Result{Content: fmt.Sprintf("已发送文件：%s", prepared.Name), Warnings: resolved.Warnings, Outputs: []delivery.Output{out}}, nil
 }
 
 func (args sendFileArgs) sourcePath() string {

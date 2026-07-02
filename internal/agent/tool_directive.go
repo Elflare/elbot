@@ -127,7 +127,7 @@ func (a *Agent) discoveryForToolDirective(ctx context.Context, value string) (*t
 		if !a.canPreloadToolRoot(actor, policy, root) {
 			return nil, "", false
 		}
-		discovery, ok := a.discoveryForToolNames([]string{value}, actor, policy)
+		discovery, ok := a.discoveryForToolNames(ctx, []string{value}, actor, policy)
 		return discovery, "", ok
 	}
 	tagName := normalizeToolTag(value)
@@ -137,7 +137,7 @@ func (a *Agent) discoveryForToolDirective(ctx context.Context, value string) (*t
 	if len(names) == 0 {
 		return nil, "", false
 	}
-	discovery, ok := a.discoveryForToolNames(names, actor, policy)
+	discovery, ok := a.discoveryForToolNames(ctx, names, actor, policy)
 	return discovery, tagName, ok
 }
 
@@ -162,7 +162,7 @@ func (a *Agent) preloadToolNames(ctx context.Context, session *storage.Session, 
 			a.audit("tool_preload_skipped", "session_id", session.ID, "tool", name, "reason", "not_found_or_not_allowed")
 			continue
 		}
-		discovery, ok := a.discoveryForToolNames([]string{name}, actor, policy)
+		discovery, ok := a.discoveryForToolNames(ctx, []string{name}, actor, policy)
 		if !ok || discovery == nil || len(discovery.Tools) == 0 {
 			a.audit("tool_preload_skipped", "session_id", session.ID, "tool", name, "reason", "no_schema")
 			continue
@@ -223,7 +223,7 @@ func (a *Agent) preloadSkillWrapper(ctx context.Context, session *storage.Sessio
 		return nil, nil
 	}
 	candidate, ok := a.toolRuntime.registry.Get(name)
-	if !ok || !tool.CanAccessTool(actor, policy, candidate.Info()) {
+	if !ok || !tool.InfoAvailableInContext(ctx, candidate.Info()) || !tool.CanAccessTool(actor, policy, candidate.Info()) {
 		a.audit("skill_wrapper_preload_skipped", "session_id", session.ID, "tool", name, "reason", "not_found_or_not_allowed")
 		return nil, nil
 	}
@@ -237,13 +237,14 @@ func (a *Agent) preloadSkillWrapper(ctx context.Context, session *storage.Sessio
 		return nil, nil
 	}
 	info := candidate.Info()
-	discovery := &tool.DiscoveryResult{Tools: []tool.DiscoveredTool{{Info: tool.PublicInfo{Name: info.Name, Description: info.Description, Source: string(info.Source)}, Schema: &schema}}}
+	discovery := &tool.DiscoveryResult{Tools: []tool.DiscoveredTool{{Info: tool.PublicInfo{Name: info.Name, Description: info.Description, Source: string(info.Source), ForegroundOnly: info.ForegroundOnly}, Schema: &schema}}}
 	return a.rememberPreloadedDiscovery(ctx, session, discovery, seen)
 }
 
-func (a *Agent) discoveryForToolNames(names []string, actor security.Actor, policy *security.Policy) (*tool.DiscoveryResult, bool) {
+func (a *Agent) discoveryForToolNames(ctx context.Context, names []string, actor security.Actor, policy *security.Policy) (*tool.DiscoveryResult, bool) {
 	details, _ := a.toolRuntime.registry.DiscoverDetails(names, func(candidate tool.Tool) bool {
-		return tool.CanAccessTool(actor, policy, candidate.Info())
+		info := candidate.Info()
+		return tool.InfoAvailableInContext(ctx, info) && tool.CanAccessTool(actor, policy, info)
 	})
 	if len(details) == 0 {
 		return nil, false

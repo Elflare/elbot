@@ -119,11 +119,11 @@ func (a *Agent) rememberActivatedTools(ctx context.Context, session *storage.Ses
 			if risk == "" {
 				risk = tool.RiskHigh
 			}
-			if !policy.CanUseTool(actor, risk, info.OwnerScoped) {
+			if !tool.InfoAvailableInContext(ctx, info) || !policy.CanUseTool(actor, risk, info.OwnerScoped) {
 				continue
 			}
 			schema := t.Schema()
-			discovery.Tools = append(discovery.Tools, tool.DiscoveredTool{Info: tool.PublicInfo{Name: name, Description: info.Description, Source: string(info.Source)}, Schema: &schema})
+			discovery.Tools = append(discovery.Tools, tool.DiscoveredTool{Info: tool.PublicInfo{Name: name, Description: info.Description, Source: string(info.Source), ForegroundOnly: info.ForegroundOnly}, Schema: &schema})
 		}
 	}
 	a.rememberDiscoveredTools(ctx, session, discovery)

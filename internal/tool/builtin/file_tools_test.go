@@ -943,3 +943,65 @@ func TestEditFileToolLineModeNeedleWithNewlineFails(t *testing.T) {
 		t.Fatalf("expected single-line prefix error, got %v", err)
 	}
 }
+
+func TestReadFileToolUsesWorkspaceRelativePath(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "sample.txt"), []byte("workspace\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := tool.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
+	args, _ := json.Marshal(map[string]any{"path": "sample.txt"})
+	result, err := NewReadFileTool().Call(ctx, tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "workspace") {
+		t.Fatalf("content = %s", result.Content)
+	}
+}
+
+func TestEditFileToolUsesWorkspaceRelativePath(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := tool.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
+	args, _ := json.Marshal(map[string]any{
+		"path": "sample.txt",
+		"edits": []map[string]any{{
+			"operation":  "replace",
+			"start_line": 1,
+			"content":    "beta",
+		}},
+	})
+	if _, err := NewEditFileTool().Call(ctx, tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "beta\n" {
+		t.Fatalf("content = %q", content)
+	}
+}
+
+func TestReadFileToolWarnsForAbsolutePath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: mustJSON(map[string]any{"path": path})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Warnings) == 0 || !strings.Contains(result.Warnings[0], "绝对路径") {
+		t.Fatalf("warnings = %#v", result.Warnings)
+	}
+}
+
+func mustJSON(value any) json.RawMessage {
+	data, _ := json.Marshal(value)
+	return data
+}
