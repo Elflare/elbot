@@ -6,6 +6,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/hook"
 	"elbot/internal/logging"
+	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/request"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -118,6 +119,7 @@ type Deps struct {
 	CleanupRetentionDays func() int
 	Audit                func(event string, attrs ...any)
 	Logs                 LogService
+	RuntimeStatus        func(sessionID string) runtimestatus.Snapshot
 }
 
 func RegisterFactories(registrar Registrar, deps Deps, factories ...HandlerFactory) error {

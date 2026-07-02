@@ -43,7 +43,7 @@
 - `internal/agent/input.go`：普通输入分发辅助；处理 idle 过期、平台引用 fork、归档拒聊、`@tool:<name>` 工具预载、LLM 打断追加、工具 pending 输入和高风险工具确认命令。
 - `internal/agent/completion.go`：平台补全辅助；暴露中央补全服务，兼容旧平台的文本补全入口。
 
-- `internal/agent/chat.go`：普通对话主流程；加载上下文、构建 Prompt、驱动 LLM/工具循环；user 与已完成工具 transcript 会阶段性落库，最终平台输出先跑 `agent.turn.output.prepared`，流式输出用最终文本 replace，正常完成后保存最终 assistant。
+- `internal/agent/chat.go`：普通对话主流程；加载上下文、构建 Prompt、驱动 LLM/工具循环；user 与已完成工具 transcript 会阶段性落库，最终平台输出先跑 `agent.turn.output.prepared`，流式输出用最终文本 replace，正常完成后保存最终 assistant；输出发送前发布 `sending` phase 供 `/requests` 区分 LLM 慢还是平台发送卡住。
 - `internal/agent/hooks.go`：Agent Hook 与输出接入；生成事件上下文，运行 Hook，提供 assistant 输出预处理，并把 Hook/工具输出意图交给 Output Manager 发送。
 - `internal/agent/chat_llm.go`：LLM 调用与消息转换辅助；处理 Hook 后请求、流式响应错误通知、多模态转换、reasoning/usage/runtime 日志；流式最终 replace 由对话主流程在输出 Hook 后完成。
 - `internal/agent/turn_output.go`：Agent turn 输出适配；区分前台/后台的流式输出、中间输出、工具预览、Notice、reasoning 和 runtime status 发布。
@@ -77,7 +77,7 @@
 - `internal/agent/commands/model.go`：模型命令；实现 `/model`、`/checkmodel`、`/models`，支持 chat/work/elwisp/compact/naming 模型查看、切换和 `/model` 参数补全，`/models --fresh` 可强制刷新模型列表缓存。
 - `internal/agent/commands/compact.go`：`/compact` 命令；触发当前 Session 主动上下文压缩。
 - `internal/agent/commands/session.go`：Session 命令；组合注册列表、生命周期、恢复、Fork、模式切换等会话命令。
-- `internal/agent/commands/request.go`：请求管理命令；实现 `/requests`、`/stop` 和 `/stopall`。
+- `internal/agent/commands/request.go`：请求管理命令；实现 `/requests`、`/stop` 和 `/stopall`；`/requests` 展示 active request 树并附带当前 runtime phase（preparing/llm/tool/sending）和阶段耗时。
 - `internal/agent/commands/log.go`：日志查看命令；实现 `/log`、`/audit`、`/elwisp`、`/usage`，支持常用过滤条件和 Debug 原始日志展示；`/usage` 从审计日志聚合 token 消耗，按模型/天/会话汇总。
 - `internal/agent/commands/usage.go`：`/usage` 命令实现；从审计日志拉取 `llm_usage` 事件并按模型/天/会话聚合 token 用量和耗时，支持快捷参数 `-d`/`-m`/`-s`。
 - `internal/agent/commands/tool.go`：工具命令；实现 `/tools` 查看已注册工具，并预留 external skill 的 reload/uninstall/remove 入口。
@@ -96,7 +96,7 @@
 
 - `internal/request/manager.go`：active request 管理器；登记 turn、LLM、工具、压缩和子 Agent 请求，记录父子 request 关系，支持列表、查询、按请求取消、按 Session 取消、全局取消、超时和完成清理。
 
-- `internal/runtime/status.go`：运行状态快照与格式化 helper；描述阶段、usage等结构化状态，供 CLI 状态栏和未来日志/命令复用。
+- `internal/runtime/status.go`：运行状态快照与格式化 helper；描述阶段（preparing/llm/tool/sending/done/error）、usage 等结构化状态，供 CLI 状态栏、`/requests` 阶段展示和未来日志复用。
 - `internal/turn/manager.go`：当前 turn 协调器；记录 Session 运行阶段、原始用户输入、pending 追加消息、确认/取消 token、工具使用计数、compact 阶段和高风险工具确认等待状态；工具阶段普通输入不打断工具，会进入 pending 并在下一次 LLM 调用前注入；请求异常结束时清理非确认追加状态，避免残留 tool pending。
 
 

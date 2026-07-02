@@ -191,6 +191,7 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 		CleanupRetentionDays: a.retentionDays,
 		Audit:                a.audit,
 		Logs:                 a,
+		RuntimeStatus:        a.runtimeStatusForSession,
 	}); err != nil {
 		panic(err)
 	}

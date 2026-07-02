@@ -286,6 +286,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	if emptyAssistantResponse && !backgroundOutput {
 		platformOutputText = "模型这次没有返回可见内容，请重试或切换模型。"
 	}
+	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseSending, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindTurn, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: storage.Now()})
 	if strings.TrimSpace(platformOutputText) != "" {
 		var err error
 		platformOutputText, err = a.prepareAssistantOutput(ctx, hook.PointAgentTurnOutputPrepared, platformOutputText)
