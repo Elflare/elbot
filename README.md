@@ -53,7 +53,7 @@ For detailed information, see [Elnis Listening Hub](docs.en/elnis.md).
 
 **Multi-platform and Rich Output Abstraction**: ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, QQ Official, and Telegram, while reserving space for extending to other platforms.
 
-**CLI Client/Server Separation**: Supports using ElBot as a client on any computer to connect to the ElBot server.  **Free Frontend Customization**, allowing you to create any frontend interface you prefer. The following screenshots demonstrate different frontend forms; except for the TUI, all are conceptual HTML mockups and do not represent the final UI.
+**CLI Client/Server Separation**: Supports using ElBot as a client on any computer to connect to the ElBot server. **Free Frontend Customization**, allowing you to create any frontend interface you prefer. The following screenshots demonstrate different frontend forms; except for the TUI, all are conceptual HTML mockups and do not represent the final UI.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/main/frontend/assets/frontend_1.png" width="260" />
@@ -92,8 +92,8 @@ Minimum usage flow:
 
 1. Configure the OpenAI-compatible Provider in `config/providers.toml`.
 2. Set the API Key corresponding to `api_key_env` via system environment variables or the configuration directory `.env`.
-3. Select the default `chat` / `work` mode and model in `config/state.toml`.
-4. After starting, enter `/help` to view commands, or start a conversation directly.
+3. After starting, use the command `/models` to view and then use `/model xx` to select the model. Or manually select the default `chat` / `work` mode and model in `config/state.toml`.
+4. Enter `/help` to view commands, or start a conversation directly.
 
 For detailed instructions, see:
 

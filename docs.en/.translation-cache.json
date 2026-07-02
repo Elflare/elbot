@@ -6,9 +6,9 @@
       "updated_at": 1782958962
     },
     "README.zh-CN.md": {
-      "source_hash": "4735bd7796bf2071e1d8029a86c07642894a2c7c62b774f5cda795527972dacb",
+      "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
       "target": "README.md",
-      "updated_at": 1782901132
+      "updated_at": 1782973974
     },
     "docs/README.md": {
       "source_hash": "c9b034abef2aab701d3e0609800a6f9e55c86b4888558a4d9a0894eaffb74cf5",
@@ -1086,6 +1086,14 @@
       "translation": "[Command Cheat Sheet](docs/commands.md)",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:list:5e230c44f97af7244b97bc308f5a8e20355da2ae9b217d18697dd7731a72a968": {
+      "kind": "list",
+      "source": "或手动在 __ELBOT_CODE_0__ 选择默认 __ELBOT_CODE_1__ / __ELBOT_CODE_2__ 模式和模型。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "5e230c44f97af7244b97bc308f5a8e20355da2ae9b217d18697dd7731a72a968",
+      "translation": "Or manually select the default __ELBOT_CODE_1__ / __ELBOT_CODE_2__ mode and model in __ELBOT_CODE_0__.",
+      "updated_at": 1782973974
+    },
     "README.zh-CN.md:list:6fb2cc1c02b5eb3e65a18ab831a3cfa49adcc74128fa61708faa33ca184cde4f": {
       "kind": "list",
       "source": "chat 模式：<500",
@@ -1101,6 +1109,22 @@
       "source_hash": "72918ffbcf05b8f291eb4e596e3b5e9fa04ef685a12033e3eadfc0e3df97e1d9",
       "translation": "work mode: <1000",
       "updated_at": 1781749522
+    },
+    "README.zh-CN.md:list:a0f2e99146f50ef99971aaaf97bdb0ea5c5581a95f4587bbbcdea4059016948c": {
+      "kind": "list",
+      "source": "输入 __ELBOT_CODE_0__ 查看命令，或直接开始对话。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "a0f2e99146f50ef99971aaaf97bdb0ea5c5581a95f4587bbbcdea4059016948c",
+      "translation": "Enter __ELBOT_CODE_0__ to view commands, or start a conversation directly.",
+      "updated_at": 1782973974
+    },
+    "README.zh-CN.md:list:a5308c5257a7cfe4edde08791e41c9954fd0a407bff2ce6aaabf33478c050847": {
+      "kind": "list",
+      "source": "启动后使用命令 __ELBOT_CODE_0__ 查看然后使用 __ELBOT_CODE_1__ 选择模型。",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "a5308c5257a7cfe4edde08791e41c9954fd0a407bff2ce6aaabf33478c050847",
+      "translation": "After starting, use the command __ELBOT_CODE_0__ to view and then use __ELBOT_CODE_1__ to select the model.",
+      "updated_at": 1782973974
     },
     "README.zh-CN.md:list:ad921ab7ca2cf9c1add35945d2b5bb1c0e3a1bbec314b0a5d3267b5bb5824aac": {
       "kind": "list",
