@@ -319,6 +319,18 @@ When left blank, the platform's default data directory is used:
 
 Runtime logs, SQLite, sandbox, and other runtime data will also be stored according to the configuration or the default data directory.
 
+Platform inbound attachment download limits use `[platform_files]`:
+
+```toml
+[platform_files]
+max_receive_file_bytes = 104857600
+download_timeout_secs = 60
+```
+
+- `max_receive_file_bytes`: Maximum save size for platform inbound files, default 100MB; a prompt will be sent to the user when the limit is exceeded, and the file will not be saved to the server.
+- `download_timeout_secs`: Platform inbound file download timeout, default 60 seconds.
+- Inbound files from QQ Official and QQ OneBot are saved by default to the `platform/<平台名>` directory under sandbox; Pure file messages only reply with the save path or a "too large" prompt, without invoking the LLM.
+
 
 ## Logs and Maintenance Tasks
 
@@ -527,7 +539,7 @@ CLI enabled by default:
 enabled = true
 ```
 
-QQ Official Bot, QQ OneBot, and Telegram configurations are commented out by default in the examples. When enabling them, you need to provide the platform's own authentication information and trigger keywords.
+Configurations for QQ Official Bot, QQ OneBot, and Telegram are commented out by default in the examples. When enabled, the platform's own authentication information and trigger keywords must be provided. When receiving files, QQ Official and QQ OneBot will download and save them according to the `[platform_files]` limits; Pure file messages only reply with the save path or a 'too large' prompt and do not enter the LLM.
 
 Telegram uses Bot API long polling. Minimum configuration example:
 

@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "907dba1724a45d481df1e06e54e8a99e998cfdbac73fae9a2f09963cfd360e89",
+      "source_hash": "d82d4de88069060d1b1e3941fce9eef1ef76acf57373d330f9ab628eb9e1747a",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783081840
+      "updated_at": 1783085325
     },
     "README.zh-CN.md": {
       "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
@@ -26,9 +26,9 @@
       "updated_at": 1783077374
     },
     "docs/configuration.md": {
-      "source_hash": "09fbbf7b67dad3e9b4e593e6e30a68d6771d0575e4e795f90686ec29bad0aea2",
+      "source_hash": "8627fc49f5aa7b98d6433d0914cfd6978c545a747cc610a3aae5afa0f306e9f9",
       "target": "docs.en/configuration.md",
-      "updated_at": 1783076156
+      "updated_at": 1783085288
     },
     "docs/elnis-usage.md": {
       "source_hash": "c8d68d4fc76a453ea4008b304cc4d8243b8b2ebc634494f4fb92016b8040c782",
@@ -165,6 +165,14 @@
       "source_hash": "1945bb5d4629d8b9098d57e66a570df93853f28efd0ddb3064b15acd7b299c38",
       "translation": "Added __ELBOT_CODE_0__ command: aggregates token consumption from the audit log, supporting summaries by model/day/Session, with shortcut parameters __ELBOT_CODE_1__ for days, __ELBOT_CODE_2__ for model, and __ELBOT_CODE_3__ for Session.",
       "updated_at": 1782884148
+    },
+    "CHANGELOG.md:list:20944797b0b64f3983e8a04062f3f6faea56013fa4b277db270982796b930d37": {
+      "kind": "list",
+      "source": "QQ OneBot 支持入站文件下载保存，不唤起 LLM。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "20944797b0b64f3983e8a04062f3f6faea56013fa4b277db270982796b930d37",
+      "translation": "QQ OneBot now supports downloading and saving inbound files without invoking the LLM.",
+      "updated_at": 1783085325
     },
     "CHANGELOG.md:list:21bcff96ea97868ed7a73b08187eef3ce889b28e69c118b725a5783d07dcadc3": {
       "kind": "list",
@@ -333,6 +341,14 @@
       "source_hash": "572872f4348e759b46f65964708d6035ffe736d5c7f16bbeca3641f8458acd29",
       "translation": "__ELBOT_CODE_0__ now controls the total duration of a full round of user requests; by default, __ELBOT_CODE_1__ indicates no time limit;",
       "updated_at": 1782574901
+    },
+    "CHANGELOG.md:list:57c02c13c5ed82c755fc0eeb729dc126624508a010829430deda85b6046bb549": {
+      "kind": "list",
+      "source": "新增 __ELBOT_CODE_0__ 配置，统一控制平台入站文件最大保存大小和下载超时。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "57c02c13c5ed82c755fc0eeb729dc126624508a010829430deda85b6046bb549",
+      "translation": "Added __ELBOT_CODE_0__ configuration to uniformly control the maximum save size and download timeout for platform inbound files.",
+      "updated_at": 1783085325
     },
     "CHANGELOG.md:list:59aef5f6af2a0610f829cfbdab62ee2b1c7298f9546374f556496c5b31f1f2e1": {
       "kind": "list",
@@ -5822,6 +5838,14 @@
       "translation": "Compression only affects the context view sent to the LLM and does not delete the original history.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:00cf80cb6f6b5f171a31dd557ed2f53ed2d6fdc4c42c9dbe9156b9eac4f4e41e": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：平台入站文件下载超时，默认 60 秒。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "00cf80cb6f6b5f171a31dd557ed2f53ed2d6fdc4c42c9dbe9156b9eac4f4e41e",
+      "translation": "__ELBOT_CODE_0__: Platform inbound file download timeout, default 60 seconds.",
+      "updated_at": 1783085288
+    },
     "docs/configuration.md:list:0115dab787da9323c0d9ecb43ea43a42703f31ed9bd5883e99dc62865ef4cfcd": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__：定义一个可在聊天里使用的 tag，例如 __ELBOT_CODE_1__ 对应 __ELBOT_CODE_2__。",
@@ -6230,6 +6254,14 @@
       "translation": "When preloading tools that already exist, they will not be added again, and the platform will prompt __ELBOT_CODE_0__.",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:list:68a774258f2a5580dd4c0e97eec34e1b8d497066492123421fd56aa8c3fbc259": {
+      "kind": "list",
+      "source": "QQ 官方和 QQ OneBot 的入站文件默认保存到 sandbox 下的 __ELBOT_CODE_0__ 目录；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "68a774258f2a5580dd4c0e97eec34e1b8d497066492123421fd56aa8c3fbc259",
+      "translation": "Inbound files from QQ Official and QQ OneBot are saved by default to the __ELBOT_CODE_0__ directory under sandbox;",
+      "updated_at": 1783085288
+    },
     "docs/configuration.md:list:68af7370138931ab9cffe624cbbdff4223e39b53389c28b02571e59434ccc579": {
       "kind": "list",
       "source": "ElBot 进程 __ELBOT_CODE_0__ 中的 __ELBOT_CODE_1__。",
@@ -6566,6 +6598,14 @@
       "translation": "__ELBOT_CODE_0__ controls the streaming refresh throttle interval, defaulting to 250ms, to avoid triggering platform rate limits.",
       "updated_at": 1781839376
     },
+    "docs/configuration.md:list:c6f7825bb2d486429e3d45850c182cd4077663f0929a18267eea0a2cf56282ea": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：平台入站文件最大保存大小，默认 100MB；超过上限时会给用户发送提示，不保存到服务器。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "c6f7825bb2d486429e3d45850c182cd4077663f0929a18267eea0a2cf56282ea",
+      "translation": "__ELBOT_CODE_0__: Maximum save size for platform inbound files, default 100MB; a prompt will be sent to the user when the limit is exceeded, and the file will not be saved to the server.",
+      "updated_at": 1783085288
+    },
     "docs/configuration.md:list:c95ef3dd8d5beb79e4ec2cee7690f3ec93630a5b9f443f63be575fa98fd3f86d": {
       "kind": "list",
       "source": "开启后，Session 上下文接近窗口上限时会触发压缩。",
@@ -6661,6 +6701,14 @@
       "source_hash": "d8c137111531834c012e9adc26eaccd2ef5e5bb6fb213e9b902666567b2d6207",
       "translation": "Update this document synchronously when adding new configuration items.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:d8efa78af8da796b38dac2dddfd1967ad430d74be0ef5d90c2e65e8210ab646a": {
+      "kind": "list",
+      "source": "纯文件消息只回复保存路径或过大提示，不唤起 LLM。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d8efa78af8da796b38dac2dddfd1967ad430d74be0ef5d90c2e65e8210ab646a",
+      "translation": "Pure file messages only reply with the save path or a \"too large\" prompt, without invoking the LLM.",
+      "updated_at": 1783085288
     },
     "docs/configuration.md:list:dbcb6972b521ae2cb9ae667a5325188f2049859535dc007ff296210bb494cc07": {
       "kind": "list",
@@ -7182,6 +7230,14 @@
       "translation": "For example, when using __ELBOT_CODE_0__:\n",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:paragraph:a498e15ffcd3184606459025a181f4173444dfe73f3101001f6ec59d2cd20254": {
+      "kind": "paragraph",
+      "source": "纯文件消息仅回复保存路径或过大提示，不进入 LLM。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "a498e15ffcd3184606459025a181f4173444dfe73f3101001f6ec59d2cd20254",
+      "translation": "Pure file messages only reply with the save path or a 'too large' prompt and do not enter the LLM.\n",
+      "updated_at": 1783085288
+    },
     "docs/configuration.md:paragraph:a728fb7fe1ecea412b0105ed9c33e4f287ba964cdfeb4efe7550a2682c580018": {
       "kind": "paragraph",
       "source": "若显式指定的配置路径不存在，ElBot 会报错而不是偷偷生成，避免掩盖路径拼写错误。\n",
@@ -7245,6 +7301,14 @@
       "source_hash": "b8c38345807cb2a9bdca16d42f3f1f696ba0bac6a1d5daf6f3f4d64318e8d037",
       "translation": "When injecting the Prompt, the two segments will be merged into a single piece of natural text.\n",
       "updated_at": 1782206047
+    },
+    "docs/configuration.md:paragraph:bd4044e2e31741854ecaef63e70289d046ac2ae08fa264f24d5a570e71b7aa0c": {
+      "kind": "paragraph",
+      "source": "QQ 官方机器人、QQ OneBot 和 Telegram 配置在示例中默认注释。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "bd4044e2e31741854ecaef63e70289d046ac2ae08fa264f24d5a570e71b7aa0c",
+      "translation": "Configurations for QQ Official Bot, QQ OneBot, and Telegram are commented out by default in the examples.",
+      "updated_at": 1783085288
     },
     "docs/configuration.md:paragraph:be766c22f4947d5d7e93ef58bac57b008c8c60eff96e5c43fb99fed53ee121b4": {
       "kind": "paragraph",
@@ -7382,6 +7446,14 @@
       "translation": "The content of the automatically generated default configuration comes from the program's built-in assets, and existing files will not be overwritten.",
       "updated_at": 1781854884
     },
+    "docs/configuration.md:paragraph:f029aa2b74a012681841f18d5aa59e9cf2f12b8d539a9c04c70e951d6b7820e5": {
+      "kind": "paragraph",
+      "source": "启用时需要补齐平台自己的认证信息和触发关键词。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "f029aa2b74a012681841f18d5aa59e9cf2f12b8d539a9c04c70e951d6b7820e5",
+      "translation": "When enabled, the platform's own authentication information and trigger keywords must be provided.",
+      "updated_at": 1783085288
+    },
     "docs/configuration.md:paragraph:f273c79bfdc15b5dd33d13b98853ccc65b6a50bfd1e0e8b423dfb54d2599ecbc": {
       "kind": "paragraph",
       "source": "源码中的 __ELBOT_CODE_0__ 目录只保留可独立维护的示例/辅助配置文件；主配置 __ELBOT_CODE_1__ 首次运行时由程序内置 assets 生成到平台配置目录。\n",
@@ -7453,6 +7525,22 @@
       "source_hash": "f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f",
       "translation": "Example:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:f7f5bd34135931c735fc61600b96df9af517f06229b3af53fa3ee3972e1f1ec9": {
+      "kind": "paragraph",
+      "source": "QQ 官方和 QQ OneBot 收到文件时会按 __ELBOT_CODE_0__ 限制下载保存；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "f7f5bd34135931c735fc61600b96df9af517f06229b3af53fa3ee3972e1f1ec9",
+      "translation": "When receiving files, QQ Official and QQ OneBot will download and save them according to the __ELBOT_CODE_0__ limits;",
+      "updated_at": 1783085288
+    },
+    "docs/configuration.md:paragraph:f9d08914082966ab69806b53b1dc7b56f6656d3d78f84637581512cbda3c42bb": {
+      "kind": "paragraph",
+      "source": "平台入站附件下载限制使用 __ELBOT_CODE_0__：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "f9d08914082966ab69806b53b1dc7b56f6656d3d78f84637581512cbda3c42bb",
+      "translation": "Platform inbound attachment download limits use __ELBOT_CODE_0__:\n",
+      "updated_at": 1783085288
     },
     "docs/configuration.md:paragraph:fc1e54ad6fecf7488ed8d0808836934a04ddcaace9d5987114a2382683724bd9": {
       "kind": "paragraph",
