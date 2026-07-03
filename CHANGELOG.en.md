@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Relative paths for ``read_file``, ``edit_file``, and ``send_file`` are now resolved based on the current workspace; Absolute paths can still be used temporarily and will return a warning.
 - `llm_usage` audit events changed from debug level to info level; token consumption data can now be recorded by default with `log_level=info`.
 - Disconnection reconnection for QQ OneBot, QQ Official, and Telegram platforms has been changed to exponential backoff (starting at 3s, doubling, capped at 10s) with downgraded logging: consecutive failures are logged as 'warn' only on the first occurrence and 'info' upon recovery, preventing log flooding in every round.
+- Platform media output now supports identifying `base64://`, `file://`, `http://`, and `https://` sources in `path`; Regular local paths are still handled according to the platform's default method.
+
+### Fixed
+
+- Fixed an issue where Chinese output might be garbled when the `shell` tool falls back to PowerShell on Windows.
+- When OneBot fails to send an image, a visible fallback will no longer appear, but it will still be logged.
+
 
 ## [v0.3.0-alpha - 2026-07-01]
 

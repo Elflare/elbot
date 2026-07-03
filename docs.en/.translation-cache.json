@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "0dc2cadd8756ae8a8156871880ddec25ae2588172f01855d31fe1ab1db38dda9",
+      "source_hash": "9b011a229d3114c057f04c0962f1e189447a0d916424f734591ebbfc5683393c",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1782958962
+      "updated_at": 1783048564
     },
     "README.zh-CN.md": {
       "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
@@ -69,6 +69,14 @@
       "source_hash": "020bcf5591a825ef02d663682d6a9f0f7c5924e7e37d3d17923b4d07b4e8d595",
       "translation": "__ELBOT_CODE_0__ previews for multiple tool calls in the same round will be merged into a single message to reduce platform spam.",
       "updated_at": 1782699038
+    },
+    "CHANGELOG.md:list:04792220a0453d2a80f396307ad2079f5a7ba1f001924b3ce14c678f7f132627": {
+      "kind": "list",
+      "source": "修复 Windows 下 __ELBOT_CODE_0__ 工具回退到 PowerShell 时中文输出可能乱码的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "04792220a0453d2a80f396307ad2079f5a7ba1f001924b3ce14c678f7f132627",
+      "translation": "Fixed an issue where Chinese output might be garbled when the __ELBOT_CODE_0__ tool falls back to PowerShell on Windows.",
+      "updated_at": 1783048564
     },
     "CHANGELOG.md:list:05a9e4447fd45b2d4076875eef3c2a7bdf6a16a84f6e8b476b1080ff1cffd0dd": {
       "kind": "list",
@@ -189,6 +197,14 @@
       "source_hash": "280823f9e19a44bcbfe92547cc46408bbcf2b93e26cd0cfcf98c3d26afaa1c3e",
       "translation": "**Tool Discovery Mechanism**: By default, only __ELBOT_CODE_0__ and the tool name are exposed, with the full schema injected on demand to reduce unnecessary context overhead.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:29d199145b36b120aac3bfe22147a8a3a6da9b52677cbbd283be284ab7d983ca": {
+      "kind": "list",
+      "source": "普通本地路径仍按平台默认方式处理。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "29d199145b36b120aac3bfe22147a8a3a6da9b52677cbbd283be284ab7d983ca",
+      "translation": "Regular local paths are still handled according to the platform's default method.",
+      "updated_at": 1783048564
     },
     "CHANGELOG.md:list:2a124153d199af5892e2e21c29055db5ce8a7cc96679b697f9e27de92a335335": {
       "kind": "list",
@@ -566,6 +582,14 @@
       "translation": "Update __ELBOT_CODE_0__ version to v3",
       "updated_at": 1782704139
     },
+    "CHANGELOG.md:list:aad5c8df94eeb1f80e25162d64492b3386d626e486461b5cff2001c143cc7fbc": {
+      "kind": "list",
+      "source": "OneBot 发送图片失败时，不再出现可见 fallback，但仍会记录日志。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "aad5c8df94eeb1f80e25162d64492b3386d626e486461b5cff2001c143cc7fbc",
+      "translation": "When OneBot fails to send an image, a visible fallback will no longer appear, but it will still be logged.",
+      "updated_at": 1783048564
+    },
     "CHANGELOG.md:list:ac3afc51b6a800e97966f71f733c8b5c6a8ed82d2528465a388929465e7a17c6": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 现在复用 __ELBOT_CODE_1__ 的 __ELBOT_CODE_2__ 编辑说明与执行能力，并在确认前预检编辑、ELyph 语法和 no-op 修改，在高风险确认详情中展示预检 diff。",
@@ -693,6 +717,14 @@
       "source_hash": "e165546c948bdf490fc215f58e25acceb7984ceaf0f31ee3e8d974b08e43db4f",
       "translation": "Direct modification of EL Skill files by __ELBOT_CODE_0__ or shell will be rejected before confirmation or execution; __ELBOT_CODE_1__ should be used instead.",
       "updated_at": 1782722558
+    },
+    "CHANGELOG.md:list:e2bba3f2fbf67c598073f06e0fb772f830654cf2b0ceca05bbb54f0354aa94bd": {
+      "kind": "list",
+      "source": "平台媒体输出支持在 __ELBOT_CODE_0__ 中识别 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__ 源；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "e2bba3f2fbf67c598073f06e0fb772f830654cf2b0ceca05bbb54f0354aa94bd",
+      "translation": "Platform media output now supports identifying __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, and __ELBOT_CODE_4__ sources in __ELBOT_CODE_0__;",
+      "updated_at": 1783048564
     },
     "CHANGELOG.md:list:e674fa7fc18af87b45660da3fff098ff0a482256ae0cdc7d64932ce221ad779c": {
       "kind": "list",
