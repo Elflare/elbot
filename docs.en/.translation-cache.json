@@ -21,9 +21,9 @@
       "updated_at": 1782958886
     },
     "docs/concepts.md": {
-      "source_hash": "ca26ca771e7c661b7563842a40d899b56b4aa4ef349dd10c1c453dff04aecf5b",
+      "source_hash": "6fa01d02bcae7c09b7285b26f6e99728a05fe7b2a2402a800d423702a8a14d69",
       "target": "docs.en/concepts.md",
-      "updated_at": 1783074327
+      "updated_at": 1783076136
     },
     "docs/configuration.md": {
       "source_hash": "327384171c0248703111f4ca28d5f229826658599345a073ef37f6dbd957ea07",
@@ -4725,6 +4725,14 @@
       "source_hash": "7ffa11ff072aa87fc6a8264d5a02d4c6f13b6f50944062c424fc660b113f8914",
       "translation": "Long-term memory uses Markdown files as human-readable source data and SQLite FTS as a reconstructible search index.\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:837ccbbc0448b78563d8b10355dbfd9407272aba7e54a55735896de8ebcdc401": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 可选，相当于为该工具分类，可用于 __ELBOT_CODE_1__ 预载；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "837ccbbc0448b78563d8b10355dbfd9407272aba7e54a55735896de8ebcdc401",
+      "translation": "__ELBOT_CODE_0__ is optional, acting as a category for the tool, and can be used for __ELBOT_CODE_1__ preloading;",
+      "updated_at": 1783076136
     },
     "docs/concepts.md:paragraph:864086a84543bbd2414a750721374355d5f246b144642cd0950725c05241128d": {
       "kind": "paragraph",
