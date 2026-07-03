@@ -204,6 +204,8 @@ actions = [
 
 执行本地脚本。脚本默认以 `plugins/` 为工作目录，`cwd` 可覆盖（绝对路径直接使用，相对路径仍基于 `plugins/`）。
 
+`command` 会按空白拆分为可执行程序和参数后直接执行，不会隐式套 `sh -c`。例如 `uv run script.py` 会直接执行 `uv`，`bash ./script.sh` 会直接执行 `bash`；需要管道、重定向、`&&` 等 shell 语法时，请显式写 `bash -lc "..."`、`sh -c "..."` 或平台对应解释器。
+
 默认 stdin 是包含完整 event 和 match 上下文的 JSON。也可以用 `stdin` 字段自定义 stdin 内容（支持模板渲染）。
 
 `stdout` 模式：
