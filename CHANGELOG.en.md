@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- AgentSkill now supports adding `ELBOT_SKILL.toml` in the root directory to register it as a tool: the LLM calls structured parameters, which ElBot translates into command-line argv for execution, reusing existing risk, confirmation, Hook, and audit log chains.
+- AgentSkill supports adding `ELBOT_SKILL.toml` in the root directory to register as a regular tool: LLM calls structured parameters, which ElBot translates into command-line argv for execution; `tags` can be used for tool classification, reusing existing risk, confirmation, Hook, and audit chains.
 - Added a hidden meta-tool `agent_skill` for reading or writing the `ELBOT_SKILL.toml` of AgentSkill; it validates the configuration before writing and reloads upon success.
 - Added `/usage` command: aggregates token consumption from the audit log, supporting summaries by model/day/Session, with shortcut parameters `-d` for days, `-m` for model, and `-s` for Session.
 - Added ``workspace`` tool: sets the shared working directory of the current foreground Session; path-related tools will resolve relative paths based on this directory.

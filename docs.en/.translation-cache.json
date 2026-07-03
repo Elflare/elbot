@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "e0fee54cde9467cbe44890cd1d502f439945beb701481075c9e2a9e7b06de08f",
+      "source_hash": "830baa3847c5920f814a30b2461608fdfc07eb2c96b9de00ad48b07b730650be",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783074551
+      "updated_at": 1783076190
     },
     "README.zh-CN.md": {
       "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
@@ -397,6 +397,14 @@
       "source_hash": "714c6568883b5a6b6d519ae10020e60c5d54a73ae7f39b8f6636810137a32aeb",
       "translation": "The risk level of the __ELBOT_CODE_0__ tool has been downgraded from high to medium.",
       "updated_at": 1782298716
+    },
+    "CHANGELOG.md:list:71add830d0076ca9ac6404ffbb06df12eec0eb2969554bfc0d4022b84f5ad16c": {
+      "kind": "list",
+      "source": "AgentSkill 支持在根目录添加 __ELBOT_CODE_0__ 注册为普通工具：LLM 调用结构化参数，ElBot 翻译为命令行 argv 执行，可用 __ELBOT_CODE_1__ 为工具分类，并复用现有风险、确认、Hook 与审计链路。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "71add830d0076ca9ac6404ffbb06df12eec0eb2969554bfc0d4022b84f5ad16c",
+      "translation": "AgentSkill supports adding __ELBOT_CODE_0__ in the root directory to register as a regular tool: LLM calls structured parameters, which ElBot translates into command-line argv for execution; __ELBOT_CODE_1__ can be used for tool classification, reusing existing risk, confirmation, Hook, and audit chains.",
+      "updated_at": 1783076190
     },
     "CHANGELOG.md:list:7451bbf5a68e98a284488175db4e8df8fae0a4cc7c3d7b20b8c10878e7390e09": {
       "kind": "list",
