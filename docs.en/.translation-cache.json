@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "907dba1724a45d481df1e06e54e8a99e998cfdbac73fae9a2f09963cfd360e89",
+      "source_hash": "d82d4de88069060d1b1e3941fce9eef1ef76acf57373d330f9ab628eb9e1747a",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783081840
+      "updated_at": 1783085325
     },
     "README.zh-CN.md": {
       "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
@@ -165,6 +165,14 @@
       "source_hash": "1945bb5d4629d8b9098d57e66a570df93853f28efd0ddb3064b15acd7b299c38",
       "translation": "Added __ELBOT_CODE_0__ command: aggregates token consumption from the audit log, supporting summaries by model/day/Session, with shortcut parameters __ELBOT_CODE_1__ for days, __ELBOT_CODE_2__ for model, and __ELBOT_CODE_3__ for Session.",
       "updated_at": 1782884148
+    },
+    "CHANGELOG.md:list:20944797b0b64f3983e8a04062f3f6faea56013fa4b277db270982796b930d37": {
+      "kind": "list",
+      "source": "QQ OneBot 支持入站文件下载保存，不唤起 LLM。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "20944797b0b64f3983e8a04062f3f6faea56013fa4b277db270982796b930d37",
+      "translation": "QQ OneBot now supports downloading and saving inbound files without invoking the LLM.",
+      "updated_at": 1783085325
     },
     "CHANGELOG.md:list:21bcff96ea97868ed7a73b08187eef3ce889b28e69c118b725a5783d07dcadc3": {
       "kind": "list",
@@ -333,6 +341,14 @@
       "source_hash": "572872f4348e759b46f65964708d6035ffe736d5c7f16bbeca3641f8458acd29",
       "translation": "__ELBOT_CODE_0__ now controls the total duration of a full round of user requests; by default, __ELBOT_CODE_1__ indicates no time limit;",
       "updated_at": 1782574901
+    },
+    "CHANGELOG.md:list:57c02c13c5ed82c755fc0eeb729dc126624508a010829430deda85b6046bb549": {
+      "kind": "list",
+      "source": "新增 __ELBOT_CODE_0__ 配置，统一控制平台入站文件最大保存大小和下载超时。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "57c02c13c5ed82c755fc0eeb729dc126624508a010829430deda85b6046bb549",
+      "translation": "Added __ELBOT_CODE_0__ configuration to uniformly control the maximum save size and download timeout for platform inbound files.",
+      "updated_at": 1783085325
     },
     "CHANGELOG.md:list:59aef5f6af2a0610f829cfbdab62ee2b1c7298f9546374f556496c5b31f1f2e1": {
       "kind": "list",
