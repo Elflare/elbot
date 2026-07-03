@@ -37,48 +37,48 @@ type LogManager interface {
 
 // Agent is the minimal agent core that handles messages and commands.
 type Agent struct {
-	platform                    platform.PlatformAdapter
-	platformSenders             map[string]delivery.MessageSender
-	modelRuntime                modelRuntimeState
-	statePath                   string
-	stateModTime                time.Time
-	store                       storage.Store
-	sessions                    *session.Service
-	requests                    *request.Manager
-	turns                       *turn.Manager
-	commands                    *command.Router
-	completion                  *completion.Service
-	titleGen                    *titleGenerator
-	soul                        SoulProvider
-	promptBuilder               PromptBuilder
-	toolRuntime                 toolRuntimeState
-	securityPolicy              *security.Policy
-	contextLoader               contextmgr.Loader
-	windowResolver              *contextmgr.WindowResolver
-	compressor                  contextmgr.Compressor
-	contextConfig               config.ContextConfig
-	hooks                       hook.Manager
-	outputs                     delivery.Manager
-	modelMetadata               config.ModelMetadataConfig
-	compactModel                config.ModelSelection
-	namingModel                 config.ModelSelection
-	usageMu                     sync.Mutex
-	lastUsage                   map[string]*llm.Usage
-	statusMu                    sync.Mutex
-	runtimeStatus               map[string]runtimestatus.Snapshot
-	pendingCompact              map[string]bool
-	lastSessionIDs              []string
-	sessionListPageSize         int
-	cleanupRetentionDays        int
-	nonSuperadminIdleTTLMinutes int
-	sandboxRoot                 string
-	logger                      *slog.Logger
-	auditLogger                 *slog.Logger
-	logReader                   logging.Reader
-	autoConfirmMu               sync.Mutex
-	autoConfirmSession          map[string]bool
-	autoConfirmTools            map[string]map[string]bool
-	visionFallbackMu            sync.Mutex
+	platform             platform.PlatformAdapter
+	platformSenders      map[string]delivery.MessageSender
+	modelRuntime         modelRuntimeState
+	statePath            string
+	stateModTime         time.Time
+	store                storage.Store
+	sessions             *session.Service
+	requests             *request.Manager
+	turns                *turn.Manager
+	commands             *command.Router
+	completion           *completion.Service
+	titleGen             *titleGenerator
+	soul                 SoulProvider
+	promptBuilder        PromptBuilder
+	toolRuntime          toolRuntimeState
+	securityPolicy       *security.Policy
+	contextLoader        contextmgr.Loader
+	windowResolver       *contextmgr.WindowResolver
+	compressor           contextmgr.Compressor
+	contextConfig        config.ContextConfig
+	hooks                hook.Manager
+	outputs              delivery.Manager
+	modelMetadata        config.ModelMetadataConfig
+	compactModel         config.ModelSelection
+	namingModel          config.ModelSelection
+	usageMu              sync.Mutex
+	lastUsage            map[string]*llm.Usage
+	statusMu             sync.Mutex
+	runtimeStatus        map[string]runtimestatus.Snapshot
+	pendingCompact       map[string]bool
+	lastSessionIDs       []string
+	sessionListPageSize  int
+	cleanupRetentionDays int
+	idleExpiration       session.IdleExpirationConfig
+	sandboxRoot          string
+	logger               *slog.Logger
+	auditLogger          *slog.Logger
+	logReader            logging.Reader
+	autoConfirmMu        sync.Mutex
+	autoConfirmSession   map[string]bool
+	autoConfirmTools     map[string]map[string]bool
+	visionFallbackMu     sync.Mutex
 
 	visionFallbackNotified map[string]bool
 	responseTimeout        time.Duration
@@ -157,12 +157,12 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 
 		discoveredTools: map[string]map[string]llm.ToolSchema{},
 
-		sessionListPageSize:         config.Default().View.SessionListPageSize,
-		cleanupRetentionDays:        30,
-		nonSuperadminIdleTTLMinutes: config.Default().Session.NonSuperadminIdleTTLMinutes,
-		sandboxRoot:                 config.Default().Sandbox.Root,
-		actorID:                     "cli:local",
-		scopeID:                     "local",
+		sessionListPageSize:  config.Default().View.SessionListPageSize,
+		cleanupRetentionDays: 30,
+		idleExpiration:       sessionIdleExpirationConfig(config.Default().Session.IdleExpiration),
+		sandboxRoot:          config.Default().Sandbox.Root,
+		actorID:              "cli:local",
+		scopeID:              "local",
 	}
 	a.rebuildSystemPrompt()
 	a.attachLLMRetryNotifier(client, workModel.Provider)
@@ -444,11 +444,17 @@ func (a *Agent) SetCleanupRetentionDays(days int) {
 	a.cleanupRetentionDays = days
 }
 
-func (a *Agent) SetNonSuperadminIdleTTLMinutes(minutes int) {
-	if minutes < 0 {
-		minutes = 0
+func (a *Agent) SetSessionIdleExpiration(cfg config.SessionIdleExpirationConfig) {
+	a.idleExpiration = sessionIdleExpirationConfig(cfg)
+}
+
+func sessionIdleExpirationConfig(cfg config.SessionIdleExpirationConfig) session.IdleExpirationConfig {
+	return session.IdleExpirationConfig{
+		GroupUserTTLMinutes:         cfg.GroupUserTTLMinutes,
+		GroupSuperadminTTLMinutes:   cfg.GroupSuperadminTTLMinutes,
+		PrivateUserTTLMinutes:       cfg.PrivateUserTTLMinutes,
+		PrivateSuperadminTTLMinutes: cfg.PrivateSuperadminTTLMinutes,
 	}
-	a.nonSuperadminIdleTTLMinutes = minutes
 }
 
 func (a *Agent) SetSandboxRoot(root string) {

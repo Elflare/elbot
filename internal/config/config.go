@@ -141,9 +141,16 @@ type SecurityConfig struct {
 }
 
 type SessionConfig struct {
-	DefaultMode                 string              `toml:"default_mode"`
-	NonSuperadminIdleTTLMinutes int                 `toml:"non_superadmin_idle_ttl_minutes"`
-	Naming                      SessionNamingConfig `toml:"naming"`
+	DefaultMode    string                      `toml:"default_mode"`
+	IdleExpiration SessionIdleExpirationConfig `toml:"idle_expiration"`
+	Naming         SessionNamingConfig         `toml:"naming"`
+}
+
+type SessionIdleExpirationConfig struct {
+	GroupUserTTLMinutes         int `toml:"group_user_ttl_minutes"`
+	GroupSuperadminTTLMinutes   int `toml:"group_superadmin_ttl_minutes"`
+	PrivateUserTTLMinutes       int `toml:"private_user_ttl_minutes"`
+	PrivateSuperadminTTLMinutes int `toml:"private_superadmin_ttl_minutes"`
 }
 
 type MaintenanceConfig struct {
@@ -455,8 +462,32 @@ func Default() *Config {
 func defaultAppConfig() *Config {
 	cfg := &Config{}
 	cfg.applyAppDefaults()
-	cfg.Session.NonSuperadminIdleTTLMinutes = 10
+	cfg.Session.IdleExpiration = defaultSessionIdleExpirationConfig()
 	return cfg
+}
+
+func defaultSessionIdleExpirationConfig() SessionIdleExpirationConfig {
+	return SessionIdleExpirationConfig{
+		GroupUserTTLMinutes:         10,
+		GroupSuperadminTTLMinutes:   10,
+		PrivateUserTTLMinutes:       10,
+		PrivateSuperadminTTLMinutes: 0,
+	}
+}
+
+func (c *Config) applySessionIdleExpirationDefaults() {
+	if c.Session.IdleExpiration.GroupUserTTLMinutes < 0 {
+		c.Session.IdleExpiration.GroupUserTTLMinutes = 0
+	}
+	if c.Session.IdleExpiration.GroupSuperadminTTLMinutes < 0 {
+		c.Session.IdleExpiration.GroupSuperadminTTLMinutes = 0
+	}
+	if c.Session.IdleExpiration.PrivateUserTTLMinutes < 0 {
+		c.Session.IdleExpiration.PrivateUserTTLMinutes = 0
+	}
+	if c.Session.IdleExpiration.PrivateSuperadminTTLMinutes < 0 {
+		c.Session.IdleExpiration.PrivateSuperadminTTLMinutes = 0
+	}
 }
 
 func loadTOML(path string, out any) error {
@@ -549,9 +580,7 @@ func (c *Config) applyAppDefaults() {
 		c.Platform = PlatformConfig{}
 	}
 	c.applyElnisDefaults()
-	if c.Session.NonSuperadminIdleTTLMinutes < 0 {
-		c.Session.NonSuperadminIdleTTLMinutes = 0
-	}
+	c.applySessionIdleExpirationDefaults()
 	if c.Maintenance.LogCleanup.Schedule == "" {
 		c.Maintenance.LogCleanup.Schedule = "0 3 * * *"
 	}

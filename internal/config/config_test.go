@@ -177,7 +177,12 @@ ws_url = "ws://example"
 trigger_keywords = ["芙莉丝"]
 
 [session]
-non_superadmin_idle_ttl_minutes = 0
+
+[session.idle_expiration]
+group_user_ttl_minutes = 0
+group_superadmin_ttl_minutes = 12
+private_user_ttl_minutes = 13
+private_superadmin_ttl_minutes = 14
 
 [session.naming]
 trigger_step = 3
@@ -310,8 +315,9 @@ prompt = "Use agent tools."
 	if _, ok := cfg.Platform["qq_onebot"]; ok {
 		t.Fatal("config should not keep legacy qq_onebot platform name")
 	}
-	if cfg.Session.NonSuperadminIdleTTLMinutes != 0 {
-		t.Fatalf("non-superadmin idle ttl = %d, want disabled", cfg.Session.NonSuperadminIdleTTLMinutes)
+	wantIdleExpiration := SessionIdleExpirationConfig{GroupUserTTLMinutes: 0, GroupSuperadminTTLMinutes: 12, PrivateUserTTLMinutes: 13, PrivateSuperadminTTLMinutes: 14}
+	if !reflect.DeepEqual(cfg.Session.IdleExpiration, wantIdleExpiration) {
+		t.Fatalf("idle expiration = %#v, want %#v", cfg.Session.IdleExpiration, wantIdleExpiration)
 	}
 	if cfg.NamingModel.Provider != "deepseek" || cfg.NamingModel.Model != "deepseek-title" {
 		t.Fatalf("naming model = %q/%q", cfg.NamingModel.Provider, cfg.NamingModel.Model)
@@ -414,8 +420,9 @@ model = "deepseek-chat"
 	if cfg.Session.DefaultMode != "work" {
 		t.Fatalf("default mode = %q", cfg.Session.DefaultMode)
 	}
-	if cfg.Session.NonSuperadminIdleTTLMinutes != 10 {
-		t.Fatalf("default non-superadmin idle ttl = %d", cfg.Session.NonSuperadminIdleTTLMinutes)
+	wantIdleExpiration := SessionIdleExpirationConfig{GroupUserTTLMinutes: 10, GroupSuperadminTTLMinutes: 10, PrivateUserTTLMinutes: 10, PrivateSuperadminTTLMinutes: 0}
+	if !reflect.DeepEqual(cfg.Session.IdleExpiration, wantIdleExpiration) {
+		t.Fatalf("default idle expiration = %#v, want %#v", cfg.Session.IdleExpiration, wantIdleExpiration)
 	}
 	wantDB := filepath.Clean(filepath.Join(platformDefaultDataDir(), "elbot_sessions.db"))
 	if cfg.Storage.SessionsSQLitePath != wantDB {

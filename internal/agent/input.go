@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -10,6 +9,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/platform"
 	"elbot/internal/security"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -98,25 +98,18 @@ func (a *Agent) handleInput(ctx context.Context, text string) error {
 
 func (a *Agent) expireIdleCurrentSession(ctx context.Context) error {
 	actor := a.actor(ctx)
-	if actor.Role == security.RoleSuperadmin || a.nonSuperadminIdleTTLMinutes <= 0 {
-		return nil
-	}
-	scope := a.scope(ctx)
-	session, err := a.sessions.Current(ctx, scope)
+	result, err := a.sessions.ExpireIdleCurrent(ctx, session.ExpireIdleRequest{
+		Scope:        a.scope(ctx),
+		IsSuperadmin: actor.Role == security.RoleSuperadmin,
+		Config:       a.idleExpiration,
+		Now:          time.Now(),
+	})
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil
-		}
 		return err
 	}
-	cutoff := time.Now().Add(-time.Duration(a.nonSuperadminIdleTTLMinutes) * time.Minute)
-	if !session.UpdatedAt.Before(cutoff) {
-		return nil
+	if result.Expired {
+		a.audit("session_idle_expired", "session_id", result.SessionID, "actor_id", actor.ID, "ttl_minutes", result.TTLMinutes)
 	}
-	if err := a.sessions.Delete(ctx, scope, session.ID); err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return err
-	}
-	a.audit("session_idle_expired", "session_id", session.ID, "actor_id", actor.ID, "ttl_minutes", a.nonSuperadminIdleTTLMinutes)
 	return nil
 }
 

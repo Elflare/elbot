@@ -320,7 +320,7 @@ func Run(ctx context.Context, opts Options) error {
 	agt.SetOutputManager(delivery.NewManager(nil, logger))
 	agt.SetSessionListPageSize(cfg.View.SessionListPageSize)
 	agt.SetCleanupRetentionDays(cfg.Maintenance.SessionCleanup.RetentionDays)
-	agt.SetNonSuperadminIdleTTLMinutes(cfg.Session.NonSuperadminIdleTTLMinutes)
+	agt.SetSessionIdleExpiration(cfg.Session.IdleExpiration)
 	agt.SetSandboxRoot(cfg.Sandbox.Root)
 	agt.SetLogManager(logs)
 	agt.SetToolRuntime(toolRegistry, skillManager.Scanner)

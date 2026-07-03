@@ -153,7 +153,12 @@ superadmin_confirm_risk = "high"
 cli = ["local"]
 
 [session]
-non_superadmin_idle_ttl_minutes = 10
+
+[session.idle_expiration]
+group_user_ttl_minutes = 10
+group_superadmin_ttl_minutes = 10
+private_user_ttl_minutes = 10
+private_superadmin_ttl_minutes = 0
 
 [session.naming]
 trigger_step = 3

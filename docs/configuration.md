@@ -203,6 +203,30 @@ ELBOT_GO_BINARY=/usr/local/go/bin/go
 Environment=ELBOT_GO_BINARY=/usr/local/go/bin/go
 ```
 
+## Session 配置
+
+`app.toml` 中的 `[session.idle_expiration]` 控制当前 Session 的闲置过期时间，单位为分钟：
+
+```toml
+[session.idle_expiration]
+group_user_ttl_minutes = 10
+group_superadmin_ttl_minutes = 10
+private_user_ttl_minutes = 10
+private_superadmin_ttl_minutes = 0
+```
+
+字段说明：
+
+- `group_user_ttl_minutes`：群聊中普通用户当前 Session 的闲置过期时间。
+- `group_superadmin_ttl_minutes`：群聊中超级管理员当前 Session 的闲置过期时间。
+- `private_user_ttl_minutes`：私聊中普通用户当前 Session 的闲置过期时间。
+- `private_superadmin_ttl_minutes`：私聊中超级管理员当前 Session 的闲置过期时间。
+- 任一字段设为 `0` 表示禁用对应场景的闲置过期。
+
+默认配置下，群聊中的普通用户和超级管理员都会在闲置 10 分钟后开启新 Session；私聊中普通用户闲置 10 分钟后开启新 Session；私聊中超级管理员不过期。
+
+这里的“超级管理员”指 `[security.superadmins]` 中配置的 ElBot 超级管理员。平台群主或群管理员如果不在超级管理员列表中，仍按普通用户规则处理。
+
 ## 模型状态配置
 
 `state.toml` 保存运行态模型选择：

@@ -1015,72 +1015,72 @@ func TestConfiguredCommandPrefixAlias(t *testing.T) {
 	}
 }
 
-func TestNonSuperadminIdleTTLExpiresCurrentSession(t *testing.T) {
-	p := &fakePlatform{}
-	store := newTestStore(t)
-	f := &fakeLLM{replies: []string{"fresh reply"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetNonSuperadminIdleTTLMinutes(10)
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "group:9"})
-
-	oldSession, err := a.sessions.Create(ctx, a.scope(ctx), "old")
-	if err != nil {
-		t.Fatalf("create old session: %v", err)
+func TestSessionIdleExpiration(t *testing.T) {
+	defaultIdleExpiration := config.SessionIdleExpirationConfig{
+		GroupUserTTLMinutes:         10,
+		GroupSuperadminTTLMinutes:   10,
+		PrivateUserTTLMinutes:       10,
+		PrivateSuperadminTTLMinutes: 0,
 	}
-	oldSession.UpdatedAt = time.Now().Add(-11 * time.Minute)
-	if err := store.Sessions().Update(ctx, oldSession); err != nil {
-		t.Fatalf("age old session: %v", err)
-	}
-
-	if err := a.HandleMessage(ctx, "hello again"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
-	}
-	if _, err := store.Sessions().Get(ctx, oldSession.ID); !errors.Is(err, storage.ErrNotFound) {
-		t.Fatalf("old session err = %v, want not found", err)
-	}
-	current, err := a.sessions.Current(ctx, a.scope(ctx))
-	if err != nil {
-		t.Fatalf("current session: %v", err)
-	}
-	if current.ID == oldSession.ID {
-		t.Fatal("current session was not replaced")
-	}
-	messages, err := store.Messages().ListBySession(ctx, current.ID)
-	if err != nil {
-		t.Fatalf("list messages: %v", err)
-	}
-	if len(messages) != 2 || messages[0].Content != "hello again" || messages[1].Content != "fresh reply" {
-		t.Fatalf("messages = %#v", messages)
-	}
-}
-
-func TestSuperadminIdleTTLKeepsCurrentSession(t *testing.T) {
-	p := &fakePlatform{}
-	store := newTestStore(t)
-	f := &fakeLLM{replies: []string{"same reply"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"qq": {"1"}}))
-	a.SetNonSuperadminIdleTTLMinutes(10)
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "group:9"})
-
-	oldSession, err := a.sessions.Create(ctx, a.scope(ctx), "old")
-	if err != nil {
-		t.Fatalf("create old session: %v", err)
-	}
-	oldSession.UpdatedAt = time.Now().Add(-11 * time.Minute)
-	if err := store.Sessions().Update(ctx, oldSession); err != nil {
-		t.Fatalf("age old session: %v", err)
+	tests := []struct {
+		name        string
+		ctx         platform.MessageContext
+		superadmin  bool
+		cfg         config.SessionIdleExpirationConfig
+		wantExpired bool
+	}{
+		{name: "group user expires", ctx: platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "group:9"}, cfg: defaultIdleExpiration, wantExpired: true},
+		{name: "group superadmin expires", ctx: platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "group:9"}, superadmin: true, cfg: defaultIdleExpiration, wantExpired: true},
+		{name: "private user expires", ctx: platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "private:1"}, cfg: defaultIdleExpiration, wantExpired: true},
+		{name: "private superadmin keeps", ctx: platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "private:1"}, superadmin: true, cfg: defaultIdleExpiration, wantExpired: false},
+		{name: "disabled group user keeps", ctx: platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "group:9"}, cfg: config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 0, GroupSuperadminTTLMinutes: 10, PrivateUserTTLMinutes: 10}, wantExpired: false},
 	}
 
-	if err := a.HandleMessage(ctx, "hello admin"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
-	}
-	current, err := a.sessions.Current(ctx, a.scope(ctx))
-	if err != nil {
-		t.Fatalf("current session: %v", err)
-	}
-	if current.ID != oldSession.ID {
-		t.Fatalf("current session = %s, want %s", current.ID, oldSession.ID)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &fakePlatform{}
+			store := newTestStore(t)
+			f := &fakeLLM{replies: []string{"fresh reply"}}
+			a := New(p, f, "test-model", config.ProviderConfig{}, store)
+			if tt.superadmin {
+				a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"qq": {"1"}}))
+			}
+			a.SetSessionIdleExpiration(tt.cfg)
+			ctx := platform.WithMessageContext(context.Background(), tt.ctx)
+
+			oldSession, err := a.sessions.Create(ctx, a.scope(ctx), "old")
+			if err != nil {
+				t.Fatalf("create old session: %v", err)
+			}
+			oldSession.UpdatedAt = time.Now().Add(-11 * time.Minute)
+			if err := store.Sessions().Update(ctx, oldSession); err != nil {
+				t.Fatalf("age old session: %v", err)
+			}
+
+			if err := a.HandleMessage(ctx, "hello again"); err != nil {
+				t.Fatalf("HandleMessage: %v", err)
+			}
+			_, oldErr := store.Sessions().Get(ctx, oldSession.ID)
+			current, err := a.sessions.Current(ctx, a.scope(ctx))
+			if err != nil {
+				t.Fatalf("current session: %v", err)
+			}
+			if tt.wantExpired {
+				if !errors.Is(oldErr, storage.ErrNotFound) {
+					t.Fatalf("old session err = %v, want not found", oldErr)
+				}
+				if current.ID == oldSession.ID {
+					t.Fatal("current session was not replaced")
+				}
+			} else {
+				if oldErr != nil {
+					t.Fatalf("old session err = %v, want nil", oldErr)
+				}
+				if current.ID != oldSession.ID {
+					t.Fatalf("current session = %s, want %s", current.ID, oldSession.ID)
+				}
+			}
+		})
 	}
 }
 
