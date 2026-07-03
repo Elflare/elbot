@@ -12,12 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- AgentSkill now supports adding `ELBOT_SKILL.toml` in the root directory to register it as a tool: the LLM calls structured parameters, which ElBot translates into command-line argv for execution, reusing existing risk, confirmation, Hook, and audit log chains.
+- Added a hidden meta-tool `agent_skill` for reading or writing the `ELBOT_SKILL.toml` of AgentSkill; it validates the configuration before writing and reloads upon success.
 - Added `/usage` command: aggregates token consumption from the audit log, supporting summaries by model/day/Session, with shortcut parameters `-d` for days, `-m` for model, and `-s` for Session.
 - Added ``workspace`` tool: sets the shared working directory of the current foreground Session; path-related tools will resolve relative paths based on this directory.
 - The `/requests` command now displays the current execution stage (preparing/llm/tool/sending) and the duration of each stage for every turn, allowing you to distinguish whether the LLM is slow or the platform delivery is stuck.
 
 ### Changed
 
+- AgentSkill no longer uses `python_skill_run` for fixed wrapping to execute Python scripts; When `ELBOT_SKILL.toml` is absent, it remains a descriptive Skill, and general-purpose tools such as shell can be used as per the documentation.
+- Skill scanning has been changed to delayed execution after startup, with a fallback to ensure scanning upon the first use of `discover_tool`, reducing startup blocking.
+- Session idle expiration is now managed by four `[session.idle_expiration]` configurations, which separately control the current Session expiration time for ordinary users and superadmins in group chats and private chats; By default, all users in group chats expire, while superadmins in private chats do not expire.
 - ``shell`` tool removed the ``path`` parameter; commands are executed in the current workspace by default, while background tasks remain restricted to their respective sandboxes.
 - Relative paths for ``read_file``, ``edit_file``, and ``send_file`` are now resolved based on the current workspace; Absolute paths can still be used temporarily and will return a warning.
 - `llm_usage` audit events changed from debug level to info level; token consumption data can now be recorded by default with `log_level=info`.

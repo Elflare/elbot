@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "9b011a229d3114c057f04c0962f1e189447a0d916424f734591ebbfc5683393c",
+      "source_hash": "e0fee54cde9467cbe44890cd1d502f439945beb701481075c9e2a9e7b06de08f",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783048564
+      "updated_at": 1783074551
     },
     "README.zh-CN.md": {
       "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
@@ -318,6 +318,14 @@
       "translation": "__ELBOT_CODE_0__ no longer automatically reloads after modifying __ELBOT_CODE_1__; __ELBOT_CODE_2__ must be called after modification to take effect.",
       "updated_at": 1782722558
     },
+    "CHANGELOG.md:list:55588c10892a80f8b20bb9511361dfb0fd9904db00b20534f96cb5989862a0df": {
+      "kind": "list",
+      "source": "AgentSkill 不再通过 __ELBOT_CODE_0__ 固定包装执行 Python 脚本；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "55588c10892a80f8b20bb9511361dfb0fd9904db00b20534f96cb5989862a0df",
+      "translation": "AgentSkill no longer uses __ELBOT_CODE_0__ for fixed wrapping to execute Python scripts;",
+      "updated_at": 1783074551
+    },
     "CHANGELOG.md:list:572872f4348e759b46f65964708d6035ffe736d5c7f16bbeca3641f8458acd29": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 现在控制整轮用户请求总时长，默认 __ELBOT_CODE_1__ 表示不限时；",
@@ -333,6 +341,14 @@
       "source_hash": "59aef5f6af2a0610f829cfbdab62ee2b1c7298f9546374f556496c5b31f1f2e1",
       "translation": "LLM request timeout configuration changed to __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__; the old __ELBOT_CODE_3__ has been removed;",
       "updated_at": 1782461728
+    },
+    "CHANGELOG.md:list:5b017e55b17383861bd993aad6190054f3317280f9908c4eeee3c45dae46b41a": {
+      "kind": "list",
+      "source": "默认群聊所有用户过期，私聊超级管理员不过期。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "5b017e55b17383861bd993aad6190054f3317280f9908c4eeee3c45dae46b41a",
+      "translation": "By default, all users in group chats expire, while superadmins in private chats do not expire.",
+      "updated_at": 1783074551
     },
     "CHANGELOG.md:list:5ba1e7bae3138806db3d563894180256e849e05fa7ca9dc5679e584ad9931382": {
       "kind": "list",
@@ -405,6 +421,14 @@
       "source_hash": "7500a6bebabf390101368282085b77b23e0a803832db24807d92874bbcf13f04",
       "translation": "Added __ELBOT_CODE_2__ and __ELBOT_CODE_3__ parameters to the __ELBOT_CODE_1__ operation of __ELBOT_CODE_0__: when __ELBOT_CODE_4__, it matches the entire line by single-line prefix (tolerating leading indentation to avoid newline character matching errors); __ELBOT_CODE_5__ (default) maintains exact substring semantics.",
       "updated_at": 1782298716
+    },
+    "CHANGELOG.md:list:75ad69691d1674c433a03bbd653863775b7dccf8ca915602d5d77c359ae93fc7": {
+      "kind": "list",
+      "source": "没有 __ELBOT_CODE_0__ 时保持说明型 Skill，可按文档使用 shell 等通用工具。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "75ad69691d1674c433a03bbd653863775b7dccf8ca915602d5d77c359ae93fc7",
+      "translation": "When __ELBOT_CODE_0__ is absent, it remains a descriptive Skill, and general-purpose tools such as shell can be used as per the documentation.",
+      "updated_at": 1783074551
     },
     "CHANGELOG.md:list:7d4eb6c7f9421281249ea4260a8e00117bc3dc92316a27b354181c10219e5e5d": {
       "kind": "list",
@@ -558,6 +582,14 @@
       "translation": "Elvena v3 action channel: Elnis supports __ELBOT_CODE_0__, with initial support for raw platform APIs as well as __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ capabilities;",
       "updated_at": 1782376912
     },
+    "CHANGELOG.md:list:a00ce6a14a49ad47de898b2bcf6e66396bbff7e68d046017ace4ec5ab76bab70": {
+      "kind": "list",
+      "source": "新增隐藏元工具 __ELBOT_CODE_0__，用于读取或写入 AgentSkill 的 __ELBOT_CODE_1__，写入前校验配置并在成功后 reload。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a00ce6a14a49ad47de898b2bcf6e66396bbff7e68d046017ace4ec5ab76bab70",
+      "translation": "Added a hidden meta-tool __ELBOT_CODE_0__ for reading or writing the __ELBOT_CODE_1__ of AgentSkill; it validates the configuration before writing and reloads upon success.",
+      "updated_at": 1783074551
+    },
     "CHANGELOG.md:list:a71cbc0c9f36ac911e0b5692c0166f7e157090086356a299746ba3b3ff1db19b": {
       "kind": "list",
       "source": "hook log日志不再重复记录",
@@ -589,6 +621,14 @@
       "source_hash": "aad5c8df94eeb1f80e25162d64492b3386d626e486461b5cff2001c143cc7fbc",
       "translation": "When OneBot fails to send an image, a visible fallback will no longer appear, but it will still be logged.",
       "updated_at": 1783048564
+    },
+    "CHANGELOG.md:list:ab58d9dcd816b9be7a67a5dda1fe70b790eeb3652be980bac9d344e0fa067f37": {
+      "kind": "list",
+      "source": "Skill 扫描改为启动后延迟执行，并在 __ELBOT_CODE_0__ 首次使用时兜底确保扫描，减少启动阻塞。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ab58d9dcd816b9be7a67a5dda1fe70b790eeb3652be980bac9d344e0fa067f37",
+      "translation": "Skill scanning has been changed to delayed execution after startup, with a fallback to ensure scanning upon the first use of __ELBOT_CODE_0__, reducing startup blocking.",
+      "updated_at": 1783074551
     },
     "CHANGELOG.md:list:ac3afc51b6a800e97966f71f733c8b5c6a8ed82d2528465a388929465e7a17c6": {
       "kind": "list",
@@ -678,6 +718,14 @@
       "translation": "**Elnis listening hub**: Receives external events delivered by Elwisp via the Elvena HTTP protocol, supporting three modes (record/direct/llm) and multi-target delivery.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:d4fabe1b31e44b62764a519526e02a1a731d546f2d3cbb0e101eb7b787c54f82": {
+      "kind": "list",
+      "source": "AgentSkill 支持在根目录添加 __ELBOT_CODE_0__ 注册为普通工具：LLM 调用结构化参数，ElBot 翻译为命令行 argv 执行，并复用现有风险、确认、Hook 与审计链路。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d4fabe1b31e44b62764a519526e02a1a731d546f2d3cbb0e101eb7b787c54f82",
+      "translation": "AgentSkill now supports adding __ELBOT_CODE_0__ in the root directory to register it as a tool: the LLM calls structured parameters, which ElBot translates into command-line argv for execution, reusing existing risk, confirmation, Hook, and audit log chains.",
+      "updated_at": 1783074551
+    },
     "CHANGELOG.md:list:d645cf77c4ee588c46e1393622a3b1673b35ad938b425f17eba22044d2bdc5a7": {
       "kind": "list",
       "source": "Hook rules 可通过 __ELBOT_CODE_0__ action 执行脚本，并用 __ELBOT_CODE_1__ 经内部 Elvena Bus 触发 Elnis direct/LLM/calls；",
@@ -749,6 +797,14 @@
       "source_hash": "e81822b53b2270a9a2f78edb916b8ee9c970a516ec77a84dd14e91bb46b0c554",
       "translation": "Hook rules can execute scripts via __ELBOT_CODE_0__ action, and use __ELBOT_CODE_1__ to trigger Elnis direct/LLM/calls via the internal Elvena Bus.",
       "updated_at": 1782376912
+    },
+    "CHANGELOG.md:list:ed3c6eabf99307e9b550f72edf9f95006bb9602d68c39639d54b35889096a8ff": {
+      "kind": "list",
+      "source": "Session 闲置过期改为 __ELBOT_CODE_0__ 四项配置，分别控制群聊/私聊下普通用户和超级管理员的当前 Session 过期时间；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ed3c6eabf99307e9b550f72edf9f95006bb9602d68c39639d54b35889096a8ff",
+      "translation": "Session idle expiration is now managed by four __ELBOT_CODE_0__ configurations, which separately control the current Session expiration time for ordinary users and superadmins in group chats and private chats;",
+      "updated_at": 1783074551
     },
     "CHANGELOG.md:list:f191a10fa95a661a532ab05af86e47b4652486eaaadeac994e312f48821af516": {
       "kind": "list",
