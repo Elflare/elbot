@@ -26,9 +26,9 @@
       "updated_at": 1783076136
     },
     "docs/configuration.md": {
-      "source_hash": "327384171c0248703111f4ca28d5f229826658599345a073ef37f6dbd957ea07",
+      "source_hash": "09fbbf7b67dad3e9b4e593e6e30a68d6771d0575e4e795f90686ec29bad0aea2",
       "target": "docs.en/configuration.md",
-      "updated_at": 1783074493
+      "updated_at": 1783076156
     },
     "docs/elnis-usage.md": {
       "source_hash": "c8d68d4fc76a453ea4008b304cc4d8243b8b2ebc634494f4fb92016b8040c782",
@@ -6069,6 +6069,14 @@
       "source_hash": "923100a5b4347b9904cbd9f94290800521403abf55e71e04320df57186e0c8b5",
       "translation": "__ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__ are optional model slots for Elnis LLM events;",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:list:92be4bc0656078dbf910e2f07eb8ea799f5bb0a08c41a1203b762904f9f710bb": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：可选，相当于为该工具分类，可用于 __ELBOT_CODE_1__ 预载。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "92be4bc0656078dbf910e2f07eb8ea799f5bb0a08c41a1203b762904f9f710bb",
+      "translation": "__ELBOT_CODE_0__: Optional, equivalent to categorizing the tool, which can be used for __ELBOT_CODE_1__ preloading.",
+      "updated_at": 1783076156
     },
     "docs/configuration.md:list:9356104be7e2173190aa205667e9f6013e011e4a85c8913418c49f5f0a5a2eb8": {
       "kind": "list",

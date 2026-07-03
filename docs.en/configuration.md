@@ -183,6 +183,7 @@ AgentSkill is used as documentation by default. To register `skills/agent/<skill
 
 ```toml
 risk = "medium"
+tags = ["doc"]
 command = ["python", "foo.py"]
 timeout_seconds = 30
 expose_root = false
@@ -204,6 +205,7 @@ input = "--input"
 Field descriptions:
 
 - `risk`: Required, allows `safe`, `low`, `medium`, `high`, `critical`.
+- `tags`: Optional, equivalent to categorizing the tool, which can be used for `@tool:<tag>` preloading.
 - `command`: Required, command array, do not use shell strings.
 - `parameters`: Required, JSON object schema, determines the tool parameters seen by the LLM.
 - `[args]`: Required, flat parameter mapping; `input = "--input"` translates tool parameter `input` into `--input <value>`.
