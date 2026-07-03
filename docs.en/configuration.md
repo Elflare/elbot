@@ -16,7 +16,7 @@ All configuration files are automatically generated from the program's built-in 
 | `SOUL.md` | The System Prompt source file for the Agent. |
 | `.env` | Optional, local key file, not recommended for submission; the one automatically generated the first time is `.env.example`, and `.env` will not be generated directly. |
 | `plugins/` | Hook and plugin configuration directory. |
-| `skills/` | User-side Skill directory, located in the configuration directory by default; current subdirectories are `skills/agent/` and `skills/go/`. |
+| `skills/` | User-side Skill directory, located in the configuration directory by default; The current subdirectories are `skills/agent/` and `skills/go/`. AgentSkill can be registered as a regular tool by placing `ELBOT_SKILL.toml` in the root directory. |
 | `memories.toml` | Resident memory file, located in the configuration directory by default. |
 | `long_memory/` | Long-term memory Markdown source data directory, located in the configuration directory by default. |
 
@@ -31,7 +31,7 @@ The main configuration is searched in the following order upon startup:
 
 The content of the automatically generated default configuration comes from the program's built-in assets, and existing files will not be overwritten. Automatic generation is only triggered when there are no explicit `--config` and `ELBOT_CONFIG_FILE`. If the explicitly specified configuration path does not exist, ElBot will report an error instead of silently generating it, to avoid masking path spelling errors.
 
-Files automatically generated for the first time include: `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `memories.toml`, `elnis.toml`, and `.env.example`; At the same time, the directories `skills/`, `skills/agent/`, `skills/go/`, `plugins/`, and `long_memory/` will be created. Existing files will not be overwritten. `elnis.toml` defaults to `enabled=false`, and HTTP listening will not be started on the first run.
+Files automatically generated for the first time include: `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `memories.toml`, `elnis.toml`, and `.env.example`; At the same time, the directories `skills/`, `skills/agent/`, `skills/go/`, `plugins/`, and `long_memory/` will be created. Existing files will not be overwritten. `elnis.toml` is `enabled=false` by default and will not start HTTP listening on the first run. Skill scanning is executed with a delay after startup; when `discover_tool` is used for the first time, it will either wait as a fallback or trigger a scan.
 
 
 During the development phase, you can run it directly to use the platform configuration directory; default configurations will be automatically generated upon the first run:
@@ -177,6 +177,41 @@ token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
 - `elbot cli -c <name>` uses the specified client profile; if not specified, `default_client` is used.
 - Similar to the Provider API Key, the CLI token prioritizes system environment variables, then reads the configuration directory `.env`.
 
+## AgentSkill Tooling Configuration
+
+AgentSkill is used as documentation by default. To register `skills/agent/<skill>/` as a regular tool, add `ELBOT_SKILL.toml` to the root directory of that Skill:
+
+```toml
+risk = "medium"
+command = ["python", "foo.py"]
+timeout_seconds = 30
+expose_root = false
+
+parameters = '''
+{
+  "type": "object",
+  "required": ["input"],
+  "properties": {
+    "input": {"type": "string", "description": "输入文本"}
+  }
+}
+'''
+
+[args]
+input = "--input"
+```
+
+Field descriptions:
+
+- `risk`: Required, allows `safe`, `low`, `medium`, `high`, `critical`.
+- `command`: Required, command array, do not use shell strings.
+- `parameters`: Required, JSON object schema, determines the tool parameters seen by the LLM.
+- `[args]`: Required, flat parameter mapping; `input = "--input"` translates tool parameter `input` into `--input <value>`.
+- `timeout_seconds`: Optional, command timeout.
+- `expose_root`: Optional, defaults to `false`; when set to `true`, the Skill root path will be exposed upon discovering the Skill.
+
+ElBot only reads `ELBOT_SKILL.toml` in the Skill root directory and does not scan recursively. The working directory during execution is fixed to the Skill root directory, and stdout will serve as the tool result; If stdout is `{"content":"..."}` JSON, the `content` field will be used.
+
 ## Go Skill Compiler Path
 
 After modifying the `code_source` of the Go Skill, ElBot will automatically execute `gofmt`, `go build`, and reload. If ElBot is running as a Linux service, the service environment may not have loaded the `PATH` of the interactive shell, causing the `go` available in the terminal to be invisible to ElBot.
@@ -204,6 +239,30 @@ For advanced deployments, this can also be specified in the systemd service:
 [Service]
 Environment=ELBOT_GO_BINARY=/usr/local/go/bin/go
 ```
+
+## Session Configuration
+
+`[session.idle_expiration]` in `app.toml` controls the idle expiration time of the current Session, in minutes:
+
+```toml
+[session.idle_expiration]
+group_user_ttl_minutes = 10
+group_superadmin_ttl_minutes = 10
+private_user_ttl_minutes = 10
+private_superadmin_ttl_minutes = 0
+```
+
+Field descriptions:
+
+- `group_user_ttl_minutes`: Idle expiration time of the current Session for ordinary users in group chats.
+- `group_superadmin_ttl_minutes`: Idle expiration time of the current Session for superadmins in group chats.
+- `private_user_ttl_minutes`: Idle expiration time of the current Session for ordinary users in private chats.
+- `private_superadmin_ttl_minutes`: Idle expiration time of the current Session for superadmins in private chats.
+- Setting any field to `0` disables idle expiration for the corresponding scenario.
+
+Under the default configuration, both regular users and superadmins in group chats will start a new Session after being idle for 10 minutes; In private chats, regular users will start a new Session after being idle for 10 minutes; In private chats, superadmins do not expire.
+
+Here, "superadmin" refers to the ElBot superadmin configured in `[security.superadmins]`. Platform group owners or group administrators who are not in the superadmin list will still be handled according to the regular user rules.
 
 ## Model Status Configuration
 

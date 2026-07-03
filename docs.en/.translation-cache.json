@@ -26,9 +26,9 @@
       "updated_at": 1783074327
     },
     "docs/configuration.md": {
-      "source_hash": "db01881a125701b41b608e1f0ebaea702f0a72ad566da422a2e3b43873475d6f",
+      "source_hash": "327384171c0248703111f4ca28d5f229826658599345a073ef37f6dbd957ea07",
       "target": "docs.en/configuration.md",
-      "updated_at": 1782901151
+      "updated_at": 1783074493
     },
     "docs/elnis-usage.md": {
       "source_hash": "c8d68d4fc76a453ea4008b304cc4d8243b8b2ebc634494f4fb92016b8040c782",
@@ -5310,6 +5310,14 @@
       "translation": "Context and Compaction",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:heading:9062d8855857eb4e3f36e3d9d97d64aa2a26bef05f6f7d4d3e9fe6cff54be422": {
+      "kind": "heading",
+      "source": "Session 配置",
+      "source_file": "docs/configuration.md",
+      "source_hash": "9062d8855857eb4e3f36e3d9d97d64aa2a26bef05f6f7d4d3e9fe6cff54be422",
+      "translation": "Session Configuration",
+      "updated_at": 1783074493
+    },
     "docs/configuration.md:heading:929f0d5782c953427e17fc7f4bf781114d0e43e5bb4184bcf089047569ca4d68": {
       "kind": "heading",
       "source": "模型状态配置",
@@ -5373,6 +5381,14 @@
       "source_hash": "c1490c52e7217e77ad897def1336f64488cd0ffad776976e00264b624e14ccf5",
       "translation": "Configuration Guide",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:heading:c2c692d61972e2969e945cf71fead209e78fd00f83b2b44216ea3f7de6e312f9": {
+      "kind": "heading",
+      "source": "AgentSkill 工具化配置",
+      "source_file": "docs/configuration.md",
+      "source_hash": "c2c692d61972e2969e945cf71fead209e78fd00f83b2b44216ea3f7de6e312f9",
+      "translation": "AgentSkill Tooling Configuration",
+      "updated_at": 1783074493
     },
     "docs/configuration.md:heading:cfbc40d05a6544e2ce5785bc042c18083cdc997bd1941b779bad82baba491968": {
       "kind": "heading",
@@ -5453,6 +5469,14 @@
       "source_hash": "0afcd43ab1b9538c96528fb64a351c7d3a02e93f850d0117aafc676121bc9162",
       "translation": "In group chats/supergroups, command prefixes, trigger keywords, __ELBOT_CODE_0__, or replying to bot messages will all trigger processing. Private chats are processed by default.",
       "updated_at": 1781839376
+    },
+    "docs/configuration.md:list:0faccf22b7493b996dc93918a0edbebb796dd39b81b0024add8f105112b81835": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：必填，JSON object schema，决定 LLM 看到的工具参数。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "0faccf22b7493b996dc93918a0edbebb796dd39b81b0024add8f105112b81835",
+      "translation": "__ELBOT_CODE_0__: Required, JSON object schema, determines the tool parameters seen by the LLM.",
+      "updated_at": 1783074493
     },
     "docs/configuration.md:list:121deebefceaedb2063599a1af3d2f33d8500ca15c12cf33792cc72508392792": {
       "kind": "list",
@@ -5550,6 +5574,14 @@
       "translation": "The superadmin configuration should be filled in by platform group using the platform's native user ID, for example __ELBOT_CODE_0__;",
       "updated_at": 1782117127
     },
+    "docs/configuration.md:list:2f61220ba8dfce44fad9543458afc49bff27bfc6d0293702d1b9f7627bba1c0b": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：私聊中超级管理员当前 Session 的闲置过期时间。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "2f61220ba8dfce44fad9543458afc49bff27bfc6d0293702d1b9f7627bba1c0b",
+      "translation": "__ELBOT_CODE_0__: Idle expiration time of the current Session for superadmins in private chats.",
+      "updated_at": 1783074493
+    },
     "docs/configuration.md:list:30840ca097b9cdde0e25dcc1ab09335ae09bbf78b2df6bfe23d6f1e77bdf781f": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 关闭格式化，只发送纯文本。",
@@ -5581,6 +5613,22 @@
       "source_hash": "33bfeb03b05e6473bd052e077674f03762cd60be81dbf214f1724b8dfedb168e",
       "translation": "__ELBOT_CODE_0__ configures __ELBOT_CODE_1__ and __ELBOT_CODE_2__ for specific models; both are optional.",
       "updated_at": 1782312356
+    },
+    "docs/configuration.md:list:343b006a519602166224e1da6808d0b9e07d366df5267b1d55a57ef12de13c99": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：必填，允许 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "343b006a519602166224e1da6808d0b9e07d366df5267b1d55a57ef12de13c99",
+      "translation": "__ELBOT_CODE_0__: Required, allows __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, __ELBOT_CODE_5__.",
+      "updated_at": 1783074493
+    },
+    "docs/configuration.md:list:3736c40e4461bdcf0502441f60ff595b46159a61793157992c801373793effab": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：私聊中普通用户当前 Session 的闲置过期时间。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "3736c40e4461bdcf0502441f60ff595b46159a61793157992c801373793effab",
+      "translation": "__ELBOT_CODE_0__: Idle expiration time of the current Session for ordinary users in private chats.",
+      "updated_at": 1783074493
     },
     "docs/configuration.md:list:374dfb411ea8aaa45f6e24fa01a3492da8c73121e562888a8d21e45bfd5c66c2": {
       "kind": "list",
@@ -5638,6 +5686,14 @@
       "translation": "__ELBOT_CODE_0__ can be omitted, defaulting to __ELBOT_CODE_1__;",
       "updated_at": 1781962094
     },
+    "docs/configuration.md:list:4905b6c0b13585401f43c4f3e367a67ccc13b439ad55e19cd51ff56847a75e9e": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：必填，命令数组，不使用 shell 字符串。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "4905b6c0b13585401f43c4f3e367a67ccc13b439ad55e19cd51ff56847a75e9e",
+      "translation": "__ELBOT_CODE_0__: Required, command array, do not use shell strings.",
+      "updated_at": 1783074493
+    },
     "docs/configuration.md:list:4bcbc0d124768f5d48ea15575767dd38516ab3d76725cdf9ed434ab7b2142dcf": {
       "kind": "list",
       "source": "配置 tag 会追加到内置 tag，不覆盖内置 tag。",
@@ -5661,6 +5717,14 @@
       "source_hash": "52eda2e5ea44f3efc3f902b206dc88f827294699e84a9dd2700075ce38fc7c61",
       "translation": "Environment variable __ELBOT_CODE_0__.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:52f461d99a78042e2884472210f1105afbb31ecf2c565467ffe07ee73f061443": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：必填，扁平参数映射；__ELBOT_CODE_1__ 会把工具参数 __ELBOT_CODE_2__ 翻译成 __ELBOT_CODE_3__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "52f461d99a78042e2884472210f1105afbb31ecf2c565467ffe07ee73f061443",
+      "translation": "__ELBOT_CODE_0__: Required, flat parameter mapping; __ELBOT_CODE_1__ translates tool parameter __ELBOT_CODE_2__ into __ELBOT_CODE_3__.",
+      "updated_at": 1783074493
     },
     "docs/configuration.md:list:53ad1130823970cb05b8bac3ceee473da5c98747cd5ac563b8819c74cb22a1ef": {
       "kind": "list",
@@ -6006,6 +6070,14 @@
       "translation": "Directly using __ELBOT_CODE_0__ only preloads the specified tools and does not activate the tag prompt.",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:list:a17872e83430fa17991ba067cf25223e53b88833ae3919719c265d8b8b2fe235": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：可选，命令超时时间。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "a17872e83430fa17991ba067cf25223e53b88833ae3919719c265d8b8b2fe235",
+      "translation": "__ELBOT_CODE_0__: Optional, command timeout.",
+      "updated_at": 1783074493
+    },
     "docs/configuration.md:list:a3724151823acbd1eeb900dbab50b61aa4c0141d1bb75eb932c0681d17155861": {
       "kind": "list",
       "source": "系统环境变量 __ELBOT_CODE_0__。",
@@ -6029,6 +6101,14 @@
       "source_hash": "aaf8e5247d2c1a38fa5fdb79bdbb0ae6bff12c66e02df9913eabd278d9055efb",
       "translation": "__ELBOT_CODE_0__ provides default request parameters.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:b3c89d4eb6d4ce0c054223cfaeb2facff8cb1b12e97b776d854d4c5c6e60a9b1": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：群聊中超级管理员当前 Session 的闲置过期时间。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "b3c89d4eb6d4ce0c054223cfaeb2facff8cb1b12e97b776d854d4c5c6e60a9b1",
+      "translation": "__ELBOT_CODE_0__: Idle expiration time of the current Session for superadmins in group chats.",
+      "updated_at": 1783074493
     },
     "docs/configuration.md:list:b5847dd8d53c0b3d3bc7c4904b65945340a8fbf2a39af41efe796d86a6e9cde6": {
       "kind": "list",
@@ -6110,6 +6190,14 @@
       "translation": "Currently, __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__ modes are supported; __ELBOT_CODE_3__ mode is executed using a background Session runner.",
       "updated_at": 1781709336
     },
+    "docs/configuration.md:list:cc9160065de2fb04c5602cbf88b5dc07fb2614f95bd622d66c97f929f4ca7eec": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：可选，默认 __ELBOT_CODE_1__；为 __ELBOT_CODE_2__ 时，发现该 Skill 时会暴露 Skill 根路径。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "cc9160065de2fb04c5602cbf88b5dc07fb2614f95bd622d66c97f929f4ca7eec",
+      "translation": "__ELBOT_CODE_0__: Optional, defaults to __ELBOT_CODE_1__; when set to __ELBOT_CODE_2__, the Skill root path will be exposed upon discovering the Skill.",
+      "updated_at": 1783074493
+    },
     "docs/configuration.md:list:cf7eddd7a224ea51aed16f2d053820de607268d3e15169de46e6dc74feeb25a3": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__：规则 Hook 配置。",
@@ -6133,6 +6221,14 @@
       "source_hash": "d331edccb8c6af201cbc6e5894d92be741f88d46055210432f2ad48a8a9cb15e",
       "translation": "__ELBOT_CODE_0__ and __ELBOT_CODE_1__ are used for connection failures or retryable HTTP failures, with retry delays increasing via exponential backoff.",
       "updated_at": 1782461691
+    },
+    "docs/configuration.md:list:d3b78f4b9a63ae9f460559781cd751b1456c395a967bcedf698879bdd6b8f6b9": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：群聊中普通用户当前 Session 的闲置过期时间。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d3b78f4b9a63ae9f460559781cd751b1456c395a967bcedf698879bdd6b8f6b9",
+      "translation": "__ELBOT_CODE_0__: Idle expiration time of the current Session for ordinary users in group chats.",
+      "updated_at": 1783074493
     },
     "docs/configuration.md:list:d3e9e843be1337f3ce26c3c204ade00db4610967bfc61f7fd42a1f4f03ff6336": {
       "kind": "list",
@@ -6165,6 +6261,14 @@
       "source_hash": "d8c137111531834c012e9adc26eaccd2ef5e5bb6fb213e9b902666567b2d6207",
       "translation": "Update this document synchronously when adding new configuration items.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:dbcb6972b521ae2cb9ae667a5325188f2049859535dc007ff296210bb494cc07": {
+      "kind": "list",
+      "source": "任一字段设为 __ELBOT_CODE_0__ 表示禁用对应场景的闲置过期。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "dbcb6972b521ae2cb9ae667a5325188f2049859535dc007ff296210bb494cc07",
+      "translation": "Setting any field to __ELBOT_CODE_0__ disables idle expiration for the corresponding scenario.",
+      "updated_at": 1783074493
     },
     "docs/configuration.md:list:e00e58dc6a9eeaacae6b0b301501c5cce0cf41a69b86653f42487b9c9db59918": {
       "kind": "list",
@@ -6254,6 +6358,14 @@
       "translation": "Existing files will not be overwritten.",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:paragraph:04d5d36561304054f0acf59da031927093307dc9a2adcc37ecadcf9aea24a9ac": {
+      "kind": "paragraph",
+      "source": "AgentSkill 默认只作为说明文档使用。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "04d5d36561304054f0acf59da031927093307dc9a2adcc37ecadcf9aea24a9ac",
+      "translation": "AgentSkill is used as documentation by default.",
+      "updated_at": 1783074493
+    },
     "docs/configuration.md:paragraph:09ee1cae2b678d97bc9906680269b4382b3ec23d437053e096c9b03d02da55c5": {
       "kind": "paragraph",
       "source": "启用后，ElBot 会启动本地 HTTP ingress，接收 Elwisp 按 Elvena 协议投递的事件。",
@@ -6270,6 +6382,14 @@
       "translation": "If you need to use a temporary configuration file, you can also explicitly specify __ELBOT_CODE_0__.\n",
       "updated_at": 1781854884
     },
+    "docs/configuration.md:paragraph:0d5bfff015f89400cd125f9af37a11537994b9603f6ba43fd0938aafce67e721": {
+      "kind": "paragraph",
+      "source": "执行时工作目录固定为该 Skill 根目录，stdout 会作为工具结果；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "0d5bfff015f89400cd125f9af37a11537994b9603f6ba43fd0938aafce67e721",
+      "translation": "The working directory during execution is fixed to the Skill root directory, and stdout will serve as the tool result;",
+      "updated_at": 1783074493
+    },
     "docs/configuration.md:paragraph:0d9a547d7e83c28e7048dbfd9ad0070bb0895ed095b23ff87363e5561167b584": {
       "kind": "paragraph",
       "source": "这些路径都会解析到 __ELBOT_CODE_0__ 目录下。\n",
@@ -6277,6 +6397,14 @@
       "source_hash": "0d9a547d7e83c28e7048dbfd9ad0070bb0895ed095b23ff87363e5561167b584",
       "translation": "These paths will all resolve to the __ELBOT_CODE_0__ directory.\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:100aeaad4fb364b6f5e955ea29aadb7fafca0a207383281f88aca46fc5899caf": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 中的 __ELBOT_CODE_1__ 控制当前 Session 的闲置过期时间，单位为分钟：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "100aeaad4fb364b6f5e955ea29aadb7fafca0a207383281f88aca46fc5899caf",
+      "translation": "__ELBOT_CODE_1__ in __ELBOT_CODE_0__ controls the idle expiration time of the current Session, in minutes:\n",
+      "updated_at": 1783074493
     },
     "docs/configuration.md:paragraph:123944ca45d38bc86a9c93ce2b88c68c450d4a5d8272799cf282d21b0bcace4a": {
       "kind": "paragraph",
@@ -6325,6 +6453,14 @@
       "source_hash": "26d74004845c90cbea41fed21d81414f7b75d6ff9021cc368e727e3d6f325411",
       "translation": "ElBot uses a main configuration entry to load application configurations, Provider configurations, and runtime states. Backward compatibility for old configurations is not considered during the development phase; it is recommended to maintain them directly according to the current __ELBOT_CODE_0__ example.\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:2a0ec7005a1b50f89801ce47d0856ad608103a6f808613a9762025220f99134a": {
+      "kind": "paragraph",
+      "source": "若要把 __ELBOT_CODE_0__ 注册成普通工具，在该 Skill 根目录添加 __ELBOT_CODE_1__：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "2a0ec7005a1b50f89801ce47d0856ad608103a6f808613a9762025220f99134a",
+      "translation": "To register __ELBOT_CODE_0__ as a regular tool, add __ELBOT_CODE_1__ to the root directory of that Skill:\n",
+      "updated_at": 1783074493
     },
     "docs/configuration.md:paragraph:2b27f119c1db9c1ab78424d2839be5830e9a2f5796cf9b44f9f2d0e4f7c4df91": {
       "kind": "paragraph",
@@ -6414,6 +6550,14 @@
       "translation": "Plugin configurations are fixed under __ELBOT_CODE_0__ in the configuration directory:\n",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:paragraph:4a3eea3524ba266782fdd62c7118512c0d83ba66f955b6ba948236a96b0c8c33": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 默认 __ELBOT_CODE_1__，不会在首次运行时启动 HTTP 监听。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "4a3eea3524ba266782fdd62c7118512c0d83ba66f955b6ba948236a96b0c8c33",
+      "translation": "__ELBOT_CODE_0__ is __ELBOT_CODE_1__ by default and will not start HTTP listening on the first run.",
+      "updated_at": 1783074493
+    },
     "docs/configuration.md:paragraph:4b5ff490d2979da5b4e418f06a4ff2294a77c9d000fc68efcf47c900c15e4d50": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 控制 OpenAI-compatible 流式请求的超时与重试：\n",
@@ -6445,6 +6589,14 @@
       "source_hash": "5ca11ebfa295a5155452a61039620780dcf3d6a509d813eb67880f2227ac8f31",
       "translation": "It is recommended to specify the Go executable in the configuration directory __ELBOT_CODE_0__:\n",
       "updated_at": 1781790272
+    },
+    "docs/configuration.md:paragraph:600b4c1563763b780a70d9b1f901fb81beae6aeb01c0e0011e9b304d935a246f": {
+      "kind": "paragraph",
+      "source": "Skill 扫描在启动后延迟执行，首次使用 __ELBOT_CODE_0__ 时会兜底等待或触发扫描。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "600b4c1563763b780a70d9b1f901fb81beae6aeb01c0e0011e9b304d935a246f",
+      "translation": "Skill scanning is executed with a delay after startup; when __ELBOT_CODE_0__ is used for the first time, it will either wait as a fallback or trigger a scan.\n",
+      "updated_at": 1783074493
     },
     "docs/configuration.md:paragraph:66a831d2bac726e8d0c866ca5765616b3e231b318802ce5b6b8da222732d9746": {
       "kind": "paragraph",
@@ -6678,6 +6830,14 @@
       "translation": "Files automatically generated for the first time include: __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, and __ELBOT_CODE_5__;",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:paragraph:b833edeb82e7c95e9c96875ea84a68fd61707bcf07c41a755b38af206c69d799": {
+      "kind": "paragraph",
+      "source": "这里的“超级管理员”指 __ELBOT_CODE_0__ 中配置的 ElBot 超级管理员。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "b833edeb82e7c95e9c96875ea84a68fd61707bcf07c41a755b38af206c69d799",
+      "translation": "Here, \"superadmin\" refers to the ElBot superadmin configured in __ELBOT_CODE_0__.",
+      "updated_at": 1783074493
+    },
     "docs/configuration.md:paragraph:b8c38345807cb2a9bdca16d42f3f1f696ba0bac6a1d5daf6f3f4d64318e8d037": {
       "kind": "paragraph",
       "source": "注入 Prompt 时两段会合并成一段自然文本。\n",
@@ -6694,6 +6854,14 @@
       "translation": "CLI enabled by default:\n",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:paragraph:befcfc899c9ce4ca376be27da74e8e9fef97c220253f5a698bf59eb7c973be71": {
+      "kind": "paragraph",
+      "source": "私聊中普通用户闲置 10 分钟后开启新 Session；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "befcfc899c9ce4ca376be27da74e8e9fef97c220253f5a698bf59eb7c973be71",
+      "translation": "In private chats, regular users will start a new Session after being idle for 10 minutes;",
+      "updated_at": 1783074493
+    },
     "docs/configuration.md:paragraph:c0bca0b32b56fe82176ebf53c4b76b9ebc30b75a5411ed053b394d97a6687970": {
       "kind": "paragraph",
       "source": "若 ElBot 以 Linux service 运行，service 环境可能没有加载交互 shell 的 __ELBOT_CODE_0__，导致终端里可用的 __ELBOT_CODE_1__ 在 ElBot 中不可见。\n",
@@ -6701,6 +6869,14 @@
       "source_hash": "c0bca0b32b56fe82176ebf53c4b76b9ebc30b75a5411ed053b394d97a6687970",
       "translation": "If ElBot is running as a Linux service, the service environment may not have loaded the __ELBOT_CODE_0__ of the interactive shell, causing the __ELBOT_CODE_1__ available in the terminal to be invisible to ElBot.\n",
       "updated_at": 1781790272
+    },
+    "docs/configuration.md:paragraph:c17c1aeab624ca482bffd2d124696081d8f4404f654a0ff5183785f6d6ed3109": {
+      "kind": "paragraph",
+      "source": "平台群主或群管理员如果不在超级管理员列表中，仍按普通用户规则处理。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "c17c1aeab624ca482bffd2d124696081d8f4404f654a0ff5183785f6d6ed3109",
+      "translation": "Platform group owners or group administrators who are not in the superadmin list will still be handled according to the regular user rules.\n",
+      "updated_at": 1783074493
     },
     "docs/configuration.md:paragraph:c409a2adc182e829412b676b2c5eef0ba96295f6fd7d021efae6bacc9f5c44d5": {
       "kind": "paragraph",
@@ -6749,6 +6925,22 @@
       "source_hash": "d4ce783a2526a9d747417ddb4fdc28255725027487b358e8d28942e05ef90dff",
       "translation": "Notes:\n",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:paragraph:db1398b7d8a8bc810a5e97b62f8a66b3f9dd50ee8eac8c37e69d9cd801e0c5b1": {
+      "kind": "paragraph",
+      "source": "私聊中超级管理员不过期。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "db1398b7d8a8bc810a5e97b62f8a66b3f9dd50ee8eac8c37e69d9cd801e0c5b1",
+      "translation": "In private chats, superadmins do not expire.\n",
+      "updated_at": 1783074493
+    },
+    "docs/configuration.md:paragraph:df52157138754b59adf61b033670d7c0a44d72226b076873cea5872b20c0c149": {
+      "kind": "paragraph",
+      "source": "默认配置下，群聊中的普通用户和超级管理员都会在闲置 10 分钟后开启新 Session；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "df52157138754b59adf61b033670d7c0a44d72226b076873cea5872b20c0c149",
+      "translation": "Under the default configuration, both regular users and superadmins in group chats will start a new Session after being idle for 10 minutes;",
+      "updated_at": 1783074493
     },
     "docs/configuration.md:paragraph:e012d5bd70975db65cf5e7a4cedfe0ab37dd4d7faba5b2855774194f2f6f3979": {
       "kind": "paragraph",
@@ -6806,6 +6998,14 @@
       "translation": "__ELBOT_CODE_0__ is a standalone configuration file, with its path specified by __ELBOT_CODE_1__.",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:paragraph:f3e6ebbdca7c74e391b3f6b1281ec0b299d31d6ae0f0a6dfc4ef15006de4952d": {
+      "kind": "paragraph",
+      "source": "若 stdout 是 __ELBOT_CODE_0__ JSON，会取 __ELBOT_CODE_1__ 字段。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "f3e6ebbdca7c74e391b3f6b1281ec0b299d31d6ae0f0a6dfc4ef15006de4952d",
+      "translation": "If stdout is __ELBOT_CODE_0__ JSON, the __ELBOT_CODE_1__ field will be used.\n",
+      "updated_at": 1783074493
+    },
     "docs/configuration.md:paragraph:f4c36dd02c77c9c190a88bdf433e7e661555136114b8a894373853b20a7e0e54": {
       "kind": "paragraph",
       "source": "修改 Go skill 的 __ELBOT_CODE_0__ 后，ElBot 会自动执行 __ELBOT_CODE_1__、__ELBOT_CODE_2__ 并 reload。",
@@ -6821,6 +7021,14 @@
       "source_hash": "f59d5b9ca6bd8410f5f15e31fc887bdb406865c2f6957ae945f34623a447bdaf",
       "translation": "Hooks and plugins should not send platform messages directly; they should return an output intent, which the Agent then passes to the Output Manager for sending.\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:f5c68f84e039762215396d1ca4056851cbe752e3431e00a07b07978e67f7ef93": {
+      "kind": "paragraph",
+      "source": "ElBot 只读取 Skill 根目录下的 __ELBOT_CODE_0__，不递归扫描。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "f5c68f84e039762215396d1ca4056851cbe752e3431e00a07b07978e67f7ef93",
+      "translation": "ElBot only reads __ELBOT_CODE_0__ in the Skill root directory and does not scan recursively.",
+      "updated_at": 1783074493
     },
     "docs/configuration.md:paragraph:f5f2a4ac963437cb5716c00aeb5cab004352ecebf41fd1061a2e7cdb8594076b": {
       "kind": "paragraph",
@@ -6910,6 +7118,14 @@
       "translation": "The System Prompt source file for the Agent.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:table:4188fdc53e8b05daae5d9e8afb2bbebc474880a14cc87711a6e077f59cfc1e56": {
+      "kind": "table",
+      "source": "AgentSkill 可在根目录放置 __ELBOT_CODE_0__ 注册为普通工具。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "4188fdc53e8b05daae5d9e8afb2bbebc474880a14cc87711a6e077f59cfc1e56",
+      "translation": "AgentSkill can be registered as a regular tool by placing __ELBOT_CODE_0__ in the root directory.",
+      "updated_at": 1783074493
+    },
     "docs/configuration.md:table:4dc9aa3e26abcdcf000d88af3835884cb3cf5db95f591375beaf66011cb6a729": {
       "kind": "table",
       "source": "长期记忆 Markdown 源数据目录，默认位于配置目录下。",
@@ -6933,6 +7149,14 @@
       "source_hash": "6d513de90d1e4639027c03fcd0c9f206dd8be3568ce60d8a686e98bc92c8dd7f",
       "translation": "Responsibility",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:table:735a88422174d572d4f8131fe53eb8895a419db828b6019b9673d36ef930bf18": {
+      "kind": "table",
+      "source": "用户侧 Skill 目录，默认位于配置目录下；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "735a88422174d572d4f8131fe53eb8895a419db828b6019b9673d36ef930bf18",
+      "translation": "User-side Skill directory, located in the configuration directory by default;",
+      "updated_at": 1783074493
     },
     "docs/configuration.md:table:76c42e5a9bc0085614667a7788075f895ff4e3204abed2895c721645f0d6e4a1": {
       "kind": "table",
@@ -6973,6 +7197,14 @@
       "source_hash": "8d1bf02a32df975898866cbb9086bb83e49c64b8fc7698b3010a7bf3bc6b3e6f",
       "translation": "User-side Skill directory, located in the configuration directory by default; current subdirectories are __ELBOT_CODE_0__ and __ELBOT_CODE_1__.",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:table:b1b88f35e0e28fc7b8c194e90b2ea2189033bce3f388067b502deef56a04f550": {
+      "kind": "table",
+      "source": "当前子目录为 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "b1b88f35e0e28fc7b8c194e90b2ea2189033bce3f388067b502deef56a04f550",
+      "translation": "The current subdirectories are __ELBOT_CODE_0__ and __ELBOT_CODE_1__.",
+      "updated_at": 1783074493
     },
     "docs/configuration.md:table:c3f46fad0461a0a9936ef7e70532a382b5d79c6460486a7191e25e1103642cf1": {
       "kind": "table",
