@@ -72,6 +72,14 @@ func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.Platfor
 		msgCtx = platform.WithMessageContext(ctx, messageCtx)
 		msgCtx = context.WithValue(msgCtx, targetKey{}, sendTarget{OpenID: openID, MsgID: msg.ID})
 	}
+	if len(attachments.TooLarge) > 0 {
+		if _, err := a.SendChat(msgCtx, platformTooLargeAttachmentsOutput(attachments.TooLarge, a.cfg.MaxReceiveFileBytes)); err != nil {
+			a.logWarn(ctx, "send qqofficial attachment too large notice failed", "error", err, "message_id", msg.ID)
+		}
+	}
+	if text == "" && len(attachments.TooLarge) > 0 && !hasPlatformImageSegment(attachments.Segments) {
+		return
+	}
 	if text == "" && len(attachments.Saved) > 0 && !hasPlatformImageSegment(attachments.Segments) {
 		if _, err := a.SendChat(msgCtx, platformSavedAttachmentsOutput(attachments.Saved)); err != nil {
 			a.logWarn(ctx, "send qqofficial attachment saved notice failed", "error", err, "message_id", msg.ID)
@@ -170,6 +178,18 @@ func platformSavedAttachmentsOutput(attachments []savedAttachment) delivery.Outp
 			name = attachment.Path
 		}
 		sb.WriteString(fmt.Sprintf("已保存附件：%s\n路径：%s\n", name, attachment.Path))
+	}
+	return delivery.Text(sb.String())
+}
+
+func platformTooLargeAttachmentsOutput(attachments []messageAttachment, maxBytes int64) delivery.Output {
+	var sb strings.Builder
+	for _, attachment := range attachments {
+		name := strings.TrimSpace(attachment.Filename)
+		if name == "" {
+			name = "附件"
+		}
+		sb.WriteString(fmt.Sprintf("文件过大，不会保存到服务器：%s（上限 %d 字节）\n", name, maxBytes))
 	}
 	return delivery.Text(sb.String())
 }

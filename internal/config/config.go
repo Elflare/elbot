@@ -37,6 +37,7 @@ type Config struct {
 	Maintenance         MaintenanceConfig         `toml:"maintenance"`
 	Sandbox             SandboxConfig             `toml:"sandbox"`
 	FileDelivery        FileDeliveryConfig        `toml:"file_delivery"`
+	PlatformFiles       PlatformFilesConfig       `toml:"platform_files"`
 	Platform            PlatformConfig            `toml:"platform"`
 	Elnis               ElnisConfig               `toml:"elnis"`
 	Soul                SoulConfig                `toml:"soul"`
@@ -182,6 +183,11 @@ type FileDeliveryConfig struct {
 }
 
 type PlatformConfig map[string]map[string]any
+
+type PlatformFilesConfig struct {
+	MaxReceiveFileBytes int64 `toml:"max_receive_file_bytes"`
+	DownloadTimeoutSecs int   `toml:"download_timeout_secs"`
+}
 
 type ElnisConfig struct {
 	Enabled          bool                         `toml:"enabled"`
@@ -613,6 +619,12 @@ func (c *Config) applyAppDefaults() {
 	}
 	if c.FileDelivery.S3Region == "" {
 		c.FileDelivery.S3Region = "auto"
+	}
+	if c.PlatformFiles.MaxReceiveFileBytes <= 0 {
+		c.PlatformFiles.MaxReceiveFileBytes = 100 * 1024 * 1024
+	}
+	if c.PlatformFiles.DownloadTimeoutSecs <= 0 {
+		c.PlatformFiles.DownloadTimeoutSecs = 60
 	}
 	if c.Session.Naming.TriggerStep <= 0 {
 		c.Session.Naming.TriggerStep = 1

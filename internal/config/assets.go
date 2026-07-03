@@ -117,6 +117,10 @@ s3_access_key_env = "ELBOT_S3_ACCESS_KEY_ID"
 s3_secret_key_env = "ELBOT_S3_SECRET_ACCESS_KEY"
 s3_public_base_url = ""
 
+[platform_files]
+max_receive_file_bytes = 104857600
+download_timeout_secs = 60
+
 [llm_request]
 first_chunk_timeout_seconds = 180
 stream_idle_timeout_seconds = 60

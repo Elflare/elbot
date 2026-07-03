@@ -33,6 +33,9 @@ type Config struct {
 	ReconnectIntervalSeconds int      `toml:"reconnect_interval_seconds"`
 	APITimeoutSeconds        int      `toml:"api_timeout_seconds"`
 	TriggerKeywords          []string `toml:"trigger_keywords"`
+	AttachmentDir            string   `toml:"-"`
+	MaxReceiveFileBytes      int64    `toml:"-"`
+	DownloadTimeoutSecs      int      `toml:"-"`
 	Superadmins              []string `toml:"-"`
 	CommandPrefixes          []string `toml:"-"`
 }
@@ -82,13 +85,16 @@ type target struct {
 
 type targetKey struct{}
 
-func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, logger *slog.Logger, superadmins []string, commandPrefixes []string) (*Adapter, error) {
+func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, logger *slog.Logger, superadmins []string, commandPrefixes []string, attachmentDir string, maxReceiveFileBytes int64, downloadTimeoutSecs int) (*Adapter, error) {
 	var cfg Config
 	if err := platform.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode qqonebot config: %w", err)
 	}
 	cfg.Superadmins = superadmins
 	cfg.CommandPrefixes = append([]string(nil), commandPrefixes...)
+	cfg.AttachmentDir = strings.TrimSpace(attachmentDir)
+	cfg.MaxReceiveFileBytes = maxReceiveFileBytes
+	cfg.DownloadTimeoutSecs = downloadTimeoutSecs
 	applyDefaults(&cfg)
 	return New(cfg, store, chatHistory, logger), nil
 }
@@ -105,6 +111,12 @@ func applyDefaults(cfg *Config) {
 	}
 	if len(cfg.CommandPrefixes) == 0 {
 		cfg.CommandPrefixes = []string{"/"}
+	}
+	if cfg.MaxReceiveFileBytes <= 0 {
+		cfg.MaxReceiveFileBytes = 100 * 1024 * 1024
+	}
+	if cfg.DownloadTimeoutSecs <= 0 {
+		cfg.DownloadTimeoutSecs = 60
 	}
 }
 
@@ -429,6 +441,8 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		return
 	}
 	currentSegments := a.resolveImageSegments(ctx, normalized.Segments)
+	attachments := a.prepareInboundAttachments(ctx, currentSegments)
+	currentSegments = attachments.Segments
 	messageCtx := platform.MessageContext{
 		Platform:              a.Name(),
 		PlatformUserID:        strconv.FormatInt(event.UserID, 10),
@@ -468,12 +482,29 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
 		referenceSegments = ref.ReferenceSegments
 	}
-	if strings.TrimSpace(text) == "" {
-		return
-	}
 	messageCtx.Segments = finalMessageSegments(text, currentSegments, referenceSegments)
 	msgCtx = platform.WithMessageContext(ctx, messageCtx)
 	msgCtx = context.WithValue(msgCtx, targetKey{}, target{MessageType: event.MessageType, UserID: event.UserID, GroupID: event.GroupID})
+	if len(attachments.TooLarge) > 0 {
+		if _, err := a.SendChat(msgCtx, platformTooLargeAttachmentsOutput(attachments.TooLarge, a.cfg.MaxReceiveFileBytes)); err != nil {
+			a.logWarn("send onebot attachment too large notice failed", "error", err, "message_id", event.MessageID)
+		}
+	}
+	if !hasTextSegment(currentSegments) && !hasPlatformImageSegment(currentSegments) {
+		if len(attachments.TooLarge) > 0 {
+			return
+		}
+		if len(attachments.Saved) > 0 {
+			if _, err := a.SendChat(msgCtx, platformSavedAttachmentsOutput(attachments.Saved)); err != nil {
+				a.logWarn("send onebot attachment saved notice failed", "error", err, "message_id", event.MessageID)
+			}
+			return
+		}
+		return
+	}
+	if strings.TrimSpace(text) == "" {
+		return
+	}
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
 		a.logWarn("handle qq message failed", "error", err, "message_id", event.MessageID)
 	}
@@ -609,6 +640,24 @@ func appendNonTextSegments(out []platform.MessageSegment, segments []platform.Me
 		}
 	}
 	return out
+}
+
+func hasPlatformImageSegment(segments []platform.MessageSegment) bool {
+	for _, segment := range segments {
+		if segment.Type == platform.SegmentImage {
+			return true
+		}
+	}
+	return false
+}
+
+func hasTextSegment(segments []platform.MessageSegment) bool {
+	for _, segment := range segments {
+		if segment.Type == platform.SegmentText && strings.TrimSpace(segment.Text) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *Adapter) isMessageEvent(event Event) bool {

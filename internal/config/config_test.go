@@ -171,6 +171,10 @@ s3_access_key_env = "ELBOT_TEST_S3_ACCESS"
 s3_secret_key_env = "ELBOT_TEST_S3_SECRET"
 s3_public_base_url = "https://files.example"
 
+[platform_files]
+max_receive_file_bytes = 456789
+download_timeout_secs = 12
+
 [platform.qqonebot]
 enabled = true
 ws_url = "ws://example"
@@ -300,6 +304,10 @@ prompt = "Use agent tools."
 	if !reflect.DeepEqual(cfg.FileDelivery, wantFileDelivery) {
 		t.Fatalf("file_delivery = %#v, want %#v", cfg.FileDelivery, wantFileDelivery)
 	}
+	wantPlatformFiles := PlatformFilesConfig{MaxReceiveFileBytes: 456789, DownloadTimeoutSecs: 12}
+	if !reflect.DeepEqual(cfg.PlatformFiles, wantPlatformFiles) {
+		t.Fatalf("platform_files = %#v, want %#v", cfg.PlatformFiles, wantPlatformFiles)
+	}
 	wantNaming := SessionNamingConfig{TriggerStep: 3}
 	if !reflect.DeepEqual(cfg.Session.Naming, wantNaming) {
 		t.Fatalf("naming = %#v, want %#v", cfg.Session.Naming, wantNaming)
@@ -413,6 +421,10 @@ model = "deepseek-chat"
 	wantFileDelivery := FileDeliveryConfig{MaxDirectBase64Bytes: 8 * 1024 * 1024, Backend: "base64", S3Region: "auto"}
 	if !reflect.DeepEqual(cfg.FileDelivery, wantFileDelivery) {
 		t.Fatalf("file_delivery defaults = %#v, want %#v", cfg.FileDelivery, wantFileDelivery)
+	}
+	wantPlatformFiles := PlatformFilesConfig{MaxReceiveFileBytes: 100 * 1024 * 1024, DownloadTimeoutSecs: 60}
+	if !reflect.DeepEqual(cfg.PlatformFiles, wantPlatformFiles) {
+		t.Fatalf("platform_files defaults = %#v, want %#v", cfg.PlatformFiles, wantPlatformFiles)
 	}
 	if cfg.Session.Naming.TriggerStep != 1 {
 		t.Fatalf("naming trigger step = %d", cfg.Session.Naming.TriggerStep)

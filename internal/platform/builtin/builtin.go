@@ -64,7 +64,7 @@ func New(opts Options, cfg *config.Config, store storage.Store, chatHistory stor
 	}
 	if raw, ok := cfg.Platform["qqofficial"]; ok {
 		attachmentDir := filepath.Join(cfg.Sandbox.Root, "platform", "qqofficial")
-		adapter, err := qqofficial.NewFromPlatformConfig(raw, store, logger, cfg.Security.Superadmins["qqofficial"], cfg.Commands.Prefixes, attachmentDir)
+		adapter, err := qqofficial.NewFromPlatformConfig(raw, store, logger, cfg.Security.Superadmins["qqofficial"], cfg.Commands.Prefixes, attachmentDir, cfg.PlatformFiles.MaxReceiveFileBytes, cfg.PlatformFiles.DownloadTimeoutSecs)
 		if err != nil {
 			return Bundle{}, err
 		}
@@ -73,7 +73,8 @@ func New(opts Options, cfg *config.Config, store storage.Store, chatHistory stor
 		}
 	}
 	if raw, ok := cfg.Platform["qqonebot"]; ok {
-		adapter, err := qqonebot.NewFromPlatformConfig(raw, store, chatHistory, logger, cfg.Security.Superadmins["qqonebot"], cfg.Commands.Prefixes)
+		attachmentDir := filepath.Join(cfg.Sandbox.Root, "platform", "qqonebot")
+		adapter, err := qqonebot.NewFromPlatformConfig(raw, store, chatHistory, logger, cfg.Security.Superadmins["qqonebot"], cfg.Commands.Prefixes, attachmentDir, cfg.PlatformFiles.MaxReceiveFileBytes, cfg.PlatformFiles.DownloadTimeoutSecs)
 		if err != nil {
 			return Bundle{}, err
 		}

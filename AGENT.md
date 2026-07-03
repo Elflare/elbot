@@ -96,20 +96,14 @@
 ### Request 与 Turn 运行态
 
 - `internal/request/manager.go`：active request 管理器；登记 turn、LLM、工具、压缩和子 Agent 请求，记录父子 request 关系，支持列表、查询、按请求取消、按 Session 取消、全局取消、超时和完成清理。
-
 - `internal/runtime/status.go`：运行状态快照与格式化 helper；描述阶段（preparing/llm/tool/sending/done/error）、usage 等结构化状态，供 CLI 状态栏、`/requests` 阶段展示和未来日志复用。
 - `internal/turn/manager.go`：当前 turn 协调器；记录 Session 运行阶段、原始用户输入、pending 追加消息、确认/取消 token、工具使用计数、compact 阶段和高风险工具确认等待状态；工具阶段普通输入不打断工具，会进入 pending 并在下一次 LLM 调用前注入；请求异常结束时清理非确认追加状态，避免残留 tool pending。
-
 
 ### 配置与日志
 
 配置约定：默认配置查找顺序为 `--config`、`ELBOT_CONFIG_FILE`、平台配置目录（Windows `%APPDATA%/Roaming/ElBot/app.toml`；Linux XDG `~/.config/elbot/app.toml`）；平台配置不存在时由内置 assets 自动生成，已有配置不覆盖。静态配置在 `app.toml`，Provider 列表在同目录 `providers.toml`，运行时热切换状态在同目录 `state.toml`，工具 tag 配置在同目录 `tool_tags.toml`；用户可编辑资产集中在配置目录：`memories.toml`、`long_memory/`、`skills/`、`plugins/`，SQLite/logs/sandbox 等运行数据仍按各自配置或默认数据目录存放。Hook/插件配置固定放在同目录 `plugins/<plugin-name>.toml`，规则 Hook 使用 `plugins/hooks.toml`，app 层不解析插件专属字段。Provider key 推荐用 `api_key_env`，读取优先级为系统环境变量 > 配置目录 `.env`。
-
-- `internal/config/config.go`：配置模型与加载逻辑；按 CLI/env/平台目录解析 `app.toml`，读取并合并 app/provider/state/tool_tags 配置，解析相对路径和 `api_key_env`，包含 LLM 流式超时、整轮 response timeout、重试、sandbox、Elnis 配置；Provider 支持 proxy，`models` 补充模型列表，`model_configs` 配置模型的 context_window 和 extra_payload。
-
+- `internal/config/config.go`：解析`app.toml`，Elnis、Provider 配置，并合并 app/provider/state/tool_tags 。
 - `internal/config/assets.go`：首次运行默认配置资产。
-
-
 - `internal/elvena/`：Elvena 公共协议层；定义 v2/v3 request/response、Origin、Dispatcher/Bus、direct 输出转换和 calls 能力映射，供 Elnis HTTP 与 Hook exec 共用。
 - `internal/elnis/types.go`：Elnis/Elvena 协议类型别名；复用 `internal/elvena` 请求、响应、事件模式、状态和 calls 类型。
 - `internal/elnis/service.go`：Elnis 接收服务主入口；实现 HTTP token Handle 与 Elvena Dispatcher，负责授权、去重后分发 record/direct/llm。
@@ -122,8 +116,6 @@
 - `internal/elnis/store.go`：Elnis 重复事件、完成状态和事件日志属性 helper。
 - `internal/elnis/background.go`：Elnis 后台 actor、sandbox subdir 和平台辅助 helper。
 - `internal/elnis/http.go`：Elnis HTTP runtime；提供 `POST /elvena/v2/events` 和 `GET /healthz`，支持 body 限制、token 提取、JSON 响应和 LLM 事件队列 worker。
-
-
 - `internal/logging/logging.go`：日志地基；创建运行日志、审计日志和 Elnis 日志的 `slog.Logger`，`Manager` 统一持有按日期懒轮转的 `elbot-YYYY-MM-DD.log`、`audit-YYYY-MM-DD.log`、`elnis-YYYY-MM-DD.log` writer，暴露日志目录和可配置旧日志清理入口。
 - `internal/logging/reader.go`：结构化文本日志读取器；解析 `slog.TextHandler` 输出，支持 `/log`、`/audit` 的时间、等级、字段、msg、latest message 文本和条数过滤，并放宽单行读取上限以支持较大的 Debug 请求体。
 
@@ -162,8 +154,6 @@
 - `internal/llm/segment.go`：内部统一 MessageSegment 工具；区分 `SegmentsTextOnly` 与 `SegmentsContentText`，提供 text segment 原位 prepend/append/regex replace、图片/文件提取、latest user 和 system message helper。
 - `internal/llm/openai/openai.go`：OpenAI-compatible adapter；实现流式 chat completions、多模态转换、模型列表、SSE、usage/reasoning/tool call delta、首包/idle 超时、重试通知、缺失 `[DONE]` 的断流检测和错误解析。
 
-
-
 ### Tool Runtime
 
 - `internal/tool/tool.go`：Tool Runtime 核心类型与 Registry；管理工具注册、查询、schema、权限、风险评估、风险确认详情、用户侧 tags、工具结果和通用 warning 输出。
@@ -192,8 +182,6 @@
 
 - `internal/tool/builtin/elwisp_creator.go`：内置 Elwisp 创建指南工具；无参数返回配置感知的精简 Elnis/Elvena/ELyph 任务卡，提示 LLM 创建 Elwisp 所需协议、约束和配置注意事项，并依赖 read_file/edit_file/shell。
 - `internal/tool/builtin/shell.go`：内置 shell 工具；支持 `cmd` 和 `timeout_ms`，前台在当前 workspace 执行，后台在当前任务 sandbox 执行；禁止在 `cmd` 中切换目录。
-
-
 - `internal/tool/builtin/file_guard.go`：受保护文件访问规则；识别 EL Skill、常驻记忆和长期记忆源文件，供文件工具和 shell 工具提示或拒绝绕过专用工具的读写。
 - `internal/tool/builtin/shell_warnings.go`：shell 命令使用建议分析；识别 `cat`/`sed`/重定向等常见文件读写误用，返回工具 warning 或阻止直接修改受保护文件。
 - `internal/tool/builtin/shell_risk.go`：shell/bash 命令风险分类器；使用 `mvdan.cc/sh/v3/syntax` 解析 AST，识别管道、重定向、命令替换、动态命令、删除、提权、下载即执行等风险并返回风险原因。
@@ -237,8 +225,8 @@
 - `internal/platform/cli/remote_server.go`：服务端侧远程 CLI Adapter；service 模式注册为 `cli` 平台，鉴权并管理多个 CLI client，支持输入、补全、notice/chat/status/reasoning/stream 推送。
 - `internal/platform/cli/remote_client.go`：客户端侧远程 CLI runner；`elbot cli`/`elbot -c` 连接服务端，复用 TUI，将输入和补全请求转发到服务端。
 - `internal/platform/cli/tui.go`：Bubble Tea TUI 主编排；提供聊天/通知/输入区、历史、滚动、补全候选窗、reasoning 与正文分离显示、状态栏。
-- `internal/platform/qq-onebot/`：QQ OneBot v11 正向 WebSocket 适配。
-- `internal/platform/qqofficial/`：QQ 官方机器人 C2C 单聊适配；负责 access token、Gateway identify/heartbeat/resume（含 4009 连接过期重连）、默认 Markdown 文本发送、富媒体上传发送、入站附件下载到 sandbox 平台目录、Keyboard 确认按钮和 ARK 预留；配置来自 `[platform.qqofficial]`。
+- `internal/platform/qq-onebot/`：QQ OneBot v11 正向 WebSocket 适配；负责入站图片解析、文件下载到 sandbox 平台目录、纯文件保存/过大提示、群聊触发、引用上下文和文本/媒体输出。
+- `internal/platform/qqofficial/`：QQ 官方机器人 C2C 单聊适配；负责 access token、Gateway identify/heartbeat/resume（含 4009 连接过期重连）、默认 Markdown 文本发送、富媒体上传发送、入站附件下载到 sandbox 平台目录、纯文件保存/过大提示、Keyboard 确认按钮和 ARK 预留；配置来自 `[platform.qqofficial]`。
 - `internal/platform/telegram/`：Telegram Bot API long polling 适配；负责文本/图片/文件收发、HTTP 代理、默认 HTML 格式化、可选 Rich Message 实验模式、editMessageText 伪流式输出、引用上下文、聊天历史记录、inline keyboard 风险确认按钮和 bot commands 同步；配置来自 `[platform.telegram]`。
 - `internal/platform/cli/tui_copy.go`：CLI TUI copy mode；支持鼠标分区滚动、vim模式复制和搜索；`clipboard.go` 默认用系统剪贴板并在 SSH/tmux 等场景走 OSC52 fallback。
 

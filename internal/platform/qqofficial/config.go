@@ -29,11 +29,13 @@ type Config struct {
 	HTTPTimeoutSeconds       int    `toml:"http_timeout_seconds"`
 	ReconnectIntervalSeconds int    `toml:"reconnect_interval_seconds"`
 	AttachmentDir            string `toml:"-"`
+	MaxReceiveFileBytes      int64  `toml:"-"`
+	DownloadTimeoutSecs      int    `toml:"-"`
 	CommandPrefixes          []string
 	Superadmins              []string
 }
 
-func NewFromPlatformConfig(raw map[string]any, store storage.Store, logger Logger, superadmins []string, commandPrefixes []string, attachmentDir string) (*Adapter, error) {
+func NewFromPlatformConfig(raw map[string]any, store storage.Store, logger Logger, superadmins []string, commandPrefixes []string, attachmentDir string, maxReceiveFileBytes int64, downloadTimeoutSecs int) (*Adapter, error) {
 	var cfg Config
 	if err := platform.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode qqofficial config: %w", err)
@@ -41,6 +43,8 @@ func NewFromPlatformConfig(raw map[string]any, store storage.Store, logger Logge
 	cfg.Superadmins = append([]string(nil), superadmins...)
 	cfg.CommandPrefixes = append([]string(nil), commandPrefixes...)
 	cfg.AttachmentDir = strings.TrimSpace(attachmentDir)
+	cfg.MaxReceiveFileBytes = maxReceiveFileBytes
+	cfg.DownloadTimeoutSecs = downloadTimeoutSecs
 	applyDefaults(&cfg)
 	if cfg.Enabled {
 		if strings.TrimSpace(cfg.AppID) == "" {
@@ -71,6 +75,12 @@ func applyDefaults(cfg *Config) {
 	if cfg.EnableKeyboard == nil {
 		value := true
 		cfg.EnableKeyboard = &value
+	}
+	if cfg.MaxReceiveFileBytes <= 0 {
+		cfg.MaxReceiveFileBytes = 100 * 1024 * 1024
+	}
+	if cfg.DownloadTimeoutSecs <= 0 {
+		cfg.DownloadTimeoutSecs = 60
 	}
 }
 

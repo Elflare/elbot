@@ -3,6 +3,7 @@ package qqonebot
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,7 +26,7 @@ func TestNewFromPlatformConfig(t *testing.T) {
 		"enabled":          true,
 		"ws_url":           "ws://example",
 		"trigger_keywords": []any{"芙莉丝"},
-	}, nil, nil, nil, nil, nil)
+	}, nil, nil, nil, nil, nil, t.TempDir(), 100*1024*1024, 60)
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -146,6 +147,113 @@ func TestNormalizePlainTextDoesNotParseMarkup(t *testing.T) {
 	}
 }
 
+func TestPrepareInboundAttachmentsSavesFile(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("test file"))
+	}))
+	defer server.Close()
+
+	adapter := New(Config{AttachmentDir: t.TempDir(), MaxReceiveFileBytes: 1024, DownloadTimeoutSecs: 60}, nil, nil, nil)
+	prepared := adapter.prepareInboundAttachments(context.Background(), []platform.MessageSegment{{Type: platform.SegmentFile, Text: "文件", URL: server.URL + "/file", Name: "test.txt"}})
+
+	if len(prepared.Saved) != 1 {
+		t.Fatalf("saved len = %d, want 1", len(prepared.Saved))
+	}
+	if filepath.Base(prepared.Saved[0].Path) != "test.txt" {
+		t.Fatalf("saved path = %q, want test.txt", prepared.Saved[0].Path)
+	}
+	data, err := os.ReadFile(prepared.Saved[0].Path)
+	if err != nil {
+		t.Fatalf("read saved file: %v", err)
+	}
+	if string(data) != "test file" {
+		t.Fatalf("saved data = %q, want test file", string(data))
+	}
+	if len(prepared.Segments) != 1 || prepared.Segments[0].Type != platform.SegmentFile || prepared.Segments[0].Name != prepared.Saved[0].Path || prepared.Segments[0].MIMEType != "text/plain" {
+		t.Fatalf("segments = %#v", prepared.Segments)
+	}
+}
+
+func TestHandleEventPureFileSendsSavedNotice(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("test file"))
+	}))
+	defer server.Close()
+
+	transport := newTestTransport(t, func(req request) response {
+		if req.Action != "send_private_msg" {
+			t.Fatalf("action = %q", req.Action)
+		}
+		text, _ := req.Params["message"].(string)
+		if !strings.Contains(text, "已保存附件：test.txt") || !strings.Contains(text, "路径：") {
+			t.Fatalf("notice = %q", text)
+		}
+		return response{Status: "ok", Data: []byte(`{"message_id":99}`), Echo: req.Echo}
+	})
+	adapter := New(Config{Enabled: true, URL: transport.URL, AttachmentDir: t.TempDir(), MaxReceiveFileBytes: 1024, DownloadTimeoutSecs: 60}, nil, nil, nil)
+	adapter.transport = transport
+	handler := &captureHandler{}
+
+	adapter.handleEvent(context.Background(), handler, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 7, Message: []byte(fmt.Sprintf(`[{"type":"file","data":{"file":"test.txt","url":%q}}]`, server.URL+"/file"))})
+
+	if handler.count != 0 {
+		t.Fatalf("handler count = %d, want 0", handler.count)
+	}
+}
+
+func TestHandleEventTextAndFileReachesHandler(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("test file"))
+	}))
+	defer server.Close()
+
+	adapter := New(Config{Enabled: true, AttachmentDir: t.TempDir(), MaxReceiveFileBytes: 1024, DownloadTimeoutSecs: 60}, nil, nil, nil)
+	handler := &captureHandler{}
+	adapter.handleEvent(context.Background(), handler, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 7, Message: []byte(fmt.Sprintf(`[{"type":"text","data":{"text":"看看"}},{"type":"file","data":{"file":"test.txt","url":%q}}]`, server.URL+"/file"))})
+
+	if handler.count != 1 || handler.text != "看看[文件]" {
+		t.Fatalf("handler count/text = %d/%q", handler.count, handler.text)
+	}
+	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	if len(msgCtx.Segments) != 2 || msgCtx.Segments[1].Type != platform.SegmentFile || !filepath.IsAbs(msgCtx.Segments[1].Name) {
+		t.Fatalf("segments = %#v", msgCtx.Segments)
+	}
+}
+
+func TestHandleEventPureTooLargeFileSendsNotice(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("too large"))
+	}))
+	defer server.Close()
+
+	transport := newTestTransport(t, func(req request) response {
+		if req.Action != "send_private_msg" {
+			t.Fatalf("action = %q", req.Action)
+		}
+		text, _ := req.Params["message"].(string)
+		if !strings.Contains(text, "文件过大，不会保存到服务器：big.txt") {
+			t.Fatalf("notice = %q", text)
+		}
+		return response{Status: "ok", Data: []byte(`{"message_id":100}`), Echo: req.Echo}
+	})
+	adapter := New(Config{Enabled: true, URL: transport.URL, AttachmentDir: t.TempDir(), MaxReceiveFileBytes: 3, DownloadTimeoutSecs: 60}, nil, nil, nil)
+	adapter.transport = transport
+	handler := &captureHandler{}
+
+	adapter.handleEvent(context.Background(), handler, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 7, Message: []byte(fmt.Sprintf(`[{"type":"file","data":{"file":"big.txt","url":%q}}]`, server.URL+"/file"))})
+
+	if handler.count != 0 {
+		t.Fatalf("handler count = %d, want 0", handler.count)
+	}
+}
+
 func TestShouldHandleGroupMessage(t *testing.T) {
 	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil, nil)
 
@@ -177,13 +285,15 @@ func TestHandleEventStripsTriggerKeywordOnly(t *testing.T) {
 }
 
 type captureHandler struct {
-	ctx  context.Context
-	text string
+	ctx   context.Context
+	text  string
+	count int
 }
 
 func (h *captureHandler) HandleMessage(ctx context.Context, text string) error {
 	h.ctx = ctx
 	h.text = text
+	h.count++
 	return nil
 }
 
