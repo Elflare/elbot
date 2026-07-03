@@ -200,7 +200,7 @@ ElBot includes two layers of Cron capabilities:
 | LLM Cron | Drive model execution based on task descriptions, with the ability to use tools. |
 
 Background Cron has an independent Session and sandbox constraints.
- When a superadmin quotes and replies to an LLM Cron notification message in the platform, it will automatically resume to the corresponding background Session to continue the conversation.
+When a superadmin quotes and replies to an LLM Cron notification message in the platform, it will automatically resume to the corresponding background Session to continue the conversation.
 
 ## Elnis / Elwisp / Elvena
 
@@ -222,6 +222,7 @@ Skill types:
 
 ```toml
 risk = "medium"
+tags = ["doc"]
 command = ["python", "foo.py"]
 timeout_seconds = 30
 expose_root = false
@@ -240,7 +241,7 @@ parameters = '''
 input = "--input"
 ```
 
-In the above example, after the LLM calls the Skill tool and passes `input`, ElBot will execute `python foo.py --input <value>`, and the working directory is fixed to the root directory of that Skill. `risk`, `command`, `parameters`, and `[args]` are required; When `expose_root=true`, the Skill root path will only be exposed to the LLM upon Skill discovery.
+In the above example, after the LLM calls the Skill tool and passes `input`, ElBot will execute `python foo.py --input <value>`, and the working directory is fixed to the root directory of that Skill. `risk`, `command`, `parameters`, and `[args]` are required; `tags` is optional, acting as a category for the tool, and can be used for `@tool:<tag>` preloading; When `expose_root=true`, the Skill root path will only be exposed to the LLM upon Skill discovery.
 
 The goal of ELyph is to express inputs, outputs, steps, conditions, and constraints using a shorter and more stable structure, reducing the ambiguity of natural language task descriptions. For the complete syntax, see [ELyph Task Notation](elyph.md).
 

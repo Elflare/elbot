@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "e0fee54cde9467cbe44890cd1d502f439945beb701481075c9e2a9e7b06de08f",
+      "source_hash": "830baa3847c5920f814a30b2461608fdfc07eb2c96b9de00ad48b07b730650be",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783074551
+      "updated_at": 1783076190
     },
     "README.zh-CN.md": {
       "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
@@ -21,14 +21,14 @@
       "updated_at": 1782958886
     },
     "docs/concepts.md": {
-      "source_hash": "ca26ca771e7c661b7563842a40d899b56b4aa4ef349dd10c1c453dff04aecf5b",
+      "source_hash": "6fa01d02bcae7c09b7285b26f6e99728a05fe7b2a2402a800d423702a8a14d69",
       "target": "docs.en/concepts.md",
-      "updated_at": 1783074327
+      "updated_at": 1783076136
     },
     "docs/configuration.md": {
-      "source_hash": "327384171c0248703111f4ca28d5f229826658599345a073ef37f6dbd957ea07",
+      "source_hash": "09fbbf7b67dad3e9b4e593e6e30a68d6771d0575e4e795f90686ec29bad0aea2",
       "target": "docs.en/configuration.md",
-      "updated_at": 1783074493
+      "updated_at": 1783076156
     },
     "docs/elnis-usage.md": {
       "source_hash": "c8d68d4fc76a453ea4008b304cc4d8243b8b2ebc634494f4fb92016b8040c782",
@@ -397,6 +397,14 @@
       "source_hash": "714c6568883b5a6b6d519ae10020e60c5d54a73ae7f39b8f6636810137a32aeb",
       "translation": "The risk level of the __ELBOT_CODE_0__ tool has been downgraded from high to medium.",
       "updated_at": 1782298716
+    },
+    "CHANGELOG.md:list:71add830d0076ca9ac6404ffbb06df12eec0eb2969554bfc0d4022b84f5ad16c": {
+      "kind": "list",
+      "source": "AgentSkill 支持在根目录添加 __ELBOT_CODE_0__ 注册为普通工具：LLM 调用结构化参数，ElBot 翻译为命令行 argv 执行，可用 __ELBOT_CODE_1__ 为工具分类，并复用现有风险、确认、Hook 与审计链路。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "71add830d0076ca9ac6404ffbb06df12eec0eb2969554bfc0d4022b84f5ad16c",
+      "translation": "AgentSkill supports adding __ELBOT_CODE_0__ in the root directory to register as a regular tool: LLM calls structured parameters, which ElBot translates into command-line argv for execution; __ELBOT_CODE_1__ can be used for tool classification, reusing existing risk, confirmation, Hook, and audit chains.",
+      "updated_at": 1783076190
     },
     "CHANGELOG.md:list:7451bbf5a68e98a284488175db4e8df8fae0a4cc7c3d7b20b8c10878e7390e09": {
       "kind": "list",
@@ -4726,6 +4734,14 @@
       "translation": "Long-term memory uses Markdown files as human-readable source data and SQLite FTS as a reconstructible search index.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:837ccbbc0448b78563d8b10355dbfd9407272aba7e54a55735896de8ebcdc401": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 可选，相当于为该工具分类，可用于 __ELBOT_CODE_1__ 预载；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "837ccbbc0448b78563d8b10355dbfd9407272aba7e54a55735896de8ebcdc401",
+      "translation": "__ELBOT_CODE_0__ is optional, acting as a category for the tool, and can be used for __ELBOT_CODE_1__ preloading;",
+      "updated_at": 1783076136
+    },
     "docs/concepts.md:paragraph:864086a84543bbd2414a750721374355d5f246b144642cd0950725c05241128d": {
       "kind": "paragraph",
       "source": "后台任务中的所有路径参数都应使用当前任务工作目录内的相对路径；",
@@ -6061,6 +6077,14 @@
       "source_hash": "923100a5b4347b9904cbd9f94290800521403abf55e71e04320df57186e0c8b5",
       "translation": "__ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__ are optional model slots for Elnis LLM events;",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:list:92be4bc0656078dbf910e2f07eb8ea799f5bb0a08c41a1203b762904f9f710bb": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：可选，相当于为该工具分类，可用于 __ELBOT_CODE_1__ 预载。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "92be4bc0656078dbf910e2f07eb8ea799f5bb0a08c41a1203b762904f9f710bb",
+      "translation": "__ELBOT_CODE_0__: Optional, equivalent to categorizing the tool, which can be used for __ELBOT_CODE_1__ preloading.",
+      "updated_at": 1783076156
     },
     "docs/configuration.md:list:9356104be7e2173190aa205667e9f6013e011e4a85c8913418c49f5f0a5a2eb8": {
       "kind": "list",
