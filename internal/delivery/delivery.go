@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -47,6 +50,54 @@ type Source struct {
 	Path     string
 	MIMEType string
 	Data     []byte
+}
+
+// IsDirectMediaSource reports whether value already declares a media source scheme.
+func IsDirectMediaSource(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return strings.HasPrefix(value, "base64://") ||
+		strings.HasPrefix(value, "file://") ||
+		strings.HasPrefix(value, "http://") ||
+		strings.HasPrefix(value, "https://")
+}
+
+// IsHTTPMediaSource reports whether value is an HTTP(S) media source.
+func IsHTTPMediaSource(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://")
+}
+
+// IsBase64MediaSource reports whether value is a base64:// media source.
+func IsBase64MediaSource(value string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), "base64://")
+}
+
+// IsFileMediaSource reports whether value is a file:// media source.
+func IsFileMediaSource(value string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), "file://")
+}
+
+// FileURIToPath converts file:// media source values to local filesystem paths.
+func FileURIToPath(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if !IsFileMediaSource(value) {
+		return value, nil
+	}
+	u, err := url.Parse(value)
+	if err != nil {
+		return "", fmt.Errorf("parse file uri: %w", err)
+	}
+	path := u.Path
+	if path == "" {
+		return "", fmt.Errorf("file uri path is empty")
+	}
+	if runtime.GOOS == "windows" && len(path) >= 3 && path[0] == '/' && path[2] == ':' {
+		path = path[1:]
+	}
+	if u.Host != "" {
+		path = "//" + u.Host + path
+	}
+	return filepath.FromSlash(path), nil
 }
 
 type Output struct {

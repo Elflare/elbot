@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"elbot/internal/delivery"
 )
 
 type apiClient struct {
@@ -138,6 +140,20 @@ func prepareSource(urlValue, path string, data []byte) (preparedSource, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return preparedSource{}, fmt.Errorf("source path is empty")
+	}
+	if delivery.IsHTTPMediaSource(path) {
+		return preparedSource{URL: path, Name: filepath.Base(path)}, nil
+	}
+	if delivery.IsBase64MediaSource(path) {
+		data, err := base64.StdEncoding.DecodeString(path[len("base64://"):])
+		if err != nil {
+			return preparedSource{}, fmt.Errorf("decode source base64 uri: %w", err)
+		}
+		return preparedSource{Data: data}, nil
+	}
+	path, err := delivery.FileURIToPath(path)
+	if err != nil {
+		return preparedSource{}, err
 	}
 	fileData, err := os.ReadFile(path)
 	if err != nil {

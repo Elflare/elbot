@@ -3,6 +3,7 @@ package telegram
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"elbot/internal/delivery"
 )
 
 type apiClient struct {
@@ -144,17 +147,24 @@ func (c *apiClient) sendDocument(ctx context.Context, chatID int64, source media
 
 func (c *apiClient) sendMedia(ctx context.Context, method string, chatID int64, field string, source mediaSource, replyTo int64) (sentMessage, error) {
 	if value := strings.TrimSpace(source.URL); value != "" {
-		body := map[string]any{"chat_id": chatID, field: value}
-		if replyTo != 0 {
-			body["reply_to_message_id"] = replyTo
-		}
-		return callTelegram[sentMessage](c, ctx, method, body, c.cfg.apiTimeout())
+		return c.sendMediaByReference(ctx, method, chatID, field, value, replyTo)
+	}
+	if value := strings.TrimSpace(source.Path); delivery.IsHTTPMediaSource(value) {
+		return c.sendMediaByReference(ctx, method, chatID, field, value, replyTo)
 	}
 	body, contentType, err := multipartMediaBody(chatID, field, source, replyTo)
 	if err != nil {
 		return sentMessage{}, err
 	}
 	return c.doMultipart(ctx, method, body, contentType)
+}
+
+func (c *apiClient) sendMediaByReference(ctx context.Context, method string, chatID int64, field string, value string, replyTo int64) (sentMessage, error) {
+	body := map[string]any{"chat_id": chatID, field: value}
+	if replyTo != 0 {
+		body["reply_to_message_id"] = replyTo
+	}
+	return callTelegram[sentMessage](c, ctx, method, body, c.cfg.apiTimeout())
 }
 
 func callTelegram[T any](c *apiClient, ctx context.Context, method string, in any, timeout time.Duration) (T, error) {
@@ -296,13 +306,27 @@ func multipartMediaBody(chatID int64, field string, source mediaSource, replyTo 
 		if path == "" {
 			return nil, "", fmt.Errorf("telegram media source is empty")
 		}
-		file, err := os.Open(path)
-		if err != nil {
-			return nil, "", fmt.Errorf("open media source %q: %w", path, err)
-		}
-		defer file.Close()
-		if _, err := io.Copy(part, file); err != nil {
-			return nil, "", err
+		if delivery.IsBase64MediaSource(path) {
+			data, err := base64.StdEncoding.DecodeString(path[len("base64://"):])
+			if err != nil {
+				return nil, "", fmt.Errorf("decode telegram media base64 source: %w", err)
+			}
+			if _, err := part.Write(data); err != nil {
+				return nil, "", err
+			}
+		} else {
+			path, err := delivery.FileURIToPath(path)
+			if err != nil {
+				return nil, "", err
+			}
+			file, err := os.Open(path)
+			if err != nil {
+				return nil, "", fmt.Errorf("open media source %q: %w", path, err)
+			}
+			defer file.Close()
+			if _, err := io.Copy(part, file); err != nil {
+				return nil, "", err
+			}
 		}
 	}
 	if err := writer.Close(); err != nil {

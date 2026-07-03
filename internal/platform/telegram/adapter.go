@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -409,7 +410,26 @@ func targetFromDelivery(outTarget delivery.Target) (target, error) {
 }
 
 func sourceFromOutput(out delivery.Output) mediaSource {
-	return mediaSource{URL: out.Source.URL, Path: out.Source.Path, Data: out.Source.Data, Name: firstNonEmpty(out.Name, out.Source.Path, out.Source.URL)}
+	return mediaSource{URL: out.Source.URL, Path: out.Source.Path, Data: out.Source.Data, Name: mediaSourceName(out)}
+}
+
+func mediaSourceName(out delivery.Output) string {
+	if name := strings.TrimSpace(out.Name); name != "" {
+		return name
+	}
+	for _, value := range []string{out.Source.Path, out.Source.URL} {
+		value = strings.TrimSpace(value)
+		if value == "" || delivery.IsBase64MediaSource(value) {
+			continue
+		}
+		if path, err := delivery.FileURIToPath(value); err == nil {
+			value = path
+		}
+		if name := strings.TrimSpace(filepath.Base(value)); name != "" && name != "." && name != string(filepath.Separator) {
+			return name
+		}
+	}
+	return "file"
 }
 
 func (a *Adapter) syncBotCommands(ctx context.Context) error {

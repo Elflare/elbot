@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -216,6 +218,86 @@ func TestSendMessageMarkdownFallback(t *testing.T) {
 	}
 	if len(parseModes) != 2 || parseModes[0] != "Markdown" || parseModes[1] != "" {
 		t.Fatalf("parse modes = %#v", parseModes)
+	}
+}
+
+func TestMediaSourceNameAvoidsBase64Path(t *testing.T) {
+	if got := mediaSourceName(delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{Path: "base64://ZnJvbS1iYXNlNjQ="}}); got != "file" {
+		t.Fatalf("base64 name = %q", got)
+	}
+	if got := mediaSourceName(delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{Path: "file:///E:/images/a.png"}}); got != "a.png" {
+		t.Fatalf("file uri name = %q", got)
+	}
+	if got := mediaSourceName(delivery.Output{Kind: delivery.KindImage, Name: "custom.png", Source: delivery.Source{Path: "base64://ZnJvbS1iYXNlNjQ="}}); got != "custom.png" {
+		t.Fatalf("custom name = %q", got)
+	}
+}
+
+func TestSendMediaUsesHTTPPathAsReference(t *testing.T) {
+	var got map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/sendPhoto") {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+			t.Fatalf("content-type = %q", ct)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(apiResponse[sentMessage]{OK: true, Result: sentMessage{MessageID: 10}})
+	}))
+	defer server.Close()
+
+	client := newAPIClient(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL})
+	if _, err := client.sendPhoto(context.Background(), 1, mediaSource{Path: "https://example.com/a.png"}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if got["photo"] != "https://example.com/a.png" {
+		t.Fatalf("photo = %#v", got["photo"])
+	}
+}
+
+func TestMultipartMediaBodyReadsDirectPathSources(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "a.txt")
+	if err := os.WriteFile(path, []byte("from-file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		path string
+		want string
+	}{
+		{name: "base64", path: "base64://ZnJvbS1iYXNlNjQ=", want: "from-base64"},
+		{name: "file", path: "file:///" + strings.TrimLeft(filepath.ToSlash(path), "/"), want: "from-file"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body, contentType, err := multipartMediaBody(1, "document", mediaSource{Path: tc.path}, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reader := multipart.NewReader(body, strings.TrimPrefix(contentType, "multipart/form-data; boundary="))
+			for {
+				part, err := reader.NextPart()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if part.FormName() != "document" {
+					continue
+				}
+				data, err := io.ReadAll(part)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(data) != tc.want {
+					t.Fatalf("document data = %q", string(data))
+				}
+				return
+			}
+			t.Fatal("document part not found")
+		})
 	}
 }
 

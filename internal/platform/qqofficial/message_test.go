@@ -254,6 +254,37 @@ func TestPrepareInboundAttachmentsSavesFileAttachment(t *testing.T) {
 	}
 }
 
+func TestPrepareSourceUsesDirectPathSources(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "a.txt")
+	if err := os.WriteFile(path, []byte("from-file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	httpSource, err := prepareSource("", "https://example.com/a.png", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if httpSource.URL != "https://example.com/a.png" || len(httpSource.Data) != 0 {
+		t.Fatalf("http source = %#v", httpSource)
+	}
+
+	base64Source, err := prepareSource("", "base64://ZnJvbS1iYXNlNjQ=", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(base64Source.Data) != "from-base64" {
+		t.Fatalf("base64 data = %q", string(base64Source.Data))
+	}
+
+	fileSource, err := prepareSource("", "file:///"+strings.TrimLeft(filepath.ToSlash(path), "/"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(fileSource.Data) != "from-file" {
+		t.Fatalf("file data = %q", string(fileSource.Data))
+	}
+}
+
 func TestHandleC2CMessageContinuesLatestAssistantReference(t *testing.T) {
 	ctx := context.Background()
 	store := newQQOfficialTestStore(t)

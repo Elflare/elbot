@@ -54,7 +54,7 @@ func TestSendNoticeKeepsPrivateToolPreview(t *testing.T) {
 		t.Fatalf("action = %q", action)
 	}
 }
-func TestOutputSegmentsFileUsesBase64(t *testing.T) {
+func TestOutputSegmentsFileUsesBase64ForPlainPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "report.txt")
 	if err := os.WriteFile(path, []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
@@ -77,7 +77,26 @@ func TestOutputSegmentsFileUsesBase64(t *testing.T) {
 	}
 }
 
-func TestSendContextOutputNotifiesAfterSendFailure(t *testing.T) {
+func TestOutputSegmentsImagePassesDirectMediaPath(t *testing.T) {
+	for _, path := range []string{
+		"base64://cG5n",
+		"file:///E:/OneDrive/emotions/a.png",
+		"http://example.com/a.png",
+		"https://example.com/a.png",
+	} {
+		out := delivery.ImagePath(path)
+		segments, err := outputSegments(out)
+		if err != nil {
+			t.Fatalf("outputSegments(%q): %v", path, err)
+		}
+		file, _ := segments[0].Data["file"].(string)
+		if file != path {
+			t.Fatalf("file data for %q = %q", path, file)
+		}
+	}
+}
+
+func TestSendContextOutputReturnsSendFailureWithoutFallbackMessage(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "a.png")
 	if err := os.WriteFile(path, []byte("png"), 0o600); err != nil {
 		t.Fatal(err)
@@ -85,10 +104,7 @@ func TestSendContextOutputNotifiesAfterSendFailure(t *testing.T) {
 	var messages []any
 	transport := newTestTransport(t, func(req request) response {
 		messages = append(messages, req.Params["message"])
-		if len(messages) == 1 {
-			return response{Status: "failed", Retcode: 1, Data: []byte(`{}`), Echo: req.Echo}
-		}
-		return response{Status: "ok", Data: []byte(`{"message_id":89}`), Echo: req.Echo}
+		return response{Status: "failed", Retcode: 1, Data: []byte(`{}`), Echo: req.Echo}
 	})
 	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
 	adapter.transport = transport
@@ -98,10 +114,7 @@ func TestSendContextOutputNotifiesAfterSendFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("SendChat error is nil")
 	}
-	if len(messages) != 2 {
+	if len(messages) != 1 {
 		t.Fatalf("transport messages = %#v", messages)
-	}
-	if messages[1] != "[表情: 开心]" {
-		t.Fatalf("notify message = %#v", messages[1])
 	}
 }

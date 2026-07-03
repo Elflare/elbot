@@ -74,6 +74,38 @@ func TestManagerSendsNotices(t *testing.T) {
 	}
 }
 
+func TestDirectMediaSourceHelpers(t *testing.T) {
+	for _, value := range []string{"base64://abc", "file:///tmp/a.png", "http://example.com/a.png", "https://example.com/a.png"} {
+		if !IsDirectMediaSource(value) {
+			t.Fatalf("IsDirectMediaSource(%q) = false", value)
+		}
+	}
+	if IsDirectMediaSource("/tmp/a.png") {
+		t.Fatal("plain path detected as direct media source")
+	}
+	if !IsHTTPMediaSource("https://example.com/a.png") || IsHTTPMediaSource("file:///tmp/a.png") {
+		t.Fatal("http media source detection failed")
+	}
+}
+
+func TestFileURIToPath(t *testing.T) {
+	got, err := FileURIToPath("file:///tmp/a.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "file://") || !strings.HasSuffix(strings.ReplaceAll(got, "\\", "/"), "/tmp/a.png") {
+		t.Fatalf("file path = %q", got)
+	}
+
+	plain, err := FileURIToPath("E:/a.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain != "E:/a.png" {
+		t.Fatalf("plain path = %q", plain)
+	}
+}
+
 func TestManagerWrapsNoticeOutputErrorWithHookName(t *testing.T) {
 	boom := errors.New("boom")
 	sender := &fakeSender{err: boom}
