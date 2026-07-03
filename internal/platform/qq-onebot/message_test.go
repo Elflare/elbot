@@ -299,12 +299,42 @@ func TestHandleEventGroupFileDoesNotSave(t *testing.T) {
 	}
 }
 
-func TestHandleEventSuperadminFileWithoutURLDoesNotSave(t *testing.T) {
-	dir := t.TempDir()
-	adapter := New(Config{Enabled: true, AttachmentDir: dir, MaxReceiveFileBytes: 1024, DownloadTimeoutSecs: 60, Superadmins: []string{"1"}}, nil, nil, nil)
-	handler := &captureHandler{}
-	adapter.handleEvent(context.Background(), handler, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 7, Message: []byte(`[{"type":"file","data":{"file":"test.txt","file_size":"9"}}]`)})
+func TestHandleEventSuperadminFileWithoutURLUsesGetFile(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("test file"))
+	}))
+	defer server.Close()
 
+	call := 0
+	transport := newTestTransport(t, func(req request) response {
+		call++
+		switch req.Action {
+		case "get_file":
+			if req.Params["file"] != "test.txt" || req.Params["download"] != true {
+				t.Fatalf("get_file params = %#v", req.Params)
+			}
+			return response{Status: "ok", Data: []byte(fmt.Sprintf(`{"file":"C:\\QQ\\test.txt","url":%q,"file_size":"9","file_name":"test.txt"}`, server.URL+"/file")), Echo: req.Echo}
+		case "send_private_msg":
+			text, _ := req.Params["message"].(string)
+			if !strings.Contains(text, "已保存附件：test.txt") || !strings.Contains(text, "路径：") {
+				t.Fatalf("notice = %q", text)
+			}
+			return response{Status: "ok", Data: []byte(`{"message_id":101}`), Echo: req.Echo}
+		default:
+			t.Fatalf("action = %q", req.Action)
+		}
+		return response{}
+	})
+	dir := t.TempDir()
+	adapter := New(Config{Enabled: true, URL: transport.URL, AttachmentDir: dir, MaxReceiveFileBytes: 1024, DownloadTimeoutSecs: 60, Superadmins: []string{"1"}}, nil, nil, nil)
+	adapter.transport = transport
+	handler := &captureHandler{}
+	adapter.handleEvent(context.Background(), handler, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 7, Message: []byte(`[{"type":"file","data":{"file":"test.txt","url":"","file_id":"id-1","path":"","file_size":"1"}}]`)})
+
+	if call != 2 {
+		t.Fatalf("call = %d, want 2", call)
+	}
 	if handler.count != 0 {
 		t.Fatalf("handler count = %d, want 0", handler.count)
 	}
@@ -312,8 +342,70 @@ func TestHandleEventSuperadminFileWithoutURLDoesNotSave(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read attachment dir: %v", err)
 	}
-	if len(entries) != 0 {
-		t.Fatalf("attachment dir entries = %d, want 0", len(entries))
+	if len(entries) != 1 || entries[0].Name() != "test.txt" {
+		t.Fatalf("attachment dir entries = %#v", entries)
+	}
+}
+
+func TestHandleEventSuperadminFileWithoutURLUsesGetFilePath(t *testing.T) {
+	call := 0
+	transport := newTestTransport(t, func(req request) response {
+		call++
+		switch req.Action {
+		case "get_file":
+			return response{Status: "ok", Data: []byte(`{"file":"C:\\Users\\Administrator\\Downloads\\test (1).txt","url":"","file_size":"1","file_name":"test.txt"}`), Echo: req.Echo}
+		case "send_private_msg":
+			text, _ := req.Params["message"].(string)
+			if !strings.Contains(text, "已接收附件：test.txt") || !strings.Contains(text, `OneBot 本地路径：C:\Users\Administrator\Downloads\test (1).txt`) || !strings.Contains(text, "如果 OneBot 和 ElBot 不在同一服务器") {
+				t.Fatalf("notice = %q", text)
+			}
+			return response{Status: "ok", Data: []byte(`{"message_id":102}`), Echo: req.Echo}
+		default:
+			t.Fatalf("action = %q", req.Action)
+		}
+		return response{}
+	})
+	adapter := New(Config{Enabled: true, URL: transport.URL, AttachmentDir: t.TempDir(), MaxReceiveFileBytes: 1024, DownloadTimeoutSecs: 60, Superadmins: []string{"1"}}, nil, nil, nil)
+	adapter.transport = transport
+	handler := &captureHandler{}
+	adapter.handleEvent(context.Background(), handler, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 7, Message: []byte(`[{"type":"file","data":{"file":"test.txt","url":"","file_size":"1"}}]`)})
+
+	if call != 2 {
+		t.Fatalf("call = %d, want 2", call)
+	}
+	if handler.count != 0 {
+		t.Fatalf("handler count = %d, want 0", handler.count)
+	}
+}
+
+func TestHandleEventSuperadminFileWithoutURLTooLargeAfterGetFile(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("file_size from get_file over limit should not be downloaded")
+	}))
+	defer server.Close()
+
+	transport := newTestTransport(t, func(req request) response {
+		switch req.Action {
+		case "get_file":
+			return response{Status: "ok", Data: []byte(fmt.Sprintf(`{"file":"C:\\QQ\\big.txt","url":%q,"file_size":"9","file_name":"big.txt"}`, server.URL+"/file")), Echo: req.Echo}
+		case "send_private_msg":
+			text, _ := req.Params["message"].(string)
+			if !strings.Contains(text, "文件过大，不会保存到服务器：big.txt") {
+				t.Fatalf("notice = %q", text)
+			}
+			return response{Status: "ok", Data: []byte(`{"message_id":103}`), Echo: req.Echo}
+		default:
+			t.Fatalf("action = %q", req.Action)
+		}
+		return response{}
+	})
+	adapter := New(Config{Enabled: true, URL: transport.URL, AttachmentDir: t.TempDir(), MaxReceiveFileBytes: 3, DownloadTimeoutSecs: 60, Superadmins: []string{"1"}}, nil, nil, nil)
+	adapter.transport = transport
+	handler := &captureHandler{}
+	adapter.handleEvent(context.Background(), handler, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 7, Message: []byte(`[{"type":"file","data":{"file":"big.txt","url":""}}]`)})
+
+	if handler.count != 0 {
+		t.Fatalf("handler count = %d, want 0", handler.count)
 	}
 }
 

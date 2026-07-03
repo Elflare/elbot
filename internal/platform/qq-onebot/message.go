@@ -149,7 +149,7 @@ func isDirectImageURL(value string) bool {
 }
 
 func fileSegment(kind string, data map[string]any) platform.MessageSegment {
-	return platform.MessageSegment{Type: platform.SegmentFile, Text: kind, URL: strings.TrimSpace(segmentDataString(data, "url")), Name: firstNonEmpty(segmentDataString(data, "name"), segmentDataString(data, "file"), segmentDataString(data, "filename")), Size: segmentDataInt64(data, "file_size")}
+	return platform.MessageSegment{Type: platform.SegmentFile, Text: kind, URL: strings.TrimSpace(segmentDataString(data, "url")), Name: firstNonEmpty(segmentDataString(data, "name"), segmentDataString(data, "file"), segmentDataString(data, "filename"), segmentDataString(data, "file_id")), Size: segmentDataInt64(data, "file_size")}
 }
 
 func segmentDataString(data map[string]any, key string) string {

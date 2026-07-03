@@ -58,6 +58,13 @@ type getImageData struct {
 	File string `json:"file"`
 }
 
+type getFileData struct {
+	File     string `json:"file"`
+	URL      string `json:"url"`
+	FileSize string `json:"file_size"`
+	FileName string `json:"file_name"`
+}
+
 func (t *Transport) Connect(ctx context.Context) error {
 	if t.URL == "" {
 		return fmt.Errorf("onebot ws url is empty")
@@ -151,6 +158,18 @@ func (t *Transport) GetImage(ctx context.Context, file string) (getImageData, er
 	var data getImageData
 	if err := json.Unmarshal(resp.Data, &data); err != nil {
 		return getImageData{}, fmt.Errorf("decode get_image response: %w", err)
+	}
+	return data, nil
+}
+
+func (t *Transport) GetFile(ctx context.Context, file string) (getFileData, error) {
+	resp, err := t.call(ctx, "get_file", map[string]any{"file": file, "download": true})
+	if err != nil {
+		return getFileData{}, err
+	}
+	var data getFileData
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		return getFileData{}, fmt.Errorf("decode get_file response: %w", err)
 	}
 	return data, nil
 }

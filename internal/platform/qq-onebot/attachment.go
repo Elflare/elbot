@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,10 +19,11 @@ import (
 )
 
 type savedAttachment struct {
-	URL      string
-	Path     string
-	Name     string
-	MIMEType string
+	URL        string
+	Path       string
+	Name       string
+	MIMEType   string
+	RemotePath bool
 }
 
 type inboundAttachments struct {
@@ -48,7 +50,25 @@ func (a *Adapter) prepareInboundAttachments(ctx context.Context, segments []plat
 			continue
 		}
 		if !isDownloadableURL(segment.URL) {
+			resolved, remoteSaved, err := a.resolveInboundFile(ctx, segment)
+			if err != nil {
+				a.logWarn("resolve onebot attachment failed", "name", segment.Name, "error", err)
+				continue
+			}
+			segment = resolved
+			out.Segments[i] = resolved
+			if remoteSaved.Path != "" {
+				out.Saved = append(out.Saved, remoteSaved)
+				continue
+			}
+		}
+		if !isDownloadableURL(segment.URL) {
 			a.logWarn("onebot attachment url missing", "name", segment.Name)
+			continue
+		}
+		if segment.Size > 0 && segment.Size > a.cfg.MaxReceiveFileBytes {
+			out.TooLarge = append(out.TooLarge, segment)
+			out.Segments[i] = platform.MessageSegment{}
 			continue
 		}
 		saved, err := a.downloadInboundAttachment(ctx, i+1, segment)
@@ -78,6 +98,40 @@ func compactMessageSegments(segments []platform.MessageSegment) []platform.Messa
 		}
 	}
 	return out
+}
+
+func (a *Adapter) resolveInboundFile(ctx context.Context, segment platform.MessageSegment) (platform.MessageSegment, savedAttachment, error) {
+	if a.transport == nil {
+		return segment, savedAttachment{}, fmt.Errorf("onebot transport is not configured")
+	}
+	file := strings.TrimSpace(segment.Name)
+	if file == "" {
+		return segment, savedAttachment{}, fmt.Errorf("onebot file name is empty")
+	}
+	data, err := a.transport.GetFile(ctx, file)
+	if err != nil {
+		return segment, savedAttachment{}, err
+	}
+	if data.FileName != "" {
+		segment.Name = strings.TrimSpace(data.FileName)
+	}
+	if segment.Size == 0 {
+		segment.Size = parseAttachmentSize(data.FileSize)
+	}
+	if data.URL != "" {
+		segment.URL = strings.TrimSpace(data.URL)
+		return segment, savedAttachment{}, nil
+	}
+	path := strings.TrimSpace(data.File)
+	if path == "" {
+		return segment, savedAttachment{}, nil
+	}
+	name := strings.TrimSpace(data.FileName)
+	if name == "" {
+		name = filepath.Base(path)
+	}
+	segment.Name = path
+	return segment, savedAttachment{Path: path, Name: name, RemotePath: true}, nil
 }
 
 func (a *Adapter) downloadInboundAttachment(ctx context.Context, index int, segment platform.MessageSegment) (savedAttachment, error) {
@@ -191,6 +245,14 @@ func isDownloadableURL(value string) bool {
 	return strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://")
 }
 
+func parseAttachmentSize(value string) int64 {
+	n, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
 func platformSavedAttachmentsOutput(attachments []savedAttachment) delivery.Output {
 	var sb strings.Builder
 	for _, attachment := range attachments {
@@ -200,6 +262,10 @@ func platformSavedAttachmentsOutput(attachments []savedAttachment) delivery.Outp
 		name := attachment.Name
 		if name == "" {
 			name = attachment.Path
+		}
+		if attachment.RemotePath {
+			sb.WriteString(fmt.Sprintf("已接收附件：%s\nOneBot 本地路径：%s\n提示：如果 OneBot 和 ElBot 不在同一服务器或同一文件系统，ElBot 可能读取不到这个路径。\n", name, attachment.Path))
+			continue
 		}
 		sb.WriteString(fmt.Sprintf("已保存附件：%s\n路径：%s\n", name, attachment.Path))
 	}
