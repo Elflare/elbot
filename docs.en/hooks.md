@@ -182,7 +182,7 @@ The segment format is unified with the [Elvena Protocol](elnis-usage.md#segments
 | `kind` | `text` / `image` / `file` / `emoticon`, default `text` |
 | `text` | Text content (required for text type, optional as additional text for other types) |
 | `url` | HTTP/HTTPS URL（image/file） |
-| `path` | Local file path (image/file/emoticon) |
+| `path` | Local file path (image/file/emoticon); Ordinary paths are handled according to the platform's default method; prefixes `base64://`, `file://`, `http://`, and `https://` indicate that the caller has specified the media source, which will be handled directly according to the platform's capabilities. |
 | `base64` | base64 encoded data (image/file) |
 | `name` | File name or emoticon name |
 | `mime_type` | MIME type hint |
