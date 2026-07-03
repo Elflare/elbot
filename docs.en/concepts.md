@@ -54,7 +54,7 @@ This mechanism can reduce invalid context overhead in ordinary tasks and also lo
 Users can specify the tools or Skills to be used in the current round in advance within a normal input.
 
 - `@tool:<name-or-tag>`: Pre-inject the schema of a tool or tool tag.
-- `@skill:<name>`: Add the content of the specified Skill document to the current user message and inject the runtime wrapper required by that Skill. The Skill entity itself is not a top-level tool schema.
+- `@skill:<name>`: Add the content of the specified Skill documentation to the current user message; If the AgentSkill contains a valid `ELBOT_SKILL.toml`, the top-level tool schema of that Skill will be injected; otherwise, it will be used only as documentation.
 
 Example:
 
@@ -150,14 +150,11 @@ Current built-in capabilities include:
 - File read and write.
 - Shell commands.
 - Chat history query.
-
 - Resident memory and long-term memory.
 - Cron management.
 - File sending.
 - Skill creation, reading, modification, and execution.
 - `elwisp_creator`: Returns protocol specifications, configuration snippets, scaffolding, and test checklists for creating Elwisp for the superadmin.
-
-Tool results can be fed back to the LLM or return a platform-agnostic output intent, which is sent uniformly by the Agent. The `Warnings` in tool results will be fed back to the LLM to suggest prioritizing more appropriate tools in the future, such as using `read_file` instead of shell `cat`. Foreground work Sessions can use `workspace` to set the shared working directory; all tools that require paths will resolve relative paths based on this directory; cron/Elnis background tasks still use their respective sandboxes. EL Skill, resident memory, and long-term memory source files are protected by FileGuard: reading will prompt the use of corresponding dedicated tools, and direct writing via general file tools or shell will be rejected.
 
 
 ## Security Policy
@@ -202,12 +199,12 @@ ElBot includes two layers of Cron capabilities:
 | Direct Cron | Send fixed content directly according to a schedule. |
 | LLM Cron | Drive model execution based on task descriptions, with the ability to use tools. |
 
-Background Cron has an independent Session and sandbox constraints. LLM Cron can select the background Session mode via `session_mode`: the default is `work`, and when passing `chat`, the tool schema is not injected, which is suitable for low-cost tasks that do not require tools. LLM Cron can pre-inject tool names or Skill names via `tool_list_names`: ordinary tools will inject the schema, while Skills will inject the description into the background task prompt and automatically inject the corresponding runner. All path parameters in background tasks should use relative paths within the current task working directory; The final JSON of LLM Cron can attach relative paths of images or files within the current task working directory via `report_segments`. When a superadmin quotes and replies to an LLM Cron notification message in the platform, it will automatically resume to the corresponding background Session to continue the conversation; When a regular user quotes it, it will only be processed as ordinary quoted text.
+Background Cron has an independent Session and sandbox constraints.
+ When a superadmin quotes and replies to an LLM Cron notification message in the platform, it will automatically resume to the corresponding background Session to continue the conversation.
 
 ## Elnis / Elwisp / Elvena
 
 Elnis is ElBot's listening hub, used for receiving external events. Elwisp is an external sub-listener responsible for observing the external world, such as servers, Webhooks, RSS, logs, or script outputs. Elvena is the protocol used by Elwisp to deliver events to Elnis, and it is also the action protocol reused by internal trigger sources such as Hook exec.
-
 
 Their division of labor is: Elwisp observes everything, Elnis manages everything, and ElBot controls the final execution and delivery.
 
@@ -219,12 +216,33 @@ ElBot supports Skill extensions and introduces ELyph Task Notation to describe r
 
 Skill types:
 
-- AgentSkill: placed in `skills/agent/<skill>/`, following or compatible with the agentskills.io style `SKILL.md`, and `SKILL.elyph` can also be used to override the Agent-readable description; Currently, attached Python scripts can be executed via `python_skill_run`.
-- Go Skill: placed in `skills/go/<skill>/`, using `SKILL.elyph` to describe the task; When a binary exists, it can be executed via `go_skill_run` and receive a JSON payload from stdin.
+- AgentSkill: Placed in `skills/agent/<skill>/`, following or compatible with the agentskills.io style `SKILL.md`, and `SKILL.elyph` can also be used to override the Agent-readable description. By default, it is a descriptive Skill; the LLM can use general tools such as shell and files to process attached scripts according to the documentation.
+- Tool-based AgentSkill: When a valid `ELBOT_SKILL.toml` exists in the root directory of the AgentSkill, it will be registered as a regular top-level tool. The LLM calls structured parameters, and ElBot translates these parameters into command-line argv according to the configuration and executes the command in the Skill directory, without going through a shell.
+`ELBOT_SKILL.toml` is only read in the `skills/agent/<skill>/` root directory. Minimum example:
 
+```toml
+risk = "medium"
+command = ["python", "foo.py"]
+timeout_seconds = 30
+expose_root = false
 
-The goal of ELyph is to express inputs, outputs, steps, conditions, and constraints using a shorter and more stable structure, reducing the ambiguity of natural language task descriptions. Reading or modifying the `SKILL.elyph` / `main.go` of Go Skill should use `read_el_skill` / `modify_el_skill`; Direct modification of these files via general file tools or shell will be rejected. For the complete syntax, see [ELyph Task Notation](elyph.md).
+parameters = '''
+{
+  "type": "object",
+  "required": ["input"],
+  "properties": {
+    "input": {"type": "string", "description": "输入文本"}
+  }
+}
+'''
 
+[args]
+input = "--input"
+```
+
+In the above example, after the LLM calls the Skill tool and passes `input`, ElBot will execute `python foo.py --input <value>`, and the working directory is fixed to the root directory of that Skill. `risk`, `command`, `parameters`, and `[args]` are required; When `expose_root=true`, the Skill root path will only be exposed to the LLM upon Skill discovery.
+
+The goal of ELyph is to express inputs, outputs, steps, conditions, and constraints using a shorter and more stable structure, reducing the ambiguity of natural language task descriptions. For the complete syntax, see [ELyph Task Notation](elyph.md).
 
 ## Platform Adapter
 
