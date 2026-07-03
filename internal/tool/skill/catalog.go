@@ -16,14 +16,17 @@ const (
 )
 
 type Record struct {
-	Name        string
-	Description string
-	Detail      string
-	Format      string
-	Risk        tool.RiskLevel
-	Kind        Kind
-	Root        string
-	BinaryPath  string
+	Name          string
+	Description   string
+	Detail        string
+	Format        string
+	Risk          tool.RiskLevel
+	Kind          Kind
+	Root          string
+	BinaryPath    string
+	Manifest      AgentSkillManifest
+	ManifestFound bool
+	ManifestError string
 }
 
 type Catalog struct {

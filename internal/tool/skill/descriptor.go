@@ -3,6 +3,7 @@ package skill
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"elbot/internal/elyph"
 	"elbot/internal/llm"
@@ -10,7 +11,7 @@ import (
 )
 
 const (
-	AgentScriptRunnerName = "python_skill_run"
+	AgentSkillManagerName = "agent_skill"
 	GoRunnerName          = "go_skill_run"
 )
 
@@ -44,7 +45,7 @@ func (d Descriptor) Schema() llm.ToolSchema {
 }
 
 func (d Descriptor) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
-	return nil, fmt.Errorf("skill %q is a document skill; query it with discover_tool and use the activated wrapper tool", d.Record.Name)
+	return nil, fmt.Errorf("skill %q is a document skill; query it with discover_tool", d.Record.Name)
 }
 
 func (d Descriptor) Detail() string {
@@ -54,7 +55,7 @@ func (d Descriptor) Detail() string {
 func (d Descriptor) DetailBlock() tool.DetailBlock {
 	content := d.Record.Detail
 	if d.Record.Kind == KindAgent {
-		content = content + agentSkillPythonConstraint()
+		content = strings.TrimSpace(content + "\n\n" + agentSkillNotice(d.Record))
 	}
 	block := tool.DetailBlock{Content: content, Format: d.Record.Format}
 	if d.Record.Format == elyph.Format {
@@ -66,8 +67,7 @@ func (d Descriptor) DetailBlock() tool.DetailBlock {
 func (d Descriptor) ActivateTools() []string {
 	switch d.Record.Kind {
 	case KindAgent:
-		// TODO: 根据 AgentSkill 声明的脚本类型选择 wrapper；当前仅支持 Python 脚本。
-		return []string{AgentScriptRunnerName}
+		return []string{AgentSkillManagerName}
 	case KindGo:
 		if d.Record.BinaryPath != "" {
 			return []string{GoRunnerName}
@@ -78,10 +78,10 @@ func (d Descriptor) ActivateTools() []string {
 	}
 }
 
-func agentSkillPythonConstraint() string {
-	return "\n\n---\n\nElBot AgentSkill Python 脚本运行约束：\n" +
-		"- 如果需要执行此 AgentSkill 附带的 Python 脚本，请使用 python_skill_run。\n" +
-		"- python_skill_run 会在 AgentSkill 目录下通过 uv run python 执行脚本。\n" +
-		"- 不要照抄原文中的 python、pip、venv、conda 环境命令。\n" +
-		"- 不要用 shell 猜测或访问 AgentSkill 安装目录；shell 仅用于当前任务 sandbox 内普通命令。"
+func agentSkillNotice(record Record) string {
+	lines := []string{"ElBot AgentSkill 使用提示：", "- 此 AgentSkill 当前是说明型 skill，未作为 top-level 工具注入。", "- 如需按文档运行脚本，可使用 shell 等通用工具。", "- 如需把它注册成普通工具，请使用 agent_skill 创建或修改 " + AgentSkillConfigFile + "。"}
+	if record.ManifestFound && record.ManifestError != "" {
+		lines = append(lines, "- 当前 "+AgentSkillConfigFile+" 无效："+record.ManifestError)
+	}
+	return strings.Join(lines, "\n")
 }

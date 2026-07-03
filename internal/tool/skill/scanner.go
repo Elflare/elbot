@@ -58,7 +58,7 @@ func (s FilesystemScanner) Scan(ctx context.Context) ([]tool.Tool, error) {
 	}
 	tools := make([]tool.Tool, 0, len(records))
 	for _, record := range records {
-		tools = append(tools, NewDescriptor(record))
+		tools = append(tools, toolForRecord(record))
 	}
 	return tools, nil
 }
@@ -92,7 +92,7 @@ func (s FilesystemScanner) Reload(ctx context.Context, registry *tool.Registry) 
 				continue
 			}
 		}
-		if err := registry.Register(NewDescriptor(record)); err != nil {
+		if err := registry.Register(toolForRecord(record)); err != nil {
 			continue
 		}
 		registered = append(registered, record)
@@ -212,7 +212,8 @@ func (s FilesystemScanner) readAgentRecord(root, dirName string) (Record, bool, 
 			return Record{}, false, nil
 		}
 		detail := strings.TrimSpace(string(data))
-		return Record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: elyphRisk(detail), Kind: KindAgent, Root: root}, true, nil
+		record := Record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: elyphRisk(detail), Kind: KindAgent, Root: root}
+		return s.withAgentManifest(record), true, nil
 	} else if !os.IsNotExist(err) {
 		return Record{}, false, fmt.Errorf("read %s in %q: %w", elyph.SkillFileName, root, err)
 	}
@@ -228,7 +229,28 @@ func (s FilesystemScanner) readAgentRecord(root, dirName string) (Record, bool, 
 		return Record{}, false, fmt.Errorf("parse SKILL.md in %q: %w", root, err)
 	}
 	record := Record{Name: def.Name, Description: def.Description, Detail: def.Detail, Format: def.Format, Risk: def.Risk, Kind: KindAgent, Root: root}
-	return record, true, nil
+	return s.withAgentManifest(record), true, nil
+}
+
+func (s FilesystemScanner) withAgentManifest(record Record) Record {
+	manifest, found, err := LoadAgentSkillManifest(record.Root)
+	record.ManifestFound = found
+	if err != nil {
+		record.ManifestError = err.Error()
+		return record
+	}
+	if found {
+		record.Manifest = manifest
+		record.Risk = manifest.Risk
+	}
+	return record
+}
+
+func toolForRecord(record Record) tool.Tool {
+	if record.Kind == KindAgent && record.ManifestFound && record.ManifestError == "" {
+		return NewCommandTool(record)
+	}
+	return NewDescriptor(record)
 }
 
 func elyphRisk(text string) tool.RiskLevel {

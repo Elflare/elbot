@@ -173,13 +173,13 @@
 
 - `internal/tool/builder.go`：Go Tool Builder；用于声明工具描述、风险、隐藏、superadmin-only、foreground-only、用户侧 tags、依赖和常用参数 schema，Object 参数默认允许任意 JSON 字段，减少内置工具与包装工具手写 schema 的成本。
 
-- `internal/tool/discover.go`：`discover_tool` 内置工具；无参列出可见工具/skill 简介，有 `name`/`names` 时普通工具仅返回“已发现工具”文本并把完整 schema 留在结构化 Data 供 Agent 注入 top-level tools，外置 AgentSkill/Go skill 返回 markdown/ELyph detail 且 ELyph 规则卡按格式去重；查询 AgentSkill/Go skill 会通过内部 metadata 激活隐藏包装工具 `python_skill_run`/`go_skill_run`。
+- `internal/tool/discover.go`：`discover_tool` 内置工具；无参列出可见工具/skill 简介，有 `name`/`names` 时普通工具仅返回“已发现工具”文本并把完整 schema 留在结构化 Data 供 Agent 注入 top-level tools，外置 AgentSkill/Go skill 返回 markdown/ELyph detail 且 ELyph 规则卡按格式去重；查询说明型 AgentSkill 会激活 `agent_skill` 元工具，查询工具化 AgentSkill 会注入其 top-level schema，查询 Go skill 会按需激活 `go_skill_run`。
 - `internal/tool/provider.go`：Tool Runtime 到 Agent Prompt/LLM schema 的旧 provider 适配；保留给显式外部 provider 兼容，默认工具视图由 `internal/toolrun` 提供。
 - `internal/toolrun/`：工具调用中间层；维护 session 工具缓存、native/Elwisp 工具视图、foreground-only 可用性过滤、命名解析、权限风险确认、工具自定义确认详情、tool call 生命周期编排、批量工具预览和失效提示；后台 session 不注入默认 `discover_tool`，执行前可注入工具 context，Elwisp 外部工具通过 HTTP JSON POST 执行。
 
 - `internal/tool/executor.go`：工具执行器；把模型产生的 `llm.ToolCallRequest` 转换为 Tool Runtime 调用，执行前按 Actor/Policy 做风险等级兜底校验，并把结果转换为 LLM tool message。
 - `internal/tool/builtin/runtime.go`：内置工具 Runtime；集中创建 Tool Registry、常驻记忆 store、Skill Manager、文件发送 helper 和内置工具私有路径；`memories.toml`、`long_memory/`、`skills/` 默认在配置目录下。
-- `internal/tool/builtin/register.go`：内置工具注册细节；由 builtin Runtime 调用，统一注册 `discover_tool`、`workspace`、常驻记忆、长期记忆、cron、`send_file`、聊天历史、web 搜索/提取、shell、`elwisp_creator`、skill 包装工具和 Go 元 skill。
+- `internal/tool/builtin/register.go`：内置工具注册细节；由 builtin Runtime 调用，统一注册 `discover_tool`、`workspace`、常驻记忆、长期记忆、cron、`send_file`、聊天历史、web 搜索/提取、shell、`elwisp_creator`、`agent_skill` 和 Go skill runner 等工具。
 - `internal/tool/builtin/workspace.go`：内置 workspace 工具；查询、设置或 reset 当前前台 Session 的共享工作目录。
 - `internal/tool/builtin/file_manager.go`：本地文件发送准备 helper；校验已解析的本地文件路径、文件名、MIME 和大小，不复制文件。
 - `internal/tool/builtin/send_file.go`：内置发文件工具；仅超管可用，支持 `path` 参数，路径基于 workspace 或后台 sandbox 解析。
@@ -203,16 +203,20 @@
 - `internal/elyph/`：ELyph Task Notation 语言层；提供规则卡、AST/diagnostic、parser/linter，供原生 skill 创建、扫描和 LLM cron 任务复用。
 - `internal/tool/skill/parser.go`：通用 `SKILL.md` 解析器；兼容 agentskills.io 风格外置 AgentSkill 常见 YAML front matter 的 `name`、`description`、`when_to_use`、`risk`，并提供目录名和正文首段 fallback；未写 risk 时默认 high。
 
-- `internal/tool/skill/catalog.go`：skill catalog；记录 AgentSkill/Go skill 的名称、详情格式、风险、根目录和 Go binary 路径，供隐藏包装工具按名称查找。
+- `internal/tool/skill/catalog.go`：skill catalog；记录 AgentSkill/Go skill 的名称、详情格式、风险、根目录、Go binary 路径和 AgentSkill 工具化配置状态。
 
 - `internal/tool/skill/creator.go`：`create_el_skill` 内置元工具；用结构化参数 `name/description/risk/elyph/go_source` 创建 ElBot 原生 skill，写入 `SKILL.elyph`，可选写入 `main.go` 并编译，创建前用 ELyph parser/linter 校验，成功后自动 reload；不再要求 LLM 拼 `SKILL.md` front matter，未提供源码时创建纯 ELyph 文本 skill。
+- `internal/tool/skill/agent_manifest.go`：AgentSkill `ELBOT_SKILL.toml` 解析与严格校验；配置把 AgentSkill 命令行参数映射为普通工具 schema。
+- `internal/tool/skill/command_tool.go`：工具化 AgentSkill runtime；按 manifest 把 LLM arguments 翻译成 argv，在 Skill 根目录执行命令并把 stdout 转成工具结果。
+- `internal/tool/skill/agent_skill_tool.go`：隐藏元工具 `agent_skill`；读取/写入 AgentSkill 的 `ELBOT_SKILL.toml`，写入前校验，成功后 reload。
 - `internal/tool/skill/modify_el_skill.go`：`read_el_skill`/`modify_el_skill` 。
 - `internal/tool/skill/finalize_el_skill.go`：`finalize_el_skill` 内置元工具；完成原生 EL Skill 修改，校验 `SKILL.elyph`，对 `main.go` 执行 gofmt、`package main` 校验、`go build` 和 reload，并把格式化/编译错误作为结果返回给 LLM。
 - `internal/tool/skill/elyph_warnings.go`：ELyph warning 结果拼接 helper；把非阻断诊断转为工具通用 warning。
 - `internal/tool/skill/go_source.go`：原生 Go skill 源码维护 helper；提供 gofmt、`package main` 校验、Go 可执行文件解析和 `go build` 编译能力，供 `finalize_el_skill` 和创建流程复用。
-- `internal/tool/skill/descriptor.go`：skill 描述对象；让 AgentSkill/Go skill 可被 `discover_tool` 查到详情，按结构化 detail 暴露内容、格式和规则卡；skill 本体不作为可直接调用 schema 暴露。
-- `internal/tool/skill/scanner.go`：skill 文件系统扫描与 reload；主程序默认根目录为配置目录下 `skills/`；AgentSkill 使用 `agent/<skill>/SKILL.md`，可选 `SKILL.elyph` 覆写 Agent 可读说明；Go skill 必须使用 `go/<skill>/SKILL.elyph`，可选 binary；同步新增/删除 skill 并更新 catalog。
-- `internal/tool/skill/runner.go`：隐藏包装工具实现；`python_skill_run` 固定在 AgentSkill 目录用 `uv run python` 执行附带 Python 脚本，`go_skill_run` 选择 Go skill binary 并把必填 `payload` 对象 JSON 写入 stdin；执行错误会区分启动/超时/进程失败并回传 stdout/stderr，风险按目标 skill 的 `risk` 评估。
+- `internal/tool/skill/descriptor.go`：skill 描述对象；让 AgentSkill/Go skill 可被 `discover_tool` 查到详情，按结构化 detail 暴露内容、格式和规则卡；说明型 AgentSkill 会激活 `agent_skill` 元工具。
+- `internal/tool/skill/scanner.go`：skill 文件系统扫描与 reload；主程序默认根目录为配置目录下 `skills/`；AgentSkill 使用 `agent/<skill>/SKILL.md`，可选 `SKILL.elyph` 覆写 Agent 可读说明，并只读取根目录 `ELBOT_SKILL.toml` 决定是否注册为普通工具；Go skill 必须使用 `go/<skill>/SKILL.elyph`，可选 binary；同步新增/删除 skill 并更新 catalog。
+- `internal/tool/skill/manager.go`：Skill manager；维护 catalog/scanner/registry，并提供延迟后台扫描与 `discover_tool` 首次使用兜底加载。
+- `internal/tool/skill/runner.go`：Go skill 隐藏包装工具；`go_skill_run` 选择 Go skill binary 并把必填 `payload` 对象 JSON 写入 stdin；执行错误会区分启动/超时/进程失败并回传 stdout/stderr，风险按目标 skill 的 `risk` 评估。
 - `internal/utils/fileops/`：公共文本文件辅助包；提供编码识别、文本读写、行编辑、match/anchor 编辑（content 精确子串与 line 行前缀两种模式，支持 index 选择多处匹配）、diff、sha256 和原子写入，供文件工具和 skill 维护工具复用。
 
 ### Tool 约定

@@ -10,12 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- AgentSkill 支持在根目录添加 `ELBOT_SKILL.toml` 注册为普通工具：LLM 调用结构化参数，ElBot 翻译为命令行 argv 执行，并复用现有风险、确认、Hook 与审计链路。
+- 新增隐藏元工具 `agent_skill`，用于读取或写入 AgentSkill 的 `ELBOT_SKILL.toml`，写入前校验配置并在成功后 reload。
 - 新增 `/usage` 命令：从审计日志聚合 token 消耗，支持按模型/天/会话汇总，快捷参数 `-d` 天数、`-m` 模型、`-s` 会话。
 - 新增 `workspace` 工具：设置当前前台 Session 的共享工作目录，路径类工具会基于该目录解析相对路径。
 - `/requests` 命令现在展示每个 turn 的当前运行阶段（preparing/llm/tool/sending）和阶段耗时，可区分 LLM 慢还是平台发送卡住。
 
 ### Changed
 
+- AgentSkill 不再通过 `python_skill_run` 固定包装执行 Python 脚本；没有 `ELBOT_SKILL.toml` 时保持说明型 Skill，可按文档使用 shell 等通用工具。
+- Skill 扫描改为启动后延迟执行，并在 `discover_tool` 首次使用时兜底确保扫描，减少启动阻塞。
 - Session 闲置过期改为 `[session.idle_expiration]` 四项配置，分别控制群聊/私聊下普通用户和超级管理员的当前 Session 过期时间；默认群聊所有用户过期，私聊超级管理员不过期。
 - `shell` 工具移除 `path` 参数，命令默认在当前 workspace 下执行；后台任务仍限制在各自 sandbox 内。
 - `read_file`、`edit_file`、`send_file` 的相对路径改为基于当前 workspace 解析；绝对路径仍可临时使用并返回 warning。

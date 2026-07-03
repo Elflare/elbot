@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
@@ -210,6 +211,7 @@ type StructuredDetailProvider interface {
 const MetadataActivateTools = "activate_tools"
 
 type Registry struct {
+	mu    sync.RWMutex
 	tools map[string]Tool
 }
 
@@ -225,6 +227,8 @@ func (r *Registry) Register(tool Tool) error {
 	if name == "" {
 		return fmt.Errorf("tool name is required")
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if _, exists := r.tools[name]; exists {
 		return fmt.Errorf("tool %q already registered", name)
 	}
@@ -234,6 +238,8 @@ func (r *Registry) Register(tool Tool) error {
 
 func (r *Registry) Unregister(name string) error {
 	name = strings.TrimSpace(name)
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	tool, ok := r.tools[name]
 	if !ok {
 		return fmt.Errorf("tool %q not found", name)
@@ -246,11 +252,15 @@ func (r *Registry) Unregister(name string) error {
 }
 
 func (r *Registry) Get(name string) (Tool, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	tool, ok := r.tools[strings.TrimSpace(name)]
 	return tool, ok
 }
 
 func (r *Registry) List() []Info {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	infos := make([]Info, 0, len(r.tools))
 	for _, tool := range r.tools {
 		infos = append(infos, tool.Info())

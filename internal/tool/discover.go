@@ -12,7 +12,8 @@ import (
 )
 
 type discoverTool struct {
-	registry *Registry
+	registry       *Registry
+	beforeDiscover func(context.Context) error
 }
 
 type discoverArgs struct {
@@ -20,8 +21,12 @@ type discoverArgs struct {
 	Names []string `json:"names"`
 }
 
-func NewDiscoverTool(registry *Registry) Tool {
-	return discoverTool{registry: registry}
+func NewDiscoverTool(registry *Registry, before ...func(context.Context) error) Tool {
+	var hook func(context.Context) error
+	if len(before) > 0 {
+		hook = before[0]
+	}
+	return discoverTool{registry: registry, beforeDiscover: hook}
 }
 
 func (t discoverTool) Name() string {
@@ -46,6 +51,11 @@ func (t discoverTool) Schema() llm.ToolSchema {
 func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if t.beforeDiscover != nil {
+		if err := t.beforeDiscover(ctx); err != nil {
+			return nil, err
+		}
 	}
 	var args discoverArgs
 	if len(req.Arguments) > 0 {

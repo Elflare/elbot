@@ -278,10 +278,8 @@ func Run(ctx context.Context, opts Options) error {
 	residentStore := toolRuntime.ResidentMemoryStore
 	skillManager := toolRuntime.SkillManager
 	profiler.Mark("builtin tools register")
-	if err := skillManager.Reload(ctx); err != nil {
-		return err
-	}
-	profiler.Mark("skill reload")
+	skillManager.StartDelayedReload(ctx, time.Second)
+	profiler.Mark("skill reload scheduled")
 	securityPolicy := security.NewPolicy(cfg.Security.UserMaxToolRisk, cfg.Security.SuperadminConfirmRisk, cfg.Security.Superadmins)
 	var elnisService *elnis.Service
 	elvenaBus := elvena.NewBus()

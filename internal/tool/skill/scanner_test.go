@@ -24,6 +24,52 @@ func TestFilesystemScannerScansAgentSkill(t *testing.T) {
 	}
 }
 
+func TestFilesystemScannerScansCallableAgentSkill(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "agent", "docx")
+	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\nrisk: low\n---\n\n# DOCX")
+	writeAgentSkillConfig(t, dir, `risk = "medium"
+command = ["python", "foo.py"]
+parameters = '''{"type":"object","required":["input"],"properties":{"input":{"type":"string"}}}'''
+[args]
+input = "--input"
+`)
+	scanner := NewFilesystemScanner(root)
+	tools, err := scanner.Scan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tools) != 1 || tools[0].Name() != "docx" || tools[0].Info().Risk != tool.RiskMedium {
+		t.Fatalf("tools = %#v", tools)
+	}
+	if _, ok := tools[0].(CommandTool); !ok {
+		t.Fatalf("tool type = %T, want CommandTool", tools[0])
+	}
+}
+
+func TestFilesystemScannerKeepsInvalidManifestAsDocumentSkill(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "agent", "docx")
+	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\nrisk: low\n---\n\n# DOCX")
+	writeAgentSkillConfig(t, dir, `risk = "nope"
+command = ["python", "foo.py"]
+parameters = '''{"type":"object","properties":{"input":{"type":"string"}}}'''
+[args]
+input = "--input"
+`)
+	scanner := NewFilesystemScanner(root)
+	tools, err := scanner.Scan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tools) != 1 || tools[0].Name() != "docx" {
+		t.Fatalf("tools = %#v", tools)
+	}
+	if _, ok := tools[0].(Descriptor); !ok {
+		t.Fatalf("tool type = %T, want Descriptor", tools[0])
+	}
+}
+
 func TestFilesystemScannerScansGoSkillWithBinary(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "go", "foo")
@@ -106,9 +152,9 @@ func TestFilesystemScannerRemoveDeletesDirectoryAndReloads(t *testing.T) {
 	}
 }
 
-func TestAgentDescriptorDetailAddsUvConstraint(t *testing.T) {
+func TestAgentDescriptorDetailAddsAgentSkillNotice(t *testing.T) {
 	d := NewDescriptor(Record{Name: "docx", Detail: "# DOCX", Kind: KindAgent})
-	if !strings.Contains(d.Detail(), "uv run python") || len(d.ActivateTools()) != 1 || d.ActivateTools()[0] != AgentScriptRunnerName {
+	if !strings.Contains(d.Detail(), AgentSkillConfigFile) || len(d.ActivateTools()) != 1 || d.ActivateTools()[0] != AgentSkillManagerName {
 		t.Fatalf("detail=%q activate=%#v", d.Detail(), d.ActivateTools())
 	}
 }
@@ -145,6 +191,13 @@ func writeElyphSkill(t *testing.T, dir, content string) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.elyph"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeAgentSkillConfig(t *testing.T, dir, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, AgentSkillConfigFile), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

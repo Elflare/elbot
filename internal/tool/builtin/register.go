@@ -1,6 +1,8 @@
 package builtin
 
 import (
+	"context"
+
 	elcron "elbot/internal/cron"
 	"elbot/internal/memory/resident"
 	"elbot/internal/storage"
@@ -18,7 +20,11 @@ type RegisterOptions struct {
 }
 
 func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
-	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
+	var beforeDiscover func(context.Context) error
+	if opts.SkillManager != nil {
+		beforeDiscover = opts.SkillManager.EnsureLoaded
+	}
+	if err := registry.Register(tool.NewDiscoverTool(registry, beforeDiscover)); err != nil {
 		return err
 	}
 	if err := registry.Register(NewWorkspaceTool()); err != nil {
@@ -94,7 +100,7 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 	if opts.SkillManager != nil {
 		catalog = opts.SkillManager.Catalog
 	}
-	if err := registry.Register(skill.NewAgentScriptRunner(catalog)); err != nil {
+	if err := registry.Register(skill.NewAgentSkillTool(opts.SkillManager)); err != nil {
 		return err
 	}
 	if err := registry.Register(skill.NewGoRunner(catalog)); err != nil {
