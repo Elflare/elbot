@@ -56,9 +56,9 @@
       "updated_at": 1782901461
     },
     "docs/hooks.md": {
-      "source_hash": "0c9ba1321ef7cc1a4ba6e101c0a8fc299e7dab73654c609b00013340d6c6d0f7",
+      "source_hash": "501f1741997bdc58597d02c5e7a84a953dc6ee28354fd486d1a94737edd0c863",
       "target": "docs.en/hooks.md",
-      "updated_at": 1783048529
+      "updated_at": 1783095081
     }
   },
   "segments": {
@@ -12398,6 +12398,14 @@
       "translation": "The script can output __ELBOT_CODE_0__ notifications or __ELBOT_CODE_1__ background tasks;",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:paragraph:6d352c178690f050a12c39d8b75857f6a65cc94f9202cb3de9f336dfcf760db4": {
+      "kind": "paragraph",
+      "source": "例如 __ELBOT_CODE_0__ 会直接执行 __ELBOT_CODE_1__，__ELBOT_CODE_2__ 会直接执行 __ELBOT_CODE_3__；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "6d352c178690f050a12c39d8b75857f6a65cc94f9202cb3de9f336dfcf760db4",
+      "translation": "For example, __ELBOT_CODE_0__ will directly execute __ELBOT_CODE_1__, and __ELBOT_CODE_2__ will directly execute __ELBOT_CODE_3__;",
+      "updated_at": 1783095081
+    },
     "docs/hooks.md:paragraph:6f210325506bd304ba78b003bbcd796a23e344791ce275e03bf0b05bbdc9bb8c": {
       "kind": "paragraph",
       "source": "规则 Hook 的 __ELBOT_CODE_0__ action 可以设置 __ELBOT_CODE_1__。",
@@ -12445,6 +12453,14 @@
       "source_hash": "7cc95ac3cab598fa14e0ec2d791067700b5af3359d14c877487f940b307fc4af",
       "translation": "The Emoji Hook has been changed from an embedded plugin to a Rule Hook example; see the [Emoji Extraction Example](#表情提取示例) in this document.\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:86c6efa81c019df85465580a72adfadd13bfe3f761edb4151905a4c4dfb8ff78": {
+      "kind": "paragraph",
+      "source": "需要管道、重定向、__ELBOT_CODE_0__ 等 shell 语法时，请显式写 __ELBOT_CODE_1__、__ELBOT_CODE_2__ 或平台对应解释器。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "86c6efa81c019df85465580a72adfadd13bfe3f761edb4151905a4c4dfb8ff78",
+      "translation": "When pipes, redirection, __ELBOT_CODE_0__, or other shell syntax are required, please explicitly write __ELBOT_CODE_1__, __ELBOT_CODE_2__, or the corresponding interpreter for the platform.\n",
+      "updated_at": 1783095081
     },
     "docs/hooks.md:paragraph:8dc0b277889a46a8d15ef0d8920c3661a0bf63f7a82f5036a2250175c1a99b94": {
       "kind": "paragraph",
@@ -12517,6 +12533,14 @@
       "source_hash": "b77e74c6ed83f86214035c7377697af2a84bdc30a69c3240a32ccc9ba2515822",
       "translation": "Text fields and exec command/stdin support __ELBOT_CODE_0__ template rendering:\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:bf09daac97e47a6d4dbf4d9d1f7b7c7f8351e81e87d58ef80c710de034c27990": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 会按空白拆分为可执行程序和参数后直接执行，不会隐式套 __ELBOT_CODE_1__。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "bf09daac97e47a6d4dbf4d9d1f7b7c7f8351e81e87d58ef80c710de034c27990",
+      "translation": "__ELBOT_CODE_0__ will be split by whitespace into an executable program and arguments and then executed directly, without implicitly wrapping it in __ELBOT_CODE_1__.",
+      "updated_at": 1783095081
     },
     "docs/hooks.md:paragraph:c152f22b7b4db7f50467fed39c70cfe2443d40eec2b1f97ccefcfef7966668fd": {
       "kind": "paragraph",

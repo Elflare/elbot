@@ -206,6 +206,8 @@ Tool calls are constrained by the Security Policy: the risk level must be within
 
 Execute a local script. The script uses `plugins/` as the working directory by default, which can be overridden by `cwd` (absolute paths are used directly, while relative paths are still based on `plugins/`).
 
+`command` will be split by whitespace into an executable program and arguments and then executed directly, without implicitly wrapping it in `sh -c`. For example, `uv run script.py` will directly execute `uv`, and `bash ./script.sh` will directly execute `bash`; When pipes, redirection, `&&`, or other shell syntax are required, please explicitly write `bash -lc "..."`, `sh -c "..."`, or the corresponding interpreter for the platform.
+
 By default, stdin is a JSON containing the full event and match context. You can also use the `stdin` field to customize the stdin content (template rendering is supported).
 
 `stdout` mode:
