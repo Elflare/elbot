@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "d82d4de88069060d1b1e3941fce9eef1ef76acf57373d330f9ab628eb9e1747a",
+      "source_hash": "f6dc1d1cf84916376e5ff15b874225ad55259fbcd7cbed95ca717af6bbfb7dfe",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783085325
+      "updated_at": 1783095128
     },
     "README.zh-CN.md": {
       "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
@@ -318,6 +318,14 @@
       "translation": "read_el_skill now depends on modify_el_skill to facilitate possible modifications",
       "updated_at": 1782569783
     },
+    "CHANGELOG.md:list:48f3a6dafe9014a329230839e2e9f2417612784774ec697386b20eb74c1e628b": {
+      "kind": "list",
+      "source": "若返回下载地址则保存到 ElBot，若只返回 OneBot 本地路径则直接提示该路径。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "48f3a6dafe9014a329230839e2e9f2417612784774ec697386b20eb74c1e628b",
+      "translation": "If a download URL is returned, it will be saved to ElBot; if only a OneBot local path is returned, that path will be displayed directly.",
+      "updated_at": 1783095128
+    },
     "CHANGELOG.md:list:544848e58ddf58eb94be259c382c90eb3999f62714ca2674072b8102baa6631a": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 修改 __ELBOT_CODE_1__ 后不再自动 reload；修改完成后需调用 __ELBOT_CODE_2__ 生效。",
@@ -534,6 +542,14 @@
       "translation": "Added `__ELBOT_CODE_0__` tool: sets the shared working directory of the current foreground Session; path-related tools will resolve relative paths based on this directory.",
       "updated_at": 1782958962
     },
+    "CHANGELOG.md:list:89005ba6c93baa5933f575ef83d9e47cc8ac49f7d6ef87ff85f02fa0333ca7e0": {
+      "kind": "list",
+      "source": "修复 Hook rules __ELBOT_CODE_0__ action 在 Windows 下固定依赖 __ELBOT_CODE_1__ 导致执行失败的问题；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "89005ba6c93baa5933f575ef83d9e47cc8ac49f7d6ef87ff85f02fa0333ca7e0",
+      "translation": "Fixed an issue where the Hook rules __ELBOT_CODE_0__ action failed to execute on Windows due to a fixed dependency on __ELBOT_CODE_1__;",
+      "updated_at": 1783095128
+    },
     "CHANGELOG.md:list:8c6db0749fc23bd2ae134ad376b9197d0f3c34d7c93e7d70e3767ccd889a12bc": {
       "kind": "list",
       "source": "ELyph __ELBOT_CODE_0__/__ELBOT_CODE_1__ 文本末尾冒号现在作为 warning 返回给 __ELBOT_CODE_2__/__ELBOT_CODE_3__，不再阻断创建或 finalize。",
@@ -565,6 +581,14 @@
       "source_hash": "8e240be846787f791774d6c36787606f8337042e10aac541f8b36ece490e981d",
       "translation": "Model-level __ELBOT_CODE_0__ and __ELBOT_CODE_1__ are now unified under __ELBOT_CODE_2__ and looked up by __ELBOT_CODE_3__, avoiding conflicts between models with the same name across providers.",
       "updated_at": 1782312399
+    },
+    "CHANGELOG.md:list:8e3bcd113d1bbd118c00b2e9428d2922ec780b8c24994c889cefe954022f7288": {
+      "kind": "list",
+      "source": "QQ OneBot 支持自动保存私聊超级管理员入站文件；纯文件消息只回复保存路径或过大提示，不唤起 LLM，群文件不自动保存。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "8e3bcd113d1bbd118c00b2e9428d2922ec780b8c24994c889cefe954022f7288",
+      "translation": "QQ OneBot now supports automatically saving inbound files from superadmins in private chats; messages containing only files will only reply with the save path or a \"too large\" prompt without invoking the LLM; group files are not automatically saved.",
+      "updated_at": 1783095128
     },
     "CHANGELOG.md:list:8ffa77eae1271a9d65560102a519441480c611c59382b37fe40218bdc1078f80": {
       "kind": "list",
@@ -613,6 +637,22 @@
       "source_hash": "a00ce6a14a49ad47de898b2bcf6e66396bbff7e68d046017ace4ec5ab76bab70",
       "translation": "Added a hidden meta-tool __ELBOT_CODE_0__ for reading or writing the __ELBOT_CODE_1__ of AgentSkill; it validates the configuration before writing and reloads upon success.",
       "updated_at": 1783074551
+    },
+    "CHANGELOG.md:list:a10c0798ae5944712b9b350660e63cb74245c95cafaccf39c5e8ade3f7857edc": {
+      "kind": "list",
+      "source": "QQ OneBot 入站 @ 消息现在会优先显示群名片，其次普通昵称，格式为 __ELBOT_CODE_0__，无法获取时才回退 QQ 号。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a10c0798ae5944712b9b350660e63cb74245c95cafaccf39c5e8ade3f7857edc",
+      "translation": "Inbound @ messages in QQ OneBot will now prioritize displaying the group business card, followed by the regular nickname, in the format __ELBOT_CODE_0__, and will fall back to the QQ number if neither can be retrieved.",
+      "updated_at": 1783095128
+    },
+    "CHANGELOG.md:list:a702b552baa7d522668a76b859a98b2272294fa7c56518f23019ef1e2e4ee45e": {
+      "kind": "list",
+      "source": "QQ OneBot 私聊文件段缺少 __ELBOT_CODE_0__ 时会调用 __ELBOT_CODE_1__；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a702b552baa7d522668a76b859a98b2272294fa7c56518f23019ef1e2e4ee45e",
+      "translation": "When the file segment in a QQ OneBot private chat is missing __ELBOT_CODE_0__, __ELBOT_CODE_1__ will be called;",
+      "updated_at": 1783095128
     },
     "CHANGELOG.md:list:a71cbc0c9f36ac911e0b5692c0166f7e157090086356a299746ba3b3ff1db19b": {
       "kind": "list",
@@ -757,6 +797,14 @@
       "source_hash": "d645cf77c4ee588c46e1393622a3b1673b35ad938b425f17eba22044d2bdc5a7",
       "translation": "Hook rules can execute scripts via the __ELBOT_CODE_0__ action and use __ELBOT_CODE_1__ to trigger Elnis direct/LLM/calls via the internal Elvena Bus.",
       "updated_at": 1782395477
+    },
+    "CHANGELOG.md:list:d66e760ce04fc90ba3cd56df661d99b3a478c370da402f32810e4f88f324a4c8": {
+      "kind": "list",
+      "source": "现在 __ELBOT_CODE_0__ 会直接按程序和参数执行。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d66e760ce04fc90ba3cd56df661d99b3a478c370da402f32810e4f88f324a4c8",
+      "translation": "Now __ELBOT_CODE_0__ will be executed directly according to the program and parameters.",
+      "updated_at": 1783095128
     },
     "CHANGELOG.md:list:d868e5b43fdd4b220f5103b4c130865608bd216aa604f67b556dc8d92822ecad": {
       "kind": "list",

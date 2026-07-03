@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `/usage` command: aggregates token consumption from the audit log, supporting summaries by model/day/Session, with shortcut parameters `-d` for days, `-m` for model, and `-s` for Session.
 - Added ``workspace`` tool: sets the shared working directory of the current foreground Session; path-related tools will resolve relative paths based on this directory.
 - Added `[platform_files]` configuration to uniformly control the maximum save size and download timeout for platform inbound files.
-- QQ OneBot now supports downloading and saving inbound files without invoking the LLM.
+- QQ OneBot now supports automatically saving inbound files from superadmins in private chats; messages containing only files will only reply with the save path or a "too large" prompt without invoking the LLM; group files are not automatically saved.
 - The `/requests` command now displays the current execution stage (preparing/llm/tool/sending) and the duration of each stage for every turn, allowing you to distinguish whether the LLM is slow or the platform delivery is stuck.
 
 ### Changed
@@ -34,8 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- When the file segment in a QQ OneBot private chat is missing `url`, `get_file` will be called; If a download URL is returned, it will be saved to ElBot; if only a OneBot local path is returned, that path will be displayed directly.
+- Fixed an issue where the Hook rules `exec` action failed to execute on Windows due to a fixed dependency on `sh`; Now `command` will be executed directly according to the program and parameters.
+- Inbound @ messages in QQ OneBot will now prioritize displaying the group business card, followed by the regular nickname, in the format `[at 名字 qq:<id>]`, and will fall back to the QQ number if neither can be retrieved.
 - Fixed an issue where Chinese output might be garbled when the `shell` tool falls back to PowerShell on Windows.
 - When OneBot fails to send an image, a visible fallback will no longer appear, but it will still be logged.
+
 
 
 ## [v0.3.0-alpha - 2026-07-01]
