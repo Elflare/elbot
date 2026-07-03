@@ -26,9 +26,9 @@
       "updated_at": 1783077374
     },
     "docs/configuration.md": {
-      "source_hash": "8627fc49f5aa7b98d6433d0914cfd6978c545a747cc610a3aae5afa0f306e9f9",
+      "source_hash": "fb23984e7986e62d6866795ec84f3dc67fc7de3e9ec3c04f75e87bb62a8b61ff",
       "target": "docs.en/configuration.md",
-      "updated_at": 1783085288
+      "updated_at": 1783095034
     },
     "docs/elnis-usage.md": {
       "source_hash": "c8d68d4fc76a453ea4008b304cc4d8243b8b2ebc634494f4fb92016b8040c782",
@@ -6678,6 +6678,14 @@
       "translation": "Platform configuration directory: Windows __ELBOT_CODE_0__; Linux uses the XDG configuration directory.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:d7429ed7de9ee030775dc1c4247f70fad9278f789481c7734ce457241ed3c927": {
+      "kind": "list",
+      "source": "入站文件默认保存到 sandbox 下的 __ELBOT_CODE_0__ 目录，不会唤起llm。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d7429ed7de9ee030775dc1c4247f70fad9278f789481c7734ce457241ed3c927",
+      "translation": "Inbound files are saved to the __ELBOT_CODE_0__ directory under sandbox by default, and will not trigger the LLM.",
+      "updated_at": 1783095034
+    },
     "docs/configuration.md:list:d7c3bc1bddbe670e97da17432d835414d5e3c43e72affbf708fa4532cb2bb129": {
       "kind": "list",
       "source": "部分客户端可能无法查看 Rich Message。",
@@ -7397,6 +7405,14 @@
       "source_hash": "db1398b7d8a8bc810a5e97b62f8a66b3f9dd50ee8eac8c37e69d9cd801e0c5b1",
       "translation": "In private chats, superadmins do not expire.\n",
       "updated_at": 1783074493
+    },
+    "docs/configuration.md:paragraph:dc643146c79de739b15afebb25dfcae29ee0a3b9b9c51e39b480c915cf57ed90": {
+      "kind": "paragraph",
+      "source": "收到文件时会按 __ELBOT_CODE_0__ 限制下载保存。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "dc643146c79de739b15afebb25dfcae29ee0a3b9b9c51e39b480c915cf57ed90",
+      "translation": "When files are received, download and save operations will be restricted according to __ELBOT_CODE_0__.\n",
+      "updated_at": 1783095034
     },
     "docs/configuration.md:paragraph:df52157138754b59adf61b033670d7c0a44d72226b076873cea5872b20c0c149": {
       "kind": "paragraph",
