@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "830baa3847c5920f814a30b2461608fdfc07eb2c96b9de00ad48b07b730650be",
+      "source_hash": "907dba1724a45d481df1e06e54e8a99e998cfdbac73fae9a2f09963cfd360e89",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783076190
+      "updated_at": 1783081840
     },
     "README.zh-CN.md": {
       "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
@@ -805,6 +805,14 @@
       "source_hash": "e81822b53b2270a9a2f78edb916b8ee9c970a516ec77a84dd14e91bb46b0c554",
       "translation": "Hook rules can execute scripts via __ELBOT_CODE_0__ action, and use __ELBOT_CODE_1__ to trigger Elnis direct/LLM/calls via the internal Elvena Bus.",
       "updated_at": 1782376912
+    },
+    "CHANGELOG.md:list:eaed67d51f700cdbcfbd66b43f3ab3d535edf10fa0a2eef475af820bb64b5e87": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 工具改为使用 __ELBOT_CODE_1__ 参数发送文件，支持本地路径、__ELBOT_CODE_2__ URI 和 HTTP(S) URL，并会按 MIME/扩展名自动将图片作为图片消息发送。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "eaed67d51f700cdbcfbd66b43f3ab3d535edf10fa0a2eef475af820bb64b5e87",
+      "translation": "The __ELBOT_CODE_0__ tool now uses the __ELBOT_CODE_1__ parameter to send files, supporting local paths, __ELBOT_CODE_2__ URIs, and HTTP(S) URLs, and will automatically send images as image messages based on MIME type/extension.",
+      "updated_at": 1783081840
     },
     "CHANGELOG.md:list:ed3c6eabf99307e9b550f72edf9f95006bb9602d68c39639d54b35889096a8ff": {
       "kind": "list",
