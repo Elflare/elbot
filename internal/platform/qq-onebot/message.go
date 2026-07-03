@@ -91,7 +91,7 @@ func normalizeSegments(segments []Segment, selfID int64) NormalizedMessage {
 			if qq == self {
 				out.AtSelf = true
 			} else if qq != "" && qq != "all" {
-				text := "[at qq:" + qq + "]"
+				text := atText(qq, "")
 				parts = append(parts, text)
 				out.Segments = append(out.Segments, platform.MessageSegment{Type: platform.SegmentAt, Text: text, UserID: qq})
 			}
@@ -179,11 +179,24 @@ func cleanText(text string) string {
 	return strings.TrimSpace(strings.Join(strings.Fields(text), " "))
 }
 
-func displayName(sender Sender, userID int64) string {
-	name := strings.TrimSpace(sender.Card)
+func atText(qq, name string) string {
+	qq = strings.TrimSpace(qq)
+	name = strings.TrimSpace(name)
 	if name == "" {
-		name = strings.TrimSpace(sender.Nickname)
+		return "[at qq:" + qq + "]"
 	}
+	return "[at " + name + " qq:" + qq + "]"
+}
+
+func senderName(sender Sender) string {
+	if name := strings.TrimSpace(sender.Card); name != "" {
+		return name
+	}
+	return strings.TrimSpace(sender.Nickname)
+}
+
+func displayName(sender Sender, userID int64) string {
+	name := senderName(sender)
 	if name == "" {
 		return fmt.Sprintf("qq:%d", userID)
 	}

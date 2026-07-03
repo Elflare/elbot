@@ -429,6 +429,7 @@ func (a *Adapter) readLoop(ctx context.Context, handler platform.PlatformHandler
 
 func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHandler, event Event) {
 	normalized := normalizeMessage(event.Message, event.RawMessage, event.SelfID)
+	normalized = a.resolveAtSegments(ctx, event, normalized)
 	a.recordChatMessage(ctx, event, normalized)
 	if !a.shouldHandle(event, normalized) {
 		return
@@ -508,6 +509,44 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
 		a.logWarn("handle qq message failed", "error", err, "message_id", event.MessageID)
 	}
+}
+
+func (a *Adapter) resolveAtSegments(ctx context.Context, event Event, msg NormalizedMessage) NormalizedMessage {
+	if event.MessageType != "group" || event.GroupID == 0 || a.transport == nil || len(msg.Segments) == 0 {
+		return msg
+	}
+	updated := append([]platform.MessageSegment(nil), msg.Segments...)
+	replacements := map[string]string{}
+	changed := false
+	for i := range updated {
+		if updated[i].Type != platform.SegmentAt || updated[i].UserID == "" {
+			continue
+		}
+		userID, err := strconv.ParseInt(updated[i].UserID, 10, 64)
+		if err != nil || userID == event.SelfID {
+			continue
+		}
+		sender, err := a.transport.GetGroupMemberInfo(ctx, event.GroupID, userID)
+		if err != nil {
+			a.logWarn("get qq group member info failed", "group_id", event.GroupID, "user_id", userID, "error", err)
+			continue
+		}
+		text := atText(updated[i].UserID, senderName(sender))
+		if text == updated[i].Text {
+			continue
+		}
+		replacements[updated[i].Text] = text
+		updated[i].Text = text
+		changed = true
+	}
+	if !changed {
+		return msg
+	}
+	for oldText, newText := range replacements {
+		msg.Text = strings.ReplaceAll(msg.Text, oldText, newText)
+	}
+	msg.Segments = updated
+	return msg
 }
 
 func (a *Adapter) resolveImageSegments(ctx context.Context, segments []platform.MessageSegment) []platform.MessageSegment {

@@ -284,6 +284,49 @@ func TestHandleEventStripsTriggerKeywordOnly(t *testing.T) {
 	}
 }
 
+func TestHandleEventAtUsesGroupMemberCard(t *testing.T) {
+	transport := newTestTransport(t, func(req request) response {
+		if req.Action != "get_group_member_info" {
+			t.Fatalf("action = %q", req.Action)
+		}
+		return response{Status: "ok", Data: []byte(`{"user_id":2,"card":"群昵称","nickname":"普通昵称"}`), Echo: req.Echo}
+	})
+	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
+	adapter.transport = transport
+	handler := &captureHandler{}
+
+	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 7, Message: []byte(`[{"type":"text","data":{"text":"/status "}},{"type":"at","data":{"qq":"2"}}]`)})
+
+	if handler.text != "/status [at 群昵称 qq:2]" {
+		t.Fatalf("handler text = %q", handler.text)
+	}
+	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	if len(msgCtx.Segments) != 2 || msgCtx.Segments[1].Text != "[at 群昵称 qq:2]" {
+		t.Fatalf("segments = %#v", msgCtx.Segments)
+	}
+}
+
+func TestHandleEventAtFallsBackToNickname(t *testing.T) {
+	transport := newTestTransport(t, func(req request) response {
+		if req.Action != "get_group_member_info" {
+			t.Fatalf("action = %q", req.Action)
+		}
+		return response{Status: "ok", Data: []byte(`{"user_id":2,"nickname":"普通昵称"}`), Echo: req.Echo}
+	})
+	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
+	adapter.transport = transport
+	handler := &captureHandler{}
+
+	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 7, Message: []byte(`[{"type":"text","data":{"text":"/status "}},{"type":"at","data":{"qq":"2"}}]`)})
+
+	if handler.text != "/status [at 普通昵称 qq:2]" {
+		t.Fatalf("handler text = %q", handler.text)
+	}
+}
+
 type captureHandler struct {
 	ctx   context.Context
 	text  string

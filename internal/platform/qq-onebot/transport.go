@@ -155,6 +155,18 @@ func (t *Transport) GetImage(ctx context.Context, file string) (getImageData, er
 	return data, nil
 }
 
+func (t *Transport) GetGroupMemberInfo(ctx context.Context, groupID, userID int64) (Sender, error) {
+	resp, err := t.call(ctx, "get_group_member_info", map[string]any{"group_id": groupID, "user_id": userID})
+	if err != nil {
+		return Sender{}, err
+	}
+	var data Sender
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		return Sender{}, fmt.Errorf("decode get_group_member_info response: %w", err)
+	}
+	return data, nil
+}
+
 func (t *Transport) Call(ctx context.Context, action string, params map[string]any) (response, error) {
 	return t.call(ctx, action, params)
 }
