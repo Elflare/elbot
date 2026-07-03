@@ -19,10 +19,11 @@ import (
 )
 
 const (
-	defaultShellTimeout = 10 * time.Second
-	maxShellOutput      = 16 * 1024
-	shellCmdRequired    = `cmd is required; use {"cmd":"..."}`
-	warnUseWorkspace    = "需要切换工作目录时请使用 workspace 工具，不要在 cmd 中切换目录或夹带目录切换。"
+	defaultShellTimeout   = 10 * time.Second
+	maxShellOutput        = 16 * 1024
+	shellCmdRequired      = `cmd is required; use {"cmd":"..."}`
+	warnUseWorkspace      = "需要切换工作目录时请使用 workspace 工具，不要在 cmd 中切换目录或夹带目录切换。"
+	powershellUTF8Prelude = `$OutputEncoding = [System.Text.UTF8Encoding]::new($false); try { [Console]::OutputEncoding = $OutputEncoding } catch {}; `
 )
 
 type ShellTool struct {
@@ -196,9 +197,26 @@ func rejectShellDirectoryChange(cmdText string) error {
 func shellCommand(ctx context.Context, cmdText string) *exec.Cmd {
 	if runtime.GOOS == "windows" {
 		name, args := resolveWindowsShell()
-		return exec.CommandContext(ctx, name, append(args, cmdText)...)
+		return exec.CommandContext(ctx, name, append(args, powershellUTF8Command(name, cmdText))...)
 	}
 	return exec.CommandContext(ctx, "sh", "-lc", cmdText)
+}
+
+func powershellUTF8Command(shellName, cmdText string) string {
+	if !isPowerShellShell(shellName) {
+		return cmdText
+	}
+	return powershellUTF8Prelude + cmdText
+}
+
+func isPowerShellShell(shellName string) bool {
+	shellBase := filepath.Base(strings.ReplaceAll(shellName, `\`, "/"))
+	switch strings.ToLower(shellBase) {
+	case "pwsh", "pwsh.exe", "powershell", "powershell.exe":
+		return true
+	default:
+		return false
+	}
 }
 
 type windowsShell struct {

@@ -257,6 +257,23 @@ func TestShellToolRunsLS(t *testing.T) {
 	}
 }
 
+func TestPowerShellUTF8Command(t *testing.T) {
+	cmd := `Get-ChildItem -Name`
+	got := powershellUTF8Command("pwsh", cmd)
+	if !strings.HasPrefix(got, powershellUTF8Prelude) {
+		t.Fatalf("expected PowerShell command to start with UTF-8 prelude, got %q", got)
+	}
+	if !strings.HasSuffix(got, cmd) {
+		t.Fatalf("expected original command to be preserved, got %q", got)
+	}
+	if got := powershellUTF8Command(`C:\Program Files\PowerShell\7\pwsh.exe`, cmd); !strings.HasPrefix(got, powershellUTF8Prelude) {
+		t.Fatalf("expected pwsh.exe path to use UTF-8 prelude, got %q", got)
+	}
+	if got := powershellUTF8Command("bash", cmd); got != cmd {
+		t.Fatalf("bash command = %q, want %q", got, cmd)
+	}
+}
+
 func TestResolveWindowsShellCachedAndValid(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("windows only")
