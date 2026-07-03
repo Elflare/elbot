@@ -51,80 +51,39 @@ This mechanism can reduce invalid context overhead in ordinary tasks and also lo
 
 ## Inline Preloading
 
-Users can specify the tools or Skills to be used in the current round in advance within a normal input.
+Inline preloading is used to prompt ElBot in normal input that the current task may require a certain type of tool or a specific Skill.
 
-- `@tool:<name-or-tag>`: Pre-inject the schema of a tool or tool tag.
-- `@skill:<name>`: Add the content of the specified Skill documentation to the current user message; If the AgentSkill contains a valid `ELBOT_SKILL.toml`, the top-level tool schema of that Skill will be injected; otherwise, it will be used only as documentation.
+Its purpose is to reduce the steps for the LLM to first discover tools and then call them, allowing clear tasks to enter the working state faster. After successful preloading, the relevant tools or Skills will enter the tool context of the current Session.
 
-Example:
-
-```text
-@tool:web 帮我查一下今天的新闻摘要
-@tool:files 读取这个配置并解释
-按这个技能处理文件 @skill:docx
-```
-
-Valid commands will be stripped; Tool schemas and Skill wrappers will be persisted to the tool cache of the current Session. Invalid values will be kept as plain text and a prompt will be shown. When multiple ELyph Skills are injected simultaneously, the ELyph rule description will only be added once.
+For specific syntax and examples, see [Command Quick Reference: Tools and Skills](commands.md#工具与-skill).
 
 ## Session
 
-A Session is the persistent session unit of ElBot. It saves:
+A Session is ElBot's persistent session unit, used to save the context, mode, message history, compressed summary, and tool call records of a continuous conversation.
 
+Different platforms and different chat scopes usually use their own Sessions to avoid cross-contamination of context. The CLI is a local high-privilege entry point and can view and manage Sessions across platforms.
 
-- Session title and mode.
-- User messages and assistant replies.
-- Context compaction checkpoint.
-- Tool call records.
-- Platform isolation information.
-
-Common operations:
-
-- `/new` Create a new Session.
-- `/sessions` View historical Sessions.
-- `/resume` Restore Session.
-- `/archive` archive Session.
-- `/pin` pin Session.
-- `/delete` delete Session.
-
-CLI is a local high-privilege entry point that allows viewing Sessions across platforms; other platforms, by default, only see Sessions under the current platform and scope.
+For operations such as creating, restoring, archiving, pinning, and deleting Sessions, see [Command Quick Reference: Session](commands.md#session).
 
 ## Fork
 
-Fork is used to create a new conversation branch from a historical assistant message.
+Fork is used to branch out a new conversation branch from a specific assistant response in the conversation history.
 
-Process:
-
-1. Use `/messages` to find the forkable assistant message ID.
-2. Use `/fork <message_id>` to create a branched Session.
-3. New Sessions use the context before the fork cutoff point to continue the conversation.
-
-Forking does not delete or modify the original Session.
+The new branch inherits the context before the fork point but does not modify the original Session. It is suitable for trying a different approach or reworking a solution for the same problem, or continuing exploration while preserving the original conversation.
 
 ## Context compaction
 
-Long conversations will gradually approach the model's context window. ElBot supports context compaction:
+Long conversations will gradually approach the model's context window. Context compaction summarizes earlier conversations and combines them with the most recent messages to form the context view sent to the LLM.
 
-- Automatic compaction: controlled by `[context] compact_enabled` and `compact_trigger_ratio`.
-- Manual compaction: use `/compact`.
-
-The compacted context view typically consists of "the latest summary + new messages after the summary".
-
-Important convention: compaction does not delete original messages; it only changes the context view sent to the LLM subsequently.
+Compaction does not delete original messages; it only changes the context content used in subsequent requests. It can be triggered automatically or manually by the user.
 
 ## Prompt and Soul
 
-ElBot loads the Agent's basic System Prompt from `SOUL.md`.
+Soul is the Agent's basic System Prompt, used to define personality, behavioral boundaries, and a long-term stable expression style.
 
-The Prompt Builder combines the following content into the final request:
+The Prompt actually sent to the LLM contains not only Soul but also dynamically combines platform information, user identity, memory, tool hints, compaction summaries, and Session history based on the current Session.
 
-- Soul Prompt。
-- Current platform and Actor information.
-- Resident memory.
-- Tool name hints.
-- Compressed summary.
-- Session history.
-
-Dynamic information such as tool discovery, resident memory, and time will not be hard-coded into `SOUL.md`.
+Therefore, Soul is only suitable for stable rules; dynamic information such as tool discovery, time, platform context, and temporary states should not be hard-coded into it.
 
 ## Memory
 
@@ -132,30 +91,26 @@ ElBot divides memory into two categories:
 
 | Type | Usage |
 | --- | --- |
-| Resident memory | Short, stable information that may be useful in every round will be injected into the Prompt. |
-| Long-term memory | Longer and more complex information, using Markdown as source data, searched on-demand via tools. |
+| Resident memory | Short, stable, and frequently useful information will be automatically injected into the conversation. |
+| Long-term memory | Longer and more complex information is searched and used via tools on demand. |
 
-Resident memory is internally saved as two segments, core and normal: core is used for core information, and modifications require high-risk confirmation; normal is used for general information and can be appended, overwritten, or cleared. When injecting the Prompt, segment headings will not be exposed; instead, they will be merged into a single piece of natural text.
-
-Long-term memory uses Markdown files as human-readable source data and SQLite FTS as a reconstructible search index.
+Resident memory is suitable for saving information related to identity, preferences, and long-term stability. Long-term memory is suitable for saving larger volumes of data that require retrieval.
 
 ## Tool Runtime
 
 Tool Runtime manages the registration, discovery, permissions, risk assessment, and execution of tools.
 
-Current built-in capabilities include:
+Tools can come from built-in capabilities, Skills, external extensions, or listening events. ElBot does not stuff all tool details into the context by default, but exposes them on demand through tool discovery and preloading mechanisms.
 
-- Web search and webpage extraction.
-- Workspace: Sets the shared working directory for the current Session.
-- File read and write.
+Common tool capabilities include:
+
+- Search and webpage extraction.
+- File read/write and file sending.
 - Shell commands.
 - Chat history query.
-- Resident memory and long-term memory.
+- Memory management.
 - Cron management.
-- File sending.
-- Skill creation, reading, modification, and execution.
-- `elwisp_creator`: Returns protocol specifications, configuration snippets, scaffolding, and test checklists for creating Elwisp for the superadmin.
-
+- Skill creation, modification, and execution.
 
 ## Security Policy
 
@@ -172,23 +127,19 @@ The default local CLI user `local` is a superadmin.
 
 ## Hook
 
-The Hook Layer is used to extend behavior before and after critical processes, such as modifying messages, appending output intents, calling low-risk tools, or injecting resident memory. Rule Hooks support conditional matching, multi-segment output, exec scripts, and role partitioning.
+The Hook Layer is used to insert extension logic before and after the Agent's key processes, such as modifying input, supplementing context, appending output intent, or triggering external actions.
 
-Important Convention: Hooks do not replace the Security Layer; security determinations are still based on the Security Layer. For full configuration and examples, see [Hook](hooks.md).
+Hooks are an extension mechanism, not a permission mechanism. Tool calls, dangerous operations, and role restrictions are still determined by the Security Layer.
 
+See [Hook: Rule Hook Configuration](hooks.md#规则-hook-配置) for full configuration and examples.
 
 ## Output Layer
 
-The Output Layer defines platform-agnostic output intents, for example:
+Output Layer defines platform-independent output intents.
 
-- Text.
-- Images.
-- Files.
-- at。
-- reply。
-- Emojis.
+Agent, Hook, and Tool do not directly depend on specific platforms to send messages; instead, they return a unified output intent, which is then passed to the corresponding platform adapter by the Output Manager for sending.
 
-Agents, Hooks, and tools should not directly depend on specific platforms to send messages; instead, they should return an output intent, which is then sent uniformly by the Output Manager.
+This allows the same Agent logic to be reused across CLI, chat platforms, and future new platforms.
 
 ## Cron
 
@@ -200,7 +151,6 @@ ElBot includes two layers of Cron capabilities:
 | LLM Cron | Drive model execution based on task descriptions, with the ability to use tools. |
 
 Background Cron has an independent Session and sandbox constraints.
-When a superadmin quotes and replies to an LLM Cron notification message in the platform, it will automatically resume to the corresponding background Session to continue the conversation.
 
 ## Elnis / Elwisp / Elvena
 
@@ -212,53 +162,24 @@ Elnis does not serve as a chat platform, nor does it replace Cron. Cron handles 
 
 ## Skill and ELyph
 
-ElBot supports Skill extensions and introduces ELyph Task Notation to describe reusable tasks.
+Skill is a reusable task extension of ElBot. It can be a set of task instructions for the Agent to read, or it can be wrapped as a structured tool for LLM invocation.
 
-Skill types:
+ElBot supports two main types of Skills:
 
-- AgentSkill: Placed in `skills/agent/<skill>/`, following or compatible with the agentskills.io style `SKILL.md`, and `SKILL.elyph` can also be used to override the Agent-readable description. By default, it is a descriptive Skill; the LLM can use general tools such as shell and files to process attached scripts according to the documentation.
-- Tool-based AgentSkill: When a valid `ELBOT_SKILL.toml` exists in the root directory of the AgentSkill, it will be registered as a regular top-level tool. The LLM calls structured parameters, and ElBot translates these parameters into command-line argv according to the configuration and executes the command in the Skill directory, without going through a shell.
-`ELBOT_SKILL.toml` is only read in the `skills/agent/<skill>/` root directory. Minimum example:
+- AgentSkill: Describes tasks in document form, allowing the LLM to complete work using general tools according to the instructions.
+- Tool-based Skill: Registers the Skill as a regular tool, allowing the LLM to invoke it via structured parameters.
 
-```toml
-risk = "medium"
-tags = ["doc"]
-command = ["python", "foo.py"]
-timeout_seconds = 30
-expose_root = false
+ELyph Task Notation is a structured representation used by ElBot to describe reusable tasks. It expresses inputs, outputs, steps, conditions, and constraints in a more stable format, reducing the ambiguity of natural language task descriptions.
 
-parameters = '''
-{
-  "type": "object",
-  "required": ["input"],
-  "properties": {
-    "input": {"type": "string", "description": "输入文本"}
-  }
-}
-'''
-
-[args]
-input = "--input"
-```
-
-In the above example, after the LLM calls the Skill tool and passes `input`, ElBot will execute `python foo.py --input <value>`, and the working directory is fixed to the root directory of that Skill. `risk`, `command`, `parameters`, and `[args]` are required; `tags` is optional, acting as a category for the tool, and can be used for `@tool:<tag>` preloading; When `expose_root=true`, the Skill root path will only be exposed to the LLM upon Skill discovery.
-
-The goal of ELyph is to express inputs, outputs, steps, conditions, and constraints using a shorter and more stable structure, reducing the ambiguity of natural language task descriptions. For the complete syntax, see [ELyph Task Notation](elyph.md).
+For an example of AgentSkill toolization configuration, see [Configuration Guide: AgentSkill Toolization Configuration](configuration.md#agentskill-工具化配置). For the relationship between ELyph and Skill, see [ELyph Task Notation: Relationship with Skill](elyph.md#与-skill-的关系); for the complete syntax, see [Syntax Quick Reference](elyph.md#语法速查).
 
 ## Platform Adapter
 
-Platform Adapter is responsible for integrating specific platforms. Currently, it mainly includes:
+The Platform Adapter is responsible for integrating specific platforms.
 
-- CLI。
-- QQ OneBot。
-- QQ official bot.
+Its responsibility is to convert platform messages into a unified input that Agent Core can understand, and to convert the output intent of the Output Layer back into platform messages.
 
-The platform adapter layer is responsible for:
-
-- Receiving inbound messages.
-- Parsing platform features such as text, images, files, @mentions, and replies.
-- Converting them into a unified input for Agent Core.
-- Sending unified output intents from the Output Layer.
+Therefore, Agent Core does not need to care whether messages come from the CLI, group chats, private chats, or other platforms.
 
 ## Logs and Auditing
 

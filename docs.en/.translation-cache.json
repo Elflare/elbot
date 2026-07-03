@@ -21,9 +21,9 @@
       "updated_at": 1782958886
     },
     "docs/concepts.md": {
-      "source_hash": "6fa01d02bcae7c09b7285b26f6e99728a05fe7b2a2402a800d423702a8a14d69",
+      "source_hash": "cfe8dca5bb8928c3cbc1b2157eea84f25898c8a207cac6c4a7de7c2b5b1b5f66",
       "target": "docs.en/concepts.md",
-      "updated_at": 1783076136
+      "updated_at": 1783077374
     },
     "docs/configuration.md": {
       "source_hash": "09fbbf7b67dad3e9b4e593e6e30a68d6771d0575e4e795f90686ec29bad0aea2",
@@ -3686,6 +3686,14 @@
       "translation": "Development Period Conventions",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:list:01229b8d56c6145dc46b71419d922b9cc99d04f41bf37412c1362784fd6874d3": {
+      "kind": "list",
+      "source": "工具化 Skill：把 Skill 注册成普通工具，让 LLM 通过结构化参数调用。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "01229b8d56c6145dc46b71419d922b9cc99d04f41bf37412c1362784fd6874d3",
+      "translation": "Tool-based Skill: Registers the Skill as a regular tool, allowing the LLM to invoke it via structured parameters.",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:list:045e6408f24f34dc7e70b8b5c4230fd99f77a4fc6da0e7a1760a43a35063f8af": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 归档 Session。",
@@ -3934,6 +3942,14 @@
       "translation": "Risk levels are used for internal permissions and confirmation, and are not directly exposed to the LLM.",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:list:5a9d0cba7af165499bd223488a6373de6da9ca55f265c893e5aee205f757431e": {
+      "kind": "list",
+      "source": "AgentSkill：以文档形式描述任务，让 LLM 按说明使用通用工具完成工作。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "5a9d0cba7af165499bd223488a6373de6da9ca55f265c893e5aee205f757431e",
+      "translation": "AgentSkill: Describes tasks in document form, allowing the LLM to complete work using general tools according to the instructions.",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:list:5aab784fcb93e2f1a25ac8b40a8f2af91651661723c9cc28c14d1e62910d38e8": {
       "kind": "list",
       "source": "常驻记忆。",
@@ -3966,6 +3982,14 @@
       "translation": "Context compaction checkpoint.",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:list:624c90267aa5fd408f73d7781de87b8626e3cb0d30abf8b0830bed7b78ded356": {
+      "kind": "list",
+      "source": "文件读写与文件发送。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "624c90267aa5fd408f73d7781de87b8626e3cb0d30abf8b0830bed7b78ded356",
+      "translation": "File read/write and file sending.",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:list:66dd458322c5a6fccfc333481450253fce35490ebf158a796d1848cc0333aa9d": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__：提前注入工具或工具 tag 的 schema。",
@@ -3989,6 +4013,14 @@
       "source_hash": "732b811f878a7fee47ab4783be6a2de1e42bb626345be3bcbb10976332620ca6",
       "translation": "Use __ELBOT_CODE_0__ to create a branched Session.",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:list:7765713ecff3182efecdc282c70c2fe1460308ee3225fd2ed211a6e9c6ee4a83": {
+      "kind": "list",
+      "source": "搜索与网页提取。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "7765713ecff3182efecdc282c70c2fe1460308ee3225fd2ed211a6e9c6ee4a83",
+      "translation": "Search and webpage extraction.",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:list:7b0282913ac1445a15f1f212998fbcd4485df23b28cf83df9f59858eaaf67dad": {
       "kind": "list",
@@ -4254,6 +4286,14 @@
       "translation": "AgentSkill: Placed in __ELBOT_CODE_0__, following or compatible with the agentskills.io style __ELBOT_CODE_1__, and __ELBOT_CODE_2__ can also be used to override the Agent-readable description.",
       "updated_at": 1783074327
     },
+    "docs/concepts.md:list:cb488dfb5f47d8f909d1e99208c8fd51a0a5528538b5e8507d70d7e4235da157": {
+      "kind": "list",
+      "source": "记忆管理。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "cb488dfb5f47d8f909d1e99208c8fd51a0a5528538b5e8507d70d7e4235da157",
+      "translation": "Memory management.",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:list:dec547fc70e434052e6fc5262414eb01da8311026f828a03fc0d37d267ece19a": {
       "kind": "list",
       "source": "文件。",
@@ -4293,6 +4333,14 @@
       "source_hash": "e407aabae63e84334619d90a51ea6766395924fc315e3630b3ddd5c77edcdd6d",
       "translation": "Internal interfaces may be adjusted.",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:list:e451d7a7b37c7df84184b17a4b33e319d2136b8ab248d5ca881e685f213f05a0": {
+      "kind": "list",
+      "source": "Skill 创建、修改和运行。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "e451d7a7b37c7df84184b17a4b33e319d2136b8ab248d5ca881e685f213f05a0",
+      "translation": "Skill creation, modification, and execution.",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:list:e48514efcf0b264f8c04031554d2487643b7c6d3b55bec7c0e1215db787abae2": {
       "kind": "list",
@@ -4398,6 +4446,14 @@
       "translation": "Important Convention: Hooks do not replace the Security Layer; security determinations are still based on the Security Layer. For full configuration and examples, see [Hook](hooks.md).\n",
       "updated_at": 1782376269
     },
+    "docs/concepts.md:paragraph:07d4bb3848f97286458d739646493a8a1c02638349e9a600966b099a0889c4ec": {
+      "kind": "paragraph",
+      "source": "内联预载用于在普通输入中提示 ElBot：本轮任务可能需要某类工具或某个 Skill。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "07d4bb3848f97286458d739646493a8a1c02638349e9a600966b099a0889c4ec",
+      "translation": "Inline preloading is used to prompt ElBot in normal input that the current task may require a certain type of tool or a specific Skill.\n",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:paragraph:0acac4d5bcfa9d70bcb616c433eb69659d0a9f1cd6f57001bce019a3179a5084": {
       "kind": "paragraph",
       "source": "ELyph 的目标是用更短、更稳定的结构表达输入、输出、步骤、条件和约束，减少自然语言任务描述的歧义。",
@@ -4422,6 +4478,14 @@
       "translation": "__ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ are required;",
       "updated_at": 1783074327
     },
+    "docs/concepts.md:paragraph:1224d17a0dab45dab25e3de52570b4f9f9f106eddba575789dfbec218759dde2": {
+      "kind": "paragraph",
+      "source": "工具可以来自内置能力、Skill、外部扩展或监听事件。ElBot 不会默认把所有工具细节都塞进上下文，而是通过工具发现和预载机制按需暴露。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "1224d17a0dab45dab25e3de52570b4f9f9f106eddba575789dfbec218759dde2",
+      "translation": "Tools can come from built-in capabilities, Skills, external extensions, or listening events. ElBot does not stuff all tool details into the context by default, but exposes them on demand through tool discovery and preloading mechanisms.\n",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:paragraph:123b7121147734576156f871abfd10a68162d2875cb75f9abec22cd68c30a07a": {
       "kind": "paragraph",
       "source": "LLM Cron 可以通过 __ELBOT_CODE_0__ 预注入工具名或 Skill 名：普通工具会注入 schema，Skill 会把说明注入后台任务 prompt，并自动注入对应 runner。\n",
@@ -4437,6 +4501,14 @@
       "source_hash": "13bb391f8e5dc72f473509a59f545d1ec862167a569706c05be36b78f83ffc5d",
       "translation": "Current built-in capabilities include:\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:19a96fcf1ae209f6c875c5f51792aeabfc29d55a3575888c3cc3d3e093e2a7ed": {
+      "kind": "paragraph",
+      "source": "Fork 用于从历史对话中的某个 assistant 回复处分出新的对话分支。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "19a96fcf1ae209f6c875c5f51792aeabfc29d55a3575888c3cc3d3e093e2a7ed",
+      "translation": "Fork is used to branch out a new conversation branch from a specific assistant response in the conversation history.\n",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:paragraph:1b542b4cbaa66bc6f48398cbb53e786fc24cdd6f98a04b4531b03e973beb4432": {
       "kind": "paragraph",
@@ -4454,6 +4526,14 @@
       "translation": "Forking does not delete or modify the original Session.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:1df96174092e6f5d58987488e8d13c536ac35d2edfb40cf4f270a692d23126d8": {
+      "kind": "paragraph",
+      "source": "工具化 AgentSkill 配置示例见 [配置说明：AgentSkill 工具化配置](configuration.md#agentskill-工具化配置)。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "1df96174092e6f5d58987488e8d13c536ac35d2edfb40cf4f270a692d23126d8",
+      "translation": "For an example of AgentSkill toolization configuration, see [Configuration Guide: AgentSkill Toolization Configuration](configuration.md#agentskill-工具化配置).",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:paragraph:235b53e6c5057f66399f65b783e99f21c2735917678a5066ee84feff3e802c14": {
       "kind": "paragraph",
       "source": "规则 Hook 支持条件匹配、多段输出、exec 脚本和角色分区。\n",
@@ -4461,6 +4541,14 @@
       "source_hash": "235b53e6c5057f66399f65b783e99f21c2735917678a5066ee84feff3e802c14",
       "translation": "Rule Hooks support conditional matching, multi-segment output, exec scripts, and role partitioning.\n",
       "updated_at": 1782376269
+    },
+    "docs/concepts.md:paragraph:24011e3f0c0b5da3048f2d715f882af65f02b130b3a0cdf6ff563f75d2f66bc7": {
+      "kind": "paragraph",
+      "source": "这样可以让同一段 Agent 逻辑复用于 CLI、聊天平台和未来的新平台。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "24011e3f0c0b5da3048f2d715f882af65f02b130b3a0cdf6ff563f75d2f66bc7",
+      "translation": "This allows the same Agent logic to be reused across CLI, chat platforms, and future new platforms.\n",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:paragraph:2629fde9657a9177cd946d5d0614870a4c64220d6593d16cbcbbf3a10c65f513": {
       "kind": "paragraph",
@@ -4542,6 +4630,14 @@
       "translation": "The platform adapter layer is responsible for:\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:40af8b9959008c9f5c70ee017b78d16f3aef6bbf46211a08cb05f209ffd33732": {
+      "kind": "paragraph",
+      "source": "它的作用是减少 LLM 先发现工具再调用工具的步骤，让明确的任务更快进入工作状态。预载成功后，相关工具或 Skill 会进入当前 Session 的工具上下文。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "40af8b9959008c9f5c70ee017b78d16f3aef6bbf46211a08cb05f209ffd33732",
+      "translation": "Its purpose is to reduce the steps for the LLM to first discover tools and then call them, allowing clear tasks to enter the working state faster. After successful preloading, the relevant tools or Skills will enter the tool context of the current Session.\n",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:paragraph:41dc92661a4b0ec79f087871e9b6f2981527d0891efc528c14420aba61a89077": {
       "kind": "paragraph",
       "source": "后台 Cron 有独立 Session 和 sandbox 约束。",
@@ -4574,6 +4670,22 @@
       "translation": "ElBot loads the Agent's basic System Prompt from __ELBOT_CODE_0__.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:4fd4bad82bf5e9316fe7e0f182ff9a9aac6b28ca0a7f5afaeee335945465d7d1": {
+      "kind": "paragraph",
+      "source": "它用更稳定的格式表达输入、输出、步骤、条件和约束，减少自然语言任务描述的歧义。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "4fd4bad82bf5e9316fe7e0f182ff9a9aac6b28ca0a7f5afaeee335945465d7d1",
+      "translation": "It expresses inputs, outputs, steps, conditions, and constraints in a more stable format, reducing the ambiguity of natural language task descriptions.\n",
+      "updated_at": 1783077374
+    },
+    "docs/concepts.md:paragraph:5037cc0eea0d971f802f7141a495d4575f2c08359a0b63919dba7c3887391a34": {
+      "kind": "paragraph",
+      "source": "ELyph 与 Skill 的关系见 [ELyph 任务表示法：与 Skill 的关系](elyph.md#与-skill-的关系)，完整语法见 [语法速查](elyph.md#语法速查)。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "5037cc0eea0d971f802f7141a495d4575f2c08359a0b63919dba7c3887391a34",
+      "translation": "For the relationship between ELyph and Skill, see [ELyph Task Notation: Relationship with Skill](elyph.md#与-skill-的关系); for the complete syntax, see [Syntax Quick Reference](elyph.md#语法速查).\n",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:paragraph:50c5082d241f20d00851ba7778c104f4d090c6844e36c4683f5ecbebe8e848e3": {
       "kind": "paragraph",
       "source": "压缩后的上下文视图通常由“最新摘要 + 摘要之后的新消息”组成。\n",
@@ -4581,6 +4693,14 @@
       "source_hash": "50c5082d241f20d00851ba7778c104f4d090c6844e36c4683f5ecbebe8e848e3",
       "translation": "The compacted context view typically consists of \"the latest summary + new messages after the summary\".\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:542f19c4a9014218bd7b4dac80ba1258ced8cf42e52e83429f64321c7570c428": {
+      "kind": "paragraph",
+      "source": "Skill 是 ElBot 的可复用任务扩展。它可以是一段给 Agent 阅读的任务说明，也可以被包装成结构化工具供 LLM 调用。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "542f19c4a9014218bd7b4dac80ba1258ced8cf42e52e83429f64321c7570c428",
+      "translation": "Skill is a reusable task extension of ElBot. It can be a set of task instructions for the Agent to read, or it can be wrapped as a structured tool for LLM invocation.\n",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:paragraph:5537f07ffa275781259429ee9c518b40b30d17456586c0a5b2f0966d7964137a": {
       "kind": "paragraph",
@@ -4597,6 +4717,14 @@
       "source_hash": "561264c5f5e3a8b44a30f5477e7d71cf7275e0dfeb4ed98998500a1358dbb19d",
       "translation": "When a superadmin quotes and replies to an LLM Cron notification message in the platform, it will automatically resume to the corresponding background Session to continue the conversation.\n",
       "updated_at": 1783074327
+    },
+    "docs/concepts.md:paragraph:579c747e55499fd4ee0c05c419d41d64ce4d7f2bd786a037a5a378066001a228": {
+      "kind": "paragraph",
+      "source": "它的职责是把平台消息转换为 Agent Core 能理解的统一输入，并把 Output Layer 的输出意图转换回平台消息。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "579c747e55499fd4ee0c05c419d41d64ce4d7f2bd786a037a5a378066001a228",
+      "translation": "Its responsibility is to convert platform messages into a unified input that Agent Core can understand, and to convert the output intent of the Output Layer back into platform messages.\n",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:paragraph:5920982e3b2aa9950b0dff04425cfa7662f4a1dbf00e078041f5d8cbfe78edff": {
       "kind": "paragraph",
@@ -4645,6 +4773,22 @@
       "source_hash": "61d630cd91ce09573f821ab2900e2b39584727ce05ef9c44a572c90b7342bd7e",
       "translation": "The final JSON of LLM Cron can attach relative paths of images or files within the current task working directory via __ELBOT_CODE_0__.",
       "updated_at": 1782039257
+    },
+    "docs/concepts.md:paragraph:63a1153b4a9de5e3a2520571f9171a37d194712a82239dded628de64cc038def": {
+      "kind": "paragraph",
+      "source": "不同平台、不同聊天作用域通常会使用各自的 Session，避免上下文互相污染。CLI 属于本地高权限入口，可以跨平台查看和管理 Session。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "63a1153b4a9de5e3a2520571f9171a37d194712a82239dded628de64cc038def",
+      "translation": "Different platforms and different chat scopes usually use their own Sessions to avoid cross-contamination of context. The CLI is a local high-privilege entry point and can view and manage Sessions across platforms.\n",
+      "updated_at": 1783077374
+    },
+    "docs/concepts.md:paragraph:64a621c8b0712a75f3a6a782bb65f2bd0371506f3efdf9f8ce147b0b66f7743c": {
+      "kind": "paragraph",
+      "source": "常见工具能力包括：\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "64a621c8b0712a75f3a6a782bb65f2bd0371506f3efdf9f8ce147b0b66f7743c",
+      "translation": "Common tool capabilities include:\n",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:paragraph:65fc08efe1525d3283def94b462a784ec30f2f0c9a8b39088d092edb4f54399d": {
       "kind": "paragraph",
@@ -4742,6 +4886,14 @@
       "translation": "__ELBOT_CODE_0__ is optional, acting as a category for the tool, and can be used for __ELBOT_CODE_1__ preloading;",
       "updated_at": 1783076136
     },
+    "docs/concepts.md:paragraph:851e26e86f1bb760db1101f510ae50f69a6e37edb7a0878c080d7493f9711be3": {
+      "kind": "paragraph",
+      "source": "Platform Adapter 负责接入具体平台。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "851e26e86f1bb760db1101f510ae50f69a6e37edb7a0878c080d7493f9711be3",
+      "translation": "The Platform Adapter is responsible for integrating specific platforms.\n",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:paragraph:864086a84543bbd2414a750721374355d5f246b144642cd0950725c05241128d": {
       "kind": "paragraph",
       "source": "后台任务中的所有路径参数都应使用当前任务工作目录内的相对路径；",
@@ -4749,6 +4901,14 @@
       "source_hash": "864086a84543bbd2414a750721374355d5f246b144642cd0950725c05241128d",
       "translation": "All path parameters in background tasks should use relative paths within the current task working directory;",
       "updated_at": 1781949019
+    },
+    "docs/concepts.md:paragraph:886338c5daaca54fae10c5364735b42d2fa826eca26f47560234e39fba7d4c18": {
+      "kind": "paragraph",
+      "source": "Output Layer 定义平台无关的输出意图。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "886338c5daaca54fae10c5364735b42d2fa826eca26f47560234e39fba7d4c18",
+      "translation": "Output Layer defines platform-independent output intents.\n",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:paragraph:89b0e88796be28cfc196e216b8571c966e19f576bfc0f38e4336823a1181fa5a": {
       "kind": "paragraph",
@@ -4765,6 +4925,22 @@
       "source_hash": "8ad804df2925c6835455adb91c4411a2cf2fc36c4bfca78ff706ef9b7d430a74",
       "translation": "Reading or modifying the __ELBOT_CODE_0__ / __ELBOT_CODE_1__ of Go Skill should use __ELBOT_CODE_2__ / __ELBOT_CODE_3__;",
       "updated_at": 1782722490
+    },
+    "docs/concepts.md:paragraph:8beb76e521a616c9c7dfeaa71bf3c53817cc1e9a2f4f05f0f72cd44bb27a414e": {
+      "kind": "paragraph",
+      "source": "ElBot 支持两类主要 Skill：\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "8beb76e521a616c9c7dfeaa71bf3c53817cc1e9a2f4f05f0f72cd44bb27a414e",
+      "translation": "ElBot supports two main types of Skills:\n",
+      "updated_at": 1783077374
+    },
+    "docs/concepts.md:paragraph:8d7937528440fde28b5cb5e75d22aac61df2f0b4b958e1f46924d249c8444238": {
+      "kind": "paragraph",
+      "source": "Hook Layer 用于在 Agent 的关键流程前后插入扩展逻辑，例如修改输入、补充上下文、追加输出意图或触发外部动作。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "8d7937528440fde28b5cb5e75d22aac61df2f0b4b958e1f46924d249c8444238",
+      "translation": "The Hook Layer is used to insert extension logic before and after the Agent's key processes, such as modifying input, supplementing context, appending output intent, or triggering external actions.\n",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:paragraph:8d8868f4841964e4aea90eb53af567667489ade4a7e2da48f9a3dbd8a04d4adf": {
       "kind": "paragraph",
@@ -4805,6 +4981,14 @@
       "source_hash": "965b3b7728322245d26e8270d95b1c3f71e3ad92576edf04571fae42e26a0535",
       "translation": "ElBot supports Skill extensions and introduces ELyph Task Notation to describe reusable tasks.\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:96b5ea7dbd003a48aac3dc1b30038366cacebec500878b1d52712a25f94c6248": {
+      "kind": "paragraph",
+      "source": "Agent、Hook 和 Tool 不直接依赖具体平台发送消息，而是返回统一的输出意图，再由 Output Manager 交给对应平台适配器发送。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "96b5ea7dbd003a48aac3dc1b30038366cacebec500878b1d52712a25f94c6248",
+      "translation": "Agent, Hook, and Tool do not directly depend on specific platforms to send messages; instead, they return a unified output intent, which is then passed to the corresponding platform adapter by the Output Manager for sending.\n",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:paragraph:999070174ead3022e3a1e9a670703ae7ff3798ebaacc8e954882f6fe4c9749c5": {
       "kind": "paragraph",
@@ -4854,6 +5038,14 @@
       "translation": "EL Skill, resident memory, and long-term memory source files are protected by FileGuard: reading will prompt the use of corresponding dedicated tools, and direct writing via general file tools or shell will be rejected.\n",
       "updated_at": 1782722490
     },
+    "docs/concepts.md:paragraph:a63153ea313ca1822738df98330c94d8f9bfd70d4c2a966573415f8e435d6c5d": {
+      "kind": "paragraph",
+      "source": "Session 的创建、恢复、归档、置顶和删除等操作见 [命令速查：Session](commands.md#session)。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "a63153ea313ca1822738df98330c94d8f9bfd70d4c2a966573415f8e435d6c5d",
+      "translation": "For operations such as creating, restoring, archiving, pinning, and deleting Sessions, see [Command Quick Reference: Session](commands.md#session).\n",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:paragraph:a800da9d165f4210729342e742feb2f8c6c2b15841003da34b733f9c9335ec52": {
       "kind": "paragraph",
       "source": "工具发现、常驻记忆和时间等动态信息不会硬编码进 __ELBOT_CODE_0__。\n",
@@ -4861,6 +5053,14 @@
       "source_hash": "a800da9d165f4210729342e742feb2f8c6c2b15841003da34b733f9c9335ec52",
       "translation": "Dynamic information such as tool discovery, resident memory, and time will not be hard-coded into __ELBOT_CODE_0__.\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:a8feb4ccf7d498abdbc84f9ea70fef1f5b2143e8202ac9a65a9f432e7d490411": {
+      "kind": "paragraph",
+      "source": "长对话会逐渐接近模型上下文窗口。上下文压缩会把较早的对话整理成摘要，并和最近的新消息一起组成后续发给 LLM 的上下文视图。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "a8feb4ccf7d498abdbc84f9ea70fef1f5b2143e8202ac9a65a9f432e7d490411",
+      "translation": "Long conversations will gradually approach the model's context window. Context compaction summarizes earlier conversations and combines them with the most recent messages to form the context view sent to the LLM.\n",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:paragraph:ad7f6c7b3785a3a2f1978cc110c9561bd027c20f75483679682b56f4abeb74c1": {
       "kind": "paragraph",
@@ -4902,6 +5102,14 @@
       "translation": "LLM Cron can select the background Session mode via __ELBOT_CODE_0__: the default is __ELBOT_CODE_1__, and when passing __ELBOT_CODE_2__, the tool schema is not injected, which is suitable for low-cost tasks that do not require tools.",
       "updated_at": 1782698966
     },
+    "docs/concepts.md:paragraph:ba6e564505606bae7bfb91350f3d2d3f85dd9cba5d06515206d4092955c62d8f": {
+      "kind": "paragraph",
+      "source": "Session 是 ElBot 的持久化会话单位，用来保存一次连续对话的上下文、模式、消息历史、压缩摘要和工具调用记录。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "ba6e564505606bae7bfb91350f3d2d3f85dd9cba5d06515206d4092955c62d8f",
+      "translation": "A Session is ElBot's persistent session unit, used to save the context, mode, message history, compressed summary, and tool call records of a continuous conversation.\n",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:paragraph:bba7fced0f9c1143a23c84ff8aafe31b0724948cccece90fd16c05d218fce7a6": {
       "kind": "paragraph",
       "source": "ElBot 包含两层 Cron 能力：\n",
@@ -4917,6 +5125,14 @@
       "source_hash": "bc1ef24d4bdb1e2ef259e8fe4592d4295216efe8cd5d4dd798acf5ec31aae6e9",
       "translation": "Elvena is the event protocol used by Elwisp to deliver events to Elnis.\n",
       "updated_at": 1781709276
+    },
+    "docs/concepts.md:paragraph:bdda44ff661fbed92e8838361bda8666877c3b348567962ef5fdfacdafbb792a": {
+      "kind": "paragraph",
+      "source": "常驻记忆适合保存偏身份、偏偏好、偏长期稳定的信息。长期记忆适合保存篇幅更大、需要检索的资料。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "bdda44ff661fbed92e8838361bda8666877c3b348567962ef5fdfacdafbb792a",
+      "translation": "Resident memory is suitable for saving information related to identity, preferences, and long-term stability. Long-term memory is suitable for saving larger volumes of data that require retrieval.\n",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:paragraph:bde0c0ecdce573cc895878def30938e78e9467573a60e3f7ad1411f495f3cde4": {
       "kind": "paragraph",
@@ -4950,6 +5166,14 @@
       "translation": "The Hook Layer is used to extend behavior before and after critical processes, such as modifying messages, appending output intents, calling low-risk tools, or injecting resident memory.",
       "updated_at": 1782376269
     },
+    "docs/concepts.md:paragraph:c0b12d7bd7eee190409c97ec62c45189a32fe3e2d384130731bab6054609475f": {
+      "kind": "paragraph",
+      "source": "Hook 是扩展机制，不是权限机制。工具调用、危险操作和角色限制仍由 Security Layer 判断。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "c0b12d7bd7eee190409c97ec62c45189a32fe3e2d384130731bab6054609475f",
+      "translation": "Hooks are an extension mechanism, not a permission mechanism. Tool calls, dangerous operations, and role restrictions are still determined by the Security Layer.\n",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:paragraph:c10f293d07ac3083b84f15d2ccc2de36508a9a99335aa62bbbeb8640d75d225c": {
       "kind": "paragraph",
       "source": "无效值会保留为普通文本并提示。",
@@ -4957,6 +5181,14 @@
       "source_hash": "c10f293d07ac3083b84f15d2ccc2de36508a9a99335aa62bbbeb8640d75d225c",
       "translation": "Invalid values will be kept as plain text and a prompt will be shown.",
       "updated_at": 1782205988
+    },
+    "docs/concepts.md:paragraph:c2f937374f4b1ebbfdf53dfbccf862ea792b41575e72d7bb7cc3e2b99faee32e": {
+      "kind": "paragraph",
+      "source": "Soul 是 Agent 的基础 System Prompt，用来定义人格、行为边界和长期稳定的表达风格。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "c2f937374f4b1ebbfdf53dfbccf862ea792b41575e72d7bb7cc3e2b99faee32e",
+      "translation": "Soul is the Agent's basic System Prompt, used to define personality, behavioral boundaries, and a long-term stable expression style.\n",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:paragraph:c6097edaa165e063e833bc0c310d26c83898f14e42fa47839288a89c49281128": {
       "kind": "paragraph",
@@ -4982,6 +5214,14 @@
       "translation": "Fork is used to create a new conversation branch from a historical assistant message.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:d1541eb028d565e1b5ffb562cc633d19717e9922cd527900a679e0152ed6e432": {
+      "kind": "paragraph",
+      "source": "实际发送给 LLM 的 Prompt 不只包含 Soul，还会按当前会话动态组合平台信息、用户身份、记忆、工具提示、压缩摘要和会话历史。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "d1541eb028d565e1b5ffb562cc633d19717e9922cd527900a679e0152ed6e432",
+      "translation": "The Prompt actually sent to the LLM contains not only Soul but also dynamically combines platform information, user identity, memory, tool hints, compaction summaries, and Session history based on the current Session.\n",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:paragraph:d2cd1baebda963d409f5e0851a65f3f9050f643115adf055977529c3c56ae4e0": {
       "kind": "paragraph",
       "source": "后台 Cron 有独立 Session 和 sandbox 约束。\n",
@@ -4990,6 +5230,14 @@
       "translation": "Background Cron has an independent Session and sandbox constraints.\n",
       "updated_at": 1783074327
     },
+    "docs/concepts.md:paragraph:d56543862bf0d60e07c7ca316e056366350c92d96bb37ce2e1c6534774aff1d1": {
+      "kind": "paragraph",
+      "source": "因此，Soul 只适合放稳定规则；工具发现、时间、平台上下文和临时状态等动态信息不应硬编码进去。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "d56543862bf0d60e07c7ca316e056366350c92d96bb37ce2e1c6534774aff1d1",
+      "translation": "Therefore, Soul is only suitable for stable rules; dynamic information such as tool discovery, time, platform context, and temporary states should not be hard-coded into it.\n",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:paragraph:d676127be7402ea48121c3258eaebdd24b877db4d6bcf7ae93371b5cb456b96d": {
       "kind": "paragraph",
       "source": "有效指令会被剥离；",
@@ -4997,6 +5245,22 @@
       "source_hash": "d676127be7402ea48121c3258eaebdd24b877db4d6bcf7ae93371b5cb456b96d",
       "translation": "Valid commands will be stripped;",
       "updated_at": 1782205988
+    },
+    "docs/concepts.md:paragraph:da98ce0b220ca13dd3e2717ffc3f989ba7c73e1d21e4d6be00aa5c9992a0d9ac": {
+      "kind": "paragraph",
+      "source": "压缩不会删除原始消息，只会改变后续请求中使用的上下文内容。它可以自动触发，也可以由用户手动触发。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "da98ce0b220ca13dd3e2717ffc3f989ba7c73e1d21e4d6be00aa5c9992a0d9ac",
+      "translation": "Compaction does not delete original messages; it only changes the context content used in subsequent requests. It can be triggered automatically or manually by the user.\n",
+      "updated_at": 1783077374
+    },
+    "docs/concepts.md:paragraph:dac34e615b193991c3e648b964f409d31143f918ba7fc5ae15f5e5a0c7c18174": {
+      "kind": "paragraph",
+      "source": "完整配置和示例见 [Hook：规则 Hook 配置](hooks.md#规则-hook-配置)。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "dac34e615b193991c3e648b964f409d31143f918ba7fc5ae15f5e5a0c7c18174",
+      "translation": "See [Hook: Rule Hook Configuration](hooks.md#规则-hook-配置) for full configuration and examples.\n",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:paragraph:e6fa4b3e4e8561b4408e3d10235ffa134cf3cfba44aa742d73a6c318a9a718c2": {
       "kind": "paragraph",
@@ -5038,6 +5302,14 @@
       "translation": "Core rules:\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:ee04889c7c9e1111f857e42abceae72ca49aeb066e283867551324bbf2dfec09": {
+      "kind": "paragraph",
+      "source": "具体语法和示例见 [命令速查：工具与 Skill](commands.md#工具与-skill)。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "ee04889c7c9e1111f857e42abceae72ca49aeb066e283867551324bbf2dfec09",
+      "translation": "For specific syntax and examples, see [Command Quick Reference: Tools and Skills](commands.md#工具与-skill).\n",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:paragraph:eea78ccedc04acb1f1261025ce39ab59e300cbfb94a41e39046d907e1d4dca34": {
       "kind": "paragraph",
       "source": "normal 用于普通信息，可追加、覆盖或清空。",
@@ -5054,6 +5326,14 @@
       "translation": "Elwisp is an external sub-listener responsible for observing the external world, such as servers, Webhooks, RSS, logs, or script outputs.",
       "updated_at": 1781709276
     },
+    "docs/concepts.md:paragraph:f130df4e2b2078db4b319ae35ddfc2417ddfc986acdbeb67e754121d15516d4c": {
+      "kind": "paragraph",
+      "source": "因此，Agent Core 不需要关心消息来自 CLI、群聊、私聊还是其他平台。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "f130df4e2b2078db4b319ae35ddfc2417ddfc986acdbeb67e754121d15516d4c",
+      "translation": "Therefore, Agent Core does not need to care whether messages come from the CLI, group chats, private chats, or other platforms.\n",
+      "updated_at": 1783077374
+    },
     "docs/concepts.md:paragraph:f63c44a9c3da8282192aae7a2c14d84859f006e9b4fc9ba29c14679c3a2ab041": {
       "kind": "paragraph",
       "source": "它们的分工是：Elwisp 观测一切，Elnis 管理一切，ElBot 掌控最终执行与投递。\n",
@@ -5061,6 +5341,14 @@
       "source_hash": "f63c44a9c3da8282192aae7a2c14d84859f006e9b4fc9ba29c14679c3a2ab041",
       "translation": "Their division of labor is: Elwisp observes everything, Elnis manages everything, and ElBot controls the final execution and delivery.\n",
       "updated_at": 1781709276
+    },
+    "docs/concepts.md:paragraph:f6ffabb2700911f566e9e5429b77829310584367c95356d35c87d391ef7ebf38": {
+      "kind": "paragraph",
+      "source": "新分支会继承 fork 点之前的上下文，但不会修改原 Session。它适合在同一个问题上尝试另一种思路、重做方案，或保留原对话同时继续探索。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "f6ffabb2700911f566e9e5429b77829310584367c95356d35c87d391ef7ebf38",
+      "translation": "The new branch inherits the context before the fork point but does not modify the original Session. It is suitable for trying a different approach or reworking a solution for the same problem, or continuing exploration while preserving the original conversation.\n",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:paragraph:f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f": {
       "kind": "paragraph",
@@ -5093,6 +5381,14 @@
       "source_hash": "f9be8056fedfb67f814a62b22dbe081ff7db49d726b347101e561e412362d523",
       "translation": "ElBot is still under rapid development:\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:fcc810a11d16dc0f7bef2d6afa1b8476097eada26bbf119f9990b08c6ffde811": {
+      "kind": "paragraph",
+      "source": "ELyph Task Notation 是 ElBot 用来描述可复用任务的结构化表示法。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "fcc810a11d16dc0f7bef2d6afa1b8476097eada26bbf119f9990b08c6ffde811",
+      "translation": "ELyph Task Notation is a structured representation used by ElBot to describe reusable tasks.",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:table:047563285d4d325d5023f47c22f5c5f3e14100d30d569d73c91946b0524815e0": {
       "kind": "table",
@@ -5165,6 +5461,14 @@
       "source_hash": "4262c45dc797bb0cd5008331ef25b684413859f55b73c71fb4e2c01b645dbbb7",
       "translation": "Description",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:table:4298086eab65f914b8e91905ad3d085ab5f00ed09cd30207b264d2cd8a0d5485": {
+      "kind": "table",
+      "source": "更长、更复杂的信息，按需通过工具搜索和使用。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "4298086eab65f914b8e91905ad3d085ab5f00ed09cd30207b264d2cd8a0d5485",
+      "translation": "Longer and more complex information is searched and used via tools on demand.",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:table:47a270081ab2892f63d740bc61cd7b17b04d9d3947b3123be8db9e0d97c12c83": {
       "kind": "table",
@@ -5253,6 +5557,14 @@
       "source_hash": "ea165e7c0ea5f518cd8afbd1d1f1078de71dd1f3342820a0b89a5b5c2e58d1d2",
       "translation": "Short, stable information that may be useful in every round will be injected into the Prompt.",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:table:fa7a0fdd214e67d899aee3f9638f4e741916e9e6ad8a6f067242879bee866dc1": {
+      "kind": "table",
+      "source": "短小、稳定、经常有用的信息，会在对话中自动注入。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "fa7a0fdd214e67d899aee3f9638f4e741916e9e6ad8a6f067242879bee866dc1",
+      "translation": "Short, stable, and frequently useful information will be automatically injected into the conversation.",
+      "updated_at": 1783077374
     },
     "docs/concepts.md:table:fc08fa260979279586861e2e1faba0e21b6b0438048afa9c98b134660d3fbe3d": {
       "kind": "table",
