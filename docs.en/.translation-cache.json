@@ -56,9 +56,9 @@
       "updated_at": 1782901461
     },
     "docs/hooks.md": {
-      "source_hash": "14eb384e96e231944da883aaf4f1a2bc7ee102664973eb5659d116729c30d2ff",
+      "source_hash": "0c9ba1321ef7cc1a4ba6e101c0a8fc299e7dab73654c609b00013340d6c6d0f7",
       "target": "docs.en/hooks.md",
-      "updated_at": 1782901461
+      "updated_at": 1783048529
     }
   },
   "segments": {
@@ -11894,6 +11894,14 @@
       "translation": "Hook Point",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:table:789f874f00b0992023b44bbada405c7aeb6f97001e6b8cdc6620d8fd24d0d383": {
+      "kind": "table",
+      "source": "本地文件路径（image/file/emoticon）；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "789f874f00b0992023b44bbada405c7aeb6f97001e6b8cdc6620d8fd24d0d383",
+      "translation": "Local file path (image/file/emoticon);",
+      "updated_at": 1783048529
+    },
     "docs/hooks.md:table:9a823cc005cedbf79cd2f3f0327b7851efcf2d12fd4a39cb30452b147bb320ae": {
       "kind": "table",
       "source": "文件名或表情名",
@@ -11989,6 +11997,14 @@
       "source_hash": "ec48f08f2b76548d8a77779a8d27aae45cc1873d691969508d6500a83de8f8db",
       "translation": "Field ends with value",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:table:efec637b28c1fb0ff5c33308cbbab61f4ba067a91835e0c443a801306f3e6ebf": {
+      "kind": "table",
+      "source": "普通路径按平台默认方式处理，__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ 前缀表示调用方已指定媒体源，会按平台能力直接处理",
+      "source_file": "docs/hooks.md",
+      "source_hash": "efec637b28c1fb0ff5c33308cbbab61f4ba067a91835e0c443a801306f3e6ebf",
+      "translation": "Ordinary paths are handled according to the platform's default method; prefixes __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ indicate that the caller has specified the media source, which will be handled directly according to the platform's capabilities.",
+      "updated_at": 1783048529
     }
   },
   "version": 1
