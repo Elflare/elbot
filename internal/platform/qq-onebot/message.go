@@ -3,6 +3,7 @@ package qqonebot
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"elbot/internal/platform"
@@ -148,7 +149,7 @@ func isDirectImageURL(value string) bool {
 }
 
 func fileSegment(kind string, data map[string]any) platform.MessageSegment {
-	return platform.MessageSegment{Type: platform.SegmentFile, Text: kind, URL: strings.TrimSpace(segmentDataString(data, "url")), Name: firstNonEmpty(segmentDataString(data, "file"), segmentDataString(data, "filename"))}
+	return platform.MessageSegment{Type: platform.SegmentFile, Text: kind, URL: strings.TrimSpace(segmentDataString(data, "url")), Name: firstNonEmpty(segmentDataString(data, "name"), segmentDataString(data, "file"), segmentDataString(data, "filename")), Size: segmentDataInt64(data, "file_size")}
 }
 
 func segmentDataString(data map[string]any, key string) string {
@@ -164,6 +165,18 @@ func segmentDataString(data map[string]any, key string) string {
 	default:
 		return fmt.Sprint(v)
 	}
+}
+
+func segmentDataInt64(data map[string]any, key string) int64 {
+	value := segmentDataString(data, key)
+	if value == "" {
+		return 0
+	}
+	n, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 func firstNonEmpty(values ...string) string {

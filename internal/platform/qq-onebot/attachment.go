@@ -39,7 +39,16 @@ func (a *Adapter) prepareInboundAttachments(ctx context.Context, segments []plat
 	out := inboundAttachments{Segments: append([]platform.MessageSegment(nil), segments...)}
 	for i := range out.Segments {
 		segment := out.Segments[i]
-		if segment.Type != platform.SegmentFile || !isDownloadableURL(segment.URL) {
+		if segment.Type != platform.SegmentFile {
+			continue
+		}
+		if segment.Size > 0 && segment.Size > a.cfg.MaxReceiveFileBytes {
+			out.TooLarge = append(out.TooLarge, segment)
+			out.Segments[i] = platform.MessageSegment{}
+			continue
+		}
+		if !isDownloadableURL(segment.URL) {
+			a.logWarn("onebot attachment url missing", "name", segment.Name)
 			continue
 		}
 		saved, err := a.downloadInboundAttachment(ctx, i+1, segment)

@@ -175,7 +175,7 @@ func TestPrepareInboundAttachmentsSavesFile(t *testing.T) {
 	}
 }
 
-func TestHandleEventPureFileSendsSavedNotice(t *testing.T) {
+func TestHandleEventPureSuperadminFileSendsSavedNotice(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = w.Write([]byte("test file"))
@@ -192,7 +192,7 @@ func TestHandleEventPureFileSendsSavedNotice(t *testing.T) {
 		}
 		return response{Status: "ok", Data: []byte(`{"message_id":99}`), Echo: req.Echo}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL, AttachmentDir: t.TempDir(), MaxReceiveFileBytes: 1024, DownloadTimeoutSecs: 60}, nil, nil, nil)
+	adapter := New(Config{Enabled: true, URL: transport.URL, AttachmentDir: t.TempDir(), MaxReceiveFileBytes: 1024, DownloadTimeoutSecs: 60, Superadmins: []string{"1"}}, nil, nil, nil)
 	adapter.transport = transport
 	handler := &captureHandler{}
 
@@ -203,14 +203,14 @@ func TestHandleEventPureFileSendsSavedNotice(t *testing.T) {
 	}
 }
 
-func TestHandleEventTextAndFileReachesHandler(t *testing.T) {
+func TestHandleEventSuperadminTextAndFileReachesHandler(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = w.Write([]byte("test file"))
 	}))
 	defer server.Close()
 
-	adapter := New(Config{Enabled: true, AttachmentDir: t.TempDir(), MaxReceiveFileBytes: 1024, DownloadTimeoutSecs: 60}, nil, nil, nil)
+	adapter := New(Config{Enabled: true, AttachmentDir: t.TempDir(), MaxReceiveFileBytes: 1024, DownloadTimeoutSecs: 60, Superadmins: []string{"1"}}, nil, nil, nil)
 	handler := &captureHandler{}
 	adapter.handleEvent(context.Background(), handler, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 7, Message: []byte(fmt.Sprintf(`[{"type":"text","data":{"text":"看看"}},{"type":"file","data":{"file":"test.txt","url":%q}}]`, server.URL+"/file"))})
 
@@ -226,10 +226,9 @@ func TestHandleEventTextAndFileReachesHandler(t *testing.T) {
 	}
 }
 
-func TestHandleEventPureTooLargeFileSendsNotice(t *testing.T) {
+func TestHandleEventPureSuperadminTooLargeFileSendsNotice(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain")
-		_, _ = w.Write([]byte("too large"))
+		t.Fatal("file_size over limit should not be downloaded")
 	}))
 	defer server.Close()
 
@@ -243,14 +242,78 @@ func TestHandleEventPureTooLargeFileSendsNotice(t *testing.T) {
 		}
 		return response{Status: "ok", Data: []byte(`{"message_id":100}`), Echo: req.Echo}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL, AttachmentDir: t.TempDir(), MaxReceiveFileBytes: 3, DownloadTimeoutSecs: 60}, nil, nil, nil)
+	adapter := New(Config{Enabled: true, URL: transport.URL, AttachmentDir: t.TempDir(), MaxReceiveFileBytes: 3, DownloadTimeoutSecs: 60, Superadmins: []string{"1"}}, nil, nil, nil)
 	adapter.transport = transport
 	handler := &captureHandler{}
 
-	adapter.handleEvent(context.Background(), handler, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 7, Message: []byte(fmt.Sprintf(`[{"type":"file","data":{"file":"big.txt","url":%q}}]`, server.URL+"/file"))})
+	adapter.handleEvent(context.Background(), handler, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 7, Message: []byte(fmt.Sprintf(`[{"type":"file","data":{"file":"big.txt","url":%q,"file_size":"9"}}]`, server.URL+"/file"))})
 
 	if handler.count != 0 {
 		t.Fatalf("handler count = %d, want 0", handler.count)
+	}
+}
+
+func TestHandleEventPrivateNonSuperadminFileDoesNotSave(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("non-superadmin file should not be downloaded")
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	adapter := New(Config{Enabled: true, AttachmentDir: dir, MaxReceiveFileBytes: 1024, DownloadTimeoutSecs: 60, Superadmins: []string{"2"}}, nil, nil, nil)
+	handler := &captureHandler{}
+	adapter.handleEvent(context.Background(), handler, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 7, Message: []byte(fmt.Sprintf(`[{"type":"file","data":{"file":"test.txt","url":%q}}]`, server.URL+"/file"))})
+
+	if handler.count != 0 {
+		t.Fatalf("handler count = %d, want 0", handler.count)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read attachment dir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("attachment dir entries = %d, want 0", len(entries))
+	}
+}
+
+func TestHandleEventGroupFileDoesNotSave(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("group file should not be downloaded")
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	adapter := New(Config{Enabled: true, AttachmentDir: dir, MaxReceiveFileBytes: 1024, DownloadTimeoutSecs: 60, Superadmins: []string{"1"}}, nil, nil, nil)
+	handler := &captureHandler{}
+	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 7, Message: []byte(fmt.Sprintf(`[{"type":"at","data":{"qq":"1000"}},{"type":"file","data":{"file":"test.txt","url":%q}}]`, server.URL+"/file"))})
+
+	if handler.count != 0 {
+		t.Fatalf("handler count = %d, want 0", handler.count)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read attachment dir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("attachment dir entries = %d, want 0", len(entries))
+	}
+}
+
+func TestHandleEventSuperadminFileWithoutURLDoesNotSave(t *testing.T) {
+	dir := t.TempDir()
+	adapter := New(Config{Enabled: true, AttachmentDir: dir, MaxReceiveFileBytes: 1024, DownloadTimeoutSecs: 60, Superadmins: []string{"1"}}, nil, nil, nil)
+	handler := &captureHandler{}
+	adapter.handleEvent(context.Background(), handler, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 7, Message: []byte(`[{"type":"file","data":{"file":"test.txt","file_size":"9"}}]`)})
+
+	if handler.count != 0 {
+		t.Fatalf("handler count = %d, want 0", handler.count)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read attachment dir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("attachment dir entries = %d, want 0", len(entries))
 	}
 }
 

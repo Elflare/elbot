@@ -420,10 +420,10 @@ func (a *Adapter) readLoop(ctx context.Context, handler platform.PlatformHandler
 		if event.PostType == "" {
 			continue
 		}
-		if !a.isMessageEvent(event) {
+		if a.isMessageEvent(event) {
+			go a.handleEvent(ctx, handler, event)
 			continue
 		}
-		go a.handleEvent(ctx, handler, event)
 	}
 }
 
@@ -442,8 +442,11 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		return
 	}
 	currentSegments := a.resolveImageSegments(ctx, normalized.Segments)
-	attachments := a.prepareInboundAttachments(ctx, currentSegments)
-	currentSegments = attachments.Segments
+	attachments := inboundAttachments{Segments: currentSegments}
+	if a.shouldAutoReceivePrivateFile(event) {
+		attachments = a.prepareInboundAttachments(ctx, currentSegments)
+		currentSegments = attachments.Segments
+	}
 	messageCtx := platform.MessageContext{
 		Platform:              a.Name(),
 		PlatformUserID:        strconv.FormatInt(event.UserID, 10),
@@ -701,6 +704,13 @@ func hasTextSegment(segments []platform.MessageSegment) bool {
 
 func (a *Adapter) isMessageEvent(event Event) bool {
 	return event.PostType == "message" && (event.MessageType == "private" || event.MessageType == "group")
+}
+
+func (a *Adapter) shouldAutoReceivePrivateFile(event Event) bool {
+	if event.MessageType != "private" {
+		return false
+	}
+	return isConfiguredSuperadmin(a.cfg.Superadmins, strconv.FormatInt(event.UserID, 10))
 }
 
 func scopeID(event Event) string {

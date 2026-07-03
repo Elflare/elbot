@@ -327,7 +327,7 @@ download_timeout_secs = 60
 
 - `max_receive_file_bytes`：平台入站文件最大保存大小，默认 100MB；超过上限时会给用户发送提示，不保存到服务器。
 - `download_timeout_secs`：平台入站文件下载超时，默认 60 秒。
-- QQ 官方和 QQ OneBot 的入站文件默认保存到 sandbox 下的 `platform/<平台名>` 目录；纯文件消息只回复保存路径或过大提示，不唤起 LLM。
+- 入站文件默认保存到 sandbox 下的 `platform/<platform name>` 目录，不会唤起llm。
 
 
 ## 日志与维护任务
@@ -537,7 +537,7 @@ CLI 默认启用：
 enabled = true
 ```
 
-QQ 官方机器人、QQ OneBot 和 Telegram 配置在示例中默认注释。启用时需要补齐平台自己的认证信息和触发关键词。QQ 官方和 QQ OneBot 收到文件时会按 `[platform_files]` 限制下载保存；纯文件消息仅回复保存路径或过大提示，不进入 LLM。
+QQ 官方机器人、QQ OneBot 和 Telegram 配置在示例中默认注释。启用时需要补齐平台自己的认证信息和触发关键词。收到文件时会按 `[platform_files]` 限制下载保存。
 
 Telegram 使用 Bot API long polling。最小配置示例：
 

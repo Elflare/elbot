@@ -48,6 +48,7 @@ type MessageSegment struct {
 	URL      string
 	MIMEType string
 	Name     string
+	Size     int64
 }
 
 // MessageContext carries per-message platform routing and actor data.
