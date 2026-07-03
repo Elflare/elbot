@@ -29,6 +29,9 @@ func applyShellSandboxRisk(cmdText string, assessment tool.RiskAssessment) tool.
 }
 
 func validateShellSandboxCommand(cmdText string) []string {
+	if isPowerShellEnv() {
+		return nil
+	}
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
 	file, err := parser.Parse(strings.NewReader(cmdText), "")
 	if err != nil {

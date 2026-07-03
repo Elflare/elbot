@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 修复 Hook rules `exec` action 在 Windows 下固定依赖 `sh` 导致执行失败的问题；现在 `command` 会直接按程序和参数执行。
 - QQ OneBot 入站 @ 消息现在会优先显示群名片，其次普通昵称，格式为 `[at 名字 qq:<id>]`，无法获取时才回退 QQ 号。
 - 修复 Windows 下 `shell` 工具回退到 PowerShell 时中文输出可能乱码的问题。
+- 修复 Windows 下无 bash 时 shell 命令的 bash AST 解析失败导致风险分类、沙盒校验、目录切换拦截和警告分析全部异常的问题；PowerShell 环境下跳过 AST 解析，风险分类直接返回高风险需用户确认。
 - OneBot 发送图片失败时，不再出现可见 fallback，但仍会记录日志。
 
 

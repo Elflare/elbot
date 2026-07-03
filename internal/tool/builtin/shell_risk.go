@@ -21,6 +21,9 @@ func classifyShellCommand(cmdText string) tool.RiskAssessment {
 	if cmdText == "" {
 		return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"命令为空，无法判断风险"}}
 	}
+	if isPowerShellEnv() {
+		return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"PowerShell 环境无法用 bash AST 解析命令，需要用户确认"}}
+	}
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
 	file, err := parser.Parse(strings.NewReader(cmdText), "")
 	if err != nil {

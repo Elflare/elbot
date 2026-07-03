@@ -184,8 +184,8 @@
 - `internal/tool/builtin/shell.go`：内置 shell 工具；支持 `cmd` 和 `timeout_ms`，前台在当前 workspace 执行，后台在当前任务 sandbox 执行；禁止在 `cmd` 中切换目录。
 - `internal/tool/builtin/file_guard.go`：受保护文件访问规则；识别 EL Skill、常驻记忆和长期记忆源文件，供文件工具和 shell 工具提示或拒绝绕过专用工具的读写。
 - `internal/tool/builtin/shell_warnings.go`：shell 命令使用建议分析；识别 `cat`/`sed`/重定向等常见文件读写误用，返回工具 warning 或阻止直接修改受保护文件。
-- `internal/tool/builtin/shell_risk.go`：shell/bash 命令风险分类器；使用 `mvdan.cc/sh/v3/syntax` 解析 AST，识别管道、重定向、命令替换、动态命令、删除、提权、下载即执行等风险并返回风险原因。
-- `internal/tool/builtin/shell_sandbox.go`：后台 shell 轻沙盒 AST 校验；检查重定向和常见路径参数中的绝对路径、`..` 逃逸、动态路径与 `cd`，违规时把风险提升为 critical。
+- `internal/tool/builtin/shell_risk.go`：shell/bash 命令风险分类器；使用 `mvdan.cc/sh/v3/syntax` 解析 AST，识别管道、重定向、命令替换、动态命令、删除、提权、下载即执行等风险并返回风险原因；PowerShell 环境跳过 AST 解析直接返回高风险。
+- `internal/tool/builtin/shell_sandbox.go`：后台 shell 轻沙盒 AST 校验；检查重定向和常见路径参数中的绝对路径、`..` 逃逸、动态路径与 `cd`，违规时把风险提升为 critical；PowerShell 环境跳过 AST 校验。
 - `internal/elyph/`：ELyph Task Notation 语言层；提供规则卡、AST/diagnostic、parser/linter，供原生 skill 创建、扫描和 LLM cron 任务复用。
 - `internal/tool/skill/parser.go`：通用 `SKILL.md` 解析器；兼容 agentskills.io 风格外置 AgentSkill 常见 YAML front matter 的 `name`、`description`、`when_to_use`、`risk`，并提供目录名和正文首段 fallback；未写 risk 时默认 high。
 

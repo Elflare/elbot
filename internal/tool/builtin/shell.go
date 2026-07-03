@@ -164,6 +164,9 @@ func resolveShellWorkDir(ctx context.Context) (string, error) {
 }
 
 func rejectShellDirectoryChange(cmdText string) error {
+	if isPowerShellEnv() {
+		return nil
+	}
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
 	file, err := parser.Parse(strings.NewReader(cmdText), "")
 	if err != nil {
@@ -288,4 +291,12 @@ func truncate(text string) string {
 		return text
 	}
 	return text[:maxShellOutput] + "\n... output truncated ...\n"
+}
+
+func isPowerShellEnv() bool {
+	if runtime.GOOS != "windows" {
+		return false
+	}
+	name, _ := resolveWindowsShell()
+	return name == "pwsh" || name == "powershell.exe"
 }
