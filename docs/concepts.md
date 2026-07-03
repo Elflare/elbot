@@ -220,6 +220,7 @@ Skill 类型：
 
 ```toml
 risk = "medium"
+tags = ["doc"]
 command = ["python", "foo.py"]
 timeout_seconds = 30
 expose_root = false
@@ -238,7 +239,7 @@ parameters = '''
 input = "--input"
 ```
 
-上例中，LLM 调用 Skill 工具传入 `input` 后，ElBot 会执行 `python foo.py --input <value>`，工作目录固定为该 Skill 根目录。`risk`、`command`、`parameters` 和 `[args]` 必填；`expose_root=true` 时，发现 Skill 时才会向 LLM 暴露 Skill 根路径。
+上例中，LLM 调用 Skill 工具传入 `input` 后，ElBot 会执行 `python foo.py --input <value>`，工作目录固定为该 Skill 根目录。`risk`、`command`、`parameters` 和 `[args]` 必填；`tags` 可选，相当于为该工具分类，可用于 `@tool:<tag>` 预载；`expose_root=true` 时，发现 Skill 时才会向 LLM 暴露 Skill 根路径。
 
 ELyph 的目标是用更短、更稳定的结构表达输入、输出、步骤、条件和约束，减少自然语言任务描述的歧义。完整语法见 [ELyph 任务表示法](elyph.md)。
 

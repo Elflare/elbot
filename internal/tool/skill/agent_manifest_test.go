@@ -4,6 +4,7 @@ import "testing"
 
 func TestParseAgentSkillManifestValid(t *testing.T) {
 	manifest, err := ParseAgentSkillManifest([]byte(`risk = "medium"
+tags = ["doc", "doc", "convert"]
 command = ["python", "foo.py"]
 timeout_seconds = 30
 expose_root = true
@@ -20,6 +21,9 @@ mode = "--mode"
 	}
 	if manifest.Risk != "medium" || len(manifest.Command) != 2 || !manifest.ExposeRoot || manifest.Args["input"] != "--input" {
 		t.Fatalf("manifest = %#v", manifest)
+	}
+	if len(manifest.Tags) != 2 || manifest.Tags[0] != "doc" || manifest.Tags[1] != "convert" {
+		t.Fatalf("tags = %#v", manifest.Tags)
 	}
 }
 

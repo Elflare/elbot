@@ -18,6 +18,7 @@ const AgentSkillConfigFile = "ELBOT_SKILL.toml"
 
 type AgentSkillManifest struct {
 	Risk           tool.RiskLevel
+	Tags           []string
 	Command        []string
 	TimeoutSeconds int
 	ExposeRoot     bool
@@ -27,6 +28,7 @@ type AgentSkillManifest struct {
 
 type agentSkillManifestFile struct {
 	Risk           string            `toml:"risk"`
+	Tags           []string          `toml:"tags"`
 	Command        []string          `toml:"command"`
 	TimeoutSeconds int               `toml:"timeout_seconds"`
 	ExposeRoot     bool              `toml:"expose_root"`
@@ -59,7 +61,7 @@ func ParseAgentSkillManifest(data []byte) (AgentSkillManifest, error) {
 	if err := toml.Unmarshal(data, &raw); err != nil {
 		return AgentSkillManifest{}, fmt.Errorf("parse %s: %w", AgentSkillConfigFile, err)
 	}
-	allowed := map[string]bool{"risk": true, "command": true, "timeout_seconds": true, "expose_root": true, "parameters": true, "args": true}
+	allowed := map[string]bool{"risk": true, "tags": true, "command": true, "timeout_seconds": true, "expose_root": true, "parameters": true, "args": true}
 	keys := make([]string, 0, len(raw))
 	for key := range raw {
 		if !allowed[key] {
@@ -131,7 +133,7 @@ func validateAgentSkillManifest(file agentSkillManifestFile) (AgentSkillManifest
 	if file.TimeoutSeconds < 0 {
 		return AgentSkillManifest{}, fmt.Errorf("timeout_seconds must be >= 0")
 	}
-	return AgentSkillManifest{Risk: risk, Command: append([]string(nil), file.Command...), TimeoutSeconds: file.TimeoutSeconds, ExposeRoot: file.ExposeRoot, Parameters: parameters, Args: copyStringMap(file.Args)}, nil
+	return AgentSkillManifest{Risk: risk, Tags: normalizeManifestTags(file.Tags), Command: append([]string(nil), file.Command...), TimeoutSeconds: file.TimeoutSeconds, ExposeRoot: file.ExposeRoot, Parameters: parameters, Args: copyStringMap(file.Args)}, nil
 }
 
 func schemaRequired(parameters map[string]any) []string {
@@ -157,6 +159,20 @@ func copyStringMap(in map[string]string) map[string]string {
 	out := make(map[string]string, len(in))
 	for key, value := range in {
 		out[key] = value
+	}
+	return out
+}
+
+func normalizeManifestTags(tags []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, tag := range tags {
+		tag = strings.TrimSpace(tag)
+		if tag == "" || seen[tag] {
+			continue
+		}
+		seen[tag] = true
+		out = append(out, tag)
 	}
 	return out
 }

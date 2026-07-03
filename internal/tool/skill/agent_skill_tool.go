@@ -30,7 +30,7 @@ func (AgentSkillTool) Name() string { return AgentSkillManagerName }
 
 func (AgentSkillTool) Info() tool.Info {
 	return tool.NewBuilder(AgentSkillManagerName).
-		Description("读取或写入 AgentSkill 的 ElBot 工具化配置。没有 " + AgentSkillConfigFile + " 的 AgentSkill 只是说明文档；如果文档要求运行脚本，可先用此工具创建配置，把 CLI 参数映射成普通工具参数。").
+		Description(agentSkillToolDescription()).
 		Source(tool.SourceBuiltin).
 		Risk(tool.RiskHigh).
 		Hidden().
@@ -40,7 +40,7 @@ func (AgentSkillTool) Info() tool.Info {
 func (AgentSkillTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{
 		Name:        AgentSkillManagerName,
-		Description: "读取或写入 AgentSkill 的 " + AgentSkillConfigFile + "。action=read 查看当前配置和格式说明；action=write 写入完整 TOML，写入前会校验，成功后自动 reload。TOML 只写 risk、command、timeout_seconds、expose_root、parameters 和 [args]；不要写 skill 名称、描述、路径、cwd、env 或 schema。command 是数组，[args] 使用扁平映射，如 input = \"--input\"。",
+		Description: agentSkillToolDescription(),
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -51,6 +51,50 @@ func (AgentSkillTool) Schema() llm.ToolSchema {
 			"required": []string{"action", "name"},
 		},
 	}}
+}
+
+func agentSkillToolDescription() string {
+	return `读或写 AgentSkill 的 ELBOT_SKILL.toml。
+if a skill 带脚本:
+    if 你没有该脚本的Schema只能用shell来运行 and 你觉得使用shell很麻烦:
+        使用该工具创建 ELBOT_SKILL.toml，之后会自动注入你的Schema，之后可以不使用shell运行
+elif:
+    检查你已知Schema工具，是否有该技能的脚本，就可以直接调用，而不用shell
+ELBOT_SKILL.toml写法：
+只允许这些字段：
+risk, tags, command, timeout_seconds, expose_root, parameters, [args]
+
+示例：
+risk = "medium"
+tags = ["doc"]
+command = ["python", "foo.py"]
+timeout_seconds = 30
+expose_root = false
+
+parameters = '''
+{
+  "type": "object",
+  "required": ["input"],
+  "properties": {
+    "input": {"type": "string", "description": "输入文本"},
+    "mode": {"type": "string", "description": "处理模式"}
+  }
+}
+'''
+
+[args]
+input = "--input"
+mode = "--mode"
+
+含义：
+工具调用 {"input":"abc","mode":"fast"} 会执行：
+python foo.py --input abc --mode fast
+
+command 必须是字符串数组。
+parameters 必须是 JSON object schema。
+parameters.properties 定义工具有哪些入参；[args] 的 key 必须对应 parameters.properties。
+risk 必填。
+tags 可选，相当于为该工具分类。`
 }
 
 func (t AgentSkillTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
@@ -154,6 +198,6 @@ func readAgentSkillConfig(record Record, path string) string {
 		b.WriteString("\nNo current TOML.\n")
 	}
 	b.WriteString("\nFormat:\n")
-	b.WriteString("risk = \"medium\"\ncommand = [\"python\", \"foo.py\"]\ntimeout_seconds = 30\nexpose_root = false\n\nparameters = '''\n{\n  \"type\": \"object\",\n  \"required\": [\"input\"],\n  \"properties\": {\n    \"input\": {\"type\": \"string\", \"description\": \"输入文本\"}\n  }\n}\n'''\n\n[args]\ninput = \"--input\"\n")
+	b.WriteString("risk = \"medium\"\ntags = [\"doc\"]\ncommand = [\"python\", \"foo.py\"]\ntimeout_seconds = 30\nexpose_root = false\n\nparameters = '''\n{\n  \"type\": \"object\",\n  \"required\": [\"input\"],\n  \"properties\": {\n    \"input\": {\"type\": \"string\", \"description\": \"输入文本\"},\n    \"mode\": {\"type\": \"string\", \"description\": \"处理模式\"}\n  }\n}\n'''\n\n[args]\ninput = \"--input\"\nmode = \"--mode\"\n")
 	return strings.TrimRight(b.String(), "\n")
 }

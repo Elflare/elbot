@@ -181,6 +181,7 @@ AgentSkill 默认只作为说明文档使用。若要把 `skills/agent/<skill>/`
 
 ```toml
 risk = "medium"
+tags = ["doc"]
 command = ["python", "foo.py"]
 timeout_seconds = 30
 expose_root = false
@@ -202,6 +203,7 @@ input = "--input"
 字段说明：
 
 - `risk`：必填，允许 `safe`、`low`、`medium`、`high`、`critical`。
+- `tags`：可选，相当于为该工具分类，可用于 `@tool:<tag>` 预载。
 - `command`：必填，命令数组，不使用 shell 字符串。
 - `parameters`：必填，JSON object schema，决定 LLM 看到的工具参数。
 - `[args]`：必填，扁平参数映射；`input = "--input"` 会把工具参数 `input` 翻译成 `--input <value>`。
