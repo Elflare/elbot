@@ -173,17 +173,15 @@
 
 - `internal/tool/builder.go`：Go Tool Builder；用于声明工具描述、风险、隐藏、superadmin-only、foreground-only、用户侧 tags、依赖和常用参数 schema，Object 参数默认允许任意 JSON 字段，减少内置工具与包装工具手写 schema 的成本。
 
-- `internal/tool/discover.go`：`discover_tool` 内置工具；无参列出可见工具/skill 简介，有 `name`/`names` 时普通工具仅返回“已发现工具”文本并把完整 schema 留在结构化 Data 供 Agent 注入 top-level tools，外置 AgentSkill/Go skill 返回 markdown/ELyph detail 且 ELyph 规则卡按格式去重；查询说明型 AgentSkill 会激活 `agent_skill` 元工具，查询工具化 AgentSkill 会注入其 top-level schema，查询 Go skill 会按需激活 `go_skill_run`。
+- `internal/tool/discover.go`：`discover_tool` 内置发现工具；有 `name`/`names` 时普通工具仅返回“已发现工具”文本并把完整 schema 留在结构化 Data 供 Agent 注入 top-level tools，外置 AgentSkill/Go skill 返回 markdown/ELyph detail；查询说明型 AgentSkill 会激活 `agent_skill` 元工具，查询工具化 AgentSkill 会注入其 top-level schema，查询 Go skill 会按需激活 `go_skill_run`。
 - `internal/tool/provider.go`：Tool Runtime 到 Agent Prompt/LLM schema 的旧 provider 适配；保留给显式外部 provider 兼容，默认工具视图由 `internal/toolrun` 提供。
 - `internal/toolrun/`：工具调用中间层；维护 session 工具缓存、native/Elwisp 工具视图、foreground-only 可用性过滤、命名解析、权限风险确认、工具自定义确认详情、tool call 生命周期编排、批量工具预览和失效提示；后台 session 不注入默认 `discover_tool`，执行前可注入工具 context，Elwisp 外部工具通过 HTTP JSON POST 执行。
-
 - `internal/tool/executor.go`：工具执行器；把模型产生的 `llm.ToolCallRequest` 转换为 Tool Runtime 调用，执行前按 Actor/Policy 做风险等级兜底校验，并把结果转换为 LLM tool message。
 - `internal/tool/builtin/runtime.go`：内置工具 Runtime；集中创建 Tool Registry、常驻记忆 store、Skill Manager、文件发送 helper 和内置工具私有路径；`memories.toml`、`long_memory/`、`skills/` 默认在配置目录下。
 - `internal/tool/builtin/register.go`：内置工具注册细节；由 builtin Runtime 调用，统一注册 `discover_tool`、`workspace`、常驻记忆、长期记忆、cron、`send_file`、聊天历史、web 搜索/提取、shell、`elwisp_creator`、`agent_skill` 和 Go skill runner 等工具。
 - `internal/tool/builtin/workspace.go`：内置 workspace 工具；查询、设置或 reset 当前前台 Session 的共享工作目录。
 - `internal/tool/builtin/file_manager.go`：本地文件发送准备 helper；校验已解析的本地文件路径、文件名、MIME 和大小，不复制文件。
 - `internal/tool/builtin/send_file.go`：内置发文件工具；仅超管可用，支持 `path` 参数，路径基于 workspace 或后台 sandbox 解析。
-
 - `internal/tool/builtin/chat_history.go`：内置聊天历史工具；按当前 platform/scope 搜索、查看上下文和引用回复平台聊天记录，用户侧 tag 为 `chat`。
 - `internal/tool/builtin/long_memory.go`：全局长期记忆工具组；可见入口 `long_memory` 依赖隐藏的 `long_memory_search`/`long_memory_write`，仅超管可用；Markdown 文件是源数据，SQLite FTS 是可重建索引，搜索/分类前会轻量同步并提示手改格式损坏文件。
 - `internal/tool/builtin/cron.go`：内置 cron 工具组；可见主工具 `cron` 依赖隐藏的 `cron_query`/`cron_write`，查询为 medium 风险，写操作为 high 风险，全部仅超级管理员可用；LLM cron 可传 `tool_list_names` 预注入工具或 Skill；列表默认隐藏已完成 cron，传 `include_completed=true` 才显示历史完成项。
