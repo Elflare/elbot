@@ -51,16 +51,30 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resu
 	}
 	store, hasStore := tool.WorkspaceStoreFromContext(ctx)
 	if args.Reset {
+		dir, err := defaultWorkspaceDir()
+		if err != nil {
+			return nil, err
+		}
+		content := fmt.Sprintf("workspace reset.\ncurrent workspace: %s", dir)
 		if hasStore {
+			if noticeStore, ok := store.(tool.WorkspaceAgentNoticeStore); ok {
+				instructions, markNotice, err := workspaceAgentInstructions(ctx, noticeStore, dir)
+				if err != nil {
+					return nil, err
+				}
+				if instructions != "" {
+					content += "\n\n" + instructions
+				}
+				if err := noticeStore.ClearWorkspaceDirWithAgentNotice(ctx, dir, markNotice); err != nil {
+					return nil, fmt.Errorf("reset workspace: %w", err)
+				}
+				return &tool.Result{Content: content}, nil
+			}
 			if err := store.ClearWorkspaceDir(ctx); err != nil {
 				return nil, fmt.Errorf("reset workspace: %w", err)
 			}
 		}
-		dir, err := tool.CurrentWorkspaceDir(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return &tool.Result{Content: fmt.Sprintf("workspace reset.\ncurrent workspace: %s", dir)}, nil
+		return &tool.Result{Content: content}, nil
 	}
 	if path := strings.TrimSpace(args.Path); path != "" {
 		if !hasStore {
@@ -96,6 +110,14 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resu
 		return nil, err
 	}
 	return &tool.Result{Content: fmt.Sprintf("current workspace: %s", dir)}, nil
+}
+
+func defaultWorkspaceDir() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("resolve workspace: %w", err)
+	}
+	return filepath.Clean(dir), nil
 }
 
 func workspaceAgentInstructions(ctx context.Context, noticeStore tool.WorkspaceAgentNoticeStore, dir string) (string, bool, error) {

@@ -175,6 +175,15 @@ func (s *testWorkspaceStore) HasWorkspaceAgentNoticeDir(ctx context.Context, dir
 
 func (s *testWorkspaceStore) SetWorkspaceDirWithAgentNotice(ctx context.Context, dir string, markNotice bool) error {
 	s.dir = dir
+	return s.markWorkspaceAgentNoticeDir(dir, markNotice)
+}
+
+func (s *testWorkspaceStore) ClearWorkspaceDirWithAgentNotice(ctx context.Context, dir string, markNotice bool) error {
+	s.dir = ""
+	return s.markWorkspaceAgentNoticeDir(dir, markNotice)
+}
+
+func (s *testWorkspaceStore) markWorkspaceAgentNoticeDir(dir string, markNotice bool) error {
 	if !markNotice {
 		return nil
 	}

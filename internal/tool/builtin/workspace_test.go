@@ -183,3 +183,45 @@ func TestWorkspaceToolSkipsLargeAgentInstructions(t *testing.T) {
 		t.Fatalf("large file should warn without notice: content=%q notice=%#v", result.Content, store.noticeDirs)
 	}
 }
+
+func TestWorkspaceToolResetLoadsAgentInstructionsOnce(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "AGENT.md"), []byte("default rules"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.Chdir(oldWD); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	store := &testWorkspaceStore{dir: filepath.Join(t.TempDir(), "other")}
+	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	args, _ := json.Marshal(map[string]any{"reset": true})
+
+	result, err := NewWorkspaceTool().Call(ctx, tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.dir != "" || !strings.Contains(result.Content, "Loaded workspace instructions from AGENT.md:\ndefault rules") {
+		t.Fatalf("reset should clear workspace and load instructions: content=%q stored=%q", result.Content, store.dir)
+	}
+	if len(store.noticeDirs) != 1 || store.noticeDirs[0] != filepath.Clean(dir) {
+		t.Fatalf("notice dirs = %#v", store.noticeDirs)
+	}
+
+	result, err = NewWorkspaceTool().Call(ctx, tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(result.Content, "default rules") {
+		t.Fatalf("reset instructions repeated: %q", result.Content)
+	}
+}
