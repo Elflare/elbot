@@ -60,6 +60,14 @@ path = "SOUL.md"
 
 These paths will all be resolved to the directory where the main configuration file is located; by default, this is the platform configuration directory.
 
+## Workspace Tools
+
+In work mode, the superadmin can allow the LLM to call the `workspace` tool to switch the shared working directory of the current Session. After switching, path-related tools such as `read_file`, `edit_file`, `send_file`, and the foreground `shell` will resolve relative paths based on this directory, avoiding the need to pass the full path every time.
+
+When switching to a directory for the first time, if `AGENTS.md` or `AGENT.md` exists at the root of the directory, `workspace` will automatically attach the file content to the tool result for the LLM to read the working conventions of the current directory. The main part of the filename must be uppercase `AGENTS` or `AGENT`, while the case of the `.md` suffix is unrestricted; `AGENTS.md` takes precedence over `AGENT.md`.
+
+The maximum size for the automatically attached instruction file is 64 KiB. If the limit is exceeded, the content will not be read, nor will it be marked as attached; the tool result will indicate that the file needs to be shortened or split before switching the workspace.
+
 ## Resident Memory Configuration
 
 Resident memory data is saved by default in `memories.toml` of the configuration directory, and the file is generated when the program runs for the first time. The length limits for the two resident memory segments, core and normal, can be set in the main configuration:
