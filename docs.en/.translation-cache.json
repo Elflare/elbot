@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "e6f215ea86e015b1a256af4a93fdbddab99f247805cafda03df6cd27e56b18cf",
+      "source_hash": "6c68b6070a5def84b7555ceb51253438f80746ca245f9d49ecddc0ec1d361528",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783129422
+      "updated_at": 1783148277
     },
     "README.zh-CN.md": {
       "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
@@ -853,6 +853,14 @@
       "source_hash": "dc3765cc3b6cc516b17fb0be590317ce5a5fab8d064d6514066e8593e421b5eb",
       "translation": "By default, the wait time for the first streaming event is 180 seconds, streaming idle is 60 seconds, and there is no total duration limit for the entire response.",
       "updated_at": 1782461728
+    },
+    "CHANGELOG.md:list:e03c11cbeaa6e58ce0ad4ee4ead359f83057de19807ef8393bca9bd67954a45c": {
+      "kind": "list",
+      "source": "重构AgentSkill：去掉py wrapper，直接使用shell执行对应sklll，同时支持在Agentkill根目录添加 __ELBOT_CODE_0__ 注册为普通工具，方便 LLM 直接调用结构化参数。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "e03c11cbeaa6e58ce0ad4ee4ead359f83057de19807ef8393bca9bd67954a45c",
+      "translation": "Refactor AgentSkill: remove the py wrapper and execute the corresponding skill directly via shell; also support adding __ELBOT_CODE_0__ in the AgentSkill root directory to register it as a normal tool, facilitating the LLM's direct call of structured parameters.",
+      "updated_at": 1783148277
     },
     "CHANGELOG.md:list:e165546c948bdf490fc215f58e25acceb7984ceaf0f31ee3e8d974b08e43db4f": {
       "kind": "list",
