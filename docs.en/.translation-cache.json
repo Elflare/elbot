@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "b47378213773e299263461fea28abf4faf15d7f28382f0c0ef7d1241dc321168",
+      "source_hash": "ecec4d4d49e859ac9e7bcd9bf3126e2b02216b8ae6311e4f374b50c39ff67ddd",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783165245
+      "updated_at": 1783178864
     },
     "README.zh-CN.md": {
       "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
@@ -413,6 +413,14 @@
       "source_hash": "611aafc7e8d828767ae2b38b0e5c3d0fead2cde039834d37560cbe5b03c27491",
       "translation": "__ELBOT_CODE_0__ audit events changed from debug level to info level; token consumption data can now be recorded by default with __ELBOT_CODE_1__.",
       "updated_at": 1782884148
+    },
+    "CHANGELOG.md:list:6804ed012e3f61e166fecd47cad310a62710f88f0f1bc81b3d2be57e1e12aa4f": {
+      "kind": "list",
+      "source": "文件超过 64 KiB 时会提示缩短。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "6804ed012e3f61e166fecd47cad310a62710f88f0f1bc81b3d2be57e1e12aa4f",
+      "translation": "A prompt to shorten will be displayed when the file exceeds 64 KiB.",
+      "updated_at": 1783178864
     },
     "CHANGELOG.md:list:6970168418b00124c98288e227a6831f798c18ed573c05cb7a6f07fd850812c6": {
       "kind": "list",
@@ -909,6 +917,14 @@
       "source_hash": "e81822b53b2270a9a2f78edb916b8ee9c970a516ec77a84dd14e91bb46b0c554",
       "translation": "Hook rules can execute scripts via __ELBOT_CODE_0__ action, and use __ELBOT_CODE_1__ to trigger Elnis direct/LLM/calls via the internal Elvena Bus.",
       "updated_at": 1782376912
+    },
+    "CHANGELOG.md:list:ea9324e8d2b186f384e727405908a402edd258407ff1c17a7fcc25913da73458": {
+      "kind": "list",
+      "source": "首次切换到含 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 的目录时，会自动附带说明文件内容；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ea9324e8d2b186f384e727405908a402edd258407ff1c17a7fcc25913da73458",
+      "translation": "When switching to a directory containing __ELBOT_CODE_0__ or __ELBOT_CODE_1__ for the first time, the contents of the documentation file will be automatically attached;",
+      "updated_at": 1783178864
     },
     "CHANGELOG.md:list:eaed67d51f700cdbcfbd66b43f3ab3d535edf10fa0a2eef475af820bb64b5e87": {
       "kind": "list",
