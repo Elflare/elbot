@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `llm_usage` 审计事件从 debug 级别改为 info 级别，默认 `log_level=info` 即可记录 token 消耗数据。
 - QQ OneBot、QQ 官方、Telegram 平台断线重连改为指数退避（3s 起，翻倍，封顶 10s）并日志降级：连续失败只在首次记 warn，恢复后记 info，不再每轮刷屏。
 - 平台媒体输出支持在 `path` 中识别 `base64://`、`file://`、`http://`、`https://` 源；普通本地路径仍按平台默认方式处理。
+- qq 官方收到图片现在直接使用url而不是base64
 
 ### Fixed
 

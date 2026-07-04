@@ -107,20 +107,14 @@ func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
 }
 
 func TestHandleC2CMessageImageAttachmentReachesHandler(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write([]byte("fake png data"))
-	}))
-	defer server.Close()
-
+	imageURL := "https://example.com/image.png"
 	adapter := New(Config{}, nil, nil)
-	adapter.client.http = server.Client()
 	handler := &captureHandler{}
 	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, c2cMessage{
 		ID:     "msg-1",
 		Author: c2cAuthor{UserOpenID: "user-1"},
 		Attachments: []messageAttachment{{
-			URL:         server.URL + "/image",
+			URL:         imageURL,
 			ContentType: "image/png",
 			Filename:    "image.jpg",
 			Width:       465,
@@ -145,27 +139,20 @@ func TestHandleC2CMessageImageAttachmentReachesHandler(t *testing.T) {
 	if image.MIMEType != "image/png" {
 		t.Fatalf("mime = %q, want image/png", image.MIMEType)
 	}
-	if !strings.HasPrefix(image.URL, "data:image/png;base64,") {
-		t.Fatalf("image URL = %q, want data URL", image.URL)
+	if image.URL != imageURL {
+		t.Fatalf("image URL = %q, want %q", image.URL, imageURL)
 	}
 }
 
 func TestHandleC2CMessageStickerAttachmentStripsFaceFallback(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/jpeg")
-		_, _ = w.Write([]byte("fake jpeg data"))
-	}))
-	defer server.Close()
-
 	adapter := New(Config{}, nil, nil)
-	adapter.client.http = server.Client()
 	handler := &captureHandler{}
 	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, c2cMessage{
 		ID:      "msg-1",
 		Author:  c2cAuthor{UserOpenID: "user-1"},
 		Content: `<faceType=6,faceId="0",ext="eyJ0ZXh0IjoiIn0=">`,
 		Attachments: []messageAttachment{{
-			URL:         server.URL + "/sticker",
+			URL:         "https://example.com/sticker.jpg",
 			ContentType: "image/jpeg",
 			Filename:    "sticker.jpg",
 			Width:       55,
@@ -186,21 +173,14 @@ func TestHandleC2CMessageStickerAttachmentStripsFaceFallback(t *testing.T) {
 }
 
 func TestHandleC2CMessageTextAndStickerStripsOnlyFaceFallback(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/jpeg")
-		_, _ = w.Write([]byte("fake jpeg data"))
-	}))
-	defer server.Close()
-
 	adapter := New(Config{}, nil, nil)
-	adapter.client.http = server.Client()
 	handler := &captureHandler{}
 	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, c2cMessage{
 		ID:      "msg-1",
 		Author:  c2cAuthor{UserOpenID: "user-1"},
 		Content: `看看这个<faceType=6,faceId="0",ext="eyJ0ZXh0IjoiIn0=">`,
 		Attachments: []messageAttachment{{
-			URL:         server.URL + "/sticker",
+			URL:         "https://example.com/sticker.jpg",
 			ContentType: "image/jpeg",
 			Filename:    "sticker.jpg",
 			Width:       55,

@@ -2,7 +2,6 @@ package qqofficial
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -43,15 +42,7 @@ func (a *Adapter) prepareInboundAttachments(ctx context.Context, attachments []m
 			continue
 		}
 		if isImageAttachment(attachment) {
-			segment, err := a.downloadInboundImageSegment(ctx, i+1, attachment)
-			if err != nil {
-				if errors.Is(err, errAttachmentTooLarge) {
-					out.TooLarge = append(out.TooLarge, attachment)
-				} else {
-					a.logWarn(ctx, "download qqofficial image failed", "url", urlValue, "error", err)
-				}
-				continue
-			}
+			segment := inboundImageSegment(i+1, attachment)
 			out.Segments = append(out.Segments, segment)
 			continue
 		}
@@ -70,14 +61,8 @@ func (a *Adapter) prepareInboundAttachments(ctx context.Context, attachments []m
 	return out
 }
 
-func (a *Adapter) downloadInboundImageSegment(ctx context.Context, index int, attachment messageAttachment) (platform.MessageSegment, error) {
-	data, header, err := a.downloadInboundAttachmentData(ctx, attachment.URL)
-	if err != nil {
-		return platform.MessageSegment{}, err
-	}
-	mimeType := attachmentMIMEType(attachment, header, data)
-	name := inboundAttachmentName(attachment, header, index)
-	return platform.MessageSegment{Type: platform.SegmentImage, URL: dataURL(data, mimeType), MIMEType: mimeType, Name: name}, nil
+func inboundImageSegment(index int, attachment messageAttachment) platform.MessageSegment {
+	return platform.MessageSegment{Type: platform.SegmentImage, URL: strings.TrimSpace(attachment.URL), MIMEType: attachmentDeclaredMIMEType(attachment), Name: inboundAttachmentName(attachment, nil, index)}
 }
 
 func (a *Adapter) downloadInboundAttachment(ctx context.Context, index int, attachment messageAttachment) (savedAttachment, error) {
@@ -188,12 +173,9 @@ func isImageAttachment(attachment messageAttachment) bool {
 }
 
 func attachmentMIMEType(attachment messageAttachment, header http.Header, data []byte) string {
-	mimeType := strings.TrimSpace(attachment.ContentType)
+	mimeType := attachmentDeclaredMIMEType(attachment)
 	if mimeType == "" || strings.EqualFold(mimeType, "file") {
 		mimeType = strings.TrimSpace(header.Get("Content-Type"))
-	}
-	if mediaType, _, err := mime.ParseMediaType(mimeType); err == nil {
-		mimeType = mediaType
 	}
 	if mimeType == "" || strings.EqualFold(mimeType, "application/octet-stream") {
 		mimeType = http.DetectContentType(data)
@@ -201,12 +183,12 @@ func attachmentMIMEType(attachment messageAttachment, header http.Header, data [
 	return strings.ToLower(mimeType)
 }
 
-func dataURL(data []byte, mimeType string) string {
-	mimeType = strings.TrimSpace(mimeType)
-	if mimeType == "" {
-		mimeType = http.DetectContentType(data)
+func attachmentDeclaredMIMEType(attachment messageAttachment) string {
+	mimeType := strings.TrimSpace(attachment.ContentType)
+	if mediaType, _, err := mime.ParseMediaType(mimeType); err == nil {
+		mimeType = mediaType
 	}
-	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data)
+	return strings.ToLower(mimeType)
 }
 
 func extensionFromContentType(value string) string {
