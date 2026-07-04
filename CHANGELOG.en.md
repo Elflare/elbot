@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `llm_usage` audit events changed from debug level to info level; token consumption data can now be recorded by default with `log_level=info`.
 - Disconnection reconnection for QQ OneBot, QQ Official, and Telegram platforms has been changed to exponential backoff (starting at 3s, doubling, capped at 10s) with downgraded logging: consecutive failures are logged as 'warn' only on the first occurrence and 'info' upon recovery, preventing log flooding in every round.
 - Platform media output now supports identifying `base64://`, `file://`, `http://`, and `https://` sources in `path`; Regular local paths are still handled according to the platform's default method.
+- QQ official now uses URLs instead of base64 when receiving images
 
 ### Fixed
 
