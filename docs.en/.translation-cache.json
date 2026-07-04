@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "6c68b6070a5def84b7555ceb51253438f80746ca245f9d49ecddc0ec1d361528",
+      "source_hash": "b47378213773e299263461fea28abf4faf15d7f28382f0c0ef7d1241dc321168",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783148277
+      "updated_at": 1783165245
     },
     "README.zh-CN.md": {
       "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
@@ -357,6 +357,14 @@
       "source_hash": "57c02c13c5ed82c755fc0eeb729dc126624508a010829430deda85b6046bb549",
       "translation": "Added __ELBOT_CODE_0__ configuration to uniformly control the maximum save size and download timeout for platform inbound files.",
       "updated_at": 1783085325
+    },
+    "CHANGELOG.md:list:596d47758ef03bb54d3851c1b678f8eb5459a7effda0ffd3212b24fe71d2804c": {
+      "kind": "list",
+      "source": "qq 官方收到图片现在直接使用url而不是base64",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "596d47758ef03bb54d3851c1b678f8eb5459a7effda0ffd3212b24fe71d2804c",
+      "translation": "QQ official now uses URLs instead of base64 when receiving images",
+      "updated_at": 1783165245
     },
     "CHANGELOG.md:list:59aef5f6af2a0610f829cfbdab62ee2b1c7298f9546374f556496c5b31f1f2e1": {
       "kind": "list",
