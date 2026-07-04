@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed the issue where `workspace` did not support `~`, `~/path`, and Windows `~\path` home directory paths when setting the tool directory.
 - When the file segment in a QQ OneBot private chat is missing `url`, `get_file` will be called; If a download URL is returned, it will be saved to ElBot; if only a OneBot local path is returned, that path will be displayed directly.
 - Fixed an issue where the Hook rules `exec` action failed to execute on Windows due to a fixed dependency on `sh`; Now `command` will be executed directly according to the program and parameters.
 - Inbound @ messages in QQ OneBot will now prioritize displaying the group business card, followed by the regular nickname, in the format `[at 名字 qq:<id>]`, and will fall back to the QQ number if neither can be retrieved.

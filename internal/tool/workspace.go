@@ -11,7 +11,7 @@ import (
 
 type workspaceContextKey struct{}
 
-const absolutePathWorkspaceWarning = "使用了绝对路径；本次按该路径执行，但不会改变 workspace。"
+const absolutePathWorkspaceWarning = "使用了绝对路径，不会改变 workspace。若多次在该目录工作，建议先使用 workspace 工具切换。"
 
 type WorkspaceStore interface {
 	GetWorkspaceDir(ctx context.Context) (string, error)
