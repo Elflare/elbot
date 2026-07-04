@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed an issue where the Hook rules `exec` action failed to execute on Windows due to a fixed dependency on `sh`; Now `command` will be executed directly according to the program and parameters.
 - Inbound @ messages in QQ OneBot will now prioritize displaying the group business card, followed by the regular nickname, in the format `[at 名字 qq:<id>]`, and will fall back to the QQ number if neither can be retrieved.
 - Fixed an issue where Chinese output might be garbled when the `shell` tool falls back to PowerShell on Windows.
+- Fixed an issue where bash AST parsing failure for shell commands on Windows (when bash is missing) caused risk classification, sandbox validation, directory change interception, and warning analysis to all fail; In PowerShell environments, AST parsing is skipped, and risk classification directly returns high-risk, requiring user confirmation.
 - When OneBot fails to send an image, a visible fallback will no longer appear, but it will still be logged.
 
 

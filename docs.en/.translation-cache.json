@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "f6dc1d1cf84916376e5ff15b874225ad55259fbcd7cbed95ca717af6bbfb7dfe",
+      "source_hash": "ebf90b89e099b8575387a991a465f54f1a4dc2f158d2621687ca77fdd1156d87",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783095128
+      "updated_at": 1783128855
     },
     "README.zh-CN.md": {
       "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
@@ -542,6 +542,14 @@
       "translation": "Added `__ELBOT_CODE_0__` tool: sets the shared working directory of the current foreground Session; path-related tools will resolve relative paths based on this directory.",
       "updated_at": 1782958962
     },
+    "CHANGELOG.md:list:87270312f6d9656623532edb7ac4d5c4a6b1edbd41ffe1f907efdcf6328dc335": {
+      "kind": "list",
+      "source": "PowerShell 环境下跳过 AST 解析，风险分类直接返回高风险需用户确认。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "87270312f6d9656623532edb7ac4d5c4a6b1edbd41ffe1f907efdcf6328dc335",
+      "translation": "In PowerShell environments, AST parsing is skipped, and risk classification directly returns high-risk, requiring user confirmation.",
+      "updated_at": 1783128855
+    },
     "CHANGELOG.md:list:89005ba6c93baa5933f575ef83d9e47cc8ac49f7d6ef87ff85f02fa0333ca7e0": {
       "kind": "list",
       "source": "修复 Hook rules __ELBOT_CODE_0__ action 在 Windows 下固定依赖 __ELBOT_CODE_1__ 导致执行失败的问题；",
@@ -589,6 +597,14 @@
       "source_hash": "8e3bcd113d1bbd118c00b2e9428d2922ec780b8c24994c889cefe954022f7288",
       "translation": "QQ OneBot now supports automatically saving inbound files from superadmins in private chats; messages containing only files will only reply with the save path or a \"too large\" prompt without invoking the LLM; group files are not automatically saved.",
       "updated_at": 1783095128
+    },
+    "CHANGELOG.md:list:8f644b4d62f870ef3dfe3516897d00d013099f137e00fcbcab03ddcfea8f969e": {
+      "kind": "list",
+      "source": "修复 Windows 下无 bash 时 shell 命令的 bash AST 解析失败导致风险分类、沙盒校验、目录切换拦截和警告分析全部异常的问题；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "8f644b4d62f870ef3dfe3516897d00d013099f137e00fcbcab03ddcfea8f969e",
+      "translation": "Fixed an issue where bash AST parsing failure for shell commands on Windows (when bash is missing) caused risk classification, sandbox validation, directory change interception, and warning analysis to all fail;",
+      "updated_at": 1783128855
     },
     "CHANGELOG.md:list:8ffa77eae1271a9d65560102a519441480c611c59382b37fe40218bdc1078f80": {
       "kind": "list",
