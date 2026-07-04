@@ -57,9 +57,24 @@ func (t ShellTool) Schema() llm.ToolSchema {
 	return shellBuilder().BuildSchema()
 }
 
+func currentShellDesc() string {
+	if runtime.GOOS != "windows" {
+		return "sh (POSIX shell)"
+	}
+	name, _ := resolveWindowsShell()
+	switch name {
+	case "bash":
+		return "bash"
+	case "pwsh":
+		return "PowerShell (pwsh)"
+	default:
+		return "Windows PowerShell"
+	}
+}
+
 func shellBuilder() *tool.Builder {
 	return tool.NewBuilder("shell").
-		Description("执行 shell 命令。命令会按当前平台通过系统 shell 运行。").
+		Description(fmt.Sprintf("执行 shell 命令。当前使用 %s，请使用相应语法。", currentShellDesc())).
 		Risk(tool.RiskHigh).
 		DependsOn("workspace").
 		Tags("agent").
