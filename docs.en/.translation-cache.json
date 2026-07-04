@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "b47378213773e299263461fea28abf4faf15d7f28382f0c0ef7d1241dc321168",
+      "source_hash": "ecec4d4d49e859ac9e7bcd9bf3126e2b02216b8ae6311e4f374b50c39ff67ddd",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783165245
+      "updated_at": 1783178864
     },
     "README.zh-CN.md": {
       "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
@@ -26,9 +26,9 @@
       "updated_at": 1783077374
     },
     "docs/configuration.md": {
-      "source_hash": "fb23984e7986e62d6866795ec84f3dc67fc7de3e9ec3c04f75e87bb62a8b61ff",
+      "source_hash": "6422b349806907c97c7c93612a0cb46332c6f40dbe5c5d0c68084e7dd11fba44",
       "target": "docs.en/configuration.md",
-      "updated_at": 1783095034
+      "updated_at": 1783178826
     },
     "docs/elnis-usage.md": {
       "source_hash": "c8d68d4fc76a453ea4008b304cc4d8243b8b2ebc634494f4fb92016b8040c782",
@@ -413,6 +413,14 @@
       "source_hash": "611aafc7e8d828767ae2b38b0e5c3d0fead2cde039834d37560cbe5b03c27491",
       "translation": "__ELBOT_CODE_0__ audit events changed from debug level to info level; token consumption data can now be recorded by default with __ELBOT_CODE_1__.",
       "updated_at": 1782884148
+    },
+    "CHANGELOG.md:list:6804ed012e3f61e166fecd47cad310a62710f88f0f1bc81b3d2be57e1e12aa4f": {
+      "kind": "list",
+      "source": "文件超过 64 KiB 时会提示缩短。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "6804ed012e3f61e166fecd47cad310a62710f88f0f1bc81b3d2be57e1e12aa4f",
+      "translation": "A prompt to shorten will be displayed when the file exceeds 64 KiB.",
+      "updated_at": 1783178864
     },
     "CHANGELOG.md:list:6970168418b00124c98288e227a6831f798c18ed573c05cb7a6f07fd850812c6": {
       "kind": "list",
@@ -909,6 +917,14 @@
       "source_hash": "e81822b53b2270a9a2f78edb916b8ee9c970a516ec77a84dd14e91bb46b0c554",
       "translation": "Hook rules can execute scripts via __ELBOT_CODE_0__ action, and use __ELBOT_CODE_1__ to trigger Elnis direct/LLM/calls via the internal Elvena Bus.",
       "updated_at": 1782376912
+    },
+    "CHANGELOG.md:list:ea9324e8d2b186f384e727405908a402edd258407ff1c17a7fcc25913da73458": {
+      "kind": "list",
+      "source": "首次切换到含 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 的目录时，会自动附带说明文件内容；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ea9324e8d2b186f384e727405908a402edd258407ff1c17a7fcc25913da73458",
+      "translation": "When switching to a directory containing __ELBOT_CODE_0__ or __ELBOT_CODE_1__ for the first time, the contents of the documentation file will be automatically attached;",
+      "updated_at": 1783178864
     },
     "CHANGELOG.md:list:eaed67d51f700cdbcfbd66b43f3ab3d535edf10fa0a2eef475af820bb64b5e87": {
       "kind": "list",
@@ -5902,6 +5918,14 @@
       "translation": "Tools and Security",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:heading:dec6da93f9f3bdfdc16ab13c6803e8501885a66f2885135b855428f179c4043d": {
+      "kind": "heading",
+      "source": "Workspace 工具",
+      "source_file": "docs/configuration.md",
+      "source_hash": "dec6da93f9f3bdfdc16ab13c6803e8501885a66f2885135b855428f179c4043d",
+      "translation": "Workspace Tools",
+      "updated_at": 1783178826
+    },
     "docs/configuration.md:heading:e3f25be706484952acdb4e98fe76ae28bdfb03f9936abd75c415a71fa85c31a8": {
       "kind": "heading",
       "source": "日志与维护任务",
@@ -6958,6 +6982,14 @@
       "translation": "Relative paths are based on the directory where __ELBOT_CODE_0__ is located:\n",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:paragraph:1348de618f0e0d0ee6e02cf28f370260454080fe4e7f5dbbe87c54feefef6abc": {
+      "kind": "paragraph",
+      "source": "自动附带的说明文件最大为 64 KiB。超过限制时不会读取内容，也不会标记为已附带，工具结果会提示需要缩短或拆分该文件后再切换 workspace。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1348de618f0e0d0ee6e02cf28f370260454080fe4e7f5dbbe87c54feefef6abc",
+      "translation": "The maximum size for the automatically attached instruction file is 64 KiB. If the limit is exceeded, the content will not be read, nor will it be marked as attached; the tool result will indicate that the file needs to be shortened or split before switching the workspace.\n",
+      "updated_at": 1783178826
+    },
     "docs/configuration.md:paragraph:168a6216e54f678c691c9d70050aebdb1a90cbd52d6c163e1d2300a219accbe5": {
       "kind": "paragraph",
       "source": "首次自动生成的文件包括：__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__ 和 __ELBOT_CODE_6__；",
@@ -6973,6 +7005,14 @@
       "source_hash": "1b1d63f6451566b1447a2aaaf1cdca290b9ce605850c0452d71f600b3239679f",
       "translation": "Lookup order:\n",
       "updated_at": 1781790272
+    },
+    "docs/configuration.md:paragraph:1c00d1332f8daefcc3d731ec842a99e61c60e7fc5695c36ba7cefb9290988402": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 优先于 __ELBOT_CODE_1__。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1c00d1332f8daefcc3d731ec842a99e61c60e7fc5695c36ba7cefb9290988402",
+      "translation": "__ELBOT_CODE_0__ takes precedence over __ELBOT_CODE_1__.\n",
+      "updated_at": 1783178826
     },
     "docs/configuration.md:paragraph:1faa263becb315d9218e99ec661dcdd56c855d92c1c32eef3ecaed5fe176cad4": {
       "kind": "paragraph",
@@ -7230,6 +7270,14 @@
       "translation": "Note:\n",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:paragraph:77475136854182eaddf921d34b6db9d4f6454d74d6823fea3f2ec493b68d843c": {
+      "kind": "paragraph",
+      "source": "首次切换到某个目录时，如果目录根部存在 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__，__ELBOT_CODE_2__ 会自动把文件内容附带到工具结果中，供 LLM 读取当前目录的工作约定。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "77475136854182eaddf921d34b6db9d4f6454d74d6823fea3f2ec493b68d843c",
+      "translation": "When switching to a directory for the first time, if __ELBOT_CODE_0__ or __ELBOT_CODE_1__ exists at the root of the directory, __ELBOT_CODE_2__ will automatically attach the file content to the tool result for the LLM to read the working conventions of the current directory.",
+      "updated_at": 1783178826
+    },
     "docs/configuration.md:paragraph:7ffeca05eb8a1c8e3d72e97c8edc57ae2ccad327917426b2e6fa11dd6a7875e9": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 控制 OpenAI-compatible 流式请求、整轮处理和重试：\n",
@@ -7261,6 +7309,14 @@
       "source_hash": "8b93dd73a21f53da48f4a2f3a619552dde5ad0a618598e7182579ebef7c77363",
       "translation": "Resident memory data is saved by default in __ELBOT_CODE_0__ of the configuration directory, and the file is generated when the program runs for the first time. The length limits for the two resident memory segments, core and normal, can be set in the main configuration:\n",
       "updated_at": 1782206047
+    },
+    "docs/configuration.md:paragraph:908d95915d62a34fdeada4121f5de175135998df8fa4e8df16ac640a6b39554f": {
+      "kind": "paragraph",
+      "source": "文件名主体必须是大写 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__，__ELBOT_CODE_2__ 后缀大小写不限；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "908d95915d62a34fdeada4121f5de175135998df8fa4e8df16ac640a6b39554f",
+      "translation": "The main part of the filename must be uppercase __ELBOT_CODE_0__ or __ELBOT_CODE_1__, while the case of the __ELBOT_CODE_2__ suffix is unrestricted;",
+      "updated_at": 1783178826
     },
     "docs/configuration.md:paragraph:92e9ae62f8c6aafa6fd87f93ae3d06c46477e883a5b9962f7acb0ea1fd0419b6": {
       "kind": "paragraph",
@@ -7301,6 +7357,14 @@
       "source_hash": "9ebb7813a2367838f3a2a32cfb794592d00c5860d3ebc93bd43cf87a4e43bca7",
       "translation": "If using asdf, mise, Nix, Linuxbrew, Snap, or a custom installation path, it is recommended to write the actual __ELBOT_CODE_0__ path directly into __ELBOT_CODE_1__, rather than relying on the initialization scripts of an interactive shell.\n",
       "updated_at": 1781790272
+    },
+    "docs/configuration.md:paragraph:9efef8f32aa834a7a61b0ec24a9a1603743013cefb7fe258814234d49f771e9c": {
+      "kind": "paragraph",
+      "source": "切换后，__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 和前台 __ELBOT_CODE_3__ 等路径类工具会基于该目录解析相对路径，避免每次都传完整路径。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "9efef8f32aa834a7a61b0ec24a9a1603743013cefb7fe258814234d49f771e9c",
+      "translation": "After switching, path-related tools such as __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, and the foreground __ELBOT_CODE_3__ will resolve relative paths based on this directory, avoiding the need to pass the full path every time.\n",
+      "updated_at": 1783178826
     },
     "docs/configuration.md:paragraph:a09a6a292ecdf93b446713171e074b39ad603ce3b20d526cc00df1009962c1c3": {
       "kind": "paragraph",
@@ -7469,6 +7533,14 @@
       "source_hash": "cce0681b233c3afc06096fb1c291b6ecb3768ecb605772fd205f738b4c58d4f1",
       "translation": "The main configuration is searched in the following order upon startup:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:ce8ea1c3c50aa0e85c723495bd4772faf0c0ef5f8d22d25da013008dffd993b1": {
+      "kind": "paragraph",
+      "source": "在 work 模式中，超级管理员可以让 LLM 调用 __ELBOT_CODE_0__ 工具切换当前 Session 的共享工作目录。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "ce8ea1c3c50aa0e85c723495bd4772faf0c0ef5f8d22d25da013008dffd993b1",
+      "translation": "In work mode, the superadmin can allow the LLM to call the __ELBOT_CODE_0__ tool to switch the shared working directory of the current Session.",
+      "updated_at": 1783178826
     },
     "docs/configuration.md:paragraph:d43f096208f1054da824c70c2f731293b37a7a8f539fd424033039d2d55c82d9": {
       "kind": "paragraph",
