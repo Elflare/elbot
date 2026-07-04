@@ -146,7 +146,8 @@ func TestShellToolRejectsRedirectToResidentMemory(t *testing.T) {
 }
 
 type testWorkspaceStore struct {
-	dir string
+	dir        string
+	noticeDirs []string
 }
 
 func (s *testWorkspaceStore) GetWorkspaceDir(ctx context.Context) (string, error) {
@@ -160,6 +161,29 @@ func (s *testWorkspaceStore) SetWorkspaceDir(ctx context.Context, dir string) er
 
 func (s *testWorkspaceStore) ClearWorkspaceDir(ctx context.Context) error {
 	s.dir = ""
+	return nil
+}
+
+func (s *testWorkspaceStore) HasWorkspaceAgentNoticeDir(ctx context.Context, dir string) (bool, error) {
+	for _, noticeDir := range s.noticeDirs {
+		if noticeDir == dir {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (s *testWorkspaceStore) SetWorkspaceDirWithAgentNotice(ctx context.Context, dir string, markNotice bool) error {
+	s.dir = dir
+	if !markNotice {
+		return nil
+	}
+	for _, noticeDir := range s.noticeDirs {
+		if noticeDir == dir {
+			return nil
+		}
+	}
+	s.noticeDirs = append(s.noticeDirs, dir)
 	return nil
 }
 

@@ -4,11 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"elbot/internal/llm"
 	"elbot/internal/tool"
 )
+
+const maxWorkspaceAgentFileSize = 64 * 1024
 
 type WorkspaceTool struct{}
 
@@ -66,14 +70,77 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resu
 		if err != nil {
 			return nil, err
 		}
+		content := fmt.Sprintf("workspace set.\ncurrent workspace: %s", dir)
+		markNotice := false
+		if noticeStore, ok := store.(tool.WorkspaceAgentNoticeStore); ok {
+			instructions, mark, err := workspaceAgentInstructions(ctx, noticeStore, dir)
+			if err != nil {
+				return nil, err
+			}
+			markNotice = mark
+			if instructions != "" {
+				content += "\n\n" + instructions
+			}
+			if err := noticeStore.SetWorkspaceDirWithAgentNotice(ctx, dir, markNotice); err != nil {
+				return nil, fmt.Errorf("set workspace: %w", err)
+			}
+			return &tool.Result{Content: content}, nil
+		}
 		if err := store.SetWorkspaceDir(ctx, dir); err != nil {
 			return nil, fmt.Errorf("set workspace: %w", err)
 		}
-		return &tool.Result{Content: fmt.Sprintf("workspace set.\ncurrent workspace: %s", dir)}, nil
+		return &tool.Result{Content: content}, nil
 	}
 	dir, err := tool.CurrentWorkspaceDir(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return &tool.Result{Content: fmt.Sprintf("current workspace: %s", dir)}, nil
+}
+
+func workspaceAgentInstructions(ctx context.Context, noticeStore tool.WorkspaceAgentNoticeStore, dir string) (string, bool, error) {
+	dir = filepath.Clean(strings.TrimSpace(dir))
+	loaded, err := noticeStore.HasWorkspaceAgentNoticeDir(ctx, dir)
+	if err != nil {
+		return "", false, fmt.Errorf("load workspace instructions notice: %w", err)
+	}
+	if loaded {
+		return "", false, nil
+	}
+	path, name, ok, err := findWorkspaceAgentFile(dir)
+	if err != nil {
+		return "", false, err
+	}
+	if !ok {
+		return "", false, nil
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", false, fmt.Errorf("stat workspace instructions %s: %w", name, err)
+	}
+	if info.Size() > maxWorkspaceAgentFileSize {
+		return fmt.Sprintf("workspace instructions file is larger than 64 KiB and was not loaded: %s\nPlease tell the user to shorten or split it before switching workspace again.", name), false, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", false, fmt.Errorf("read workspace instructions %s: %w", name, err)
+	}
+	return fmt.Sprintf("Loaded workspace instructions from %s:\n%s", name, strings.TrimRight(string(data), "\r\n")), true, nil
+}
+
+func findWorkspaceAgentFile(dir string) (string, string, bool, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", "", false, fmt.Errorf("read workspace directory: %w", err)
+	}
+	for _, base := range []string{"AGENTS", "AGENT"} {
+		for _, entry := range entries {
+			name := entry.Name()
+			if entry.IsDir() || strings.TrimSuffix(name, filepath.Ext(name)) != base || !strings.EqualFold(filepath.Ext(name), ".md") {
+				continue
+			}
+			return filepath.Join(dir, name), name, true, nil
+		}
+	}
+	return "", "", false, nil
 }

@@ -19,6 +19,11 @@ type WorkspaceStore interface {
 	ClearWorkspaceDir(ctx context.Context) error
 }
 
+type WorkspaceAgentNoticeStore interface {
+	HasWorkspaceAgentNoticeDir(ctx context.Context, dir string) (bool, error)
+	SetWorkspaceDirWithAgentNotice(ctx context.Context, dir string, markNotice bool) error
+}
+
 type PathResolveOptions struct {
 	AllowCreate    bool
 	AllowDirectory bool

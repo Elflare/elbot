@@ -9,12 +9,13 @@ import (
 )
 
 type sessionMetadata struct {
-	DiscoveredTools []string             `json:"discovered_tools,omitempty"`
-	ToolCache       []toolrun.CachedTool `json:"tool_cache,omitempty"`
-	ToolTags        []string             `json:"tool_tags,omitempty"`
-	LastUsage       *llm.Usage           `json:"last_usage,omitempty"`
-	BackgroundKind  string               `json:"background_kind,omitempty"`
-	WorkspaceDir    string               `json:"workspace_dir,omitempty"`
+	DiscoveredTools          []string             `json:"discovered_tools,omitempty"`
+	ToolCache                []toolrun.CachedTool `json:"tool_cache,omitempty"`
+	ToolTags                 []string             `json:"tool_tags,omitempty"`
+	LastUsage                *llm.Usage           `json:"last_usage,omitempty"`
+	BackgroundKind           string               `json:"background_kind,omitempty"`
+	WorkspaceDir             string               `json:"workspace_dir,omitempty"`
+	WorkspaceAgentNoticeDirs []string             `json:"workspace_agent_notice_dirs,omitempty"`
 }
 
 func decodeSessionMetadata(raw string) sessionMetadata {
@@ -26,6 +27,7 @@ func decodeSessionMetadata(raw string) sessionMetadata {
 	metadata.DiscoveredTools = sortedUnique(metadata.DiscoveredTools)
 	metadata.ToolCache = toolCacheItemsNormalized(metadata.ToolCache)
 	metadata.ToolTags = sortedUnique(metadata.ToolTags)
+	metadata.WorkspaceAgentNoticeDirs = sortedUnique(metadata.WorkspaceAgentNoticeDirs)
 	return metadata
 }
 
@@ -37,6 +39,7 @@ func encodeSessionMetadataInto(raw string, metadata sessionMetadata) string {
 	metadata.DiscoveredTools = sortedUnique(metadata.DiscoveredTools)
 	metadata.ToolCache = toolCacheItemsNormalized(metadata.ToolCache)
 	metadata.ToolTags = sortedUnique(metadata.ToolTags)
+	metadata.WorkspaceAgentNoticeDirs = sortedUnique(metadata.WorkspaceAgentNoticeDirs)
 	if metadata.LastUsage != nil && metadata.LastUsage.TotalTokens <= 0 && metadata.LastUsage.CacheHitTokens <= 0 && metadata.LastUsage.PromptTokens <= 0 && metadata.LastUsage.CompletionTokens <= 0 {
 		metadata.LastUsage = nil
 	}
@@ -50,6 +53,7 @@ func encodeSessionMetadataInto(raw string, metadata sessionMetadata) string {
 	setMetadataField(base, "last_usage", metadata.LastUsage)
 	setMetadataField(base, "background_kind", metadata.BackgroundKind)
 	setMetadataField(base, "workspace_dir", metadata.WorkspaceDir)
+	setMetadataField(base, "workspace_agent_notice_dirs", metadata.WorkspaceAgentNoticeDirs)
 	data, _ := json.Marshal(base)
 	if string(data) == "{}" {
 		return ""

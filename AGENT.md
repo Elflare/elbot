@@ -64,8 +64,8 @@
 
 - `internal/agent/status.go`：Agent 运行状态发布 helper；保存每个 Session 最新 runtime snapshot，并通过平台可选接口推送给 CLI TUI 等状态展示层。
 
-- `internal/agent/session_metadata.go`：Session metadata 编解码辅助；当前用于保存已 discover 工具名、已激活 tool tag、最近一次 LLM usage 和 workspace。
-- `internal/agent/workspace.go`：Agent workspace 持久化适配；通过 Tool context 读写当前 Session metadata 中的 workspace。
+- `internal/agent/session_metadata.go`：Session metadata 编解码辅助；当前用于保存已 discover 工具名、已激活 tool tag、最近一次 LLM usage、workspace 和已附带过 AGENT 说明的 workspace 目录。
+- `internal/agent/workspace.go`：Agent workspace 持久化适配；通过 Tool context 读写当前 Session metadata 中的 workspace 和 AGENT 说明附带记录。
 
 - `internal/agent/tool_transcript.go`：工具调用历史持久化辅助；保存 assistant tool_calls 与 tool result，提供 user 多模态 segments metadata 和 turn message 落库 helper，并在持久化 discover 结果时压缩 schema，避免未来上下文膨胀。
 - `internal/agent/context.go`：Agent 上下文压缩依赖实现；维护 context 配置、压缩模型、ContextLoader、WindowResolver、Compressor、最近 usage 和待压缩标记，并提供 `/compact` 与 `/status` 所需能力；最近 usage 会写入 Session metadata 供恢复会话后展示。
@@ -159,7 +159,7 @@
 - `internal/tool/tool.go`：Tool Runtime 核心类型与 Registry；管理工具注册、查询、schema、权限、风险评估、风险确认详情、用户侧 tags、工具结果和通用 warning 输出。
 - `internal/tool/detail.go`：工具/Skill detail 渲染 helper；按结构化格式去重共享规则卡并拼接 detail 内容。
 - `internal/tool/sandbox.go`：工具执行轻量 sandbox context；传递统一 sandbox root、当前工作目录和后台运行 kind，提供后台相对路径解析，只随本次 context 传播，不写入 Session。
-- `internal/tool/workspace.go`：workspace context、Session store 接口和路径解析 helper；前台相对路径基于 workspace，后台路径仍基于 sandbox。
+- `internal/tool/workspace.go`：workspace context、Session store 接口、AGENT 说明附带记录接口和路径解析 helper；前台相对路径基于 workspace，后台路径仍基于 sandbox。
 
 - `internal/tool/builder.go`：Go Tool Builder；用于声明工具描述、风险、隐藏、superadmin-only、foreground-only、用户侧 tags、依赖和常用参数 schema，Object 参数默认允许任意 JSON 字段，减少内置工具与包装工具手写 schema 的成本。
 
@@ -169,7 +169,7 @@
 - `internal/tool/executor.go`：工具执行器；把模型产生的 `llm.ToolCallRequest` 转换为 Tool Runtime 调用，执行前按 Actor/Policy 做风险等级兜底校验，并把结果转换为 LLM tool message。
 - `internal/tool/builtin/runtime.go`：内置工具 Runtime；集中创建 Tool Registry、常驻记忆 store、Skill Manager、文件发送 helper 和内置工具私有路径；`memories.toml`、`long_memory/`、`skills/` 默认在配置目录下。
 - `internal/tool/builtin/register.go`：内置工具注册细节；由 builtin Runtime 调用，统一注册 `discover_tool`、`workspace`、常驻记忆、长期记忆、cron、`send_file`、聊天历史、web 搜索/提取、shell、`elwisp_creator`、`agent_skill` 和 Go skill runner 等工具。
-- `internal/tool/builtin/workspace.go`：内置 workspace 工具；查询、设置或 reset 当前前台 Session 的共享工作目录。
+- `internal/tool/builtin/workspace.go`：内置 workspace 工具；查询、设置或 reset 当前前台 Session 的共享工作目录，首次切换目录时附带根目录 AGENTS.md/AGENT.md 内容并按 Session 去重。
 - `internal/tool/builtin/file_manager.go`：本地文件发送准备 helper；校验已解析的本地文件路径、文件名、MIME 和大小，不复制文件。
 - `internal/tool/builtin/send_file.go`：内置发文件工具；仅超管可用，支持 `path` 参数，路径基于 workspace 或后台 sandbox 解析。
 - `internal/tool/builtin/chat_history.go`：内置聊天历史工具；按当前 platform/scope 搜索、查看上下文和引用回复平台聊天记录，用户侧 tag 为 `chat`。
