@@ -43,6 +43,23 @@ func TestWorkspaceToolQuerySetAndReset(t *testing.T) {
 	}
 }
 
+func TestWorkspaceToolAcceptsHomeShortcut(t *testing.T) {
+	store := &testWorkspaceStore{}
+	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	args, _ := json.Marshal(map[string]any{"path": "~"})
+	result, err := NewWorkspaceTool().Call(ctx, tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.dir != filepath.Clean(home) || !strings.Contains(result.Content, filepath.Clean(home)) {
+		t.Fatalf("set content=%q stored=%q", result.Content, store.dir)
+	}
+}
+
 func TestWorkspaceToolRejectsMissingDirectory(t *testing.T) {
 	store := &testWorkspaceStore{}
 	ctx := tool.WithWorkspaceStore(context.Background(), store)

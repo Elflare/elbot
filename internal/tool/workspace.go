@@ -100,7 +100,15 @@ func ResolveWorkspacePath(ctx context.Context, rawPath string, opts PathResolveO
 }
 
 func ValidateWorkspaceDir(path string) (string, error) {
-	path = filepath.Clean(strings.TrimSpace(normalizeWorkspaceLocalPath(path)))
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", fmt.Errorf("workspace path is required")
+	}
+	expandedPath, err := expandWorkspacePath(path)
+	if err != nil {
+		return "", err
+	}
+	path = filepath.Clean(normalizeWorkspaceLocalPath(expandedPath))
 	if path == "" || path == "." {
 		return "", fmt.Errorf("workspace path is required")
 	}

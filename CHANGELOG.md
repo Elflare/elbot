@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复 `workspace` 工具设置目录时不支持 `~`、`~/path` 和 Windows `~\path` 主目录路径的问题。
 - QQ OneBot 私聊文件段缺少 `url` 时会调用 `get_file`；若返回下载地址则保存到 ElBot，若只返回 OneBot 本地路径则直接提示该路径。
 - 修复 Hook rules `exec` action 在 Windows 下固定依赖 `sh` 导致执行失败的问题；现在 `command` 会直接按程序和参数执行。
 - QQ OneBot 入站 @ 消息现在会优先显示群名片，其次普通昵称，格式为 `[at 名字 qq:<id>]`，无法获取时才回退 QQ 号。
