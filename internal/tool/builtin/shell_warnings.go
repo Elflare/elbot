@@ -13,6 +13,9 @@ type shellAdvice struct {
 }
 
 func analyzeShellAdvice(cmdText, workDir string, fileGuard *FileGuard) shellAdvice {
+	if isPowerShellEnv() {
+		return shellAdvice{}
+	}
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
 	file, err := parser.Parse(strings.NewReader(cmdText), "")
 	if err != nil {
