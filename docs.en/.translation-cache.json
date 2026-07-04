@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "ebf90b89e099b8575387a991a465f54f1a4dc2f158d2621687ca77fdd1156d87",
+      "source_hash": "e6f215ea86e015b1a256af4a93fdbddab99f247805cafda03df6cd27e56b18cf",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783128855
+      "updated_at": 1783129422
     },
     "README.zh-CN.md": {
       "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
@@ -597,6 +597,14 @@
       "source_hash": "8e3bcd113d1bbd118c00b2e9428d2922ec780b8c24994c889cefe954022f7288",
       "translation": "QQ OneBot now supports automatically saving inbound files from superadmins in private chats; messages containing only files will only reply with the save path or a \"too large\" prompt without invoking the LLM; group files are not automatically saved.",
       "updated_at": 1783095128
+    },
+    "CHANGELOG.md:list:8ef9f18e3241e84e97a4cbd687879ed03fe1f84b791b222984a4f808dd42fdf7": {
+      "kind": "list",
+      "source": "修复 __ELBOT_CODE_0__ 工具设置目录时不支持 __ELBOT_CODE_1__、__ELBOT_CODE_2__ 和 Windows __ELBOT_CODE_3__ 主目录路径的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "8ef9f18e3241e84e97a4cbd687879ed03fe1f84b791b222984a4f808dd42fdf7",
+      "translation": "Fixed the issue where __ELBOT_CODE_0__ did not support __ELBOT_CODE_1__, __ELBOT_CODE_2__, and Windows __ELBOT_CODE_3__ home directory paths when setting the tool directory.",
+      "updated_at": 1783129422
     },
     "CHANGELOG.md:list:8f644b4d62f870ef3dfe3516897d00d013099f137e00fcbcab03ddcfea8f969e": {
       "kind": "list",
