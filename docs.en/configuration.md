@@ -118,7 +118,7 @@ Note:
 ## Built-in Web Tool Configuration
 
 The `proxy` parameter of `web_extract` is used to control the proxy for webpage extraction requests:
- If you want all default `web_extract` calls to go through a fixed proxy, you can set it in the configuration directory `.env` or in the system environment:
+If you want all default `web_extract` calls to go through a fixed proxy, you can set it in the configuration directory `.env` or in the system environment:
 
 ```env
 WEB_EXTRACT_PROXY=http://127.0.0.1:7890
@@ -472,7 +472,7 @@ MUST:
 
 Field descriptions:
 
-- `[tags.<tag-name>]`: Defines a tag that can be used in chat, for example, `[tags.agent]` corresponds to `@tool:agent`.
+- `[tags.<tag-name>]`: Define a tag that can be used in chat, for example, `[tags.agent]` corresponds to `@tool:agent` or the shorthand `@t:agent`.
 - `tools`: A list of tool names that this tag will preload. Tool names must be registered tools that the current user has permission to access.
 - `prompt`: The tool usage strategy appended to the system prompt after this tag is successfully activated. The content will be presented directly to the model without automatically adding a tag name header.
 
@@ -480,6 +480,7 @@ Usage:
 
 ```text
 @tool:agent 帮我检查这个项目的问题
+@t:agent 帮我检查这个项目的问题
 ```
 
 This will preload the tools configured under `agent` into the current Session. If `prompt` is not empty, it will also be appended to the system prompt starting from this round.
@@ -487,8 +488,8 @@ This will preload the tools configured under `agent` into the current Session. I
 Notes:
 
 - Configured tags will be appended to built-in tags, not overwrite them.
-- Only after `@tool:<tag>` successfully hits at least one tool will the current Session activate the prompt for that tag.
-- Directly using `@tool:<tool-name>` only preloads the specified tools and does not activate the tag prompt.
+- Only after `@tool:<tag>` or `@t:<tag>` successfully hits at least one tool will the current Session activate the prompt for that tag.
+- Directly using `@tool:<tool-name>` or `@t:<tool-name>` only preloads the specified tools and does not activate the tag prompt.
 - Activated tags are written to the Session metadata and remain effective after `/resume`.
 - Prompt text is dynamically read from `tool_tags.toml`; changes to the file affect subsequent requests, behaving similarly to `SOUL.md`.
 - When preloading tools that already exist, they will not be added again, and the platform will prompt `已存在工具：<name>`.
