@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "9b0fc5f5c2458fff2433636e997ff5f7972f0fc5010a71c2b6377792418c3fe4",
+      "source_hash": "975ecfcca0584c3376c799cc3d4c9e479e7d9ea9596b1b0dd01b0ac2916dda8e",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783236675
+      "updated_at": 1783240947
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -909,6 +909,14 @@
       "source_hash": "e03c11cbeaa6e58ce0ad4ee4ead359f83057de19807ef8393bca9bd67954a45c",
       "translation": "Refactor AgentSkill: remove the py wrapper and execute the corresponding skill directly via shell; also support adding __ELBOT_CODE_0__ in the AgentSkill root directory to register it as a normal tool, facilitating the LLM's direct call of structured parameters.",
       "updated_at": 1783148277
+    },
+    "CHANGELOG.md:list:e0c0fad68a12ce290b23ee8b605343887e494815742088a454977ceb93b7379c": {
+      "kind": "list",
+      "source": "内联预载支持工具简写 __ELBOT_CODE_0__ 和 Skill 简写 __ELBOT_CODE_1__，并兼容中文全角冒号 __ELBOT_CODE_2__。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "e0c0fad68a12ce290b23ee8b605343887e494815742088a454977ceb93b7379c",
+      "translation": "Inline preloading supports tool shorthand __ELBOT_CODE_0__ and Skill shorthand __ELBOT_CODE_1__, and is compatible with Chinese full-width colon __ELBOT_CODE_2__.",
+      "updated_at": 1783240947
     },
     "CHANGELOG.md:list:e165546c948bdf490fc215f58e25acceb7984ceaf0f31ee3e8d974b08e43db4f": {
       "kind": "list",
