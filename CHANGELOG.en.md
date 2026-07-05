@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Refactor AgentSkill: remove the py wrapper and execute the corresponding skill directly via shell; also support adding `ELBOT_SKILL.toml` in the AgentSkill root directory to register it as a normal tool, facilitating the LLM's direct call of structured parameters.
 - Added a hidden meta-tool `agent_skill` for reading or writing the `ELBOT_SKILL.toml` of AgentSkill; it validates the configuration before writing and reloads upon success.
+- The first run will generate `skills/agent/agent_skill_creator/SKILL.md`, which explains how to register an AgentSkill as a regular tool.
+- The first run will generate `skills/go/write_elbot_hook/SKILL.elyph`, used to write ElBot rule hooks as needed.
 - Added `/usage` command: aggregates token consumption from the audit log, supporting summaries by model/day/Session, with shortcut parameters `-d` for days, `-m` for model, and `-s` for Session.
 - Added ``workspace`` tool: sets the shared working directory of the current foreground Session; path-related tools will resolve relative paths based on this directory. When switching to a directory containing `AGENTS.md` or `AGENT.md` for the first time, the contents of the documentation file will be automatically attached; A prompt to shorten will be displayed when the file exceeds 64 KiB.
 - Added `[platform_files]` configuration to uniformly control the maximum save size and download timeout for platform inbound files.
@@ -23,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The `send_file` tool now uses the `source` parameter to send files, supporting local paths, `file://` URIs, and HTTP(S) URLs, and will automatically send images as image messages based on MIME type/extension.
-- AgentSkill no longer uses `python_skill_run` for fixed wrapping to execute Python scripts; When `ELBOT_SKILL.toml` is absent, it remains a descriptive Skill, and general-purpose tools such as shell can be used as per the documentation.
+- AgentSkill no longer uses `python_skill_run` for fixed wrapping to execute Python scripts; When `ELBOT_SKILL.toml` is absent, it remains a descriptive Skill, and general-purpose tools such as shell can be used according to the documentation; Descriptive AgentSkills do not read `SKILL.md`, avoiding risk; after toolization, `risk` of `ELBOT_SKILL.toml` shall prevail.
 - Skill scanning has been changed to delayed execution after startup, with a fallback to ensure scanning upon the first use of `discover_tool`, reducing startup blocking.
 - Session idle expiration is now managed by four `[session.idle_expiration]` configurations, which separately control the current Session expiration time for ordinary users and superadmins in group chats and private chats; By default, all users in group chats expire, while superadmins in private chats do not expire.
 - ``shell`` tool removed the ``path`` parameter; commands are executed in the current workspace by default, while background tasks remain restricted to their respective sandboxes.
