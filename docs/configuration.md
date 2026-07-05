@@ -113,6 +113,15 @@ default_context_window = 256000
 - `extra_payload` 会合并到 LLM 请求 JSON 中，模型级覆盖 Provider 级。
 - `[model_metadata]` 的 `default_context_window` 是全局回退值，没有在 `model_configs` 里配 `context_window` 时使用。
 
+## 内置 Web 工具配置
+
+`web_extract` 的 `proxy` 参数用于控制网页提取请求的代理：
+如果希望所有默认 `web_extract` 调用都走固定代理，可以在配置目录 `.env` 或系统环境中设置：
+
+```env
+WEB_EXTRACT_PROXY=http://127.0.0.1:7890
+```
+
 ## LLM 请求与整轮超时
 
 `app.toml` 的 `[llm_request]` 控制 OpenAI-compatible 流式请求、整轮处理和重试：

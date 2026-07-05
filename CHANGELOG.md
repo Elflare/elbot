@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `web_extract` 工具的代理参数从 `disable_proxy` 改为 `proxy`：不填时使用 `WEB_EXTRACT_PROXY` 或系统代理环境，填 `disabled` 禁用代理，填 URL 使用指定代理。
 - `send_file` 工具改为使用 `source` 参数发送文件，支持本地路径、`file://` URI 和 HTTP(S) URL，并会按 MIME/扩展名自动将图片作为图片消息发送。
 - AgentSkill 不再通过 `python_skill_run` 固定包装执行 Python 脚本；没有 `ELBOT_SKILL.toml` 时保持说明型 Skill，可按文档使用 shell 等通用工具；说明型 AgentSkill 不读取 `SKILL.md` 风险，工具化后以 `ELBOT_SKILL.toml` 的 `risk` 为准。
 - Skill 扫描改为启动后延迟执行，并在 `discover_tool` 首次使用时兜底确保扫描，减少启动阻塞。
