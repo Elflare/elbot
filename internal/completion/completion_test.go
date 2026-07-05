@@ -59,12 +59,20 @@ func TestToolDirectiveSourceCompletesOnlyPlainTools(t *testing.T) {
 		t.Fatalf("Complete @tool prefix = %#v", items)
 	}
 	items = source.Complete(context.Background(), Request{Text: "查 @t", Cursor: len("查 @t")})
-	if len(items) != 1 || items[0].Text != "@tool:" || items[0].ReplaceStart != len("查 ") || items[0].ReplaceEnd != len("查 @t") {
+	if len(items) != 1 || items[0].Text != "@t:" || items[0].ReplaceStart != len("查 ") || items[0].ReplaceEnd != len("查 @t") {
 		t.Fatalf("Complete @t prefix = %#v", items)
 	}
 	items = source.Complete(context.Background(), Request{Text: "@tool:shl", Cursor: len("@tool:shl")})
 	if len(items) != 1 || items[0].Text != "@tool:shell" {
 		t.Fatalf("fuzzy complete = %#v", items)
+	}
+	items = source.Complete(context.Background(), Request{Text: "@t:shl", Cursor: len("@t:shl")})
+	if len(items) != 1 || items[0].Text != "@t:shell" {
+		t.Fatalf("short fuzzy complete = %#v", items)
+	}
+	items = source.Complete(context.Background(), Request{Text: "@tool：shl", Cursor: len("@tool：shl")})
+	if len(items) != 1 || items[0].Text != "@tool：shell" {
+		t.Fatalf("full-width colon complete = %#v", items)
 	}
 	if got := source.Complete(context.Background(), Request{Text: "@tool:d", Cursor: len("@tool:d")}); len(got) != 0 {
 		t.Fatalf("skill should not complete: %#v", got)
@@ -86,8 +94,16 @@ func TestToolDirectiveSourceCompletesSkillsSeparately(t *testing.T) {
 		t.Fatalf("Complete @skill prefix = %#v", items)
 	}
 	items = source.Complete(context.Background(), Request{Text: "查 @s", Cursor: len("查 @s")})
-	if len(items) != 1 || items[0].Text != "@skill:" {
+	if len(items) != 1 || items[0].Text != "@s:" {
 		t.Fatalf("Complete @s prefix = %#v", items)
+	}
+	items = source.Complete(context.Background(), Request{Text: "查 @s:do", Cursor: len("查 @s:do")})
+	if len(items) != 1 || items[0].Text != "@s:docx" || items[0].Kind != KindSkillDirective {
+		t.Fatalf("Complete @s prefix = %#v", items)
+	}
+	items = source.Complete(context.Background(), Request{Text: "查 @skill：do", Cursor: len("查 @skill：do")})
+	if len(items) != 1 || items[0].Text != "@skill：docx" || items[0].Kind != KindSkillDirective {
+		t.Fatalf("Complete full-width skill prefix = %#v", items)
 	}
 	if got := source.Complete(context.Background(), Request{Text: "@skill:doc_", Cursor: len("@skill:doc_")}); len(got) != 0 {
 		t.Fatalf("plain tool should not complete as skill: %#v", got)

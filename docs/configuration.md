@@ -470,7 +470,7 @@ MUST:
 
 字段说明：
 
-- `[tags.<tag-name>]`：定义一个可在聊天里使用的 tag，例如 `[tags.agent]` 对应 `@tool:agent`。
+- `[tags.<tag-name>]`：定义一个可在聊天里使用的 tag，例如 `[tags.agent]` 对应 `@tool:agent` 或简写 `@t:agent`。
 - `tools`：这个 tag 会预载的工具名列表。工具名必须是已注册且当前用户有权限访问的工具。
 - `prompt`：这个 tag 成功激活后追加到 system prompt 的工具使用策略。内容会直接给模型看，不会自动添加 tag 名标题。
 
@@ -478,6 +478,7 @@ MUST:
 
 ```text
 @tool:agent 帮我检查这个项目的问题
+@t:agent 帮我检查这个项目的问题
 ```
 
 这会把 `agent` 下配置的工具预载到当前 Session。如果 `prompt` 非空，也会从本轮开始追加到 system prompt。
@@ -485,8 +486,8 @@ MUST:
 注意事项：
 
 - 配置 tag 会追加到内置 tag，不覆盖内置 tag。
-- 只有 `@tool:<tag>` 成功命中至少一个工具后，当前 Session 才会激活该 tag 的 prompt。
-- 直接 `@tool:<tool-name>` 只预载指定工具，不激活 tag prompt。
+- 只有 `@tool:<tag>` 或 `@t:<tag>` 成功命中至少一个工具后，当前 Session 才会激活该 tag 的 prompt。
+- 直接 `@tool:<tool-name>` 或 `@t:<tool-name>` 只预载指定工具，不激活 tag prompt。
 - 激活的 tag 会写入 Session metadata，`/resume` 后仍生效。
 - prompt 文本从 `tool_tags.toml` 动态读取；文件变更后影响后续请求，行为类似 `SOUL.md`。
 - 重复预载已经存在的工具时不会重复添加，平台会提示 `已存在工具：<name>`。

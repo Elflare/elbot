@@ -1495,41 +1495,45 @@ func TestDiscoveredToolsAreInjectedIntoTopLevelTools(t *testing.T) {
 }
 
 func TestToolDirectiveInjectsAndStripsValidTools(t *testing.T) {
-	p := &fakePlatform{}
-	store := newTestStore(t)
-	f := &fakeLLM{replies: []string{"done"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
-	registry := tool.NewRegistry()
-	_ = registry.Register(tool.NewDiscoverTool(registry))
-	_ = registry.Register(builtin.NewWebSearchTool())
-	_ = registry.Register(builtin.NewWebExtractTool())
-	a.SetToolRuntime(registry, nil)
+	for _, directive := range []string{"@tool:web_search", "@tool：web_search", "@t:web_search", "@t：web_search"} {
+		t.Run(directive, func(t *testing.T) {
+			p := &fakePlatform{}
+			store := newTestStore(t)
+			f := &fakeLLM{replies: []string{"done"}}
+			a := New(p, f, "test-model", config.ProviderConfig{}, store)
+			a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+			registry := tool.NewRegistry()
+			_ = registry.Register(tool.NewDiscoverTool(registry))
+			_ = registry.Register(builtin.NewWebSearchTool())
+			_ = registry.Register(builtin.NewWebExtractTool())
+			a.SetToolRuntime(registry, nil)
 
-	if err := a.HandleMessage(context.Background(), "查资料 @tool:web_search"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
-	}
-	requests := f.chatRequests()
-	if len(requests) != 1 {
-		t.Fatalf("chat requests = %d", len(requests))
-	}
-	if toolNames(requests[0].Tools) != "discover_tool,web_extract,web_search" {
-		t.Fatalf("tools = %s", toolNames(requests[0].Tools))
-	}
-	latest := requests[0].Messages[len(requests[0].Messages)-1]
-	if got := llm.SegmentsContentText(latest.Segments); got != "查资料" {
-		t.Fatalf("latest user content = %q", got)
-	}
-	sessions, err := store.Sessions().List(context.Background(), storage.ListSessionsRequest{ActorID: "cli:local", Platform: p.Name(), PlatformScopeID: "local"})
-	if err != nil || len(sessions) == 0 {
-		t.Fatalf("list sessions: %#v err=%v", sessions, err)
-	}
-	messages, err := store.Messages().ListBySession(context.Background(), sessions[0].ID)
-	if err != nil {
-		t.Fatalf("list messages: %v", err)
-	}
-	if len(messages) == 0 || messages[0].Content != "查资料" || strings.Contains(messages[0].Content, "@tool:web_search") {
-		t.Fatalf("stored user message = %#v", messages)
+			if err := a.HandleMessage(context.Background(), "查资料 "+directive); err != nil {
+				t.Fatalf("HandleMessage: %v", err)
+			}
+			requests := f.chatRequests()
+			if len(requests) != 1 {
+				t.Fatalf("chat requests = %d", len(requests))
+			}
+			if toolNames(requests[0].Tools) != "discover_tool,web_extract,web_search" {
+				t.Fatalf("tools = %s", toolNames(requests[0].Tools))
+			}
+			latest := requests[0].Messages[len(requests[0].Messages)-1]
+			if got := llm.SegmentsContentText(latest.Segments); got != "查资料" {
+				t.Fatalf("latest user content = %q", got)
+			}
+			sessions, err := store.Sessions().List(context.Background(), storage.ListSessionsRequest{ActorID: "cli:local", Platform: p.Name(), PlatformScopeID: "local"})
+			if err != nil || len(sessions) == 0 {
+				t.Fatalf("list sessions: %#v err=%v", sessions, err)
+			}
+			messages, err := store.Messages().ListBySession(context.Background(), sessions[0].ID)
+			if err != nil {
+				t.Fatalf("list messages: %v", err)
+			}
+			if len(messages) == 0 || messages[0].Content != "查资料" || strings.Contains(messages[0].Content, directive) {
+				t.Fatalf("stored user message = %#v", messages)
+			}
+		})
 	}
 }
 
@@ -1653,27 +1657,31 @@ func TestToolDirectiveReportsExistingTools(t *testing.T) {
 }
 
 func TestToolDirectiveInvalidStaysAsText(t *testing.T) {
-	p := &fakePlatform{}
-	store := newTestStore(t)
-	f := &fakeLLM{replies: []string{"done"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	registry := tool.NewRegistry()
-	_ = registry.Register(tool.NewDiscoverTool(registry))
-	a.SetToolRuntime(registry, nil)
+	for _, directive := range []string{"@tool:nope", "@t:nope"} {
+		t.Run(directive, func(t *testing.T) {
+			p := &fakePlatform{}
+			store := newTestStore(t)
+			f := &fakeLLM{replies: []string{"done"}}
+			a := New(p, f, "test-model", config.ProviderConfig{}, store)
+			registry := tool.NewRegistry()
+			_ = registry.Register(tool.NewDiscoverTool(registry))
+			a.SetToolRuntime(registry, nil)
 
-	if err := a.HandleMessage(context.Background(), "hello @tool:nope"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
-	}
-	requests := f.chatRequests()
-	if len(requests) != 1 {
-		t.Fatalf("chat requests = %d", len(requests))
-	}
-	latest := requests[0].Messages[len(requests[0].Messages)-1]
-	if got := llm.SegmentsContentText(latest.Segments); got != "hello @tool:nope" {
-		t.Fatalf("latest user content = %q", got)
-	}
-	if !strings.Contains(p.out.String(), "未找到或不可用的工具：nope") {
-		t.Fatalf("missing invalid tool notice: %q", p.out.String())
+			if err := a.HandleMessage(context.Background(), "hello "+directive); err != nil {
+				t.Fatalf("HandleMessage: %v", err)
+			}
+			requests := f.chatRequests()
+			if len(requests) != 1 {
+				t.Fatalf("chat requests = %d", len(requests))
+			}
+			latest := requests[0].Messages[len(requests[0].Messages)-1]
+			if got := llm.SegmentsContentText(latest.Segments); got != "hello "+directive {
+				t.Fatalf("latest user content = %q", got)
+			}
+			if !strings.Contains(p.out.String(), "未找到或不可用的工具：nope") {
+				t.Fatalf("missing invalid tool notice: %q", p.out.String())
+			}
+		})
 	}
 }
 
@@ -1719,34 +1727,38 @@ func toolNames(schemas []llm.ToolSchema) string {
 }
 
 func TestSkillDirectiveInjectsDetailAndWrapper(t *testing.T) {
-	p := &fakePlatform{}
-	store := newTestStore(t)
-	f := &fakeLLM{replies: []string{"done"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
-	registry := tool.NewRegistry()
-	_ = registry.Register(tool.NewDiscoverTool(registry))
-	_ = registry.Register(agentDetailTool{name: "docx", source: tool.SourceSkillAgent, detail: "# DOCX", activate: []string{"python_skill_run"}})
-	_ = registry.Register(agentWrapperTool{name: "python_skill_run", hidden: true})
-	a.SetToolRuntime(registry, nil)
+	for _, directive := range []string{"@skill:docx", "@skill：docx", "@s:docx", "@s：docx"} {
+		t.Run(directive, func(t *testing.T) {
+			p := &fakePlatform{}
+			store := newTestStore(t)
+			f := &fakeLLM{replies: []string{"done"}}
+			a := New(p, f, "test-model", config.ProviderConfig{}, store)
+			a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+			registry := tool.NewRegistry()
+			_ = registry.Register(tool.NewDiscoverTool(registry))
+			_ = registry.Register(agentDetailTool{name: "docx", source: tool.SourceSkillAgent, detail: "# DOCX", activate: []string{"python_skill_run"}})
+			_ = registry.Register(agentWrapperTool{name: "python_skill_run", hidden: true})
+			a.SetToolRuntime(registry, nil)
 
-	if err := a.HandleMessage(context.Background(), "处理这个 @skill:docx"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
-	}
-	requests := f.chatRequests()
-	if len(requests) != 1 {
-		t.Fatalf("chat requests = %d", len(requests))
-	}
-	if toolNames(requests[0].Tools) != "discover_tool,python_skill_run" {
-		t.Fatalf("tools = %s", toolNames(requests[0].Tools))
-	}
-	latest := requests[0].Messages[len(requests[0].Messages)-1]
-	content := llm.SegmentsContentText(latest.Segments)
-	if content != "处理这个\n\n# DOCX" {
-		t.Fatalf("latest user content = %q", content)
-	}
-	if strings.Contains(content, "系统预加载") || strings.Contains(content, "Skill: docx") {
-		t.Fatalf("skill directive should not add synthetic headers: %q", content)
+			if err := a.HandleMessage(context.Background(), "处理这个 "+directive); err != nil {
+				t.Fatalf("HandleMessage: %v", err)
+			}
+			requests := f.chatRequests()
+			if len(requests) != 1 {
+				t.Fatalf("chat requests = %d", len(requests))
+			}
+			if toolNames(requests[0].Tools) != "discover_tool,python_skill_run" {
+				t.Fatalf("tools = %s", toolNames(requests[0].Tools))
+			}
+			latest := requests[0].Messages[len(requests[0].Messages)-1]
+			content := llm.SegmentsContentText(latest.Segments)
+			if content != "处理这个\n\n# DOCX" {
+				t.Fatalf("latest user content = %q", content)
+			}
+			if strings.Contains(content, "系统预加载") || strings.Contains(content, "Skill: docx") {
+				t.Fatalf("skill directive should not add synthetic headers: %q", content)
+			}
+		})
 	}
 }
 
@@ -1779,27 +1791,31 @@ func TestSkillDirectiveDeduplicatesElyphRuleCards(t *testing.T) {
 }
 
 func TestSkillDirectiveInvalidStaysAsText(t *testing.T) {
-	p := &fakePlatform{}
-	store := newTestStore(t)
-	f := &fakeLLM{replies: []string{"done"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	registry := tool.NewRegistry()
-	_ = registry.Register(tool.NewDiscoverTool(registry))
-	a.SetToolRuntime(registry, nil)
+	for _, directive := range []string{"@skill:nope", "@s:nope"} {
+		t.Run(directive, func(t *testing.T) {
+			p := &fakePlatform{}
+			store := newTestStore(t)
+			f := &fakeLLM{replies: []string{"done"}}
+			a := New(p, f, "test-model", config.ProviderConfig{}, store)
+			registry := tool.NewRegistry()
+			_ = registry.Register(tool.NewDiscoverTool(registry))
+			a.SetToolRuntime(registry, nil)
 
-	if err := a.HandleMessage(context.Background(), "hello @skill:nope"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
-	}
-	requests := f.chatRequests()
-	if len(requests) != 1 {
-		t.Fatalf("chat requests = %d", len(requests))
-	}
-	content := llm.SegmentsContentText(requests[0].Messages[len(requests[0].Messages)-1].Segments)
-	if content != "hello @skill:nope" {
-		t.Fatalf("latest user content = %q", content)
-	}
-	if !strings.Contains(p.out.String(), "未找到或不可用的 Skill：nope") {
-		t.Fatalf("missing invalid skill notice: %q", p.out.String())
+			if err := a.HandleMessage(context.Background(), "hello "+directive); err != nil {
+				t.Fatalf("HandleMessage: %v", err)
+			}
+			requests := f.chatRequests()
+			if len(requests) != 1 {
+				t.Fatalf("chat requests = %d", len(requests))
+			}
+			content := llm.SegmentsContentText(requests[0].Messages[len(requests[0].Messages)-1].Segments)
+			if content != "hello "+directive {
+				t.Fatalf("latest user content = %q", content)
+			}
+			if !strings.Contains(p.out.String(), "未找到或不可用的 Skill：nope") {
+				t.Fatalf("missing invalid skill notice: %q", p.out.String())
+			}
+		})
 	}
 }
 

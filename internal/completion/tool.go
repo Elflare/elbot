@@ -50,19 +50,19 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) []Item {
 		return nil
 	}
 	if token.PrefixOnly {
-		return []Item{{Text: directive.ToolPrefix, Label: directive.ToolPrefix, Kind: KindToolDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}
+		return []Item{{Text: token.Prefix, Label: token.Prefix, Kind: KindToolDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}
 	}
 	tags := s.matchingTags(ctx, registry, actor, policy, token.Query)
 	infos := s.matchingTools(registry, actor, policy, token.Query)
 	out := make([]Item, 0, len(tags)+len(infos))
 	seenText := map[string]bool{}
 	for _, tag := range tags {
-		text := directive.ToolPrefix + tag
+		text := token.Prefix + tag
 		seenText[text] = true
 		out = append(out, Item{Text: text, Label: tag + " <tag>", Description: s.tagDescription(ctx, registry, actor, policy, tag), Kind: KindToolTagDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
 	}
 	for _, info := range infos {
-		text := directive.ToolPrefix + info.Name
+		text := token.Prefix + info.Name
 		if seenText[text] {
 			continue
 		}
@@ -81,12 +81,12 @@ func (s ToolDirectiveSource) registry() *tool.Registry {
 
 func (s ToolDirectiveSource) completeSkills(registry *tool.Registry, actor security.Actor, policy *security.Policy, token directive.SkillCompletionToken, cursor int) []Item {
 	if token.PrefixOnly {
-		return []Item{{Text: directive.SkillPrefix, Label: directive.SkillPrefix, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}
+		return []Item{{Text: token.Prefix, Label: token.Prefix, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}
 	}
 	infos := s.matchingSkills(registry, actor, policy, token.Query)
 	out := make([]Item, 0, len(infos))
 	for _, info := range infos {
-		out = append(out, Item{Text: directive.SkillPrefix + info.Name, Label: info.Name, Description: info.Description, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
+		out = append(out, Item{Text: token.Prefix + info.Name, Label: info.Name, Description: info.Description, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
 	}
 	return out
 }

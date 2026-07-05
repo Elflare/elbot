@@ -105,6 +105,22 @@ func TestCompletionSingleItemUsesReplaceRange(t *testing.T) {
 	}
 }
 
+func TestCompletionUsesByteRangesWithFullWidthInput(t *testing.T) {
+	service := completion.NewService(staticCompletionSource{{Text: "@t：web_search", ReplaceStart: 0, ReplaceEnd: len("@t：we")}})
+	m := tuiModel{completion: service, width: 80, height: 20}
+	m.input.SetValue("@t：we")
+	m.input.CursorEnd()
+
+	updated, _ := m.completeInput(1)
+	m = updated.(tuiModel)
+	if got := m.input.Value(); got != "@t：web_search" {
+		t.Fatalf("single completion = %q", got)
+	}
+	if got := m.input.Position(); got != len([]rune("@t：web_search")) {
+		t.Fatalf("cursor position = %d", got)
+	}
+}
+
 func TestCancelKeyClearsCompletionOrInputBeforeQuit(t *testing.T) {
 	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, width: 80, height: 20}
 	m.input.SetValue("/c")

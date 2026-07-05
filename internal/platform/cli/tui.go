@@ -428,7 +428,7 @@ func (m tuiModel) completeInput(delta int) (tea.Model, tea.Cmd) {
 
 func (m tuiModel) complete(value string) []completion.Item {
 	if m.completion != nil {
-		return m.completion.Complete(m.ctx, completion.Request{Text: value, Cursor: m.input.Position()})
+		return m.completion.Complete(m.ctx, completion.Request{Text: value, Cursor: byteOffsetForRunePosition(value, m.input.Position())})
 	}
 
 	c, ok := m.handler.(legacyCompleter)
@@ -470,12 +470,41 @@ func (m *tuiModel) applyCompletionItem(item completion.Item, value string) {
 		return
 	}
 	if item.ReplaceStart >= 0 && item.ReplaceEnd >= item.ReplaceStart && item.ReplaceEnd <= len(value) && (item.ReplaceStart != 0 || item.ReplaceEnd != 0) {
-		m.input.SetValue(value[:item.ReplaceStart] + text + value[item.ReplaceEnd:])
-		m.input.SetCursor(item.ReplaceStart + len(text))
+		updated := value[:item.ReplaceStart] + text + value[item.ReplaceEnd:]
+		m.input.SetValue(updated)
+		m.input.SetCursor(runePositionForByteOffset(updated, item.ReplaceStart+len(text)))
 		return
 	}
 	m.input.SetValue(text)
 	m.input.CursorEnd()
+}
+
+func byteOffsetForRunePosition(value string, pos int) int {
+	if pos <= 0 {
+		return 0
+	}
+	count := 0
+	for offset := range value {
+		if count == pos {
+			return offset
+		}
+		count++
+	}
+	return len(value)
+}
+
+func runePositionForByteOffset(value string, offset int) int {
+	if offset <= 0 {
+		return 0
+	}
+	count := 0
+	for byteOffset := range value {
+		if byteOffset >= offset {
+			return count
+		}
+		count++
+	}
+	return count
 }
 
 func (m tuiModel) prevHistory() (tea.Model, tea.Cmd) {

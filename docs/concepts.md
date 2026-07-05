@@ -53,6 +53,8 @@ ElBot 不会在每轮 work 对话中默认注入所有工具的完整 schema。
 
 它的作用是减少 LLM 先发现工具再调用工具的步骤，让明确的任务更快进入工作状态。预载成功后，相关工具或 Skill 会进入当前 Session 的工具上下文。
 
+工具可用 `@tool:<name-or-tag>` 或简写 `@t:<name-or-tag>` 预载，Skill 可用 `@skill:<name>` 或简写 `@s:<name>` 预载；冒号也可以写成中文全角冒号 `：`。
+
 具体语法和示例见 [命令速查：工具与 Skill](commands.md#工具与-skill)。
 
 ## Session
