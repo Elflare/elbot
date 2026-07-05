@@ -161,16 +161,10 @@ func (a *Adapter) handleCallbackQuery(ctx context.Context, handler platform.Plat
 func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHandler, msg message) {
 	normalized := normalizeMessage(ctx, a.client, msg, a.botUsername)
 	a.recordChatMessage(ctx, msg, normalized)
-	if !a.shouldHandle(msg, normalized) {
+	if msg.Chat.Type != "private" && msg.Chat.Type != "group" && msg.Chat.Type != "supergroup" {
 		return
 	}
 	text := normalized.Text
-	if stripped, ok := platform.StripTriggerKeyword(text, a.cfg.TriggerKeywords); ok {
-		text = stripped
-	}
-	if strings.TrimSpace(text) == "" {
-		return
-	}
 	platformUserID := userIDString(msg.From)
 	groupRole := a.messageGroupRole(ctx, msg)
 	messageCtx := platform.MessageContext{
@@ -180,11 +174,17 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 		DisplayName:       displayNamePtr(msg.From, userIDString(msg.From)),
 		GroupRole:         groupRole,
 		ScopeID:           scopeID(msg.Chat),
+		ConversationKind:  telegramConversationKind(msg.Chat),
 		PlatformMessageID: formatMessageID(msg.MessageID),
 		ReplyToMessageID:  normalized.ReplyID,
+		ReplyToSenderID:   userIDString(replySender(normalized.ReplyMessage)),
 
-		Sender:   a,
-		Segments: finalMessageSegments(text, normalized.Segments, nil),
+		Sender:          a,
+		Segments:        finalMessageSegments(text, normalized.Segments, nil),
+		RawText:         normalized.Text,
+		Bot:             platform.Identity{UserID: formatMessageID(a.botID), Username: a.botUsername},
+		Mentions:        append([]platform.Mention(nil), normalized.Mentions...),
+		TriggerKeywords: append([]string(nil), a.cfg.TriggerKeywords...),
 		Meta: map[string]any{
 			"telegram.message_id": formatMessageID(msg.MessageID),
 			"telegram.chat_id":    strconv.FormatInt(msg.Chat.ID, 10),

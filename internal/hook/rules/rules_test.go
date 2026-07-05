@@ -186,6 +186,28 @@ func TestTurnOutputPreparedAllowsMessageText(t *testing.T) {
 	}
 }
 
+func TestLoadConfigAcceptsRequireWakeup(t *testing.T) {
+	dir := t.TempDir()
+	content := `[[rules]]
+name = "passive"
+on = "platform.message.received"
+require_wakeup = false
+always = true
+action = "send"
+text = "ok"
+`
+	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, _, err := loadConfig(dir)
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if len(cfg.Rules) != 1 || cfg.Rules[0].RequireWakeup == nil || *cfg.Rules[0].RequireWakeup {
+		t.Fatalf("rules = %#v", cfg.Rules)
+	}
+}
+
 func TestLoadConfigAcceptsFlatControlFields(t *testing.T) {
 	dir := t.TempDir()
 	content := `[[rules]]

@@ -390,6 +390,128 @@ func TestPlatformMessageReceivedHookSendsOutputs(t *testing.T) {
 	}
 }
 
+func TestUnwokenGroupMessageSkipsLLMButAllowsPassiveHook(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	allowPassive := false
+	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.passive", Match: hook.Always(), RequireWakeup: &allowPassive, Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		event.Outputs = append(event.Outputs, delivery.Text("passive output"))
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register passive hook: %v", err)
+	}
+	a.SetHookManager(manager)
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:         "qqonebot",
+		ScopeID:          "group:9",
+		ConversationKind: platform.ConversationGroup,
+		Sender:           p,
+		RawText:          "hello",
+		Segments:         []platform.MessageSegment{{Type: platform.SegmentText, Text: "hello"}},
+	})
+
+	if err := a.HandleMessage(ctx, "hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if got := p.out.String(); !strings.Contains(got, "passive output") || strings.Contains(got, "final") {
+		t.Fatalf("platform output = %q", got)
+	}
+	if got := len(f.chatRequests()); got != 0 {
+		t.Fatalf("chat requests = %d, want 0", got)
+	}
+}
+
+func TestUnwokenGroupMessageSkipsDefaultHook(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.default", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		event.Outputs = append(event.Outputs, delivery.Text("default output"))
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register default hook: %v", err)
+	}
+	a.SetHookManager(manager)
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:         "qqonebot",
+		ScopeID:          "group:9",
+		ConversationKind: platform.ConversationGroup,
+		Sender:           p,
+		RawText:          "hello",
+		Segments:         []platform.MessageSegment{{Type: platform.SegmentText, Text: "hello"}},
+	})
+
+	if err := a.HandleMessage(ctx, "hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if got := p.out.String(); strings.Contains(got, "default output") || strings.Contains(got, "final") {
+		t.Fatalf("platform output = %q", got)
+	}
+	if got := len(f.chatRequests()); got != 0 {
+		t.Fatalf("chat requests = %d, want 0", got)
+	}
+}
+
+func TestPassiveHookCannotWakeLLMByEditingMessage(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	allowPassive := false
+	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.edit", Match: hook.Always(), RequireWakeup: &allowPassive, Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		event.Message.Segments = llm.TextSegments("芙莉丝 hello")
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register passive hook: %v", err)
+	}
+	a.SetHookManager(manager)
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:         "qqonebot",
+		ScopeID:          "group:9",
+		ConversationKind: platform.ConversationGroup,
+		Sender:           p,
+		RawText:          "hello",
+		Segments:         []platform.MessageSegment{{Type: platform.SegmentText, Text: "hello"}},
+		TriggerKeywords:  []string{"芙莉丝"},
+	})
+
+	if err := a.HandleMessage(ctx, "hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if got := len(f.chatRequests()); got != 0 {
+		t.Fatalf("chat requests = %d, want 0", got)
+	}
+}
+
+func TestWokenGroupMessageStripsTriggerKeywordBeforeLLM(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:         "qqonebot",
+		ScopeID:          "group:9",
+		ConversationKind: platform.ConversationGroup,
+		Sender:           p,
+		RawText:          "芙莉丝 hello",
+		Segments:         []platform.MessageSegment{{Type: platform.SegmentText, Text: "芙莉丝 hello"}},
+		TriggerKeywords:  []string{"芙莉丝"},
+	})
+
+	if err := a.HandleMessage(ctx, "芙莉丝 hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d, want 1", len(requests))
+	}
+	if got := llm.LatestUserSegmentTextOnly(requests[0].Messages); got != "hello" {
+		t.Fatalf("latest user text = %q", got)
+	}
+}
+
 func TestPlatformMessageReceivedHookConsumeSkipsCommandAndLLM(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
