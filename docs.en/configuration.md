@@ -115,6 +115,15 @@ Note:
 - `extra_payload` will be merged into the LLM request JSON, with model-level settings overriding provider-level settings.
 - The `default_context_window` of `[model_metadata]` is a global fallback value, used when `context_window` is not configured in `model_configs`.
 
+## Built-in Web Tool Configuration
+
+The `proxy` parameter of `web_extract` is used to control the proxy for webpage extraction requests:
+ If you want all default `web_extract` calls to go through a fixed proxy, you can set it in the configuration directory `.env` or in the system environment:
+
+```env
+WEB_EXTRACT_PROXY=http://127.0.0.1:7890
+```
+
 ## LLM Request and Round Timeout
 
 `app.toml`'s `[llm_request]` controls OpenAI-compatible streaming requests, round processing, and retries:

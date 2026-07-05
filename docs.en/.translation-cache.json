@@ -26,9 +26,9 @@
       "updated_at": 1783077374
     },
     "docs/configuration.md": {
-      "source_hash": "83ec3668649adc9efba2cbe375e18af3992e677eb94219f88986f83fb0a3d710",
+      "source_hash": "c85d057fe2f8645bd2b8f92c038458a85cda7661215da6484e1182820a3fe2b7",
       "target": "docs.en/configuration.md",
-      "updated_at": 1783219308
+      "updated_at": 1783236651
     },
     "docs/elnis-usage.md": {
       "source_hash": "c8d68d4fc76a453ea4008b304cc4d8243b8b2ebc634494f4fb92016b8040c782",
@@ -5806,6 +5806,14 @@
       "translation": "Storage and Runtime Data",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:heading:5b7ce9b12cdbe3bcbb6b972b01e951702c417ca4fd6dda8b1f178d46e6915fa6": {
+      "kind": "heading",
+      "source": "内置 Web 工具配置",
+      "source_file": "docs/configuration.md",
+      "source_hash": "5b7ce9b12cdbe3bcbb6b972b01e951702c417ca4fd6dda8b1f178d46e6915fa6",
+      "translation": "Built-in Web Tool Configuration",
+      "updated_at": 1783236651
+    },
     "docs/configuration.md:heading:5df6c836420325b8f38db842707d47225d469f5db74b464699690dee14280ab1": {
       "kind": "heading",
       "source": "LLM 请求与整轮超时",
@@ -7046,6 +7054,14 @@
       "translation": "__ELBOT_CODE_0__ takes precedence over __ELBOT_CODE_1__.\n",
       "updated_at": 1783178826
     },
+    "docs/configuration.md:paragraph:1ec87d4b5c7c2b92c42ede7bc9c709dfb495faa515e2855f4c3003e6a01040af": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 参数用于控制网页提取请求的代理：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1ec87d4b5c7c2b92c42ede7bc9c709dfb495faa515e2855f4c3003e6a01040af",
+      "translation": "The __ELBOT_CODE_1__ parameter of __ELBOT_CODE_0__ is used to control the proxy for webpage extraction requests:\n",
+      "updated_at": 1783236651
+    },
     "docs/configuration.md:paragraph:1faa263becb315d9218e99ec661dcdd56c855d92c1c32eef3ecaed5fe176cad4": {
       "kind": "paragraph",
       "source": "运行日志、SQLite、sandbox 等运行数据也会按配置或默认数据目录存放。\n",
@@ -7597,6 +7613,14 @@
       "source_hash": "c74858812ff04da3be7f272e7bcefd762a521226fb6cdf4adfd0a5b1d2beef3a",
       "translation": "For example, writing __ELBOT_CODE_0__ under the platform configuration directory:\n",
       "updated_at": 1781854884
+    },
+    "docs/configuration.md:paragraph:c81266f25b33c69371d1f88881db9f73d0492adff2a8d00aeed459ca2540b552": {
+      "kind": "paragraph",
+      "source": "如果希望所有默认 __ELBOT_CODE_0__ 调用都走固定代理，可以在配置目录 __ELBOT_CODE_1__ 或系统环境中设置：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "c81266f25b33c69371d1f88881db9f73d0492adff2a8d00aeed459ca2540b552",
+      "translation": "If you want all default __ELBOT_CODE_0__ calls to go through a fixed proxy, you can set it in the configuration directory __ELBOT_CODE_1__ or in the system environment:\n",
+      "updated_at": 1783236651
     },
     "docs/configuration.md:paragraph:cce0681b233c3afc06096fb1c291b6ecb3768ecb605772fd205f738b4c58d4f1": {
       "kind": "paragraph",
