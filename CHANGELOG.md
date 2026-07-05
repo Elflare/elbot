@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 重构AgentSkill：去掉py wrapper，直接使用shell执行对应sklll，同时支持在Agentkill根目录添加 `ELBOT_SKILL.toml` 注册为普通工具，方便 LLM 直接调用结构化参数。
 - 新增隐藏元工具 `agent_skill`，用于读取或写入 AgentSkill 的 `ELBOT_SKILL.toml`，写入前校验配置并在成功后 reload。
+- 首次运行会生成 `skills/agent/agent_skill_creator/SKILL.md`，用于说明如何把 AgentSkill 注册为普通工具。
+- 首次运行会生成 `skills/go/write_elbot_hook/SKILL.elyph`，用于按需求编写 ElBot 规则 Hook。
 - 新增 `/usage` 命令：从审计日志聚合 token 消耗，支持按模型/天/会话汇总，快捷参数 `-d` 天数、`-m` 模型、`-s` 会话。
 - 新增 `workspace` 工具：设置当前前台 Session 的共享工作目录，路径类工具会基于该目录解析相对路径。首次切换到含 `AGENTS.md` 或 `AGENT.md` 的目录时，会自动附带说明文件内容；文件超过 64 KiB 时会提示缩短。
 - 新增 `[platform_files]` 配置，统一控制平台入站文件最大保存大小和下载超时。
@@ -21,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `send_file` 工具改为使用 `source` 参数发送文件，支持本地路径、`file://` URI 和 HTTP(S) URL，并会按 MIME/扩展名自动将图片作为图片消息发送。
-- AgentSkill 不再通过 `python_skill_run` 固定包装执行 Python 脚本；没有 `ELBOT_SKILL.toml` 时保持说明型 Skill，可按文档使用 shell 等通用工具。
+- AgentSkill 不再通过 `python_skill_run` 固定包装执行 Python 脚本；没有 `ELBOT_SKILL.toml` 时保持说明型 Skill，可按文档使用 shell 等通用工具；说明型 AgentSkill 不读取 `SKILL.md` 风险，工具化后以 `ELBOT_SKILL.toml` 的 `risk` 为准。
 - Skill 扫描改为启动后延迟执行，并在 `discover_tool` 首次使用时兜底确保扫描，减少启动阻塞。
 - Session 闲置过期改为 `[session.idle_expiration]` 四项配置，分别控制群聊/私聊下普通用户和超级管理员的当前 Session 过期时间；默认群聊所有用户过期，私聊超级管理员不过期。
 - `shell` 工具移除 `path` 参数，命令默认在当前 workspace 下执行；后台任务仍限制在各自 sandbox 内。

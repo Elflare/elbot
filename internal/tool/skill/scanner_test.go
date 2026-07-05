@@ -19,7 +19,7 @@ func TestFilesystemScannerScansAgentSkill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 1 || tools[0].Name() != "docx" || tools[0].Info().Source != tool.SourceSkillAgent || tools[0].Info().Risk != tool.RiskLow {
+	if len(tools) != 1 || tools[0].Name() != "docx" || tools[0].Info().Source != tool.SourceSkillAgent || tools[0].Info().Risk != tool.RiskSafe {
 		t.Fatalf("tools = %#v", tools)
 	}
 }
@@ -62,7 +62,7 @@ input = "--input"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 1 || tools[0].Name() != "docx" {
+	if len(tools) != 1 || tools[0].Name() != "docx" || tools[0].Info().Risk != tool.RiskSafe {
 		t.Fatalf("tools = %#v", tools)
 	}
 	if _, ok := tools[0].(Descriptor); !ok {
@@ -154,7 +154,7 @@ func TestFilesystemScannerRemoveDeletesDirectoryAndReloads(t *testing.T) {
 
 func TestAgentDescriptorDetailAddsAgentSkillNotice(t *testing.T) {
 	d := NewDescriptor(Record{Name: "docx", Detail: "# DOCX", Kind: KindAgent})
-	if !strings.Contains(d.Detail(), AgentSkillConfigFile) || len(d.ActivateTools()) != 1 || d.ActivateTools()[0] != AgentSkillManagerName {
+	if !strings.Contains(d.Detail(), "agent_skill_creator") || len(d.ActivateTools()) != 1 || d.ActivateTools()[0] != AgentSkillManagerName {
 		t.Fatalf("detail=%q activate=%#v", d.Detail(), d.ActivateTools())
 	}
 }
