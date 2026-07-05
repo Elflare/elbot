@@ -6,9 +6,9 @@
       "updated_at": 1783236675
     },
     "README.zh-CN.md": {
-      "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
+      "source_hash": "afe9d4178a0b5e0db0a85bc2127aaba1746f356abf6d6f7d4605d57679547761",
       "target": "README.md",
-      "updated_at": 1782973974
+      "updated_at": 1783238361
     },
     "docs/README.md": {
       "source_hash": "c9b034abef2aab701d3e0609800a6f9e55c86b4888558a4d9a0894eaffb74cf5",
@@ -2182,6 +2182,14 @@
       "translation": "ElBot abstracts the platform and output layers, supporting CLI and QQ OneBot, with space reserved for extending to other platforms.\n",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:a2697f67276cc762f1326edc0337f08b2eaf6e81f7a551f78c4de726699d7b9e": {
+      "kind": "paragraph",
+      "source": "两种模式可独立配置模型，让低成本模型承担闲聊，让强模型专注处理复杂任务。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "a2697f67276cc762f1326edc0337f08b2eaf6e81f7a551f78c4de726699d7b9e",
+      "translation": "The two modes can be configured with models independently, allowing low-cost models to handle small talk and powerful models to focus on complex tasks.\n",
+      "updated_at": 1783238361
+    },
     "README.zh-CN.md:paragraph:a31cd2d091db4ab3d28dd684cbc40b62ff6d679d75682532e29553b19c566f24": {
       "kind": "paragraph",
       "source": "**可由 LLM 创建的 EL Skill**： ElBot 内置 __ELBOT_CODE_0__ 元工具，允许 LLM 将可复用经验沉淀为 EL Skill。",
@@ -2494,6 +2502,14 @@
       "translation": "Chinese | [English](README.md)\n",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:e997c799cb51b04e45896166d18965f6eef42da6810ccc37f42993fd36b9f515": {
+      "kind": "paragraph",
+      "source": "**极致轻量的 Go 实现**：\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "e997c799cb51b04e45896166d18965f6eef42da6810ccc37f42993fd36b9f515",
+      "translation": "**Ultra-lightweight Go implementation**:\n",
+      "updated_at": 1783238361
+    },
     "README.zh-CN.md:paragraph:e9d63a46f13f33bafd48564db6799182c8cdf2685f63bae31e034b34b842597b": {
       "kind": "paragraph",
       "source": "**极致轻量的 Go 实现。** ElBot 当前本地启动耗时 <10ms（N5105，sata固态），常驻内存约 30MB。\n",
@@ -2525,6 +2541,14 @@
       "source_hash": "f2ead8a344911defe004a651de9652ed19f79a5e23fdbdf642fefbc62a578fe5",
       "translation": "**Token-efficient tool discovery**: Research shows that many ordinary users still primarily use LLM-like products as advanced search engines, writing assistants, and listening objects; frequent tool calls are not the norm for all conversations.\n",
       "updated_at": 1781779200
+    },
+    "README.zh-CN.md:paragraph:f3f58da84d595e2affe264aae406be89ef016e82a47a199bd591f504f97fd54b": {
+      "kind": "paragraph",
+      "source": "**Chat / Work 双模式**：\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "f3f58da84d595e2affe264aae406be89ef016e82a47a199bd591f504f97fd54b",
+      "translation": "**Chat / Work dual mode**:\n",
+      "updated_at": 1783238361
     },
     "README.zh-CN.md:paragraph:f46bac1c99a4efda93ed74ed213c06bfffd909d7973518739715c2ae4a7276cb": {
       "kind": "paragraph",
@@ -2565,6 +2589,142 @@
       "source_hash": "fa3db717aba99b1acfe0c33feacf67d4d130a349f374fdcf553f44c5edc0d657",
       "translation": "**Comprehensive logging and auditing.** Distinguishes between runtime logs, Elwisp logs, and audit logs, supporting structured fields, log queries, audit queries, and runtime debugging.\n",
       "updated_at": 1781749522
+    },
+    "README.zh-CN.md:table:100587977125c8c3844f25aaf755f7b998ce69c9c3c97758ae2b17eea268d13a": {
+      "kind": "table",
+      "source": "适用场景",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "100587977125c8c3844f25aaf755f7b998ce69c9c3c97758ae2b17eea268d13a",
+      "translation": "Applicable Scenarios",
+      "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:124be3f86f197802985a1b7a88f402b9d06aa9bfb8a2129abb3632f177779852": {
+      "kind": "table",
+      "source": "Token 消耗",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "124be3f86f197802985a1b7a88f402b9d06aa9bfb8a2129abb3632f177779852",
+      "translation": "Token consumption",
+      "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:2213f84f9f36b44bd1ca881f8c44f9fff52c83f9bae393fb8c3acbf0b7d8088b": {
+      "kind": "table",
+      "source": "本地启动耗时",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "2213f84f9f36b44bd1ca881f8c44f9fff52c83f9bae393fb8c3acbf0b7d8088b",
+      "translation": "Local startup time",
+      "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:274b2621cfd1a630b28b6a23a25c2776dc0cfd5b53c9430c40a7d868e1ca61cc": {
+      "kind": "table",
+      "source": "闲聊、陪伴、轻量问答、低成本对话",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "274b2621cfd1a630b28b6a23a25c2776dc0cfd5b53c9430c40a7d868e1ca61cc",
+      "translation": "Small talk, companionship, lightweight Q&A, low-cost conversation",
+      "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:47a270081ab2892f63d740bc61cd7b17b04d9d3947b3123be8db9e0d97c12c83": {
+      "kind": "table",
+      "source": "模式",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "47a270081ab2892f63d740bc61cd7b17b04d9d3947b3123be8db9e0d97c12c83",
+      "translation": "Mode",
+      "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:5ca6730d441522017552bf309fcddbed161b77440dc3a11d9945788d802afdb3": {
+      "kind": "table",
+      "source": "工具",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "5ca6730d441522017552bf309fcddbed161b77440dc3a11d9945788d802afdb3",
+      "translation": "Tool",
+      "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:6013d22aff44101654c021d7fbc1e2e3f333a0cbc742a4aeeebd738227e4ac6f": {
+      "kind": "table",
+      "source": "<10ms（N5105，SATA 固态）",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "6013d22aff44101654c021d7fbc1e2e3f333a0cbc742a4aeeebd738227e4ac6f",
+      "translation": "<10ms (N5105, SATA SSD)",
+      "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:698ae0907a5bdb75767beffe19e5c1f16c1aee9433469015e08999ac5da5859c": {
+      "kind": "table",
+      "source": "缓存命中",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "698ae0907a5bdb75767beffe19e5c1f16c1aee9433469015e08999ac5da5859c",
+      "translation": "Cache hit",
+      "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:6d8bf291de5e875b77b0caa1cd2b2d730aec287d99659f09906085f2297896b5": {
+      "kind": "table",
+      "source": "work 模式",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "6d8bf291de5e875b77b0caa1cd2b2d730aec287d99659f09906085f2297896b5",
+      "translation": "work mode",
+      "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:7f72f06a88779b5a006749b25767cd11395e7e3ae869db274637b7f051ca7774": {
+      "kind": "table",
+      "source": "场景",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "7f72f06a88779b5a006749b25767cd11395e7e3ae869db274637b7f051ca7774",
+      "translation": "Scenario",
+      "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:862feefdb7a16e98a7873a1043b074cebb5437032d715b16073c6db5bbfc9495": {
+      "kind": "table",
+      "source": "搜索、文件、命令、Cron、Skill 等复杂任务",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "862feefdb7a16e98a7873a1043b074cebb5437032d715b16073c6db5bbfc9495",
+      "translation": "Complex tasks such as search, files, commands, Cron, Skills, etc.",
+      "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:921615681fd5dfb6ea6bafa5c15a4dd7f4357f1e2bcba415b941eaab7886b538": {
+      "kind": "table",
+      "source": "启用工具发现与调用",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "921615681fd5dfb6ea6bafa5c15a4dd7f4357f1e2bcba415b941eaab7886b538",
+      "translation": "Enable tool discovery and invocation",
+      "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:92d13afee995ed85062899d18fb38bb02291ecba8ff488b4b0efe3d27de27a26": {
+      "kind": "table",
+      "source": "常驻内存",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "92d13afee995ed85062899d18fb38bb02291ecba8ff488b4b0efe3d27de27a26",
+      "translation": "Resident memory",
+      "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:a683b9e9a5e0df6abfa23dfa49a96fbf1da2f7c700be0959e3d5b1839b10fe93": {
+      "kind": "table",
+      "source": "不注入",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "a683b9e9a5e0df6abfa23dfa49a96fbf1da2f7c700be0959e3d5b1839b10fe93",
+      "translation": "No injection",
+      "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:b87e67c7dae039910f79b50feeae0daee49f29066618cf35637550c34f5a625e": {
+      "kind": "table",
+      "source": "指标",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "b87e67c7dae039910f79b50feeae0daee49f29066618cf35637550c34f5a625e",
+      "translation": "Metric",
+      "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:c5500a58e0c5262581da8e92ea8bbffe7cea9466242f2a93f4cf02e14854f187": {
+      "kind": "table",
+      "source": "数值",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "c5500a58e0c5262581da8e92ea8bbffe7cea9466242f2a93f4cf02e14854f187",
+      "translation": "Value",
+      "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:d8a1c67c9fb5ed444455c27b964de9efc67999177cdcb0c1e02993622eec3fc6": {
+      "kind": "table",
+      "source": "chat 模式",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "d8a1c67c9fb5ed444455c27b964de9efc67999177cdcb0c1e02993622eec3fc6",
+      "translation": "chat mode",
+      "updated_at": 1783238361
     },
     "docs/README.md:heading:04a55997533ed4e754cbb599541c5df54f5ea8c60d5c4e750befd52196318380": {
       "kind": "heading",
