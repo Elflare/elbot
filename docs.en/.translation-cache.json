@@ -26,9 +26,9 @@
       "updated_at": 1783240887
     },
     "docs/configuration.md": {
-      "source_hash": "c85d057fe2f8645bd2b8f92c038458a85cda7661215da6484e1182820a3fe2b7",
+      "source_hash": "d35248fa027fd712a825f66dbb803567a731e3ee51ac044864c906bffb7ddd96",
       "target": "docs.en/configuration.md",
-      "updated_at": 1783236651
+      "updated_at": 1783240925
     },
     "docs/elnis-usage.md": {
       "source_hash": "c8d68d4fc76a453ea4008b304cc4d8243b8b2ebc634494f4fb92016b8040c782",
@@ -6630,6 +6630,14 @@
       "translation": "In __ELBOT_CODE_0__ mode, __ELBOT_CODE_1__ can be specified as __ELBOT_CODE_2__, __ELBOT_CODE_3__, or __ELBOT_CODE_4__ in Elvena requests;",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:list:6469645d8528221a2de47802bb56388902fba57b4612e918006f63b801f39de9": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：定义一个可在聊天里使用的 tag，例如 __ELBOT_CODE_1__ 对应 __ELBOT_CODE_2__ 或简写 __ELBOT_CODE_3__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "6469645d8528221a2de47802bb56388902fba57b4612e918006f63b801f39de9",
+      "translation": "__ELBOT_CODE_0__: Define a tag that can be used in chat, for example, __ELBOT_CODE_1__ corresponds to __ELBOT_CODE_2__ or the shorthand __ELBOT_CODE_3__.",
+      "updated_at": 1783240925
+    },
     "docs/configuration.md:list:64a8a1c8b969b46ec95861a59fcc2342b5120b90e2cd82c47e01d7a2603ea634": {
       "kind": "list",
       "source": "prompt 文本从 __ELBOT_CODE_0__ 动态读取；文件变更后影响后续请求，行为类似 __ELBOT_CODE_1__。",
@@ -6757,6 +6765,14 @@
       "source_hash": "75a4c5af06fd40f543549456b5ffc8311c622d2c85f949a8b1ce5c7b9be86b0f",
       "translation": "A single LLM streaming request is not limited by this field.",
       "updated_at": 1782574866
+    },
+    "docs/configuration.md:list:7b608c2d93f0ad25046af3b1afe1af872d5718000a2f8a085e0f619e3911e77b": {
+      "kind": "list",
+      "source": "直接 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 只预载指定工具，不激活 tag prompt。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "7b608c2d93f0ad25046af3b1afe1af872d5718000a2f8a085e0f619e3911e77b",
+      "translation": "Directly using __ELBOT_CODE_0__ or __ELBOT_CODE_1__ only preloads the specified tools and does not activate the tag prompt.",
+      "updated_at": 1783240925
     },
     "docs/configuration.md:list:7cc26368a77adcbf24f1f6fa9179b3153c2ad5f8f6668088265c08c40cca1f01": {
       "kind": "list",
@@ -7061,6 +7077,14 @@
       "source_hash": "cc9160065de2fb04c5602cbf88b5dc07fb2614f95bd622d66c97f929f4ca7eec",
       "translation": "__ELBOT_CODE_0__: Optional, defaults to __ELBOT_CODE_1__; when set to __ELBOT_CODE_2__, the Skill root path will be exposed upon discovering the Skill.",
       "updated_at": 1783074493
+    },
+    "docs/configuration.md:list:cd02714853c03f05346600d33d768618785d928ce5f2ea7fafd46d777c223ac9": {
+      "kind": "list",
+      "source": "只有 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 成功命中至少一个工具后，当前 Session 才会激活该 tag 的 prompt。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "cd02714853c03f05346600d33d768618785d928ce5f2ea7fafd46d777c223ac9",
+      "translation": "Only after __ELBOT_CODE_0__ or __ELBOT_CODE_1__ successfully hits at least one tool will the current Session activate the prompt for that tag.",
+      "updated_at": 1783240925
     },
     "docs/configuration.md:list:cf7eddd7a224ea51aed16f2d053820de607268d3e15169de46e6dc74feeb25a3": {
       "kind": "list",
