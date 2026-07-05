@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "ecec4d4d49e859ac9e7bcd9bf3126e2b02216b8ae6311e4f374b50c39ff67ddd",
+      "source_hash": "409a059d3338de0b51317ebed1b4fdf85a0315187354c1f686215a5d45785376",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783178864
+      "updated_at": 1783219356
     },
     "README.zh-CN.md": {
       "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
@@ -26,9 +26,9 @@
       "updated_at": 1783077374
     },
     "docs/configuration.md": {
-      "source_hash": "6422b349806907c97c7c93612a0cb46332c6f40dbe5c5d0c68084e7dd11fba44",
+      "source_hash": "83ec3668649adc9efba2cbe375e18af3992e677eb94219f88986f83fb0a3d710",
       "target": "docs.en/configuration.md",
-      "updated_at": 1783178826
+      "updated_at": 1783219308
     },
     "docs/elnis-usage.md": {
       "source_hash": "c8d68d4fc76a453ea4008b304cc4d8243b8b2ebc634494f4fb92016b8040c782",
@@ -149,6 +149,14 @@
       "source_hash": "172ce4a2b47495feea66fd71dd0d868f23fcc3fbe8c9aa01a58362342daddd52",
       "translation": "qq heartbeat ack and qqofficial gateway resumed are no longer logged",
       "updated_at": 1782563804
+    },
+    "CHANGELOG.md:list:1764df0588f5930644e52d3390abe06c5909cf93fbb5a5bd4a7fa9150c62d2e9": {
+      "kind": "list",
+      "source": "首次运行会生成 __ELBOT_CODE_0__，用于说明如何把 AgentSkill 注册为普通工具。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "1764df0588f5930644e52d3390abe06c5909cf93fbb5a5bd4a7fa9150c62d2e9",
+      "translation": "The first run will generate __ELBOT_CODE_0__, which explains how to register an AgentSkill as a regular tool.",
+      "updated_at": 1783219356
     },
     "CHANGELOG.md:list:18f8686c3e2512c85d4545e776b64d44967ba9ce78170d168c2be40eff28fa31": {
       "kind": "list",
@@ -429,6 +437,14 @@
       "source_hash": "6970168418b00124c98288e227a6831f798c18ed573c05cb7a6f07fd850812c6",
       "translation": "Compatible with agentskills.io style external AgentSkills (accompanied by Python scripts).",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:6a952eb1ca1e4416c1ffcbff62e707f82ef5f2b2aeff3b2b640b82bce7417fde": {
+      "kind": "list",
+      "source": "说明型 AgentSkill 不读取 __ELBOT_CODE_0__ 风险，工具化后以 __ELBOT_CODE_1__ 的 __ELBOT_CODE_2__ 为准。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "6a952eb1ca1e4416c1ffcbff62e707f82ef5f2b2aeff3b2b640b82bce7417fde",
+      "translation": "Descriptive AgentSkills do not read __ELBOT_CODE_0__, avoiding risk; after toolization, __ELBOT_CODE_2__ of __ELBOT_CODE_1__ shall prevail.",
+      "updated_at": 1783219356
     },
     "CHANGELOG.md:list:714c6568883b5a6b6d519ae10020e60c5d54a73ae7f39b8f6636810137a32aeb": {
       "kind": "list",
@@ -782,6 +798,14 @@
       "translation": "Fixed an issue where OpenAI-compatible streaming responses that disconnected midway but were missing __ELBOT_CODE_0__ were treated as normal terminations; now it will explicitly notify that the LLM response was interrupted.",
       "updated_at": 1782298716
     },
+    "CHANGELOG.md:list:bbe69649fedf66fe55c50171fda1e0bafc56ed2f3759250fbef518fdf34acccf": {
+      "kind": "list",
+      "source": "没有 __ELBOT_CODE_0__ 时保持说明型 Skill，可按文档使用 shell 等通用工具；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "bbe69649fedf66fe55c50171fda1e0bafc56ed2f3759250fbef518fdf34acccf",
+      "translation": "When __ELBOT_CODE_0__ is absent, it remains a descriptive Skill, and general-purpose tools such as shell can be used according to the documentation;",
+      "updated_at": 1783219356
+    },
     "CHANGELOG.md:list:bd93eae9bd1763e2908b379364b1f9d9b2057b8941646314b5cf7d0e454e8ac8": {
       "kind": "list",
       "source": "**标准 Cron 与 LLM Cron**：标准 Cron 按计划直发固定内容；",
@@ -933,6 +957,14 @@
       "source_hash": "eaed67d51f700cdbcfbd66b43f3ab3d535edf10fa0a2eef475af820bb64b5e87",
       "translation": "The __ELBOT_CODE_0__ tool now uses the __ELBOT_CODE_1__ parameter to send files, supporting local paths, __ELBOT_CODE_2__ URIs, and HTTP(S) URLs, and will automatically send images as image messages based on MIME type/extension.",
       "updated_at": 1783081840
+    },
+    "CHANGELOG.md:list:ec8fb6fd65d0f829e210f8e552f8c23550a29e91cbb008703938f91359472e82": {
+      "kind": "list",
+      "source": "首次运行会生成 __ELBOT_CODE_0__，用于按需求编写 ElBot 规则 Hook。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ec8fb6fd65d0f829e210f8e552f8c23550a29e91cbb008703938f91359472e82",
+      "translation": "The first run will generate __ELBOT_CODE_0__, used to write ElBot rule hooks as needed.",
+      "updated_at": 1783219356
     },
     "CHANGELOG.md:list:ed3c6eabf99307e9b550f72edf9f95006bb9602d68c39639d54b35889096a8ff": {
       "kind": "list",
@@ -7030,6 +7062,14 @@
       "translation": "__ELBOT_CODE_0__ is used by default. If you want to support other command prefixes, you can add them here.\n",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:paragraph:260b5a08ea997de4311bc0c341a4822cc2ef02d11f6d7e068f896a7417aea695": {
+      "kind": "paragraph",
+      "source": "若要把 __ELBOT_CODE_0__ 注册成普通工具，在该 Skill 根目录添加 __ELBOT_CODE_1__，工具风险以其中的 __ELBOT_CODE_2__ 为准。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "260b5a08ea997de4311bc0c341a4822cc2ef02d11f6d7e068f896a7417aea695",
+      "translation": "To register __ELBOT_CODE_0__ as a regular tool, add __ELBOT_CODE_1__ to the root directory of that Skill; the tool risk is subject to the __ELBOT_CODE_2__ within it.",
+      "updated_at": 1783219308
+    },
     "docs/configuration.md:paragraph:26d74004845c90cbea41fed21d81414f7b75d6ff9021cc368e727e3d6f325411": {
       "kind": "paragraph",
       "source": "ElBot 使用一个主配置入口加载应用配置、Provider 配置和运行态状态。开发期不考虑旧配置兼容，建议直接按当前 __ELBOT_CODE_0__ 示例维护。\n",
@@ -7037,6 +7077,14 @@
       "source_hash": "26d74004845c90cbea41fed21d81414f7b75d6ff9021cc368e727e3d6f325411",
       "translation": "ElBot uses a main configuration entry to load application configurations, Provider configurations, and runtime states. Backward compatibility for old configurations is not considered during the development phase; it is recommended to maintain them directly according to the current __ELBOT_CODE_0__ example.\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:294d7a07eff0f2abcac512c1dddf32d067b3202501c8cb1d8958bae7323c31bd": {
+      "kind": "paragraph",
+      "source": "首次自动生成的文件包括：__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__、__ELBOT_CODE_6__、__ELBOT_CODE_7__ 和 __ELBOT_CODE_8__；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "294d7a07eff0f2abcac512c1dddf32d067b3202501c8cb1d8958bae7323c31bd",
+      "translation": "The files automatically generated for the first time include: __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, __ELBOT_CODE_5__, __ELBOT_CODE_6__, __ELBOT_CODE_7__, and __ELBOT_CODE_8__;",
+      "updated_at": 1783219308
     },
     "docs/configuration.md:paragraph:2a0ec7005a1b50f89801ce47d0856ad608103a6f808613a9762025220f99134a": {
       "kind": "paragraph",
@@ -7077,6 +7125,14 @@
       "source_hash": "323f549485c3d3dd2ff5049a006e5b5e4a587f798db38ba90b3fbef6eca2e930",
       "translation": "Storage-related configurations in __ELBOT_CODE_0__:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:356e77f44d73ce9e8ccff42c83a4635c2fe6235b6b16e4c011b49d2d43f6d8b6": {
+      "kind": "paragraph",
+      "source": "默认生成的 __ELBOT_CODE_0__ Skill 可用于查看说明并辅助创建该文件：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "356e77f44d73ce9e8ccff42c83a4635c2fe6235b6b16e4c011b49d2d43f6d8b6",
+      "translation": "The default generated __ELBOT_CODE_0__ Skill can be used to view instructions and assist in creating the file:\n",
+      "updated_at": 1783219308
     },
     "docs/configuration.md:paragraph:3ec24d449c7a33eb474c1fe8d8afbd73b0b7db98587e8214c7d884a64f1b6f6e": {
       "kind": "paragraph",
@@ -7326,6 +7382,14 @@
       "translation": "ElBot uses a main configuration entry to load application configuration, Provider configuration, and runtime state. Default configurations are generated from the program's built-in assets into the platform configuration directory; existing configuration files will not be overwritten.\n",
       "updated_at": 1781854884
     },
+    "docs/configuration.md:paragraph:93d6047b443962572a9c1b318dc1bd52903268d03d790f23ce9cfb2b8baf2eb2": {
+      "kind": "paragraph",
+      "source": "若按文档执行脚本，风险由实际调用的 __ELBOT_CODE_0__ 等工具承担。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "93d6047b443962572a9c1b318dc1bd52903268d03d790f23ce9cfb2b8baf2eb2",
+      "translation": "If the script is executed according to the documentation, the risk is borne by the tools actually called, such as __ELBOT_CODE_0__.",
+      "updated_at": 1783219308
+    },
     "docs/configuration.md:paragraph:98eb7743b6382d1927f6e0c8096646fef84bd7543d6a077816680a510239c6c1": {
       "kind": "paragraph",
       "source": "默认维护任务包含日志、Session、sandbox 和聊天历史清理，例如 Session 清理默认保留 30 天，sandbox 默认每天 04:00 清理 7 天前内容，聊天历史默认每天 04:35 执行：\n",
@@ -7413,6 +7477,14 @@
       "source_hash": "a7b5dadd94461348e8ce4007f1f51c7083535f8023a1827f1afb9f34a399590d",
       "translation": "For full configuration instructions for Rule Hooks (action type, segments multi-segment output, exec stdout mode, role partitioning, control fields), see [Hook](hooks.md).\n",
       "updated_at": 1782376291
+    },
+    "docs/configuration.md:paragraph:ad94f84e75a385d66574406eeac257dda1df6e2ec0dd1eb5d474460510359610": {
+      "kind": "paragraph",
+      "source": "AgentSkill 默认只作为说明文档使用；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "ad94f84e75a385d66574406eeac257dda1df6e2ec0dd1eb5d474460510359610",
+      "translation": "By default, AgentSkill is used only as documentation;",
+      "updated_at": 1783219308
     },
     "docs/configuration.md:paragraph:af00c8f9cf411e48f6a22c9a7b231eb240ba73e6a3d2411797bc8996c3a450f5": {
       "kind": "paragraph",
