@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "409a059d3338de0b51317ebed1b4fdf85a0315187354c1f686215a5d45785376",
+      "source_hash": "9b0fc5f5c2458fff2433636e997ff5f7972f0fc5010a71c2b6377792418c3fe4",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783219356
+      "updated_at": 1783236675
     },
     "README.zh-CN.md": {
       "source_hash": "044a1f377190383dbec37496aed591210866828ed92695f58388d7637ea52c7b",
@@ -573,6 +573,14 @@
       "source_hash": "853ae2250ec20c31453a70311204d8cc2a35abbca73df01d69a3e53005c936bb",
       "translation": "Added `__ELBOT_CODE_0__` tool: sets the shared working directory of the current foreground Session; path-related tools will resolve relative paths based on this directory.",
       "updated_at": 1782958962
+    },
+    "CHANGELOG.md:list:8722a2d934648665f30becf49386a69bc05302e1048ceea9349dbb4cb96b26ac": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 工具的代理参数从 __ELBOT_CODE_1__ 改为 __ELBOT_CODE_2__：不填时使用 __ELBOT_CODE_3__ 或系统代理环境，填 __ELBOT_CODE_4__ 禁用代理，填 URL 使用指定代理。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "8722a2d934648665f30becf49386a69bc05302e1048ceea9349dbb4cb96b26ac",
+      "translation": "The proxy parameter of the __ELBOT_CODE_0__ tool has been changed from __ELBOT_CODE_1__ to __ELBOT_CODE_2__: use __ELBOT_CODE_3__ or the system proxy environment when left blank, fill in __ELBOT_CODE_4__ to disable the proxy, or fill in a URL to use a specified proxy.",
+      "updated_at": 1783236675
     },
     "CHANGELOG.md:list:87270312f6d9656623532edb7ac4d5c4a6b1edbd41ffe1f907efdcf6328dc335": {
       "kind": "list",

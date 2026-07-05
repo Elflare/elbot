@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The proxy parameter of the `web_extract` tool has been changed from `disable_proxy` to `proxy`: use `WEB_EXTRACT_PROXY` or the system proxy environment when left blank, fill in `disabled` to disable the proxy, or fill in a URL to use a specified proxy.
 - The `send_file` tool now uses the `source` parameter to send files, supporting local paths, `file://` URIs, and HTTP(S) URLs, and will automatically send images as image messages based on MIME type/extension.
 - AgentSkill no longer uses `python_skill_run` for fixed wrapping to execute Python scripts; When `ELBOT_SKILL.toml` is absent, it remains a descriptive Skill, and general-purpose tools such as shell can be used according to the documentation; Descriptive AgentSkills do not read `SKILL.md`, avoiding risk; after toolization, `risk` of `ELBOT_SKILL.toml` shall prevail.
 - Skill scanning has been changed to delayed execution after startup, with a fallback to ensure scanning upon the first use of `discover_tool`, reducing startup blocking.
