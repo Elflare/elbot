@@ -6,9 +6,9 @@
       "updated_at": 1783236675
     },
     "README.zh-CN.md": {
-      "source_hash": "fde351343cfb60c30d73a049f65e33ed2bc234075111034d1ed609863885ab22",
+      "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
       "target": "README.md",
-      "updated_at": 1783238675
+      "updated_at": 1783240822
     },
     "docs/README.md": {
       "source_hash": "c9b034abef2aab701d3e0609800a6f9e55c86b4888558a4d9a0894eaffb74cf5",
@@ -2630,6 +2630,14 @@
       "translation": "<1000 (cache hit 90%+)",
       "updated_at": 1783238675
     },
+    "README.zh-CN.md:table:13a5017263fb90bfe54eec46aec21d20910c53fa0350e47e3d2bea5f2a416f0e": {
+      "kind": "table",
+      "source": "<1000 （后续缓存命中90%+）",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "13a5017263fb90bfe54eec46aec21d20910c53fa0350e47e3d2bea5f2a416f0e",
+      "translation": "<1000 (subsequent cache hit 90%+)",
+      "updated_at": 1783240822
+    },
     "README.zh-CN.md:table:1eaa58c7df0514e272b2d3a037d3ddd46b7512c252bedddc1a01131a5559e8ed": {
       "kind": "table",
       "source": "第一次请求 Token 消耗",
@@ -2653,6 +2661,14 @@
       "source_hash": "274b2621cfd1a630b28b6a23a25c2776dc0cfd5b53c9430c40a7d868e1ca61cc",
       "translation": "Small talk, companionship, lightweight Q&A, low-cost conversation",
       "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:3f1a2cfd5a1355aa1841d236999c29b0d5490cd254c46b794a43fb78d6122d76": {
+      "kind": "table",
+      "source": "<500 （后续缓存命中95%+）",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "3f1a2cfd5a1355aa1841d236999c29b0d5490cd254c46b794a43fb78d6122d76",
+      "translation": "<500 (subsequent cache hit 95%+)",
+      "updated_at": 1783240822
     },
     "README.zh-CN.md:table:47a270081ab2892f63d740bc61cd7b17b04d9d3947b3123be8db9e0d97c12c83": {
       "kind": "table",
