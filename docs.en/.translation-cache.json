@@ -6,9 +6,9 @@
       "updated_at": 1783236675
     },
     "README.zh-CN.md": {
-      "source_hash": "afe9d4178a0b5e0db0a85bc2127aaba1746f356abf6d6f7d4605d57679547761",
+      "source_hash": "fde351343cfb60c30d73a049f65e33ed2bc234075111034d1ed609863885ab22",
       "target": "README.md",
-      "updated_at": 1783238361
+      "updated_at": 1783238675
     },
     "docs/README.md": {
       "source_hash": "c9b034abef2aab701d3e0609800a6f9e55c86b4888558a4d9a0894eaffb74cf5",
@@ -1870,6 +1870,14 @@
       "translation": "Standard Cron can send fixed content directly according to a schedule;",
       "updated_at": 1781513003
     },
+    "README.zh-CN.md:paragraph:638b1fdf9372721e8e01e87f011c48637d3cd94217fba95b9cdf3a02882ef37d": {
+      "kind": "paragraph",
+      "source": "参考：Chatterji et al., _How People Use ChatGPT_, NBER, 2025；",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "638b1fdf9372721e8e01e87f011c48637d3cd94217fba95b9cdf3a02882ef37d",
+      "translation": "Reference: Chatterji et al., _How People Use ChatGPT_, NBER, 2025;",
+      "updated_at": 1783238675
+    },
     "README.zh-CN.md:paragraph:68397415ecb5c4759d11d6ebbb984ea7973c62020240780d3f68dcaee2a7560e": {
       "kind": "paragraph",
       "source": "研究表明，许多普通用户仍主要将 ChatGPT 类产品用作更高级的搜索引擎、写作助手和倾听对象，频繁工具调用并不是所有对话的常态。",
@@ -2157,6 +2165,14 @@
       "source_hash": "9937d97661f20c6e0e596c2524d181238a0ed15dcdeea0a7a96e6e6b0961c129",
       "translation": "ElBot's tool system has built-in risk levels, permission judgments, and high-risk confirmation processes. Regular users can only discover and call tools within the low-risk range, and superadmins also need confirmation when calling high-risk tools.\n",
       "updated_at": 1781513003
+    },
+    "README.zh-CN.md:paragraph:99f4e826b7d8779e0f70d6a363d00a49458939edb90cefb2fa24ec5cc88fb957": {
+      "kind": "paragraph",
+      "source": "**Chat / Work 双模式**：两种模式可独立配置模型，让低成本模型承担闲聊，让强模型专注处理复杂任务。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "99f4e826b7d8779e0f70d6a363d00a49458939edb90cefb2fa24ec5cc88fb957",
+      "translation": "**Chat / Work dual mode**: Both modes can be configured with independent models, allowing low-cost models to handle casual chat and powerful models to focus on complex tasks.\n",
+      "updated_at": 1783238675
     },
     "README.zh-CN.md:paragraph:9be84d1fd5b9a6d21bbe71eb7a5f191f91ddb3bd15593d67749b34856871faee": {
       "kind": "paragraph",
@@ -2606,6 +2622,22 @@
       "translation": "Token consumption",
       "updated_at": 1783238361
     },
+    "README.zh-CN.md:table:1318ff38347074d3be673e0c579898c1aaba0336e3a287437540217d0304141e": {
+      "kind": "table",
+      "source": "<1000 (缓存命中90%+)",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "1318ff38347074d3be673e0c579898c1aaba0336e3a287437540217d0304141e",
+      "translation": "<1000 (cache hit 90%+)",
+      "updated_at": 1783238675
+    },
+    "README.zh-CN.md:table:1eaa58c7df0514e272b2d3a037d3ddd46b7512c252bedddc1a01131a5559e8ed": {
+      "kind": "table",
+      "source": "第一次请求 Token 消耗",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "1eaa58c7df0514e272b2d3a037d3ddd46b7512c252bedddc1a01131a5559e8ed",
+      "translation": "Token consumption for the first request",
+      "updated_at": 1783238675
+    },
     "README.zh-CN.md:table:2213f84f9f36b44bd1ca881f8c44f9fff52c83f9bae393fb8c3acbf0b7d8088b": {
       "kind": "table",
       "source": "本地启动耗时",
@@ -2702,6 +2734,14 @@
       "translation": "No injection",
       "updated_at": 1783238361
     },
+    "README.zh-CN.md:table:b54a3a65ff3bd06b5ac48f685d8b370c5efc286467dc5bf32fd62d5b6385f582": {
+      "kind": "table",
+      "source": "<500 (缓存命中95%+)",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "b54a3a65ff3bd06b5ac48f685d8b370c5efc286467dc5bf32fd62d5b6385f582",
+      "translation": "<500 (cache hit 95%+)",
+      "updated_at": 1783238675
+    },
     "README.zh-CN.md:table:b87e67c7dae039910f79b50feeae0daee49f29066618cf35637550c34f5a625e": {
       "kind": "table",
       "source": "指标",
@@ -2725,6 +2765,22 @@
       "source_hash": "d8a1c67c9fb5ed444455c27b964de9efc67999177cdcb0c1e02993622eec3fc6",
       "translation": "chat mode",
       "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:f49365618a4d710bfb55d24874004f0124006a0b0d307cdd70444e813b601527": {
+      "kind": "table",
+      "source": "<10ms（N5105，SATA 固态上测试）",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "f49365618a4d710bfb55d24874004f0124006a0b0d307cdd70444e813b601527",
+      "translation": "<10ms (tested on N5105, SATA SSD)",
+      "updated_at": 1783238675
+    },
+    "README.zh-CN.md:table:fbb169a5376de755bf402f921702e72099bbe8c347d17316176a37b3452f2ce9": {
+      "kind": "table",
+      "source": "二进制文件大小",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "fbb169a5376de755bf402f921702e72099bbe8c347d17316176a37b3452f2ce9",
+      "translation": "Binary file size",
+      "updated_at": 1783238675
     },
     "docs/README.md:heading:04a55997533ed4e754cbb599541c5df54f5ea8c60d5c4e750befd52196318380": {
       "kind": "heading",
