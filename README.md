@@ -11,22 +11,36 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 
 ### 1. Lightweight and Efficient
 
-**Ultra-lightweight Go implementation**: ElBot's current local startup time is <10ms (N5105, SATA SSD), with resident memory of about 30MB.
+**Ultra-lightweight Go implementation**:
+
+| Metric | Value |
+| --- | --- |
+| Local startup time | <10ms (N5105, SATA SSD) |
+| Resident memory | ~30MB |
 
 **Token-efficient tool discovery**: Research shows that many ordinary users still primarily use LLM-like products as advanced search engines, writing assistants, and listening objects; frequent tool calls are not the norm for all conversations.
 Reference: Chatterji et al., *How People Use ChatGPT*, NBER, 2025;Yan et al., *ShareChat: A Dataset of Chatbot Conversations in the Wild*, arXiv:2512.17843, 2025。
 
 ElBot does not inject the full schema of all tools by default in every round of conversation, but only exposes `discover_tool` and the names of currently available tools. When the model needs to use a tool, it first discovers the tool details on demand, and then the Agent injects the corresponding schema. Greatly reduces invalid context overhead.
 
-**Chat / Work dual mode**: ElBot distinguishes between chat mode and work mode. chat mode completely removes tools, making it more suitable for daily chatting, companionship, lightweight Q&A, and low-cost conversations; Work mode enables tool discovery and tool calling capabilities for complex tasks. The two modes can be configured with models independently, allowing low-cost models to handle casual chat and powerful models to focus on complex tasks.
+**Chat / Work dual mode**:
+
+| Mode | Tool | Applicable Scenarios |
+| --- | --- | --- |
+| `chat` | No injection | Small talk, companionship, lightweight Q&A, low-cost conversation |
+| `work` | Enable tool discovery and invocation | Complex tasks such as search, files, commands, Cron, Skills, etc. |
+
+The two modes can be configured with models independently, allowing low-cost models to handle small talk and powerful models to focus on complex tasks.
 
 **Layering of resident memory and long-term memory**: Resident memory only saves short, stable information that truly needs to be injected into every round, and internally distinguishes between 'core' (requiring confirmation for modification) and 'normal' (organizable); Longer and more complex memories are queried by the LLM on demand via `long_memory`. Long-term memory uses Markdown source data and SQLite FTS, balancing transparency and retrieval efficiency.
 
 For personal daily use, token consumption per request:
 
-- work mode: <1000
-- chat mode: <500
-- Cache hit: >90%
+| Scenario | Token consumption |
+| --- | --- |
+| work mode | <1000 |
+| chat mode | <500 |
+| Cache hit | >90% |
 
 ### II. Powerful and Extensible
 
