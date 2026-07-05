@@ -21,9 +21,9 @@
       "updated_at": 1783240856
     },
     "docs/concepts.md": {
-      "source_hash": "cfe8dca5bb8928c3cbc1b2157eea84f25898c8a207cac6c4a7de7c2b5b1b5f66",
+      "source_hash": "b9f6b98ec7977a296b7fcccdc91cbb47fff7f709fdf2342bd2fb79e0510ea6c7",
       "target": "docs.en/concepts.md",
-      "updated_at": 1783077374
+      "updated_at": 1783240887
     },
     "docs/configuration.md": {
       "source_hash": "c85d057fe2f8645bd2b8f92c038458a85cda7661215da6484e1182820a3fe2b7",
@@ -5230,6 +5230,14 @@
       "translation": "The final JSON of LLM Cron can attach relative paths of images or files within the current task working directory via __ELBOT_CODE_0__.\n",
       "updated_at": 1781949019
     },
+    "docs/concepts.md:paragraph:6d44113da741d20c4942ea1c332e5f11f6ff9f0a76ebc9185ae1ed36e8d57fa0": {
+      "kind": "paragraph",
+      "source": "冒号也可以写成中文全角冒号 __ELBOT_CODE_0__。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "6d44113da741d20c4942ea1c332e5f11f6ff9f0a76ebc9185ae1ed36e8d57fa0",
+      "translation": "The colon can also be written as a full-width Chinese colon __ELBOT_CODE_0__.\n",
+      "updated_at": 1783240887
+    },
     "docs/concepts.md:paragraph:6e42cc2f1a5cddf15b21787db94f70824aef56dc96fc8d4ad0d88ec625fe1b5a": {
       "kind": "paragraph",
       "source": "本文档解释 ElBot 的主要概念，帮助理解为什么它这样组织对话、工具、上下文和扩展能力。\n",
@@ -5613,6 +5621,14 @@
       "source_hash": "c6097edaa165e063e833bc0c310d26c83898f14e42fa47839288a89c49281128",
       "translation": "Agent Core is the conversation and orchestration center of ElBot, responsible for:\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:c80b27e50bcd682e039be9634d567850c31a8f311dc9e8f347c7b5b919a77d58": {
+      "kind": "paragraph",
+      "source": "工具可用 __ELBOT_CODE_0__ 或简写 __ELBOT_CODE_1__ 预载，Skill 可用 __ELBOT_CODE_2__ 或简写 __ELBOT_CODE_3__ 预载；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "c80b27e50bcd682e039be9634d567850c31a8f311dc9e8f347c7b5b919a77d58",
+      "translation": "Tools can be preloaded using __ELBOT_CODE_0__ or the shorthand __ELBOT_CODE_1__, and Skills can be preloaded using __ELBOT_CODE_2__ or the shorthand __ELBOT_CODE_3__;",
+      "updated_at": 1783240887
     },
     "docs/concepts.md:paragraph:d01dd6b9b007c1c478e3ca11cb4d84ab22fb3ddfe73b8193f6a649b115e9ecfe": {
       "kind": "paragraph",
