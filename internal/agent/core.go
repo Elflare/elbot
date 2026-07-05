@@ -307,6 +307,7 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 			}
 		}
 	}()
+	woken := a.messageWakeup(ctx, llm.SegmentsTextOnly(segments))
 	event, err := a.runHook(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
 	if err != nil {
 		return err
@@ -322,6 +323,12 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 	segments = event.Message.Segments
 	ctx = withInboundSegments(ctx, segments)
 	text = llm.SegmentsTextOnly(segments)
+	if !woken {
+		return nil
+	}
+	text = a.stripWakeupPrefix(ctx, text)
+	segments = replaceInboundTextSegments(ctx, text)
+	ctx = withInboundSegments(ctx, segments)
 	if a.commands.IsCommand(text) {
 		session, sessionErr := a.sessions.Current(ctx, a.scope(ctx))
 		if sessionErr == nil && a.turns.Snapshot(session.ID).Phase == turn.PhaseAwaitRiskConfirm && isRiskConfirmationCommand(text, a.commands) {
@@ -522,6 +529,9 @@ func (a *Agent) SetOutputManager(manager delivery.Manager) {
 func (a *Agent) SetHookManager(manager hook.Manager) {
 	if manager == nil {
 		manager = hook.NoopManager{}
+	}
+	if defaultManager, ok := manager.(*hook.DefaultManager); ok {
+		defaultManager.SetWakeupFunc(a.hookWakeup)
 	}
 	a.hooks = manager
 }

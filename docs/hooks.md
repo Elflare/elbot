@@ -35,7 +35,32 @@ name = "stable_debug_name"          # 必填，用于日志和审计
 on = "hook.point"                   # 必填，Hook 点
 enabled = true                      # 可选，默认 true
 priority = 1000                     # 可选，值越小越先执行
+require_wakeup = true               # 可选，默认 true；false 表示未唤起消息也可触发
 ```
+
+### 唤起要求
+
+`platform.message.received` 规则默认只处理已唤起消息，兼容旧行为。已唤起通常包括私聊、slash 命令、命中唤起词、at 机器人、回复机器人消息。
+
+如果希望 Hook 被动监听普通群消息，设置：
+
+```toml
+require_wakeup = false
+```
+
+示例：
+
+```toml
+[[rules]]
+name = "passive_cat_ping"
+on = "platform.message.received"
+require_wakeup = false
+match = [{ field = "message.text", op = "contains", value = "猫" }]
+action = "send"
+text = "检测到猫。"
+```
+
+处理顺序是：先运行 `platform.message.received` Hook；发送 Hook outputs；如果规则设置 `consume = true`，本次消息到此结束，不进入命令或 LLM；如果未 consume，则只有已唤起消息才继续进入命令或 LLM。也就是说，`require_wakeup = false` 可以让 Hook 看见未唤起消息，但不会自动让 LLM 处理群里所有消息。
 
 ### 条件匹配
 

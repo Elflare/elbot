@@ -46,6 +46,7 @@ type Rule struct {
 	On              string           `toml:"on"`
 	Priority        int              `toml:"priority"`
 	Enabled         *bool            `toml:"enabled"`
+	RequireWakeup   *bool            `toml:"require_wakeup"`
 	If              string           `toml:"if"`
 	Op              string           `toml:"op"`
 	Value           string           `toml:"value"`
@@ -175,11 +176,12 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 				detail = fmt.Sprintf("%s\n\n(role partition %d/%d)", detail, roleIndex+1, len(registrations))
 			}
 			if err := registrar.Register(hook.Registration{
-				Point:    hook.Point(rule.On),
-				Priority: priority,
-				Name:     regName,
-				Match:    match,
-				Detail:   detail,
+				Point:         hook.Point(rule.On),
+				Priority:      priority,
+				Name:          regName,
+				Match:         match,
+				Detail:        detail,
+				RequireWakeup: rule.RequireWakeup,
 				Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 					return m.runRule(ctx, rule, event)
 				}),
@@ -995,6 +997,9 @@ func formatRuleDetail(rule Rule) string {
 	}
 	if rule.StopPropagation {
 		sb.WriteString("\nstop_propagation: true")
+	}
+	if rule.RequireWakeup != nil && !*rule.RequireWakeup {
+		sb.WriteString("\nrequire_wakeup: false")
 	}
 	if rule.Priority != 0 {
 		sb.WriteString(fmt.Sprintf("\npriority: %d", rule.Priority))

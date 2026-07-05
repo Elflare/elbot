@@ -386,6 +386,7 @@ $hook_config:str=~/.config/elbot/plugins/hooks.toml
 ** outputs JSON：outputs 数组每项格式同 send segments；text 可选，action 设 field 时用 text 覆写该字段
 ** elvena JSON：必须是完整 Elvena 请求，UTF-8 编码，经内部 Elvena Bus 投递
 ** 角色字段：roles 同时匹配内部角色和群身份；actor_roles 只匹配 superadmin/user；group_roles 只匹配 owner/admin/member
+** 唤起字段：require_wakeup 默认 true；在 platform.message.received 上设为 false 可监听未 at、未命中唤起词、未回复机器人的普通群消息，但不会自动让 LLM 处理该消息
 ** 控制字段：consume=true 阻止后续 slash 命令和 LLM 处理；stop_propagation=true 阻止同 Hook 点后续规则执行，二者都与 on/name/match/actions 等字段平级
 ** 模板变量：platform.name/scope_id/user_id/message_id/reply_to_message_id、actor.id/user_id/role、message.text/content_text、llm.text/raw_text/latest_user_text、tool.arguments/result、actions.<name>.result/error；regex 捕获组用 match.regex.0.group.1 或命名组 match.regex.0.<name>
 ** 先判断需求适合的 Hook 点，只使用本 Skill 列出的 Hook 点；选择 always、单条件 if/op/value 或 match 多条件，不混用互斥写法
@@ -461,6 +462,7 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # on = "hook.point"
 # enabled = true          # optional, default true
 # priority = 1000        # optional, smaller runs earlier
+# require_wakeup = true  # optional, default true; false allows passive group messages.
 #
 # Single condition:
 # if = "message.text"
@@ -520,6 +522,11 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # message.text/content_text/role
 # llm.text/raw_text/latest_user_text/latest_user_content_text/provider/model
 # tool.name/arguments/result/risk
+#
+# require_wakeup=false on platform.message.received lets a rule observe ordinary
+# group messages that did not mention or wake the bot. Hook outputs may still be
+# sent, but command/LLM processing only continues for woken messages unless the
+# rule consumes the message first.
 #
 # Editable fields:
 # platform.message.received / agent.input.prepared: message.text

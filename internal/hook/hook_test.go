@@ -139,7 +139,7 @@ func TestManagerLogsNamedHook(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	logs := buf.String()
-for _, want := range []string{"hook triggered", "test.logger", "before_text=before", "after_text=after", "raw_text=raw"} {
+	for _, want := range []string{"hook triggered", "test.logger", "before_text=before", "after_text=after", "raw_text=raw"} {
 		if !strings.Contains(logs, want) {
 			t.Fatalf("logs missing %q:\n%s", want, logs)
 		}
@@ -209,6 +209,50 @@ func TestManagerPassesRegexMatchContext(t *testing.T) {
 	match := got.Regex[0]
 	if match.Text != "mute alice 10" || match.Named["target"] != "alice" || match.Named["minutes"] != "10" {
 		t.Fatalf("match = %#v", match)
+	}
+}
+
+func TestManagerFiltersByWakeupRequirement(t *testing.T) {
+	manager := NewManager()
+	manager.SetWakeupFunc(func(context.Context, Event) bool { return false })
+	calls := []string{}
+	allowPassive := false
+	if err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "default", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+		calls = append(calls, "default")
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register default: %v", err)
+	}
+	if err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "passive", Match: Always(), RequireWakeup: &allowPassive, Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+		calls = append(calls, "passive")
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register passive: %v", err)
+	}
+
+	if _, err := manager.Run(context.Background(), Event{Point: PointPlatformMessageReceived}); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !reflect.DeepEqual(calls, []string{"passive"}) {
+		t.Fatalf("calls = %#v", calls)
+	}
+}
+
+func TestManagerRunsWakeupRequiredHookWhenWakeupUnknown(t *testing.T) {
+	manager := NewManager()
+	called := false
+	if err := manager.Register(Registration{Point: PointPlatformConnected, Name: "connected", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+		called = true
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	if _, err := manager.Run(context.Background(), Event{Point: PointPlatformConnected}); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected hook to run when no wakeup function is configured")
 	}
 }
 
