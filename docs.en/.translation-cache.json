@@ -16,9 +16,9 @@
       "updated_at": 1782901148
     },
     "docs/commands.md": {
-      "source_hash": "29ec4e349dce65e989d20ff11c7275410c5c3278aba104045082e3380045ddf9",
+      "source_hash": "8de40446f7289da6926ba0fddb2dfa20faedf85fb934f72ecdd33113fab56342",
       "target": "docs.en/commands.md",
-      "updated_at": 1783129396
+      "updated_at": 1783240856
     },
     "docs/concepts.md": {
       "source_hash": "cfe8dca5bb8928c3cbc1b2157eea84f25898c8a207cac6c4a7de7c2b5b1b5f66",
@@ -3190,6 +3190,14 @@
       "translation": "Specific prompts are subject to the runtime output.\n",
       "updated_at": 1781514917
     },
+    "docs/commands.md:paragraph:4e18ac914a4e3692063ecee7f62d63117a10dd0bde42f4c98dd7797e5e0b4a4f": {
+      "kind": "paragraph",
+      "source": "聊天中也可以用 __ELBOT_CODE_0__（简写 __ELBOT_CODE_1__）预载工具，或用 __ELBOT_CODE_2__（简写 __ELBOT_CODE_3__）把 Skill 文档加入本轮消息并预载对应运行 wrapper。",
+      "source_file": "docs/commands.md",
+      "source_hash": "4e18ac914a4e3692063ecee7f62d63117a10dd0bde42f4c98dd7797e5e0b4a4f",
+      "translation": "In a chat, you can also use __ELBOT_CODE_0__ (shorthand __ELBOT_CODE_1__) to preload tools, or use __ELBOT_CODE_2__ (shorthand __ELBOT_CODE_3__) to add Skill documentation to the current round of messages and preload the corresponding runtime wrapper.",
+      "updated_at": 1783240856
+    },
     "docs/commands.md:paragraph:5b9cabfff69460916096d38fb82201e002fbcb5568abd8509ff01023e3949fb3": {
       "kind": "paragraph",
       "source": "聊天中也可以用 __ELBOT_CODE_0__ 预载工具，或用 __ELBOT_CODE_1__ 把 Skill 文档加入本轮消息并预载对应运行 wrapper。\n",
@@ -3197,6 +3205,14 @@
       "source_hash": "5b9cabfff69460916096d38fb82201e002fbcb5568abd8509ff01023e3949fb3",
       "translation": "In chat, you can also use __ELBOT_CODE_0__ to preload tools, or use __ELBOT_CODE_1__ to add Skill documentation to the current round of messages and preload the corresponding runtime wrapper.\n",
       "updated_at": 1782205939
+    },
+    "docs/commands.md:paragraph:6d44113da741d20c4942ea1c332e5f11f6ff9f0a76ebc9185ae1ed36e8d57fa0": {
+      "kind": "paragraph",
+      "source": "冒号也可以写成中文全角冒号 __ELBOT_CODE_0__。\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "6d44113da741d20c4942ea1c332e5f11f6ff9f0a76ebc9185ae1ed36e8d57fa0",
+      "translation": "The colon can also be written as a full-width Chinese colon __ELBOT_CODE_0__.\n",
+      "updated_at": 1783240856
     },
     "docs/commands.md:paragraph:764d85255caea7854ea163538429dadf782cc6b076d052916bdf4ef1622e85c8": {
       "kind": "paragraph",
