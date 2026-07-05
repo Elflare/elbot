@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "975ecfcca0584c3376c799cc3d4c9e479e7d9ea9596b1b0dd01b0ac2916dda8e",
+      "source_hash": "2283288320bb952ad4878cc2c7ca4ac658b1e7c1fe2ff7c74a28ff7b9e2417a7",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783240947
+      "updated_at": 1783259210
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -542,6 +542,14 @@
       "translation": "Fixed an issue where long tool chains would be silently stopped by the Agent's internal 5-minute default request timeout; users will now be notified upon a full round timeout.",
       "updated_at": 1782574901
     },
+    "CHANGELOG.md:list:7ff1dc77d2f0a19513c6a38379495c29e0ec9a01d825648d16fe385f93d260c3": {
+      "kind": "list",
+      "source": "Hook rules 新增 __ELBOT_CODE_0__ 配置；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "7ff1dc77d2f0a19513c6a38379495c29e0ec9a01d825648d16fe385f93d260c3",
+      "translation": "Added __ELBOT_CODE_0__ configuration to Hook rules;",
+      "updated_at": 1783259210
+    },
     "CHANGELOG.md:list:804a20b9431dfd46cceb9e146447ae9d772bc44fb8be93b5eefe7498ef357e15": {
       "kind": "list",
       "source": "修复 QQ OneBot 发图片/表情/文件时 API 超时可能取消 WebSocket 写入并触发断线重连的问题；媒体发送失败时会尝试发送同目标文字提示。",
@@ -677,6 +685,14 @@
       "source_hash": "94517b0f2275ae4197728d971ccfb2f1a1a20c60f53243383ab713f3cbd12b8b",
       "translation": "**Hook Layer**: Inserts extension logic at key points such as Agent input, LLM request/response, and platform sending; includes built-in rule Hooks and resident memory Hooks.",
       "updated_at": 1782376912
+    },
+    "CHANGELOG.md:list:9814a084d8f0e645764924f1a2542de2327dbcefa63668f8ecfd68078a261b80": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 规则可设置为 __ELBOT_CODE_1__ 监听未 at、未命中唤起词、未回复机器人的普通群消息，同时不会自动唤起命令或 LLM。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "9814a084d8f0e645764924f1a2542de2327dbcefa63668f8ecfd68078a261b80",
+      "translation": "__ELBOT_CODE_0__ rules can be set to __ELBOT_CODE_1__ to listen to ordinary group messages that are not @-mentioned, do not match wake-up words, and are not replies to the bot, without automatically triggering commands or the LLM.",
+      "updated_at": 1783259210
     },
     "CHANGELOG.md:list:982e715f6a8e303465255744e60589d5a93f784f31e748fbdb313c57f07a56e8": {
       "kind": "list",
