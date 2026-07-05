@@ -1,14 +1,14 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "9b0fc5f5c2458fff2433636e997ff5f7972f0fc5010a71c2b6377792418c3fe4",
+      "source_hash": "975ecfcca0584c3376c799cc3d4c9e479e7d9ea9596b1b0dd01b0ac2916dda8e",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783236675
+      "updated_at": 1783240947
     },
     "README.zh-CN.md": {
-      "source_hash": "fde351343cfb60c30d73a049f65e33ed2bc234075111034d1ed609863885ab22",
+      "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
       "target": "README.md",
-      "updated_at": 1783238675
+      "updated_at": 1783240822
     },
     "docs/README.md": {
       "source_hash": "c9b034abef2aab701d3e0609800a6f9e55c86b4888558a4d9a0894eaffb74cf5",
@@ -16,19 +16,19 @@
       "updated_at": 1782901148
     },
     "docs/commands.md": {
-      "source_hash": "29ec4e349dce65e989d20ff11c7275410c5c3278aba104045082e3380045ddf9",
+      "source_hash": "8de40446f7289da6926ba0fddb2dfa20faedf85fb934f72ecdd33113fab56342",
       "target": "docs.en/commands.md",
-      "updated_at": 1783129396
+      "updated_at": 1783240856
     },
     "docs/concepts.md": {
-      "source_hash": "cfe8dca5bb8928c3cbc1b2157eea84f25898c8a207cac6c4a7de7c2b5b1b5f66",
+      "source_hash": "b9f6b98ec7977a296b7fcccdc91cbb47fff7f709fdf2342bd2fb79e0510ea6c7",
       "target": "docs.en/concepts.md",
-      "updated_at": 1783077374
+      "updated_at": 1783240887
     },
     "docs/configuration.md": {
-      "source_hash": "c85d057fe2f8645bd2b8f92c038458a85cda7661215da6484e1182820a3fe2b7",
+      "source_hash": "d35248fa027fd712a825f66dbb803567a731e3ee51ac044864c906bffb7ddd96",
       "target": "docs.en/configuration.md",
-      "updated_at": 1783236651
+      "updated_at": 1783240925
     },
     "docs/elnis-usage.md": {
       "source_hash": "c8d68d4fc76a453ea4008b304cc4d8243b8b2ebc634494f4fb92016b8040c782",
@@ -909,6 +909,14 @@
       "source_hash": "e03c11cbeaa6e58ce0ad4ee4ead359f83057de19807ef8393bca9bd67954a45c",
       "translation": "Refactor AgentSkill: remove the py wrapper and execute the corresponding skill directly via shell; also support adding __ELBOT_CODE_0__ in the AgentSkill root directory to register it as a normal tool, facilitating the LLM's direct call of structured parameters.",
       "updated_at": 1783148277
+    },
+    "CHANGELOG.md:list:e0c0fad68a12ce290b23ee8b605343887e494815742088a454977ceb93b7379c": {
+      "kind": "list",
+      "source": "内联预载支持工具简写 __ELBOT_CODE_0__ 和 Skill 简写 __ELBOT_CODE_1__，并兼容中文全角冒号 __ELBOT_CODE_2__。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "e0c0fad68a12ce290b23ee8b605343887e494815742088a454977ceb93b7379c",
+      "translation": "Inline preloading supports tool shorthand __ELBOT_CODE_0__ and Skill shorthand __ELBOT_CODE_1__, and is compatible with Chinese full-width colon __ELBOT_CODE_2__.",
+      "updated_at": 1783240947
     },
     "CHANGELOG.md:list:e165546c948bdf490fc215f58e25acceb7984ceaf0f31ee3e8d974b08e43db4f": {
       "kind": "list",
@@ -2630,6 +2638,14 @@
       "translation": "<1000 (cache hit 90%+)",
       "updated_at": 1783238675
     },
+    "README.zh-CN.md:table:13a5017263fb90bfe54eec46aec21d20910c53fa0350e47e3d2bea5f2a416f0e": {
+      "kind": "table",
+      "source": "<1000 （后续缓存命中90%+）",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "13a5017263fb90bfe54eec46aec21d20910c53fa0350e47e3d2bea5f2a416f0e",
+      "translation": "<1000 (subsequent cache hit 90%+)",
+      "updated_at": 1783240822
+    },
     "README.zh-CN.md:table:1eaa58c7df0514e272b2d3a037d3ddd46b7512c252bedddc1a01131a5559e8ed": {
       "kind": "table",
       "source": "第一次请求 Token 消耗",
@@ -2653,6 +2669,14 @@
       "source_hash": "274b2621cfd1a630b28b6a23a25c2776dc0cfd5b53c9430c40a7d868e1ca61cc",
       "translation": "Small talk, companionship, lightweight Q&A, low-cost conversation",
       "updated_at": 1783238361
+    },
+    "README.zh-CN.md:table:3f1a2cfd5a1355aa1841d236999c29b0d5490cd254c46b794a43fb78d6122d76": {
+      "kind": "table",
+      "source": "<500 （后续缓存命中95%+）",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "3f1a2cfd5a1355aa1841d236999c29b0d5490cd254c46b794a43fb78d6122d76",
+      "translation": "<500 (subsequent cache hit 95%+)",
+      "updated_at": 1783240822
     },
     "README.zh-CN.md:table:47a270081ab2892f63d740bc61cd7b17b04d9d3947b3123be8db9e0d97c12c83": {
       "kind": "table",
@@ -3174,6 +3198,14 @@
       "translation": "Specific prompts are subject to the runtime output.\n",
       "updated_at": 1781514917
     },
+    "docs/commands.md:paragraph:4e18ac914a4e3692063ecee7f62d63117a10dd0bde42f4c98dd7797e5e0b4a4f": {
+      "kind": "paragraph",
+      "source": "聊天中也可以用 __ELBOT_CODE_0__（简写 __ELBOT_CODE_1__）预载工具，或用 __ELBOT_CODE_2__（简写 __ELBOT_CODE_3__）把 Skill 文档加入本轮消息并预载对应运行 wrapper。",
+      "source_file": "docs/commands.md",
+      "source_hash": "4e18ac914a4e3692063ecee7f62d63117a10dd0bde42f4c98dd7797e5e0b4a4f",
+      "translation": "In a chat, you can also use __ELBOT_CODE_0__ (shorthand __ELBOT_CODE_1__) to preload tools, or use __ELBOT_CODE_2__ (shorthand __ELBOT_CODE_3__) to add Skill documentation to the current round of messages and preload the corresponding runtime wrapper.",
+      "updated_at": 1783240856
+    },
     "docs/commands.md:paragraph:5b9cabfff69460916096d38fb82201e002fbcb5568abd8509ff01023e3949fb3": {
       "kind": "paragraph",
       "source": "聊天中也可以用 __ELBOT_CODE_0__ 预载工具，或用 __ELBOT_CODE_1__ 把 Skill 文档加入本轮消息并预载对应运行 wrapper。\n",
@@ -3181,6 +3213,14 @@
       "source_hash": "5b9cabfff69460916096d38fb82201e002fbcb5568abd8509ff01023e3949fb3",
       "translation": "In chat, you can also use __ELBOT_CODE_0__ to preload tools, or use __ELBOT_CODE_1__ to add Skill documentation to the current round of messages and preload the corresponding runtime wrapper.\n",
       "updated_at": 1782205939
+    },
+    "docs/commands.md:paragraph:6d44113da741d20c4942ea1c332e5f11f6ff9f0a76ebc9185ae1ed36e8d57fa0": {
+      "kind": "paragraph",
+      "source": "冒号也可以写成中文全角冒号 __ELBOT_CODE_0__。\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "6d44113da741d20c4942ea1c332e5f11f6ff9f0a76ebc9185ae1ed36e8d57fa0",
+      "translation": "The colon can also be written as a full-width Chinese colon __ELBOT_CODE_0__.\n",
+      "updated_at": 1783240856
     },
     "docs/commands.md:paragraph:764d85255caea7854ea163538429dadf782cc6b076d052916bdf4ef1622e85c8": {
       "kind": "paragraph",
@@ -5198,6 +5238,14 @@
       "translation": "The final JSON of LLM Cron can attach relative paths of images or files within the current task working directory via __ELBOT_CODE_0__.\n",
       "updated_at": 1781949019
     },
+    "docs/concepts.md:paragraph:6d44113da741d20c4942ea1c332e5f11f6ff9f0a76ebc9185ae1ed36e8d57fa0": {
+      "kind": "paragraph",
+      "source": "冒号也可以写成中文全角冒号 __ELBOT_CODE_0__。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "6d44113da741d20c4942ea1c332e5f11f6ff9f0a76ebc9185ae1ed36e8d57fa0",
+      "translation": "The colon can also be written as a full-width Chinese colon __ELBOT_CODE_0__.\n",
+      "updated_at": 1783240887
+    },
     "docs/concepts.md:paragraph:6e42cc2f1a5cddf15b21787db94f70824aef56dc96fc8d4ad0d88ec625fe1b5a": {
       "kind": "paragraph",
       "source": "本文档解释 ElBot 的主要概念，帮助理解为什么它这样组织对话、工具、上下文和扩展能力。\n",
@@ -5581,6 +5629,14 @@
       "source_hash": "c6097edaa165e063e833bc0c310d26c83898f14e42fa47839288a89c49281128",
       "translation": "Agent Core is the conversation and orchestration center of ElBot, responsible for:\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:c80b27e50bcd682e039be9634d567850c31a8f311dc9e8f347c7b5b919a77d58": {
+      "kind": "paragraph",
+      "source": "工具可用 __ELBOT_CODE_0__ 或简写 __ELBOT_CODE_1__ 预载，Skill 可用 __ELBOT_CODE_2__ 或简写 __ELBOT_CODE_3__ 预载；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "c80b27e50bcd682e039be9634d567850c31a8f311dc9e8f347c7b5b919a77d58",
+      "translation": "Tools can be preloaded using __ELBOT_CODE_0__ or the shorthand __ELBOT_CODE_1__, and Skills can be preloaded using __ELBOT_CODE_2__ or the shorthand __ELBOT_CODE_3__;",
+      "updated_at": 1783240887
     },
     "docs/concepts.md:paragraph:d01dd6b9b007c1c478e3ca11cb4d84ab22fb3ddfe73b8193f6a649b115e9ecfe": {
       "kind": "paragraph",
@@ -6582,6 +6638,14 @@
       "translation": "In __ELBOT_CODE_0__ mode, __ELBOT_CODE_1__ can be specified as __ELBOT_CODE_2__, __ELBOT_CODE_3__, or __ELBOT_CODE_4__ in Elvena requests;",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:list:6469645d8528221a2de47802bb56388902fba57b4612e918006f63b801f39de9": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：定义一个可在聊天里使用的 tag，例如 __ELBOT_CODE_1__ 对应 __ELBOT_CODE_2__ 或简写 __ELBOT_CODE_3__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "6469645d8528221a2de47802bb56388902fba57b4612e918006f63b801f39de9",
+      "translation": "__ELBOT_CODE_0__: Define a tag that can be used in chat, for example, __ELBOT_CODE_1__ corresponds to __ELBOT_CODE_2__ or the shorthand __ELBOT_CODE_3__.",
+      "updated_at": 1783240925
+    },
     "docs/configuration.md:list:64a8a1c8b969b46ec95861a59fcc2342b5120b90e2cd82c47e01d7a2603ea634": {
       "kind": "list",
       "source": "prompt 文本从 __ELBOT_CODE_0__ 动态读取；文件变更后影响后续请求，行为类似 __ELBOT_CODE_1__。",
@@ -6709,6 +6773,14 @@
       "source_hash": "75a4c5af06fd40f543549456b5ffc8311c622d2c85f949a8b1ce5c7b9be86b0f",
       "translation": "A single LLM streaming request is not limited by this field.",
       "updated_at": 1782574866
+    },
+    "docs/configuration.md:list:7b608c2d93f0ad25046af3b1afe1af872d5718000a2f8a085e0f619e3911e77b": {
+      "kind": "list",
+      "source": "直接 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 只预载指定工具，不激活 tag prompt。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "7b608c2d93f0ad25046af3b1afe1af872d5718000a2f8a085e0f619e3911e77b",
+      "translation": "Directly using __ELBOT_CODE_0__ or __ELBOT_CODE_1__ only preloads the specified tools and does not activate the tag prompt.",
+      "updated_at": 1783240925
     },
     "docs/configuration.md:list:7cc26368a77adcbf24f1f6fa9179b3153c2ad5f8f6668088265c08c40cca1f01": {
       "kind": "list",
@@ -7013,6 +7085,14 @@
       "source_hash": "cc9160065de2fb04c5602cbf88b5dc07fb2614f95bd622d66c97f929f4ca7eec",
       "translation": "__ELBOT_CODE_0__: Optional, defaults to __ELBOT_CODE_1__; when set to __ELBOT_CODE_2__, the Skill root path will be exposed upon discovering the Skill.",
       "updated_at": 1783074493
+    },
+    "docs/configuration.md:list:cd02714853c03f05346600d33d768618785d928ce5f2ea7fafd46d777c223ac9": {
+      "kind": "list",
+      "source": "只有 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 成功命中至少一个工具后，当前 Session 才会激活该 tag 的 prompt。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "cd02714853c03f05346600d33d768618785d928ce5f2ea7fafd46d777c223ac9",
+      "translation": "Only after __ELBOT_CODE_0__ or __ELBOT_CODE_1__ successfully hits at least one tool will the current Session activate the prompt for that tag.",
+      "updated_at": 1783240925
     },
     "docs/configuration.md:list:cf7eddd7a224ea51aed16f2d053820de607268d3e15169de46e6dc74feeb25a3": {
       "kind": "list",
