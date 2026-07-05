@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "975ecfcca0584c3376c799cc3d4c9e479e7d9ea9596b1b0dd01b0ac2916dda8e",
+      "source_hash": "2283288320bb952ad4878cc2c7ca4ac658b1e7c1fe2ff7c74a28ff7b9e2417a7",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783240947
+      "updated_at": 1783259210
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -56,9 +56,9 @@
       "updated_at": 1782901461
     },
     "docs/hooks.md": {
-      "source_hash": "501f1741997bdc58597d02c5e7a84a953dc6ee28354fd486d1a94737edd0c863",
+      "source_hash": "75c6e3edccf4d2d5d834ec06d7233bcc1bf5602a753ad4583a5720b9952b5b7b",
       "target": "docs.en/hooks.md",
-      "updated_at": 1783095081
+      "updated_at": 1783259169
     }
   },
   "segments": {
@@ -542,6 +542,14 @@
       "translation": "Fixed an issue where long tool chains would be silently stopped by the Agent's internal 5-minute default request timeout; users will now be notified upon a full round timeout.",
       "updated_at": 1782574901
     },
+    "CHANGELOG.md:list:7ff1dc77d2f0a19513c6a38379495c29e0ec9a01d825648d16fe385f93d260c3": {
+      "kind": "list",
+      "source": "Hook rules 新增 __ELBOT_CODE_0__ 配置；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "7ff1dc77d2f0a19513c6a38379495c29e0ec9a01d825648d16fe385f93d260c3",
+      "translation": "Added __ELBOT_CODE_0__ configuration to Hook rules;",
+      "updated_at": 1783259210
+    },
     "CHANGELOG.md:list:804a20b9431dfd46cceb9e146447ae9d772bc44fb8be93b5eefe7498ef357e15": {
       "kind": "list",
       "source": "修复 QQ OneBot 发图片/表情/文件时 API 超时可能取消 WebSocket 写入并触发断线重连的问题；媒体发送失败时会尝试发送同目标文字提示。",
@@ -677,6 +685,14 @@
       "source_hash": "94517b0f2275ae4197728d971ccfb2f1a1a20c60f53243383ab713f3cbd12b8b",
       "translation": "**Hook Layer**: Inserts extension logic at key points such as Agent input, LLM request/response, and platform sending; includes built-in rule Hooks and resident memory Hooks.",
       "updated_at": 1782376912
+    },
+    "CHANGELOG.md:list:9814a084d8f0e645764924f1a2542de2327dbcefa63668f8ecfd68078a261b80": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 规则可设置为 __ELBOT_CODE_1__ 监听未 at、未命中唤起词、未回复机器人的普通群消息，同时不会自动唤起命令或 LLM。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "9814a084d8f0e645764924f1a2542de2327dbcefa63668f8ecfd68078a261b80",
+      "translation": "__ELBOT_CODE_0__ rules can be set to __ELBOT_CODE_1__ to listen to ordinary group messages that are not @-mentioned, do not match wake-up words, and are not replies to the bot, without automatically triggering commands or the LLM.",
+      "updated_at": 1783259210
     },
     "CHANGELOG.md:list:982e715f6a8e303465255744e60589d5a93f784f31e748fbdb313c57f07a56e8": {
       "kind": "list",
@@ -12494,6 +12510,14 @@
       "translation": "Single action",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:code-comment:toml:66cecf99b3e48737e8d076a30c7f31d2fe52fbbb311d646a361fc5da5e35d1a7": {
+      "kind": "code-comment:toml",
+      "source": "可选，默认 true；false 表示未唤起消息也可触发",
+      "source_file": "docs/hooks.md",
+      "source_hash": "66cecf99b3e48737e8d076a30c7f31d2fe52fbbb311d646a361fc5da5e35d1a7",
+      "translation": "Optional, defaults to true; false indicates that non-triggered messages can also trigger it",
+      "updated_at": 1783259169
+    },
     "docs/hooks.md:code-comment:toml:cad876ad15a3f281a1e8832752bc3948dc99ef2fc4678ebf33fa1db47381c2a2": {
       "kind": "code-comment:toml",
       "source": "多 actions",
@@ -12589,6 +12613,14 @@
       "source_hash": "8d2335ad6c3ec64461ec19e866c1734af5dd619fcc7d6275e1f90298b8574776",
       "translation": "Condition Matching",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:heading:8e1abf9a468fe6cf298fb60a46c68b320bf46486e7208a063a995f3927691888": {
+      "kind": "heading",
+      "source": "唤起要求",
+      "source_file": "docs/hooks.md",
+      "source_hash": "8e1abf9a468fe6cf298fb60a46c68b320bf46486e7208a063a995f3927691888",
+      "translation": "Trigger Requirements",
+      "updated_at": 1783259169
     },
     "docs/hooks.md:heading:8f3dc37d3379170682d5b1a898548aaa97cb5dc4d86a81e988d88c3bddcace8b": {
       "kind": "heading",
@@ -12806,6 +12838,14 @@
       "translation": "Platform connection events.",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:paragraph:0210da0c8771c158cbeb166bdba7efd1624a17b2af1c62c3fc18e699898c9cb3": {
+      "kind": "paragraph",
+      "source": "处理顺序是：先运行 __ELBOT_CODE_0__ Hook；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "0210da0c8771c158cbeb166bdba7efd1624a17b2af1c62c3fc18e699898c9cb3",
+      "translation": "The processing order is: first run the __ELBOT_CODE_0__ Hook;",
+      "updated_at": 1783259169
+    },
     "docs/hooks.md:paragraph:0c322990a3a232cdb3351714624191224d2b98fb4a2756acd155674e02c45e39": {
       "kind": "paragraph",
       "source": "脚本 stdout 必须是完整 Elvena JSON 请求，ElBot 会通过内部 Elvena Bus 交给 Elnis，而不是重新走 HTTP token 鉴权。\n",
@@ -12829,6 +12869,14 @@
       "source_hash": "16930dcae02fdc38005c1661b6492aa666b274f2328d9994bd4f1d646a835393",
       "translation": "__ELBOT_CODE_0__ action generates an output intent, which is sent to the platform by the Output Manager.\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:1803b43f3e1365c6453e5701fc52ae2bf57cfc492587212fcff42353923e939f": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 规则默认只处理已唤起消息，兼容旧行为。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "1803b43f3e1365c6453e5701fc52ae2bf57cfc492587212fcff42353923e939f",
+      "translation": "__ELBOT_CODE_0__ rules process only triggered messages by default, for compatibility with legacy behavior.",
+      "updated_at": 1783259169
     },
     "docs/hooks.md:paragraph:1ae3dfe38349535fb7fe8358c8cd7cdbf5d7ede4ff516eee3f943c4418f122c1": {
       "kind": "paragraph",
@@ -12861,6 +12909,14 @@
       "source_hash": "2d1b19911c8683cf2e1a79642443864bc02b4833d6193e77251aac8b2d97e11f",
       "translation": "Capture groups from regex matches can be referenced via __ELBOT_CODE_0__ or named groups __ELBOT_CODE_1__.\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:2de7d89ce95d47727ec9f52c2df4419155890440b8812b4cb610692517d1d6e3": {
+      "kind": "paragraph",
+      "source": "已唤起通常包括私聊、slash 命令、命中唤起词、at 机器人、回复机器人消息。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "2de7d89ce95d47727ec9f52c2df4419155890440b8812b4cb610692517d1d6e3",
+      "translation": "Triggered messages typically include private chats, slash commands, matching trigger words, @mentioning the bot, or replying to the bot's messages.\n",
+      "updated_at": 1783259169
     },
     "docs/hooks.md:paragraph:3283c79ad7d7846eadee0313d246d1621ac108297e8d9981b5d9a87426438992": {
       "kind": "paragraph",
@@ -12966,6 +13022,14 @@
       "translation": "For example, __ELBOT_CODE_0__ will directly execute __ELBOT_CODE_1__, and __ELBOT_CODE_2__ will directly execute __ELBOT_CODE_3__;",
       "updated_at": 1783095081
     },
+    "docs/hooks.md:paragraph:6d8e7389eeb30e7a7330998a00ec7d422863f5f504a04e403a633ae1aeb07073": {
+      "kind": "paragraph",
+      "source": "发送 Hook outputs；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "6d8e7389eeb30e7a7330998a00ec7d422863f5f504a04e403a633ae1aeb07073",
+      "translation": "send Hook outputs;",
+      "updated_at": 1783259169
+    },
     "docs/hooks.md:paragraph:6f210325506bd304ba78b003bbcd796a23e344791ce275e03bf0b05bbdc9bb8c": {
       "kind": "paragraph",
       "source": "规则 Hook 的 __ELBOT_CODE_0__ action 可以设置 __ELBOT_CODE_1__。",
@@ -12981,6 +13045,14 @@
       "source_hash": "72951dfc6191226b7f93f65b5e11a3ccb3b42704be6a0eb4605842a9508e73e9",
       "translation": "Rules can use __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__ for permission partitioning:\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:751676c6acd39a2b97c19b84ee9d0f1c0162faee39db3b93b6e5a7967ec8b2fe": {
+      "kind": "paragraph",
+      "source": "也就是说，__ELBOT_CODE_0__ 可以让 Hook 看见未唤起消息，但不会自动让 LLM 处理群里所有消息。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "751676c6acd39a2b97c19b84ee9d0f1c0162faee39db3b93b6e5a7967ec8b2fe",
+      "translation": "In other words, __ELBOT_CODE_0__ allows the Hook to see untriggered messages, but it will not automatically let the LLM process all messages in the group.\n",
+      "updated_at": 1783259169
     },
     "docs/hooks.md:paragraph:756c7814a424497de394ec5ad5af74ec6c99f42eec8d13e422db3652524a2c84": {
       "kind": "paragraph",
@@ -13029,6 +13101,22 @@
       "source_hash": "8dc0b277889a46a8d15ef0d8920c3661a0bf63f7a82f5036a2250175c1a99b94",
       "translation": "In the Hook, the platform message ID of the quoted message can be read via __ELBOT_CODE_0__, and the message ID that triggered the current Hook can be read via __ELBOT_CODE_1__.\n",
       "updated_at": 1782395417
+    },
+    "docs/hooks.md:paragraph:8f9bae6e5f3294ecf0e981ec7c187fde86708770eebae4b5aba22c936a07d096": {
+      "kind": "paragraph",
+      "source": "下面内容在ElBot第一次运行时自动生成在 __ELBOT_CODE_0__，用于让 LLM 按需求生成规则 Hook 配置和可选 exec 脚本。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "8f9bae6e5f3294ecf0e981ec7c187fde86708770eebae4b5aba22c936a07d096",
+      "translation": "The following content is automatically generated in __ELBOT_CODE_0__ when ElBot runs for the first time, to allow the LLM to generate rule Hook configurations and optional exec scripts as needed.\n",
+      "updated_at": 1783259169
+    },
+    "docs/hooks.md:paragraph:91154873dc9ff6080acdb39d01fd985658ed208656598d83c0c7ec0aeaf28510": {
+      "kind": "paragraph",
+      "source": "如果规则设置 __ELBOT_CODE_0__，本次消息到此结束，不进入命令或 LLM；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "91154873dc9ff6080acdb39d01fd985658ed208656598d83c0c7ec0aeaf28510",
+      "translation": "If the rule sets __ELBOT_CODE_0__, the current message ends here and will not enter the command or LLM;",
+      "updated_at": 1783259169
     },
     "docs/hooks.md:paragraph:98c36d56db840c16e4706887a55f78b029ff7a4e2ecd3fcc349c8a4a161edcca": {
       "kind": "paragraph",
@@ -13093,6 +13181,14 @@
       "source_hash": "b77e74c6ed83f86214035c7377697af2a84bdc30a69c3240a32ccc9ba2515822",
       "translation": "Text fields and exec command/stdin support __ELBOT_CODE_0__ template rendering:\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:be0c7c253c39272562b582871732c13e881d12c40ca549ee2f108cf1318d98d3": {
+      "kind": "paragraph",
+      "source": "如果希望 Hook 被动监听普通群消息，设置：\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "be0c7c253c39272562b582871732c13e881d12c40ca549ee2f108cf1318d98d3",
+      "translation": "If you want the Hook to passively listen to ordinary group messages, set:\n",
+      "updated_at": 1783259169
     },
     "docs/hooks.md:paragraph:bf09daac97e47a6d4dbf4d9d1f7b7c7f8351e81e87d58ef80c710de034c27990": {
       "kind": "paragraph",
@@ -13181,6 +13277,22 @@
       "source_hash": "f3d9af3c12dc8514c6679be1574201d0d40dc74413c4f23720a8ff2440a22062",
       "translation": "The segment format is unified with the [Elvena Protocol](elnis-usage.md#segments多模态消息段), with additional support for local __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__ types:\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:f740b40b8ff8baf010a6209fccbfcb34d3fd1458470caed36048d95abae38c45": {
+      "kind": "paragraph",
+      "source": "如果未 consume，则只有已唤起消息才继续进入命令或 LLM。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "f740b40b8ff8baf010a6209fccbfcb34d3fd1458470caed36048d95abae38c45",
+      "translation": "If not consumed, then only triggered messages will continue to enter the command or LLM.",
+      "updated_at": 1783259169
+    },
+    "docs/hooks.md:paragraph:f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f": {
+      "kind": "paragraph",
+      "source": "示例：\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f",
+      "translation": "Example:\n",
+      "updated_at": 1783259169
     },
     "docs/hooks.md:paragraph:f9da09fe524acf7135ad3694debb852da3e37f45c574b015b7cd2e431d2ac89a": {
       "kind": "paragraph",

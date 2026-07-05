@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - QQ OneBot now supports automatically saving inbound files from superadmins in private chats; messages containing only files will only reply with the save path or a "too large" prompt without invoking the LLM; group files are not automatically saved.
 - The `/requests` command now displays the current execution stage (preparing/llm/tool/sending) and the duration of each stage for every turn, allowing you to distinguish whether the LLM is slow or the platform delivery is stuck.
 - Inline preloading supports tool shorthand `@t:<name-or-tag>` and Skill shorthand `@s:<name>`, and is compatible with Chinese full-width colon `：`.
+- Added `require_wakeup` configuration to Hook rules; `platform.message.received` rules can be set to `false` to listen to ordinary group messages that are not @-mentioned, do not match wake-up words, and are not replies to the bot, without automatically triggering commands or the LLM.
 
 ### Changed
 

@@ -37,7 +37,32 @@ name = "stable_debug_name"          # Required, used for logs and audit
 on = "hook.point"                   # Required, Hook point
 enabled = true                      # Optional, defaults to true
 priority = 1000                     # Optional, smaller values are executed first
+require_wakeup = true               # Optional, defaults to true; false indicates that non-triggered messages can also trigger it
 ```
+
+### Trigger Requirements
+
+`platform.message.received` rules process only triggered messages by default, for compatibility with legacy behavior. Triggered messages typically include private chats, slash commands, matching trigger words, @mentioning the bot, or replying to the bot's messages.
+
+If you want the Hook to passively listen to ordinary group messages, set:
+
+```toml
+require_wakeup = false
+```
+
+Example:
+
+```toml
+[[rules]]
+name = "passive_cat_ping"
+on = "platform.message.received"
+require_wakeup = false
+match = [{ field = "message.text", op = "contains", value = "猫" }]
+action = "send"
+text = "检测到猫。"
+```
+
+The processing order is: first run the `platform.message.received` Hook; send Hook outputs; If the rule sets `consume = true`, the current message ends here and will not enter the command or LLM; If not consumed, then only triggered messages will continue to enter the command or LLM. In other words, `require_wakeup = false` allows the Hook to see untriggered messages, but it will not automatically let the LLM process all messages in the group.
 
 ### Condition Matching
 
@@ -495,7 +520,7 @@ if __name__ == "__main__":
 
 ### write_elbot_hook Skill Example
 
-You can save the following content as `skills/go/write_elbot_hook/SKILL.elyph`, which allows the LLM to generate rule Hook configurations and optional exec scripts as needed.
+The following content is automatically generated in `skills/go/write_elbot_hook/SKILL.elyph` when ElBot runs for the first time, to allow the LLM to generate rule Hook configurations and optional exec scripts as needed.
 
 ```text
 #skill write_elbot_hook - 根据需求编写 ElBot 规则 Hook
