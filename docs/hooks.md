@@ -493,7 +493,7 @@ if __name__ == "__main__":
 
 ### write_elbot_hook Skill 示例
 
-可以把下面内容保存为 `skills/go/write_elbot_hook/SKILL.elyph`，用于让 LLM 按需求生成规则 Hook 配置和可选 exec 脚本。
+下面内容在ElBot第一次运行时自动生成在 `skills/go/write_elbot_hook/SKILL.elyph`，用于让 LLM 按需求生成规则 Hook 配置和可选 exec 脚本。
 
 ```text
 #skill write_elbot_hook - 根据需求编写 ElBot 规则 Hook
