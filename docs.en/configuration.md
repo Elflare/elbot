@@ -31,7 +31,7 @@ The main configuration is searched in the following order upon startup:
 
 The content of the automatically generated default configuration comes from the program's built-in assets, and existing files will not be overwritten. Automatic generation is only triggered when there are no explicit `--config` and `ELBOT_CONFIG_FILE`. If the explicitly specified configuration path does not exist, ElBot will report an error instead of silently generating it, to avoid masking path spelling errors.
 
-Files automatically generated for the first time include: `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `memories.toml`, `elnis.toml`, and `.env.example`; At the same time, the directories `skills/`, `skills/agent/`, `skills/go/`, `plugins/`, and `long_memory/` will be created. Existing files will not be overwritten. `elnis.toml` is `enabled=false` by default and will not start HTTP listening on the first run. Skill scanning is executed with a delay after startup; when `discover_tool` is used for the first time, it will either wait as a fallback or trigger a scan.
+The files automatically generated for the first time include: `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `memories.toml`, `elnis.toml`, `skills/agent/agent_skill_creator/SKILL.md`, `skills/go/write_elbot_hook/SKILL.elyph`, and `.env.example`; At the same time, the directories `skills/`, `skills/agent/`, `skills/go/`, `plugins/`, and `long_memory/` will be created. Existing files will not be overwritten. `elnis.toml` is `enabled=false` by default and will not start HTTP listening on the first run. Skill scanning is executed with a delay after startup; when `discover_tool` is used for the first time, it will either wait as a fallback or trigger a scan.
 
 
 During the development phase, you can run it directly to use the platform configuration directory; default configurations will be automatically generated upon the first run:
@@ -187,7 +187,7 @@ token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
 
 ## AgentSkill Tooling Configuration
 
-AgentSkill is used as documentation by default. To register `skills/agent/<skill>/` as a regular tool, add `ELBOT_SKILL.toml` to the root directory of that Skill:
+By default, AgentSkill is used only as documentation; If the script is executed according to the documentation, the risk is borne by the tools actually called, such as `shell`. To register `skills/agent/<skill>/` as a regular tool, add `ELBOT_SKILL.toml` to the root directory of that Skill; the tool risk is subject to the `risk` within it. The default generated `agent_skill_creator` Skill can be used to view instructions and assist in creating the file:
 
 ```toml
 risk = "medium"
