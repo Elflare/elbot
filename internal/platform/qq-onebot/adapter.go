@@ -481,12 +481,16 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 			CommandPrefixes: a.cfg.CommandPrefixes,
 			Fetch:           a.referenceFetcher(event),
 		})
-		text = ref.Text
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
+		messageCtx.ContextText = ref.Text
+		messageCtx.Reply = ref.Reply
 		referenceSegments = ref.ReferenceSegments
+		if strings.TrimSpace(ref.Text) != "" {
+			messageCtx.ContextSegments = finalMessageSegments(ref.Text, currentSegments, referenceSegments)
+		}
 	}
-	messageCtx.Segments = finalMessageSegments(text, currentSegments, referenceSegments)
+	messageCtx.Segments = finalMessageSegments(text, currentSegments, nil)
 	msgCtx = platform.WithMessageContext(ctx, messageCtx)
 	msgCtx = context.WithValue(msgCtx, targetKey{}, target{MessageType: event.MessageType, UserID: event.UserID, GroupID: event.GroupID})
 	if len(attachments.TooLarge) > 0 {
@@ -625,7 +629,7 @@ func (a *Adapter) referenceFetcher(event Event) func(context.Context, string) (r
 		if data.UserID != 0 {
 			label = "引用：" + displayName(data.Sender, data.UserID)
 		}
-		return refcontext.ReferencedMessage{Label: label, Text: ref.Text, Segments: a.resolveImageSegments(ctx, ref.Segments)}, true
+		return refcontext.ReferencedMessage{SenderID: strconv.FormatInt(data.UserID, 10), Label: label, Text: ref.Text, Segments: a.resolveImageSegments(ctx, ref.Segments)}, true
 	}
 }
 

@@ -977,6 +977,28 @@ func readTextField(event hook.Event, field string) string {
 		return llm.SegmentsTextOnly(event.Message.Segments)
 	case "message.content_text":
 		return llm.SegmentsContentText(event.Message.Segments)
+	case "message.raw_text":
+		return event.Message.RawText
+	case "message.reply.message_id":
+		if event.Message.Reply == nil {
+			return ""
+		}
+		return event.Message.Reply.MessageID
+	case "message.reply.sender_id":
+		if event.Message.Reply == nil {
+			return ""
+		}
+		return event.Message.Reply.SenderID
+	case "message.reply.text":
+		if event.Message.Reply == nil {
+			return ""
+		}
+		return event.Message.Reply.Text
+	case "message.reply.content_text":
+		if event.Message.Reply == nil {
+			return ""
+		}
+		return event.Message.Reply.ContentText
 	case "llm.text":
 		return event.LLM.Text
 	case "llm.raw_text":
@@ -1222,6 +1244,7 @@ func render(text string, event hook.Event, state state) string {
 		"{{actor.group_role}}":             event.Actor.GroupRole,
 		"{{message.text}}":                 llm.SegmentsTextOnly(event.Message.Segments),
 		"{{message.content_text}}":         llm.SegmentsContentText(event.Message.Segments),
+		"{{message.raw_text}}":             event.Message.RawText,
 		"{{llm.text}}":                     event.LLM.Text,
 		"{{llm.raw_text}}":                 event.LLM.RawText,
 		"{{llm.latest_user_text}}":         llm.LatestUserSegmentTextOnly(event.LLM.Messages),
@@ -1244,6 +1267,12 @@ func render(text string, event hook.Event, state state) string {
 	for name, result := range state.Actions {
 		replacements["{{actions."+name+".result}}"] = result.Result
 		replacements["{{actions."+name+".error}}"] = result.Error
+	}
+	if event.Message.Reply != nil {
+		replacements["{{message.reply.message_id}}"] = event.Message.Reply.MessageID
+		replacements["{{message.reply.sender_id}}"] = event.Message.Reply.SenderID
+		replacements["{{message.reply.text}}"] = event.Message.Reply.Text
+		replacements["{{message.reply.content_text}}"] = event.Message.Reply.ContentText
 	}
 	for old, newText := range replacements {
 		text = strings.ReplaceAll(text, old, newText)

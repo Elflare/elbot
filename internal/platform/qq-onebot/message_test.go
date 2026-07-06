@@ -562,15 +562,35 @@ func TestForkableReferenceMessageIDRequiresOwnAssistantSession(t *testing.T) {
 
 	handler = &captureHandler{}
 	adapter.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: []byte(`[{"type":"reply","data":{"id":"other-assistant"}},{"type":"text","data":{"text":"继续"}}]`)})
-	if handler.text != "[引用：bot]：other answer\n\n继续" {
-		t.Fatalf("other assistant reference text = %q", handler.text)
+	msgCtx, ok = platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	if handler.text != "继续" {
+		t.Fatalf("other assistant current text = %q, want current", handler.text)
+	}
+	if msgCtx.ContextText != "[引用：bot]：other answer\n\n继续" {
+		t.Fatalf("other assistant context text = %q", msgCtx.ContextText)
+	}
+	if msgCtx.Reply.MessageID != "other-assistant" || msgCtx.Reply.Text != "other answer" {
+		t.Fatalf("other assistant reply = %#v", msgCtx.Reply)
 	}
 
 	handler = &captureHandler{}
 	adapter.cfg.TriggerKeywords = []string{"芙莉丝"}
 	adapter.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: []byte(`[{"type":"reply","data":{"id":"own-user"}},{"type":"text","data":{"text":"芙莉丝 继续"}}]`)})
-	if handler.text != "[引用]：own user\n\n芙莉丝 继续" {
-		t.Fatalf("user reference text = %q", handler.text)
+	msgCtx, ok = platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	if handler.text != "芙莉丝 继续" {
+		t.Fatalf("user current text = %q, want current", handler.text)
+	}
+	if msgCtx.ContextText != "[引用]：own user\n\n芙莉丝 继续" {
+		t.Fatalf("user context text = %q", msgCtx.ContextText)
+	}
+	if msgCtx.Reply.MessageID != "own-user" || msgCtx.Reply.Text != "own user" {
+		t.Fatalf("user reply = %#v", msgCtx.Reply)
 	}
 }
 

@@ -112,8 +112,18 @@ type RequestContext struct {
 type MessagePayload struct {
 	ID       string               `json:"id"`
 	Role     string               `json:"role"`
+	RawText  string               `json:"raw_text,omitempty"`
+	Reply    *MessageReplyPayload `json:"reply,omitempty"`
 	Segments []llm.MessageSegment `json:"segments,omitempty"`
 	Messages []llm.LLMMessage     `json:"messages,omitempty"`
+}
+
+type MessageReplyPayload struct {
+	MessageID   string               `json:"message_id"`
+	SenderID    string               `json:"sender_id,omitempty"`
+	Text        string               `json:"text,omitempty"`
+	ContentText string               `json:"content_text,omitempty"`
+	Segments    []llm.MessageSegment `json:"segments,omitempty"`
 }
 
 type LLMPayload struct {
@@ -357,7 +367,8 @@ func needsMatchValue(op string) bool {
 func knownMatchField(field string) bool {
 	switch strings.TrimSpace(field) {
 	case "platform.name", "platform.scope_id", "platform.user_id", "platform.conversation_id", "platform.message_id", "platform.reply_to_message_id",
-		"message.text", "message.content_text", "message.role",
+		"message.text", "message.content_text", "message.raw_text", "message.role",
+		"message.reply.message_id", "message.reply.sender_id", "message.reply.text", "message.reply.content_text",
 		"llm.text", "llm.raw_text", "llm.latest_user_text", "llm.latest_user_content_text", "llm.provider", "llm.model",
 		"tool.name", "tool.arguments", "tool.result", "tool.risk",
 		"actor.id", "actor.user_id", "actor.role", "actor.group_role", "actor.display_name",
@@ -387,8 +398,30 @@ func matchField(event Event, field string) string {
 		return llm.SegmentsTextOnly(event.Message.Segments)
 	case "message.content_text":
 		return llm.SegmentsContentText(event.Message.Segments)
+	case "message.raw_text":
+		return event.Message.RawText
 	case "message.role":
 		return event.Message.Role
+	case "message.reply.message_id":
+		if event.Message.Reply == nil {
+			return ""
+		}
+		return event.Message.Reply.MessageID
+	case "message.reply.sender_id":
+		if event.Message.Reply == nil {
+			return ""
+		}
+		return event.Message.Reply.SenderID
+	case "message.reply.text":
+		if event.Message.Reply == nil {
+			return ""
+		}
+		return event.Message.Reply.Text
+	case "message.reply.content_text":
+		if event.Message.Reply == nil {
+			return ""
+		}
+		return event.Message.Reply.ContentText
 	case "llm.text":
 		return event.LLM.Text
 	case "llm.raw_text":

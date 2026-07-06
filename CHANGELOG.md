@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 修复 Windows 下 `shell` 工具回退到 PowerShell 时中文输出可能乱码的问题。
 - 修复 Windows 下无 bash 时 shell 命令的 bash AST 解析失败导致风险分类、沙盒校验、目录切换拦截和警告分析全部异常的问题；PowerShell 环境下跳过 AST 解析，风险分类直接返回高风险需用户确认。
 - OneBot 发送图片失败时，不再出现可见 fallback，但仍会记录日志。
+- 修复回复 Hook/斜杠命令等通知消息时，引用 fallback 文本污染 `platform.message.received` 的 `message.text`，导致撤回类 Hook 无法匹配的问题；Hook 现在可通过 `message.reply.*` 读取结构化引用信息。
 
 
 

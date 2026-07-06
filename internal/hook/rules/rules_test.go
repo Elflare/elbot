@@ -340,6 +340,33 @@ func TestTextActionsKeepMediaSegmentsInPlace(t *testing.T) {
 	}
 }
 
+func TestSendActionRendersMessageRawTextAndReplyFields(t *testing.T) {
+	module := Module{}
+	event := hook.Event{
+		Point: hook.PointPlatformMessageReceived,
+		Message: hook.MessagePayload{
+			RawText:  "撤回",
+			Segments: llm.TextSegments("撤回"),
+			Reply: &hook.MessageReplyPayload{
+				MessageID:   "notice-1",
+				SenderID:    "bot",
+				Text:        "通知",
+				ContentText: "通知",
+			},
+		},
+	}
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{
+		Type: "send",
+		Text: "{{message.raw_text}}/{{message.reply.message_id}}/{{message.reply.sender_id}}/{{message.reply.text}}/{{message.reply.content_text}}",
+	}}}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 || got.Outputs[0].Text != "撤回/notice-1/bot/通知/通知" {
+		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+}
+
 func TestReplaceActionFirstAndAllAcrossTextSegments(t *testing.T) {
 	module := Module{}
 	event := hook.Event{

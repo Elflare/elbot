@@ -512,6 +512,87 @@ func TestWokenGroupMessageStripsTriggerKeywordBeforeLLM(t *testing.T) {
 	}
 }
 
+func TestPlatformMessageReceivedHookMatchesCurrentTextWithReplyContext(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	allowPassive := false
+	if err := manager.Register(hook.Registration{
+		Point:         hook.PointPlatformMessageReceived,
+		Name:          "test.recall.reply",
+		RequireWakeup: &allowPassive,
+		Match: hook.Match{Conditions: []hook.Condition{
+			{Field: "message.text", Op: hook.MatchFull, Value: "撤回"},
+			{Field: "message.reply.message_id", Op: hook.MatchExists},
+		}},
+		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+			if event.Message.RawText != "撤回" {
+				t.Fatalf("raw text = %q, want current text", event.Message.RawText)
+			}
+			if event.Message.Reply == nil || event.Message.Reply.Text != "通知内容" {
+				t.Fatalf("reply = %#v, want structured reply", event.Message.Reply)
+			}
+			event.Outputs = append(event.Outputs, delivery.Text("recalled"))
+			event.Control.Consume = true
+			return event, nil
+		}),
+	}); err != nil {
+		t.Fatalf("Register recall hook: %v", err)
+	}
+	a.SetHookManager(manager)
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:         "qqonebot",
+		ScopeID:          "group:9",
+		ConversationKind: platform.ConversationGroup,
+		Sender:           p,
+		RawText:          "撤回",
+		Segments:         []platform.MessageSegment{{Type: platform.SegmentText, Text: "撤回"}},
+		ContextText:      "[引用：通知]：通知内容\n\n撤回",
+		ContextSegments:  []platform.MessageSegment{{Type: platform.SegmentText, Text: "[引用：通知]：通知内容\n\n撤回"}},
+		Reply:            platform.ReplyContext{MessageID: "notice-1", SenderID: "bot", Text: "通知内容", Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "通知内容"}}},
+	})
+
+	if err := a.HandleMessage(ctx, "撤回"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if got := p.out.String(); got != "recalled" {
+		t.Fatalf("platform output = %q, want recalled", got)
+	}
+	if got := len(f.chatRequests()); got != 0 {
+		t.Fatalf("chat requests = %d, want 0", got)
+	}
+}
+
+func TestReplyContextFallbackStillReachesLLMWhenNotConsumed(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:         "qqonebot",
+		ScopeID:          "group:9",
+		ConversationKind: platform.ConversationGroup,
+		Sender:           p,
+		RawText:          "芙莉丝 继续",
+		Segments:         []platform.MessageSegment{{Type: platform.SegmentText, Text: "芙莉丝 继续"}},
+		ContextText:      "[引用：通知]：通知内容\n\n芙莉丝 继续",
+		ContextSegments:  []platform.MessageSegment{{Type: platform.SegmentText, Text: "[引用：通知]：通知内容\n\n芙莉丝 继续"}},
+		Reply:            platform.ReplyContext{MessageID: "notice-1", Text: "通知内容", Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "通知内容"}}},
+		TriggerKeywords:  []string{"芙莉丝"},
+	})
+
+	if err := a.HandleMessage(ctx, "芙莉丝 继续"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d, want 1", len(requests))
+	}
+	if got := llm.LatestUserSegmentTextOnly(requests[0].Messages); got != "[引用：通知]：通知内容\n\n继续" {
+		t.Fatalf("latest user text = %q", got)
+	}
+}
+
 func TestPlatformMessageReceivedHookConsumeSkipsCommandAndLLM(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
