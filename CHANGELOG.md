@@ -20,7 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - QQ OneBot 支持自动保存私聊超级管理员入站文件；纯文件消息只回复保存路径或过大提示，不唤起 LLM，群文件不自动保存。
 - `/requests` 命令现在展示每个 turn 的当前运行阶段（preparing/llm/tool/sending）和阶段耗时，可区分 LLM 慢还是平台发送卡住。
 - 内联预载支持工具简写 `@t:<name-or-tag>` 和 Skill 简写 `@s:<name>`，并兼容中文全角冒号 `：`。
-- Hook rules 新增 `require_wakeup` 配置；`platform.message.received` 规则可设置为 `false` 监听未 at、未命中唤起词、未回复机器人的普通群消息，同时不会自动唤起命令或 LLM。
 
 ### Changed
 
@@ -35,13 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - QQ OneBot、QQ 官方、Telegram 平台断线重连改为指数退避（3s 起，翻倍，封顶 10s）并日志降级：连续失败只在首次记 warn，恢复后记 info，不再每轮刷屏。
 - 平台媒体输出支持在 `path` 中识别 `base64://`、`file://`、`http://`、`https://` 源；普通本地路径仍按平台默认方式处理。
 - qq 官方收到图片现在直接使用url而不是base64
-- Hook rules 的 `exec` action 改为 `hook.v1` 行协议：脚本从 stdin 读取 init frame，向 stdout 写 `output`、`request`、`done` 或 `error` frame；旧 `stdout`/`stdin` 配置字段不再支持。规则 Hook 也支持通过 `[[plugins]]` 加载插件目录内的 `hook.toml`，并支持 `at` / `reply` 输出段。
+- 重构hook，详情见docs。
+- Windows 下 `shell` 工具优先使用 `pwsh`，其次 `bash`，最后回退到 `powershell.exe`。
 
 ### Fixed
 
 - 修复 `workspace` 工具设置目录时不支持 `~`、`~/path` 和 Windows `~\path` 主目录路径的问题。
 - QQ OneBot 私聊文件段缺少 `url` 时会调用 `get_file`；若返回下载地址则保存到 ElBot，若只返回 OneBot 本地路径则直接提示该路径。
-- 修复 Hook rules `exec` action 在 Windows 下固定依赖 `sh` 导致执行失败的问题；现在 `command` 会直接按程序和参数执行。
 - QQ OneBot 入站 @ 消息现在会优先显示群名片，其次普通昵称，格式为 `[at 名字 qq:<id>]`，无法获取时才回退 QQ 号。
 - 修复 Windows 下 `shell` 工具回退到 PowerShell 时中文输出可能乱码的问题。
 - 修复 Windows 下无 bash 时 shell 命令的 bash AST 解析失败导致风险分类、沙盒校验、目录切换拦截和警告分析全部异常的问题；PowerShell 环境下跳过 AST 解析，风险分类直接返回高风险需用户确认。

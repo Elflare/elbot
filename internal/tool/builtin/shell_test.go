@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -12,6 +13,16 @@ import (
 
 	"elbot/internal/tool"
 )
+
+func TestMain(m *testing.M) {
+	if runtime.GOOS == "windows" {
+		if _, err := exec.LookPath("bash"); err == nil {
+			windowsShellResolved = windowsShell{name: "bash", args: []string{"-lc"}}
+			windowsShellOnce.Do(func() {})
+		}
+	}
+	os.Exit(m.Run())
+}
 
 func TestShellToolMissingCmdHintsExpectedArgument(t *testing.T) {
 	shell := NewShellTool()
@@ -304,6 +315,69 @@ func TestPowerShellUTF8Command(t *testing.T) {
 	}
 	if got := powershellUTF8Command("bash", cmd); got != cmd {
 		t.Fatalf("bash command = %q, want %q", got, cmd)
+	}
+}
+
+func TestDetectWindowsShellPrefersPwshThenBash(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows only")
+	}
+
+	root := t.TempDir()
+	pwshDir := filepath.Join(root, "pwsh")
+	bashDir := filepath.Join(root, "bash")
+	emptyDir := filepath.Join(root, "empty")
+	for _, dir := range []string{pwshDir, bashDir, emptyDir} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range []string{
+		filepath.Join(pwshDir, "pwsh.exe"),
+		filepath.Join(bashDir, "bash.exe"),
+	} {
+		if err := os.WriteFile(path, []byte{}, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tests := []struct {
+		name     string
+		path     string
+		wantName string
+		wantArgs []string
+	}{
+		{
+			name:     "pwsh before bash",
+			path:     pwshDir + string(os.PathListSeparator) + bashDir,
+			wantName: "pwsh",
+			wantArgs: []string{"-NoProfile", "-Command"},
+		},
+		{
+			name:     "bash when pwsh missing",
+			path:     bashDir,
+			wantName: "bash",
+			wantArgs: []string{"-lc"},
+		},
+		{
+			name:     "powershell fallback",
+			path:     emptyDir,
+			wantName: "powershell.exe",
+			wantArgs: []string{"-NoProfile", "-Command"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("PATH", tt.path)
+			got := detectWindowsShell()
+			if got.name != tt.wantName {
+				t.Fatalf("shell name = %q, want %q", got.name, tt.wantName)
+			}
+			if strings.Join(got.args, "\x00") != strings.Join(tt.wantArgs, "\x00") {
+				t.Fatalf("shell args = %v, want %v", got.args, tt.wantArgs)
+			}
+		})
 	}
 }
 
