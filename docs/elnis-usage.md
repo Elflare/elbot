@@ -245,13 +245,6 @@ Elvena v3 支持通过 `segments` 字段发送图片和文件。`content` 保留
 | `calls` | 否 | Elvena v3 动作调用数组。`kind="raw"` 透传平台原始 API，`kind="capability"` 使用统一能力名；首批 capability 包含 `message.recall`、`member.mute`、`chat.leave`。direct 请求只有 `calls` 且没有 `content`/`segments` 时只执行 API，不发送消息。 |
 | `meta` | 否 | 原始补充数据，只做记录和 prompt 附加。 |
 
-
-
-## Hook exec 投递 Elvena
-
-规则 Hook 的 `exec` action 可以设置 `stdout = "elvena"`，脚本 stdout 作为 Elvena JSON 请求经内部 Elvena Bus 交给 Elnis，不走 HTTP token 鉴权。完整配置说明见 [Hook](hooks.md#hook-exec-投递-elvena)。
-
-
 HTTP 响应只表示 Elnis 已接收或拒绝请求，不等待 LLM 完成。
 
 

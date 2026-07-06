@@ -2134,11 +2134,13 @@ func TestToolCallAssistantEmoticonSendsBeforeFinalResponse(t *testing.T) {
 	if err := os.WriteFile(imgPath, []byte("fake"), 0o644); err != nil {
 		t.Fatalf("write emoticon image: %v", err)
 	}
-	// Shell script: read stdin JSON, extract [[微笑]], output JSON with emoticon output and cleaned text.
+	// Shell script: read init frame, emit an emoticon output frame and cleaned text.
 	scriptPath := filepath.Join(configDir, "emoticon_extract.sh")
 	script := `#!/bin/sh
+read init
 img=$(ls emoticons/微笑/*.png 2>/dev/null | head -1)
-printf '{"outputs":[{"kind":"emoticon","name":"微笑","path":"'"$img"'"}],"text":"我先查一下"}'
+printf '{"type":"output","output":{"kind":"emoticon","name":"微笑","path":"%s"}}\n' "$img"
+printf '{"type":"done","message":{"text":"我先查一下"}}\n'
 `
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write script: %v", err)
@@ -2152,7 +2154,7 @@ if = "llm.text"
 op = "regex"
 value = "\\[\\[[^\\[\\]]+\\]\\]"
 actions = [
-  { type = "exec", command = "sh ./emoticon_extract.sh", stdout = "outputs", field = "llm.text", timing = "%s" },
+  { name = "extract", type = "exec", command = "sh ./emoticon_extract.sh", field = "llm.text", timing = "%s" },
 ]
 `, delivery.DeliveryAfterAssistant)
 	if err := os.WriteFile(filepath.Join(configDir, "hooks.toml"), []byte(hooksTOML), 0o644); err != nil {
@@ -3558,8 +3560,10 @@ func TestEmoticonHookSendsSeparateOutputAndCleansPersistedContent(t *testing.T) 
 	}
 	scriptPath := filepath.Join(configDir, "emoticon_extract.sh")
 	script := `#!/bin/sh
+read init
 img=$(ls emoticons/微笑/*.png 2>/dev/null | head -1)
-printf '{"outputs":[{"kind":"emoticon","name":"微笑","path":"'"$img"'"}],"text":"像这样~"}'
+printf '{"type":"output","output":{"kind":"emoticon","name":"微笑","path":"%s"}}\n' "$img"
+printf '{"type":"done","message":{"text":"像这样~"}}\n'
 `
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write script: %v", err)
@@ -3573,7 +3577,7 @@ if = "llm.text"
 op = "regex"
 value = "\\[\\[[^\\[\\]]+\\]\\]"
 actions = [
-  { type = "exec", command = "sh ./emoticon_extract.sh", stdout = "outputs", field = "llm.text" },
+  { name = "extract", type = "exec", command = "sh ./emoticon_extract.sh", field = "llm.text" },
 ]
 `
 	if err := os.WriteFile(filepath.Join(configDir, "hooks.toml"), []byte(hooksTOML), 0o644); err != nil {

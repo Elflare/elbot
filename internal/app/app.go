@@ -295,7 +295,13 @@ func Run(ctx context.Context, opts Options) error {
 			logs.Audit().Log(context.Background(), slog.LevelInfo, "audit event", append([]any{"event", event}, attrs...)...)
 		},
 		Notify: notifyHookIssue,
-		Elvena: elvenaBus,
+		Send: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+			if agt == nil {
+				return delivery.Receipt{}, fmt.Errorf("agent is not ready")
+			}
+			return agt.SendNoticeOutput(ctx, target, out)
+		},
+		PlatformCallers: hookPlatformCallerResolver{runtimes: platforms.Runtimes},
 	}
 	if err := hookbuiltin.RegisterAll(hooks, hookOpts); err != nil {
 		logger.Error("hook registration failed", "error", err)

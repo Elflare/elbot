@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"elbot/internal/elvena"
+	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	residentmemory "elbot/internal/hook/plugins/resident_memory"
 	"elbot/internal/hook/rules"
@@ -23,7 +23,8 @@ type Options struct {
 	Logger              *slog.Logger
 	Audit               func(event string, attrs ...any)
 	Notify              func(context.Context, string)
-	Elvena              elvena.Dispatcher
+	Send                func(context.Context, delivery.Target, delivery.Output) (delivery.Receipt, error)
+	PlatformCallers     rules.PlatformCallerResolver
 }
 
 func RegisterAll(registrar hook.Registrar, opts Options) error {
@@ -34,13 +35,14 @@ func RegisterAll(registrar hook.Registrar, opts Options) error {
 	registerModule(registrar, opts, "resident_memory", residentMemoryModule)
 
 	rulesModule, err := rules.NewModule(rules.Options{
-		ConfigDir: opts.ConfigDir,
-		Tools:     opts.Tools,
-		Policy:    opts.Policy,
-		Logger:    opts.Logger,
-		Audit:     opts.Audit,
-		Notify:    opts.Notify,
-		Elvena:    opts.Elvena,
+		ConfigDir:       opts.ConfigDir,
+		Tools:           opts.Tools,
+		Policy:          opts.Policy,
+		Logger:          opts.Logger,
+		Audit:           opts.Audit,
+		Notify:          opts.Notify,
+		Send:            opts.Send,
+		PlatformCallers: opts.PlatformCallers,
 	})
 	if err == nil {
 		registerModule(registrar, opts, "rules", rulesModule)
