@@ -244,6 +244,8 @@ actions = [
 
 exec 使用 `hook.v1` 行协议：ElBot 启动脚本后，会先向 stdin 写一行 init JSON；脚本向 stdout 每行写一个 JSON frame，最后必须写 `done` 或 `error` frame。stderr 会进入日志，不作为协议数据。
 
+脚本只应读取 stdin 第一行作为 init frame，不要 read-all、read-to-end、`fread` 到 EOF 或循环读到 EOF；stdin 后续还用于 `request`/`response` frame。脚本写出合法 `done` 或 `error` frame 后应以 0 退出；非 0 exit code 会被视为 exec 进程失败。
+
 ```toml
 actions = [
   { name = "script", type = "exec", command = "uv run script.py", timeout_seconds = 30 },
@@ -405,7 +407,7 @@ stdout frame 结构示例：
 | method | params | 说明 |
 | --- | --- | --- |
 | `platform.call` | `platform`、`api`、`params` | 调用当前平台原始 API；不能跨平台调用 |
-| `output.send` | `output` | 立即发送一个输出并返回 receipt；需要 app 层 sender 可用 |
+| `output.send` | `outputs` | 立即发送 output segment 数组并返回 receipt；需要 app 层 sender 可用 |
 | `message.get_reply` | 无 | 返回当前消息引用/回复的目标消息 ID |
 | `message.get` | 预留 | 当前返回 `available=false` |
 | `hook.log` | 任意 JSON | 写入 Hook 插件日志 |
@@ -679,82 +681,133 @@ if __name__ == "__main__":
 <- $requirement:str!
 <- $script_name:str?
 -> $script_content:str
-?if(windows){
-$hook_config:str=%AppData%/ElBot/plugins/hooks.toml
+?if(windows) {
+  $hook_config:str = %AppData%/ElBot/plugins/hooks.toml
 }
 ?else {
-$hook_config:str=~/.config/elbot/plugins/hooks.toml
-}
-** $requirement 是用户想实现的 Hook 行为，直接修改$hook_config；$script_name 是可选脚本文件名，仅在需要 exec 时使用
-** $script_content 仅在需要 exec 时输出完整脚本，否则说明不需要
-** 主 hooks.toml 只允许顶层 [[plugins]] 和 [[rules]]；严格模式，不允许未知字段、旧字段 stdout/stdin，且同一条 rule 里不要混用 actions=[...] 和 [[rules.actions]]
-** 主 hooks.toml 的 [[plugins]] 字段：name 必填；enabled 可选默认 true；path 可选且必须相对 plugins/，未设置时默认读取 plugins/<name>/hook.toml
-** 插件 hook.toml 只允许顶层 [plugin] 和 [[rules]]；[plugin] 只允许 description；插件 hook.toml 不能再写 [[plugins]] 指向其他 toml，不支持套娃加载
-** 主 hooks.toml 和插件 hook.toml 的 [[rules]] 字段相同：name、on、priority、enabled、require_wakeup、if/op/value、always、match、roles、actor_roles、group_roles、action、actions、field、text、pattern、replace、kind、path、timing、tool、arguments、command、cwd、timeout_seconds、all、target、consume、stop_propagation
-** rule 的 target 字段：target.platform、target.scope_id、target.private_user_id、target.group_id、target.superadmins；未指定 target 时输出到当前上下文
-** rule 的 actions 可用两种写法二选一：内联 actions=[{type=...}]，或多段 [[rules.actions]]；单 action 也可用 action="send" 加 text/kind 等平铺字段
-** Hook 点：platform.connected=平台连接完成；platform.message.received=平台消息刚收到（适合关键词拦截、预处理和 consume）
-** Hook 点：agent.input.prepared=Agent 输入准备后（改写用户输入文本）；llm.turn.prepared=LLM turn 准备阶段（改写本轮 latest user 文本）；llm.request.prepared=LLM 请求发出前（改写 latest user 文本）
-** Hook 点：llm.response.received=LLM 响应收到后（改写 assistant 文本或提取标记）；tool.call.prepared=工具调用执行前（改写 tool.arguments）；tool.call.completed=工具调用完成后（改写 tool.result）
-** Hook 点：agent.output.prepared=Agent 输出准备后（改写 assistant message.text）；agent.turn.output.prepared=本轮最终输出准备后（改写 assistant message.text）；platform.message.sent=平台消息发送后（记录或后处理）；error.occurred=发生错误时（记录或通知）
-** 匹配字段——平台/消息：platform.name、scope_id、user_id、conversation_id、message_id、reply_to_message_id
-** 引用字段说明：platform.message_id 是当前入站平台消息 ID；platform.reply_to_message_id 是当前消息引用/回复的目标平台消息 ID，适合撤回引用消息、引用上下文判断和传给 Elvena calls
-** 匹配字段——Actor：actor.id、actor.user_id、actor.role（superadmin/user）、actor.group_role（owner/admin/member）、actor.display_name
-** 匹配字段——Session/Request：session.id/mode/status、request.id/kind/phase
-** 匹配字段——Message：message.text（部分 Hook 点可编辑）、message.content_text（纯文本聚合，用于匹配）、message.role
-** 匹配字段——LLM：llm.text（可编辑）、llm.raw_text（只匹配不可编辑）、llm.latest_user_text（可编辑）、llm.latest_user_content_text（用于匹配）、llm.provider、llm.model
-** 匹配字段——Tool：tool.name、tool.arguments（可编辑）、tool.result（可编辑）、tool.risk
-** 匹配写法：always=true 无条件匹配（不能与 if/op/value 或 match 混用）；单条件用 if/op/value；多条件 AND 用 match 数组（每项含 field/op/value）
-** 匹配操作：exists=非空、contains=包含 value、fullmatch=完全等于、startswith=以 value 开头、endswith=以 value 结尾、regex=正则匹配（捕获组可用模板引用）
-** 可编辑字段按 Hook 点：platform.message.received 和 agent.input.prepared→message.text；llm.turn.prepared 和 llm.request.prepared→llm.latest_user_text；llm.response.received→llm.text；tool.call.prepared→tool.arguments；tool.call.completed→tool.result；agent.output.prepared、agent.turn.output.prepared、platform.message.sent→assistant message.text；llm.raw_text 只能匹配不能编辑
-** Action 类型：prepend=开头追加、append=末尾追加、replace=替换（可用 pattern/replace/all）、delete=删除（等同 replace 空串）、send=生成输出意图由 Output Manager 发送、tool=调用已注册工具（结果存 actions.<name>.result）、exec=执行本地脚本（使用 hook.v1 行协议）
-** send 字段：kind（text/image/file/emoticon/at，默认 text）、text（文本内容）、timing（immediate/after_assistant，默认 immediate）、target（输出目标，未指定时用当前上下文）、outputs（多段输出数组）
-** output segment 字段：kind（text/image/file/emoticon/at/reply）、text（内容或附加文本）、url（HTTP/HTTPS）、path（相对 plugins/ 或插件目录的本地路径）、base64（编码数据）、name（文件名或表情名）、mime_type（MIME 提示）、user_id（at）、message_id（reply）
-** exec 字段：command（命令）、cwd（可覆盖工作目录；插件规则的相对 cwd 不能逃出插件目录）、timeout_seconds（超时）、field（done.message.text 覆写的字段）
-** exec 协议：ElBot 向 stdin 写 init frame；脚本向 stdout 逐行写 JSON frame，支持 output、request、done、error；最后必须写 done 或 error
-** exec init 顶层字段：type=init、version=hook.v1、event=当前 Hook 事件上下文、match=规则匹配上下文、runtime=本次 exec 运行上下文；字段按 Hook 点填充，不相关字段为空/零值/省略
-** exec event 字段：id、point、time、metadata、control.consume、control.stop_propagation、platform、actor、session、request、message、llm、tool、outputs、error
-** exec event.platform：name=平台名；scope_id=平台会话范围ID（由平台适配器生成，通常如 group:<id>、private:<id>）；user_id=发送者用户ID；conversation_id=平台会话ID；message_id=当前入站平台消息ID；reply_to_message_id=当前消息引用/回复目标平台消息ID
-** exec event.actor：id=ElBot内部Actor ID；user_id=平台用户ID；role=superadmin/user；group_role=owner/admin/member/unknown；display_name=显示名
-** exec event.session/request：session.id/mode/title/status；request.id/kind/session_id/phase
-** exec event.message：id、role、segments、messages；脚本读取用户文本优先从 message.segments 中拼接 type=text 的片段，不要假设 init JSON 有 message.text/message.content_text 字段
-** exec event.llm：provider、model、messages、tools、usage、raw_text、text、tool_calls、elapsed_ms；raw_text 是原始响应文本，text 是当前可见/可编辑文本
-** exec event.tool：id、name、arguments、risk、result、error
-** exec output segment 字段：入站 message.segments/llm.messages[].segments 常见 type/text/url/mime_type/name；stdout output frame 的 outputs 字段、request output.send 的 params.outputs、TOML send action 的 outputs 都使用 kind/text/url/path/base64/name/mime_type/user_id/message_id，其中 path 相对 plugins/ 或插件目录解析
-** exec stdout frame 示例：output={"type":"output","outputs":[{"kind":"text","text":"内容"}]}；image={"type":"output","outputs":[{"kind":"image","path":"images/a.png","text":"附加说明"}]}；done={"type":"done","result":"ok","message":{"text":"改写后的文本"}}；error={"type":"error","error":"失败原因"}
-** exec output frame 必须用 outputs 字段放 output segment 对象数组；TOML send action 也只用 outputs=[...]
-** exec match.regex 字段：field、value、text、groups（groups[0] 为完整匹配）、named、start、end
-** exec runtime 字段：plugin_name、plugin_dir、config_path、rule_name、cwd
-** exec request：platform.call 调当前平台 API（params含 platform/api/params，不能跨平台），output.send 立即发送输出（params.outputs 是 output segment 数组，例如 {"type":"request","id":"send-1","method":"output.send","params":{"outputs":[{"kind":"text","text":"立即发送"}]}}），message.get_reply 读取引用消息，message.get 预留，hook.log 写日志；带 id 时会收到 response frame：type=response、id、ok、result 或 error
-** exec done：result 存 actions.<name>.result，error 存 actions.<name>.error，message.text 按 action.field 覆写字段，matched=false 会回滚本规则并跳过后续 action，consume/stop_propagation 可设置控制位
-** 角色字段：roles 同时匹配内部角色和群身份；actor_roles 只匹配 superadmin/user；group_roles 只匹配 owner/admin/member
-** 唤起字段：require_wakeup 默认 true；在 platform.message.received 上设为 false 可监听未 at、未命中唤起词、未回复机器人的普通群消息，但不会自动让 LLM 处理该消息
-** 控制字段：consume=true 阻止后续 slash 命令和 LLM 处理；stop_propagation=true 阻止同 Hook 点后续规则执行，二者都与 on/name/match/actions 等字段平级
-** 模板变量：platform.name/scope_id/user_id/message_id/reply_to_message_id、actor.id/user_id/role、message.text/content_text、llm.text/raw_text/latest_user_text、tool.arguments/result、actions.<name>.result/error；regex 捕获组用 match.regex.0.group.1 或命名组 match.regex.0.<name>
-** 先判断需求适合的 Hook 点，只使用本 Skill 列出的 Hook 点；选择 always、单条件 if/op/value 或 match 多条件，不混用互斥写法
-** 只编辑当前 Hook 点允许修改的字段；需要发送消息时优先用 send action 产出 output 意图，不直接调用平台发送
-** 需要多模态输出时使用 outputs=[...]，字段格式必须使用本 Skill 列出的 output segment 字段；exec 脚本多模态/多条输出也使用 {"type":"output","outputs":[...]} frame；需要本地脚本时使用 exec action，并让脚本实现 hook.v1 行协议
-** exec 脚本默认以 plugins/ 或插件目录为工作目录，脚本和资源路径用相对路径；工具调用必须遵守 Security Policy，只调用当前 Actor 可用且不需要交互确认的工具
-** 输出必须包含可直接复制的 TOML；如果需要脚本，也输出完整脚本内容
-~ 使用本 Skill 未列出的 Hook 点
-~ 修改不可编辑字段
-~ 让 Hook 或脚本直接绕过 Output Manager 发送平台消息
-~ 让 exec 脚本输出非 JSON 行、忘记输出 done/error、或把日志写到 stdout
-~ 编造不存在的 action 类型、segment 字段、request method 或模板变量
-?if(需求需要拦截输入并阻止后续 LLM 处理) {
-  ** 在 platform.message.received Hook 上使用 consume = true
-}
-?else {
-  ** 不主动设置 consume，避免误拦截正常对话
-}
-?if(需求包含脚本处理、外部程序或复杂文本解析) {
-  ** 使用 exec action
-  ** 如果脚本要同时发送输出并改写文本，stdout 写 {"type":"output","outputs":[...]} frame，最后 done.message.text，并在 action 上设置 field
-  ** 脚本先从 stdin 读取 init frame，向 stdout 写 hook.v1 JSON frame；需要平台 API 时用 request frame
-}
-?else {
-  ** 优先用 replace、append、prepend、delete、send 或 tool action 完成
+  $hook_config:str = $XDG_CONFIG_HOME/elbot/plugins/hooks.toml
+  ** 若 XDG_CONFIG_HOME 未设置，按 XDG 规范使用 $HOME/.config
 }
 
-> 完成后通知用户用/hooks reload重载
+step goal {
+  ** 根据 $requirement 直接修改 $hook_config
+  ** 输出可直接使用的 TOML
+  ** 仅当必须使用 exec 时才输出完整 $script_content
+  ** 配置示例可看自动生成的 hooks.toml 注释
+  ** 完整说明和例子可看 https://github.com/Elflare/elbot/blob/main/docs/hooks.md
+  ** 完成后提醒用户执行 /hooks reload
+}
+
+step files {
+  ** 主 hooks.toml 只允许顶层 [[plugins]] 和 [[rules]]
+  ** [[plugins]] 只允许 name,enabled,path
+  ** [[plugins]].path 必须相对 plugins/
+  ** 未设置 path 时默认读取 plugins/<name>/hook.toml
+  ** 插件 hook.toml 只允许顶层 [plugin] 和 [[rules]]
+  ** [plugin] 只允许 description
+  ** 插件 hook.toml 不能再写 [[plugins]]
+  ** 严格模式不允许未知字段、旧字段 stdout/stdin
+  ** 同一 rule 内 actions=[...] 和 [[rules.actions]] 只能二选一
+}
+
+step rule_shape {
+  ** [[rules]] 字段白名单：name,on,priority,enabled,require_wakeup,if,op,value,always,match,roles,actor_roles,group_roles,action,actions,field,text,pattern,replace,kind,path,timing,tool,arguments,command,cwd,timeout_seconds,all,target,outputs,consume,stop_propagation
+  ** Hook 点白名单：platform.connected,platform.message.received,agent.input.prepared,llm.turn.prepared,llm.request.prepared,llm.response.received,tool.call.prepared,tool.call.completed,agent.output.prepared,agent.turn.output.prepared,platform.message.sent,error.occurred
+  ** 匹配写法三选一：always=true；if/op/value；match=[{field,op,value},...]
+  ** op 白名单：exists,contains,fullmatch,startswith,endswith,regex
+  ** roles 同时匹配内部角色和群身份
+  ** actor_roles 只匹配 superadmin/user
+  ** group_roles 只匹配 owner/admin/member
+}
+
+step fields {
+  ** 匹配字段白名单：platform.name,scope_id,user_id,conversation_id,message_id,reply_to_message_id,actor.id,actor.user_id,actor.role,actor.group_role,actor.display_name,session.id,session.mode,session.status,request.id,request.kind,request.phase,message.text,message.content_text,message.role,llm.text,llm.raw_text,llm.latest_user_text,llm.latest_user_content_text,llm.provider,llm.model,tool.name,tool.arguments,tool.result,tool.risk
+  ** 可编辑 field 映射：on=platform.message.received/agent.input.prepared 时 field="message.text"；on=llm.turn.prepared/llm.request.prepared 时 field="llm.latest_user_text"；on=llm.response.received 时 field="llm.text"；on=tool.call.prepared 时 field="tool.arguments"；on=tool.call.completed 时 field="tool.result"；on=agent.output.prepared/agent.turn.output.prepared/platform.message.sent 时 field="message.text"；llm.raw_text 只可匹配不可作为 field
+}
+
+step actions {
+  ** action 类型白名单：prepend,append,replace,delete,send,tool,exec
+  ** 单 action 可用 action="send" 加平铺字段
+  ** 多 action 用 actions=[{type="..."},...] 或 [[rules.actions]]
+  ** replace/delete 使用 field,pattern,replace,all
+  ** tool 使用 tool 和 arguments
+  ** tool 结果模板是 {{actions.<name>.result}}
+  ** send 产生输出意图，由 Output Manager 发送
+  ** send 字段：kind,text,timing,target,outputs
+  ** timing 默认 immediate，可用 after_assistant
+  ** target 字段：target.platform,target.scope_id,target.private_user_id,target.group_id,target.superadmins
+  ** 不写 target 时发送到当前上下文
+  ** output segment 字段：kind,text,url,path,base64,name,mime_type,user_id,message_id
+  ** kind 白名单：text,image,file,emoticon,at,reply
+  ** outputs 必须是 segment 数组
+}
+
+step templates: ** 模板变量白名单：{{platform.name}},{{platform.scope_id}},{{platform.user_id}},{{platform.message_id}},{{platform.reply_to_message_id}},{{actor.id}},{{actor.user_id}},{{actor.role}},{{message.text}},{{message.content_text}},{{llm.text}},{{llm.raw_text}},{{llm.latest_user_text}},{{tool.arguments}},{{tool.result}},{{actions.<name>.result}},{{actions.<name>.error}},{{match.regex.0.group.1}},{{match.regex.0.<name>}}
+
+step exec_protocol {
+  ** exec 字段：command,cwd,timeout_seconds,field
+  ** command 按空白拆分后直接 exec，不自动套 shell
+  ** 需要管道、重定向、&& 时显式使用平台 shell
+  ** 工作目录默认是 plugins/ 或插件目录
+  ** 插件规则的相对 cwd 不能逃出插件目录
+  ** hook.v1 是行协议
+  ** ElBot 向 stdin 写一行 init JSON
+  ** 脚本必须只读取 stdin 第一行作为 init frame
+  ** 脚本不能 read_all、read_to_end、fread 到 EOF、循环读到 EOF
+  ** 脚本向 stdout 每行写一个 JSON frame
+  ** stdout 只能写 JSON frame
+  ** 日志和 debug 写 stderr 或文件
+  ** 最后必须写 done 或 error frame
+  ** 写出合法 done/error frame 后进程应以 0 退出
+  ** 非 0 exit code 会被视为 exec 进程失败
+  ** output frame 必须是 {"type":"output","outputs":[...]}
+  ** 禁止使用 output={...} 或 segments=[...]
+  ** done.message.text 写回 action.field
+  ** done.result 存入 {{actions.<name>.result}}
+  ** matched=false 会回滚本规则并跳过后续 action
+  ** request frame 可调用 platform.call、output.send、message.get_reply、message.get、hook.log
+  ** 脚本发 request frame 后再逐行读取 stdin 的 response frame
+}
+
+step exec_init {
+  ** init 顶层字段：type,version,event,match,runtime
+  ** init.event 常用字段：platform,actor,session,request,message,llm,tool,outputs,error
+  ** init.event.message 字段：id,role,segments,messages
+  ** init.event.message 没有 message.text/message.content_text
+  ** 读用户文本时拼接 init.event.message.segments 中 type=text 的片段
+  ** init.event.llm 字段：provider,model,messages,tools,usage,raw_text,text,tool_calls,elapsed_ms
+  ** init.event.tool 字段：id,name,arguments,risk,result,error
+  ** regex 匹配结果在 init.match.regex[0].groups
+  ** groups[0] 是完整匹配
+  ** groups[1+] 是捕获组
+  ** 命名捕获组在 init.match.regex[0].named
+}
+
+step exec_python_template {
+  ** Python 读取 init：init=json.loads(sys.stdin.readline())
+  ** Python 读取 regex groups：groups=init.get("match",{}).get("regex",[{}])[0].get("groups",[])
+  ** Python 输出文本：print(json.dumps({"type":"output","outputs":[{"kind":"text","text":text}]},ensure_ascii=False),flush=True)
+  ** Python 正常结束：print(json.dumps({"type":"done","result":"ok"},ensure_ascii=False),flush=True)
+  ** Python 业务失败：print(json.dumps({"type":"error","error":"原因"},ensure_ascii=False),flush=True) 后正常 return
+}
+
+step decisions {
+  ** 能用 replace、append、prepend、delete、send、tool 完成时不使用 exec
+  ** 需要复杂解析、随机、文件、外部程序或平台 API 时使用 exec
+  ** 拦截输入并阻止后续 LLM 时使用 on="platform.message.received" 且 consume=true
+  ** 监听未唤起群消息时使用 on="platform.message.received" 且 require_wakeup=false
+  ** 普通改写用户输入优先使用 agent.input.prepared
+  ** 改写 LLM 回复优先使用 llm.response.received
+  ** 只改最终发出的 assistant 文本优先使用 agent.turn.output.prepared
+}
+
+~ 使用未列出的 Hook 点、字段、action、segment 字段、request method 或模板变量
+~ 修改当前 Hook 点不可编辑的字段
+~ 让 Hook 或脚本绕过 Output Manager 直接发送平台消息
+~ 把 exec 日志写到 stdout
+~ 让 exec 脚本读取 stdin 到 EOF
+~ 让 exec 脚本输出 done/error 后以非 0 退出
+~ 用 output={...} 或 segments=[...] 代替 outputs=[...]
+~ 编造配置字段或旧版 stdout/stdin 字段
+
 ```
