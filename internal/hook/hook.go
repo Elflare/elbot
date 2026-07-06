@@ -62,20 +62,25 @@ type Event struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 	Control  Control        `json:"control"`
 
-	Platform PlatformContext   `json:"platform"`
-	Actor    ActorContext      `json:"actor"`
-	Session  SessionContext    `json:"session"`
-	Request  RequestContext    `json:"request"`
-	Message  MessagePayload    `json:"message"`
-	LLM      LLMPayload        `json:"llm"`
-	Tool     ToolPayload       `json:"tool"`
-	Outputs  []delivery.Output `json:"outputs,omitempty"`
-	Error    error             `json:"error,omitempty"`
+	Platform  PlatformContext   `json:"platform"`
+	Actor     ActorContext      `json:"actor"`
+	Session   SessionContext    `json:"session"`
+	Request   RequestContext    `json:"request"`
+	Message   MessagePayload    `json:"message"`
+	LLM       LLMPayload        `json:"llm"`
+	Tool      ToolPayload       `json:"tool"`
+	Outputs   []delivery.Output `json:"outputs,omitempty"`
+	Error     error             `json:"-"`
+	ErrorInfo *ErrorPayload     `json:"error,omitempty"`
 }
 
 type Control struct {
 	Consume         bool `json:"consume"`
 	StopPropagation bool `json:"stop_propagation"`
+}
+
+type ErrorPayload struct {
+	Message string `json:"message"`
 }
 
 type PlatformContext struct {
@@ -373,7 +378,8 @@ func knownMatchField(field string) bool {
 		"tool.name", "tool.arguments", "tool.result", "tool.risk",
 		"actor.id", "actor.user_id", "actor.role", "actor.group_role", "actor.display_name",
 		"session.id", "session.mode", "session.status",
-		"request.id", "request.kind", "request.phase":
+		"request.id", "request.kind", "request.phase",
+		"error.message":
 		return true
 	default:
 		return false
@@ -464,6 +470,8 @@ func matchField(event Event, field string) string {
 		return event.Request.Kind
 	case "request.phase":
 		return event.Request.Phase
+	case "error.message":
+		return EventErrorMessage(event)
 	default:
 		return ""
 	}
@@ -815,5 +823,18 @@ func prepareEvent(event Event) Event {
 	if event.Metadata == nil {
 		event.Metadata = map[string]any{}
 	}
+	if event.ErrorInfo == nil && event.Error != nil {
+		event.ErrorInfo = &ErrorPayload{Message: event.Error.Error()}
+	}
 	return event
+}
+
+func EventErrorMessage(event Event) string {
+	if event.ErrorInfo != nil {
+		return event.ErrorInfo.Message
+	}
+	if event.Error != nil {
+		return event.Error.Error()
+	}
+	return ""
 }

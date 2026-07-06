@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -60,7 +62,31 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		return event, actionResult{Error: err.Error()}, err
 	}
 	defer stdin.Close()
-	go m.logExecStderr(stderr, action)
+	stderrTail := newExecStderrTail()
+	stderrDone := make(chan struct{})
+	go m.logExecStderr(stderr, action, stderrTail, stderrDone)
+	waited := false
+	waitExec := func() error {
+		if waited {
+			return nil
+		}
+		waited = true
+		err := cmd.Wait()
+		<-stderrDone
+		return err
+	}
+	failExec := func(result actionResult, err error, kill bool) (hook.Event, actionResult, error) {
+		if kill && cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		waitErr := waitExec()
+		if err == nil {
+			err = execProcessError(runCtx, action, waitErr)
+		}
+		err = withExecStderr(err, stderrTail.String())
+		result.Error = err.Error()
+		return event, result, err
+	}
 
 	init := map[string]any{
 		"type":    "init",
@@ -76,8 +102,7 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		},
 	}
 	if err := writeProtocolFrame(stdin, init); err != nil {
-		_ = cmd.Process.Kill()
-		return event, actionResult{Error: err.Error()}, err
+		return failExec(actionResult{}, err, true)
 	}
 
 	done := false
@@ -92,14 +117,12 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		}
 		var frame map[string]json.RawMessage
 		if err := json.Unmarshal([]byte(line), &frame); err != nil {
-			_ = cmd.Process.Kill()
 			err = fmt.Errorf("parse hook protocol frame at stdout line %d: %w; line=%s", lineNo, err, shortProtocolLine(line))
-			return event, actionResult{Error: err.Error()}, err
+			return failExec(actionResult{}, err, true)
 		}
 		updated, frameResult, frameDone, err := m.handleProtocolFrame(runCtx, stdin, event, action, state, frame, lineNo, line)
 		if err != nil {
-			_ = cmd.Process.Kill()
-			return event, frameResult, err
+			return failExec(frameResult, err, true)
 		}
 		event = updated
 		if frameDone {
@@ -108,14 +131,15 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		_ = cmd.Process.Kill()
-		return event, actionResult{Error: err.Error()}, err
+		return failExec(actionResult{}, err, true)
 	}
-	if err := cmd.Wait(); err != nil {
-		return event, actionResult{Error: err.Error()}, fmt.Errorf("exec failed: %w", err)
+	if err := waitExec(); err != nil {
+		err = withExecStderr(execProcessError(runCtx, action, err), stderrTail.String())
+		return event, actionResult{Error: err.Error()}, err
 	}
 	if !done {
 		err := fmt.Errorf("hook protocol missing done frame")
+		err = withExecStderr(err, stderrTail.String())
 		return event, actionResult{Error: err.Error()}, err
 	}
 	return event, result, nil
@@ -370,10 +394,77 @@ func writeProtocolResponse(w io.Writer, id string, result any, sourceErr error) 
 	return writeProtocolFrame(w, resp)
 }
 
-func (m Module) logExecStderr(r io.Reader, action Action) {
+func execProcessError(ctx context.Context, action Action, err error) error {
+	if action.TimeoutSeconds > 0 && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf("exec timed out after %ds", action.TimeoutSeconds)
+	}
+	if err != nil {
+		return fmt.Errorf("exec failed: %w", err)
+	}
+	return fmt.Errorf("exec failed")
+}
+
+func withExecStderr(err error, stderr string) error {
+	stderr = strings.TrimSpace(stderr)
+	if err == nil || stderr == "" {
+		return err
+	}
+	return fmt.Errorf("%w\nstderr:\n%s", err, stderr)
+}
+
+type execStderrTail struct {
+	mu      sync.Mutex
+	lines   []string
+	dropped int
+}
+
+func newExecStderrTail() *execStderrTail {
+	return &execStderrTail{}
+}
+
+func (t *execStderrTail) Add(line string) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	const maxLines = 20
+	if len(t.lines) >= maxLines {
+		copy(t.lines, t.lines[1:])
+		t.lines[len(t.lines)-1] = line
+		t.dropped++
+		return
+	}
+	t.lines = append(t.lines, line)
+}
+
+func (t *execStderrTail) String() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if len(t.lines) == 0 {
+		return ""
+	}
+	out := strings.Join(t.lines, "\n")
+	const maxRunes = 2000
+	runes := []rune(out)
+	if len(runes) > maxRunes {
+		out = string(runes[len(runes)-maxRunes:])
+	}
+	if t.dropped > 0 {
+		return fmt.Sprintf("...(%d earlier stderr lines omitted)\n%s", t.dropped, out)
+	}
+	return out
+}
+
+func (m Module) logExecStderr(r io.Reader, action Action, tail *execStderrTail, done chan<- struct{}) {
+	defer close(done)
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+		if tail != nil {
+			tail.Add(line)
+		}
 		if line != "" && m.Logger != nil {
 			m.Logger.Info("hook exec stderr", "rule", firstNonEmpty(action.source.FinalName, action.Name), "line", line)
 		}

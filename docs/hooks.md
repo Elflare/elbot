@@ -121,6 +121,7 @@ message.text / content_text / raw_text / role
 message.reply.message_id / sender_id / text / content_text
 llm.text / raw_text / latest_user_text / latest_user_content_text / provider / model
 tool.name / arguments / result / risk
+error.message
 ```
 
 ### Hook 点
@@ -243,7 +244,7 @@ actions = [
 
 `command` 会按空白拆分为可执行程序和参数后直接执行，不会隐式套 `sh -c`。例如 `uv run script.py` 会直接执行 `uv`，`bash ./script.sh` 会直接执行 `bash`；需要管道、重定向、`&&` 等 shell 语法时，请显式写 `bash -lc "..."`、`sh -c "..."` 或平台对应解释器。
 
-exec 使用 `hook.v1` 行协议：ElBot 启动脚本后，会先向 stdin 写一行 init JSON；脚本向 stdout 每行写一个 JSON frame，最后必须写 `done` 或 `error` frame。stderr 会进入日志，不作为协议数据。
+exec 使用 `hook.v1` 行协议：ElBot 启动脚本后，会先向 stdin 写一行 init JSON；脚本向 stdout 每行写一个 JSON frame，最后必须写 `done` 或 `error` frame。stderr 不作为协议数据；脚本成功时只进入日志，脚本失败、超时、崩溃或协议错误时会把 stderr 尾部并入 Hook 失败通知。
 
 脚本只应读取 stdin 第一行作为 init frame，不要 read-all、read-to-end、`fread` 到 EOF 或循环读到 EOF；stdin 后续还用于 `request`/`response` frame。脚本写出合法 `done` 或 `error` frame 后应以 0 退出；非 0 exit code 会被视为 exec 进程失败。
 
@@ -337,7 +338,7 @@ init frame 字段：
 | `tool.result` | 工具结果文本 |
 | `tool.error` | 工具错误；通常仅用于错误上下文 |
 | `outputs` | 当前事件已累计的输出意图数组 |
-| `error` | 当前错误上下文；仅错误 Hook 相关 |
+| `error.message` | 当前错误文本；仅错误 Hook 相关 |
 
 `message.segments`、`llm.messages[].segments`、stdout `output` frame 的 `outputs` 字段、`request output.send` 的 `params.outputs`，以及 TOML send action 的 `outputs` 使用的常见片段字段：
 
@@ -397,6 +398,25 @@ stdout frame 结构示例：
 
 `output` frame 只使用 `outputs` 字段；不要写 `{"type":"output","output":{...}}` 或 `{"type":"output","segments":[...]}`。需要多段输出时，把多个 output segment 放在同一个 `outputs` 数组里；也可以写多行 `output` frame。TOML send action 同样使用 `outputs = [...]`。
 
+`output` frame 字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `type` | 固定为 `output` |
+| `id` | 可选；设置后 ElBot 会回 `response`，成功时 `result.queued=true` |
+| `outputs` | 必填，output segment 对象数组 |
+
+`request` frame 字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `type` | 固定为 `request` |
+| `id` | 可选但强烈建议设置；设置后 ElBot 会向 stdin 写 `response` frame |
+| `method` | 请求方法，见下方 method 表 |
+| `params` | 请求参数对象；结构随 method 变化 |
+
+不带 `id` 的 `request` 不会收到 `response`；但如果请求失败，当前 exec action 仍会失败并触发 Hook 失败通知。
+
 `done` 可选字段：
 
 | 字段 | 说明 |
@@ -408,6 +428,13 @@ stdout frame 结构示例：
 | `consume` | 设置本事件的 consume 控制位 |
 | `stop_propagation` | 设置本事件的 stop_propagation 控制位 |
 
+`error` frame 字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `type` | 固定为 `error` |
+| `error` / `message` | 失败文本；`error` 优先 |
+
 支持的 request method：
 
 | method | params | 说明 |
@@ -417,6 +444,18 @@ stdout frame 结构示例：
 | `message.get_reply` | 无 | 返回当前消息引用/回复的目标消息 ID |
 | `message.get` | 预留 | 当前返回 `available=false` |
 | `hook.log` | 任意 JSON | 写入 Hook 插件日志 |
+
+ElBot 写回 stdin 的 `response` frame 字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `type` | 固定为 `response` |
+| `id` | 对应 request/output frame 的 `id` |
+| `ok` | `true` 表示成功，`false` 表示失败 |
+| `result` | 成功结果；仅 `ok=true` 时存在 |
+| `error` | 失败文本；仅 `ok=false` 时存在 |
+
+`platform.call`、`output.send` 等 request 失败时，脚本会先收到 `ok=false` 的 response；随后当前 exec action 也会失败并触发 Hook 失败通知。
 
 最小 Python 示例：
 
@@ -729,7 +768,7 @@ step rule_shape {
 }
 
 step fields {
-  ** 匹配字段白名单：platform.name,scope_id,user_id,conversation_id,message_id,reply_to_message_id,actor.id,actor.user_id,actor.role,actor.group_role,actor.display_name,session.id,session.mode,session.status,request.id,request.kind,request.phase,message.text,message.content_text,message.raw_text,message.role,message.reply.message_id,message.reply.sender_id,message.reply.text,message.reply.content_text,llm.text,llm.raw_text,llm.latest_user_text,llm.latest_user_content_text,llm.provider,llm.model,tool.name,tool.arguments,tool.result,tool.risk
+  ** 匹配字段白名单：platform.name,scope_id,user_id,conversation_id,message_id,reply_to_message_id,actor.id,actor.user_id,actor.role,actor.group_role,actor.display_name,session.id,session.mode,session.status,request.id,request.kind,request.phase,message.text,message.content_text,message.raw_text,message.role,message.reply.message_id,message.reply.sender_id,message.reply.text,message.reply.content_text,llm.text,llm.raw_text,llm.latest_user_text,llm.latest_user_content_text,llm.provider,llm.model,tool.name,tool.arguments,tool.result,tool.risk,error.message
   ** 可编辑 field 映射：on=platform.message.received/agent.input.prepared 时 field="message.text"；on=llm.turn.prepared/llm.request.prepared 时 field="llm.latest_user_text"；on=llm.response.received 时 field="llm.text"；on=tool.call.prepared 时 field="tool.arguments"；on=tool.call.completed 时 field="tool.result"；on=agent.output.prepared/agent.turn.output.prepared/platform.message.sent 时 field="message.text"；llm.raw_text 只可匹配不可作为 field
 }
 
@@ -750,7 +789,7 @@ step actions {
   ** outputs 必须是 segment 数组
 }
 
-step templates: ** 模板变量白名单：{{platform.name}},{{platform.scope_id}},{{platform.user_id}},{{platform.message_id}},{{platform.reply_to_message_id}},{{actor.id}},{{actor.user_id}},{{actor.role}},{{message.text}},{{message.content_text}},{{message.raw_text}},{{message.reply.message_id}},{{message.reply.sender_id}},{{message.reply.text}},{{message.reply.content_text}},{{llm.text}},{{llm.raw_text}},{{llm.latest_user_text}},{{tool.arguments}},{{tool.result}},{{actions.<name>.result}},{{actions.<name>.error}},{{match.regex.0.group.1}},{{match.regex.0.<name>}}
+step templates: ** 模板变量白名单：{{platform.name}},{{platform.scope_id}},{{platform.user_id}},{{platform.message_id}},{{platform.reply_to_message_id}},{{actor.id}},{{actor.user_id}},{{actor.role}},{{message.text}},{{message.content_text}},{{message.raw_text}},{{message.reply.message_id}},{{message.reply.sender_id}},{{message.reply.text}},{{message.reply.content_text}},{{llm.text}},{{llm.raw_text}},{{llm.latest_user_text}},{{tool.arguments}},{{tool.result}},{{error.message}},{{actions.<name>.result}},{{actions.<name>.error}},{{match.regex.0.group.1}},{{match.regex.0.<name>}}
 
 step exec_protocol {
   ** exec 字段：command,cwd,timeout_seconds,field
@@ -765,26 +804,44 @@ step exec_protocol {
   ** 脚本向 stdout 每行写一个 JSON frame
   ** stdout 只能写 JSON frame
   ** 日志和 debug 写 stderr 或文件
+  ** stderr 成功时只进日志
+  ** exec 失败/崩溃/超时/协议错误时 stderr 尾部会进入 Hook 失败通知
   ** 最后必须写 done 或 error frame
   ** 写出合法 done/error frame 后进程应以 0 退出
   ** 非 0 exit code 会被视为 exec 进程失败
   ** output frame 必须是 {"type":"output","outputs":[...]}
+  ** output frame 字段：type,id,outputs
   ** 禁止使用 output={...} 或 segments=[...]
+  ** request frame 字段：type,id,method,params
   ** done.message.text 写回 action.field
   ** done.result 存入 {{actions.<name>.result}}
+  ** done.error 存入 {{actions.<name>.error}}
+  ** done.consume 设置事件 consume
+  ** done.stop_propagation 设置事件 stop_propagation
   ** matched=false 会回滚本规则并跳过后续 action
+  ** error frame 字段：type,error 或 type,message
   ** request frame 可调用 platform.call、output.send、message.get_reply、message.get、hook.log
   ** 脚本发 request frame 后再逐行读取 stdin 的 response frame
+  ** response frame 字段：type,id,ok,result,error
+  ** request 失败会收到 ok=false/error，且当前 exec action 失败
 }
 
 step exec_init {
   ** init 顶层字段：type,version,event,match,runtime
-  ** init.event 常用字段：platform,actor,session,request,message,llm,tool,outputs,error
-  ** init.event.message 字段：id,role,segments,messages
+  ** init.event 字段：id,point,time,metadata,control,platform,actor,session,request,message,llm,tool,outputs,error
+  ** init.event.control 字段：consume,stop_propagation
+  ** init.event.platform 字段：name,scope_id,user_id,conversation_id,message_id,reply_to_message_id
+  ** init.event.actor 字段：id,user_id,role,group_role,display_name
+  ** init.event.session 字段：id,mode,title,status
+  ** init.event.request 字段：id,kind,session_id,phase
+  ** init.event.message 字段：id,role,raw_text,reply,segments,messages
+  ** init.event.message.reply 字段：message_id,sender_id,text,content_text,segments
   ** init.event.message 没有 message.text/message.content_text；读取当前原始文本用 raw_text，读取引用用 reply
   ** 读用户文本时拼接 init.event.message.segments 中 type=text 的片段
   ** init.event.llm 字段：provider,model,messages,tools,usage,raw_text,text,tool_calls,elapsed_ms
   ** init.event.tool 字段：id,name,arguments,risk,result,error
+  ** init.event.outputs 是已累计输出意图数组
+  ** init.event.error.message 是错误文本
   ** regex 匹配结果在 init.match.regex[0].groups
   ** groups[0] 是完整匹配
   ** groups[1+] 是捕获组

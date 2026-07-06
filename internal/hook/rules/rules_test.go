@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
@@ -57,6 +58,17 @@ func TestExecHelperProcess(t *testing.T) {
 			os.Exit(1)
 		}
 		writeProtocolTestOutput(string(data))
+	case "crash-stderr":
+		fmt.Fprintln(os.Stderr, "script exploded")
+		os.Exit(7)
+	case "missing-done-stderr":
+		fmt.Fprintln(os.Stderr, "wrote stderr before clean exit")
+	case "invalid-json-stderr":
+		fmt.Fprintln(os.Stderr, "bad json stderr")
+		fmt.Fprintln(os.Stdout, `{not json`)
+	case "sleep-stderr":
+		fmt.Fprintln(os.Stderr, "waiting forever")
+		time.Sleep(5 * time.Second)
 	default:
 		os.Exit(2)
 	}
@@ -494,6 +506,17 @@ func TestRenderRegexCapture(t *testing.T) {
 	}
 }
 
+func TestRenderErrorMessage(t *testing.T) {
+	event := hook.Event{Point: hook.PointErrorOccurred, Error: fmt.Errorf("hook failed")}
+	got, err := Module{}.runRule(context.Background(), Rule{Actions: []Action{{Type: "send", Text: "err={{error.message}}"}}}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 || got.Outputs[0].Text != "err=hook failed" {
+		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+}
+
 func TestExecActionDefaultStdinIncludesEvent(t *testing.T) {
 	module := Module{}
 	event := hook.Event{Point: hook.PointAgentInputPrepared, Actor: hook.ActorContext{UserID: "alice"}}
@@ -539,6 +562,54 @@ func TestExecDoneUnmatchedRollsBackAndSkipsRemainingActions(t *testing.T) {
 	}
 	if len(got.Outputs) != 0 {
 		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+}
+
+func TestExecFailuresIncludeStderrTail(t *testing.T) {
+	tests := []struct {
+		name           string
+		helper         string
+		timeoutSeconds int
+		want           []string
+	}{
+		{
+			name:   "nonzero exit",
+			helper: "crash-stderr",
+			want:   []string{"exec failed", "stderr:", "script exploded"},
+		},
+		{
+			name:   "missing done",
+			helper: "missing-done-stderr",
+			want:   []string{"hook protocol missing done frame", "stderr:", "wrote stderr before clean exit"},
+		},
+		{
+			name:   "invalid json",
+			helper: "invalid-json-stderr",
+			want:   []string{"parse hook protocol frame", "stderr:", "bad json stderr"},
+		},
+		{
+			name:           "timeout",
+			helper:         "sleep-stderr",
+			timeoutSeconds: 1,
+			want:           []string{"exec timed out after 1s", "stderr:", "waiting forever"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Module{}.runRule(context.Background(), Rule{Actions: []Action{{
+				Type:           "exec",
+				Command:        execHelperCommand(tt.helper),
+				TimeoutSeconds: tt.timeoutSeconds,
+			}}}, hook.Event{Point: hook.PointLLMResponseReceived})
+			if err == nil {
+				t.Fatal("expected exec error")
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("error = %q, want %q", err.Error(), want)
+				}
+			}
+		})
 	}
 }
 
