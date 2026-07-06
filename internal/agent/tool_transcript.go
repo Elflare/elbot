@@ -96,6 +96,7 @@ func (a *Agent) rememberDiscoveryResult(ctx context.Context, session *storage.Se
 		}
 	}
 	a.rememberActivatedTools(ctx, session, result.Metadata)
+	a.persistShownRuleCardFormats(ctx, session, metadataToolNames(result.Metadata[tool.MetadataShownRuleCardFormats]))
 }
 
 func (a *Agent) rememberActivatedTools(ctx context.Context, session *storage.Session, metadata map[string]any) {

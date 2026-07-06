@@ -109,7 +109,10 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, error
 	if len(activateTools) > 0 {
 		metadata[MetadataActivateTools] = activateTools
 	}
-	content := discoveryContent(result)
+	content := discoveryContent(ctx, result)
+	if formats := NewRuleCardFormatsFromContext(ctx); len(formats) > 0 {
+		metadata[MetadataShownRuleCardFormats] = formats
+	}
 	// 普通工具的完整 schema 通过 Data 交给 Agent 注入 top-level tools。
 	// tool message 文本只返回简短“已发现工具”，避免上下文膨胀，
 	// 也让后续请求保持稳定的工具注入顺序。
@@ -126,7 +129,7 @@ func marshalJSONNoEscape(value any) ([]byte, error) {
 	return bytes.TrimSpace(buf.Bytes()), nil
 }
 
-func discoveryContent(result *DiscoveryResult) string {
+func discoveryContent(ctx context.Context, result *DiscoveryResult) string {
 	if result == nil {
 		return ""
 	}
@@ -154,7 +157,7 @@ func discoveryContent(result *DiscoveryResult) string {
 	if len(foundTools) > 0 {
 		parts = append([]string{fmt.Sprintf("已发现工具：%s。后续可直接调用。", strings.Join(foundTools, ", "))}, parts...)
 	}
-	if detailText := RenderDetailBlocks(detailBlocks); detailText != "" {
+	if detailText := RenderDetailBlocksWithContext(ctx, detailBlocks); detailText != "" {
 		parts = append(parts, detailText)
 	}
 	if len(result.Errors) > 0 {

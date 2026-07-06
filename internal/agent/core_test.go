@@ -1558,6 +1558,29 @@ func firstRequestSystemText(req llm.ChatRequest) string {
 	return ""
 }
 
+func chatRequestText(req llm.ChatRequest) string {
+	parts := make([]string, 0, len(req.Messages))
+	for _, message := range req.Messages {
+		if text := llm.SegmentsContentText(message.Segments); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func onlySession(t *testing.T, store storage.Store, p *fakePlatform) *storage.Session {
+	t.Helper()
+	sessions, err := store.Sessions().List(context.Background(), storage.ListSessionsRequest{ActorID: "cli:local", Platform: p.Name(), PlatformScopeID: "local"})
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("list sessions: %#v err=%v", sessions, err)
+	}
+	sessionRecord, err := store.Sessions().Get(context.Background(), sessions[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sessionRecord
+}
+
 func TestDiscoveredToolsAreInjectedIntoTopLevelTools(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
@@ -1912,6 +1935,93 @@ func TestSkillDirectiveDeduplicatesElyphRuleCards(t *testing.T) {
 	}
 }
 
+func TestSkillDirectiveDoesNotRepeatElyphRuleCardAcrossTurns(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"done alpha", "done beta"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(agentDetailTool{name: "alpha", source: tool.SourceSkillAgent, detail: "#skill alpha - A", format: "elyph", ruleCard: "ELyph RULE"})
+	_ = registry.Register(agentDetailTool{name: "beta", source: tool.SourceSkillAgent, detail: "#skill beta - B", format: "elyph", ruleCard: "ELyph RULE"})
+	a.SetToolRuntime(registry, nil)
+
+	if err := a.HandleMessage(context.Background(), "处理这个 @skill:alpha"); err != nil {
+		t.Fatalf("HandleMessage alpha: %v", err)
+	}
+	if err := a.HandleMessage(context.Background(), "继续 @skill:beta"); err != nil {
+		t.Fatalf("HandleMessage beta: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 2 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	firstLatest := llm.SegmentsContentText(requests[0].Messages[len(requests[0].Messages)-1].Segments)
+	if strings.Count(firstLatest, "ELyph RULE") != 1 || !strings.Contains(firstLatest, "#skill alpha - A") {
+		t.Fatalf("first skill directive should include rule card and alpha detail: %q", firstLatest)
+	}
+	secondLatest := llm.SegmentsContentText(requests[1].Messages[len(requests[1].Messages)-1].Segments)
+	if strings.Contains(secondLatest, "ELyph RULE") {
+		t.Fatalf("second skill directive should not repeat rule card: %q", secondLatest)
+	}
+	if !strings.Contains(secondLatest, "#skill beta - B") {
+		t.Fatalf("second skill directive should include beta detail: %q", secondLatest)
+	}
+	sessionRecord := onlySession(t, store, p)
+	if !strings.Contains(sessionRecord.Metadata, `"shown_rule_card_formats":["elyph"]`) {
+		t.Fatalf("metadata should persist shown rule card format: %q", sessionRecord.Metadata)
+	}
+}
+
+func TestDiscoverToolDoesNotRepeatElyphRuleCardAcrossTurns(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{
+		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "discover_tool", Args: `{"name":"alpha"}`}}, FinishReason: "tool_calls"}},
+		{{DeltaContent: "done alpha"}},
+		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_2", Name: "discover_tool", Args: `{"name":"beta"}`}}, FinishReason: "tool_calls"}},
+		{{DeltaContent: "done beta"}},
+	}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(agentDetailTool{name: "alpha", source: tool.SourceSkillAgent, detail: "#skill alpha - A", format: "elyph", ruleCard: "ELyph RULE"})
+	_ = registry.Register(agentDetailTool{name: "beta", source: tool.SourceSkillAgent, detail: "#skill beta - B", format: "elyph", ruleCard: "ELyph RULE"})
+	a.SetToolRuntime(registry, nil)
+
+	if err := a.HandleMessage(context.Background(), "发现 alpha"); err != nil {
+		t.Fatalf("HandleMessage alpha: %v", err)
+	}
+	if err := a.HandleMessage(context.Background(), "发现 beta"); err != nil {
+		t.Fatalf("HandleMessage beta: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 4 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	firstToolResult := llm.SegmentsContentText(requests[1].Messages[len(requests[1].Messages)-1].Segments)
+	if strings.Count(firstToolResult, "ELyph RULE") != 1 || !strings.Contains(firstToolResult, "#skill alpha - A") {
+		t.Fatalf("first discovery should include rule card and alpha detail: %q", firstToolResult)
+	}
+	secondToolResult := llm.SegmentsContentText(requests[3].Messages[len(requests[3].Messages)-1].Segments)
+	if strings.Contains(secondToolResult, "ELyph RULE") {
+		t.Fatalf("second discovery should not repeat rule card: %q", secondToolResult)
+	}
+	if !strings.Contains(secondToolResult, "#skill beta - B") {
+		t.Fatalf("second discovery should include beta detail: %q", secondToolResult)
+	}
+	allSecondRequestText := chatRequestText(requests[3])
+	if strings.Count(allSecondRequestText, "ELyph RULE") != 1 {
+		t.Fatalf("previous rule card should remain in history exactly once: %q", allSecondRequestText)
+	}
+	sessionRecord := onlySession(t, store, p)
+	if !strings.Contains(sessionRecord.Metadata, `"shown_rule_card_formats":["elyph"]`) {
+		t.Fatalf("metadata should persist shown rule card format: %q", sessionRecord.Metadata)
+	}
+}
+
 func TestSkillDirectiveInvalidStaysAsText(t *testing.T) {
 	for _, directive := range []string{"@skill:nope", "@s:nope"} {
 		t.Run(directive, func(t *testing.T) {
@@ -2139,7 +2249,7 @@ func TestToolCallAssistantEmoticonSendsBeforeFinalResponse(t *testing.T) {
 	script := `#!/bin/sh
 read init
 img=$(ls emoticons/微笑/*.png 2>/dev/null | head -1)
-printf '{"type":"output","output":{"kind":"emoticon","name":"微笑","path":"%s"}}\n' "$img"
+printf '{"type":"output","outputs":[{"kind":"emoticon","name":"微笑","path":"%s"}]}\n' "$img"
 printf '{"type":"done","message":{"text":"我先查一下"}}\n'
 `
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
@@ -3562,7 +3672,7 @@ func TestEmoticonHookSendsSeparateOutputAndCleansPersistedContent(t *testing.T) 
 	script := `#!/bin/sh
 read init
 img=$(ls emoticons/微笑/*.png 2>/dev/null | head -1)
-printf '{"type":"output","output":{"kind":"emoticon","name":"微笑","path":"%s"}}\n' "$img"
+printf '{"type":"output","outputs":[{"kind":"emoticon","name":"微笑","path":"%s"}]}\n' "$img"
 printf '{"type":"done","message":{"text":"像这样~"}}\n'
 `
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
