@@ -1251,6 +1251,7 @@ func render(text string, event hook.Event, state state) string {
 		"{{llm.latest_user_content_text}}": llm.LatestUserSegmentContentText(event.LLM.Messages),
 		"{{tool.arguments}}":               event.Tool.Arguments,
 		"{{tool.result}}":                  event.Tool.Result,
+		"{{error.message}}":                hook.EventErrorMessage(event),
 	}
 	for index, match := range eventMatchContext(event).Regex {
 		prefix := fmt.Sprintf("{{match.regex.%d", index)

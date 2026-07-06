@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"elbot/internal/hook"
@@ -44,5 +46,37 @@ func TestFillHookContextKeepsExplicitPlatformMessageIDs(t *testing.T) {
 	}
 	if event.Platform.ReplyToMessageID != "explicit-reply" {
 		t.Fatalf("reply to message id = %q, want explicit value", event.Platform.ReplyToMessageID)
+	}
+}
+
+func TestRunHookErrorSendsFailureNotice(t *testing.T) {
+	p := &fakePlatform{}
+	manager := hook.NewManager()
+	if err := manager.Register(hook.Registration{
+		Point: hook.PointAgentInputPrepared,
+		Name:  "test.boom",
+		Match: hook.Always(),
+		Handler: hook.HandlerFunc(func(context.Context, hook.Event) (hook.Event, error) {
+			return hook.Event{}, errors.New("boom")
+		}),
+	}); err != nil {
+		t.Fatalf("register hook: %v", err)
+	}
+	a := &Agent{platform: p, hooks: manager}
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform: "cli",
+		ScopeID:  "private:test",
+		Sender:   p,
+	})
+
+	_, err := a.runHook(ctx, hook.Event{Point: hook.PointAgentInputPrepared})
+	if err == nil {
+		t.Fatal("expected hook error")
+	}
+	got := p.out.String()
+	for _, want := range []string{"Hook 执行失败", "agent.input.prepared", "hook test.boom", "boom"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("notice = %q, want %q", got, want)
+		}
 	}
 }

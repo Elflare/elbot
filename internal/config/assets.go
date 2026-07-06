@@ -396,7 +396,7 @@ step rule_shape {
 }
 
 step fields {
-  ** 匹配字段白名单：platform.name,scope_id,user_id,conversation_id,message_id,reply_to_message_id,actor.id,actor.user_id,actor.role,actor.group_role,actor.display_name,session.id,session.mode,session.status,request.id,request.kind,request.phase,message.text,message.content_text,message.raw_text,message.role,message.reply.message_id,message.reply.sender_id,message.reply.text,message.reply.content_text,llm.text,llm.raw_text,llm.latest_user_text,llm.latest_user_content_text,llm.provider,llm.model,tool.name,tool.arguments,tool.result,tool.risk
+  ** 匹配字段白名单：platform.name,scope_id,user_id,conversation_id,message_id,reply_to_message_id,actor.id,actor.user_id,actor.role,actor.group_role,actor.display_name,session.id,session.mode,session.status,request.id,request.kind,request.phase,message.text,message.content_text,message.raw_text,message.role,message.reply.message_id,message.reply.sender_id,message.reply.text,message.reply.content_text,llm.text,llm.raw_text,llm.latest_user_text,llm.latest_user_content_text,llm.provider,llm.model,tool.name,tool.arguments,tool.result,tool.risk,error.message
   ** 可编辑 field 映射：on=platform.message.received/agent.input.prepared 时 field="message.text"；on=llm.turn.prepared/llm.request.prepared 时 field="llm.latest_user_text"；on=llm.response.received 时 field="llm.text"；on=tool.call.prepared 时 field="tool.arguments"；on=tool.call.completed 时 field="tool.result"；on=agent.output.prepared/agent.turn.output.prepared/platform.message.sent 时 field="message.text"；llm.raw_text 只可匹配不可作为 field
 }
 
@@ -417,7 +417,7 @@ step actions {
   ** outputs 必须是 segment 数组
 }
 
-step templates: ** 模板变量白名单：{{platform.name}},{{platform.scope_id}},{{platform.user_id}},{{platform.message_id}},{{platform.reply_to_message_id}},{{actor.id}},{{actor.user_id}},{{actor.role}},{{message.text}},{{message.content_text}},{{message.raw_text}},{{message.reply.message_id}},{{message.reply.sender_id}},{{message.reply.text}},{{message.reply.content_text}},{{llm.text}},{{llm.raw_text}},{{llm.latest_user_text}},{{tool.arguments}},{{tool.result}},{{actions.<name>.result}},{{actions.<name>.error}},{{match.regex.0.group.1}},{{match.regex.0.<name>}}
+step templates: ** 模板变量白名单：{{platform.name}},{{platform.scope_id}},{{platform.user_id}},{{platform.message_id}},{{platform.reply_to_message_id}},{{actor.id}},{{actor.user_id}},{{actor.role}},{{message.text}},{{message.content_text}},{{message.raw_text}},{{message.reply.message_id}},{{message.reply.sender_id}},{{message.reply.text}},{{message.reply.content_text}},{{llm.text}},{{llm.raw_text}},{{llm.latest_user_text}},{{tool.arguments}},{{tool.result}},{{error.message}},{{actions.<name>.result}},{{actions.<name>.error}},{{match.regex.0.group.1}},{{match.regex.0.<name>}}
 
 step exec_protocol {
   ** exec 字段：command,cwd,timeout_seconds,field
@@ -432,26 +432,44 @@ step exec_protocol {
   ** 脚本向 stdout 每行写一个 JSON frame
   ** stdout 只能写 JSON frame
   ** 日志和 debug 写 stderr 或文件
+  ** stderr 成功时只进日志
+  ** exec 失败/崩溃/超时/协议错误时 stderr 尾部会进入 Hook 失败通知
   ** 最后必须写 done 或 error frame
   ** 写出合法 done/error frame 后进程应以 0 退出
   ** 非 0 exit code 会被视为 exec 进程失败
   ** output frame 必须是 {"type":"output","outputs":[...]}
+  ** output frame 字段：type,id,outputs
   ** 禁止使用 output={...} 或 segments=[...]
+  ** request frame 字段：type,id,method,params
   ** done.message.text 写回 action.field
   ** done.result 存入 {{actions.<name>.result}}
+  ** done.error 存入 {{actions.<name>.error}}
+  ** done.consume 设置事件 consume
+  ** done.stop_propagation 设置事件 stop_propagation
   ** matched=false 会回滚本规则并跳过后续 action
+  ** error frame 字段：type,error 或 type,message
   ** request frame 可调用 platform.call、output.send、message.get_reply、message.get、hook.log
   ** 脚本发 request frame 后再逐行读取 stdin 的 response frame
+  ** response frame 字段：type,id,ok,result,error
+  ** request 失败会收到 ok=false/error，且当前 exec action 失败
 }
 
 step exec_init {
   ** init 顶层字段：type,version,event,match,runtime
-  ** init.event 常用字段：platform,actor,session,request,message,llm,tool,outputs,error
-  ** init.event.message 字段：id,role,segments,messages
+  ** init.event 字段：id,point,time,metadata,control,platform,actor,session,request,message,llm,tool,outputs,error
+  ** init.event.control 字段：consume,stop_propagation
+  ** init.event.platform 字段：name,scope_id,user_id,conversation_id,message_id,reply_to_message_id
+  ** init.event.actor 字段：id,user_id,role,group_role,display_name
+  ** init.event.session 字段：id,mode,title,status
+  ** init.event.request 字段：id,kind,session_id,phase
+  ** init.event.message 字段：id,role,raw_text,reply,segments,messages
+  ** init.event.message.reply 字段：message_id,sender_id,text,content_text,segments
   ** init.event.message 没有 message.text/message.content_text；读取当前原始文本用 raw_text，读取引用用 reply
   ** 读用户文本时拼接 init.event.message.segments 中 type=text 的片段
   ** init.event.llm 字段：provider,model,messages,tools,usage,raw_text,text,tool_calls,elapsed_ms
   ** init.event.tool 字段：id,name,arguments,risk,result,error
+  ** init.event.outputs 是已累计输出意图数组
+  ** init.event.error.message 是错误文本
   ** regex 匹配结果在 init.match.regex[0].groups
   ** groups[0] 是完整匹配
   ** groups[1+] 是捕获组
@@ -574,10 +592,17 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # ElBot writes one init JSON frame line to stdin.
 # Scripts must read only the first stdin line as init; do not read until EOF.
 # Scripts write one JSON frame per stdout line: output/request/done/error.
+# stderr is logged on success; on exec failure/crash/timeout/protocol error, the
+# stderr tail is included in the Hook failure notice.
 # After writing done/error, exit with code 0; non-zero exit means process failure.
 # Output frame shape: {"type":"output","outputs":[{"kind":"text","text":"hello"}]}.
+# request frame shape: {"type":"request","id":"x","method":"platform.call","params":{...}}.
+# response frame shape: {"type":"response","id":"x","ok":true,"result":{...}} or
+# {"type":"response","id":"x","ok":false,"error":"..."}.
 # done.result is available as {{actions.<name>.result}}.
+# done.error is available as {{actions.<name>.error}}.
 # done.message.text is written back to the field specified by the action's field setting.
+# done.consume and done.stop_propagation set event control flags.
 # actions = [
 #   { name = "extract", type = "exec", command = "uv run extract.py", field = "llm.text", timing = "after_assistant" },
 # ]
@@ -598,6 +623,7 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # message.reply.message_id/sender_id/text/content_text
 # llm.text/raw_text/latest_user_text/latest_user_content_text/provider/model
 # tool.name/arguments/result/risk
+# error.message
 #
 # require_wakeup=false on platform.message.received lets a rule observe ordinary
 # group messages that did not mention or wake the bot. Hook outputs may still be

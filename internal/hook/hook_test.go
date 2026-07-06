@@ -3,6 +3,7 @@ package hook
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"reflect"
@@ -24,6 +25,33 @@ func TestNoopManagerRunPreparesEvent(t *testing.T) {
 	}
 	if event.Metadata == nil {
 		t.Fatal("expected Metadata to be populated")
+	}
+}
+
+func TestPreparedErrorEventExposesMessage(t *testing.T) {
+	event, err := NoopManager{}.Run(context.Background(), Event{
+		Point: PointErrorOccurred,
+		Error: errors.New("boom"),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if got := EventErrorMessage(event); got != "boom" {
+		t.Fatalf("error message = %q, want boom", got)
+	}
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("marshal event: %v", err)
+	}
+	if !strings.Contains(string(data), `"error":{"message":"boom"}`) {
+		t.Fatalf("event json = %s", data)
+	}
+}
+
+func TestMatchErrorMessage(t *testing.T) {
+	event := Event{Point: PointErrorOccurred, Error: errors.New("hook failed")}
+	if !Contains("error.message", "failed").Matches(event) {
+		t.Fatal("expected error.message match")
 	}
 }
 
