@@ -83,7 +83,9 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 	done := false
 	result := actionResult{}
 	scanner := bufio.NewScanner(stdout)
+	lineNo := 0
 	for scanner.Scan() {
+		lineNo++
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
@@ -91,9 +93,10 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		var frame map[string]json.RawMessage
 		if err := json.Unmarshal([]byte(line), &frame); err != nil {
 			_ = cmd.Process.Kill()
-			return event, actionResult{Error: err.Error()}, fmt.Errorf("parse hook protocol frame: %w", err)
+			err = fmt.Errorf("parse hook protocol frame at stdout line %d: %w; line=%s", lineNo, err, shortProtocolLine(line))
+			return event, actionResult{Error: err.Error()}, err
 		}
-		updated, frameResult, frameDone, err := m.handleProtocolFrame(runCtx, stdin, event, action, state, frame)
+		updated, frameResult, frameDone, err := m.handleProtocolFrame(runCtx, stdin, event, action, state, frame, lineNo, line)
 		if err != nil {
 			_ = cmd.Process.Kill()
 			return event, frameResult, err
@@ -118,19 +121,15 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 	return event, result, nil
 }
 
-func (m Module) handleProtocolFrame(ctx context.Context, stdin io.Writer, event hook.Event, action Action, state state, frame map[string]json.RawMessage) (hook.Event, actionResult, bool, error) {
+func (m Module) handleProtocolFrame(ctx context.Context, stdin io.Writer, event hook.Event, action Action, state state, frame map[string]json.RawMessage, lineNo int, line string) (hook.Event, actionResult, bool, error) {
 	typ := frameString(frame, "type")
 	switch typ {
 	case "output":
-		var seg SegmentSpec
-		if err := json.Unmarshal(frame["output"], &seg); err != nil {
-			return event, actionResult{Error: err.Error()}, false, err
-		}
-		out, err := buildSegmentOutput(resolveSegmentSpecPath(seg, action.sourceBaseDir()), delivery.Target{}, render(action.Timing, event, state))
+		outputs, err := protocolFrameOutputs(frame, action, render(action.Timing, event, state), lineNo, typ, line)
 		if err != nil {
 			return event, actionResult{Error: err.Error()}, false, err
 		}
-		event.Outputs = append(event.Outputs, out)
+		event.Outputs = append(event.Outputs, outputs...)
 		if id := frameString(frame, "id"); id != "" {
 			_ = writeProtocolResponse(stdin, id, map[string]any{"queued": true}, nil)
 		}
@@ -189,8 +188,26 @@ func (m Module) handleProtocolFrame(ctx context.Context, stdin io.Writer, event 
 		}
 		return event, actionResult{Error: msg}, false, fmt.Errorf("hook protocol error: %s", msg)
 	default:
-		return event, actionResult{Error: "unsupported protocol frame"}, false, fmt.Errorf("unsupported hook protocol frame %q", typ)
+		err := protocolFrameError(lineNo, typ, line, fmt.Sprintf("unsupported hook protocol frame %q", typ))
+		return event, actionResult{Error: "unsupported protocol frame"}, false, err
 	}
+}
+
+func protocolFrameError(lineNo int, typ, line, message string) error {
+	if typ == "" {
+		typ = "<missing>"
+	}
+	return fmt.Errorf("hook protocol stdout line %d frame type %q: %s; line=%s", lineNo, typ, message, shortProtocolLine(line))
+}
+
+func shortProtocolLine(line string) string {
+	line = strings.TrimSpace(line)
+	const max = 240
+	if len([]rune(line)) <= max {
+		return line
+	}
+	runes := []rune(line)
+	return string(runes[:max]) + "..."
 }
 
 func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, action Action, state state, frame map[string]json.RawMessage) (any, error) {
@@ -237,15 +254,19 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 		if err != nil {
 			return nil, err
 		}
-		var seg SegmentSpec
-		if err := json.Unmarshal(paramsMap["output"], &seg); err != nil {
-			return nil, err
-		}
-		out, err := buildSegmentOutput(resolveSegmentSpecPath(seg, action.sourceBaseDir()), delivery.Target{}, render(action.Timing, event, state))
+		outputs, err := protocolOutputsFromRaw(paramsMap["outputs"], action, render(action.Timing, event, state), "params.outputs")
 		if err != nil {
 			return nil, err
 		}
-		return m.sendProtocolOutput(ctx, event, out)
+		receipts := make([]delivery.Receipt, 0, len(outputs))
+		for _, out := range outputs {
+			receipt, err := m.sendProtocolOutput(ctx, event, out)
+			if err != nil {
+				return nil, err
+			}
+			receipts = append(receipts, receipt)
+		}
+		return map[string]any{"sent": len(receipts), "receipts": receipts}, nil
 	case "message.get_reply":
 		return map[string]any{"message_id": event.Platform.ReplyToMessageID, "available": event.Platform.ReplyToMessageID != ""}, nil
 	case "message.get":
@@ -258,6 +279,39 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 	default:
 		return nil, fmt.Errorf("unsupported hook protocol method %q", method)
 	}
+}
+
+func protocolFrameOutputs(frame map[string]json.RawMessage, action Action, timing string, lineNo int, typ, line string) ([]delivery.Output, error) {
+	outputs, err := protocolOutputsFromRaw(frame["outputs"], action, timing, "outputs")
+	if err == nil {
+		return outputs, nil
+	}
+	if len(frame["outputs"]) == 0 {
+		return nil, protocolFrameError(lineNo, typ, line, "missing required field \"outputs\"; output frames must be {\"type\":\"output\",\"outputs\":[{...}]}. The \"outputs\" value is an array of segment objects")
+	}
+	return nil, protocolFrameError(lineNo, typ, line, err.Error())
+}
+
+func protocolOutputsFromRaw(raw json.RawMessage, action Action, timing, fieldName string) ([]delivery.Output, error) {
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("missing required field %q; expected an array of segment objects", fieldName)
+	}
+	var specs []SegmentSpec
+	if err := json.Unmarshal(raw, &specs); err != nil {
+		return nil, fmt.Errorf("invalid field %q: %w", fieldName, err)
+	}
+	if len(specs) == 0 {
+		return nil, fmt.Errorf("field %q must contain at least one segment object", fieldName)
+	}
+	outputs := make([]delivery.Output, 0, len(specs))
+	for _, seg := range specs {
+		out, err := buildSegmentOutput(resolveSegmentSpecPath(seg, action.sourceBaseDir()), delivery.Target{}, timing)
+		if err != nil {
+			return nil, err
+		}
+		outputs = append(outputs, out)
+	}
+	return outputs, nil
 }
 
 func (m Module) sendProtocolOutput(ctx context.Context, event hook.Event, out delivery.Output) (delivery.Receipt, error) {

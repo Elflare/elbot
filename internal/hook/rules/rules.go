@@ -110,7 +110,7 @@ type Action struct {
 	Cwd            string        `toml:"cwd"`
 	TimeoutSeconds int           `toml:"timeout_seconds"`
 	Target         Target        `toml:"target"`
-	Segments       []SegmentSpec `toml:"segments"`
+	Outputs        []SegmentSpec `toml:"outputs"`
 	source         ruleSource
 }
 
@@ -1103,9 +1103,9 @@ func makeOutputs(action Action, event hook.Event, state state) ([]delivery.Outpu
 	}
 	timing := render(action.Timing, event, state)
 
-	if len(action.Segments) > 0 {
-		outputs := make([]delivery.Output, 0, len(action.Segments))
-		for _, seg := range action.Segments {
+	if len(action.Outputs) > 0 {
+		outputs := make([]delivery.Output, 0, len(action.Outputs))
+		for _, seg := range action.Outputs {
 			seg := SegmentSpec{
 				Kind:      render(seg.Kind, event, state),
 				Text:      render(seg.Text, event, state),
@@ -1419,8 +1419,8 @@ func formatRuleDetail(rule Rule) string {
 		if action.All {
 			sb.WriteString(" all=true")
 		}
-		if len(action.Segments) > 0 {
-			sb.WriteString(fmt.Sprintf(" segments=%d", len(action.Segments)))
+		if len(action.Outputs) > 0 {
+			sb.WriteString(fmt.Sprintf(" outputs=%d", len(action.Outputs)))
 		}
 	}
 
