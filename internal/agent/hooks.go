@@ -265,6 +265,19 @@ func (a *Agent) fillHookContext(ctx context.Context, event hook.Event) hook.Even
 		if event.Platform.ReplyToMessageID == "" {
 			event.Platform.ReplyToMessageID = msg.ReplyToMessageID
 		}
+		if event.Message.RawText == "" {
+			event.Message.RawText = msg.RawText
+		}
+		if event.Message.Reply == nil && msg.Reply.MessageID != "" {
+			replySegments := platformSegmentsToLLM(msg.Reply.Segments, msg.Reply.Text)
+			event.Message.Reply = &hook.MessageReplyPayload{
+				MessageID:   msg.Reply.MessageID,
+				SenderID:    msg.Reply.SenderID,
+				Text:        llm.SegmentsTextOnly(replySegments),
+				ContentText: llm.SegmentsContentText(replySegments),
+				Segments:    replySegments,
+			}
+		}
 	}
 	if event.Platform.Name == "" {
 		event.Platform.Name = platformName

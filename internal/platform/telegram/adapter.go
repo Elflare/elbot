@@ -206,15 +206,19 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 			CommandPrefixes: a.cfg.CommandPrefixes,
 			Fetch:           a.referenceFetcher(msg, normalized),
 		})
-		text = ref.Text
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
+		messageCtx.ContextText = ref.Text
+		messageCtx.Reply = ref.Reply
 		referenceSegments = ref.ReferenceSegments
+		if strings.TrimSpace(ref.Text) != "" {
+			messageCtx.ContextSegments = finalMessageSegments(ref.Text, normalized.Segments, referenceSegments)
+		}
 	}
-	if strings.TrimSpace(text) == "" {
+	if strings.TrimSpace(text) == "" && strings.TrimSpace(messageCtx.ContextText) == "" {
 		return
 	}
-	messageCtx.Segments = finalMessageSegments(text, normalized.Segments, referenceSegments)
+	messageCtx.Segments = finalMessageSegments(text, normalized.Segments, nil)
 	msgCtx = platform.WithMessageContext(ctx, messageCtx)
 	msgCtx = context.WithValue(msgCtx, targetKey{}, target{ChatID: msg.Chat.ID, ScopeID: scopeID(msg.Chat)})
 	if err := handler.HandleMessage(msgCtx, text); err != nil {

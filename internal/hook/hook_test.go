@@ -72,6 +72,31 @@ func TestManagerPassesUpdatedEventToNextHandler(t *testing.T) {
 	}
 }
 
+func TestMatchMessageRawTextAndReplyFields(t *testing.T) {
+	event := Event{
+		Message: MessagePayload{
+			RawText:  "撤回",
+			Segments: llm.TextSegments("[引用]：通知\n\n撤回"),
+			Reply: &MessageReplyPayload{
+				MessageID:   "notice-1",
+				SenderID:    "bot",
+				Text:        "通知",
+				ContentText: "通知",
+			},
+		},
+	}
+	match := Match{Conditions: []Condition{
+		{Field: "message.raw_text", Op: MatchFull, Value: "撤回"},
+		{Field: "message.reply.message_id", Op: MatchExists},
+		{Field: "message.reply.sender_id", Op: MatchFull, Value: "bot"},
+		{Field: "message.reply.text", Op: MatchFull, Value: "通知"},
+		{Field: "message.reply.content_text", Op: MatchContains, Value: "通知"},
+	}}
+	if result := match.MatchEvent(event); !result.OK {
+		t.Fatal("match did not include message raw/reply fields")
+	}
+}
+
 func TestManagerStopsOnRunError(t *testing.T) {
 	manager := NewManager()
 	boom := errors.New("boom")

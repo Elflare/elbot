@@ -51,6 +51,13 @@ type MessageSegment struct {
 	Size     int64
 }
 
+type ReplyContext struct {
+	MessageID string
+	SenderID  string
+	Text      string
+	Segments  []MessageSegment
+}
+
 type ConversationKind string
 
 const (
@@ -88,6 +95,9 @@ type MessageContext struct {
 	ForkFromMessageID     string
 	ResumeSessionID       string
 	Segments              []MessageSegment
+	ContextText           string
+	ContextSegments       []MessageSegment
+	Reply                 ReplyContext
 	Meta                  map[string]any
 	RawText               string
 	Bot                   Identity

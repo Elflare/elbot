@@ -60,8 +60,18 @@ func TestHandleC2CMessageAddsFallbackReferenceText(t *testing.T) {
 	})
 
 	want := "[引用]：已保存附件：attachment-1\n路径：/tmp/attachment-1\n\n你看看有没"
-	if handler.text != want {
-		t.Fatalf("text = %q, want %q", handler.text, want)
+	if handler.text != "你看看有没" {
+		t.Fatalf("text = %q, want current text", handler.text)
+	}
+	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	if msgCtx.ContextText != want {
+		t.Fatalf("context text = %q, want %q", msgCtx.ContextText, want)
+	}
+	if msgCtx.Reply.MessageID != "notice-1" || msgCtx.Reply.Text != "已保存附件：attachment-1\n路径：/tmp/attachment-1" {
+		t.Fatalf("reply = %#v", msgCtx.Reply)
 	}
 }
 

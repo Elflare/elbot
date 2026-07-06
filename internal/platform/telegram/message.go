@@ -155,7 +155,7 @@ func (a *Adapter) referenceFetcher(msg message, normalized normalizedMessage) fu
 		if normalized.ReplyMessage.From != nil {
 			label = "引用：" + displayName(*normalized.ReplyMessage.From)
 		}
-		return refcontext.ReferencedMessage{Label: label, Text: ref.Text, Segments: appendNonTextSegments(nil, ref.Segments)}, true
+		return refcontext.ReferencedMessage{SenderID: userIDString(normalized.ReplyMessage.From), Label: label, Text: ref.Text, Segments: appendNonTextSegments(nil, ref.Segments)}, true
 	}
 }
 
