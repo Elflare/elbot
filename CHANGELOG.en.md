@@ -22,7 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - QQ OneBot now supports automatically saving inbound files from superadmins in private chats; messages containing only files will only reply with the save path or a "too large" prompt without invoking the LLM; group files are not automatically saved.
 - The `/requests` command now displays the current execution stage (preparing/llm/tool/sending) and the duration of each stage for every turn, allowing you to distinguish whether the LLM is slow or the platform delivery is stuck.
 - Inline preloading supports tool shorthand `@t:<name-or-tag>` and Skill shorthand `@s:<name>`, and is compatible with Chinese full-width colon `：`.
-- Added `require_wakeup` configuration to Hook rules; `platform.message.received` rules can be set to `false` to listen to ordinary group messages that are not @-mentioned, do not match wake-up words, and are not replies to the bot, without automatically triggering commands or the LLM.
 
 ### Changed
 
@@ -37,12 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disconnection reconnection for QQ OneBot, QQ Official, and Telegram platforms has been changed to exponential backoff (starting at 3s, doubling, capped at 10s) with downgraded logging: consecutive failures are logged as 'warn' only on the first occurrence and 'info' upon recovery, preventing log flooding in every round.
 - Platform media output now supports identifying `base64://`, `file://`, `http://`, and `https://` sources in `path`; Regular local paths are still handled according to the platform's default method.
 - QQ official now uses URLs instead of base64 when receiving images
+- Refactored hooks, see docs for details.
+- On Windows, the `shell` tool prioritizes `pwsh`, followed by `bash`, and finally falls back to `powershell.exe`.
 
 ### Fixed
 
+- Fixed the issue where rule cards were repeatedly injected into the context when performing tool discovery or inline preloading of multiple ELyph Skills; In the same Session, only Skill content is returned after the first injection, preserving the first rule card in history to facilitate cache hits.
+- Fixed the issue where Session messages under the same timestamp might be loaded out of order by UUID, leading to unstable historical context order.
 - Fixed the issue where `workspace` did not support `~`, `~/path`, and Windows `~\path` home directory paths when setting the tool directory.
 - When the file segment in a QQ OneBot private chat is missing `url`, `get_file` will be called; If a download URL is returned, it will be saved to ElBot; if only a OneBot local path is returned, that path will be displayed directly.
-- Fixed an issue where the Hook rules `exec` action failed to execute on Windows due to a fixed dependency on `sh`; Now `command` will be executed directly according to the program and parameters.
 - Inbound @ messages in QQ OneBot will now prioritize displaying the group business card, followed by the regular nickname, in the format `[at 名字 qq:<id>]`, and will fall back to the QQ number if neither can be retrieved.
 - Fixed an issue where Chinese output might be garbled when the `shell` tool falls back to PowerShell on Windows.
 - Fixed an issue where bash AST parsing failure for shell commands on Windows (when bash is missing) caused risk classification, sandbox validation, directory change interception, and warning analysis to all fail; In PowerShell environments, AST parsing is skipped, and risk classification directly returns high-risk, requiring user confirmation.
