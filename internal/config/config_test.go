@@ -1,6 +1,7 @@
 package config
 
 import (
+	"elbot/internal/elyph"
 	"errors"
 	"os"
 	"path/filepath"
@@ -8,6 +9,12 @@ import (
 	"runtime"
 	"testing"
 )
+
+func TestDefaultWriteElbotHookSkillElyphParses(t *testing.T) {
+	if _, err := elyph.ParseSkill(defaultWriteElbotHookSkillElyph, "write_elbot_hook"); err != nil {
+		t.Fatalf("default write_elbot_hook skill should parse: %v", err)
+	}
+}
 
 func TestResolvePathUsesExplicitPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "app.toml")
