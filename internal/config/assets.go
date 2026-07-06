@@ -367,7 +367,7 @@ $hook_config:str=~/.config/elbot/plugins/hooks.toml
 ** 主 hooks.toml 只允许顶层 [[plugins]] 和 [[rules]]；严格模式，不允许未知字段、旧字段 stdout/stdin，且同一条 rule 里不要混用 actions=[...] 和 [[rules.actions]]
 ** 主 hooks.toml 的 [[plugins]] 字段：name 必填；enabled 可选默认 true；path 可选且必须相对 plugins/，未设置时默认读取 plugins/<name>/hook.toml
 ** 插件 hook.toml 只允许顶层 [plugin] 和 [[rules]]；[plugin] 只允许 description；插件 hook.toml 不能再写 [[plugins]] 指向其他 toml，不支持套娃加载
-** 主 hooks.toml 和插件 hook.toml 的 [[rules]] 字段相同：name、on、priority、enabled、require_wakeup、if/op/value、always、match、roles、actor_roles、group_roles、action、actions、field、text、pattern、replace、kind、path、timing、tool、arguments、command、cwd、timeout_seconds、all、target、consume、stop_propagation
+** 主 hooks.toml 和插件 hook.toml 的 [[rules]] 字段相同：name、on、priority、enabled、require_wakeup、if/op/value、always、match、roles、actor_roles、group_roles、action、actions、field、text、pattern、replace、kind、path、timing、tool、arguments、command、cwd、timeout_seconds、all、target、outputs、consume、stop_propagation
 ** rule 的 target 字段：target.platform、target.scope_id、target.private_user_id、target.group_id、target.superadmins；未指定 target 时输出到当前上下文
 ** rule 的 actions 可用两种写法二选一：内联 actions=[{type=...}]，或多段 [[rules.actions]]；单 action 也可用 action="send" 加 text/kind 等平铺字段
 ** Hook 点：platform.connected=平台连接完成；platform.message.received=平台消息刚收到（适合关键词拦截、预处理和 consume）
@@ -386,7 +386,7 @@ $hook_config:str=~/.config/elbot/plugins/hooks.toml
 ** 可编辑字段按 Hook 点：platform.message.received 和 agent.input.prepared→message.text；llm.turn.prepared 和 llm.request.prepared→llm.latest_user_text；llm.response.received→llm.text；tool.call.prepared→tool.arguments；tool.call.completed→tool.result；agent.output.prepared、agent.turn.output.prepared、platform.message.sent→assistant message.text；llm.raw_text 只能匹配不能编辑
 ** Action 类型：prepend=开头追加、append=末尾追加、replace=替换（可用 pattern/replace/all）、delete=删除（等同 replace 空串）、send=生成输出意图由 Output Manager 发送、tool=调用已注册工具（结果存 actions.<name>.result）、exec=执行本地脚本（使用 hook.v1 行协议）
 ** send 字段：kind（text/image/file/emoticon/at，默认 text）、text（文本内容）、timing（immediate/after_assistant，默认 immediate）、target（输出目标，未指定时用当前上下文）
-** segment 字段：kind（text/image/file/emoticon/at/reply）、text（内容或附加文本）、url（HTTP/HTTPS）、path（相对 plugins/ 或插件目录的本地路径）、base64（编码数据）、name（文件名或表情名）、mime_type（MIME 提示）、user_id（at）、message_id（reply）
+** output segment 字段：kind（text/image/file/emoticon/at/reply）、text（内容或附加文本）、url（HTTP/HTTPS）、path（相对 plugins/ 或插件目录的本地路径）、base64（编码数据）、name（文件名或表情名）、mime_type（MIME 提示）、user_id（at）、message_id（reply）
 ** exec 字段：command（命令）、cwd（可覆盖工作目录；插件规则的相对 cwd 不能逃出插件目录）、timeout_seconds（超时）、field（done.message.text 覆写的字段）
 ** exec 协议：ElBot 向 stdin 写 init frame；脚本向 stdout 逐行写 JSON frame，支持 output、request、done、error；最后必须写 done 或 error
 ** exec init 顶层字段：type=init、version=hook.v1、event=当前 Hook 事件上下文、match=规则匹配上下文、runtime=本次 exec 运行上下文；字段按 Hook 点填充，不相关字段为空/零值/省略
@@ -397,10 +397,12 @@ $hook_config:str=~/.config/elbot/plugins/hooks.toml
 ** exec event.message：id、role、segments、messages；脚本读取用户文本优先从 message.segments 中拼接 type=text 的片段，不要假设 init JSON 有 message.text/message.content_text 字段
 ** exec event.llm：provider、model、messages、tools、usage、raw_text、text、tool_calls、elapsed_ms；raw_text 是原始响应文本，text 是当前可见/可编辑文本
 ** exec event.tool：id、name、arguments、risk、result、error
-** exec segment 字段：入站 message.segments/llm.messages[].segments 常见 type/text/url/mime_type/name；stdout output/segments 使用 kind/text/url/path/base64/name/mime_type/user_id/message_id，其中 path 相对 plugins/ 或插件目录解析
+** exec output segment 字段：入站 message.segments/llm.messages[].segments 常见 type/text/url/mime_type/name；stdout output frame 的 outputs 字段、request output.send 的 params.outputs、TOML send action 的 outputs 使用 kind/text/url/path/base64/name/mime_type/user_id/message_id，其中 path 相对 plugins/ 或插件目录解析
+** exec stdout frame 示例：output={"type":"output","outputs":[{"kind":"text","text":"内容"}]}；image={"type":"output","outputs":[{"kind":"image","path":"images/a.png","text":"附加说明"}]}；done={"type":"done","result":"ok","message":{"text":"改写后的文本"}}；error={"type":"error","error":"失败原因"}
+** exec output frame 必须用 outputs 字段放 output segment 对象数组；禁止写 {"type":"output","output":{...}} 或 {"type":"output","segments":[...]}。TOML send action 也只用 outputs=[...]
 ** exec match.regex 字段：field、value、text、groups（groups[0] 为完整匹配）、named、start、end
 ** exec runtime 字段：plugin_name、plugin_dir、config_path、rule_name、cwd
-** exec request：platform.call 调当前平台 API（params含 platform/api/params，不能跨平台），output.send 立即发送输出（params.output 使用 segment 字段），message.get_reply 读取引用消息，message.get 预留，hook.log 写日志；带 id 时会收到 response frame：type=response、id、ok、result 或 error
+** exec request：platform.call 调当前平台 API（params含 platform/api/params，不能跨平台），output.send 立即发送输出（params.outputs 是 output segment 数组，例如 {"type":"request","id":"send-1","method":"output.send","params":{"outputs":[{"kind":"text","text":"立即发送"}]}}），message.get_reply 读取引用消息，message.get 预留，hook.log 写日志；带 id 时会收到 response frame：type=response、id、ok、result 或 error
 ** exec done：result 存 actions.<name>.result，error 存 actions.<name>.error，message.text 按 action.field 覆写字段，matched=false 会回滚本规则并跳过后续 action，consume/stop_propagation 可设置控制位
 ** 角色字段：roles 同时匹配内部角色和群身份；actor_roles 只匹配 superadmin/user；group_roles 只匹配 owner/admin/member
 ** 唤起字段：require_wakeup 默认 true；在 platform.message.received 上设为 false 可监听未 at、未命中唤起词、未回复机器人的普通群消息，但不会自动让 LLM 处理该消息
@@ -408,7 +410,7 @@ $hook_config:str=~/.config/elbot/plugins/hooks.toml
 ** 模板变量：platform.name/scope_id/user_id/message_id/reply_to_message_id、actor.id/user_id/role、message.text/content_text、llm.text/raw_text/latest_user_text、tool.arguments/result、actions.<name>.result/error；regex 捕获组用 match.regex.0.group.1 或命名组 match.regex.0.<name>
 ** 先判断需求适合的 Hook 点，只使用本 Skill 列出的 Hook 点；选择 always、单条件 if/op/value 或 match 多条件，不混用互斥写法
 ** 只编辑当前 Hook 点允许修改的字段；需要发送消息时优先用 send action 产出 output 意图，不直接调用平台发送
-** 需要多模态输出时使用 segments，字段格式必须使用本 Skill 列出的 segment 字段；需要本地脚本时使用 exec action，并让脚本实现 hook.v1 行协议
+** TOML send action 需要多模态输出时使用 outputs=[...]；exec 脚本多模态/多条输出也使用 {"type":"output","outputs":[...]} frame；不要使用 output={...} 或 segments=[...]；需要本地脚本时使用 exec action，并让脚本实现 hook.v1 行协议
 ** exec 脚本默认以 plugins/ 或插件目录为工作目录，脚本和资源路径用相对路径；工具调用必须遵守 Security Policy，只调用当前 Actor 可用且不需要交互确认的工具
 ** 输出必须包含可直接复制的 TOML；如果需要脚本，也输出完整脚本内容
 ~ 使用本 Skill 未列出的 Hook 点
@@ -424,7 +426,7 @@ $hook_config:str=~/.config/elbot/plugins/hooks.toml
 }
 ?if(需求包含脚本处理、外部程序或复杂文本解析) {
   ** 使用 exec action
-  ** 如果脚本要同时发送输出并改写文本，stdout 写 output frame，最后 done.message.text，并在 action 上设置 field
+  ** 如果脚本要同时发送输出并改写文本，stdout 写 {"type":"output","outputs":[...]} frame，最后 done.message.text，并在 action 上设置 field
   ** 脚本先从 stdin 读取 init frame，向 stdout 写 hook.v1 JSON frame；需要平台 API 时用 request frame
 }
 ?else {
@@ -507,9 +509,9 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 #   { type = "append", field = "message.text", text = "!" },
 # ]
 #
-# send action with segments (kind/text/url/path/base64/name/mime_type/user_id/message_id):
+# send action with outputs (kind/text/url/path/base64/name/mime_type/user_id/message_id):
 # actions = [
-#   { type = "send", timing = "after_assistant", segments = [
+#   { type = "send", timing = "after_assistant", outputs = [
 #     { kind = "text", text = "检测到关键词" },
 #     { kind = "image", path = "alert.png" },
 #     { kind = "emoticon", name = "微笑", path = "emoticons/微笑/01.png" },
@@ -520,6 +522,7 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # exec action uses hook.v1 line protocol:
 # ElBot writes an init JSON frame to stdin.
 # Scripts write one JSON frame per stdout line: output/request/done/error.
+# Output frame shape: {"type":"output","outputs":[{"kind":"text","text":"hello"}]}.
 # done.result is available as {{actions.<name>.result}}.
 # done.message.text is written back to the field specified by the action's field setting.
 # actions = [

@@ -35,7 +35,7 @@ func TestExecHelperProcess(t *testing.T) {
 	case "done-message":
 		fmt.Fprintln(os.Stdout, `{"type":"done","matched":true,"result":"ok","message":{"text":"clean"}}`)
 	case "unmatched":
-		output, _ := json.Marshal(map[string]any{"type": "output", "output": map[string]any{"kind": "text", "text": "should not survive"}})
+		output, _ := json.Marshal(map[string]any{"type": "output", "outputs": []map[string]any{{"kind": "text", "text": "should not survive"}}})
 		fmt.Fprintln(os.Stdout, string(output))
 		fmt.Fprintln(os.Stdout, `{"type":"done","matched":false}`)
 	case "stdin":
@@ -64,7 +64,7 @@ func TestExecHelperProcess(t *testing.T) {
 }
 
 func writeProtocolTestOutput(text string) {
-	output, _ := json.Marshal(map[string]any{"type": "output", "output": map[string]any{"kind": "text", "text": text}})
+	output, _ := json.Marshal(map[string]any{"type": "output", "outputs": []map[string]any{{"kind": "text", "text": text}}})
 	fmt.Fprintln(os.Stdout, string(output))
 	fmt.Fprintln(os.Stdout, `{"type":"done","matched":true}`)
 }
@@ -534,11 +534,11 @@ func TestLatestUserTextActionWritesBackToMessages(t *testing.T) {
 	}
 }
 
-func TestSendActionWithSegments(t *testing.T) {
+func TestSendActionWithOutputs(t *testing.T) {
 	module := Module{}
 	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "done"}}
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
-		{Type: "send", Timing: delivery.DeliveryAfterAssistant, Segments: []SegmentSpec{
+		{Type: "send", Timing: delivery.DeliveryAfterAssistant, Outputs: []SegmentSpec{
 			{Kind: "text", Text: "检测到关键词"},
 			{Kind: "image", Path: "alert.png"},
 			{Kind: "emoticon", Name: "微笑", Path: "emoticons/微笑/01.png"},
@@ -566,11 +566,11 @@ func TestSendActionWithSegments(t *testing.T) {
 	}
 }
 
-func TestSendActionWithSegmentsBase64(t *testing.T) {
+func TestSendActionWithOutputsBase64(t *testing.T) {
 	module := Module{}
 	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "done"}}
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
-		{Type: "send", Segments: []SegmentSpec{
+		{Type: "send", Outputs: []SegmentSpec{
 			{Kind: "image", Base64: "aGVsbG8="}, // "hello" in base64
 		}},
 	}}, event)
@@ -585,7 +585,7 @@ func TestSendActionWithSegmentsBase64(t *testing.T) {
 	}
 }
 
-func TestSendActionSegmentsFallbackToSingleOutput(t *testing.T) {
+func TestSendActionFallbackToSingleOutput(t *testing.T) {
 	module := Module{}
 	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "done"}}
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
