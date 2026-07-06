@@ -117,11 +117,38 @@ platform.name / scope_id / user_id / conversation_id / message_id / reply_to_mes
 actor.id / user_id / role / group_role / display_name
 session.id / mode / status
 request.id / kind / phase
-message.text / content_text / raw_text / role
+message.text / content_text / raw_text / input_text / role
 message.reply.message_id / sender_id / text / content_text
 llm.text / raw_text / latest_user_text / latest_user_content_text / provider / model
 tool.name / arguments / result / risk
 error.message
+```
+
+字段选择速查：
+
+| 需求 | 推荐字段 | 说明 |
+| --- | --- | --- |
+| 匹配用户实际说了什么，忽略群聊唤醒词或 bot mention | `message.input_text` | 例如用户发 `芙莉丝 咩` 时，`message.input_text` 为 `咩` |
+| 匹配当前消息纯文本，保留唤醒词 | `message.text` | 只拼接 text 片段，不含图片/文件占位 |
+| 匹配当前消息可读内容，保留唤醒词 | `message.content_text` | text + 图片/文件占位，例如 `[图片: ...]` |
+| 匹配平台原始文本 | `message.raw_text` | 平台给的原始文本，不含引用 fallback 展开 |
+| 匹配引用/回复的内容 | `message.reply.*` | 当前消息回复了别人时才有值 |
+
+自动回复并阻止后续命令/LLM 时，优先用 `platform.message.received` + `consume=true`。如果群里需要唤醒词，用 `message.input_text` 匹配：
+
+```toml
+[[rules]]
+name = "reply_mee"
+on = "platform.message.received"
+if = "message.input_text"
+op = "fullmatch"
+value = "咩"
+consume = true
+
+[[rules.actions]]
+type = "send"
+kind = "text"
+text = "咩"
 ```
 
 ### Hook 点
@@ -306,16 +333,17 @@ init frame 字段：
 | `actor.group_role` | 群身份：`owner`、`admin`、`member`、`unknown` |
 | `actor.display_name` | 显示名 |
 | `session.id` | 当前 Session ID |
-| `session.mode` | 当前 Session 模式 |
+| `session.mode` | 当前 Session 模式，例如 `chat`、`work`；未进入会话前为空 |
 | `session.title` | 当前 Session 标题 |
-| `session.status` | 当前 Session 状态 |
+| `session.status` | 当前 Session 状态；没有会话上下文时为空 |
 | `request.id` | 当前 Request ID |
-| `request.kind` | Request 类型 |
+| `request.kind` | Request 类型：`turn`、`llm`、`tool`、`compress`、`sub_agent`；无运行中 Request 时为空 |
 | `request.session_id` | Request 关联的 Session ID |
-| `request.phase` | Request/Turn 阶段 |
+| `request.phase` | Turn 阶段：`idle`、`llm`、`tool`、`awaiting_risk_confirm`、`awaiting_append_confirm`、`compact`；无 Turn 上下文时为空 |
 | `message.id` | 当前消息 ID；未设置时为空 |
 | `message.role` | 消息角色，例如 `user`、`assistant` |
 | `message.raw_text` | 平台原始当前消息文本，不包含引用 fallback 展开内容 |
+| `message.input_text` | 用户输入意图文本；对用户消息会去掉配置的唤醒关键词和 bot mention，适合在 `platform.message.received` 中匹配 `芙莉丝 咩` 这种消息里的 `咩` |
 | `message.segments` | 当前消息片段数组；脚本读取用户文本应优先从这里聚合 `type=text` 的片段。`platform.message.received` 中这里表示当前入站消息，不包含被引用消息文本 |
 | `message.messages` | 相关 LLM 消息数组；仅部分 Hook 点填充 |
 | `message.reply.message_id` | 当前消息引用/回复的目标平台消息 ID |
@@ -768,7 +796,12 @@ step rule_shape {
 }
 
 step fields {
-  ** 匹配字段白名单：platform.name,scope_id,user_id,conversation_id,message_id,reply_to_message_id,actor.id,actor.user_id,actor.role,actor.group_role,actor.display_name,session.id,session.mode,session.status,request.id,request.kind,request.phase,message.text,message.content_text,message.raw_text,message.role,message.reply.message_id,message.reply.sender_id,message.reply.text,message.reply.content_text,llm.text,llm.raw_text,llm.latest_user_text,llm.latest_user_content_text,llm.provider,llm.model,tool.name,tool.arguments,tool.result,tool.risk,error.message
+  ** 匹配字段白名单：platform.name,scope_id,user_id,conversation_id,message_id,reply_to_message_id,actor.id,actor.user_id,actor.role,actor.group_role,actor.display_name,session.id,session.mode,session.status,request.id,request.kind,request.phase,message.text,message.content_text,message.raw_text,message.input_text,message.role,message.reply.message_id,message.reply.sender_id,message.reply.text,message.reply.content_text,llm.text,llm.raw_text,llm.latest_user_text,llm.latest_user_content_text,llm.provider,llm.model,tool.name,tool.arguments,tool.result,tool.risk,error.message
+  ** 匹配用户意图优先用 message.input_text：它会去掉群聊唤醒关键词和 bot mention
+  ** platform.message.received 中 message.text/content_text/raw_text 保留唤醒词
+  ** 自动回复并阻止后续处理时用 on=platform.message.received, consume=true, if=message.input_text
+  ** request.kind 取值：turn,llm,tool,compress,sub_agent
+  ** request.phase 取值：idle,llm,tool,awaiting_risk_confirm,awaiting_append_confirm,compact
   ** 可编辑 field 映射：on=platform.message.received/agent.input.prepared 时 field="message.text"；on=llm.turn.prepared/llm.request.prepared 时 field="llm.latest_user_text"；on=llm.response.received 时 field="llm.text"；on=tool.call.prepared 时 field="tool.arguments"；on=tool.call.completed 时 field="tool.result"；on=agent.output.prepared/agent.turn.output.prepared/platform.message.sent 时 field="message.text"；llm.raw_text 只可匹配不可作为 field
 }
 
@@ -789,7 +822,7 @@ step actions {
   ** outputs 必须是 segment 数组
 }
 
-step templates: ** 模板变量白名单：{{platform.name}},{{platform.scope_id}},{{platform.user_id}},{{platform.message_id}},{{platform.reply_to_message_id}},{{actor.id}},{{actor.user_id}},{{actor.role}},{{message.text}},{{message.content_text}},{{message.raw_text}},{{message.reply.message_id}},{{message.reply.sender_id}},{{message.reply.text}},{{message.reply.content_text}},{{llm.text}},{{llm.raw_text}},{{llm.latest_user_text}},{{tool.arguments}},{{tool.result}},{{error.message}},{{actions.<name>.result}},{{actions.<name>.error}},{{match.regex.0.group.1}},{{match.regex.0.<name>}}
+step templates: ** 模板变量白名单：{{platform.name}},{{platform.scope_id}},{{platform.user_id}},{{platform.message_id}},{{platform.reply_to_message_id}},{{actor.id}},{{actor.user_id}},{{actor.role}},{{message.text}},{{message.content_text}},{{message.raw_text}},{{message.input_text}},{{message.reply.message_id}},{{message.reply.sender_id}},{{message.reply.text}},{{message.reply.content_text}},{{llm.text}},{{llm.raw_text}},{{llm.latest_user_text}},{{tool.arguments}},{{tool.result}},{{error.message}},{{actions.<name>.result}},{{actions.<name>.error}},{{match.regex.0.group.1}},{{match.regex.0.<name>}}
 
 step exec_protocol {
   ** exec 字段：command,cwd,timeout_seconds,field
@@ -834,9 +867,9 @@ step exec_init {
   ** init.event.actor 字段：id,user_id,role,group_role,display_name
   ** init.event.session 字段：id,mode,title,status
   ** init.event.request 字段：id,kind,session_id,phase
-  ** init.event.message 字段：id,role,raw_text,reply,segments,messages
+  ** init.event.message 字段：id,role,raw_text,input_text,reply,segments,messages
   ** init.event.message.reply 字段：message_id,sender_id,text,content_text,segments
-  ** init.event.message 没有 message.text/message.content_text；读取当前原始文本用 raw_text，读取引用用 reply
+  ** init.event.message 没有 message.text/message.content_text；读取当前原始文本用 raw_text，读取去唤醒词后的意图用 input_text，读取引用用 reply
   ** 读用户文本时拼接 init.event.message.segments 中 type=text 的片段
   ** init.event.llm 字段：provider,model,messages,tools,usage,raw_text,text,tool_calls,elapsed_ms
   ** init.event.tool 字段：id,name,arguments,risk,result,error

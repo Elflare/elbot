@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/requests` 命令现在展示每个 turn 的当前运行阶段（preparing/llm/tool/sending）和阶段耗时，可区分 LLM 慢还是平台发送卡住。
 - 内联预载支持工具简写 `@t:<name-or-tag>` 和 Skill 简写 `@s:<name>`，并兼容中文全角冒号 `：`。
 - Hook exec 失败、脚本崩溃、超时或协议错误时会向当前消息平台发送失败通知，并在失败时附带 stderr 尾部；规则匹配和模板新增 `error.message`。
+- Hook 规则新增 `message.input_text` 匹配/模板字段，用于匹配去掉群聊唤醒关键词或 bot mention 后的用户输入。
 
 ### Changed
 

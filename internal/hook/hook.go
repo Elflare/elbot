@@ -115,12 +115,13 @@ type RequestContext struct {
 }
 
 type MessagePayload struct {
-	ID       string               `json:"id"`
-	Role     string               `json:"role"`
-	RawText  string               `json:"raw_text,omitempty"`
-	Reply    *MessageReplyPayload `json:"reply,omitempty"`
-	Segments []llm.MessageSegment `json:"segments,omitempty"`
-	Messages []llm.LLMMessage     `json:"messages,omitempty"`
+	ID        string               `json:"id"`
+	Role      string               `json:"role"`
+	RawText   string               `json:"raw_text,omitempty"`
+	InputText string               `json:"input_text,omitempty"`
+	Reply     *MessageReplyPayload `json:"reply,omitempty"`
+	Segments  []llm.MessageSegment `json:"segments,omitempty"`
+	Messages  []llm.LLMMessage     `json:"messages,omitempty"`
 }
 
 type MessageReplyPayload struct {
@@ -372,7 +373,7 @@ func needsMatchValue(op string) bool {
 func knownMatchField(field string) bool {
 	switch strings.TrimSpace(field) {
 	case "platform.name", "platform.scope_id", "platform.user_id", "platform.conversation_id", "platform.message_id", "platform.reply_to_message_id",
-		"message.text", "message.content_text", "message.raw_text", "message.role",
+		"message.text", "message.content_text", "message.raw_text", "message.input_text", "message.role",
 		"message.reply.message_id", "message.reply.sender_id", "message.reply.text", "message.reply.content_text",
 		"llm.text", "llm.raw_text", "llm.latest_user_text", "llm.latest_user_content_text", "llm.provider", "llm.model",
 		"tool.name", "tool.arguments", "tool.result", "tool.risk",
@@ -406,6 +407,8 @@ func matchField(event Event, field string) string {
 		return llm.SegmentsContentText(event.Message.Segments)
 	case "message.raw_text":
 		return event.Message.RawText
+	case "message.input_text":
+		return MessageInputText(event)
 	case "message.role":
 		return event.Message.Role
 	case "message.reply.message_id":
@@ -837,4 +840,11 @@ func EventErrorMessage(event Event) string {
 		return event.Error.Error()
 	}
 	return ""
+}
+
+func MessageInputText(event Event) string {
+	if strings.TrimSpace(event.Message.InputText) != "" {
+		return strings.TrimSpace(event.Message.InputText)
+	}
+	return llm.SegmentsTextOnly(event.Message.Segments)
 }
