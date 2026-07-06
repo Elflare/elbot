@@ -1245,6 +1245,7 @@ func render(text string, event hook.Event, state state) string {
 		"{{message.text}}":                 llm.SegmentsTextOnly(event.Message.Segments),
 		"{{message.content_text}}":         llm.SegmentsContentText(event.Message.Segments),
 		"{{message.raw_text}}":             event.Message.RawText,
+		"{{message.input_text}}":           hook.MessageInputText(event),
 		"{{llm.text}}":                     event.LLM.Text,
 		"{{llm.raw_text}}":                 event.LLM.RawText,
 		"{{llm.latest_user_text}}":         llm.LatestUserSegmentTextOnly(event.LLM.Messages),

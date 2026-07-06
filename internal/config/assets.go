@@ -396,7 +396,12 @@ step rule_shape {
 }
 
 step fields {
-  ** 匹配字段白名单：platform.name,scope_id,user_id,conversation_id,message_id,reply_to_message_id,actor.id,actor.user_id,actor.role,actor.group_role,actor.display_name,session.id,session.mode,session.status,request.id,request.kind,request.phase,message.text,message.content_text,message.raw_text,message.role,message.reply.message_id,message.reply.sender_id,message.reply.text,message.reply.content_text,llm.text,llm.raw_text,llm.latest_user_text,llm.latest_user_content_text,llm.provider,llm.model,tool.name,tool.arguments,tool.result,tool.risk,error.message
+  ** 匹配字段白名单：platform.name,scope_id,user_id,conversation_id,message_id,reply_to_message_id,actor.id,actor.user_id,actor.role,actor.group_role,actor.display_name,session.id,session.mode,session.status,request.id,request.kind,request.phase,message.text,message.content_text,message.raw_text,message.input_text,message.role,message.reply.message_id,message.reply.sender_id,message.reply.text,message.reply.content_text,llm.text,llm.raw_text,llm.latest_user_text,llm.latest_user_content_text,llm.provider,llm.model,tool.name,tool.arguments,tool.result,tool.risk,error.message
+  ** 匹配用户意图优先用 message.input_text：它会去掉群聊唤醒关键词和 bot mention
+  ** platform.message.received 中 message.text/content_text/raw_text 保留唤醒词
+  ** 自动回复并阻止后续处理时用 on=platform.message.received, consume=true, if=message.input_text
+  ** request.kind 取值：turn,llm,tool,compress,sub_agent
+  ** request.phase 取值：idle,llm,tool,awaiting_risk_confirm,awaiting_append_confirm,compact
   ** 可编辑 field 映射：on=platform.message.received/agent.input.prepared 时 field="message.text"；on=llm.turn.prepared/llm.request.prepared 时 field="llm.latest_user_text"；on=llm.response.received 时 field="llm.text"；on=tool.call.prepared 时 field="tool.arguments"；on=tool.call.completed 时 field="tool.result"；on=agent.output.prepared/agent.turn.output.prepared/platform.message.sent 时 field="message.text"；llm.raw_text 只可匹配不可作为 field
 }
 
@@ -417,7 +422,7 @@ step actions {
   ** outputs 必须是 segment 数组
 }
 
-step templates: ** 模板变量白名单：{{platform.name}},{{platform.scope_id}},{{platform.user_id}},{{platform.message_id}},{{platform.reply_to_message_id}},{{actor.id}},{{actor.user_id}},{{actor.role}},{{message.text}},{{message.content_text}},{{message.raw_text}},{{message.reply.message_id}},{{message.reply.sender_id}},{{message.reply.text}},{{message.reply.content_text}},{{llm.text}},{{llm.raw_text}},{{llm.latest_user_text}},{{tool.arguments}},{{tool.result}},{{error.message}},{{actions.<name>.result}},{{actions.<name>.error}},{{match.regex.0.group.1}},{{match.regex.0.<name>}}
+step templates: ** 模板变量白名单：{{platform.name}},{{platform.scope_id}},{{platform.user_id}},{{platform.message_id}},{{platform.reply_to_message_id}},{{actor.id}},{{actor.user_id}},{{actor.role}},{{message.text}},{{message.content_text}},{{message.raw_text}},{{message.input_text}},{{message.reply.message_id}},{{message.reply.sender_id}},{{message.reply.text}},{{message.reply.content_text}},{{llm.text}},{{llm.raw_text}},{{llm.latest_user_text}},{{tool.arguments}},{{tool.result}},{{error.message}},{{actions.<name>.result}},{{actions.<name>.error}},{{match.regex.0.group.1}},{{match.regex.0.<name>}}
 
 step exec_protocol {
   ** exec 字段：command,cwd,timeout_seconds,field
@@ -462,9 +467,9 @@ step exec_init {
   ** init.event.actor 字段：id,user_id,role,group_role,display_name
   ** init.event.session 字段：id,mode,title,status
   ** init.event.request 字段：id,kind,session_id,phase
-  ** init.event.message 字段：id,role,raw_text,reply,segments,messages
+  ** init.event.message 字段：id,role,raw_text,input_text,reply,segments,messages
   ** init.event.message.reply 字段：message_id,sender_id,text,content_text,segments
-  ** init.event.message 没有 message.text/message.content_text；读取当前原始文本用 raw_text，读取引用用 reply
+  ** init.event.message 没有 message.text/message.content_text；读取当前原始文本用 raw_text，读取去唤醒词后的意图用 input_text，读取引用用 reply
   ** 读用户文本时拼接 init.event.message.segments 中 type=text 的片段
   ** init.event.llm 字段：provider,model,messages,tools,usage,raw_text,text,tool_calls,elapsed_ms
   ** init.event.tool 字段：id,name,arguments,risk,result,error
@@ -618,8 +623,9 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # platform.name/scope_id/user_id/conversation_id/message_id/reply_to_message_id
 # actor.id/user_id/role/display_name
 # session.id/mode/status
-# request.id/kind/phase
-# message.text/content_text/raw_text/role
+# request.id/kind/phase (kind: turn,llm,tool,compress,sub_agent; phase: idle,llm,tool,awaiting_risk_confirm,awaiting_append_confirm,compact)
+# message.text/content_text/raw_text/input_text/role
+# message.input_text strips wakeup keywords and bot mentions; use it for user intent matching.
 # message.reply.message_id/sender_id/text/content_text
 # llm.text/raw_text/latest_user_text/latest_user_content_text/provider/model
 # tool.name/arguments/result/risk

@@ -55,6 +55,19 @@ func TestMatchErrorMessage(t *testing.T) {
 	}
 }
 
+func TestMatchMessageInputText(t *testing.T) {
+	event := Event{Point: PointPlatformMessageReceived, Message: MessagePayload{
+		Segments:  llm.TextSegments("芙莉丝 咩"),
+		InputText: "咩",
+	}}
+	if !FullMatch("message.input_text", "咩").Matches(event) {
+		t.Fatal("expected message.input_text match")
+	}
+	if FullMatch("message.text", "咩").Matches(event) {
+		t.Fatal("message.text should still include the original text")
+	}
+}
+
 func TestManagerRunsByPriorityAndRegistrationOrder(t *testing.T) {
 	manager := NewManager()
 	var got []string

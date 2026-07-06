@@ -322,6 +322,9 @@ func (a *Agent) fillHookContext(ctx context.Context, event hook.Event) hook.Even
 			}
 		}
 	}
+	if event.Message.InputText == "" && event.Message.Role == string(llm.RoleUser) {
+		event.Message.InputText = a.stripWakeupPrefix(ctx, llm.SegmentsTextOnly(event.Message.Segments))
+	}
 	if event.Platform.Name == "" {
 		event.Platform.Name = platformName
 	}

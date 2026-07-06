@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"elbot/internal/hook"
+	"elbot/internal/llm"
 	"elbot/internal/platform"
 )
 
@@ -46,6 +47,25 @@ func TestFillHookContextKeepsExplicitPlatformMessageIDs(t *testing.T) {
 	}
 	if event.Platform.ReplyToMessageID != "explicit-reply" {
 		t.Fatalf("reply to message id = %q, want explicit value", event.Platform.ReplyToMessageID)
+	}
+}
+
+func TestFillHookContextAddsInputTextWithoutWakeupPrefix(t *testing.T) {
+	a := &Agent{platform: &fakePlatform{}, scopeID: "default"}
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:         "qq-onebot",
+		ScopeID:          "group:123",
+		ConversationKind: platform.ConversationGroup,
+		TriggerKeywords:  []string{"芙莉丝"},
+	})
+
+	event := a.fillHookContext(ctx, hook.Event{
+		Point:   hook.PointPlatformMessageReceived,
+		Message: hook.MessagePayload{Role: "user", Segments: llm.TextSegments("芙莉丝 咩")},
+	})
+
+	if event.Message.InputText != "咩" {
+		t.Fatalf("input text = %q, want 咩", event.Message.InputText)
 	}
 }
 
