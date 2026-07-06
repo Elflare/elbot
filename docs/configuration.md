@@ -596,7 +596,7 @@ stream_edit_interval_milliseconds = 250
 
 Hook 和插件不要直接发平台消息，应返回输出意图，由 Agent 统一交给 Output Manager 发送。
 
-规则 Hook 的完整配置说明（action 类型、segments 多段输出、exec stdout 模式、角色分区、控制字段）见 [Hook](hooks.md)。
+规则 Hook 的完整配置说明（action 类型、segments 多段输出、exec hook.v1 协议、角色分区、控制字段）见 [Hook](hooks.md)。
 
 ## 建议的维护方式
 

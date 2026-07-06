@@ -1,16 +1,16 @@
 package rules
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"elbot/internal/delivery"
-	"elbot/internal/elvena"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 )
@@ -31,9 +31,22 @@ func TestExecHelperProcess(t *testing.T) {
 	}
 	switch os.Args[marker] {
 	case "print":
-		fmt.Fprint(os.Stdout, strings.Join(os.Args[marker+1:], " "))
+		writeProtocolTestOutput(strings.Join(os.Args[marker+1:], " "))
+	case "done-message":
+		fmt.Fprintln(os.Stdout, `{"type":"done","matched":true,"result":"ok","message":{"text":"clean"}}`)
+	case "unmatched":
+		output, _ := json.Marshal(map[string]any{"type": "output", "output": map[string]any{"kind": "text", "text": "should not survive"}})
+		fmt.Fprintln(os.Stdout, string(output))
+		fmt.Fprintln(os.Stdout, `{"type":"done","matched":false}`)
 	case "stdin":
-		_, _ = io.Copy(os.Stdout, os.Stdin)
+		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		var frame map[string]any
+		if err := json.Unmarshal([]byte(line), &frame); err != nil {
+			fmt.Fprint(os.Stderr, err)
+			os.Exit(1)
+		}
+		data, _ := json.Marshal(frame)
+		writeProtocolTestOutput(string(data))
 	case "read":
 		if marker+1 >= len(os.Args) {
 			os.Exit(2)
@@ -43,13 +56,18 @@ func TestExecHelperProcess(t *testing.T) {
 			fmt.Fprint(os.Stderr, err)
 			os.Exit(1)
 		}
-		_, _ = os.Stdout.Write(data)
+		writeProtocolTestOutput(string(data))
 	default:
 		os.Exit(2)
 	}
 	os.Exit(0)
 }
 
+func writeProtocolTestOutput(text string) {
+	output, _ := json.Marshal(map[string]any{"type": "output", "output": map[string]any{"kind": "text", "text": text}})
+	fmt.Fprintln(os.Stdout, string(output))
+	fmt.Fprintln(os.Stdout, `{"type":"done","matched":true}`)
+}
 func execHelperCommand(args ...string) string {
 	argv := append([]string{os.Args[0], "-test.run=TestExecHelperProcess", "--", "elbot-exec-helper"}, args...)
 	parts := make([]string, 0, len(argv))
@@ -199,7 +217,7 @@ text = "ok"
 	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	cfg, _, err := loadConfig(dir)
+	cfg, _, err := loadConfig(Options{ConfigDir: dir})
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
@@ -224,12 +242,55 @@ text = "ok"
 	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	cfg, _, err := loadConfig(dir)
+	cfg, _, err := loadConfig(Options{ConfigDir: dir})
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
 	if len(cfg.Rules) != 1 || !cfg.Rules[0].Consume || !cfg.Rules[0].StopPropagation {
 		t.Fatalf("rules = %#v", cfg.Rules)
+	}
+}
+
+func TestLoadConfigLoadsPluginRulesWithPluginBaseDir(t *testing.T) {
+	dir := t.TempDir()
+	pluginDir := filepath.Join(dir, "demo")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("mkdir plugin: %v", err)
+	}
+	root := `[[plugins]]
+name = "demo"
+`
+	plugin := `[plugin]
+description = "demo plugin"
+
+[[rules]]
+name = "emit_file"
+on = "llm.response.received"
+always = true
+action = "send"
+kind = "image"
+path = "assets/pic.png"
+`
+	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(root), 0o644); err != nil {
+		t.Fatalf("write root config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "hook.toml"), []byte(plugin), 0o644); err != nil {
+		t.Fatalf("write plugin config: %v", err)
+	}
+	cfg, _, err := loadConfig(Options{ConfigDir: dir})
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if len(cfg.Rules) != 1 || cfg.Rules[0].source.PluginName != "demo" || cfg.Rules[0].source.BaseDir != pluginDir {
+		t.Fatalf("rules = %#v", cfg.Rules)
+	}
+	got, err := Module{}.runRule(context.Background(), cfg.Rules[0], hook.Event{Point: hook.PointLLMResponseReceived})
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	wantPath := filepath.Join(pluginDir, "assets", "pic.png")
+	if len(got.Outputs) != 1 || got.Outputs[0].Source.Path != wantPath {
+		t.Fatalf("outputs = %#v, want path %q", got.Outputs, wantPath)
 	}
 }
 
@@ -245,7 +306,7 @@ text = "old"
 	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	_, _, err := loadConfig(dir)
+	_, _, err := loadConfig(Options{ConfigDir: dir})
 	if err == nil {
 		t.Fatal("expected parse error")
 	}
@@ -406,118 +467,50 @@ func TestRenderRegexCapture(t *testing.T) {
 	}
 }
 
-type fakeElvenaDispatcher struct {
-	origin elvena.Origin
-	req    elvena.Request
-}
-
-func (f *fakeElvenaDispatcher) DispatchElvena(ctx context.Context, origin elvena.Origin, req elvena.Request) (elvena.Response, error) {
-	f.origin = origin
-	f.req = req
-	return elvena.Response{Accepted: true, Status: elvena.StatusAccepted, EventKey: req.Elwisp.Name + "/" + req.Source + "/" + req.ID}, nil
-}
-
-func TestExecActionRunsFromPluginConfigDir(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "message.txt"), []byte("plugin-dir"), 0o644); err != nil {
-		t.Fatalf("write message: %v", err)
-	}
-	module := Module{Opts: Options{ConfigDir: dir}}
-	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("read", "message.txt"), Stdout: "send"}}}, hook.Event{Point: hook.PointAgentInputPrepared})
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
-	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Text != "plugin-dir" {
-		t.Fatalf("outputs = %#v", got.Outputs)
-	}
-}
-
-func TestExecActionRelativeCwdUsesPluginConfigDir(t *testing.T) {
-	dir := t.TempDir()
-	subdir := filepath.Join(dir, "scripts")
-	if err := os.MkdirAll(subdir, 0o755); err != nil {
-		t.Fatalf("mkdir scripts: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(subdir, "message.txt"), []byte("relative-cwd"), 0o644); err != nil {
-		t.Fatalf("write message: %v", err)
-	}
-	module := Module{Opts: Options{ConfigDir: dir}}
-	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("read", "message.txt"), Cwd: "scripts", Stdout: "send"}}}, hook.Event{Point: hook.PointAgentInputPrepared})
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
-	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Text != "relative-cwd" {
-		t.Fatalf("outputs = %#v", got.Outputs)
-	}
-}
-
-func TestExecActionCaptureAndRender(t *testing.T) {
+func TestExecActionDefaultStdinIncludesEvent(t *testing.T) {
 	module := Module{}
-	event := hook.Event{Point: hook.PointAgentInputPrepared, Message: hook.MessagePayload{Segments: llm.TextSegments("hello")}}
+	event := hook.Event{Point: hook.PointAgentInputPrepared, Actor: hook.ActorContext{UserID: "alice"}}
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("stdin")}}}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 || !strings.Contains(got.Outputs[0].Text, `"type":"init"`) || !strings.Contains(got.Outputs[0].Text, `"user_id":"alice"`) {
+		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+}
+
+func TestExecDoneMessageWritesConfiguredFieldAndResult(t *testing.T) {
+	module := Module{}
+	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "old"}}
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
-		{Name: "script", Type: "exec", Command: execHelperCommand("print", "ok"), Stdout: "capture"},
+		{Name: "script", Type: "exec", Command: execHelperCommand("done-message"), Field: "llm.text"},
 		{Type: "send", Text: "{{actions.script.result}}"},
 	}}, event)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
+	}
+	if got.LLM.Text != "clean" {
+		t.Fatalf("llm.text = %q, want clean", got.LLM.Text)
 	}
 	if len(got.Outputs) != 1 || got.Outputs[0].Text != "ok" {
 		t.Fatalf("outputs = %#v", got.Outputs)
 	}
 }
 
-func TestExecActionSplitsQuotedArguments(t *testing.T) {
+func TestExecDoneUnmatchedRollsBackAndSkipsRemainingActions(t *testing.T) {
 	module := Module{}
+	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "old"}}
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
-		{Type: "exec", Command: execHelperCommand("print", "hello world", `C:\Users\Tenshi\script.py`), Stdout: "send"},
-	}}, hook.Event{Point: hook.PointAgentInputPrepared})
+		{Type: "exec", Command: execHelperCommand("unmatched"), Field: "llm.text"},
+		{Type: "send", Text: "after"},
+	}}, event)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Text != `hello world C:\Users\Tenshi\script.py` {
-		t.Fatalf("outputs = %#v", got.Outputs)
+	if got.LLM.Text != "old" {
+		t.Fatalf("llm.text = %q, want old", got.LLM.Text)
 	}
-}
-
-func TestExecActionStdoutSend(t *testing.T) {
-	module := Module{}
-	event := hook.Event{Point: hook.PointAgentInputPrepared, Message: hook.MessagePayload{Segments: llm.TextSegments("hello")}}
-	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("print", "sent"), Stdout: "send", Timing: delivery.DeliveryAfterAssistant}}}, event)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
-	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Text != "sent" {
-		t.Fatalf("outputs = %#v", got.Outputs)
-	}
-	if timing := delivery.DeliveryTiming(got.Outputs[0]); timing != delivery.DeliveryAfterAssistant {
-		t.Fatalf("timing = %q", timing)
-	}
-}
-
-func TestExecActionStdoutElvena(t *testing.T) {
-	dispatcher := &fakeElvenaDispatcher{}
-	module := Module{Opts: Options{Elvena: dispatcher}}
-	stdout := `{"version":"elvena.v3","elwisp":{"name":"hook_rule"},"source":"hook","id":"1","mode":"direct","content":"hi","targets":[{"platform":"all"}]}`
-	_, err := module.runRule(context.Background(), Rule{Actions: []Action{{Name: "script", Type: "exec", Command: execHelperCommand("print", stdout), Stdout: "elvena"}}}, hook.Event{Point: hook.PointAgentInputPrepared})
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
-	}
-	if dispatcher.origin.Kind != elvena.OriginHook || dispatcher.origin.Name != "script" {
-		t.Fatalf("origin = %#v", dispatcher.origin)
-	}
-	if dispatcher.req.Version != elvena.VersionV3 || dispatcher.req.Elwisp.Name != "hook_rule" {
-		t.Fatalf("request = %#v", dispatcher.req)
-	}
-}
-
-func TestExecActionDefaultStdinIncludesEvent(t *testing.T) {
-	module := Module{}
-	event := hook.Event{Point: hook.PointAgentInputPrepared, Actor: hook.ActorContext{UserID: "alice"}}
-	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("stdin"), Stdout: "send"}}}, event)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
-	}
-	if len(got.Outputs) != 1 || !strings.Contains(got.Outputs[0].Text, `"user_id":"alice"`) {
+	if len(got.Outputs) != 0 {
 		t.Fatalf("outputs = %#v", got.Outputs)
 	}
 }
@@ -603,42 +596,6 @@ func TestSendActionSegmentsFallbackToSingleOutput(t *testing.T) {
 	}
 	if len(got.Outputs) != 1 || got.Outputs[0].Text != "fallback" {
 		t.Fatalf("outputs = %#v", got.Outputs)
-	}
-}
-
-func TestExecActionStdoutOutputs(t *testing.T) {
-	module := Module{}
-	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "[[微笑]] hello"}}
-	stdout := `{"outputs":[{"kind":"emoticon","name":"微笑","path":"emoticons/微笑/01.png"}],"text":"hello"}`
-	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
-		{Type: "exec", Command: execHelperCommand("print", stdout), Stdout: "outputs", Field: "llm.text"},
-	}}, event)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
-	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Kind != delivery.KindEmoticon || got.Outputs[0].Name != "微笑" {
-		t.Fatalf("outputs = %#v", got.Outputs)
-	}
-	if got.LLM.Text != "hello" {
-		t.Fatalf("llm.text = %q, want %q", got.LLM.Text, "hello")
-	}
-}
-
-func TestExecActionStdoutOutputsWithoutField(t *testing.T) {
-	module := Module{}
-	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "[[微笑]] hello"}}
-	stdout := `{"outputs":[{"kind":"emoticon","name":"微笑"}],"text":"hello"}`
-	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
-		{Type: "exec", Command: execHelperCommand("print", stdout), Stdout: "outputs"},
-	}}, event)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
-	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Kind != delivery.KindEmoticon {
-		t.Fatalf("outputs = %#v", got.Outputs)
-	}
-	if got.LLM.Text != "[[微笑]] hello" {
-		t.Fatalf("llm.text = %q, want unchanged", got.LLM.Text)
 	}
 }
 
