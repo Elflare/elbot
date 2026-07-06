@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "2283288320bb952ad4878cc2c7ca4ac658b1e7c1fe2ff7c74a28ff7b9e2417a7",
+      "source_hash": "212eaf2340f5f23c3fa66d431574f26c68cecfbf919fdb4d2f5b5baa3a68bb85",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783259210
+      "updated_at": 1783334583
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -238,6 +238,14 @@
       "translation": "When not customized, JSON parameters will still be formatted into a more readable multi-line display, and __ELBOT_CODE_0__ within strings will be displayed as actual line breaks.",
       "updated_at": 1782631048
     },
+    "CHANGELOG.md:list:2c14940f8f5aa7ab8978b0cd2dc3f461a7b7169821180297e66c8f8a73c700ea": {
+      "kind": "list",
+      "source": "Windows 下 __ELBOT_CODE_0__ 工具优先使用 __ELBOT_CODE_1__，其次 __ELBOT_CODE_2__，最后回退到 __ELBOT_CODE_3__。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "2c14940f8f5aa7ab8978b0cd2dc3f461a7b7169821180297e66c8f8a73c700ea",
+      "translation": "On Windows, the __ELBOT_CODE_0__ tool prioritizes __ELBOT_CODE_1__, followed by __ELBOT_CODE_2__, and finally falls back to __ELBOT_CODE_3__.",
+      "updated_at": 1783334583
+    },
     "CHANGELOG.md:list:2f756ea7d8087b7077089523bb17dcc90b0b684370d97617d56618e4f644439c": {
       "kind": "list",
       "source": "绝对路径仍可临时使用并返回 warning。",
@@ -421,6 +429,14 @@
       "source_hash": "611aafc7e8d828767ae2b38b0e5c3d0fead2cde039834d37560cbe5b03c27491",
       "translation": "__ELBOT_CODE_0__ audit events changed from debug level to info level; token consumption data can now be recorded by default with __ELBOT_CODE_1__.",
       "updated_at": 1782884148
+    },
+    "CHANGELOG.md:list:6591817f82efe0b2c5e6a0f20415974f7b06b4e8cd819ab6c957df0b3a56c245": {
+      "kind": "list",
+      "source": "修复发现或内联预载多个 ELyph Skill 时规则卡会重复注入上下文的问题；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "6591817f82efe0b2c5e6a0f20415974f7b06b4e8cd819ab6c957df0b3a56c245",
+      "translation": "Fixed the issue where rule cards were repeatedly injected into the context when performing tool discovery or inline preloading of multiple ELyph Skills;",
+      "updated_at": 1783334583
     },
     "CHANGELOG.md:list:6804ed012e3f61e166fecd47cad310a62710f88f0f1bc81b3d2be57e1e12aa4f": {
       "kind": "list",
@@ -710,6 +726,14 @@
       "translation": "Elvena v3 action channel: Elnis supports __ELBOT_CODE_0__, with initial support for raw platform APIs as well as __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ capabilities;",
       "updated_at": 1782376912
     },
+    "CHANGELOG.md:list:9d5bd31f0053c4ae0a75ef9edef00162aa8c3f86f473d7a5b5a15df30dd4b93e": {
+      "kind": "list",
+      "source": "重构hook，详情见docs。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "9d5bd31f0053c4ae0a75ef9edef00162aa8c3f86f473d7a5b5a15df30dd4b93e",
+      "translation": "Refactored hooks, see docs for details.",
+      "updated_at": 1783334583
+    },
     "CHANGELOG.md:list:a00ce6a14a49ad47de898b2bcf6e66396bbff7e68d046017ace4ec5ab76bab70": {
       "kind": "list",
       "source": "新增隐藏元工具 __ELBOT_CODE_0__，用于读取或写入 AgentSkill 的 __ELBOT_CODE_1__，写入前校验配置并在成功后 reload。",
@@ -781,6 +805,14 @@
       "source_hash": "ac3afc51b6a800e97966f71f733c8b5c6a8ed82d2528465a388929465e7a17c6",
       "translation": "__ELBOT_CODE_0__ now reuses the __ELBOT_CODE_2__ editing instructions and execution capabilities of __ELBOT_CODE_1__, and pre-checks edits, ELyph syntax, and no-op modifications before confirmation, displaying the pre-check diff in the high-risk confirmation details.",
       "updated_at": 1782699038
+    },
+    "CHANGELOG.md:list:ac8feca5e8bd2d6bf810555d7b339671c93bf8b03e518f9cabab44e2af7bf9aa": {
+      "kind": "list",
+      "source": "同一会话首次注入后只继续返回 Skill 内容，保留历史中的首次规则卡以利于缓存命中。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ac8feca5e8bd2d6bf810555d7b339671c93bf8b03e518f9cabab44e2af7bf9aa",
+      "translation": "In the same Session, only Skill content is returned after the first injection, preserving the first rule card in history to facilitate cache hits.",
+      "updated_at": 1783334583
     },
     "CHANGELOG.md:list:ada87970eec02cf839ea0c3ab0c573116bb30bcb71bac655bf9eaeb0c4d76173": {
       "kind": "list",
@@ -1013,6 +1045,14 @@
       "source_hash": "f191a10fa95a661a532ab05af86e47b4652486eaaadeac994e312f48821af516",
       "translation": "The __ELBOT_CODE_0__ command now displays the current execution stage (preparing/llm/tool/sending) and the duration of each stage for every turn, allowing you to distinguish whether the LLM is slow or the platform delivery is stuck.",
       "updated_at": 1782952540
+    },
+    "CHANGELOG.md:list:f6c1cb497ae4f2ad103aff727d2c39baae1e5a5217229da9cedaecc67ef9c4ce": {
+      "kind": "list",
+      "source": "修复同一时间戳下会话消息可能按 UUID 错序加载，导致历史上下文顺序不稳定的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "f6c1cb497ae4f2ad103aff727d2c39baae1e5a5217229da9cedaecc67ef9c4ce",
+      "translation": "Fixed the issue where Session messages under the same timestamp might be loaded out of order by UUID, leading to unstable historical context order.",
+      "updated_at": 1783334583
     },
     "CHANGELOG.md:list:faa151eb2284bda7e4e6995ad15597fdaec9d9c2d87d2a98a3ab4a418ee37890": {
       "kind": "list",
