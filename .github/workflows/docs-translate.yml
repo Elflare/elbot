@@ -50,8 +50,8 @@ jobs:
           --base-ref "${{ github.event.before }}"
           --head-ref "${{ github.sha }}"
           --batch-size 8
-          --parallel-batches 2
-          --batch-delay 1
+          --parallel-batches 1
+          --batch-delay 5
           --retries 5
           --timeout 240
 
