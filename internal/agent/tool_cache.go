@@ -202,3 +202,32 @@ func (a *Agent) persistToolTags(ctx context.Context, session *storage.Session, t
 	}
 	session.Metadata = encoded
 }
+
+func (a *Agent) persistShownRuleCardFormats(ctx context.Context, session *storage.Session, formats []string) {
+	if session == nil || session.ID == "" || len(formats) == 0 {
+		return
+	}
+	latest, err := a.store.Sessions().Get(ctx, session.ID)
+	if err != nil {
+		if a.logger != nil {
+			a.logger.Warn("load session for rule card formats failed", "session_id", session.ID, "error", err)
+		}
+		return
+	}
+	metadata := decodeSessionMetadata(latest.Metadata)
+	metadata.ShownRuleCardFormats = sortedUnique(append(metadata.ShownRuleCardFormats, formats...))
+	encoded := encodeSessionMetadataInto(latest.Metadata, metadata)
+	if encoded == latest.Metadata {
+		session.Metadata = latest.Metadata
+		return
+	}
+	latest.Metadata = encoded
+	latest.UpdatedAt = storage.Now()
+	if err := a.store.Sessions().Update(ctx, latest); err != nil {
+		if a.logger != nil {
+			a.logger.Warn("persist rule card formats failed", "session_id", session.ID, "error", err)
+		}
+		return
+	}
+	session.Metadata = encoded
+}

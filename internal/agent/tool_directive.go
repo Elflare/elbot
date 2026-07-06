@@ -69,6 +69,7 @@ func (a *Agent) applySkillDirectives(ctx context.Context, session *storage.Sessi
 	if len(matches) == 0 {
 		return result
 	}
+	ctx = tool.WithShownRuleCardFormats(ctx, decodeSessionMetadata(session.Metadata).ShownRuleCardFormats)
 	policy := a.securityPolicy
 	if policy == nil {
 		policy = security.DefaultPolicy()
@@ -102,13 +103,14 @@ func (a *Agent) applySkillDirectives(ctx context.Context, session *storage.Sessi
 		return result
 	}
 	stripped := directive.StripToolMatches(text, matches, remove)
-	if detailText := tool.RenderDetailBlocks(blocks); detailText != "" {
+	if detailText := tool.RenderDetailBlocksWithContext(ctx, blocks); detailText != "" {
 		if strings.TrimSpace(stripped) == "" {
 			stripped = detailText
 		} else {
 			stripped = strings.TrimSpace(stripped) + "\n\n" + detailText
 		}
 	}
+	a.persistShownRuleCardFormats(ctx, session, tool.NewRuleCardFormatsFromContext(ctx))
 	result.Text = stripped
 	return result
 }

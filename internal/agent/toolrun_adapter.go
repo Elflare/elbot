@@ -66,7 +66,11 @@ func (d agentToolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolN
 }
 
 func (d agentToolRunDeps) PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
-	if session == nil || isBackgroundSession(session) {
+	if session == nil {
+		return ctx
+	}
+	ctx = tool.WithShownRuleCardFormats(ctx, decodeSessionMetadata(session.Metadata).ShownRuleCardFormats)
+	if isBackgroundSession(session) {
 		return ctx
 	}
 	return tool.WithWorkspaceStore(ctx, sessionWorkspaceStore{agent: d.agent, session: session})

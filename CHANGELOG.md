@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复发现或内联预载多个 ELyph Skill 时规则卡会重复注入上下文的问题；同一会话首次注入后只继续返回 Skill 内容，保留历史中的首次规则卡以利于缓存命中。
+- 修复同一时间戳下会话消息可能按 UUID 错序加载，导致历史上下文顺序不稳定的问题。
 - 修复 `workspace` 工具设置目录时不支持 `~`、`~/path` 和 Windows `~\path` 主目录路径的问题。
 - QQ OneBot 私聊文件段缺少 `url` 时会调用 `get_file`；若返回下载地址则保存到 ElBot，若只返回 OneBot 本地路径则直接提示该路径。
 - QQ OneBot 入站 @ 消息现在会优先显示群名片，其次普通昵称，格式为 `[at 名字 qq:<id>]`，无法获取时才回退 QQ 号。
