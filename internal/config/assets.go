@@ -363,6 +363,7 @@ Linux：= $XDG_CONFIG_HOME/elbot/plugins/hooks.toml
 若 XDG_CONFIG_HOME 未设置，按 XDG 规范使用 $HOME/.config
 
 简单hook直接参考hooks.toml中的注释写，复杂hook看https://github.com/Elflare/elbot/blob/main/docs/hooks.md
+修改完成后提醒用户使用 /hooks reload 重新加载
 `
 const defaultEnvExample = `# Copy this file to .env or set these variables in your OS environment.
 
