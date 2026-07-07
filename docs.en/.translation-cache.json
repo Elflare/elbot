@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "212eaf2340f5f23c3fa66d431574f26c68cecfbf919fdb4d2f5b5baa3a68bb85",
+      "source_hash": "b12d2ee85e3488186db64ea35d50dfb6f74238624ffad70c1ed342034594f3ca",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783334583
+      "updated_at": 1783392486
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -214,6 +214,14 @@
       "translation": "**Tool Discovery Mechanism**: By default, only __ELBOT_CODE_0__ and the tool name are exposed, with the full schema injected on demand to reduce unnecessary context overhead.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:29533c2451977f6c9654e1c83ddf4788eea0af1efedf47df283f7f9e7f7845da": {
+      "kind": "list",
+      "source": "规则匹配和模板新增 __ELBOT_CODE_0__。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "29533c2451977f6c9654e1c83ddf4788eea0af1efedf47df283f7f9e7f7845da",
+      "translation": "Added __ELBOT_CODE_0__ to rule matching and templates.",
+      "updated_at": 1783392486
+    },
     "CHANGELOG.md:list:29d199145b36b120aac3bfe22147a8a3a6da9b52677cbbd283be284ab7d983ca": {
       "kind": "list",
       "source": "普通本地路径仍按平台默认方式处理。",
@@ -253,6 +261,14 @@
       "source_hash": "2f756ea7d8087b7077089523bb17dcc90b0b684370d97617d56618e4f644439c",
       "translation": "Absolute paths can still be used temporarily and will return a warning.",
       "updated_at": 1782958962
+    },
+    "CHANGELOG.md:list:312d4439022670c8a48cc24e096eb8461e05bbe1502d096b2d22196686acc9f2": {
+      "kind": "list",
+      "source": "规则 Hook 支持可选 __ELBOT_CODE_0__，内置 Hook 统一使用 __ELBOT_CODE_1__ 名称和 description，规则细节只在详情中展示。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "312d4439022670c8a48cc24e096eb8461e05bbe1502d096b2d22196686acc9f2",
+      "translation": "Rule Hooks now support optional __ELBOT_CODE_0__; built-in Hooks uniformly use __ELBOT_CODE_1__ for name and description, with rule details displayed only in the details view.",
+      "updated_at": 1783392486
     },
     "CHANGELOG.md:list:317c7d32a5e329ea22f1b69bc2b8231d35853cf1c43e347f9d558d23b403a0ed": {
       "kind": "list",
@@ -438,6 +454,14 @@
       "translation": "Fixed the issue where rule cards were repeatedly injected into the context when performing tool discovery or inline preloading of multiple ELyph Skills;",
       "updated_at": 1783334583
     },
+    "CHANGELOG.md:list:65ae67352b54f25412a03feef13470d8b188b35e8cf905c5d2acc4e7acabd902": {
+      "kind": "list",
+      "source": "Hook 现在可通过 __ELBOT_CODE_0__ 读取结构化引用信息。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "65ae67352b54f25412a03feef13470d8b188b35e8cf905c5d2acc4e7acabd902",
+      "translation": "Hooks can now read structured reference information via __ELBOT_CODE_0__.",
+      "updated_at": 1783392486
+    },
     "CHANGELOG.md:list:6804ed012e3f61e166fecd47cad310a62710f88f0f1bc81b3d2be57e1e12aa4f": {
       "kind": "list",
       "source": "文件超过 64 KiB 时会提示缩短。",
@@ -461,6 +485,14 @@
       "source_hash": "6a952eb1ca1e4416c1ffcbff62e707f82ef5f2b2aeff3b2b640b82bce7417fde",
       "translation": "Descriptive AgentSkills do not read __ELBOT_CODE_0__, avoiding risk; after toolization, __ELBOT_CODE_2__ of __ELBOT_CODE_1__ shall prevail.",
       "updated_at": 1783219356
+    },
+    "CHANGELOG.md:list:6d478a5dfd779970629f0cfd46fe4d8231a05246961a162a024ed3172b1cfa56": {
+      "kind": "list",
+      "source": "首次运行会生成 __ELBOT_CODE_0__，用于提示按需求编写 ElBot 规则 Hook。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "6d478a5dfd779970629f0cfd46fe4d8231a05246961a162a024ed3172b1cfa56",
+      "translation": "The first run will generate __ELBOT_CODE_0__, which serves as a prompt to write ElBot rule Hooks according to your needs.",
+      "updated_at": 1783392486
     },
     "CHANGELOG.md:list:714c6568883b5a6b6d519ae10020e60c5d54a73ae7f39b8f6636810137a32aeb": {
       "kind": "list",
@@ -613,6 +645,14 @@
       "source_hash": "87270312f6d9656623532edb7ac4d5c4a6b1edbd41ffe1f907efdcf6328dc335",
       "translation": "In PowerShell environments, AST parsing is skipped, and risk classification directly returns high-risk, requiring user confirmation.",
       "updated_at": 1783128855
+    },
+    "CHANGELOG.md:list:87e332c5198fa0e4bb6f4b4998019814a5c00c9fcb3ce0d628a039580a29511d": {
+      "kind": "list",
+      "source": "修复回复 Hook/斜杠命令等通知消息时，引用 fallback 文本污染 __ELBOT_CODE_0__ 的 __ELBOT_CODE_1__，导致撤回类 Hook 无法匹配的问题；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "87e332c5198fa0e4bb6f4b4998019814a5c00c9fcb3ce0d628a039580a29511d",
+      "translation": "Fixed an issue where referencing fallback text when replying to Hook/slash command notifications polluted the __ELBOT_CODE_1__ of __ELBOT_CODE_0__, causing recall-type Hooks to fail matching;",
+      "updated_at": 1783392486
     },
     "CHANGELOG.md:list:89005ba6c93baa5933f575ef83d9e47cc8ac49f7d6ef87ff85f02fa0333ca7e0": {
       "kind": "list",
@@ -854,6 +894,14 @@
       "translation": "Fixed an issue where OpenAI-compatible streaming responses that disconnected midway but were missing __ELBOT_CODE_0__ were treated as normal terminations; now it will explicitly notify that the LLM response was interrupted.",
       "updated_at": 1782298716
     },
+    "CHANGELOG.md:list:b891fb86b08d802bcfd1a88b7d05884203b9e1384a85260a567dd7cfb3b7e111": {
+      "kind": "list",
+      "source": "Hook exec 失败、脚本崩溃、超时或协议错误时会向当前消息平台发送失败通知，并在失败时附带 stderr 尾部；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "b891fb86b08d802bcfd1a88b7d05884203b9e1384a85260a567dd7cfb3b7e111",
+      "translation": "Failure notifications will be sent to the current messaging platform when Hook execution fails, the script crashes, times out, or a protocol error occurs, with the end of stderr attached upon failure;",
+      "updated_at": 1783392486
+    },
     "CHANGELOG.md:list:bbe69649fedf66fe55c50171fda1e0bafc56ed2f3759250fbef518fdf34acccf": {
       "kind": "list",
       "source": "没有 __ELBOT_CODE_0__ 时保持说明型 Skill，可按文档使用 shell 等通用工具；",
@@ -877,6 +925,22 @@
       "source_hash": "c5677ef83020b6879bc81ba0896f3ae4a390a95cc8329831e1008ad10406bf25",
       "translation": "__ELBOT_CODE_0__/__ELBOT_CODE_1__ will suggest using __ELBOT_CODE_2__ when reading EL Skill files;",
       "updated_at": 1782722558
+    },
+    "CHANGELOG.md:list:c659654a91e70db79e33730b0bb870b7e736ceab0541a3297b9a74ad01a06e60": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 现在直接使用规则名查看详情，不再要求输入 __ELBOT_CODE_1__ 前缀；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "c659654a91e70db79e33730b0bb870b7e736ceab0541a3297b9a74ad01a06e60",
+      "translation": "__ELBOT_CODE_0__ now allows viewing details directly using the rule name, without requiring the __ELBOT_CODE_1__ prefix;",
+      "updated_at": 1783392486
+    },
+    "CHANGELOG.md:list:c84de9193b601fbc4ea0e32aeb3883130e9e3ff124fde2b226707513af4a619e": {
+      "kind": "list",
+      "source": "Hook 规则新增 __ELBOT_CODE_0__ 匹配/模板字段，用于匹配去掉群聊唤醒关键词或 bot mention 后的用户输入。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "c84de9193b601fbc4ea0e32aeb3883130e9e3ff124fde2b226707513af4a619e",
+      "translation": "Added __ELBOT_CODE_0__ matching/template fields to Hook rules, used to match user input after removing group chat wake-up keywords or bot mentions.",
+      "updated_at": 1783392486
     },
     "CHANGELOG.md:list:c9b8f985f26ae2840c237c92f9163141ff2da581a519ff26340d57eb8120d0c4": {
       "kind": "list",
