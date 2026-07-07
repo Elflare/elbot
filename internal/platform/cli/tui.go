@@ -79,6 +79,7 @@ type tuiModel struct {
 	copyState       copyModeState
 	clipboard       clipboardWriter
 	completion      completionProvider
+	localFiles      *localFileResolver
 	completionState completionState
 	content         string
 	notices         []string
@@ -122,6 +123,7 @@ func runTUI(ctx context.Context, handler platform.PlatformHandler, completion co
 		copyState:     copyModeState{},
 		clipboard:     newClipboardWriter(),
 		completion:    completion,
+		localFiles:    newLocalFileResolver(""),
 		input:         input,
 		userName:      userName,
 		assistantName: assistantName,
@@ -254,18 +256,25 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			m.clearCompletion()
 			text := strings.TrimSpace(m.input.Value())
-			m.input.SetValue("")
 			if text == "" {
 				return m, nil
 			}
 			if text == "/exit" {
 				return m, tea.Quit
 			}
+			sendText, err := m.expandLocalFileReferences(text)
+			if err != nil {
+				m.input.SetValue(text)
+				m.input.CursorEnd()
+				m.appendNotice("local file reference: " + err.Error())
+				return m, nil
+			}
+			m.input.SetValue("")
 			m.history = append(m.history, text)
 			m.histPos = len(m.history)
 			m.appendUserContent(text)
 			go func() {
-				if err := m.handler.HandleMessage(m.ctx, text); err != nil {
+				if err := m.handler.HandleMessage(m.ctx, sendText); err != nil {
 					select {
 					case m.output <- tuiNoticeMsg("error: " + err.Error()):
 					case <-m.ctx.Done():
@@ -427,8 +436,15 @@ func (m tuiModel) completeInput(delta int) (tea.Model, tea.Cmd) {
 }
 
 func (m tuiModel) complete(value string) []completion.Item {
+	cursor := byteOffsetForRunePosition(value, m.input.Position())
+	if resolver := m.localFileResolver(); resolver != nil {
+		items := resolver.Complete(m.ctx, completion.Request{Text: value, Cursor: cursor})
+		if len(items) > 0 {
+			return items
+		}
+	}
 	if m.completion != nil {
-		return m.completion.Complete(m.ctx, completion.Request{Text: value, Cursor: byteOffsetForRunePosition(value, m.input.Position())})
+		return m.completion.Complete(m.ctx, completion.Request{Text: value, Cursor: cursor})
 	}
 
 	c, ok := m.handler.(legacyCompleter)
@@ -441,6 +457,21 @@ func (m tuiModel) complete(value string) []completion.Item {
 		items = append(items, completion.Item{Text: text})
 	}
 	return items
+}
+
+func (m tuiModel) localFileResolver() *localFileResolver {
+	if m.localFiles != nil {
+		return m.localFiles
+	}
+	return newLocalFileResolver("")
+}
+
+func (m tuiModel) expandLocalFileReferences(text string) (string, error) {
+	resolver := m.localFileResolver()
+	if resolver == nil {
+		return text, nil
+	}
+	return resolver.expandReferences(text)
 }
 
 func (m *tuiModel) clearCompletion() {
