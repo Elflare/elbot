@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "b12d2ee85e3488186db64ea35d50dfb6f74238624ffad70c1ed342034594f3ca",
+      "source_hash": "6627f82aecb6409c6de00f7193ed7c01e3e35b1abaa0bf3d112aa090c23a766d",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783392486
+      "updated_at": 1783392554
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -773,6 +773,14 @@
       "source_hash": "9d5bd31f0053c4ae0a75ef9edef00162aa8c3f86f473d7a5b5a15df30dd4b93e",
       "translation": "Refactored hooks, see docs for details.",
       "updated_at": 1783334583
+    },
+    "CHANGELOG.md:list:9ffa53ad5a88b16b4d40df38dffc95ed3c9714db43a39a7176b2fd6dbaed6dd6": {
+      "kind": "list",
+      "source": "CLI TUI 输入框支持用 __ELBOT_CODE_0__ 模糊补全本地文件；发送时会把引用替换为文件名和文件内容，含空格路径可写作 __ELBOT_CODE_1__。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "9ffa53ad5a88b16b4d40df38dffc95ed3c9714db43a39a7176b2fd6dbaed6dd6",
+      "translation": "The CLI TUI input box now supports fuzzy completion of local files using __ELBOT_CODE_0__; references are replaced with the filename and file content upon sending, and paths containing spaces can be written as __ELBOT_CODE_1__.",
+      "updated_at": 1783392554
     },
     "CHANGELOG.md:list:a00ce6a14a49ad47de898b2bcf6e66396bbff7e68d046017ace4ec5ab76bab70": {
       "kind": "list",
