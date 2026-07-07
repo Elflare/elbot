@@ -26,9 +26,9 @@
       "updated_at": 1783240887
     },
     "docs/configuration.md": {
-      "source_hash": "d35248fa027fd712a825f66dbb803567a731e3ee51ac044864c906bffb7ddd96",
+      "source_hash": "90980a762e7ae03afe22e03b7f49c67b463dd98fe81d85728d67d16c6e544b17",
       "target": "docs.en/configuration.md",
-      "updated_at": 1783240925
+      "updated_at": 1783390929
     },
     "docs/elnis-usage.md": {
       "source_hash": "c8d68d4fc76a453ea4008b304cc4d8243b8b2ebc634494f4fb92016b8040c782",
@@ -8021,6 +8021,14 @@
       "source_hash": "ce8ea1c3c50aa0e85c723495bd4772faf0c0ef5f8d22d25da013008dffd993b1",
       "translation": "In work mode, the superadmin can allow the LLM to call the __ELBOT_CODE_0__ tool to switch the shared working directory of the current Session.",
       "updated_at": 1783178826
+    },
+    "docs/configuration.md:paragraph:d43cd928fddc5be46f6c5f1c40b2ef0036cf1b1160a7d02d2cd5d9d3fcea48f4": {
+      "kind": "paragraph",
+      "source": "规则 Hook 的完整配置说明（action 类型、segments 多段输出、exec hook.v1 协议、角色分区、控制字段）见 [Hook](hooks.md)。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d43cd928fddc5be46f6c5f1c40b2ef0036cf1b1160a7d02d2cd5d9d3fcea48f4",
+      "translation": "For complete configuration instructions for Rule Hooks (action types, segments multi-part output, exec hook.v1 protocol, role partitioning, control fields), see [Hook](hooks.md).\n",
+      "updated_at": 1783390929
     },
     "docs/configuration.md:paragraph:d43f096208f1054da824c70c2f731293b37a7a8f539fd424033039d2d55c82d9": {
       "kind": "paragraph",
