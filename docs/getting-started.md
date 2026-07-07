@@ -96,6 +96,7 @@ CLI TUI 常用按键：
 - `Ctrl+K` / `Ctrl+J`：小幅滚动聊天输出；`Ctrl+U` / `Ctrl+D` 滚动通知区。
 - `Alt+h` / `Alt+l`：进入聊天区 / 通知区 copy mode。
 - copy mode 中可用 `h/j/k/l` 与 `w/e/b` 移动，`v` / `V` 选择，`y` 复制，`/` 搜索，`i` 或 `Esc` 返回输入。
+- \#<文件名> 文件补全
 
 构建二进制：
 
