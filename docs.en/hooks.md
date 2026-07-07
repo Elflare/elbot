@@ -14,26 +14,37 @@ Hooks can modify messages, append output intents, call low-risk tools, or inject
 
 Important convention: Hooks do not replace the Security Layer; security determinations are still based on the Security Layer. Hooks and plugins do not send platform messages directly; they should return an output intent, which is then handed over by the Agent to the Output Manager for sending.
 
-## Built-in Hooks
+## Hook Sources
 
-ElBot registers two types of built-in hooks with the program:
+ElBot will register these Hook sources:
 
-| Type | Description |
+| Source | Name | Description |
 | --- | --- |
-| Rule Hook | Loads declarative rules from `plugins/hooks.toml`, supporting conditional matching, text operations, output sending, tool calls, and script execution. |
-| Resident Memory Hook | Inject the resident memory and temporary username of the current platform + actor every round. |
+| Rule Hook | `name` in the configuration | Loads declarative rules from `plugins/hooks.toml`, supporting conditional matching, text operations, output sending, tool calls, and script execution. |
+| Resident Memory Hook | `builtin.resident_memory` | Inject the resident memory and temporary username of the current platform + actor every round. |
+| Cron Hook | `builtin.cron.missed_once` | Re-deliver missed once cron upon platform connection. |
 
 The Emoji Hook has been changed from an embedded plugin to a Rule Hook example; see the [Emoji Extraction Example](#表情提取示例) in this document.
 
 ## Rule Hook Configuration
 
-Rule Hook configurations are fixed in `plugins/hooks.toml` of the configuration directory. Plugin-specific configurations are placed in `plugins/<plugin-name>.toml`.
+The main configuration for rule Hooks is fixed at `plugins/hooks.toml` in the configuration directory. Plugin rules are referenced via `[[plugins]]` in the main configuration, and `plugins/<plugin-name>/hook.toml` is read by default.
+
+```toml
+[[plugins]]
+name = "demo"
+enabled = true
+# path = "demo/hook.toml" # Optional; must be a path relative to plugins/
+```
+
+Plugin configuration files can contain `[plugin]` metadata and their own `[[rules]]`. Local relative paths and paths relative to `cwd` in plugin rules are resolved based on the directory where the plugin configuration is located.
 
 ### Rule Structure
 
 ```toml
 [[rules]]
 name = "stable_debug_name"          # Required, used for logs and audit
+description = "简短说明"            # Optional, recommended
 on = "hook.point"                   # Required, Hook point
 enabled = true                      # Optional, defaults to true
 priority = 1000                     # Optional, smaller values are executed first
@@ -110,9 +121,38 @@ platform.name / scope_id / user_id / conversation_id / message_id / reply_to_mes
 actor.id / user_id / role / group_role / display_name
 session.id / mode / status
 request.id / kind / phase
-message.text / content_text / role
+message.text / content_text / raw_text / input_text / role
+message.reply.message_id / sender_id / text / content_text
 llm.text / raw_text / latest_user_text / latest_user_content_text / provider / model
 tool.name / arguments / result / risk
+error.message
+```
+
+Field selection quick reference:
+
+| Requirement | Recommended Field | Description |
+| --- | --- | --- |
+| Matches what the user actually said, ignoring group chat wake-up words or bot mentions | `message.input_text` | For example, when the user sends `芙莉丝 咩`, `message.input_text` is `咩` |
+| Match the plain text of the current message, preserving the wake-up word | `message.text` | Only concatenate text fragments, excluding image/file placeholders |
+| Match the readable content of the current message, preserving the wake-up word | `message.content_text` | text + image/file placeholders, e.g., `[图片: ...]` |
+| Match the original platform text | `message.raw_text` | Original text provided by the platform, excluding quote fallback expansion |
+| Match the content of the quote/reply | `message.reply.*` | Has a value only when the current message is a reply to someone else |
+
+When automatically replying and blocking subsequent commands/LLM, prioritize using `platform.message.received` + `consume=true`. If a wake-up word is required in the group, use `message.input_text` for matching:
+
+```toml
+[[rules]]
+name = "reply_mee"
+on = "platform.message.received"
+if = "message.input_text"
+op = "fullmatch"
+value = "咩"
+consume = true
+
+[[rules.actions]]
+type = "send"
+kind = "text"
+text = "咩"
 ```
 
 ### Hook Point
@@ -185,11 +225,11 @@ text = "检测到关键词"
 timing = "after_assistant" # Optional, default immediate
 ```
 
-Multi-segment output (segments):
+Multi-segment output (outputs):
 
 ```toml
 actions = [
-  { type = "send", timing = "after_assistant", segments = [
+  { type = "send", timing = "after_assistant", outputs = [
     { kind = "text", text = "检测到关键词" },
     { kind = "image", path = "alert.png" },
     { kind = "image", url = "https://example.com/chart.png", name = "chart.png" },
@@ -200,17 +240,19 @@ actions = [
 ]
 ```
 
-The segment format is unified with the [Elvena Protocol](elnis-usage.md#segments多模态消息段), with additional support for local `path`, `base64`, and `emoticon` types:
+The output segment format is unified with the [Elvena Protocol](elnis-usage.md#segments多模态消息段), with additional support for local `path`, `base64`, and `emoticon` types:
 
 | Field | Description |
 | --- | --- |
-| `kind` | `text` / `image` / `file` / `emoticon`, default `text` |
-| `text` | Text content (required for text type, optional as additional text for other types) |
+| `kind` | `text` / `image` / `file` / `emoticon` / `at` / `reply`, default `text` |
+| `text` | Text content (required for text type, optional as additional text for other types; serves as user ID for at type when `user_id` is not set) |
 | `url` | HTTP/HTTPS URL（image/file） |
-| `path` | Local file path (image/file/emoticon); Ordinary paths are handled according to the platform's default method; prefixes `base64://`, `file://`, `http://`, and `https://` indicate that the caller has specified the media source, which will be handled directly according to the platform's capabilities. |
+| `path` | Local file path (image/file/emoticon); Serves as the replied message ID for reply type when `message_id` is not set; Ordinary paths are handled according to the platform's default method; prefixes `base64://`, `file://`, `http://`, and `https://` indicate that the caller has specified the media source, which will be handled directly according to the platform's capabilities. |
 | `base64` | base64 encoded data (image/file) |
 | `name` | File name or emoticon name |
 | `mime_type` | MIME type hint |
+| `user_id` | Target user ID for at |
+| `message_id` | reply target message ID |
 
 `target` and `timing` are inherited from the action to all segments.
 
@@ -229,44 +271,242 @@ Tool calls are constrained by the Security Policy: the risk level must be within
 
 #### exec
 
-Execute a local script. The script uses `plugins/` as the working directory by default, which can be overridden by `cwd` (absolute paths are used directly, while relative paths are still based on `plugins/`).
+Execute a local script. Scripts in the main configuration use `plugins/` as the default working directory; scripts in plugin configurations use the directory where the plugin configuration is located as the default working directory and cannot escape the plugin directory relative to `cwd`.
 
 `command` will be split by whitespace into an executable program and arguments and then executed directly, without implicitly wrapping it in `sh -c`. For example, `uv run script.py` will directly execute `uv`, and `bash ./script.sh` will directly execute `bash`; When pipes, redirection, `&&`, or other shell syntax are required, please explicitly write `bash -lc "..."`, `sh -c "..."`, or the corresponding interpreter for the platform.
 
-By default, stdin is a JSON containing the full event and match context. You can also use the `stdin` field to customize the stdin content (template rendering is supported).
+exec uses the `hook.v1` line protocol: after ElBot starts the script, it first writes a line of init JSON to stdin; The script writes one JSON frame per line to stdout, and must finally write a `done` or `error` frame. stderr is not used as protocol data; When the script succeeds, it only goes to the logs; when the script fails, times out, crashes, or has a protocol error, the end of stderr will be merged into the Hook failure notification.
 
-`stdout` mode:
-
-| Mode | Description |
-| --- | --- |
-| `capture` | Default value; saves stdout to `{{actions.<name>.result}}` for use by subsequent actions |
-| `send` | Sends stdout as text output |
-| `outputs` | Parses stdout as JSON, extracting the `outputs` array and optional `text` |
-| `elvena` | Parses stdout as an Elvena JSON request and delivers it to Elnis via the internal Elvena Bus |
-| `ignore` | Ignore stdout |
+The script should only read the first line of stdin as the init frame; do not read-all, read-to-end, `fread` until EOF, or read in a loop until EOF; stdin is subsequently used for `request`/`response` frames. After the script writes a valid `done` or `error` frame, it should exit with 0; A non-zero exit code will be regarded as a failure of the exec process.
 
 ```toml
 actions = [
-  { type = "exec", command = "uv run script.py", stdout = "capture", timeout_seconds = 30 },
+  { name = "script", type = "exec", command = "uv run script.py", timeout_seconds = 30 },
 ]
 ```
 
-### exec outputs mode
+### exec hook.v1 protocol
 
-When `stdout = "outputs"`, the script stdout must be JSON:
+The init frame is written to the script's stdin by ElBot:
 
 ```json
 {
-  "outputs": [
-    {"kind": "emoticon", "name": "微笑", "path": "emoticons/微笑/01.png"},
-    {"kind": "text", "text": "已处理"}
-  ],
-  "text": "清理后的文本"
+  "type": "init",
+  "version": "hook.v1",
+  "event": {},
+  "match": {},
+  "runtime": {
+    "plugin_name": "demo",
+    "plugin_dir": ".../plugins/demo",
+    "config_path": ".../plugins/demo/hook.toml",
+    "rule_name": "demo_rule",
+    "cwd": ".../plugins/demo"
+  }
 }
 ```
 
-- `outputs`: Each item's format is consistent with send segments and is converted into an output intent to be sent to the platform.
-- `text`: Optional. When action is set to `field`, `text` will completely overwrite the field (subject to editable field validation); The original text will not be modified if `field` is not set or if `text` is empty.
+init frame fields:
+
+| Field | Description |
+| --- | --- |
+| `type` | Fixed as `init` |
+| `version` | Fixed as `hook.v1` |
+| `event` | Current Hook event context; fields are populated according to the Hook point, and irrelevant fields are empty, zero-valued, or omitted |
+| `match` | Current rule matching context; contains `regex` array when regex hits |
+| `runtime` | Execution context for this exec run |
+
+`event` field:
+
+| Field | Description |
+| --- | --- |
+| `id` | Hook event ID |
+| `point` | Hook point, e.g., `platform.message.received`, `llm.response.received` |
+| `time` | Event time, RFC3339 format |
+| `metadata` | Reserved/extension metadata object |
+| `control.consume` | Whether to block subsequent slash commands and LLM processing |
+| `control.stop_propagation` | Whether to block the execution of subsequent rules at the same Hook point |
+| `platform.name` | Platform name, e.g., `qqonebot`, `telegram`, `cli` |
+| `platform.scope_id` | Platform Session scope ID; generated by the platform adapter, usually with a scope prefix, e.g., `group:<id>`, `private:<id>` |
+| `platform.user_id` | Current platform sender user ID |
+| `platform.conversation_id` | Platform Session ID; empty if not provided by the platform |
+| `platform.message_id` | Current inbound platform message ID |
+| `platform.reply_to_message_id` | Target platform message ID being quoted/replied to by the current message. |
+| `actor.id` | ElBot internal Actor ID, usually composed of the platform name and user ID |
+| `actor.user_id` | Platform user ID corresponding to the Actor |
+| `actor.role` | ElBot internal role: `superadmin` or `user` |
+| `actor.group_role` | Group identity: `owner`, `admin`, `member`, `unknown` |
+| `actor.display_name` | Display name |
+| `session.id` | Current Session ID |
+| `session.mode` | Current Session mode, e.g., `chat`, `work`; empty before entering a Session |
+| `session.title` | Current Session title |
+| `session.status` | Current Session status; empty when there is no Session context |
+| `request.id` | Current Request ID |
+| `request.kind` | Request type: `turn`, `llm`, `tool`, `compress`, `sub_agent`; empty when there is no running Request |
+| `request.session_id` | Session ID associated with the Request |
+| `request.phase` | Turn stage: `idle`, `llm`, `tool`, `awaiting_risk_confirm`, `awaiting_append_confirm`, `compact`; Empty when there is no Turn context |
+| `message.id` | Current message ID; empty when not set |
+| `message.role` | Message role, e.g., `user`, `assistant` |
+| `message.raw_text` | Original current message text from the platform, excluding expanded content from fallback references |
+| `message.input_text` | User input intent text; Configured wake-up keywords and bot mentions are removed from user messages; suitable for matching `咩` in messages like `芙莉丝 咩` within `platform.message.received`. |
+| `message.segments` | Current message fragments array; Scripts reading user text should prioritize aggregating fragments of `type=text` from here. In `platform.message.received`, this represents the current inbound message, excluding the text of quoted messages. |
+| `message.messages` | Related LLM messages array; populated only at certain Hook points. |
+| `message.reply.message_id` | Target platform message ID being quoted/replied to by the current message. |
+| `message.reply.sender_id` | Sender ID of the quoted message; empty if not provided by the platform. |
+| `message.reply.text` | Plain text content of the quoted message; empty if there is no text |
+| `message.reply.content_text` | Readable content text of the quoted message, which may contain image/file placeholders |
+| `llm.provider` | LLM provider name |
+| `llm.model` | LLM model name |
+| `llm.messages` | The LLM message array for this request |
+| `llm.tools` | The array of available tool schemas for this request |
+| `llm.usage` | LLM usage statistics; empty if not provided |
+| `llm.raw_text` | Raw LLM response text; can be matched, but cannot be edited |
+| `llm.text` | Currently visible/editable LLM text |
+| `llm.tool_calls` | Tool call array returned by the LLM |
+| `llm.elapsed_ms` | LLM call duration in milliseconds |
+| `tool.id` | Tool call ID |
+| `tool.name` | Tool name |
+| `tool.arguments` | Tool parameters JSON string |
+| `tool.risk` | Tool risk level |
+| `tool.result` | Tool result text |
+| `tool.error` | Tool error; usually used only in error contexts |
+| `outputs` | Array of accumulated output intents for the current event |
+| `error.message` | Current error text; only related to error Hooks |
+
+Common fragment fields used by `message.segments`, `llm.messages[].segments`, the `outputs` field of stdout `output` frame, `params.outputs` of `request output.send`, and `outputs` of TOML send action:
+
+| Field | Description |
+| --- | --- |
+| `type` / `kind` | Fragment type; common for inbound messages are `text`, `image`, `file`, and output also supports `emoticon`, `at`, `reply` |
+| `text` | Text content or additional text |
+| `url` | HTTP/HTTPS resource URL |
+| `path` | Local resource path; resolved relative to `plugins/` or the plugin directory during output |
+| `base64` | base64 encoded data; used only for output fragments |
+| `name` | File name or emoticon name |
+| `mime_type` | MIME type hint |
+| `user_id` | `at` Target user ID for output |
+| `message_id` | `reply` Target platform message ID for output |
+
+Note: `message.text`, `message.content_text`, `llm.latest_user_text`, etc., are derived fields in rule matching and template variables, not fields with the same name in the init JSON. The exec script needs to read raw data from `event.message.segments`, `event.message.raw_text`, `event.message.reply`, or `event.llm.messages[].segments`.
+
+`match.regex[]` field:
+
+| Field | Description |
+| --- | --- |
+| `field` | Field name for regex matching |
+| `value` | Regular expression |
+| `text` | Matched text |
+| `groups` | Capture group array; `groups[0]` is the full match |
+| `named` | Named capture group object |
+| `start` / `end` | Hit range |
+
+`runtime` field:
+
+| Field | Description |
+| --- | --- |
+| `plugin_name` | Plugin name; the rule in the main `plugins/hooks.toml` is empty |
+| `plugin_dir` | Plugin directory; the main rule is empty |
+| `config_path` | Current rule configuration file path |
+| `rule_name` | Final name of the current rule |
+| `cwd` | Working directory of the exec process |
+
+stdout frames that the script can write:
+
+| type | Description |
+| --- | --- |
+| `output` | Queue output intent for this Hook; the frame must contain the `outputs` field, whose value is an array of output segment objects |
+| `request` | Call ElBot capabilities; when `id` is provided, ElBot will write a `response` frame to stdin |
+| `done` | Normal termination; can include `matched=false` to indicate that this rule is not effective and to roll back previous action effects |
+| `error` | Failure termination, with the `error` or `message` field serving as the error text |
+
+Example of stdout frame structure:
+
+```json
+{"type":"output","outputs":[{"kind":"text","text":"内容"}]}
+{"type":"output","outputs":[{"kind":"image","path":"images/a.png","text":"附加说明"}]}
+{"type":"request","id":"send-1","method":"output.send","params":{"outputs":[{"kind":"text","text":"立即发送"}]}}
+{"type":"done","result":"ok","message":{"text":"改写后的文本"}}
+{"type":"error","error":"失败原因"}
+```
+
+`output` frame only uses the `outputs` field; Do not write `{"type":"output","output":{...}}` or `{"type":"output","segments":[...]}`. When multiple output segments are needed, place multiple output segments in the same `outputs` array; Alternatively, multiple lines of `output` frames can be written. TOML send action also uses `outputs = [...]`.
+
+`output` frame field:
+
+| Field | Description |
+| --- | --- |
+| `type` | Fixed as `output` |
+| `id` | Optional; once set, ElBot will return `response`, and `result.queued=true` upon success |
+| `outputs` | Required, an array of output segment objects |
+
+`request` frame field:
+
+| Field | Description |
+| --- | --- |
+| `type` | Fixed as `request` |
+| `id` | Optional but strongly recommended; once set, ElBot will write the `response` frame to stdin |
+| `method` | Request method, see the method table below |
+| `params` | Request parameters object; structure varies by method |
+
+`request` without `id` will not receive `response`; however, if the request fails, the current exec action will still fail and trigger a Hook failure notification.
+
+`done` optional fields:
+
+| Field | Description |
+| --- | --- |
+| `matched` | Default is `true`; when it is `false`, the entire rule is considered a miss, and subsequent actions will no longer be executed |
+| `result` | Save to `{{actions.<name>.result}}` |
+| `error` | Save to `{{actions.<name>.error}}` |
+| `message.text` | Overwrite the `field` of the action; overwrite `message.text` when `field` is not set |
+| `consume` | Set the consume control bit of this event |
+| `stop_propagation` | Set the stop_propagation control bit of this event |
+
+`error` frame field:
+
+| Field | Description |
+| --- | --- |
+| `type` | Fixed as `error` |
+| `error` / `message` | Failure text; `error` takes precedence |
+
+Supported request methods:
+
+| method | params | Description |
+| --- | --- | --- |
+| `platform.call` | `platform`、`api`、`params` | Call the current platform's original API; cannot be called across platforms |
+| `output.send` | `outputs` | Immediately send the output segment array and return a receipt; requires the app-layer sender to be available |
+| `message.get_reply` | None | Return the target message ID that the current message references/replies to |
+| `message.get` | Reserved | Currently returns `available=false` |
+| `hook.log` | Any JSON | Write to Hook plugin log |
+
+The `response` frame fields written back to stdin by ElBot:
+
+| Field | Description |
+| --- | --- |
+| `type` | Fixed as `response` |
+| `id` | Corresponding `id` of the request/output frame |
+| `ok` | `true` indicates success, `false` indicates failure |
+| `result` | Success result; exists only when `ok=true` |
+| `error` | Failure text; exists only when `ok=false` |
+
+When requests such as `platform.call` and `output.send` fail, the script will first receive a response from `ok=false`; Subsequently, the current exec action will also fail and trigger a Hook failure notification.
+
+Minimal Python example:
+
+```python
+#!/usr/bin/env python3
+import json
+import sys
+
+init = json.loads(sys.stdin.readline())
+event = init["event"]
+segments = event.get("message", {}).get("segments", [])
+text = "".join(seg.get("text", "") for seg in segments if seg.get("type") == "text")
+
+print(json.dumps({
+    "type": "output",
+    "outputs": [{"kind": "text", "text": "收到：" + text}],
+}, ensure_ascii=False), flush=True)
+print(json.dumps({"type": "done", "result": "ok"}, ensure_ascii=False), flush=True)
+```
 
 ```toml
 [[rules]]
@@ -276,19 +516,20 @@ if = "llm.text"
 op = "regex"
 value = "\\[\\[[^\\[\\]]+\\]\\]"
 actions = [
-  { type = "exec", command = "uv run emoticon_extract.py", stdout = "outputs", field = "llm.text", timing = "after_assistant" },
+  { name = "extract", type = "exec", command = "uv run emoticon_extract.py", field = "llm.text", timing = "after_assistant" },
 ]
 ```
 
 ### Template Variables
 
-Text fields and exec command/stdin support `{{...}}` template rendering:
+Text fields and exec commands support `{{...}}` template rendering:
 
 ```
 {{platform.name}}          {{platform.scope_id}}      {{platform.user_id}}
 {{platform.message_id}}    {{platform.reply_to_message_id}}
 {{actor.id}}               {{actor.user_id}}          {{actor.role}}
-{{message.text}}           {{message.content_text}}
+{{message.text}}           {{message.content_text}}   {{message.raw_text}}
+{{message.reply.message_id}} {{message.reply.text}}    {{message.reply.content_text}}
 {{llm.text}}               {{llm.raw_text}}           {{llm.latest_user_text}}
 {{tool.arguments}}         {{tool.result}}
 {{actions.<name>.result}}  {{actions.<name>.error}}
@@ -324,33 +565,25 @@ stop_propagation = true      # Block subsequent rules at the same Hook point fro
 
 `consume = true` is typically used for `platform.message.received` Hooks: it blocks subsequent commands and LLM processing after sending output, allowing the Hook to take full control of the message.
 
-## Hook exec Delivery to Elvena
+## Hook exec platform call
 
-The `exec` action of a Rule Hook can be set to `stdout = "elvena"`. The script stdout must be a complete Elvena JSON request; ElBot will pass it to Elnis via the internal Elvena Bus, rather than going through HTTP token authentication again.
+The `exec` action of a rule Hook can call the current platform's original API via the `request` frame. Platform calls will be entered into the audit log, and only the platform to which the current event belongs can be called; it is not possible to cross from one platform Hook to another platform.
 
-```toml
-[[rules]]
-name = "server-script"
-on = "platform.message.received"
-roles = ["superadmin"]
-always = true
-
-[[rules.actions]]
-type = "exec"
-name = "notify"
-command = "uv run scripts/build_elvena.py"
-stdout = "elvena"
+```json
+{"type":"request","id":"call-1","method":"platform.call","params":{"api":"delete_msg","params":{"message_id":"123"}}}
 ```
 
-The script can output `mode = "direct"` notifications or `mode = "llm"` background tasks; Subsequent processing is still handled by Elnis's target arbitration, logging, deduplication, and background runner.
+ElBot will write the response frame to the script's stdin:
 
-Elvena is based on JSON, and the content must be UTF-8 encoded. For the complete Elvena request fields, see [Elnis Configuration and Usage](elnis-usage.md#elvena-请求示例).
+```json
+{"type":"response","id":"call-1","ok":true,"result":{}}
+```
 
 ## Example of Recalling a Quoted Message
 
-The following example is used when a superadmin replies to a platform message and sends "recall this", calling the platform API via Elvena v3 `calls` to recall the quoted message.
+The following example is used when a superadmin replies to a platform message and sends "recall", calling the platform API via Elvena v3 `calls` to recall the quoted message.
 
-Prerequisite: The platform adapter must support raw API calls, and the current message must have a quote/reply relationship. In the Hook, the platform message ID of the quoted message can be read via `platform.reply_to_message_id`, and the message ID that triggered the current Hook can be read via `platform.message_id`.
+Prerequisite: The platform adapter must support raw API calls, and the current message must have a quote/reply relationship. In the Hook, the platform message ID of the quoted message can be read via `message.reply.message_id` or `platform.reply_to_message_id`, and the message ID that triggered the current Hook can be read via `platform.message_id`. The `message.text` in `platform.message.received` only represents the text sent by the current user; The quoted content is in `message.reply.*` and will not pollute `message.text`.
 
 Telegram uses Bot API `deleteMessage`; the bot must have permission to delete the target message, and the target message must not exceed the deletion time limit allowed by the platform.
 
@@ -360,10 +593,11 @@ Telegram uses Bot API `deleteMessage`; the bot must have permission to delete th
 [[rules]]
 name = "recall_quoted_message"
 on = "platform.message.received"
+require_wakeup = false
 roles = ["superadmin"]
 match = [
-  { field = "message.text", op = "fullmatch", value = "撤回这条" },
-  { field = "platform.reply_to_message_id", op = "exists" },
+  { field = "message.text", op = "fullmatch", value = "撤回" },
+  { field = "message.reply.message_id", op = "exists" },
 ]
 
 consume = true
@@ -372,19 +606,17 @@ consume = true
 type = "exec"
 name = "recall"
 command = "uv run recall_quoted_message.py"
-stdout = "elvena"
 timeout_seconds = 10
 ```
 
 ### recall_quoted_message.py
 
-The script reads the Hook event JSON from stdin and generates an Elvena v3 direct calls-only request based on the current platform. Elnis only executes `calls`, and no additional confirmation message will be sent if the request does not contain `content` or `segments`.
+The script reads the init frame from stdin, writes the `platform.call` request frame to stdout, then reads the response frame, and finally writes the done frame.
 
 ```python
 #!/usr/bin/env python3
 import json
 import sys
-import time
 
 
 def numeric_scope_id(scope_id):
@@ -394,8 +626,8 @@ def numeric_scope_id(scope_id):
 
 
 def main():
-    data = json.load(sys.stdin)
-    event = data.get("event", {})
+    init = json.loads(sys.stdin.readline())
+    event = init.get("event", {})
     platform = event.get("platform", {})
     platform_name = platform.get("name", "")
     scope_id = platform.get("scope_id", "")
@@ -404,50 +636,43 @@ def main():
     if not reply_id:
         raise SystemExit("missing platform.reply_to_message_id")
 
-    target = {"platform": platform_name}
     scope_target_id = numeric_scope_id(scope_id)
-    if scope_id.startswith("group:") or scope_id.startswith("supergroup:"):
-        target.update({"type": "group", "id": scope_target_id})
-    elif scope_id.startswith("private:"):
-        target.update({"type": "private", "id": scope_target_id})
-
-    call = {
-        "kind": "capability",
-        "name": "message.recall",
-        "platform": platform_name,
-        "target": target,
-        "params": {"message_id": reply_id},
-    }
-
-    # Telegram deleteMessage 还需要 chat_id；message.recall 会从 target.id 映射。
-    if platform_name == "telegram":
-        call["params"]["chat_id"] = scope_target_id
+    if platform_name == "qqonebot":
+        api = "delete_msg"
+        params = {"message_id": reply_id}
+    elif platform_name == "telegram":
+        api = "deleteMessage"
+        params = {"chat_id": scope_target_id, "message_id": int(reply_id)}
+    else:
+        raise SystemExit(f"unsupported platform: {platform_name}")
 
     req = {
-        "version": "elvena.v3",
-        "elwisp": {"name": "hook_recall"},
-        "source": "rules-hook",
-        "id": f"recall-{platform_name}-{reply_id}-{int(time.time() * 1000)}",
-        "mode": "direct",
-        "targets": [target],
-        "calls": [call],
+        "type": "request",
+        "id": "recall",
+        "method": "platform.call",
+        "params": {
+            "platform": platform_name,
+            "api": api,
+            "params": params,
+        },
     }
-    json.dump(req, sys.stdout, ensure_ascii=False)
+    print(json.dumps(req, ensure_ascii=False), flush=True)
+    resp = json.loads(sys.stdin.readline())
+    if not resp.get("ok"):
+        print(json.dumps({
+            "type": "error",
+            "error": resp.get("error", "platform.call failed"),
+        }, ensure_ascii=False), flush=True)
+        return
+
+    done = {"type": "done", "result": "recalled", "consume": True}
+    if platform_name == "telegram":
+        done["message"] = {"text": "已撤回引用消息"}
+    print(json.dumps(done, ensure_ascii=False), flush=True)
 
 
 if __name__ == "__main__":
     main()
-```
-
-OneBot can also perform a raw call directly without using capabilities:
-
-```json
-{
-  "kind": "raw",
-  "platform": "qqonebot",
-  "api": "delete_msg",
-  "params": {"message_id": "{{platform.reply_to_message_id}}"}
-}
 ```
 
 ## Emoticon Extraction Example
@@ -465,13 +690,13 @@ if = "llm.text"
 op = "regex"
 value = "\\[\\[[^\\[\\]]+\\]\\]"
 actions = [
-  { type = "exec", command = "uv run emoticon_extract.py", stdout = "outputs", field = "llm.text", timing = "after_assistant" },
+  { name = "extract", type = "exec", command = "uv run emoticon_extract.py", field = "llm.text", timing = "after_assistant" },
 ]
 ```
 
 ### emoticon_extract.py
 
-The script reads the event JSON from stdin, extracts `[[token]]`, and checks if there are images in the `emoticons/<token>/` directory. If images exist, it generates an emoticon output and removes the token from the text; otherwise, it keeps the text as is.
+The script reads the init frame from stdin, extracts `[[token]]`, and checks if there are images in the `emoticons/<token>/` directory; if so, it outputs an emoticon frame and removes the token from the text; otherwise, it keeps it as is.
 
 ```python
 #!/usr/bin/env python3
@@ -486,8 +711,8 @@ EMOTICON_DIR = "emoticons"
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
 def main():
-    data = json.load(sys.stdin)
-    text = data.get("event", {}).get("llm", {}).get("text", "")
+    init = json.loads(sys.stdin.readline())
+    text = init.get("event", {}).get("llm", {}).get("text", "")
     outputs = []
 
     def replace(match):
@@ -504,8 +729,16 @@ def main():
         return ""
 
     cleaned = TOKEN_RE.sub(replace, text).strip()
-    result = {"outputs": outputs, "text": cleaned}
-    json.dump(result, sys.stdout, ensure_ascii=False)
+    if outputs:
+        print(json.dumps({
+            "type": "output",
+            "outputs": outputs,
+        }, ensure_ascii=False), flush=True)
+    print(json.dumps({
+        "type": "done",
+        "message": {"text": cleaned},
+        "result": str(len(outputs)),
+    }, ensure_ascii=False), flush=True)
 
 if __name__ == "__main__":
     main()
@@ -517,79 +750,4 @@ if __name__ == "__main__":
 - `timing` controls the timing of emoticon delivery: `immediate` (default) sends before the LLM text output, and `after_assistant` sends after the assistant's reply.
 - `field = "llm.text"` allows the `text` returned by the script to overwrite the LLM response text, removing the extracted tokens.
 - When `field` is not set, the script only produces outputs without modifying the original text (suitable for scenarios such as "send a notification when content is detected but do not modify the original text").
-
-### write_elbot_hook Skill Example
-
-The following content is automatically generated in `skills/go/write_elbot_hook/SKILL.elyph` when ElBot runs for the first time, to allow the LLM to generate rule Hook configurations and optional exec scripts as needed.
-
-```text
-#skill write_elbot_hook - 根据需求编写 ElBot 规则 Hook
-<- $requirement:str!
-<- $script_name:str?
--> $script_content:str
-?if(windows){
-$hook_config:str=%AppData/Roaming/ElBot/hooks.toml
-}
-?else {
-$hook_config:str=~/.config/elbot/plugins/hooks.toml
-}
-** $requirement 是用户想实现的 Hook 行为，直接修改$hook_config；$script_name 是可选脚本文件名，仅在需要 exec 时使用
-** $script_content 仅在需要 exec 时输出完整脚本，否则说明不需要
-** Hook 点：platform.connected=平台连接完成；platform.message.received=平台消息刚收到（适合关键词拦截、预处理和 consume）
-** Hook 点：agent.input.prepared=Agent 输入准备后（改写用户输入文本）；llm.turn.prepared=LLM turn 准备阶段（改写本轮 latest user 文本）；llm.request.prepared=LLM 请求发出前（改写 latest user 文本）
-** Hook 点：llm.response.received=LLM 响应收到后（改写 assistant 文本或提取标记）；tool.call.prepared=工具调用执行前（改写 tool.arguments）；tool.call.completed=工具调用完成后（改写 tool.result）
-** Hook 点：agent.output.prepared=Agent 输出准备后（改写 assistant message.text）；agent.turn.output.prepared=本轮最终输出准备后（改写 assistant message.text）；platform.message.sent=平台消息发送后（记录或后处理）；error.occurred=发生错误时（记录或通知）
-** 匹配字段——平台/消息：platform.name、scope_id、user_id、conversation_id、message_id、reply_to_message_id
-** 引用字段说明：platform.message_id 是当前入站平台消息 ID；platform.reply_to_message_id 是当前消息引用/回复的目标平台消息 ID，适合撤回引用消息、引用上下文判断和传给 Elvena calls
-** 匹配字段——Actor：actor.id、actor.user_id、actor.role（superadmin/user）、actor.group_role（owner/admin/member）、actor.display_name
-** 匹配字段——Session/Request：session.id/mode/status、request.id/kind/phase
-** 匹配字段——Message：message.text（部分 Hook 点可编辑）、message.content_text（纯文本聚合，用于匹配）、message.role
-** 匹配字段——LLM：llm.text（可编辑）、llm.raw_text（只匹配不可编辑）、llm.latest_user_text（可编辑）、llm.latest_user_content_text（用于匹配）、llm.provider、llm.model
-** 匹配字段——Tool：tool.name、tool.arguments（可编辑）、tool.result（可编辑）、tool.risk
-** 匹配写法：always=true 无条件匹配（不能与 if/op/value 或 match 混用）；单条件用 if/op/value；多条件 AND 用 match 数组（每项含 field/op/value）
-** 匹配操作：exists=非空、contains=包含 value、fullmatch=完全等于、startswith=以 value 开头、endswith=以 value 结尾、regex=正则匹配（捕获组可用模板引用）
-** 可编辑字段按 Hook 点：platform.message.received 和 agent.input.prepared→message.text；llm.turn.prepared 和 llm.request.prepared→llm.latest_user_text；llm.response.received→llm.text；tool.call.prepared→tool.arguments；tool.call.completed→tool.result；agent.output.prepared、agent.turn.output.prepared、platform.message.sent→assistant message.text；llm.raw_text 只能匹配不能编辑
-** Action 类型：prepend=开头追加、append=末尾追加、replace=替换（可用 pattern/replace/all）、delete=删除（等同 replace 空串）、send=生成输出意图由 Output Manager 发送、tool=调用已注册工具（结果存 actions.<name>.result）、exec=执行本地脚本（默认 cwd 是 plugins/）
-** send 字段：kind（text/image/file/emoticon/at，默认 text）、text（文本内容）、timing（immediate/after_assistant，默认 immediate）、target（输出目标，未指定时用当前上下文）
-** segment 字段：kind（text/image/file/emoticon）、text（内容或附加文本）、url（HTTP/HTTPS）、path（相对 plugins/ 的本地路径）、base64（编码数据）、name（文件名或表情名）、mime_type（MIME 提示）
-** exec 字段：command（命令）、cwd（可覆盖工作目录，相对路径仍基于 plugins/）、stdin（自定义标准输入，支持模板；未设置时为 event+match 的 JSON）、timeout_seconds（超时）、field（仅 stdout=outputs 且需用 text 覆写字段时使用）
-** exec stdout 模式：capture=默认（存 actions.<name>.result）、send=作为文本输出发送、outputs=解析 JSON 读取 outputs 数组和可选 text、elvena=解析为 Elvena JSON 请求交内部 Elnis、ignore=忽略
-** outputs JSON：outputs 数组每项格式同 send segments；text 可选，action 设 field 时用 text 覆写该字段
-** elvena JSON：必须是完整 Elvena 请求，UTF-8 编码，经内部 Elvena Bus 投递
-** 角色字段：roles 同时匹配内部角色和群身份；actor_roles 只匹配 superadmin/user；group_roles 只匹配 owner/admin/member
-** 控制字段：consume=true 阻止后续 slash 命令和 LLM 处理；stop_propagation=true 阻止同 Hook 点后续规则执行，二者都与 on/name/match/actions 等字段平级
-** 模板变量：platform.name/scope_id/user_id/message_id/reply_to_message_id、actor.id/user_id/role、message.text/content_text、llm.text/raw_text/latest_user_text、tool.arguments/result、actions.<name>.result/error；regex 捕获组用 match.regex.0.group.1 或命名组 match.regex.0.<name>
-** 先判断需求适合的 Hook 点，只使用本 Skill 列出的 Hook 点；选择 always、单条件 if/op/value 或 match 多条件，不混用互斥写法
-** 只编辑当前 Hook 点允许修改的字段；需要发送消息时优先用 send action 产出 output 意图，不直接调用平台发送
-** 需要多模态输出时使用 segments，字段格式必须使用本 Skill 列出的 segment 字段；需要本地脚本时使用 exec action 并明确 stdout 模式
-** exec 脚本默认以 plugins/ 为工作目录，脚本和资源路径用相对 plugins/ 的路径；工具调用必须遵守 Security Policy，只调用当前 Actor 可用且不需要交互确认的工具
-** 输出必须包含可直接复制的 TOML；如果需要脚本，也输出完整脚本内容
-~ 使用本 Skill 未列出的 Hook 点
-~ 修改不可编辑字段
-~ 让 Hook 或脚本直接绕过 Output Manager 发送平台消息
-~ 让 exec stdout 输出非 JSON 却声明 outputs 或 elvena 模式
-~ 编造不存在的 action 类型、segment 字段、stdout 模式或模板变量
-?if(需求需要拦截输入并阻止后续 LLM 处理) {
-  ** 在 platform.message.received Hook 上使用 consume = true
-}
-?else {
-  ** 不主动设置 consume，避免误拦截正常对话
-}
-?if(需求包含脚本处理、外部程序或复杂文本解析) {
-  ** 使用 exec action
-  ** 如果脚本要同时发送 outputs 并改写文本，stdout 使用 outputs，并在 action 上设置 field
-  ** 脚本从 stdin 读取 event JSON，向 stdout 写规定格式结果
-}
-?else {
-  ** 优先用 replace、append、prepend、delete、send 或 tool action 完成
-}
-> 选择的 Hook 点、匹配条件和 action 原因。
-> plugins/hooks.toml 中可复制的 [[rules]] 配置。
-?if(用到exec){
-> 脚本文件路径和完整脚本内容
-}
-> 把脚本和资源放在 plugins/ 下，并按需测试。
-> 完成后通知用户用/hooks reload重载
-```
-
 
