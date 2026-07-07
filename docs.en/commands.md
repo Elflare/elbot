@@ -175,13 +175,14 @@ Example:
 
 ```text
 /hooks
-/hooks rules.greet
+/hooks greet
 /hooks reload
 ```
 
 Note:
 
-- Hooks include rule Hooks (`plugins/hooks.toml`), resident memory Hooks, and built-in Cron Hooks.
+- Rule Hooks directly use the `name` in the configuration; Built-in Hooks use the `builtin.*` name, such as `builtin.resident_memory` and `builtin.cron.missed_once`.
+- `Description` will be displayed in the list and details; rule details are only displayed in the details.
 - `reload` will re-read `hooks.toml` and rebuild all Hook registrations, allowing configuration changes to take effect without a restart.
 - `/hooks` is a superadmin command.
 

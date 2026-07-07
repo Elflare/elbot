@@ -16,9 +16,9 @@
       "updated_at": 1782901148
     },
     "docs/commands.md": {
-      "source_hash": "8de40446f7289da6926ba0fddb2dfa20faedf85fb934f72ecdd33113fab56342",
+      "source_hash": "d2070dc3745b463252a7df765e0fc21712b36c96fff6d96c6b59fa207035fe2d",
       "target": "docs.en/commands.md",
-      "updated_at": 1783240856
+      "updated_at": 1783390911
     },
     "docs/concepts.md": {
       "source_hash": "b9f6b98ec7977a296b7fcccdc91cbb47fff7f709fdf2342bd2fb79e0510ea6c7",
@@ -3134,6 +3134,14 @@
       "translation": "Hooks include rule Hooks (__ELBOT_CODE_0__), resident memory Hooks, and built-in Cron Hooks.",
       "updated_at": 1782444282
     },
+    "docs/commands.md:list:4691554f72e6c9db8dad2211f514020935023e8ac97c7d157c4ca2e7ac997513": {
+      "kind": "list",
+      "source": "规则 Hook 直接使用配置里的 __ELBOT_CODE_0__；",
+      "source_file": "docs/commands.md",
+      "source_hash": "4691554f72e6c9db8dad2211f514020935023e8ac97c7d157c4ca2e7ac997513",
+      "translation": "Rule Hooks directly use the __ELBOT_CODE_0__ in the configuration;",
+      "updated_at": 1783390911
+    },
     "docs/commands.md:list:56f592b51f3e4db3f0574804db58561c5ce478a9a00b4737d840d1da8cc53ebf": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 展示的编号可被 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__ 等命令复用。",
@@ -3157,6 +3165,14 @@
       "source_hash": "86f4b0d40783395da1758f840cbcc66650a856e5369c4fedfbb386d7ef46feb4",
       "translation": "__ELBOT_CODE_0__ aggregates token usage from __ELBOT_CODE_1__ events in the audit log, calculating prompt, completion, total, cache, and duration grouped by model/day/Session.",
       "updated_at": 1782884118
+    },
+    "docs/commands.md:list:8f2f7d63d3db67a7a577eebfd266cafc17be3dd507dad49fe860f9fc068b8c19": {
+      "kind": "list",
+      "source": "内置 Hook 使用 __ELBOT_CODE_0__ 名称，例如 __ELBOT_CODE_1__、__ELBOT_CODE_2__。",
+      "source_file": "docs/commands.md",
+      "source_hash": "8f2f7d63d3db67a7a577eebfd266cafc17be3dd507dad49fe860f9fc068b8c19",
+      "translation": "Built-in Hooks use the __ELBOT_CODE_0__ name, such as __ELBOT_CODE_1__ and __ELBOT_CODE_2__.",
+      "updated_at": 1783390911
     },
     "docs/commands.md:list:90c8c1bfe6e267ecc3fefcb7a87133b98693bf3aebd34ab4340440f416f34a60": {
       "kind": "list",
@@ -3213,6 +3229,14 @@
       "source_hash": "e850fda8108ea39dcdeac91904fad7726f49f72fd03ac228d94e6242fbe400e3",
       "translation": "Compaction only affects the context view sent to the LLM and does not delete the original message history.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:list:f275ad5728d0764f38c31757da740dea8fbb8ca748a44322a4182a2ca668d5c5": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 会显示在列表和详情里；规则细节只在详情里显示。",
+      "source_file": "docs/commands.md",
+      "source_hash": "f275ad5728d0764f38c31757da740dea8fbb8ca748a44322a4182a2ca668d5c5",
+      "translation": "__ELBOT_CODE_0__ will be displayed in the list and details; rule details are only displayed in the details.",
+      "updated_at": 1783390911
     },
     "docs/commands.md:paragraph:0659d53aec5275ec4629f57bb87e0537087628ebd646e0504ad9fd702bba5f6f": {
       "kind": "paragraph",
