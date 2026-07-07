@@ -38,12 +38,12 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 		priority = DefaultPriority
 	}
 	if err := registrar.Register(hook.Registration{
-		Point:    hook.PointLLMTurnPrepared,
-		Priority: priority,
-		Name:     "plugins.resident_memory",
-		Match:    hook.Always(),
-		Detail:   "每 turn 注入当前 platform + actor 的常驻记忆和临时用户名",
-		Handler:  hook.HandlerFunc(m.inject),
+		Point:       hook.PointLLMTurnPrepared,
+		Priority:    priority,
+		Name:        "builtin.resident_memory",
+		Description: "每 turn 注入当前 platform + actor 的常驻记忆和临时用户名",
+		Match:       hook.Always(),
+		Handler:     hook.HandlerFunc(m.inject),
 	}); err != nil {
 		return err
 	}

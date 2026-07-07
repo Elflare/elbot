@@ -21,7 +21,7 @@ var defaultConfigAssets = []defaultAsset{
 	{Path: "tool_tags.toml", Content: defaultToolTagsTOML},
 	{Path: "plugins/hooks.toml", Content: defaultHooksTOML},
 	{Path: filepath.Join("skills", "agent", "agent_skill_creator", "SKILL.md"), Content: defaultAgentSkillCreatorSkillMD},
-	{Path: filepath.Join("skills", "go", "write_elbot_hook", "SKILL.elyph"), Content: defaultWriteElbotHookSkillElyph},
+	{Path: filepath.Join("skills", "agent", "write_elbot_hook", "SKILL.md"), Content: defaultWriteElbotHookSkillMD},
 	{Path: ".env.example", Content: defaultEnvExample},
 }
 
@@ -352,163 +352,18 @@ AgentSkill 和 EL Skill 分开选择：
 高性能、强结构化、需要校验/编译/长期维护的任务，优先使用 EL Skill。
 `
 
-const defaultWriteElbotHookSkillElyph = `#skill write_elbot_hook - 根据需求编写 ElBot 规则 Hook
-<- $requirement:str!
-<- $script_name:str?
--> $script_content:str
-?if(windows) {
-  $hook_config:str = %AppData%/ElBot/plugins/hooks.toml
-}
-?else {
-  $hook_config:str = $XDG_CONFIG_HOME/elbot/plugins/hooks.toml
-  ** 若 XDG_CONFIG_HOME 未设置，按 XDG 规范使用 $HOME/.config
-}
+const defaultWriteElbotHookSkillMD = `---
+name: write_elbot_hook
+description: 编写或修改 ElBot 规则 Hook 配置。
+---
 
-step goal {
-  ** 根据 $requirement 直接修改 $hook_config
-  ** 输出可直接使用的 TOML
-  ** 仅当必须使用 exec 时才输出完整 $script_content
-  ** 配置示例可看自动生成的 hooks.toml 注释
-  ** 完整说明和例子可看 https://github.com/Elflare/elbot/blob/main/docs/hooks.md
-  ** 完成后提醒用户执行 /hooks reload
-}
+路径：
+windows：%AppData%/ElBot/plugins/hooks.toml
+Linux：= $XDG_CONFIG_HOME/elbot/plugins/hooks.toml
+若 XDG_CONFIG_HOME 未设置，按 XDG 规范使用 $HOME/.config
 
-step files {
-  ** 主 hooks.toml 只允许顶层 [[plugins]] 和 [[rules]]
-  ** [[plugins]] 只允许 name,enabled,path
-  ** [[plugins]].path 必须相对 plugins/
-  ** 未设置 path 时默认读取 plugins/<name>/hook.toml
-  ** 插件 hook.toml 只允许顶层 [plugin] 和 [[rules]]
-  ** [plugin] 只允许 description
-  ** 插件 hook.toml 不能再写 [[plugins]]
-  ** 严格模式不允许未知字段、旧字段 stdout/stdin
-  ** 同一 rule 内 actions=[...] 和 [[rules.actions]] 只能二选一
-}
-
-step rule_shape {
-  ** [[rules]] 字段白名单：name,on,priority,enabled,require_wakeup,if,op,value,always,match,roles,actor_roles,group_roles,action,actions,field,text,pattern,replace,kind,path,timing,tool,arguments,command,cwd,timeout_seconds,all,target,outputs,consume,stop_propagation
-  ** Hook 点白名单：platform.connected,platform.message.received,agent.input.prepared,llm.turn.prepared,llm.request.prepared,llm.response.received,tool.call.prepared,tool.call.completed,agent.output.prepared,agent.turn.output.prepared,platform.message.sent,error.occurred
-  ** 匹配写法三选一：always=true；if/op/value；match=[{field,op,value},...]
-  ** op 白名单：exists,contains,fullmatch,startswith,endswith,regex
-  ** roles 同时匹配内部角色和群身份
-  ** actor_roles 只匹配 superadmin/user
-  ** group_roles 只匹配 owner/admin/member
-}
-
-step fields {
-  ** 匹配字段白名单：platform.name,scope_id,user_id,conversation_id,message_id,reply_to_message_id,actor.id,actor.user_id,actor.role,actor.group_role,actor.display_name,session.id,session.mode,session.status,request.id,request.kind,request.phase,message.text,message.content_text,message.raw_text,message.input_text,message.role,message.reply.message_id,message.reply.sender_id,message.reply.text,message.reply.content_text,llm.text,llm.raw_text,llm.latest_user_text,llm.latest_user_content_text,llm.provider,llm.model,tool.name,tool.arguments,tool.result,tool.risk,error.message
-  ** 匹配用户意图优先用 message.input_text：它会去掉群聊唤醒关键词和 bot mention
-  ** platform.message.received 中 message.text/content_text/raw_text 保留唤醒词
-  ** 自动回复并阻止后续处理时用 on=platform.message.received, consume=true, if=message.input_text
-  ** request.kind 取值：turn,llm,tool,compress,sub_agent
-  ** request.phase 取值：idle,llm,tool,awaiting_risk_confirm,awaiting_append_confirm,compact
-  ** 可编辑 field 映射：on=platform.message.received/agent.input.prepared 时 field="message.text"；on=llm.turn.prepared/llm.request.prepared 时 field="llm.latest_user_text"；on=llm.response.received 时 field="llm.text"；on=tool.call.prepared 时 field="tool.arguments"；on=tool.call.completed 时 field="tool.result"；on=agent.output.prepared/agent.turn.output.prepared/platform.message.sent 时 field="message.text"；llm.raw_text 只可匹配不可作为 field
-}
-
-step actions {
-  ** action 类型白名单：prepend,append,replace,delete,send,tool,exec
-  ** 单 action 可用 action="send" 加平铺字段
-  ** 多 action 用 actions=[{type="..."},...] 或 [[rules.actions]]
-  ** replace/delete 使用 field,pattern,replace,all
-  ** tool 使用 tool 和 arguments
-  ** tool 结果模板是 {{actions.<name>.result}}
-  ** send 产生输出意图，由 Output Manager 发送
-  ** send 字段：kind,text,timing,target,outputs
-  ** timing 默认 immediate，可用 after_assistant
-  ** target 字段：target.platform,target.scope_id,target.private_user_id,target.group_id,target.superadmins
-  ** 不写 target 时发送到当前上下文
-  ** output segment 字段：kind,text,url,path,base64,name,mime_type,user_id,message_id
-  ** kind 白名单：text,image,file,emoticon,at,reply
-  ** outputs 必须是 segment 数组
-}
-
-step templates: ** 模板变量白名单：{{platform.name}},{{platform.scope_id}},{{platform.user_id}},{{platform.message_id}},{{platform.reply_to_message_id}},{{actor.id}},{{actor.user_id}},{{actor.role}},{{message.text}},{{message.content_text}},{{message.raw_text}},{{message.input_text}},{{message.reply.message_id}},{{message.reply.sender_id}},{{message.reply.text}},{{message.reply.content_text}},{{llm.text}},{{llm.raw_text}},{{llm.latest_user_text}},{{tool.arguments}},{{tool.result}},{{error.message}},{{actions.<name>.result}},{{actions.<name>.error}},{{match.regex.0.group.1}},{{match.regex.0.<name>}}
-
-step exec_protocol {
-  ** exec 字段：command,cwd,timeout_seconds,field
-  ** command 按空白拆分后直接 exec，不自动套 shell
-  ** 需要管道、重定向、&& 时显式使用平台 shell
-  ** 工作目录默认是 plugins/ 或插件目录
-  ** 插件规则的相对 cwd 不能逃出插件目录
-  ** hook.v1 是行协议
-  ** ElBot 向 stdin 写一行 init JSON
-  ** 脚本必须只读取 stdin 第一行作为 init frame
-  ** 脚本不能 read_all、read_to_end、fread 到 EOF、循环读到 EOF
-  ** 脚本向 stdout 每行写一个 JSON frame
-  ** stdout 只能写 JSON frame
-  ** 日志和 debug 写 stderr 或文件
-  ** stderr 成功时只进日志
-  ** exec 失败/崩溃/超时/协议错误时 stderr 尾部会进入 Hook 失败通知
-  ** 最后必须写 done 或 error frame
-  ** 写出合法 done/error frame 后进程应以 0 退出
-  ** 非 0 exit code 会被视为 exec 进程失败
-  ** output frame 必须是 {"type":"output","outputs":[...]}
-  ** output frame 字段：type,id,outputs
-  ** 禁止使用 output={...} 或 segments=[...]
-  ** request frame 字段：type,id,method,params
-  ** done.message.text 写回 action.field
-  ** done.result 存入 {{actions.<name>.result}}
-  ** done.error 存入 {{actions.<name>.error}}
-  ** done.consume 设置事件 consume
-  ** done.stop_propagation 设置事件 stop_propagation
-  ** matched=false 会回滚本规则并跳过后续 action
-  ** error frame 字段：type,error 或 type,message
-  ** request frame 可调用 platform.call、output.send、message.get_reply、message.get、hook.log
-  ** 脚本发 request frame 后再逐行读取 stdin 的 response frame
-  ** response frame 字段：type,id,ok,result,error
-  ** request 失败会收到 ok=false/error，且当前 exec action 失败
-}
-
-step exec_init {
-  ** init 顶层字段：type,version,event,match,runtime
-  ** init.event 字段：id,point,time,metadata,control,platform,actor,session,request,message,llm,tool,outputs,error
-  ** init.event.control 字段：consume,stop_propagation
-  ** init.event.platform 字段：name,scope_id,user_id,conversation_id,message_id,reply_to_message_id
-  ** init.event.actor 字段：id,user_id,role,group_role,display_name
-  ** init.event.session 字段：id,mode,title,status
-  ** init.event.request 字段：id,kind,session_id,phase
-  ** init.event.message 字段：id,role,raw_text,input_text,reply,segments,messages
-  ** init.event.message.reply 字段：message_id,sender_id,text,content_text,segments
-  ** init.event.message 没有 message.text/message.content_text；读取当前原始文本用 raw_text，读取去唤醒词后的意图用 input_text，读取引用用 reply
-  ** 读用户文本时拼接 init.event.message.segments 中 type=text 的片段
-  ** init.event.llm 字段：provider,model,messages,tools,usage,raw_text,text,tool_calls,elapsed_ms
-  ** init.event.tool 字段：id,name,arguments,risk,result,error
-  ** init.event.outputs 是已累计输出意图数组
-  ** init.event.error.message 是错误文本
-  ** regex 匹配结果在 init.match.regex[0].groups
-  ** groups[0] 是完整匹配
-  ** groups[1+] 是捕获组
-  ** 命名捕获组在 init.match.regex[0].named
-}
-
-step exec_python_template {
-  ** Python 读取 init：init=json.loads(sys.stdin.readline())
-  ** Python 读取 regex groups：groups=init.get("match",{}).get("regex",[{}])[0].get("groups",[])
-  ** Python 输出文本：print(json.dumps({"type":"output","outputs":[{"kind":"text","text":text}]},ensure_ascii=False),flush=True)
-  ** Python 正常结束：print(json.dumps({"type":"done","result":"ok"},ensure_ascii=False),flush=True)
-  ** Python 业务失败：print(json.dumps({"type":"error","error":"原因"},ensure_ascii=False),flush=True) 后正常 return
-}
-
-step decisions {
-  ** 能用 replace、append、prepend、delete、send、tool 完成时不使用 exec
-  ** 需要复杂解析、随机、文件、外部程序或平台 API 时使用 exec
-  ** 拦截输入并阻止后续 LLM 时使用 on="platform.message.received" 且 consume=true
-  ** 监听未唤起群消息时使用 on="platform.message.received" 且 require_wakeup=false
-  ** 普通改写用户输入优先使用 agent.input.prepared
-  ** 改写 LLM 回复优先使用 llm.response.received
-  ** 只改最终发出的 assistant 文本优先使用 agent.turn.output.prepared
-}
-
-~ 使用未列出的 Hook 点、字段、action、segment 字段、request method 或模板变量
-~ 修改当前 Hook 点不可编辑的字段
-~ 让 Hook 或脚本绕过 Output Manager 直接发送平台消息
-~ 把 exec 日志写到 stdout
-~ 让 exec 脚本读取 stdin 到 EOF
-~ 让 exec 脚本输出 done/error 后以非 0 退出
-~ 用 output={...} 或 segments=[...] 代替 outputs=[...]
-~ 编造配置字段或旧版 stdout/stdin 字段
+简单hook直接参考hooks.toml中的注释写，复杂hook看https://github.com/Elflare/elbot/blob/main/docs/hooks.md
 `
-
 const defaultEnvExample = `# Copy this file to .env or set these variables in your OS environment.
 
 # Provider API keys
@@ -549,9 +404,16 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # Complex logic should be implemented as a code plugin instead.
 # Full docs and examples: https://github.com/Elflare/elbot/blob/main/docs/hooks.md
 #
+# Optional plugin configs:
+# [[plugins]]
+# name = "demo"
+# enabled = true
+# path = "demo/hook.toml" # optional; default is plugins/<name>/hook.toml
+#
 # Rule shape:
 # [[rules]]
 # name = "stable_debug_name"
+# description = "short summary" # optional, recommended
 # on = "hook.point"
 # enabled = true          # optional, default true
 # priority = 1000        # optional, smaller runs earlier
@@ -584,6 +446,8 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # ]
 #
 # send action with outputs (kind/text/url/path/base64/name/mime_type/user_id/message_id):
+# target.platform/target.scope_id/target.private_user_id/target.group_id/target.superadmins
+# can redirect send outputs; omit target to send to the current context.
 # actions = [
 #   { type = "send", timing = "after_assistant", outputs = [
 #     { kind = "text", text = "检测到关键词" },
@@ -621,7 +485,7 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # Match ops: always, exists, contains, fullmatch, startswith, endswith, regex.
 # Common fields:
 # platform.name/scope_id/user_id/conversation_id/message_id/reply_to_message_id
-# actor.id/user_id/role/display_name
+# actor.id/user_id/role/group_role/display_name
 # session.id/mode/status
 # request.id/kind/phase (kind: turn,llm,tool,compress,sub_agent; phase: idle,llm,tool,awaiting_risk_confirm,awaiting_append_confirm,compact)
 # message.text/content_text/raw_text/input_text/role
@@ -645,12 +509,14 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # agent.output.prepared / agent.turn.output.prepared / platform.message.sent: message.text
 #
 # Template variables include:
-# {{platform.name}}, {{platform.scope_id}}, {{platform.user_id}}
-# {{actor.id}}, {{actor.user_id}}
-# {{message.text}}, {{message.content_text}}, {{message.raw_text}}
-# {{message.reply.message_id}}, {{message.reply.text}}, {{message.reply.content_text}}
+# {{platform.name}}, {{platform.scope_id}}, {{platform.user_id}}, {{platform.message_id}}, {{platform.reply_to_message_id}}
+# {{actor.id}}, {{actor.user_id}}, {{actor.role}}, {{actor.group_role}}
+# {{message.text}}, {{message.content_text}}, {{message.raw_text}}, {{message.input_text}}
+# {{message.reply.message_id}}, {{message.reply.sender_id}}, {{message.reply.text}}, {{message.reply.content_text}}
 # {{llm.text}}, {{llm.raw_text}}, {{llm.latest_user_text}}, {{llm.latest_user_content_text}}
 # {{tool.arguments}}, {{tool.result}}
+# {{error.message}}
+# {{match.regex.0.group.1}}, {{match.regex.0.<name>}}
 # {{actions.<name>.result}}, {{actions.<name>.error}} from earlier tool actions.
 
 # Notify qqonebot superadmins after OneBot connects.

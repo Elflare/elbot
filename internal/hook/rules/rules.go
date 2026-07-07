@@ -59,6 +59,7 @@ type pluginConfig struct {
 
 type Rule struct {
 	Name            string           `toml:"name"`
+	Description     string           `toml:"description"`
 	On              string           `toml:"on"`
 	Priority        int              `toml:"priority"`
 	Enabled         *bool            `toml:"enabled"`
@@ -203,10 +204,11 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 		rule := rule
 		registrations := ruleRegistrations(rule)
 		for roleIndex, match := range registrations {
-			regName := "rules." + name
+			regName := name
 			if len(registrations) > 1 {
 				regName = fmt.Sprintf("%s.role.%d", regName, roleIndex+1)
 			}
+			description := ruleDescription(rule)
 			detail := formatRuleDetail(rule)
 			if len(registrations) > 1 {
 				detail = fmt.Sprintf("%s\n\n(role partition %d/%d)", detail, roleIndex+1, len(registrations))
@@ -215,6 +217,7 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 				Point:         hook.Point(rule.On),
 				Priority:      priority,
 				Name:          regName,
+				Description:   description,
 				Match:         match,
 				Detail:        detail,
 				RequireWakeup: rule.RequireWakeup,
@@ -1469,6 +1472,13 @@ func formatRuleDetail(rule Rule) string {
 	}
 
 	return sb.String()
+}
+
+func ruleDescription(rule Rule) string {
+	if description := strings.TrimSpace(rule.Description); description != "" {
+		return description
+	}
+	return strings.TrimSpace(rule.source.PluginDescription)
 }
 
 func targetString(t Target) string {

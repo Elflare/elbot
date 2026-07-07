@@ -485,6 +485,7 @@ type Registration struct {
 	Point         Point
 	Priority      int
 	Name          string
+	Description   string
 	Match         Match
 	Handler       Handler
 	Detail        string
@@ -493,10 +494,11 @@ type Registration struct {
 
 // Info describes a registered hook for inspection commands.
 type Info struct {
-	Name     string
-	Point    Point
-	Priority int
-	Detail   string
+	Name        string
+	Description string
+	Point       Point
+	Priority    int
+	Detail      string
 }
 
 // Registrar registers hook handlers for modules.
@@ -547,6 +549,7 @@ type registration struct {
 	priority      int
 	order         int
 	name          string
+	description   string
 	match         Match
 	handler       Handler
 	detail        string
@@ -576,7 +579,7 @@ func (m *DefaultManager) Register(reg Registration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.next++
-	m.handlers[reg.Point] = append(m.handlers[reg.Point], registration{priority: reg.Priority, order: m.next, name: reg.Name, match: reg.Match, handler: reg.Handler, detail: reg.Detail, requireWakeup: registrationRequireWakeup(reg)})
+	m.handlers[reg.Point] = append(m.handlers[reg.Point], registration{priority: reg.Priority, order: m.next, name: reg.Name, description: strings.TrimSpace(reg.Description), match: reg.Match, handler: reg.Handler, detail: reg.Detail, requireWakeup: registrationRequireWakeup(reg)})
 	sort.SliceStable(m.handlers[reg.Point], func(i, j int) bool {
 		left := m.handlers[reg.Point][i]
 		right := m.handlers[reg.Point][j]
@@ -697,7 +700,7 @@ func (m *DefaultManager) List() []Info {
 	var out []Info
 	for point, items := range m.handlers {
 		for _, reg := range items {
-			out = append(out, Info{Name: reg.name, Point: point, Priority: reg.priority, Detail: reg.detail})
+			out = append(out, Info{Name: reg.name, Description: reg.description, Point: point, Priority: reg.priority, Detail: reg.detail})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
