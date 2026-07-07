@@ -306,6 +306,84 @@ path = "assets/pic.png"
 	}
 }
 
+func TestRegisterHooksUsesRuleNamesAndDescriptions(t *testing.T) {
+	manager := hook.NewManager()
+	module := Module{Rules: []Rule{
+		{
+			Name:        "greet",
+			Description: "send a greeting",
+			On:          string(hook.PointPlatformMessageReceived),
+			Match:       []hook.Condition{{Op: hook.MatchAlways}},
+			Actions:     []Action{{Type: "send", Text: "hi"}},
+		},
+		{
+			Name:    "gated",
+			On:      string(hook.PointPlatformMessageReceived),
+			Match:   []hook.Condition{{Op: hook.MatchAlways}},
+			Roles:   []string{"superadmin", "admin"},
+			Actions: []Action{{Type: "send", Text: "ok"}},
+		},
+	}}
+	if err := module.RegisterHooks(manager); err != nil {
+		t.Fatalf("RegisterHooks: %v", err)
+	}
+	infos := manager.List()
+	byName := map[string]hook.Info{}
+	for _, info := range infos {
+		if strings.HasPrefix(info.Name, "rules.") {
+			t.Fatalf("unexpected rules prefix in %#v", infos)
+		}
+		byName[info.Name] = info
+	}
+	if got := byName["greet"]; got.Description != "send a greeting" || strings.Contains(got.Detail, "description:") || !strings.Contains(got.Detail, "on: platform.message.received") {
+		t.Fatalf("greet info = %#v", got)
+	}
+	for _, name := range []string{"gated.role.1", "gated.role.2"} {
+		if _, ok := byName[name]; !ok {
+			t.Fatalf("missing %s in %#v", name, infos)
+		}
+	}
+}
+
+func TestRegisterHooksFallsBackToPluginDescription(t *testing.T) {
+	dir := t.TempDir()
+	pluginDir := filepath.Join(dir, "demo")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("mkdir plugin: %v", err)
+	}
+	root := `[[plugins]]
+name = "demo"
+`
+	plugin := `[plugin]
+description = "demo plugin"
+
+[[rules]]
+name = "emit_file"
+on = "llm.response.received"
+always = true
+action = "send"
+text = "ok"
+`
+	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(root), 0o644); err != nil {
+		t.Fatalf("write root config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "hook.toml"), []byte(plugin), 0o644); err != nil {
+		t.Fatalf("write plugin config: %v", err)
+	}
+	cfg, _, err := loadConfig(Options{ConfigDir: dir})
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	manager := hook.NewManager()
+	if err := (Module{Rules: cfg.Rules}).RegisterHooks(manager); err != nil {
+		t.Fatalf("RegisterHooks: %v", err)
+	}
+	infos := manager.List()
+	if len(infos) != 1 || infos[0].Name != "emit_file" || infos[0].Description != "demo plugin" || strings.Contains(infos[0].Detail, "description:") || !strings.Contains(infos[0].Detail, "on: llm.response.received") {
+		t.Fatalf("infos = %#v", infos)
+	}
+}
+
 func TestLoadConfigRejectsUnknownLegacyField(t *testing.T) {
 	dir := t.TempDir()
 	content := `[[rules]]

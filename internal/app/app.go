@@ -446,10 +446,10 @@ func registerCronPlatformHook(hooks hook.Registrar, service *elcron.Service) err
 		return nil
 	}
 	return hooks.Register(hook.Registration{
-		Point:  hook.PointPlatformConnected,
-		Name:   "builtin.cron.missed_once",
-		Match:  hook.Always(),
-		Detail: "平台连接时补投递 missed once cron",
+		Point:       hook.PointPlatformConnected,
+		Name:        "builtin.cron.missed_once",
+		Description: "平台连接时补投递 missed once cron",
+		Match:       hook.Always(),
 		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 			service.NotifyPlatformConnected(ctx, event.Platform.Name)
 			return event, nil
