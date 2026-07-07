@@ -51,9 +51,9 @@
       "updated_at": 1782901460
     },
     "docs/getting-started.md": {
-      "source_hash": "be8df536298bfcae8caaf7f4a2932c844d168db3877fa150d2b96286d3d137b4",
+      "source_hash": "7a979d636bfda93ac7be66aadab1fd4a2fbc79820d464d2455dd2fa8fad5d4c2",
       "target": "docs.en/getting-started.md",
-      "updated_at": 1782901461
+      "updated_at": 1783392534
     },
     "docs/hooks.md": {
       "source_hash": "7ee7ef0e5f9c6ef275f4f1623383b10f0f4a822febd8ff00ed8a5d2263d8b900",
@@ -12109,6 +12109,14 @@
       "source_hash": "47d21cada652323c14884225b24ffb1055d586fbbf55c29f5b404b1d3ed02c8c",
       "translation": "Whether __ELBOT_CODE_1__ in __ELBOT_CODE_0__ is written correctly.",
       "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:58074fcac229a100c2cd2babfa663424aeafb1a83c4ccdae60cc1bf4a32d6b0b": {
+      "kind": "list",
+      "source": "\\#<文件名> 文件补全",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "58074fcac229a100c2cd2babfa663424aeafb1a83c4ccdae60cc1bf4a32d6b0b",
+      "translation": "\\#<filename> file completion",
+      "updated_at": 1783392534
     },
     "docs/getting-started.md:list:5c1ee4efcb90e0999f77fda34e78d255e8abdc071f7d846f7782569067269cc0": {
       "kind": "list",
