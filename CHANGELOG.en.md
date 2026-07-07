@@ -15,13 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactor AgentSkill: remove the py wrapper and execute the corresponding skill directly via shell; also support adding `ELBOT_SKILL.toml` in the AgentSkill root directory to register it as a normal tool, facilitating the LLM's direct call of structured parameters.
 - Added a hidden meta-tool `agent_skill` for reading or writing the `ELBOT_SKILL.toml` of AgentSkill; it validates the configuration before writing and reloads upon success.
 - The first run will generate `skills/agent/agent_skill_creator/SKILL.md`, which explains how to register an AgentSkill as a regular tool.
-- The first run will generate `skills/go/write_elbot_hook/SKILL.elyph`, used to write ElBot rule hooks as needed.
+- The first run will generate `skills/agent/write_elbot_hook/SKILL.md`, which serves as a prompt to write ElBot rule Hooks according to your needs.
 - Added `/usage` command: aggregates token consumption from the audit log, supporting summaries by model/day/Session, with shortcut parameters `-d` for days, `-m` for model, and `-s` for Session.
 - Added ``workspace`` tool: sets the shared working directory of the current foreground Session; path-related tools will resolve relative paths based on this directory. When switching to a directory containing `AGENTS.md` or `AGENT.md` for the first time, the contents of the documentation file will be automatically attached; A prompt to shorten will be displayed when the file exceeds 64 KiB.
 - Added `[platform_files]` configuration to uniformly control the maximum save size and download timeout for platform inbound files.
 - QQ OneBot now supports automatically saving inbound files from superadmins in private chats; messages containing only files will only reply with the save path or a "too large" prompt without invoking the LLM; group files are not automatically saved.
 - The `/requests` command now displays the current execution stage (preparing/llm/tool/sending) and the duration of each stage for every turn, allowing you to distinguish whether the LLM is slow or the platform delivery is stuck.
 - Inline preloading supports tool shorthand `@t:<name-or-tag>` and Skill shorthand `@s:<name>`, and is compatible with Chinese full-width colon `：`.
+- Failure notifications will be sent to the current messaging platform when Hook execution fails, the script crashes, times out, or a protocol error occurs, with the end of stderr attached upon failure; Added `error.message` to rule matching and templates.
+- Added `message.input_text` matching/template fields to Hook rules, used to match user input after removing group chat wake-up keywords or bot mentions.
 
 ### Changed
 
@@ -41,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `/hooks` now allows viewing details directly using the rule name, without requiring the `rules.` prefix; Rule Hooks now support optional `description`; built-in Hooks uniformly use `builtin.*` for name and description, with rule details displayed only in the details view.
 - Fixed the issue where rule cards were repeatedly injected into the context when performing tool discovery or inline preloading of multiple ELyph Skills; In the same Session, only Skill content is returned after the first injection, preserving the first rule card in history to facilitate cache hits.
 - Fixed the issue where Session messages under the same timestamp might be loaded out of order by UUID, leading to unstable historical context order.
 - Fixed the issue where `workspace` did not support `~`, `~/path`, and Windows `~\path` home directory paths when setting the tool directory.
@@ -49,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed an issue where Chinese output might be garbled when the `shell` tool falls back to PowerShell on Windows.
 - Fixed an issue where bash AST parsing failure for shell commands on Windows (when bash is missing) caused risk classification, sandbox validation, directory change interception, and warning analysis to all fail; In PowerShell environments, AST parsing is skipped, and risk classification directly returns high-risk, requiring user confirmation.
 - When OneBot fails to send an image, a visible fallback will no longer appear, but it will still be logged.
+- Fixed an issue where referencing fallback text when replying to Hook/slash command notifications polluted the `message.text` of `platform.message.received`, causing recall-type Hooks to fail matching; Hooks can now read structured reference information via `message.reply.*`.
 
 
 
