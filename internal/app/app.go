@@ -32,6 +32,7 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool/builtin"
+	"elbot/internal/tool/runtimeinfo"
 )
 
 type RunMode string
@@ -270,7 +271,17 @@ func Run(ctx context.Context, opts Options) error {
 	if err := cronManager.RegisterHandler(elcron.UserHandlerName, cronService.Handler); err != nil {
 		return err
 	}
-	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{ConfigDir: filepath.Dir(cfg.ConfigPath), CronService: cronService, ChatHistory: chatHistory, SandboxRoot: cfg.Sandbox.Root, FileDelivery: cfg.FileDelivery, ResidentMemoryMaxUnits: resident.Limits{Core: cfg.ResidentMemory.CoreMaxUnits, Normal: cfg.ResidentMemory.NormalMaxUnits}})
+	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{
+		ConfigDir: filepath.Dir(cfg.ConfigPath),
+		RuntimeInfo: runtimeinfo.Info{
+			ConfigPath:   cfg.ConfigPath,
+			SandboxRoot:  cfg.Sandbox.Root,
+			FileDelivery: cfg.FileDelivery,
+		},
+		CronService:            cronService,
+		ChatHistory:            chatHistory,
+		ResidentMemoryMaxUnits: resident.Limits{Core: cfg.ResidentMemory.CoreMaxUnits, Normal: cfg.ResidentMemory.NormalMaxUnits},
+	})
 	if err != nil {
 		return err
 	}

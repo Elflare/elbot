@@ -16,6 +16,7 @@ import (
 	"elbot/internal/elyph"
 	"elbot/internal/llm"
 	"elbot/internal/tool"
+	"elbot/internal/tool/runtimeinfo"
 )
 
 const CreateElSkillName = "create_el_skill"
@@ -56,7 +57,7 @@ func (CreateElSkillTool) Schema() llm.ToolSchema {
 		String("name", "skill 名称，也是目录名和 binary 名；使用小写字母、数字、下划线或短横线。", tool.Required()).
 		String("description", "skill 的可复用能力简述。", tool.Required()).
 		String("risk", "风险等级：safe, low, medium, high, critical。", tool.Required()).
-		String("elyph", "完整 SKILL.elyph 内容。"+elyph.RuleCard(), tool.Required()).
+		String("elyph", "完整 SKILL.elyph 内容。"+runtimeinfo.ElyphRuleCard(), tool.Required()).
 		String("go_source", "可选，Go main 包源码；提供时写入 main.go 并编译 binary。源码必须从 os.Stdin 读取业务参数 JSON；不要依赖 os.Args 传业务参数。不提供时创建纯 ELyph 文本 skill。").
 		Integer("timeout_ms", "可选，编译超时时间，默认 60000。").
 		BuildSchema()

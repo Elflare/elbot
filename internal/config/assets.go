@@ -21,7 +21,9 @@ var defaultConfigAssets = []defaultAsset{
 	{Path: "tool_tags.toml", Content: defaultToolTagsTOML},
 	{Path: "plugins/hooks.toml", Content: defaultHooksTOML},
 	{Path: filepath.Join("skills", "agent", "agent_skill_creator", "SKILL.md"), Content: defaultAgentSkillCreatorSkillMD},
+	{Path: filepath.Join("skills", "agent", "agent_skill_creator", "ELBOT_SKILL.toml"), Content: defaultAgentSkillCreatorSkillTOML},
 	{Path: filepath.Join("skills", "agent", "write_elbot_hook", "SKILL.md"), Content: defaultWriteElbotHookSkillMD},
+	{Path: filepath.Join("skills", "agent", "write_elbot_hook", "ELBOT_SKILL.toml"), Content: defaultWriteElbotHookSkillTOML},
 	{Path: ".env.example", Content: defaultEnvExample},
 }
 
@@ -308,10 +310,15 @@ elif:
     检查你已知Schema工具，是否有该技能的脚本，就可以直接调用，而不用shell
 ELBOT_SKILL.toml写法：
 只允许这些字段：
-risk, tags, command, timeout_seconds, expose_root, parameters, [args]
+risk, superadmin_only, tags, command, timeout_seconds, expose_root, parameters, [args]
+
+纯文档型 Skill 只限制可见性时，可以只写：
+risk = "high"
+superadmin_only = true
 
 示例：
 risk = "medium"
+superadmin_only = false
 tags = ["doc"]
 command = ["python", "foo.py"]
 timeout_seconds = 30
@@ -339,7 +346,8 @@ python foo.py --input abc --mode fast
 command 必须是字符串数组。
 parameters 必须是 JSON object schema。
 parameters.properties 定义工具有哪些入参；[args] 的 key 必须对应 parameters.properties。
-risk 必填。
+risk 可选；注册成普通工具时必填。纯文档型未写 risk 时按 safe 处理。
+superadmin_only 可选，true 时只有超级管理员可发现或使用。
 tags 可选，相当于为该工具分类。
 
 创建 AgentSkill：
@@ -351,18 +359,26 @@ AgentSkill 和 EL Skill 分开选择：
 高性能、强结构化、需要校验/编译/长期维护的任务，优先使用 EL Skill。
 `
 
+const defaultAgentSkillCreatorSkillTOML = `risk = "low"
+superadmin_only = true
+`
+
 const defaultWriteElbotHookSkillMD = `---
 name: write_elbot_hook
 description: 编写或修改 ElBot 规则 Hook 配置。
 ---
 
-路径：
+hook路径：
 windows：%AppData%/ElBot/plugins/hooks.toml
 Linux：= $XDG_CONFIG_HOME/elbot/plugins/hooks.toml
 若 XDG_CONFIG_HOME 未设置，按 XDG 规范使用 $HOME/.config
 
 简单hook直接参考hooks.toml中的注释写，复杂hook看https://github.com/Elflare/elbot/blob/main/docs/hooks.md
 修改完成后提醒用户使用 /hooks reload 重新加载
+`
+
+const defaultWriteElbotHookSkillTOML = `risk = "low"
+superadmin_only = true
 `
 const defaultEnvExample = `# Copy this file to .env or set these variables in your OS environment.
 
