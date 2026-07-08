@@ -109,7 +109,7 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, error
 	if len(activateTools) > 0 {
 		metadata[MetadataActivateTools] = activateTools
 	}
-	content := discoveryContent(ctx, result)
+	content := discoveryContent(ctx, t.registry, result)
 	if formats := NewRuleCardFormatsFromContext(ctx); len(formats) > 0 {
 		metadata[MetadataShownRuleCardFormats] = formats
 	}
@@ -129,12 +129,13 @@ func marshalJSONNoEscape(value any) ([]byte, error) {
 	return bytes.TrimSpace(buf.Bytes()), nil
 }
 
-func discoveryContent(ctx context.Context, result *DiscoveryResult) string {
+func discoveryContent(ctx context.Context, registry *Registry, result *DiscoveryResult) string {
 	if result == nil {
 		return ""
 	}
 	parts := []string{}
 	foundTools := []string{}
+	appendedExtras := []string{}
 	detailBlocks := []DetailBlock{}
 	for _, discovered := range result.Tools {
 		name := strings.TrimSpace(discovered.Info.Name)
@@ -147,6 +148,19 @@ func discoveryContent(ctx context.Context, result *DiscoveryResult) string {
 			continue
 		}
 		if discovered.Schema != nil && name != "" {
+			if target, ok := registry.Get(name); ok {
+				if provider, ok := target.(DiscoveryContentProvider); ok {
+					if content, override := provider.DiscoveryContent(); strings.TrimSpace(content) != "" {
+						if override {
+							parts = append(parts, content)
+						} else {
+							foundTools = append(foundTools, name)
+							appendedExtras = append(appendedExtras, content)
+						}
+						continue
+					}
+				}
+			}
 			foundTools = append(foundTools, name)
 			continue
 		}
@@ -157,6 +171,7 @@ func discoveryContent(ctx context.Context, result *DiscoveryResult) string {
 	if len(foundTools) > 0 {
 		parts = append([]string{fmt.Sprintf("已发现工具：%s。后续可直接调用。", strings.Join(foundTools, ", "))}, parts...)
 	}
+	parts = append(parts, appendedExtras...)
 	if detailText := RenderDetailBlocksWithContext(ctx, detailBlocks); detailText != "" {
 		parts = append(parts, detailText)
 	}

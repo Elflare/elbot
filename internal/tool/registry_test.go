@@ -334,6 +334,95 @@ func (t fakeDetailTool) DetailBlock() DetailBlock {
 }
 func (t fakeDetailTool) ActivateTools() []string { return t.activate }
 
+type fakeDiscoveryContentTool struct {
+	fakeTool
+	content  string
+	override bool
+}
+
+func (t fakeDiscoveryContentTool) DiscoveryContent() (string, bool) {
+	return t.content, t.override
+}
+
+func TestDiscoverToolDiscoveryContentAppend(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeDiscoveryContentTool{
+		fakeTool: fakeTool{name: "cron", source: SourceBuiltin},
+		content:  "当前本地时间：2099-01-01 00:00:00",
+		override: false,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]string{"name": "cron"})
+	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "已发现工具：cron。后续可直接调用。") {
+		t.Fatalf("append should keep tool in found line: %q", result.Content)
+	}
+	if !strings.Contains(result.Content, "当前本地时间：2099-01-01 00:00:00") {
+		t.Fatalf("append should add extra content: %q", result.Content)
+	}
+}
+
+func TestDiscoverToolDiscoveryContentOverride(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeDiscoveryContentTool{
+		fakeTool: fakeTool{name: "special", source: SourceBuiltin},
+		content:  "自定义内容",
+		override: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]string{"name": "special"})
+	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(result.Content, "已发现工具") {
+		t.Fatalf("override should exclude tool from found line: %q", result.Content)
+	}
+	if !strings.Contains(result.Content, "自定义内容") {
+		t.Fatalf("override should show custom content: %q", result.Content)
+	}
+}
+
+func TestDiscoverToolDiscoveryContentMixed(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeDiscoveryContentTool{
+		fakeTool: fakeTool{name: "append_tool", source: SourceBuiltin},
+		content:  "追加文本",
+		override: false,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(fakeDiscoveryContentTool{
+		fakeTool: fakeTool{name: "override_tool", source: SourceBuiltin},
+		content:  "覆盖文本",
+		override: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(fakeTool{name: "plain_tool", source: SourceBuiltin}); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string][]string{"names": []string{"append_tool", "override_tool", "plain_tool"}})
+	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "已发现工具：append_tool, plain_tool。后续可直接调用。") {
+		t.Fatalf("found line should include append and plain tools, exclude override: %q", result.Content)
+	}
+	if !strings.Contains(result.Content, "追加文本") {
+		t.Fatalf("append content missing: %q", result.Content)
+	}
+	if !strings.Contains(result.Content, "覆盖文本") {
+		t.Fatalf("override content missing: %q", result.Content)
+	}
+}
+
 func TestDiscoverDependenciesHandleCycles(t *testing.T) {
 	registry := NewRegistry()
 	if err := registry.Register(fakeTool{name: "a", source: SourceBuiltin, dependsOn: []string{"b"}}); err != nil {
