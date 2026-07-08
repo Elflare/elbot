@@ -26,7 +26,7 @@ func NewCommandTool(record Record) CommandTool {
 func (t CommandTool) Name() string { return t.Record.Name }
 
 func (t CommandTool) Info() tool.Info {
-	return tool.Info{Name: t.Record.Name, Description: t.Record.Description, Source: SourceForKind(t.Record.Kind), Risk: t.Manifest.Risk, Tags: t.Manifest.Tags}
+	return tool.Info{Name: t.Record.Name, Description: t.Record.Description, Source: SourceForKind(t.Record.Kind), Risk: t.Manifest.Risk, SuperadminOnly: t.Manifest.SuperadminOnly, Tags: t.Manifest.Tags}
 }
 
 func (t CommandTool) Schema() llm.ToolSchema {

@@ -11,6 +11,9 @@ import (
 )
 
 func TestDefaultWriteElbotHookSkillMarkdown(t *testing.T) {
+	if !strings.Contains(defaultAgentSkillCreatorSkillTOML, `risk = "low"`) || !strings.Contains(defaultAgentSkillCreatorSkillTOML, `superadmin_only = true`) {
+		t.Fatalf("default agent_skill_creator toml = %q", defaultAgentSkillCreatorSkillTOML)
+	}
 	for _, want := range []string{
 		"name: write_elbot_hook",
 		"description: 编写或修改 ElBot 规则 Hook 配置。",
@@ -21,6 +24,9 @@ func TestDefaultWriteElbotHookSkillMarkdown(t *testing.T) {
 		if !strings.Contains(defaultWriteElbotHookSkillMD, want) {
 			t.Fatalf("default write_elbot_hook skill missing %q", want)
 		}
+	}
+	if !strings.Contains(defaultWriteElbotHookSkillTOML, `risk = "low"`) || !strings.Contains(defaultWriteElbotHookSkillTOML, `superadmin_only = true`) {
+		t.Fatalf("default write_elbot_hook toml = %q", defaultWriteElbotHookSkillTOML)
 	}
 }
 
@@ -63,10 +69,18 @@ func TestResolvePathGeneratesPlatformDefaultsWhenNoConfigExists(t *testing.T) {
 	if resolved != filepath.Clean(want) {
 		t.Fatalf("resolved path = %q, want %q", resolved, filepath.Clean(want))
 	}
-	for _, rel := range []string{"app.toml", "providers.toml", "state.toml", "SOUL.md", "memories.toml", "elnis.toml", filepath.Join("skills", "agent", "agent_skill_creator", "SKILL.md"), filepath.Join("skills", "agent", "write_elbot_hook", "SKILL.md"), ".env.example"} {
+	for _, rel := range []string{"app.toml", "providers.toml", "state.toml", "SOUL.md", "memories.toml", "elnis.toml", filepath.Join("skills", "agent", "agent_skill_creator", "SKILL.md"), filepath.Join("skills", "agent", "agent_skill_creator", "ELBOT_SKILL.toml"), filepath.Join("skills", "agent", "write_elbot_hook", "SKILL.md"), filepath.Join("skills", "agent", "write_elbot_hook", "ELBOT_SKILL.toml"), ".env.example"} {
 		if _, err := os.Stat(filepath.Join(filepath.Dir(want), rel)); err != nil {
 			t.Fatalf("expected generated file %s: %v", rel, err)
 		}
+	}
+	creatorTomlPath := filepath.Join(filepath.Dir(want), "skills", "agent", "agent_skill_creator", "ELBOT_SKILL.toml")
+	creatorTomlData, err := os.ReadFile(creatorTomlPath)
+	if err != nil {
+		t.Fatalf("read generated agent_skill_creator toml: %v", err)
+	}
+	if !strings.Contains(string(creatorTomlData), `risk = "low"`) || !strings.Contains(string(creatorTomlData), `superadmin_only = true`) {
+		t.Fatalf("generated agent_skill_creator toml = %q", string(creatorTomlData))
 	}
 	skillPath := filepath.Join(filepath.Dir(want), "skills", "agent", "write_elbot_hook", "SKILL.md")
 	skillData, err := os.ReadFile(skillPath)
@@ -75,6 +89,14 @@ func TestResolvePathGeneratesPlatformDefaultsWhenNoConfigExists(t *testing.T) {
 	}
 	if !strings.Contains(string(skillData), "hook路径：") || !strings.Contains(string(skillData), "plugins/hooks.toml") {
 		t.Fatalf("generated write_elbot_hook skill = %q", string(skillData))
+	}
+	tomlPath := filepath.Join(filepath.Dir(want), "skills", "agent", "write_elbot_hook", "ELBOT_SKILL.toml")
+	tomlData, err := os.ReadFile(tomlPath)
+	if err != nil {
+		t.Fatalf("read generated write_elbot_hook toml: %v", err)
+	}
+	if !strings.Contains(string(tomlData), `risk = "low"`) || !strings.Contains(string(tomlData), `superadmin_only = true`) {
+		t.Fatalf("generated write_elbot_hook toml = %q", string(tomlData))
 	}
 	for _, rel := range []string{filepath.Join("skills", "agent"), filepath.Join("skills", "go"), "plugins", "long_memory"} {
 		info, err := os.Stat(filepath.Join(filepath.Dir(want), rel))

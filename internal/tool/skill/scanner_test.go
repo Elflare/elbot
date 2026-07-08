@@ -2,12 +2,14 @@ package skill
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 
+	"elbot/internal/security"
 	"elbot/internal/tool"
 )
 
@@ -44,6 +46,95 @@ input = "--input"
 	}
 	if _, ok := tools[0].(CommandTool); !ok {
 		t.Fatalf("tool type = %T, want CommandTool", tools[0])
+	}
+}
+
+func TestFilesystemScannerKeepsPolicyOnlyManifestAsDocumentSkill(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "agent", "private_doc")
+	writeSkill(t, dir, "---\nname: private_doc\ndescription: Private doc\n---\n\n# Private")
+	writeAgentSkillConfig(t, dir, `risk = "high"
+superadmin_only = true
+tags = ["private"]
+`)
+	scanner := NewFilesystemScanner(root)
+	tools, err := scanner.Scan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tools) != 1 || tools[0].Name() != "private_doc" || tools[0].Info().Risk != tool.RiskHigh || !tools[0].Info().SuperadminOnly {
+		t.Fatalf("tools = %#v", tools)
+	}
+	if _, ok := tools[0].(Descriptor); !ok {
+		t.Fatalf("tool type = %T, want Descriptor", tools[0])
+	}
+	if len(tools[0].Info().Tags) != 1 || tools[0].Info().Tags[0] != "private" {
+		t.Fatalf("tags = %#v", tools[0].Info().Tags)
+	}
+}
+
+func TestPolicyOnlyAgentSkillHiddenFromNormalUserDiscovery(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "agent", "private_doc")
+	writeSkill(t, dir, "---\nname: private_doc\ndescription: Private doc\n---\n\n# Private")
+	writeAgentSkillConfig(t, dir, `risk = "high"
+`)
+	scanner := NewFilesystemScanner(root)
+	tools, err := scanner.Scan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry()
+	for _, scanned := range tools {
+		if err := registry.Register(scanned); err != nil {
+			t.Fatal(err)
+		}
+	}
+	policy := security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
+	actor := security.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: security.RoleUser}
+	ctx := security.WithPolicy(security.WithActor(context.Background(), actor), policy)
+	discover := tool.NewDiscoverTool(registry)
+	result, err := discover.Call(ctx, tool.CallRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(result.Data), "private_doc") {
+		t.Fatalf("private skill should be hidden from normal user: %s", result.Data)
+	}
+	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
+	if _, err := discover.Call(ctx, tool.CallRequest{Arguments: args}); err == nil {
+		t.Fatal("expected normal user detail query to be denied")
+	}
+}
+
+func TestSuperadminOnlyAgentSkillVisibleToSuperadminDiscovery(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "agent", "private_doc")
+	writeSkill(t, dir, "---\nname: private_doc\ndescription: Private doc\n---\n\n# Private")
+	writeAgentSkillConfig(t, dir, `risk = "low"
+superadmin_only = true
+`)
+	scanner := NewFilesystemScanner(root)
+	tools, err := scanner.Scan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry()
+	for _, scanned := range tools {
+		if err := registry.Register(scanned); err != nil {
+			t.Fatal(err)
+		}
+	}
+	policy := security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
+	superadmin := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
+	ctx := security.WithPolicy(security.WithActor(context.Background(), superadmin), policy)
+	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
+	result, err := tool.NewDiscoverTool(registry).Call(ctx, tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "# Private") {
+		t.Fatalf("superadmin should see skill detail: %q", result.Content)
 	}
 }
 

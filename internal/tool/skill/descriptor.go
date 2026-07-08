@@ -33,10 +33,12 @@ func (d Descriptor) Name() string { return d.Record.Name }
 
 func (d Descriptor) Info() tool.Info {
 	return tool.Info{
-		Name:        d.Record.Name,
-		Description: d.Record.Description,
-		Source:      SourceForKind(d.Record.Kind),
-		Risk:        d.Record.Risk,
+		Name:           d.Record.Name,
+		Description:    d.Record.Description,
+		Source:         SourceForKind(d.Record.Kind),
+		Risk:           d.Record.Risk,
+		SuperadminOnly: d.Record.SuperadminOnly,
+		Tags:           d.Record.Tags,
 	}
 }
 

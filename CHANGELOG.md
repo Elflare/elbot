@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 新增隐藏元工具 `agent_skill`，用于读取或写入 AgentSkill 的 `ELBOT_SKILL.toml`，写入前校验配置并在成功后 reload。
 - 首次运行会生成 `skills/agent/agent_skill_creator/SKILL.md`，用于说明如何把 AgentSkill 注册为普通工具。
 - 首次运行会生成 `skills/agent/write_elbot_hook/SKILL.md`，用于提示按需求编写 ElBot 规则 Hook。
+- AgentSkill 的 `ELBOT_SKILL.toml` 支持只写 `risk` / `superadmin_only` 做文档可见性限制，不写工具化字段时不会注册为普通工具；默认 `agent_skill_creator` 和 `write_elbot_hook` Skill 会生成仅超管可见、低风险的 TOML。
 - 新增 `/usage` 命令：从审计日志聚合 token 消耗，支持按模型/天/会话汇总，快捷参数 `-d` 天数、`-m` 模型、`-s` 会话。
 - 新增 `workspace` 工具：设置当前前台 Session 的共享工作目录，路径类工具会基于该目录解析相对路径。首次切换到含 `AGENTS.md` 或 `AGENT.md` 的目录时，会自动附带说明文件内容；文件超过 64 KiB 时会提示缩短。
 - 新增 `[platform_files]` 配置，统一控制平台入站文件最大保存大小和下载超时。
