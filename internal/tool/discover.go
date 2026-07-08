@@ -15,10 +15,6 @@ type discoverTool struct {
 	registry       *Registry
 	beforeDiscover func(context.Context) error
 }
-type discoveryExtra struct {
-	content  string
-	override bool
-}
 
 type discoverArgs struct {
 	Name  string   `json:"name"`
@@ -113,30 +109,7 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, error
 	if len(activateTools) > 0 {
 		metadata[MetadataActivateTools] = activateTools
 	}
-	extras := map[string]discoveryExtra{}
-	for _, discovered := range result.Tools {
-		if discovered.Schema == nil {
-			continue
-		}
-		name := strings.TrimSpace(discovered.Info.Name)
-		if name == "" {
-			continue
-		}
-		target, ok := t.registry.Get(name)
-		if !ok {
-			continue
-		}
-		provider, ok := target.(DiscoveryContentProvider)
-		if !ok {
-			continue
-		}
-		content, override := provider.DiscoveryContent()
-		if strings.TrimSpace(content) == "" {
-			continue
-		}
-		extras[name] = discoveryExtra{content: content, override: override}
-	}
-	content := discoveryContent(ctx, result, extras)
+	content := discoveryContent(ctx, t.registry, result)
 	if formats := NewRuleCardFormatsFromContext(ctx); len(formats) > 0 {
 		metadata[MetadataShownRuleCardFormats] = formats
 	}
@@ -156,7 +129,7 @@ func marshalJSONNoEscape(value any) ([]byte, error) {
 	return bytes.TrimSpace(buf.Bytes()), nil
 }
 
-func discoveryContent(ctx context.Context, result *DiscoveryResult, extras map[string]discoveryExtra) string {
+func discoveryContent(ctx context.Context, registry *Registry, result *DiscoveryResult) string {
 	if result == nil {
 		return ""
 	}
@@ -175,16 +148,20 @@ func discoveryContent(ctx context.Context, result *DiscoveryResult, extras map[s
 			continue
 		}
 		if discovered.Schema != nil && name != "" {
-			if extra, ok := extras[name]; ok {
-				if extra.override {
-					parts = append(parts, extra.content)
-				} else {
-					foundTools = append(foundTools, name)
-					appendedExtras = append(appendedExtras, extra.content)
+			if target, ok := registry.Get(name); ok {
+				if provider, ok := target.(DiscoveryContentProvider); ok {
+					if content, override := provider.DiscoveryContent(); strings.TrimSpace(content) != "" {
+						if override {
+							parts = append(parts, content)
+						} else {
+							foundTools = append(foundTools, name)
+							appendedExtras = append(appendedExtras, content)
+						}
+						continue
+					}
 				}
-			} else {
-				foundTools = append(foundTools, name)
 			}
+			foundTools = append(foundTools, name)
 			continue
 		}
 		if name != "" {
