@@ -15,6 +15,10 @@ type discoverTool struct {
 	registry       *Registry
 	beforeDiscover func(context.Context) error
 }
+type discoveryExtra struct {
+	content  string
+	override bool
+}
 
 type discoverArgs struct {
 	Name  string   `json:"name"`
@@ -109,7 +113,30 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, error
 	if len(activateTools) > 0 {
 		metadata[MetadataActivateTools] = activateTools
 	}
-	content := discoveryContent(result)
+	extras := map[string]discoveryExtra{}
+	for _, discovered := range result.Tools {
+		if discovered.Schema == nil {
+			continue
+		}
+		name := strings.TrimSpace(discovered.Info.Name)
+		if name == "" {
+			continue
+		}
+		target, ok := t.registry.Get(name)
+		if !ok {
+			continue
+		}
+		provider, ok := target.(DiscoveryContentProvider)
+		if !ok {
+			continue
+		}
+		content, override := provider.DiscoveryContent()
+		if strings.TrimSpace(content) == "" {
+			continue
+		}
+		extras[name] = discoveryExtra{content: content, override: override}
+	}
+	content := discoveryContent(result, extras)
 	// 普通工具的完整 schema 通过 Data 交给 Agent 注入 top-level tools。
 	// tool message 文本只返回简短“已发现工具”，避免上下文膨胀，
 	// 也让后续请求保持稳定的工具注入顺序。
@@ -126,12 +153,13 @@ func marshalJSONNoEscape(value any) ([]byte, error) {
 	return bytes.TrimSpace(buf.Bytes()), nil
 }
 
-func discoveryContent(result *DiscoveryResult) string {
+func discoveryContent(result *DiscoveryResult, extras map[string]discoveryExtra) string {
 	if result == nil {
 		return ""
 	}
 	parts := []string{}
 	foundTools := []string{}
+	appendedExtras := []string{}
 	detailBlocks := []DetailBlock{}
 	for _, discovered := range result.Tools {
 		name := strings.TrimSpace(discovered.Info.Name)
@@ -144,7 +172,16 @@ func discoveryContent(result *DiscoveryResult) string {
 			continue
 		}
 		if discovered.Schema != nil && name != "" {
-			foundTools = append(foundTools, name)
+			if extra, ok := extras[name]; ok {
+				if extra.override {
+					parts = append(parts, extra.content)
+				} else {
+					foundTools = append(foundTools, name)
+					appendedExtras = append(appendedExtras, extra.content)
+				}
+			} else {
+				foundTools = append(foundTools, name)
+			}
 			continue
 		}
 		if name != "" {
@@ -154,6 +191,7 @@ func discoveryContent(result *DiscoveryResult) string {
 	if len(foundTools) > 0 {
 		parts = append([]string{fmt.Sprintf("已发现工具：%s。后续可直接调用。", strings.Join(foundTools, ", "))}, parts...)
 	}
+	parts = append(parts, appendedExtras...)
 	if detailText := RenderDetailBlocks(detailBlocks); detailText != "" {
 		parts = append(parts, detailText)
 	}
