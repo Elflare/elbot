@@ -749,3 +749,5 @@ if __name__ == "__main__":
 - `field = "llm.text"` 让脚本返回的 `text` 覆写 LLM 响应文本，移除已被提取的 token。
 - 不设 `field` 时脚本只产出 outputs，不修改原文（适合"检测到内容就发通知但不改原文"的场景）。
 
+更多 exec 脚本示例（C / C++ / TypeScript）见 [elbot-showcase/hooks](https://github.com/Elfreese/elbot-showcase/tree/main/hooks)。
+
