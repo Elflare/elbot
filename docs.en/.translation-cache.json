@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "6627f82aecb6409c6de00f7193ed7c01e3e35b1abaa0bf3d112aa090c23a766d",
+      "source_hash": "4313201a8c8c17c2ef031ce91f1cc2c0ce2f1e7beb09d0c323a5428f37ce1d87",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783392554
+      "updated_at": 1783479117
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -357,6 +357,14 @@
       "source_hash": "48f3a6dafe9014a329230839e2e9f2417612784774ec697386b20eb74c1e628b",
       "translation": "If a download URL is returned, it will be saved to ElBot; if only a OneBot local path is returned, that path will be displayed directly.",
       "updated_at": 1783095128
+    },
+    "CHANGELOG.md:list:50e8edceef9ba9f05ab3e29be70643e7d1e29373c088d70a65ef6b30249494e3": {
+      "kind": "list",
+      "source": "默认 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ Skill 会生成仅超管可见、低风险的 TOML。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "50e8edceef9ba9f05ab3e29be70643e7d1e29373c088d70a65ef6b30249494e3",
+      "translation": "By default, __ELBOT_CODE_0__ and __ELBOT_CODE_1__ Skills will generate TOML that is low-risk and visible only to the superadmin.",
+      "updated_at": 1783479117
     },
     "CHANGELOG.md:list:544848e58ddf58eb94be259c382c90eb3999f62714ca2674072b8102baa6631a": {
       "kind": "list",
@@ -925,6 +933,14 @@
       "source_hash": "bd93eae9bd1763e2908b379364b1f9d9b2057b8941646314b5cf7d0e454e8ac8",
       "translation": "**Standard Cron and LLM Cron**: Standard Cron sends fixed content directly according to a schedule;",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:c1f3b644091065de80d300d76b09ba465097fb8b0f28ef5f7ce2c3d3a7051ce7": {
+      "kind": "list",
+      "source": "AgentSkill 的 __ELBOT_CODE_0__ 支持只写 __ELBOT_CODE_1__ / __ELBOT_CODE_2__ 做文档可见性限制，不写工具化字段时不会注册为普通工具；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "c1f3b644091065de80d300d76b09ba465097fb8b0f28ef5f7ce2c3d3a7051ce7",
+      "translation": "__ELBOT_CODE_0__ of AgentSkill supports writing only __ELBOT_CODE_1__ / __ELBOT_CODE_2__ for document visibility restrictions; it will not be registered as a normal tool when tool-related fields are not provided.",
+      "updated_at": 1783479117
     },
     "CHANGELOG.md:list:c5677ef83020b6879bc81ba0896f3ae4a390a95cc8329831e1008ad10406bf25": {
       "kind": "list",
