@@ -36,11 +36,10 @@ type Segment struct {
 }
 
 type NormalizedMessage struct {
-	Text      string
-	ReplyID   string
-	AtSelf    bool
-	Mentioned bool
-	Segments  []platform.MessageSegment
+	Text     string
+	ReplyID  string
+	Mentions []platform.Mention
+	Segments []platform.MessageSegment
 }
 
 func normalizeMessage(raw json.RawMessage, rawMessage string, selfID int64) NormalizedMessage {
@@ -88,10 +87,11 @@ func normalizeSegments(segments []Segment, selfID int64) NormalizedMessage {
 
 		case "at":
 			qq := strings.TrimSpace(segmentDataString(seg.Data, "qq"))
-			out.Mentioned = true
-			if qq == self {
-				out.AtSelf = true
-			} else if qq != "" && qq != "all" {
+			if qq == "" || qq == "all" {
+				continue
+			}
+			out.Mentions = append(out.Mentions, platform.Mention{UserID: qq})
+			if qq != self {
 				text := atText(qq, "")
 				parts = append(parts, text)
 				out.Segments = append(out.Segments, platform.MessageSegment{Type: platform.SegmentAt, Text: text, UserID: qq})

@@ -129,11 +129,24 @@ func TestWebExtractToolSlicesAndCaches(t *testing.T) {
 	}
 }
 
-func TestWebExtractDefaultClientUsesProxy(t *testing.T) {
+func TestWebExtractDefaultClientUsesConfiguredProxy(t *testing.T) {
+	t.Setenv(webExtractProxyEnv, "http://127.0.0.1:9999")
+	proxy, err := resolveExtractProxy(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	extract := NewWebExtractTool()
-	transport, ok := extract.httpClient(false).Transport.(*http.Transport)
+	transport, ok := extract.httpClient(proxy).Transport.(*http.Transport)
 	if !ok || transport.Proxy == nil {
-		t.Fatalf("transport = %#v", extract.httpClient(false).Transport)
+		t.Fatalf("transport = %#v", extract.httpClient(proxy).Transport)
+	}
+	req := &http.Request{URL: mustParseURL(t, "https://example.com")}
+	proxyURL, err := transport.Proxy(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proxyURL == nil || proxyURL.String() != "http://127.0.0.1:9999" {
+		t.Fatalf("proxy = %v", proxyURL)
 	}
 }
 
@@ -155,8 +168,12 @@ func TestWebExtractToolParsesFlatJinaResponse(t *testing.T) {
 	}
 }
 
-func TestWebExtractTransportUsesDefaultProxy(t *testing.T) {
-	transport := extractTransport(false)
+func TestWebExtractTransportUsesProxyArgument(t *testing.T) {
+	proxy, err := resolveExtractProxy(context.Background(), "http://127.0.0.1:7891")
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := extractTransport(proxy)
 	if transport.Proxy == nil {
 		t.Fatal("expected proxy")
 	}
@@ -165,15 +182,26 @@ func TestWebExtractTransportUsesDefaultProxy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if proxyURL == nil || proxyURL.String() != defaultExtractProxy {
+	if proxyURL == nil || proxyURL.String() != "http://127.0.0.1:7891" {
 		t.Fatalf("proxy = %v", proxyURL)
 	}
 }
 
-func TestWebExtractTransportCanDisableProxy(t *testing.T) {
-	transport := extractTransport(true)
+func TestWebExtractTransportDisablesProxyWithArgument(t *testing.T) {
+	proxy, err := resolveExtractProxy(context.Background(), "disabled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := extractTransport(proxy)
 	if transport.Proxy != nil {
 		t.Fatal("expected nil proxy")
+	}
+}
+
+func TestWebExtractRejectsInvalidProxyURL(t *testing.T) {
+	_, err := resolveExtractProxy(context.Background(), "localhost:7890")
+	if err == nil || !strings.Contains(err.Error(), "invalid web_extract proxy url") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -195,7 +223,7 @@ func TestWebExtractToolDirectFallbackWithoutJinaKey(t *testing.T) {
 	defer server.Close()
 
 	extract := NewWebExtractTool()
-	result, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"` + server.URL + `","disable_proxy":true}`)})
+	result, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"` + server.URL + `","proxy":"disabled"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}

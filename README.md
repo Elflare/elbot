@@ -11,22 +11,27 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 
 ### 1. Lightweight and Efficient
 
-**Ultra-lightweight Go implementation**: ElBot's current local startup time is <10ms (N5105, SATA SSD), with resident memory of about 30MB.
+**Ultra-lightweight Go implementation**:
+
+| Metric           | Value                            |
+| -------------- | ------------------------------- |
+| Local startup time   | <10ms (tested on N5105, SATA SSD) |
+| Resident memory       | ~30MB                           |
+| Binary file size | <30MB                           |
 
 **Token-efficient tool discovery**: Research shows that many ordinary users still primarily use LLM-like products as advanced search engines, writing assistants, and listening objects; frequent tool calls are not the norm for all conversations.
-Reference: Chatterji et al., *How People Use ChatGPT*, NBER, 2025;Yan et al., *ShareChat: A Dataset of Chatbot Conversations in the Wild*, arXiv:2512.17843, 2025。
+Reference: Chatterji et al., _How People Use ChatGPT_, NBER, 2025;Yan et al., _ShareChat: A Dataset of Chatbot Conversations in the Wild_, arXiv:2512.17843, 2025。
 
 ElBot does not inject the full schema of all tools by default in every round of conversation, but only exposes `discover_tool` and the names of currently available tools. When the model needs to use a tool, it first discovers the tool details on demand, and then the Agent injects the corresponding schema. Greatly reduces invalid context overhead.
 
-**Chat / Work dual mode**: ElBot distinguishes between chat mode and work mode. chat mode completely removes tools, making it more suitable for daily chatting, companionship, lightweight Q&A, and low-cost conversations; Work mode enables tool discovery and tool calling capabilities for complex tasks. The two modes can be configured with models independently, allowing low-cost models to handle casual chat and powerful models to focus on complex tasks.
+**Chat / Work dual mode**: Both modes can be configured with independent models, allowing low-cost models to handle casual chat and powerful models to focus on complex tasks.
 
 **Layering of resident memory and long-term memory**: Resident memory only saves short, stable information that truly needs to be injected into every round, and internally distinguishes between 'core' (requiring confirmation for modification) and 'normal' (organizable); Longer and more complex memories are queried by the LLM on demand via `long_memory`. Long-term memory uses Markdown source data and SQLite FTS, balancing transparency and retrieval efficiency.
 
-For personal daily use, token consumption per request:
-
-- work mode: <1000
-- chat mode: <500
-- Cache hit: >90%
+| Mode   | Tool               | Applicable Scenarios                                 | Token consumption for the first request      |
+| ------ | ------------------ | ---------------------------------------- | -------------------------- |
+| `chat` | No injection             | Small talk, companionship, lightweight Q&A, low-cost conversation         | <500 (subsequent cache hit 95%+)  |
+| `work` | Enable tool discovery and invocation | Complex tasks such as search, files, commands, Cron, Skills, etc. | <1000 (subsequent cache hit 90%+) |
 
 ### II. Powerful and Extensible
 
@@ -39,7 +44,6 @@ For personal daily use, token consumption per request:
 **EL Skills creatable by LLM**: ElBot has a built-in `create_el_skill` meta-tool, allowing the LLM to crystallize reusable experience into EL Skills. Automatically validate ELyph syntax upon creation, with optional Go source code attachment and compilation; The pure ELyph text or Go source code created is maintained by a unified `read_el_skill` / `modify_el_skill`; after the source code is modified, it is uniformly formatted and compiled via `finalize_el_skill`, and the check results are returned.
 
 **Compatible with external AgentSkills**: In addition to native Go Skills, ElBot is also compatible with external AgentSkills that follow the agentskills.io style. Automatically scan `skills/agent/<skill>/SKILL.md` or `SKILL.elyph` to read the name, description, applicable scenarios, and risk level; Currently, bundled Python scripts can be executed via hidden wrapper tools.
-
 
 ### III. Elnis Event Perception System
 
@@ -75,14 +79,13 @@ For more screenshots, see [elbot-showcase/frontend](https://github.com/Elfreese/
 
 ## Usage
 
-
 Common startup methods:
 
 ```bash
 elbot              # Automatic mode: Prioritize attempting the default remote CLI client; fall back to full foreground startup when local is unreachable
 elbot run          # Full foreground: Local CLI + Enabled platforms + Cron
-elbot cli [-c 名称] # Remote CLI client: Connect to a resident ElBot server
-elbot -c 名称      # Connect to the server directly using a specified CLI client profile
+elbot cli [-c name]# Remote CLI client: Connect to a resident ElBot server
+elbot -c name      # Connect to the server directly using a specified CLI client profile
 elbot service run  # Linux/headless service mode: Do not start local CLI; remote CLI server, platforms, and Cron can be enabled
 ```
 
@@ -110,4 +113,3 @@ Development plan and task decomposition: [devdocs](devdocs/).
 ## Development Status
 
 ElBot is still under rapid development; interfaces, configurations, and internal implementations may continue to be adjusted. It is currently more suitable for exploration as a personal Agent/bot framework.
-

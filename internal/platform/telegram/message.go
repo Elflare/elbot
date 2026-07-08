@@ -18,22 +18,18 @@ type normalizedMessage struct {
 	Text         string
 	ReplyID      string
 	ReplyMessage *message
-	MentionedBot bool
+	Mentions     []platform.Mention
 	Segments     []platform.MessageSegment
 }
 
 func normalizeMessage(ctx context.Context, client *apiClient, msg message, botUsername string) normalizedMessage {
 	var out normalizedMessage
 	text := strings.TrimSpace(firstNonEmpty(msg.Text, msg.Caption))
-	text, mentioned := stripBotMention(text, botUsername)
-	out.MentionedBot = mentioned
+	out.Mentions = mentionsFromText(text)
 	out.Text = cleanText(text)
 	if msg.ReplyToMessage != nil {
 		out.ReplyID = formatMessageID(msg.ReplyToMessage.MessageID)
 		out.ReplyMessage = msg.ReplyToMessage
-		if isFromBot(*msg.ReplyToMessage) {
-			out.MentionedBot = true
-		}
 	}
 	if out.Text != "" {
 		out.Segments = append(out.Segments, platform.MessageSegment{Type: platform.SegmentText, Text: out.Text})
@@ -123,21 +119,30 @@ func largestPhoto(photos []photoSize) photoSize {
 	return best
 }
 
-func (a *Adapter) shouldHandle(msg message, normalized normalizedMessage) bool {
-	if msg.Chat.Type == "private" {
-		return true
+func telegramConversationKind(c chat) platform.ConversationKind {
+	switch c.Type {
+	case "private":
+		return platform.ConversationPrivate
+	case "group", "supergroup":
+		return platform.ConversationGroup
+	case "channel":
+		return platform.ConversationChannel
+	default:
+		return platform.ConversationUnknown
 	}
-	if msg.Chat.Type != "group" && msg.Chat.Type != "supergroup" {
-		return false
+}
+
+func mentionsFromText(text string) []platform.Mention {
+	fields := strings.Fields(text)
+	mentions := make([]platform.Mention, 0)
+	for _, field := range fields {
+		name := strings.Trim(strings.TrimSpace(field), ",，.:：;；!！?？()（）[]【】")
+		if !strings.HasPrefix(name, "@") || len(name) <= 1 {
+			continue
+		}
+		mentions = append(mentions, platform.Mention{Username: strings.TrimPrefix(name, "@"), Text: field})
 	}
-	text := strings.TrimSpace(normalized.Text)
-	if platform.HasCommandPrefix(text, a.cfg.CommandPrefixes) {
-		return true
-	}
-	if _, ok := platform.StripTriggerKeyword(text, a.cfg.TriggerKeywords); ok {
-		return true
-	}
-	return normalized.MentionedBot
+	return mentions
 }
 
 func (a *Adapter) referenceFetcher(msg message, normalized normalizedMessage) func(context.Context, string) (refcontext.ReferencedMessage, bool) {
@@ -150,7 +155,7 @@ func (a *Adapter) referenceFetcher(msg message, normalized normalizedMessage) fu
 		if normalized.ReplyMessage.From != nil {
 			label = "引用：" + displayName(*normalized.ReplyMessage.From)
 		}
-		return refcontext.ReferencedMessage{Label: label, Text: ref.Text, Segments: appendNonTextSegments(nil, ref.Segments)}, true
+		return refcontext.ReferencedMessage{SenderID: userIDString(normalized.ReplyMessage.From), Label: label, Text: ref.Text, Segments: appendNonTextSegments(nil, ref.Segments)}, true
 	}
 }
 
@@ -215,6 +220,13 @@ func userIDString(u *user) string {
 		return ""
 	}
 	return strconv.FormatInt(u.ID, 10)
+}
+
+func replySender(msg *message) *user {
+	if msg == nil {
+		return nil
+	}
+	return msg.From
 }
 
 func isConfiguredSuperadmin(superadmins []string, id string) bool {

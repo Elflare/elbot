@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +21,15 @@ type fakeCompletingHandler struct {
 
 func (h fakeCompletingHandler) HandleMessage(context.Context, string) error { return nil }
 func (h fakeCompletingHandler) Complete(string) []string                    { return h.candidates }
+
+type capturingHandler struct {
+	messages chan string
+}
+
+func (h capturingHandler) HandleMessage(_ context.Context, text string) error {
+	h.messages <- text
+	return nil
+}
 
 func TestCompleteInputCyclesCandidates(t *testing.T) {
 	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, width: 80, height: 20}
@@ -102,6 +113,102 @@ func TestCompletionSingleItemUsesReplaceRange(t *testing.T) {
 	m = updated.(tuiModel)
 	if got := m.input.Value(); got != "/model openai/gpt-4o" {
 		t.Fatalf("single completion = %q", got)
+	}
+}
+
+func TestCompletionUsesByteRangesWithFullWidthInput(t *testing.T) {
+	service := completion.NewService(staticCompletionSource{{Text: "@t：web_search", ReplaceStart: 0, ReplaceEnd: len("@t：we")}})
+	m := tuiModel{completion: service, width: 80, height: 20}
+	m.input.SetValue("@t：we")
+	m.input.CursorEnd()
+
+	updated, _ := m.completeInput(1)
+	m = updated.(tuiModel)
+	if got := m.input.Value(); got != "@t：web_search" {
+		t.Fatalf("single completion = %q", got)
+	}
+	if got := m.input.Position(); got != len([]rune("@t：web_search")) {
+		t.Fatalf("cursor position = %d", got)
+	}
+}
+
+func TestLocalFileCompletionFuzzyMatchesRelativePaths(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, root, "internal/app/app.go", "package app\n")
+	mustWriteFile(t, root, "README.md", "hello\n")
+	m := tuiModel{localFiles: newLocalFileResolver(root), width: 80, height: 20}
+	m.input.SetValue("#iag")
+	m.input.CursorEnd()
+
+	updated, _ := m.completeInput(1)
+	m = updated.(tuiModel)
+	if got := m.input.Value(); got != "#internal/app/app.go" {
+		t.Fatalf("local file completion = %q", got)
+	}
+}
+
+func TestLocalFileCompletionQuotesPathsWithSpaces(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, root, "notes/a b.txt", "hello\n")
+	m := tuiModel{localFiles: newLocalFileResolver(root), width: 80, height: 20}
+	m.input.SetValue("#\"ab")
+	m.input.CursorEnd()
+
+	updated, _ := m.completeInput(1)
+	m = updated.(tuiModel)
+	if got := m.input.Value(); got != "#\"notes/a b.txt\"" {
+		t.Fatalf("quoted local file completion = %q", got)
+	}
+}
+
+func TestEnterExpandsLocalFileReferencesBeforeSending(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, root, "foo.txt", "hello\n")
+	handler := capturingHandler{messages: make(chan string, 1)}
+	m := tuiModel{ctx: context.Background(), handler: handler, output: make(chan tea.Msg, 1), localFiles: newLocalFileResolver(root), width: 80, height: 20}
+	m.input.SetValue("see #foo.txt")
+	m.input.CursorEnd()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(tuiModel)
+	select {
+	case got := <-handler.messages:
+		if !strings.Contains(got, "[file: foo.txt]") || !strings.Contains(got, "hello\n") {
+			t.Fatalf("expanded message = %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("message was not sent")
+	}
+	if len(m.history) != 1 || m.history[0] != "see #foo.txt" {
+		t.Fatalf("history = %#v", m.history)
+	}
+	if !strings.Contains(m.content, "see #foo.txt") {
+		t.Fatalf("transcript = %q", m.content)
+	}
+}
+
+func TestEnterRestoresInputWhenLocalFileReferenceFails(t *testing.T) {
+	root := t.TempDir()
+	handler := capturingHandler{messages: make(chan string, 1)}
+	m := tuiModel{ctx: context.Background(), handler: handler, output: make(chan tea.Msg, 1), localFiles: newLocalFileResolver(root), width: 80, height: 20}
+	m.input.SetValue("see #missing.txt")
+	m.input.CursorEnd()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(tuiModel)
+	if got := m.input.Value(); got != "see #missing.txt" {
+		t.Fatalf("input after failed expansion = %q", got)
+	}
+	if len(m.history) != 0 {
+		t.Fatalf("history should remain empty: %#v", m.history)
+	}
+	if !strings.Contains(m.content, "local file reference:") {
+		t.Fatalf("notice missing from transcript: %q", m.content)
+	}
+	select {
+	case got := <-handler.messages:
+		t.Fatalf("message should not be sent: %q", got)
+	default:
 	}
 }
 
@@ -200,6 +307,17 @@ type staticCompletionSource []completion.Item
 
 func (s staticCompletionSource) Complete(context.Context, completion.Request) []completion.Item {
 	return s
+}
+
+func mustWriteFile(t *testing.T, root, rel, content string) {
+	t.Helper()
+	path := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestAppendAssistantContentDoesNotAddSeparatorOnNewline(t *testing.T) {

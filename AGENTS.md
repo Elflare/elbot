@@ -29,8 +29,8 @@
 示例：
 
 ```bash
-rg -n "locator:tool" AGENT.md devdocs/*.md docs/*.md
-rg -n "locator:agent-chat" AGENT.md devdocs/*.md
+rg -n "locator:tool" AGENTS.md devdocs/*.md docs/*.md
+rg -n "locator:agent-chat" AGENTS.md devdocs/*.md
 ```
 
 常见任务入口：
@@ -62,7 +62,7 @@ rg -n "locator:agent-chat" AGENT.md devdocs/*.md
 - 新增、删除或明显调整重要 Go 文件职责：更新 `devdocs/code-map.md`；必要时在本文件的 locator 表里补入口。
 - `docs.en/`、`README.md`、`CHANGELOG.en.md` 是英文镜像或自动翻译产物，不要手动修改。
 - `devdocs/` 只给维护者和 Agent 看，不参与自动翻译。
-- `AGENT.md` 只保留操作规则；不要把架构详解、逐文件说明重新写回这里。
+- `AGENTS.md` 只保留操作规则；不要把架构详解、逐文件说明重新写回这里。
 - 在已知代码的情况下，发现 code-map 或者 architecture 和代码有冲突或者内容太多，以代码为准，同时修改或者精简这两个文档。
 
 <!-- locator:testing -->
@@ -74,4 +74,7 @@ rg -n "locator:agent-chat" AGENT.md devdocs/*.md
 - 修改文档时，用 `rg -n` 检查关键链接、locator 和禁改说明是否还在。
 - 如果本次只改 Markdown，不需要运行 Go 测试。
 - 看diff时发现有和自己改动无关或者和记忆中不对的地方，可能是用户在同时修改，先向用户确认。
+
+## 注意：
+- 所有非精确rg使用（如搜索内容中有多个|、内容简短等），必须加上限制，如-m，或者使用管道符过滤
 

@@ -15,7 +15,6 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"elbot/internal/delivery"
-	"elbot/internal/elvena"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/security"
@@ -28,24 +27,43 @@ const (
 )
 
 type Options struct {
-	ConfigDir string
-	Tools     *tool.Registry
-	Policy    *security.Policy
-	Logger    *slog.Logger
-	Audit     func(event string, attrs ...any)
-	Notify    func(context.Context, string)
-	Elvena    elvena.Dispatcher
+	ConfigDir       string
+	Tools           *tool.Registry
+	Policy          *security.Policy
+	Logger          *slog.Logger
+	Audit           func(event string, attrs ...any)
+	Notify          func(context.Context, string)
+	Send            func(context.Context, delivery.Target, delivery.Output) (delivery.Receipt, error)
+	PlatformCallers PlatformCallerResolver
 }
 
 type Config struct {
-	Rules []Rule `toml:"rules"`
+	Plugins []PluginRef `toml:"plugins"`
+	Rules   []Rule      `toml:"rules"`
+}
+
+type PluginRef struct {
+	Name    string `toml:"name"`
+	Enabled *bool  `toml:"enabled"`
+	Path    string `toml:"path"`
+}
+
+type PluginInfo struct {
+	Description string `toml:"description"`
+}
+
+type pluginConfig struct {
+	Plugin PluginInfo `toml:"plugin"`
+	Rules  []Rule     `toml:"rules"`
 }
 
 type Rule struct {
 	Name            string           `toml:"name"`
+	Description     string           `toml:"description"`
 	On              string           `toml:"on"`
 	Priority        int              `toml:"priority"`
 	Enabled         *bool            `toml:"enabled"`
+	RequireWakeup   *bool            `toml:"require_wakeup"`
 	If              string           `toml:"if"`
 	Op              string           `toml:"op"`
 	Value           string           `toml:"value"`
@@ -67,13 +85,12 @@ type Rule struct {
 	Args            string           `toml:"arguments"`
 	Command         string           `toml:"command"`
 	Cwd             string           `toml:"cwd"`
-	Stdin           string           `toml:"stdin"`
-	Stdout          string           `toml:"stdout"`
 	TimeoutSeconds  int              `toml:"timeout_seconds"`
 	All             bool             `toml:"all"`
 	Target          Target           `toml:"target"`
 	Consume         bool             `toml:"consume"`
 	StopPropagation bool             `toml:"stop_propagation"`
+	source          ruleSource
 }
 
 type Action struct {
@@ -92,21 +109,22 @@ type Action struct {
 	All            bool          `toml:"all"`
 	Command        string        `toml:"command"`
 	Cwd            string        `toml:"cwd"`
-	Stdin          string        `toml:"stdin"`
-	Stdout         string        `toml:"stdout"`
 	TimeoutSeconds int           `toml:"timeout_seconds"`
 	Target         Target        `toml:"target"`
-	Segments       []SegmentSpec `toml:"segments"`
+	Outputs        []SegmentSpec `toml:"outputs"`
+	source         ruleSource
 }
 
 type SegmentSpec struct {
-	Kind     string `toml:"kind" json:"kind"`
-	Text     string `toml:"text" json:"text,omitempty"`
-	URL      string `toml:"url" json:"url,omitempty"`
-	Path     string `toml:"path" json:"path,omitempty"`
-	Base64   string `toml:"base64" json:"base64,omitempty"`
-	Name     string `toml:"name" json:"name,omitempty"`
-	MIMEType string `toml:"mime_type" json:"mime_type,omitempty"`
+	Kind      string `toml:"kind" json:"kind"`
+	Text      string `toml:"text" json:"text,omitempty"`
+	URL       string `toml:"url" json:"url,omitempty"`
+	Path      string `toml:"path" json:"path,omitempty"`
+	Base64    string `toml:"base64" json:"base64,omitempty"`
+	Name      string `toml:"name" json:"name,omitempty"`
+	MIMEType  string `toml:"mime_type" json:"mime_type,omitempty"`
+	UserID    string `toml:"user_id" json:"user_id,omitempty"`
+	MessageID string `toml:"message_id" json:"message_id,omitempty"`
 }
 
 type Target struct {
@@ -123,8 +141,26 @@ type Module struct {
 	Logger *slog.Logger
 }
 
+type ruleSource struct {
+	PluginName        string
+	PluginDescription string
+	ConfigPath        string
+	BaseDir           string
+	StrictDir         string
+	OriginalName      string
+	FinalName         string
+}
+
+type PlatformAPICaller interface {
+	CallPlatformAPI(ctx context.Context, api string, params map[string]any) (json.RawMessage, error)
+}
+
+type PlatformCallerResolver interface {
+	PlatformCaller(platform string) (PlatformAPICaller, bool)
+}
+
 func NewModule(opts Options) (Module, error) {
-	cfg, path, err := loadConfig(opts.ConfigDir)
+	cfg, path, err := loadConfig(opts)
 	if err != nil {
 		reportConfigError(context.Background(), opts, path, err)
 		return Module{}, err
@@ -155,31 +191,36 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 		if priority == 0 {
 			priority = DefaultPriority
 		}
-		name := strings.TrimSpace(rule.Name)
+		name := strings.TrimSpace(rule.source.FinalName)
+		if name == "" {
+			name = strings.TrimSpace(rule.Name)
+		}
 		if name == "" {
 			name = fmt.Sprintf("rule.%d", index+1)
 		}
 		if m.Logger != nil {
-			m.Logger.Info("hook rule registered", "name", name, "point", rule.On, "priority", priority, "matches", len(rule.Match), "actions", len(rule.Actions))
+			m.Logger.Info("hook rule registered", "name", name, "point", rule.On, "priority", priority, "matches", len(rule.Match), "actions", len(rule.Actions), "config_path", rule.source.ConfigPath)
 		}
-
 		rule := rule
 		registrations := ruleRegistrations(rule)
 		for roleIndex, match := range registrations {
-			regName := "rules." + name
+			regName := name
 			if len(registrations) > 1 {
 				regName = fmt.Sprintf("%s.role.%d", regName, roleIndex+1)
 			}
+			description := ruleDescription(rule)
 			detail := formatRuleDetail(rule)
 			if len(registrations) > 1 {
 				detail = fmt.Sprintf("%s\n\n(role partition %d/%d)", detail, roleIndex+1, len(registrations))
 			}
 			if err := registrar.Register(hook.Registration{
-				Point:    hook.Point(rule.On),
-				Priority: priority,
-				Name:     regName,
-				Match:    match,
-				Detail:   detail,
+				Point:         hook.Point(rule.On),
+				Priority:      priority,
+				Name:          regName,
+				Description:   description,
+				Match:         match,
+				Detail:        detail,
+				RequireWakeup: rule.RequireWakeup,
 				Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 					return m.runRule(ctx, rule, event)
 				}),
@@ -198,7 +239,7 @@ func validateExecAction(action Action) error {
 	if action.TimeoutSeconds < 0 {
 		return fmt.Errorf("timeout_seconds cannot be negative")
 	}
-	return validateExecStdout(action.Stdout)
+	return nil
 }
 
 func ruleRegistrations(rule Rule) []hook.Match {
@@ -250,28 +291,409 @@ func ruleRoleConditions(rule Rule) []hook.Condition {
 	return out
 }
 
-func loadConfig(configDir string) (Config, string, error) {
-	if strings.TrimSpace(configDir) == "" {
+func loadConfig(opts Options) (Config, string, error) {
+	configDir := strings.TrimSpace(opts.ConfigDir)
+	if configDir == "" {
 		return Config{}, "", nil
 	}
 	path := filepath.Join(configDir, ConfigFile)
-	data, err := os.ReadFile(path)
-	if err != nil {
+	var cfg Config
+	if err := decodeTOMLFile(path, &cfg); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return Config{}, path, nil
 		}
-		return Config{}, path, fmt.Errorf("read hook rule config %q: %w", path, err)
+		return Config{}, path, err
 	}
-	var cfg Config
-	decoder := toml.NewDecoder(strings.NewReader(string(data)))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&cfg); err != nil {
-		return Config{}, path, fmt.Errorf("parse hook rule config %q: %w", path, err)
+
+	rootSource := ruleSource{ConfigPath: path, BaseDir: configDir}
+	for i := range cfg.Rules {
+		cfg.Rules[i].source = rootSource
 	}
-	if err := cfg.normalize(); err != nil {
+
+	for _, ref := range cfg.Plugins {
+		if !ref.enabled() {
+			continue
+		}
+		pluginPath, err := pluginConfigPath(configDir, ref)
+		if err != nil {
+			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), "", err)
+			continue
+		}
+		var pcfg pluginConfig
+		if err := decodeTOMLFile(pluginPath, &pcfg); err != nil {
+			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
+			continue
+		}
+		pluginDir := filepath.Dir(pluginPath)
+		source := ruleSource{
+			PluginName:        strings.TrimSpace(ref.Name),
+			PluginDescription: strings.TrimSpace(pcfg.Plugin.Description),
+			ConfigPath:        pluginPath,
+			BaseDir:           pluginDir,
+			StrictDir:         pluginDir,
+		}
+		for i := range pcfg.Rules {
+			pcfg.Rules[i].source = source
+		}
+		cfg.Rules = append(cfg.Rules, pcfg.Rules...)
+	}
+
+	if err := normalizeLoadedRules(&cfg, opts); err != nil {
 		return Config{}, path, fmt.Errorf("parse hook rule config %q: %w", path, err)
 	}
 	return cfg, path, nil
+}
+
+func decodeTOMLFile(path string, target any) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read hook rule config %q: %w", path, err)
+	}
+	decoder := toml.NewDecoder(strings.NewReader(string(data)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return detailedTOMLDecodeError(path, string(data), err)
+	}
+	return nil
+}
+
+func detailedTOMLDecodeError(path, data string, err error) error {
+	var strictErr *toml.StrictMissingError
+	if errors.As(err, &strictErr) && len(strictErr.Errors) > 0 {
+		var b strings.Builder
+		fmt.Fprintf(&b, "parse hook rule config %q", path)
+		for _, decodeErr := range strictErr.Errors {
+			appendDecodeErrorDetail(&b, data, decodeErr)
+		}
+		return configParseError{message: b.String(), cause: err}
+	}
+
+	var decodeErr *toml.DecodeError
+	if errors.As(err, &decodeErr) {
+		var b strings.Builder
+		fmt.Fprintf(&b, "parse hook rule config %q", path)
+		appendDecodeErrorDetail(&b, data, *decodeErr)
+		return configParseError{message: b.String(), cause: err}
+	}
+
+	if detailed, ok := detailedGenericTOMLParseError(path, data, err); ok {
+		return detailed
+	}
+
+	return fmt.Errorf("parse hook rule config %q: %w", path, err)
+}
+
+func detailedGenericTOMLParseError(path, data string, err error) (error, bool) {
+	if !strings.Contains(err.Error(), "already exists as a") {
+		return nil, false
+	}
+	key := conflictingTOMLKey(err.Error())
+	if key == "" {
+		return nil, false
+	}
+	row, column, previousRow, context := findTOMLArrayTableConflict(data, key)
+	if row == 0 {
+		return nil, false
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "parse hook rule config %q\n- line %d, column %d, field %q", path, row, column, key)
+	if context != "" {
+		fmt.Fprintf(&b, ", %s", context)
+	}
+	fmt.Fprintf(&b, ": %s", err.Error())
+	if previousRow > 0 {
+		fmt.Fprintf(&b, "；%q was already set on line %d", key, previousRow)
+	}
+	if snippet := sourceLineSnippet(data, row, column); snippet != "" {
+		b.WriteString("\n")
+		b.WriteString(indentLines(snippet, "  "))
+	}
+	return configParseError{message: b.String(), cause: err}, true
+}
+
+func conflictingTOMLKey(message string) string {
+	match := regexp.MustCompile(`already exists as a\s+([A-Za-z0-9_-]+)`).FindStringSubmatch(message)
+	if len(match) < 2 {
+		return ""
+	}
+	return match[1]
+}
+
+func findTOMLArrayTableConflict(data, key string) (row, column, previousRow int, context string) {
+	lines := strings.Split(data, "\n")
+	ruleName := ""
+	seenKeyLine := 0
+	seenArrayTableLine := 0
+	for i, line := range lines {
+		lineNo := i + 1
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if trimmed == "[[rules]]" {
+			ruleName = ""
+			seenKeyLine = 0
+			seenArrayTableLine = 0
+			continue
+		}
+		if k, value, ok := parseTomlStringAssignment(trimmed); ok && k == "name" {
+			ruleName = value
+		}
+		if parseTomlAssignmentKey(trimmed) == key {
+			if seenArrayTableLine > 0 {
+				return lineNo, lineColumn(line, key), seenArrayTableLine, ruleContext(ruleName)
+			}
+			seenKeyLine = lineNo
+			continue
+		}
+		if isTomlArrayTableForKey(trimmed, key) {
+			if seenKeyLine > 0 {
+				return lineNo, lineColumn(line, "[["), seenKeyLine, ruleContext(ruleName)
+			}
+			seenArrayTableLine = lineNo
+		}
+	}
+	return 0, 0, 0, ""
+}
+
+func parseTomlAssignmentKey(line string) string {
+	key, _, ok := strings.Cut(line, "=")
+	if !ok {
+		return ""
+	}
+	key = strings.TrimSpace(key)
+	if key == "" || strings.HasPrefix(key, "[") {
+		return ""
+	}
+	return key
+}
+
+func isTomlArrayTableForKey(line, key string) bool {
+	return line == "[["+key+"]]" || strings.HasSuffix(line, "."+key+"]] ") || strings.HasSuffix(line, "."+key+"]] ") || strings.HasSuffix(line, "."+key+"]]")
+}
+
+func ruleContext(name string) string {
+	if strings.TrimSpace(name) == "" {
+		return "rule"
+	}
+	return fmt.Sprintf("rule %q", name)
+}
+
+func lineColumn(line, needle string) int {
+	if index := strings.Index(line, needle); index >= 0 {
+		return index + 1
+	}
+	return 1
+}
+
+func sourceLineSnippet(data string, row, column int) string {
+	lines := strings.Split(data, "\n")
+	if row <= 0 || row > len(lines) {
+		return ""
+	}
+	line := lines[row-1]
+	if column <= 0 {
+		column = 1
+	}
+	return fmt.Sprintf("%d| %s\n | %s^", row, line, strings.Repeat(" ", column-1))
+}
+
+func appendDecodeErrorDetail(b *strings.Builder, data string, err toml.DecodeError) {
+	row, column := err.Position()
+	key := strings.Join([]string(err.Key()), ".")
+	context := tomlContextAtLine(data, row)
+	fmt.Fprintf(b, "\n- line %d, column %d", row, column)
+	if key != "" {
+		fmt.Fprintf(b, ", field %q", key)
+	}
+	if context != "" {
+		fmt.Fprintf(b, ", %s", context)
+	}
+	fmt.Fprintf(b, ": %s", err.Error())
+	if snippet := strings.TrimRight(err.String(), "\n"); snippet != "" {
+		b.WriteString("\n")
+		b.WriteString(indentLines(snippet, "  "))
+	}
+}
+
+func tomlContextAtLine(data string, row int) string {
+	if row <= 0 {
+		return ""
+	}
+	lines := strings.Split(data, "\n")
+	if row > len(lines) {
+		row = len(lines)
+	}
+	section := ""
+	ruleName := ""
+	pluginName := ""
+	for i := 0; i < row; i++ {
+		line := strings.TrimSpace(lines[i])
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		switch {
+		case line == "[[rules]]":
+			section = "rule"
+			ruleName = ""
+		case line == "[[plugins]]":
+			section = "plugin_ref"
+			pluginName = ""
+		case line == "[plugin]":
+			section = "plugin_info"
+		case strings.HasPrefix(line, "[rules.") || strings.HasPrefix(line, "[[rules."):
+			section = "rule"
+		case strings.HasPrefix(line, "["):
+			section = line
+		}
+		key, value, ok := parseTomlStringAssignment(line)
+		if !ok || key != "name" {
+			continue
+		}
+		switch section {
+		case "rule":
+			ruleName = value
+		case "plugin_ref":
+			pluginName = value
+		}
+	}
+	switch section {
+	case "rule":
+		if ruleName != "" {
+			return fmt.Sprintf("rule %q", ruleName)
+		}
+		return "rule"
+	case "plugin_ref":
+		if pluginName != "" {
+			return fmt.Sprintf("plugin ref %q", pluginName)
+		}
+		return "plugin ref"
+	case "plugin_info":
+		return "plugin metadata"
+	default:
+		if strings.HasPrefix(section, "[") {
+			return "section " + section
+		}
+		return ""
+	}
+}
+
+func parseTomlStringAssignment(line string) (string, string, bool) {
+	key, value, ok := strings.Cut(line, "=")
+	if !ok {
+		return "", "", false
+	}
+	key = strings.TrimSpace(key)
+	value = strings.TrimSpace(value)
+	if comment := strings.Index(value, " #"); comment >= 0 {
+		value = strings.TrimSpace(value[:comment])
+	}
+	if len(value) < 2 || value[0] != '"' || value[len(value)-1] != '"' {
+		return key, "", false
+	}
+	return key, strings.Trim(value, "\""), true
+}
+
+func indentLines(text, prefix string) string {
+	lines := strings.Split(text, "\n")
+	for i := range lines {
+		if lines[i] != "" {
+			lines[i] = prefix + lines[i]
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+type configParseError struct {
+	message string
+	cause   error
+}
+
+func (e configParseError) Error() string { return e.message }
+
+func (e configParseError) Unwrap() error { return e.cause }
+
+func (p PluginRef) enabled() bool {
+	return p.Enabled == nil || *p.Enabled
+}
+
+func pluginConfigPath(configDir string, ref PluginRef) (string, error) {
+	name := strings.TrimSpace(ref.Name)
+	if name == "" {
+		return "", fmt.Errorf("plugin name is required")
+	}
+	rel := strings.TrimSpace(ref.Path)
+	if rel == "" {
+		rel = filepath.Join(name, "hook.toml")
+	}
+	return safeRelativePath(configDir, rel)
+}
+
+func safeRelativePath(base, rel string) (string, error) {
+	if filepath.IsAbs(rel) {
+		return "", fmt.Errorf("path %q must be relative", rel)
+	}
+	clean := filepath.Clean(rel)
+	if clean == "." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean == ".." {
+		return "", fmt.Errorf("path %q escapes plugins directory", rel)
+	}
+	joined := filepath.Join(base, clean)
+	if !pathWithin(base, joined) {
+		return "", fmt.Errorf("path %q escapes plugins directory", rel)
+	}
+	return joined, nil
+}
+
+func pathWithin(base, path string) bool {
+	base = filepath.Clean(base)
+	path = filepath.Clean(path)
+	rel, err := filepath.Rel(base, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
+func normalizeLoadedRules(cfg *Config, opts Options) error {
+	seen := map[string]int{}
+	for i := range cfg.Rules {
+		rule := &cfg.Rules[i]
+		if err := rule.normalize(); err != nil {
+			return fmt.Errorf("rule %d: %w", i+1, err)
+		}
+		original := strings.TrimSpace(rule.Name)
+		if original == "" {
+			original = fmt.Sprintf("rule.%d", i+1)
+			rule.Name = original
+		}
+		rule.source.OriginalName = original
+		final := original
+		if count := seen[original]; count > 0 {
+			final = fmt.Sprintf("%s.%d", original, count)
+			if opts.Logger != nil {
+				opts.Logger.Warn("duplicate hook rule name renamed", "name", original, "final_name", final, "config_path", rule.source.ConfigPath)
+			}
+		}
+		seen[original]++
+		rule.source.FinalName = final
+		for j := range rule.Actions {
+			rule.Actions[j].source = rule.source
+		}
+	}
+	return nil
+}
+
+func reportPluginConfigError(ctx context.Context, opts Options, name, path string, err error) {
+	if opts.Logger != nil {
+		opts.Logger.Warn("hook plugin skipped", "plugin", name, "path", path, "error", err)
+	}
+	if opts.Notify != nil {
+		label := strings.TrimSpace(name)
+		if label == "" {
+			label = path
+		}
+		opts.Notify(ctx, fmt.Sprintf("Hook 插件 %s 已跳过：%v", label, err))
+	}
 }
 
 func reportConfigError(ctx context.Context, opts Options, path string, err error) {
@@ -284,12 +706,7 @@ func reportConfigError(ctx context.Context, opts Options, path string, err error
 }
 
 func (c *Config) normalize() error {
-	for i := range c.Rules {
-		if err := c.Rules[i].normalize(); err != nil {
-			return fmt.Errorf("rule %d: %w", i+1, err)
-		}
-	}
-	return nil
+	return normalizeLoadedRules(c, Options{})
 }
 
 func (r *Rule) normalize() error {
@@ -343,8 +760,6 @@ func (r Rule) inlineAction() Action {
 		Arguments:      r.Args,
 		Command:        r.Command,
 		Cwd:            r.Cwd,
-		Stdin:          r.Stdin,
-		Stdout:         r.Stdout,
 		TimeoutSeconds: r.TimeoutSeconds,
 		All:            r.All,
 		Target:         r.Target,
@@ -435,19 +850,25 @@ func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.
 	if !rule.matchRoles(event) {
 		return event, nil
 	}
+	before := event
+	state := state{Actions: map[string]actionResult{}}
+	var err error
+	for index, action := range rule.Actions {
+		action.source = rule.source
+		var result actionResult
+		event, result, err = m.runAction(ctx, event, action, state)
+		if err != nil {
+			return event, fmt.Errorf("rule %q action %d %s: %w", rule.Name, index+1, action.Type, err)
+		}
+		if result.Matched != nil && !*result.Matched {
+			return before, nil
+		}
+	}
 	if rule.Consume {
 		event.Control.Consume = true
 	}
 	if rule.StopPropagation {
 		event.Control.StopPropagation = true
-	}
-	state := state{Actions: map[string]actionResult{}}
-	var err error
-	for index, action := range rule.Actions {
-		event, err = m.runAction(ctx, event, action, state)
-		if err != nil {
-			return event, fmt.Errorf("rule %q action %d %s: %w", rule.Name, index+1, action.Type, err)
-		}
 	}
 	return event, nil
 }
@@ -490,37 +911,39 @@ type state struct {
 }
 
 type actionResult struct {
-	Result string
-	Error  string
+	Result  string
+	Error   string
+	Matched *bool
 }
 
-func (m Module) runAction(ctx context.Context, event hook.Event, action Action, state state) (hook.Event, error) {
+func (m Module) runAction(ctx context.Context, event hook.Event, action Action, state state) (hook.Event, actionResult, error) {
 	switch strings.TrimSpace(action.Type) {
 	case "prepend", "append", "replace", "delete":
-		return applyTextAction(event, action, state)
+		updated, err := applyTextAction(event, action, state)
+		return updated, actionResult{}, err
 	case "send":
 		outputs, err := makeOutputs(action, event, state)
 		if err != nil {
-			return event, err
+			return event, actionResult{}, err
 		}
 		event.Outputs = append(event.Outputs, outputs...)
-		return event, nil
+		return event, actionResult{}, nil
 	case "exec":
 		updated, result, err := m.runExec(ctx, event, action, state)
 		key := firstNonEmpty(strings.TrimSpace(action.Name), "exec")
 		if key != "" {
 			state.Actions[key] = result
 		}
-		return updated, err
+		return updated, result, err
 	case "tool":
 		result, err := m.callTool(ctx, event, action, state)
 		key := firstNonEmpty(strings.TrimSpace(action.Name), strings.TrimSpace(action.Tool))
 		if key != "" {
 			state.Actions[key] = result
 		}
-		return event, err
+		return event, result, err
 	default:
-		return event, fmt.Errorf("unsupported action type %q", action.Type)
+		return event, actionResult{}, fmt.Errorf("unsupported action type %q", action.Type)
 	}
 }
 
@@ -557,6 +980,28 @@ func readTextField(event hook.Event, field string) string {
 		return llm.SegmentsTextOnly(event.Message.Segments)
 	case "message.content_text":
 		return llm.SegmentsContentText(event.Message.Segments)
+	case "message.raw_text":
+		return event.Message.RawText
+	case "message.reply.message_id":
+		if event.Message.Reply == nil {
+			return ""
+		}
+		return event.Message.Reply.MessageID
+	case "message.reply.sender_id":
+		if event.Message.Reply == nil {
+			return ""
+		}
+		return event.Message.Reply.SenderID
+	case "message.reply.text":
+		if event.Message.Reply == nil {
+			return ""
+		}
+		return event.Message.Reply.Text
+	case "message.reply.content_text":
+		if event.Message.Reply == nil {
+			return ""
+		}
+		return event.Message.Reply.ContentText
 	case "llm.text":
 		return event.LLM.Text
 	case "llm.raw_text":
@@ -683,18 +1128,21 @@ func makeOutputs(action Action, event hook.Event, state state) ([]delivery.Outpu
 	}
 	timing := render(action.Timing, event, state)
 
-	if len(action.Segments) > 0 {
-		outputs := make([]delivery.Output, 0, len(action.Segments))
-		for _, seg := range action.Segments {
+	if len(action.Outputs) > 0 {
+		outputs := make([]delivery.Output, 0, len(action.Outputs))
+		for _, seg := range action.Outputs {
 			seg := SegmentSpec{
-				Kind:     render(seg.Kind, event, state),
-				Text:     render(seg.Text, event, state),
-				URL:      render(seg.URL, event, state),
-				Path:     render(seg.Path, event, state),
-				Base64:   render(seg.Base64, event, state),
-				Name:     render(seg.Name, event, state),
-				MIMEType: render(seg.MIMEType, event, state),
+				Kind:      render(seg.Kind, event, state),
+				Text:      render(seg.Text, event, state),
+				URL:       render(seg.URL, event, state),
+				Path:      render(seg.Path, event, state),
+				Base64:    render(seg.Base64, event, state),
+				Name:      render(seg.Name, event, state),
+				MIMEType:  render(seg.MIMEType, event, state),
+				UserID:    render(seg.UserID, event, state),
+				MessageID: render(seg.MessageID, event, state),
 			}
+			seg = resolveSegmentSpecPath(seg, action.sourceBaseDir())
 			out, err := buildSegmentOutput(seg, target, timing)
 			if err != nil {
 				return nil, err
@@ -710,7 +1158,7 @@ func makeOutputs(action Action, event hook.Event, state state) ([]delivery.Outpu
 		kind = delivery.KindText
 	}
 	text := render(action.Text, event, state)
-	path := render(action.Path, event, state)
+	path := resolveLocalPath(render(action.Path, event, state), action.sourceBaseDir())
 	var out delivery.Output
 	switch kind {
 	case delivery.KindText:
@@ -726,6 +1174,8 @@ func makeOutputs(action Action, event hook.Event, state state) ([]delivery.Outpu
 		out.Source.Path = path
 	case delivery.KindAt:
 		out = delivery.At(text)
+	case delivery.KindReply:
+		out = delivery.Reply(path, text)
 	default:
 		return nil, fmt.Errorf("unsupported output kind %q", kind)
 	}
@@ -797,12 +1247,15 @@ func render(text string, event hook.Event, state state) string {
 		"{{actor.group_role}}":             event.Actor.GroupRole,
 		"{{message.text}}":                 llm.SegmentsTextOnly(event.Message.Segments),
 		"{{message.content_text}}":         llm.SegmentsContentText(event.Message.Segments),
+		"{{message.raw_text}}":             event.Message.RawText,
+		"{{message.input_text}}":           hook.MessageInputText(event),
 		"{{llm.text}}":                     event.LLM.Text,
 		"{{llm.raw_text}}":                 event.LLM.RawText,
 		"{{llm.latest_user_text}}":         llm.LatestUserSegmentTextOnly(event.LLM.Messages),
 		"{{llm.latest_user_content_text}}": llm.LatestUserSegmentContentText(event.LLM.Messages),
 		"{{tool.arguments}}":               event.Tool.Arguments,
 		"{{tool.result}}":                  event.Tool.Result,
+		"{{error.message}}":                hook.EventErrorMessage(event),
 	}
 	for index, match := range eventMatchContext(event).Regex {
 		prefix := fmt.Sprintf("{{match.regex.%d", index)
@@ -819,6 +1272,12 @@ func render(text string, event hook.Event, state state) string {
 	for name, result := range state.Actions {
 		replacements["{{actions."+name+".result}}"] = result.Result
 		replacements["{{actions."+name+".error}}"] = result.Error
+	}
+	if event.Message.Reply != nil {
+		replacements["{{message.reply.message_id}}"] = event.Message.Reply.MessageID
+		replacements["{{message.reply.sender_id}}"] = event.Message.Reply.SenderID
+		replacements["{{message.reply.text}}"] = event.Message.Reply.Text
+		replacements["{{message.reply.content_text}}"] = event.Message.Reply.ContentText
 	}
 	for old, newText := range replacements {
 		text = strings.ReplaceAll(text, old, newText)
@@ -880,6 +1339,18 @@ func buildSegmentOutput(spec SegmentSpec, target delivery.Target, timing string)
 			}
 			out.Source.Data = data
 		}
+	case string(delivery.KindAt):
+		userID := strings.TrimSpace(spec.UserID)
+		if userID == "" {
+			userID = strings.TrimSpace(spec.Text)
+		}
+		out = delivery.At(userID)
+	case string(delivery.KindReply):
+		messageID := strings.TrimSpace(spec.MessageID)
+		if messageID == "" {
+			messageID = strings.TrimSpace(spec.Path)
+		}
+		out = delivery.Reply(messageID, strings.TrimSpace(spec.Text))
 	case string(delivery.KindEmoticon):
 		name := strings.TrimSpace(spec.Name)
 		if name == "" {
@@ -973,9 +1444,6 @@ func formatRuleDetail(rule Rule) string {
 		if action.Command != "" {
 			sb.WriteString(" command=" + strconvQuote(action.Command))
 		}
-		if action.Stdout != "" {
-			sb.WriteString(" stdout=" + action.Stdout)
-		}
 		if action.Timing != "" {
 			sb.WriteString(" timing=" + action.Timing)
 		}
@@ -985,8 +1453,8 @@ func formatRuleDetail(rule Rule) string {
 		if action.All {
 			sb.WriteString(" all=true")
 		}
-		if len(action.Segments) > 0 {
-			sb.WriteString(fmt.Sprintf(" segments=%d", len(action.Segments)))
+		if len(action.Outputs) > 0 {
+			sb.WriteString(fmt.Sprintf(" outputs=%d", len(action.Outputs)))
 		}
 	}
 
@@ -996,11 +1464,21 @@ func formatRuleDetail(rule Rule) string {
 	if rule.StopPropagation {
 		sb.WriteString("\nstop_propagation: true")
 	}
+	if rule.RequireWakeup != nil && !*rule.RequireWakeup {
+		sb.WriteString("\nrequire_wakeup: false")
+	}
 	if rule.Priority != 0 {
 		sb.WriteString(fmt.Sprintf("\npriority: %d", rule.Priority))
 	}
 
 	return sb.String()
+}
+
+func ruleDescription(rule Rule) string {
+	if description := strings.TrimSpace(rule.Description); description != "" {
+		return description
+	}
+	return strings.TrimSpace(rule.source.PluginDescription)
 }
 
 func targetString(t Target) string {

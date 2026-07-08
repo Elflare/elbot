@@ -40,6 +40,21 @@ func TestModuleInjectsSavedResidentMemory(t *testing.T) {
 	}
 }
 
+func TestModuleRegistersBuiltinHookDescription(t *testing.T) {
+	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	manager := hook.NewManager()
+	if err := NewModule(Options{Store: store}).RegisterHooks(manager); err != nil {
+		t.Fatalf("RegisterHooks: %v", err)
+	}
+	infos := manager.List()
+	if len(infos) != 1 {
+		t.Fatalf("infos = %#v", infos)
+	}
+	if infos[0].Name != "builtin.resident_memory" || infos[0].Description == "" || infos[0].Detail != "" {
+		t.Fatalf("info = %#v", infos[0])
+	}
+}
+
 func TestModuleInjectsDefaultDisplayNameWhenMemoryIsEmpty(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
 	event := hook.Event{

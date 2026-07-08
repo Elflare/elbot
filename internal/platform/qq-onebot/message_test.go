@@ -76,8 +76,11 @@ func TestNormalizeArrayMessage(t *testing.T) {
 		{"type":"reply","data":{"id":"42"}},
 		{"type":"image","data":{"file":"a.jpg"}}
 	]`), "", 1000)
-	if !msg.AtSelf || msg.ReplyID != "42" || msg.Text != "hello [图片]" {
+	if msg.ReplyID != "42" || msg.Text != "hello [图片]" {
 		t.Fatalf("message = %#v", msg)
+	}
+	if len(msg.Mentions) != 1 || msg.Mentions[0].UserID != "1000" {
+		t.Fatalf("mentions = %#v", msg.Mentions)
 	}
 	if len(msg.Segments) != 2 || msg.Segments[0].Type != "text" || msg.Segments[1].Type != "image" || msg.Segments[1].Name != "a.jpg" {
 		t.Fatalf("segments = %#v", msg.Segments)
@@ -409,32 +412,29 @@ func TestHandleEventSuperadminFileWithoutURLTooLargeAfterGetFile(t *testing.T) {
 	}
 }
 
-func TestShouldHandleGroupMessage(t *testing.T) {
+func TestHandleEventDeliversPlainGroupMessage(t *testing.T) {
 	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil, nil)
+	handler := &captureHandler{}
 
-	event := Event{MessageType: "group"}
-	if adapter.shouldHandle(event, NormalizedMessage{Text: "hello"}) {
-		t.Fatal("unexpectedly handled plain group message")
+	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, RawMessage: "hello"})
+
+	if handler.count != 1 || handler.text != "hello" {
+		t.Fatalf("handler count/text = %d/%q", handler.count, handler.text)
 	}
-	if !adapter.shouldHandle(event, NormalizedMessage{AtSelf: true, Text: "hello"}) {
-		t.Fatal("expected at-self group message to be handled")
+	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
 	}
-	if !adapter.shouldHandle(event, NormalizedMessage{Text: "/status"}) {
-		t.Fatal("expected slash command to be handled")
-	}
-	if !adapter.shouldHandle(event, NormalizedMessage{Text: "芙莉丝你好"}) {
-		t.Fatal("expected trigger keyword group message to be handled")
-	}
-	if adapter.shouldHandle(event, NormalizedMessage{Text: "你好芙莉丝"}) {
-		t.Fatal("did not expect non-prefix trigger keyword to be handled")
+	if msgCtx.ConversationKind != platform.ConversationGroup || msgCtx.RawText != "hello" {
+		t.Fatalf("message context = %#v", msgCtx)
 	}
 }
 
-func TestHandleEventStripsTriggerKeywordOnly(t *testing.T) {
+func TestHandleEventKeepsTriggerKeywordForUpperLayers(t *testing.T) {
 	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil, nil)
 	handler := &captureHandler{}
 	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, RawMessage: "芙莉丝，你好"})
-	if handler.text != "，你好" {
+	if handler.text != "芙莉丝，你好" {
 		t.Fatalf("handled text = %q", handler.text)
 	}
 }
@@ -562,15 +562,35 @@ func TestForkableReferenceMessageIDRequiresOwnAssistantSession(t *testing.T) {
 
 	handler = &captureHandler{}
 	adapter.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: []byte(`[{"type":"reply","data":{"id":"other-assistant"}},{"type":"text","data":{"text":"继续"}}]`)})
-	if handler.text != "[引用：bot]：other answer\n\n继续" {
-		t.Fatalf("other assistant reference text = %q", handler.text)
+	msgCtx, ok = platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	if handler.text != "继续" {
+		t.Fatalf("other assistant current text = %q, want current", handler.text)
+	}
+	if msgCtx.ContextText != "[引用：bot]：other answer\n\n继续" {
+		t.Fatalf("other assistant context text = %q", msgCtx.ContextText)
+	}
+	if msgCtx.Reply.MessageID != "other-assistant" || msgCtx.Reply.Text != "other answer" {
+		t.Fatalf("other assistant reply = %#v", msgCtx.Reply)
 	}
 
 	handler = &captureHandler{}
 	adapter.cfg.TriggerKeywords = []string{"芙莉丝"}
 	adapter.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: []byte(`[{"type":"reply","data":{"id":"own-user"}},{"type":"text","data":{"text":"芙莉丝 继续"}}]`)})
-	if handler.text != "[引用]：own user\n\n继续" {
-		t.Fatalf("user reference text = %q", handler.text)
+	msgCtx, ok = platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	if handler.text != "芙莉丝 继续" {
+		t.Fatalf("user current text = %q, want current", handler.text)
+	}
+	if msgCtx.ContextText != "[引用]：own user\n\n芙莉丝 继续" {
+		t.Fatalf("user context text = %q", msgCtx.ContextText)
+	}
+	if msgCtx.Reply.MessageID != "own-user" || msgCtx.Reply.Text != "own user" {
+		t.Fatalf("user reply = %#v", msgCtx.Reply)
 	}
 }
 
@@ -624,18 +644,28 @@ func TestOutputSegments(t *testing.T) {
 	}
 }
 
-func TestIsBotReplyFallsBackToGetMessage(t *testing.T) {
+func TestHandleEventFillsReplyToSenderID(t *testing.T) {
 	transport := newTestTransport(t, func(req request) response {
-		if req.Action != "get_msg" {
+		switch req.Action {
+		case "get_msg":
+			return response{Status: "ok", Data: []byte(`{"user_id":1000,"message":[]}`), Echo: req.Echo}
+		default:
 			t.Fatalf("action = %q", req.Action)
 		}
-		return response{Status: "ok", Data: []byte(`{"user_id":1000}`), Echo: req.Echo}
+		return response{}
 	})
 	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
 	adapter.transport = transport
+	handler := &captureHandler{}
 
-	if !adapter.shouldHandle(Event{MessageType: "group", SelfID: 1000}, NormalizedMessage{ReplyID: "77", Text: "继续"}) {
-		t.Fatal("expected reply to bot message to be handled")
+	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 7, Message: []byte(`[{"type":"reply","data":{"id":"77"}},{"type":"text","data":{"text":"继续"}}]`)})
+
+	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	if msgCtx.ReplyToSenderID != "1000" {
+		t.Fatalf("reply sender = %q", msgCtx.ReplyToSenderID)
 	}
 }
 

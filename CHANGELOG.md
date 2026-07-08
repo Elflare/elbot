@@ -12,16 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 重构AgentSkill：去掉py wrapper，直接使用shell执行对应sklll，同时支持在Agentkill根目录添加 `ELBOT_SKILL.toml` 注册为普通工具，方便 LLM 直接调用结构化参数。
 - 新增隐藏元工具 `agent_skill`，用于读取或写入 AgentSkill 的 `ELBOT_SKILL.toml`，写入前校验配置并在成功后 reload。
+- 首次运行会生成 `skills/agent/agent_skill_creator/SKILL.md`，用于说明如何把 AgentSkill 注册为普通工具。
+- 首次运行会生成 `skills/agent/write_elbot_hook/SKILL.md`，用于提示按需求编写 ElBot 规则 Hook。
 - 新增 `/usage` 命令：从审计日志聚合 token 消耗，支持按模型/天/会话汇总，快捷参数 `-d` 天数、`-m` 模型、`-s` 会话。
 - 新增 `workspace` 工具：设置当前前台 Session 的共享工作目录，路径类工具会基于该目录解析相对路径。首次切换到含 `AGENTS.md` 或 `AGENT.md` 的目录时，会自动附带说明文件内容；文件超过 64 KiB 时会提示缩短。
 - 新增 `[platform_files]` 配置，统一控制平台入站文件最大保存大小和下载超时。
 - QQ OneBot 支持自动保存私聊超级管理员入站文件；纯文件消息只回复保存路径或过大提示，不唤起 LLM，群文件不自动保存。
 - `/requests` 命令现在展示每个 turn 的当前运行阶段（preparing/llm/tool/sending）和阶段耗时，可区分 LLM 慢还是平台发送卡住。
+- 内联预载支持工具简写 `@t:<name-or-tag>` 和 Skill 简写 `@s:<name>`，并兼容中文全角冒号 `：`。
+- CLI TUI 输入框支持用 `#文件名` 模糊补全本地文件；发送时会把引用替换为文件名和文件内容，含空格路径可写作 `#"a b.txt"`。
+- Hook exec 失败、脚本崩溃、超时或协议错误时会向当前消息平台发送失败通知，并在失败时附带 stderr 尾部；规则匹配和模板新增 `error.message`。
+- Hook 规则新增 `message.input_text` 匹配/模板字段，用于匹配去掉群聊唤醒关键词或 bot mention 后的用户输入。
 
 ### Changed
 
+- `web_extract` 工具的代理参数从 `disable_proxy` 改为 `proxy`：不填时使用 `WEB_EXTRACT_PROXY` 或系统代理环境，填 `disabled` 禁用代理，填 URL 使用指定代理。
 - `send_file` 工具改为使用 `source` 参数发送文件，支持本地路径、`file://` URI 和 HTTP(S) URL，并会按 MIME/扩展名自动将图片作为图片消息发送。
-- AgentSkill 不再通过 `python_skill_run` 固定包装执行 Python 脚本；没有 `ELBOT_SKILL.toml` 时保持说明型 Skill，可按文档使用 shell 等通用工具。
+- AgentSkill 不再通过 `python_skill_run` 固定包装执行 Python 脚本；没有 `ELBOT_SKILL.toml` 时保持说明型 Skill，可按文档使用 shell 等通用工具；说明型 AgentSkill 不读取 `SKILL.md` 风险，工具化后以 `ELBOT_SKILL.toml` 的 `risk` 为准。
 - Skill 扫描改为启动后延迟执行，并在 `discover_tool` 首次使用时兜底确保扫描，减少启动阻塞。
 - Session 闲置过期改为 `[session.idle_expiration]` 四项配置，分别控制群聊/私聊下普通用户和超级管理员的当前 Session 过期时间；默认群聊所有用户过期，私聊超级管理员不过期。
 - `shell` 工具移除 `path` 参数，命令默认在当前 workspace 下执行；后台任务仍限制在各自 sandbox 内。
@@ -30,16 +37,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - QQ OneBot、QQ 官方、Telegram 平台断线重连改为指数退避（3s 起，翻倍，封顶 10s）并日志降级：连续失败只在首次记 warn，恢复后记 info，不再每轮刷屏。
 - 平台媒体输出支持在 `path` 中识别 `base64://`、`file://`、`http://`、`https://` 源；普通本地路径仍按平台默认方式处理。
 - qq 官方收到图片现在直接使用url而不是base64
+- 重构hook，详情见docs。
+- Windows 下 `shell` 工具优先使用 `pwsh`，其次 `bash`，最后回退到 `powershell.exe`。
 
 ### Fixed
 
+- `/hooks` 现在直接使用规则名查看详情，不再要求输入 `rules.` 前缀；规则 Hook 支持可选 `description`，内置 Hook 统一使用 `builtin.*` 名称和 description，规则细节只在详情中展示。
+- 修复发现或内联预载多个 ELyph Skill 时规则卡会重复注入上下文的问题；同一会话首次注入后只继续返回 Skill 内容，保留历史中的首次规则卡以利于缓存命中。
+- 修复同一时间戳下会话消息可能按 UUID 错序加载，导致历史上下文顺序不稳定的问题。
 - 修复 `workspace` 工具设置目录时不支持 `~`、`~/path` 和 Windows `~\path` 主目录路径的问题。
 - QQ OneBot 私聊文件段缺少 `url` 时会调用 `get_file`；若返回下载地址则保存到 ElBot，若只返回 OneBot 本地路径则直接提示该路径。
-- 修复 Hook rules `exec` action 在 Windows 下固定依赖 `sh` 导致执行失败的问题；现在 `command` 会直接按程序和参数执行。
 - QQ OneBot 入站 @ 消息现在会优先显示群名片，其次普通昵称，格式为 `[at 名字 qq:<id>]`，无法获取时才回退 QQ 号。
 - 修复 Windows 下 `shell` 工具回退到 PowerShell 时中文输出可能乱码的问题。
 - 修复 Windows 下无 bash 时 shell 命令的 bash AST 解析失败导致风险分类、沙盒校验、目录切换拦截和警告分析全部异常的问题；PowerShell 环境下跳过 AST 解析，风险分类直接返回高风险需用户确认。
 - OneBot 发送图片失败时，不再出现可见 fallback，但仍会记录日志。
+- 修复回复 Hook/斜杠命令等通知消息时，引用 fallback 文本污染 `platform.message.received` 的 `message.text`，导致撤回类 Hook 无法匹配的问题；Hook 现在可通过 `message.reply.*` 读取结构化引用信息。
 
 
 

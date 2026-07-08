@@ -56,26 +56,31 @@ func KnownPoint(point Point) bool {
 // Event carries the context available at a hook point. Fields are populated
 // according to Point; hook handlers should only rely on fields relevant there.
 type Event struct {
-	ID       string          `json:"id"`
-	Point    Point           `json:"point"`
-	Time     time.Time       `json:"time"`
-	Metadata map[string]any  `json:"metadata,omitempty"`
-	Control  Control         `json:"control"`
+	ID       string         `json:"id"`
+	Point    Point          `json:"point"`
+	Time     time.Time      `json:"time"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+	Control  Control        `json:"control"`
 
-	Platform PlatformContext `json:"platform"`
-	Actor    ActorContext    `json:"actor"`
-	Session  SessionContext  `json:"session"`
-	Request  RequestContext  `json:"request"`
-	Message  MessagePayload  `json:"message"`
-	LLM      LLMPayload      `json:"llm"`
-	Tool     ToolPayload     `json:"tool"`
-	Outputs  []delivery.Output `json:"outputs,omitempty"`
-	Error    error           `json:"error,omitempty"`
+	Platform  PlatformContext   `json:"platform"`
+	Actor     ActorContext      `json:"actor"`
+	Session   SessionContext    `json:"session"`
+	Request   RequestContext    `json:"request"`
+	Message   MessagePayload    `json:"message"`
+	LLM       LLMPayload        `json:"llm"`
+	Tool      ToolPayload       `json:"tool"`
+	Outputs   []delivery.Output `json:"outputs,omitempty"`
+	Error     error             `json:"-"`
+	ErrorInfo *ErrorPayload     `json:"error,omitempty"`
 }
 
 type Control struct {
 	Consume         bool `json:"consume"`
 	StopPropagation bool `json:"stop_propagation"`
+}
+
+type ErrorPayload struct {
+	Message string `json:"message"`
 }
 
 type PlatformContext struct {
@@ -110,22 +115,33 @@ type RequestContext struct {
 }
 
 type MessagePayload struct {
-	ID       string              `json:"id"`
-	Role     string              `json:"role"`
-	Segments []llm.MessageSegment `json:"segments,omitempty"`
-	Messages []llm.LLMMessage     `json:"messages,omitempty"`
+	ID        string               `json:"id"`
+	Role      string               `json:"role"`
+	RawText   string               `json:"raw_text,omitempty"`
+	InputText string               `json:"input_text,omitempty"`
+	Reply     *MessageReplyPayload `json:"reply,omitempty"`
+	Segments  []llm.MessageSegment `json:"segments,omitempty"`
+	Messages  []llm.LLMMessage     `json:"messages,omitempty"`
+}
+
+type MessageReplyPayload struct {
+	MessageID   string               `json:"message_id"`
+	SenderID    string               `json:"sender_id,omitempty"`
+	Text        string               `json:"text,omitempty"`
+	ContentText string               `json:"content_text,omitempty"`
+	Segments    []llm.MessageSegment `json:"segments,omitempty"`
 }
 
 type LLMPayload struct {
-	Provider  string             `json:"provider"`
-	Model     string             `json:"model"`
-	Messages  []llm.LLMMessage   `json:"messages,omitempty"`
-	Tools     []llm.ToolSchema   `json:"tools,omitempty"`
-	Usage     *llm.Usage         `json:"usage,omitempty"`
-	RawText   string             `json:"raw_text,omitempty"`
-	Text      string             `json:"text,omitempty"`
+	Provider  string                `json:"provider"`
+	Model     string                `json:"model"`
+	Messages  []llm.LLMMessage      `json:"messages,omitempty"`
+	Tools     []llm.ToolSchema      `json:"tools,omitempty"`
+	Usage     *llm.Usage            `json:"usage,omitempty"`
+	RawText   string                `json:"raw_text,omitempty"`
+	Text      string                `json:"text,omitempty"`
 	ToolCalls []llm.ToolCallRequest `json:"tool_calls,omitempty"`
-	ElapsedMS int64              `json:"elapsed_ms,omitempty"`
+	ElapsedMS int64                 `json:"elapsed_ms,omitempty"`
 }
 
 type ToolPayload struct {
@@ -134,17 +150,17 @@ type ToolPayload struct {
 	Arguments string `json:"arguments,omitempty"`
 	Risk      string `json:"risk,omitempty"`
 	Result    string `json:"result,omitempty"`
-	Error     error `json:"error,omitempty"`
+	Error     error  `json:"error,omitempty"`
 }
 
 type RegexMatch struct {
-	Field  string   `json:"field"`
-	Value  string   `json:"value"`
-	Text   string   `json:"text"`
-	Groups []string `json:"groups"`
+	Field  string            `json:"field"`
+	Value  string            `json:"value"`
+	Text   string            `json:"text"`
+	Groups []string          `json:"groups"`
 	Named  map[string]string `json:"named,omitempty"`
-	Start  int      `json:"start"`
-	End    int      `json:"end"`
+	Start  int               `json:"start"`
+	End    int               `json:"end"`
 }
 
 type MatchContext struct {
@@ -357,12 +373,14 @@ func needsMatchValue(op string) bool {
 func knownMatchField(field string) bool {
 	switch strings.TrimSpace(field) {
 	case "platform.name", "platform.scope_id", "platform.user_id", "platform.conversation_id", "platform.message_id", "platform.reply_to_message_id",
-		"message.text", "message.content_text", "message.role",
+		"message.text", "message.content_text", "message.raw_text", "message.input_text", "message.role",
+		"message.reply.message_id", "message.reply.sender_id", "message.reply.text", "message.reply.content_text",
 		"llm.text", "llm.raw_text", "llm.latest_user_text", "llm.latest_user_content_text", "llm.provider", "llm.model",
 		"tool.name", "tool.arguments", "tool.result", "tool.risk",
 		"actor.id", "actor.user_id", "actor.role", "actor.group_role", "actor.display_name",
 		"session.id", "session.mode", "session.status",
-		"request.id", "request.kind", "request.phase":
+		"request.id", "request.kind", "request.phase",
+		"error.message":
 		return true
 	default:
 		return false
@@ -387,8 +405,32 @@ func matchField(event Event, field string) string {
 		return llm.SegmentsTextOnly(event.Message.Segments)
 	case "message.content_text":
 		return llm.SegmentsContentText(event.Message.Segments)
+	case "message.raw_text":
+		return event.Message.RawText
+	case "message.input_text":
+		return MessageInputText(event)
 	case "message.role":
 		return event.Message.Role
+	case "message.reply.message_id":
+		if event.Message.Reply == nil {
+			return ""
+		}
+		return event.Message.Reply.MessageID
+	case "message.reply.sender_id":
+		if event.Message.Reply == nil {
+			return ""
+		}
+		return event.Message.Reply.SenderID
+	case "message.reply.text":
+		if event.Message.Reply == nil {
+			return ""
+		}
+		return event.Message.Reply.Text
+	case "message.reply.content_text":
+		if event.Message.Reply == nil {
+			return ""
+		}
+		return event.Message.Reply.ContentText
 	case "llm.text":
 		return event.LLM.Text
 	case "llm.raw_text":
@@ -431,6 +473,8 @@ func matchField(event Event, field string) string {
 		return event.Request.Kind
 	case "request.phase":
 		return event.Request.Phase
+	case "error.message":
+		return EventErrorMessage(event)
 	default:
 		return ""
 	}
@@ -438,20 +482,23 @@ func matchField(event Event, field string) string {
 
 // Registration describes one explicitly matched hook handler.
 type Registration struct {
-	Point    Point
-	Priority int
-	Name     string
-	Match    Match
-	Handler  Handler
-	Detail   string
+	Point         Point
+	Priority      int
+	Name          string
+	Description   string
+	Match         Match
+	Handler       Handler
+	Detail        string
+	RequireWakeup *bool
 }
 
 // Info describes a registered hook for inspection commands.
 type Info struct {
-	Name     string
-	Point    Point
-	Priority int
-	Detail   string
+	Name        string
+	Description string
+	Point       Point
+	Priority    int
+	Detail      string
 }
 
 // Registrar registers hook handlers for modules.
@@ -493,15 +540,20 @@ type DefaultManager struct {
 	next     int
 	handlers map[Point][]registration
 	logger   *slog.Logger
+	wakeup   WakeupFunc
 }
 
+type WakeupFunc func(context.Context, Event) bool
+
 type registration struct {
-	priority int
-	order    int
-	name     string
-	match    Match
-	handler  Handler
-	detail   string
+	priority      int
+	order         int
+	name          string
+	description   string
+	match         Match
+	handler       Handler
+	detail        string
+	requireWakeup bool
 }
 
 func NewManager() *DefaultManager {
@@ -514,6 +566,12 @@ func (m *DefaultManager) SetLogger(logger *slog.Logger) {
 	m.logger = logger
 }
 
+func (m *DefaultManager) SetWakeupFunc(fn WakeupFunc) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.wakeup = fn
+}
+
 func (m *DefaultManager) Register(reg Registration) error {
 	if err := validateRegistration(reg); err != nil {
 		return err
@@ -521,7 +579,7 @@ func (m *DefaultManager) Register(reg Registration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.next++
-	m.handlers[reg.Point] = append(m.handlers[reg.Point], registration{priority: reg.Priority, order: m.next, name: reg.Name, match: reg.Match, handler: reg.Handler, detail: reg.Detail})
+	m.handlers[reg.Point] = append(m.handlers[reg.Point], registration{priority: reg.Priority, order: m.next, name: reg.Name, description: strings.TrimSpace(reg.Description), match: reg.Match, handler: reg.Handler, detail: reg.Detail, requireWakeup: registrationRequireWakeup(reg)})
 	sort.SliceStable(m.handlers[reg.Point], func(i, j int) bool {
 		left := m.handlers[reg.Point][i]
 		right := m.handlers[reg.Point][j]
@@ -549,9 +607,16 @@ func validateRegistration(reg Registration) error {
 	return nil
 }
 
+func registrationRequireWakeup(reg Registration) bool {
+	return reg.RequireWakeup == nil || *reg.RequireWakeup
+}
+
 func (m *DefaultManager) Run(ctx context.Context, event Event) (Event, error) {
 	event = prepareEvent(event)
 	for _, reg := range m.handlersFor(event.Point) {
+		if m.skipForWakeup(ctx, event, reg) {
+			continue
+		}
 		matchResult := reg.match.MatchEvent(event)
 		if !matchResult.OK {
 			continue
@@ -561,12 +626,12 @@ func (m *DefaultManager) Run(ctx context.Context, event Event) (Event, error) {
 		updated, err := reg.handler.HandleHook(ctx, event)
 		delete(event.Metadata, "match")
 		if err != nil {
-m.logHook(ctx, "run", reg, before, before, err)
+			m.logHook(ctx, "run", reg, before, before, err)
 			return event, wrapHookError(reg, err)
 		}
 		updated = markHookOutputs(updated, len(before.Outputs), reg, "run")
 		event = prepareEvent(updated)
-m.logHook(ctx, "run", reg, before, event, nil)
+		m.logHook(ctx, "run", reg, before, event, nil)
 		if event.Control.StopPropagation {
 			break
 		}
@@ -578,6 +643,9 @@ func (m *DefaultManager) Notify(ctx context.Context, event Event) error {
 	event = prepareEvent(event)
 	var joined error
 	for _, reg := range m.handlersFor(event.Point) {
+		if m.skipForWakeup(ctx, event, reg) {
+			continue
+		}
 		matchResult := reg.match.MatchEvent(event)
 		if !matchResult.OK {
 			continue
@@ -587,12 +655,12 @@ func (m *DefaultManager) Notify(ctx context.Context, event Event) error {
 		updated, err := reg.handler.HandleHook(ctx, event)
 		delete(event.Metadata, "match")
 		if err != nil {
-m.logHook(ctx, "notify", reg, before, before, err)
+			m.logHook(ctx, "notify", reg, before, before, err)
 			joined = errors.Join(joined, wrapHookError(reg, err))
 			continue
 		}
 		_ = markHookOutputs(updated, len(before.Outputs), reg, "notify")
-m.logHook(ctx, "notify", reg, before, before, nil)
+		m.logHook(ctx, "notify", reg, before, before, nil)
 		if updated.Control.StopPropagation {
 			break
 		}
@@ -609,13 +677,30 @@ func (m *DefaultManager) handlersFor(point Point) []registration {
 	return out
 }
 
+func (m *DefaultManager) skipForWakeup(ctx context.Context, event Event, reg registration) bool {
+	if !reg.requireWakeup {
+		return false
+	}
+	wakeup := m.wakeupForRun()
+	if wakeup == nil {
+		return false
+	}
+	return !wakeup(ctx, event)
+}
+
+func (m *DefaultManager) wakeupForRun() WakeupFunc {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.wakeup
+}
+
 func (m *DefaultManager) List() []Info {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var out []Info
 	for point, items := range m.handlers {
 		for _, reg := range items {
-			out = append(out, Info{Name: reg.name, Point: point, Priority: reg.priority, Detail: reg.detail})
+			out = append(out, Info{Name: reg.name, Description: reg.description, Point: point, Priority: reg.priority, Detail: reg.detail})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -744,5 +829,25 @@ func prepareEvent(event Event) Event {
 	if event.Metadata == nil {
 		event.Metadata = map[string]any{}
 	}
+	if event.ErrorInfo == nil && event.Error != nil {
+		event.ErrorInfo = &ErrorPayload{Message: event.Error.Error()}
+	}
 	return event
+}
+
+func EventErrorMessage(event Event) string {
+	if event.ErrorInfo != nil {
+		return event.ErrorInfo.Message
+	}
+	if event.Error != nil {
+		return event.Error.Error()
+	}
+	return ""
+}
+
+func MessageInputText(event Event) string {
+	if strings.TrimSpace(event.Message.InputText) != "" {
+		return strings.TrimSpace(event.Message.InputText)
+	}
+	return llm.SegmentsTextOnly(event.Message.Segments)
 }

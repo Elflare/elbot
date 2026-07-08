@@ -12,6 +12,7 @@ type sessionMetadata struct {
 	DiscoveredTools          []string             `json:"discovered_tools,omitempty"`
 	ToolCache                []toolrun.CachedTool `json:"tool_cache,omitempty"`
 	ToolTags                 []string             `json:"tool_tags,omitempty"`
+	ShownRuleCardFormats     []string             `json:"shown_rule_card_formats,omitempty"`
 	LastUsage                *llm.Usage           `json:"last_usage,omitempty"`
 	BackgroundKind           string               `json:"background_kind,omitempty"`
 	WorkspaceDir             string               `json:"workspace_dir,omitempty"`
@@ -27,6 +28,7 @@ func decodeSessionMetadata(raw string) sessionMetadata {
 	metadata.DiscoveredTools = sortedUnique(metadata.DiscoveredTools)
 	metadata.ToolCache = toolCacheItemsNormalized(metadata.ToolCache)
 	metadata.ToolTags = sortedUnique(metadata.ToolTags)
+	metadata.ShownRuleCardFormats = sortedUnique(metadata.ShownRuleCardFormats)
 	metadata.WorkspaceAgentNoticeDirs = sortedUnique(metadata.WorkspaceAgentNoticeDirs)
 	return metadata
 }
@@ -39,6 +41,7 @@ func encodeSessionMetadataInto(raw string, metadata sessionMetadata) string {
 	metadata.DiscoveredTools = sortedUnique(metadata.DiscoveredTools)
 	metadata.ToolCache = toolCacheItemsNormalized(metadata.ToolCache)
 	metadata.ToolTags = sortedUnique(metadata.ToolTags)
+	metadata.ShownRuleCardFormats = sortedUnique(metadata.ShownRuleCardFormats)
 	metadata.WorkspaceAgentNoticeDirs = sortedUnique(metadata.WorkspaceAgentNoticeDirs)
 	if metadata.LastUsage != nil && metadata.LastUsage.TotalTokens <= 0 && metadata.LastUsage.CacheHitTokens <= 0 && metadata.LastUsage.PromptTokens <= 0 && metadata.LastUsage.CompletionTokens <= 0 {
 		metadata.LastUsage = nil
@@ -50,6 +53,7 @@ func encodeSessionMetadataInto(raw string, metadata sessionMetadata) string {
 	setMetadataField(base, "discovered_tools", metadata.DiscoveredTools)
 	setMetadataField(base, "tool_cache", metadata.ToolCache)
 	setMetadataField(base, "tool_tags", metadata.ToolTags)
+	setMetadataField(base, "shown_rule_card_formats", metadata.ShownRuleCardFormats)
 	setMetadataField(base, "last_usage", metadata.LastUsage)
 	setMetadataField(base, "background_kind", metadata.BackgroundKind)
 	setMetadataField(base, "workspace_dir", metadata.WorkspaceDir)

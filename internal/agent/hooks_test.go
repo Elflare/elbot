@@ -2,9 +2,12 @@ package agent
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"elbot/internal/hook"
+	"elbot/internal/llm"
 	"elbot/internal/platform"
 )
 
@@ -44,5 +47,56 @@ func TestFillHookContextKeepsExplicitPlatformMessageIDs(t *testing.T) {
 	}
 	if event.Platform.ReplyToMessageID != "explicit-reply" {
 		t.Fatalf("reply to message id = %q, want explicit value", event.Platform.ReplyToMessageID)
+	}
+}
+
+func TestFillHookContextAddsInputTextWithoutWakeupPrefix(t *testing.T) {
+	a := &Agent{platform: &fakePlatform{}, scopeID: "default"}
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:         "qq-onebot",
+		ScopeID:          "group:123",
+		ConversationKind: platform.ConversationGroup,
+		TriggerKeywords:  []string{"芙莉丝"},
+	})
+
+	event := a.fillHookContext(ctx, hook.Event{
+		Point:   hook.PointPlatformMessageReceived,
+		Message: hook.MessagePayload{Role: "user", Segments: llm.TextSegments("芙莉丝 咩")},
+	})
+
+	if event.Message.InputText != "咩" {
+		t.Fatalf("input text = %q, want 咩", event.Message.InputText)
+	}
+}
+
+func TestRunHookErrorSendsFailureNotice(t *testing.T) {
+	p := &fakePlatform{}
+	manager := hook.NewManager()
+	if err := manager.Register(hook.Registration{
+		Point: hook.PointAgentInputPrepared,
+		Name:  "test.boom",
+		Match: hook.Always(),
+		Handler: hook.HandlerFunc(func(context.Context, hook.Event) (hook.Event, error) {
+			return hook.Event{}, errors.New("boom")
+		}),
+	}); err != nil {
+		t.Fatalf("register hook: %v", err)
+	}
+	a := &Agent{platform: p, hooks: manager}
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform: "cli",
+		ScopeID:  "private:test",
+		Sender:   p,
+	})
+
+	_, err := a.runHook(ctx, hook.Event{Point: hook.PointAgentInputPrepared})
+	if err == nil {
+		t.Fatal("expected hook error")
+	}
+	got := p.out.String()
+	for _, want := range []string{"Hook 执行失败", "agent.input.prepared", "hook test.boom", "boom"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("notice = %q, want %q", got, want)
+		}
 	}
 }

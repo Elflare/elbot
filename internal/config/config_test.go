@@ -6,8 +6,23 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 )
+
+func TestDefaultWriteElbotHookSkillMarkdown(t *testing.T) {
+	for _, want := range []string{
+		"name: write_elbot_hook",
+		"description: 编写或修改 ElBot 规则 Hook 配置。",
+		"hook路径：",
+		"plugins/hooks.toml",
+		"https://github.com/Elflare/elbot/blob/main/docs/hooks.md",
+	} {
+		if !strings.Contains(defaultWriteElbotHookSkillMD, want) {
+			t.Fatalf("default write_elbot_hook skill missing %q", want)
+		}
+	}
+}
 
 func TestResolvePathUsesExplicitPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "app.toml")
@@ -48,10 +63,18 @@ func TestResolvePathGeneratesPlatformDefaultsWhenNoConfigExists(t *testing.T) {
 	if resolved != filepath.Clean(want) {
 		t.Fatalf("resolved path = %q, want %q", resolved, filepath.Clean(want))
 	}
-	for _, rel := range []string{"app.toml", "providers.toml", "state.toml", "SOUL.md", "memories.toml", "elnis.toml", ".env.example"} {
+	for _, rel := range []string{"app.toml", "providers.toml", "state.toml", "SOUL.md", "memories.toml", "elnis.toml", filepath.Join("skills", "agent", "agent_skill_creator", "SKILL.md"), filepath.Join("skills", "agent", "write_elbot_hook", "SKILL.md"), ".env.example"} {
 		if _, err := os.Stat(filepath.Join(filepath.Dir(want), rel)); err != nil {
 			t.Fatalf("expected generated file %s: %v", rel, err)
 		}
+	}
+	skillPath := filepath.Join(filepath.Dir(want), "skills", "agent", "write_elbot_hook", "SKILL.md")
+	skillData, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("read generated write_elbot_hook skill: %v", err)
+	}
+	if !strings.Contains(string(skillData), "hook路径：") || !strings.Contains(string(skillData), "plugins/hooks.toml") {
+		t.Fatalf("generated write_elbot_hook skill = %q", string(skillData))
 	}
 	for _, rel := range []string{filepath.Join("skills", "agent"), filepath.Join("skills", "go"), "plugins", "long_memory"} {
 		info, err := os.Stat(filepath.Join(filepath.Dir(want), rel))

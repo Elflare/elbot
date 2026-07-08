@@ -28,7 +28,7 @@ type skillDirectiveResult struct {
 
 func (a *Agent) applyToolDirectives(ctx context.Context, session *storage.Session, text string) toolDirectiveResult {
 	result := toolDirectiveResult{Text: text}
-	if session == nil || session.Mode != storage.SessionModeWork || a.toolRuntime.registry == nil || !strings.Contains(text, directive.ToolPrefix) {
+	if session == nil || session.Mode != storage.SessionModeWork || a.toolRuntime.registry == nil || !containsAny(text, directive.ToolPrefix, directive.ToolFullPrefix, directive.ToolShortPrefix, directive.ToolShortFull) {
 		return result
 	}
 	matches := directive.ToolMatches(text)
@@ -62,13 +62,14 @@ func (a *Agent) applyToolDirectives(ctx context.Context, session *storage.Sessio
 
 func (a *Agent) applySkillDirectives(ctx context.Context, session *storage.Session, text string) skillDirectiveResult {
 	result := skillDirectiveResult{Text: text}
-	if session == nil || session.Mode != storage.SessionModeWork || a.toolRuntime.registry == nil || !strings.Contains(text, directive.SkillPrefix) {
+	if session == nil || session.Mode != storage.SessionModeWork || a.toolRuntime.registry == nil || !containsAny(text, directive.SkillPrefix, directive.SkillFullPrefix, directive.SkillShortPrefix, directive.SkillShortFull) {
 		return result
 	}
 	matches := directive.SkillMatches(text)
 	if len(matches) == 0 {
 		return result
 	}
+	ctx = tool.WithShownRuleCardFormats(ctx, decodeSessionMetadata(session.Metadata).ShownRuleCardFormats)
 	policy := a.securityPolicy
 	if policy == nil {
 		policy = security.DefaultPolicy()
@@ -102,13 +103,14 @@ func (a *Agent) applySkillDirectives(ctx context.Context, session *storage.Sessi
 		return result
 	}
 	stripped := directive.StripToolMatches(text, matches, remove)
-	if detailText := tool.RenderDetailBlocks(blocks); detailText != "" {
+	if detailText := tool.RenderDetailBlocksWithContext(ctx, blocks); detailText != "" {
 		if strings.TrimSpace(stripped) == "" {
 			stripped = detailText
 		} else {
 			stripped = strings.TrimSpace(stripped) + "\n\n" + detailText
 		}
 	}
+	a.persistShownRuleCardFormats(ctx, session, tool.NewRuleCardFormatsFromContext(ctx))
 	result.Text = stripped
 	return result
 }
@@ -208,6 +210,15 @@ func (a *Agent) canPreloadSkill(actor security.Actor, policy *security.Policy, c
 	}
 	_, isSkillLike := candidate.(tool.DetailProvider)
 	return isSkillLike
+}
+
+func containsAny(text string, values ...string) bool {
+	for _, value := range values {
+		if strings.Contains(text, value) {
+			return true
+		}
+	}
+	return false
 }
 
 func skillDetailBlock(candidate tool.Tool, detailer tool.DetailProvider) tool.DetailBlock {

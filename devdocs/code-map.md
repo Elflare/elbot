@@ -175,7 +175,7 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 <!-- locator:hook -->
 ## Hook 与插件
 
-适用任务：Hook 事件、控制字段、注册、列表、热重载、规则 Hook TOML、exec action、stdout 模式、常驻记忆 Hook。
+适用任务：Hook 事件、控制字段、注册、列表、热重载、规则 Hook TOML、exec action、hook.v1 协议、常驻记忆 Hook。
 
 先看：
 
@@ -186,7 +186,7 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 常用搜索：
 
 ```bash
-rg -n "Event|Handler|Control|plugins/hooks.toml|exec|stdout|resident" internal/hook internal/agent docs/hooks.md
+rg -n "Event|Handler|Control|plugins/hooks.toml|exec|hook.v1|resident" internal/hook internal/agent docs/hooks.md
 ```
 
 <!-- locator:output -->
