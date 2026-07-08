@@ -9,7 +9,7 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 
 ## Features
 
-### 1. Lightweight and Efficient
+### I. Lightweight and Efficient
 
 **Ultra-lightweight Go implementation**:
 
