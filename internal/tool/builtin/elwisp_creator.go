@@ -10,14 +10,16 @@ import (
 	"strings"
 
 	"elbot/internal/config"
-	"elbot/internal/elyph"
 	"elbot/internal/llm"
 	"elbot/internal/tool"
+	"elbot/internal/tool/runtimeinfo"
 )
 
 const ElwispCreatorName = "elwisp_creator"
 
-type ElwispCreatorTool struct{}
+type ElwispCreatorTool struct {
+	info runtimeinfo.Info
+}
 
 type elwispCreatorConfigSnapshot struct {
 	AppConfigPath   string
@@ -30,8 +32,8 @@ type elwispCreatorConfigSnapshot struct {
 	Warnings        []string
 }
 
-func NewElwispCreatorTool() ElwispCreatorTool {
-	return ElwispCreatorTool{}
+func NewElwispCreatorTool(infos ...runtimeinfo.Info) ElwispCreatorTool {
+	return ElwispCreatorTool{info: runtimeinfo.First(infos...)}
 }
 
 func (ElwispCreatorTool) Name() string {
@@ -54,16 +56,16 @@ func (ElwispCreatorTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 
-func (ElwispCreatorTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t ElwispCreatorTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
 	_ = req
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return &tool.Result{Content: buildElwispCreatorGuide(loadElwispCreatorConfig())}, nil
+	return &tool.Result{Content: buildElwispCreatorGuide(loadElwispCreatorConfig(t.info))}, nil
 }
 
-func loadElwispCreatorConfig() elwispCreatorConfigSnapshot {
-	appConfigPath, ok := findElwispCreatorAppConfigPath()
+func loadElwispCreatorConfig(info runtimeinfo.Info) elwispCreatorConfigSnapshot {
+	appConfigPath, ok := findElwispCreatorAppConfigPath(info)
 	if !ok {
 		return elwispCreatorConfigSnapshot{Warnings: []string{
 			"未找到 ElBot app.toml，无法确认 Elnis endpoint 和 token 配置。请提示用户先配置 Elnis，或让用户要求 Agent 修改 app.toml / elnis.toml / .env。",
@@ -121,7 +123,11 @@ func loadElwispCreatorConfig() elwispCreatorConfigSnapshot {
 	return snapshot
 }
 
-func findElwispCreatorAppConfigPath() (string, bool) {
+func findElwispCreatorAppConfigPath(info runtimeinfo.Info) (string, bool) {
+	info = info.Normalize()
+	if strings.TrimSpace(info.ConfigPath) != "" {
+		return filepath.Clean(info.ConfigPath), true
+	}
 	if envPath := strings.TrimSpace(os.Getenv(config.EnvConfigFile)); envPath != "" {
 		return filepath.Clean(envPath), true
 	}
@@ -185,7 +191,7 @@ func buildElwispCreatorGuide(cfg elwispCreatorConfigSnapshot) string {
 // minimal_direct_calls_payload: {"version":"elvena.v3","elwisp":{"name":"example-elwisp"},"source":"example-source","id":"stable-event-id","mode":"direct","targets":[{"platform":"qqonebot","type":"group","id":"987654321"}],"calls":[{"kind":"capability","name":"message.recall","platform":"qqonebot","target":{"platform":"qqonebot","type":"group","id":"987654321"},"params":{"message_id":1024}}]}
 // minimal_llm_payload: {"version":"elvena.v3","elwisp":{"name":"example-elwisp","tags":["example"]},"source":"example-source","id":"stable-event-id","mode":"llm","title":"需要分析的事件","format":"elyph","content":"#task review_event - 判断事件是否需要通知\n<- $event:object!\n-> $report:str\n** 基于事件内容、meta 和工具结果判断\n~ 编造日志、指标或结论\n> 如果需要通知，给出原因和建议；否则说明无需打扰。","tool_list_names":[],"targets":[{"platform":"cli"}],"meta":{}}
 `)
-	writeGuideCommentBlock(&b, "elyph_rule_card", elyph.RuleCard())
+	writeGuideCommentBlock(&b, "elyph_rule_card", runtimeinfo.ElyphRuleCard())
 	b.WriteString(`** 如果 current_elnis 有 warning，先提醒用户处理。
 ** event id 在同一 source 内稳定且唯一。
 ** Elwisp 只上报事件，由 Elnis/ElBot 决定记录、通知、分析或调用工具。

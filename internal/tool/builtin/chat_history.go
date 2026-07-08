@@ -13,6 +13,7 @@ import (
 	"elbot/internal/platform"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
+	"elbot/internal/tool/runtimeinfo"
 )
 
 const (
@@ -24,9 +25,18 @@ const (
 
 var chatHistoryAtIDPattern = regexp.MustCompile(`^(?:@|qq:)(\d+)$`)
 
-type SearchChatHistoryTool struct{ history storage.ChatHistoryRepository }
-type GetChatHistoryAroundTool struct{ history storage.ChatHistoryRepository }
-type ReplyToChatHistoryMessageTool struct{ history storage.ChatHistoryRepository }
+type SearchChatHistoryTool struct {
+	history storage.ChatHistoryRepository
+	info    runtimeinfo.Info
+}
+type GetChatHistoryAroundTool struct {
+	history storage.ChatHistoryRepository
+	info    runtimeinfo.Info
+}
+type ReplyToChatHistoryMessageTool struct {
+	history storage.ChatHistoryRepository
+	info    runtimeinfo.Info
+}
 
 type searchChatHistoryArgs struct {
 	Limit     int    `json:"limit"`
@@ -50,16 +60,16 @@ type replyChatHistoryArgs struct {
 	Message   string `json:"message"`
 }
 
-func NewSearchChatHistoryTool(history storage.ChatHistoryRepository) SearchChatHistoryTool {
-	return SearchChatHistoryTool{history: history}
+func NewSearchChatHistoryTool(history storage.ChatHistoryRepository, infos ...runtimeinfo.Info) SearchChatHistoryTool {
+	return SearchChatHistoryTool{history: history, info: runtimeinfo.First(infos...)}
 }
 
-func NewGetChatHistoryAroundTool(history storage.ChatHistoryRepository) GetChatHistoryAroundTool {
-	return GetChatHistoryAroundTool{history: history}
+func NewGetChatHistoryAroundTool(history storage.ChatHistoryRepository, infos ...runtimeinfo.Info) GetChatHistoryAroundTool {
+	return GetChatHistoryAroundTool{history: history, info: runtimeinfo.First(infos...)}
 }
 
-func NewReplyToChatHistoryMessageTool(history storage.ChatHistoryRepository) ReplyToChatHistoryMessageTool {
-	return ReplyToChatHistoryMessageTool{history: history}
+func NewReplyToChatHistoryMessageTool(history storage.ChatHistoryRepository, infos ...runtimeinfo.Info) ReplyToChatHistoryMessageTool {
+	return ReplyToChatHistoryMessageTool{history: history, info: runtimeinfo.First(infos...)}
 }
 
 func (SearchChatHistoryTool) Name() string         { return "search_chat_history" }
@@ -129,7 +139,7 @@ func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (
 			return nil, fmt.Errorf("parse search_chat_history arguments: %w", err)
 		}
 	}
-	since, until := chatHistoryTimeRange(args.Since, args.Until, args.Hours, args.Days)
+	since, until := chatHistoryTimeRangeAt(args.Since, args.Until, args.Hours, args.Days, t.info.CurrentTime())
 	senderID, senderName, userErr := chatHistoryUserFilter(args.User, chatCtx)
 	if userErr != "" {
 		return &tool.Result{Content: userErr}, nil
@@ -267,14 +277,18 @@ func chatHistoryUserFilter(user string, ctx chatHistoryContext) (senderID, sende
 }
 
 func chatHistoryTimeRange(sinceRaw, untilRaw string, hours, days int) (*time.Time, *time.Time) {
+	return chatHistoryTimeRangeAt(sinceRaw, untilRaw, hours, days, time.Now())
+}
+
+func chatHistoryTimeRangeAt(sinceRaw, untilRaw string, hours, days int, now time.Time) (*time.Time, *time.Time) {
 	since := parseChatHistoryTime(sinceRaw)
 	until := parseChatHistoryTime(untilRaw)
 	if since == nil {
 		if hours > 0 {
-			value := time.Now().Add(-time.Duration(hours) * time.Hour)
+			value := now.Add(-time.Duration(hours) * time.Hour)
 			since = &value
 		} else if days > 0 {
-			value := time.Now().AddDate(0, 0, -days)
+			value := now.AddDate(0, 0, -days)
 			since = &value
 		}
 	}

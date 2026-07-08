@@ -7,10 +7,12 @@ import (
 	"elbot/internal/memory/resident"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
+	"elbot/internal/tool/runtimeinfo"
 	"elbot/internal/tool/skill"
 )
 
 type RegisterOptions struct {
+	RuntimeInfo         runtimeinfo.Info
 	ResidentMemoryStore *resident.Store
 	SkillManager        *skill.Manager
 	CronService         *elcron.Service
@@ -20,6 +22,7 @@ type RegisterOptions struct {
 }
 
 func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
+	info := opts.RuntimeInfo.Normalize()
 	var beforeDiscover func(context.Context) error
 	if opts.SkillManager != nil {
 		beforeDiscover = opts.SkillManager.EnsureLoaded
@@ -46,7 +49,7 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 	}
 	if opts.CronService != nil {
 
-		for _, cronTool := range NewCronTools(opts.CronService) {
+		for _, cronTool := range NewCronTools(opts.CronService, info) {
 			if err := registry.Register(cronTool); err != nil {
 				return err
 			}
@@ -58,13 +61,13 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 		}
 	}
 	if opts.ChatHistory != nil {
-		if err := registry.Register(NewSearchChatHistoryTool(opts.ChatHistory)); err != nil {
+		if err := registry.Register(NewSearchChatHistoryTool(opts.ChatHistory, info)); err != nil {
 			return err
 		}
-		if err := registry.Register(NewGetChatHistoryAroundTool(opts.ChatHistory)); err != nil {
+		if err := registry.Register(NewGetChatHistoryAroundTool(opts.ChatHistory, info)); err != nil {
 			return err
 		}
-		if err := registry.Register(NewReplyToChatHistoryMessageTool(opts.ChatHistory)); err != nil {
+		if err := registry.Register(NewReplyToChatHistoryMessageTool(opts.ChatHistory, info)); err != nil {
 			return err
 		}
 	}
@@ -93,7 +96,7 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 	if err := registry.Register(NewShellTool(fileGuard)); err != nil {
 		return err
 	}
-	if err := registry.Register(NewElwispCreatorTool()); err != nil {
+	if err := registry.Register(NewElwispCreatorTool(info)); err != nil {
 		return err
 	}
 	catalog := (*skill.Catalog)(nil)
