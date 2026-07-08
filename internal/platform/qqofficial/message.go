@@ -65,10 +65,14 @@ func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.Platfor
 			CommandPrefixes: a.cfg.CommandPrefixes,
 			Fetch:           c2cReferenceFetcher(msg),
 		})
-		text = ref.Text
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
-		messageCtx.Segments = finalMessageSegments(text, segments, ref.ReferenceSegments)
+		messageCtx.ContextText = ref.Text
+		messageCtx.Reply = ref.Reply
+		if strings.TrimSpace(ref.Text) != "" {
+			messageCtx.ContextSegments = finalMessageSegments(ref.Text, segments, ref.ReferenceSegments)
+		}
+		messageCtx.Segments = finalMessageSegments(text, segments, nil)
 		msgCtx = platform.WithMessageContext(ctx, messageCtx)
 		msgCtx = context.WithValue(msgCtx, targetKey{}, sendTarget{OpenID: openID, MsgID: msg.ID})
 	}

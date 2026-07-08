@@ -18,8 +18,8 @@ import (
 
 const (
 	jinaAPIKeyEnv          = "JINA_API_KEY"
+	webExtractProxyEnv     = "WEB_EXTRACT_PROXY"
 	defaultExtractEndpoint = "https://r.jina.ai/"
-	defaultExtractProxy    = "http://127.0.0.1:7890"
 	defaultRemoveSelector  = "header, .class, #id"
 	defaultExtractChars    = 8000
 	maxExtractChars        = 16000
@@ -39,7 +39,7 @@ type webExtractArgs struct {
 	MaxChars       int    `json:"max_chars"`
 	RemoveSelector string `json:"remove_selector"`
 	TimeoutMS      int    `json:"timeout_ms"`
-	DisableProxy   bool   `json:"disable_proxy"`
+	Proxy          string `json:"proxy"`
 }
 
 type jinaResponse struct {
@@ -84,6 +84,12 @@ type extractCache struct {
 	values map[string]cachedExtract
 }
 
+type extractProxyConfig struct {
+	proxyURL *url.URL
+	disabled bool
+	cacheKey string
+}
+
 func NewWebExtractTool() *WebExtractTool {
 	return &WebExtractTool{endpoint: defaultExtractEndpoint, cache: newExtractCache()}
 }
@@ -111,7 +117,7 @@ func webExtractBuilder() *tool.Builder {
 		Integer("max_chars", "本次最多返回字符数，默认 8000，硬上限 16000。").
 		String("remove_selector", "可选，覆盖默认移除 CSS 选择器：header, .class, #id。").
 		Integer("timeout_ms", "可选，请求超时时间，默认 15000。").
-		Boolean("disable_proxy", "是否关闭默认本机代理 http://127.0.0.1:7890。")
+		String("proxy", "代理设置：不填则使用 WEB_EXTRACT_PROXY 或系统代理；填 disabled 禁用代理；填 URL 使用指定代理。")
 }
 
 func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
@@ -132,6 +138,10 @@ func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.
 	if selector == "" {
 		selector = defaultRemoveSelector
 	}
+	proxy, err := resolveExtractProxy(ctx, args.Proxy)
+	if err != nil {
+		return nil, err
+	}
 	cache := t.extractCache()
 	apiKey, hasJinaKey, err := optionalBuiltinEnv(ctx, jinaAPIKeyEnv)
 	if err != nil {
@@ -141,15 +151,15 @@ func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.
 	if hasJinaKey {
 		source = "jina"
 	}
-	key := extractCacheKey(source, url, selector, args.DisableProxy)
+	key := extractCacheKey(source, url, selector, proxy)
 	entry, cached := cache.get(key)
 	if !cached {
 		var fetched cachedExtract
 		var err error
 		if hasJinaKey {
-			fetched, err = t.fetchJina(ctx, apiKey, url, selector, args.TimeoutMS, args.DisableProxy)
+			fetched, err = t.fetchJina(ctx, apiKey, url, selector, args.TimeoutMS, proxy)
 		} else {
-			fetched, err = t.fetchDirect(ctx, url, args.TimeoutMS, args.DisableProxy)
+			fetched, err = t.fetchDirect(ctx, url, args.TimeoutMS, proxy)
 		}
 		if err != nil {
 			return nil, err
@@ -161,7 +171,7 @@ func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.
 	return &tool.Result{Content: formatExtractContent(data)}, nil
 }
 
-func (t *WebExtractTool) fetchJina(ctx context.Context, apiKey, targetURL, selector string, timeoutMS int, disableProxy bool) (cachedExtract, error) {
+func (t *WebExtractTool) fetchJina(ctx context.Context, apiKey, targetURL, selector string, timeoutMS int, proxy extractProxyConfig) (cachedExtract, error) {
 	requestCtx := ctx
 	cancel := func() {}
 	if timeoutMS > 0 {
@@ -187,7 +197,7 @@ func (t *WebExtractTool) fetchJina(ctx context.Context, apiKey, targetURL, selec
 	httpReq.Header.Set("X-With-Images-Summary", "true")
 	httpReq.Header.Set("X-With-Links-Summary", "true")
 
-	resp, err := t.httpClient(disableProxy).Do(httpReq)
+	resp, err := t.httpClient(proxy).Do(httpReq)
 	if err != nil {
 		return cachedExtract{}, fmt.Errorf("Jina request: %w", err)
 	}
@@ -227,7 +237,7 @@ func jinaReaderURL(endpoint, targetURL string) (string, error) {
 	return strings.TrimRight(endpoint, "/") + "/http://" + parsed.Host + parsed.RequestURI(), nil
 }
 
-func (t *WebExtractTool) fetchDirect(ctx context.Context, targetURL string, timeoutMS int, disableProxy bool) (cachedExtract, error) {
+func (t *WebExtractTool) fetchDirect(ctx context.Context, targetURL string, timeoutMS int, proxy extractProxyConfig) (cachedExtract, error) {
 	requestCtx := ctx
 	cancel := func() {}
 	if timeoutMS > 0 {
@@ -241,7 +251,7 @@ func (t *WebExtractTool) fetchDirect(ctx context.Context, targetURL string, time
 		return cachedExtract{}, fmt.Errorf("create direct extract request: %w", err)
 	}
 	httpReq.Header.Set("User-Agent", "ElBot-WebExtract/1.0")
-	resp, err := t.httpClient(disableProxy).Do(httpReq)
+	resp, err := t.httpClient(proxy).Do(httpReq)
 	if err != nil {
 		return cachedExtract{}, fmt.Errorf("direct extract request: %w", err)
 	}
@@ -318,25 +328,48 @@ func formatExtractContent(data webExtractData) string {
 	return strings.TrimSpace(out.String())
 }
 
-func (t *WebExtractTool) httpClient(disableProxy bool) *http.Client {
+func (t *WebExtractTool) httpClient(proxy extractProxyConfig) *http.Client {
 	if t.client != nil {
 		return t.client
 	}
-	return &http.Client{Timeout: defaultExtractTimeout, Transport: extractTransport(disableProxy)}
+	return &http.Client{Timeout: defaultExtractTimeout, Transport: extractTransport(proxy)}
 }
 
-func extractTransport(disableProxy bool) *http.Transport {
+func resolveExtractProxy(ctx context.Context, value string) (extractProxyConfig, error) {
+	proxy := strings.TrimSpace(value)
+	if proxy == "" {
+		configured, ok, err := optionalBuiltinEnv(ctx, webExtractProxyEnv)
+		if err != nil {
+			return extractProxyConfig{}, err
+		}
+		if ok {
+			proxy = strings.TrimSpace(configured)
+		}
+	}
+	if proxy == "" {
+		return extractProxyConfig{cacheKey: "env"}, nil
+	}
+	if proxy == "disabled" {
+		return extractProxyConfig{disabled: true, cacheKey: "disabled"}, nil
+	}
+	proxyURL, err := url.Parse(proxy)
+	if err != nil || proxyURL.Scheme == "" || proxyURL.Host == "" {
+		return extractProxyConfig{}, fmt.Errorf("invalid web_extract proxy url: %s", proxy)
+	}
+	return extractProxyConfig{proxyURL: proxyURL, cacheKey: proxyURL.String()}, nil
+}
+
+func extractTransport(proxy extractProxyConfig) *http.Transport {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if disableProxy {
+	if proxy.disabled {
 		transport.Proxy = nil
 		return transport
 	}
-	proxyURL, err := url.Parse(defaultExtractProxy)
-	if err != nil {
-		transport.Proxy = http.ProxyFromEnvironment
+	if proxy.proxyURL != nil {
+		transport.Proxy = http.ProxyURL(proxy.proxyURL)
 		return transport
 	}
-	transport.Proxy = http.ProxyURL(proxyURL)
+	transport.Proxy = http.ProxyFromEnvironment
 	return transport
 }
 
@@ -464,6 +497,6 @@ func (c *extractCache) set(key string, entry cachedExtract) {
 	c.values[key] = entry
 }
 
-func extractCacheKey(source, targetURL, selector string, disableProxy bool) string {
-	return strings.TrimSpace(source) + "\x00" + strings.TrimSpace(targetURL) + "\x00" + strings.TrimSpace(selector) + fmt.Sprintf("\x00%t", disableProxy)
+func extractCacheKey(source, targetURL, selector string, proxy extractProxyConfig) string {
+	return strings.TrimSpace(source) + "\x00" + strings.TrimSpace(targetURL) + "\x00" + strings.TrimSpace(selector) + "\x00" + proxy.cacheKey
 }

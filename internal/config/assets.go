@@ -20,6 +20,8 @@ var defaultConfigAssets = []defaultAsset{
 	{Path: "elnis.toml", Content: defaultElnisTOML},
 	{Path: "tool_tags.toml", Content: defaultToolTagsTOML},
 	{Path: "plugins/hooks.toml", Content: defaultHooksTOML},
+	{Path: filepath.Join("skills", "agent", "agent_skill_creator", "SKILL.md"), Content: defaultAgentSkillCreatorSkillMD},
+	{Path: filepath.Join("skills", "agent", "write_elbot_hook", "SKILL.md"), Content: defaultWriteElbotHookSkillMD},
 	{Path: ".env.example", Content: defaultEnvExample},
 }
 
@@ -295,6 +297,74 @@ download_timeout_secs = 60
 # enabled = false
 `
 
+const defaultAgentSkillCreatorSkillMD = `---
+name: agent_skill_creator
+description: 创建或修改 AgentSkill 的 ELBOT_SKILL.toml。
+---
+
+if a skill 带脚本:
+    if 你没有该脚本的Schema只能用shell来运行 and 你觉得使用shell很麻烦:
+        使用该工具创建 ELBOT_SKILL.toml，之后会自动注入你的Schema，之后可以不使用shell运行
+elif:
+    检查你已知Schema工具，是否有该技能的脚本，就可以直接调用，而不用shell
+ELBOT_SKILL.toml写法：
+只允许这些字段：
+risk, tags, command, timeout_seconds, expose_root, parameters, [args]
+
+示例：
+risk = "medium"
+tags = ["doc"]
+command = ["python", "foo.py"]
+timeout_seconds = 30
+expose_root = false
+
+parameters = '''
+{
+  "type": "object",
+  "required": ["input"],
+  "properties": {
+    "input": {"type": "string", "description": "输入文本"},
+    "mode": {"type": "string", "description": "处理模式"}
+  }
+}
+'''
+
+[args]
+input = "--input"
+mode = "--mode"
+
+含义：
+工具调用 {"input":"abc","mode":"fast"} 会执行：
+python foo.py --input abc --mode fast
+
+command 必须是字符串数组。
+parameters 必须是 JSON object schema。
+parameters.properties 定义工具有哪些入参；[args] 的 key 必须对应 parameters.properties。
+risk 必填。
+tags 可选，相当于为该工具分类。
+
+创建 AgentSkill：
+在配置目录的 skills/agent/<name>/SKILL.md 编写 AgentSkill 说明。Windows 默认位置是 %APPDATA%/ElBot/skills/agent/<name>/SKILL.md；Linux 遵循 XDG 配置目录，通常是 $XDG_CONFIG_HOME/elbot/skills/agent/<name>/SKILL.md。
+AgentSkill 适合文档型任务、外部脚本包装、临时或低频流程。
+如果要把该 AgentSkill 注册成普通工具，再为它创建 ELBOT_SKILL.toml。
+
+AgentSkill 和 EL Skill 分开选择：
+高性能、强结构化、需要校验/编译/长期维护的任务，优先使用 EL Skill。
+`
+
+const defaultWriteElbotHookSkillMD = `---
+name: write_elbot_hook
+description: 编写或修改 ElBot 规则 Hook 配置。
+---
+
+路径：
+windows：%AppData%/ElBot/plugins/hooks.toml
+Linux：= $XDG_CONFIG_HOME/elbot/plugins/hooks.toml
+若 XDG_CONFIG_HOME 未设置，按 XDG 规范使用 $HOME/.config
+
+简单hook直接参考hooks.toml中的注释写，复杂hook看https://github.com/Elflare/elbot/blob/main/docs/hooks.md
+修改完成后提醒用户使用 /hooks reload 重新加载
+`
 const defaultEnvExample = `# Copy this file to .env or set these variables in your OS environment.
 
 # Provider API keys
@@ -304,6 +374,9 @@ OPENAI_API_KEY=
 # Platform secrets
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_PROXY_URL=
+
+# Web tools
+WEB_EXTRACT_PROXY=
 
 # CLI remote client/server tokens
 ELBOT_CLI_LOCAL_TOKEN=
@@ -330,13 +403,22 @@ MUST:
 
 const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # Complex logic should be implemented as a code plugin instead.
+# Full docs and examples: https://github.com/Elflare/elbot/blob/main/docs/hooks.md
+#
+# Optional plugin configs:
+# [[plugins]]
+# name = "demo"
+# enabled = true
+# path = "demo/hook.toml" # optional; default is plugins/<name>/hook.toml
 #
 # Rule shape:
 # [[rules]]
 # name = "stable_debug_name"
+# description = "short summary" # optional, recommended
 # on = "hook.point"
 # enabled = true          # optional, default true
 # priority = 1000        # optional, smaller runs earlier
+# require_wakeup = true  # optional, default true; false allows passive group messages.
 #
 # Single condition:
 # if = "message.text"
@@ -353,7 +435,7 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # ]
 #
 # Single action:
-# action = "send"        # send/prepend/append/replace/delete/tool
+# action = "send"        # send/prepend/append/replace/delete/tool/exec
 # text = "..."
 # timing = "after_assistant" # optional for send outputs; default immediate.
 #
@@ -364,53 +446,78 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 #   { type = "append", field = "message.text", text = "!" },
 # ]
 #
-# send action with segments (kind/text/url/path/base64/name/mime_type):
+# send action with outputs (kind/text/url/path/base64/name/mime_type/user_id/message_id):
+# target.platform/target.scope_id/target.private_user_id/target.group_id/target.superadmins
+# can redirect send outputs; omit target to send to the current context.
 # actions = [
-#   { type = "send", timing = "after_assistant", segments = [
+#   { type = "send", timing = "after_assistant", outputs = [
 #     { kind = "text", text = "检测到关键词" },
 #     { kind = "image", path = "alert.png" },
 #     { kind = "emoticon", name = "微笑", path = "emoticons/微笑/01.png" },
+#     { kind = "at", user_id = "123456" },
 #   ] },
 # ]
 #
-# exec action with stdout = "outputs":
-# Script stdout must be JSON: {"outputs":[...],"text":"..."}
-# outputs items use the same segment spec as send segments.
-# text is written back to the field specified by the action's field setting.
+# exec action uses hook.v1 line protocol:
+# ElBot writes one init JSON frame line to stdin.
+# Scripts must read only the first stdin line as init; do not read until EOF.
+# Scripts write one JSON frame per stdout line: output/request/done/error.
+# stderr is logged on success; on exec failure/crash/timeout/protocol error, the
+# stderr tail is included in the Hook failure notice.
+# After writing done/error, exit with code 0; non-zero exit means process failure.
+# Output frame shape: {"type":"output","outputs":[{"kind":"text","text":"hello"}]}.
+# request frame shape: {"type":"request","id":"x","method":"platform.call","params":{...}}.
+# response frame shape: {"type":"response","id":"x","ok":true,"result":{...}} or
+# {"type":"response","id":"x","ok":false,"error":"..."}.
+# done.result is available as {{actions.<name>.result}}.
+# done.error is available as {{actions.<name>.error}}.
+# done.message.text is written back to the field specified by the action's field setting.
+# done.consume and done.stop_propagation set event control flags.
 # actions = [
-#   { type = "exec", command = "uv run extract.py", stdout = "outputs", field = "llm.text", timing = "after_assistant" },
+#   { name = "extract", type = "exec", command = "uv run extract.py", field = "llm.text", timing = "after_assistant" },
 # ]
 #
 # Supported hook points:
 # platform.connected, platform.message.received, agent.input.prepared,
-# llm.request.prepared, llm.response.received, tool.call.prepared,
-# tool.call.completed, agent.output.prepared, agent.turn.output.prepared,
-# platform.message.sent, error.occurred
+# llm.turn.prepared, llm.request.prepared, llm.response.received,
+# tool.call.prepared, tool.call.completed, agent.output.prepared,
+# agent.turn.output.prepared, platform.message.sent, error.occurred
 #
 # Match ops: always, exists, contains, fullmatch, startswith, endswith, regex.
 # Common fields:
 # platform.name/scope_id/user_id/conversation_id/message_id/reply_to_message_id
-# actor.id/user_id/role/display_name
+# actor.id/user_id/role/group_role/display_name
 # session.id/mode/status
-# request.id/kind/phase
-# message.text/content_text/role
+# request.id/kind/phase (kind: turn,llm,tool,compress,sub_agent; phase: idle,llm,tool,awaiting_risk_confirm,awaiting_append_confirm,compact)
+# message.text/content_text/raw_text/input_text/role
+# message.input_text strips wakeup keywords and bot mentions; use it for user intent matching.
+# message.reply.message_id/sender_id/text/content_text
 # llm.text/raw_text/latest_user_text/latest_user_content_text/provider/model
 # tool.name/arguments/result/risk
+# error.message
+#
+# require_wakeup=false on platform.message.received lets a rule observe ordinary
+# group messages that did not mention or wake the bot. Hook outputs may still be
+# sent, but command/LLM processing only continues for woken messages unless the
+# rule consumes the message first.
 #
 # Editable fields:
 # platform.message.received / agent.input.prepared: message.text
-# llm.request.prepared: llm.latest_user_text
-# llm.response.received: llm.text, llm.raw_text
+# llm.turn.prepared / llm.request.prepared: llm.latest_user_text
+# llm.response.received: llm.text
 # tool.call.prepared: tool.arguments
 # tool.call.completed: tool.result
-# agent.output.prepared / platform.message.sent: assistant message.text
+# agent.output.prepared / agent.turn.output.prepared / platform.message.sent: message.text
 #
 # Template variables include:
-# {{platform.name}}, {{platform.scope_id}}, {{platform.user_id}}
-# {{actor.id}}, {{actor.user_id}}
-# {{message.text}}, {{message.content_text}}
+# {{platform.name}}, {{platform.scope_id}}, {{platform.user_id}}, {{platform.message_id}}, {{platform.reply_to_message_id}}
+# {{actor.id}}, {{actor.user_id}}, {{actor.role}}, {{actor.group_role}}
+# {{message.text}}, {{message.content_text}}, {{message.raw_text}}, {{message.input_text}}
+# {{message.reply.message_id}}, {{message.reply.sender_id}}, {{message.reply.text}}, {{message.reply.content_text}}
 # {{llm.text}}, {{llm.raw_text}}, {{llm.latest_user_text}}, {{llm.latest_user_content_text}}
 # {{tool.arguments}}, {{tool.result}}
+# {{error.message}}
+# {{match.regex.0.group.1}}, {{match.regex.0.<name>}}
 # {{actions.<name>.result}}, {{actions.<name>.error}} from earlier tool actions.
 
 # Notify qqonebot superadmins after OneBot connects.
@@ -462,9 +569,9 @@ target.superadmins = true
 # replace = "狗"
 # all = true
 #
-# Example: emoticon extraction via exec + outputs.
-# The script reads event JSON from stdin, extracts [[token]] tokens, picks a random
-# image from emoticons/<token>/, outputs JSON with emoticon outputs and cleaned text.
+# Example: emoticon extraction via exec + hook.v1.
+# The script reads the init frame from stdin, extracts [[token]] tokens, picks a random
+# image from emoticons/<token>/, writes output frames and ends with done.message.text.
 # [[rules]]
 # name = "emoticon_extract"
 # on = "llm.response.received"
@@ -473,6 +580,6 @@ target.superadmins = true
 # op = "regex"
 # value = "\\[\\[[^\\[\\]]+\\]\\]"
 # actions = [
-#   { type = "exec", command = "uv run emoticon_extract.py", stdout = "outputs", field = "llm.text", timing = "after_assistant" },
+#   { name = "extract", type = "exec", command = "uv run emoticon_extract.py", field = "llm.text", timing = "after_assistant" },
 # ]
 `

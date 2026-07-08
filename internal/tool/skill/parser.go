@@ -27,11 +27,6 @@ func ParseSkillMarkdown(raw []byte, fallbackName string) (Definition, error) {
 		Detail:      strings.TrimSpace(body),
 		Format:      "markdown",
 	}
-	risk, err := parseRisk(fields["risk"])
-	if err != nil {
-		return Definition{}, err
-	}
-	def.Risk = risk
 	if def.Name == "" {
 		def.Name = strings.TrimSpace(fallbackName)
 	}

@@ -10,6 +10,7 @@ import (
 )
 
 type ReferencedMessage struct {
+	SenderID string
 	Label    string
 	Text     string
 	Segments []platform.MessageSegment
@@ -32,6 +33,7 @@ type Result struct {
 	ForkFromMessageID string
 	ResumeSessionID   string
 	ReferenceSegments []platform.MessageSegment
+	Reply             platform.ReplyContext
 }
 
 func Apply(ctx context.Context, opts Options) Result {
@@ -40,8 +42,15 @@ func Apply(ctx context.Context, opts Options) Result {
 	if replyID == "" {
 		return result
 	}
+	result.Reply.MessageID = replyID
 
 	stored, hasStored := referencedMessage(ctx, opts, replyID)
+	if stored != nil {
+		result.Reply.Text = strings.TrimSpace(stored.Content)
+		if result.Reply.Text != "" {
+			result.Reply.Segments = []platform.MessageSegment{{Type: platform.SegmentText, Text: result.Reply.Text}}
+		}
+	}
 	trimmed := strings.TrimSpace(opts.Text)
 	if platform.HasCommandPrefix(trimmed, opts.CommandPrefixes) {
 		if stored != nil && stored.Role == storage.RoleAssistant {
@@ -66,7 +75,10 @@ func Apply(ctx context.Context, opts Options) Result {
 		}
 	}
 
-	text, segments := fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
+	text, segments, reply := fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
+	if reply.MessageID != "" {
+		result.Reply = reply
+	}
 	if strings.TrimSpace(text) != "" {
 		result.Text = text
 		result.ReferenceSegments = segments
@@ -128,15 +140,17 @@ func isLatestAssistant(ctx context.Context, store storage.Store, msg *storage.Me
 	return true
 }
 
-func fallbackReferenceText(ctx context.Context, opts Options, replyID string, stored *storage.Message, hasStored bool) (string, []platform.MessageSegment) {
+func fallbackReferenceText(ctx context.Context, opts Options, replyID string, stored *storage.Message, hasStored bool) (string, []platform.MessageSegment, platform.ReplyContext) {
 	label := "引用"
 	content := ""
 	var segments []platform.MessageSegment
+	reply := platform.ReplyContext{MessageID: replyID}
 	if opts.Fetch != nil {
 		if ref, ok := opts.Fetch(ctx, replyID); ok {
 			if strings.TrimSpace(ref.Label) != "" {
 				label = strings.TrimSpace(ref.Label)
 			}
+			reply.SenderID = strings.TrimSpace(ref.SenderID)
 			content = ref.Text
 			segments = ref.Segments
 		}
@@ -147,14 +161,20 @@ func fallbackReferenceText(ctx context.Context, opts Options, replyID string, st
 		}
 		if strings.TrimSpace(stored.Content) != "" {
 			content = stored.Content
+			segments = []platform.MessageSegment{{Type: platform.SegmentText, Text: content}}
 		}
 	}
 	content = strings.TrimSpace(content)
+	reply.Text = content
+	reply.Segments = append([]platform.MessageSegment(nil), segments...)
+	if len(reply.Segments) == 0 && content != "" {
+		reply.Segments = []platform.MessageSegment{{Type: platform.SegmentText, Text: content}}
+	}
 	if content == "" {
-		return opts.Text, segments
+		return opts.Text, segments, reply
 	}
 	if strings.TrimSpace(opts.Text) == "" {
-		return fmt.Sprintf("[%s]：%s", label, content), segments
+		return fmt.Sprintf("[%s]：%s", label, content), segments, reply
 	}
-	return fmt.Sprintf("[%s]：%s\n\n%s", label, content, opts.Text), segments
+	return fmt.Sprintf("[%s]：%s\n\n%s", label, content, opts.Text), segments, reply
 }

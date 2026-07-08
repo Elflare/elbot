@@ -31,7 +31,7 @@ The main configuration is searched in the following order upon startup:
 
 The content of the automatically generated default configuration comes from the program's built-in assets, and existing files will not be overwritten. Automatic generation is only triggered when there are no explicit `--config` and `ELBOT_CONFIG_FILE`. If the explicitly specified configuration path does not exist, ElBot will report an error instead of silently generating it, to avoid masking path spelling errors.
 
-Files automatically generated for the first time include: `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `memories.toml`, `elnis.toml`, and `.env.example`; At the same time, the directories `skills/`, `skills/agent/`, `skills/go/`, `plugins/`, and `long_memory/` will be created. Existing files will not be overwritten. `elnis.toml` is `enabled=false` by default and will not start HTTP listening on the first run. Skill scanning is executed with a delay after startup; when `discover_tool` is used for the first time, it will either wait as a fallback or trigger a scan.
+The files automatically generated for the first time include: `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `memories.toml`, `elnis.toml`, `skills/agent/agent_skill_creator/SKILL.md`, `skills/agent/write_elbot_hook/SKILL.md`, and `.env.example`; At the same time, the directories `skills/`, `skills/agent/`, `skills/go/`, `plugins/`, and `long_memory/` will be created. Existing files will not be overwritten. `elnis.toml` is `enabled=false` by default and will not start HTTP listening on the first run. Skill scanning is executed with a delay after startup; when `discover_tool` is used for the first time, it will either wait as a fallback or trigger a scan.
 
 
 During the development phase, you can run it directly to use the platform configuration directory; default configurations will be automatically generated upon the first run:
@@ -115,6 +115,15 @@ Note:
 - `extra_payload` will be merged into the LLM request JSON, with model-level settings overriding provider-level settings.
 - The `default_context_window` of `[model_metadata]` is a global fallback value, used when `context_window` is not configured in `model_configs`.
 
+## Built-in Web Tool Configuration
+
+The `proxy` parameter of `web_extract` is used to control the proxy for webpage extraction requests:
+If you want all default `web_extract` calls to go through a fixed proxy, you can set it in the configuration directory `.env` or in the system environment:
+
+```env
+WEB_EXTRACT_PROXY=http://127.0.0.1:7890
+```
+
 ## LLM Request and Round Timeout
 
 `app.toml`'s `[llm_request]` controls OpenAI-compatible streaming requests, round processing, and retries:
@@ -187,7 +196,7 @@ token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
 
 ## AgentSkill Tooling Configuration
 
-AgentSkill is used as documentation by default. To register `skills/agent/<skill>/` as a regular tool, add `ELBOT_SKILL.toml` to the root directory of that Skill:
+By default, AgentSkill is used only as documentation; If the script is executed according to the documentation, the risk is borne by the tools actually called, such as `shell`. To register `skills/agent/<skill>/` as a regular tool, add `ELBOT_SKILL.toml` to the root directory of that Skill; the tool risk is subject to the `risk` within it. The default generated `agent_skill_creator` Skill can be used to view instructions and assist in creating the file:
 
 ```toml
 risk = "medium"
@@ -463,7 +472,7 @@ MUST:
 
 Field descriptions:
 
-- `[tags.<tag-name>]`: Defines a tag that can be used in chat, for example, `[tags.agent]` corresponds to `@tool:agent`.
+- `[tags.<tag-name>]`: Define a tag that can be used in chat, for example, `[tags.agent]` corresponds to `@tool:agent` or the shorthand `@t:agent`.
 - `tools`: A list of tool names that this tag will preload. Tool names must be registered tools that the current user has permission to access.
 - `prompt`: The tool usage strategy appended to the system prompt after this tag is successfully activated. The content will be presented directly to the model without automatically adding a tag name header.
 
@@ -471,6 +480,7 @@ Usage:
 
 ```text
 @tool:agent 帮我检查这个项目的问题
+@t:agent 帮我检查这个项目的问题
 ```
 
 This will preload the tools configured under `agent` into the current Session. If `prompt` is not empty, it will also be appended to the system prompt starting from this round.
@@ -478,8 +488,8 @@ This will preload the tools configured under `agent` into the current Session. I
 Notes:
 
 - Configured tags will be appended to built-in tags, not overwrite them.
-- Only after `@tool:<tag>` successfully hits at least one tool will the current Session activate the prompt for that tag.
-- Directly using `@tool:<tool-name>` only preloads the specified tools and does not activate the tag prompt.
+- Only after `@tool:<tag>` or `@t:<tag>` successfully hits at least one tool will the current Session activate the prompt for that tag.
+- Directly using `@tool:<tool-name>` or `@t:<tool-name>` only preloads the specified tools and does not activate the tag prompt.
 - Activated tags are written to the Session metadata and remain effective after `/resume`.
 - Prompt text is dynamically read from `tool_tags.toml`; changes to the file affect subsequent requests, behaving similarly to `SOUL.md`.
 - When preloading tools that already exist, they will not be added again, and the platform will prompt `已存在工具：<name>`.
@@ -588,7 +598,7 @@ Plugin configurations are fixed under `plugins/` in the configuration directory:
 
 Hooks and plugins should not send platform messages directly; they should return an output intent, which the Agent then passes to the Output Manager for sending.
 
-For full configuration instructions for Rule Hooks (action type, segments multi-segment output, exec stdout mode, role partitioning, control fields), see [Hook](hooks.md).
+For complete configuration instructions for Rule Hooks (action types, segments multi-part output, exec hook.v1 protocol, role partitioning, control fields), see [Hook](hooks.md).
 
 ## Recommended Maintenance Method
 

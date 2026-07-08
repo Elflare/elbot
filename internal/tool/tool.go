@@ -218,7 +218,10 @@ type StructuredDetailProvider interface {
 	DetailBlock() DetailBlock
 }
 
-const MetadataActivateTools = "activate_tools"
+const (
+	MetadataActivateTools        = "activate_tools"
+	MetadataShownRuleCardFormats = "shown_rule_card_formats"
+)
 
 type Registry struct {
 	mu    sync.RWMutex

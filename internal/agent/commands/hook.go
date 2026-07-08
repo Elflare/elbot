@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"elbot/internal/command"
 )
+
+const hookListDescriptionLimit = 60
 
 func NewHooks(deps Deps) command.Handler {
 	return hooksCommand{deps: deps}
@@ -69,7 +72,11 @@ func formatHookList(deps Deps) string {
 	var sb strings.Builder
 	sb.WriteString("hooks:\n")
 	for _, info := range infos {
-		sb.WriteString(fmt.Sprintf("  %s  [%s]  priority=%d\n", info.Name, info.Point, info.Priority))
+		sb.WriteString(fmt.Sprintf("  %s  [%s]  priority=%d", info.Name, info.Point, info.Priority))
+		if description := strings.TrimSpace(info.Description); description != "" {
+			sb.WriteString(" - " + truncateHookDescription(description))
+		}
+		sb.WriteString("\n")
 	}
 	return trimTrailingNewlines(sb.String())
 }
@@ -80,13 +87,25 @@ func formatHookDetail(deps Deps, name string) string {
 		if info.Name == name {
 			var sb strings.Builder
 			sb.WriteString(fmt.Sprintf("name: %s\npoint: %s\npriority: %d", info.Name, info.Point, info.Priority))
-			if strings.TrimSpace(info.Detail) != "" {
-				sb.WriteString("\n\n" + info.Detail)
+			if description := strings.TrimSpace(info.Description); description != "" {
+				sb.WriteString("\ndescription: " + description)
+			}
+			if detail := strings.TrimSpace(info.Detail); detail != "" {
+				sb.WriteString("\n" + detail)
 			}
 			return sb.String()
 		}
 	}
 	return fmt.Sprintf("hook %q not found. Use /hooks to list all hooks.", name)
+}
+
+func truncateHookDescription(description string) string {
+	description = strings.TrimSpace(description)
+	if utf8.RuneCountInString(description) <= hookListDescriptionLimit {
+		return description
+	}
+	runes := []rune(description)
+	return string(runes[:hookListDescriptionLimit]) + "..."
 }
 
 type HookModule struct{}

@@ -431,16 +431,10 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 	normalized := normalizeMessage(event.Message, event.RawMessage, event.SelfID)
 	normalized = a.resolveAtSegments(ctx, event, normalized)
 	a.recordChatMessage(ctx, event, normalized)
-	if !a.shouldHandle(event, normalized) {
+	if event.MessageType != "private" && event.MessageType != "group" {
 		return
 	}
 	text := normalized.Text
-	if stripped, ok := platform.StripTriggerKeyword(text, a.cfg.TriggerKeywords); ok {
-		text = stripped
-	}
-	if text == "" && !platform.HasCommandPrefix(event.RawMessage, a.cfg.CommandPrefixes) {
-		return
-	}
 	currentSegments := a.resolveImageSegments(ctx, normalized.Segments)
 	attachments := inboundAttachments{Segments: currentSegments}
 	if a.shouldAutoReceivePrivateFile(event) {
@@ -453,11 +447,17 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		DisplayName:           displayName(event.Sender, event.UserID),
 		GroupRole:             oneBotGroupRole(event),
 		ScopeID:               scopeID(event),
+		ConversationKind:      oneBotConversationKind(event),
 		PlatformMessageID:     strconv.FormatInt(event.MessageID, 10),
 		ReplyToMessageID:      normalized.ReplyID,
+		ReplyToSenderID:       a.replyToSenderID(ctx, normalized.ReplyID),
 		Sender:                a,
 		BufferAssistantOutput: true,
 		Segments:              finalMessageSegments(text, currentSegments, nil),
+		RawText:               normalized.Text,
+		Bot:                   platform.Identity{UserID: strconv.FormatInt(event.SelfID, 10)},
+		Mentions:              append([]platform.Mention(nil), normalized.Mentions...),
+		TriggerKeywords:       append([]string(nil), a.cfg.TriggerKeywords...),
 		Meta: map[string]any{
 			"qq_onebot.message_id":   strconv.FormatInt(event.MessageID, 10),
 			"qq_onebot.message_type": event.MessageType,
@@ -481,12 +481,16 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 			CommandPrefixes: a.cfg.CommandPrefixes,
 			Fetch:           a.referenceFetcher(event),
 		})
-		text = ref.Text
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
+		messageCtx.ContextText = ref.Text
+		messageCtx.Reply = ref.Reply
 		referenceSegments = ref.ReferenceSegments
+		if strings.TrimSpace(ref.Text) != "" {
+			messageCtx.ContextSegments = finalMessageSegments(ref.Text, currentSegments, referenceSegments)
+		}
 	}
-	messageCtx.Segments = finalMessageSegments(text, currentSegments, referenceSegments)
+	messageCtx.Segments = finalMessageSegments(text, currentSegments, nil)
 	msgCtx = platform.WithMessageContext(ctx, messageCtx)
 	msgCtx = context.WithValue(msgCtx, targetKey{}, target{MessageType: event.MessageType, UserID: event.UserID, GroupID: event.GroupID})
 	if len(attachments.TooLarge) > 0 {
@@ -588,38 +592,27 @@ func imageFileDataURL(path string) (string, error) {
 	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }
 
-func (a *Adapter) shouldHandle(event Event, normalized NormalizedMessage) bool {
-	if event.MessageType == "private" {
-		return true
+func oneBotConversationKind(event Event) platform.ConversationKind {
+	switch event.MessageType {
+	case "private":
+		return platform.ConversationPrivate
+	case "group":
+		return platform.ConversationGroup
+	default:
+		return platform.ConversationUnknown
 	}
-	if event.MessageType != "group" {
-		return false
-	}
-	text := strings.TrimSpace(normalized.Text)
-	if platform.HasCommandPrefix(text, a.cfg.CommandPrefixes) {
-		return true
-	}
-	if _, ok := platform.StripTriggerKeyword(text, a.cfg.TriggerKeywords); ok {
-		return true
-	}
-	if normalized.AtSelf {
-		return true
-	}
-	return normalized.ReplyID != "" && a.isBotReply(event, normalized.ReplyID)
 }
 
-func (a *Adapter) isBotReply(event Event, replyID string) bool {
-	if a.store != nil {
-		msg, err := a.store.Messages().FindByPlatformMessage(context.Background(), a.Name(), scopeID(event), replyID)
-		if err == nil && msg.Role == storage.RoleAssistant {
-			return true
-		}
+func (a *Adapter) replyToSenderID(ctx context.Context, replyID string) string {
+	replyID = strings.TrimSpace(replyID)
+	if replyID == "" || a.transport == nil {
+		return ""
 	}
-	if a.transport == nil {
-		return false
+	data, err := a.transport.GetMessage(ctx, replyID)
+	if err != nil || data.UserID == 0 {
+		return ""
 	}
-	data, err := a.transport.GetMessage(context.Background(), replyID)
-	return err == nil && data.UserID == event.SelfID
+	return strconv.FormatInt(data.UserID, 10)
 }
 
 func (a *Adapter) referenceFetcher(event Event) func(context.Context, string) (refcontext.ReferencedMessage, bool) {
@@ -636,7 +629,7 @@ func (a *Adapter) referenceFetcher(event Event) func(context.Context, string) (r
 		if data.UserID != 0 {
 			label = "引用：" + displayName(data.Sender, data.UserID)
 		}
-		return refcontext.ReferencedMessage{Label: label, Text: ref.Text, Segments: a.resolveImageSegments(ctx, ref.Segments)}, true
+		return refcontext.ReferencedMessage{SenderID: strconv.FormatInt(data.UserID, 10), Label: label, Text: ref.Text, Segments: a.resolveImageSegments(ctx, ref.Segments)}, true
 	}
 }
 

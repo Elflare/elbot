@@ -390,6 +390,209 @@ func TestPlatformMessageReceivedHookSendsOutputs(t *testing.T) {
 	}
 }
 
+func TestUnwokenGroupMessageSkipsLLMButAllowsPassiveHook(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	allowPassive := false
+	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.passive", Match: hook.Always(), RequireWakeup: &allowPassive, Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		event.Outputs = append(event.Outputs, delivery.Text("passive output"))
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register passive hook: %v", err)
+	}
+	a.SetHookManager(manager)
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:         "qqonebot",
+		ScopeID:          "group:9",
+		ConversationKind: platform.ConversationGroup,
+		Sender:           p,
+		RawText:          "hello",
+		Segments:         []platform.MessageSegment{{Type: platform.SegmentText, Text: "hello"}},
+	})
+
+	if err := a.HandleMessage(ctx, "hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if got := p.out.String(); !strings.Contains(got, "passive output") || strings.Contains(got, "final") {
+		t.Fatalf("platform output = %q", got)
+	}
+	if got := len(f.chatRequests()); got != 0 {
+		t.Fatalf("chat requests = %d, want 0", got)
+	}
+}
+
+func TestUnwokenGroupMessageSkipsDefaultHook(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.default", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		event.Outputs = append(event.Outputs, delivery.Text("default output"))
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register default hook: %v", err)
+	}
+	a.SetHookManager(manager)
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:         "qqonebot",
+		ScopeID:          "group:9",
+		ConversationKind: platform.ConversationGroup,
+		Sender:           p,
+		RawText:          "hello",
+		Segments:         []platform.MessageSegment{{Type: platform.SegmentText, Text: "hello"}},
+	})
+
+	if err := a.HandleMessage(ctx, "hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if got := p.out.String(); strings.Contains(got, "default output") || strings.Contains(got, "final") {
+		t.Fatalf("platform output = %q", got)
+	}
+	if got := len(f.chatRequests()); got != 0 {
+		t.Fatalf("chat requests = %d, want 0", got)
+	}
+}
+
+func TestPassiveHookCannotWakeLLMByEditingMessage(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	allowPassive := false
+	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.edit", Match: hook.Always(), RequireWakeup: &allowPassive, Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		event.Message.Segments = llm.TextSegments("芙莉丝 hello")
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register passive hook: %v", err)
+	}
+	a.SetHookManager(manager)
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:         "qqonebot",
+		ScopeID:          "group:9",
+		ConversationKind: platform.ConversationGroup,
+		Sender:           p,
+		RawText:          "hello",
+		Segments:         []platform.MessageSegment{{Type: platform.SegmentText, Text: "hello"}},
+		TriggerKeywords:  []string{"芙莉丝"},
+	})
+
+	if err := a.HandleMessage(ctx, "hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if got := len(f.chatRequests()); got != 0 {
+		t.Fatalf("chat requests = %d, want 0", got)
+	}
+}
+
+func TestWokenGroupMessageStripsTriggerKeywordBeforeLLM(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:         "qqonebot",
+		ScopeID:          "group:9",
+		ConversationKind: platform.ConversationGroup,
+		Sender:           p,
+		RawText:          "芙莉丝 hello",
+		Segments:         []platform.MessageSegment{{Type: platform.SegmentText, Text: "芙莉丝 hello"}},
+		TriggerKeywords:  []string{"芙莉丝"},
+	})
+
+	if err := a.HandleMessage(ctx, "芙莉丝 hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d, want 1", len(requests))
+	}
+	if got := llm.LatestUserSegmentTextOnly(requests[0].Messages); got != "hello" {
+		t.Fatalf("latest user text = %q", got)
+	}
+}
+
+func TestPlatformMessageReceivedHookMatchesCurrentTextWithReplyContext(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	allowPassive := false
+	if err := manager.Register(hook.Registration{
+		Point:         hook.PointPlatformMessageReceived,
+		Name:          "test.recall.reply",
+		RequireWakeup: &allowPassive,
+		Match: hook.Match{Conditions: []hook.Condition{
+			{Field: "message.text", Op: hook.MatchFull, Value: "撤回"},
+			{Field: "message.reply.message_id", Op: hook.MatchExists},
+		}},
+		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+			if event.Message.RawText != "撤回" {
+				t.Fatalf("raw text = %q, want current text", event.Message.RawText)
+			}
+			if event.Message.Reply == nil || event.Message.Reply.Text != "通知内容" {
+				t.Fatalf("reply = %#v, want structured reply", event.Message.Reply)
+			}
+			event.Outputs = append(event.Outputs, delivery.Text("recalled"))
+			event.Control.Consume = true
+			return event, nil
+		}),
+	}); err != nil {
+		t.Fatalf("Register recall hook: %v", err)
+	}
+	a.SetHookManager(manager)
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:         "qqonebot",
+		ScopeID:          "group:9",
+		ConversationKind: platform.ConversationGroup,
+		Sender:           p,
+		RawText:          "撤回",
+		Segments:         []platform.MessageSegment{{Type: platform.SegmentText, Text: "撤回"}},
+		ContextText:      "[引用：通知]：通知内容\n\n撤回",
+		ContextSegments:  []platform.MessageSegment{{Type: platform.SegmentText, Text: "[引用：通知]：通知内容\n\n撤回"}},
+		Reply:            platform.ReplyContext{MessageID: "notice-1", SenderID: "bot", Text: "通知内容", Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "通知内容"}}},
+	})
+
+	if err := a.HandleMessage(ctx, "撤回"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if got := p.out.String(); got != "recalled" {
+		t.Fatalf("platform output = %q, want recalled", got)
+	}
+	if got := len(f.chatRequests()); got != 0 {
+		t.Fatalf("chat requests = %d, want 0", got)
+	}
+}
+
+func TestReplyContextFallbackStillReachesLLMWhenNotConsumed(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:         "qqonebot",
+		ScopeID:          "group:9",
+		ConversationKind: platform.ConversationGroup,
+		Sender:           p,
+		RawText:          "芙莉丝 继续",
+		Segments:         []platform.MessageSegment{{Type: platform.SegmentText, Text: "芙莉丝 继续"}},
+		ContextText:      "[引用：通知]：通知内容\n\n芙莉丝 继续",
+		ContextSegments:  []platform.MessageSegment{{Type: platform.SegmentText, Text: "[引用：通知]：通知内容\n\n芙莉丝 继续"}},
+		Reply:            platform.ReplyContext{MessageID: "notice-1", Text: "通知内容", Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "通知内容"}}},
+		TriggerKeywords:  []string{"芙莉丝"},
+	})
+
+	if err := a.HandleMessage(ctx, "芙莉丝 继续"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d, want 1", len(requests))
+	}
+	if got := llm.LatestUserSegmentTextOnly(requests[0].Messages); got != "[引用：通知]：通知内容\n\n继续" {
+		t.Fatalf("latest user text = %q", got)
+	}
+}
+
 func TestPlatformMessageReceivedHookConsumeSkipsCommandAndLLM(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
@@ -1436,6 +1639,29 @@ func firstRequestSystemText(req llm.ChatRequest) string {
 	return ""
 }
 
+func chatRequestText(req llm.ChatRequest) string {
+	parts := make([]string, 0, len(req.Messages))
+	for _, message := range req.Messages {
+		if text := llm.SegmentsContentText(message.Segments); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func onlySession(t *testing.T, store storage.Store, p *fakePlatform) *storage.Session {
+	t.Helper()
+	sessions, err := store.Sessions().List(context.Background(), storage.ListSessionsRequest{ActorID: "cli:local", Platform: p.Name(), PlatformScopeID: "local"})
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("list sessions: %#v err=%v", sessions, err)
+	}
+	sessionRecord, err := store.Sessions().Get(context.Background(), sessions[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sessionRecord
+}
+
 func TestDiscoveredToolsAreInjectedIntoTopLevelTools(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
@@ -1495,41 +1721,45 @@ func TestDiscoveredToolsAreInjectedIntoTopLevelTools(t *testing.T) {
 }
 
 func TestToolDirectiveInjectsAndStripsValidTools(t *testing.T) {
-	p := &fakePlatform{}
-	store := newTestStore(t)
-	f := &fakeLLM{replies: []string{"done"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
-	registry := tool.NewRegistry()
-	_ = registry.Register(tool.NewDiscoverTool(registry))
-	_ = registry.Register(builtin.NewWebSearchTool())
-	_ = registry.Register(builtin.NewWebExtractTool())
-	a.SetToolRuntime(registry, nil)
+	for _, directive := range []string{"@tool:web_search", "@tool：web_search", "@t:web_search", "@t：web_search"} {
+		t.Run(directive, func(t *testing.T) {
+			p := &fakePlatform{}
+			store := newTestStore(t)
+			f := &fakeLLM{replies: []string{"done"}}
+			a := New(p, f, "test-model", config.ProviderConfig{}, store)
+			a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+			registry := tool.NewRegistry()
+			_ = registry.Register(tool.NewDiscoverTool(registry))
+			_ = registry.Register(builtin.NewWebSearchTool())
+			_ = registry.Register(builtin.NewWebExtractTool())
+			a.SetToolRuntime(registry, nil)
 
-	if err := a.HandleMessage(context.Background(), "查资料 @tool:web_search"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
-	}
-	requests := f.chatRequests()
-	if len(requests) != 1 {
-		t.Fatalf("chat requests = %d", len(requests))
-	}
-	if toolNames(requests[0].Tools) != "discover_tool,web_extract,web_search" {
-		t.Fatalf("tools = %s", toolNames(requests[0].Tools))
-	}
-	latest := requests[0].Messages[len(requests[0].Messages)-1]
-	if got := llm.SegmentsContentText(latest.Segments); got != "查资料" {
-		t.Fatalf("latest user content = %q", got)
-	}
-	sessions, err := store.Sessions().List(context.Background(), storage.ListSessionsRequest{ActorID: "cli:local", Platform: p.Name(), PlatformScopeID: "local"})
-	if err != nil || len(sessions) == 0 {
-		t.Fatalf("list sessions: %#v err=%v", sessions, err)
-	}
-	messages, err := store.Messages().ListBySession(context.Background(), sessions[0].ID)
-	if err != nil {
-		t.Fatalf("list messages: %v", err)
-	}
-	if len(messages) == 0 || messages[0].Content != "查资料" || strings.Contains(messages[0].Content, "@tool:web_search") {
-		t.Fatalf("stored user message = %#v", messages)
+			if err := a.HandleMessage(context.Background(), "查资料 "+directive); err != nil {
+				t.Fatalf("HandleMessage: %v", err)
+			}
+			requests := f.chatRequests()
+			if len(requests) != 1 {
+				t.Fatalf("chat requests = %d", len(requests))
+			}
+			if toolNames(requests[0].Tools) != "discover_tool,web_extract,web_search" {
+				t.Fatalf("tools = %s", toolNames(requests[0].Tools))
+			}
+			latest := requests[0].Messages[len(requests[0].Messages)-1]
+			if got := llm.SegmentsContentText(latest.Segments); got != "查资料" {
+				t.Fatalf("latest user content = %q", got)
+			}
+			sessions, err := store.Sessions().List(context.Background(), storage.ListSessionsRequest{ActorID: "cli:local", Platform: p.Name(), PlatformScopeID: "local"})
+			if err != nil || len(sessions) == 0 {
+				t.Fatalf("list sessions: %#v err=%v", sessions, err)
+			}
+			messages, err := store.Messages().ListBySession(context.Background(), sessions[0].ID)
+			if err != nil {
+				t.Fatalf("list messages: %v", err)
+			}
+			if len(messages) == 0 || messages[0].Content != "查资料" || strings.Contains(messages[0].Content, directive) {
+				t.Fatalf("stored user message = %#v", messages)
+			}
+		})
 	}
 }
 
@@ -1653,27 +1883,31 @@ func TestToolDirectiveReportsExistingTools(t *testing.T) {
 }
 
 func TestToolDirectiveInvalidStaysAsText(t *testing.T) {
-	p := &fakePlatform{}
-	store := newTestStore(t)
-	f := &fakeLLM{replies: []string{"done"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	registry := tool.NewRegistry()
-	_ = registry.Register(tool.NewDiscoverTool(registry))
-	a.SetToolRuntime(registry, nil)
+	for _, directive := range []string{"@tool:nope", "@t:nope"} {
+		t.Run(directive, func(t *testing.T) {
+			p := &fakePlatform{}
+			store := newTestStore(t)
+			f := &fakeLLM{replies: []string{"done"}}
+			a := New(p, f, "test-model", config.ProviderConfig{}, store)
+			registry := tool.NewRegistry()
+			_ = registry.Register(tool.NewDiscoverTool(registry))
+			a.SetToolRuntime(registry, nil)
 
-	if err := a.HandleMessage(context.Background(), "hello @tool:nope"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
-	}
-	requests := f.chatRequests()
-	if len(requests) != 1 {
-		t.Fatalf("chat requests = %d", len(requests))
-	}
-	latest := requests[0].Messages[len(requests[0].Messages)-1]
-	if got := llm.SegmentsContentText(latest.Segments); got != "hello @tool:nope" {
-		t.Fatalf("latest user content = %q", got)
-	}
-	if !strings.Contains(p.out.String(), "未找到或不可用的工具：nope") {
-		t.Fatalf("missing invalid tool notice: %q", p.out.String())
+			if err := a.HandleMessage(context.Background(), "hello "+directive); err != nil {
+				t.Fatalf("HandleMessage: %v", err)
+			}
+			requests := f.chatRequests()
+			if len(requests) != 1 {
+				t.Fatalf("chat requests = %d", len(requests))
+			}
+			latest := requests[0].Messages[len(requests[0].Messages)-1]
+			if got := llm.SegmentsContentText(latest.Segments); got != "hello "+directive {
+				t.Fatalf("latest user content = %q", got)
+			}
+			if !strings.Contains(p.out.String(), "未找到或不可用的工具：nope") {
+				t.Fatalf("missing invalid tool notice: %q", p.out.String())
+			}
+		})
 	}
 }
 
@@ -1719,34 +1953,38 @@ func toolNames(schemas []llm.ToolSchema) string {
 }
 
 func TestSkillDirectiveInjectsDetailAndWrapper(t *testing.T) {
-	p := &fakePlatform{}
-	store := newTestStore(t)
-	f := &fakeLLM{replies: []string{"done"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
-	registry := tool.NewRegistry()
-	_ = registry.Register(tool.NewDiscoverTool(registry))
-	_ = registry.Register(agentDetailTool{name: "docx", source: tool.SourceSkillAgent, detail: "# DOCX", activate: []string{"python_skill_run"}})
-	_ = registry.Register(agentWrapperTool{name: "python_skill_run", hidden: true})
-	a.SetToolRuntime(registry, nil)
+	for _, directive := range []string{"@skill:docx", "@skill：docx", "@s:docx", "@s：docx"} {
+		t.Run(directive, func(t *testing.T) {
+			p := &fakePlatform{}
+			store := newTestStore(t)
+			f := &fakeLLM{replies: []string{"done"}}
+			a := New(p, f, "test-model", config.ProviderConfig{}, store)
+			a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+			registry := tool.NewRegistry()
+			_ = registry.Register(tool.NewDiscoverTool(registry))
+			_ = registry.Register(agentDetailTool{name: "docx", source: tool.SourceSkillAgent, detail: "# DOCX", activate: []string{"python_skill_run"}})
+			_ = registry.Register(agentWrapperTool{name: "python_skill_run", hidden: true})
+			a.SetToolRuntime(registry, nil)
 
-	if err := a.HandleMessage(context.Background(), "处理这个 @skill:docx"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
-	}
-	requests := f.chatRequests()
-	if len(requests) != 1 {
-		t.Fatalf("chat requests = %d", len(requests))
-	}
-	if toolNames(requests[0].Tools) != "discover_tool,python_skill_run" {
-		t.Fatalf("tools = %s", toolNames(requests[0].Tools))
-	}
-	latest := requests[0].Messages[len(requests[0].Messages)-1]
-	content := llm.SegmentsContentText(latest.Segments)
-	if content != "处理这个\n\n# DOCX" {
-		t.Fatalf("latest user content = %q", content)
-	}
-	if strings.Contains(content, "系统预加载") || strings.Contains(content, "Skill: docx") {
-		t.Fatalf("skill directive should not add synthetic headers: %q", content)
+			if err := a.HandleMessage(context.Background(), "处理这个 "+directive); err != nil {
+				t.Fatalf("HandleMessage: %v", err)
+			}
+			requests := f.chatRequests()
+			if len(requests) != 1 {
+				t.Fatalf("chat requests = %d", len(requests))
+			}
+			if toolNames(requests[0].Tools) != "discover_tool,python_skill_run" {
+				t.Fatalf("tools = %s", toolNames(requests[0].Tools))
+			}
+			latest := requests[0].Messages[len(requests[0].Messages)-1]
+			content := llm.SegmentsContentText(latest.Segments)
+			if content != "处理这个\n\n# DOCX" {
+				t.Fatalf("latest user content = %q", content)
+			}
+			if strings.Contains(content, "系统预加载") || strings.Contains(content, "Skill: docx") {
+				t.Fatalf("skill directive should not add synthetic headers: %q", content)
+			}
+		})
 	}
 }
 
@@ -1778,28 +2016,119 @@ func TestSkillDirectiveDeduplicatesElyphRuleCards(t *testing.T) {
 	}
 }
 
-func TestSkillDirectiveInvalidStaysAsText(t *testing.T) {
+func TestSkillDirectiveDoesNotRepeatElyphRuleCardAcrossTurns(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	f := &fakeLLM{replies: []string{"done"}}
+	f := &fakeLLM{replies: []string{"done alpha", "done beta"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(agentDetailTool{name: "alpha", source: tool.SourceSkillAgent, detail: "#skill alpha - A", format: "elyph", ruleCard: "ELyph RULE"})
+	_ = registry.Register(agentDetailTool{name: "beta", source: tool.SourceSkillAgent, detail: "#skill beta - B", format: "elyph", ruleCard: "ELyph RULE"})
 	a.SetToolRuntime(registry, nil)
 
-	if err := a.HandleMessage(context.Background(), "hello @skill:nope"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
+	if err := a.HandleMessage(context.Background(), "处理这个 @skill:alpha"); err != nil {
+		t.Fatalf("HandleMessage alpha: %v", err)
+	}
+	if err := a.HandleMessage(context.Background(), "继续 @skill:beta"); err != nil {
+		t.Fatalf("HandleMessage beta: %v", err)
 	}
 	requests := f.chatRequests()
-	if len(requests) != 1 {
+	if len(requests) != 2 {
 		t.Fatalf("chat requests = %d", len(requests))
 	}
-	content := llm.SegmentsContentText(requests[0].Messages[len(requests[0].Messages)-1].Segments)
-	if content != "hello @skill:nope" {
-		t.Fatalf("latest user content = %q", content)
+	firstLatest := llm.SegmentsContentText(requests[0].Messages[len(requests[0].Messages)-1].Segments)
+	if strings.Count(firstLatest, "ELyph RULE") != 1 || !strings.Contains(firstLatest, "#skill alpha - A") {
+		t.Fatalf("first skill directive should include rule card and alpha detail: %q", firstLatest)
 	}
-	if !strings.Contains(p.out.String(), "未找到或不可用的 Skill：nope") {
-		t.Fatalf("missing invalid skill notice: %q", p.out.String())
+	secondLatest := llm.SegmentsContentText(requests[1].Messages[len(requests[1].Messages)-1].Segments)
+	if strings.Contains(secondLatest, "ELyph RULE") {
+		t.Fatalf("second skill directive should not repeat rule card: %q", secondLatest)
+	}
+	if !strings.Contains(secondLatest, "#skill beta - B") {
+		t.Fatalf("second skill directive should include beta detail: %q", secondLatest)
+	}
+	sessionRecord := onlySession(t, store, p)
+	if !strings.Contains(sessionRecord.Metadata, `"shown_rule_card_formats":["elyph"]`) {
+		t.Fatalf("metadata should persist shown rule card format: %q", sessionRecord.Metadata)
+	}
+}
+
+func TestDiscoverToolDoesNotRepeatElyphRuleCardAcrossTurns(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{
+		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "discover_tool", Args: `{"name":"alpha"}`}}, FinishReason: "tool_calls"}},
+		{{DeltaContent: "done alpha"}},
+		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_2", Name: "discover_tool", Args: `{"name":"beta"}`}}, FinishReason: "tool_calls"}},
+		{{DeltaContent: "done beta"}},
+	}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(agentDetailTool{name: "alpha", source: tool.SourceSkillAgent, detail: "#skill alpha - A", format: "elyph", ruleCard: "ELyph RULE"})
+	_ = registry.Register(agentDetailTool{name: "beta", source: tool.SourceSkillAgent, detail: "#skill beta - B", format: "elyph", ruleCard: "ELyph RULE"})
+	a.SetToolRuntime(registry, nil)
+
+	if err := a.HandleMessage(context.Background(), "发现 alpha"); err != nil {
+		t.Fatalf("HandleMessage alpha: %v", err)
+	}
+	if err := a.HandleMessage(context.Background(), "发现 beta"); err != nil {
+		t.Fatalf("HandleMessage beta: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 4 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	firstToolResult := llm.SegmentsContentText(requests[1].Messages[len(requests[1].Messages)-1].Segments)
+	if strings.Count(firstToolResult, "ELyph RULE") != 1 || !strings.Contains(firstToolResult, "#skill alpha - A") {
+		t.Fatalf("first discovery should include rule card and alpha detail: %q", firstToolResult)
+	}
+	secondToolResult := llm.SegmentsContentText(requests[3].Messages[len(requests[3].Messages)-1].Segments)
+	if strings.Contains(secondToolResult, "ELyph RULE") {
+		t.Fatalf("second discovery should not repeat rule card: %q", secondToolResult)
+	}
+	if !strings.Contains(secondToolResult, "#skill beta - B") {
+		t.Fatalf("second discovery should include beta detail: %q", secondToolResult)
+	}
+	allSecondRequestText := chatRequestText(requests[3])
+	if strings.Count(allSecondRequestText, "ELyph RULE") != 1 {
+		t.Fatalf("previous rule card should remain in history exactly once: %q", allSecondRequestText)
+	}
+	sessionRecord := onlySession(t, store, p)
+	if !strings.Contains(sessionRecord.Metadata, `"shown_rule_card_formats":["elyph"]`) {
+		t.Fatalf("metadata should persist shown rule card format: %q", sessionRecord.Metadata)
+	}
+}
+
+func TestSkillDirectiveInvalidStaysAsText(t *testing.T) {
+	for _, directive := range []string{"@skill:nope", "@s:nope"} {
+		t.Run(directive, func(t *testing.T) {
+			p := &fakePlatform{}
+			store := newTestStore(t)
+			f := &fakeLLM{replies: []string{"done"}}
+			a := New(p, f, "test-model", config.ProviderConfig{}, store)
+			registry := tool.NewRegistry()
+			_ = registry.Register(tool.NewDiscoverTool(registry))
+			a.SetToolRuntime(registry, nil)
+
+			if err := a.HandleMessage(context.Background(), "hello "+directive); err != nil {
+				t.Fatalf("HandleMessage: %v", err)
+			}
+			requests := f.chatRequests()
+			if len(requests) != 1 {
+				t.Fatalf("chat requests = %d", len(requests))
+			}
+			content := llm.SegmentsContentText(requests[0].Messages[len(requests[0].Messages)-1].Segments)
+			if content != "hello "+directive {
+				t.Fatalf("latest user content = %q", content)
+			}
+			if !strings.Contains(p.out.String(), "未找到或不可用的 Skill：nope") {
+				t.Fatalf("missing invalid skill notice: %q", p.out.String())
+			}
+		})
 	}
 }
 
@@ -1996,11 +2325,13 @@ func TestToolCallAssistantEmoticonSendsBeforeFinalResponse(t *testing.T) {
 	if err := os.WriteFile(imgPath, []byte("fake"), 0o644); err != nil {
 		t.Fatalf("write emoticon image: %v", err)
 	}
-	// Shell script: read stdin JSON, extract [[微笑]], output JSON with emoticon output and cleaned text.
+	// Shell script: read init frame, emit an emoticon output frame and cleaned text.
 	scriptPath := filepath.Join(configDir, "emoticon_extract.sh")
 	script := `#!/bin/sh
+read init
 img=$(ls emoticons/微笑/*.png 2>/dev/null | head -1)
-printf '{"outputs":[{"kind":"emoticon","name":"微笑","path":"'"$img"'"}],"text":"我先查一下"}'
+printf '{"type":"output","outputs":[{"kind":"emoticon","name":"微笑","path":"%s"}]}\n' "$img"
+printf '{"type":"done","message":{"text":"我先查一下"}}\n'
 `
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write script: %v", err)
@@ -2014,7 +2345,7 @@ if = "llm.text"
 op = "regex"
 value = "\\[\\[[^\\[\\]]+\\]\\]"
 actions = [
-  { type = "exec", command = "sh ./emoticon_extract.sh", stdout = "outputs", field = "llm.text", timing = "%s" },
+  { name = "extract", type = "exec", command = "sh ./emoticon_extract.sh", field = "llm.text", timing = "%s" },
 ]
 `, delivery.DeliveryAfterAssistant)
 	if err := os.WriteFile(filepath.Join(configDir, "hooks.toml"), []byte(hooksTOML), 0o644); err != nil {
@@ -3420,8 +3751,10 @@ func TestEmoticonHookSendsSeparateOutputAndCleansPersistedContent(t *testing.T) 
 	}
 	scriptPath := filepath.Join(configDir, "emoticon_extract.sh")
 	script := `#!/bin/sh
+read init
 img=$(ls emoticons/微笑/*.png 2>/dev/null | head -1)
-printf '{"outputs":[{"kind":"emoticon","name":"微笑","path":"'"$img"'"}],"text":"像这样~"}'
+printf '{"type":"output","outputs":[{"kind":"emoticon","name":"微笑","path":"%s"}]}\n' "$img"
+printf '{"type":"done","message":{"text":"像这样~"}}\n'
 `
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write script: %v", err)
@@ -3435,7 +3768,7 @@ if = "llm.text"
 op = "regex"
 value = "\\[\\[[^\\[\\]]+\\]\\]"
 actions = [
-  { type = "exec", command = "sh ./emoticon_extract.sh", stdout = "outputs", field = "llm.text" },
+  { name = "extract", type = "exec", command = "sh ./emoticon_extract.sh", field = "llm.text" },
 ]
 `
 	if err := os.WriteFile(filepath.Join(configDir, "hooks.toml"), []byte(hooksTOML), 0o644); err != nil {

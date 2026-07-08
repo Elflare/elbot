@@ -1,52 +1,30 @@
 package rules
 
 import (
-	"bytes"
+	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
 	"elbot/internal/delivery"
-	"elbot/internal/elvena"
 	"elbot/internal/hook"
 )
 
-const (
-	execStdoutIgnore  = "ignore"
-	execStdoutCapture = "capture"
-	execStdoutSend    = "send"
-	execStdoutElvena  = "elvena"
-	execStdoutOutputs = "outputs"
-)
-
-type execPayload struct {
-	Event hook.Event        `json:"event"`
-	Match hook.MatchContext `json:"match"`
-}
-
-type execOutputsPayload struct {
-	Outputs []SegmentSpec `json:"outputs"`
-	Text    string        `json:"text"`
-}
+const hookProtocolVersion = "hook.v1"
 
 func (m Module) runExec(ctx context.Context, event hook.Event, action Action, state state) (hook.Event, actionResult, error) {
 	command := render(action.Command, event, state)
 	if strings.TrimSpace(command) == "" {
 		return event, actionResult{Error: "command is required"}, fmt.Errorf("command is required")
 	}
-	stdoutMode := strings.TrimSpace(action.Stdout)
-	if stdoutMode == "" {
-		stdoutMode = execStdoutCapture
-	}
-	if err := validateExecStdout(stdoutMode); err != nil {
-		return event, actionResult{Error: err.Error()}, err
-	}
-
 	runCtx := ctx
 	cancel := func() {}
 	if action.TimeoutSeconds > 0 {
@@ -61,111 +39,489 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 	if len(argv) == 0 {
 		return event, actionResult{Error: "command is required"}, fmt.Errorf("command is required")
 	}
-	cmd := exec.CommandContext(runCtx, argv[0], argv[1:]...)
-	cmd.Dir = m.execCwd(action, event, state)
-	stdin, err := execStdin(action, event, state)
+	cwd, err := m.execCwd(action, event, state)
 	if err != nil {
 		return event, actionResult{Error: err.Error()}, err
 	}
-	cmd.Stdin = strings.NewReader(stdin)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		message := strings.TrimSpace(stderr.String())
-		if message == "" {
-			message = err.Error()
-		}
-		return event, actionResult{Result: strings.TrimSpace(stdout.String()), Error: message}, fmt.Errorf("exec failed: %s", message)
+
+	cmd := exec.CommandContext(runCtx, argv[0], argv[1:]...)
+	cmd.Dir = cwd
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return event, actionResult{Error: err.Error()}, err
 	}
-	outText := strings.TrimSpace(stdout.String())
-	result := actionResult{Result: outText}
-	switch stdoutMode {
-	case execStdoutIgnore, execStdoutCapture:
-		return event, result, nil
-	case execStdoutSend:
-		if outText != "" {
-			out := delivery.Text(outText)
-			out.Target = delivery.Target{
-				Platform:      render(action.Target.Platform, event, state),
-				ScopeID:       render(action.Target.ScopeID, event, state),
-				PrivateUserID: render(action.Target.PrivateUserID, event, state),
-				GroupID:       render(action.Target.GroupID, event, state),
-				Superadmins:   action.Target.Superadmins,
-			}
-			out = delivery.WithDeliveryTiming(out, render(action.Timing, event, state))
-			event.Outputs = append(event.Outputs, out)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return event, actionResult{Error: err.Error()}, err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return event, actionResult{Error: err.Error()}, err
+	}
+	if err := cmd.Start(); err != nil {
+		return event, actionResult{Error: err.Error()}, err
+	}
+	defer stdin.Close()
+	stderrTail := newExecStderrTail()
+	stderrDone := make(chan struct{})
+	go m.logExecStderr(stderr, action, stderrTail, stderrDone)
+	waited := false
+	waitExec := func() error {
+		if waited {
+			return nil
 		}
-		return event, result, nil
-	case execStdoutOutputs:
-		var payload execOutputsPayload
-		if err := json.Unmarshal([]byte(outText), &payload); err != nil {
-			return event, actionResult{Result: outText, Error: err.Error()}, fmt.Errorf("parse outputs stdout: %w", err)
+		waited = true
+		err := cmd.Wait()
+		<-stderrDone
+		return err
+	}
+	failExec := func(result actionResult, err error, kill bool) (hook.Event, actionResult, error) {
+		if kill && cmd.Process != nil {
+			_ = cmd.Process.Kill()
 		}
-		target := delivery.Target{
-			Platform:      render(action.Target.Platform, event, state),
-			ScopeID:       render(action.Target.ScopeID, event, state),
-			PrivateUserID: render(action.Target.PrivateUserID, event, state),
-			GroupID:       render(action.Target.GroupID, event, state),
-			Superadmins:   action.Target.Superadmins,
+		waitErr := waitExec()
+		if err == nil {
+			err = execProcessError(runCtx, action, waitErr)
 		}
-		timing := render(action.Timing, event, state)
-		for _, seg := range payload.Outputs {
-			out, err := buildSegmentOutput(seg, target, timing)
-			if err != nil {
-				return event, actionResult{Result: outText, Error: err.Error()}, err
-			}
-			event.Outputs = append(event.Outputs, out)
+		err = withExecStderr(err, stderrTail.String())
+		result.Error = err.Error()
+		return event, result, err
+	}
+
+	init := map[string]any{
+		"type":    "init",
+		"version": hookProtocolVersion,
+		"event":   event,
+		"match":   eventMatchContext(event),
+		"runtime": map[string]any{
+			"plugin_name": action.source.PluginName,
+			"plugin_dir":  action.source.BaseDir,
+			"config_path": action.source.ConfigPath,
+			"rule_name":   firstNonEmpty(action.source.FinalName, action.Name),
+			"cwd":         cwd,
+		},
+	}
+	if err := writeProtocolFrame(stdin, init); err != nil {
+		return failExec(actionResult{}, err, true)
+	}
+
+	done := false
+	result := actionResult{}
+	scanner := bufio.NewScanner(stdout)
+	lineNo := 0
+	for scanner.Scan() {
+		lineNo++
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
 		}
-		if strings.TrimSpace(action.Field) != "" {
-			var err error
-			event, err = setTextField(event, action.Field, payload.Text)
-			if err != nil {
-				return event, actionResult{Result: outText, Error: err.Error()}, err
-			}
+		var frame map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(line), &frame); err != nil {
+			err = fmt.Errorf("parse hook protocol frame at stdout line %d: %w; line=%s", lineNo, err, shortProtocolLine(line))
+			return failExec(actionResult{}, err, true)
 		}
-		return event, result, nil
-	case execStdoutElvena:
-		if m.Opts.Elvena == nil {
-			err := fmt.Errorf("elvena dispatcher is not configured")
-			return event, actionResult{Result: outText, Error: err.Error()}, err
-		}
-		var req elvena.Request
-		if err := json.Unmarshal([]byte(outText), &req); err != nil {
-			return event, actionResult{Result: outText, Error: err.Error()}, fmt.Errorf("parse elvena stdout: %w", err)
-		}
-		resp, err := m.Opts.Elvena.DispatchElvena(ctx, elvena.Origin{Kind: elvena.OriginHook, Name: firstNonEmpty(action.Name, "rules.exec")}, req)
+		updated, frameResult, frameDone, err := m.handleProtocolFrame(runCtx, stdin, event, action, state, frame, lineNo, line)
 		if err != nil {
-			return event, actionResult{Result: outText, Error: err.Error()}, err
+			return failExec(frameResult, err, true)
 		}
-		data, _ := json.Marshal(resp)
-		return event, actionResult{Result: string(data)}, nil
+		event = updated
+		if frameDone {
+			result = frameResult
+			done = true
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return failExec(actionResult{}, err, true)
+	}
+	if err := waitExec(); err != nil {
+		err = withExecStderr(execProcessError(runCtx, action, err), stderrTail.String())
+		return event, actionResult{Error: err.Error()}, err
+	}
+	if !done {
+		err := fmt.Errorf("hook protocol missing done frame")
+		err = withExecStderr(err, stderrTail.String())
+		return event, actionResult{Error: err.Error()}, err
+	}
+	return event, result, nil
+}
+
+func (m Module) handleProtocolFrame(ctx context.Context, stdin io.Writer, event hook.Event, action Action, state state, frame map[string]json.RawMessage, lineNo int, line string) (hook.Event, actionResult, bool, error) {
+	typ := frameString(frame, "type")
+	switch typ {
+	case "output":
+		outputs, err := protocolFrameOutputs(frame, action, render(action.Timing, event, state), lineNo, typ, line)
+		if err != nil {
+			return event, actionResult{Error: err.Error()}, false, err
+		}
+		event.Outputs = append(event.Outputs, outputs...)
+		if id := frameString(frame, "id"); id != "" {
+			_ = writeProtocolResponse(stdin, id, map[string]any{"queued": true}, nil)
+		}
+		return event, actionResult{}, false, nil
+	case "request":
+		result, err := m.handleProtocolRequest(ctx, event, action, state, frame)
+		if id := frameString(frame, "id"); id != "" {
+			_ = writeProtocolResponse(stdin, id, result, err)
+		}
+		if err != nil {
+			return event, actionResult{Error: err.Error()}, false, err
+		}
+		return event, actionResult{}, false, nil
+	case "done":
+		matched := frameBoolDefault(frame, "matched", true)
+		res := actionResult{
+			Result:  frameString(frame, "result"),
+			Error:   frameString(frame, "error"),
+			Matched: &matched,
+		}
+		if !matched {
+			return event, res, true, nil
+		}
+		if raw := frame["message"]; len(raw) > 0 {
+			var msg map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &msg); err != nil {
+				return event, actionResult{Error: err.Error(), Matched: &matched}, true, err
+			}
+			if textRaw := msg["text"]; len(textRaw) > 0 {
+				var text string
+				if err := json.Unmarshal(textRaw, &text); err != nil {
+					return event, actionResult{Error: err.Error(), Matched: &matched}, true, err
+				}
+				field := strings.TrimSpace(action.Field)
+				if field == "" {
+					field = "message.text"
+				}
+				var err error
+				event, err = setTextField(event, field, text)
+				if err != nil {
+					return event, actionResult{Error: err.Error(), Matched: &matched}, true, err
+				}
+			}
+		}
+		if frameBoolDefault(frame, "consume", false) {
+			event.Control.Consume = true
+		}
+		if frameBoolDefault(frame, "stop_propagation", false) {
+			event.Control.StopPropagation = true
+		}
+		return event, res, true, nil
+	case "error":
+		msg := firstNonEmpty(frameString(frame, "error"), frameString(frame, "message"))
+		if msg == "" {
+			msg = "hook protocol error frame"
+		}
+		return event, actionResult{Error: msg}, false, fmt.Errorf("hook protocol error: %s", msg)
 	default:
-		return event, result, nil
+		err := protocolFrameError(lineNo, typ, line, fmt.Sprintf("unsupported hook protocol frame %q", typ))
+		return event, actionResult{Error: "unsupported protocol frame"}, false, err
 	}
 }
 
-func (m Module) execCwd(action Action, event hook.Event, state state) string {
-	base := strings.TrimSpace(m.Opts.ConfigDir)
+func protocolFrameError(lineNo int, typ, line, message string) error {
+	if typ == "" {
+		typ = "<missing>"
+	}
+	return fmt.Errorf("hook protocol stdout line %d frame type %q: %s; line=%s", lineNo, typ, message, shortProtocolLine(line))
+}
+
+func shortProtocolLine(line string) string {
+	line = strings.TrimSpace(line)
+	const max = 240
+	if len([]rune(line)) <= max {
+		return line
+	}
+	runes := []rune(line)
+	return string(runes[:max]) + "..."
+}
+
+func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, action Action, state state, frame map[string]json.RawMessage) (any, error) {
+	method := frameString(frame, "method")
+	switch method {
+	case "platform.call":
+		paramsMap, err := rawObject(frame["params"])
+		if err != nil {
+			return nil, err
+		}
+		platformName := strings.TrimSpace(rawString(paramsMap["platform"]))
+		if platformName == "" {
+			platformName = event.Platform.Name
+		}
+		if event.Platform.Name != "" && platformName != event.Platform.Name {
+			return nil, fmt.Errorf("platform.call can only call current platform %q", event.Platform.Name)
+		}
+		api := rawString(paramsMap["api"])
+		callParams := map[string]any{}
+		if raw := paramsMap["params"]; len(raw) > 0 {
+			if err := json.Unmarshal(raw, &callParams); err != nil {
+				return nil, err
+			}
+		}
+		if m.Opts.PlatformCallers == nil {
+			return nil, fmt.Errorf("platform callers are not configured")
+		}
+		caller, ok := m.Opts.PlatformCallers.PlatformCaller(platformName)
+		if !ok || caller == nil {
+			return nil, fmt.Errorf("platform %q does not support api calls", platformName)
+		}
+		m.audit("hook.platform_call", "platform", platformName, "api", api, "rule", firstNonEmpty(action.source.FinalName, action.Name))
+		resp, err := caller.CallPlatformAPI(ctx, api, callParams)
+		if err != nil {
+			return nil, err
+		}
+		var decoded any
+		if len(resp) > 0 && json.Unmarshal(resp, &decoded) == nil {
+			return decoded, nil
+		}
+		return string(resp), nil
+	case "output.send":
+		paramsMap, err := rawObject(frame["params"])
+		if err != nil {
+			return nil, err
+		}
+		outputs, err := protocolOutputsFromRaw(paramsMap["outputs"], action, render(action.Timing, event, state), "params.outputs")
+		if err != nil {
+			return nil, err
+		}
+		receipts := make([]delivery.Receipt, 0, len(outputs))
+		for _, out := range outputs {
+			receipt, err := m.sendProtocolOutput(ctx, event, out)
+			if err != nil {
+				return nil, err
+			}
+			receipts = append(receipts, receipt)
+		}
+		return map[string]any{"sent": len(receipts), "receipts": receipts}, nil
+	case "message.get_reply":
+		return map[string]any{"message_id": event.Platform.ReplyToMessageID, "available": event.Platform.ReplyToMessageID != ""}, nil
+	case "message.get":
+		return map[string]any{"available": false}, nil
+	case "hook.log":
+		if m.Logger != nil {
+			m.Logger.Info("hook plugin log", "rule", firstNonEmpty(action.source.FinalName, action.Name), "params", string(frame["params"]))
+		}
+		return map[string]any{"ok": true}, nil
+	default:
+		return nil, fmt.Errorf("unsupported hook protocol method %q", method)
+	}
+}
+
+func protocolFrameOutputs(frame map[string]json.RawMessage, action Action, timing string, lineNo int, typ, line string) ([]delivery.Output, error) {
+	outputs, err := protocolOutputsFromRaw(frame["outputs"], action, timing, "outputs")
+	if err == nil {
+		return outputs, nil
+	}
+	if len(frame["outputs"]) == 0 {
+		return nil, protocolFrameError(lineNo, typ, line, "missing required field \"outputs\"; output frames must be {\"type\":\"output\",\"outputs\":[{...}]}. The \"outputs\" value is an array of segment objects")
+	}
+	return nil, protocolFrameError(lineNo, typ, line, err.Error())
+}
+
+func protocolOutputsFromRaw(raw json.RawMessage, action Action, timing, fieldName string) ([]delivery.Output, error) {
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("missing required field %q; expected an array of segment objects", fieldName)
+	}
+	var specs []SegmentSpec
+	if err := json.Unmarshal(raw, &specs); err != nil {
+		return nil, fmt.Errorf("invalid field %q: %w", fieldName, err)
+	}
+	if len(specs) == 0 {
+		return nil, fmt.Errorf("field %q must contain at least one segment object", fieldName)
+	}
+	outputs := make([]delivery.Output, 0, len(specs))
+	for _, seg := range specs {
+		out, err := buildSegmentOutput(resolveSegmentSpecPath(seg, action.sourceBaseDir()), delivery.Target{}, timing)
+		if err != nil {
+			return nil, err
+		}
+		outputs = append(outputs, out)
+	}
+	return outputs, nil
+}
+
+func (m Module) sendProtocolOutput(ctx context.Context, event hook.Event, out delivery.Output) (delivery.Receipt, error) {
+	if m.Opts.Send != nil {
+		return m.Opts.Send(ctx, out.Target, out)
+	}
+	return delivery.Receipt{}, fmt.Errorf("output sender is not configured")
+}
+
+func rawObject(raw json.RawMessage) (map[string]json.RawMessage, error) {
+	var out map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func rawString(raw json.RawMessage) string {
+	var value string
+	_ = json.Unmarshal(raw, &value)
+	return strings.TrimSpace(value)
+}
+
+func frameString(frame map[string]json.RawMessage, key string) string {
+	return rawString(frame[key])
+}
+
+func frameBoolDefault(frame map[string]json.RawMessage, key string, fallback bool) bool {
+	raw := frame[key]
+	if len(raw) == 0 {
+		return fallback
+	}
+	var value bool
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return fallback
+	}
+	return value
+}
+
+func writeProtocolFrame(w io.Writer, frame any) error {
+	data, err := json.Marshal(frame)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(w, "%s\n", data)
+	return err
+}
+
+func writeProtocolResponse(w io.Writer, id string, result any, sourceErr error) error {
+	resp := map[string]any{"type": "response", "id": id, "ok": sourceErr == nil}
+	if sourceErr != nil {
+		resp["error"] = sourceErr.Error()
+	} else {
+		resp["result"] = result
+	}
+	return writeProtocolFrame(w, resp)
+}
+
+func execProcessError(ctx context.Context, action Action, err error) error {
+	if action.TimeoutSeconds > 0 && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf("exec timed out after %ds", action.TimeoutSeconds)
+	}
+	if err != nil {
+		return fmt.Errorf("exec failed: %w", err)
+	}
+	return fmt.Errorf("exec failed")
+}
+
+func withExecStderr(err error, stderr string) error {
+	stderr = strings.TrimSpace(stderr)
+	if err == nil || stderr == "" {
+		return err
+	}
+	return fmt.Errorf("%w\nstderr:\n%s", err, stderr)
+}
+
+type execStderrTail struct {
+	mu      sync.Mutex
+	lines   []string
+	dropped int
+}
+
+func newExecStderrTail() *execStderrTail {
+	return &execStderrTail{}
+}
+
+func (t *execStderrTail) Add(line string) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	const maxLines = 20
+	if len(t.lines) >= maxLines {
+		copy(t.lines, t.lines[1:])
+		t.lines[len(t.lines)-1] = line
+		t.dropped++
+		return
+	}
+	t.lines = append(t.lines, line)
+}
+
+func (t *execStderrTail) String() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if len(t.lines) == 0 {
+		return ""
+	}
+	out := strings.Join(t.lines, "\n")
+	const maxRunes = 2000
+	runes := []rune(out)
+	if len(runes) > maxRunes {
+		out = string(runes[len(runes)-maxRunes:])
+	}
+	if t.dropped > 0 {
+		return fmt.Sprintf("...(%d earlier stderr lines omitted)\n%s", t.dropped, out)
+	}
+	return out
+}
+
+func (m Module) logExecStderr(r io.Reader, action Action, tail *execStderrTail, done chan<- struct{}) {
+	defer close(done)
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if tail != nil {
+			tail.Add(line)
+		}
+		if line != "" && m.Logger != nil {
+			m.Logger.Info("hook exec stderr", "rule", firstNonEmpty(action.source.FinalName, action.Name), "line", line)
+		}
+	}
+	if err := scanner.Err(); err != nil && m.Logger != nil {
+		m.Logger.Warn("hook exec stderr read failed", "rule", firstNonEmpty(action.source.FinalName, action.Name), "error", err)
+	}
+}
+
+func (m Module) execCwd(action Action, event hook.Event, state state) (string, error) {
+	base := strings.TrimSpace(action.sourceBaseDir())
+	if base == "" {
+		base = strings.TrimSpace(m.Opts.ConfigDir)
+	}
 	cwd := strings.TrimSpace(render(action.Cwd, event, state))
 	if cwd == "" {
-		return base
+		return base, nil
+	}
+	if action.hasStrictDir() {
+		if filepath.IsAbs(cwd) {
+			return "", fmt.Errorf("cwd %q must be relative inside plugin directory", cwd)
+		}
+		joined := filepath.Join(base, filepath.Clean(cwd))
+		if !pathWithin(action.sourceStrictDir(), joined) {
+			return "", fmt.Errorf("cwd %q escapes plugin directory", cwd)
+		}
+		return joined, nil
 	}
 	if filepath.IsAbs(cwd) || base == "" {
-		return cwd
+		return cwd, nil
 	}
-	return filepath.Join(base, cwd)
+	return filepath.Join(base, cwd), nil
 }
 
-func execStdin(action Action, event hook.Event, state state) (string, error) {
-	if strings.TrimSpace(action.Stdin) != "" {
-		return render(action.Stdin, event, state), nil
+func (a Action) sourceBaseDir() string {
+	return strings.TrimSpace(a.source.BaseDir)
+}
+
+func (a Action) sourceStrictDir() string {
+	return strings.TrimSpace(a.source.StrictDir)
+}
+
+func (a Action) hasStrictDir() bool {
+	return strings.TrimSpace(a.source.StrictDir) != ""
+}
+
+func resolveSegmentSpecPath(spec SegmentSpec, base string) SegmentSpec {
+	spec.Path = resolveLocalPath(spec.Path, base)
+	return spec
+}
+
+func resolveLocalPath(path, base string) string {
+	path = strings.TrimSpace(path)
+	if path == "" || base == "" || filepath.IsAbs(path) || delivery.IsDirectMediaSource(path) {
+		return path
 	}
-	data, err := json.Marshal(execPayload{Event: event, Match: eventMatchContext(event)})
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
+	return filepath.Join(base, path)
 }
 
 func splitExecCommand(command string) ([]string, error) {
@@ -177,7 +533,7 @@ func splitExecCommand(command string) ([]string, error) {
 	for i := 0; i < len(runes); i++ {
 		r := runes[i]
 		if quote != 0 {
-			if r == '\\' && i+1 < len(runes) && (runes[i+1] == quote || runes[i+1] == '\\') {
+			if r == 92 && i+1 < len(runes) && (runes[i+1] == quote || runes[i+1] == 92) {
 				b.WriteRune(runes[i+1])
 				i++
 				continue
@@ -197,7 +553,7 @@ func splitExecCommand(command string) ([]string, error) {
 			}
 			continue
 		}
-		if r == '\'' || r == '"' {
+		if r == 39 || r == 34 {
 			quote = r
 			tokenStarted = true
 			continue
@@ -212,13 +568,4 @@ func splitExecCommand(command string) ([]string, error) {
 		args = append(args, b.String())
 	}
 	return args, nil
-}
-
-func validateExecStdout(stdout string) error {
-	switch strings.TrimSpace(stdout) {
-	case "", execStdoutIgnore, execStdoutCapture, execStdoutSend, execStdoutElvena, execStdoutOutputs:
-		return nil
-	default:
-		return fmt.Errorf("unsupported exec stdout %q", stdout)
-	}
 }

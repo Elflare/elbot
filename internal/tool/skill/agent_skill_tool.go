@@ -54,47 +54,7 @@ func (AgentSkillTool) Schema() llm.ToolSchema {
 }
 
 func agentSkillToolDescription() string {
-	return `读或写 AgentSkill 的 ELBOT_SKILL.toml。
-if a skill 带脚本:
-    if 你没有该脚本的Schema只能用shell来运行 and 你觉得使用shell很麻烦:
-        使用该工具创建 ELBOT_SKILL.toml，之后会自动注入你的Schema，之后可以不使用shell运行
-elif:
-    检查你已知Schema工具，是否有该技能的脚本，就可以直接调用，而不用shell
-ELBOT_SKILL.toml写法：
-只允许这些字段：
-risk, tags, command, timeout_seconds, expose_root, parameters, [args]
-
-示例：
-risk = "medium"
-tags = ["doc"]
-command = ["python", "foo.py"]
-timeout_seconds = 30
-expose_root = false
-
-parameters = '''
-{
-  "type": "object",
-  "required": ["input"],
-  "properties": {
-    "input": {"type": "string", "description": "输入文本"},
-    "mode": {"type": "string", "description": "处理模式"}
-  }
-}
-'''
-
-[args]
-input = "--input"
-mode = "--mode"
-
-含义：
-工具调用 {"input":"abc","mode":"fast"} 会执行：
-python foo.py --input abc --mode fast
-
-command 必须是字符串数组。
-parameters 必须是 JSON object schema。
-parameters.properties 定义工具有哪些入参；[args] 的 key 必须对应 parameters.properties。
-risk 必填。
-tags 可选，相当于为该工具分类。`
+	return "读或写 AgentSkill 的 ELBOT_SKILL.toml。"
 }
 
 func (t AgentSkillTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {

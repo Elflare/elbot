@@ -51,6 +51,33 @@ type MessageSegment struct {
 	Size     int64
 }
 
+type ReplyContext struct {
+	MessageID string
+	SenderID  string
+	Text      string
+	Segments  []MessageSegment
+}
+
+type ConversationKind string
+
+const (
+	ConversationUnknown ConversationKind = "unknown"
+	ConversationPrivate ConversationKind = "private"
+	ConversationGroup   ConversationKind = "group"
+	ConversationChannel ConversationKind = "channel"
+)
+
+type Identity struct {
+	UserID   string
+	Username string
+}
+
+type Mention struct {
+	UserID   string
+	Username string
+	Text     string
+}
+
 // MessageContext carries per-message platform routing and actor data.
 type MessageContext struct {
 	Platform              string
@@ -59,14 +86,23 @@ type MessageContext struct {
 	DisplayName           string
 	GroupRole             security.GroupRole
 	ScopeID               string
+	ConversationKind      ConversationKind
 	PlatformMessageID     string
 	ReplyToMessageID      string
+	ReplyToSenderID       string
 	Sender                delivery.ContextSender
 	BufferAssistantOutput bool
 	ForkFromMessageID     string
 	ResumeSessionID       string
 	Segments              []MessageSegment
+	ContextText           string
+	ContextSegments       []MessageSegment
+	Reply                 ReplyContext
 	Meta                  map[string]any
+	RawText               string
+	Bot                   Identity
+	Mentions              []Mention
+	TriggerKeywords       []string
 }
 
 type messageContextKey struct{}

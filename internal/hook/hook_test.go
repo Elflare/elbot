@@ -3,6 +3,7 @@ package hook
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"reflect"
@@ -24,6 +25,46 @@ func TestNoopManagerRunPreparesEvent(t *testing.T) {
 	}
 	if event.Metadata == nil {
 		t.Fatal("expected Metadata to be populated")
+	}
+}
+
+func TestPreparedErrorEventExposesMessage(t *testing.T) {
+	event, err := NoopManager{}.Run(context.Background(), Event{
+		Point: PointErrorOccurred,
+		Error: errors.New("boom"),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if got := EventErrorMessage(event); got != "boom" {
+		t.Fatalf("error message = %q, want boom", got)
+	}
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("marshal event: %v", err)
+	}
+	if !strings.Contains(string(data), `"error":{"message":"boom"}`) {
+		t.Fatalf("event json = %s", data)
+	}
+}
+
+func TestMatchErrorMessage(t *testing.T) {
+	event := Event{Point: PointErrorOccurred, Error: errors.New("hook failed")}
+	if !Contains("error.message", "failed").Matches(event) {
+		t.Fatal("expected error.message match")
+	}
+}
+
+func TestMatchMessageInputText(t *testing.T) {
+	event := Event{Point: PointPlatformMessageReceived, Message: MessagePayload{
+		Segments:  llm.TextSegments("芙莉丝 咩"),
+		InputText: "咩",
+	}}
+	if !FullMatch("message.input_text", "咩").Matches(event) {
+		t.Fatal("expected message.input_text match")
+	}
+	if FullMatch("message.text", "咩").Matches(event) {
+		t.Fatal("message.text should still include the original text")
 	}
 }
 
@@ -69,6 +110,31 @@ func TestManagerPassesUpdatedEventToNextHandler(t *testing.T) {
 	}
 	if event.LLM.Text != "cleaned response" {
 		t.Fatalf("Text = %q, want %q", event.LLM.Text, "cleaned response")
+	}
+}
+
+func TestMatchMessageRawTextAndReplyFields(t *testing.T) {
+	event := Event{
+		Message: MessagePayload{
+			RawText:  "撤回",
+			Segments: llm.TextSegments("[引用]：通知\n\n撤回"),
+			Reply: &MessageReplyPayload{
+				MessageID:   "notice-1",
+				SenderID:    "bot",
+				Text:        "通知",
+				ContentText: "通知",
+			},
+		},
+	}
+	match := Match{Conditions: []Condition{
+		{Field: "message.raw_text", Op: MatchFull, Value: "撤回"},
+		{Field: "message.reply.message_id", Op: MatchExists},
+		{Field: "message.reply.sender_id", Op: MatchFull, Value: "bot"},
+		{Field: "message.reply.text", Op: MatchFull, Value: "通知"},
+		{Field: "message.reply.content_text", Op: MatchContains, Value: "通知"},
+	}}
+	if result := match.MatchEvent(event); !result.OK {
+		t.Fatal("match did not include message raw/reply fields")
 	}
 }
 
@@ -139,7 +205,7 @@ func TestManagerLogsNamedHook(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	logs := buf.String()
-for _, want := range []string{"hook triggered", "test.logger", "before_text=before", "after_text=after", "raw_text=raw"} {
+	for _, want := range []string{"hook triggered", "test.logger", "before_text=before", "after_text=after", "raw_text=raw"} {
 		if !strings.Contains(logs, want) {
 			t.Fatalf("logs missing %q:\n%s", want, logs)
 		}
@@ -209,6 +275,50 @@ func TestManagerPassesRegexMatchContext(t *testing.T) {
 	match := got.Regex[0]
 	if match.Text != "mute alice 10" || match.Named["target"] != "alice" || match.Named["minutes"] != "10" {
 		t.Fatalf("match = %#v", match)
+	}
+}
+
+func TestManagerFiltersByWakeupRequirement(t *testing.T) {
+	manager := NewManager()
+	manager.SetWakeupFunc(func(context.Context, Event) bool { return false })
+	calls := []string{}
+	allowPassive := false
+	if err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "default", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+		calls = append(calls, "default")
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register default: %v", err)
+	}
+	if err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "passive", Match: Always(), RequireWakeup: &allowPassive, Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+		calls = append(calls, "passive")
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register passive: %v", err)
+	}
+
+	if _, err := manager.Run(context.Background(), Event{Point: PointPlatformMessageReceived}); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !reflect.DeepEqual(calls, []string{"passive"}) {
+		t.Fatalf("calls = %#v", calls)
+	}
+}
+
+func TestManagerRunsWakeupRequiredHookWhenWakeupUnknown(t *testing.T) {
+	manager := NewManager()
+	called := false
+	if err := manager.Register(Registration{Point: PointPlatformConnected, Name: "connected", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+		called = true
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	if _, err := manager.Run(context.Background(), Event{Point: PointPlatformConnected}); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected hook to run when no wakeup function is configured")
 	}
 }
 

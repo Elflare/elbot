@@ -160,7 +160,7 @@ Example:
 /tools remove my_skill --confirm
 ```
 
-In work mode, the LLM can discover tool details on demand via `discover_tool`. In chat, you can also use `@tool:<name-or-tag>` to preload tools, or use `@skill:<name>` to add Skill documentation to the current round of messages and preload the corresponding runtime wrapper.
+In work mode, the LLM can discover tool details on demand via `discover_tool`. In a chat, you can also use `@tool:<name-or-tag>` (shorthand `@t:<name-or-tag>`) to preload tools, or use `@skill:<name>` (shorthand `@s:<name>`) to add Skill documentation to the current round of messages and preload the corresponding runtime wrapper. The colon can also be written as a full-width Chinese colon `：`.
 
 ## Hook
 
@@ -175,13 +175,14 @@ Example:
 
 ```text
 /hooks
-/hooks rules.greet
+/hooks greet
 /hooks reload
 ```
 
 Note:
 
-- Hooks include rule Hooks (`plugins/hooks.toml`), resident memory Hooks, and built-in Cron Hooks.
+- Rule Hooks directly use the `name` in the configuration; Built-in Hooks use the `builtin.*` name, such as `builtin.resident_memory` and `builtin.cron.missed_once`.
+- `Description` will be displayed in the list and details; rule details are only displayed in the details.
 - `reload` will re-read `hooks.toml` and rebuild all Hook registrations, allowing configuration changes to take effect without a restart.
 - `/hooks` is a superadmin command.
 

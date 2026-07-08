@@ -212,7 +212,7 @@ func (s FilesystemScanner) readAgentRecord(root, dirName string) (Record, bool, 
 			return Record{}, false, nil
 		}
 		detail := strings.TrimSpace(string(data))
-		record := Record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: elyphRisk(detail), Kind: KindAgent, Root: root}
+		record := Record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: tool.RiskSafe, Kind: KindAgent, Root: root}
 		return s.withAgentManifest(record), true, nil
 	} else if !os.IsNotExist(err) {
 		return Record{}, false, fmt.Errorf("read %s in %q: %w", elyph.SkillFileName, root, err)
@@ -228,7 +228,7 @@ func (s FilesystemScanner) readAgentRecord(root, dirName string) (Record, bool, 
 	if err != nil {
 		return Record{}, false, fmt.Errorf("parse SKILL.md in %q: %w", root, err)
 	}
-	record := Record{Name: def.Name, Description: def.Description, Detail: def.Detail, Format: def.Format, Risk: def.Risk, Kind: KindAgent, Root: root}
+	record := Record{Name: def.Name, Description: def.Description, Detail: def.Detail, Format: def.Format, Risk: tool.RiskSafe, Kind: KindAgent, Root: root}
 	return s.withAgentManifest(record), true, nil
 }
 

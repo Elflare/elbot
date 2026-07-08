@@ -3,8 +3,6 @@ package skill
 import (
 	"strings"
 	"testing"
-
-	"elbot/internal/tool"
 )
 
 func TestParseSkillMarkdownFrontMatter(t *testing.T) {
@@ -19,7 +17,7 @@ func TestParseSkillMarkdownFrontMatter(t *testing.T) {
 	if !strings.Contains(def.Description, "Work with docx files") || !strings.Contains(def.Description, "Edit Word documents") {
 		t.Fatalf("description = %q", def.Description)
 	}
-	if def.Risk != tool.RiskMedium {
+	if def.Risk != "" {
 		t.Fatalf("risk = %q", def.Risk)
 	}
 	if def.Detail != "# DOCX\n\nDetails here." {
@@ -41,15 +39,12 @@ func TestParseSkillMarkdownFallbacks(t *testing.T) {
 	}
 }
 
-func TestParseSkillMarkdownDefaultRiskHighAndRejectsInvalidRisk(t *testing.T) {
-	def, err := ParseSkillMarkdown([]byte("# Demo"), "demo")
+func TestParseSkillMarkdownIgnoresRisk(t *testing.T) {
+	def, err := ParseSkillMarkdown([]byte("---\nrisk: scary\n---\n\n# Demo"), "demo")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if def.Risk != tool.RiskHigh {
-		t.Fatalf("default risk = %q", def.Risk)
-	}
-	if _, err := ParseSkillMarkdown([]byte("---\nrisk: scary\n---\n\n# Demo"), "demo"); err == nil {
-		t.Fatal("expected invalid risk error")
+	if def.Risk != "" {
+		t.Fatalf("risk = %q", def.Risk)
 	}
 }

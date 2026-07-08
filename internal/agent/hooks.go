@@ -23,6 +23,7 @@ func (a *Agent) runHook(ctx context.Context, event hook.Event) (hook.Event, erro
 	updated, err := manager.Run(ctx, event)
 	if err != nil {
 		a.notifyHookError(ctx, event, err)
+		a.sendHookFailureNotice(ctx, event, err)
 		return event, err
 	}
 	return updated, nil
@@ -34,7 +35,13 @@ func (a *Agent) notifyHook(ctx context.Context, event hook.Event) {
 		manager = hook.NoopManager{}
 	}
 	event = a.fillHookContext(ctx, event)
-	_ = manager.Notify(ctx, event)
+	if err := manager.Notify(ctx, event); err != nil {
+		a.logHookError(event.Point, err)
+		if event.Point != hook.PointErrorOccurred {
+			a.notifyHookError(ctx, event, err)
+			a.sendHookFailureNotice(ctx, event, err)
+		}
+	}
 }
 
 func (a *Agent) notifyHookError(ctx context.Context, source hook.Event, err error) {
@@ -45,6 +52,42 @@ func (a *Agent) notifyHookError(ctx context.Context, source hook.Event, err erro
 	event.Point = hook.PointErrorOccurred
 	event.Error = err
 	a.notifyHook(ctx, event)
+}
+
+func (a *Agent) sendHookFailureNotice(ctx context.Context, event hook.Event, err error) {
+	if err == nil || event.Point == hook.PointErrorOccurred {
+		return
+	}
+	text := hookFailureNoticeText(event, err)
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	target := delivery.Target{}
+	if _, ok := platform.MessageContextFrom(ctx); !ok {
+		target.Platform = event.Platform.Name
+		target.ScopeID = event.Platform.ScopeID
+	}
+	if sendErr := a.sendNoticeOutput(ctx, target, delivery.Text(text)); sendErr != nil && a.logger != nil {
+		a.logger.WarnContext(ctx, "hook failure notice failed", "point", string(event.Point), "error", sendErr.Error())
+	}
+}
+
+func hookFailureNoticeText(event hook.Event, err error) string {
+	point := strings.TrimSpace(string(event.Point))
+	if point == "" {
+		point = "unknown"
+	}
+	return "Hook 执行失败（" + point + "）：\n" + trimHookNoticeText(err.Error())
+}
+
+func trimHookNoticeText(text string) string {
+	text = strings.TrimSpace(text)
+	const max = 1200
+	runes := []rune(text)
+	if len(runes) <= max {
+		return text
+	}
+	return string(runes[:max]) + "\n...（已截断）"
 }
 
 func (a *Agent) sendOutputs(ctx context.Context, outputs []delivery.Output) error {
@@ -265,6 +308,22 @@ func (a *Agent) fillHookContext(ctx context.Context, event hook.Event) hook.Even
 		if event.Platform.ReplyToMessageID == "" {
 			event.Platform.ReplyToMessageID = msg.ReplyToMessageID
 		}
+		if event.Message.RawText == "" {
+			event.Message.RawText = msg.RawText
+		}
+		if event.Message.Reply == nil && msg.Reply.MessageID != "" {
+			replySegments := platformSegmentsToLLM(msg.Reply.Segments, msg.Reply.Text)
+			event.Message.Reply = &hook.MessageReplyPayload{
+				MessageID:   msg.Reply.MessageID,
+				SenderID:    msg.Reply.SenderID,
+				Text:        llm.SegmentsTextOnly(replySegments),
+				ContentText: llm.SegmentsContentText(replySegments),
+				Segments:    replySegments,
+			}
+		}
+	}
+	if event.Message.InputText == "" && event.Message.Role == string(llm.RoleUser) {
+		event.Message.InputText = a.stripWakeupPrefix(ctx, llm.SegmentsTextOnly(event.Message.Segments))
 	}
 	if event.Platform.Name == "" {
 		event.Platform.Name = platformName

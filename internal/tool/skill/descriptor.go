@@ -79,7 +79,7 @@ func (d Descriptor) ActivateTools() []string {
 }
 
 func agentSkillNotice(record Record) string {
-	lines := []string{"ElBot AgentSkill 使用提示：", "- 此 AgentSkill 当前是说明型 skill，未作为 top-level 工具注入。", "- 如需按文档运行脚本，可使用 shell 等通用工具。", "- 如需把它注册成普通工具，请使用 agent_skill 创建或修改 " + AgentSkillConfigFile + "。"}
+	lines := []string{"ElBot AgentSkill 使用提示：", "", "- 如该文档有脚本，请发现 agent_skill_creator，参考其说明是否把他注册成普通工具。"}
 	if record.ManifestFound && record.ManifestError != "" {
 		lines = append(lines, "- 当前 "+AgentSkillConfigFile+" 无效："+record.ManifestError)
 	}

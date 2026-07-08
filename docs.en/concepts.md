@@ -55,6 +55,8 @@ Inline preloading is used to prompt ElBot in normal input that the current task 
 
 Its purpose is to reduce the steps for the LLM to first discover tools and then call them, allowing clear tasks to enter the working state faster. After successful preloading, the relevant tools or Skills will enter the tool context of the current Session.
 
+Tools can be preloaded using `@tool:<name-or-tag>` or the shorthand `@t:<name-or-tag>`, and Skills can be preloaded using `@skill:<name>` or the shorthand `@s:<name>`; The colon can also be written as a full-width Chinese colon `：`.
+
 For specific syntax and examples, see [Command Quick Reference: Tools and Skills](commands.md#工具与-skill).
 
 ## Session

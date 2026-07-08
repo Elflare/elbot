@@ -255,11 +255,11 @@ func resolveWindowsShell() (string, []string) {
 }
 
 func detectWindowsShell() windowsShell {
-	if _, err := exec.LookPath("bash"); err == nil {
-		return windowsShell{name: "bash", args: []string{"-lc"}}
-	}
 	if _, err := exec.LookPath("pwsh"); err == nil {
 		return windowsShell{name: "pwsh", args: []string{"-NoProfile", "-Command"}}
+	}
+	if _, err := exec.LookPath("bash"); err == nil {
+		return windowsShell{name: "bash", args: []string{"-lc"}}
 	}
 	return windowsShell{name: "powershell.exe", args: []string{"-NoProfile", "-Command"}}
 }

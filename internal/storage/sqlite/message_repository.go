@@ -66,7 +66,7 @@ SELECT id, session_id, role, content, parent_message_id, reply_to_platform_messa
        reply_to_message_id, tool_call_id, metadata, created_at
 FROM messages
 WHERE session_id = ?
-ORDER BY created_at ASC, id ASC`, sessionID)
+ORDER BY created_at ASC, rowid ASC`, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("list messages: %w", err)
 	}
@@ -74,7 +74,7 @@ ORDER BY created_at ASC, id ASC`, sessionID)
 }
 
 func (r *MessageRepository) ListBySessionUpTo(ctx context.Context, sessionID, toMessageID string) ([]storage.Message, error) {
-	toCreatedAt, toID, err := r.messagePosition(ctx, sessionID, toMessageID)
+	toCreatedAt, toRowID, err := r.messagePosition(ctx, sessionID, toMessageID)
 	if err != nil {
 		return nil, err
 	}
@@ -83,8 +83,8 @@ func (r *MessageRepository) ListBySessionUpTo(ctx context.Context, sessionID, to
 SELECT id, session_id, role, content, parent_message_id, reply_to_platform_message_id,
        reply_to_message_id, tool_call_id, metadata, created_at
 FROM messages
-WHERE session_id = ? AND (created_at < ? OR (created_at = ? AND id <= ?))
-ORDER BY created_at ASC, id ASC`, sessionID, toCreatedAt, toCreatedAt, toID)
+WHERE session_id = ? AND (created_at < ? OR (created_at = ? AND rowid <= ?))
+ORDER BY created_at ASC, rowid ASC`, sessionID, toCreatedAt, toCreatedAt, toRowID)
 	if err != nil {
 		return nil, fmt.Errorf("list messages up to checkpoint: %w", err)
 	}
@@ -92,7 +92,7 @@ ORDER BY created_at ASC, id ASC`, sessionID, toCreatedAt, toCreatedAt, toID)
 }
 
 func (r *MessageRepository) ListBySessionAfter(ctx context.Context, sessionID, afterMessageID string) ([]storage.Message, error) {
-	afterCreatedAt, afterID, err := r.messagePosition(ctx, sessionID, afterMessageID)
+	afterCreatedAt, afterRowID, err := r.messagePosition(ctx, sessionID, afterMessageID)
 	if err != nil {
 		return nil, err
 	}
@@ -101,8 +101,8 @@ func (r *MessageRepository) ListBySessionAfter(ctx context.Context, sessionID, a
 SELECT id, session_id, role, content, parent_message_id, reply_to_platform_message_id,
        reply_to_message_id, tool_call_id, metadata, created_at
 FROM messages
-WHERE session_id = ? AND (created_at > ? OR (created_at = ? AND id > ?))
-ORDER BY created_at ASC, id ASC`, sessionID, afterCreatedAt, afterCreatedAt, afterID)
+WHERE session_id = ? AND (created_at > ? OR (created_at = ? AND rowid > ?))
+ORDER BY created_at ASC, rowid ASC`, sessionID, afterCreatedAt, afterCreatedAt, afterRowID)
 	if err != nil {
 		return nil, fmt.Errorf("list messages after checkpoint: %w", err)
 	}
@@ -110,11 +110,11 @@ ORDER BY created_at ASC, id ASC`, sessionID, afterCreatedAt, afterCreatedAt, aft
 }
 
 func (r *MessageRepository) ListBySessionAfterUpTo(ctx context.Context, sessionID, afterMessageID, toMessageID string) ([]storage.Message, error) {
-	afterCreatedAt, afterID, err := r.messagePosition(ctx, sessionID, afterMessageID)
+	afterCreatedAt, afterRowID, err := r.messagePosition(ctx, sessionID, afterMessageID)
 	if err != nil {
 		return nil, err
 	}
-	toCreatedAt, toID, err := r.messagePosition(ctx, sessionID, toMessageID)
+	toCreatedAt, toRowID, err := r.messagePosition(ctx, sessionID, toMessageID)
 	if err != nil {
 		return nil, err
 	}
@@ -124,9 +124,9 @@ SELECT id, session_id, role, content, parent_message_id, reply_to_platform_messa
        reply_to_message_id, tool_call_id, metadata, created_at
 FROM messages
 WHERE session_id = ?
-  AND (created_at > ? OR (created_at = ? AND id > ?))
-  AND (created_at < ? OR (created_at = ? AND id <= ?))
-ORDER BY created_at ASC, id ASC`, sessionID, afterCreatedAt, afterCreatedAt, afterID, toCreatedAt, toCreatedAt, toID)
+  AND (created_at > ? OR (created_at = ? AND rowid > ?))
+  AND (created_at < ? OR (created_at = ? AND rowid <= ?))
+ORDER BY created_at ASC, rowid ASC`, sessionID, afterCreatedAt, afterCreatedAt, afterRowID, toCreatedAt, toCreatedAt, toRowID)
 	if err != nil {
 		return nil, fmt.Errorf("list messages after and up to checkpoint: %w", err)
 	}
@@ -177,20 +177,21 @@ WHERE p.platform = ? AND p.platform_scope_id = ? AND p.platform_message_id = ?`,
 	return message, nil
 }
 
-func (r *MessageRepository) messagePosition(ctx context.Context, sessionID, messageID string) (string, string, error) {
+func (r *MessageRepository) messagePosition(ctx context.Context, sessionID, messageID string) (string, int64, error) {
 	row := r.db.QueryRowContext(ctx, `
-SELECT created_at, id
+SELECT created_at, rowid
 FROM messages
 WHERE id = ? AND session_id = ?`, messageID, sessionID)
 
-	var createdAt, id string
-	if err := row.Scan(&createdAt, &id); err != nil {
+	var createdAt string
+	var rowID int64
+	if err := row.Scan(&createdAt, &rowID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", "", storage.ErrNotFound
+			return "", 0, storage.ErrNotFound
 		}
-		return "", "", fmt.Errorf("get checkpoint message: %w", err)
+		return "", 0, fmt.Errorf("get checkpoint message: %w", err)
 	}
-	return createdAt, id, nil
+	return createdAt, rowID, nil
 }
 
 func scanMessages(rows *sql.Rows) ([]storage.Message, error) {

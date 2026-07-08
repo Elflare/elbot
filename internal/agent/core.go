@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -235,12 +236,26 @@ func inboundSegments(ctx context.Context, text string) []llm.MessageSegment {
 	return llm.TextSegments(text)
 }
 
+func inboundContextSegments(ctx context.Context, text string) []llm.MessageSegment {
+	if msg, ok := platform.MessageContextFrom(ctx); ok {
+		if len(msg.ContextSegments) > 0 {
+			return platformSegmentsToLLM(msg.ContextSegments, msg.ContextText)
+		}
+		if strings.TrimSpace(msg.ContextText) != "" {
+			return llm.TextSegments(msg.ContextText)
+		}
+	}
+	return inboundSegments(ctx, text)
+}
+
 func withInboundSegments(ctx context.Context, segments []llm.MessageSegment) context.Context {
 	msg, ok := platform.MessageContextFrom(ctx)
 	if !ok {
 		return ctx
 	}
 	msg.Segments = llmSegmentsToPlatform(segments)
+	msg.ContextText = ""
+	msg.ContextSegments = nil
 	return platform.WithMessageContext(ctx, msg)
 }
 
@@ -307,6 +322,7 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 			}
 		}
 	}()
+	woken := a.messageWakeup(ctx, llm.SegmentsTextOnly(segments))
 	event, err := a.runHook(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
 	if err != nil {
 		return err
@@ -319,9 +335,20 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 	if event.Control.Consume {
 		return nil
 	}
-	segments = event.Message.Segments
+	hookChangedSegments := !reflect.DeepEqual(event.Message.Segments, segments)
+	if hookChangedSegments {
+		segments = event.Message.Segments
+	} else {
+		segments = inboundContextSegments(ctx, text)
+	}
 	ctx = withInboundSegments(ctx, segments)
 	text = llm.SegmentsTextOnly(segments)
+	if !woken {
+		return nil
+	}
+	text = a.stripWakeupPrefix(ctx, text)
+	segments = replaceInboundTextSegments(ctx, text)
+	ctx = withInboundSegments(ctx, segments)
 	if a.commands.IsCommand(text) {
 		session, sessionErr := a.sessions.Current(ctx, a.scope(ctx))
 		if sessionErr == nil && a.turns.Snapshot(session.ID).Phase == turn.PhaseAwaitRiskConfirm && isRiskConfirmationCommand(text, a.commands) {
@@ -522,6 +549,9 @@ func (a *Agent) SetOutputManager(manager delivery.Manager) {
 func (a *Agent) SetHookManager(manager hook.Manager) {
 	if manager == nil {
 		manager = hook.NoopManager{}
+	}
+	if defaultManager, ok := manager.(*hook.DefaultManager); ok {
+		defaultManager.SetWakeupFunc(a.hookWakeup)
 	}
 	a.hooks = manager
 }
