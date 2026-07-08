@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "4313201a8c8c17c2ef031ce91f1cc2c0ce2f1e7beb09d0c323a5428f37ce1d87",
+      "source_hash": "ede04500b1ed5f006f4b5b301babe2d3093aec639b99693d3d750ef7066cf070",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783479117
+      "updated_at": 1783519200
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -56,9 +56,9 @@
       "updated_at": 1783392534
     },
     "docs/hooks.md": {
-      "source_hash": "7ee7ef0e5f9c6ef275f4f1623383b10f0f4a822febd8ff00ed8a5d2263d8b900",
+      "source_hash": "131ba077e48536cf7b18add8acc2e4b83053aa6386a6218bb4c9b4708fb06573",
       "target": "docs.en/hooks.md",
-      "updated_at": 1783392421
+      "updated_at": 1783521501
     }
   },
   "segments": {
@@ -301,6 +301,14 @@
       "source_hash": "33a2ed6142f63fac0076480da8ce2e21882df328c3016365afaea0d692d9c3b9",
       "translation": "A single LLM streaming request is controlled only by the first packet and idle timeout.",
       "updated_at": 1782574901
+    },
+    "CHANGELOG.md:list:36326ca18c13f00375cdf8134055082ca8bcb7fac1c0539ced4864dc039700ee": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 新增 __ELBOT_CODE_1__ 参数，默认使用 Jina Reader；传 __ELBOT_CODE_2__ 可手动改用直接爬取。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "36326ca18c13f00375cdf8134055082ca8bcb7fac1c0539ced4864dc039700ee",
+      "translation": "__ELBOT_CODE_0__ added the __ELBOT_CODE_1__ parameter, which defaults to using Jina Reader; passing __ELBOT_CODE_2__ allows manually switching to direct crawling.",
+      "updated_at": 1783519200
     },
     "CHANGELOG.md:list:36d8eefabd86733235aa7765b21ab8353754de23bae489203434cee8a682113b": {
       "kind": "list",
@@ -13885,6 +13893,14 @@
       "source_hash": "ce7cca2d4ea553bc687245fa20fc280515e61383dbaa6d692642c846218dc991",
       "translation": "__ELBOT_CODE_0__ can be used for conditional matching, but cannot be edited.\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:d9f8c5cce6259b92d4848c0eb8be7e1c056d33d74521f343e40280c43543aa59": {
+      "kind": "paragraph",
+      "source": "更多 exec 脚本示例（C / C++ / TypeScript）见 [elbot-showcase/hooks](https://github.com/Elfreese/elbot-showcase/tree/main/hooks)。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "d9f8c5cce6259b92d4848c0eb8be7e1c056d33d74521f343e40280c43543aa59",
+      "translation": "More exec script examples (C / C++ / TypeScript) can be found at [elbot-showcase/hooks](https://github.com/Elfreese/elbot-showcase/tree/main/hooks).\n",
+      "updated_at": 1783521501
     },
     "docs/hooks.md:paragraph:dcd8b313aef42dad55528fe0db4e6c30c68dc352ef2c4b005888f6301286dc6f": {
       "kind": "paragraph",
