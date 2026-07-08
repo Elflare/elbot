@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "4313201a8c8c17c2ef031ce91f1cc2c0ce2f1e7beb09d0c323a5428f37ce1d87",
+      "source_hash": "ede04500b1ed5f006f4b5b301babe2d3093aec639b99693d3d750ef7066cf070",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783479117
+      "updated_at": 1783519200
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -301,6 +301,14 @@
       "source_hash": "33a2ed6142f63fac0076480da8ce2e21882df328c3016365afaea0d692d9c3b9",
       "translation": "A single LLM streaming request is controlled only by the first packet and idle timeout.",
       "updated_at": 1782574901
+    },
+    "CHANGELOG.md:list:36326ca18c13f00375cdf8134055082ca8bcb7fac1c0539ced4864dc039700ee": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 新增 __ELBOT_CODE_1__ 参数，默认使用 Jina Reader；传 __ELBOT_CODE_2__ 可手动改用直接爬取。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "36326ca18c13f00375cdf8134055082ca8bcb7fac1c0539ced4864dc039700ee",
+      "translation": "__ELBOT_CODE_0__ added the __ELBOT_CODE_1__ parameter, which defaults to using Jina Reader; passing __ELBOT_CODE_2__ allows manually switching to direct crawling.",
+      "updated_at": 1783519200
     },
     "CHANGELOG.md:list:36d8eefabd86733235aa7765b21ab8353754de23bae489203434cee8a682113b": {
       "kind": "list",
