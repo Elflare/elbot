@@ -235,6 +235,33 @@ func TestWebExtractToolDirectFallbackWithoutJinaKey(t *testing.T) {
 	}
 }
 
+func TestWebExtractToolCanDisableJina(t *testing.T) {
+	t.Setenv(jinaAPIKeyEnv, "jina-test")
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		_, _ = w.Write([]byte(`<!doctype html><html><head><title>Direct</title></head><body><p>直接提取</p></body></html>`))
+	}))
+	defer server.Close()
+
+	extract := NewWebExtractTool()
+	extract.client = server.Client()
+	extract.endpoint = "http://127.0.0.1:1"
+	result, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"` + server.URL + `","jina":false}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("server calls = %d", calls)
+	}
+	if !strings.Contains(result.Content, "Source: direct") || !strings.Contains(result.Content, "Title: Direct") || !strings.Contains(result.Content, "直接提取") {
+		t.Fatalf("content = %q", result.Content)
+	}
+}
+
 func mustParseURL(t *testing.T, raw string) *url.URL {
 	t.Helper()
 	parsed, err := url.Parse(raw)

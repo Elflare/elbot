@@ -40,6 +40,7 @@ type webExtractArgs struct {
 	RemoveSelector string `json:"remove_selector"`
 	TimeoutMS      int    `json:"timeout_ms"`
 	Proxy          string `json:"proxy"`
+	Jina           *bool  `json:"jina"`
 }
 
 type jinaResponse struct {
@@ -117,7 +118,8 @@ func webExtractBuilder() *tool.Builder {
 		Integer("max_chars", "本次最多返回字符数，默认 8000，硬上限 16000。").
 		String("remove_selector", "可选，覆盖默认移除 CSS 选择器：header, .class, #id。").
 		Integer("timeout_ms", "可选，请求超时时间，默认 15000。").
-		String("proxy", "代理设置：不填则使用 WEB_EXTRACT_PROXY 或系统代理；填 disabled 禁用代理；填 URL 使用指定代理。")
+		String("proxy", "代理设置：不填则使用 WEB_EXTRACT_PROXY 或系统代理；填 disabled 禁用代理；填 URL 使用指定代理。").
+		Boolean("jina", "是否使用 Jina Reader 提取网页，默认 true；Jina 失败或效果不佳时可传 false 改用直接爬取。")
 }
 
 func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
@@ -143,12 +145,21 @@ func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.
 		return nil, err
 	}
 	cache := t.extractCache()
-	apiKey, hasJinaKey, err := optionalBuiltinEnv(ctx, jinaAPIKeyEnv)
-	if err != nil {
-		return nil, err
+	useJina := true
+	if args.Jina != nil {
+		useJina = *args.Jina
+	}
+	apiKey := ""
+	hasJinaKey := false
+	if useJina {
+		var err error
+		apiKey, hasJinaKey, err = optionalBuiltinEnv(ctx, jinaAPIKeyEnv)
+		if err != nil {
+			return nil, err
+		}
 	}
 	source := "direct"
-	if hasJinaKey {
+	if useJina && hasJinaKey {
 		source = "jina"
 	}
 	key := extractCacheKey(source, url, selector, proxy)
@@ -156,7 +167,7 @@ func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.
 	if !cached {
 		var fetched cachedExtract
 		var err error
-		if hasJinaKey {
+		if useJina && hasJinaKey {
 			fetched, err = t.fetchJina(ctx, apiKey, url, selector, args.TimeoutMS, proxy)
 		} else {
 			fetched, err = t.fetchDirect(ctx, url, args.TimeoutMS, proxy)

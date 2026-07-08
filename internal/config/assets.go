@@ -237,19 +237,18 @@ model = "deepseek-v4-flash"
 # Optional Elnis LLM model slots. If omitted, each slot falls back to work.
 [mode_models.elwisp1]
 provider = "deepseek"
-model = "deepseek-chat"
+model = "deepseek-v4-flash"
 
 [mode_models.elwisp2]
 provider = "deepseek"
-model = "deepseek-chat"
+model = "deepseek-v4-flash"
 
 [mode_models.elwisp3]
 provider = "deepseek"
-model = "deepseek-chat"
+model = "deepseek-v4-flash"
 `
 
-const defaultSoulMD = `You are ElBot, a helpful assistant.
-
+const defaultSoulMD = `You are ElBot, a helpful assistant. ElBot's repo is https://github.com/Elflare/elbot.
 Keep responses concise, accurate, and friendly. Follow the user's language unless they ask otherwise.
 `
 
