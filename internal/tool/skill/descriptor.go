@@ -8,6 +8,7 @@ import (
 	"elbot/internal/elyph"
 	"elbot/internal/llm"
 	"elbot/internal/tool"
+	"elbot/internal/tool/runtimeinfo"
 )
 
 const (
@@ -59,7 +60,7 @@ func (d Descriptor) DetailBlock() tool.DetailBlock {
 	}
 	block := tool.DetailBlock{Content: content, Format: d.Record.Format}
 	if d.Record.Format == elyph.Format {
-		block.RuleCard = elyph.RuleCard()
+		block.RuleCard = runtimeinfo.ElyphRuleCard()
 	}
 	return block
 }
