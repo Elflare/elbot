@@ -26,9 +26,9 @@
       "updated_at": 1783240887
     },
     "docs/configuration.md": {
-      "source_hash": "90980a762e7ae03afe22e03b7f49c67b463dd98fe81d85728d67d16c6e544b17",
+      "source_hash": "19d07855b431619f32454c37bb657d46be9b6025b307017f0da4c5a7c0150243",
       "target": "docs.en/configuration.md",
-      "updated_at": 1783390929
+      "updated_at": 1783479082
     },
     "docs/elnis-usage.md": {
       "source_hash": "c8d68d4fc76a453ea4008b304cc4d8243b8b2ebc634494f4fb92016b8040c782",
@@ -6542,6 +6542,14 @@
       "translation": "__ELBOT_CODE_0__: The maximum wait time from the start of the response to the first streaming event, defaulting to 180 seconds, suitable for models with slower first-token generation.",
       "updated_at": 1782461691
     },
+    "docs/configuration.md:list:24d279fce38a15b849ee54bafde4bef42d4bb015e20c16be54345ae359232504": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：可选，允许 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "24d279fce38a15b849ee54bafde4bef42d4bb015e20c16be54345ae359232504",
+      "translation": "__ELBOT_CODE_0__: Optional, allows __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, __ELBOT_CODE_5__;",
+      "updated_at": 1783479082
+    },
     "docs/configuration.md:list:253675af53556b235e6784d99667083d22f4b660712adc9a46cf2024c2682e71": {
       "kind": "list",
       "source": "设置为正数时，到时会停止本轮处理并提示用户。",
@@ -6774,6 +6782,14 @@
       "translation": "You can also manually compress the current Session via __ELBOT_CODE_0__.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:59d69db0d23c23007064b2dd2fad00d7c557fdf5e2511a8fb2ab5ac76f21a4f8": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：工具化时必填，JSON object schema，决定 LLM 看到的工具参数。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "59d69db0d23c23007064b2dd2fad00d7c557fdf5e2511a8fb2ab5ac76f21a4f8",
+      "translation": "__ELBOT_CODE_0__: Required for toolization; a JSON object schema that determines the tool parameters seen by the LLM.",
+      "updated_at": 1783479082
+    },
     "docs/configuration.md:list:5c04e7dfd5181188f463c61041eb1f0f5017d1b34bb7afc8defe7353fde3fd2f": {
       "kind": "list",
       "source": "命令行 __ELBOT_CODE_0__。",
@@ -6949,6 +6965,14 @@
       "source_hash": "7f34133b5869a70f57d503c31ad434050ea803efb1c486f3b639c8779e7e4794",
       "translation": "__ELBOT_CODE_0__ and single Elwisp __ELBOT_CODE_1__ are used to explicitly prohibit platforms, private chats, or group chats; `platform-only` in the configuration indicates that all deliveries for the entire platform are disabled.",
       "updated_at": 1782033039
+    },
+    "docs/configuration.md:list:823651d8867281f2e798c088c99573417db41d99b7e89e87b3bb154ca29f1085": {
+      "kind": "list",
+      "source": "注册成普通工具时必填。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "823651d8867281f2e798c088c99573417db41d99b7e89e87b3bb154ca29f1085",
+      "translation": "Required when registering as a regular tool.",
+      "updated_at": 1783479082
     },
     "docs/configuration.md:list:826c019d3d4694805a7bafdcfa232b73d5ca05192f673a07a18bbc62fcf2de40": {
       "kind": "list",
@@ -7134,6 +7158,14 @@
       "translation": "__ELBOT_CODE_0__ provides default request parameters.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:b33076ceb8803e198e53a280166c00b5fade9de12dbbe8a949a94b17fc65b1b4": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：可选，__ELBOT_CODE_1__ 表示只有 ElBot 超级管理员能发现、预载或调用该 Skill。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "b33076ceb8803e198e53a280166c00b5fade9de12dbbe8a949a94b17fc65b1b4",
+      "translation": "__ELBOT_CODE_0__: Optional. __ELBOT_CODE_1__ indicates that only the ElBot superadmin can discover, preload, or call this Skill.",
+      "updated_at": 1783479082
+    },
     "docs/configuration.md:list:b3c89d4eb6d4ce0c054223cfaeb2facff8cb1b12e97b776d854d4c5c6e60a9b1": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__：群聊中超级管理员当前 Session 的闲置过期时间。",
@@ -7246,6 +7278,14 @@
       "translation": "Only after __ELBOT_CODE_0__ or __ELBOT_CODE_1__ successfully hits at least one tool will the current Session activate the prompt for that tag.",
       "updated_at": 1783240925
     },
+    "docs/configuration.md:list:cd239933b038dd742f0b02db0cc4eacdb9254f5846b507e13b6624b2260e0e56": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：工具化时必填，命令数组，不使用 shell 字符串。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "cd239933b038dd742f0b02db0cc4eacdb9254f5846b507e13b6624b2260e0e56",
+      "translation": "__ELBOT_CODE_0__: Required for toolization; a command array, do not use shell strings.",
+      "updated_at": 1783479082
+    },
     "docs/configuration.md:list:cf7eddd7a224ea51aed16f2d053820de607268d3e15169de46e6dc74feeb25a3": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__：规则 Hook 配置。",
@@ -7350,6 +7390,14 @@
       "translation": "You can also use __ELBOT_CODE_0__ to write the configuration directly, but it is not recommended to commit actual tokens.",
       "updated_at": 1781846628
     },
+    "docs/configuration.md:list:e9fcf600642647100aad58e5dcbebc9273a69372cde521aab77a15018b85f8b1": {
+      "kind": "list",
+      "source": "文档型 Skill 未写时按 __ELBOT_CODE_0__ 处理。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e9fcf600642647100aad58e5dcbebc9273a69372cde521aab77a15018b85f8b1",
+      "translation": "When not specified for a documentation-type Skill, it is handled according to __ELBOT_CODE_0__.",
+      "updated_at": 1783479082
+    },
     "docs/configuration.md:list:ebeb56a48082d767b02e47f06df0086ea8bd0345a7f3ad17f034a236a00a1975": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 指向 Bot Token 的变量名，读取顺序为系统环境变量、配置目录 __ELBOT_CODE_1__；",
@@ -7389,6 +7437,14 @@
       "source_hash": "f31646a8be06d4f780c4c5e2e465aa83cfc7dac48d114fae5c53de76cf7571be",
       "translation": "__ELBOT_CODE_0__ points to the Bot Token in the system environment variables; you can also use __ELBOT_CODE_1__ to write it directly into the configuration, but it is not recommended to commit real tokens.",
       "updated_at": 1781839376
+    },
+    "docs/configuration.md:list:fe900b55ac012e73ee1c2a2c7e6974496e4d071ef8b7897ce263805101d2df50": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：工具化时必填，扁平参数映射；__ELBOT_CODE_1__ 会把工具参数 __ELBOT_CODE_2__ 翻译成 __ELBOT_CODE_3__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "fe900b55ac012e73ee1c2a2c7e6974496e4d071ef8b7897ce263805101d2df50",
+      "translation": "__ELBOT_CODE_0__: Required for toolization; a flat parameter mapping. __ELBOT_CODE_1__ will translate tool parameter __ELBOT_CODE_2__ into __ELBOT_CODE_3__.",
+      "updated_at": 1783479082
     },
     "docs/configuration.md:list:ff0bb46d8c01020c512aaf0281ff62576ae04556c98f5f77ba781c26e7a1193c": {
       "kind": "list",
@@ -7486,6 +7542,14 @@
       "translation": "The maximum size for the automatically attached instruction file is 64 KiB. If the limit is exceeded, the content will not be read, nor will it be marked as attached; the tool result will indicate that the file needs to be shortened or split before switching the workspace.\n",
       "updated_at": 1783178826
     },
+    "docs/configuration.md:paragraph:151056656c9b2a6fb3c0870fa2d50fd465cecc7fafd989215af4d48f716cd62d": {
+      "kind": "paragraph",
+      "source": "若要限制文档型 Skill 的可见性，或把 __ELBOT_CODE_0__ 注册成普通工具，在该 Skill 根目录添加 __ELBOT_CODE_1__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "151056656c9b2a6fb3c0870fa2d50fd465cecc7fafd989215af4d48f716cd62d",
+      "translation": "To restrict the visibility of a documentation-type Skill, or to register __ELBOT_CODE_0__ as a regular tool, add __ELBOT_CODE_1__ to the root directory of that Skill.",
+      "updated_at": 1783479082
+    },
     "docs/configuration.md:paragraph:168a6216e54f678c691c9d70050aebdb1a90cbd52d6c163e1d2300a219accbe5": {
       "kind": "paragraph",
       "source": "首次自动生成的文件包括：__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__ 和 __ELBOT_CODE_6__；",
@@ -7533,6 +7597,14 @@
       "source_hash": "1feaca43453e4d561393b74ffa970d1046385242029d7b8497a5857cdfb9f54b",
       "translation": "__ELBOT_CODE_0__ is used by default. If you want to support other command prefixes, you can add them here.\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:2275be5532b121cbdee3c68bba1c8720214133e2f6dab13f388b26c9439ea3ab": {
+      "kind": "paragraph",
+      "source": "未写 __ELBOT_CODE_0__/__ELBOT_CODE_1__/__ELBOT_CODE_2__ 时只作为可见性配置，不会注册成普通工具；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "2275be5532b121cbdee3c68bba1c8720214133e2f6dab13f388b26c9439ea3ab",
+      "translation": "When __ELBOT_CODE_0__/__ELBOT_CODE_1__/__ELBOT_CODE_2__ are not specified, it only serves as a visibility configuration and will not be registered as a regular tool;",
+      "updated_at": 1783479082
     },
     "docs/configuration.md:paragraph:260b5a08ea997de4311bc0c341a4822cc2ef02d11f6d7e068f896a7417aea695": {
       "kind": "paragraph",
@@ -7814,6 +7886,14 @@
       "translation": "__ELBOT_CODE_0__'s __ELBOT_CODE_1__ controls OpenAI-compatible streaming requests, round processing, and retries:\n",
       "updated_at": 1782574866
     },
+    "docs/configuration.md:paragraph:8437841c0244bf25c90b6f8426dc27fdd5cec8a98e03242f50415e6c82600197": {
+      "kind": "paragraph",
+      "source": "写了任一工具化字段后必须补齐完整工具化配置。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "8437841c0244bf25c90b6f8426dc27fdd5cec8a98e03242f50415e6c82600197",
+      "translation": "Once any toolization field is specified, the complete toolization configuration must be provided.",
+      "updated_at": 1783479082
+    },
     "docs/configuration.md:paragraph:853cfdeab0dd75da5628a469411c7c90563a481ae0074e2e1e3d9d2620284dc2": {
       "kind": "paragraph",
       "source": "QQ 官方机器人、QQ OneBot 和 Telegram 配置在示例中默认注释。启用时需要补齐平台自己的认证信息、连接地址或触发关键词。\n",
@@ -7877,6 +7957,14 @@
       "source_hash": "9b5878230e34a540b3bc2f4b759f21a0bf924ce76763874851dd26916e8f921b",
       "translation": "Usage:\n",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:paragraph:9dd2f350b3b601ee91bb15c7dc0e185bec8f2ec085396042db2b6558536df0bd": {
+      "kind": "paragraph",
+      "source": "首次自动生成的文件包括：__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__、__ELBOT_CODE_6__、__ELBOT_CODE_7__、__ELBOT_CODE_8__、__ELBOT_CODE_9__ 和 __ELBOT_CODE_10__；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "9dd2f350b3b601ee91bb15c7dc0e185bec8f2ec085396042db2b6558536df0bd",
+      "translation": "Files automatically generated for the first time include: __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, __ELBOT_CODE_5__, __ELBOT_CODE_6__, __ELBOT_CODE_7__, __ELBOT_CODE_8__, __ELBOT_CODE_9__, and __ELBOT_CODE_10__;",
+      "updated_at": 1783479082
     },
     "docs/configuration.md:paragraph:9df1d86d01117e8f6e59299abf97ac21668c92aa8e8e67bc53e8cfaf0251f30c": {
       "kind": "paragraph",
@@ -8445,6 +8533,14 @@
       "source_hash": "e60b9d9487f22074340403f7da3d9274afae05b1c3a56e28c20cf7cac98d5414",
       "translation": "User-side Skill directory, located in the configuration directory by default.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:table:fe78923ef43170a39aea4acde63295b22b4aacb23b5aa34581faee23e358c1d6": {
+      "kind": "table",
+      "source": "AgentSkill 可在根目录放置 __ELBOT_CODE_0__ 配置可见性或注册为普通工具。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "fe78923ef43170a39aea4acde63295b22b4aacb23b5aa34581faee23e358c1d6",
+      "translation": "AgentSkill can place __ELBOT_CODE_0__ in the root directory to configure visibility or register as a regular tool.",
+      "updated_at": 1783479082
     },
     "docs/configuration.md:table:feadb5db00a4c25043aba57675abb1270384de8f8152b53c90d49003e200b4af": {
       "kind": "table",
