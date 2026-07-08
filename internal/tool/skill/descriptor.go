@@ -8,6 +8,7 @@ import (
 	"elbot/internal/elyph"
 	"elbot/internal/llm"
 	"elbot/internal/tool"
+	"elbot/internal/tool/runtimeinfo"
 )
 
 const (
@@ -32,10 +33,12 @@ func (d Descriptor) Name() string { return d.Record.Name }
 
 func (d Descriptor) Info() tool.Info {
 	return tool.Info{
-		Name:        d.Record.Name,
-		Description: d.Record.Description,
-		Source:      SourceForKind(d.Record.Kind),
-		Risk:        d.Record.Risk,
+		Name:           d.Record.Name,
+		Description:    d.Record.Description,
+		Source:         SourceForKind(d.Record.Kind),
+		Risk:           d.Record.Risk,
+		SuperadminOnly: d.Record.SuperadminOnly,
+		Tags:           d.Record.Tags,
 	}
 }
 
@@ -59,7 +62,7 @@ func (d Descriptor) DetailBlock() tool.DetailBlock {
 	}
 	block := tool.DetailBlock{Content: content, Format: d.Record.Format}
 	if d.Record.Format == elyph.Format {
-		block.RuleCard = elyph.RuleCard()
+		block.RuleCard = runtimeinfo.ElyphRuleCard()
 	}
 	return block
 }

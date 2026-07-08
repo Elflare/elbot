@@ -140,7 +140,7 @@ Tool Runtime 负责注册、schema、权限、风险、确认详情、用户侧 
 
 Skill 分三类：
 
-- AgentSkill：`skills/agent/<name>/SKILL.md`，可选 `ELBOT_SKILL.toml` 工具化。
+- AgentSkill：`skills/agent/<name>/SKILL.md`，可选 `ELBOT_SKILL.toml` 做文档可见性限制或工具化。
 - 原生 EL Skill：使用 `SKILL.elyph` 描述任务和规则，可选 Go 源码。
 - Go skill：`skills/go/<name>/SKILL.elyph`，可选编译产物，通过隐藏 wrapper 执行。
 

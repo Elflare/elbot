@@ -8,15 +8,24 @@ import (
 	"time"
 
 	elcron "elbot/internal/cron"
-	"elbot/internal/elyph"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/tool"
+	"elbot/internal/tool/runtimeinfo"
 )
 
-type CronTool struct{ service *elcron.Service }
-type CronQueryTool struct{ service *elcron.Service }
-type CronWriteTool struct{ service *elcron.Service }
+type CronTool struct {
+	service *elcron.Service
+	info    runtimeinfo.Info
+}
+type CronQueryTool struct {
+	service *elcron.Service
+	info    runtimeinfo.Info
+}
+type CronWriteTool struct {
+	service *elcron.Service
+	info    runtimeinfo.Info
+}
 
 type cronCreateArgs struct {
 	Name                string   `json:"name"`
@@ -63,8 +72,9 @@ type cronWriteArgs struct {
 	Enabled             *bool    `json:"enabled"`
 }
 
-func NewCronTools(service *elcron.Service) []tool.Tool {
-	return []tool.Tool{CronTool{service}, CronQueryTool{service}, CronWriteTool{service}}
+func NewCronTools(service *elcron.Service, infos ...runtimeinfo.Info) []tool.Tool {
+	info := runtimeinfo.First(infos...)
+	return []tool.Tool{CronTool{service: service, info: info}, CronQueryTool{service: service, info: info}, CronWriteTool{service: service, info: info}}
 }
 
 func (t CronTool) Name() string { return "cron" }
@@ -75,8 +85,15 @@ func (t CronTool) Schema() llm.ToolSchema {
 	return cronBuilder(t.Name(), t.Info().Description).BuildSchema()
 }
 func (t CronTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	now := time.Now().Format("2006-01-02 15:04:05")
+	now := t.info.CurrentTime().Format("2006-01-02 15:04:05")
 	return textResult("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。"), nil
+}
+
+// DiscoveryContent appends the current local time to the discover_tool text.
+// The cron entry tool is the natural place to surface this because users often
+// discover cron tools to set up time-based reminders.
+func (t CronTool) DiscoveryContent() (string, bool) {
+	return "当前本地时间：" + t.info.CurrentTime().Format("2006-01-02 15:04:05"), false
 }
 
 func (t CronQueryTool) Name() string { return "cron_query" }
@@ -170,7 +187,7 @@ func (t CronWriteTool) create(ctx context.Context, args cronWriteArgs) (*tool.Re
 		allEnabledPlatforms = *args.AllEnabledPlatforms
 	}
 	createArgs := cronCreateArgs{Name: args.Name, Title: args.Title, ScheduleMode: args.ScheduleMode, RunAt: args.RunAt, CronExpr: args.CronExpr, RunAfterMinutes: args.RunAfterMinutes, RunAfterHours: args.RunAfterHours, RunAfterDays: args.RunAfterDays, RunAfterWeeks: args.RunAfterWeeks, RunAfterMonths: args.RunAfterMonths, TriggerMode: args.TriggerMode, Message: args.Message, ToolListNames: args.ToolListNames, SessionMode: args.SessionMode, AllEnabledPlatforms: allEnabledPlatforms, Enabled: args.Enabled}
-	runAt, err := resolveCreateRunAt(createArgs)
+	runAt, err := resolveCreateRunAtAt(createArgs, t.info.CurrentTime())
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +199,7 @@ func (t CronWriteTool) create(ctx context.Context, args cronWriteArgs) (*tool.Re
 }
 
 func (t CronWriteTool) update(ctx context.Context, args cronWriteArgs) (*tool.Result, error) {
-	runAt, err := resolveUpdateRunAt(stringPtrIfNotEmpty(args.RunAt), relativeOffset{Minutes: args.RunAfterMinutes, Hours: args.RunAfterHours, Days: args.RunAfterDays, Weeks: args.RunAfterWeeks, Months: args.RunAfterMonths})
+	runAt, err := resolveUpdateRunAtAt(stringPtrIfNotEmpty(args.RunAt), relativeOffset{Minutes: args.RunAfterMinutes, Hours: args.RunAfterHours, Days: args.RunAfterDays, Weeks: args.RunAfterWeeks, Months: args.RunAfterMonths}, t.info.CurrentTime())
 	if err != nil {
 		return nil, err
 	}
@@ -206,10 +223,18 @@ func (t CronWriteTool) update(ctx context.Context, args cronWriteArgs) (*tool.Re
 }
 
 func resolveCreateRunAt(args cronCreateArgs) (string, error) {
-	return resolveRunAt(args.RunAt, relativeOffset{Minutes: args.RunAfterMinutes, Hours: args.RunAfterHours, Days: args.RunAfterDays, Weeks: args.RunAfterWeeks, Months: args.RunAfterMonths})
+	return resolveCreateRunAtAt(args, time.Now())
+}
+
+func resolveCreateRunAtAt(args cronCreateArgs, now time.Time) (string, error) {
+	return resolveRunAtAt(args.RunAt, relativeOffset{Minutes: args.RunAfterMinutes, Hours: args.RunAfterHours, Days: args.RunAfterDays, Weeks: args.RunAfterWeeks, Months: args.RunAfterMonths}, now)
 }
 
 func resolveUpdateRunAt(runAt *string, offset relativeOffset) (*string, error) {
+	return resolveUpdateRunAtAt(runAt, offset, time.Now())
+}
+
+func resolveUpdateRunAtAt(runAt *string, offset relativeOffset, now time.Time) (*string, error) {
 	if !offset.hasAny() {
 		return runAt, nil
 	}
@@ -217,7 +242,7 @@ func resolveUpdateRunAt(runAt *string, offset relativeOffset) (*string, error) {
 	if runAt != nil {
 		value = *runAt
 	}
-	resolved, err := resolveRunAt(value, offset)
+	resolved, err := resolveRunAtAt(value, offset, now)
 	if err != nil {
 		return nil, err
 	}
@@ -237,6 +262,10 @@ func (o relativeOffset) hasAny() bool {
 }
 
 func resolveRunAt(runAt string, offset relativeOffset) (string, error) {
+	return resolveRunAtAt(runAt, offset, time.Now())
+}
+
+func resolveRunAtAt(runAt string, offset relativeOffset, now time.Time) (string, error) {
 	runAt = strings.TrimSpace(runAt)
 	if !offset.hasAny() {
 		return runAt, nil
@@ -245,18 +274,17 @@ func resolveRunAt(runAt string, offset relativeOffset) (string, error) {
 		return "", fmt.Errorf("run_at 不能和 run_after_* 同时传；请只使用绝对时间或相对偏移之一")
 	}
 	if offset.Minutes < 0 || offset.Hours < 0 || offset.Days < 0 || offset.Weeks < 0 || offset.Months < 0 {
-		return "", fmt.Errorf("run_after_* 必须是正数；当前本地时间：%s", time.Now().Format("2006-01-02 15:04:05"))
+		return "", fmt.Errorf("run_after_* 必须是正数；当前本地时间：%s", now.Format("2006-01-02 15:04:05"))
 	}
 	if offset.Months == 0 && offset.Weeks == 0 && offset.Days == 0 && offset.Hours == 0 && offset.Minutes == 0 {
-		return "", fmt.Errorf("run_after_* 至少需要一个正数；当前本地时间：%s", time.Now().Format("2006-01-02 15:04:05"))
+		return "", fmt.Errorf("run_after_* 至少需要一个正数；当前本地时间：%s", now.Format("2006-01-02 15:04:05"))
 	}
-	now := time.Now()
 	run := now.AddDate(0, offset.Months, offset.Weeks*7+offset.Days).Add(time.Duration(offset.Hours)*time.Hour + time.Duration(offset.Minutes)*time.Minute)
 	return run.Format("2006-01-02 15:04:05"), nil
 }
 
 func cronWriteDescription() string {
-	return "创建、Patch 更新、停用或硬删除 cron。\n\n" + elyph.RuleCard() + `
+	return "创建、Patch 更新、停用或硬删除 cron。\n\n" + runtimeinfo.ElyphRuleCard() + `
 
 #task cron_write_desc - cron_write 总规则
 ** operation=create 时创建一次性或周期 cron；title、schedule_mode、trigger_mode、message 通常需要填写

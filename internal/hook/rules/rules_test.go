@@ -2,9 +2,11 @@ package rules
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,10 +37,23 @@ func TestExecHelperProcess(t *testing.T) {
 		writeProtocolTestOutput(strings.Join(os.Args[marker+1:], " "))
 	case "done-message":
 		fmt.Fprintln(os.Stdout, `{"type":"done","matched":true,"result":"ok","message":{"text":"clean"}}`)
+	case "done-result":
+		result := "ok"
+		if marker+1 < len(os.Args) {
+			result = os.Args[marker+1]
+		}
+		data, _ := json.Marshal(map[string]any{"type": "done", "matched": true, "result": result})
+		fmt.Fprintln(os.Stdout, string(data))
 	case "unmatched":
 		output, _ := json.Marshal(map[string]any{"type": "output", "outputs": []map[string]any{{"kind": "text", "text": "should not survive"}}})
 		fmt.Fprintln(os.Stdout, string(output))
 		fmt.Fprintln(os.Stdout, `{"type":"done","matched":false}`)
+	case "stderr-success":
+		fmt.Fprintln(os.Stderr, "plugin diagnostic")
+		fmt.Fprintln(os.Stdout, `{"type":"done","matched":true,"result":"ok"}`)
+	case "stderr-no-newline":
+		fmt.Fprint(os.Stderr, "partial diagnostic")
+		fmt.Fprintln(os.Stdout, `{"type":"done","matched":true,"result":"ok"}`)
 	case "stdin":
 		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 		var frame map[string]any
@@ -66,9 +81,49 @@ func TestExecHelperProcess(t *testing.T) {
 	case "invalid-json-stderr":
 		fmt.Fprintln(os.Stderr, "bad json stderr")
 		fmt.Fprintln(os.Stdout, `{not json`)
+	case "unknown-frame":
+		fmt.Fprintln(os.Stdout, `{"type":"mystery"}`)
+	case "bad-output":
+		fmt.Fprintln(os.Stdout, `{"type":"output","output":{"kind":"text","text":"wrong field"}}`)
+	case "plugin-error-frame":
+		fmt.Fprintln(os.Stdout, `{"type":"error","error":"plugin said no"}`)
+	case "stderr-no-newline-crash":
+		fmt.Fprint(os.Stderr, "partial crash diagnostic")
+		os.Exit(8)
+	case "many-stderr":
+		for i := 0; i < 25; i++ {
+			fmt.Fprintf(os.Stderr, "stderr line %02d\n", i)
+		}
+		os.Exit(9)
 	case "sleep-stderr":
 		fmt.Fprintln(os.Stderr, "waiting forever")
 		time.Sleep(5 * time.Second)
+	case "close-stdin-after-request":
+		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+		_ = os.Stdin.Close()
+		time.Sleep(100 * time.Millisecond)
+		fmt.Fprintln(os.Stdout, `{"type":"request","id":"reply","method":"message.get_reply"}`)
+		time.Sleep(5 * time.Second)
+	case "signal-and-wait":
+		if marker+2 >= len(os.Args) {
+			os.Exit(2)
+		}
+		if err := os.WriteFile(os.Args[marker+1], []byte("ready"), 0o644); err != nil {
+			fmt.Fprint(os.Stderr, err)
+			os.Exit(1)
+		}
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			if _, err := os.Stat(os.Args[marker+2]); err == nil {
+				fmt.Fprintln(os.Stdout, `{"type":"done","matched":true,"result":"ready"}`)
+				break
+			}
+			if time.Now().After(deadline) {
+				fmt.Fprintln(os.Stderr, "timed out waiting for peer marker")
+				os.Exit(10)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 	default:
 		os.Exit(2)
 	}
@@ -643,6 +698,82 @@ func TestExecDoneUnmatchedRollsBackAndSkipsRemainingActions(t *testing.T) {
 	}
 }
 
+func TestExecSuccessLogsStderrWithoutReadFailure(t *testing.T) {
+	var logs bytes.Buffer
+	module := Module{Logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))}
+	_, err := module.runRule(context.Background(), Rule{Actions: []Action{{
+		Name:    "script",
+		Type:    "exec",
+		Command: execHelperCommand("stderr-success"),
+	}}}, hook.Event{Point: hook.PointLLMResponseReceived})
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	gotLogs := logs.String()
+	if !strings.Contains(gotLogs, "hook exec stderr") || !strings.Contains(gotLogs, "plugin diagnostic") {
+		t.Fatalf("logs missing stderr line:\n%s", gotLogs)
+	}
+	if strings.Contains(gotLogs, "read failed") || strings.Contains(gotLogs, "file already closed") {
+		t.Fatalf("stderr logging reported internal read failure:\n%s", gotLogs)
+	}
+}
+
+func TestExecFlushesStderrWithoutTrailingNewline(t *testing.T) {
+	var logs bytes.Buffer
+	module := Module{Logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))}
+	_, err := module.runRule(context.Background(), Rule{Actions: []Action{{
+		Type:    "exec",
+		Command: execHelperCommand("stderr-no-newline"),
+	}}}, hook.Event{Point: hook.PointLLMResponseReceived})
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if gotLogs := logs.String(); !strings.Contains(gotLogs, "partial diagnostic") {
+		t.Fatalf("logs missing partial stderr line:\n%s", gotLogs)
+	}
+}
+
+func TestExecActionsRunSynchronouslyInOrder(t *testing.T) {
+	module := Module{}
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
+		{Name: "first", Type: "exec", Command: execHelperCommand("done-result", "one")},
+		{Type: "send", Text: "{{actions.first.result}}"},
+	}}, hook.Event{Point: hook.PointLLMResponseReceived})
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 || got.Outputs[0].Text != "one" {
+		t.Fatalf("outputs = %#v, want result from completed first exec", got.Outputs)
+	}
+}
+
+func TestExecRunsDoNotShareGlobalBlockingLock(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "left.ready")
+	right := filepath.Join(dir, "right.ready")
+	run := func(self, peer string) error {
+		_, err := Module{}.runRule(context.Background(), Rule{Actions: []Action{{
+			Type:           "exec",
+			Command:        execHelperCommand("signal-and-wait", self, peer),
+			TimeoutSeconds: 4,
+		}}}, hook.Event{Point: hook.PointLLMResponseReceived})
+		return err
+	}
+	errCh := make(chan error, 2)
+	go func() { errCh <- run(left, right) }()
+	go func() { errCh <- run(right, left) }()
+	for i := 0; i < 2; i++ {
+		select {
+		case err := <-errCh:
+			if err != nil {
+				t.Fatalf("parallel exec run failed: %v", err)
+			}
+		case <-time.After(6 * time.Second):
+			t.Fatal("parallel exec runs blocked each other")
+		}
+	}
+}
+
 func TestExecFailuresIncludeStderrTail(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -671,6 +802,16 @@ func TestExecFailuresIncludeStderrTail(t *testing.T) {
 			timeoutSeconds: 1,
 			want:           []string{"exec timed out after 1s", "stderr:", "waiting forever"},
 		},
+		{
+			name:   "stderr without trailing newline",
+			helper: "stderr-no-newline-crash",
+			want:   []string{"exec failed", "stderr:", "partial crash diagnostic"},
+		},
+		{
+			name:   "many stderr lines keeps tail",
+			helper: "many-stderr",
+			want:   []string{"exec failed", "stderr:", "earlier stderr lines omitted", "stderr line 24"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -688,6 +829,62 @@ func TestExecFailuresIncludeStderrTail(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestExecProtocolErrorsIdentifyPluginProblem(t *testing.T) {
+	tests := []struct {
+		name   string
+		helper string
+		want   []string
+	}{
+		{
+			name:   "unknown frame",
+			helper: "unknown-frame",
+			want:   []string{"unsupported hook protocol frame", "stdout line 1", "mystery"},
+		},
+		{
+			name:   "bad output field",
+			helper: "bad-output",
+			want:   []string{"missing required field \"outputs\"", "output frames must be"},
+		},
+		{
+			name:   "plugin error frame",
+			helper: "plugin-error-frame",
+			want:   []string{"hook protocol error frame from plugin", "plugin said no"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Module{}.runRule(context.Background(), Rule{Actions: []Action{{
+				Type:    "exec",
+				Command: execHelperCommand(tt.helper),
+			}}}, hook.Event{Point: hook.PointLLMResponseReceived})
+			if err == nil {
+				t.Fatal("expected exec error")
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("error = %q, want %q", err.Error(), want)
+				}
+			}
+		})
+	}
+}
+
+func TestExecResponseWriteFailureIdentifiesPluginStdinProblem(t *testing.T) {
+	_, err := Module{}.runRule(context.Background(), Rule{Actions: []Action{{
+		Type:           "exec",
+		Command:        execHelperCommand("close-stdin-after-request"),
+		TimeoutSeconds: 2,
+	}}}, hook.Event{Point: hook.PointLLMResponseReceived})
+	if err == nil {
+		t.Fatal("expected exec error")
+	}
+	for _, want := range []string{"write hook plugin stdin response frame failed", "closed stdin"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %q, want %q", err.Error(), want)
+		}
 	}
 }
 

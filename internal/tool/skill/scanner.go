@@ -242,12 +242,14 @@ func (s FilesystemScanner) withAgentManifest(record Record) Record {
 	if found {
 		record.Manifest = manifest
 		record.Risk = manifest.Risk
+		record.SuperadminOnly = manifest.SuperadminOnly
+		record.Tags = manifest.Tags
 	}
 	return record
 }
 
 func toolForRecord(record Record) tool.Tool {
-	if record.Kind == KindAgent && record.ManifestFound && record.ManifestError == "" {
+	if record.Kind == KindAgent && record.ManifestFound && record.ManifestError == "" && record.Manifest.Callable {
 		return NewCommandTool(record)
 	}
 	return NewDescriptor(record)

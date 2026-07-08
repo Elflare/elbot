@@ -16,7 +16,7 @@ All configuration files are automatically generated from the program's built-in 
 | `SOUL.md` | The System Prompt source file for the Agent. |
 | `.env` | Optional, local key file, not recommended for submission; the one automatically generated the first time is `.env.example`, and `.env` will not be generated directly. |
 | `plugins/` | Hook and plugin configuration directory. |
-| `skills/` | User-side Skill directory, located in the configuration directory by default; The current subdirectories are `skills/agent/` and `skills/go/`. AgentSkill can be registered as a regular tool by placing `ELBOT_SKILL.toml` in the root directory. |
+| `skills/` | User-side Skill directory, located in the configuration directory by default; The current subdirectories are `skills/agent/` and `skills/go/`. AgentSkill can place `ELBOT_SKILL.toml` in the root directory to configure visibility or register as a regular tool. |
 | `memories.toml` | Resident memory file, located in the configuration directory by default. |
 | `long_memory/` | Long-term memory Markdown source data directory, located in the configuration directory by default. |
 
@@ -31,7 +31,7 @@ The main configuration is searched in the following order upon startup:
 
 The content of the automatically generated default configuration comes from the program's built-in assets, and existing files will not be overwritten. Automatic generation is only triggered when there are no explicit `--config` and `ELBOT_CONFIG_FILE`. If the explicitly specified configuration path does not exist, ElBot will report an error instead of silently generating it, to avoid masking path spelling errors.
 
-The files automatically generated for the first time include: `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `memories.toml`, `elnis.toml`, `skills/agent/agent_skill_creator/SKILL.md`, `skills/agent/write_elbot_hook/SKILL.md`, and `.env.example`; At the same time, the directories `skills/`, `skills/agent/`, `skills/go/`, `plugins/`, and `long_memory/` will be created. Existing files will not be overwritten. `elnis.toml` is `enabled=false` by default and will not start HTTP listening on the first run. Skill scanning is executed with a delay after startup; when `discover_tool` is used for the first time, it will either wait as a fallback or trigger a scan.
+Files automatically generated for the first time include: `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `memories.toml`, `elnis.toml`, `skills/agent/agent_skill_creator/SKILL.md`, `skills/agent/agent_skill_creator/ELBOT_SKILL.toml`, `skills/agent/write_elbot_hook/SKILL.md`, `skills/agent/write_elbot_hook/ELBOT_SKILL.toml`, and `.env.example`; At the same time, the directories `skills/`, `skills/agent/`, `skills/go/`, `plugins/`, and `long_memory/` will be created. Existing files will not be overwritten. `elnis.toml` is `enabled=false` by default and will not start HTTP listening on the first run. Skill scanning is executed with a delay after startup; when `discover_tool` is used for the first time, it will either wait as a fallback or trigger a scan.
 
 
 During the development phase, you can run it directly to use the platform configuration directory; default configurations will be automatically generated upon the first run:
@@ -196,10 +196,16 @@ token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
 
 ## AgentSkill Tooling Configuration
 
-By default, AgentSkill is used only as documentation; If the script is executed according to the documentation, the risk is borne by the tools actually called, such as `shell`. To register `skills/agent/<skill>/` as a regular tool, add `ELBOT_SKILL.toml` to the root directory of that Skill; the tool risk is subject to the `risk` within it. The default generated `agent_skill_creator` Skill can be used to view instructions and assist in creating the file:
+By default, AgentSkill is used only as documentation; If the script is executed according to the documentation, the risk is borne by the tools actually called, such as `shell`. To restrict the visibility of a documentation-type Skill, or to register `skills/agent/<skill>/` as a regular tool, add `ELBOT_SKILL.toml` to the root directory of that Skill. When `command`/`parameters`/`[args]` are not specified, it only serves as a visibility configuration and will not be registered as a regular tool; Once any toolization field is specified, the complete toolization configuration must be provided. The default generated `agent_skill_creator` Skill can be used to view instructions and assist in creating the file:
+
+```toml
+risk = "high"
+superadmin_only = true
+```
 
 ```toml
 risk = "medium"
+superadmin_only = false
 tags = ["doc"]
 command = ["python", "foo.py"]
 timeout_seconds = 30
@@ -221,11 +227,12 @@ input = "--input"
 
 Field descriptions:
 
-- `risk`: Required, allows `safe`, `low`, `medium`, `high`, `critical`.
+- `risk`: Optional, allows `safe`, `low`, `medium`, `high`, `critical`; Required when registering as a regular tool. When not specified for a documentation-type Skill, it is handled according to `safe`.
+- `superadmin_only`: Optional. `true` indicates that only the ElBot superadmin can discover, preload, or call this Skill.
 - `tags`: Optional, equivalent to categorizing the tool, which can be used for `@tool:<tag>` preloading.
-- `command`: Required, command array, do not use shell strings.
-- `parameters`: Required, JSON object schema, determines the tool parameters seen by the LLM.
-- `[args]`: Required, flat parameter mapping; `input = "--input"` translates tool parameter `input` into `--input <value>`.
+- `command`: Required for toolization; a command array, do not use shell strings.
+- `parameters`: Required for toolization; a JSON object schema that determines the tool parameters seen by the LLM.
+- `[args]`: Required for toolization; a flat parameter mapping. `input = "--input"` will translate tool parameter `input` into `--input <value>`.
 - `timeout_seconds`: Optional, command timeout.
 - `expose_root`: Optional, defaults to `false`; when set to `true`, the Skill root path will be exposed upon discovering the Skill.
 
