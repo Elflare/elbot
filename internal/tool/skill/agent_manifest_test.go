@@ -4,6 +4,7 @@ import "testing"
 
 func TestParseAgentSkillManifestValid(t *testing.T) {
 	manifest, err := ParseAgentSkillManifest([]byte(`risk = "medium"
+superadmin_only = true
 tags = ["doc", "doc", "convert"]
 command = ["python", "foo.py"]
 timeout_seconds = 30
@@ -19,11 +20,38 @@ mode = "--mode"
 	if err != nil {
 		t.Fatalf("ParseAgentSkillManifest: %v", err)
 	}
-	if manifest.Risk != "medium" || len(manifest.Command) != 2 || !manifest.ExposeRoot || manifest.Args["input"] != "--input" {
+	if manifest.Risk != "medium" || !manifest.SuperadminOnly || len(manifest.Command) != 2 || !manifest.ExposeRoot || manifest.Args["input"] != "--input" || !manifest.Callable {
 		t.Fatalf("manifest = %#v", manifest)
 	}
 	if len(manifest.Tags) != 2 || manifest.Tags[0] != "doc" || manifest.Tags[1] != "convert" {
 		t.Fatalf("tags = %#v", manifest.Tags)
+	}
+}
+
+func TestParseAgentSkillManifestAllowsDocumentPolicyOnly(t *testing.T) {
+	manifest, err := ParseAgentSkillManifest([]byte(`risk = "high"
+superadmin_only = true
+tags = ["private"]
+`))
+	if err != nil {
+		t.Fatalf("ParseAgentSkillManifest: %v", err)
+	}
+	if manifest.Risk != "high" || !manifest.SuperadminOnly || manifest.Callable {
+		t.Fatalf("manifest = %#v", manifest)
+	}
+	if len(manifest.Tags) != 1 || manifest.Tags[0] != "private" {
+		t.Fatalf("tags = %#v", manifest.Tags)
+	}
+}
+
+func TestParseAgentSkillManifestAllowsSuperadminOnlyWithoutRisk(t *testing.T) {
+	manifest, err := ParseAgentSkillManifest([]byte(`superadmin_only = true
+`))
+	if err != nil {
+		t.Fatalf("ParseAgentSkillManifest: %v", err)
+	}
+	if manifest.Risk != "safe" || !manifest.SuperadminOnly || manifest.Callable {
+		t.Fatalf("manifest = %#v", manifest)
 	}
 }
 

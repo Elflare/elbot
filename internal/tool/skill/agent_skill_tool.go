@@ -141,8 +141,10 @@ func readAgentSkillConfig(record Record, path string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "AgentSkill: %s\n", record.Name)
 	fmt.Fprintf(&b, "Config file: %s\n", AgentSkillConfigFile)
-	if record.ManifestFound && record.ManifestError == "" {
+	if record.ManifestFound && record.ManifestError == "" && record.Manifest.Callable {
 		b.WriteString("Status: callable\n")
+	} else if record.ManifestFound && record.ManifestError == "" {
+		b.WriteString("Status: document-only\nPolicy: configured\n")
 	} else if record.ManifestFound {
 		fmt.Fprintf(&b, "Status: invalid\nError: %s\n", record.ManifestError)
 	} else {
@@ -158,6 +160,6 @@ func readAgentSkillConfig(record Record, path string) string {
 		b.WriteString("\nNo current TOML.\n")
 	}
 	b.WriteString("\nFormat:\n")
-	b.WriteString("risk = \"medium\"\ntags = [\"doc\"]\ncommand = [\"python\", \"foo.py\"]\ntimeout_seconds = 30\nexpose_root = false\n\nparameters = '''\n{\n  \"type\": \"object\",\n  \"required\": [\"input\"],\n  \"properties\": {\n    \"input\": {\"type\": \"string\", \"description\": \"输入文本\"},\n    \"mode\": {\"type\": \"string\", \"description\": \"处理模式\"}\n  }\n}\n'''\n\n[args]\ninput = \"--input\"\nmode = \"--mode\"\n")
+	b.WriteString("# 文档型 Skill 只限制可见性时，可以只写：\nrisk = \"high\"\nsuperadmin_only = true\n\n# 注册成普通工具时，补齐命令和 schema：\nrisk = \"medium\"\nsuperadmin_only = false\ntags = [\"doc\"]\ncommand = [\"python\", \"foo.py\"]\ntimeout_seconds = 30\nexpose_root = false\n\nparameters = '''\n{\n  \"type\": \"object\",\n  \"required\": [\"input\"],\n  \"properties\": {\n    \"input\": {\"type\": \"string\", \"description\": \"输入文本\"},\n    \"mode\": {\"type\": \"string\", \"description\": \"处理模式\"}\n  }\n}\n'''\n\n[args]\ninput = \"--input\"\nmode = \"--mode\"\n")
 	return strings.TrimRight(b.String(), "\n")
 }
