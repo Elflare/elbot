@@ -54,17 +54,13 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 	if err != nil {
 		return event, actionResult{Error: err.Error()}, err
 	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return event, actionResult{Error: err.Error()}, err
-	}
+	stderrTail := newExecStderrTail()
+	stderrLogger := newExecStderrLogger(m, action, stderrTail)
+	cmd.Stderr = stderrLogger
 	if err := cmd.Start(); err != nil {
 		return event, actionResult{Error: err.Error()}, err
 	}
 	defer stdin.Close()
-	stderrTail := newExecStderrTail()
-	stderrDone := make(chan struct{})
-	go m.logExecStderr(stderr, action, stderrTail, stderrDone)
 	waited := false
 	waitExec := func() error {
 		if waited {
@@ -72,7 +68,7 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		}
 		waited = true
 		err := cmd.Wait()
-		<-stderrDone
+		stderrLogger.Flush()
 		return err
 	}
 	failExec := func(result actionResult, err error, kill bool) (hook.Event, actionResult, error) {
@@ -102,7 +98,7 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		},
 	}
 	if err := writeProtocolFrame(stdin, init); err != nil {
-		return failExec(actionResult{}, err, true)
+		return failExec(actionResult{}, pluginStdinWriteError("init", err), true)
 	}
 
 	done := false
@@ -117,7 +113,7 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		}
 		var frame map[string]json.RawMessage
 		if err := json.Unmarshal([]byte(line), &frame); err != nil {
-			err = fmt.Errorf("parse hook protocol frame at stdout line %d: %w; line=%s", lineNo, err, shortProtocolLine(line))
+			err = fmt.Errorf("parse hook protocol frame from plugin stdout line %d: %w; line=%s", lineNo, err, shortProtocolLine(line))
 			return failExec(actionResult{}, err, true)
 		}
 		updated, frameResult, frameDone, err := m.handleProtocolFrame(runCtx, stdin, event, action, state, frame, lineNo, line)
@@ -131,14 +127,14 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return failExec(actionResult{}, err, true)
+		return failExec(actionResult{}, fmt.Errorf("read hook plugin stdout: %w", err), true)
 	}
 	if err := waitExec(); err != nil {
 		err = withExecStderr(execProcessError(runCtx, action, err), stderrTail.String())
 		return event, actionResult{Error: err.Error()}, err
 	}
 	if !done {
-		err := fmt.Errorf("hook protocol missing done frame")
+		err := fmt.Errorf("hook protocol missing done frame from plugin")
 		err = withExecStderr(err, stderrTail.String())
 		return event, actionResult{Error: err.Error()}, err
 	}
@@ -155,13 +151,19 @@ func (m Module) handleProtocolFrame(ctx context.Context, stdin io.Writer, event 
 		}
 		event.Outputs = append(event.Outputs, outputs...)
 		if id := frameString(frame, "id"); id != "" {
-			_ = writeProtocolResponse(stdin, id, map[string]any{"queued": true}, nil)
+			if err := writeProtocolResponse(stdin, id, map[string]any{"queued": true}, nil); err != nil {
+				err = pluginStdinWriteError("response", err)
+				return event, actionResult{Error: err.Error()}, false, err
+			}
 		}
 		return event, actionResult{}, false, nil
 	case "request":
 		result, err := m.handleProtocolRequest(ctx, event, action, state, frame)
 		if id := frameString(frame, "id"); id != "" {
-			_ = writeProtocolResponse(stdin, id, result, err)
+			if writeErr := writeProtocolResponse(stdin, id, result, err); writeErr != nil {
+				writeErr = pluginStdinWriteError("response", writeErr)
+				return event, actionResult{Error: writeErr.Error()}, false, writeErr
+			}
 		}
 		if err != nil {
 			return event, actionResult{Error: err.Error()}, false, err
@@ -210,7 +212,7 @@ func (m Module) handleProtocolFrame(ctx context.Context, stdin io.Writer, event 
 		if msg == "" {
 			msg = "hook protocol error frame"
 		}
-		return event, actionResult{Error: msg}, false, fmt.Errorf("hook protocol error: %s", msg)
+		return event, actionResult{Error: msg}, false, fmt.Errorf("hook protocol error frame from plugin: %s", msg)
 	default:
 		err := protocolFrameError(lineNo, typ, line, fmt.Sprintf("unsupported hook protocol frame %q", typ))
 		return event, actionResult{Error: "unsupported protocol frame"}, false, err
@@ -394,14 +396,22 @@ func writeProtocolResponse(w io.Writer, id string, result any, sourceErr error) 
 	return writeProtocolFrame(w, resp)
 }
 
+func pluginStdinWriteError(frame string, err error) error {
+	frame = strings.TrimSpace(frame)
+	if frame == "" {
+		frame = "protocol"
+	}
+	return fmt.Errorf("write hook plugin stdin %s frame failed; plugin may have exited early or closed stdin: %w", frame, err)
+}
+
 func execProcessError(ctx context.Context, action Action, err error) error {
 	if action.TimeoutSeconds > 0 && errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return fmt.Errorf("exec timed out after %ds", action.TimeoutSeconds)
+		return fmt.Errorf("hook plugin exec timed out after %ds", action.TimeoutSeconds)
 	}
 	if err != nil {
-		return fmt.Errorf("exec failed: %w", err)
+		return fmt.Errorf("hook plugin exec failed: %w", err)
 	}
-	return fmt.Errorf("exec failed")
+	return fmt.Errorf("hook plugin exec failed")
 }
 
 func withExecStderr(err error, stderr string) error {
@@ -457,20 +467,58 @@ func (t *execStderrTail) String() string {
 	return out
 }
 
-func (m Module) logExecStderr(r io.Reader, action Action, tail *execStderrTail, done chan<- struct{}) {
-	defer close(done)
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if tail != nil {
-			tail.Add(line)
+type execStderrLogger struct {
+	mu      sync.Mutex
+	module  Module
+	action  Action
+	tail    *execStderrTail
+	pending strings.Builder
+}
+
+func newExecStderrLogger(module Module, action Action, tail *execStderrTail) *execStderrLogger {
+	return &execStderrLogger{module: module, action: action, tail: tail}
+}
+
+func (w *execStderrLogger) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	n := len(p)
+	for len(p) > 0 {
+		if i := strings.IndexByte(string(p), '\n'); i >= 0 {
+			w.pending.Write(p[:i])
+			w.emitLocked(w.pending.String())
+			w.pending.Reset()
+			p = p[i+1:]
+			continue
 		}
-		if line != "" && m.Logger != nil {
-			m.Logger.Info("hook exec stderr", "rule", firstNonEmpty(action.source.FinalName, action.Name), "line", line)
+		w.pending.Write(p)
+		const maxPending = 4096
+		if w.pending.Len() >= maxPending {
+			w.emitLocked(w.pending.String())
+			w.pending.Reset()
 		}
+		break
 	}
-	if err := scanner.Err(); err != nil && m.Logger != nil {
-		m.Logger.Warn("hook exec stderr read failed", "rule", firstNonEmpty(action.source.FinalName, action.Name), "error", err)
+	return n, nil
+}
+
+func (w *execStderrLogger) Flush() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.pending.Len() == 0 {
+		return
+	}
+	w.emitLocked(w.pending.String())
+	w.pending.Reset()
+}
+
+func (w *execStderrLogger) emitLocked(line string) {
+	line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+	if w.tail != nil {
+		w.tail.Add(line)
+	}
+	if line != "" && w.module.Logger != nil {
+		w.module.Logger.Info("hook exec stderr", "rule", firstNonEmpty(w.action.source.FinalName, w.action.Name), "line", line)
 	}
 }
 
