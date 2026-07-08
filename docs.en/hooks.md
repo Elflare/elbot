@@ -751,3 +751,5 @@ if __name__ == "__main__":
 - `field = "llm.text"` allows the `text` returned by the script to overwrite the LLM response text, removing the extracted tokens.
 - When `field` is not set, the script only produces outputs without modifying the original text (suitable for scenarios such as "send a notification when content is detected but do not modify the original text").
 
+More exec script examples (C / C++ / TypeScript) can be found at [elbot-showcase/hooks](https://github.com/Elfreese/elbot-showcase/tree/main/hooks).
+

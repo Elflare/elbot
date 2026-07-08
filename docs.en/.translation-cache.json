@@ -56,9 +56,9 @@
       "updated_at": 1783392534
     },
     "docs/hooks.md": {
-      "source_hash": "7ee7ef0e5f9c6ef275f4f1623383b10f0f4a822febd8ff00ed8a5d2263d8b900",
+      "source_hash": "131ba077e48536cf7b18add8acc2e4b83053aa6386a6218bb4c9b4708fb06573",
       "target": "docs.en/hooks.md",
-      "updated_at": 1783392421
+      "updated_at": 1783521501
     }
   },
   "segments": {
@@ -13893,6 +13893,14 @@
       "source_hash": "ce7cca2d4ea553bc687245fa20fc280515e61383dbaa6d692642c846218dc991",
       "translation": "__ELBOT_CODE_0__ can be used for conditional matching, but cannot be edited.\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:d9f8c5cce6259b92d4848c0eb8be7e1c056d33d74521f343e40280c43543aa59": {
+      "kind": "paragraph",
+      "source": "更多 exec 脚本示例（C / C++ / TypeScript）见 [elbot-showcase/hooks](https://github.com/Elfreese/elbot-showcase/tree/main/hooks)。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "d9f8c5cce6259b92d4848c0eb8be7e1c056d33d74521f343e40280c43543aa59",
+      "translation": "More exec script examples (C / C++ / TypeScript) can be found at [elbot-showcase/hooks](https://github.com/Elfreese/elbot-showcase/tree/main/hooks).\n",
+      "updated_at": 1783521501
     },
     "docs/hooks.md:paragraph:dcd8b313aef42dad55528fe0db4e6c30c68dc352ef2c4b005888f6301286dc6f": {
       "kind": "paragraph",
