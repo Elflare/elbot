@@ -204,6 +204,16 @@ type DetailProvider interface {
 	ActivateTools() []string
 }
 
+// DiscoveryContentProvider lets a tool customize the text shown when it is discovered
+// via discover_tool. The schema injection (Data) is unaffected.
+// override=true: the tool is excluded from the "已发现工具" line and its content
+// is rendered as a standalone block instead.
+// override=false: the tool stays in the "已发现工具" line and its content is
+// appended after that line as a standalone block.
+type DiscoveryContentProvider interface {
+	DiscoveryContent() (content string, override bool)
+}
+
 type StructuredDetailProvider interface {
 	DetailBlock() DetailBlock
 }

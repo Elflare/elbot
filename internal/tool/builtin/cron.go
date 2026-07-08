@@ -79,6 +79,13 @@ func (t CronTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result,
 	return textResult("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。"), nil
 }
 
+// DiscoveryContent appends the current local time to the discover_tool text.
+// The cron entry tool is the natural place to surface this because users often
+// discover cron tools to set up time-based reminders.
+func (t CronTool) DiscoveryContent() (string, bool) {
+	return "当前本地时间：" + time.Now().Format("2006-01-02 15:04:05"), false
+}
+
 func (t CronQueryTool) Name() string { return "cron_query" }
 func (t CronQueryTool) Info() tool.Info {
 	return hiddenCronInfo(t.Name(), "查询单个 cron 或列出 cron。不传 name 时列出；传 name 时查询单个。", tool.RiskMedium)
