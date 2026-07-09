@@ -59,6 +59,7 @@ func readFileBuilder() *tool.Builder {
 	return tool.NewBuilder("read_file").
 		Description("读取文本文件并返回带行号的内容；编辑前应先用它确认行号和文件哈希。").
 		Risk(tool.RiskLow).
+		SuperadminOnly().
 		Tags("files", "agent").
 		DependsOn("workspace").
 		String("path", "要读取的文件路径", tool.Required()).
