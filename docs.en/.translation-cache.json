@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "ede04500b1ed5f006f4b5b301babe2d3093aec639b99693d3d750ef7066cf070",
+      "source_hash": "a6d0c635e84963633fb7777c065572002e3787910e127a4960747ae2ddddca59",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783519200
+      "updated_at": 1783567455
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -990,6 +990,14 @@
       "translation": "**SQLite Persistence**: Unified storage for Sessions, messages, context summaries, tool call records, Cron jobs, and Elnis events.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:cc48499925e50f0156703dc753ae76ba767e135e29e86e4ce5b4e82dcfac8f84": {
+      "kind": "list",
+      "source": "Hook 插件元信息支持 __ELBOT_CODE_0__；__ELBOT_CODE_1__ 会在命令结果中显示插件跳过或配置警告。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "cc48499925e50f0156703dc753ae76ba767e135e29e86e4ce5b4e82dcfac8f84",
+      "translation": "Hook plugin meta-information now supports __ELBOT_CODE_0__; __ELBOT_CODE_1__ will display plugin skip or configuration warnings in the command results.",
+      "updated_at": 1783567455
+    },
     "CHANGELOG.md:list:ce3e9cc6dd15510c9cfe7dbcae094bd1f1cb641bc8875c00f0d3c95d4642854d": {
       "kind": "list",
       "source": "**Elnis 监听枢纽**：接收 Elwisp 通过 Elvena HTTP 协议投递的外部事件，支持 record/direct/llm 三种模式与多目标投递。",
@@ -1157,6 +1165,14 @@
       "source_hash": "faa151eb2284bda7e4e6995ad15597fdaec9d9c2d87d2a98a3ab4a418ee37890",
       "translation": "Fixed the issue where __ELBOT_CODE_0__ fails during the write confirmation stage when creating a new file using __ELBOT_CODE_1__ if the target parent directory does not exist.",
       "updated_at": 1782644646
+    },
+    "CHANGELOG.md:list:fb5d2dd0b045669c98e5c52df0f404d36c2193257fd1fc991b262fd82d6de07d": {
+      "kind": "list",
+      "source": "Hook 规则文本字段整理为 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ 等清晰命名。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "fb5d2dd0b045669c98e5c52df0f404d36c2193257fd1fc991b262fd82d6de07d",
+      "translation": "Hook rule text fields have been organized into clear names such as __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__.",
+      "updated_at": 1783567455
     },
     "CHANGELOG.md:paragraph:f4fdd49cee5a8975381d265d52b666a936b8a0b8d696502ff7ac1ebdda67c23c": {
       "kind": "paragraph",
