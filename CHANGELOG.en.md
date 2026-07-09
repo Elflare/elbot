@@ -25,7 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inline preloading supports tool shorthand `@t:<name-or-tag>` and Skill shorthand `@s:<name>`, and is compatible with Chinese full-width colon `：`.
 - The CLI TUI input box now supports fuzzy completion of local files using `#文件名`; references are replaced with the filename and file content upon sending, and paths containing spaces can be written as `#"a b.txt"`.
 - Failure notifications will be sent to the current messaging platform when Hook execution fails, the script crashes, times out, or a protocol error occurs, with the end of stderr attached upon failure; Added `error.message` to rule matching and templates.
-- Added `message.input_text` matching/template fields to Hook rules, used to match user input after removing group chat wake-up keywords or bot mentions.
+- Hook rule text fields have been organized into clear names such as `message.intent_text`, `message.display_text`, `message.platform_text`, and `llm.source_text`.
+- Hook plugin meta-information now supports `[plugin] name`; `/hooks reload` will display plugin skip or configuration warnings in the command results.
 - `web_extract` added the `jina` parameter, which defaults to using Jina Reader; passing `jina=false` allows manually switching to direct crawling.
 
 ### Changed
