@@ -67,6 +67,11 @@ func (m *Manager) UpsertJob(ctx context.Context, req UpsertJobRequest) (*storage
 	if err := validateUpsertRequest(req); err != nil {
 		return nil, err
 	}
+	nextRun, err := computeNextRunAt(req.Schedule, req.Metadata, req.Enabled, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	req.NextRunAt = nextRun
 	job, err := m.repo.Upsert(ctx, req)
 	if err != nil {
 		return nil, err
@@ -157,11 +162,23 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 	}
 	if !job.Enabled {
 		m.mu.Unlock()
+		m.updateNextRunAt(context.Background(), job, nil)
 		return nil
 	}
 	if _, ok := m.handlers[job.Handler]; !ok {
 		m.mu.Unlock()
 		m.logWarn("cron job handler not registered", "job", job.Name, "handler", job.Handler)
+		m.updateNextRunAt(context.Background(), job, nil)
+		return nil
+	}
+	nextRun, err := computeNextRunAt(job.Schedule, job.Metadata, true, time.Now())
+	if err != nil {
+		m.mu.Unlock()
+		return fmt.Errorf("schedule cron job %q: %w", job.Name, err)
+	}
+	if nextRun == nil {
+		m.mu.Unlock()
+		m.updateNextRunAt(context.Background(), job, nil)
 		return nil
 	}
 	scheduler := m.scheduler
@@ -177,6 +194,7 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 	m.mu.Lock()
 	m.entries[job.Name] = entryID
 	m.mu.Unlock()
+	m.updateNextRunAt(context.Background(), job, nextRun)
 	m.logInfo("cron job scheduled", "job", job.Name, "handler", job.Handler, "schedule", job.Schedule)
 	return nil
 }
@@ -219,6 +237,13 @@ func (m *Manager) runJob(name string) {
 	scheduler := m.scheduler
 	m.mu.Unlock()
 
+	stateJob := job
+	if latest, err := m.repo.GetByName(ctx, job.Name); err == nil {
+		stateJob = latest
+	} else {
+		m.logWarn("cron job reload after run failed", "job", job.Name, "handler", job.Handler, "error", err)
+	}
+
 	lastError := ""
 	if runErr != nil {
 		lastError = runErr.Error()
@@ -227,19 +252,23 @@ func (m *Manager) runJob(name string) {
 		m.logInfo("cron job completed", "job", job.Name, "handler", job.Handler, "duration", duration.String())
 	}
 
-	enabled := job.Enabled
+	enabled := stateJob.Enabled
 	var nextRun *time.Time
-	if scheduler != nil && entryID != 0 {
+	if enabled && scheduler != nil && entryID != 0 {
 		entry := scheduler.Entry(entryID)
 		if !entry.Next.IsZero() {
 			next := entry.Next
 			nextRun = &next
 		}
 	}
-	if err := m.repo.UpdateRunState(ctx, job.ID, storage.CronJobRunState{
+	if userOnceRunAtExpired(stateJob.Metadata, time.Now()) {
+		nextRun = nil
+		m.removeEntry(job.Name)
+	}
+	if err := m.repo.UpdateRunState(ctx, stateJob.ID, storage.CronJobRunState{
 		LastRunAt: startedAt,
 		NextRunAt: nextRun,
-		RunCount:  job.RunCount + 1,
+		RunCount:  stateJob.RunCount + 1,
 		LastError: lastError,
 		Enabled:   enabled,
 		UpdatedAt: time.Now(),
@@ -272,6 +301,61 @@ func validateUpsertRequest(req UpsertJobRequest) error {
 		return fmt.Errorf("cron job schedule is empty")
 	}
 	return nil
+}
+
+func (m *Manager) updateNextRunAt(ctx context.Context, job storage.CronJob, nextRunAt *time.Time) {
+	if err := m.repo.UpdateNextRunAt(ctx, job.ID, nextRunAt, time.Now()); err != nil {
+		m.logWarn("cron job next run update failed", "job", job.Name, "handler", job.Handler, "error", err)
+	}
+}
+
+func computeNextRunAt(schedule, metadata string, enabled bool, now time.Time) (*time.Time, error) {
+	parsed, err := robfigcron.ParseStandard(schedule)
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+	if runAt, ok, err := userOnceRunAt(metadata); ok || err != nil {
+		if err != nil {
+			return nil, err
+		}
+		if runAt.After(now) {
+			return timePtr(runAt), nil
+		}
+		return nil, nil
+	}
+	next := parsed.Next(now)
+	if next.IsZero() {
+		return nil, nil
+	}
+	return timePtr(next), nil
+}
+
+func userOnceRunAt(metadata string) (time.Time, bool, error) {
+	if metadata == "" {
+		return time.Time{}, false, nil
+	}
+	meta, err := decodeMetadata(metadata)
+	if err != nil || meta.Kind != metadataKind || meta.Schedule.Mode != ScheduleOnce {
+		return time.Time{}, false, nil
+	}
+	runAt, err := parseRunAt(meta.Schedule.RunAt)
+	if err != nil {
+		return time.Time{}, true, err
+	}
+	return runAt, true, nil
+}
+
+func userOnceRunAtExpired(metadata string, now time.Time) bool {
+	runAt, ok, err := userOnceRunAt(metadata)
+	return err == nil && ok && !runAt.After(now)
+}
+
+func timePtr(t time.Time) *time.Time {
+	v := t
+	return &v
 }
 
 func (m *Manager) logInfo(msg string, attrs ...any) {

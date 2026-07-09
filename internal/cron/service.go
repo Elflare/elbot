@@ -536,7 +536,7 @@ func (s *Service) deliverMissedOnce(ctx context.Context, job storage.CronJob, me
 		return fmt.Errorf("unsupported trigger mode %q", meta.Trigger.Mode)
 	}
 	if report != "" || len(meta.Delivery.ReportSegments) > 0 {
-		if err := s.sendReportToPlatforms(ctx, job.Name, []string{platformName}, report, meta.Delivery.ReportSegments); err != nil {
+		if err := s.sendReportToPlatforms(ctx, job.Name, []string{platformName}, missedOnceReportText(platformName, report), meta.Delivery.ReportSegments); err != nil {
 			return err
 		}
 	}
@@ -556,6 +556,15 @@ func (s *Service) deliverMissedOnce(ctx context.Context, job storage.CronJob, me
 		return nil
 	}
 	return nil
+}
+
+func missedOnceReportText(platformName, report string) string {
+	prefix := fmt.Sprintf("cron 补发平台：%s", strings.TrimSpace(platformName))
+	report = strings.TrimSpace(report)
+	if report == "" {
+		return prefix
+	}
+	return prefix + "\n\n" + report
 }
 
 func (s *Service) connectedPlatformNames() []string {
@@ -597,7 +606,11 @@ func (s *Service) upsert(ctx context.Context, name string, meta Metadata, enable
 	if s.manager != nil {
 		return s.manager.UpsertJob(ctx, UpsertJobRequest{Name: name, Handler: UserHandlerName, Schedule: schedule, Enabled: enabled, Metadata: string(data)})
 	}
-	return s.store.CronJobs().Upsert(ctx, storage.UpsertCronJobRequest{Name: name, Handler: UserHandlerName, Schedule: schedule, Enabled: enabled, Metadata: string(data)})
+	nextRun, err := computeNextRunAt(schedule, string(data), enabled, s.now())
+	if err != nil {
+		return nil, err
+	}
+	return s.store.CronJobs().Upsert(ctx, storage.UpsertCronJobRequest{Name: name, Handler: UserHandlerName, Schedule: schedule, Enabled: enabled, Metadata: string(data), NextRunAt: nextRun})
 }
 
 func (s *Service) runDirect(ctx context.Context, job storage.CronJob, meta Metadata) error {

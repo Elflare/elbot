@@ -221,31 +221,35 @@ func TestCronJobRepositoryUpsertAndRunState(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
+	initialNextRun := storage.Now().Add(30 * time.Minute)
 	job, err := store.CronJobs().Upsert(ctx, storage.UpsertCronJobRequest{
-		Name:     "system.maintenance.cleanup",
-		Handler:  "maintenance.cleanup",
-		Schedule: "0 3 * * *",
-		Enabled:  true,
-		Metadata: `{"system":true}`,
+		Name:      "system.maintenance.cleanup",
+		Handler:   "maintenance.cleanup",
+		Schedule:  "0 3 * * *",
+		Enabled:   true,
+		Metadata:  `{"system":true}`,
+		NextRunAt: &initialNextRun,
 	})
 	if err != nil {
 		t.Fatalf("upsert cron job: %v", err)
 	}
-	if job.ID == "" || !job.Enabled || job.RunCount != 0 {
+	if job.ID == "" || !job.Enabled || job.RunCount != 0 || job.NextRunAt == nil {
 		t.Fatalf("job = %#v", job)
 	}
 
+	updatedNextRun := initialNextRun.Add(time.Hour)
 	updated, err := store.CronJobs().Upsert(ctx, storage.UpsertCronJobRequest{
-		Name:     job.Name,
-		Handler:  job.Handler,
-		Schedule: "0 4 * * *",
-		Enabled:  true,
-		Metadata: `{"system":true,"updated":true}`,
+		Name:      job.Name,
+		Handler:   job.Handler,
+		Schedule:  "0 4 * * *",
+		Enabled:   true,
+		Metadata:  `{"system":true,"updated":true}`,
+		NextRunAt: &updatedNextRun,
 	})
 	if err != nil {
 		t.Fatalf("update cron job: %v", err)
 	}
-	if updated.ID != job.ID || updated.Schedule != "0 4 * * *" {
+	if updated.ID != job.ID || updated.Schedule != "0 4 * * *" || updated.NextRunAt == nil || !updated.NextRunAt.Equal(updatedNextRun) {
 		t.Fatalf("updated = %#v", updated)
 	}
 
@@ -286,6 +290,9 @@ func TestCronJobRepositoryUpsertAndRunState(t *testing.T) {
 	}
 	if len(listed) != 1 || listed[0].Name != job.Name || listed[0].Enabled {
 		t.Fatalf("listed after disable = %#v", listed)
+	}
+	if listed[0].NextRunAt != nil {
+		t.Fatalf("next run was not cleared after disable: %#v", listed[0])
 	}
 	enabled, err = store.CronJobs().ListEnabled(ctx)
 	if err != nil {

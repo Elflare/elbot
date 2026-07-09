@@ -169,11 +169,12 @@ type CronJobRunState struct {
 }
 
 type UpsertCronJobRequest struct {
-	Name     string
-	Handler  string
-	Schedule string
-	Enabled  bool
-	Metadata string
+	Name      string
+	Handler   string
+	Schedule  string
+	Enabled   bool
+	Metadata  string
+	NextRunAt *time.Time
 }
 
 type CreateElnisEventRequest struct {
@@ -292,6 +293,7 @@ type CronJobRepository interface {
 	GetByName(ctx context.Context, name string) (*CronJob, error)
 	List(ctx context.Context, includeDisabled bool) ([]CronJob, error)
 	ListEnabled(ctx context.Context) ([]CronJob, error)
+	UpdateNextRunAt(ctx context.Context, id string, nextRunAt *time.Time, updatedAt time.Time) error
 	UpdateRunState(ctx context.Context, id string, state CronJobRunState) error
 	DisableByName(ctx context.Context, name string) error
 	DeleteByName(ctx context.Context, name string) error
