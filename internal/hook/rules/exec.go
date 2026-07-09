@@ -81,7 +81,9 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 			_ = cmd.Process.Kill()
 		}
 		waitErr := waitExec()
-		if err == nil {
+		if ctxErr := execContextError(runCtx, action); ctxErr != nil {
+			err = ctxErr
+		} else if err == nil {
 			err = execProcessError(runCtx, action, waitErr)
 		}
 		err = withExecStderr(err, stderrTail.String())
@@ -438,13 +440,23 @@ func pluginStdinWriteError(frame string, err error) error {
 }
 
 func execProcessError(ctx context.Context, action Action, err error) error {
-	if action.TimeoutSeconds > 0 && errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return fmt.Errorf("hook plugin exec timed out after %ds", action.TimeoutSeconds)
+	if ctxErr := execContextError(ctx, action); ctxErr != nil {
+		return ctxErr
 	}
 	if err != nil {
 		return fmt.Errorf("hook plugin exec failed: %w", err)
 	}
 	return fmt.Errorf("hook plugin exec failed")
+}
+
+func execContextError(ctx context.Context, action Action) error {
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return fmt.Errorf("hook plugin exec canceled: %w", context.Canceled)
+	}
+	if action.TimeoutSeconds > 0 && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf("hook plugin exec timed out after %ds: %w", action.TimeoutSeconds, context.DeadlineExceeded)
+	}
+	return nil
 }
 
 func withExecStderr(err error, stderr string) error {

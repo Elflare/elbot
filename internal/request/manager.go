@@ -14,6 +14,7 @@ const (
 	KindTurn     Kind = "turn"
 	KindLLM      Kind = "llm"
 	KindTool     Kind = "tool"
+	KindHook     Kind = "hook"
 	KindCompress Kind = "compress"
 	KindSubAgent Kind = "sub_agent"
 )

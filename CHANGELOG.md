@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 新增 `[platform_files]` 配置，统一控制平台入站文件最大保存大小和下载超时。
 - QQ OneBot 支持自动保存私聊超级管理员入站文件；纯文件消息只回复保存路径或过大提示，不唤起 LLM，群文件不自动保存。
 - `/requests` 命令现在展示每个 turn 的当前运行阶段（preparing/llm/tool/sending）和阶段耗时，可区分 LLM 慢还是平台发送卡住。
+- 执行中的 Hook 会显示在 `/requests`，当前 Session 的 Hook 也会显示在 `/status`；可用 `/stop` 取消长时间运行的 Hook，手动取消按正常取消记录。
 - 内联预载支持工具简写 `@t:<name-or-tag>` 和 Skill 简写 `@s:<name>`，并兼容中文全角冒号 `：`。
 - CLI TUI 输入框支持用 `#文件名` 模糊补全本地文件；发送时会把引用替换为文件名和文件内容，含空格路径可写作 `#"a b.txt"`。
 - Hook exec 失败、脚本崩溃、超时或协议错误时会向当前消息平台发送失败通知，并在失败时附带 stderr 尾部；规则匹配和模板新增 `error.message`。

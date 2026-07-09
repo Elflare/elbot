@@ -354,7 +354,7 @@ init frame 字段：
 | `session.title` | 当前 Session 标题 |
 | `session.status` | 当前 Session 状态；没有会话上下文时为空 |
 | `request.id` | 当前 Request ID |
-| `request.kind` | Request 类型：`turn`、`llm`、`tool`、`compress`、`sub_agent`；无运行中 Request 时为空 |
+| `request.kind` | Request 类型：`turn`、`llm`、`tool`、`hook`、`compress`、`sub_agent`；无运行中 Request 时为空 |
 | `request.session_id` | Request 关联的 Session ID |
 | `request.phase` | Turn 阶段：`idle`、`llm`、`tool`、`awaiting_risk_confirm`、`awaiting_append_confirm`、`compact`；无 Turn 上下文时为空 |
 | `message.id` | 当前消息 ID；未设置时为空 |

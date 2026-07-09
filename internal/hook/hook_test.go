@@ -166,6 +166,111 @@ func TestManagerStopsOnRunError(t *testing.T) {
 	}
 }
 
+func TestManagerObserverWrapsMatchedHookContext(t *testing.T) {
+	type contextKey struct{}
+	manager := NewManager()
+	observed := false
+	done := false
+	if err := manager.Register(Registration{
+		Point:    PointAgentInputPrepared,
+		Priority: 7,
+		Name:     "observed",
+		Match:    Always(),
+		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+			if got, _ := ctx.Value(contextKey{}).(string); got != "wrapped" {
+				t.Fatalf("observer context value = %q, want wrapped", got)
+			}
+			return event, nil
+		}),
+	}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	manager.SetObserver(func(ctx context.Context, event Event, info ObserverInfo) (context.Context, func()) {
+		observed = true
+		if info.Name != "observed" || info.Point != PointAgentInputPrepared || info.Priority != 7 || info.Mode != "run" {
+			t.Fatalf("observer info = %#v", info)
+		}
+		return context.WithValue(ctx, contextKey{}, "wrapped"), func() { done = true }
+	})
+
+	if _, err := manager.Run(context.Background(), Event{Point: PointAgentInputPrepared}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !observed || !done {
+		t.Fatalf("observer observed=%v done=%v, want both true", observed, done)
+	}
+}
+
+func TestManagerObserverSkipsUnmatchedAndWakeupSkippedHooks(t *testing.T) {
+	manager := NewManager()
+	observed := 0
+	called := 0
+	noWakeup := false
+	if err := manager.Register(Registration{
+		Point:         PointLLMResponseReceived,
+		Name:          "unmatched",
+		Match:         Contains("llm.text", "[["),
+		RequireWakeup: &noWakeup,
+		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+			called++
+			return event, nil
+		}),
+	}); err != nil {
+		t.Fatalf("Register unmatched: %v", err)
+	}
+	if err := manager.Register(Registration{
+		Point: PointLLMResponseReceived,
+		Name:  "wakeup-skipped",
+		Match: Always(),
+		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+			called++
+			return event, nil
+		}),
+	}); err != nil {
+		t.Fatalf("Register wakeup-skipped: %v", err)
+	}
+	manager.SetWakeupFunc(func(context.Context, Event) bool { return false })
+	manager.SetObserver(func(ctx context.Context, event Event, info ObserverInfo) (context.Context, func()) {
+		observed++
+		return ctx, func() {}
+	})
+
+	if _, err := manager.Run(context.Background(), Event{Point: PointLLMResponseReceived, LLM: LLMPayload{Text: "plain"}}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if observed != 0 || called != 0 {
+		t.Fatalf("observed=%d called=%d, want both 0", observed, called)
+	}
+}
+
+func TestManagerLogsCanceledHookAsInfo(t *testing.T) {
+	var buf bytes.Buffer
+	manager := NewManager()
+	manager.SetLogger(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	if err := manager.Register(Registration{
+		Point: PointAgentInputPrepared,
+		Name:  "cancel",
+		Match: Always(),
+		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+			return event, context.Canceled
+		}),
+	}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	_, err := manager.Run(context.Background(), Event{Point: PointAgentInputPrepared})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run error = %v, want context canceled", err)
+	}
+	logs := buf.String()
+	if !strings.Contains(logs, "level=INFO") || !strings.Contains(logs, "hook canceled") {
+		t.Fatalf("logs missing info cancellation:\n%s", logs)
+	}
+	if strings.Contains(logs, "hook error") || strings.Contains(logs, "level=WARN") {
+		t.Fatalf("canceled hook should not log warning/error:\n%s", logs)
+	}
+}
+
 func TestNotifyRunsAllHandlersAndJoinsErrors(t *testing.T) {
 	manager := NewManager()
 	first := errors.New("first")

@@ -161,17 +161,17 @@ func writeRequestLine(sb *strings.Builder, ctx context.Context, deps Deps, numbe
 			mode = session.Mode
 		}
 		sb.WriteString(fmt.Sprintf("      session: %s\n", title))
-	if deps.RuntimeStatus != nil {
-		snapshot := deps.RuntimeStatus(req.SessionID)
-		if snapshot.Phase != "" && snapshot.Phase != runtimestatus.PhaseIdle && snapshot.Phase != runtimestatus.PhaseDone {
-			phaseText := string(snapshot.Phase)
-			if snapshot.Phase == runtimestatus.PhaseTool && snapshot.ToolName != "" {
-				phaseText += " " + snapshot.ToolName
+		if deps.RuntimeStatus != nil {
+			snapshot := deps.RuntimeStatus(req.SessionID)
+			if snapshot.Phase != "" && snapshot.Phase != runtimestatus.PhaseIdle && snapshot.Phase != runtimestatus.PhaseDone {
+				phaseText := string(snapshot.Phase)
+				if snapshot.Phase == runtimestatus.PhaseTool && snapshot.ToolName != "" {
+					phaseText += " " + snapshot.ToolName
+				}
+				sb.WriteString(fmt.Sprintf("      phase: %s (%s)\n", phaseText, formatDuration(snapshot.StageElapsed(time.Now()))))
 			}
-			sb.WriteString(fmt.Sprintf("      phase: %s (%s)\n", phaseText, formatDuration(snapshot.StageElapsed(time.Now()))))
 		}
-	}
-	sb.WriteString(fmt.Sprintf("      mode: %s\n", mode))
+		sb.WriteString(fmt.Sprintf("      mode: %s\n", mode))
 		if tools := turn.ToolsString(deps.Turns.Snapshot(req.SessionID).Tools); tools != "" {
 			sb.WriteString(fmt.Sprintf("      tools: %s\n", tools))
 		}
@@ -179,6 +179,9 @@ func writeRequestLine(sb *strings.Builder, ctx context.Context, deps Deps, numbe
 	}
 	if req.Kind == request.KindTool {
 		sb.WriteString(fmt.Sprintf("      tool: %s\n", label))
+	}
+	if req.Kind == request.KindHook {
+		sb.WriteString(fmt.Sprintf("      hook: %s\n", label))
 	}
 }
 
