@@ -318,6 +318,23 @@ func TestPowerShellUTF8Command(t *testing.T) {
 	}
 }
 
+func TestResolveUnixShellPrefersBash(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix only")
+	}
+	name, args := resolveUnixShell()
+	if _, err := exec.LookPath("bash"); err == nil {
+		if name != "bash" {
+			t.Fatalf("shell name = %q, want bash", name)
+		}
+	} else if name != "sh" {
+		t.Fatalf("shell name = %q, want sh fallback", name)
+	}
+	if strings.Join(args, "\x00") != "-lc" {
+		t.Fatalf("shell args = %v, want [-lc]", args)
+	}
+}
+
 func TestDetectWindowsShellPrefersPwshThenBash(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("windows only")

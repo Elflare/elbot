@@ -59,6 +59,10 @@ func (t ShellTool) Schema() llm.ToolSchema {
 
 func currentShellDesc() string {
 	if runtime.GOOS != "windows" {
+		name, _ := resolveUnixShell()
+		if name == "bash" {
+			return "bash"
+		}
 		return "sh (POSIX shell)"
 	}
 	name, _ := resolveWindowsShell()
@@ -217,7 +221,8 @@ func shellCommand(ctx context.Context, cmdText string) *exec.Cmd {
 		name, args := resolveWindowsShell()
 		return exec.CommandContext(ctx, name, append(args, powershellUTF8Command(name, cmdText))...)
 	}
-	return exec.CommandContext(ctx, "sh", "-lc", cmdText)
+	name, args := resolveUnixShell()
+	return exec.CommandContext(ctx, name, append(args, cmdText)...)
 }
 
 func powershellUTF8Command(shellName, cmdText string) string {
@@ -262,6 +267,13 @@ func detectWindowsShell() windowsShell {
 		return windowsShell{name: "bash", args: []string{"-lc"}}
 	}
 	return windowsShell{name: "powershell.exe", args: []string{"-NoProfile", "-Command"}}
+}
+
+func resolveUnixShell() (string, []string) {
+	if _, err := exec.LookPath("bash"); err == nil {
+		return "bash", []string{"-lc"}
+	}
+	return "sh", []string{"-lc"}
 }
 
 func runShellCommand(ctx context.Context, cmd *exec.Cmd) error {
