@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "a6d0c635e84963633fb7777c065572002e3787910e127a4960747ae2ddddca59",
+      "source_hash": "1c6661fdd9420a3529f656ecdc2250c1bc201d77ee870e50a3c10e8a10d6709f",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783567455
+      "updated_at": 1783571675
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -1006,6 +1006,14 @@
       "translation": "**Elnis listening hub**: Receives external events delivered by Elwisp via the Elvena HTTP protocol, supporting three modes (record/direct/llm) and multi-target delivery.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:d3908641b559bc54ede96c20cd1c652257d818385b70144f4cdcd75c3cfecf17": {
+      "kind": "list",
+      "source": "可用 __ELBOT_CODE_0__ 取消长时间运行的 Hook，手动取消按正常取消记录。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d3908641b559bc54ede96c20cd1c652257d818385b70144f4cdcd75c3cfecf17",
+      "translation": "Use __ELBOT_CODE_0__ to cancel long-running Hooks; manual cancellations are recorded as normal cancellations.",
+      "updated_at": 1783571675
+    },
     "CHANGELOG.md:list:d4fabe1b31e44b62764a519526e02a1a731d546f2d3cbb0e101eb7b787c54f82": {
       "kind": "list",
       "source": "AgentSkill 支持在根目录添加 __ELBOT_CODE_0__ 注册为普通工具：LLM 调用结构化参数，ElBot 翻译为命令行 argv 执行，并复用现有风险、确认、Hook 与审计链路。",
@@ -1053,6 +1061,14 @@
       "source_hash": "dc3765cc3b6cc516b17fb0be590317ce5a5fab8d064d6514066e8593e421b5eb",
       "translation": "By default, the wait time for the first streaming event is 180 seconds, streaming idle is 60 seconds, and there is no total duration limit for the entire response.",
       "updated_at": 1782461728
+    },
+    "CHANGELOG.md:list:dda9f80d869b591edf7f9696577d405bb57a881c2e08f7cee08483abdd6db5a7": {
+      "kind": "list",
+      "source": "执行中的 Hook 会显示在 __ELBOT_CODE_0__，当前 Session 的 Hook 也会显示在 __ELBOT_CODE_1__；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "dda9f80d869b591edf7f9696577d405bb57a881c2e08f7cee08483abdd6db5a7",
+      "translation": "Executing Hooks will be displayed in __ELBOT_CODE_0__, and Hooks for the current Session will also be displayed in __ELBOT_CODE_1__;",
+      "updated_at": 1783571675
     },
     "CHANGELOG.md:list:e03c11cbeaa6e58ce0ad4ee4ead359f83057de19807ef8393bca9bd67954a45c": {
       "kind": "list",
