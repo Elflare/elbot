@@ -39,6 +39,21 @@ enabled = true
 
 Plugin configuration files can contain `[plugin]` metadata and their own `[[rules]]`. Local relative paths and paths relative to `cwd` in plugin rules are resolved based on the directory where the plugin configuration is located.
 
+```toml
+[plugin]
+name = "demo"                 # Optional; the actual reference name is based on [[plugins]].name in the main hooks.toml
+description = "demo plugin"   # Optional; serves as a fallback description when the rule does not have a description
+
+[[rules]]
+name = "demo_rule"
+on = "platform.message.received"
+always = true
+action = "send"
+text = "ok"
+```
+
+`/hooks` lists the successfully registered rule names, such as `demo_rule`, not the plugin names of `[[plugins]]`. `/hooks reload` will reread the main configuration and plugin configurations; If a plugin is skipped, a warning will be displayed in the command result.
+
 ### Rule Structure
 
 ```toml
@@ -119,11 +134,11 @@ match = [
 ```
 platform.name / scope_id / user_id / conversation_id / message_id / reply_to_message_id
 actor.id / user_id / role / group_role / display_name
-session.id / mode / status
-request.id / kind / phase
-message.text / content_text / raw_text / input_text / role
-message.reply.message_id / sender_id / text / content_text
-llm.text / raw_text / latest_user_text / latest_user_content_text / provider / model
+session.id / mode / title / status
+request.id / kind / session_id / phase
+message.id / text / display_text / platform_text / intent_text / role
+message.reply.message_id / sender_id / text / display_text
+llm.text / source_text / latest_user_text / latest_user_display_text / provider / model
 tool.name / arguments / result / risk
 error.message
 ```
@@ -132,19 +147,19 @@ Field selection quick reference:
 
 | Requirement | Recommended Field | Description |
 | --- | --- | --- |
-| Matches what the user actually said, ignoring group chat wake-up words or bot mentions | `message.input_text` | For example, when the user sends `芙莉丝 咩`, `message.input_text` is `咩` |
+| Matches what the user actually said, ignoring group chat wake-up words or bot mentions | `message.intent_text` | For example, when the user sends `elbot 咩`, `message.intent_text` is `咩` |
 | Match the plain text of the current message, preserving the wake-up word | `message.text` | Only concatenate text fragments, excluding image/file placeholders |
-| Match the readable content of the current message, preserving the wake-up word | `message.content_text` | text + image/file placeholders, e.g., `[图片: ...]` |
-| Match the original platform text | `message.raw_text` | Original text provided by the platform, excluding quote fallback expansion |
+| Match the readable content of the current message, preserving the wake-up word | `message.display_text` | text + image/file placeholders, e.g., `[图片: ...]` |
+| Match the original platform text | `message.platform_text` | Original text provided by the platform, excluding quote fallback expansion |
 | Match the content of the quote/reply | `message.reply.*` | Has a value only when the current message is a reply to someone else |
 
-When automatically replying and blocking subsequent commands/LLM, prioritize using `platform.message.received` + `consume=true`. If a wake-up word is required in the group, use `message.input_text` for matching:
+When automatically replying and blocking subsequent commands/LLM, prioritize using `platform.message.received` + `consume=true`. If a wake-up word is required in the group, use `message.intent_text` for matching:
 
 ```toml
 [[rules]]
 name = "reply_mee"
 on = "platform.message.received"
-if = "message.input_text"
+if = "message.intent_text"
 op = "fullmatch"
 value = "咩"
 consume = true
@@ -185,7 +200,7 @@ Different Hook Points allow different editable fields:
 | `tool.call.completed` | `tool.result` |
 | `agent.output.prepared` / `agent.turn.output.prepared` / `platform.message.sent` | assistant `message.text` |
 
-`llm.raw_text` can be used for conditional matching, but cannot be edited.
+`llm.source_text` can be used for conditional matching, but cannot be edited.
 
 ### Action Type
 
@@ -346,20 +361,22 @@ init frame fields:
 | `request.phase` | Turn stage: `idle`, `llm`, `tool`, `awaiting_risk_confirm`, `awaiting_append_confirm`, `compact`; Empty when there is no Turn context |
 | `message.id` | Current message ID; empty when not set |
 | `message.role` | Message role, e.g., `user`, `assistant` |
-| `message.raw_text` | Original current message text from the platform, excluding expanded content from fallback references |
-| `message.input_text` | User input intent text; Configured wake-up keywords and bot mentions are removed from user messages; suitable for matching `咩` in messages like `芙莉丝 咩` within `platform.message.received`. |
+| `message.text` | Plain text of the current message, only concatenating text fragments, without image/file placeholders |
+| `message.display_text` | Readable content text of the current message, which may include image/file placeholders |
+| `message.platform_text` | Original current message text from the platform, excluding expanded content from fallback references |
+| `message.intent_text` | User input intent text; Configured wake-up keywords and bot mentions are removed from user messages; suitable for matching `咩` in messages like `elbot 咩` within `platform.message.received`. |
 | `message.segments` | Current message fragments array; Scripts reading user text should prioritize aggregating fragments of `type=text` from here. In `platform.message.received`, this represents the current inbound message, excluding the text of quoted messages. |
 | `message.messages` | Related LLM messages array; populated only at certain Hook points. |
 | `message.reply.message_id` | Target platform message ID being quoted/replied to by the current message. |
 | `message.reply.sender_id` | Sender ID of the quoted message; empty if not provided by the platform. |
 | `message.reply.text` | Plain text content of the quoted message; empty if there is no text |
-| `message.reply.content_text` | Readable content text of the quoted message, which may contain image/file placeholders |
+| `message.reply.display_text` | Readable content text of the quoted message, which may contain image/file placeholders |
 | `llm.provider` | LLM provider name |
 | `llm.model` | LLM model name |
 | `llm.messages` | The LLM message array for this request |
 | `llm.tools` | The array of available tool schemas for this request |
 | `llm.usage` | LLM usage statistics; empty if not provided |
-| `llm.raw_text` | Raw LLM response text; can be matched, but cannot be edited |
+| `llm.source_text` | Raw LLM response text; can be matched, but cannot be edited |
 | `llm.text` | Currently visible/editable LLM text |
 | `llm.tool_calls` | Tool call array returned by the LLM |
 | `llm.elapsed_ms` | LLM call duration in milliseconds |
@@ -386,7 +403,7 @@ Common fragment fields used by `message.segments`, `llm.messages[].segments`, th
 | `user_id` | `at` Target user ID for output |
 | `message_id` | `reply` Target platform message ID for output |
 
-Note: `message.text`, `message.content_text`, `llm.latest_user_text`, etc., are derived fields in rule matching and template variables, not fields with the same name in the init JSON. The exec script needs to read raw data from `event.message.segments`, `event.message.raw_text`, `event.message.reply`, or `event.llm.messages[].segments`.
+Note: `message.text`, `message.display_text`, `llm.latest_user_text`, etc., are derived fields in rule matching and template variables, not fields with the same name in the init JSON. The exec script needs to read raw data from `event.message.segments`, `event.message.platform_text`, `event.message.reply`, or `event.llm.messages[].segments`.
 
 `match.regex[]` field:
 
@@ -528,9 +545,9 @@ Text fields and exec commands support `{{...}}` template rendering:
 {{platform.name}}          {{platform.scope_id}}      {{platform.user_id}}
 {{platform.message_id}}    {{platform.reply_to_message_id}}
 {{actor.id}}               {{actor.user_id}}          {{actor.role}}
-{{message.text}}           {{message.content_text}}   {{message.raw_text}}
-{{message.reply.message_id}} {{message.reply.text}}    {{message.reply.content_text}}
-{{llm.text}}               {{llm.raw_text}}           {{llm.latest_user_text}}
+{{message.text}}           {{message.display_text}}   {{message.platform_text}}
+{{message.reply.message_id}} {{message.reply.text}}    {{message.reply.display_text}}
+{{llm.text}}               {{llm.source_text}}        {{llm.latest_user_text}}
 {{tool.arguments}}         {{tool.result}}
 {{actions.<name>.result}}  {{actions.<name>.error}}
 ```
