@@ -551,9 +551,21 @@ type DefaultManager struct {
 	handlers map[Point][]registration
 	logger   *slog.Logger
 	wakeup   WakeupFunc
+	observer Observer
 }
 
 type WakeupFunc func(context.Context, Event) bool
+
+// ObserverInfo describes one matched hook handler execution.
+type ObserverInfo struct {
+	Point    Point
+	Name     string
+	Priority int
+	Mode     string
+}
+
+// Observer can wrap a matched hook handler execution with extra lifecycle state.
+type Observer func(context.Context, Event, ObserverInfo) (context.Context, func())
 
 type registration struct {
 	priority      int
@@ -580,6 +592,12 @@ func (m *DefaultManager) SetWakeupFunc(fn WakeupFunc) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.wakeup = fn
+}
+
+func (m *DefaultManager) SetObserver(fn Observer) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.observer = fn
 }
 
 func (m *DefaultManager) Register(reg Registration) error {
@@ -633,15 +651,19 @@ func (m *DefaultManager) Run(ctx context.Context, event Event) (Event, error) {
 		}
 		event.Metadata["match"] = matchResult.Context
 		before := event
-		updated, err := reg.handler.HandleHook(ctx, event)
+		runCtx, done := m.observe(ctx, event, reg, "run")
+		updated, err := func() (Event, error) {
+			defer done()
+			return reg.handler.HandleHook(runCtx, event)
+		}()
 		delete(event.Metadata, "match")
 		if err != nil {
-			m.logHook(ctx, "run", reg, before, before, err)
+			m.logHook(runCtx, "run", reg, before, before, err)
 			return event, wrapHookError(reg, err)
 		}
 		updated = markHookOutputs(updated, len(before.Outputs), reg, "run")
 		event = prepareEvent(updated)
-		m.logHook(ctx, "run", reg, before, event, nil)
+		m.logHook(runCtx, "run", reg, before, event, nil)
 		if event.Control.StopPropagation {
 			break
 		}
@@ -662,15 +684,19 @@ func (m *DefaultManager) Notify(ctx context.Context, event Event) error {
 		}
 		event.Metadata["match"] = matchResult.Context
 		before := event
-		updated, err := reg.handler.HandleHook(ctx, event)
+		runCtx, done := m.observe(ctx, event, reg, "notify")
+		updated, err := func() (Event, error) {
+			defer done()
+			return reg.handler.HandleHook(runCtx, event)
+		}()
 		delete(event.Metadata, "match")
 		if err != nil {
-			m.logHook(ctx, "notify", reg, before, before, err)
+			m.logHook(runCtx, "notify", reg, before, before, err)
 			joined = errors.Join(joined, wrapHookError(reg, err))
 			continue
 		}
 		_ = markHookOutputs(updated, len(before.Outputs), reg, "notify")
-		m.logHook(ctx, "notify", reg, before, before, nil)
+		m.logHook(runCtx, "notify", reg, before, before, nil)
 		if updated.Control.StopPropagation {
 			break
 		}
@@ -702,6 +728,27 @@ func (m *DefaultManager) wakeupForRun() WakeupFunc {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.wakeup
+}
+
+func (m *DefaultManager) observe(ctx context.Context, event Event, reg registration, mode string) (context.Context, func()) {
+	observer := m.observerForRun()
+	if observer == nil {
+		return ctx, func() {}
+	}
+	runCtx, done := observer(ctx, event, ObserverInfo{Point: event.Point, Name: reg.name, Priority: reg.priority, Mode: mode})
+	if runCtx == nil {
+		runCtx = ctx
+	}
+	if done == nil {
+		done = func() {}
+	}
+	return runCtx, done
+}
+
+func (m *DefaultManager) observerForRun() Observer {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.observer
 }
 
 func (m *DefaultManager) List() []Info {
@@ -783,6 +830,10 @@ func (m *DefaultManager) logHook(ctx context.Context, mode string, reg registrat
 	}
 	if err != nil {
 		attrs = append(attrs, "error", err.Error())
+		if errors.Is(err, context.Canceled) {
+			logger.InfoContext(ctx, "hook canceled", attrs...)
+			return
+		}
 		logger.WarnContext(ctx, "hook error", attrs...)
 		return
 	}

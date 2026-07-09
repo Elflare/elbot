@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
+	"elbot/internal/request"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 )
@@ -22,6 +24,9 @@ func (a *Agent) runHook(ctx context.Context, event hook.Event) (hook.Event, erro
 	event = a.fillHookContext(ctx, event)
 	updated, err := manager.Run(ctx, event)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return event, err
+		}
 		a.notifyHookError(ctx, event, err)
 		a.sendHookFailureNotice(ctx, event, err)
 		return event, err
@@ -37,11 +42,42 @@ func (a *Agent) notifyHook(ctx context.Context, event hook.Event) {
 	event = a.fillHookContext(ctx, event)
 	if err := manager.Notify(ctx, event); err != nil {
 		a.logHookError(event.Point, err)
+		if errors.Is(err, context.Canceled) {
+			return
+		}
 		if event.Point != hook.PointErrorOccurred {
 			a.notifyHookError(ctx, event, err)
 			a.sendHookFailureNotice(ctx, event, err)
 		}
 	}
+}
+
+func (a *Agent) observeHookRun(ctx context.Context, event hook.Event, info hook.ObserverInfo) (context.Context, func()) {
+	if a == nil || a.requests == nil {
+		return ctx, func() {}
+	}
+	sessionID := strings.TrimSpace(event.Session.ID)
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(event.Request.SessionID)
+	}
+	label := strings.TrimSpace(info.Name)
+	if label == "" {
+		label = strings.TrimSpace(string(info.Point))
+	}
+	req, reqCtx, done, err := a.requests.Start(ctx, request.StartRequest{
+		ParentID:  turnRequestIDFromContext(ctx),
+		SessionID: sessionID,
+		Kind:      request.KindHook,
+		Label:     label,
+	})
+	if err != nil {
+		if a.logger != nil {
+			a.logger.WarnContext(ctx, "hook request tracking failed", "hook", label, "point", string(info.Point), "error", err.Error())
+		}
+		return ctx, func() {}
+	}
+	_ = req
+	return reqCtx, done
 }
 
 func (a *Agent) notifyHookError(ctx context.Context, source hook.Event, err error) {
@@ -56,6 +92,9 @@ func (a *Agent) notifyHookError(ctx context.Context, source hook.Event, err erro
 
 func (a *Agent) sendHookFailureNotice(ctx context.Context, event hook.Event, err error) {
 	if err == nil || event.Point == hook.PointErrorOccurred {
+		return
+	}
+	if errors.Is(err, context.Canceled) {
 		return
 	}
 	text := hookFailureNoticeText(event, err)
@@ -347,6 +386,10 @@ func (a *Agent) logHookError(point hook.Point, err error) {
 		return
 	}
 	if a.logger != nil {
+		if errors.Is(err, context.Canceled) {
+			a.logger.Info("hook canceled", slog.String("point", string(point)), slog.String("error", err.Error()))
+			return
+		}
 		a.logger.Warn("hook error", slog.String("point", string(point)), slog.String("error", err.Error()))
 	}
 }

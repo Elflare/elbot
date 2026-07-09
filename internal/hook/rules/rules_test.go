@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -769,6 +770,19 @@ func TestReadProtocolLineRejectsOversizedFrame(t *testing.T) {
 	_, err := readProtocolLine(bufio.NewReader(strings.NewReader(strings.Repeat("x", maxHookProtocolFrameBytes+1))))
 	if err == nil || !strings.Contains(err.Error(), "stdout frame exceeds 16 MiB limit") || !strings.Contains(err.Error(), "outputs[].path") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestExecProcessErrorPreservesContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := execProcessError(ctx, Action{}, fmt.Errorf("signal: killed"))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("execProcessError = %v, want context canceled", err)
+	}
+	if !strings.Contains(err.Error(), "canceled") {
+		t.Fatalf("execProcessError text = %q, want canceled", err.Error())
 	}
 }
 

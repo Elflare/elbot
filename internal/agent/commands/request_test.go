@@ -32,13 +32,18 @@ func TestRequestsCommandFormatsTree(t *testing.T) {
 		t.Fatalf("start tool: %v", err)
 	}
 	defer toolDone()
+	_, _, hookDone, err := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
+	if err != nil {
+		t.Fatalf("start hook: %v", err)
+	}
+	defer hookDone()
 
 	cmd := NewRequests(Deps{Requests: manager, Store: store, Turns: turn.NewManager()})
 	result, err := cmd.Handle(ctx, command.Request{})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	for _, want := range []string{"[1] chat turn request", "└── [1.1] shell tool request", "session: 测试会话", "tool: shell"} {
+	for _, want := range []string{"[1] chat turn request", "[1.1] shell tool request", "[1.2] gpt_image_draw_fullwidth hook request", "session: 测试会话", "tool: shell", "hook: gpt_image_draw_fullwidth"} {
 		if !strings.Contains(result.Content, want) {
 			t.Fatalf("requests output missing %q:\n%s", want, result.Content)
 		}
@@ -82,12 +87,42 @@ func TestFormatActiveRequestsUsesTree(t *testing.T) {
 		t.Fatalf("start tool: %v", err)
 	}
 	defer toolDone()
+	_, _, hookDone, err := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
+	if err != nil {
+		t.Fatalf("start hook: %v", err)
+	}
+	defer hookDone()
 
 	got := formatActiveRequests(ctx, Deps{Requests: manager, Store: store, Turns: turn.NewManager()}, manager.ListBySession("s1"))
-	for _, want := range []string{"[1] chat turn request", "└── [1.1] shell tool request"} {
+	for _, want := range []string{"[1] chat turn request", "[1.1] shell tool request", "[1.2] gpt_image_draw_fullwidth hook request"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("active requests output missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func TestStopCommandCancelsNumberedHookRequest(t *testing.T) {
+	ctx := context.Background()
+	manager := request.NewManager(time.Minute)
+	turnReq, turnCtx, turnDone, err := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
+	if err != nil {
+		t.Fatalf("start turn: %v", err)
+	}
+	defer turnDone()
+	_, hookCtx, _, err := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
+	if err != nil {
+		t.Fatalf("start hook: %v", err)
+	}
+
+	cmd := NewStop(Deps{Requests: manager, Turns: turn.NewManager()})
+	if _, err := cmd.Handle(ctx, command.Request{Args: "1.1"}); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	assertCommandTestCanceled(t, hookCtx)
+	select {
+	case <-turnCtx.Done():
+		t.Fatal("turn request was canceled by hook stop")
+	default:
 	}
 }
 

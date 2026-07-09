@@ -552,6 +552,7 @@ func (a *Agent) SetHookManager(manager hook.Manager) {
 	}
 	if defaultManager, ok := manager.(*hook.DefaultManager); ok {
 		defaultManager.SetWakeupFunc(a.hookWakeup)
+		defaultManager.SetObserver(a.observeHookRun)
 	}
 	a.hooks = manager
 }

@@ -5,10 +5,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
+	"elbot/internal/request"
 )
 
 func TestFillHookContextAddsPlatformMessageIDs(t *testing.T) {
@@ -98,5 +100,101 @@ func TestRunHookErrorSendsFailureNotice(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("notice = %q, want %q", got, want)
 		}
+	}
+}
+
+func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
+	manager := hook.NewManager()
+	a := &Agent{platform: &fakePlatform{}, requests: request.NewManager(time.Minute)}
+	a.SetHookManager(manager)
+	parent, parentCtx, parentDone, err := a.requests.Start(context.Background(), request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
+	if err != nil {
+		t.Fatalf("start turn: %v", err)
+	}
+	defer parentDone()
+	ctx := withTurnRequestID(parentCtx, parent.ID)
+
+	if err := manager.Register(hook.Registration{
+		Point: hook.PointAgentInputPrepared,
+		Name:  "test.hook_status",
+		Match: hook.Always(),
+		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+			var hookReq request.Request
+			for _, req := range a.requests.List() {
+				if req.Kind == request.KindHook {
+					hookReq = req
+					break
+				}
+			}
+			if hookReq.ID == "" {
+				t.Fatal("hook request was not active while handler ran")
+			}
+			if hookReq.ParentID != parent.ID || hookReq.SessionID != "s1" || hookReq.Label != "test.hook_status" {
+				t.Fatalf("hook request = %#v", hookReq)
+			}
+			return event, nil
+		}),
+	}); err != nil {
+		t.Fatalf("register hook: %v", err)
+	}
+
+	if _, err := manager.Run(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Session: hook.SessionContext{ID: "s1"}}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, req := range a.requests.List() {
+		if req.Kind == request.KindHook {
+			t.Fatalf("hook request leaked after handler finished: %#v", req)
+		}
+	}
+}
+
+func TestStopCanCancelTrackedHookRequest(t *testing.T) {
+	manager := hook.NewManager()
+	a := &Agent{platform: &fakePlatform{}, requests: request.NewManager(time.Minute)}
+	a.SetHookManager(manager)
+	entered := make(chan struct{})
+	if err := manager.Register(hook.Registration{
+		Point: hook.PointAgentInputPrepared,
+		Name:  "test.cancel_hook",
+		Match: hook.Always(),
+		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+			close(entered)
+			<-ctx.Done()
+			return event, ctx.Err()
+		}),
+	}); err != nil {
+		t.Fatalf("register hook: %v", err)
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := manager.Run(context.Background(), hook.Event{Point: hook.PointAgentInputPrepared, Session: hook.SessionContext{ID: "s1"}})
+		errCh <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("hook handler did not start")
+	}
+	var hookReq request.Request
+	for _, req := range a.requests.List() {
+		if req.Kind == request.KindHook {
+			hookReq = req
+			break
+		}
+	}
+	if hookReq.ID == "" {
+		t.Fatal("hook request not found")
+	}
+	if !a.requests.Cancel(hookReq.ID) {
+		t.Fatal("Cancel returned false for hook request")
+	}
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Run error = %v, want context canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("hook run did not stop after cancel")
 	}
 }
