@@ -54,6 +54,9 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 	}
 	ch, err := a.clientForProvider(selection.Provider).ChatStream(ctx, req)
 	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return llmCallResult{Messages: baseMessages, Stream: stream}, latestUserContent, nil
+		}
 		if shouldFallbackVision(requestMessages, err) {
 			a.notifyVisionFallbackOnce(ctx, sessionID, out)
 			return a.callLLM(ctx, sessionID, selection, fallbackVisionMessages(baseMessages), tools, latestUserContent, stream, out)
