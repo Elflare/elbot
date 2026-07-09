@@ -1283,9 +1283,9 @@ func buildSegmentOutput(spec SegmentSpec, target delivery.Target, timing string)
 			out.Source.URL = u
 		}
 		if b := strings.TrimSpace(spec.Base64); b != "" {
-			data, err := base64.StdEncoding.DecodeString(b)
+			data, err := decodeOutputBase64(b)
 			if err != nil {
-				return delivery.Output{}, fmt.Errorf("decode base64: %w", err)
+				return delivery.Output{}, err
 			}
 			out.Source.Data = data
 		}
@@ -1298,9 +1298,9 @@ func buildSegmentOutput(spec SegmentSpec, target delivery.Target, timing string)
 			out.Source.URL = u
 		}
 		if b := strings.TrimSpace(spec.Base64); b != "" {
-			data, err := base64.StdEncoding.DecodeString(b)
+			data, err := decodeOutputBase64(b)
 			if err != nil {
-				return delivery.Output{}, fmt.Errorf("decode base64: %w", err)
+				return delivery.Output{}, err
 			}
 			out.Source.Data = data
 		}
@@ -1333,6 +1333,34 @@ func buildSegmentOutput(spec SegmentSpec, target delivery.Target, timing string)
 	out.Target = target
 	out = delivery.WithDeliveryTiming(out, timing)
 	return out, nil
+}
+
+func decodeOutputBase64(value string) ([]byte, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	if base64.StdEncoding.DecodedLen(len(value)) > maxHookOutputBase64Bytes {
+		return nil, fmt.Errorf("base64 output exceeds %s decoded limit; %s", byteSize(maxHookOutputBase64Bytes), largeOutputRecommendation)
+	}
+	data, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return nil, fmt.Errorf("decode base64 output: %w", err)
+	}
+	if len(data) > maxHookOutputBase64Bytes {
+		return nil, fmt.Errorf("base64 output exceeds %s decoded limit; %s", byteSize(maxHookOutputBase64Bytes), largeOutputRecommendation)
+	}
+	return data, nil
+}
+
+func byteSize(bytes int) string {
+	if bytes%(1024*1024) == 0 {
+		return fmt.Sprintf("%d MiB", bytes/(1024*1024))
+	}
+	if bytes%1024 == 0 {
+		return fmt.Sprintf("%d KiB", bytes/1024)
+	}
+	return fmt.Sprintf("%d bytes", bytes)
 }
 
 // setTextField overwrites a text field with the given value, using allowField for permission checks.

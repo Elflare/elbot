@@ -18,7 +18,12 @@ import (
 	"elbot/internal/hook"
 )
 
-const hookProtocolVersion = "hook.v1"
+const (
+	hookProtocolVersion       = "hook.v1"
+	maxHookProtocolFrameBytes = 16 * 1024 * 1024
+	maxHookOutputBase64Bytes  = 10 * 1024 * 1024
+	largeOutputRecommendation = "write large media to a file and return outputs[].path or outputs[].url instead of inline base64"
+)
 
 func (m Module) runExec(ctx context.Context, event hook.Event, action Action, state state) (hook.Event, actionResult, error) {
 	command := render(action.Command, event, state)
@@ -103,11 +108,18 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 
 	done := false
 	result := actionResult{}
-	scanner := bufio.NewScanner(stdout)
+	stdoutReader := bufio.NewReader(stdout)
 	lineNo := 0
-	for scanner.Scan() {
+	for {
+		line, err := readProtocolLine(stdoutReader)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return failExec(actionResult{}, err, true)
+		}
 		lineNo++
-		line := strings.TrimSpace(scanner.Text())
+		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
@@ -126,9 +138,6 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 			done = true
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		return failExec(actionResult{}, fmt.Errorf("read hook plugin stdout: %w", err), true)
-	}
 	if err := waitExec(); err != nil {
 		err = withExecStderr(execProcessError(runCtx, action, err), stderrTail.String())
 		return event, actionResult{Error: err.Error()}, err
@@ -139,6 +148,30 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		return event, actionResult{Error: err.Error()}, err
 	}
 	return event, result, nil
+}
+
+func readProtocolLine(reader *bufio.Reader) (string, error) {
+	var data []byte
+	for {
+		part, err := reader.ReadSlice('\n')
+		data = append(data, part...)
+		if len(data) > maxHookProtocolFrameBytes {
+			return "", fmt.Errorf("hook protocol stdout frame exceeds %s limit; %s", byteSize(maxHookProtocolFrameBytes), largeOutputRecommendation)
+		}
+		switch {
+		case err == nil:
+			return string(data), nil
+		case errors.Is(err, bufio.ErrBufferFull):
+			continue
+		case errors.Is(err, io.EOF):
+			if len(data) == 0 {
+				return "", io.EOF
+			}
+			return string(data), nil
+		default:
+			return "", fmt.Errorf("read hook plugin stdout: %w", err)
+		}
+	}
 }
 
 func (m Module) handleProtocolFrame(ctx context.Context, stdin io.Writer, event hook.Event, action Action, state state, frame map[string]json.RawMessage, lineNo int, line string) (hook.Event, actionResult, bool, error) {

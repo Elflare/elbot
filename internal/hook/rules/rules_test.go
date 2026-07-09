@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -63,6 +64,18 @@ func TestExecHelperProcess(t *testing.T) {
 		}
 		data, _ := json.Marshal(frame)
 		writeProtocolTestOutput(string(data))
+	case "base64-output":
+		if marker+1 >= len(os.Args) {
+			os.Exit(2)
+		}
+		var size int
+		if _, err := fmt.Sscanf(os.Args[marker+1], "%d", &size); err != nil || size < 0 {
+			os.Exit(2)
+		}
+		encoded := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte("x"), size))
+		output, _ := json.Marshal(map[string]any{"type": "output", "outputs": []map[string]any{{"kind": "image", "base64": encoded}}})
+		fmt.Fprintln(os.Stdout, string(output))
+		fmt.Fprintln(os.Stdout, `{"type":"done","matched":true}`)
 	case "read":
 		if marker+1 >= len(os.Args) {
 			os.Exit(2)
@@ -737,6 +750,28 @@ func TestExecActionDefaultStdinIncludesEvent(t *testing.T) {
 	}
 }
 
+func TestExecOutputFrameLargerThanScannerDefaultSucceeds(t *testing.T) {
+	module := Module{}
+	const decodedSize = 70 * 1024
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("base64-output", fmt.Sprint(decodedSize))}}}, hook.Event{})
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 {
+		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+	if got.Outputs[0].Kind != delivery.KindImage || len(got.Outputs[0].Source.Data) != decodedSize {
+		t.Fatalf("output = %#v, data len %d", got.Outputs[0], len(got.Outputs[0].Source.Data))
+	}
+}
+
+func TestReadProtocolLineRejectsOversizedFrame(t *testing.T) {
+	_, err := readProtocolLine(bufio.NewReader(strings.NewReader(strings.Repeat("x", maxHookProtocolFrameBytes+1))))
+	if err == nil || !strings.Contains(err.Error(), "stdout frame exceeds 16 MiB limit") || !strings.Contains(err.Error(), "outputs[].path") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestExecDoneMessageWritesConfiguredFieldAndResult(t *testing.T) {
 	module := Module{}
 	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "old"}}
@@ -1030,6 +1065,14 @@ func TestSendActionWithOutputsBase64(t *testing.T) {
 	}
 	if string(got.Outputs[0].Source.Data) != "hello" {
 		t.Fatalf("base64 data = %q, want %q", string(got.Outputs[0].Source.Data), "hello")
+	}
+}
+
+func TestBuildSegmentOutputRejectsLargeBase64(t *testing.T) {
+	encoded := strings.Repeat("A", base64.StdEncoding.EncodedLen(maxHookOutputBase64Bytes+1))
+	_, err := buildSegmentOutput(SegmentSpec{Kind: "image", Base64: encoded}, delivery.Target{}, "")
+	if err == nil || !strings.Contains(err.Error(), "base64 output exceeds 10 MiB decoded limit") || !strings.Contains(err.Error(), "outputs[].path") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

@@ -395,7 +395,7 @@ init frame 字段：
 | `text` | 文本内容或附加文本 |
 | `url` | HTTP/HTTPS 资源 URL |
 | `path` | 本地资源路径；输出时相对 `plugins/` 或插件目录解析 |
-| `base64` | base64 编码数据；仅输出片段使用 |
+| `base64` | base64 编码数据；仅输出片段使用，解码后最大 10 MiB |
 | `name` | 文件名或表情名 |
 | `mime_type` | MIME 类型提示 |
 | `user_id` | `at` 输出的目标用户 ID |
@@ -444,6 +444,8 @@ stdout frame 结构示例：
 ```
 
 `output` frame 只使用 `outputs` 字段；不要写 `{"type":"output","output":{...}}` 或 `{"type":"output","segments":[...]}`。需要多段输出时，把多个 output segment 放在同一个 `outputs` 数组里；也可以写多行 `output` frame。TOML send action 同样使用 `outputs = [...]`。
+
+单个 stdout frame 最大 16 MiB。图片等大媒体不要直接塞进 `base64`，推荐先写入插件目录或临时文件，再用 `path` 返回；也可以返回 `url`。
 
 `output` frame 字段：
 
