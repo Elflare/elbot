@@ -308,8 +308,8 @@ func (a *Agent) fillHookContext(ctx context.Context, event hook.Event) hook.Even
 		if event.Platform.ReplyToMessageID == "" {
 			event.Platform.ReplyToMessageID = msg.ReplyToMessageID
 		}
-		if event.Message.RawText == "" {
-			event.Message.RawText = msg.RawText
+		if event.Message.PlatformText == "" {
+			event.Message.PlatformText = msg.RawText
 		}
 		if event.Message.Reply == nil && msg.Reply.MessageID != "" {
 			replySegments := platformSegmentsToLLM(msg.Reply.Segments, msg.Reply.Text)
@@ -317,13 +317,13 @@ func (a *Agent) fillHookContext(ctx context.Context, event hook.Event) hook.Even
 				MessageID:   msg.Reply.MessageID,
 				SenderID:    msg.Reply.SenderID,
 				Text:        llm.SegmentsTextOnly(replySegments),
-				ContentText: llm.SegmentsContentText(replySegments),
+				DisplayText: llm.SegmentsContentText(replySegments),
 				Segments:    replySegments,
 			}
 		}
 	}
-	if event.Message.InputText == "" && event.Message.Role == string(llm.RoleUser) {
-		event.Message.InputText = a.stripWakeupPrefix(ctx, llm.SegmentsTextOnly(event.Message.Segments))
+	if event.Message.IntentText == "" && event.Message.Role == string(llm.RoleUser) {
+		event.Message.IntentText = a.stripWakeupPrefix(ctx, llm.SegmentsTextOnly(event.Message.Segments))
 	}
 	if event.Platform.Name == "" {
 		event.Platform.Name = platformName

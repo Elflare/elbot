@@ -6,8 +6,8 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/hook"
 	"elbot/internal/logging"
-	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/request"
+	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -94,7 +94,7 @@ type ToolService interface {
 
 type HookService interface {
 	HookList() []hook.Info
-	HookReload() error
+	HookReload() (hook.ReloadReport, error)
 }
 
 type LogService interface {

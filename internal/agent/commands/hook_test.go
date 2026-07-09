@@ -10,11 +10,14 @@ import (
 )
 
 type fakeHookService struct {
-	infos []hook.Info
+	infos        []hook.Info
+	reloadReport hook.ReloadReport
 }
 
 func (s fakeHookService) HookList() []hook.Info { return s.infos }
-func (s fakeHookService) HookReload() error     { return nil }
+func (s fakeHookService) HookReload() (hook.ReloadReport, error) {
+	return s.reloadReport, nil
+}
 
 func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
 	longDescription := "123456789012345678901234567890123456789012345678901234567890tail"
@@ -59,5 +62,18 @@ func TestHooksCommandCompletesRuleNameWithoutRulesPrefix(t *testing.T) {
 	got := cmd.Complete(context.Background(), command.CompletionRequest{Raw: "/hooks g", Prefix: "/", Name: "hooks", Args: "g", Cursor: len("/hooks g")})
 	if len(got) != 1 || got[0].Text != "greet" || strings.HasPrefix(got[0].Text, "rules.") {
 		t.Fatalf("Complete = %#v", got)
+	}
+}
+
+func TestHooksReloadShowsWarnings(t *testing.T) {
+	hooks := fakeHookService{reloadReport: hook.ReloadReport{Notices: []string{"Hook 插件 gpt_image 已跳过：bad field"}}}
+	cmd := NewHooks(Deps{Hooks: hooks})
+
+	result, err := cmd.Handle(context.Background(), command.Request{Args: "reload"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "hook reload completed with warnings") || !strings.Contains(result.Content, "gpt_image") {
+		t.Fatalf("reload content = %q", result.Content)
 	}
 }

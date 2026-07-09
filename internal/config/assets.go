@@ -426,6 +426,11 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # enabled = true
 # path = "demo/hook.toml" # optional; default is plugins/<name>/hook.toml
 #
+# Plugin hook.toml may include:
+# [plugin]
+# name = "demo" # optional metadata; [[plugins]].name is the reference name
+# description = "demo plugin"
+#
 # Rule shape:
 # [[rules]]
 # name = "stable_debug_name"
@@ -502,12 +507,12 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # Common fields:
 # platform.name/scope_id/user_id/conversation_id/message_id/reply_to_message_id
 # actor.id/user_id/role/group_role/display_name
-# session.id/mode/status
-# request.id/kind/phase (kind: turn,llm,tool,compress,sub_agent; phase: idle,llm,tool,awaiting_risk_confirm,awaiting_append_confirm,compact)
-# message.text/content_text/raw_text/input_text/role
-# message.input_text strips wakeup keywords and bot mentions; use it for user intent matching.
-# message.reply.message_id/sender_id/text/content_text
-# llm.text/raw_text/latest_user_text/latest_user_content_text/provider/model
+# session.id/mode/title/status
+# request.id/kind/session_id/phase (kind: turn,llm,tool,compress,sub_agent; phase: idle,llm,tool,awaiting_risk_confirm,awaiting_append_confirm,compact)
+# message.id/text/display_text/platform_text/intent_text/role
+# message.intent_text strips wakeup keywords and bot mentions; use it for user intent matching.
+# message.reply.message_id/sender_id/text/display_text
+# llm.text/source_text/latest_user_text/latest_user_display_text/provider/model
 # tool.name/arguments/result/risk
 # error.message
 #
@@ -527,9 +532,9 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # Template variables include:
 # {{platform.name}}, {{platform.scope_id}}, {{platform.user_id}}, {{platform.message_id}}, {{platform.reply_to_message_id}}
 # {{actor.id}}, {{actor.user_id}}, {{actor.role}}, {{actor.group_role}}
-# {{message.text}}, {{message.content_text}}, {{message.raw_text}}, {{message.input_text}}
-# {{message.reply.message_id}}, {{message.reply.sender_id}}, {{message.reply.text}}, {{message.reply.content_text}}
-# {{llm.text}}, {{llm.raw_text}}, {{llm.latest_user_text}}, {{llm.latest_user_content_text}}
+# {{message.text}}, {{message.display_text}}, {{message.platform_text}}, {{message.intent_text}}
+# {{message.reply.message_id}}, {{message.reply.sender_id}}, {{message.reply.text}}, {{message.reply.display_text}}
+# {{llm.text}}, {{llm.source_text}}, {{llm.latest_user_text}}, {{llm.latest_user_display_text}}
 # {{tool.arguments}}, {{tool.result}}
 # {{error.message}}
 # {{match.regex.0.group.1}}, {{match.regex.0.<name>}}

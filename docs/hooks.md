@@ -37,6 +37,21 @@ enabled = true
 
 插件配置文件可以包含 `[plugin]` 元信息和自己的 `[[rules]]`。插件规则里的本地相对路径和相对 `cwd` 都基于该插件配置所在目录解析。
 
+```toml
+[plugin]
+name = "demo"                 # 可选；实际引用名以主 hooks.toml 的 [[plugins]].name 为准
+description = "demo plugin"   # 可选；规则未写 description 时作为说明兜底
+
+[[rules]]
+name = "demo_rule"
+on = "platform.message.received"
+always = true
+action = "send"
+text = "ok"
+```
+
+`/hooks` 列出的是成功注册的规则名，例如 `demo_rule`，不是 `[[plugins]]` 的插件名。`/hooks reload` 会重新读取主配置和插件配置；如果某个插件被跳过，会在命令结果里显示 warning。
+
 ### 规则结构
 
 ```toml
@@ -117,11 +132,11 @@ match = [
 ```
 platform.name / scope_id / user_id / conversation_id / message_id / reply_to_message_id
 actor.id / user_id / role / group_role / display_name
-session.id / mode / status
-request.id / kind / phase
-message.text / content_text / raw_text / input_text / role
-message.reply.message_id / sender_id / text / content_text
-llm.text / raw_text / latest_user_text / latest_user_content_text / provider / model
+session.id / mode / title / status
+request.id / kind / session_id / phase
+message.id / text / display_text / platform_text / intent_text / role
+message.reply.message_id / sender_id / text / display_text
+llm.text / source_text / latest_user_text / latest_user_display_text / provider / model
 tool.name / arguments / result / risk
 error.message
 ```
@@ -130,19 +145,19 @@ error.message
 
 | 需求 | 推荐字段 | 说明 |
 | --- | --- | --- |
-| 匹配用户实际说了什么，忽略群聊唤醒词或 bot mention | `message.input_text` | 例如用户发 `芙莉丝 咩` 时，`message.input_text` 为 `咩` |
+| 匹配用户实际说了什么，忽略群聊唤醒词或 bot mention | `message.intent_text` | 例如用户发 `elbot 咩` 时，`message.intent_text` 为 `咩` |
 | 匹配当前消息纯文本，保留唤醒词 | `message.text` | 只拼接 text 片段，不含图片/文件占位 |
-| 匹配当前消息可读内容，保留唤醒词 | `message.content_text` | text + 图片/文件占位，例如 `[图片: ...]` |
-| 匹配平台原始文本 | `message.raw_text` | 平台给的原始文本，不含引用 fallback 展开 |
+| 匹配当前消息可读内容，保留唤醒词 | `message.display_text` | text + 图片/文件占位，例如 `[图片: ...]` |
+| 匹配平台原始文本 | `message.platform_text` | 平台给的原始文本，不含引用 fallback 展开 |
 | 匹配引用/回复的内容 | `message.reply.*` | 当前消息回复了别人时才有值 |
 
-自动回复并阻止后续命令/LLM 时，优先用 `platform.message.received` + `consume=true`。如果群里需要唤醒词，用 `message.input_text` 匹配：
+自动回复并阻止后续命令/LLM 时，优先用 `platform.message.received` + `consume=true`。如果群里需要唤醒词，用 `message.intent_text` 匹配：
 
 ```toml
 [[rules]]
 name = "reply_mee"
 on = "platform.message.received"
-if = "message.input_text"
+if = "message.intent_text"
 op = "fullmatch"
 value = "咩"
 consume = true
@@ -183,7 +198,7 @@ error.occurred
 | `tool.call.completed` | `tool.result` |
 | `agent.output.prepared` / `agent.turn.output.prepared` / `platform.message.sent` | assistant `message.text` |
 
-`llm.raw_text` 可以用于条件匹配，但不能被编辑。
+`llm.source_text` 可以用于条件匹配，但不能被编辑。
 
 ### Action 类型
 
@@ -344,20 +359,22 @@ init frame 字段：
 | `request.phase` | Turn 阶段：`idle`、`llm`、`tool`、`awaiting_risk_confirm`、`awaiting_append_confirm`、`compact`；无 Turn 上下文时为空 |
 | `message.id` | 当前消息 ID；未设置时为空 |
 | `message.role` | 消息角色，例如 `user`、`assistant` |
-| `message.raw_text` | 平台原始当前消息文本，不包含引用 fallback 展开内容 |
-| `message.input_text` | 用户输入意图文本；对用户消息会去掉配置的唤醒关键词和 bot mention，适合在 `platform.message.received` 中匹配 `芙莉丝 咩` 这种消息里的 `咩` |
+| `message.text` | 当前消息纯文本，只拼接 text 片段，不包含图片/文件占位 |
+| `message.display_text` | 当前消息可读内容文本，可能包含图片/文件占位 |
+| `message.platform_text` | 平台原始当前消息文本，不包含引用 fallback 展开内容 |
+| `message.intent_text` | 用户输入意图文本；对用户消息会去掉配置的唤醒关键词和 bot mention，适合在 `platform.message.received` 中匹配 `elbot 咩` 这种消息里的 `咩` |
 | `message.segments` | 当前消息片段数组；脚本读取用户文本应优先从这里聚合 `type=text` 的片段。`platform.message.received` 中这里表示当前入站消息，不包含被引用消息文本 |
 | `message.messages` | 相关 LLM 消息数组；仅部分 Hook 点填充 |
 | `message.reply.message_id` | 当前消息引用/回复的目标平台消息 ID |
 | `message.reply.sender_id` | 被引用消息发送者 ID；平台未提供时为空 |
 | `message.reply.text` | 被引用消息的纯文本内容；没有文本时为空 |
-| `message.reply.content_text` | 被引用消息的可读内容文本，可能包含图片/文件占位 |
+| `message.reply.display_text` | 被引用消息的可读内容文本，可能包含图片/文件占位 |
 | `llm.provider` | LLM provider 名 |
 | `llm.model` | LLM model 名 |
 | `llm.messages` | 本次 LLM 消息数组 |
 | `llm.tools` | 本次请求可用工具 schema 数组 |
 | `llm.usage` | LLM usage 统计；未提供时为空 |
-| `llm.raw_text` | LLM 原始响应文本；可匹配，不可编辑 |
+| `llm.source_text` | LLM 原始响应文本；可匹配，不可编辑 |
 | `llm.text` | 当前可见/可编辑的 LLM 文本 |
 | `llm.tool_calls` | LLM 返回的工具调用数组 |
 | `llm.elapsed_ms` | LLM 调用耗时毫秒数 |
@@ -384,7 +401,7 @@ init frame 字段：
 | `user_id` | `at` 输出的目标用户 ID |
 | `message_id` | `reply` 输出的目标平台消息 ID |
 
-注意：`message.text`、`message.content_text`、`llm.latest_user_text` 等是规则匹配和模板变量里的派生字段，不是 init JSON 里的同名字段。exec 脚本需要从 `event.message.segments`、`event.message.raw_text`、`event.message.reply` 或 `event.llm.messages[].segments` 读取原始数据。
+注意：`message.text`、`message.display_text`、`llm.latest_user_text` 等是规则匹配和模板变量里的派生字段，不是 init JSON 里的同名字段。exec 脚本需要从 `event.message.segments`、`event.message.platform_text`、`event.message.reply` 或 `event.llm.messages[].segments` 读取原始数据。
 
 `match.regex[]` 字段：
 
@@ -526,9 +543,9 @@ actions = [
 {{platform.name}}          {{platform.scope_id}}      {{platform.user_id}}
 {{platform.message_id}}    {{platform.reply_to_message_id}}
 {{actor.id}}               {{actor.user_id}}          {{actor.role}}
-{{message.text}}           {{message.content_text}}   {{message.raw_text}}
-{{message.reply.message_id}} {{message.reply.text}}    {{message.reply.content_text}}
-{{llm.text}}               {{llm.raw_text}}           {{llm.latest_user_text}}
+{{message.text}}           {{message.display_text}}   {{message.platform_text}}
+{{message.reply.message_id}} {{message.reply.text}}    {{message.reply.display_text}}
+{{llm.text}}               {{llm.source_text}}        {{llm.latest_user_text}}
 {{tool.arguments}}         {{tool.result}}
 {{actions.<name>.result}}  {{actions.<name>.error}}
 ```

@@ -328,6 +328,7 @@ func TestLoadConfigLoadsPluginRulesWithPluginBaseDir(t *testing.T) {
 name = "demo"
 `
 	plugin := `[plugin]
+name = "demo"
 description = "demo plugin"
 
 [[rules]]
@@ -358,6 +359,80 @@ path = "assets/pic.png"
 	wantPath := filepath.Join(pluginDir, "assets", "pic.png")
 	if len(got.Outputs) != 1 || got.Outputs[0].Source.Path != wantPath {
 		t.Fatalf("outputs = %#v, want path %q", got.Outputs, wantPath)
+	}
+}
+
+func TestLoadConfigSkipsInvalidPluginRuleOnly(t *testing.T) {
+	dir := t.TempDir()
+	badPluginDir := filepath.Join(dir, "bad")
+	goodPluginDir := filepath.Join(dir, "good")
+	if err := os.MkdirAll(badPluginDir, 0o755); err != nil {
+		t.Fatalf("mkdir bad plugin: %v", err)
+	}
+	if err := os.MkdirAll(goodPluginDir, 0o755); err != nil {
+		t.Fatalf("mkdir good plugin: %v", err)
+	}
+	root := `[[plugins]]
+name = "bad"
+
+[[plugins]]
+name = "good"
+
+[[rules]]
+name = "root_ok"
+on = "platform.message.received"
+always = true
+action = "send"
+text = "root"
+`
+	badPlugin := `[[rules]]
+name = "bad_old_field"
+on = "platform.message.received"
+if = "message.content_text"
+op = "fullmatch"
+value = "咩"
+action = "send"
+text = "bad"
+`
+	goodPlugin := `[plugin]
+name = "good"
+description = "good plugin"
+
+[[rules]]
+name = "good_ok"
+on = "platform.message.received"
+always = true
+action = "send"
+text = "good"
+`
+	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(root), 0o644); err != nil {
+		t.Fatalf("write root config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(badPluginDir, "hook.toml"), []byte(badPlugin), 0o644); err != nil {
+		t.Fatalf("write bad plugin: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(goodPluginDir, "hook.toml"), []byte(goodPlugin), 0o644); err != nil {
+		t.Fatalf("write good plugin: %v", err)
+	}
+	notices := []string{}
+	cfg, _, err := loadConfig(Options{
+		ConfigDir: dir,
+		Notify: func(ctx context.Context, text string) {
+			notices = append(notices, text)
+		},
+	})
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	names := map[string]bool{}
+	for _, rule := range cfg.Rules {
+		names[rule.Name] = true
+	}
+	if !names["root_ok"] || !names["good_ok"] || names["bad_old_field"] {
+		t.Fatalf("rules = %#v", cfg.Rules)
+	}
+	if len(notices) != 1 || !strings.Contains(notices[0], "bad") || !strings.Contains(notices[0], "message.content_text") {
+		t.Fatalf("notices = %#v", notices)
 	}
 }
 
@@ -485,24 +560,24 @@ func TestTextActionsKeepMediaSegmentsInPlace(t *testing.T) {
 	}
 }
 
-func TestSendActionRendersMessageRawTextAndReplyFields(t *testing.T) {
+func TestSendActionRendersMessagePlatformTextAndReplyFields(t *testing.T) {
 	module := Module{}
 	event := hook.Event{
 		Point: hook.PointPlatformMessageReceived,
 		Message: hook.MessagePayload{
-			RawText:  "撤回",
-			Segments: llm.TextSegments("撤回"),
+			PlatformText: "撤回",
+			Segments:     llm.TextSegments("撤回"),
 			Reply: &hook.MessageReplyPayload{
 				MessageID:   "notice-1",
 				SenderID:    "bot",
 				Text:        "通知",
-				ContentText: "通知",
+				DisplayText: "通知",
 			},
 		},
 	}
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{
 		Type: "send",
-		Text: "{{message.raw_text}}/{{message.reply.message_id}}/{{message.reply.sender_id}}/{{message.reply.text}}/{{message.reply.content_text}}",
+		Text: "{{message.platform_text}}/{{message.reply.message_id}}/{{message.reply.sender_id}}/{{message.reply.text}}/{{message.reply.display_text}}",
 	}}}, event)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
@@ -538,22 +613,22 @@ func TestReplaceActionFirstAndAllAcrossTextSegments(t *testing.T) {
 	}
 }
 
-func TestLLMResponseRawTextCanMatchButCannotBeEdited(t *testing.T) {
+func TestLLMResponseSourceTextCanMatchButCannotBeEdited(t *testing.T) {
 	module := Module{}
-	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "visible", RawText: "raw token"}}
+	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "visible", SourceText: "raw token"}}
 	matched, err := module.runRule(context.Background(), Rule{
-		Match:   []hook.Condition{{Field: "llm.raw_text", Op: hook.MatchContains, Value: "raw"}},
+		Match:   []hook.Condition{{Field: "llm.source_text", Op: hook.MatchContains, Value: "raw"}},
 		Actions: []Action{{Type: "append", Field: "llm.text", Text: " output"}},
 	}, event)
 	if err != nil {
-		t.Fatalf("runRule match raw_text: %v", err)
+		t.Fatalf("runRule match source_text: %v", err)
 	}
-	if matched.LLM.Text != "visible output" || matched.LLM.RawText != "raw token" {
+	if matched.LLM.Text != "visible output" || matched.LLM.SourceText != "raw token" {
 		t.Fatalf("matched event = %#v", matched.LLM)
 	}
 
-	_, err = module.runRule(context.Background(), Rule{Actions: []Action{{Type: "append", Field: "llm.raw_text", Text: " changed"}}}, event)
-	if err == nil || !strings.Contains(err.Error(), `field "llm.raw_text" cannot be edited`) {
+	_, err = module.runRule(context.Background(), Rule{Actions: []Action{{Type: "append", Field: "llm.source_text", Text: " changed"}}}, event)
+	if err == nil || !strings.Contains(err.Error(), `field "llm.source_text" cannot be edited`) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -984,9 +1059,9 @@ func TestSetTextField(t *testing.T) {
 }
 
 func TestSetTextFieldRejectsDisallowedField(t *testing.T) {
-	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "old", RawText: "raw"}}
-	_, err := setTextField(event, "llm.raw_text", "new")
-	if err == nil || !strings.Contains(err.Error(), `field "llm.raw_text" cannot be edited`) {
+	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "old", SourceText: "raw"}}
+	_, err := setTextField(event, "llm.source_text", "new")
+	if err == nil || !strings.Contains(err.Error(), `field "llm.source_text" cannot be edited`) {
 		t.Fatalf("err = %v", err)
 	}
 }
