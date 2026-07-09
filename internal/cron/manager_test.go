@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"testing"
@@ -24,10 +25,11 @@ func (r *fakeCronRepo) Upsert(ctx context.Context, req storage.UpsertCronJobRequ
 		job.Schedule = req.Schedule
 		job.Enabled = req.Enabled
 		job.Metadata = req.Metadata
+		job.NextRunAt = req.NextRunAt
 		job.UpdatedAt = storage.Now()
 		return job, nil
 	}
-	job := &storage.CronJob{ID: storage.NewID(), Name: req.Name, Handler: req.Handler, Schedule: req.Schedule, Enabled: req.Enabled, Metadata: req.Metadata, CreatedAt: storage.Now(), UpdatedAt: storage.Now()}
+	job := &storage.CronJob{ID: storage.NewID(), Name: req.Name, Handler: req.Handler, Schedule: req.Schedule, Enabled: req.Enabled, Metadata: req.Metadata, NextRunAt: req.NextRunAt, CreatedAt: storage.Now(), UpdatedAt: storage.Now()}
 	r.jobs[job.Name] = job
 	return job, nil
 }
@@ -55,6 +57,17 @@ func (r *fakeCronRepo) ListEnabled(ctx context.Context) ([]storage.CronJob, erro
 	return r.List(ctx, false)
 }
 
+func (r *fakeCronRepo) UpdateNextRunAt(ctx context.Context, id string, nextRunAt *time.Time, updatedAt time.Time) error {
+	for _, job := range r.jobs {
+		if job.ID == id {
+			job.NextRunAt = nextRunAt
+			job.UpdatedAt = updatedAt
+			return nil
+		}
+	}
+	return storage.ErrNotFound
+}
+
 func (r *fakeCronRepo) UpdateRunState(ctx context.Context, id string, state storage.CronJobRunState) error {
 	for _, job := range r.jobs {
 		if job.ID == id {
@@ -76,6 +89,7 @@ func (r *fakeCronRepo) DisableByName(ctx context.Context, name string) error {
 		return storage.ErrNotFound
 	}
 	job.Enabled = false
+	job.NextRunAt = nil
 	return nil
 }
 
@@ -133,6 +147,71 @@ func TestManagerStoresHandlerError(t *testing.T) {
 	got := repo.jobs[job.Name]
 	if got.RunCount != 1 || got.LastError != "boom" {
 		t.Fatalf("job state = %#v", got)
+	}
+}
+
+func TestManagerUpsertStoresAndDisableClearsNextRunAt(t *testing.T) {
+	repo := newFakeCronRepo()
+	manager := NewManager(repo, nil)
+	job, err := manager.UpsertJob(context.Background(), UpsertJobRequest{Name: "test.job", Handler: "test.handler", Schedule: "0 3 * * *", Enabled: true})
+	if err != nil {
+		t.Fatalf("upsert job: %v", err)
+	}
+	if job.NextRunAt == nil {
+		t.Fatalf("next run was not stored: %#v", job)
+	}
+	if err := manager.DisableJob(context.Background(), job.Name); err != nil {
+		t.Fatalf("disable job: %v", err)
+	}
+	if repo.jobs[job.Name].NextRunAt != nil {
+		t.Fatalf("next run was not cleared: %#v", repo.jobs[job.Name])
+	}
+}
+
+func TestManagerRunJobDoesNotReenableJobDisabledByHandler(t *testing.T) {
+	repo := newFakeCronRepo()
+	manager := NewManager(repo, nil)
+	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) error {
+		return manager.DisableJob(ctx, job.Name)
+	}); err != nil {
+		t.Fatalf("register handler: %v", err)
+	}
+	job, err := manager.UpsertJob(context.Background(), UpsertJobRequest{Name: "test.job", Handler: "test.handler", Schedule: "0 3 * * *", Enabled: true})
+	if err != nil {
+		t.Fatalf("upsert job: %v", err)
+	}
+
+	manager.runJob(job.Name)
+	got := repo.jobs[job.Name]
+	if got.Enabled {
+		t.Fatalf("job was re-enabled: %#v", got)
+	}
+	if got.RunCount != 1 || got.LastRunAt == nil {
+		t.Fatalf("job state was not updated: %#v", got)
+	}
+}
+
+func TestComputeNextRunAtUsesUserOnceRunAt(t *testing.T) {
+	now := time.Date(2026, 1, 2, 3, 3, 0, 0, time.Local)
+	meta := Metadata{Kind: metadataKind, Version: 1, Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}}
+	data, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatalf("marshal metadata: %v", err)
+	}
+	nextRun, err := computeNextRunAt("4 3 2 1 *", string(data), true, now)
+	if err != nil {
+		t.Fatalf("compute next run: %v", err)
+	}
+	want := time.Date(2026, 1, 2, 3, 4, 0, 0, time.Local)
+	if nextRun == nil || !nextRun.Equal(want) {
+		t.Fatalf("next run = %v, want %v", nextRun, want)
+	}
+	nextRun, err = computeNextRunAt("4 3 2 1 *", string(data), true, want)
+	if err != nil {
+		t.Fatalf("compute expired next run: %v", err)
+	}
+	if nextRun != nil {
+		t.Fatalf("expired once next run = %v, want nil", nextRun)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"elbot/internal/storage"
 )
@@ -24,6 +25,7 @@ func (r *CronJobRepository) Upsert(ctx context.Context, req storage.UpsertCronJo
 			Schedule:  req.Schedule,
 			Enabled:   req.Enabled,
 			Metadata:  req.Metadata,
+			NextRunAt: req.NextRunAt,
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
@@ -44,6 +46,7 @@ func (r *CronJobRepository) Upsert(ctx context.Context, req storage.UpsertCronJo
 	job.Schedule = req.Schedule
 	job.Enabled = req.Enabled
 	job.Metadata = req.Metadata
+	job.NextRunAt = req.NextRunAt
 	job.UpdatedAt = now
 	if err := r.update(ctx, job); err != nil {
 		return nil, err
@@ -58,7 +61,15 @@ func cronJobMatchesUpsert(job *storage.CronJob, req storage.UpsertCronJobRequest
 	return job.Handler == req.Handler &&
 		job.Schedule == req.Schedule &&
 		job.Enabled == req.Enabled &&
-		job.Metadata == req.Metadata
+		job.Metadata == req.Metadata &&
+		optionalTimeEqual(job.NextRunAt, req.NextRunAt)
+}
+
+func optionalTimeEqual(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Equal(*b)
 }
 
 func (r *CronJobRepository) GetByName(ctx context.Context, name string) (*storage.CronJob, error) {
@@ -113,6 +124,24 @@ func (r *CronJobRepository) ListEnabled(ctx context.Context) ([]storage.CronJob,
 	return r.List(ctx, false)
 }
 
+func (r *CronJobRepository) UpdateNextRunAt(ctx context.Context, id string, nextRunAt *time.Time, updatedAt time.Time) error {
+	res, err := r.db.ExecContext(ctx, `
+UPDATE cron_jobs
+SET next_run_at = ?, updated_at = ?
+WHERE id = ?`,
+		nullTime(nextRunAt),
+		storage.FormatTime(updatedAt),
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("update cron job next run: %w", err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return storage.ErrNotFound
+	}
+	return nil
+}
+
 func (r *CronJobRepository) UpdateRunState(ctx context.Context, id string, state storage.CronJobRunState) error {
 	res, err := r.db.ExecContext(ctx, `
 UPDATE cron_jobs
@@ -138,7 +167,7 @@ WHERE id = ?`,
 func (r *CronJobRepository) DisableByName(ctx context.Context, name string) error {
 	res, err := r.db.ExecContext(ctx, `
 UPDATE cron_jobs
-SET enabled = 0, updated_at = ?
+SET enabled = 0, next_run_at = NULL, updated_at = ?
 WHERE name = ?`, storage.FormatTime(storage.Now()), name)
 	if err != nil {
 		return fmt.Errorf("disable cron job: %w", err)
@@ -188,12 +217,13 @@ INSERT INTO cron_jobs (
 func (r *CronJobRepository) update(ctx context.Context, job *storage.CronJob) error {
 	res, err := r.db.ExecContext(ctx, `
 UPDATE cron_jobs
-SET handler = ?, schedule = ?, enabled = ?, metadata = ?, updated_at = ?
+SET handler = ?, schedule = ?, enabled = ?, metadata = ?, next_run_at = ?, updated_at = ?
 WHERE id = ?`,
 		job.Handler,
 		job.Schedule,
 		boolInt(job.Enabled),
 		nullString(job.Metadata),
+		nullTime(job.NextRunAt),
 		storage.FormatTime(job.UpdatedAt),
 		job.ID,
 	)

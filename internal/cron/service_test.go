@@ -72,7 +72,7 @@ func TestNotifyPlatformConnectedDeliversMissedDirectCronPerPlatform(t *testing.T
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "提醒", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "该测试啦"}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
 
 	svc.NotifyPlatformConnected(context.Background(), "qqonebot")
-	if len(sent) != 1 || sent[0] != "qqonebot:该测试啦" {
+	if len(sent) != 1 || sent[0] != "qqonebot:cron 补发平台：qqonebot\n\n该测试啦" {
 		t.Fatalf("sent = %#v", sent)
 	}
 	meta := mustDecodeTestMetadata(t, repo.jobs[job.Name].Metadata)
@@ -88,7 +88,7 @@ func TestNotifyPlatformConnectedDeliversMissedDirectCronPerPlatform(t *testing.T
 		t.Fatalf("duplicate send after reconnect: %#v", sent)
 	}
 	svc.NotifyPlatformConnected(context.Background(), "cli")
-	if len(sent) != 2 || sent[1] != "cli:该测试啦" {
+	if len(sent) != 2 || sent[1] != "cli:cron 补发平台：cli\n\n该测试啦" {
 		t.Fatalf("sent after cli = %#v", sent)
 	}
 	if repo.jobs[job.Name].Enabled {
@@ -117,7 +117,7 @@ func TestNotifyPlatformConnectedGeneratesLLMReportForFirstConnectedTarget(t *tes
 	if runner.calls != 1 {
 		t.Fatalf("runner calls after qq = %d", runner.calls)
 	}
-	if len(sent) != 1 || sent[0] != "qqonebot:报告内容" {
+	if len(sent) != 1 || sent[0] != "qqonebot:cron 补发平台：qqonebot\n\n报告内容" {
 		t.Fatalf("sent after qq = %#v", sent)
 	}
 	meta := mustDecodeTestMetadata(t, repo.jobs[job.Name].Metadata)
@@ -129,12 +129,21 @@ func TestNotifyPlatformConnectedGeneratesLLMReportForFirstConnectedTarget(t *tes
 	if runner.calls != 1 {
 		t.Fatalf("runner should reuse cached report, calls = %d", runner.calls)
 	}
-	if len(sent) != 2 || sent[1] != "cli:报告内容" {
+	if len(sent) != 2 || sent[1] != "cli:cron 补发平台：cli\n\n报告内容" {
 		t.Fatalf("sent after cli = %#v", sent)
 	}
 	svc.NotifyPlatformConnected(context.Background(), "qqonebot")
 	if runner.calls != 1 || len(sent) != 2 {
 		t.Fatalf("duplicate run/send: calls=%d sent=%#v", runner.calls, sent)
+	}
+}
+
+func TestMissedOnceReportTextIncludesPlatformWithoutPersistingTargetLanguage(t *testing.T) {
+	if got := missedOnceReportText("cli", " 报告内容 "); got != "cron 补发平台：cli\n\n报告内容" {
+		t.Fatalf("text = %q", got)
+	}
+	if got := missedOnceReportText("qqonebot", ""); got != "cron 补发平台：qqonebot" {
+		t.Fatalf("empty report text = %q", got)
 	}
 }
 
