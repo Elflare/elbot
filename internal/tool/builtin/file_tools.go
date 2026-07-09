@@ -201,7 +201,7 @@ func editFileBuilder() *tool.Builder {
 		String("expected_sha256", "可选，编辑前文件 sha256；用于防止外部并发修改。").
 		Boolean("create", "为 true 时允许创建不存在的文本文件；提供 expected_sha256 时仍要求文件已存在。").
 		Integer("context_lines", "diff 上下文行数，默认 3，范围 0-20。确认前自动预检和实际写入结果都会使用该上下文行数。").
-		ObjectArray("edits", "批量编辑列表，按顺序应用；连续编辑同一文件时优先使用 match/anchor 操作，行号 replace/delete 建议提供 expected_content。", editProperties, []string{"operation"}, tool.Required())
+		ObjectArray("edits", "批量编辑列表，按顺序应用；行号操作引用编辑前文件的原始行号，工具会自动补偿同一批内前序行号编辑造成的漂移；*_match 后不要在同一批继续使用行号操作。行号 replace/delete 建议提供 expected_content。", editProperties, []string{"operation"}, tool.Required())
 }
 
 func (t EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
@@ -318,11 +318,11 @@ func writeEditLocation(b *strings.Builder, edit fileops.Edit) {
 	switch edit.Operation {
 	case "replace", "delete":
 		if edit.StartLine > 0 {
-			fmt.Fprintf(b, "位置：%s\n", editLineRangeText(edit.StartLine, edit.EndLine))
+			fmt.Fprintf(b, "原始位置：%s\n", editLineRangeText(edit.StartLine, edit.EndLine))
 		}
 	case "insert_line_before", "insert_line_after":
 		if edit.StartLine > 0 {
-			fmt.Fprintf(b, "位置：第 %d 行\n", edit.StartLine)
+			fmt.Fprintf(b, "原始位置：第 %d 行\n", edit.StartLine)
 		}
 	}
 }

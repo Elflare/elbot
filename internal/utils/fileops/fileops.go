@@ -101,14 +101,14 @@ type EditResult struct {
 
 func EditOperationProperties() map[string]any {
 	return map[string]any{
-		"operation":        map[string]any{"type": "string", "description": "编辑操作：replace、delete、insert_line_before、insert_line_after、prepend、append、replace_match、delete_match、insert_before_match、insert_after_match。edits 按顺序应用，后一步基于前一步结果；工具不会重排序或补偿行号。"},
-		"start_line":       map[string]any{"type": "integer", "description": "行号操作的起始行号，1-based。"},
-		"end_line":         map[string]any{"type": "string", "description": "行号 replace/delete 的结束行号，1-based 且包含该行；也可传 end；默认等于 start_line。"},
+		"operation":        map[string]any{"type": "string", "description": "编辑操作：replace、delete、insert_line_before、insert_line_after、prepend、append、replace_match、delete_match、insert_before_match、insert_after_match。edits 按顺序应用；行号操作的 start_line/end_line 均引用编辑前文件的原始行号，工具会自动补偿同一批内前序行号编辑造成的漂移。"},
+		"start_line":       map[string]any{"type": "integer", "description": "行号操作的起始行号，1-based，引用编辑前文件的原始行号。"},
+		"end_line":         map[string]any{"type": "string", "description": "行号 replace/delete 的结束行号，1-based 且包含该行，引用编辑前文件的原始行号；也可传 end；默认等于 start_line。"},
 		"content":          map[string]any{"type": "string", "description": "replace/insert 写入的文本；delete/delete_match 忽略此字段。insert_line_*、prepend、append 及 line 模式 insert_*_match 按整行插入并自动补换行，无需自加换行符；content 模式 insert_*_match 为字面插入，不自动加换行符。"},
 		"expected_content": map[string]any{"type": "string", "description": "replace/delete 前校验目标行范围原始文本；换行符按 \\n 规范化比较，用于防止行号漂移误改；不需要校验时请省略该字段，不要传空字符串。"},
 		"old_content":      map[string]any{"type": "string", "description": "replace_match/delete_match 的匹配文本。match_mode=content（默认）时为精确子串，写多少匹配/替换多少；match_mode=line 时为单行前缀，匹配并操作整行。"},
 		"anchor":           map[string]any{"type": "string", "description": "insert_before_match/insert_after_match 的匹配文本，语义同 old_content，受 match_mode 控制。"},
-		"match_mode":       map[string]any{"type": "string", "enum": []string{"content", "line"}, "description": "*_match 的匹配方式。content（默认）：精确子串，写多少替换多少，insert 为字面插入不自动加换行符。line：单行前缀匹配整行，容忍行首缩进，needle 不得含换行；操作整行，insert 按整行插入自动补换行，content 可多行展开。仅对 *_match 操作有效。"},
+		"match_mode":       map[string]any{"type": "string", "enum": []string{"content", "line"}, "description": "*_match 的匹配方式。content（默认）：精确子串，写多少替换多少，insert 为字面插入不自动加换行符。line：单行前缀匹配整行，容忍行首缩进，needle 不得含换行；操作整行，insert 按整行插入自动补换行，content 可多行展开。仅对 *_match 操作有效。*_match 后不要在同一批继续使用行号操作；如需继续按行号编辑，请拆成下一次 edit_file 调用。"},
 		"index":            map[string]any{"type": "integer", "description": "当 old_content/anchor 匹配到多处时，用 index 选择第几处，1-based。默认不填：唯一匹配时直接命中，多处匹配时报错并列出所有匹配位置供你更精准匹配或传入 index。仅对 *_match 操作有效。"},
 	}
 }
@@ -356,14 +356,189 @@ func ApplyEdits(text string, edits []Edit) (string, error) {
 		return "", fmt.Errorf("edits is required")
 	}
 	current := NormalizeEditText(text)
+	mapper := newLineEditMapper(len(SplitLines(current)))
 	for i, edit := range edits {
-		next, err := applyEdit(current, edit)
+		mappedEdit, err := mapper.mapEdit(edit)
 		if err != nil {
+			return "", fmt.Errorf("edit %d: %w", i+1, err)
+		}
+		next, err := applyEdit(current, mappedEdit)
+		if err != nil {
+			return "", fmt.Errorf("edit %d: %w", i+1, err)
+		}
+		if err := mapper.recordEdit(edit); err != nil {
 			return "", fmt.Errorf("edit %d: %w", i+1, err)
 		}
 		current = next
 	}
 	return current, nil
+}
+
+type lineEditMapper struct {
+	originalLineCount int
+	deltas            []lineDelta
+	blocked           []lineRange
+	insertions        []int
+	afterLineInserts  map[int]int
+	seenMatchEdit     bool
+}
+
+type lineDelta struct {
+	threshold int
+	delta     int
+}
+
+type lineRange struct {
+	start int
+	end   int
+}
+
+func newLineEditMapper(originalLineCount int) *lineEditMapper {
+	return &lineEditMapper{originalLineCount: originalLineCount, afterLineInserts: map[int]int{}}
+}
+
+func (m *lineEditMapper) mapEdit(edit Edit) (Edit, error) {
+	operation := strings.ToLower(strings.TrimSpace(edit.Operation))
+	if usesOriginalLineNumbers(operation) && m.seenMatchEdit {
+		return Edit{}, fmt.Errorf("line-number operation %q cannot follow a match operation in the same batch; split it into a separate edit_file call or put line-number edits before match edits", edit.Operation)
+	}
+	mapped := edit
+	start, end := m.originalRange(edit, operation)
+	switch operation {
+	case "replace", "delete":
+		if err := m.ensureRangeAvailable(start, end); err != nil {
+			return Edit{}, err
+		}
+		if err := m.ensureNoInsertedContentInside(start, end); err != nil {
+			return Edit{}, err
+		}
+		mapped.StartLine = m.mapLine(start)
+		mapped.EndLine = LineNumber{Value: m.mapLine(end)}
+	case "insert_line_before":
+		if err := m.ensureRangeAvailable(start, start); err != nil {
+			return Edit{}, err
+		}
+		mapped.StartLine = m.mapLine(start)
+	case "insert_line_after":
+		if err := m.ensureRangeAvailable(start, start); err != nil {
+			return Edit{}, err
+		}
+		mapped.StartLine = m.mapInsertAfterLine(start)
+	}
+	return mapped, nil
+}
+
+func (m *lineEditMapper) recordEdit(edit Edit) error {
+	operation := strings.ToLower(strings.TrimSpace(edit.Operation))
+	start, end := m.originalRange(edit, operation)
+	switch operation {
+	case "replace":
+		oldCount := end - start + 1
+		newCount := editLineCount(edit.Content)
+		m.blocked = append(m.blocked, lineRange{start: start, end: end})
+		m.addDelta(end+1, newCount-oldCount)
+	case "delete":
+		oldCount := end - start + 1
+		m.blocked = append(m.blocked, lineRange{start: start, end: end})
+		m.addDelta(end+1, -oldCount)
+	case "insert_line_before":
+		m.recordInsertion(start, editLineCount(edit.Content))
+	case "insert_line_after":
+		count := editLineCount(edit.Content)
+		m.recordInsertion(start+1, count)
+		m.afterLineInserts[start] += count
+	case "prepend":
+		m.recordInsertion(1, editLineCount(edit.Content))
+	case "append":
+		m.recordInsertion(m.originalLineCount+1, editLineCount(edit.Content))
+	case "replace_match", "delete_match", "insert_before_match", "insert_after_match":
+		m.seenMatchEdit = true
+	}
+	return nil
+}
+
+func (m *lineEditMapper) originalRange(edit Edit, operation string) (int, int) {
+	start := edit.StartLine
+	end := edit.EndLine.Value
+	if edit.EndLine.End {
+		end = m.originalLineCount
+	} else if end == 0 || operation == "insert_line_before" || operation == "insert_line_after" {
+		end = start
+	}
+	return start, end
+}
+
+func (m *lineEditMapper) mapLine(line int) int {
+	mapped := line
+	for _, delta := range m.deltas {
+		if line >= delta.threshold {
+			mapped += delta.delta
+		}
+	}
+	return mapped
+}
+
+func (m *lineEditMapper) mapInsertAfterLine(line int) int {
+	return m.mapLine(line) + m.afterLineInserts[line]
+}
+
+func (m *lineEditMapper) recordInsertion(position, count int) {
+	if count == 0 {
+		return
+	}
+	m.insertions = append(m.insertions, position)
+	m.addDelta(position, count)
+}
+
+func (m *lineEditMapper) addDelta(threshold, delta int) {
+	if delta == 0 {
+		return
+	}
+	m.deltas = append(m.deltas, lineDelta{threshold: threshold, delta: delta})
+}
+
+func (m *lineEditMapper) ensureRangeAvailable(start, end int) error {
+	if start <= 0 || end < start {
+		return nil
+	}
+	for _, blocked := range m.blocked {
+		if start <= blocked.end && end >= blocked.start {
+			return fmt.Errorf("original lines %s were already modified by a previous line edit", formatOriginalRange(start, end))
+		}
+	}
+	return nil
+}
+
+func (m *lineEditMapper) ensureNoInsertedContentInside(start, end int) error {
+	if start <= 0 || end <= start {
+		return nil
+	}
+	for _, position := range m.insertions {
+		if position > start && position <= end {
+			return fmt.Errorf("original lines %s contain content inserted by a previous line edit; split the range edit into separate edits or put it before the insertion", formatOriginalRange(start, end))
+		}
+	}
+	return nil
+}
+
+func usesOriginalLineNumbers(operation string) bool {
+	switch operation {
+	case "replace", "delete", "insert_line_before", "insert_line_after":
+		return true
+	default:
+		return false
+	}
+}
+
+func editLineCount(content string) int {
+	return len(SplitLines(content))
+}
+
+func formatOriginalRange(start, end int) string {
+	if start == end {
+		return fmt.Sprintf("%d", start)
+	}
+	return fmt.Sprintf("%d-%d", start, end)
 }
 
 func applyEdit(text string, edit Edit) (string, error) {
