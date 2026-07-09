@@ -50,7 +50,7 @@ func TestFillHookContextKeepsExplicitPlatformMessageIDs(t *testing.T) {
 	}
 }
 
-func TestFillHookContextAddsInputTextWithoutWakeupPrefix(t *testing.T) {
+func TestFillHookContextAddsIntentTextWithoutWakeupPrefix(t *testing.T) {
 	a := &Agent{platform: &fakePlatform{}, scopeID: "default"}
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
 		Platform:         "qq-onebot",
@@ -64,8 +64,8 @@ func TestFillHookContextAddsInputTextWithoutWakeupPrefix(t *testing.T) {
 		Message: hook.MessagePayload{Role: "user", Segments: llm.TextSegments("芙莉丝 咩")},
 	})
 
-	if event.Message.InputText != "咩" {
-		t.Fatalf("input text = %q, want 咩", event.Message.InputText)
+	if event.Message.IntentText != "咩" {
+		t.Fatalf("intent text = %q, want 咩", event.Message.IntentText)
 	}
 }
 

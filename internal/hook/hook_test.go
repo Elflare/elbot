@@ -55,13 +55,13 @@ func TestMatchErrorMessage(t *testing.T) {
 	}
 }
 
-func TestMatchMessageInputText(t *testing.T) {
+func TestMatchMessageIntentText(t *testing.T) {
 	event := Event{Point: PointPlatformMessageReceived, Message: MessagePayload{
-		Segments:  llm.TextSegments("芙莉丝 咩"),
-		InputText: "咩",
+		Segments:   llm.TextSegments("芙莉丝 咩"),
+		IntentText: "咩",
 	}}
-	if !FullMatch("message.input_text", "咩").Matches(event) {
-		t.Fatal("expected message.input_text match")
+	if !FullMatch("message.intent_text", "咩").Matches(event) {
+		t.Fatal("expected message.intent_text match")
 	}
 	if FullMatch("message.text", "咩").Matches(event) {
 		t.Fatal("message.text should still include the original text")
@@ -113,28 +113,28 @@ func TestManagerPassesUpdatedEventToNextHandler(t *testing.T) {
 	}
 }
 
-func TestMatchMessageRawTextAndReplyFields(t *testing.T) {
+func TestMatchMessagePlatformTextAndReplyFields(t *testing.T) {
 	event := Event{
 		Message: MessagePayload{
-			RawText:  "撤回",
-			Segments: llm.TextSegments("[引用]：通知\n\n撤回"),
+			PlatformText: "撤回",
+			Segments:     llm.TextSegments("[引用]：通知\n\n撤回"),
 			Reply: &MessageReplyPayload{
 				MessageID:   "notice-1",
 				SenderID:    "bot",
 				Text:        "通知",
-				ContentText: "通知",
+				DisplayText: "通知",
 			},
 		},
 	}
 	match := Match{Conditions: []Condition{
-		{Field: "message.raw_text", Op: MatchFull, Value: "撤回"},
+		{Field: "message.platform_text", Op: MatchFull, Value: "撤回"},
 		{Field: "message.reply.message_id", Op: MatchExists},
 		{Field: "message.reply.sender_id", Op: MatchFull, Value: "bot"},
 		{Field: "message.reply.text", Op: MatchFull, Value: "通知"},
-		{Field: "message.reply.content_text", Op: MatchContains, Value: "通知"},
+		{Field: "message.reply.display_text", Op: MatchContains, Value: "通知"},
 	}}
 	if result := match.MatchEvent(event); !result.OK {
-		t.Fatal("match did not include message raw/reply fields")
+		t.Fatal("match did not include message platform/reply fields")
 	}
 }
 
@@ -201,11 +201,11 @@ func TestManagerLogsNamedHook(t *testing.T) {
 		return event, nil
 	})})
 
-	if _, err := manager.Run(context.Background(), Event{Point: PointLLMResponseReceived, LLM: LLMPayload{Text: "before", RawText: "raw"}}); err != nil {
+	if _, err := manager.Run(context.Background(), Event{Point: PointLLMResponseReceived, LLM: LLMPayload{Text: "before", SourceText: "raw"}}); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	logs := buf.String()
-	for _, want := range []string{"hook triggered", "test.logger", "before_text=before", "after_text=after", "raw_text=raw"} {
+	for _, want := range []string{"hook triggered", "test.logger", "before_text=before", "after_text=after", "source_text=raw"} {
 		if !strings.Contains(logs, want) {
 			t.Fatalf("logs missing %q:\n%s", want, logs)
 		}

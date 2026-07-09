@@ -23,7 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 内联预载支持工具简写 `@t:<name-or-tag>` 和 Skill 简写 `@s:<name>`，并兼容中文全角冒号 `：`。
 - CLI TUI 输入框支持用 `#文件名` 模糊补全本地文件；发送时会把引用替换为文件名和文件内容，含空格路径可写作 `#"a b.txt"`。
 - Hook exec 失败、脚本崩溃、超时或协议错误时会向当前消息平台发送失败通知，并在失败时附带 stderr 尾部；规则匹配和模板新增 `error.message`。
-- Hook 规则新增 `message.input_text` 匹配/模板字段，用于匹配去掉群聊唤醒关键词或 bot mention 后的用户输入。
+- Hook 规则文本字段整理为 `message.intent_text`、`message.display_text`、`message.platform_text`、`llm.source_text` 等清晰命名。
+- Hook 插件元信息支持 `[plugin] name`；`/hooks reload` 会在命令结果中显示插件跳过或配置警告。
 - `web_extract` 新增 `jina` 参数，默认使用 Jina Reader；传 `jina=false` 可手动改用直接爬取。
 
 ### Changed

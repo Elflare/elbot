@@ -527,8 +527,8 @@ func TestPlatformMessageReceivedHookMatchesCurrentTextWithReplyContext(t *testin
 			{Field: "message.reply.message_id", Op: hook.MatchExists},
 		}},
 		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
-			if event.Message.RawText != "撤回" {
-				t.Fatalf("raw text = %q, want current text", event.Message.RawText)
+			if event.Message.PlatformText != "撤回" {
+				t.Fatalf("platform text = %q, want current text", event.Message.PlatformText)
 			}
 			if event.Message.Reply == nil || event.Message.Reply.Text != "通知内容" {
 				t.Fatalf("reply = %#v, want structured reply", event.Message.Reply)

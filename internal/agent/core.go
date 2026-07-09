@@ -86,7 +86,7 @@ type Agent struct {
 	discoveredTools        map[string]map[string]llm.ToolSchema
 	actorID                string
 	scopeID                string
-	hookReloader           func() error
+	hookReloader           func() (hook.ReloadReport, error)
 }
 
 // New creates a new Agent.
@@ -556,7 +556,7 @@ func (a *Agent) SetHookManager(manager hook.Manager) {
 	a.hooks = manager
 }
 
-func (a *Agent) SetHookReloader(fn func() error) {
+func (a *Agent) SetHookReloader(fn func() (hook.ReloadReport, error)) {
 	a.hookReloader = fn
 }
 
@@ -564,9 +564,9 @@ func (a *Agent) HookList() []hook.Info {
 	return a.hooks.List()
 }
 
-func (a *Agent) HookReload() error {
+func (a *Agent) HookReload() (hook.ReloadReport, error) {
 	if a.hookReloader == nil {
-		return fmt.Errorf("hook reloader is not configured")
+		return hook.ReloadReport{}, fmt.Errorf("hook reloader is not configured")
 	}
 	return a.hookReloader()
 }

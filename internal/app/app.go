@@ -325,12 +325,23 @@ func Run(ctx context.Context, opts Options) error {
 	profiler.Mark("hook register")
 	agt = agent.NewWithRequestConfig(platforms.Primary, adapter, workModel.Provider, cfg.ModeModels, cfg.Providers, cfg.StateConfigPath, store, cfg.Commands.Prefixes, session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode}, cfg.NamingModel, namingAdapter, namingModel, namingLogger{logger: logger}, cfg.Soul.Path, cfg.LLMRequest)
 	agt.SetHookManager(hooks)
-	agt.SetHookReloader(func() error {
-		hooks.Reset()
-		if err := hookbuiltin.RegisterAll(hooks, hookOpts); err != nil {
-			return err
+	agt.SetHookReloader(func() (hook.ReloadReport, error) {
+		var notices []string
+		reloadOpts := hookOpts
+		reloadOpts.Notify = func(ctx context.Context, text string) {
+			text = strings.TrimSpace(text)
+			if text != "" {
+				notices = append(notices, text)
+			}
 		}
-		return registerCronPlatformHook(hooks, cronService)
+		hooks.Reset()
+		if err := hookbuiltin.RegisterAll(hooks, reloadOpts); err != nil {
+			return hook.ReloadReport{Notices: notices}, err
+		}
+		if err := registerCronPlatformHook(hooks, cronService); err != nil {
+			return hook.ReloadReport{Notices: notices}, err
+		}
+		return hook.ReloadReport{Notices: notices}, nil
 	})
 	agt.SetOutputManager(delivery.NewManager(nil, logger))
 	agt.SetSessionListPageSize(cfg.View.SessionListPageSize)

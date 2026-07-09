@@ -115,33 +115,33 @@ type RequestContext struct {
 }
 
 type MessagePayload struct {
-	ID        string               `json:"id"`
-	Role      string               `json:"role"`
-	RawText   string               `json:"raw_text,omitempty"`
-	InputText string               `json:"input_text,omitempty"`
-	Reply     *MessageReplyPayload `json:"reply,omitempty"`
-	Segments  []llm.MessageSegment `json:"segments,omitempty"`
-	Messages  []llm.LLMMessage     `json:"messages,omitempty"`
+	ID           string               `json:"id"`
+	Role         string               `json:"role"`
+	PlatformText string               `json:"platform_text,omitempty"`
+	IntentText   string               `json:"intent_text,omitempty"`
+	Reply        *MessageReplyPayload `json:"reply,omitempty"`
+	Segments     []llm.MessageSegment `json:"segments,omitempty"`
+	Messages     []llm.LLMMessage     `json:"messages,omitempty"`
 }
 
 type MessageReplyPayload struct {
 	MessageID   string               `json:"message_id"`
 	SenderID    string               `json:"sender_id,omitempty"`
 	Text        string               `json:"text,omitempty"`
-	ContentText string               `json:"content_text,omitempty"`
+	DisplayText string               `json:"display_text,omitempty"`
 	Segments    []llm.MessageSegment `json:"segments,omitempty"`
 }
 
 type LLMPayload struct {
-	Provider  string                `json:"provider"`
-	Model     string                `json:"model"`
-	Messages  []llm.LLMMessage      `json:"messages,omitempty"`
-	Tools     []llm.ToolSchema      `json:"tools,omitempty"`
-	Usage     *llm.Usage            `json:"usage,omitempty"`
-	RawText   string                `json:"raw_text,omitempty"`
-	Text      string                `json:"text,omitempty"`
-	ToolCalls []llm.ToolCallRequest `json:"tool_calls,omitempty"`
-	ElapsedMS int64                 `json:"elapsed_ms,omitempty"`
+	Provider   string                `json:"provider"`
+	Model      string                `json:"model"`
+	Messages   []llm.LLMMessage      `json:"messages,omitempty"`
+	Tools      []llm.ToolSchema      `json:"tools,omitempty"`
+	Usage      *llm.Usage            `json:"usage,omitempty"`
+	SourceText string                `json:"source_text,omitempty"`
+	Text       string                `json:"text,omitempty"`
+	ToolCalls  []llm.ToolCallRequest `json:"tool_calls,omitempty"`
+	ElapsedMS  int64                 `json:"elapsed_ms,omitempty"`
 }
 
 type ToolPayload struct {
@@ -277,7 +277,7 @@ func (c Condition) validate() error {
 		}
 		return nil
 	}
-	if !knownMatchField(c.Field) {
+	if !KnownField(c.Field) {
 		return fmt.Errorf("unsupported field %q", c.Field)
 	}
 	if needsMatchValue(op) && c.Value == "" {
@@ -297,7 +297,7 @@ func (c Condition) matches(event Event) bool {
 }
 
 func (c Condition) match(event Event) (bool, *RegexMatch) {
-	fieldValue := matchField(event, c.Field)
+	fieldValue := FieldValue(event, c.Field)
 	switch strings.TrimSpace(c.Op) {
 	case MatchAlways:
 		return true, nil
@@ -370,16 +370,16 @@ func needsMatchValue(op string) bool {
 	}
 }
 
-func knownMatchField(field string) bool {
+func KnownField(field string) bool {
 	switch strings.TrimSpace(field) {
 	case "platform.name", "platform.scope_id", "platform.user_id", "platform.conversation_id", "platform.message_id", "platform.reply_to_message_id",
-		"message.text", "message.content_text", "message.raw_text", "message.input_text", "message.role",
-		"message.reply.message_id", "message.reply.sender_id", "message.reply.text", "message.reply.content_text",
-		"llm.text", "llm.raw_text", "llm.latest_user_text", "llm.latest_user_content_text", "llm.provider", "llm.model",
+		"message.id", "message.text", "message.display_text", "message.platform_text", "message.intent_text", "message.role",
+		"message.reply.message_id", "message.reply.sender_id", "message.reply.text", "message.reply.display_text",
+		"llm.text", "llm.source_text", "llm.latest_user_text", "llm.latest_user_display_text", "llm.provider", "llm.model",
 		"tool.name", "tool.arguments", "tool.result", "tool.risk",
 		"actor.id", "actor.user_id", "actor.role", "actor.group_role", "actor.display_name",
-		"session.id", "session.mode", "session.status",
-		"request.id", "request.kind", "request.phase",
+		"session.id", "session.mode", "session.title", "session.status",
+		"request.id", "request.kind", "request.session_id", "request.phase",
 		"error.message":
 		return true
 	default:
@@ -387,7 +387,7 @@ func knownMatchField(field string) bool {
 	}
 }
 
-func matchField(event Event, field string) string {
+func FieldValue(event Event, field string) string {
 	switch strings.TrimSpace(field) {
 	case "platform.name":
 		return event.Platform.Name
@@ -401,14 +401,16 @@ func matchField(event Event, field string) string {
 		return event.Platform.PlatformMessageID
 	case "platform.reply_to_message_id":
 		return event.Platform.ReplyToMessageID
+	case "message.id":
+		return event.Message.ID
 	case "message.text":
 		return llm.SegmentsTextOnly(event.Message.Segments)
-	case "message.content_text":
+	case "message.display_text":
 		return llm.SegmentsContentText(event.Message.Segments)
-	case "message.raw_text":
-		return event.Message.RawText
-	case "message.input_text":
-		return MessageInputText(event)
+	case "message.platform_text":
+		return event.Message.PlatformText
+	case "message.intent_text":
+		return MessageIntentText(event)
 	case "message.role":
 		return event.Message.Role
 	case "message.reply.message_id":
@@ -426,18 +428,18 @@ func matchField(event Event, field string) string {
 			return ""
 		}
 		return event.Message.Reply.Text
-	case "message.reply.content_text":
+	case "message.reply.display_text":
 		if event.Message.Reply == nil {
 			return ""
 		}
-		return event.Message.Reply.ContentText
+		return event.Message.Reply.DisplayText
 	case "llm.text":
 		return event.LLM.Text
-	case "llm.raw_text":
-		return event.LLM.RawText
+	case "llm.source_text":
+		return event.LLM.SourceText
 	case "llm.latest_user_text":
 		return llm.LatestUserSegmentTextOnly(event.LLM.Messages)
-	case "llm.latest_user_content_text":
+	case "llm.latest_user_display_text":
 		return llm.LatestUserSegmentContentText(event.LLM.Messages)
 	case "llm.provider":
 		return event.LLM.Provider
@@ -465,12 +467,16 @@ func matchField(event Event, field string) string {
 		return event.Session.ID
 	case "session.mode":
 		return event.Session.Mode
+	case "session.title":
+		return event.Session.Title
 	case "session.status":
 		return event.Session.Status
 	case "request.id":
 		return event.Request.ID
 	case "request.kind":
 		return event.Request.Kind
+	case "request.session_id":
+		return event.Request.SessionID
 	case "request.phase":
 		return event.Request.Phase
 	case "error.message":
@@ -499,6 +505,10 @@ type Info struct {
 	Point       Point
 	Priority    int
 	Detail      string
+}
+
+type ReloadReport struct {
+	Notices []string
 }
 
 // Registrar registers hook handlers for modules.
@@ -784,7 +794,7 @@ func (m *DefaultManager) logHook(ctx context.Context, mode string, reg registrat
 			"tool", after.Tool.Name,
 			"before_text", trimLogText(eventText(before)),
 			"after_text", trimLogText(eventText(after)),
-			"raw_text", trimLogText(after.LLM.RawText),
+			"source_text", trimLogText(after.LLM.SourceText),
 		)
 		logger.DebugContext(ctx, "hook triggered", attrs...)
 	} else {
@@ -845,9 +855,27 @@ func EventErrorMessage(event Event) string {
 	return ""
 }
 
-func MessageInputText(event Event) string {
-	if strings.TrimSpace(event.Message.InputText) != "" {
-		return strings.TrimSpace(event.Message.InputText)
+func MessageIntentText(event Event) string {
+	if strings.TrimSpace(event.Message.IntentText) != "" {
+		return strings.TrimSpace(event.Message.IntentText)
 	}
 	return llm.SegmentsTextOnly(event.Message.Segments)
+}
+
+func TemplateValues(event Event) map[string]string {
+	values := map[string]string{}
+	for _, field := range []string{
+		"platform.name", "platform.scope_id", "platform.user_id", "platform.conversation_id", "platform.message_id", "platform.reply_to_message_id",
+		"actor.id", "actor.user_id", "actor.role", "actor.group_role", "actor.display_name",
+		"session.id", "session.mode", "session.title", "session.status",
+		"request.id", "request.kind", "request.session_id", "request.phase",
+		"message.id", "message.text", "message.display_text", "message.platform_text", "message.intent_text", "message.role",
+		"message.reply.message_id", "message.reply.sender_id", "message.reply.text", "message.reply.display_text",
+		"llm.text", "llm.source_text", "llm.latest_user_text", "llm.latest_user_display_text", "llm.provider", "llm.model",
+		"tool.name", "tool.arguments", "tool.result", "tool.risk",
+		"error.message",
+	} {
+		values["{{"+field+"}}"] = FieldValue(event, field)
+	}
+	return values
 }

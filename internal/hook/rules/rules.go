@@ -49,6 +49,7 @@ type PluginRef struct {
 }
 
 type PluginInfo struct {
+	Name        string `toml:"name"`
 	Description string `toml:"description"`
 }
 
@@ -324,6 +325,9 @@ func loadConfig(opts Options) (Config, string, error) {
 			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
 			continue
 		}
+		if infoName := strings.TrimSpace(pcfg.Plugin.Name); infoName != "" && infoName != strings.TrimSpace(ref.Name) {
+			reportPluginConfigWarning(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, fmt.Sprintf("[plugin].name %q differs from [[plugins]].name %q; using the referenced plugin name", infoName, strings.TrimSpace(ref.Name)))
+		}
 		pluginDir := filepath.Dir(pluginPath)
 		source := ruleSource{
 			PluginName:        strings.TrimSpace(ref.Name),
@@ -334,6 +338,15 @@ func loadConfig(opts Options) (Config, string, error) {
 		}
 		for i := range pcfg.Rules {
 			pcfg.Rules[i].source = source
+		}
+		pluginRules := Config{Rules: append([]Rule(nil), pcfg.Rules...)}
+		if err := normalizeLoadedRules(&pluginRules, opts); err != nil {
+			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
+			continue
+		}
+		if err := validateLoadedRules(pluginRules.Rules); err != nil {
+			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
+			continue
 		}
 		cfg.Rules = append(cfg.Rules, pcfg.Rules...)
 	}
@@ -683,6 +696,15 @@ func normalizeLoadedRules(cfg *Config, opts Options) error {
 	return nil
 }
 
+func validateLoadedRules(rules []Rule) error {
+	for i, rule := range rules {
+		if err := validateRule(rule); err != nil {
+			return fmt.Errorf("rule %d: %w", i+1, err)
+		}
+	}
+	return nil
+}
+
 func reportPluginConfigError(ctx context.Context, opts Options, name, path string, err error) {
 	if opts.Logger != nil {
 		opts.Logger.Warn("hook plugin skipped", "plugin", name, "path", path, "error", err)
@@ -693,6 +715,19 @@ func reportPluginConfigError(ctx context.Context, opts Options, name, path strin
 			label = path
 		}
 		opts.Notify(ctx, fmt.Sprintf("Hook 插件 %s 已跳过：%v", label, err))
+	}
+}
+
+func reportPluginConfigWarning(ctx context.Context, opts Options, name, path, message string) {
+	if opts.Logger != nil {
+		opts.Logger.Warn("hook plugin warning", "plugin", name, "path", path, "warning", message)
+	}
+	if opts.Notify != nil {
+		label := strings.TrimSpace(name)
+		if label == "" {
+			label = path
+		}
+		opts.Notify(ctx, fmt.Sprintf("Hook 插件 %s 警告：%s", label, message))
 	}
 }
 
@@ -974,51 +1009,6 @@ func applyTextAction(event hook.Event, action Action, state state) (hook.Event, 
 	}
 }
 
-func readTextField(event hook.Event, field string) string {
-	switch strings.TrimSpace(field) {
-	case "message.text":
-		return llm.SegmentsTextOnly(event.Message.Segments)
-	case "message.content_text":
-		return llm.SegmentsContentText(event.Message.Segments)
-	case "message.raw_text":
-		return event.Message.RawText
-	case "message.reply.message_id":
-		if event.Message.Reply == nil {
-			return ""
-		}
-		return event.Message.Reply.MessageID
-	case "message.reply.sender_id":
-		if event.Message.Reply == nil {
-			return ""
-		}
-		return event.Message.Reply.SenderID
-	case "message.reply.text":
-		if event.Message.Reply == nil {
-			return ""
-		}
-		return event.Message.Reply.Text
-	case "message.reply.content_text":
-		if event.Message.Reply == nil {
-			return ""
-		}
-		return event.Message.Reply.ContentText
-	case "llm.text":
-		return event.LLM.Text
-	case "llm.raw_text":
-		return event.LLM.RawText
-	case "llm.latest_user_text":
-		return llm.LatestUserSegmentTextOnly(event.LLM.Messages)
-	case "llm.latest_user_content_text":
-		return llm.LatestUserSegmentContentText(event.LLM.Messages)
-	case "tool.arguments":
-		return event.Tool.Arguments
-	case "tool.result":
-		return event.Tool.Result
-	default:
-		return ""
-	}
-}
-
 func prependTextField(event hook.Event, field, value string) (hook.Event, error) {
 	switch field {
 	case "message.text":
@@ -1237,26 +1227,7 @@ func (m Module) audit(event string, attrs ...any) {
 }
 
 func render(text string, event hook.Event, state state) string {
-	replacements := map[string]string{
-		"{{platform.name}}":                event.Platform.Name,
-		"{{platform.scope_id}}":            event.Platform.ScopeID,
-		"{{platform.user_id}}":             event.Platform.UserID,
-		"{{actor.id}}":                     event.Actor.ID,
-		"{{actor.user_id}}":                event.Actor.UserID,
-		"{{actor.role}}":                   event.Actor.Role,
-		"{{actor.group_role}}":             event.Actor.GroupRole,
-		"{{message.text}}":                 llm.SegmentsTextOnly(event.Message.Segments),
-		"{{message.content_text}}":         llm.SegmentsContentText(event.Message.Segments),
-		"{{message.raw_text}}":             event.Message.RawText,
-		"{{message.input_text}}":           hook.MessageInputText(event),
-		"{{llm.text}}":                     event.LLM.Text,
-		"{{llm.raw_text}}":                 event.LLM.RawText,
-		"{{llm.latest_user_text}}":         llm.LatestUserSegmentTextOnly(event.LLM.Messages),
-		"{{llm.latest_user_content_text}}": llm.LatestUserSegmentContentText(event.LLM.Messages),
-		"{{tool.arguments}}":               event.Tool.Arguments,
-		"{{tool.result}}":                  event.Tool.Result,
-		"{{error.message}}":                hook.EventErrorMessage(event),
-	}
+	replacements := hook.TemplateValues(event)
 	for index, match := range eventMatchContext(event).Regex {
 		prefix := fmt.Sprintf("{{match.regex.%d", index)
 		replacements[prefix+".text}}"] = match.Text
@@ -1272,12 +1243,6 @@ func render(text string, event hook.Event, state state) string {
 	for name, result := range state.Actions {
 		replacements["{{actions."+name+".result}}"] = result.Result
 		replacements["{{actions."+name+".error}}"] = result.Error
-	}
-	if event.Message.Reply != nil {
-		replacements["{{message.reply.message_id}}"] = event.Message.Reply.MessageID
-		replacements["{{message.reply.sender_id}}"] = event.Message.Reply.SenderID
-		replacements["{{message.reply.text}}"] = event.Message.Reply.Text
-		replacements["{{message.reply.content_text}}"] = event.Message.Reply.ContentText
 	}
 	for old, newText := range replacements {
 		text = strings.ReplaceAll(text, old, newText)

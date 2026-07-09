@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"elbot/internal/command"
+	"elbot/internal/hook"
 )
 
 const hookListDescriptionLimit = 60
@@ -38,10 +39,11 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 	}
 	switch fields[0] {
 	case "reload":
-		if err := deps.Hooks.HookReload(); err != nil {
+		report, err := deps.Hooks.HookReload()
+		if err != nil {
 			return &command.Result{Content: fmt.Sprintf("hook reload failed: %v", err)}, nil
 		}
-		return &command.Result{Content: "hook reload completed"}, nil
+		return &command.Result{Content: formatHookReloadResult(report)}, nil
 	default:
 		name := fields[0]
 		return &command.Result{Content: formatHookDetail(deps, name)}, nil
@@ -76,6 +78,24 @@ func formatHookList(deps Deps) string {
 		if description := strings.TrimSpace(info.Description); description != "" {
 			sb.WriteString(" - " + truncateHookDescription(description))
 		}
+		sb.WriteString("\n")
+	}
+	return trimTrailingNewlines(sb.String())
+}
+
+func formatHookReloadResult(report hook.ReloadReport) string {
+	if len(report.Notices) == 0 {
+		return "hook reload completed"
+	}
+	var sb strings.Builder
+	sb.WriteString("hook reload completed with warnings:\n")
+	for _, notice := range report.Notices {
+		notice = strings.TrimSpace(notice)
+		if notice == "" {
+			continue
+		}
+		sb.WriteString("- ")
+		sb.WriteString(notice)
 		sb.WriteString("\n")
 	}
 	return trimTrailingNewlines(sb.String())

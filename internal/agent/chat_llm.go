@@ -78,7 +78,7 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 				return a.callLLM(ctx, sessionID, selection, fallbackVisionMessages(baseMessages), tools, latestUserContent, stream, out)
 			}
 			a.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", chunk.Error.Error())
-			a.notifyHookError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, RawText: assistant.String(), Text: assistant.String(), ToolCalls: toolCalls, Usage: usage, ElapsedMS: elapsedMillis(startedAt)}}, chunk.Error)
+			a.notifyHookError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, SourceText: assistant.String(), Text: assistant.String(), ToolCalls: toolCalls, Usage: usage, ElapsedMS: elapsedMillis(startedAt)}}, chunk.Error)
 			out.SendNotice(ctx, fmt.Sprintf("LLM 响应中断：%v", chunk.Error))
 
 			return llmCallResult{}, latestUserContent, markUserNotified(fmt.Errorf("chat stream: %w", chunk.Error))
@@ -113,13 +113,13 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 		Point:   hook.PointLLMResponseReceived,
 		Session: hook.SessionContext{ID: sessionID},
 		LLM: hook.LLMPayload{
-			Provider:  selection.Provider,
-			Model:     selection.Model,
-			Usage:     usage,
-			RawText:   content,
-			Text:      content,
-			ToolCalls: toolCalls,
-			ElapsedMS: elapsedMs,
+			Provider:   selection.Provider,
+			Model:      selection.Model,
+			Usage:      usage,
+			SourceText: content,
+			Text:       content,
+			ToolCalls:  toolCalls,
+			ElapsedMS:  elapsedMs,
 		},
 	})
 	if err != nil {
@@ -128,7 +128,7 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 	usage = event.LLM.Usage
 	toolCalls = event.LLM.ToolCalls
 	finalText := event.LLM.Text
-	a.logLLMOutput(sessionID, selection, finalText, event.LLM.RawText, len(toolCalls), elapsedMs)
+	a.logLLMOutput(sessionID, selection, finalText, event.LLM.SourceText, len(toolCalls), elapsedMs)
 
 	a.auditUsage(sessionID, selection, usage, elapsedMs)
 	return llmCallResult{Text: finalText, RawText: content, Usage: usage, ToolCalls: toolCalls, Outputs: event.Outputs, Messages: baseMessages, Stream: stream}, latestUserContent, nil
