@@ -56,9 +56,9 @@
       "updated_at": 1783392534
     },
     "docs/hooks.md": {
-      "source_hash": "3424312a48cc74b114bf6c3a3b8934576fcd5a9aa8cbc11bea9e7e039a084495",
+      "source_hash": "c6c836fbb2f41a6bb667b13274f57af1203add5883322b4294a17c434bd64767",
       "target": "docs.en/hooks.md",
-      "updated_at": 1783571649
+      "updated_at": 1783577216
     }
   },
   "segments": {
@@ -13406,6 +13406,14 @@
       "translation": "__ELBOT_CODE_0__ matches both internal roles and group identities; __ELBOT_CODE_1__ only matches internal roles; __ELBOT_CODE_2__ only matches group identities.\n",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:paragraph:3f795d3741a61db364581b16f7dfb332a6dba89912257bdddd10594f01e32d86": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 表示本地文件路径（相对路径按规则或插件目录解析），__ELBOT_CODE_1__ 会按远程 URL 发送，__ELBOT_CODE_2__ 表示内联数据；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "3f795d3741a61db364581b16f7dfb332a6dba89912257bdddd10594f01e32d86",
+      "translation": "__ELBOT_CODE_0__ represents a local file path (relative paths are resolved according to rules or the plugin directory), __ELBOT_CODE_1__ is sent as a remote URL, and __ELBOT_CODE_2__ represents inline data;",
+      "updated_at": 1783577216
+    },
     "docs/hooks.md:paragraph:45cfef509a16811fe244c5a7c5b81268513b2734844e461eb05d7c8b332d8943": {
       "kind": "paragraph",
       "source": "多段输出（segments）：\n",
@@ -13509,6 +13517,14 @@
       "source_hash": "5afb1e3750485d6ad914d2df2f1a1d980834421cfe047198e468af25c802f306",
       "translation": "Tool calls are constrained by the Security Policy: the risk level must be within the range allowed for the current Actor, and high-risk tools requiring interactive confirmation will be rejected.\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:5c671096eab912d67dfde66c7911b6a111b341646ab3b4e5ffe1d9bca2966d0a": {
+      "kind": "paragraph",
+      "source": "output segment 格式与 [Elvena 协议](elnis-usage.md#segments多模态消息段)统一，额外支持本地 __ELBOT_CODE_0__、__ELBOT_CODE_1__ 和 __ELBOT_CODE_2__ 类型。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "5c671096eab912d67dfde66c7911b6a111b341646ab3b4e5ffe1d9bca2966d0a",
+      "translation": "The output segment format is unified with the [Elvena protocol](elnis-usage.md#segments多模态消息段), with additional support for local __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__ types.",
+      "updated_at": 1783577216
     },
     "docs/hooks.md:paragraph:5d9e5b4fed321781baa2e556dc7444c6deac16c37287361a7077d5095a431cee": {
       "kind": "paragraph",
@@ -13845,6 +13861,14 @@
       "source_hash": "b0c89d9035f39758fddd8a59ed409cf33811bafc032a4ddf1ca9473ba36eb6eb",
       "translation": "No condition:\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:b0fb1f4c145372d75dcad949d00f44c9261839bf68573ce14ed373136b79a216": {
+      "kind": "paragraph",
+      "source": "具体以图片还是文件形式发送由 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 决定：\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "b0fb1f4c145372d75dcad949d00f44c9261839bf68573ce14ed373136b79a216",
+      "translation": "Whether it is sent as an image or a file is determined by __ELBOT_CODE_0__ or __ELBOT_CODE_1__:\n",
+      "updated_at": 1783577216
     },
     "docs/hooks.md:paragraph:b3a5a6971bc46f048c9a7967090e33d278c35ff1b0c77738084e4c76f66f4690": {
       "kind": "paragraph",
