@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "a6d0c635e84963633fb7777c065572002e3787910e127a4960747ae2ddddca59",
+      "source_hash": "1c6661fdd9420a3529f656ecdc2250c1bc201d77ee870e50a3c10e8a10d6709f",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783567455
+      "updated_at": 1783571675
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -16,9 +16,9 @@
       "updated_at": 1782901148
     },
     "docs/commands.md": {
-      "source_hash": "d2070dc3745b463252a7df765e0fc21712b36c96fff6d96c6b59fa207035fe2d",
+      "source_hash": "f120b462b36098952dd26f97d7a7ed9adf6d1d6083171f7ed5421e562494a642",
       "target": "docs.en/commands.md",
-      "updated_at": 1783390911
+      "updated_at": 1783571608
     },
     "docs/concepts.md": {
       "source_hash": "b9f6b98ec7977a296b7fcccdc91cbb47fff7f709fdf2342bd2fb79e0510ea6c7",
@@ -56,9 +56,9 @@
       "updated_at": 1783392534
     },
     "docs/hooks.md": {
-      "source_hash": "7d5c753258df8f4e1686a9a4dd141c063df56b3ccef5d78f0c89728faa95f170",
+      "source_hash": "3424312a48cc74b114bf6c3a3b8934576fcd5a9aa8cbc11bea9e7e039a084495",
       "target": "docs.en/hooks.md",
-      "updated_at": 1783567419
+      "updated_at": 1783571649
     }
   },
   "segments": {
@@ -1006,6 +1006,14 @@
       "translation": "**Elnis listening hub**: Receives external events delivered by Elwisp via the Elvena HTTP protocol, supporting three modes (record/direct/llm) and multi-target delivery.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:d3908641b559bc54ede96c20cd1c652257d818385b70144f4cdcd75c3cfecf17": {
+      "kind": "list",
+      "source": "可用 __ELBOT_CODE_0__ 取消长时间运行的 Hook，手动取消按正常取消记录。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d3908641b559bc54ede96c20cd1c652257d818385b70144f4cdcd75c3cfecf17",
+      "translation": "Use __ELBOT_CODE_0__ to cancel long-running Hooks; manual cancellations are recorded as normal cancellations.",
+      "updated_at": 1783571675
+    },
     "CHANGELOG.md:list:d4fabe1b31e44b62764a519526e02a1a731d546f2d3cbb0e101eb7b787c54f82": {
       "kind": "list",
       "source": "AgentSkill 支持在根目录添加 __ELBOT_CODE_0__ 注册为普通工具：LLM 调用结构化参数，ElBot 翻译为命令行 argv 执行，并复用现有风险、确认、Hook 与审计链路。",
@@ -1053,6 +1061,14 @@
       "source_hash": "dc3765cc3b6cc516b17fb0be590317ce5a5fab8d064d6514066e8593e421b5eb",
       "translation": "By default, the wait time for the first streaming event is 180 seconds, streaming idle is 60 seconds, and there is no total duration limit for the entire response.",
       "updated_at": 1782461728
+    },
+    "CHANGELOG.md:list:dda9f80d869b591edf7f9696577d405bb57a881c2e08f7cee08483abdd6db5a7": {
+      "kind": "list",
+      "source": "执行中的 Hook 会显示在 __ELBOT_CODE_0__，当前 Session 的 Hook 也会显示在 __ELBOT_CODE_1__；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "dda9f80d869b591edf7f9696577d405bb57a881c2e08f7cee08483abdd6db5a7",
+      "translation": "Executing Hooks will be displayed in __ELBOT_CODE_0__, and Hooks for the current Session will also be displayed in __ELBOT_CODE_1__;",
+      "updated_at": 1783571675
     },
     "CHANGELOG.md:list:e03c11cbeaa6e58ce0ad4ee4ead359f83057de19807ef8393bca9bd67954a45c": {
       "kind": "list",
@@ -3797,6 +3813,22 @@
       "source_hash": "5c68a0583f2fd47d9217b6c75f247209183d81ea81abce866b559380605dd974",
       "translation": "Stop the current request.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:629a1073c0066a3358615afbcf3145605f4ad8ed20696b995ae6d2121b9bfddd": {
+      "kind": "table",
+      "source": "停止指定请求；也可使用 __ELBOT_CODE_0__ 显示的编号；不传参数时停止当前 Session 的请求。",
+      "source_file": "docs/commands.md",
+      "source_hash": "629a1073c0066a3358615afbcf3145605f4ad8ed20696b995ae6d2121b9bfddd",
+      "translation": "Stop a specified request; you can also use the ID displayed by __ELBOT_CODE_0__; if no parameters are passed, stop the requests of the current Session.",
+      "updated_at": 1783571608
+    },
+    "docs/commands.md:table:662180bb3357d0b97297639a4fa15e277afffa7d24630a4aa8343a9db12e49c8": {
+      "kind": "table",
+      "source": "查看当前进程中的 active request，包括 turn、LLM、tool、hook 等请求；turn 会显示运行阶段和阶段耗时。",
+      "source_file": "docs/commands.md",
+      "source_hash": "662180bb3357d0b97297639a4fa15e277afffa7d24630a4aa8343a9db12e49c8",
+      "translation": "View active requests in the current process, including turn, LLM, tool, and hook requests; turns will display the execution stage and the time spent on each stage.",
+      "updated_at": 1783571608
     },
     "docs/commands.md:table:6af7f1c01fb3994695d9dff53ca9b725917dbb86db250e9d8d154c3065086590": {
       "kind": "table",
@@ -13462,6 +13494,14 @@
       "translation": "The exec script needs to read raw data from __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, or __ELBOT_CODE_3__.\n",
       "updated_at": 1783392421
     },
+    "docs/hooks.md:paragraph:5aa8165b4f830c15695439ac36e8d2b3b84910a7b8688a724828ead11e96cfa9": {
+      "kind": "paragraph",
+      "source": "图片等大媒体不要直接塞进 __ELBOT_CODE_0__，推荐先写入插件目录或临时文件，再用 __ELBOT_CODE_1__ 返回；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "5aa8165b4f830c15695439ac36e8d2b3b84910a7b8688a724828ead11e96cfa9",
+      "translation": "Large media such as images should not be put directly into __ELBOT_CODE_0__; it is recommended to first write to the plugin directory or a temporary file, and then return using __ELBOT_CODE_1__;",
+      "updated_at": 1783571649
+    },
     "docs/hooks.md:paragraph:5afb1e3750485d6ad914d2df2f1a1d980834421cfe047198e468af25c802f306": {
       "kind": "paragraph",
       "source": "工具调用受 Security Policy 约束：风险等级必须在当前 Actor 允许范围内，需要交互确认的高风险工具会被拒绝。\n",
@@ -13605,6 +13645,14 @@
       "source_hash": "75d6020ac1f84dc2b0329d90826f94bc9d5a4707c94e8027e9002a9500c3db62",
       "translation": "Hooks and plugins do not send platform messages directly; they should return an output intent, which is then handed over by the Agent to the Output Manager for sending.\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:78594f9a7333c63e5fded76be8169ec2ee29df91e4dbf8f37d5cff8f95a108cb": {
+      "kind": "paragraph",
+      "source": "也可以返回 __ELBOT_CODE_0__。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "78594f9a7333c63e5fded76be8169ec2ee29df91e4dbf8f37d5cff8f95a108cb",
+      "translation": "Alternatively, __ELBOT_CODE_0__ can be returned.\n",
+      "updated_at": 1783571649
     },
     "docs/hooks.md:paragraph:7bb62ce238fb635c78bf2e33f6209cc330ac64e5bc8577cc0227ae4a96e96c85": {
       "kind": "paragraph",
@@ -14037,6 +14085,14 @@
       "source_hash": "f40fe099e3394673e7c6410292af2d5c752cb28a3e7e5fa4567b563a6be41af4",
       "translation": "A non-zero exit code will be regarded as a failure of the exec process.\n",
       "updated_at": 1783392421
+    },
+    "docs/hooks.md:paragraph:f489c47ec390edd71fcac29bd0a56509162656a0fe98a090ad90c9691a087f14": {
+      "kind": "paragraph",
+      "source": "单个 stdout frame 最大 16 MiB。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "f489c47ec390edd71fcac29bd0a56509162656a0fe98a090ad90c9691a087f14",
+      "translation": "A single stdout frame is maximum 16 MiB.",
+      "updated_at": 1783571649
     },
     "docs/hooks.md:paragraph:f740b40b8ff8baf010a6209fccbfcb34d3fd1458470caed36048d95abae38c45": {
       "kind": "paragraph",
@@ -14734,6 +14790,14 @@
       "translation": "Final name of the current rule",
       "updated_at": 1783392421
     },
+    "docs/hooks.md:table:7b10a8cc39295b6ce314585c8d402322e87869e8c57fa96f815aadc5fa0ac035": {
+      "kind": "table",
+      "source": "base64 编码数据；仅输出片段使用，解码后最大 10 MiB",
+      "source_file": "docs/hooks.md",
+      "source_hash": "7b10a8cc39295b6ce314585c8d402322e87869e8c57fa96f815aadc5fa0ac035",
+      "translation": "base64 encoded data; used only for output fragments, maximum 10 MiB after decoding",
+      "updated_at": 1783571649
+    },
     "docs/hooks.md:table:7b44a9241bea164a0800182c125c839f6f104ea296aef70ef5b6cbf1be395656": {
       "kind": "table",
       "source": "at 目标用户 ID",
@@ -15045,6 +15109,14 @@
       "source_hash": "c398fa6cd39a525f986d086b6e5182cdebc4637f7360eb30f8b15560ffa52e97",
       "translation": "Plain text of the current message, only concatenating text fragments, without image/file placeholders",
       "updated_at": 1783567419
+    },
+    "docs/hooks.md:table:c4a66d1b72e509f0b12e2e05087437686ac53b27cdf5860c73e20b0a5b7480e8": {
+      "kind": "table",
+      "source": "Request 类型：__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__；无运行中 Request 时为空",
+      "source_file": "docs/hooks.md",
+      "source_hash": "c4a66d1b72e509f0b12e2e05087437686ac53b27cdf5860c73e20b0a5b7480e8",
+      "translation": "Request type: __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, __ELBOT_CODE_5__; empty when there are no running Requests",
+      "updated_at": 1783571649
     },
     "docs/hooks.md:table:c5cf176db186f21b51f8285214e2e9448f25f76fb849ea1b04999a707f5a2af5": {
       "kind": "table",

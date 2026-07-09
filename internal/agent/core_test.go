@@ -2582,6 +2582,94 @@ func TestChatToolMaxRoundsPerTurnRequestsSummary(t *testing.T) {
 	}
 }
 
+func TestLLMInterruptKeepsAppendConfirmationUntilConfirm(t *testing.T) {
+	p := &fakePlatform{}
+	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
+	f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"interrupted", "confirmed"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	ctx := context.Background()
+
+	done := make(chan error, 1)
+	go func() { done <- a.HandleMessage(ctx, "1+1") }()
+	select {
+	case <-block.started:
+	case <-time.After(time.Second):
+		t.Fatal("first LLM request did not start")
+	}
+	waitRequestCount(t, f, 1)
+
+	if err := a.HandleMessage(ctx, "stop"); err != nil {
+		t.Fatalf("interrupt: %v", err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("interrupted turn: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("interrupted turn did not finish")
+	}
+
+	if err := a.HandleMessage(ctx, "同时计算2+2"); err != nil {
+		t.Fatalf("append pending: %v", err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if got := f.requestCount(); got != 1 {
+		t.Fatalf("request count after pending append = %d, want 1", got)
+	}
+
+	if err := a.HandleMessage(ctx, "再计算3+3"); err != nil {
+		t.Fatalf("append pending 2: %v", err)
+	}
+	if err := a.HandleMessage(ctx, "y"); err != nil {
+		t.Fatalf("confirm append: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 2 {
+		t.Fatalf("chat requests = %d, want 2", len(requests))
+	}
+	got := llm.SegmentsContentText(requests[1].Messages[len(requests[1].Messages)-1].Segments)
+	for _, want := range []string{"1+1", "stop", "同时计算2+2", "再计算3+3"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("confirmed request content = %q, missing %q", got, want)
+		}
+	}
+}
+
+func TestAppendConfirmationBlocksNewSessionCommand(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"confirmed"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	ctx := context.Background()
+	session, err := a.sessions.Create(ctx, a.scope(ctx), "current")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.turns.StartLLM(session.ID, "1+1") {
+		t.Fatal("StartLLM returned false")
+	}
+	if !a.turns.InterruptLLM(session.ID, "stop") {
+		t.Fatal("InterruptLLM returned false")
+	}
+
+	if err := a.HandleMessage(ctx, "/new"); err != nil {
+		t.Fatalf("/new: %v", err)
+	}
+	current, err := a.sessions.Current(ctx, a.scope(ctx))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.ID != session.ID {
+		t.Fatalf("current session = %s, want %s", current.ID, session.ID)
+	}
+	if snapshot := a.turns.Snapshot(session.ID); snapshot.Phase != turn.PhaseAwaitAppendConfirm || snapshot.PendingCount != 1 {
+		t.Fatalf("snapshot = %#v", snapshot)
+	}
+	if got := p.out.String(); !strings.Contains(got, appendConfirmPrompt) {
+		t.Fatalf("output = %q, want append confirmation prompt", got)
+	}
+}
+
 func TestToolPhasePendingInputInjectedBeforeFollowupLLM(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)

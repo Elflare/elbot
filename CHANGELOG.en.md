@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `[platform_files]` configuration to uniformly control the maximum save size and download timeout for platform inbound files.
 - QQ OneBot now supports automatically saving inbound files from superadmins in private chats; messages containing only files will only reply with the save path or a "too large" prompt without invoking the LLM; group files are not automatically saved.
 - The `/requests` command now displays the current execution stage (preparing/llm/tool/sending) and the duration of each stage for every turn, allowing you to distinguish whether the LLM is slow or the platform delivery is stuck.
+- Executing Hooks will be displayed in `/requests`, and Hooks for the current Session will also be displayed in `/status`; Use `/stop` to cancel long-running Hooks; manual cancellations are recorded as normal cancellations.
 - Inline preloading supports tool shorthand `@t:<name-or-tag>` and Skill shorthand `@s:<name>`, and is compatible with Chinese full-width colon `：`.
 - The CLI TUI input box now supports fuzzy completion of local files using `#文件名`; references are replaced with the filename and file content upon sending, and paths containing spaces can be written as `#"a b.txt"`.
 - Failure notifications will be sent to the current messaging platform when Hook execution fails, the script crashes, times out, or a protocol error occurs, with the end of stderr attached upon failure; Added `error.message` to rule matching and templates.
