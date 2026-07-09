@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -14,6 +15,42 @@ import (
 	"elbot/internal/turn"
 )
 
+const appendConfirmPrompt = "已停止当前处理。是否追加这条消息并重新发送？\n发送 $ / 是 / y / yes 确认；发送 取消 / 否 / n / no 放弃。\n也可以继续发送内容，发送完后再确认。"
+
+func (a *Agent) handleAppendConfirmationInput(ctx context.Context, session *storage.Session, text string) error {
+	switch {
+	case turn.IsConfirm(text):
+		merged, ok := a.turns.ConfirmAppend(session.ID)
+		if !ok || merged == "" {
+			return nil
+		}
+		ctx = withInboundSegments(ctx, llm.TextSegments(merged))
+		return a.startChat(ctx, session, merged)
+	case turn.IsCancel(text):
+		a.turns.CancelAppend(session.ID)
+		a.sendChat(ctx, "已取消追加，本轮处理已停止。")
+		return nil
+	default:
+		a.turns.AppendPending(session.ID, text)
+		return nil
+	}
+}
+
+func shouldBlockCommandDuringAppendConfirmation(name string) bool {
+	switch name {
+	case "new", "resume", "fork", "work", "chat":
+		return true
+	default:
+		return false
+	}
+}
+
+func appendConfirmationCommandBlockedText(command string) string {
+	if strings.TrimSpace(command) == "/new" {
+		return appendConfirmPrompt
+	}
+	return fmt.Sprintf("当前有待确认的追加消息，暂不执行 %s。\n%s", command, appendConfirmPrompt)
+}
 func (a *Agent) handleInput(ctx context.Context, text string) error {
 	if !hasForkFromMessage(ctx) {
 		if err := a.expireIdleCurrentSession(ctx); err != nil {
@@ -63,26 +100,11 @@ func (a *Agent) handleInput(ctx context.Context, text string) error {
 	case turn.PhaseAwaitRiskConfirm:
 		return a.handleRiskConfirmationInput(ctx, session.ID, text)
 	case turn.PhaseAwaitAppendConfirm:
-		switch {
-		case turn.IsConfirm(text):
-			merged, ok := a.turns.ConfirmAppend(session.ID)
-			if !ok || merged == "" {
-				return nil
-			}
-			ctx = withInboundSegments(ctx, llm.TextSegments(merged))
-			return a.startChat(ctx, session, merged)
-		case turn.IsCancel(text):
-			a.turns.CancelAppend(session.ID)
-			a.sendChat(ctx, "已取消追加，本轮处理已停止。")
-			return nil
-		default:
-			a.turns.AppendPending(session.ID, text)
-			return nil
-		}
+		return a.handleAppendConfirmationInput(ctx, session, text)
 	case turn.PhaseLLM:
 		a.requests.CancelSession(session.ID)
 		a.turns.InterruptLLM(session.ID, text)
-		a.sendChat(ctx, "已停止当前处理。是否追加这条消息并重新发送？\n发送 $ / 是 / y / yes 确认；发送 取消 / 否 / n / no 放弃。\n也可以继续发送内容，发送完后再确认。")
+		a.sendChat(ctx, appendConfirmPrompt)
 		return nil
 	case turn.PhaseTool:
 		a.turns.AppendPending(session.ID, text)

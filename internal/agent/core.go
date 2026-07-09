@@ -351,10 +351,19 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 	ctx = withInboundSegments(ctx, segments)
 	if a.commands.IsCommand(text) {
 		session, sessionErr := a.sessions.Current(ctx, a.scope(ctx))
+		parsed := a.commands.Parse(text)
+		if sessionErr == nil && a.turns.Snapshot(session.ID).Phase == turn.PhaseAwaitAppendConfirm {
+			if turn.IsConfirm(text) || turn.IsCancel(text) {
+				return a.handleAppendConfirmationInput(ctx, session, text)
+			}
+			if shouldBlockCommandDuringAppendConfirmation(parsed.Name) {
+				a.sendChat(ctx, appendConfirmationCommandBlockedText(text))
+				return nil
+			}
+		}
 		if sessionErr == nil && a.turns.Snapshot(session.ID).Phase == turn.PhaseAwaitRiskConfirm && isRiskConfirmationCommand(text, a.commands) {
 			return a.handleRiskConfirmationInput(ctx, session.ID, text)
 		}
-		parsed := a.commands.Parse(text)
 		if parsed.OK && parsed.Name != "" {
 			if info, ok := a.commands.CommandInfo(parsed.Name); ok {
 				if info.MinRole != security.RoleUser && actor.Role != security.RoleSuperadmin {
