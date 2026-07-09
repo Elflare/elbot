@@ -16,9 +16,9 @@
       "updated_at": 1782901148
     },
     "docs/commands.md": {
-      "source_hash": "d2070dc3745b463252a7df765e0fc21712b36c96fff6d96c6b59fa207035fe2d",
+      "source_hash": "f120b462b36098952dd26f97d7a7ed9adf6d1d6083171f7ed5421e562494a642",
       "target": "docs.en/commands.md",
-      "updated_at": 1783390911
+      "updated_at": 1783571608
     },
     "docs/concepts.md": {
       "source_hash": "b9f6b98ec7977a296b7fcccdc91cbb47fff7f709fdf2342bd2fb79e0510ea6c7",
@@ -3797,6 +3797,22 @@
       "source_hash": "5c68a0583f2fd47d9217b6c75f247209183d81ea81abce866b559380605dd974",
       "translation": "Stop the current request.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:629a1073c0066a3358615afbcf3145605f4ad8ed20696b995ae6d2121b9bfddd": {
+      "kind": "table",
+      "source": "停止指定请求；也可使用 __ELBOT_CODE_0__ 显示的编号；不传参数时停止当前 Session 的请求。",
+      "source_file": "docs/commands.md",
+      "source_hash": "629a1073c0066a3358615afbcf3145605f4ad8ed20696b995ae6d2121b9bfddd",
+      "translation": "Stop a specified request; you can also use the ID displayed by __ELBOT_CODE_0__; if no parameters are passed, stop the requests of the current Session.",
+      "updated_at": 1783571608
+    },
+    "docs/commands.md:table:662180bb3357d0b97297639a4fa15e277afffa7d24630a4aa8343a9db12e49c8": {
+      "kind": "table",
+      "source": "查看当前进程中的 active request，包括 turn、LLM、tool、hook 等请求；turn 会显示运行阶段和阶段耗时。",
+      "source_file": "docs/commands.md",
+      "source_hash": "662180bb3357d0b97297639a4fa15e277afffa7d24630a4aa8343a9db12e49c8",
+      "translation": "View active requests in the current process, including turn, LLM, tool, and hook requests; turns will display the execution stage and the time spent on each stage.",
+      "updated_at": 1783571608
     },
     "docs/commands.md:table:6af7f1c01fb3994695d9dff53ca9b725917dbb86db250e9d8d154c3065086590": {
       "kind": "table",
