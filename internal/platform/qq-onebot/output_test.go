@@ -54,7 +54,7 @@ func TestSendNoticeKeepsPrivateToolPreview(t *testing.T) {
 		t.Fatalf("action = %q", action)
 	}
 }
-func TestOutputSegmentsFileUsesBase64ForPlainPath(t *testing.T) {
+func TestOutputSegmentsFileUsesFileURIForPlainPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "report.txt")
 	if err := os.WriteFile(path, []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
@@ -69,11 +69,69 @@ func TestOutputSegmentsFileUsesBase64ForPlainPath(t *testing.T) {
 		t.Fatalf("segments = %#v", segments)
 	}
 	file, _ := segments[0].Data["file"].(string)
-	if !strings.HasPrefix(file, "base64://") {
+	if !strings.HasPrefix(file, "file://") {
 		t.Fatalf("file data = %q", file)
+	}
+	gotPath, err := delivery.FileURIToPath(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Clean(gotPath) != filepath.Clean(path) {
+		t.Fatalf("file path = %q, want %q", gotPath, path)
 	}
 	if segments[0].Data["name"] != "report.txt" {
 		t.Fatalf("name = %#v", segments[0].Data["name"])
+	}
+}
+
+func TestOutputSegmentsImageUsesFileURIForPlainPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "image.png")
+	out := delivery.ImagePath(path)
+	segments, err := outputSegments(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(segments) != 1 || segments[0].Type != "image" {
+		t.Fatalf("segments = %#v", segments)
+	}
+	file, _ := segments[0].Data["file"].(string)
+	if !strings.HasPrefix(file, "file://") {
+		t.Fatalf("file data = %q", file)
+	}
+	gotPath, err := delivery.FileURIToPath(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Clean(gotPath) != filepath.Clean(path) {
+		t.Fatalf("file path = %q, want %q", gotPath, path)
+	}
+}
+
+func TestOutputSegmentsImageUsesFileURIForRelativePath(t *testing.T) {
+	tmp := t.TempDir()
+	t.Chdir(tmp)
+	rel := filepath.Join("nested", "image.png")
+	want := filepath.Join(tmp, rel)
+	if err := os.MkdirAll(filepath.Dir(want), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(want, []byte("png"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	segments, err := outputSegments(delivery.ImagePath(rel))
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, _ := segments[0].Data["file"].(string)
+	if !strings.HasPrefix(file, "file://") {
+		t.Fatalf("file data = %q", file)
+	}
+	gotPath, err := delivery.FileURIToPath(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Clean(gotPath) != filepath.Clean(want) {
+		t.Fatalf("file path = %q, want %q", gotPath, want)
 	}
 }
 
@@ -93,6 +151,18 @@ func TestOutputSegmentsImagePassesDirectMediaPath(t *testing.T) {
 		if file != path {
 			t.Fatalf("file data for %q = %q", path, file)
 		}
+	}
+}
+
+func TestOutputSegmentsUsesBase64ForData(t *testing.T) {
+	out := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("png")}}
+	segments, err := outputSegments(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, _ := segments[0].Data["file"].(string)
+	if file != "base64://cG5n" {
+		t.Fatalf("file data = %q", file)
 	}
 }
 

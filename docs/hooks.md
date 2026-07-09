@@ -253,7 +253,7 @@ actions = [
 ]
 ```
 
-output segment 格式与 [Elvena 协议](elnis-usage.md#segments多模态消息段)统一，额外支持本地 `path`、`base64` 和 `emoticon` 类型：
+output segment 格式与 [Elvena 协议](elnis-usage.md#segments多模态消息段)统一，额外支持本地 `path`、`base64` 和 `emoticon` 类型。`path` 表示本地文件路径（相对路径按规则或插件目录解析），`url` 会按远程 URL 发送，`base64` 表示内联数据；具体以图片还是文件形式发送由 `kind = "image"` 或 `kind = "file"` 决定：
 
 | 字段 | 说明 |
 | --- | --- |
