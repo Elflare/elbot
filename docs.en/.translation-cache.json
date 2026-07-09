@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "ede04500b1ed5f006f4b5b301babe2d3093aec639b99693d3d750ef7066cf070",
+      "source_hash": "a6d0c635e84963633fb7777c065572002e3787910e127a4960747ae2ddddca59",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783519200
+      "updated_at": 1783567455
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -56,9 +56,9 @@
       "updated_at": 1783392534
     },
     "docs/hooks.md": {
-      "source_hash": "131ba077e48536cf7b18add8acc2e4b83053aa6386a6218bb4c9b4708fb06573",
+      "source_hash": "7d5c753258df8f4e1686a9a4dd141c063df56b3ccef5d78f0c89728faa95f170",
       "target": "docs.en/hooks.md",
-      "updated_at": 1783521501
+      "updated_at": 1783567419
     }
   },
   "segments": {
@@ -990,6 +990,14 @@
       "translation": "**SQLite Persistence**: Unified storage for Sessions, messages, context summaries, tool call records, Cron jobs, and Elnis events.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:cc48499925e50f0156703dc753ae76ba767e135e29e86e4ce5b4e82dcfac8f84": {
+      "kind": "list",
+      "source": "Hook 插件元信息支持 __ELBOT_CODE_0__；__ELBOT_CODE_1__ 会在命令结果中显示插件跳过或配置警告。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "cc48499925e50f0156703dc753ae76ba767e135e29e86e4ce5b4e82dcfac8f84",
+      "translation": "Hook plugin meta-information now supports __ELBOT_CODE_0__; __ELBOT_CODE_1__ will display plugin skip or configuration warnings in the command results.",
+      "updated_at": 1783567455
+    },
     "CHANGELOG.md:list:ce3e9cc6dd15510c9cfe7dbcae094bd1f1cb641bc8875c00f0d3c95d4642854d": {
       "kind": "list",
       "source": "**Elnis 监听枢纽**：接收 Elwisp 通过 Elvena HTTP 协议投递的外部事件，支持 record/direct/llm 三种模式与多目标投递。",
@@ -1157,6 +1165,14 @@
       "source_hash": "faa151eb2284bda7e4e6995ad15597fdaec9d9c2d87d2a98a3ab4a418ee37890",
       "translation": "Fixed the issue where __ELBOT_CODE_0__ fails during the write confirmation stage when creating a new file using __ELBOT_CODE_1__ if the target parent directory does not exist.",
       "updated_at": 1782644646
+    },
+    "CHANGELOG.md:list:fb5d2dd0b045669c98e5c52df0f404d36c2193257fd1fc991b262fd82d6de07d": {
+      "kind": "list",
+      "source": "Hook 规则文本字段整理为 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ 等清晰命名。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "fb5d2dd0b045669c98e5c52df0f404d36c2193257fd1fc991b262fd82d6de07d",
+      "translation": "Hook rule text fields have been organized into clear names such as __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__.",
+      "updated_at": 1783567455
     },
     "CHANGELOG.md:paragraph:f4fdd49cee5a8975381d265d52b666a936b8a0b8d696502ff7ac1ebdda67c23c": {
       "kind": "paragraph",
@@ -12790,6 +12806,22 @@
       "translation": "Optional, defaults to true; false indicates that non-triggered messages can also trigger it",
       "updated_at": 1783259169
     },
+    "docs/hooks.md:code-comment:toml:8a72bce2e731543c6c38e519858dc6acea177b26d5de852396353c39dc3404a9": {
+      "kind": "code-comment:toml",
+      "source": "可选；实际引用名以主 hooks.toml 的 [[plugins]].name 为准",
+      "source_file": "docs/hooks.md",
+      "source_hash": "8a72bce2e731543c6c38e519858dc6acea177b26d5de852396353c39dc3404a9",
+      "translation": "Optional; the actual reference name is based on [[plugins]].name in the main hooks.toml",
+      "updated_at": 1783567419
+    },
+    "docs/hooks.md:code-comment:toml:8cb46271993f3f3c0f1b6fa7dda52500a81001eab8f568e1193e67a649be1ec8": {
+      "kind": "code-comment:toml",
+      "source": "可选；规则未写 description 时作为说明兜底",
+      "source_file": "docs/hooks.md",
+      "source_hash": "8cb46271993f3f3c0f1b6fa7dda52500a81001eab8f568e1193e67a649be1ec8",
+      "translation": "Optional; serves as a fallback description when the rule does not have a description",
+      "updated_at": 1783567419
+    },
     "docs/hooks.md:code-comment:toml:926dc46dd723a3e7c910267778d415dcf1400cc7dbea35f57d54117119650c6b": {
       "kind": "code-comment:toml",
       "source": "path = \"demo/hook.toml\" # 可选；必须是相对 plugins/ 的路径",
@@ -13662,6 +13694,14 @@
       "translation": "Call a registered tool; the result is stored in __ELBOT_CODE_0__ for use by subsequent actions.\n",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:paragraph:99b467e802c7e35434b2c4c8ff9a064941e4e475cec244f93e09766772fe5c95": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 会重新读取主配置和插件配置；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "99b467e802c7e35434b2c4c8ff9a064941e4e475cec244f93e09766772fe5c95",
+      "translation": "__ELBOT_CODE_0__ will reread the main configuration and plugin configurations;",
+      "updated_at": 1783567419
+    },
     "docs/hooks.md:paragraph:9a86c3e1d296f1f280aa5bc0c174e05ac50790275dd4fcee4219750129ce31e3": {
       "kind": "paragraph",
       "source": "ElBot 会注册这些 Hook 来源：\n",
@@ -13822,6 +13862,14 @@
       "translation": "ElBot will write the response frame to the script's stdin:\n",
       "updated_at": 1783392421
     },
+    "docs/hooks.md:paragraph:c40bacb9a198a6ac1f85f6d526f60ef2510703e9a1aa4f8aaae40fb919b6914d": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 列出的是成功注册的规则名，例如 __ELBOT_CODE_1__，不是 __ELBOT_CODE_2__ 的插件名。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "c40bacb9a198a6ac1f85f6d526f60ef2510703e9a1aa4f8aaae40fb919b6914d",
+      "translation": "__ELBOT_CODE_0__ lists the successfully registered rule names, such as __ELBOT_CODE_1__, not the plugin names of __ELBOT_CODE_2__.",
+      "updated_at": 1783567419
+    },
     "docs/hooks.md:paragraph:c466628e3d4b2784366e78b8f4f124974a5ac8fa78414af3cffd40eb29dd97eb": {
       "kind": "paragraph",
       "source": "自动回复并阻止后续命令/LLM 时，优先用 __ELBOT_CODE_0__ + __ELBOT_CODE_1__。",
@@ -13869,6 +13917,14 @@
       "source_hash": "c9838b82a028b6695bad70c3635fe684b03543f3f8ffb81dc9914f82dde28e0a",
       "translation": "The following example is used when a superadmin replies to a platform message and sends \"recall\", calling the platform API via Elvena v3 __ELBOT_CODE_0__ to recall the quoted message.\n",
       "updated_at": 1783392421
+    },
+    "docs/hooks.md:paragraph:cb2534b1d61a4bf74bc7112cadf201a8655182ee079dedab82aa0509be194b65": {
+      "kind": "paragraph",
+      "source": "如果某个插件被跳过，会在命令结果里显示 warning。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "cb2534b1d61a4bf74bc7112cadf201a8655182ee079dedab82aa0509be194b65",
+      "translation": "If a plugin is skipped, a warning will be displayed in the command result.\n",
+      "updated_at": 1783567419
     },
     "docs/hooks.md:paragraph:cd02a0f87d7051f6571ce40f9dfe6850b8b6f3e546a142391935c8ac5a94f38b": {
       "kind": "paragraph",
@@ -14357,6 +14413,14 @@
       "source_hash": "34ee51493f4bd1d442f279f7e1850f8ab56ab4b28291ef7fa19c4b701db4eab1",
       "translation": "Raw LLM response text; can be matched, but cannot be edited",
       "updated_at": 1783392421
+    },
+    "docs/hooks.md:table:3b22516fdb8a3458b94623fb194419d32881e21ac9b896b355e21cf9ffc1fdda": {
+      "kind": "table",
+      "source": "当前消息可读内容文本，可能包含图片/文件占位",
+      "source_file": "docs/hooks.md",
+      "source_hash": "3b22516fdb8a3458b94623fb194419d32881e21ac9b896b355e21cf9ffc1fdda",
+      "translation": "Readable content text of the current message, which may include image/file placeholders",
+      "updated_at": 1783567419
     },
     "docs/hooks.md:table:3dfebd9dbd214bc8e51925675f385e9abd3af9979a1c6993eb32f0b47b4566fc": {
       "kind": "table",
@@ -14973,6 +15037,14 @@
       "source_hash": "ba40014ff496f64e755492a5c6243cc0222a5d3e4b795ecfea7c9bed809adaab",
       "translation": "Type",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:table:c398fa6cd39a525f986d086b6e5182cdebc4637f7360eb30f8b15560ffa52e97": {
+      "kind": "table",
+      "source": "当前消息纯文本，只拼接 text 片段，不包含图片/文件占位",
+      "source_file": "docs/hooks.md",
+      "source_hash": "c398fa6cd39a525f986d086b6e5182cdebc4637f7360eb30f8b15560ffa52e97",
+      "translation": "Plain text of the current message, only concatenating text fragments, without image/file placeholders",
+      "updated_at": 1783567419
     },
     "docs/hooks.md:table:c5cf176db186f21b51f8285214e2e9448f25f76fb849ea1b04999a707f5a2af5": {
       "kind": "table",
