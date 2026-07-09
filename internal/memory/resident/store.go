@@ -113,13 +113,13 @@ func (s *Store) Read(ctx context.Context, scope session.Scope) (Memory, error) {
 }
 
 func (s *Store) WriteCore(ctx context.Context, scope session.Scope, content string) error {
-	return s.update(ctx, scope, func(memory *ResidentMemory) {
+	return s.update(ctx, scope, validateCore, func(memory *ResidentMemory) {
 		memory.Core = strings.TrimSpace(content)
 	})
 }
 
 func (s *Store) WriteNormal(ctx context.Context, scope session.Scope, content string) error {
-	return s.update(ctx, scope, func(memory *ResidentMemory) {
+	return s.update(ctx, scope, validateNormal, func(memory *ResidentMemory) {
 		memory.Normal = strings.TrimSpace(content)
 	})
 }
@@ -129,7 +129,7 @@ func (s *Store) AppendNormal(ctx context.Context, scope session.Scope, content s
 	if content == "" {
 		return fmt.Errorf("resident memory normal content is required")
 	}
-	return s.update(ctx, scope, func(memory *ResidentMemory) {
+	return s.update(ctx, scope, validateNormal, func(memory *ResidentMemory) {
 		existing := strings.TrimSpace(memory.Normal)
 		if existing == "" {
 			memory.Normal = content
@@ -147,7 +147,9 @@ func (s *Store) LimitsOrDefault() Limits {
 	return normalizeLimits(s.Limits)
 }
 
-func (s *Store) update(ctx context.Context, scope session.Scope, update func(*ResidentMemory)) error {
+type validatePart func(ResidentMemory, Limits) error
+
+func (s *Store) update(ctx context.Context, scope session.Scope, validate validatePart, update func(*ResidentMemory)) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -171,7 +173,7 @@ func (s *Store) update(ctx context.Context, scope session.Scope, update func(*Re
 	update(&memory)
 	memory.Core = strings.TrimSpace(memory.Core)
 	memory.Normal = strings.TrimSpace(memory.Normal)
-	if err := s.validateMemory(memory); err != nil {
+	if err := validate(memory, s.LimitsOrDefault()); err != nil {
 		return err
 	}
 	if memory.Core == "" && memory.Normal == "" {
@@ -186,11 +188,14 @@ func (s *Store) update(ctx context.Context, scope session.Scope, update func(*Re
 	return s.saveLocked(file)
 }
 
-func (s *Store) validateMemory(memory ResidentMemory) error {
-	limits := s.LimitsOrDefault()
+func validateCore(memory ResidentMemory, limits Limits) error {
 	if units := CountUnits(memory.Core); units > limits.Core {
 		return fmt.Errorf("resident memory core is too long: %d/%d units", units, limits.Core)
 	}
+	return nil
+}
+
+func validateNormal(memory ResidentMemory, limits Limits) error {
 	if units := CountUnits(memory.Normal); units > limits.Normal {
 		return fmt.Errorf("resident memory normal is too long: %d/%d units", units, limits.Normal)
 	}

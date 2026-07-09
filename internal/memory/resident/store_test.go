@@ -87,6 +87,29 @@ func TestStoreMaxUnits(t *testing.T) {
 	}
 }
 
+func TestStoreNormalWriteIgnoresExistingOverLimitCore(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "memories.toml")
+	data := []byte("[[resident_memories]]\nplatform = \"cli\"\nactor_id = \"cli:local\"\ncore = \"四个汉字\"\nnormal = \"旧\"\ncreated_at = \"t1\"\nupdated_at = \"t1\"\n")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("seed memory: %v", err)
+	}
+	store := NewStoreWithLimits(path, Limits{Core: 3, Normal: 5})
+	scope := session.Scope{Platform: "cli", ActorID: "cli:local"}
+	if err := store.WriteNormal(context.Background(), scope, "新 normal"); err != nil {
+		t.Fatalf("WriteNormal with over-limit core: %v", err)
+	}
+	if err := store.AppendNormal(context.Background(), scope, "追加"); err != nil {
+		t.Fatalf("AppendNormal with over-limit core: %v", err)
+	}
+	memory, err := store.Read(context.Background(), scope)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if memory.Core != "四个汉字" || memory.Normal != "新 normal 追加" {
+		t.Fatalf("memory = %#v", memory)
+	}
+}
+
 func TestStoreReloadsExternalFileChanges(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "memories.toml")
 	store := NewStore(path)
