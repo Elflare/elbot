@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -354,13 +355,13 @@ func outputSegments(out delivery.Output) ([]Segment, error) {
 			{Type: "text", Data: map[string]any{"text": out.Text}},
 		}, nil
 	case delivery.KindEmoticon, delivery.KindImage:
-		file, err := base64SourceFile(out.Source, "image")
+		file, err := oneBotSourceFile(out.Source, "image")
 		if err != nil {
 			return nil, err
 		}
 		return []Segment{{Type: "image", Data: map[string]any{"file": file}}}, nil
 	case delivery.KindFile:
-		file, err := base64SourceFile(out.Source, "file")
+		file, err := oneBotSourceFile(out.Source, "file")
 		if err != nil {
 			return nil, err
 		}
@@ -390,12 +391,12 @@ func oneBotGroupRole(event Event) security.GroupRole {
 	return security.ParseGroupRole(event.Sender.Role)
 }
 
-func base64SourceFile(source delivery.Source, label string) (string, error) {
+func oneBotSourceFile(source delivery.Source, label string) (string, error) {
 	if len(source.Data) > 0 {
 		return "base64://" + base64.StdEncoding.EncodeToString(source.Data), nil
 	}
-	if url := strings.TrimSpace(source.URL); url != "" {
-		return url, nil
+	if sourceURL := strings.TrimSpace(source.URL); sourceURL != "" {
+		return sourceURL, nil
 	}
 	path := strings.TrimSpace(source.Path)
 	if path == "" {
@@ -404,11 +405,26 @@ func base64SourceFile(source delivery.Source, label string) (string, error) {
 	if delivery.IsDirectMediaSource(path) {
 		return path, nil
 	}
-	data, err := os.ReadFile(path)
+	return localPathFileURI(path, label)
+}
+
+func localPathFileURI(path, label string) (string, error) {
+	abs, err := filepath.Abs(path)
 	if err != nil {
-		return "", fmt.Errorf("read %s %q: %w", label, path, err)
+		return "", fmt.Errorf("resolve %s path %q: %w", label, path, err)
 	}
-	return "base64://" + base64.StdEncoding.EncodeToString(data), nil
+	slashPath := filepath.ToSlash(abs)
+	if strings.HasPrefix(slashPath, "//") {
+		trimmed := strings.TrimPrefix(slashPath, "//")
+		host, rest, ok := strings.Cut(trimmed, "/")
+		if ok {
+			return (&url.URL{Scheme: "file", Host: host, Path: "/" + rest}).String(), nil
+		}
+	}
+	if filepath.VolumeName(abs) != "" && !strings.HasPrefix(slashPath, "/") {
+		slashPath = "/" + slashPath
+	}
+	return (&url.URL{Scheme: "file", Path: slashPath}).String(), nil
 }
 
 func (a *Adapter) readLoop(ctx context.Context, handler platform.PlatformHandler) error {

@@ -2,7 +2,6 @@ package qqonebot
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -624,15 +623,15 @@ func TestOutputSegments(t *testing.T) {
 		t.Fatalf("image segments = %#v", segments)
 	}
 	file := segmentDataString(segments[0].Data, "file")
-	if !strings.HasPrefix(file, "base64://") {
+	if !strings.HasPrefix(file, "file://") {
 		t.Fatalf("image file = %q", file)
 	}
-	decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(file, "base64://"))
+	gotPath, err := delivery.FileURIToPath(file)
 	if err != nil {
-		t.Fatalf("decode image: %v", err)
+		t.Fatalf("decode image file uri: %v", err)
 	}
-	if string(decoded) != string(image) {
-		t.Fatalf("decoded image = %q", decoded)
+	if filepath.Clean(gotPath) != filepath.Clean(path) {
+		t.Fatalf("image path = %q, want %q", gotPath, path)
 	}
 
 	segments, err = outputSegments(delivery.At("123456"))
