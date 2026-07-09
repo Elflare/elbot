@@ -255,7 +255,7 @@ actions = [
 ]
 ```
 
-The output segment format is unified with the [Elvena Protocol](elnis-usage.md#segments多模态消息段), with additional support for local `path`, `base64`, and `emoticon` types:
+The output segment format is unified with the [Elvena protocol](elnis-usage.md#segments多模态消息段), with additional support for local `path`, `base64`, and `emoticon` types. `path` represents a local file path (relative paths are resolved according to rules or the plugin directory), `url` is sent as a remote URL, and `base64` represents inline data; Whether it is sent as an image or a file is determined by `kind = "image"` or `kind = "file"`:
 
 | Field | Description |
 | --- | --- |
