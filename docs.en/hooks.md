@@ -356,7 +356,7 @@ init frame fields:
 | `session.title` | Current Session title |
 | `session.status` | Current Session status; empty when there is no Session context |
 | `request.id` | Current Request ID |
-| `request.kind` | Request type: `turn`, `llm`, `tool`, `compress`, `sub_agent`; empty when there is no running Request |
+| `request.kind` | Request type: `turn`, `llm`, `tool`, `hook`, `compress`, `sub_agent`; empty when there are no running Requests |
 | `request.session_id` | Session ID associated with the Request |
 | `request.phase` | Turn stage: `idle`, `llm`, `tool`, `awaiting_risk_confirm`, `awaiting_append_confirm`, `compact`; Empty when there is no Turn context |
 | `message.id` | Current message ID; empty when not set |
@@ -397,7 +397,7 @@ Common fragment fields used by `message.segments`, `llm.messages[].segments`, th
 | `text` | Text content or additional text |
 | `url` | HTTP/HTTPS resource URL |
 | `path` | Local resource path; resolved relative to `plugins/` or the plugin directory during output |
-| `base64` | base64 encoded data; used only for output fragments |
+| `base64` | base64 encoded data; used only for output fragments, maximum 10 MiB after decoding |
 | `name` | File name or emoticon name |
 | `mime_type` | MIME type hint |
 | `user_id` | `at` Target user ID for output |
@@ -446,6 +446,8 @@ Example of stdout frame structure:
 ```
 
 `output` frame only uses the `outputs` field; Do not write `{"type":"output","output":{...}}` or `{"type":"output","segments":[...]}`. When multiple output segments are needed, place multiple output segments in the same `outputs` array; Alternatively, multiple lines of `output` frames can be written. TOML send action also uses `outputs = [...]`.
+
+A single stdout frame is maximum 16 MiB. Large media such as images should not be put directly into `base64`; it is recommended to first write to the plugin directory or a temporary file, and then return using `path`; Alternatively, `url` can be returned.
 
 `output` frame field:
 
