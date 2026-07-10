@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `read_file` 新增 `mode=ast`，可对 Go 和 Shell 文件按名称进行轻量 AST 搜索；`mode` 同时统一为 `read`、`grep`、`ast` 三种读取模式。
 - 重构AgentSkill：去掉py wrapper，直接使用shell执行对应sklll，同时支持在Agentkill根目录添加 `ELBOT_SKILL.toml` 注册为普通工具，方便 LLM 直接调用结构化参数。
 - 新增隐藏元工具 `agent_skill`，用于读取或写入 AgentSkill 的 `ELBOT_SKILL.toml`，写入前校验配置并在成功后 reload。
 - 首次运行会生成 `skills/agent/agent_skill_creator/SKILL.md`，用于说明如何把 AgentSkill 注册为普通工具。

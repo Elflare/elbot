@@ -121,6 +121,7 @@ rg -n "Phase|Request|Cancel|pending|confirm|runtime status|sending" internal/req
 - `internal/tool/runtimeinfo/`：工具运行期常用信息入口，如配置路径、sandbox、文件发送配置、时间源和规则卡转发。
 - `internal/toolrun/`：工具调用中间层、工具视图、命名解析、风险确认。
 - `internal/tool/builtin/`：内置工具。
+- `internal/tool/builtin/file_tools_ast.go`：`read_file` 的 Go/Shell AST 名称搜索与结果渲染。
 - `internal/agent/tools.go`：Agent 工具运行态和命令依赖适配。
 - `internal/agent/toolrun_*.go`：Agent 到 ToolRun 的桥接。
 - `internal/agent/tool_cache.go`：Session 级工具 schema 缓存。
