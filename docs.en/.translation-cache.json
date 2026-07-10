@@ -56,9 +56,9 @@
       "updated_at": 1783392534
     },
     "docs/hooks.md": {
-      "source_hash": "5da09208a1cfaffda99369ba86c7ffc16d9d6e86dd72589a771a42ba7578a8a1",
+      "source_hash": "a2ddcb8c11bac834f0dd815433983621db25f42ea75a205ad5847931e92ce8f6",
       "target": "docs.en/hooks.md",
-      "updated_at": 1783679732
+      "updated_at": 1783692987
     }
   },
   "segments": {
@@ -13478,6 +13478,14 @@
       "translation": "The script stdout must be a complete Elvena JSON request; ElBot will pass it to Elnis via the internal Elvena Bus, rather than going through HTTP token authentication again.\n",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:paragraph:0c7ec3b891ea3ce5a7ebc3d6b2fd64b7cca94ef93431b5de599fd115252498e5": {
+      "kind": "paragraph",
+      "source": "QQ OneBot 撤回示例：\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "0c7ec3b891ea3ce5a7ebc3d6b2fd64b7cca94ef93431b5de599fd115252498e5",
+      "translation": "QQ OneBot recall example:\n",
+      "updated_at": 1783692987
+    },
     "docs/hooks.md:paragraph:0e08cee2fae25f5d61abdcf069904c547eae4e286cdb779fd188e845ee137a48": {
       "kind": "paragraph",
       "source": "Hook 里可通过 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 读取被引用消息的平台消息 ID，通过 __ELBOT_CODE_2__ 读取当前触发 Hook 的消息 ID。",
@@ -13501,6 +13509,14 @@
       "source_hash": "0fd57b05096c72610c2de468a6ebdf055954d60304c5f3d59d20c8fcc4324eca",
       "translation": "Persistent Hooks can receive multiple __ELBOT_CODE_1__ after __ELBOT_CODE_0__.",
       "updated_at": 1783679732
+    },
+    "docs/hooks.md:paragraph:11f69a8557f9eab47c8dbab30aaface04500a1c2615923bba2aa48cfb4d76291": {
+      "kind": "paragraph",
+      "source": "Host 成功后复用 __ELBOT_CODE_0__ ID 回写：\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "11f69a8557f9eab47c8dbab30aaface04500a1c2615923bba2aa48cfb4d76291",
+      "translation": "Reuse the __ELBOT_CODE_0__ ID for write-back after Host success:\n",
+      "updated_at": 1783692987
     },
     "docs/hooks.md:paragraph:1278724997dbc51ff0cc6a3f4c3799d14d76c1567fe6c27655ee495d4f730b52": {
       "kind": "paragraph",
@@ -13574,6 +13590,14 @@
       "translation": "The __ELBOT_CODE_1__ of __ELBOT_CODE_0__ is executed directly after being split by whitespace, without implicitly passing through a shell.",
       "updated_at": 1783679732
     },
+    "docs/hooks.md:paragraph:18e60e33d2f990d95b175f30b9a72d1b2dae6d56117c5f54480ba44a57f53491": {
+      "kind": "paragraph",
+      "source": "这里的 __ELBOT_CODE_0__ 可取自 __ELBOT_CODE_1__。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "18e60e33d2f990d95b175f30b9a72d1b2dae6d56117c5f54480ba44a57f53491",
+      "translation": "The __ELBOT_CODE_0__ here can be taken from __ELBOT_CODE_1__.",
+      "updated_at": 1783692987
+    },
     "docs/hooks.md:paragraph:1a7069a108538e6ad24b704ad4bccb8d73907e6579f7533a109c230f5415cc23": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 中的 __ELBOT_CODE_1__ 只表示当前用户发送的文本；",
@@ -13589,6 +13613,14 @@
       "source_hash": "1ae3dfe38349535fb7fe8358c8cd7cdbf5d7ede4ff516eee3f943c4418f122c1",
       "translation": "Subsequent processing is still handled by Elnis's target arbitration, logging, deduplication, and background runner.\n",
       "updated_at": 1782376842
+    },
+    "docs/hooks.md:paragraph:1bb2de1e938b2ac6e384029d911da52780ce317a43f2672dde0b96ab604fe6c7": {
+      "kind": "paragraph",
+      "source": "Host 发起的 ID 必须使用 __ELBOT_CODE_0__，Hook 发起的 ID 必须使用 __ELBOT_CODE_1__；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "1bb2de1e938b2ac6e384029d911da52780ce317a43f2672dde0b96ab604fe6c7",
+      "translation": "IDs initiated by the Host must use __ELBOT_CODE_0__, and IDs initiated by the Hook must use __ELBOT_CODE_1__;",
+      "updated_at": 1783692987
     },
     "docs/hooks.md:paragraph:2029be61d02b3d56380b71dc55ec652e52395cecf5e85b9bed5ecb4acc6a3fc5": {
       "kind": "paragraph",
@@ -13622,6 +13654,14 @@
       "translation": "The __ELBOT_CODE_0__ in the configuration directory is the rule entry point. It can directly contain __ELBOT_CODE_1__ or reference a plugin directory:\n",
       "updated_at": 1783679732
     },
+    "docs/hooks.md:paragraph:23708d2f8640b17feaa773e999cc0bbcab44af174149f6b095804fbfa66067ea": {
+      "kind": "paragraph",
+      "source": "其他平台 API 需要哪些目标字段，由对应平台 API 定义。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "23708d2f8640b17feaa773e999cc0bbcab44af174149f6b095804fbfa66067ea",
+      "translation": "Which target fields are required by other platform APIs is defined by the corresponding platform API.\n",
+      "updated_at": 1783692987
+    },
     "docs/hooks.md:paragraph:2393da37ecc33c704f66bca1556b564611d27307507b6e016ab5504e7bd0dcb2": {
       "kind": "paragraph",
       "source": "执行本地脚本。主配置里的脚本默认以 __ELBOT_CODE_0__ 为工作目录；插件配置里的脚本默认以插件配置所在目录为工作目录，且相对 __ELBOT_CODE_1__ 不能逃出插件目录。\n",
@@ -13629,6 +13669,22 @@
       "source_hash": "2393da37ecc33c704f66bca1556b564611d27307507b6e016ab5504e7bd0dcb2",
       "translation": "Execute a local script. Scripts in the main configuration use __ELBOT_CODE_0__ as the default working directory; scripts in plugin configurations use the directory where the plugin configuration is located as the default working directory and cannot escape the plugin directory relative to __ELBOT_CODE_1__.\n",
       "updated_at": 1783392421
+    },
+    "docs/hooks.md:paragraph:251e266a83216727cca50d950af0a1f006c7403d0c6854ee246dcdbed6e144f4": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 可省略，默认取 __ELBOT_CODE_1__；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "251e266a83216727cca50d950af0a1f006c7403d0c6854ee246dcdbed6e144f4",
+      "translation": "__ELBOT_CODE_0__ can be omitted, and it defaults to __ELBOT_CODE_1__;",
+      "updated_at": 1783692987
+    },
+    "docs/hooks.md:paragraph:29f4247f83d99bc2e34727826bfbb5addaa452ab19eccc0ad13ab8efab18c141": {
+      "kind": "paragraph",
+      "source": "否则放入字符串。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "29f4247f83d99bc2e34727826bfbb5addaa452ab19eccc0ad13ab8efab18c141",
+      "translation": "otherwise, it is placed as a string.",
+      "updated_at": 1783692987
     },
     "docs/hooks.md:paragraph:2ac451b6b42c4e74a76e3a639cba16de6ae9dc70079eef71ae465800d3d3749a": {
       "kind": "paragraph",
@@ -13694,6 +13750,14 @@
       "translation": "Subsequently, the current exec action will also fail and trigger a Hook failure notification.\n",
       "updated_at": 1783392421
     },
+    "docs/hooks.md:paragraph:365916f0a09b5cd58021700b0ca4472e79f404d744aea0d0044e16f629fba1c7": {
+      "kind": "paragraph",
+      "source": "每个帧占 stdout/stdin 的一行 JSON。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "365916f0a09b5cd58021700b0ca4472e79f404d744aea0d0044e16f629fba1c7",
+      "translation": "Each frame occupies one line of JSON in stdout/stdin.",
+      "updated_at": 1783692987
+    },
     "docs/hooks.md:paragraph:38b66285c3780eee6207e5704f29f57c5f036b2c8a6851ef20317c69ac4ce241": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 是唯一管理入口（超级管理员命令）：\n",
@@ -13734,6 +13798,14 @@
       "translation": "__ELBOT_CODE_0__ matches both internal roles and group identities; __ELBOT_CODE_1__ only matches internal roles; __ELBOT_CODE_2__ only matches group identities.\n",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:paragraph:3bc29c060d0a5b558980b475bd973dd7c7c72836331758f3f451e740a353edb4": {
+      "kind": "paragraph",
+      "source": "平台 API 自身的参数放在内层 __ELBOT_CODE_0__，不是 Hook output target。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "3bc29c060d0a5b558980b475bd973dd7c7c72836331758f3f451e740a353edb4",
+      "translation": "The parameters of the platform API itself are placed in the inner __ELBOT_CODE_0__, not the Hook output target.\n",
+      "updated_at": 1783692987
+    },
     "docs/hooks.md:paragraph:3f73312de57083ac72186df9d1407a2599302e9fc5c7da5bd2eec18094ab3933": {
       "kind": "paragraph",
       "source": "普通 __ELBOT_CODE_0__ 必须携带 Host 下发的 __ELBOT_CODE_1__。",
@@ -13750,6 +13822,14 @@
       "translation": "__ELBOT_CODE_0__ represents a local file path (relative paths are resolved according to rules or the plugin directory), __ELBOT_CODE_1__ is sent as a remote URL, and __ELBOT_CODE_2__ represents inline data;",
       "updated_at": 1783577216
     },
+    "docs/hooks.md:paragraph:417e04f5eacf22dd6d9e385701a4227a63c34e68202ccb29ee0f1de64bec4860": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 是平台 adapter 返回的数据：若平台返回 JSON，Host 原样作为 JSON 值放入 __ELBOT_CODE_1__；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "417e04f5eacf22dd6d9e385701a4227a63c34e68202ccb29ee0f1de64bec4860",
+      "translation": "__ELBOT_CODE_0__ is the data returned by the platform adapter: if the platform returns JSON, the Host places it as a JSON value into __ELBOT_CODE_1__ as is;",
+      "updated_at": 1783692987
+    },
     "docs/hooks.md:paragraph:422649d29cf0f4d42a36107ce4a47e3ff6465993ad8273de75845c7174e886e8": {
       "kind": "paragraph",
       "source": "本版本统一使用 __ELBOT_CODE_0__。旧 __ELBOT_CODE_1__ 的 __ELBOT_CODE_2__ 帧已移除，现有外部 exec 脚本必须迁移。\n",
@@ -13757,6 +13837,14 @@
       "source_hash": "422649d29cf0f4d42a36107ce4a47e3ff6465993ad8273de75845c7174e886e8",
       "translation": "This version uniformly uses __ELBOT_CODE_0__. The __ELBOT_CODE_2__ frames of the old __ELBOT_CODE_1__ have been removed, and existing external exec scripts must be migrated.\n",
       "updated_at": 1783679732
+    },
+    "docs/hooks.md:paragraph:42c4aa29487d359a40ba7186b6f2068ef5b109d86a426c1fad4105b3103e4b9d": {
+      "kind": "paragraph",
+      "source": "失败回包为：\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "42c4aa29487d359a40ba7186b6f2068ef5b109d86a426c1fad4105b3103e4b9d",
+      "translation": "The failure response is:\n",
+      "updated_at": 1783692987
     },
     "docs/hooks.md:paragraph:45cfef509a16811fe244c5a7c5b81268513b2734844e461eb05d7c8b332d8943": {
       "kind": "paragraph",
@@ -13830,6 +13918,14 @@
       "translation": "The script reads the init frame from stdin, writes the __ELBOT_CODE_0__ request frame to stdout, then reads the response frame, and finally writes the done frame.\n",
       "updated_at": 1783392421
     },
+    "docs/hooks.md:paragraph:4d1fcd0795da9e34d8d618a85f982bbacc769527716cad07e5b3e984a35ea703": {
+      "kind": "paragraph",
+      "source": "Hook 主动请求 Host 调用当前平台 API 时，使用 __ELBOT_CODE_0__。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "4d1fcd0795da9e34d8d618a85f982bbacc769527716cad07e5b3e984a35ea703",
+      "translation": "When a Hook actively requests the Host to call the current platform API, use __ELBOT_CODE_0__.",
+      "updated_at": 1783692987
+    },
     "docs/hooks.md:paragraph:4ed8fdc836b54fd817595fdeba9c50dfd5f5b66ad24db8c0da9162cc3c25220c": {
       "kind": "paragraph",
       "source": "字段选择速查：\n",
@@ -13877,6 +13973,14 @@
       "source_hash": "58e51573ff8c9c20258f54fe06f815f675518e485f90197787948a1f18e2bceb",
       "translation": "The exec script needs to read raw data from __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, or __ELBOT_CODE_3__.\n",
       "updated_at": 1783392421
+    },
+    "docs/hooks.md:paragraph:5a2acf5cc315255c6f0e89044e578ad51775651a6e7f987b6b98b4a4e8f8825f": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 的完整成功 response 为：\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "5a2acf5cc315255c6f0e89044e578ad51775651a6e7f987b6b98b4a4e8f8825f",
+      "translation": "The complete successful response for __ELBOT_CODE_0__ is:\n",
+      "updated_at": 1783692987
     },
     "docs/hooks.md:paragraph:5aa425addf5675ae6b53f7a71cfabab146507d8d15177ffc9921a5185e731deb": {
       "kind": "paragraph",
@@ -13990,6 +14094,14 @@
       "translation": "The script should only read the first line of stdin as the init frame; do not read-all, read-to-end, __ELBOT_CODE_0__ until EOF, or read in a loop until EOF;",
       "updated_at": 1783392421
     },
+    "docs/hooks.md:paragraph:62b157c140386ed39d096a059e89bca8a1343193c1a7615bf8224162981b9227": {
+      "kind": "paragraph",
+      "source": "一次性 exec 收到的完整 request 形如：\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "62b157c140386ed39d096a059e89bca8a1343193c1a7615bf8224162981b9227",
+      "translation": "The complete request received by a one-time exec looks like:\n",
+      "updated_at": 1783692987
+    },
     "docs/hooks.md:paragraph:66958244ec765be706fe009b40203677e1367b6fbff3f32229593cd02a42212e": {
       "kind": "paragraph",
       "source": "前序 tool/exec action 的结果可用 __ELBOT_CODE_0__ 与 __ELBOT_CODE_1__。\n",
@@ -14054,6 +14166,14 @@
       "translation": "The __ELBOT_CODE_0__ action of a Rule Hook can be set to __ELBOT_CODE_1__.",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:paragraph:710a1ede158dc38c23c94fd56e20cd9ae0cdcac66019f5d4a3ce0f414589aa4a": {
+      "kind": "paragraph",
+      "source": "stdout 只能写协议帧，日志写 stderr。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "710a1ede158dc38c23c94fd56e20cd9ae0cdcac66019f5d4a3ce0f414589aa4a",
+      "translation": "stdout can only be used to write protocol frames; logs should be written to stderr.\n",
+      "updated_at": 1783692987
+    },
     "docs/hooks.md:paragraph:72951dfc6191226b7f93f65b5e11a3ccb3b42704be6a0eb4605842a9508e73e9": {
       "kind": "paragraph",
       "source": "规则可用 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 做权限分区：\n",
@@ -14069,6 +14189,14 @@
       "source_hash": "7348947213fd27464df3498763852faf0cb353d790e2ee7a0531b727e166ee12",
       "translation": "The script writes the response using the same __ELBOT_CODE_0__ ID.",
       "updated_at": 1783679732
+    },
+    "docs/hooks.md:paragraph:7368b2498b97a79d82c62287e2679b520c6567064ba7db52d29dea162a15e51f": {
+      "kind": "paragraph",
+      "source": "事件数据位于 __ELBOT_CODE_0__；规则正则捕获位于 __ELBOT_CODE_1__。示例只展开常用字段，实际 __ELBOT_CODE_2__ 字段见后文“模板与字段”。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "7368b2498b97a79d82c62287e2679b520c6567064ba7db52d29dea162a15e51f",
+      "translation": "Event data is located in __ELBOT_CODE_0__; rule regex captures are located in __ELBOT_CODE_1__. The example only expands commonly used fields; for actual __ELBOT_CODE_2__ fields, see \"Templates and Fields\" below.\n",
+      "updated_at": 1783692987
     },
     "docs/hooks.md:paragraph:7451a127568b4908200123c53a074cb46e392eb672a1f6c3204291f890e77bbf": {
       "kind": "paragraph",
@@ -14166,6 +14294,14 @@
       "translation": "The Emoji Hook has been changed from an embedded plugin to a Rule Hook example; see the [Emoji Extraction Example](#表情提取示例) in this document.\n",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:paragraph:7cfc3d4f9b7937f47d5bb587192bab2106491b47e2309059d47d1eead54ec25b": {
+      "kind": "paragraph",
+      "source": "Host 先写入 __ELBOT_CODE_0__ request，收到成功 response 后再写入 __ELBOT_CODE_1__ request。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "7cfc3d4f9b7937f47d5bb587192bab2106491b47e2309059d47d1eead54ec25b",
+      "translation": "The Host first writes the __ELBOT_CODE_0__ request, and after receiving a successful response, it writes the __ELBOT_CODE_1__ request.",
+      "updated_at": 1783692987
+    },
     "docs/hooks.md:paragraph:7d0acb7d3f4297c61755904756656bef4df73aaf6cfac450cc595a62c8f1d4c0": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__、__ELBOT_CODE_1__、stdout __ELBOT_CODE_2__ frame 的 __ELBOT_CODE_3__ 字段、__ELBOT_CODE_4__ 的 __ELBOT_CODE_5__，以及 TOML send action 的 __ELBOT_CODE_6__ 使用的常见片段字段：\n",
@@ -14181,6 +14317,14 @@
       "source_hash": "7e5faf97ce03552e48ce939c891131e2cbbea058c2f0d9a7a43498ab7cea383e",
       "translation": "Except for the __ELBOT_CODE_0__ file directory, all persistent Hooks share an in-process JSON KV:\n",
       "updated_at": 1783679732
+    },
+    "docs/hooks.md:paragraph:7e723a988d39966d98f62b5fcea88ad6c4a5b3eb3c0041eba2f3cafc175b731f": {
+      "kind": "paragraph",
+      "source": "若显式填写，只能等于当前事件平台。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "7e723a988d39966d98f62b5fcea88ad6c4a5b3eb3c0041eba2f3cafc175b731f",
+      "translation": "If explicitly filled, it must equal the current event platform.",
+      "updated_at": 1783692987
     },
     "docs/hooks.md:paragraph:81e052eb0866021f719229d9f3877cdb6113d32ac0c716b0c92e7bc1b8f360b5": {
       "kind": "paragraph",
@@ -14406,6 +14550,14 @@
       "translation": "init frame fields:\n",
       "updated_at": 1783392421
     },
+    "docs/hooks.md:paragraph:aac15fac6de002280422373c978129d26b6e07a69064b7bcdbae0eead97382f7": {
+      "kind": "paragraph",
+      "source": "省略 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 才表示不修改字段。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "aac15fac6de002280422373c978129d26b6e07a69064b7bcdbae0eead97382f7",
+      "translation": "Omitting __ELBOT_CODE_0__ or __ELBOT_CODE_1__ indicates that the field will not be modified.\n",
+      "updated_at": 1783692987
+    },
     "docs/hooks.md:paragraph:ad1a4dcdebbc435a2f8117221aedac2ad3dd61161183b787c90b3c44a245c286": {
       "kind": "paragraph",
       "source": "默认 stdin 是包含完整 event 和 match 上下文的 JSON。也可以用 __ELBOT_CODE_0__ 字段自定义 stdin 内容（支持模板渲染）。\n",
@@ -14421,6 +14573,14 @@
       "source_hash": "ad2cba75febd313b6fcf617f5c11edf78b21e0d14a0cce5efe160b14c4f60db6",
       "translation": "Common actions:\n",
       "updated_at": 1783679732
+    },
+    "docs/hooks.md:paragraph:af420a726ca0bb98fff5bad259b8e7a889e70222584127b2799bd3ffc13b67fc": {
+      "kind": "paragraph",
+      "source": "其结构没有跨平台约定，Hook 应以外层 __ELBOT_CODE_0__ 判断通用成功，只有明确依赖某个平台 API 时才解析 __ELBOT_CODE_1__。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "af420a726ca0bb98fff5bad259b8e7a889e70222584127b2799bd3ffc13b67fc",
+      "translation": "Its structure has no cross-platform convention; the Hook should use the outer __ELBOT_CODE_0__ to determine general success, and only parse __ELBOT_CODE_1__ when there is an explicit dependency on a specific platform API.",
+      "updated_at": 1783692987
     },
     "docs/hooks.md:paragraph:b0c89d9035f39758fddd8a59ed409cf33811bafc032a4ddf1ca9473ba36eb6eb": {
       "kind": "paragraph",
@@ -14477,6 +14637,22 @@
       "source_hash": "b93ebdb845d5fc64eabd7b499f2c813dea549229c5df4bfdaddf294116bbf025",
       "translation": "Hooks do not send platform messages directly;",
       "updated_at": 1783679732
+    },
+    "docs/hooks.md:paragraph:bc1e5a153fd26f8ea08c44726da72f0c19c5044c0bbeb80f58f4be9f7a7dd987": {
+      "kind": "paragraph",
+      "source": "空字符串是合法值，表示清空字段。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "bc1e5a153fd26f8ea08c44726da72f0c19c5044c0bbeb80f58f4be9f7a7dd987",
+      "translation": "An empty string is a valid value, indicating that the field should be cleared.",
+      "updated_at": 1783692987
+    },
+    "docs/hooks.md:paragraph:bc28b34924ae5850c1a1a16bdea386417ccee862c01be4f87ae55e4bc3fc737b": {
+      "kind": "paragraph",
+      "source": "处理失败时返回 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__，不写 __ELBOT_CODE_2__：\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "bc28b34924ae5850c1a1a16bdea386417ccee862c01be4f87ae55e4bc3fc737b",
+      "translation": "When processing fails, return __ELBOT_CODE_0__ and __ELBOT_CODE_1__, and do not write __ELBOT_CODE_2__:\n",
+      "updated_at": 1783692987
     },
     "docs/hooks.md:paragraph:bc3a90315507d5a444a0a18a0e0c385709c5e8b59eb9cf676e889e5872fe6a04": {
       "kind": "paragraph",
@@ -14622,6 +14798,14 @@
       "translation": "When shell syntax is required, explicitly use __ELBOT_CODE_0__, __ELBOT_CODE_1__, or the corresponding platform interpreter.\n",
       "updated_at": 1783679732
     },
+    "docs/hooks.md:paragraph:d2e835c3aebd3991158155430fbae1e8f6ded2f4034c3d18a7ff5c347487ffbc": {
+      "kind": "paragraph",
+      "source": "response 必须复用原 request ID。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "d2e835c3aebd3991158155430fbae1e8f6ded2f4034c3d18a7ff5c347487ffbc",
+      "translation": "The response must reuse the original request ID.",
+      "updated_at": 1783692987
+    },
     "docs/hooks.md:paragraph:d9e1fed087fc27ca7bc46f7085172ccc122946fea930078bd6df9da2248f0c7b": {
       "kind": "paragraph",
       "source": "其状态为 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__ 或 __ELBOT_CODE_6__。",
@@ -14670,6 +14854,14 @@
       "translation": "If a wake-up word is required in the group, use __ELBOT_CODE_0__ for matching:\n",
       "updated_at": 1783392421
     },
+    "docs/hooks.md:paragraph:e4be907e473ba9b2f99908b52476217e02579fb715f97ae6189edd1bfebb5aa7": {
+      "kind": "paragraph",
+      "source": "Hook 必须使用相同的 __ELBOT_CODE_0__ ID 回写 response。__ELBOT_CODE_1__ 通常返回空对象：\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "e4be907e473ba9b2f99908b52476217e02579fb715f97ae6189edd1bfebb5aa7",
+      "translation": "The Hook must use the same __ELBOT_CODE_0__ ID to write back the response. __ELBOT_CODE_1__ usually returns an empty object:\n",
+      "updated_at": 1783692987
+    },
     "docs/hooks.md:paragraph:e78e5b98b027111516f5f8f4cefe1b74f9c832764e45ba4b9e57c84ffd2dbf89": {
       "kind": "paragraph",
       "source": "前提：平台适配器需要支持原始 API 调用，且本次消息必须带引用/回复关系。",
@@ -14693,6 +14885,22 @@
       "source_hash": "e9c2a9eb8b17285b69926eb8d82e16edc92461ad6072b9dacf4cf68b480a6ce9",
       "translation": "It does not write Hook calls into the ElBot Agent Session, nor does it perform user risk confirmation.",
       "updated_at": 1783679732
+    },
+    "docs/hooks.md:paragraph:ea1cbd0b44cedac66569a39e04d613205d5512fe9e072f83746896a485718f0f": {
+      "kind": "paragraph",
+      "source": "当 exec action 配置了 __ELBOT_CODE_0__ 时，response 中存在 __ELBOT_CODE_1__ 就会覆写该字段；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "ea1cbd0b44cedac66569a39e04d613205d5512fe9e072f83746896a485718f0f",
+      "translation": "When the exec action is configured with __ELBOT_CODE_0__, the presence of __ELBOT_CODE_1__ in the response will overwrite that field;",
+      "updated_at": 1783692987
+    },
+    "docs/hooks.md:paragraph:eab7a44cefc22bedb4d13012503f4dccc1446857e3de8bd1db4265e01129d1fe": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 不需要额外声明群聊或私聊 target；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "eab7a44cefc22bedb4d13012503f4dccc1446857e3de8bd1db4265e01129d1fe",
+      "translation": "__ELBOT_CODE_0__ does not require additional declaration of group chat or private chat targets;",
+      "updated_at": 1783692987
     },
     "docs/hooks.md:paragraph:ebbd31d2a5d8641db655bab8a67dce8848e0a910e27a5ab7be57025c94cf418c": {
       "kind": "paragraph",

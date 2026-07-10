@@ -56,28 +56,83 @@ actions = [
 ]
 ```
 
-Host writes two requests sequentially: `system.init` and `event.handle`. The script writes the response using the same `host:*` ID. Usage of the successful result of `event.handle`:
+The Host first writes the `system.init` request, and after receiving a successful response, it writes the `event.handle` request. Each frame occupies one line of JSON in stdout/stdin. The complete request received by a one-time exec looks like:
+
+```json
+{"type":"request","id":"host:init","method":"system.init","params":{"version":"hook.v2","runtime":{"plugin_name":"demo","plugin_dir":"C:/elbot/plugins/demo","config_path":"C:/elbot/plugins/demo/hook.toml","rule_name":"demo_rule","cwd":"C:/elbot/plugins/demo"}}}
+{"type":"request","id":"host:event","method":"event.handle","params":{"event":{"point":"platform.message.received","platform":{"name":"qqonebot","scope_id":"group:123","message_id":"456","reply_to_message_id":"789"},"actor":{"id":"qqonebot:10001"},"message":{"role":"user","segments":[{"type":"text","text":"撤回"}]}},"match":{},"runtime":{"plugin_name":"demo","plugin_dir":"C:/elbot/plugins/demo","config_path":"C:/elbot/plugins/demo/hook.toml","rule_name":"demo_rule","cwd":"C:/elbot/plugins/demo"}}}
+```
+
+Event data is located in `params.event`; rule regex captures are located in `params.match`. The example only expands commonly used fields; for actual `event` fields, see "Templates and Fields" below.
+
+The Hook must use the same `host:*` ID to write back the response. `system.init` usually returns an empty object:
+
+```json
+{"type":"response","id":"host:init","ok":true,"result":{}}
+```
+
+The complete successful response for `event.handle` is:
 
 ```json
 {
-  "status": "completed",
-  "result": "optional template result",
-  "message": {"text": "optional replacement text"},
-  "outputs": [{"kind": "text", "text": "hello"}],
-  "consume": false,
-  "stop_propagation": false
+  "type": "response",
+  "id": "host:event",
+  "ok": true,
+  "result": {
+    "status": "completed",
+    "result": "optional template result",
+    "message": {"text": "optional replacement text"},
+    "outputs": [{"kind": "text", "text": "hello"}],
+    "consume": false,
+    "stop_propagation": false
+  }
 }
 ```
 
-`outputs` is an output intent array; Parsed relative to the plugin directory relative to `path`. For large media, please write to the plugin directory or return the path or URL after `_shared/`; do not put them in the JSON Pipe. stderr is used only for logs and failure diagnosis, and stdout can only output protocol frames.
-
-Used when the Hook actively requests Host capabilities:
+When processing fails, return `ok=false` and `error`, and do not write `result`:
 
 ```json
-{"type":"request","id":"plugin:send-1","method":"platform.call","params":{}}
+{"type":"response","id":"host:event","ok":false,"error":"missing platform.reply_to_message_id"}
 ```
 
-Host writes back `response`. The ID initiated by the Host must be `host:*`, and the ID initiated by the Hook must be `plugin:*`; The response reuses the original request ID.
+When the exec action is configured with `field`, the presence of `message.text` in the response will overwrite that field; An empty string is a valid value, indicating that the field should be cleared. Omitting `message` or `message.text` indicates that the field will not be modified.
+
+`outputs` is an output intent array; Parsed relative to the plugin directory relative to `path`. For large media, please write to the plugin directory or return the path or URL after `_shared/`; do not put them in the JSON Pipe. stderr is used only for logs and failure diagnosis, and stdout can only output protocol frames.
+
+When a Hook actively requests the Host to call the current platform API, use `platform.call`. `platform` can be omitted, and it defaults to `params.event.platform.name`; If explicitly filled, it must equal the current event platform. The parameters of the platform API itself are placed in the inner `params`, not the Hook output target.
+
+QQ OneBot recall example:
+
+```json
+{
+  "type": "request",
+  "id": "plugin:recall-1",
+  "method": "platform.call",
+  "params": {
+    "platform": "qqonebot",
+    "api": "delete_msg",
+    "params": {
+      "message_id": "789"
+    }
+  }
+}
+```
+
+The `message_id` here can be taken from `params.event.platform.reply_to_message_id`. `delete_msg` does not require additional declaration of group chat or private chat targets; Which target fields are required by other platform APIs is defined by the corresponding platform API.
+
+Reuse the `plugin:*` ID for write-back after Host success:
+
+```json
+{"type":"response","id":"plugin:recall-1","ok":true,"result":{}}
+```
+
+`result` is the data returned by the platform adapter: if the platform returns JSON, the Host places it as a JSON value into `result` as is; otherwise, it is placed as a string. Its structure has no cross-platform convention; the Hook should use the outer `ok` to determine general success, and only parse `result` when there is an explicit dependency on a specific platform API. The failure response is:
+
+```json
+{"type":"response","id":"plugin:recall-1","ok":false,"error":"platform api call failed"}
+```
+
+IDs initiated by the Host must use `host:*`, and IDs initiated by the Hook must use `plugin:*`; The response must reuse the original request ID. stdout can only be used to write protocol frames; logs should be written to stderr.
 
 ## Persistent Hook
 
@@ -129,6 +184,7 @@ Persistent Hooks can receive multiple `event.handle` after `system.init`. The sa
 ```
 
 The wait route only captures subsequent messages from the initiator within the same scope; Group chats will not capture other members, nor do they require the initiator to @ again. It is executed after the regular `platform.message.received` Hook is completed and not consumed, and before the command and the main LLM. `/cancel` only cancels the current execution or waiting Session of the current route, while the process and memory state are retained; Only using `/hooks stop <id>` will stop the process.
+
 
 ## Tools and Shared State
 
