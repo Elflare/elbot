@@ -26,9 +26,9 @@
       "updated_at": 1783658081
     },
     "docs/configuration.md": {
-      "source_hash": "19d07855b431619f32454c37bb657d46be9b6025b307017f0da4c5a7c0150243",
+      "source_hash": "fc6f7212cbf018ab9ec0d3e16961285e6ff918a2b42ffa9ec10c57bbcc9569b4",
       "target": "docs.en/configuration.md",
-      "updated_at": 1783479082
+      "updated_at": 1783678911
     },
     "docs/elnis-usage.md": {
       "source_hash": "c8d68d4fc76a453ea4008b304cc4d8243b8b2ebc634494f4fb92016b8040c782",
@@ -6590,6 +6590,14 @@
       "translation": "__ELBOT_CODE_0__ in Elvena requests enters the validation, persistence, and execution chain; external tool names are still controlled by the denylist of individual Elwisps.",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:list:04b73bb686d2f43f538fa6d9bd405de7859fbb9dbad2eaa182684c637cd3502a": {
+      "kind": "list",
+      "source": "可包含 __ELBOT_CODE_0__ 持久运行配置。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "04b73bb686d2f43f538fa6d9bd405de7859fbb9dbad2eaa182684c637cd3502a",
+      "translation": "Can contain __ELBOT_CODE_0__ persistent runtime configuration.",
+      "updated_at": 1783678911
+    },
     "docs/configuration.md:list:069c4c956592e665a411ced0802d1064d13169e473546dae1f9b42f11b84fbb1": {
       "kind": "list",
       "source": "也可以用 __ELBOT_CODE_0__ 直接写入配置。",
@@ -6677,6 +6685,14 @@
       "source_hash": "1e4e61ce9aa1d8fda4581e885e0d5e284d8b4c6b9fa9280cde3422c4c39b50fd",
       "translation": "__ELBOT_CODE_0__ is the Elnis internal tool whitelist; Elwisps without separate configurations inherit the global default.",
       "updated_at": 1781749596
+    },
+    "docs/configuration.md:list:1f1ade473edbb805ca254892c0bfe425cae706c9dfe60c9945f92a799d779d05": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：被 __ELBOT_CODE_1__ 引用的插件 Hook；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1f1ade473edbb805ca254892c0bfe425cae706c9dfe60c9945f92a799d779d05",
+      "translation": "__ELBOT_CODE_0__: Plugin Hooks referenced by __ELBOT_CODE_1__;",
+      "updated_at": 1783678911
     },
     "docs/configuration.md:list:22cc400819e351e6fb44fe0a36d9bcbb1d25f07798bf0f4ade71cb91c5ce685b": {
       "kind": "list",
@@ -6829,6 +6845,14 @@
       "source_hash": "40ca22a0cc1b1e5450e16b0cbb857b8d7ae1aae9e78880b28afb8b5555c1d030",
       "translation": "Activated tags are written to the Session metadata and remain effective after __ELBOT_CODE_0__.",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:list:44c59b224eda5a6bdaa96713b6266b711f07026d0204e07227324d5ce52c72ff": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：ElBot 创建的跨 Hook 文件协作目录，不作为插件扫描。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "44c59b224eda5a6bdaa96713b6266b711f07026d0204e07227324d5ce52c72ff",
+      "translation": "__ELBOT_CODE_0__: A cross-Hook file collaboration directory created by ElBot, not scanned as a plugin.",
+      "updated_at": 1783678911
     },
     "docs/configuration.md:list:455dd27c5413f3cc87b796d44da3029f5da92c1f738c013af8acd2c4ac008c18": {
       "kind": "list",
@@ -7902,6 +7926,14 @@
       "translation": "Field descriptions:\n",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:paragraph:55f6ab95af8b883536fe8cebfdb9c9e6c251d3a7fc9e70810044fa6fa83e412c": {
+      "kind": "paragraph",
+      "source": "规则与持久 Hook 的完整配置说明（action、hook.v2、生命周期、工具和多轮捕获）见 [Hook](hooks.md)。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "55f6ab95af8b883536fe8cebfdb9c9e6c251d3a7fc9e70810044fa6fa83e412c",
+      "translation": "For complete configuration instructions for rules and persistent Hooks (action, hook.v2, lifecycle, tools, and multi-turn capture), see [Hook](hooks.md).\n",
+      "updated_at": 1783678911
+    },
     "docs/configuration.md:paragraph:5aeb7fbf1f153f54353359dccc9852cfe83a928d764929990cfde5ecd023c911": {
       "kind": "paragraph",
       "source": "更多说明见 [Elnis 配置与使用](elnis-usage.md)。\n",
@@ -8517,6 +8549,14 @@
       "source_hash": "fc1e54ad6fecf7488ed8d0808836934a04ddcaace9d5987114a2382683724bd9",
       "translation": "Default maintenance tasks include the cleanup of logs, sandbox, and chat history. For example, the sandbox defaults to cleaning up content older than 7 days every day at 04:00, and chat history cleanup is executed every day at 04:35 by default:\n",
       "updated_at": 1781949050
+    },
+    "docs/configuration.md:paragraph:fe3763737e369c201cf7cf50f1c19da604a37227e49113f9d433f7628d1094c4": {
+      "kind": "paragraph",
+      "source": "Hook 不要直接发平台消息，应返回输出意图，由 Agent 统一交给 Output Manager 发送。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "fe3763737e369c201cf7cf50f1c19da604a37227e49113f9d433f7628d1094c4",
+      "translation": "Hooks should not send platform messages directly; they should return an output intent, which is then handed over to the Output Manager by the Agent for sending.\n",
+      "updated_at": 1783678911
     },
     "docs/configuration.md:paragraph:ffb80c4c463a0d4bcf6ebf5f1b9c4b3f84dda3528faeba688d0d7dcc41e5d78d": {
       "kind": "paragraph",
