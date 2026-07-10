@@ -93,6 +93,8 @@ Hook 必须使用相同的 `host:*` ID 回写 response。`system.init` 通常返
 {"type":"response","id":"host:event","ok":false,"error":"missing platform.reply_to_message_id"}
 ```
 
+当 exec action 配置了 `field` 时，response 中存在 `message.text` 就会覆写该字段；空字符串是合法值，表示清空字段。省略 `message` 或 `message.text` 才表示不修改字段。
+
 `outputs` 是输出意图数组；相对 `path` 相对插件目录解析。大媒体请写入插件目录或 `_shared/` 后返回路径或 URL，不要放进 JSON Pipe。stderr 只用于日志和失败诊断，stdout 只能输出协议帧。
 
 Hook 主动请求 Host 调用当前平台 API 时，使用 `platform.call`。`platform` 可省略，默认取 `params.event.platform.name`；若显式填写，只能等于当前事件平台。平台 API 自身的参数放在内层 `params`，不是 Hook output target。

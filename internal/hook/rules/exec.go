@@ -205,8 +205,8 @@ func v2EventResult(event hook.Event, action Action, state state, raw json.RawMes
 		Result  string        `json:"result"`
 		Error   string        `json:"error"`
 		Matched *bool         `json:"matched"`
-		Message struct {
-			Text string `json:"text"`
+		Message *struct {
+			Text *string `json:"text"`
 		} `json:"message"`
 		Consume         bool `json:"consume"`
 		StopPropagation bool `json:"stop_propagation"`
@@ -227,12 +227,12 @@ func v2EventResult(event hook.Event, action Action, state state, raw json.RawMes
 			event.Outputs = append(event.Outputs, out)
 		}
 	}
-	if payload.Message.Text != "" {
+	if payload.Message != nil && payload.Message.Text != nil {
 		field := strings.TrimSpace(action.Field)
 		if field == "" {
 			field = "message.text"
 		}
-		updated, err := setTextField(event, field, payload.Message.Text)
+		updated, err := setTextField(event, field, *payload.Message.Text)
 		if err != nil {
 			return result, event, err
 		}

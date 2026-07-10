@@ -47,6 +47,8 @@ func TestExecHelperProcess(t *testing.T) {
 		writeProtocolTestOutput(strings.Join(os.Args[marker+1:], " "))
 	case "done-message":
 		writeProtocolTestResult(map[string]any{"status": "completed", "result": "ok", "message": map[string]string{"text": "clean"}})
+	case "done-empty-message":
+		writeProtocolTestResult(map[string]any{"status": "completed", "message": map[string]string{"text": ""}})
 	case "done-result":
 		result := "ok"
 		if marker+1 < len(os.Args) {
@@ -883,6 +885,20 @@ func TestExecDoneMessageWritesConfiguredFieldAndResult(t *testing.T) {
 	}
 	if len(got.Outputs) != 1 || got.Outputs[0].Text != "ok" {
 		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+}
+
+func TestExecDoneEmptyMessageClearsConfiguredField(t *testing.T) {
+	module := Module{}
+	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "[[atri_emotions]]"}}
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
+		{Type: "exec", Command: execHelperCommand("done-empty-message"), Field: "llm.text"},
+	}}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if got.LLM.Text != "" {
+		t.Fatalf("llm.text = %q, want empty", got.LLM.Text)
 	}
 }
 
