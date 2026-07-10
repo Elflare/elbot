@@ -478,21 +478,21 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 #   ] },
 # ]
 #
-# exec action uses hook.v1 line protocol:
-# ElBot writes one init JSON frame line to stdin.
-# Scripts must read only the first stdin line as init; do not read until EOF.
-# Scripts write one JSON frame per stdout line: output/request/done/error.
+# exec action uses hook.v2 line protocol:
+# ElBot sends request system.init, then request event.handle on stdin.
+# Scripts reply with response frames using the Host request ID (host:*).
+# Hook-originated requests use plugin:* IDs; stdout only contains request/response/event frames.
 # stderr is logged on success; on exec failure/crash/timeout/protocol error, the
 # stderr tail is included in the Hook failure notice.
-# After writing done/error, exit with code 0; non-zero exit means process failure.
-# Output frame shape: {"type":"output","outputs":[{"kind":"text","text":"hello"}]}.
-# request frame shape: {"type":"request","id":"x","method":"platform.call","params":{...}}.
+# A one-shot script responds to event.handle with {"status":"completed",...}
+# and exits with code 0; non-zero exit means process failure.
+# request frame shape: {"type":"request","id":"plugin:x","method":"platform.call","params":{...}}.
 # response frame shape: {"type":"response","id":"x","ok":true,"result":{...}} or
 # {"type":"response","id":"x","ok":false,"error":"..."}.
-# done.result is available as {{actions.<name>.result}}.
-# done.error is available as {{actions.<name>.error}}.
-# done.message.text is written back to the field specified by the action's field setting.
-# done.consume and done.stop_propagation set event control flags.
+# event.handle result.result is available as {{actions.<name>.result}}.
+# event.handle result.error is available as {{actions.<name>.error}}.
+# event.handle result.message.text is written back to the action field.
+# event.handle result.outputs, consume and stop_propagation apply Hook output/control.
 # actions = [
 #   { name = "extract", type = "exec", command = "uv run extract.py", field = "llm.text", timing = "after_assistant" },
 # ]
@@ -589,9 +589,8 @@ target.superadmins = true
 # replace = "狗"
 # all = true
 #
-# Example: emoticon extraction via exec + hook.v1.
-# The script reads the init frame from stdin, extracts [[token]] tokens, picks a random
-# image from emoticons/<token>/, writes output frames and ends with done.message.text.
+# Example: emoticon extraction via exec + hook.v2.
+# The script answers system.init, handles event.handle, and returns outputs plus message.text.
 # [[rules]]
 # name = "emoticon_extract"
 # on = "llm.response.received"

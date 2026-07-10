@@ -599,11 +599,12 @@ stream_edit_interval_milliseconds = 250
 插件配置固定放在配置目录的 `plugins/` 下：
 
 - `plugins/hooks.toml`：规则 Hook 配置。
-- `plugins/<plugin-name>.toml`：插件专属配置。
+- `plugins/<plugin-id>/hook.toml`：被 `hooks.toml` 引用的插件 Hook；可包含 `[plugin.runtime]` 持久运行配置。
+- `plugins/_shared/`：ElBot 创建的跨 Hook 文件协作目录，不作为插件扫描。
 
-Hook 和插件不要直接发平台消息，应返回输出意图，由 Agent 统一交给 Output Manager 发送。
+Hook 不要直接发平台消息，应返回输出意图，由 Agent 统一交给 Output Manager 发送。
 
-规则 Hook 的完整配置说明（action 类型、segments 多段输出、exec hook.v1 协议、角色分区、控制字段）见 [Hook](hooks.md)。
+规则与持久 Hook 的完整配置说明（action、hook.v2、生命周期、工具和多轮捕获）见 [Hook](hooks.md)。
 
 ## 建议的维护方式
 

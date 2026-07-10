@@ -35,7 +35,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - 运行时模型状态：同目录 `state.toml`。
 - 工具 tag 配置：同目录 `tool_tags.toml`。
 - 用户可编辑资产：配置目录下的 `memories.toml`、`long_memory/`、`skills/`、`plugins/`。
-- Hook/插件配置：固定在配置目录 `plugins/<plugin-name>.toml`，规则 Hook 使用 `plugins/hooks.toml`。
+- Hook 配置：入口为配置目录 `plugins/hooks.toml`；被引用插件使用 `plugins/<plugin-id>/hook.toml`，持久 Hook 在其中声明 `[plugin.runtime]`。
 - Provider key 推荐用 `api_key_env`，读取优先级是系统环境变量高于配置目录 `.env`。
 
 默认配置查找顺序：
@@ -159,7 +159,8 @@ Hook Manager 按事件点和优先级串行执行 Handler。
 常见来源：
 
 - 规则 Hook：读取 `plugins/hooks.toml`。
-- exec action：默认在 `plugins/` 目录执行 shell 命令。
+- exec action：按 `hook.v2` 一次性 Pipe 协议执行，默认在 `plugins/` 目录执行 shell 命令。
+- 持久 Hook：在插件 `hook.toml` 的 `[plugin.runtime]` 声明；Hook runtime 管进程生命周期、双向 RPC、waiting 路由和进程内 SharedState。
 - 常驻记忆 Hook：每 turn 注入当前 platform + actor 的常驻记忆和临时用户名。
 
 约定：
@@ -167,6 +168,7 @@ Hook Manager 按事件点和优先级串行执行 Handler。
 - Hook 可返回控制字段和输出意图。
 - Hook 不直接发平台消息。
 - 输出预处理 Hook 运行在 assistant 最终发送前。
+- 命中 waiting 租约的消息在常规平台 Hook 后、命令和主 LLM 前交给持久 Hook；`/cancel` 只取消该路由执行，不停止进程。
 - Hook 用户文档优先看 `docs/hooks.md`。
 
 <!-- locator:output -->

@@ -16,6 +16,7 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
+	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/tool"
@@ -35,11 +36,13 @@ type Options struct {
 	Notify          func(context.Context, string)
 	Send            func(context.Context, delivery.Target, delivery.Output) (delivery.Receipt, error)
 	PlatformCallers PlatformCallerResolver
+	Runtime         *hookruntime.Manager
 }
 
 type Config struct {
-	Plugins []PluginRef `toml:"plugins"`
-	Rules   []Rule      `toml:"rules"`
+	Plugins  []PluginRef          `toml:"plugins"`
+	Rules    []Rule               `toml:"rules"`
+	Runtimes []hookruntime.Config `toml:"-"`
 }
 
 type PluginRef struct {
@@ -49,8 +52,9 @@ type PluginRef struct {
 }
 
 type PluginInfo struct {
-	Name        string `toml:"name"`
-	Description string `toml:"description"`
+	Name        string              `toml:"name"`
+	Description string              `toml:"description"`
+	Runtime     *hookruntime.Config `toml:"runtime"`
 }
 
 type pluginConfig struct {
@@ -150,6 +154,7 @@ type ruleSource struct {
 	StrictDir         string
 	OriginalName      string
 	FinalName         string
+	RuntimeID         string
 }
 
 type PlatformAPICaller interface {
@@ -165,6 +170,12 @@ func NewModule(opts Options) (Module, error) {
 	if err != nil {
 		reportConfigError(context.Background(), opts, path, err)
 		return Module{}, err
+	}
+	if opts.Runtime != nil {
+		if err := opts.Runtime.Apply(cfg.Runtimes); err != nil {
+			reportConfigError(context.Background(), opts, path, err)
+			return Module{}, err
+		}
 	}
 
 	module := Module{Rules: cfg.Rules, Opts: opts, Logger: opts.Logger}
@@ -223,6 +234,12 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 				Detail:        detail,
 				RequireWakeup: rule.RequireWakeup,
 				Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+					if rule.source.RuntimeID != "" {
+						if m.Opts.Runtime == nil {
+							return event, fmt.Errorf("stateful hook runtime is not configured")
+						}
+						return m.Opts.Runtime.Handle(ctx, rule.source.RuntimeID, event)
+					}
 					return m.runRule(ctx, rule, event)
 				}),
 			}); err != nil {
@@ -329,12 +346,26 @@ func loadConfig(opts Options) (Config, string, error) {
 			reportPluginConfigWarning(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, fmt.Sprintf("[plugin].name %q differs from [[plugins]].name %q; using the referenced plugin name", infoName, strings.TrimSpace(ref.Name)))
 		}
 		pluginDir := filepath.Dir(pluginPath)
+		runtimeID := ""
+		if pcfg.Plugin.Runtime != nil {
+			runtimeConfig := *pcfg.Plugin.Runtime
+			runtimeConfig.ID = strings.TrimSpace(ref.Name)
+			runtimeConfig.Description = strings.TrimSpace(pcfg.Plugin.Description)
+			runtimeConfig.Dir = pluginDir
+			if err := runtimeConfig.Validate(); err != nil {
+				reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
+				continue
+			}
+			cfg.Runtimes = append(cfg.Runtimes, runtimeConfig)
+			runtimeID = runtimeConfig.ID
+		}
 		source := ruleSource{
 			PluginName:        strings.TrimSpace(ref.Name),
 			PluginDescription: strings.TrimSpace(pcfg.Plugin.Description),
 			ConfigPath:        pluginPath,
 			BaseDir:           pluginDir,
 			StrictDir:         pluginDir,
+			RuntimeID:         runtimeID,
 		}
 		for i := range pcfg.Rules {
 			pcfg.Rules[i].source = source
@@ -821,7 +852,11 @@ func validateRule(rule Rule) error {
 		return fmt.Errorf("hook rule %q unknown hook point %q", rule.Name, rule.On)
 	}
 
-	if len(rule.Actions) == 0 {
+	if rule.source.RuntimeID != "" {
+		if len(rule.Actions) != 0 {
+			return fmt.Errorf("stateful hook rule %q only declares event triggers and cannot set actions", rule.Name)
+		}
+	} else if len(rule.Actions) == 0 {
 		return fmt.Errorf("hook rule %q has no actions", rule.Name)
 	}
 	if len(rule.Match) == 0 {

@@ -22,6 +22,7 @@ import (
 	"elbot/internal/elvena"
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
+	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/llm/openai"
 	"elbot/internal/logging"
 	"elbot/internal/maintenance"
@@ -296,6 +297,21 @@ func Run(ctx context.Context, opts Options) error {
 	elvenaBus := elvena.NewBus()
 	hooks := hook.NewManager()
 	hooks.SetLogger(logger)
+	hookRuntime := hookruntime.NewManager(hookruntime.Options{
+		Registry: toolRegistry,
+		Logger:   logger,
+		Audit: func(event string, attrs ...any) {
+			logs.Audit().Log(context.Background(), slog.LevelInfo, "audit event", append([]any{"event", event}, attrs...)...)
+		},
+		Send: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+			if agt == nil {
+				return delivery.Receipt{}, fmt.Errorf("agent is not ready")
+			}
+			return agt.SendNoticeOutput(ctx, target, out)
+		},
+		SharedDir: filepath.Join(config.PluginConfigDir(cfg.ConfigPath), "_shared"),
+	})
+	defer hookRuntime.Close(context.Background())
 	hookOpts := hookbuiltin.Options{
 		ConfigDir:           config.PluginConfigDir(cfg.ConfigPath),
 		Tools:               toolRegistry,
@@ -313,6 +329,7 @@ func Run(ctx context.Context, opts Options) error {
 			return agt.SendNoticeOutput(ctx, target, out)
 		},
 		PlatformCallers: hookPlatformCallerResolver{runtimes: platforms.Runtimes},
+		Runtime:         hookRuntime,
 	}
 	if err := hookbuiltin.RegisterAll(hooks, hookOpts); err != nil {
 		logger.Error("hook registration failed", "error", err)
@@ -325,6 +342,7 @@ func Run(ctx context.Context, opts Options) error {
 	profiler.Mark("hook register")
 	agt = agent.NewWithRequestConfig(platforms.Primary, adapter, workModel.Provider, cfg.ModeModels, cfg.Providers, cfg.StateConfigPath, store, cfg.Commands.Prefixes, session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode}, cfg.NamingModel, namingAdapter, namingModel, namingLogger{logger: logger}, cfg.Soul.Path, cfg.LLMRequest)
 	agt.SetHookManager(hooks)
+	agt.SetHookRuntime(hookRuntime)
 	agt.SetHookReloader(func() (hook.ReloadReport, error) {
 		var notices []string
 		reloadOpts := hookOpts

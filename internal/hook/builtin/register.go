@@ -9,6 +9,7 @@ import (
 	"elbot/internal/hook"
 	residentmemory "elbot/internal/hook/plugins/resident_memory"
 	"elbot/internal/hook/rules"
+	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/memory/resident"
 	"elbot/internal/security"
 	"elbot/internal/tool"
@@ -25,6 +26,7 @@ type Options struct {
 	Notify              func(context.Context, string)
 	Send                func(context.Context, delivery.Target, delivery.Output) (delivery.Receipt, error)
 	PlatformCallers     rules.PlatformCallerResolver
+	Runtime             *hookruntime.Manager
 }
 
 func RegisterAll(registrar hook.Registrar, opts Options) error {
@@ -43,6 +45,7 @@ func RegisterAll(registrar hook.Registrar, opts Options) error {
 		Notify:          opts.Notify,
 		Send:            opts.Send,
 		PlatformCallers: opts.PlatformCallers,
+		Runtime:         opts.Runtime,
 	})
 	if err == nil {
 		registerModule(registrar, opts, "rules", rulesModule)

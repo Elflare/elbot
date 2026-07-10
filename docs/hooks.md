@@ -1,772 +1,170 @@
 # Hook
 
-Hook Layer 用于在关键流程前后扩展行为，例如：
+Hook 在 ElBot 的关键边界运行：它可以观察或修改事件、追加输出意图，或把事件交给外部进程。Hook 不直接发送平台消息；所有 outputs 都由 Output Manager 落到平台。
 
-- Agent 输入处理。
-- LLM 请求准备。
-- LLM 响应处理。
-- 平台发送前后。
-- 平台连接事件。
+本版本统一使用 `hook.v2`。旧 `hook.v1` 的 `init/output/done` 帧已移除，现有外部 exec 脚本必须迁移。
 
-Hook 可以修改消息、追加输出意图、调用低风险工具或注入常驻记忆。规则 Hook 还可以执行本地脚本。
+## 配置位置
 
-重要约定：Hook 不替代 Security Layer，安全判定仍以 Security Layer 为准。Hook 和插件不直接发平台消息，应返回输出意图，由 Agent 统一交给 Output Manager 发送。
-
-## Hook 来源
-
-ElBot 会注册这些 Hook 来源：
-
-| 来源 | 名称 | 说明 |
-| --- | --- |
-| 规则 Hook | 配置里的 `name` | 从 `plugins/hooks.toml` 加载声明式规则，支持条件匹配、文本操作、输出发送、工具调用和脚本执行。 |
-| 常驻记忆 Hook | `builtin.resident_memory` | 每轮注入当前 platform + actor 的常驻记忆和临时用户名。 |
-| Cron Hook | `builtin.cron.missed_once` | 平台连接时补投递 missed once cron。 |
-
-表情 Hook 已从内嵌插件改为规则 Hook 示例，见本文档[表情提取示例](#表情提取示例)。
-
-## 规则 Hook 配置
-
-规则 Hook 主配置固定在配置目录的 `plugins/hooks.toml`。插件规则通过主配置里的 `[[plugins]]` 引用，默认读取 `plugins/<plugin-name>/hook.toml`。
+配置目录的 `plugins/hooks.toml` 是规则入口。它可直接包含 `[[rules]]`，也可引用插件目录：
 
 ```toml
 [[plugins]]
-name = "demo"
-enabled = true
-# path = "demo/hook.toml" # 可选；必须是相对 plugins/ 的路径
+name = "weather"
+# 默认读取 plugins/weather/hook.toml
 ```
 
-插件配置文件可以包含 `[plugin]` 元信息和自己的 `[[rules]]`。插件规则里的本地相对路径和相对 `cwd` 都基于该插件配置所在目录解析。
+插件源码、`hook.toml` 和它自行维护的状态文件都放在 `plugins/<id>/`。ElBot 额外创建 `plugins/_shared/`，供所有 Hook 共享文件；它不是插件目录，也不会被扫描。
 
-```toml
-[plugin]
-name = "demo"                 # 可选；实际引用名以主 hooks.toml 的 [[plugins]].name 为准
-description = "demo plugin"   # 可选；规则未写 description 时作为说明兜底
+## 规则 Hook
 
-[[rules]]
-name = "demo_rule"
-on = "platform.message.received"
-always = true
-action = "send"
-text = "ok"
-```
-
-`/hooks` 列出的是成功注册的规则名，例如 `demo_rule`，不是 `[[plugins]]` 的插件名。`/hooks reload` 会重新读取主配置和插件配置；如果某个插件被跳过，会在命令结果里显示 warning。
-
-### 规则结构
+普通规则使用 `[[rules]]`。规则先按 `on`、条件和角色匹配，再顺序执行 actions。
 
 ```toml
 [[rules]]
-name = "stable_debug_name"          # 必填，用于日志和审计
-description = "简短说明"            # 可选，建议填写
-on = "hook.point"                   # 必填，Hook 点
-enabled = true                      # 可选，默认 true
-priority = 1000                     # 可选，值越小越先执行
-require_wakeup = true               # 可选，默认 true；false 表示未唤起消息也可触发
-```
-
-### 唤起要求
-
-`platform.message.received` 规则默认只处理已唤起消息，兼容旧行为。已唤起通常包括私聊、slash 命令、命中唤起词、at 机器人、回复机器人消息。
-
-如果希望 Hook 被动监听普通群消息，设置：
-
-```toml
-require_wakeup = false
-```
-
-示例：
-
-```toml
-[[rules]]
-name = "passive_cat_ping"
-on = "platform.message.received"
-require_wakeup = false
-match = [{ field = "message.text", op = "contains", value = "猫" }]
-action = "send"
-text = "检测到猫。"
-```
-
-处理顺序是：先运行 `platform.message.received` Hook；发送 Hook outputs；如果规则设置 `consume = true`，本次消息到此结束，不进入命令或 LLM；如果未 consume，则只有已唤起消息才继续进入命令或 LLM。也就是说，`require_wakeup = false` 可以让 Hook 看见未唤起消息，但不会自动让 LLM 处理群里所有消息。
-
-### 条件匹配
-
-单条件：
-
-```toml
-if = "message.text"
-op = "contains"
-value = "hello"
-```
-
-无条件：
-
-```toml
-always = true
-```
-
-多条件（AND）：
-
-```toml
-match = [
-  { field = "platform.name", op = "fullmatch", value = "qqonebot" },
-  { field = "message.text", op = "contains", value = "猫" },
-]
-```
-
-`always` 不能与 `if/op/value` 或 `match` 组合使用；`if/op/value` 不能与 `match` 组合使用。
-
-### 匹配操作
-
-| op | 说明 |
-| --- | --- |
-| `always` | 无条件匹配，不能设 field 或 value |
-| `exists` | 字段非空 |
-| `contains` | 字段包含 value |
-| `fullmatch` | 字段完全等于 value |
-| `startswith` | 字段以 value 开头 |
-| `endswith` | 字段以 value 结尾 |
-| `regex` | 正则匹配，捕获组可通过模板变量引用 |
-
-### 可匹配字段
-
-```
-platform.name / scope_id / user_id / conversation_id / message_id / reply_to_message_id
-actor.id / user_id / role / group_role / display_name
-session.id / mode / title / status
-request.id / kind / session_id / phase
-message.id / text / display_text / platform_text / intent_text / role
-message.reply.message_id / sender_id / text / display_text
-llm.text / source_text / latest_user_text / latest_user_display_text / provider / model
-tool.name / arguments / result / risk
-error.message
-```
-
-字段选择速查：
-
-| 需求 | 推荐字段 | 说明 |
-| --- | --- | --- |
-| 匹配用户实际说了什么，忽略群聊唤醒词或 bot mention | `message.intent_text` | 例如用户发 `elbot 咩` 时，`message.intent_text` 为 `咩` |
-| 匹配当前消息纯文本，保留唤醒词 | `message.text` | 只拼接 text 片段，不含图片/文件占位 |
-| 匹配当前消息可读内容，保留唤醒词 | `message.display_text` | text + 图片/文件占位，例如 `[图片: ...]` |
-| 匹配平台原始文本 | `message.platform_text` | 平台给的原始文本，不含引用 fallback 展开 |
-| 匹配引用/回复的内容 | `message.reply.*` | 当前消息回复了别人时才有值 |
-
-自动回复并阻止后续命令/LLM 时，优先用 `platform.message.received` + `consume=true`。如果群里需要唤醒词，用 `message.intent_text` 匹配：
-
-```toml
-[[rules]]
-name = "reply_mee"
-on = "platform.message.received"
-if = "message.intent_text"
+name = "notify_qqonebot_connected"
+on = "platform.connected"
+if = "platform.name"
 op = "fullmatch"
-value = "咩"
-consume = true
-
-[[rules.actions]]
-type = "send"
-kind = "text"
-text = "咩"
-```
-
-### Hook 点
-
-```
-platform.connected
-platform.message.received
-agent.input.prepared
-llm.turn.prepared
-llm.request.prepared
-llm.response.received
-tool.call.prepared
-tool.call.completed
-agent.output.prepared
-agent.turn.output.prepared
-platform.message.sent
-error.occurred
-```
-
-### 可编辑字段
-
-不同 Hook 点允许编辑的字段不同：
-
-| Hook 点 | 可编辑字段 |
-| --- | --- |
-| `platform.message.received` / `agent.input.prepared` | `message.text` |
-| `llm.turn.prepared` / `llm.request.prepared` | `llm.latest_user_text` |
-| `llm.response.received` | `llm.text` |
-| `tool.call.prepared` | `tool.arguments` |
-| `tool.call.completed` | `tool.result` |
-| `agent.output.prepared` / `agent.turn.output.prepared` / `platform.message.sent` | assistant `message.text` |
-
-`llm.source_text` 可以用于条件匹配，但不能被编辑。
-
-### Action 类型
-
-每条规则可以写单个 `action` 或多个 `actions`（按顺序执行）。
-
-#### 文本操作
-
-```toml
-# 单 action
-action = "replace"
-field = "message.text"
-pattern = "猫"
-replace = "狗"
-all = true                 # 可选，默认只替换第一处
-
-# 多 actions
-actions = [
-  { type = "replace", field = "message.text", pattern = "猫", replace = "狗", all = true },
-  { type = "append", field = "message.text", text = "!" },
-]
-```
-
-文本操作类型：`prepend`、`append`、`replace`、`delete`。`delete` 等同于 `replace` 为空字符串。
-
-文本操作会保留消息中的图片、文件等多模态 segment 位置，只修改 text segment。
-
-#### send
-
-`send` action 产生输出意图，由 Output Manager 统一发送到平台。
-
-单输出（向后兼容）：
-
-```toml
+value = "qqonebot"
 action = "send"
-kind = "text"              # text/image/file/emoticon/at，默认 text
-text = "检测到关键词"
-timing = "after_assistant" # 可选，默认 immediate
+kind = "text"
+text = "ElBot 已连接 QQ OneBot。"
+target.superadmins = true
 ```
 
-多段输出（outputs）：
+常用 action：
 
-```toml
-actions = [
-  { type = "send", timing = "after_assistant", outputs = [
-    { kind = "text", text = "检测到关键词" },
-    { kind = "image", path = "alert.png" },
-    { kind = "image", url = "https://example.com/chart.png", name = "chart.png" },
-    { kind = "image", base64 = "iVBORw0KGgo..." },
-    { kind = "emoticon", name = "微笑", path = "emoticons/微笑/01.png" },
-    { kind = "file", path = "report.pdf", name = "报告.pdf" },
-  ] },
-]
-```
-
-output segment 格式与 [Elvena 协议](elnis-usage.md#segments多模态消息段)统一，额外支持本地 `path`、`base64` 和 `emoticon` 类型。`path` 表示本地文件路径（相对路径按规则或插件目录解析），`url` 会按远程 URL 发送，`base64` 表示内联数据；具体以图片还是文件形式发送由 `kind = "image"` 或 `kind = "file"` 决定：
-
-| 字段 | 说明 |
+| action | 作用 |
 | --- | --- |
-| `kind` | `text` / `image` / `file` / `emoticon` / `at` / `reply`，默认 `text` |
-| `text` | 文本内容（text 类型必填，其他类型可选作为附加文本；at 类型未设置 `user_id` 时作为用户 ID） |
-| `url` | HTTP/HTTPS URL（image/file） |
-| `path` | 本地文件路径（image/file/emoticon）；reply 类型未设置 `message_id` 时作为被回复消息 ID；普通路径按平台默认方式处理，`base64://`、`file://`、`http://`、`https://` 前缀表示调用方已指定媒体源，会按平台能力直接处理 |
-| `base64` | base64 编码数据（image/file） |
-| `name` | 文件名或表情名 |
-| `mime_type` | MIME 类型提示 |
-| `user_id` | at 目标用户 ID |
-| `message_id` | reply 目标消息 ID |
+| `prepend` / `append` / `replace` / `delete` | 修改当前事件允许编辑的文本字段。 |
+| `send` | 追加 text/image/file/emoticon/at/reply 输出意图。 |
+| `tool` | 以当前 Actor 的普通 Hook 权限调用低风险工具。 |
+| `exec` | 启动一次性外部 Hook，并按 hook.v2 处理。 |
 
-`target` 和 `timing` 从 action 继承到所有 segment。
+`platform.message.received` 的 `require_wakeup = false` 可观察未唤起的群消息；它不会让主 LLM 自动处理这些消息。规则设置 `consume = true` 时，发送 outputs 后不再进入命令或 LLM。
 
-#### tool
+## hook.v2 一次性 exec
 
-调用已注册工具，结果存到 `{{actions.<name>.result}}` 供后续 action 使用。
+`exec` 的 `command` 按空白拆分后直接执行，不隐式经过 shell。需要 shell 语法时显式使用 `sh -c`、`bash -lc` 或平台对应解释器。
 
 ```toml
 actions = [
-  { name = "search", type = "tool", tool = "web_search", arguments = '{"query":"ElBot"}' },
-  { type = "append", field = "llm.latest_user_text", text = "\n\nHook 工具结果：{{actions.search.result}}" },
+  { name = "extract", type = "exec", command = "uv run extract.py", field = "llm.text", timeout_seconds = 30 },
 ]
 ```
 
-工具调用受 Security Policy 约束：风险等级必须在当前 Actor 允许范围内，需要交互确认的高风险工具会被拒绝。
-
-#### exec
-
-执行本地脚本。主配置里的脚本默认以 `plugins/` 为工作目录；插件配置里的脚本默认以插件配置所在目录为工作目录，且相对 `cwd` 不能逃出插件目录。
-
-`command` 会按空白拆分为可执行程序和参数后直接执行，不会隐式套 `sh -c`。例如 `uv run script.py` 会直接执行 `uv`，`bash ./script.sh` 会直接执行 `bash`；需要管道、重定向、`&&` 等 shell 语法时，请显式写 `bash -lc "..."`、`sh -c "..."` 或平台对应解释器。
-
-exec 使用 `hook.v1` 行协议：ElBot 启动脚本后，会先向 stdin 写一行 init JSON；脚本向 stdout 每行写一个 JSON frame，最后必须写 `done` 或 `error` frame。stderr 不作为协议数据；脚本成功时只进入日志，脚本失败、超时、崩溃或协议错误时会把 stderr 尾部并入 Hook 失败通知。
-
-脚本只应读取 stdin 第一行作为 init frame，不要 read-all、read-to-end、`fread` 到 EOF 或循环读到 EOF；stdin 后续还用于 `request`/`response` frame。脚本写出合法 `done` 或 `error` frame 后应以 0 退出；非 0 exit code 会被视为 exec 进程失败。
-
-```toml
-actions = [
-  { name = "script", type = "exec", command = "uv run script.py", timeout_seconds = 30 },
-]
-```
-
-### exec hook.v1 协议
-
-init frame 由 ElBot 写入脚本 stdin：
+Host 依次写入两个 request：`system.init` 和 `event.handle`。脚本以相同 `host:*` ID 写 response。`event.handle` 的成功 result 使用：
 
 ```json
 {
-  "type": "init",
-  "version": "hook.v1",
-  "event": {},
-  "match": {},
-  "runtime": {
-    "plugin_name": "demo",
-    "plugin_dir": ".../plugins/demo",
-    "config_path": ".../plugins/demo/hook.toml",
-    "rule_name": "demo_rule",
-    "cwd": ".../plugins/demo"
-  }
+  "status": "completed",
+  "result": "optional template result",
+  "message": {"text": "optional replacement text"},
+  "outputs": [{"kind": "text", "text": "hello"}],
+  "consume": false,
+  "stop_propagation": false
 }
 ```
 
-init frame 字段：
+`outputs` 是输出意图数组；相对 `path` 相对插件目录解析。大媒体请写入插件目录或 `_shared/` 后返回路径或 URL，不要放进 JSON Pipe。stderr 只用于日志和失败诊断，stdout 只能输出协议帧。
 
-| 字段 | 说明 |
-| --- | --- |
-| `type` | 固定为 `init` |
-| `version` | 固定为 `hook.v1` |
-| `event` | 当前 Hook 事件上下文；字段按 Hook 点填充，不相关字段为空、零值或省略 |
-| `match` | 当前规则匹配上下文；正则命中时包含 `regex` 数组 |
-| `runtime` | 本次 exec 运行上下文 |
-
-`event` 字段：
-
-| 字段 | 说明 |
-| --- | --- |
-| `id` | Hook 事件 ID |
-| `point` | Hook 点，例如 `platform.message.received`、`llm.response.received` |
-| `time` | 事件时间，RFC3339 格式 |
-| `metadata` | 预留/扩展元数据对象 |
-| `control.consume` | 是否阻止后续 slash 命令和 LLM 处理 |
-| `control.stop_propagation` | 是否阻止同 Hook 点后续规则执行 |
-| `platform.name` | 平台名，例如 `qqonebot`、`telegram`、`cli` |
-| `platform.scope_id` | 平台会话范围 ID；由平台适配器生成，通常带范围前缀，例如 `group:<id>`、`private:<id>` |
-| `platform.user_id` | 当前平台发送者用户 ID |
-| `platform.conversation_id` | 平台会话 ID；平台未提供时为空 |
-| `platform.message_id` | 当前入站平台消息 ID |
-| `platform.reply_to_message_id` | 当前消息引用/回复的目标平台消息 ID |
-| `actor.id` | ElBot 内部 Actor ID，通常由平台名和用户 ID 组合得到 |
-| `actor.user_id` | Actor 对应的平台用户 ID |
-| `actor.role` | ElBot 内部角色：`superadmin` 或 `user` |
-| `actor.group_role` | 群身份：`owner`、`admin`、`member`、`unknown` |
-| `actor.display_name` | 显示名 |
-| `session.id` | 当前 Session ID |
-| `session.mode` | 当前 Session 模式，例如 `chat`、`work`；未进入会话前为空 |
-| `session.title` | 当前 Session 标题 |
-| `session.status` | 当前 Session 状态；没有会话上下文时为空 |
-| `request.id` | 当前 Request ID |
-| `request.kind` | Request 类型：`turn`、`llm`、`tool`、`hook`、`compress`、`sub_agent`；无运行中 Request 时为空 |
-| `request.session_id` | Request 关联的 Session ID |
-| `request.phase` | Turn 阶段：`idle`、`llm`、`tool`、`awaiting_risk_confirm`、`awaiting_append_confirm`、`compact`；无 Turn 上下文时为空 |
-| `message.id` | 当前消息 ID；未设置时为空 |
-| `message.role` | 消息角色，例如 `user`、`assistant` |
-| `message.text` | 当前消息纯文本，只拼接 text 片段，不包含图片/文件占位 |
-| `message.display_text` | 当前消息可读内容文本，可能包含图片/文件占位 |
-| `message.platform_text` | 平台原始当前消息文本，不包含引用 fallback 展开内容 |
-| `message.intent_text` | 用户输入意图文本；对用户消息会去掉配置的唤醒关键词和 bot mention，适合在 `platform.message.received` 中匹配 `elbot 咩` 这种消息里的 `咩` |
-| `message.segments` | 当前消息片段数组；脚本读取用户文本应优先从这里聚合 `type=text` 的片段。`platform.message.received` 中这里表示当前入站消息，不包含被引用消息文本 |
-| `message.messages` | 相关 LLM 消息数组；仅部分 Hook 点填充 |
-| `message.reply.message_id` | 当前消息引用/回复的目标平台消息 ID |
-| `message.reply.sender_id` | 被引用消息发送者 ID；平台未提供时为空 |
-| `message.reply.text` | 被引用消息的纯文本内容；没有文本时为空 |
-| `message.reply.display_text` | 被引用消息的可读内容文本，可能包含图片/文件占位 |
-| `llm.provider` | LLM provider 名 |
-| `llm.model` | LLM model 名 |
-| `llm.messages` | 本次 LLM 消息数组 |
-| `llm.tools` | 本次请求可用工具 schema 数组 |
-| `llm.usage` | LLM usage 统计；未提供时为空 |
-| `llm.source_text` | LLM 原始响应文本；可匹配，不可编辑 |
-| `llm.text` | 当前可见/可编辑的 LLM 文本 |
-| `llm.tool_calls` | LLM 返回的工具调用数组 |
-| `llm.elapsed_ms` | LLM 调用耗时毫秒数 |
-| `tool.id` | 工具调用 ID |
-| `tool.name` | 工具名 |
-| `tool.arguments` | 工具参数 JSON 字符串 |
-| `tool.risk` | 工具风险等级 |
-| `tool.result` | 工具结果文本 |
-| `tool.error` | 工具错误；通常仅用于错误上下文 |
-| `outputs` | 当前事件已累计的输出意图数组 |
-| `error.message` | 当前错误文本；仅错误 Hook 相关 |
-
-`message.segments`、`llm.messages[].segments`、stdout `output` frame 的 `outputs` 字段、`request output.send` 的 `params.outputs`，以及 TOML send action 的 `outputs` 使用的常见片段字段：
-
-| 字段 | 说明 |
-| --- | --- |
-| `type` / `kind` | 片段类型；入站消息常见为 `text`、`image`、`file`，输出还支持 `emoticon`、`at`、`reply` |
-| `text` | 文本内容或附加文本 |
-| `url` | HTTP/HTTPS 资源 URL |
-| `path` | 本地资源路径；输出时相对 `plugins/` 或插件目录解析 |
-| `base64` | base64 编码数据；仅输出片段使用，解码后最大 10 MiB |
-| `name` | 文件名或表情名 |
-| `mime_type` | MIME 类型提示 |
-| `user_id` | `at` 输出的目标用户 ID |
-| `message_id` | `reply` 输出的目标平台消息 ID |
-
-注意：`message.text`、`message.display_text`、`llm.latest_user_text` 等是规则匹配和模板变量里的派生字段，不是 init JSON 里的同名字段。exec 脚本需要从 `event.message.segments`、`event.message.platform_text`、`event.message.reply` 或 `event.llm.messages[].segments` 读取原始数据。
-
-`match.regex[]` 字段：
-
-| 字段 | 说明 |
-| --- | --- |
-| `field` | 正则匹配的字段名 |
-| `value` | 正则表达式 |
-| `text` | 被匹配的文本 |
-| `groups` | 捕获组数组；`groups[0]` 为完整匹配 |
-| `named` | 命名捕获组对象 |
-| `start` / `end` | 命中范围 |
-
-`runtime` 字段：
-
-| 字段 | 说明 |
-| --- | --- |
-| `plugin_name` | 插件名；主 `plugins/hooks.toml` 中的规则为空 |
-| `plugin_dir` | 插件目录；主规则为空 |
-| `config_path` | 当前规则配置文件路径 |
-| `rule_name` | 当前规则最终名称 |
-| `cwd` | exec 进程工作目录 |
-
-脚本可写的 stdout frame：
-
-| type | 说明 |
-| --- | --- |
-| `output` | 排入本次 Hook 的输出意图；frame 必须包含 `outputs` 字段，值是 output segment 对象数组 |
-| `request` | 调用 ElBot 能力；带 `id` 时 ElBot 会向 stdin 写 `response` frame |
-| `done` | 正常结束；可带 `matched=false` 表示本规则不生效并回滚此前 action 效果 |
-| `error` | 失败结束，`error` 或 `message` 字段作为错误文本 |
-
-stdout frame 结构示例：
+Hook 主动请求 Host 能力时使用：
 
 ```json
-{"type":"output","outputs":[{"kind":"text","text":"内容"}]}
-{"type":"output","outputs":[{"kind":"image","path":"images/a.png","text":"附加说明"}]}
-{"type":"request","id":"send-1","method":"output.send","params":{"outputs":[{"kind":"text","text":"立即发送"}]}}
-{"type":"done","result":"ok","message":{"text":"改写后的文本"}}
-{"type":"error","error":"失败原因"}
+{"type":"request","id":"plugin:send-1","method":"platform.call","params":{}}
 ```
 
-`output` frame 只使用 `outputs` 字段；不要写 `{"type":"output","output":{...}}` 或 `{"type":"output","segments":[...]}`。需要多段输出时，把多个 output segment 放在同一个 `outputs` 数组里；也可以写多行 `output` frame。TOML send action 同样使用 `outputs = [...]`。
+Host 回写 `response`。Host 发起的 ID 必须是 `host:*`，Hook 发起的 ID 必须是 `plugin:*`；response 复用原 request ID。
 
-单个 stdout frame 最大 16 MiB。图片等大媒体不要直接塞进 `base64`，推荐先写入插件目录或临时文件，再用 `path` 返回；也可以返回 `url`。
+## 持久 Hook
 
-`output` frame 字段：
-
-| 字段 | 说明 |
-| --- | --- |
-| `type` | 固定为 `output` |
-| `id` | 可选；设置后 ElBot 会回 `response`，成功时 `result.queued=true` |
-| `outputs` | 必填，output segment 对象数组 |
-
-`request` frame 字段：
-
-| 字段 | 说明 |
-| --- | --- |
-| `type` | 固定为 `request` |
-| `id` | 可选但强烈建议设置；设置后 ElBot 会向 stdin 写 `response` frame |
-| `method` | 请求方法，见下方 method 表 |
-| `params` | 请求参数对象；结构随 method 变化 |
-
-不带 `id` 的 `request` 不会收到 `response`；但如果请求失败，当前 exec action 仍会失败并触发 Hook 失败通知。
-
-`done` 可选字段：
-
-| 字段 | 说明 |
-| --- | --- |
-| `matched` | 默认 `true`；为 `false` 时整条规则视为未命中，后续 action 不再执行 |
-| `result` | 保存到 `{{actions.<name>.result}}` |
-| `error` | 保存到 `{{actions.<name>.error}}` |
-| `message.text` | 覆写 action 的 `field`；未设置 `field` 时覆写 `message.text` |
-| `consume` | 设置本事件的 consume 控制位 |
-| `stop_propagation` | 设置本事件的 stop_propagation 控制位 |
-
-`error` frame 字段：
-
-| 字段 | 说明 |
-| --- | --- |
-| `type` | 固定为 `error` |
-| `error` / `message` | 失败文本；`error` 优先 |
-
-支持的 request method：
-
-| method | params | 说明 |
-| --- | --- | --- |
-| `platform.call` | `platform`、`api`、`params` | 调用当前平台原始 API；不能跨平台调用 |
-| `output.send` | `outputs` | 立即发送 output segment 数组并返回 receipt；需要 app 层 sender 可用 |
-| `message.get_reply` | 无 | 返回当前消息引用/回复的目标消息 ID |
-| `message.get` | 预留 | 当前返回 `available=false` |
-| `hook.log` | 任意 JSON | 写入 Hook 插件日志 |
-
-ElBot 写回 stdin 的 `response` frame 字段：
-
-| 字段 | 说明 |
-| --- | --- |
-| `type` | 固定为 `response` |
-| `id` | 对应 request/output frame 的 `id` |
-| `ok` | `true` 表示成功，`false` 表示失败 |
-| `result` | 成功结果；仅 `ok=true` 时存在 |
-| `error` | 失败文本；仅 `ok=false` 时存在 |
-
-`platform.call`、`output.send` 等 request 失败时，脚本会先收到 `ok=false` 的 response；随后当前 exec action 也会失败并触发 Hook 失败通知。
-
-最小 Python 示例：
-
-```python
-#!/usr/bin/env python3
-import json
-import sys
-
-init = json.loads(sys.stdin.readline())
-event = init["event"]
-segments = event.get("message", {}).get("segments", [])
-text = "".join(seg.get("text", "") for seg in segments if seg.get("type") == "text")
-
-print(json.dumps({
-    "type": "output",
-    "outputs": [{"kind": "text", "text": "收到：" + text}],
-}, ensure_ascii=False), flush=True)
-print(json.dumps({"type": "done", "result": "ok"}, ensure_ascii=False), flush=True)
-```
+持久 Hook 仍是 Hook，不存在独立的插件系统或 `/plugins` 命令。它由插件自己的 `hook.toml` 声明：
 
 ```toml
+[plugin]
+name = "weather"
+description = "有状态天气助手"
+
+[plugin.runtime]
+stateful = true
+command = "uv run weather_hook.py"
+cwd = "."
+startup_timeout_seconds = 10
+shutdown_timeout_seconds = 5
+event_timeout_seconds = 30
+max_wait_seconds = 900
+
+[plugin.runtime.restart]
+strategy = "on_failure" # never / on_failure / always
+initial_delay_seconds = 1
+max_delay_seconds = 30
+
+[plugin.runtime.tools]
+allow = ["web_search"]
+background_allow = []
+
 [[rules]]
-name = "emoticon_extract"
-on = "llm.response.received"
-if = "llm.text"
-op = "regex"
-value = "\\[\\[[^\\[\\]]+\\]\\]"
-actions = [
-  { name = "extract", type = "exec", command = "uv run emoticon_extract.py", field = "llm.text", timing = "after_assistant" },
-]
-```
-
-### 模板变量
-
-文本字段和 exec command 支持 `{{...}}` 模板渲染：
-
-```
-{{platform.name}}          {{platform.scope_id}}      {{platform.user_id}}
-{{platform.message_id}}    {{platform.reply_to_message_id}}
-{{actor.id}}               {{actor.user_id}}          {{actor.role}}
-{{message.text}}           {{message.display_text}}   {{message.platform_text}}
-{{message.reply.message_id}} {{message.reply.text}}    {{message.reply.display_text}}
-{{llm.text}}               {{llm.source_text}}        {{llm.latest_user_text}}
-{{tool.arguments}}         {{tool.result}}
-{{actions.<name>.result}}  {{actions.<name>.error}}
-```
-
-regex 匹配的捕获组可通过 `{{match.regex.0.group.1}}` 或命名组 `{{match.regex.0.<name>}}` 引用。
-
-### 角色分区
-
-规则可用 `roles`、`actor_roles`、`group_roles` 做权限分区：
-
-- `superadmin` / `user`：ElBot 内部安全角色。
-- `owner` / `admin` / `member`：平台群身份，由平台适配器映射。
-
-`roles` 同时匹配内部角色和群身份；`actor_roles` 只匹配内部角色；`group_roles` 只匹配群身份。
-
-```toml
-[[rules]]
-name = "admin_only_rule"
-on = "platform.message.received"
-roles = ["admin"]
-always = true
-action = "send"
-text = "仅管理员可见"
-```
-
-### 控制字段
-
-```toml
-consume = true              # 阻止后续 slash 命令和 LLM 处理
-stop_propagation = true      # 阻止同一 Hook 点后续规则继续执行
-```
-
-`consume = true` 通常用于 `platform.message.received` Hook：发送输出后阻止后续命令和 LLM 处理，让 Hook 完全接管消息。
-
-## Hook exec 平台调用
-
-规则 Hook 的 `exec` action 可以通过 `request` frame 调用当前平台原始 API。平台调用会进入审计日志，并且只能调用当前事件所属平台，不能从一个平台 Hook 跨到另一个平台。
-
-```json
-{"type":"request","id":"call-1","method":"platform.call","params":{"api":"delete_msg","params":{"message_id":"123"}}}
-```
-
-ElBot 会向脚本 stdin 写入 response frame：
-
-```json
-{"type":"response","id":"call-1","ok":true,"result":{}}
-```
-
-## 撤回引用消息示例
-
-以下示例用于超级管理员回复某条平台消息并发送“撤回”时，通过 Elvena v3 `calls` 调用平台 API 撤回被引用的消息。
-
-前提：平台适配器需要支持原始 API 调用，且本次消息必须带引用/回复关系。Hook 里可通过 `message.reply.message_id` 或 `platform.reply_to_message_id` 读取被引用消息的平台消息 ID，通过 `platform.message_id` 读取当前触发 Hook 的消息 ID。`platform.message.received` 中的 `message.text` 只表示当前用户发送的文本；被引用内容在 `message.reply.*` 中，不会污染 `message.text`。
-
-Telegram 使用 Bot API `deleteMessage`，机器人必须有删除目标消息的权限，且目标消息不能超过平台允许的删除时限。
-
-### hooks.toml
-
-```toml
-[[rules]]
-name = "recall_quoted_message"
+name = "weather_entry"
 on = "platform.message.received"
 require_wakeup = false
-roles = ["superadmin"]
-match = [
-  { field = "message.text", op = "fullmatch", value = "撤回" },
-  { field = "message.reply.message_id", op = "exists" },
-]
-
-consume = true
-
-[[rules.actions]]
-type = "exec"
-name = "recall"
-command = "uv run recall_quoted_message.py"
-timeout_seconds = 10
+if = "message.intent_text"
+op = "contains"
+value = "天气"
+# 持久 Hook 的 rules 仅是 event.handle 触发器，不设置 action/actions。
 ```
 
-### recall_quoted_message.py
+所有持久运行字段都必须显式填写。ElBot 启动和 `/hooks reload` 后会自动启动已启用的持久 Hook；其状态为 `starting`、`ready`、`running`、`degraded`、`stopping`、`stopped` 或 `failed`。`system.shutdown` 会先请求优雅退出，超过关闭超时才终止进程。
 
-脚本从 stdin 读取 init frame，向 stdout 写 `platform.call` request frame，再读取 response frame，最后写 done frame。
+持久 Hook 在 `system.init` 后可接收多个 `event.handle`。同一 `platform + scope + actor` 串行，不同路由可以并行。Hook 的 response 可以返回：
 
-```python
-#!/usr/bin/env python3
-import json
-import sys
-
-
-def numeric_scope_id(scope_id):
-    if ":" not in scope_id:
-        return scope_id
-    return scope_id.split(":", 1)[1]
-
-
-def main():
-    init = json.loads(sys.stdin.readline())
-    event = init.get("event", {})
-    platform = event.get("platform", {})
-    platform_name = platform.get("name", "")
-    scope_id = platform.get("scope_id", "")
-    reply_id = platform.get("reply_to_message_id", "")
-
-    if not reply_id:
-        raise SystemExit("missing platform.reply_to_message_id")
-
-    scope_target_id = numeric_scope_id(scope_id)
-    if platform_name == "qqonebot":
-        api = "delete_msg"
-        params = {"message_id": reply_id}
-    elif platform_name == "telegram":
-        api = "deleteMessage"
-        params = {"chat_id": scope_target_id, "message_id": int(reply_id)}
-    else:
-        raise SystemExit(f"unsupported platform: {platform_name}")
-
-    req = {
-        "type": "request",
-        "id": "recall",
-        "method": "platform.call",
-        "params": {
-            "platform": platform_name,
-            "api": api,
-            "params": params,
-        },
-    }
-    print(json.dumps(req, ensure_ascii=False), flush=True)
-    resp = json.loads(sys.stdin.readline())
-    if not resp.get("ok"):
-        print(json.dumps({
-            "type": "error",
-            "error": resp.get("error", "platform.call failed"),
-        }, ensure_ascii=False), flush=True)
-        return
-
-    done = {"type": "done", "result": "recalled", "consume": True}
-    if platform_name == "telegram":
-        done["message"] = {"text": "已撤回引用消息"}
-    print(json.dumps(done, ensure_ascii=False), flush=True)
-
-
-if __name__ == "__main__":
-    main()
+```json
+{
+  "status": "waiting",
+  "conversation_id": "weather-42",
+  "expires_at": "2026-07-10T12:00:00Z"
+}
 ```
 
-## 表情提取示例
+等待路由只捕获发起者在同一 scope 的后续消息；群聊不会捕获其他成员，也不要求发起者重新 at。它在常规 `platform.message.received` Hook 完成且未 consume 后、命令和主 LLM 前执行。`/cancel` 只取消当前路由的这次执行或等待会话，进程和内存状态继续保留；使用 `/hooks stop <id>` 才停止进程。
 
-以下示例用规则 Hook + exec 脚本实现表情提取功能，替代旧的内嵌表情 Hook。
+## 工具与共享状态
 
-### hooks.toml
+持久 Hook 管理自己的 LLM loop 和业务状态。ElBot 只在 `system.init` 下发 `[plugin.runtime.tools].allow` 中的 schema，并处理 Hook 的 `tool.call` request。
 
-```toml
-[[rules]]
-name = "emoticon_extract"
-on = "llm.response.received"
-priority = 1000
-if = "llm.text"
-op = "regex"
-value = "\\[\\[[^\\[\\]]+\\]\\]"
-actions = [
-  { name = "extract", type = "exec", command = "uv run emoticon_extract.py", field = "llm.text", timing = "after_assistant" },
-]
+普通 `tool.call` 必须携带 Host 下发的 `tool_context`。Host 校验 allowlist、前后台可用性、调用次数、超时、取消和上下文归属；它不把 Hook 调用写入 ElBot Agent Session，也不执行用户风险确认。工具结果返回 `content`、`segments`、`warnings` 和 Output Manager 的发送回执。
+
+后台调用仅能使用 `background_allow`，主体是 `hook:<id>`；没有有效 origin 时必须显式提供输出 target。若携带 Host 签发且未过期的 origin，平台、scope 和用户信息仅用于正确的上下文工具、发送路由和最小边界审计。
+
+除 `_shared/` 文件目录外，所有持久 Hook 共享一个进程内 JSON KV：
+
+| request method | 说明 |
+| --- | --- |
+| `shared.get` | 按 key 读取值。 |
+| `shared.set` | 写入 JSON 值。 |
+| `shared.delete` | 删除 key。 |
+| `shared.list` | 按 prefix 列出 key。 |
+| `shared.compare_and_swap` | 原子条件写入。 |
+
+key 必须为 `<namespace>/<key>`。共享内存跨 Hook 重启和 `/hooks reload` 保留，在 ElBot 重启后清空；需要持久化时由 Hook 写入自己的目录或 `_shared/`。
+
+## 管理命令
+
+`/hooks` 是唯一管理入口（超级管理员命令）：
+
+```text
+/hooks
+/hooks <name-or-id>
+/hooks start <id>
+/hooks stop <id>
+/hooks restart <id>
+/hooks reload
 ```
 
-### emoticon_extract.py
+`reload` 会重新读取规则与持久运行配置，并停止、替换或启动对应的持久 Hook。配置变更不做动态 schema patch，重载会重启受影响进程。
 
-脚本从 stdin 读取 init frame，提取 `[[token]]`，检查 `emoticons/<token>/` 目录是否有图片，有则输出 emoticon frame 并从文本中移除 token，无则保留原样。
+## 模板与字段
 
-```python
-#!/usr/bin/env python3
-import json
-import os
-import random
-import re
-import sys
+普通规则的文本和 `exec.command` 支持 `{{...}}` 模板，例如 `{{platform.name}}`、`{{actor.id}}`、`{{message.text}}`、`{{llm.text}}`、`{{tool.result}}` 和 `{{match.regex.0.group.1}}`。前序 tool/exec action 的结果可用 `{{actions.<name>.result}}` 与 `{{actions.<name>.error}}`。
 
-TOKEN_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
-EMOTICON_DIR = "emoticons"
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
-
-def main():
-    init = json.loads(sys.stdin.readline())
-    text = init.get("event", {}).get("llm", {}).get("text", "")
-    outputs = []
-
-    def replace(match):
-        name = match.group(1).strip()
-        d = os.path.join(EMOTICON_DIR, name)
-        if not os.path.isdir(d):
-            return match.group(0)
-        images = [f for f in os.listdir(d)
-                  if os.path.splitext(f)[1].lower() in IMAGE_EXTS]
-        if not images:
-            return match.group(0)
-        path = os.path.join(d, random.choice(images))
-        outputs.append({"kind": "emoticon", "name": name, "path": path})
-        return ""
-
-    cleaned = TOKEN_RE.sub(replace, text).strip()
-    if outputs:
-        print(json.dumps({
-            "type": "output",
-            "outputs": outputs,
-        }, ensure_ascii=False), flush=True)
-    print(json.dumps({
-        "type": "done",
-        "message": {"text": cleaned},
-        "result": str(len(outputs)),
-    }, ensure_ascii=False), flush=True)
-
-if __name__ == "__main__":
-    main()
-```
-
-### 配置说明
-
-- `root_dir`（旧内嵌插件的配置项）不再需要；脚本里直接写相对 `plugins/` 的目录路径。
-- `timing` 控制表情发送时机：`immediate`（默认）在 LLM 文本输出前发送，`after_assistant` 在 assistant 回复后发送。
-- `field = "llm.text"` 让脚本返回的 `text` 覆写 LLM 响应文本，移除已被提取的 token。
-- 不设 `field` 时脚本只产出 outputs，不修改原文（适合"检测到内容就发通知但不改原文"的场景）。
-
-更多 exec 脚本示例（C / C++ / TypeScript）见 [elbot-showcase/hooks](https://github.com/Elfreese/elbot-showcase/tree/main/hooks)。
-
+可匹配字段、Hook 点和可编辑字段沿用现有规则语义；配置错误会在 `/hooks reload` 报告，并跳过问题插件，不影响其他已注册 Hook。
