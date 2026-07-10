@@ -141,9 +141,10 @@ type Target struct {
 }
 
 type Module struct {
-	Rules  []Rule
-	Opts   Options
-	Logger *slog.Logger
+	Rules    []Rule
+	Runtimes []hookruntime.Config
+	Opts     Options
+	Logger   *slog.Logger
 }
 
 type ruleSource struct {
@@ -171,14 +172,7 @@ func NewModule(opts Options) (Module, error) {
 		reportConfigError(context.Background(), opts, path, err)
 		return Module{}, err
 	}
-	if opts.Runtime != nil {
-		if err := opts.Runtime.Apply(cfg.Runtimes); err != nil {
-			reportConfigError(context.Background(), opts, path, err)
-			return Module{}, err
-		}
-	}
-
-	module := Module{Rules: cfg.Rules, Opts: opts, Logger: opts.Logger}
+	module := Module{Rules: cfg.Rules, Runtimes: cfg.Runtimes, Opts: opts, Logger: opts.Logger}
 	if module.Logger != nil {
 		enabled := 0
 		for _, rule := range module.Rules {

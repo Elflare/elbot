@@ -8,17 +8,9 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/hook"
-	hookruntime "elbot/internal/hook/runtime"
 )
 
 const hookListDescriptionLimit = 60
-
-type StatefulHookService interface {
-	StatefulHooks() []hookruntime.Info
-	StartStatefulHook(id string) error
-	StopStatefulHook(ctx context.Context, id string) error
-	RestartStatefulHook(ctx context.Context, id string) error
-}
 
 func NewHooks(deps Deps) command.Handler {
 	return hooksCommand{deps: deps}
@@ -56,18 +48,14 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 		if len(fields) != 2 {
 			return &command.Result{Content: fmt.Sprintf("usage: /hooks %s <id>", fields[0])}, nil
 		}
-		runtime, ok := deps.Hooks.(StatefulHookService)
-		if !ok {
-			return &command.Result{Content: "stateful hook runtime is not configured"}, nil
-		}
 		var err error
 		switch fields[0] {
 		case "start":
-			err = runtime.StartStatefulHook(fields[1])
+			err = deps.Hooks.StartStatefulHook(fields[1])
 		case "stop":
-			err = runtime.StopStatefulHook(ctx, fields[1])
+			err = deps.Hooks.StopStatefulHook(ctx, fields[1])
 		case "restart":
-			err = runtime.RestartStatefulHook(ctx, fields[1])
+			err = deps.Hooks.RestartStatefulHook(ctx, fields[1])
 		}
 		if err != nil {
 			return &command.Result{Content: fmt.Sprintf("hook %s failed: %v", fields[0], err)}, nil
@@ -94,12 +82,8 @@ func (c hooksCommand) Complete(ctx context.Context, req command.CompletionReques
 	}
 	fields := strings.Fields(req.Args)
 	if len(fields) > 0 && (fields[0] == "start" || fields[0] == "stop" || fields[0] == "restart") {
-		runtime, ok := c.deps.Hooks.(StatefulHookService)
-		if !ok {
-			return nil
-		}
 		options := []completionOption{}
-		for _, info := range runtime.StatefulHooks() {
+		for _, info := range c.deps.Hooks.StatefulHooks() {
 			options = append(options, completionOption{Text: info.ID, Description: string(info.Status)})
 		}
 		return completeStaticOptions(options, token.Text, token.Start, token.End, "stateful_hook")
@@ -109,10 +93,7 @@ func (c hooksCommand) Complete(ctx context.Context, req command.CompletionReques
 
 func formatHookList(deps Deps) string {
 	infos := deps.Hooks.HookList()
-	var stateful []hookruntime.Info
-	if runtime, ok := deps.Hooks.(StatefulHookService); ok {
-		stateful = runtime.StatefulHooks()
-	}
+	stateful := deps.Hooks.StatefulHooks()
 	if len(infos) == 0 && len(stateful) == 0 {
 		return "hooks: none"
 	}
@@ -154,18 +135,16 @@ func formatHookReloadResult(report hook.ReloadReport) string {
 }
 
 func formatHookDetail(deps Deps, name string) string {
-	if runtime, ok := deps.Hooks.(StatefulHookService); ok {
-		for _, info := range runtime.StatefulHooks() {
-			if info.ID == name {
-				text := fmt.Sprintf("name: %s\nstateful: true\nstatus: %s", info.ID, info.Status)
-				if description := strings.TrimSpace(info.Description); description != "" {
-					text += "\ndescription: " + description
-				}
-				if detail := strings.TrimSpace(info.Detail); detail != "" {
-					text += "\ndetail: " + detail
-				}
-				return text
+	for _, info := range deps.Hooks.StatefulHooks() {
+		if info.ID == name {
+			text := fmt.Sprintf("name: %s\nstateful: true\nstatus: %s", info.ID, info.Status)
+			if description := strings.TrimSpace(info.Description); description != "" {
+				text += "\ndescription: " + description
 			}
+			if detail := strings.TrimSpace(info.Detail); detail != "" {
+				text += "\ndetail: " + detail
+			}
+			return text
 		}
 	}
 	infos := deps.Hooks.HookList()

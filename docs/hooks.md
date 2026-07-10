@@ -128,6 +128,7 @@ value = "天气"
 
 等待路由只捕获发起者在同一 scope 的后续消息；群聊不会捕获其他成员，也不要求发起者重新 at。它在常规 `platform.message.received` Hook 完成且未 consume 后、命令和主 LLM 前执行。`/cancel` 只取消当前路由的这次执行或等待会话，进程和内存状态继续保留；使用 `/hooks stop <id>` 才停止进程。
 
+
 ## 工具与共享状态
 
 持久 Hook 管理自己的 LLM loop 和业务状态。ElBot 只在 `system.init` 下发 `[plugin.runtime.tools].allow` 中的 schema，并处理 Hook 的 `tool.call` request。

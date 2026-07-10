@@ -18,7 +18,6 @@ import (
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
-	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/platform"
@@ -59,8 +58,8 @@ type Agent struct {
 	windowResolver       *contextmgr.WindowResolver
 	compressor           contextmgr.Compressor
 	contextConfig        config.ContextConfig
-	hooks                hook.Manager
-	hookRuntime          *hookruntime.Manager
+	hooks                hookRunner
+	hookRuntime          hookRouter
 	outputs              delivery.Manager
 	modelMetadata        config.ModelMetadataConfig
 	compactModel         config.ModelSelection
@@ -88,7 +87,6 @@ type Agent struct {
 	discoveredTools        map[string]map[string]llm.ToolSchema
 	actorID                string
 	scopeID                string
-	hookReloader           func() (hook.ReloadReport, error)
 }
 
 // New creates a new Agent.
@@ -105,7 +103,7 @@ func NewWithPrefixes(p platform.PlatformAdapter, client llm.LLM, modeModels map[
 }
 
 func NewWithOptions(p platform.PlatformAdapter, client llm.LLM, providerName string, modeModels map[string]config.ModelSelection, providers map[string]config.ProviderConfig, statePath string, store storage.Store, prefixes []string, sessionCfg session.Config, namingSelection config.ModelSelection, namingClient llm.LLM, namingModel string, namingNotifier session.NamingNotifier, soulPath string) *Agent {
-	return NewWithRequestConfig(p, client, providerName, modeModels, providers, statePath, store, prefixes, sessionCfg, namingSelection, namingClient, namingModel, namingNotifier, soulPath, config.Default().LLMRequest)
+	return NewWithRequestConfig(p, client, providerName, modeModels, providers, statePath, store, prefixes, sessionCfg, namingSelection, namingClient, namingModel, namingNotifier, soulPath, config.Default().LLMRequest, nil)
 }
 
 func responseTimeout(cfg config.LLMRequestConfig) time.Duration {
@@ -115,7 +113,7 @@ func responseTimeout(cfg config.LLMRequestConfig) time.Duration {
 	return time.Duration(cfg.ResponseTimeoutSeconds) * time.Second
 }
 
-func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerName string, modeModels map[string]config.ModelSelection, providers map[string]config.ProviderConfig, statePath string, store storage.Store, prefixes []string, sessionCfg session.Config, namingSelection config.ModelSelection, namingClient llm.LLM, namingModel string, namingNotifier session.NamingNotifier, soulPath string, llmRequestConfig config.LLMRequestConfig) *Agent {
+func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerName string, modeModels map[string]config.ModelSelection, providers map[string]config.ProviderConfig, statePath string, store storage.Store, prefixes []string, sessionCfg session.Config, namingSelection config.ModelSelection, namingClient llm.LLM, namingModel string, namingNotifier session.NamingNotifier, soulPath string, llmRequestConfig config.LLMRequestConfig, hookService agentcommands.HookService) *Agent {
 	workModel := modeModels[storage.SessionModeWork]
 	if workModel.Provider == "" || workModel.Model == "" {
 		panic("mode_models.work provider/model is required")
@@ -187,7 +185,7 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 		Compact:              a,
 		ContextStatus:        a,
 		Tools:                a,
-		Hooks:                a,
+		Hooks:                hookService,
 		SetLastSessions:      a.setLastSessions,
 		LastSessions:         a.lastSessions,
 		SessionListPageSize:  a.sessionPageSize,
@@ -325,9 +323,9 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 		}
 	}()
 	woken := a.messageWakeup(ctx, llm.SegmentsTextOnly(segments))
-	if a.hookRuntime != nil && strings.TrimSpace(llm.SegmentsTextOnly(segments)) == "/cancel" {
+	if strings.TrimSpace(llm.SegmentsTextOnly(segments)) == "/cancel" {
 		cancelEvent := a.fillHookContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
-		if a.hookRuntime.Cancel(cancelEvent) {
+		if a.cancelHookRoute(cancelEvent) {
 			a.sendChat(ctx, "已取消当前 Hook 会话。")
 			return nil
 		}
@@ -352,21 +350,19 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 	}
 	ctx = withInboundSegments(ctx, segments)
 	text = llm.SegmentsTextOnly(segments)
-	if a.hookRuntime != nil {
-		if strings.TrimSpace(text) == "/cancel" && a.hookRuntime.Cancel(event) {
-			a.sendChat(ctx, "已取消当前 Hook 会话。")
-			return nil
+	if strings.TrimSpace(text) == "/cancel" && a.cancelHookRoute(event) {
+		a.sendChat(ctx, "已取消当前 Hook 会话。")
+		return nil
+	}
+	handled, outputs, routeErr := a.routeHook(ctx, event)
+	if routeErr != nil {
+		return routeErr
+	}
+	if handled {
+		if err := a.sendOutputs(ctx, outputs); err != nil {
+			return err
 		}
-		handled, outputs, routeErr := a.hookRuntime.Route(ctx, event)
-		if routeErr != nil {
-			return routeErr
-		}
-		if handled {
-			if err := a.sendOutputs(ctx, outputs); err != nil {
-				return err
-			}
-			return nil
-		}
+		return nil
 	}
 	if !woken {
 		return nil
@@ -574,71 +570,6 @@ func (a *Agent) auditLog(level slog.Level, event string, attrs ...any) {
 	}
 	attrs = append([]any{"event", event}, attrs...)
 	a.auditLogger.Log(context.Background(), level, "audit event", attrs...)
-}
-
-func (a *Agent) SetOutputManager(manager delivery.Manager) {
-	a.outputs = manager
-}
-
-func (a *Agent) SetHookManager(manager hook.Manager) {
-	if manager == nil {
-		manager = hook.NoopManager{}
-	}
-	if defaultManager, ok := manager.(*hook.DefaultManager); ok {
-		defaultManager.SetWakeupFunc(a.hookWakeup)
-		defaultManager.SetObserver(a.observeHookRun)
-	}
-	a.hooks = manager
-}
-
-// SetHookRuntime attaches the stateful Hook runtime. It remains separate from
-// the Hook manager's registration API because it owns processes and routes,
-// while the manager continues to own normal Hook ordering and matching.
-func (a *Agent) SetHookRuntime(manager *hookruntime.Manager) {
-	a.hookRuntime = manager
-}
-
-func (a *Agent) SetHookReloader(fn func() (hook.ReloadReport, error)) {
-	a.hookReloader = fn
-}
-
-func (a *Agent) HookList() []hook.Info {
-	return a.hooks.List()
-}
-
-func (a *Agent) HookReload() (hook.ReloadReport, error) {
-	if a.hookReloader == nil {
-		return hook.ReloadReport{}, fmt.Errorf("hook reloader is not configured")
-	}
-	return a.hookReloader()
-}
-
-func (a *Agent) StatefulHooks() []hookruntime.Info {
-	if a.hookRuntime == nil {
-		return nil
-	}
-	return a.hookRuntime.List()
-}
-
-func (a *Agent) StartStatefulHook(id string) error {
-	if a.hookRuntime == nil {
-		return fmt.Errorf("stateful hook runtime is not configured")
-	}
-	return a.hookRuntime.Start(id)
-}
-
-func (a *Agent) StopStatefulHook(ctx context.Context, id string) error {
-	if a.hookRuntime == nil {
-		return fmt.Errorf("stateful hook runtime is not configured")
-	}
-	return a.hookRuntime.Stop(ctx, id)
-}
-
-func (a *Agent) RestartStatefulHook(ctx context.Context, id string) error {
-	if a.hookRuntime == nil {
-		return fmt.Errorf("stateful hook runtime is not configured")
-	}
-	return a.hookRuntime.Restart(ctx, id)
 }
 
 func (a *Agent) SetSecurityPolicy(policy *security.Policy) {
