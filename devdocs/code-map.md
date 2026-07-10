@@ -181,9 +181,14 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 
 先看：
 
-- `internal/hook/`：Hook 基础、内置注册、规则 Hook、hook.v2 exec、持久运行时与常驻记忆插件。
-- `internal/hook/runtime/`：持久 Hook 进程、双向 Pipe RPC、waiting 路由、工具桥接和进程内 SharedState。
-- `internal/agent/hooks.go`：Agent Hook 与输出接入。
+- `internal/hook/event.go`：Hook 点、事件 payload 和 Handler 基础类型。
+- `internal/hook/match.go`：Hook 条件匹配、字段读取和模板值。
+- `internal/hook/manager.go`：普通 Hook 注册、排序、执行与原子 handler 快照替换。
+- `internal/hook/control/`：`/hooks` 的列表、重载和持久进程生命周期管理入口。
+- `internal/hook/builtin/`、`internal/hook/rules/`、`internal/hook/plugins/`：内置注册、规则配置与内置插件。
+- `internal/hook/runtime/`：持久 Hook 配置、进程、双向 Pipe RPC、waiting 路由、工具桥接和进程内 SharedState。
+- `internal/agent/hooks.go`：Agent 的 Hook 执行、上下文和 continuation 接入。
+- `internal/agent/output.go`：Agent 的 Output Manager 与平台 sender 接入。
 - `docs/hooks.md`：用户侧 Hook 文档。
 
 常用搜索：
@@ -201,7 +206,7 @@ rg -n "Event|Handler|Control|plugins/hooks.toml|exec|hook.v2|runtime|SharedState
 
 - `internal/delivery/`：平台无关输出意图和发送管理。
 - `internal/agent/turn_output.go`：Agent turn 输出适配。
-- `internal/agent/hooks.go`：Hook/工具输出意图接入。
+- `internal/agent/output.go`：Agent 的 Hook/工具输出意图和平台 sender 接入。
 - `internal/platform/platform.go`：平台发送抽象。
 
 常用搜索：

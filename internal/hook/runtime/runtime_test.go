@@ -120,3 +120,35 @@ func waitForStatus(t *testing.T, manager *Manager, id string, wanted Status) {
 	}
 	t.Fatalf("hook %q did not reach %s: %#v", id, wanted, manager.List())
 }
+
+func TestManagerApplyInvalidConfigKeepsCurrentWorkers(t *testing.T) {
+	manager := NewManager(Options{SharedDir: t.TempDir()})
+	config := Config{
+		Stateful:               true,
+		Command:                runtimeHelperCommand(),
+		Cwd:                    ".",
+		StartupTimeoutSeconds:  2,
+		ShutdownTimeoutSeconds: 2,
+		EventTimeoutSeconds:    2,
+		MaxWaitSeconds:         30,
+		Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
+		ID:                     "current",
+		Dir:                    t.TempDir(),
+	}
+	if err := manager.Apply([]Config{config}); err != nil {
+		t.Fatalf("Apply current: %v", err)
+	}
+	t.Cleanup(func() { manager.Close(context.Background()) })
+	waitForStatus(t, manager, "current", StatusReady)
+
+	invalid := config
+	invalid.ID = "invalid"
+	invalid.Command = ""
+	if err := manager.Apply([]Config{invalid}); err == nil {
+		t.Fatal("expected invalid config error")
+	}
+	infos := manager.List()
+	if len(infos) != 1 || infos[0].ID != "current" || infos[0].Status != StatusReady {
+		t.Fatalf("workers after invalid Apply = %#v", infos)
+	}
+}

@@ -5,6 +5,7 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/hook"
+	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/logging"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
@@ -95,6 +96,10 @@ type ToolService interface {
 type HookService interface {
 	HookList() []hook.Info
 	HookReload() (hook.ReloadReport, error)
+	StatefulHooks() []hookruntime.Info
+	StartStatefulHook(id string) error
+	StopStatefulHook(ctx context.Context, id string) error
+	RestartStatefulHook(ctx context.Context, id string) error
 }
 
 type LogService interface {

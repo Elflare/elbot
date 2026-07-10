@@ -449,6 +449,13 @@ always = true
 	if len(cfg.Runtimes) != 1 || cfg.Runtimes[0].ID != "weather" || len(cfg.Rules) != 1 || cfg.Rules[0].source.RuntimeID != "weather" {
 		t.Fatalf("config = %#v", cfg)
 	}
+	module, err := NewModule(Options{ConfigDir: dir})
+	if err != nil {
+		t.Fatalf("NewModule: %v", err)
+	}
+	if len(module.Runtimes) != 1 || module.Runtimes[0].ID != "weather" {
+		t.Fatalf("module runtimes = %#v", module.Runtimes)
+	}
 }
 
 func TestLoadConfigSkipsInvalidPluginRuleOnly(t *testing.T) {

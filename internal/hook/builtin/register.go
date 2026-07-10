@@ -29,12 +29,14 @@ type Options struct {
 	Runtime             *hookruntime.Manager
 }
 
-func RegisterAll(registrar hook.Registrar, opts Options) error {
+func RegisterAll(registrar hook.Registrar, opts Options) ([]hookruntime.Config, error) {
 	if registrar == nil {
-		return nil
+		return nil, nil
 	}
 	residentMemoryModule := residentmemory.NewModule(residentmemory.Options{Store: opts.ResidentMemoryStore})
-	registerModule(registrar, opts, "resident_memory", residentMemoryModule)
+	if err := registerModule(registrar, opts, "resident_memory", residentMemoryModule); err != nil {
+		return nil, err
+	}
 
 	rulesModule, err := rules.NewModule(rules.Options{
 		ConfigDir:       opts.ConfigDir,
@@ -48,17 +50,22 @@ func RegisterAll(registrar hook.Registrar, opts Options) error {
 		Runtime:         opts.Runtime,
 	})
 	if err == nil {
-		registerModule(registrar, opts, "rules", rulesModule)
+		if err := registerModule(registrar, opts, "rules", rulesModule); err != nil {
+			return nil, err
+		}
 	} else {
 		reportPluginError(opts, "rules", err)
+		return nil, err
 	}
-	return nil
+	return append([]hookruntime.Config(nil), rulesModule.Runtimes...), nil
 }
 
-func registerModule(registrar hook.Registrar, opts Options, name string, module hook.Module) {
+func registerModule(registrar hook.Registrar, opts Options, name string, module hook.Module) error {
 	if err := module.RegisterHooks(registrar); err != nil {
 		reportPluginError(opts, name, err)
+		return err
 	}
+	return nil
 }
 
 func reportPluginError(opts Options, name string, err error) {

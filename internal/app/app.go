@@ -22,6 +22,7 @@ import (
 	"elbot/internal/elvena"
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
+	hookcontrol "elbot/internal/hook/control"
 	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/llm/openai"
 	"elbot/internal/logging"
@@ -331,36 +332,34 @@ func Run(ctx context.Context, opts Options) error {
 		PlatformCallers: hookPlatformCallerResolver{runtimes: platforms.Runtimes},
 		Runtime:         hookRuntime,
 	}
-	if err := hookbuiltin.RegisterAll(hooks, hookOpts); err != nil {
-		logger.Error("hook registration failed", "error", err)
-		notifyHookIssue(context.Background(), fmt.Sprintf("Hook 注册失败：%v", err))
-	}
-	if err := registerCronPlatformHook(hooks, cronService); err != nil {
-		logger.Error("cron platform hook registration failed", "error", err)
-		notifyHookIssue(context.Background(), fmt.Sprintf("Cron Hook 注册失败：%v", err))
-	}
-	profiler.Mark("hook register")
-	agt = agent.NewWithRequestConfig(platforms.Primary, adapter, workModel.Provider, cfg.ModeModels, cfg.Providers, cfg.StateConfigPath, store, cfg.Commands.Prefixes, session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode}, cfg.NamingModel, namingAdapter, namingModel, namingLogger{logger: logger}, cfg.Soul.Path, cfg.LLMRequest)
-	agt.SetHookManager(hooks)
-	agt.SetHookRuntime(hookRuntime)
-	agt.SetHookReloader(func() (hook.ReloadReport, error) {
+	loadHooks := func(registrar hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {
 		var notices []string
-		reloadOpts := hookOpts
-		reloadOpts.Notify = func(ctx context.Context, text string) {
+		loadOpts := hookOpts
+		loadOpts.Notify = func(_ context.Context, text string) {
 			text = strings.TrimSpace(text)
 			if text != "" {
 				notices = append(notices, text)
 			}
 		}
-		hooks.Reset()
-		if err := hookbuiltin.RegisterAll(hooks, reloadOpts); err != nil {
-			return hook.ReloadReport{Notices: notices}, err
+		configs, err := hookbuiltin.RegisterAll(registrar, loadOpts)
+		if err == nil {
+			err = registerCronPlatformHook(registrar, cronService)
 		}
-		if err := registerCronPlatformHook(hooks, cronService); err != nil {
-			return hook.ReloadReport{Notices: notices}, err
-		}
-		return hook.ReloadReport{Notices: notices}, nil
-	})
+		return hook.ReloadReport{Notices: notices}, configs, err
+	}
+	hookService := hookcontrol.New(hooks, hookRuntime, loadHooks)
+	report, err := hookService.HookReload()
+	for _, notice := range report.Notices {
+		notifyHookIssue(context.Background(), notice)
+	}
+	if err != nil {
+		logger.Error("hook registration failed", "error", err)
+		notifyHookIssue(context.Background(), fmt.Sprintf("Hook 注册失败：%v", err))
+	}
+	profiler.Mark("hook register")
+	agt = agent.NewWithRequestConfig(platforms.Primary, adapter, workModel.Provider, cfg.ModeModels, cfg.Providers, cfg.StateConfigPath, store, cfg.Commands.Prefixes, session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode}, cfg.NamingModel, namingAdapter, namingModel, namingLogger{logger: logger}, cfg.Soul.Path, cfg.LLMRequest, hookService)
+	agt.SetHookManager(hooks)
+	agt.SetHookRuntime(hookRuntime)
 	agt.SetOutputManager(delivery.NewManager(nil, logger))
 	agt.SetSessionListPageSize(cfg.View.SessionListPageSize)
 	agt.SetCleanupRetentionDays(cfg.Maintenance.SessionCleanup.RetentionDays)

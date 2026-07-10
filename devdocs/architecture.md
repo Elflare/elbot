@@ -154,7 +154,7 @@ Skill 分三类：
 <!-- locator:hook -->
 ## Hook 链路
 
-Hook Manager 按事件点和优先级串行执行 Handler。
+普通 Hook Manager 按事件点和优先级串行执行 Handler，`hook/control.Service` 作为 `/hooks` 的独立管理入口，组合普通 Manager、持久 Runtime 和配置 loader。
 
 常见来源：
 
@@ -165,6 +165,8 @@ Hook Manager 按事件点和优先级串行执行 Handler。
 
 约定：
 
+- Hook 配置先加载到候选 Manager，并完成持久 Runtime 配置校验；候选构建或校验失败时保留当前活动 Hook。提交时先一次性替换 Runtime worker 索引，再原子替换普通 Hook handler 快照。
+- 持久进程启动仍是异步生命周期，reload 提交后可短暂处于 `starting`，进程后续失败由既有状态和重启策略处理。
 - Hook 可返回控制字段和输出意图。
 - Hook 不直接发平台消息。
 - 输出预处理 Hook 运行在 assistant 最终发送前。

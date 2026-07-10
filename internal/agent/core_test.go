@@ -2352,7 +2352,7 @@ actions = [
 	if err := os.WriteFile(filepath.Join(configDir, "hooks.toml"), []byte(hooksTOML), 0o644); err != nil {
 		t.Fatalf("write hooks.toml: %v", err)
 	}
-	if err := hookbuiltin.RegisterAll(manager, hookbuiltin.Options{ConfigDir: configDir}); err != nil {
+	if _, err := hookbuiltin.RegisterAll(manager, hookbuiltin.Options{ConfigDir: configDir}); err != nil {
 		t.Fatalf("RegisterAll: %v", err)
 	}
 	a.SetHookManager(manager)
@@ -3864,7 +3864,7 @@ actions = [
 	if err := os.WriteFile(filepath.Join(configDir, "hooks.toml"), []byte(hooksTOML), 0o644); err != nil {
 		t.Fatalf("write hooks.toml: %v", err)
 	}
-	if err := hookbuiltin.RegisterAll(manager, hookbuiltin.Options{ConfigDir: configDir}); err != nil {
+	if _, err := hookbuiltin.RegisterAll(manager, hookbuiltin.Options{ConfigDir: configDir}); err != nil {
 		t.Fatalf("RegisterAll: %v", err)
 	}
 	a.SetHookManager(manager)

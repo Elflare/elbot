@@ -24,14 +24,17 @@ text = "!"
 	}
 	manager := hook.NewManager()
 	notices := []string{}
-	err := RegisterAll(manager, Options{
+	configs, err := RegisterAll(manager, Options{
 		ConfigDir: dir,
 		Notify: func(ctx context.Context, text string) {
 			notices = append(notices, text)
 		},
 	})
-	if err != nil {
-		t.Fatalf("RegisterAll returned fatal error: %v", err)
+	if err == nil {
+		t.Fatal("expected root Hook config error")
+	}
+	if len(configs) != 0 {
+		t.Fatalf("runtime configs = %#v, want none", configs)
 	}
 	if len(notices) == 0 {
 		t.Fatal("expected hook config notice")

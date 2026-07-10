@@ -12,39 +12,34 @@ import (
 
 type fakeHookService struct {
 	infos        []hook.Info
+	runtimeInfos []hookruntime.Info
 	reloadReport hook.ReloadReport
+	started      string
+	stopped      string
+	restarted    string
 }
 
-func (s fakeHookService) HookList() []hook.Info { return s.infos }
-func (s fakeHookService) HookReload() (hook.ReloadReport, error) {
+func (s *fakeHookService) HookList() []hook.Info { return s.infos }
+func (s *fakeHookService) HookReload() (hook.ReloadReport, error) {
 	return s.reloadReport, nil
 }
-
-type fakeStatefulHookService struct {
-	fakeHookService
-	infos     []hookruntime.Info
-	started   string
-	stopped   string
-	restarted string
-}
-
-func (s *fakeStatefulHookService) StatefulHooks() []hookruntime.Info { return s.infos }
-func (s *fakeStatefulHookService) StartStatefulHook(id string) error {
+func (s *fakeHookService) StatefulHooks() []hookruntime.Info { return s.runtimeInfos }
+func (s *fakeHookService) StartStatefulHook(id string) error {
 	s.started = id
 	return nil
 }
-func (s *fakeStatefulHookService) StopStatefulHook(_ context.Context, id string) error {
+func (s *fakeHookService) StopStatefulHook(_ context.Context, id string) error {
 	s.stopped = id
 	return nil
 }
-func (s *fakeStatefulHookService) RestartStatefulHook(_ context.Context, id string) error {
+func (s *fakeHookService) RestartStatefulHook(_ context.Context, id string) error {
 	s.restarted = id
 	return nil
 }
 
 func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
 	longDescription := "123456789012345678901234567890123456789012345678901234567890tail"
-	hooks := fakeHookService{infos: []hook.Info{
+	hooks := &fakeHookService{infos: []hook.Info{
 		{
 			Name:        "greet",
 			Description: longDescription,
@@ -79,7 +74,7 @@ func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
 }
 
 func TestHooksCommandCompletesRuleNameWithoutRulesPrefix(t *testing.T) {
-	hooks := fakeHookService{infos: []hook.Info{{Name: "greet", Point: hook.PointPlatformMessageReceived}}}
+	hooks := &fakeHookService{infos: []hook.Info{{Name: "greet", Point: hook.PointPlatformMessageReceived}}}
 	cmd := NewHooks(Deps{Hooks: hooks}).(command.Completer)
 
 	got := cmd.Complete(context.Background(), command.CompletionRequest{Raw: "/hooks g", Prefix: "/", Name: "hooks", Args: "g", Cursor: len("/hooks g")})
@@ -89,7 +84,7 @@ func TestHooksCommandCompletesRuleNameWithoutRulesPrefix(t *testing.T) {
 }
 
 func TestHooksReloadShowsWarnings(t *testing.T) {
-	hooks := fakeHookService{reloadReport: hook.ReloadReport{Notices: []string{"Hook 插件 gpt_image 已跳过：bad field"}}}
+	hooks := &fakeHookService{reloadReport: hook.ReloadReport{Notices: []string{"Hook 插件 gpt_image 已跳过：bad field"}}}
 	cmd := NewHooks(Deps{Hooks: hooks})
 
 	result, err := cmd.Handle(context.Background(), command.Request{Args: "reload"})
@@ -102,7 +97,7 @@ func TestHooksReloadShowsWarnings(t *testing.T) {
 }
 
 func TestHooksCommandManagesStatefulHooks(t *testing.T) {
-	hooks := &fakeStatefulHookService{infos: []hookruntime.Info{{ID: "weather", Description: "weather loop", Status: hookruntime.StatusReady}}}
+	hooks := &fakeHookService{runtimeInfos: []hookruntime.Info{{ID: "weather", Description: "weather loop", Status: hookruntime.StatusReady}}}
 	cmd := NewHooks(Deps{Hooks: hooks})
 
 	result, err := cmd.Handle(context.Background(), command.Request{})
