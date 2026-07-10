@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "1c6661fdd9420a3529f656ecdc2250c1bc201d77ee870e50a3c10e8a10d6709f",
+      "source_hash": "9d1f1a717140cf3ba79b8eb7478a228c6fbf23b49fa248b9bdcca4585b98484a",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783571675
+      "updated_at": 1783658112
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -350,6 +350,14 @@
       "translation": "Elvena v3 action channel: Elnis supports __ELBOT_CODE_0__, initially supporting raw platform APIs as well as __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ capabilities; unsupported ones can directly call the messaging platform API.",
       "updated_at": 1782395477
     },
+    "CHANGELOG.md:list:452192294ae296b84042bb201edbf0936231be05a01c5ff72cc9a3409d6ce4d4": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 新增 __ELBOT_CODE_1__，可对 Go 和 Shell 文件按名称进行轻量 AST 搜索；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "452192294ae296b84042bb201edbf0936231be05a01c5ff72cc9a3409d6ce4d4",
+      "translation": "__ELBOT_CODE_0__ added __ELBOT_CODE_1__, enabling lightweight AST search by name for Go and Shell files;",
+      "updated_at": 1783658112
+    },
     "CHANGELOG.md:list:48a9dbb08660f2dae754713aea25100d54b59eb98c8a3fea1d54df9cfb657b67": {
       "kind": "list",
       "source": "read_el_skill 现在依赖modify_el_skill，方便执行可能的修改",
@@ -509,6 +517,14 @@
       "source_hash": "6d478a5dfd779970629f0cfd46fe4d8231a05246961a162a024ed3172b1cfa56",
       "translation": "The first run will generate __ELBOT_CODE_0__, which serves as a prompt to write ElBot rule Hooks according to your needs.",
       "updated_at": 1783392486
+    },
+    "CHANGELOG.md:list:70f1550f6bf2f281c0cb0927e41c0bb07572e4e28e171b808ba30dfe69f1597f": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 同时统一为 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ 三种读取模式。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "70f1550f6bf2f281c0cb0927e41c0bb07572e4e28e171b808ba30dfe69f1597f",
+      "translation": "__ELBOT_CODE_0__ is also unified into three reading modes: __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__.",
+      "updated_at": 1783658112
     },
     "CHANGELOG.md:list:714c6568883b5a6b6d519ae10020e60c5d54a73ae7f39b8f6636810137a32aeb": {
       "kind": "list",
