@@ -54,28 +54,81 @@ actions = [
 ]
 ```
 
-Host 依次写入两个 request：`system.init` 和 `event.handle`。脚本以相同 `host:*` ID 写 response。`event.handle` 的成功 result 使用：
+Host 先写入 `system.init` request，收到成功 response 后再写入 `event.handle` request。每个帧占 stdout/stdin 的一行 JSON。一次性 exec 收到的完整 request 形如：
+
+```json
+{"type":"request","id":"host:init","method":"system.init","params":{"version":"hook.v2","runtime":{"plugin_name":"demo","plugin_dir":"C:/elbot/plugins/demo","config_path":"C:/elbot/plugins/demo/hook.toml","rule_name":"demo_rule","cwd":"C:/elbot/plugins/demo"}}}
+{"type":"request","id":"host:event","method":"event.handle","params":{"event":{"point":"platform.message.received","platform":{"name":"qqonebot","scope_id":"group:123","message_id":"456","reply_to_message_id":"789"},"actor":{"id":"qqonebot:10001"},"message":{"role":"user","segments":[{"type":"text","text":"撤回"}]}},"match":{},"runtime":{"plugin_name":"demo","plugin_dir":"C:/elbot/plugins/demo","config_path":"C:/elbot/plugins/demo/hook.toml","rule_name":"demo_rule","cwd":"C:/elbot/plugins/demo"}}}
+```
+
+事件数据位于 `params.event`；规则正则捕获位于 `params.match`。示例只展开常用字段，实际 `event` 字段见后文“模板与字段”。
+
+Hook 必须使用相同的 `host:*` ID 回写 response。`system.init` 通常返回空对象：
+
+```json
+{"type":"response","id":"host:init","ok":true,"result":{}}
+```
+
+`event.handle` 的完整成功 response 为：
 
 ```json
 {
-  "status": "completed",
-  "result": "optional template result",
-  "message": {"text": "optional replacement text"},
-  "outputs": [{"kind": "text", "text": "hello"}],
-  "consume": false,
-  "stop_propagation": false
+  "type": "response",
+  "id": "host:event",
+  "ok": true,
+  "result": {
+    "status": "completed",
+    "result": "optional template result",
+    "message": {"text": "optional replacement text"},
+    "outputs": [{"kind": "text", "text": "hello"}],
+    "consume": false,
+    "stop_propagation": false
+  }
 }
+```
+
+处理失败时返回 `ok=false` 和 `error`，不写 `result`：
+
+```json
+{"type":"response","id":"host:event","ok":false,"error":"missing platform.reply_to_message_id"}
 ```
 
 `outputs` 是输出意图数组；相对 `path` 相对插件目录解析。大媒体请写入插件目录或 `_shared/` 后返回路径或 URL，不要放进 JSON Pipe。stderr 只用于日志和失败诊断，stdout 只能输出协议帧。
 
-Hook 主动请求 Host 能力时使用：
+Hook 主动请求 Host 调用当前平台 API 时，使用 `platform.call`。`platform` 可省略，默认取 `params.event.platform.name`；若显式填写，只能等于当前事件平台。平台 API 自身的参数放在内层 `params`，不是 Hook output target。
+
+QQ OneBot 撤回示例：
 
 ```json
-{"type":"request","id":"plugin:send-1","method":"platform.call","params":{}}
+{
+  "type": "request",
+  "id": "plugin:recall-1",
+  "method": "platform.call",
+  "params": {
+    "platform": "qqonebot",
+    "api": "delete_msg",
+    "params": {
+      "message_id": "789"
+    }
+  }
+}
 ```
 
-Host 回写 `response`。Host 发起的 ID 必须是 `host:*`，Hook 发起的 ID 必须是 `plugin:*`；response 复用原 request ID。
+这里的 `message_id` 可取自 `params.event.platform.reply_to_message_id`。`delete_msg` 不需要额外声明群聊或私聊 target；其他平台 API 需要哪些目标字段，由对应平台 API 定义。
+
+Host 成功后复用 `plugin:*` ID 回写：
+
+```json
+{"type":"response","id":"plugin:recall-1","ok":true,"result":{}}
+```
+
+`result` 是平台 adapter 返回的数据：若平台返回 JSON，Host 原样作为 JSON 值放入 `result`；否则放入字符串。其结构没有跨平台约定，Hook 应以外层 `ok` 判断通用成功，只有明确依赖某个平台 API 时才解析 `result`。失败回包为：
+
+```json
+{"type":"response","id":"plugin:recall-1","ok":false,"error":"platform api call failed"}
+```
+
+Host 发起的 ID 必须使用 `host:*`，Hook 发起的 ID 必须使用 `plugin:*`；response 必须复用原 request ID。stdout 只能写协议帧，日志写 stderr。
 
 ## 持久 Hook
 

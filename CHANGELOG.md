@@ -53,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 补全 `docs/hooks.md` 中 hook.v2 的完整 `system.init` / `event.handle` request、成功与失败 response 外层帧，以及 `platform.call.params`、平台回包和 QQ OneBot 撤回示例。
 - `/hooks` 现在直接使用规则名查看详情，不再要求输入 `rules.` 前缀；规则 Hook 支持可选 `description`，内置 Hook 统一使用 `builtin.*` 名称和 description，规则细节只在详情中展示。
 - 修复发现或内联预载多个 ELyph Skill 时规则卡会重复注入上下文的问题；同一会话首次注入后只继续返回 Skill 内容，保留历史中的首次规则卡以利于缓存命中。
 - 修复同一时间戳下会话消息可能按 UUID 错序加载，导致历史上下文顺序不稳定的问题。
