@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "9d1f1a717140cf3ba79b8eb7478a228c6fbf23b49fa248b9bdcca4585b98484a",
+      "source_hash": "dcccefb4a2a1e50dbc341e28106ae7e3be6383f36622079edc60bd28d15bd22b",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783658112
+      "updated_at": 1783679790
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -85,6 +85,14 @@
       "source_hash": "05a9e4447fd45b2d4076875eef3c2a7bdf6a16a84f6e8b476b1080ff1cffd0dd",
       "translation": "__ELBOT_CODE_0__ no longer exposes the __ELBOT_CODE_1__ parameter to the LLM; the system will automatically pre-check and generate a diff before user confirmation, and if the pre-check fails, it will not proceed to confirmation or write to the file.",
       "updated_at": 1782631048
+    },
+    "CHANGELOG.md:list:05ad1627b0b86b34c1e51497f2bd17f7f5e0bba778087015e06478d449d61a2b": {
+      "kind": "list",
+      "source": "统一由 __ELBOT_CODE_0__ 列表、详情、启动、停止、重启与重载管理。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "05ad1627b0b86b34c1e51497f2bd17f7f5e0bba778087015e06478d449d61a2b",
+      "translation": "Unified management via __ELBOT_CODE_0__ for listing, details, starting, stopping, restarting, and reloading.",
+      "updated_at": 1783679790
     },
     "CHANGELOG.md:list:08a9f4bd4b91764404716cc4408cc3a4cebdbd94393d6470bde4721425c133b3": {
       "kind": "list",
@@ -358,6 +366,14 @@
       "translation": "__ELBOT_CODE_0__ added __ELBOT_CODE_1__, enabling lightweight AST search by name for Go and Shell files;",
       "updated_at": 1783658112
     },
+    "CHANGELOG.md:list:462d10b37e3d09f43ef3372ca72b74042d240fe0073172dc7468e34fe915057d": {
+      "kind": "list",
+      "source": "新增 Hook 共享空间 __ELBOT_CODE_0__ 及进程内 JSON SharedState，提供命名空间 KV 和 compare-and-swap 协调能力。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "462d10b37e3d09f43ef3372ca72b74042d240fe0073172dc7468e34fe915057d",
+      "translation": "Added Hook shared space __ELBOT_CODE_0__ and in-process JSON SharedState, providing namespace KV and compare-and-swap coordination capabilities.",
+      "updated_at": 1783679790
+    },
     "CHANGELOG.md:list:48a9dbb08660f2dae754713aea25100d54b59eb98c8a3fea1d54df9cfb657b67": {
       "kind": "list",
       "source": "read_el_skill 现在依赖modify_el_skill，方便执行可能的修改",
@@ -469,6 +485,14 @@
       "source_hash": "611aafc7e8d828767ae2b38b0e5c3d0fead2cde039834d37560cbe5b03c27491",
       "translation": "__ELBOT_CODE_0__ audit events changed from debug level to info level; token consumption data can now be recorded by default with __ELBOT_CODE_1__.",
       "updated_at": 1782884148
+    },
+    "CHANGELOG.md:list:63042250d07ae50433d3c6faa823eff52bf4bcf75d54ebf86ec8266ff7a67323": {
+      "kind": "list",
+      "source": "Hook exec 协议统一升级为 __ELBOT_CODE_0__，支持 request/response/event 帧、双向 Pipe RPC 和 Host/Hook 请求 ID 隔离；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "63042250d07ae50433d3c6faa823eff52bf4bcf75d54ebf86ec8266ff7a67323",
+      "translation": "The Hook exec protocol has been unified and upgraded to __ELBOT_CODE_0__, supporting request/response/event frames, bidirectional Pipe RPC, and Host/Hook request ID isolation;",
+      "updated_at": 1783679790
     },
     "CHANGELOG.md:list:6591817f82efe0b2c5e6a0f20415974f7b06b4e8cd819ab6c957df0b3a56c245": {
       "kind": "list",
@@ -998,6 +1022,14 @@
       "translation": "Added JSON tags consistently to Hook event and related payload structs.",
       "updated_at": 1782376912
     },
+    "CHANGELOG.md:list:ca10caffe2003bd1607d5b26cdbb8ff6dc9f669d4a4cc48d8cea113993019de2": {
+      "kind": "list",
+      "source": "旧 __ELBOT_CODE_0__ 脚本需要迁移。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ca10caffe2003bd1607d5b26cdbb8ff6dc9f669d4a4cc48d8cea113993019de2",
+      "translation": "Legacy __ELBOT_CODE_0__ scripts need to be migrated.",
+      "updated_at": 1783679790
+    },
     "CHANGELOG.md:list:cb42950d3097afb350e0270a9241489518a607d30bcc8c00f788f103348b188a": {
       "kind": "list",
       "source": "**SQLite 持久化**：Session、消息、上下文摘要、工具调用记录、Cron job、Elnis 事件统一存储。",
@@ -1181,6 +1213,14 @@
       "source_hash": "f191a10fa95a661a532ab05af86e47b4652486eaaadeac994e312f48821af516",
       "translation": "The __ELBOT_CODE_0__ command now displays the current execution stage (preparing/llm/tool/sending) and the duration of each stage for every turn, allowing you to distinguish whether the LLM is slow or the platform delivery is stuck.",
       "updated_at": 1782952540
+    },
+    "CHANGELOG.md:list:f6393e59f31848957eb7f5829f415e64d8d45522b3fc84d8f793ccb38541a193": {
+      "kind": "list",
+      "source": "新增持久 Hook：在插件 __ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 声明生命周期、重启、工具白名单和多轮 waiting 会话；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "f6393e59f31848957eb7f5829f415e64d8d45522b3fc84d8f793ccb38541a193",
+      "translation": "Added persistent Hooks: declare lifecycle, restart, tool whitelist, and multi-turn waiting Sessions in the __ELBOT_CODE_1__ of plugin __ELBOT_CODE_0__;",
+      "updated_at": 1783679790
     },
     "CHANGELOG.md:list:f6c1cb497ae4f2ad103aff727d2c39baae1e5a5217229da9cedaecc67ef9c4ce": {
       "kind": "list",
