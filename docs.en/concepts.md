@@ -114,6 +114,7 @@ Common tool capabilities include:
 - Cron management.
 - Skill creation, modification, and execution.
 
+
 ## Security Policy
 
 ElBot's tool system includes risk levels and permission control.
