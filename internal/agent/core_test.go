@@ -2325,13 +2325,14 @@ func TestToolCallAssistantEmoticonSendsBeforeFinalResponse(t *testing.T) {
 	if err := os.WriteFile(imgPath, []byte("fake"), 0o644); err != nil {
 		t.Fatalf("write emoticon image: %v", err)
 	}
-	// Shell script: read init frame, emit an emoticon output frame and cleaned text.
+	// Shell script: complete the hook.v2 handshake, then return an emoticon and cleaned text.
 	scriptPath := filepath.Join(configDir, "emoticon_extract.sh")
 	script := `#!/bin/sh
 read init
+printf '{"type":"response","id":"host:init","ok":true,"result":{}}\n'
+read event
 img=$(ls emoticons/微笑/*.png 2>/dev/null | head -1)
-printf '{"type":"output","outputs":[{"kind":"emoticon","name":"微笑","path":"%s"}]}\n' "$img"
-printf '{"type":"done","message":{"text":"我先查一下"}}\n'
+printf '{"type":"response","id":"host:event","ok":true,"result":{"status":"completed","outputs":[{"kind":"emoticon","name":"微笑","path":"%s"}],"message":{"text":"我先查一下"}}}\n' "$img"
 `
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write script: %v", err)
@@ -3840,9 +3841,10 @@ func TestEmoticonHookSendsSeparateOutputAndCleansPersistedContent(t *testing.T) 
 	scriptPath := filepath.Join(configDir, "emoticon_extract.sh")
 	script := `#!/bin/sh
 read init
+printf '{"type":"response","id":"host:init","ok":true,"result":{}}\n'
+read event
 img=$(ls emoticons/微笑/*.png 2>/dev/null | head -1)
-printf '{"type":"output","outputs":[{"kind":"emoticon","name":"微笑","path":"%s"}]}\n' "$img"
-printf '{"type":"done","message":{"text":"像这样~"}}\n'
+printf '{"type":"response","id":"host:event","ok":true,"result":{"status":"completed","outputs":[{"kind":"emoticon","name":"微笑","path":"%s"}],"message":{"text":"像这样~"}}}\n' "$img"
 `
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write script: %v", err)

@@ -19,13 +19,235 @@ import (
 )
 
 const (
-	hookProtocolVersion       = "hook.v1"
+	hookProtocolVersion       = "hook.v2"
 	maxHookProtocolFrameBytes = 16 * 1024 * 1024
 	maxHookOutputBase64Bytes  = 10 * 1024 * 1024
 	largeOutputRecommendation = "write large media to a file and return outputs[].path or outputs[].url instead of inline base64"
 )
 
+// runExec executes the one-shot variant of hook.v2. The process performs a
+// request/response handshake, receives one event.handle request, and returns a
+// completed result before exiting. Stateful hooks use internal/hook/runtime.
 func (m Module) runExec(ctx context.Context, event hook.Event, action Action, state state) (hook.Event, actionResult, error) {
+	command := render(action.Command, event, state)
+	if strings.TrimSpace(command) == "" {
+		return event, actionResult{Error: "command is required"}, fmt.Errorf("command is required")
+	}
+	runCtx := ctx
+	cancel := func() {}
+	if action.TimeoutSeconds > 0 {
+		runCtx, cancel = context.WithTimeout(ctx, time.Duration(action.TimeoutSeconds)*time.Second)
+	}
+	defer cancel()
+	argv, err := splitExecCommand(command)
+	if err != nil || len(argv) == 0 {
+		if err == nil {
+			err = fmt.Errorf("command is required")
+		}
+		return event, actionResult{Error: err.Error()}, err
+	}
+	cwd, err := m.execCwd(action, event, state)
+	if err != nil {
+		return event, actionResult{Error: err.Error()}, err
+	}
+	cmd := exec.CommandContext(runCtx, argv[0], argv[1:]...)
+	cmd.Dir = cwd
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return event, actionResult{Error: err.Error()}, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return event, actionResult{Error: err.Error()}, err
+	}
+	stderrTail := newExecStderrTail()
+	stderrLogger := newExecStderrLogger(m, action, stderrTail)
+	cmd.Stderr = stderrLogger
+	if err := cmd.Start(); err != nil {
+		return event, actionResult{Error: err.Error()}, err
+	}
+	defer stdin.Close()
+	waited := false
+	waitExec := func() error {
+		if waited {
+			return nil
+		}
+		waited = true
+		err := cmd.Wait()
+		stderrLogger.Flush()
+		return err
+	}
+	fail := func(result actionResult, source error) (hook.Event, actionResult, error) {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		waitErr := waitExec()
+		if contextErr := execContextError(runCtx, action); contextErr != nil {
+			source = contextErr
+		} else if source == nil {
+			source = execProcessError(runCtx, action, waitErr)
+		}
+		source = withExecStderr(source, stderrTail.String())
+		result.Error = source.Error()
+		return event, result, source
+	}
+
+	reader := bufio.NewReader(stdout)
+	runtime := map[string]any{
+		"plugin_name": action.source.PluginName,
+		"plugin_dir":  action.source.BaseDir,
+		"config_path": action.source.ConfigPath,
+		"rule_name":   firstNonEmpty(action.source.FinalName, action.Name),
+		"cwd":         cwd,
+	}
+	initID := "host:init"
+	if err := writeV2Request(stdin, initID, "system.init", map[string]any{"version": hookProtocolVersion, "runtime": runtime}); err != nil {
+		return fail(actionResult{}, pluginStdinWriteError("system.init", err))
+	}
+	if _, err := m.readV2Response(runCtx, reader, stdin, event, action, state, initID); err != nil {
+		return fail(actionResult{}, err)
+	}
+	eventID := "host:event"
+	params := map[string]any{"event": event, "match": eventMatchContext(event), "runtime": runtime}
+	if err := writeV2Request(stdin, eventID, "event.handle", params); err != nil {
+		return fail(actionResult{}, pluginStdinWriteError("event.handle", err))
+	}
+	rawResult, err := m.readV2Response(runCtx, reader, stdin, event, action, state, eventID)
+	if err != nil {
+		return fail(actionResult{}, err)
+	}
+	result, updated, err := v2EventResult(event, action, state, rawResult)
+	if err != nil {
+		return fail(result, err)
+	}
+	event = updated
+	if err := waitExec(); err != nil {
+		err = withExecStderr(execProcessError(runCtx, action, err), stderrTail.String())
+		return event, actionResult{Error: err.Error()}, err
+	}
+	return event, result, nil
+}
+
+func writeV2Request(w io.Writer, id, method string, params any) error {
+	return writeProtocolFrame(w, map[string]any{"type": "request", "id": id, "method": method, "params": params})
+}
+
+func writeV2Response(w io.Writer, id string, result any, sourceErr error) error {
+	response := map[string]any{"type": "response", "id": id, "ok": sourceErr == nil}
+	if sourceErr != nil {
+		response["error"] = sourceErr.Error()
+	} else {
+		response["result"] = result
+	}
+	return writeProtocolFrame(w, response)
+}
+
+func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin io.Writer, event hook.Event, action Action, state state, wantedID string) (json.RawMessage, error) {
+	for {
+		line, err := readProtocolLine(reader)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil, fmt.Errorf("hook.v2 plugin closed stdout while waiting for response %q", wantedID)
+			}
+			return nil, err
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var frame map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(line), &frame); err != nil {
+			return nil, fmt.Errorf("parse hook.v2 stdout frame: %w; line=%s", err, shortProtocolLine(line))
+		}
+		switch frameString(frame, "type") {
+		case "response":
+			id := frameString(frame, "id")
+			if !strings.HasPrefix(id, "host:") {
+				return nil, fmt.Errorf("hook.v2 response id %q must use host: prefix", id)
+			}
+			if id != wantedID {
+				return nil, fmt.Errorf("unexpected hook.v2 response id %q while waiting for %q", id, wantedID)
+			}
+			var ok bool
+			if raw := frame["ok"]; len(raw) == 0 || json.Unmarshal(raw, &ok) != nil || !ok {
+				return nil, fmt.Errorf("hook.v2 request %q failed: %s", wantedID, firstNonEmpty(frameString(frame, "error"), "plugin returned ok=false"))
+			}
+			return frame["result"], nil
+		case "request":
+			id := frameString(frame, "id")
+			if !strings.HasPrefix(id, "plugin:") {
+				return nil, fmt.Errorf("hook.v2 request id %q must use plugin: prefix", id)
+			}
+			result, requestErr := m.handleProtocolRequest(ctx, event, action, state, frame)
+			if err := writeV2Response(stdin, id, result, requestErr); err != nil {
+				return nil, pluginStdinWriteError("response", err)
+			}
+			if requestErr != nil {
+				return nil, requestErr
+			}
+		case "event":
+			if frameString(frame, "method") == "hook.log" && m.Logger != nil {
+				m.Logger.Info("hook.v2 plugin event", "rule", firstNonEmpty(action.source.FinalName, action.Name), "params", string(frame["params"]))
+			}
+		default:
+			return nil, fmt.Errorf("unsupported hook.v2 frame type %q", frameString(frame, "type"))
+		}
+	}
+}
+
+func v2EventResult(event hook.Event, action Action, state state, raw json.RawMessage) (actionResult, hook.Event, error) {
+	if len(raw) == 0 {
+		return actionResult{}, event, nil
+	}
+	var payload struct {
+		Status  string        `json:"status"`
+		Outputs []SegmentSpec `json:"outputs"`
+		Result  string        `json:"result"`
+		Error   string        `json:"error"`
+		Matched *bool         `json:"matched"`
+		Message struct {
+			Text string `json:"text"`
+		} `json:"message"`
+		Consume         bool `json:"consume"`
+		StopPropagation bool `json:"stop_propagation"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return actionResult{}, event, fmt.Errorf("decode hook.v2 event result: %w", err)
+	}
+	if status := strings.TrimSpace(payload.Status); status != "" && status != "completed" {
+		return actionResult{}, event, fmt.Errorf("one-shot hook.v2 returned unsupported status %q", status)
+	}
+	result := actionResult{Result: payload.Result, Error: payload.Error, Matched: payload.Matched}
+	if len(payload.Outputs) > 0 {
+		for _, spec := range payload.Outputs {
+			out, err := buildSegmentOutput(resolveSegmentSpecPath(spec, action.sourceBaseDir()), delivery.Target{}, render(action.Timing, event, state))
+			if err != nil {
+				return result, event, err
+			}
+			event.Outputs = append(event.Outputs, out)
+		}
+	}
+	if payload.Message.Text != "" {
+		field := strings.TrimSpace(action.Field)
+		if field == "" {
+			field = "message.text"
+		}
+		updated, err := setTextField(event, field, payload.Message.Text)
+		if err != nil {
+			return result, event, err
+		}
+		event = updated
+	}
+	if payload.Consume {
+		event.Control.Consume = true
+	}
+	if payload.StopPropagation {
+		event.Control.StopPropagation = true
+	}
+	return result, event, nil
+}
+
+func (m Module) runExecV1(ctx context.Context, event hook.Event, action Action, state state) (hook.Event, actionResult, error) {
 	command := render(action.Command, event, state)
 	if strings.TrimSpace(command) == "" {
 		return event, actionResult{Error: "command is required"}, fmt.Errorf("command is required")

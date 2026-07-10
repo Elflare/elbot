@@ -871,7 +871,7 @@
 - [x] Elvena v3 支持 `calls`，首批支持 raw 平台 API 和 capability：`message.recall`、`member.mute`、`chat.leave`。
 - [x] QQ OneBot 和 Telegram 支持 raw API caller。
 - [x] Hook rules 支持角色分区、正则捕获上下文、`consume`、`stop_propagation`。
-- [x] Hook rules 支持 `exec` action，脚本通过 `hook.v1` 行协议输出、请求平台调用并回写字段。
+- [x] Hook rules 支持 `exec` action，脚本通过 `hook.v2` 双向行协议输出、请求平台调用并回写字段。
 - [x] `platform.message.received` Hook outputs 会发送，`consume=true` 会阻止后续命令/LLM。
 - [x] app 层为 Hook rules 提供平台 API 调用和输出发送能力，Hook 不直接依赖 Elnis。
 - [ ] 后续支持更多 capability：`member.kick`、`message.pin`、`member.unmute`、bot profile/avatar/name/commands。

@@ -18,6 +18,7 @@ import (
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
+	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/platform"
@@ -59,6 +60,7 @@ type Agent struct {
 	compressor           contextmgr.Compressor
 	contextConfig        config.ContextConfig
 	hooks                hook.Manager
+	hookRuntime          *hookruntime.Manager
 	outputs              delivery.Manager
 	modelMetadata        config.ModelMetadataConfig
 	compactModel         config.ModelSelection
@@ -323,6 +325,13 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 		}
 	}()
 	woken := a.messageWakeup(ctx, llm.SegmentsTextOnly(segments))
+	if a.hookRuntime != nil && strings.TrimSpace(llm.SegmentsTextOnly(segments)) == "/cancel" {
+		cancelEvent := a.fillHookContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
+		if a.hookRuntime.Cancel(cancelEvent) {
+			a.sendChat(ctx, "已取消当前 Hook 会话。")
+			return nil
+		}
+	}
 	event, err := a.runHook(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
 	if err != nil {
 		return err
@@ -343,6 +352,22 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 	}
 	ctx = withInboundSegments(ctx, segments)
 	text = llm.SegmentsTextOnly(segments)
+	if a.hookRuntime != nil {
+		if strings.TrimSpace(text) == "/cancel" && a.hookRuntime.Cancel(event) {
+			a.sendChat(ctx, "已取消当前 Hook 会话。")
+			return nil
+		}
+		handled, outputs, routeErr := a.hookRuntime.Route(ctx, event)
+		if routeErr != nil {
+			return routeErr
+		}
+		if handled {
+			if err := a.sendOutputs(ctx, outputs); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
 	if !woken {
 		return nil
 	}
@@ -566,6 +591,13 @@ func (a *Agent) SetHookManager(manager hook.Manager) {
 	a.hooks = manager
 }
 
+// SetHookRuntime attaches the stateful Hook runtime. It remains separate from
+// the Hook manager's registration API because it owns processes and routes,
+// while the manager continues to own normal Hook ordering and matching.
+func (a *Agent) SetHookRuntime(manager *hookruntime.Manager) {
+	a.hookRuntime = manager
+}
+
 func (a *Agent) SetHookReloader(fn func() (hook.ReloadReport, error)) {
 	a.hookReloader = fn
 }
@@ -579,6 +611,34 @@ func (a *Agent) HookReload() (hook.ReloadReport, error) {
 		return hook.ReloadReport{}, fmt.Errorf("hook reloader is not configured")
 	}
 	return a.hookReloader()
+}
+
+func (a *Agent) StatefulHooks() []hookruntime.Info {
+	if a.hookRuntime == nil {
+		return nil
+	}
+	return a.hookRuntime.List()
+}
+
+func (a *Agent) StartStatefulHook(id string) error {
+	if a.hookRuntime == nil {
+		return fmt.Errorf("stateful hook runtime is not configured")
+	}
+	return a.hookRuntime.Start(id)
+}
+
+func (a *Agent) StopStatefulHook(ctx context.Context, id string) error {
+	if a.hookRuntime == nil {
+		return fmt.Errorf("stateful hook runtime is not configured")
+	}
+	return a.hookRuntime.Stop(ctx, id)
+}
+
+func (a *Agent) RestartStatefulHook(ctx context.Context, id string) error {
+	if a.hookRuntime == nil {
+		return fmt.Errorf("stateful hook runtime is not configured")
+	}
+	return a.hookRuntime.Restart(ctx, id)
 }
 
 func (a *Agent) SetSecurityPolicy(policy *security.Policy) {

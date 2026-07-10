@@ -7,6 +7,7 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/hook"
+	hookruntime "elbot/internal/hook/runtime"
 )
 
 type fakeHookService struct {
@@ -17,6 +18,28 @@ type fakeHookService struct {
 func (s fakeHookService) HookList() []hook.Info { return s.infos }
 func (s fakeHookService) HookReload() (hook.ReloadReport, error) {
 	return s.reloadReport, nil
+}
+
+type fakeStatefulHookService struct {
+	fakeHookService
+	infos     []hookruntime.Info
+	started   string
+	stopped   string
+	restarted string
+}
+
+func (s *fakeStatefulHookService) StatefulHooks() []hookruntime.Info { return s.infos }
+func (s *fakeStatefulHookService) StartStatefulHook(id string) error {
+	s.started = id
+	return nil
+}
+func (s *fakeStatefulHookService) StopStatefulHook(_ context.Context, id string) error {
+	s.stopped = id
+	return nil
+}
+func (s *fakeStatefulHookService) RestartStatefulHook(_ context.Context, id string) error {
+	s.restarted = id
+	return nil
 }
 
 func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
@@ -75,5 +98,23 @@ func TestHooksReloadShowsWarnings(t *testing.T) {
 	}
 	if !strings.Contains(result.Content, "hook reload completed with warnings") || !strings.Contains(result.Content, "gpt_image") {
 		t.Fatalf("reload content = %q", result.Content)
+	}
+}
+
+func TestHooksCommandManagesStatefulHooks(t *testing.T) {
+	hooks := &fakeStatefulHookService{infos: []hookruntime.Info{{ID: "weather", Description: "weather loop", Status: hookruntime.StatusReady}}}
+	cmd := NewHooks(Deps{Hooks: hooks})
+
+	result, err := cmd.Handle(context.Background(), command.Request{})
+	if err != nil || !strings.Contains(result.Content, "weather  [stateful:ready]") {
+		t.Fatalf("list = %#v, %v", result, err)
+	}
+	result, err = cmd.Handle(context.Background(), command.Request{Args: "weather"})
+	if err != nil || !strings.Contains(result.Content, "stateful: true\nstatus: ready") {
+		t.Fatalf("detail = %#v, %v", result, err)
+	}
+	result, err = cmd.Handle(context.Background(), command.Request{Args: "restart weather"})
+	if err != nil || hooks.restarted != "weather" || !strings.Contains(result.Content, "requested") {
+		t.Fatalf("restart = %#v, restarted=%q, err=%v", result, hooks.restarted, err)
 	}
 }

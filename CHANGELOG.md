@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Hook exec 协议统一升级为 `hook.v2`，支持 request/response/event 帧、双向 Pipe RPC 和 Host/Hook 请求 ID 隔离；旧 `hook.v1` 脚本需要迁移。
+- 新增持久 Hook：在插件 `hook.toml` 的 `[plugin.runtime]` 声明生命周期、重启、工具白名单和多轮 waiting 会话；统一由 `/hooks` 列表、详情、启动、停止、重启与重载管理。
+- 新增 Hook 共享空间 `plugins/_shared/` 及进程内 JSON SharedState，提供命名空间 KV 和 compare-and-swap 协调能力。
 - `read_file` 新增 `mode=ast`，可对 Go 和 Shell 文件按名称进行轻量 AST 搜索；`mode` 同时统一为 `read`、`grep`、`ast` 三种读取模式。
 - 重构AgentSkill：去掉py wrapper，直接使用shell执行对应sklll，同时支持在Agentkill根目录添加 `ELBOT_SKILL.toml` 注册为普通工具，方便 LLM 直接调用结构化参数。
 - 新增隐藏元工具 `agent_skill`，用于读取或写入 AgentSkill 的 `ELBOT_SKILL.toml`，写入前校验配置并在成功后 reload。

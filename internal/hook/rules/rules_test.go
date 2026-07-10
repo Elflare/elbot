@@ -20,6 +20,10 @@ import (
 	"elbot/internal/llm"
 )
 
+var execHelperInitFrame map[string]any
+var execHelperEventFrame map[string]any
+var execHelperEventID string
+
 func TestExecHelperProcess(t *testing.T) {
 	marker := -1
 	for i := 0; i+1 < len(os.Args); i++ {
@@ -34,36 +38,31 @@ func TestExecHelperProcess(t *testing.T) {
 	if marker >= len(os.Args) {
 		os.Exit(2)
 	}
+	if err := execHelperHandshake(); err != nil {
+		fmt.Fprint(os.Stderr, err)
+		os.Exit(1)
+	}
 	switch os.Args[marker] {
 	case "print":
 		writeProtocolTestOutput(strings.Join(os.Args[marker+1:], " "))
 	case "done-message":
-		fmt.Fprintln(os.Stdout, `{"type":"done","matched":true,"result":"ok","message":{"text":"clean"}}`)
+		writeProtocolTestResult(map[string]any{"status": "completed", "result": "ok", "message": map[string]string{"text": "clean"}})
 	case "done-result":
 		result := "ok"
 		if marker+1 < len(os.Args) {
 			result = os.Args[marker+1]
 		}
-		data, _ := json.Marshal(map[string]any{"type": "done", "matched": true, "result": result})
-		fmt.Fprintln(os.Stdout, string(data))
+		writeProtocolTestResult(map[string]any{"status": "completed", "result": result})
 	case "unmatched":
-		output, _ := json.Marshal(map[string]any{"type": "output", "outputs": []map[string]any{{"kind": "text", "text": "should not survive"}}})
-		fmt.Fprintln(os.Stdout, string(output))
-		fmt.Fprintln(os.Stdout, `{"type":"done","matched":false}`)
+		writeProtocolTestResult(map[string]any{"status": "completed", "matched": false, "outputs": []map[string]any{{"kind": "text", "text": "should not survive"}}})
 	case "stderr-success":
 		fmt.Fprintln(os.Stderr, "plugin diagnostic")
-		fmt.Fprintln(os.Stdout, `{"type":"done","matched":true,"result":"ok"}`)
+		writeProtocolTestResult(map[string]any{"status": "completed", "result": "ok"})
 	case "stderr-no-newline":
 		fmt.Fprint(os.Stderr, "partial diagnostic")
-		fmt.Fprintln(os.Stdout, `{"type":"done","matched":true,"result":"ok"}`)
+		writeProtocolTestResult(map[string]any{"status": "completed", "result": "ok"})
 	case "stdin":
-		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-		var frame map[string]any
-		if err := json.Unmarshal([]byte(line), &frame); err != nil {
-			fmt.Fprint(os.Stderr, err)
-			os.Exit(1)
-		}
-		data, _ := json.Marshal(frame)
+		data, _ := json.Marshal(execHelperEventFrame)
 		writeProtocolTestOutput(string(data))
 	case "base64-output":
 		if marker+1 >= len(os.Args) {
@@ -74,9 +73,7 @@ func TestExecHelperProcess(t *testing.T) {
 			os.Exit(2)
 		}
 		encoded := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte("x"), size))
-		output, _ := json.Marshal(map[string]any{"type": "output", "outputs": []map[string]any{{"kind": "image", "base64": encoded}}})
-		fmt.Fprintln(os.Stdout, string(output))
-		fmt.Fprintln(os.Stdout, `{"type":"done","matched":true}`)
+		writeProtocolTestResult(map[string]any{"status": "completed", "outputs": []map[string]any{{"kind": "image", "base64": encoded}}})
 	case "read":
 		if marker+1 >= len(os.Args) {
 			os.Exit(2)
@@ -113,10 +110,9 @@ func TestExecHelperProcess(t *testing.T) {
 		fmt.Fprintln(os.Stderr, "waiting forever")
 		time.Sleep(5 * time.Second)
 	case "close-stdin-after-request":
-		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
 		_ = os.Stdin.Close()
 		time.Sleep(100 * time.Millisecond)
-		fmt.Fprintln(os.Stdout, `{"type":"request","id":"reply","method":"message.get_reply"}`)
+		fmt.Fprintln(os.Stdout, `{"type":"request","id":"plugin:reply","method":"message.get_reply"}`)
 		time.Sleep(5 * time.Second)
 	case "signal-and-wait":
 		if marker+2 >= len(os.Args) {
@@ -129,7 +125,7 @@ func TestExecHelperProcess(t *testing.T) {
 		deadline := time.Now().Add(5 * time.Second)
 		for {
 			if _, err := os.Stat(os.Args[marker+2]); err == nil {
-				fmt.Fprintln(os.Stdout, `{"type":"done","matched":true,"result":"ready"}`)
+				writeProtocolTestResult(map[string]any{"status": "completed", "result": "ready"})
 				break
 			}
 			if time.Now().After(deadline) {
@@ -144,10 +140,45 @@ func TestExecHelperProcess(t *testing.T) {
 	os.Exit(0)
 }
 
+func execHelperHandshake() error {
+	reader := bufio.NewReader(os.Stdin)
+	initLine, err := reader.ReadString('\n')
+	if err != nil {
+		return err
+	}
+	var init map[string]any
+	if err := json.Unmarshal([]byte(initLine), &init); err != nil {
+		return err
+	}
+	if init["type"] != "request" || init["method"] != "system.init" {
+		return fmt.Errorf("unexpected init frame %#v", init)
+	}
+	execHelperInitFrame = init
+	initID, _ := init["id"].(string)
+	fmt.Fprintf(os.Stdout, `{"type":"response","id":%q,"ok":true,"result":{}}`+"\n", initID)
+	eventLine, err := reader.ReadString('\n')
+	if err != nil {
+		return err
+	}
+	var event map[string]any
+	if err := json.Unmarshal([]byte(eventLine), &event); err != nil {
+		return err
+	}
+	if event["type"] != "request" || event["method"] != "event.handle" {
+		return fmt.Errorf("unexpected event frame %#v", event)
+	}
+	execHelperEventID, _ = event["id"].(string)
+	execHelperEventFrame = event
+	return nil
+}
+
+func writeProtocolTestResult(result any) {
+	data, _ := json.Marshal(map[string]any{"type": "response", "id": execHelperEventID, "ok": true, "result": result})
+	fmt.Fprintln(os.Stdout, string(data))
+}
+
 func writeProtocolTestOutput(text string) {
-	output, _ := json.Marshal(map[string]any{"type": "output", "outputs": []map[string]any{{"kind": "text", "text": text}}})
-	fmt.Fprintln(os.Stdout, string(output))
-	fmt.Fprintln(os.Stdout, `{"type":"done","matched":true}`)
+	writeProtocolTestResult(map[string]any{"status": "completed", "outputs": []map[string]any{{"kind": "text", "text": text}}})
 }
 func execHelperCommand(args ...string) string {
 	argv := append([]string{os.Args[0], "-test.run=TestExecHelperProcess", "--", "elbot-exec-helper"}, args...)
@@ -373,6 +404,50 @@ path = "assets/pic.png"
 	wantPath := filepath.Join(pluginDir, "assets", "pic.png")
 	if len(got.Outputs) != 1 || got.Outputs[0].Source.Path != wantPath {
 		t.Fatalf("outputs = %#v, want path %q", got.Outputs, wantPath)
+	}
+}
+
+func TestLoadConfigLoadsStatefulHookRuntimeAndTriggerRules(t *testing.T) {
+	dir := t.TempDir()
+	pluginDir := filepath.Join(dir, "weather")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("mkdir plugin: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte("[[plugins]]\nname = \"weather\"\n"), 0o644); err != nil {
+		t.Fatalf("write root config: %v", err)
+	}
+	plugin := `[plugin]
+name = "weather"
+description = "weather hook"
+
+[plugin.runtime]
+stateful = true
+command = "weather-hook"
+cwd = "."
+startup_timeout_seconds = 5
+shutdown_timeout_seconds = 5
+event_timeout_seconds = 30
+max_wait_seconds = 60
+
+[plugin.runtime.restart]
+strategy = "never"
+initial_delay_seconds = 1
+max_delay_seconds = 1
+
+[[rules]]
+name = "weather_message"
+on = "platform.message.received"
+always = true
+`
+	if err := os.WriteFile(filepath.Join(pluginDir, "hook.toml"), []byte(plugin), 0o644); err != nil {
+		t.Fatalf("write plugin config: %v", err)
+	}
+	cfg, _, err := loadConfig(Options{ConfigDir: dir})
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if len(cfg.Runtimes) != 1 || cfg.Runtimes[0].ID != "weather" || len(cfg.Rules) != 1 || cfg.Rules[0].source.RuntimeID != "weather" {
+		t.Fatalf("config = %#v", cfg)
 	}
 }
 
@@ -746,7 +821,7 @@ func TestExecActionDefaultStdinIncludesEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
-	if len(got.Outputs) != 1 || !strings.Contains(got.Outputs[0].Text, `"type":"init"`) || !strings.Contains(got.Outputs[0].Text, `"user_id":"alice"`) {
+	if len(got.Outputs) != 1 || !strings.Contains(got.Outputs[0].Text, `"type":"request"`) || !strings.Contains(got.Outputs[0].Text, `"method":"event.handle"`) || !strings.Contains(got.Outputs[0].Text, `"user_id":"alice"`) {
 		t.Fatalf("outputs = %#v", got.Outputs)
 	}
 }
@@ -908,17 +983,17 @@ func TestExecFailuresIncludeStderrTail(t *testing.T) {
 		{
 			name:   "nonzero exit",
 			helper: "crash-stderr",
-			want:   []string{"exec failed", "stderr:", "script exploded"},
+			want:   []string{"closed stdout", "stderr:", "script exploded"},
 		},
 		{
-			name:   "missing done",
+			name:   "closed before event response",
 			helper: "missing-done-stderr",
-			want:   []string{"hook protocol missing done frame", "stderr:", "wrote stderr before clean exit"},
+			want:   []string{"closed stdout", "stderr:", "wrote stderr before clean exit"},
 		},
 		{
 			name:   "invalid json",
 			helper: "invalid-json-stderr",
-			want:   []string{"parse hook protocol frame", "stderr:", "bad json stderr"},
+			want:   []string{"parse hook.v2 stdout frame", "stderr:", "bad json stderr"},
 		},
 		{
 			name:           "timeout",
@@ -929,12 +1004,12 @@ func TestExecFailuresIncludeStderrTail(t *testing.T) {
 		{
 			name:   "stderr without trailing newline",
 			helper: "stderr-no-newline-crash",
-			want:   []string{"exec failed", "stderr:", "partial crash diagnostic"},
+			want:   []string{"closed stdout", "stderr:", "partial crash diagnostic"},
 		},
 		{
 			name:   "many stderr lines keeps tail",
 			helper: "many-stderr",
-			want:   []string{"exec failed", "stderr:", "earlier stderr lines omitted", "stderr line 24"},
+			want:   []string{"closed stdout", "stderr:", "earlier stderr lines omitted", "stderr line 24"},
 		},
 	}
 	for _, tt := range tests {
@@ -965,17 +1040,17 @@ func TestExecProtocolErrorsIdentifyPluginProblem(t *testing.T) {
 		{
 			name:   "unknown frame",
 			helper: "unknown-frame",
-			want:   []string{"unsupported hook protocol frame", "stdout line 1", "mystery"},
+			want:   []string{"unsupported hook.v2 frame type", "mystery"},
 		},
 		{
 			name:   "bad output field",
 			helper: "bad-output",
-			want:   []string{"missing required field \"outputs\"", "output frames must be"},
+			want:   []string{"unsupported hook.v2 frame type", "output"},
 		},
 		{
 			name:   "plugin error frame",
 			helper: "plugin-error-frame",
-			want:   []string{"hook protocol error frame from plugin", "plugin said no"},
+			want:   []string{"unsupported hook.v2 frame type", "error"},
 		},
 	}
 	for _, tt := range tests {

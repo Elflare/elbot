@@ -177,18 +177,19 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 <!-- locator:hook -->
 ## Hook 与插件
 
-适用任务：Hook 事件、控制字段、注册、列表、热重载、规则 Hook TOML、exec action、hook.v1 协议、常驻记忆 Hook。
+适用任务：Hook 事件、控制字段、注册、列表、热重载、规则 Hook TOML、exec action、hook.v2 协议、持久 Hook、SharedState、常驻记忆 Hook。
 
 先看：
 
-- `internal/hook/`：Hook 基础、内置注册、规则 Hook、exec action、常驻记忆插件。
+- `internal/hook/`：Hook 基础、内置注册、规则 Hook、hook.v2 exec、持久运行时与常驻记忆插件。
+- `internal/hook/runtime/`：持久 Hook 进程、双向 Pipe RPC、waiting 路由、工具桥接和进程内 SharedState。
 - `internal/agent/hooks.go`：Agent Hook 与输出接入。
 - `docs/hooks.md`：用户侧 Hook 文档。
 
 常用搜索：
 
 ```bash
-rg -n "Event|Handler|Control|plugins/hooks.toml|exec|hook.v1|resident" internal/hook internal/agent docs/hooks.md
+rg -n "Event|Handler|Control|plugins/hooks.toml|exec|hook.v2|runtime|SharedState|resident" internal/hook internal/agent docs/hooks.md
 ```
 
 <!-- locator:output -->
