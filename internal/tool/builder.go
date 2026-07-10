@@ -22,6 +22,7 @@ type ParamOption func(*paramConfig)
 type paramConfig struct {
 	required bool
 	items    map[string]any
+	enum     []string
 }
 
 func NewBuilder(name string) *Builder {
@@ -152,6 +153,9 @@ func (b *Builder) param(name, typ, description string, opts ...ParamOption) *Bui
 	if cfg.items != nil {
 		property["items"] = cfg.items
 	}
+	if len(cfg.enum) > 0 {
+		property["enum"] = append([]string(nil), cfg.enum...)
+	}
 	if b.properties == nil {
 		b.properties = map[string]any{}
 	}
@@ -168,6 +172,10 @@ func Required() ParamOption {
 
 func Items(typ string) ParamOption {
 	return func(cfg *paramConfig) { cfg.items = map[string]any{"type": typ} }
+}
+
+func Enum(values ...string) ParamOption {
+	return func(cfg *paramConfig) { cfg.enum = append([]string(nil), values...) }
 }
 
 func appendUnique(values []string, value string) []string {

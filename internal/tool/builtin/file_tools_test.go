@@ -35,13 +35,57 @@ func TestReadFileToolGrepReturnsMatchesWithContext(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	args, _ := json.Marshal(map[string]any{"path": path, "grep": "beta", "context_lines": 1})
+	args, _ := json.Marshal(map[string]any{"path": path, "mode": "grep", "query": "beta", "context_lines": 1})
 	result, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(result.Content, "grep: \"beta\"") || !strings.Contains(result.Content, "> 5 | beta") || !strings.Contains(result.Content, "  4 | three") || !strings.Contains(result.Content, "  6 | four") {
 		t.Fatalf("unexpected grep output:\n%s", result.Content)
+	}
+}
+
+func TestReadFileToolASTSearchesGoIdentifiers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.go")
+	content := "package sample\n\n// Target must not match in comments.\ntype Target struct{}\nfunc (Target) Run() { _ = Target{} }\nvar _ = \"Target\"\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "Target", "context_lines": 0})
+	result, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "language: go") || !strings.Contains(result.Content, "[identifier]") || strings.Count(result.Content, "match:") != 3 {
+		t.Fatalf("unexpected AST content:\n%s", result.Content)
+	}
+}
+
+func TestReadFileToolASTSearchesShellWordsAndParameters(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.sh")
+	content := "#!/usr/bin/env bash\nfn() { echo target; echo \"target $target\"; }\n# target\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "target", "context_lines": 0})
+	result, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "language: shell") || strings.Count(result.Content, "match:") != 2 || !strings.Contains(result.Content, "[parameter]") {
+		t.Fatalf("unexpected AST content:\n%s", result.Content)
+	}
+}
+
+func TestReadFileToolASTRejectsUnsupportedLanguage(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.py")
+	if err := os.WriteFile(path, []byte("target = 1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "target"})
+	_, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "only supports Go and Shell") {
+		t.Fatalf("expected unsupported language error, got %v", err)
 	}
 }
 

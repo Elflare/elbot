@@ -25,7 +25,8 @@ type readFileArgs struct {
 	Encoding     string             `json:"encoding"`
 	StartLine    int                `json:"start_line"`
 	EndLine      fileops.LineNumber `json:"end_line"`
-	Grep         string             `json:"grep"`
+	Mode         string             `json:"mode"`
+	Query        string             `json:"query"`
 	ContextLines int                `json:"context_lines"`
 	MaxMatches   int                `json:"max_matches"`
 }
@@ -57,17 +58,18 @@ func (t ReadFileTool) Schema() llm.ToolSchema {
 
 func readFileBuilder() *tool.Builder {
 	return tool.NewBuilder("read_file").
-		Description("读取文本文件并返回带行号的内容；编辑前应先用它确认行号和文件哈希。").
+		Description("读取文本文件并返回行号和哈希；支持按行读取、文本搜索和 AST 名称搜索。").
 		Risk(tool.RiskLow).
 		Tags("files", "agent").
 		DependsOn("workspace").
-		String("path", "要读取的文件路径", tool.Required()).
-		String("encoding", "文本编码，默认 auto；可选 utf-8、utf-8-bom、utf-16le、utf-16be、gbk、gb18030、big5、shift_jis 等。").
-		Integer("start_line", "起始行号，1-based；默认 1。").
-		String("end_line", "结束行号，1-based 且包含该行；也可传 end 表示文件末尾；默认最多返回 200 行。").
-		String("grep", "可选，按子串搜索匹配行；提供后返回匹配行及上下文，而不是普通行范围读取。").
-		Integer("context_lines", "grep 上下文行数，默认 2，范围 0-20。").
-		Integer("max_matches", "grep 最大匹配数，默认 20，范围 1-100。")
+		String("path", "文件路径。", tool.Required()).
+		String("encoding", "文本编码，默认 auto。").
+		String("mode", "模式：read（默认，可不填）、grep、ast；ast 仅支持 Go 和 Shell。", tool.Enum("read", "grep", "ast")).
+		String("query", "grep/ast 模式的搜索内容；ast 按名称精确匹配。").
+		Integer("start_line", "read 模式起始行，1-based，默认 1。").
+		String("end_line", "read 模式结束行（含），可传 end；默认最多读取 200 行。").
+		Integer("context_lines", "grep/ast 模式上下文行数，默认 2，范围 0-20。").
+		Integer("max_matches", "grep/ast 模式最大匹配数，默认 20，范围 1-100。")
 }
 
 func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
@@ -88,8 +90,15 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	}
 	lines := fileops.SplitLines(file.Text)
 	warnings := append(resolved.Warnings, t.FileGuard.ReadWarnings(path)...)
-	if strings.TrimSpace(args.Grep) != "" {
-		return readFileGrepResult(file, lines, args.Grep, args.ContextLines, args.MaxMatches, warnings)
+	mode, err := normalizeReadFileMode(args.Mode)
+	if err != nil {
+		return nil, err
+	}
+	switch mode {
+	case readFileModeGrep:
+		return readFileGrepResult(file, lines, args.Query, args.ContextLines, args.MaxMatches, warnings)
+	case readFileModeAST:
+		return readFileASTResult(file, args.Query, args.ContextLines, args.MaxMatches, warnings)
 	}
 	start, end, truncated, err := fileops.NormalizeReadRange(len(lines), args.StartLine, args.EndLine)
 	if err != nil {
