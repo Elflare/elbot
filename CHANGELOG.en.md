@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `read_file` added `mode=ast`, enabling lightweight AST search by name for Go and Shell files; `mode` is also unified into three reading modes: `read`, `grep`, and `ast`.
 - Refactor AgentSkill: remove the py wrapper and execute the corresponding skill directly via shell; also support adding `ELBOT_SKILL.toml` in the AgentSkill root directory to register it as a normal tool, facilitating the LLM's direct call of structured parameters.
 - Added a hidden meta-tool `agent_skill` for reading or writing the `ELBOT_SKILL.toml` of AgentSkill; it validates the configuration before writing and reloads upon success.
 - The first run will generate `skills/agent/agent_skill_creator/SKILL.md`, which explains how to register an AgentSkill as a regular tool.
