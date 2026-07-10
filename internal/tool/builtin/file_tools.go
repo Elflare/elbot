@@ -60,6 +60,7 @@ func readFileBuilder() *tool.Builder {
 	return tool.NewBuilder("read_file").
 		Description("读取文本文件并返回行号和哈希；支持按行读取、文本搜索和 AST 名称搜索。").
 		Risk(tool.RiskLow).
+		SuperadminOnly().
 		Tags("files", "agent").
 		DependsOn("workspace").
 		String("path", "文件路径。", tool.Required()).

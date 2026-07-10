@@ -801,6 +801,9 @@ func TestFileToolsHaveFilesAndAgentTags(t *testing.T) {
 	if got := strings.Join(NewReadFileTool().Info().Tags, ","); got != "files,agent" {
 		t.Fatalf("read_file tags = %q", got)
 	}
+	if !NewReadFileTool().Info().SuperadminOnly {
+		t.Fatal("read_file should be superadmin-only")
+	}
 	if got := strings.Join(NewEditFileTool().Info().Tags, ","); got != "files,agent" {
 		t.Fatalf("edit_file tags = %q", got)
 	}
