@@ -16,9 +16,9 @@
       "updated_at": 1782901148
     },
     "docs/commands.md": {
-      "source_hash": "f120b462b36098952dd26f97d7a7ed9adf6d1d6083171f7ed5421e562494a642",
+      "source_hash": "2006eb13cb791ac42e10cb45dce715f939c117cb87254e541c4afa13f04f85ce",
       "target": "docs.en/commands.md",
-      "updated_at": 1783571608
+      "updated_at": 1783678873
     },
     "docs/concepts.md": {
       "source_hash": "5e07d91a84bb604aa80a9b50c585bebf9257ded72c240f2db8c4d3239c9ca6cf",
@@ -3334,6 +3334,14 @@
       "translation": "Available to superadmins only.",
       "updated_at": 1782884118
     },
+    "docs/commands.md:list:97373883e2c7b6a67aaf64e0c0843930d201380850c2324a4f7b6efe359893dd": {
+      "kind": "list",
+      "source": "持久 Hook 使用插件 ID。",
+      "source_file": "docs/commands.md",
+      "source_hash": "97373883e2c7b6a67aaf64e0c0843930d201380850c2324a4f7b6efe359893dd",
+      "translation": "Persistent Hooks use plugin IDs.",
+      "updated_at": 1783678873
+    },
     "docs/commands.md:list:a0b5430c1b57bff3b15d0f05598d4fb48dd807a396c4627a0b3f97a23697a81c": {
       "kind": "list",
       "source": "自动压缩由 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 控制。",
@@ -3358,6 +3366,14 @@
       "translation": "__ELBOT_CODE_0__ mode does not inject tools, making it suitable for casual chat, companionship, and low-cost Q&A.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:list:c6aabceefdd7218e3d5a373a4ee77247ca2e489c1aaaac47fac0674b5fd5c90b": {
+      "kind": "list",
+      "source": "内置 Hook 使用 __ELBOT_CODE_0__ 名称，例如 __ELBOT_CODE_1__、__ELBOT_CODE_2__；",
+      "source_file": "docs/commands.md",
+      "source_hash": "c6aabceefdd7218e3d5a373a4ee77247ca2e489c1aaaac47fac0674b5fd5c90b",
+      "translation": "Built-in Hooks use __ELBOT_CODE_0__ names, such as __ELBOT_CODE_1__ and __ELBOT_CODE_2__;",
+      "updated_at": 1783678873
+    },
     "docs/commands.md:list:cb73e0f2b874464a2ffa6a5b345d0b0c0b2f28d34a219af24e2ce824f6997095": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 模式启用工具发现和工具调用。",
@@ -3373,6 +3389,14 @@
       "source_hash": "e850fda8108ea39dcdeac91904fad7726f49f72fd03ac228d94e6242fbe400e3",
       "translation": "Compaction only affects the context view sent to the LLM and does not delete the original message history.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:list:f09b27469f6c5b3a4aed39e01ef19ff88d1b7b67a2a7234105026a61371182d4": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 会重新读取 __ELBOT_CODE_1__ 和各插件 __ELBOT_CODE_2__，并重建 Hook 注册、替换受影响的持久进程。",
+      "source_file": "docs/commands.md",
+      "source_hash": "f09b27469f6c5b3a4aed39e01ef19ff88d1b7b67a2a7234105026a61371182d4",
+      "translation": "__ELBOT_CODE_0__ will reread __ELBOT_CODE_1__ and the __ELBOT_CODE_2__ of each plugin, rebuild Hook registrations, and replace affected persistent processes.",
+      "updated_at": 1783678873
     },
     "docs/commands.md:list:f275ad5728d0764f38c31757da740dea8fbb8ca748a44322a4182a2ca668d5c5": {
       "kind": "list",
@@ -3782,6 +3806,14 @@
       "translation": "Function",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:44d72185339f8bce0128735d97b327ff2b989dba5b815656660c8e1298fb64d2": {
+      "kind": "table",
+      "source": "停止并重新启动一个持久 Hook。",
+      "source_file": "docs/commands.md",
+      "source_hash": "44d72185339f8bce0128735d97b327ff2b989dba5b815656660c8e1298fb64d2",
+      "translation": "Stop and restart a persistent Hook.",
+      "updated_at": 1783678873
+    },
     "docs/commands.md:table:4b18f0e99fbc129f18b64f742b16ac6821ec0b60852c604bb4bcfd840ef92d43": {
       "kind": "table",
       "source": "查看某个命令的详细帮助。",
@@ -3829,6 +3861,14 @@
       "source_hash": "5c68a0583f2fd47d9217b6c75f247209183d81ea81abce866b559380605dd974",
       "translation": "Stop the current request.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:5e6e0bf605e10eb3ab584ae0ae6cc6323c7a18ea890ffd3de66303f329dbc1a8": {
+      "kind": "table",
+      "source": "启动一个持久 Hook。",
+      "source_file": "docs/commands.md",
+      "source_hash": "5e6e0bf605e10eb3ab584ae0ae6cc6323c7a18ea890ffd3de66303f329dbc1a8",
+      "translation": "Start a persistent Hook.",
+      "updated_at": 1783678873
     },
     "docs/commands.md:table:629a1073c0066a3358615afbcf3145605f4ad8ed20696b995ae6d2121b9bfddd": {
       "kind": "table",
@@ -3886,6 +3926,14 @@
       "translation": "Switch the work mode model.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:7bade1c1b9e2413a2bba26225f04ca4208937f14c09b9f8f513c4ef625f70f0e": {
+      "kind": "table",
+      "source": "优雅停止一个持久 Hook。",
+      "source_file": "docs/commands.md",
+      "source_hash": "7bade1c1b9e2413a2bba26225f04ca4208937f14c09b9f8f513c4ef625f70f0e",
+      "translation": "Gracefully stop a persistent Hook.",
+      "updated_at": 1783678873
+    },
     "docs/commands.md:table:7c2a3e53187de152eca878c772c15121d046d1770f0bad67422f8ebdd89f1302": {
       "kind": "table",
       "source": "置顶 Session，默认当前 Session。",
@@ -3933,6 +3981,14 @@
       "source_hash": "89ecb328e1b26ec437f984697b66da85607a590050992eb503f702272a848295",
       "translation": "Filter by event mode.",
       "updated_at": 1781752948
+    },
+    "docs/commands.md:table:8c15f471f2ed058be7a62495ecf71ab1dc41376d5abb176f333e0df50c5c2c74": {
+      "kind": "table",
+      "source": "重读规则和持久 Hook 配置，并重新协调进程生命周期。",
+      "source_file": "docs/commands.md",
+      "source_hash": "8c15f471f2ed058be7a62495ecf71ab1dc41376d5abb176f333e0df50c5c2c74",
+      "translation": "Reread rules and persistent Hook configurations, and re-coordinate the process lifecycle.",
+      "updated_at": 1783678873
     },
     "docs/commands.md:table:8fa37aaa6c746fb53072b6f6a943149880a5a1c290cb57787c69e222e3cefaa4": {
       "kind": "table",

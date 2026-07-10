@@ -170,21 +170,25 @@ In work mode, the LLM can discover tool details on demand via `discover_tool`. I
 | --- | --- |
 | `/hooks` | List all registered Hooks. |
 | `/hooks <name>` | View the detailed configuration of a specific Hook. |
-| `/hooks reload` | Clear and re-register all Hooks (rule Hooks, resident memory, built-in Hooks). |
+| `/hooks start <id>` | Start a persistent Hook. |
+| `/hooks stop <id>` | Gracefully stop a persistent Hook. |
+| `/hooks restart <id>` | Stop and restart a persistent Hook. |
+| `/hooks reload` | Reread rules and persistent Hook configurations, and re-coordinate the process lifecycle. |
 
 Example:
 
 ```text
 /hooks
 /hooks greet
+/hooks restart weather
 /hooks reload
 ```
 
 Note:
 
-- Rule Hooks directly use the `name` in the configuration; Built-in Hooks use the `builtin.*` name, such as `builtin.resident_memory` and `builtin.cron.missed_once`.
+- Rule Hooks directly use the `name` in the configuration; Built-in Hooks use `builtin.*` names, such as `builtin.resident_memory` and `builtin.cron.missed_once`; Persistent Hooks use plugin IDs.
 - `Description` will be displayed in the list and details; rule details are only displayed in the details.
-- `reload` will re-read `hooks.toml` and rebuild all Hook registrations, allowing configuration changes to take effect without a restart.
+- `reload` will reread `hooks.toml` and the `hook.toml` of each plugin, rebuild Hook registrations, and replace affected persistent processes.
 - `/hooks` is a superadmin command.
 
 ## Logs and Audit
