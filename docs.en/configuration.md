@@ -601,11 +601,12 @@ Note:
 Plugin configurations are fixed under `plugins/` in the configuration directory:
 
 - `plugins/hooks.toml`: Rule Hook configuration.
-- `plugins/<plugin-name>.toml`: Plugin-specific configuration.
+- `plugins/<plugin-id>/hook.toml`: Plugin Hooks referenced by `hooks.toml`; Can contain `[plugin.runtime]` persistent runtime configuration.
+- `plugins/_shared/`: A cross-Hook file collaboration directory created by ElBot, not scanned as a plugin.
 
-Hooks and plugins should not send platform messages directly; they should return an output intent, which the Agent then passes to the Output Manager for sending.
+Hooks should not send platform messages directly; they should return an output intent, which is then handed over to the Output Manager by the Agent for sending.
 
-For complete configuration instructions for Rule Hooks (action types, segments multi-part output, exec hook.v1 protocol, role partitioning, control fields), see [Hook](hooks.md).
+For complete configuration instructions for rules and persistent Hooks (action, hook.v2, lifecycle, tools, and multi-turn capture), see [Hook](hooks.md).
 
 ## Recommended Maintenance Method
 
