@@ -237,7 +237,10 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 						if m.Opts.Runtime == nil {
 							return event, fmt.Errorf("stateful hook runtime is not configured")
 						}
-						return m.Opts.Runtime.Handle(ctx, rule.source.RuntimeID, event)
+						return m.Opts.Runtime.Handle(ctx, rule.source.RuntimeID, event, hook.Control{
+							Consume:         rule.Consume,
+							StopPropagation: rule.StopPropagation,
+						})
 					}
 					return m.runRule(ctx, rule, event)
 				}),

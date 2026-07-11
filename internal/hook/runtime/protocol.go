@@ -53,12 +53,11 @@ func eventMatch(event hook.Event) hook.MatchContext {
 }
 
 type eventResult struct {
-	Status          string       `json:"status"`
-	ConversationID  string       `json:"conversation_id,omitempty"`
-	ExpiresAt       time.Time    `json:"expires_at,omitempty"`
-	Outputs         []outputSpec `json:"outputs,omitempty"`
-	Consume         bool         `json:"consume,omitempty"`
-	StopPropagation bool         `json:"stop_propagation,omitempty"`
+	Status         string       `json:"status"`
+	ConversationID string       `json:"conversation_id,omitempty"`
+	ExpiresAt      time.Time    `json:"expires_at,omitempty"`
+	Outputs        []outputSpec `json:"outputs,omitempty"`
+	PassThrough    *bool        `json:"pass_through,omitempty"`
 }
 
 type outputSpec struct {

@@ -46,8 +46,10 @@ func TestHookRuntimeHelperProcess(t *testing.T) {
 			eventCount++
 			if eventCount == 1 {
 				writeHelperResponse(id, map[string]any{"status": "waiting", "conversation_id": "demo", "expires_at": time.Now().Add(10 * time.Second).UTC().Format(time.RFC3339Nano)})
-			} else {
+			} else if helperActorID(frame) == "test:defaults" {
 				writeHelperResponse(id, map[string]any{"status": "completed"})
+			} else {
+				writeHelperResponse(id, map[string]any{"status": "completed", "pass_through": true})
 			}
 		case "system.shutdown":
 			writeHelperResponse(id, map[string]any{})
@@ -56,6 +58,14 @@ func TestHookRuntimeHelperProcess(t *testing.T) {
 			writeHelperError(id, "unknown method")
 		}
 	}
+}
+
+func helperActorID(value map[string]any) string {
+	params, _ := value["params"].(map[string]any)
+	event, _ := params["event"].(map[string]any)
+	actor, _ := event["actor"].(map[string]any)
+	id, _ := actor["id"].(string)
+	return id
 }
 
 func writeHelperResponse(id string, result any) {
@@ -88,25 +98,70 @@ func TestManagerRoutesWaitingConversation(t *testing.T) {
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
 	event := hook.Event{Platform: hook.PlatformContext{Name: "test", ScopeID: "private:1"}, Actor: hook.ActorContext{ID: "test:1", UserID: "1"}}
-	if _, err := manager.Handle(context.Background(), "demo", event); err != nil {
+	if _, err := manager.Handle(context.Background(), "demo", event, hook.Control{Consume: true, StopPropagation: true}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	handled, outputs, err := manager.Route(context.Background(), event)
+	updated, handled, err := manager.Route(context.Background(), event)
 	if err != nil {
 		t.Fatalf("Route: %v", err)
 	}
-	if !handled || len(outputs) != 0 {
-		t.Fatalf("Route = handled=%v outputs=%#v", handled, outputs)
+	if !handled || len(updated.Outputs) != 0 || updated.Control.Consume || updated.Control.StopPropagation {
+		t.Fatalf("Route = handled=%v event=%#v", handled, updated)
 	}
-	handled, outputs, err = manager.Route(context.Background(), event)
+	updated, handled, err = manager.Route(context.Background(), event)
 	if err != nil {
 		t.Fatalf("Route after completion: %v", err)
 	}
-	if handled || len(outputs) != 0 {
-		t.Fatalf("Route after completion = handled=%v outputs=%#v", handled, outputs)
+	if handled || len(updated.Outputs) != 0 {
+		t.Fatalf("Route after completion = handled=%v event=%#v", handled, updated)
 	}
 	if err := manager.Stop(context.Background(), "demo"); err != nil {
 		t.Fatalf("Stop: %v", err)
+	}
+}
+
+func TestManagerRouteUsesConfiguredDefaults(t *testing.T) {
+	manager := NewManager(Options{SharedDir: t.TempDir()})
+	config := Config{
+		Stateful:               true,
+		Command:                runtimeHelperCommand(),
+		Cwd:                    ".",
+		StartupTimeoutSeconds:  2,
+		ShutdownTimeoutSeconds: 2,
+		EventTimeoutSeconds:    2,
+		MaxWaitSeconds:         30,
+		Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
+		ID:                     "demo",
+		Dir:                    t.TempDir(),
+	}
+	if err := manager.Apply([]Config{config}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	t.Cleanup(func() { manager.Close(context.Background()) })
+	waitForStatus(t, manager, "demo", StatusReady)
+	event := hook.Event{Platform: hook.PlatformContext{Name: "test", ScopeID: "private:defaults"}, Actor: hook.ActorContext{ID: "test:defaults", UserID: "defaults"}}
+	defaults := hook.Control{Consume: true, StopPropagation: false}
+	if _, err := manager.Handle(context.Background(), "demo", event, defaults); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	updated, routed, err := manager.Route(context.Background(), event)
+	if err != nil {
+		t.Fatalf("Route: %v", err)
+	}
+	if !routed || !updated.Control.Consume || updated.Control.StopPropagation {
+		t.Fatalf("Route = routed=%v control=%#v", routed, updated.Control)
+	}
+}
+
+func TestManagerHandleSkipsReleasedWaitingOwner(t *testing.T) {
+	manager := NewManager(Options{})
+	event := hook.Event{Metadata: map[string]any{skipHookIDMetadataKey: "demo"}}
+	updated, err := manager.Handle(context.Background(), "demo", event, hook.Control{})
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if updated.Metadata[skipHookIDMetadataKey] != "demo" {
+		t.Fatalf("metadata = %#v", updated.Metadata)
 	}
 }
 
@@ -135,23 +190,23 @@ func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
 		t.Fatalf("NewBlockPolicy: %v", err)
 	}
 	manager.worker("demo").config.Block = policy
-	if _, err := manager.Handle(context.Background(), "demo", event); err != nil {
+	if _, err := manager.Handle(context.Background(), "demo", event, hook.Control{}); err != nil {
 		t.Fatalf("blocked Handle: %v", err)
 	}
 	if manager.hasLease(event) {
 		t.Fatal("blocked Handle created a waiting lease")
 	}
 	manager.worker("demo").config.Block = hook.BlockPolicy{}
-	if _, err := manager.Handle(context.Background(), "demo", event); err != nil {
+	if _, err := manager.Handle(context.Background(), "demo", event, hook.Control{}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
 	manager.worker("demo").config.Block = policy
-	handled, outputs, err := manager.Route(context.Background(), event)
+	updated, handled, err := manager.Route(context.Background(), event)
 	if err != nil {
 		t.Fatalf("Route: %v", err)
 	}
-	if handled || len(outputs) != 0 || manager.hasLease(event) {
-		t.Fatalf("blocked route = handled=%v outputs=%#v leased=%v", handled, outputs, manager.hasLease(event))
+	if handled || len(updated.Outputs) != 0 || manager.hasLease(event) {
+		t.Fatalf("blocked route = handled=%v event=%#v leased=%v", handled, updated, manager.hasLease(event))
 	}
 }
 

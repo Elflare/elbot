@@ -424,7 +424,9 @@ require_wakeup = false
 if = "message.intent_text"
 op = "contains"
 value = "天气"
-# 持久 Hook 的 rules 仅是 event.handle 触发器；不设置 action/actions/consume/stop_propagation。
+# 持久 Hook 的 rules 不设置 action/actions；控制字段作为 event.handle 的默认值。
+consume = true
+stop_propagation = true
 ```
 
 ### 插件与 runtime 配置
@@ -468,9 +470,9 @@ value = "天气"
 | `allow` | 前台 `tool.call` 可使用的工具名；Host 在 `system.init.params.tools` 下发对应 schema。 |
 | `background_allow` | 后台可使用的工具名，必须同时出现在 `allow`。 |
 
-持久 trigger rule 复用规则 Hook 的匹配、角色、priority 和 `require_wakeup` 语义。`action` 或 `actions` 会使配置校验失败；`consume`、`stop_propagation` 即使写入也不会由 trigger rule 应用，应改由插件的 `event.handle` response 返回。
+持久 trigger rule 复用规则 Hook 的匹配、角色、priority、`require_wakeup`、`consume` 和 `stop_propagation` 语义。`action` 或 `actions` 会使配置校验失败。两个控制字段是插件未返回 `pass_through` 时的默认行为。
 
-需要由插件动态决定是否拦截时，trigger rule 中将 `consume`、`stop_propagation` 保持为 `false`（或省略），再由插件根据处理结果在 stdout 的 `event.handle` response 中返回这两个字段。处理成功并需要独占消息时返回 `consume: true` 和 `stop_propagation: true`；未处理时省略或返回 `false`，消息会继续交给后续规则或主 LLM。
+需要由插件动态决定是否拦截时，在 stdout 的 `event.handle` response 中返回 `pass_through`：`false` 表示当前插件接管消息，`true` 表示继续交给后续插件、命令或主 LLM。该字段会同时覆盖规则配置中的 `consume` 和 `stop_propagation`；省略时仍按配置处理。
 
 worker 状态为 `starting`、`ready`、`running`、`degraded`、`stopping`、`stopped` 或 `failed`。停止时 Host 先请求 `system.shutdown`，超过关闭超时才强制结束进程。
 
@@ -537,8 +539,9 @@ def message_text(event):
 | `conversation_id` | `waiting` 时必填的非空不透明 ID。 |
 | `expires_at` | `waiting` 时必填的 RFC 3339 时间，必须晚于当前时间且不超过 `max_wait_seconds`。 |
 | `outputs` | 交给 Output Manager 的输出数组。 |
-| `consume` | 对首次 trigger 消息为 `true` 时阻止命令和主 LLM。 |
-| `stop_propagation` | 为 `true` 时停止当前 Hook 点后续规则。 |
+| `pass_through` | 可选动态控制；`false` 表示接管消息，`true` 表示完整放行，省略时使用 trigger rule 的 `consume`、`stop_propagation`。 |
+
+例如，查询插件缺少参数时返回 `waiting` 和“请输入查询内容”；收到 continuation 后，命中时返回结果及 `"pass_through": false`，未命中时静默返回 `{"status":"completed","pass_through":true}`。
 
 持久 Hook JSON output 使用另一套字段：
 
@@ -568,8 +571,8 @@ def message_text(event):
 
 - 正常串行分发中，首个返回 `waiting` 的持久 Hook 持有该路由，后续持久 trigger rule 不会再分发该路由。实现每条路由只存一份租约；若并发事件使多个 Hook 同时竞争，最后写入者覆盖此前租约。因此多个持久 Hook 可能匹配同一路由时，应使用 `priority`、更严格条件或 `stop_propagation` 明确归属。
 - waiting 存在时，普通 `platform.message.received` 规则仍会先运行；持久 trigger rule 不会再次触发。
-- 常规规则完成且消息未被 `consume` 后，Host 将后续消息以 `continuation = true` 路由给持有租约的 Hook。
-- continuation 被路由后，消息不会再进入 slash 命令或主 LLM，即使 response 中 `consume` 为 `false`。
+- Host 先将后续消息以 `continuation = true` 路由给持有租约的 Hook；插件返回 `pass_through = true` 时，再从后续规则继续传播，最后可进入命令或主 LLM。
+- continuation 放行后不会用同一条消息重新触发刚结束 waiting 的插件。
 - continuation 返回 `completed` 或省略 `status` 后，Host 立即释放租约；再次返回 `waiting` 则以新 ID、过期时间续期。
 - 阻断策略命中、worker 退出、停止或重载会清理该插件租约。
 
