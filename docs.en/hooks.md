@@ -472,6 +472,8 @@ The following fields for `[plugin.runtime.restart]` are required:
 
 Persistent trigger rules reuse the matching, role, priority, and `require_wakeup` semantics of rule Hooks. `action` or `actions` will cause configuration validation to fail; `consume` and `stop_propagation` will not be applied by the trigger rule even if written; they should instead be returned by the plugin's `event.handle` response.
 
+When the plugin needs to dynamically decide whether to intercept, keep `consume` and `stop_propagation` in the trigger rule as `false` (or omit them), and then have the plugin return these two fields in the `event.handle` response of stdout based on the processing result. Return `consume: true` and `stop_propagation: true` when processing is successful and exclusive access to the message is required; Omit or return `false` when not processed; the message will continue to be passed to subsequent rules or the main LLM.
+
 The worker state is `starting`, `ready`, `running`, `degraded`, `stopping`, `stopped`, or `failed`. When stopping, the Host first requests `system.shutdown`, and the process is forcibly terminated only after the shutdown timeout is exceeded.
 
 ### Protocol and Output
