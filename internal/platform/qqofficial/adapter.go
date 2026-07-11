@@ -83,13 +83,13 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 	}
 }
 
-func (a *Adapter) SendChat(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
-	return a.sendContextOutput(ctx, out)
+func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+	return a.sendContextOutput(ctx, outputs)
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) SendNotice(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	if target.Empty() {
-		return a.SendChat(ctx, out)
+		return a.SendChat(ctx, outputs)
 	}
 	openIDs, err := a.targetOpenIDs(target)
 	if err != nil {
@@ -98,7 +98,7 @@ func (a *Adapter) SendNotice(ctx context.Context, target delivery.Target, out de
 	var receipt delivery.Receipt
 	for _, openID := range openIDs {
 		ctx := context.WithValue(ctx, targetKey{}, sendTarget{OpenID: openID, Proactive: true})
-		sent, err := a.sendContextOutput(ctx, out)
+		sent, err := a.sendContextOutput(ctx, outputs)
 		if err != nil {
 			return delivery.Receipt{}, err
 		}

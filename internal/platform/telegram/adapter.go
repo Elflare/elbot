@@ -226,8 +226,8 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 	}
 }
 
-func (a *Adapter) SendChat(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
-	return a.sendContextOutput(ctx, out)
+func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+	return a.sendContextOutput(ctx, outputs)
 }
 
 func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[string]any) (json.RawMessage, error) {
@@ -237,22 +237,22 @@ func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[st
 	return a.client.callRaw(ctx, strings.TrimSpace(api), params)
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, outTarget delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) SendNotice(ctx context.Context, outTarget delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	if outTarget.Empty() {
-		return a.SendChat(ctx, out)
+		return a.SendChat(ctx, outputs)
 	}
-	return a.sendTarget(ctx, outTarget, out)
+	return a.sendTarget(ctx, outTarget, outputs)
 }
 
-func (a *Adapter) sendContextOutput(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
 	t, ok := ctx.Value(targetKey{}).(target)
 	if !ok || t.ChatID == 0 {
 		return delivery.Receipt{}, fmt.Errorf("telegram send target missing")
 	}
-	return a.sendToTarget(ctx, t, out)
+	return a.sendOutputs(ctx, t, outputs)
 }
 
-func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	if outTarget.Superadmins {
 		if len(a.cfg.Superadmins) == 0 {
 			return delivery.Receipt{}, fmt.Errorf("telegram superadmins are not configured")
@@ -268,7 +268,7 @@ func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, out
 			copyTarget.PrivateUserID = id
 			copyTarget.GroupID = ""
 			copyTarget.ScopeID = ""
-			sent, err := a.sendTarget(ctx, copyTarget, out)
+			sent, err := a.sendTarget(ctx, copyTarget, outputs)
 			if err != nil {
 				return delivery.Receipt{}, err
 			}
@@ -280,7 +280,19 @@ func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, out
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
-	return a.sendToTarget(ctx, t, out)
+	return a.sendOutputs(ctx, t, outputs)
+}
+
+func (a *Adapter) sendOutputs(ctx context.Context, t target, outputs []delivery.Output) (delivery.Receipt, error) {
+	var receipt delivery.Receipt
+	for _, out := range outputs {
+		sent, err := a.sendToTarget(ctx, t, out)
+		if err != nil {
+			return delivery.Receipt{}, err
+		}
+		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
+	}
+	return receipt, nil
 }
 
 func (a *Adapter) sendToTarget(ctx context.Context, t target, out delivery.Output) (delivery.Receipt, error) {

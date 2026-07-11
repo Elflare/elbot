@@ -161,26 +161,23 @@ func (a *Adapter) SendReasoning(ctx context.Context, text string) error {
 	return nil
 }
 
-func (a *Adapter) SendChat(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
-	text := chatText(out)
+func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+	text := outputsText(outputs)
 	if text != "" {
 		a.sendTUIMessage(tuiOutputMsg(text), text)
 	}
 	return delivery.Receipt{}, nil
 }
 
-func chatText(out delivery.Output) string {
-	if out.Kind == delivery.KindText {
-		return out.Text
-	}
-	return delivery.FallbackText(out)
+func outputsText(outputs []delivery.Output) string {
+	return delivery.FallbackOutput(outputs).Text
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) SendNotice(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	if platformName := strings.TrimSpace(target.Platform); platformName != "" && platformName != a.Name() {
 		return delivery.Receipt{}, fmt.Errorf("cli cannot send to platform %q", platformName)
 	}
-	text := delivery.FallbackText(out)
+	text := outputsText(outputs)
 	if text != "" {
 		a.sendTUIMessage(tuiNoticeMsg(text), "[notice] "+text)
 	}
@@ -192,7 +189,7 @@ func (a *Adapter) SendToolNotice(text string) {
 	if text == "" {
 		return
 	}
-	_, _ = a.SendNotice(context.Background(), delivery.Target{}, delivery.Text("[tool] "+text))
+	_, _ = a.SendNotice(context.Background(), delivery.Target{}, []delivery.Output{delivery.Text("[tool] " + text)})
 }
 
 func (a *Adapter) sendTUIMessage(msg tea.Msg, fallback string) {

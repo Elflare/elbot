@@ -109,7 +109,7 @@ func TestHooksCommandManagesStatefulHooks(t *testing.T) {
 		t.Fatalf("detail = %#v, %v", result, err)
 	}
 	result, err = cmd.Handle(context.Background(), command.Request{Args: "restart weather"})
-	if err != nil || hooks.restarted != "weather" || !strings.Contains(result.Content, "requested") {
+	if err != nil || hooks.restarted != "weather" || !strings.Contains(result.Content, "completed") {
 		t.Fatalf("restart = %#v, restarted=%q, err=%v", result, hooks.restarted, err)
 	}
 }

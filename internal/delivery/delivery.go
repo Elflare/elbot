@@ -215,10 +215,10 @@ type MessageStream interface {
 	Finish(ctx context.Context) (Receipt, error)
 }
 
-// MessageSender sends chat messages and notifications through a platform.
+// MessageSender sends one logical message, represented by ordered output segments.
 type MessageSender interface {
-	SendChat(ctx context.Context, out Output) (Receipt, error)
-	SendNotice(ctx context.Context, target Target, out Output) (Receipt, error)
+	SendChat(ctx context.Context, outputs []Output) (Receipt, error)
+	SendNotice(ctx context.Context, target Target, outputs []Output) (Receipt, error)
 }
 
 // ContextSender can send a reply using routing information carried by ctx.
@@ -226,10 +226,7 @@ type ContextSender interface {
 	MessageSender
 }
 
-type Sender interface {
-	SendChat(ctx context.Context, output Output) (Receipt, error)
-	SendNotice(ctx context.Context, target Target, output Output) (Receipt, error)
-}
+type Sender = MessageSender
 
 type Manager struct {
 	Sender Sender
@@ -241,43 +238,41 @@ func NewManager(sender Sender, logger *slog.Logger) Manager {
 }
 
 func (m Manager) SendNotices(ctx context.Context, outputs []Output) error {
-	for _, out := range outputs {
-		if _, err := m.SendNotice(ctx, out.Target, out); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err := m.SendNotice(ctx, Target{}, outputs)
+	return err
 }
 
-func (m Manager) SendChat(ctx context.Context, out Output) (Receipt, error) {
+func (m Manager) SendChat(ctx context.Context, outputs []Output) (Receipt, error) {
 	if err := ctx.Err(); err != nil {
 		return Receipt{}, err
 	}
 	if m.Sender == nil {
 		return Receipt{}, fmt.Errorf("output sender is not configured")
 	}
-	return m.Sender.SendChat(ctx, out)
+	return m.Sender.SendChat(ctx, outputs)
 }
 
-func (m Manager) SendNotice(ctx context.Context, target Target, out Output) (Receipt, error) {
+func (m Manager) SendNotice(ctx context.Context, target Target, outputs []Output) (Receipt, error) {
 	if err := ctx.Err(); err != nil {
 		return Receipt{}, err
 	}
-	if m.Sender == nil {
-		return Receipt{}, fmt.Errorf("output sender is not configured")
+	if m.Sender == nil || len(outputs) == 0 {
+		return Receipt{}, nil
 	}
-	if !target.Empty() {
-		out.Target = target
-	} else if !out.Target.Empty() {
-		target = out.Target
+	configuredTarget, err := ValidateOutputsTarget(outputs)
+	if err != nil {
+		return Receipt{}, err
 	}
-	receipt, err := m.Sender.SendNotice(ctx, target, out)
+	if target.Empty() {
+		target = configuredTarget
+	}
+	receipt, err := m.Sender.SendNotice(ctx, target, outputs)
 	if err != nil {
 		if m.Logger != nil {
-			attrs := outputLogAttrs(out, "kind", out.Kind, "name", out.Name, "platform", target.Platform, "error", err.Error())
+			attrs := outputLogAttrs(outputs[0], "platform", target.Platform, "error", err.Error())
 			m.Logger.WarnContext(ctx, "notice output failed", attrs...)
 		}
-		return Receipt{}, wrapOutputSourceError(out, err)
+		return Receipt{}, wrapOutputSourceError(outputs[0], err)
 	}
 	return receipt, nil
 }
@@ -317,6 +312,33 @@ func outputMetaString(out Output, key string) string {
 		return ""
 	}
 	return strings.TrimSpace(value)
+}
+
+func FallbackOutput(outputs []Output) Output {
+	parts := make([]string, 0, len(outputs))
+	for _, out := range outputs {
+		if text := strings.TrimSpace(FallbackText(out)); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return Text(strings.Join(parts, "\n"))
+}
+
+func ValidateOutputsTarget(outputs []Output) (Target, error) {
+	var target Target
+	for _, out := range outputs {
+		if out.Target.Empty() {
+			continue
+		}
+		if target.Empty() {
+			target = out.Target
+			continue
+		}
+		if target != out.Target {
+			return Target{}, fmt.Errorf("outputs in one batch must use the same target")
+		}
+	}
+	return target, nil
 }
 
 func FallbackText(out Output) string {

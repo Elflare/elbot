@@ -158,21 +158,19 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	if result == nil {
 		return map[string]any{"content": "", "segments": []llm.MessageSegment{}, "warnings": []string{}, "receipts": []delivery.Receipt{}}, nil
 	}
-	receipts := []delivery.Receipt{}
-	for _, output := range result.Outputs {
-		if !params.Target.Empty() {
-			output.Target = params.Target
-		}
-		if w.manager.opts.Send == nil {
-			return nil, fmt.Errorf("hook output sender is not configured")
-		}
-		receipt, err := w.manager.opts.Send(callCtx, output.Target, output)
-		if err != nil {
-			return nil, err
-		}
-		receipts = append(receipts, receipt)
+	if w.manager.opts.Send == nil {
+		return nil, fmt.Errorf("hook output sender is not configured")
 	}
-	return map[string]any{"content": result.Content, "segments": result.Segments, "warnings": result.Warnings, "receipts": receipts}, nil
+	if !params.Target.Empty() {
+		for i := range result.Outputs {
+			result.Outputs[i].Target = params.Target
+		}
+	}
+	receipt, err := w.manager.opts.Send(callCtx, params.Target, result.Outputs)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"content": result.Content, "segments": result.Segments, "warnings": result.Warnings, "receipts": []delivery.Receipt{receipt}}, nil
 }
 
 func (w *worker) schemas() []llm.ToolSchema {

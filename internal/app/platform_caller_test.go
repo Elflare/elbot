@@ -18,11 +18,11 @@ func (r fakeRuntimeWithCaller) Name() string { return r.name }
 
 func (r fakeRuntimeWithCaller) Run(context.Context, platform.PlatformHandler) error { return nil }
 
-func (r fakeRuntimeWithCaller) SendChat(context.Context, delivery.Output) (delivery.Receipt, error) {
+func (r fakeRuntimeWithCaller) SendChat(context.Context, []delivery.Output) (delivery.Receipt, error) {
 	return delivery.Receipt{}, nil
 }
 
-func (r fakeRuntimeWithCaller) SendNotice(context.Context, delivery.Target, delivery.Output) (delivery.Receipt, error) {
+func (r fakeRuntimeWithCaller) SendNotice(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
 	return delivery.Receipt{}, nil
 }
 

@@ -396,7 +396,7 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 			return dispatchErr
 		}
 		if result != nil && result.Content != "" {
-			if err := a.sendNoticeOutput(ctx, delivery.Target{}, delivery.Text(result.Content)); err != nil {
+			if err := a.sendNotice(ctx, delivery.Target{}, []delivery.Output{delivery.Text(result.Content)}); err != nil {
 				return err
 			}
 		}

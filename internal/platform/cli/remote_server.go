@@ -159,19 +159,19 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler platform
 	}
 }
 
-func (s *RemoteServer) SendChat(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
+func (s *RemoteServer) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
 	if client, ok := ctx.Value(remoteClientKey{}).(*remoteClientConn); ok && client != nil {
-		return delivery.Receipt{}, client.write(ctx, outputMessage(remoteMsgChat, out))
+		return delivery.Receipt{}, client.write(ctx, outputMessage(remoteMsgChat, delivery.FallbackOutput(outputs)))
 	}
 	return delivery.Receipt{}, fmt.Errorf("cli chat target missing")
 }
 
-func (s *RemoteServer) SendNotice(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+func (s *RemoteServer) SendNotice(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	clients, err := s.targetClients(ctx, target)
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
-	msg := outputMessage(remoteMsgNotice, out)
+	msg := outputMessage(remoteMsgNotice, delivery.FallbackOutput(outputs))
 	return delivery.Receipt{}, s.writeClients(ctx, clients, msg)
 }
 

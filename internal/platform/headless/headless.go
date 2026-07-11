@@ -20,10 +20,10 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 	return ctx.Err()
 }
 
-func (a *Adapter) SendChat(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
 	return delivery.Receipt{}, fmt.Errorf("service platform cannot send chat output without a target platform")
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) SendNotice(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
 	return delivery.Receipt{}, fmt.Errorf("service platform cannot send notice without a target platform")
 }

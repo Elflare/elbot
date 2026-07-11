@@ -139,7 +139,7 @@ func (a *Agent) sendHookFailureNotice(ctx context.Context, event hook.Event, err
 		target.Platform = event.Platform.Name
 		target.ScopeID = event.Platform.ScopeID
 	}
-	if sendErr := a.sendNoticeOutput(ctx, target, delivery.Text(text)); sendErr != nil && a.logger != nil {
+	if sendErr := a.sendNotice(ctx, target, []delivery.Output{delivery.Text(text)}); sendErr != nil && a.logger != nil {
 		a.logger.WarnContext(ctx, "hook failure notice failed", "point", string(event.Point), "error", sendErr.Error())
 	}
 }

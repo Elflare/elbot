@@ -65,13 +65,13 @@ func (p *fakePlatform) Name() string { return "cli" }
 
 func (p *fakePlatform) Run(context.Context, platform.PlatformHandler) error { return nil }
 
-func (p *fakePlatform) SendChat(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
-	p.out.WriteString(delivery.FallbackText(out))
+func (p *fakePlatform) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+	p.out.WriteString(delivery.FallbackOutput(outputs).Text)
 	return delivery.Receipt{}, nil
 }
 
-func (p *fakePlatform) SendNotice(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
-	text := delivery.FallbackText(out)
+func (p *fakePlatform) SendNotice(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	text := delivery.FallbackOutput(outputs).Text
 	p.out.WriteString(text)
 	p.preview.WriteString(text)
 	return delivery.Receipt{}, nil

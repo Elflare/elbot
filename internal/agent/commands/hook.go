@@ -60,7 +60,7 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 		if err != nil {
 			return &command.Result{Content: fmt.Sprintf("hook %s failed: %v", fields[0], err)}, nil
 		}
-		return &command.Result{Content: fmt.Sprintf("hook %s requested: %s", fields[0], fields[1])}, nil
+		return &command.Result{Content: fmt.Sprintf("hook %s completed: %s", fields[0], fields[1])}, nil
 	default:
 		name := fields[0]
 		return &command.Result{Content: formatHookDetail(deps, name)}, nil

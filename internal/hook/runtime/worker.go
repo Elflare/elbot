@@ -49,6 +49,38 @@ func (w *worker) start() {
 	go w.run()
 }
 
+func (w *worker) waitReady(ctx context.Context) error {
+	timeout := time.Duration(w.config.StartupTimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = time.Second
+	}
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		w.mu.Lock()
+		status, detail := w.status, w.detail
+		w.mu.Unlock()
+		switch status {
+		case StatusReady, StatusRunning:
+			return nil
+		case StatusFailed, StatusDegraded:
+			if detail == "" {
+				detail = string(status)
+			}
+			return fmt.Errorf("hook worker %q failed to start: %s", w.config.ID, detail)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline.C:
+			return fmt.Errorf("hook worker %q startup timed out", w.config.ID)
+		case <-ticker.C:
+		}
+	}
+}
+
 func (w *worker) info() Info {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -154,6 +186,11 @@ func (w *worker) waitLoop(cmd *exec.Cmd) {
 		w.setStatus(StatusDegraded, detail)
 		w.manager.mu.Lock()
 		w.manager.clearRoutesLocked(w.config.ID)
+		for key, transient := range w.manager.transient {
+			if transient == w {
+				delete(w.manager.transient, key)
+			}
+		}
 		w.manager.mu.Unlock()
 		if w.shouldRestart() {
 			go w.restartLater()
@@ -164,7 +201,7 @@ func (w *worker) waitLoop(cmd *exec.Cmd) {
 }
 
 func (w *worker) shouldRestart() bool {
-	return w.config.Restart.Strategy == "on_failure" || w.config.Restart.Strategy == "always"
+	return w.config.ModeOrOnce() == ModePersistent && (w.config.Restart.Strategy == "on_failure" || w.config.Restart.Strategy == "always")
 }
 
 func (w *worker) restartLater() {
@@ -205,13 +242,11 @@ func (w *worker) stop(ctx context.Context) {
 	cmd := w.cmd
 	done := w.done
 	w.mu.Unlock()
-	defer func() {
+	if cmd == nil {
+		w.setStatus(StatusStopped, "")
 		w.mu.Lock()
 		w.stopping = false
 		w.mu.Unlock()
-	}()
-	if cmd == nil {
-		w.setStatus(StatusStopped, "")
 		return
 	}
 	w.setStatus(StatusStopping, "")
@@ -223,8 +258,10 @@ func (w *worker) stop(ctx context.Context) {
 	case <-time.After(time.Duration(w.config.ShutdownTimeoutSeconds) * time.Second):
 		w.kill()
 	}
+	w.mu.Lock()
+	w.stopping = false
+	w.mu.Unlock()
 }
-
 func (w *worker) kill() {
 	w.mu.Lock()
 	cmd := w.cmd
@@ -248,7 +285,7 @@ func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool
 	}
 	w.mu.Unlock()
 	if status != StatusReady && status != StatusRunning {
-		return event, fmt.Errorf("stateful hook %q is %s", w.config.ID, status)
+		return event, fmt.Errorf("hook worker %q is %s", w.config.ID, status)
 	}
 	defer w.finishHandle()
 	w.setStatus(StatusRunning, "")

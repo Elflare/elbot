@@ -337,4 +337,3 @@ func formatUsageBucket(sb *strings.Builder, label string, b *usageBucket) {
 func formatElapsed(ms int64) string {
 	return fmt.Sprintf("%.1fs", float64(ms)/1000)
 }
-

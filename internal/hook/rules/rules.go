@@ -33,7 +33,7 @@ type Options struct {
 	Logger          *slog.Logger
 	Audit           func(event string, attrs ...any)
 	Notify          func(context.Context, string)
-	Send            func(context.Context, delivery.Target, delivery.Output) (delivery.Receipt, error)
+	Send            func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 	PlatformCallers PlatformCallerResolver
 	Runtime         *hookruntime.Manager
 }
@@ -361,12 +361,14 @@ func loadConfig(opts Options) (Config, string, error) {
 			runtimeConfig.Dir = pluginDir
 			runtimeConfig.ConfigPath = pluginPath
 			runtimeConfig.Block = block
-			if err := runtimeConfig.Validate(); err != nil {
-				reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
-				continue
+			if runtimeConfig.IsWorker() {
+				if err := runtimeConfig.Validate(); err != nil {
+					reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
+					continue
+				}
+				cfg.Runtimes = append(cfg.Runtimes, runtimeConfig)
+				runtimeID = runtimeConfig.ID
 			}
-			cfg.Runtimes = append(cfg.Runtimes, runtimeConfig)
-			runtimeID = runtimeConfig.ID
 		}
 		source := ruleSource{
 			PluginName:        strings.TrimSpace(ref.Name),
@@ -864,7 +866,7 @@ func validateRule(rule Rule) error {
 
 	if rule.source.RuntimeID != "" {
 		if len(rule.Actions) != 0 {
-			return fmt.Errorf("stateful hook rule %q only declares event triggers and cannot set actions", rule.Name)
+			return fmt.Errorf("worker hook rule %q only declares event triggers and cannot set actions", rule.Name)
 		}
 	} else if len(rule.Actions) == 0 {
 		return fmt.Errorf("hook rule %q has no actions", rule.Name)

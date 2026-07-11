@@ -48,7 +48,7 @@ func TestSharedStateRejectsInvalidKeysAndValues(t *testing.T) {
 
 func TestConfigValidateRequiresExplicitLifecycle(t *testing.T) {
 	config := Config{
-		Stateful:               true,
+		Mode:                   ModePersistent,
 		Command:                "hook.exe",
 		Cwd:                    ".",
 		StartupTimeoutSeconds:  5,
