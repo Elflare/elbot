@@ -22,7 +22,7 @@ type hookRunner interface {
 
 type hookRouter interface {
 	Cancel(hook.Event) bool
-	Route(context.Context, hook.Event) (bool, []delivery.Output, error)
+	Route(context.Context, hook.Event) (hook.Event, bool, error)
 }
 
 func (a *Agent) SetHookManager(manager hook.Manager) {
@@ -46,9 +46,9 @@ func (a *Agent) cancelHookRoute(event hook.Event) bool {
 	return a.hookRuntime != nil && a.hookRuntime.Cancel(event)
 }
 
-func (a *Agent) routeHook(ctx context.Context, event hook.Event) (bool, []delivery.Output, error) {
+func (a *Agent) routeHook(ctx context.Context, event hook.Event) (hook.Event, bool, error) {
 	if a.hookRuntime == nil {
-		return false, nil, nil
+		return event, false, nil
 	}
 	return a.hookRuntime.Route(ctx, event)
 }

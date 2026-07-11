@@ -249,8 +249,11 @@ func (m *Manager) worker(id string) *worker {
 	return m.workers[strings.TrimSpace(id)]
 }
 
-func (m *Manager) Handle(ctx context.Context, id string, event hook.Event) (hook.Event, error) {
+func (m *Manager) Handle(ctx context.Context, id string, event hook.Event, defaults hook.Control) (hook.Event, error) {
 	if m.hasLease(event) {
+		return event, nil
+	}
+	if skipped, _ := event.Metadata[skipHookIDMetadataKey].(string); skipped == id {
 		return event, nil
 	}
 	worker := m.worker(id)
@@ -260,7 +263,7 @@ func (m *Manager) Handle(ctx context.Context, id string, event hook.Event) (hook
 	if worker.config.Block.Blocks(event) {
 		return event, nil
 	}
-	updated, err := worker.handle(ctx, event, false)
+	updated, err := worker.handle(ctx, event, false, defaults)
 	if err == nil {
 		if updated.Metadata == nil {
 			updated.Metadata = map[string]any{}

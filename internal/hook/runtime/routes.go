@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"elbot/internal/delivery"
 	"elbot/internal/hook"
 )
 
 const maxToolCallsPerInvocation = 32
 const dispatchedMetadataKey = "hook.runtime.dispatched"
+const skipHookIDMetadataKey = "hook.runtime.skip_id"
 
 func (m *Manager) hasLease(event hook.Event) bool {
 	if m == nil {
@@ -32,12 +32,12 @@ func (m *Manager) hasLease(event hook.Event) bool {
 
 // Route dispatches a captured continuation before Agent wakeup, commands and
 // LLM processing. The caller owns normal Hook execution before calling Route.
-func (m *Manager) Route(ctx context.Context, event hook.Event) (bool, []delivery.Output, error) {
+func (m *Manager) Route(ctx context.Context, event hook.Event) (hook.Event, bool, error) {
 	if m == nil {
-		return false, nil, nil
+		return event, false, nil
 	}
 	if dispatched, _ := event.Metadata[dispatchedMetadataKey].(bool); dispatched {
-		return false, nil, nil
+		return event, false, nil
 	}
 	key := routeKeyFor(event)
 	m.mu.Lock()
@@ -48,21 +48,27 @@ func (m *Manager) Route(ctx context.Context, event hook.Event) (bool, []delivery
 	}
 	m.mu.Unlock()
 	if !ok {
-		return false, nil, nil
+		return event, false, nil
 	}
 	worker := m.worker(lease.HookID)
 	if worker == nil {
 		m.mu.Lock()
 		delete(m.routes, key)
 		m.mu.Unlock()
-		return false, nil, nil
+		return event, false, nil
 	}
 	if worker.config.Block.Blocks(event) {
 		m.clearLease(lease.HookID, event)
-		return false, nil, nil
+		return event, false, nil
 	}
-	updated, err := worker.handle(ctx, event, true)
-	return true, appendedOutputs(event.Outputs, updated.Outputs), err
+	updated, err := worker.handle(ctx, event, true, lease.Control)
+	if err == nil && !updated.Control.StopPropagation {
+		if updated.Metadata == nil {
+			updated.Metadata = map[string]any{}
+		}
+		updated.Metadata[skipHookIDMetadataKey] = lease.HookID
+	}
+	return updated, true, err
 }
 
 func (m *Manager) Cancel(event hook.Event) bool {
@@ -94,13 +100,6 @@ func (m *Manager) Cancel(event hook.Event) bool {
 	return true
 }
 
-func appendedOutputs(before, after []delivery.Output) []delivery.Output {
-	if len(after) <= len(before) {
-		return nil
-	}
-	return append([]delivery.Output(nil), after[len(before):]...)
-}
-
 type routeKey struct {
 	Platform string
 	ScopeID  string
@@ -115,6 +114,7 @@ type lease struct {
 	HookID         string
 	ConversationID string
 	ExpiresAt      time.Time
+	Control        hook.Control
 }
 
 type invocation struct {
@@ -135,7 +135,7 @@ func (m *Manager) endInvocation(key routeKey, cancel context.CancelFunc) {
 	m.mu.Unlock()
 }
 
-func (m *Manager) setLease(id string, event hook.Event, result eventResult) error {
+func (m *Manager) setLease(id string, event hook.Event, result eventResult, defaults hook.Control) error {
 	if result.Status != "waiting" {
 		return nil
 	}
@@ -156,7 +156,7 @@ func (m *Manager) setLease(id string, event hook.Event, result eventResult) erro
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	key := routeKeyFor(event)
-	m.routes[key] = lease{HookID: id, ConversationID: result.ConversationID, ExpiresAt: result.ExpiresAt}
+	m.routes[key] = lease{HookID: id, ConversationID: result.ConversationID, ExpiresAt: result.ExpiresAt, Control: defaults}
 	return nil
 }
 

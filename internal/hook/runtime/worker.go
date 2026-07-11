@@ -234,7 +234,7 @@ func (w *worker) kill() {
 	}
 }
 
-func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool) (hook.Event, error) {
+func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool, defaults hook.Control) (hook.Event, error) {
 	key := routeKeyFor(event)
 	unlock, err := w.lockRoute(ctx, key)
 	if err != nil {
@@ -278,7 +278,7 @@ func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool
 	switch result.Status {
 	case "", "completed":
 	case "waiting":
-		if err := w.manager.setLease(w.config.ID, event, result); err != nil {
+		if err := w.manager.setLease(w.config.ID, event, result, defaults); err != nil {
 			return event, err
 		}
 	default:
@@ -289,10 +289,16 @@ func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool
 		return event, err
 	}
 	event.Outputs = append(event.Outputs, outputs...)
-	if result.Consume {
+	consume := defaults.Consume
+	stopPropagation := defaults.StopPropagation
+	if result.PassThrough != nil {
+		consume = !*result.PassThrough
+		stopPropagation = !*result.PassThrough
+	}
+	if consume {
 		event.Control.Consume = true
 	}
-	if result.StopPropagation {
+	if stopPropagation {
 		event.Control.StopPropagation = true
 	}
 	if continuation && result.Status != "waiting" {

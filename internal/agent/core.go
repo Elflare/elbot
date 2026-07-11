@@ -330,9 +330,16 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 			return nil
 		}
 	}
-	event, err := a.runHook(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
-	if err != nil {
-		return err
+	event := a.fillHookContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
+	event, routed, routeErr := a.routeHook(ctx, event)
+	if routeErr != nil {
+		return routeErr
+	}
+	if !routed || !event.Control.StopPropagation {
+		event, err = a.runHook(ctx, event)
+		if err != nil {
+			return err
+		}
 	}
 	if len(event.Outputs) > 0 {
 		if err := a.sendOutputs(ctx, event.Outputs); err != nil {
@@ -352,16 +359,6 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 	text = llm.SegmentsTextOnly(segments)
 	if strings.TrimSpace(text) == "/cancel" && a.cancelHookRoute(event) {
 		a.sendChat(ctx, "已取消当前 Hook 会话。")
-		return nil
-	}
-	handled, outputs, routeErr := a.routeHook(ctx, event)
-	if routeErr != nil {
-		return routeErr
-	}
-	if handled {
-		if err := a.sendOutputs(ctx, outputs); err != nil {
-			return err
-		}
 		return nil
 	}
 	if !woken {

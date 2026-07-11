@@ -45,6 +45,22 @@ type fakePlatform struct {
 	lastStatus  runtimestatus.Snapshot
 }
 
+type fakeHookRouter struct {
+	event  hook.Event
+	routed bool
+}
+
+func (r *fakeHookRouter) Cancel(hook.Event) bool { return false }
+
+func (r *fakeHookRouter) Route(_ context.Context, event hook.Event) (hook.Event, bool, error) {
+	if !r.routed {
+		return event, false, nil
+	}
+	event.Outputs = append(event.Outputs, r.event.Outputs...)
+	event.Control = r.event.Control
+	return event, true, nil
+}
+
 func (p *fakePlatform) Name() string { return "cli" }
 
 func (p *fakePlatform) Run(context.Context, platform.PlatformHandler) error { return nil }
@@ -590,6 +606,36 @@ func TestReplyContextFallbackStillReachesLLMWhenNotConsumed(t *testing.T) {
 	}
 	if got := llm.LatestUserSegmentTextOnly(requests[0].Messages); got != "[引用：通知]：通知内容\n\n继续" {
 		t.Fatalf("latest user text = %q", got)
+	}
+}
+
+func TestWaitingContinuationPassThroughReachesLaterHooksAndLLM(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a.SetHookRuntime(&fakeHookRouter{routed: true})
+	manager := hook.NewManager()
+	if err := manager.Register(hook.Registration{
+		Point: hook.PointPlatformMessageReceived,
+		Name:  "test.after.waiting",
+		Match: hook.Always(),
+		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+			event.Outputs = append(event.Outputs, delivery.Text("later hook"))
+			return event, nil
+		}),
+	}); err != nil {
+		t.Fatalf("Register hook: %v", err)
+	}
+	a.SetHookManager(manager)
+
+	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if got := p.out.String(); !strings.Contains(got, "later hook") || !strings.Contains(got, "final") {
+		t.Fatalf("platform output = %q, want later hook and final", got)
+	}
+	if got := len(f.chatRequests()); got != 1 {
+		t.Fatalf("chat requests = %d, want 1", got)
 	}
 }
 
