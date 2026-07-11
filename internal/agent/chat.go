@@ -52,6 +52,10 @@ func (a *Agent) startChatWithOutput(ctx context.Context, session *storage.Sessio
 		out.PublishRuntimeStatus(ctx, status)
 		return err
 	}
+	status := a.runtimeStatusForSession(session.ID)
+	if status.Running() {
+		out.PublishRuntimeStatus(ctx, runtimeDoneStatus(status, storage.Now()))
+	}
 	return nil
 }
 

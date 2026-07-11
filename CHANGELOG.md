@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 优化 CLI TUI。
 - Hook 管理从 Agent 核心解耦为独立 Control Service；`/hooks reload` 先隔离构建并校验候选配置，再原子替换普通 Hook 快照和持久 Runtime worker 索引，失败时保留当前活动 Hook。
 - Hook 基础与持久 Runtime 按事件、匹配、Manager、路由、进程、协议和工具桥拆分文件；Agent 的 Hook 执行接入与 Output 发送适配也已分离，外部 Hook 配置和 `hook.v2` 协议不变。
 
@@ -53,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- CLI TUI 执行 `/stop` 后会把当前运行状态收束为 `done` 并固定耗时，不再继续累加状态栏时间。
 - 补全 `docs/hooks.md` 中 hook.v2 的完整 `system.init` / `event.handle` request、成功与失败 response 外层帧，以及 `platform.call.params`、平台回包和 QQ OneBot 撤回示例。
 - `/hooks` 现在直接使用规则名查看详情，不再要求输入 `rules.` 前缀；规则 Hook 支持可选 `description`，内置 Hook 统一使用 `builtin.*` 名称和 description，规则细节只在详情中展示。
 - 修复发现或内联预载多个 ELyph Skill 时规则卡会重复注入上下文的问题；同一会话首次注入后只继续返回 Skill 内容，保留历史中的首次规则卡以利于缓存命中。

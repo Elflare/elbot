@@ -2,11 +2,12 @@ package cli
 
 import (
 	"context"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -30,6 +31,13 @@ type tuiProgramSetter func(*tea.Program)
 const (
 	noticePanelWidth        = 40
 	maxCompletionPopupItems = 8
+	tuiInputCharLimit       = 4096
+	tuiInputGutterWidth     = 2
+	minTUIInputHeight       = 3
+	maxTUIInputHeight       = 6
+	pasteBurstCharInterval  = 12 * time.Millisecond
+	pasteBurstIdleTimeout   = 80 * time.Millisecond
+	pasteBurstMinRunes      = 3
 )
 
 var (
@@ -48,6 +56,7 @@ var (
 	tuiPanelStyle              = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).BorderForeground(lipgloss.Color("8")).PaddingLeft(1)
 	tuiCompletionStyle         = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("62")).Padding(0, 1)
 	tuiCompletionSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("62"))
+	tuiInputPromptStyle        = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
 )
 
 type legacyCompleter interface {
@@ -58,6 +67,48 @@ type completionState struct {
 	base  string
 	items []completion.Item
 	index int
+}
+
+type tuiPasteBurst struct {
+	lastInput time.Time
+	runes     int
+	active    bool
+}
+
+// Windows Console Input exposes pasted text as ordinary key events. Detect a
+// short rune burst so Enter inside that stream becomes a textarea newline.
+func (b *tuiPasteBurst) observeText(now time.Time, count int) {
+	if count <= 0 {
+		return
+	}
+	gap := now.Sub(b.lastInput)
+	if b.lastInput.IsZero() || gap < 0 || gap > pasteBurstIdleTimeout {
+		b.runes = count
+		b.active = false
+	} else if b.active || gap <= pasteBurstCharInterval {
+		b.runes += count
+	} else {
+		b.runes = count
+	}
+	if b.runes >= pasteBurstMinRunes {
+		b.active = true
+	}
+	b.lastInput = now
+}
+
+func (b *tuiPasteBurst) shouldInsertEnter(now time.Time) bool {
+	if !b.active || b.lastInput.IsZero() || now.Sub(b.lastInput) > pasteBurstIdleTimeout {
+		b.reset()
+		return false
+	}
+	b.lastInput = now
+	return true
+}
+
+func (b *tuiPasteBurst) reset() {
+	b.lastInput = time.Time{}
+	b.runes = 0
+	b.active = false
 }
 
 func (s completionState) visible() bool {
@@ -94,7 +145,9 @@ type tuiModel struct {
 	statusNow       time.Time
 	viewport        viewport.Model
 	noticeViewport  viewport.Model
-	input           textinput.Model
+	input           textarea.Model
+	pasteBurst      tuiPasteBurst
+	inputNow        func() time.Time
 	width           int
 	height          int
 }
@@ -103,11 +156,19 @@ type completionProvider interface {
 	Complete(context.Context, completion.Request) []completion.Item
 }
 
-func runTUI(ctx context.Context, handler platform.PlatformHandler, completion completionProvider, output chan tea.Msg, setProgram tuiProgramSetter, userName, assistantName string) error {
-	input := textinput.New()
+func newTUIInput() textarea.Model {
+	input := textarea.New()
 	input.Focus()
-	input.Prompt = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81")).Render("❯ ")
-	input.CharLimit = 4096
+	input.FocusedStyle.CursorLine = input.FocusedStyle.Text
+	input.Prompt = ""
+	input.ShowLineNumbers = false
+	input.CharLimit = tuiInputCharLimit
+	input.SetHeight(1)
+	return input
+}
+
+func runTUI(ctx context.Context, handler platform.PlatformHandler, completion completionProvider, output chan tea.Msg, setProgram tuiProgramSetter, userName, assistantName string) error {
+	input := newTUIInput()
 
 	if userName == "" {
 		userName = "user"
@@ -143,6 +204,18 @@ func (m tuiModel) Init() tea.Cmd {
 }
 
 func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.Paste {
+		keyMsg.Runes = []rune(normalizeTUIInputPaste(string(keyMsg.Runes)))
+		msg = keyMsg
+	}
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && runtime.GOOS == "windows" {
+		now := m.now()
+		if !keyMsg.Paste && !keyMsg.Alt && len(keyMsg.Runes) > 0 {
+			m.pasteBurst.observeText(now, len(keyMsg.Runes))
+		} else if keyMsg.Type != tea.KeyEnter {
+			m.pasteBurst.reset()
+		}
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -175,6 +248,20 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tuiNoticeMsg:
 		m.appendNotice(string(msg))
 		return m, waitTUIOutput(m.output)
+	case tuiClipboardMsg:
+		if msg.err != nil {
+			m.appendNotice("paste: " + msg.err.Error())
+			return m, nil
+		}
+		oldInputContentHeight := m.inputContentHeight()
+		m.input.InsertString(normalizeTUIInputPaste(msg.text))
+		m.clearCompletion()
+		if m.inputContentHeight() != oldInputContentHeight {
+			m.resizeViewports()
+			m.refreshContent()
+			m.refreshNotices()
+		}
+		return m, nil
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	case tea.KeyMsg:
@@ -198,7 +285,7 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.input.Value() != "" {
-				m.input.SetValue("")
+				m.clearInput()
 			}
 			return m, nil
 		case "ctrl+c":
@@ -207,10 +294,12 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.input.Value() != "" {
-				m.input.SetValue("")
+				m.clearInput()
 				return m, nil
 			}
 			return m, tea.Quit
+		case "ctrl+v":
+			return m, readTUIClipboard()
 		case "pgup":
 			m.viewport.ScrollUp(max(1, m.viewport.Height-1))
 			return m, nil
@@ -229,12 +318,6 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+d":
 			m.noticeViewport.ScrollDown(max(1, m.noticeViewport.Height/2))
 			return m, nil
-		case "home":
-			m.viewport.GotoTop()
-			return m, nil
-		case "end":
-			m.viewport.GotoBottom()
-			return m, nil
 		case "tab", "ctrl+i":
 			return m.completeInput(1)
 		case "shift+tab", "backtab":
@@ -244,44 +327,26 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selectCompletion(-1)
 				return m, nil
 			}
-			m.clearCompletion()
-			return m.prevHistory()
+			if m.input.Line() == 0 {
+				m.clearCompletion()
+				return m.prevHistory()
+			}
 		case "down":
 			if m.completionState.visible() {
 				m.selectCompletion(1)
 				return m, nil
 			}
-			m.clearCompletion()
-			return m.nextHistory()
+			if m.input.Line() == m.input.LineCount()-1 {
+				m.clearCompletion()
+				return m.nextHistory()
+			}
 		case "enter":
-			m.clearCompletion()
-			text := strings.TrimSpace(m.input.Value())
-			if text == "" {
-				return m, nil
+			if runtime.GOOS == "windows" && m.pasteBurst.shouldInsertEnter(m.now()) {
+				break
 			}
-			if text == "/exit" {
-				return m, tea.Quit
+			if m.input.Line() == m.input.LineCount()-1 {
+				return m.submitInput()
 			}
-			sendText, err := m.expandLocalFileReferences(text)
-			if err != nil {
-				m.input.SetValue(text)
-				m.input.CursorEnd()
-				m.appendNotice("local file reference: " + err.Error())
-				return m, nil
-			}
-			m.input.SetValue("")
-			m.history = append(m.history, text)
-			m.histPos = len(m.history)
-			m.appendUserContent(text)
-			go func() {
-				if err := m.handler.HandleMessage(m.ctx, sendText); err != nil {
-					select {
-					case m.output <- tuiNoticeMsg("error: " + err.Error()):
-					case <-m.ctx.Done():
-					}
-				}
-			}()
-			return m, nil
 		}
 	}
 
@@ -289,26 +354,72 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	oldInput := m.input.Value()
+	oldInputContentHeight := m.inputContentHeight()
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
 	if m.input.Value() != oldInput {
 		m.clearCompletion()
+		if m.inputContentHeight() != oldInputContentHeight {
+			m.resizeViewports()
+			m.refreshContent()
+			m.refreshNotices()
+		}
 	}
 	return m, cmd
 }
 
 func (m tuiModel) View() string {
-	return m.headerView() + "\n" + m.bodyView() + m.completionView() + "\n" + m.statusView() + "\n" + m.input.View()
+	return m.headerView() + "\n" + m.bodyView() + m.completionView() + "\n" + m.statusView() + "\n" + m.inputSeparatorView() + "\n" + m.inputView()
+}
+
+func normalizeTUIInputPaste(text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	return strings.ReplaceAll(text, "\r", "\n")
 }
 
 func (m *tuiModel) resizeViewports() {
 	chatWidth, noticeWidth := m.layoutWidths()
-	bodyHeight := max(1, m.height-4-m.completionViewHeight())
+	m.input.SetWidth(max(1, m.width-tuiInputGutterWidth))
+	inputHeight := m.inputViewHeight()
+	bodyHeight := max(1, m.height-4-m.completionViewHeight()-inputHeight)
 	m.viewport.Width = chatWidth
 	m.viewport.Height = bodyHeight
 	m.noticeViewport.Width = noticeWidth
 	m.noticeViewport.Height = bodyHeight
-	m.input.Width = m.width
+	m.input.SetHeight(min(m.inputContentHeight(), maxTUIInputHeight))
+}
+
+func (m tuiModel) inputViewHeight() int {
+	return min(max(minTUIInputHeight, m.inputContentHeight()), maxTUIInputHeight)
+}
+
+func (m tuiModel) inputContentHeight() int {
+	width := max(1, m.input.Width())
+	height := 0
+	for _, line := range strings.Split(m.input.Value(), "\n") {
+		height += max(1, strings.Count(wrapDisplayWidth(line, width), "\n")+1)
+	}
+	return max(1, height)
+}
+
+func (m tuiModel) inputView() string {
+	height := m.inputViewHeight()
+	prompt := lipgloss.PlaceVertical(height, lipgloss.Center, tuiInputPromptStyle.Render("❯ "))
+	content := lipgloss.PlaceVertical(height, lipgloss.Center, m.input.View())
+	return lipgloss.JoinHorizontal(lipgloss.Top, prompt, content)
+}
+
+func (m tuiModel) inputSeparatorView() string {
+	width := max(0, m.width*3/4)
+	leftPadding := max(0, (m.width-width)/2)
+	return strings.Repeat(" ", leftPadding) + tuiSeparatorStyle.Render(strings.Repeat("─", width))
+}
+
+func (m tuiModel) now() time.Time {
+	if m.inputNow != nil {
+		return m.inputNow()
+	}
+	return time.Now()
 }
 
 func (m tuiModel) completionViewHeight() int {
@@ -436,7 +547,7 @@ func (m tuiModel) completeInput(delta int) (tea.Model, tea.Cmd) {
 }
 
 func (m tuiModel) complete(value string) []completion.Item {
-	cursor := byteOffsetForRunePosition(value, m.input.Position())
+	cursor := byteOffsetForRunePosition(value, textareaCursorRunePosition(m.input))
 	if resolver := m.localFileResolver(); resolver != nil {
 		items := resolver.Complete(m.ctx, completion.Request{Text: value, Cursor: cursor})
 		if len(items) > 0 {
@@ -502,12 +613,41 @@ func (m *tuiModel) applyCompletionItem(item completion.Item, value string) {
 	}
 	if item.ReplaceStart >= 0 && item.ReplaceEnd >= item.ReplaceStart && item.ReplaceEnd <= len(value) && (item.ReplaceStart != 0 || item.ReplaceEnd != 0) {
 		updated := value[:item.ReplaceStart] + text + value[item.ReplaceEnd:]
-		m.input.SetValue(updated)
-		m.input.SetCursor(runePositionForByteOffset(updated, item.ReplaceStart+len(text)))
+		setTextareaValueAndCursor(&m.input, updated, runePositionForByteOffset(updated, item.ReplaceStart+len(text)))
 		return
 	}
 	m.input.SetValue(text)
-	m.input.CursorEnd()
+}
+
+func textareaCursorRunePosition(input textarea.Model) int {
+	lines := strings.Split(input.Value(), "\n")
+	row := min(max(0, input.Line()), len(lines)-1)
+	position := 0
+	for i := 0; i < row; i++ {
+		position += len([]rune(lines[i])) + 1
+	}
+	lineInfo := input.LineInfo()
+	return position + lineInfo.StartColumn + lineInfo.ColumnOffset
+}
+
+func setTextareaValueAndCursor(input *textarea.Model, value string, runePosition int) {
+	runes := []rune(value)
+	runePosition = min(max(0, runePosition), len(runes))
+	row := 0
+	column := 0
+	for _, r := range runes[:runePosition] {
+		if r == '\n' {
+			row++
+			column = 0
+		} else {
+			column++
+		}
+	}
+	input.SetValue(value)
+	for input.Line() > row {
+		input.CursorUp()
+	}
+	input.SetCursor(column)
 }
 
 func byteOffsetForRunePosition(value string, pos int) int {
@@ -548,7 +688,9 @@ func (m tuiModel) prevHistory() (tea.Model, tea.Cmd) {
 		m.histPos--
 	}
 	m.input.SetValue(m.history[m.histPos])
-	m.input.CursorEnd()
+	m.resizeViewports()
+	m.refreshContent()
+	m.refreshNotices()
 	return m, nil
 }
 
@@ -558,13 +700,52 @@ func (m tuiModel) nextHistory() (tea.Model, tea.Cmd) {
 	}
 	if m.histPos >= len(m.history)-1 {
 		m.histPos = len(m.history)
-		m.input.SetValue("")
+		m.clearInput()
 	} else {
 		m.histPos++
 		m.input.SetValue(m.history[m.histPos])
+		m.resizeViewports()
+		m.refreshContent()
+		m.refreshNotices()
 	}
-	m.input.CursorEnd()
 	return m, nil
+}
+
+func (m tuiModel) submitInput() (tea.Model, tea.Cmd) {
+	m.clearCompletion()
+	text := strings.TrimSpace(m.input.Value())
+	if text == "" {
+		return m, nil
+	}
+	if text == "/exit" {
+		return m, tea.Quit
+	}
+	sendText, err := m.expandLocalFileReferences(text)
+	if err != nil {
+		m.input.SetValue(m.input.Value())
+		m.appendNotice("local file reference: " + err.Error())
+		return m, nil
+	}
+	m.history = append(m.history, text)
+	m.histPos = len(m.history)
+	m.clearInput()
+	m.appendUserContent(text)
+	go func() {
+		if err := m.handler.HandleMessage(m.ctx, sendText); err != nil {
+			select {
+			case m.output <- tuiNoticeMsg("error: " + err.Error()):
+			case <-m.ctx.Done():
+			}
+		}
+	}()
+	return m, nil
+}
+
+func (m *tuiModel) clearInput() {
+	m.input.Reset()
+	m.resizeViewports()
+	m.refreshContent()
+	m.refreshNotices()
 }
 
 func (m *tuiModel) appendUserContent(text string) {

@@ -7,12 +7,25 @@ import (
 
 	"github.com/atotto/clipboard"
 	osc52 "github.com/aymanbagabas/go-osc52/v2"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 const osc52ClipboardMaxBytes = 100 * 1024
 
 type clipboardWriter interface {
 	WriteAll(string) error
+}
+
+type tuiClipboardMsg struct {
+	text string
+	err  error
+}
+
+func readTUIClipboard() tea.Cmd {
+	return func() tea.Msg {
+		text, err := clipboard.ReadAll()
+		return tuiClipboardMsg{text: text, err: err}
+	}
 }
 
 type systemClipboardWriter struct{}

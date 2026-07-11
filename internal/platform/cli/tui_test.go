@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -31,8 +32,58 @@ func (h capturingHandler) HandleMessage(_ context.Context, text string) error {
 	return nil
 }
 
+func TestTUIInputCentersPromptAndSingleLine(t *testing.T) {
+	m := tuiModel{input: newTUIInput(), width: 20, height: 20}
+	m.input.SetValue("hello")
+	m.resizeViewports()
+
+	view := m.inputView()
+	if got := strings.Count(view, "❯"); got != 1 {
+		t.Fatalf("prompt count = %d, want 1", got)
+	}
+	lines := strings.Split(view, "\n")
+	if len(lines) != minTUIInputHeight {
+		t.Fatalf("input view height = %d, want %d", len(lines), minTUIInputHeight)
+	}
+	if !strings.Contains(lines[1], "❯") || !strings.Contains(lines[1], "hello") {
+		t.Fatalf("center line = %q, want prompt and input text", lines[1])
+	}
+	if got, want := m.input.FocusedStyle.CursorLine.GetBackground(), m.input.FocusedStyle.Text.GetBackground(); got != want {
+		t.Fatalf("cursor line background = %v, want text background %v", got, want)
+	}
+}
+
+func TestTUIInputCentersMultilineBlock(t *testing.T) {
+	m := tuiModel{input: newTUIInput(), width: 20, height: 20}
+	m.input.SetValue("first\nsecond")
+	m.resizeViewports()
+
+	lines := strings.Split(m.inputView(), "\n")
+	if len(lines) != minTUIInputHeight {
+		t.Fatalf("input view height = %d, want %d", len(lines), minTUIInputHeight)
+	}
+	if !strings.Contains(lines[0], "first") || !strings.Contains(lines[1], "second") {
+		t.Fatalf("multiline input is not centered as a block: %q", lines)
+	}
+	if !strings.Contains(lines[1], "❯") {
+		t.Fatalf("prompt is not vertically centered: %q", lines)
+	}
+}
+
+func TestTUIInputSeparatorIsCenteredAndThreeQuarterWidth(t *testing.T) {
+	m := tuiModel{width: 80}
+	view := m.inputSeparatorView()
+	wantWidth := m.width * 3 / 4
+	if got := strings.Count(view, "─"); got != wantWidth {
+		t.Fatalf("separator width = %d, want %d", got, wantWidth)
+	}
+	if wantPadding := (m.width - wantWidth) / 2; !strings.HasPrefix(view, strings.Repeat(" ", wantPadding)) {
+		t.Fatalf("separator is not centered: %q", view)
+	}
+}
+
 func TestCompleteInputCyclesCandidates(t *testing.T) {
-	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, width: 80, height: 20}
+	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/c")
 
 	updated, _ := m.completeInput(1)
@@ -61,7 +112,7 @@ func TestCompleteInputCyclesCandidates(t *testing.T) {
 }
 
 func TestCompletionSelectionUsesArrowKeysWhenPopupVisible(t *testing.T) {
-	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, width: 80, height: 20}
+	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/c")
 	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
@@ -81,7 +132,7 @@ func TestCompletionSelectionUsesArrowKeysWhenPopupVisible(t *testing.T) {
 
 func TestCompletionServicePreferredOverLegacyHandler(t *testing.T) {
 	service := completion.NewService(staticCompletionSource{{Text: "/service"}, {Text: "/service2"}})
-	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/legacy"}}, completion: service, width: 80, height: 20}
+	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/legacy"}}, completion: service, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/s")
 	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
@@ -91,7 +142,7 @@ func TestCompletionServicePreferredOverLegacyHandler(t *testing.T) {
 }
 
 func TestCompletionShiftTabSelectsPreviousCandidate(t *testing.T) {
-	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, width: 80, height: 20}
+	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/c")
 	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
@@ -105,7 +156,7 @@ func TestCompletionShiftTabSelectsPreviousCandidate(t *testing.T) {
 
 func TestCompletionSingleItemUsesReplaceRange(t *testing.T) {
 	service := completion.NewService(staticCompletionSource{{Text: "openai/gpt-4o", ReplaceStart: len("/model "), ReplaceEnd: len("/model gp")}})
-	m := tuiModel{completion: service, width: 80, height: 20}
+	m := tuiModel{completion: service, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/model gp")
 	m.input.CursorEnd()
 
@@ -118,7 +169,7 @@ func TestCompletionSingleItemUsesReplaceRange(t *testing.T) {
 
 func TestCompletionUsesByteRangesWithFullWidthInput(t *testing.T) {
 	service := completion.NewService(staticCompletionSource{{Text: "@t：web_search", ReplaceStart: 0, ReplaceEnd: len("@t：we")}})
-	m := tuiModel{completion: service, width: 80, height: 20}
+	m := tuiModel{completion: service, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("@t：we")
 	m.input.CursorEnd()
 
@@ -127,7 +178,29 @@ func TestCompletionUsesByteRangesWithFullWidthInput(t *testing.T) {
 	if got := m.input.Value(); got != "@t：web_search" {
 		t.Fatalf("single completion = %q", got)
 	}
-	if got := m.input.Position(); got != len([]rune("@t：web_search")) {
+	if got := textareaCursorRunePosition(m.input); got != len([]rune("@t：web_search")) {
+		t.Fatalf("cursor position = %d", got)
+	}
+}
+
+func TestCompletionUsesCursorInMultilineInput(t *testing.T) {
+	prefix := "context\n"
+	value := prefix + "/model gp"
+	service := completion.NewService(staticCompletionSource{{
+		Text:         "openai/gpt-4o",
+		ReplaceStart: len(prefix + "/model "),
+		ReplaceEnd:   len(value),
+	}})
+	m := tuiModel{completion: service, input: newTUIInput(), width: 80, height: 20}
+	m.input.SetValue(value)
+
+	updated, _ := m.completeInput(1)
+	m = updated.(tuiModel)
+	want := prefix + "/model openai/gpt-4o"
+	if got := m.input.Value(); got != want {
+		t.Fatalf("multiline completion = %q", got)
+	}
+	if got := textareaCursorRunePosition(m.input); got != len([]rune(want)) {
 		t.Fatalf("cursor position = %d", got)
 	}
 }
@@ -136,7 +209,7 @@ func TestLocalFileCompletionFuzzyMatchesRelativePaths(t *testing.T) {
 	root := t.TempDir()
 	mustWriteFile(t, root, "internal/app/app.go", "package app\n")
 	mustWriteFile(t, root, "README.md", "hello\n")
-	m := tuiModel{localFiles: newLocalFileResolver(root), width: 80, height: 20}
+	m := tuiModel{localFiles: newLocalFileResolver(root), input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("#iag")
 	m.input.CursorEnd()
 
@@ -150,7 +223,7 @@ func TestLocalFileCompletionFuzzyMatchesRelativePaths(t *testing.T) {
 func TestLocalFileCompletionQuotesPathsWithSpaces(t *testing.T) {
 	root := t.TempDir()
 	mustWriteFile(t, root, "notes/a b.txt", "hello\n")
-	m := tuiModel{localFiles: newLocalFileResolver(root), width: 80, height: 20}
+	m := tuiModel{localFiles: newLocalFileResolver(root), input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("#\"ab")
 	m.input.CursorEnd()
 
@@ -165,7 +238,7 @@ func TestEnterExpandsLocalFileReferencesBeforeSending(t *testing.T) {
 	root := t.TempDir()
 	mustWriteFile(t, root, "foo.txt", "hello\n")
 	handler := capturingHandler{messages: make(chan string, 1)}
-	m := tuiModel{ctx: context.Background(), handler: handler, output: make(chan tea.Msg, 1), localFiles: newLocalFileResolver(root), width: 80, height: 20}
+	m := tuiModel{ctx: context.Background(), handler: handler, output: make(chan tea.Msg, 1), localFiles: newLocalFileResolver(root), input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("see #foo.txt")
 	m.input.CursorEnd()
 
@@ -190,7 +263,7 @@ func TestEnterExpandsLocalFileReferencesBeforeSending(t *testing.T) {
 func TestEnterRestoresInputWhenLocalFileReferenceFails(t *testing.T) {
 	root := t.TempDir()
 	handler := capturingHandler{messages: make(chan string, 1)}
-	m := tuiModel{ctx: context.Background(), handler: handler, output: make(chan tea.Msg, 1), localFiles: newLocalFileResolver(root), width: 80, height: 20}
+	m := tuiModel{ctx: context.Background(), handler: handler, output: make(chan tea.Msg, 1), localFiles: newLocalFileResolver(root), input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("see #missing.txt")
 	m.input.CursorEnd()
 
@@ -213,7 +286,7 @@ func TestEnterRestoresInputWhenLocalFileReferenceFails(t *testing.T) {
 }
 
 func TestCancelKeyClearsCompletionOrInputBeforeQuit(t *testing.T) {
-	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, width: 80, height: 20}
+	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/c")
 	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
@@ -254,7 +327,7 @@ func TestAppendNoticeContentUsesSeparator(t *testing.T) {
 }
 
 func TestRefreshNoticesUsesSeparator(t *testing.T) {
-	m := tuiModel{width: 120, height: 20}
+	m := tuiModel{input: newTUIInput(), width: 120, height: 20}
 	m.resizeViewports()
 	m.notices = []string{"notice one", "notice two"}
 	m.refreshNotices()
@@ -300,6 +373,212 @@ func TestRuntimeStatusTickUpdatesElapsed(t *testing.T) {
 	after := m.runtimeStatusText()
 	if before == after || !strings.Contains(after, "00:02") {
 		t.Fatalf("status did not update, before=%q after=%q", before, after)
+	}
+}
+
+func TestRuntimeStatusTickKeepsFinishedElapsedFixed(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	finished := start.Add(3 * time.Second)
+	m := tuiModel{
+		width:     80,
+		statusNow: finished,
+		runtimeStatus: runtimestatus.Snapshot{
+			SessionID:     "s1",
+			Phase:         runtimestatus.PhaseDone,
+			TurnStartedAt: start,
+			FinishedAt:    finished,
+		},
+	}
+	before := m.runtimeStatusText()
+	updated, _ := m.Update(tuiStatusTickMsg(finished.Add(time.Minute)))
+	after := updated.(tuiModel).runtimeStatusText()
+	if before != after || !strings.Contains(after, "00:03") {
+		t.Fatalf("finished status changed, before=%q after=%q", before, after)
+	}
+}
+
+func TestMultilinePasteStaysInTextareaUntilEnter(t *testing.T) {
+	handler := capturingHandler{messages: make(chan string, 1)}
+	m := tuiModel{
+		ctx:        context.Background(),
+		handler:    handler,
+		output:     make(chan tea.Msg, 1),
+		localFiles: newLocalFileResolver(t.TempDir()),
+		input:      newTUIInput(),
+		width:      80,
+		height:     20,
+		userName:   "user",
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("first\r\nsecond"), Paste: true})
+	m = updated.(tuiModel)
+	if got := m.input.Value(); got != "first\nsecond" {
+		t.Fatalf("textarea value = %q", got)
+	}
+	if m.input.LineCount() != 2 || m.input.Line() != 1 {
+		t.Fatalf("textarea cursor line=%d lines=%d", m.input.Line(), m.input.LineCount())
+	}
+	select {
+	case got := <-handler.messages:
+		t.Fatalf("paste sent before enter: %q", got)
+	default:
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(tuiModel)
+	select {
+	case got := <-handler.messages:
+		if got != "first\nsecond" {
+			t.Fatalf("sent paste = %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("pasted text was not sent")
+	}
+	if !strings.Contains(m.content, "first\nsecond") {
+		t.Fatalf("transcript did not show full paste: %q", m.content)
+	}
+}
+
+func TestClipboardPasteNormalizesCRLF(t *testing.T) {
+	m := tuiModel{input: newTUIInput(), width: 80, height: 20}
+
+	updated, _ := m.Update(tuiClipboardMsg{text: "你好\r\n世界"})
+	m = updated.(tuiModel)
+	if got := m.input.Value(); got != "你好\n世界" {
+		t.Fatalf("clipboard paste = %q", got)
+	}
+}
+
+func TestWindowsPasteBurstEnterInsertsNewlineBeforeSubmit(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows console input behavior")
+	}
+	current := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	handler := capturingHandler{messages: make(chan string, 1)}
+	m := tuiModel{
+		ctx:      context.Background(),
+		handler:  handler,
+		output:   make(chan tea.Msg, 1),
+		input:    newTUIInput(),
+		inputNow: func() time.Time { return current },
+		width:    80,
+		height:   20,
+	}
+	update := func(msg tea.KeyMsg) {
+		current = current.Add(time.Millisecond)
+		updated, _ := m.Update(msg)
+		m = updated.(tuiModel)
+	}
+	for _, r := range "abc" {
+		update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	update(tea.KeyMsg{Type: tea.KeyEnter})
+	for _, r := range "def" {
+		update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	if got := m.input.Value(); got != "abc\ndef" {
+		t.Fatalf("paste burst value = %q", got)
+	}
+	select {
+	case got := <-handler.messages:
+		t.Fatalf("paste burst sent early: %q", got)
+	default:
+	}
+
+	current = current.Add(pasteBurstIdleTimeout + time.Millisecond)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(tuiModel)
+	select {
+	case got := <-handler.messages:
+		if got != "abc\ndef" {
+			t.Fatalf("sent paste burst = %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("paste burst was not sent")
+	}
+}
+
+func TestEnterInPreviousLineInsertsNewline(t *testing.T) {
+	handler := capturingHandler{messages: make(chan string, 1)}
+	m := tuiModel{ctx: context.Background(), handler: handler, input: newTUIInput(), width: 80, height: 20}
+	setTextareaValueAndCursor(&m.input, "first\nsecond", len([]rune("first")))
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(tuiModel)
+	if got := m.input.Value(); got != "first\n\nsecond" {
+		t.Fatalf("textarea value = %q", got)
+	}
+	select {
+	case got := <-handler.messages:
+		t.Fatalf("middle-line enter sent message: %q", got)
+	default:
+	}
+}
+
+func TestUpDownUseHistoryOnlyAtTextareaBoundaries(t *testing.T) {
+	m := tuiModel{input: newTUIInput(), history: []string{"older", "newer"}, histPos: 2, width: 80, height: 20}
+	m.input.SetValue("top\nbottom")
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(tuiModel)
+	if m.input.Value() != "top\nbottom" || m.input.Line() != 0 {
+		t.Fatalf("up inside textarea changed history: value=%q line=%d", m.input.Value(), m.input.Line())
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(tuiModel)
+	if m.input.Value() != "newer" {
+		t.Fatalf("up at first line = %q", m.input.Value())
+	}
+
+	m.input.SetValue("top\nbottom")
+	setTextareaValueAndCursor(&m.input, m.input.Value(), 0)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(tuiModel)
+	if m.input.Value() != "top\nbottom" || m.input.Line() != 1 {
+		t.Fatalf("down inside textarea changed history: value=%q line=%d", m.input.Value(), m.input.Line())
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(tuiModel)
+	if m.input.Value() != "" {
+		t.Fatalf("down at last line = %q", m.input.Value())
+	}
+}
+
+func TestTextareaHeightIsCapped(t *testing.T) {
+	m := tuiModel{input: newTUIInput(), width: 80, height: 30}
+	m.input.SetValue(strings.Repeat("line\n", 9) + "line")
+	m.resizeViewports()
+	if got := m.input.Height(); got != maxTUIInputHeight {
+		t.Fatalf("input height = %d", got)
+	}
+	if got, want := m.viewport.Height, 30-4-maxTUIInputHeight; got != want {
+		t.Fatalf("viewport height = %d, want %d", got, want)
+	}
+}
+
+func TestTextareaHasMinimumHeight(t *testing.T) {
+	m := tuiModel{input: newTUIInput(), width: 80, height: 30}
+	m.input.SetValue("one line")
+	m.resizeViewports()
+	if got := m.input.Height(); got != 1 {
+		t.Fatalf("textarea height = %d, want 1", got)
+	}
+	if got, want := m.inputViewHeight(), minTUIInputHeight; got != want {
+		t.Fatalf("input view height = %d, want %d", got, want)
+	}
+	if got, want := m.viewport.Height, 30-4-minTUIInputHeight; got != want {
+		t.Fatalf("viewport height = %d, want %d", got, want)
+	}
+}
+
+func TestTextareaPasteHonorsCharacterLimit(t *testing.T) {
+	m := tuiModel{input: newTUIInput()}
+	content := strings.Repeat("a", tuiInputCharLimit+10)
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(content), Paste: true})
+	m = updated.(tuiModel)
+	if got := len([]rune(m.input.Value())); got != tuiInputCharLimit {
+		t.Fatalf("textarea length = %d", got)
 	}
 }
 
