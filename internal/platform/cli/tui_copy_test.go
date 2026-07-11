@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -20,14 +19,12 @@ func (c *fakeClipboard) WriteAll(text string) error {
 }
 
 func newCopyTestModel() tuiModel {
-	input := textinput.New()
-	input.Focus()
 	m := tuiModel{
 		handler:       fakeCompletingHandler{},
 		clipboard:     &fakeClipboard{},
 		userName:      "user",
 		assistantName: "assistant",
-		input:         input,
+		input:         newTUIInput(),
 		width:         120,
 		height:        20,
 		ctx:           context.Background(),

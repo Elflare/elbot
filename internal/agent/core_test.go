@@ -2800,6 +2800,49 @@ func TestToolChildRequestCancelReturnsToolMessageAndContinuesTurn(t *testing.T) 
 	}
 }
 
+func TestStopFinishesRuntimeStatus(t *testing.T) {
+	p := &fakePlatform{}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	f := &fakeLLM{
+		replies:    []string{"should not finish"},
+		chatBlocks: []fakeLLMBlock{{started: started, release: release}},
+	}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	ctx := context.Background()
+
+	done := make(chan error, 1)
+	go func() { done <- a.HandleMessage(ctx, "等待停止") }()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("LLM did not start")
+	}
+	if err := a.HandleMessage(ctx, "/stop"); err != nil {
+		t.Fatalf("stop: %v", err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("chat returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("chat did not stop")
+	}
+
+	status := p.lastStatus
+	if status.Phase != runtimestatus.PhaseDone {
+		t.Fatalf("runtime phase = %s, want %s", status.Phase, runtimestatus.PhaseDone)
+	}
+	if status.FinishedAt.IsZero() {
+		t.Fatal("runtime status has no finished time")
+	}
+	wantElapsed := status.FinishedAt.Sub(status.TurnStartedAt)
+	if got := status.Elapsed(status.FinishedAt.Add(time.Minute)); got != wantElapsed {
+		t.Fatalf("elapsed kept running after stop: got %s want %s", got, wantElapsed)
+	}
+}
+
 func TestTurnRequestCancelStopsWithoutPersistingToolTranscript(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
