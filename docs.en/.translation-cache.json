@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "dbce9ddb32fd39f14f4e575f4b3f94f544bd62ff3dffb3bb702cf0d94275f4ef",
+      "source_hash": "55f1b9053f6e8060d074ff06edb9f0ea95f6f4717f2a05cf43b6ad38e565e1ca",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783738522
+      "updated_at": 1783775610
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -358,6 +358,14 @@
       "translation": "Source files for resident memory and long-term memory are now included in general FileGuard protection; reading will suggest using memory tools, and direct writing via general file tools or shell will be rejected.",
       "updated_at": 1782722558
     },
+    "CHANGELOG.md:list:40c02f479f2e6b57124b75dcc7cc55618de3b111ba80eaef6af4bf49626c6d0c": {
+      "kind": "list",
+      "source": "AgentSkill 启动扫描不再常驻缓存 __ELBOT_CODE_0__ 正文，只保留摘要与路径；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "40c02f479f2e6b57124b75dcc7cc55618de3b111ba80eaef6af4bf49626c6d0c",
+      "translation": "AgentSkill startup scan no longer caches __ELBOT_CODE_0__ body permanently, keeping only summaries and paths;",
+      "updated_at": 1783775610
+    },
     "CHANGELOG.md:list:423439494f92faf1b2877f3d54114488603b875cb08f29295101899fef57e0a8": {
       "kind": "list",
       "source": "Elvena v3 动作通道：Elnis 支持 __ELBOT_CODE_0__，首批支持 raw 平台 API 以及 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ capability，未支持的可以直接调用消息平台api；",
@@ -565,6 +573,14 @@
       "source_hash": "6d478a5dfd779970629f0cfd46fe4d8231a05246961a162a024ed3172b1cfa56",
       "translation": "The first run will generate __ELBOT_CODE_0__, which serves as a prompt to write ElBot rule Hooks according to your needs.",
       "updated_at": 1783392486
+    },
+    "CHANGELOG.md:list:6d55b14b054668feb279ff23dfbe0cdc6e09e77000873c9339ddd76d82190b4e": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 按名称发现或 __ELBOT_CODE_1__ 预载时会读取当前正文，带 __ELBOT_CODE_2__ 的工具化 Skill 同样如此。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "6d55b14b054668feb279ff23dfbe0cdc6e09e77000873c9339ddd76d82190b4e",
+      "translation": "The current body will be read when __ELBOT_CODE_0__ is discovered by name or __ELBOT_CODE_1__ is preloaded; the same applies to tool-based Skills with __ELBOT_CODE_2__.",
+      "updated_at": 1783775610
     },
     "CHANGELOG.md:list:70f1550f6bf2f281c0cb0927e41c0bb07572e4e28e171b808ba30dfe69f1597f": {
       "kind": "list",
@@ -1021,6 +1037,14 @@
       "source_hash": "bbe69649fedf66fe55c50171fda1e0bafc56ed2f3759250fbef518fdf34acccf",
       "translation": "When __ELBOT_CODE_0__ is absent, it remains a descriptive Skill, and general-purpose tools such as shell can be used according to the documentation;",
       "updated_at": 1783219356
+    },
+    "CHANGELOG.md:list:bc86c8fa9b9050ebddacdf8f7fba5d266f228b0295246e5feb509bfaa5533795": {
+      "kind": "list",
+      "source": "**重构hook系统**",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "bc86c8fa9b9050ebddacdf8f7fba5d266f228b0295246e5feb509bfaa5533795",
+      "translation": "**Refactor hook system**",
+      "updated_at": 1783775610
     },
     "CHANGELOG.md:list:bd93eae9bd1763e2908b379364b1f9d9b2057b8941646314b5cf7d0e454e8ac8": {
       "kind": "list",
