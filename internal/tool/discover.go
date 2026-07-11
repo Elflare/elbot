@@ -97,7 +97,7 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, error
 		}
 		result = &DiscoveryResult{Tools: details, Errors: errors}
 		if len(details) == 0 && len(errors) > 0 && len(names) == 1 {
-			return nil, fmt.Errorf("tool %q not found or not allowed", names[0])
+			return nil, fmt.Errorf("discover tool %q: %s", errors[0].Name, errors[0].Reason)
 		}
 	}
 	data, err := marshalJSONNoEscape(result)

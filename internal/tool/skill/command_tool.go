@@ -34,15 +34,28 @@ func (t CommandTool) Schema() llm.ToolSchema {
 }
 
 func (t CommandTool) Detail() string {
-	return tool.RenderDetailBlocks([]tool.DetailBlock{t.DetailBlock()})
+	block, err := t.LoadDetail()
+	if err != nil {
+		return ""
+	}
+	return tool.RenderDetailBlocks([]tool.DetailBlock{block})
 }
 
 func (t CommandTool) DetailBlock() tool.DetailBlock {
-	content := t.Record.Detail
-	if t.Manifest.ExposeRoot {
-		content = strings.TrimSpace(content) + "\n\nAgentSkill root: " + t.Record.Root
+	block, _ := t.LoadDetail()
+	return block
+}
+
+func (t CommandTool) LoadDetail() (tool.DetailBlock, error) {
+	block, err := loadRecordDetail(t.Record)
+	if err != nil {
+		return tool.DetailBlock{}, err
 	}
-	return tool.DetailBlock{Content: strings.TrimSpace(content), Format: t.Record.Format}
+	if t.Manifest.ExposeRoot {
+		block.Content = strings.TrimSpace(block.Content) + "\n\nAgentSkill root: " + t.Record.Root
+	}
+	block.Content = strings.TrimSpace(block.Content)
+	return block, nil
 }
 
 func (t CommandTool) ActivateTools() []string {

@@ -88,9 +88,15 @@ func (a *Agent) applySkillDirectives(ctx context.Context, session *storage.Sessi
 		}
 		detailer := candidate.(tool.DetailProvider)
 		if !seenSkills[name] {
+			block, err := skillDetailBlock(candidate, detailer)
+			if err != nil {
+				result.Invalid = append(result.Invalid, name)
+				a.audit("skill_preload_failed", "session_id", session.ID, "tool", name, "error", err)
+				continue
+			}
 			seenSkills[name] = true
 			result.Skills = append(result.Skills, name)
-			blocks = append(blocks, skillDetailBlock(candidate, detailer))
+			blocks = append(blocks, block)
 		}
 		for _, wrapper := range detailer.ActivateTools() {
 			injected, existing := a.preloadSkillWrapper(ctx, session, wrapper, actor, policy, seenInjected)
@@ -221,11 +227,14 @@ func containsAny(text string, values ...string) bool {
 	return false
 }
 
-func skillDetailBlock(candidate tool.Tool, detailer tool.DetailProvider) tool.DetailBlock {
-	if structured, ok := candidate.(tool.StructuredDetailProvider); ok {
-		return structured.DetailBlock()
+func skillDetailBlock(candidate tool.Tool, detailer tool.DetailProvider) (tool.DetailBlock, error) {
+	if loader, ok := candidate.(tool.LazyDetailProvider); ok {
+		return loader.LoadDetail()
 	}
-	return tool.DetailBlock{Content: detailer.Detail()}
+	if structured, ok := candidate.(tool.StructuredDetailProvider); ok {
+		return structured.DetailBlock(), nil
+	}
+	return tool.DetailBlock{Content: detailer.Detail()}, nil
 }
 
 func (a *Agent) preloadSkillWrapper(ctx context.Context, session *storage.Session, name string, actor security.Actor, policy *security.Policy, seen map[string]bool) ([]string, []string) {

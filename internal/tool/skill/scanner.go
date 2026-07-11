@@ -217,7 +217,8 @@ func (s FilesystemScanner) readAgentRecord(root, dirName string) (Record, bool, 
 	} else if !os.IsNotExist(err) {
 		return Record{}, false, fmt.Errorf("read %s in %q: %w", elyph.SkillFileName, root, err)
 	}
-	data, err := os.ReadFile(filepath.Join(root, "SKILL.md"))
+	detailPath := filepath.Join(root, "SKILL.md")
+	data, err := os.ReadFile(detailPath)
 	if os.IsNotExist(err) {
 		return Record{}, false, nil
 	}
@@ -228,7 +229,7 @@ func (s FilesystemScanner) readAgentRecord(root, dirName string) (Record, bool, 
 	if err != nil {
 		return Record{}, false, fmt.Errorf("parse SKILL.md in %q: %w", root, err)
 	}
-	record := Record{Name: def.Name, Description: def.Description, Detail: def.Detail, Format: def.Format, Risk: tool.RiskSafe, Kind: KindAgent, Root: root}
+	record := Record{Name: strings.Clone(def.Name), Description: strings.Clone(def.Description), DetailPath: detailPath, Format: def.Format, Risk: tool.RiskSafe, Kind: KindAgent, Root: root}
 	return s.withAgentManifest(record), true, nil
 }
 

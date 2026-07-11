@@ -2132,6 +2132,35 @@ func TestSkillDirectiveInvalidStaysAsText(t *testing.T) {
 	}
 }
 
+func TestSkillDirectiveLazyDetailFailureStaysAsText(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"done"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(agentLazyDetailTool{
+		agentDetailTool: agentDetailTool{name: "broken", source: tool.SourceSkillAgent},
+		err:             errors.New("read SKILL.md: missing"),
+	})
+	a.SetToolRuntime(registry, nil)
+
+	if err := a.HandleMessage(context.Background(), "hello @skill:broken"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 1 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	content := llm.SegmentsContentText(requests[0].Messages[len(requests[0].Messages)-1].Segments)
+	if content != "hello @skill:broken" {
+		t.Fatalf("latest user content = %q", content)
+	}
+	if !strings.Contains(p.out.String(), "未找到或不可用的 Skill：broken") {
+		t.Fatalf("missing invalid skill notice: %q", p.out.String())
+	}
+}
+
 func TestSkillDirectiveOnlySkillSendsDetailAsUserMessage(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
@@ -2232,6 +2261,18 @@ func (t agentDetailTool) DetailBlock() tool.DetailBlock {
 	return tool.DetailBlock{Content: t.detail, Format: t.format, RuleCard: t.ruleCard}
 }
 func (t agentDetailTool) ActivateTools() []string { return t.activate }
+
+type agentLazyDetailTool struct {
+	agentDetailTool
+	err error
+}
+
+func (t agentLazyDetailTool) LoadDetail() (tool.DetailBlock, error) {
+	if t.err != nil {
+		return tool.DetailBlock{}, t.err
+	}
+	return t.DetailBlock(), nil
+}
 
 type agentWrapperTool struct {
 	name   string
