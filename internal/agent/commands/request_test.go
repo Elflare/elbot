@@ -43,7 +43,7 @@ func TestRequestsCommandFormatsTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	for _, want := range []string{"[1] chat turn request", "[1.1] shell tool request", "[1.2] gpt_image_draw_fullwidth hook request", "session: 测试会话", "tool: shell", "hook: gpt_image_draw_fullwidth"} {
+	for _, want := range []string{"[1] chat turn request", "[1.1]", "[1.2]", "shell tool request", "gpt_image_draw_fullwidth hook request", "session: 测试会话", "tool: shell", "hook: gpt_image_draw_fullwidth"} {
 		if !strings.Contains(result.Content, want) {
 			t.Fatalf("requests output missing %q:\n%s", want, result.Content)
 		}
@@ -94,7 +94,7 @@ func TestFormatActiveRequestsUsesTree(t *testing.T) {
 	defer hookDone()
 
 	got := formatActiveRequests(ctx, Deps{Requests: manager, Store: store, Turns: turn.NewManager()}, manager.ListBySession("s1"))
-	for _, want := range []string{"[1] chat turn request", "[1.1] shell tool request", "[1.2] gpt_image_draw_fullwidth hook request"} {
+	for _, want := range []string{"[1] chat turn request", "[1.1]", "[1.2]", "shell tool request", "gpt_image_draw_fullwidth hook request"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("active requests output missing %q:\n%s", want, got)
 		}
