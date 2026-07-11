@@ -470,6 +470,8 @@ value = "天气"
 
 持久 trigger rule 复用规则 Hook 的匹配、角色、priority 和 `require_wakeup` 语义。`action` 或 `actions` 会使配置校验失败；`consume`、`stop_propagation` 即使写入也不会由 trigger rule 应用，应改由插件的 `event.handle` response 返回。
 
+需要由插件动态决定是否拦截时，trigger rule 中将 `consume`、`stop_propagation` 保持为 `false`（或省略），再由插件根据处理结果在 stdout 的 `event.handle` response 中返回这两个字段。处理成功并需要独占消息时返回 `consume: true` 和 `stop_propagation: true`；未处理时省略或返回 `false`，消息会继续交给后续规则或主 LLM。
+
 worker 状态为 `starting`、`ready`、`running`、`degraded`、`stopping`、`stopped` 或 `failed`。停止时 Host 先请求 `system.shutdown`，超过关闭超时才强制结束进程。
 
 ### 协议与输出
