@@ -57,6 +57,7 @@ var (
 	tuiCompletionStyle         = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("62")).Padding(0, 1)
 	tuiCompletionSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("62"))
 	tuiInputPromptStyle        = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
+	tuiInputSeparatorStyle     = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#989898", Dark: "#666666"})
 )
 
 type legacyCompleter interface {
@@ -410,9 +411,50 @@ func (m tuiModel) inputView() string {
 }
 
 func (m tuiModel) inputSeparatorView() string {
-	width := max(0, m.width*3/4)
-	leftPadding := max(0, (m.width-width)/2)
-	return strings.Repeat(" ", leftPadding) + tuiSeparatorStyle.Render(strings.Repeat("─", width))
+	if m.width <= 0 {
+		return ""
+	}
+	padding := max(1, m.width/20)
+	minSeparatorWidth := min(m.width, max(8, m.width/3))
+	keys := m.inputShortcutText()
+	maxKeysWidth := max(0, m.width-padding*2-minSeparatorWidth)
+	keys = truncateLeftDisplayWidth(keys, maxKeysWidth)
+	separatorWidth := max(0, m.width-padding*2-runewidth.StringWidth(keys))
+	return strings.Repeat(" ", padding) +
+		tuiInputSeparatorStyle.Render(strings.Repeat("─", separatorWidth)) +
+		strings.Repeat(" ", padding) +
+		tuiStatusStyle.Render(keys)
+}
+
+func (m tuiModel) inputShortcutText() string {
+	if _, noticeWidth := m.layoutWidths(); noticeWidth > 0 {
+		return "Alt+h/l copy · Esc clear · Ctrl+C exit"
+	}
+	return "Alt+h copy · Esc clear · Ctrl+C exit"
+}
+
+func truncateLeftDisplayWidth(text string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if runewidth.StringWidth(text) <= width {
+		return text
+	}
+	if width == 1 {
+		return "…"
+	}
+	runes := []rune(text)
+	used := 0
+	start := len(runes)
+	for i := len(runes) - 1; i >= 0; i-- {
+		runeWidth := runewidth.RuneWidth(runes[i])
+		if used+runeWidth > width-1 {
+			break
+		}
+		used += runeWidth
+		start = i
+	}
+	return "…" + string(runes[start:])
 }
 
 func (m tuiModel) now() time.Time {
@@ -477,29 +519,14 @@ func (m tuiModel) headerView() string {
 	if noticeWidth > 0 {
 		chatTitle += " " + tuiTitleMutedStyle.Render("chat")
 	}
-	header := lipgloss.NewStyle().Width(chatWidth).Render(chatTitle)
-	if noticeWidth <= 0 {
-		return header
-	}
-	noticeTitle := tuiTitleMutedStyle.Width(noticeWidth).Render("notices")
-	return lipgloss.JoinHorizontal(lipgloss.Top, header, noticeTitle)
+	return lipgloss.NewStyle().Width(chatWidth).Render(chatTitle)
 }
 
 func (m tuiModel) statusView() string {
 	if m.copyState.active() {
 		return tuiStatusStyle.Render(m.copyStatusText())
 	}
-	status := m.runtimeStatusText()
-	keys := "Alt+h copy · Ctrl+C exit"
-	if status == "" {
-		keys = "Alt+h chat copy · Alt+l notices copy · Esc clear · Ctrl+C exit · C-k/C-j chat · C-u/C-d notices"
-	} else {
-		status += "     "
-	}
-	if m.completionState.visible() {
-		keys += " · completion " + strconv.Itoa(m.completionState.index+1) + "/" + strconv.Itoa(len(m.completionState.items))
-	}
-	return tuiStatusStyle.Render(status + keys)
+	return tuiStatusStyle.Render(m.runtimeStatusText())
 }
 
 func (m tuiModel) bodyView() string {
@@ -881,7 +908,7 @@ func (m *tuiModel) refreshNotices() {
 	}
 	contentWidth := max(1, m.noticeViewport.Width-4)
 	var sb strings.Builder
-	sb.WriteString(tuiNoticeStyle.Bold(true).Render("通知"))
+	sb.WriteString(tuiNoticeStyle.Bold(true).Render("Notices"))
 	if len(m.notices) == 0 {
 		sb.WriteString("\n")
 		sb.WriteString(tuiTitleMutedStyle.Render("暂无通知"))
