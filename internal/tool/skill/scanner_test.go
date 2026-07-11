@@ -49,6 +49,95 @@ input = "--input"
 	}
 }
 
+func TestFilesystemScannerLoadsMarkdownDetailOnDemand(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "agent", "docx")
+	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Initial DOCX")
+	scanner := NewFilesystemScanner(root)
+	registry := tool.NewRegistry()
+	if err := scanner.Reload(context.Background(), registry); err != nil {
+		t.Fatal(err)
+	}
+	candidate, ok := registry.Get("docx")
+	if !ok {
+		t.Fatal("docx should be registered")
+	}
+	descriptor, ok := candidate.(Descriptor)
+	if !ok {
+		t.Fatalf("tool type = %T, want Descriptor", candidate)
+	}
+	if descriptor.Record.Detail != "" || descriptor.Record.DetailPath != filepath.Join(dir, "SKILL.md") {
+		t.Fatalf("record detail should not be cached: %#v", descriptor.Record)
+	}
+
+	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Updated DOCX")
+	args, _ := json.Marshal(map[string]string{"name": "docx"})
+	result, err := tool.NewDiscoverTool(registry).Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "# Updated DOCX") || strings.Contains(result.Content, "# Initial DOCX") {
+		t.Fatalf("discovery should read current SKILL.md: %q", result.Content)
+	}
+}
+
+func TestFilesystemScannerLoadsCallableMarkdownDetailOnDemand(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "agent", "docx")
+	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Initial DOCX")
+	writeAgentSkillConfig(t, dir, `risk = "safe"
+command = ["echo"]
+parameters = '''{"type":"object","properties":{"input":{"type":"string"}}}'''
+[args]
+input = "--input"
+`)
+	scanner := NewFilesystemScanner(root)
+	registry := tool.NewRegistry()
+	if err := scanner.Reload(context.Background(), registry); err != nil {
+		t.Fatal(err)
+	}
+	candidate, ok := registry.Get("docx")
+	if !ok {
+		t.Fatal("docx should be registered")
+	}
+	command, ok := candidate.(CommandTool)
+	if !ok {
+		t.Fatalf("tool type = %T, want CommandTool", candidate)
+	}
+	if command.Record.Detail != "" || command.Record.DetailPath == "" {
+		t.Fatalf("callable skill detail should not be cached: %#v", command.Record)
+	}
+
+	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Updated callable DOCX")
+	args, _ := json.Marshal(map[string]string{"name": "docx"})
+	result, err := tool.NewDiscoverTool(registry).Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "# Updated callable DOCX") {
+		t.Fatalf("callable discovery should read current SKILL.md: %q", result.Content)
+	}
+}
+
+func TestMarkdownDetailReadFailureReturnsDiscoveryError(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "agent", "docx")
+	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# DOCX")
+	scanner := NewFilesystemScanner(root)
+	registry := tool.NewRegistry()
+	if err := scanner.Reload(context.Background(), registry); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir, "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]string{"name": "docx"})
+	_, err := tool.NewDiscoverTool(registry).Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "read SKILL.md") {
+		t.Fatalf("discovery error = %v, want SKILL.md read failure", err)
+	}
+}
+
 func TestFilesystemScannerKeepsPolicyOnlyManifestAsDocumentSkill(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "agent", "private_doc")

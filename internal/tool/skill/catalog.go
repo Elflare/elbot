@@ -19,6 +19,7 @@ type Record struct {
 	Name           string
 	Description    string
 	Detail         string
+	DetailPath     string
 	Format         string
 	Risk           tool.RiskLevel
 	SuperadminOnly bool

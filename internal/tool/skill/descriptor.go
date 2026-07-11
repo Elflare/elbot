@@ -3,6 +3,7 @@ package skill
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"elbot/internal/elyph"
@@ -52,19 +53,27 @@ func (d Descriptor) Call(context.Context, tool.CallRequest) (*tool.Result, error
 }
 
 func (d Descriptor) Detail() string {
-	return tool.RenderDetailBlocks([]tool.DetailBlock{d.DetailBlock()})
+	block, err := d.LoadDetail()
+	if err != nil {
+		return ""
+	}
+	return tool.RenderDetailBlocks([]tool.DetailBlock{block})
 }
 
 func (d Descriptor) DetailBlock() tool.DetailBlock {
-	content := d.Record.Detail
-	if d.Record.Kind == KindAgent {
-		content = strings.TrimSpace(content + "\n\n" + agentSkillNotice(d.Record))
-	}
-	block := tool.DetailBlock{Content: content, Format: d.Record.Format}
-	if d.Record.Format == elyph.Format {
-		block.RuleCard = runtimeinfo.ElyphRuleCard()
-	}
+	block, _ := d.LoadDetail()
 	return block
+}
+
+func (d Descriptor) LoadDetail() (tool.DetailBlock, error) {
+	block, err := loadRecordDetail(d.Record)
+	if err != nil {
+		return tool.DetailBlock{}, err
+	}
+	if d.Record.Kind == KindAgent {
+		block.Content = strings.TrimSpace(block.Content + "\n\n" + agentSkillNotice(d.Record))
+	}
+	return block, nil
 }
 
 func (d Descriptor) ActivateTools() []string {
@@ -87,4 +96,26 @@ func agentSkillNotice(record Record) string {
 		lines = append(lines, "- 当前 "+AgentSkillConfigFile+" 无效："+record.ManifestError)
 	}
 	return strings.Join(lines, "\n")
+}
+
+func loadRecordDetail(record Record) (tool.DetailBlock, error) {
+	content := record.Detail
+	format := record.Format
+	if record.DetailPath != "" {
+		data, err := os.ReadFile(record.DetailPath)
+		if err != nil {
+			return tool.DetailBlock{}, fmt.Errorf("read SKILL.md for %q: %w", record.Name, err)
+		}
+		def, err := ParseSkillMarkdown(data, record.Name)
+		if err != nil {
+			return tool.DetailBlock{}, fmt.Errorf("parse SKILL.md for %q: %w", record.Name, err)
+		}
+		content = def.Detail
+		format = def.Format
+	}
+	block := tool.DetailBlock{Content: content, Format: format}
+	if format == elyph.Format {
+		block.RuleCard = runtimeinfo.ElyphRuleCard()
+	}
+	return block, nil
 }

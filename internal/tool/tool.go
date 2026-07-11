@@ -218,6 +218,11 @@ type StructuredDetailProvider interface {
 	DetailBlock() DetailBlock
 }
 
+// LazyDetailProvider loads detail content only when a tool is discovered or preloaded.
+type LazyDetailProvider interface {
+	LoadDetail() (DetailBlock, error)
+}
+
 const (
 	MetadataActivateTools        = "activate_tools"
 	MetadataShownRuleCardFormats = "shown_rule_card_formats"
@@ -405,7 +410,16 @@ func (r *Registry) addDiscoveryDetail(name string, root bool, allowed func(Tool)
 	seen[name] = true
 	info := tool.Info()
 	discovered := DiscoveredTool{Info: publicInfo(info)}
-	if detailer, ok := tool.(DetailProvider); ok {
+	if loader, ok := tool.(LazyDetailProvider); ok {
+		block, err := loader.LoadDetail()
+		if err != nil {
+			errors = append(errors, DiscoveryError{Name: name, Reason: err.Error()})
+			delete(visiting, name)
+			return details, errors
+		}
+		discovered.DetailBlock = block
+		discovered.Detail = RenderDetailBlocks([]DetailBlock{block})
+	} else if detailer, ok := tool.(DetailProvider); ok {
 		if structured, ok := tool.(StructuredDetailProvider); ok {
 			discovered.DetailBlock = structured.DetailBlock()
 			discovered.Detail = RenderDetailBlocks([]DetailBlock{discovered.DetailBlock})
