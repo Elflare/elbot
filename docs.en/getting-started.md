@@ -98,7 +98,7 @@ Common CLI TUI keys:
 - `Ctrl+K` / `Ctrl+J`: Scroll chat output slightly; `Ctrl+U` / `Ctrl+D`: Scroll notification area.
 - `Alt+h` / `Alt+l`: Enter copy mode for chat area / notification area.
 - In copy mode, use `h/j/k/l` and `w/e/b` to move, `v` / `V` to select, `y` to copy, `/` to search, and `i` or `Esc` to return to input.
-- \#<filename> file completion
+- `#<文件名>`: Complete and reference local files.
 
 Build binary:
 
