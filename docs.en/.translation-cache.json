@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "dcccefb4a2a1e50dbc341e28106ae7e3be6383f36622079edc60bd28d15bd22b",
+      "source_hash": "dbce9ddb32fd39f14f4e575f4b3f94f544bd62ff3dffb3bb702cf0d94275f4ef",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783679790
+      "updated_at": 1783738522
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -270,6 +270,14 @@
       "translation": "Absolute paths can still be used temporarily and will return a warning.",
       "updated_at": 1782958962
     },
+    "CHANGELOG.md:list:3113c27f20b53241bc3c9f28cfe562a2fa63ad88463bbb3f33c3ef5fe21eb55f": {
+      "kind": "list",
+      "source": "CLI TUI 执行 __ELBOT_CODE_0__ 后会把当前运行状态收束为 __ELBOT_CODE_1__ 并固定耗时，不再继续累加状态栏时间。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "3113c27f20b53241bc3c9f28cfe562a2fa63ad88463bbb3f33c3ef5fe21eb55f",
+      "translation": "After executing __ELBOT_CODE_0__, the CLI TUI will converge the current running state into __ELBOT_CODE_1__ and fix the elapsed time, no longer accumulating time in the status bar.",
+      "updated_at": 1783738522
+    },
     "CHANGELOG.md:list:312d4439022670c8a48cc24e096eb8461e05bbe1502d096b2d22196686acc9f2": {
       "kind": "list",
       "source": "规则 Hook 支持可选 __ELBOT_CODE_0__，内置 Hook 统一使用 __ELBOT_CODE_1__ 名称和 description，规则细节只在详情中展示。",
@@ -357,6 +365,14 @@
       "source_hash": "423439494f92faf1b2877f3d54114488603b875cb08f29295101899fef57e0a8",
       "translation": "Elvena v3 action channel: Elnis supports __ELBOT_CODE_0__, initially supporting raw platform APIs as well as __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ capabilities; unsupported ones can directly call the messaging platform API.",
       "updated_at": 1782395477
+    },
+    "CHANGELOG.md:list:42cbb41cea50ff9d651fe7f2d1e56894b5c0a61a38c4f71a3594f569f9e05435": {
+      "kind": "list",
+      "source": "Hook 基础与持久 Runtime 按事件、匹配、Manager、路由、进程、协议和工具桥拆分文件；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "42cbb41cea50ff9d651fe7f2d1e56894b5c0a61a38c4f71a3594f569f9e05435",
+      "translation": "Split Hook basics and persistent Runtime files by event, matching, Manager, routing, process, protocol, and tool bridge;",
+      "updated_at": 1783738522
     },
     "CHANGELOG.md:list:452192294ae296b84042bb201edbf0936231be05a01c5ff72cc9a3409d6ce4d4": {
       "kind": "list",
@@ -518,6 +534,14 @@
       "translation": "A prompt to shorten will be displayed when the file exceeds 64 KiB.",
       "updated_at": 1783178864
     },
+    "CHANGELOG.md:list:68645eb7967230d7e200dbf82e2ae986fcd80d338b26b1d759d4c1a627292050": {
+      "kind": "list",
+      "source": "Agent 的 Hook 执行接入与 Output 发送适配也已分离，外部 Hook 配置和 __ELBOT_CODE_0__ 协议不变。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "68645eb7967230d7e200dbf82e2ae986fcd80d338b26b1d759d4c1a627292050",
+      "translation": "The Hook execution access and Output sending adaptation of the Agent have also been separated; external Hook configurations and the __ELBOT_CODE_0__ protocol remain unchanged.",
+      "updated_at": 1783738522
+    },
     "CHANGELOG.md:list:6970168418b00124c98288e227a6831f798c18ed573c05cb7a6f07fd850812c6": {
       "kind": "list",
       "source": "兼容 agentskills.io 风格外置 AgentSkill（附带 Python 脚本）。",
@@ -597,6 +621,14 @@
       "source_hash": "75ad69691d1674c433a03bbd653863775b7dccf8ca915602d5d77c359ae93fc7",
       "translation": "When __ELBOT_CODE_0__ is absent, it remains a descriptive Skill, and general-purpose tools such as shell can be used as per the documentation.",
       "updated_at": 1783074551
+    },
+    "CHANGELOG.md:list:75b77affa31e96512930af7483d3649450522ef61f68f675ec772b2db0dd961c": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 先隔离构建并校验候选配置，再原子替换普通 Hook 快照和持久 Runtime worker 索引，失败时保留当前活动 Hook。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "75b77affa31e96512930af7483d3649450522ef61f68f675ec772b2db0dd961c",
+      "translation": "__ELBOT_CODE_0__ first builds and validates the candidate configuration in isolation, then atomically replaces the general Hook snapshot and persistent Runtime worker index, retaining the current active Hook upon failure.",
+      "updated_at": 1783738522
     },
     "CHANGELOG.md:list:7d4eb6c7f9421281249ea4260a8e00117bc3dc92316a27b354181c10219e5e5d": {
       "kind": "list",
@@ -822,6 +854,14 @@
       "translation": "Elvena v3 action channel: Elnis supports __ELBOT_CODE_0__, with initial support for raw platform APIs as well as __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ capabilities;",
       "updated_at": 1782376912
     },
+    "CHANGELOG.md:list:9b1a5c4feee4ab81f89fbf16db2b636ca3269ef6609eb1ac66f45062bf0d31ea": {
+      "kind": "list",
+      "source": "补全 __ELBOT_CODE_0__ 中 hook.v2 的完整 __ELBOT_CODE_1__ / __ELBOT_CODE_2__ request、成功与失败 response 外层帧，以及 __ELBOT_CODE_3__、平台回包和 QQ OneBot 撤回示例。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "9b1a5c4feee4ab81f89fbf16db2b636ca3269ef6609eb1ac66f45062bf0d31ea",
+      "translation": "Complete the full __ELBOT_CODE_1__ / __ELBOT_CODE_2__ request and success/failure response outer frames for hook.v2 in __ELBOT_CODE_0__, as well as __ELBOT_CODE_3__, platform response packets, and QQ OneBot recall examples.",
+      "updated_at": 1783738522
+    },
     "CHANGELOG.md:list:9d5bd31f0053c4ae0a75ef9edef00162aa8c3f86f473d7a5b5a15df30dd4b93e": {
       "kind": "list",
       "source": "重构hook，详情见docs。",
@@ -853,6 +893,14 @@
       "source_hash": "a10c0798ae5944712b9b350660e63cb74245c95cafaccf39c5e8ade3f7857edc",
       "translation": "Inbound @ messages in QQ OneBot will now prioritize displaying the group business card, followed by the regular nickname, in the format __ELBOT_CODE_0__, and will fall back to the QQ number if neither can be retrieved.",
       "updated_at": 1783095128
+    },
+    "CHANGELOG.md:list:a4ec61a14d64392d44b2e878cd85da05bc9acc8c3ccbbc2c7be323fe16ddfada": {
+      "kind": "list",
+      "source": "优化 CLI TUI。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a4ec61a14d64392d44b2e878cd85da05bc9acc8c3ccbbc2c7be323fe16ddfada",
+      "translation": "Optimize CLI TUI.",
+      "updated_at": 1783738522
     },
     "CHANGELOG.md:list:a702b552baa7d522668a76b859a98b2272294fa7c56518f23019ef1e2e4ee45e": {
       "kind": "list",
@@ -1149,6 +1197,14 @@
       "source_hash": "e2bba3f2fbf67c598073f06e0fb772f830654cf2b0ceca05bbb54f0354aa94bd",
       "translation": "Platform media output now supports identifying __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, and __ELBOT_CODE_4__ sources in __ELBOT_CODE_0__;",
       "updated_at": 1783048564
+    },
+    "CHANGELOG.md:list:e4b8c6a85af766228fa47061f5bbc65135d97533c261fd7b7604a28de99fdbf5": {
+      "kind": "list",
+      "source": "Hook 管理从 Agent 核心解耦为独立 Control Service；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "e4b8c6a85af766228fa47061f5bbc65135d97533c261fd7b7604a28de99fdbf5",
+      "translation": "Decouple Hook management from the Agent core into an independent Control Service;",
+      "updated_at": 1783738522
     },
     "CHANGELOG.md:list:e674fa7fc18af87b45660da3fff098ff0a482256ae0cdc7d64932ce221ad779c": {
       "kind": "list",

@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Optimize CLI TUI.
+- Decouple Hook management from the Agent core into an independent Control Service; `/hooks reload` first builds and validates the candidate configuration in isolation, then atomically replaces the general Hook snapshot and persistent Runtime worker index, retaining the current active Hook upon failure.
+- Split Hook basics and persistent Runtime files by event, matching, Manager, routing, process, protocol, and tool bridge; The Hook execution access and Output sending adaptation of the Agent have also been separated; external Hook configurations and the `hook.v2` protocol remain unchanged.
+
 - The proxy parameter of the `web_extract` tool has been changed from `disable_proxy` to `proxy`: use `WEB_EXTRACT_PROXY` or the system proxy environment when left blank, fill in `disabled` to disable the proxy, or fill in a URL to use a specified proxy.
 - The `send_file` tool now uses the `source` parameter to send files, supporting local paths, `file://` URIs, and HTTP(S) URLs, and will automatically send images as image messages based on MIME type/extension.
 - AgentSkill no longer uses `python_skill_run` for fixed wrapping to execute Python scripts; When `ELBOT_SKILL.toml` is absent, it remains a descriptive Skill, and general-purpose tools such as shell can be used according to the documentation; Descriptive AgentSkills do not read `SKILL.md`, avoiding risk; after toolization, `risk` of `ELBOT_SKILL.toml` shall prevail.
@@ -52,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- After executing `/stop`, the CLI TUI will converge the current running state into `done` and fix the elapsed time, no longer accumulating time in the status bar.
+- Complete the full `system.init` / `event.handle` request and success/failure response outer frames for hook.v2 in `docs/hooks.md`, as well as `platform.call.params`, platform response packets, and QQ OneBot recall examples.
 - `/hooks` now allows viewing details directly using the rule name, without requiring the `rules.` prefix; Rule Hooks now support optional `description`; built-in Hooks uniformly use `builtin.*` for name and description, with rule details displayed only in the details view.
 - Fixed the issue where rule cards were repeatedly injected into the context when performing tool discovery or inline preloading of multiple ELyph Skills; In the same Session, only Skill content is returned after the first injection, preserving the first rule card in history to facilitate cache hits.
 - Fixed the issue where Session messages under the same timestamp might be loaded out of order by UUID, leading to unstable historical context order.
