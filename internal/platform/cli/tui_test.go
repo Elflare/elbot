@@ -70,15 +70,48 @@ func TestTUIInputCentersMultilineBlock(t *testing.T) {
 	}
 }
 
-func TestTUIInputSeparatorIsCenteredAndThreeQuarterWidth(t *testing.T) {
-	m := tuiModel{width: 80}
+func TestTUIInputSeparatorSharesLineWithRightAlignedShortcuts(t *testing.T) {
+	m := tuiModel{width: 120}
 	view := m.inputSeparatorView()
-	wantWidth := m.width * 3 / 4
+	padding := m.width / 10
+	keys := m.inputShortcutText()
+	wantWidth := m.width - padding*2 - len([]rune(keys))
 	if got := strings.Count(view, "─"); got != wantWidth {
 		t.Fatalf("separator width = %d, want %d", got, wantWidth)
 	}
-	if wantPadding := (m.width - wantWidth) / 2; !strings.HasPrefix(view, strings.Repeat(" ", wantPadding)) {
+	if !strings.HasPrefix(view, strings.Repeat(" ", padding)) {
 		t.Fatalf("separator is not centered: %q", view)
+	}
+	if !strings.Contains(view, strings.Repeat("─", wantWidth)+strings.Repeat(" ", padding)) {
+		t.Fatalf("separator-to-shortcut padding is not %d: %q", padding, view)
+	}
+	if !strings.HasSuffix(view, keys) {
+		t.Fatalf("keys are not right aligned: %q", view)
+	}
+}
+
+func TestTUIInputSeparatorTruncatesShortcutsWhenNarrow(t *testing.T) {
+	m := tuiModel{width: 40}
+	view := m.inputSeparatorView()
+	if got := len([]rune(view)); got != m.width {
+		t.Fatalf("toolbar width = %d, want %d: %q", got, m.width, view)
+	}
+	if !strings.Contains(view, "…") || !strings.HasSuffix(view, "Ctrl+C exit") {
+		t.Fatalf("shortcuts were not left-truncated: %q", view)
+	}
+	if strings.Count(view, "─") < 8 {
+		t.Fatalf("separator became too short: %q", view)
+	}
+}
+
+func TestTUIStatusCopyHintMatchesNoticePanel(t *testing.T) {
+	narrow := tuiModel{width: 80}.inputSeparatorView()
+	if !strings.Contains(narrow, "Alt+h copy") || strings.Contains(narrow, "Alt+h/l copy") {
+		t.Fatalf("narrow status hint = %q", narrow)
+	}
+	wide := tuiModel{width: 120}.inputSeparatorView()
+	if !strings.Contains(wide, "Alt+h/l copy") {
+		t.Fatalf("wide status hint = %q", wide)
 	}
 }
 
@@ -333,11 +366,21 @@ func TestRefreshNoticesUsesSeparator(t *testing.T) {
 	m.refreshNotices()
 
 	got := m.noticeViewport.View()
+	if !strings.Contains(got, "Notices") || strings.Contains(got, "通知") {
+		t.Fatalf("notice heading is not English:\n%s", got)
+	}
 	if !strings.Contains(got, "notice one") || !strings.Contains(got, "notice two") {
 		t.Fatalf("notice view missing notices:\n%s", got)
 	}
 	if !strings.Contains(got, strings.Repeat("─", 8)) {
 		t.Fatalf("notice view missing separator:\n%s", got)
+	}
+}
+
+func TestTUIHeaderOmitsMutedNoticeTitle(t *testing.T) {
+	m := tuiModel{width: 120}
+	if got := m.headerView(); strings.Contains(got, "notices") {
+		t.Fatalf("header still contains muted notice title: %q", got)
 	}
 }
 
