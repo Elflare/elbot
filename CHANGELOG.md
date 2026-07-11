@@ -10,9 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Hook exec 协议统一升级为 `hook.v2`，支持 request/response/event 帧、双向 Pipe RPC 和 Host/Hook 请求 ID 隔离；旧 `hook.v1` 脚本需要迁移。
-- 新增持久 Hook：在插件 `hook.toml` 的 `[plugin.runtime]` 声明生命周期、重启、工具白名单和多轮 waiting 会话；统一由 `/hooks` 列表、详情、启动、停止、重启与重载管理。
-- 新增 Hook 共享空间 `plugins/_shared/` 及进程内 JSON SharedState，提供命名空间 KV 和 compare-and-swap 协调能力。
+- **重构hook系统**
 - `read_file` 新增 `mode=ast`，可对 Go 和 Shell 文件按名称进行轻量 AST 搜索；`mode` 同时统一为 `read`、`grep`、`ast` 三种读取模式。
 - 重构AgentSkill：去掉py wrapper，直接使用shell执行对应sklll，同时支持在Agentkill根目录添加 `ELBOT_SKILL.toml` 注册为普通工具，方便 LLM 直接调用结构化参数。
 - 新增隐藏元工具 `agent_skill`，用于读取或写入 AgentSkill 的 `ELBOT_SKILL.toml`，写入前校验配置并在成功后 reload。
@@ -27,16 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 执行中的 Hook 会显示在 `/requests`，当前 Session 的 Hook 也会显示在 `/status`；可用 `/stop` 取消长时间运行的 Hook，手动取消按正常取消记录。
 - 内联预载支持工具简写 `@t:<name-or-tag>` 和 Skill 简写 `@s:<name>`，并兼容中文全角冒号 `：`。
 - CLI TUI 输入框支持用 `#文件名` 模糊补全本地文件；发送时会把引用替换为文件名和文件内容，含空格路径可写作 `#"a b.txt"`。
-- Hook exec 失败、脚本崩溃、超时或协议错误时会向当前消息平台发送失败通知，并在失败时附带 stderr 尾部；规则匹配和模板新增 `error.message`。
-- Hook 规则文本字段整理为 `message.intent_text`、`message.display_text`、`message.platform_text`、`llm.source_text` 等清晰命名。
-- Hook 插件元信息支持 `[plugin] name`；`/hooks reload` 会在命令结果中显示插件跳过或配置警告。
 - `web_extract` 新增 `jina` 参数，默认使用 Jina Reader；传 `jina=false` 可手动改用直接爬取。
 
 ### Changed
-
-- 优化 CLI TUI。
-- Hook 管理从 Agent 核心解耦为独立 Control Service；`/hooks reload` 先隔离构建并校验候选配置，再原子替换普通 Hook 快照和持久 Runtime worker 索引，失败时保留当前活动 Hook。
-- Hook 基础与持久 Runtime 按事件、匹配、Manager、路由、进程、协议和工具桥拆分文件；Agent 的 Hook 执行接入与 Output 发送适配也已分离，外部 Hook 配置和 `hook.v2` 协议不变。
 
 - `web_extract` 工具的代理参数从 `disable_proxy` 改为 `proxy`：不填时使用 `WEB_EXTRACT_PROXY` 或系统代理环境，填 `disabled` 禁用代理，填 URL 使用指定代理。
 - `send_file` 工具改为使用 `source` 参数发送文件，支持本地路径、`file://` URI 和 HTTP(S) URL，并会按 MIME/扩展名自动将图片作为图片消息发送。
@@ -55,8 +46,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - CLI TUI 执行 `/stop` 后会把当前运行状态收束为 `done` 并固定耗时，不再继续累加状态栏时间。
-- 补全 `docs/hooks.md` 中 hook.v2 的完整 `system.init` / `event.handle` request、成功与失败 response 外层帧，以及 `platform.call.params`、平台回包和 QQ OneBot 撤回示例。
-- `/hooks` 现在直接使用规则名查看详情，不再要求输入 `rules.` 前缀；规则 Hook 支持可选 `description`，内置 Hook 统一使用 `builtin.*` 名称和 description，规则细节只在详情中展示。
 - 修复发现或内联预载多个 ELyph Skill 时规则卡会重复注入上下文的问题；同一会话首次注入后只继续返回 Skill 内容，保留历史中的首次规则卡以利于缓存命中。
 - 修复同一时间戳下会话消息可能按 UUID 错序加载，导致历史上下文顺序不稳定的问题。
 - 修复 `workspace` 工具设置目录时不支持 `~`、`~/path` 和 Windows `~\path` 主目录路径的问题。
@@ -65,8 +54,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 修复 Windows 下 `shell` 工具回退到 PowerShell 时中文输出可能乱码的问题。
 - 修复 Windows 下无 bash 时 shell 命令的 bash AST 解析失败导致风险分类、沙盒校验、目录切换拦截和警告分析全部异常的问题；PowerShell 环境下跳过 AST 解析，风险分类直接返回高风险需用户确认。
 - OneBot 发送图片失败时，不再出现可见 fallback，但仍会记录日志。
-- 修复回复 Hook/斜杠命令等通知消息时，引用 fallback 文本污染 `platform.message.received` 的 `message.text`，导致撤回类 Hook 无法匹配的问题；Hook 现在可通过 `message.reply.*` 读取结构化引用信息。
-
 
 
 ## [v0.3.0-alpha - 2026-07-01]

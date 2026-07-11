@@ -43,6 +43,80 @@ type Condition struct {
 	Value string `toml:"value"`
 }
 
+// BlockPolicy skips every registration contributed by one plugin before its
+// normal match conditions or handler are evaluated.
+type BlockPolicy struct {
+	platforms map[string]struct{}
+	groups    map[string]struct{}
+	users     map[string]struct{}
+}
+
+func NewBlockPolicy(blockedPlatforms, blockedGroups, blockedUsers []string) (BlockPolicy, error) {
+	policy := BlockPolicy{
+		platforms: make(map[string]struct{}, len(blockedPlatforms)),
+		groups:    make(map[string]struct{}, len(blockedGroups)),
+		users:     make(map[string]struct{}, len(blockedUsers)),
+	}
+	for _, value := range blockedPlatforms {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return BlockPolicy{}, fmt.Errorf("blocked_platform contains an empty platform")
+		}
+		policy.platforms[value] = struct{}{}
+	}
+	for _, item := range []struct {
+		name   string
+		values []string
+		target map[string]struct{}
+	}{
+		{name: "blocked_group", values: blockedGroups, target: policy.groups},
+		{name: "blocked_id", values: blockedUsers, target: policy.users},
+	} {
+		for _, value := range item.values {
+			platform, id, ok := splitBlockedID(value)
+			if !ok {
+				return BlockPolicy{}, fmt.Errorf("%s entry %q must use <platform>:<id>", item.name, value)
+			}
+			item.target[platform+":"+id] = struct{}{}
+		}
+	}
+	return policy, nil
+}
+
+func (p BlockPolicy) Blocks(event Event) bool {
+	platform := strings.TrimSpace(event.Platform.Name)
+	if platform == "" {
+		return false
+	}
+	if _, ok := p.platforms[platform]; ok {
+		return true
+	}
+	if groupID, ok := eventGroupID(event.Platform.ScopeID); ok {
+		if _, blocked := p.groups[platform+":"+groupID]; blocked {
+			return true
+		}
+	}
+	userID := strings.TrimSpace(event.Actor.UserID)
+	if userID == "" {
+		userID = strings.TrimPrefix(strings.TrimSpace(event.Actor.ID), platform+":")
+	}
+	_, blocked := p.users[platform+":"+userID]
+	return userID != "" && blocked
+}
+
+func splitBlockedID(value string) (string, string, bool) {
+	platform, id, ok := strings.Cut(strings.TrimSpace(value), ":")
+	platform = strings.TrimSpace(platform)
+	id = strings.TrimSpace(id)
+	return platform, id, ok && platform != "" && id != ""
+}
+
+func eventGroupID(scopeID string) (string, bool) {
+	kind, id, ok := strings.Cut(strings.TrimSpace(scopeID), ":")
+	id = strings.TrimSpace(id)
+	return id, ok && id != "" && (kind == "group" || kind == "supergroup")
+}
+
 func Always() Match {
 	return Match{Conditions: []Condition{{Op: MatchAlways}}}
 }

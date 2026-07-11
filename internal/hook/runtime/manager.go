@@ -12,13 +12,14 @@ import (
 )
 
 type Manager struct {
-	mu      sync.RWMutex
-	opts    Options
-	workers map[string]*worker
-	routes  map[routeKey]lease
-	running map[routeKey]invocation
-	tokens  map[string]toolContext
-	shared  *SharedState
+	mu            sync.RWMutex
+	opts          Options
+	workers       map[string]*worker
+	routes        map[routeKey]lease
+	running       map[routeKey]invocation
+	tokens        map[string]toolContext
+	shared        *SharedState
+	prepareReload func(string) (func() error, error)
 }
 
 func NewManager(opts Options) *Manager {
@@ -40,6 +41,25 @@ func (m *Manager) SharedState() *SharedState {
 		return nil
 	}
 	return m.shared
+}
+
+func (m *Manager) SetPluginReloadPreparer(fn func(string) (func() error, error)) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	m.prepareReload = fn
+	m.mu.Unlock()
+}
+
+func (m *Manager) preparePluginReload(id string) (func() error, error) {
+	m.mu.RLock()
+	prepare := m.prepareReload
+	m.mu.RUnlock()
+	if prepare == nil {
+		return nil, fmt.Errorf("hook plugin reload is not configured")
+	}
+	return prepare(id)
 }
 
 // Apply reconciles configured persistent hooks. It is safe to call on startup
@@ -118,6 +138,51 @@ func (m *Manager) validateConfig(config Config) error {
 	return nil
 }
 
+func (m *Manager) ValidatePlugin(config Config) error {
+	if m == nil {
+		return fmt.Errorf("stateful hook runtime is not configured")
+	}
+	if err := m.validateConfig(config); err != nil {
+		return err
+	}
+	current := m.worker(config.ID)
+	if current == nil {
+		return fmt.Errorf("stateful hook %q is not configured", config.ID)
+	}
+	if current.config.Dir != config.Dir || current.config.ConfigPath != config.ConfigPath {
+		return fmt.Errorf("stateful hook %q cannot change plugin path during self reload", config.ID)
+	}
+	return nil
+}
+
+// ReplacePlugin swaps and restarts one persistent worker without disturbing
+// other plugins or their continuation routes.
+func (m *Manager) ReplacePlugin(config Config) error {
+	if err := m.ValidatePlugin(config); err != nil {
+		return err
+	}
+	id := strings.TrimSpace(config.ID)
+	next := newWorker(m, config)
+	m.mu.Lock()
+	old := m.workers[id]
+	if old == nil {
+		m.mu.Unlock()
+		return fmt.Errorf("stateful hook %q is not configured", id)
+	}
+	m.workers[id] = next
+	m.clearRoutesLocked(id)
+	for token, value := range m.tokens {
+		if value.HookID == id {
+			delete(m.tokens, token)
+		}
+	}
+	m.mu.Unlock()
+
+	old.stop(context.Background())
+	go next.run()
+	return nil
+}
+
 func (m *Manager) Close(ctx context.Context) {
 	if m == nil {
 		return
@@ -191,6 +256,9 @@ func (m *Manager) Handle(ctx context.Context, id string, event hook.Event) (hook
 	worker := m.worker(id)
 	if worker == nil {
 		return event, fmt.Errorf("stateful hook %q is not configured", id)
+	}
+	if worker.config.Block.Blocks(event) {
+		return event, nil
 	}
 	updated, err := worker.handle(ctx, event, false)
 	if err == nil {

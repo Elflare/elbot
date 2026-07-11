@@ -98,8 +98,60 @@ func TestManagerRoutesWaitingConversation(t *testing.T) {
 	if !handled || len(outputs) != 0 {
 		t.Fatalf("Route = handled=%v outputs=%#v", handled, outputs)
 	}
+	handled, outputs, err = manager.Route(context.Background(), event)
+	if err != nil {
+		t.Fatalf("Route after completion: %v", err)
+	}
+	if handled || len(outputs) != 0 {
+		t.Fatalf("Route after completion = handled=%v outputs=%#v", handled, outputs)
+	}
 	if err := manager.Stop(context.Background(), "demo"); err != nil {
 		t.Fatalf("Stop: %v", err)
+	}
+}
+
+func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
+	manager := NewManager(Options{SharedDir: t.TempDir()})
+	config := Config{
+		Stateful:               true,
+		Command:                runtimeHelperCommand(),
+		Cwd:                    ".",
+		StartupTimeoutSeconds:  2,
+		ShutdownTimeoutSeconds: 2,
+		EventTimeoutSeconds:    2,
+		MaxWaitSeconds:         30,
+		Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
+		ID:                     "demo",
+		Dir:                    t.TempDir(),
+	}
+	if err := manager.Apply([]Config{config}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	t.Cleanup(func() { manager.Close(context.Background()) })
+	waitForStatus(t, manager, "demo", StatusReady)
+	event := hook.Event{Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:123"}, Actor: hook.ActorContext{ID: "qqonebot:1", UserID: "1"}}
+	policy, err := hook.NewBlockPolicy(nil, []string{"qqonebot:123"}, nil)
+	if err != nil {
+		t.Fatalf("NewBlockPolicy: %v", err)
+	}
+	manager.worker("demo").config.Block = policy
+	if _, err := manager.Handle(context.Background(), "demo", event); err != nil {
+		t.Fatalf("blocked Handle: %v", err)
+	}
+	if manager.hasLease(event) {
+		t.Fatal("blocked Handle created a waiting lease")
+	}
+	manager.worker("demo").config.Block = hook.BlockPolicy{}
+	if _, err := manager.Handle(context.Background(), "demo", event); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	manager.worker("demo").config.Block = policy
+	handled, outputs, err := manager.Route(context.Background(), event)
+	if err != nil {
+		t.Fatalf("Route: %v", err)
+	}
+	if handled || len(outputs) != 0 || manager.hasLease(event) {
+		t.Fatalf("blocked route = handled=%v outputs=%#v leased=%v", handled, outputs, manager.hasLease(event))
 	}
 }
 
@@ -119,6 +171,84 @@ func waitForStatus(t *testing.T, manager *Manager, id string, wanted Status) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("hook %q did not reach %s: %#v", id, wanted, manager.List())
+}
+
+func TestHookReloadRequestWaitsForActiveHandle(t *testing.T) {
+	manager := NewManager(Options{SharedDir: t.TempDir()})
+	committed := make(chan struct{})
+	manager.SetPluginReloadPreparer(func(id string) (func() error, error) {
+		if id != "demo" {
+			t.Fatalf("reload id = %q, want demo", id)
+		}
+		return func() error {
+			close(committed)
+			return nil
+		}, nil
+	})
+	worker := newWorker(manager, Config{ID: "demo"})
+	worker.status = StatusRunning
+	worker.active = 1
+	result, err := worker.pluginRequest(frame{Method: "hooks.reload", Params: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatalf("pluginRequest: %v", err)
+	}
+	if scheduled, _ := result.(map[string]any)["scheduled"].(bool); !scheduled {
+		t.Fatalf("result = %#v", result)
+	}
+	worker.armReload()
+	select {
+	case <-committed:
+		t.Fatal("reload committed before active handle finished")
+	case <-time.After(20 * time.Millisecond):
+	}
+	worker.finishHandle()
+	select {
+	case <-committed:
+	case <-time.After(time.Second):
+		t.Fatal("reload was not committed after active handle finished")
+	}
+}
+
+func TestManagerReplacePluginKeepsOtherWorker(t *testing.T) {
+	manager := NewManager(Options{SharedDir: t.TempDir()})
+	config := func(id string) Config {
+		return Config{
+			Stateful:               true,
+			Command:                runtimeHelperCommand(),
+			Cwd:                    ".",
+			StartupTimeoutSeconds:  2,
+			ShutdownTimeoutSeconds: 2,
+			EventTimeoutSeconds:    2,
+			MaxWaitSeconds:         30,
+			Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
+			ID:                     id,
+			Dir:                    t.TempDir(),
+		}
+	}
+	demo := config("demo")
+	other := config("other")
+	if err := manager.Apply([]Config{demo, other}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	t.Cleanup(func() { manager.Close(context.Background()) })
+	waitForStatus(t, manager, "demo", StatusReady)
+	waitForStatus(t, manager, "other", StatusReady)
+	oldDemo := manager.worker("demo")
+	oldOther := manager.worker("other")
+	moved := demo
+	moved.Dir = t.TempDir()
+	if err := manager.ReplacePlugin(moved); err == nil {
+		t.Fatal("expected self reload to reject a plugin path change")
+	}
+	if err := manager.ReplacePlugin(demo); err != nil {
+		t.Fatalf("ReplacePlugin: %v", err)
+	}
+	if manager.worker("demo") == oldDemo {
+		t.Fatal("demo worker was not replaced")
+	}
+	if manager.worker("other") != oldOther {
+		t.Fatal("other worker was replaced")
+	}
 }
 
 func TestManagerApplyInvalidConfigKeepsCurrentWorkers(t *testing.T) {

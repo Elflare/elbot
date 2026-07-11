@@ -117,3 +117,36 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 		t.Fatalf("new handler = %q, want new", got)
 	}
 }
+
+func TestManagerReplacePluginLeavesOtherRegistrationsUntouched(t *testing.T) {
+	active := NewManager()
+	candidate := NewManager()
+	runs := []string{}
+	register := func(manager *DefaultManager, pluginID, name string) {
+		t.Helper()
+		if err := manager.Register(Registration{
+			Point:    PointAgentInputPrepared,
+			PluginID: pluginID,
+			Name:     name,
+			Match:    Always(),
+			Handler: HandlerFunc(func(_ context.Context, event Event) (Event, error) {
+				runs = append(runs, name)
+				return event, nil
+			}),
+		}); err != nil {
+			t.Fatalf("Register %s: %v", name, err)
+		}
+	}
+	register(active, "demo", "old")
+	register(active, "other", "other")
+	register(candidate, "demo", "new")
+	register(candidate, "unrelated", "unrelated")
+
+	active.ReplacePlugin("demo", candidate)
+	if _, err := active.Run(context.Background(), Event{Point: PointAgentInputPrepared}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(runs) != 2 || runs[0] != "new" || runs[1] != "other" {
+		t.Fatalf("runs = %#v, want new and other", runs)
+	}
+}
