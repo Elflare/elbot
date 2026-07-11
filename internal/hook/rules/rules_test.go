@@ -427,7 +427,7 @@ blocked_group = ["qqonebot:123"]
 blocked_id = ["qqonebot:42"]
 
 [plugin.runtime]
-stateful = true
+mode = "persistent"
 command = "weather-hook"
 cwd = "."
 startup_timeout_seconds = 5

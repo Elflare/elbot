@@ -21,7 +21,7 @@ func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
 	adapter.transport = transport
 	ctx := context.WithValue(context.Background(), targetKey{}, target{MessageType: "group", GroupID: 9})
 
-	receipt, err := adapter.SendNotice(ctx, delivery.Target{}, delivery.Text("[tool] 正在调用 shell：{}"))
+	receipt, err := adapter.SendNotice(ctx, delivery.Target{}, []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")})
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestSendNoticeKeepsPrivateToolPreview(t *testing.T) {
 	adapter.transport = transport
 	ctx := context.WithValue(context.Background(), targetKey{}, target{MessageType: "private", UserID: 1})
 
-	receipt, err := adapter.SendNotice(ctx, delivery.Target{}, delivery.Text("[tool] 正在调用 shell：{}"))
+	receipt, err := adapter.SendNotice(ctx, delivery.Target{}, []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")})
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestSendContextOutputReturnsSendFailureWithoutFallbackMessage(t *testing.T)
 	adapter.transport = transport
 	ctx := context.WithValue(context.Background(), targetKey{}, target{MessageType: "private", UserID: 1})
 
-	_, err := adapter.SendChat(ctx, delivery.EmoticonPath("开心", path))
+	_, err := adapter.SendChat(ctx, []delivery.Output{delivery.EmoticonPath("开心", path)})
 	if err == nil {
 		t.Fatal("SendChat error is nil")
 	}

@@ -94,7 +94,7 @@ func TestTUIInputSeparatorSharesLineWithRightAlignedShortcuts(t *testing.T) {
 func TestTUIInputSeparatorTruncatesShortcutsWhenNarrow(t *testing.T) {
 	m := tuiModel{width: 40}
 	view := m.inputSeparatorView()
-	if got := len([]rune(view)); got != m.width {
+	if got := runewidth.StringWidth(view); got != m.width {
 		t.Fatalf("toolbar width = %d, want %d: %q", got, m.width, view)
 	}
 	if !strings.Contains(view, "…") || !strings.HasSuffix(view, "Ctrl+C exit") {

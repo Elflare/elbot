@@ -23,11 +23,11 @@ type cronModelSelectionKey struct{}
 
 type discardSender struct{}
 
-func (discardSender) SendChat(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
+func (discardSender) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
 	return delivery.Receipt{}, nil
 }
 
-func (discardSender) SendNotice(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+func (discardSender) SendNotice(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
 	return delivery.Receipt{}, nil
 }
 

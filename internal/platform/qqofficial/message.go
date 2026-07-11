@@ -77,7 +77,7 @@ func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.Platfor
 		msgCtx = context.WithValue(msgCtx, targetKey{}, sendTarget{OpenID: openID, MsgID: msg.ID})
 	}
 	if len(attachments.TooLarge) > 0 {
-		if _, err := a.SendChat(msgCtx, platformTooLargeAttachmentsOutput(attachments.TooLarge, a.cfg.MaxReceiveFileBytes)); err != nil {
+		if _, err := a.SendChat(msgCtx, []delivery.Output{platformTooLargeAttachmentsOutput(attachments.TooLarge, a.cfg.MaxReceiveFileBytes)}); err != nil {
 			a.logWarn(ctx, "send qqofficial attachment too large notice failed", "error", err, "message_id", msg.ID)
 		}
 	}
@@ -85,7 +85,7 @@ func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.Platfor
 		return
 	}
 	if text == "" && len(attachments.Saved) > 0 && !hasPlatformImageSegment(attachments.Segments) {
-		if _, err := a.SendChat(msgCtx, platformSavedAttachmentsOutput(attachments.Saved)); err != nil {
+		if _, err := a.SendChat(msgCtx, []delivery.Output{platformSavedAttachmentsOutput(attachments.Saved)}); err != nil {
 			a.logWarn(ctx, "send qqofficial attachment saved notice failed", "error", err, "message_id", msg.ID)
 		}
 		return

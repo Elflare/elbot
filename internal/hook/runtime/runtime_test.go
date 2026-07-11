@@ -81,7 +81,7 @@ func writeHelperError(id, message string) {
 func TestManagerRoutesWaitingConversation(t *testing.T) {
 	manager := NewManager(Options{SharedDir: t.TempDir()})
 	config := Config{
-		Stateful:               true,
+		Mode:                   ModePersistent,
 		Command:                runtimeHelperCommand(),
 		Cwd:                    ".",
 		StartupTimeoutSeconds:  2,
@@ -120,10 +120,53 @@ func TestManagerRoutesWaitingConversation(t *testing.T) {
 	}
 }
 
+func TestManagerReclaimsTransientWorkerAfterPassThrough(t *testing.T) {
+	manager := NewManager(Options{SharedDir: t.TempDir()})
+	config := Config{
+		Mode:                   ModeTransient,
+		Command:                runtimeHelperCommand(),
+		Cwd:                    ".",
+		StartupTimeoutSeconds:  2,
+		ShutdownTimeoutSeconds: 2,
+		EventTimeoutSeconds:    2,
+		MaxWaitSeconds:         30,
+		Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
+		ID:                     "demo",
+		Dir:                    t.TempDir(),
+	}
+	if err := manager.Apply([]Config{config}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	t.Cleanup(func() { manager.Close(context.Background()) })
+	event := hook.Event{Platform: hook.PlatformContext{Name: "test", ScopeID: "private:transient"}, Actor: hook.ActorContext{ID: "test:transient", UserID: "transient"}}
+	if _, err := manager.Handle(context.Background(), "demo", event, hook.Control{Consume: true, StopPropagation: true}); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	manager.mu.RLock()
+	active := len(manager.transient)
+	manager.mu.RUnlock()
+	if active != 1 || !manager.hasLease(event) {
+		t.Fatalf("transient worker = %d leased=%v, want one leased worker", active, manager.hasLease(event))
+	}
+	updated, routed, err := manager.Route(context.Background(), event)
+	if err != nil {
+		t.Fatalf("Route: %v", err)
+	}
+	if !routed || updated.Control.Consume || updated.Control.StopPropagation {
+		t.Fatalf("Route = routed=%v control=%#v", routed, updated.Control)
+	}
+	manager.mu.RLock()
+	active = len(manager.transient)
+	manager.mu.RUnlock()
+	if active != 0 || manager.hasLease(event) {
+		t.Fatalf("transient worker = %d leased=%v after completion", active, manager.hasLease(event))
+	}
+}
+
 func TestManagerRouteUsesConfiguredDefaults(t *testing.T) {
 	manager := NewManager(Options{SharedDir: t.TempDir()})
 	config := Config{
-		Stateful:               true,
+		Mode:                   ModePersistent,
 		Command:                runtimeHelperCommand(),
 		Cwd:                    ".",
 		StartupTimeoutSeconds:  2,
@@ -168,7 +211,7 @@ func TestManagerHandleSkipsReleasedWaitingOwner(t *testing.T) {
 func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
 	manager := NewManager(Options{SharedDir: t.TempDir()})
 	config := Config{
-		Stateful:               true,
+		Mode:                   ModePersistent,
 		Command:                runtimeHelperCommand(),
 		Cwd:                    ".",
 		StartupTimeoutSeconds:  2,
@@ -268,7 +311,7 @@ func TestManagerReplacePluginKeepsOtherWorker(t *testing.T) {
 	manager := NewManager(Options{SharedDir: t.TempDir()})
 	config := func(id string) Config {
 		return Config{
-			Stateful:               true,
+			Mode:                   ModePersistent,
 			Command:                runtimeHelperCommand(),
 			Cwd:                    ".",
 			StartupTimeoutSeconds:  2,
@@ -309,7 +352,7 @@ func TestManagerReplacePluginKeepsOtherWorker(t *testing.T) {
 func TestManagerApplyInvalidConfigKeepsCurrentWorkers(t *testing.T) {
 	manager := NewManager(Options{SharedDir: t.TempDir()})
 	config := Config{
-		Stateful:               true,
+		Mode:                   ModePersistent,
 		Command:                runtimeHelperCommand(),
 		Cwd:                    ".",
 		StartupTimeoutSeconds:  2,

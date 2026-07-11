@@ -219,7 +219,6 @@ func (c Compressor) Compact(ctx context.Context, req CompactRequest) (*CompactRe
 			{Role: llm.RoleSystem, Segments: llm.TextSegments("你是对话上下文压缩器。请保留事实、决策、用户偏好、待办和最近上下文，删除寒暄与重复内容。")},
 			{Role: llm.RoleUser, Segments: llm.TextSegments(prompt)},
 		},
-
 	})
 	if err != nil {
 		return nil, fmt.Errorf("调用压缩模型: %w", err)
@@ -291,10 +290,10 @@ func compactPrompt(previous *storage.ContextSummary, messages []storage.Message)
 func NewWindowResolver(metadata config.ModelMetadataConfig, providers map[string]config.ProviderConfig, clientFor ClientProvider) *WindowResolver {
 	manual := map[string]int{}
 	for providerName, provider := range providers {
-	for modelName, modelCfg := range provider.ModelConfigs {
-		if modelCfg.ContextWindow > 0 {
-			manual[providerName+"/"+modelName] = modelCfg.ContextWindow
-		}
+		for modelName, modelCfg := range provider.ModelConfigs {
+			if modelCfg.ContextWindow > 0 {
+				manual[providerName+"/"+modelName] = modelCfg.ContextWindow
+			}
 		}
 	}
 	return &WindowResolver{DefaultWindow: metadata.DefaultContextWindow, ManualWindows: manual, ClientFor: clientFor}

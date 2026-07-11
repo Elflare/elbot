@@ -49,7 +49,7 @@ func (o foregroundTurnOutput) SendOutputs(ctx context.Context, outputs []deliver
 }
 
 func (o foregroundTurnOutput) SendNotice(ctx context.Context, text string) {
-	o.agent.sendNotice(ctx, text)
+	o.agent.sendTextNotice(ctx, text)
 }
 
 func (o foregroundTurnOutput) SendPreview(ctx context.Context, text string) {
@@ -92,12 +92,12 @@ func (o backgroundTurnOutput) PublishRuntimeStatus(ctx context.Context, snapshot
 	o.agent.recordRuntimeStatus(snapshot)
 }
 
-func (a *Agent) sendNotice(ctx context.Context, text string) {
+func (a *Agent) sendTextNotice(ctx context.Context, text string) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return
 	}
-	_, _ = a.SendNoticeOutput(ctx, delivery.Target{}, delivery.Text(text))
+	a.SendNotice(ctx, delivery.Target{}, []delivery.Output{delivery.Text(text)})
 }
 
 func (a *Agent) sendPreview(ctx context.Context, text string) {
@@ -114,7 +114,7 @@ func (a *Agent) sendPreview(ctx context.Context, text string) {
 		return
 	}
 	preview := formatToolPreview(body)
-	_ = a.sendNoticeOutput(ctx, delivery.Target{}, delivery.Text(preview))
+	a.SendNotice(ctx, delivery.Target{}, []delivery.Output{delivery.Text(preview)})
 	a.notifyHook(ctx, hook.Event{Point: hook.PointPlatformMessageSent, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(preview)}})
 }
 

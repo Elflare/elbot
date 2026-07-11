@@ -15,6 +15,8 @@ type Manager struct {
 	mu            sync.RWMutex
 	opts          Options
 	workers       map[string]*worker
+	transient     map[routeKey]*worker
+	configs       map[string]Config
 	routes        map[routeKey]lease
 	running       map[routeKey]invocation
 	tokens        map[string]toolContext
@@ -27,12 +29,14 @@ func NewManager(opts Options) *Manager {
 		_ = os.MkdirAll(opts.SharedDir, 0o755)
 	}
 	return &Manager{
-		opts:    opts,
-		workers: map[string]*worker{},
-		routes:  map[routeKey]lease{},
-		running: map[routeKey]invocation{},
-		tokens:  map[string]toolContext{},
-		shared:  NewSharedState(),
+		opts:      opts,
+		workers:   map[string]*worker{},
+		transient: map[routeKey]*worker{},
+		configs:   map[string]Config{},
+		routes:    map[routeKey]lease{},
+		running:   map[routeKey]invocation{},
+		tokens:    map[string]toolContext{},
+		shared:    NewSharedState(),
 	}
 }
 
@@ -62,9 +66,8 @@ func (m *Manager) preparePluginReload(id string) (func() error, error) {
 	return prepare(id)
 }
 
-// Apply reconciles configured persistent hooks. It is safe to call on startup
-// and from /hooks reload; unchanged entries are restarted so config changes are
-// deterministic rather than partially live-patched.
+// Apply reconciles configured workers. Persistent workers start immediately;
+// transient worker definitions are retained until a trigger rule matches.
 func (m *Manager) Apply(configs []Config) error {
 	if m == nil {
 		return nil
@@ -75,13 +78,16 @@ func (m *Manager) Apply(configs []Config) error {
 			return err
 		}
 		if _, exists := next[config.ID]; exists {
-			return fmt.Errorf("duplicate stateful hook %q", config.ID)
+			return fmt.Errorf("duplicate hook worker %q", config.ID)
 		}
 		next[config.ID] = config
 	}
 	nextWorkers := make(map[string]*worker, len(next))
 	workers := make([]*worker, 0, len(next))
 	for id, config := range next {
+		if config.ModeOrOnce() != ModePersistent {
+			continue
+		}
 		worker := newWorker(m, config)
 		nextWorkers[id] = worker
 		workers = append(workers, worker)
@@ -89,7 +95,10 @@ func (m *Manager) Apply(configs []Config) error {
 
 	m.mu.Lock()
 	previous := m.workers
+	previousTransient := m.transient
 	m.workers = nextWorkers
+	m.transient = map[routeKey]*worker{}
+	m.configs = next
 	previousIDs := make(map[string]bool, len(previous))
 	for id := range previous {
 		previousIDs[id] = true
@@ -103,6 +112,9 @@ func (m *Manager) Apply(configs []Config) error {
 	m.mu.Unlock()
 
 	for _, old := range previous {
+		old.stop(context.Background())
+	}
+	for _, old := range previousTransient {
 		old.stop(context.Background())
 	}
 	for _, worker := range workers {
@@ -140,46 +152,55 @@ func (m *Manager) validateConfig(config Config) error {
 
 func (m *Manager) ValidatePlugin(config Config) error {
 	if m == nil {
-		return fmt.Errorf("stateful hook runtime is not configured")
+		return fmt.Errorf("hook runtime is not configured")
+	}
+	if !config.IsWorker() {
+		return fmt.Errorf("hook %q is not a worker", config.ID)
 	}
 	if err := m.validateConfig(config); err != nil {
 		return err
 	}
-	current := m.worker(config.ID)
-	if current == nil {
-		return fmt.Errorf("stateful hook %q is not configured", config.ID)
+	m.mu.RLock()
+	current, ok := m.configs[config.ID]
+	m.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("hook worker %q is not configured", config.ID)
 	}
-	if current.config.Dir != config.Dir || current.config.ConfigPath != config.ConfigPath {
-		return fmt.Errorf("stateful hook %q cannot change plugin path during self reload", config.ID)
+	if current.Dir != config.Dir || current.ConfigPath != config.ConfigPath || current.ModeOrOnce() != config.ModeOrOnce() {
+		return fmt.Errorf("hook worker %q cannot change plugin path or mode during self reload", config.ID)
 	}
 	return nil
 }
 
-// ReplacePlugin swaps and restarts one persistent worker without disturbing
-// other plugins or their continuation routes.
+// ReplacePlugin replaces one worker definition and restarts it when persistent.
 func (m *Manager) ReplacePlugin(config Config) error {
 	if err := m.ValidatePlugin(config); err != nil {
 		return err
 	}
 	id := strings.TrimSpace(config.ID)
-	next := newWorker(m, config)
 	m.mu.Lock()
 	old := m.workers[id]
-	if old == nil {
-		m.mu.Unlock()
-		return fmt.Errorf("stateful hook %q is not configured", id)
-	}
-	m.workers[id] = next
+	m.configs[id] = config
 	m.clearRoutesLocked(id)
 	for token, value := range m.tokens {
 		if value.HookID == id {
 			delete(m.tokens, token)
 		}
 	}
+	if config.ModeOrOnce() == ModePersistent {
+		m.workers[id] = newWorker(m, config)
+	} else {
+		delete(m.workers, id)
+	}
+	next := m.workers[id]
 	m.mu.Unlock()
 
-	old.stop(context.Background())
-	go next.run()
+	if old != nil {
+		old.stop(context.Background())
+	}
+	if next != nil {
+		go next.run()
+	}
 	return nil
 }
 
@@ -188,8 +209,11 @@ func (m *Manager) Close(ctx context.Context) {
 		return
 	}
 	m.mu.RLock()
-	workers := make([]*worker, 0, len(m.workers))
+	workers := make([]*worker, 0, len(m.workers)+len(m.transient))
 	for _, worker := range m.workers {
+		workers = append(workers, worker)
+	}
+	for _, worker := range m.transient {
 		workers = append(workers, worker)
 	}
 	m.mu.RUnlock()
@@ -215,16 +239,16 @@ func (m *Manager) List() []Info {
 func (m *Manager) Start(id string) error {
 	worker := m.worker(id)
 	if worker == nil {
-		return fmt.Errorf("stateful hook %q not found", id)
+		return fmt.Errorf("persistent hook %q not found", id)
 	}
 	worker.start()
-	return nil
+	return worker.waitReady(context.Background())
 }
 
 func (m *Manager) Stop(ctx context.Context, id string) error {
 	worker := m.worker(id)
 	if worker == nil {
-		return fmt.Errorf("stateful hook %q not found", id)
+		return fmt.Errorf("persistent hook %q not found", id)
 	}
 	worker.stop(ctx)
 	m.mu.Lock()
@@ -256,14 +280,35 @@ func (m *Manager) Handle(ctx context.Context, id string, event hook.Event, defau
 	if skipped, _ := event.Metadata[skipHookIDMetadataKey].(string); skipped == id {
 		return event, nil
 	}
-	worker := m.worker(id)
+	m.mu.RLock()
+	config, configured := m.configs[id]
+	m.mu.RUnlock()
+	if !configured {
+		return event, fmt.Errorf("hook worker %q is not configured", id)
+	}
+	var worker *worker
+	switch config.ModeOrOnce() {
+	case ModePersistent:
+		worker = m.worker(id)
+	case ModeTransient:
+		var err error
+		worker, err = m.startTransient(ctx, config, routeKeyFor(event))
+		if err != nil {
+			return event, err
+		}
+	default:
+		return event, fmt.Errorf("hook %q is not configured as a worker", id)
+	}
 	if worker == nil {
-		return event, fmt.Errorf("stateful hook %q is not configured", id)
+		return event, fmt.Errorf("hook worker %q is not available", id)
 	}
 	if worker.config.Block.Blocks(event) {
 		return event, nil
 	}
 	updated, err := worker.handle(ctx, event, false, defaults)
+	if config.ModeOrOnce() == ModeTransient && (err != nil || !m.hasLease(event)) {
+		m.stopTransient(routeKeyFor(event), worker)
+	}
 	if err == nil {
 		if updated.Metadata == nil {
 			updated.Metadata = map[string]any{}
@@ -271,4 +316,33 @@ func (m *Manager) Handle(ctx context.Context, id string, event hook.Event, defau
 		updated.Metadata[dispatchedMetadataKey] = true
 	}
 	return updated, err
+}
+
+func (m *Manager) startTransient(ctx context.Context, config Config, key routeKey) (*worker, error) {
+	m.mu.Lock()
+	worker := m.transient[key]
+	if worker == nil {
+		worker = newWorker(m, config)
+		m.transient[key] = worker
+		go worker.run()
+	}
+	m.mu.Unlock()
+	if err := worker.waitReady(ctx); err != nil {
+		m.stopTransient(key, worker)
+		return nil, err
+	}
+	return worker, nil
+}
+
+func (m *Manager) stopTransient(key routeKey, wanted *worker) {
+	m.mu.Lock()
+	worker := m.transient[key]
+	if worker == nil || (wanted != nil && worker != wanted) {
+		m.mu.Unlock()
+		return
+	}
+	delete(m.transient, key)
+	delete(m.routes, key)
+	m.mu.Unlock()
+	go worker.stop(context.Background())
 }

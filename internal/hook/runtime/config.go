@@ -27,6 +27,14 @@ const (
 	StatusFailed   Status = "failed"
 )
 
+type Mode string
+
+const (
+	ModeOnce       Mode = "once"
+	ModePersistent Mode = "persistent"
+	ModeTransient  Mode = "transient"
+)
+
 type RestartConfig struct {
 	Strategy            string `toml:"strategy"`
 	InitialDelaySeconds int    `toml:"initial_delay_seconds"`
@@ -38,10 +46,10 @@ type ToolsConfig struct {
 	BackgroundAllow []string `toml:"background_allow"`
 }
 
-// Config is decoded from [plugin.runtime]. All stateful lifecycle values are
-// explicit so a configuration never inherits surprising restart behaviour.
+// Config is decoded from [plugin.runtime]. Omitted mode is equivalent to
+// once; only persistent and transient modes create hook.v2 workers.
 type Config struct {
-	Stateful               bool          `toml:"stateful"`
+	Mode                   Mode          `toml:"mode"`
 	Command                string        `toml:"command"`
 	Cwd                    string        `toml:"cwd"`
 	StartupTimeoutSeconds  int           `toml:"startup_timeout_seconds"`
@@ -58,15 +66,30 @@ type Config struct {
 	Block       hook.BlockPolicy `toml:"-"`
 }
 
+func (c Config) ModeOrOnce() Mode {
+	if c.Mode == "" {
+		return ModeOnce
+	}
+	return c.Mode
+}
+
+func (c Config) IsWorker() bool {
+	return c.ModeOrOnce() != ModeOnce
+}
+
 func (c Config) Validate() error {
+	mode := c.ModeOrOnce()
+	if mode == ModeOnce {
+		return nil
+	}
+	if mode != ModePersistent && mode != ModeTransient {
+		return fmt.Errorf("runtime mode must be once, persistent or transient")
+	}
 	if strings.TrimSpace(c.ID) == "" {
 		return fmt.Errorf("hook id is required")
 	}
 	if !validID(c.ID) {
 		return fmt.Errorf("hook id %q must contain only lowercase letters, digits, '-' or '_'", c.ID)
-	}
-	if !c.Stateful {
-		return fmt.Errorf("[plugin.runtime] requires stateful = true")
 	}
 	if strings.TrimSpace(c.Command) == "" {
 		return fmt.Errorf("runtime command is required")
@@ -110,7 +133,7 @@ type Options struct {
 	Registry  *tool.Registry
 	Logger    *slog.Logger
 	Audit     func(event string, attrs ...any)
-	Send      func(context.Context, delivery.Target, delivery.Output) (delivery.Receipt, error)
+	Send      func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 	SharedDir string
 }
 

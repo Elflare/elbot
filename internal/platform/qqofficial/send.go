@@ -27,11 +27,23 @@ func receiptWithMessageID(id string) delivery.Receipt {
 	return delivery.Receipt{PlatformMessageIDs: []string{id}}
 }
 
-func (a *Adapter) sendContextOutput(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
 	t, err := a.contextTarget(ctx)
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
+	var receipt delivery.Receipt
+	for _, out := range outputs {
+		sent, err := a.sendOutput(ctx, t, out)
+		if err != nil {
+			return delivery.Receipt{}, err
+		}
+		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
+	}
+	return receipt, nil
+}
+
+func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Output) (delivery.Receipt, error) {
 	switch out.Kind {
 	case delivery.KindText:
 		return a.sendText(ctx, t, out.Text)

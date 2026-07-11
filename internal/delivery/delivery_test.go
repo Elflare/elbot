@@ -8,25 +8,30 @@ import (
 )
 
 type fakeSender struct {
-	chats   []Output
-	notices []Output
+	chats   [][]Output
+	notices [][]Output
 	err     error
 }
 
-func (s *fakeSender) SendChat(ctx context.Context, out Output) (Receipt, error) {
+func (s *fakeSender) SendChat(_ context.Context, outputs []Output) (Receipt, error) {
 	if s.err != nil {
 		return Receipt{}, s.err
 	}
-	s.chats = append(s.chats, out)
+	s.chats = append(s.chats, outputs)
 	return Receipt{}, nil
 }
 
-func (s *fakeSender) SendNotice(ctx context.Context, target Target, out Output) (Receipt, error) {
+func (s *fakeSender) SendNotice(_ context.Context, target Target, outputs []Output) (Receipt, error) {
 	if s.err != nil {
 		return Receipt{}, s.err
 	}
-	out.Target = target
-	s.notices = append(s.notices, out)
+	if !target.Empty() {
+		outputs = append([]Output(nil), outputs...)
+		for i := range outputs {
+			outputs[i].Target = target
+		}
+	}
+	s.notices = append(s.notices, outputs)
 	return Receipt{}, nil
 }
 
@@ -55,10 +60,10 @@ func TestManagerSendsChat(t *testing.T) {
 	sender := &fakeSender{}
 	manager := NewManager(sender, nil)
 	out := Output{Kind: KindText, Text: "hello"}
-	if _, err := manager.SendChat(context.Background(), out); err != nil {
+	if _, err := manager.SendChat(context.Background(), []Output{out}); err != nil {
 		t.Fatalf("SendChat: %v", err)
 	}
-	if len(sender.chats) != 1 || sender.chats[0].Text != "hello" {
+	if len(sender.chats) != 1 || len(sender.chats[0]) != 1 || sender.chats[0][0].Text != "hello" {
 		t.Fatalf("chats = %#v", sender.chats)
 	}
 }
@@ -69,7 +74,7 @@ func TestManagerSendsNotices(t *testing.T) {
 	if err := manager.SendNotices(context.Background(), []Output{{Kind: KindText, Text: "hello"}, {Kind: KindImage, Name: "pic"}}); err != nil {
 		t.Fatalf("SendNotices: %v", err)
 	}
-	if len(sender.notices) != 2 || sender.notices[0].Text != "hello" || sender.notices[1].Name != "pic" {
+	if len(sender.notices) != 1 || len(sender.notices[0]) != 2 || sender.notices[0][0].Text != "hello" || sender.notices[0][1].Name != "pic" {
 		t.Fatalf("notices = %#v", sender.notices)
 	}
 }
@@ -111,14 +116,14 @@ func TestManagerWrapsNoticeOutputErrorWithHookName(t *testing.T) {
 	sender := &fakeSender{err: boom}
 	manager := NewManager(sender, nil)
 	err := func() error {
-		_, err := manager.SendNotice(context.Background(), Target{Platform: "qqonebot", PrivateUserID: "123"}, Output{
+		_, err := manager.SendNotice(context.Background(), Target{Platform: "qqonebot", PrivateUserID: "123"}, []Output{{
 			Kind: KindText,
 			Text: "hello",
 			Meta: map[string]any{
 				MetaHookName:  "notify.connected",
 				MetaHookPoint: "platform.connected",
 			},
-		})
+		}})
 		return err
 	}()
 	if !errors.Is(err, boom) {

@@ -541,15 +541,11 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 		if err != nil {
 			return nil, err
 		}
-		receipts := make([]delivery.Receipt, 0, len(outputs))
-		for _, out := range outputs {
-			receipt, err := m.sendProtocolOutput(ctx, event, out)
-			if err != nil {
-				return nil, err
-			}
-			receipts = append(receipts, receipt)
+		receipt, err := m.sendProtocolOutput(ctx, event, outputs)
+		if err != nil {
+			return nil, err
 		}
-		return map[string]any{"sent": len(receipts), "receipts": receipts}, nil
+		return map[string]any{"sent": len(outputs), "receipts": []delivery.Receipt{receipt}}, nil
 	case "message.get_reply":
 		return map[string]any{"message_id": event.Platform.ReplyToMessageID, "available": event.Platform.ReplyToMessageID != ""}, nil
 	case "message.get":
@@ -597,9 +593,9 @@ func protocolOutputsFromRaw(raw json.RawMessage, action Action, timing, fieldNam
 	return outputs, nil
 }
 
-func (m Module) sendProtocolOutput(ctx context.Context, event hook.Event, out delivery.Output) (delivery.Receipt, error) {
+func (m Module) sendProtocolOutput(ctx context.Context, event hook.Event, outputs []delivery.Output) (delivery.Receipt, error) {
 	if m.Opts.Send != nil {
-		return m.Opts.Send(ctx, out.Target, out)
+		return m.Opts.Send(ctx, delivery.Target{}, outputs)
 	}
 	return delivery.Receipt{}, fmt.Errorf("output sender is not configured")
 }

@@ -22,7 +22,7 @@ type Options struct {
 	Logger              *slog.Logger
 	Audit               func(event string, attrs ...any)
 	Notify              func(context.Context, string)
-	Send                func(context.Context, delivery.Target, delivery.Output) (delivery.Receipt, error)
+	Send                func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 	PlatformCallers     rules.PlatformCallerResolver
 	Runtime             *hookruntime.Manager
 }

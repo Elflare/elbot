@@ -252,7 +252,7 @@ func Run(ctx context.Context, opts Options) error {
 			startupHookNotices = append(startupHookNotices, text)
 			return
 		}
-		_, _ = agt.SendNoticeOutput(ctx, delivery.Target{}, delivery.Text(text))
+		_, _ = agt.SendNotice(ctx, delivery.Target{}, []delivery.Output{delivery.Text(text)})
 	}
 	cronService := elcron.NewService(elcron.Options{
 		Manager:          cronManager,
@@ -267,7 +267,7 @@ func Run(ctx context.Context, opts Options) error {
 			if agt == nil {
 				return delivery.Receipt{}, fmt.Errorf("agent is not ready")
 			}
-			return agt.SendNoticeOutput(ctx, target, out)
+			return agt.SendNotice(ctx, target, []delivery.Output{out})
 		},
 	})
 	if err := cronManager.RegisterHandler(elcron.UserHandlerName, cronService.Handler); err != nil {
@@ -304,11 +304,11 @@ func Run(ctx context.Context, opts Options) error {
 		Audit: func(event string, attrs ...any) {
 			logs.Audit().Log(context.Background(), slog.LevelInfo, "audit event", append([]any{"event", event}, attrs...)...)
 		},
-		Send: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+		Send: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 			if agt == nil {
 				return delivery.Receipt{}, fmt.Errorf("agent is not ready")
 			}
-			return agt.SendNoticeOutput(ctx, target, out)
+			return agt.SendNotice(ctx, target, outputs)
 		},
 		SharedDir: filepath.Join(config.PluginConfigDir(cfg.ConfigPath), "_shared"),
 	})
@@ -322,11 +322,11 @@ func Run(ctx context.Context, opts Options) error {
 			logs.Audit().Log(context.Background(), slog.LevelInfo, "audit event", append([]any{"event", event}, attrs...)...)
 		},
 		Notify: notifyHookIssue,
-		Send: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+		Send: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 			if agt == nil {
 				return delivery.Receipt{}, fmt.Errorf("agent is not ready")
 			}
-			return agt.SendNoticeOutput(ctx, target, out)
+			return agt.SendNotice(ctx, target, outputs)
 		},
 		PlatformCallers: hookPlatformCallerResolver{runtimes: platforms.Runtimes},
 		Runtime:         hookRuntime,
@@ -397,7 +397,7 @@ func Run(ctx context.Context, opts Options) error {
 				logs.Audit().Log(context.Background(), slog.LevelInfo, "audit event", append([]any{"event", event}, attrs...)...)
 			},
 			Send: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
-				return agt.SendNoticeOutput(ctx, target, out)
+				return agt.SendNotice(ctx, target, []delivery.Output{out})
 			},
 			Runner: agt,
 			ResolveModel: func(slot string) config.ModelSelection {
@@ -441,11 +441,11 @@ func (a elnisRuntimeAdapter) Run(ctx context.Context, handler platform.PlatformH
 	return a.runtime.Run(ctx)
 }
 
-func (a elnisRuntimeAdapter) SendChat(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
+func (a elnisRuntimeAdapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
 	return delivery.Receipt{}, fmt.Errorf("elnis cannot send chat output")
 }
 
-func (a elnisRuntimeAdapter) SendNotice(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+func (a elnisRuntimeAdapter) SendNotice(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
 	return delivery.Receipt{}, fmt.Errorf("elnis cannot send notice output")
 }
 

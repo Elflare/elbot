@@ -188,11 +188,19 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 	}
 }
 
-func (a *Adapter) SendChat(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
-	if out.Kind == delivery.KindText {
-		return a.sendContextText(ctx, out.Text)
+func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+	if text, ok := textOutputs(outputs); ok {
+		return a.sendContextText(ctx, text)
 	}
-	return a.sendContextOutput(ctx, out)
+	t, ok := ctx.Value(targetKey{}).(target)
+	if !ok {
+		return delivery.Receipt{}, fmt.Errorf("qq send target missing")
+	}
+	segments, err := outputSegments(outputs...)
+	if err != nil {
+		return delivery.Receipt{}, err
+	}
+	return a.sendSegments(ctx, t, segments)
 }
 
 func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[string]any) (json.RawMessage, error) {
@@ -206,18 +214,59 @@ func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[st
 	return resp.Data, nil
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, outTarget delivery.Target, out delivery.Output) (delivery.Receipt, error) {
-	if outTarget.Empty() && isGroupToolPreviewNotice(ctx, out) {
+func (a *Adapter) SendNotice(ctx context.Context, outTarget delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	if outTarget.Empty() && isGroupToolPreviewNotice(ctx, outputs) {
 		return delivery.Receipt{}, nil
 	}
 	if outTarget.Empty() {
-		return a.SendChat(ctx, out)
+		return a.SendChat(ctx, outputs)
 	}
-	return a.sendTarget(ctx, outTarget, out)
+	if outTarget.Superadmins {
+		if len(a.cfg.Superadmins) == 0 {
+			return delivery.Receipt{}, fmt.Errorf("qqonebot superadmins are not configured")
+		}
+		var receipt delivery.Receipt
+		for _, id := range a.cfg.Superadmins {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			copyTarget := outTarget
+			copyTarget.Superadmins = false
+			copyTarget.PrivateUserID = id
+			copyTarget.GroupID = ""
+			copyTarget.ScopeID = ""
+			sent, err := a.SendNotice(ctx, copyTarget, outputs)
+			if err != nil {
+				return delivery.Receipt{}, err
+			}
+			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
+		}
+		return receipt, nil
+	}
+	t, err := targetToQQ(outTarget)
+	if err != nil {
+		return delivery.Receipt{}, err
+	}
+	segments, err := outputSegments(outputs...)
+	if err != nil {
+		return delivery.Receipt{}, err
+	}
+	return a.sendSegments(ctx, t, segments)
 }
 
-func isGroupToolPreviewNotice(ctx context.Context, out delivery.Output) bool {
-	if out.Kind != delivery.KindText || !strings.HasPrefix(strings.TrimSpace(out.Text), "[tool]") {
+func textOutputs(outputs []delivery.Output) (string, bool) {
+	var text strings.Builder
+	for _, out := range outputs {
+		if out.Kind != delivery.KindText {
+			return "", false
+		}
+		text.WriteString(out.Text)
+	}
+	return text.String(), true
+}
+func isGroupToolPreviewNotice(ctx context.Context, outputs []delivery.Output) bool {
+	if len(outputs) != 1 || outputs[0].Kind != delivery.KindText || !strings.HasPrefix(strings.TrimSpace(outputs[0].Text), "[tool]") {
 		return false
 	}
 	t, ok := ctx.Value(targetKey{}).(target)
@@ -246,19 +295,7 @@ func (a *Adapter) sendContextText(ctx context.Context, text string) (delivery.Re
 }
 
 func (a *Adapter) sendContextOutput(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
-	t, ok := ctx.Value(targetKey{}).(target)
-	if !ok {
-		return delivery.Receipt{}, fmt.Errorf("qq send target missing")
-	}
-	segments, err := outputSegments(out)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	receipt, err := a.sendSegments(ctx, t, segments)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	return receipt, nil
+	return a.SendChat(ctx, []delivery.Output{out})
 }
 
 func (a *Adapter) sendSegments(ctx context.Context, t target, segments []Segment) (delivery.Receipt, error) {
@@ -275,38 +312,7 @@ func (a *Adapter) sendSegments(ctx context.Context, t target, segments []Segment
 }
 
 func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, out delivery.Output) (delivery.Receipt, error) {
-	if outTarget.Superadmins {
-		if len(a.cfg.Superadmins) == 0 {
-			return delivery.Receipt{}, fmt.Errorf("qqonebot superadmins are not configured")
-		}
-		var receipt delivery.Receipt
-		for _, id := range a.cfg.Superadmins {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
-			}
-			copyTarget := outTarget
-			copyTarget.Superadmins = false
-			copyTarget.PrivateUserID = id
-			copyTarget.GroupID = ""
-			copyTarget.ScopeID = ""
-			sent, err := a.sendTarget(ctx, copyTarget, out)
-			if err != nil {
-				return delivery.Receipt{}, err
-			}
-			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
-		}
-		return receipt, nil
-	}
-	t, err := targetToQQ(outTarget)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	targetCtx := context.WithValue(ctx, targetKey{}, t)
-	if out.Kind == delivery.KindText {
-		return a.sendContextText(targetCtx, out.Text)
-	}
-	return a.sendContextOutput(targetCtx, out)
+	return a.SendNotice(ctx, outTarget, []delivery.Output{out})
 }
 
 func receiptWithMessageID(id string) delivery.Receipt {
@@ -343,45 +349,48 @@ func targetToQQ(outTarget delivery.Target) (target, error) {
 	return target{}, fmt.Errorf("qqonebot target missing private_user_id, group_id or scope_id")
 }
 
-func outputSegments(out delivery.Output) ([]Segment, error) {
-	switch out.Kind {
-	case delivery.KindReply:
-		replyID := strings.TrimSpace(out.ReplyToPlatformMessageID)
-		if replyID == "" {
-			return nil, fmt.Errorf("reply target message id is empty")
+func outputSegments(outputs ...delivery.Output) ([]Segment, error) {
+	segments := make([]Segment, 0, len(outputs))
+	for _, out := range outputs {
+		switch out.Kind {
+		case delivery.KindText:
+			segments = append(segments, Segment{Type: "text", Data: map[string]any{"text": out.Text}})
+		case delivery.KindReply:
+			replyID := strings.TrimSpace(out.ReplyToPlatformMessageID)
+			if replyID == "" {
+				return nil, fmt.Errorf("reply target message id is empty")
+			}
+			segments = append(segments, Segment{Type: "reply", Data: map[string]any{"id": replyID}}, Segment{Type: "text", Data: map[string]any{"text": out.Text}})
+		case delivery.KindEmoticon, delivery.KindImage:
+			file, err := oneBotSourceFile(out.Source, "image")
+			if err != nil {
+				return nil, err
+			}
+			segments = append(segments, Segment{Type: "image", Data: map[string]any{"file": file}})
+		case delivery.KindFile:
+			file, err := oneBotSourceFile(out.Source, "file")
+			if err != nil {
+				return nil, err
+			}
+			data := map[string]any{"file": file}
+			if name := strings.TrimSpace(out.Name); name != "" {
+				data["name"] = name
+			}
+			segments = append(segments, Segment{Type: "file", Data: data})
+		case delivery.KindAt:
+			qq := strings.TrimSpace(out.Name)
+			if qq == "" {
+				qq = strings.TrimSpace(out.Text)
+			}
+			if qq == "" {
+				return nil, fmt.Errorf("at target is empty")
+			}
+			segments = append(segments, Segment{Type: "at", Data: map[string]any{"qq": qq}})
+		default:
+			return nil, fmt.Errorf("unsupported output kind %q", out.Kind)
 		}
-		return []Segment{
-			{Type: "reply", Data: map[string]any{"id": replyID}},
-			{Type: "text", Data: map[string]any{"text": out.Text}},
-		}, nil
-	case delivery.KindEmoticon, delivery.KindImage:
-		file, err := oneBotSourceFile(out.Source, "image")
-		if err != nil {
-			return nil, err
-		}
-		return []Segment{{Type: "image", Data: map[string]any{"file": file}}}, nil
-	case delivery.KindFile:
-		file, err := oneBotSourceFile(out.Source, "file")
-		if err != nil {
-			return nil, err
-		}
-		data := map[string]any{"file": file}
-		if name := strings.TrimSpace(out.Name); name != "" {
-			data["name"] = name
-		}
-		return []Segment{{Type: "file", Data: data}}, nil
-	case delivery.KindAt:
-		qq := strings.TrimSpace(out.Name)
-		if qq == "" {
-			qq = strings.TrimSpace(out.Text)
-		}
-		if qq == "" {
-			return nil, fmt.Errorf("at target is empty")
-		}
-		return []Segment{{Type: "at", Data: map[string]any{"qq": qq}}}, nil
-	default:
-		return nil, fmt.Errorf("unsupported output kind %q", out.Kind)
 	}
+	return segments, nil
 }
 
 func oneBotGroupRole(event Event) security.GroupRole {
@@ -510,7 +519,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 	msgCtx = platform.WithMessageContext(ctx, messageCtx)
 	msgCtx = context.WithValue(msgCtx, targetKey{}, target{MessageType: event.MessageType, UserID: event.UserID, GroupID: event.GroupID})
 	if len(attachments.TooLarge) > 0 {
-		if _, err := a.SendChat(msgCtx, platformTooLargeAttachmentsOutput(attachments.TooLarge, a.cfg.MaxReceiveFileBytes)); err != nil {
+		if _, err := a.SendChat(msgCtx, []delivery.Output{platformTooLargeAttachmentsOutput(attachments.TooLarge, a.cfg.MaxReceiveFileBytes)}); err != nil {
 			a.logWarn("send onebot attachment too large notice failed", "error", err, "message_id", event.MessageID)
 		}
 	}
@@ -519,7 +528,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 			return
 		}
 		if len(attachments.Saved) > 0 {
-			if _, err := a.SendChat(msgCtx, platformSavedAttachmentsOutput(attachments.Saved)); err != nil {
+			if _, err := a.SendChat(msgCtx, []delivery.Output{platformSavedAttachmentsOutput(attachments.Saved)}); err != nil {
 				a.logWarn("send onebot attachment saved notice failed", "error", err, "message_id", event.MessageID)
 			}
 			return

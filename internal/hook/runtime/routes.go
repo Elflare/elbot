@@ -21,12 +21,18 @@ func (m *Manager) hasLease(event hook.Event) bool {
 	}
 	key := routeKeyFor(event)
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	lease, ok := m.routes[key]
 	if ok && time.Now().After(lease.ExpiresAt) {
 		delete(m.routes, key)
+		worker := m.transient[key]
+		delete(m.transient, key)
+		m.mu.Unlock()
+		if worker != nil {
+			go worker.stop(context.Background())
+		}
 		return false
 	}
+	m.mu.Unlock()
 	return ok
 }
 
@@ -44,13 +50,24 @@ func (m *Manager) Route(ctx context.Context, event hook.Event) (hook.Event, bool
 	lease, ok := m.routes[key]
 	if ok && time.Now().After(lease.ExpiresAt) {
 		delete(m.routes, key)
-		ok = false
+		worker := m.transient[key]
+		delete(m.transient, key)
+		m.mu.Unlock()
+		if worker != nil {
+			go worker.stop(context.Background())
+		}
+		return event, false, nil
 	}
 	m.mu.Unlock()
 	if !ok {
 		return event, false, nil
 	}
 	worker := m.worker(lease.HookID)
+	if worker == nil {
+		m.mu.RLock()
+		worker = m.transient[key]
+		m.mu.RUnlock()
+	}
 	if worker == nil {
 		m.mu.Lock()
 		delete(m.routes, key)
@@ -62,6 +79,9 @@ func (m *Manager) Route(ctx context.Context, event hook.Event) (hook.Event, bool
 		return event, false, nil
 	}
 	updated, err := worker.handle(ctx, event, true, lease.Control)
+	if worker.config.ModeOrOnce() == ModeTransient && (err != nil || !m.hasLease(event)) {
+		m.stopTransient(key, worker)
+	}
 	if err == nil && !updated.Control.StopPropagation {
 		if updated.Metadata == nil {
 			updated.Metadata = map[string]any{}
@@ -82,6 +102,7 @@ func (m *Manager) Cancel(event hook.Event) bool {
 		delete(m.routes, key)
 	}
 	running, runningOK := m.running[key]
+	transient := m.transient[key]
 	m.mu.Unlock()
 	if !ok && !runningOK {
 		return false
@@ -94,8 +115,15 @@ func (m *Manager) Cancel(event hook.Event) bool {
 	if hookID == "" && runningOK {
 		hookID = running.HookID
 	}
-	if worker := m.worker(hookID); worker != nil {
-		worker.notifyCancel(conversationID)
+	selected := m.worker(hookID)
+	if selected == nil {
+		selected = transient
+	}
+	if selected != nil {
+		selected.notifyCancel(conversationID)
+		if selected.config.ModeOrOnce() == ModeTransient {
+			m.stopTransient(key, selected)
+		}
 	}
 	return true
 }
@@ -145,11 +173,13 @@ func (m *Manager) setLease(id string, event hook.Event, result eventResult, defa
 	if result.ExpiresAt.IsZero() || !result.ExpiresAt.After(time.Now()) {
 		return fmt.Errorf("hook waiting response requires a future expires_at")
 	}
-	worker := m.worker(id)
-	if worker == nil {
-		return fmt.Errorf("stateful hook %q is no longer configured", id)
+	m.mu.RLock()
+	config, ok := m.configs[id]
+	m.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("hook worker %q is no longer configured", id)
 	}
-	max := time.Duration(worker.config.MaxWaitSeconds) * time.Second
+	max := time.Duration(config.MaxWaitSeconds) * time.Second
 	if result.ExpiresAt.After(time.Now().Add(max)) {
 		return fmt.Errorf("hook waiting response exceeds max_wait_seconds")
 	}
@@ -173,6 +203,10 @@ func (m *Manager) clearRoutesLocked(id string) {
 	for key, lease := range m.routes {
 		if lease.HookID == id {
 			delete(m.routes, key)
+			if worker := m.transient[key]; worker != nil {
+				delete(m.transient, key)
+				go worker.stop(context.Background())
+			}
 		}
 	}
 	for key, running := range m.running {
