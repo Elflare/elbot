@@ -12,9 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- The Hook exec protocol has been unified and upgraded to `hook.v2`, supporting request/response/event frames, bidirectional Pipe RPC, and Host/Hook request ID isolation; Legacy `hook.v1` scripts need to be migrated.
-- Added persistent Hooks: declare lifecycle, restart, tool whitelist, and multi-turn waiting Sessions in the `[plugin.runtime]` of plugin `hook.toml`; Unified management via `/hooks` for listing, details, starting, stopping, restarting, and reloading.
-- Added Hook shared space `plugins/_shared/` and in-process JSON SharedState, providing namespace KV and compare-and-swap coordination capabilities.
+- **Refactor hook system**
 - `read_file` added `mode=ast`, enabling lightweight AST search by name for Go and Shell files; `mode` is also unified into three reading modes: `read`, `grep`, and `ast`.
 - Refactor AgentSkill: remove the py wrapper and execute the corresponding skill directly via shell; also support adding `ELBOT_SKILL.toml` in the AgentSkill root directory to register it as a normal tool, facilitating the LLM's direct call of structured parameters.
 - Added a hidden meta-tool `agent_skill` for reading or writing the `ELBOT_SKILL.toml` of AgentSkill; it validates the configuration before writing and reloads upon success.
@@ -29,17 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Executing Hooks will be displayed in `/requests`, and Hooks for the current Session will also be displayed in `/status`; Use `/stop` to cancel long-running Hooks; manual cancellations are recorded as normal cancellations.
 - Inline preloading supports tool shorthand `@t:<name-or-tag>` and Skill shorthand `@s:<name>`, and is compatible with Chinese full-width colon `：`.
 - The CLI TUI input box now supports fuzzy completion of local files using `#文件名`; references are replaced with the filename and file content upon sending, and paths containing spaces can be written as `#"a b.txt"`.
-- Failure notifications will be sent to the current messaging platform when Hook execution fails, the script crashes, times out, or a protocol error occurs, with the end of stderr attached upon failure; Added `error.message` to rule matching and templates.
-- Hook rule text fields have been organized into clear names such as `message.intent_text`, `message.display_text`, `message.platform_text`, and `llm.source_text`.
-- Hook plugin meta-information now supports `[plugin] name`; `/hooks reload` will display plugin skip or configuration warnings in the command results.
 - `web_extract` added the `jina` parameter, which defaults to using Jina Reader; passing `jina=false` allows manually switching to direct crawling.
 
 ### Changed
 
-- Optimize CLI TUI.
-- Decouple Hook management from the Agent core into an independent Control Service; `/hooks reload` first builds and validates the candidate configuration in isolation, then atomically replaces the general Hook snapshot and persistent Runtime worker index, retaining the current active Hook upon failure.
-- Split Hook basics and persistent Runtime files by event, matching, Manager, routing, process, protocol, and tool bridge; The Hook execution access and Output sending adaptation of the Agent have also been separated; external Hook configurations and the `hook.v2` protocol remain unchanged.
-
+- AgentSkill startup scan no longer caches `SKILL.md` body permanently, keeping only summaries and paths; The current body will be read when `discover_tool` is discovered by name or `@skill` is preloaded; the same applies to tool-based Skills with `ELBOT_SKILL.toml`.
 - The proxy parameter of the `web_extract` tool has been changed from `disable_proxy` to `proxy`: use `WEB_EXTRACT_PROXY` or the system proxy environment when left blank, fill in `disabled` to disable the proxy, or fill in a URL to use a specified proxy.
 - The `send_file` tool now uses the `source` parameter to send files, supporting local paths, `file://` URIs, and HTTP(S) URLs, and will automatically send images as image messages based on MIME type/extension.
 - AgentSkill no longer uses `python_skill_run` for fixed wrapping to execute Python scripts; When `ELBOT_SKILL.toml` is absent, it remains a descriptive Skill, and general-purpose tools such as shell can be used according to the documentation; Descriptive AgentSkills do not read `SKILL.md`, avoiding risk; after toolization, `risk` of `ELBOT_SKILL.toml` shall prevail.
@@ -57,8 +49,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - After executing `/stop`, the CLI TUI will converge the current running state into `done` and fix the elapsed time, no longer accumulating time in the status bar.
-- Complete the full `system.init` / `event.handle` request and success/failure response outer frames for hook.v2 in `docs/hooks.md`, as well as `platform.call.params`, platform response packets, and QQ OneBot recall examples.
-- `/hooks` now allows viewing details directly using the rule name, without requiring the `rules.` prefix; Rule Hooks now support optional `description`; built-in Hooks uniformly use `builtin.*` for name and description, with rule details displayed only in the details view.
 - Fixed the issue where rule cards were repeatedly injected into the context when performing tool discovery or inline preloading of multiple ELyph Skills; In the same Session, only Skill content is returned after the first injection, preserving the first rule card in history to facilitate cache hits.
 - Fixed the issue where Session messages under the same timestamp might be loaded out of order by UUID, leading to unstable historical context order.
 - Fixed the issue where `workspace` did not support `~`, `~/path`, and Windows `~\path` home directory paths when setting the tool directory.
@@ -67,8 +57,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed an issue where Chinese output might be garbled when the `shell` tool falls back to PowerShell on Windows.
 - Fixed an issue where bash AST parsing failure for shell commands on Windows (when bash is missing) caused risk classification, sandbox validation, directory change interception, and warning analysis to all fail; In PowerShell environments, AST parsing is skipped, and risk classification directly returns high-risk, requiring user confirmation.
 - When OneBot fails to send an image, a visible fallback will no longer appear, but it will still be logged.
-- Fixed an issue where referencing fallback text when replying to Hook/slash command notifications polluted the `message.text` of `platform.message.received`, causing recall-type Hooks to fail matching; Hooks can now read structured reference information via `message.reply.*`.
-
 
 
 ## [v0.3.0-alpha - 2026-07-01]
