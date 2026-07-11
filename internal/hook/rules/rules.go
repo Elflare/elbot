@@ -30,7 +30,6 @@ const (
 type Options struct {
 	ConfigDir       string
 	Tools           *tool.Registry
-	Policy          *security.Policy
 	Logger          *slog.Logger
 	Audit           func(event string, attrs ...any)
 	Notify          func(context.Context, string)
@@ -52,9 +51,12 @@ type PluginRef struct {
 }
 
 type PluginInfo struct {
-	Name        string              `toml:"name"`
-	Description string              `toml:"description"`
-	Runtime     *hookruntime.Config `toml:"runtime"`
+	Name             string              `toml:"name"`
+	Description      string              `toml:"description"`
+	BlockedPlatforms []string            `toml:"blocked_platform"`
+	BlockedGroups    []string            `toml:"blocked_group"`
+	BlockedIDs       []string            `toml:"blocked_id"`
+	Runtime          *hookruntime.Config `toml:"runtime"`
 }
 
 type pluginConfig struct {
@@ -156,6 +158,7 @@ type ruleSource struct {
 	OriginalName      string
 	FinalName         string
 	RuntimeID         string
+	Block             hook.BlockPolicy
 }
 
 type PlatformAPICaller interface {
@@ -222,9 +225,11 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 			if err := registrar.Register(hook.Registration{
 				Point:         hook.Point(rule.On),
 				Priority:      priority,
+				PluginID:      rule.source.PluginName,
 				Name:          regName,
 				Description:   description,
 				Match:         match,
+				Block:         rule.source.Block,
 				Detail:        detail,
 				RequireWakeup: rule.RequireWakeup,
 				Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
@@ -340,12 +345,19 @@ func loadConfig(opts Options) (Config, string, error) {
 			reportPluginConfigWarning(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, fmt.Sprintf("[plugin].name %q differs from [[plugins]].name %q; using the referenced plugin name", infoName, strings.TrimSpace(ref.Name)))
 		}
 		pluginDir := filepath.Dir(pluginPath)
+		block, err := hook.NewBlockPolicy(pcfg.Plugin.BlockedPlatforms, pcfg.Plugin.BlockedGroups, pcfg.Plugin.BlockedIDs)
+		if err != nil {
+			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
+			continue
+		}
 		runtimeID := ""
 		if pcfg.Plugin.Runtime != nil {
 			runtimeConfig := *pcfg.Plugin.Runtime
 			runtimeConfig.ID = strings.TrimSpace(ref.Name)
 			runtimeConfig.Description = strings.TrimSpace(pcfg.Plugin.Description)
 			runtimeConfig.Dir = pluginDir
+			runtimeConfig.ConfigPath = pluginPath
+			runtimeConfig.Block = block
 			if err := runtimeConfig.Validate(); err != nil {
 				reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
 				continue
@@ -360,6 +372,7 @@ func loadConfig(opts Options) (Config, string, error) {
 			BaseDir:           pluginDir,
 			StrictDir:         pluginDir,
 			RuntimeID:         runtimeID,
+			Block:             block,
 		}
 		for i := range pcfg.Rules {
 			pcfg.Rules[i].source = source
@@ -1203,6 +1216,8 @@ func makeOutputs(action Action, event hook.Event, state state) ([]delivery.Outpu
 	return []delivery.Output{out}, nil
 }
 
+// callTool invokes a registered tool without Agent risk or confirmation gates.
+// Hook authors own authorization and risk decisions for Hook-triggered calls.
 func (m Module) callTool(ctx context.Context, event hook.Event, action Action, state state) (actionResult, error) {
 	if m.Opts.Tools == nil {
 		return actionResult{Error: "tool registry is not configured"}, fmt.Errorf("tool registry is not configured")
@@ -1213,39 +1228,20 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 	}
 	arguments := render(action.Arguments, event, state)
 	call := llm.ToolCallRequest{ID: "hook:" + name, Name: name, Arguments: arguments}
-	t, ok := m.Opts.Tools.Get(name)
+	registered, ok := m.Opts.Tools.Get(name)
 	if !ok {
 		return actionResult{Error: "tool not found"}, fmt.Errorf("tool %q not found", name)
 	}
-	assessment, err := tool.AssessRisk(ctx, t, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
+	toolResult, err := registered.Call(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
 	if err != nil {
+		m.audit("hook_tool_error", "tool", name, "error", err.Error())
 		return actionResult{Error: err.Error()}, err
 	}
-	actor := security.Actor{ID: event.Actor.ID, PlatformUserID: event.Actor.UserID, Role: security.RoleUser}
-	if event.Actor.Role == string(security.RoleSuperadmin) {
-		actor.Role = security.RoleSuperadmin
+	content := ""
+	if toolResult != nil {
+		content = llm.SegmentsContentText(toolResult.LLMSegments())
 	}
-	policy := m.Opts.Policy
-	if policy == nil {
-		policy = security.DefaultPolicy()
-	}
-	if !policy.CanUseTool(actor, assessment.Level, t.Info().OwnerScoped) {
-		err := fmt.Errorf("risk %s is above allowed tool level", assessment.Level)
-		m.audit("hook_tool_denied", "tool", name, "risk", assessment.Level, "reason", err.Error())
-		return actionResult{Error: err.Error()}, err
-	}
-	if policy.NeedsToolConfirmation(actor, assessment.Level) {
-		err := fmt.Errorf("risk %s requires interactive confirmation", assessment.Level)
-		m.audit("hook_tool_denied", "tool", name, "risk", assessment.Level, "reason", err.Error())
-		return actionResult{Error: err.Error()}, err
-	}
-	result := tool.Executor{Registry: m.Opts.Tools, Actor: actor, Policy: policy}.Execute(ctx, call)
-	content := llm.SegmentsContentText(result.Message.Segments)
-	if result.Err != nil {
-		m.audit("hook_tool_error", "tool", name, "risk", assessment.Level, "error", result.Err.Error())
-		return actionResult{Result: content, Error: result.Err.Error()}, result.Err
-	}
-	m.audit("hook_tool_call", "tool", name, "risk", assessment.Level)
+	m.audit("hook_tool_call", "tool", name)
 	return actionResult{Result: content}, nil
 }
 

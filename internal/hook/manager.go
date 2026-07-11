@@ -17,9 +17,11 @@ import (
 type Registration struct {
 	Point         Point
 	Priority      int
+	PluginID      string
 	Name          string
 	Description   string
 	Match         Match
+	Block         BlockPolicy
 	Handler       Handler
 	Detail        string
 	RequireWakeup *bool
@@ -27,6 +29,7 @@ type Registration struct {
 
 // Info describes a registered hook for inspection commands.
 type Info struct {
+	PluginID    string
 	Name        string
 	Description string
 	Point       Point
@@ -94,9 +97,11 @@ type Observer func(context.Context, Event, ObserverInfo) (context.Context, func(
 type registration struct {
 	priority      int
 	order         int
+	pluginID      string
 	name          string
 	description   string
 	match         Match
+	block         BlockPolicy
 	handler       Handler
 	detail        string
 	requireWakeup bool
@@ -131,7 +136,7 @@ func (m *DefaultManager) Register(reg Registration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.next++
-	m.handlers[reg.Point] = append(m.handlers[reg.Point], registration{priority: reg.Priority, order: m.next, name: reg.Name, description: strings.TrimSpace(reg.Description), match: reg.Match, handler: reg.Handler, detail: reg.Detail, requireWakeup: registrationRequireWakeup(reg)})
+	m.handlers[reg.Point] = append(m.handlers[reg.Point], registration{priority: reg.Priority, order: m.next, pluginID: strings.TrimSpace(reg.PluginID), name: reg.Name, description: strings.TrimSpace(reg.Description), match: reg.Match, block: reg.Block, handler: reg.Handler, detail: reg.Detail, requireWakeup: registrationRequireWakeup(reg)})
 	sort.SliceStable(m.handlers[reg.Point], func(i, j int) bool {
 		left := m.handlers[reg.Point][i]
 		right := m.handlers[reg.Point][j]
@@ -166,6 +171,9 @@ func registrationRequireWakeup(reg Registration) bool {
 func (m *DefaultManager) Run(ctx context.Context, event Event) (Event, error) {
 	event = prepareEvent(event)
 	for _, reg := range m.handlersFor(event.Point) {
+		if reg.block.Blocks(event) {
+			continue
+		}
 		if m.skipForWakeup(ctx, event, reg) {
 			continue
 		}
@@ -199,6 +207,9 @@ func (m *DefaultManager) Notify(ctx context.Context, event Event) error {
 	event = prepareEvent(event)
 	var joined error
 	for _, reg := range m.handlersFor(event.Point) {
+		if reg.block.Blocks(event) {
+			continue
+		}
 		if m.skipForWakeup(ctx, event, reg) {
 			continue
 		}
@@ -281,7 +292,7 @@ func (m *DefaultManager) List() []Info {
 	var out []Info
 	for point, items := range m.handlers {
 		for _, reg := range items {
-			out = append(out, Info{Name: reg.name, Description: reg.description, Point: point, Priority: reg.priority, Detail: reg.detail})
+			out = append(out, Info{PluginID: reg.pluginID, Name: reg.name, Description: reg.description, Point: point, Priority: reg.priority, Detail: reg.detail})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -312,6 +323,71 @@ func (m *DefaultManager) Replace(next *DefaultManager) {
 	m.handlers = handlers
 	m.next = order
 	m.mu.Unlock()
+}
+
+// ReplacePlugin atomically replaces only registrations owned by pluginID.
+func (m *DefaultManager) ReplacePlugin(pluginID string, next *DefaultManager) {
+	if m == nil || next == nil || m == next {
+		return
+	}
+	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == "" {
+		return
+	}
+	next.mu.RLock()
+	replacements := make(map[Point][]registration)
+	for point, items := range next.handlers {
+		for _, reg := range items {
+			if reg.pluginID == pluginID {
+				replacements[point] = append(replacements[point], reg)
+			}
+		}
+	}
+	next.mu.RUnlock()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	points := make(map[Point]struct{}, len(m.handlers)+len(replacements))
+	for point := range m.handlers {
+		points[point] = struct{}{}
+	}
+	for point := range replacements {
+		points[point] = struct{}{}
+	}
+	for point := range points {
+		kept := make([]registration, 0, len(m.handlers[point])+len(replacements[point]))
+		insertAt := -1
+		for _, reg := range m.handlers[point] {
+			if reg.pluginID == pluginID {
+				if insertAt == -1 {
+					insertAt = len(kept)
+				}
+				continue
+			}
+			kept = append(kept, reg)
+		}
+		if insertAt == -1 {
+			insertAt = len(kept)
+		}
+		kept = append(kept, make([]registration, len(replacements[point]))...)
+		copy(kept[insertAt+len(replacements[point]):], kept[insertAt:len(kept)-len(replacements[point])])
+		copy(kept[insertAt:], replacements[point])
+		for i := range kept {
+			m.next++
+			kept[i].order = m.next
+		}
+		if len(kept) == 0 {
+			delete(m.handlers, point)
+			continue
+		}
+		sort.SliceStable(kept, func(i, j int) bool {
+			if kept[i].priority == kept[j].priority {
+				return kept[i].order < kept[j].order
+			}
+			return kept[i].priority < kept[j].priority
+		})
+		m.handlers[point] = kept
+	}
 }
 
 func wrapHookError(reg registration, err error) error {

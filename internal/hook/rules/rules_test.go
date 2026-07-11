@@ -18,6 +18,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/tool"
 )
 
 var execHelperInitFrame map[string]any
@@ -421,6 +422,9 @@ func TestLoadConfigLoadsStatefulHookRuntimeAndTriggerRules(t *testing.T) {
 	plugin := `[plugin]
 name = "weather"
 description = "weather hook"
+blocked_platform = ["telegram"]
+blocked_group = ["qqonebot:123"]
+blocked_id = ["qqonebot:42"]
 
 [plugin.runtime]
 stateful = true
@@ -450,6 +454,10 @@ always = true
 	}
 	if len(cfg.Runtimes) != 1 || cfg.Runtimes[0].ID != "weather" || len(cfg.Rules) != 1 || cfg.Rules[0].source.RuntimeID != "weather" {
 		t.Fatalf("config = %#v", cfg)
+	}
+	blockedEvent := hook.Event{Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:123"}, Actor: hook.ActorContext{UserID: "7"}}
+	if !cfg.Runtimes[0].Block.Blocks(blockedEvent) || !cfg.Rules[0].source.Block.Blocks(blockedEvent) {
+		t.Fatalf("plugin block policy was not propagated: %#v", cfg)
 	}
 	module, err := NewModule(Options{ConfigDir: dir})
 	if err != nil {
@@ -607,7 +615,7 @@ text = "ok"
 		t.Fatalf("RegisterHooks: %v", err)
 	}
 	infos := manager.List()
-	if len(infos) != 1 || infos[0].Name != "emit_file" || infos[0].Description != "demo plugin" || strings.Contains(infos[0].Detail, "description:") || !strings.Contains(infos[0].Detail, "on: llm.response.received") {
+	if len(infos) != 1 || infos[0].PluginID != "demo" || infos[0].Name != "emit_file" || infos[0].Description != "demo plugin" || strings.Contains(infos[0].Detail, "description:") || !strings.Contains(infos[0].Detail, "on: llm.response.received") {
 		t.Fatalf("infos = %#v", infos)
 	}
 }
@@ -819,6 +827,47 @@ func TestRenderErrorMessage(t *testing.T) {
 		t.Fatalf("runRule: %v", err)
 	}
 	if len(got.Outputs) != 1 || got.Outputs[0].Text != "err=hook failed" {
+		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+}
+
+type hookActionTestTool struct {
+	calls int
+}
+
+func (*hookActionTestTool) Name() string { return "hook_test_critical" }
+
+func (*hookActionTestTool) Info() tool.Info {
+	return tool.Info{Name: "hook_test_critical", Description: "test hook tool", Risk: tool.RiskCritical}
+}
+
+func (*hookActionTestTool) Schema() llm.ToolSchema {
+	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: "hook_test_critical", Parameters: map[string]any{"type": "object"}}}
+}
+
+func (t *hookActionTestTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
+	t.calls++
+	return &tool.Result{Content: "called"}, nil
+}
+
+func TestRuleToolActionLeavesRiskAndAuthorizationToHook(t *testing.T) {
+	registry := tool.NewRegistry()
+	testTool := &hookActionTestTool{}
+	if err := registry.Register(testTool); err != nil {
+		t.Fatalf("register tool: %v", err)
+	}
+
+	got, err := Module{Opts: Options{Tools: registry}}.runRule(context.Background(), Rule{Actions: []Action{
+		{Name: "critical", Type: "tool", Tool: "hook_test_critical", Arguments: `{}`},
+		{Type: "send", Text: "{{actions.critical.result}}"},
+	}}, hook.Event{Point: hook.PointLLMResponseReceived, Actor: hook.ActorContext{Role: "user"}})
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if testTool.calls != 1 {
+		t.Fatalf("tool calls = %d, want 1", testTool.calls)
+	}
+	if len(got.Outputs) != 1 || got.Outputs[0].Text != "called" {
 		t.Fatalf("outputs = %#v", got.Outputs)
 	}
 }

@@ -16,6 +16,7 @@ type fakeRuntime struct {
 	started   string
 	stopped   string
 	restarted string
+	replaced  string
 }
 
 func (r *fakeRuntime) Apply(configs []hookruntime.Config) error {
@@ -23,6 +24,21 @@ func (r *fakeRuntime) Apply(configs []hookruntime.Config) error {
 		return r.applyErr
 	}
 	r.applied = append([]hookruntime.Config(nil), configs...)
+	return nil
+}
+
+func (r *fakeRuntime) ValidatePlugin(config hookruntime.Config) error {
+	if r.applyErr != nil {
+		return r.applyErr
+	}
+	return nil
+}
+
+func (r *fakeRuntime) ReplacePlugin(config hookruntime.Config) error {
+	if r.applyErr != nil {
+		return r.applyErr
+	}
+	r.replaced = config.ID
 	return nil
 }
 
@@ -142,5 +158,50 @@ func TestServiceReportsMissingRuntime(t *testing.T) {
 	}
 	if err := service.StartStatefulHook("demo"); err == nil {
 		t.Fatal("expected missing runtime start error")
+	}
+}
+
+func TestPreparePluginReloadReplacesOnlyRequestedPlugin(t *testing.T) {
+	active := hook.NewManager()
+	registerPluginTestHook(t, active, "demo", "old")
+	registerPluginTestHook(t, active, "other", "other")
+	runtime := &fakeRuntime{}
+	service := New(active, runtime, func(candidate hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {
+		registerPluginTestHook(t, candidate, "demo", "new")
+		registerPluginTestHook(t, candidate, "other", "other-new")
+		return hook.ReloadReport{}, []hookruntime.Config{{ID: "demo"}, {ID: "other"}}, nil
+	})
+
+	commit, err := service.PreparePluginReload("demo")
+	if err != nil {
+		t.Fatalf("PreparePluginReload: %v", err)
+	}
+	assertHookNames(t, active.List(), "old", "other")
+	if err := commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if runtime.replaced != "demo" {
+		t.Fatalf("replaced runtime = %q, want demo", runtime.replaced)
+	}
+	infos := active.List()
+	names := map[string]bool{}
+	for _, info := range infos {
+		names[info.Name] = true
+	}
+	if !names["new"] || !names["other"] || names["old"] || names["other-new"] {
+		t.Fatalf("hook infos = %#v", infos)
+	}
+}
+
+func registerPluginTestHook(t *testing.T, registrar hook.Registrar, pluginID, name string) {
+	t.Helper()
+	if err := registrar.Register(hook.Registration{
+		Point:    hook.PointAgentInputPrepared,
+		PluginID: pluginID,
+		Name:     name,
+		Match:    hook.Always(),
+		Handler:  hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) { return event, nil }),
+	}); err != nil {
+		t.Fatalf("Register %s: %v", name, err)
 	}
 }

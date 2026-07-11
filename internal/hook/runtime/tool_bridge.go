@@ -16,6 +16,17 @@ import (
 
 func (w *worker) pluginRequest(value frame) (any, error) {
 	switch value.Method {
+	case "hooks.reload":
+		var params map[string]json.RawMessage
+		if len(bytesTrim(value.Params)) > 0 {
+			if err := json.Unmarshal(value.Params, &params); err != nil {
+				return nil, err
+			}
+		}
+		if len(params) > 0 {
+			return nil, fmt.Errorf("hooks.reload does not accept parameters")
+		}
+		return w.prepareSelfReload()
 	case "tool.call":
 		return w.callTool(value.Params)
 	case "shared.get":

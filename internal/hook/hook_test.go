@@ -28,6 +28,75 @@ func TestNoopManagerRunPreparesEvent(t *testing.T) {
 	}
 }
 
+func TestBlockPolicyMatchesPlatformGroupAndUser(t *testing.T) {
+	policy, err := NewBlockPolicy(
+		[]string{"telegram"},
+		[]string{"qqonebot:123", "telegram:-100456"},
+		[]string{"qqonebot:42"},
+	)
+	if err != nil {
+		t.Fatalf("NewBlockPolicy: %v", err)
+	}
+	tests := []struct {
+		name  string
+		event Event
+		want  bool
+	}{
+		{name: "platform", event: Event{Platform: PlatformContext{Name: "telegram"}}, want: true},
+		{name: "group", event: Event{Platform: PlatformContext{Name: "qqonebot", ScopeID: "group:123"}}, want: true},
+		{name: "supergroup", event: Event{Platform: PlatformContext{Name: "telegram", ScopeID: "supergroup:-100456"}}, want: true},
+		{name: "user", event: Event{Platform: PlatformContext{Name: "qqonebot"}, Actor: ActorContext{UserID: "42"}}, want: true},
+		{name: "private scope is not group", event: Event{Platform: PlatformContext{Name: "qqonebot", ScopeID: "private:123"}}},
+		{name: "other", event: Event{Platform: PlatformContext{Name: "qqonebot", ScopeID: "group:999"}, Actor: ActorContext{UserID: "7"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := policy.Blocks(tt.event); got != tt.want {
+				t.Fatalf("Blocks() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+	if _, err := NewBlockPolicy(nil, []string{"missing-platform"}, nil); err == nil {
+		t.Fatal("expected malformed blocked_group to fail")
+	}
+}
+
+func TestManagerSkipsBlockedPluginAndContinues(t *testing.T) {
+	manager := NewManager()
+	policy, err := NewBlockPolicy(nil, []string{"qqonebot:123"}, nil)
+	if err != nil {
+		t.Fatalf("NewBlockPolicy: %v", err)
+	}
+	runs := []string{}
+	for _, reg := range []Registration{
+		{PluginID: "blocked", Name: "blocked", Block: policy},
+		{PluginID: "other", Name: "other"},
+	} {
+		reg.Point = PointPlatformMessageReceived
+		reg.Match = Always()
+		name := reg.Name
+		reg.Handler = HandlerFunc(func(_ context.Context, event Event) (Event, error) {
+			runs = append(runs, name)
+			return event, nil
+		})
+		if err := manager.Register(reg); err != nil {
+			t.Fatalf("Register %s: %v", name, err)
+		}
+	}
+	if _, err := manager.Run(context.Background(), Event{Point: PointPlatformMessageReceived, Platform: PlatformContext{Name: "qqonebot", ScopeID: "group:123"}}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(runs) != 1 || runs[0] != "other" {
+		t.Fatalf("runs = %#v, want other only", runs)
+	}
+	if err := manager.Notify(context.Background(), Event{Point: PointPlatformMessageReceived, Platform: PlatformContext{Name: "qqonebot", ScopeID: "group:123"}}); err != nil {
+		t.Fatalf("Notify: %v", err)
+	}
+	if len(runs) != 2 || runs[1] != "other" {
+		t.Fatalf("runs after Notify = %#v, want other twice", runs)
+	}
+}
+
 func TestPreparedErrorEventExposesMessage(t *testing.T) {
 	event, err := NoopManager{}.Run(context.Background(), Event{
 		Point: PointErrorOccurred,

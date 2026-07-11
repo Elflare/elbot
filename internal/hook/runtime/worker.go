@@ -29,6 +29,10 @@ type worker struct {
 	manualStop   bool
 	restartDelay time.Duration
 	done         chan struct{}
+	active       int
+	reload       func() error
+	reloadArmed  bool
+	reloadPrep   bool
 	writeMu      sync.Mutex
 	routeMu      sync.Mutex
 	routeLocks   map[routeKey]chan struct{}
@@ -239,10 +243,14 @@ func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool
 	defer unlock()
 	w.mu.Lock()
 	status := w.status
+	if status == StatusReady || status == StatusRunning {
+		w.active++
+	}
 	w.mu.Unlock()
 	if status != StatusReady && status != StatusRunning {
 		return event, fmt.Errorf("stateful hook %q is %s", w.config.ID, status)
 	}
+	defer w.finishHandle()
 	w.setStatus(StatusRunning, "")
 	defer func() {
 		w.mu.Lock()
@@ -287,7 +295,86 @@ func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool
 	if result.StopPropagation {
 		event.Control.StopPropagation = true
 	}
+	if continuation && result.Status != "waiting" {
+		w.manager.clearLease(w.config.ID, event)
+	}
 	return event, nil
+}
+
+func (w *worker) finishHandle() {
+	w.mu.Lock()
+	if w.active > 0 {
+		w.active--
+	}
+	reload := w.takeReloadLocked()
+	w.mu.Unlock()
+	w.runReload(reload)
+}
+
+func (w *worker) prepareSelfReload() (any, error) {
+	w.mu.Lock()
+	if w.status != StatusReady && w.status != StatusRunning {
+		status := w.status
+		w.mu.Unlock()
+		return nil, fmt.Errorf("stateful hook %q cannot reload while %s", w.config.ID, status)
+	}
+	if w.reload != nil || w.reloadPrep {
+		w.mu.Unlock()
+		return nil, fmt.Errorf("stateful hook %q already has a reload scheduled", w.config.ID)
+	}
+	w.reloadPrep = true
+	w.mu.Unlock()
+
+	commit, err := w.manager.preparePluginReload(w.config.ID)
+	if err == nil && commit == nil {
+		err = fmt.Errorf("hook plugin reload returned an empty commit")
+	}
+	w.mu.Lock()
+	w.reloadPrep = false
+	if err == nil {
+		w.reload = commit
+	}
+	w.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"scheduled": true}, nil
+}
+
+func (w *worker) armReload() {
+	w.mu.Lock()
+	w.reloadArmed = true
+	reload := w.takeReloadLocked()
+	w.mu.Unlock()
+	w.runReload(reload)
+}
+
+func (w *worker) discardReload() {
+	w.mu.Lock()
+	w.reload = nil
+	w.reloadArmed = false
+	w.mu.Unlock()
+}
+
+func (w *worker) takeReloadLocked() func() error {
+	if !w.reloadArmed || w.active > 0 || w.reload == nil {
+		return nil
+	}
+	reload := w.reload
+	w.reload = nil
+	w.reloadArmed = false
+	return reload
+}
+
+func (w *worker) runReload(reload func() error) {
+	if reload == nil {
+		return
+	}
+	go func() {
+		if err := reload(); err != nil && w.manager.opts.Logger != nil {
+			w.manager.opts.Logger.Warn("hook plugin reload failed", "hook", w.config.ID, "error", err)
+		}
+	}()
 }
 
 func (w *worker) lockRoute(ctx context.Context, key routeKey) (func(), error) {
@@ -439,7 +526,15 @@ func (w *worker) handlePluginRequest(value frame) {
 	} else {
 		response.Result = mustJSON(result)
 	}
-	if writeErr := w.write(response); writeErr != nil && w.manager.opts.Logger != nil {
+	writeErr := w.write(response)
+	if writeErr != nil && w.manager.opts.Logger != nil {
 		w.manager.opts.Logger.Warn("write hook request response failed", "hook", w.config.ID, "method", value.Method, "error", writeErr)
+	}
+	if value.Method == "hooks.reload" && err == nil {
+		if writeErr == nil {
+			w.armReload()
+		} else {
+			w.discardReload()
+		}
 	}
 }

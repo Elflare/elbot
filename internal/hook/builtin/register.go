@@ -11,7 +11,6 @@ import (
 	"elbot/internal/hook/rules"
 	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/memory/resident"
-	"elbot/internal/security"
 	"elbot/internal/tool"
 )
 
@@ -19,7 +18,6 @@ import (
 type Options struct {
 	ConfigDir           string
 	Tools               *tool.Registry
-	Policy              *security.Policy
 	ResidentMemoryStore *resident.Store
 	Logger              *slog.Logger
 	Audit               func(event string, attrs ...any)
@@ -41,7 +39,6 @@ func RegisterAll(registrar hook.Registrar, opts Options) ([]hookruntime.Config, 
 	rulesModule, err := rules.NewModule(rules.Options{
 		ConfigDir:       opts.ConfigDir,
 		Tools:           opts.Tools,
-		Policy:          opts.Policy,
 		Logger:          opts.Logger,
 		Audit:           opts.Audit,
 		Notify:          opts.Notify,

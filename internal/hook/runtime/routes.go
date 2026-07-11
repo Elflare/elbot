@@ -57,6 +57,10 @@ func (m *Manager) Route(ctx context.Context, event hook.Event) (bool, []delivery
 		m.mu.Unlock()
 		return false, nil, nil
 	}
+	if worker.config.Block.Blocks(event) {
+		m.clearLease(lease.HookID, event)
+		return false, nil, nil
+	}
 	updated, err := worker.handle(ctx, event, true)
 	return true, appendedOutputs(event.Outputs, updated.Outputs), err
 }
@@ -154,6 +158,15 @@ func (m *Manager) setLease(id string, event hook.Event, result eventResult) erro
 	key := routeKeyFor(event)
 	m.routes[key] = lease{HookID: id, ConversationID: result.ConversationID, ExpiresAt: result.ExpiresAt}
 	return nil
+}
+
+func (m *Manager) clearLease(id string, event hook.Event) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := routeKeyFor(event)
+	if current, ok := m.routes[key]; ok && current.HookID == id {
+		delete(m.routes, key)
+	}
 }
 
 func (m *Manager) clearRoutesLocked(id string) {

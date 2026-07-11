@@ -316,7 +316,6 @@ func Run(ctx context.Context, opts Options) error {
 	hookOpts := hookbuiltin.Options{
 		ConfigDir:           config.PluginConfigDir(cfg.ConfigPath),
 		Tools:               toolRegistry,
-		Policy:              securityPolicy,
 		ResidentMemoryStore: residentStore,
 		Logger:              logger,
 		Audit: func(event string, attrs ...any) {
@@ -348,6 +347,7 @@ func Run(ctx context.Context, opts Options) error {
 		return hook.ReloadReport{Notices: notices}, configs, err
 	}
 	hookService := hookcontrol.New(hooks, hookRuntime, loadHooks)
+	hookRuntime.SetPluginReloadPreparer(hookService.PreparePluginReload)
 	report, err := hookService.HookReload()
 	for _, notice := range report.Notices {
 		notifyHookIssue(context.Background(), notice)
