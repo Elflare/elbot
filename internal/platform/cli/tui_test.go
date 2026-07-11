@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/mattn/go-runewidth"
 
 	"elbot/internal/completion"
 	"elbot/internal/llm"
@@ -73,9 +74,9 @@ func TestTUIInputCentersMultilineBlock(t *testing.T) {
 func TestTUIInputSeparatorSharesLineWithRightAlignedShortcuts(t *testing.T) {
 	m := tuiModel{width: 120}
 	view := m.inputSeparatorView()
-	padding := m.width / 10
+	padding := max(1, m.width/20)
 	keys := m.inputShortcutText()
-	wantWidth := m.width - padding*2 - len([]rune(keys))
+	wantWidth := m.width - padding*2 - runewidth.StringWidth(keys)
 	if got := strings.Count(view, "─"); got != wantWidth {
 		t.Fatalf("separator width = %d, want %d", got, wantWidth)
 	}
