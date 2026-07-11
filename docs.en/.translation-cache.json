@@ -51,9 +51,9 @@
       "updated_at": 1782901460
     },
     "docs/getting-started.md": {
-      "source_hash": "7a979d636bfda93ac7be66aadab1fd4a2fbc79820d464d2455dd2fa8fad5d4c2",
+      "source_hash": "787311c7c1101fbe24ebf29bec1ecaba6401e320cd10da8af18a0d4c6dc9f895",
       "target": "docs.en/getting-started.md",
-      "updated_at": 1783392534
+      "updated_at": 1783738456
     },
     "docs/hooks.md": {
       "source_hash": "a2ddcb8c11bac834f0dd815433983621db25f42ea75a205ad5847931e92ce8f6",
@@ -12533,6 +12533,14 @@
       "source_hash": "cf8e65e5c3131db0a92f17cc70c72fde24253e12242164ff3955f59aaa8c3f0c",
       "translation": "After starting, you can use __ELBOT_CODE_0__ or __ELBOT_CODE_1__ to refresh the model list.",
       "updated_at": 1781580008
+    },
+    "docs/getting-started.md:list:d9e8e3e8c8694479e9c9d2888398fa6190958fa138cef4f1007b2408e75b19c2": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：补全并引用本地文件。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "d9e8e3e8c8694479e9c9d2888398fa6190958fa138cef4f1007b2408e75b19c2",
+      "translation": "__ELBOT_CODE_0__: Complete and reference local files.",
+      "updated_at": 1783738456
     },
     "docs/getting-started.md:list:da055f600dde151737e1dc8af0a47d237857c8e042d39efdd7fb4091b0c75e1c": {
       "kind": "list",
