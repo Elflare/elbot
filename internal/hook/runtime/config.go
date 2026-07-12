@@ -125,8 +125,11 @@ func validID(value string) bool {
 type Info struct {
 	ID          string
 	Description string
+	Mode        Mode
 	Status      Status
 	Detail      string
+	Active      int
+	Waiting     int
 }
 
 type Options struct {

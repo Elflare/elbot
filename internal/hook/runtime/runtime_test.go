@@ -115,7 +115,7 @@ func TestManagerRoutesWaitingConversation(t *testing.T) {
 	if handled || len(updated.Outputs) != 0 {
 		t.Fatalf("Route after completion = handled=%v event=%#v", handled, updated)
 	}
-	if err := manager.Stop(context.Background(), "demo"); err != nil {
+	if _, err := manager.Stop(context.Background(), "demo"); err != nil {
 		t.Fatalf("Stop: %v", err)
 	}
 }
@@ -160,6 +160,39 @@ func TestManagerReclaimsTransientWorkerAfterPassThrough(t *testing.T) {
 	manager.mu.RUnlock()
 	if active != 0 || manager.hasLease(event) {
 		t.Fatalf("transient worker = %d leased=%v after completion", active, manager.hasLease(event))
+	}
+}
+
+func TestManagerStopReclaimsTransientWorkers(t *testing.T) {
+	manager := NewManager(Options{SharedDir: t.TempDir()})
+	config := Config{
+		Mode:                   ModeTransient,
+		Command:                runtimeHelperCommand(),
+		Cwd:                    ".",
+		StartupTimeoutSeconds:  2,
+		ShutdownTimeoutSeconds: 2,
+		EventTimeoutSeconds:    2,
+		MaxWaitSeconds:         30,
+		Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
+		ID:                     "demo",
+		Dir:                    t.TempDir(),
+	}
+	if err := manager.Apply([]Config{config}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	t.Cleanup(func() { manager.Close(context.Background()) })
+	event := hook.Event{Platform: hook.PlatformContext{Name: "test", ScopeID: "private:stop"}, Actor: hook.ActorContext{ID: "test:stop", UserID: "stop"}}
+	if _, err := manager.Handle(context.Background(), "demo", event, hook.Control{}); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if _, err := manager.Stop(context.Background(), "demo"); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	manager.mu.RLock()
+	active := len(manager.transient)
+	manager.mu.RUnlock()
+	if active != 0 || manager.hasLease(event) {
+		t.Fatalf("transient worker = %d leased=%v after stop", active, manager.hasLease(event))
 	}
 }
 

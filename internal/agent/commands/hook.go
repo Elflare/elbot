@@ -53,7 +53,7 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 		case "start":
 			err = deps.Hooks.StartStatefulHook(fields[1])
 		case "stop":
-			err = deps.Hooks.StopStatefulHook(ctx, fields[1])
+			_, err = deps.Hooks.StopHook(ctx, fields[1])
 		case "restart":
 			err = deps.Hooks.RestartStatefulHook(ctx, fields[1])
 		}
@@ -104,12 +104,21 @@ func formatHookList(deps Deps) string {
 		if description := strings.TrimSpace(info.Description); description != "" {
 			sb.WriteString(" - " + truncateHookDescription(description))
 		}
+		if info.Active > 0 {
+			sb.WriteString(fmt.Sprintf(" | %d actived", info.Active))
+		}
 		sb.WriteString("\n")
 	}
 	for _, info := range stateful {
-		sb.WriteString(fmt.Sprintf("  %s  [stateful:%s]", info.ID, info.Status))
+		sb.WriteString(fmt.Sprintf("  %s  [%s:%s]", info.ID, info.Mode, info.Status))
 		if description := strings.TrimSpace(info.Description); description != "" {
 			sb.WriteString(" - " + truncateHookDescription(description))
+		}
+		if info.Active > 0 {
+			sb.WriteString(fmt.Sprintf(" | %d actived", info.Active))
+		}
+		if info.Waiting > 0 {
+			sb.WriteString(fmt.Sprintf(" | %d waiting", info.Waiting))
 		}
 		sb.WriteString("\n")
 	}
@@ -137,7 +146,13 @@ func formatHookReloadResult(report hook.ReloadReport) string {
 func formatHookDetail(deps Deps, name string) string {
 	for _, info := range deps.Hooks.StatefulHooks() {
 		if info.ID == name {
-			text := fmt.Sprintf("name: %s\nstateful: true\nstatus: %s", info.ID, info.Status)
+			text := fmt.Sprintf("name: %s\nmode: %s\nstatus: %s", info.ID, info.Mode, info.Status)
+			if info.Active > 0 {
+				text += fmt.Sprintf("\nactive: %d", info.Active)
+			}
+			if info.Waiting > 0 {
+				text += fmt.Sprintf("\nwaiting: %d", info.Waiting)
+			}
 			if description := strings.TrimSpace(info.Description); description != "" {
 				text += "\ndescription: " + description
 			}

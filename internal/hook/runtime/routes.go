@@ -36,7 +36,20 @@ func (m *Manager) hasLease(event hook.Event) bool {
 	return ok
 }
 
-// Route dispatches a captured continuation before Agent wakeup, commands and
+func (m *Manager) RouteHookID(event hook.Event) string {
+	if m == nil {
+		return ""
+	}
+	key := routeKeyFor(event)
+	m.mu.RLock()
+	lease, ok := m.routes[key]
+	m.mu.RUnlock()
+	if !ok || time.Now().After(lease.ExpiresAt) {
+		return ""
+	}
+	return lease.HookID
+}
+
 // LLM processing. The caller owns normal Hook execution before calling Route.
 func (m *Manager) Route(ctx context.Context, event hook.Event) (hook.Event, bool, error) {
 	if m == nil {

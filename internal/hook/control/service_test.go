@@ -47,9 +47,9 @@ func (r *fakeRuntime) Start(id string) error {
 	r.started = id
 	return nil
 }
-func (r *fakeRuntime) Stop(_ context.Context, id string) error {
+func (r *fakeRuntime) Stop(_ context.Context, id string) (bool, error) {
 	r.stopped = id
-	return nil
+	return true, nil
 }
 func (r *fakeRuntime) Restart(_ context.Context, id string) error {
 	r.restarted = id

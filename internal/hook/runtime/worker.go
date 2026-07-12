@@ -84,7 +84,7 @@ func (w *worker) waitReady(ctx context.Context) error {
 func (w *worker) info() Info {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return Info{ID: w.config.ID, Description: w.config.Description, Status: w.status, Detail: w.detail}
+	return Info{ID: w.config.ID, Description: w.config.Description, Mode: w.config.ModeOrOnce(), Status: w.status, Detail: w.detail, Active: w.active}
 }
 
 func (w *worker) setStatus(status Status, detail string) {

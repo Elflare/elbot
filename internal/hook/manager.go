@@ -35,6 +35,7 @@ type Info struct {
 	Point       Point
 	Priority    int
 	Detail      string
+	Active      int
 }
 
 type ReloadReport struct {
@@ -75,13 +76,21 @@ func (NoopManager) List() []Info { return nil }
 type DefaultManager struct {
 	mu       sync.RWMutex
 	next     int
+	activeID int
 	handlers map[Point][]registration
 	logger   *slog.Logger
 	wakeup   WakeupFunc
 	observer Observer
+	active   map[string]activeHook
 }
 
 type WakeupFunc func(context.Context, Event) bool
+
+type activeHook struct {
+	name     string
+	pluginID string
+	cancel   context.CancelFunc
+}
 
 // ObserverInfo describes one matched hook handler execution.
 type ObserverInfo struct {
@@ -108,7 +117,7 @@ type registration struct {
 }
 
 func NewManager() *DefaultManager {
-	return &DefaultManager{handlers: map[Point][]registration{}}
+	return &DefaultManager{handlers: map[Point][]registration{}, active: map[string]activeHook{}}
 }
 
 func (m *DefaultManager) SetLogger(logger *slog.Logger) {
@@ -183,9 +192,14 @@ func (m *DefaultManager) Run(ctx context.Context, event Event) (Event, error) {
 		}
 		event.Metadata["match"] = matchResult.Context
 		before := event
-		runCtx, done := m.observe(ctx, event, reg, "run")
+		handlerCtx, cancel := context.WithCancel(ctx)
+		activeID := m.startActive(reg, cancel)
+		runCtx, done := m.observe(handlerCtx, event, reg, "run")
 		updated, err := func() (Event, error) {
-			defer done()
+			defer func() {
+				done()
+				m.finishActive(activeID)
+			}()
 			return reg.handler.HandleHook(runCtx, event)
 		}()
 		delete(event.Metadata, "match")
@@ -219,9 +233,14 @@ func (m *DefaultManager) Notify(ctx context.Context, event Event) error {
 		}
 		event.Metadata["match"] = matchResult.Context
 		before := event
-		runCtx, done := m.observe(ctx, event, reg, "notify")
+		handlerCtx, cancel := context.WithCancel(ctx)
+		activeID := m.startActive(reg, cancel)
+		runCtx, done := m.observe(handlerCtx, event, reg, "notify")
 		updated, err := func() (Event, error) {
-			defer done()
+			defer func() {
+				done()
+				m.finishActive(activeID)
+			}()
 			return reg.handler.HandleHook(runCtx, event)
 		}()
 		delete(event.Metadata, "match")
@@ -286,13 +305,68 @@ func (m *DefaultManager) observerForRun() Observer {
 	return m.observer
 }
 
+func (m *DefaultManager) startActive(reg registration, cancel context.CancelFunc) string {
+	m.mu.Lock()
+	m.activeID++
+	id := fmt.Sprintf("%s:%d", reg.name, m.activeID)
+	m.active[id] = activeHook{name: reg.name, pluginID: reg.pluginID, cancel: cancel}
+	m.mu.Unlock()
+	return id
+}
+
+func (m *DefaultManager) finishActive(id string) {
+	m.mu.Lock()
+	delete(m.active, id)
+	m.mu.Unlock()
+}
+
+// Stop cancels active normal Hook executions matching a rule name or plugin ID.
+func (m *DefaultManager) Stop(id string) int {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return 0
+	}
+	m.mu.RLock()
+	cancels := make([]context.CancelFunc, 0)
+	for _, active := range m.active {
+		if active.name == id || active.pluginID == id {
+			cancels = append(cancels, active.cancel)
+		}
+	}
+	m.mu.RUnlock()
+	for _, cancel := range cancels {
+		cancel()
+	}
+	return len(cancels)
+}
+
+// Matches reports whether id names a normal rule or plugin.
+func (m *DefaultManager) Matches(id string) bool {
+	id = strings.TrimSpace(id)
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, items := range m.handlers {
+		for _, reg := range items {
+			if reg.name == id || (reg.pluginID != "" && reg.pluginID == id) {
+				return true
+			}
+		}
+	}
+	return false
+}
 func (m *DefaultManager) List() []Info {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var out []Info
 	for point, items := range m.handlers {
 		for _, reg := range items {
-			out = append(out, Info{PluginID: reg.pluginID, Name: reg.name, Description: reg.description, Point: point, Priority: reg.priority, Detail: reg.detail})
+			active := 0
+			for _, running := range m.active {
+				if running.name == reg.name {
+					active++
+				}
+			}
+			out = append(out, Info{PluginID: reg.pluginID, Name: reg.name, Description: reg.description, Point: point, Priority: reg.priority, Detail: reg.detail, Active: active})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {

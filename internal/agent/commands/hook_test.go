@@ -28,9 +28,9 @@ func (s *fakeHookService) StartStatefulHook(id string) error {
 	s.started = id
 	return nil
 }
-func (s *fakeHookService) StopStatefulHook(_ context.Context, id string) error {
+func (s *fakeHookService) StopHook(_ context.Context, id string) (bool, error) {
 	s.stopped = id
-	return nil
+	return true, nil
 }
 func (s *fakeHookService) RestartStatefulHook(_ context.Context, id string) error {
 	s.restarted = id
@@ -97,15 +97,15 @@ func TestHooksReloadShowsWarnings(t *testing.T) {
 }
 
 func TestHooksCommandManagesStatefulHooks(t *testing.T) {
-	hooks := &fakeHookService{runtimeInfos: []hookruntime.Info{{ID: "weather", Description: "weather loop", Status: hookruntime.StatusReady}}}
+	hooks := &fakeHookService{runtimeInfos: []hookruntime.Info{{ID: "weather", Description: "weather loop", Mode: hookruntime.ModePersistent, Status: hookruntime.StatusReady}}}
 	cmd := NewHooks(Deps{Hooks: hooks})
 
 	result, err := cmd.Handle(context.Background(), command.Request{})
-	if err != nil || !strings.Contains(result.Content, "weather  [stateful:ready]") {
+	if err != nil || !strings.Contains(result.Content, "weather  [persistent:ready]") {
 		t.Fatalf("list = %#v, %v", result, err)
 	}
 	result, err = cmd.Handle(context.Background(), command.Request{Args: "weather"})
-	if err != nil || !strings.Contains(result.Content, "stateful: true\nstatus: ready") {
+	if err != nil || !strings.Contains(result.Content, "mode: persistent\nstatus: ready") {
 		t.Fatalf("detail = %#v, %v", result, err)
 	}
 	result, err = cmd.Handle(context.Background(), command.Request{Args: "restart weather"})
