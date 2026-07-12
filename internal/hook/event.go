@@ -92,6 +92,8 @@ type ActorContext struct {
 	Role        string `json:"role"`
 	GroupRole   string `json:"group_role"`
 	UserID      string `json:"user_id"`
+	Nickname    string `json:"nickname"`
+	GroupCard   string `json:"group_card"`
 	DisplayName string `json:"display_name"`
 }
 

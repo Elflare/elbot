@@ -83,6 +83,8 @@ type MessageContext struct {
 	Platform              string
 	ActorID               string
 	PlatformUserID        string
+	Nickname              string
+	GroupCard             string
 	DisplayName           string
 	GroupRole             security.GroupRole
 	ScopeID               string

@@ -209,9 +209,5 @@ func senderName(sender Sender) string {
 }
 
 func displayName(sender Sender, userID int64) string {
-	name := senderName(sender)
-	if name == "" {
-		return fmt.Sprintf("qq:%d", userID)
-	}
-	return fmt.Sprintf("%s(qq:%d)", name, userID)
+	return senderName(sender)
 }

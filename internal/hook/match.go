@@ -381,6 +381,10 @@ func FieldValue(event Event, field string) string {
 		return event.Actor.GroupRole
 	case "actor.display_name":
 		return event.Actor.DisplayName
+	case "actor.nickname":
+		return event.Actor.Nickname
+	case "actor.group_card":
+		return event.Actor.GroupCard
 	case "session.id":
 		return event.Session.ID
 	case "session.mode":

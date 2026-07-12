@@ -174,7 +174,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 		ScopeType:                msg.Chat.Type,
 		PlatformMessageID:        formatMessageID(msg.MessageID),
 		SenderID:                 senderID,
-		SenderName:               displayNamePtr(msg.From, senderID),
+		SenderName:               displayNamePtr(msg.From, ""),
 		Text:                     normalized.Text,
 		Raw:                      firstNonEmpty(msg.Text, msg.Caption),
 		ReplyToPlatformMessageID: normalized.ReplyID,
@@ -262,10 +262,7 @@ func displayName(u user) string {
 	if name == "" {
 		name = strings.TrimSpace(u.Username)
 	}
-	if name == "" {
-		return fmt.Sprintf("tg:%d", u.ID)
-	}
-	return fmt.Sprintf("%s(tg:%d)", name, u.ID)
+	return name
 }
 
 func isFromBot(msg message) bool {

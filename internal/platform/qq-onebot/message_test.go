@@ -597,11 +597,11 @@ func TestFinalMessageSegmentsIncludesReferenceImage(t *testing.T) {
 	current := []platform.MessageSegment{{Type: platform.SegmentText, Text: "看这个"}}
 	referenced := []platform.MessageSegment{{Type: platform.SegmentText, Text: "[图片]"}, {Type: platform.SegmentImage, URL: "https://example.com/a.jpg", Name: "a.jpg"}}
 
-	segments := finalMessageSegments("[引用：用户(qq:1)]：[图片]\n\n看这个", current, referenced)
+	segments := finalMessageSegments("[引用：用户]：[图片]\n\n看这个", current, referenced)
 	if len(segments) != 2 {
 		t.Fatalf("segments = %#v", segments)
 	}
-	if segments[0].Type != platform.SegmentText || !strings.Contains(segments[0].Text, "[引用：用户(qq:1)]：[图片]") {
+	if segments[0].Type != platform.SegmentText || !strings.Contains(segments[0].Text, "[引用：用户]：[图片]") {
 		t.Fatalf("text segment = %#v", segments[0])
 	}
 	if segments[1].Type != platform.SegmentImage || segments[1].URL != "https://example.com/a.jpg" || segments[1].Name != "a.jpg" {
@@ -682,7 +682,7 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	if !ok {
 		t.Fatal("missing reference")
 	}
-	if ref.Label != "引用：用户(qq:2)" {
+	if ref.Label != "引用：用户" {
 		t.Fatalf("reference label = %q", ref.Label)
 	}
 	if len(ref.Segments) != 1 || ref.Segments[0].Type != platform.SegmentImage || ref.Segments[0].URL != "https://example.com/a.jpg" {

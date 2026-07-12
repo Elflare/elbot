@@ -32,6 +32,8 @@ type Actor struct {
 	ID             string
 	Platform       string
 	PlatformUserID string
+	Nickname       string
+	GroupCard      string
 	DisplayName    string
 	Role           Role
 	GroupRole      GroupRole

@@ -255,5 +255,5 @@ func (a *Agent) logHookError(point hook.Point, err error) {
 }
 
 func actorContext(actor security.Actor) hook.ActorContext {
-	return hook.ActorContext{ID: actor.ID, Role: string(actor.Role), GroupRole: string(actor.GroupRole), UserID: actor.PlatformUserID, DisplayName: actor.DisplayName}
+	return hook.ActorContext{ID: actor.ID, Role: string(actor.Role), GroupRole: string(actor.GroupRole), UserID: actor.PlatformUserID, Nickname: actor.Nickname, GroupCard: actor.GroupCard, DisplayName: actor.DisplayName}
 }
