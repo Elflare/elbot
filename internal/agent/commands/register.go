@@ -98,7 +98,7 @@ type HookService interface {
 	HookReload() (hook.ReloadReport, error)
 	StatefulHooks() []hookruntime.Info
 	StartStatefulHook(id string) error
-	StopStatefulHook(ctx context.Context, id string) error
+	StopHook(ctx context.Context, id string) (bool, error)
 	RestartStatefulHook(ctx context.Context, id string) error
 }
 

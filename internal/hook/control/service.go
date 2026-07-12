@@ -20,7 +20,7 @@ type Runtime interface {
 	ReplacePlugin(hookruntime.Config) error
 	List() []hookruntime.Info
 	Start(string) error
-	Stop(context.Context, string) error
+	Stop(context.Context, string) (bool, error)
 	Restart(context.Context, string) error
 }
 
@@ -133,10 +133,25 @@ func (s *Service) StartStatefulHook(id string) error {
 }
 
 func (s *Service) StopStatefulHook(ctx context.Context, id string) error {
-	if s == nil || s.runtime == nil {
-		return fmt.Errorf("stateful hook runtime is not configured")
+	_, err := s.StopHook(ctx, id)
+	return err
+}
+
+func (s *Service) StopHook(ctx context.Context, id string) (bool, error) {
+	if s == nil || s.manager == nil {
+		return false, fmt.Errorf("hook service is not configured")
 	}
-	return s.runtime.Stop(ctx, id)
+	matched := s.manager.Matches(id)
+	stopped := s.manager.Stop(id)
+	if s.runtime != nil {
+		runtimeStopped, err := s.runtime.Stop(ctx, id)
+		if err == nil {
+			matched = matched || runtimeStopped
+		} else if !matched {
+			return false, err
+		}
+	}
+	return matched || stopped > 0, nil
 }
 
 func (s *Service) RestartStatefulHook(ctx context.Context, id string) error {

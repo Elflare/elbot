@@ -23,6 +23,7 @@ type hookRunner interface {
 type hookRouter interface {
 	Cancel(hook.Event) bool
 	Route(context.Context, hook.Event) (hook.Event, bool, error)
+	RouteHookID(hook.Event) string
 }
 
 func (a *Agent) SetHookManager(manager hook.Manager) {
@@ -49,6 +50,13 @@ func (a *Agent) cancelHookRoute(event hook.Event) bool {
 func (a *Agent) routeHook(ctx context.Context, event hook.Event) (hook.Event, bool, error) {
 	if a.hookRuntime == nil {
 		return event, false, nil
+	}
+	if id := a.hookRuntime.RouteHookID(event); id != "" && a.requests != nil {
+		_, requestCtx, done, err := a.requests.Start(ctx, request.StartRequest{ParentID: turnRequestIDFromContext(ctx), Kind: request.KindHook, Label: id + " continuation"})
+		if err == nil {
+			defer done()
+			ctx = requestCtx
+		}
 	}
 	return a.hookRuntime.Route(ctx, event)
 }

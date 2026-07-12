@@ -52,6 +52,8 @@ type fakeHookRouter struct {
 
 func (r *fakeHookRouter) Cancel(hook.Event) bool { return false }
 
+func (r *fakeHookRouter) RouteHookID(hook.Event) string { return "" }
+
 func (r *fakeHookRouter) Route(_ context.Context, event hook.Event) (hook.Event, bool, error) {
 	if !r.routed {
 		return event, false, nil

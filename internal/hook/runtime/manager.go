@@ -228,9 +228,39 @@ func (m *Manager) List() []Info {
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	items := make([]Info, 0, len(m.workers))
-	for _, worker := range m.workers {
-		items = append(items, worker.info())
+	itemsByID := map[string]Info{}
+	for id, config := range m.configs {
+		itemsByID[id] = Info{ID: id, Description: config.Description, Mode: config.ModeOrOnce()}
+	}
+	for id, worker := range m.workers {
+		itemsByID[id] = worker.info()
+	}
+	for key, worker := range m.transient {
+		info := itemsByID[worker.config.ID]
+		if info.ID == "" {
+			info = Info{ID: worker.config.ID, Description: worker.config.Description, Mode: ModeTransient}
+		}
+		workerInfo := worker.info()
+		info.Active += workerInfo.Active
+		if workerInfo.Status == StatusRunning {
+			info.Status = StatusRunning
+		} else if info.Status == "" {
+			info.Status = workerInfo.Status
+		}
+		itemsByID[worker.config.ID] = info
+		_ = key
+	}
+	for _, lease := range m.routes {
+		info := itemsByID[lease.HookID]
+		info.Waiting++
+		itemsByID[lease.HookID] = info
+	}
+	items := make([]Info, 0, len(itemsByID))
+	for _, info := range itemsByID {
+		if info.Mode == ModeTransient && info.Status == "" {
+			info.Status = StatusStopped
+		}
+		items = append(items, info)
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 	return items
@@ -245,20 +275,40 @@ func (m *Manager) Start(id string) error {
 	return worker.waitReady(context.Background())
 }
 
-func (m *Manager) Stop(ctx context.Context, id string) error {
-	worker := m.worker(id)
-	if worker == nil {
-		return fmt.Errorf("persistent hook %q not found", id)
+func (m *Manager) Stop(ctx context.Context, id string) (bool, error) {
+	id = strings.TrimSpace(id)
+	persistent := m.worker(id)
+	if persistent != nil {
+		persistent.stop(ctx)
+		m.mu.Lock()
+		m.clearRoutesLocked(id)
+		m.mu.Unlock()
+		return true, nil
 	}
-	worker.stop(ctx)
 	m.mu.Lock()
+	config, ok := m.configs[id]
+	if !ok || config.ModeOrOnce() != ModeTransient {
+		m.mu.Unlock()
+		return false, fmt.Errorf("hook worker %q not found", id)
+	}
+	workers := make([]*worker, 0)
+	for key, transient := range m.transient {
+		if transient.config.ID == id {
+			delete(m.transient, key)
+			delete(m.routes, key)
+			workers = append(workers, transient)
+		}
+	}
 	m.clearRoutesLocked(id)
 	m.mu.Unlock()
-	return nil
+	for _, transient := range workers {
+		transient.stop(ctx)
+	}
+	return true, nil
 }
 
 func (m *Manager) Restart(ctx context.Context, id string) error {
-	if err := m.Stop(ctx, id); err != nil {
+	if _, err := m.Stop(ctx, id); err != nil {
 		return err
 	}
 	return m.Start(id)
