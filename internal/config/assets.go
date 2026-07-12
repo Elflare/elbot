@@ -466,14 +466,14 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 #   { type = "append", field = "message.text", text = "!" },
 # ]
 #
-# send action with outputs (kind/text/url/path/base64/name/mime_type/user_id/message_id):
+# send action with outputs (kind/text/url/path/base64/name/mime_type/user_id/message_id/emoticon_id):
 # target.platform/target.scope_id/target.private_user_id/target.group_id/target.superadmins
 # can redirect send outputs; omit target to send to the current context.
 # actions = [
 #   { type = "send", timing = "after_assistant", outputs = [
 #     { kind = "text", text = "检测到关键词" },
 #     { kind = "image", path = "alert.png" },
-#     { kind = "emoticon", name = "微笑", path = "emoticons/微笑/01.png" },
+#     { kind = "image", name = "微笑", path = "emoticons/微笑/01.png" },
 #     { kind = "at", user_id = "123456" },
 #   ] },
 # ]
@@ -494,7 +494,7 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # event.handle result.message.text is written back to the action field.
 # event.handle result.outputs, consume and stop_propagation apply Hook output/control.
 # actions = [
-#   { name = "extract", type = "exec", command = "uv run extract.py", field = "llm.text", timing = "after_assistant" },
+#   { action_name = "extract", type = "exec", command = "uv run extract.py", field = "llm.text", timing = "after_assistant" },
 # ]
 #
 # Supported hook points:
@@ -560,7 +560,7 @@ target.superadmins = true
 # priority = 1000
 # always = true
 # actions = [
-#   { name = "search", type = "tool", tool = "web_search", arguments = '{"query":"ElBot"}' },
+#   { action_name = "search", type = "tool", tool = "web_search", arguments = '{"query":"ElBot"}' },
 #   { type = "append", field = "llm.latest_user_text", text = "\n\nHook 工具结果：{{actions.search.result}}" },
 # ]
 #
@@ -599,6 +599,6 @@ target.superadmins = true
 # op = "regex"
 # value = "\\[\\[[^\\[\\]]+\\]\\]"
 # actions = [
-#   { name = "extract", type = "exec", command = "uv run emoticon_extract.py", field = "llm.text", timing = "after_assistant" },
+#   { action_name = "extract", type = "exec", command = "uv run emoticon_extract.py", field = "llm.text", timing = "after_assistant" },
 # ]
 `

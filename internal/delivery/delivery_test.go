@@ -36,7 +36,7 @@ func (s *fakeSender) SendNotice(_ context.Context, target Target, outputs []Outp
 }
 
 func TestFallbackTextForEmoticon(t *testing.T) {
-	got := FallbackText(Emoticon("微笑"))
+	got := FallbackText(Emoticon("14", "微笑", ""))
 	if got != "[表情: 微笑]" {
 		t.Fatalf("FallbackText = %q", got)
 	}
@@ -71,43 +71,13 @@ func TestManagerSendsChat(t *testing.T) {
 func TestManagerSendsNotices(t *testing.T) {
 	sender := &fakeSender{}
 	manager := NewManager(sender, nil)
-	if err := manager.SendNotices(context.Background(), []Output{{Kind: KindText, Text: "hello"}, {Kind: KindImage, Name: "pic"}}); err != nil {
+	image := ImagePath("pic.png")
+	image.Name = "pic"
+	if err := manager.SendNotices(context.Background(), []Output{{Kind: KindText, Text: "hello"}, image}); err != nil {
 		t.Fatalf("SendNotices: %v", err)
 	}
 	if len(sender.notices) != 1 || len(sender.notices[0]) != 2 || sender.notices[0][0].Text != "hello" || sender.notices[0][1].Name != "pic" {
 		t.Fatalf("notices = %#v", sender.notices)
-	}
-}
-
-func TestDirectMediaSourceHelpers(t *testing.T) {
-	for _, value := range []string{"base64://abc", "file:///tmp/a.png", "http://example.com/a.png", "https://example.com/a.png"} {
-		if !IsDirectMediaSource(value) {
-			t.Fatalf("IsDirectMediaSource(%q) = false", value)
-		}
-	}
-	if IsDirectMediaSource("/tmp/a.png") {
-		t.Fatal("plain path detected as direct media source")
-	}
-	if !IsHTTPMediaSource("https://example.com/a.png") || IsHTTPMediaSource("file:///tmp/a.png") {
-		t.Fatal("http media source detection failed")
-	}
-}
-
-func TestFileURIToPath(t *testing.T) {
-	got, err := FileURIToPath("file:///tmp/a.png")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(got, "file://") || !strings.HasSuffix(strings.ReplaceAll(got, "\\", "/"), "/tmp/a.png") {
-		t.Fatalf("file path = %q", got)
-	}
-
-	plain, err := FileURIToPath("E:/a.png")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if plain != "E:/a.png" {
-		t.Fatalf("plain path = %q", plain)
 	}
 }
 

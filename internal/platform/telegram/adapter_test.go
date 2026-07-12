@@ -221,19 +221,19 @@ func TestSendMessageMarkdownFallback(t *testing.T) {
 	}
 }
 
-func TestMediaSourceNameAvoidsBase64Path(t *testing.T) {
-	if got := mediaSourceName(delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{Path: "base64://ZnJvbS1iYXNlNjQ="}}); got != "file" {
-		t.Fatalf("base64 name = %q", got)
+func TestMediaSourceNameUsesStructuredSource(t *testing.T) {
+	if got := mediaSourceName(delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("data")}}); got != "file" {
+		t.Fatalf("data name = %q", got)
 	}
-	if got := mediaSourceName(delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{Path: "file:///E:/images/a.png"}}); got != "a.png" {
-		t.Fatalf("file uri name = %q", got)
+	if got := mediaSourceName(delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{Path: "E:/images/a.png"}}); got != "a.png" {
+		t.Fatalf("path name = %q", got)
 	}
-	if got := mediaSourceName(delivery.Output{Kind: delivery.KindImage, Name: "custom.png", Source: delivery.Source{Path: "base64://ZnJvbS1iYXNlNjQ="}}); got != "custom.png" {
+	if got := mediaSourceName(delivery.Output{Kind: delivery.KindImage, Name: "custom.png", Source: delivery.Source{Data: []byte("data")}}); got != "custom.png" {
 		t.Fatalf("custom name = %q", got)
 	}
 }
 
-func TestSendMediaUsesHTTPPathAsReference(t *testing.T) {
+func TestSendMediaUsesURLAsReference(t *testing.T) {
 	var got map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasSuffix(r.URL.Path, "/sendPhoto") {
@@ -249,7 +249,7 @@ func TestSendMediaUsesHTTPPathAsReference(t *testing.T) {
 	defer server.Close()
 
 	client := newAPIClient(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL})
-	if _, err := client.sendPhoto(context.Background(), 1, mediaSource{Path: "https://example.com/a.png"}, 0); err != nil {
+	if _, err := client.sendPhoto(context.Background(), 1, mediaSource{URL: "https://example.com/a.png"}, 0); err != nil {
 		t.Fatal(err)
 	}
 	if got["photo"] != "https://example.com/a.png" {
@@ -257,21 +257,41 @@ func TestSendMediaUsesHTTPPathAsReference(t *testing.T) {
 	}
 }
 
-func TestMultipartMediaBodyReadsDirectPathSources(t *testing.T) {
+func TestSendStickerUsesNativeEmoticonID(t *testing.T) {
+	var got map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/sendSticker") {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(apiResponse[sentMessage]{OK: true, Result: sentMessage{MessageID: 11}})
+	}))
+	defer server.Close()
+	client := newAPIClient(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL})
+	if _, err := client.sendSticker(context.Background(), 1, "sticker-file-id", 0); err != nil {
+		t.Fatal(err)
+	}
+	if got["sticker"] != "sticker-file-id" {
+		t.Fatalf("sticker = %#v", got["sticker"])
+	}
+}
+
+func TestMultipartMediaBodyReadsStructuredSources(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "a.txt")
 	if err := os.WriteFile(path, []byte("from-file"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
-		name string
-		path string
-		want string
+		name   string
+		source mediaSource
+		want   string
 	}{
-		{name: "base64", path: "base64://ZnJvbS1iYXNlNjQ=", want: "from-base64"},
-		{name: "file", path: "file:///" + strings.TrimLeft(filepath.ToSlash(path), "/"), want: "from-file"},
+		{name: "data", source: mediaSource{Data: []byte("from-data")}, want: "from-data"},
+		{name: "file", source: mediaSource{Path: path}, want: "from-file"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			body, contentType, err := multipartMediaBody(1, "document", mediaSource{Path: tc.path}, 0)
+			body, contentType, err := multipartMediaBody(1, "document", tc.source, 0)
 			if err != nil {
 				t.Fatal(err)
 			}

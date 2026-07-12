@@ -182,6 +182,7 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 先看：
 
 - `internal/hook/event.go`：Hook 点、事件 payload 和 Handler 基础类型。
+- `internal/hook/output/`：规则、一次性 exec 与 runtime 共用的输出协议、校验和 delivery 转换。
 - `internal/hook/match.go`：Hook 条件匹配、字段读取和模板值。
 - `internal/hook/manager.go`：普通 Hook 注册、排序、执行与原子 handler 快照替换。
 - `internal/hook/control/`：`/hooks` 的列表、重载和持久进程生命周期管理入口。

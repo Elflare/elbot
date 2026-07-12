@@ -2478,7 +2478,7 @@ read init
 printf '{"type":"response","id":"host:init","ok":true,"result":{}}\n'
 read event
 img=$(ls emoticons/微笑/*.png 2>/dev/null | head -1)
-printf '{"type":"response","id":"host:event","ok":true,"result":{"status":"completed","outputs":[{"kind":"emoticon","name":"微笑","path":"%s"}],"message":{"text":"我先查一下"}}}\n' "$img"
+printf '{"type":"response","id":"host:event","ok":true,"result":{"status":"completed","outputs":[{"kind":"image","name":"微笑","path":"%s"}],"message":{"text":"我先查一下"}}}\n' "$img"
 `
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write script: %v", err)
@@ -2492,7 +2492,7 @@ if = "llm.text"
 op = "regex"
 value = "\\[\\[[^\\[\\]]+\\]\\]"
 actions = [
-  { name = "extract", type = "exec", command = "sh ./emoticon_extract.sh", field = "llm.text", timing = "%s" },
+  { action_name = "extract", type = "exec", command = "sh ./emoticon_extract.sh", field = "llm.text", timing = "%s" },
 ]
 `, delivery.DeliveryAfterAssistant)
 	if err := os.WriteFile(filepath.Join(configDir, "hooks.toml"), []byte(hooksTOML), 0o644); err != nil {
@@ -2508,7 +2508,7 @@ actions = [
 	}
 	out := p.out.String()
 	textIdx := strings.Index(out, "我先查一下")
-	emoticonIdx := strings.Index(out, "[表情: 微笑]")
+	emoticonIdx := strings.Index(out, "[图片: 微笑]")
 	finalIdx := strings.Index(out, "查完了")
 	if textIdx < 0 || emoticonIdx < 0 || finalIdx < 0 {
 		t.Fatalf("platform output = %q, want intermediate text, emoticon, and final text", out)
@@ -4033,7 +4033,7 @@ read init
 printf '{"type":"response","id":"host:init","ok":true,"result":{}}\n'
 read event
 img=$(ls emoticons/微笑/*.png 2>/dev/null | head -1)
-printf '{"type":"response","id":"host:event","ok":true,"result":{"status":"completed","outputs":[{"kind":"emoticon","name":"微笑","path":"%s"}],"message":{"text":"像这样~"}}}\n' "$img"
+printf '{"type":"response","id":"host:event","ok":true,"result":{"status":"completed","outputs":[{"kind":"image","name":"微笑","path":"%s"}],"message":{"text":"像这样~"}}}\n' "$img"
 `
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write script: %v", err)
@@ -4047,7 +4047,7 @@ if = "llm.text"
 op = "regex"
 value = "\\[\\[[^\\[\\]]+\\]\\]"
 actions = [
-  { name = "extract", type = "exec", command = "sh ./emoticon_extract.sh", field = "llm.text" },
+  { action_name = "extract", type = "exec", command = "sh ./emoticon_extract.sh", field = "llm.text" },
 ]
 `
 	if err := os.WriteFile(filepath.Join(configDir, "hooks.toml"), []byte(hooksTOML), 0o644); err != nil {
@@ -4062,7 +4062,7 @@ actions = [
 		t.Fatalf("HandleMessage: %v", err)
 	}
 	out := p.out.String()
-	emoticonIdx := strings.Index(out, "[表情: 微笑]")
+	emoticonIdx := strings.Index(out, "[图片: 微笑]")
 	textIdx := strings.Index(out, "像这样~")
 	if emoticonIdx < 0 || textIdx < 0 || emoticonIdx > textIdx {
 		t.Fatalf("platform output = %q, want separate emoticon fallback and cleaned text", out)

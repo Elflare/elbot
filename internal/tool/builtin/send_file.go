@@ -41,7 +41,7 @@ func sendFileBuilder() *tool.Builder {
 		Description("发送文件。").
 		Risk(tool.RiskMedium).
 		SuperadminOnly().
-		String("source", "要发送的文件来源。可以是本地路径、file:// URI 或 HTTP(S) URL；本地路径不需要加 file://。", tool.Required()).
+		String("source", "要发送的文件来源。可以是本地路径或 HTTP(S) URL。", tool.Required()).
 		String("name", "可选，发送时展示的文件名。").
 		String("mime_type", "可选，文件 MIME 类型；不填时按扩展名推断。")
 }
@@ -147,10 +147,10 @@ func fileNameFromURL(value string) string {
 }
 
 func localSourcePath(source string) (string, error) {
-	if !delivery.IsFileMediaSource(source) {
-		return source, nil
+	if strings.Contains(strings.TrimSpace(source), "://") {
+		return "", fmt.Errorf("local source must be a filesystem path, not a URI")
 	}
-	return delivery.FileURIToPath(source)
+	return source, nil
 }
 
 func (args sendFileArgs) source() string {

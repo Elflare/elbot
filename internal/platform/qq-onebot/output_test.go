@@ -72,12 +72,9 @@ func TestOutputSegmentsFileUsesFileURIForPlainPath(t *testing.T) {
 	if !strings.HasPrefix(file, "file://") {
 		t.Fatalf("file data = %q", file)
 	}
-	gotPath, err := delivery.FileURIToPath(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if filepath.Clean(gotPath) != filepath.Clean(path) {
-		t.Fatalf("file path = %q, want %q", gotPath, path)
+	wantURI, _ := localPathFileURI(path, "file")
+	if file != wantURI {
+		t.Fatalf("file URI = %q, want %q", file, wantURI)
 	}
 	if segments[0].Data["name"] != "report.txt" {
 		t.Fatalf("name = %#v", segments[0].Data["name"])
@@ -98,12 +95,9 @@ func TestOutputSegmentsImageUsesFileURIForPlainPath(t *testing.T) {
 	if !strings.HasPrefix(file, "file://") {
 		t.Fatalf("file data = %q", file)
 	}
-	gotPath, err := delivery.FileURIToPath(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if filepath.Clean(gotPath) != filepath.Clean(path) {
-		t.Fatalf("file path = %q, want %q", gotPath, path)
+	wantURI, _ := localPathFileURI(path, "image")
+	if file != wantURI {
+		t.Fatalf("file URI = %q, want %q", file, wantURI)
 	}
 }
 
@@ -126,31 +120,20 @@ func TestOutputSegmentsImageUsesFileURIForRelativePath(t *testing.T) {
 	if !strings.HasPrefix(file, "file://") {
 		t.Fatalf("file data = %q", file)
 	}
-	gotPath, err := delivery.FileURIToPath(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if filepath.Clean(gotPath) != filepath.Clean(want) {
-		t.Fatalf("file path = %q, want %q", gotPath, want)
+	wantURI, _ := localPathFileURI(want, "image")
+	if file != wantURI {
+		t.Fatalf("file URI = %q, want %q", file, wantURI)
 	}
 }
 
-func TestOutputSegmentsImagePassesDirectMediaPath(t *testing.T) {
-	for _, path := range []string{
-		"base64://cG5n",
-		"file:///E:/OneDrive/emotions/a.png",
-		"http://example.com/a.png",
-		"https://example.com/a.png",
-	} {
-		out := delivery.ImagePath(path)
-		segments, err := outputSegments(out)
-		if err != nil {
-			t.Fatalf("outputSegments(%q): %v", path, err)
-		}
-		file, _ := segments[0].Data["file"].(string)
-		if file != path {
-			t.Fatalf("file data for %q = %q", path, file)
-		}
+func TestOutputSegmentsImageUsesStructuredURL(t *testing.T) {
+	out := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/a.png"}}
+	segments, err := outputSegments(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if file := segments[0].Data["file"]; file != "https://example.com/a.png" {
+		t.Fatalf("file = %#v", file)
 	}
 }
 
@@ -180,7 +163,7 @@ func TestSendContextOutputReturnsSendFailureWithoutFallbackMessage(t *testing.T)
 	adapter.transport = transport
 	ctx := context.WithValue(context.Background(), targetKey{}, target{MessageType: "private", UserID: 1})
 
-	_, err := adapter.SendChat(ctx, []delivery.Output{delivery.EmoticonPath("开心", path)})
+	_, err := adapter.SendChat(ctx, []delivery.Output{delivery.Emoticon("14", "开心", "")})
 	if err == nil {
 		t.Fatal("SendChat error is nil")
 	}

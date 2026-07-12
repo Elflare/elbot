@@ -610,28 +610,12 @@ func TestFinalMessageSegmentsIncludesReferenceImage(t *testing.T) {
 }
 
 func TestOutputSegments(t *testing.T) {
-	image := []byte("fake image")
-	path := filepath.Join(t.TempDir(), "huaji.png")
-	if err := os.WriteFile(path, image, 0o644); err != nil {
-		t.Fatalf("write image: %v", err)
-	}
-	segments, err := outputSegments(delivery.EmoticonPath("滑稽", path))
+	segments, err := outputSegments(delivery.Emoticon("178", "滑稽", ""))
 	if err != nil {
-		t.Fatalf("outputSegments image: %v", err)
+		t.Fatalf("outputSegments emoticon: %v", err)
 	}
-	if len(segments) != 1 || segments[0].Type != "image" {
-		t.Fatalf("image segments = %#v", segments)
-	}
-	file := segmentDataString(segments[0].Data, "file")
-	if !strings.HasPrefix(file, "file://") {
-		t.Fatalf("image file = %q", file)
-	}
-	gotPath, err := delivery.FileURIToPath(file)
-	if err != nil {
-		t.Fatalf("decode image file uri: %v", err)
-	}
-	if filepath.Clean(gotPath) != filepath.Clean(path) {
-		t.Fatalf("image path = %q, want %q", gotPath, path)
+	if len(segments) != 1 || segments[0].Type != "face" || segmentDataString(segments[0].Data, "id") != "178" {
+		t.Fatalf("emoticon segments = %#v", segments)
 	}
 
 	segments, err = outputSegments(delivery.At("123456"))

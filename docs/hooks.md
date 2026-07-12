@@ -145,7 +145,7 @@ text = "\n处理完成。"
 ```toml
 # 内联 actions 数组，按数组顺序执行。
 actions = [
-  { type = "tool", name = "search", tool = "web_search", arguments = "{\"query\":\"{{message.text}}\"}" },
+  { type = "tool", action_name = "search", tool = "web_search", arguments = "{\"query\":\"{{message.text}}\"}" },
   { type = "send", text = "{{actions.search.result}}" },
 ]
 ```
@@ -153,7 +153,7 @@ actions = [
 ```toml
 # TOML array table，按声明顺序执行。
 [[rules.actions]]
-name = "search"
+action_name = "search"
 type = "tool"
 tool = "web_search"
 arguments = "{\"query\":\"{{message.text}}\"}"
@@ -163,7 +163,7 @@ type = "send"
 text = "{{actions.search.result}}"
 ```
 
-`action = "..."` 不能和 `actions` 混用。`actions = [...]` 与 `[[rules.actions]]` 都使用 `type` 和 `arguments`；`name` 在两种 actions 形式中都可用。内联 `action = "tool"` 的参数字段同样是 `arguments`，不是 `args`。
+`action = "..."` 不能和 `actions` 混用。`actions = [...]` 与 `[[rules.actions]]` 都使用 `type` 和 `arguments`；`action_name` 在两种 actions 形式中都可用。内联 `action = "tool"` 的参数字段同样是 `arguments`，不是 `args`。
 
 | 类型 | 主要字段 | 作用 |
 | --- | --- | --- |
@@ -171,8 +171,8 @@ text = "{{actions.search.result}}"
 | `replace` | `field`、`pattern`、`replace`、`all` | 正则替换；`all = false` 时只替换第一个命中。 |
 | `delete` | `field`、`pattern` 或 `text` | 删除全部正则命中。 |
 | `send` | 单输出字段或 `outputs` | 追加输出意图。 |
-| `tool` | `tool`、`arguments`、可选 `name` | 调用已注册工具。 |
-| `exec` | `command`、`cwd`、`timeout_seconds`、`field`、`timing`、可选 `name` | 启动一次性 `hook.v2` 进程。 |
+| `tool` | `tool`、`arguments`、可选 `action_name` | 调用已注册工具。 |
+| `exec` | `command`、`cwd`、`timeout_seconds`、`field`、`timing`、可选 `action_name` | 启动一次性 `hook.v2` 进程。 |
 
 命名的 `tool` / `exec` action 可供后续 action 使用：
 
@@ -195,36 +195,20 @@ text = "{{actions.search.result}}"
 
 ## 输出与路径
 
-输出格式分三种；字段不能混写。下面先给容易混淆的字段对照，后续章节再分别展开。
-
-| 概念 | 规则 TOML 单个 `send` | 规则 TOML `outputs` | 一次性 exec `result.outputs` | 持久 Hook JSON `outputs` |
-| --- | --- | --- | --- | --- |
-| 输出种类 | `kind` | `kind` | `kind` | `kind` |
-| `at` 的用户 ID | `text` | `user_id`，为空时回退 `text` | `user_id`，为空时回退 `text` | `text` |
-| `reply` 的消息 ID | `path` | `message_id`，为空时回退 `path` | `message_id`，为空时回退 `path` | `reply_to_message_id` |
-| 媒体来源 | `path` | `path`、`url`、`base64` | `path`、`url`、`base64` | `path`、`url`；不支持 `base64` |
-| target | action 的 `target.*`，snake_case | action 的 `target.*`，snake_case | 不支持；沿用当前事件 | output 自身 `target`，PascalCase |
-| timing | action 的 `timing` | action 的 `timing` | exec action 的 `timing` | 不支持 |
+规则 `send`、一次性 exec、临时 Hook 和持久 Hook 使用同一套输出 segment。`target` 和 `timing` 属于整组 outputs，不属于单个 segment。
 
 ### 规则 TOML 的单个 `send`
 
 ```toml
-action = "send"
+type = "send"
 kind = "reply"
-# reply 的被引用消息 ID 放 path。
-path = "{{platform.reply_to_message_id}}"
+message_id = "{{platform.reply_to_message_id}}"
 text = "已收到。"
 timing = "immediate"
 target.group_id = "123456"
 ```
 
-单输出支持 `kind`、`text`、`path`、`timing`、`target`。`kind` 默认 `text`：
-
-- `text`：`text` 为文本；
-- `image` / `file`：`path` 是媒体来源，`text` 是 fallback；
-- `emoticon`：`text` 是表情名，`path` 可指定本地媒体；
-- `at`：`text` 是平台原始用户 ID；
-- `reply`：`path` 是平台消息 ID，`text` 是回复正文。
+单输出快速写法支持与 outputs segment 相同的字段，内部等价于单元素 `outputs`。快速字段与 `outputs` 不能同时出现；需要为 exec/tool action 命名时使用 `action_name`。
 
 ### TOML `outputs` 与一次性 exec 的 `outputs`
 
@@ -245,13 +229,14 @@ outputs = [
 | 字段 | 说明 |
 | --- | --- |
 | `kind` | `text`、`image`、`file`、`emoticon`、`at`、`reply`；默认 `text`。 |
-| `text` | 文本、媒体 fallback 或特殊输出的备用字段。 |
-| `url` / `path` / `base64` | 图片、文件、表情媒体来源。相对 `path` 以声明该规则的插件目录解析。`base64` 解码后最大 10 MiB。 |
-| `name` / `mime_type` | 媒体显示名和 MIME 类型。 |
-| `user_id` | `kind = "at"` 的平台原始用户 ID；为空时回退 `text`。 |
-| `message_id` | `kind = "reply"` 的平台消息 ID；为空时回退 `path`。 |
+| `text` | 文本、媒体 fallback、回复正文或原生表情 fallback。 |
+| `url` / `path` / `base64` | `image`、`file` 必须且只能选择一种来源。`url` 只接受 HTTP(S)，`path` 只接受文件系统路径且相对插件目录解析，`base64` 解码后最大 10 MiB。 |
+| `name` / `mime_type` | 图片或文件的显示名和 MIME 类型；`name` 也可作为原生表情的可读名称。 |
+| `user_id` | `kind = "at"` 的非空平台用户 ID。 |
+| `message_id` | `kind = "reply"` 的非空平台消息 ID。 |
+| `emoticon_id` | `kind = "emoticon"` 的非空平台原生表情或贴纸 ID；原生表情不接受媒体来源。 |
 
-`outputs` 是一条消息片段组，要发送单片段消息，只需让 `outputs` 只包含一个元素；要发送多条消息，则使用多个 `send` action 或多次 `output.send` 请求。一个 `outputs` 内若显式指定 target，所有片段的 target 必须一致。
+`outputs` 是一条消息片段组。要发送单片段消息，只需让 `outputs` 只包含一个元素；要发送多条消息，则使用多个 `send` action 或多次 `output.send` 请求。
 
 一次性 exec 的大媒体应写到插件目录或 `_shared/`，然后返回 `path` 或 `url`；不要把大数据塞进 JSON Pipe。单个 stdout 协议帧最大 16 MiB。
 
@@ -267,7 +252,7 @@ target.group_id = "123456"
 target.superadmins = true
 ```
 
-通常省略 target 以沿用当前事件。`timing` 为 `immediate`（默认）或 `after_assistant`；其实际生效范围见 Hook 点表。
+通常省略 target 以沿用当前事件。JSON 和 TOML target 都使用上面的 snake_case 字段。`timing` 为 `immediate`（默认）或 `after_assistant`；其实际生效范围见 Hook 点表。
 
 ## 一次性 exec 与 hook.v2
 
@@ -286,7 +271,7 @@ on = "llm.response.received"
 always = true
 
 [[rules.actions]]
-name = "extract"
+action_name = "extract"
 type = "exec"
 command = "uv run extract.py"
 field = "llm.text"
@@ -474,7 +459,8 @@ stop_propagation = true
 
 持久 trigger rule 复用规则 Hook 的匹配、角色、priority、`require_wakeup`、`consume` 和 `stop_propagation` 语义。`action` 或 `actions` 会使配置校验失败。两个控制字段是插件未返回 `pass_through` 时的默认行为。
 
-需要由插件动态决定是否拦截时，在 stdout 的 `event.handle` response 中返回 `pass_through`：`false` 表示当前插件接管消息，`true` 表示继续交给后续插件、命令或主 LLM。该字段会同时覆盖规则配置中的 `consume` 和 `stop_propagation`；省略时仍按配置处理。
+需要由插件动态决定是否拦截时，在 stdout 的 `event.handle` response 中返回 `pass_through`：`false` 表示当前插件接管消息，`true` 表示继续交给后续插件、命令或主 LLM。该字段会
+         同时覆盖规则配置中的 `consume` 和 `stop_propagation`；省略时仍按配置处理。
 
 worker 状态为 `starting`、`ready`、`running`、`degraded`、`stopping`、`stopped` 或 `failed`。停止时 Host 先请求 `system.shutdown`，超过关闭超时才强制结束进程。
 
@@ -541,31 +527,21 @@ def message_text(event):
 | `conversation_id` | `waiting` 时必填的非空不透明 ID。 |
 | `expires_at` | `waiting` 时必填的 RFC 3339 时间，必须晚于当前时间且不超过 `max_wait_seconds`。 |
 | `outputs` | 交给 Output Manager 的输出数组。 |
+| `target` | 可选的整组发送目标，使用统一 snake_case 字段；省略时沿用当前事件。 |
+| `timing` | 可选的整组发送时机：`immediate` 或 `after_assistant`。 |
 | `pass_through` | 可选动态控制；`false` 表示接管消息，`true` 表示完整放行，省略时使用 trigger rule 的 `consume`、`stop_propagation`。 |
 
 例如，查询插件缺少参数时返回 `waiting` 和“请输入查询内容”；收到 continuation 后，命中时返回结果及 `"pass_through": false`，未命中时静默返回 `{"status":"completed","pass_through":true}`。
 
-持久 Hook JSON output 使用另一套字段：
+临时和持久 Hook 使用与规则、一次性 exec 相同的 outputs segment：
 
 ```json
 {
-  "kind": "reply",
-  "reply_to_message_id": "456",
-  "text": "引用回复",
-  "target": {"Platform":"qqonebot","ScopeID":"group:123"}
+  "outputs": [{"kind": "reply", "message_id": "456", "text": "引用回复"}],
+  "target": {"platform":"qqonebot","scope_id":"group:123"},
+  "timing": "immediate"
 }
 ```
-
-| 字段 | 说明 |
-| --- | --- |
-| `kind` | `text`、`image`、`file`、`emoticon`、`at`、`reply`。 |
-| `text` | text 内容、媒体 fallback；`at` 的平台原始用户 ID 也放在此处。 |
-| `name` / `alt_text` | 显示名和媒体不可发送时的替代文本。 |
-| `url` / `path` / `mime_type` | 媒体来源；相对 `path` 以插件目录解析。持久 Hook output 不支持 `base64`。 |
-| `reply_to_message_id` | `reply` 的被引用平台消息 ID。 |
-| `target` | 可选显式目标，使用 PascalCase：`Platform`、`ScopeID`、`PrivateUserID`、`GroupID`、`Superadmins`。 |
-
-省略 target 时沿用当前事件目标。规则 TOML target 使用 snake_case，不要混写。
 
 ### waiting、并发与取消
 

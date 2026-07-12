@@ -3,7 +3,6 @@ package telegram
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,8 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"elbot/internal/delivery"
 )
 
 type apiClient struct {
@@ -145,11 +142,12 @@ func (c *apiClient) sendDocument(ctx context.Context, chatID int64, source media
 	return c.sendMedia(ctx, "sendDocument", chatID, "document", source, replyTo)
 }
 
+func (c *apiClient) sendSticker(ctx context.Context, chatID int64, stickerID string, replyTo int64) (sentMessage, error) {
+	return c.sendMediaByReference(ctx, "sendSticker", chatID, "sticker", strings.TrimSpace(stickerID), replyTo)
+}
+
 func (c *apiClient) sendMedia(ctx context.Context, method string, chatID int64, field string, source mediaSource, replyTo int64) (sentMessage, error) {
 	if value := strings.TrimSpace(source.URL); value != "" {
-		return c.sendMediaByReference(ctx, method, chatID, field, value, replyTo)
-	}
-	if value := strings.TrimSpace(source.Path); delivery.IsHTTPMediaSource(value) {
 		return c.sendMediaByReference(ctx, method, chatID, field, value, replyTo)
 	}
 	body, contentType, err := multipartMediaBody(chatID, field, source, replyTo)
@@ -306,27 +304,13 @@ func multipartMediaBody(chatID int64, field string, source mediaSource, replyTo 
 		if path == "" {
 			return nil, "", fmt.Errorf("telegram media source is empty")
 		}
-		if delivery.IsBase64MediaSource(path) {
-			data, err := base64.StdEncoding.DecodeString(path[len("base64://"):])
-			if err != nil {
-				return nil, "", fmt.Errorf("decode telegram media base64 source: %w", err)
-			}
-			if _, err := part.Write(data); err != nil {
-				return nil, "", err
-			}
-		} else {
-			path, err := delivery.FileURIToPath(path)
-			if err != nil {
-				return nil, "", err
-			}
-			file, err := os.Open(path)
-			if err != nil {
-				return nil, "", fmt.Errorf("open media source %q: %w", path, err)
-			}
-			defer file.Close()
-			if _, err := io.Copy(part, file); err != nil {
-				return nil, "", err
-			}
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, "", fmt.Errorf("open media source %q: %w", path, err)
+		}
+		defer file.Close()
+		if _, err := io.Copy(part, file); err != nil {
+			return nil, "", err
 		}
 	}
 	if err := writer.Close(); err != nil {

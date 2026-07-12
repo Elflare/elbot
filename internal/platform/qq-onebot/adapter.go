@@ -361,7 +361,13 @@ func outputSegments(outputs ...delivery.Output) ([]Segment, error) {
 				return nil, fmt.Errorf("reply target message id is empty")
 			}
 			segments = append(segments, Segment{Type: "reply", Data: map[string]any{"id": replyID}}, Segment{Type: "text", Data: map[string]any{"text": out.Text}})
-		case delivery.KindEmoticon, delivery.KindImage:
+		case delivery.KindEmoticon:
+			id := strings.TrimSpace(out.EmoticonID)
+			if id == "" {
+				return nil, fmt.Errorf("emoticon id is empty")
+			}
+			segments = append(segments, Segment{Type: "face", Data: map[string]any{"id": id}})
+		case delivery.KindImage:
 			file, err := oneBotSourceFile(out.Source, "image")
 			if err != nil {
 				return nil, err
@@ -410,9 +416,6 @@ func oneBotSourceFile(source delivery.Source, label string) (string, error) {
 	path := strings.TrimSpace(source.Path)
 	if path == "" {
 		return "", fmt.Errorf("%s path is empty", label)
-	}
-	if delivery.IsDirectMediaSource(path) {
-		return path, nil
 	}
 	return localPathFileURI(path, label)
 }

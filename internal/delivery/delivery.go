@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"path/filepath"
-	"runtime"
 	"strings"
 )
 
@@ -22,11 +20,11 @@ const (
 )
 
 type Target struct {
-	Platform      string
-	ScopeID       string
-	PrivateUserID string
-	GroupID       string
-	Superadmins   bool
+	Platform      string `json:"platform,omitempty"`
+	ScopeID       string `json:"scope_id,omitempty"`
+	PrivateUserID string `json:"private_user_id,omitempty"`
+	GroupID       string `json:"group_id,omitempty"`
+	Superadmins   bool   `json:"superadmins,omitempty"`
 }
 
 const (
@@ -52,58 +50,17 @@ type Source struct {
 	Data     []byte
 }
 
-// IsDirectMediaSource reports whether value already declares a media source scheme.
-func IsDirectMediaSource(value string) bool {
-	value = strings.ToLower(strings.TrimSpace(value))
-	return strings.HasPrefix(value, "base64://") ||
-		strings.HasPrefix(value, "file://") ||
-		strings.HasPrefix(value, "http://") ||
-		strings.HasPrefix(value, "https://")
-}
-
 // IsHTTPMediaSource reports whether value is an HTTP(S) media source.
 func IsHTTPMediaSource(value string) bool {
 	value = strings.ToLower(strings.TrimSpace(value))
 	return strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://")
 }
 
-// IsBase64MediaSource reports whether value is a base64:// media source.
-func IsBase64MediaSource(value string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), "base64://")
-}
-
-// IsFileMediaSource reports whether value is a file:// media source.
-func IsFileMediaSource(value string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), "file://")
-}
-
-// FileURIToPath converts file:// media source values to local filesystem paths.
-func FileURIToPath(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if !IsFileMediaSource(value) {
-		return value, nil
-	}
-	u, err := url.Parse(value)
-	if err != nil {
-		return "", fmt.Errorf("parse file uri: %w", err)
-	}
-	path := u.Path
-	if path == "" {
-		return "", fmt.Errorf("file uri path is empty")
-	}
-	if runtime.GOOS == "windows" && len(path) >= 3 && path[0] == '/' && path[2] == ':' {
-		path = path[1:]
-	}
-	if u.Host != "" {
-		path = "//" + u.Host + path
-	}
-	return filepath.FromSlash(path), nil
-}
-
 type Output struct {
 	Kind                     Kind
 	Text                     string
 	Name                     string
+	EmoticonID               string
 	AltText                  string
 	ReplyToPlatformMessageID string
 	Source                   Source
@@ -160,18 +117,15 @@ func Text(text string) Output {
 	return Output{Kind: KindText, Text: text}
 }
 
-func Emoticon(name string) Output {
+func Emoticon(id, name, text string) Output {
+	id = strings.TrimSpace(id)
 	name = strings.TrimSpace(name)
-	out := Output{Kind: KindEmoticon, Name: name}
+	out := Output{Kind: KindEmoticon, EmoticonID: id, Name: name, Text: strings.TrimSpace(text)}
 	if name != "" {
 		out.AltText = "[表情: " + name + "]"
+	} else if out.Text != "" {
+		out.AltText = out.Text
 	}
-	return out
-}
-
-func EmoticonPath(name, path string) Output {
-	out := Emoticon(name)
-	out.Source.Path = path
 	return out
 }
 
@@ -249,6 +203,9 @@ func (m Manager) SendChat(ctx context.Context, outputs []Output) (Receipt, error
 	if m.Sender == nil {
 		return Receipt{}, fmt.Errorf("output sender is not configured")
 	}
+	if err := ValidateOutputs(outputs); err != nil {
+		return Receipt{}, err
+	}
 	return m.Sender.SendChat(ctx, outputs)
 }
 
@@ -258,6 +215,9 @@ func (m Manager) SendNotice(ctx context.Context, target Target, outputs []Output
 	}
 	if m.Sender == nil || len(outputs) == 0 {
 		return Receipt{}, nil
+	}
+	if err := ValidateOutputs(outputs); err != nil {
+		return Receipt{}, err
 	}
 	configuredTarget, err := ValidateOutputsTarget(outputs)
 	if err != nil {
@@ -339,6 +299,62 @@ func ValidateOutputsTarget(outputs []Output) (Target, error) {
 		}
 	}
 	return target, nil
+}
+
+func ValidateOutputs(outputs []Output) error {
+	for i, out := range outputs {
+		if err := ValidateDeliveryTiming(DeliveryTiming(out)); err != nil {
+			return fmt.Errorf("outputs[%d]: %w", i, err)
+		}
+		sourceCount := 0
+		if strings.TrimSpace(out.Source.Path) != "" {
+			sourceCount++
+		}
+		if strings.TrimSpace(out.Source.URL) != "" {
+			sourceCount++
+		}
+		if len(out.Source.Data) > 0 {
+			sourceCount++
+		}
+		switch out.Kind {
+		case KindText:
+			if sourceCount != 0 {
+				return fmt.Errorf("outputs[%d]: text output cannot have a media source", i)
+			}
+		case KindImage, KindFile:
+			if sourceCount != 1 {
+				return fmt.Errorf("outputs[%d]: image/file output must have exactly one media source", i)
+			}
+			if path := strings.TrimSpace(out.Source.Path); strings.Contains(path, "://") {
+				return fmt.Errorf("outputs[%d]: media path must be a filesystem path, not a URI", i)
+			}
+			if value := strings.TrimSpace(out.Source.URL); value != "" {
+				u, err := url.Parse(value)
+				if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+					return fmt.Errorf("outputs[%d]: media URL must be an absolute HTTP(S) URL", i)
+				}
+			}
+		case KindEmoticon:
+			if sourceCount != 0 {
+				return fmt.Errorf("outputs[%d]: emoticon output cannot have a media source", i)
+			}
+			if strings.TrimSpace(out.EmoticonID) == "" {
+				return fmt.Errorf("outputs[%d]: emoticon output requires an emoticon ID", i)
+			}
+		case KindAt:
+			if strings.TrimSpace(out.Name) == "" {
+				return fmt.Errorf("outputs[%d]: at output requires a user ID", i)
+			}
+		case KindReply:
+			if strings.TrimSpace(out.ReplyToPlatformMessageID) == "" {
+				return fmt.Errorf("outputs[%d]: reply output requires a message ID", i)
+			}
+		default:
+			return fmt.Errorf("outputs[%d]: unsupported output kind %q", i, out.Kind)
+		}
+	}
+	_, err := ValidateOutputsTarget(outputs)
+	return err
 }
 
 func FallbackText(out Output) string {
