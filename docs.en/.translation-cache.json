@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "161e6d9c9fc5f6447f49b64b2493ddac34b945cdda79f1b036b6e8fe87c2a000",
+      "source_hash": "1d66dc3959109c07011b86ccc22fbc1766cb4390d03899c0cb51a32868eb2a08",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783833527
+      "updated_at": 1783856514
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -56,9 +56,9 @@
       "updated_at": 1783738456
     },
     "docs/hooks.md": {
-      "source_hash": "39c46481aa60154fe82fa0caa4429255d5ddbad0099b60c94729d6e82cb83596",
+      "source_hash": "e1a3a6aab19bb06c62322d33d08e751682f4f190fe64223986a708d3e7b98bd5",
       "target": "docs.en/hooks.md",
-      "updated_at": 1783853279
+      "updated_at": 1783856494
     }
   },
   "segments": {
@@ -397,6 +397,14 @@
       "source_hash": "42cbb41cea50ff9d651fe7f2d1e56894b5c0a61a38c4f71a3594f569f9e05435",
       "translation": "Split Hook basics and persistent Runtime files by event, matching, Manager, routing, process, protocol, and tool bridge;",
       "updated_at": 1783738522
+    },
+    "CHANGELOG.md:list:44960cf8c2c2d97c3b07a6b6158788294f95befa9b8dd85dacca7ea066bfaecf": {
+      "kind": "list",
+      "source": "Hook Actor 现在同时提供平台昵称、群名片和纯展示名；聊天历史按平台用户 ID 与名称分开保存和搜索。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "44960cf8c2c2d97c3b07a6b6158788294f95befa9b8dd85dacca7ea066bfaecf",
+      "translation": "Hook Actor now provides platform nicknames, group nicknames, and pure display names; chat history is saved and searched separately by platform user ID and name.",
+      "updated_at": 1783856514
     },
     "CHANGELOG.md:list:452192294ae296b84042bb201edbf0936231be05a01c5ff72cc9a3409d6ce4d4": {
       "kind": "list",
@@ -17606,6 +17614,14 @@
       "translation": "When set to __ELBOT_CODE_0__, it stops rules following the current Hook point; it does not stop the Agent's main process.",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:table:23ee7ea210dfca07d02ee0daaa346ec629384f0583de91bf967f09633fe9f7fc": {
+      "kind": "table",
+      "source": "群聊通常优先群名片，否则使用昵称。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "23ee7ea210dfca07d02ee0daaa346ec629384f0583de91bf967f09633fe9f7fc",
+      "translation": "Group chats usually prioritize group profiles, otherwise nicknames are used.",
+      "updated_at": 1783856494
+    },
     "docs/hooks.md:table:23fa488104ab5f689fc387e8f2fd7dded4ab9de3e669c49132b4457cacbfd0a7": {
       "kind": "table",
       "source": "交给 Output Manager 的输出数组。",
@@ -19085,6 +19101,14 @@
       "source_hash": "b62450565373c1822d1c9f4d9f184f89169f0b55320fbf0a332a99cc02a9799b",
       "translation": "Completely stop distributing events from the specified user, format __ELBOT_CODE_0__.",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:table:b7158fbf48b392d4b479891427a42cb4f403ec6d5fe00599f7f94a898db02dae": {
+      "kind": "table",
+      "source": "__ELBOT_CODE_0__ 是纯展示名；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "b7158fbf48b392d4b479891427a42cb4f403ec6d5fe00599f7f94a898db02dae",
+      "translation": "__ELBOT_CODE_0__ is a pure display name;",
+      "updated_at": 1783856494
     },
     "docs/hooks.md:table:b720c899658d5fcae464ab5f83fc0bd7bafb1a86ce9786912999df38d6a9c99a": {
       "kind": "table",

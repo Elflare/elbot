@@ -462,7 +462,7 @@ If any of the three items are hit, the plugin rule or `event.handle` will not be
 Persistent trigger rules reuse the matching, role, priority, `require_wakeup`, `consume`, and `stop_propagation` semantics of rule Hooks. `action` or `actions` will cause configuration validation to fail. The two control fields are the default behaviors when the plugin does not return `pass_through`.
 
 When the plugin needs to dynamically decide whether to intercept, return `pass_through` in the `event.handle` response of stdout: `false` indicates that the current plugin takes over the message, and `true` indicates that it should be passed to subsequent plugins, commands, or the main LLM. This field will
-          simultaneously override `consume` and `stop_propagation` in the rule configuration; if omitted, it will still be processed according to the configuration.
+         simultaneously override `consume` and `stop_propagation` in the rule configuration; if omitted, it will still be processed according to the configuration.
 
 The worker state is `starting`, `ready`, `running`, `degraded`, `stopping`, `stopped`, or `failed`. When stopping, the Host first requests `system.shutdown`, and the process is forcibly terminated only after the shutdown timeout is exceeded.
 
@@ -622,7 +622,7 @@ The actual replacement occurs after the current `event.handle` ends: only the ru
 | --- | --- |
 | `control` | `consume`、`stop_propagation`。 |
 | `platform` | `name`、`scope_id`、`user_id`、`conversation_id`、`message_id`、`reply_to_message_id`。 |
-| `actor` | `id`（`<platform>:<id>`）、`user_id`、`role`、`group_role`、`display_name`。 |
+| `actor` | `id`（`<platform>:<id>`）、`user_id`、`role`、`group_role`、`nickname`、`group_card`、`display_name`。 `display_name` is a pure display name; Group chats usually prioritize group profiles, otherwise nicknames are used. |
 | `session` | `id`, `mode`, `title`, `status`; some Hook points only provide `id`. |
 | `request` | `id`, `kind`, `session_id`, `phase`; currently all may be empty. |
 | `error` | `message`; only reliable for error events. |
@@ -646,7 +646,7 @@ Text fields that can be used in `if`, `match.field`, and templates:
 
 ```text
 platform.name / platform.scope_id / platform.user_id / platform.conversation_id / platform.message_id / platform.reply_to_message_id
-actor.id / actor.user_id / actor.role / actor.group_role / actor.display_name
+actor.id / actor.user_id / actor.role / actor.group_role / actor.nickname / actor.group_card / actor.display_name
 session.id / session.mode / session.title / session.status
 request.id / request.kind / request.session_id / request.phase
 message.id / message.text / message.display_text / message.platform_text / message.intent_text / message.role
