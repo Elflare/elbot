@@ -147,7 +147,7 @@ text = "\n处理完成。"
 ```toml
 # An inline actions array, executed in array order.
 actions = [
-  { type = "tool", name = "search", tool = "web_search", arguments = "{\"query\":\"{{message.text}}\"}" },
+  { type = "tool", action_name = "search", tool = "web_search", arguments = "{\"query\":\"{{message.text}}\"}" },
   { type = "send", text = "{{actions.search.result}}" },
 ]
 ```
@@ -155,7 +155,7 @@ actions = [
 ```toml
 # TOML array table, executed in declaration order.
 [[rules.actions]]
-name = "search"
+action_name = "search"
 type = "tool"
 tool = "web_search"
 arguments = "{\"query\":\"{{message.text}}\"}"
@@ -165,7 +165,7 @@ type = "send"
 text = "{{actions.search.result}}"
 ```
 
-`action = "..."` cannot be mixed with `actions`. Both `actions = [...]` and `[[rules.actions]]` use `type` and `arguments`; `name` is available in both action forms. The parameter field for inline `action = "tool"` is also `arguments`, not `args`.
+`action = "..."` cannot be mixed with `actions`. Both `actions = [...]` and `[[rules.actions]]` use `type` and `arguments`; `action_name` is available in both action forms. The parameter field for inline `action = "tool"` is also `arguments`, not `args`.
 
 | Type | Main fields | Effect |
 | --- | --- | --- |
@@ -173,8 +173,8 @@ text = "{{actions.search.result}}"
 | `replace` | `field`、`pattern`、`replace`、`all` | Regex replacement; only the first match is replaced when `all = false`. |
 | `delete` | `field`, `pattern`, or `text` | Delete all regex matches. |
 | `send` | Single output field or `outputs` | Append output intent. |
-| `tool` | `tool`, `arguments`, optional `name` | Call a registered tool. |
-| `exec` | `command`, `cwd`, `timeout_seconds`, `field`, `timing`, optional `name` | Start a one-time `hook.v2` process. |
+| `tool` | `tool`, `arguments`, optional `action_name` | Call a registered tool. |
+| `exec` | `command`, `cwd`, `timeout_seconds`, `field`, `timing`, optional `action_name` | Start a one-time `hook.v2` process. |
 
 Named `tool` / `exec` actions are available for subsequent actions:
 
@@ -197,36 +197,20 @@ For `message.text` and `llm.latest_user_text`:
 
 ## Output and Path
 
-There are three types of output formats; fields cannot be mixed. Below is a comparison of fields that are easily confused, which will be expanded upon in subsequent sections.
-
-| Concept | Rule TOML single `send` | Rule TOML `outputs` | One-time exec `result.outputs` | Persistent Hook JSON `outputs` |
-| --- | --- | --- | --- | --- |
-| Output Type | `kind` | `kind` | `kind` | `kind` |
-| User ID of `at` | `text` | `user_id`, fallback to `text` when empty | `user_id`, fallback to `text` when empty | `text` |
-| Message ID of `reply` | `path` | `message_id`, fallback to `path` when empty | `message_id`, fallback to `path` when empty | `reply_to_message_id` |
-| Media source | `path` | `path`、`url`、`base64` | `path`、`url`、`base64` | `path`, `url`; `base64` is not supported |
-| target | `target.*` of action, snake_case | `target.*` of action, snake_case | Not supported; use the current event | output's own `target`, PascalCase |
-| timing | `timing` of action | `timing` of action | `timing` of exec action | Not supported |
+Rules `send`, one-time exec, temporary Hooks, and persistent Hooks use the same set of output segments. `target` and `timing` belong to the entire group of outputs, not to a single segment.
 
 ### A single `send` of the rule TOML
 
 ```toml
-action = "send"
+type = "send"
 kind = "reply"
-# Put the quoted message ID of the reply in path.
-path = "{{platform.reply_to_message_id}}"
+message_id = "{{platform.reply_to_message_id}}"
 text = "已收到。"
 timing = "immediate"
 target.group_id = "123456"
 ```
 
-Single output supports `kind`, `text`, `path`, `timing`, and `target`. `kind` defaults to `text`:
-
-- `text`: `text` is text;
-- `image` / `file`: `path` is the media source, and `text` is the fallback;
-- `emoticon`: `text` is the emoji name, and `path` can specify local media;
-- `at`: `text` is the platform's original user ID;
-- `reply`: `path` is the platform message ID, and `text` is the reply body.
+The single-output shorthand supports the same fields as output segments and is internally equivalent to a single-element `outputs`. Shorthand fields and `outputs` cannot appear simultaneously; Use `action_name` when you need to name an exec/tool action.
 
 ### TOML `outputs` and `outputs` of one-time exec
 
@@ -247,13 +231,14 @@ outputs = [
 | Field | Description |
 | --- | --- |
 | `kind` | `text`, `image`, `file`, `emoticon`, `at`, `reply`; default `text`. |
-| `text` | Fallback field for text, media fallback, or special outputs. |
-| `url` / `path` / `base64` | Media source for images, files, or emojis. Relative to `path`, resolved using the plugin directory that declares the rule. `base64` maximum 10 MiB after decoding. |
-| `name` / `mime_type` | Media display name and MIME type. |
-| `user_id` | Platform raw user ID of `kind = "at"`; falls back to `text` when empty. |
-| `message_id` | Platform message ID of `kind = "reply"`; falls back to `path` when empty. |
+| `text` | Text, media fallback, reply body, or native emoji fallback. |
+| `url` / `path` / `base64` | `image` and `file` must and can only choose one source. `url` only accepts HTTP(S), `path` only accepts filesystem paths resolved relative to the plugin directory, and `base64` has a maximum size of 10 MiB after decoding. |
+| `name` / `mime_type` | Display name and MIME type of the image or file; `name` can also serve as the readable name of a native emoji. |
+| `user_id` | Non-empty platform user ID of `kind = "at"`. |
+| `message_id` | Non-empty platform message ID of `kind = "reply"`. |
+| `emoticon_id` | Non-empty platform native emoji or sticker ID of `kind = "emoticon"`; native emojis do not accept media sources. |
 
-`outputs` is a group of message fragments. To send a single-fragment message, simply make `outputs` contain only one element; To send multiple messages, use multiple `send` actions or multiple `output.send` requests. If a target is explicitly specified within a `outputs`, the target of all fragments must be consistent.
+`outputs` is a group of message fragments. To send a single-fragment message, simply make `outputs` contain only one element; To send multiple messages, use multiple `send` actions or multiple `output.send` requests.
 
 Large media for one-time exec should be written to the plugin directory or `_shared/`, then return `path` or `url`; Do not stuff large amounts of data into the JSON Pipe. A single stdout protocol frame is at most 16 MiB.
 
@@ -269,7 +254,7 @@ target.group_id = "123456"
 target.superadmins = true
 ```
 
-Usually, target is omitted to reuse the current event. `timing` is `immediate` (default) or `after_assistant`; See the Hook point table for its actual effective scope.
+Usually, target is omitted to reuse the current event. Both JSON and TOML targets use the snake_case fields mentioned above. `timing` is `immediate` (default) or `after_assistant`; See the Hook point table for its actual effective scope.
 
 ## One-off exec and hook.v2
 
@@ -288,7 +273,7 @@ on = "llm.response.received"
 always = true
 
 [[rules.actions]]
-name = "extract"
+action_name = "extract"
 type = "exec"
 command = "uv run extract.py"
 field = "llm.text"
@@ -476,7 +461,8 @@ If any of the three items are hit, the plugin rule or `event.handle` will not be
 
 Persistent trigger rules reuse the matching, role, priority, `require_wakeup`, `consume`, and `stop_propagation` semantics of rule Hooks. `action` or `actions` will cause configuration validation to fail. The two control fields are the default behaviors when the plugin does not return `pass_through`.
 
-When the plugin needs to dynamically decide whether to intercept, return `pass_through` in the `event.handle` response of stdout: `false` indicates that the current plugin takes over the message, and `true` indicates that it should be passed to subsequent plugins, commands, or the main LLM. This field will override both `consume` and `stop_propagation` in the rule configuration; When omitted, it will still be processed according to the configuration.
+When the plugin needs to dynamically decide whether to intercept, return `pass_through` in the `event.handle` response of stdout: `false` indicates that the current plugin takes over the message, and `true` indicates that it should be passed to subsequent plugins, commands, or the main LLM. This field will
+          simultaneously override `consume` and `stop_propagation` in the rule configuration; if omitted, it will still be processed according to the configuration.
 
 The worker state is `starting`, `ready`, `running`, `degraded`, `stopping`, `stopped`, or `failed`. When stopping, the Host first requests `system.shutdown`, and the process is forcibly terminated only after the shutdown timeout is exceeded.
 
@@ -543,31 +529,21 @@ The `result` of a successful `event.handle` response:
 | `conversation_id` | A required non-empty opaque ID when `waiting`. |
 | `expires_at` | A required RFC 3339 timestamp when `waiting`, which must be later than the current time and not exceed `max_wait_seconds`. |
 | `outputs` | The output array passed to the Output Manager. |
+| `target` | Optional group sending target, using a unified snake_case field; if omitted, the current event is used. |
+| `timing` | Optional group sending timing: `immediate` or `after_assistant`. |
 | `pass_through` | Optional dynamic control; `false` indicates taking over the message, `true` indicates full pass-through; when omitted, `consume` and `stop_propagation` of the trigger rule are used. |
 
 For example, when a query plugin is missing parameters, return `waiting` and "Please enter the query content"; After receiving a continuation, return the result and `"pass_through": false` on a hit, and silently return `{"status":"completed","pass_through":true}` on a miss.
 
-Persistent Hook JSON output uses another set of fields:
+Temporary and persistent Hooks use the same outputs segment as rules and one-time exec:
 
 ```json
 {
-  "kind": "reply",
-  "reply_to_message_id": "456",
-  "text": "引用回复",
-  "target": {"Platform":"qqonebot","ScopeID":"group:123"}
+  "outputs": [{"kind": "reply", "message_id": "456", "text": "引用回复"}],
+  "target": {"platform":"qqonebot","scope_id":"group:123"},
+  "timing": "immediate"
 }
 ```
-
-| Field | Description |
-| --- | --- |
-| `kind` | `text`、`image`、`file`、`emoticon`、`at`、`reply`。 |
-| `text` | text content, media fallback; the platform's original user ID of `at` is also placed here. |
-| `name` / `alt_text` | Display name and alternative text when media cannot be sent. |
-| `url` / `path` / `mime_type` | Media source; resolved relative to `path` using the plugin directory. Persistent Hook output does not support `base64`. |
-| `reply_to_message_id` | The referenced platform message ID of `reply`. |
-| `target` | Optional explicit target, using PascalCase: `Platform`, `ScopeID`, `PrivateUserID`, `GroupID`, `Superadmins`. |
-
-When target is omitted, the current event target is used. Rule TOML targets use snake_case; do not mix them.
 
 ### Waiting, Concurrency, and Cancellation
 
