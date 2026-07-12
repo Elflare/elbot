@@ -29,6 +29,29 @@ func TestReadFileToolReturnsLineNumbersAndEndRange(t *testing.T) {
 	}
 }
 
+func TestReadFileToolAcceptsStringStartLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path, "start_line": "1", "end_line": "240"})
+	result, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "1 | alpha") || !strings.Contains(result.Content, "3 | gamma") {
+		t.Fatalf("unexpected read_file content:\n%s", result.Content)
+	}
+}
+
+func TestReadFileToolRejectsInvalidStringStartLine(t *testing.T) {
+	args := []byte(`{"path":"sample.txt","start_line":"end"}`)
+	_, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "start_line") || !strings.Contains(err.Error(), "integer string") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestReadFileToolGrepReturnsMatchesWithContext(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
 	content := strings.Join([]string{"one", "alpha", "two", "three", "beta", "four"}, "\n") + "\n"
