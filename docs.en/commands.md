@@ -171,7 +171,7 @@ In work mode, the LLM can discover tool details on demand via `discover_tool`. I
 | `/hooks` | List all registered Hooks. |
 | `/hooks <name>` | View the detailed configuration of a specific Hook. |
 | `/hooks start <id>` | Start a persistent Hook. |
-| `/hooks stop <id>` | Gracefully stop a persistent Hook. |
+| `/hooks stop <id>` | Gracefully stop a Hook. |
 | `/hooks restart <id>` | Stop and restart a persistent Hook. |
 | `/hooks reload` | Reread rules and persistent Hook configurations, and re-coordinate the process lifecycle. |
 

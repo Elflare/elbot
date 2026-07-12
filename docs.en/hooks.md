@@ -253,6 +253,8 @@ outputs = [
 | `user_id` | Platform raw user ID of `kind = "at"`; falls back to `text` when empty. |
 | `message_id` | Platform message ID of `kind = "reply"`; falls back to `path` when empty. |
 
+`outputs` is a group of message fragments. To send a single-fragment message, simply make `outputs` contain only one element; To send multiple messages, use multiple `send` actions or multiple `output.send` requests. If a target is explicitly specified within a `outputs`, the target of all fragments must be consistent.
+
 Large media for one-time exec should be written to the plugin directory or `_shared/`, then return `path` or `url`; Do not stuff large amounts of data into the JSON Pipe. A single stdout protocol frame is at most 16 MiB.
 
 ### target and timing
@@ -390,7 +392,7 @@ When the platform adapter returns JSON, the Host places it as a JSON value into 
 
 ## Persistent Hook
 
-Persistent Hooks are still Hooks; there is no independent plugin system or `/plugins` command. It is declared by the plugin's own `hook.toml` and starts automatically after ElBot starts or `/hooks reload`.
+Both persistent and temporary workers are declared by the plugin's own `hook.toml`. The worker of `mode = "persistent"` starts automatically after ElBot starts or `/hooks reload`; `mode = "transient"` only starts when the trigger rule is hit. Omitting `[plugin.runtime]` or omitting `mode` is equivalent to `mode = "once"`: a regular rule Hook or a one-time `exec`, with no resident worker.
 
 ```toml
 [plugin]
@@ -401,7 +403,7 @@ blocked_group = ["qqonebot:123456"]
 blocked_id = ["qqonebot:10001"]
 
 [plugin.runtime]
-stateful = true
+mode = "persistent"
 command = "uv run weather_hook.py"
 cwd = "."
 startup_timeout_seconds = 10
@@ -426,7 +428,9 @@ require_wakeup = false
 if = "message.intent_text"
 op = "contains"
 value = "天气"
-# The rules of a Persistent Hook are only event.handle triggers; do not set action/actions/consume/stop_propagation.
+# The rules of a persistent Hook do not set action/actions; control fields serve as the default value for event.handle.
+consume = true
+stop_propagation = true
 ```
 
 ### Plugin and Runtime Configuration
@@ -443,11 +447,11 @@ value = "天气"
 
 If any of the three items are hit, the plugin rule or `event.handle` will not be called; Other plugins are not affected. Exact match, wildcards are not supported; `blocked_group` recognizes both `group` and `supergroup` scopes.
 
-The following fields for `[plugin.runtime]` are required:
+`[plugin.runtime]` requires the following fields when `mode = "persistent"` or `mode = "transient"`; `mode` can only be `once`, `persistent`, or `transient`; it defaults to `once` if omitted. `once` does not create a worker and does not require other runtime fields.
 
 | Field | Description |
 | --- | --- |
-| `stateful` | Must be `true`. |
+| `mode` | `once` (default), `persistent`, or `transient`. `persistent` remains resident after starting; `transient` only starts after a rule is hit and exits after the Session ends. |
 | `command` | Startup command, executed without a shell. Currently split simply by whitespace, **quotes are not parsed**; if parameters contain spaces, please wrap them in a script or avoid this path. |
 | `cwd` | Relative to the plugin directory; cannot be an absolute path or escape the plugin directory. Usually `.`. |
 | `startup_timeout_seconds` | Maximum seconds to wait for a successful response from `system.init`, must be greater than `0`. |
@@ -455,7 +459,7 @@ The following fields for `[plugin.runtime]` are required:
 | `event_timeout_seconds` | Maximum seconds for a single `event.handle`, which also limits the tool context for this instance, must be greater than `0`. |
 | `max_wait_seconds` | Maximum remaining time that can be declared for a waiting Session, must be greater than `0`. |
 
-The following fields for `[plugin.runtime.restart]` are required:
+`[plugin.runtime.restart]` only applies to `mode = "persistent"`:
 
 | Field | Description |
 | --- | --- |
@@ -470,9 +474,9 @@ The following fields for `[plugin.runtime.restart]` are required:
 | `allow` | Tool names available to the foreground `tool.call`; the Host delivers the corresponding schema in `system.init.params.tools`. |
 | `background_allow` | Tool names available to the background, which must also appear in `allow`. |
 
-Persistent trigger rules reuse the matching, role, priority, and `require_wakeup` semantics of rule Hooks. `action` or `actions` will cause configuration validation to fail; `consume` and `stop_propagation` will not be applied by the trigger rule even if written; they should instead be returned by the plugin's `event.handle` response.
+Persistent trigger rules reuse the matching, role, priority, `require_wakeup`, `consume`, and `stop_propagation` semantics of rule Hooks. `action` or `actions` will cause configuration validation to fail. The two control fields are the default behaviors when the plugin does not return `pass_through`.
 
-When the plugin needs to dynamically decide whether to intercept, keep `consume` and `stop_propagation` in the trigger rule as `false` (or omit them), and then have the plugin return these two fields in the `event.handle` response of stdout based on the processing result. Return `consume: true` and `stop_propagation: true` when processing is successful and exclusive access to the message is required; Omit or return `false` when not processed; the message will continue to be passed to subsequent rules or the main LLM.
+When the plugin needs to dynamically decide whether to intercept, return `pass_through` in the `event.handle` response of stdout: `false` indicates that the current plugin takes over the message, and `true` indicates that it should be passed to subsequent plugins, commands, or the main LLM. This field will override both `consume` and `stop_propagation` in the rule configuration; When omitted, it will still be processed according to the configuration.
 
 The worker state is `starting`, `ready`, `running`, `degraded`, `stopping`, `stopped`, or `failed`. When stopping, the Host first requests `system.shutdown`, and the process is forcibly terminated only after the shutdown timeout is exceeded.
 
@@ -514,7 +518,7 @@ The worker state is `starting`, `ready`, `running`, `degraded`, `stopping`, `sto
 
 #### Reading User Input
 
-Persistent Hooks should not assume that `event.message.segments` has had the wake-up prefix removed: it retains the original segments after platform normalization; `event.message.intent_text` is the user intent text calculated by the Host after removing the wake-up prefix. When handling text commands, `intent_text` should be read preferentially; if it is empty, concatenate the text segments:
+Persistent or temporary workers should not assume that the wake-up prefix has been removed from `event.message.segments`: it retains the original segments after platform normalization; `event.message.intent_text` is the user intent text calculated by the Host after removing the wake-up prefix. When handling text commands, `intent_text` should be read preferentially; if it is empty, concatenate the text segments:
 
 ```python
 def message_text(event):
@@ -539,8 +543,9 @@ The `result` of a successful `event.handle` response:
 | `conversation_id` | A required non-empty opaque ID when `waiting`. |
 | `expires_at` | A required RFC 3339 timestamp when `waiting`, which must be later than the current time and not exceed `max_wait_seconds`. |
 | `outputs` | The output array passed to the Output Manager. |
-| `consume` | Blocks commands and the main LLM when the first trigger message is `true`. |
-| `stop_propagation` | Stops subsequent rules of the current Hook point when it is `true`. |
+| `pass_through` | Optional dynamic control; `false` indicates taking over the message, `true` indicates full pass-through; when omitted, `consume` and `stop_propagation` of the trigger rule are used. |
+
+For example, when a query plugin is missing parameters, return `waiting` and "Please enter the query content"; After receiving a continuation, return the result and `"pass_through": false` on a hit, and silently return `{"status":"completed","pass_through":true}` on a miss.
 
 Persistent Hook JSON output uses another set of fields:
 
@@ -568,24 +573,22 @@ When target is omitted, the current event target is used. Rule TOML targets use 
 
 The same `platform + scope_id + actor.id` is executed serially within the same worker, while different routes can be executed in parallel. The waiting lease also uses this triplet as the key:
 
-- In normal serial distribution, the first persistent Hook that returns `waiting` holds the route, and subsequent persistent trigger rules will no longer distribute this route. Ensuring that only one lease is stored per route; If concurrent events cause multiple Hooks to compete simultaneously, the last writer overwrites the previous lease. Therefore, when multiple persistent Hooks might match the same route, `priority`, stricter conditions, or `stop_propagation` should be used to clarify ownership.
-- When waiting exists, ordinary `platform.message.received` rules will still run first; persistent trigger rules will not be triggered again.
-- After regular rules are completed and the message has not been `consume`, the Host will route subsequent messages via `continuation = true` to the Hook holding the lease.
-- After the continuation is routed, messages will no longer enter slash commands or the main LLM, even if `consume` in the response is `false`.
-- After the continuation returns `completed` or omits `status`, the Host immediately releases the lease; Returning `waiting` again will renew it with a new ID and expiration time.
+- In normal serial distribution, the first worker to return `waiting` holds the route, and subsequent worker trigger rules will no longer distribute this route. Ensuring that only one lease is stored per route; If concurrent events cause multiple workers to compete simultaneously, the last writer overrides the previous lease. Therefore, when multiple worker Hooks may match the same route, `priority`, stricter conditions, or `stop_propagation` should be used to clarify ownership.
+- When waiting exists, ordinary `platform.message.received` rules will still run first; worker trigger rules will not be triggered again.
+- The Host first routes subsequent messages to the Hook holding the lease via `continuation = true`; When the plugin returns `pass_through = true`, propagation continues from subsequent rules, and can finally enter a command or the main LLM.
+- After the continuation is released, the plugin that just finished waiting will not be re-triggered by the same message.
+- After the continuation returns `completed` or omits `status`, the Host immediately releases the lease; For transient workers, the process is closed simultaneously. Returning `waiting` again will renew it with a new ID and expiration time.
 - Blocking strategy hits, worker exits, stops, or reloads will clear the plugin lease.
 
-When the user sends the exact `/cancel`, the Host cancels the current execution or waiting Session of that route and writes a notification frame without a response to the plugin:
+When the user sends the exact `/cancel`, the Host cancels the current execution or waiting Session of that route and closes the transient worker; Persistent workers only receive the cancellation notification and retain the process and memory.
 
 ```json
 {"type":"event","method":"event.cancel","params":{"conversation_id":"weather-42"}}
 ```
 
-`conversation_id` is provided only when it exists. `/cancel` does not stop the process and plugin memory; use `/hooks stop <id>` to stop the worker.
-
 ### Tools and Shared State
 
-Persistent Hooks maintain their own LLM loop, business state, and tool usage decisions. The Host only validates the allowlist, foreground/background capabilities, context ownership, count, timeout, cancellation, and send target for `tool.call`; **Does not execute ElBot's risk grading, permission policies, or interaction confirmations**. Plugins must handle tool authorization and risk control on their own.
+The worker Hook maintains the LLM loop, business state, and tool usage decisions on its own. The Host only validates the allowlist, foreground/background capabilities, context ownership, count, timeout, cancellation, and send target for `tool.call`; **Does not execute ElBot's risk grading, permission policies, or interaction confirmations**. Plugins must handle tool authorization and risk control on their own.
 
 Foreground call:
 
@@ -605,7 +608,7 @@ Background calls must be located in `background_allow`: when there is a context 
 
 `content` is the tool text result, `segments` is a `{type,text,url,mime_type,name}` array, `warnings` is a string array, and `receipts` is the platform message ID after the tool outputs are sent via the Output Manager. Failures uniformly use the outer `ok=false,error`. Hook tool calls will not be written to the Agent Session.
 
-In addition to the `_shared/` file directory, all persistent Hooks also share an in-process JSON KV:
+Except for the `_shared/` file directory, all workers share an in-process JSON KV:
 
 | method | `params` | Successful `result` |
 | --- | --- | --- |
@@ -619,7 +622,7 @@ The key written to the shared KV must be `<namespace>/<key>`. The value must be 
 
 ### Plugin Self-Reload
 
-After a persistent Hook modifies its own `hook.toml`, it can request to reload itself:
+After a worker modifies its own `hook.toml`, it can request to reload itself:
 
 ```json
 {"type":"request","id":"plugin:reload-1","method":"hooks.reload","params":{}}
@@ -634,21 +637,6 @@ The Host will first fully read and validate the candidate configuration. If it f
 ```
 
 The actual replacement occurs after the current `event.handle` ends: only the rules and workers that call the plugin are replaced, the waiting routes and tool contexts of that plugin are cleared, and other plugins are not restarted. The caller's identity is determined by the process, and it cannot reload other plugins; Reload requests cannot be made during `starting`, `stopping`, or `stopped`. Plugin references in the root `plugins/hooks.toml`, `enabled`, `path`, as well as the addition or removal of plugins, still require an administrator to perform a global `/hooks reload`.
-
-## Management Commands
-
-`/hooks` is the superadmin management entry point:
-
-```text
-/hooks
-/hooks <rule-name-or-stateful-id>
-/hooks start <id>
-/hooks stop <id>
-/hooks restart <id>
-/hooks reload
-```
-
-`/hooks` lists rules and persistent Hooks; `/hooks <名称>` views rule details or persistent worker status. `start`, `stop`, and `restart` only accept persistent Hook IDs. Global `reload` re-reads rules and persistent runtime configurations, and stops, replaces, or starts the corresponding workers; Configurations are not dynamically schema-patched; affected workers will restart.
 
 ## Event and Template Fields
 
