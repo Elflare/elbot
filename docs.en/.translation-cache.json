@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "1d66dc3959109c07011b86ccc22fbc1766cb4390d03899c0cb51a32868eb2a08",
+      "source_hash": "a47b01793ecd4a0aaaf208e1c4ac74accad10133215ff5c33c76e80b0c01e32c",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783856514
+      "updated_at": 1783859074
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -1213,6 +1213,14 @@
       "source_hash": "dc3765cc3b6cc516b17fb0be590317ce5a5fab8d064d6514066e8593e421b5eb",
       "translation": "By default, the wait time for the first streaming event is 180 seconds, streaming idle is 60 seconds, and there is no total duration limit for the entire response.",
       "updated_at": 1782461728
+    },
+    "CHANGELOG.md:list:dce3acb92361980914c413865ff9af806d501fdd807684850e8b1aa5d27376a7": {
+      "kind": "list",
+      "source": "修复 __ELBOT_CODE_0__ 工具设置目录时不支持 __ELBOT_CODE_1__、__ELBOT_CODE_2__、Windows __ELBOT_CODE_3__、__ELBOT_CODE_4__ 和 __ELBOT_CODE_5__ 主目录路径的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "dce3acb92361980914c413865ff9af806d501fdd807684850e8b1aa5d27376a7",
+      "translation": "Fixed the issue where __ELBOT_CODE_0__ tools did not support __ELBOT_CODE_1__, __ELBOT_CODE_2__, Windows __ELBOT_CODE_3__, __ELBOT_CODE_4__, and __ELBOT_CODE_5__ home directory paths when setting the directory.",
+      "updated_at": 1783859074
     },
     "CHANGELOG.md:list:dda9f80d869b591edf7f9696577d405bb57a881c2e08f7cee08483abdd6db5a7": {
       "kind": "list",

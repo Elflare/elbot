@@ -60,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - After executing `/stop`, the CLI TUI will converge the current running state into `done` and fix the elapsed time, no longer accumulating time in the status bar.
 - Fixed the issue where rule cards were repeatedly injected into the context when performing tool discovery or inline preloading of multiple ELyph Skills; In the same Session, only Skill content is returned after the first injection, preserving the first rule card in history to facilitate cache hits.
 - Fixed the issue where Session messages under the same timestamp might be loaded out of order by UUID, leading to unstable historical context order.
-- Fixed the issue where `workspace` did not support `~`, `~/path`, and Windows `~\path` home directory paths when setting the tool directory.
+- Fixed the issue where `workspace` tools did not support `~`, `~/path`, Windows `~\path`, `$HOME`, and `$HOME/path` home directory paths when setting the directory.
 - When the file segment in a QQ OneBot private chat is missing `url`, `get_file` will be called; If a download URL is returned, it will be saved to ElBot; if only a OneBot local path is returned, that path will be displayed directly.
 - Inbound @ messages in QQ OneBot will now prioritize displaying the group business card, followed by the regular nickname, in the format `[at 名字 qq:<id>]`, and will fall back to the QQ number if neither can be retrieved.
 - Fixed an issue where Chinese output might be garbled when the `shell` tool falls back to PowerShell on Windows.
