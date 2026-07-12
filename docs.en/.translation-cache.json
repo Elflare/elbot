@@ -26,9 +26,9 @@
       "updated_at": 1783658081
     },
     "docs/configuration.md": {
-      "source_hash": "8e37ddc0b6d86888de6d3e572f8ffc931c41580023efd6f0e522d1818569c452",
+      "source_hash": "e1880d436feb720a7c7063d6272caa9270c7cb23d9128083a2559283802630b4",
       "target": "docs.en/configuration.md",
-      "updated_at": 1783775574
+      "updated_at": 1783833502
     },
     "docs/elnis-usage.md": {
       "source_hash": "c8d68d4fc76a453ea4008b304cc4d8243b8b2ebc634494f4fb92016b8040c782",
@@ -8381,6 +8381,14 @@
       "source_hash": "b39ab7bb7e5dd45a5aa587eead2f035d20350e7c3ad0c4e6a3a592305ad20637",
       "translation": "Telegram uses Bot API long polling. Minimum configuration example:\n",
       "updated_at": 1781839376
+    },
+    "docs/configuration.md:paragraph:b4973c21af408f9bdeb18d02b1cefbcfd0aaa3c73d01d5ebf9bb2b81499e5ed2": {
+      "kind": "paragraph",
+      "source": "某个目录的 __ELBOT_CODE_0__ 工具首次被发现或注入，或者首次切换、重置到该目录时，如果目录根部存在 __ELBOT_CODE_1__ 或 __ELBOT_CODE_2__，系统会自动把文件内容附带给 LLM，供其读取当前目录的工作约定。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "b4973c21af408f9bdeb18d02b1cefbcfd0aaa3c73d01d5ebf9bb2b81499e5ed2",
+      "translation": "When a __ELBOT_CODE_0__ tool in a directory is first discovered or injected, or when switching to or resetting to that directory for the first time, if __ELBOT_CODE_1__ or __ELBOT_CODE_2__ exists at the root of the directory, the system will automatically attach the file content to the LLM so that it can read the working conventions of the current directory.",
+      "updated_at": 1783833502
     },
     "docs/configuration.md:paragraph:b5677d6b75b2703b9b64bea53a2215425d90ca4cd4d3970d802782ede5df8de8": {
       "kind": "paragraph",
