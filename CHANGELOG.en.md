@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Hook Actor now provides platform nicknames, group nicknames, and pure display names; chat history is saved and searched separately by platform user ID and name.
 - `workspace` tools will also load the `AGENTS.md`/`AGENT.md` of the current directory when they are first discovered or injected; The same path within the same Session shares a one-time record with the switch and reset entries, so it will not be injected repeatedly.
 
 ### Fixed
