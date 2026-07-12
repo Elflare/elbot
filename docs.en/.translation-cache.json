@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "161e6d9c9fc5f6447f49b64b2493ddac34b945cdda79f1b036b6e8fe87c2a000",
+      "source_hash": "1d66dc3959109c07011b86ccc22fbc1766cb4390d03899c0cb51a32868eb2a08",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783833527
+      "updated_at": 1783856514
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -397,6 +397,14 @@
       "source_hash": "42cbb41cea50ff9d651fe7f2d1e56894b5c0a61a38c4f71a3594f569f9e05435",
       "translation": "Split Hook basics and persistent Runtime files by event, matching, Manager, routing, process, protocol, and tool bridge;",
       "updated_at": 1783738522
+    },
+    "CHANGELOG.md:list:44960cf8c2c2d97c3b07a6b6158788294f95befa9b8dd85dacca7ea066bfaecf": {
+      "kind": "list",
+      "source": "Hook Actor 现在同时提供平台昵称、群名片和纯展示名；聊天历史按平台用户 ID 与名称分开保存和搜索。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "44960cf8c2c2d97c3b07a6b6158788294f95befa9b8dd85dacca7ea066bfaecf",
+      "translation": "Hook Actor now provides platform nicknames, group nicknames, and pure display names; chat history is saved and searched separately by platform user ID and name.",
+      "updated_at": 1783856514
     },
     "CHANGELOG.md:list:452192294ae296b84042bb201edbf0936231be05a01c5ff72cc9a3409d6ce4d4": {
       "kind": "list",
