@@ -1,9 +1,9 @@
 {
   "files": {
     "CHANGELOG.md": {
-      "source_hash": "2d9aa6689ed0f9734582f4b3a85dbb7e25550d26850bd78c0fa0fdc107e3a1f5",
+      "source_hash": "161e6d9c9fc5f6447f49b64b2493ddac34b945cdda79f1b036b6e8fe87c2a000",
       "target": "CHANGELOG.en.md",
-      "updated_at": 1783831156
+      "updated_at": 1783833527
     },
     "README.zh-CN.md": {
       "source_hash": "775291d6b840206bd566d2b7e1285507ccdbe7fe402070e7ce2fc7360cb0aa1c",
@@ -365,6 +365,14 @@
       "source_hash": "3cac303e77d78b8a38bc8c513ad9c4a32a433a641f83783336fe7338f1f9c46c",
       "translation": "Source files for resident memory and long-term memory are now included in general FileGuard protection; reading will suggest using memory tools, and direct writing via general file tools or shell will be rejected.",
       "updated_at": 1782722558
+    },
+    "CHANGELOG.md:list:4044f046a8ac2f38149d91bf251a488e181b94d64f9a8f006b4abe16dfdce2b2": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 工具首次被发现或注入时也会加载当前目录的 __ELBOT_CODE_1__/__ELBOT_CODE_2__；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "4044f046a8ac2f38149d91bf251a488e181b94d64f9a8f006b4abe16dfdce2b2",
+      "translation": "__ELBOT_CODE_0__ tools will also load the __ELBOT_CODE_1__/__ELBOT_CODE_2__ of the current directory when they are first discovered or injected;",
+      "updated_at": 1783833527
     },
     "CHANGELOG.md:list:40c02f479f2e6b57124b75dcc7cc55618de3b111ba80eaef6af4bf49626c6d0c": {
       "kind": "list",
@@ -925,6 +933,14 @@
       "source_hash": "a4ec61a14d64392d44b2e878cd85da05bc9acc8c3ccbbc2c7be323fe16ddfada",
       "translation": "Optimize CLI TUI.",
       "updated_at": 1783738522
+    },
+    "CHANGELOG.md:list:a57014269f2740133b4741d7c07d93ac6b9d18e72ed1c452cf164c62c16e3c54": {
+      "kind": "list",
+      "source": "同一 Session 的同一路径与切换、重置入口共享一次性记录，不会重复注入。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a57014269f2740133b4741d7c07d93ac6b9d18e72ed1c452cf164c62c16e3c54",
+      "translation": "The same path within the same Session shares a one-time record with the switch and reset entries, so it will not be injected repeatedly.",
+      "updated_at": 1783833527
     },
     "CHANGELOG.md:list:a702b552baa7d522668a76b859a98b2272294fa7c56518f23019ef1e2e4ee45e": {
       "kind": "list",
