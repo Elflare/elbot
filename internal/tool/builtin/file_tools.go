@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"elbot/internal/llm"
@@ -23,12 +24,36 @@ type EditFileTool struct {
 type readFileArgs struct {
 	Path         string             `json:"path"`
 	Encoding     string             `json:"encoding"`
-	StartLine    int                `json:"start_line"`
+	StartLine    readFileInteger    `json:"start_line"`
 	EndLine      fileops.LineNumber `json:"end_line"`
 	Mode         string             `json:"mode"`
 	Query        string             `json:"query"`
 	ContextLines int                `json:"context_lines"`
 	MaxMatches   int                `json:"max_matches"`
+}
+
+type readFileInteger int
+
+func (n *readFileInteger) UnmarshalJSON(data []byte) error {
+	text := strings.TrimSpace(string(data))
+	if text == "" || text == "null" {
+		return nil
+	}
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		value, err := strconv.Atoi(strings.TrimSpace(str))
+		if err != nil {
+			return fmt.Errorf("start_line must be an integer or integer string")
+		}
+		*n = readFileInteger(value)
+		return nil
+	}
+	var value int
+	if err := json.Unmarshal(data, &value); err != nil {
+		return fmt.Errorf("start_line must be an integer or integer string")
+	}
+	*n = readFileInteger(value)
+	return nil
 }
 
 type editFileArgs struct {
@@ -101,7 +126,7 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	case readFileModeAST:
 		return readFileASTResult(file, args.Query, args.ContextLines, args.MaxMatches, warnings)
 	}
-	start, end, truncated, err := fileops.NormalizeReadRange(len(lines), args.StartLine, args.EndLine)
+	start, end, truncated, err := fileops.NormalizeReadRange(len(lines), int(args.StartLine), args.EndLine)
 	if err != nil {
 		return nil, err
 	}
