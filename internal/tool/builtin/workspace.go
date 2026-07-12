@@ -31,6 +31,31 @@ func (WorkspaceTool) Info() tool.Info { return workspaceBuilder().BuildInfo() }
 
 func (WorkspaceTool) Schema() llm.ToolSchema { return workspaceBuilder().BuildSchema() }
 
+func (WorkspaceTool) DiscoveryContent(ctx context.Context) (string, bool, error) {
+	store, ok := tool.WorkspaceStoreFromContext(ctx)
+	if !ok {
+		return "", false, nil
+	}
+	noticeStore, ok := store.(tool.WorkspaceAgentNoticeStore)
+	if !ok {
+		return "", false, nil
+	}
+	dir, err := tool.CurrentWorkspaceDir(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	instructions, markNotice, err := workspaceAgentInstructions(ctx, noticeStore, dir)
+	if err != nil {
+		return "", false, err
+	}
+	if markNotice {
+		if err := noticeStore.MarkWorkspaceAgentNoticeDir(ctx, dir); err != nil {
+			return "", false, fmt.Errorf("mark workspace instructions notice: %w", err)
+		}
+	}
+	return instructions, false, nil
+}
+
 func workspaceBuilder() *tool.Builder {
 	return tool.NewBuilder("workspace").
 		Description("设置当前 Session 的共享工作目录。所有需要路径的工具会基于该目录解析相对路径。").

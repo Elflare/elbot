@@ -89,6 +89,32 @@ func TestSessionWorkspaceStoreClear(t *testing.T) {
 	}
 }
 
+func TestSessionWorkspaceStoreMarksNoticeWithoutChangingWorkspace(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+	session := newWorkspaceTestSession(t, ctx, store, `{"workspace_dir":"C:/work/project"}`)
+	agent := &Agent{store: store}
+	workspaceStore := sessionWorkspaceStore{agent: agent, session: session}
+
+	if err := workspaceStore.MarkWorkspaceAgentNoticeDir(ctx, "C:/work/project"); err != nil {
+		t.Fatal(err)
+	}
+	if err := workspaceStore.MarkWorkspaceAgentNoticeDir(ctx, "C:/work/project"); err != nil {
+		t.Fatal(err)
+	}
+	latest, err := store.Sessions().Get(ctx, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := decodeSessionMetadata(latest.Metadata)
+	if metadata.WorkspaceDir != "C:/work/project" {
+		t.Fatalf("workspace dir changed: %q", metadata.WorkspaceDir)
+	}
+	if len(metadata.WorkspaceAgentNoticeDirs) != 1 || metadata.WorkspaceAgentNoticeDirs[0] != "C:/work/project" {
+		t.Fatalf("notice dirs = %#v", metadata.WorkspaceAgentNoticeDirs)
+	}
+}
+
 func TestSessionWorkspaceStoreIsSessionScoped(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"elbot/internal/directive"
@@ -16,6 +17,7 @@ type toolDirectiveResult struct {
 	Injected []string
 	Existing []string
 	Invalid  []string
+	Err      error
 }
 
 type skillDirectiveResult struct {
@@ -31,6 +33,9 @@ func (a *Agent) applyToolDirectives(ctx context.Context, session *storage.Sessio
 	if session == nil || session.Mode != storage.SessionModeWork || a.toolRuntime.registry == nil || !containsAny(text, directive.ToolPrefix, directive.ToolFullPrefix, directive.ToolShortPrefix, directive.ToolShortFull) {
 		return result
 	}
+	if !isBackgroundSession(session) {
+		ctx = tool.WithWorkspaceStore(ctx, sessionWorkspaceStore{agent: a, session: session})
+	}
 	matches := directive.ToolMatches(text)
 	if len(matches) == 0 {
 		return result
@@ -38,12 +43,22 @@ func (a *Agent) applyToolDirectives(ctx context.Context, session *storage.Sessio
 
 	remove := make([]bool, len(matches))
 	seenInjected := map[string]bool{}
+	seenDiscoveryContent := map[string]bool{}
+	discoveryContent := []string{}
 	for i, match := range matches {
 		name := match.Name
 		discovery, tagName, ok := a.discoveryForToolDirective(ctx, name)
 		if !ok || discovery == nil || len(discovery.Tools) == 0 {
 			result.Invalid = append(result.Invalid, name)
 			continue
+		}
+		content, err := a.preloadedContextDiscoveryContent(ctx, discovery, seenDiscoveryContent)
+		if err != nil {
+			result.Err = err
+			return result
+		}
+		if strings.TrimSpace(content) != "" {
+			discoveryContent = append(discoveryContent, content)
 		}
 		injected, existing := a.rememberPreloadedDiscovery(ctx, session, discovery, seenInjected)
 		result.Injected = append(result.Injected, injected...)
@@ -57,7 +72,43 @@ func (a *Agent) applyToolDirectives(ctx context.Context, session *storage.Sessio
 		return result
 	}
 	result.Text = directive.StripToolMatches(text, matches, remove)
+	if len(discoveryContent) > 0 {
+		if strings.TrimSpace(result.Text) == "" {
+			result.Text = strings.Join(discoveryContent, "\n\n")
+		} else {
+			result.Text = strings.TrimSpace(result.Text) + "\n\n" + strings.Join(discoveryContent, "\n\n")
+		}
+	}
 	return result
+}
+
+func (a *Agent) preloadedContextDiscoveryContent(ctx context.Context, discovery *tool.DiscoveryResult, seen map[string]bool) (string, error) {
+	if discovery == nil || a.toolRuntime.registry == nil {
+		return "", nil
+	}
+	parts := []string{}
+	for _, discovered := range discovery.Tools {
+		name := strings.TrimSpace(discovered.Info.Name)
+		if discovered.Schema == nil || name == "" || seen[name] {
+			continue
+		}
+		target, ok := a.toolRuntime.registry.Get(name)
+		if !ok {
+			continue
+		}
+		if _, ok := target.(tool.ContextDiscoveryContentProvider); !ok {
+			continue
+		}
+		seen[name] = true
+		content, _, _, err := tool.LoadDiscoveryContent(ctx, target)
+		if err != nil {
+			return "", fmt.Errorf("load discovery content for %s: %w", name, err)
+		}
+		if strings.TrimSpace(content) != "" {
+			parts = append(parts, content)
+		}
+	}
+	return strings.Join(parts, "\n\n"), nil
 }
 
 func (a *Agent) applySkillDirectives(ctx context.Context, session *storage.Session, text string) skillDirectiveResult {

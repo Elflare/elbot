@@ -47,6 +47,27 @@ func (s sessionWorkspaceStore) HasWorkspaceAgentNoticeDir(ctx context.Context, d
 	return slices.Contains(metadata.WorkspaceAgentNoticeDirs, dir), nil
 }
 
+func (s sessionWorkspaceStore) MarkWorkspaceAgentNoticeDir(ctx context.Context, dir string) error {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return nil
+	}
+	if s.agent == nil || s.agent.store == nil || s.session == nil || s.session.ID == "" {
+		return nil
+	}
+	latest, err := s.agent.store.Sessions().Get(ctx, s.session.ID)
+	if err != nil {
+		return err
+	}
+	metadata := decodeSessionMetadata(latest.Metadata)
+	if slices.Contains(metadata.WorkspaceAgentNoticeDirs, dir) {
+		s.session.Metadata = latest.Metadata
+		return nil
+	}
+	metadata.WorkspaceAgentNoticeDirs = append(metadata.WorkspaceAgentNoticeDirs, dir)
+	return s.save(ctx, latest, metadata)
+}
+
 func (s sessionWorkspaceStore) SetWorkspaceDirWithAgentNotice(ctx context.Context, dir string, markNotice bool) error {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {

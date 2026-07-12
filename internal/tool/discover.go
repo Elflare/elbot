@@ -109,7 +109,10 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, error
 	if len(activateTools) > 0 {
 		metadata[MetadataActivateTools] = activateTools
 	}
-	content := discoveryContent(ctx, t.registry, result)
+	content, err := discoveryContent(ctx, t.registry, result)
+	if err != nil {
+		return nil, err
+	}
 	if formats := NewRuleCardFormatsFromContext(ctx); len(formats) > 0 {
 		metadata[MetadataShownRuleCardFormats] = formats
 	}
@@ -129,9 +132,9 @@ func marshalJSONNoEscape(value any) ([]byte, error) {
 	return bytes.TrimSpace(buf.Bytes()), nil
 }
 
-func discoveryContent(ctx context.Context, registry *Registry, result *DiscoveryResult) string {
+func discoveryContent(ctx context.Context, registry *Registry, result *DiscoveryResult) (string, error) {
 	if result == nil {
-		return ""
+		return "", nil
 	}
 	parts := []string{}
 	foundTools := []string{}
@@ -149,8 +152,12 @@ func discoveryContent(ctx context.Context, registry *Registry, result *Discovery
 		}
 		if discovered.Schema != nil && name != "" {
 			if target, ok := registry.Get(name); ok {
-				if provider, ok := target.(DiscoveryContentProvider); ok {
-					if content, override := provider.DiscoveryContent(); strings.TrimSpace(content) != "" {
+				content, override, supported, err := LoadDiscoveryContent(ctx, target)
+				if err != nil {
+					return "", fmt.Errorf("load discovery content for %s: %w", name, err)
+				}
+				if supported {
+					if strings.TrimSpace(content) != "" {
 						if override {
 							parts = append(parts, content)
 						} else {
@@ -191,7 +198,7 @@ func discoveryContent(ctx context.Context, registry *Registry, result *Discovery
 			parts = append(parts, "未发现工具："+strings.Join(errors, ", "))
 		}
 	}
-	return strings.Join(parts, "\n\n")
+	return strings.Join(parts, "\n\n"), nil
 }
 
 func discoverySecurity(ctx context.Context) (security.Actor, *security.Policy) {
