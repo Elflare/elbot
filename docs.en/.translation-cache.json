@@ -16,9 +16,9 @@
       "updated_at": 1782901148
     },
     "docs/commands.md": {
-      "source_hash": "2006eb13cb791ac42e10cb45dce715f939c117cb87254e541c4afa13f04f85ce",
+      "source_hash": "3e3c00850f22f08bcfbd4f2daedf04ba77717fd79a6756745768209cab96fe61",
       "target": "docs.en/commands.md",
-      "updated_at": 1783678873
+      "updated_at": 1783824913
     },
     "docs/concepts.md": {
       "source_hash": "5e07d91a84bb604aa80a9b50c585bebf9257ded72c240f2db8c4d3239c9ca6cf",
@@ -4421,6 +4421,14 @@
       "source_hash": "fbadfde16ab096fb7b4bd4bb64fdfa90cd7c1de04d0711b60abe60eb0ae1a312",
       "translation": "Confirm all pending tools in the current batch.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:ff991cd4dba8f3a4e6fefea17df3910897cd25d1bec1059eb0bc2c524e3da2ac": {
+      "kind": "table",
+      "source": "优雅停止一个 Hook。",
+      "source_file": "docs/commands.md",
+      "source_hash": "ff991cd4dba8f3a4e6fefea17df3910897cd25d1bec1059eb0bc2c524e3da2ac",
+      "translation": "Gracefully stop a Hook.",
+      "updated_at": 1783824913
     },
     "docs/concepts.md:heading:011b22ad82036fe134aecc848c93a0434ab764ed0052a4c8608e4e62ae5ff92a": {
       "kind": "heading",
