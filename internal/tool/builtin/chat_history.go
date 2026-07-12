@@ -23,7 +23,7 @@ const (
 	chatHistoryMessageLimit = 300
 )
 
-var chatHistoryAtIDPattern = regexp.MustCompile(`^(?:@|qq:)(\d+)$`)
+var chatHistoryAtIDPattern = regexp.MustCompile(`^@(.+)$`)
 
 type SearchChatHistoryTool struct {
 	history storage.ChatHistoryRepository
@@ -97,7 +97,7 @@ func searchChatHistoryBuilder() *tool.Builder {
 		DependsOn("get_chat_history_around", "reply_to_chat_history_message").
 		String("query", "按消息正文搜索的关键词；可传多个搜索词，用空格、逗号、中文逗号、竖线或换行分隔；留空表示不过滤。").
 		String("query_mode", "多个搜索词的匹配规则：or 或 and；默认 or。").
-		String("user", "按用户过滤。可传平台用户 ID、qq:ID、@ID、昵称，或“我”。不支持 [at:1] 这类占位符。").
+		String("user", "按用户过滤。可传平台用户 ID、@ID、昵称，或“我”。").
 		String("since", "起始时间。支持 Unix 时间戳、YYYY-MM-DD、YYYY-MM-DD HH:MM、YYYY-MM-DD HH:MM:SS；留空表示不限制。").
 		String("until", "结束时间。格式同 since；留空表示不限制。").
 		Integer("hours", "查询最近多少小时。since 为空时生效；0 表示不限制。").
@@ -268,7 +268,7 @@ func chatHistoryUserFilter(user string, ctx chatHistoryContext) (senderID, sende
 		return ctx.PlatformUserID, "", ""
 	}
 	if match := chatHistoryAtIDPattern.FindStringSubmatch(user); len(match) == 2 {
-		return match[1], "", ""
+		return strings.TrimSpace(match[1]), "", ""
 	}
 	if isDigits(user) {
 		return user, "", ""

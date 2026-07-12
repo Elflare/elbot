@@ -454,6 +454,8 @@ func (a *Agent) actor(ctx context.Context) security.Actor {
 	displayName := ""
 	actorID := ""
 	groupRole := security.GroupRoleUnknown
+	nickname := ""
+	groupCard := ""
 	if msg, ok := platform.MessageContextFrom(ctx); ok {
 		if msg.Platform != "" {
 			platformName = msg.Platform
@@ -463,6 +465,8 @@ func (a *Agent) actor(ctx context.Context) security.Actor {
 		}
 		actorID = msg.ActorID
 		displayName = msg.DisplayName
+		nickname = msg.Nickname
+		groupCard = msg.GroupCard
 		groupRole = security.ParseGroupRole(string(msg.GroupRole))
 	}
 	if prefix := platformName + ":"; strings.HasPrefix(platformUserID, prefix) {
@@ -473,6 +477,8 @@ func (a *Agent) actor(ctx context.Context) security.Actor {
 		policy = security.DefaultPolicy()
 	}
 	actor := policy.Actor(actorID, platformName, platformUserID, displayName)
+	actor.Nickname = nickname
+	actor.GroupCard = groupCard
 	actor.GroupRole = groupRole
 	return actor
 }

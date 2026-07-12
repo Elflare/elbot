@@ -222,6 +222,7 @@ func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientC
 		Platform:       s.Name(),
 		ActorID:        security.ActorID(s.Name(), client.id),
 		PlatformUserID: client.id,
+		Nickname:       client.id,
 		DisplayName:    client.id,
 		ScopeID:        client.id,
 		Sender:         s,

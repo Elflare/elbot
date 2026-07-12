@@ -472,6 +472,8 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 	messageCtx := platform.MessageContext{
 		Platform:              a.Name(),
 		PlatformUserID:        strconv.FormatInt(event.UserID, 10),
+		Nickname:              strings.TrimSpace(event.Sender.Nickname),
+		GroupCard:             strings.TrimSpace(event.Sender.Card),
 		DisplayName:           displayName(event.Sender, event.UserID),
 		GroupRole:             oneBotGroupRole(event),
 		ScopeID:               scopeID(event),
@@ -675,7 +677,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 		ScopeType:                event.MessageType,
 		PlatformMessageID:        strconv.FormatInt(event.MessageID, 10),
 		SenderID:                 strconv.FormatInt(event.UserID, 10),
-		SenderName:               displayName(event.Sender, event.UserID),
+		SenderName:               senderName(event.Sender),
 		Text:                     normalized.Text,
 		Raw:                      event.RawMessage,
 		ReplyToPlatformMessageID: normalized.ReplyID,

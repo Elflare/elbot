@@ -38,7 +38,7 @@ func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.Platfor
 		Platform:              a.Name(),
 		ActorID:               actorID,
 		PlatformUserID:        openID,
-		DisplayName:           openID,
+		DisplayName:           "",
 		ScopeID:               "c2c:" + openID,
 		PlatformMessageID:     strings.TrimSpace(msg.ID),
 		ReplyToMessageID:      replyID,
