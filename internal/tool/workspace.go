@@ -21,6 +21,7 @@ type WorkspaceStore interface {
 
 type WorkspaceAgentNoticeStore interface {
 	HasWorkspaceAgentNoticeDir(ctx context.Context, dir string) (bool, error)
+	MarkWorkspaceAgentNoticeDir(ctx context.Context, dir string) error
 	SetWorkspaceDirWithAgentNotice(ctx context.Context, dir string, markNotice bool) error
 	ClearWorkspaceDirWithAgentNotice(ctx context.Context, dir string, markNotice bool) error
 }

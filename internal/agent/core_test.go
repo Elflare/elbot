@@ -1836,6 +1836,63 @@ func TestToolDirectiveInjectsTaggedTools(t *testing.T) {
 	}
 }
 
+func TestWorkspaceToolDirectiveLoadsInstructionsOnce(t *testing.T) {
+	for _, directive := range []string{"@tool:workspace", "@tool:files"} {
+		t.Run(directive, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("directive rules"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			p := &fakePlatform{}
+			store := newTestStore(t)
+			f := &fakeLLM{replies: []string{"done"}}
+			a := New(p, f, "test-model", config.ProviderConfig{}, store)
+			a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+			registry := tool.NewRegistry()
+			_ = registry.Register(tool.NewDiscoverTool(registry))
+			_ = registry.Register(builtin.NewWorkspaceTool())
+			a.SetToolRuntime(registry, nil)
+
+			ctx := context.Background()
+			sessionRecord, err := a.sessionForInput(ctx, "prepare workspace")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := (sessionWorkspaceStore{agent: a, session: sessionRecord}).SetWorkspaceDir(ctx, dir); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := a.HandleMessage(ctx, directive); err != nil {
+				t.Fatalf("HandleMessage first: %v", err)
+			}
+			requests := f.chatRequests()
+			if len(requests) != 1 {
+				t.Fatalf("chat requests = %d", len(requests))
+			}
+			latest := requests[0].Messages[len(requests[0].Messages)-1]
+			content := llm.SegmentsContentText(latest.Segments)
+			if !strings.Contains(content, "Loaded workspace instructions from AGENTS.md:\ndirective rules") {
+				t.Fatalf("latest user content = %q", content)
+			}
+
+			if err := a.HandleMessage(ctx, directive); err != nil {
+				t.Fatalf("HandleMessage second: %v", err)
+			}
+			if got := len(f.chatRequests()); got != 1 {
+				t.Fatalf("instructions triggered another LLM call: %d", got)
+			}
+			latestSession, err := store.Sessions().Get(ctx, sessionRecord.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			metadata := decodeSessionMetadata(latestSession.Metadata)
+			if len(metadata.WorkspaceAgentNoticeDirs) != 1 || metadata.WorkspaceAgentNoticeDirs[0] != filepath.Clean(dir) {
+				t.Fatalf("notice dirs = %#v", metadata.WorkspaceAgentNoticeDirs)
+			}
+		})
+	}
+}
+
 func TestToolDirectiveInjectsConfiguredTagPrompt(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)

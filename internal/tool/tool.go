@@ -214,6 +214,24 @@ type DiscoveryContentProvider interface {
 	DiscoveryContent() (content string, override bool)
 }
 
+// ContextDiscoveryContentProvider provides discovery text that depends on the
+// current tool execution context, such as the active workspace.
+type ContextDiscoveryContentProvider interface {
+	DiscoveryContent(context.Context) (content string, override bool, err error)
+}
+
+func LoadDiscoveryContent(ctx context.Context, target Tool) (content string, override bool, supported bool, err error) {
+	if provider, ok := target.(ContextDiscoveryContentProvider); ok {
+		content, override, err = provider.DiscoveryContent(ctx)
+		return content, override, true, err
+	}
+	if provider, ok := target.(DiscoveryContentProvider); ok {
+		content, override = provider.DiscoveryContent()
+		return content, override, true, nil
+	}
+	return "", false, false, nil
+}
+
 type StructuredDetailProvider interface {
 	DetailBlock() DetailBlock
 }

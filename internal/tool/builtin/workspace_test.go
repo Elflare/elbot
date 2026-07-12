@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/security"
 	"elbot/internal/tool"
 )
 
@@ -113,6 +114,75 @@ func TestWorkspaceToolLoadsAgentInstructionsOnce(t *testing.T) {
 	}
 	if strings.Contains(result.Content, "work rules") {
 		t.Fatalf("instructions repeated after resume: %q", result.Content)
+	}
+}
+
+func TestWorkspaceToolDiscoveryLoadsAgentInstructionsOnceAcrossEntryPoints(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("discovery rules"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	store := &testWorkspaceStore{dir: dir}
+	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	workspace := NewWorkspaceTool()
+
+	content, override, err := workspace.DiscoveryContent(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if override || !strings.Contains(content, "Loaded workspace instructions from AGENTS.md:\ndiscovery rules") {
+		t.Fatalf("unexpected discovery content: override=%t content=%q", override, content)
+	}
+	if len(store.noticeDirs) != 1 || store.noticeDirs[0] != filepath.Clean(dir) {
+		t.Fatalf("notice dirs = %#v", store.noticeDirs)
+	}
+
+	content, _, err = workspace.DiscoveryContent(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content != "" {
+		t.Fatalf("instructions repeated during discovery: %q", content)
+	}
+
+	args, _ := json.Marshal(map[string]any{"path": dir})
+	result, err := workspace.Call(ctx, tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(result.Content, "discovery rules") {
+		t.Fatalf("instructions repeated while setting workspace: %q", result.Content)
+	}
+}
+
+func TestDiscoverWorkspaceLoadsCurrentAgentInstructions(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "AGENT.md"), []byte("current rules"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	store := &testWorkspaceStore{dir: dir}
+	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	ctx = security.WithPolicy(ctx, security.NewPolicy("low", "critical", map[string][]string{"cli": {"admin"}}))
+	ctx = security.WithActor(ctx, security.Actor{ID: "cli:admin", Platform: "cli", PlatformUserID: "admin", Role: security.RoleSuperadmin})
+	registry := tool.NewRegistry()
+	if err := registry.Register(NewWorkspaceTool()); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]string{"name": "workspace"})
+	result, err := tool.NewDiscoverTool(registry).Call(ctx, tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "已发现工具：workspace") || !strings.Contains(result.Content, "Loaded workspace instructions from AGENT.md:\ncurrent rules") {
+		t.Fatalf("unexpected discovery result: %q", result.Content)
+	}
+
+	result, err = tool.NewDiscoverTool(registry).Call(ctx, tool.CallRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(result.Content, "current rules") {
+		t.Fatalf("list discovery should not load instructions: %q", result.Content)
 	}
 }
 
