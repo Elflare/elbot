@@ -130,8 +130,15 @@ func ValidateWorkspaceDir(path string) (string, error) {
 }
 
 func expandWorkspacePath(path string) (string, error) {
-	if path != "~" && !strings.HasPrefix(path, "~/") && !strings.HasPrefix(path, `~\`) {
-		return path, nil
+	isHomePath := func(value, prefix string) bool {
+		return value == prefix || strings.HasPrefix(value, prefix+"/") || strings.HasPrefix(value, prefix+`\`)
+	}
+	prefix := "~"
+	if !isHomePath(path, prefix) {
+		prefix = "$HOME"
+		if !isHomePath(path, prefix) {
+			return path, nil
+		}
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -140,10 +147,10 @@ func expandWorkspacePath(path string) (string, error) {
 	if strings.TrimSpace(home) == "" {
 		return "", fmt.Errorf("home directory is not configured")
 	}
-	if path == "~" {
+	if path == prefix {
 		return home, nil
 	}
-	return filepath.Join(home, path[2:]), nil
+	return filepath.Join(home, path[len(prefix)+1:]), nil
 }
 
 func validateResolvedPath(path string, opts PathResolveOptions) error {

@@ -52,13 +52,52 @@ func TestWorkspaceToolAcceptsHomeShortcut(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	args, _ := json.Marshal(map[string]any{"path": "~"})
-	result, err := NewWorkspaceTool().Call(ctx, tool.CallRequest{Arguments: args})
-	if err != nil {
+	for _, path := range []string{"~", "$HOME"} {
+		args, _ := json.Marshal(map[string]any{"path": path})
+		result, err := NewWorkspaceTool().Call(ctx, tool.CallRequest{Arguments: args})
+		if err != nil {
+			t.Fatalf("path %q: %v", path, err)
+		}
+		if store.dir != filepath.Clean(home) || !strings.Contains(result.Content, filepath.Clean(home)) {
+			t.Fatalf("path %q: set content=%q stored=%q", path, result.Content, store.dir)
+		}
+	}
+}
+
+func TestWorkspaceToolAcceptsHomeSubpath(t *testing.T) {
+	store := &testWorkspaceStore{}
+	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	subdir := filepath.Join(home, "workspace")
+	if err := os.Mkdir(subdir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if store.dir != filepath.Clean(home) || !strings.Contains(result.Content, filepath.Clean(home)) {
-		t.Fatalf("set content=%q stored=%q", result.Content, store.dir)
+
+	for _, path := range []string{"$HOME/workspace", `$HOME\workspace`} {
+		args, _ := json.Marshal(map[string]any{"path": path})
+		_, err := NewWorkspaceTool().Call(ctx, tool.CallRequest{Arguments: args})
+		if err != nil {
+			t.Fatalf("path %q: %v", path, err)
+		}
+		if store.dir != filepath.Clean(subdir) {
+			t.Fatalf("path %q: stored=%q want=%q", path, store.dir, subdir)
+		}
+	}
+}
+
+func TestWorkspaceToolDoesNotExpandHomePrefixWithoutBoundary(t *testing.T) {
+	store := &testWorkspaceStore{}
+	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	args, _ := json.Marshal(map[string]any{"path": "$HOMEfoo"})
+	_, err := NewWorkspaceTool().Call(ctx, tool.CallRequest{Arguments: args})
+	if err == nil {
+		t.Fatal("expected literal $HOMEfoo path to be rejected")
 	}
 }
 
