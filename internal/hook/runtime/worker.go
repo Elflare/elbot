@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"elbot/internal/hook"
+	hookoutput "elbot/internal/hook/output"
 )
 
 type worker struct {
@@ -308,7 +309,7 @@ func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool
 	}
 	var result eventResult
 	if len(response) > 0 {
-		if err := json.Unmarshal(response, &result); err != nil {
+		if err := hookoutput.DecodeJSON(response, &result); err != nil {
 			return event, fmt.Errorf("decode hook event response: %w", err)
 		}
 	}
@@ -321,7 +322,7 @@ func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool
 	default:
 		return event, fmt.Errorf("unsupported hook event status %q", result.Status)
 	}
-	outputs, err := w.outputs(result.Outputs)
+	outputs, err := hookoutput.BuildGroup(result.Group, hookoutput.BuildOptions{BaseDir: w.config.Dir})
 	if err != nil {
 		return event, err
 	}

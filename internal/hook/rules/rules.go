@@ -2,7 +2,6 @@ package rules
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +15,7 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
+	hookoutput "elbot/internal/hook/output"
 	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/llm"
 	"elbot/internal/security"
@@ -101,7 +101,7 @@ type Rule struct {
 }
 
 type Action struct {
-	Name           string        `toml:"name"`
+	ActionName     string        `toml:"action_name"`
 	Type           string        `toml:"type"`
 	Field          string        `toml:"field"`
 	Text           string        `toml:"text"`
@@ -109,7 +109,14 @@ type Action struct {
 	Match          string        `toml:"-"`
 	Replace        string        `toml:"replace"`
 	Kind           string        `toml:"kind"`
+	URL            string        `toml:"url"`
 	Path           string        `toml:"path"`
+	Base64         string        `toml:"base64"`
+	Name           string        `toml:"name"`
+	MIMEType       string        `toml:"mime_type"`
+	UserID         string        `toml:"user_id"`
+	MessageID      string        `toml:"message_id"`
+	EmoticonID     string        `toml:"emoticon_id"`
 	Timing         string        `toml:"timing"`
 	Tool           string        `toml:"tool"`
 	Arguments      string        `toml:"arguments"`
@@ -122,25 +129,8 @@ type Action struct {
 	source         ruleSource
 }
 
-type SegmentSpec struct {
-	Kind      string `toml:"kind" json:"kind"`
-	Text      string `toml:"text" json:"text,omitempty"`
-	URL       string `toml:"url" json:"url,omitempty"`
-	Path      string `toml:"path" json:"path,omitempty"`
-	Base64    string `toml:"base64" json:"base64,omitempty"`
-	Name      string `toml:"name" json:"name,omitempty"`
-	MIMEType  string `toml:"mime_type" json:"mime_type,omitempty"`
-	UserID    string `toml:"user_id" json:"user_id,omitempty"`
-	MessageID string `toml:"message_id" json:"message_id,omitempty"`
-}
-
-type Target struct {
-	Platform      string `toml:"platform"`
-	ScopeID       string `toml:"scope_id"`
-	PrivateUserID string `toml:"private_user_id"`
-	GroupID       string `toml:"group_id"`
-	Superadmins   bool   `toml:"superadmins"`
-}
+type SegmentSpec = hookoutput.Segment
+type Target = hookoutput.Target
 
 type Module struct {
 	Rules    []Rule
@@ -887,11 +877,11 @@ func validateRule(rule Rule) error {
 			return fmt.Errorf("hook rule %q has action without type", rule.Name)
 		}
 		if err := validateActionTiming(action.Timing); err != nil {
-			return fmt.Errorf("hook rule %q action %q: %w", rule.Name, firstNonEmpty(action.Name, action.Type), err)
+			return fmt.Errorf("hook rule %q action %q: %w", rule.Name, firstNonEmpty(action.ActionName, action.Type), err)
 		}
 		if strings.TrimSpace(action.Type) == "exec" {
 			if err := validateExecAction(action); err != nil {
-				return fmt.Errorf("hook rule %q action %q: %w", rule.Name, firstNonEmpty(action.Name, action.Type), err)
+				return fmt.Errorf("hook rule %q action %q: %w", rule.Name, firstNonEmpty(action.ActionName, action.Type), err)
 			}
 		}
 	}
@@ -934,6 +924,7 @@ func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.
 	}
 	before := event
 	state := state{Actions: map[string]actionResult{}}
+	var passThrough *bool
 	var err error
 	for index, action := range rule.Actions {
 		action.source = rule.source
@@ -945,12 +936,25 @@ func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.
 		if result.Matched != nil && !*result.Matched {
 			return before, nil
 		}
+		if result.PassThrough != nil {
+			value := *result.PassThrough
+			passThrough = &value
+		}
 	}
-	if rule.Consume {
-		event.Control.Consume = true
-	}
-	if rule.StopPropagation {
-		event.Control.StopPropagation = true
+	if passThrough != nil {
+		if *passThrough {
+			event.Control = before.Control
+		} else {
+			event.Control.Consume = true
+			event.Control.StopPropagation = true
+		}
+	} else {
+		if rule.Consume {
+			event.Control.Consume = true
+		}
+		if rule.StopPropagation {
+			event.Control.StopPropagation = true
+		}
 	}
 	return event, nil
 }
@@ -993,9 +997,10 @@ type state struct {
 }
 
 type actionResult struct {
-	Result  string
-	Error   string
-	Matched *bool
+	Result      string
+	Error       string
+	Matched     *bool
+	PassThrough *bool
 }
 
 func (m Module) runAction(ctx context.Context, event hook.Event, action Action, state state) (hook.Event, actionResult, error) {
@@ -1012,14 +1017,14 @@ func (m Module) runAction(ctx context.Context, event hook.Event, action Action, 
 		return event, actionResult{}, nil
 	case "exec":
 		updated, result, err := m.runExec(ctx, event, action, state)
-		key := firstNonEmpty(strings.TrimSpace(action.Name), "exec")
+		key := firstNonEmpty(strings.TrimSpace(action.ActionName), "exec")
 		if key != "" {
 			state.Actions[key] = result
 		}
 		return updated, result, err
 	case "tool":
 		result, err := m.callTool(ctx, event, action, state)
-		key := firstNonEmpty(strings.TrimSpace(action.Name), strings.TrimSpace(action.Tool))
+		key := firstNonEmpty(strings.TrimSpace(action.ActionName), strings.TrimSpace(action.Tool))
 		if key != "" {
 			state.Actions[key] = result
 		}
@@ -1153,72 +1158,34 @@ func allowField(event hook.Event, field string) error {
 }
 
 func makeOutputs(action Action, event hook.Event, state state) ([]delivery.Output, error) {
-	target := delivery.Target{
-		Platform:      render(action.Target.Platform, event, state),
-		ScopeID:       render(action.Target.ScopeID, event, state),
-		PrivateUserID: render(action.Target.PrivateUserID, event, state),
-		GroupID:       render(action.Target.GroupID, event, state),
-		Superadmins:   action.Target.Superadmins,
+	target := hookoutput.Target{
+		Platform: render(action.Target.Platform, event, state), ScopeID: render(action.Target.ScopeID, event, state),
+		PrivateUserID: render(action.Target.PrivateUserID, event, state), GroupID: render(action.Target.GroupID, event, state), Superadmins: action.Target.Superadmins,
 	}
 	if strings.TrimSpace(target.Platform) == "" && event.Point == hook.PointPlatformConnected {
 		target.Platform = event.Platform.Name
 	}
-	timing := render(action.Timing, event, state)
+	quick := SegmentSpec{Kind: action.Kind, Text: action.Text, URL: action.URL, Path: action.Path, Base64: action.Base64, Name: action.Name, MIMEType: action.MIMEType, UserID: action.UserID, MessageID: action.MessageID, EmoticonID: action.EmoticonID}
+	if len(action.Outputs) > 0 && segmentSpecSet(quick) {
+		return nil, fmt.Errorf("send action cannot combine outputs with quick output fields")
+	}
+	specs := action.Outputs
+	if len(specs) == 0 {
+		specs = []SegmentSpec{quick}
+	}
+	rendered := make([]SegmentSpec, 0, len(specs))
+	for _, seg := range specs {
+		rendered = append(rendered, SegmentSpec{
+			Kind: render(seg.Kind, event, state), Text: render(seg.Text, event, state), URL: render(seg.URL, event, state), Path: render(seg.Path, event, state),
+			Base64: render(seg.Base64, event, state), Name: render(seg.Name, event, state), MIMEType: render(seg.MIMEType, event, state),
+			UserID: render(seg.UserID, event, state), MessageID: render(seg.MessageID, event, state), EmoticonID: render(seg.EmoticonID, event, state),
+		})
+	}
+	return hookoutput.BuildGroup(hookoutput.Group{Outputs: rendered, Target: target, Timing: render(action.Timing, event, state)}, hookoutput.BuildOptions{BaseDir: action.sourceBaseDir()})
+}
 
-	if len(action.Outputs) > 0 {
-		outputs := make([]delivery.Output, 0, len(action.Outputs))
-		for _, seg := range action.Outputs {
-			seg := SegmentSpec{
-				Kind:      render(seg.Kind, event, state),
-				Text:      render(seg.Text, event, state),
-				URL:       render(seg.URL, event, state),
-				Path:      render(seg.Path, event, state),
-				Base64:    render(seg.Base64, event, state),
-				Name:      render(seg.Name, event, state),
-				MIMEType:  render(seg.MIMEType, event, state),
-				UserID:    render(seg.UserID, event, state),
-				MessageID: render(seg.MessageID, event, state),
-			}
-			seg = resolveSegmentSpecPath(seg, action.sourceBaseDir())
-			out, err := buildSegmentOutput(seg, target, timing)
-			if err != nil {
-				return nil, err
-			}
-			outputs = append(outputs, out)
-		}
-		return outputs, nil
-	}
-
-	// Fallback: single output from kind/text/path.
-	kind := delivery.Kind(strings.TrimSpace(action.Kind))
-	if kind == "" {
-		kind = delivery.KindText
-	}
-	text := render(action.Text, event, state)
-	path := resolveLocalPath(render(action.Path, event, state), action.sourceBaseDir())
-	var out delivery.Output
-	switch kind {
-	case delivery.KindText:
-		out = delivery.Text(text)
-	case delivery.KindImage:
-		out = delivery.ImagePath(path)
-		out.Text = text
-	case delivery.KindFile:
-		out = delivery.FilePath(path)
-		out.Text = text
-	case delivery.KindEmoticon:
-		out = delivery.Emoticon(text)
-		out.Source.Path = path
-	case delivery.KindAt:
-		out = delivery.At(text)
-	case delivery.KindReply:
-		out = delivery.Reply(path, text)
-	default:
-		return nil, fmt.Errorf("unsupported output kind %q", kind)
-	}
-	out.Target = target
-	out = delivery.WithDeliveryTiming(out, timing)
-	return []delivery.Output{out}, nil
+func segmentSpecSet(spec SegmentSpec) bool {
+	return spec.Kind != "" || spec.Text != "" || spec.URL != "" || spec.Path != "" || spec.Base64 != "" || spec.Name != "" || spec.MIMEType != "" || spec.UserID != "" || spec.MessageID != "" || spec.EmoticonID != ""
 }
 
 // callTool invokes a registered tool without Agent risk or confirmation gates.
@@ -1294,95 +1261,6 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-// buildSegmentOutput converts a SegmentSpec to a delivery.Output with the given target and timing.
-func buildSegmentOutput(spec SegmentSpec, target delivery.Target, timing string) (delivery.Output, error) {
-	spec.Kind = strings.TrimSpace(spec.Kind)
-	if spec.Kind == "" {
-		spec.Kind = string(delivery.KindText)
-	}
-	var out delivery.Output
-	switch spec.Kind {
-	case string(delivery.KindText):
-		out = delivery.Text(strings.TrimSpace(spec.Text))
-	case string(delivery.KindImage):
-		out = delivery.ImagePath(strings.TrimSpace(spec.Path))
-		out.Text = strings.TrimSpace(spec.Text)
-		out.Name = strings.TrimSpace(spec.Name)
-		out.Source.MIMEType = strings.TrimSpace(spec.MIMEType)
-		if u := strings.TrimSpace(spec.URL); u != "" {
-			out.Source.URL = u
-		}
-		if b := strings.TrimSpace(spec.Base64); b != "" {
-			data, err := decodeOutputBase64(b)
-			if err != nil {
-				return delivery.Output{}, err
-			}
-			out.Source.Data = data
-		}
-	case string(delivery.KindFile):
-		out = delivery.FilePath(strings.TrimSpace(spec.Path))
-		out.Text = strings.TrimSpace(spec.Text)
-		out.Name = strings.TrimSpace(spec.Name)
-		out.Source.MIMEType = strings.TrimSpace(spec.MIMEType)
-		if u := strings.TrimSpace(spec.URL); u != "" {
-			out.Source.URL = u
-		}
-		if b := strings.TrimSpace(spec.Base64); b != "" {
-			data, err := decodeOutputBase64(b)
-			if err != nil {
-				return delivery.Output{}, err
-			}
-			out.Source.Data = data
-		}
-	case string(delivery.KindAt):
-		userID := strings.TrimSpace(spec.UserID)
-		if userID == "" {
-			userID = strings.TrimSpace(spec.Text)
-		}
-		out = delivery.At(userID)
-	case string(delivery.KindReply):
-		messageID := strings.TrimSpace(spec.MessageID)
-		if messageID == "" {
-			messageID = strings.TrimSpace(spec.Path)
-		}
-		out = delivery.Reply(messageID, strings.TrimSpace(spec.Text))
-	case string(delivery.KindEmoticon):
-		name := strings.TrimSpace(spec.Name)
-		if name == "" {
-			name = strings.TrimSpace(spec.Text)
-		}
-		path := strings.TrimSpace(spec.Path)
-		if path != "" {
-			out = delivery.EmoticonPath(name, path)
-		} else {
-			out = delivery.Emoticon(name)
-		}
-	default:
-		return delivery.Output{}, fmt.Errorf("unsupported segment kind %q", spec.Kind)
-	}
-	out.Target = target
-	out = delivery.WithDeliveryTiming(out, timing)
-	return out, nil
-}
-
-func decodeOutputBase64(value string) ([]byte, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil, nil
-	}
-	if base64.StdEncoding.DecodedLen(len(value)) > maxHookOutputBase64Bytes {
-		return nil, fmt.Errorf("base64 output exceeds %s decoded limit; %s", byteSize(maxHookOutputBase64Bytes), largeOutputRecommendation)
-	}
-	data, err := base64.StdEncoding.DecodeString(value)
-	if err != nil {
-		return nil, fmt.Errorf("decode base64 output: %w", err)
-	}
-	if len(data) > maxHookOutputBase64Bytes {
-		return nil, fmt.Errorf("base64 output exceeds %s decoded limit; %s", byteSize(maxHookOutputBase64Bytes), largeOutputRecommendation)
-	}
-	return data, nil
-}
-
 func byteSize(bytes int) string {
 	if bytes%(1024*1024) == 0 {
 		return fmt.Sprintf("%d MiB", bytes/(1024*1024))
@@ -1443,8 +1321,8 @@ func formatRuleDetail(rule Rule) string {
 
 	for i, action := range rule.Actions {
 		sb.WriteString(fmt.Sprintf("\naction[%d]: %s", i+1, action.Type))
-		if action.Name != "" {
-			sb.WriteString(" (" + action.Name + ")")
+		if action.ActionName != "" {
+			sb.WriteString(" (" + action.ActionName + ")")
 		}
 		if action.Field != "" {
 			sb.WriteString(" field=" + action.Field)

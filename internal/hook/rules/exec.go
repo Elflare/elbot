@@ -16,6 +16,7 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
+	hookoutput "elbot/internal/hook/output"
 )
 
 const (
@@ -97,7 +98,7 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		"plugin_name": action.source.PluginName,
 		"plugin_dir":  action.source.BaseDir,
 		"config_path": action.source.ConfigPath,
-		"rule_name":   firstNonEmpty(action.source.FinalName, action.Name),
+		"rule_name":   firstNonEmpty(action.source.FinalName, action.ActionName),
 		"cwd":         cwd,
 	}
 	initID := "host:init"
@@ -187,7 +188,7 @@ func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin 
 			}
 		case "event":
 			if frameString(frame, "method") == "hook.log" && m.Logger != nil {
-				m.Logger.Info("hook.v2 plugin event", "rule", firstNonEmpty(action.source.FinalName, action.Name), "params", string(frame["params"]))
+				m.Logger.Info("hook.v2 plugin event", "rule", firstNonEmpty(action.source.FinalName, action.ActionName), "params", string(frame["params"]))
 			}
 		default:
 			return nil, fmt.Errorf("unsupported hook.v2 frame type %q", frameString(frame, "type"))
@@ -200,32 +201,33 @@ func v2EventResult(event hook.Event, action Action, state state, raw json.RawMes
 		return actionResult{}, event, nil
 	}
 	var payload struct {
-		Status  string        `json:"status"`
-		Outputs []SegmentSpec `json:"outputs"`
-		Result  string        `json:"result"`
-		Error   string        `json:"error"`
-		Matched *bool         `json:"matched"`
-		Message *struct {
+		Status      string        `json:"status"`
+		Outputs     []SegmentSpec `json:"outputs"`
+		Target      Target        `json:"target,omitempty"`
+		Timing      string        `json:"timing,omitempty"`
+		Result      string        `json:"result"`
+		Error       string        `json:"error"`
+		Matched     *bool         `json:"matched"`
+		PassThrough *bool         `json:"pass_through,omitempty"`
+		Message     *struct {
 			Text *string `json:"text"`
 		} `json:"message"`
 		Consume         bool `json:"consume"`
 		StopPropagation bool `json:"stop_propagation"`
 	}
-	if err := json.Unmarshal(raw, &payload); err != nil {
+	if err := hookoutput.DecodeJSON(raw, &payload); err != nil {
 		return actionResult{}, event, fmt.Errorf("decode hook.v2 event result: %w", err)
 	}
 	if status := strings.TrimSpace(payload.Status); status != "" && status != "completed" {
 		return actionResult{}, event, fmt.Errorf("one-shot hook.v2 returned unsupported status %q", status)
 	}
-	result := actionResult{Result: payload.Result, Error: payload.Error, Matched: payload.Matched}
+	result := actionResult{Result: payload.Result, Error: payload.Error, Matched: payload.Matched, PassThrough: payload.PassThrough}
 	if len(payload.Outputs) > 0 {
-		for _, spec := range payload.Outputs {
-			out, err := buildSegmentOutput(resolveSegmentSpecPath(spec, action.sourceBaseDir()), delivery.Target{}, render(action.Timing, event, state))
-			if err != nil {
-				return result, event, err
-			}
-			event.Outputs = append(event.Outputs, out)
+		outputs, err := hookoutput.BuildGroup(hookoutput.Group{Outputs: payload.Outputs, Target: payload.Target, Timing: payload.Timing}, hookoutput.BuildOptions{BaseDir: action.sourceBaseDir(), DefaultTarget: renderedActionTarget(action, event, state), DefaultTiming: render(action.Timing, event, state)})
+		if err != nil {
+			return result, event, err
 		}
+		event.Outputs = append(event.Outputs, outputs...)
 	}
 	if payload.Message != nil && payload.Message.Text != nil {
 		field := strings.TrimSpace(action.Field)
@@ -322,7 +324,7 @@ func (m Module) runExecV1(ctx context.Context, event hook.Event, action Action, 
 			"plugin_name": action.source.PluginName,
 			"plugin_dir":  action.source.BaseDir,
 			"config_path": action.source.ConfigPath,
-			"rule_name":   firstNonEmpty(action.source.FinalName, action.Name),
+			"rule_name":   firstNonEmpty(action.source.FinalName, action.ActionName),
 			"cwd":         cwd,
 		},
 	}
@@ -402,7 +404,7 @@ func (m Module) handleProtocolFrame(ctx context.Context, stdin io.Writer, event 
 	typ := frameString(frame, "type")
 	switch typ {
 	case "output":
-		outputs, err := protocolFrameOutputs(frame, action, render(action.Timing, event, state), lineNo, typ, line)
+		outputs, err := protocolFrameOutputs(frame, action, renderedActionTarget(action, event, state), render(action.Timing, event, state), lineNo, typ, line)
 		if err != nil {
 			return event, actionResult{Error: err.Error()}, false, err
 		}
@@ -522,7 +524,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 		if !ok || caller == nil {
 			return nil, fmt.Errorf("platform %q does not support api calls", platformName)
 		}
-		m.audit("hook.platform_call", "platform", platformName, "api", api, "rule", firstNonEmpty(action.source.FinalName, action.Name))
+		m.audit("hook.platform_call", "platform", platformName, "api", api, "rule", firstNonEmpty(action.source.FinalName, action.ActionName))
 		resp, err := caller.CallPlatformAPI(ctx, api, callParams)
 		if err != nil {
 			return nil, err
@@ -537,7 +539,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 		if err != nil {
 			return nil, err
 		}
-		outputs, err := protocolOutputsFromRaw(paramsMap["outputs"], action, render(action.Timing, event, state), "params.outputs")
+		outputs, err := protocolOutputsFromMap(paramsMap, action, renderedActionTarget(action, event, state), render(action.Timing, event, state), "params.outputs")
 		if err != nil {
 			return nil, err
 		}
@@ -552,7 +554,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 		return map[string]any{"available": false}, nil
 	case "hook.log":
 		if m.Logger != nil {
-			m.Logger.Info("hook plugin log", "rule", firstNonEmpty(action.source.FinalName, action.Name), "params", string(frame["params"]))
+			m.Logger.Info("hook plugin log", "rule", firstNonEmpty(action.source.FinalName, action.ActionName), "params", string(frame["params"]))
 		}
 		return map[string]any{"ok": true}, nil
 	default:
@@ -560,8 +562,8 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 	}
 }
 
-func protocolFrameOutputs(frame map[string]json.RawMessage, action Action, timing string, lineNo int, typ, line string) ([]delivery.Output, error) {
-	outputs, err := protocolOutputsFromRaw(frame["outputs"], action, timing, "outputs")
+func protocolFrameOutputs(frame map[string]json.RawMessage, action Action, target Target, timing string, lineNo int, typ, line string) ([]delivery.Output, error) {
+	outputs, err := protocolOutputsFromMap(frame, action, target, timing, "outputs")
 	if err == nil {
 		return outputs, nil
 	}
@@ -571,26 +573,32 @@ func protocolFrameOutputs(frame map[string]json.RawMessage, action Action, timin
 	return nil, protocolFrameError(lineNo, typ, line, err.Error())
 }
 
-func protocolOutputsFromRaw(raw json.RawMessage, action Action, timing, fieldName string) ([]delivery.Output, error) {
+func protocolOutputsFromMap(values map[string]json.RawMessage, action Action, defaultTarget Target, defaultTiming, fieldName string) ([]delivery.Output, error) {
+	raw := values["outputs"]
 	if len(raw) == 0 {
 		return nil, fmt.Errorf("missing required field %q; expected an array of segment objects", fieldName)
 	}
 	var specs []SegmentSpec
-	if err := json.Unmarshal(raw, &specs); err != nil {
+	if err := hookoutput.DecodeJSON(raw, &specs); err != nil {
 		return nil, fmt.Errorf("invalid field %q: %w", fieldName, err)
 	}
 	if len(specs) == 0 {
 		return nil, fmt.Errorf("field %q must contain at least one segment object", fieldName)
 	}
-	outputs := make([]delivery.Output, 0, len(specs))
-	for _, seg := range specs {
-		out, err := buildSegmentOutput(resolveSegmentSpecPath(seg, action.sourceBaseDir()), delivery.Target{}, timing)
-		if err != nil {
-			return nil, err
+	var target Target
+	if rawTarget := values["target"]; len(rawTarget) > 0 {
+		if err := hookoutput.DecodeJSON(rawTarget, &target); err != nil {
+			return nil, fmt.Errorf("invalid field \"target\": %w", err)
 		}
-		outputs = append(outputs, out)
 	}
-	return outputs, nil
+	return hookoutput.BuildGroup(hookoutput.Group{Outputs: specs, Target: target, Timing: rawString(values["timing"])}, hookoutput.BuildOptions{BaseDir: action.sourceBaseDir(), DefaultTarget: defaultTarget, DefaultTiming: defaultTiming})
+}
+
+func renderedActionTarget(action Action, event hook.Event, state state) hookoutput.Target {
+	return hookoutput.Target{
+		Platform: render(action.Target.Platform, event, state), ScopeID: render(action.Target.ScopeID, event, state),
+		PrivateUserID: render(action.Target.PrivateUserID, event, state), GroupID: render(action.Target.GroupID, event, state), Superadmins: action.Target.Superadmins,
+	}
 }
 
 func (m Module) sendProtocolOutput(ctx context.Context, event hook.Event, outputs []delivery.Output) (delivery.Receipt, error) {
@@ -781,7 +789,7 @@ func (w *execStderrLogger) emitLocked(line string) {
 		w.tail.Add(line)
 	}
 	if line != "" && w.module.Logger != nil {
-		w.module.Logger.Info("hook exec stderr", "rule", firstNonEmpty(w.action.source.FinalName, w.action.Name), "line", line)
+		w.module.Logger.Info("hook exec stderr", "rule", firstNonEmpty(w.action.source.FinalName, w.action.ActionName), "line", line)
 	}
 }
 
@@ -820,19 +828,6 @@ func (a Action) sourceStrictDir() string {
 
 func (a Action) hasStrictDir() bool {
 	return strings.TrimSpace(a.source.StrictDir) != ""
-}
-
-func resolveSegmentSpecPath(spec SegmentSpec, base string) SegmentSpec {
-	spec.Path = resolveLocalPath(spec.Path, base)
-	return spec
-}
-
-func resolveLocalPath(path, base string) string {
-	path = strings.TrimSpace(path)
-	if path == "" || base == "" || filepath.IsAbs(path) || delivery.IsDirectMediaSource(path) {
-		return path
-	}
-	return filepath.Join(base, path)
 }
 
 func splitExecCommand(command string) ([]string, error) {

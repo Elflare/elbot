@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -58,6 +59,10 @@ func TestExecHelperProcess(t *testing.T) {
 		writeProtocolTestResult(map[string]any{"status": "completed", "result": result})
 	case "unmatched":
 		writeProtocolTestResult(map[string]any{"status": "completed", "matched": false, "outputs": []map[string]any{{"kind": "text", "text": "should not survive"}}})
+	case "pass-true":
+		writeProtocolTestResult(map[string]any{"status": "completed", "pass_through": true})
+	case "pass-false":
+		writeProtocolTestResult(map[string]any{"status": "completed", "pass_through": false})
 	case "stderr-success":
 		fmt.Fprintln(os.Stderr, "plugin diagnostic")
 		writeProtocolTestResult(map[string]any{"status": "completed", "result": "ok"})
@@ -858,7 +863,7 @@ func TestRuleToolActionLeavesRiskAndAuthorizationToHook(t *testing.T) {
 	}
 
 	got, err := Module{Opts: Options{Tools: registry}}.runRule(context.Background(), Rule{Actions: []Action{
-		{Name: "critical", Type: "tool", Tool: "hook_test_critical", Arguments: `{}`},
+		{ActionName: "critical", Type: "tool", Tool: "hook_test_critical", Arguments: `{}`},
 		{Type: "send", Text: "{{actions.critical.result}}"},
 	}}, hook.Event{Point: hook.PointLLMResponseReceived, Actor: hook.ActorContext{Role: "user"}})
 	if err != nil {
@@ -923,7 +928,7 @@ func TestExecDoneMessageWritesConfiguredFieldAndResult(t *testing.T) {
 	module := Module{}
 	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "old"}}
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
-		{Name: "script", Type: "exec", Command: execHelperCommand("done-message"), Field: "llm.text"},
+		{ActionName: "script", Type: "exec", Command: execHelperCommand("done-message"), Field: "llm.text"},
 		{Type: "send", Text: "{{actions.script.result}}"},
 	}}, event)
 	if err != nil {
@@ -973,9 +978,9 @@ func TestExecSuccessLogsStderrWithoutReadFailure(t *testing.T) {
 	var logs bytes.Buffer
 	module := Module{Logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))}
 	_, err := module.runRule(context.Background(), Rule{Actions: []Action{{
-		Name:    "script",
-		Type:    "exec",
-		Command: execHelperCommand("stderr-success"),
+		ActionName: "script",
+		Type:       "exec",
+		Command:    execHelperCommand("stderr-success"),
 	}}}, hook.Event{Point: hook.PointLLMResponseReceived})
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
@@ -1004,10 +1009,34 @@ func TestExecFlushesStderrWithoutTrailingNewline(t *testing.T) {
 	}
 }
 
+func TestExecPassThroughOverridesRuleControl(t *testing.T) {
+	tests := []struct {
+		name        string
+		mode        string
+		consume     bool
+		stop        bool
+		wantControl hook.Control
+	}{
+		{name: "true allows propagation", mode: "pass-true", consume: true, stop: true, wantControl: hook.Control{}},
+		{name: "false blocks propagation", mode: "pass-false", wantControl: hook.Control{Consume: true, StopPropagation: true}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := (Module{}).runRule(context.Background(), Rule{Name: "pass", Consume: tc.consume, StopPropagation: tc.stop, Actions: []Action{{Type: "exec", Command: execHelperCommand(tc.mode)}}}, hook.Event{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Control != tc.wantControl {
+				t.Fatalf("control = %#v, want %#v", got.Control, tc.wantControl)
+			}
+		})
+	}
+}
+
 func TestExecActionsRunSynchronouslyInOrder(t *testing.T) {
 	module := Module{}
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
-		{Name: "first", Type: "exec", Command: execHelperCommand("done-result", "one")},
+		{ActionName: "first", Type: "exec", Command: execHelperCommand("done-result", "one")},
 		{Type: "send", Text: "{{actions.first.result}}"},
 	}}, hook.Event{Point: hook.PointLLMResponseReceived})
 	if err != nil {
@@ -1185,7 +1214,7 @@ func TestSendActionWithOutputs(t *testing.T) {
 		{Type: "send", Timing: delivery.DeliveryAfterAssistant, Outputs: []SegmentSpec{
 			{Kind: "text", Text: "检测到关键词"},
 			{Kind: "image", Path: "alert.png"},
-			{Kind: "emoticon", Name: "微笑", Path: "emoticons/微笑/01.png"},
+			{Kind: "emoticon", Name: "微笑", EmoticonID: "14"},
 		}},
 	}}, event)
 	if err != nil {
@@ -1200,7 +1229,7 @@ func TestSendActionWithOutputs(t *testing.T) {
 	if got.Outputs[1].Kind != delivery.KindImage || got.Outputs[1].Source.Path != "alert.png" {
 		t.Fatalf("output[1] = %#v", got.Outputs[1])
 	}
-	if got.Outputs[2].Kind != delivery.KindEmoticon || got.Outputs[2].Name != "微笑" || got.Outputs[2].Source.Path != "emoticons/微笑/01.png" {
+	if got.Outputs[2].Kind != delivery.KindEmoticon || got.Outputs[2].Name != "微笑" || got.Outputs[2].EmoticonID != "14" {
 		t.Fatalf("output[2] = %#v", got.Outputs[2])
 	}
 	for i, out := range got.Outputs {
@@ -1229,9 +1258,24 @@ func TestSendActionWithOutputsBase64(t *testing.T) {
 	}
 }
 
+func TestSendQuickMediaMatchesSingleOutput(t *testing.T) {
+	event := hook.Event{Point: hook.PointLLMResponseReceived}
+	quick, err := makeOutputs(Action{Type: "send", Kind: "image", Base64: "aGVsbG8=", Name: "hello.png", MIMEType: "image/png"}, event, state{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	grouped, err := makeOutputs(Action{Type: "send", Outputs: []SegmentSpec{{Kind: "image", Base64: "aGVsbG8=", Name: "hello.png", MIMEType: "image/png"}}}, event, state{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(quick, grouped) {
+		t.Fatalf("quick = %#v, grouped = %#v", quick, grouped)
+	}
+}
+
 func TestBuildSegmentOutputRejectsLargeBase64(t *testing.T) {
 	encoded := strings.Repeat("A", base64.StdEncoding.EncodedLen(maxHookOutputBase64Bytes+1))
-	_, err := buildSegmentOutput(SegmentSpec{Kind: "image", Base64: encoded}, delivery.Target{}, "")
+	_, err := makeOutputs(Action{Type: "send", Outputs: []SegmentSpec{{Kind: "image", Base64: encoded}}}, hook.Event{}, state{})
 	if err == nil || !strings.Contains(err.Error(), "base64 output exceeds 10 MiB decoded limit") || !strings.Contains(err.Error(), "outputs[].path") {
 		t.Fatalf("err = %v", err)
 	}

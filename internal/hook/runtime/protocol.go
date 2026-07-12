@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"elbot/internal/delivery"
 	"elbot/internal/hook"
+	hookoutput "elbot/internal/hook/output"
 	"elbot/internal/llm"
 )
 
@@ -53,23 +53,11 @@ func eventMatch(event hook.Event) hook.MatchContext {
 }
 
 type eventResult struct {
-	Status         string       `json:"status"`
-	ConversationID string       `json:"conversation_id,omitempty"`
-	ExpiresAt      time.Time    `json:"expires_at,omitempty"`
-	Outputs        []outputSpec `json:"outputs,omitempty"`
-	PassThrough    *bool        `json:"pass_through,omitempty"`
-}
-
-type outputSpec struct {
-	Kind             string          `json:"kind"`
-	Text             string          `json:"text,omitempty"`
-	Name             string          `json:"name,omitempty"`
-	AltText          string          `json:"alt_text,omitempty"`
-	URL              string          `json:"url,omitempty"`
-	Path             string          `json:"path,omitempty"`
-	MIMEType         string          `json:"mime_type,omitempty"`
-	ReplyToMessageID string          `json:"reply_to_message_id,omitempty"`
-	Target           delivery.Target `json:"target,omitempty"`
+	Status         string    `json:"status"`
+	ConversationID string    `json:"conversation_id,omitempty"`
+	ExpiresAt      time.Time `json:"expires_at,omitempty"`
+	hookoutput.Group
+	PassThrough *bool `json:"pass_through,omitempty"`
 }
 
 type stderrLogger struct {

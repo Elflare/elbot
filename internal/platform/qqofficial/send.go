@@ -50,7 +50,9 @@ func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Out
 	case delivery.KindReply:
 		text := delivery.FallbackText(out)
 		return a.sendText(ctx, t, text)
-	case delivery.KindImage, delivery.KindEmoticon:
+	case delivery.KindEmoticon:
+		return a.sendText(ctx, t, delivery.FallbackText(out))
+	case delivery.KindImage:
 		return a.sendMedia(ctx, t, out, fileTypeImage)
 	case delivery.KindFile:
 		return a.sendMedia(ctx, t, out, fileTypeFile)

@@ -302,7 +302,9 @@ func (a *Adapter) sendToTarget(ctx context.Context, t target, out delivery.Outpu
 	case delivery.KindReply:
 		replyID, _ := strconv.ParseInt(strings.TrimSpace(out.ReplyToPlatformMessageID), 10, 64)
 		return a.sendText(ctx, t, out.Text, replyID, shouldAttachRiskKeyboard(out.Text))
-	case delivery.KindImage, delivery.KindEmoticon:
+	case delivery.KindEmoticon:
+		return a.sendSticker(ctx, t, out, 0)
+	case delivery.KindImage:
 		return a.sendPhoto(ctx, t, out, 0)
 	case delivery.KindFile:
 		return a.sendDocument(ctx, t, out, 0)
@@ -400,6 +402,11 @@ func (a *Adapter) sendDocument(ctx context.Context, t target, out delivery.Outpu
 	return receiptWithMessageID(msg.MessageID), err
 }
 
+func (a *Adapter) sendSticker(ctx context.Context, t target, out delivery.Output, replyTo int64) (delivery.Receipt, error) {
+	msg, err := a.client.sendSticker(ctx, t.ChatID, out.EmoticonID, replyTo)
+	return receiptWithMessageID(msg.MessageID), err
+}
+
 func targetFromDelivery(outTarget delivery.Target) (target, error) {
 	if strings.TrimSpace(outTarget.PrivateUserID) == "" && strings.TrimSpace(outTarget.GroupID) == "" {
 		scope := strings.TrimSpace(outTarget.ScopeID)
@@ -435,11 +442,8 @@ func mediaSourceName(out delivery.Output) string {
 	}
 	for _, value := range []string{out.Source.Path, out.Source.URL} {
 		value = strings.TrimSpace(value)
-		if value == "" || delivery.IsBase64MediaSource(value) {
+		if value == "" {
 			continue
-		}
-		if path, err := delivery.FileURIToPath(value); err == nil {
-			value = path
 		}
 		if name := strings.TrimSpace(filepath.Base(value)); name != "" && name != "." && name != string(filepath.Separator) {
 			return name

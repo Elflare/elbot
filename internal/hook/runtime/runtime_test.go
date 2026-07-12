@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/delivery"
 	"elbot/internal/hook"
 )
 
@@ -44,7 +45,9 @@ func TestHookRuntimeHelperProcess(t *testing.T) {
 			writeHelperResponse(id, map[string]any{})
 		case "event.handle":
 			eventCount++
-			if eventCount == 1 {
+			if helperActorID(frame) == "test:output" {
+				writeHelperResponse(id, map[string]any{"status": "completed", "outputs": []map[string]any{{"kind": "image", "base64": "aGVsbG8=", "name": "hello.png"}}, "target": map[string]any{"platform": "qqonebot", "group_id": "42"}, "timing": "after_assistant"})
+			} else if eventCount == 1 {
 				writeHelperResponse(id, map[string]any{"status": "waiting", "conversation_id": "demo", "expires_at": time.Now().Add(10 * time.Second).UTC().Format(time.RFC3339Nano)})
 			} else if helperActorID(frame) == "test:defaults" {
 				writeHelperResponse(id, map[string]any{"status": "completed"})
@@ -57,6 +60,24 @@ func TestHookRuntimeHelperProcess(t *testing.T) {
 		default:
 			writeHelperError(id, "unknown method")
 		}
+	}
+}
+
+func TestManagerBuildsCanonicalRuntimeOutputs(t *testing.T) {
+	manager := NewManager(Options{SharedDir: t.TempDir()})
+	config := Config{Mode: ModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 2, MaxWaitSeconds: 30, Restart: RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}, ID: "demo", Dir: t.TempDir()}
+	if err := manager.Apply([]Config{config}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	t.Cleanup(func() { manager.Close(context.Background()) })
+	waitForStatus(t, manager, "demo", StatusReady)
+	event := hook.Event{Actor: hook.ActorContext{ID: "test:output"}}
+	got, err := manager.Handle(context.Background(), "demo", event, hook.Control{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Outputs) != 1 || string(got.Outputs[0].Source.Data) != "hello" || got.Outputs[0].Target.GroupID != "42" || got.Outputs[0].Target.Platform != "qqonebot" || delivery.DeliveryTiming(got.Outputs[0]) != delivery.DeliveryAfterAssistant {
+		t.Fatalf("outputs = %#v", got.Outputs)
 	}
 }
 

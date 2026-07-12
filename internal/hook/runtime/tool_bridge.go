@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -184,24 +183,6 @@ func (w *worker) schemas() []llm.ToolSchema {
 		}
 	}
 	return out
-}
-
-func (w *worker) outputs(specs []outputSpec) ([]delivery.Output, error) {
-	outputs := make([]delivery.Output, 0, len(specs))
-	for _, spec := range specs {
-		kind := delivery.Kind(strings.TrimSpace(spec.Kind))
-		switch kind {
-		case delivery.KindText, delivery.KindEmoticon, delivery.KindImage, delivery.KindFile, delivery.KindAt, delivery.KindReply:
-		default:
-			return nil, fmt.Errorf("unsupported hook output kind %q", spec.Kind)
-		}
-		path := strings.TrimSpace(spec.Path)
-		if path != "" && !filepath.IsAbs(path) {
-			path = filepath.Join(w.config.Dir, path)
-		}
-		outputs = append(outputs, delivery.Output{Kind: kind, Text: spec.Text, Name: spec.Name, AltText: spec.AltText, ReplyToPlatformMessageID: spec.ReplyToMessageID, Source: delivery.Source{URL: spec.URL, Path: path, MIMEType: spec.MIMEType}, Target: spec.Target})
-	}
-	return outputs, nil
 }
 
 func contains(values []string, target string) bool {

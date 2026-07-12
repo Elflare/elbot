@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"elbot/internal/platform"
@@ -244,13 +243,13 @@ func TestPrepareInboundAttachmentsSavesFileAttachment(t *testing.T) {
 	}
 }
 
-func TestPrepareSourceUsesDirectPathSources(t *testing.T) {
+func TestPrepareSourceUsesStructuredSources(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "a.txt")
 	if err := os.WriteFile(path, []byte("from-file"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	httpSource, err := prepareSource("", "https://example.com/a.png", nil)
+	httpSource, err := prepareSource("https://example.com/a.png", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +257,7 @@ func TestPrepareSourceUsesDirectPathSources(t *testing.T) {
 		t.Fatalf("http source = %#v", httpSource)
 	}
 
-	base64Source, err := prepareSource("", "base64://ZnJvbS1iYXNlNjQ=", nil)
+	base64Source, err := prepareSource("", "", []byte("from-base64"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +265,7 @@ func TestPrepareSourceUsesDirectPathSources(t *testing.T) {
 		t.Fatalf("base64 data = %q", string(base64Source.Data))
 	}
 
-	fileSource, err := prepareSource("", "file:///"+strings.TrimLeft(filepath.ToSlash(path), "/"), nil)
+	fileSource, err := prepareSource("", path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
