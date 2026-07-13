@@ -65,38 +65,38 @@ type pluginConfig struct {
 }
 
 type Rule struct {
-	Name            string           `toml:"name"`
-	Description     string           `toml:"description"`
-	On              string           `toml:"on"`
-	Priority        int              `toml:"priority"`
-	Enabled         *bool            `toml:"enabled"`
-	RequireWakeup   *bool            `toml:"require_wakeup"`
-	If              string           `toml:"if"`
-	Op              string           `toml:"op"`
-	Value           string           `toml:"value"`
-	Always          bool             `toml:"always"`
-	Match           []hook.Condition `toml:"match"`
-	Roles           []string         `toml:"roles"`
-	ActorRoles      []string         `toml:"actor_roles"`
-	GroupRoles      []string         `toml:"group_roles"`
-	Action          string           `toml:"action"`
-	Actions         []Action         `toml:"actions"`
-	Field           string           `toml:"field"`
-	Text            string           `toml:"text"`
-	Pattern         string           `toml:"pattern"`
-	Replace         string           `toml:"replace"`
-	Kind            string           `toml:"kind"`
-	Path            string           `toml:"path"`
-	Timing          string           `toml:"timing"`
-	Tool            string           `toml:"tool"`
-	Args            string           `toml:"arguments"`
-	Command         string           `toml:"command"`
-	Cwd             string           `toml:"cwd"`
-	TimeoutSeconds  int              `toml:"timeout_seconds"`
-	All             bool             `toml:"all"`
-	Target          Target           `toml:"target"`
-	Consume         bool             `toml:"consume"`
-	StopPropagation bool             `toml:"stop_propagation"`
+	Name            string            `toml:"name"`
+	Description     string            `toml:"description"`
+	On              string            `toml:"on"`
+	Priority        int               `toml:"priority"`
+	Enabled         *bool             `toml:"enabled"`
+	Wakeup          hook.WakeupPolicy `toml:"wakeup"`
+	If              string            `toml:"if"`
+	Op              string            `toml:"op"`
+	Value           string            `toml:"value"`
+	Always          bool              `toml:"always"`
+	Match           []hook.Condition  `toml:"match"`
+	Roles           []string          `toml:"roles"`
+	ActorRoles      []string          `toml:"actor_roles"`
+	GroupRoles      []string          `toml:"group_roles"`
+	Action          string            `toml:"action"`
+	Actions         []Action          `toml:"actions"`
+	Field           string            `toml:"field"`
+	Text            string            `toml:"text"`
+	Pattern         string            `toml:"pattern"`
+	Replace         string            `toml:"replace"`
+	Kind            string            `toml:"kind"`
+	Path            string            `toml:"path"`
+	Timing          string            `toml:"timing"`
+	Tool            string            `toml:"tool"`
+	Args            string            `toml:"arguments"`
+	Command         string            `toml:"command"`
+	Cwd             string            `toml:"cwd"`
+	TimeoutSeconds  int               `toml:"timeout_seconds"`
+	All             bool              `toml:"all"`
+	Target          Target            `toml:"target"`
+	Consume         bool              `toml:"consume"`
+	StopPropagation bool              `toml:"stop_propagation"`
 	source          ruleSource
 }
 
@@ -213,15 +213,15 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 				detail = fmt.Sprintf("%s\n\n(role partition %d/%d)", detail, roleIndex+1, len(registrations))
 			}
 			if err := registrar.Register(hook.Registration{
-				Point:         hook.Point(rule.On),
-				Priority:      priority,
-				PluginID:      rule.source.PluginName,
-				Name:          regName,
-				Description:   description,
-				Match:         match,
-				Block:         rule.source.Block,
-				Detail:        detail,
-				RequireWakeup: rule.RequireWakeup,
+				Point:       hook.Point(rule.On),
+				Priority:    priority,
+				PluginID:    rule.source.PluginName,
+				Name:        regName,
+				Description: description,
+				Match:       match,
+				Block:       rule.source.Block,
+				Detail:      detail,
+				Wakeup:      rule.Wakeup,
 				Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 					if rule.source.RuntimeID != "" {
 						if m.Opts.Runtime == nil {
@@ -871,7 +871,9 @@ func validateRule(rule Rule) error {
 	if err := rule.validateRoles(); err != nil {
 		return fmt.Errorf("hook rule %q: %w", rule.Name, err)
 	}
-
+	if err := rule.Wakeup.Validate(); err != nil {
+		return fmt.Errorf("hook rule %q: %w", rule.Name, err)
+	}
 	for _, action := range rule.Actions {
 		if strings.TrimSpace(action.Type) == "" {
 			return fmt.Errorf("hook rule %q has action without type", rule.Name)
@@ -1365,8 +1367,8 @@ func formatRuleDetail(rule Rule) string {
 	if rule.StopPropagation {
 		sb.WriteString("\nstop_propagation: true")
 	}
-	if rule.RequireWakeup != nil && !*rule.RequireWakeup {
-		sb.WriteString("\nrequire_wakeup: false")
+	if rule.Wakeup != "" && rule.Wakeup != hook.WakeupRequired {
+		sb.WriteString("\nwakeup: " + string(rule.Wakeup))
 	}
 	if rule.Priority != 0 {
 		sb.WriteString(fmt.Sprintf("\npriority: %d", rule.Priority))

@@ -274,12 +274,11 @@ func TestManagerObserverSkipsUnmatchedAndWakeupSkippedHooks(t *testing.T) {
 	manager := NewManager()
 	observed := 0
 	called := 0
-	noWakeup := false
 	if err := manager.Register(Registration{
-		Point:         PointLLMResponseReceived,
-		Name:          "unmatched",
-		Match:         Contains("llm.text", "[["),
-		RequireWakeup: &noWakeup,
+		Point:  PointLLMResponseReceived,
+		Name:   "unmatched",
+		Match:  Contains("llm.text", "[["),
+		Wakeup: WakeupAny,
 		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
 			called++
 			return event, nil
@@ -452,29 +451,49 @@ func TestManagerPassesRegexMatchContext(t *testing.T) {
 	}
 }
 
-func TestManagerFiltersByWakeupRequirement(t *testing.T) {
+func TestManagerFiltersByWakeupPolicy(t *testing.T) {
 	manager := NewManager()
-	manager.SetWakeupFunc(func(context.Context, Event) bool { return false })
+	woken := false
+	manager.SetWakeupFunc(func(context.Context, Event) bool { return woken })
 	calls := []string{}
-	allowPassive := false
 	if err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "default", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
 		calls = append(calls, "default")
 		return event, nil
 	})}); err != nil {
 		t.Fatalf("Register default: %v", err)
 	}
-	if err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "passive", Match: Always(), RequireWakeup: &allowPassive, Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
-		calls = append(calls, "passive")
+	if err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "any", Match: Always(), Wakeup: WakeupAny, Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+		calls = append(calls, "any")
 		return event, nil
 	})}); err != nil {
-		t.Fatalf("Register passive: %v", err)
+		t.Fatalf("Register any: %v", err)
+	}
+	if err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "forbidden", Match: Always(), Wakeup: WakeupForbidden, Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+		calls = append(calls, "forbidden")
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register forbidden: %v", err)
 	}
 
 	if _, err := manager.Run(context.Background(), Event{Point: PointPlatformMessageReceived}); err != nil {
-		t.Fatalf("Run returned error: %v", err)
+		t.Fatalf("Run unwoken message: %v", err)
 	}
-	if !reflect.DeepEqual(calls, []string{"passive"}) {
+	woken = true
+	if _, err := manager.Run(context.Background(), Event{Point: PointPlatformMessageReceived}); err != nil {
+		t.Fatalf("Run woken message: %v", err)
+	}
+	if !reflect.DeepEqual(calls, []string{"any", "forbidden", "default", "any"}) {
 		t.Fatalf("calls = %#v", calls)
+	}
+}
+
+func TestManagerRejectsUnsupportedWakeupPolicy(t *testing.T) {
+	manager := NewManager()
+	err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "invalid", Match: Always(), Wakeup: "sometimes", Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+		return event, nil
+	})})
+	if err == nil || !strings.Contains(err.Error(), `unsupported wakeup policy "sometimes"`) {
+		t.Fatalf("err = %v", err)
 	}
 }
 

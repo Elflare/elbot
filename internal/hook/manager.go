@@ -15,16 +15,16 @@ import (
 
 // Registration describes one explicitly matched hook handler.
 type Registration struct {
-	Point         Point
-	Priority      int
-	PluginID      string
-	Name          string
-	Description   string
-	Match         Match
-	Block         BlockPolicy
-	Handler       Handler
-	Detail        string
-	RequireWakeup *bool
+	Point       Point
+	Priority    int
+	PluginID    string
+	Name        string
+	Description string
+	Match       Match
+	Block       BlockPolicy
+	Handler     Handler
+	Detail      string
+	Wakeup      WakeupPolicy
 }
 
 // Info describes a registered hook for inspection commands.
@@ -86,6 +86,18 @@ type DefaultManager struct {
 
 type WakeupFunc func(context.Context, Event) bool
 
+// WakeupPolicy controls whether a hook accepts woken or unwoken messages.
+type WakeupPolicy string
+
+const (
+	// WakeupRequired accepts only woken messages and is the default.
+	WakeupRequired WakeupPolicy = "required"
+	// WakeupAny accepts messages regardless of wakeup state.
+	WakeupAny WakeupPolicy = "any"
+	// WakeupForbidden accepts only unwoken messages.
+	WakeupForbidden WakeupPolicy = "forbidden"
+)
+
 type activeHook struct {
 	name     string
 	pluginID string
@@ -104,16 +116,16 @@ type ObserverInfo struct {
 type Observer func(context.Context, Event, ObserverInfo) (context.Context, func())
 
 type registration struct {
-	priority      int
-	order         int
-	pluginID      string
-	name          string
-	description   string
-	match         Match
-	block         BlockPolicy
-	handler       Handler
-	detail        string
-	requireWakeup bool
+	priority    int
+	order       int
+	pluginID    string
+	name        string
+	description string
+	match       Match
+	block       BlockPolicy
+	handler     Handler
+	detail      string
+	wakeup      WakeupPolicy
 }
 
 func NewManager() *DefaultManager {
@@ -145,7 +157,7 @@ func (m *DefaultManager) Register(reg Registration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.next++
-	m.handlers[reg.Point] = append(m.handlers[reg.Point], registration{priority: reg.Priority, order: m.next, pluginID: strings.TrimSpace(reg.PluginID), name: reg.Name, description: strings.TrimSpace(reg.Description), match: reg.Match, block: reg.Block, handler: reg.Handler, detail: reg.Detail, requireWakeup: registrationRequireWakeup(reg)})
+	m.handlers[reg.Point] = append(m.handlers[reg.Point], registration{priority: reg.Priority, order: m.next, pluginID: strings.TrimSpace(reg.PluginID), name: reg.Name, description: strings.TrimSpace(reg.Description), match: reg.Match, block: reg.Block, handler: reg.Handler, detail: reg.Detail, wakeup: normalizeWakeupPolicy(reg.Wakeup)})
 	sort.SliceStable(m.handlers[reg.Point], func(i, j int) bool {
 		left := m.handlers[reg.Point][i]
 		right := m.handlers[reg.Point][j]
@@ -167,14 +179,34 @@ func validateRegistration(reg Registration) error {
 	if reg.Handler == nil {
 		return fmt.Errorf("hook handler is required")
 	}
+	if err := validateWakeupPolicy(reg.Wakeup); err != nil {
+		return fmt.Errorf("hook %q: %w", reg.Name, err)
+	}
 	if err := reg.Match.Validate(); err != nil {
 		return fmt.Errorf("hook %q match: %w", reg.Name, err)
 	}
 	return nil
 }
 
-func registrationRequireWakeup(reg Registration) bool {
-	return reg.RequireWakeup == nil || *reg.RequireWakeup
+func normalizeWakeupPolicy(policy WakeupPolicy) WakeupPolicy {
+	if policy == "" {
+		return WakeupRequired
+	}
+	return policy
+}
+
+func validateWakeupPolicy(policy WakeupPolicy) error {
+	switch normalizeWakeupPolicy(policy) {
+	case WakeupRequired, WakeupAny, WakeupForbidden:
+		return nil
+	default:
+		return fmt.Errorf("unsupported wakeup policy %q", policy)
+	}
+}
+
+// Validate reports whether policy is a supported wakeup policy.
+func (policy WakeupPolicy) Validate() error {
+	return validateWakeupPolicy(policy)
 }
 
 func (m *DefaultManager) Run(ctx context.Context, event Event) (Event, error) {
@@ -268,14 +300,19 @@ func (m *DefaultManager) handlersFor(point Point) []registration {
 }
 
 func (m *DefaultManager) skipForWakeup(ctx context.Context, event Event, reg registration) bool {
-	if !reg.requireWakeup {
+	if reg.wakeup == WakeupAny {
 		return false
 	}
 	wakeup := m.wakeupForRun()
 	if wakeup == nil {
 		return false
 	}
-	return !wakeup(ctx, event)
+	switch reg.wakeup {
+	case WakeupForbidden:
+		return wakeup(ctx, event)
+	default:
+		return !wakeup(ctx, event)
+	}
 }
 
 func (m *DefaultManager) wakeupForRun() WakeupFunc {

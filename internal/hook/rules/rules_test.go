@@ -324,12 +324,12 @@ func TestTurnOutputPreparedAllowsMessageText(t *testing.T) {
 	}
 }
 
-func TestLoadConfigAcceptsRequireWakeup(t *testing.T) {
+func TestLoadConfigAcceptsWakeupPolicy(t *testing.T) {
 	dir := t.TempDir()
 	content := `[[rules]]
-name = "passive"
+name = "passive_only"
 on = "platform.message.received"
-require_wakeup = false
+wakeup = "forbidden"
 always = true
 action = "send"
 text = "ok"
@@ -341,8 +341,16 @@ text = "ok"
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
-	if len(cfg.Rules) != 1 || cfg.Rules[0].RequireWakeup == nil || *cfg.Rules[0].RequireWakeup {
+	if len(cfg.Rules) != 1 || cfg.Rules[0].Wakeup != hook.WakeupForbidden {
 		t.Fatalf("rules = %#v", cfg.Rules)
+	}
+}
+
+func TestValidateRuleRejectsUnsupportedWakeupPolicy(t *testing.T) {
+	rule := Rule{Name: "invalid", On: string(hook.PointPlatformMessageReceived), Wakeup: "sometimes", Match: []hook.Condition{{Op: hook.MatchAlways}}, Actions: []Action{{Type: "send", Text: "ok"}}}
+	err := validateRule(rule)
+	if err == nil || !strings.Contains(err.Error(), `unsupported wakeup policy "sometimes"`) {
+		t.Fatalf("err = %v", err)
 	}
 }
 
