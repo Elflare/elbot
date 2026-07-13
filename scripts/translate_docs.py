@@ -2,8 +2,8 @@
 """Incrementally translate user-facing Markdown docs from docs/ to docs.en/.
 
 Chinese docs in docs/ are the source of truth. This script generates an English
-mirror under docs.en/ and stores per-segment translation cache in
-`docs.en/.translation-cache.json`.
+mirror under docs.en/ and stores one per-segment translation cache file per
+source document under the repository-local `.translation-cache/` directory.
 
 Only changed Markdown segments are sent to an OpenAI-compatible chat completions
 API. Code blocks are copied verbatim except selected documentation comments.
@@ -35,7 +35,8 @@ README_SOURCE = ROOT / "README.zh-CN.md"
 README_TARGET = ROOT / "README.md"
 CHANGELOG_SOURCE = ROOT / "CHANGELOG.md"
 CHANGELOG_TARGET = ROOT / "CHANGELOG.en.md"
-CACHE_PATH = TARGET_DIR / ".translation-cache.json"
+CACHE_DIR = ROOT / ".translation-cache"
+LEGACY_CACHE_PATH = TARGET_DIR / ".translation-cache.json"
 AUTO_HEADER_TEMPLATE = "<!-- This file is auto-translated from {source}. Do not edit manually. -->\n\n"
 PLACEHOLDER_TEMPLATE = "\ue000ELBOT_SEGMENT_{index}\ue000"
 
@@ -199,16 +200,18 @@ def extract_first_json_array(content: str) -> str | None:
     return None
 
 
-def read_json(path: Path) -> dict:
+def read_json(path: Path, default: dict | None = None) -> dict:
+    fallback = default or {}
     if not path.exists():
-        return {"version": 1, "segments": {}, "files": {}}
-    with path.open("r", encoding="utf-8") as f:
-        data = json.load(f)
+        return dict(fallback)
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        log(f"warning: cannot read cache {path.relative_to(ROOT).as_posix()}: {exc}")
+        return dict(fallback)
     if not isinstance(data, dict):
-        return {"version": 1, "segments": {}, "files": {}}
-    data.setdefault("version", 1)
-    data.setdefault("segments", {})
-    data.setdefault("files", {})
+        return dict(fallback)
     return data
 
 
@@ -217,6 +220,94 @@ def write_json(path: Path, data: dict) -> None:
     with path.open("w", encoding="utf-8", newline="\n") as f:
         json.dump(data, f, ensure_ascii=False, indent=2, sort_keys=True)
         f.write("\n")
+
+
+def cache_path_for_source(rel: str) -> Path:
+    source_path = Path(*rel.split("/"))
+    return CACHE_DIR / source_path.parent / f"{source_path.name}.json"
+
+
+def source_for_cache_path(path: Path) -> str:
+    rel = path.relative_to(CACHE_DIR).as_posix()
+    if not rel.endswith(".json"):
+        raise ValueError(f"invalid translation cache path: {rel}")
+    return rel.removesuffix(".json")
+
+
+def empty_doc_cache(doc: SourceDoc) -> dict:
+    return {
+        "version": 2,
+        "source": doc.source_rel,
+        "target": doc.target_rel,
+        "source_hash": "",
+        "updated_at": 0,
+        "segments": {},
+    }
+
+
+def read_doc_cache(doc: SourceDoc) -> dict:
+    cache = read_json(cache_path_for_source(doc.source_rel), empty_doc_cache(doc))
+    if cache.get("version") != 2 or cache.get("source") != doc.source_rel:
+        return empty_doc_cache(doc)
+    if not isinstance(cache.get("segments"), dict):
+        cache["segments"] = {}
+    return cache
+
+
+def migrate_legacy_cache(docs: list[SourceDoc]) -> list[Path]:
+    if not LEGACY_CACHE_PATH.exists():
+        return []
+    legacy = read_json(LEGACY_CACHE_PATH, {"version": 1, "segments": {}, "files": {}})
+    files = legacy.get("files")
+    segments = legacy.get("segments")
+    if not isinstance(files, dict) or not isinstance(segments, dict):
+        log("warning: legacy translation cache is invalid; leaving it in place")
+        return []
+
+    log("migrating legacy translation cache to per-document files")
+    changed_paths: list[Path] = []
+    current_sources = {doc.source_rel for doc in docs}
+    segments_by_source: dict[str, dict[str, dict]] = {}
+    for key, entry in segments.items():
+        if not isinstance(entry, dict):
+            continue
+        source_file = entry.get("source_file")
+        if isinstance(source_file, str) and source_file in current_sources:
+            segments_by_source.setdefault(source_file, {})[key] = entry
+
+    for doc in docs:
+        cache_path = cache_path_for_source(doc.source_rel)
+        if cache_path.exists():
+            existing = read_json(cache_path)
+            if existing.get("version") == 2 and existing.get("source") == doc.source_rel:
+                continue
+        file_entry = files.get(doc.source_rel, {})
+        if not isinstance(file_entry, dict):
+            file_entry = {}
+        cache = {
+            "version": 2,
+            "source": doc.source_rel,
+            "target": doc.target_rel,
+            "source_hash": file_entry.get("source_hash", ""),
+            "updated_at": file_entry.get("updated_at", 0),
+            "segments": segments_by_source.get(doc.source_rel, {}),
+        }
+        write_json(cache_path, cache)
+        changed_paths.append(cache_path)
+
+    stale_sources = set(files) - current_sources
+    for rel in sorted(stale_sources):
+        target = target_for_deleted_source(rel)
+        if target is not None and target.exists() and target != README_TARGET:
+            ensure_generated_path(target)
+            target.unlink()
+            changed_paths.append(target)
+
+    if all(cache_path_for_source(doc.source_rel).exists() for doc in docs):
+        ensure_generated_path(LEGACY_CACHE_PATH)
+        LEGACY_CACHE_PATH.unlink()
+        changed_paths.append(LEGACY_CACHE_PATH)
+    return changed_paths
 
 
 def all_source_docs() -> list[SourceDoc]:
@@ -523,6 +614,7 @@ class MarkdownRenderer:
         cached = self.cache.get("segments", {}).get(segment.key)
         if cached and cached.get("source_hash") == segment.hash:
             self.reused_count += 1
+            self.cache_entries[segment.key] = cached
             return unmask_inline_code(cached["translation"], masks)
 
         placeholder = PLACEHOLDER_TEMPLATE.format(index=self.placeholder_index)
@@ -666,25 +758,26 @@ def is_zero_ref(ref: str) -> bool:
     return bool(ref) and set(ref) == {"0"}
 
 
-def missing_generated_targets(docs: list[SourceDoc], cache: dict) -> list[str]:
-    cached_files = cache.get("files", {})
-    missing: list[str] = []
+def stale_source_names(docs: list[SourceDoc], caches: dict[str, dict]) -> set[str]:
+    stale: set[str] = set()
     for doc in docs:
-        if doc.source_rel not in cached_files or not doc.target.exists():
-            missing.append(doc.source_rel)
-    return missing
+        cache = caches[doc.source_rel]
+        source_hash = sha256_text(doc.source.read_text(encoding="utf-8"))
+        if cache.get("source_hash") != source_hash or not doc.target.exists():
+            stale.add(doc.source_rel)
+    return stale
 
 
-def changed_source_names(args: argparse.Namespace, docs: list[SourceDoc], cache: dict) -> set[str] | None:
+def changed_source_names(
+    args: argparse.Namespace,
+    docs: list[SourceDoc],
+    caches: dict[str, dict],
+) -> set[str] | None:
     if not args.changed_only:
         return None
-    missing = missing_generated_targets(docs, cache)
-    if missing:
-        log(f"generated docs are incomplete; falling back to full scan: {', '.join(missing)}")
-        return None
-    if not CACHE_PATH.exists():
-        log("translation cache is missing; falling back to full scan")
-        return None
+    stale = stale_source_names(docs, caches)
+    if stale:
+        log(f"including stale translated source(s): {', '.join(sorted(stale))}")
     if not args.base_ref or not args.head_ref or is_zero_ref(args.base_ref):
         log("changed-only requested but git refs are incomplete; falling back to full scan")
         return None
@@ -701,33 +794,46 @@ def changed_source_names(args: argparse.Namespace, docs: list[SourceDoc], cache:
         log(f"git diff failed; falling back to full scan: {exc}")
         return None
     changed = {line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()}
-    return {name for name in changed if name == "README.zh-CN.md" or name == "CHANGELOG.md" or (name.startswith("docs/") and name.endswith(".md"))}
+    git_changed = {
+        name
+        for name in changed
+        if name == "README.zh-CN.md"
+        or name == "CHANGELOG.md"
+        or (name.startswith("docs/") and name.endswith(".md"))
+    }
+    return git_changed | stale
 
 
-def select_source_docs(args: argparse.Namespace, cache: dict) -> tuple[list[SourceDoc], set[str], set[str] | None]:
-    docs = all_source_docs()
+def select_source_docs(
+    args: argparse.Namespace,
+    docs: list[SourceDoc],
+    caches: dict[str, dict],
+) -> tuple[list[SourceDoc], set[str], set[str] | None]:
     current_sources = {doc.source_rel for doc in docs}
-    changed = changed_source_names(args, docs, cache)
+    changed = changed_source_names(args, docs, caches)
     if changed is None:
         return docs, current_sources, None
     selected = [doc for doc in docs if doc.source_rel in changed]
     return selected, current_sources, changed
 
 
-def prune_deleted_sources(cache: dict, current_sources: set[str]) -> list[Path]:
-    deleted_targets: list[Path] = []
-    stale_sources = set(cache.get("files", {})) - current_sources
-    cache["files"] = {k: v for k, v in cache.get("files", {}).items() if k in current_sources}
-    cache["segments"] = {
-        k: v for k, v in cache.get("segments", {}).items() if v.get("source_file") in current_sources
-    }
-    for rel in stale_sources:
+def prune_deleted_sources(current_sources: set[str]) -> list[Path]:
+    deleted_paths: list[Path] = []
+    if not CACHE_DIR.exists():
+        return deleted_paths
+    for cache_path in sorted(CACHE_DIR.glob("**/*.json")):
+        rel = source_for_cache_path(cache_path)
+        if rel in current_sources:
+            continue
         target = target_for_deleted_source(rel)
         if target is not None and target.exists() and target != README_TARGET:
             ensure_generated_path(target)
             target.unlink()
-            deleted_targets.append(target)
-    return deleted_targets
+            deleted_paths.append(target)
+        ensure_generated_path(cache_path)
+        cache_path.unlink()
+        deleted_paths.append(cache_path)
+    return deleted_paths
 
 
 def translate_batch_parallel(
@@ -829,7 +935,9 @@ def is_allowed_generated_path(path: Path) -> bool:
     return (
         resolved == README_TARGET.resolve()
         or resolved == CHANGELOG_TARGET.resolve()
-        or resolved == CACHE_PATH.resolve()
+        or resolved == LEGACY_CACHE_PATH.resolve()
+        or resolved == CACHE_DIR.resolve()
+        or CACHE_DIR.resolve() in resolved.parents
         or resolved == target_root
         or target_root in resolved.parents
     )
@@ -874,8 +982,27 @@ def rewrite_readme_language_switcher(rendered: str) -> str:
     return rendered
 
 
+def rewrite_readme_feature_numbering(rendered: str) -> str:
+    roman = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI", 7: "VII", 8: "VIII", 9: "IX", 10: "X"}
+    lines = rendered.splitlines()
+    in_features = False
+    for index, line in enumerate(lines):
+        if line.strip().lower() == "## features":
+            in_features = True
+            continue
+        if in_features and line.startswith("## "):
+            break
+        if not in_features:
+            continue
+        match = re.match(r"^(###\s+)(\d{1,2})([.)]\s+)(.*)$", line)
+        if match and int(match.group(2)) in roman:
+            lines[index] = f"{match.group(1)}{roman[int(match.group(2))]}. {match.group(4)}"
+    return "\n".join(lines) + ("\n" if rendered.endswith("\n") else "")
+
+
 def rewrite_readme_links(rendered: str) -> str:
     rendered = rewrite_readme_language_switcher(rendered)
+    rendered = rewrite_readme_feature_numbering(rendered)
     return re.sub(r"\((docs/[^)\s]+\.md(?:#[^)\s]+)?)\)", r"(docs.en/\1)", rendered).replace("docs.en/docs/", "docs.en/")
 
 
@@ -886,14 +1013,37 @@ def finalize_rendered(doc: SourceDoc, rendered: str) -> str:
     return rendered
 
 
+def make_doc_cache(doc: SourceDoc, previous: dict, segments: dict[str, dict]) -> dict:
+    source_hash = sha256_text(doc.source.read_text(encoding="utf-8"))
+    unchanged = (
+        previous.get("version") == 2
+        and previous.get("source") == doc.source_rel
+        and previous.get("target") == doc.target_rel
+        and previous.get("source_hash") == source_hash
+        and previous.get("segments") == segments
+    )
+    return {
+        "version": 2,
+        "source": doc.source_rel,
+        "target": doc.target_rel,
+        "source_hash": source_hash,
+        "updated_at": previous.get("updated_at", 0) if unchanged else int(time.time()),
+        "segments": segments,
+    }
+
+
 def run(args: argparse.Namespace) -> int:
-    cache = read_json(CACHE_PATH)
-    sources, current_source_names, changed_names = select_source_docs(args, cache)
-    deleted_targets = prune_deleted_sources(cache, current_source_names)
-    if deleted_targets:
-        write_json(CACHE_PATH, cache)
+    docs = all_source_docs()
+    migration_paths = migrate_legacy_cache(docs)
+    if migration_paths and args.commit_each and not args.dry_run:
+        commit_translation(migration_paths, "docs: migrate translation cache")
+
+    caches = {doc.source_rel: read_doc_cache(doc) for doc in docs}
+    sources, current_source_names, changed_names = select_source_docs(args, docs, caches)
+    deleted_paths = prune_deleted_sources(current_source_names)
+    if deleted_paths:
         if args.commit_each and not args.dry_run:
-            commit_translation([*deleted_targets, CACHE_PATH], "docs: remove translated deleted sources")
+            commit_translation(deleted_paths, "docs: remove translated deleted sources")
 
     if changed_names is not None:
         deleted = sorted(changed_names - current_source_names)
@@ -902,14 +1052,14 @@ def run(args: argparse.Namespace) -> int:
     log(f"found {len(sources)} source doc file(s) to process")
     client: TranslationClient | None = None
     staged_outputs: dict[Path, str] = {}
-    all_new_segments: dict[str, dict] = {}
-    file_entries: dict[str, dict] = dict(cache.get("files", {}))
+    staged_caches: dict[Path, dict] = {}
     total_pending = 0
     total_reused = 0
 
     for source_index, doc in enumerate(sources, start=1):
         rel = doc.source_rel
         log(f"[{source_index}/{len(sources)}] rendering {rel} -> {doc.target_rel}")
+        cache = caches[rel]
         renderer = MarkdownRenderer(cache=cache)
         result = renderer.render_file(doc.source)
         total_pending += len(result.pending)
@@ -924,32 +1074,25 @@ def run(args: argparse.Namespace) -> int:
         rendered = translate_pending(result.text, result.pending, result.cache_entries, client, args, rel)
         rendered = finalize_rendered(doc, rendered)
         staged_outputs[doc.target] = rendered
-        all_new_segments.update(result.cache_entries)
-        file_entries[rel] = {
-            "source_hash": sha256_text(doc.source.read_text(encoding="utf-8")),
-            "target": doc.target_rel,
-            "updated_at": int(time.time()),
-        }
+        cache_path = cache_path_for_source(rel)
+        new_cache = make_doc_cache(doc, cache, result.cache_entries)
+        staged_caches[cache_path] = new_cache
         if args.commit_each and not args.dry_run:
             write_text_file(doc.target, rendered)
-            cache.setdefault("segments", {}).update(result.cache_entries)
-            cache["files"] = file_entries
-            write_json(CACHE_PATH, cache)
-            commit_translation([doc.target, CACHE_PATH], f"docs: auto-translate {rel}")
+            write_json(cache_path, new_cache)
+            commit_translation([doc.target, cache_path], f"docs: auto-translate {rel}")
 
     if not args.commit_each or args.dry_run:
         TARGET_DIR.mkdir(parents=True, exist_ok=True)
         for target, rendered in staged_outputs.items():
             write_text_file(target, rendered)
-
-        cache.setdefault("segments", {}).update(all_new_segments)
-        cache["files"] = file_entries
-        write_json(CACHE_PATH, cache)
+        for cache_path, cache in staged_caches.items():
+            write_json(cache_path, cache)
 
     if args.dry_run:
         log("dry run completed; changed segments were copied from source text")
     else:
-        log(f"translated {len(staged_outputs)} file(s); updated {len(all_new_segments)} segment(s)")
+        log(f"translated {len(staged_outputs)} file(s)")
     log(f"summary: reused={total_reused}, changed={total_pending}, batch_size={args.batch_size}")
     return 0
 
