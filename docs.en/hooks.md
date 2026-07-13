@@ -377,7 +377,7 @@ When the platform adapter returns JSON, the Host places it as a JSON value into 
 
 ## Persistent Hook
 
-Both persistent and temporary workers are declared by the plugin's own `hook.toml`. The worker of `mode = "persistent"` starts automatically after ElBot starts or `/hooks reload`; `mode = "transient"` only starts when the trigger rule is hit. Omitting `[plugin.runtime]` or omitting `mode` is equivalent to `mode = "once"`: a regular rule Hook or a one-time `exec`, with no resident worker.
+Both persistent and temporary workers are declared by the plugin's own `hook.toml`. The worker of `mode = "persistent"` starts automatically after ElBot starts or `/hooks reload`; `mode = "transient"` only starts when the trigger rule is hit. Omitting `[plugin.runtime]` or omitting `mode` is equivalent to `mode = "once"`.
 
 ```toml
 [plugin]
@@ -633,7 +633,7 @@ The actual replacement occurs after the current `event.handle` ends: only the ru
 | --- | --- |
 | `id`、`role` | Message ID and `user` / `assistant` / `system` / `tool` roles. |
 | `platform_text` | Original platform text, may be empty. |
-| `platform_message` | Platform native message JSON, the structure is determined by the platform; currently, QQ OneBot provides the original `message` value, while other platforms may omit it. |
+| `platform_message` | Platform-native message JSON, the structure of which is determined by the platform; currently, QQ OneBot provides the raw `message` value, while other platforms may omit it. |
 | `intent_text` | User intent after removing the wake-up prefix; message input Hooks should generally prioritize using it. |
 | `segments` | `{type,text,url,mime_type,name}` array, with type as `text` / `image` / `file`. |
 | `reply` | Quoted message: `message_id`, `sender_id`, `text`, `display_text`, `segments`. |
