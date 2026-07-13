@@ -413,8 +413,7 @@ func TestUnwokenGroupMessageSkipsLLMButAllowsPassiveHook(t *testing.T) {
 	f := &fakeLLM{replies: []string{"final"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	manager := hook.NewManager()
-	allowPassive := false
-	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.passive", Match: hook.Always(), RequireWakeup: &allowPassive, Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.passive", Match: hook.Always(), Wakeup: hook.WakeupAny, Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 		event.Outputs = append(event.Outputs, delivery.Text("passive output"))
 		return event, nil
 	})}); err != nil {
@@ -473,13 +472,46 @@ func TestUnwokenGroupMessageSkipsDefaultHook(t *testing.T) {
 	}
 }
 
+func TestWokenGroupMessageSkipsForbiddenHookAndRunsLLM(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.passive-only", Match: hook.Always(), Wakeup: hook.WakeupForbidden, Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		event.Outputs = append(event.Outputs, delivery.Text("plugin output"))
+		event.Control.Consume = true
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register passive-only hook: %v", err)
+	}
+	a.SetHookManager(manager)
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:         "qqonebot",
+		ScopeID:          "group:9",
+		ConversationKind: platform.ConversationGroup,
+		Sender:           p,
+		RawText:          "芙莉丝 hello",
+		Segments:         []platform.MessageSegment{{Type: platform.SegmentText, Text: "芙莉丝 hello"}},
+		TriggerKeywords:  []string{"芙莉丝"},
+	})
+
+	if err := a.HandleMessage(ctx, "芙莉丝 hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if got := p.out.String(); strings.Contains(got, "plugin output") || !strings.Contains(got, "final") {
+		t.Fatalf("platform output = %q", got)
+	}
+	if got := len(f.chatRequests()); got != 1 {
+		t.Fatalf("chat requests = %d, want 1", got)
+	}
+}
+
 func TestPassiveHookCannotWakeLLMByEditingMessage(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	manager := hook.NewManager()
-	allowPassive := false
-	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.edit", Match: hook.Always(), RequireWakeup: &allowPassive, Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.edit", Match: hook.Always(), Wakeup: hook.WakeupAny, Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 		event.Message.Segments = llm.TextSegments("芙莉丝 hello")
 		return event, nil
 	})}); err != nil {
@@ -535,11 +567,10 @@ func TestPlatformMessageReceivedHookMatchesCurrentTextWithReplyContext(t *testin
 	f := &fakeLLM{replies: []string{"final"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	manager := hook.NewManager()
-	allowPassive := false
 	if err := manager.Register(hook.Registration{
-		Point:         hook.PointPlatformMessageReceived,
-		Name:          "test.recall.reply",
-		RequireWakeup: &allowPassive,
+		Point:  hook.PointPlatformMessageReceived,
+		Name:   "test.recall.reply",
+		Wakeup: hook.WakeupAny,
 		Match: hook.Match{Conditions: []hook.Condition{
 			{Field: "message.text", Op: hook.MatchFull, Value: "撤回"},
 			{Field: "message.reply.message_id", Op: hook.MatchExists},

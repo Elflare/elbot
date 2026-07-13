@@ -438,7 +438,7 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # on = "hook.point"
 # enabled = true          # optional, default true
 # priority = 1000        # optional, smaller runs earlier
-# require_wakeup = true  # optional, default true; false allows passive group messages.
+# wakeup = "required"   # optional: required (default), any, or forbidden.
 #
 # Single condition:
 # if = "message.text"
@@ -516,10 +516,10 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # tool.name/arguments/result/risk
 # error.message
 #
-# require_wakeup=false on platform.message.received lets a rule observe ordinary
-# group messages that did not mention or wake the bot. Hook outputs may still be
-# sent, but command/LLM processing only continues for woken messages unless the
-# rule consumes the message first.
+# wakeup="any" on platform.message.received also observes ordinary group messages
+# that did not mention or wake the bot. wakeup="forbidden" observes only those
+# messages and skips the rule when the user explicitly wakes the bot. Hook outputs
+# may still be sent, but command/LLM processing only continues for woken messages.
 #
 # Editable fields:
 # platform.message.received / agent.input.prepared: message.text

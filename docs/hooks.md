@@ -63,11 +63,11 @@ target.superadmins = true
 | `on` | 是 | Hook 点，见下表。 |
 | `priority` | 否 | 数字越小越先执行；默认 `1000`，`0` 也按默认值处理。相同 priority 按加载顺序稳定执行：根规则、`[[plugins]]` 声明顺序、各插件内规则顺序。 |
 | `enabled` | 否 | 是否加载，默认 `true`。 |
-| `require_wakeup` | 否 | 默认 `true`；主要用于 `platform.message.received`，设为 `false` 可观察未唤起的群消息。 |
+| `wakeup` | 否 | 唤起策略：`required` 仅处理已唤起消息（默认），`any` 无论是否唤起都处理，`forbidden` 仅处理未唤起消息。主要用于 `platform.message.received`。 |
 | `consume` | 否 | 在 `platform.message.received` 中为 `true` 时，发送当前 outputs 后不再进入命令或主 LLM。 |
 | `stop_propagation` | 否 | 为 `true` 时停止当前 Hook 点之后的规则；不停止 Agent 主流程。 |
 
-`require_wakeup = false` 只允许 Hook 观察未唤起消息，不会让主 LLM 自动处理它们。
+`wakeup = "any"` 和 `wakeup = "forbidden"` 允许 Hook 观察未唤起消息，但不会让主 LLM 自动处理它们。`forbidden` 规则遇到已唤起消息时会直接跳过，不影响后续插件、命令或主 LLM。
 
 ### Hook 点
 
@@ -407,7 +407,7 @@ background_allow = []
 [[rules]]
 name = "weather_entry"
 on = "platform.message.received"
-require_wakeup = false
+wakeup = "any"
 if = "message.intent_text"
 op = "contains"
 value = "天气"
@@ -457,7 +457,7 @@ stop_propagation = true
 | `allow` | 前台 `tool.call` 可使用的工具名；Host 在 `system.init.params.tools` 下发对应 schema。 |
 | `background_allow` | 后台可使用的工具名，必须同时出现在 `allow`。 |
 
-持久 trigger rule 复用规则 Hook 的匹配、角色、priority、`require_wakeup`、`consume` 和 `stop_propagation` 语义。`action` 或 `actions` 会使配置校验失败。两个控制字段是插件未返回 `pass_through` 时的默认行为。
+持久 trigger rule 复用规则 Hook 的匹配、角色、priority、`wakeup`、`consume` 和 `stop_propagation` 语义。`action` 或 `actions` 会使配置校验失败。两个控制字段是插件未返回 `pass_through` 时的默认行为。
 
 需要由插件动态决定是否拦截时，在 stdout 的 `event.handle` response 中返回 `pass_through`：`false` 表示当前插件接管消息，`true` 表示继续交给后续插件、命令或主 LLM。该字段会
          同时覆盖规则配置中的 `consume` 和 `stop_propagation`；省略时仍按配置处理。
