@@ -3,6 +3,7 @@ package hook
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -27,6 +28,9 @@ const (
 	PointPlatformMessageSent     Point = "platform.message.sent"
 	PointErrorOccurred           Point = "error.occurred"
 )
+
+// MaxProtocolFrameBytes is the maximum size of one hook.v2 JSON Lines frame.
+const MaxProtocolFrameBytes = 16 * 1024 * 1024
 
 func KnownPoint(point Point) bool {
 	switch point {
@@ -112,13 +116,14 @@ type RequestContext struct {
 }
 
 type MessagePayload struct {
-	ID           string               `json:"id"`
-	Role         string               `json:"role"`
-	PlatformText string               `json:"platform_text,omitempty"`
-	IntentText   string               `json:"intent_text,omitempty"`
-	Reply        *MessageReplyPayload `json:"reply,omitempty"`
-	Segments     []llm.MessageSegment `json:"segments,omitempty"`
-	Messages     []llm.LLMMessage     `json:"messages,omitempty"`
+	ID              string               `json:"id"`
+	Role            string               `json:"role"`
+	PlatformText    string               `json:"platform_text,omitempty"`
+	PlatformMessage json.RawMessage      `json:"platform_message,omitempty"`
+	IntentText      string               `json:"intent_text,omitempty"`
+	Reply           *MessageReplyPayload `json:"reply,omitempty"`
+	Segments        []llm.MessageSegment `json:"segments,omitempty"`
+	Messages        []llm.LLMMessage     `json:"messages,omitempty"`
 }
 
 type MessageReplyPayload struct {

@@ -210,6 +210,9 @@ func (a *Agent) fillHookContext(ctx context.Context, event hook.Event) hook.Even
 		if event.Message.PlatformText == "" {
 			event.Message.PlatformText = msg.RawText
 		}
+		if event.Point == hook.PointPlatformMessageReceived && len(event.Message.PlatformMessage) == 0 && len(msg.PlatformMessage) > 0 {
+			event.Message.PlatformMessage = append(event.Message.PlatformMessage, msg.PlatformMessage...)
+		}
 		if event.Message.Reply == nil && msg.Reply.MessageID != "" {
 			replySegments := platformSegmentsToLLM(msg.Reply.Segments, msg.Reply.Text)
 			event.Message.Reply = &hook.MessageReplyPayload{

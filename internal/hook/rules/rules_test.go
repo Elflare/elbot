@@ -887,13 +887,24 @@ func TestRuleToolActionLeavesRiskAndAuthorizationToHook(t *testing.T) {
 
 func TestExecActionDefaultStdinIncludesEvent(t *testing.T) {
 	module := Module{}
-	event := hook.Event{Point: hook.PointAgentInputPrepared, Actor: hook.ActorContext{UserID: "alice"}}
+	event := hook.Event{Point: hook.PointAgentInputPrepared, Actor: hook.ActorContext{UserID: "alice"}, Message: hook.MessagePayload{PlatformMessage: []byte(`[{"type":"json"}]`)}}
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("stdin")}}}, event)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
-	if len(got.Outputs) != 1 || !strings.Contains(got.Outputs[0].Text, `"type":"request"`) || !strings.Contains(got.Outputs[0].Text, `"method":"event.handle"`) || !strings.Contains(got.Outputs[0].Text, `"user_id":"alice"`) {
+	if len(got.Outputs) != 1 || !strings.Contains(got.Outputs[0].Text, `"type":"request"`) || !strings.Contains(got.Outputs[0].Text, `"method":"event.handle"`) || !strings.Contains(got.Outputs[0].Text, `"user_id":"alice"`) || !strings.Contains(got.Outputs[0].Text, `"platform_message":[{"type":"json"}]`) {
 		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+}
+
+func TestWriteProtocolFrameRejectsOversizedInput(t *testing.T) {
+	var out bytes.Buffer
+	err := writeProtocolFrame(&out, map[string]any{"data": strings.Repeat("x", maxHookProtocolFrameBytes)})
+	if err == nil || !strings.Contains(err.Error(), "stdin frame exceeds 16 MiB limit") {
+		t.Fatalf("err = %v", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("wrote %d bytes", out.Len())
 	}
 }
 

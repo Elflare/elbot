@@ -429,6 +429,22 @@ func TestHandleEventDeliversPlainGroupMessage(t *testing.T) {
 	}
 }
 
+func TestHandleEventKeepsPlatformMessageForHooks(t *testing.T) {
+	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, nil, nil, nil)
+	handler := &captureHandler{}
+	raw := []byte(`[{"type":"json","data":{"data":"{\"app\":\"miniapp\"}"}}]`)
+
+	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: raw})
+
+	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	if got := string(msgCtx.PlatformMessage); got != string(raw) {
+		t.Fatalf("platform message = %q, want %q", got, raw)
+	}
+}
+
 func TestHandleEventKeepsTriggerKeywordForUpperLayers(t *testing.T) {
 	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil, nil)
 	handler := &captureHandler{}

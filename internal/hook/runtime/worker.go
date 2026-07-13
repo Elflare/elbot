@@ -486,6 +486,9 @@ func (w *worker) write(value frame) error {
 	if err != nil {
 		return err
 	}
+	if len(data)+1 > hook.MaxProtocolFrameBytes {
+		return fmt.Errorf("hook protocol stdin frame exceeds 16 MiB limit")
+	}
 	w.writeMu.Lock()
 	defer w.writeMu.Unlock()
 	w.mu.Lock()
@@ -502,7 +505,7 @@ func (w *worker) write(value frame) error {
 
 func (w *worker) readLoop(reader io.Reader) {
 	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 64*1024), 16*1024*1024)
+	scanner.Buffer(make([]byte, 64*1024), hook.MaxProtocolFrameBytes)
 	for scanner.Scan() {
 		line := bytesTrim(scanner.Bytes())
 		if len(line) == 0 {

@@ -485,6 +485,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		BufferAssistantOutput: true,
 		Segments:              finalMessageSegments(text, currentSegments, nil),
 		RawText:               normalized.Text,
+		PlatformMessage:       append(json.RawMessage(nil), event.Message...),
 		Bot:                   platform.Identity{UserID: strconv.FormatInt(event.SelfID, 10)},
 		Mentions:              append([]platform.Mention(nil), normalized.Mentions...),
 		TriggerKeywords:       append([]string(nil), a.cfg.TriggerKeywords...),

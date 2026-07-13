@@ -20,15 +20,23 @@ func TestFillHookContextAddsPlatformMessageIDs(t *testing.T) {
 		ScopeID:           "group:123",
 		PlatformMessageID: "456",
 		ReplyToMessageID:  "789",
+		PlatformMessage:   []byte(`[{"type":"json","data":{"data":"{}"}}]`),
 	})
 
-	event := a.fillHookContext(ctx, hook.Event{})
+	event := a.fillHookContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived})
 
 	if event.Platform.PlatformMessageID != "456" {
 		t.Fatalf("platform message id = %q, want %q", event.Platform.PlatformMessageID, "456")
 	}
 	if event.Platform.ReplyToMessageID != "789" {
 		t.Fatalf("reply to message id = %q, want %q", event.Platform.ReplyToMessageID, "789")
+	}
+	if got := string(event.Message.PlatformMessage); got != `[{"type":"json","data":{"data":"{}"}}]` {
+		t.Fatalf("platform message = %q", got)
+	}
+	other := a.fillHookContext(ctx, hook.Event{Point: hook.PointAgentInputPrepared})
+	if len(other.Message.PlatformMessage) != 0 {
+		t.Fatalf("non-platform hook message = %s", other.Message.PlatformMessage)
 	}
 }
 

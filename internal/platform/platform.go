@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"encoding/json"
 
 	"elbot/internal/delivery"
 	"elbot/internal/security"
@@ -102,6 +103,7 @@ type MessageContext struct {
 	Reply                 ReplyContext
 	Meta                  map[string]any
 	RawText               string
+	PlatformMessage       json.RawMessage
 	Bot                   Identity
 	Mentions              []Mention
 	TriggerKeywords       []string
