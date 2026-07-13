@@ -81,6 +81,19 @@ func TestManagerBuildsCanonicalRuntimeOutputs(t *testing.T) {
 	}
 }
 
+type discardWriteCloser struct{}
+
+func (discardWriteCloser) Write(data []byte) (int, error) { return len(data), nil }
+func (discardWriteCloser) Close() error                   { return nil }
+
+func TestWorkerRejectsOversizedInputFrame(t *testing.T) {
+	w := &worker{stdin: discardWriteCloser{}}
+	err := w.write(frame{Type: "request", Error: strings.Repeat("x", hook.MaxProtocolFrameBytes)})
+	if err == nil || !strings.Contains(err.Error(), "stdin frame exceeds 16 MiB limit") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func helperActorID(value map[string]any) string {
 	params, _ := value["params"].(map[string]any)
 	event, _ := params["event"].(map[string]any)

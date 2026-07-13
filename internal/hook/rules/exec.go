@@ -21,7 +21,7 @@ import (
 
 const (
 	hookProtocolVersion       = "hook.v2"
-	maxHookProtocolFrameBytes = 16 * 1024 * 1024
+	maxHookProtocolFrameBytes = hook.MaxProtocolFrameBytes
 	maxHookOutputBase64Bytes  = 10 * 1024 * 1024
 	largeOutputRecommendation = "write large media to a file and return outputs[].path or outputs[].url instead of inline base64"
 )
@@ -642,6 +642,9 @@ func writeProtocolFrame(w io.Writer, frame any) error {
 	data, err := json.Marshal(frame)
 	if err != nil {
 		return err
+	}
+	if len(data)+1 > maxHookProtocolFrameBytes {
+		return fmt.Errorf("hook protocol stdin frame exceeds %s limit", byteSize(maxHookProtocolFrameBytes))
 	}
 	_, err = fmt.Fprintf(w, "%s\n", data)
 	return err
