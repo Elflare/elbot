@@ -65,11 +65,11 @@ target.superadmins = true
 | `on` | Yes | Hook point, see the table below. |
 | `priority` | No | The smaller the number, the earlier it is executed; Default is `1000`, and `0` is also handled according to the default value. The same priority is executed stably according to the loading order: root rules, `[[plugins]]` declaration order, and the order of rules within each plugin. |
 | `enabled` | No | Whether to load, defaults to `true`. |
-| `require_wakeup` | No | Defaults to `true`; primarily used for `platform.message.received`. Setting it to `false` allows observing group messages that were not triggered. |
+| `wakeup` | No | Wake-up strategy: `required` only processes awakened messages (default), `any` processes regardless of whether it is awakened, `forbidden` only processes non-awakened messages. Mainly used for `platform.message.received`. |
 | `consume` | No | When set to `true` in `platform.message.received`, it will no longer enter commands or the main LLM after sending the current outputs. |
 | `stop_propagation` | No | When set to `true`, it stops rules following the current Hook point; it does not stop the Agent's main process. |
 
-`require_wakeup = false` only allows Hooks to observe un-invoked messages and will not let the main LLM process them automatically.
+`wakeup = "any"` and `wakeup = "forbidden"` allow Hooks to observe non-awakened messages, but will not let the main LLM process them automatically. `forbidden` rules will skip directly when encountering awakened messages, without affecting subsequent plugins, commands, or the main LLM.
 
 ### Hook Point
 
@@ -409,7 +409,7 @@ background_allow = []
 [[rules]]
 name = "weather_entry"
 on = "platform.message.received"
-require_wakeup = false
+wakeup = "any"
 if = "message.intent_text"
 op = "contains"
 value = "天气"
@@ -459,7 +459,7 @@ If any of the three items are hit, the plugin rule or `event.handle` will not be
 | `allow` | Tool names available to the foreground `tool.call`; the Host delivers the corresponding schema in `system.init.params.tools`. |
 | `background_allow` | Tool names available to the background, which must also appear in `allow`. |
 
-Persistent trigger rules reuse the matching, role, priority, `require_wakeup`, `consume`, and `stop_propagation` semantics of rule Hooks. `action` or `actions` will cause configuration validation to fail. The two control fields are the default behaviors when the plugin does not return `pass_through`.
+Persistent trigger rules reuse the matching, role, priority, `wakeup`, `consume`, and `stop_propagation` semantics of rule Hooks. `action` or `actions` will cause configuration validation to fail. The two control fields are the default behaviors when the plugin does not return `pass_through`.
 
 When the plugin needs to dynamically decide whether to intercept, return `pass_through` in the `event.handle` response of stdout: `false` indicates that the current plugin takes over the message, and `true` indicates that it should be passed to subsequent plugins, commands, or the main LLM. This field will
          simultaneously override `consume` and `stop_propagation` in the rule configuration; if omitted, it will still be processed according to the configuration.
