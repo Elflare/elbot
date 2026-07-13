@@ -633,6 +633,7 @@ The actual replacement occurs after the current `event.handle` ends: only the ru
 | --- | --- |
 | `id`、`role` | Message ID and `user` / `assistant` / `system` / `tool` roles. |
 | `platform_text` | Original platform text, may be empty. |
+| `platform_message` | Platform native message JSON, the structure is determined by the platform; currently, QQ OneBot provides the original `message` value, while other platforms may omit it. |
 | `intent_text` | User intent after removing the wake-up prefix; message input Hooks should generally prioritize using it. |
 | `segments` | `{type,text,url,mime_type,name}` array, with type as `text` / `image` / `file`. |
 | `reply` | Quoted message: `message_id`, `sender_id`, `text`, `display_text`, `segments`. |
