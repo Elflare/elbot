@@ -56,9 +56,9 @@
       "updated_at": 1783738456
     },
     "docs/hooks.md": {
-      "source_hash": "f1b41917e87d626fd56d53bcea36b73782fbf2f8bf9225a443c26f89f5df0984",
+      "source_hash": "a88d9a927740149ca22f8692ad0d07d09d419d5d5ae73daec8bc6bd5414b66dd",
       "target": "docs.en/hooks.md",
-      "updated_at": 1783912115
+      "updated_at": 1783915553
     }
   },
   "segments": {
@@ -17541,6 +17541,14 @@
       "source_hash": "17219ae41a3ccef00580053d4a257937446ee3e7bb9fa1ab1bc36a9b6e26b0a0",
       "translation": "Single output field or __ELBOT_CODE_0__",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:table:183a69f052e9c57cc906ee5860be10a8d41657ea3d556a31756f2c62cdae03ee": {
+      "kind": "table",
+      "source": "平台原生 message JSON，结构由平台决定；当前 QQ OneBot 提供原始 __ELBOT_CODE_0__ 值，其他平台可能省略。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "183a69f052e9c57cc906ee5860be10a8d41657ea3d556a31756f2c62cdae03ee",
+      "translation": "Platform native message JSON, the structure is determined by the platform; currently, QQ OneBot provides the original __ELBOT_CODE_0__ value, while other platforms may omit it.",
+      "updated_at": 1783915553
     },
     "docs/hooks.md:table:18880ba1c25cd2f69b7b2302451ed4a99c700cc58cf3a2f4ef2ec2a09804e785": {
       "kind": "table",
