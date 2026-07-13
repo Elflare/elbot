@@ -19,7 +19,7 @@ func TestDefaultWriteElbotHookSkillMarkdown(t *testing.T) {
 		"description: 编写或修改 ElBot 规则 Hook 配置。",
 		"hook路径：",
 		"plugins/hooks.toml",
-		"https://github.com/Elflare/elbot/blob/main/docs/hooks.md",
+		"https://raw.githubusercontent.com/Elflare/elbot/main/docs/hooks.md",
 	} {
 		if !strings.Contains(defaultWriteElbotHookSkillMD, want) {
 			t.Fatalf("default write_elbot_hook skill missing %q", want)
