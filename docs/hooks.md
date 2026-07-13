@@ -375,7 +375,7 @@ Hook 成功响应：
 
 ## 持久 Hook
 
-持久和临时 worker 都由插件自己的 `hook.toml` 声明。`mode = "persistent"` 的 worker 在 ElBot 启动或 `/hooks reload` 后自动启动；`mode = "transient"` 只在 trigger rule 命中时启动。省略 `[plugin.runtime]` 或省略 `mode` 等价于 `mode = "once"`：普通规则 Hook 或一次性 `exec`，没有常驻 worker。
+持久和临时 worker 都由插件自己的 `hook.toml` 声明。`mode = "persistent"` 的 worker 在 ElBot 启动或 `/hooks reload` 后自动启动；`mode = "transient"` 只在 trigger rule 命中时启动。省略 `[plugin.runtime]` 或省略 `mode` 等价于 `mode = "once"`。
 
 ```toml
 [plugin]
