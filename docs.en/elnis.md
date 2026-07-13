@@ -126,9 +126,9 @@ Elwisp is only responsible for "seeing and reporting." It does not directly cont
 
 ### Elvena: event protocol
 
-Elvena is the JSON over HTTP protocol for Elwisp to deliver events to Elnis. Hook exec within ElBot can also submit Elvena requests via the same Elvena Bus; These requests do not go through an HTTP token, but instead carry a `hook` origin, and are executed by Elnis in a unified manner for direct, LLM, and calls.
+Elvena is the JSON over HTTP protocol used by Elwisp to deliver events to Elnis.
 
-It is responsible for transforming "what happened outside" or "what the internal Hook wants to do" into a unified event that Elnis can understand: who the source is, what the event ID is, what the content is, how it should be handled, and where it should be delivered.
+It is responsible for turning "what happened outside" into a unified event that Elnis can understand: who the source is, what the event ID is, what the content is, how it should be handled, and where it should be delivered.
 
 
 Initial endpoint:

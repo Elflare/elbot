@@ -24,14 +24,6 @@
       "translation": "Elnis Listening Hub",
       "updated_at": 1781710746
     },
-    "docs/elnis.md:heading:7d1083764ee3635bc5e2302bf4cd32a51920cbf2d402eb5549abcfe9067eef41": {
-      "kind": "heading",
-      "source": "当前限制与后续方向",
-      "source_file": "docs/elnis.md",
-      "source_hash": "7d1083764ee3635bc5e2302bf4cd32a51920cbf2d402eb5549abcfe9067eef41",
-      "translation": "Current Limitations and Future Directions",
-      "updated_at": 1781710746
-    },
     "docs/elnis.md:heading:7f1dc02e6e98f119f6b1c6c3719205f2024a25fce5d92c5e3725f90678b92d49": {
       "kind": "heading",
       "source": "架构图",
@@ -232,14 +224,6 @@
       "translation": "Deduplicate persistence based on __ELBOT_CODE_0__.",
       "updated_at": 1781710746
     },
-    "docs/elnis.md:list:905c52b662a4bce86460a4b7055832b443613e6d0bf6c5b14888fdb2b3689b27": {
-      "kind": "list",
-      "source": "多种消息 segment。",
-      "source_file": "docs/elnis.md",
-      "source_hash": "905c52b662a4bce86460a4b7055832b443613e6d0bf6c5b14888fdb2b3689b27",
-      "translation": "Multiple message segments.",
-      "updated_at": 1781710746
-    },
     "docs/elnis.md:list:95e04a0a5c219009dbc1c24acb81d5e0f2be572e47a984c906ac192114748602": {
       "kind": "list",
       "source": "[Elnis 配置与使用](elnis-usage.md)：启用 Elnis、配置 Elwisp 策略、发送 Elvena 请求，并了解请求字段和投递边界。",
@@ -248,36 +232,12 @@
       "translation": "[Elnis Configuration and Usage](elnis-usage.md): Enable Elnis, configure Elwisp policies, send Elvena requests, and understand request fields and delivery boundaries.",
       "updated_at": 1781710746
     },
-    "docs/elnis.md:list:a2100b5087e50e720ec07dd411f1f5140e7d9a05dfc8cc8519185681bdc7538a": {
-      "kind": "list",
-      "source": "stdio、pipe 等非 HTTP transport。",
-      "source_file": "docs/elnis.md",
-      "source_hash": "a2100b5087e50e720ec07dd411f1f5140e7d9a05dfc8cc8519185681bdc7538a",
-      "translation": "Non-HTTP transports such as stdio, pipe, etc.",
-      "updated_at": 1781710746
-    },
     "docs/elnis.md:list:aaa581372e5ecd5fda5a54b105ceafccd8ade537da0f7521a7205df4877bd63d": {
       "kind": "list",
       "source": "裁决事件可以投递到哪些平台。",
       "source_file": "docs/elnis.md",
       "source_hash": "aaa581372e5ecd5fda5a54b105ceafccd8ade537da0f7521a7205df4877bd63d",
       "translation": "Decide which platforms events can be delivered to.",
-      "updated_at": 1781710746
-    },
-    "docs/elnis.md:list:b66b8fa4d5e5963e02867077bc113b75e7fa9e1e266720dca16df4f94a3d3509": {
-      "kind": "list",
-      "source": "更多统一 capability：__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、bot profile/avatar/name/commands 等。",
-      "source_file": "docs/elnis.md",
-      "source_hash": "b66b8fa4d5e5963e02867077bc113b75e7fa9e1e266720dca16df4f94a3d3509",
-      "translation": "More unified capabilities: __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, bot profile/avatar/name/commands, etc.",
-      "updated_at": 1782376420
-    },
-    "docs/elnis.md:list:ba33d5e79f175e2f0e007cb409211c4d0d8faa1128448d83f267e9aa15969f94": {
-      "kind": "list",
-      "source": "Elwisp 随事件声明工具并由 Elnis 安全调用。",
-      "source_file": "docs/elnis.md",
-      "source_hash": "ba33d5e79f175e2f0e007cb409211c4d0d8faa1128448d83f267e9aa15969f94",
-      "translation": "Elwisp declares tools along with events and is called securely by Elnis.",
       "updated_at": 1781710746
     },
     "docs/elnis.md:list:bd9e5e4de631eeb8a5e388eecc4d02e8fc1fbece0e10f560e6fa21f32e84bb45": {
@@ -304,36 +264,12 @@
       "translation": "Any content that a computer can receive, read, listen to, or generate.",
       "updated_at": 1781710746
     },
-    "docs/elnis.md:list:dcbbedb1f1e172a416df81a912b2ea6adcfba46bd4baa30d4d9eb99e5eb1b15b": {
-      "kind": "list",
-      "source": "Elnis 事件查询、失败重试或禁用能力。",
-      "source_file": "docs/elnis.md",
-      "source_hash": "dcbbedb1f1e172a416df81a912b2ea6adcfba46bd4baa30d4d9eb99e5eb1b15b",
-      "translation": "Elnis event querying, failure retry, or disabling capabilities.",
-      "updated_at": 1781710746
-    },
-    "docs/elnis.md:list:de069db686cee81db91146144660061686a7da335b45b7a91458d328e4e4683b": {
-      "kind": "list",
-      "source": "内置“创建 Elwisp”的 Skill 或工具。",
-      "source_file": "docs/elnis.md",
-      "source_hash": "de069db686cee81db91146144660061686a7da335b45b7a91458d328e4e4683b",
-      "translation": "Built-in Skills or tools for \"creating Elwisp\".",
-      "updated_at": 1781710746
-    },
     "docs/elnis.md:list:f437bc1af1014664cd38da9def33f2c438ca93303546a3c9fae8c0ec55c292a5": {
       "kind": "list",
       "source": "校验 token 和协议字段。",
       "source_file": "docs/elnis.md",
       "source_hash": "f437bc1af1014664cd38da9def33f2c438ca93303546a3c9fae8c0ec55c292a5",
       "translation": "Validating tokens and protocol fields.",
-      "updated_at": 1781710746
-    },
-    "docs/elnis.md:list:fbda849eb7228a035909ae25550ede36112fbb0f62449bd56bad75ed6f72ad11": {
-      "kind": "list",
-      "source": "Elnis 与 Elwisp 多轮通信。",
-      "source_file": "docs/elnis.md",
-      "source_hash": "fbda849eb7228a035909ae25550ede36112fbb0f62449bd56bad75ed6f72ad11",
-      "translation": "Multi-turn communication between Elnis and Elwisp.",
       "updated_at": 1781710746
     },
     "docs/elnis.md:list:ff928ac3660d94a6b065be449e132a0ac81840b5b9215012ca6d18f36ffd044c": {
@@ -384,14 +320,6 @@
       "translation": "It reads __ELBOT_CODE_0__ and supports filtering by Elwisp name, event source, event ID, mode, and time range.\n",
       "updated_at": 1781753001
     },
-    "docs/elnis.md:paragraph:18cdbbb221760ae5f6fc3896b1b4cc8560190f2cd8e4896469a94f0e16ceef4f": {
-      "kind": "paragraph",
-      "source": "它负责把“外面发生了什么”或“内部 Hook 想做什么”变成 Elnis 能理解的统一事件：来源是谁、事件 ID 是什么、内容是什么、希望怎么处理、希望投递到哪里。\n",
-      "source_file": "docs/elnis.md",
-      "source_hash": "18cdbbb221760ae5f6fc3896b1b4cc8560190f2cd8e4896469a94f0e16ceef4f",
-      "translation": "It is responsible for transforming \"what happened outside\" or \"what the internal Hook wants to do\" into a unified event that Elnis can understand: who the source is, what the event ID is, what the content is, how it should be handled, and where it should be delivered.\n",
-      "updated_at": 1782376420
-    },
     "docs/elnis.md:paragraph:1ff5ad7a790c585c4083e66c874fd07f1d57a76721909ae15dbd178cd77e554d": {
       "kind": "paragraph",
       "source": "例如：\n",
@@ -399,14 +327,6 @@
       "source_hash": "1ff5ad7a790c585c4083e66c874fd07f1d57a76721909ae15dbd178cd77e554d",
       "translation": "For example:\n",
       "updated_at": 1781710746
-    },
-    "docs/elnis.md:paragraph:2bc3b5bba831d8de50edd49ad30f9381523e646e9d05fe08f8e7352bbaeb7576": {
-      "kind": "paragraph",
-      "source": "以下能力仍在开发或规划中：\n",
-      "source_file": "docs/elnis.md",
-      "source_hash": "2bc3b5bba831d8de50edd49ad30f9381523e646e9d05fe08f8e7352bbaeb7576",
-      "translation": "The following capabilities are still under development or planning:\n",
-      "updated_at": 1781929296
     },
     "docs/elnis.md:paragraph:2d715a6c4fb79cb27aa82fff2dbdf7154788a9b1c684315dceb99fef2850e289": {
       "kind": "paragraph",
@@ -432,14 +352,6 @@
       "translation": "Ordinary chatbots usually only respond to user messages. Cron can respond to time, but it doesn't know what is happening in the outside world.\n",
       "updated_at": 1781710746
     },
-    "docs/elnis.md:paragraph:3f24d1d9a69f093031b0110677ea5248bcc48d3400b2934ee0d37c57cf203367": {
-      "kind": "paragraph",
-      "source": "当前 Elnis 已支持 record、direct、llm 模式、Elwisp 随事件声明外部工具以及多模态消息段（text/image/file）。",
-      "source_file": "docs/elnis.md",
-      "source_hash": "3f24d1d9a69f093031b0110677ea5248bcc48d3400b2934ee0d37c57cf203367",
-      "translation": "Currently, Elnis supports record, direct, and llm modes, Elwisp declaring external tools with events, and multimodal message segments (text/image/file).",
-      "updated_at": 1781929296
-    },
     "docs/elnis.md:paragraph:45c5931b1d976a6f207d4ef77b3f374398031cd36dcae8068a6986b3d5a5b83e": {
       "kind": "paragraph",
       "source": "Elnis 是 ElBot 的事件监听枢纽。它像一颗恒星，接住来自各处 Elwisp 群星的信号，再由 ElBot 决定是否记录、通知、分析或执行后台任务。\n",
@@ -456,28 +368,12 @@
       "translation": "It uniformly receives external events and routes them to logs, notifications, or the background LLM; it is like a star around which all Elwisp signals converge, but the ultimate energy is controlled by ElBot.\n",
       "updated_at": 1781794504
     },
-    "docs/elnis.md:paragraph:47e7546b41374642462c6ef6b9692408285bca851b34aa07d22f6416f6aa2628": {
-      "kind": "paragraph",
-      "source": "看完这里，就可以开始了解配置和投递事件。\n",
-      "source_file": "docs/elnis.md",
-      "source_hash": "47e7546b41374642462c6ef6b9692408285bca851b34aa07d22f6416f6aa2628",
-      "translation": "After reading this, you can start learning about configuration and delivering events.\n",
-      "updated_at": 1781710746
-    },
     "docs/elnis.md:paragraph:509b6cc30a8018ba4b61a30be1475c308497744ee7175969a2c3a7ec131ead16": {
       "kind": "paragraph",
       "source": "核心思想：\n",
       "source_file": "docs/elnis.md",
       "source_hash": "509b6cc30a8018ba4b61a30be1475c308497744ee7175969a2c3a7ec131ead16",
       "translation": "Core Idea:\n",
-      "updated_at": 1781710746
-    },
-    "docs/elnis.md:paragraph:54824c2593c9b02143896be6d6eaf0dde7817e650824e8e4fb8d97f2584b2242": {
-      "kind": "paragraph",
-      "source": "它统一接收外部事件，把事件接到记录、通知或后台 LLM；也像恒星，所有 Elwisp 的信号都围绕它汇聚，但最终能量由 ElBot 控制。\n",
-      "source_file": "docs/elnis.md",
-      "source_hash": "54824c2593c9b02143896be6d6eaf0dde7817e650824e8e4fb8d97f2584b2242",
-      "translation": "It uniformly receives external events and routes them to logs, notifications, or the background LLM; like a star, all signals from Elwisp converge around it, but the final energy is controlled by ElBot.\n",
       "updated_at": 1781710746
     },
     "docs/elnis.md:paragraph:553a11fc1053ba214de0c4f60cba055a78bfb071ece2965f544711b0d008de7d": {
@@ -488,14 +384,6 @@
       "translation": "In work mode, the superadmin can let ElBot use the built-in tool __ELBOT_CODE_0__ to assist in creating Elwisp.",
       "updated_at": 1781779501
     },
-    "docs/elnis.md:paragraph:66f48853ec205c7158c6ef88ea175b8aeda3b121cd998ddd217db989af24cf94": {
-      "kind": "paragraph",
-      "source": "当前 Elnis 已支持 record、direct、llm 模式、Elwisp 随事件声明外部工具、多模态消息段（text/image/file）、Elvena v3 calls（raw 平台 API 与首批 capability）以及 Hook exec 经内部 Elvena Bus 投递。",
-      "source_file": "docs/elnis.md",
-      "source_hash": "66f48853ec205c7158c6ef88ea175b8aeda3b121cd998ddd217db989af24cf94",
-      "translation": "Currently, Elnis supports record, direct, and llm modes, Elwisp declaring external tools with events, multimodal message segments (text/image/file), Elvena v3 calls (raw platform APIs and the first batch of capabilities), and Hook exec delivery via the internal Elvena Bus.",
-      "updated_at": 1782376420
-    },
     "docs/elnis.md:paragraph:695148bdd3a5cccf1382ef265c97fe80863c1b0b09aa2727b1b892fc67855062": {
       "kind": "paragraph",
       "source": "该工具会返回创建指南、Elvena 事件模板、Elnis 配置片段、监听器脚手架、curl 测试命令和安全检查清单；",
@@ -504,28 +392,12 @@
       "translation": "This tool returns creation guides, Elvena event templates, Elnis configuration snippets, listener scaffolds, curl test commands, and security checklists;",
       "updated_at": 1781779501
     },
-    "docs/elnis.md:paragraph:74dd4c5e1d128658da1f514639215f757e7790dfb996fbe3964a991bb2fcbdab": {
-      "kind": "paragraph",
-      "source": "Elvena 是 Elwisp 向 Elnis 投递事件的 JSON over HTTP 协议。",
-      "source_file": "docs/elnis.md",
-      "source_hash": "74dd4c5e1d128658da1f514639215f757e7790dfb996fbe3964a991bb2fcbdab",
-      "translation": "Elvena is the JSON over HTTP protocol for Elwisp to deliver events to Elnis.",
-      "updated_at": 1782376420
-    },
     "docs/elnis.md:paragraph:7ff9d0ef9e57e4c67efc6620f4d2c83e0d1d68c8430e82eb68b1057fd5e7968d": {
       "kind": "paragraph",
       "source": "简单说，Elnis 把 ElBot 从“等用户说话的机器人”扩展成“能感知外部世界的 Agent 枢纽”。\n",
       "source_file": "docs/elnis.md",
       "source_hash": "7ff9d0ef9e57e4c67efc6620f4d2c83e0d1d68c8430e82eb68b1057fd5e7968d",
       "translation": "Simply put, Elnis expands ElBot from a \"bot that waits for users to speak\" into an \"Agent hub capable of perceiving the external world.\"\n",
-      "updated_at": 1781710746
-    },
-    "docs/elnis.md:paragraph:96d4257f00bcf65b25e342c089f87d68e4284fdc28ec1e9d3bade76a082d916a": {
-      "kind": "paragraph",
-      "source": "Elwisp 像散布在外部世界的探机，也像 ElBot 的眼睛。它们可以很多、很小、很分散；职责只有一个：把外部世界发生了什么告诉 Elnis。\n",
-      "source_file": "docs/elnis.md",
-      "source_hash": "96d4257f00bcf65b25e342c089f87d68e4284fdc28ec1e9d3bade76a082d916a",
-      "translation": "Elwisp is like a probe scattered across the external world, and also like the eyes of ElBot. They can be numerous, small, and dispersed; they have only one responsibility: to tell Elnis what is happening in the external world.\n",
       "updated_at": 1781710746
     },
     "docs/elnis.md:paragraph:9986537e133dc0f6ed3dffddebe35416063688bd89421f1028b57d137f2261a9": {
@@ -552,14 +424,6 @@
       "translation": "Elnis allows ElBot to respond to the external world.\n",
       "updated_at": 1781710746
     },
-    "docs/elnis.md:paragraph:afa7d04616c71399fcd939fd81170dc64911e3820fba22bcabd71cfa76ab63f4": {
-      "kind": "paragraph",
-      "source": "超级管理员在平台里引用回复 Elnis LLM 报告通知时，会自动 resume 到对应后台 Session 继续对话；",
-      "source_file": "docs/elnis.md",
-      "source_hash": "afa7d04616c71399fcd939fd81170dc64911e3820fba22bcabd71cfa76ab63f4",
-      "translation": "When a superadmin quotes and replies to an Elnis LLM report notification within the platform, it will automatically resume to the corresponding background Session to continue the conversation;",
-      "updated_at": 1782039286
-    },
     "docs/elnis.md:paragraph:b3a11302390f0fe1b098f268e2c006c8c6fcfd2397c7cf6a18dae3609c3980c5": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 时，Elnis 会按裁决后的目标发送 __ELBOT_CODE_1__。\n",
@@ -576,36 +440,12 @@
       "translation": "For ready-made Elwisp examples, protocol documentation, and templates, please refer to [Elwisp Showcase](https://github.com/Elfreese/elwisp-showcase).\n",
       "updated_at": 1782288638
     },
-    "docs/elnis.md:paragraph:be686882804206dc8baf58a45f5512013a83eea607a21bba995c1a01103817ee": {
-      "kind": "paragraph",
-      "source": "普通用户引用时只会作为普通引用文本处理。\n",
-      "source_file": "docs/elnis.md",
-      "source_hash": "be686882804206dc8baf58a45f5512013a83eea607a21bba995c1a01103817ee",
-      "translation": "When a regular user quotes it, it will only be processed as ordinary quoted text.\n",
-      "updated_at": 1782039286
-    },
-    "docs/elnis.md:paragraph:be7fb34b0e4f390173e4b6d7babb63f3cca8fdaae63a589a7e3898f4d681124b": {
-      "kind": "paragraph",
-      "source": "ElBot 内部的 Hook exec 也可以通过同一 Elvena Bus 提交 Elvena 请求；",
-      "source_file": "docs/elnis.md",
-      "source_hash": "be7fb34b0e4f390173e4b6d7babb63f3cca8fdaae63a589a7e3898f4d681124b",
-      "translation": "Hook exec within ElBot can also submit Elvena requests via the same Elvena Bus;",
-      "updated_at": 1782376420
-    },
     "docs/elnis.md:paragraph:c235f80b7fef92338972f15c874cba0d2e2410167f4ef2eb2e6db6e4ec5ce465": {
       "kind": "paragraph",
       "source": "Elwisp 是外部子监听器。",
       "source_file": "docs/elnis.md",
       "source_hash": "c235f80b7fef92338972f15c874cba0d2e2410167f4ef2eb2e6db6e4ec5ce465",
       "translation": "Elwisp is an external sub-listener.",
-      "updated_at": 1781710746
-    },
-    "docs/elnis.md:paragraph:c8678c2e8de577198ed94b6b19e6614cc97a6ea1fede906b42c09c8a061ebcd3": {
-      "kind": "paragraph",
-      "source": "当前 Elnis 已支持 record、direct 和 llm 模式。以下能力仍在开发或规划中：\n",
-      "source_file": "docs/elnis.md",
-      "source_hash": "c8678c2e8de577198ed94b6b19e6614cc97a6ea1fede906b42c09c8a061ebcd3",
-      "translation": "Currently, Elnis supports record, direct, and llm modes. The following capabilities are still under development or planning:\n",
       "updated_at": 1781710746
     },
     "docs/elnis.md:paragraph:c9622566443e8cfc57507fb93091b584ea8d7763303696b4c1b4ed7b32f3276b": {
@@ -648,14 +488,6 @@
       "translation": "Elnis is the event entry runtime within ElBot, assembled at the same level as the platform runtime and Cron runtime.\n",
       "updated_at": 1781710746
     },
-    "docs/elnis.md:paragraph:dc779ba829405e8f3b9576669351c0fe9ae5073f84db85a454189cff3a16a870": {
-      "kind": "paragraph",
-      "source": "这类请求不经过 HTTP token，而是带 __ELBOT_CODE_0__ origin，由 Elnis 统一执行 direct、LLM 和 calls。\n",
-      "source_file": "docs/elnis.md",
-      "source_hash": "dc779ba829405e8f3b9576669351c0fe9ae5073f84db85a454189cff3a16a870",
-      "translation": "These requests do not go through an HTTP token, but instead carry a __ELBOT_CODE_0__ origin, and are executed by Elnis in a unified manner for direct, LLM, and calls.\n",
-      "updated_at": 1782376420
-    },
     "docs/elnis.md:paragraph:e4dca4da13020e3b19785f32c8b200b0920a028bc4036a95fa5551faef12ce44": {
       "kind": "paragraph",
       "source": "它负责把“外面发生了什么”变成 Elnis 能理解的统一事件：来源是谁、事件 ID 是什么、内容是什么、希望怎么处理、希望投递到哪里。\n",
@@ -671,14 +503,6 @@
       "source_hash": "e8ed8ec34748c1b2669ebd41ac9693b4a8ad42b4d79dd6520d28147f0ab44a25",
       "translation": "Elnis is responsible for:\n",
       "updated_at": 1781710746
-    },
-    "docs/elnis.md:paragraph:e977c070f63dd3f5a23520ead48425b7148e2707c6f2da04b324e79af71b903d": {
-      "kind": "paragraph",
-      "source": "当前 Elnis 已支持 record、direct、llm 模式和 Elwisp 随事件声明外部工具。以下能力仍在开发或规划中：\n",
-      "source_file": "docs/elnis.md",
-      "source_hash": "e977c070f63dd3f5a23520ead48425b7148e2707c6f2da04b324e79af71b903d",
-      "translation": "Currently, Elnis supports record, direct, and llm modes, as well as Elwisp declaring external tools along with events. The following capabilities are still under development or planning:\n",
-      "updated_at": 1781779501
     },
     "docs/elnis.md:paragraph:f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f": {
       "kind": "paragraph",
@@ -850,8 +674,8 @@
     }
   },
   "source": "docs/elnis.md",
-  "source_hash": "64da4ee616a7573bb315be76264e9c48de8fec352c9aae5a4c11dd259a3fd277",
+  "source_hash": "9821d5f60ecf2588d334fb079ccf66f507e8c356730c34f69afb27bc22349817",
   "target": "docs.en/elnis.md",
-  "updated_at": 1782901152,
+  "updated_at": 1783922709,
   "version": 2
 }
