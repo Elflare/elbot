@@ -711,9 +711,6 @@
 - [x] 常驻记忆保持短小且高优先级，每次注入 Prompt。
 - [x] 常驻记忆支持增删改查。
 - [x] 长期记忆使用 Markdown 源文件 + SQLite FTS 索引，由 LLM 通过工具主动增删改查。
-
-- [ ] 记忆/el skill整理通过 Cron 类插件定时触发。（暂时不做）
- - [ ] 当日记忆没有更新时，跳过整理。
 - [x] 常驻记忆长度限制（默认400字以内）
 - [x] 实现不同用户有自己的常驻记忆，并按平台隔离；同一平台同一用户共享一段文本，不按群聊/私聊拆分。
 
@@ -764,7 +761,7 @@
 - [x] 实现 `/tools uninstall <name>` / `/tools remove <name>` 删除外置工具，内置工具不可卸载。
 
 
-### MCP
+### MCP（暂定不做，建议使用skill）
 
 - [ ] 设计 MCP 配置格式。
 - [ ] 实现 MCP 工具发现。
@@ -862,7 +859,6 @@
 - [x] 支持多种消息segment
 - [x] 可通过扁平 `targets` 指定平台超级管理员、指定私聊或指定群聊，并支持 disabled target 禁止项。
 - [x] 超级管理员引用回复 LLM Elwisp 通知时，自动 resume 到对应后台 session 继续对话；普通用户仍 fallback 为普通引用文本。
-- [ ] 待定：评估 stdio/pipe transport。
 
 ### Phase 5：Elvena v3、Hook exec 与平台调用
 
@@ -874,6 +870,4 @@
 - [x] Hook rules 支持 `exec` action，脚本通过 `hook.v2` 双向行协议输出、请求平台调用并回写字段。
 - [x] `platform.message.received` Hook outputs 会发送，`consume=true` 会阻止后续命令/LLM。
 - [x] app 层为 Hook rules 提供平台 API 调用和输出发送能力，Hook 不直接依赖 Elnis。
-- [ ] 后续支持更多 capability：`member.kick`、`message.pin`、`member.unmute`、bot profile/avatar/name/commands。
-- [ ] 后续实现 QQ Official raw API caller。
 
