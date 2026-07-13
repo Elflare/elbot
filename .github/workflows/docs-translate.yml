@@ -8,6 +8,9 @@ on:
       - "README.zh-CN.md"
       - "CHANGELOG.md"
       - "docs/**/*.md"
+      - "scripts/translate_docs.py"
+      - "scripts/test_translate_docs.py"
+      - ".github/workflows/docs-translate.yml"
   workflow_dispatch:
 
 permissions:
@@ -38,6 +41,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      - name: Test translation tooling
+        run: python -m unittest discover -s scripts -p "test_*.py"
+
       - name: Translate changed docs
         env:
           TRANSLATE_LLM_API_KEY: ${{ secrets.TRANSLATE_LLM_API_KEY }}
@@ -54,4 +60,3 @@ jobs:
           --batch-delay 5
           --retries 5
           --timeout 240
-

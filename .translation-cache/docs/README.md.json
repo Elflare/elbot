@@ -1,0 +1,177 @@
+{
+  "segments": {
+    "docs/README.md:heading:04a55997533ed4e754cbb599541c5df54f5ea8c60d5c4e750befd52196318380": {
+      "kind": "heading",
+      "source": "文档维护约定",
+      "source_file": "docs/README.md",
+      "source_hash": "04a55997533ed4e754cbb599541c5df54f5ea8c60d5c4e750befd52196318380",
+      "translation": "Documentation Maintenance Conventions",
+      "updated_at": 1781513067
+    },
+    "docs/README.md:heading:410b1989a3cec16d944f5f4c7e36db3a9c16aa063a8e2c990cad359495883498": {
+      "kind": "heading",
+      "source": "ElBot 文档",
+      "source_file": "docs/README.md",
+      "source_hash": "410b1989a3cec16d944f5f4c7e36db3a9c16aa063a8e2c990cad359495883498",
+      "translation": "ElBot Documentation",
+      "updated_at": 1781513067
+    },
+    "docs/README.md:heading:82b7cf40b5e63d33ce89e23efe810b5f76aded0a13ad7291e22ba5e09b6c5c1b": {
+      "kind": "heading",
+      "source": "当前状态",
+      "source_file": "docs/README.md",
+      "source_hash": "82b7cf40b5e63d33ce89e23efe810b5f76aded0a13ad7291e22ba5e09b6c5c1b",
+      "translation": "Current Status",
+      "updated_at": 1781513067
+    },
+    "docs/README.md:heading:96c4712247755ad7eaa09455ac4b91dd65bda5320dc61bd3e3b05c4736b1f358": {
+      "kind": "heading",
+      "source": "推荐阅读顺序",
+      "source_file": "docs/README.md",
+      "source_hash": "96c4712247755ad7eaa09455ac4b91dd65bda5320dc61bd3e3b05c4736b1f358",
+      "translation": "Recommended Reading Order",
+      "updated_at": 1781513067
+    },
+    "docs/README.md:list:0e4f12e82fff34643cdc46bd0126ae64a534995e75ee950d9274bd4e77df5017": {
+      "kind": "list",
+      "source": "[配置说明](configuration.md)：了解配置文件、路径规则、Provider、运行数据和插件目录。",
+      "source_file": "docs/README.md",
+      "source_hash": "0e4f12e82fff34643cdc46bd0126ae64a534995e75ee950d9274bd4e77df5017",
+      "translation": "[Configuration Guide](configuration.md): Learn about configuration files, path rules, Providers, runtime data, and plugin directories.",
+      "updated_at": 1781513067
+    },
+    "docs/README.md:list:35f1b03774981b49a02e65d01acf820bdfdbac0cbf13d1a219f21fb6a898a3b9": {
+      "kind": "list",
+      "source": "[命令速查](commands.md)：查看常用 slash 命令和会话管理方式。",
+      "source_file": "docs/README.md",
+      "source_hash": "35f1b03774981b49a02e65d01acf820bdfdbac0cbf13d1a219f21fb6a898a3b9",
+      "translation": "[Command Cheat Sheet](commands.md): View common slash commands and Session management methods.",
+      "updated_at": 1781513067
+    },
+    "docs/README.md:list:3e17b235a2be478b21e7c5ed0c0a7b830cecd1e686205ea1f09bb2bc3afdba80": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 为中文源文件，__ELBOT_CODE_1__ 由 GitHub Actions 自动翻译，请勿手改；",
+      "source_file": "docs/README.md",
+      "source_hash": "3e17b235a2be478b21e7c5ed0c0a7b830cecd1e686205ea1f09bb2bc3afdba80",
+      "translation": "__ELBOT_CODE_0__ is the Chinese source file, and __ELBOT_CODE_1__ is automatically translated by GitHub Actions; do not edit it manually;",
+      "updated_at": 1782298662
+    },
+    "docs/README.md:list:4fa3148d2e12ea4a699a24a6f81fe0a78efa8110dbcf583995d8273b16a21bb8": {
+      "kind": "list",
+      "source": "新增用户可见功能时，优先更新对应专题文档，而不是把细节全部塞进 README。",
+      "source_file": "docs/README.md",
+      "source_hash": "4fa3148d2e12ea4a699a24a6f81fe0a78efa8110dbcf583995d8273b16a21bb8",
+      "translation": "When adding user-visible features, prioritize updating the corresponding topic documentation instead of stuffing all details into the README.",
+      "updated_at": 1781513067
+    },
+    "docs/README.md:list:676cf7b537a528e8e0ec9bc31620a6db216298e58571b5f4b350a181b7bd9617": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 放用户使用文档，避免混入开发任务流水账。",
+      "source_file": "docs/README.md",
+      "source_hash": "676cf7b537a528e8e0ec9bc31620a6db216298e58571b5f4b350a181b7bd9617",
+      "translation": "__ELBOT_CODE_0__ contains user documentation, avoiding the inclusion of development task logs.",
+      "updated_at": 1781513067
+    },
+    "docs/README.md:list:6e38716289e341fef6345a2dc8255855033d895c2798f65d2b4ebb06e0738fa0": {
+      "kind": "list",
+      "source": "以版本（tag）为节点，平时改动写进 __ELBOT_CODE_0__，发版时将其改为 __ELBOT_CODE_1__ 并新建空 Unreleased。",
+      "source_file": "docs/README.md",
+      "source_hash": "6e38716289e341fef6345a2dc8255855033d895c2798f65d2b4ebb06e0738fa0",
+      "translation": "Using versions (tags) as nodes, regular changes should be written into __ELBOT_CODE_0__; when releasing, change it to __ELBOT_CODE_1__ and create a new empty Unreleased.",
+      "updated_at": 1782298662
+    },
+    "docs/README.md:list:97d2363c2991fa485e07be08a3757caa35e02dd1ae8b9530f0e0e3c3b7a556aa": {
+      "kind": "list",
+      "source": "[Hook](hooks.md)：规则 Hook 配置、action 类型、segments 多段输出、exec 脚本和表情提取示例。",
+      "source_file": "docs/README.md",
+      "source_hash": "97d2363c2991fa485e07be08a3757caa35e02dd1ae8b9530f0e0e3c3b7a556aa",
+      "translation": "[Hook](hooks.md): Rule Hook configuration, action types, segments multi-part output, exec scripts, and emoji extraction examples.",
+      "updated_at": 1782376212
+    },
+    "docs/README.md:list:b458ca24b5d56f6ca819edecdeb2187c244d62e454f97d58ee1dab9466165afe": {
+      "kind": "list",
+      "source": "[核心概念](concepts.md)：理解 Chat / Work 模式、工具发现、Session、Hook、Cron、Skill 和安全策略。",
+      "source_file": "docs/README.md",
+      "source_hash": "b458ca24b5d56f6ca819edecdeb2187c244d62e454f97d58ee1dab9466165afe",
+      "translation": "[Core Concepts](concepts.md): Understand Chat / Work modes, tool discovery, Session, Hook, Cron, Skill, and security policies.",
+      "updated_at": 1781513067
+    },
+    "docs/README.md:list:bde7e37979d0e00dfe4a23373f9052b84f4f50664de99bf2be044ecced4b04b4": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 只保留项目介绍、快速入口和最小启动路径。",
+      "source_file": "docs/README.md",
+      "source_hash": "bde7e37979d0e00dfe4a23373f9052b84f4f50664de99bf2be044ecced4b04b4",
+      "translation": "__ELBOT_CODE_0__ only retains the project introduction, quick entry points, and the minimum startup path.",
+      "updated_at": 1781513067
+    },
+    "docs/README.md:list:c5b48b30108c9b1ff727cb06136bdc6abdf81c236153b4ac1fffb965c336f4e9": {
+      "kind": "list",
+      "source": "[Elnis 配置与使用](elnis-usage.md)：启用 Elnis、配置 Elwisp，并用 Elvena 投递事件。",
+      "source_file": "docs/README.md",
+      "source_hash": "c5b48b30108c9b1ff727cb06136bdc6abdf81c236153b4ac1fffb965c336f4e9",
+      "translation": "[Elnis Configuration and Usage](elnis-usage.md): Enable Elnis, configure Elwisp, and deliver events using Elvena.",
+      "updated_at": 1781709222
+    },
+    "docs/README.md:list:deca1c32aca61b193dde733ab68c892046776bff5b6e5b72f3b270fb39e8e7f1": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 放开发计划、任务拆分、架构草案和接口草案。",
+      "source_file": "docs/README.md",
+      "source_hash": "deca1c32aca61b193dde733ab68c892046776bff5b6e5b72f3b270fb39e8e7f1",
+      "translation": "__ELBOT_CODE_0__ contains development plans, task breakdowns, architecture drafts, and interface drafts.",
+      "updated_at": 1781513067
+    },
+    "docs/README.md:list:dee52a67c99bffba7fdbf5cb7e86b8645e41df9b171ba60f8d4faf559c9ded67": {
+      "kind": "list",
+      "source": "[前端 API](frontend-api.md)：WebSocket 协议、消息类型和补全接口，用于编写自定义前端。",
+      "source_file": "docs/README.md",
+      "source_hash": "dee52a67c99bffba7fdbf5cb7e86b8645e41df9b171ba60f8d4faf559c9ded67",
+      "translation": "[Frontend API](frontend-api.md): WebSocket protocol, message types, and completion interfaces, used for writing custom frontends.",
+      "updated_at": 1782901148
+    },
+    "docs/README.md:list:ebd53d55610920fa20e00927343cd31ec185b469e23dc58c066954943fab97d0": {
+      "kind": "list",
+      "source": "[Elnis 监听枢纽](elnis.md)：了解 Elnis、Elwisp、Elvena 和外部事件接入。",
+      "source_file": "docs/README.md",
+      "source_hash": "ebd53d55610920fa20e00927343cd31ec185b469e23dc58c066954943fab97d0",
+      "translation": "[Elnis Listening Hub](elnis.md): Learn about Elnis, Elwisp, Elvena, and external event access.",
+      "updated_at": 1781709222
+    },
+    "docs/README.md:list:eefedc6adaeda98a1b7a2dd9cb099adfee795e53d6cf7dfae14c9d9582157b8b": {
+      "kind": "list",
+      "source": "[快速开始](getting-started.md)：从配置 API Key 到启动 CLI，完成第一次对话。",
+      "source_file": "docs/README.md",
+      "source_hash": "eefedc6adaeda98a1b7a2dd9cb099adfee795e53d6cf7dfae14c9d9582157b8b",
+      "translation": "[Quick Start](getting-started.md): From configuring the API Key to launching the CLI, complete your first conversation.",
+      "updated_at": 1781513067
+    },
+    "docs/README.md:list:f411e881a9df45fba6904c37d1dcf9fa5d8ad81cf8e747cde422aef48ab5f31e": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 放开发计划、任务拆分、架构和接口。",
+      "source_file": "docs/README.md",
+      "source_hash": "f411e881a9df45fba6904c37d1dcf9fa5d8ad81cf8e747cde422aef48ab5f31e",
+      "translation": "__ELBOT_CODE_0__ is used for development plans, task breakdowns, architecture, and interfaces.",
+      "updated_at": 1782395265
+    },
+    "docs/README.md:paragraph:1dd32f9d7b7a52985e194349ce545d963940a5d449a9dd1aeeee23477222f304": {
+      "kind": "paragraph",
+      "source": "这里是面向用户的 ElBot 文档。开发计划、任务拆分和内部设计资料已移到 [__ELBOT_CODE_0__](../devdocs/)。\n",
+      "source_file": "docs/README.md",
+      "source_hash": "1dd32f9d7b7a52985e194349ce545d963940a5d449a9dd1aeeee23477222f304",
+      "translation": "This is the user-facing ElBot documentation. Development plans, task breakdowns, and internal design materials have been moved to [__ELBOT_CODE_0__](../devdocs/).\n",
+      "updated_at": 1781513067
+    },
+    "docs/README.md:paragraph:d3463fc8b32e9313df4797488a03de196706485458b11ef1c3fbf0586ad80529": {
+      "kind": "paragraph",
+      "source": "ElBot 仍在开发中，配置、命令和扩展接口可能调整。文档优先覆盖当前稳定且常用的使用路径；实验性能力会尽量标注。\n",
+      "source_file": "docs/README.md",
+      "source_hash": "d3463fc8b32e9313df4797488a03de196706485458b11ef1c3fbf0586ad80529",
+      "translation": "ElBot is still under development; configurations, commands, and extension interfaces may be adjusted. Documentation prioritizes coverage of current stable and commonly used paths; experimental capabilities will be labeled as such where possible.\n",
+      "updated_at": 1781513067
+    }
+  },
+  "source": "docs/README.md",
+  "source_hash": "c9b034abef2aab701d3e0609800a6f9e55c86b4888558a4d9a0894eaffb74cf5",
+  "target": "docs.en/README.md",
+  "updated_at": 1782901148,
+  "version": 2
+}
