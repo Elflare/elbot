@@ -56,9 +56,9 @@
       "updated_at": 1783738456
     },
     "docs/hooks.md": {
-      "source_hash": "e1a3a6aab19bb06c62322d33d08e751682f4f190fe64223986a708d3e7b98bd5",
+      "source_hash": "f1b41917e87d626fd56d53bcea36b73782fbf2f8bf9225a443c26f89f5df0984",
       "target": "docs.en/hooks.md",
-      "updated_at": 1783856494
+      "updated_at": 1783912115
     }
   },
   "segments": {
@@ -14502,6 +14502,14 @@
       "translation": "__ELBOT_CODE_0__ or __ELBOT_CODE_1__ will cause configuration validation to fail;",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:1db20ecbe1d93a4ab01ecfe8cb1f2b44b0b862a1cf076c733d31e16dae4370a5": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 允许 Hook 观察未唤起消息，但不会让主 LLM 自动处理它们。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "1db20ecbe1d93a4ab01ecfe8cb1f2b44b0b862a1cf076c733d31e16dae4370a5",
+      "translation": "__ELBOT_CODE_0__ and __ELBOT_CODE_1__ allow Hooks to observe non-awakened messages, but will not let the main LLM process them automatically.",
+      "updated_at": 1783912115
+    },
     "docs/hooks.md:paragraph:1f24a10bc66595adb5166c41d78d32634eef869e6e19420e4524a9b146e73eae": {
       "kind": "paragraph",
       "source": "Host 对 __ELBOT_CODE_0__ 只校验 allowlist、前后台能力、context 归属、次数、超时、取消和发送 target；",
@@ -15653,6 +15661,14 @@
       "source_hash": "7b36efcc3976703539ee3d8503cf7a3acbc17c5fa9a43e2980069db4bebe1fb8",
       "translation": "It is not a plugin directory and will not be scanned.\n",
       "updated_at": 1783679732
+    },
+    "docs/hooks.md:paragraph:7b44e01416c52581ef6fb5b9d85226b510096337c2b8753e15b84b1fc8225c2f": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 规则遇到已唤起消息时会直接跳过，不影响后续插件、命令或主 LLM。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "7b44e01416c52581ef6fb5b9d85226b510096337c2b8753e15b84b1fc8225c2f",
+      "translation": "__ELBOT_CODE_0__ rules will skip directly when encountering awakened messages, without affecting subsequent plugins, commands, or the main LLM.\n",
+      "updated_at": 1783912115
     },
     "docs/hooks.md:paragraph:7bb62ce238fb635c78bf2e33f6209cc330ac64e5bc8577cc0227ae4a96e96c85": {
       "kind": "paragraph",
@@ -18774,6 +18790,14 @@
       "translation": "File name or emoticon name",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:table:9b492126885c2820dc1427775cc271bd06e798cfc6609e09830f0185beacb316": {
+      "kind": "table",
+      "source": "主要用于 __ELBOT_CODE_0__。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "9b492126885c2820dc1427775cc271bd06e798cfc6609e09830f0185beacb316",
+      "translation": "Mainly used for __ELBOT_CODE_0__.",
+      "updated_at": 1783912115
+    },
     "docs/hooks.md:table:9c2bd6e02d2dcf0e40a7cccc979b965ae82237a10c2ebe72f3da10c4894f355d": {
       "kind": "table",
       "source": "Hook 事件 ID",
@@ -18837,6 +18861,14 @@
       "source_hash": "a28f54a6904af59517230f49e24bcbe1d7c37ecf15b98488da1a585394bbbab1",
       "translation": "Tool error; usually used only in error contexts",
       "updated_at": 1783392421
+    },
+    "docs/hooks.md:table:a2dd9126ce3da0d51045aa5be5d76bc8d4faaf4b251f376021d9720ff2df50a3": {
+      "kind": "table",
+      "source": "唤起策略：__ELBOT_CODE_0__ 仅处理已唤起消息（默认），__ELBOT_CODE_1__ 无论是否唤起都处理，__ELBOT_CODE_2__ 仅处理未唤起消息。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "a2dd9126ce3da0d51045aa5be5d76bc8d4faaf4b251f376021d9720ff2df50a3",
+      "translation": "Wake-up strategy: __ELBOT_CODE_0__ only processes awakened messages (default), __ELBOT_CODE_1__ processes regardless of whether it is awakened, __ELBOT_CODE_2__ only processes non-awakened messages.",
+      "updated_at": 1783912115
     },
     "docs/hooks.md:table:a2fe8fa487fdb10a65ef39b8b1a119f151fc2a9ff8b7d2ae8c87733170267e68": {
       "kind": "table",
