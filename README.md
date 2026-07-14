@@ -35,7 +35,7 @@ ElBot does not inject the full schema of all tools by default in every round of 
 
 ### II. Powerful and Extensible
 
-**Extensible Hook system**: ElBot has a built-in Hook Layer, allowing extension logic to be inserted at key event points such as Agent input, LLM request, LLM response, platform sending, and platform connection. Hooks can modify messages, append output intents, call scripts, and more. The exec action of Rule Hooks is based on stdio communication, supporting the development of plugins using any language or script.
+**Extensible Hook system**: ElBot has a built-in Hook Layer, allowing extension logic to be inserted at key event points such as Agent input, LLM request, LLM response, platform sending, and platform connection. Hooks can modify messages, append output intents, call scripts, and more. Hook supports writing plugins in **any language**.
 
 **Standard Cron and LLM Cron**: ElBot features a built-in Cron Runtime and an LLM-orchestratable Cron service. Standard Cron sends fixed content directly according to a schedule; LLM Cron drives model execution using task descriptions, making it suitable for scheduled tasks that require analysis, summarization, or the use of tools.
 
@@ -43,7 +43,7 @@ ElBot does not inject the full schema of all tools by default in every round of 
 
 **EL Skills creatable by LLM**: ElBot has a built-in `create_el_skill` meta-tool, allowing the LLM to crystallize reusable experience into EL Skills. Automatically validate ELyph syntax upon creation, with optional Go source code attachment and compilation; The pure ELyph text or Go source code created is maintained by a unified `read_el_skill` / `modify_el_skill`; after the source code is modified, it is uniformly formatted and compiled via `finalize_el_skill`, and the check results are returned.
 
-**Compatible with external AgentSkills**: In addition to native Go Skills, ElBot is also compatible with external AgentSkills that follow the agentskills.io style. Automatically scan `skills/agent/<skill>/SKILL.md` or `SKILL.elyph` to read the name, description, applicable scenarios, and risk level; Currently, bundled Python scripts can be executed via hidden wrapper tools.
+**Compatible with external AgentSkill**: ElBot is compatible with external AgentSkills that follow the agentskills.io style. Any AgentSkill script can be used as a tool through configuration.
 
 ### III. Elnis Event Perception System
 
