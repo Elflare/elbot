@@ -107,9 +107,9 @@ func (w *worker) run() {
 	w.done = make(chan struct{})
 	w.mu.Unlock()
 
-	argv, err := splitCommand(w.config.Command)
-	if err != nil {
-		w.startFailed(err)
+	argv := w.config.Command
+	if len(argv) == 0 || strings.TrimSpace(argv[0]) == "" {
+		w.startFailed(fmt.Errorf("runtime command is required"))
 		return
 	}
 	cwd, err := resolveCwd(w.config.Dir, w.config.Cwd)

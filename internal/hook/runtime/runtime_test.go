@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +25,9 @@ func TestHookRuntimeHelperProcess(t *testing.T) {
 	}
 	if marker == -1 {
 		return
+	}
+	if !reflect.DeepEqual(os.Args[marker:], runtimeHelperArgs) {
+		os.Exit(3)
 	}
 	reader := bufio.NewReader(os.Stdin)
 	for eventCount := 0; ; {
@@ -320,8 +324,10 @@ func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
 	}
 }
 
-func runtimeHelperCommand() string {
-	return strings.Join([]string{os.Args[0], "-test.run=TestHookRuntimeHelperProcess", "--", "hook-runtime-helper"}, " ")
+var runtimeHelperArgs = []string{"space arg", "", `C:\hook dir\`, `"quoted"`}
+
+func runtimeHelperCommand() []string {
+	return append([]string{os.Args[0], "-test.run=TestHookRuntimeHelperProcess", "--", "hook-runtime-helper"}, runtimeHelperArgs...)
 }
 
 func waitForStatus(t *testing.T, manager *Manager, id string, wanted Status) {
@@ -438,7 +444,7 @@ func TestManagerApplyInvalidConfigKeepsCurrentWorkers(t *testing.T) {
 
 	invalid := config
 	invalid.ID = "invalid"
-	invalid.Command = ""
+	invalid.Command = nil
 	if err := manager.Apply([]Config{invalid}); err == nil {
 		t.Fatal("expected invalid config error")
 	}

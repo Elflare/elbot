@@ -2523,7 +2523,7 @@ if = "llm.text"
 op = "regex"
 value = "\\[\\[[^\\[\\]]+\\]\\]"
 actions = [
-  { action_name = "extract", type = "exec", command = "sh ./emoticon_extract.sh", field = "llm.text", timing = "%s" },
+  { action_name = "extract", type = "exec", command = ["sh", "./emoticon_extract.sh"], field = "llm.text", timing = "%s" },
 ]
 `, delivery.DeliveryAfterAssistant)
 	if err := os.WriteFile(filepath.Join(configDir, "hooks.toml"), []byte(hooksTOML), 0o644); err != nil {
@@ -4078,7 +4078,7 @@ if = "llm.text"
 op = "regex"
 value = "\\[\\[[^\\[\\]]+\\]\\]"
 actions = [
-  { action_name = "extract", type = "exec", command = "sh ./emoticon_extract.sh", field = "llm.text" },
+  { action_name = "extract", type = "exec", command = ["sh", "./emoticon_extract.sh"], field = "llm.text" },
 ]
 `
 	if err := os.WriteFile(filepath.Join(configDir, "hooks.toml"), []byte(hooksTOML), 0o644); err != nil {

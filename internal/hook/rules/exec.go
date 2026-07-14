@@ -30,8 +30,11 @@ const (
 // request/response handshake, receives one event.handle request, and returns a
 // completed result before exiting. Stateful hooks use internal/hook/runtime.
 func (m Module) runExec(ctx context.Context, event hook.Event, action Action, state state) (hook.Event, actionResult, error) {
-	command := render(action.Command, event, state)
-	if strings.TrimSpace(command) == "" {
+	argv := make([]string, len(action.Command))
+	for i, arg := range action.Command {
+		argv[i] = render(arg, event, state)
+	}
+	if len(argv) == 0 || strings.TrimSpace(argv[0]) == "" {
 		return event, actionResult{Error: "command is required"}, fmt.Errorf("command is required")
 	}
 	runCtx := ctx
@@ -40,13 +43,6 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		runCtx, cancel = context.WithTimeout(ctx, time.Duration(action.TimeoutSeconds)*time.Second)
 	}
 	defer cancel()
-	argv, err := hook.SplitCommand(command)
-	if err != nil || len(argv) == 0 {
-		if err == nil {
-			err = fmt.Errorf("command is required")
-		}
-		return event, actionResult{Error: err.Error()}, err
-	}
 	cwd, err := m.execCwd(action, event, state)
 	if err != nil {
 		return event, actionResult{Error: err.Error()}, err

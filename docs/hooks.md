@@ -392,12 +392,12 @@ always = true
 [[rules.actions]]
 action_name = "extract"
 type = "exec"
-command = "uv run extract.py"
+command = ["uv", "run", "extract.py"]
 field = "llm.text"
 timeout_seconds = 30
 ```
 
-`command` 不经过 shell，支持单引号、双引号及引号内的反斜杠转义；shell 语法应显式调用 `bash -lc`、`sh -c` 或平台解释器。`timeout_seconds` 为 `0` 或省略时不额外超时，不能为负数。
+`command` 是非空 argv 数组：第一个元素是程序，其余元素原样作为参数；每个元素分别渲染模板，不经过 shell。需要 shell 语法时显式配置为 `["bash", "-lc", "..."]`、`["sh", "-c", "..."]` 或对应平台解释器。`timeout_seconds` 为 `0` 或省略时不额外超时，不能为负数。
 
 插件内规则的 `cwd` 默认插件目录，只能使用插件内相对路径；根 `plugins/hooks.toml` 的规则默认在 `plugins/` 执行，可使用相对或绝对 cwd。
 
@@ -417,7 +417,7 @@ blocked_id = ["qqonebot:10001"]
 
 [plugin.runtime]
 mode = "persistent"
-command = "uv run weather_hook.py"
+command = ["uv", "run", "weather_hook.py"]
 cwd = "."
 startup_timeout_seconds = 10
 shutdown_timeout_seconds = 5
@@ -465,7 +465,7 @@ stop_propagation = true
 | 字段 | 说明 |
 | --- | --- |
 | `mode` | `once`（默认）、`persistent` 或 `transient`。`persistent` 启动后常驻；`transient` 只在规则命中后启动，并在会话结束后退出。 |
-| `command` | 启动命令，不经过 shell；支持单引号、双引号及引号内的反斜杠转义。 |
+| `command` | 非空 argv 数组；第一个元素是程序，其余元素原样作为参数，不渲染模板，也不经过 shell。 |
 | `cwd` | 相对插件目录，不能为绝对路径或逃出插件目录。通常为 `.`。 |
 | `startup_timeout_seconds` | 等待 `system.init` 成功 response 的最长秒数，必须大于 `0`。 |
 | `shutdown_timeout_seconds` | 等待 `system.shutdown` 和退出的最长秒数，必须大于 `0`。 |
