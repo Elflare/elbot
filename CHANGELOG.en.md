@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inline preloading supports tool shorthand `@t:<name-or-tag>` and Skill shorthand `@s:<name>`, and is compatible with Chinese full-width colon `：`.
 - The CLI TUI input box now supports fuzzy completion of local files using `#文件名`; references are replaced with the filename and file content upon sending, and paths containing spaces can be written as `#"a b.txt"`.
 - `web_extract` added the `jina` parameter, which defaults to using Jina Reader; passing `jina=false` allows manually switching to direct crawling.
+- `web_extract` added the `force_refresh` parameter, which can skip the cache, re-fetch the webpage, and update the cached content as needed.
 
 ### Changed
 
