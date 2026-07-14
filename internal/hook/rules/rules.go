@@ -90,7 +90,7 @@ type Rule struct {
 	Timing          string            `toml:"timing"`
 	Tool            string            `toml:"tool"`
 	Args            string            `toml:"arguments"`
-	Command         string            `toml:"command"`
+	Command         []string          `toml:"command"`
 	Cwd             string            `toml:"cwd"`
 	TimeoutSeconds  int               `toml:"timeout_seconds"`
 	All             bool              `toml:"all"`
@@ -121,7 +121,7 @@ type Action struct {
 	Tool           string        `toml:"tool"`
 	Arguments      string        `toml:"arguments"`
 	All            bool          `toml:"all"`
-	Command        string        `toml:"command"`
+	Command        []string      `toml:"command"`
 	Cwd            string        `toml:"cwd"`
 	TimeoutSeconds int           `toml:"timeout_seconds"`
 	Target         Target        `toml:"target"`
@@ -243,7 +243,7 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 }
 
 func validateExecAction(action Action) error {
-	if strings.TrimSpace(action.Command) == "" {
+	if len(action.Command) == 0 || strings.TrimSpace(action.Command[0]) == "" {
 		return fmt.Errorf("command is required")
 	}
 	if action.TimeoutSeconds < 0 {
@@ -1339,8 +1339,8 @@ func formatRuleDetail(rule Rule) string {
 		if action.Arguments != "" {
 			sb.WriteString(" args=" + strconvQuote(action.Arguments))
 		}
-		if action.Command != "" {
-			sb.WriteString(" command=" + strconvQuote(action.Command))
+		if len(action.Command) > 0 {
+			sb.WriteString(fmt.Sprintf(" command=%q", action.Command))
 		}
 		if action.Timing != "" {
 			sb.WriteString(" timing=" + action.Timing)

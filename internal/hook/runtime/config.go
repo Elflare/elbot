@@ -50,7 +50,7 @@ type ToolsConfig struct {
 // once; only persistent and transient modes create hook.v2 workers.
 type Config struct {
 	Mode                   Mode          `toml:"mode"`
-	Command                string        `toml:"command"`
+	Command                []string      `toml:"command"`
 	Cwd                    string        `toml:"cwd"`
 	StartupTimeoutSeconds  int           `toml:"startup_timeout_seconds"`
 	ShutdownTimeoutSeconds int           `toml:"shutdown_timeout_seconds"`
@@ -91,7 +91,7 @@ func (c Config) Validate() error {
 	if !validID(c.ID) {
 		return fmt.Errorf("hook id %q must contain only lowercase letters, digits, '-' or '_'", c.ID)
 	}
-	if strings.TrimSpace(c.Command) == "" {
+	if len(c.Command) == 0 || strings.TrimSpace(c.Command[0]) == "" {
 		return fmt.Errorf("runtime command is required")
 	}
 	if strings.TrimSpace(c.Cwd) == "" {
@@ -138,17 +138,6 @@ type Options struct {
 	Audit     func(event string, attrs ...any)
 	Send      func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 	SharedDir string
-}
-
-func splitCommand(command string) ([]string, error) {
-	fields, err := hook.SplitCommand(command)
-	if err != nil {
-		return nil, err
-	}
-	if len(fields) == 0 {
-		return nil, fmt.Errorf("runtime command is required")
-	}
-	return fields, nil
 }
 
 func resolveCwd(dir, cwd string) (string, error) {

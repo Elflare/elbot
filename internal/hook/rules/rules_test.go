@@ -48,6 +48,9 @@ func TestExecHelperProcess(t *testing.T) {
 	switch os.Args[marker] {
 	case "print":
 		writeProtocolTestOutput(strings.Join(os.Args[marker+1:], " "))
+	case "argv":
+		data, _ := json.Marshal(os.Args[marker+1:])
+		writeProtocolTestOutput(string(data))
 	case "done-message":
 		writeProtocolTestResult(map[string]any{"status": "completed", "result": "ok", "message": map[string]string{"text": "clean"}})
 	case "done-empty-message":
@@ -241,18 +244,8 @@ func writeProtocolTestResult(result any) {
 func writeProtocolTestOutput(text string) {
 	writeProtocolTestResult(map[string]any{"status": "completed", "outputs": []map[string]any{{"kind": "text", "text": text}}})
 }
-func execHelperCommand(args ...string) string {
-	argv := append([]string{os.Args[0], "-test.run=TestExecHelperProcess", "--", "elbot-exec-helper"}, args...)
-	parts := make([]string, 0, len(argv))
-	for _, arg := range argv {
-		parts = append(parts, quoteExecArg(arg))
-	}
-	return strings.Join(parts, " ")
-}
-
-func quoteExecArg(arg string) string {
-	arg = strings.ReplaceAll(arg, `"`, `\"`)
-	return `"` + arg + `"`
+func execHelperCommand(args ...string) []string {
+	return append([]string{os.Args[0], "-test.run=TestExecHelperProcess", "--", "elbot-exec-helper"}, args...)
 }
 
 func TestRuleNormalizeFlatConditionAndAction(t *testing.T) {
@@ -273,6 +266,44 @@ func TestRuleNormalizeFlatConditionAndAction(t *testing.T) {
 	}
 	if len(rule.Actions) != 1 || rule.Actions[0].Type != "send" || rule.Actions[0].Text != "connected" || rule.Actions[0].Timing != delivery.DeliveryAfterAssistant {
 		t.Fatalf("actions = %#v", rule.Actions)
+	}
+}
+
+func TestDecodeTOMLRejectsStringCommands(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		data   string
+		target any
+	}{
+		{
+			name:   "exec action",
+			data:   "[[rules]]\nname = \"demo\"\non = \"llm.response.received\"\nalways = true\naction = \"exec\"\ncommand = \"uv run hook.py\"\n",
+			target: &Config{},
+		},
+		{
+			name:   "worker runtime",
+			data:   "[plugin.runtime]\nmode = \"persistent\"\ncommand = \"uv run hook.py\"\n",
+			target: &pluginConfig{},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "hook.toml")
+			if err := os.WriteFile(path, []byte(tc.data), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			err := decodeTOMLFile(path, tc.target)
+			if err == nil || !strings.Contains(err.Error(), "command") {
+				t.Fatalf("decode error = %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateExecActionRejectsMissingProgram(t *testing.T) {
+	for _, command := range [][]string{nil, {}, {""}, {"  "}} {
+		if err := validateExecAction(Action{Command: command}); err == nil || !strings.Contains(err.Error(), "command is required") {
+			t.Fatalf("command %#v validation error = %v", command, err)
+		}
 	}
 }
 
@@ -494,7 +525,7 @@ blocked_id = ["qqonebot:42"]
 
 [plugin.runtime]
 mode = "persistent"
-command = "weather-hook"
+command = ["weather-hook"]
 cwd = "."
 startup_timeout_seconds = 5
 shutdown_timeout_seconds = 5
@@ -947,6 +978,26 @@ func TestExecActionDefaultStdinIncludesEvent(t *testing.T) {
 	}
 	if len(got.Outputs) != 1 || !strings.Contains(got.Outputs[0].Text, `"type":"request"`) || !strings.Contains(got.Outputs[0].Text, `"method":"event.handle"`) || !strings.Contains(got.Outputs[0].Text, `"user_id":"alice"`) || !strings.Contains(got.Outputs[0].Text, `"platform_message":[{"type":"json"}]`) {
 		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+}
+
+func TestExecCommandPreservesArgvAndRendersEachArgument(t *testing.T) {
+	event := hook.Event{Message: hook.MessagePayload{Segments: []llm.MessageSegment{{Type: llm.SegmentText, Text: "上海 天气"}}}}
+	command := execHelperCommand("argv", "{{message.text}}", "", `C:\hook dir\`, `"quoted"`)
+	got, err := (Module{}).runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: command}}}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 {
+		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+	var args []string
+	if err := json.Unmarshal([]byte(got.Outputs[0].Text), &args); err != nil {
+		t.Fatalf("decode argv: %v", err)
+	}
+	want := []string{"上海 天气", "", `C:\hook dir\`, `"quoted"`}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("argv = %#v, want %#v", args, want)
 	}
 }
 

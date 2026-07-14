@@ -495,7 +495,7 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # event.handle result.message.text is written back to the action field.
 # event.handle result.outputs, consume and stop_propagation apply Hook output/control.
 # actions = [
-#   { action_name = "extract", type = "exec", command = "uv run extract.py", field = "llm.text", timing = "after_assistant" },
+#   { action_name = "extract", type = "exec", command = ["uv", "run", "extract.py"], field = "llm.text", timing = "after_assistant" },
 # ]
 #
 # Supported hook points:
@@ -600,6 +600,6 @@ target.superadmins = true
 # op = "regex"
 # value = "\\[\\[[^\\[\\]]+\\]\\]"
 # actions = [
-#   { action_name = "extract", type = "exec", command = "uv run emoticon_extract.py", field = "llm.text", timing = "after_assistant" },
+#   { action_name = "extract", type = "exec", command = ["uv", "run", "emoticon_extract.py"], field = "llm.text", timing = "after_assistant" },
 # ]
 `

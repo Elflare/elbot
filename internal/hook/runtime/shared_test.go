@@ -278,7 +278,7 @@ func TestSharedTTLDefaultsAndValidation(t *testing.T) {
 func TestConfigValidateRequiresExplicitLifecycle(t *testing.T) {
 	config := Config{
 		Mode:                   ModePersistent,
-		Command:                "hook.exe",
+		Command:                []string{"hook.exe"},
 		Cwd:                    ".",
 		StartupTimeoutSeconds:  5,
 		ShutdownTimeoutSeconds: 5,
@@ -295,6 +295,11 @@ func TestConfigValidateRequiresExplicitLifecycle(t *testing.T) {
 	if err := config.Validate(); err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
+	config.Command = []string{""}
+	if err := config.Validate(); err == nil || !strings.Contains(err.Error(), "runtime command is required") {
+		t.Fatalf("Validate empty command: %v", err)
+	}
+	config.Command = []string{"hook.exe"}
 	config.Restart.Strategy = ""
 	if err := config.Validate(); err == nil {
 		t.Fatal("Validate accepted missing restart strategy")
