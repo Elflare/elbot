@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 内联预载支持工具简写 `@t:<name-or-tag>` 和 Skill 简写 `@s:<name>`，并兼容中文全角冒号 `：`。
 - CLI TUI 输入框支持用 `#文件名` 模糊补全本地文件；发送时会把引用替换为文件名和文件内容，含空格路径可写作 `#"a b.txt"`。
 - `web_extract` 新增 `jina` 参数，默认使用 Jina Reader；传 `jina=false` 可手动改用直接爬取。
+- `web_extract` 新增 `force_refresh` 参数，可按需跳过缓存、重新获取网页并更新缓存内容。
 
 ### Changed
 

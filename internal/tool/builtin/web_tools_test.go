@@ -129,6 +129,88 @@ func TestWebExtractToolSlicesAndCaches(t *testing.T) {
 	}
 }
 
+func TestWebExtractToolForceRefreshReplacesCache(t *testing.T) {
+	t.Setenv(jinaAPIKeyEnv, "jina-test")
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		content := "first version"
+		if calls > 1 {
+			content = "second version"
+		}
+		_ = json.NewEncoder(w).Encode(jinaResponse{Data: &jinaResponseData{URL: "https://example.com/page", Content: content}})
+	}))
+	defer server.Close()
+
+	extract := NewWebExtractTool()
+	extract.client = server.Client()
+	extract.endpoint = server.URL
+	first, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(first.Content, "first version") || !strings.Contains(first.Content, "Cached: false") {
+		t.Fatalf("first content = %q", first.Content)
+	}
+
+	refreshed, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page","force_refresh":true}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected refresh request, server calls = %d", calls)
+	}
+	if !strings.Contains(refreshed.Content, "second version") || !strings.Contains(refreshed.Content, "Cached: false") {
+		t.Fatalf("refreshed content = %q", refreshed.Content)
+	}
+
+	cached, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected refreshed content to be cached, server calls = %d", calls)
+	}
+	if !strings.Contains(cached.Content, "second version") || !strings.Contains(cached.Content, "Cached: true") {
+		t.Fatalf("cached content = %q", cached.Content)
+	}
+}
+
+func TestWebExtractToolFailedForceRefreshPreservesCache(t *testing.T) {
+	t.Setenv(jinaAPIKeyEnv, "jina-test")
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		if calls > 1 {
+			http.Error(w, "refresh failed", http.StatusBadGateway)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(jinaResponse{Data: &jinaResponseData{URL: "https://example.com/page", Content: "cached version"}})
+	}))
+	defer server.Close()
+
+	extract := NewWebExtractTool()
+	extract.client = server.Client()
+	extract.endpoint = server.URL
+	if _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page","force_refresh":true}`)}); err == nil {
+		t.Fatal("expected force refresh error")
+	}
+
+	cached, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected failed refresh to preserve cache, server calls = %d", calls)
+	}
+	if !strings.Contains(cached.Content, "cached version") || !strings.Contains(cached.Content, "Cached: true") {
+		t.Fatalf("cached content = %q", cached.Content)
+	}
+}
+
 func TestWebExtractDefaultClientUsesConfiguredProxy(t *testing.T) {
 	t.Setenv(webExtractProxyEnv, "http://127.0.0.1:9999")
 	proxy, err := resolveExtractProxy(context.Background(), "")
