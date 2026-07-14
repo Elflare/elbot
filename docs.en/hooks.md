@@ -589,12 +589,16 @@ Except for the `_shared/` file directory, all workers share an in-process JSON K
 | method | `params` | Successful `result` |
 | --- | --- | --- |
 | `shared.get` | `{"key":"weather/cache"}` | `{"found":true,"value":<任意 JSON>}`; `found=false` when it does not exist. |
-| `shared.set` | `{"key":"weather/cache","value":<任意 JSON>}` | `{"ok":true}` |
+| `shared.set` | `{"key":"weather/cache","value":<任意 JSON>,"ttl_seconds":600}` | `{"ok":true}` |
 | `shared.delete` | `{"key":"weather/cache"}` | `{"deleted":true/false}` |
 | `shared.list` | `{"prefix":"weather/"}` | `{"keys":["weather/cache",...]}`, in lexicographical order; an empty prefix lists all. |
-| `shared.compare_and_swap` | `{"key":"weather/cache","expected":<旧 JSON>,"value":<新 JSON>}` | `{"swapped":true/false}` |
+| `shared.compare_and_swap` | `{"key":"weather/cache","expected":<旧 JSON>,"value":<新 JSON>,"ttl_seconds":600}` | `{"swapped":true/false}` |
 
-The key written to the shared KV must be `<namespace>/<key>`. The value must be valid JSON, with a maximum size of 1 MiB per value after compression and a maximum of 32 MiB for the shared area. `compare_and_swap` is an atomic operation, compared based on the compressed JSON content; Omitting `expected` indicates writing only if the key does not exist; explicitly specifying `expected: null` indicates that the current value must be JSON `null`. Shared memory is preserved across Hook restarts and `/hooks reload`, and is cleared after ElBot restarts; When persistence is required, the Hook writes to its own directory or `_shared/`.
+`ttl_seconds` is the idle timeout: defaults to 600 seconds if omitted; when set to a positive number, the timer resets upon every successful `get`, `set`, or `compare_and_swap`; when explicitly set to `0`, it does not expire based on time; Negative numbers are invalid. `list` and failed `compare_and_swap` will not refresh the access time. Expired keys are treated as non-existent during reading, listing, deletion, or CAS.
+
+The key must be non-empty after trimming leading and trailing whitespace, with a maximum length of 256 bytes; no specific format is enforced. It is recommended to organize global data using prefixes such as `users/<platform>/<id>` and `cache/<name>` to reduce naming conflicts; Prefixes are merely naming conventions, not security boundaries; all workers can access all keys. The value must be valid JSON, with a maximum size of 1 MiB per value after compression; The shared area supports up to 10,000 entries, with a combined maximum size of 32 MiB for keys and values.
+
+When the entry or capacity limit is reached, the Host will first delete expired items and then evict the globally coldest data based on the least recently used time; Entries in `ttl_seconds = 0` may also be evicted due to capacity limits. `compare_and_swap` is an atomic operation, compared based on the compressed JSON content; Omitting `expected` indicates writing only if the key does not exist; explicitly specifying `expected: null` indicates that the current value must be JSON `null`. Shared memory is preserved across Hook restarts and `/hooks reload`, and is cleared after ElBot restarts; When persistence is required, the Hook writes to its own directory or `_shared/`.
 
 ### Plugin Self-Reload
 
