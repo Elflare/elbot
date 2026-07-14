@@ -2,16 +2,18 @@
 
 # Hook
 
-Hooks run at critical boundaries of ElBot: they can match or modify events, append output intents, or hand over events to external processes. Hooks do not directly call the platform's sending interface; Output is uniformly delivered to the platform by ElBot's Output Manager.
+Hooks match or modify events, append output, or hand over events to external programs at key boundaries of ElBot. Output is sent uniformly by the Output Manager.
 
+## Terminology and Selection
 
-## Select Type First
+| Name | Configuration and Lifecycle | Applicable Scenarios |
+| --- | --- | --- |
+| **Rule Hook** | TOML `[[rules]]`; execute actions after matching. | Simple logic such as modifying text or sending content. |
+| **One-time exec Hook** | `type = "exec"` in the rule; starts an external program each time it is triggered, and exits after processing the current event. | Independent scripts or logic that does not require saving process state. |
+| **Transient Worker** | `[plugin.runtime] mode = "transient"`; starts after the trigger rule is hit, and exits after the waiting Session ends. | Short-term stateful, multi-turn interaction. |
+| **Persistent Worker** | `[plugin.runtime] mode = "persistent"`; starts with ElBot and remains resident. | Long-term state, background tasks, frequent events. |
 
-| Requirement | Selection |
-| --- | --- |
-| Modify text, append output, or call registered tools after matching events | Rule Hook |
-| Each event is independently handed over to an external program, which exits after processing | The `exec` action of Rule Hooks |
-| Process residency, maintaining state, waiting for subsequent input, actively calling Host tools | Persistent Hook |
+Transient Worker and Persistent Worker are collectively referred to as **Worker Hook**; One-time exec Hooks and Worker Hooks are collectively known as **process Hooks**. `mode = "once"` does not create a Worker and still runs according to the rule Hook; A one-time exec Hook will only be started if the rule is configured with `type = "exec"`. All entry points that produce outputs use the same set of segments.
 
 See Hook examples in [Hook Showcase](https://github.com/Elfreese/elbot-showcase/blob/main/hooks/README.md).
 
@@ -29,7 +31,7 @@ name = "weather"
 
 | Field | Required | Description |
 | --- | --- | --- |
-| `name` | Yes | Plugin identifier and default directory name; Persistent Hooks also use it as the worker ID. Persistent Hook IDs can only use lowercase letters, numbers, `-`, and `_`; it is also recommended that rule plugins follow this format. |
+| `name` | Yes | Plugin identifier and default directory name; Worker Hook also uses it as the worker ID. Worker ID can only use lowercase letters, numbers, `-`, and `_`; Rule plugins are also recommended to follow this format. |
 | `enabled` | No | Whether to load, default `true`. After modifying the root configuration, an administrator needs to execute a global `/hooks reload`. |
 | `path` | No | Configuration path relative to `plugins/`, default `<name>/hook.toml`; it cannot be an absolute path or escape `plugins/`. |
 
@@ -195,11 +197,13 @@ For `message.text` and `llm.latest_user_text`:
 - `replace` / `delete` only process text segments; images and files are preserved.
 - Overwriting `message.text` in the exec response will reconstruct it as a pure text segment, and the original image and file segments will be lost.
 
-## Output and Path
+## Unified Output
 
-Rules `send`, one-time exec, temporary Hooks, and persistent Hooks use the same set of output segments. `target` and `timing` belong to the entire group of outputs, not to a single segment.
+Rules `send`, `output.send`, one-time exec Hooks, and Worker Hook responses use the same set of outputs segments. `target` and `timing` belong to the entire group of outputs, not to a single segment.
 
-### A single `send` of the rule TOML
+### TOML Syntax
+
+A single segment can be written directly in the `send` action:
 
 ```toml
 type = "send"
@@ -210,11 +214,7 @@ timing = "immediate"
 target.group_id = "123456"
 ```
 
-The single-output shorthand supports the same fields as output segments and is internally equivalent to a single-element `outputs`. Shorthand fields and `outputs` cannot appear simultaneously; Use `action_name` when you need to name an exec/tool action.
-
-### TOML `outputs` and `outputs` of one-time exec
-
-Multi-segment outputs of rules use `outputs`, and `outputs` of one-time exec responses use the same segment format:
+This syntax is equivalent to a single-element `outputs`, and both cannot appear simultaneously. Multi-segment syntax:
 
 ```toml
 [[rules.actions]]
@@ -228,6 +228,18 @@ outputs = [
 ]
 ```
 
+### JSON Syntax
+
+Process Hook responses and `output.send` use the same structure:
+
+```json
+{
+  "outputs": [{"kind":"reply","message_id":"456","text":"引用回复"}],
+  "target": {"platform":"qqonebot","scope_id":"group:123"},
+  "timing": "immediate"
+}
+```
+
 | Field | Description |
 | --- | --- |
 | `kind` | `text`, `image`, `file`, `emoticon`, `at`, `reply`; default `text`. |
@@ -238,11 +250,9 @@ outputs = [
 | `message_id` | Non-empty platform message ID of `kind = "reply"`. |
 | `emoticon_id` | Non-empty platform native emoji or sticker ID of `kind = "emoticon"`; native emojis do not accept media sources. |
 
-`outputs` is a group of message fragments. To send a single-fragment message, simply make `outputs` contain only one element; To send multiple messages, use multiple `send` actions or multiple `output.send` requests.
+`outputs` is a group of segments for a single message. Sending multiple messages requires multiple `send` actions or multiple `output.send`.
 
-Large media for one-time exec should be written to the plugin directory or `_shared/`, then return `path` or `url`; Do not stuff large amounts of data into the JSON Pipe. A single stdout protocol frame is at most 16 MiB.
-
-### target and timing
+### target, timing and paths
 
 Rule TOML uses snake_case target:
 
@@ -254,17 +264,126 @@ target.group_id = "123456"
 target.superadmins = true
 ```
 
-Usually, target is omitted to reuse the current event. Both JSON and TOML targets use the snake_case fields mentioned above. `timing` is `immediate` (default) or `after_assistant`; See the Hook point table for its actual effective scope.
+Both JSON and TOML targets use the snake_case fields mentioned above; If omitted, the current event is used. `timing` is `immediate` (default) or `after_assistant`; for the actual scope of effect, refer to the Hook point table.
 
-## One-off exec and hook.v2
+Relative media paths are resolved based on the plugin directory of the declared rule; Rules for the root `plugins/hooks.toml` are relative to `plugins/`. Large media files should be written to the plugin directory or `_shared/`, then return `path` or `url`. A single `hook.v2` JSON Lines frame has a maximum size of 16 MiB; do not inline large data.
 
-### Common Protocol Principles
+## Process Hook Programming Interface
 
-Both one-time exec and persistent Hooks use `hook.v2` JSON Lines: each line of stdin and stdout is a JSON frame; stdout can only be used to write protocol frames; logs should be written to stderr. Request IDs initiated by the Host must start with `host:`, and request IDs initiated by the Hook must start with `plugin:`; responses must reuse the corresponding request ID.
+Process Hook uses `hook.v2` JSON Lines. one JSON frame per line for stdin and stdout; stdout can only be used to write the protocol; logs should be written to stderr. Host request ID uses `host:*`, Hook request ID uses `plugin:*`, and the response must reuse the request ID.
 
-Both modes process `system.init` first, then process `event.handle` upon success, and both allow the Hook to send requests to the Host; Available methods vary depending on the execution mode. A one-time exec exits after processing a single `event.handle`; A persistent Hook continuously processes multiple events and additionally receives `system.shutdown` and may receive `event.cancel`.
+The Host first sends `system.init`, and then sends `event.handle` upon success. A one-time exec Hook exits after processing a single event; A Worker Hook can process multiple events and receives `system.shutdown` and potentially `event.cancel`.
 
-`exec` starts a child process for each match: the Host sends `system.init`, sends `event.handle` after receiving a successful response, and waits for the process to exit after reading its response.
+### Complete Interaction Example
+
+The following is a complete round-trip of a one-time exec Hook; each line in the code block is a JSON Lines frame. Host writes to Hook stdin:
+
+```jsonl
+{"type":"request","id":"host:init","method":"system.init","params":{"version":"hook.v2","runtime":{"plugin_name":"demo","plugin_dir":"C:/elbot/plugins/demo","config_path":"C:/elbot/plugins/demo/hook.toml","rule_name":"weather","cwd":"C:/elbot/plugins/demo"}}}
+```
+
+Hook returns a successful response from stdout:
+
+```jsonl
+{"type":"response","id":"host:init","ok":true,"result":{}}
+```
+
+Subsequently, the Host sends the current event:
+
+```jsonl
+{"type":"request","id":"host:event","method":"event.handle","params":{"event":{"id":"evt-123","point":"platform.message.received","time":"2026-07-14T12:00:00+08:00","metadata":{"match":{}},"control":{"consume":false,"stop_propagation":false},"platform":{"name":"qqonebot","scope_id":"group:123456","user_id":"10001","conversation_id":"group:123456","message_id":"789","reply_to_message_id":""},"actor":{"id":"qqonebot:10001","role":"user","group_role":"member","user_id":"10001","nickname":"Alice","group_card":"","display_name":"Alice"},"session":{"id":"session-123","mode":"group","title":"","status":""},"request":{"id":"","kind":"","session_id":"","phase":""},"message":{"id":"789","role":"user","platform_text":"天气 上海","intent_text":"天气 上海","segments":[{"type":"text","text":"天气 上海"}]},"llm":{"provider":"","model":""},"tool":{"id":"","name":""}},"match":{},"runtime":{"plugin_name":"demo","plugin_dir":"C:/elbot/plugins/demo","config_path":"C:/elbot/plugins/demo/hook.toml","rule_name":"weather","cwd":"C:/elbot/plugins/demo"}}}
+```
+
+Hook returns the processing result:
+
+```jsonl
+{"type":"response","id":"host:event","ok":true,"result":{"status":"completed","matched":true,"result":"weather accepted","message":{"text":"查询上海天气"},"outputs":[{"kind":"text","text":"正在查询……"}],"target":{"platform":"qqonebot","scope_id":"group:123456"},"timing":"immediate","pass_through":false}}
+```
+
+When processing fails, omit `result` and return `{"type":"response","id":"host:event","ok":false,"error":"error message"}`. The `id` of the response must be the same as the request.
+
+### system.init.params
+
+| Field | User | Description |
+| --- | --- | --- |
+| `version` | All | Fixed as `hook.v2`. |
+| `runtime.plugin_name` | One-time | Plugin name; the root rule may be empty. |
+| `runtime.plugin_dir` | One-time | Plugin directory. |
+| `runtime.config_path` | One-time | Configuration file for declaring rules. |
+| `runtime.rule_name` | One-time | Current rule name; use the action name if the rule has no name. |
+| `runtime.cwd` | One-time | Current working directory of the process. |
+| `hook.id` / `hook.description` | Worker | Worker ID and description. |
+| `hook.plugin_dir` / `hook.cwd` / `hook.shared_dir` | Worker | Plugin directory, working directory, and shared directory. |
+| `tools` | Worker | The schema of the tool in `[plugin.runtime.tools].allow`; empty if not configured. |
+
+### event.handle.params
+
+| Field | User | Description |
+| --- | --- | --- |
+| `event` | All | Current event; see the Event section at the end for fields. |
+| `match` | All | Regex captures from the trigger rule; an empty object if there are no captures. |
+| `runtime` | One-time | Same as `system.init.params.runtime`. |
+| `continuation` | Worker | `true` represents subsequent messages captured by the waiting route. |
+| `tool_context` | Worker | Current foreground `tool.call` token. |
+
+### event.handle result
+
+| Field | User | Description |
+| --- | --- | --- |
+| `status` | All | Omitted or `completed` indicates the end; the Worker can also return `waiting`. |
+| `outputs` / `target` / `timing` | All | Unified output format, see "Unified Output". |
+| `pass_through` | All | `false` indicates takeover, `true` indicates pass-through; overrides the rule defaults `consume` and `stop_propagation`. |
+| `matched` | One-time | `false` indicates that this rule was not hit: roll back the modifications and outputs of this rule, and skip the remaining actions. |
+| `result` / `error` | One-time | Text to be written to `{{actions.<name>.result/error}}`. |
+| `message.text` | One-time | Overwrite the `field` of the action; defaults to `message.text` when the field is not configured. An empty string indicates clearing, and omission indicates no change. |
+| `consume` / `stop_propagation` | One-time | Set the corresponding control field when it is `true`. |
+| `conversation_id` | Worker | A required non-empty opaque ID when `waiting`. |
+| `expires_at` | Worker | RFC 3339 time required when `waiting`, must not exceed `max_wait_seconds`. |
+
+### Host Methods
+
+When the plugin initiates a request, `id` must start with `plugin:`; It is not part of the method. For example, the Hook requests `platform.call` from stdout:
+
+```jsonl
+{"type":"request","id":"plugin:get-message-1","method":"platform.call","params":{"platform":"qqonebot","api":"get_msg","params":{"message_id":"789"}}}
+```
+
+The Host returns the same `id` from stdin; the specific structure of `result` is determined by the platform API:
+
+```jsonl
+{"type":"response","id":"plugin:get-message-1","ok":true,"result":{"message_id":789,"raw_message":"天气 上海"}}
+```
+
+| method | Available party | `params` and `result` |
+| --- | --- | --- |
+| `shared.*` | All | Read and write global shared state, see the table below. |
+| `platform.call` | One-time | params are `platform` (optional, default current platform), required `api`, and optional object `params`; result is the platform return value. |
+| `output.send` | One-time | params use a unified output structure; result contains the count of `sent` and `receipts`. |
+| `message.get_reply` | One-time | No parameters; result contains `message_id` and `available`. |
+| `message.get` | One-time | Reserved interface; currently always returns `{"available":false}`. |
+| `hook.log` | One-time | params are used as log content; result is `{"ok":true}`. |
+| `tool.call` | Worker | Call ElBot tools in the allowlist; see "Tool Call" for fields. |
+| `hooks.reload` | Worker | params is an empty object; reload the current plugin; see "Plugin Self-Reload" for results. |
+
+### Shared State
+
+One-time exec Hooks share an in-process JSON KV with all Worker Hooks:
+
+| method | `params` | Successful `result` |
+| --- | --- | --- |
+| `shared.get` | `{"key":"weather/cache"}` | `{"found":true,"value":<任意 JSON>}`; `found=false` when it does not exist. |
+| `shared.set` | `{"key":"weather/cache","value":<任意 JSON>,"ttl_seconds":600}` | `{"ok":true}` |
+| `shared.delete` | `{"key":"weather/cache"}` | `{"deleted":true/false}` |
+| `shared.list` | `{"prefix":"weather/"}` | `{"keys":["weather/cache",...]}`; sorted lexicographically; an empty prefix lists all. |
+| `shared.compare_and_swap` | `{"key":"weather/cache","expected":<旧 JSON>,"value":<新 JSON>,"ttl_seconds":600}` | `{"swapped":true/false}` |
+
+`ttl_seconds` is the idle timeout: defaults to 600 seconds if omitted; A positive number will reset the timer upon successful `get`, `set`, or CAS; `0` does not expire by time; Negative numbers are invalid. `list` and failed CAS do not refresh the time; expired keys are treated as non-existent.
+
+The key must be non-empty after trimming leading and trailing whitespace, with a maximum length of 256 bytes. It is recommended to use prefixes such as `users/<platform>/<id>` and `cache/<name>` to avoid conflicts, but prefixes are not permission boundaries. The value must be valid JSON, with a maximum size of 1 MiB per value after compression; The shared area supports up to 10,000 entries, with a combined maximum size of 32 MiB for keys and values.
+
+When the limit is reached, expired items are deleted first, and then the coldest data is evicted based on the most recent usage time; `ttl_seconds = 0` may also be evicted. CAS performs atomic comparisons based on the compressed JSON; Omitting `expected` indicates writing only when the key does not exist; explicitly providing `expected: null` only matches JSON `null`. Shared state is preserved across Hook restarts and `/hooks reload`, and is cleared after ElBot restarts; Write to the plugin directory or `_shared/` when persistence is required.
+
+### One-time exec Hook
 
 ```toml
 [[rules]]
@@ -280,104 +399,15 @@ field = "llm.text"
 timeout_seconds = 30
 ```
 
-### command, cwd and timeout
+`command` does not go through the shell and supports single quotes, double quotes, and backslash escapes within quotes; Shell syntax should explicitly call `bash -lc`, `sh -c`, or the platform interpreter. No additional timeout when `timeout_seconds` is `0` or omitted; it cannot be a negative number.
 
-`exec.command` does not implicitly go through a shell. It supports single quotes, double quotes, and limited escaping of quotes/backslashes; Shell syntax should explicitly call `bash -lc`, `sh -c`, or a platform interpreter.
+The `cwd` of rules within a plugin defaults to the plugin directory and can only use relative paths within the plugin; Rules for the root `plugins/hooks.toml` are executed in `plugins/` by default, and relative or absolute cwd can be used.
 
-- When `timeout_seconds` is `0` or omitted, no additional exec timeout is set; it cannot be a negative number.
-- The `cwd` of rules within a plugin defaults to the plugin directory; an explicit cwd must be a relative path within the plugin directory.
-- Rules for the root `plugins/hooks.toml` are executed in the `plugins/` directory by default; its cwd can be a relative or absolute path.
-- The relative media `path` returned by `exec` is always relative to the plugin directory of the declared rule; root rules are relative to `plugins/`.
+In the `platform.call` of a one-time exec Hook, `platform` can be omitted and will default to the current platform; When explicitly filled, it must equal the current platform. When the adapter returns JSON, the Host places it as-is into response `result`; otherwise, it is treated as a string.
 
-### Host Request and Hook Response
+## Worker Hook
 
-Each stdin/stdout frame is a line of JSON. Host ID uses `host:*`, and Hook active request ID uses `plugin:*`; The response must reuse the original request ID. stdout can only be used to write protocol frames; logs should be written to stderr.
-
-Host first sends:
-
-```json
-{"type":"request","id":"host:init","method":"system.init","params":{"version":"hook.v2","runtime":{"plugin_name":"demo","plugin_dir":"C:/elbot/plugins/demo","config_path":"C:/elbot/plugins/demo/hook.toml","rule_name":"demo_rule","cwd":"C:/elbot/plugins/demo"}}}
-```
-
-Hook successfully responds:
-
-```json
-{"type":"response","id":"host:init","ok":true,"result":{}}
-```
-
-Then Host sends:
-
-```json
-{"type":"request","id":"host:event","method":"event.handle","params":{"event":{"point":"platform.message.received","platform":{"name":"qqonebot","scope_id":"group:123","message_id":"456","reply_to_message_id":"789"},"actor":{"id":"qqonebot:10001"},"message":{"role":"user","segments":[{"type":"text","text":"撤回"}]}},"match":{},"runtime":{"plugin_name":"demo","plugin_dir":"C:/elbot/plugins/demo","config_path":"C:/elbot/plugins/demo/hook.toml","rule_name":"demo_rule","cwd":"C:/elbot/plugins/demo"}}}
-```
-
-`event.handle` successful response:
-
-```json
-{
-  "type": "response",
-  "id": "host:event",
-  "ok": true,
-  "result": {
-    "status": "completed",
-    "matched": true,
-    "result": "optional template result",
-    "message": {"text": "optional replacement text"},
-    "outputs": [{"kind": "text", "text": "hello"}],
-    "consume": false,
-    "stop_propagation": false
-  }
-}
-```
-
-Return only the outer error upon failure:
-
-```json
-{"type":"response","id":"host:event","ok":false,"error":"missing platform.reply_to_message_id"}
-```
-
-`status` can only be omitted or set to `completed`. When action `field` is configured, the existing `message.text` overrides this field; Empty strings are valid; omitting `message` or `message.text` indicates no change.
-
-`matched = false` indicates that the external script's decision rule was not hit: text modifications and outputs generated by this rule will be rolled back, remaining actions will not be executed, and this will not be treated as an error.
-
-### exec Hook actively requests Host
-
-A one-time exec can send an `plugin:*` request to the Host:
-
-| method | Effect |
-| --- | --- |
-| `platform.call` | Call the native API of the current event platform. |
-| `output.send` | Immediately send outputs via the Output Manager. |
-| `message.get_reply` | Read the currently referenced platform message ID. |
-| `message.get` | Reserved interface; currently always returns `available: false`. |
-| `hook.log` | Write to Host logs. |
-
-`platform.call` example:
-
-```json
-{
-  "type": "request",
-  "id": "plugin:recall-1",
-  "method": "platform.call",
-  "params": {
-    "platform": "qqonebot",
-    "api": "delete_msg",
-    "params": {"message_id": "789"}
-  }
-}
-```
-
-`platform` is optional and defaults to the `platform.name` of the current event; if provided, it must equal the current platform. After the Host succeeds, it writes back with the same ID:
-
-```json
-{"type":"response","id":"plugin:recall-1","ok":true,"result":{}}
-```
-
-When the platform adapter returns JSON, the Host places it as a JSON value into `result` as is; otherwise, as a string. Hooks should first determine general success based on the outer `ok`.
-
-## Persistent Hook
-
-Both persistent and temporary workers are declared by the plugin's own `hook.toml`. The worker of `mode = "persistent"` starts automatically after ElBot starts or `/hooks reload`; `mode = "transient"` only starts when the trigger rule is hit. Omitting `[plugin.runtime]` or omitting `mode` is equivalent to `mode = "once"`.
+Worker Hooks are declared by the plugin's own `hook.toml`. Persistent Workers start after ElBot starts or `/hooks reload`; Transient Workers start when a trigger rule is matched. Omitting `[plugin.runtime]` or `mode` is equivalent to `mode = "once"`, and no Worker will be created.
 
 ```toml
 [plugin]
@@ -413,7 +443,7 @@ wakeup = "any"
 if = "message.intent_text"
 op = "contains"
 value = "天气"
-# The rules of a persistent Hook do not set action/actions; control fields serve as the default value for event.handle.
+# The rules of a Worker Hook do not set action/actions; control fields serve as the default value for event.handle.
 consume = true
 stop_propagation = true
 ```
@@ -437,7 +467,7 @@ If any of the three items are hit, the plugin rule or `event.handle` will not be
 | Field | Description |
 | --- | --- |
 | `mode` | `once` (default), `persistent`, or `transient`. `persistent` remains resident after starting; `transient` only starts after a rule is hit and exits after the Session ends. |
-| `command` | Startup command, executed without a shell. Currently split simply by whitespace, **quotes are not parsed**; if parameters contain spaces, please wrap them in a script or avoid this path. |
+| `command` | Startup command, executed without a shell; supports single quotes, double quotes, and backslash escaping within quotes. |
 | `cwd` | Relative to the plugin directory; cannot be an absolute path or escape the plugin directory. Usually `.`. |
 | `startup_timeout_seconds` | Maximum seconds to wait for a successful response from `system.init`, must be greater than `0`. |
 | `shutdown_timeout_seconds` | Maximum seconds to wait for `system.shutdown` and exit, must be greater than `0`. |
@@ -459,93 +489,13 @@ If any of the three items are hit, the plugin rule or `event.handle` will not be
 | `allow` | Tool names available to the foreground `tool.call`; the Host delivers the corresponding schema in `system.init.params.tools`. |
 | `background_allow` | Tool names available to the background, which must also appear in `allow`. |
 
-Persistent trigger rules reuse the matching, role, priority, `wakeup`, `consume`, and `stop_propagation` semantics of rule Hooks. `action` or `actions` will cause configuration validation to fail. The two control fields are the default behaviors when the plugin does not return `pass_through`.
+Worker trigger rule reuses the matching, role, priority, `wakeup`, `consume`, and `stop_propagation` of the rule Hook; Configuring `action` or `actions` will result in a validation failure. When `pass_through` is omitted, the two control fields in the rule are used.
 
-When the plugin needs to dynamically decide whether to intercept, return `pass_through` in the `event.handle` response of stdout: `false` indicates that the current plugin takes over the message, and `true` indicates that it should be passed to subsequent plugins, commands, or the main LLM. This field will
-         simultaneously override `consume` and `stop_propagation` in the rule configuration; if omitted, it will still be processed according to the configuration.
-
-The worker state is `starting`, `ready`, `running`, `degraded`, `stopping`, `stopped`, or `failed`. When stopping, the Host first requests `system.shutdown`, and the process is forcibly terminated only after the shutdown timeout is exceeded.
-
-### Protocol and Output
-
-`system.init.params` received by the persistent process:
-
-```json
-{
-  "version": "hook.v2",
-  "hook": {
-    "id": "weather",
-    "description": "有状态天气助手",
-    "plugin_dir": "C:/elbot/plugins/weather",
-    "cwd": "C:/elbot/plugins/weather",
-    "shared_dir": "C:/elbot/plugins/_shared"
-  },
-  "tools": [
-    {
-      "type": "function",
-      "function": {
-        "name": "web_search",
-        "description": "...",
-        "parameters": {"type": "object"}
-      }
-    }
-  ]
-}
-```
-
-`event.handle.params`：
-
-| Field | Description |
-| --- | --- |
-| `event` | The current Hook event. |
-| `match` | Regex captures from the trigger rule; an empty object if there are no captures. |
-| `continuation` | `true` represents subsequent messages captured by the waiting route. |
-| `tool_context` | The foreground tool call token for this instance must be used as is for the foreground `tool.call`. |
-
-#### Reading User Input
-
-Persistent or temporary workers should not assume that the wake-up prefix has been removed from `event.message.segments`: it retains the original segments after platform normalization; `event.message.intent_text` is the user intent text calculated by the Host after removing the wake-up prefix. When handling text commands, `intent_text` should be read preferentially; if it is empty, concatenate the text segments:
-
-```python
-def message_text(event):
-    message = event.get("message") or {}
-    intent = str(message.get("intent_text") or "").strip()
-    if intent:
-        return intent
-    return "".join(
-        str(segment.get("text") or "")
-        for segment in message.get("segments") or []
-        if segment.get("type") == "text"
-    ).strip()
-```
-
-For the first call triggered by a `platform.message.received` trigger rule matched with `message.intent_text`, the plugin usually does not need to verify the same wake-up prefix or command text again; The Host has already completed this layer of routing. waiting continuation will also only capture messages from the same platform, scope, and actor. Business parameter validation, external service authorization, and plugin-specific permission checks are still the responsibility of the plugin.
-
-The `result` of a successful `event.handle` response:
-
-| Field | Description |
-| --- | --- |
-| `status` | Omitted or `completed` indicates the end; `waiting` indicates continuing to capture subsequent messages. |
-| `conversation_id` | A required non-empty opaque ID when `waiting`. |
-| `expires_at` | A required RFC 3339 timestamp when `waiting`, which must be later than the current time and not exceed `max_wait_seconds`. |
-| `outputs` | The output array passed to the Output Manager. |
-| `target` | Optional group sending target, using a unified snake_case field; if omitted, the current event is used. |
-| `timing` | Optional group sending timing: `immediate` or `after_assistant`. |
-| `pass_through` | Optional dynamic control; `false` indicates taking over the message, `true` indicates full pass-through; when omitted, `consume` and `stop_propagation` of the trigger rule are used. |
-
-For example, when a query plugin is missing parameters, return `waiting` and "Please enter the query content"; After receiving a continuation, return the result and `"pass_through": false` on a hit, and silently return `{"status":"completed","pass_through":true}` on a miss.
-
-Temporary and persistent Hooks use the same outputs segment as rules and one-time exec:
-
-```json
-{
-  "outputs": [{"kind": "reply", "message_id": "456", "text": "引用回复"}],
-  "target": {"platform":"qqonebot","scope_id":"group:123"},
-  "timing": "immediate"
-}
-```
+Worker status is `starting`, `ready`, `running`, `degraded`, `stopping`, `stopped`, or `failed`. When stopping, the Host first requests `system.shutdown`, and the process is forcibly terminated only after the shutdown timeout is exceeded.
 
 ### Waiting, Concurrency, and Cancellation
+
+Return `status = "waiting"`, `conversation_id`, and `expires_at` when continuing to collect input is required; `expires_at` must be later than the current time, and the remaining time must not exceed `max_wait_seconds`. Return `completed` or omit status upon completion.
 
 The same `platform + scope_id + actor.id` is executed serially within the same worker, while different routes can be executed in parallel. The waiting lease also uses this triplet as the key:
 
@@ -556,15 +506,15 @@ The same `platform + scope_id + actor.id` is executed serially within the same w
 - After the continuation returns `completed` or omits `status`, the Host immediately releases the lease; For transient workers, the process is closed simultaneously. Returning `waiting` again will renew it with a new ID and expiration time.
 - Blocking strategy hits, worker exits, stops, or reloads will clear the plugin lease.
 
-When the user sends the exact `/cancel`, the Host cancels the current execution or waiting Session of that route and closes the transient worker; Persistent workers only receive the cancellation notification and retain the process and memory.
+When the user sends the exact `/cancel`, the Host cancels the current execution or waiting Session of the route and closes the Transient Worker; Persistent Worker only receives cancellation notifications and retains the process and memory.
 
 ```json
 {"type":"event","method":"event.cancel","params":{"conversation_id":"weather-42"}}
 ```
 
-### Tools and Shared State
+### Tool Call
 
-The worker Hook maintains the LLM loop, business state, and tool usage decisions on its own. The Host only validates the allowlist, foreground/background capabilities, context ownership, count, timeout, cancellation, and send target for `tool.call`; **Does not execute ElBot's risk grading, permission policies, or interaction confirmations**. Plugins must handle tool authorization and risk control on their own.
+Worker Hook maintains the LLM loop, business state, and tool usage decisions on its own. The Host only validates the allowlist, foreground/background capabilities, context ownership, count, timeout, cancellation, and send target for `tool.call`; **Does not execute ElBot's risk grading, permission policies, or interaction confirmations**. Plugins must handle tool authorization and risk control on their own.
 
 Foreground call:
 
@@ -582,23 +532,7 @@ Background calls must be located in `background_allow`: when there is a context 
 {"content":"...","segments":[],"warnings":[],"receipts":[{"PlatformMessageIDs":["123"]}]}
 ```
 
-`content` is the tool text result, `segments` is a `{type,text,url,mime_type,name}` array, `warnings` is a string array, and `receipts` is the platform message ID after the tool outputs are sent via the Output Manager. Failures uniformly use the outer `ok=false,error`. Hook tool calls will not be written to the Agent Session.
-
-Except for the `_shared/` file directory, all workers share an in-process JSON KV:
-
-| method | `params` | Successful `result` |
-| --- | --- | --- |
-| `shared.get` | `{"key":"weather/cache"}` | `{"found":true,"value":<任意 JSON>}`; `found=false` when it does not exist. |
-| `shared.set` | `{"key":"weather/cache","value":<任意 JSON>,"ttl_seconds":600}` | `{"ok":true}` |
-| `shared.delete` | `{"key":"weather/cache"}` | `{"deleted":true/false}` |
-| `shared.list` | `{"prefix":"weather/"}` | `{"keys":["weather/cache",...]}`, in lexicographical order; an empty prefix lists all. |
-| `shared.compare_and_swap` | `{"key":"weather/cache","expected":<旧 JSON>,"value":<新 JSON>,"ttl_seconds":600}` | `{"swapped":true/false}` |
-
-`ttl_seconds` is the idle timeout: defaults to 600 seconds if omitted; when set to a positive number, the timer resets upon every successful `get`, `set`, or `compare_and_swap`; when explicitly set to `0`, it does not expire based on time; Negative numbers are invalid. `list` and failed `compare_and_swap` will not refresh the access time. Expired keys are treated as non-existent during reading, listing, deletion, or CAS.
-
-The key must be non-empty after trimming leading and trailing whitespace, with a maximum length of 256 bytes; no specific format is enforced. It is recommended to organize global data using prefixes such as `users/<platform>/<id>` and `cache/<name>` to reduce naming conflicts; Prefixes are merely naming conventions, not security boundaries; all workers can access all keys. The value must be valid JSON, with a maximum size of 1 MiB per value after compression; The shared area supports up to 10,000 entries, with a combined maximum size of 32 MiB for keys and values.
-
-When the entry or capacity limit is reached, the Host will first delete expired items and then evict the globally coldest data based on the least recently used time; Entries in `ttl_seconds = 0` may also be evicted due to capacity limits. `compare_and_swap` is an atomic operation, compared based on the compressed JSON content; Omitting `expected` indicates writing only if the key does not exist; explicitly specifying `expected: null` indicates that the current value must be JSON `null`. Shared memory is preserved across Hook restarts and `/hooks reload`, and is cleared after ElBot restarts; When persistence is required, the Hook writes to its own directory or `_shared/`.
+`content` is the tool text result, `segments` is a `{type,text,url,mime_type,name}` array, `warnings` is a string array, and `receipts` is the platform message ID after the tool outputs are sent via the Output Manager. Use the outer `ok=false,error` upon failure. Hook tool calls will not be written to the Agent Session.
 
 ### Plugin Self-Reload
 
@@ -642,6 +576,25 @@ The actual replacement occurs after the current `event.handle` ends: only the ru
 | `segments` | `{type,text,url,mime_type,name}` array, with type as `text` / `image` / `file`. |
 | `reply` | Quoted message: `message_id`, `sender_id`, `text`, `display_text`, `segments`. |
 | `messages` | LLM message array; non-LLM context is usually empty. |
+
+### Reading User Input
+
+`segments` retains the original content after platform normalization; when processing text commands, priority is given to reading `intent_text` with the wake-up prefix removed, and text segments are concatenated if it is empty:
+
+```python
+def message_text(event):
+    message = event.get("message") or {}
+    intent = str(message.get("intent_text") or "").strip()
+    if intent:
+        return intent
+    return "".join(
+        str(item.get("text") or "")
+        for item in message.get("segments") or []
+        if item.get("type") == "text"
+    ).strip()
+```
+
+The first call where the trigger rule has already matched usually does not require repeated validation of the same command; Waiting continuation only captures the same platform, scope, and actor. Business parameters, authorization, and plugin permissions are still validated by the plugin.
 
 `llm` contains `provider`, `model`, `messages`, `tools`, `usage`, `source_text`, `text`, `tool_calls`, `elapsed_ms`. Among them, nested `messages`, `tool_calls`, `usage` follow the JSON names exported by Go: `Role/Segments/Name/ToolCallID/ToolCalls`, `ID/Name/Arguments`, `PromptTokens/CompletionTokens/TotalTokens/CacheHitTokens`.
 
