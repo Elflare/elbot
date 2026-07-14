@@ -182,12 +182,14 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 先看：
 
 - `internal/hook/event.go`：Hook 点、事件 payload 和 Handler 基础类型。
+- `internal/hook/command.go`：一次性 exec Hook 与 Worker Hook 共用的无 shell 命令解析。
 - `internal/hook/output/`：规则、一次性 exec 与 runtime 共用的输出协议、校验和 delivery 转换。
+- `internal/hook/protocol/`：进程 Hook 共用的 `hook.v2` 帧、ID 校验和 `event.handle` 公共结果字段。
 - `internal/hook/match.go`：Hook 条件匹配、字段读取和模板值。
 - `internal/hook/manager.go`：普通 Hook 注册、排序、执行与原子 handler 快照替换。
 - `internal/hook/control/`：`/hooks` 的列表、重载和持久进程生命周期管理入口。
 - `internal/hook/builtin/`、`internal/hook/rules/`、`internal/hook/plugins/`：内置注册、规则配置与内置插件。
-- `internal/hook/runtime/`：持久 Hook 配置、进程、双向 Pipe RPC、waiting 路由、工具桥接和进程内 SharedState。
+- `internal/hook/runtime/`：Worker Hook 配置、进程、双向 Pipe RPC、waiting 路由、工具桥接和进程内 SharedState。
 - `internal/agent/hooks.go`：Agent 的 Hook 执行、上下文和 continuation 接入。
 - `internal/agent/output.go`：Agent 的 Output Manager 与平台 sender 接入。
 - `docs/hooks.md`：用户侧 Hook 文档。
