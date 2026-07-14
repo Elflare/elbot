@@ -41,6 +41,7 @@ type webExtractArgs struct {
 	TimeoutMS      int    `json:"timeout_ms"`
 	Proxy          string `json:"proxy"`
 	Jina           *bool  `json:"jina"`
+	ForceRefresh   bool   `json:"force_refresh"`
 }
 
 type jinaResponse struct {
@@ -119,7 +120,8 @@ func webExtractBuilder() *tool.Builder {
 		String("remove_selector", "可选，覆盖默认移除 CSS 选择器：header, .class, #id。").
 		Integer("timeout_ms", "可选，请求超时时间，默认 15000。").
 		String("proxy", "代理设置：不填则使用 WEB_EXTRACT_PROXY 或系统代理；填 disabled 禁用代理；填 URL 使用指定代理。").
-		Boolean("jina", "是否使用 Jina Reader 提取网页，默认 true；Jina 失败或效果不佳时可传 false 改用直接爬取。")
+		Boolean("jina", "是否使用 Jina Reader 提取网页，默认 true；Jina 失败或效果不佳时可传 false 改用直接爬取。").
+		Boolean("force_refresh", "是否跳过缓存并重新获取网页，默认 false；刷新成功后会覆盖对应缓存。")
 }
 
 func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
@@ -163,7 +165,11 @@ func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.
 		source = "jina"
 	}
 	key := extractCacheKey(source, url, selector, proxy)
-	entry, cached := cache.get(key)
+	entry := cachedExtract{}
+	cached := false
+	if !args.ForceRefresh {
+		entry, cached = cache.get(key)
+	}
 	if !cached {
 		var fetched cachedExtract
 		var err error
