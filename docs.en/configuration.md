@@ -117,6 +117,12 @@ Note:
 
 ## Built-in Web Tool Configuration
 
+`web_extract` prioritizes Jina Reader by default. After configuring `JINA_API_KEY`, web pages will be extracted via Jina Reader; When not configured, it falls back to direct scraping:
+
+```env
+JINA_API_KEY=your_jina_api_key
+```
+
 The `proxy` parameter of `web_extract` is used to control the proxy for webpage extraction requests:
 If you want all default `web_extract` calls to go through a fixed proxy, you can set it in the configuration directory `.env` or in the system environment:
 
