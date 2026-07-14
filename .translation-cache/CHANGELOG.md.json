@@ -24,14 +24,6 @@
       "translation": "__ELBOT_CODE_0__ no longer exposes the __ELBOT_CODE_1__ parameter to the LLM; the system will automatically pre-check and generate a diff before user confirmation, and if the pre-check fails, it will not proceed to confirmation or write to the file.",
       "updated_at": 1782631048
     },
-    "CHANGELOG.md:list:05ad1627b0b86b34c1e51497f2bd17f7f5e0bba778087015e06478d449d61a2b": {
-      "kind": "list",
-      "source": "统一由 __ELBOT_CODE_0__ 列表、详情、启动、停止、重启与重载管理。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "05ad1627b0b86b34c1e51497f2bd17f7f5e0bba778087015e06478d449d61a2b",
-      "translation": "Unified management via __ELBOT_CODE_0__ for listing, details, starting, stopping, restarting, and reloading.",
-      "updated_at": 1783679790
-    },
     "CHANGELOG.md:list:08a9f4bd4b91764404716cc4408cc3a4cebdbd94393d6470bde4721425c133b3": {
       "kind": "list",
       "source": "现在不在启动elbot的时候校验ELyph语法，免得拖慢启动速度",
@@ -80,14 +72,6 @@
       "translation": "__ELBOT_CODE_0__'s __ELBOT_CODE_1__ now supports updating meta via filled fields, and __ELBOT_CODE_2__ has been added to reuse the edit operation of __ELBOT_CODE_3__ to modify the body;",
       "updated_at": 1782662506
     },
-    "CHANGELOG.md:list:148fd2049ad883525735464ea60234f38932c41612530f7e14a9a1126210df3d": {
-      "kind": "list",
-      "source": "Hook rules 新增角色分区与控制字段：__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__；",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "148fd2049ad883525735464ea60234f38932c41612530f7e14a9a1126210df3d",
-      "translation": "Hook rules added role partitioning and control fields: __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__;",
-      "updated_at": 1782376912
-    },
     "CHANGELOG.md:list:14cd896f3e686f14895d68bac5e89d2420b4109ebf71e29785677cc89a68d1a8": {
       "kind": "list",
       "source": "接口、配置与内部实现仍可能调整，更适合作为个人 Agent/bot 框架探索使用。",
@@ -128,22 +112,6 @@
       "translation": "Added __ELBOT_CODE_0__ command: aggregates token consumption from the audit log, supporting summaries by model/day/Session, with shortcut parameters __ELBOT_CODE_1__ for days, __ELBOT_CODE_2__ for model, and __ELBOT_CODE_3__ for Session.",
       "updated_at": 1782884148
     },
-    "CHANGELOG.md:list:20944797b0b64f3983e8a04062f3f6faea56013fa4b277db270982796b930d37": {
-      "kind": "list",
-      "source": "QQ OneBot 支持入站文件下载保存，不唤起 LLM。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "20944797b0b64f3983e8a04062f3f6faea56013fa4b277db270982796b930d37",
-      "translation": "QQ OneBot now supports downloading and saving inbound files without invoking the LLM.",
-      "updated_at": 1783085325
-    },
-    "CHANGELOG.md:list:21bcff96ea97868ed7a73b08187eef3ce889b28e69c118b725a5783d07dcadc3": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 高风险工具调用详情现在会把 JSON 参数格式化成更易读的多行展示，字符串里的 __ELBOT_CODE_1__ 会显示为真实换行。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "21bcff96ea97868ed7a73b08187eef3ce889b28e69c118b725a5783d07dcadc3",
-      "translation": "__ELBOT_CODE_0__ High-risk tool invocation details now format JSON parameters into a more readable multi-line display, and __ELBOT_CODE_1__ within strings will be displayed as actual line breaks.",
-      "updated_at": 1782567776
-    },
     "CHANGELOG.md:list:26b222fc0d0b7e2913298c6c9031205f80eda52572d2f5f484ad632790632906": {
       "kind": "list",
       "source": "QQ OneBot、QQ 官方、Telegram 平台断线重连改为指数退避（3s 起，翻倍，封顶 10s）并日志降级：连续失败只在首次记 warn，恢复后记 info，不再每轮刷屏。",
@@ -152,14 +120,6 @@
       "translation": "Disconnection reconnection for QQ OneBot, QQ Official, and Telegram platforms has been changed to exponential backoff (starting at 3s, doubling, capped at 10s) with downgraded logging: consecutive failures are logged as 'warn' only on the first occurrence and 'info' upon recovery, preventing log flooding in every round.",
       "updated_at": 1782892198
     },
-    "CHANGELOG.md:list:2745a89844d91e4a2590b5284e77982521e997061f71c4ff1e8c3962563bc6e6": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 现在也会在确认前预检 patch/content、ELyph 语法和 no-op 修改，并在高风险确认详情中展示预检 diff。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "2745a89844d91e4a2590b5284e77982521e997061f71c4ff1e8c3962563bc6e6",
-      "translation": "__ELBOT_CODE_0__ now also pre-checks patch/content, ELyph syntax, and no-op modifications before confirmation, and displays the pre-check diff in the high-risk confirmation details.",
-      "updated_at": 1782631048
-    },
     "CHANGELOG.md:list:280823f9e19a44bcbfe92547cc46408bbcf2b93e26cd0cfcf98c3d26afaa1c3e": {
       "kind": "list",
       "source": "**工具发现机制**：默认只暴露 __ELBOT_CODE_0__ 与工具名，按需注入完整 schema，减少无效上下文开销。",
@@ -167,14 +127,6 @@
       "source_hash": "280823f9e19a44bcbfe92547cc46408bbcf2b93e26cd0cfcf98c3d26afaa1c3e",
       "translation": "**Tool Discovery Mechanism**: By default, only __ELBOT_CODE_0__ and the tool name are exposed, with the full schema injected on demand to reduce unnecessary context overhead.",
       "updated_at": 1782270601
-    },
-    "CHANGELOG.md:list:29533c2451977f6c9654e1c83ddf4788eea0af1efedf47df283f7f9e7f7845da": {
-      "kind": "list",
-      "source": "规则匹配和模板新增 __ELBOT_CODE_0__。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "29533c2451977f6c9654e1c83ddf4788eea0af1efedf47df283f7f9e7f7845da",
-      "translation": "Added __ELBOT_CODE_0__ to rule matching and templates.",
-      "updated_at": 1783392486
     },
     "CHANGELOG.md:list:29d199145b36b120aac3bfe22147a8a3a6da9b52677cbbd283be284ab7d983ca": {
       "kind": "list",
@@ -223,14 +175,6 @@
       "source_hash": "3113c27f20b53241bc3c9f28cfe562a2fa63ad88463bbb3f33c3ef5fe21eb55f",
       "translation": "After executing __ELBOT_CODE_0__, the CLI TUI will converge the current running state into __ELBOT_CODE_1__ and fix the elapsed time, no longer accumulating time in the status bar.",
       "updated_at": 1783738522
-    },
-    "CHANGELOG.md:list:312d4439022670c8a48cc24e096eb8461e05bbe1502d096b2d22196686acc9f2": {
-      "kind": "list",
-      "source": "规则 Hook 支持可选 __ELBOT_CODE_0__，内置 Hook 统一使用 __ELBOT_CODE_1__ 名称和 description，规则细节只在详情中展示。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "312d4439022670c8a48cc24e096eb8461e05bbe1502d096b2d22196686acc9f2",
-      "translation": "Rule Hooks now support optional __ELBOT_CODE_0__; built-in Hooks uniformly use __ELBOT_CODE_1__ for name and description, with rule details displayed only in the details view.",
-      "updated_at": 1783392486
     },
     "CHANGELOG.md:list:317c7d32a5e329ea22f1b69bc2b8231d35853cf1c43e347f9d558d23b403a0ed": {
       "kind": "list",
@@ -328,14 +272,6 @@
       "translation": "Elvena v3 action channel: Elnis supports __ELBOT_CODE_0__, initially supporting raw platform APIs as well as __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ capabilities; unsupported ones can directly call the messaging platform API.",
       "updated_at": 1782395477
     },
-    "CHANGELOG.md:list:42cbb41cea50ff9d651fe7f2d1e56894b5c0a61a38c4f71a3594f569f9e05435": {
-      "kind": "list",
-      "source": "Hook 基础与持久 Runtime 按事件、匹配、Manager、路由、进程、协议和工具桥拆分文件；",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "42cbb41cea50ff9d651fe7f2d1e56894b5c0a61a38c4f71a3594f569f9e05435",
-      "translation": "Split Hook basics and persistent Runtime files by event, matching, Manager, routing, process, protocol, and tool bridge;",
-      "updated_at": 1783738522
-    },
     "CHANGELOG.md:list:44960cf8c2c2d97c3b07a6b6158788294f95befa9b8dd85dacca7ea066bfaecf": {
       "kind": "list",
       "source": "Hook Actor 现在同时提供平台昵称、群名片和纯展示名；聊天历史按平台用户 ID 与名称分开保存和搜索。",
@@ -351,14 +287,6 @@
       "source_hash": "452192294ae296b84042bb201edbf0936231be05a01c5ff72cc9a3409d6ce4d4",
       "translation": "__ELBOT_CODE_0__ added __ELBOT_CODE_1__, enabling lightweight AST search by name for Go and Shell files;",
       "updated_at": 1783658112
-    },
-    "CHANGELOG.md:list:462d10b37e3d09f43ef3372ca72b74042d240fe0073172dc7468e34fe915057d": {
-      "kind": "list",
-      "source": "新增 Hook 共享空间 __ELBOT_CODE_0__ 及进程内 JSON SharedState，提供命名空间 KV 和 compare-and-swap 协调能力。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "462d10b37e3d09f43ef3372ca72b74042d240fe0073172dc7468e34fe915057d",
-      "translation": "Added Hook shared space __ELBOT_CODE_0__ and in-process JSON SharedState, providing namespace KV and compare-and-swap coordination capabilities.",
-      "updated_at": 1783679790
     },
     "CHANGELOG.md:list:48a9dbb08660f2dae754713aea25100d54b59eb98c8a3fea1d54df9cfb657b67": {
       "kind": "list",
@@ -440,30 +368,6 @@
       "translation": "By default, all users in group chats expire, while superadmins in private chats do not expire.",
       "updated_at": 1783074551
     },
-    "CHANGELOG.md:list:5ba1e7bae3138806db3d563894180256e849e05fa7ca9dc5679e584ad9931382": {
-      "kind": "list",
-      "source": "**Hook Layer**：在 Agent 输入、LLM 请求/响应、平台发送等关键点插入扩展逻辑；内置规则 Hook、表情 Hook 与常驻记忆 Hook。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "5ba1e7bae3138806db3d563894180256e849e05fa7ca9dc5679e584ad9931382",
-      "translation": "**Hook Layer**: Insert extension logic at key points such as Agent input, LLM request/response, and platform sending; built-in rule Hooks, emoji Hooks, and resident memory Hooks.",
-      "updated_at": 1782270601
-    },
-    "CHANGELOG.md:list:5c0a5ce2e366d9d60822811bd14fe5f653c0e6db01d3e8451843f3a6008a8038": {
-      "kind": "list",
-      "source": "修复 Elnis/Hook exec 触发 Elvena __ELBOT_CODE_0__ 时未注入平台 API caller，导致 __ELBOT_CODE_1__ 的问题。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "5c0a5ce2e366d9d60822811bd14fe5f653c0e6db01d3e8451843f3a6008a8038",
-      "translation": "Fixed an issue where the platform API caller was not injected when Elnis/Hook exec triggered Elvena __ELBOT_CODE_0__, resulting in __ELBOT_CODE_1__.",
-      "updated_at": 1782395477
-    },
-    "CHANGELOG.md:list:5dbdd806482b1e945ebebe2a1645201195d9e47466394536266d5fa8b0d4b681": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 工具新增 __ELBOT_CODE_1__ 参数，用于显式设置命令工作目录；前台会按 Session 记住最近一次工作目录，后台仍限制在各自 sandbox 内。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "5dbdd806482b1e945ebebe2a1645201195d9e47466394536266d5fa8b0d4b681",
-      "translation": "__ELBOT_CODE_0__ tool added __ELBOT_CODE_1__ parameter to explicitly set the command working directory; the foreground remembers the most recent working directory per Session, while the background remains restricted to its respective sandbox.",
-      "updated_at": 1782910722
-    },
     "CHANGELOG.md:list:611aafc7e8d828767ae2b38b0e5c3d0fead2cde039834d37560cbe5b03c27491": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 审计事件从 debug 级别改为 info 级别，默认 __ELBOT_CODE_1__ 即可记录 token 消耗数据。",
@@ -471,14 +375,6 @@
       "source_hash": "611aafc7e8d828767ae2b38b0e5c3d0fead2cde039834d37560cbe5b03c27491",
       "translation": "__ELBOT_CODE_0__ audit events changed from debug level to info level; token consumption data can now be recorded by default with __ELBOT_CODE_1__.",
       "updated_at": 1782884148
-    },
-    "CHANGELOG.md:list:63042250d07ae50433d3c6faa823eff52bf4bcf75d54ebf86ec8266ff7a67323": {
-      "kind": "list",
-      "source": "Hook exec 协议统一升级为 __ELBOT_CODE_0__，支持 request/response/event 帧、双向 Pipe RPC 和 Host/Hook 请求 ID 隔离；",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "63042250d07ae50433d3c6faa823eff52bf4bcf75d54ebf86ec8266ff7a67323",
-      "translation": "The Hook exec protocol has been unified and upgraded to __ELBOT_CODE_0__, supporting request/response/event frames, bidirectional Pipe RPC, and Host/Hook request ID isolation;",
-      "updated_at": 1783679790
     },
     "CHANGELOG.md:list:6591817f82efe0b2c5e6a0f20415974f7b06b4e8cd819ab6c957df0b3a56c245": {
       "kind": "list",
@@ -488,14 +384,6 @@
       "translation": "Fixed the issue where rule cards were repeatedly injected into the context when performing tool discovery or inline preloading of multiple ELyph Skills;",
       "updated_at": 1783334583
     },
-    "CHANGELOG.md:list:65ae67352b54f25412a03feef13470d8b188b35e8cf905c5d2acc4e7acabd902": {
-      "kind": "list",
-      "source": "Hook 现在可通过 __ELBOT_CODE_0__ 读取结构化引用信息。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "65ae67352b54f25412a03feef13470d8b188b35e8cf905c5d2acc4e7acabd902",
-      "translation": "Hooks can now read structured reference information via __ELBOT_CODE_0__.",
-      "updated_at": 1783392486
-    },
     "CHANGELOG.md:list:6804ed012e3f61e166fecd47cad310a62710f88f0f1bc81b3d2be57e1e12aa4f": {
       "kind": "list",
       "source": "文件超过 64 KiB 时会提示缩短。",
@@ -503,14 +391,6 @@
       "source_hash": "6804ed012e3f61e166fecd47cad310a62710f88f0f1bc81b3d2be57e1e12aa4f",
       "translation": "A prompt to shorten will be displayed when the file exceeds 64 KiB.",
       "updated_at": 1783178864
-    },
-    "CHANGELOG.md:list:68645eb7967230d7e200dbf82e2ae986fcd80d338b26b1d759d4c1a627292050": {
-      "kind": "list",
-      "source": "Agent 的 Hook 执行接入与 Output 发送适配也已分离，外部 Hook 配置和 __ELBOT_CODE_0__ 协议不变。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "68645eb7967230d7e200dbf82e2ae986fcd80d338b26b1d759d4c1a627292050",
-      "translation": "The Hook execution access and Output sending adaptation of the Agent have also been separated; external Hook configurations and the __ELBOT_CODE_0__ protocol remain unchanged.",
-      "updated_at": 1783738522
     },
     "CHANGELOG.md:list:6970168418b00124c98288e227a6831f798c18ed573c05cb7a6f07fd850812c6": {
       "kind": "list",
@@ -560,14 +440,6 @@
       "translation": "The risk level of the __ELBOT_CODE_0__ tool has been downgraded from high to medium.",
       "updated_at": 1782298716
     },
-    "CHANGELOG.md:list:71add830d0076ca9ac6404ffbb06df12eec0eb2969554bfc0d4022b84f5ad16c": {
-      "kind": "list",
-      "source": "AgentSkill 支持在根目录添加 __ELBOT_CODE_0__ 注册为普通工具：LLM 调用结构化参数，ElBot 翻译为命令行 argv 执行，可用 __ELBOT_CODE_1__ 为工具分类，并复用现有风险、确认、Hook 与审计链路。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "71add830d0076ca9ac6404ffbb06df12eec0eb2969554bfc0d4022b84f5ad16c",
-      "translation": "AgentSkill supports adding __ELBOT_CODE_0__ in the root directory to register as a regular tool: LLM calls structured parameters, which ElBot translates into command-line argv for execution; __ELBOT_CODE_1__ can be used for tool classification, reusing existing risk, confirmation, Hook, and audit chains.",
-      "updated_at": 1783076190
-    },
     "CHANGELOG.md:list:7451bbf5a68e98a284488175db4e8df8fae0a4cc7c3d7b20b8c10878e7390e09": {
       "kind": "list",
       "source": "设 __ELBOT_CODE_0__ 时 __ELBOT_CODE_1__ 覆写对应字段，不设时不修改原文。",
@@ -591,22 +463,6 @@
       "source_hash": "7500a6bebabf390101368282085b77b23e0a803832db24807d92874bbcf13f04",
       "translation": "Added __ELBOT_CODE_2__ and __ELBOT_CODE_3__ parameters to the __ELBOT_CODE_1__ operation of __ELBOT_CODE_0__: when __ELBOT_CODE_4__, it matches the entire line by single-line prefix (tolerating leading indentation to avoid newline character matching errors); __ELBOT_CODE_5__ (default) maintains exact substring semantics.",
       "updated_at": 1782298716
-    },
-    "CHANGELOG.md:list:75ad69691d1674c433a03bbd653863775b7dccf8ca915602d5d77c359ae93fc7": {
-      "kind": "list",
-      "source": "没有 __ELBOT_CODE_0__ 时保持说明型 Skill，可按文档使用 shell 等通用工具。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "75ad69691d1674c433a03bbd653863775b7dccf8ca915602d5d77c359ae93fc7",
-      "translation": "When __ELBOT_CODE_0__ is absent, it remains a descriptive Skill, and general-purpose tools such as shell can be used as per the documentation.",
-      "updated_at": 1783074551
-    },
-    "CHANGELOG.md:list:75b77affa31e96512930af7483d3649450522ef61f68f675ec772b2db0dd961c": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 先隔离构建并校验候选配置，再原子替换普通 Hook 快照和持久 Runtime worker 索引，失败时保留当前活动 Hook。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "75b77affa31e96512930af7483d3649450522ef61f68f675ec772b2db0dd961c",
-      "translation": "__ELBOT_CODE_0__ first builds and validates the candidate configuration in isolation, then atomically replaces the general Hook snapshot and persistent Runtime worker index, retaining the current active Hook upon failure.",
-      "updated_at": 1783738522
     },
     "CHANGELOG.md:list:7d4eb6c7f9421281249ea4260a8e00117bc3dc92316a27b354181c10219e5e5d": {
       "kind": "list",
@@ -656,14 +512,6 @@
       "translation": "Fixed an issue where long tool chains would be silently stopped by the Agent's internal 5-minute default request timeout; users will now be notified upon a full round timeout.",
       "updated_at": 1782574901
     },
-    "CHANGELOG.md:list:7ff1dc77d2f0a19513c6a38379495c29e0ec9a01d825648d16fe385f93d260c3": {
-      "kind": "list",
-      "source": "Hook rules 新增 __ELBOT_CODE_0__ 配置；",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "7ff1dc77d2f0a19513c6a38379495c29e0ec9a01d825648d16fe385f93d260c3",
-      "translation": "Added __ELBOT_CODE_0__ configuration to Hook rules;",
-      "updated_at": 1783259210
-    },
     "CHANGELOG.md:list:804a20b9431dfd46cceb9e146447ae9d772bc44fb8be93b5eefe7498ef357e15": {
       "kind": "list",
       "source": "修复 QQ OneBot 发图片/表情/文件时 API 超时可能取消 WebSocket 写入并触发断线重连的问题；媒体发送失败时会尝试发送同目标文字提示。",
@@ -679,14 +527,6 @@
       "source_hash": "83aa655090903e728d1214292cfd1dd5bdd99b5ae467bc2329b6108a14d1a622",
       "translation": "**Native and External Skills**: The __ELBOT_CODE_0__ meta-tool supports LLMs in creating native EL Skills (pure ELyph or accompanied by Go source code and compiled);",
       "updated_at": 1782270601
-    },
-    "CHANGELOG.md:list:851d612e3a059ffb21b2b3df00f732f7cd1723da278cd59e8fec0e979a56793d": {
-      "kind": "list",
-      "source": "修复 Hook exec stdin JSON 使用 Go 默认大写字段名导致外部脚本无法用小写 key 读取 event 字段的问题；",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "851d612e3a059ffb21b2b3df00f732f7cd1723da278cd59e8fec0e979a56793d",
-      "translation": "Fixed an issue where Hook exec stdin JSON used Go's default capitalized field names, preventing external scripts from reading the event field using lowercase keys;",
-      "updated_at": 1782376912
     },
     "CHANGELOG.md:list:853ae2250ec20c31453a70311204d8cc2a35abbca73df01d69a3e53005c936bb": {
       "kind": "list",
@@ -711,22 +551,6 @@
       "source_hash": "87270312f6d9656623532edb7ac4d5c4a6b1edbd41ffe1f907efdcf6328dc335",
       "translation": "In PowerShell environments, AST parsing is skipped, and risk classification directly returns high-risk, requiring user confirmation.",
       "updated_at": 1783128855
-    },
-    "CHANGELOG.md:list:87e332c5198fa0e4bb6f4b4998019814a5c00c9fcb3ce0d628a039580a29511d": {
-      "kind": "list",
-      "source": "修复回复 Hook/斜杠命令等通知消息时，引用 fallback 文本污染 __ELBOT_CODE_0__ 的 __ELBOT_CODE_1__，导致撤回类 Hook 无法匹配的问题；",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "87e332c5198fa0e4bb6f4b4998019814a5c00c9fcb3ce0d628a039580a29511d",
-      "translation": "Fixed an issue where referencing fallback text when replying to Hook/slash command notifications polluted the __ELBOT_CODE_1__ of __ELBOT_CODE_0__, causing recall-type Hooks to fail matching;",
-      "updated_at": 1783392486
-    },
-    "CHANGELOG.md:list:89005ba6c93baa5933f575ef83d9e47cc8ac49f7d6ef87ff85f02fa0333ca7e0": {
-      "kind": "list",
-      "source": "修复 Hook rules __ELBOT_CODE_0__ action 在 Windows 下固定依赖 __ELBOT_CODE_1__ 导致执行失败的问题；",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "89005ba6c93baa5933f575ef83d9e47cc8ac49f7d6ef87ff85f02fa0333ca7e0",
-      "translation": "Fixed an issue where the Hook rules __ELBOT_CODE_0__ action failed to execute on Windows due to a fixed dependency on __ELBOT_CODE_1__;",
-      "updated_at": 1783095128
     },
     "CHANGELOG.md:list:8c6db0749fc23bd2ae134ad376b9197d0f3c34d7c93e7d70e3767ccd889a12bc": {
       "kind": "list",
@@ -768,14 +592,6 @@
       "translation": "QQ OneBot now supports automatically saving inbound files from superadmins in private chats; messages containing only files will only reply with the save path or a \"too large\" prompt without invoking the LLM; group files are not automatically saved.",
       "updated_at": 1783095128
     },
-    "CHANGELOG.md:list:8ef9f18e3241e84e97a4cbd687879ed03fe1f84b791b222984a4f808dd42fdf7": {
-      "kind": "list",
-      "source": "修复 __ELBOT_CODE_0__ 工具设置目录时不支持 __ELBOT_CODE_1__、__ELBOT_CODE_2__ 和 Windows __ELBOT_CODE_3__ 主目录路径的问题。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "8ef9f18e3241e84e97a4cbd687879ed03fe1f84b791b222984a4f808dd42fdf7",
-      "translation": "Fixed the issue where __ELBOT_CODE_0__ did not support __ELBOT_CODE_1__, __ELBOT_CODE_2__, and Windows __ELBOT_CODE_3__ home directory paths when setting the tool directory.",
-      "updated_at": 1783129422
-    },
     "CHANGELOG.md:list:8f644b4d62f870ef3dfe3516897d00d013099f137e00fcbcab03ddcfea8f969e": {
       "kind": "list",
       "source": "修复 Windows 下无 bash 时 shell 命令的 bash AST 解析失败导致风险分类、沙盒校验、目录切换拦截和警告分析全部异常的问题；",
@@ -808,14 +624,6 @@
       "translation": "**Hook Layer**: Inserts extension logic at key points such as Agent input, LLM request/response, and platform sending; includes built-in rule Hooks and resident memory Hooks.",
       "updated_at": 1782376912
     },
-    "CHANGELOG.md:list:9814a084d8f0e645764924f1a2542de2327dbcefa63668f8ecfd68078a261b80": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 规则可设置为 __ELBOT_CODE_1__ 监听未 at、未命中唤起词、未回复机器人的普通群消息，同时不会自动唤起命令或 LLM。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "9814a084d8f0e645764924f1a2542de2327dbcefa63668f8ecfd68078a261b80",
-      "translation": "__ELBOT_CODE_0__ rules can be set to __ELBOT_CODE_1__ to listen to ordinary group messages that are not @-mentioned, do not match wake-up words, and are not replies to the bot, without automatically triggering commands or the LLM.",
-      "updated_at": 1783259210
-    },
     "CHANGELOG.md:list:982e715f6a8e303465255744e60589d5a93f784f31e748fbdb313c57f07a56e8": {
       "kind": "list",
       "source": "Elvena LLM 事件和 LLM Cron 支持 __ELBOT_CODE_0__ 选择后台 Session 模式，默认仍为 __ELBOT_CODE_1__。",
@@ -823,22 +631,6 @@
       "source_hash": "982e715f6a8e303465255744e60589d5a93f784f31e748fbdb313c57f07a56e8",
       "translation": "Elvena LLM events and LLM Cron now support __ELBOT_CODE_0__ selecting background Session mode, with the default remaining __ELBOT_CODE_1__.",
       "updated_at": 1782699038
-    },
-    "CHANGELOG.md:list:98e6593633bc9b68e06b9a76de0dfbe3f13ced9b3500785a4dd4c30c39f20666": {
-      "kind": "list",
-      "source": "Elvena v3 动作通道：Elnis 支持 __ELBOT_CODE_0__，首批支持 raw 平台 API 以及 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ capability；",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "98e6593633bc9b68e06b9a76de0dfbe3f13ced9b3500785a4dd4c30c39f20666",
-      "translation": "Elvena v3 action channel: Elnis supports __ELBOT_CODE_0__, with initial support for raw platform APIs as well as __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ capabilities;",
-      "updated_at": 1782376912
-    },
-    "CHANGELOG.md:list:9b1a5c4feee4ab81f89fbf16db2b636ca3269ef6609eb1ac66f45062bf0d31ea": {
-      "kind": "list",
-      "source": "补全 __ELBOT_CODE_0__ 中 hook.v2 的完整 __ELBOT_CODE_1__ / __ELBOT_CODE_2__ request、成功与失败 response 外层帧，以及 __ELBOT_CODE_3__、平台回包和 QQ OneBot 撤回示例。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "9b1a5c4feee4ab81f89fbf16db2b636ca3269ef6609eb1ac66f45062bf0d31ea",
-      "translation": "Complete the full __ELBOT_CODE_1__ / __ELBOT_CODE_2__ request and success/failure response outer frames for hook.v2 in __ELBOT_CODE_0__, as well as __ELBOT_CODE_3__, platform response packets, and QQ OneBot recall examples.",
-      "updated_at": 1783738522
     },
     "CHANGELOG.md:list:9d5bd31f0053c4ae0a75ef9edef00162aa8c3f86f473d7a5b5a15df30dd4b93e": {
       "kind": "list",
@@ -871,14 +663,6 @@
       "source_hash": "a10c0798ae5944712b9b350660e63cb74245c95cafaccf39c5e8ade3f7857edc",
       "translation": "Inbound @ messages in QQ OneBot will now prioritize displaying the group business card, followed by the regular nickname, in the format __ELBOT_CODE_0__, and will fall back to the QQ number if neither can be retrieved.",
       "updated_at": 1783095128
-    },
-    "CHANGELOG.md:list:a4ec61a14d64392d44b2e878cd85da05bc9acc8c3ccbbc2c7be323fe16ddfada": {
-      "kind": "list",
-      "source": "优化 CLI TUI。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "a4ec61a14d64392d44b2e878cd85da05bc9acc8c3ccbbc2c7be323fe16ddfada",
-      "translation": "Optimize CLI TUI.",
-      "updated_at": 1783738522
     },
     "CHANGELOG.md:list:a57014269f2740133b4741d7c07d93ac6b9d18e72ed1c452cf164c62c16e3c54": {
       "kind": "list",
@@ -992,14 +776,6 @@
       "translation": "Fixed an issue where OpenAI-compatible streaming responses that disconnected midway but were missing __ELBOT_CODE_0__ were treated as normal terminations; now it will explicitly notify that the LLM response was interrupted.",
       "updated_at": 1782298716
     },
-    "CHANGELOG.md:list:b891fb86b08d802bcfd1a88b7d05884203b9e1384a85260a567dd7cfb3b7e111": {
-      "kind": "list",
-      "source": "Hook exec 失败、脚本崩溃、超时或协议错误时会向当前消息平台发送失败通知，并在失败时附带 stderr 尾部；",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "b891fb86b08d802bcfd1a88b7d05884203b9e1384a85260a567dd7cfb3b7e111",
-      "translation": "Failure notifications will be sent to the current messaging platform when Hook execution fails, the script crashes, times out, or a protocol error occurs, with the end of stderr attached upon failure;",
-      "updated_at": 1783392486
-    },
     "CHANGELOG.md:list:bbe69649fedf66fe55c50171fda1e0bafc56ed2f3759250fbef518fdf34acccf": {
       "kind": "list",
       "source": "没有 __ELBOT_CODE_0__ 时保持说明型 Skill，可按文档使用 shell 等通用工具；",
@@ -1040,38 +816,6 @@
       "translation": "__ELBOT_CODE_0__/__ELBOT_CODE_1__ will suggest using __ELBOT_CODE_2__ when reading EL Skill files;",
       "updated_at": 1782722558
     },
-    "CHANGELOG.md:list:c659654a91e70db79e33730b0bb870b7e736ceab0541a3297b9a74ad01a06e60": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 现在直接使用规则名查看详情，不再要求输入 __ELBOT_CODE_1__ 前缀；",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "c659654a91e70db79e33730b0bb870b7e736ceab0541a3297b9a74ad01a06e60",
-      "translation": "__ELBOT_CODE_0__ now allows viewing details directly using the rule name, without requiring the __ELBOT_CODE_1__ prefix;",
-      "updated_at": 1783392486
-    },
-    "CHANGELOG.md:list:c84de9193b601fbc4ea0e32aeb3883130e9e3ff124fde2b226707513af4a619e": {
-      "kind": "list",
-      "source": "Hook 规则新增 __ELBOT_CODE_0__ 匹配/模板字段，用于匹配去掉群聊唤醒关键词或 bot mention 后的用户输入。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "c84de9193b601fbc4ea0e32aeb3883130e9e3ff124fde2b226707513af4a619e",
-      "translation": "Added __ELBOT_CODE_0__ matching/template fields to Hook rules, used to match user input after removing group chat wake-up keywords or bot mentions.",
-      "updated_at": 1783392486
-    },
-    "CHANGELOG.md:list:c9b8f985f26ae2840c237c92f9163141ff2da581a519ff26340d57eb8120d0c4": {
-      "kind": "list",
-      "source": "Hook event 及相关 payload 结构体统一加 JSON tag。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "c9b8f985f26ae2840c237c92f9163141ff2da581a519ff26340d57eb8120d0c4",
-      "translation": "Added JSON tags consistently to Hook event and related payload structs.",
-      "updated_at": 1782376912
-    },
-    "CHANGELOG.md:list:ca10caffe2003bd1607d5b26cdbb8ff6dc9f669d4a4cc48d8cea113993019de2": {
-      "kind": "list",
-      "source": "旧 __ELBOT_CODE_0__ 脚本需要迁移。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "ca10caffe2003bd1607d5b26cdbb8ff6dc9f669d4a4cc48d8cea113993019de2",
-      "translation": "Legacy __ELBOT_CODE_0__ scripts need to be migrated.",
-      "updated_at": 1783679790
-    },
     "CHANGELOG.md:list:cb42950d3097afb350e0270a9241489518a607d30bcc8c00f788f103348b188a": {
       "kind": "list",
       "source": "**SQLite 持久化**：Session、消息、上下文摘要、工具调用记录、Cron job、Elnis 事件统一存储。",
@@ -1079,14 +823,6 @@
       "source_hash": "cb42950d3097afb350e0270a9241489518a607d30bcc8c00f788f103348b188a",
       "translation": "**SQLite Persistence**: Unified storage for Sessions, messages, context summaries, tool call records, Cron jobs, and Elnis events.",
       "updated_at": 1782270601
-    },
-    "CHANGELOG.md:list:cc48499925e50f0156703dc753ae76ba767e135e29e86e4ce5b4e82dcfac8f84": {
-      "kind": "list",
-      "source": "Hook 插件元信息支持 __ELBOT_CODE_0__；__ELBOT_CODE_1__ 会在命令结果中显示插件跳过或配置警告。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "cc48499925e50f0156703dc753ae76ba767e135e29e86e4ce5b4e82dcfac8f84",
-      "translation": "Hook plugin meta-information now supports __ELBOT_CODE_0__; __ELBOT_CODE_1__ will display plugin skip or configuration warnings in the command results.",
-      "updated_at": 1783567455
     },
     "CHANGELOG.md:list:ce3e9cc6dd15510c9cfe7dbcae094bd1f1cb641bc8875c00f0d3c95d4642854d": {
       "kind": "list",
@@ -1104,14 +840,6 @@
       "translation": "Use __ELBOT_CODE_0__ to cancel long-running Hooks; manual cancellations are recorded as normal cancellations.",
       "updated_at": 1783571675
     },
-    "CHANGELOG.md:list:d4fabe1b31e44b62764a519526e02a1a731d546f2d3cbb0e101eb7b787c54f82": {
-      "kind": "list",
-      "source": "AgentSkill 支持在根目录添加 __ELBOT_CODE_0__ 注册为普通工具：LLM 调用结构化参数，ElBot 翻译为命令行 argv 执行，并复用现有风险、确认、Hook 与审计链路。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "d4fabe1b31e44b62764a519526e02a1a731d546f2d3cbb0e101eb7b787c54f82",
-      "translation": "AgentSkill now supports adding __ELBOT_CODE_0__ in the root directory to register it as a tool: the LLM calls structured parameters, which ElBot translates into command-line argv for execution, reusing existing risk, confirmation, Hook, and audit log chains.",
-      "updated_at": 1783074551
-    },
     "CHANGELOG.md:list:d645cf77c4ee588c46e1393622a3b1673b35ad938b425f17eba22044d2bdc5a7": {
       "kind": "list",
       "source": "Hook rules 可通过 __ELBOT_CODE_0__ action 执行脚本，并用 __ELBOT_CODE_1__ 经内部 Elvena Bus 触发 Elnis direct/LLM/calls；",
@@ -1119,14 +847,6 @@
       "source_hash": "d645cf77c4ee588c46e1393622a3b1673b35ad938b425f17eba22044d2bdc5a7",
       "translation": "Hook rules can execute scripts via the __ELBOT_CODE_0__ action and use __ELBOT_CODE_1__ to trigger Elnis direct/LLM/calls via the internal Elvena Bus.",
       "updated_at": 1782395477
-    },
-    "CHANGELOG.md:list:d66e760ce04fc90ba3cd56df661d99b3a478c370da402f32810e4f88f324a4c8": {
-      "kind": "list",
-      "source": "现在 __ELBOT_CODE_0__ 会直接按程序和参数执行。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "d66e760ce04fc90ba3cd56df661d99b3a478c370da402f32810e4f88f324a4c8",
-      "translation": "Now __ELBOT_CODE_0__ will be executed directly according to the program and parameters.",
-      "updated_at": 1783095128
     },
     "CHANGELOG.md:list:d868e5b43fdd4b220f5103b4c130865608bd216aa604f67b556dc8d92822ecad": {
       "kind": "list",
@@ -1200,14 +920,6 @@
       "translation": "Platform media output now supports identifying __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, and __ELBOT_CODE_4__ sources in __ELBOT_CODE_0__;",
       "updated_at": 1783048564
     },
-    "CHANGELOG.md:list:e4b8c6a85af766228fa47061f5bbc65135d97533c261fd7b7604a28de99fdbf5": {
-      "kind": "list",
-      "source": "Hook 管理从 Agent 核心解耦为独立 Control Service；",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "e4b8c6a85af766228fa47061f5bbc65135d97533c261fd7b7604a28de99fdbf5",
-      "translation": "Decouple Hook management from the Agent core into an independent Control Service;",
-      "updated_at": 1783738522
-    },
     "CHANGELOG.md:list:e674fa7fc18af87b45660da3fff098ff0a482256ae0cdc7d64932ce221ad779c": {
       "kind": "list",
       "source": "**Session 服务**：持久化会话，支持恢复、归档、置顶、Fork、删除、分页与平台隔离；长对话自动上下文压缩。",
@@ -1222,14 +934,6 @@
       "source_file": "CHANGELOG.md",
       "source_hash": "e7510a5df400801c446ff0dd93100e5a836baef132edb73440540d3f81862d5c",
       "translation": "Emoticon Hook changed from an embedded plugin to a rule Hook example; the emoticon plugin and __ELBOT_CODE_0__ assets are no longer built-in.",
-      "updated_at": 1782376912
-    },
-    "CHANGELOG.md:list:e81822b53b2270a9a2f78edb916b8ee9c970a516ec77a84dd14e91bb46b0c554": {
-      "kind": "list",
-      "source": "Hook rules 可通过 __ELBOT_CODE_0__ action 执行脚本，并用 __ELBOT_CODE_1__ 经内部 Elvena Bus 触发 Elnis direct/LLM/calls。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "e81822b53b2270a9a2f78edb916b8ee9c970a516ec77a84dd14e91bb46b0c554",
-      "translation": "Hook rules can execute scripts via __ELBOT_CODE_0__ action, and use __ELBOT_CODE_1__ to trigger Elnis direct/LLM/calls via the internal Elvena Bus.",
       "updated_at": 1782376912
     },
     "CHANGELOG.md:list:ea9324e8d2b186f384e727405908a402edd258407ff1c17a7fcc25913da73458": {
@@ -1248,14 +952,6 @@
       "translation": "The __ELBOT_CODE_0__ tool now uses the __ELBOT_CODE_1__ parameter to send files, supporting local paths, __ELBOT_CODE_2__ URIs, and HTTP(S) URLs, and will automatically send images as image messages based on MIME type/extension.",
       "updated_at": 1783081840
     },
-    "CHANGELOG.md:list:ec8fb6fd65d0f829e210f8e552f8c23550a29e91cbb008703938f91359472e82": {
-      "kind": "list",
-      "source": "首次运行会生成 __ELBOT_CODE_0__，用于按需求编写 ElBot 规则 Hook。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "ec8fb6fd65d0f829e210f8e552f8c23550a29e91cbb008703938f91359472e82",
-      "translation": "The first run will generate __ELBOT_CODE_0__, used to write ElBot rule hooks as needed.",
-      "updated_at": 1783219356
-    },
     "CHANGELOG.md:list:ed3c6eabf99307e9b550f72edf9f95006bb9602d68c39639d54b35889096a8ff": {
       "kind": "list",
       "source": "Session 闲置过期改为 __ELBOT_CODE_0__ 四项配置，分别控制群聊/私聊下普通用户和超级管理员的当前 Session 过期时间；",
@@ -1271,14 +967,6 @@
       "source_hash": "f191a10fa95a661a532ab05af86e47b4652486eaaadeac994e312f48821af516",
       "translation": "The __ELBOT_CODE_0__ command now displays the current execution stage (preparing/llm/tool/sending) and the duration of each stage for every turn, allowing you to distinguish whether the LLM is slow or the platform delivery is stuck.",
       "updated_at": 1782952540
-    },
-    "CHANGELOG.md:list:f6393e59f31848957eb7f5829f415e64d8d45522b3fc84d8f793ccb38541a193": {
-      "kind": "list",
-      "source": "新增持久 Hook：在插件 __ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 声明生命周期、重启、工具白名单和多轮 waiting 会话；",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "f6393e59f31848957eb7f5829f415e64d8d45522b3fc84d8f793ccb38541a193",
-      "translation": "Added persistent Hooks: declare lifecycle, restart, tool whitelist, and multi-turn waiting Sessions in the __ELBOT_CODE_1__ of plugin __ELBOT_CODE_0__;",
-      "updated_at": 1783679790
     },
     "CHANGELOG.md:list:f6c1cb497ae4f2ad103aff727d2c39baae1e5a5217229da9cedaecc67ef9c4ce": {
       "kind": "list",
@@ -1296,13 +984,13 @@
       "translation": "Fixed the issue where __ELBOT_CODE_0__ fails during the write confirmation stage when creating a new file using __ELBOT_CODE_1__ if the target parent directory does not exist.",
       "updated_at": 1782644646
     },
-    "CHANGELOG.md:list:fb5d2dd0b045669c98e5c52df0f404d36c2193257fd1fc991b262fd82d6de07d": {
+    "CHANGELOG.md:list:fdcc1bb80493caf955c15fb8fb062f834010b24265bf816c6bd42884904fb10a": {
       "kind": "list",
-      "source": "Hook 规则文本字段整理为 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ 等清晰命名。",
+      "source": "补全默认 __ELBOT_CODE_0__ 中缺失的 __ELBOT_CODE_1__。",
       "source_file": "CHANGELOG.md",
-      "source_hash": "fb5d2dd0b045669c98e5c52df0f404d36c2193257fd1fc991b262fd82d6de07d",
-      "translation": "Hook rule text fields have been organized into clear names such as __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__.",
-      "updated_at": 1783567455
+      "source_hash": "fdcc1bb80493caf955c15fb8fb062f834010b24265bf816c6bd42884904fb10a",
+      "translation": "Completed the missing __ELBOT_CODE_1__ in the default __ELBOT_CODE_0__.",
+      "updated_at": 1784025711
     },
     "CHANGELOG.md:paragraph:f4fdd49cee5a8975381d265d52b666a936b8a0b8d696502ff7ac1ebdda67c23c": {
       "kind": "paragraph",
@@ -1314,8 +1002,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "a47b01793ecd4a0aaaf208e1c4ac74accad10133215ff5c33c76e80b0c01e32c",
+  "source_hash": "c5f3340b858315163f900bb5641a3f3fb7a22f67208290a0dd5ccfb46dcedd5a",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1783859074,
+  "updated_at": 1784025711,
   "version": 2
 }
