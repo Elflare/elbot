@@ -608,6 +608,14 @@
       "translation": "Do not rely on this compatibility behavior.\n",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:18c20bd0c41bd40a2841ae1cfdf4da33bc10fb55975daca3f03a8a8f803d8ceb": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 的条目也可能被容量淘汰。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "18c20bd0c41bd40a2841ae1cfdf4da33bc10fb55975daca3f03a8a8f803d8ceb",
+      "translation": "Entries in __ELBOT_CODE_0__ may also be evicted due to capacity limits.",
+      "updated_at": 1784015429
+    },
     "docs/hooks.md:paragraph:19f6330283e3cb328ab1d7038be83ad13c7019d756166ee302ed8546d5ac3160": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 只在 trigger rule 命中时启动。",
@@ -824,6 +832,14 @@
       "translation": "Shorthand fields and __ELBOT_CODE_0__ cannot appear simultaneously;",
       "updated_at": 1783853279
     },
+    "docs/hooks.md:paragraph:4390fb33faeb337ba392a93881a397834814856b15f6281ad55551f057b0af12": {
+      "kind": "paragraph",
+      "source": "value 必须是合法 JSON，压缩后单值最大 1 MiB；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "4390fb33faeb337ba392a93881a397834814856b15f6281ad55551f057b0af12",
+      "translation": "The value must be valid JSON, with a maximum size of 1 MiB per value after compression;",
+      "updated_at": 1784015429
+    },
     "docs/hooks.md:paragraph:4aa811f2db1a79b392eec48452915267c316ae4d541d214708a6ee27ebb1cdc4": {
       "kind": "paragraph",
       "source": "persistent worker 只接收取消通知并保留进程和内存。\n",
@@ -984,6 +1000,14 @@
       "translation": "The final assistant text usually passes through __ELBOT_CODE_0__ first, and then through __ELBOT_CODE_1__.",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:6b2ae1fab3551c7dff7f234009068af83690b39766e12b70f2c9472bbd1480a5": {
+      "kind": "paragraph",
+      "source": "过期 key 在读取、列举、删除或 CAS 时均视为不存在。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "6b2ae1fab3551c7dff7f234009068af83690b39766e12b70f2c9472bbd1480a5",
+      "translation": "Expired keys are treated as non-existent during reading, listing, deletion, or CAS.\n",
+      "updated_at": 1784015429
+    },
     "docs/hooks.md:paragraph:6d4df3d5a3205a4f9f7529fde42cd2b4f3b3250215a893f4209d47165c151c1d": {
       "kind": "paragraph",
       "source": "业务参数校验、外部服务授权和插件自身权限判断仍由插件负责。\n",
@@ -1024,6 +1048,14 @@
       "translation": "When action __ELBOT_CODE_0__ is configured, the existing __ELBOT_CODE_1__ overrides this field;",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:7249e18e02bab1429a9fcfd9faba4eeedd16ca41b7757f6e285b4050f7408a75": {
+      "kind": "paragraph",
+      "source": "负数非法。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "7249e18e02bab1429a9fcfd9faba4eeedd16ca41b7757f6e285b4050f7408a75",
+      "translation": "Negative numbers are invalid.",
+      "updated_at": 1784015429
+    },
     "docs/hooks.md:paragraph:73fb4f0ce579852bef7a4279dc87af3f65a62559c21cbfe5a57cb831b795b290": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 为 __ELBOT_CODE_1__（默认）或 __ELBOT_CODE_2__；",
@@ -1063,6 +1095,14 @@
       "source_hash": "7672a4198472ba160122f78cb1ef063db60b9cb45747141fb0e22cf7554ff746",
       "translation": "__ELBOT_CODE_0__ can be omitted; omitting it is equivalent to an empty allowlist:\n",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:paragraph:76a83d9c7bb944c8c68b054ccc4b190b32d586a8e4cfb067bb2bd03b34ef7ee3": {
+      "kind": "paragraph",
+      "source": "前缀只是命名约定，不是权限边界，所有 worker 都能访问所有 key。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "76a83d9c7bb944c8c68b054ccc4b190b32d586a8e4cfb067bb2bd03b34ef7ee3",
+      "translation": "Prefixes are merely naming conventions, not security boundaries; all workers can access all keys.",
+      "updated_at": 1784015429
     },
     "docs/hooks.md:paragraph:78101b2061e322db3ecef6358e5a1b1c2c2b89ba9a3e15cc7dd139229a0cbbcd": {
       "kind": "paragraph",
@@ -1200,6 +1240,14 @@
       "translation": "Background calls must be located in __ELBOT_CODE_0__: when there is a context issued by the Host, place it in __ELBOT_CODE_1__;",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:8e0212688cf1244334dedc30eae9255ff0c2ac3288ee704bf54a395c2e5dfa27": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 和失败的 __ELBOT_CODE_1__ 不会刷新访问时间。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "8e0212688cf1244334dedc30eae9255ff0c2ac3288ee704bf54a395c2e5dfa27",
+      "translation": "__ELBOT_CODE_0__ and failed __ELBOT_CODE_1__ will not refresh the access time.",
+      "updated_at": 1784015429
+    },
     "docs/hooks.md:paragraph:915b4886dded51c03b16a8b10247bd1e32df1d114da561b4023d4d4904d6bce4": {
       "kind": "paragraph",
       "source": "可用于 __ELBOT_CODE_0__、__ELBOT_CODE_1__ 和模板的文本字段：\n",
@@ -1312,6 +1360,14 @@
       "translation": "__ELBOT_CODE_0__ cannot be mixed with __ELBOT_CODE_1__.",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:a230d5bdafbea471d60af01a4bbde27ec20911437f71f0ff1c46afa42595ed31": {
+      "kind": "paragraph",
+      "source": "建议按 __ELBOT_CODE_0__、__ELBOT_CODE_1__ 等前缀组织全局数据以减少命名冲突；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "a230d5bdafbea471d60af01a4bbde27ec20911437f71f0ff1c46afa42595ed31",
+      "translation": "It is recommended to organize global data using prefixes such as __ELBOT_CODE_0__ and __ELBOT_CODE_1__ to reduce naming conflicts;",
+      "updated_at": 1784015429
+    },
     "docs/hooks.md:paragraph:a2acccd80932a623e24ff5d331d5ee926c105d0edde49386edccf1bd7cb9da8d": {
       "kind": "paragraph",
       "source": "未命名 __ELBOT_CODE_0__ 使用工具名作为结果名；未命名 __ELBOT_CODE_1__ 使用 __ELBOT_CODE_2__。同一规则内多个未命名 exec 会覆盖同一结果，需模板引用时应显式命名。\n",
@@ -1335,6 +1391,14 @@
       "source_hash": "a44d652eb99a368aa06371bbfbd2dd05accb62b010128f617e4f4fddd49731f5",
       "translation": "Among these, __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ are virtual text fields calculated during matching/templating and do not exist directly in the event JSON;",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:paragraph:a746171070f2609cf017f98f9a3b929d6033ee6bd3b8366993ad588fd0068a16": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 是空闲超时：省略时默认 600 秒，设为正数时每次成功 __ELBOT_CODE_1__、__ELBOT_CODE_2__ 或 __ELBOT_CODE_3__ 都会重新计时，显式设为 __ELBOT_CODE_4__ 时不按时间过期；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "a746171070f2609cf017f98f9a3b929d6033ee6bd3b8366993ad588fd0068a16",
+      "translation": "__ELBOT_CODE_0__ is the idle timeout: defaults to 600 seconds if omitted; when set to a positive number, the timer resets upon every successful __ELBOT_CODE_1__, __ELBOT_CODE_2__, or __ELBOT_CODE_3__; when explicitly set to __ELBOT_CODE_4__, it does not expire based on time;",
+      "updated_at": 1784015429
     },
     "docs/hooks.md:paragraph:a7fd931c2e04fcc2cc532ca9dca57c9f9e3ed827213f11d6b79df800baf662c5": {
       "kind": "paragraph",
@@ -1398,14 +1462,6 @@
       "source_file": "docs/hooks.md",
       "source_hash": "afaca0e0651f4f8d69d229ae6f0b4f601dab523aceb4a59f115f46af5a9a24dd",
       "translation": "Failures uniformly use the outer __ELBOT_CODE_0__.",
-      "updated_at": 1783771179
-    },
-    "docs/hooks.md:paragraph:b403da97c60462142355cbedb72d3ad552294aa0c5acbe92ad6dca47d6fddd64": {
-      "kind": "paragraph",
-      "source": "value 必须是合法 JSON，压缩后单值最大 1 MiB，共享区最大 32 MiB。",
-      "source_file": "docs/hooks.md",
-      "source_hash": "b403da97c60462142355cbedb72d3ad552294aa0c5acbe92ad6dca47d6fddd64",
-      "translation": "The value must be valid JSON, with a maximum size of 1 MiB per value after compression and a maximum of 32 MiB for the shared area.",
       "updated_at": 1783771179
     },
     "docs/hooks.md:paragraph:b5f5fb704617c59e05b3e71fead08392c610032d8bcc5bb0682dab7233b5ec91": {
@@ -1480,6 +1536,14 @@
       "translation": "__ELBOT_CODE_0__ top-level contains __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, __ELBOT_CODE_5__, __ELBOT_CODE_6__, __ELBOT_CODE_7__, __ELBOT_CODE_8__, __ELBOT_CODE_9__, __ELBOT_CODE_10__, __ELBOT_CODE_11__, and __ELBOT_CODE_12__;",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:c18552f73f69505048352d89e62f9eaa0be200dc128917743b7dc1572ebfc933": {
+      "kind": "paragraph",
+      "source": "key 去除首尾空白后必须非空，最长 256 字节，不强制使用特定格式。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "c18552f73f69505048352d89e62f9eaa0be200dc128917743b7dc1572ebfc933",
+      "translation": "The key must be non-empty after trimming leading and trailing whitespace, with a maximum length of 256 bytes; no specific format is enforced.",
+      "updated_at": 1784015429
+    },
     "docs/hooks.md:paragraph:c21e56a0408f816be4367e081573045e9148ae50b2807a27612eb03695eebe0c": {
       "kind": "paragraph",
       "source": "一次性 exec 与持久 Hook 都使用 __ELBOT_CODE_0__ JSON Lines：stdin 和 stdout 的每行都是一个 JSON 帧；",
@@ -1542,14 +1606,6 @@
       "source_file": "docs/hooks.md",
       "source_hash": "c72bf22406a6e458f4ad12707cac4952a81395796dd63bddca40893f7a7e54b7",
       "translation": "Then Host sends:\n",
-      "updated_at": 1783771179
-    },
-    "docs/hooks.md:paragraph:c7a8df1f9294d70f87183b487458a0eea65637105438a6763eb734070201be59": {
-      "kind": "paragraph",
-      "source": "写入 shared KV 的 key 必须为 __ELBOT_CODE_0__。",
-      "source_file": "docs/hooks.md",
-      "source_hash": "c7a8df1f9294d70f87183b487458a0eea65637105438a6763eb734070201be59",
-      "translation": "The key written to the shared KV must be __ELBOT_CODE_0__.",
       "updated_at": 1783771179
     },
     "docs/hooks.md:paragraph:c845375650fb802d1965c3b2a8f5e9e32881779b857af2f9678e743771e6975f": {
@@ -1615,6 +1671,14 @@
       "source_hash": "d7aebd5cd49739d006a674e1b41d8049d62d3d06e41778a7a8b69c4364ffbd62",
       "translation": "When the user sends the exact __ELBOT_CODE_0__, the Host cancels the current execution or waiting Session of that route and closes the transient worker;",
       "updated_at": 1783825265
+    },
+    "docs/hooks.md:paragraph:d7d4b195bcb51398229411084ad8467b2fb7b82308fe466fff07f6a6ceff3394": {
+      "kind": "paragraph",
+      "source": "达到条目或容量上限时，Host 会先删除过期项，再按最近使用时间淘汰全局最冷的数据；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "d7d4b195bcb51398229411084ad8467b2fb7b82308fe466fff07f6a6ceff3394",
+      "translation": "When the entry or capacity limit is reached, the Host will first delete expired items and then evict the globally coldest data based on the least recently used time;",
+      "updated_at": 1784015429
     },
     "docs/hooks.md:paragraph:d9394f73f44253549afc4570849e72051da20aa9938a81e621e546004e5f3d35": {
       "kind": "paragraph",
@@ -1719,6 +1783,14 @@
       "source_hash": "ea61428d37fae0d5927a48fde49b7ca596eae8b31d937548c66de6f5633684a9",
       "translation": "The template syntax is __ELBOT_CODE_0__, for example __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__.",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:paragraph:efde1789c6abaa9117a24a7e4f0b9cdb834f6d55d3c6db4ec89ae5db75848167": {
+      "kind": "paragraph",
+      "source": "共享区最多 10,000 条，key 与 value 合计最大 32 MiB。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "efde1789c6abaa9117a24a7e4f0b9cdb834f6d55d3c6db4ec89ae5db75848167",
+      "translation": "The shared area supports up to 10,000 entries, with a combined maximum size of 32 MiB for keys and values.\n",
+      "updated_at": 1784015429
     },
     "docs/hooks.md:paragraph:f11e59199970ad53ea9ba8f12b9200124c92c5146e2586ccd3cb14c3d9c830ae": {
       "kind": "paragraph",
@@ -2842,8 +2914,8 @@
     }
   },
   "source": "docs/hooks.md",
-  "source_hash": "aaa3912d8892ecdce236803b6a1e8ff0df321e6b8251cb91ce32128debd665bb",
+  "source_hash": "d85d916bcee349e5c98ab46e0fd592800d031f1518418a8810637dc4ddfdf69e",
   "target": "docs.en/hooks.md",
-  "updated_at": 1783922732,
+  "updated_at": 1784015429,
   "version": 2
 }
