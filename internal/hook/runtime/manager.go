@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"elbot/internal/hook"
 )
@@ -21,6 +22,8 @@ type Manager struct {
 	running       map[routeKey]invocation
 	tokens        map[string]toolContext
 	shared        *SharedState
+	sharedCancel  context.CancelFunc
+	sharedDone    chan struct{}
 	prepareReload func(string) (func() error, error)
 }
 
@@ -28,15 +31,34 @@ func NewManager(opts Options) *Manager {
 	if strings.TrimSpace(opts.SharedDir) != "" {
 		_ = os.MkdirAll(opts.SharedDir, 0o755)
 	}
-	return &Manager{
-		opts:      opts,
-		workers:   map[string]*worker{},
-		transient: map[routeKey]*worker{},
-		configs:   map[string]Config{},
-		routes:    map[routeKey]lease{},
-		running:   map[routeKey]invocation{},
-		tokens:    map[string]toolContext{},
-		shared:    NewSharedState(),
+	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
+	m := &Manager{
+		opts:         opts,
+		workers:      map[string]*worker{},
+		transient:    map[routeKey]*worker{},
+		configs:      map[string]Config{},
+		routes:       map[routeKey]lease{},
+		running:      map[routeKey]invocation{},
+		tokens:       map[string]toolContext{},
+		shared:       NewSharedState(),
+		sharedCancel: cleanupCancel,
+		sharedDone:   make(chan struct{}),
+	}
+	go m.cleanSharedState(cleanupCtx)
+	return m
+}
+
+func (m *Manager) cleanSharedState(ctx context.Context) {
+	defer close(m.sharedDone)
+	ticker := time.NewTicker(sharedCleanupInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			m.shared.PruneExpired()
+		}
 	}
 }
 
@@ -207,6 +229,13 @@ func (m *Manager) ReplacePlugin(config Config) error {
 func (m *Manager) Close(ctx context.Context) {
 	if m == nil {
 		return
+	}
+	if m.sharedCancel != nil {
+		m.sharedCancel()
+		select {
+		case <-m.sharedDone:
+		case <-ctx.Done():
+		}
 	}
 	m.mu.RLock()
 	workers := make([]*worker, 0, len(m.workers)+len(m.transient))

@@ -2,7 +2,12 @@ package runtime
 
 import (
 	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestSharedStateSetGetAndCompareAndSwap(t *testing.T) {
@@ -32,17 +37,206 @@ func TestSharedStateSetGetAndCompareAndSwap(t *testing.T) {
 
 func TestSharedStateRejectsInvalidKeysAndValues(t *testing.T) {
 	state := NewSharedState()
+	if err := state.Set("flat-key", json.RawMessage(`1`)); err != nil {
+		t.Fatalf("Set flat key: %v", err)
+	}
 	for _, tc := range []struct {
 		key   string
 		value json.RawMessage
 	}{
-		{key: "missing-namespace", value: json.RawMessage(`1`)},
-		{key: "/empty", value: json.RawMessage(`1`)},
+		{key: "", value: json.RawMessage(`1`)},
+		{key: "   ", value: json.RawMessage(`1`)},
+		{key: strings.Repeat("k", maxSharedKeyBytes+1), value: json.RawMessage(`1`)},
 		{key: "demo/value", value: json.RawMessage(`not-json`)},
 	} {
 		if err := state.Set(tc.key, tc.value); err == nil {
 			t.Fatalf("Set(%q, %s) succeeded", tc.key, tc.value)
 		}
+	}
+}
+
+func TestSharedStateIdleTTLAndAccessRefresh(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	state := NewSharedState()
+	state.now = func() time.Time { return now }
+	if err := state.SetWithTTL("hot", json.RawMessage(`1`), 10*time.Second); err != nil {
+		t.Fatalf("SetWithTTL: %v", err)
+	}
+	now = now.Add(9 * time.Second)
+	if _, ok := state.Get("hot"); !ok {
+		t.Fatal("hot key expired before first idle TTL")
+	}
+	now = now.Add(9 * time.Second)
+	if _, ok := state.Get("hot"); !ok {
+		t.Fatal("get did not refresh idle TTL")
+	}
+	now = now.Add(11 * time.Second)
+	if _, ok := state.Get("hot"); ok {
+		t.Fatal("idle key did not expire")
+	}
+
+	if err := state.SetWithTTL("permanent", json.RawMessage(`1`), 0); err != nil {
+		t.Fatalf("Set permanent: %v", err)
+	}
+	now = now.Add(365 * 24 * time.Hour)
+	if _, ok := state.Get("permanent"); !ok {
+		t.Fatal("zero TTL key expired")
+	}
+}
+
+func TestSharedStateListAndFailedCASDoNotRefresh(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	state := NewSharedState()
+	state.now = func() time.Time { return now }
+	if err := state.SetWithTTL("cold", json.RawMessage(`1`), 10*time.Second); err != nil {
+		t.Fatalf("SetWithTTL: %v", err)
+	}
+	now = now.Add(9 * time.Second)
+	if keys := state.List(""); len(keys) != 1 {
+		t.Fatalf("List = %#v", keys)
+	}
+	swapped, err := state.CompareAndSwapWithTTL("cold", json.RawMessage(`2`), json.RawMessage(`3`), 10*time.Second)
+	if err != nil || swapped {
+		t.Fatalf("failed CAS = %v, %v", swapped, err)
+	}
+	now = now.Add(2 * time.Second)
+	if _, ok := state.Get("cold"); ok {
+		t.Fatal("list or failed CAS refreshed idle TTL")
+	}
+}
+
+func TestSharedStatePruneExpired(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	state := NewSharedState()
+	state.now = func() time.Time { return now }
+	if err := state.SetWithTTL("expired", json.RawMessage(`1`), time.Second); err != nil {
+		t.Fatalf("Set expired: %v", err)
+	}
+	if err := state.SetWithTTL("kept", json.RawMessage(`2`), 0); err != nil {
+		t.Fatalf("Set kept: %v", err)
+	}
+	now = now.Add(2 * time.Second)
+	if removed := state.PruneExpired(); removed != 1 {
+		t.Fatalf("PruneExpired = %d", removed)
+	}
+	if keys := state.List(""); len(keys) != 1 || keys[0] != "kept" {
+		t.Fatalf("remaining keys = %#v", keys)
+	}
+}
+
+func TestSharedStateEvictsLeastRecentlyUsed(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	state := NewSharedState()
+	state.now = func() time.Time { return now }
+	state.maxEntries = 3
+	for _, key := range []string{"a", "b", "c"} {
+		if err := state.SetWithTTL(key, json.RawMessage(`1`), 0); err != nil {
+			t.Fatalf("Set %s: %v", key, err)
+		}
+		now = now.Add(time.Second)
+	}
+	if _, ok := state.Get("a"); !ok {
+		t.Fatal("Get a failed")
+	}
+	now = now.Add(time.Second)
+	if err := state.SetWithTTL("d", json.RawMessage(`1`), 0); err != nil {
+		t.Fatalf("Set d: %v", err)
+	}
+	state.mu.RLock()
+	_, hasA := state.items["a"]
+	_, hasB := state.items["b"]
+	_, hasD := state.items["d"]
+	state.mu.RUnlock()
+	if !hasA || hasB || !hasD {
+		t.Fatalf("LRU contents: a=%v b=%v d=%v", hasA, hasB, hasD)
+	}
+}
+
+func TestSharedStateSizeLimitCountsKeysAndValues(t *testing.T) {
+	state := NewSharedState()
+	state.maxEntries = 10
+	state.maxSize = 10
+	if err := state.SetWithTTL("aaaa", json.RawMessage(`1`), 0); err != nil {
+		t.Fatalf("Set aaaa: %v", err)
+	}
+	if err := state.SetWithTTL("bbbb", json.RawMessage(`2`), 0); err != nil {
+		t.Fatalf("Set bbbb: %v", err)
+	}
+	if err := state.SetWithTTL("cc", json.RawMessage(`3`), 0); err != nil {
+		t.Fatalf("Set cc: %v", err)
+	}
+	state.mu.RLock()
+	_, hasOldest := state.items["aaaa"]
+	size := state.size
+	state.mu.RUnlock()
+	if hasOldest || size > state.maxSize {
+		t.Fatalf("size eviction: hasOldest=%v size=%d", hasOldest, size)
+	}
+}
+
+func TestSharedStateConcurrentCompareAndSwap(t *testing.T) {
+	state := NewSharedState()
+	if err := state.SetWithTTL("counter", json.RawMessage(`0`), 0); err != nil {
+		t.Fatalf("Set counter: %v", err)
+	}
+	const workers = 8
+	const increments = 50
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range increments {
+				for {
+					current, ok := state.Get("counter")
+					if !ok {
+						t.Error("counter disappeared")
+						return
+					}
+					value, err := strconv.Atoi(string(current))
+					if err != nil {
+						t.Errorf("parse counter: %v", err)
+						return
+					}
+					next := json.RawMessage(fmt.Sprintf("%d", value+1))
+					swapped, err := state.CompareAndSwapWithTTL("counter", current, next, 0)
+					if err != nil {
+						t.Errorf("CompareAndSwap: %v", err)
+						return
+					}
+					if swapped {
+						break
+					}
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	value, ok := state.Get("counter")
+	if !ok || string(value) != strconv.Itoa(workers*increments) {
+		t.Fatalf("counter = %s, %v", value, ok)
+	}
+}
+
+func TestSharedTTLDefaultsAndValidation(t *testing.T) {
+	if ttl, err := sharedTTL(nil); err != nil || ttl != 10*time.Minute {
+		t.Fatalf("default TTL = %v, %v", ttl, err)
+	}
+	zero := int64(0)
+	if ttl, err := sharedTTL(&zero); err != nil || ttl != 0 {
+		t.Fatalf("zero TTL = %v, %v", ttl, err)
+	}
+	seconds := int64(90)
+	if ttl, err := sharedTTL(&seconds); err != nil || ttl != 90*time.Second {
+		t.Fatalf("explicit TTL = %v, %v", ttl, err)
+	}
+	negative := int64(-1)
+	if _, err := sharedTTL(&negative); err == nil {
+		t.Fatal("negative TTL succeeded")
+	}
+	tooLarge := maxSharedTTLSeconds + 1
+	if _, err := sharedTTL(&tooLarge); err == nil {
+		t.Fatal("overflowing TTL succeeded")
 	}
 }
 
