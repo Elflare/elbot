@@ -496,6 +496,14 @@
       "translation": "**ELyph Task Notation**: A structured task description language used for LLM Cron and native Skills to reduce natural language ambiguity.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:7f811e2659fa131805affccbb016c1e0ea38f38f089e07295791622572bc69c1": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 新增 __ELBOT_CODE_1__ 参数，可按需跳过缓存、重新获取网页并更新缓存内容。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "7f811e2659fa131805affccbb016c1e0ea38f38f089e07295791622572bc69c1",
+      "translation": "__ELBOT_CODE_0__ added the __ELBOT_CODE_1__ parameter, which can skip the cache, re-fetch the webpage, and update the cached content as needed.",
+      "updated_at": 1784027930
+    },
     "CHANGELOG.md:list:7fd433831a9af6deb1b74bac56866140ab955919d1548bfc07d96e3d59a7dd51": {
       "kind": "list",
       "source": "确认前会自动预检并展示 diff。",
@@ -1002,8 +1010,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "c5f3340b858315163f900bb5641a3f3fb7a22f67208290a0dd5ccfb46dcedd5a",
+  "source_hash": "bd2eaf86e53f49ba403e8867b6246f99755d01d241d01c220077e074f53539e5",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784025711,
+  "updated_at": 1784027930,
   "version": 2
 }
