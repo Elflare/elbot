@@ -391,6 +391,7 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_PROXY_URL=
 
 # Web tools
+JINA_API_KEY=
 WEB_EXTRACT_PROXY=
 
 # CLI remote client/server tokens

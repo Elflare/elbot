@@ -74,6 +74,14 @@ func TestResolvePathGeneratesPlatformDefaultsWhenNoConfigExists(t *testing.T) {
 			t.Fatalf("expected generated file %s: %v", rel, err)
 		}
 	}
+	envExamplePath := filepath.Join(filepath.Dir(want), ".env.example")
+	envExampleData, err := os.ReadFile(envExamplePath)
+	if err != nil {
+		t.Fatalf("read generated .env.example: %v", err)
+	}
+	if !strings.Contains(string(envExampleData), "JINA_API_KEY=") {
+		t.Fatalf("generated .env.example is missing JINA_API_KEY: %q", string(envExampleData))
+	}
 	creatorTomlPath := filepath.Join(filepath.Dir(want), "skills", "agent", "agent_skill_creator", "ELBOT_SKILL.toml")
 	creatorTomlData, err := os.ReadFile(creatorTomlPath)
 	if err != nil {

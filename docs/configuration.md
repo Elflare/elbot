@@ -115,6 +115,12 @@ default_context_window = 256000
 
 ## 内置 Web 工具配置
 
+`web_extract` 默认优先使用 Jina Reader。配置 `JINA_API_KEY` 后会通过 Jina Reader 提取网页；未配置时回退为直接抓取：
+
+```env
+JINA_API_KEY=your_jina_api_key
+```
+
 `web_extract` 的 `proxy` 参数用于控制网页提取请求的代理：
 如果希望所有默认 `web_extract` 调用都走固定代理，可以在配置目录 `.env` 或系统环境中设置：
 
