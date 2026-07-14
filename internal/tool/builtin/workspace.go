@@ -63,7 +63,7 @@ func workspaceBuilder() *tool.Builder {
 		SuperadminOnly().
 		Tags("agent", "files").
 		ForegroundOnly().
-		String("path", "要设置为 workspace 的已有目录路径。").
+		String("path", "要设置为 workspace 的已有目录路径。支持~或者$HOME开头。").
 		Boolean("reset", "为 true 时重置为默认工作目录。")
 }
 
