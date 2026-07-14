@@ -195,7 +195,7 @@ text = "{{actions.search.result}}"
 
 ## 输出与路径
 
-规则 `send`、一次性 exec、临时 Hook 和持久 Hook 使用同一套输出 segment。`target` 和 `timing` 属于整组 outputs，不属于单个 segment。
+规则 `send`、所有 Hook 使用同一套输出 segment。`target` 和 `timing` 属于整组 outputs，不属于单个 segment。
 
 ### 规则 TOML 的单个 `send`
 
@@ -212,7 +212,6 @@ target.group_id = "123456"
 
 ### TOML `outputs` 与一次性 exec 的 `outputs`
 
-规则的多段输出使用 `outputs`，一次性 exec response 的 `outputs` 使用相同 segment 格式：
 
 ```toml
 [[rules.actions]]
@@ -238,7 +237,7 @@ outputs = [
 
 `outputs` 是一条消息片段组。要发送单片段消息，只需让 `outputs` 只包含一个元素；要发送多条消息，则使用多个 `send` action 或多次 `output.send` 请求。
 
-一次性 exec 的大媒体应写到插件目录或 `_shared/`，然后返回 `path` 或 `url`；不要把大数据塞进 JSON Pipe。单个 stdout 协议帧最大 16 MiB。
+大媒体应写到插件目录或 `_shared/`，然后返回 `path` 或 `url`；不要把大数据塞进 JSON Pipe。单个 stdout 协议帧最大 16 MiB。
 
 ### target 与 timing
 
@@ -254,11 +253,11 @@ target.superadmins = true
 
 通常省略 target 以沿用当前事件。JSON 和 TOML target 都使用上面的 snake_case 字段。`timing` 为 `immediate`（默认）或 `after_assistant`；其实际生效范围见 Hook 点表。
 
-## 一次性 exec 与 hook.v2
+## hook.v2
 
 ### 共同协议原则
 
-一次性 exec 与持久 Hook 都使用 `hook.v2` JSON Lines：stdin 和 stdout 的每行都是一个 JSON 帧；stdout 只能写协议帧，日志写 stderr。Host 发起的 request ID 必须以 `host:` 开头，Hook 发起的 request ID 必须以 `plugin:` 开头，response 必须复用对应 request ID。
+所有 Hook 都使用 `hook.v2` JSON Lines：stdin 和 stdout 的每行都是一个 JSON 帧；stdout 只能写协议帧，日志写 stderr。Host 发起的 request ID 必须以 `host:` 开头，Hook 发起的 request ID 必须以 `plugin:` 开头，response 必须复用对应 request ID。
 
 两种模式都先处理 `system.init`，成功后再处理 `event.handle`，也都允许 Hook 向 Host 发 request；可用 method 则随运行模式不同。一次性 exec 只处理一个 `event.handle` 后退出；持久 Hook 会持续处理多个事件，并额外接收 `system.shutdown`、可能收到 `event.cancel`。
 
@@ -349,6 +348,7 @@ Hook 成功响应：
 | `message.get_reply` | 读取当前被引用的平台消息 ID。 |
 | `message.get` | 保留接口；当前总是返回 `available: false`。 |
 | `hook.log` | 写入 Host 日志。 |
+| `shared.*` | 读写全局共享 KV；方法和参数见下文“工具与共享状态”。 |
 
 `platform.call` 示例：
 
@@ -582,7 +582,7 @@ worker Hook 自行维护 LLM loop、业务状态和工具使用决策。Host 对
 
 `content` 是工具文本结果，`segments` 为 `{type,text,url,mime_type,name}` 数组，`warnings` 为字符串数组，`receipts` 是工具 outputs 经 Output Manager 发送后的平台消息 ID。失败统一使用外层 `ok=false,error`。Hook 工具调用不会写入 Agent Session。
 
-除 `_shared/` 文件目录外，所有 worker 共享一个进程内 JSON KV：
+除 `_shared/` 文件目录外，一次性 exec 与所有 worker 共享一个进程内 JSON KV：
 
 | method | `params` | 成功 `result` |
 | --- | --- | --- |
@@ -594,7 +594,7 @@ worker Hook 自行维护 LLM loop、业务状态和工具使用决策。Host 对
 
 `ttl_seconds` 是空闲超时：省略时默认 600 秒，设为正数时每次成功 `get`、`set` 或 `compare_and_swap` 都会重新计时，显式设为 `0` 时不按时间过期；负数非法。`list` 和失败的 `compare_and_swap` 不会刷新访问时间。过期 key 在读取、列举、删除或 CAS 时均视为不存在。
 
-key 去除首尾空白后必须非空，最长 256 字节，不强制使用特定格式。建议按 `users/<platform>/<id>`、`cache/<name>` 等前缀组织全局数据以减少命名冲突；前缀只是命名约定，不是权限边界，所有 worker 都能访问所有 key。value 必须是合法 JSON，压缩后单值最大 1 MiB；共享区最多 10,000 条，key 与 value 合计最大 32 MiB。
+key 去除首尾空白后必须非空，最长 256 字节，不强制使用特定格式。建议按 `users/<platform>/<id>`、`cache/<name>` 等前缀组织全局数据以减少命名冲突；前缀只是命名约定，不是权限边界，所有hook共享数据。value 必须是合法 JSON，压缩后单值最大 1 MiB；共享区最多 10,000 条，key 与 value 合计最大 32 MiB。
 
 达到条目或容量上限时，Host 会先删除过期项，再按最近使用时间淘汰全局最冷的数据；`ttl_seconds = 0` 的条目也可能被容量淘汰。`compare_and_swap` 是原子操作，按压缩后的 JSON 内容比较；省略 `expected` 表示仅当 key 不存在时写入，显式 `expected: null` 表示当前值必须是 JSON `null`。共享内存跨 Hook 重启和 `/hooks reload` 保留，在 ElBot 重启后清空；需要持久化时由 Hook 写入自己的目录或 `_shared/`。
 

@@ -14,6 +14,9 @@ import (
 )
 
 func (w *worker) pluginRequest(value frame) (any, error) {
+	if strings.HasPrefix(value.Method, "shared.") {
+		return w.manager.shared.HandleRequest(value.Method, value.Params)
+	}
 	switch value.Method {
 	case "hooks.reload":
 		var params map[string]json.RawMessage
@@ -28,67 +31,6 @@ func (w *worker) pluginRequest(value frame) (any, error) {
 		return w.prepareSelfReload()
 	case "tool.call":
 		return w.callTool(value.Params)
-	case "shared.get":
-		var params struct {
-			Key string `json:"key"`
-		}
-		if err := json.Unmarshal(value.Params, &params); err != nil {
-			return nil, err
-		}
-		value, ok := w.manager.shared.Get(params.Key)
-		return map[string]any{"found": ok, "value": json.RawMessage(value)}, nil
-	case "shared.set":
-		var params struct {
-			Key        string          `json:"key"`
-			Value      json.RawMessage `json:"value"`
-			TTLSeconds *int64          `json:"ttl_seconds"`
-		}
-		if err := json.Unmarshal(value.Params, &params); err != nil {
-			return nil, err
-		}
-		ttl, err := sharedTTL(params.TTLSeconds)
-		if err != nil {
-			return nil, err
-		}
-		if err := w.manager.shared.SetWithTTL(params.Key, params.Value, ttl); err != nil {
-			return nil, err
-		}
-		return map[string]any{"ok": true}, nil
-	case "shared.delete":
-		var params struct {
-			Key string `json:"key"`
-		}
-		if err := json.Unmarshal(value.Params, &params); err != nil {
-			return nil, err
-		}
-		return map[string]any{"deleted": w.manager.shared.Delete(params.Key)}, nil
-	case "shared.list":
-		var params struct {
-			Prefix string `json:"prefix"`
-		}
-		if err := json.Unmarshal(value.Params, &params); err != nil {
-			return nil, err
-		}
-		return map[string]any{"keys": w.manager.shared.List(params.Prefix)}, nil
-	case "shared.compare_and_swap":
-		var params struct {
-			Key        string          `json:"key"`
-			Expected   json.RawMessage `json:"expected"`
-			Value      json.RawMessage `json:"value"`
-			TTLSeconds *int64          `json:"ttl_seconds"`
-		}
-		if err := json.Unmarshal(value.Params, &params); err != nil {
-			return nil, err
-		}
-		ttl, err := sharedTTL(params.TTLSeconds)
-		if err != nil {
-			return nil, err
-		}
-		swapped, err := w.manager.shared.CompareAndSwapWithTTL(params.Key, params.Expected, params.Value, ttl)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]any{"swapped": swapped}, nil
 	default:
 		return nil, fmt.Errorf("unsupported hook request method %q", value.Method)
 	}

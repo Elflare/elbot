@@ -35,6 +35,41 @@ func TestSharedStateSetGetAndCompareAndSwap(t *testing.T) {
 	}
 }
 
+func TestSharedStateHandleRequest(t *testing.T) {
+	state := NewSharedState()
+	setResult, err := state.HandleRequest("shared.set", json.RawMessage(`{"key":"flat","value":{"count":1},"ttl_seconds":0}`))
+	if err != nil || setResult.(map[string]any)["ok"] != true {
+		t.Fatalf("shared.set = %#v, %v", setResult, err)
+	}
+	getResult, err := state.HandleRequest("shared.get", json.RawMessage(`{"key":"flat"}`))
+	if err != nil {
+		t.Fatalf("shared.get: %v", err)
+	}
+	get := getResult.(map[string]any)
+	if get["found"] != true || string(get["value"].(json.RawMessage)) != `{"count":1}` {
+		t.Fatalf("shared.get = %#v", get)
+	}
+	listResult, err := state.HandleRequest("shared.list", json.RawMessage(`{"prefix":"fl"}`))
+	if err != nil {
+		t.Fatalf("shared.list: %v", err)
+	}
+	keys := listResult.(map[string]any)["keys"].([]string)
+	if len(keys) != 1 || keys[0] != "flat" {
+		t.Fatalf("shared.list = %#v", keys)
+	}
+	casResult, err := state.HandleRequest("shared.compare_and_swap", json.RawMessage(`{"key":"flat","expected":{"count":1},"value":{"count":2}}`))
+	if err != nil || casResult.(map[string]any)["swapped"] != true {
+		t.Fatalf("shared.compare_and_swap = %#v, %v", casResult, err)
+	}
+	deleteResult, err := state.HandleRequest("shared.delete", json.RawMessage(`{"key":"flat"}`))
+	if err != nil || deleteResult.(map[string]any)["deleted"] != true {
+		t.Fatalf("shared.delete = %#v, %v", deleteResult, err)
+	}
+	if _, err := state.HandleRequest("shared.unknown", json.RawMessage(`{}`)); err == nil {
+		t.Fatal("unknown shared method succeeded")
+	}
+}
+
 func TestSharedStateRejectsInvalidKeysAndValues(t *testing.T) {
 	state := NewSharedState()
 	if err := state.Set("flat-key", json.RawMessage(`1`)); err != nil {

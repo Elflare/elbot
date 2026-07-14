@@ -497,6 +497,12 @@ func shortProtocolLine(line string) string {
 
 func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, action Action, state state, frame map[string]json.RawMessage) (any, error) {
 	method := frameString(frame, "method")
+	if strings.HasPrefix(method, "shared.") {
+		if m.Opts.Runtime == nil {
+			return nil, fmt.Errorf("hook runtime is not configured")
+		}
+		return m.Opts.Runtime.SharedState().HandleRequest(method, frame["params"])
+	}
 	switch method {
 	case "platform.call":
 		paramsMap, err := rawObject(frame["params"])
