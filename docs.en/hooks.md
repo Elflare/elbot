@@ -394,12 +394,12 @@ always = true
 [[rules.actions]]
 action_name = "extract"
 type = "exec"
-command = "uv run extract.py"
+command = ["uv", "run", "extract.py"]
 field = "llm.text"
 timeout_seconds = 30
 ```
 
-`command` does not go through the shell and supports single quotes, double quotes, and backslash escapes within quotes; Shell syntax should explicitly call `bash -lc`, `sh -c`, or the platform interpreter. No additional timeout when `timeout_seconds` is `0` or omitted; it cannot be a negative number.
+`command` is a non-empty argv array: the first element is the program, and the remaining elements are passed as arguments as-is; Each element renders the template individually and does not go through a shell. When shell syntax is required, explicitly configure it as `["bash", "-lc", "..."]`, `["sh", "-c", "..."]`, or the corresponding platform interpreter. No additional timeout when `timeout_seconds` is `0` or omitted; it cannot be a negative number.
 
 The `cwd` of rules within a plugin defaults to the plugin directory and can only use relative paths within the plugin; Rules for the root `plugins/hooks.toml` are executed in `plugins/` by default, and relative or absolute cwd can be used.
 
@@ -419,7 +419,7 @@ blocked_id = ["qqonebot:10001"]
 
 [plugin.runtime]
 mode = "persistent"
-command = "uv run weather_hook.py"
+command = ["uv", "run", "weather_hook.py"]
 cwd = "."
 startup_timeout_seconds = 10
 shutdown_timeout_seconds = 5
@@ -467,7 +467,7 @@ If any of the three items are hit, the plugin rule or `event.handle` will not be
 | Field | Description |
 | --- | --- |
 | `mode` | `once` (default), `persistent`, or `transient`. `persistent` remains resident after starting; `transient` only starts after a rule is hit and exits after the Session ends. |
-| `command` | Startup command, executed without a shell; supports single quotes, double quotes, and backslash escaping within quotes. |
+| `command` | A non-empty argv array; the first element is the program, and the remaining elements are passed as arguments as-is, without template rendering or shell processing. |
 | `cwd` | Relative to the plugin directory; cannot be an absolute path or escape the plugin directory. Usually `.`. |
 | `startup_timeout_seconds` | Maximum seconds to wait for a successful response from `system.init`, must be greater than `0`. |
 | `shutdown_timeout_seconds` | Maximum seconds to wait for `system.shutdown` and exit, must be greater than `0`. |
