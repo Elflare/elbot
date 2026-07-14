@@ -400,6 +400,14 @@
       "translation": "**Does not execute ElBot's risk grading, permission policies, or interaction confirmations**.",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:06473d882cc10af396c43124613a7e444bc1f5cf73c33db8ecdcbd64cb90722c": {
+      "kind": "paragraph",
+      "source": "每个元素分别渲染模板，不经过 shell。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "06473d882cc10af396c43124613a7e444bc1f5cf73c33db8ecdcbd64cb90722c",
+      "translation": "Each element renders the template individually and does not go through a shell.",
+      "updated_at": 1784027267
+    },
     "docs/hooks.md:paragraph:0720f17c9fef9af3b7a9b408fb4f57d9b1ccf58d8ff10d53c8920583b763b06a": {
       "kind": "paragraph",
       "source": "waiting 租约也以该三元组为 key：\n",
@@ -1360,6 +1368,14 @@
       "translation": "It is recommended to use prefixes such as __ELBOT_CODE_0__ and __ELBOT_CODE_1__ to avoid conflicts, but prefixes are not permission boundaries.",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:b6ff4576549e53039ef4ac152f763deedbb9a41a6563adfd796edf35926adf00": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 是非空 argv 数组：第一个元素是程序，其余元素原样作为参数；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "b6ff4576549e53039ef4ac152f763deedbb9a41a6563adfd796edf35926adf00",
+      "translation": "__ELBOT_CODE_0__ is a non-empty argv array: the first element is the program, and the remaining elements are passed as arguments as-is;",
+      "updated_at": 1784027267
+    },
     "docs/hooks.md:paragraph:b92eb66a81c86f0491485b0863ae3a3e1f3ac1044c1c2b176c7bb401c4b7e3f8": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 为 __ELBOT_CODE_1__（默认）或 __ELBOT_CODE_2__，实际生效范围见 Hook 点表。\n",
@@ -1400,14 +1416,6 @@
       "translation": "For example, the Hook requests __ELBOT_CODE_0__ from stdout:\n",
       "updated_at": 1784025692
     },
-    "docs/hooks.md:paragraph:beaa1f1dfe7a871ab13d4267271bfd7a7267c0bd9c0c299a6e698dee10743fa2": {
-      "kind": "paragraph",
-      "source": "shell 语法应显式调用 __ELBOT_CODE_0__、__ELBOT_CODE_1__ 或平台解释器。",
-      "source_file": "docs/hooks.md",
-      "source_hash": "beaa1f1dfe7a871ab13d4267271bfd7a7267c0bd9c0c299a6e698dee10743fa2",
-      "translation": "Shell syntax should explicitly call __ELBOT_CODE_0__, __ELBOT_CODE_1__, or the platform interpreter.",
-      "updated_at": 1784025692
-    },
     "docs/hooks.md:paragraph:bebb69355aeaa8fb79723ecab293663babc7174a5c2fbe5c16108d4d6391130c": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 同时识别 __ELBOT_CODE_1__ 和 __ELBOT_CODE_2__ scope。\n",
@@ -1424,14 +1432,6 @@
       "translation": "This syntax is equivalent to a single-element __ELBOT_CODE_0__, and both cannot appear simultaneously. Multi-segment syntax:\n",
       "updated_at": 1784025692
     },
-    "docs/hooks.md:paragraph:c085e605f9e3d00b239f830d8b49dc7c3915f5482ee1304dda99693ec1a03b13": {
-      "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 不经过 shell，支持单引号、双引号及引号内的反斜杠转义；",
-      "source_file": "docs/hooks.md",
-      "source_hash": "c085e605f9e3d00b239f830d8b49dc7c3915f5482ee1304dda99693ec1a03b13",
-      "translation": "__ELBOT_CODE_0__ does not go through the shell and supports single quotes, double quotes, and backslash escapes within quotes;",
-      "updated_at": 1784025692
-    },
     "docs/hooks.md:paragraph:c0def3e1535ccb7f7b61214cb269f4f4b967f7aebcc6dd7d395b3d0718d0c258": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 顶层包含 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__、__ELBOT_CODE_6__、__ELBOT_CODE_7__、__ELBOT_CODE_8__、__ELBOT_CODE_9__、__ELBOT_CODE_10__、__ELBOT_CODE_11__、__ELBOT_CODE_12__；",
@@ -1439,6 +1439,14 @@
       "source_hash": "c0def3e1535ccb7f7b61214cb269f4f4b967f7aebcc6dd7d395b3d0718d0c258",
       "translation": "__ELBOT_CODE_0__ top-level contains __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, __ELBOT_CODE_5__, __ELBOT_CODE_6__, __ELBOT_CODE_7__, __ELBOT_CODE_8__, __ELBOT_CODE_9__, __ELBOT_CODE_10__, __ELBOT_CODE_11__, and __ELBOT_CODE_12__;",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:paragraph:c14a51f279420f4aff66128f1862dc434bca6ddf0636a98d5eb428cf3d7167c8": {
+      "kind": "paragraph",
+      "source": "需要 shell 语法时显式配置为 __ELBOT_CODE_0__、__ELBOT_CODE_1__ 或对应平台解释器。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "c14a51f279420f4aff66128f1862dc434bca6ddf0636a98d5eb428cf3d7167c8",
+      "translation": "When shell syntax is required, explicitly configure it as __ELBOT_CODE_0__, __ELBOT_CODE_1__, or the corresponding platform interpreter.",
+      "updated_at": 1784027267
     },
     "docs/hooks.md:paragraph:c4dd0f4714f1602a2e13727def7b79edb56b11c8bdfb706a0d92a5e47b0fd7bf": {
       "kind": "paragraph",
@@ -2336,14 +2344,6 @@
       "translation": "Main payload",
       "updated_at": 1783771179
     },
-    "docs/hooks.md:table:7d3d4271bb55e9b8efb57af6b9e6cdc76c89f9cb1ec0fa07c718af90003ceed8": {
-      "kind": "table",
-      "source": "启动命令，不经过 shell；支持单引号、双引号及引号内的反斜杠转义。",
-      "source_file": "docs/hooks.md",
-      "source_hash": "7d3d4271bb55e9b8efb57af6b9e6cdc76c89f9cb1ec0fa07c718af90003ceed8",
-      "translation": "Startup command, executed without a shell; supports single quotes, double quotes, and backslash escaping within quotes.",
-      "updated_at": 1784025692
-    },
     "docs/hooks.md:table:7d74e2024e48d923525a144801e5367fbc149015e16e766f1d0c66b54e66d830": {
       "kind": "table",
       "source": "前缀或后缀匹配。",
@@ -2952,6 +2952,14 @@
       "translation": "No parameters; result contains __ELBOT_CODE_0__ and __ELBOT_CODE_1__.",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:table:fa0d31b4d75fc9a4763f591750cefea0419cc4fed487283db146c5847625627d": {
+      "kind": "table",
+      "source": "非空 argv 数组；第一个元素是程序，其余元素原样作为参数，不渲染模板，也不经过 shell。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "fa0d31b4d75fc9a4763f591750cefea0419cc4fed487283db146c5847625627d",
+      "translation": "A non-empty argv array; the first element is the program, and the remaining elements are passed as arguments as-is, without template rendering or shell processing.",
+      "updated_at": 1784027267
+    },
     "docs/hooks.md:table:fa5d02ba22da130ca307df5d24447856ff1909175a09bd4e00fc260dc50a20eb": {
       "kind": "table",
       "source": "相对 __ELBOT_CODE_0__ 的配置路径，默认 __ELBOT_CODE_1__；不能是绝对路径或逃出 __ELBOT_CODE_2__。",
@@ -2978,8 +2986,8 @@
     }
   },
   "source": "docs/hooks.md",
-  "source_hash": "93c26ae2d171dc70135bd48e6acfc0bf729e7d01f274bd2186e1cb512d3a7c16",
+  "source_hash": "5fa8bb81c2f14830ba99879b3e69bf32bfd0b04b84ecb60b3b284408f7bb7050",
   "target": "docs.en/hooks.md",
-  "updated_at": 1784025692,
+  "updated_at": 1784027267,
   "version": 2
 }
