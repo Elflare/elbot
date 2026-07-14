@@ -256,13 +256,13 @@
       "translation": "ElBot is still under rapid development; interfaces, configurations, and internal implementations may continue to be adjusted. It is currently more suitable for exploration as a personal Agent/bot framework.\n",
       "updated_at": 1781513003
     },
-    "README.zh-CN.md:paragraph:2b63699a68e31f81c59d9343adaa0639790597fcbb5a66581043c8382d03edb5": {
+    "README.zh-CN.md:paragraph:2f78c5cb347d4542e112458fd2cb8f25ab068a4b4f1da621f414bab7459f6a9d": {
       "kind": "paragraph",
-      "source": "**兼容外置 AgentSkill**： 除了原生 Go Skill，ElBot 也兼容遵从 agentskills.io 风格的外置 AgentSkill。",
+      "source": "**兼容外置 AgentSkill**： ElBot 兼容遵从 agentskills.io 风格的外置 AgentSkill。",
       "source_file": "README.zh-CN.md",
-      "source_hash": "2b63699a68e31f81c59d9343adaa0639790597fcbb5a66581043c8382d03edb5",
-      "translation": "**Compatible with external AgentSkills**: In addition to native Go Skills, ElBot is also compatible with external AgentSkills that follow the agentskills.io style.",
-      "updated_at": 1781786013
+      "source_hash": "2f78c5cb347d4542e112458fd2cb8f25ab068a4b4f1da621f414bab7459f6a9d",
+      "translation": "**Compatible with external AgentSkill**: ElBot is compatible with external AgentSkills that follow the agentskills.io style.",
+      "updated_at": 1784013247
     },
     "README.zh-CN.md:paragraph:336c271da8fa594093a784cde0b062ba64994ff1a31e2949ea1d89cce7f72f73": {
       "kind": "paragraph",
@@ -296,6 +296,14 @@
       "translation": "The goal is to reduce ambiguity in natural language task descriptions and use a shorter, more stable structure to express inputs, outputs, steps, conditions, and constraints.",
       "updated_at": 1781749522
     },
+    "README.zh-CN.md:paragraph:3ca26fdb9e90d78630708d5ece58d278ece39435905d69485abca04b48bb203e": {
+      "kind": "paragraph",
+      "source": "可通过配置将任意 AgentSKill 脚本作为工具使用。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "3ca26fdb9e90d78630708d5ece58d278ece39435905d69485abca04b48bb203e",
+      "translation": "Any AgentSkill script can be used as a tool through configuration.\n",
+      "updated_at": 1784013247
+    },
     "README.zh-CN.md:paragraph:3f4c2d701f7f5dea315432c1090e522b4774e275ab2f606586729300139ba6d1": {
       "kind": "paragraph",
       "source": "Elnis 是 ElBot 的监听枢纽，Elwisp 是分布在各地的外部监听器，Elvena 是统一的 JSON over HTTP 事件协议。",
@@ -303,14 +311,6 @@
       "source_hash": "3f4c2d701f7f5dea315432c1090e522b4774e275ab2f606586729300139ba6d1",
       "translation": "Elnis is the listening hub of ElBot, Elwisp consists of external listeners distributed in various locations, and Elvena is a unified JSON over HTTP event protocol.",
       "updated_at": 1781749522
-    },
-    "README.zh-CN.md:paragraph:616774b748ae46e8140414fbbbbe26da9664d62567866b811d35ce70a63ba554": {
-      "kind": "paragraph",
-      "source": "规则 Hook 的 exec action 基于 stdio 通信，支持用任意语言或脚本编写插件。\n",
-      "source_file": "README.zh-CN.md",
-      "source_hash": "616774b748ae46e8140414fbbbbe26da9664d62567866b811d35ce70a63ba554",
-      "translation": "The exec action of Rule Hooks is based on stdio communication, supporting the development of plugins using any language or script.\n",
-      "updated_at": 1783922707
     },
     "README.zh-CN.md:paragraph:638b1fdf9372721e8e01e87f011c48637d3cd94217fba95b9cdf3a02882ef37d": {
       "kind": "paragraph",
@@ -424,6 +424,14 @@
       "translation": "**EL Skills creatable by LLM**: ElBot has a built-in __ELBOT_CODE_0__ meta-tool, allowing the LLM to crystallize reusable experience into EL Skills.",
       "updated_at": 1781779200
     },
+    "README.zh-CN.md:paragraph:a3aaabb6654a17ccdd9a225bf2f6ebfaaa3b3b41ec702bbf863c1920729d0d94": {
+      "kind": "paragraph",
+      "source": "Hook 支持用**任意语言**编写插件。\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "a3aaabb6654a17ccdd9a225bf2f6ebfaaa3b3b41ec702bbf863c1920729d0d94",
+      "translation": "Hook supports writing plugins in **any language**.\n",
+      "updated_at": 1784013247
+    },
     "README.zh-CN.md:paragraph:ae06f8efb42f6986fd37876867ad012905b49d2b55e3bd9fca3aec513a859ba0": {
       "kind": "paragraph",
       "source": "更长、更复杂的记忆由 LLM 按需通过 __ELBOT_CODE_0__ 查询。",
@@ -447,14 +455,6 @@
       "source_hash": "bba5fe1a79db2ae2eda5ac90c6f8cbbe49298bcc1ba9f71f385c5dc9875006dc",
       "translation": "Greatly reduces invalid context overhead.\n",
       "updated_at": 1781519017
-    },
-    "README.zh-CN.md:paragraph:bd2d7a0747df8671b9039976585d9ad7eecf85e1e12257929c2a2972c934f9ee": {
-      "kind": "paragraph",
-      "source": "当前可通过隐藏包装工具执行附带 Python 脚本。\n",
-      "source_file": "README.zh-CN.md",
-      "source_hash": "bd2d7a0747df8671b9039976585d9ad7eecf85e1e12257929c2a2972c934f9ee",
-      "translation": "Currently, bundled Python scripts can be executed via hidden wrapper tools.\n",
-      "updated_at": 1781786013
     },
     "README.zh-CN.md:paragraph:bd5b8229918b5ece1025466f0be78687159ac8ec8a2bf810e21fcaf407aa97a8": {
       "kind": "paragraph",
@@ -519,14 +519,6 @@
       "source_hash": "d529a380cb2ed49be41a36713291327ba40177fdee617fbc107124001522d271",
       "translation": "**CLI Client/Server Separation**: Supports using ElBot as a client on any computer to connect to the ElBot server.",
       "updated_at": 1782901132
-    },
-    "README.zh-CN.md:paragraph:deaf166c031ac95885bc0b635833883bf7e195c723c637a2535aad2dc9cc0a20": {
-      "kind": "paragraph",
-      "source": "自动扫描 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__，读取名称、描述、适用场景和风险等级；",
-      "source_file": "README.zh-CN.md",
-      "source_hash": "deaf166c031ac95885bc0b635833883bf7e195c723c637a2535aad2dc9cc0a20",
-      "translation": "Automatically scan __ELBOT_CODE_0__ or __ELBOT_CODE_1__ to read the name, description, applicable scenarios, and risk level;",
-      "updated_at": 1781786013
     },
     "README.zh-CN.md:paragraph:e6f4153f1349157870738be3a4746bbd3c9f49dfc4ff4e8ae577e585a858eec5": {
       "kind": "paragraph",
@@ -714,8 +706,8 @@
     }
   },
   "source": "README.zh-CN.md",
-  "source_hash": "552aad5421266650187a55dc8fe5d5dda4dc6705a94f5e50eaea2ae4a1b2a830",
+  "source_hash": "aedfc2d97b8ebfa2e024b3ded38909413c6eef336f4bf9349fed9d576978b8ed",
   "target": "README.md",
-  "updated_at": 1783922707,
+  "updated_at": 1784013247,
   "version": 2
 }
