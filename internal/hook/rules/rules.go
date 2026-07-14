@@ -1227,7 +1227,7 @@ func (m Module) audit(event string, attrs ...any) {
 
 func render(text string, event hook.Event, state state) string {
 	replacements := hook.TemplateValues(event)
-	for index, match := range eventMatchContext(event).Regex {
+	for index, match := range hook.EventMatchContext(event).Regex {
 		prefix := fmt.Sprintf("{{match.regex.%d", index)
 		replacements[prefix+".text}}"] = match.Text
 		replacements[prefix+".field}}"] = match.Field
@@ -1247,11 +1247,6 @@ func render(text string, event hook.Event, state state) string {
 		text = strings.ReplaceAll(text, old, newText)
 	}
 	return text
-}
-
-func eventMatchContext(event hook.Event) hook.MatchContext {
-	match, _ := event.Metadata["match"].(hook.MatchContext)
-	return match
 }
 
 func firstNonEmpty(values ...string) string {

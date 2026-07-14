@@ -22,6 +22,14 @@ type MatchContext struct {
 	Regex []RegexMatch `json:"regex,omitempty"`
 }
 
+func EventMatchContext(event Event) MatchContext {
+	if event.Metadata == nil {
+		return MatchContext{}
+	}
+	match, _ := event.Metadata["match"].(MatchContext)
+	return match
+}
+
 const (
 	MatchAlways   = "always"
 	MatchExists   = "exists"

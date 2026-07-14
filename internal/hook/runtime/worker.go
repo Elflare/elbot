@@ -14,6 +14,7 @@ import (
 
 	"elbot/internal/hook"
 	hookoutput "elbot/internal/hook/output"
+	hookprotocol "elbot/internal/hook/protocol"
 )
 
 type worker struct {
@@ -302,7 +303,11 @@ func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool
 	defer w.manager.endInvocation(key, cancel)
 	defer cancel()
 	token := w.manager.putToolContext(w.config.ID, requestCtx, event, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
-	params := eventHandle{Event: event, Match: eventMatch(event), Continuation: continuation, ToolContext: token}
+	params := eventHandle{
+		EventHandleParams: hookprotocol.EventHandleParams{Event: event, Match: hook.EventMatchContext(event)},
+		Continuation:      continuation,
+		ToolContext:       token,
+	}
 	response, err := w.request(requestCtx, "event.handle", params)
 	if err != nil {
 		return event, err
@@ -461,7 +466,11 @@ func (w *worker) request(ctx context.Context, method string, params any) (json.R
 		delete(w.pending, id)
 		w.mu.Unlock()
 	}()
-	if err := w.write(frame{Type: "request", ID: id, Method: method, Params: mustJSON(params)}); err != nil {
+	request, err := hookprotocol.NewRequest(id, method, params)
+	if err != nil {
+		return nil, err
+	}
+	if err := w.write(request); err != nil {
 		return nil, err
 	}
 	select {
@@ -482,7 +491,7 @@ func (w *worker) request(ctx context.Context, method string, params any) (json.R
 }
 
 func (w *worker) write(value frame) error {
-	data, err := json.Marshal(value)
+	data, err := hookprotocol.EncodeFrame(value)
 	if err != nil {
 		return err
 	}
@@ -511,8 +520,8 @@ func (w *worker) readLoop(reader io.Reader) {
 		if len(line) == 0 {
 			continue
 		}
-		var value frame
-		if err := json.Unmarshal(line, &value); err != nil {
+		value, err := hookprotocol.DecodeFrame(line)
+		if err != nil {
 			w.setStatus(StatusDegraded, "invalid hook.v2 stdout frame: "+err.Error())
 			w.kill()
 			return
@@ -521,7 +530,7 @@ func (w *worker) readLoop(reader io.Reader) {
 		case "response":
 			w.deliverResponse(value)
 		case "request":
-			if !strings.HasPrefix(value.ID, "plugin:") || strings.TrimSpace(value.Method) == "" {
+			if hookprotocol.ValidateID(value.ID, "plugin:") != nil || strings.TrimSpace(value.Method) == "" {
 				w.setStatus(StatusDegraded, "invalid hook request frame")
 				w.kill()
 				return
@@ -545,7 +554,7 @@ func bytesTrim(value []byte) []byte {
 }
 
 func (w *worker) deliverResponse(value frame) {
-	if !strings.HasPrefix(value.ID, "host:") {
+	if hookprotocol.ValidateID(value.ID, "host:") != nil {
 		w.setStatus(StatusDegraded, "response id must use host: prefix")
 		w.kill()
 		return

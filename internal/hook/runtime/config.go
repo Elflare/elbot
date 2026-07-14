@@ -141,7 +141,10 @@ type Options struct {
 }
 
 func splitCommand(command string) ([]string, error) {
-	fields := strings.Fields(strings.TrimSpace(command))
+	fields, err := hook.SplitCommand(command)
+	if err != nil {
+		return nil, err
+	}
 	if len(fields) == 0 {
 		return nil, fmt.Errorf("runtime command is required")
 	}

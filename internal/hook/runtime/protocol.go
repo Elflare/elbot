@@ -6,22 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"elbot/internal/hook"
-	hookoutput "elbot/internal/hook/output"
+	hookprotocol "elbot/internal/hook/protocol"
 	"elbot/internal/llm"
 )
 
-const protocolVersion = "hook.v2"
+const protocolVersion = hookprotocol.Version
 
-type frame struct {
-	Type   string          `json:"type"`
-	ID     string          `json:"id,omitempty"`
-	Method string          `json:"method,omitempty"`
-	Params json.RawMessage `json:"params,omitempty"`
-	OK     *bool           `json:"ok,omitempty"`
-	Result json.RawMessage `json:"result,omitempty"`
-	Error  string          `json:"error,omitempty"`
-}
+type frame = hookprotocol.Frame
 
 type systemInit struct {
 	Version string           `json:"version"`
@@ -38,26 +29,15 @@ type systemHook struct {
 }
 
 type eventHandle struct {
-	Event        hook.Event        `json:"event"`
-	Match        hook.MatchContext `json:"match,omitempty"`
-	Continuation bool              `json:"continuation,omitempty"`
-	ToolContext  string            `json:"tool_context"`
-}
-
-func eventMatch(event hook.Event) hook.MatchContext {
-	if event.Metadata == nil {
-		return hook.MatchContext{}
-	}
-	match, _ := event.Metadata["match"].(hook.MatchContext)
-	return match
+	hookprotocol.EventHandleParams
+	Continuation bool   `json:"continuation,omitempty"`
+	ToolContext  string `json:"tool_context"`
 }
 
 type eventResult struct {
-	Status         string    `json:"status"`
+	hookprotocol.EventResultBase
 	ConversationID string    `json:"conversation_id,omitempty"`
 	ExpiresAt      time.Time `json:"expires_at,omitempty"`
-	hookoutput.Group
-	PassThrough *bool `json:"pass_through,omitempty"`
 }
 
 type stderrLogger struct {

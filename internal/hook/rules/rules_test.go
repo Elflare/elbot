@@ -981,11 +981,8 @@ func TestExecCanUseRuntimeSharedState(t *testing.T) {
 }
 
 func TestExecSharedStateRequiresRuntime(t *testing.T) {
-	frame := map[string]json.RawMessage{
-		"method": json.RawMessage(`"shared.get"`),
-		"params": json.RawMessage(`{"key":"missing"}`),
-	}
-	if _, err := (Module{}).handleProtocolRequest(context.Background(), hook.Event{}, Action{}, state{}, frame); err == nil || !strings.Contains(err.Error(), "runtime is not configured") {
+	params := json.RawMessage(`{"key":"missing"}`)
+	if _, err := (Module{}).handleProtocolRequest(context.Background(), hook.Event{}, Action{}, state{}, "shared.get", params); err == nil || !strings.Contains(err.Error(), "runtime is not configured") {
 		t.Fatalf("shared request error = %v", err)
 	}
 }
