@@ -18,6 +18,7 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
+	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/llm"
 	"elbot/internal/tool"
 )
@@ -122,6 +123,23 @@ func TestExecHelperProcess(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		fmt.Fprintln(os.Stdout, `{"type":"request","id":"plugin:reply","method":"message.get_reply"}`)
 		time.Sleep(5 * time.Second)
+	case "shared-state":
+		reader := bufio.NewReader(os.Stdin)
+		getResult, err := execHelperHostRequest(reader, "plugin:get", "shared.get", map[string]any{"key": "worker-data"})
+		if err != nil || getResult["found"] != true || getResult["value"] != "from-worker" {
+			fmt.Fprint(os.Stderr, firstNonEmpty(errorText(err), "worker-data not found"))
+			os.Exit(11)
+		}
+		if _, err := execHelperHostRequest(reader, "plugin:set", "shared.set", map[string]any{"key": "once-data", "value": 1, "ttl_seconds": 0}); err != nil {
+			fmt.Fprint(os.Stderr, err)
+			os.Exit(11)
+		}
+		casResult, err := execHelperHostRequest(reader, "plugin:cas", "shared.compare_and_swap", map[string]any{"key": "once-data", "expected": 1, "value": 2, "ttl_seconds": 0})
+		if err != nil || casResult["swapped"] != true {
+			fmt.Fprint(os.Stderr, firstNonEmpty(errorText(err), "once-data CAS failed"))
+			os.Exit(11)
+		}
+		writeProtocolTestResult(map[string]any{"status": "completed", "result": "shared-ok"})
 	case "signal-and-wait":
 		if marker+2 >= len(os.Args) {
 			os.Exit(2)
@@ -178,6 +196,41 @@ func execHelperHandshake() error {
 	execHelperEventID, _ = event["id"].(string)
 	execHelperEventFrame = event
 	return nil
+}
+
+func execHelperHostRequest(reader *bufio.Reader, id, method string, params any) (map[string]any, error) {
+	request, err := json.Marshal(map[string]any{"type": "request", "id": id, "method": method, "params": params})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := fmt.Fprintln(os.Stdout, string(request)); err != nil {
+		return nil, err
+	}
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	var response struct {
+		Type   string         `json:"type"`
+		ID     string         `json:"id"`
+		OK     bool           `json:"ok"`
+		Result map[string]any `json:"result"`
+		Error  string         `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(line), &response); err != nil {
+		return nil, err
+	}
+	if response.Type != "response" || response.ID != id || !response.OK {
+		return nil, fmt.Errorf("host response %q failed: %s", id, response.Error)
+	}
+	return response.Result, nil
+}
+
+func errorText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 func writeProtocolTestResult(result any) {
@@ -905,6 +958,35 @@ func TestWriteProtocolFrameRejectsOversizedInput(t *testing.T) {
 	}
 	if out.Len() != 0 {
 		t.Fatalf("wrote %d bytes", out.Len())
+	}
+}
+
+func TestExecCanUseRuntimeSharedState(t *testing.T) {
+	runtimeManager := hookruntime.NewManager(hookruntime.Options{})
+	defer runtimeManager.Close(context.Background())
+	if err := runtimeManager.SharedState().SetWithTTL("worker-data", json.RawMessage(`"from-worker"`), 0); err != nil {
+		t.Fatalf("seed shared state: %v", err)
+	}
+	module := Module{Opts: Options{Runtime: runtimeManager}}
+	if _, err := module.runRule(context.Background(), Rule{Actions: []Action{{
+		Type:    "exec",
+		Command: execHelperCommand("shared-state"),
+	}}}, hook.Event{Point: hook.PointLLMResponseReceived}); err != nil {
+		t.Fatalf("run exec shared state: %v", err)
+	}
+	value, ok := runtimeManager.SharedState().Get("once-data")
+	if !ok || string(value) != "2" {
+		t.Fatalf("once-data = %s, %v", value, ok)
+	}
+}
+
+func TestExecSharedStateRequiresRuntime(t *testing.T) {
+	frame := map[string]json.RawMessage{
+		"method": json.RawMessage(`"shared.get"`),
+		"params": json.RawMessage(`{"key":"missing"}`),
+	}
+	if _, err := (Module{}).handleProtocolRequest(context.Background(), hook.Event{}, Action{}, state{}, frame); err == nil || !strings.Contains(err.Error(), "runtime is not configured") {
+		t.Fatalf("shared request error = %v", err)
 	}
 }
 
