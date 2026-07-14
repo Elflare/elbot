@@ -587,12 +587,16 @@ worker Hook 自行维护 LLM loop、业务状态和工具使用决策。Host 对
 | method | `params` | 成功 `result` |
 | --- | --- | --- |
 | `shared.get` | `{"key":"weather/cache"}` | `{"found":true,"value":<任意 JSON>}`；不存在时 `found=false`。 |
-| `shared.set` | `{"key":"weather/cache","value":<任意 JSON>}` | `{"ok":true}` |
+| `shared.set` | `{"key":"weather/cache","value":<任意 JSON>,"ttl_seconds":600}` | `{"ok":true}` |
 | `shared.delete` | `{"key":"weather/cache"}` | `{"deleted":true/false}` |
 | `shared.list` | `{"prefix":"weather/"}` | `{"keys":["weather/cache",...]}`，按字典序；空 prefix 列出全部。 |
-| `shared.compare_and_swap` | `{"key":"weather/cache","expected":<旧 JSON>,"value":<新 JSON>}` | `{"swapped":true/false}` |
+| `shared.compare_and_swap` | `{"key":"weather/cache","expected":<旧 JSON>,"value":<新 JSON>,"ttl_seconds":600}` | `{"swapped":true/false}` |
 
-写入 shared KV 的 key 必须为 `<namespace>/<key>`。value 必须是合法 JSON，压缩后单值最大 1 MiB，共享区最大 32 MiB。`compare_and_swap` 是原子操作，按压缩后的 JSON 内容比较；省略 `expected` 表示仅当 key 不存在时写入，显式 `expected: null` 表示当前值必须是 JSON `null`。共享内存跨 Hook 重启和 `/hooks reload` 保留，在 ElBot 重启后清空；需要持久化时由 Hook 写入自己的目录或 `_shared/`。
+`ttl_seconds` 是空闲超时：省略时默认 600 秒，设为正数时每次成功 `get`、`set` 或 `compare_and_swap` 都会重新计时，显式设为 `0` 时不按时间过期；负数非法。`list` 和失败的 `compare_and_swap` 不会刷新访问时间。过期 key 在读取、列举、删除或 CAS 时均视为不存在。
+
+key 去除首尾空白后必须非空，最长 256 字节，不强制使用特定格式。建议按 `users/<platform>/<id>`、`cache/<name>` 等前缀组织全局数据以减少命名冲突；前缀只是命名约定，不是权限边界，所有 worker 都能访问所有 key。value 必须是合法 JSON，压缩后单值最大 1 MiB；共享区最多 10,000 条，key 与 value 合计最大 32 MiB。
+
+达到条目或容量上限时，Host 会先删除过期项，再按最近使用时间淘汰全局最冷的数据；`ttl_seconds = 0` 的条目也可能被容量淘汰。`compare_and_swap` 是原子操作，按压缩后的 JSON 内容比较；省略 `expected` 表示仅当 key 不存在时写入，显式 `expected: null` 表示当前值必须是 JSON `null`。共享内存跨 Hook 重启和 `/hooks reload` 保留，在 ElBot 重启后清空；需要持久化时由 Hook 写入自己的目录或 `_shared/`。
 
 ### 插件自身重载
 
