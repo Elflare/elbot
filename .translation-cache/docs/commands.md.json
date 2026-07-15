@@ -464,6 +464,14 @@
       "translation": "Filter by Elnis event key.",
       "updated_at": 1781752948
     },
+    "docs/commands.md:table:33ca20a4e06855fffb447d197531d0cd845c6165cf4bf703fbb76e9fce95421c": {
+      "kind": "table",
+      "source": "分别筛选用户、助手、工具事件。",
+      "source_file": "docs/commands.md",
+      "source_hash": "33ca20a4e06855fffb447d197531d0cd845c6165cf4bf703fbb76e9fce95421c",
+      "translation": "Filter user, assistant, and tool events respectively.",
+      "updated_at": 1784127033
+    },
     "docs/commands.md:table:3638a4c91c9acad148e26b0e79bd50766ca7688e1d59e23c29e03b2276ba38be": {
       "kind": "table",
       "source": "按事件来源过滤。",
@@ -824,6 +832,14 @@
       "translation": "View archived Sessions.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:c7e6d544f944b86eb5c4bfb87f6a75e00a79e2996fa4071ffd12f3a75ae59306": {
+      "kind": "table",
+      "source": "筛选并显示 __ELBOT_CODE_0__ 日志。",
+      "source_file": "docs/commands.md",
+      "source_hash": "c7e6d544f944b86eb5c4bfb87f6a75e00a79e2996fa4071ffd12f3a75ae59306",
+      "translation": "Filter and display __ELBOT_CODE_0__ logs.",
+      "updated_at": 1784127033
+    },
     "docs/commands.md:table:ca62733aa865adb9dd18ea238ef85037e8d791de79bd30b54a5aeef619d4540a": {
       "kind": "table",
       "source": "`/rename [编号或session_id",
@@ -920,6 +936,14 @@
       "translation": "Level shortcuts.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:f44dc3d6e7a777fcdd14e34473754ad8430bb79d8f560857f31f95faea231e7b": {
+      "kind": "table",
+      "source": "筛选 Hook 事件。",
+      "source_file": "docs/commands.md",
+      "source_hash": "f44dc3d6e7a777fcdd14e34473754ad8430bb79d8f560857f31f95faea231e7b",
+      "translation": "Filter Hook events.",
+      "updated_at": 1784127033
+    },
     "docs/commands.md:table:f68452c447fd532444e28a4bdf3b590ebe3adc00ef11558ab941271dc21a7885": {
       "kind": "table",
       "source": "永久删除 Session。",
@@ -1002,8 +1026,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "8c43309b8335f6e75cfe3798e3c105fa846ee8dbac0d8469fd7c0ad1e8f32f31",
+  "source_hash": "7c24ba54a142d292b4283b5d989fbbd4371d4a8206970552da47032909bb1eba",
   "target": "docs.en/commands.md",
-  "updated_at": 1784109294,
+  "updated_at": 1784127033,
   "version": 2
 }

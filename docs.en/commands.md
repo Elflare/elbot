@@ -212,6 +212,14 @@ Common options:
 | `--msg <text>` | Filter by the msg field. |
 | `--contains <text>` | Filter by text, parameters, results, or raw content. |
 
+`/log` additionally supports:
+
+| Option | Function |
+| --- | --- |
+| `-u`、`-a`、`-t` | Filter user, assistant, and tool events respectively. |
+| `-s, --system` | Filter and display `system prompt` logs. |
+| `--hook` | Filter Hook events. |
+
 `/audit` additionally supports:
 
 | Option | Function |
@@ -240,6 +248,7 @@ Example:
 ```text
 /log
 /log -w -n 10
+/log --system
 /log --msg startup --days 3
 /audit --event tool_call --risk high -n 10
 /audit --actor cli:local --since 24h
