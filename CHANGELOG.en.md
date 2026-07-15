@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- When the context window cannot be identified from model metadata or configuration, the default window is adjusted to 256k.
+- Context compaction is changed to retain original user utterances from history and filter tool results; upon success, it switches to an independent `原标题 compacted-N` Session, and the compacted content along with the new input is fixedly materialized as the first user message; Simultaneously fixed concurrency issues related to model switching, `/stop`, and Session change commands.
 - Hook Actor now provides platform nicknames, group nicknames, and pure display names; chat history is saved and searched separately by platform user ID and name.
 - `workspace` tools will also load the `AGENTS.md`/`AGENT.md` of the current directory when they are first discovered or injected; The same path within the same Session shares a one-time record with the switch and reset entries, so it will not be injected repeatedly.
 
