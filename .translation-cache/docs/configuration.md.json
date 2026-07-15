@@ -232,14 +232,6 @@
       "translation": "CLI Remote Configuration",
       "updated_at": 1781962094
     },
-    "docs/configuration.md:list:005872fed21e156f096a6909121afe58a97417df3614ea9c7aa6f806120ea3ff": {
-      "kind": "list",
-      "source": "压缩只影响发给 LLM 的上下文视图，不删除原始历史。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "005872fed21e156f096a6909121afe58a97417df3614ea9c7aa6f806120ea3ff",
-      "translation": "Compression only affects the context view sent to the LLM and does not delete the original history.",
-      "updated_at": 1781515756
-    },
     "docs/configuration.md:list:00cf80cb6f6b5f171a31dd557ed2f53ed2d6fdc4c42c9dbe9156b9eac4f4e41e": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__：平台入站文件下载超时，默认 60 秒。",
@@ -432,14 +424,6 @@
       "translation": "__ELBOT_CODE_0__ is an experimental mode: uses __ELBOT_CODE_1__ / private chat __ELBOT_CODE_2__, and automatically falls back to HTML if Rich Message fails;",
       "updated_at": 1781839376
     },
-    "docs/configuration.md:list:3a9949395a8eab9b5578b2f1b3b2ac69d75f36ac87e1b7dd26baf0cde5087c73": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 是全局回退值，没有在 __ELBOT_CODE_2__ 里配 __ELBOT_CODE_3__ 时使用。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "3a9949395a8eab9b5578b2f1b3b2ac69d75f36ac87e1b7dd26baf0cde5087c73",
-      "translation": "The __ELBOT_CODE_1__ of __ELBOT_CODE_0__ is a global fallback value, used when __ELBOT_CODE_3__ is not configured in __ELBOT_CODE_2__.",
-      "updated_at": 1782312356
-    },
     "docs/configuration.md:list:3bde83cd85506c356fb56701e1e038418254cd3b12742b16d236087b00ea9f5f": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 用来配置 __ELBOT_CODE_1__ 可注入的工具组，以及 tag 激活后追加到 system prompt 的工具使用策略。",
@@ -455,6 +439,14 @@
       "source_hash": "40ca22a0cc1b1e5450e16b0cbb857b8d7ae1aae9e78880b28afb8b5555c1d030",
       "translation": "Activated tags are written to the Session metadata and remain effective after __ELBOT_CODE_0__.",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:list:43b36882e312fc05de927d1c84d2a2590c2ee29c409ba6536e90af33aa867107": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是全局回退值，默认 __ELBOT_CODE_1__，模型块里没配 __ELBOT_CODE_2__ 时使用。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "43b36882e312fc05de927d1c84d2a2590c2ee29c409ba6536e90af33aa867107",
+      "translation": "__ELBOT_CODE_0__ is the global fallback value, defaulting to __ELBOT_CODE_1__, and is used when __ELBOT_CODE_2__ is not configured in the model block.",
+      "updated_at": 1784109369
     },
     "docs/configuration.md:list:44c59b224eda5a6bdaa96713b6266b711f07026d0204e07227324d5ce52c72ff": {
       "kind": "list",
@@ -479,6 +471,14 @@
       "source_hash": "4bcbc0d124768f5d48ea15575767dd38516ab3d76725cdf9ed434ab7b2142dcf",
       "translation": "Configured tags will be appended to built-in tags, not overwrite them.",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:list:51f64775af82d13ed2ab4f8b4381526cb54c1340f53be8db4ee0afae03b3c4f7": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 是全局回退值，默认 __ELBOT_CODE_2__，没有在 __ELBOT_CODE_3__ 里配 __ELBOT_CODE_4__ 时使用。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "51f64775af82d13ed2ab4f8b4381526cb54c1340f53be8db4ee0afae03b3c4f7",
+      "translation": "__ELBOT_CODE_1__ of __ELBOT_CODE_0__ is the global fallback value, defaulting to __ELBOT_CODE_2__, and is used when __ELBOT_CODE_4__ is not configured in __ELBOT_CODE_3__.",
+      "updated_at": 1784109369
     },
     "docs/configuration.md:list:52166eb639a551aa259dab28c37789e19834e2dc049e5644ee07aac35c9d4d93": {
       "kind": "list",
@@ -647,14 +647,6 @@
       "source_hash": "6bb103b7558715a6df73bb64f6957f641f077f0e117e7d3966bf4bfa63d88657",
       "translation": "Proxy address examples: __ELBOT_CODE_0__, __ELBOT_CODE_1__.",
       "updated_at": 1781846628
-    },
-    "docs/configuration.md:list:6ccdb54bf6f5af6fa987fee2c896e9dd72e7c5c9ff88f423ae98867fb5a5770e": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 是全局回退值，模型块里没配 __ELBOT_CODE_1__ 时使用。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "6ccdb54bf6f5af6fa987fee2c896e9dd72e7c5c9ff88f423ae98867fb5a5770e",
-      "translation": "__ELBOT_CODE_0__ is a global fallback value, used when __ELBOT_CODE_1__ is not configured in the model block.",
-      "updated_at": 1782312356
     },
     "docs/configuration.md:list:6cd89da7557c0fa722138f493974d997fc40799da25b45c8695cb5083a9c6888": {
       "kind": "list",
@@ -1063,6 +1055,14 @@
       "source_hash": "e00e58dc6a9eeaacae6b0b301501c5cce0cf41a69b86653f42487b9c9db59918",
       "translation": "Supports readable rendering of headings, quotes, horizontal rules, code blocks, and tables, with automatic plain text retry upon failure.",
       "updated_at": 1781839376
+    },
+    "docs/configuration.md:list:e1359cf53ef874c7243bd986c265a0650d7953a060c9d8a0b0092b8c84531472": {
+      "kind": "list",
+      "source": "压缩成功后会切换到独立的新 Session，不修改原 Session 的历史。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e1359cf53ef874c7243bd986c265a0650d7953a060c9d8a0b0092b8c84531472",
+      "translation": "After successful compaction, it will switch to a new independent Session without modifying the history of the original Session.",
+      "updated_at": 1784109369
     },
     "docs/configuration.md:list:e1c0fc91408142a68c3b54e1cdcf458498effcde753e1836d2395b3123a284a0": {
       "kind": "list",
@@ -1954,8 +1954,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "cffbafef22c5eac4efcbbc62cc0ccbd022060e7d7e9fe815683d905999583f82",
+  "source_hash": "279ce6a1b6009e7c66a001dbf989839e93f7293607db22f7e95530dab5491b6f",
   "target": "docs.en/configuration.md",
-  "updated_at": 1784024475,
+  "updated_at": 1784109369,
   "version": 2
 }

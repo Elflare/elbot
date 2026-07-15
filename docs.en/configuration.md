@@ -113,7 +113,7 @@ Note:
 - `models` is a manually supplemented list of model names, used when the Provider's model list interface cannot retrieve certain models.
 - `[providers.<name>.model_configs."<model>"]` configures `context_window` and `extra_payload` for specific models; both are optional.
 - `extra_payload` will be merged into the LLM request JSON, with model-level settings overriding provider-level settings.
-- The `default_context_window` of `[model_metadata]` is a global fallback value, used when `context_window` is not configured in `model_configs`.
+- `default_context_window` of `[model_metadata]` is the global fallback value, defaulting to `256000`, and is used when `context_window` is not configured in `model_configs`.
 
 ## Built-in Web Tool Configuration
 
@@ -413,7 +413,7 @@ compact_trigger_ratio = 0.8
 
 - When enabled, compaction will be triggered when the Session context approaches the window limit.
 - You can also manually compress the current Session via `/compact`.
-- Compression only affects the context view sent to the LLM and does not delete the original history.
+- After successful compaction, it will switch to a new independent Session without modifying the history of the original Session.
 
 The model window is configured in `model_configs` of `providers.toml`:
 
@@ -425,7 +425,7 @@ context_window = 64000
 default_context_window = 256000
 ```
 
-- `[model_metadata].default_context_window` is a global fallback value, used when `context_window` is not configured in the model block.
+- `[model_metadata].default_context_window` is the global fallback value, defaulting to `256000`, and is used when `context_window` is not configured in the model block.
 
 ## Command Prefix
 
