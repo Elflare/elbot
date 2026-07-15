@@ -142,7 +142,7 @@ Example:
 Note:
 
 - Automatic compaction is controlled by `[context] compact_enabled` and `compact_trigger_ratio`.
-- Compaction only affects the context view sent to the LLM and does not delete the original message history.
+- Compaction preserves the original user history and ignores tool return values; upon success, it creates and switches to an independent `原标题 compacted-N` Session, while the old Session remains unmodified.
 
 ## Tools and Skills
 
