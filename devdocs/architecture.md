@@ -245,6 +245,7 @@ Session 服务管理：
 约定：
 
 - Prompt Builder 只生成单条 system prompt，并组合历史、工具 transcript、多模态 metadata 和摘要。
+- 压缩以可取消 request 保护生命周期，仅总结有效对话与成功工具调用，并把摘要和历史用户原话固定注入 checkpoint 后第一条 user 消息。
 - System Prompt Manager 按优先级收集 Soul、工具名称、tag prompt 等片段。
 - 最近 usage 会写入 Session metadata，恢复会话后可展示。
 

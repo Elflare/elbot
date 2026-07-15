@@ -11,6 +11,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/request"
 	"elbot/internal/storage"
+	"elbot/internal/turn"
 )
 
 func (a *Agent) CompactCurrent(ctx context.Context, triggerReason string) (string, error) {
@@ -25,17 +26,21 @@ func (a *Agent) compactSession(ctx context.Context, session *storage.Session, tr
 	if len(a.requests.ListBySession(session.ID)) > 0 {
 		return "", fmt.Errorf("当前会话有正在运行的请求，无法压缩")
 	}
-	if !a.turns.StartCompact(session.ID) {
-		return "", fmt.Errorf("当前会话正在处理其他任务，无法压缩")
-	}
-	defer a.turns.CompleteCompact(session.ID)
-
-	reqInfo, reqCtx, done, err := a.requests.Start(ctx, request.StartRequest{SessionID: session.ID, Kind: request.KindCompress, Label: "compact"})
+	_, reqCtx, done, err := a.requests.Start(ctx, request.StartRequest{SessionID: session.ID, Kind: request.KindCompress, Label: "compact"})
 	if err != nil {
 		return "", err
 	}
 	defer done()
-	_ = reqInfo
+	if err := reqCtx.Err(); err != nil {
+		return "", err
+	}
+	if !a.turns.StartCompact(session.ID) {
+		return "", fmt.Errorf("当前会话正在处理其他任务，无法压缩")
+	}
+	defer a.turns.CompleteCompact(session.ID)
+	if err := reqCtx.Err(); err != nil {
+		return "", err
+	}
 
 	loaded, err := a.contextLoader.Load(reqCtx, session.ID)
 	if err != nil {
@@ -44,14 +49,25 @@ func (a *Agent) compactSession(ctx context.Context, session *storage.Session, tr
 	if len(loaded.Messages) == 0 {
 		return "", fmt.Errorf("没有可压缩的历史消息")
 	}
+	rawMessages, err := a.contextLoader.LoadRawMessages(reqCtx, session.ID)
+	if err != nil {
+		return "", err
+	}
+	compactMessages, err := a.compactMessages(reqCtx, loaded)
+	if err != nil {
+		return "", err
+	}
 	selection := a.compactSelectionForSession(session)
 	result, err := a.compressor.Compact(reqCtx, contextmgr.CompactRequest{
-		SessionID:       session.ID,
-		Provider:        selection.Provider,
-		Model:           selection.Model,
-		Messages:        loaded.Messages,
-		PreviousSummary: loaded.Summary,
-		TriggerReason:   triggerReason,
+		SessionID:          session.ID,
+		Provider:           selection.Provider,
+		Model:              selection.Model,
+		Messages:           compactMessages,
+		UserInputs:         compactUserInputs(rawMessages),
+		PreviousCheckpoint: loaded.Summary,
+		FromMessageID:      loaded.Messages[0].ID,
+		ToMessageID:        loaded.Messages[len(loaded.Messages)-1].ID,
+		TriggerReason:      triggerReason,
 	})
 	if err != nil {
 		return "", err
@@ -64,6 +80,89 @@ func (a *Agent) compactSession(ctx context.Context, session *storage.Session, tr
 	sb.WriteString(result.Summary)
 	sb.WriteString("\n")
 	return sb.String(), nil
+}
+
+func (a *Agent) compactMessages(ctx context.Context, loaded *contextmgr.LoadedContext) ([]contextmgr.CompactMessage, error) {
+	callIDs := []string{}
+	for _, message := range loaded.Messages {
+		if message.Role != storage.RoleAssistant {
+			continue
+		}
+		for _, call := range assistantMessageMetadata(message.Metadata).ToolCalls {
+			if call.ID != "" {
+				callIDs = append(callIDs, call.ID)
+			}
+		}
+	}
+	successful := map[string]bool{}
+	if len(callIDs) > 0 {
+		if a.store == nil || a.store.ToolCalls() == nil {
+			return nil, fmt.Errorf("tool call repository is not configured")
+		}
+		var err error
+		successful, err = a.store.ToolCalls().SuccessfulIDs(ctx, callIDs)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	out := make([]contextmgr.CompactMessage, 0, len(loaded.Messages))
+	summaryInjected := false
+	for _, message := range loaded.Messages {
+		switch message.Role {
+		case storage.RoleUser:
+			content := message.Content
+			if loaded.Summary != nil && !summaryInjected {
+				content = summaryUserPrefix(loaded.Summary.Summary) + content
+				summaryInjected = true
+			}
+			if strings.TrimSpace(content) != "" {
+				out = append(out, contextmgr.CompactMessage{Role: storage.RoleUser, Content: content})
+			}
+		case storage.RoleAssistant:
+			metadata := assistantMessageMetadata(message.Metadata)
+			content := message.Content
+			if metadata.RawText != "" {
+				content = metadata.RawText
+			}
+			calls := make([]contextmgr.CompactToolCall, 0, len(metadata.ToolCalls))
+			for _, call := range metadata.ToolCalls {
+				if !successful[call.ID] {
+					continue
+				}
+				calls = append(calls, contextmgr.CompactToolCall{Name: call.Name, Arguments: call.Arguments})
+			}
+			if strings.TrimSpace(content) != "" || len(calls) > 0 {
+				out = append(out, contextmgr.CompactMessage{Role: storage.RoleAssistant, Content: content, ToolCalls: calls})
+			}
+		}
+	}
+	if loaded.Summary != nil && !summaryInjected && strings.TrimSpace(loaded.Summary.Summary) != "" {
+		out = append([]contextmgr.CompactMessage{{Role: storage.RoleUser, Content: loaded.Summary.Summary}}, out...)
+	}
+	return out, nil
+}
+
+func compactUserInputs(messages []storage.Message) []string {
+	inputs := []string{}
+	for _, message := range messages {
+		if message.Role == storage.RoleUser && strings.TrimSpace(message.Content) != "" {
+			inputs = append(inputs, message.Content)
+		}
+	}
+	return inputs
+}
+
+func (a *Agent) compactActive(sessionID string) bool {
+	if a.turns.Snapshot(sessionID).Phase == turn.PhaseCompact {
+		return true
+	}
+	for _, active := range a.requests.ListBySession(sessionID) {
+		if active.Kind == request.KindCompress {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *Agent) SetContextOptions(ctxCfg config.ContextConfig, metadata config.ModelMetadataConfig, providers map[string]config.ProviderConfig, compactModel config.ModelSelection) {

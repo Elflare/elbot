@@ -251,3 +251,27 @@ func TestPromptBuilderInjectsSummaryIntoCurrentUserMessage(t *testing.T) {
 		t.Fatalf("summary polluted system prompt: %q", llm.SegmentsContentText(messages[0].Segments))
 	}
 }
+
+func TestPromptBuilderKeepsSummaryOnFirstUserAfterCheckpoint(t *testing.T) {
+	builder := newTestPromptBuilder("SOUL")
+	messages, err := builder.Build(context.Background(), PromptBuildRequest{
+		Session: &storage.Session{Mode: storage.SessionModeWork},
+		Messages: []storage.Message{
+			{Role: storage.RoleUser, Content: "first question"},
+			{Role: storage.RoleAssistant, Content: "first answer"},
+			{Role: storage.RoleUser, Content: "latest question"},
+		},
+		Summary: &storage.ContextSummary{Summary: "old summary"},
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	first := llm.SegmentsContentText(messages[1].Segments)
+	latest := llm.SegmentsContentText(messages[3].Segments)
+	if !strings.Contains(first, "old summary") || !strings.Contains(first, "当前用户输入：\nfirst question") {
+		t.Fatalf("first user = %q", first)
+	}
+	if strings.Contains(latest, "old summary") || latest != "latest question" {
+		t.Fatalf("latest user = %q", latest)
+	}
+}

@@ -2,6 +2,7 @@ package contextmgr
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"elbot/internal/config"
@@ -81,6 +82,64 @@ func TestLoaderUsesLatestSummary(t *testing.T) {
 	}
 	if len(loaded.Messages) != 1 || loaded.Messages[0].ID != third.ID {
 		t.Fatalf("messages = %#v", loaded.Messages)
+	}
+}
+
+func TestLoaderRawMessagesIgnoresSummary(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.New(ctx, t.TempDir()+"/elbot.db")
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer store.Close()
+
+	session := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
+	if err := store.Sessions().Create(ctx, session); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	first := &storage.Message{SessionID: session.ID, Role: storage.RoleUser, Content: "first"}
+	second := &storage.Message{SessionID: session.ID, Role: storage.RoleAssistant, Content: "second"}
+	third := &storage.Message{SessionID: session.ID, Role: storage.RoleUser, Content: "third"}
+	for _, message := range []*storage.Message{first, second, third} {
+		if err := store.Messages().Append(ctx, message); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+	if err := store.ContextSummaries().Create(ctx, &storage.ContextSummary{SessionID: session.ID, ToMessageID: second.ID, Summary: "summary"}); err != nil {
+		t.Fatalf("create summary: %v", err)
+	}
+
+	messages, err := (Loader{Store: store}).LoadRawMessages(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("load raw: %v", err)
+	}
+	if got, want := messageContents(messages), []string{"first", "second", "third"}; !equalStrings(got, want) {
+		t.Fatalf("messages = %#v, want %#v", got, want)
+	}
+}
+
+func TestCompactPromptAndSummaryAssembly(t *testing.T) {
+	prompt := compactPrompt([]CompactMessage{
+		{Role: storage.RoleUser, Content: "B"},
+		{Role: storage.RoleAssistant, Content: "C", ToolCalls: []CompactToolCall{{Name: "shell", Arguments: `{"command":"go test ./..."}`}}},
+		{Role: storage.RoleAssistant, Content: "H"},
+	}, []string{"B", "G"})
+	for _, want := range []string{"上下文内容：", "user: B", "assistant: C", `tool_call: name=shell arguments={"command":"go test ./..."}`, "用户原话：\n1. B\n2. G"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt missing %q:\n%s", want, prompt)
+		}
+	}
+	if strings.Contains(prompt, "tool result") {
+		t.Fatalf("prompt contains tool result: %s", prompt)
+	}
+
+	got := assembleSummary("K\n", []string{"B", "G"})
+	want := "K\n\n以下是用户原话：\n1. B\n2. G"
+	if got != want {
+		t.Fatalf("summary = %q, want %q", got, want)
+	}
+	if got := assembleSummary("K", nil); got != "K" {
+		t.Fatalf("summary without inputs = %q", got)
 	}
 }
 
@@ -176,6 +235,14 @@ func TestLoaderUsesForkParentSummary(t *testing.T) {
 	want := []string{"third"}
 	if !equalStrings(got, want) {
 		t.Fatalf("messages = %#v, want %#v", got, want)
+	}
+
+	raw, err := (Loader{Store: store}).LoadRawMessages(ctx, fork.ID)
+	if err != nil {
+		t.Fatalf("load raw fork: %v", err)
+	}
+	if got, want := messageContents(raw), []string{"first", "second", "third"}; !equalStrings(got, want) {
+		t.Fatalf("raw messages = %#v, want %#v", got, want)
 	}
 }
 

@@ -45,6 +45,19 @@ func shouldBlockCommandDuringAppendConfirmation(name string) bool {
 	}
 }
 
+func shouldBlockCommandDuringCompact(name string) bool {
+	switch name {
+	case "new", "resume", "fork", "work", "chat", "archive", "unarchive", "pin", "unpin", "rename", "delete", "clean", "compact":
+		return true
+	default:
+		return false
+	}
+}
+
+func compactCommandBlockedText(command string) string {
+	return fmt.Sprintf("正在压缩当前会话，暂不执行 %s。请等待压缩完成，或先使用 /stop 取消。", command)
+}
+
 func appendConfirmationCommandBlockedText(command string) string {
 	if strings.TrimSpace(command) == "/new" {
 		return appendConfirmPrompt

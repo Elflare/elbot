@@ -285,6 +285,7 @@ type MessageRepository interface {
 
 type ToolCallRepository interface {
 	Create(ctx context.Context, record *ToolCallRecord) error
+	SuccessfulIDs(ctx context.Context, toolCallIDs []string) (map[string]bool, error)
 	UsageBySession(ctx context.Context, sessionID string) ([]ToolUsageSummary, error)
 }
 
