@@ -100,6 +100,57 @@ func TestReadFileToolASTSearchesShellWordsAndParameters(t *testing.T) {
 	}
 }
 
+func TestReadFileToolASTFunctionReturnsCompleteGoFunctions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.go")
+	content := "package sample\n\n// Run documentation must not be included.\nfunc Run() {\n\tfirst()\n\tsecond()\n}\n\ntype Worker struct{}\n\nfunc (*Worker) Run() {\n\tthird()\n}\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast_function", "query": "Run"})
+	result, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"ast_function: \"Run\"", "matches: 2", "match: 4-7 [function] Run", "match: 11-13 [method] (*Worker).Run", "  5 | \tfirst()", " 13 | }"} {
+		if !strings.Contains(result.Content, expected) {
+			t.Fatalf("expected %q in AST function output:\n%s", expected, result.Content)
+		}
+	}
+	if strings.Contains(result.Content, "Run documentation") {
+		t.Fatalf("function output must not include doc comments:\n%s", result.Content)
+	}
+}
+
+func TestReadFileToolASTFunctionReturnsCompleteShellFunction(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.sh")
+	content := "#!/usr/bin/env bash\n\nrun() {\n  echo one\n  echo two\n}\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast_function", "query": "run"})
+	result, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"language: shell", "match: 3-6 [function] run", " 4 |   echo one", " 6 | }"} {
+		if !strings.Contains(result.Content, expected) {
+			t.Fatalf("expected %q in AST function output:\n%s", expected, result.Content)
+		}
+	}
+}
+
+func TestReadFileToolASTFunctionRequiresQuery(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.go")
+	if err := os.WriteFile(path, []byte("package sample\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast_function"})
+	_, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "query is required when mode is ast_function") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestReadFileToolASTRejectsUnsupportedLanguage(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.py")
 	if err := os.WriteFile(path, []byte("target = 1\n"), 0644); err != nil {
