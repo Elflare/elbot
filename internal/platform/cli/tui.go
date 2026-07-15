@@ -30,6 +30,10 @@ type tuiProgramSetter func(*tea.Program)
 
 const (
 	noticePanelWidth        = 40
+	minNoticePanelWidth     = 20
+	minChatPanelWidth       = 40
+	noticePanelFrameWidth   = 2
+	minNoticeLayoutWidth    = 100
 	maxCompletionPopupItems = 8
 	tuiInputCharLimit       = 4096
 	tuiInputGutterWidth     = 2
@@ -151,6 +155,8 @@ type tuiModel struct {
 	inputNow        func() time.Time
 	width           int
 	height          int
+	noticeWidth     int
+	resizingNotice  bool
 }
 
 type completionProvider interface {
@@ -540,11 +546,16 @@ func (m tuiModel) bodyView() string {
 }
 
 func (m tuiModel) layoutWidths() (int, int) {
-	if m.width < 100 {
+	if m.width < minNoticeLayoutWidth {
 		return max(1, m.width), 0
 	}
-	noticeWidth := noticePanelWidth
-	chatWidth := max(1, m.width-noticeWidth-2)
+	noticeWidth := m.noticeWidth
+	if noticeWidth <= 0 {
+		noticeWidth = noticePanelWidth
+	}
+	maxNoticeWidth := m.width - noticePanelFrameWidth - minChatPanelWidth
+	noticeWidth = clampInt(noticeWidth, minNoticePanelWidth, maxNoticeWidth)
+	chatWidth := m.width - noticeWidth - noticePanelFrameWidth
 	return chatWidth, noticeWidth
 }
 

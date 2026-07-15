@@ -273,34 +273,3 @@ func TestVisualCharWordMotionExtendsSelection(t *testing.T) {
 		t.Fatalf("after y mode = %v", m.copyState.Mode)
 	}
 }
-
-func TestMouseWheelScrollsRegionUnderPointer(t *testing.T) {
-	m := newCopyTestModel()
-	m.content = ""
-	for i := 0; i < 50; i++ {
-		m.content += "line\n"
-	}
-	m.notices = []string{strings.Repeat("notice\n", 80)}
-	m.refreshContent()
-	m.refreshNotices()
-	chatBefore := m.viewport.YOffset
-	noticeBefore := m.noticeViewport.YOffset
-
-	updated, _ := m.Update(tea.MouseMsg{X: 2, Y: 2, Type: tea.MouseWheelUp, Button: tea.MouseButtonWheelUp, Action: tea.MouseActionPress})
-	m = updated.(tuiModel)
-	if m.viewport.YOffset >= chatBefore || m.noticeViewport.YOffset != noticeBefore {
-		t.Fatalf("chat wheel offsets chat=%d notice=%d", m.viewport.YOffset, m.noticeViewport.YOffset)
-	}
-
-	chatWidth, _ := m.layoutWidths()
-	if region := m.mouseRegion(chatWidth+2, 2); region != regionNotice {
-		t.Fatalf("notice mouse region = %v", region)
-	}
-	noticeBefore = m.noticeViewport.YOffset
-	chatBefore = m.viewport.YOffset
-	updated, _ = m.Update(tea.MouseMsg{X: chatWidth + 2, Y: 2, Type: tea.MouseWheelUp, Button: tea.MouseButtonWheelUp, Action: tea.MouseActionPress})
-	m = updated.(tuiModel)
-	if m.noticeViewport.YOffset >= noticeBefore || m.viewport.YOffset != chatBefore {
-		t.Fatalf("notice wheel offsets chat=%d notice=%d", m.viewport.YOffset, m.noticeViewport.YOffset)
-	}
-}

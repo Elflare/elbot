@@ -228,6 +228,7 @@ rg -n "Output|SendChat|SendNotice|Stream|Reasoning|emoticon|receipt" internal/de
 - `internal/platform/config.go`：平台配置解码。
 - `internal/platform/builtin/`：内置平台装配。
 - `internal/platform/cli/`：本地/远程 CLI 和 TUI。
+- `internal/platform/cli/tui.go`、`tui_mouse.go`、`tui_copy.go`：TUI 主模型、鼠标交互与 copy mode。
 - `internal/platform/qq-onebot/`
 - `internal/platform/qqofficial/`
 - `internal/platform/telegram/`
