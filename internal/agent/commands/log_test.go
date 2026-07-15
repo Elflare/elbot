@@ -173,6 +173,23 @@ func TestLogCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 		t.Fatalf("query = %#v", service.query)
 	}
 
+	service.entries = []logging.LogEntry{{
+		Message: "system prompt",
+		Fields:  map[string]string{"event": "system_message", "first_system_message_json": `{"role":"system","content":"You are ElBot."}`},
+	}}
+	for _, arg := range []string{"-s", "--system"} {
+		result, err := NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: arg})
+		if err != nil {
+			t.Fatalf("log handle %s: %v", arg, err)
+		}
+		if service.query.Fields["event"] != "system_message" {
+			t.Fatalf("query = %#v", service.query)
+		}
+		if !strings.Contains(result.Content, "system prompt") || !strings.Contains(result.Content, "first_system_message_json") {
+			t.Fatalf("content = %q", result.Content)
+		}
+	}
+
 	_, err = NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `-t`})
 	if err != nil {
 		t.Fatalf("log handle -t: %v", err)
@@ -238,6 +255,10 @@ func TestLogAndAuditCommandsCompleteOptionsAndValues(t *testing.T) {
 	if len(got) != 1 || got[0].Text != "warn" || got[0].Kind != "log_level" {
 		t.Fatalf("log level Complete = %#v", got)
 	}
+	got = logCmd.Complete(context.Background(), command.CompletionRequest{Raw: "/log --sy", Prefix: "/", Name: "log", Args: "--sy", Cursor: len("/log --sy")})
+	if len(got) != 1 || got[0].Text != "--system" {
+		t.Fatalf("log system Complete = %#v", got)
+	}
 
 	elwispCmd := NewElwisp(Deps{}).(command.Completer)
 	got = elwispCmd.Complete(context.Background(), command.CompletionRequest{Raw: "/elwisp --mo", Prefix: "/", Name: "elwisp", Args: "--mo", Cursor: len("/elwisp --mo")})
@@ -268,6 +289,9 @@ func TestLogCommandHelpAndRawDebug(t *testing.T) {
 	}
 	if !strings.Contains(result.Content, "command: log") {
 		t.Fatalf("content = %q", result.Content)
+	}
+	if !strings.Contains(result.Content, "-s, --system") {
+		t.Fatalf("log help missing system filter: %q", result.Content)
 	}
 
 	service.entries = []logging.LogEntry{{Message: "debug", Level: "DEBUG", Raw: "raw debug"}}

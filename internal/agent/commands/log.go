@@ -98,6 +98,7 @@ func logInfo() command.Info {
   --level <level>       Minimum level: debug, info, warn, error. Default: debug.
   -d, -i, -w, -e       Shorthand for --level debug/info/warn/error. -d also shows raw entries.
   -u, -a, -t           Filter user/assistant/tool events.
+  -s, --system         Filter system prompt events.
   --hook               Filter hook events.
   --since <time>        Show logs after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
 
@@ -198,6 +199,12 @@ func logCompletionOptions(audit, elwisp bool) []completionOption {
 			completionOption{Text: "--hook", Description: "Hook events"},
 		)
 	}
+	if !audit && !elwisp {
+		options = append(options,
+			completionOption{Text: "-s", Description: "System prompt events"},
+			completionOption{Text: "--system", Description: "System prompt events"},
+		)
+	}
 	if audit {
 		options = append(options,
 			completionOption{Text: "--event", Description: "Filter audit event"},
@@ -291,9 +298,9 @@ func parseRuntimeLogQuery(args string) (logging.LogQuery, error) {
 	query := baseLogQuery("elbot")
 	query.MinLevel = "debug"
 	fields := map[string]string{}
-	if err := parseLogArgs(args, &query, fields, func(name, value string) error {
+	if err := parseLogArgsWithOptions(args, &query, fields, func(name, value string) error {
 		return fmt.Errorf("unknown option: --%s", name)
-	}); err != nil {
+	}, logArgOptions{eventFilters: true, systemFilter: true}); err != nil {
 		return query, err
 	}
 	query.Fields = fields
@@ -358,6 +365,7 @@ func parseLogArgs(args string, query *logging.LogQuery, fields map[string]string
 
 type logArgOptions struct {
 	eventFilters bool
+	systemFilter bool
 	positional   func(value string) error
 }
 
@@ -440,6 +448,11 @@ func parseLogArgsWithOptions(args string, query *logging.LogQuery, fields map[st
 				return fmt.Errorf("unknown option: %s", name)
 			}
 			fields["event"] = "tool_call"
+		case "-s", "--system":
+			if !opts.systemFilter {
+				return fmt.Errorf("unknown option: %s", name)
+			}
+			fields["event"] = "system_message"
 		case "--hook":
 			if !opts.eventFilters {
 				return fmt.Errorf("unknown option: %s", name)
