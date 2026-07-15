@@ -17,7 +17,7 @@ func TestRiskConfirmationSourceCompletesOnlyDuringRiskPhase(t *testing.T) {
 	ctx := context.Background()
 	store := newCompletionTestStore(t)
 	sessions := session.NewService(store)
-	sess, err := sessions.Create(ctx, testScope(), "risk")
+	sess, err := sessions.Create(ctx, testScope(), session.CreateRequest{Title: "risk"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestForkMessageSourceCompletesAssistantMessageIDs(t *testing.T) {
 	ctx := context.Background()
 	store := newCompletionTestStore(t)
 	sessions := session.NewService(store)
-	sess, err := sessions.Create(ctx, testScope(), "fork")
+	sess, err := sessions.Create(ctx, testScope(), session.CreateRequest{Title: "fork"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}

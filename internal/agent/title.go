@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"elbot/internal/llm"
 	"elbot/internal/session"
@@ -11,6 +12,7 @@ import (
 )
 
 type titleGenerator struct {
+	mu           sync.RWMutex
 	primary      llm.LLM
 	primaryModel string
 	naming       llm.LLM
@@ -21,17 +23,35 @@ func (g *titleGenerator) GenerateTitle(ctx context.Context, messages []storage.M
 	if g == nil {
 		return session.TitleResult{}, fmt.Errorf("no title model available")
 	}
-	if g.naming != nil && g.namingModel != "" {
-		if title, err := g.generate(ctx, g.naming, g.namingModel, messages); err == nil {
+	g.mu.RLock()
+	naming, namingModel := g.naming, g.namingModel
+	primary, primaryModel := g.primary, g.primaryModel
+	g.mu.RUnlock()
+	if naming != nil && namingModel != "" {
+		if title, err := g.generate(ctx, naming, namingModel, messages); err == nil {
 			return session.TitleResult{RawTitle: title}, nil
 		}
 		// 专门命名模型失败时继续回退主模型，避免命名功能影响主对话。
 	}
-	if g.primary == nil || g.primaryModel == "" {
+	if primary == nil || primaryModel == "" {
 		return session.TitleResult{}, fmt.Errorf("no title model available")
 	}
-	title, err := g.generate(ctx, g.primary, g.primaryModel, messages)
+	title, err := g.generate(ctx, primary, primaryModel, messages)
 	return session.TitleResult{RawTitle: title}, err
+}
+
+func (g *titleGenerator) setPrimary(client llm.LLM, model string) {
+	g.mu.Lock()
+	g.primary = client
+	g.primaryModel = model
+	g.mu.Unlock()
+}
+
+func (g *titleGenerator) setNaming(client llm.LLM, model string) {
+	g.mu.Lock()
+	g.naming = client
+	g.namingModel = model
+	g.mu.Unlock()
 }
 
 func (g *titleGenerator) generate(ctx context.Context, client llm.LLM, model string, messages []storage.Message) (string, error) {

@@ -103,7 +103,7 @@ func TestServiceRenameMarksManualTitleAndPreservesMetadata(t *testing.T) {
 	ctx := context.Background()
 	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 
-	session, err := svc.Create(ctx, scope, "old title")
+	session, err := svc.Create(ctx, scope, CreateRequest{Title: "old title"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestServiceRenameSkipsAutomaticNaming(t *testing.T) {
 	generator := &fakeTitleGenerator{calls: make(chan []storage.Message, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, generator, nil)
 	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
-	session, err := svc.Create(ctx, scope, "old title")
+	session, err := svc.Create(ctx, scope, CreateRequest{Title: "old title"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 		t.Fatalf("title = %q", first.Title)
 	}
 
-	second, err := svc.Create(ctx, scope, "second")
+	second, err := svc.Create(ctx, scope, CreateRequest{Title: "second"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -228,11 +228,11 @@ func TestPlatformScopeCanListAndResumeSamePlatformCronSessions(t *testing.T) {
 	scope := Scope{ActorID: "qq:user1", Platform: "qq-onebot", PlatformScopeID: "private:user1"}
 	otherScope := Scope{ActorID: "qq:user1", Platform: "qq-onebot", PlatformScopeID: "group:g1"}
 
-	front, err := svc.Create(ctx, scope, "front")
+	front, err := svc.Create(ctx, scope, CreateRequest{Title: "front"})
 	if err != nil {
 		t.Fatalf("Create front: %v", err)
 	}
-	otherFront, err := svc.Create(ctx, otherScope, "other front")
+	otherFront, err := svc.Create(ctx, otherScope, CreateRequest{Title: "other front"})
 	if err != nil {
 		t.Fatalf("Create other front: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestServiceLifecycleOperations(t *testing.T) {
 	ctx := context.Background()
 	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 
-	session, err := svc.Create(ctx, scope, "lifecycle")
+	session, err := svc.Create(ctx, scope, CreateRequest{Title: "lifecycle"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -338,7 +338,7 @@ func TestServiceSetMode(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
 	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
-	session, err := svc.Create(ctx, scope, "mode test")
+	session, err := svc.Create(ctx, scope, CreateRequest{Title: "mode test"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -361,6 +361,38 @@ func TestServiceSetMode(t *testing.T) {
 	}
 }
 
+func TestServiceCreateRequest(t *testing.T) {
+	svc, store := newTestService(t)
+	ctx := context.Background()
+	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+
+	defaultSession, err := svc.Create(ctx, scope, CreateRequest{Metadata: `{"kind":"default"}`})
+	if err != nil {
+		t.Fatalf("Create default: %v", err)
+	}
+	if defaultSession.Title != "New session" || defaultSession.Mode != storage.SessionModeWork || defaultSession.Metadata != `{"kind":"default"}` {
+		t.Fatalf("default session = %#v", defaultSession)
+	}
+	explicit, err := svc.Create(ctx, scope, CreateRequest{Title: "chat", Mode: storage.SessionModeChat, Metadata: `{"kind":"compact"}`})
+	if err != nil {
+		t.Fatalf("Create explicit: %v", err)
+	}
+	stored, err := store.Sessions().Get(ctx, explicit.ID)
+	if err != nil {
+		t.Fatalf("Get explicit: %v", err)
+	}
+	if stored.Mode != storage.SessionModeChat || stored.Metadata != `{"kind":"compact"}` {
+		t.Fatalf("stored explicit session = %#v", stored)
+	}
+	if _, err := svc.Create(ctx, scope, CreateRequest{Title: "invalid", Mode: "invalid"}); err == nil {
+		t.Fatal("expected invalid mode error")
+	}
+	current, err := svc.Current(ctx, scope)
+	if err != nil || current.ID != explicit.ID {
+		t.Fatalf("current after invalid create = %#v, err = %v", current, err)
+	}
+}
+
 func TestServiceGetOrCreateCurrentCreatesNewWhenNoInMemoryCurrent(t *testing.T) {
 	ctx := context.Background()
 	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "elbot_sessions.db"))
@@ -371,7 +403,7 @@ func TestServiceGetOrCreateCurrentCreatesNewWhenNoInMemoryCurrent(t *testing.T) 
 
 	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	firstSvc := NewService(store)
-	first, err := firstSvc.Create(ctx, scope, "old session")
+	first, err := firstSvc.Create(ctx, scope, CreateRequest{Title: "old session"})
 	if err != nil {
 		t.Fatalf("create old session: %v", err)
 	}
@@ -420,7 +452,7 @@ func TestServiceNamingTriggerSteps(t *testing.T) {
 			t.Cleanup(func() { _ = store.Close() })
 			generator := &fakeTitleGenerator{titles: []string{"generated title"}, calls: make(chan []storage.Message, 1)}
 			svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: tc.triggerStep}, generator, nil)
-			session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, "fallback")
+			session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, CreateRequest{Title: "fallback"})
 			if err != nil {
 				t.Fatalf("create session: %v", err)
 			}
@@ -456,7 +488,7 @@ func TestServiceMaybeScheduleNamingSkipsRenamedTitle(t *testing.T) {
 
 	generator := &fakeTitleGenerator{calls: make(chan []storage.Message, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, generator, nil)
-	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, "Cron title")
+	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, CreateRequest{Title: "Cron title"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -483,7 +515,7 @@ func TestServiceNamingFailureNotifiesAndKeepsFallbackTitle(t *testing.T) {
 	generator := &fakeTitleGenerator{errs: []error{fmt.Errorf("boom")}, calls: make(chan []storage.Message, 1)}
 	notifier := &fakeNamingNotifier{failures: make(chan NamingFailedEvent, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, generator, notifier)
-	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, "fallback")
+	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, CreateRequest{Title: "fallback"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -525,7 +557,7 @@ func TestServiceNamingFailureCanRetryAndSuccessStopsRepeats(t *testing.T) {
 	}
 	notifier := &fakeNamingNotifier{failures: make(chan NamingFailedEvent, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, generator, notifier)
-	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, "fallback")
+	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, CreateRequest{Title: "fallback"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -562,7 +594,7 @@ func TestServiceNamingUsesOnlyTriggerStepMessages(t *testing.T) {
 
 	generator := &fakeTitleGenerator{titles: []string{"generated title"}, calls: make(chan []storage.Message, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, generator, nil)
-	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, "fallback")
+	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, CreateRequest{Title: "fallback"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -598,7 +630,7 @@ func TestServiceNamingPlaceholderFallbacksImmediately(t *testing.T) {
 	}
 	notifier := &fakeNamingNotifier{failures: make(chan NamingFailedEvent, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, generator, notifier)
-	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, "New session")
+	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, CreateRequest{Title: "New session"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -632,7 +664,7 @@ func TestServiceNamingSkipsBlankMessages(t *testing.T) {
 
 	generator := &fakeTitleGenerator{titles: []string{"generated title"}, calls: make(chan []storage.Message, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 2}, generator, nil)
-	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, "fallback")
+	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, CreateRequest{Title: "fallback"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -659,7 +691,7 @@ func TestServiceNonCLICannotResumeOtherScope(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
 	cliScope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
-	s, err := svc.Create(ctx, cliScope, "cli")
+	s, err := svc.Create(ctx, cliScope, CreateRequest{Title: "cli"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -674,7 +706,7 @@ func TestServiceForkCreatesCurrentBranch(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
 	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
-	parent, err := svc.CreateWithMode(ctx, scope, "parent session", storage.SessionModeChat)
+	parent, err := svc.Create(ctx, scope, CreateRequest{Title: "parent session", Mode: storage.SessionModeChat})
 	if err != nil {
 		t.Fatalf("create parent: %v", err)
 	}
@@ -703,7 +735,7 @@ func TestServiceForkRejectsNonAssistantMessage(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
 	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
-	session, err := svc.Create(ctx, scope, "parent")
+	session, err := svc.Create(ctx, scope, CreateRequest{Title: "parent"})
 	if err != nil {
 		t.Fatalf("create parent: %v", err)
 	}
@@ -720,7 +752,7 @@ func TestServiceForkChecksScope(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
 	ownerScope := Scope{ActorID: "u1", Platform: "qq", PlatformScopeID: "group:1"}
-	parent, err := svc.Create(ctx, ownerScope, "parent")
+	parent, err := svc.Create(ctx, ownerScope, CreateRequest{Title: "parent"})
 	if err != nil {
 		t.Fatalf("create parent: %v", err)
 	}

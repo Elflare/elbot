@@ -17,6 +17,26 @@ type sessionMetadata struct {
 	BackgroundKind           string               `json:"background_kind,omitempty"`
 	WorkspaceDir             string               `json:"workspace_dir,omitempty"`
 	WorkspaceAgentNoticeDirs []string             `json:"workspace_agent_notice_dirs,omitempty"`
+	ContextCompact           *contextCompactState `json:"context_compact,omitempty"`
+	TitleRenamed             bool                 `json:"title_renamed,omitempty"`
+	TitleSource              string               `json:"title_source,omitempty"`
+}
+
+type contextCompactState struct {
+	Pending         bool   `json:"pending,omitempty"`
+	Summary         string `json:"summary,omitempty"`
+	SourceSessionID string `json:"source_session_id,omitempty"`
+	FromMessageID   string `json:"from_message_id,omitempty"`
+	ToMessageID     string `json:"to_message_id,omitempty"`
+	Provider        string `json:"provider,omitempty"`
+	Model           string `json:"model,omitempty"`
+	TriggerReason   string `json:"trigger_reason,omitempty"`
+	SourceTokens    int    `json:"source_tokens,omitempty"`
+	SummaryTokens   int    `json:"summary_tokens,omitempty"`
+	TotalTokens     int    `json:"total_tokens,omitempty"`
+	CacheHitTokens  int    `json:"cache_hit_tokens,omitempty"`
+	Generation      int    `json:"generation,omitempty"`
+	BaseTitle       string `json:"base_title,omitempty"`
 }
 
 func decodeSessionMetadata(raw string) sessionMetadata {
@@ -58,6 +78,9 @@ func encodeSessionMetadataInto(raw string, metadata sessionMetadata) string {
 	setMetadataField(base, "background_kind", metadata.BackgroundKind)
 	setMetadataField(base, "workspace_dir", metadata.WorkspaceDir)
 	setMetadataField(base, "workspace_agent_notice_dirs", metadata.WorkspaceAgentNoticeDirs)
+	setMetadataField(base, "context_compact", metadata.ContextCompact)
+	setMetadataField(base, "title_renamed", metadata.TitleRenamed)
+	setMetadataField(base, "title_source", metadata.TitleSource)
 	data, _ := json.Marshal(base)
 	if string(data) == "{}" {
 		return ""
@@ -84,6 +107,16 @@ func setMetadataField(data map[string]any, key string, value any) {
 		}
 	case *llm.Usage:
 		if typed == nil {
+			delete(data, key)
+			return
+		}
+	case *contextCompactState:
+		if typed == nil {
+			delete(data, key)
+			return
+		}
+	case bool:
+		if !typed {
 			delete(data, key)
 			return
 		}

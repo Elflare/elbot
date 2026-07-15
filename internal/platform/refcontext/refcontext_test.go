@@ -140,7 +140,7 @@ func TestApplyForkCommandUsesReferencedAssistantID(t *testing.T) {
 
 func createAssistantMessages(t *testing.T, ctx context.Context, store storage.Store, scope session.Scope) (*storage.Message, *storage.Message) {
 	t.Helper()
-	s, err := session.NewService(store).Create(ctx, scope, "source")
+	s, err := session.NewService(store).Create(ctx, scope, session.CreateRequest{Title: "source"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}

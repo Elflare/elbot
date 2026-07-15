@@ -60,11 +60,11 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 
 	svc := session.NewService(store)
 	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
-	first, err := svc.Create(ctx, scope, "first")
+	first, err := svc.Create(ctx, scope, session.CreateRequest{Title: "first"})
 	if err != nil {
 		t.Fatalf("create first: %v", err)
 	}
-	second, err := svc.Create(ctx, scope, "second")
+	second, err := svc.Create(ctx, scope, session.CreateRequest{Title: "second"})
 	if err != nil {
 		t.Fatalf("create second: %v", err)
 	}
@@ -139,11 +139,11 @@ func TestResumeCommandCompletesSessionIDs(t *testing.T) {
 
 	svc := session.NewService(store)
 	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
-	first, err := svc.Create(ctx, scope, "first")
+	first, err := svc.Create(ctx, scope, session.CreateRequest{Title: "first"})
 	if err != nil {
 		t.Fatalf("create first: %v", err)
 	}
-	second, err := svc.Create(ctx, scope, "second")
+	second, err := svc.Create(ctx, scope, session.CreateRequest{Title: "second"})
 	if err != nil {
 		t.Fatalf("create second: %v", err)
 	}
@@ -170,11 +170,11 @@ func TestSessionTargetCommandsCompleteSessionIDsAndConfirm(t *testing.T) {
 
 	svc := session.NewService(store)
 	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
-	first, err := svc.Create(ctx, scope, "first")
+	first, err := svc.Create(ctx, scope, session.CreateRequest{Title: "first"})
 	if err != nil {
 		t.Fatalf("create first: %v", err)
 	}
-	archived, err := svc.Create(ctx, scope, "archived")
+	archived, err := svc.Create(ctx, scope, session.CreateRequest{Title: "archived"})
 	if err != nil {
 		t.Fatalf("create archived: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestResumeCommandEmitsAudit(t *testing.T) {
 
 	svc := session.NewService(store)
 	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
-	created, err := svc.Create(ctx, scope, "audited")
+	created, err := svc.Create(ctx, scope, session.CreateRequest{Title: "audited"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestSessionsCommandCLIListsAllPlatformOwners(t *testing.T) {
 
 	svc := session.NewService(store)
 	qqScope := session.Scope{ActorID: "qqonebot:42", Platform: "qqonebot", PlatformScopeID: "group:9"}
-	qqSession, err := svc.Create(ctx, qqScope, "qq visible")
+	qqSession, err := svc.Create(ctx, qqScope, session.CreateRequest{Title: "qq visible"})
 	if err != nil {
 		t.Fatalf("create qq session: %v", err)
 	}
@@ -340,7 +340,7 @@ func TestForkMessagesUseForkContextAndForkShowsHistory(t *testing.T) {
 
 	svc := session.NewService(store)
 	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
-	parent, err := svc.Create(ctx, scope, "parent")
+	parent, err := svc.Create(ctx, scope, session.CreateRequest{Title: "parent"})
 	if err != nil {
 		t.Fatalf("create parent: %v", err)
 	}

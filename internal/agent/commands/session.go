@@ -11,6 +11,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/contextmgr"
 	"elbot/internal/security"
+	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -26,7 +27,7 @@ func NewNew(deps Deps) command.Handler {
 		Description: "Create and switch to a new session.",
 		MinRole:     security.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
-		session, err := deps.Sessions.Create(ctx, deps.Scope(ctx), "New session")
+		session, err := deps.Sessions.Create(ctx, deps.Scope(ctx), sessionpkg.CreateRequest{Title: "New session"})
 		if err != nil {
 			return nil, err
 		}
@@ -523,7 +524,7 @@ func NewWork(deps Deps) command.Handler {
 		session, err := deps.Sessions.Current(ctx, scope)
 		if err != nil {
 			if err == storage.ErrNotFound {
-				session, err = deps.Sessions.CreateWithMode(ctx, scope, "New work session", storage.SessionModeWork)
+				session, err = deps.Sessions.Create(ctx, scope, sessionpkg.CreateRequest{Title: "New work session", Mode: storage.SessionModeWork})
 			}
 			if err != nil {
 				return nil, err
@@ -549,7 +550,7 @@ func NewChat(deps Deps) command.Handler {
 		session, err := deps.Sessions.Current(ctx, scope)
 		if err != nil {
 			if err == storage.ErrNotFound {
-				session, err = deps.Sessions.CreateWithMode(ctx, scope, "New chat session", storage.SessionModeChat)
+				session, err = deps.Sessions.Create(ctx, scope, sessionpkg.CreateRequest{Title: "New chat session", Mode: storage.SessionModeChat})
 				if err != nil {
 					return nil, err
 				}

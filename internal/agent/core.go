@@ -15,7 +15,6 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/config"
-	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -54,21 +53,14 @@ type Agent struct {
 	promptBuilder        PromptBuilder
 	toolRuntime          toolRuntimeState
 	securityPolicy       *security.Policy
-	contextLoader        contextmgr.Loader
-	windowResolver       *contextmgr.WindowResolver
-	compressor           contextmgr.Compressor
-	contextConfig        config.ContextConfig
+	contextRuntime       contextRuntimeState
 	hooks                hookRunner
 	hookRuntime          hookRouter
 	outputs              delivery.Manager
-	modelMetadata        config.ModelMetadataConfig
-	compactModel         config.ModelSelection
+	namingModelMu        sync.RWMutex
 	namingModel          config.ModelSelection
-	usageMu              sync.Mutex
-	lastUsage            map[string]*llm.Usage
 	statusMu             sync.Mutex
 	runtimeStatus        map[string]runtimestatus.Snapshot
-	pendingCompact       map[string]bool
 	lastSessionIDs       []string
 	sessionListPageSize  int
 	cleanupRetentionDays int
@@ -129,6 +121,9 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 		promptSoul = &FileSoulProvider{Path: soulPath}
 	}
 	stateModTime := initialStateModTime(statePath)
+	requests := request.NewManager(0)
+	turns := turn.NewManager()
+	sessions := session.NewServiceWithConfig(store, sessionCfg, titleGen, namingNotifier)
 	a := &Agent{
 		platform:               p,
 		platformSenders:        map[string]delivery.MessageSender{},
@@ -136,21 +131,17 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 		statePath:              statePath,
 		stateModTime:           stateModTime,
 		store:                  store,
-		sessions:               session.NewServiceWithConfig(store, sessionCfg, titleGen, namingNotifier),
-		requests:               request.NewManager(0),
-		turns:                  turn.NewManager(),
+		sessions:               sessions,
+		requests:               requests,
+		turns:                  turns,
 		commands:               command.NewRouter(prefixes),
 		soul:                   promptSoul,
 		securityPolicy:         security.DefaultPolicy(),
-		contextLoader:          contextmgr.Loader{Store: store},
-		contextConfig:          config.Default().Context,
+		contextRuntime:         newContextRuntimeState(store, sessions, requests, turns),
 		hooks:                  hook.NoopManager{},
 		outputs:                delivery.NewManager(nil, nil),
-		compactModel:           config.ModelSelection{},
 		namingModel:            namingSelection,
-		lastUsage:              map[string]*llm.Usage{},
 		runtimeStatus:          map[string]runtimestatus.Snapshot{},
-		pendingCompact:         map[string]bool{},
 		autoConfirmSession:     map[string]bool{},
 		autoConfirmTools:       map[string]map[string]bool{},
 		visionFallbackNotified: map[string]bool{},
@@ -173,7 +164,7 @@ func NewWithRequestConfig(p platform.PlatformAdapter, client llm.LLM, providerNa
 	if p != nil {
 		a.platformSenders[p.Name()] = p
 	}
-	a.SetContextOptions(a.contextConfig, config.ModelMetadataConfig{}, providers, config.ModelSelection{})
+	a.SetContextOptions(config.Default().Context, config.ModelMetadataConfig{}, providers, config.ModelSelection{})
 	if err := agentcommands.RegisterDefaultModules(a.commands, agentcommands.Deps{
 		Router:               a.commands,
 		Sessions:             a.sessions,

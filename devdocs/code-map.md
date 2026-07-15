@@ -265,8 +265,8 @@ rg -n "Fork|Archive|Pinned|Expire|SessionMode|metadata|workspace|cron:" internal
 
 先看：
 
-- `internal/contextmgr/`：上下文加载、窗口和压缩能力。
-- `internal/agent/context.go`：Agent 上下文压缩依赖实现。
+- `internal/contextmgr/`：按加载/Fork、窗口、usage、压缩器和摘要 prompt 拆分的上下文基础能力。
+- `internal/agent/context_runtime.go`、`context_compact.go`、`context_seed.go`、`context_usage.go`：Agent 上下文运行态、独立 Session 压缩编排、首消息 seed 物化与 usage/动态阈值。
 - `internal/agent/prompt.go`：Prompt Builder。
 - `internal/agent/system_prompt*.go`：system prompt 管理和来源。
 - `internal/llm/segment.go`：MessageSegment helper。

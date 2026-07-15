@@ -2,52 +2,11 @@ package contextmgr
 
 import (
 	"context"
-	"strings"
 	"testing"
 
-	"elbot/internal/config"
-	"elbot/internal/llm"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
-
-type metadataLLM struct {
-	llm.LLM
-	metadata []llm.ModelMetadata
-}
-
-func (m metadataLLM) ListModelMetadata(context.Context) ([]llm.ModelMetadata, error) {
-	return m.metadata, nil
-}
-
-func TestWindowResolverPriority(t *testing.T) {
-	providers := map[string]config.ProviderConfig{
-		"p": {ModelConfigs: map[string]config.ModelConfig{
-			"manual":   {ContextWindow: 16000},
-			"fallback": {ContextWindow: 12000},
-		}},
-	}
-	resolver := NewWindowResolver(
-		config.ModelMetadataConfig{DefaultContextWindow: 8192},
-		providers,
-		func(provider string) llm.LLM {
-			return metadataLLM{metadata: []llm.ModelMetadata{{ID: "api", ContextWindow: 32000}}}
-		},
-	)
-
-	if got := resolver.Resolve(context.Background(), "p", "api"); got != 32000 {
-		t.Fatalf("api window = %d", got)
-	}
-	if got := resolver.Resolve(context.Background(), "p", "manual"); got != 16000 {
-		t.Fatalf("manual provider/model window = %d", got)
-	}
-	if got := resolver.Resolve(context.Background(), "p", "fallback"); got != 12000 {
-		t.Fatalf("fallback provider/model window = %d", got)
-	}
-	if got := resolver.Resolve(context.Background(), "p", "unknown"); got != 8192 {
-		t.Fatalf("default window = %d", got)
-	}
-}
 
 func TestLoaderUsesLatestSummary(t *testing.T) {
 	ctx := context.Background()
@@ -115,44 +74,6 @@ func TestLoaderRawMessagesIgnoresSummary(t *testing.T) {
 	}
 	if got, want := messageContents(messages), []string{"first", "second", "third"}; !equalStrings(got, want) {
 		t.Fatalf("messages = %#v, want %#v", got, want)
-	}
-}
-
-func TestCompactPromptAndSummaryAssembly(t *testing.T) {
-	prompt := compactPrompt([]CompactMessage{
-		{Role: storage.RoleUser, Content: "B"},
-		{Role: storage.RoleAssistant, Content: "C", ToolCalls: []CompactToolCall{{Name: "shell", Arguments: `{"command":"go test ./..."}`}}},
-		{Role: storage.RoleAssistant, Content: "H"},
-	}, []string{"B", "G"})
-	for _, want := range []string{"上下文内容：", "user: B", "assistant: C", `tool_call: name=shell arguments={"command":"go test ./..."}`, "用户原话：\n1. B\n2. G"} {
-		if !strings.Contains(prompt, want) {
-			t.Fatalf("prompt missing %q:\n%s", want, prompt)
-		}
-	}
-	if strings.Contains(prompt, "tool result") {
-		t.Fatalf("prompt contains tool result: %s", prompt)
-	}
-
-	got := assembleSummary("K\n", []string{"B", "G"})
-	want := "K\n\n以下是用户原话：\n1. B\n2. G"
-	if got != want {
-		t.Fatalf("summary = %q, want %q", got, want)
-	}
-	if got := assembleSummary("K", nil); got != "K" {
-		t.Fatalf("summary without inputs = %q", got)
-	}
-}
-
-func TestUsageStateAndFormatTokens(t *testing.T) {
-	state := UsageState{Usage: &llm.Usage{TotalTokens: 90, CacheHitTokens: 10}, ContextWindow: 100, TriggerRatio: 0.8}
-	if !state.ReachedThreshold() {
-		t.Fatal("expected threshold reached")
-	}
-	if got := FormatTokens(state.Usage); got != "tokens：90（命中：10）" {
-		t.Fatalf("tokens = %q", got)
-	}
-	if got := FormatTokens(nil); got != "tokens：unknown（命中：unknown）" {
-		t.Fatalf("unknown tokens = %q", got)
 	}
 }
 

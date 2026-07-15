@@ -32,18 +32,20 @@ func (a *Agent) startBackgroundChat(ctx context.Context, session *storage.Sessio
 }
 
 func (a *Agent) startChatWithOutput(ctx context.Context, session *storage.Session, text string, out turnOutput) error {
-	if a.shouldCompact(session.ID) {
-		content, err := a.compactSession(ctx, session, "auto")
+	selection := a.modelSelectionForTurn(ctx, session)
+	if a.shouldCompact(ctx, session, selection) {
+		next, content, err := a.compactSession(ctx, session, "auto", selection)
 		if err != nil {
 			return err
 		}
+		session = next
 		_, _ = out.SendAssistant(ctx, content)
 	}
 	if !a.turns.StartLLM(session.ID, text) {
 		return nil
 	}
 	defer a.turns.FinishRequest(session.ID)
-	if err := a.runChat(ctx, session, text, out); err != nil {
+	if err := a.runChat(ctx, session, text, out, selection); err != nil {
 		a.turns.StopSession(session.ID)
 		status := a.runtimeStatusForSession(session.ID)
 		status.Phase = runtimestatus.PhaseError
@@ -71,7 +73,7 @@ func (a *Agent) handleTurnContextDone(ctx context.Context, sessionID string, err
 	return nil
 }
 
-func (a *Agent) runChat(ctx context.Context, session *storage.Session, text string, out turnOutput) error {
+func (a *Agent) runChat(ctx context.Context, session *storage.Session, text string, out turnOutput, selection config.ModelSelection) error {
 	userSegments := a.userMessageSegments(ctx, text)
 	userContent := llm.SegmentsContentText(userSegments)
 
@@ -85,11 +87,21 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		a.logger.Info("user input", "event", "user_message", "session_id", session.ID, "text", previewLogText(userContent))
 	}
 
-	loaded, err := a.contextLoader.Load(ctx, session.ID)
+	loaded, err := a.contextRuntime.load(ctx, session.ID)
 	if err != nil {
 		return err
 	}
-	summaryOnCurrentUser := loaded.Summary != nil && !hasStorageUserMessage(loaded.Messages)
+	hasUserHistory := hasStorageUserMessage(loaded.Messages)
+	compactSeedOnCurrentUser := false
+	if seed := pendingContextCompact(session); seed != nil {
+		if !hasUserHistory {
+			loaded.Summary = &storage.ContextSummary{Summary: seed.Summary}
+			compactSeedOnCurrentUser = true
+		} else {
+			a.consumeContextCompactSeed(ctx, session)
+		}
+	}
+	summaryOnCurrentUser := loaded.Summary != nil && !hasUserHistory && !compactSeedOnCurrentUser
 	messages := append([]storage.Message{}, loaded.Messages...)
 	messages = append(messages, *userMessage)
 
@@ -100,15 +112,6 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	defer done()
 	reqCtx = withTurnRequestID(reqCtx, reqCtxInfo.ID)
 
-	selection := a.modelForMode(session.Mode)
-	if override, ok := ctx.Value(cronModelSelectionKey{}).(config.ModelSelection); ok {
-		if override.Provider != "" {
-			selection.Provider = override.Provider
-		}
-		if override.Model != "" {
-			selection.Model = override.Model
-		}
-	}
 	turnStartedAt := storage.Now()
 	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
 	llmMessages, err := a.promptBuilder.Build(ctx, PromptBuildRequest{Session: session, Scope: a.scope(ctx), Messages: messages, Summary: loaded.Summary})
@@ -137,7 +140,11 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	llmMessages = turnEvent.LLM.Messages
 	tools = turnEvent.LLM.Tools
 	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
-	if updatedUserContent := llm.LatestUserSegmentContentText(llmMessages); updatedUserContent != "" {
+	if compactSeedOnCurrentUser {
+		segments := llm.LatestUserSegments(llmMessages)
+		userMessage.Content = llm.SegmentsContentText(segments)
+		userMessage.Metadata = userSegmentsMetadata(segments)
+	} else if updatedUserContent := llm.LatestUserSegmentContentText(llmMessages); updatedUserContent != "" {
 		if summaryOnCurrentUser {
 			updatedUserContent = strings.TrimPrefix(updatedUserContent, summaryUserPrefix(loaded.Summary.Summary))
 		}
@@ -145,6 +152,9 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	}
 	if err := a.persistTurnMessage(ctx, userMessage, "append_user_message"); err != nil {
 		return err
+	}
+	if compactSeedOnCurrentUser {
+		a.consumeContextCompactSeed(ctx, session)
 	}
 
 	bufferOutput := bufferAssistantOutput(ctx)
@@ -362,11 +372,29 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	a.recordUsage(session.ID, usage)
 	doneStatus := runtimeDoneStatus(runtimestatus.Snapshot{SessionID: session.ID, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt, Usage: usage}, storage.Now())
 	out.PublishRuntimeStatus(ctx, doneStatus)
-	if a.markPendingCompact(ctx, session, usage) {
+	nextSelection := a.modelSelectionForTurn(ctx, session)
+	if a.shouldCompact(ctx, session, nextSelection) {
 		_, _ = out.SendAssistant(ctx, "compact status: will compact before next request")
 	}
 	a.sessions.MaybeScheduleNaming(ctx, session.ID)
 	return nil
+}
+
+func (a *Agent) modelSelectionForTurn(ctx context.Context, session *storage.Session) config.ModelSelection {
+	mode := storage.SessionModeWork
+	if session != nil && session.Mode != "" {
+		mode = session.Mode
+	}
+	selection := a.modelForMode(mode)
+	if override, ok := ctx.Value(cronModelSelectionKey{}).(config.ModelSelection); ok {
+		if override.Provider != "" {
+			selection.Provider = override.Provider
+		}
+		if override.Model != "" {
+			selection.Model = override.Model
+		}
+	}
+	return selection
 }
 
 func hasStorageUserMessage(messages []storage.Message) bool {
