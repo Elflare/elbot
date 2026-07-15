@@ -19,6 +19,12 @@ type Scope struct {
 	IsCLI           bool
 }
 
+type CreateRequest struct {
+	Title    string
+	Mode     string
+	Metadata string
+}
+
 type Status struct {
 	Session           *storage.Session
 	MessageCount      int
@@ -143,27 +149,27 @@ func (s *Service) GetOrCreateCurrent(ctx context.Context, scope Scope, firstMess
 		return current, nil
 	}
 
-	return s.CreateWithMode(ctx, scope, defaultTitle(firstMessage), s.defaultMode)
+	return s.Create(ctx, scope, CreateRequest{Title: defaultTitle(firstMessage)})
 }
 
-func (s *Service) Create(ctx context.Context, scope Scope, title string) (*storage.Session, error) {
-	return s.CreateWithMode(ctx, scope, title, s.defaultMode)
-}
-
-func (s *Service) CreateWithMode(ctx context.Context, scope Scope, title, mode string) (*storage.Session, error) {
-	if err := validateMode(mode); err != nil {
+func (s *Service) Create(ctx context.Context, scope Scope, req CreateRequest) (*storage.Session, error) {
+	if req.Mode == "" {
+		req.Mode = s.defaultMode
+	}
+	if err := validateMode(req.Mode); err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(title) == "" {
-		title = "New session"
+	if strings.TrimSpace(req.Title) == "" {
+		req.Title = "New session"
 	}
 	session := &storage.Session{
 		OwnerID:         scope.ActorID,
 		Platform:        scope.Platform,
 		PlatformScopeID: scope.PlatformScopeID,
-		Mode:            mode,
+		Mode:            req.Mode,
 		Status:          storage.SessionStatusActive,
-		Title:           title,
+		Title:           req.Title,
+		Metadata:        req.Metadata,
 	}
 	if err := s.store.Sessions().Create(ctx, session); err != nil {
 		return nil, err

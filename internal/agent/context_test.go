@@ -10,6 +10,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -35,8 +36,8 @@ func TestCompactMessagesFiltersToolResultsAndFailedCalls(t *testing.T) {
 		{ID: "missing", Name: "shell", Arguments: `{"command":"missing"}`},
 	}
 	toolCall := toolCallStorageMessage(session.ID, "C", "C", calls)
-	a := &Agent{store: store}
-	messages, err := a.compactMessages(ctx, &contextmgr.LoadedContext{
+	runtime := contextRuntimeState{store: store}
+	messages, err := runtime.compactMessages(ctx, &contextmgr.LoadedContext{
 		Summary: &storage.ContextSummary{Summary: "I"},
 		Messages: []storage.Message{
 			{Role: storage.RoleUser, Content: "J"},
@@ -70,21 +71,20 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 	f := &fakeLLM{replies: []string{"K", "answer J", "answer L", "K2", "answer M"}}
 	store := newTestStore(t)
 	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	session, err := a.sessions.Create(ctx, a.scope(ctx), "compact")
+	source, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "compact"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 	for _, message := range []*storage.Message{
-		{SessionID: session.ID, Role: storage.RoleUser, Content: "B"},
-		{SessionID: session.ID, Role: storage.RoleAssistant, Content: "H"},
+		{SessionID: source.ID, Role: storage.RoleUser, Content: "B"},
+		{SessionID: source.ID, Role: storage.RoleAssistant, Content: "H"},
 	} {
 		if err := store.Messages().Append(ctx, message); err != nil {
 			t.Fatalf("append message: %v", err)
 		}
 	}
-	a.usageMu.Lock()
-	a.pendingCompact[session.ID] = true
-	a.usageMu.Unlock()
+	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil, config.ModelSelection{})
+	a.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
 
 	if err := a.HandleMessage(ctx, "J"); err != nil {
 		t.Fatalf("first message after compact: %v", err)
@@ -98,6 +98,16 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 		if !strings.Contains(compactPayload, want) {
 			t.Fatalf("compact payload missing %q:\n%s", want, compactPayload)
 		}
+	}
+	compacted, err := a.sessions.Current(ctx, a.scope(ctx))
+	if err != nil {
+		t.Fatalf("current compacted session: %v", err)
+	}
+	if compacted.ID == source.ID || compacted.ParentSessionID != "" || compacted.ForkFromMessageID != "" {
+		t.Fatalf("compacted session is not independent: %#v", compacted)
+	}
+	if compacted.Title != "compact compacted-1" {
+		t.Fatalf("compacted title = %q", compacted.Title)
 	}
 	firstUser := llm.SegmentsContentText(requests[1].Messages[1].Segments)
 	for _, want := range []string{"K", "以下是用户原话：\n1. B", "当前用户输入：\nJ"} {
@@ -121,30 +131,30 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 		t.Fatalf("latest user = %q", got)
 	}
 
-	summary, err := store.ContextSummaries().LatestBySession(ctx, session.ID)
+	oldMessages, err := store.Messages().ListBySession(ctx, source.ID)
 	if err != nil {
-		t.Fatalf("load summary: %v", err)
+		t.Fatalf("list old messages: %v", err)
 	}
-	if summary.Summary != "K\n\n以下是用户原话：\n1. B" {
-		t.Fatalf("summary = %q", summary.Summary)
+	if len(oldMessages) != 2 {
+		t.Fatalf("old session changed: %#v", oldMessages)
 	}
-	messages, err := store.Messages().ListBySession(ctx, session.ID)
+	newMessages, err := store.Messages().ListBySession(ctx, compacted.ID)
 	if err != nil {
-		t.Fatalf("list messages: %v", err)
+		t.Fatalf("list compacted messages: %v", err)
 	}
-	var foundRawJ bool
-	for _, message := range messages {
-		if message.Role == storage.RoleUser && message.Content == "J" {
-			foundRawJ = true
-		}
+	if len(newMessages) < 1 || newMessages[0].Role != storage.RoleUser || newMessages[0].Content != firstUser {
+		t.Fatalf("first compacted user message = %#v, want %q", newMessages, firstUser)
 	}
-	if !foundRawJ {
-		t.Fatalf("raw user input J was not preserved: %#v", messages)
+	compacted, err = store.Sessions().Get(ctx, compacted.ID)
+	if err != nil {
+		t.Fatalf("reload compacted session: %v", err)
+	}
+	compactMetadata := decodeSessionMetadata(compacted.Metadata).ContextCompact
+	if compactMetadata == nil || compactMetadata.Pending || compactMetadata.Generation != 1 || compactMetadata.SourceSessionID != source.ID {
+		t.Fatalf("compact metadata = %#v", compactMetadata)
 	}
 
-	a.usageMu.Lock()
-	a.pendingCompact[session.ID] = true
-	a.usageMu.Unlock()
+	a.recordUsage(compacted.ID, &llm.Usage{TotalTokens: 80})
 	if err := a.HandleMessage(ctx, "M"); err != nil {
 		t.Fatalf("message after repeated compact: %v", err)
 	}
@@ -153,7 +163,7 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 		t.Fatalf("requests after repeated compact = %d, want 5", len(requests))
 	}
 	repeatedPayload := llm.SegmentsContentText(requests[3].Messages[1].Segments)
-	for _, want := range []string{"user: K", "以下是用户原话：", "当前用户输入：\nJ", "用户原话：\n1. B\n2. J\n3. L"} {
+	for _, want := range []string{"user: K", "以下是用户原话：", "当前用户输入：\nJ", firstUser, "2. L"} {
 		if !strings.Contains(repeatedPayload, want) {
 			t.Fatalf("repeated compact payload missing %q:\n%s", want, repeatedPayload)
 		}
@@ -161,16 +171,75 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 	if strings.Contains(repeatedPayload, "已有摘要") || strings.Contains(repeatedPayload, "已有较早摘要") {
 		t.Fatalf("repeated compact used a special previous-summary field:\n%s", repeatedPayload)
 	}
-	repeatedSummary, err := store.ContextSummaries().LatestBySession(ctx, session.ID)
+	repeated, err := a.sessions.Current(ctx, a.scope(ctx))
 	if err != nil {
-		t.Fatalf("load repeated summary: %v", err)
+		t.Fatalf("current repeated session: %v", err)
 	}
-	if repeatedSummary.Summary != "K2\n\n以下是用户原话：\n1. B\n2. J\n3. L" {
-		t.Fatalf("repeated summary = %q", repeatedSummary.Summary)
+	if repeated.ID == compacted.ID || repeated.ParentSessionID != "" || repeated.Title != "compact compacted-2" {
+		t.Fatalf("repeated compact session = %#v", repeated)
 	}
 	mainAfterRepeated := llm.SegmentsContentText(requests[4].Messages[1].Segments)
-	if !strings.Contains(mainAfterRepeated, repeatedSummary.Summary) || !strings.Contains(mainAfterRepeated, "当前用户输入：\nM") {
-		t.Fatalf("main user after repeated compact = %q", mainAfterRepeated)
+	for _, want := range []string{"K2", "以下是用户原话：", firstUser, "当前用户输入：\nM"} {
+		if !strings.Contains(mainAfterRepeated, want) {
+			t.Fatalf("main user after repeated compact missing %q: %q", want, mainAfterRepeated)
+		}
+	}
+	if _, err := store.ContextSummaries().LatestBySession(ctx, repeated.ID); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("new compact flow wrote a context summary: %v", err)
+	}
+}
+
+func TestManualCompactDefersSeedUntilNextUserMessage(t *testing.T) {
+	ctx := context.Background()
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"K", "answer J"}}
+	store := newTestStore(t)
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	old, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "manual"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	for _, message := range []*storage.Message{{SessionID: old.ID, Role: storage.RoleUser, Content: "B"}, {SessionID: old.ID, Role: storage.RoleAssistant, Content: "H"}} {
+		if err := store.Messages().Append(ctx, message); err != nil {
+			t.Fatalf("append message: %v", err)
+		}
+	}
+	if err := a.HandleMessage(ctx, "/compact"); err != nil {
+		t.Fatalf("manual compact: %v", err)
+	}
+	next, err := a.sessions.Current(ctx, a.scope(ctx))
+	if err != nil {
+		t.Fatalf("current session: %v", err)
+	}
+	if seed := pendingContextCompact(next); next.ID == old.ID || seed == nil || !seed.Pending {
+		t.Fatalf("pending compacted session = %#v", next)
+	}
+	if messages, err := store.Messages().ListBySession(ctx, next.ID); err != nil || len(messages) != 0 {
+		t.Fatalf("messages before J = %#v, err = %v", messages, err)
+	}
+	if err := a.HandleMessage(ctx, "J"); err != nil {
+		t.Fatalf("first user message: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 2 {
+		t.Fatalf("requests = %d", len(requests))
+	}
+	firstUser := llm.SegmentsContentText(requests[1].Messages[1].Segments)
+	for _, want := range []string{"K", "1. B", "当前用户输入：\nJ"} {
+		if !strings.Contains(firstUser, want) {
+			t.Fatalf("first user missing %q: %q", want, firstUser)
+		}
+	}
+	messages, err := store.Messages().ListBySession(ctx, next.ID)
+	if err != nil || len(messages) < 1 || messages[0].Content != firstUser {
+		t.Fatalf("persisted first user = %#v, err = %v", messages, err)
+	}
+	latest, _ := store.Sessions().Get(ctx, next.ID)
+	if compact := decodeSessionMetadata(latest.Metadata).ContextCompact; compact == nil || compact.Pending {
+		t.Fatalf("compact seed was not consumed: %#v", compact)
+	}
+	if got := p.out.String(); !strings.Contains(got, "new session: "+next.ID) {
+		t.Fatalf("completion output = %q", got)
 	}
 }
 
@@ -181,21 +250,20 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 	f := &fakeLLM{replies: []string{"K"}, chatBlocks: []fakeLLMBlock{{started: started, release: make(chan struct{})}}}
 	store := newTestStore(t)
 	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	session, err := a.sessions.Create(ctx, a.scope(ctx), "compact")
+	source, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "compact"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 	for _, message := range []*storage.Message{
-		{SessionID: session.ID, Role: storage.RoleUser, Content: "B"},
-		{SessionID: session.ID, Role: storage.RoleAssistant, Content: "H"},
+		{SessionID: source.ID, Role: storage.RoleUser, Content: "B"},
+		{SessionID: source.ID, Role: storage.RoleAssistant, Content: "H"},
 	} {
 		if err := store.Messages().Append(ctx, message); err != nil {
 			t.Fatalf("append message: %v", err)
 		}
 	}
-	a.usageMu.Lock()
-	a.pendingCompact[session.ID] = true
-	a.usageMu.Unlock()
+	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil, config.ModelSelection{})
+	a.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
 
 	done := make(chan error, 1)
 	go func() { done <- a.HandleMessage(ctx, "/compact") }()
@@ -207,14 +275,14 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 	if err := a.HandleMessage(ctx, "/new"); err != nil {
 		t.Fatalf("blocked /new: %v", err)
 	}
-	if err := a.HandleMessage(ctx, "/delete "+session.ID+" --confirm"); err != nil {
+	if err := a.HandleMessage(ctx, "/delete "+source.ID+" --confirm"); err != nil {
 		t.Fatalf("blocked /delete: %v", err)
 	}
 	current, err := a.sessions.Current(ctx, a.scope(ctx))
-	if err != nil || current.ID != session.ID {
+	if err != nil || current.ID != source.ID {
 		t.Fatalf("current session = %#v, err = %v", current, err)
 	}
-	if _, err := store.Sessions().Get(ctx, session.ID); err != nil {
+	if _, err := store.Sessions().Get(ctx, source.ID); err != nil {
 		t.Fatalf("source session was deleted: %v", err)
 	}
 	if err := a.HandleMessage(ctx, "/stop"); err != nil {
@@ -228,20 +296,52 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("compact did not stop")
 	}
-	if got := a.turns.Snapshot(session.ID).Phase; got != turn.PhaseIdle {
+	if got := a.turns.Snapshot(source.ID).Phase; got != turn.PhaseIdle {
 		t.Fatalf("turn phase = %s", got)
 	}
-	if got := len(a.requests.ListBySession(session.ID)); got != 0 {
+	if got := len(a.requests.ListBySession(source.ID)); got != 0 {
 		t.Fatalf("active requests = %d", got)
 	}
-	if _, err := store.ContextSummaries().LatestBySession(ctx, session.ID); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := store.ContextSummaries().LatestBySession(ctx, source.ID); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("summary after cancel err = %v", err)
 	}
-	if !a.shouldCompact(session.ID) {
-		t.Fatal("pending compact flag was cleared after cancellation")
+	if !a.shouldCompact(ctx, source, a.modelSelectionForTurn(ctx, source)) {
+		t.Fatal("usage no longer triggers compact after cancellation")
 	}
 	if got := p.out.String(); !strings.Contains(got, "暂不执行 /new") || !strings.Contains(got, "暂不执行 /delete") || !strings.Contains(got, "stopped 1 request") {
 		t.Fatalf("output = %q", got)
+	}
+}
+
+func TestAutoCompactFailureKeepsSourceSession(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+	a := New(&fakePlatform{}, &fakeLLM{replies: []string{"__ERR__"}}, "test-model", config.ProviderConfig{}, store)
+	source, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "failure"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	for _, message := range []*storage.Message{{SessionID: source.ID, Role: storage.RoleUser, Content: "B"}, {SessionID: source.ID, Role: storage.RoleAssistant, Content: "H"}} {
+		if err := store.Messages().Append(ctx, message); err != nil {
+			t.Fatalf("append message: %v", err)
+		}
+	}
+	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil, config.ModelSelection{})
+	a.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
+	if err := a.HandleMessage(ctx, "J"); err == nil {
+		t.Fatal("auto compact unexpectedly succeeded")
+	}
+	current, err := a.sessions.Current(ctx, a.scope(ctx))
+	if err != nil || current.ID != source.ID {
+		t.Fatalf("current session = %#v, err = %v", current, err)
+	}
+	messages, err := store.Messages().ListBySession(ctx, source.ID)
+	if err != nil || len(messages) != 2 {
+		t.Fatalf("source messages = %#v, err = %v", messages, err)
+	}
+	sessions, err := a.sessions.List(ctx, a.scope(ctx), "", 10)
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("sessions = %#v, err = %v", sessions, err)
 	}
 }
 
@@ -255,5 +355,74 @@ func TestCompactBlockedCommandSet(t *testing.T) {
 		if shouldBlockCommandDuringCompact(name) {
 			t.Fatalf("command %q should remain available", name)
 		}
+	}
+}
+
+func TestModelSwitchDuringTurnAppliesOnNextTurn(t *testing.T) {
+	ctx := context.Background()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	f := &fakeLLM{
+		models:     []string{"old", "new"},
+		replies:    []string{"first answer", "second answer"},
+		chatBlocks: []fakeLLMBlock{{started: started, release: release}},
+	}
+	a := New(&fakePlatform{}, f, "old", config.ProviderConfig{Models: []string{"old", "new"}}, newTestStore(t))
+
+	done := make(chan error, 1)
+	go func() { done <- a.HandleMessage(ctx, "first") }()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("first model request did not start")
+	}
+	if err := a.HandleMessage(ctx, "/model new"); err != nil {
+		t.Fatalf("switch model: %v", err)
+	}
+	close(release)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("first turn: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("first turn did not finish")
+	}
+	if err := a.HandleMessage(ctx, "second"); err != nil {
+		t.Fatalf("second turn: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 2 {
+		t.Fatalf("requests = %d", len(requests))
+	}
+	if requests[0].Model != "old" || requests[1].Model != "new" {
+		t.Fatalf("request models = %q, %q", requests[0].Model, requests[1].Model)
+	}
+}
+
+func TestModelSwitchReevaluatesCompactWindow(t *testing.T) {
+	ctx := context.Background()
+	provider := config.ProviderConfig{
+		Models: []string{"small", "large"},
+		ModelConfigs: map[string]config.ModelConfig{
+			"small": {ContextWindow: 100},
+			"large": {ContextWindow: 1000},
+		},
+	}
+	a := New(&fakePlatform{}, &fakeLLM{models: []string{"small", "large"}}, "small", provider, newTestStore(t))
+	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, map[string]config.ProviderConfig{"default": provider}, config.ModelSelection{})
+	current, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "model window"})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	a.recordUsage(current.ID, &llm.Usage{TotalTokens: 80})
+	if !a.shouldCompact(ctx, current, a.modelSelectionForTurn(ctx, current)) {
+		t.Fatal("small model did not trigger compact")
+	}
+	if _, err := a.SelectModel(ctx, "large"); err != nil {
+		t.Fatalf("select large model: %v", err)
+	}
+	if a.shouldCompact(ctx, current, a.modelSelectionForTurn(ctx, current)) {
+		t.Fatal("large model reused the old model compact decision")
 	}
 }

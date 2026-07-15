@@ -859,7 +859,7 @@ func TestCompleteForkMessageID(t *testing.T) {
 	a := New(p, f, "m", config.ProviderConfig{}, store)
 	ctx := context.Background()
 
-	session, err := a.sessions.Create(ctx, a.scope(context.Background()), "completion")
+	session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "completion"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -1190,7 +1190,7 @@ func TestMapSentAssistantMessageMapsAllReceiptIDs(t *testing.T) {
 	store := newTestStore(t)
 	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qqonebot", PlatformUserID: "1", ScopeID: "group:9"})
-	session, err := a.sessions.Create(ctx, a.scope(ctx), "mapped")
+	session, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "mapped"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -1228,7 +1228,7 @@ func TestModelSwitchUsesMessagePlatformCurrentModeForGlobalState(t *testing.T) {
 	qqCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qq", PlatformUserID: "admin", ScopeID: "group:9"})
 	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"qq": {"admin"}}))
 
-	qqSession, err := a.sessions.Create(qqCtx, a.scope(qqCtx), "qq chat")
+	qqSession, err := a.sessions.Create(qqCtx, a.scope(qqCtx), session.CreateRequest{Title: "qq chat"})
 	if err != nil {
 		t.Fatalf("create qq session: %v", err)
 	}
@@ -1330,7 +1330,7 @@ func TestSessionIdleExpiration(t *testing.T) {
 			a.SetSessionIdleExpiration(tt.cfg)
 			ctx := platform.WithMessageContext(context.Background(), tt.ctx)
 
-			oldSession, err := a.sessions.Create(ctx, a.scope(ctx), "old")
+			oldSession, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "old"})
 			if err != nil {
 				t.Fatalf("create old session: %v", err)
 			}
@@ -1404,7 +1404,7 @@ func TestMessageContextForkStartsForkSession(t *testing.T) {
 	a := New(p, f, "test-model", config.ProviderConfig{}, store)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "group:9"})
 
-	source, err := a.sessions.Create(ctx, a.scope(ctx), "source")
+	source, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "source"})
 	if err != nil {
 		t.Fatalf("create source: %v", err)
 	}
@@ -2819,7 +2819,7 @@ func TestAppendConfirmationBlocksNewSessionCommand(t *testing.T) {
 	f := &fakeLLM{replies: []string{"confirmed"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
-	session, err := a.sessions.Create(ctx, a.scope(ctx), "current")
+	session, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "current"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3357,7 +3357,7 @@ func TestRiskConfirmationDetailShowsFullArgumentsWithoutResolving(t *testing.T) 
 	p := &fakePlatform{}
 	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
-	session, err := a.sessions.Create(ctx, a.scope(context.Background()), "confirm detail")
+	session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm detail"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -3414,7 +3414,7 @@ func TestRiskConfirmationDetailUsesToolProvidedDetail(t *testing.T) {
 	p := &fakePlatform{}
 	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
-	session, err := a.sessions.Create(ctx, a.scope(context.Background()), "confirm custom detail")
+	session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm custom detail"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -3456,7 +3456,7 @@ func TestRiskConfirmationDetailFormatsEscapedNewlines(t *testing.T) {
 	p := &fakePlatform{}
 	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
-	session, err := a.sessions.Create(ctx, a.scope(context.Background()), "confirm detail newlines")
+	session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm detail newlines"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -3499,7 +3499,7 @@ func TestRiskConfirmationConfirmToolAndConfirmAllAliases(t *testing.T) {
 		p := &fakePlatform{}
 		a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 		ctx := context.Background()
-		session, err := a.sessions.Create(ctx, a.scope(context.Background()), "confirm tool")
+		session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm tool"})
 		if err != nil {
 			t.Fatalf("create session: %v", err)
 		}
@@ -3532,7 +3532,7 @@ func TestRiskConfirmationConfirmToolAndConfirmAllAliases(t *testing.T) {
 		p := &fakePlatform{}
 		a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 		ctx := context.Background()
-		session, err := a.sessions.Create(ctx, a.scope(context.Background()), "confirm all")
+		session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm all"})
 		if err != nil {
 			t.Fatalf("create session: %v", err)
 		}
@@ -3567,7 +3567,7 @@ func TestRiskConfirmationCompletionAndConfirmAlias(t *testing.T) {
 	p := &fakePlatform{}
 	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
-	session, err := a.sessions.Create(ctx, a.scope(context.Background()), "confirm completion")
+	session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm completion"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -4131,7 +4131,7 @@ func TestRegularUserCanUseOwnDataSlashCommands(t *testing.T) {
 	}
 	p.out.Reset()
 
-	if _, err := a.sessions.Create(ctx, a.scope(ctx), "mine"); err != nil {
+	if _, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "mine"}); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 	if err := a.HandleMessage(ctx, "/sessions"); err != nil {

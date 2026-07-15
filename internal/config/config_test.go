@@ -453,7 +453,7 @@ model = "deepseek-chat"
 	if cfg.Context.CompactTriggerRatio != 0.8 {
 		t.Fatalf("CompactTriggerRatio = %v", cfg.Context.CompactTriggerRatio)
 	}
-	if cfg.ModelMetadata.DefaultContextWindow != 8192 {
+	if cfg.ModelMetadata.DefaultContextWindow != 256000 {
 		t.Fatalf("DefaultContextWindow = %d", cfg.ModelMetadata.DefaultContextWindow)
 	}
 	if !reflect.DeepEqual(cfg.Commands.Prefixes, []string{"/"}) {

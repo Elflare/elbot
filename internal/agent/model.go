@@ -27,6 +27,7 @@ type modelRuntimeState struct {
 	llmRequestConfig config.LLMRequestConfig
 	providers        map[string]config.ProviderConfig
 	modeModels       map[string]config.ModelSelection
+	selectionMu      sync.RWMutex
 	clients          map[string]llm.LLM
 	clientsMu        sync.Mutex
 	allModels        []string
@@ -91,7 +92,7 @@ func (a *Agent) currentMode(ctx context.Context) string {
 }
 
 func (a *Agent) CurrentNamingModel() agentcommands.ModelOption {
-	selected := a.namingModel
+	selected := a.configuredNamingModel()
 	if selected.Provider == "" || selected.Model == "" {
 		return agentcommands.ModelOption{}
 	}
@@ -103,7 +104,7 @@ func (a *Agent) SelectCompactModel(arg string) (agentcommands.ModelOption, error
 	if err != nil {
 		return agentcommands.ModelOption{}, err
 	}
-	a.compactModel = config.ModelSelection{Provider: selected.Provider, Model: selected.Model}
+	a.contextRuntime.setCompactModel(config.ModelSelection{Provider: selected.Provider, Model: selected.Model})
 	selected.Compact = true
 	if a.statePath != "" {
 		if err := a.saveRuntimeState(); err != nil {
@@ -118,11 +119,10 @@ func (a *Agent) SelectNamingModel(arg string) (agentcommands.ModelOption, error)
 	if err != nil {
 		return agentcommands.ModelOption{}, err
 	}
-	a.namingModel = config.ModelSelection{Provider: selected.Provider, Model: selected.Model}
+	a.setNamingModel(config.ModelSelection{Provider: selected.Provider, Model: selected.Model})
 	selected.Naming = true
 	if a.titleGen != nil {
-		a.titleGen.naming = a.clientForProvider(selected.Provider)
-		a.titleGen.namingModel = selected.Model
+		a.titleGen.setNaming(a.clientForProvider(selected.Provider), selected.Model)
 	}
 	if a.statePath != "" {
 		if err := a.saveRuntimeState(); err != nil {
@@ -237,7 +237,7 @@ func (a *Agent) modelOptions(query string, opts modelListOptions) agentcommands.
 	work := a.modelForMode(storage.SessionModeWork)
 	modeMarks := a.modelModeMarks([]string{storage.SessionModeChat, storage.SessionModeWork, "elwisp1", "elwisp2", "elwisp3"})
 	compact := a.compactSelectionForSession(nil)
-	naming := a.namingModel
+	naming := a.configuredNamingModel()
 	options := []agentcommands.ModelOption{}
 	idx := 1
 	for i, provider := range providers {
@@ -297,7 +297,10 @@ func (a *Agent) sortedProviderModels(providerName string) ([]string, error) {
 	set := map[string]struct{}{}
 
 	client := a.clientForProvider(providerName)
-	fetchFromAPI := providerName == a.modelRuntime.providerName || (provider.BaseURL != "" && provider.APIKey != "")
+	a.modelRuntime.selectionMu.RLock()
+	currentProviderName := a.modelRuntime.providerName
+	a.modelRuntime.selectionMu.RUnlock()
+	fetchFromAPI := providerName == currentProviderName || (provider.BaseURL != "" && provider.APIKey != "")
 	var fetchErr error
 	if strings.TrimSpace(provider.APIKey) == "" && strings.TrimSpace(provider.APIKeyEnv) != "" && strings.TrimSpace(provider.BaseURL) != "" {
 		fetchErr = fmt.Errorf("api_key_env %q is not set", provider.APIKeyEnv)
@@ -330,19 +333,23 @@ func (a *Agent) applyModeModelSelection(mode, providerName, model string) error 
 	if !ok {
 		return fmt.Errorf("provider %q not found", providerName)
 	}
+	client := a.clientForProvider(providerName)
+	a.modelRuntime.selectionMu.Lock()
 	a.modelRuntime.modeModels[mode] = config.ModelSelection{Provider: providerName, Model: model}
 	a.modelRuntime.providerName = providerName
 	a.modelRuntime.provider = provider
 	a.modelRuntime.model = model
-	a.modelRuntime.llmClient = a.clientForProvider(providerName)
+	a.modelRuntime.llmClient = client
+	a.modelRuntime.selectionMu.Unlock()
 	if a.titleGen != nil && mode == storage.SessionModeWork {
-		a.titleGen.primary = a.modelRuntime.llmClient
-		a.titleGen.primaryModel = model
+		a.titleGen.setPrimary(client, model)
 	}
 	return nil
 }
 
 func (a *Agent) modelForMode(mode string) config.ModelSelection {
+	a.modelRuntime.selectionMu.RLock()
+	defer a.modelRuntime.selectionMu.RUnlock()
 	selected := a.modelRuntime.modeModels[mode]
 	if selected.Provider == "" || selected.Model == "" {
 		return a.modelRuntime.modeModels[storage.SessionModeWork]
@@ -475,13 +482,12 @@ func (a *Agent) applyRuntimeState(state *config.StateConfig) error {
 		}
 	}
 	if state.CompactModel.Provider != "" && state.CompactModel.Model != "" {
-		a.compactModel = state.CompactModel
+		a.contextRuntime.setCompactModel(state.CompactModel)
 	}
 	if state.NamingModel.Provider != "" && state.NamingModel.Model != "" {
-		a.namingModel = state.NamingModel
+		a.setNamingModel(state.NamingModel)
 		if a.titleGen != nil {
-			a.titleGen.naming = a.clientForProvider(state.NamingModel.Provider)
-			a.titleGen.namingModel = state.NamingModel.Model
+			a.titleGen.setNaming(a.clientForProvider(state.NamingModel.Provider), state.NamingModel.Model)
 		}
 	}
 	return nil
@@ -490,14 +496,32 @@ func (a *Agent) applyRuntimeState(state *config.StateConfig) error {
 func (a *Agent) saveRuntimeState() error {
 	if err := config.SaveState(a.statePath, config.StateConfig{
 		Session:      config.StateSessionConfig{DefaultMode: a.sessions.DefaultMode()},
-		ModeModels:   cloneModeModels(a.modelRuntime.modeModels),
-		CompactModel: a.compactModel,
-		NamingModel:  a.namingModel,
+		ModeModels:   a.modeModelsSnapshot(),
+		CompactModel: a.contextRuntime.configuredCompactModel(),
+		NamingModel:  a.configuredNamingModel(),
 	}); err != nil {
 		return err
 	}
 	a.stateModTime = initialStateModTime(a.statePath)
 	return nil
+}
+
+func (a *Agent) modeModelsSnapshot() map[string]config.ModelSelection {
+	a.modelRuntime.selectionMu.RLock()
+	defer a.modelRuntime.selectionMu.RUnlock()
+	return cloneModeModels(a.modelRuntime.modeModels)
+}
+
+func (a *Agent) configuredNamingModel() config.ModelSelection {
+	a.namingModelMu.RLock()
+	defer a.namingModelMu.RUnlock()
+	return a.namingModel
+}
+
+func (a *Agent) setNamingModel(selection config.ModelSelection) {
+	a.namingModelMu.Lock()
+	a.namingModel = selection
+	a.namingModelMu.Unlock()
 }
 
 func joinModelMatches(matches []agentcommands.ModelOption) string {

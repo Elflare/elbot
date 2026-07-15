@@ -82,6 +82,8 @@ type ModelMetadataConfig struct {
 	DefaultContextWindow int `toml:"default_context_window"`
 }
 
+const DefaultContextWindow = 256000
+
 type LLMRequestConfig struct {
 	FirstChunkTimeoutSeconds int `toml:"first_chunk_timeout_seconds"`
 	StreamIdleTimeoutSeconds int `toml:"stream_idle_timeout_seconds"`
@@ -663,7 +665,7 @@ func (c *Config) applyProviderDefaults() {
 		c.Providers = map[string]ProviderConfig{}
 	}
 	if c.ModelMetadata.DefaultContextWindow <= 0 {
-		c.ModelMetadata.DefaultContextWindow = 8192
+		c.ModelMetadata.DefaultContextWindow = DefaultContextWindow
 	}
 }
 

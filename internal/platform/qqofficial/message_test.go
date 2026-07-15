@@ -80,7 +80,7 @@ func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
 	adapter := New(Config{}, store, nil)
 	svc := session.NewService(store)
 	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: platformName, PlatformScopeID: "c2c:user-1"}
-	s, err := svc.Create(ctx, scope, "source")
+	s, err := svc.Create(ctx, scope, session.CreateRequest{Title: "source"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -305,7 +305,7 @@ func TestHandleC2CMessageContinuesLatestAssistantReference(t *testing.T) {
 
 func createQQOfficialAssistantMessages(t *testing.T, ctx context.Context, store storage.Store, scope session.Scope) (*storage.Message, *storage.Message) {
 	t.Helper()
-	s, err := session.NewService(store).Create(ctx, scope, "source")
+	s, err := session.NewService(store).Create(ctx, scope, session.CreateRequest{Title: "source"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}

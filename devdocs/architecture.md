@@ -239,13 +239,15 @@ Session 服务管理：
 
 - 加载历史消息和 Fork 上下文。
 - 解析 context window。
-- 维护压缩摘要和待压缩标记。
+- 按当前模型的 context window 动态判断压缩阈值。
 - 格式化厂商 usage 状态。
 
 约定：
 
 - Prompt Builder 只生成单条 system prompt，并组合历史、工具 transcript、多模态 metadata 和摘要。
-- 压缩以可取消 request 保护生命周期，仅总结有效对话与成功工具调用，并把摘要和历史用户原话固定注入 checkpoint 后第一条 user 消息。
+- 压缩以可取消 request 保护生命周期，仅总结有效对话与成功工具调用。成功后创建并切换到无 Parent/Fork 关系的新 Session，旧 Session 保持不变。
+- 新 Session metadata 暂存一次性 compact seed；首条用户输入时，Prompt Builder 将“压缩结果 + 历史用户原话 + 当前输入”物化为单条 user message，成功持久化后消耗 seed。
+- 模型选择在 turn 开始时快照；进行中的 `/model` 不改变当前 LLM/工具循环，下一轮按新模型重新解析窗口与阈值。
 - System Prompt Manager 按优先级收集 Soul、工具名称、tag prompt 等片段。
 - 最近 usage 会写入 Session metadata，恢复会话后可展示。
 

@@ -111,7 +111,7 @@ default_context_window = 256000
 - `models` 是手动补充的模型名列表，当 Provider 的模型列表接口获取不到某些模型时使用。
 - `[providers.<name>.model_configs."<model>"]` 为特定模型配置 `context_window` 和 `extra_payload`，两者都是可选的。
 - `extra_payload` 会合并到 LLM 请求 JSON 中，模型级覆盖 Provider 级。
-- `[model_metadata]` 的 `default_context_window` 是全局回退值，没有在 `model_configs` 里配 `context_window` 时使用。
+- `[model_metadata]` 的 `default_context_window` 是全局回退值，默认 `256000`，没有在 `model_configs` 里配 `context_window` 时使用。
 
 ## 内置 Web 工具配置
 
@@ -411,7 +411,7 @@ compact_trigger_ratio = 0.8
 
 - 开启后，Session 上下文接近窗口上限时会触发压缩。
 - 也可以通过 `/compact` 手动压缩当前 Session。
-- 压缩只影响发给 LLM 的上下文视图，不删除原始历史。
+- 压缩成功后会切换到独立的新 Session，不修改原 Session 的历史。
 
 模型窗口在 `providers.toml` 的 `model_configs` 中配置：
 
@@ -423,7 +423,7 @@ context_window = 64000
 default_context_window = 256000
 ```
 
-- `[model_metadata].default_context_window` 是全局回退值，模型块里没配 `context_window` 时使用。
+- `[model_metadata].default_context_window` 是全局回退值，默认 `256000`，模型块里没配 `context_window` 时使用。
 
 ## 命令前缀
 
