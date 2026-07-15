@@ -672,6 +672,14 @@
       "translation": "Inbound @ messages in QQ OneBot will now prioritize displaying the group business card, followed by the regular nickname, in the format __ELBOT_CODE_0__, and will fall back to the QQ number if neither can be retrieved.",
       "updated_at": 1783095128
     },
+    "CHANGELOG.md:list:a271e909035b0a70b1fa7088d1024a133655b05e8878e62ccfad3f0f6f18ccaa": {
+      "kind": "list",
+      "source": "同时修复模型切换、__ELBOT_CODE_0__ 与 Session 变更命令的并发问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a271e909035b0a70b1fa7088d1024a133655b05e8878e62ccfad3f0f6f18ccaa",
+      "translation": "Simultaneously fixed concurrency issues related to model switching, __ELBOT_CODE_0__, and Session change commands.",
+      "updated_at": 1784109405
+    },
     "CHANGELOG.md:list:a57014269f2740133b4741d7c07d93ac6b9d18e72ed1c452cf164c62c16e3c54": {
       "kind": "list",
       "source": "同一 Session 的同一路径与切换、重置入口共享一次性记录，不会重复注入。",
@@ -807,6 +815,14 @@
       "source_hash": "bd93eae9bd1763e2908b379364b1f9d9b2057b8941646314b5cf7d0e454e8ac8",
       "translation": "**Standard Cron and LLM Cron**: Standard Cron sends fixed content directly according to a schedule;",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:bfcdea1f22fc104c87792b36230a1333c05c0c6ab4336e69e47203197c32a7b2": {
+      "kind": "list",
+      "source": "无法从模型元数据或配置识别 context window 时，默认窗口调整为 256k。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "bfcdea1f22fc104c87792b36230a1333c05c0c6ab4336e69e47203197c32a7b2",
+      "translation": "When the context window cannot be identified from model metadata or configuration, the default window is adjusted to 256k.",
+      "updated_at": 1784109405
     },
     "CHANGELOG.md:list:c1f3b644091065de80d300d76b09ba465097fb8b0f28ef5f7ce2c3d3a7051ce7": {
       "kind": "list",
@@ -976,6 +992,14 @@
       "translation": "Session idle expiration is now managed by four __ELBOT_CODE_0__ configurations, which separately control the current Session expiration time for ordinary users and superadmins in group chats and private chats;",
       "updated_at": 1783074551
     },
+    "CHANGELOG.md:list:ef6588782632f866ab4b19fd530b98068c98b122ae747795f4ea20470edff7e6": {
+      "kind": "list",
+      "source": "上下文压缩改为保留历史用户原话、过滤工具结果，成功后切换到 __ELBOT_CODE_0__ 独立 Session，并将压缩内容与新输入固定物化为首条用户消息；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ef6588782632f866ab4b19fd530b98068c98b122ae747795f4ea20470edff7e6",
+      "translation": "Context compaction is changed to retain original user utterances from history and filter tool results; upon success, it switches to an independent __ELBOT_CODE_0__ Session, and the compacted content along with the new input is fixedly materialized as the first user message;",
+      "updated_at": 1784109405
+    },
     "CHANGELOG.md:list:f191a10fa95a661a532ab05af86e47b4652486eaaadeac994e312f48821af516": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 命令现在展示每个 turn 的当前运行阶段（preparing/llm/tool/sending）和阶段耗时，可区分 LLM 慢还是平台发送卡住。",
@@ -1018,8 +1042,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "63c728cef8db8dfa1e5e77f2c070d739a6c4a630ed921a98e57eb69436df139b",
+  "source_hash": "12c011476d470fcee7c2b75d15c13e0941362916f9b0f99e4e59de6c0390a938",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784085278,
+  "updated_at": 1784109405,
   "version": 2
 }
