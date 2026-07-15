@@ -61,7 +61,7 @@ For specific syntax and examples, see [Command Quick Reference: Tools and Skills
 
 ## Session
 
-A Session is ElBot's persistent session unit, used to save the context, mode, message history, compressed summary, and tool call records of a continuous conversation.
+Session is ElBot's persistent session unit, used to save the context, mode, message history, and tool call records of a continuous conversation.
 
 Different platforms and different chat scopes usually use their own Sessions to avoid cross-contamination of context. The CLI is a local high-privilege entry point and can view and manage Sessions across platforms.
 
@@ -75,9 +75,9 @@ The new branch inherits the context before the fork point but does not modify th
 
 ## Context compaction
 
-Long conversations will gradually approach the model's context window. Context compaction summarizes earlier conversations and combines them with the most recent messages to form the context view sent to the LLM.
+Long conversations will gradually approach the model's context window. Context compaction uses a compression model to organize the current conversation, then assembles the compression result with all historical original user messages as a new context starting point.
 
-Compaction does not delete original messages; it only changes the context content used in subsequent requests. It can be triggered automatically or manually by the user.
+After successful compression, it will switch to a completely independent new Session with the title `原标题 compacted-N`. The old Session will not be modified, and there is no Fork relationship between the old and new Sessions. The user's next message will be merged with the assembled compressed content to become the first user message of the new Session. It can be triggered automatically or manually by the user.
 
 ## Prompt and Soul
 
