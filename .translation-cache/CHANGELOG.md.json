@@ -112,6 +112,14 @@
       "translation": "Added __ELBOT_CODE_0__ command: aggregates token consumption from the audit log, supporting summaries by model/day/Session, with shortcut parameters __ELBOT_CODE_1__ for days, __ELBOT_CODE_2__ for model, and __ELBOT_CODE_3__ for Session.",
       "updated_at": 1782884148
     },
+    "CHANGELOG.md:list:1e09ce6b38276aa92e6b8263e6d5d976e802755ccd80424e2d1025e6e460f939": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 新增 __ELBOT_CODE_1__ 和 __ELBOT_CODE_2__，用于筛选并显示 __ELBOT_CODE_3__ 日志。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "1e09ce6b38276aa92e6b8263e6d5d976e802755ccd80424e2d1025e6e460f939",
+      "translation": "__ELBOT_CODE_0__ added __ELBOT_CODE_1__ and __ELBOT_CODE_2__ to filter and display __ELBOT_CODE_3__ logs.",
+      "updated_at": 1784127057
+    },
     "CHANGELOG.md:list:26b222fc0d0b7e2913298c6c9031205f80eda52572d2f5f484ad632790632906": {
       "kind": "list",
       "source": "QQ OneBot、QQ 官方、Telegram 平台断线重连改为指数退避（3s 起，翻倍，封顶 10s）并日志降级：连续失败只在首次记 warn，恢复后记 info，不再每轮刷屏。",
@@ -1042,8 +1050,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "12c011476d470fcee7c2b75d15c13e0941362916f9b0f99e4e59de6c0390a938",
+  "source_hash": "fe91e30a01b301e8c224774896e5adee77f417eb226e3efd7ba63eb82610d325",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784109405,
+  "updated_at": 1784127057,
   "version": 2
 }
