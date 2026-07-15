@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"elbot/internal/storage"
 )
@@ -49,6 +50,53 @@ INSERT INTO tool_call_records (
 		return fmt.Errorf("create tool call record: %w", err)
 	}
 	return nil
+}
+
+func (r *ToolCallRepository) SuccessfulIDs(ctx context.Context, toolCallIDs []string) (map[string]bool, error) {
+	const batchSize = 500
+
+	unique := make([]string, 0, len(toolCallIDs))
+	seen := map[string]bool{}
+	for _, id := range toolCallIDs {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		unique = append(unique, id)
+	}
+
+	successful := map[string]bool{}
+	for start := 0; start < len(unique); start += batchSize {
+		end := min(start+batchSize, len(unique))
+		batch := unique[start:end]
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(batch)), ",")
+		args := make([]any, len(batch))
+		for i, id := range batch {
+			args[i] = id
+		}
+		rows, err := r.db.QueryContext(ctx, `
+SELECT DISTINCT tool_call_id
+FROM tool_call_records
+WHERE success = 1 AND tool_call_id IN (`+placeholders+`)`, args...)
+		if err != nil {
+			return nil, fmt.Errorf("query successful tool calls: %w", err)
+		}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("scan successful tool call: %w", err)
+			}
+			successful[id] = true
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("iterate successful tool calls: %w", err)
+		}
+		rows.Close()
+	}
+	return successful, nil
 }
 
 func (r *ToolCallRepository) UsageBySession(ctx context.Context, sessionID string) ([]storage.ToolUsageSummary, error) {

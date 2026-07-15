@@ -377,6 +377,14 @@ func TestToolCallRepositoryUsageBySession(t *testing.T) {
 	if len(usage) != 2 || usage[0].ToolName != "shell" || usage[0].Count != 2 || usage[1].ToolName != "web_search" || usage[1].Count != 1 {
 		t.Fatalf("usage = %#v", usage)
 	}
+
+	successful, err := store.ToolCalls().SuccessfulIDs(ctx, []string{"call_1", "call_2", "call_3", "missing", "call_1"})
+	if err != nil {
+		t.Fatalf("successful ids: %v", err)
+	}
+	if len(successful) != 2 || !successful["call_1"] || !successful["call_3"] || successful["call_2"] {
+		t.Fatalf("successful ids = %#v", successful)
+	}
 }
 
 func TestContextSummaryRepositoryAndListAfter(t *testing.T) {

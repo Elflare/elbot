@@ -370,6 +370,10 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 	if a.commands.IsCommand(text) {
 		session, sessionErr := a.sessions.Current(ctx, a.scope(ctx))
 		parsed := a.commands.Parse(text)
+		if sessionErr == nil && parsed.OK && a.compactActive(session.ID) && shouldBlockCommandDuringCompact(parsed.Name) {
+			a.sendChat(ctx, compactCommandBlockedText(text))
+			return nil
+		}
 		if sessionErr == nil && a.turns.Snapshot(session.ID).Phase == turn.PhaseAwaitAppendConfirm {
 			if turn.IsConfirm(text) || turn.IsCancel(text) {
 				return a.handleAppendConfirmationInput(ctx, session, text)

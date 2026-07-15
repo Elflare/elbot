@@ -89,6 +89,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	if err != nil {
 		return err
 	}
+	summaryOnCurrentUser := loaded.Summary != nil && !hasStorageUserMessage(loaded.Messages)
 	messages := append([]storage.Message{}, loaded.Messages...)
 	messages = append(messages, *userMessage)
 
@@ -114,7 +115,6 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	if err != nil {
 		return err
 	}
-	llmMessages = llm.SetLatestUserSegments(llmMessages, userSegments)
 	tools, err := a.toolsForSession(ctx, session)
 	if err != nil {
 		return err
@@ -138,6 +138,9 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	tools = turnEvent.LLM.Tools
 	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
 	if updatedUserContent := llm.LatestUserSegmentContentText(llmMessages); updatedUserContent != "" {
+		if summaryOnCurrentUser {
+			updatedUserContent = strings.TrimPrefix(updatedUserContent, summaryUserPrefix(loaded.Summary.Summary))
+		}
 		userMessage.Content = updatedUserContent
 	}
 	if err := a.persistTurnMessage(ctx, userMessage, "append_user_message"); err != nil {
@@ -364,4 +367,13 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	}
 	a.sessions.MaybeScheduleNaming(ctx, session.ID)
 	return nil
+}
+
+func hasStorageUserMessage(messages []storage.Message) bool {
+	for _, message := range messages {
+		if message.Role == storage.RoleUser {
+			return true
+		}
+	}
+	return false
 }

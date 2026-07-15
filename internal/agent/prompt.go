@@ -117,7 +117,8 @@ func (b PromptBuilder) Build(ctx context.Context, req PromptBuildRequest) ([]llm
 		return nil, fmt.Errorf("system prompt is required")
 	}
 	out := []llm.LLMMessage{{Role: llm.RoleSystem, Segments: llm.TextSegments(systemPrompt)}}
-	for i, message := range req.Messages {
+	summaryInjected := false
+	for _, message := range req.Messages {
 		role := llm.MessageRole(message.Role)
 		if role != llm.RoleUser && role != llm.RoleAssistant && role != llm.RoleTool && role != llm.RoleSystem {
 			continue
@@ -128,11 +129,11 @@ func (b PromptBuilder) Build(ctx context.Context, req PromptBuildRequest) ([]llm
 			content = metadata.RawText
 		}
 		segments := messageSegments(role, content, message)
-		// 有些模型只稳定接受第一条 system prompt，压缩摘要不要新增第二条 system。
-		// 摘要拼到最后一条 user message 前缀，同时保留原 user 的图片/文件 segments，
-		// 避免破坏多模态输入结构。
-		if req.Summary != nil && i == len(req.Messages)-1 && role == llm.RoleUser {
+		// 摘要固定在 checkpoint 后的第一条 user 消息中，形成稳定的新上下文起点。
+		// 仍保留原 user 的图片/文件 segments，避免破坏多模态输入结构。
+		if req.Summary != nil && !summaryInjected && role == llm.RoleUser {
 			segments = llm.PrependSegmentText(segments, summaryUserPrefix(req.Summary.Summary))
+			summaryInjected = true
 		}
 		out = append(out, storageMessageToLLM(role, segments, message))
 	}
@@ -197,5 +198,5 @@ func toolNamesText(names []string) string {
 }
 
 func summaryUserPrefix(summary string) string {
-	return fmt.Sprintf("以下是较早对话的压缩摘要：\n%s\n\n---\n\n用户本轮消息：\n", summary)
+	return fmt.Sprintf("%s\n\n当前用户输入：\n", strings.TrimSpace(summary))
 }
