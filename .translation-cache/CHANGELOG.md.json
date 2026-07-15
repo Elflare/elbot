@@ -944,6 +944,14 @@
       "translation": "Emoticon Hook changed from an embedded plugin to a rule Hook example; the emoticon plugin and __ELBOT_CODE_0__ assets are no longer built-in.",
       "updated_at": 1782376912
     },
+    "CHANGELOG.md:list:e7a12fa2b8a4d1ae4b390ff2377dc8d286be5ad3d7ab85257d5fdede2622a942": {
+      "kind": "list",
+      "source": "CLI TUI 宽屏模式支持用鼠标拖动聊天区与通知区之间的分界线，运行期间可自由调整两侧宽度。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "e7a12fa2b8a4d1ae4b390ff2377dc8d286be5ad3d7ab85257d5fdede2622a942",
+      "translation": "CLI TUI wide-screen mode now supports using the mouse to drag the divider between the chat area and the notification area, allowing the widths of both sides to be freely adjusted during runtime.",
+      "updated_at": 1784085278
+    },
     "CHANGELOG.md:list:ea9324e8d2b186f384e727405908a402edd258407ff1c17a7fcc25913da73458": {
       "kind": "list",
       "source": "首次切换到含 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 的目录时，会自动附带说明文件内容；",
@@ -1010,8 +1018,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "bd2eaf86e53f49ba403e8867b6246f99755d01d241d01c220077e074f53539e5",
+  "source_hash": "63c728cef8db8dfa1e5e77f2c070d739a6c4a630ed921a98e57eb69436df139b",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784027930,
+  "updated_at": 1784085278,
   "version": 2
 }
