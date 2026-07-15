@@ -1,8 +1,10 @@
 package builtin
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
+	"go/format"
 	"go/parser"
 	"go/token"
 	"path/filepath"
@@ -15,9 +17,10 @@ import (
 )
 
 const (
-	readFileModeRead = "read"
-	readFileModeGrep = "grep"
-	readFileModeAST  = "ast"
+	readFileModeRead        = "read"
+	readFileModeGrep        = "grep"
+	readFileModeAST         = "ast"
+	readFileModeASTFunction = "ast_function"
 )
 
 type astMatch struct {
@@ -33,10 +36,10 @@ func normalizeReadFileMode(value string) (string, error) {
 		return readFileModeRead, nil
 	}
 	switch mode {
-	case readFileModeRead, readFileModeGrep, readFileModeAST:
+	case readFileModeRead, readFileModeGrep, readFileModeAST, readFileModeASTFunction:
 		return mode, nil
 	default:
-		return "", fmt.Errorf("read_file mode must be read, grep, or ast")
+		return "", fmt.Errorf("read_file mode must be read, grep, ast, or ast_function")
 	}
 }
 
@@ -63,6 +66,101 @@ func readFileASTResult(file fileops.File, query string, contextLines, maxMatches
 		warnings = append(warnings, parseWarning)
 	}
 	return formatASTMatches(file, query, language, matches, contextLines, maxMatches, warnings), nil
+}
+
+type astFunctionMatch struct {
+	StartLine int
+	EndLine   int
+	Kind      string
+	Name      string
+}
+
+func readFileASTFunctionResult(file fileops.File, query string, maxMatches int, warnings []string) (*tool.Result, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, fmt.Errorf("query is required when mode is ast_function")
+	}
+	language, variant, err := detectASTLanguage(file.Path, file.Text)
+	if err != nil {
+		return nil, err
+	}
+	var matches []astFunctionMatch
+	var parseWarning string
+	if language == "go" {
+		matches, parseWarning, err = findGoASTFunctions(file.Path, file.Text, query)
+	} else {
+		matches, parseWarning, err = findShellASTFunctions(file.Text, query, variant)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if parseWarning != "" {
+		warnings = append(warnings, parseWarning)
+	}
+	return formatASTFunctionMatches(file, query, language, matches, maxMatches, warnings), nil
+}
+
+func findGoASTFunctions(path, source, query string) ([]astFunctionMatch, string, error) {
+	if strings.TrimSpace(source) == "" {
+		return nil, "", nil
+	}
+	fset := token.NewFileSet()
+	file, parseErr := parser.ParseFile(fset, path, source, parser.AllErrors)
+	if file == nil {
+		return nil, "", fmt.Errorf("parse Go source: %w", parseErr)
+	}
+	matches := make([]astFunctionMatch, 0)
+	for _, decl := range file.Decls {
+		function, ok := decl.(*ast.FuncDecl)
+		if !ok || function.Name == nil || function.Name.Name != query {
+			continue
+		}
+		start := fset.Position(function.Pos()).Line
+		end := fset.Position(function.End()).Line
+		kind, name := "function", function.Name.Name
+		if function.Recv != nil {
+			kind, name = "method", goASTFunctionName(fset, function)
+		}
+		matches = append(matches, astFunctionMatch{StartLine: start, EndLine: end, Kind: kind, Name: name})
+	}
+	if parseErr != nil {
+		return matches, "Go AST 解析存在错误，结果可能不完整：" + parseErr.Error(), nil
+	}
+	return matches, "", nil
+}
+
+func goASTFunctionName(fset *token.FileSet, function *ast.FuncDecl) string {
+	if function.Recv == nil || len(function.Recv.List) == 0 {
+		return function.Name.Name
+	}
+	var receiver bytes.Buffer
+	if err := format.Node(&receiver, fset, function.Recv.List[0].Type); err != nil {
+		return function.Name.Name
+	}
+	return "(" + receiver.String() + ")." + function.Name.Name
+}
+
+func findShellASTFunctions(source, query string, variant syntax.LangVariant) ([]astFunctionMatch, string, error) {
+	parser := syntax.NewParser(syntax.Variant(variant))
+	file, parseErr := parser.Parse(strings.NewReader(source), "")
+	warning := ""
+	if parseErr != nil {
+		file, parseErr = syntax.NewParser(syntax.Variant(variant), syntax.RecoverErrors(10)).Parse(strings.NewReader(source), "")
+		if parseErr != nil || file == nil {
+			return nil, "", fmt.Errorf("parse Shell source: %w", parseErr)
+		}
+		warning = "Shell AST 解析已恢复错误，结果可能不完整。"
+	}
+	matches := make([]astFunctionMatch, 0)
+	syntax.Walk(file, func(node syntax.Node) bool {
+		function, ok := node.(*syntax.FuncDecl)
+		if !ok || function.Name == nil || function.Name.Value != query {
+			return true
+		}
+		matches = append(matches, astFunctionMatch{StartLine: int(function.Pos().Line()), EndLine: int(function.End().Line()), Kind: "function", Name: function.Name.Value})
+		return true
+	})
+	return matches, warning, nil
 }
 
 func detectASTLanguage(path, text string) (string, syntax.LangVariant, error) {
@@ -217,6 +315,28 @@ func formatASTMatches(file fileops.File, query, language string, matches []astMa
 				marker = ">"
 			}
 			fmt.Fprintf(&b, "%s %*d | %s\n", marker, width, line, lines[line-1])
+		}
+	}
+	return &tool.Result{Content: b.String(), Warnings: warnings}
+}
+
+func formatASTFunctionMatches(file fileops.File, query, language string, matches []astFunctionMatch, maxMatches int, warnings []string) *tool.Result {
+	maxMatches = fileops.NormalizeMaxMatches(maxMatches)
+	truncated := len(matches) > maxMatches
+	if truncated {
+		matches = matches[:maxMatches]
+	}
+	lines := fileops.SplitLines(file.Text)
+	var b strings.Builder
+	fmt.Fprintf(&b, "file: %s\nencoding: %s\nsha256: %s\nast_function: %q\nlanguage: %s\nmatches: %d\ntruncated: %t\ncontent:\n", file.Path, file.Encoding, fileops.SHA256Hex(file.Bytes), query, language, len(matches), truncated)
+	width := len(fmt.Sprintf("%d", len(lines)))
+	for index, match := range matches {
+		if index > 0 {
+			b.WriteString("--\n")
+		}
+		fmt.Fprintf(&b, "match: %d-%d [%s] %s\n", match.StartLine, match.EndLine, match.Kind, match.Name)
+		for line := match.StartLine; line <= match.EndLine; line++ {
+			fmt.Fprintf(&b, "  %*d | %s\n", width, line, lines[line-1])
 		}
 	}
 	return &tool.Result{Content: b.String(), Warnings: warnings}
