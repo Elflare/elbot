@@ -96,14 +96,6 @@
       "translation": "A work Session with existing history cannot be switched directly to chat; you need to __ELBOT_CODE_0__ first, and then __ELBOT_CODE_1__.",
       "updated_at": 1781514917
     },
-    "docs/commands.md:list:23f8c5838d6c120b2886e3ecb1b73f29c36197a8e11c71adc468372356e2e815": {
-      "kind": "list",
-      "source": "Hook 包括规则 Hook（__ELBOT_CODE_0__）、常驻记忆 Hook 和内置 Cron Hook。",
-      "source_file": "docs/commands.md",
-      "source_hash": "23f8c5838d6c120b2886e3ecb1b73f29c36197a8e11c71adc468372356e2e815",
-      "translation": "Hooks include rule Hooks (__ELBOT_CODE_0__), resident memory Hooks, and built-in Cron Hooks.",
-      "updated_at": 1782444282
-    },
     "docs/commands.md:list:4691554f72e6c9db8dad2211f514020935023e8ac97c7d157c4ca2e7ac997513": {
       "kind": "list",
       "source": "规则 Hook 直接使用配置里的 __ELBOT_CODE_0__；",
@@ -136,22 +128,6 @@
       "translation": "__ELBOT_CODE_0__ aggregates token usage from __ELBOT_CODE_1__ events in the audit log, calculating prompt, completion, total, cache, and duration grouped by model/day/Session.",
       "updated_at": 1782884118
     },
-    "docs/commands.md:list:8f2f7d63d3db67a7a577eebfd266cafc17be3dd507dad49fe860f9fc068b8c19": {
-      "kind": "list",
-      "source": "内置 Hook 使用 __ELBOT_CODE_0__ 名称，例如 __ELBOT_CODE_1__、__ELBOT_CODE_2__。",
-      "source_file": "docs/commands.md",
-      "source_hash": "8f2f7d63d3db67a7a577eebfd266cafc17be3dd507dad49fe860f9fc068b8c19",
-      "translation": "Built-in Hooks use the __ELBOT_CODE_0__ name, such as __ELBOT_CODE_1__ and __ELBOT_CODE_2__.",
-      "updated_at": 1783390911
-    },
-    "docs/commands.md:list:90c8c1bfe6e267ecc3fefcb7a87133b98693bf3aebd34ab4340440f416f34a60": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 会重新读取 __ELBOT_CODE_1__ 并重建所有 Hook 注册，修改配置后无需重启即可生效。",
-      "source_file": "docs/commands.md",
-      "source_hash": "90c8c1bfe6e267ecc3fefcb7a87133b98693bf3aebd34ab4340440f416f34a60",
-      "translation": "__ELBOT_CODE_0__ will re-read __ELBOT_CODE_1__ and rebuild all Hook registrations, allowing configuration changes to take effect without a restart.",
-      "updated_at": 1782444282
-    },
     "docs/commands.md:list:9400f2f042628dd3abff85e3325458fa3f499931e3b3a94c0e520db1bfd12b52": {
       "kind": "list",
       "source": "仅超级管理员可用。",
@@ -167,6 +143,14 @@
       "source_hash": "97373883e2c7b6a67aaf64e0c0843930d201380850c2324a4f7b6efe359893dd",
       "translation": "Persistent Hooks use plugin IDs.",
       "updated_at": 1783678873
+    },
+    "docs/commands.md:list:9bb8cb699b4337c2b627fa62837be2876ed6f421289c58268fff61b68abcf498": {
+      "kind": "list",
+      "source": "压缩会保留历史用户原话、忽略工具返回值，成功后创建并切换到独立的 __ELBOT_CODE_0__ Session；旧 Session 不修改。",
+      "source_file": "docs/commands.md",
+      "source_hash": "9bb8cb699b4337c2b627fa62837be2876ed6f421289c58268fff61b68abcf498",
+      "translation": "Compaction preserves the original user history and ignores tool return values; upon success, it creates and switches to an independent __ELBOT_CODE_0__ Session, while the old Session remains unmodified.",
+      "updated_at": 1784109294
     },
     "docs/commands.md:list:a0b5430c1b57bff3b15d0f05598d4fb48dd807a396c4627a0b3f97a23697a81c": {
       "kind": "list",
@@ -208,14 +192,6 @@
       "translation": "__ELBOT_CODE_0__ mode enables tool discovery and tool calling.",
       "updated_at": 1781514917
     },
-    "docs/commands.md:list:e850fda8108ea39dcdeac91904fad7726f49f72fd03ac228d94e6242fbe400e3": {
-      "kind": "list",
-      "source": "压缩只影响发送给 LLM 的上下文视图，不删除原始消息历史。",
-      "source_file": "docs/commands.md",
-      "source_hash": "e850fda8108ea39dcdeac91904fad7726f49f72fd03ac228d94e6242fbe400e3",
-      "translation": "Compaction only affects the context view sent to the LLM and does not delete the original message history.",
-      "updated_at": 1781514917
-    },
     "docs/commands.md:list:f09b27469f6c5b3a4aed39e01ef19ff88d1b7b67a2a7234105026a61371182d4": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 会重新读取 __ELBOT_CODE_1__ 和各插件 __ELBOT_CODE_2__，并重建 Hook 注册、替换受影响的持久进程。",
@@ -231,14 +207,6 @@
       "source_hash": "f275ad5728d0764f38c31757da740dea8fbb8ca748a44322a4182a2ca668d5c5",
       "translation": "__ELBOT_CODE_0__ will be displayed in the list and details; rule details are only displayed in the details.",
       "updated_at": 1783390911
-    },
-    "docs/commands.md:paragraph:0659d53aec5275ec4629f57bb87e0537087628ebd646e0504ad9fd702bba5f6f": {
-      "kind": "paragraph",
-      "source": "LLM 在 work 模式下可以通过 __ELBOT_CODE_0__ 按需发现工具详情。聊天中也可以用 __ELBOT_CODE_1__ 预载工具。\n",
-      "source_file": "docs/commands.md",
-      "source_hash": "0659d53aec5275ec4629f57bb87e0537087628ebd646e0504ad9fd702bba5f6f",
-      "translation": "In work mode, the LLM can discover tool details on demand via __ELBOT_CODE_0__. In chat, __ELBOT_CODE_1__ can also be used to preload tools.\n",
-      "updated_at": 1781514917
     },
     "docs/commands.md:paragraph:11949f500527ac1c11f5031f858cfb0a5bfb8bf7f0a9644ef049ccfb83459f01": {
       "kind": "paragraph",
@@ -280,14 +248,6 @@
       "translation": "In a chat, you can also use __ELBOT_CODE_0__ (shorthand __ELBOT_CODE_1__) to preload tools, or use __ELBOT_CODE_2__ (shorthand __ELBOT_CODE_3__) to add Skill documentation to the current round of messages and preload the corresponding runtime wrapper.",
       "updated_at": 1783240856
     },
-    "docs/commands.md:paragraph:5b9cabfff69460916096d38fb82201e002fbcb5568abd8509ff01023e3949fb3": {
-      "kind": "paragraph",
-      "source": "聊天中也可以用 __ELBOT_CODE_0__ 预载工具，或用 __ELBOT_CODE_1__ 把 Skill 文档加入本轮消息并预载对应运行 wrapper。\n",
-      "source_file": "docs/commands.md",
-      "source_hash": "5b9cabfff69460916096d38fb82201e002fbcb5568abd8509ff01023e3949fb3",
-      "translation": "In chat, you can also use __ELBOT_CODE_0__ to preload tools, or use __ELBOT_CODE_1__ to add Skill documentation to the current round of messages and preload the corresponding runtime wrapper.\n",
-      "updated_at": 1782205939
-    },
     "docs/commands.md:paragraph:6d44113da741d20c4942ea1c332e5f11f6ff9f0a76ebc9185ae1ed36e8d57fa0": {
       "kind": "paragraph",
       "source": "冒号也可以写成中文全角冒号 __ELBOT_CODE_0__。\n",
@@ -312,38 +272,6 @@
       "translation": "Model parameters can be a list number, model name, or __ELBOT_CODE_0__.\n",
       "updated_at": 1781514917
     },
-    "docs/commands.md:paragraph:812445d8702bbb42e10670c0dd7eef363e6983f1a595099f176f33f4147d637d": {
-      "kind": "paragraph",
-      "source": "设置后，所有需要路径的工具都会基于该目录解析相对路径；",
-      "source_file": "docs/commands.md",
-      "source_hash": "812445d8702bbb42e10670c0dd7eef363e6983f1a595099f176f33f4147d637d",
-      "translation": "Once set, all tools that require a path will resolve relative paths based on this directory;",
-      "updated_at": 1782958886
-    },
-    "docs/commands.md:paragraph:898e1bc0f9ce70981765d22f71d5a0fb6e75efed2623547dbe0b4d1bf0d239f0": {
-      "kind": "paragraph",
-      "source": "内置工具 __ELBOT_CODE_0__ 可帮助超级管理员生成 Elwisp 配置、Elvena 事件模板、监听器脚手架和测试命令；",
-      "source_file": "docs/commands.md",
-      "source_hash": "898e1bc0f9ce70981765d22f71d5a0fb6e75efed2623547dbe0b4d1bf0d239f0",
-      "translation": "The built-in tool __ELBOT_CODE_0__ helps superadmins generate Elwisp configurations, Elvena event templates, listener scaffolds, and test commands;",
-      "updated_at": 1781779244
-    },
-    "docs/commands.md:paragraph:8d384f75e84811811e30deb615414f9aa2af1c79133c70f7051c7632144f9501": {
-      "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 工具用于设置当前 Session 的共享工作目录。",
-      "source_file": "docs/commands.md",
-      "source_hash": "8d384f75e84811811e30deb615414f9aa2af1c79133c70f7051c7632144f9501",
-      "translation": "__ELBOT_CODE_0__ tool is used to set the shared working directory of the current Session.",
-      "updated_at": 1782958886
-    },
-    "docs/commands.md:paragraph:93a121bb25dbf94d677d8ed7ff045ab92de7934c0a409c7ebcddaa4152346f1b": {
-      "kind": "paragraph",
-      "source": "cron/Elnis 后台任务不使用 workspace，仍限制在各自 sandbox 内。\n",
-      "source_file": "docs/commands.md",
-      "source_hash": "93a121bb25dbf94d677d8ed7ff045ab92de7934c0a409c7ebcddaa4152346f1b",
-      "translation": "cron/Elnis background tasks do not use the workspace and remain restricted within their respective sandboxes.\n",
-      "updated_at": 1782958886
-    },
     "docs/commands.md:paragraph:9cfc23ef97546ba454e69b31ea4aa508069e0043bb886c750dfb05372b197d92": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 查询 __ELBOT_CODE_1__，额外支持：\n",
@@ -351,14 +279,6 @@
       "source_hash": "9cfc23ef97546ba454e69b31ea4aa508069e0043bb886c750dfb05372b197d92",
       "translation": "__ELBOT_CODE_0__ queries __ELBOT_CODE_1__, with additional support for:\n",
       "updated_at": 1781752948
-    },
-    "docs/commands.md:paragraph:ac2863acb3046269d4539cff1acca6f6344a808173250f85ddffd5e82acc2719": {
-      "kind": "paragraph",
-      "source": "不传参数时返回当前 workspace，__ELBOT_CODE_0__ 时重置为默认工作目录。",
-      "source_file": "docs/commands.md",
-      "source_hash": "ac2863acb3046269d4539cff1acca6f6344a808173250f85ddffd5e82acc2719",
-      "translation": "When no parameters are passed, it returns the current workspace; when __ELBOT_CODE_0__ is used, it resets to the default working directory.",
-      "updated_at": 1782958886
     },
     "docs/commands.md:paragraph:b14afe6a70f51142e0bae242dcc2ce09ddf662a9e7ffc2fc3edc636f27af2569": {
       "kind": "paragraph",
@@ -400,14 +320,6 @@
       "translation": "Example:\n",
       "updated_at": 1781514917
     },
-    "docs/commands.md:paragraph:f8d019b11ba9dd9b0e8e9c0f4ecbc784290f10108e0b0e58d7c80177eb7c9dc6": {
-      "kind": "paragraph",
-      "source": "它本身无参数、无副作用，实际写文件或运行命令仍会继续使用文件工具和 shell 工具并走对应风险确认。\n",
-      "source_file": "docs/commands.md",
-      "source_hash": "f8d019b11ba9dd9b0e8e9c0f4ecbc784290f10108e0b0e58d7c80177eb7c9dc6",
-      "translation": "It has no parameters or side effects itself; actually writing files or running commands will still use the file tool and shell tool and go through the corresponding risk confirmation.\n",
-      "updated_at": 1781779244
-    },
     "docs/commands.md:paragraph:fd46fc8739d3b03d73dfe9915fef257fe25c994f1c6fd3bf1a96e95fddc2d0d6": {
       "kind": "paragraph",
       "source": "默认命令前缀是 __ELBOT_CODE_0__，可在 __ELBOT_CODE_1__ 的 __ELBOT_CODE_2__ 中配置。\n",
@@ -415,14 +327,6 @@
       "source_hash": "fd46fc8739d3b03d73dfe9915fef257fe25c994f1c6fd3bf1a96e95fddc2d0d6",
       "translation": "The default command prefix is __ELBOT_CODE_0__, which can be configured in __ELBOT_CODE_2__ of __ELBOT_CODE_1__.\n",
       "updated_at": 1781514917
-    },
-    "docs/commands.md:table:02c6d7d3fe6aba06a842a547d09d869f8c21c943fd74cabe9a1b0e00d972151f": {
-      "kind": "table",
-      "source": "查看当前进程中的 active request，包括每个 turn 的运行阶段（preparing/llm/tool/sending）和阶段耗时。",
-      "source_file": "docs/commands.md",
-      "source_hash": "02c6d7d3fe6aba06a842a547d09d869f8c21c943fd74cabe9a1b0e00d972151f",
-      "translation": "View active requests in the current process, including the execution stage (preparing/llm/tool/sending) and the duration of each stage for every turn.",
-      "updated_at": 1782952514
     },
     "docs/commands.md:table:03af39065d441408d43be4c157c84c77736fa517eedfac00caa9a31d9f4fa872": {
       "kind": "table",
@@ -470,14 +374,6 @@
       "source_file": "docs/commands.md",
       "source_hash": "0ba7423e03b0426c37991378a8ba9034b7eec65b7c3fcb33a4b7c8c582e3deef",
       "translation": "Switch to work mode, or create a new work Session.",
-      "updated_at": 1781514917
-    },
-    "docs/commands.md:table:0c376fc3086a94ef9c0983b67af721cf91f8861adc532c0b438e6ce1847fdf29": {
-      "kind": "table",
-      "source": "查看待确认工具调用详情。",
-      "source_file": "docs/commands.md",
-      "source_hash": "0c376fc3086a94ef9c0983b67af721cf91f8861adc532c0b438e6ce1847fdf29",
-      "translation": "View details of the tool call awaiting confirmation.",
       "updated_at": 1781514917
     },
     "docs/commands.md:table:0ca36ceb7e35d7dbf9961cd6ed699c41a62490440129e9dd66c3dfbc9ec0ca95": {
@@ -752,14 +648,6 @@
       "translation": "Switch the work mode model.",
       "updated_at": 1781514917
     },
-    "docs/commands.md:table:7bade1c1b9e2413a2bba26225f04ca4208937f14c09b9f8f513c4ef625f70f0e": {
-      "kind": "table",
-      "source": "优雅停止一个持久 Hook。",
-      "source_file": "docs/commands.md",
-      "source_hash": "7bade1c1b9e2413a2bba26225f04ca4208937f14c09b9f8f513c4ef625f70f0e",
-      "translation": "Gracefully stop a persistent Hook.",
-      "updated_at": 1783678873
-    },
     "docs/commands.md:table:7c2a3e53187de152eca878c772c15121d046d1770f0bad67422f8ebdd89f1302": {
       "kind": "table",
       "source": "置顶 Session，默认当前 Session。",
@@ -832,14 +720,6 @@
       "translation": "Command",
       "updated_at": 1781514917
     },
-    "docs/commands.md:table:92fcd4b94504ac990e5556a1f5a0af838e346375bda1b9d966bc7670cb647838": {
-      "kind": "table",
-      "source": "查看当前进程中的 active request。",
-      "source_file": "docs/commands.md",
-      "source_hash": "92fcd4b94504ac990e5556a1f5a0af838e346375bda1b9d966bc7670cb647838",
-      "translation": "View active requests in the current process.",
-      "updated_at": 1781514917
-    },
     "docs/commands.md:table:932c4281b5b49e5e207614f0ad4654e6fe3d23de12de1a395cfcc538809ecd7a": {
       "kind": "table",
       "source": "重新扫描并加载 Skill。",
@@ -863,14 +743,6 @@
       "source_hash": "99fcf954149006d2eeb8bcb2e5a869876cc6a9da83592f06d5ef09cfb81195c2",
       "translation": "Switch to Elnis elwisp2 model slot.",
       "updated_at": 1781779244
-    },
-    "docs/commands.md:table:9c12162af64254ee6aa7edf3275557631df4aef36a8de59244e5c3112268b0a8": {
-      "kind": "table",
-      "source": "清空并重新注册所有 Hook（规则 Hook、常驻记忆、内置 Hook）。",
-      "source_file": "docs/commands.md",
-      "source_hash": "9c12162af64254ee6aa7edf3275557631df4aef36a8de59244e5c3112268b0a8",
-      "translation": "Clear and re-register all Hooks (rule Hooks, resident memory, built-in Hooks).",
-      "updated_at": 1782444282
     },
     "docs/commands.md:table:9c8296ef5a7163e244dc82750aac5e3abf13641df0937fa27a79a8eb1da6ed31": {
       "kind": "table",
@@ -935,14 +807,6 @@
       "source_hash": "bd4ad57b9faa267a22bbe1c54a874a561e4bd90fbb98ac6c5221fe2ef3706a05",
       "translation": "Filter by model name.",
       "updated_at": 1782884118
-    },
-    "docs/commands.md:table:c138155e55d5651eb10f758b8fcd4c95b8aa5251b4a3634571a7722cc6ff12c7": {
-      "kind": "table",
-      "source": "停止指定请求；不传参数时停止当前 Session 的请求。",
-      "source_file": "docs/commands.md",
-      "source_hash": "c138155e55d5651eb10f758b8fcd4c95b8aa5251b4a3634571a7722cc6ff12c7",
-      "translation": "Stop a specified request; if no parameter is provided, stop the request of the current Session.",
-      "updated_at": 1781514917
     },
     "docs/commands.md:table:c361507dc951fd06a7e7941d4ec575c1a625999ce479cb9ecc0f1b4793d43f24": {
       "kind": "table",
@@ -1138,8 +1002,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "3e3c00850f22f08bcfbd4f2daedf04ba77717fd79a6756745768209cab96fe61",
+  "source_hash": "8c43309b8335f6e75cfe3798e3c105fa846ee8dbac0d8469fd7c0ad1e8f32f31",
   "target": "docs.en/commands.md",
-  "updated_at": 1783824913,
+  "updated_at": 1784109294,
   "version": 2
 }
