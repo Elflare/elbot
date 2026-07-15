@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Refactor hook system**
+- `/log` added `-s` and `--system` to filter and display `system prompt` logs.
 - CLI TUI wide-screen mode now supports using the mouse to drag the divider between the chat area and the notification area, allowing the widths of both sides to be freely adjusted during runtime.
 - `read_file` added `mode=ast`, enabling lightweight AST search by name for Go and Shell files; `mode` is also unified into three reading modes: `read`, `grep`, and `ast`.
 - Refactor AgentSkill: remove the py wrapper and execute the corresponding skill directly via shell; also support adding `ELBOT_SKILL.toml` in the AgentSkill root directory to register it as a normal tool, facilitating the LLM's direct call of structured parameters.
