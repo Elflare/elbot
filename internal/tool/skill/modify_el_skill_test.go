@@ -10,43 +10,50 @@ import (
 
 	"elbot/internal/elyph"
 	"elbot/internal/tool"
+	"elbot/internal/utils/fileops"
 )
 
 func TestReadElSkillReadsLineRanges(t *testing.T) {
 	root := t.TempDir()
-	writeTestSkill(t, root, "reader", "#skill reader - Reader.\n** risk low\n<- $text:str!\n-> $result:str\n")
+	content := "#skill reader - Reader.\n** risk low\n<- $text:str!\n-> $result:str\n"
+	writeTestSkill(t, root, "reader", content)
 	reader := NewReadElSkillTool(NewManager(root, tool.NewRegistry()))
 
 	result, err := reader.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"reader","start_line":2,"end_line":3}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Content != "2: ** risk low\n3: <- $text:str!" {
+	want := "revision: " + fileops.ContentRevision([]byte(content)) + "\n2: ** risk low\n3: <- $text:str!"
+	if result.Content != want {
 		t.Fatalf("content = %q", result.Content)
 	}
 }
 
 func TestReadElSkillReadsCodeSource(t *testing.T) {
 	root := t.TempDir()
-	writeTestGoSkill(t, root, "reader_code", "package main\n\nfunc main() {}\n")
+	content := "package main\n\nfunc main() {}\n"
+	writeTestGoSkill(t, root, "reader_code", content)
 	reader := NewReadElSkillTool(NewManager(root, tool.NewRegistry()))
 
 	result, err := reader.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"reader_code","target":"code_source","start_line":1,"end_line":3}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Content != "1: package main\n2: \n3: func main() {}" {
+	want := "revision: " + fileops.ContentRevision([]byte(content)) + "\n1: package main\n2: \n3: func main() {}"
+	if result.Content != want {
 		t.Fatalf("content = %q", result.Content)
 	}
 }
 
 func TestModifyElSkillWritesFullContent(t *testing.T) {
 	root := t.TempDir()
-	writeTestSkill(t, root, "writer", "#skill writer - Old.\n** risk low\n<- $text:str!\n-> $result:str\n")
+	original := "#skill writer - Old.\n** risk low\n<- $text:str!\n-> $result:str\n"
+	writeTestSkill(t, root, "writer", original)
 	registry := tool.NewRegistry()
 	modifier := NewModifyElSkillTool(NewManager(root, registry))
 	args, _ := json.Marshal(map[string]any{
-		"name": "writer",
+		"name":              "writer",
+		"expected_revision": fileops.ContentRevision([]byte(original)),
 		"edits": []map[string]any{{
 			"operation":   "replace_match",
 			"old_content": "#skill writer - Old.\n** risk low\n<- $text:str!\n-> $result:str\n",
@@ -58,7 +65,7 @@ func TestModifyElSkillWritesFullContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "finalize_el_skill") {
+	if !strings.Contains(result.Content, "finalize_el_skill") || !strings.Contains(result.Content, "revision_after: ") {
 		t.Fatalf("result = %q", result.Content)
 	}
 	content := readTestSkill(t, root, "writer")
@@ -67,6 +74,53 @@ func TestModifyElSkillWritesFullContent(t *testing.T) {
 	}
 	if _, ok := registry.Get("writer"); ok {
 		t.Fatal("modify_el_skill should not reload modified skill before finalize")
+	}
+}
+
+func TestModifyElSkillRejectsStaleRevision(t *testing.T) {
+	root := t.TempDir()
+	original := "#skill guarded_revision - Old.\n** risk low\n"
+	current := "#skill guarded_revision - Current.\n** risk low\n"
+	writeTestSkill(t, root, "guarded_revision", original)
+	staleRevision := fileops.ContentRevision([]byte(original))
+	writeTestSkill(t, root, "guarded_revision", current)
+	modifier := NewModifyElSkillTool(NewManager(root, tool.NewRegistry()))
+	args, _ := json.Marshal(map[string]any{
+		"name":              "guarded_revision",
+		"expected_revision": staleRevision,
+		"edits": []map[string]any{{
+			"operation":  "replace",
+			"start_line": 1,
+			"end_line":   1,
+			"content":    "#skill guarded_revision - New.",
+		}},
+	})
+	_, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "file revision mismatch: current "+fileops.ContentRevision([]byte(current))) {
+		t.Fatalf("expected stale revision error, got %v", err)
+	}
+	if got := readTestSkill(t, root, "guarded_revision"); got != current {
+		t.Fatalf("file changed after rejected edit: %q", got)
+	}
+}
+
+func TestModifyElSkillSchemaUsesRevision(t *testing.T) {
+	schema := NewModifyElSkillTool(nil).Schema()
+	properties, ok := schema.Function.Parameters["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("schema properties missing: %#v", schema.Function.Parameters)
+	}
+	if _, ok := properties["expected_revision"]; !ok {
+		t.Fatalf("modify_el_skill schema should expose expected_revision: %#v", properties)
+	}
+	if _, ok := properties["expected_sha256"]; ok {
+		t.Fatalf("modify_el_skill schema should not expose expected_sha256: %#v", properties)
+	}
+
+	modifier := NewModifyElSkillTool(NewManager(t.TempDir(), tool.NewRegistry()))
+	_, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"missing","expected_sha256":"deadbeef","edits":[{"operation":"append","content":"x"}]}`)})
+	if err == nil || !strings.Contains(err.Error(), "unknown field \"expected_sha256\"") {
+		t.Fatalf("expected legacy field rejection, got %v", err)
 	}
 }
 

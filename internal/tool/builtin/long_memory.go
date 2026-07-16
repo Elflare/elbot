@@ -556,7 +556,7 @@ func longMemoryInlineValue(value string) string {
 func (s *longMemoryStore) writeUpdatePreviewLocked(ctx context.Context, preview longMemoryUpdatePreview) error {
 	expected := fileops.NormalizeEditText(preview.File.Text)
 	edit := fileops.Edit{Operation: "replace", StartLine: 1, EndLine: fileops.LineNumber{End: true}, Content: preview.FullContent, ExpectedContent: &expected}
-	_, err := fileops.EditFile(preview.After.FilePath, preview.File.Encoding, fileops.SHA256Hex(preview.File.Bytes), false, false, 3, []fileops.Edit{edit})
+	_, err := fileops.EditFile(preview.After.FilePath, preview.File.Encoding, fileops.ContentRevision(preview.File.Bytes), false, false, 3, []fileops.Edit{edit})
 	if err != nil {
 		return err
 	}

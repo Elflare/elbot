@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"elbot/internal/tool"
+	"elbot/internal/utils/fileops"
 )
 
 func TestReadFileToolReturnsLineNumbersAndEndRange(t *testing.T) {
@@ -28,6 +29,7 @@ func TestReadFileToolReturnsLineNumbersAndEndRange(t *testing.T) {
 	if !strings.Contains(result.Content, "truncated: false") {
 		t.Fatalf("expected untruncated result:\n%s", result.Content)
 	}
+	assertFileRevision(t, result.Content, []byte("alpha\nbeta\ngamma\n"))
 }
 
 func TestReadFileToolAcceptsStringStartLine(t *testing.T) {
@@ -67,6 +69,7 @@ func TestReadFileToolGrepReturnsMatchesWithContext(t *testing.T) {
 	if !strings.Contains(result.Content, "grep: \"beta\"") || !strings.Contains(result.Content, "> 5 | beta") || !strings.Contains(result.Content, "  4 | three") || !strings.Contains(result.Content, "  6 | four") {
 		t.Fatalf("unexpected grep output:\n%s", result.Content)
 	}
+	assertFileRevision(t, result.Content, []byte(content))
 }
 
 func TestReadFileToolASTSearchesGoIdentifiers(t *testing.T) {
@@ -83,6 +86,7 @@ func TestReadFileToolASTSearchesGoIdentifiers(t *testing.T) {
 	if !strings.Contains(result.Content, "language: go") || !strings.Contains(result.Content, "[identifier]") || strings.Count(result.Content, "match:") != 3 {
 		t.Fatalf("unexpected AST content:\n%s", result.Content)
 	}
+	assertFileRevision(t, result.Content, []byte(content))
 }
 
 func TestReadFileToolASTSearchesShellWordsAndParameters(t *testing.T) {
@@ -130,6 +134,7 @@ func TestReadFileToolASTFunctionReturnsCompleteGoFunctions(t *testing.T) {
 	if strings.Contains(result.Content, "Run documentation") {
 		t.Fatalf("function output must not include doc comments:\n%s", result.Content)
 	}
+	assertFileRevision(t, result.Content, []byte(content))
 }
 
 func TestReadFileToolASTFunctionReturnsCompleteShellFunction(t *testing.T) {
@@ -289,6 +294,9 @@ func TestEditFileToolBatchReplacesLinesAndReturnsDiff(t *testing.T) {
 	}
 	if !strings.Contains(result.Content, "dry_run: false") || !strings.Contains(result.Content, "-beta") || !strings.Contains(result.Content, "+BETA") || !strings.Contains(result.Content, "+DELTA") {
 		t.Fatalf("unexpected diff:\n%s", result.Content)
+	}
+	if !strings.Contains(result.Content, "revision_before: ") || !strings.Contains(result.Content, "revision_after: ") || strings.Contains(result.Content, "sha256_") {
+		t.Fatalf("unexpected revision output:\n%s", result.Content)
 	}
 }
 
@@ -564,6 +572,12 @@ func TestEditFileToolSchemaOmitsDryRun(t *testing.T) {
 	if _, ok := properties["dry_run"]; ok {
 		t.Fatalf("edit_file schema should not expose dry_run: %#v", properties["dry_run"])
 	}
+	if _, ok := properties["expected_revision"]; !ok {
+		t.Fatalf("edit_file schema should expose expected_revision: %#v", properties)
+	}
+	if _, ok := properties["expected_sha256"]; ok {
+		t.Fatalf("edit_file schema should not expose expected_sha256: %#v", properties)
+	}
 }
 
 func TestEditFileToolPreflightRejectsInvalidEdits(t *testing.T) {
@@ -756,13 +770,13 @@ func TestEditFileToolCreateAndAppendCreatesParentDirectory(t *testing.T) {
 	}
 }
 
-func TestEditFileToolCreateWithExpectedSHARequiresExistingFile(t *testing.T) {
+func TestEditFileToolCreateWithExpectedRevisionRequiresExistingFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing.txt")
 	args, _ := json.Marshal(map[string]any{
-		"path":            path,
-		"create":          true,
-		"expected_sha256": "deadbeef",
-		"edits":           []map[string]any{{"operation": "append", "content": "alpha"}},
+		"path":              path,
+		"create":            true,
+		"expected_revision": "deadbeefdeadbeef",
+		"edits":             []map[string]any{{"operation": "append", "content": "alpha"}},
 	})
 	_, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "stat file") {
@@ -770,6 +784,17 @@ func TestEditFileToolCreateWithExpectedSHARequiresExistingFile(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("file should not be created, stat err = %v", err)
+	}
+}
+
+func assertFileRevision(t *testing.T, output string, data []byte) {
+	t.Helper()
+	want := "revision: " + fileops.ContentRevision(data)
+	if !strings.Contains(output, want) {
+		t.Fatalf("output missing %q:\n%s", want, output)
+	}
+	if strings.Contains(output, "sha256:") {
+		t.Fatalf("output still exposes sha256:\n%s", output)
 	}
 }
 

@@ -1,6 +1,7 @@
 package skill
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -38,12 +39,12 @@ type readElSkillArgs struct {
 }
 
 type modifyElSkillArgs struct {
-	Name         string         `json:"name"`
-	Target       string         `json:"target"`
-	Encoding     string         `json:"encoding"`
-	ExpectedHash string         `json:"expected_sha256"`
-	ContextLines int            `json:"context_lines"`
-	Edits        []fileops.Edit `json:"edits"`
+	Name             string         `json:"name"`
+	Target           string         `json:"target"`
+	Encoding         string         `json:"encoding"`
+	ExpectedRevision string         `json:"expected_revision"`
+	ContextLines     int            `json:"context_lines"`
+	Edits            []fileops.Edit `json:"edits"`
 }
 
 type modifyElSkillPreview struct {
@@ -67,7 +68,7 @@ func (ReadElSkillTool) Name() string { return ReadElSkillName }
 
 func (ReadElSkillTool) Info() tool.Info {
 	return tool.NewBuilder(ReadElSkillName).
-		Description("按行读取 ElBot 原生 EL Skill 的 SKILL.elyph 或 main.go，返回 1-based 行号，供修改前定位使用。").
+		Description("按行读取 ElBot 原生 EL Skill 的 SKILL.elyph 或 main.go，返回 revision 和 1-based 行号，供修改前定位使用。").
 		DependsOn("modify_el_skill").
 		Source(tool.SourceBuiltin).
 		Risk(tool.RiskMedium).
@@ -77,7 +78,7 @@ func (ReadElSkillTool) Info() tool.Info {
 func (ReadElSkillTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{
 		Name:        ReadElSkillName,
-		Description: "按行读取 ElBot 原生 EL Skill 文件。target 可选：skill_elyph 读取 SKILL.elyph；code_source 读取 main.go。默认读取 SKILL.elyph。start_line/end_line 为 1-based，可省略以读取全文。",
+		Description: "按行读取 ElBot 原生 EL Skill 文件并返回 revision。target 可选：skill_elyph 读取 SKILL.elyph；code_source 读取 main.go。默认读取 SKILL.elyph。start_line/end_line 为 1-based，可省略以读取全文。",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -122,6 +123,7 @@ func (t ReadElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.
 		return nil, fmt.Errorf("start_line %d is out of range", args.StartLine)
 	}
 	var b strings.Builder
+	fmt.Fprintf(&b, "revision: %s\n", fileops.ContentRevision(file.Bytes))
 	for i := start; i <= end; i++ {
 		fmt.Fprintf(&b, "%d: %s\n", i, lines[i-1])
 	}
@@ -147,12 +149,12 @@ func (ModifyElSkillTool) Schema() llm.ToolSchema {
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"name":            map[string]any{"type": "string", "description": "skill 名称。"},
-				"target":          map[string]any{"type": "string", "enum": []string{elSkillTargetElyph, elSkillTargetCodeSource}, "description": "修改目标：skill_elyph 表示 SKILL.elyph；code_source 表示 main.go。默认 skill_elyph。"},
-				"encoding":        map[string]any{"type": "string", "description": "文本编码，默认 auto；非 UTF-8 文件应显式传入 gb18030、gbk、big5、shift_jis 等。"},
-				"expected_sha256": map[string]any{"type": "string", "description": "可选，编辑前文件 sha256；用于防止外部并发修改。"},
-				"context_lines":   map[string]any{"type": "integer", "description": "diff 上下文行数，默认 3，范围 0-20。确认前自动预检和实际写入结果都会使用该上下文行数。"},
-				"edits":           map[string]any{"type": "array", "description": "批量编辑列表，按顺序应用；连续编辑同一文件时优先使用 match/anchor 操作，行号 replace/delete 建议提供 expected_content。", "items": map[string]any{"type": "object", "properties": editProperties, "required": []string{"operation"}}},
+				"name":              map[string]any{"type": "string", "description": "skill 名称。"},
+				"target":            map[string]any{"type": "string", "enum": []string{elSkillTargetElyph, elSkillTargetCodeSource}, "description": "修改目标：skill_elyph 表示 SKILL.elyph；code_source 表示 main.go。默认 skill_elyph。"},
+				"encoding":          map[string]any{"type": "string", "description": "文本编码，默认 auto；非 UTF-8 文件应显式传入 gb18030、gbk、big5、shift_jis 等。"},
+				"expected_revision": map[string]any{"type": "string", "description": "可选，编辑前读取到的 revision；用于防止外部并发修改。"},
+				"context_lines":     map[string]any{"type": "integer", "description": "diff 上下文行数，默认 3，范围 0-20。确认前自动预检和实际写入结果都会使用该上下文行数。"},
+				"edits":             map[string]any{"type": "array", "description": "批量编辑列表，按顺序应用；连续编辑同一文件时优先使用 match/anchor 操作，行号 replace/delete 建议提供 expected_content。", "items": map[string]any{"type": "object", "properties": editProperties, "required": []string{"operation"}}},
 			},
 			"required": []string{"name", "edits"},
 		},
@@ -203,7 +205,7 @@ func (t ModifyElSkillTool) preview(ctx context.Context, req tool.CallRequest) (m
 	}
 	var args modifyElSkillArgs
 	if len(req.Arguments) > 0 {
-		if err := json.Unmarshal(req.Arguments, &args); err != nil {
+		if err := decodeModifyElSkillArgs(req.Arguments, &args); err != nil {
 			return modifyElSkillPreview{}, fmt.Errorf("parse modify_el_skill arguments: %w", err)
 		}
 	}
@@ -215,7 +217,7 @@ func (t ModifyElSkillTool) preview(ctx context.Context, req tool.CallRequest) (m
 	if len(args.Edits) == 0 {
 		return modifyElSkillPreview{}, fmt.Errorf("edits is required")
 	}
-	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedHash, false, true, args.ContextLines, args.Edits)
+	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedRevision, false, true, args.ContextLines, args.Edits)
 	if err != nil {
 		return modifyElSkillPreview{}, err
 	}
@@ -235,14 +237,20 @@ func (t ModifyElSkillTool) modifyElyph(preview modifyElSkillPreview) (*tool.Resu
 	if err := fileops.AtomicWriteFile(preview.Path, preview.Result.NewBytes, existingFileMode(preview.Path)); err != nil {
 		return nil, err
 	}
-	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\ndiff:\n%s\n\nSKILL.elyph 已写入但尚未 reload；完成修改后调用 finalize_el_skill。", preview.Name, elSkillTargetElyph, preview.Diff)}, nil
+	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\nrevision_after: %s\ndiff:\n%s\n\nSKILL.elyph 已写入但尚未 reload；完成修改后调用 finalize_el_skill。", preview.Name, elSkillTargetElyph, preview.Result.RevisionAfter, preview.Diff)}, nil
 }
 
 func (t ModifyElSkillTool) modifyCodeSource(preview modifyElSkillPreview) (*tool.Result, error) {
 	if err := fileops.AtomicWriteFile(preview.Path, preview.Result.NewBytes, existingFileMode(preview.Path)); err != nil {
 		return nil, err
 	}
-	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\ndiff:\n%s\n\n源码已写入但尚未格式化/编译；完成修改后调用 finalize_el_skill。", preview.Name, elSkillTargetCodeSource, preview.Diff)}, nil
+	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\nrevision_after: %s\ndiff:\n%s\n\n源码已写入但尚未格式化/编译；完成修改后调用 finalize_el_skill。", preview.Name, elSkillTargetCodeSource, preview.Result.RevisionAfter, preview.Diff)}, nil
+}
+
+func decodeModifyElSkillArgs(raw json.RawMessage, args *modifyElSkillArgs) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	return dec.Decode(args)
 }
 
 func existingFileMode(path string) os.FileMode {
