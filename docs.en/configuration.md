@@ -117,6 +117,12 @@ Note:
 
 ## Built-in Web Tool Configuration
 
+`web_search` uses `tavily`:
+
+```env
+TAVILY_API_KEY=your_tavily_api_key
+```
+
 `web_extract` prioritizes Jina Reader by default. After configuring `JINA_API_KEY`, web pages will be extracted via Jina Reader; When not configured, it falls back to direct scraping:
 
 ```env
