@@ -1,5 +1,13 @@
 {
   "segments": {
+    "docs/configuration.md:code-comment:toml:00d93f2106a4209ec1cea0c3d859353bd59ead58d6790d6ad1b3dacfb3225a37": {
+      "kind": "code-comment:toml",
+      "source": "base64 跨机器可用；共享文件系统可改为 file_uri",
+      "source_file": "docs/configuration.md",
+      "source_hash": "00d93f2106a4209ec1cea0c3d859353bd59ead58d6790d6ad1b3dacfb3225a37",
+      "translation": "base64 is available across machines; shared file systems can be changed to file_uri",
+      "updated_at": 1784209665
+    },
     "docs/configuration.md:code-comment:toml:4d2380e350c5b825b8290b38675e36e385481e1218ee92712655df3c414fe32b": {
       "kind": "code-comment:toml",
       "source": "手动补充模型列表（API 获取不到时使用）",
@@ -1448,6 +1456,14 @@
       "translation": "__ELBOT_CODE_0__'s __ELBOT_CODE_1__ controls OpenAI-compatible streaming requests, round processing, and retries:\n",
       "updated_at": 1782574866
     },
+    "docs/configuration.md:paragraph:82745aedc60bb1401f266f33e7012495664b9d0d72bf7920a5b04de60e98e201": {
+      "kind": "paragraph",
+      "source": "QQ OneBot 最小配置示例：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "82745aedc60bb1401f266f33e7012495664b9d0d72bf7920a5b04de60e98e201",
+      "translation": "Minimum configuration example for QQ OneBot:\n",
+      "updated_at": 1784209665
+    },
     "docs/configuration.md:paragraph:8437841c0244bf25c90b6f8426dc27fdd5cec8a98e03242f50415e6c82600197": {
       "kind": "paragraph",
       "source": "写了任一工具化字段后必须补齐完整工具化配置。",
@@ -1962,8 +1978,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "e87d6f157b0213cbf4ba01e173fc5e303ba65e4b21594f8cd67ae0430e6b265f",
+  "source_hash": "9c8b2356c5727b8a952e5f42a765b1adcade12dfd7fcc376cb28142b403d87ce",
   "target": "docs.en/configuration.md",
-  "updated_at": 1784194867,
+  "updated_at": 1784209665,
   "version": 2
 }

@@ -578,6 +578,17 @@ enabled = true
 
 Configurations for QQ Official Bot, QQ OneBot, and Telegram are commented out by default in the examples. When enabled, the platform's own authentication information and trigger keywords must be provided. When files are received, download and save operations will be restricted according to `[platform_files]`.
 
+Minimum configuration example for QQ OneBot:
+
+```toml
+[platform.qqonebot]
+enabled = true
+ws_url = "ws://127.0.0.1:6700/"
+access_token = ""
+trigger_keywords = ["bot"]
+send_file_mode = "base64" # base64 is available across machines; shared file systems can be changed to file_uri
+```
+
 Telegram uses Bot API long polling. Minimum configuration example:
 
 ```toml
