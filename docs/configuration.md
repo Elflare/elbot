@@ -115,6 +115,12 @@ default_context_window = 256000
 
 ## 内置 Web 工具配置
 
+`web_search` 使用 `tavily`：
+
+```env
+TAVILY_API_KEY=your_tavily_api_key
+```
+
 `web_extract` 默认优先使用 Jina Reader。配置 `JINA_API_KEY` 后会通过 Jina Reader 提取网页；未配置时回退为直接抓取：
 
 ```env
