@@ -29,8 +29,29 @@ func TestNewFromPlatformConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
-	if !adapter.Enabled() || adapter.cfg.URL != "ws://example" || len(adapter.cfg.TriggerKeywords) != 1 || adapter.cfg.TriggerKeywords[0] != "芙莉丝" {
+	if !adapter.Enabled() || adapter.cfg.URL != "ws://example" || len(adapter.cfg.TriggerKeywords) != 1 || adapter.cfg.TriggerKeywords[0] != "芙莉丝" || adapter.cfg.SendFileMode != sendFileModeBase64 {
 		t.Fatalf("adapter config = %#v", adapter.cfg)
+	}
+}
+
+func TestNewFromPlatformConfigSendFileMode(t *testing.T) {
+	adapter, err := NewFromPlatformConfig(map[string]any{
+		"send_file_mode": "file_uri",
+	}, nil, nil, nil, nil, nil, t.TempDir(), 100*1024*1024, 60)
+	if err != nil {
+		t.Fatalf("NewFromPlatformConfig: %v", err)
+	}
+	if adapter.cfg.SendFileMode != sendFileModeFileURI {
+		t.Fatalf("send file mode = %q", adapter.cfg.SendFileMode)
+	}
+}
+
+func TestNewFromPlatformConfigRejectsInvalidSendFileMode(t *testing.T) {
+	_, err := NewFromPlatformConfig(map[string]any{
+		"send_file_mode": "auto",
+	}, nil, nil, nil, nil, nil, t.TempDir(), 100*1024*1024, 60)
+	if err == nil || !strings.Contains(err.Error(), "send_file_mode") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -626,7 +647,7 @@ func TestFinalMessageSegmentsIncludesReferenceImage(t *testing.T) {
 }
 
 func TestOutputSegments(t *testing.T) {
-	segments, err := outputSegments(delivery.Emoticon("178", "滑稽", ""))
+	segments, err := outputSegments(sendFileModeBase64, delivery.Emoticon("178", "滑稽", ""))
 	if err != nil {
 		t.Fatalf("outputSegments emoticon: %v", err)
 	}
@@ -634,7 +655,7 @@ func TestOutputSegments(t *testing.T) {
 		t.Fatalf("emoticon segments = %#v", segments)
 	}
 
-	segments, err = outputSegments(delivery.At("123456"))
+	segments, err = outputSegments(sendFileModeBase64, delivery.At("123456"))
 	if err != nil {
 		t.Fatalf("outputSegments at: %v", err)
 	}
