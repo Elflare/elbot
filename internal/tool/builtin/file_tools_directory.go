@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"elbot/internal/tool"
 	"elbot/internal/utils/fileops"
@@ -26,7 +28,85 @@ type directorySearchMatch struct {
 	Language string
 }
 
-func readFileDirectorySearch(ctx context.Context, root, mode string, args readFileArgs, warnings []string) (*tool.Result, error) {
+const (
+	directoryASTCacheTTL     = time.Minute
+	directoryASTCacheMaxSize = 64
+)
+
+type directoryASTCacheKey struct {
+	Root  string
+	Mode  string
+	Query string
+}
+
+type directoryASTFileState struct {
+	Path    string
+	Size    int64
+	ModTime int64
+}
+
+type directoryASTCacheEntry struct {
+	Matches   []directorySearchMatch
+	Files     []directoryASTFileState
+	ExpiresAt time.Time
+	UsedAt    time.Time
+}
+
+type directoryASTCache struct {
+	mu      sync.Mutex
+	entries map[directoryASTCacheKey]directoryASTCacheEntry
+}
+
+func newDirectoryASTCache() *directoryASTCache {
+	return &directoryASTCache{entries: make(map[directoryASTCacheKey]directoryASTCacheEntry)}
+}
+
+func (c *directoryASTCache) load(root, mode, query string) ([]directorySearchMatch, bool) {
+	if c == nil {
+		return nil, false
+	}
+	key := directoryASTCacheKey{Root: root, Mode: mode, Query: query}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.entries[key]
+	if !ok || time.Now().After(entry.ExpiresAt) {
+		delete(c.entries, key)
+		return nil, false
+	}
+	if !directoryASTFilesMatch(root, entry.Files) {
+		delete(c.entries, key)
+		return nil, false
+	}
+	entry.UsedAt = time.Now()
+	c.entries[key] = entry
+	return append([]directorySearchMatch(nil), entry.Matches...), true
+}
+
+func (c *directoryASTCache) store(root, mode, query string, matches []directorySearchMatch, files []directoryASTFileState) {
+	if c == nil {
+		return
+	}
+	key := directoryASTCacheKey{Root: root, Mode: mode, Query: query}
+	now := time.Now()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, exists := c.entries[key]; !exists {
+		for len(c.entries) >= directoryASTCacheMaxSize {
+			var oldestKey directoryASTCacheKey
+			var oldestTime time.Time
+			for candidateKey, entry := range c.entries {
+				if oldestTime.IsZero() || entry.UsedAt.Before(oldestTime) {
+					oldestKey, oldestTime = candidateKey, entry.UsedAt
+				}
+			}
+			delete(c.entries, oldestKey)
+		}
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+	c.entries[key] = directoryASTCacheEntry{Matches: append([]directorySearchMatch(nil), matches...), Files: append([]directoryASTFileState(nil), files...), ExpiresAt: now.Add(directoryASTCacheTTL), UsedAt: now}
+}
+
+func readFileDirectorySearch(ctx context.Context, root, mode string, args readFileArgs, warnings []string, astCache *directoryASTCache) (*tool.Result, error) {
 	query := strings.TrimSpace(args.Query)
 	if query == "" {
 		return nil, fmt.Errorf("query is required when mode is %s", mode)
@@ -37,7 +117,15 @@ func readFileDirectorySearch(ctx context.Context, root, mode string, args readFi
 	case readFileModeGrep:
 		matches, err = findDirectoryGrepMatches(ctx, root, query)
 	case readFileModeAST, readFileModeASTFunction:
-		matches, err = findDirectoryASTMatches(root, query, mode)
+		if cached, ok := astCache.load(root, mode, query); ok {
+			matches = cached
+		} else {
+			var files []directoryASTFileState
+			matches, files, err = findDirectoryASTMatches(root, query, mode)
+			if err == nil {
+				astCache.store(root, mode, query, matches, files)
+			}
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -100,8 +188,9 @@ func findDirectoryGrepMatches(ctx context.Context, root, query string) ([]direct
 	return matches, nil
 }
 
-func findDirectoryASTMatches(root, query, mode string) ([]directorySearchMatch, error) {
+func findDirectoryASTMatches(root, query, mode string) ([]directorySearchMatch, []directoryASTFileState, error) {
 	matches := make([]directorySearchMatch, 0)
+	files := make([]directoryASTFileState, 0)
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -113,15 +202,20 @@ func findDirectoryASTMatches(root, query, mode string) ([]directorySearchMatch, 
 			}
 			return nil
 		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil
+		}
+		files = append(files, directoryASTFileState{Path: filepath.ToSlash(rel), Size: info.Size(), ModTime: info.ModTime().UnixNano()})
 		text, err := os.ReadFile(path)
 		if err != nil {
 			return nil
 		}
 		language, variant, err := detectASTLanguage(path, string(text))
-		if err != nil {
-			return nil
-		}
-		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return nil
 		}
@@ -154,7 +248,43 @@ func findDirectoryASTMatches(root, query, mode string) ([]directorySearchMatch, 
 		}
 		return nil
 	})
-	return matches, err
+	return matches, files, err
+}
+
+func directoryASTFilesMatch(root string, cached []directoryASTFileState) bool {
+	current := make([]directoryASTFileState, 0)
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", "node_modules", "vendor":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil
+		}
+		current = append(current, directoryASTFileState{Path: filepath.ToSlash(rel), Size: info.Size(), ModTime: info.ModTime().UnixNano()})
+		return nil
+	})
+	if err != nil || len(current) != len(cached) {
+		return false
+	}
+	sort.Slice(current, func(i, j int) bool { return current[i].Path < current[j].Path })
+	for i, file := range current {
+		if file != cached[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func formatDirectorySearchMatches(root, mode, query string, matches []directorySearchMatch, contextLines, maxMatches, index int, warnings []string) (*tool.Result, error) {

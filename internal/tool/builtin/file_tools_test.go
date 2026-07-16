@@ -190,6 +190,32 @@ func TestReadFileToolASTFunctionSearchesDirectoryAndSelectsIndex(t *testing.T) {
 	}
 }
 
+func TestReadFileToolDirectoryASTCacheInvalidatesWhenFilesChange(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "sample.go")
+	if err := os.WriteFile(path, []byte("package sample\n\nfunc Run() {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	readTool := NewReadFileTool()
+	args, _ := json.Marshal(map[string]any{"path": root, "mode": "ast_function", "query": "Run"})
+	if _, err := readTool.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(readTool.astCache.entries); got != 1 {
+		t.Fatalf("cache entry count = %d, want 1", got)
+	}
+	if err := os.WriteFile(path, []byte("package sample\n\nfunc Run() {}\n\nfunc Run() {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := readTool.Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "matches: 2") || !strings.Contains(result.Content, "selection_required: true") {
+		t.Fatalf("cache was not invalidated after file change:\n%s", result.Content)
+	}
+}
+
 func TestReadFileToolDirectoryGrepSelectsIndex(t *testing.T) {
 	if _, err := exec.LookPath("rg"); err != nil {
 		t.Skip("ripgrep is required for directory grep")
