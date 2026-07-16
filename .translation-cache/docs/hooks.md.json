@@ -472,6 +472,14 @@
       "translation": "The __ELBOT_CODE_0__ of rules within a plugin defaults to the plugin directory and can only use relative paths within the plugin;",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:10b49aa7344f4bb237bff3181093df7e17de3290a4f660dcdb2057b561f56c16": {
+      "kind": "paragraph",
+      "source": "独立插件不在各条规则重复配置，而是在插件 __ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 中配置一次，对该插件全部规则和 Worker 生效。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "10b49aa7344f4bb237bff3181093df7e17de3290a4f660dcdb2057b561f56c16",
+      "translation": "Independent plugins are not configured repeatedly in each rule, but are configured once in the __ELBOT_CODE_1__ of the plugin __ELBOT_CODE_0__, which takes effect for all rules and Workers of that plugin.",
+      "updated_at": 1784194979
+    },
     "docs/hooks.md:paragraph:11516bd2ca17e71cfe66de8ec4a055d41fd4cc418751e5289b8c145571a15121": {
       "kind": "paragraph",
       "source": "捕获中 __ELBOT_CODE_0__ 是完整命中，后续分组从 __ELBOT_CODE_1__ 开始。",
@@ -479,6 +487,14 @@
       "source_hash": "11516bd2ca17e71cfe66de8ec4a055d41fd4cc418751e5289b8c145571a15121",
       "translation": "In captures, __ELBOT_CODE_0__ is the full match, and subsequent groups start from __ELBOT_CODE_1__.",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:paragraph:118d6fa24b2607ffa601fb89a1cf6400e4bdc5b82cc61a12e157fc14aafe9caf": {
+      "kind": "paragraph",
+      "source": "插件内所有规则（包括 exec action）、Worker trigger 和 waiting 路由统一使用 __ELBOT_CODE_0__ 的阻断配置。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "118d6fa24b2607ffa601fb89a1cf6400e4bdc5b82cc61a12e157fc14aafe9caf",
+      "translation": "All rules within the plugin (including exec actions), Worker triggers, and waiting routes uniformly use the blocking configuration of __ELBOT_CODE_0__.",
+      "updated_at": 1784194979
     },
     "docs/hooks.md:paragraph:11fb5f914f98951e97c12d7dde4bb0f95ee8c5a5b89f5443df9d6931405b6f40": {
       "kind": "paragraph",
@@ -984,6 +1000,14 @@
       "translation": "One-time exec Hooks share an in-process JSON KV with all Worker Hooks:\n",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:6e9afd4092841c5e1da820aa3ba7728315c43c3a5060b2a3ee0f6bb663ad7030": {
+      "kind": "paragraph",
+      "source": "插件规则误写这三个字段时会产生 warning，但插件仍正常加载，误写字段会被忽略。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "6e9afd4092841c5e1da820aa3ba7728315c43c3a5060b2a3ee0f6bb663ad7030",
+      "translation": "A warning will be generated if these three fields are incorrectly written in plugin rules, but the plugin will still load normally, and the incorrectly written fields will be ignored.\n",
+      "updated_at": 1784194979
+    },
     "docs/hooks.md:paragraph:6ff2e1b7c1766432e22af5172d6639bcf677e476923e070a2cd5caa0957c1a7b": {
       "kind": "paragraph",
       "source": "其中嵌套 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 沿用 Go 导出的 JSON 名：__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__。\n",
@@ -1015,6 +1039,14 @@
       "source_hash": "7295c45877c67ce90761d8d06c19c6a6a9049ab30f696c0d663218ed299d05b4",
       "translation": "__ELBOT_CODE_0__ must be later than the current time, and the remaining time must not exceed __ELBOT_CODE_1__.",
       "updated_at": 1784025692
+    },
+    "docs/hooks.md:paragraph:736f6acee2dde258c0276ecaf271f94eb4eee4ce759915ae1999cc3fcff7806a": {
+      "kind": "paragraph",
+      "source": "根规则的阻断检查先于普通匹配和 action 执行，因此命中后不会启动 exec 进程；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "736f6acee2dde258c0276ecaf271f94eb4eee4ce759915ae1999cc3fcff7806a",
+      "translation": "The blocking check of root rules is executed prior to normal matching and action execution; therefore, the exec process will not be started after a match;",
+      "updated_at": 1784194979
     },
     "docs/hooks.md:paragraph:7451a127568b4908200123c53a074cb46e392eb672a1f6c3204291f890e77bbf": {
       "kind": "paragraph",
@@ -1167,6 +1199,14 @@
       "source_hash": "8c4d744b57827c9eb1d333ec8071742dfa656947c079a841389455e4a74f5431",
       "translation": "__ELBOT_CODE_0__ can only be __ELBOT_CODE_1__, __ELBOT_CODE_2__, or __ELBOT_CODE_3__; it defaults to __ELBOT_CODE_4__ if omitted.",
       "updated_at": 1783825265
+    },
+    "docs/hooks.md:paragraph:8d21a47f2db23dda2e516d85514650f159784b799f32af49e21589caf424a825": {
+      "kind": "paragraph",
+      "source": "其他规则不受影响。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "8d21a47f2db23dda2e516d85514650f159784b799f32af49e21589caf424a825",
+      "translation": "Other rules are unaffected.",
+      "updated_at": 1784194979
     },
     "docs/hooks.md:paragraph:8d7d84d60383b868074e14d7af5308b314b598b46bbd23d223100055fbf709d7": {
       "kind": "paragraph",
@@ -1384,6 +1424,14 @@
       "translation": "__ELBOT_CODE_0__ is __ELBOT_CODE_1__ (default) or __ELBOT_CODE_2__; for the actual scope of effect, refer to the Hook point table.\n",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:b9813e64e2b4bc8bc48d7f20e2dee2747bb53e3d4926e146eca19a982cb2d8d2": {
+      "kind": "paragraph",
+      "source": "三项均为精确匹配且不支持通配符，__ELBOT_CODE_0__ 同时识别 __ELBOT_CODE_1__ 和 __ELBOT_CODE_2__ scope。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "b9813e64e2b4bc8bc48d7f20e2dee2747bb53e3d4926e146eca19a982cb2d8d2",
+      "translation": "All three items are exact matches and do not support wildcards; __ELBOT_CODE_0__ recognizes both __ELBOT_CODE_1__ and __ELBOT_CODE_2__ scopes.\n",
+      "updated_at": 1784194979
+    },
     "docs/hooks.md:paragraph:ba25d37a0a7d8a63d80720a6d6c37acc1b2d86f8c427d5a2f5c200059d7303fe": {
       "kind": "paragraph",
       "source": "否则 Host 回写无人读取而死锁。",
@@ -1487,6 +1535,14 @@
       "source_hash": "cc539518b504c93ac6697235dae9868346c43d292a067891c5b6c6ef6734511b",
       "translation": "Plugins must handle tool authorization and risk control on their own.\n",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:paragraph:cfb613a2c8b0575348d0728f7ab4a420c8c455272daa2739497bfa1981a45ee5": {
+      "kind": "paragraph",
+      "source": "若在插件内的 __ELBOT_CODE_0__ 误写 __ELBOT_CODE_1__、__ELBOT_CODE_2__ 或 __ELBOT_CODE_3__，加载和 reload 会返回 warning 并忽略这些规则级字段，不会阻止插件运行。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "cfb613a2c8b0575348d0728f7ab4a420c8c455272daa2739497bfa1981a45ee5",
+      "translation": "If __ELBOT_CODE_1__, __ELBOT_CODE_2__, or __ELBOT_CODE_3__ are mistakenly written in __ELBOT_CODE_0__ within the plugin, loading and reloading will return a warning and ignore these rule-level fields, which will not prevent the plugin from running.\n",
+      "updated_at": 1784194979
     },
     "docs/hooks.md:paragraph:cfcc5546f5c88d92bb184c9b3fbbd52b1405b16e914325d7874c0e95ea9184d7": {
       "kind": "paragraph",
@@ -1695,6 +1751,14 @@
       "source_hash": "f45ee481f5136d244bb3444a7e50afd460945b6adbb796668d8222440e0d35ce",
       "translation": "Persistent Workers start after ElBot starts or __ELBOT_CODE_0__;",
       "updated_at": 1784025692
+    },
+    "docs/hooks.md:paragraph:f5382ce3682f712cbf71a3ff694ab194301ebde675790de85d6eac35da66fb4b": {
+      "kind": "paragraph",
+      "source": "直接写在根 __ELBOT_CODE_0__ 中的规则可以各自配置阻断范围。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "f5382ce3682f712cbf71a3ff694ab194301ebde675790de85d6eac35da66fb4b",
+      "translation": "Rules written directly in the root __ELBOT_CODE_0__ can each configure their own blocking scope.",
+      "updated_at": 1784194979
     },
     "docs/hooks.md:paragraph:f8d7444e6b3e1f36c8b9ba1c15cd6828b29ba94bcba17127fb6260c0368d6630": {
       "kind": "paragraph",
@@ -2192,6 +2256,14 @@
       "translation": "All",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:table:5ded527fa19b365247e0059bbf7f4df32d84074288050ba4650c4ae6aa1b266b": {
+      "kind": "table",
+      "source": "仅根 __ELBOT_CODE_0__ 的直接规则使用；跳过指定用户，格式 __ELBOT_CODE_1__。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "5ded527fa19b365247e0059bbf7f4df32d84074288050ba4650c4ae6aa1b266b",
+      "translation": "Used only by direct rules in the root __ELBOT_CODE_0__; skips specified users, format __ELBOT_CODE_1__.",
+      "updated_at": 1784194979
+    },
     "docs/hooks.md:table:5f50127ed3b6f63f71fdfd1a722715eb011eb9aba828a65d11f35c27f8d87963": {
       "kind": "table",
       "source": "不写 __ELBOT_CODE_0__",
@@ -2263,6 +2335,14 @@
       "source_hash": "6c6504e8fd528dd956038b3ca564d4cfd61194457f1b828f4eef6f3e155b7a77",
       "translation": "Text, media fallback, reply body, or native emoji fallback.",
       "updated_at": 1783853279
+    },
+    "docs/hooks.md:table:6e17f8123e58f7a6bc34355529e217c61af753b3a7988ac758781400027b6c6d": {
+      "kind": "table",
+      "source": "仅根 __ELBOT_CODE_0__ 的直接规则使用；跳过指定平台。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "6e17f8123e58f7a6bc34355529e217c61af753b3a7988ac758781400027b6c6d",
+      "translation": "Used only by direct rules in the root __ELBOT_CODE_0__; skips specified platforms.",
+      "updated_at": 1784194979
     },
     "docs/hooks.md:table:6f895e4f2b47e3d09e3c112502b7e1621d2d24cccc6f159c46b75ec9956346a8": {
       "kind": "table",
@@ -2920,6 +3000,14 @@
       "translation": "Simple logic such as modifying text or sending content.",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:table:f1e7cfc9e9a68cbb055d40471be6073be11de282baadd866e013d83fbf8b7bee": {
+      "kind": "table",
+      "source": "仅根 __ELBOT_CODE_0__ 的直接规则使用；跳过指定群，格式 __ELBOT_CODE_1__。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "f1e7cfc9e9a68cbb055d40471be6073be11de282baadd866e013d83fbf8b7bee",
+      "translation": "Used only by direct rules in the root __ELBOT_CODE_0__; skips specified groups, format __ELBOT_CODE_1__.",
+      "updated_at": 1784194979
+    },
     "docs/hooks.md:table:f2c27af6535a7eb43a2c25569c2bbebdf1caf552a6b8ff0cfa26e40bb2f59417": {
       "kind": "table",
       "source": "__ELBOT_CODE_0__ 中工具的 schema；未配置时为空。",
@@ -2986,8 +3074,8 @@
     }
   },
   "source": "docs/hooks.md",
-  "source_hash": "5fa8bb81c2f14830ba99879b3e69bf32bfd0b04b84ecb60b3b284408f7bb7050",
+  "source_hash": "37e4a82ec0795494f38e8528e5ee70f82e13a2e59feb049a62926104550ac6a4",
   "target": "docs.en/hooks.md",
-  "updated_at": 1784027267,
+  "updated_at": 1784194979,
   "version": 2
 }

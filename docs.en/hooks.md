@@ -39,6 +39,8 @@ Plugin source code, `hook.toml`, and plugin private state files are placed in `p
 
 Parsing failure of the root `hooks.toml` will cause the current rule configuration loading to fail; When a single referenced plugin configuration is incorrect, that plugin will be skipped, and other plugins will be loaded as usual. TOML uses strict field validation; unknown fields will cause an error. If the rule `name` is empty, it will currently be automatically named `rule.<序号>`, and duplicate names will have sequence numbers appended automatically; Do not rely on this compatibility behavior.
 
+Rules written directly in the root `plugins/hooks.toml` can each configure their own blocking scope. Independent plugins are not configured repeatedly in each rule, but are configured once in the `[plugin]` of the plugin `hook.toml`, which takes effect for all rules and Workers of that plugin. A warning will be generated if these three fields are incorrectly written in plugin rules, but the plugin will still load normally, and the incorrectly written fields will be ignored.
+
 ## Rule Hook
 
 Ordinary rules use `[[rules]]`. After rules are filtered by `on`, matching conditions, roles, and priority, the actions are executed in sequence.
@@ -47,15 +49,17 @@ Ordinary rules use `[[rules]]`. After rules are filtered by `on`, matching condi
 
 ```toml
 [[rules]]
-name = "notify_qqonebot_connected"
-on = "platform.connected"
-if = "platform.name"
+name = "hello_reply"
+on = "platform.message.received"
+blocked_platform = ["telegram"]
+blocked_group = ["qqonebot:123456"]
+blocked_id = ["qqonebot:10001"]
+if = "message.intent_text"
 op = "fullmatch"
-value = "qqonebot"
+value = "你好"
 action = "send"
 kind = "text"
-text = "ElBot 已连接 QQ OneBot。"
-target.superadmins = true
+text = "你好呀"
 ```
 
 ### Common Fields, Order and Control
@@ -68,10 +72,15 @@ target.superadmins = true
 | `priority` | No | The smaller the number, the earlier it is executed; Default is `1000`, and `0` is also handled according to the default value. The same priority is executed stably according to the loading order: root rules, `[[plugins]]` declaration order, and the order of rules within each plugin. |
 | `enabled` | No | Whether to load, defaults to `true`. |
 | `wakeup` | No | Wake-up strategy: `required` only processes awakened messages (default), `any` processes regardless of whether it is awakened, `forbidden` only processes non-awakened messages. Mainly used for `platform.message.received`. |
+| `blocked_platform` | No | Used only by direct rules in the root `hooks.toml`; skips specified platforms. |
+| `blocked_group` | No | Used only by direct rules in the root `hooks.toml`; skips specified groups, format `<platform>:<平台原始群 ID>`. |
+| `blocked_id` | No | Used only by direct rules in the root `hooks.toml`; skips specified users, format `<platform>:<平台原始用户 ID>`. |
 | `consume` | No | When set to `true` in `platform.message.received`, it will no longer enter commands or the main LLM after sending the current outputs. |
 | `stop_propagation` | No | When set to `true`, it stops rules following the current Hook point; it does not stop the Agent's main process. |
 
 `wakeup = "any"` and `wakeup = "forbidden"` allow Hooks to observe non-awakened messages, but will not let the main LLM process them automatically. `forbidden` rules will skip directly when encountering awakened messages, without affecting subsequent plugins, commands, or the main LLM.
+
+The blocking check of root rules is executed prior to normal matching and action execution; therefore, the exec process will not be started after a match; Other rules are unaffected. All three items are exact matches and do not support wildcards; `blocked_group` recognizes both `group` and `supergroup` scopes.
 
 ### Hook Point
 
@@ -461,6 +470,8 @@ stop_propagation = true
 | `blocked_id` | Completely stop distributing events from the specified user, format `<platform>:<平台原始用户 ID>`. |
 
 If any of the three items are hit, the plugin rule or `event.handle` will not be called; Other plugins are not affected. Exact match, wildcards are not supported; `blocked_group` recognizes both `group` and `supergroup` scopes.
+
+All rules within the plugin (including exec actions), Worker triggers, and waiting routes uniformly use the blocking configuration of `[plugin]`. If `blocked_platform`, `blocked_group`, or `blocked_id` are mistakenly written in `[[rules]]` within the plugin, loading and reloading will return a warning and ignore these rule-level fields, which will not prevent the plugin from running.
 
 `[plugin.runtime]` requires the following fields when `mode = "persistent"` or `mode = "transient"`; `mode` can only be `once`, `persistent`, or `transient`; it defaults to `once` if omitted. `once` does not create a worker and does not require other runtime fields.
 
