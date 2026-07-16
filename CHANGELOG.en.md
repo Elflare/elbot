@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Refactor hook system**
+- QQ OneBot added `send_file_mode` configuration; local images and files are sent using base64 by default, but can be explicitly changed to `file_uri` in shared file system deployments.
 - `/log` added `-s` and `--system` to filter and display `system prompt` logs.
 - CLI TUI wide-screen mode now supports using the mouse to drag the divider between the chat area and the notification area, allowing the widths of both sides to be freely adjusted during runtime.
 - `read_file` added `mode=ast`, enabling lightweight AST search by name for Go and Shell files; `mode` is also unified into three reading modes: `read`, `grep`, and `ast`.
