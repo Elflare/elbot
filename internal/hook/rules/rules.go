@@ -65,39 +65,42 @@ type pluginConfig struct {
 }
 
 type Rule struct {
-	Name            string            `toml:"name"`
-	Description     string            `toml:"description"`
-	On              string            `toml:"on"`
-	Priority        int               `toml:"priority"`
-	Enabled         *bool             `toml:"enabled"`
-	Wakeup          hook.WakeupPolicy `toml:"wakeup"`
-	If              string            `toml:"if"`
-	Op              string            `toml:"op"`
-	Value           string            `toml:"value"`
-	Always          bool              `toml:"always"`
-	Match           []hook.Condition  `toml:"match"`
-	Roles           []string          `toml:"roles"`
-	ActorRoles      []string          `toml:"actor_roles"`
-	GroupRoles      []string          `toml:"group_roles"`
-	Action          string            `toml:"action"`
-	Actions         []Action          `toml:"actions"`
-	Field           string            `toml:"field"`
-	Text            string            `toml:"text"`
-	Pattern         string            `toml:"pattern"`
-	Replace         string            `toml:"replace"`
-	Kind            string            `toml:"kind"`
-	Path            string            `toml:"path"`
-	Timing          string            `toml:"timing"`
-	Tool            string            `toml:"tool"`
-	Args            string            `toml:"arguments"`
-	Command         []string          `toml:"command"`
-	Cwd             string            `toml:"cwd"`
-	TimeoutSeconds  int               `toml:"timeout_seconds"`
-	All             bool              `toml:"all"`
-	Target          Target            `toml:"target"`
-	Consume         bool              `toml:"consume"`
-	StopPropagation bool              `toml:"stop_propagation"`
-	source          ruleSource
+	Name             string            `toml:"name"`
+	Description      string            `toml:"description"`
+	On               string            `toml:"on"`
+	Priority         int               `toml:"priority"`
+	Enabled          *bool             `toml:"enabled"`
+	Wakeup           hook.WakeupPolicy `toml:"wakeup"`
+	BlockedPlatforms []string          `toml:"blocked_platform"`
+	BlockedGroups    []string          `toml:"blocked_group"`
+	BlockedIDs       []string          `toml:"blocked_id"`
+	If               string            `toml:"if"`
+	Op               string            `toml:"op"`
+	Value            string            `toml:"value"`
+	Always           bool              `toml:"always"`
+	Match            []hook.Condition  `toml:"match"`
+	Roles            []string          `toml:"roles"`
+	ActorRoles       []string          `toml:"actor_roles"`
+	GroupRoles       []string          `toml:"group_roles"`
+	Action           string            `toml:"action"`
+	Actions          []Action          `toml:"actions"`
+	Field            string            `toml:"field"`
+	Text             string            `toml:"text"`
+	Pattern          string            `toml:"pattern"`
+	Replace          string            `toml:"replace"`
+	Kind             string            `toml:"kind"`
+	Path             string            `toml:"path"`
+	Timing           string            `toml:"timing"`
+	Tool             string            `toml:"tool"`
+	Args             string            `toml:"arguments"`
+	Command          []string          `toml:"command"`
+	Cwd              string            `toml:"cwd"`
+	TimeoutSeconds   int               `toml:"timeout_seconds"`
+	All              bool              `toml:"all"`
+	Target           Target            `toml:"target"`
+	Consume          bool              `toml:"consume"`
+	StopPropagation  bool              `toml:"stop_propagation"`
+	source           ruleSource
 }
 
 type Action struct {
@@ -317,7 +320,13 @@ func loadConfig(opts Options) (Config, string, error) {
 
 	rootSource := ruleSource{ConfigPath: path, BaseDir: configDir}
 	for i := range cfg.Rules {
-		cfg.Rules[i].source = rootSource
+		block, err := cfg.Rules[i].blockPolicy()
+		if err != nil {
+			return Config{}, path, fmt.Errorf("parse hook rule config %q: rule %d: %w", path, i+1, err)
+		}
+		source := rootSource
+		source.Block = block
+		cfg.Rules[i].source = source
 	}
 
 	for _, ref := range cfg.Plugins {
@@ -336,6 +345,10 @@ func loadConfig(opts Options) (Config, string, error) {
 		}
 		if infoName := strings.TrimSpace(pcfg.Plugin.Name); infoName != "" && infoName != strings.TrimSpace(ref.Name) {
 			reportPluginConfigWarning(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, fmt.Sprintf("[plugin].name %q differs from [[plugins]].name %q; using the referenced plugin name", infoName, strings.TrimSpace(ref.Name)))
+		}
+		warnIgnoredPluginRuleBlocks(opts, strings.TrimSpace(ref.Name), pluginPath, pcfg.Rules)
+		for i := range pcfg.Rules {
+			pcfg.Rules[i].clearBlockConfig()
 		}
 		pluginDir := filepath.Dir(pluginPath)
 		block, err := hook.NewBlockPolicy(pcfg.Plugin.BlockedPlatforms, pcfg.Plugin.BlockedGroups, pcfg.Plugin.BlockedIDs)
@@ -846,6 +859,44 @@ func (r Rule) enabled() bool {
 	return r.Enabled == nil || *r.Enabled
 }
 
+func (r Rule) hasBlockConfig() bool {
+	return r.BlockedPlatforms != nil || r.BlockedGroups != nil || r.BlockedIDs != nil
+}
+
+func (r Rule) blockPolicy() (hook.BlockPolicy, error) {
+	return hook.NewBlockPolicy(r.BlockedPlatforms, r.BlockedGroups, r.BlockedIDs)
+}
+
+func (r *Rule) clearBlockConfig() {
+	r.BlockedPlatforms = nil
+	r.BlockedGroups = nil
+	r.BlockedIDs = nil
+}
+
+func warnIgnoredPluginRuleBlocks(opts Options, pluginName, path string, rules []Rule) {
+	var names []string
+	for i, rule := range rules {
+		if !rule.hasBlockConfig() {
+			continue
+		}
+		name := strings.TrimSpace(rule.Name)
+		if name == "" {
+			name = fmt.Sprintf("rule.%d", i+1)
+		}
+		names = append(names, name)
+	}
+	if len(names) == 0 {
+		return
+	}
+	reportPluginConfigWarning(
+		context.Background(),
+		opts,
+		pluginName,
+		path,
+		fmt.Sprintf("rules %s declare blocked_platform/blocked_group/blocked_id; these fields are ignored in plugin rules, configure them under [plugin] instead", strings.Join(names, ", ")),
+	)
+}
+
 func validateRule(rule Rule) error {
 	if strings.TrimSpace(rule.On) == "" {
 		return fmt.Errorf("hook rule %q missing on", rule.Name)
@@ -1314,6 +1365,15 @@ func formatRuleDetail(rule Rule) string {
 	}
 	if len(rule.GroupRoles) > 0 {
 		sb.WriteString("\ngroup_roles: " + strings.Join(rule.GroupRoles, ", "))
+	}
+	if len(rule.BlockedPlatforms) > 0 {
+		sb.WriteString("\nblocked_platform: " + strings.Join(rule.BlockedPlatforms, ", "))
+	}
+	if len(rule.BlockedGroups) > 0 {
+		sb.WriteString("\nblocked_group: " + strings.Join(rule.BlockedGroups, ", "))
+	}
+	if len(rule.BlockedIDs) > 0 {
+		sb.WriteString("\nblocked_id: " + strings.Join(rule.BlockedIDs, ", "))
 	}
 
 	for i, action := range rule.Actions {

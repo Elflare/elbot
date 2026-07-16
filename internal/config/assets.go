@@ -431,6 +431,9 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # [plugin]
 # name = "demo" # optional metadata; [[plugins]].name is the reference name
 # description = "demo plugin"
+# blocked_platform = [] # applies to every rule and Worker in this plugin
+# blocked_group = ["qqonebot:123456"]
+# blocked_id = ["qqonebot:10001"]
 #
 # Rule shape:
 # [[rules]]
@@ -440,6 +443,11 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # enabled = true          # optional, default true
 # priority = 1000        # optional, smaller runs earlier
 # wakeup = "required"   # optional: required (default), any, or forbidden.
+# Direct rules in this root hooks.toml may set blocked_platform, blocked_group,
+# and blocked_id independently. Plugin rules use [plugin] instead.
+# blocked_platform = []
+# blocked_group = ["qqonebot:123456"]
+# blocked_id = ["qqonebot:10001"]
 #
 # Single condition:
 # if = "message.text"
