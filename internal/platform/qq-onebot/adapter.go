@@ -25,7 +25,11 @@ import (
 	"elbot/internal/storage"
 )
 
-const qqTextPageRunes = 3000
+const (
+	qqTextPageRunes     = 3000
+	sendFileModeBase64  = "base64"
+	sendFileModeFileURI = "file_uri"
+)
 
 type Config struct {
 	Enabled                  bool     `toml:"enabled"`
@@ -34,6 +38,7 @@ type Config struct {
 	ReconnectIntervalSeconds int      `toml:"reconnect_interval_seconds"`
 	APITimeoutSeconds        int      `toml:"api_timeout_seconds"`
 	TriggerKeywords          []string `toml:"trigger_keywords"`
+	SendFileMode             string   `toml:"send_file_mode"`
 	AttachmentDir            string   `toml:"-"`
 	MaxReceiveFileBytes      int64    `toml:"-"`
 	DownloadTimeoutSecs      int      `toml:"-"`
@@ -97,6 +102,9 @@ func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory 
 	cfg.MaxReceiveFileBytes = maxReceiveFileBytes
 	cfg.DownloadTimeoutSecs = downloadTimeoutSecs
 	applyDefaults(&cfg)
+	if err := validateSendFileMode(cfg.SendFileMode); err != nil {
+		return nil, err
+	}
 	return New(cfg, store, chatHistory, logger), nil
 }
 
@@ -110,6 +118,10 @@ func applyDefaults(cfg *Config) {
 	if cfg.APITimeoutSeconds <= 0 {
 		cfg.APITimeoutSeconds = 15
 	}
+	cfg.SendFileMode = strings.ToLower(strings.TrimSpace(cfg.SendFileMode))
+	if cfg.SendFileMode == "" {
+		cfg.SendFileMode = sendFileModeBase64
+	}
 	if len(cfg.CommandPrefixes) == 0 {
 		cfg.CommandPrefixes = []string{"/"}
 	}
@@ -118,6 +130,15 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.DownloadTimeoutSecs <= 0 {
 		cfg.DownloadTimeoutSecs = 60
+	}
+}
+
+func validateSendFileMode(mode string) error {
+	switch mode {
+	case sendFileModeBase64, sendFileModeFileURI:
+		return nil
+	default:
+		return fmt.Errorf("qqonebot send_file_mode must be %q or %q, got %q", sendFileModeBase64, sendFileModeFileURI, mode)
 	}
 }
 
@@ -196,7 +217,7 @@ func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (deli
 	if !ok {
 		return delivery.Receipt{}, fmt.Errorf("qq send target missing")
 	}
-	segments, err := outputSegments(outputs...)
+	segments, err := outputSegments(a.cfg.SendFileMode, outputs...)
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
@@ -248,7 +269,7 @@ func (a *Adapter) SendNotice(ctx context.Context, outTarget delivery.Target, out
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
-	segments, err := outputSegments(outputs...)
+	segments, err := outputSegments(a.cfg.SendFileMode, outputs...)
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
@@ -349,7 +370,7 @@ func targetToQQ(outTarget delivery.Target) (target, error) {
 	return target{}, fmt.Errorf("qqonebot target missing private_user_id, group_id or scope_id")
 }
 
-func outputSegments(outputs ...delivery.Output) ([]Segment, error) {
+func outputSegments(sendFileMode string, outputs ...delivery.Output) ([]Segment, error) {
 	segments := make([]Segment, 0, len(outputs))
 	for _, out := range outputs {
 		switch out.Kind {
@@ -368,13 +389,13 @@ func outputSegments(outputs ...delivery.Output) ([]Segment, error) {
 			}
 			segments = append(segments, Segment{Type: "face", Data: map[string]any{"id": id}})
 		case delivery.KindImage:
-			file, err := oneBotSourceFile(out.Source, "image")
+			file, err := oneBotSourceFile(out.Source, "image", sendFileMode)
 			if err != nil {
 				return nil, err
 			}
 			segments = append(segments, Segment{Type: "image", Data: map[string]any{"file": file}})
 		case delivery.KindFile:
-			file, err := oneBotSourceFile(out.Source, "file")
+			file, err := oneBotSourceFile(out.Source, "file", sendFileMode)
 			if err != nil {
 				return nil, err
 			}
@@ -406,7 +427,7 @@ func oneBotGroupRole(event Event) security.GroupRole {
 	return security.ParseGroupRole(event.Sender.Role)
 }
 
-func oneBotSourceFile(source delivery.Source, label string) (string, error) {
+func oneBotSourceFile(source delivery.Source, label, sendFileMode string) (string, error) {
 	if len(source.Data) > 0 {
 		return "base64://" + base64.StdEncoding.EncodeToString(source.Data), nil
 	}
@@ -417,7 +438,18 @@ func oneBotSourceFile(source delivery.Source, label string) (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("%s path is empty", label)
 	}
-	return localPathFileURI(path, label)
+	switch sendFileMode {
+	case sendFileModeBase64:
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("read %s path %q: %w", label, path, err)
+		}
+		return "base64://" + base64.StdEncoding.EncodeToString(data), nil
+	case sendFileModeFileURI:
+		return localPathFileURI(path, label)
+	default:
+		return "", fmt.Errorf("unsupported qqonebot send_file_mode %q", sendFileMode)
+	}
 }
 
 func localPathFileURI(path, label string) (string, error) {

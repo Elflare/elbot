@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **重构hook系统**
+- QQ OneBot 新增 `send_file_mode` 配置，本地图片和文件默认使用 base64 发送，也可在共享文件系统的部署中显式改用 `file_uri`。
 - `/log` 新增 `-s` 和 `--system`，用于筛选并显示 `system prompt` 日志。
 - CLI TUI 宽屏模式支持用鼠标拖动聊天区与通知区之间的分界线，运行期间可自由调整两侧宽度。
 - `read_file` 新增 `mode=ast`，可对 Go 和 Shell 文件按名称进行轻量 AST 搜索；`mode` 同时统一为 `read`、`grep`、`ast` 三种读取模式。

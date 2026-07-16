@@ -192,6 +192,13 @@ local = ["ELBOT_CLI_LOCAL_TOKEN"]
 [platform.cli.clients.local]
 token_env = ["ELBOT_CLI_LOCAL_TOKEN"]
 
+# [platform.qqonebot]
+# enabled = false
+# ws_url = "ws://127.0.0.1:6700/"
+# access_token = ""
+# trigger_keywords = ["bot"]
+# send_file_mode = "base64" # base64 works across machines; use file_uri for a shared filesystem
+
 # [platform.telegram]
 # enabled = false
 # bot_token_env = "TELEGRAM_BOT_TOKEN"

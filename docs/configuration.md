@@ -576,6 +576,17 @@ enabled = true
 
 QQ 官方机器人、QQ OneBot 和 Telegram 配置在示例中默认注释。启用时需要补齐平台自己的认证信息和触发关键词。收到文件时会按 `[platform_files]` 限制下载保存。
 
+QQ OneBot 最小配置示例：
+
+```toml
+[platform.qqonebot]
+enabled = true
+ws_url = "ws://127.0.0.1:6700/"
+access_token = ""
+trigger_keywords = ["bot"]
+send_file_mode = "base64" # base64 跨机器可用；共享文件系统可改为 file_uri
+```
+
 Telegram 使用 Bot API long polling。最小配置示例：
 
 ```toml
