@@ -216,14 +216,6 @@
       "translation": "A single LLM streaming request is controlled only by the first packet and idle timeout.",
       "updated_at": 1782574901
     },
-    "CHANGELOG.md:list:350728b56963a6505837a25b3f26a186a5a9a763ffabe1d514fe0ac1e45b2392": {
-      "kind": "list",
-      "source": "优化 __ELBOT_CODE_0__ 工具，支持按 AST 函数名返回完整函数内容及其起止行号。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "350728b56963a6505837a25b3f26a186a5a9a763ffabe1d514fe0ac1e45b2392",
-      "translation": "Optimized the __ELBOT_CODE_0__ tool to support returning the full function content and its start and end line numbers by AST function name.",
-      "updated_at": 1784164687
-    },
     "CHANGELOG.md:list:36326ca18c13f00375cdf8134055082ca8bcb7fac1c0539ced4864dc039700ee": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 新增 __ELBOT_CODE_1__ 参数，默认使用 Jina Reader；传 __ELBOT_CODE_2__ 可手动改用直接爬取。",
@@ -696,6 +688,14 @@
       "translation": "Simultaneously fixed concurrency issues related to model switching, __ELBOT_CODE_0__, and Session change commands.",
       "updated_at": 1784109405
     },
+    "CHANGELOG.md:list:a2c765ee4f5aa3de25461f0adededcdc8817f1c57cdd832af2ba145019abbccb": {
+      "kind": "list",
+      "source": "优化 __ELBOT_CODE_0__ 工具，支持目录搜索、搜索结果编号选择，以及按 AST 函数名精确返回完整函数内容及其起止行号。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a2c765ee4f5aa3de25461f0adededcdc8817f1c57cdd832af2ba145019abbccb",
+      "translation": "Optimized the __ELBOT_CODE_0__ tool, supporting directory search, selection of search results by index, and precise return of complete function content and its start and end line numbers based on AST function names.",
+      "updated_at": 1784167898
+    },
     "CHANGELOG.md:list:a57014269f2740133b4741d7c07d93ac6b9d18e72ed1c452cf164c62c16e3c54": {
       "kind": "list",
       "source": "同一 Session 的同一路径与切换、重置入口共享一次性记录，不会重复注入。",
@@ -1058,8 +1058,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "e309da5cdc2ef494a40aaa6de3d7e5142098a5e031890ab1aa9dcf1e38397ca4",
+  "source_hash": "0850f250af21219c9655e0365047d2de6900d03c0e2e01d6517f22a8140483a3",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784164687,
+  "updated_at": 1784167898,
   "version": 2
 }
