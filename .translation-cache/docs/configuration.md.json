@@ -1136,6 +1136,14 @@
       "translation": "Existing files will not be overwritten.",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:paragraph:01f1bfa955794ef1c2fd69180c14c70e5eab27d060a94bd28eef48340299d6c4": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 使用 __ELBOT_CODE_1__：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "01f1bfa955794ef1c2fd69180c14c70e5eab27d060a94bd28eef48340299d6c4",
+      "translation": "__ELBOT_CODE_0__ uses __ELBOT_CODE_1__:\n",
+      "updated_at": 1784194867
+    },
     "docs/configuration.md:paragraph:084b8ac421111c91f1c1288860dc246a47351620de634bccac58acbcd2b438e6": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 默认优先使用 Jina Reader。",
@@ -1954,8 +1962,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "279ce6a1b6009e7c66a001dbf989839e93f7293607db22f7e95530dab5491b6f",
+  "source_hash": "e87d6f157b0213cbf4ba01e173fc5e303ba65e4b21594f8cd67ae0430e6b265f",
   "target": "docs.en/configuration.md",
-  "updated_at": 1784109369,
+  "updated_at": 1784194867,
   "version": 2
 }
