@@ -432,6 +432,14 @@
       "translation": "The current body will be read when __ELBOT_CODE_0__ is discovered by name or __ELBOT_CODE_1__ is preloaded; the same applies to tool-based Skills with __ELBOT_CODE_2__.",
       "updated_at": 1783775610
     },
+    "CHANGELOG.md:list:6e825de7a3fb0a65300d30be0edd7d8051380fa20be7239c89d4c991c8928362": {
+      "kind": "list",
+      "source": "QQ OneBot 新增 __ELBOT_CODE_0__ 配置，本地图片和文件默认使用 base64 发送，也可在共享文件系统的部署中显式改用 __ELBOT_CODE_1__。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "6e825de7a3fb0a65300d30be0edd7d8051380fa20be7239c89d4c991c8928362",
+      "translation": "QQ OneBot added __ELBOT_CODE_0__ configuration; local images and files are sent using base64 by default, but can be explicitly changed to __ELBOT_CODE_1__ in shared file system deployments.",
+      "updated_at": 1784209683
+    },
     "CHANGELOG.md:list:70f1550f6bf2f281c0cb0927e41c0bb07572e4e28e171b808ba30dfe69f1597f": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 同时统一为 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ 三种读取模式。",
@@ -1058,8 +1066,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "0850f250af21219c9655e0365047d2de6900d03c0e2e01d6517f22a8140483a3",
+  "source_hash": "ba7d198646d4f3a3cddea2d36a3c8a55f4b5b2a96fe3c6885fb587b8663310fb",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784167898,
+  "updated_at": 1784209683,
   "version": 2
 }
