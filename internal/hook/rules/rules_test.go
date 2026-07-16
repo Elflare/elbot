@@ -565,6 +565,190 @@ always = true
 	}
 }
 
+func TestLoadConfigAppliesIndependentRootRuleBlockPolicies(t *testing.T) {
+	dir := t.TempDir()
+	content := `[[rules]]
+name = "block_platform"
+on = "platform.message.received"
+always = true
+blocked_platform = ["telegram"]
+action = "send"
+text = "platform"
+
+[[rules]]
+name = "block_group"
+on = "platform.message.received"
+always = true
+blocked_group = ["qqonebot:123"]
+action = "send"
+text = "group"
+
+[[rules]]
+name = "block_user"
+on = "platform.message.received"
+always = true
+blocked_id = ["qqonebot:42"]
+action = "send"
+text = "user"
+`
+	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := loadConfig(Options{ConfigDir: dir})
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if len(cfg.Rules) != 3 {
+		t.Fatalf("rules = %#v", cfg.Rules)
+	}
+	if !cfg.Rules[0].source.Block.Blocks(hook.Event{Platform: hook.PlatformContext{Name: "telegram"}}) {
+		t.Fatal("platform block was not applied")
+	}
+	if !cfg.Rules[1].source.Block.Blocks(hook.Event{Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:123"}}) {
+		t.Fatal("group block was not applied")
+	}
+	if !cfg.Rules[2].source.Block.Blocks(hook.Event{Platform: hook.PlatformContext{Name: "qqonebot"}, Actor: hook.ActorContext{UserID: "42"}}) {
+		t.Fatal("user block was not applied")
+	}
+}
+
+func TestRootRuleBlockSkipsExecAndContinues(t *testing.T) {
+	dir := t.TempDir()
+	content := `[[rules]]
+name = "blocked_exec"
+on = "platform.message.received"
+always = true
+blocked_group = ["qqonebot:123"]
+action = "exec"
+command = ["program-that-must-not-run"]
+
+[[rules]]
+name = "allowed"
+on = "platform.message.received"
+always = true
+action = "send"
+text = "continued"
+`
+	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	module, err := NewModule(Options{ConfigDir: dir})
+	if err != nil {
+		t.Fatalf("NewModule: %v", err)
+	}
+	manager := hook.NewManager()
+	if err := module.RegisterHooks(manager); err != nil {
+		t.Fatalf("RegisterHooks: %v", err)
+	}
+	event, err := manager.Run(context.Background(), hook.Event{
+		Point:    hook.PointPlatformMessageReceived,
+		Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:123"},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(event.Outputs) != 1 || event.Outputs[0].Text != "continued" {
+		t.Fatalf("outputs = %#v", event.Outputs)
+	}
+}
+
+func TestLoadConfigRejectsInvalidRootRuleBlock(t *testing.T) {
+	dir := t.TempDir()
+	content := `[[rules]]
+name = "bad_block"
+on = "platform.message.received"
+always = true
+blocked_group = ["missing-platform"]
+action = "send"
+text = "bad"
+`
+	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := loadConfig(Options{ConfigDir: dir})
+	if err == nil || !strings.Contains(err.Error(), "rule 1") || !strings.Contains(err.Error(), "blocked_group") {
+		t.Fatalf("loadConfig error = %v", err)
+	}
+}
+
+func TestPluginRuleBlockFieldsWarnAndUsePluginPolicy(t *testing.T) {
+	dir := t.TempDir()
+	pluginDir := filepath.Join(dir, "demo")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte("[[plugins]]\nname = \"demo\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plugin := `[plugin]
+name = "demo"
+blocked_group = ["qqonebot:123"]
+
+[[rules]]
+name = "rule_group"
+on = "platform.message.received"
+always = true
+blocked_group = ["qqonebot:999"]
+action = "send"
+text = "group rule"
+
+[[rules]]
+name = "rule_user"
+on = "platform.message.received"
+always = true
+blocked_platform = []
+blocked_id = ["qqonebot:42"]
+action = "send"
+text = "user rule"
+`
+	if err := os.WriteFile(filepath.Join(pluginDir, "hook.toml"), []byte(plugin), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var notices []string
+	cfg, _, err := loadConfig(Options{
+		ConfigDir: dir,
+		Notify: func(_ context.Context, text string) {
+			notices = append(notices, text)
+		},
+	})
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if len(notices) != 1 || !strings.Contains(notices[0], "rule_group") || !strings.Contains(notices[0], "rule_user") || !strings.Contains(notices[0], "[plugin]") {
+		t.Fatalf("notices = %#v", notices)
+	}
+	for _, rule := range cfg.Rules {
+		if rule.hasBlockConfig() {
+			t.Fatalf("plugin rule block config was not ignored: %#v", rule)
+		}
+	}
+	manager := hook.NewManager()
+	if err := (Module{Rules: cfg.Rules}).RegisterHooks(manager); err != nil {
+		t.Fatalf("RegisterHooks: %v", err)
+	}
+	allowed, err := manager.Run(context.Background(), hook.Event{
+		Point:    hook.PointPlatformMessageReceived,
+		Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:999"},
+		Actor:    hook.ActorContext{UserID: "42"},
+	})
+	if err != nil {
+		t.Fatalf("allowed Run: %v", err)
+	}
+	if len(allowed.Outputs) != 2 {
+		t.Fatalf("allowed outputs = %#v", allowed.Outputs)
+	}
+	blocked, err := manager.Run(context.Background(), hook.Event{
+		Point:    hook.PointPlatformMessageReceived,
+		Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:123"},
+	})
+	if err != nil {
+		t.Fatalf("blocked Run: %v", err)
+	}
+	if len(blocked.Outputs) != 0 {
+		t.Fatalf("blocked outputs = %#v", blocked.Outputs)
+	}
+}
+
 func TestLoadConfigSkipsInvalidPluginRuleOnly(t *testing.T) {
 	dir := t.TempDir()
 	badPluginDir := filepath.Join(dir, "bad")

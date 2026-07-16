@@ -37,6 +37,8 @@ name = "weather"
 
 根 `hooks.toml` 的解析失败会使本次规则配置加载失败；单个被引用插件配置有误时，该插件会被跳过，其他插件照常加载。TOML 使用严格字段校验，未知字段会报错。规则空 `name` 当前会自动命名为 `rule.<序号>`，重复名称会自动追加序号；不要依赖这种兼容行为。
 
+直接写在根 `plugins/hooks.toml` 中的规则可以各自配置阻断范围。独立插件不在各条规则重复配置，而是在插件 `hook.toml` 的 `[plugin]` 中配置一次，对该插件全部规则和 Worker 生效。插件规则误写这三个字段时会产生 warning，但插件仍正常加载，误写字段会被忽略。
+
 ## 规则 Hook
 
 普通规则使用 `[[rules]]`。规则按 `on`、匹配条件、角色和优先级筛选后，依次执行 actions。
@@ -45,15 +47,17 @@ name = "weather"
 
 ```toml
 [[rules]]
-name = "notify_qqonebot_connected"
-on = "platform.connected"
-if = "platform.name"
+name = "hello_reply"
+on = "platform.message.received"
+blocked_platform = ["telegram"]
+blocked_group = ["qqonebot:123456"]
+blocked_id = ["qqonebot:10001"]
+if = "message.intent_text"
 op = "fullmatch"
-value = "qqonebot"
+value = "你好"
 action = "send"
 kind = "text"
-text = "ElBot 已连接 QQ OneBot。"
-target.superadmins = true
+text = "你好呀"
 ```
 
 ### 公共字段、顺序与控制
@@ -66,10 +70,15 @@ target.superadmins = true
 | `priority` | 否 | 数字越小越先执行；默认 `1000`，`0` 也按默认值处理。相同 priority 按加载顺序稳定执行：根规则、`[[plugins]]` 声明顺序、各插件内规则顺序。 |
 | `enabled` | 否 | 是否加载，默认 `true`。 |
 | `wakeup` | 否 | 唤起策略：`required` 仅处理已唤起消息（默认），`any` 无论是否唤起都处理，`forbidden` 仅处理未唤起消息。主要用于 `platform.message.received`。 |
+| `blocked_platform` | 否 | 仅根 `hooks.toml` 的直接规则使用；跳过指定平台。 |
+| `blocked_group` | 否 | 仅根 `hooks.toml` 的直接规则使用；跳过指定群，格式 `<platform>:<平台原始群 ID>`。 |
+| `blocked_id` | 否 | 仅根 `hooks.toml` 的直接规则使用；跳过指定用户，格式 `<platform>:<平台原始用户 ID>`。 |
 | `consume` | 否 | 在 `platform.message.received` 中为 `true` 时，发送当前 outputs 后不再进入命令或主 LLM。 |
 | `stop_propagation` | 否 | 为 `true` 时停止当前 Hook 点之后的规则；不停止 Agent 主流程。 |
 
 `wakeup = "any"` 和 `wakeup = "forbidden"` 允许 Hook 观察未唤起消息，但不会让主 LLM 自动处理它们。`forbidden` 规则遇到已唤起消息时会直接跳过，不影响后续插件、命令或主 LLM。
+
+根规则的阻断检查先于普通匹配和 action 执行，因此命中后不会启动 exec 进程；其他规则不受影响。三项均为精确匹配且不支持通配符，`blocked_group` 同时识别 `group` 和 `supergroup` scope。
 
 ### Hook 点
 
@@ -459,6 +468,8 @@ stop_propagation = true
 | `blocked_id` | 完全不分发指定用户事件，格式 `<platform>:<平台原始用户 ID>`。 |
 
 阻断三项任一命中即不调用该插件规则或 `event.handle`；其他插件不受影响。匹配精确、不支持通配符；`blocked_group` 同时识别 `group` 和 `supergroup` scope。
+
+插件内所有规则（包括 exec action）、Worker trigger 和 waiting 路由统一使用 `[plugin]` 的阻断配置。若在插件内的 `[[rules]]` 误写 `blocked_platform`、`blocked_group` 或 `blocked_id`，加载和 reload 会返回 warning 并忽略这些规则级字段，不会阻止插件运行。
 
 `[plugin.runtime]` 在 `mode = "persistent"` 或 `mode = "transient"` 时需要以下字段；`mode` 只能是 `once`、`persistent` 或 `transient`，省略时为 `once`。`once` 不创建 worker，也不要求其余 runtime 字段。
 
