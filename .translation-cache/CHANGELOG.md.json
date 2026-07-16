@@ -216,6 +216,14 @@
       "translation": "A single LLM streaming request is controlled only by the first packet and idle timeout.",
       "updated_at": 1782574901
     },
+    "CHANGELOG.md:list:350728b56963a6505837a25b3f26a186a5a9a763ffabe1d514fe0ac1e45b2392": {
+      "kind": "list",
+      "source": "优化 __ELBOT_CODE_0__ 工具，支持按 AST 函数名返回完整函数内容及其起止行号。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "350728b56963a6505837a25b3f26a186a5a9a763ffabe1d514fe0ac1e45b2392",
+      "translation": "Optimized the __ELBOT_CODE_0__ tool to support returning the full function content and its start and end line numbers by AST function name.",
+      "updated_at": 1784164687
+    },
     "CHANGELOG.md:list:36326ca18c13f00375cdf8134055082ca8bcb7fac1c0539ced4864dc039700ee": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 新增 __ELBOT_CODE_1__ 参数，默认使用 Jina Reader；传 __ELBOT_CODE_2__ 可手动改用直接爬取。",
@@ -1050,8 +1058,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "fe91e30a01b301e8c224774896e5adee77f417eb226e3efd7ba63eb82610d325",
+  "source_hash": "e309da5cdc2ef494a40aaa6de3d7e5142098a5e031890ab1aa9dcf1e38397ca4",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784127057,
+  "updated_at": 1784164687,
   "version": 2
 }
