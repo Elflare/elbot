@@ -60,12 +60,12 @@ func (n *readFileInteger) UnmarshalJSON(data []byte) error {
 }
 
 type editFileArgs struct {
-	Path           string         `json:"path"`
-	Encoding       string         `json:"encoding"`
-	ExpectedSHA256 string         `json:"expected_sha256"`
-	Create         bool           `json:"create"`
-	ContextLines   int            `json:"context_lines"`
-	Edits          []fileops.Edit `json:"edits"`
+	Path             string         `json:"path"`
+	Encoding         string         `json:"encoding"`
+	ExpectedRevision string         `json:"expected_revision"`
+	Create           bool           `json:"create"`
+	ContextLines     int            `json:"context_lines"`
+	Edits            []fileops.Edit `json:"edits"`
 }
 
 func NewReadFileTool(fileGuard ...*FileGuard) ReadFileTool {
@@ -86,7 +86,7 @@ func (t ReadFileTool) Schema() llm.ToolSchema {
 
 func readFileBuilder() *tool.Builder {
 	return tool.NewBuilder("read_file").
-		Description("读取文本文件并返回行号和哈希；支持按行读取，以及在文件或目录中进行文本、AST 名称和函数名搜索。").
+		Description("读取文本文件并返回行号和 revision；支持按行读取，以及在文件或目录中进行文本、AST 名称和函数名搜索。").
 		Risk(tool.RiskLow).
 		SuperadminOnly().
 		Tags("files", "agent").
@@ -149,7 +149,7 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	var b strings.Builder
 	fmt.Fprintf(&b, "file: %s\n", file.Path)
 	fmt.Fprintf(&b, "encoding: %s\n", file.Encoding)
-	fmt.Fprintf(&b, "sha256: %s\n", fileops.SHA256Hex(file.Bytes))
+	fmt.Fprintf(&b, "revision: %s\n", fileops.ContentRevision(file.Bytes))
 	if len(lines) == 0 {
 		fmt.Fprintf(&b, "lines: 0/0\n")
 		fmt.Fprintf(&b, "empty: true\n")
@@ -193,7 +193,7 @@ func readFileGrepResult(file fileops.File, lines []string, grep string, contextL
 	var b strings.Builder
 	fmt.Fprintf(&b, "file: %s\n", file.Path)
 	fmt.Fprintf(&b, "encoding: %s\n", file.Encoding)
-	fmt.Fprintf(&b, "sha256: %s\n", fileops.SHA256Hex(file.Bytes))
+	fmt.Fprintf(&b, "revision: %s\n", fileops.ContentRevision(file.Bytes))
 	fmt.Fprintf(&b, "grep: %q\n", query)
 	fmt.Fprintf(&b, "matches: %d\n", len(matches))
 	if index > 0 {
@@ -259,8 +259,8 @@ func editFileBuilder() *tool.Builder {
 		Tags("files", "agent").
 		String("path", "要编辑的文件路径。", tool.Required()).
 		String("encoding", "文本编码，默认 auto；非 UTF-8 文件应显式传入 gb18030、gbk、big5、shift_jis 等。").
-		String("expected_sha256", "可选，编辑前文件 sha256；用于防止外部并发修改。").
-		Boolean("create", "为 true 时允许创建不存在的文本文件；提供 expected_sha256 时仍要求文件已存在。").
+		String("expected_revision", "可选，编辑前读取到的revision；用于防止外部并发修改。").
+		Boolean("create", "为 true 时允许创建不存在的文本文件；提供 expected_revision 时仍要求文件已存在。").
 		Integer("context_lines", "diff 上下文行数，默认 3，范围 0-20。确认前自动预检和实际写入结果都会使用该上下文行数。").
 		ObjectArray("edits", "批量编辑列表，按顺序应用；行号操作引用编辑前文件的原始行号，工具会自动补偿同一批内前序行号编辑造成的漂移；*_match 后不要在同一批继续使用行号操作。行号 replace/delete 建议提供 expected_content。", editProperties, []string{"operation"}, tool.Required())
 }
@@ -313,8 +313,8 @@ func (t EditFileTool) RiskDetail(ctx context.Context, req tool.CallRequest) (str
 		b.WriteString("编码：auto\n")
 	}
 	fmt.Fprintf(&b, "编辑数：%d\n", len(args.Edits))
-	if strings.TrimSpace(args.ExpectedSHA256) != "" {
-		b.WriteString("文件哈希校验：有\n")
+	if strings.TrimSpace(args.ExpectedRevision) != "" {
+		b.WriteString("文件 revision 校验：有\n")
 	}
 	for i, edit := range args.Edits {
 		fmt.Fprintf(&b, "\n编辑 %d/%d：%s\n", i+1, len(args.Edits), editOperationTitle(edit.Operation))
@@ -463,11 +463,11 @@ func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	if err := t.FileGuard.CheckWrite(resolved.Path); err != nil {
 		return nil, err
 	}
-	result, err := fileops.EditFile(resolved.Path, args.Encoding, args.ExpectedSHA256, args.Create, false, args.ContextLines, args.Edits)
+	result, err := fileops.EditFile(resolved.Path, args.Encoding, args.ExpectedRevision, args.Create, false, args.ContextLines, args.Edits)
 	if err != nil {
 		return nil, err
 	}
-	content := fmt.Sprintf("dry_run: %t\nedited: %s\ncreated: %t\nencoding: %s\nsha256_before: %s\nsha256_after: %s\ndiff:\n%s", result.DryRun, result.Path, result.Created, result.Encoding, result.SHA256Before, result.SHA256After, result.Diff)
+	content := fmt.Sprintf("dry_run: %t\nedited: %s\ncreated: %t\nencoding: %s\nrevision_before: %s\nrevision_after: %s\ndiff:\n%s", result.DryRun, result.Path, result.Created, result.Encoding, result.RevisionBefore, result.RevisionAfter, result.Diff)
 	return &tool.Result{Content: content, Warnings: resolved.Warnings}, nil
 }
 
@@ -479,7 +479,7 @@ func previewEditFile(ctx context.Context, args editFileArgs, fileGuard *FileGuar
 	if err := fileGuard.CheckWrite(resolved.Path); err != nil {
 		return fileops.EditResult{}, err
 	}
-	result, err := fileops.EditFile(resolved.Path, args.Encoding, args.ExpectedSHA256, args.Create, true, args.ContextLines, args.Edits)
+	result, err := fileops.EditFile(resolved.Path, args.Encoding, args.ExpectedRevision, args.Create, true, args.ContextLines, args.Edits)
 	if err != nil {
 		return fileops.EditResult{}, fmt.Errorf("preflight edit_file: %w", err)
 	}

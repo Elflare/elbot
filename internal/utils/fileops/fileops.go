@@ -21,6 +21,7 @@ import (
 const (
 	DefaultReadLineLimit = 200
 	MaxFileSize          = 2 * 1024 * 1024
+	contentRevisionBytes = 8
 	maxDiffCells         = 2_000_000
 	matchModeContent     = "content"
 	matchModeLine        = "line"
@@ -89,14 +90,14 @@ type Edit struct {
 }
 
 type EditResult struct {
-	DryRun       bool
-	Path         string
-	Created      bool
-	Encoding     string
-	SHA256Before string
-	SHA256After  string
-	Diff         string
-	NewBytes     []byte
+	DryRun         bool
+	Path           string
+	Created        bool
+	Encoding       string
+	RevisionBefore string
+	RevisionAfter  string
+	Diff           string
+	NewBytes       []byte
 }
 
 func EditOperationProperties() map[string]any {
@@ -138,12 +139,12 @@ func ReadFile(path, requestedEncoding string) (File, error) {
 	return File{Path: path, Bytes: data, Text: text, Encoding: encName, BOM: bom, LineEnding: DetectLineEnding(text), EndsNewline: strings.HasSuffix(text, "\n")}, nil
 }
 
-func ReadOrCreateFile(path, requestedEncoding string, create bool, hasExpectedSHA bool) (File, bool, error) {
+func ReadOrCreateFile(path, requestedEncoding string, create bool, hasExpectedRevision bool) (File, bool, error) {
 	file, err := ReadFile(path, requestedEncoding)
 	if err == nil {
 		return file, false, nil
 	}
-	if !create || hasExpectedSHA || !errors.Is(err, os.ErrNotExist) {
+	if !create || hasExpectedRevision || !errors.Is(err, os.ErrNotExist) {
 		return File{}, false, err
 	}
 	encodingName := strings.ToLower(strings.TrimSpace(requestedEncoding))
@@ -161,13 +162,23 @@ func ReadOrCreateFile(path, requestedEncoding string, create bool, hasExpectedSH
 	return File{Path: path, Encoding: encodingName, LineEnding: "\n"}, true, nil
 }
 
-func EditFile(path, requestedEncoding, expectedSHA string, create, dryRun bool, contextLines int, edits []Edit) (EditResult, error) {
-	file, created, err := ReadOrCreateFile(path, requestedEncoding, create, strings.TrimSpace(expectedSHA) != "")
+func EditFile(path, requestedEncoding, expectedRevision string, create, dryRun bool, contextLines int, edits []Edit) (EditResult, error) {
+	expectedRevision = strings.TrimSpace(expectedRevision)
+	if expectedRevision != "" {
+		if len(expectedRevision) != contentRevisionBytes*2 {
+			return EditResult{}, fmt.Errorf("expected_revision must be %d hexadecimal characters", contentRevisionBytes*2)
+		}
+		if _, err := hex.DecodeString(expectedRevision); err != nil {
+			return EditResult{}, fmt.Errorf("expected_revision must be %d hexadecimal characters", contentRevisionBytes*2)
+		}
+	}
+	file, created, err := ReadOrCreateFile(path, requestedEncoding, create, expectedRevision != "")
 	if err != nil {
 		return EditResult{}, err
 	}
-	if expected := strings.TrimSpace(expectedSHA); expected != "" && !strings.EqualFold(expected, SHA256Hex(file.Bytes)) {
-		return EditResult{}, fmt.Errorf("file sha256 mismatch: current %s", SHA256Hex(file.Bytes))
+	oldRevision := ContentRevision(file.Bytes)
+	if expectedRevision != "" && !strings.EqualFold(expectedRevision, oldRevision) {
+		return EditResult{}, fmt.Errorf("file revision mismatch: current %s", oldRevision)
 	}
 	oldText := NormalizeEditText(file.Text)
 	newText, err := ApplyEdits(oldText, edits)
@@ -184,14 +195,14 @@ func EditFile(path, requestedEncoding, expectedSHA string, create, dryRun bool, 
 	}
 	contextLines = NormalizeContextLines(contextLines)
 	result := EditResult{
-		DryRun:       dryRun,
-		Path:         file.Path,
-		Created:      created,
-		Encoding:     file.Encoding,
-		SHA256Before: SHA256Hex(file.Bytes),
-		SHA256After:  SHA256Hex(newBytes),
-		Diff:         UnifiedDiff(file.Path, SplitLines(oldText), SplitLines(newText), contextLines),
-		NewBytes:     newBytes,
+		DryRun:         dryRun,
+		Path:           file.Path,
+		Created:        created,
+		Encoding:       file.Encoding,
+		RevisionBefore: oldRevision,
+		RevisionAfter:  ContentRevision(newBytes),
+		Diff:           UnifiedDiff(file.Path, SplitLines(oldText), SplitLines(newText), contextLines),
+		NewBytes:       newBytes,
 	}
 	if dryRun {
 		return result, nil
@@ -971,9 +982,9 @@ func LooksBinary(data []byte) bool {
 	return bytes.Contains(data[:limit], []byte{0})
 }
 
-func SHA256Hex(data []byte) string {
+func ContentRevision(data []byte) string {
 	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
+	return hex.EncodeToString(sum[:contentRevisionBytes])
 }
 
 type DiffHunk struct {

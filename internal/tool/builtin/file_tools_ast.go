@@ -307,7 +307,7 @@ func formatASTMatches(file fileops.File, query, language string, matches []astMa
 	}
 	lines := fileops.SplitLines(file.Text)
 	var b strings.Builder
-	fmt.Fprintf(&b, "file: %s\nencoding: %s\nsha256: %s\nast: %q\nlanguage: %s\nmatches: %d\ntruncated: %t\n", file.Path, file.Encoding, fileops.SHA256Hex(file.Bytes), query, language, len(matches), truncated)
+	fmt.Fprintf(&b, "file: %s\nencoding: %s\nrevision: %s\nast: %q\nlanguage: %s\nmatches: %d\ntruncated: %t\n", file.Path, file.Encoding, fileops.ContentRevision(file.Bytes), query, language, len(matches), truncated)
 	if index > 0 {
 		fmt.Fprintf(&b, "index: %d\n", index)
 	}
@@ -345,7 +345,7 @@ func formatASTFunctionMatches(file fileops.File, query, language string, matches
 		matches = matches[:maxMatches]
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "file: %s\nencoding: %s\nsha256: %s\nast_function: %q\nlanguage: %s\nmatches: %d\ntruncated: %t\n", file.Path, file.Encoding, fileops.SHA256Hex(file.Bytes), query, language, len(matches), truncated)
+	fmt.Fprintf(&b, "file: %s\nencoding: %s\nrevision: %s\nast_function: %q\nlanguage: %s\nmatches: %d\ntruncated: %t\n", file.Path, file.Encoding, fileops.ContentRevision(file.Bytes), query, language, len(matches), truncated)
 	if len(matches) > 1 && index == 0 {
 		b.WriteString("selection_required: true\ncontent:\n")
 		for matchIndex, match := range matches {
