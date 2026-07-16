@@ -43,7 +43,7 @@ func normalizeReadFileMode(value string) (string, error) {
 	}
 }
 
-func readFileASTResult(file fileops.File, query string, contextLines, maxMatches int, warnings []string) (*tool.Result, error) {
+func readFileASTResult(file fileops.File, query string, contextLines, maxMatches, index int, warnings []string) (*tool.Result, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, fmt.Errorf("query is required when mode is ast")
@@ -65,7 +65,7 @@ func readFileASTResult(file fileops.File, query string, contextLines, maxMatches
 	if parseWarning != "" {
 		warnings = append(warnings, parseWarning)
 	}
-	return formatASTMatches(file, query, language, matches, contextLines, maxMatches, warnings), nil
+	return formatASTMatches(file, query, language, matches, contextLines, maxMatches, index, warnings), nil
 }
 
 type astFunctionMatch struct {
@@ -75,7 +75,7 @@ type astFunctionMatch struct {
 	Name      string
 }
 
-func readFileASTFunctionResult(file fileops.File, query string, maxMatches int, warnings []string) (*tool.Result, error) {
+func readFileASTFunctionResult(file fileops.File, query string, maxMatches, index int, warnings []string) (*tool.Result, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, fmt.Errorf("query is required when mode is ast_function")
@@ -97,7 +97,7 @@ func readFileASTFunctionResult(file fileops.File, query string, maxMatches int, 
 	if parseWarning != "" {
 		warnings = append(warnings, parseWarning)
 	}
-	return formatASTFunctionMatches(file, query, language, matches, maxMatches, warnings), nil
+	return formatASTFunctionMatches(file, query, language, matches, maxMatches, index, warnings), nil
 }
 
 func findGoASTFunctions(path, source, query string) ([]astFunctionMatch, string, error) {
@@ -285,7 +285,7 @@ func shellASTContainer(stack []syntax.Node) string {
 	return "file"
 }
 
-func formatASTMatches(file fileops.File, query, language string, matches []astMatch, contextLines, maxMatches int, warnings []string) *tool.Result {
+func formatASTMatches(file fileops.File, query, language string, matches []astMatch, contextLines, maxMatches, index int, warnings []string) *tool.Result {
 	contextLines = fileops.NormalizeGrepContextLines(contextLines)
 	maxMatches = fileops.NormalizeMaxMatches(maxMatches)
 	sort.Slice(matches, func(i, j int) bool {
@@ -294,19 +294,30 @@ func formatASTMatches(file fileops.File, query, language string, matches []astMa
 		}
 		return matches[i].Line < matches[j].Line
 	})
-	truncated := len(matches) > maxMatches
-	if truncated {
+	matchCount := len(matches)
+	truncated := matchCount > maxMatches
+	if index > 0 {
+		if index > matchCount {
+			return &tool.Result{Content: fmt.Sprintf("index %d is out of range; found %d matches", index, matchCount), Warnings: warnings}
+		}
+		matches = matches[index-1 : index]
+		truncated = false
+	} else if truncated {
 		matches = matches[:maxMatches]
 	}
 	lines := fileops.SplitLines(file.Text)
 	var b strings.Builder
-	fmt.Fprintf(&b, "file: %s\nencoding: %s\nsha256: %s\nast: %q\nlanguage: %s\nmatches: %d\ntruncated: %t\ncontent:\n", file.Path, file.Encoding, fileops.SHA256Hex(file.Bytes), query, language, len(matches), truncated)
+	fmt.Fprintf(&b, "file: %s\nencoding: %s\nsha256: %s\nast: %q\nlanguage: %s\nmatches: %d\ntruncated: %t\n", file.Path, file.Encoding, fileops.SHA256Hex(file.Bytes), query, language, len(matches), truncated)
+	if index > 0 {
+		fmt.Fprintf(&b, "index: %d\n", index)
+	}
+	b.WriteString("content:\n")
 	width := len(fmt.Sprintf("%d", len(lines)))
 	for index, match := range matches {
 		if index > 0 {
 			b.WriteString("--\n")
 		}
-		fmt.Fprintf(&b, "match: %d:%d [%s] in %s\n", match.Line, match.Column, match.Kind, match.Container)
+		fmt.Fprintf(&b, "%d. match: %d:%d [%s] in %s\n", index+1, match.Line, match.Column, match.Kind, match.Container)
 		start := max(1, match.Line-contextLines)
 		end := min(len(lines), match.Line+contextLines)
 		for line := start; line <= end; line++ {
@@ -320,20 +331,35 @@ func formatASTMatches(file fileops.File, query, language string, matches []astMa
 	return &tool.Result{Content: b.String(), Warnings: warnings}
 }
 
-func formatASTFunctionMatches(file fileops.File, query, language string, matches []astFunctionMatch, maxMatches int, warnings []string) *tool.Result {
+func formatASTFunctionMatches(file fileops.File, query, language string, matches []astFunctionMatch, maxMatches, index int, warnings []string) *tool.Result {
 	maxMatches = fileops.NormalizeMaxMatches(maxMatches)
-	truncated := len(matches) > maxMatches
-	if truncated {
+	matchCount := len(matches)
+	truncated := matchCount > maxMatches
+	if index > 0 {
+		if index > matchCount {
+			return &tool.Result{Content: fmt.Sprintf("index %d is out of range; found %d matches", index, matchCount), Warnings: warnings}
+		}
+		matches = matches[index-1 : index]
+		truncated = false
+	} else if truncated {
 		matches = matches[:maxMatches]
 	}
-	lines := fileops.SplitLines(file.Text)
 	var b strings.Builder
-	fmt.Fprintf(&b, "file: %s\nencoding: %s\nsha256: %s\nast_function: %q\nlanguage: %s\nmatches: %d\ntruncated: %t\ncontent:\n", file.Path, file.Encoding, fileops.SHA256Hex(file.Bytes), query, language, len(matches), truncated)
-	width := len(fmt.Sprintf("%d", len(lines)))
-	for index, match := range matches {
-		if index > 0 {
-			b.WriteString("--\n")
+	fmt.Fprintf(&b, "file: %s\nencoding: %s\nsha256: %s\nast_function: %q\nlanguage: %s\nmatches: %d\ntruncated: %t\n", file.Path, file.Encoding, fileops.SHA256Hex(file.Bytes), query, language, len(matches), truncated)
+	if len(matches) > 1 && index == 0 {
+		b.WriteString("selection_required: true\ncontent:\n")
+		for matchIndex, match := range matches {
+			fmt.Fprintf(&b, "%d. %s - %s:%d-%d\n", matchIndex+1, match.Name, file.Path, match.StartLine, match.EndLine)
 		}
+		return &tool.Result{Content: b.String(), Warnings: warnings}
+	}
+	if index > 0 {
+		fmt.Fprintf(&b, "index: %d\n", index)
+	}
+	b.WriteString("content:\n")
+	lines := fileops.SplitLines(file.Text)
+	width := len(fmt.Sprintf("%d", len(lines)))
+	for _, match := range matches {
 		fmt.Fprintf(&b, "match: %d-%d [%s] %s\n", match.StartLine, match.EndLine, match.Kind, match.Name)
 		for line := match.StartLine; line <= match.EndLine; line++ {
 			fmt.Fprintf(&b, "  %*d | %s\n", width, line, lines[line-1])
