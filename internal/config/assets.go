@@ -393,6 +393,7 @@ TELEGRAM_PROXY_URL=
 # Web tools
 JINA_API_KEY=
 WEB_EXTRACT_PROXY=
+TAVILY_API_KEY=
 
 # CLI remote client/server tokens
 ELBOT_CLI_LOCAL_TOKEN=
