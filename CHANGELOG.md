@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 上下文压缩改为保留历史用户原话、过滤工具结果，成功后切换到 `原标题 compacted-N` 独立 Session，并将压缩内容与新输入固定物化为首条用户消息；同时修复模型切换、`/stop` 与 Session 变更命令的并发问题。
 - Hook Actor 现在同时提供平台昵称、群名片和纯展示名；聊天历史按平台用户 ID 与名称分开保存和搜索。
 - `workspace` 工具首次被发现或注入时也会加载当前目录的 `AGENTS.md`/`AGENT.md`；同一 Session 的同一路径与切换、重置入口共享一次性记录，不会重复注入。
+- 优化 `read_file` 工具，支持按 AST 函数名返回完整函数内容及其起止行号。
 
 ### Fixed
 

@@ -83,15 +83,15 @@ func (t ReadFileTool) Schema() llm.ToolSchema {
 
 func readFileBuilder() *tool.Builder {
 	return tool.NewBuilder("read_file").
-		Description("读取文本文件并返回行号和哈希；支持按行读取、文本搜索和 AST 名称搜索。").
+		Description("读取文本文件并返回行号和哈希；支持按行读取、文本搜索、AST 名称搜索，以及按函数名读取完整函数。").
 		Risk(tool.RiskLow).
 		SuperadminOnly().
 		Tags("files", "agent").
 		DependsOn("workspace").
 		String("path", "文件路径。", tool.Required()).
 		String("encoding", "文本编码，默认 auto。").
-		String("mode", "模式：read（默认，可不填）、grep、ast；ast 仅支持 Go 和 Shell。", tool.Enum("read", "grep", "ast")).
-		String("query", "grep/ast 模式的搜索内容；ast 按名称精确匹配。").
+		String("mode", "模式：read（默认，可不填）、grep、ast、ast_function；ast/ast_function 仅支持 Go 和 Shell。", tool.Enum("read", "grep", "ast", "ast_function")).
+		String("query", "grep/ast/ast_function 模式的搜索内容；ast 按名称精确匹配，ast_function 按函数名精确匹配。").
 		Integer("start_line", "read 模式起始行，1-based，默认 1。").
 		String("end_line", "read 模式结束行（含），可传 end；默认最多读取 200 行。").
 		Integer("context_lines", "grep/ast 模式上下文行数，默认 2，范围 0-20。").
@@ -125,6 +125,8 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		return readFileGrepResult(file, lines, args.Query, args.ContextLines, args.MaxMatches, warnings)
 	case readFileModeAST:
 		return readFileASTResult(file, args.Query, args.ContextLines, args.MaxMatches, warnings)
+	case readFileModeASTFunction:
+		return readFileASTFunctionResult(file, args.Query, args.MaxMatches, warnings)
 	}
 	start, end, truncated, err := fileops.NormalizeReadRange(len(lines), int(args.StartLine), args.EndLine)
 	if err != nil {
