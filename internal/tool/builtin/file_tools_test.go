@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -111,9 +112,19 @@ func TestReadFileToolASTFunctionReturnsCompleteGoFunctions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"ast_function: \"Run\"", "matches: 2", "match: 4-7 [function] Run", "match: 11-13 [method] (*Worker).Run", "  5 | \tfirst()", " 13 | }"} {
+	for _, expected := range []string{"ast_function: \"Run\"", "matches: 2", "selection_required: true", "1. Run -", "2. (*Worker).Run -"} {
 		if !strings.Contains(result.Content, expected) {
-			t.Fatalf("expected %q in AST function output:\n%s", expected, result.Content)
+			t.Fatalf("expected %q in AST function candidates:\n%s", expected, result.Content)
+		}
+	}
+	args, _ = json.Marshal(map[string]any{"path": path, "mode": "ast_function", "query": "Run", "index": 2})
+	result, err = NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"index: 2", "match: 11-13 [method] (*Worker).Run", " 12 | \tthird()", " 13 | }"} {
+		if !strings.Contains(result.Content, expected) {
+			t.Fatalf("expected %q in selected AST function output:\n%s", expected, result.Content)
 		}
 	}
 	if strings.Contains(result.Content, "Run documentation") {
@@ -148,6 +159,55 @@ func TestReadFileToolASTFunctionRequiresQuery(t *testing.T) {
 	_, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "query is required when mode is ast_function") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestReadFileToolASTFunctionSearchesDirectoryAndSelectsIndex(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "first.go"), []byte("package sample\n\nfunc Run() {\n\tfirst()\n}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "second.go"), []byte("package sample\n\nfunc Run() {\n\tsecond()\n}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": root, "mode": "ast_function", "query": "Run"})
+	result, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"selection_required: true", "1. Run - first.go:3-5", "2. Run - second.go:3-5"} {
+		if !strings.Contains(result.Content, expected) {
+			t.Fatalf("expected %q in directory candidates:\n%s", expected, result.Content)
+		}
+	}
+	args, _ = json.Marshal(map[string]any{"path": root, "mode": "ast_function", "query": "Run", "index": 2})
+	result, err = NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "match: second.go:3-5 [function] Run") || !strings.Contains(result.Content, " 4 | \tsecond()") {
+		t.Fatalf("unexpected selected directory function:\n%s", result.Content)
+	}
+}
+
+func TestReadFileToolDirectoryGrepSelectsIndex(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("ripgrep is required for directory grep")
+	}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "first.txt"), []byte("needle one\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "second.txt"), []byte("needle two\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": root, "mode": "grep", "query": "needle", "index": 2})
+	result, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "index: 2") || !strings.Contains(result.Content, "match: second.txt:1-1 [grep]") || !strings.Contains(result.Content, " 1 | needle two") {
+		t.Fatalf("unexpected selected directory grep:\n%s", result.Content)
 	}
 }
 
