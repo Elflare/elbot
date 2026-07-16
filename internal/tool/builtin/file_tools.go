@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -30,6 +31,7 @@ type readFileArgs struct {
 	Query        string             `json:"query"`
 	ContextLines int                `json:"context_lines"`
 	MaxMatches   int                `json:"max_matches"`
+	Index        int                `json:"index"`
 }
 
 type readFileInteger int
@@ -83,19 +85,20 @@ func (t ReadFileTool) Schema() llm.ToolSchema {
 
 func readFileBuilder() *tool.Builder {
 	return tool.NewBuilder("read_file").
-		Description("读取文本文件并返回行号和哈希；支持按行读取、文本搜索、AST 名称搜索，以及按函数名读取完整函数。").
+		Description("读取文本文件并返回行号和哈希；支持按行读取，以及在文件或目录中进行文本、AST 名称和函数名搜索。").
 		Risk(tool.RiskLow).
 		SuperadminOnly().
 		Tags("files", "agent").
 		DependsOn("workspace").
-		String("path", "文件路径。", tool.Required()).
+		String("path", "文件或目录路径；read 模式仅支持文件，搜索模式可递归搜索目录。", tool.Required()).
 		String("encoding", "文本编码，默认 auto。").
 		String("mode", "模式：read（默认，可不填）、grep、ast、ast_function；ast/ast_function 仅支持 Go 和 Shell。", tool.Enum("read", "grep", "ast", "ast_function")).
 		String("query", "grep/ast/ast_function 模式的搜索内容；ast 按名称精确匹配，ast_function 按函数名精确匹配。").
+		Integer("index", "可选，搜索结果序号，默认不填。grep/ast/ast_function返回内容有多个时，根据返回内容的编号再次搜索时填写。").
 		Integer("start_line", "read 模式起始行，1-based，默认 1。").
 		String("end_line", "read 模式结束行（含），可传 end；默认最多读取 200 行。").
 		Integer("context_lines", "grep/ast 模式上下文行数，默认 2，范围 0-20。").
-		Integer("max_matches", "grep/ast 模式最大匹配数，默认 20，范围 1-100。")
+		Integer("max_matches", "grep/ast/ast_function 模式最大匹配数，默认 20，范围 1-100。")
 }
 
 func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
@@ -105,28 +108,38 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 			return nil, fmt.Errorf("parse read_file arguments: %w", err)
 		}
 	}
-	resolved, err := resolveFileToolPath(ctx, args.Path, false)
+	mode, err := normalizeReadFileMode(args.Mode)
+	if err != nil {
+		return nil, err
+	}
+	resolved, err := tool.ResolveWorkspacePath(ctx, args.Path, tool.PathResolveOptions{AllowDirectory: mode != readFileModeRead})
 	if err != nil {
 		return nil, err
 	}
 	path := resolved.Path
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.IsDir() {
+		if mode == readFileModeRead {
+			return nil, fmt.Errorf("read mode requires a file path")
+		}
+		return readFileDirectorySearch(ctx, path, mode, args, resolved.Warnings)
+	}
 	file, err := fileops.ReadFile(path, args.Encoding)
 	if err != nil {
 		return nil, err
 	}
 	lines := fileops.SplitLines(file.Text)
 	warnings := append(resolved.Warnings, t.FileGuard.ReadWarnings(path)...)
-	mode, err := normalizeReadFileMode(args.Mode)
-	if err != nil {
-		return nil, err
-	}
 	switch mode {
 	case readFileModeGrep:
-		return readFileGrepResult(file, lines, args.Query, args.ContextLines, args.MaxMatches, warnings)
+		return readFileGrepResult(file, lines, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
 	case readFileModeAST:
-		return readFileASTResult(file, args.Query, args.ContextLines, args.MaxMatches, warnings)
+		return readFileASTResult(file, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
 	case readFileModeASTFunction:
-		return readFileASTFunctionResult(file, args.Query, args.MaxMatches, warnings)
+		return readFileASTFunctionResult(file, args.Query, args.MaxMatches, args.Index, warnings)
 	}
 	start, end, truncated, err := fileops.NormalizeReadRange(len(lines), int(args.StartLine), args.EndLine)
 	if err != nil {
@@ -154,7 +167,7 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	return &tool.Result{Content: b.String(), Warnings: warnings}, nil
 }
 
-func readFileGrepResult(file fileops.File, lines []string, grep string, contextLines, maxMatches int, warnings []string) (*tool.Result, error) {
+func readFileGrepResult(file fileops.File, lines []string, grep string, contextLines, maxMatches, index int, warnings []string) (*tool.Result, error) {
 	query := strings.TrimSpace(grep)
 	if query == "" {
 		return nil, fmt.Errorf("grep is required")
@@ -170,12 +183,21 @@ func readFileGrepResult(file fileops.File, lines []string, grep string, contextL
 			}
 		}
 	}
+	if index > 0 {
+		if index > len(matches) {
+			return nil, fmt.Errorf("index %d is out of range; found %d matches", index, len(matches))
+		}
+		matches = matches[index-1 : index]
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "file: %s\n", file.Path)
 	fmt.Fprintf(&b, "encoding: %s\n", file.Encoding)
 	fmt.Fprintf(&b, "sha256: %s\n", fileops.SHA256Hex(file.Bytes))
 	fmt.Fprintf(&b, "grep: %q\n", query)
 	fmt.Fprintf(&b, "matches: %d\n", len(matches))
+	if index > 0 {
+		fmt.Fprintf(&b, "index: %d\n", index)
+	}
 	fmt.Fprintf(&b, "context_lines: %d\n", contextLines)
 	b.WriteString("content:\n")
 	if len(matches) == 0 || len(lines) == 0 {
@@ -183,7 +205,7 @@ func readFileGrepResult(file fileops.File, lines []string, grep string, contextL
 	}
 	width := len(fmt.Sprintf("%d", len(lines)))
 	lastPrinted := 0
-	for _, matchLine := range matches {
+	for matchIndex, matchLine := range matches {
 		start := matchLine - contextLines
 		if start < 1 {
 			start = 1
@@ -198,6 +220,7 @@ func readFileGrepResult(file fileops.File, lines []string, grep string, contextL
 		if start <= lastPrinted {
 			start = lastPrinted + 1
 		}
+		fmt.Fprintf(&b, "%d. match: %d\n", matchIndex+1, matchLine)
 		for i := start; i <= end; i++ {
 			marker := " "
 			if i == matchLine {
