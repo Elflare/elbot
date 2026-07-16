@@ -16,6 +16,7 @@ import (
 
 type ReadFileTool struct {
 	FileGuard *FileGuard
+	astCache  *directoryASTCache
 }
 
 type EditFileTool struct {
@@ -68,7 +69,7 @@ type editFileArgs struct {
 }
 
 func NewReadFileTool(fileGuard ...*FileGuard) ReadFileTool {
-	return ReadFileTool{FileGuard: firstFileGuard(fileGuard)}
+	return ReadFileTool{FileGuard: firstFileGuard(fileGuard), astCache: newDirectoryASTCache()}
 }
 
 func (ReadFileTool) Name() string {
@@ -125,7 +126,7 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		if mode == readFileModeRead {
 			return nil, fmt.Errorf("read mode requires a file path")
 		}
-		return readFileDirectorySearch(ctx, path, mode, args, resolved.Warnings)
+		return readFileDirectorySearch(ctx, path, mode, args, resolved.Warnings, t.astCache)
 	}
 	file, err := fileops.ReadFile(path, args.Encoding)
 	if err != nil {
