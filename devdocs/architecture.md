@@ -69,15 +69,18 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 
 Slash 命令链路：
 
-1. Agent core 识别命令前缀。
+1. `internal/agent/command_runtime.go` 的命令执行器识别命令前缀，并统一处理权限、Turn 冲突和用户通知。
 2. `internal/command/router.go` 负责解析命令名、alias、参数文本和分发。
 3. `internal/agent/commands/` 的模块注册具体命令。
 4. 命令通过 deps 访问 Session、模型、Hook、工具、日志、请求管理等能力。
-5. 平台补全通过中央 completion 服务组合命令名、命令参数、风险确认、fork message ID 和 `@tool:` 候选。
+5. 命令可通过 `command.Result.Continuation` 请求在指定 Session 中继续处理一条普通输入；模式切换、历史限制等策略先由 Session 服务完成，Agent core 不识别具体 Session 命令名。
+6. 平台补全通过中央 completion 服务组合命令名、命令参数、风险确认、fork message ID 和 `@tool:` 候选。
 
 约定：
 
 - 新命令优先做成 `internal/agent/commands/` 模块。
+- 会改变或切换 Session 的命令必须声明 `command.Info.SessionEffect`，命令执行器据此处理压缩和 pending 确认冲突，不维护命令名白名单。
+- Session 规则放在 `session.Service`；命令只解析参数和格式化结果，Agent 只编排命令与普通输入。
 - 命令详细帮助写在 `command.Info.Help`。
 - 用户可见命令变化要同步 `docs/commands.md` 和 `CHANGELOG.md`。
 
@@ -225,6 +228,8 @@ Session 服务管理：
 - 模式切换和手动重命名。
 - 平台隔离。
 - cron session 可见性和 CLI 全平台列表可见性。
+
+Session 命令的分页选择记录和维护配置由 `SessionCommandState` 按 Scope 保存，不使用跨用户的包级状态。
 
 约定：
 

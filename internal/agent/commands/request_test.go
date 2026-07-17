@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -10,7 +9,6 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/request"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/turn"
 )
 
@@ -48,16 +46,6 @@ func TestRequestsCommandFormatsTree(t *testing.T) {
 			t.Fatalf("requests output missing %q:\n%s", want, result.Content)
 		}
 	}
-}
-
-func newCommandTestStore(t *testing.T) storage.Store {
-	t.Helper()
-	store, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "elbot_commands.db"))
-	if err != nil {
-		t.Fatalf("new sqlite store: %v", err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-	return store
 }
 
 func assertCommandTestCanceled(t *testing.T, ctx context.Context) {

@@ -146,7 +146,7 @@ func TestSessionRepositoryArchivePinAndCleanup(t *testing.T) {
 
 	normal := &storage.Session{OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "normal", UpdatedAt: old}
 	archived := &storage.Session{OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "archived", UpdatedAt: old, ArchivedAt: &now}
-	pinned := &storage.Session{OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "pinned", UpdatedAt: old, PinnedAt: &now}
+	pinned := &storage.Session{OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "pinned", UpdatedAt: old.Add(-time.Hour), PinnedAt: &now}
 	for _, session := range []*storage.Session{normal, archived, pinned} {
 		if err := store.Sessions().Create(ctx, session); err != nil {
 			t.Fatalf("create %s: %v", session.Title, err)
@@ -159,6 +159,20 @@ func TestSessionRepositoryArchivePinAndCleanup(t *testing.T) {
 	}
 	if len(listed) != 2 || listed[0].ID != pinned.ID || listed[1].ID != normal.ID {
 		t.Fatalf("active list = %#v", listed)
+	}
+	recent, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", OrderByUpdatedAt: true})
+	if err != nil {
+		t.Fatalf("list recent: %v", err)
+	}
+	if len(recent) != 2 || recent[0].ID != normal.ID || recent[1].ID != pinned.ID {
+		t.Fatalf("recent list = %#v", recent)
+	}
+	excluded, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", ExcludeSessionID: normal.ID, OrderByUpdatedAt: true})
+	if err != nil {
+		t.Fatalf("list excluding current: %v", err)
+	}
+	if len(excluded) != 1 || excluded[0].ID != pinned.ID {
+		t.Fatalf("excluded list = %#v", excluded)
 	}
 
 	archives, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", ArchivedOnly: true})
@@ -217,6 +231,43 @@ func TestSessionListPreviewSkipsBlankMessages(t *testing.T) {
 		t.Fatalf("preview = %q", sessions[0].MessagePreview)
 	}
 }
+
+func TestSessionListPreviewUsesInsertionOrderForEqualTimestamps(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	session := &storage.Session{OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "test"}
+	if err := store.Sessions().Create(ctx, session); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	createdAt := storage.Now()
+	messages := []storage.Message{
+		{ID: "z-user", SessionID: session.ID, Role: storage.RoleUser, Content: "first", CreatedAt: createdAt},
+		{ID: "a-user", SessionID: session.ID, Role: storage.RoleUser, Content: "second", CreatedAt: createdAt},
+		{ID: "z-assistant", SessionID: session.ID, Role: storage.RoleAssistant, Content: "third", CreatedAt: createdAt},
+		{ID: "a-assistant", SessionID: session.ID, Role: storage.RoleAssistant, Content: "fourth", CreatedAt: createdAt},
+	}
+	for i := range messages {
+		if err := store.Messages().Append(ctx, &messages[i]); err != nil {
+			t.Fatalf("append message %d: %v", i, err)
+		}
+	}
+
+	sessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local"})
+	if err != nil {
+		t.Fatalf("list sessions: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("session count = %d", len(sessions))
+	}
+	if sessions[0].LastUserPreview != "second" || sessions[0].LastBotPreview != "fourth" {
+		t.Fatalf("last previews = %q / %q", sessions[0].LastUserPreview, sessions[0].LastBotPreview)
+	}
+	if sessions[0].MessagePreview != "u: first / u: second / b: third / b: fourth" {
+		t.Fatalf("message preview = %q", sessions[0].MessagePreview)
+	}
+}
+
 func TestCronJobRepositoryUpsertAndRunState(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()

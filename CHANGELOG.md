@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - 无法从模型元数据或配置识别 context window 时，默认窗口调整为 256k。
+- `/resume <编号>` 改为直接按最近更新时间恢复非当前 Session，`1` 表示最近一项，不再要求先执行裸 `/resume` 建立编号。
 - 上下文压缩改为保留历史用户原话、过滤工具结果，成功后切换到 `原标题 compacted-N` 独立 Session，并将压缩内容与新输入固定物化为首条用户消息；同时修复模型切换、`/stop` 与 Session 变更命令的并发问题。
 - Hook Actor 现在同时提供平台昵称、群名片和纯展示名；聊天历史按平台用户 ID 与名称分开保存和搜索。
 - `workspace` 工具首次被发现或注入时也会加载当前目录的 `AGENTS.md`/`AGENT.md`；同一 Session 的同一路径与切换、重置入口共享一次性记录，不会重复注入。
@@ -19,11 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - 补全默认 `.env.example` 中缺失的 `JINA_API_KEY`。
+- 修复 Session 删除、归档确认可能因列表或当前 Session 变化而作用到错误目标的问题，并让存储错误正确返回给调用方。
 - `read_file` 的 `start_line` 兼容 LLM 偶尔生成的整数字符串，避免有效行号因 JSON 类型偏差导致读取失败。
 
 ### Added
 
 - **重构hook系统**
+- `/chat` 和 `/work` 支持直接携带消息，在切换 Session 模式后立即发送；Session 命令状态改为按平台 Scope 隔离。
 - QQ OneBot 新增 `send_file_mode` 配置，本地图片和文件默认使用 base64 发送，也可在共享文件系统的部署中显式改用 `file_uri`。
 - `/log` 新增 `-s` 和 `--system`，用于筛选并显示 `system prompt` 日志。
 - CLI TUI 宽屏模式支持用鼠标拖动聊天区与通知区之间的分界线，运行期间可自由调整两侧宽度。

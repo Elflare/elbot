@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/command"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
@@ -36,32 +37,11 @@ func (a *Agent) handleAppendConfirmationInput(ctx context.Context, session *stor
 	}
 }
 
-func shouldBlockCommandDuringAppendConfirmation(name string) bool {
-	switch name {
-	case "new", "resume", "fork", "work", "chat":
-		return true
-	default:
-		return false
-	}
-}
-
-func shouldBlockCommandDuringCompact(name string) bool {
-	switch name {
-	case "new", "resume", "fork", "work", "chat", "archive", "unarchive", "pin", "unpin", "rename", "delete", "clean", "compact":
-		return true
-	default:
-		return false
-	}
-}
-
 func compactCommandBlockedText(command string) string {
 	return fmt.Sprintf("正在压缩当前会话，暂不执行 %s。请等待压缩完成，或先使用 /stop 取消。", command)
 }
 
 func appendConfirmationCommandBlockedText(command string) string {
-	if strings.TrimSpace(command) == "/new" {
-		return appendConfirmPrompt
-	}
 	return fmt.Sprintf("当前有待确认的追加消息，暂不执行 %s。\n%s", command, appendConfirmPrompt)
 }
 func (a *Agent) handleInput(ctx context.Context, text string) error {
@@ -74,6 +54,20 @@ func (a *Agent) handleInput(ctx context.Context, text string) error {
 	if err != nil {
 		return err
 	}
+	return a.handleSessionInput(ctx, session, text)
+}
+
+func (a *Agent) continueCommandInput(ctx context.Context, continuation command.Continuation) error {
+	session, err := a.sessions.Resume(ctx, a.scope(ctx), continuation.SessionID)
+	if err != nil {
+		return err
+	}
+	segments := replaceInboundTextSegments(ctx, continuation.Text)
+	ctx = withInboundSegments(ctx, segments)
+	return a.handleSessionInput(ctx, session, continuation.Text)
+}
+
+func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session, text string) error {
 	event, err := a.runHook(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Session: a.hookSession(session), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: inboundSegments(ctx, text)}})
 	if err != nil {
 		return err

@@ -230,6 +230,8 @@ type ListSessionsRequest struct {
 	IncludeSamePlatformCron bool
 	IncludeArchived         bool
 	ArchivedOnly            bool
+	ExcludeSessionID        string
+	OrderByUpdatedAt        bool
 	Query                   string
 	Limit                   int
 	Offset                  int

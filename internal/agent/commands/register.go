@@ -107,24 +107,21 @@ type LogService interface {
 }
 
 type Deps struct {
-	Router               *command.Router
-	Sessions             *session.Service
-	Requests             *request.Manager
-	Turns                *turn.Manager
-	Store                storage.Store
-	Scope                func(context.Context) session.Scope
-	Models               ModelService
-	Compact              CompactService
-	ContextStatus        ContextStatusService
-	Tools                ToolService
-	Hooks                HookService
-	SetLastSessions      func([]storage.SessionSummary)
-	LastSessions         func() []string
-	SessionListPageSize  func() int
-	CleanupRetentionDays func() int
-	Audit                func(event string, attrs ...any)
-	Logs                 LogService
-	RuntimeStatus        func(sessionID string) runtimestatus.Snapshot
+	Router        *command.Router
+	Sessions      *session.Service
+	Requests      *request.Manager
+	Turns         *turn.Manager
+	Store         storage.Store
+	Scope         func(context.Context) session.Scope
+	Models        ModelService
+	Compact       CompactService
+	ContextStatus ContextStatusService
+	Tools         ToolService
+	Hooks         HookService
+	SessionState  *SessionCommandState
+	Audit         func(event string, attrs ...any)
+	Logs          LogService
+	RuntimeStatus func(sessionID string) runtimestatus.Snapshot
 }
 
 func RegisterFactories(registrar Registrar, deps Deps, factories ...HandlerFactory) error {

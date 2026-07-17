@@ -70,8 +70,6 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		return nil, fmt.Errorf("tool %q is foreground-only", name)
 	}
 	callCtx := context.Background()
-	cancel := func() {}
-	defer cancel()
 	actor := security.Actor{ID: "hook:" + w.config.ID, Role: security.RoleSuperadmin}
 	if !params.Background || strings.TrimSpace(params.Origin) != "" {
 		token := params.ToolContext
@@ -87,7 +85,9 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	} else if params.Target.Empty() {
 		return nil, fmt.Errorf("background tool output requires an explicit target")
 	} else {
+		var cancel context.CancelFunc
 		callCtx, cancel = context.WithTimeout(callCtx, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
+		defer cancel()
 	}
 	callCtx = security.WithActor(callCtx, actor)
 	started := time.Now()
