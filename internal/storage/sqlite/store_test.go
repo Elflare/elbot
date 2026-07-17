@@ -37,7 +37,7 @@ func hasSQLiteObject(t *testing.T, db *sql.DB, objectType, name string) bool {
 func TestNewRunsMigrations(t *testing.T) {
 	store := newTestStore(t)
 
-	for _, table := range []string{"schema_migrations", "sessions", "messages", "platform_message_map", "context_summaries", "tool_call_records", "cron_jobs"} {
+	for _, table := range []string{"schema_migrations", "sessions", "messages", "platform_message_map", "context_summaries", "tool_call_records", "cron_jobs", "elnis_events", "elnis_report_deliveries"} {
 		var name string
 		err := store.db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&name)
 		if err != nil {
@@ -54,7 +54,7 @@ func TestNewRunsMigrations(t *testing.T) {
 	}
 
 	var version int
-	if err := store.db.QueryRow(`SELECT version FROM schema_migrations WHERE version = 5`).Scan(&version); err != nil {
+	if err := store.db.QueryRow(`SELECT version FROM schema_migrations WHERE version = 9`).Scan(&version); err != nil {
 		t.Fatalf("migration version missing: %v", err)
 	}
 }

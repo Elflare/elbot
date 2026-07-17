@@ -10,6 +10,8 @@ const (
 	StatusAccepted    = elvena.StatusAccepted
 	StatusQueued      = elvena.StatusQueued
 	StatusRunning     = elvena.StatusRunning
+	StatusResultReady = elvena.StatusResultReady
+	StatusDelivering  = elvena.StatusDelivering
 	StatusCompleted   = elvena.StatusCompleted
 	StatusFailed      = elvena.StatusFailed
 	StatusDuplicate   = elvena.StatusDuplicate

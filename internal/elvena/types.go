@@ -17,6 +17,8 @@ const (
 	StatusAccepted    = "accepted"
 	StatusQueued      = "queued"
 	StatusRunning     = "running"
+	StatusResultReady = "result_ready"
+	StatusDelivering  = "delivering"
 	StatusCompleted   = "completed"
 	StatusFailed      = "failed"
 	StatusDuplicate   = "duplicate"

@@ -20,6 +20,8 @@ type Runtime struct {
 	workers int
 }
 
+const reportRecoveryInterval = 30 * time.Second
+
 func NewRuntime(cfg config.ElnisHTTPConfig, service *Service) *Runtime {
 	mux := http.NewServeMux()
 	queueSize := cfg.QueueSize
@@ -85,6 +87,11 @@ func (r *Runtime) enqueueLLM(ctx context.Context, event QueuedLLMEvent) error {
 func (r *Runtime) Run(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	if r.service != nil {
+		if err := r.service.resetDeliveringReports(runCtx); err != nil {
+			return fmt.Errorf("reset interrupted elnis reports: %w", err)
+		}
+	}
 	var wg sync.WaitGroup
 	for i := 0; i < r.workers; i++ {
 		wg.Add(1)
@@ -93,6 +100,11 @@ func (r *Runtime) Run(ctx context.Context) error {
 			r.worker(runCtx)
 		}()
 	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		r.reportWorker(runCtx)
+	}()
 	errCh := make(chan error, 1)
 	go func() {
 		if err := r.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -113,6 +125,27 @@ func (r *Runtime) Run(ctx context.Context) error {
 		cancel()
 		wg.Wait()
 		return err
+	}
+}
+
+func (r *Runtime) reportWorker(ctx context.Context) {
+	if r.service == nil {
+		return
+	}
+	if err := r.service.recoverReports(ctx, false); err != nil && ctx.Err() == nil {
+		r.service.logWarn("initial elnis report recovery failed", "error", err.Error())
+	}
+	ticker := time.NewTicker(reportRecoveryInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := r.service.recoverReports(ctx, false); err != nil && ctx.Err() == nil {
+				r.service.logWarn("elnis report retry failed", "error", err.Error())
+			}
+		}
 	}
 }
 
