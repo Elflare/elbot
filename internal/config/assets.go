@@ -272,6 +272,10 @@ addr = "127.0.0.1:32170"
 max_body_bytes = 1048576
 queue_size = 128
 workers = 2
+read_header_timeout_seconds = 5 # Request header read deadline.
+read_timeout_seconds = 30       # Full request read deadline, including the body.
+write_timeout_seconds = 300     # Handler and response write deadline; direct mode can perform external I/O.
+idle_timeout_seconds = 60       # Keep-alive idle connection deadline.
 
 [tokens.home]
 # Read token values from OS environment variables or the config directory .env file.

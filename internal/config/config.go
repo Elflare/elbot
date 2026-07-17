@@ -207,10 +207,14 @@ type ElnisSegmentConfig struct {
 }
 
 type ElnisHTTPConfig struct {
-	Addr         string `toml:"addr"`
-	MaxBodyBytes int64  `toml:"max_body_bytes"`
-	QueueSize    int    `toml:"queue_size"`
-	Workers      int    `toml:"workers"`
+	Addr                     string `toml:"addr"`
+	MaxBodyBytes             int64  `toml:"max_body_bytes"`
+	QueueSize                int    `toml:"queue_size"`
+	Workers                  int    `toml:"workers"`
+	ReadHeaderTimeoutSeconds int    `toml:"read_header_timeout_seconds"`
+	ReadTimeoutSeconds       int    `toml:"read_timeout_seconds"`
+	WriteTimeoutSeconds      int    `toml:"write_timeout_seconds"`
+	IdleTimeoutSeconds       int    `toml:"idle_timeout_seconds"`
 }
 
 type ElnisTokenConfig struct {
@@ -645,6 +649,18 @@ func (c *Config) applyElnisDefaults() {
 	}
 	if c.Elnis.HTTP.Workers <= 0 {
 		c.Elnis.HTTP.Workers = 2
+	}
+	if c.Elnis.HTTP.ReadHeaderTimeoutSeconds <= 0 {
+		c.Elnis.HTTP.ReadHeaderTimeoutSeconds = 5
+	}
+	if c.Elnis.HTTP.ReadTimeoutSeconds <= 0 {
+		c.Elnis.HTTP.ReadTimeoutSeconds = 30
+	}
+	if c.Elnis.HTTP.WriteTimeoutSeconds <= 0 {
+		c.Elnis.HTTP.WriteTimeoutSeconds = 300
+	}
+	if c.Elnis.HTTP.IdleTimeoutSeconds <= 0 {
+		c.Elnis.HTTP.IdleTimeoutSeconds = 60
 	}
 	if c.Elnis.Tokens == nil {
 		c.Elnis.Tokens = map[string]ElnisTokenConfig{}
