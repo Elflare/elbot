@@ -120,6 +120,14 @@
       "translation": "__ELBOT_CODE_0__ added __ELBOT_CODE_1__ and __ELBOT_CODE_2__ to filter and display __ELBOT_CODE_3__ logs.",
       "updated_at": 1784127057
     },
+    "CHANGELOG.md:list:21d72a77e48ea524eff4c4c1df5ca0a1108124985828b75d4370351c123487c8": {
+      "kind": "list",
+      "source": "修复 Session 删除、归档确认可能因列表或当前 Session 变化而作用到错误目标的问题，并让存储错误正确返回给调用方。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "21d72a77e48ea524eff4c4c1df5ca0a1108124985828b75d4370351c123487c8",
+      "translation": "Fixed an issue where Session deletion or archive confirmation might affect the wrong target due to changes in the list or the current Session, and ensured that storage errors are correctly returned to the caller.",
+      "updated_at": 1784276217
+    },
     "CHANGELOG.md:list:26b222fc0d0b7e2913298c6c9031205f80eda52572d2f5f484ad632790632906": {
       "kind": "list",
       "source": "QQ OneBot、QQ 官方、Telegram 平台断线重连改为指数退避（3s 起，翻倍，封顶 10s）并日志降级：连续失败只在首次记 warn，恢复后记 info，不再每轮刷屏。",
@@ -432,6 +440,14 @@
       "translation": "The current body will be read when __ELBOT_CODE_0__ is discovered by name or __ELBOT_CODE_1__ is preloaded; the same applies to tool-based Skills with __ELBOT_CODE_2__.",
       "updated_at": 1783775610
     },
+    "CHANGELOG.md:list:6d6331b02474cad308cfd2bebfb6083f119ddf49787f83639f01fa37b66e5d71": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 改为直接按最近更新时间恢复非当前 Session，__ELBOT_CODE_1__ 表示最近一项，不再要求先执行裸 __ELBOT_CODE_2__ 建立编号。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "6d6331b02474cad308cfd2bebfb6083f119ddf49787f83639f01fa37b66e5d71",
+      "translation": "__ELBOT_CODE_0__ now restores non-current Sessions directly based on the most recent update time; __ELBOT_CODE_1__ represents the most recent item, and it is no longer required to first execute a bare __ELBOT_CODE_2__ to establish numbering.",
+      "updated_at": 1784276217
+    },
     "CHANGELOG.md:list:6e825de7a3fb0a65300d30be0edd7d8051380fa20be7239c89d4c991c8928362": {
       "kind": "list",
       "source": "QQ OneBot 新增 __ELBOT_CODE_0__ 配置，本地图片和文件默认使用 base64 发送，也可在共享文件系统的部署中显式改用 __ELBOT_CODE_1__。",
@@ -647,6 +663,14 @@
       "source_hash": "94517b0f2275ae4197728d971ccfb2f1a1a20c60f53243383ab713f3cbd12b8b",
       "translation": "**Hook Layer**: Inserts extension logic at key points such as Agent input, LLM request/response, and platform sending; includes built-in rule Hooks and resident memory Hooks.",
       "updated_at": 1782376912
+    },
+    "CHANGELOG.md:list:96773e2d260f3f80747946fd551439f8b2b94b07a20d94084ab7f1cc1d68a2e3": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 支持直接携带消息，在切换 Session 模式后立即发送；Session 命令状态改为按平台 Scope 隔离。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "96773e2d260f3f80747946fd551439f8b2b94b07a20d94084ab7f1cc1d68a2e3",
+      "translation": "__ELBOT_CODE_0__ and __ELBOT_CODE_1__ now support carrying messages directly, which are sent immediately after switching the Session mode; Session command status is now isolated by platform Scope.",
+      "updated_at": 1784276217
     },
     "CHANGELOG.md:list:982e715f6a8e303465255744e60589d5a93f784f31e748fbdb313c57f07a56e8": {
       "kind": "list",
@@ -1066,8 +1090,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "ba7d198646d4f3a3cddea2d36a3c8a55f4b5b2a96fe3c6885fb587b8663310fb",
+  "source_hash": "4edf2cf840aa8ccd8205f411aeec99e84f6fae179b8bfec5ec23ee32a77a5464",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784209683,
+  "updated_at": 1784276217,
   "version": 2
 }
