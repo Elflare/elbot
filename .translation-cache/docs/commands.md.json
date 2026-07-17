@@ -104,14 +104,6 @@
       "translation": "Rule Hooks directly use the __ELBOT_CODE_0__ in the configuration;",
       "updated_at": 1783390911
     },
-    "docs/commands.md:list:56f592b51f3e4db3f0574804db58561c5ce478a9a00b4737d840d1da8cc53ebf": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 展示的编号可被 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__ 等命令复用。",
-      "source_file": "docs/commands.md",
-      "source_hash": "56f592b51f3e4db3f0574804db58561c5ce478a9a00b4737d840d1da8cc53ebf",
-      "translation": "The IDs displayed by __ELBOT_CODE_0__ can be reused by commands such as __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, and __ELBOT_CODE_4__.",
-      "updated_at": 1781514917
-    },
     "docs/commands.md:list:618c24a7386c36940053553ef820dc60e8388b7ae4241071f56b8e02ec097504": {
       "kind": "list",
       "source": "CLI 作为本地高权限入口，可以跨平台查看 Session；非 CLI 平台默认只查看当前平台和作用域下的 Session。",
@@ -119,6 +111,14 @@
       "source_hash": "618c24a7386c36940053553ef820dc60e8388b7ae4241071f56b8e02ec097504",
       "translation": "CLI serves as a local high-privilege entry point and can view Sessions across platforms; non-CLI platforms view Sessions under the current platform and scope by default.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:list:6474db69037797ece1c045a96537d8381a30c5b7d095eb4f8e03d2de4b2bf50e": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 可以直接恢复最近更新的非当前 Session，无需先执行裸 __ELBOT_CODE_1__；编号按更新时间排列，不受置顶影响，翻页时编号连续。",
+      "source_file": "docs/commands.md",
+      "source_hash": "6474db69037797ece1c045a96537d8381a30c5b7d095eb4f8e03d2de4b2bf50e",
+      "translation": "__ELBOT_CODE_0__ can directly restore the most recently updated Session other than the current one without first executing a bare __ELBOT_CODE_1__; indices are sorted by update time, are not affected by pinning, and remain continuous when paging.",
+      "updated_at": 1784276178
     },
     "docs/commands.md:list:86f4b0d40783395da1758f840cbcc66650a856e5369c4fedfbb386d7ef46feb4": {
       "kind": "list",
@@ -159,6 +159,14 @@
       "source_hash": "a0b5430c1b57bff3b15d0f05598d4fb48dd807a396c4627a0b3f97a23697a81c",
       "translation": "Automatic compaction is controlled by __ELBOT_CODE_0__ and __ELBOT_CODE_1__.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:list:a56a0a6ac06392789217795b3227c76560ce0447cd532ba1cf27e71ddf23a0b1": {
+      "kind": "list",
+      "source": "例如 __ELBOT_CODE_0__ 会先切换到 chat 模式，再把“随便聊聊”作为同一条用户消息发给模型；若模式切换被拒绝，消息不会发送。",
+      "source_file": "docs/commands.md",
+      "source_hash": "a56a0a6ac06392789217795b3227c76560ce0447cd532ba1cf27e71ddf23a0b1",
+      "translation": "For example, __ELBOT_CODE_0__ will first switch to chat mode, then send \"Just chatting\" as the same user message to the model; if the mode switch is rejected, the message will not be sent.",
+      "updated_at": 1784276178
     },
     "docs/commands.md:list:a9cf3d8b3aa047986187e2776b1d230f8024f8e67e006db91b2fed1a8603cac2": {
       "kind": "list",
@@ -207,6 +215,14 @@
       "source_hash": "f275ad5728d0764f38c31757da740dea8fbb8ca748a44322a4182a2ca668d5c5",
       "translation": "__ELBOT_CODE_0__ will be displayed in the list and details; rule details are only displayed in the details.",
       "updated_at": 1783390911
+    },
+    "docs/commands.md:list:f8edef1dd92025bd8f485f8622b7aff963a7eee3025a9f0974b1a36c16f459e5": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 展示的编号可被 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ 等 Session 操作命令复用。",
+      "source_file": "docs/commands.md",
+      "source_hash": "f8edef1dd92025bd8f485f8622b7aff963a7eee3025a9f0974b1a36c16f459e5",
+      "translation": "The indices displayed by __ELBOT_CODE_0__ can be reused by Session operation commands such as __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__.",
+      "updated_at": 1784276178
     },
     "docs/commands.md:paragraph:11949f500527ac1c11f5031f858cfb0a5bfb8bf7f0a9644ef049ccfb83459f01": {
       "kind": "paragraph",
@@ -368,14 +384,6 @@
       "translation": "List all registered Hooks.",
       "updated_at": 1782444282
     },
-    "docs/commands.md:table:0ba7423e03b0426c37991378a8ba9034b7eec65b7c3fcb33a4b7c8c582e3deef": {
-      "kind": "table",
-      "source": "切换到 work 模式，或创建新的 work Session。",
-      "source_file": "docs/commands.md",
-      "source_hash": "0ba7423e03b0426c37991378a8ba9034b7eec65b7c3fcb33a4b7c8c582e3deef",
-      "translation": "Switch to work mode, or create a new work Session.",
-      "updated_at": 1781514917
-    },
     "docs/commands.md:table:0ca36ceb7e35d7dbf9961cd6ed699c41a62490440129e9dd66c3dfbc9ec0ca95": {
       "kind": "table",
       "source": "只看某时间之前。",
@@ -415,6 +423,14 @@
       "source_hash": "171f6e4fe2aacef03bf09f9c9a70f5fd3465cb82498eb3ace86243e8fd621f5e",
       "translation": "Filter by actor ID.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:1b9b7ec543db3d789cde242022594ae6f500b1e5d56ae6346058c3dad298de77": {
+      "kind": "table",
+      "source": "切换到 chat 模式，或创建新的 chat Session；提供消息时会切换后立即发送。",
+      "source_file": "docs/commands.md",
+      "source_hash": "1b9b7ec543db3d789cde242022594ae6f500b1e5d56ae6346058c3dad298de77",
+      "translation": "Switch to chat mode, or create a new chat Session; if a message is provided, it will be sent immediately after switching.",
+      "updated_at": 1784276178
     },
     "docs/commands.md:table:26048c0dbde8ca8a2caddcf9458d313d95556cbe391d5d3f8485e42da4b94093": {
       "kind": "table",
@@ -544,6 +560,14 @@
       "translation": "Stop and restart a persistent Hook.",
       "updated_at": 1783678873
     },
+    "docs/commands.md:table:47784861a54331a69ab91bf6148d0764494c94a71bd8cdf9282e7b3e78512532": {
+      "kind": "table",
+      "source": "恢复历史 Session；编号 __ELBOT_CODE_0__ 表示最近更新的非当前 Session。",
+      "source_file": "docs/commands.md",
+      "source_hash": "47784861a54331a69ab91bf6148d0764494c94a71bd8cdf9282e7b3e78512532",
+      "translation": "Restore a historical Session; index __ELBOT_CODE_0__ represents the most recently updated Session other than the current one.",
+      "updated_at": 1784276178
+    },
     "docs/commands.md:table:4b18f0e99fbc129f18b64f742b16ac6821ec0b60852c604bb4bcfd840ef92d43": {
       "kind": "table",
       "source": "查看某个命令的详细帮助。",
@@ -567,6 +591,14 @@
       "source_hash": "4f5d8f215ee70aac504ec360d2a91a33c83c6a22dbbb8bf01086927acad28926",
       "translation": "Filter by internal Elnis event ID.",
       "updated_at": 1781752948
+    },
+    "docs/commands.md:table:53fa3a6b3b254c4004e9ea9e02ac28a49a46344876ce9f9998f65096f8d61537": {
+      "kind": "table",
+      "source": "切换到 work 模式，或创建新的 work Session；提供消息时会切换后立即发送。",
+      "source_file": "docs/commands.md",
+      "source_hash": "53fa3a6b3b254c4004e9ea9e02ac28a49a46344876ce9f9998f65096f8d61537",
+      "translation": "Switch to work mode, or create a new work Session; if a message is provided, it will be sent immediately after switching.",
+      "updated_at": 1784276178
     },
     "docs/commands.md:table:56375112941485fecc695a61d05b78314279a7909c81077498d2177a2947318c": {
       "kind": "table",
@@ -880,14 +912,6 @@
       "translation": "Unarchive Session, defaults to the current Session.",
       "updated_at": 1781514917
     },
-    "docs/commands.md:table:d64f98c5cac70b7821672e5bb4a3ec183b517898df12d4e0734f519bcc1a7ff6": {
-      "kind": "table",
-      "source": "恢复历史 Session。",
-      "source_file": "docs/commands.md",
-      "source_hash": "d64f98c5cac70b7821672e5bb4a3ec183b517898df12d4e0734f519bcc1a7ff6",
-      "translation": "Restore a historical Session.",
-      "updated_at": 1781514917
-    },
     "docs/commands.md:table:d9c788e8bb861df5f4d353643fc918a6120fdd5bfe94c847452de41041200e72": {
       "kind": "table",
       "source": "列出当前 Session 中可用于 fork 的 assistant message ID。",
@@ -992,14 +1016,6 @@
       "translation": "Switch to Elnis elwisp1 model slot.",
       "updated_at": 1781779244
     },
-    "docs/commands.md:table:f9c1352e4733a42ee68b763377496585a444cf7aa6d4798d88ff9700921ac903": {
-      "kind": "table",
-      "source": "切换到 chat 模式，或创建新的 chat Session。",
-      "source_file": "docs/commands.md",
-      "source_hash": "f9c1352e4733a42ee68b763377496585a444cf7aa6d4798d88ff9700921ac903",
-      "translation": "Switch to chat mode, or create a new chat Session.",
-      "updated_at": 1781514917
-    },
     "docs/commands.md:table:fb6b2fa9be44b8de7e4415daf70ae2bf32694deeba05d64cdcf82d1164ca1855": {
       "kind": "table",
       "source": "重命名当前或指定 Session。",
@@ -1026,8 +1042,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "7c24ba54a142d292b4283b5d989fbbd4371d4a8206970552da47032909bb1eba",
+  "source_hash": "8b505c131a2c2585a118b54b9f4fa2744c1f5089d59e03902218ce5e70af409b",
   "target": "docs.en/commands.md",
-  "updated_at": 1784127033,
+  "updated_at": 1784276178,
   "version": 2
 }
