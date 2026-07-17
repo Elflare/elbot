@@ -108,6 +108,94 @@ func TestRegistryUnregisterBuiltinRejected(t *testing.T) {
 	}
 }
 
+func TestRegistryReplaceSourcesReplacesCompleteSnapshot(t *testing.T) {
+	registry := NewRegistry()
+	for _, item := range []Tool{
+		fakeTool{name: "builtin", source: SourceBuiltin},
+		fakeTool{name: "old_agent", source: SourceSkillAgent},
+		fakeTool{name: "old_go", source: SourceSkillGo},
+	} {
+		if err := registry.Register(item); err != nil {
+			t.Fatal(err)
+		}
+	}
+	replacements := []Tool{
+		fakeTool{name: "new_agent", source: SourceSkillAgent},
+		fakeTool{name: "new_go", source: SourceSkillGo},
+	}
+	if err := registry.ReplaceSources([]Source{SourceSkillAgent, SourceSkillGo}, replacements); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"builtin", "new_agent", "new_go"} {
+		if _, ok := registry.Get(name); !ok {
+			t.Fatalf("tool %q should be registered", name)
+		}
+	}
+	for _, name := range []string{"old_agent", "old_go"} {
+		if _, ok := registry.Get(name); ok {
+			t.Fatalf("tool %q should have been replaced", name)
+		}
+	}
+}
+
+func TestRegistryReplaceSourcesConflictKeepsOldSnapshot(t *testing.T) {
+	registry := NewRegistry()
+	builtin := fakeTool{name: "conflict", source: SourceBuiltin}
+	old := fakeTool{name: "old", source: SourceSkillAgent}
+	if err := registry.Register(builtin); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(old); err != nil {
+		t.Fatal(err)
+	}
+	err := registry.ReplaceSources([]Source{SourceSkillAgent, SourceSkillGo}, []Tool{
+		fakeTool{name: "fresh", source: SourceSkillAgent},
+		fakeTool{name: "conflict", source: SourceSkillGo},
+	})
+	if err == nil || !strings.Contains(err.Error(), "conflicts with existing source") {
+		t.Fatalf("ReplaceSources error = %v, want source conflict", err)
+	}
+	if _, ok := registry.Get("old"); !ok {
+		t.Fatal("old skill should remain after failed replacement")
+	}
+	if _, ok := registry.Get("fresh"); ok {
+		t.Fatal("fresh skill should not be visible after failed replacement")
+	}
+	got, ok := registry.Get("conflict")
+	if !ok || got.Info().Source != SourceBuiltin {
+		t.Fatalf("conflicting builtin changed: %#v, %v", got, ok)
+	}
+}
+
+func TestRegistryReplaceSourcesAggregatesCandidateErrors(t *testing.T) {
+	registry := NewRegistry()
+	err := registry.ReplaceSources([]Source{SourceSkillAgent}, []Tool{
+		fakeTool{name: "dup", source: SourceSkillAgent},
+		fakeTool{name: "dup", source: SourceSkillAgent},
+		fakeTool{name: "wrong", source: SourceBuiltin},
+	})
+	if err == nil || !strings.Contains(err.Error(), "appears more than once") || !strings.Contains(err.Error(), "outside replacement set") {
+		t.Fatalf("ReplaceSources error = %v, want aggregated validation errors", err)
+	}
+	if len(registry.List()) != 0 {
+		t.Fatalf("registry changed after failed replacement: %#v", registry.List())
+	}
+}
+
+func TestRegistryReplaceSourcesRejectsBuiltinSource(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(fakeTool{name: "builtin", source: SourceBuiltin}); err != nil {
+		t.Fatal(err)
+	}
+	err := registry.ReplaceSources([]Source{SourceBuiltin}, nil)
+	if err == nil || !strings.Contains(err.Error(), "builtin tools cannot be replaced") {
+		t.Fatalf("ReplaceSources error = %v, want builtin protection", err)
+	}
+	if _, ok := registry.Get("builtin"); !ok {
+		t.Fatal("builtin tool should remain registered")
+	}
+}
+
 func TestDiscoverToolDescriptionEncouragesSpeakingBeforeToolUse(t *testing.T) {
 	description := NewDiscoverTool(NewRegistry()).Info().Description
 	if !strings.Contains(description, "先用一句简短自然语言") {

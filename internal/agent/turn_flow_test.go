@@ -229,7 +229,7 @@ func TestStopFinishesRuntimeStatus(t *testing.T) {
 		t.Fatal("chat did not stop")
 	}
 
-	status := p.lastStatus
+	_, status := p.statusSnapshot()
 	if status.Phase != runtimestatus.PhaseDone {
 		t.Fatalf("runtime phase = %s, want %s", status.Phase, runtimestatus.PhaseDone)
 	}

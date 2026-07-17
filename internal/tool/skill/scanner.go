@@ -16,11 +16,6 @@ import (
 const windowsAppDirName = "ElBot"
 const xdgAppDirName = "elbot"
 
-type Scanner interface {
-	Scan(ctx context.Context) ([]tool.Tool, error)
-	Reload(ctx context.Context, registry *tool.Registry) error
-}
-
 type FilesystemScanner struct {
 	Root    string
 	Catalog *Catalog
@@ -74,31 +69,15 @@ func (s FilesystemScanner) Reload(ctx context.Context, registry *tool.Registry) 
 	if err != nil {
 		return err
 	}
-	seen := map[string]bool{}
+	replacements := make([]tool.Tool, 0, len(records))
 	for _, record := range records {
-		seen[record.Name] = true
+		replacements = append(replacements, toolForRecord(record))
 	}
-	for _, info := range registry.List() {
-		if (info.Source == tool.SourceSkillAgent || info.Source == tool.SourceSkillGo) && !seen[info.Name] {
-			_ = registry.Unregister(info.Name)
-		}
-	}
-	registered := make([]Record, 0, len(records))
-	for _, record := range records {
-		if existing, ok := registry.Get(record.Name); ok {
-			if existing.Info().Source == tool.SourceSkillAgent || existing.Info().Source == tool.SourceSkillGo {
-				_ = registry.Unregister(record.Name)
-			} else {
-				continue
-			}
-		}
-		if err := registry.Register(toolForRecord(record)); err != nil {
-			continue
-		}
-		registered = append(registered, record)
+	if err := registry.ReplaceSources([]tool.Source{tool.SourceSkillAgent, tool.SourceSkillGo}, replacements); err != nil {
+		return err
 	}
 	if s.Catalog != nil {
-		s.Catalog.Replace(registered)
+		s.Catalog.Replace(records)
 	}
 	return nil
 }
@@ -135,14 +114,23 @@ func (s FilesystemScanner) scanRecords(ctx context.Context) ([]Record, error) {
 		return nil, err
 	}
 	records = append(records, goRecords...)
-	seen := map[string]bool{}
+	seen := map[string]Record{}
 	out := make([]Record, 0, len(records))
+	duplicates := []string{}
 	for _, record := range records {
-		if record.Name == "" || seen[record.Name] {
+		if record.Name == "" {
 			continue
 		}
-		seen[record.Name] = true
+		if previous, ok := seen[record.Name]; ok {
+			duplicates = append(duplicates, fmt.Sprintf("%q (%s, %s)", record.Name, previous.Root, record.Root))
+			continue
+		}
+		seen[record.Name] = record
 		out = append(out, record)
+	}
+	if len(duplicates) > 0 {
+		sort.Strings(duplicates)
+		return nil, fmt.Errorf("duplicate skill names: %s", strings.Join(duplicates, "; "))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil

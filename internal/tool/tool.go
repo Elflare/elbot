@@ -272,6 +272,73 @@ func (r *Registry) Register(tool Tool) error {
 	return nil
 }
 
+// ReplaceSources atomically replaces every tool owned by the selected sources.
+// Existing tools from other sources are preserved and may not be shadowed.
+func (r *Registry) ReplaceSources(sources []Source, replacements []Tool) error {
+	sourceSet := make(map[Source]bool, len(sources))
+	for _, source := range sources {
+		if source == SourceBuiltin {
+			return fmt.Errorf("builtin tools cannot be replaced")
+		}
+		sourceSet[source] = true
+	}
+	if len(sourceSet) == 0 {
+		return fmt.Errorf("replacement sources are required")
+	}
+
+	type candidate struct {
+		name string
+		tool Tool
+	}
+	candidates := make([]candidate, 0, len(replacements))
+	seen := make(map[string]bool, len(replacements))
+	problems := []string{}
+	for i, replacement := range replacements {
+		if replacement == nil {
+			problems = append(problems, fmt.Sprintf("replacement[%d] is nil", i))
+			continue
+		}
+		name := strings.TrimSpace(replacement.Name())
+		if name == "" {
+			problems = append(problems, fmt.Sprintf("replacement[%d] has no name", i))
+			continue
+		}
+		if !sourceSet[replacement.Info().Source] {
+			problems = append(problems, fmt.Sprintf("tool %q has source %q outside replacement set", name, replacement.Info().Source))
+		}
+		if seen[name] {
+			problems = append(problems, fmt.Sprintf("tool %q appears more than once", name))
+		} else {
+			seen[name] = true
+		}
+		candidates = append(candidates, candidate{name: name, tool: replacement})
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, candidate := range candidates {
+		if existing, ok := r.tools[candidate.name]; ok && !sourceSet[existing.Info().Source] {
+			problems = append(problems, fmt.Sprintf("tool %q conflicts with existing source %q", candidate.name, existing.Info().Source))
+		}
+	}
+	if len(problems) > 0 {
+		sort.Strings(problems)
+		return fmt.Errorf("replace tool sources: %s", strings.Join(problems, "; "))
+	}
+
+	next := make(map[string]Tool, len(r.tools)+len(candidates))
+	for name, existing := range r.tools {
+		if !sourceSet[existing.Info().Source] {
+			next[name] = existing
+		}
+	}
+	for _, candidate := range candidates {
+		next[candidate.name] = candidate.tool
+	}
+	r.tools = next
+	return nil
+}
+
 func (r *Registry) Unregister(name string) error {
 	name = strings.TrimSpace(name)
 	r.mu.Lock()
