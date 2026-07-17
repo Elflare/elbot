@@ -55,8 +55,12 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 
 先看：
 
-- `internal/agent/core.go`：Agent 入口和 slash/普通输入分发。
-- `internal/agent/input.go`：普通输入预处理、pending、风险确认入口。
+- `internal/agent/core.go`：Agent 状态和构造装配；构造参数集中在 `Options`。
+- `internal/agent/message.go`：消息入口、slash/普通输入分发和用户错误通知。
+- `internal/agent/command_runtime.go`：命令权限、Turn 冲突、通知和 continuation 的统一编排。
+- `internal/agent/input.go`：普通输入预处理、命令 continuation、pending 和风险确认入口。
+- `internal/agent/segments.go`：平台入站 Segment 与 LLM Segment 转换。
+- `internal/agent/options.go`、`logging.go`、`identity.go`：运行配置、日志和 Actor/Scope 解析。
 - `internal/agent/chat.go`：普通对话主流程。
 - `internal/agent/chat_llm.go`：LLM 调用和消息转换。
 - `internal/agent/chat_tools.go`：工具执行与确认。
@@ -80,6 +84,7 @@ rg -n "Handle|Run|Prompt|tool_calls|reasoning|usage|pending|prepared" internal/a
 
 - `internal/agent/commands/`：内置命令实现。
 - `internal/agent/commands/register.go`：命令模块注册入口。
+- `internal/agent/commands/session_*.go`：按模式、核心、导航、生命周期和格式化拆分的 Session 命令；共享状态由 `SessionCommandState` 按 Scope 隔离。
 - `internal/command/`：通用命令框架和 Router。
 - `internal/completion/`：平台补全服务。
 - `docs/commands.md`：用户侧命令文档。
@@ -247,7 +252,10 @@ rg -n "PlatformAdapter|SendChat|MessageSegment|Actor|Scope|remote|websocket|long
 
 先看：
 
-- `internal/session/`
+- `internal/session/service.go`、`types.go`：Session 服务主体和领域请求/结果类型。
+- `internal/session/mode.go`：模式激活和 work 历史限制。
+- `internal/session/lifecycle.go`、`query.go`、`fork.go`、`expiration.go`：生命周期、查询、Fork 和闲置过期策略。
+- `internal/session/naming.go`：异步 Session 命名。
 - `internal/agent/session_metadata.go`：Session metadata 编解码。
 - `internal/agent/workspace.go`：Agent workspace 持久化适配。
 - `internal/tool/workspace.go`：工具 workspace context 和路径解析。

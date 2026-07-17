@@ -357,7 +357,23 @@ func Run(ctx context.Context, opts Options) error {
 		notifyHookIssue(context.Background(), fmt.Sprintf("Hook 注册失败：%v", err))
 	}
 	profiler.Mark("hook register")
-	agt = agent.NewWithRequestConfig(platforms.Primary, adapter, workModel.Provider, cfg.ModeModels, cfg.Providers, cfg.StateConfigPath, store, cfg.Commands.Prefixes, session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode}, cfg.NamingModel, namingAdapter, namingModel, namingLogger{logger: logger}, cfg.Soul.Path, cfg.LLMRequest, hookService)
+	agt = agent.NewWithOptions(agent.Options{
+		Platform:         platforms.Primary,
+		Client:           adapter,
+		ModeModels:       cfg.ModeModels,
+		Providers:        cfg.Providers,
+		StatePath:        cfg.StateConfigPath,
+		Store:            store,
+		CommandPrefixes:  cfg.Commands.Prefixes,
+		SessionConfig:    session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode},
+		NamingSelection:  cfg.NamingModel,
+		NamingClient:     namingAdapter,
+		NamingModel:      namingModel,
+		NamingNotifier:   namingLogger{logger: logger},
+		SoulPath:         cfg.Soul.Path,
+		LLMRequestConfig: cfg.LLMRequest,
+		HookService:      hookService,
+	})
 	agt.SetHookManager(hooks)
 	agt.SetHookRuntime(hookRuntime)
 	agt.SetOutputManager(delivery.NewManager(nil, logger))

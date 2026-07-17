@@ -134,6 +134,10 @@ func (r *SessionRepository) List(ctx context.Context, req storage.ListSessionsRe
 	} else if !req.IncludeArchived {
 		where = append(where, "archived_at IS NULL")
 	}
+	if req.ExcludeSessionID != "" {
+		where = append(where, "s.id <> ?")
+		args = append(args, req.ExcludeSessionID)
+	}
 	if req.Query != "" {
 		where = append(where, "title LIKE ?")
 		args = append(args, "%"+req.Query+"%")
@@ -143,18 +147,22 @@ func (r *SessionRepository) List(ctx context.Context, req storage.ListSessionsRe
 	}
 	args = append(args, limit, max(0, req.Offset))
 
+	orderBy := "CASE WHEN s.pinned_at IS NULL THEN 1 ELSE 0 END, s.pinned_at DESC, s.updated_at DESC"
+	if req.OrderByUpdatedAt {
+		orderBy = "s.updated_at DESC, s.id DESC"
+	}
 	query := fmt.Sprintf(`
 SELECT s.id, s.owner_id, s.platform, s.platform_scope_id, s.title, s.mode, s.status,
        s.created_at, s.updated_at, s.archived_at, s.pinned_at,
        COUNT(m.id) AS message_count,
-       COALESCE((SELECT content FROM messages WHERE session_id = s.id AND role = 'user' ORDER BY created_at DESC, id DESC LIMIT 1), '') AS last_user_preview,
-       COALESCE((SELECT content FROM messages WHERE session_id = s.id AND role = 'assistant' ORDER BY created_at DESC, id DESC LIMIT 1), '') AS last_bot_preview
+       COALESCE((SELECT content FROM messages WHERE session_id = s.id AND role = 'user' ORDER BY created_at DESC, rowid DESC LIMIT 1), '') AS last_user_preview,
+       COALESCE((SELECT content FROM messages WHERE session_id = s.id AND role = 'assistant' ORDER BY created_at DESC, rowid DESC LIMIT 1), '') AS last_bot_preview
 FROM sessions s
 LEFT JOIN messages m ON m.session_id = s.id
 WHERE %s
 GROUP BY s.id
-ORDER BY CASE WHEN s.pinned_at IS NULL THEN 1 ELSE 0 END, s.pinned_at DESC, s.updated_at DESC
-LIMIT ? OFFSET ?`, strings.Join(where, " AND "))
+ORDER BY %s
+LIMIT ? OFFSET ?`, strings.Join(where, " AND "), orderBy)
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -224,7 +232,7 @@ func (r *SessionRepository) messagePreview(ctx context.Context, sessionID string
 SELECT role, content
 FROM messages
 WHERE session_id = ? AND role IN ('user', 'assistant')
-ORDER BY created_at ASC, id ASC
+ORDER BY created_at ASC, rowid ASC
 LIMIT 4`, sessionID)
 	if err != nil {
 		return ""

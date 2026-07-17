@@ -7,15 +7,25 @@ import (
 )
 
 type Info struct {
-	Name        string
-	Usage       string
-	Description string
-	Aliases     []string
-	Help        string
+	Name          string
+	Usage         string
+	Description   string
+	Aliases       []string
+	Help          string
+	SessionEffect SessionEffect
 	// MinRole controls slash-command access. RoleUser allows regular users;
 	// empty defaults to RoleSuperadmin for backward compatibility.
 	MinRole security.Role
 }
+
+type SessionEffect uint8
+
+const SessionEffectNone SessionEffect = 0
+
+const (
+	SessionEffectSwitchCurrent SessionEffect = 1 << iota
+	SessionEffectMutate
+)
 
 type Request struct {
 	Raw    string
@@ -25,7 +35,13 @@ type Request struct {
 }
 
 type Result struct {
-	Content string
+	Content      string
+	Continuation *Continuation
+}
+
+type Continuation struct {
+	Text      string
+	SessionID string
 }
 
 type CompletionRequest struct {

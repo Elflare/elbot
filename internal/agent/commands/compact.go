@@ -9,10 +9,11 @@ import (
 
 func NewCompact(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
-		Name:        "compact",
-		Usage:       "/compact",
-		Description: "Compact current session context.",
-		MinRole:     security.RoleUser,
+		Name:          "compact",
+		Usage:         "/compact",
+		Description:   "Compact current session context.",
+		SessionEffect: command.SessionEffectMutate,
+		MinRole:       security.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		content, err := deps.Compact.CompactCurrent(ctx, "manual")
 		if err != nil {

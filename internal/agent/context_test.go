@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
@@ -346,15 +347,13 @@ func TestAutoCompactFailureKeepsSourceSession(t *testing.T) {
 }
 
 func TestCompactBlockedCommandSet(t *testing.T) {
-	for _, name := range []string{"new", "resume", "fork", "work", "chat", "archive", "unarchive", "pin", "unpin", "rename", "delete", "clean", "compact"} {
-		if !shouldBlockCommandDuringCompact(name) {
-			t.Fatalf("command %q should be blocked", name)
+	for _, effect := range []command.SessionEffect{command.SessionEffectSwitchCurrent, command.SessionEffectMutate, command.SessionEffectSwitchCurrent | command.SessionEffectMutate} {
+		if !blocksDuringCompact(effect) {
+			t.Fatalf("effect %d should be blocked", effect)
 		}
 	}
-	for _, name := range []string{"stop", "stopall", "requests", "status", "sessions", "messages"} {
-		if shouldBlockCommandDuringCompact(name) {
-			t.Fatalf("command %q should remain available", name)
-		}
+	if blocksDuringCompact(command.SessionEffectNone) {
+		t.Fatal("commands without session effects should remain available")
 	}
 }
 
