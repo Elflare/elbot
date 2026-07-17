@@ -109,6 +109,7 @@ func aroundChatHistoryBuilder() *tool.Builder {
 	return tool.NewBuilder("get_chat_history_around").
 		Description("根据 search_chat_history 返回的 #message_id 查询当前聊天中该条消息附近的上下文。").
 		Risk(tool.RiskLow).
+		Hidden().
 		Tags("chat").
 		DependsOn("reply_to_chat_history_message").
 		String("message_id", "search_chat_history 返回结果中的平台消息 ID，可传 # 开头或纯 ID。", tool.Required()).
@@ -119,6 +120,7 @@ func aroundChatHistoryBuilder() *tool.Builder {
 func replyChatHistoryBuilder() *tool.Builder {
 	return tool.NewBuilder("reply_to_chat_history_message").
 		Description("引用当前聊天历史中的某条平台消息，并发送回复到当前群聊或私聊。调用成功后不要重复发送相同内容。").
+		Hidden().
 		Risk(tool.RiskLow).
 		Tags("chat").
 		String("message_id", "search_chat_history 或 get_chat_history_around 返回结果中的平台消息 ID，可传 # 开头或纯 ID。", tool.Required()).
