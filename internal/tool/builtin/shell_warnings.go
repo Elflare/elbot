@@ -16,6 +16,10 @@ func analyzeShellAdvice(cmdText, workDir string, fileGuard *FileGuard) shellAdvi
 	if isPowerShellEnv() {
 		return shellAdvice{}
 	}
+	return analyzeBashShellAdvice(cmdText, workDir, fileGuard)
+}
+
+func analyzeBashShellAdvice(cmdText, workDir string, fileGuard *FileGuard) shellAdvice {
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
 	file, err := parser.Parse(strings.NewReader(cmdText), "")
 	if err != nil {

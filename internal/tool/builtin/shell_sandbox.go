@@ -17,7 +17,14 @@ var windowsAbsPathPattern = regexp.MustCompile(`^[A-Za-z]:/`)
 // 后台任务无人值守，因此禁止绝对路径、.. 逃逸、动态路径和 cd，
 // 尽量把 shell 影响限制在 sandbox cwd 内。
 func applyShellSandboxRisk(cmdText string, assessment tool.RiskAssessment) tool.RiskAssessment {
-	violations := validateShellSandboxCommand(cmdText)
+	if isPowerShellEnv() {
+		return assessment
+	}
+	return applyBashShellSandboxRisk(cmdText, assessment)
+}
+
+func applyBashShellSandboxRisk(cmdText string, assessment tool.RiskAssessment) tool.RiskAssessment {
+	violations := validateBashShellSandboxCommand(cmdText)
 	if len(violations) == 0 {
 		return assessment
 	}
@@ -28,10 +35,7 @@ func applyShellSandboxRisk(cmdText string, assessment tool.RiskAssessment) tool.
 	return assessment
 }
 
-func validateShellSandboxCommand(cmdText string) []string {
-	if isPowerShellEnv() {
-		return nil
-	}
+func validateBashShellSandboxCommand(cmdText string) []string {
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
 	file, err := parser.Parse(strings.NewReader(cmdText), "")
 	if err != nil {
