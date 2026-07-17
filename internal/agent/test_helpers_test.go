@@ -20,11 +20,35 @@ import (
 )
 
 type fakePlatform struct {
-	out         strings.Builder
-	preview     strings.Builder
-	reasoning   strings.Builder
+	out         safeStringBuilder
+	preview     safeStringBuilder
+	reasoning   safeStringBuilder
+	statusMu    sync.Mutex
 	statusCount int
 	lastStatus  runtimestatus.Snapshot
+}
+
+type safeStringBuilder struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (b *safeStringBuilder) WriteString(text string) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.WriteString(text)
+}
+
+func (b *safeStringBuilder) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.String()
+}
+
+func (b *safeStringBuilder) Reset() {
+	b.mu.Lock()
+	b.b.Reset()
+	b.mu.Unlock()
 }
 
 type fakeHookRouter struct {
@@ -67,9 +91,17 @@ func (p *fakePlatform) SendReasoning(ctx context.Context, text string) error {
 }
 
 func (p *fakePlatform) SetRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
+	p.statusMu.Lock()
+	defer p.statusMu.Unlock()
 	p.statusCount++
 	p.lastStatus = snapshot
 	return nil
+}
+
+func (p *fakePlatform) statusSnapshot() (int, runtimestatus.Snapshot) {
+	p.statusMu.Lock()
+	defer p.statusMu.Unlock()
+	return p.statusCount, p.lastStatus
 }
 
 type fakeStreamingPlatform struct {

@@ -156,6 +156,8 @@ Skill 分三类：
 3. `discover_tool` 暴露 Skill 详情或激活对应 wrapper。
 4. 原生 EL Skill 创建/修改后需要 finalize，执行 lint、gofmt、build 和 reload。
 
+Reload 由 Skill Manager 串行执行：scanner 先构建并验证完整候选集，registry 在单次写锁内替换 Agent/Go Skill 快照，成功后再替换 catalog；任一步失败均保留旧运行快照。`agent_skill` 写入 `ELBOT_SKILL.toml` 后若 reload 失败，会在同一管理事务内恢复原文件。
+
 <!-- locator:hook -->
 ## Hook 链路
 

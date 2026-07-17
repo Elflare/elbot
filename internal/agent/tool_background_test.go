@@ -250,8 +250,8 @@ func TestRunCronMessagePreloadsToolListNamesWithoutDiscoverTool(t *testing.T) {
 	if got := platform.reasoning.String(); got != "" {
 		t.Fatalf("background cron wrote reasoning output: %q", got)
 	}
-	if platform.statusCount != 0 {
-		t.Fatalf("background cron published runtime status: count=%d last=%#v", platform.statusCount, platform.lastStatus)
+	if count, last := platform.statusSnapshot(); count != 0 {
+		t.Fatalf("background cron published runtime status: count=%d last=%#v", count, last)
 	}
 }
 
@@ -277,8 +277,8 @@ func TestRunCronMessageToolPhaseDoesNotPublishRuntimeStatus(t *testing.T) {
 	if got := platform.out.String(); got != "" {
 		t.Fatalf("background cron tool phase wrote platform output: %q", got)
 	}
-	if platform.statusCount != 0 {
-		t.Fatalf("background cron tool phase published runtime status: count=%d last=%#v", platform.statusCount, platform.lastStatus)
+	if count, last := platform.statusSnapshot(); count != 0 {
+		t.Fatalf("background cron tool phase published runtime status: count=%d last=%#v", count, last)
 	}
 }
 

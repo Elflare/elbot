@@ -5,15 +5,19 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/tool"
-	"elbot/internal/tool/skill"
 	"elbot/internal/toolrun"
 )
+
+type skillLifecycle interface {
+	Reload(context.Context) error
+	Remove(context.Context, string) error
+}
 
 type toolRuntimeState struct {
 	provider        ToolSchemaProvider
 	manager         *toolrun.Manager
 	registry        *tool.Registry
-	scanner         skill.Scanner
+	skills          skillLifecycle
 	config          config.ToolsConfig
 	toolTags        *toolTagConfigSource
 	defaultProvider bool
@@ -46,9 +50,9 @@ func (a *Agent) SetToolProvider(provider ToolSchemaProvider) {
 	a.rebuildSystemPrompt()
 }
 
-func (a *Agent) SetToolRuntime(registry *tool.Registry, scanner skill.Scanner) {
+func (a *Agent) SetToolRuntime(registry *tool.Registry, skills skillLifecycle) {
 	a.toolRuntime.registry = registry
-	a.toolRuntime.scanner = scanner
+	a.toolRuntime.skills = skills
 	a.toolRuntime.manager = toolrun.NewManager(registry, a.securityPolicy)
 	if registry != nil {
 		a.toolRuntime.provider = toolRunPromptProvider{agent: a}
@@ -84,20 +88,15 @@ func (a *Agent) Unregister(name string) error {
 }
 
 func (a *Agent) Remove(ctx context.Context, name string) error {
-	if a.toolRuntime.scanner == nil || a.toolRuntime.registry == nil {
+	if a.toolRuntime.skills == nil || a.toolRuntime.registry == nil {
 		return a.Unregister(name)
 	}
-	if remover, ok := a.toolRuntime.scanner.(interface {
-		Remove(context.Context, *tool.Registry, string) error
-	}); ok {
-		return remover.Remove(ctx, a.toolRuntime.registry, name)
-	}
-	return a.Unregister(name)
+	return a.toolRuntime.skills.Remove(ctx, name)
 }
 
 func (a *Agent) Reload(ctx context.Context) error {
-	if a.toolRuntime.scanner == nil || a.toolRuntime.registry == nil {
+	if a.toolRuntime.skills == nil || a.toolRuntime.registry == nil {
 		return nil
 	}
-	return a.toolRuntime.scanner.Reload(ctx, a.toolRuntime.registry)
+	return a.toolRuntime.skills.Reload(ctx)
 }

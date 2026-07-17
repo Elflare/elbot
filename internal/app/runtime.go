@@ -209,7 +209,7 @@ func buildAgent(
 	agt.SetSessionIdleExpiration(cfg.Session.IdleExpiration)
 	agt.SetSandboxRoot(cfg.Sandbox.Root)
 	agt.SetLogManager(foundation.Logs)
-	agt.SetToolRuntime(toolRuntime.Registry, toolRuntime.SkillManager.Scanner)
+	agt.SetToolRuntime(toolRuntime.Registry, toolRuntime.SkillManager)
 	agt.SetToolConfig(cfg.Tools)
 	agt.SetToolTagConfig(cfg.ToolTagsConfigPath, cfg.ToolTags)
 	agt.SetSecurityPolicy(securityPolicy)

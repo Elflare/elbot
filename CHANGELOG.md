@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复 AgentSkill 配置写入后 reload 失败会留下磁盘与运行 registry 不一致的问题；Skill reload 现改为串行、完整验证并原子替换，名称冲突或候选失败时保留旧 registry、catalog 和 AgentSkill 配置。
 - 补齐 Elnis HTTP 请求头、请求读取、响应写入和空闲连接超时，并拒绝请求体中的尾随第二个 JSON 值；未知字段继续作为无语义字段忽略。
 - 修复 Elnis LLM 报告发送前就把事件标记为 `completed` 的问题；报告改用可恢复 outbox，所有目标回执持久化后才完成，失败项会定时及在重启后重试。
 - 补全默认 `.env.example` 中缺失的 `JINA_API_KEY`。

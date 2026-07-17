@@ -312,6 +312,53 @@ func TestFilesystemScannerReloadRemovesDeletedExternalSkill(t *testing.T) {
 	}
 }
 
+func TestFilesystemScannerReloadConflictKeepsRegistryAndCatalog(t *testing.T) {
+	root := t.TempDir()
+	oldDir := filepath.Join(root, "agent", "old")
+	writeSkill(t, oldDir, "---\nname: old\ndescription: Old skill\n---\n\n# Old")
+	scanner := NewFilesystemScanner(root)
+	registry := tool.NewRegistry()
+	if err := registry.Register(NewAgentSkillTool(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := scanner.Reload(context.Background(), registry); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(oldDir); err != nil {
+		t.Fatal(err)
+	}
+	writeSkill(t, filepath.Join(root, "agent", AgentSkillManagerName), "---\nname: agent_skill\ndescription: Conflict\n---\n\n# Conflict")
+
+	err := scanner.Reload(context.Background(), registry)
+	if err == nil || !strings.Contains(err.Error(), "conflicts with existing source") {
+		t.Fatalf("Reload error = %v, want builtin conflict", err)
+	}
+	if _, ok := registry.Get("old"); !ok {
+		t.Fatal("old registry snapshot should remain after failed reload")
+	}
+	if _, ok := scanner.Catalog.Get("old"); !ok {
+		t.Fatal("old catalog snapshot should remain after failed reload")
+	}
+	if _, ok := scanner.Catalog.Get(AgentSkillManagerName); ok {
+		t.Fatal("conflicting skill should not enter catalog")
+	}
+}
+
+func TestFilesystemScannerReloadRejectsDuplicateSkillNames(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, filepath.Join(root, "agent", "shared"), "---\nname: shared\ndescription: Agent copy\n---\n\n# Shared")
+	writeElyphSkill(t, filepath.Join(root, "go", "shared"), "#skill shared - Go copy\n")
+	scanner := NewFilesystemScanner(root)
+	registry := tool.NewRegistry()
+	err := scanner.Reload(context.Background(), registry)
+	if err == nil || !strings.Contains(err.Error(), "duplicate skill names") {
+		t.Fatalf("Reload error = %v, want duplicate name error", err)
+	}
+	if len(registry.List()) != 0 || len(scanner.Catalog.List()) != 0 {
+		t.Fatalf("failed reload changed state: registry=%#v catalog=%#v", registry.List(), scanner.Catalog.List())
+	}
+}
+
 func TestFilesystemScannerRemoveDeletesDirectoryAndReloads(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "agent", "docx")

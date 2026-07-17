@@ -9,7 +9,6 @@ import (
 
 	"elbot/internal/llm"
 	"elbot/internal/tool"
-	"elbot/internal/utils/fileops"
 )
 
 type AgentSkillTool struct {
@@ -81,11 +80,8 @@ func (t AgentSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.R
 	if preview.Action == "read" {
 		return &tool.Result{Content: preview.ReadContent}, nil
 	}
-	if err := fileops.AtomicWriteFile(preview.Path, []byte(preview.Toml), existingFileMode(preview.Path)); err != nil {
-		return nil, err
-	}
-	if err := t.Manager.Reload(ctx); err != nil {
-		return nil, fmt.Errorf("%s written but reload failed: %w", AgentSkillConfigFile, err)
+	if err := t.Manager.WriteAgentSkillConfig(ctx, preview.Name, preview.Toml); err != nil {
+		return nil, fmt.Errorf("write %s for AgentSkill %s: %w", AgentSkillConfigFile, preview.Name, err)
 	}
 	return &tool.Result{Content: fmt.Sprintf("wrote %s for AgentSkill %s and reloaded skills", AgentSkillConfigFile, preview.Name)}, nil
 }

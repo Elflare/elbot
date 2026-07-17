@@ -248,6 +248,8 @@ input = "--input"
 
 ElBot 只读取 Skill 根目录下的 `ELBOT_SKILL.toml`，不递归扫描。执行时工作目录固定为该 Skill 根目录，stdout 会作为工具结果；若 stdout 是 `{"content":"..."}` JSON，会取 `content` 字段。
 
+通过 `agent_skill` 元工具写入配置时，ElBot 会在完整 reload 成功后才确认写入；若 reload 失败，会恢复原有 TOML，原先没有该文件时则删除本次新建文件。
+
 ## Go Skill 编译器路径
 
 修改 Go skill 的 `code_source` 后，ElBot 会自动执行 `gofmt`、`go build` 并 reload。若 ElBot 以 Linux service 运行，service 环境可能没有加载交互 shell 的 `PATH`，导致终端里可用的 `go` 在 ElBot 中不可见。
