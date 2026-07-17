@@ -186,6 +186,10 @@ func rejectShellDirectoryChange(cmdText string) error {
 	if isPowerShellEnv() {
 		return nil
 	}
+	return rejectBashShellDirectoryChange(cmdText)
+}
+
+func rejectBashShellDirectoryChange(cmdText string) error {
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
 	file, err := parser.Parse(strings.NewReader(cmdText), "")
 	if err != nil {

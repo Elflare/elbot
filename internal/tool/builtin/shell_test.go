@@ -14,16 +14,6 @@ import (
 	"elbot/internal/tool"
 )
 
-func TestMain(m *testing.M) {
-	if runtime.GOOS == "windows" {
-		if _, err := exec.LookPath("bash"); err == nil {
-			windowsShellResolved = windowsShell{name: "bash", args: []string{"-lc"}}
-			windowsShellOnce.Do(func() {})
-		}
-	}
-	os.Exit(m.Run())
-}
-
 func TestShellToolMissingCmdHintsExpectedArgument(t *testing.T) {
 	shell := NewShellTool()
 	args, _ := json.Marshal(map[string]any{"Command": "ls"})
@@ -55,24 +45,19 @@ func TestShellToolRunsArbitraryCommand(t *testing.T) {
 	}
 }
 
-func TestShellToolWarnsForCat(t *testing.T) {
+func TestAnalyzeBashShellAdviceWarnsForCat(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
 	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	shell := NewShellTool()
-	args, _ := json.Marshal(map[string]any{"cmd": "cat " + filepath.ToSlash(path)})
-	result, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := tool.AppendWarnings(result.Content, result.Warnings)
-	if !strings.Contains(text, "alpha") || !strings.Contains(text, "read_file") {
-		t.Fatalf("expected cat output and read_file warning, got:\n%s", text)
+	advice := analyzeBashShellAdvice("cat "+filepath.ToSlash(path), filepath.Dir(path), nil)
+	text := tool.AppendWarnings("", advice.warnings)
+	if !strings.Contains(text, "read_file") {
+		t.Fatalf("expected read_file warning, got:\n%s", text)
 	}
 }
 
-func TestShellToolWarnsForCatElSkill(t *testing.T) {
+func TestAnalyzeBashShellAdviceWarnsForCatElSkill(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "go", "reader", "SKILL.elyph")
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -81,19 +66,14 @@ func TestShellToolWarnsForCatElSkill(t *testing.T) {
 	if err := os.WriteFile(path, []byte("#skill reader - Reader.\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	shell := NewShellTool(NewFileGuard(NewElSkillFileGuardRule(root)))
-	args, _ := json.Marshal(map[string]any{"cmd": "cat " + filepath.ToSlash(path)})
-	result, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := tool.AppendWarnings(result.Content, result.Warnings)
+	advice := analyzeBashShellAdvice("cat "+filepath.ToSlash(path), root, NewFileGuard(NewElSkillFileGuardRule(root)))
+	text := tool.AppendWarnings("", advice.warnings)
 	if !strings.Contains(text, "read_file") || !strings.Contains(text, "read_el_skill") {
 		t.Fatalf("expected read_file and read_el_skill warnings, got:\n%s", text)
 	}
 }
 
-func TestShellToolRejectsSedEditElSkill(t *testing.T) {
+func TestAnalyzeBashShellAdviceRejectsSedEditElSkill(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "go", "writer", "SKILL.elyph")
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -103,11 +83,9 @@ func TestShellToolRejectsSedEditElSkill(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	shell := NewShellTool(NewFileGuard(NewElSkillFileGuardRule(root)))
-	args, _ := json.Marshal(map[string]any{"cmd": "sed -i 's/Writer/Changed/' " + filepath.ToSlash(path)})
-	_, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
-		t.Fatalf("expected modify_el_skill error, got %v", err)
+	advice := analyzeBashShellAdvice("sed -i 's/Writer/Changed/' "+filepath.ToSlash(path), root, NewFileGuard(NewElSkillFileGuardRule(root)))
+	if advice.blockErr == nil || !strings.Contains(advice.blockErr.Error(), "modify_el_skill") {
+		t.Fatalf("expected modify_el_skill error, got %v", advice.blockErr)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -118,34 +96,27 @@ func TestShellToolRejectsSedEditElSkill(t *testing.T) {
 	}
 }
 
-func TestShellToolWarnsForCatResidentMemory(t *testing.T) {
+func TestAnalyzeBashShellAdviceWarnsForCatResidentMemory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "memories.toml")
 	if err := os.WriteFile(path, []byte("[[resident_memories]]\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	shell := NewShellTool(NewFileGuard(NewResidentMemoryFileGuardRule(path)))
-	args, _ := json.Marshal(map[string]any{"cmd": "cat " + filepath.ToSlash(path)})
-	result, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := tool.AppendWarnings(result.Content, result.Warnings)
+	advice := analyzeBashShellAdvice("cat "+filepath.ToSlash(path), filepath.Dir(path), NewFileGuard(NewResidentMemoryFileGuardRule(path)))
+	text := tool.AppendWarnings("", advice.warnings)
 	if !strings.Contains(text, "read_file") || !strings.Contains(text, "resident_memory_read") {
 		t.Fatalf("expected read_file and resident_memory_read warnings, got:\n%s", text)
 	}
 }
 
-func TestShellToolRejectsRedirectToResidentMemory(t *testing.T) {
+func TestAnalyzeBashShellAdviceRejectsRedirectToResidentMemory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "memories.toml")
 	original := "[[resident_memories]]\n"
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	shell := NewShellTool(NewFileGuard(NewResidentMemoryFileGuardRule(path)))
-	args, _ := json.Marshal(map[string]any{"cmd": "echo changed > " + filepath.ToSlash(path)})
-	_, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "resident_memory_normal") {
-		t.Fatalf("expected resident memory error, got %v", err)
+	advice := analyzeBashShellAdvice("echo changed > "+filepath.ToSlash(path), filepath.Dir(path), NewFileGuard(NewResidentMemoryFileGuardRule(path)))
+	if advice.blockErr == nil || !strings.Contains(advice.blockErr.Error(), "resident_memory_normal") {
+		t.Fatalf("expected resident memory error, got %v", advice.blockErr)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -227,27 +198,20 @@ func TestShellToolUsesWorkspaceDir(t *testing.T) {
 	}
 }
 
-func TestShellToolRejectsDirectoryChangeCommand(t *testing.T) {
-	shell := NewShellTool()
-	args, _ := json.Marshal(map[string]any{"cmd": "cd internal && pwd"})
-	_, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
+func TestRejectBashShellDirectoryChangeCommand(t *testing.T) {
+	err := rejectBashShellDirectoryChange("cd internal && pwd")
 	if err == nil || !strings.Contains(err.Error(), "workspace") {
 		t.Fatalf("expected cd rejection, got %v", err)
 	}
 }
 
-func TestShellToolWarnsForCommandPathArgument(t *testing.T) {
+func TestAnalyzeBashShellAdviceWarnsForCommandPathArgument(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
 	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	shell := NewShellTool()
-	args, _ := json.Marshal(map[string]any{"cmd": "cat " + filepath.ToSlash(path)})
-	result, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := tool.AppendWarnings(result.Content, result.Warnings)
+	advice := analyzeBashShellAdvice("cat "+filepath.ToSlash(path), filepath.Dir(path), nil)
+	text := tool.AppendWarnings("", advice.warnings)
 	if !strings.Contains(text, warnUseWorkspace) {
 		t.Fatalf("expected path argument warning, got:\n%s", text)
 	}
@@ -271,20 +235,38 @@ func TestShellToolUsesSandboxDir(t *testing.T) {
 }
 
 func TestShellToolCancelReturnsQuickly(t *testing.T) {
+	workspace := t.TempDir()
 	shell := NewShellTool()
-	ctx, cancel := context.WithCancel(context.Background())
-	args, _ := json.Marshal(map[string]any{"cmd": "sleep 5", "timeout_ms": 10000})
+	ctx := tool.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
+	ctx, cancel := context.WithCancel(ctx)
+	args, _ := json.Marshal(map[string]any{"cmd": "echo started > started.txt; sleep 5", "timeout_ms": 10000})
 	done := make(chan error, 1)
-	started := time.Now()
 	go func() {
 		_, err := shell.Call(ctx, tool.CallRequest{Arguments: args})
 		done <- err
 	}()
-	time.Sleep(100 * time.Millisecond)
+
+	marker := filepath.Join(workspace, "started.txt")
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(marker); err == nil {
+			break
+		} else if !os.IsNotExist(err) {
+			cancel()
+			t.Fatalf("stat shell start marker: %v", err)
+		}
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("shell command did not start within 5s")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	cancelStarted := time.Now()
 	cancel()
 	select {
 	case <-done:
-		if elapsed := time.Since(started); elapsed > time.Second {
+		if elapsed := time.Since(cancelStarted); elapsed > time.Second {
 			t.Fatalf("shell cancel took %s, want under 1s", elapsed)
 		}
 	case <-time.After(time.Second):
@@ -410,6 +392,10 @@ func TestResolveWindowsShellCachedAndValid(t *testing.T) {
 	name2, _ := resolveWindowsShell()
 	if name1 != name2 {
 		t.Fatalf("resolveWindowsShell not cached: %q vs %q", name1, name2)
+	}
+	detected := detectWindowsShell()
+	if name1 != detected.name || strings.Join(args1, "\x00") != strings.Join(detected.args, "\x00") {
+		t.Fatalf("resolved shell = %q %v, detected shell = %q %v", name1, args1, detected.name, detected.args)
 	}
 	if name1 == "" {
 		t.Fatal("expected non-empty shell name")
