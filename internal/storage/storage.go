@@ -123,6 +123,27 @@ type ElnisEvent struct {
 	UpdatedAt        time.Time
 }
 
+type ElnisReportDelivery struct {
+	ID        string
+	EventID   string
+	Ordinal   int
+	Target    string
+	Output    string
+	MessageID string
+	Status    string
+	Receipt   string
+	Error     string
+	Attempts  int
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+const (
+	ElnisReportDeliveryPending   = "pending"
+	ElnisReportDeliveryFailed    = "failed"
+	ElnisReportDeliveryDelivered = "delivered"
+)
+
 type ChatMessage struct {
 	Seq                      int64
 	ID                       string
@@ -205,6 +226,21 @@ type UpdateElnisEventRequest struct {
 	SessionID       string
 	Result          string
 	Error           string
+}
+
+type CreateElnisReportDeliveryRequest struct {
+	Target    string
+	Output    string
+	MessageID string
+}
+
+type PrepareElnisReportRequest struct {
+	EventID           string
+	ResolvedTargets   string
+	SessionID         string
+	Result            string
+	Deliveries        []CreateElnisReportDeliveryRequest
+	ResultReadyStatus string
 }
 
 type ToolUsageSummary struct {
@@ -304,8 +340,19 @@ type CronJobRepository interface {
 
 type ElnisEventRepository interface {
 	Create(ctx context.Context, req CreateElnisEventRequest) (*ElnisEvent, error)
+	Get(ctx context.Context, id string) (*ElnisEvent, error)
 	GetByKey(ctx context.Context, elwispName, source, sourceID string) (*ElnisEvent, error)
 	Update(ctx context.Context, req UpdateElnisEventRequest) error
+	PrepareReport(ctx context.Context, req PrepareElnisReportRequest) error
+	ResetDeliveringReports(ctx context.Context, deliveringStatus, resultReadyStatus string) error
+	ListResultReadyReportIDs(ctx context.Context, resultReadyStatus string) ([]string, error)
+	ClaimReport(ctx context.Context, eventID, resultReadyStatus, deliveringStatus string) (bool, error)
+	ReleaseReport(ctx context.Context, eventID, deliveringStatus, resultReadyStatus, deliveryError string) error
+	ListReportDeliveries(ctx context.Context, eventID string) ([]ElnisReportDelivery, error)
+	StartReportDelivery(ctx context.Context, id string) error
+	MarkReportDeliveryFailed(ctx context.Context, eventID, deliveryID, resultReadyStatus, deliveryError string) error
+	MarkReportDeliveryDelivered(ctx context.Context, deliveryID, receipt string) error
+	CompleteReport(ctx context.Context, eventID, deliveringStatus, completedStatus string) error
 }
 
 type ChatHistoryRepository interface {

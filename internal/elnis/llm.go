@@ -65,15 +65,22 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		return parseErr
 	}
 	resultJSON, _ := json.Marshal(parsed)
-	if err := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, result.SessionID, string(resultJSON), ""); err != nil {
-		return err
-	}
-	if parsed.NeedReport && strings.TrimSpace(parsed.Report) != "" {
-		if err := s.sendReport(ctx, event, parsed.Report, parsed.ReportSegments, result.SessionID, result.MessageID); err != nil {
+	if parsed.NeedReport && (strings.TrimSpace(parsed.Report) != "" || len(parsed.ReportSegments) > 0) {
+		prepared, err := s.prepareReport(ctx, event, eventID, string(resultJSON), result.SessionID, result.MessageID, parsed)
+		if err != nil {
 			_ = s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, string(resultJSON), err.Error())
-			s.logWarn("elnis llm report failed", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", err.Error())...)
+			s.logWarn("elnis llm report prepare failed", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", err.Error())...)
 			return err
 		}
+		if prepared {
+			if err := s.deliverReport(ctx, eventID); err != nil {
+				s.logWarn("elnis llm report delivery failed", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", err.Error())...)
+				return err
+			}
+			return nil
+		}
+	} else if err := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, result.SessionID, string(resultJSON), ""); err != nil {
+		return err
 	}
 	s.auditEvent("elnis.llm_completed", append(attrs, "event_id", eventID, "session_id", result.SessionID)...)
 	s.logInfo("elnis llm completed", append(attrs, "event_id", eventID, "session_id", result.SessionID)...)

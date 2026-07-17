@@ -238,8 +238,12 @@ direct 内容默认使用 `title + content` 组合为通知文本。未来可扩
 
 6. 使用 Elnis sandbox 子目录运行 ElBot 内置工具；Elwisp 工具由 ToolRun 路由到对应 Elwisp 调用端点或后续多轮通道。
 7. 要求 LLM 最终输出严格 JSON。
-8. 解析结果并更新事件状态。
-9. 若需要报告，按 Elnis 裁决后的目标发送通知。
+8. 解析结果；不需要报告时直接将事件置为 `completed`。
+9. 需要报告时，原子保存 LLM result 和逐目标、逐 output 的 outbox，事件进入 `result_ready`。
+10. outbox worker claim 事件后将其置为 `delivering`，按顺序发送未完成项并持久化 receipt。
+11. 所有 outbox 项均为 `delivered` 后，事件才进入 `completed`；失败项定时重试，启动时将中断的 `delivering` 恢复为 `result_ready`。
+
+outbox 提供至少一次投递语义。平台发送成功后、receipt 落库前发生崩溃时，恢复可能重复发送；外部平台没有幂等键时不承诺 exactly-once。
 
 LLM 最终 JSON：
 
@@ -457,7 +461,7 @@ Elnis 事件需要持久化，避免重启后重复处理。
 | `resolved_targets` | JSON。 |
 | `tool_declarations` | Elwisp 随事件声明的工具 JSON，供重放、审计和失败排查。 |
 | `tool_declarations_hash` | 工具声明 hash，用于重复事件和 schema 变化排查。 |
-| `status` | accepted/queued/running/completed/failed/duplicate。 |
+| `status` | accepted/queued/running/result_ready/delivering/completed/failed/duplicate。 |
 | `session_id` | LLM Session ID。 |
 | `result` | LLM JSON result。 |
 | `error` | 错误文本。 |
@@ -470,6 +474,8 @@ Elnis 事件需要持久化，避免重启后重复处理。
 ```sql
 unique(elwisp_name, source, source_id)
 ```
+
+LLM 报告 outbox 表 `elnis_report_deliveries` 按 `event_id + ordinal` 唯一，保存 target、序列化 output、message ID、投递状态、receipt、错误、尝试次数和时间戳。事件 result 与 outbox 项在同一事务中写入；单项 receipt 先持久化，再建立平台消息到后台消息的映射。
 
 重复处理：
 

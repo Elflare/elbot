@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复 Elnis LLM 报告发送前就把事件标记为 `completed` 的问题；报告改用可恢复 outbox，所有目标回执持久化后才完成，失败项会定时及在重启后重试。
 - 补全默认 `.env.example` 中缺失的 `JINA_API_KEY`。
 - 修复 Session 删除、归档确认可能因列表或当前 Session 变化而作用到错误目标的问题，并让存储错误正确返回给调用方。
 - `read_file` 的 `start_line` 兼容 LLM 偶尔生成的整数字符串，避免有效行号因 JSON 类型偏差导致读取失败。

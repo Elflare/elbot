@@ -3,10 +3,12 @@ package elnis
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/background"
 	"elbot/internal/config"
@@ -418,6 +420,278 @@ func TestRunLLMEventCompletesAndReports(t *testing.T) {
 	}
 }
 
+func TestRunLLMEventDoesNotCompleteBeforeReportDelivery(t *testing.T) {
+	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"处理完成"}`}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	released := false
+	defer func() {
+		if !released {
+			close(release)
+		}
+	}()
+	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+		close(entered)
+		select {
+		case <-release:
+			return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}}, nil
+		case <-ctx.Done():
+			return delivery.Receipt{}, ctx.Err()
+		}
+	})
+	defer cleanup()
+	var queued QueuedLLMEvent
+	service.SetLLMEnqueuer(func(ctx context.Context, event QueuedLLMEvent) error {
+		queued = event
+		return nil
+	})
+
+	req := testRequest(ModeLLM)
+	if _, err := service.Handle(context.Background(), "secret", req); err != nil {
+		t.Fatalf("Handle llm: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- service.RunLLMEvent(context.Background(), queued.Event, queued.EventID)
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("report sender was not called")
+	}
+	record, err := service.store.ElnisEvents().Get(context.Background(), queued.EventID)
+	if err != nil {
+		t.Fatalf("Get event while sending: %v", err)
+	}
+	if record.Status != StatusDelivering {
+		t.Fatalf("status while sending = %q, want %q", record.Status, StatusDelivering)
+	}
+
+	close(release)
+	released = true
+	if err := <-done; err != nil {
+		t.Fatalf("RunLLMEvent: %v", err)
+	}
+	record, err = service.store.ElnisEvents().Get(context.Background(), queued.EventID)
+	if err != nil {
+		t.Fatalf("Get completed event: %v", err)
+	}
+	if record.Status != StatusCompleted {
+		t.Fatalf("completed status = %q", record.Status)
+	}
+	deliveries, err := service.store.ElnisEvents().ListReportDeliveries(context.Background(), queued.EventID)
+	if err != nil {
+		t.Fatalf("ListReportDeliveries: %v", err)
+	}
+	if len(deliveries) != 1 || deliveries[0].Status != storage.ElnisReportDeliveryDelivered || !strings.Contains(deliveries[0].Receipt, "notice-1") {
+		t.Fatalf("deliveries = %#v", deliveries)
+	}
+}
+
+func TestRunLLMEventRetriesOnlyIncompleteReportDeliveries(t *testing.T) {
+	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"处理完成"}`}
+	calls := 0
+	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+		calls++
+		if calls == 2 {
+			return delivery.Receipt{}, errors.New("temporary delivery failure")
+		}
+		return delivery.Receipt{PlatformMessageIDs: []string{"notice-" + target.Platform}}, nil
+	})
+	defer cleanup()
+	var queued QueuedLLMEvent
+	service.SetLLMEnqueuer(func(ctx context.Context, event QueuedLLMEvent) error {
+		queued = event
+		return nil
+	})
+
+	req := testRequest(ModeLLM)
+	req.Targets = []Target{{Platform: "cli"}, {Platform: "qqonebot"}}
+	if _, err := service.Handle(context.Background(), "secret", req); err != nil {
+		t.Fatalf("Handle llm: %v", err)
+	}
+	if err := service.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err == nil {
+		t.Fatal("expected report delivery failure")
+	}
+	record, err := service.store.ElnisEvents().Get(context.Background(), queued.EventID)
+	if err != nil {
+		t.Fatalf("Get failed delivery event: %v", err)
+	}
+	if record.Status != StatusResultReady || !strings.Contains(record.Error, "temporary delivery failure") {
+		t.Fatalf("record after failure = %#v", record)
+	}
+	deliveries, err := service.store.ElnisEvents().ListReportDeliveries(context.Background(), queued.EventID)
+	if err != nil {
+		t.Fatalf("ListReportDeliveries after failure: %v", err)
+	}
+	if len(deliveries) != 2 || deliveries[0].Status != storage.ElnisReportDeliveryDelivered || deliveries[1].Status != storage.ElnisReportDeliveryFailed {
+		t.Fatalf("deliveries after failure = %#v", deliveries)
+	}
+
+	if err := service.recoverReports(context.Background(), false); err != nil {
+		t.Fatalf("recoverReports: %v", err)
+	}
+	record, err = service.store.ElnisEvents().Get(context.Background(), queued.EventID)
+	if err != nil {
+		t.Fatalf("Get recovered event: %v", err)
+	}
+	if record.Status != StatusCompleted || calls != 3 {
+		t.Fatalf("recovered record = %#v, send calls = %d", record, calls)
+	}
+	deliveries, err = service.store.ElnisEvents().ListReportDeliveries(context.Background(), queued.EventID)
+	if err != nil {
+		t.Fatalf("ListReportDeliveries after recovery: %v", err)
+	}
+	if deliveries[0].Attempts != 1 || deliveries[1].Attempts != 2 {
+		t.Fatalf("delivery attempts = %d, %d", deliveries[0].Attempts, deliveries[1].Attempts)
+	}
+}
+
+func TestRunLLMEventRetriesWhenReceiptPersistenceFails(t *testing.T) {
+	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"处理完成"}`}
+	calls := 0
+	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+		calls++
+		return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}}, nil
+	})
+	defer cleanup()
+	failingRepo := &failOnceReceiptRepository{ElnisEventRepository: service.store.ElnisEvents()}
+	service.store = elnisRepositoryStore{Store: service.store, repo: failingRepo}
+	var queued QueuedLLMEvent
+	service.SetLLMEnqueuer(func(ctx context.Context, event QueuedLLMEvent) error {
+		queued = event
+		return nil
+	})
+
+	req := testRequest(ModeLLM)
+	if _, err := service.Handle(context.Background(), "secret", req); err != nil {
+		t.Fatalf("Handle llm: %v", err)
+	}
+	if err := service.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err == nil {
+		t.Fatal("expected receipt persistence failure")
+	}
+	record, err := service.store.ElnisEvents().Get(context.Background(), queued.EventID)
+	if err != nil {
+		t.Fatalf("Get event after receipt failure: %v", err)
+	}
+	if record.Status != StatusResultReady || calls != 1 {
+		t.Fatalf("record after receipt failure = %#v, calls = %d", record, calls)
+	}
+
+	if err := service.recoverReports(context.Background(), false); err != nil {
+		t.Fatalf("recoverReports: %v", err)
+	}
+	record, err = service.store.ElnisEvents().Get(context.Background(), queued.EventID)
+	if err != nil {
+		t.Fatalf("Get recovered event: %v", err)
+	}
+	if record.Status != StatusCompleted || calls != 2 {
+		t.Fatalf("recovered record = %#v, calls = %d", record, calls)
+	}
+	deliveries, err := service.store.ElnisEvents().ListReportDeliveries(context.Background(), queued.EventID)
+	if err != nil {
+		t.Fatalf("ListReportDeliveries: %v", err)
+	}
+	if len(deliveries) != 1 || deliveries[0].Attempts != 2 || deliveries[0].Status != storage.ElnisReportDeliveryDelivered {
+		t.Fatalf("deliveries = %#v", deliveries)
+	}
+}
+
+func TestRecoverReportsResetsInterruptedDeliveringEvent(t *testing.T) {
+	sent := 0
+	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+		sent++
+		return delivery.Receipt{}, nil
+	})
+	defer cleanup()
+	var queued QueuedLLMEvent
+	service.SetLLMEnqueuer(func(ctx context.Context, event QueuedLLMEvent) error {
+		queued = event
+		return nil
+	})
+	req := testRequest(ModeLLM)
+	if _, err := service.Handle(context.Background(), "secret", req); err != nil {
+		t.Fatalf("Handle llm: %v", err)
+	}
+	parsed := background.JSONResult{Completed: true, NeedReport: true, Report: "处理完成"}
+	resultJSON, err := json.Marshal(parsed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := service.prepareReport(context.Background(), queued.Event, queued.EventID, string(resultJSON), "bg-session", "bg-message", parsed)
+	if err != nil || !prepared {
+		t.Fatalf("prepareReport = %v, %v", prepared, err)
+	}
+	claimed, err := service.store.ElnisEvents().ClaimReport(context.Background(), queued.EventID, StatusResultReady, StatusDelivering)
+	if err != nil || !claimed {
+		t.Fatalf("ClaimReport = %v, %v", claimed, err)
+	}
+
+	if err := service.recoverReports(context.Background(), true); err != nil {
+		t.Fatalf("recoverReports: %v", err)
+	}
+	record, err := service.store.ElnisEvents().Get(context.Background(), queued.EventID)
+	if err != nil {
+		t.Fatalf("Get recovered event: %v", err)
+	}
+	if record.Status != StatusCompleted || sent != 1 {
+		t.Fatalf("recovered record = %#v, sent = %d", record, sent)
+	}
+}
+
+func TestRecoverReportsDoesNotResendPersistedReceipt(t *testing.T) {
+	sent := 0
+	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+		sent++
+		return delivery.Receipt{}, nil
+	})
+	defer cleanup()
+	var queued QueuedLLMEvent
+	service.SetLLMEnqueuer(func(ctx context.Context, event QueuedLLMEvent) error {
+		queued = event
+		return nil
+	})
+	req := testRequest(ModeLLM)
+	if _, err := service.Handle(context.Background(), "secret", req); err != nil {
+		t.Fatalf("Handle llm: %v", err)
+	}
+	parsed := background.JSONResult{Completed: true, NeedReport: true, Report: "处理完成"}
+	resultJSON, err := json.Marshal(parsed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := service.prepareReport(context.Background(), queued.Event, queued.EventID, string(resultJSON), "bg-session", "bg-message", parsed)
+	if err != nil || !prepared {
+		t.Fatalf("prepareReport = %v, %v", prepared, err)
+	}
+	repo := service.store.ElnisEvents()
+	claimed, err := repo.ClaimReport(context.Background(), queued.EventID, StatusResultReady, StatusDelivering)
+	if err != nil || !claimed {
+		t.Fatalf("ClaimReport = %v, %v", claimed, err)
+	}
+	deliveries, err := repo.ListReportDeliveries(context.Background(), queued.EventID)
+	if err != nil || len(deliveries) != 1 {
+		t.Fatalf("ListReportDeliveries = %#v, %v", deliveries, err)
+	}
+	if err := repo.StartReportDelivery(context.Background(), deliveries[0].ID); err != nil {
+		t.Fatalf("StartReportDelivery: %v", err)
+	}
+	if err := repo.MarkReportDeliveryDelivered(context.Background(), deliveries[0].ID, `{"PlatformMessageIDs":["notice-1"]}`); err != nil {
+		t.Fatalf("MarkReportDeliveryDelivered: %v", err)
+	}
+
+	if err := service.recoverReports(context.Background(), true); err != nil {
+		t.Fatalf("recoverReports: %v", err)
+	}
+	record, err := repo.Get(context.Background(), queued.EventID)
+	if err != nil {
+		t.Fatalf("Get recovered event: %v", err)
+	}
+	if record.Status != StatusCompleted || sent != 0 {
+		t.Fatalf("recovered record = %#v, sent = %d", record, sent)
+	}
+}
+
 func TestRunLLMEventReportsSegmentsByRelativePath(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"见图","report_segments":[{"type":"image","url":"chart.png"}]}`}
 	sent := []delivery.Kind{}
@@ -747,6 +1021,28 @@ func (r *fakePlatformCallerResolver) PlatformCaller(platform string) (elvena.Pla
 type fakeBackgroundRunner struct {
 	text     string
 	requests []background.RunRequest
+}
+
+type elnisRepositoryStore struct {
+	storage.Store
+	repo storage.ElnisEventRepository
+}
+
+func (s elnisRepositoryStore) ElnisEvents() storage.ElnisEventRepository {
+	return s.repo
+}
+
+type failOnceReceiptRepository struct {
+	storage.ElnisEventRepository
+	failed bool
+}
+
+func (r *failOnceReceiptRepository) MarkReportDeliveryDelivered(ctx context.Context, deliveryID, receipt string) error {
+	if !r.failed {
+		r.failed = true
+		return errors.New("receipt persistence failed")
+	}
+	return r.ElnisEventRepository.MarkReportDeliveryDelivered(ctx, deliveryID, receipt)
 }
 
 func (r *fakeBackgroundRunner) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
