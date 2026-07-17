@@ -54,14 +54,15 @@ Example:
 
 | Command | Function |
 | --- | --- |
-| `/chat` | Switch to chat mode, or create a new chat Session. |
-| `/work` | Switch to work mode, or create a new work Session. |
+| `/chat [消息]` | Switch to chat mode, or create a new chat Session; if a message is provided, it will be sent immediately after switching. |
+| `/work [消息]` | Switch to work mode, or create a new work Session; if a message is provided, it will be sent immediately after switching. |
 
 Note:
 
 - `chat` mode does not inject tools, making it suitable for casual chat, companionship, and low-cost Q&A.
 - `work` mode enables tool discovery and tool calling.
 - A work Session with existing history cannot be switched directly to chat; you need to `/new` first, and then `/chat`.
+- For example, `/chat 随便聊聊` will first switch to chat mode, then send "Just chatting" as the same user message to the model; if the mode switch is rejected, the message will not be sent.
 
 ## Session
 
@@ -70,7 +71,7 @@ Note:
 | `/new` | Create and switch to a new Session. |
 | `/status` | View the current Session status. |
 | `/sessions [关键词]` | List or search visible Sessions. |
-| `/resume [编号或session_id]` | Restore a historical Session. |
+| `/resume [最近编号或session_id]` | Restore a historical Session; index `1` represents the most recently updated Session other than the current one. |
 | `/archives [页码] [关键词]` | View archived Sessions. |
 | `/archive [编号或session_id] --confirm` | Archive Session, defaults to the current Session. |
 | `/unarchive [编号或session_id]` | Unarchive Session, defaults to the current Session. |
@@ -95,7 +96,8 @@ Example:
 
 Note:
 
-- The IDs displayed by `/sessions` can be reused by commands such as `/resume`, `/archive`, `/pin`, and `/delete`.
+- `/resume 1` can directly restore the most recently updated Session other than the current one without first executing a bare `/resume`; indices are sorted by update time, are not affected by pinning, and remain continuous when paging.
+- The indices displayed by `/sessions` can be reused by Session operation commands such as `/archive`, `/pin`, and `/delete`.
 - CLI serves as a local high-privilege entry point and can view Sessions across platforms; non-CLI platforms view Sessions under the current platform and scope by default.
 - Deletion is a permanent operation and requires explicit `--confirm`.
 
