@@ -15,15 +15,17 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 
 1. `cmd/elbot/main.go` 创建根 context，并把命令行交给 launcher。
 2. `internal/launcher/cli.go` 解析 `run`、`cli`、`service run`、补全和远程 CLI 参数。
-3. 普通运行进入 `internal/app.Run`，远程 CLI 进入 `internal/app` 的 CLI client 入口。
-4. app 层加载配置、日志、SQLite、LLM、Agent、Tool、Platform、Hook、Output、Cron 等依赖。
-5. app 层按运行模式启动平台 runtime 和 Cron runtime。
+3. 普通运行进入 `internal/app.Run`，由默认 `Runner` 执行；远程 CLI 进入 `internal/app` 的 CLI client 入口。
+4. Runner 按 Environment、Foundation、Models、Platforms、Runtime、Integrations 阶段装配配置、日志、SQLite、LLM、Agent、Tool、Platform、Hook、Output、Cron 和 Elnis。
+5. app 层按运行模式启动平台 runtime，并在平台启动后异步启动 Cron runtime。
 
 设计边界：
 
 - app 层负责装配，不承载业务逻辑。
 - launcher 只做命令行解析，不直接初始化复杂依赖。
 - 平台 adapter 只处理平台输入输出，不直接驱动 LLM。
+- `app.Run` 保持默认生产入口；需要替换启动阶段或做隔离测试时，使用 `NewRunner(Dependencies)` 注入分组工厂。
+- Runner 逆序释放已完成阶段：Hook runtime 先于 Cron，Cron 先于 SQLite 和日志；阶段失败不得启动后续阶段。
 
 <!-- locator:config -->
 ## 配置与运行数据

@@ -23,7 +23,9 @@ rg -n "locator:tool" devdocs/code-map.md
 
 - `cmd/elbot/main.go`：程序入口。
 - `internal/launcher/cli.go`：命令行解析和补全生成。
-- `internal/app/`：应用装配、远程 CLI client、service marker。
+- `internal/app/app.go`、`runner.go`、`dependencies.go`：稳定启动入口、分阶段 Runner 和可替换依赖组。
+- `internal/app/foundation.go`、`models.go`、`runtime.go`：配置/存储基础设施、模型客户端，以及 Cron/Tool/Hook/Agent 核心装配。
+- `internal/app/platforms.go`、`integrations.go`：平台运行、Elnis 和平台能力接线；同目录还包含远程 CLI client 与 service marker。
 
 常用搜索：
 
