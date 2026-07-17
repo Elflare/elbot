@@ -129,6 +129,16 @@ func TestResidentMemoryToolRisksAndSchema(t *testing.T) {
 	if !strings.Contains(schema.Function.Description, "200 字数或单词") {
 		t.Fatalf("core description = %q", schema.Function.Description)
 	}
+	for name, description := range map[string]string{
+		"core":   schema.Function.Description,
+		"normal": normalTool.Schema().Function.Description,
+	} {
+		for _, want := range []string{"第三人称", "用户", "assistant", "不记录对模型的指令"} {
+			if !strings.Contains(description, want) {
+				t.Fatalf("%s description missing %q: %q", name, want, description)
+			}
+		}
+	}
 	if !strings.Contains(normalTool.Schema().Function.Description, "300 字数或单词") {
 		t.Fatalf("normal description = %q", normalTool.Schema().Function.Description)
 	}
