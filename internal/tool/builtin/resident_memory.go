@@ -19,6 +19,7 @@ const (
 	ResidentMemoryReadToolName   = "resident_memory_read"
 	ResidentMemoryNormalToolName = "resident_memory_normal"
 	ResidentMemoryCoreToolName   = "resident_memory_core"
+	residentMemoryWritingRule    = "内容必须使用第三人称：当前用户称为“用户”，模型自身称为“assistant”；只记录背景信息，不记录对模型的指令"
 )
 
 type ResidentMemoryTool struct {
@@ -203,12 +204,12 @@ func memoryBuilder(name, description string, risk tool.RiskLevel) *tool.Builder 
 
 func normalDescription(store *resident.Store) string {
 	limits := memoryLimits(store)
-	return fmt.Sprintf("修改当前用户在当前平台的普通常驻记忆。支持 append、write、delete。write 会覆盖完整 normal，使用前必须先调用 resident_memory_read。normal 上限 %d 字数或单词", limits.Normal)
+	return fmt.Sprintf("修改当前用户在当前平台的普通常驻记忆。支持 append、write、delete。write 会覆盖完整 normal，使用前必须先调用 resident_memory_read。normal 上限 %d 字数或单词。%s", limits.Normal, residentMemoryWritingRule)
 }
 
 func coreDescription(store *resident.Store) string {
 	limits := memoryLimits(store)
-	return fmt.Sprintf("覆盖当前用户在当前平台的核心常驻记忆。仅当用户明确要求修改核心记忆时使用；必须先调用 resident_memory_read 读取完整 core，再写入完整 core。允许传空字符串清空 core。core 上限 %d 字数或单词", limits.Core)
+	return fmt.Sprintf("覆盖当前用户在当前平台的核心常驻记忆。仅当用户明确要求修改核心记忆时使用；必须先调用 resident_memory_read 读取完整 core，再写入完整 core。允许传空字符串清空 core。core 上限 %d 字数或单词。%s", limits.Core, residentMemoryWritingRule)
 }
 
 func memoryLimits(store *resident.Store) resident.Limits {
