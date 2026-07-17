@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -21,6 +22,13 @@ type Runtime struct {
 }
 
 const reportRecoveryInterval = 30 * time.Second
+
+const (
+	defaultReadHeaderTimeout = 5 * time.Second
+	defaultReadTimeout       = 30 * time.Second
+	defaultWriteTimeout      = 300 * time.Second
+	defaultIdleTimeout       = 60 * time.Second
+)
 
 func NewRuntime(cfg config.ElnisHTTPConfig, service *Service) *Runtime {
 	mux := http.NewServeMux()
@@ -49,7 +57,7 @@ func NewRuntime(cfg config.ElnisHTTPConfig, service *Service) *Runtime {
 		defer req.Body.Close()
 		var event Request
 		decoder := json.NewDecoder(http.MaxBytesReader(w, req.Body, maxBodyBytes))
-		if err := decoder.Decode(&event); err != nil {
+		if err := decodeSingleJSON(decoder, &event); err != nil {
 			writeJSON(w, http.StatusBadRequest, Response{Accepted: false, Status: StatusFailed, Error: fmt.Sprintf("invalid json: %v", err)})
 			return
 		}
@@ -69,8 +77,36 @@ func NewRuntime(cfg config.ElnisHTTPConfig, service *Service) *Runtime {
 	if addr == "" {
 		addr = "127.0.0.1:32170"
 	}
-	r.server = &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	r.server = &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: configuredTimeout(cfg.ReadHeaderTimeoutSeconds, defaultReadHeaderTimeout),
+		ReadTimeout:       configuredTimeout(cfg.ReadTimeoutSeconds, defaultReadTimeout),
+		WriteTimeout:      configuredTimeout(cfg.WriteTimeoutSeconds, defaultWriteTimeout),
+		IdleTimeout:       configuredTimeout(cfg.IdleTimeoutSeconds, defaultIdleTimeout),
+	}
 	return r
+}
+
+func configuredTimeout(seconds int, fallback time.Duration) time.Duration {
+	if seconds <= 0 {
+		return fallback
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func decodeSingleJSON(decoder *json.Decoder, target any) error {
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("unexpected trailing JSON value")
+		}
+		return err
+	}
+	return nil
 }
 
 func (r *Runtime) enqueueLLM(ctx context.Context, event QueuedLLMEvent) error {

@@ -82,6 +82,20 @@ func TestResolvePathGeneratesPlatformDefaultsWhenNoConfigExists(t *testing.T) {
 	if !strings.Contains(string(envExampleData), "JINA_API_KEY=") {
 		t.Fatalf("generated .env.example is missing JINA_API_KEY: %q", string(envExampleData))
 	}
+	elnisData, err := os.ReadFile(filepath.Join(filepath.Dir(want), "elnis.toml"))
+	if err != nil {
+		t.Fatalf("read generated elnis.toml: %v", err)
+	}
+	for _, setting := range []string{
+		"read_header_timeout_seconds = 5",
+		"read_timeout_seconds = 30",
+		"write_timeout_seconds = 300",
+		"idle_timeout_seconds = 60",
+	} {
+		if !strings.Contains(string(elnisData), setting) {
+			t.Fatalf("generated elnis.toml is missing %q", setting)
+		}
+	}
 	creatorTomlPath := filepath.Join(filepath.Dir(want), "skills", "agent", "agent_skill_creator", "ELBOT_SKILL.toml")
 	creatorTomlData, err := os.ReadFile(creatorTomlPath)
 	if err != nil {
@@ -124,6 +138,9 @@ func TestResolvePathGeneratesPlatformDefaultsWhenNoConfigExists(t *testing.T) {
 	}
 	if cfg.Elnis.Enabled {
 		t.Fatal("generated Elnis config should be disabled")
+	}
+	if cfg.Elnis.HTTP.ReadHeaderTimeoutSeconds != 5 || cfg.Elnis.HTTP.ReadTimeoutSeconds != 30 || cfg.Elnis.HTTP.WriteTimeoutSeconds != 300 || cfg.Elnis.HTTP.IdleTimeoutSeconds != 60 {
+		t.Fatalf("generated Elnis HTTP timeouts = %#v", cfg.Elnis.HTTP)
 	}
 }
 

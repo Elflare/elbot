@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 补齐 Elnis HTTP 请求头、请求读取、响应写入和空闲连接超时，并拒绝请求体中的尾随第二个 JSON 值；未知字段继续作为无语义字段忽略。
 - 修复 Elnis LLM 报告发送前就把事件标记为 `completed` 的问题；报告改用可恢复 outbox，所有目标回执持久化后才完成，失败项会定时及在重启后重试。
 - 补全默认 `.env.example` 中缺失的 `JINA_API_KEY`。
 - 修复 Session 删除、归档确认可能因列表或当前 Session 变化而作用到错误目标的问题，并让存储错误正确返回给调用方。
