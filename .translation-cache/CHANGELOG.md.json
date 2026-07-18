@@ -592,6 +592,22 @@
       "translation": "In PowerShell environments, AST parsing is skipped, and risk classification directly returns high-risk, requiring user confirmation.",
       "updated_at": 1783128855
     },
+    "CHANGELOG.md:list:8a6b94368cf2dede5354c5ff825af2af6857a380c6456fdb37a5cae19284d736": {
+      "kind": "list",
+      "source": "Skill reload 现改为串行、完整验证并原子替换，名称冲突或候选失败时保留旧 registry、catalog 和 AgentSkill 配置。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "8a6b94368cf2dede5354c5ff825af2af6857a380c6456fdb37a5cae19284d736",
+      "translation": "Skill reload is now changed to be serial, fully validated, and atomically replaced; the old registry, catalog, and AgentSkill configuration are retained in case of name conflicts or candidate failures.",
+      "updated_at": 1784340385
+    },
+    "CHANGELOG.md:list:8c30da44dfd5da697c3be775652c2559cb146f73b97cec1a08b7e5199bde956b": {
+      "kind": "list",
+      "source": "报告改用可恢复 outbox，所有目标回执持久化后才完成，失败项会定时及在重启后重试。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "8c30da44dfd5da697c3be775652c2559cb146f73b97cec1a08b7e5199bde956b",
+      "translation": "Reports now use a recoverable outbox, completing only after all target acknowledgments are persisted; failed items will be retried periodically and after restart.",
+      "updated_at": 1784340385
+    },
     "CHANGELOG.md:list:8c6db0749fc23bd2ae134ad376b9197d0f3c34d7c93e7d70e3767ccd889a12bc": {
       "kind": "list",
       "source": "ELyph __ELBOT_CODE_0__/__ELBOT_CODE_1__ 文本末尾冒号现在作为 warning 返回给 __ELBOT_CODE_2__/__ELBOT_CODE_3__，不再阻断创建或 finalize。",
@@ -864,6 +880,14 @@
       "translation": "**Standard Cron and LLM Cron**: Standard Cron sends fixed content directly according to a schedule;",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:bd94f6e99860eeead24ecf3dbebbea42b0a11237404c1a8c4bef8673584fd60b": {
+      "kind": "list",
+      "source": "修复 Elnis LLM 报告发送前就把事件标记为 __ELBOT_CODE_0__ 的问题；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "bd94f6e99860eeead24ecf3dbebbea42b0a11237404c1a8c4bef8673584fd60b",
+      "translation": "Fixed an issue where Elnis LLM marked events as __ELBOT_CODE_0__ before sending the report;",
+      "updated_at": 1784340385
+    },
     "CHANGELOG.md:list:bfcdea1f22fc104c87792b36230a1333c05c0c6ab4336e69e47203197c32a7b2": {
       "kind": "list",
       "source": "无法从模型元数据或配置识别 context window 时，默认窗口调整为 256k。",
@@ -887,6 +911,14 @@
       "source_hash": "c5677ef83020b6879bc81ba0896f3ae4a390a95cc8329831e1008ad10406bf25",
       "translation": "__ELBOT_CODE_0__/__ELBOT_CODE_1__ will suggest using __ELBOT_CODE_2__ when reading EL Skill files;",
       "updated_at": 1782722558
+    },
+    "CHANGELOG.md:list:c975eb5ea81074e512045d3db3c8162aaabc288a0ffd73a973da3be406a6632d": {
+      "kind": "list",
+      "source": "修复已完成的一次性 LLM Cron 重新启用或重新调度后直接复用旧报告、未创建新后台 Session 的问题；通知失败和平台重连仍补发同一轮已持久化结果。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "c975eb5ea81074e512045d3db3c8162aaabc288a0ffd73a973da3be406a6632d",
+      "translation": "Fixed an issue where a completed one-time LLM Cron would directly reuse the old report and fail to create a new background Session after being re-enabled or rescheduled; notification failures and platform reconnections still resend the same round of persisted results.",
+      "updated_at": 1784340385
     },
     "CHANGELOG.md:list:cb42950d3097afb350e0270a9241489518a607d30bcc8c00f788f103348b188a": {
       "kind": "list",
@@ -952,6 +984,14 @@
       "translation": "Fixed the issue where __ELBOT_CODE_0__ tools did not support __ELBOT_CODE_1__, __ELBOT_CODE_2__, Windows __ELBOT_CODE_3__, __ELBOT_CODE_4__, and __ELBOT_CODE_5__ home directory paths when setting the directory.",
       "updated_at": 1783859074
     },
+    "CHANGELOG.md:list:dd95926df3a6e0e7ff20bafd8926f476218ede01e566243f30897cf14688ae78": {
+      "kind": "list",
+      "source": "补齐 Elnis HTTP 请求头、请求读取、响应写入和空闲连接超时，并拒绝请求体中的尾随第二个 JSON 值；未知字段继续作为无语义字段忽略。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "dd95926df3a6e0e7ff20bafd8926f476218ede01e566243f30897cf14688ae78",
+      "translation": "Completed Elnis HTTP request headers, request reading, response writing, and idle connection timeouts, and now rejects a trailing second JSON value in the request body; unknown fields continue to be ignored as non-semantic fields.",
+      "updated_at": 1784340385
+    },
     "CHANGELOG.md:list:dda9f80d869b591edf7f9696577d405bb57a881c2e08f7cee08483abdd6db5a7": {
       "kind": "list",
       "source": "执行中的 Hook 会显示在 __ELBOT_CODE_0__，当前 Session 的 Hook 也会显示在 __ELBOT_CODE_1__；",
@@ -983,6 +1023,14 @@
       "source_hash": "e165546c948bdf490fc215f58e25acceb7984ceaf0f31ee3e8d974b08e43db4f",
       "translation": "Direct modification of EL Skill files by __ELBOT_CODE_0__ or shell will be rejected before confirmation or execution; __ELBOT_CODE_1__ should be used instead.",
       "updated_at": 1782722558
+    },
+    "CHANGELOG.md:list:e1f8df1540d086ff32434c5a253720b069a12f2e8d92ef58e386b00c2a726bdd": {
+      "kind": "list",
+      "source": "修复 AgentSkill 配置写入后 reload 失败会留下磁盘与运行 registry 不一致的问题；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "e1f8df1540d086ff32434c5a253720b069a12f2e8d92ef58e386b00c2a726bdd",
+      "translation": "Fixed an issue where a reload failure after writing AgentSkill configuration would leave an inconsistency between the disk and the runtime registry;",
+      "updated_at": 1784340385
     },
     "CHANGELOG.md:list:e2bba3f2fbf67c598073f06e0fb772f830654cf2b0ceca05bbb54f0354aa94bd": {
       "kind": "list",
@@ -1090,8 +1138,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "4edf2cf840aa8ccd8205f411aeec99e84f6fae179b8bfec5ec23ee32a77a5464",
+  "source_hash": "56c652b23e71a323faf23ee3d1448e8baf4c11db267f3c1629266fb57a123222",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784276217,
+  "updated_at": 1784340385,
   "version": 2
 }
