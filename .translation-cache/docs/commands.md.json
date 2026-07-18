@@ -256,6 +256,14 @@
       "translation": "Specific prompts are subject to the runtime output.\n",
       "updated_at": 1781514917
     },
+    "docs/commands.md:paragraph:475e75cb3d56ea41c86811e552bb665f3895896d3971c72602ce76f2f647a7f5": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 会先完整扫描并验证候选 Skill，再一次性替换当前集合。",
+      "source_file": "docs/commands.md",
+      "source_hash": "475e75cb3d56ea41c86811e552bb665f3895896d3971c72602ce76f2f647a7f5",
+      "translation": "__ELBOT_CODE_0__ will first fully scan and verify the candidate Skills, and then replace the current set all at once.",
+      "updated_at": 1784340183
+    },
     "docs/commands.md:paragraph:4e18ac914a4e3692063ecee7f62d63117a10dd0bde42f4c98dd7797e5e0b4a4f": {
       "kind": "paragraph",
       "source": "聊天中也可以用 __ELBOT_CODE_0__（简写 __ELBOT_CODE_1__）预载工具，或用 __ELBOT_CODE_2__（简写 __ELBOT_CODE_3__）把 Skill 文档加入本轮消息并预载对应运行 wrapper。",
@@ -287,6 +295,14 @@
       "source_hash": "7b5dd9c95b68cb3548a0f0e25535be58a906d86b0cf2f779f87f54f4e0931e29",
       "translation": "Model parameters can be a list number, model name, or __ELBOT_CODE_0__.\n",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:paragraph:970c185f8fd4da80594d1b54243c21f8aa313fb566a5e4779dfb28c1b6b82f1f": {
+      "kind": "paragraph",
+      "source": "若存在重名 Skill、与内置工具重名或读取失败，reload 会返回错误并保留原有工具集合。\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "970c185f8fd4da80594d1b54243c21f8aa313fb566a5e4779dfb28c1b6b82f1f",
+      "translation": "If there are duplicate Skill names, names that conflict with built-in tools, or if reading fails, reload will return an error and preserve the original tool set.\n",
+      "updated_at": 1784340183
     },
     "docs/commands.md:paragraph:9cfc23ef97546ba454e69b31ea4aa508069e0043bb886c750dfb05372b197d92": {
       "kind": "paragraph",
@@ -1042,8 +1058,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "8b505c131a2c2585a118b54b9f4fa2744c1f5089d59e03902218ce5e70af409b",
+  "source_hash": "631e440fdc246f6992cca637f9e1e8850861f8ce0d79199688daff2601ec97b0",
   "target": "docs.en/commands.md",
-  "updated_at": 1784276178,
+  "updated_at": 1784340183,
   "version": 2
 }
