@@ -8,6 +8,14 @@
       "translation": "This Elwisp is disabled only when enabled=false is explicitly set.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:code-comment:toml:1bdf13d861b4ab1b8197152af36c17c484156f6abd5425c38efcd16b7f9be1e9": {
+      "kind": "code-comment:toml",
+      "source": "handler 执行及响应写出期限；direct 模式可能包含外部 I/O，因此默认较宽松。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "1bdf13d861b4ab1b8197152af36c17c484156f6abd5425c38efcd16b7f9be1e9",
+      "translation": "Timeout for handler execution and response writing; direct mode may involve external I/O, so the default is more lenient.",
+      "updated_at": 1784340335
+    },
     "docs/elnis-usage.md:code-comment:toml:3c23ea131d1df5e2d5318b9317ca57d0b1fa269169d01dcb7591bc050def97ff": {
       "kind": "code-comment:toml",
       "source": "Elnis 总开关；false 时不启动 HTTP runtime。",
@@ -80,6 +88,14 @@
       "translation": "{ platform = \"telegram\" }, # Disable all deliveries for the entire telegram platform.",
       "updated_at": 1782033114
     },
+    "docs/elnis-usage.md:code-comment:toml:b2a3ab0aa8db9f6a93f9f52e15783f0a3ab72109861f9fdb10a86b70df2724c1": {
+      "kind": "code-comment:toml",
+      "source": "整个请求（含 body）读取期限。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "b2a3ab0aa8db9f6a93f9f52e15783f0a3ab72109861f9fdb10a86b70df2724c1",
+      "translation": "Read timeout for the entire request (including body).",
+      "updated_at": 1784340335
+    },
     "docs/elnis-usage.md:code-comment:toml:c2ef86d5900a07f72fc8bb5bce6305e2030e5baff114a859d434d5eaf0da866d": {
       "kind": "code-comment:toml",
       "source": "从系统环境变量或配置目录 .env 读取。",
@@ -95,6 +111,22 @@
       "source_hash": "e2387e326cb33176309e98026e53ed52661a0a08046d9dd7e698d5a009128dcb",
       "translation": "Overrides the top-level allowed_tools when present.",
       "updated_at": 1781749660
+    },
+    "docs/elnis-usage.md:code-comment:toml:eca27e7517e41340c57a493660ff153f024466f073c3122fa47271f169ea7970": {
+      "kind": "code-comment:toml",
+      "source": "keep-alive 空闲连接期限。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "eca27e7517e41340c57a493660ff153f024466f073c3122fa47271f169ea7970",
+      "translation": "Keep-alive idle connection timeout.",
+      "updated_at": 1784340335
+    },
+    "docs/elnis-usage.md:code-comment:toml:f47db574560a79c1f3a76ce25c334e03b46b00fadb19621e8ae0cd011f224ccf": {
+      "kind": "code-comment:toml",
+      "source": "请求头读取期限。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "f47db574560a79c1f3a76ce25c334e03b46b00fadb19621e8ae0cd011f224ccf",
+      "translation": "Request header read timeout.",
+      "updated_at": 1784340335
     },
     "docs/elnis-usage.md:heading:0d53f08678d8101b0c7e5053b30224fc671c55051770ba18207435ead7ad37bd": {
       "kind": "heading",
@@ -192,6 +224,14 @@
       "translation": "The original token text is not written to logs.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:list:1e556fd35e3587bfc10717bdd81cf532ae6c205f11fd14ebe299c7d71bfdc8ed": {
+      "kind": "list",
+      "source": "HTTP 超时配置小于等于 0 时使用上述安全默认值，不能用 0 关闭超时。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "1e556fd35e3587bfc10717bdd81cf532ae6c205f11fd14ebe299c7d71bfdc8ed",
+      "translation": "When HTTP timeout configurations are less than or equal to 0, the aforementioned safe default values are used; timeouts cannot be disabled by using 0.",
+      "updated_at": 1784340335
+    },
     "docs/elnis-usage.md:list:39d59267ebaab21e07dc512b5809024eda04a12d8a8151c63be19fe6532a4450": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__：投递到指定平台群聊。",
@@ -215,6 +255,14 @@
       "source_hash": "4df54398bc8b1532dafee25af6fb8c9f087ee72898883833b90a74e1de092cca",
       "translation": "__ELBOT_CODE_0__ only allows __ELBOT_CODE_1__ or __ELBOT_CODE_2__, and does not affect model slots.",
       "updated_at": 1782699001
+    },
+    "docs/elnis-usage.md:list:5aa752857d96b5f52c36cbb528333af31ba8f223a2014a279fcd3b40e8c6af35": {
+      "kind": "list",
+      "source": "非 loopback 地址应放在反向代理后，由代理负责 TLS、连接上限和请求速率限制；应用层超时不能代替这些边界。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "5aa752857d96b5f52c36cbb528333af31ba8f223a2014a279fcd3b40e8c6af35",
+      "translation": "Non-loopback addresses should be placed behind a reverse proxy, with the proxy handling TLS, connection limits, and request rate limiting; application-layer timeouts cannot replace these boundaries.",
+      "updated_at": 1784340335
     },
     "docs/elnis-usage.md:list:5c6d736596b8e683ecb7c0de019d1bd69420c0838b38ad750c5ac86bcc5a8451": {
       "kind": "list",
@@ -560,6 +608,14 @@
       "translation": "Elvena v3 supports sending images and files via the __ELBOT_CODE_0__ field.",
       "updated_at": 1782395349
     },
+    "docs/elnis-usage.md:paragraph:8db3fb03241ed80dbb5c546ec35efe3175b8c4c2dea8fb37737becc905156875": {
+      "kind": "paragraph",
+      "source": "每个 HTTP 请求体必须且只能包含一个 JSON 值，尾随空白允许，尾随第二个 JSON 值或非法内容会返回 __ELBOT_CODE_0__。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "8db3fb03241ed80dbb5c546ec35efe3175b8c4c2dea8fb37737becc905156875",
+      "translation": "Each HTTP request body must contain exactly one JSON value. Trailing whitespace is allowed, but a trailing second JSON value or illegal content will return __ELBOT_CODE_0__.",
+      "updated_at": 1784340335
+    },
     "docs/elnis-usage.md:paragraph:8e10903c1c241907a109ea2991f0ecee90e4156346762acc425a4a89f389fe9b": {
       "kind": "paragraph",
       "source": "Elnis 默认允许投递；",
@@ -608,6 +664,14 @@
       "translation": "Security Conventions:\n",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:paragraph:c4402f94918807a518f6b164f2a244567d04ce9486135926cc1da4fe356abe30": {
+      "kind": "paragraph",
+      "source": "需要正式语义的字段应加入对应 Elvena 协议版本。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "c4402f94918807a518f6b164f2a244567d04ce9486135926cc1da4fe356abe30",
+      "translation": "Fields requiring formal semantics should be added to the corresponding Elvena protocol version.\n",
+      "updated_at": 1784340335
+    },
     "docs/elnis-usage.md:paragraph:c4d8b65b953274a6f55a14e458f1692b0c1a4c266202db3f4cb38edcb2f173c2": {
       "kind": "paragraph",
       "source": "语义：\n",
@@ -623,6 +687,14 @@
       "source_hash": "ddac502e5a9bf6effe2c663d9791e9d17620364e413cc20355177083ec692c93",
       "translation": "After starting ElBot, you can use curl to test a __ELBOT_CODE_0__ event:\n",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:e2c1b9710c551dd0140829237aaf3de5d4d60159f0c15b8a901d0d0be399d3ac": {
+      "kind": "paragraph",
+      "source": "未知字段会被忽略，不参与协议语义、规范化、事件 __ELBOT_CODE_0__ 或审计；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "e2c1b9710c551dd0140829237aaf3de5d4d60159f0c15b8a901d0d0be399d3ac",
+      "translation": "Unknown fields will be ignored and will not participate in protocol semantics, normalization, event __ELBOT_CODE_0__, or auditing;",
+      "updated_at": 1784340335
     },
     "docs/elnis-usage.md:paragraph:e9b088a20b3196f9c15eb69e11284b94638f0c0538ada2b9e49a0112519d875e": {
       "kind": "paragraph",
@@ -930,8 +1002,8 @@
     }
   },
   "source": "docs/elnis-usage.md",
-  "source_hash": "cb0ec41f51c9a55121d0c4088d3dec54179f37d7f2e2e213e7b312ad0194335f",
+  "source_hash": "765d2c3367a3e69ca0fdafed6c3a78a8fcb82ab97d28d710431a3ce743067d0e",
   "target": "docs.en/elnis-usage.md",
-  "updated_at": 1783922708,
+  "updated_at": 1784340335,
   "version": 2
 }
