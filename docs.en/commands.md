@@ -163,6 +163,8 @@ Example:
 /tools remove my_skill --confirm
 ```
 
+`/tools reload` will first fully scan and verify the candidate Skills, and then replace the current set all at once. If there are duplicate Skill names, names that conflict with built-in tools, or if reading fails, reload will return an error and preserve the original tool set.
+
 In work mode, the LLM can discover tool details on demand via `discover_tool`. In a chat, you can also use `@tool:<name-or-tag>` (shorthand `@t:<name-or-tag>`) to preload tools, or use `@skill:<name>` (shorthand `@s:<name>`) to add Skill documentation to the current round of messages and preload the corresponding runtime wrapper. The colon can also be written as a full-width Chinese colon `：`.
 
 ## Hook
