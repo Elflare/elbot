@@ -1488,6 +1488,14 @@
       "translation": "Resident memory data is saved by default in __ELBOT_CODE_0__ of the configuration directory, and the file is generated when the program runs for the first time. The length limits for the two resident memory segments, core and normal, can be set in the main configuration:\n",
       "updated_at": 1782206047
     },
+    "docs/configuration.md:paragraph:906a4f019eb5ff9868f5feb6e2fffa252172a1e7548fde00f159bf6a9896bf35": {
+      "kind": "paragraph",
+      "source": "通过 __ELBOT_CODE_0__ 元工具写入配置时，ElBot 会在完整 reload 成功后才确认写入；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "906a4f019eb5ff9868f5feb6e2fffa252172a1e7548fde00f159bf6a9896bf35",
+      "translation": "When writing configuration via the __ELBOT_CODE_0__ meta-tool, ElBot will only confirm the write after a complete reload is successful;",
+      "updated_at": 1784340255
+    },
     "docs/configuration.md:paragraph:908d95915d62a34fdeada4121f5de175135998df8fa4e8df16ac640a6b39554f": {
       "kind": "paragraph",
       "source": "文件名主体必须是大写 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__，__ELBOT_CODE_2__ 后缀大小写不限；",
@@ -1856,6 +1864,14 @@
       "translation": "Platform inbound attachment download limits use __ELBOT_CODE_0__:\n",
       "updated_at": 1783085288
     },
+    "docs/configuration.md:paragraph:fd16041846ef78c1e35cde0ac959f8294920c1612453cac05c10d264a3e97833": {
+      "kind": "paragraph",
+      "source": "若 reload 失败，会恢复原有 TOML，原先没有该文件时则删除本次新建文件。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "fd16041846ef78c1e35cde0ac959f8294920c1612453cac05c10d264a3e97833",
+      "translation": "If the reload fails, the original TOML will be restored; if the file did not exist previously, the newly created file will be deleted.\n",
+      "updated_at": 1784340255
+    },
     "docs/configuration.md:paragraph:fe3763737e369c201cf7cf50f1c19da604a37227e49113f9d433f7628d1094c4": {
       "kind": "paragraph",
       "source": "Hook 不要直接发平台消息，应返回输出意图，由 Agent 统一交给 Output Manager 发送。\n",
@@ -1978,8 +1994,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "9c8b2356c5727b8a952e5f42a765b1adcade12dfd7fcc376cb28142b403d87ce",
+  "source_hash": "a463319639b49647e56df5c31a79e526a3ebc1c3e4b7c963c4a67c59e2058769",
   "target": "docs.en/configuration.md",
-  "updated_at": 1784209665,
+  "updated_at": 1784340255,
   "version": 2
 }
