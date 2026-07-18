@@ -274,6 +274,7 @@ func (s *Service) Update(ctx context.Context, req PatchRequest) (*storage.CronJo
 	if err != nil {
 		return nil, err
 	}
+	previousMeta := meta
 	if req.Title != nil {
 		meta.Title = strings.TrimSpace(*req.Title)
 	}
@@ -317,6 +318,9 @@ func (s *Service) Update(ctx context.Context, req PatchRequest) (*storage.CronJo
 		if err := s.validateUserSchedule(&meta); err != nil {
 			return nil, err
 		}
+	}
+	if startsNewDeliveryCycle(previousMeta, meta, req, enabled) {
+		meta.Delivery = CronDeliveryMetadata{}
 	}
 	updated, err := s.upsert(ctx, name, meta, enabled)
 	if err != nil {
@@ -438,7 +442,30 @@ func (s *Service) isCompletedCron(job storage.CronJob, meta Metadata) bool {
 	if meta.Schedule.Mode != ScheduleOnce {
 		return false
 	}
+	if job.Enabled && !meta.Delivery.Completed {
+		return false
+	}
 	return job.RunCount > 0 || meta.Delivery.Completed || !job.Enabled
+}
+
+func startsNewDeliveryCycle(before, after Metadata, req PatchRequest, enabled bool) bool {
+	if !enabled || !hasDeliveryState(before.Delivery) {
+		return false
+	}
+	if req.Enabled != nil && *req.Enabled {
+		return true
+	}
+	if before.Schedule != after.Schedule || before.Trigger != after.Trigger {
+		return true
+	}
+	if before.LLM.SessionMode != after.LLM.SessionMode || strings.Join(before.LLM.ToolListNames, "\x00") != strings.Join(after.LLM.ToolListNames, "\x00") {
+		return true
+	}
+	return false
+}
+
+func hasDeliveryState(delivery CronDeliveryMetadata) bool {
+	return delivery.Completed || delivery.Report != "" || len(delivery.ReportSegments) > 0 || delivery.ReportSessionID != "" || delivery.ReportMessageID != "" || len(delivery.DeliveredPlatforms) > 0
 }
 
 func (s *Service) RunMissedOnce(ctx context.Context) {
@@ -659,9 +686,6 @@ func (s *Service) runLLM(ctx context.Context, job storage.CronJob, meta Metadata
 
 func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Metadata) (Metadata, string, error) {
 	reusable := meta.Schedule.Mode == ScheduleOnce
-	if reusable && meta.Delivery.Completed {
-		return meta, strings.TrimSpace(meta.Delivery.Report), nil
-	}
 	if s.runner == nil {
 		return meta, "", fmt.Errorf("cron llm runner is not configured")
 	}
@@ -678,13 +702,11 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 	}
 	if err != nil {
 		message := cronParseFailedMessage(meta.Title, result.SessionID, err)
-		if reusable {
-			meta.Delivery.Completed = true
-			meta.Delivery.Report = message
-			meta.Delivery.ReportSegments = nil
-			meta.Delivery.ReportSessionID = result.SessionID
-			meta.Delivery.ReportMessageID = result.MessageID
-		}
+		meta.Delivery.Completed = reusable
+		meta.Delivery.Report = message
+		meta.Delivery.ReportSegments = nil
+		meta.Delivery.ReportSessionID = result.SessionID
+		meta.Delivery.ReportMessageID = result.MessageID
 		return meta, message, err
 	}
 	if meta.Target.AllEnabledPlatforms {
@@ -692,18 +714,13 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 			s.logWarn("copy cron session failed", "job", job.Name, "error", err)
 		}
 	}
+	meta.Delivery.Completed = reusable && parsed.Completed
 	meta.Delivery.ReportSegments = parsed.ReportSegments
-	if reusable {
-		meta.Delivery.Completed = parsed.Completed
-	}
+	meta.Delivery.ReportSessionID = result.SessionID
+	meta.Delivery.ReportMessageID = result.MessageID
 	if parsed.Completed {
 		report := strings.TrimSpace(parsed.Report)
-		if reusable {
-			meta.Delivery.Report = report
-			meta.Delivery.ReportSegments = parsed.ReportSegments
-			meta.Delivery.ReportSessionID = result.SessionID
-			meta.Delivery.ReportMessageID = result.MessageID
-		}
+		meta.Delivery.Report = report
 		return meta, report, nil
 	}
 	report := strings.TrimSpace(parsed.Report)
@@ -711,12 +728,7 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 		report = "任务未完成。"
 	}
 	report += fmt.Sprintf("\n可 /resume 到 cron session 查看详情。\nsession: %s", result.SessionID)
-	if reusable {
-		meta.Delivery.Report = report
-		meta.Delivery.ReportSegments = parsed.ReportSegments
-		meta.Delivery.ReportSessionID = result.SessionID
-		meta.Delivery.ReportMessageID = result.MessageID
-	}
+	meta.Delivery.Report = report
 	return meta, report, nil
 }
 
