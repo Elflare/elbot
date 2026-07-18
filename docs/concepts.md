@@ -151,7 +151,9 @@ ElBot 包含两层 Cron 能力：
 | Direct Cron | 按计划直接发送固定内容。 |
 | LLM Cron | 按任务描述驱动模型执行，并可使用工具。 |
 
-后台 Cron 有独立 Session 和 sandbox 约束。
+LLM Cron 每次调度触发都会创建独立的后台 Session，把任务作为新输入执行，并在完成后发送本轮结果。Session 可在创建 Cron 的平台通过 `/sessions`、`/resume` 查看；广播任务会为其他目标平台复制 Session，CLI 可查看全部平台 Session。
+
+一次性 LLM Cron 会先持久化本轮结果再发送通知。通知失败或服务重启时只补发同一轮结果，不会重复调用 LLM；将已完成任务重新启用或重新调度后，才会清空旧投递状态并开始新的 Session。后台 Cron 仍受独立 sandbox 约束。
 
 ## Elnis / Elwisp / Elvena
 

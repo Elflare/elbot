@@ -11,6 +11,7 @@ import (
 
 	"elbot/internal/background"
 	"elbot/internal/delivery"
+	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -191,6 +192,46 @@ func TestUpdateRejectsCurrentMinuteOnceRunAt(t *testing.T) {
 	}
 }
 
+func TestUpdateReenablesCompletedOnceCronWithFreshDeliveryState(t *testing.T) {
+	repo := newFakeCronRepo()
+	svc := NewService(Options{Store: fakeCronStore{cron: repo}})
+	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:04:30") }
+	actor := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
+	job := upsertTestCronJob(t, repo, Metadata{
+		Kind:      metadataKind,
+		Version:   1,
+		Title:     "LLM",
+		CreatedBy: actorMetadata(actor),
+		Schedule:  CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:03:00"},
+		Trigger:   CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")},
+		Target:    CronTarget{SourcePlatform: "cli"},
+		Delivery: CronDeliveryMetadata{
+			Completed:          true,
+			Report:             "旧报告",
+			ReportSegments:     []llm.MessageSegment{{Type: llm.SegmentImage, URL: "old.png"}},
+			ReportSessionID:    "old-session",
+			ReportMessageID:    "old-message",
+			DeliveredPlatforms: []string{"cli"},
+		},
+	})
+	repo.jobs[job.Name].Enabled = false
+	repo.jobs[job.Name].RunCount = 1
+
+	runAt := "2026-01-02 03:05:00"
+	enabled := true
+	updated, err := svc.Update(context.Background(), PatchRequest{Name: job.Name, RunAt: &runAt, Enabled: &enabled, Actor: actor})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	meta := mustDecodeTestMetadata(t, updated.Metadata)
+	if hasDeliveryState(meta.Delivery) {
+		t.Fatalf("delivery state was not cleared: %#v", meta.Delivery)
+	}
+	if svc.isCompletedCron(*updated, meta) {
+		t.Fatal("re-enabled once cron is still considered completed")
+	}
+}
+
 func TestCreateLLMCronRequiresElyphTask(t *testing.T) {
 	svc := NewService(Options{Store: fakeCronStore{cron: newFakeCronRepo()}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:04:30") }
@@ -293,6 +334,49 @@ func TestRunLLMMapsReportNoticeToBackgroundMessage(t *testing.T) {
 	}
 }
 
+func TestCopyCronSessionIsVisibleOnBroadcastPlatformsAndCLI(t *testing.T) {
+	ctx := context.Background()
+	store := newCronSQLiteStore(t)
+	source := &storage.Session{OwnerID: "cli:local", Platform: "cli", PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "cron"}
+	if err := store.Sessions().Create(ctx, source); err != nil {
+		t.Fatalf("create source session: %v", err)
+	}
+	for _, message := range []storage.Message{
+		{SessionID: source.ID, Role: storage.RoleUser, Content: "task"},
+		{SessionID: source.ID, Role: storage.RoleAssistant, Content: "result"},
+	} {
+		if err := store.Messages().Append(ctx, &message); err != nil {
+			t.Fatalf("append source message: %v", err)
+		}
+	}
+	svc := NewService(Options{
+		Store: store,
+		EnabledPlatforms: []PlatformTarget{
+			{Name: "qq-onebot", SuperadminIDs: []string{"1001"}},
+			{Name: "telegram", SuperadminIDs: []string{"2002"}},
+		},
+	})
+	meta := Metadata{Title: "cron", Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}}
+	if err := svc.copySessionToBroadcastTargets(ctx, source.ID, meta, "user.cron.test"); err != nil {
+		t.Fatalf("copySessionToBroadcastTargets: %v", err)
+	}
+
+	qqSessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: security.ActorID("qq-onebot", "1001"), Platform: "qq-onebot", PlatformScopeID: "private:1001", IncludeSamePlatformCron: true, Limit: 20})
+	if err != nil {
+		t.Fatalf("list qq sessions: %v", err)
+	}
+	if len(qqSessions) != 1 || qqSessions[0].PlatformScopeID != "cron:user.cron.test" || qqSessions[0].MessageCount != 2 {
+		t.Fatalf("qq sessions = %#v", qqSessions)
+	}
+	cliSessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 20})
+	if err != nil {
+		t.Fatalf("list cli sessions: %v", err)
+	}
+	if len(cliSessions) != 3 {
+		t.Fatalf("cli sessions = %#v", cliSessions)
+	}
+}
+
 func TestRunLLMSendsReportSegments(t *testing.T) {
 	repo := newFakeCronRepo()
 	root := filepath.Join(t.TempDir(), "sandbox")
@@ -344,6 +428,32 @@ func TestRunLLMReportStartsFreshSessionEachCronTrigger(t *testing.T) {
 	}
 	if runner.requests[0].SessionID != "" || runner.requests[1].SessionID != "" {
 		t.Fatalf("cron triggers should start fresh sessions: %#v", runner.requests)
+	}
+}
+
+func TestRunLLMReportDoesNotReuseCompletedOnceCronOutput(t *testing.T) {
+	repo := newFakeCronRepo()
+	runner := &fakeCronRunner{text: `{"completed":true,"need_report":true,"report":"新报告"}`, sessionIDs: []string{"new-session"}}
+	svc := NewService(Options{Store: fakeCronStore{cron: repo}, Runner: runner})
+	job := upsertTestCronJob(t, repo, Metadata{
+		Kind:     metadataKind,
+		Version:  1,
+		Title:    "LLM",
+		Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"},
+		Trigger:  CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")},
+		Target:   CronTarget{SourcePlatform: "cli"},
+		Delivery: CronDeliveryMetadata{Completed: true, Report: "旧报告", ReportSessionID: "old-session", ReportMessageID: "old-message"},
+	})
+
+	updated, report, err := svc.runLLMReport(context.Background(), *job, mustDecodeTestMetadata(t, job.Metadata))
+	if err != nil {
+		t.Fatalf("runLLMReport: %v", err)
+	}
+	if runner.calls != 1 || runner.requests[0].SessionID != "" {
+		t.Fatalf("runner requests = %#v", runner.requests)
+	}
+	if report != "新报告" || updated.Delivery.Report != "新报告" || updated.Delivery.ReportSessionID != "new-session" {
+		t.Fatalf("report=%q delivery=%#v", report, updated.Delivery)
 	}
 }
 

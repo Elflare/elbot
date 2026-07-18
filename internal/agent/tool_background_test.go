@@ -153,6 +153,45 @@ func TestRunBackgroundUsesWorkModeWhenDefaultModeIsChat(t *testing.T) {
 	}
 }
 
+func TestRunBackgroundCreatesFreshSessionForEachCronTrigger(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{
+		{{DeltaContent: `{"completed":true,"need_report":true,"report":"first"}`}},
+		{{DeltaContent: `{"completed":true,"need_report":true,"report":"second"}`}},
+	}}
+	a := New(&fakePlatform{}, f, "test-model", config.ProviderConfig{}, store)
+	req := background.RunRequest{
+		Kind:     background.KindCron,
+		Name:     "fresh-session",
+		Platform: "cli",
+		Actor:    security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin},
+		ScopeID:  "cron:fresh-session",
+		Prompt:   "run",
+	}
+
+	first, err := a.RunBackground(ctx, req)
+	if err != nil {
+		t.Fatalf("first RunBackground: %v", err)
+	}
+	second, err := a.RunBackground(ctx, req)
+	if err != nil {
+		t.Fatalf("second RunBackground: %v", err)
+	}
+	if first.SessionID == "" || second.SessionID == "" || first.SessionID == second.SessionID {
+		t.Fatalf("session ids: first=%q second=%q", first.SessionID, second.SessionID)
+	}
+	for _, result := range []background.RunResult{first, second} {
+		messages, err := store.Messages().ListBySession(ctx, result.SessionID)
+		if err != nil {
+			t.Fatalf("ListBySession(%s): %v", result.SessionID, err)
+		}
+		if len(messages) != 2 || messages[0].Role != storage.RoleUser || messages[1].Role != storage.RoleAssistant {
+			t.Fatalf("session %s messages = %#v", result.SessionID, messages)
+		}
+	}
+}
+
 func TestRunBackgroundRepairsReusedSessionModeAndMetadata(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
