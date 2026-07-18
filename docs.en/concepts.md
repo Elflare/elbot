@@ -153,7 +153,9 @@ ElBot includes two layers of Cron capabilities:
 | Direct Cron | Send fixed content directly according to a schedule. |
 | LLM Cron | Drive model execution based on task descriptions, with the ability to use tools. |
 
-Background Cron has an independent Session and sandbox constraints.
+Each schedule trigger of LLM Cron creates an independent background Session, executes the task as a new input, and sends the result of the current round upon completion. Sessions can be viewed on the platform where the Cron was created via `/sessions` and `/resume`; Broadcast tasks will duplicate the Session for other target platforms; the CLI can be used to view Sessions across all platforms.
+
+A one-time LLM Cron will persist the result of the current round before sending the notification. In case of notification failure or service restart, only the result of the same round will be resent, and the LLM will not be called repeatedly; Only after a completed task is re-enabled or rescheduled will the old delivery status be cleared and a new Session begin. Background Cron is still constrained by an independent sandbox.
 
 ## Elnis / Elwisp / Elvena
 
