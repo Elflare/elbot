@@ -217,22 +217,26 @@ func TestRuleToolActionLeavesRiskAndAuthorizationToHook(t *testing.T) {
 	}
 }
 
-func TestLatestUserTextActionWritesBackToMessages(t *testing.T) {
+func TestLatestUserTextActionWritesBoundMessage(t *testing.T) {
 	module := Module{}
 	event := hook.Event{
-		Point: hook.PointLLMRequestPrepared,
+		Point:   hook.PointLLMRequestPrepared,
+		Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: []llm.MessageSegment{{Type: llm.SegmentImage, URL: "image"}, {Type: llm.SegmentText, Text: "hello"}}},
 		LLM: hook.LLMPayload{Messages: []llm.LLMMessage{
 			{Role: llm.RoleSystem, Segments: llm.TextSegments("system")},
-			{Role: llm.RoleUser, Segments: []llm.MessageSegment{{Type: llm.SegmentImage, URL: "image"}, {Type: llm.SegmentText, Text: "hello"}}},
+			{Role: llm.RoleUser, Segments: llm.TextSegments("history")},
 		}},
 	}
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "prepend", Field: "llm.latest_user_text", Text: "pre "}}}, event)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
-	segments := got.LLM.Messages[1].Segments
+	segments := got.Message.Segments
 	if segments[0].Type != llm.SegmentImage || segments[1].Text != "pre hello" {
-		t.Fatalf("latest user segments = %#v", segments)
+		t.Fatalf("bound user segments = %#v", segments)
+	}
+	if text := llm.SegmentsTextOnly(got.LLM.Messages[1].Segments); text != "history" {
+		t.Fatalf("history = %q, want unchanged", text)
 	}
 }
 
@@ -359,17 +363,21 @@ func TestSetTextFieldMessageText(t *testing.T) {
 
 func TestSetTextFieldLatestUserText(t *testing.T) {
 	event := hook.Event{
-		Point: hook.PointLLMRequestPrepared,
+		Point:   hook.PointLLMRequestPrepared,
+		Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: llm.TextSegments("old user")},
 		LLM: hook.LLMPayload{Messages: []llm.LLMMessage{
 			{Role: llm.RoleSystem, Segments: llm.TextSegments("sys")},
-			{Role: llm.RoleUser, Segments: llm.TextSegments("old user")},
+			{Role: llm.RoleUser, Segments: llm.TextSegments("history")},
 		}},
 	}
 	got, err := setTextField(event, "llm.latest_user_text", "new user")
 	if err != nil {
 		t.Fatalf("setTextField: %v", err)
 	}
-	if text := llm.SegmentsTextOnly(got.LLM.Messages[1].Segments); text != "new user" {
+	if text := llm.SegmentsTextOnly(got.Message.Segments); text != "new user" {
 		t.Fatalf("text = %q, want %q", text, "new user")
+	}
+	if text := llm.SegmentsTextOnly(got.LLM.Messages[1].Segments); text != "history" {
+		t.Fatalf("history = %q, want unchanged", text)
 	}
 }

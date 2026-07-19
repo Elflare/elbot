@@ -18,6 +18,7 @@ type runnerContextKey struct{}
 
 type runnerTestDeps struct {
 	confirmed      bool
+	completed      int
 	recorded       []runnerTestRecord
 	prepareContext func(context.Context, *storage.Session, llm.ToolCallRequest) context.Context
 }
@@ -56,6 +57,7 @@ func (d *runnerTestDeps) PrepareToolContext(ctx context.Context, session *storag
 }
 
 func (d *runnerTestDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error) {
+	d.completed++
 	return segments, nil
 }
 
@@ -230,6 +232,9 @@ func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
 	})
 	if deps.confirmed {
 		t.Fatal("preflight error should not ask for confirmation")
+	}
+	if deps.completed != 0 {
+		t.Fatalf("completed hook calls = %d, want 0", deps.completed)
 	}
 	if len(result.Messages) != 1 {
 		t.Fatalf("messages = %d", len(result.Messages))

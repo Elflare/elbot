@@ -52,6 +52,7 @@ type RunRequest struct {
 
 type RunResult struct {
 	Messages          []llm.LLMMessage
+	PreparedCalls     []llm.ToolCallRequest
 	ConfirmationExtra string
 	Transcript        []storage.Message
 	Stopped           bool
@@ -96,7 +97,7 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 		confirm, err := m.confirm(ctx, deps, req.Actor, sessionID, call, resolved, assessment)
 		if !confirm.Allowed {
 			if confirm.Stopped {
-				return RunResult{Messages: messages, ConfirmationExtra: confirmationExtra, Transcript: transcript, Stopped: true}
+				return RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra, Transcript: transcript, Stopped: true}
 			}
 			message := confirm.Message
 			if len(message.Segments) == 0 {
@@ -125,14 +126,16 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 		done()
 		if err := toolErr; err != nil {
 			if ctx.Err() != nil {
-				return RunResult{Messages: messages, ConfirmationExtra: confirmationExtra, Transcript: transcript, Stopped: true}
+				return RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra, Transcript: transcript, Stopped: true}
 			}
-			message := toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s canceled by user", call.Name))
-			content := llm.SegmentsContentText(message.Segments)
-			deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, content, err)
-			messages = append(messages, message)
-			transcript = append(transcript, deps.ToolResultMessage(sessionID, message))
-			continue
+			result.Err = err
+			result.Message = toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s canceled by user", call.Name))
+		}
+		if result.Result != nil && len(result.Result.Outputs) > 0 {
+			if err := deps.SendOutputs(ctx, result.Result.Outputs); err != nil {
+				result.Err = err
+				result.Message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: output: %v", call.Name, err))
+			}
 		}
 		completedSegments, hookErr := deps.CompleteToolCall(ctx, req.Session, call, riskText, result.Message.Segments, result.Err)
 		if hookErr != nil {
@@ -147,19 +150,13 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 		if call.Name == "discover_tool" && result.Result != nil {
 			deps.RememberDiscoveryResult(ctx, req.Session, result.Result)
 		}
-		if result.Result != nil && len(result.Result.Outputs) > 0 {
-			if err := deps.SendOutputs(ctx, result.Result.Outputs); err != nil {
-				result.Err = err
-				result.Message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: output: %v", call.Name, err))
-			}
-		}
 		transcript = append(transcript, deps.ToolResultMessage(sessionID, deps.PersistedToolMessage(result.Message)))
 		if result.Err != nil {
 			deps.SendPreview(ctx, fmt.Sprintf("%s 调用失败：%v", call.Name, result.Err))
 		}
 	}
 	transcript = append([]storage.Message{deps.ToolCallMessage(sessionID, req.AssistantText, req.AssistantRawText, preparedCalls)}, transcript...)
-	return RunResult{Messages: messages, ConfirmationExtra: confirmationExtra, Transcript: transcript}
+	return RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra, Transcript: transcript}
 }
 
 func sendBatchToolPreview(ctx context.Context, deps RunnerDeps, req RunRequest) bool {

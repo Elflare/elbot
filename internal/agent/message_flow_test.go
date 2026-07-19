@@ -5,11 +5,13 @@ import (
 	"context"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
+	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/llm/openai"
 	"elbot/internal/platform"
 	"elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/turn"
 	"io"
 	"log/slog"
 	"net/http"
@@ -18,6 +20,84 @@ import (
 	"testing"
 	"time"
 )
+
+func TestInboundTurnInputRoundTripWithoutPlatformContext(t *testing.T) {
+	want := turn.Input{
+		Text:         "这是猫",
+		PlatformText: "这是狗",
+		Segments: []llm.MessageSegment{
+			{Type: llm.SegmentText, Text: "这是猫"},
+			{Type: llm.SegmentImage, URL: "https://example.com/cat.png"},
+		},
+	}
+	got := inboundTurnInput(withInboundTurnInput(context.Background(), want), "fallback")
+	if got.Text != want.Text || got.PlatformText != want.PlatformText || len(got.Segments) != 2 || got.Segments[1].URL != want.Segments[1].URL {
+		t.Fatalf("inbound turn input = %#v, want %#v", got, want)
+	}
+}
+
+func TestTurnHookMultimodalUserMessagePersistsWithoutChangingPlatformText(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{replies: []string{"first", "second"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	manager := hook.NewManager()
+	var platformText string
+	if err := manager.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "test.user_segments", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		if platformText == "" {
+			platformText = event.Message.PlatformText
+			event.Message.Segments = []llm.MessageSegment{
+				{Type: llm.SegmentText, Text: "这是猫"},
+				{Type: llm.SegmentImage, URL: "https://example.com/cat.png", Name: "cat.png"},
+			}
+		}
+		if len(event.LLM.Messages) > 0 && len(event.LLM.Messages[0].Segments) > 0 {
+			event.LLM.Messages[0].Segments[0].Text = "不应修改系统提示词"
+		}
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register turn hook: %v", err)
+	}
+	a.SetHookManager(manager)
+
+	if err := a.HandleMessage(context.Background(), "这是狗"); err != nil {
+		t.Fatalf("first HandleMessage: %v", err)
+	}
+	if err := a.HandleMessage(context.Background(), "继续"); err != nil {
+		t.Fatalf("second HandleMessage: %v", err)
+	}
+	if platformText != "这是狗" {
+		t.Fatalf("platform text = %q", platformText)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 2 {
+		t.Fatalf("requests = %d, want 2", len(requests))
+	}
+	firstUser := llm.LatestUserSegments(requests[0].Messages)
+	if len(firstUser) != 2 || llm.SegmentsTextOnly(firstUser) != "这是猫" || firstUser[1].Type != llm.SegmentImage {
+		t.Fatalf("first user segments = %#v", firstUser)
+	}
+	if strings.Contains(firstRequestSystemText(requests[0]), "不应修改系统提示词") {
+		t.Fatalf("turn hook modified system prompt: %q", firstRequestSystemText(requests[0]))
+	}
+	var restored bool
+	for _, message := range requests[1].Messages {
+		if message.Role == llm.RoleUser && len(message.Segments) == 2 && llm.SegmentsTextOnly(message.Segments) == "这是猫" && message.Segments[1].Type == llm.SegmentImage {
+			restored = true
+		}
+	}
+	if !restored {
+		t.Fatalf("second request did not restore multimodal history: %#v", requests[1].Messages)
+	}
+	sessionRecord := onlySession(t, store, p)
+	messages, err := store.Messages().ListBySession(context.Background(), sessionRecord.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) == 0 || !strings.Contains(messages[0].Content, "这是猫") || !strings.Contains(messages[0].Content, "cat.png") || !strings.Contains(messages[0].Segments, `"type":"image"`) {
+		t.Fatalf("stored user message = %#v", messages)
+	}
+}
 
 func TestHandleMessageSendsLLMErrorToPlatform(t *testing.T) {
 	p := &fakePlatform{}

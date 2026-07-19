@@ -14,27 +14,34 @@ import (
 	"elbot/internal/toolrun"
 )
 
-func (a *Agent) drainPendingUserInput(sessionID string, messages []llm.LLMMessage, transcript *[]storage.Message) []llm.LLMMessage {
-	pending := a.turns.DrainMerged(sessionID)
-	if pending == "" {
-		return messages
-	}
-	// 工具执行期间的用户追问不打断工具；在下一次 LLM 调用前作为补充输入注入，并持久化进本轮 transcript。
-	return appendPendingUserInput(messages, transcript, pending)
+type pendingUserMessage struct {
+	message      storage.Message
+	messageIndex int
+	platformText string
 }
 
-func appendPendingUserInput(messages []llm.LLMMessage, transcript *[]storage.Message, content string) []llm.LLMMessage {
-	if content == "" {
-		return messages
+func (a *Agent) drainPendingUserInput(sessionID string, messages []llm.LLMMessage) ([]llm.LLMMessage, *pendingUserMessage) {
+	pending := a.turns.DrainMergedInput(sessionID)
+	if pending.Text == "" && len(pending.Segments) == 0 {
+		return messages, nil
 	}
-	if transcript != nil {
-		*transcript = append(*transcript, storage.Message{Role: storage.RoleUser, Content: content})
+	segments := append([]llm.MessageSegment(nil), pending.Segments...)
+	if len(segments) == 0 {
+		segments = llm.TextSegments(pending.Text)
 	}
-	return append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments(content)})
+	message := storage.Message{
+		ID:        storage.NewID(),
+		SessionID: sessionID,
+		Role:      storage.RoleUser,
+		Content:   llm.SegmentsContentText(segments),
+		Segments:  storedMessageSegments(segments),
+	}
+	binding := &pendingUserMessage{message: message, messageIndex: len(messages), platformText: pending.PlatformText}
+	return append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: segments}), binding
 }
 
-func (a *Agent) executeToolCalls(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string, out turnOutput) ([]llm.LLMMessage, string, []storage.Message, bool) {
-	result := a.toolRunManager().Run(ctx, agentToolRunDeps{agent: a, output: out}, toolrun.RunRequest{
+func (a *Agent) executeToolCalls(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string, out turnOutput) toolrun.RunResult {
+	return a.toolRunManager().Run(ctx, agentToolRunDeps{agent: a, output: out}, toolrun.RunRequest{
 		Session:          session,
 		Calls:            calls,
 		AssistantText:    assistantText,
@@ -42,7 +49,6 @@ func (a *Agent) executeToolCalls(ctx context.Context, session *storage.Session, 
 		CachedTools:      a.cachedToolsForSession(session),
 		Actor:            a.actor(ctx),
 	})
-	return result.Messages, result.ConfirmationExtra, result.Transcript, result.Stopped
 }
 
 func riskReasonsText(reasons []string) string {

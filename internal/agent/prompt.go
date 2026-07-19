@@ -98,10 +98,11 @@ type PromptBuilder struct {
 }
 
 type PromptBuildRequest struct {
-	Session  *storage.Session
-	Scope    session.Scope
-	Messages []storage.Message
-	Summary  *storage.ContextSummary
+	Session          *storage.Session
+	Scope            session.Scope
+	ActorDisplayName string
+	Messages         []storage.Message
+	Summary          *storage.ContextSummary
 }
 
 func (b PromptBuilder) Build(ctx context.Context, req PromptBuildRequest) ([]llm.LLMMessage, error) {
@@ -109,7 +110,7 @@ func (b PromptBuilder) Build(ctx context.Context, req PromptBuildRequest) ([]llm
 	if req.Session != nil && req.Session.Mode != "" {
 		mode = req.Session.Mode
 	}
-	systemPrompt, err := b.System.Build(ctx, SystemPromptRequest{Mode: mode, Session: req.Session, Scope: req.Scope})
+	systemPrompt, err := b.System.Build(ctx, SystemPromptRequest{Mode: mode, Session: req.Session, Scope: req.Scope, ActorDisplayName: req.ActorDisplayName})
 	if err != nil {
 		return nil, err
 	}

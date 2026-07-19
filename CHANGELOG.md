@@ -14,12 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/resume <编号>` 改为直接按最近更新时间恢复非当前 Session，`1` 表示最近一项，不再要求先执行裸 `/resume` 建立编号。
 - 上下文压缩改为保留历史用户原话、过滤工具结果，成功后切换到 `原标题 compacted-N` 独立 Session，并将压缩内容与新输入固定物化为首条用户消息；同时修复模型切换、`/stop` 与 Session 变更命令的并发问题。
 - Hook Actor 现在同时提供平台昵称、群名片和纯展示名；聊天历史按平台用户 ID 与名称分开保存和搜索。
+- Soul 和常驻记忆统一由内置 System Prompt 来源按 turn 构建；常驻记忆不再注册为 Hook，普通 Hook 的 `llm.messages` 明确为只读上下文。
 - `workspace` 工具首次被发现或注入时也会加载当前目录的 `AGENTS.md`/`AGENT.md`；同一 Session 的同一路径与切换、重置入口共享一次性记录，不会重复注入。
 - 优化 `read_file` 工具，支持目录搜索、搜索结果编号选择，以及按 AST 函数名精确返回完整函数内容及其起止行号。
 
 ### Fixed
 
 - 修复工具流程的最终 LLM 请求期间收到的 pending 消息会随当前 turn 结束而丢失的问题；当前回复现在正常结束，多条 pending 合并后自动开启下一轮请求。
+- 修复 `llm.request.prepared` 可以临时改写本 turn 初始输入或历史消息、pending 图片在排队时丢失且 Hook 修改未持久化的问题；request Hook 现在只修改本次新 drain 的 pending。
+- 修复工具 prepared Hook 改写后的参数没有同步到当前 LLM 上下文，以及进程内 Hook 可以改写工具 ID/名称的问题；实际执行、后续请求和 transcript 现在统一使用最终 arguments。
 - 修复 Cron 补发使用旧 job 快照覆盖禁用、调度和任务内容，以及多个平台同时连接时重复生成、重复发送和投递状态相互覆盖的问题；LLM 返回 `completed=false` 的失败或阻塞报告现在也会冻结并完成补发。
 - 修复已完成的一次性 LLM Cron 重新启用或重新调度后直接复用旧报告、未创建新后台 Session 的问题；通知失败和平台重连仍补发同一轮已持久化结果。
 - 修复 AgentSkill 配置写入后 reload 失败会留下磁盘与运行 registry 不一致的问题；Skill reload 现改为串行、完整验证并原子替换，名称冲突或候选失败时保留旧 registry、catalog 和 AgentSkill 配置。
@@ -33,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **重构hook系统**
 - 工具完成 Hook 支持返回包含 URL、路径或 base64 图片的 `message.segments`；多模态工具结果可持久化并按 OpenAI Chat Completions 协议作为后续图片消息提供给模型。
+- 用户输入和工具 pending 的前置 Hook 支持用 `message.segments` 同时改写文字和附加图片，最终多模态内容会在请求前写入会话历史。
 - `/chat` 和 `/work` 支持直接携带消息，在切换 Session 模式后立即发送；Session 命令状态改为按平台 Scope 隔离。
 - QQ OneBot 新增 `send_file_mode` 配置，本地图片和文件默认使用 base64 发送，也可在共享文件系统的部署中显式改用 `file_uri`。
 - `/log` 新增 `-s` 和 `--system`，用于筛选并显示 `system prompt` 日志。

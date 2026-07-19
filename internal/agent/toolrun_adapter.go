@@ -32,8 +32,6 @@ func (d agentToolRunDeps) PrepareToolCall(ctx context.Context, session *storage.
 	if err != nil {
 		return call, err
 	}
-	call.ID = event.Tool.ID
-	call.Name = event.Tool.Name
 	call.Arguments = event.Tool.Arguments
 	return call, nil
 }

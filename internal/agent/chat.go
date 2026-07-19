@@ -13,6 +13,7 @@ import (
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/storage"
+	"elbot/internal/turn"
 )
 
 func (a *Agent) handleChat(ctx context.Context, text string) error {
@@ -37,30 +38,30 @@ func (a *Agent) startChatWithOutput(ctx context.Context, session *storage.Sessio
 		if err != nil {
 			return err
 		}
-		if pending == "" {
+		if pending.Text == "" && len(pending.Segments) == 0 {
 			return nil
 		}
 		session = nextSession
-		text = pending
-		ctx = withInboundSegments(ctx, llm.TextSegments(pending))
+		text = pending.Text
+		ctx = withInboundTurnInput(ctx, pending)
 	}
 }
 
-func (a *Agent) runChatTurnWithOutput(ctx context.Context, session *storage.Session, text string, out turnOutput) (*storage.Session, string, error) {
+func (a *Agent) runChatTurnWithOutput(ctx context.Context, session *storage.Session, text string, out turnOutput) (*storage.Session, turn.Input, error) {
 	selection := a.modelSelectionForTurn(ctx, session)
 	if a.shouldCompact(ctx, session, selection) {
 		next, content, err := a.compactSession(ctx, session, "auto", selection)
 		if err != nil {
-			return session, "", err
+			return session, turn.Input{}, err
 		}
 		session = next
 		_, _ = out.SendAssistant(ctx, content)
 	}
-	if !a.turns.StartLLM(session.ID, text) {
-		return session, "", nil
+	if !a.turns.StartLLMInput(session.ID, inboundTurnInput(ctx, text)) {
+		return session, turn.Input{}, nil
 	}
 	defer a.turns.FinishRequest(session.ID)
-	var pending string
+	var pending turn.Input
 	if err := a.runChat(ctx, session, text, out, selection, &pending); err != nil {
 		a.turns.StopSession(session.ID)
 		status := a.runtimeStatusForSession(session.ID)
@@ -68,7 +69,7 @@ func (a *Agent) runChatTurnWithOutput(ctx context.Context, session *storage.Sess
 		status.FinishedAt = storage.Now()
 		status.Error = err.Error()
 		out.PublishRuntimeStatus(ctx, status)
-		return session, "", err
+		return session, turn.Input{}, err
 	}
 	status := a.runtimeStatusForSession(session.ID)
 	if status.Running() {
@@ -89,11 +90,12 @@ func (a *Agent) handleTurnContextDone(ctx context.Context, sessionID string, err
 	return nil
 }
 
-func (a *Agent) runChat(ctx context.Context, session *storage.Session, text string, out turnOutput, selection config.ModelSelection, completedPending *string) error {
+func (a *Agent) runChat(ctx context.Context, session *storage.Session, text string, out turnOutput, selection config.ModelSelection, completedPending *turn.Input) error {
 	userSegments := a.userMessageSegments(ctx, text)
 	userContent := llm.SegmentsContentText(userSegments)
 
 	userMessage := &storage.Message{
+		ID:        storage.NewID(),
 		SessionID: session.ID,
 		Role:      storage.RoleUser,
 		Content:   userContent,
@@ -130,7 +132,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 
 	turnStartedAt := storage.Now()
 	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
-	llmMessages, err := a.promptBuilder.Build(ctx, PromptBuildRequest{Session: session, Scope: a.scope(ctx), Messages: messages, Summary: loaded.Summary})
+	llmMessages, err := a.promptBuilder.Build(ctx, PromptBuildRequest{Session: session, Scope: a.scope(ctx), ActorDisplayName: a.actor(ctx).DisplayName, Messages: messages, Summary: loaded.Summary})
 	if err != nil {
 		return err
 	}
@@ -141,10 +143,11 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	turnEvent, err := a.runHook(ctx, hook.Event{
 		Point:   hook.PointLLMTurnPrepared,
 		Session: hook.SessionContext{ID: session.ID},
+		Message: hook.MessagePayload{ID: userMessage.ID, Role: string(llm.RoleUser), PlatformText: inboundTurnInput(ctx, text).PlatformText, Segments: append([]llm.MessageSegment(nil), userSegments...)},
 		LLM: hook.LLMPayload{
 			Provider: selection.Provider,
 			Model:    selection.Model,
-			Messages: llmMessages,
+			Messages: llm.CloneMessages(llmMessages),
 			Tools:    tools,
 		},
 	})
@@ -153,18 +156,20 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	}
 	selection.Provider = turnEvent.LLM.Provider
 	selection.Model = turnEvent.LLM.Model
-	llmMessages = turnEvent.LLM.Messages
 	tools = turnEvent.LLM.Tools
 	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
+	canonicalUserSegments := append([]llm.MessageSegment(nil), turnEvent.Message.Segments...)
+	promptUserSegments := canonicalUserSegments
+	if compactSeedOnCurrentUser || summaryOnCurrentUser {
+		promptUserSegments = llm.PrependSegmentText(promptUserSegments, summaryUserPrefix(loaded.Summary.Summary))
+	}
+	llmMessages = llm.SetLatestUserSegments(llmMessages, promptUserSegments)
 	if compactSeedOnCurrentUser {
-		segments := llm.LatestUserSegments(llmMessages)
-		userMessage.Content = llm.SegmentsContentText(segments)
-		userMessage.Segments = storedMessageSegments(segments)
-	} else if updatedUserContent := llm.LatestUserSegmentContentText(llmMessages); updatedUserContent != "" {
-		if summaryOnCurrentUser {
-			updatedUserContent = strings.TrimPrefix(updatedUserContent, summaryUserPrefix(loaded.Summary.Summary))
-		}
-		userMessage.Content = updatedUserContent
+		userMessage.Content = llm.SegmentsContentText(promptUserSegments)
+		userMessage.Segments = storedMessageSegments(promptUserSegments)
+	} else {
+		userMessage.Content = llm.SegmentsContentText(canonicalUserSegments)
+		userMessage.Segments = storedMessageSegments(canonicalUserSegments)
 	}
 	if err := a.persistTurnMessage(ctx, userMessage, "append_user_message"); err != nil {
 		return err
@@ -181,28 +186,19 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	var finalReceipt delivery.Receipt
 	var deferredOutputs []delivery.Output
 	var usage *llm.Usage
-	turnMessages := []storage.Message{}
 	toolRounds := 0
 	inToolPhase := false
-	latestUserContent := userMessage.Content
 	for {
+		var pending *pendingUserMessage
 		if inToolPhase {
-			llmMessages = a.drainPendingUserInput(session.ID, llmMessages, &turnMessages)
-			if err := a.persistTurnMessages(ctx, session.ID, "append_pending_user_message", turnMessages); err != nil {
-				return err
-			}
-			turnMessages = turnMessages[:0]
+			llmMessages, pending = a.drainPendingUserInput(session.ID, llmMessages)
 		}
 		stream := out.StartStream(reqCtx)
 		llmStageStartedAt := storage.Now()
 		out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseLLM, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindTurn, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: llmStageStartedAt, Usage: usage})
-		result, updatedUserContent, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, latestUserContent, stream, out)
-		latestUserContent = ""
+		result, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, pending, stream, out)
 		if len(result.Messages) > 0 {
 			llmMessages = result.Messages
-		}
-		if updatedUserContent != "" {
-			userMessage.Content = updatedUserContent
 		}
 		if err != nil {
 			return err
@@ -243,19 +239,17 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			}
 			inToolPhase = true
 		}
+		assistantToolCallIndex := len(llmMessages)
 		llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleAssistant, Segments: llm.TextSegments(assistantRawText), ToolCalls: result.ToolCalls})
 		if toolRounds >= a.maxToolRoundsPerTurn() {
 			out.SendPreview(ctx, fmt.Sprintf("已达到 max_rounds_per_turn=%d，后续工具调用未执行，正在请求模型总结当前进度。", a.maxToolRoundsPerTurn()))
 			llmMessages = append(llmMessages, skippedToolMessages(result.ToolCalls, a.maxToolRoundsPerTurn())...)
-			llmMessages = a.drainPendingUserInput(session.ID, llmMessages, &turnMessages)
-			if err := a.persistTurnMessages(ctx, session.ID, "append_pending_user_message", turnMessages); err != nil {
-				return err
-			}
-			turnMessages = turnMessages[:0]
+			var summaryPending *pendingUserMessage
+			llmMessages, summaryPending = a.drainPendingUserInput(session.ID, llmMessages)
 			llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("工具调用轮次已达到上限，可以询问用户是否继续或者基于已有工具结果和当前上下文总结当前进度。")})
 			tools = nil
 			stream := out.StartStream(reqCtx)
-			summary, _, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, "", stream, out)
+			summary, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, summaryPending, stream, out)
 			if err != nil {
 				return err
 			}
@@ -286,20 +280,21 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			break
 		}
 		toolRounds++
-		toolMessages, confirmationExtra, transcriptMessages, stopped := a.executeToolCalls(reqCtx, session, result.ToolCalls, assistantRawText, assistantRawText, out)
-		if stopped {
+		execution := a.executeToolCalls(reqCtx, session, result.ToolCalls, assistantRawText, assistantRawText, out)
+		if execution.Stopped {
 			return nil
 		}
-		llmMessages = append(llmMessages, toolMessages...)
-		if err := a.persistTurnMessages(ctx, session.ID, "append_tool_transcript", transcriptMessages); err != nil {
+		llmMessages[assistantToolCallIndex].ToolCalls = append([]llm.ToolCallRequest(nil), execution.PreparedCalls...)
+		llmMessages = append(llmMessages, execution.Messages...)
+		if err := a.persistTurnMessages(ctx, session.ID, "append_tool_transcript", execution.Transcript); err != nil {
 			return err
 		}
 		tools, err = a.toolsForSession(ctx, session)
 		if err != nil {
 			return err
 		}
-		if confirmationExtra != "" {
-			llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("补充：" + confirmationExtra)})
+		if execution.ConfirmationExtra != "" {
+			llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("补充：" + execution.ConfirmationExtra)})
 		}
 	}
 	platformOutputText := platformFinalText
@@ -343,7 +338,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		Content:   finalText,
 		Metadata:  assistantRawTextMetadata(finalText, finalRawText),
 	}
-	pending, completed := a.turns.CompleteLLM(session.ID)
+	pending, completed := a.turns.CompleteLLMInput(session.ID)
 	if !completed {
 		return nil
 	}

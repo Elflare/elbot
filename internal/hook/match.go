@@ -364,9 +364,9 @@ func FieldValue(event Event, field string) string {
 	case "llm.source_text":
 		return event.LLM.SourceText
 	case "llm.latest_user_text":
-		return llm.LatestUserSegmentTextOnly(event.LLM.Messages)
+		return llm.SegmentsTextOnly(event.Message.Segments)
 	case "llm.latest_user_display_text":
-		return llm.LatestUserSegmentContentText(event.LLM.Messages)
+		return llm.SegmentsContentText(event.Message.Segments)
 	case "llm.provider":
 		return event.LLM.Provider
 	case "llm.model":

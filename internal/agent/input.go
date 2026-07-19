@@ -21,18 +21,18 @@ const appendConfirmPrompt = "已停止当前处理。是否追加这条消息并
 func (a *Agent) handleAppendConfirmationInput(ctx context.Context, session *storage.Session, text string) error {
 	switch {
 	case turn.IsConfirm(text):
-		merged, ok := a.turns.ConfirmAppend(session.ID)
-		if !ok || merged == "" {
+		merged, ok := a.turns.ConfirmAppendInput(session.ID)
+		if !ok || (merged.Text == "" && len(merged.Segments) == 0) {
 			return nil
 		}
-		ctx = withInboundSegments(ctx, llm.TextSegments(merged))
-		return a.startChat(ctx, session, merged)
+		ctx = withInboundTurnInput(ctx, merged)
+		return a.startChat(ctx, session, merged.Text)
 	case turn.IsCancel(text):
 		a.turns.CancelAppend(session.ID)
 		a.sendChat(ctx, "已取消追加，本轮处理已停止。")
 		return nil
 	default:
-		a.turns.AppendPending(session.ID, text)
+		a.turns.AppendPendingInput(session.ID, inboundTurnInput(ctx, text))
 		return nil
 	}
 }
@@ -113,11 +113,11 @@ func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session
 		return a.handleAppendConfirmationInput(ctx, session, text)
 	case turn.PhaseLLM:
 		a.requests.CancelSession(session.ID)
-		a.turns.InterruptLLM(session.ID, text)
+		a.turns.InterruptLLMInput(session.ID, inboundTurnInput(ctx, text))
 		a.sendChat(ctx, appendConfirmPrompt)
 		return nil
 	case turn.PhaseTool:
-		a.turns.AppendPending(session.ID, text)
+		a.turns.AppendPendingInput(session.ID, inboundTurnInput(ctx, text))
 		a.sendChat(ctx, "已追加，将在当前流程下一次模型调用时带上。发送 /stop 可打断当前流程。")
 		return nil
 	case turn.PhaseCompact:

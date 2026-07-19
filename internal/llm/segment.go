@@ -5,6 +5,18 @@ import (
 	"strings"
 )
 
+func CloneMessages(messages []LLMMessage) []LLMMessage {
+	if messages == nil {
+		return nil
+	}
+	out := append([]LLMMessage(nil), messages...)
+	for i := range out {
+		out[i].Segments = append([]MessageSegment(nil), messages[i].Segments...)
+		out[i].ToolCalls = append([]ToolCallRequest(nil), messages[i].ToolCalls...)
+	}
+	return out
+}
+
 func TextSegments(text string) []MessageSegment {
 	if text == "" {
 		return nil
@@ -163,9 +175,6 @@ func LatestUserSegmentContentText(messages []LLMMessage) string {
 }
 
 func SetLatestUserSegments(messages []LLMMessage, segments []MessageSegment) []LLMMessage {
-	if len(segments) == 0 {
-		return messages
-	}
 	out := append([]LLMMessage(nil), messages...)
 	for i := len(out) - 1; i >= 0; i-- {
 		if out[i].Role == RoleUser {
