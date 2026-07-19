@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **重构hook系统**
+- 工具完成 Hook 支持返回包含 URL、路径或 base64 图片的 `message.segments`；多模态工具结果可持久化并按 OpenAI Chat Completions 协议作为后续图片消息提供给模型。
 - `/chat` 和 `/work` 支持直接携带消息，在切换 Session 模式后立即发送；Session 命令状态改为按平台 Scope 隔离。
 - QQ OneBot 新增 `send_file_mode` 配置，本地图片和文件默认使用 base64 发送，也可在共享文件系统的部署中显式改用 `file_uri`。
 - `/log` 新增 `-s` 和 `--system`，用于筛选并显示 `system prompt` 日志。

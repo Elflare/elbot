@@ -46,6 +46,11 @@ func TestExecHelperProcess(t *testing.T) {
 		writeProtocolTestResult(map[string]any{"status": "completed", "result": "ok", "message": map[string]string{"text": "clean"}})
 	case "done-empty-message":
 		writeProtocolTestResult(map[string]any{"status": "completed", "message": map[string]string{"text": ""}})
+	case "done-segments":
+		writeProtocolTestResult(map[string]any{"status": "completed", "message": map[string]any{"segments": []map[string]any{
+			{"type": "text", "text": "截图完成"},
+			{"type": "image", "base64": "aGVsbG8=", "mime_type": "image/png", "name": "result.png"},
+		}}})
 	case "done-result":
 		result := "ok"
 		if marker+1 < len(os.Args) {

@@ -476,17 +476,63 @@ type openAIToolFunction struct {
 }
 
 func toOpenAIMessages(msgs []llm.LLMMessage) []openAIMessage {
-	out := make([]openAIMessage, len(msgs))
-	for i, m := range msgs {
-		out[i] = openAIMessage{
-			Role:       string(m.Role),
-			Content:    toOpenAIContent(m.Segments),
-			Name:       m.Name,
-			ToolCallID: m.ToolCallID,
-			ToolCalls:  toOpenAIToolCalls(m.ToolCalls),
+	out := make([]openAIMessage, 0, len(msgs))
+	for i := 0; i < len(msgs); {
+		m := msgs[i]
+		if m.Role != llm.RoleTool {
+			out = append(out, openAIMessage{
+				Role:       string(m.Role),
+				Content:    toOpenAIContent(m.Segments),
+				Name:       m.Name,
+				ToolCallID: m.ToolCallID,
+				ToolCalls:  toOpenAIToolCalls(m.ToolCalls),
+			})
+			i++
+			continue
+		}
+
+		var imageCarrier []llm.MessageSegment
+		for i < len(msgs) && msgs[i].Role == llm.RoleTool {
+			toolMessage := msgs[i]
+			content, images := openAIToolContent(toolMessage.Segments)
+			out = append(out, openAIMessage{
+				Role:       string(toolMessage.Role),
+				Content:    content,
+				Name:       toolMessage.Name,
+				ToolCallID: toolMessage.ToolCallID,
+				ToolCalls:  toOpenAIToolCalls(toolMessage.ToolCalls),
+			})
+			if len(images) > 0 {
+				imageCarrier = append(imageCarrier, llm.MessageSegment{
+					Type: llm.SegmentText,
+					Text: fmt.Sprintf("以下图片来自工具 %s（tool_call_id: %s）：", toolMessage.Name, toolMessage.ToolCallID),
+				})
+				imageCarrier = append(imageCarrier, images...)
+			}
+			i++
+		}
+		if len(imageCarrier) > 0 {
+			out = append(out, openAIMessage{Role: string(llm.RoleUser), Content: toOpenAIContent(imageCarrier)})
 		}
 	}
 	return out
+}
+
+func openAIToolContent(segments []llm.MessageSegment) (string, []llm.MessageSegment) {
+	textSegments := make([]llm.MessageSegment, 0, len(segments))
+	images := make([]llm.MessageSegment, 0, len(segments))
+	for _, segment := range segments {
+		if segment.Type == llm.SegmentImage && segment.URL != "" {
+			images = append(images, segment)
+			continue
+		}
+		textSegments = append(textSegments, segment)
+	}
+	content := llm.SegmentsContentText(textSegments)
+	if content == "" && len(images) > 0 {
+		content = "工具返回了图片，见下一条多模态消息。"
+	}
+	return content, images
 }
 
 func toOpenAIContent(segments []llm.MessageSegment) any {

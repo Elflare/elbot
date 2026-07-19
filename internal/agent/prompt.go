@@ -128,7 +128,7 @@ func (b PromptBuilder) Build(ctx context.Context, req PromptBuildRequest) ([]llm
 		if role == llm.RoleAssistant && metadata.RawText != "" {
 			content = metadata.RawText
 		}
-		segments := messageSegments(role, content, message)
+		segments := messageSegments(content, message)
 		// 摘要固定在 checkpoint 后的第一条 user 消息中，形成稳定的新上下文起点。
 		// 仍保留原 user 的图片/文件 segments，避免破坏多模态输入结构。
 		if req.Summary != nil && !summaryInjected && role == llm.RoleUser {
@@ -151,24 +151,22 @@ func storageMessageToLLM(role llm.MessageRole, segments []llm.MessageSegment, me
 	return out
 }
 
-func messageSegments(role llm.MessageRole, content string, message storage.Message) []llm.MessageSegment {
-	if role == llm.RoleUser {
-		if segments := userMessageSegmentsFromMetadata(message.Metadata); len(segments) > 0 {
-			return segments
-		}
+func messageSegments(content string, message storage.Message) []llm.MessageSegment {
+	if segments := messageSegmentsFromStorage(message.Segments); len(segments) > 0 {
+		return segments
 	}
 	return llm.TextSegments(content)
 }
 
-func userMessageSegmentsFromMetadata(metadata string) []llm.MessageSegment {
-	if metadata == "" {
+func messageSegmentsFromStorage(raw string) []llm.MessageSegment {
+	if raw == "" {
 		return nil
 	}
-	var data userMetadata
-	if err := json.Unmarshal([]byte(metadata), &data); err != nil {
+	var segments []llm.MessageSegment
+	if err := json.Unmarshal([]byte(raw), &segments); err != nil {
 		return nil
 	}
-	return data.Segments
+	return segments
 }
 
 func assistantMessageMetadata(metadata string) assistantMetadata {

@@ -48,6 +48,7 @@ type Message struct {
 	ReplyToPlatformMessageID string
 	ReplyToMessageID         string
 	ToolCallID               string
+	Segments                 string
 	Metadata                 string
 	CreatedAt                time.Time
 }

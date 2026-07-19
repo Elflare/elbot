@@ -55,8 +55,8 @@ func (d *runnerTestDeps) PrepareToolContext(ctx context.Context, session *storag
 	return ctx
 }
 
-func (d *runnerTestDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, result string, callErr error) (string, error) {
-	return result, nil
+func (d *runnerTestDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error) {
+	return segments, nil
 }
 
 func (d *runnerTestDeps) SendPreview(ctx context.Context, text string) {}
@@ -175,6 +175,41 @@ func (runnerRiskErrorTool) AssessRisk(ctx context.Context, req tool.CallRequest)
 
 func (runnerRiskErrorTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
 	return &tool.Result{Content: "called"}, nil
+}
+
+type runnerImageTool struct{}
+
+func (runnerImageTool) Name() string { return "image_tool" }
+
+func (runnerImageTool) Info() tool.Info {
+	return tool.Info{Name: "image_tool", Risk: tool.RiskLow}
+}
+
+func (runnerImageTool) Schema() llm.ToolSchema {
+	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: "image_tool", Parameters: map[string]any{"type": "object"}}}
+}
+
+func (runnerImageTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+	return &tool.Result{Segments: []llm.MessageSegment{
+		{Type: llm.SegmentText, Text: "done"},
+		{Type: llm.SegmentImage, URL: "https://example.com/a.png"},
+	}}, nil
+}
+
+func TestRunPreservesMultimodalToolSegments(t *testing.T) {
+	registry := tool.NewRegistry()
+	if err := registry.Register(runnerImageTool{}); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+	result := manager.Run(context.Background(), &runnerTestDeps{}, RunRequest{
+		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
+		Actor:   security.Actor{Role: security.RoleSuperadmin},
+		Calls:   []llm.ToolCallRequest{{ID: "call-1", Name: "image_tool", Arguments: `{}`}},
+	})
+	if len(result.Messages) != 1 || len(result.Messages[0].Segments) != 2 || result.Messages[0].Segments[1].Type != llm.SegmentImage {
+		t.Fatalf("messages = %#v", result.Messages)
+	}
 }
 
 func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {

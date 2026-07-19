@@ -122,27 +122,41 @@ func TestPromptBuilderRestoresAssistantRawTextAndToolCalls(t *testing.T) {
 	}
 }
 
-func TestUserSegmentsMetadataUsesStableLightweightJSON(t *testing.T) {
-	metadata := userSegmentsMetadata([]llm.MessageSegment{
+func TestStoredMessageSegmentsUsesStableLightweightJSON(t *testing.T) {
+	stored := storedMessageSegments([]llm.MessageSegment{
 		{Type: llm.SegmentText, Text: "看图"},
 		{Type: llm.SegmentImage, URL: "https://example.com/a.png", MIMEType: "image/png"},
 	})
-	if metadata == "" {
-		t.Fatal("metadata is empty")
+	if stored == "" {
+		t.Fatal("stored segments are empty")
 	}
 	for _, want := range []string{`"type":"text"`, `"text":"看图"`, `"type":"image"`, `"url":"https://example.com/a.png"`, `"mime_type":"image/png"`} {
-		if !strings.Contains(metadata, want) {
-			t.Fatalf("metadata = %s, want contains %s", metadata, want)
+		if !strings.Contains(stored, want) {
+			t.Fatalf("segments = %s, want contains %s", stored, want)
 		}
 	}
 	for _, forbidden := range []string{"Type", "Text", "URL", "MIMEType"} {
-		if strings.Contains(metadata, forbidden) {
-			t.Fatalf("metadata = %s, should not contain Go field name %s", metadata, forbidden)
+		if strings.Contains(stored, forbidden) {
+			t.Fatalf("segments = %s, should not contain Go field name %s", stored, forbidden)
 		}
 	}
 }
 
-func TestPromptBuilderRestoresUserSegmentsFromMetadata(t *testing.T) {
+func TestToolResultStorageMessageUsesContentFastPath(t *testing.T) {
+	pureText := toolResultStorageMessage("s1", llm.LLMMessage{Role: llm.RoleTool, Name: "shell", ToolCallID: "call_1", Segments: llm.TextSegments("done")})
+	if pureText.Content != "done" || pureText.Segments != "" {
+		t.Fatalf("pure text message = %#v", pureText)
+	}
+	multimodal := toolResultStorageMessage("s1", llm.LLMMessage{Role: llm.RoleTool, Name: "screenshot", ToolCallID: "call_2", Segments: []llm.MessageSegment{
+		{Type: llm.SegmentText, Text: "done"},
+		{Type: llm.SegmentImage, URL: "data:image/png;base64,aGVsbG8=", Name: "result.png"},
+	}})
+	if multimodal.Content != "done [图片: result.png]" || !strings.Contains(multimodal.Segments, `"type":"image"`) {
+		t.Fatalf("multimodal message = %#v", multimodal)
+	}
+}
+
+func TestPromptBuilderRestoresUserSegmentsFromStorage(t *testing.T) {
 	builder := newTestPromptBuilder("SOUL")
 	segments := []llm.MessageSegment{
 		{Type: llm.SegmentText, Text: "看图"},
@@ -151,7 +165,7 @@ func TestPromptBuilderRestoresUserSegmentsFromMetadata(t *testing.T) {
 	messages, err := builder.Build(context.Background(), PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
-			{Role: storage.RoleUser, Content: llm.SegmentsContentText(segments), Metadata: userSegmentsMetadata(segments)},
+			{Role: storage.RoleUser, Content: llm.SegmentsContentText(segments), Segments: storedMessageSegments(segments)},
 		},
 	})
 	if err != nil {
@@ -166,13 +180,41 @@ func TestPromptBuilderRestoresUserSegmentsFromMetadata(t *testing.T) {
 	}
 }
 
+func TestPromptBuilderRestoresToolSegmentsAndFallsBackToContent(t *testing.T) {
+	builder := newTestPromptBuilder("SOUL")
+	toolSegments := []llm.MessageSegment{
+		{Type: llm.SegmentText, Text: "截图完成"},
+		{Type: llm.SegmentImage, URL: "https://example.com/tool.png", MIMEType: "image/png"},
+	}
+	messages, err := builder.Build(context.Background(), PromptBuildRequest{
+		Session: &storage.Session{Mode: storage.SessionModeWork},
+		Messages: []storage.Message{
+			{Role: storage.RoleUser, Content: "纯文本快速路径"},
+			{Role: storage.RoleTool, Content: "截图完成 [图片]", ToolCallID: "call_1", Segments: storedMessageSegments(toolSegments), Metadata: toolNameMetadata("screenshot")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if got := llm.SegmentsTextOnly(messages[1].Segments); got != "纯文本快速路径" {
+		t.Fatalf("user text = %q", got)
+	}
+	toolMessage := messages[2]
+	if toolMessage.Role != llm.RoleTool || toolMessage.Name != "screenshot" || toolMessage.ToolCallID != "call_1" {
+		t.Fatalf("tool message = %#v", toolMessage)
+	}
+	if len(toolMessage.Segments) != 2 || toolMessage.Segments[1].Type != llm.SegmentImage || toolMessage.Segments[1].URL != "https://example.com/tool.png" {
+		t.Fatalf("tool segments = %#v", toolMessage.Segments)
+	}
+}
+
 func TestPromptBuilderSummaryPreservesUserImageSegment(t *testing.T) {
 	builder := newTestPromptBuilder("SOUL")
 	segments := []llm.MessageSegment{{Type: llm.SegmentImage, URL: "https://example.com/a.png"}}
 	messages, err := builder.Build(context.Background(), PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
-			{Role: storage.RoleUser, Content: llm.SegmentsContentText(segments), Metadata: userSegmentsMetadata(segments)},
+			{Role: storage.RoleUser, Content: llm.SegmentsContentText(segments), Segments: storedMessageSegments(segments)},
 		},
 		Summary: &storage.ContextSummary{Summary: "old summary"},
 	})

@@ -24,7 +24,13 @@ type Frame struct {
 type EventResultBase struct {
 	Status string `json:"status"`
 	hookoutput.Group
-	PassThrough *bool `json:"pass_through,omitempty"`
+	PassThrough *bool          `json:"pass_through,omitempty"`
+	Message     *MessageResult `json:"message,omitempty"`
+}
+
+type MessageResult struct {
+	Text     *string                      `json:"text,omitempty"`
+	Segments *[]hookoutput.MessageSegment `json:"segments,omitempty"`
 }
 
 type EventHandleParams struct {

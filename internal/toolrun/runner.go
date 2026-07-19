@@ -22,7 +22,7 @@ type RunnerDeps interface {
 	ConfirmBackgroundTool(ctx context.Context, sessionID string, call llm.ToolCallRequest, resolved ResolvedTool, assessment tool.RiskAssessment) (ConfirmResult, bool)
 	StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error)
 	PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context
-	CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, result string, callErr error) (string, error)
+	CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error)
 	SendPreview(ctx context.Context, text string)
 	SendOutputs(ctx context.Context, outputs []delivery.Output) error
 	RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error)
@@ -134,15 +134,14 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			transcript = append(transcript, deps.ToolResultMessage(sessionID, message))
 			continue
 		}
-		resultText := llm.SegmentsContentText(result.Message.Segments)
-		completedText, hookErr := deps.CompleteToolCall(ctx, req.Session, call, riskText, resultText, result.Err)
+		completedSegments, hookErr := deps.CompleteToolCall(ctx, req.Session, call, riskText, result.Message.Segments, result.Err)
 		if hookErr != nil {
 			result.Err = hookErr
 			result.Message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: hook: %v", call.Name, hookErr))
 		} else {
-			result.Message.Segments = llm.TextSegments(completedText)
+			result.Message.Segments = completedSegments
 		}
-		resultText = llm.SegmentsContentText(result.Message.Segments)
+		resultText := llm.SegmentsContentText(result.Message.Segments)
 		deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, resultText, result.Err)
 		messages = append(messages, result.Message)
 		if call.Name == "discover_tool" && result.Result != nil {

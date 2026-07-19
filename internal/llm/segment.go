@@ -12,6 +12,27 @@ func TextSegments(text string) []MessageSegment {
 	return []MessageSegment{{Type: SegmentText, Text: text}}
 }
 
+// SetSegmentText replaces all text content while retaining non-text segments.
+func SetSegmentText(segments []MessageSegment, text string) []MessageSegment {
+	out := make([]MessageSegment, 0, len(segments)+1)
+	inserted := false
+	for _, segment := range segments {
+		if segment.Type != SegmentText {
+			out = append(out, segment)
+			continue
+		}
+		if !inserted && text != "" {
+			segment.Text = text
+			out = append(out, segment)
+			inserted = true
+		}
+	}
+	if !inserted && text != "" {
+		out = append([]MessageSegment{{Type: SegmentText, Text: text}}, out...)
+	}
+	return out
+}
+
 // SegmentsTextOnly returns only text segment content.
 func SegmentsTextOnly(segments []MessageSegment) string {
 	var text strings.Builder
@@ -32,12 +53,19 @@ func SegmentsContentText(segments []MessageSegment) string {
 		case SegmentText:
 			text.WriteString(segment.Text)
 		case SegmentImage:
-			writeSegmentLabel(&text, "图片", segment.URL, segment.Name, segment.Text, segment.MIMEType)
+			writeSegmentLabel(&text, "图片", displaySegmentURL(segment.URL), segment.Name, segment.Text, segment.MIMEType)
 		case SegmentFile:
-			writeSegmentLabel(&text, "文件", segment.URL, segment.Name, segment.Text, segment.MIMEType)
+			writeSegmentLabel(&text, "文件", displaySegmentURL(segment.URL), segment.Name, segment.Text, segment.MIMEType)
 		}
 	}
 	return strings.TrimSpace(text.String())
+}
+
+func displaySegmentURL(value string) string {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), "data:") {
+		return ""
+	}
+	return value
 }
 
 func PrependSegmentText(segments []MessageSegment, prefix string) []MessageSegment {

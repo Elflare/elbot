@@ -91,7 +91,7 @@ text = "你好呀"
 | `llm.request.prepared` | 每次实际模型请求前 | 同上 | `llm.latest_user_text` | 否 |
 | `llm.response.received` | 模型响应完成 | `llm.text/source_text/tool_calls/usage` | `llm.text` | 是 |
 | `tool.call.prepared` | 工具调用前 | `session`、`tool` | `tool.arguments` | 否 |
-| `tool.call.completed` | 工具调用后 | `session`、`tool.result/error/risk` | `tool.result` | 否 |
+| `tool.call.completed` | 工具调用后 | `session`、`message.segments`、`tool.name/result/error/risk` | `tool.result` 或进程响应 `message.segments` | 否 |
 | `agent.output.prepared` | 每段 assistant 输出发送前 | `message` | assistant `message.text` | 否 |
 | `agent.turn.output.prepared` | 整轮 assistant 最终输出发送前 | `message` | assistant `message.text` | 否 |
 | `platform.message.sent` | assistant chat 或 preview 成功发送后的通知 | `message` | 无 | 否 |
@@ -202,7 +202,11 @@ text = "{{actions.search.result}}"
 
 - `prepend` / `append` 修改首个或最后一个 text segment；没有 text segment 时新增 text segment；图片和文件保留。
 - `replace` / `delete` 只处理 text segment；图片和文件保留。
-- exec response 的 `message.text` 覆写会重建为纯 text segment，原图片和文件 segment 会丢失。
+- exec response 的 `message.text` 覆写只替换 text segment，原图片和文件 segment 会保留。
+
+进程 Hook 还可直接返回 `message.segments` 替换当前消息的完整内容；显式空数组表示清空。若同一 response 同时返回 `message.text` 和 `message.segments`，以 `message.segments` 为准。
+
+工具完成事件中的 `message.role` 为 `tool`，`message.segments` 是工具的原始多模态结果，`tool.name` 和 `tool.id` 标识工具及本次调用。Hook 修改后的工具 segments 会写入会话历史并回灌 LLM；纯文本结果仍只保存 `content`，只有包含图片等非文本内容时才额外保存完整 segments。
 
 ## 统一输出
 
@@ -307,6 +311,14 @@ Hook 返回处理结果：
 {"type":"response","id":"host:event","ok":true,"result":{"status":"completed","matched":true,"result":"weather accepted","message":{"text":"查询上海天气"},"outputs":[{"kind":"text","text":"正在查询……"}],"target":{"platform":"qqonebot","scope_id":"group:123456"},"timing":"immediate","pass_through":false}}
 ```
 
+工具完成 Hook 可以直接返回文本和图片：
+
+```jsonl
+{"type":"response","id":"host:event","ok":true,"result":{"status":"completed","message":{"segments":[{"type":"text","text":"截图完成"},{"type":"image","path":"result.png","mime_type":"image/png"}]}}}
+```
+
+图片 segment 必须且只能提供 `url`、`path`、`base64` 之一。`url` 接受绝对 HTTP(S) URL 或 `data:image/...;base64,...`，相对 `path` 按插件目录解析；path、base64 和 data URL 解码后最大 10 MiB，并在送入 LLM 前规范化为 data URL。目前该替换协议支持 `text` 和 `image` segment。
+
 处理失败时省略 `result`，返回 `{"type":"response","id":"host:event","ok":false,"error":"error message"}`。response 的 `id` 必须与 request 相同。
 
 ### system.init.params
@@ -342,7 +354,8 @@ Hook 返回处理结果：
 | `pass_through` | 全部 | `false` 表示接管，`true` 表示放行；覆盖规则默认的 `consume` 和 `stop_propagation`。 |
 | `matched` | 一次性 | `false` 表示本规则未命中：回滚本规则修改和 outputs，并跳过剩余 actions。 |
 | `result` / `error` | 一次性 | 写入 `{{actions.<name>.result/error}}` 的文本。 |
-| `message.text` | 一次性 | 覆写 action 的 `field`；未配置 field 时默认 `message.text`。空字符串表示清空，省略表示不改。 |
+| `message.text` | 全部 | 一次性 Hook 覆写 action 的 `field`，Worker Hook 覆写当前消息文本；空字符串表示清空，省略表示不改，已有媒体保留。 |
+| `message.segments` | 全部 | 替换当前消息的完整 segments；支持文本和图片，显式空数组表示清空。与 `message.text` 同时出现时优先。 |
 | `consume` / `stop_propagation` | 一次性 | 为 `true` 时设置对应控制字段。 |
 | `conversation_id` | Worker | `waiting` 时必填的非空不透明 ID。 |
 | `expires_at` | Worker | `waiting` 时必填的 RFC 3339 时间，不得超过 `max_wait_seconds`。 |
@@ -607,7 +620,7 @@ trigger rule 已匹配的首次调用通常无需重复校验同一指令；wait
 
 `llm` 包含 `provider`、`model`、`messages`、`tools`、`usage`、`source_text`、`text`、`tool_calls`、`elapsed_ms`。其中嵌套 `messages`、`tool_calls`、`usage` 沿用 Go 导出的 JSON 名：`Role/Segments/Name/ToolCallID/ToolCalls`、`ID/Name/Arguments`、`PromptTokens/CompletionTokens/TotalTokens/CacheHitTokens`。
 
-`tool` 包含 `id`、`name`、`arguments`（JSON 字符串）、`risk`、`result`、`error`。prepared 阶段主要提供 `id/name/arguments`，completed 阶段才有 `risk/result/error`。
+`tool` 包含 `id`、`name`、`arguments`（JSON 字符串）、`risk`、`result`、`error`。prepared 阶段主要提供 `id/name/arguments`；completed 阶段还提供 `risk/result/error`，对应工具消息的完整内容位于 `message.segments`。
 
 可用于 `if`、`match.field` 和模板的文本字段：
 

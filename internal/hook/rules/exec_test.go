@@ -155,6 +155,27 @@ func TestExecDoneEmptyMessageClearsConfiguredField(t *testing.T) {
 	}
 }
 
+func TestExecDoneSegmentsReplacesToolResultContent(t *testing.T) {
+	module := Module{}
+	event := hook.Event{
+		Point:   hook.PointToolCallCompleted,
+		Message: hook.MessagePayload{Role: string(llm.RoleTool), Segments: llm.TextSegments("old")},
+		Tool:    hook.ToolPayload{Name: "screenshot", Result: "old"},
+	}
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
+		{Type: "exec", Command: execHelperCommand("done-segments"), Field: "tool.result"},
+	}}, event)
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Message.Segments) != 2 || got.Message.Segments[1].Type != llm.SegmentImage || !strings.HasPrefix(got.Message.Segments[1].URL, "data:image/png;base64,") {
+		t.Fatalf("segments = %#v", got.Message.Segments)
+	}
+	if got.Tool.Result != "截图完成" {
+		t.Fatalf("tool.result = %q", got.Tool.Result)
+	}
+}
+
 func TestExecDoneUnmatchedRollsBackAndSkipsRemainingActions(t *testing.T) {
 	module := Module{}
 	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "old"}}
