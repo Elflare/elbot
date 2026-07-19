@@ -8,11 +8,78 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/config"
 	"elbot/internal/llm"
+	"elbot/internal/memory/resident"
 	"elbot/internal/platform"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )
+
+func TestResidentMemorySystemPromptSource(t *testing.T) {
+	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	scope := session.Scope{Platform: "qqonebot", ActorID: "qqonebot:1"}
+	if err := store.WriteCore(context.Background(), scope, "用户喜欢被称为娅娅。"); err != nil {
+		t.Fatalf("WriteCore: %v", err)
+	}
+	if err := store.WriteNormal(context.Background(), scope, "用户喜欢简短回答。"); err != nil {
+		t.Fatalf("WriteNormal: %v", err)
+	}
+	parts, err := (residentMemorySystemPromptSource{Store: store}).Parts(context.Background(), SystemPromptRequest{Scope: scope, ActorDisplayName: "群名片"})
+	if err != nil {
+		t.Fatalf("Parts: %v", err)
+	}
+	if len(parts) != 1 || parts[0].Content != "用户喜欢被称为娅娅。 用户喜欢简短回答。" {
+		t.Fatalf("parts = %#v", parts)
+	}
+}
+
+func TestResidentMemorySystemPromptSourceUsesDefaultDisplayName(t *testing.T) {
+	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	parts, err := (residentMemorySystemPromptSource{Store: store}).Parts(context.Background(), SystemPromptRequest{Scope: session.Scope{Platform: "cli", ActorID: "cli:local", IsCLI: true}})
+	if err != nil {
+		t.Fatalf("Parts: %v", err)
+	}
+	if len(parts) != 1 || parts[0].Content != "用户名字：管理员。" {
+		t.Fatalf("parts = %#v", parts)
+	}
+}
+
+func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
+	ctx := context.Background()
+	scope := session.Scope{Platform: "cli", ActorID: "cli:local", IsCLI: true}
+	memoryStore := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	if err := memoryStore.WriteCore(ctx, scope, "RESIDENT_ORDER"); err != nil {
+		t.Fatalf("WriteCore: %v", err)
+	}
+	tagSource := newToolTagConfigSource("", config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
+		"alpha": {Prompt: "TAG_ALPHA"},
+		"beta":  {Prompt: "TAG_BETA"},
+	}})
+	sessionRecord := &storage.Session{
+		Mode:     storage.SessionModeWork,
+		Metadata: encodeSessionMetadata(sessionMetadata{ToolTags: []string{"beta", "alpha"}}),
+	}
+	manager := NewSystemPromptManager(
+		soulSystemPromptSource{Soul: staticSoulProvider{Prompt: "SOUL_ORDER"}},
+		toolNamesSystemPromptSource{Tools: staticToolNames{names: []string{"shell"}}},
+		tagSource,
+		residentMemorySystemPromptSource{Store: memoryStore},
+	)
+	got, err := manager.Build(ctx, SystemPromptRequest{Session: sessionRecord, Scope: scope})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	parts := []string{"SOUL_ORDER", toolNamesText([]string{"shell"}), "TAG_ALPHA", "TAG_BETA", "RESIDENT_ORDER"}
+	previous := -1
+	for _, part := range parts {
+		index := strings.Index(got, part)
+		if index <= previous {
+			t.Fatalf("system prompt order invalid for %q: %q", part, got)
+		}
+		previous = index
+	}
+}
 
 type recordingToolProvider struct {
 	tools []llm.ToolSchema

@@ -85,13 +85,13 @@ text = "你好呀"
 | Hook 点 | 时机 | 主要 payload | 可编辑字段 | outputs 会被发送 |
 | --- | --- | --- | --- | --- |
 | `platform.connected` | 平台连接完成 | `platform` | 无 | 是 |
-| `platform.message.received` | 收到用户消息，命令和 LLM 前 | `platform`、`actor`、`message` | `message.text` | 是 |
-| `agent.input.prepared` | 输入写入会话前 | `session`、`message` | `message.text` | 否 |
-| `llm.turn.prepared` | 整轮 LLM 调用前 | `session`、`llm.messages/tools/provider/model` | `llm.latest_user_text` | 否 |
-| `llm.request.prepared` | 每次实际模型请求前 | 同上 | `llm.latest_user_text` | 否 |
+| `platform.message.received` | 收到用户消息，命令和 LLM 前 | `platform`、`actor`、`message` | `message.text/segments` | 是 |
+| `agent.input.prepared` | 输入写入会话前 | `session`、`message` | `message.text/segments` | 否 |
+| `llm.turn.prepared` | 整轮 LLM 调用前 | `session`、当前用户 `message.segments`、只读 `llm.messages`、tools/provider/model | `message.segments` 或 `llm.latest_user_text` | 否 |
+| `llm.request.prepared` | 每次实际模型请求前 | 同上；仅工具流程中新到达的 pending 提供 `message` | pending 的 `message.segments` 或 `llm.latest_user_text` | 否 |
 | `llm.response.received` | 模型响应完成 | `llm.text/source_text/tool_calls/usage` | `llm.text` | 是 |
 | `tool.call.prepared` | 工具调用前 | `session`、`tool` | `tool.arguments` | 否 |
-| `tool.call.completed` | 工具调用后 | `session`、`message.segments`、`tool.name/result/error/risk` | `tool.result` 或进程响应 `message.segments` | 否 |
+| `tool.call.completed` | 工具实际执行后 | `session`、`message.segments`、`tool.name/result/error/risk` | `tool.result` 或进程响应 `message.segments` | 否 |
 | `agent.output.prepared` | 每段 assistant 输出发送前 | `message` | assistant `message.text` | 否 |
 | `agent.turn.output.prepared` | 整轮 assistant 最终输出发送前 | `message` | assistant `message.text` | 否 |
 | `platform.message.sent` | assistant chat 或 preview 成功发送后的通知 | `message` | 无 | 否 |
@@ -206,7 +206,34 @@ text = "{{actions.search.result}}"
 
 进程 Hook 还可直接返回 `message.segments` 替换当前消息的完整内容；显式空数组表示清空。若同一 response 同时返回 `message.text` 和 `message.segments`，以 `message.segments` 为准。
 
-工具完成事件中的 `message.role` 为 `tool`，`message.segments` 是工具的原始多模态结果，`tool.name` 和 `tool.id` 标识工具及本次调用。Hook 修改后的工具 segments 会写入会话历史并回灌 LLM；纯文本结果仍只保存 `content`，只有包含图片等非文本内容时才额外保存完整 segments。
+### 消息内容修改
+
+`message.segments` 始终指向当前 Hook 点明确绑定的新消息，不表示完整历史：
+
+- `platform.message.received`、`agent.input.prepared` 和 `llm.turn.prepared` 绑定本 turn 初始用户消息。
+- `llm.request.prepared` 只在工具流程下一次请求前存在新 pending 时绑定该 pending；没有 pending 时不提供可编辑消息，不能再次修改本 turn 初始输入。
+- `tool.call.completed` 绑定已经实际进入工具执行阶段后产生的工具结果；预检失败、确认拒绝或启动前失败不触发该点。
+
+`llm.messages` 是即将发给模型的完整工作上下文，包含 system、历史消息、当前消息和工具消息，但对普通 Hook 只读。Hook 不能修改 system 或历史消息。`llm.latest_user_text` 是当前绑定用户消息文字部分的兼容视图，不再表示历史中最后一个 `role=user`；没有绑定消息时为空。
+
+用户或 pending 的 Hook 修改会在模型请求前写入会话历史；工具完成 Hook 的修改也会写入 transcript。纯文本继续只保存 `content`，包含图片等非文本内容时额外保存完整 segments。`message.platform_text` 始终保留平台原文，不随 segments 修改。
+
+例如平台原消息是“这是狗”，进程 Hook 可用同一个 response 将模型实际看到并持久化的内容改为“这是猫”并附图，而 `message.platform_text` 仍为“这是狗”。其中`result`字段为：
+
+```json
+{
+  "message": {
+    "segments": [
+      {"type": "text", "text": "这是猫"},
+      {"type": "image", "path": "assets/cat.png", "name": "cat.png"}
+    ]
+  }
+}
+```
+
+图片可使用 HTTP(S) `url`、相对插件目录的 `path` 或最大 10 MiB 的 `base64`，path/base64 会规范化为模型可读取的数据 URL。`message.segments` 修改 LLM 输入和会话历史；`outputs` 创建发送到平台的输出意图，两者不会互相转换。
+
+工具完成事件中的 `message.role` 为 `tool`，`message.segments` 是工具的原始多模态结果，`tool.name` 和 `tool.id` 标识工具及本次调用。工具准备事件中的 `tool.id` 和 `tool.name` 只读，只有 `tool.arguments` 可以改写；改写后的参数同时用于实际执行、后续 LLM 请求和 transcript。
 
 ## 统一输出
 
@@ -636,7 +663,7 @@ tool.name / tool.arguments / tool.result / tool.risk
 error.message
 ```
 
-其中 `message.text`、`message.display_text`、`llm.latest_user_text`、`llm.latest_user_display_text` 是匹配/模板时计算的虚拟文本字段，不直接存在于 event JSON；插件进程应从 `segments` 或 `messages` 读取原始结构。
+其中 `message.text`、`message.display_text`、`llm.latest_user_text`、`llm.latest_user_display_text` 是匹配/模板时计算的虚拟文本字段，不直接存在于 event JSON；当前消息内容从 `message.segments` 读取，`llm.messages` 仅用于观察完整请求上下文。
 
 模板写法为 `{{...}}`，例如 `{{platform.name}}`、`{{message.text}}`、`{{llm.text}}`。regex 捕获可使用：
 

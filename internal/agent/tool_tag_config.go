@@ -16,8 +16,6 @@ import (
 	"elbot/internal/tool"
 )
 
-const systemPromptPriorityToolTagPrompts = 200
-
 type toolTagConfigSource struct {
 	path  string
 	mu    sync.Mutex
@@ -57,7 +55,7 @@ func (s *toolTagConfigSource) Parts(ctx context.Context, req SystemPromptRequest
 		if !ok || strings.TrimSpace(entry.Prompt) == "" {
 			continue
 		}
-		parts = append(parts, SystemPromptPart{Name: "tool_tag_prompt:" + tag, Priority: systemPromptPriorityToolTagPrompts, Content: entry.Prompt})
+		parts = append(parts, SystemPromptPart{Name: "tool_tag_prompt:" + tag, Content: entry.Prompt})
 	}
 	return parts, nil
 }

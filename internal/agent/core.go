@@ -16,6 +16,7 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
+	"elbot/internal/memory/resident"
 	"elbot/internal/platform"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
@@ -42,6 +43,7 @@ type Agent struct {
 	completion         *completion.Service
 	titleGen           *titleGenerator
 	soul               SoulProvider
+	residentMemory     *resident.Store
 	promptBuilder      PromptBuilder
 	toolRuntime        toolRuntimeState
 	securityPolicy     *security.Policy
@@ -166,6 +168,7 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		turns:                  turns,
 		commands:               command.NewRouter(prefixes),
 		soul:                   promptSoul,
+		residentMemory:         opts.ResidentMemoryStore,
 		securityPolicy:         policy,
 		contextRuntime:         newContextRuntimeState(store, sessions, requests, turns),
 		hooks:                  hookManager,

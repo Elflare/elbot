@@ -143,15 +143,14 @@ func buildHookService(
 ) *hookcontrol.Service {
 	cfg := foundation.Config
 	hookOpts := hookbuiltin.Options{
-		ConfigDir:           config.PluginConfigDir(cfg.ConfigPath),
-		Tools:               toolRuntime.Registry,
-		ResidentMemoryStore: toolRuntime.ResidentMemoryStore,
-		Logger:              foundation.Logger,
-		Audit:               auditFunc(foundation.Logs),
-		Notify:              notifyHookIssue,
-		Send:                sendNotice,
-		PlatformCallers:     hookPlatformCallerResolver{runtimes: platforms.Runtimes},
-		Runtime:             hookRuntime,
+		ConfigDir:       config.PluginConfigDir(cfg.ConfigPath),
+		Tools:           toolRuntime.Registry,
+		Logger:          foundation.Logger,
+		Audit:           auditFunc(foundation.Logs),
+		Notify:          notifyHookIssue,
+		Send:            sendNotice,
+		PlatformCallers: hookPlatformCallerResolver{runtimes: platforms.Runtimes},
+		Runtime:         hookRuntime,
 	}
 
 	loadHooks := func(registrar hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {
@@ -206,6 +205,7 @@ func buildAgent(
 		NamingSelection:       cfg.NamingModel,
 		NamingNotifier:        namingLogger{logger: foundation.Logger},
 		SoulPath:              cfg.Soul.Path,
+		ResidentMemoryStore:   toolRuntime.ResidentMemoryStore,
 		LLMRequestConfig:      cfg.LLMRequest,
 		HookService:           hookService,
 		HookManager:           hooks,

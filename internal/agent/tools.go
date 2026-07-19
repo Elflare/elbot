@@ -38,6 +38,9 @@ func (a *Agent) rebuildSystemPrompt() {
 	if a.toolRuntime.toolTags != nil {
 		manager.AddSource(a.toolRuntime.toolTags)
 	}
+	if a.residentMemory != nil {
+		manager.AddSource(residentMemorySystemPromptSource{Store: a.residentMemory})
+	}
 	a.promptBuilder.System = manager
 }
 

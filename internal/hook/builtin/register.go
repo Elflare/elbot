@@ -7,35 +7,27 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
-	residentmemory "elbot/internal/hook/plugins/resident_memory"
 	"elbot/internal/hook/rules"
 	hookruntime "elbot/internal/hook/runtime"
-	"elbot/internal/memory/resident"
 	"elbot/internal/tool"
 )
 
 // Options contains shared dependencies for hook plugins shipped with ElBot.
 type Options struct {
-	ConfigDir           string
-	Tools               *tool.Registry
-	ResidentMemoryStore *resident.Store
-	Logger              *slog.Logger
-	Audit               func(event string, attrs ...any)
-	Notify              func(context.Context, string)
-	Send                func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
-	PlatformCallers     rules.PlatformCallerResolver
-	Runtime             *hookruntime.Manager
+	ConfigDir       string
+	Tools           *tool.Registry
+	Logger          *slog.Logger
+	Audit           func(event string, attrs ...any)
+	Notify          func(context.Context, string)
+	Send            func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
+	PlatformCallers rules.PlatformCallerResolver
+	Runtime         *hookruntime.Manager
 }
 
 func RegisterAll(registrar hook.Registrar, opts Options) ([]hookruntime.Config, error) {
 	if registrar == nil {
 		return nil, nil
 	}
-	residentMemoryModule := residentmemory.NewModule(residentmemory.Options{Store: opts.ResidentMemoryStore})
-	if err := registerModule(registrar, opts, "resident_memory", residentMemoryModule); err != nil {
-		return nil, err
-	}
-
 	rulesModule, err := rules.NewModule(rules.Options{
 		ConfigDir:       opts.ConfigDir,
 		Tools:           opts.Tools,

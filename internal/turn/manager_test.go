@@ -1,9 +1,32 @@
 package turn
 
 import (
+	"elbot/internal/llm"
 	"testing"
 	"time"
 )
+
+func TestDrainMergedInputPreservesMediaAndPlatformText(t *testing.T) {
+	m := NewManager()
+	if !m.StartLLMInput("s1", Input{Text: "start", PlatformText: "raw start", Segments: llm.TextSegments("start")}) || !m.StartToolPhase("s1") {
+		t.Fatal("failed to start tool turn")
+	}
+	m.AppendPendingInput("s1", Input{Text: "first", PlatformText: "raw first", Segments: []llm.MessageSegment{{Type: llm.SegmentText, Text: "first"}, {Type: llm.SegmentImage, URL: "image-1"}}})
+	m.AppendPendingInput("s1", Input{Text: "second", PlatformText: "raw second", Segments: []llm.MessageSegment{{Type: llm.SegmentText, Text: "second"}, {Type: llm.SegmentImage, URL: "image-2"}}})
+	merged := m.DrainMergedInput("s1")
+	if merged.Text != "补充信息：\n1. first\n2. second" || merged.PlatformText != "补充信息：\n1. raw first\n2. raw second" {
+		t.Fatalf("merged = %#v", merged)
+	}
+	var images int
+	for _, segment := range merged.Segments {
+		if segment.Type == llm.SegmentImage {
+			images++
+		}
+	}
+	if images != 2 {
+		t.Fatalf("segments = %#v", merged.Segments)
+	}
+}
 
 func TestConfirmAndCancelTokens(t *testing.T) {
 	for _, token := range []string{"$", "是", "y", "yes", " YES "} {

@@ -68,7 +68,7 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 - `internal/agent/chat_tools.go`：工具执行与确认。
 - `internal/agent/turn_output.go`：turn 输出适配。
 - `internal/agent/prompt.go`：Prompt 构建。
-- `internal/agent/system_prompt*.go`：system prompt 来源和组合。
+- `internal/agent/system_prompt*.go`：Soul、常驻记忆、工具提示等 system prompt 来源和组合。
 - `internal/agent/tool_transcript.go`：工具 transcript 持久化。
 
 常用搜索：
@@ -184,7 +184,7 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 <!-- locator:hook -->
 ## Hook 与插件
 
-适用任务：Hook 事件、控制字段、注册、列表、热重载、规则 Hook TOML、exec action、hook.v2 协议、持久 Hook、SharedState、常驻记忆 Hook。
+适用任务：Hook 事件、控制字段、注册、列表、热重载、规则 Hook TOML、exec action、hook.v2 协议、持久 Hook 和 SharedState。
 
 先看：
 
@@ -204,7 +204,7 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 常用搜索：
 
 ```bash
-rg -n "Event|Handler|Control|plugins/hooks.toml|exec|hook.v2|runtime|SharedState|resident" internal/hook internal/agent docs/hooks.md
+rg -n "Event|Handler|Control|plugins/hooks.toml|exec|hook.v2|runtime|SharedState|message.segments|llm.messages" internal/hook internal/agent docs/hooks.md
 ```
 
 <!-- locator:output -->
@@ -356,6 +356,7 @@ rg -n "Elvena|Elwisp|/elvena/v2/events|direct|segments|session_mode|background" 
 - `internal/cron/model.go`：任务 Metadata、Delivery 状态类型、校验与规范化。
 - `internal/cron/execution.go`：Direct/LLM 执行、报告生成和 JSON 格式重试。
 - `internal/cron/delivery.go`：逐目标逐输出发送、状态持久化、降级与 receipt mapping。
+
 - `internal/cron/recovery.go`：平台连接跟踪、过期 once 扫描与补发入口。
 - `internal/maintenance/`
 - `internal/agent/cron*.go`：Agent 后台 runner 和后台工具确认特例。

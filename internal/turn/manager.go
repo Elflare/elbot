@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"elbot/internal/llm"
 )
 
 type Phase string
@@ -44,6 +46,12 @@ type Snapshot struct {
 	Tools        map[string]int
 }
 
+type Input struct {
+	Text         string
+	PlatformText string
+	Segments     []llm.MessageSegment
+}
+
 type Manager struct {
 	mu    sync.Mutex
 	turns map[string]*state
@@ -51,8 +59,8 @@ type Manager struct {
 
 type state struct {
 	phase         Phase
-	originalInput string
-	pending       []string
+	originalInput Input
+	pending       []Input
 	riskConfirm   *RiskConfirmation
 	riskResponse  chan RiskConfirmationResponse
 	tools         map[string]int
@@ -84,16 +92,24 @@ func (m *Manager) CompleteCompact(sessionID string) bool {
 }
 
 func (m *Manager) StartLLM(sessionID, input string) bool {
+	return m.StartLLMInput(sessionID, textInput(input))
+}
+
+func (m *Manager) StartLLMInput(sessionID string, input Input) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, exists := m.turns[sessionID]; exists {
 		return false
 	}
-	m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: strings.TrimSpace(input), tools: map[string]int{}}
+	m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: normalizeInput(input), tools: map[string]int{}}
 	return true
 }
 
 func (m *Manager) InterruptLLM(sessionID, input string) bool {
+	return m.InterruptLLMInput(sessionID, textInput(input))
+}
+
+func (m *Manager) InterruptLLMInput(sessionID string, input Input) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
@@ -106,6 +122,10 @@ func (m *Manager) InterruptLLM(sessionID, input string) bool {
 }
 
 func (m *Manager) AppendPending(sessionID, input string) bool {
+	return m.AppendPendingInput(sessionID, textInput(input))
+}
+
+func (m *Manager) AppendPendingInput(sessionID string, input Input) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
@@ -117,13 +137,18 @@ func (m *Manager) AppendPending(sessionID, input string) bool {
 }
 
 func (m *Manager) ConfirmAppend(sessionID string) (string, bool) {
+	input, ok := m.ConfirmAppendInput(sessionID)
+	return input.Text, ok
+}
+
+func (m *Manager) ConfirmAppendInput(sessionID string) (Input, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
 	if !ok || turn.phase != PhaseAwaitAppendConfirm {
-		return "", false
+		return Input{}, false
 	}
-	merged := mergeInputs(append([]string{turn.originalInput}, turn.pending...))
+	merged := mergeInputs(append([]Input{turn.originalInput}, turn.pending...))
 	delete(m.turns, sessionID)
 	return merged, true
 }
@@ -202,11 +227,16 @@ func (m *Manager) StartToolPhase(sessionID string) bool {
 }
 
 func (m *Manager) CompleteLLM(sessionID string) (string, bool) {
+	input, ok := m.CompleteLLMInput(sessionID)
+	return input.Text, ok
+}
+
+func (m *Manager) CompleteLLMInput(sessionID string) (Input, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
 	if !ok || (turn.phase != PhaseLLM && turn.phase != PhaseTool && turn.phase != PhaseAwaitRiskConfirm) {
-		return "", false
+		return Input{}, false
 	}
 	pending := mergeInputs(turn.pending)
 	delete(m.turns, sessionID)
@@ -241,11 +271,15 @@ func (m *Manager) StopAll() {
 }
 
 func (m *Manager) DrainMerged(sessionID string) string {
+	return m.DrainMergedInput(sessionID).Text
+}
+
+func (m *Manager) DrainMergedInput(sessionID string) Input {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
 	if !ok || len(turn.pending) == 0 {
-		return ""
+		return Input{}
 	}
 	merged := mergeInputs(turn.pending)
 	turn.pending = nil
@@ -321,18 +355,59 @@ func ToolsString(tools map[string]int) string {
 	return strings.Join(parts, ", ")
 }
 
-func appendPending(turn *state, input string) {
-	input = strings.TrimSpace(input)
-	if input != "" {
+func appendPending(turn *state, input Input) {
+	input = normalizeInput(input)
+	if input.Text != "" || len(input.Segments) > 0 {
 		turn.pending = append(turn.pending, input)
 	}
 }
 
-func mergeInputs(inputs []string) string {
-	clean := []string{}
+func mergeInputs(inputs []Input) Input {
+	clean := []Input{}
 	for _, input := range inputs {
-		input = strings.TrimSpace(input)
-		if input != "" {
+		input = normalizeInput(input)
+		if input.Text != "" || len(input.Segments) > 0 {
+			clean = append(clean, input)
+		}
+	}
+	if len(clean) == 0 {
+		return Input{}
+	}
+	if len(clean) == 1 {
+		return clean[0]
+	}
+	segments := llm.TextSegments("补充信息：")
+	platformTexts := make([]string, 0, len(clean))
+	for i, input := range clean {
+		segments = llm.AppendSegmentText(segments, fmt.Sprintf("\n%d. ", i+1))
+		segments = append(segments, input.Segments...)
+		platformTexts = append(platformTexts, input.PlatformText)
+	}
+	return Input{Text: llm.SegmentsTextOnly(segments), PlatformText: mergeTextInputs(platformTexts), Segments: segments}
+}
+
+func textInput(text string) Input {
+	text = strings.TrimSpace(text)
+	return Input{Text: text, PlatformText: text, Segments: llm.TextSegments(text)}
+}
+
+func normalizeInput(input Input) Input {
+	input.Text = strings.TrimSpace(input.Text)
+	input.PlatformText = strings.TrimSpace(input.PlatformText)
+	input.Segments = append([]llm.MessageSegment(nil), input.Segments...)
+	if len(input.Segments) == 0 {
+		input.Segments = llm.TextSegments(input.Text)
+	}
+	if input.Text == "" {
+		input.Text = strings.TrimSpace(llm.SegmentsTextOnly(input.Segments))
+	}
+	return input
+}
+
+func mergeTextInputs(inputs []string) string {
+	clean := make([]string, 0, len(inputs))
+	for _, input := range inputs {
+		if input = strings.TrimSpace(input); input != "" {
 			clean = append(clean, input)
 		}
 	}

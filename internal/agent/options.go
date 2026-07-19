@@ -10,6 +10,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/memory/resident"
 	"elbot/internal/platform"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -30,6 +31,7 @@ type Options struct {
 	NamingSelection       config.ModelSelection
 	NamingNotifier        session.NamingNotifier
 	SoulPath              string
+	ResidentMemoryStore   *resident.Store
 	LLMRequestConfig      config.LLMRequestConfig
 	HookService           agentcommands.HookService
 	HookManager           hook.Manager

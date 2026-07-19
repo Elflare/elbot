@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"sort"
 	"strings"
 
 	"elbot/internal/session"
@@ -10,15 +9,15 @@ import (
 )
 
 type SystemPromptPart struct {
-	Name     string
-	Priority int
-	Content  string
+	Name    string
+	Content string
 }
 
 type SystemPromptRequest struct {
-	Mode    string
-	Session *storage.Session
-	Scope   session.Scope
+	Mode             string
+	Session          *storage.Session
+	Scope            session.Scope
+	ActorDisplayName string
 }
 
 type SystemPromptSource interface {
@@ -45,11 +44,7 @@ func (m *SystemPromptManager) AddSource(source SystemPromptSource) {
 }
 
 func (m SystemPromptManager) Build(ctx context.Context, req SystemPromptRequest) (string, error) {
-	type orderedPart struct {
-		part  SystemPromptPart
-		order int
-	}
-	parts := []orderedPart{}
+	content := []string{}
 	for _, source := range m.sources {
 		sourceParts, err := source.Parts(ctx, req)
 		if err != nil {
@@ -60,18 +55,8 @@ func (m SystemPromptManager) Build(ctx context.Context, req SystemPromptRequest)
 			if part.Content == "" {
 				continue
 			}
-			parts = append(parts, orderedPart{part: part, order: len(parts)})
+			content = append(content, part.Content)
 		}
-	}
-	sort.SliceStable(parts, func(i, j int) bool {
-		if parts[i].part.Priority == parts[j].part.Priority {
-			return parts[i].order < parts[j].order
-		}
-		return parts[i].part.Priority < parts[j].part.Priority
-	})
-	content := make([]string, 0, len(parts))
-	for _, part := range parts {
-		content = append(content, part.part.Content)
 	}
 	return strings.Join(content, "\n\n"), nil
 }

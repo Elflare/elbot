@@ -88,7 +88,7 @@ func prependTextField(event hook.Event, field, value string) (hook.Event, error)
 	case "message.text":
 		event.Message.Segments = llm.PrependSegmentText(event.Message.Segments, value)
 	case "llm.latest_user_text":
-		event.LLM.Messages = llm.PrependLatestUserSegmentText(event.LLM.Messages, value)
+		event.Message.Segments = llm.PrependSegmentText(event.Message.Segments, value)
 	case "llm.text":
 		event.LLM.Text = value + event.LLM.Text
 	case "tool.arguments":
@@ -107,7 +107,7 @@ func appendTextField(event hook.Event, field, value string) (hook.Event, error) 
 	case "message.text":
 		event.Message.Segments = llm.AppendSegmentText(event.Message.Segments, value)
 	case "llm.latest_user_text":
-		event.LLM.Messages = llm.AppendLatestUserSegmentText(event.LLM.Messages, value)
+		event.Message.Segments = llm.AppendSegmentText(event.Message.Segments, value)
 	case "llm.text":
 		event.LLM.Text += value
 	case "tool.arguments":
@@ -126,7 +126,7 @@ func replaceTextField(event hook.Event, field string, pattern *regexp.Regexp, re
 	case "message.text":
 		event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, pattern, replacement, all)
 	case "llm.latest_user_text":
-		event.LLM.Messages = llm.ReplaceLatestUserSegmentText(event.LLM.Messages, pattern, replacement, all)
+		event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, pattern, replacement, all)
 	case "llm.text":
 		event.LLM.Text = replaceString(event.LLM.Text, pattern, replacement, all)
 	case "tool.arguments":
@@ -308,7 +308,7 @@ func setTextField(event hook.Event, field, value string) (hook.Event, error) {
 	case "message.text":
 		event.Message.Segments = llm.SetSegmentText(event.Message.Segments, value)
 	case "llm.latest_user_text":
-		event.LLM.Messages = llm.SetLatestUserSegments(event.LLM.Messages, llm.TextSegments(value))
+		event.Message.Segments = llm.SetSegmentText(event.Message.Segments, value)
 	case "llm.text":
 		event.LLM.Text = value
 	case "tool.arguments":

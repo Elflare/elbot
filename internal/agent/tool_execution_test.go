@@ -7,8 +7,10 @@ import (
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
 	"elbot/internal/llm"
+	"elbot/internal/memory/resident"
 	"elbot/internal/platform"
 	"elbot/internal/security"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"fmt"
@@ -17,6 +19,25 @@ import (
 	"strings"
 	"testing"
 )
+
+type preparedArgumentTool struct {
+	arguments *string
+}
+
+func (t preparedArgumentTool) Name() string { return "prepared_args" }
+
+func (t preparedArgumentTool) Info() tool.Info {
+	return tool.Info{Name: t.Name(), Source: tool.SourceBuiltin, Risk: tool.RiskLow}
+}
+
+func (t preparedArgumentTool) Schema() llm.ToolSchema {
+	return llm.ToolSchema{Function: llm.ToolFunctionSchema{Name: t.Name(), Parameters: map[string]any{"type": "object"}}}
+}
+
+func (t preparedArgumentTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+	*t.arguments = string(req.Arguments)
+	return &tool.Result{Content: "prepared arguments received"}, nil
+}
 
 func TestChatExecutesToolAndFollowsUp(t *testing.T) {
 	p := &fakePlatform{}
@@ -98,6 +119,74 @@ func TestChatExecutesToolAndFollowsUp(t *testing.T) {
 	}
 }
 
+func TestPreparedToolArgumentsReachExecutionLLMAndTranscript(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{
+		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "prepared_args", Args: `{"q":"original"}`}}, FinishReason: "tool_calls"}},
+		{{DeltaContent: "done"}},
+	}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	var executedArguments string
+	_ = registry.Register(preparedArgumentTool{arguments: &executedArguments})
+	a.SetToolRuntime(registry, nil)
+	manager := hook.NewManager()
+	if err := manager.Register(hook.Registration{Point: hook.PointToolCallPrepared, Name: "test.arguments", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		event.Tool.Arguments = `{"q":"prepared"}`
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register hook: %v", err)
+	}
+	if err := manager.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "test.result-image", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		event.Message.Segments = append(event.Message.Segments, llm.MessageSegment{Type: llm.SegmentImage, URL: "https://example.com/result.png", Name: "result.png"})
+		return event, nil
+	})}); err != nil {
+		t.Fatalf("Register completed hook: %v", err)
+	}
+	a.SetHookManager(manager)
+
+	if err := a.HandleMessage(context.Background(), "run tool"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 2 {
+		t.Fatalf("requests = %d, want 2", len(requests))
+	}
+	var callArgs, resultText string
+	var resultHasImage bool
+	for _, message := range requests[1].Messages {
+		if len(message.ToolCalls) > 0 && message.ToolCalls[0].ID == "call_1" {
+			callArgs = message.ToolCalls[0].Arguments
+		}
+		if message.Role == llm.RoleTool && message.ToolCallID == "call_1" {
+			resultText = llm.SegmentsContentText(message.Segments)
+			resultHasImage = len(message.Segments) == 2 && message.Segments[1].Type == llm.SegmentImage
+		}
+	}
+	if callArgs != `{"q":"prepared"}` || executedArguments != `{"q":"prepared"}` || !strings.Contains(resultText, "prepared") || !resultHasImage {
+		t.Fatalf("call args = %q, executed = %q, result = %q, image = %v", callArgs, executedArguments, resultText, resultHasImage)
+	}
+	sessionRecord := onlySession(t, store, p)
+	messages, err := store.Messages().ListBySession(context.Background(), sessionRecord.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var transcriptArgs, transcriptImage bool
+	for _, message := range messages {
+		if message.Role == storage.RoleAssistant && strings.Contains(message.Metadata, `\"q\":\"prepared\"`) {
+			transcriptArgs = true
+		}
+		if message.Role == storage.RoleTool && message.ToolCallID == "call_1" && strings.Contains(message.Segments, `"type":"image"`) {
+			transcriptImage = true
+		}
+	}
+	if !transcriptArgs || !transcriptImage {
+		t.Fatalf("prepared arguments missing from transcript: %#v", messages)
+	}
+}
+
 func TestToolTranscriptPersistsWhenFollowupLLMFails(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
@@ -142,7 +231,7 @@ func TestToolTranscriptPersistsWhenFollowupLLMFails(t *testing.T) {
 	}
 }
 
-func TestTurnHookDoesNotRepeatDuringToolFollowup(t *testing.T) {
+func TestTurnHookCannotModifySystemDuringToolFollowup(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo hi"}`}}, FinishReason: "tool_calls"}},
@@ -172,9 +261,60 @@ func TestTurnHookDoesNotRepeatDuringToolFollowup(t *testing.T) {
 	}
 	for i, req := range requests {
 		system := firstRequestSystemText(req)
-		if strings.Count(system, "TURN_MEMORY") != 1 {
+		if strings.Count(system, "TURN_MEMORY") != 0 {
 			t.Fatalf("request %d system memory count = %d, system=%q", i, strings.Count(system, "TURN_MEMORY"), system)
 		}
+	}
+}
+
+func TestResidentMemoryAppearsOnceAcrossToolFollowupAndTurns(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{
+		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo hi"}`}}, FinishReason: "tool_calls"}},
+		{{DeltaContent: "done"}},
+		{{DeltaContent: "next"}},
+	}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	_ = registry.Register(newAgentShellTool())
+	a.SetToolRuntime(registry, nil)
+	memoryStore := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	if err := memoryStore.WriteCore(context.Background(), session.Scope{Platform: "cli", ActorID: "cli:local"}, "用户喜欢简短回答。"); err != nil {
+		t.Fatalf("WriteCore: %v", err)
+	}
+	a.residentMemory = memoryStore
+	a.rebuildSystemPrompt()
+
+	if err := a.HandleMessage(context.Background(), "run tool"); err != nil {
+		t.Fatalf("first HandleMessage: %v", err)
+	}
+	if err := memoryStore.WriteCore(context.Background(), session.Scope{Platform: "cli", ActorID: "cli:local"}, "用户现在喜欢详细回答。"); err != nil {
+		t.Fatalf("update WriteCore: %v", err)
+	}
+	if err := a.HandleMessage(context.Background(), "next turn"); err != nil {
+		t.Fatalf("second HandleMessage: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 3 {
+		t.Fatalf("chat requests = %d, want 3", len(requests))
+	}
+	for i, req := range requests[:2] {
+		system := firstRequestSystemText(req)
+		if count := strings.Count(system, "用户喜欢简短回答。"); count != 1 {
+			t.Fatalf("request %d resident memory count = %d, system=%q", i, count, system)
+		}
+		if count := strings.Count(system, "You are a helpful assistant."); count != 1 {
+			t.Fatalf("request %d soul count = %d, system=%q", i, count, system)
+		}
+	}
+	lastSystem := firstRequestSystemText(requests[2])
+	if strings.Contains(lastSystem, "用户喜欢简短回答。") || strings.Count(lastSystem, "用户现在喜欢详细回答。") != 1 {
+		t.Fatalf("next turn did not rebuild resident memory: %q", lastSystem)
+	}
+	if count := strings.Count(lastSystem, "You are a helpful assistant."); count != 1 {
+		t.Fatalf("next turn soul count = %d, system=%q", count, lastSystem)
 	}
 }
 
