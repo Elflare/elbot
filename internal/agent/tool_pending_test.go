@@ -273,7 +273,7 @@ func TestTurnRequestCancelStopsWithoutPersistingToolTranscript(t *testing.T) {
 	}
 }
 
-func TestToolPhasePendingInputDuringFollowupLLMContinuesSameTurn(t *testing.T) {
+func TestToolPhasePendingInputDuringFinalLLMStartsNewTurn(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	followupStarted := make(chan struct{})
@@ -308,6 +308,9 @@ func TestToolPhasePendingInputDuringFollowupLLMContinuesSameTurn(t *testing.T) {
 	if err := a.HandleMessage(ctx, "收尾前补一句"); err != nil {
 		t.Fatalf("pending HandleMessage: %v", err)
 	}
+	if err := a.HandleMessage(ctx, "再补一句"); err != nil {
+		t.Fatalf("second pending HandleMessage: %v", err)
+	}
 	close(followupRelease)
 	select {
 	case err := <-done:
@@ -322,13 +325,20 @@ func TestToolPhasePendingInputDuringFollowupLLMContinuesSameTurn(t *testing.T) {
 	if len(requests) != 3 {
 		t.Fatalf("chat requests = %d", len(requests))
 	}
+	for _, msg := range requests[1].Messages {
+		content := llm.SegmentsContentText(msg.Segments)
+		if strings.Contains(content, "收尾前补一句") || strings.Contains(content, "再补一句") {
+			t.Fatalf("final request unexpectedly included late pending input: %#v", requests[1].Messages)
+		}
+	}
 	retry := requests[2]
 	var sawAssistant, sawPending bool
+	mergedPending := "补充信息：\n1. 收尾前补一句\n2. 再补一句"
 	for _, msg := range retry.Messages {
 		if msg.Role == llm.RoleAssistant && llm.SegmentsContentText(msg.Segments) == "almost final" {
 			sawAssistant = true
 		}
-		if msg.Role == llm.RoleUser && strings.Contains(llm.SegmentsContentText(msg.Segments), "收尾前补一句") {
+		if msg.Role == llm.RoleUser && llm.SegmentsContentText(msg.Segments) == mergedPending {
 			sawPending = true
 		}
 	}
@@ -339,8 +349,19 @@ func TestToolPhasePendingInputDuringFollowupLLMContinuesSameTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasStoredUserMessage(messages, "收尾前补一句") {
-		t.Fatalf("pending input was not persisted: %#v", messages)
+	assistantIdx, pendingIdx, followupIdx := -1, -1, -1
+	for i, msg := range messages {
+		switch {
+		case msg.Role == storage.RoleAssistant && msg.Content == "almost final":
+			assistantIdx = i
+		case msg.Role == storage.RoleUser && msg.Content == mergedPending:
+			pendingIdx = i
+		case msg.Role == storage.RoleAssistant && msg.Content == "final with pending":
+			followupIdx = i
+		}
+	}
+	if assistantIdx < 0 || pendingIdx < 0 || followupIdx < 0 || !(assistantIdx < pendingIdx && pendingIdx < followupIdx) {
+		t.Fatalf("unexpected automatic followup message order: %#v", messages)
 	}
 }
 

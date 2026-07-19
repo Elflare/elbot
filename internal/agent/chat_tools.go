@@ -33,16 +33,6 @@ func appendPendingUserInput(messages []llm.LLMMessage, transcript *[]storage.Mes
 	return append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments(content)})
 }
 
-func appendAssistantTextMessage(messages []llm.LLMMessage, content, rawContent string) []llm.LLMMessage {
-	if rawContent == "" {
-		rawContent = content
-	}
-	if rawContent == "" {
-		return messages
-	}
-	return append(messages, llm.LLMMessage{Role: llm.RoleAssistant, Segments: llm.TextSegments(rawContent)})
-}
-
 func (a *Agent) executeToolCalls(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string, out turnOutput) ([]llm.LLMMessage, string, []storage.Message, bool) {
 	result := a.toolRunManager().Run(ctx, agentToolRunDeps{agent: a, output: out}, toolrun.RunRequest{
 		Session:          session,
