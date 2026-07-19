@@ -194,7 +194,8 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 - `internal/hook/match.go`：Hook 条件匹配、字段读取和模板值。
 - `internal/hook/manager.go`：普通 Hook 注册、排序、执行与原子 handler 快照替换。
 - `internal/hook/control/`：`/hooks` 的列表、重载和持久进程生命周期管理入口。
-- `internal/hook/builtin/`、`internal/hook/rules/`、`internal/hook/plugins/`：内置注册、规则配置与内置插件。
+- `internal/hook/builtin/`、`internal/hook/plugins/`：内置 Hook 注册与内置插件。
+- `internal/hook/rules/`：规则 Hook；`rules.go` 提供类型和模块入口，`config.go`/`toml_error.go` 负责配置加载与诊断，`rule.go`/`action.go`/`exec.go` 负责规则及 Action 执行，`detail.go` 负责列表详情。
 - `internal/hook/runtime/`：Worker Hook 配置、进程、双向 Pipe RPC、waiting 路由、工具桥接和进程内 SharedState。
 - `internal/agent/hooks.go`：Agent 的 Hook 执行、上下文和 continuation 接入。
 - `internal/agent/output.go`：Agent 的 Output Manager 与平台 sender 接入。
