@@ -10,6 +10,72 @@ import (
 	"elbot/internal/storage"
 )
 
+// MigrateLegacyDeliveryState moves completed or pending once-delivery data out
+// of metadata before the scheduler can mistake an old task for a fresh run.
+func (s *Service) MigrateLegacyDeliveryState(ctx context.Context) error {
+	jobs, err := s.store.CronJobs().ListEnabled(ctx)
+	if err != nil {
+		return fmt.Errorf("list cron jobs for legacy delivery migration: %w", err)
+	}
+	for _, job := range jobs {
+		if job.Handler != UserHandlerName || job.RunCount == 0 || job.NextRunAt != nil || job.DeliveryState != "" || job.DeliveryToken != "" {
+			continue
+		}
+		meta, err := decodeMetadata(job.Metadata)
+		if err != nil || meta.Schedule.Mode != ScheduleOnce {
+			continue
+		}
+		legacy, err := decodeLegacyDeliveryMetadata(job.Metadata)
+		if err != nil || !hasLegacyDeliveryMetadata(legacy) {
+			continue
+		}
+
+		state := s.legacyDeliveryState(meta, legacy)
+		encoded, err := encodeDeliveryState(state)
+		if err != nil {
+			return fmt.Errorf("encode legacy cron delivery %s: %w", job.Name, err)
+		}
+		swapped, err := s.store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "", state.RunID, encoded)
+		if err != nil {
+			return fmt.Errorf("migrate legacy cron delivery %s: %w", job.Name, err)
+		}
+		if !swapped {
+			continue
+		}
+		s.logInfo("cron legacy delivery migrated", s.cronLogAttrs(job.Name, meta)...)
+		if s.deliveryComplete(meta, state) {
+			if err := s.disableCompletedDelivery(ctx, job.Name, state.RunID); err != nil {
+				return fmt.Errorf("disable migrated cron delivery %s: %w", job.Name, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) legacyDeliveryState(meta Metadata, legacy legacyCronDeliveryMetadata) CronDeliveryState {
+	state := CronDeliveryState{
+		RunID:           storage.NewID(),
+		ReportReady:     true,
+		TaskCompleted:   legacy.Completed,
+		Report:          legacy.Report,
+		ReportSegments:  legacy.ReportSegments,
+		ReportSessionID: legacy.ReportSessionID,
+		ReportMessageID: legacy.ReportMessageID,
+	}
+	outputIDs := deliveryOutputIDs(state)
+	for _, target := range s.resolveDeliveryTargets(meta, "") {
+		if !containsString(legacy.DeliveredPlatforms, target.platform) {
+			continue
+		}
+		targetState := ensureDeliveryTargetState(&state, target.key)
+		for _, outputID := range outputIDs {
+			outputState := ensureDeliveryOutputState(targetState, outputID)
+			outputState.Status = DeliveryDelivered
+		}
+	}
+	return state
+}
+
 func (s *Service) RunMissedOnce(ctx context.Context) {
 	for _, platformName := range s.connectedPlatformNames() {
 		s.runMissedOnceForPlatform(ctx, platformName)

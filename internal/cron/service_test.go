@@ -759,6 +759,191 @@ func TestNotifyPlatformConnectedSkipsAlreadyDeliveredPlatform(t *testing.T) {
 	}
 }
 
+func TestMigrateLegacyDeliveryStateDisablesCompletedOnceCron(t *testing.T) {
+	repo := newFakeCronRepo()
+	svc := NewService(Options{Store: fakeCronStore{cron: repo}, EnabledPlatforms: []PlatformTarget{{Name: "qqonebot", SuperadminIDs: []string{"1001"}}}})
+	actor := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
+	job := upsertTestCronJob(t, repo, Metadata{
+		Kind:      metadataKind,
+		Version:   1,
+		Title:     "旧提醒",
+		CreatedBy: CronActor{Platform: "qqonebot", PlatformUserID: "1001"},
+		Schedule:  CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"},
+		Trigger:   CronTrigger{Mode: TriggerDirect, Message: "旧报告"},
+		Target:    CronTarget{SourcePlatform: "qqonebot"},
+	})
+	job.RunCount = 1
+	job.Metadata = withLegacyDeliveryMetadata(t, job.Metadata, legacyCronDeliveryMetadata{Completed: true, Report: "旧报告", DeliveredPlatforms: []string{"qqonebot"}})
+
+	if err := svc.MigrateLegacyDeliveryState(context.Background()); err != nil {
+		t.Fatalf("MigrateLegacyDeliveryState: %v", err)
+	}
+	migrated := repo.jobs[job.Name]
+	if migrated.Enabled {
+		t.Fatal("completed legacy once cron is still enabled")
+	}
+	state := mustDecodeTestDelivery(t, migrated.DeliveryState)
+	if !state.ReportReady || !state.TaskCompleted || state.Report != "旧报告" || !deliveryPlatformDone(state, "qqonebot") {
+		t.Fatalf("migrated delivery = %#v", state)
+	}
+	token := migrated.DeliveryToken
+	if token == "" || token != state.RunID {
+		t.Fatalf("delivery token=%q run_id=%q", token, state.RunID)
+	}
+
+	views, err := svc.List(context.Background(), true, false, actor)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(views) != 0 {
+		t.Fatalf("migrated completed cron should be hidden: %#v", views)
+	}
+	if err := svc.MigrateLegacyDeliveryState(context.Background()); err != nil {
+		t.Fatalf("second MigrateLegacyDeliveryState: %v", err)
+	}
+	if repo.jobs[job.Name].DeliveryToken != token {
+		t.Fatalf("migration is not idempotent: token=%q want=%q", repo.jobs[job.Name].DeliveryToken, token)
+	}
+}
+
+func TestMigrateLegacyDeliveryStateSQLite(t *testing.T) {
+	store := newCronSQLiteStore(t)
+	meta := Metadata{
+		Kind:      metadataKind,
+		Version:   1,
+		Title:     "旧提醒",
+		CreatedBy: CronActor{Platform: "cli", PlatformUserID: "local"},
+		Schedule:  CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"},
+		Trigger:   CronTrigger{Mode: TriggerDirect, Message: "旧报告"},
+		Target:    CronTarget{SourcePlatform: "cli"},
+	}
+	job, err := store.CronJobs().Upsert(context.Background(), storage.UpsertCronJobRequest{
+		Name:     "user.cron.legacy_sqlite",
+		Handler:  UserHandlerName,
+		Schedule: "4 3 2 1 *",
+		Enabled:  true,
+		Metadata: withLegacyDeliveryMetadata(t, mustMarshalTestMetadata(t, meta), legacyCronDeliveryMetadata{Completed: true, Report: "旧报告", DeliveredPlatforms: []string{"cli"}}),
+	})
+	if err != nil {
+		t.Fatalf("upsert sqlite cron: %v", err)
+	}
+	if err := store.CronJobs().UpdateRunState(context.Background(), job.ID, storage.CronJobRunState{LastRunAt: time.Now(), RunCount: 1, Enabled: true, UpdatedAt: time.Now()}); err != nil {
+		t.Fatalf("update sqlite cron run state: %v", err)
+	}
+
+	svc := NewService(Options{Store: store})
+	if err := svc.MigrateLegacyDeliveryState(context.Background()); err != nil {
+		t.Fatalf("MigrateLegacyDeliveryState: %v", err)
+	}
+	migrated, err := store.CronJobs().GetByName(context.Background(), job.Name)
+	if err != nil {
+		t.Fatalf("load migrated sqlite cron: %v", err)
+	}
+	state := mustDecodeTestDelivery(t, migrated.DeliveryState)
+	if migrated.Enabled || migrated.DeliveryToken != state.RunID || !state.ReportReady || !deliveryPlatformDone(state, "cli") {
+		t.Fatalf("migrated sqlite cron=%#v delivery=%#v", migrated, state)
+	}
+}
+
+func TestMigrateLegacyDeliveryStateResumesOnlyPendingPlatform(t *testing.T) {
+	repo := newFakeCronRepo()
+	runner := &fakeCronRunner{text: `{"completed":true,"need_report":true,"report":"不应执行"}`}
+	var sentPlatforms []string
+	svc := NewService(Options{
+		Store:            fakeCronStore{cron: repo},
+		Runner:           runner,
+		EnabledPlatforms: []PlatformTarget{{Name: "qqofficial", SuperadminIDs: []string{"1001"}}, {Name: "cli"}},
+		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+			sentPlatforms = append(sentPlatforms, target.Platform)
+			return delivery.Receipt{}, nil
+		},
+	})
+	job := upsertTestCronJob(t, repo, Metadata{
+		Kind:      metadataKind,
+		Version:   1,
+		Title:     "旧广播",
+		CreatedBy: CronActor{Platform: "qqofficial", PlatformUserID: "1001"},
+		Schedule:  CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"},
+		Trigger:   CronTrigger{Mode: TriggerLLM, Message: testElyphTask("legacy")},
+		Target:    CronTarget{AllEnabledPlatforms: true, SourcePlatform: "qqofficial"},
+	})
+	job.RunCount = 1
+	job.Metadata = withLegacyDeliveryMetadata(t, job.Metadata, legacyCronDeliveryMetadata{Completed: true, Report: "旧报告", DeliveredPlatforms: []string{"qqofficial"}})
+
+	if err := svc.MigrateLegacyDeliveryState(context.Background()); err != nil {
+		t.Fatalf("MigrateLegacyDeliveryState: %v", err)
+	}
+	if !repo.jobs[job.Name].Enabled {
+		t.Fatal("partially delivered legacy cron was disabled")
+	}
+	state := mustDecodeTestDelivery(t, repo.jobs[job.Name].DeliveryState)
+	if !deliveryPlatformDone(state, "qqofficial") || deliveryPlatformDone(state, "cli") {
+		t.Fatalf("migrated delivery = %#v", state)
+	}
+
+	svc.NotifyPlatformConnected(context.Background(), "qqofficial")
+	if len(sentPlatforms) != 0 {
+		t.Fatalf("already delivered platform was sent again: %#v", sentPlatforms)
+	}
+	svc.NotifyPlatformConnected(context.Background(), "cli")
+	if len(sentPlatforms) != 1 || sentPlatforms[0] != "cli" {
+		t.Fatalf("sent platforms = %#v", sentPlatforms)
+	}
+	if runner.calls != 0 {
+		t.Fatalf("legacy LLM task was executed again: calls=%d", runner.calls)
+	}
+	if repo.jobs[job.Name].Enabled {
+		t.Fatal("legacy cron was not disabled after pending delivery completed")
+	}
+}
+
+func TestMigrateLegacyDeliveryStateSkipsFreshAndCurrentCycles(t *testing.T) {
+	repo := newFakeCronRepo()
+	svc := NewService(Options{Store: fakeCronStore{cron: repo}})
+	legacy := legacyCronDeliveryMetadata{Completed: true, Report: "旧报告", DeliveredPlatforms: []string{"cli"}}
+	base := Metadata{Kind: metadataKind, Version: 1, Title: "skip", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "test"}, Target: CronTarget{SourcePlatform: "cli"}}
+
+	nextRun := time.Now().Add(time.Hour)
+	future, err := repo.Upsert(context.Background(), storage.UpsertCronJobRequest{Name: "user.cron.future", Handler: UserHandlerName, Schedule: "4 3 2 1 *", Enabled: true, Metadata: withLegacyDeliveryMetadata(t, mustMarshalTestMetadata(t, base), legacy), NextRunAt: &nextRun})
+	if err != nil {
+		t.Fatalf("upsert future cron: %v", err)
+	}
+	future.RunCount = 1
+
+	unrun, err := repo.Upsert(context.Background(), storage.UpsertCronJobRequest{Name: "user.cron.unrun", Handler: UserHandlerName, Schedule: "4 3 2 1 *", Enabled: true, Metadata: withLegacyDeliveryMetadata(t, mustMarshalTestMetadata(t, base), legacy)})
+	if err != nil {
+		t.Fatalf("upsert unrun cron: %v", err)
+	}
+
+	periodicMeta := base
+	periodicMeta.Schedule = CronSchedule{Mode: ScheduleCron, CronExpr: "0 3 * * *"}
+	periodic, err := repo.Upsert(context.Background(), storage.UpsertCronJobRequest{Name: "user.cron.periodic", Handler: UserHandlerName, Schedule: "0 3 * * *", Enabled: true, Metadata: withLegacyDeliveryMetadata(t, mustMarshalTestMetadata(t, periodicMeta), legacy)})
+	if err != nil {
+		t.Fatalf("upsert periodic cron: %v", err)
+	}
+	periodic.RunCount = 1
+
+	current, err := repo.Upsert(context.Background(), storage.UpsertCronJobRequest{Name: "user.cron.current", Handler: UserHandlerName, Schedule: "4 3 2 1 *", Enabled: true, Metadata: withLegacyDeliveryMetadata(t, mustMarshalTestMetadata(t, base), legacy)})
+	if err != nil {
+		t.Fatalf("upsert current cron: %v", err)
+	}
+	current.RunCount = 1
+	current.DeliveryToken = "current-run"
+	current.DeliveryState = mustMarshalTestDelivery(t, CronDeliveryState{RunID: "current-run", ReportReady: true, Report: "当前报告"})
+
+	if err := svc.MigrateLegacyDeliveryState(context.Background()); err != nil {
+		t.Fatalf("MigrateLegacyDeliveryState: %v", err)
+	}
+	for _, name := range []string{future.Name, unrun.Name, periodic.Name} {
+		if job := repo.jobs[name]; !job.Enabled || job.DeliveryState != "" || job.DeliveryToken != "" {
+			t.Fatalf("cron %s was migrated: %#v", name, job)
+		}
+	}
+	if got := repo.jobs[current.Name]; !got.Enabled || got.DeliveryToken != "current-run" || mustDecodeTestDelivery(t, got.DeliveryState).Report != "当前报告" {
+		t.Fatalf("current delivery was overwritten: %#v", got)
+	}
+}
+
 func TestListHidesCompletedCronByDefault(t *testing.T) {
 	repo := newFakeCronRepo()
 	svc := NewService(Options{Store: fakeCronStore{cron: repo}})
@@ -882,6 +1067,24 @@ func mustMarshalTestMetadata(t *testing.T, meta Metadata) string {
 		t.Fatalf("marshal metadata: %v", err)
 	}
 	return string(data)
+}
+
+func withLegacyDeliveryMetadata(t *testing.T, raw string, delivery legacyCronDeliveryMetadata) string {
+	t.Helper()
+	var metadata map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
+		t.Fatalf("decode metadata for legacy delivery: %v", err)
+	}
+	encoded, err := json.Marshal(delivery)
+	if err != nil {
+		t.Fatalf("marshal legacy delivery: %v", err)
+	}
+	metadata["delivery"] = encoded
+	encoded, err = json.Marshal(metadata)
+	if err != nil {
+		t.Fatalf("marshal metadata with legacy delivery: %v", err)
+	}
+	return string(encoded)
 }
 
 func mustDecodeTestDelivery(t *testing.T, raw string) CronDeliveryState {
