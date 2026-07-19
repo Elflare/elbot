@@ -32,33 +32,49 @@ func (a *Agent) startBackgroundChat(ctx context.Context, session *storage.Sessio
 }
 
 func (a *Agent) startChatWithOutput(ctx context.Context, session *storage.Session, text string, out turnOutput) error {
+	for {
+		nextSession, pending, err := a.runChatTurnWithOutput(ctx, session, text, out)
+		if err != nil {
+			return err
+		}
+		if pending == "" {
+			return nil
+		}
+		session = nextSession
+		text = pending
+		ctx = withInboundSegments(ctx, llm.TextSegments(pending))
+	}
+}
+
+func (a *Agent) runChatTurnWithOutput(ctx context.Context, session *storage.Session, text string, out turnOutput) (*storage.Session, string, error) {
 	selection := a.modelSelectionForTurn(ctx, session)
 	if a.shouldCompact(ctx, session, selection) {
 		next, content, err := a.compactSession(ctx, session, "auto", selection)
 		if err != nil {
-			return err
+			return session, "", err
 		}
 		session = next
 		_, _ = out.SendAssistant(ctx, content)
 	}
 	if !a.turns.StartLLM(session.ID, text) {
-		return nil
+		return session, "", nil
 	}
 	defer a.turns.FinishRequest(session.ID)
-	if err := a.runChat(ctx, session, text, out, selection); err != nil {
+	var pending string
+	if err := a.runChat(ctx, session, text, out, selection, &pending); err != nil {
 		a.turns.StopSession(session.ID)
 		status := a.runtimeStatusForSession(session.ID)
 		status.Phase = runtimestatus.PhaseError
 		status.FinishedAt = storage.Now()
 		status.Error = err.Error()
 		out.PublishRuntimeStatus(ctx, status)
-		return err
+		return session, "", err
 	}
 	status := a.runtimeStatusForSession(session.ID)
 	if status.Running() {
 		out.PublishRuntimeStatus(ctx, runtimeDoneStatus(status, storage.Now()))
 	}
-	return nil
+	return session, pending, nil
 }
 
 func (a *Agent) handleTurnContextDone(ctx context.Context, sessionID string, err error, out turnOutput) error {
@@ -73,7 +89,7 @@ func (a *Agent) handleTurnContextDone(ctx context.Context, sessionID string, err
 	return nil
 }
 
-func (a *Agent) runChat(ctx context.Context, session *storage.Session, text string, out turnOutput, selection config.ModelSelection) error {
+func (a *Agent) runChat(ctx context.Context, session *storage.Session, text string, out turnOutput, selection config.ModelSelection, completedPending *string) error {
 	userSegments := a.userMessageSegments(ctx, text)
 	userContent := llm.SegmentsContentText(userSegments)
 
@@ -211,17 +227,6 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		if len(result.ToolCalls) == 0 {
 			finalText = joinAssistantText(finalText, assistantRawText)
 			finalRawText = joinAssistantText(finalRawText, assistantRawText)
-			if inToolPhase {
-				if pending := a.turns.DrainMerged(session.ID); pending != "" {
-					// 用户可能在后续 LLM 响应期间补充输入；继续同一轮请求，避免 pending 被结束流程丢弃。
-					if err := out.FinishIntermediate(ctx, reqCtx, result.Stream, assistantText, streaming); err != nil {
-						return err
-					}
-					llmMessages = appendAssistantTextMessage(llmMessages, assistantRawText, assistantRawText)
-					llmMessages = appendPendingUserInput(llmMessages, &turnMessages, pending)
-					continue
-				}
-			}
 			platformFinalText = joinAssistantText(platformFinalText, assistantText)
 			finalStream = result.Stream
 			break
@@ -338,8 +343,12 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		Content:   finalText,
 		Metadata:  assistantRawTextMetadata(finalText, finalRawText),
 	}
-	if !a.turns.CompleteLLM(session.ID) {
+	pending, completed := a.turns.CompleteLLM(session.ID)
+	if !completed {
 		return nil
+	}
+	if completedPending != nil {
+		*completedPending = pending
 	}
 	persistedAssistant := false
 	if !emptyAssistantResponse {

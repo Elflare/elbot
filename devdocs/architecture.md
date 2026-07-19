@@ -64,7 +64,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - user 与已完成工具 transcript 会阶段性落库。
 - 流式输出最终由对话主流程用最终文本 replace。
 - 发送前会发布 `sending` phase，便于 `/requests` 区分 LLM 慢还是平台发送慢。
-- 普通输入在工具阶段不会打断工具，会进入 pending 并在下一次 LLM 调用前注入。
+- 普通输入在工具阶段不会打断工具，会进入 pending；下一次 LLM 调用前已有的 pending 会合并注入当前轮，最终 LLM 调用期间新到达的 pending 则在当前轮正常结束后作为新用户消息自动开启下一轮。
 
 <!-- locator:commands -->
 ## 命令链路

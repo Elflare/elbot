@@ -201,15 +201,16 @@ func (m *Manager) StartToolPhase(sessionID string) bool {
 	return true
 }
 
-func (m *Manager) CompleteLLM(sessionID string) bool {
+func (m *Manager) CompleteLLM(sessionID string) (string, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
 	if !ok || (turn.phase != PhaseLLM && turn.phase != PhaseTool && turn.phase != PhaseAwaitRiskConfirm) {
-		return false
+		return "", false
 	}
+	pending := mergeInputs(turn.pending)
 	delete(m.turns, sessionID)
-	return true
+	return pending, true
 }
 
 func (m *Manager) FinishRequest(sessionID string) {

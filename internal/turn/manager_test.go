@@ -90,6 +90,30 @@ func TestToolPendingDrain(t *testing.T) {
 	}
 }
 
+func TestCompleteLLMReturnsMergedPending(t *testing.T) {
+	m := NewManager()
+	if !m.StartLLM("s1", "先查") {
+		t.Fatal("StartLLM returned false")
+	}
+	if !m.StartToolPhase("s1") {
+		t.Fatal("StartToolPhase returned false")
+	}
+	m.AppendPending("s1", "补充 A")
+	m.AppendPending("s1", "补充 B")
+
+	pending, ok := m.CompleteLLM("s1")
+	if !ok {
+		t.Fatal("CompleteLLM returned false")
+	}
+	want := "补充信息：\n1. 补充 A\n2. 补充 B"
+	if pending != want {
+		t.Fatalf("pending = %q, want %q", pending, want)
+	}
+	if got := m.Snapshot("s1").Phase; got != PhaseIdle {
+		t.Fatalf("phase = %s, want idle", got)
+	}
+}
+
 func TestStopAllClearsTurns(t *testing.T) {
 	m := NewManager()
 	m.StartLLM("s1", "a")
