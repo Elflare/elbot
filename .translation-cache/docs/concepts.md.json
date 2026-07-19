@@ -632,6 +632,14 @@
       "translation": "After successful compression, it will switch to a completely independent new Session with the title __ELBOT_CODE_0__.",
       "updated_at": 1784109334
     },
+    "docs/concepts.md:paragraph:950141b16938af1977bd1b1cf4e970bf45086da0990f38298ca50243961beb6b": {
+      "kind": "paragraph",
+      "source": "如果最终模型请求已经开始并直接结束了当前轮次，这些消息会在回复发出后自动作为一条新用户消息开启下一轮。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "950141b16938af1977bd1b1cf4e970bf45086da0990f38298ca50243961beb6b",
+      "translation": "If the final model request has already started and directly ends the current turn, these messages will automatically start the next turn as a new user message after the response is sent.\n",
+      "updated_at": 1784466634
+    },
     "docs/concepts.md:paragraph:96b5ea7dbd003a48aac3dc1b30038366cacebec500878b1d52712a25f94c6248": {
       "kind": "paragraph",
       "source": "Agent、Hook 和 Tool 不直接依赖具体平台发送消息，而是返回统一的输出意图，再由 Output Manager 交给对应平台适配器发送。\n",
@@ -687,6 +695,14 @@
       "source_hash": "bba7fced0f9c1143a23c84ff8aafe31b0724948cccece90fd16c05d218fce7a6",
       "translation": "ElBot includes two layers of Cron capabilities:\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:bbfa54fe1df1bf21ab2cc688d3496fa9c15e162e202fa5e56790ad19ef55a91b": {
+      "kind": "paragraph",
+      "source": "工具执行期间收到的新消息不会打断正在运行的工具。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "bbfa54fe1df1bf21ab2cc688d3496fa9c15e162e202fa5e56790ad19ef55a91b",
+      "translation": "New messages received during tool execution will not interrupt the tool currently running.",
+      "updated_at": 1784466634
     },
     "docs/concepts.md:paragraph:bdda44ff661fbed92e8838361bda8666877c3b348567962ef5fdfacdafbb792a": {
       "kind": "paragraph",
@@ -847,6 +863,14 @@
       "source_hash": "f6ffabb2700911f566e9e5429b77829310584367c95356d35c87d391ef7ebf38",
       "translation": "The new branch inherits the context before the fork point but does not modify the original Session. It is suitable for trying a different approach or reworking a solution for the same problem, or continuing exploration while preserving the original conversation.\n",
       "updated_at": 1783077374
+    },
+    "docs/concepts.md:paragraph:f81de47b3d46f19bbb6056c07ed782bf49323a0227b23f414c157ffc67ff1495": {
+      "kind": "paragraph",
+      "source": "下一次模型请求尚未开始时，多条消息会按顺序合并后注入该请求；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "f81de47b3d46f19bbb6056c07ed782bf49323a0227b23f414c157ffc67ff1495",
+      "translation": "When the next model request has not yet started, multiple messages will be merged in order and injected into that request;",
+      "updated_at": 1784466634
     },
     "docs/concepts.md:paragraph:f9be8056fedfb67f814a62b22dbe081ff7db49d726b347101e561e412362d523": {
       "kind": "paragraph",
@@ -1034,8 +1058,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "e06eb89df855358cf0581caf201317540d2caed6b8862a14423d61899f0cca7c",
+  "source_hash": "3a631064ded8d39c1d4b485b75f032ef734d5ed26d136310195ed10776643392",
   "target": "docs.en/concepts.md",
-  "updated_at": 1784437431,
+  "updated_at": 1784466634,
   "version": 2
 }

@@ -104,6 +104,8 @@ Tool Runtime manages the registration, discovery, permissions, risk assessment, 
 
 Tools can come from built-in capabilities, Skills, external extensions, or listening events. ElBot does not stuff all tool details into the context by default, but exposes them on demand through tool discovery and preloading mechanisms.
 
+New messages received during tool execution will not interrupt the tool currently running. When the next model request has not yet started, multiple messages will be merged in order and injected into that request; If the final model request has already started and directly ends the current turn, these messages will automatically start the next turn as a new user message after the response is sent.
+
 Common tool capabilities include:
 
 - Search and webpage extraction.
