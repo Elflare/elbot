@@ -94,7 +94,8 @@ func prependTextField(event hook.Event, field, value string) (hook.Event, error)
 	case "tool.arguments":
 		event.Tool.Arguments = value + event.Tool.Arguments
 	case "tool.result":
-		event.Tool.Result = value + event.Tool.Result
+		event.Message.Segments = llm.PrependSegmentText(toolResultSegments(event), value)
+		event.Tool.Result = llm.SegmentsTextOnly(event.Message.Segments)
 	default:
 		return event, fmt.Errorf("unsupported prepend field %q", field)
 	}
@@ -112,7 +113,8 @@ func appendTextField(event hook.Event, field, value string) (hook.Event, error) 
 	case "tool.arguments":
 		event.Tool.Arguments += value
 	case "tool.result":
-		event.Tool.Result += value
+		event.Message.Segments = llm.AppendSegmentText(toolResultSegments(event), value)
+		event.Tool.Result = llm.SegmentsTextOnly(event.Message.Segments)
 	default:
 		return event, fmt.Errorf("unsupported append field %q", field)
 	}
@@ -130,7 +132,8 @@ func replaceTextField(event hook.Event, field string, pattern *regexp.Regexp, re
 	case "tool.arguments":
 		event.Tool.Arguments = replaceString(event.Tool.Arguments, pattern, replacement, all)
 	case "tool.result":
-		event.Tool.Result = replaceString(event.Tool.Result, pattern, replacement, all)
+		event.Message.Segments = llm.ReplaceSegmentText(toolResultSegments(event), pattern, replacement, all)
+		event.Tool.Result = llm.SegmentsTextOnly(event.Message.Segments)
 	default:
 		return event, fmt.Errorf("unsupported replace field %q", field)
 	}
@@ -146,6 +149,13 @@ func replaceString(text string, pattern *regexp.Regexp, replacement string, all 
 		return text
 	}
 	return text[:loc[0]] + pattern.ReplaceAllString(text[loc[0]:loc[1]], replacement) + text[loc[1]:]
+}
+
+func toolResultSegments(event hook.Event) []llm.MessageSegment {
+	if len(event.Message.Segments) > 0 {
+		return event.Message.Segments
+	}
+	return llm.TextSegments(event.Tool.Result)
 }
 
 func allowField(event hook.Event, field string) error {
@@ -296,7 +306,7 @@ func setTextField(event hook.Event, field, value string) (hook.Event, error) {
 	}
 	switch field {
 	case "message.text":
-		event.Message.Segments = llm.TextSegments(value)
+		event.Message.Segments = llm.SetSegmentText(event.Message.Segments, value)
 	case "llm.latest_user_text":
 		event.LLM.Messages = llm.SetLatestUserSegments(event.LLM.Messages, llm.TextSegments(value))
 	case "llm.text":
@@ -305,6 +315,7 @@ func setTextField(event hook.Event, field, value string) (hook.Event, error) {
 		event.Tool.Arguments = value
 	case "tool.result":
 		event.Tool.Result = value
+		event.Message.Segments = llm.SetSegmentText(toolResultSegments(event), value)
 	default:
 		return event, fmt.Errorf("unsupported set field %q", field)
 	}

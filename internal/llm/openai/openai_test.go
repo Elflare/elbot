@@ -316,6 +316,45 @@ func TestChatStream_ToolMessagesPayload(t *testing.T) {
 	}
 }
 
+func TestToOpenAIMessagesMovesToolImagesIntoFollowingUserMessage(t *testing.T) {
+	messages := toOpenAIMessages([]llm.LLMMessage{
+		{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCallRequest{{ID: "call_1", Name: "screenshot"}, {ID: "call_2", Name: "camera"}}},
+		{Role: llm.RoleTool, Name: "screenshot", ToolCallID: "call_1", Segments: []llm.MessageSegment{
+			{Type: llm.SegmentText, Text: "截图完成"},
+			{Type: llm.SegmentImage, URL: "https://example.com/a.png"},
+		}},
+		{Role: llm.RoleTool, Name: "camera", ToolCallID: "call_2", Segments: []llm.MessageSegment{
+			{Type: llm.SegmentImage, URL: "data:image/png;base64,aGVsbG8="},
+		}},
+		{Role: llm.RoleAssistant, Segments: llm.TextSegments("我看到了")},
+	})
+	if len(messages) != 5 {
+		t.Fatalf("messages = %#v", messages)
+	}
+	if messages[1].Role != "tool" || messages[1].Content != "截图完成" {
+		t.Fatalf("first tool = %#v", messages[1])
+	}
+	if messages[2].Role != "tool" || messages[2].Content != "工具返回了图片，见下一条多模态消息。" {
+		t.Fatalf("second tool = %#v", messages[2])
+	}
+	if messages[3].Role != "user" {
+		t.Fatalf("image carrier = %#v", messages[3])
+	}
+	parts, ok := messages[3].Content.([]openAIContentPart)
+	if !ok || len(parts) != 4 {
+		t.Fatalf("carrier content = %#v", messages[3].Content)
+	}
+	if parts[0].Type != "text" || !strings.Contains(parts[0].Text, "screenshot") || !strings.Contains(parts[0].Text, "call_1") || parts[1].ImageURL.URL != "https://example.com/a.png" {
+		t.Fatalf("first image group = %#v", parts[:2])
+	}
+	if parts[2].Type != "text" || !strings.Contains(parts[2].Text, "camera") || !strings.Contains(parts[2].Text, "call_2") || parts[3].ImageURL.URL != "data:image/png;base64,aGVsbG8=" {
+		t.Fatalf("second image group = %#v", parts[2:])
+	}
+	if messages[4].Role != "assistant" || messages[4].Content != "我看到了" {
+		t.Fatalf("following assistant = %#v", messages[4])
+	}
+}
+
 func TestChatStream_FirstChunkCanArriveAfterIdleTimeout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

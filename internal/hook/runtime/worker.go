@@ -15,6 +15,7 @@ import (
 	"elbot/internal/hook"
 	hookoutput "elbot/internal/hook/output"
 	hookprotocol "elbot/internal/hook/protocol"
+	"elbot/internal/llm"
 )
 
 type worker struct {
@@ -393,6 +394,21 @@ func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool
 		return event, err
 	}
 	event.Outputs = append(event.Outputs, outputs...)
+	if result.Message != nil && result.Message.Segments != nil {
+		segments, err := hookoutput.BuildMessageSegments(*result.Message.Segments, w.config.Dir)
+		if err != nil {
+			return event, err
+		}
+		event.Message.Segments = segments
+		if event.Point == hook.PointToolCallCompleted {
+			event.Tool.Result = llm.SegmentsTextOnly(segments)
+		}
+	} else if result.Message != nil && result.Message.Text != nil {
+		event.Message.Segments = llm.SetSegmentText(event.Message.Segments, *result.Message.Text)
+		if event.Point == hook.PointToolCallCompleted {
+			event.Tool.Result = llm.SegmentsTextOnly(event.Message.Segments)
+		}
+	}
 	consume := defaults.Consume
 	stopPropagation := defaults.StopPropagation
 	if result.PassThrough != nil {

@@ -263,6 +263,21 @@ ALTER TABLE cron_jobs ADD COLUMN delivery_state TEXT NULL;
 ALTER TABLE cron_jobs ADD COLUMN delivery_token TEXT NULL;
 `,
 	},
+	{
+		version: 11,
+		name:    "add_message_segments",
+		sql: `
+ALTER TABLE messages ADD COLUMN segments TEXT NULL;
+
+UPDATE messages
+SET segments = json_extract(metadata, '$.segments'),
+    metadata = NULLIF(json_remove(metadata, '$.segments'), '{}')
+WHERE role = 'user'
+  AND metadata IS NOT NULL
+  AND json_valid(metadata)
+  AND json_type(CASE WHEN json_valid(metadata) THEN metadata END, '$.segments') = 'array';
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

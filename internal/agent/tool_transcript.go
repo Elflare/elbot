@@ -16,10 +16,6 @@ type assistantMetadata struct {
 	RawText   string                `json:"raw_text,omitempty"`
 }
 
-type userMetadata struct {
-	Segments []llm.MessageSegment `json:"segments,omitempty"`
-}
-
 func toolCallStorageMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest) storage.Message {
 	metadata := assistantMetadata{ToolCalls: calls}
 	if rawText != "" && rawText != content {
@@ -29,11 +25,11 @@ func toolCallStorageMessage(sessionID, content, rawText string, calls []llm.Tool
 	return storage.Message{SessionID: sessionID, Role: storage.RoleAssistant, Content: content, Metadata: string(data)}
 }
 
-func userSegmentsMetadata(segments []llm.MessageSegment) string {
+func storedMessageSegments(segments []llm.MessageSegment) string {
 	if len(segments) == 0 || segmentsTextOnly(segments) {
 		return ""
 	}
-	data, _ := json.Marshal(userMetadata{Segments: segments})
+	data, _ := json.Marshal(segments)
 	return string(data)
 }
 
@@ -55,7 +51,14 @@ func assistantRawTextMetadata(content, rawText string) string {
 }
 
 func toolResultStorageMessage(sessionID string, message llm.LLMMessage) storage.Message {
-	return storage.Message{SessionID: sessionID, Role: storage.RoleTool, Content: llm.SegmentsContentText(message.Segments), ToolCallID: message.ToolCallID, Metadata: toolNameMetadata(message.Name)}
+	return storage.Message{
+		SessionID:  sessionID,
+		Role:       storage.RoleTool,
+		Content:    llm.SegmentsContentText(message.Segments),
+		ToolCallID: message.ToolCallID,
+		Segments:   storedMessageSegments(message.Segments),
+		Metadata:   toolNameMetadata(message.Name),
+	}
 }
 
 func toolNameMetadata(name string) string {

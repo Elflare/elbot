@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -54,8 +55,42 @@ func TestNewRunsMigrations(t *testing.T) {
 	}
 
 	var version int
-	if err := store.db.QueryRow(`SELECT version FROM schema_migrations WHERE version = 9`).Scan(&version); err != nil {
+	if err := store.db.QueryRow(`SELECT version FROM schema_migrations WHERE version = 11`).Scan(&version); err != nil {
 		t.Fatalf("migration version missing: %v", err)
+	}
+}
+
+func TestMessageSegmentsMigrationMovesUserSegmentsAndPreservesMetadata(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "migration.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)`); err != nil {
+		t.Fatalf("create migration table: %v", err)
+	}
+	for _, migration := range migrations[:10] {
+		if err := applyMigration(ctx, db, migration); err != nil {
+			t.Fatalf("apply migration %d: %v", migration.version, err)
+		}
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO sessions (id, owner_id, platform, platform_scope_id, mode, status, created_at, updated_at) VALUES ('s1', 'u1', 'cli', 'local', 'work', 'active', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+	legacyMetadata := `{"segments":[{"type":"text","text":"看图"},{"type":"image","url":"https://example.com/a.png"}],"custom":true}`
+	if _, err := db.ExecContext(ctx, `INSERT INTO messages (id, session_id, role, content, metadata, created_at) VALUES ('m1', 's1', 'user', '看图', ?, '2026-01-01T00:00:00Z')`, legacyMetadata); err != nil {
+		t.Fatalf("insert message: %v", err)
+	}
+	if err := applyMigration(ctx, db, migrations[10]); err != nil {
+		t.Fatalf("apply segments migration: %v", err)
+	}
+	var segments, metadata string
+	if err := db.QueryRowContext(ctx, `SELECT segments, metadata FROM messages WHERE id = 'm1'`).Scan(&segments, &metadata); err != nil {
+		t.Fatalf("query migrated message: %v", err)
+	}
+	if !strings.Contains(segments, `"type":"image"`) || metadata != `{"custom":true}` {
+		t.Fatalf("segments = %q, metadata = %q", segments, metadata)
 	}
 }
 
@@ -546,7 +581,7 @@ func TestMessageRepositoryAndPlatformMap(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
-	user := &storage.Message{SessionID: session.ID, Role: storage.RoleUser, Content: "hello"}
+	user := &storage.Message{SessionID: session.ID, Role: storage.RoleUser, Content: "hello", Segments: `[{"type":"text","text":"hello"},{"type":"image","url":"https://example.com/a.png"}]`}
 	assistant := &storage.Message{SessionID: session.ID, Role: storage.RoleAssistant, Content: "hi"}
 	if err := store.Messages().Append(ctx, user); err != nil {
 		t.Fatalf("append user: %v", err)
@@ -559,7 +594,7 @@ func TestMessageRepositoryAndPlatformMap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get user: %v", err)
 	}
-	if got.SessionID != session.ID || got.Content != "hello" {
+	if got.SessionID != session.ID || got.Content != "hello" || got.Segments != user.Segments {
 		t.Fatalf("unexpected message: %#v", got)
 	}
 
@@ -584,7 +619,7 @@ func TestMessageRepositoryAndPlatformMap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find platform message: %v", err)
 	}
-	if mapped.ID != user.ID {
+	if mapped.ID != user.ID || mapped.Segments != user.Segments {
 		t.Fatalf("mapped ID = %q", mapped.ID)
 	}
 

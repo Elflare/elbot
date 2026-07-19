@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -37,23 +38,32 @@ func (d agentToolRunDeps) PrepareToolCall(ctx context.Context, session *storage.
 	return call, nil
 }
 
-func (d agentToolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, result string, callErr error) (string, error) {
+func (d agentToolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error) {
+	original := append([]llm.MessageSegment(nil), segments...)
+	resultText := llm.SegmentsTextOnly(original)
 	event, err := d.agent.runHook(ctx, hook.Event{
 		Point:   hook.PointToolCallCompleted,
 		Session: d.agent.hookSession(session),
+		Message: hook.MessagePayload{Role: string(llm.RoleTool), Segments: original},
 		Tool: hook.ToolPayload{
 			ID:        call.ID,
 			Name:      call.Name,
 			Arguments: call.Arguments,
 			Risk:      risk,
-			Result:    result,
+			Result:    resultText,
 			Error:     callErr,
 		},
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return event.Tool.Result, nil
+	if !reflect.DeepEqual(event.Message.Segments, original) {
+		return event.Message.Segments, nil
+	}
+	if event.Tool.Result != resultText {
+		return llm.SetSegmentText(original, event.Tool.Result), nil
+	}
+	return original, nil
 }
 
 func (d agentToolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error) {

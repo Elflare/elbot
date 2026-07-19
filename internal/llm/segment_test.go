@@ -19,6 +19,21 @@ func TestSegmentsTextOnlyAndContentText(t *testing.T) {
 	}
 }
 
+func TestSegmentsContentTextDoesNotInlineDataURL(t *testing.T) {
+	segments := []MessageSegment{{Type: SegmentText, Text: "done"}, {Type: SegmentImage, URL: "data:image/png;base64,aGVsbG8=", Name: "result.png"}}
+	if got := SegmentsContentText(segments); got != "done [图片: result.png]" {
+		t.Fatalf("SegmentsContentText = %q", got)
+	}
+}
+
+func TestSetSegmentTextKeepsMediaAndCollapsesTextSegments(t *testing.T) {
+	segments := []MessageSegment{{Type: SegmentText, Text: "old"}, {Type: SegmentImage, URL: "image"}, {Type: SegmentText, Text: "tail"}}
+	got := SetSegmentText(segments, "new")
+	if len(got) != 2 || got[0].Text != "new" || got[1].Type != SegmentImage {
+		t.Fatalf("segments = %#v", got)
+	}
+}
+
 func TestPrependAppendSegmentTextKeepsMediaInPlace(t *testing.T) {
 	segments := []MessageSegment{
 		{Type: SegmentImage, URL: "image"},

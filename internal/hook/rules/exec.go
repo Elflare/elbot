@@ -17,6 +17,7 @@ import (
 	"elbot/internal/hook"
 	hookoutput "elbot/internal/hook/output"
 	hookprotocol "elbot/internal/hook/protocol"
+	"elbot/internal/llm"
 )
 
 const (
@@ -205,14 +206,11 @@ func v2EventResult(event hook.Event, action Action, state state, raw json.RawMes
 	}
 	var payload struct {
 		hookprotocol.EventResultBase
-		Result  string `json:"result"`
-		Error   string `json:"error"`
-		Matched *bool  `json:"matched"`
-		Message *struct {
-			Text *string `json:"text"`
-		} `json:"message"`
-		Consume         bool `json:"consume"`
-		StopPropagation bool `json:"stop_propagation"`
+		Result          string `json:"result"`
+		Error           string `json:"error"`
+		Matched         *bool  `json:"matched"`
+		Consume         bool   `json:"consume"`
+		StopPropagation bool   `json:"stop_propagation"`
 	}
 	if err := hookoutput.DecodeJSON(raw, &payload); err != nil {
 		return actionResult{}, event, fmt.Errorf("decode hook.v2 event result: %w", err)
@@ -228,7 +226,16 @@ func v2EventResult(event hook.Event, action Action, state state, raw json.RawMes
 		}
 		event.Outputs = append(event.Outputs, outputs...)
 	}
-	if payload.Message != nil && payload.Message.Text != nil {
+	if payload.Message != nil && payload.Message.Segments != nil {
+		segments, err := hookoutput.BuildMessageSegments(*payload.Message.Segments, action.sourceBaseDir())
+		if err != nil {
+			return result, event, err
+		}
+		event.Message.Segments = segments
+		if event.Point == hook.PointToolCallCompleted {
+			event.Tool.Result = llm.SegmentsTextOnly(segments)
+		}
+	} else if payload.Message != nil && payload.Message.Text != nil {
 		field := strings.TrimSpace(action.Field)
 		if field == "" {
 			field = "message.text"
