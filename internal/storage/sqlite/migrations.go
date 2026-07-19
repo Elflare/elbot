@@ -255,6 +255,14 @@ CREATE INDEX idx_elnis_report_deliveries_event_status_ordinal
 ON elnis_report_deliveries(event_id, status, ordinal);
 `,
 	},
+	{
+		version: 10,
+		name:    "add_cron_delivery_state",
+		sql: `
+ALTER TABLE cron_jobs ADD COLUMN delivery_state TEXT NULL;
+ALTER TABLE cron_jobs ADD COLUMN delivery_token TEXT NULL;
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

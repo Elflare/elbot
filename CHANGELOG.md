@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复 Cron 补发使用旧 job 快照覆盖禁用、调度和任务内容，以及多个平台同时连接时重复生成、重复发送和投递状态相互覆盖的问题；LLM 返回 `completed=false` 的失败或阻塞报告现在也会冻结并完成补发。
 - 修复已完成的一次性 LLM Cron 重新启用或重新调度后直接复用旧报告、未创建新后台 Session 的问题；通知失败和平台重连仍补发同一轮已持久化结果。
 - 修复 AgentSkill 配置写入后 reload 失败会留下磁盘与运行 registry 不一致的问题；Skill reload 现改为串行、完整验证并原子替换，名称冲突或候选失败时保留旧 registry、catalog 和 AgentSkill 配置。
 - 补齐 Elnis HTTP 请求头、请求读取、响应写入和空闲连接超时，并拒绝请求体中的尾随第二个 JSON 值；未知字段继续作为无语义字段忽略。

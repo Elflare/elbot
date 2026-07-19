@@ -20,31 +20,42 @@ func BuildReportOutputs(report string, segments []llm.MessageSegment, sandbox to
 		outputs = append(outputs, delivery.Text(text))
 	}
 	for i, segment := range segments {
-		path, err := tool.ResolveSandboxRelativePath(sandbox, segment.URL)
+		out, err := BuildReportSegmentOutput(segment, sandbox)
 		if err != nil {
 			return nil, fmt.Errorf("report segment %d: %w", i, err)
 		}
-		info, err := os.Stat(path)
-		if err != nil {
-			return nil, fmt.Errorf("report segment %d stat: %w", i, err)
-		}
-		if info.IsDir() {
-			return nil, fmt.Errorf("report segment %d path is a directory", i)
-		}
-		switch segment.Type {
-		case llm.SegmentImage:
-			out := delivery.ImagePath(path)
-			out.Name = segment.Name
-			out.Source.MIMEType = segment.MIMEType
-			outputs = append(outputs, out)
-		case llm.SegmentFile:
-			out := delivery.FilePath(path)
-			out.Name = segment.Name
-			out.Source.MIMEType = segment.MIMEType
-			outputs = append(outputs, out)
-		default:
-			return nil, fmt.Errorf("report segment %d has unsupported type %q", i, segment.Type)
-		}
+		outputs = append(outputs, out)
 	}
 	return outputs, nil
+}
+
+func BuildReportSegmentOutput(segment llm.MessageSegment, sandbox tool.SandboxContext) (delivery.Output, error) {
+	var kind delivery.Kind
+	switch segment.Type {
+	case llm.SegmentImage:
+		kind = delivery.KindImage
+	case llm.SegmentFile:
+		kind = delivery.KindFile
+	default:
+		return delivery.Output{}, fmt.Errorf("unsupported type %q", segment.Type)
+	}
+
+	out := delivery.Output{Kind: kind, Name: segment.Name, Source: delivery.Source{MIMEType: segment.MIMEType}}
+	if delivery.IsHTTPMediaSource(segment.URL) {
+		out.Source.URL = strings.TrimSpace(segment.URL)
+		return out, nil
+	}
+	path, err := tool.ResolveSandboxRelativePath(sandbox, segment.URL)
+	if err != nil {
+		return delivery.Output{}, err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return delivery.Output{}, fmt.Errorf("stat: %w", err)
+	}
+	if info.IsDir() {
+		return delivery.Output{}, fmt.Errorf("path is a directory")
+	}
+	out.Source.Path = path
+	return out, nil
 }
