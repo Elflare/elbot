@@ -392,14 +392,6 @@
       "translation": "Fork is used to branch out a new conversation branch from a specific assistant response in the conversation history.\n",
       "updated_at": 1783077374
     },
-    "docs/concepts.md:paragraph:1d15c246fe540aaa6d4b262004732ad397149d0c1c15eef78017b42105123fb2": {
-      "kind": "paragraph",
-      "source": "一次性 LLM Cron 会先持久化本轮结果再发送通知。",
-      "source_file": "docs/concepts.md",
-      "source_hash": "1d15c246fe540aaa6d4b262004732ad397149d0c1c15eef78017b42105123fb2",
-      "translation": "A one-time LLM Cron will persist the result of the current round before sending the notification.",
-      "updated_at": 1784340226
-    },
     "docs/concepts.md:paragraph:1df96174092e6f5d58987488e8d13c536ac35d2edfb40cf4f270a692d23126d8": {
       "kind": "paragraph",
       "source": "工具化 AgentSkill 配置示例见 [配置说明：AgentSkill 工具化配置](configuration.md#agentskill-工具化配置)。",
@@ -584,14 +576,6 @@
       "translation": "This document explains the main concepts of ElBot to help you understand how it organizes conversations, tools, context, and extensibility.\n",
       "updated_at": 1781515483
     },
-    "docs/concepts.md:paragraph:7a372018969eb64dc50f923838e9b7213312efbdde4aa1fbbce0c21b7b9a1db2": {
-      "kind": "paragraph",
-      "source": "通知失败或服务重启时只补发同一轮结果，不会重复调用 LLM；",
-      "source_file": "docs/concepts.md",
-      "source_hash": "7a372018969eb64dc50f923838e9b7213312efbdde4aa1fbbce0c21b7b9a1db2",
-      "translation": "In case of notification failure or service restart, only the result of the same round will be resent, and the LLM will not be called repeatedly;",
-      "updated_at": 1784340226
-    },
     "docs/concepts.md:paragraph:7fc746b0d913fc734edabcab044d768898397c98a0735b56dc3ebd4e765f1bef": {
       "kind": "paragraph",
       "source": "默认流程是：\n",
@@ -615,14 +599,6 @@
       "source_hash": "886338c5daaca54fae10c5364735b42d2fa826eca26f47560234e39fba7d4c18",
       "translation": "Output Layer defines platform-independent output intents.\n",
       "updated_at": 1783077374
-    },
-    "docs/concepts.md:paragraph:8b9677379d78ca99b975d2b8ab85962e9458140c83e38823913fa8f7850e37b0": {
-      "kind": "paragraph",
-      "source": "将已完成任务重新启用或重新调度后，才会清空旧投递状态并开始新的 Session。",
-      "source_file": "docs/concepts.md",
-      "source_hash": "8b9677379d78ca99b975d2b8ab85962e9458140c83e38823913fa8f7850e37b0",
-      "translation": "Only after a completed task is re-enabled or rescheduled will the old delivery status be cleared and a new Session begin.",
-      "updated_at": 1784340226
     },
     "docs/concepts.md:paragraph:8beb76e521a616c9c7dfeaa71bf3c53817cc1e9a2f4f05f0f72cd44bb27a414e": {
       "kind": "paragraph",
@@ -872,14 +848,6 @@
       "translation": "The new branch inherits the context before the fork point but does not modify the original Session. It is suitable for trying a different approach or reworking a solution for the same problem, or continuing exploration while preserving the original conversation.\n",
       "updated_at": 1783077374
     },
-    "docs/concepts.md:paragraph:f80f159b2ac1fc234b6880632270ffeac5fab4f5d4b7ec7e0e64e9ea1cd2730a": {
-      "kind": "paragraph",
-      "source": "后台 Cron 仍受独立 sandbox 约束。\n",
-      "source_file": "docs/concepts.md",
-      "source_hash": "f80f159b2ac1fc234b6880632270ffeac5fab4f5d4b7ec7e0e64e9ea1cd2730a",
-      "translation": "Background Cron is still constrained by an independent sandbox.\n",
-      "updated_at": 1784340226
-    },
     "docs/concepts.md:paragraph:f9be8056fedfb67f814a62b22dbe081ff7db49d726b347101e561e412362d523": {
       "kind": "paragraph",
       "source": "ElBot 仍在快速开发中：\n",
@@ -1066,8 +1034,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "1ef2557fe4275a88ee11a269101df48b7d4fbbe0742d6cff92fec6ba081a83c5",
+  "source_hash": "e06eb89df855358cf0581caf201317540d2caed6b8862a14423d61899f0cca7c",
   "target": "docs.en/concepts.md",
-  "updated_at": 1784340226,
+  "updated_at": 1784437431,
   "version": 2
 }
