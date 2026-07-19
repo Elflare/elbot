@@ -96,14 +96,6 @@
       "translation": "A work Session with existing history cannot be switched directly to chat; you need to __ELBOT_CODE_0__ first, and then __ELBOT_CODE_1__.",
       "updated_at": 1781514917
     },
-    "docs/commands.md:list:4691554f72e6c9db8dad2211f514020935023e8ac97c7d157c4ca2e7ac997513": {
-      "kind": "list",
-      "source": "规则 Hook 直接使用配置里的 __ELBOT_CODE_0__；",
-      "source_file": "docs/commands.md",
-      "source_hash": "4691554f72e6c9db8dad2211f514020935023e8ac97c7d157c4ca2e7ac997513",
-      "translation": "Rule Hooks directly use the __ELBOT_CODE_0__ in the configuration;",
-      "updated_at": 1783390911
-    },
     "docs/commands.md:list:618c24a7386c36940053553ef820dc60e8388b7ae4241071f56b8e02ec097504": {
       "kind": "list",
       "source": "CLI 作为本地高权限入口，可以跨平台查看 Session；非 CLI 平台默认只查看当前平台和作用域下的 Session。",
@@ -120,6 +112,14 @@
       "translation": "__ELBOT_CODE_0__ can directly restore the most recently updated Session other than the current one without first executing a bare __ELBOT_CODE_1__; indices are sorted by update time, are not affected by pinning, and remain continuous when paging.",
       "updated_at": 1784276178
     },
+    "docs/commands.md:list:67a80dc961c39a456c1c849cbd68209626ed5711bc03748b0df4153e8f0447c5": {
+      "kind": "list",
+      "source": "规则 Hook 直接使用配置里的 __ELBOT_CODE_0__；内置 Hook 使用 __ELBOT_CODE_1__ 名称，例如 __ELBOT_CODE_2__。",
+      "source_file": "docs/commands.md",
+      "source_hash": "67a80dc961c39a456c1c849cbd68209626ed5711bc03748b0df4153e8f0447c5",
+      "translation": "Rule Hooks directly use __ELBOT_CODE_0__ from the configuration; built-in Hooks use __ELBOT_CODE_1__ names, for example __ELBOT_CODE_2__.",
+      "updated_at": 1784466598
+    },
     "docs/commands.md:list:86f4b0d40783395da1758f840cbcc66650a856e5369c4fedfbb386d7ef46feb4": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 从审计日志的 __ELBOT_CODE_1__ 事件聚合 token 用量，按模型/天/会话分组统计 prompt、completion、total、cache 和耗时。",
@@ -135,14 +135,6 @@
       "source_hash": "9400f2f042628dd3abff85e3325458fa3f499931e3b3a94c0e520db1bfd12b52",
       "translation": "Available to superadmins only.",
       "updated_at": 1782884118
-    },
-    "docs/commands.md:list:97373883e2c7b6a67aaf64e0c0843930d201380850c2324a4f7b6efe359893dd": {
-      "kind": "list",
-      "source": "持久 Hook 使用插件 ID。",
-      "source_file": "docs/commands.md",
-      "source_hash": "97373883e2c7b6a67aaf64e0c0843930d201380850c2324a4f7b6efe359893dd",
-      "translation": "Persistent Hooks use plugin IDs.",
-      "updated_at": 1783678873
     },
     "docs/commands.md:list:9bb8cb699b4337c2b627fa62837be2876ed6f421289c58268fff61b68abcf498": {
       "kind": "list",
@@ -183,14 +175,6 @@
       "source_hash": "b697cfc2231f030876aacc244a6fe0b8292a272110153d88306d4e51e4c7af11",
       "translation": "__ELBOT_CODE_0__ mode does not inject tools, making it suitable for casual chat, companionship, and low-cost Q&A.",
       "updated_at": 1781514917
-    },
-    "docs/commands.md:list:c6aabceefdd7218e3d5a373a4ee77247ca2e489c1aaaac47fac0674b5fd5c90b": {
-      "kind": "list",
-      "source": "内置 Hook 使用 __ELBOT_CODE_0__ 名称，例如 __ELBOT_CODE_1__、__ELBOT_CODE_2__；",
-      "source_file": "docs/commands.md",
-      "source_hash": "c6aabceefdd7218e3d5a373a4ee77247ca2e489c1aaaac47fac0674b5fd5c90b",
-      "translation": "Built-in Hooks use __ELBOT_CODE_0__ names, such as __ELBOT_CODE_1__ and __ELBOT_CODE_2__;",
-      "updated_at": 1783678873
     },
     "docs/commands.md:list:cb73e0f2b874464a2ffa6a5b345d0b0c0b2f28d34a219af24e2ce824f6997095": {
       "kind": "list",
@@ -1058,8 +1042,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "631e440fdc246f6992cca637f9e1e8850861f8ce0d79199688daff2601ec97b0",
+  "source_hash": "05408cce1dd5d93691366bd8618e2708fad0079ec48eb9d64582545c0cfda800",
   "target": "docs.en/commands.md",
-  "updated_at": 1784340183,
+  "updated_at": 1784466598,
   "version": 2
 }

@@ -190,7 +190,7 @@ Example:
 
 Note:
 
-- Rule Hooks directly use the `name` in the configuration; Built-in Hooks use `builtin.*` names, such as `builtin.resident_memory` and `builtin.cron.missed_once`; Persistent Hooks use plugin IDs.
+- Rule Hooks directly use `name` from the configuration; built-in Hooks use `builtin.*` names, for example `builtin.cron.missed_once`.
 - `Description` will be displayed in the list and details; rule details are only displayed in the details.
 - `reload` will reread `hooks.toml` and the `hook.toml` of each plugin, rebuild Hook registrations, and replace affected persistent processes.
 - `/hooks` is a superadmin command.
