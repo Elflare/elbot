@@ -8,6 +8,14 @@
       "translation": "__ELBOT_CODE_0__ previews for multiple tool calls in the same round will be merged into a single message to reduce platform spam.",
       "updated_at": 1782699038
     },
+    "CHANGELOG.md:list:0298de911a1c00f2891bc6e3b40b94e7ed086d8987fcbf87047a2a52cb3725a4": {
+      "kind": "list",
+      "source": "工具完成 Hook 支持返回包含 URL、路径或 base64 图片的 __ELBOT_CODE_0__；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "0298de911a1c00f2891bc6e3b40b94e7ed086d8987fcbf87047a2a52cb3725a4",
+      "translation": "Tool completion Hook supports returning __ELBOT_CODE_0__ containing URLs, paths, or base64 images;",
+      "updated_at": 1784467084
+    },
     "CHANGELOG.md:list:04792220a0453d2a80f396307ad2079f5a7ba1f001924b3ce14c678f7f132627": {
       "kind": "list",
       "source": "修复 Windows 下 __ELBOT_CODE_0__ 工具回退到 PowerShell 时中文输出可能乱码的问题。",
@@ -15,6 +23,14 @@
       "source_hash": "04792220a0453d2a80f396307ad2079f5a7ba1f001924b3ce14c678f7f132627",
       "translation": "Fixed an issue where Chinese output might be garbled when the __ELBOT_CODE_0__ tool falls back to PowerShell on Windows.",
       "updated_at": 1783048564
+    },
+    "CHANGELOG.md:list:047f7cf9833475fc12c30cf0758713ff86c16333283727a9a94630a204a6d626": {
+      "kind": "list",
+      "source": "修复工具流程的最终 LLM 请求期间收到的 pending 消息会随当前 turn 结束而丢失的问题；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "047f7cf9833475fc12c30cf0758713ff86c16333283727a9a94630a204a6d626",
+      "translation": "Fixed an issue where pending messages received during the final LLM request of a tool flow were lost when the current turn ended;",
+      "updated_at": 1784467084
     },
     "CHANGELOG.md:list:05a9e4447fd45b2d4076875eef3c2a7bdf6a16a84f6e8b476b1080ff1cffd0dd": {
       "kind": "list",
@@ -304,6 +320,22 @@
       "translation": "__ELBOT_CODE_0__ added __ELBOT_CODE_1__, enabling lightweight AST search by name for Go and Shell files;",
       "updated_at": 1783658112
     },
+    "CHANGELOG.md:list:47793fe0c09b4247d0d7fac666acbfbaa8acd5a191ebfbf22dcc67469561f434": {
+      "kind": "list",
+      "source": "request Hook 现在只修改本次新 drain 的 pending。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "47793fe0c09b4247d0d7fac666acbfbaa8acd5a191ebfbf22dcc67469561f434",
+      "translation": "The request Hook now only modifies pending messages from the current new drain.",
+      "updated_at": 1784467084
+    },
+    "CHANGELOG.md:list:489064ca9afaeaddf543b39864f46123c6b879bcd4d233305274c06ac5c6ec2c": {
+      "kind": "list",
+      "source": "Soul 和常驻记忆统一由内置 System Prompt 来源按 turn 构建；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "489064ca9afaeaddf543b39864f46123c6b879bcd4d233305274c06ac5c6ec2c",
+      "translation": "Soul and resident memory are now uniformly constructed by turn from the built-in System Prompt source;",
+      "updated_at": 1784467084
+    },
     "CHANGELOG.md:list:48a9dbb08660f2dae754713aea25100d54b59eb98c8a3fea1d54df9cfb657b67": {
       "kind": "list",
       "source": "read_el_skill 现在依赖modify_el_skill，方便执行可能的修改",
@@ -511,6 +543,14 @@
       "source_hash": "7500a6bebabf390101368282085b77b23e0a803832db24807d92874bbcf13f04",
       "translation": "Added __ELBOT_CODE_2__ and __ELBOT_CODE_3__ parameters to the __ELBOT_CODE_1__ operation of __ELBOT_CODE_0__: when __ELBOT_CODE_4__, it matches the entire line by single-line prefix (tolerating leading indentation to avoid newline character matching errors); __ELBOT_CODE_5__ (default) maintains exact substring semantics.",
       "updated_at": 1782298716
+    },
+    "CHANGELOG.md:list:79e13956de2275bf7954e4071d4c7b43e177af53dfe03d7cdaac4cbd1cab4431": {
+      "kind": "list",
+      "source": "修复 __ELBOT_CODE_0__ 可以临时改写本 turn 初始输入或历史消息、pending 图片在排队时丢失且 Hook 修改未持久化的问题；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "79e13956de2275bf7954e4071d4c7b43e177af53dfe03d7cdaac4cbd1cab4431",
+      "translation": "Fixed an issue where __ELBOT_CODE_0__ could temporarily rewrite the initial input or historical messages of the current turn, and pending images were lost during queuing while Hook modifications were not persisted;",
+      "updated_at": 1784467084
     },
     "CHANGELOG.md:list:7d4eb6c7f9421281249ea4260a8e00117bc3dc92316a27b354181c10219e5e5d": {
       "kind": "list",
@@ -760,6 +800,14 @@
       "translation": "Optimized the __ELBOT_CODE_0__ tool, supporting directory search, selection of search results by index, and precise return of complete function content and its start and end line numbers based on AST function names.",
       "updated_at": 1784167898
     },
+    "CHANGELOG.md:list:a4d9db282b34bc855fb836df1e6af9afcc930d531a253435487b572420d5a595": {
+      "kind": "list",
+      "source": "当前回复现在正常结束，多条 pending 合并后自动开启下一轮请求。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a4d9db282b34bc855fb836df1e6af9afcc930d531a253435487b572420d5a595",
+      "translation": "The current response now ends normally, and the next round of requests is automatically started after multiple pending messages are merged.",
+      "updated_at": 1784467084
+    },
     "CHANGELOG.md:list:a57014269f2740133b4741d7c07d93ac6b9d18e72ed1c452cf164c62c16e3c54": {
       "kind": "list",
       "source": "同一 Session 的同一路径与切换、重置入口共享一次性记录，不会重复注入。",
@@ -799,6 +847,14 @@
       "source_hash": "a9132ec799ad162e44f3624974b7fd5075c636df96835cdb8c1aec9d01061bbe",
       "translation": "Update __ELBOT_CODE_0__ version to v3",
       "updated_at": 1782704139
+    },
+    "CHANGELOG.md:list:a9d6da892e7e5b7ce145d29cb24cfd5cf97b4af2fdc44bdd550062d95d5ffbb6": {
+      "kind": "list",
+      "source": "常驻记忆不再注册为 Hook，普通 Hook 的 __ELBOT_CODE_0__ 明确为只读上下文。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a9d6da892e7e5b7ce145d29cb24cfd5cf97b4af2fdc44bdd550062d95d5ffbb6",
+      "translation": "Resident memory is no longer registered as a Hook; the __ELBOT_CODE_0__ of ordinary Hooks is explicitly defined as read-only context.",
+      "updated_at": 1784467084
     },
     "CHANGELOG.md:list:aad5c8df94eeb1f80e25162d64492b3386d626e486461b5cff2001c143cc7fbc": {
       "kind": "list",
@@ -944,6 +1000,14 @@
       "translation": "**SQLite Persistence**: Unified storage for Sessions, messages, context summaries, tool call records, Cron jobs, and Elnis events.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:cd8d247a2da615761263d4d1c775cd8b4f3bcb8dce6a38e69a1325d2c885c46b": {
+      "kind": "list",
+      "source": "实际执行、后续请求和 transcript 现在统一使用最终 arguments。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "cd8d247a2da615761263d4d1c775cd8b4f3bcb8dce6a38e69a1325d2c885c46b",
+      "translation": "Actual execution, subsequent requests, and transcripts now uniformly use the final arguments.",
+      "updated_at": 1784467084
+    },
     "CHANGELOG.md:list:ce3e9cc6dd15510c9cfe7dbcae094bd1f1cb641bc8875c00f0d3c95d4642854d": {
       "kind": "list",
       "source": "**Elnis 监听枢纽**：接收 Elwisp 通过 Elvena HTTP 协议投递的外部事件，支持 record/direct/llm 三种模式与多目标投递。",
@@ -952,6 +1016,14 @@
       "translation": "**Elnis listening hub**: Receives external events delivered by Elwisp via the Elvena HTTP protocol, supporting three modes (record/direct/llm) and multi-target delivery.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:d0175f70fdf81c63c972bdf310a17e8f41d2292f524be381fd252b494bcce468": {
+      "kind": "list",
+      "source": "用户输入和工具 pending 的前置 Hook 支持用 __ELBOT_CODE_0__ 同时改写文字和附加图片，最终多模态内容会在请求前写入会话历史。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d0175f70fdf81c63c972bdf310a17e8f41d2292f524be381fd252b494bcce468",
+      "translation": "Pre-hooks for user input and tool pending support using __ELBOT_CODE_0__ to simultaneously rewrite text and attach images; the final multimodal content will be written to the Session history before the request.",
+      "updated_at": 1784467084
+    },
     "CHANGELOG.md:list:d3908641b559bc54ede96c20cd1c652257d818385b70144f4cdcd75c3cfecf17": {
       "kind": "list",
       "source": "可用 __ELBOT_CODE_0__ 取消长时间运行的 Hook，手动取消按正常取消记录。",
@@ -959,6 +1031,14 @@
       "source_hash": "d3908641b559bc54ede96c20cd1c652257d818385b70144f4cdcd75c3cfecf17",
       "translation": "Use __ELBOT_CODE_0__ to cancel long-running Hooks; manual cancellations are recorded as normal cancellations.",
       "updated_at": 1783571675
+    },
+    "CHANGELOG.md:list:d408cf85360e0661ed43f8e27b1c93b23ea162bb86b523ef7ac4e8bdfce07e49": {
+      "kind": "list",
+      "source": "修复工具 prepared Hook 改写后的参数没有同步到当前 LLM 上下文，以及进程内 Hook 可以改写工具 ID/名称的问题；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d408cf85360e0661ed43f8e27b1c93b23ea162bb86b523ef7ac4e8bdfce07e49",
+      "translation": "Fixed an issue where parameters rewritten by the tool prepared Hook were not synchronized to the current LLM context, and in-process Hooks could rewrite tool IDs/names;",
+      "updated_at": 1784467084
     },
     "CHANGELOG.md:list:d645cf77c4ee588c46e1393622a3b1673b35ad938b425f17eba22044d2bdc5a7": {
       "kind": "list",
@@ -1055,6 +1135,14 @@
       "source_hash": "e2bba3f2fbf67c598073f06e0fb772f830654cf2b0ceca05bbb54f0354aa94bd",
       "translation": "Platform media output now supports identifying __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, and __ELBOT_CODE_4__ sources in __ELBOT_CODE_0__;",
       "updated_at": 1783048564
+    },
+    "CHANGELOG.md:list:e61e924ffeaf3af76674496454c2f62693c27ea3b0aa3815d172dae151b1521b": {
+      "kind": "list",
+      "source": "多模态工具结果可持久化并按 OpenAI Chat Completions 协议作为后续图片消息提供给模型。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "e61e924ffeaf3af76674496454c2f62693c27ea3b0aa3815d172dae151b1521b",
+      "translation": "Multimodal tool results can be persisted and provided to the model as subsequent image messages according to the OpenAI Chat Completions protocol.",
+      "updated_at": 1784467084
     },
     "CHANGELOG.md:list:e674fa7fc18af87b45660da3fff098ff0a482256ae0cdc7d64932ce221ad779c": {
       "kind": "list",
@@ -1154,8 +1242,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "d971cfdab8fd0625d21b27225c5cc775aaca21f57c13acaddc0c33ee5e58cb11",
+  "source_hash": "6884feaa9a7e94ca939fa7d2037c769af595b7a174e31264beafe8ff7f7690f6",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784437461,
+  "updated_at": 1784467084,
   "version": 2
 }

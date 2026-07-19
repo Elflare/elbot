@@ -16,11 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/resume <编号>` now restores non-current Sessions directly based on the most recent update time; `1` represents the most recent item, and it is no longer required to first execute a bare `/resume` to establish numbering.
 - Context compaction is changed to retain original user utterances from history and filter tool results; upon success, it switches to an independent `原标题 compacted-N` Session, and the compacted content along with the new input is fixedly materialized as the first user message; Simultaneously fixed concurrency issues related to model switching, `/stop`, and Session change commands.
 - Hook Actor now provides platform nicknames, group nicknames, and pure display names; chat history is saved and searched separately by platform user ID and name.
+- Soul and resident memory are now uniformly constructed by turn from the built-in System Prompt source; Resident memory is no longer registered as a Hook; the `llm.messages` of ordinary Hooks is explicitly defined as read-only context.
 - `workspace` tools will also load the `AGENTS.md`/`AGENT.md` of the current directory when they are first discovered or injected; The same path within the same Session shares a one-time record with the switch and reset entries, so it will not be injected repeatedly.
 - Optimized the `read_file` tool, supporting directory search, selection of search results by index, and precise return of complete function content and its start and end line numbers based on AST function names.
 
 ### Fixed
 
+- Fixed an issue where pending messages received during the final LLM request of a tool flow were lost when the current turn ended; The current response now ends normally, and the next round of requests is automatically started after multiple pending messages are merged.
+- Fixed an issue where `llm.request.prepared` could temporarily rewrite the initial input or historical messages of the current turn, and pending images were lost during queuing while Hook modifications were not persisted; The request Hook now only modifies pending messages from the current new drain.
+- Fixed an issue where parameters rewritten by the tool prepared Hook were not synchronized to the current LLM context, and in-process Hooks could rewrite tool IDs/names; Actual execution, subsequent requests, and transcripts now uniformly use the final arguments.
 - Fixed issues where Cron re-delivery used old job snapshots to overwrite disable status, scheduling, and task content, as well as duplicate generation, duplicate sending, and delivery statuses overwriting each other when multiple platforms were connected simultaneously; Failure or blocking reports from LLM returning `completed=false` will now also be frozen and complete the re-delivery.
 - Fixed an issue where a completed one-time LLM Cron would directly reuse the old report and fail to create a new background Session after being re-enabled or rescheduled; notification failures and platform reconnections still resend the same round of persisted results.
 - Fixed an issue where a reload failure after writing AgentSkill configuration would leave an inconsistency between the disk and the runtime registry; Skill reload is now changed to be serial, fully validated, and atomically replaced; the old registry, catalog, and AgentSkill configuration are retained in case of name conflicts or candidate failures.
@@ -33,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Refactor hook system**
+- Tool completion Hook supports returning `message.segments` containing URLs, paths, or base64 images; Multimodal tool results can be persisted and provided to the model as subsequent image messages according to the OpenAI Chat Completions protocol.
+- Pre-hooks for user input and tool pending support using `message.segments` to simultaneously rewrite text and attach images; the final multimodal content will be written to the Session history before the request.
 - `/chat` and `/work` now support carrying messages directly, which are sent immediately after switching the Session mode; Session command status is now isolated by platform Scope.
 - QQ OneBot added `send_file_mode` configuration; local images and files are sent using base64 by default, but can be explicitly changed to `file_uri` in shared file system deployments.
 - `/log` added `-s` and `--system` to filter and display `system prompt` logs.
