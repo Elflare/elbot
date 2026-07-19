@@ -27,12 +27,7 @@ const (
 	defaultRetryDelay        = 2 * time.Second
 )
 
-type RetryEvent struct {
-	Attempt    int
-	MaxRetries int
-	Delay      time.Duration
-	Err        error
-}
+type RetryEvent = llm.RetryEvent
 
 type RequestOptions struct {
 	FirstChunkTimeout time.Duration
@@ -83,10 +78,11 @@ func New(baseURL, apiKey string, extraPayload map[string]any) *Adapter {
 }
 
 func NewWithModelExtraPayloads(baseURL, apiKey string, extraPayload map[string]any, modelExtraPayloads map[string]map[string]any) *Adapter {
-	return NewWithOptions(baseURL, apiKey, extraPayload, modelExtraPayloads, RequestOptions{})
+	adapter, _ := NewWithOptions(baseURL, apiKey, extraPayload, modelExtraPayloads, RequestOptions{})
+	return adapter
 }
 
-func NewWithOptions(baseURL, apiKey string, extraPayload map[string]any, modelExtraPayloads map[string]map[string]any, opts RequestOptions) *Adapter {
+func NewWithOptions(baseURL, apiKey string, extraPayload map[string]any, modelExtraPayloads map[string]map[string]any, opts RequestOptions) (*Adapter, error) {
 	baseURL = strings.TrimRight(baseURL, "/")
 	opts = opts.withDefaults()
 	transport := http.DefaultTransport.(*http.Transport).Clone()
@@ -95,7 +91,7 @@ func NewWithOptions(baseURL, apiKey string, extraPayload map[string]any, modelEx
 	if strings.TrimSpace(opts.Proxy) != "" {
 		proxyURL, err := url.Parse(opts.Proxy)
 		if err != nil {
-			panic(fmt.Sprintf("invalid proxy URL %q: %v", opts.Proxy, err))
+			return nil, fmt.Errorf("invalid proxy URL %q: %w", opts.Proxy, err)
 		}
 		transport.Proxy = http.ProxyURL(proxyURL)
 	}
@@ -111,7 +107,7 @@ func NewWithOptions(baseURL, apiKey string, extraPayload map[string]any, modelEx
 		retryInitialDelay:  opts.RetryInitialDelay,
 		onRetry:            opts.OnRetry,
 		loggedSystem:       map[string]bool{},
-	}
+	}, nil
 }
 
 func (a *Adapter) SetLogger(logger *slog.Logger) {

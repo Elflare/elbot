@@ -15,6 +15,22 @@ import (
 	"elbot/internal/llm"
 )
 
+func mustNewWithOptions(t *testing.T, baseURL, apiKey string, extraPayload map[string]any, modelExtraPayloads map[string]map[string]any, opts RequestOptions) *Adapter {
+	t.Helper()
+	adapter, err := NewWithOptions(baseURL, apiKey, extraPayload, modelExtraPayloads, opts)
+	if err != nil {
+		t.Fatalf("NewWithOptions: %v", err)
+	}
+	return adapter
+}
+
+func TestNewWithOptionsReturnsInvalidProxyError(t *testing.T) {
+	_, err := NewWithOptions("https://example.invalid/v1", "key", nil, nil, RequestOptions{Proxy: "://bad proxy"})
+	if err == nil || !strings.Contains(err.Error(), "invalid proxy URL") {
+		t.Fatalf("NewWithOptions() error = %v", err)
+	}
+}
+
 func TestChatStream_BasicContent(t *testing.T) {
 	var capturedPath string
 	var capturedBody []byte
@@ -311,7 +327,7 @@ func TestChatStream_FirstChunkCanArriveAfterIdleTimeout(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := NewWithOptions(srv.URL, "test-key", nil, nil, RequestOptions{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{
 		FirstChunkTimeout: 100 * time.Millisecond,
 		StreamIdleTimeout: 10 * time.Millisecond,
 		MaxRetries:        1,
@@ -346,7 +362,7 @@ func TestChatStream_StreamIdleTimeout(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := NewWithOptions(srv.URL, "test-key", nil, nil, RequestOptions{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{
 		FirstChunkTimeout: 100 * time.Millisecond,
 		StreamIdleTimeout: 10 * time.Millisecond,
 		MaxRetries:        1,
@@ -393,7 +409,7 @@ func TestChatStream_StreamIdleResetsOnEachChunk(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := NewWithOptions(srv.URL, "test-key", nil, nil, RequestOptions{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{
 		FirstChunkTimeout: 100 * time.Millisecond,
 		StreamIdleTimeout: 30 * time.Millisecond,
 		MaxRetries:        1,
@@ -434,7 +450,7 @@ func TestChatStream_ActiveStreamCompletesWithoutResponseTimeout(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := NewWithOptions(srv.URL, "test-key", nil, nil, RequestOptions{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{
 		FirstChunkTimeout: 100 * time.Millisecond,
 		StreamIdleTimeout: 50 * time.Millisecond,
 		MaxRetries:        1,
@@ -713,7 +729,7 @@ func TestChatStream_RetriesRetryableHTTPStatus(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := NewWithOptions(srv.URL, "test-key", nil, nil, RequestOptions{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{
 		MaxRetries:        3,
 		RetryInitialDelay: time.Millisecond,
 		OnRetry: func(ctx context.Context, event RetryEvent) {
@@ -754,7 +770,7 @@ func TestChatStream_ReportsMissingDoneAsInterrupted(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := NewWithOptions(srv.URL, "test-key", nil, nil, RequestOptions{MaxRetries: 1, RetryInitialDelay: time.Millisecond})
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{MaxRetries: 1, RetryInitialDelay: time.Millisecond})
 	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},

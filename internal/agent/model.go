@@ -15,24 +15,22 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
-	"elbot/internal/llm/openai"
 	"elbot/internal/storage"
 )
 
 type modelRuntimeState struct {
-	llmClient        llm.LLM
-	model            string
-	providerName     string
-	provider         config.ProviderConfig
-	llmRequestConfig config.LLMRequestConfig
-	providers        map[string]config.ProviderConfig
-	modeModels       map[string]config.ModelSelection
-	selectionMu      sync.RWMutex
-	clients          map[string]llm.LLM
-	clientsMu        sync.Mutex
-	allModels        []string
-	modelListCache   map[string]modelListCacheEntry
-	modelListMu      sync.Mutex
+	llmClient      llm.LLM
+	model          string
+	providerName   string
+	provider       config.ProviderConfig
+	providers      map[string]config.ProviderConfig
+	modeModels     map[string]config.ModelSelection
+	selectionMu    sync.RWMutex
+	clients        map[string]llm.LLM
+	clientsMu      sync.RWMutex
+	allModels      []string
+	modelListCache map[string]modelListCacheEntry
+	modelListMu    sync.Mutex
 }
 
 type modelListCacheEntry struct {
@@ -44,17 +42,16 @@ type modelListOptions struct {
 	Fresh bool
 }
 
-func newModelRuntimeState(client llm.LLM, model, providerName string, provider config.ProviderConfig, llmRequestConfig config.LLMRequestConfig, providers map[string]config.ProviderConfig, modeModels map[string]config.ModelSelection, clients map[string]llm.LLM) modelRuntimeState {
+func newModelRuntimeState(client llm.LLM, model, providerName string, provider config.ProviderConfig, providers map[string]config.ProviderConfig, modeModels map[string]config.ModelSelection, clients map[string]llm.LLM) modelRuntimeState {
 	return modelRuntimeState{
-		llmClient:        client,
-		model:            model,
-		providerName:     providerName,
-		provider:         provider,
-		llmRequestConfig: llmRequestConfig,
-		providers:        providers,
-		modeModels:       cloneModeModels(modeModels),
-		clients:          clients,
-		modelListCache:   map[string]modelListCacheEntry{},
+		llmClient:      client,
+		model:          model,
+		providerName:   providerName,
+		provider:       provider,
+		providers:      providers,
+		modeModels:     cloneModeModels(modeModels),
+		clients:        clients,
+		modelListCache: map[string]modelListCacheEntry{},
 	}
 }
 
@@ -381,26 +378,17 @@ func modelSelectionKey(provider, model string) string {
 }
 
 func (a *Agent) clientForProvider(providerName string) llm.LLM {
-	a.modelRuntime.clientsMu.Lock()
-	defer a.modelRuntime.clientsMu.Unlock()
-	if client := a.modelRuntime.clients[providerName]; client != nil {
-		return client
-	}
-	provider := a.modelRuntime.providers[providerName]
-	client := openai.NewWithOptions(provider.BaseURL, provider.APIKey, provider.ExtraPayload, agentModelExtraPayloads(provider.ModelConfigs), llmRequestOptions(a.modelRuntime.llmRequestConfig, provider.Proxy))
-
-	client.SetLogger(a.logger)
-	a.attachLLMRetryNotifier(client, providerName)
-	a.modelRuntime.clients[providerName] = client
-	return client
+	a.modelRuntime.clientsMu.RLock()
+	defer a.modelRuntime.clientsMu.RUnlock()
+	return a.modelRuntime.clients[providerName]
 }
 
 func (a *Agent) attachLLMRetryNotifier(client llm.LLM, providerName string) {
-	adapter, ok := client.(*openai.Adapter)
+	adapter, ok := client.(llm.RetryNotifier)
 	if !ok {
 		return
 	}
-	adapter.SetRetryNotifier(func(ctx context.Context, event openai.RetryEvent) {
+	adapter.SetRetryNotifier(func(ctx context.Context, event llm.RetryEvent) {
 		if event.Err == nil || errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return
 		}
@@ -530,25 +518,4 @@ func joinModelMatches(matches []agentcommands.ModelOption) string {
 		parts[i] = fmt.Sprintf("[%d] %s/%s", m.Index, m.Provider, m.Model)
 	}
 	return strings.Join(parts, ", ")
-}
-
-func llmRequestOptions(cfg config.LLMRequestConfig, proxy string) openai.RequestOptions {
-	return openai.RequestOptions{
-		FirstChunkTimeout: time.Duration(cfg.FirstChunkTimeoutSeconds) * time.Second,
-		StreamIdleTimeout: time.Duration(cfg.StreamIdleTimeoutSeconds) * time.Second,
-		MaxRetries:        cfg.MaxRetries,
-		RetryInitialDelay: time.Duration(cfg.RetryInitialDelaySeconds) * time.Second,
-		Proxy:             proxy,
-	}
-}
-
-func agentModelExtraPayloads(modelConfigs map[string]config.ModelConfig) map[string]map[string]any {
-	out := map[string]map[string]any{}
-
-	for model, cfg := range modelConfigs {
-		if cfg.ExtraPayload != nil {
-			out[model] = cfg.ExtraPayload
-		}
-	}
-	return out
 }

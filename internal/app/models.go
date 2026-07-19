@@ -1,9 +1,11 @@
 package app
 
 import (
+	"fmt"
 	"time"
 
 	"elbot/internal/config"
+	"elbot/internal/llm"
 	"elbot/internal/llm/openai"
 )
 
@@ -12,24 +14,17 @@ type defaultModelFactory struct{}
 func (defaultModelFactory) Build(req ModelRequest) (ModelClients, error) {
 	cfg := req.Foundation.Config
 	logger := req.Foundation.Logger
-	workModel := cfg.ModeModels["work"]
-	provider := cfg.Providers[workModel.Provider]
-
-	primary := openai.NewWithOptions(provider.BaseURL, provider.APIKey, provider.ExtraPayload, modelExtraPayloads(provider.ModelConfigs), appLLMRequestOptions(cfg.LLMRequest, provider.Proxy))
-	primary.SetLogger(logger)
-	naming := primary
-	namingModel := ""
-	if cfg.NamingModel.Provider != "" && cfg.NamingModel.Model != "" {
-		if namingProvider, ok := cfg.Providers[cfg.NamingModel.Provider]; ok {
-			naming = openai.NewWithOptions(namingProvider.BaseURL, namingProvider.APIKey, namingProvider.ExtraPayload, modelExtraPayloads(namingProvider.ModelConfigs), appLLMRequestOptions(cfg.LLMRequest, namingProvider.Proxy))
-			naming.SetLogger(logger)
-			namingModel = cfg.NamingModel.Model
-		} else {
-			logger.Warn("session naming provider not found, fallback to main model", "provider", cfg.NamingModel.Provider)
+	clients := make(map[string]llm.LLM, len(cfg.Providers))
+	for name, provider := range cfg.Providers {
+		client, err := openai.NewWithOptions(provider.BaseURL, provider.APIKey, provider.ExtraPayload, modelExtraPayloads(provider.ModelConfigs), appLLMRequestOptions(cfg.LLMRequest, provider.Proxy))
+		if err != nil {
+			return ModelClients{}, fmt.Errorf("create provider %q client: %w", name, err)
 		}
+		client.SetLogger(logger)
+		clients[name] = client
 	}
 	req.Profiler.Mark("llm adapters")
-	return ModelClients{Primary: primary, Naming: naming, NamingModel: namingModel}, nil
+	return ModelClients{ByProvider: clients}, nil
 }
 
 func appLLMRequestOptions(cfg config.LLMRequestConfig, proxy string) openai.RequestOptions {
