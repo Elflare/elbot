@@ -112,6 +112,14 @@
       "translation": "JSON Syntax",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:heading:2e2cce1ed1fbee514bfa142d3eaf77f1be0e09e0f7d416c48555ff9c3bbbcb6d": {
+      "kind": "heading",
+      "source": "消息内容修改",
+      "source_file": "docs/hooks.md",
+      "source_hash": "2e2cce1ed1fbee514bfa142d3eaf77f1be0e09e0f7d416c48555ff9c3bbbcb6d",
+      "translation": "Message Content Modification",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:heading:32c3f5fd3f36a027934751eb5576fd2208e07488752acac971b998a13b224473": {
       "kind": "heading",
       "source": "waiting、并发与取消",
@@ -248,14 +256,6 @@
       "translation": "Common Fields, Order and Control",
       "updated_at": 1783771179
     },
-    "docs/hooks.md:list:0f15fd574716c563e6eee271f4dd9910ced0ca7b44c72a7c8ac6dfacbb71226f": {
-      "kind": "list",
-      "source": "exec response 的 __ELBOT_CODE_0__ 覆写会重建为纯 text segment，原图片和文件 segment 会丢失。",
-      "source_file": "docs/hooks.md",
-      "source_hash": "0f15fd574716c563e6eee271f4dd9910ced0ca7b44c72a7c8ac6dfacbb71226f",
-      "translation": "Overwriting __ELBOT_CODE_0__ in the exec response will reconstruct it as a pure text segment, and the original image and file segments will be lost.",
-      "updated_at": 1783771179
-    },
     "docs/hooks.md:list:1afb8182c866497b73b13535663f051b392ca911ea24ce354ccd037822299d2a": {
       "kind": "list",
       "source": "阻断策略命中、worker 退出、停止或重载会清理该插件租约。",
@@ -264,6 +264,14 @@
       "translation": "Blocking strategy hits, worker exits, stops, or reloads will clear the plugin lease.",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:list:21c9908a3aadef709e270b3fb6fa5e693cff33faaae3189727509697684decc3": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 只在工具流程下一次请求前存在新 pending 时绑定该 pending；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "21c9908a3aadef709e270b3fb6fa5e693cff33faaae3189727509697684decc3",
+      "translation": "__ELBOT_CODE_0__ is bound to the pending item only when a new pending exists before the next request in the tool flow;",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:list:28d01b9f2d4ced97f17ff6894b20a78a7233f1be35b5adad4801d8187d927fc3": {
       "kind": "list",
       "source": "插件返回 __ELBOT_CODE_0__ 时，再从后续规则继续传播，最后可进入命令或主 LLM。",
@@ -271,6 +279,14 @@
       "source_hash": "28d01b9f2d4ced97f17ff6894b20a78a7233f1be35b5adad4801d8187d927fc3",
       "translation": "When the plugin returns __ELBOT_CODE_0__, propagation continues from subsequent rules, and can finally enter a command or the main LLM.",
       "updated_at": 1783825265
+    },
+    "docs/hooks.md:list:30ea95f461581195d0853fdbe16342d0a847bd9f47da5f5bc09f6fd4d12b9bdc": {
+      "kind": "list",
+      "source": "没有 pending 时不提供可编辑消息，不能再次修改本 turn 初始输入。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "30ea95f461581195d0853fdbe16342d0a847bd9f47da5f5bc09f6fd4d12b9bdc",
+      "translation": "When there is no pending item, no editable message is provided, and the initial input of this turn cannot be modified again.",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:list:343fe68f6abd6d2032b06f16245af354483c46c27d0cc0a0c504ef7f67a89b10": {
       "kind": "list",
@@ -336,6 +352,14 @@
       "translation": "For transient workers, the process is closed simultaneously.",
       "updated_at": 1783825265
     },
+    "docs/hooks.md:list:752ba8ad0a091e103fb42b4d46bf2242d3987daf16d6cb6e9cff59dd823b363a": {
+      "kind": "list",
+      "source": "exec response 的 __ELBOT_CODE_0__ 覆写只替换 text segment，原图片和文件 segment 会保留。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "752ba8ad0a091e103fb42b4d46bf2242d3987daf16d6cb6e9cff59dd823b363a",
+      "translation": "The __ELBOT_CODE_0__ overwrite of the exec response only replaces the text segment; original image and file segments will be preserved.",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:list:7e6945229958122f2d30165e4006ec23e66b552de13b568c26adeefef6ea74e3": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ / __ELBOT_CODE_1__ 修改首个或最后一个 text segment；",
@@ -351,6 +375,14 @@
       "source_hash": "84df50a6c33070c68814ae654d6caff21463bd790cb476ac8e9a785dda493bd6",
       "translation": "Images and files are preserved.",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:list:85a9add32d0cf4af1bbb33272cd4e7bb0a8fb67d89faecdd2f259fa04d59ea25": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 绑定已经实际进入工具执行阶段后产生的工具结果；预检失败、确认拒绝或启动前失败不触发该点。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "85a9add32d0cf4af1bbb33272cd4e7bb0a8fb67d89faecdd2f259fa04d59ea25",
+      "translation": "__ELBOT_CODE_0__ is bound to the tool result produced after actually entering the tool execution phase; pre-check failure, confirmation rejection, or failure before startup will not trigger this point.",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:list:8faba9089ffef7ec502117b0b8f550a3061df6d1c7b3db2fd5bf313cee2fb91f": {
       "kind": "list",
@@ -383,6 +415,14 @@
       "source_hash": "c8aa19094b7370c9f0cb02cf0a43c271cb170b45232baf06d88ae71395305c6f",
       "translation": "In normal serial distribution, the first worker to return __ELBOT_CODE_0__ holds the route, and subsequent worker trigger rules will no longer distribute this route.",
       "updated_at": 1783825265
+    },
+    "docs/hooks.md:list:e873dc829708f502b02d06b34076843a16a62c8fbaba8ca6481488d8c8660a89": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__、__ELBOT_CODE_1__ 和 __ELBOT_CODE_2__ 绑定本 turn 初始用户消息。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "e873dc829708f502b02d06b34076843a16a62c8fbaba8ca6481488d8c8660a89",
+      "translation": "__ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__ are bound to the initial user message of this turn.",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:paragraph:0111d6ae39b723fac26c08abced963f1d89aa7bc37bfc6c6fec9d290168665aa": {
       "kind": "paragraph",
@@ -448,13 +488,13 @@
       "translation": "The same __ELBOT_CODE_0__ is executed serially within the same worker, while different routes can be executed in parallel.",
       "updated_at": 1783771179
     },
-    "docs/hooks.md:paragraph:0c2752ac266ba9f3143799f2c60c2a9482e85711ba659448b6bb10abcc367ef1": {
+    "docs/hooks.md:paragraph:0b3c760683adfe0ea9768748bc9d382887c221b8d6078f343d2b8e4579ea84c1": {
       "kind": "paragraph",
-      "source": "插件进程应从 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 读取原始结构。\n",
+      "source": "改写后的参数同时用于实际执行、后续 LLM 请求和 transcript。\n",
       "source_file": "docs/hooks.md",
-      "source_hash": "0c2752ac266ba9f3143799f2c60c2a9482e85711ba659448b6bb10abcc367ef1",
-      "translation": "The plugin process should read the original structure from __ELBOT_CODE_0__ or __ELBOT_CODE_1__.\n",
-      "updated_at": 1783771179
+      "source_hash": "0b3c760683adfe0ea9768748bc9d382887c221b8d6078f343d2b8e4579ea84c1",
+      "translation": "The rewritten parameters are used for actual execution, subsequent LLM requests, and the transcript.\n",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:paragraph:0c92d535d1f6224a881d03940f47cbd72ba007a0cbc85eb77cc9535f6ea48ff4": {
       "kind": "paragraph",
@@ -543,6 +583,14 @@
       "source_hash": "175e189a617c755cee7e94c552097c8eaf4d685e02af77d5fce869855d3e65c3",
       "translation": "Write to the plugin directory or __ELBOT_CODE_0__ when persistence is required.\n",
       "updated_at": 1784025692
+    },
+    "docs/hooks.md:paragraph:17d4b8b792d630a8fc8aa1a51e8e994ea3bd42d66fde3cfb18e2b8e5b4e2276c": {
+      "kind": "paragraph",
+      "source": "工具准备事件中的 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 只读，只有 __ELBOT_CODE_2__ 可以改写；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "17d4b8b792d630a8fc8aa1a51e8e994ea3bd42d66fde3cfb18e2b8e5b4e2276c",
+      "translation": "In the tool preparation event, __ELBOT_CODE_0__ and __ELBOT_CODE_1__ are read-only; only __ELBOT_CODE_2__ can be rewritten;",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:paragraph:18926a4492cbdf0317a02d65fa0c960ea67132d4114c2b3fc1e728316156cb42": {
       "kind": "paragraph",
@@ -655,6 +703,14 @@
       "source_hash": "1fef06942ed4a36de1055286d3f9dba1c724801de9c4a70d8aee3ab8a4d17ea3",
       "translation": "No additional timeout when __ELBOT_CODE_0__ is __ELBOT_CODE_1__ or omitted; it cannot be a negative number.\n",
       "updated_at": 1784025692
+    },
+    "docs/hooks.md:paragraph:21aa8da9e093acd8087f6259a8c3180212177890468d846692e21ee4bebb2311": {
+      "kind": "paragraph",
+      "source": "工具完成事件中的 __ELBOT_CODE_0__ 为 __ELBOT_CODE_1__，__ELBOT_CODE_2__ 是工具的原始多模态结果，__ELBOT_CODE_3__ 和 __ELBOT_CODE_4__ 标识工具及本次调用。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "21aa8da9e093acd8087f6259a8c3180212177890468d846692e21ee4bebb2311",
+      "translation": "In the tool completion event, __ELBOT_CODE_0__ is __ELBOT_CODE_1__, __ELBOT_CODE_2__ is the original multimodal result of the tool, and __ELBOT_CODE_3__ and __ELBOT_CODE_4__ identify the tool and this specific call.",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:paragraph:2252ec30356c37b53308d82931401ed1ebede8f267a42830adb9526adfdd6750": {
       "kind": "paragraph",
@@ -832,6 +888,14 @@
       "translation": "Although __ELBOT_CODE_0__ action can create an output intent at all Hook points, only the points in the table above where 'outputs will be sent' will consume it.",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:400bccd7922b9f3e386fe40877d486c7637081da5c4bbfc7b2061f0aa4eee483": {
+      "kind": "paragraph",
+      "source": "纯文本继续只保存 __ELBOT_CODE_0__，包含图片等非文本内容时额外保存完整 segments。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "400bccd7922b9f3e386fe40877d486c7637081da5c4bbfc7b2061f0aa4eee483",
+      "translation": "For plain text continuations, only __ELBOT_CODE_0__ is saved; when non-text content such as images is included, complete segments are additionally saved.",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:paragraph:4390fb33faeb337ba392a93881a397834814856b15f6281ad55551f057b0af12": {
       "kind": "paragraph",
       "source": "value 必须是合法 JSON，压缩后单值最大 1 MiB；",
@@ -864,6 +928,14 @@
       "translation": "Known fields are rendered as empty strings when they have no value in the current event;",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:4cbd2574536cb55685172413caa339e25635d1d4855d34cc2ee48a7d10afbaf6": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 始终指向当前 Hook 点明确绑定的新消息，不表示完整历史：\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "4cbd2574536cb55685172413caa339e25635d1d4855d34cc2ee48a7d10afbaf6",
+      "translation": "__ELBOT_CODE_0__ always points to the new message explicitly bound to the current Hook point, and does not represent the full history:\n",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:paragraph:4d0e05d0933ddc82dc85adefbce39a5820cf97991405520ccb9d41174ca50fda": {
       "kind": "paragraph",
       "source": "不要在两个点配置同一 append/prepend 规则，否则文本会被处理两次。\n",
@@ -888,6 +960,14 @@
       "translation": "The __ELBOT_CODE_0__ of the response must be the same as the request.\n",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:510ee55c3720a4b98fbc15042b3359c6dd9a364b804b4ddc7405a82667fa4691": {
+      "kind": "paragraph",
+      "source": "图片可使用 HTTP(S) __ELBOT_CODE_0__、相对插件目录的 __ELBOT_CODE_1__ 或最大 10 MiB 的 __ELBOT_CODE_2__，path/base64 会规范化为模型可读取的数据 URL。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "510ee55c3720a4b98fbc15042b3359c6dd9a364b804b4ddc7405a82667fa4691",
+      "translation": "Images can use HTTP(S) __ELBOT_CODE_0__, __ELBOT_CODE_1__ relative to the plugin directory, or __ELBOT_CODE_2__ up to 10 MiB; path/base64 will be normalized into a data URL readable by the model.",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:paragraph:5354ead8bafb1d938acee5a5bba7f4f0f3fc12dd330cb4ddbca02db0268be92f": {
       "kind": "paragraph",
       "source": "内联 __ELBOT_CODE_0__ 的参数字段同样是 __ELBOT_CODE_1__，不是 __ELBOT_CODE_2__。\n",
@@ -903,6 +983,14 @@
       "source_hash": "55578b40e72abf5c30e6cc6b5e1d07824f1367b5d6dc59adf4286fe6d2fd3ed0",
       "translation": "__ELBOT_CODE_0__ and failed CAS do not refresh the time; expired keys are treated as non-existent.\n",
       "updated_at": 1784025692
+    },
+    "docs/hooks.md:paragraph:56241febfbba482afb28ebdf04196145bbc2c6dcaf50dcc7321dc7213be68fa5": {
+      "kind": "paragraph",
+      "source": "工具完成 Hook 可以直接返回文本和图片：\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "56241febfbba482afb28ebdf04196145bbc2c6dcaf50dcc7321dc7213be68fa5",
+      "translation": "Tool completion Hooks can directly return text and images:\n",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:paragraph:5a328597d63aa31e7a98510c278e815e5e49ad50f59f8d9829fca4a08a26a090": {
       "kind": "paragraph",
@@ -1000,6 +1088,14 @@
       "translation": "One-time exec Hooks share an in-process JSON KV with all Worker Hooks:\n",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:6da35f4b02952b97baff137aa1f2dabb00ef0719e7fa5d7d4f058eec096b8c3c": {
+      "kind": "paragraph",
+      "source": "没有绑定消息时为空。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "6da35f4b02952b97baff137aa1f2dabb00ef0719e7fa5d7d4f058eec096b8c3c",
+      "translation": "It is empty when no message is bound.\n",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:paragraph:6e9afd4092841c5e1da820aa3ba7728315c43c3a5060b2a3ee0f6bb663ad7030": {
       "kind": "paragraph",
       "source": "插件规则误写这三个字段时会产生 warning，但插件仍正常加载，误写字段会被忽略。\n",
@@ -1048,6 +1144,14 @@
       "translation": "The blocking check of root rules is executed prior to normal matching and action execution; therefore, the exec process will not be started after a match;",
       "updated_at": 1784194979
     },
+    "docs/hooks.md:paragraph:742ec5886016f820a43480bade5a69666b8c296bec11c3c59bcad45b2aca27af": {
+      "kind": "paragraph",
+      "source": "工具完成 Hook 的修改也会写入 transcript。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "742ec5886016f820a43480bade5a69666b8c296bec11c3c59bcad45b2aca27af",
+      "translation": "Modifications from tool completion Hooks will also be written to the transcript.",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:paragraph:7451a127568b4908200123c53a074cb46e392eb672a1f6c3204291f890e77bbf": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 字段：\n",
@@ -1071,6 +1175,22 @@
       "source_hash": "747c3d5f6e1e0f7ce1b5b0bfea4a9b8f6404203029a15c2124ce8896f18a1e9d",
       "translation": "Use the outer __ELBOT_CODE_0__ upon failure.",
       "updated_at": 1784025692
+    },
+    "docs/hooks.md:paragraph:7487077ff2b25b751595a2e51d9610fee9628d633d6d4723b000baa426added9": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 修改 LLM 输入和会话历史；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "7487077ff2b25b751595a2e51d9610fee9628d633d6d4723b000baa426added9",
+      "translation": "__ELBOT_CODE_0__ modifies the LLM input and Session history;",
+      "updated_at": 1784466987
+    },
+    "docs/hooks.md:paragraph:7525336dc508ba708108da2ab0361c4ce251bdbf9054fa8275d3948df65aaefb": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 接受绝对 HTTP(S) URL 或 __ELBOT_CODE_1__，相对 __ELBOT_CODE_2__ 按插件目录解析；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "7525336dc508ba708108da2ab0361c4ce251bdbf9054fa8275d3948df65aaefb",
+      "translation": "__ELBOT_CODE_0__ accepts absolute HTTP(S) URLs or __ELBOT_CODE_1__; relative __ELBOT_CODE_2__ are resolved based on the plugin directory;",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:paragraph:7672a4198472ba160122f78cb1ef063db60b9cb45747141fb0e22cf7554ff746": {
       "kind": "paragraph",
@@ -1216,6 +1336,14 @@
       "translation": "Background calls must be located in __ELBOT_CODE_0__: when there is a context issued by the Host, place it in __ELBOT_CODE_1__;",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:907c1d51f258289874925190e2d277677826e9a1d1c345f8092c266762210ba6": {
+      "kind": "paragraph",
+      "source": "图片 segment 必须且只能提供 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 之一。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "907c1d51f258289874925190e2d277677826e9a1d1c345f8092c266762210ba6",
+      "translation": "Image segments must provide one and only one of __ELBOT_CODE_0__, __ELBOT_CODE_1__, or __ELBOT_CODE_2__.",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:paragraph:915b4886dded51c03b16a8b10247bd1e32df1d114da561b4023d4d4904d6bce4": {
       "kind": "paragraph",
       "source": "可用于 __ELBOT_CODE_0__、__ELBOT_CODE_1__ 和模板的文本字段：\n",
@@ -1248,6 +1376,14 @@
       "translation": "Ordinary rules use __ELBOT_CODE_0__. After rules are filtered by __ELBOT_CODE_1__, matching conditions, roles, and priority, the actions are executed in sequence.\n",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:9ba9e818159b4bdaefd4499babece8dfeada14af878f70fa4f578804a093b893": {
+      "kind": "paragraph",
+      "source": "completed 阶段还提供 __ELBOT_CODE_0__，对应工具消息的完整内容位于 __ELBOT_CODE_1__。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "9ba9e818159b4bdaefd4499babece8dfeada14af878f70fa4f578804a093b893",
+      "translation": "The completed stage also provides __ELBOT_CODE_0__, and the full content of the corresponding tool message is located in __ELBOT_CODE_1__.\n",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:paragraph:9c03165cf3a6ea4d1cdfef964e9ff0037364d6c55b78a634570554e14f60bfed": {
       "kind": "paragraph",
       "source": "条件可写单条件简写，或写 AND 数组，二者不能混用：\n",
@@ -1271,6 +1407,14 @@
       "source_hash": "9e13635ee1f1af3eace05c0a33edef77916eec27a59d1751c1bcf2f017416f58",
       "translation": "TOML uses strict field validation; unknown fields will cause an error.",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:paragraph:9ee3c2692821081a631fce4f1276c5bc65f778ac42a9a5a61b1be261d4d78cf9": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 是即将发给模型的完整工作上下文，包含 system、历史消息、当前消息和工具消息，但对普通 Hook 只读。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "9ee3c2692821081a631fce4f1276c5bc65f778ac42a9a5a61b1be261d4d78cf9",
+      "translation": "__ELBOT_CODE_0__ is the complete working context to be sent to the model, including system, historical messages, current messages, and tool messages, but it is read-only for ordinary Hooks.",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:paragraph:9ee492646bd72ca8b59b147dba876abc25b8bfb2e688d69c4dbdb3867d2c895b": {
       "kind": "paragraph",
@@ -1312,6 +1456,14 @@
       "translation": "Unnamed __ELBOT_CODE_0__ uses the tool name as the result name; unnamed __ELBOT_CODE_1__ uses __ELBOT_CODE_2__. Multiple unnamed execs within the same rule will overwrite the same result; they should be explicitly named when template referencing is required.\n",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:a3da0937279fdcb377f3257f467970467013c3a4f563e42c6a1ae56c7fac3780": {
+      "kind": "paragraph",
+      "source": "例如平台原消息是“这是狗”，进程 Hook 可用同一个 response 将模型实际看到并持久化的内容改为“这是猫”并附图，而 __ELBOT_CODE_0__ 仍为“这是狗”。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "a3da0937279fdcb377f3257f467970467013c3a4f563e42c6a1ae56c7fac3780",
+      "translation": "For example, if the original platform message is \"This is a dog\", a process Hook can use the same response to change the content that the model actually sees and persists to \"This is a cat\" with an attached image, while __ELBOT_CODE_0__ remains \"This is a dog\".",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:paragraph:a44d652eb99a368aa06371bbfbd2dd05accb62b010128f617e4f4fddd49731f5": {
       "kind": "paragraph",
       "source": "其中 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ 是匹配/模板时计算的虚拟文本字段，不直接存在于 event JSON；",
@@ -1319,6 +1471,14 @@
       "source_hash": "a44d652eb99a368aa06371bbfbd2dd05accb62b010128f617e4f4fddd49731f5",
       "translation": "Among these, __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ are virtual text fields calculated during matching/templating and do not exist directly in the event JSON;",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:paragraph:a52480680e80fca4fffcc9ba290596a922f0ea96cfb57a9932b146b1376c2d69": {
+      "kind": "paragraph",
+      "source": "Hook 不能修改 system 或历史消息。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "a52480680e80fca4fffcc9ba290596a922f0ea96cfb57a9932b146b1376c2d69",
+      "translation": "Hooks cannot modify the system or historical messages.",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:paragraph:a615857e7fd2ab294410ecf48afd19a4c912dc26e78fe85c78f74de78d53be22": {
       "kind": "paragraph",
@@ -1352,6 +1512,14 @@
       "translation": "The __ELBOT_CODE_1__ of a single __ELBOT_CODE_0__ can be called up to 32 times, and becomes invalid after __ELBOT_CODE_2__ expires, is cancelled, or the worker is reloaded.\n",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:ac0f72eb247f2a167a1586c8c3042ffb49feadf62dd34578871a8e50edda8278": {
+      "kind": "paragraph",
+      "source": "用户或 pending 的 Hook 修改会在模型请求前写入会话历史；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "ac0f72eb247f2a167a1586c8c3042ffb49feadf62dd34578871a8e50edda8278",
+      "translation": "Modifications by the user or pending Hooks will be written to the Session history before the model request;",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:paragraph:adb769cd0fd2c4d445187b61720aeda8c05e95e93a471e49143ce90cf69d5fe2": {
       "kind": "paragraph",
       "source": "不要在唯一读取 stdin 的协议循环中同步等待该 response；",
@@ -1359,6 +1527,14 @@
       "source_hash": "adb769cd0fd2c4d445187b61720aeda8c05e95e93a471e49143ce90cf69d5fe2",
       "translation": "Do not synchronously wait for the response within the protocol loop that is the sole reader of stdin;",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:paragraph:addb4250ed292f387353826e122cdccf99420e0d5dd43e15f761373b37d1b793": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 创建发送到平台的输出意图，两者不会互相转换。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "addb4250ed292f387353826e122cdccf99420e0d5dd43e15f761373b37d1b793",
+      "translation": "__ELBOT_CODE_0__ creates an output intent sent to the platform; the two will not be converted into each other.\n",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:paragraph:ae72e031ccdb95fac56264923c2db01f7b257041dd0c840a06b419b718367972": {
       "kind": "paragraph",
@@ -1368,6 +1544,14 @@
       "translation": "__ELBOT_CODE_0__ is a group of segments for a single message. Sending multiple messages requires multiple __ELBOT_CODE_1__ actions or multiple __ELBOT_CODE_2__.\n",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:af73847fca47f0d9134f195ee38101ea0a238af878c713c00468ed8aa60689d5": {
+      "kind": "paragraph",
+      "source": "path、base64 和 data URL 解码后最大 10 MiB，并在送入 LLM 前规范化为 data URL。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "af73847fca47f0d9134f195ee38101ea0a238af878c713c00468ed8aa60689d5",
+      "translation": "path, base64, and data URLs have a maximum size of 10 MiB after decoding and are normalized to data URLs before being sent to the LLM.",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:paragraph:b0650ac499fb7955c25a983c741f55782568a9aa2bf68e72d22220524e5de07d": {
       "kind": "paragraph",
       "source": "Transient Worker 在 trigger rule 命中时启动。",
@@ -1375,6 +1559,14 @@
       "source_hash": "b0650ac499fb7955c25a983c741f55782568a9aa2bf68e72d22220524e5de07d",
       "translation": "Transient Workers start when a trigger rule is matched.",
       "updated_at": 1784025692
+    },
+    "docs/hooks.md:paragraph:b093eb0d54a4ebfd18dd83ca3dd6ec8bd22b15a13c100a3bd741974c7c3c907b": {
+      "kind": "paragraph",
+      "source": "prepared 阶段主要提供 __ELBOT_CODE_0__；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "b093eb0d54a4ebfd18dd83ca3dd6ec8bd22b15a13c100a3bd741974c7c3c907b",
+      "translation": "The prepared stage primarily provides __ELBOT_CODE_0__;",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:paragraph:b1447006a6a79d4a4db2369f2e69df55296d049633ce60028a815dcd11caf3a7": {
       "kind": "paragraph",
@@ -1464,6 +1656,14 @@
       "translation": "For example, the Hook requests __ELBOT_CODE_0__ from stdout:\n",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:be1acd09ff76b2121792a0cf6e5778ba18a7d0c21458545a22e85684658ee9d6": {
+      "kind": "paragraph",
+      "source": "显式空数组表示清空。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "be1acd09ff76b2121792a0cf6e5778ba18a7d0c21458545a22e85684658ee9d6",
+      "translation": "An explicit empty array indicates clearing.",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:paragraph:bebb69355aeaa8fb79723ecab293663babc7174a5c2fbe5c16108d4d6391130c": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 同时识别 __ELBOT_CODE_1__ 和 __ELBOT_CODE_2__ scope。\n",
@@ -1471,6 +1671,14 @@
       "source_hash": "bebb69355aeaa8fb79723ecab293663babc7174a5c2fbe5c16108d4d6391130c",
       "translation": "__ELBOT_CODE_0__ recognizes both __ELBOT_CODE_1__ and __ELBOT_CODE_2__ scopes.\n",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:paragraph:bef26ba024e9ae0eec53608f857240035095196ea1ccb68dace6f8941b2996f2": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 是当前绑定用户消息文字部分的兼容视图，不再表示历史中最后一个 __ELBOT_CODE_1__；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "bef26ba024e9ae0eec53608f857240035095196ea1ccb68dace6f8941b2996f2",
+      "translation": "__ELBOT_CODE_0__ is a compatibility view of the text part of the currently bound user message, and no longer represents the last __ELBOT_CODE_1__ in the history;",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:paragraph:bfeff31f7273e1dc7aa704a4a97cca619c64c9a8ae5bbf6d858a7cf003f77926": {
       "kind": "paragraph",
@@ -1495,6 +1703,14 @@
       "source_hash": "c14a51f279420f4aff66128f1862dc434bca6ddf0636a98d5eb428cf3d7167c8",
       "translation": "When shell syntax is required, explicitly configure it as __ELBOT_CODE_0__, __ELBOT_CODE_1__, or the corresponding platform interpreter.",
       "updated_at": 1784027267
+    },
+    "docs/hooks.md:paragraph:c41d2b22ff5c8e0067a0132a9990bbae2d8c6cb60f1b37e8664eeb6a95ce7ab5": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 始终保留平台原文，不随 segments 修改。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "c41d2b22ff5c8e0067a0132a9990bbae2d8c6cb60f1b37e8664eeb6a95ce7ab5",
+      "translation": "__ELBOT_CODE_0__ always retains the original text from the platform and does not change with segments.\n",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:paragraph:c4dd0f4714f1602a2e13727def7b79edb56b11c8bdfb706a0d92a5e47b0fd7bf": {
       "kind": "paragraph",
@@ -1648,13 +1864,13 @@
       "translation": "Rules for the root __ELBOT_CODE_0__ are executed in __ELBOT_CODE_1__ by default, and relative or absolute cwd can be used.\n",
       "updated_at": 1784025692
     },
-    "docs/hooks.md:paragraph:e5735ba38217804ffbf8c0819b63bef2154a92994d11dc657375edfb7c217761": {
+    "docs/hooks.md:paragraph:e4a4fbaecbdf7e55c912108ecf76ed897dca837ee1ab020d19eae94d57b10069": {
       "kind": "paragraph",
-      "source": "prepared 阶段主要提供 __ELBOT_CODE_0__，completed 阶段才有 __ELBOT_CODE_1__。\n",
+      "source": "目前该替换协议支持 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ segment。\n",
       "source_file": "docs/hooks.md",
-      "source_hash": "e5735ba38217804ffbf8c0819b63bef2154a92994d11dc657375edfb7c217761",
-      "translation": "The prepared stage mainly provides __ELBOT_CODE_0__, while __ELBOT_CODE_1__ is only available in the completed stage.\n",
-      "updated_at": 1783771179
+      "source_hash": "e4a4fbaecbdf7e55c912108ecf76ed897dca837ee1ab020d19eae94d57b10069",
+      "translation": "Currently, this replacement protocol supports __ELBOT_CODE_0__ and __ELBOT_CODE_1__ segments.\n",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:paragraph:e61ca6b4d2ba78b816fb69149b92cf74a6d7cebf3f3081b5de140fb2a67a8e6a": {
       "kind": "paragraph",
@@ -1712,6 +1928,14 @@
       "translation": "Worker Hook maintains the LLM loop, business state, and tool usage decisions on its own.",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:ed4179e52a3d1a4ec920fe4eb1241902f1596bb3525e581a8920904ed722bc30": {
+      "kind": "paragraph",
+      "source": "若同一 response 同时返回 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__，以 __ELBOT_CODE_2__ 为准。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "ed4179e52a3d1a4ec920fe4eb1241902f1596bb3525e581a8920904ed722bc30",
+      "translation": "If the same response returns both __ELBOT_CODE_0__ and __ELBOT_CODE_1__, __ELBOT_CODE_2__ shall prevail.\n",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:paragraph:efde1789c6abaa9117a24a7e4f0b9cdb834f6d55d3c6db4ec89ae5db75848167": {
       "kind": "paragraph",
       "source": "共享区最多 10,000 条，key 与 value 合计最大 32 MiB。\n",
@@ -1768,6 +1992,14 @@
       "translation": "One-time exec Hooks and Worker Hooks are collectively known as **process Hooks**.",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:f9e1d3c981dcbbab1a6686935e9865b699366396caf9fbf541fde83ae5adb9e9": {
+      "kind": "paragraph",
+      "source": "其中__ELBOT_CODE_0__字段为：\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "f9e1d3c981dcbbab1a6686935e9865b699366396caf9fbf541fde83ae5adb9e9",
+      "translation": "Where the __ELBOT_CODE_0__ field is:\n",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:paragraph:fa5a224833c4c031dd7fd35a191cb78c447c9aa2496b35a6b41046edd4baf910": {
       "kind": "paragraph",
       "source": "命名的 __ELBOT_CODE_0__ / __ELBOT_CODE_1__ action 可供后续 action 使用：\n",
@@ -1783,6 +2015,22 @@
       "source_hash": "faab3a9d5237f625594a079d4d06a2645129d1f1fb0983a3054a61eb17ea2f3e",
       "translation": "Configuring __ELBOT_CODE_0__ or __ELBOT_CODE_1__ will result in a validation failure.",
       "updated_at": 1784025692
+    },
+    "docs/hooks.md:paragraph:fc58e3c4b2b31a02142581a8649f57501b64bc95cda6aa4c56773febf811756c": {
+      "kind": "paragraph",
+      "source": "进程 Hook 还可直接返回 __ELBOT_CODE_0__ 替换当前消息的完整内容；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "fc58e3c4b2b31a02142581a8649f57501b64bc95cda6aa4c56773febf811756c",
+      "translation": "Process Hooks can also directly return __ELBOT_CODE_0__ to replace the full content of the current message;",
+      "updated_at": 1784466987
+    },
+    "docs/hooks.md:paragraph:ff7e92985b200637abeb4c6b50cbfe9c04434ec5e437584fb44ffaac3962a6b6": {
+      "kind": "paragraph",
+      "source": "当前消息内容从 __ELBOT_CODE_0__ 读取，__ELBOT_CODE_1__ 仅用于观察完整请求上下文。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "ff7e92985b200637abeb4c6b50cbfe9c04434ec5e437584fb44ffaac3962a6b6",
+      "translation": "The current message content is read from __ELBOT_CODE_0__, while __ELBOT_CODE_1__ is only used to observe the full request context.\n",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:table:000c2c24df9187660db4899025c5a5f3e5f6d74496be01fdba66796a2202d8a0": {
       "kind": "table",
@@ -1888,14 +2136,6 @@
       "translation": "params are __ELBOT_CODE_0__ (optional, default current platform), required __ELBOT_CODE_1__, and optional object __ELBOT_CODE_2__; result is the platform return value.",
       "updated_at": 1784025692
     },
-    "docs/hooks.md:table:15552b136dfb0c6a9b3f1eeaef6f39a2ef98df1d59d24198baacc6dc75169b44": {
-      "kind": "table",
-      "source": "同上",
-      "source_file": "docs/hooks.md",
-      "source_hash": "15552b136dfb0c6a9b3f1eeaef6f39a2ef98df1d59d24198baacc6dc75169b44",
-      "translation": "Same as above",
-      "updated_at": 1783771179
-    },
     "docs/hooks.md:table:161cabbd4c9a0c7753ec00a1450bed68c8c3de546f938c946e02b4f8e991ea7e": {
       "kind": "table",
       "source": "消息 ID 和 __ELBOT_CODE_0__ / __ELBOT_CODE_1__ / __ELBOT_CODE_2__ / __ELBOT_CODE_3__ 角色。",
@@ -1928,6 +2168,14 @@
       "translation": "Platform-native message JSON, the structure of which is determined by the platform; currently, QQ OneBot provides the raw __ELBOT_CODE_0__ value, while other platforms may omit it.",
       "updated_at": 1783922732
     },
+    "docs/hooks.md:table:1a4bc0a1480760d74e0489d6fe3f0667a96a37379ff7529d2f119067b92445cb": {
+      "kind": "table",
+      "source": "同上；仅工具流程中新到达的 pending 提供 __ELBOT_CODE_0__",
+      "source_file": "docs/hooks.md",
+      "source_hash": "1a4bc0a1480760d74e0489d6fe3f0667a96a37379ff7529d2f119067b92445cb",
+      "translation": "Same as above; only newly arrived pending in the tool flow provide __ELBOT_CODE_0__",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:table:1b4b989bd8a196fccde3a54193165677949fbf2b3bd10057bc39f02560f9e572": {
       "kind": "table",
       "source": "等待 __ELBOT_CODE_0__ 和退出的最长秒数，必须大于 __ELBOT_CODE_1__。",
@@ -1935,6 +2183,14 @@
       "source_hash": "1b4b989bd8a196fccde3a54193165677949fbf2b3bd10057bc39f02560f9e572",
       "translation": "Maximum seconds to wait for __ELBOT_CODE_0__ and exit, must be greater than __ELBOT_CODE_1__.",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:table:1e0b7bbeb545a8f38cc805e87330a99468fb4f868e00e2985c4dceba24d1732f": {
+      "kind": "table",
+      "source": "工具实际执行后",
+      "source_file": "docs/hooks.md",
+      "source_hash": "1e0b7bbeb545a8f38cc805e87330a99468fb4f868e00e2985c4dceba24d1732f",
+      "translation": "After the tool is actually executed",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:table:229aef8bffa8adeefe4c171fbee25d15d757467d5b51175668035293865f6c59": {
       "kind": "table",
@@ -1975,14 +2231,6 @@
       "source_hash": "24e5463576bce0847640408477cb6d74406287a2fb3a140641506413ffa1d8fa",
       "translation": "TOML __ELBOT_CODE_0__; execute actions after matching.",
       "updated_at": 1784025692
-    },
-    "docs/hooks.md:table:252b019eb3b8bc2e8559e597541e6a69e78cbf13676176a8efc46be418b15ff0": {
-      "kind": "table",
-      "source": "工具调用后",
-      "source_file": "docs/hooks.md",
-      "source_hash": "252b019eb3b8bc2e8559e597541e6a69e78cbf13676176a8efc46be418b15ff0",
-      "translation": "After tool call",
-      "updated_at": 1783771179
     },
     "docs/hooks.md:table:27d9c24a21c37b419c2e745d5232eaeee052597637ad35032a8b6594cfb47801": {
       "kind": "table",
@@ -2632,6 +2880,14 @@
       "translation": "Wake-up strategy: __ELBOT_CODE_0__ only processes awakened messages (default), __ELBOT_CODE_1__ processes regardless of whether it is awakened, __ELBOT_CODE_2__ only processes non-awakened messages.",
       "updated_at": 1783912115
     },
+    "docs/hooks.md:table:a726fb681e067681ebbdacc0f7ba9dd94a716f6b490ed8a04b25a9004f76c5dd": {
+      "kind": "table",
+      "source": "替换当前消息的完整 segments；支持文本和图片，显式空数组表示清空。与 __ELBOT_CODE_0__ 同时出现时优先。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "a726fb681e067681ebbdacc0f7ba9dd94a716f6b490ed8a04b25a9004f76c5dd",
+      "translation": "Replaces the complete segments of the current message; supports text and images, and an explicit empty array indicates clearing. It takes precedence when appearing simultaneously with __ELBOT_CODE_0__.",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:table:a73690ad6dd3165b970985e60da53cc268d44df764455901bf079ca93c33434c": {
       "kind": "table",
       "source": "当前进程工作目录。",
@@ -2704,6 +2960,14 @@
       "translation": "__ELBOT_CODE_0__",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:table:b1737d78a7caf7386cb87c230fd55fdb38aaf20b29e819524bd32e9bb8464f47": {
+      "kind": "table",
+      "source": "__ELBOT_CODE_0__ 或进程响应 __ELBOT_CODE_1__",
+      "source_file": "docs/hooks.md",
+      "source_hash": "b1737d78a7caf7386cb87c230fd55fdb38aaf20b29e819524bd32e9bb8464f47",
+      "translation": "__ELBOT_CODE_0__ or process response __ELBOT_CODE_1__",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:table:b22137778df223495af5ebe3d253c16e7822be1f7764b752d26e8719e64281d4": {
       "kind": "table",
       "source": "独立脚本或无需保存进程状态的逻辑。",
@@ -2760,6 +3024,14 @@
       "translation": "__ELBOT_CODE_0__, __ELBOT_CODE_1__, optional __ELBOT_CODE_2__",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:table:b83ffffc044e7fe2d41b867c7870e8c28d2c4a3335800c747cf8b40c58f9a939": {
+      "kind": "table",
+      "source": "pending 的 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__",
+      "source_file": "docs/hooks.md",
+      "source_hash": "b83ffffc044e7fe2d41b867c7870e8c28d2c4a3335800c747cf8b40c58f9a939",
+      "translation": "pending __ELBOT_CODE_0__ or __ELBOT_CODE_1__",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:table:ba13be7c0d535609156db78cfdff7723a2cd1dd8a3f4920b9171c8de5729c4ff": {
       "kind": "table",
       "source": "规则中的 __ELBOT_CODE_0__；每次命中启动一个外部程序，处理当前事件后退出。",
@@ -2808,14 +3080,6 @@
       "translation": "Worker ID and description.",
       "updated_at": 1784025692
     },
-    "docs/hooks.md:table:c15ac2b395e18c4409db0b8083a3a1e9bb51820023f127ae30fb6e10bb2711ac": {
-      "kind": "table",
-      "source": "覆写 action 的 __ELBOT_CODE_0__；未配置 field 时默认 __ELBOT_CODE_1__。空字符串表示清空，省略表示不改。",
-      "source_file": "docs/hooks.md",
-      "source_hash": "c15ac2b395e18c4409db0b8083a3a1e9bb51820023f127ae30fb6e10bb2711ac",
-      "translation": "Overwrite the __ELBOT_CODE_0__ of the action; defaults to __ELBOT_CODE_1__ when the field is not configured. An empty string indicates clearing, and omission indicates no change.",
-      "updated_at": 1784025692
-    },
     "docs/hooks.md:table:c2614fbfd06ec67766aef5e5a5b55f92ae522286d2e758ac138b8c9bb26fb8b6": {
       "kind": "table",
       "source": "自述名称；建议与根 __ELBOT_CODE_0__ 一致。不一致时以根 ID 为准并记录警告。",
@@ -2839,6 +3103,14 @@
       "source_hash": "c34f40b3d02259d02a1f9fd472fd918f65633f261ef2c926aa854cc789880f0a",
       "translation": "__ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, __ELBOT_CODE_5__; default __ELBOT_CODE_6__.",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:table:c6bdb3b4f876cbe400e32d0ea4cbbc7ab6489e793d13bb8d215a169d24e9549b": {
+      "kind": "table",
+      "source": "一次性 Hook 覆写 action 的 __ELBOT_CODE_0__，Worker Hook 覆写当前消息文本；空字符串表示清空，省略表示不改，已有媒体保留。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "c6bdb3b4f876cbe400e32d0ea4cbbc7ab6489e793d13bb8d215a169d24e9549b",
+      "translation": "One-time Hooks overwrite the __ELBOT_CODE_0__ of the action, while Worker Hooks overwrite the current message text; an empty string indicates clearing, omission indicates no change, and existing media is preserved.",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:table:c847b20a8be04ab115d82963a2d8fa32ff298094bbf50f393cfc598af159d34f": {
       "kind": "table",
@@ -2864,6 +3136,14 @@
       "translation": "Call a registered tool.",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:table:cb880f07fee2fda4841b564674e5339cc2b53eb927b59239018916f6cd3d5aaf": {
+      "kind": "table",
+      "source": "__ELBOT_CODE_0__、当前用户 __ELBOT_CODE_1__、只读 __ELBOT_CODE_2__、tools/provider/model",
+      "source_file": "docs/hooks.md",
+      "source_hash": "cb880f07fee2fda4841b564674e5339cc2b53eb927b59239018916f6cd3d5aaf",
+      "translation": "__ELBOT_CODE_0__, current user __ELBOT_CODE_1__, read-only __ELBOT_CODE_2__, tools/provider/model",
+      "updated_at": 1784466987
+    },
     "docs/hooks.md:table:cc44e51b4227a4c612b421c6cfefc5204671f5cb5f5e5f6a4d81c637accfb7d5": {
       "kind": "table",
       "source": "__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__；当前可能都为空。",
@@ -2871,6 +3151,14 @@
       "source_hash": "cc44e51b4227a4c612b421c6cfefc5204671f5cb5f5e5f6a4d81c637accfb7d5",
       "translation": "__ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__; currently all may be empty.",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:table:cd080a6bf2eae38dc7053224321e2f995fb1f02f11293b6e327a08acf1842747": {
+      "kind": "table",
+      "source": "__ELBOT_CODE_0__ 或 __ELBOT_CODE_1__",
+      "source_file": "docs/hooks.md",
+      "source_hash": "cd080a6bf2eae38dc7053224321e2f995fb1f02f11293b6e327a08acf1842747",
+      "translation": "__ELBOT_CODE_0__ or __ELBOT_CODE_1__",
+      "updated_at": 1784466987
     },
     "docs/hooks.md:table:cd1887ba58c815c5446fea3c1feb88327c8cc0c3a94e9e754c00e613e65ea6ea": {
       "kind": "table",
@@ -3074,8 +3362,8 @@
     }
   },
   "source": "docs/hooks.md",
-  "source_hash": "37e4a82ec0795494f38e8528e5ee70f82e13a2e59feb049a62926104550ac6a4",
+  "source_hash": "52dc5b115d5da268b40257a10c859d4f23e06049a4fb97c79420cbb530a91ed5",
   "target": "docs.en/hooks.md",
-  "updated_at": 1784194979,
+  "updated_at": 1784466987,
   "version": 2
 }
