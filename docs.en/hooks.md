@@ -87,13 +87,13 @@ The blocking check of root rules is executed prior to normal matching and action
 | Hook Point | Timing | Main payload | Editable Fields | outputs will be sent |
 | --- | --- | --- | --- | --- |
 | `platform.connected` | Platform connection completed | `platform` | None | Yes |
-| `platform.message.received` | Upon receiving a user message, before commands and the LLM | `platform`、`actor`、`message` | `message.text` | Yes |
-| `agent.input.prepared` | Before input is written to the Session | `session`、`message` | `message.text` | No |
-| `llm.turn.prepared` | Before the full round of LLM calls | `session`、`llm.messages/tools/provider/model` | `llm.latest_user_text` | No |
-| `llm.request.prepared` | Before each actual model request | Same as above | `llm.latest_user_text` | No |
+| `platform.message.received` | Upon receiving a user message, before commands and the LLM | `platform`、`actor`、`message` | `message.text/segments` | Yes |
+| `agent.input.prepared` | Before input is written to the Session | `session`、`message` | `message.text/segments` | No |
+| `llm.turn.prepared` | Before the full round of LLM calls | `session`, current user `message.segments`, read-only `llm.messages`, tools/provider/model | `message.segments` or `llm.latest_user_text` | No |
+| `llm.request.prepared` | Before each actual model request | Same as above; only newly arrived pending in the tool flow provide `message` | pending `message.segments` or `llm.latest_user_text` | No |
 | `llm.response.received` | Model response completed | `llm.text/source_text/tool_calls/usage` | `llm.text` | Yes |
 | `tool.call.prepared` | Before tool call | `session`、`tool` | `tool.arguments` | No |
-| `tool.call.completed` | After tool call | `session`、`tool.result/error/risk` | `tool.result` | No |
+| `tool.call.completed` | After the tool is actually executed | `session`、`message.segments`、`tool.name/result/error/risk` | `tool.result` or process response `message.segments` | No |
 | `agent.output.prepared` | Before sending each segment of assistant output | `message` | assistant `message.text` | No |
 | `agent.turn.output.prepared` | Before sending the final assistant output of the round | `message` | assistant `message.text` | No |
 | `platform.message.sent` | Notification after assistant chat or preview is successfully sent | `message` | None | No |
@@ -204,7 +204,38 @@ For `message.text` and `llm.latest_user_text`:
 
 - `prepend` / `append` modify the first or last text segment; Add a text segment when no text segment exists; Images and files are preserved.
 - `replace` / `delete` only process text segments; images and files are preserved.
-- Overwriting `message.text` in the exec response will reconstruct it as a pure text segment, and the original image and file segments will be lost.
+- The `message.text` overwrite of the exec response only replaces the text segment; original image and file segments will be preserved.
+
+Process Hooks can also directly return `message.segments` to replace the full content of the current message; An explicit empty array indicates clearing. If the same response returns both `message.text` and `message.segments`, `message.segments` shall prevail.
+
+### Message Content Modification
+
+`message.segments` always points to the new message explicitly bound to the current Hook point, and does not represent the full history:
+
+- `platform.message.received`, `agent.input.prepared`, and `llm.turn.prepared` are bound to the initial user message of this turn.
+- `llm.request.prepared` is bound to the pending item only when a new pending exists before the next request in the tool flow; When there is no pending item, no editable message is provided, and the initial input of this turn cannot be modified again.
+- `tool.call.completed` is bound to the tool result produced after actually entering the tool execution phase; pre-check failure, confirmation rejection, or failure before startup will not trigger this point.
+
+`llm.messages` is the complete working context to be sent to the model, including system, historical messages, current messages, and tool messages, but it is read-only for ordinary Hooks. Hooks cannot modify the system or historical messages. `llm.latest_user_text` is a compatibility view of the text part of the currently bound user message, and no longer represents the last `role=user` in the history; It is empty when no message is bound.
+
+Modifications by the user or pending Hooks will be written to the Session history before the model request; Modifications from tool completion Hooks will also be written to the transcript. For plain text continuations, only `content` is saved; when non-text content such as images is included, complete segments are additionally saved. `message.platform_text` always retains the original text from the platform and does not change with segments.
+
+For example, if the original platform message is "This is a dog", a process Hook can use the same response to change the content that the model actually sees and persists to "This is a cat" with an attached image, while `message.platform_text` remains "This is a dog". Where the `result` field is:
+
+```json
+{
+  "message": {
+    "segments": [
+      {"type": "text", "text": "这是猫"},
+      {"type": "image", "path": "assets/cat.png", "name": "cat.png"}
+    ]
+  }
+}
+```
+
+Images can use HTTP(S) `url`, `path` relative to the plugin directory, or `base64` up to 10 MiB; path/base64 will be normalized into a data URL readable by the model. `message.segments` modifies the LLM input and Session history; `outputs` creates an output intent sent to the platform; the two will not be converted into each other.
+
+In the tool completion event, `message.role` is `tool`, `message.segments` is the original multimodal result of the tool, and `tool.name` and `tool.id` identify the tool and this specific call. In the tool preparation event, `tool.id` and `tool.name` are read-only; only `tool.arguments` can be rewritten; The rewritten parameters are used for actual execution, subsequent LLM requests, and the transcript.
 
 ## Unified Output
 
@@ -309,6 +340,14 @@ Hook returns the processing result:
 {"type":"response","id":"host:event","ok":true,"result":{"status":"completed","matched":true,"result":"weather accepted","message":{"text":"查询上海天气"},"outputs":[{"kind":"text","text":"正在查询……"}],"target":{"platform":"qqonebot","scope_id":"group:123456"},"timing":"immediate","pass_through":false}}
 ```
 
+Tool completion Hooks can directly return text and images:
+
+```jsonl
+{"type":"response","id":"host:event","ok":true,"result":{"status":"completed","message":{"segments":[{"type":"text","text":"截图完成"},{"type":"image","path":"result.png","mime_type":"image/png"}]}}}
+```
+
+Image segments must provide one and only one of `url`, `path`, or `base64`. `url` accepts absolute HTTP(S) URLs or `data:image/...;base64,...`; relative `path` are resolved based on the plugin directory; path, base64, and data URLs have a maximum size of 10 MiB after decoding and are normalized to data URLs before being sent to the LLM. Currently, this replacement protocol supports `text` and `image` segments.
+
 When processing fails, omit `result` and return `{"type":"response","id":"host:event","ok":false,"error":"error message"}`. The `id` of the response must be the same as the request.
 
 ### system.init.params
@@ -344,7 +383,8 @@ When processing fails, omit `result` and return `{"type":"response","id":"host:e
 | `pass_through` | All | `false` indicates takeover, `true` indicates pass-through; overrides the rule defaults `consume` and `stop_propagation`. |
 | `matched` | One-time | `false` indicates that this rule was not hit: roll back the modifications and outputs of this rule, and skip the remaining actions. |
 | `result` / `error` | One-time | Text to be written to `{{actions.<name>.result/error}}`. |
-| `message.text` | One-time | Overwrite the `field` of the action; defaults to `message.text` when the field is not configured. An empty string indicates clearing, and omission indicates no change. |
+| `message.text` | All | One-time Hooks overwrite the `field` of the action, while Worker Hooks overwrite the current message text; an empty string indicates clearing, omission indicates no change, and existing media is preserved. |
+| `message.segments` | All | Replaces the complete segments of the current message; supports text and images, and an explicit empty array indicates clearing. It takes precedence when appearing simultaneously with `message.text`. |
 | `consume` / `stop_propagation` | One-time | Set the corresponding control field when it is `true`. |
 | `conversation_id` | Worker | A required non-empty opaque ID when `waiting`. |
 | `expires_at` | Worker | RFC 3339 time required when `waiting`, must not exceed `max_wait_seconds`. |
@@ -609,7 +649,7 @@ The first call where the trigger rule has already matched usually does not requi
 
 `llm` contains `provider`, `model`, `messages`, `tools`, `usage`, `source_text`, `text`, `tool_calls`, `elapsed_ms`. Among them, nested `messages`, `tool_calls`, `usage` follow the JSON names exported by Go: `Role/Segments/Name/ToolCallID/ToolCalls`, `ID/Name/Arguments`, `PromptTokens/CompletionTokens/TotalTokens/CacheHitTokens`.
 
-`tool` contains `id`, `name`, `arguments` (JSON string), `risk`, `result`, `error`. The prepared stage mainly provides `id/name/arguments`, while `risk/result/error` is only available in the completed stage.
+`tool` contains `id`, `name`, `arguments` (JSON string), `risk`, `result`, `error`. The prepared stage primarily provides `id/name/arguments`; The completed stage also provides `risk/result/error`, and the full content of the corresponding tool message is located in `message.segments`.
 
 Text fields that can be used in `if`, `match.field`, and templates:
 
@@ -625,7 +665,7 @@ tool.name / tool.arguments / tool.result / tool.risk
 error.message
 ```
 
-Among these, `message.text`, `message.display_text`, `llm.latest_user_text`, and `llm.latest_user_display_text` are virtual text fields calculated during matching/templating and do not exist directly in the event JSON; The plugin process should read the original structure from `segments` or `messages`.
+Among these, `message.text`, `message.display_text`, `llm.latest_user_text`, and `llm.latest_user_display_text` are virtual text fields calculated during matching/templating and do not exist directly in the event JSON; The current message content is read from `message.segments`, while `llm.messages` is only used to observe the full request context.
 
 The template syntax is `{{...}}`, for example `{{platform.name}}`, `{{message.text}}`, and `{{llm.text}}`. Regex captures can be used as:
 
