@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed issues where Cron re-delivery used old job snapshots to overwrite disable status, scheduling, and task content, as well as duplicate generation, duplicate sending, and delivery statuses overwriting each other when multiple platforms were connected simultaneously; Failure or blocking reports from LLM returning `completed=false` will now also be frozen and complete the re-delivery.
 - Fixed an issue where a completed one-time LLM Cron would directly reuse the old report and fail to create a new background Session after being re-enabled or rescheduled; notification failures and platform reconnections still resend the same round of persisted results.
 - Fixed an issue where a reload failure after writing AgentSkill configuration would leave an inconsistency between the disk and the runtime registry; Skill reload is now changed to be serial, fully validated, and atomically replaced; the old registry, catalog, and AgentSkill configuration are retained in case of name conflicts or candidate failures.
 - Completed Elnis HTTP request headers, request reading, response writing, and idle connection timeouts, and now rejects a trailing second JSON value in the request body; unknown fields continue to be ignored as non-semantic fields.

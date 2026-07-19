@@ -344,6 +344,14 @@
       "translation": "AgentSkill no longer uses __ELBOT_CODE_0__ for fixed wrapping to execute Python scripts;",
       "updated_at": 1783074551
     },
+    "CHANGELOG.md:list:56627bbe550c1cd55685d53c98d96f9daf509a689e4532b1444bac71bff9760f": {
+      "kind": "list",
+      "source": "修复 Cron 补发使用旧 job 快照覆盖禁用、调度和任务内容，以及多个平台同时连接时重复生成、重复发送和投递状态相互覆盖的问题；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "56627bbe550c1cd55685d53c98d96f9daf509a689e4532b1444bac71bff9760f",
+      "translation": "Fixed issues where Cron re-delivery used old job snapshots to overwrite disable status, scheduling, and task content, as well as duplicate generation, duplicate sending, and delivery statuses overwriting each other when multiple platforms were connected simultaneously;",
+      "updated_at": 1784437461
+    },
     "CHANGELOG.md:list:572872f4348e759b46f65964708d6035ffe736d5c7f16bbeca3641f8458acd29": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 现在控制整轮用户请求总时长，默认 __ELBOT_CODE_1__ 表示不限时；",
@@ -471,6 +479,14 @@
       "source_hash": "714c6568883b5a6b6d519ae10020e60c5d54a73ae7f39b8f6636810137a32aeb",
       "translation": "The risk level of the __ELBOT_CODE_0__ tool has been downgraded from high to medium.",
       "updated_at": 1782298716
+    },
+    "CHANGELOG.md:list:724d7413284e7fd78ea7267adc35cf07734d88c82a66dd3a6bd95024ad16c090": {
+      "kind": "list",
+      "source": "LLM 返回 __ELBOT_CODE_0__ 的失败或阻塞报告现在也会冻结并完成补发。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "724d7413284e7fd78ea7267adc35cf07734d88c82a66dd3a6bd95024ad16c090",
+      "translation": "Failure or blocking reports from LLM returning __ELBOT_CODE_0__ will now also be frozen and complete the re-delivery.",
+      "updated_at": 1784437461
     },
     "CHANGELOG.md:list:7451bbf5a68e98a284488175db4e8df8fae0a4cc7c3d7b20b8c10878e7390e09": {
       "kind": "list",
@@ -1138,8 +1154,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "56c652b23e71a323faf23ee3d1448e8baf4c11db267f3c1629266fb57a123222",
+  "source_hash": "d971cfdab8fd0625d21b27225c5cc775aaca21f57c13acaddc0c33ee5e58cb11",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784340385,
+  "updated_at": 1784437461,
   "version": 2
 }
