@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -30,6 +31,7 @@ func TestHookRuntimeHelperProcess(t *testing.T) {
 		os.Exit(3)
 	}
 	reader := bufio.NewReader(os.Stdin)
+	hookID := ""
 	for eventCount := 0; ; {
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -46,6 +48,7 @@ func TestHookRuntimeHelperProcess(t *testing.T) {
 		method, _ := frame["method"].(string)
 		switch method {
 		case "system.init":
+			hookID = helperHookID(frame)
 			writeHelperResponse(id, map[string]any{})
 		case "event.handle":
 			eventCount++
@@ -59,12 +62,22 @@ func TestHookRuntimeHelperProcess(t *testing.T) {
 				writeHelperResponse(id, map[string]any{"status": "completed", "pass_through": true})
 			}
 		case "system.shutdown":
+			if hookID == "slow-shutdown" {
+				time.Sleep(200 * time.Millisecond)
+			}
 			writeHelperResponse(id, map[string]any{})
 			os.Exit(0)
 		default:
 			writeHelperError(id, "unknown method")
 		}
 	}
+}
+
+func helperHookID(value map[string]any) string {
+	params, _ := value["params"].(map[string]any)
+	hookValue, _ := params["hook"].(map[string]any)
+	id, _ := hookValue["id"].(string)
+	return id
 }
 
 func TestManagerBuildsCanonicalRuntimeOutputs(t *testing.T) {
@@ -451,5 +464,50 @@ func TestManagerApplyInvalidConfigKeepsCurrentWorkers(t *testing.T) {
 	infos := manager.List()
 	if len(infos) != 1 || infos[0].ID != "current" || infos[0].Status != StatusReady {
 		t.Fatalf("workers after invalid Apply = %#v", infos)
+	}
+}
+
+func TestManagerCloseRejectsNewStartsAndIsIdempotent(t *testing.T) {
+	manager := NewManager(Options{SharedDir: t.TempDir()})
+	if err := manager.Close(context.Background()); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := manager.Close(context.Background()); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+	if err := manager.Apply(nil); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Apply after Close = %v, want ErrClosed", err)
+	}
+	if err := manager.Start("missing"); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Start after Close = %v, want ErrClosed", err)
+	}
+}
+
+func TestManagerCloseContextOnlyBoundsWaiting(t *testing.T) {
+	manager := NewManager(Options{SharedDir: t.TempDir()})
+	config := Config{
+		Mode:                   ModePersistent,
+		Command:                runtimeHelperCommand(),
+		Cwd:                    ".",
+		StartupTimeoutSeconds:  2,
+		ShutdownTimeoutSeconds: 2,
+		EventTimeoutSeconds:    2,
+		MaxWaitSeconds:         30,
+		Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
+		ID:                     "slow-shutdown",
+		Dir:                    t.TempDir(),
+	}
+	if err := manager.Apply([]Config{config}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	waitForStatus(t, manager, config.ID, StatusReady)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := manager.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Close = %v, want deadline exceeded", err)
+	}
+	if err := manager.Close(context.Background()); err != nil {
+		t.Fatalf("eventual Close: %v", err)
 	}
 }

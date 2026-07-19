@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -86,7 +87,13 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	hookService := buildHookService(foundation, req.Platforms, toolRuntime, cronService, hooks, hookRuntime, notifyHookIssue, sendNotice)
 	req.Profiler.Mark("hook register")
 
-	agt = buildAgent(foundation, req.Models, req.Platforms, toolRuntime, securityPolicy, hooks, hookRuntime, hookService)
+	agt, err = buildAgent(foundation, req.Models, req.Platforms, toolRuntime, securityPolicy, hooks, hookRuntime, hookService)
+	if err != nil {
+		if closeErr := hookRuntime.Close(context.Background()); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("cleanup hook runtime after agent build: %w", closeErr))
+		}
+		return nil, err
+	}
 	cronService.SetRunner(agt)
 	for _, notice := range startupHookNotices {
 		notifyHookIssue(context.Background(), notice)
@@ -182,39 +189,44 @@ func buildAgent(
 	hooks *hook.DefaultManager,
 	hookRuntime *hookruntime.Manager,
 	hookService *hookcontrol.Service,
-) *agent.Agent {
+) (*agent.Agent, error) {
 	cfg := foundation.Config
-	agt := agent.NewWithOptions(agent.Options{
-		Platform:         platforms.Primary,
-		Client:           models.Primary,
-		ModeModels:       cfg.ModeModels,
-		Providers:        cfg.Providers,
-		StatePath:        cfg.StateConfigPath,
-		Store:            foundation.Store,
-		CommandPrefixes:  cfg.Commands.Prefixes,
-		SessionConfig:    session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode},
-		NamingSelection:  cfg.NamingModel,
-		NamingClient:     models.Naming,
-		NamingModel:      models.NamingModel,
-		NamingNotifier:   namingLogger{logger: foundation.Logger},
-		SoulPath:         cfg.Soul.Path,
-		LLMRequestConfig: cfg.LLMRequest,
-		HookService:      hookService,
+	agt, err := agent.NewWithOptions(agent.Options{
+		Platform:              platforms.Primary,
+		Clients:               models.ByProvider,
+		ModeModels:            cfg.ModeModels,
+		Providers:             cfg.Providers,
+		StatePath:             cfg.StateConfigPath,
+		Store:                 foundation.Store,
+		CommandPrefixes:       cfg.Commands.Prefixes,
+		SessionConfig:         session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode},
+		NamingSelection:       cfg.NamingModel,
+		NamingNotifier:        namingLogger{logger: foundation.Logger},
+		SoulPath:              cfg.Soul.Path,
+		LLMRequestConfig:      cfg.LLMRequest,
+		HookService:           hookService,
+		HookManager:           hooks,
+		HookRuntime:           hookRuntime,
+		OutputManager:         delivery.NewManager(nil, foundation.Logger),
+		Logs:                  foundation.Logs,
+		ToolRegistry:          toolRuntime.Registry,
+		Skills:                toolRuntime.SkillManager,
+		SecurityPolicy:        securityPolicy,
+		ContextConfig:         cfg.Context,
+		ModelMetadata:         cfg.ModelMetadata,
+		CompactModel:          cfg.CompactModel,
+		SessionListPageSize:   cfg.View.SessionListPageSize,
+		CleanupRetentionDays:  cfg.Maintenance.SessionCleanup.RetentionDays,
+		SessionIdleExpiration: cfg.Session.IdleExpiration,
+		SandboxRoot:           cfg.Sandbox.Root,
+		ToolsConfig:           cfg.Tools,
+		ToolTagsPath:          cfg.ToolTagsConfigPath,
+		ToolTags:              cfg.ToolTags,
 	})
-	agt.SetHookManager(hooks)
-	agt.SetHookRuntime(hookRuntime)
-	agt.SetOutputManager(delivery.NewManager(nil, foundation.Logger))
-	agt.SetSessionListPageSize(cfg.View.SessionListPageSize)
-	agt.SetCleanupRetentionDays(cfg.Maintenance.SessionCleanup.RetentionDays)
-	agt.SetSessionIdleExpiration(cfg.Session.IdleExpiration)
-	agt.SetSandboxRoot(cfg.Sandbox.Root)
-	agt.SetLogManager(foundation.Logs)
-	agt.SetToolRuntime(toolRuntime.Registry, toolRuntime.SkillManager)
-	agt.SetToolConfig(cfg.Tools)
-	agt.SetToolTagConfig(cfg.ToolTagsConfigPath, cfg.ToolTags)
-	agt.SetSecurityPolicy(securityPolicy)
-	agt.SetContextOptions(cfg.Context, cfg.ModelMetadata, cfg.Providers, cfg.CompactModel)
-	return agt
+	if err != nil {
+		return nil, err
+	}
+	return agt, nil
 }
 
 func auditFunc(logs LogManager) func(string, ...any) {
@@ -227,6 +239,6 @@ type hookRuntimeLifecycle struct {
 	runtime *hookruntime.Manager
 }
 
-func (l hookRuntimeLifecycle) Close(ctx context.Context) {
-	l.runtime.Close(ctx)
+func (l hookRuntimeLifecycle) Close(ctx context.Context) error {
+	return l.runtime.Close(ctx)
 }

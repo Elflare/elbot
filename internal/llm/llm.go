@@ -1,6 +1,9 @@
 package llm
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // MessageRole represents the role of a message in a conversation.
 type MessageRole string
@@ -115,4 +118,15 @@ type ChatResponse struct {
 type LLM interface {
 	ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, error)
 	ListModels(ctx context.Context) ([]string, error)
+}
+
+type RetryEvent struct {
+	Attempt    int
+	MaxRetries int
+	Delay      time.Duration
+	Err        error
+}
+
+type RetryNotifier interface {
+	SetRetryNotifier(func(context.Context, RetryEvent))
 }

@@ -2,10 +2,33 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 )
 
-func (r *Runner) Run(ctx context.Context, opts Options) error {
+const defaultShutdownTimeout = 30 * time.Second
+
+type cleanupStep struct {
+	name  string
+	close func(context.Context) error
+}
+
+func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
+	var cleanups []cleanupStep
+	defer func() {
+		shutdownTimeout := r.shutdownTimeout
+		if shutdownTimeout <= 0 {
+			shutdownTimeout = defaultShutdownTimeout
+		}
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		for i := len(cleanups) - 1; i >= 0; i-- {
+			if err := cleanups[i].close(shutdownCtx); err != nil {
+				runErr = errors.Join(runErr, fmt.Errorf("close %s: %w", cleanups[i].name, err))
+			}
+		}
+	}()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -19,7 +42,7 @@ func (r *Runner) Run(ctx context.Context, opts Options) error {
 		return err
 	}
 	if marker != nil {
-		defer marker.Close()
+		cleanups = append(cleanups, cleanupStep{name: "service marker", close: func(context.Context) error { return marker.Close() }})
 	}
 
 	profiler := r.deps.Environment.NewStartupProfiler(opts.StartedAt)
@@ -36,7 +59,7 @@ func (r *Runner) Run(ctx context.Context, opts Options) error {
 	if foundation.Lifecycle == nil {
 		return fmt.Errorf("app: foundation factory returned incomplete components")
 	}
-	defer foundation.Lifecycle.Close(context.Background())
+	cleanups = append(cleanups, cleanupStep{name: "foundation", close: foundation.Lifecycle.Close})
 	if foundation.Logger == nil {
 		return fmt.Errorf("app: foundation factory returned incomplete components")
 	}
@@ -59,7 +82,7 @@ func (r *Runner) Run(ctx context.Context, opts Options) error {
 	if runtime.Lifecycle == nil {
 		return fmt.Errorf("app: runtime factory returned incomplete components")
 	}
-	defer runtime.Lifecycle.Close(context.Background())
+	cleanups = append(cleanups, cleanupStep{name: "runtime", close: runtime.Lifecycle.Close})
 	if runtime.Handler == nil {
 		return fmt.Errorf("app: runtime factory returned incomplete components")
 	}

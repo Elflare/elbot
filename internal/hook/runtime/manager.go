@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -25,13 +26,22 @@ type Manager struct {
 	sharedCancel  context.CancelFunc
 	sharedDone    chan struct{}
 	prepareReload func(string) (func() error, error)
+	rootCtx       context.Context
+	rootCancel    context.CancelFunc
+	closed        bool
+	startWG       sync.WaitGroup
+	closeDone     chan struct{}
+	closeErr      error
 }
+
+var ErrClosed = errors.New("hook runtime manager is closed")
 
 func NewManager(opts Options) *Manager {
 	if strings.TrimSpace(opts.SharedDir) != "" {
 		_ = os.MkdirAll(opts.SharedDir, 0o755)
 	}
 	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
+	rootCtx, rootCancel := context.WithCancel(context.Background())
 	m := &Manager{
 		opts:         opts,
 		workers:      map[string]*worker{},
@@ -43,6 +53,9 @@ func NewManager(opts Options) *Manager {
 		shared:       NewSharedState(),
 		sharedCancel: cleanupCancel,
 		sharedDone:   make(chan struct{}),
+		rootCtx:      rootCtx,
+		rootCancel:   rootCancel,
+		closeDone:    make(chan struct{}),
 	}
 	go m.cleanSharedState(cleanupCtx)
 	return m
@@ -116,6 +129,10 @@ func (m *Manager) Apply(configs []Config) error {
 	}
 
 	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return ErrClosed
+	}
 	previous := m.workers
 	previousTransient := m.transient
 	m.workers = nextWorkers
@@ -134,13 +151,15 @@ func (m *Manager) Apply(configs []Config) error {
 	m.mu.Unlock()
 
 	for _, old := range previous {
-		old.stop(context.Background())
+		_ = old.stop(context.Background())
 	}
 	for _, old := range previousTransient {
-		old.stop(context.Background())
+		_ = old.stop(context.Background())
 	}
 	for _, worker := range workers {
-		go worker.run()
+		if err := m.startWorker(worker); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -201,6 +220,10 @@ func (m *Manager) ReplacePlugin(config Config) error {
 	}
 	id := strings.TrimSpace(config.ID)
 	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return ErrClosed
+	}
 	old := m.workers[id]
 	m.configs[id] = config
 	m.clearRoutesLocked(id)
@@ -218,26 +241,28 @@ func (m *Manager) ReplacePlugin(config Config) error {
 	m.mu.Unlock()
 
 	if old != nil {
-		old.stop(context.Background())
+		if err := old.stop(context.Background()); err != nil {
+			return err
+		}
 	}
 	if next != nil {
-		go next.run()
+		return m.startWorker(next)
 	}
 	return nil
 }
 
-func (m *Manager) Close(ctx context.Context) {
+func (m *Manager) Close(ctx context.Context) error {
 	if m == nil {
-		return
+		return nil
 	}
-	if m.sharedCancel != nil {
-		m.sharedCancel()
-		select {
-		case <-m.sharedDone:
-		case <-ctx.Done():
-		}
+	m.mu.Lock()
+	if m.closed {
+		done := m.closeDone
+		m.mu.Unlock()
+		return m.waitClose(ctx, done)
 	}
-	m.mu.RLock()
+	m.closed = true
+	m.rootCancel()
 	workers := make([]*worker, 0, len(m.workers)+len(m.transient))
 	for _, worker := range m.workers {
 		workers = append(workers, worker)
@@ -245,10 +270,75 @@ func (m *Manager) Close(ctx context.Context) {
 	for _, worker := range m.transient {
 		workers = append(workers, worker)
 	}
-	m.mu.RUnlock()
-	for _, worker := range workers {
-		worker.stop(ctx)
+	m.routes = map[routeKey]lease{}
+	m.running = map[routeKey]invocation{}
+	m.tokens = map[string]toolContext{}
+	m.mu.Unlock()
+
+	if m.sharedCancel != nil {
+		m.sharedCancel()
 	}
+	go m.finishClose(workers)
+	return m.waitClose(ctx, m.closeDone)
+}
+
+func (m *Manager) waitClose(ctx context.Context, done <-chan struct{}) error {
+	select {
+	case <-done:
+		return m.closeErr
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (m *Manager) finishClose(workers []*worker) {
+	workerErrs := make([]error, len(workers))
+	var wg sync.WaitGroup
+	for i, worker := range workers {
+		i, worker := i, worker
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			workerErrs[i] = worker.stop(context.Background())
+		}()
+	}
+	wg.Wait()
+	m.startWG.Wait()
+	if m.sharedDone != nil {
+		<-m.sharedDone
+	}
+
+	m.mu.Lock()
+	m.closeErr = errors.Join(workerErrs...)
+	close(m.closeDone)
+	m.mu.Unlock()
+}
+
+func (m *Manager) startWorker(worker *worker) error {
+	if m == nil || worker == nil {
+		return nil
+	}
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return ErrClosed
+	}
+	m.startWG.Add(1)
+	m.mu.Unlock()
+	go func() {
+		defer m.startWG.Done()
+		worker.run()
+	}()
+	return nil
+}
+
+func (m *Manager) isClosed() bool {
+	if m == nil {
+		return true
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.closed
 }
 
 func (m *Manager) List() []Info {
@@ -296,11 +386,16 @@ func (m *Manager) List() []Info {
 }
 
 func (m *Manager) Start(id string) error {
+	if m.isClosed() {
+		return ErrClosed
+	}
 	worker := m.worker(id)
 	if worker == nil {
 		return fmt.Errorf("persistent hook %q not found", id)
 	}
-	worker.start()
+	if err := worker.start(); err != nil {
+		return err
+	}
 	return worker.waitReady(context.Background())
 }
 
@@ -308,11 +403,11 @@ func (m *Manager) Stop(ctx context.Context, id string) (bool, error) {
 	id = strings.TrimSpace(id)
 	persistent := m.worker(id)
 	if persistent != nil {
-		persistent.stop(ctx)
+		stopErr := persistent.stop(ctx)
 		m.mu.Lock()
 		m.clearRoutesLocked(id)
 		m.mu.Unlock()
-		return true, nil
+		return true, stopErr
 	}
 	m.mu.Lock()
 	config, ok := m.configs[id]
@@ -330,10 +425,11 @@ func (m *Manager) Stop(ctx context.Context, id string) (bool, error) {
 	}
 	m.clearRoutesLocked(id)
 	m.mu.Unlock()
-	for _, transient := range workers {
-		transient.stop(ctx)
+	stopErrs := make([]error, len(workers))
+	for i, transient := range workers {
+		stopErrs[i] = transient.stop(ctx)
 	}
-	return true, nil
+	return true, errors.Join(stopErrs...)
 }
 
 func (m *Manager) Restart(ctx context.Context, id string) error {
@@ -399,13 +495,23 @@ func (m *Manager) Handle(ctx context.Context, id string, event hook.Event, defau
 
 func (m *Manager) startTransient(ctx context.Context, config Config, key routeKey) (*worker, error) {
 	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return nil, ErrClosed
+	}
 	worker := m.transient[key]
+	created := false
 	if worker == nil {
 		worker = newWorker(m, config)
 		m.transient[key] = worker
-		go worker.run()
+		created = true
 	}
 	m.mu.Unlock()
+	if created {
+		if err := m.startWorker(worker); err != nil {
+			return nil, err
+		}
+	}
 	if err := worker.waitReady(ctx); err != nil {
 		m.stopTransient(key, worker)
 		return nil, err
@@ -423,5 +529,5 @@ func (m *Manager) stopTransient(key routeKey, wanted *worker) {
 	delete(m.transient, key)
 	delete(m.routes, key)
 	m.mu.Unlock()
-	go worker.stop(context.Background())
+	go func() { _ = worker.stop(context.Background()) }()
 }

@@ -27,6 +27,7 @@ type worker struct {
 	cmd          *exec.Cmd
 	stdin        io.WriteCloser
 	pending      map[string]chan frame
+	starting     bool
 	stopping     bool
 	manualStop   bool
 	restartDelay time.Duration
@@ -44,11 +45,11 @@ func newWorker(manager *Manager, config Config) *worker {
 	return &worker{manager: manager, config: config, status: StatusStopped, pending: map[string]chan frame{}, routeLocks: map[routeKey]chan struct{}{}}
 }
 
-func (w *worker) start() {
+func (w *worker) start() error {
 	w.mu.Lock()
 	w.manualStop = false
 	w.mu.Unlock()
-	go w.run()
+	return w.manager.startWorker(w)
 }
 
 func (w *worker) waitReady(ctx context.Context) error {
@@ -98,10 +99,11 @@ func (w *worker) setStatus(status Status, detail string) {
 
 func (w *worker) run() {
 	w.mu.Lock()
-	if w.cmd != nil || w.stopping {
+	if w.cmd != nil || w.starting || w.stopping || w.manualStop {
 		w.mu.Unlock()
 		return
 	}
+	w.starting = true
 	w.status = StatusStarting
 	w.detail = ""
 	w.done = make(chan struct{})
@@ -130,19 +132,36 @@ func (w *worker) run() {
 		return
 	}
 	cmd.Stderr = stderrLogger{logger: w.manager.opts.Logger, hookID: w.config.ID}
-	if err := cmd.Start(); err != nil {
-		w.startFailed(err)
+	w.manager.mu.RLock()
+	w.mu.Lock()
+	if w.manager.closed || w.cmd != nil || w.stopping || w.manualStop {
+		w.starting = false
+		w.mu.Unlock()
+		w.manager.mu.RUnlock()
+		w.setStatus(StatusStopped, "")
 		return
 	}
-	w.mu.Lock()
+	if err := cmd.Start(); err != nil {
+		w.starting = false
+		w.status = StatusFailed
+		w.detail = err.Error()
+		w.mu.Unlock()
+		w.manager.mu.RUnlock()
+		if w.shouldRestart() {
+			go w.restartLater()
+		}
+		return
+	}
 	w.cmd = cmd
 	w.stdin = stdin
+	w.starting = false
 	w.pending = map[string]chan frame{}
 	w.mu.Unlock()
+	w.manager.mu.RUnlock()
 	go w.readLoop(stdout)
 	go w.waitLoop(cmd)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(w.config.StartupTimeoutSeconds)*time.Second)
+	ctx, cancel := context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.StartupTimeoutSeconds)*time.Second)
 	defer cancel()
 	init := systemInit{Version: protocolVersion, Hook: systemHook{ID: w.config.ID, Description: w.config.Description, Dir: w.config.Dir, Cwd: cwd, SharedDir: w.manager.opts.SharedDir}, Tools: w.schemas()}
 	if _, err := w.request(ctx, "system.init", init); err != nil {
@@ -157,7 +176,11 @@ func (w *worker) run() {
 }
 
 func (w *worker) startFailed(err error) {
-	w.setStatus(StatusFailed, err.Error())
+	w.mu.Lock()
+	w.starting = false
+	w.status = StatusFailed
+	w.detail = strings.TrimSpace(err.Error())
+	w.mu.Unlock()
 	if w.shouldRestart() {
 		go w.restartLater()
 	}
@@ -199,7 +222,11 @@ func (w *worker) waitLoop(cmd *exec.Cmd) {
 		}
 		return
 	}
-	w.setStatus(StatusStopped, "")
+	w.mu.Lock()
+	w.stopping = false
+	w.status = StatusStopped
+	w.detail = ""
+	w.mu.Unlock()
 }
 
 func (w *worker) shouldRestart() bool {
@@ -224,20 +251,33 @@ func (w *worker) restartLater() {
 	}
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
-	<-timer.C
+	select {
+	case <-timer.C:
+	case <-w.manager.rootCtx.Done():
+		return
+	}
 	w.mu.Lock()
 	stopping := w.stopping || w.manualStop
 	w.mu.Unlock()
 	if !stopping {
-		w.run()
+		_ = w.start()
 	}
 }
 
-func (w *worker) stop(ctx context.Context) {
+func (w *worker) stop(ctx context.Context) error {
 	w.mu.Lock()
 	if w.stopping {
+		done := w.done
 		w.mu.Unlock()
-		return
+		if done == nil {
+			return nil
+		}
+		select {
+		case <-done:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 	w.stopping = true
 	w.manualStop = true
@@ -245,24 +285,45 @@ func (w *worker) stop(ctx context.Context) {
 	done := w.done
 	w.mu.Unlock()
 	if cmd == nil {
-		w.setStatus(StatusStopped, "")
 		w.mu.Lock()
 		w.stopping = false
+		w.status = StatusStopped
+		w.detail = ""
 		w.mu.Unlock()
-		return
+		return nil
 	}
 	w.setStatus(StatusStopping, "")
 	shutdownCtx, cancel := context.WithTimeout(ctx, time.Duration(w.config.ShutdownTimeoutSeconds)*time.Second)
 	_, _ = w.request(shutdownCtx, "system.shutdown", map[string]any{})
 	cancel()
+	graceful := true
+	timer := time.NewTimer(time.Duration(w.config.ShutdownTimeoutSeconds) * time.Second)
+	defer timer.Stop()
 	select {
 	case <-done:
-	case <-time.After(time.Duration(w.config.ShutdownTimeoutSeconds) * time.Second):
+	case <-ctx.Done():
 		w.kill()
+		return ctx.Err()
+	case <-timer.C:
+		graceful = false
+		w.kill()
+		killTimer := time.NewTimer(time.Duration(w.config.ShutdownTimeoutSeconds) * time.Second)
+		defer killTimer.Stop()
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-killTimer.C:
+			return fmt.Errorf("hook worker %q did not exit after kill", w.config.ID)
+		}
 	}
 	w.mu.Lock()
 	w.stopping = false
 	w.mu.Unlock()
+	if !graceful {
+		return fmt.Errorf("hook worker %q graceful shutdown timed out", w.config.ID)
+	}
+	return nil
 }
 func (w *worker) kill() {
 	w.mu.Lock()

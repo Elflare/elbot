@@ -8,7 +8,7 @@ import (
 	"elbot/internal/toolrun"
 )
 
-type skillLifecycle interface {
+type SkillLifecycle interface {
 	Reload(context.Context) error
 	Remove(context.Context, string) error
 }
@@ -17,7 +17,7 @@ type toolRuntimeState struct {
 	provider        ToolSchemaProvider
 	manager         *toolrun.Manager
 	registry        *tool.Registry
-	skills          skillLifecycle
+	skills          SkillLifecycle
 	config          config.ToolsConfig
 	toolTags        *toolTagConfigSource
 	defaultProvider bool
@@ -50,7 +50,7 @@ func (a *Agent) SetToolProvider(provider ToolSchemaProvider) {
 	a.rebuildSystemPrompt()
 }
 
-func (a *Agent) SetToolRuntime(registry *tool.Registry, skills skillLifecycle) {
+func (a *Agent) SetToolRuntime(registry *tool.Registry, skills SkillLifecycle) {
 	a.toolRuntime.registry = registry
 	a.toolRuntime.skills = skills
 	a.toolRuntime.manager = toolrun.NewManager(registry, a.securityPolicy)

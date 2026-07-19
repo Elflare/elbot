@@ -13,9 +13,10 @@ import (
 )
 
 type environmentStub struct {
-	events   *[]string
-	mode     RunMode
-	profiler StartupProfiler
+	events    *[]string
+	mode      RunMode
+	profiler  StartupProfiler
+	markerErr error
 }
 
 func (s environmentStub) ResolveMode(RunMode) (RunMode, error) {
@@ -25,7 +26,10 @@ func (s environmentStub) ResolveMode(RunMode) (RunMode, error) {
 
 func (s environmentStub) ClaimServiceMarker(RunMode) (io.Closer, error) {
 	*s.events = append(*s.events, "marker")
-	return closeFunc(func() { *s.events = append(*s.events, "marker-close") }), nil
+	return closeFunc(func() error {
+		*s.events = append(*s.events, "marker-close")
+		return s.markerErr
+	}), nil
 }
 
 func (s environmentStub) NewStartupProfiler(time.Time) StartupProfiler {
@@ -33,16 +37,15 @@ func (s environmentStub) NewStartupProfiler(time.Time) StartupProfiler {
 	return s.profiler
 }
 
-type closeFunc func()
+type closeFunc func() error
 
 func (f closeFunc) Close() error {
-	f()
-	return nil
+	return f()
 }
 
-type lifecycleFunc func(context.Context)
+type lifecycleFunc func(context.Context) error
 
-func (f lifecycleFunc) Close(ctx context.Context) { f(ctx) }
+func (f lifecycleFunc) Close(ctx context.Context) error { return f(ctx) }
 
 type profilerStub struct {
 	events *[]string
@@ -162,6 +165,55 @@ func TestRunnerRunStopsBeforeEnvironmentWhenContextCanceled(t *testing.T) {
 	}
 }
 
+func TestRunnerRunJoinsExecutionAndCleanupErrors(t *testing.T) {
+	events := []string{}
+	runErr := errors.New("executor failed")
+	runtimeCloseErr := errors.New("runtime close failed")
+	foundationCloseErr := errors.New("foundation close failed")
+	markerCloseErr := errors.New("marker close failed")
+	runner := newLifecycleErrorRunner(t, &events, runErr, runtimeCloseErr, foundationCloseErr, markerCloseErr)
+
+	err := runner.Run(context.Background(), Options{Mode: RunModeFull})
+	for _, want := range []error{runErr, runtimeCloseErr, foundationCloseErr, markerCloseErr} {
+		if !errors.Is(err, want) {
+			t.Fatalf("Run() error = %v, want errors.Is(%v)", err, want)
+		}
+	}
+	wantTail := []string{"runtime-close", "foundation-close", "marker-close"}
+	if !reflect.DeepEqual(events[len(events)-len(wantTail):], wantTail) {
+		t.Fatalf("events = %#v, want tail %#v", events, wantTail)
+	}
+}
+
+func TestRunnerRunBoundsCleanupWithSharedTimeout(t *testing.T) {
+	events := []string{}
+	runner := newLifecycleErrorRunner(t, &events, nil, nil, nil, nil)
+	runner.shutdownTimeout = 20 * time.Millisecond
+	runner.deps.Runtime = runtimeFactoryFunc(func(context.Context, RuntimeRequest) (*RuntimeComponents, error) {
+		return &RuntimeComponents{
+			Handler: handlerStub{},
+			Lifecycle: lifecycleFunc(func(ctx context.Context) error {
+				events = append(events, "runtime-close")
+				<-ctx.Done()
+				return ctx.Err()
+			}),
+		}, nil
+	})
+
+	started := time.Now()
+	err := runner.Run(context.Background(), Options{Mode: RunModeFull})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Run() error = %v, want deadline exceeded", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("Run() cleanup took %v", elapsed)
+	}
+	wantTail := []string{"runtime-close", "foundation-close", "marker-close"}
+	if !reflect.DeepEqual(events[len(events)-len(wantTail):], wantTail) {
+		t.Fatalf("events = %#v, want tail %#v", events, wantTail)
+	}
+}
+
 func TestNewRunnerRejectsMissingDependencyGroup(t *testing.T) {
 	deps := DefaultDependencies()
 	deps.Models = nil
@@ -193,8 +245,9 @@ func newTestRunner(t *testing.T, events *[]string, mode RunMode, failAt string) 
 				StartCron: func(context.Context, *elcron.Service) {
 					*events = append(*events, "cron-start")
 				},
-				Lifecycle: lifecycleFunc(func(context.Context) {
+				Lifecycle: lifecycleFunc(func(context.Context) error {
 					*events = append(*events, "foundation-close")
+					return nil
 				}),
 			}, nil
 		}),
@@ -213,8 +266,9 @@ func newTestRunner(t *testing.T, events *[]string, mode RunMode, failAt string) 
 			}
 			return &RuntimeComponents{
 				Handler: handlerStub{},
-				Lifecycle: lifecycleFunc(func(context.Context) {
+				Lifecycle: lifecycleFunc(func(context.Context) error {
 					*events = append(*events, "runtime-close")
+					return nil
 				}),
 			}, nil
 		}),
@@ -228,6 +282,56 @@ func newTestRunner(t *testing.T, events *[]string, mode RunMode, failAt string) 
 				req.AfterStart(context.Background())
 			}
 			return fail("executor")
+		}),
+	}
+	runner, err := NewRunner(deps)
+	if err != nil {
+		t.Fatalf("NewRunner() error = %v", err)
+	}
+	return runner
+}
+
+func newLifecycleErrorRunner(t *testing.T, events *[]string, runErr, runtimeCloseErr, foundationCloseErr, markerCloseErr error) *Runner {
+	t.Helper()
+	profiler := profilerStub{events: events}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	deps := Dependencies{
+		Environment: environmentStub{events: events, mode: RunModeFull, profiler: profiler, markerErr: markerCloseErr},
+		Foundation: foundationFactoryFunc(func(context.Context, FoundationRequest) (*FoundationComponents, error) {
+			*events = append(*events, "foundation")
+			return &FoundationComponents{
+				Logger: logger,
+				Lifecycle: lifecycleFunc(func(context.Context) error {
+					*events = append(*events, "foundation-close")
+					return foundationCloseErr
+				}),
+			}, nil
+		}),
+		Models: modelFactoryFunc(func(ModelRequest) (ModelClients, error) {
+			*events = append(*events, "models")
+			return ModelClients{}, nil
+		}),
+		Platforms: platformFactoryFunc(func(PlatformRequest) (PlatformComponents, error) {
+			*events = append(*events, "platforms")
+			return PlatformComponents{}, nil
+		}),
+		Runtime: runtimeFactoryFunc(func(context.Context, RuntimeRequest) (*RuntimeComponents, error) {
+			*events = append(*events, "runtime")
+			return &RuntimeComponents{
+				Handler: handlerStub{},
+				Lifecycle: lifecycleFunc(func(context.Context) error {
+					*events = append(*events, "runtime-close")
+					return runtimeCloseErr
+				}),
+			}, nil
+		}),
+		Integrations: integrationFactoryFunc(func(_ context.Context, req IntegrationRequest) (PlatformComponents, error) {
+			*events = append(*events, "integrations")
+			return req.Platforms, nil
+		}),
+		Executor: executorFunc(func(context.Context, PlatformRunRequest) error {
+			*events = append(*events, "executor")
+			return runErr
 		}),
 	}
 	runner, err := NewRunner(deps)

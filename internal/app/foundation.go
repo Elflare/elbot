@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -34,7 +35,9 @@ func (defaultFoundationFactory) Build(ctx context.Context, req FoundationRequest
 	lifecycle := &foundationLifecycle{cfg: cfg, logs: logs}
 	defer func() {
 		if err != nil {
-			lifecycle.Close(context.Background())
+			if closeErr := lifecycle.Close(context.Background()); closeErr != nil {
+				err = errors.Join(err, fmt.Errorf("cleanup incomplete foundation: %w", closeErr))
+			}
 		}
 	}()
 
@@ -129,20 +132,36 @@ func (l *foundationLifecycle) startCron(ctx context.Context, service *elcron.Ser
 	startCronAsync(ctx, l.cronManager, service, l.cfg, l.logs.Runtime(), l.cronStartupDone)
 }
 
-func (l *foundationLifecycle) Close(context.Context) {
+func (l *foundationLifecycle) Close(ctx context.Context) error {
+	var errs []error
 	if l.cronScheduled {
-		<-l.cronStartupDone
+		select {
+		case <-l.cronStartupDone:
+		case <-ctx.Done():
+			errs = append(errs, fmt.Errorf("wait cron startup: %w", ctx.Err()))
+		}
 	}
 	if l.cronManager != nil {
-		<-l.cronManager.Stop().Done()
+		select {
+		case <-l.cronManager.Stop().Done():
+		case <-ctx.Done():
+			errs = append(errs, fmt.Errorf("stop cron manager: %w", ctx.Err()))
+		}
 	}
 	if l.chatHistoryStore != nil {
-		_ = l.chatHistoryStore.Close()
+		if err := l.chatHistoryStore.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("close chat history store: %w", err))
+		}
 	}
 	if l.store != nil {
-		_ = l.store.Close()
+		if err := l.store.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("close main store: %w", err))
+		}
 	}
 	if l.logs != nil {
-		_ = l.logs.Close()
+		if err := l.logs.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("close logs: %w", err))
+		}
 	}
+	return errors.Join(errs...)
 }

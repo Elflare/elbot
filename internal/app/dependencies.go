@@ -29,7 +29,7 @@ type Environment interface {
 }
 
 type Lifecycle interface {
-	Close(context.Context)
+	Close(context.Context) error
 }
 
 type LogManager interface {
@@ -73,9 +73,7 @@ type ModelRequest struct {
 }
 
 type ModelClients struct {
-	Primary     llm.LLM
-	Naming      llm.LLM
-	NamingModel string
+	ByProvider map[string]llm.LLM
 }
 
 type ModelFactory interface {
@@ -162,7 +160,8 @@ func DefaultDependencies() Dependencies {
 }
 
 type Runner struct {
-	deps Dependencies
+	deps            Dependencies
+	shutdownTimeout time.Duration
 }
 
 func NewRunner(deps Dependencies) (*Runner, error) {
@@ -183,5 +182,5 @@ func NewRunner(deps Dependencies) (*Runner, error) {
 			return nil, fmt.Errorf("app: missing %s", check.name)
 		}
 	}
-	return &Runner{deps: deps}, nil
+	return &Runner{deps: deps, shutdownTimeout: defaultShutdownTimeout}, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	agentcommands "elbot/internal/agent/commands"
 	"elbot/internal/config"
+	"elbot/internal/llm"
 	"elbot/internal/platform"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -52,7 +53,7 @@ func TestModelsGroupsProvidersAndSwitchPersistsState(t *testing.T) {
 		storage.SessionModeWork: {Provider: "deepseek", Model: "deepseek-chat"},
 		storage.SessionModeChat: {Provider: "zhipu", Model: "glm-4-flash"},
 	}
-	a := NewWithOptions(Options{Platform: p, Client: f, ModeModels: modeModels, Providers: providers, StatePath: statePath, Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
+	a := mustNewWithOptions(t, Options{Platform: p, Clients: map[string]llm.LLM{"deepseek": f}, ModeModels: modeModels, Providers: providers, StatePath: statePath, Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
 
 	if err := a.HandleMessage(context.Background(), "/models zhipu"); err != nil {
 		t.Fatalf("models: %v", err)
@@ -159,7 +160,7 @@ func TestModelsShowsMissingAPIKeyEnv(t *testing.T) {
 		storage.SessionModeWork: {Provider: "local", Model: "local-model"},
 		storage.SessionModeChat: {Provider: "local", Model: "local-model"},
 	}
-	a := NewWithOptions(Options{Platform: p, Client: &fakeLLM{models: []string{"local-model"}}, ModeModels: modeModels, Providers: providers, Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
+	a := mustNewWithOptions(t, Options{Platform: p, Clients: map[string]llm.LLM{"local": &fakeLLM{models: []string{"local-model"}}}, ModeModels: modeModels, Providers: providers, Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
 
 	if err := a.HandleMessage(context.Background(), "/models"); err != nil {
 		t.Fatalf("models: %v", err)
@@ -193,7 +194,7 @@ func TestModelsShowsProviderFetchErrorsAndHealthyModels(t *testing.T) {
 		storage.SessionModeWork: {Provider: "local", Model: "local-model"},
 		storage.SessionModeChat: {Provider: "local", Model: "local-model"},
 	}
-	a := NewWithOptions(Options{Platform: p, Client: &fakeLLM{models: []string{"local-model"}}, ModeModels: modeModels, Providers: providers, Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
+	a := mustNewWithOptions(t, Options{Platform: p, Clients: map[string]llm.LLM{"local": &fakeLLM{models: []string{"local-model"}}}, ModeModels: modeModels, Providers: providers, Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
 
 	if err := a.HandleMessage(context.Background(), "/models"); err != nil {
 		t.Fatalf("models: %v", err)
@@ -231,7 +232,7 @@ func TestModelOptionsFetchesProvidersInParallel(t *testing.T) {
 		storage.SessionModeWork: {Provider: "local", Model: "local-model"},
 		storage.SessionModeChat: {Provider: "local", Model: "local-model"},
 	}
-	a := NewWithOptions(Options{Platform: &fakePlatform{}, Client: &fakeLLM{models: []string{"local-model"}}, ModeModels: modeModels, Providers: providers, Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
+	a := mustNewWithOptions(t, Options{Platform: &fakePlatform{}, Clients: map[string]llm.LLM{"local": &fakeLLM{models: []string{"local-model"}}}, ModeModels: modeModels, Providers: providers, Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
 
 	startedAt := time.Now()
 	options := a.Models("")
@@ -267,7 +268,7 @@ func TestModelOptionsCachesProviderModelsUntilFresh(t *testing.T) {
 		storage.SessionModeWork: {Provider: "local", Model: "local-model"},
 		storage.SessionModeChat: {Provider: "local", Model: "local-model"},
 	}
-	a := NewWithOptions(Options{Platform: &fakePlatform{}, Client: &fakeLLM{models: []string{"local-model"}}, ModeModels: modeModels, Providers: providers, Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
+	a := mustNewWithOptions(t, Options{Platform: &fakePlatform{}, Clients: map[string]llm.LLM{"local": &fakeLLM{models: []string{"local-model"}}}, ModeModels: modeModels, Providers: providers, Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
 
 	first := a.ModelList("", agentcommands.ModelListOptions{})
 	second := a.ModelList("", agentcommands.ModelListOptions{})
@@ -293,7 +294,8 @@ func TestModelSwitchUsesMessagePlatformCurrentModeForGlobalState(t *testing.T) {
 		storage.SessionModeWork: {Provider: "deepseek", Model: "deepseek-chat"},
 		storage.SessionModeChat: {Provider: "deepseek", Model: "deepseek-chat"},
 	}
-	a := NewWithOptions(Options{Platform: p, Client: &fakeLLM{models: []string{"deepseek-chat"}}, ModeModels: modeModels, Providers: providers, StatePath: statePath, Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
+	client := &fakeLLM{models: []string{"deepseek-chat"}}
+	a := mustNewWithOptions(t, Options{Platform: p, Clients: map[string]llm.LLM{"deepseek": client, "zhipu": client}, ModeModels: modeModels, Providers: providers, StatePath: statePath, Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
 	a.RegisterPlatformSender("qq", p)
 	qqCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qq", PlatformUserID: "admin", ScopeID: "group:9"})
 	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"qq": {"admin"}}))

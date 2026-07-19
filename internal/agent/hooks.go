@@ -20,7 +20,7 @@ type hookRunner interface {
 	Notify(context.Context, hook.Event) error
 }
 
-type hookRouter interface {
+type HookRouter interface {
 	Cancel(hook.Event) bool
 	Route(context.Context, hook.Event) (hook.Event, bool, error)
 	RouteHookID(hook.Event) string
@@ -39,7 +39,7 @@ func (a *Agent) SetHookManager(manager hook.Manager) {
 
 // SetHookRuntime attaches stateful Hook continuation routing. Process lifecycle
 // management remains outside Agent in the Hook control service.
-func (a *Agent) SetHookRuntime(router hookRouter) {
+func (a *Agent) SetHookRuntime(router HookRouter) {
 	a.hookRuntime = router
 }
 

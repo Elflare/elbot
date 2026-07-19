@@ -119,7 +119,7 @@ func TestRunBackgroundUsesWorkModeWhenDefaultModeIsChat(t *testing.T) {
 		storage.SessionModeWork: {Provider: "default", Model: "test-model"},
 		storage.SessionModeChat: {Provider: "default", Model: "test-model"},
 	}
-	a := NewWithOptions(Options{Platform: platform, Client: f, ModeModels: modeModels, Providers: map[string]config.ProviderConfig{"default": {}}, Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeChat}})
+	a := mustNewWithOptions(t, Options{Platform: platform, Clients: map[string]llm.LLM{"default": f}, ModeModels: modeModels, Providers: map[string]config.ProviderConfig{"default": {}}, Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeChat}})
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))

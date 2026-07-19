@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"log/slog"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,7 +47,7 @@ type Agent struct {
 	securityPolicy     *security.Policy
 	contextRuntime     contextRuntimeState
 	hooks              hookRunner
-	hookRuntime        hookRouter
+	hookRuntime        HookRouter
 	outputs            delivery.Manager
 	namingModelMu      sync.RWMutex
 	namingModel        config.ModelSelection
@@ -79,16 +81,28 @@ func New(p platform.PlatformAdapter, client llm.LLM, model string, provider conf
 }
 
 func NewWithPrefixes(p platform.PlatformAdapter, client llm.LLM, modeModels map[string]config.ModelSelection, provider config.ProviderConfig, store storage.Store, prefixes []string) *Agent {
-	return NewWithOptions(Options{
-		Platform:         p,
-		Client:           client,
-		ModeModels:       modeModels,
-		Providers:        map[string]config.ProviderConfig{"default": provider},
-		Store:            store,
-		CommandPrefixes:  prefixes,
-		SessionConfig:    session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork},
-		LLMRequestConfig: config.Default().LLMRequest,
+	defaults := config.Default()
+	agent, err := NewWithOptions(Options{
+		Platform:              p,
+		Clients:               map[string]llm.LLM{"default": client},
+		ModeModels:            modeModels,
+		Providers:             map[string]config.ProviderConfig{"default": provider},
+		Store:                 store,
+		CommandPrefixes:       prefixes,
+		SessionConfig:         session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork},
+		LLMRequestConfig:      defaults.LLMRequest,
+		SecurityPolicy:        security.DefaultPolicy(),
+		ContextConfig:         defaults.Context,
+		SessionListPageSize:   defaults.View.SessionListPageSize,
+		CleanupRetentionDays:  30,
+		SessionIdleExpiration: defaults.Session.IdleExpiration,
+		SandboxRoot:           defaults.Sandbox.Root,
+		ToolsConfig:           defaults.Tools,
 	})
+	if err != nil {
+		panic(err)
+	}
+	return agent
 }
 
 func responseTimeout(cfg config.LLMRequestConfig) time.Duration {
@@ -98,9 +112,11 @@ func responseTimeout(cfg config.LLMRequestConfig) time.Duration {
 	return time.Duration(cfg.ResponseTimeoutSeconds) * time.Second
 }
 
-func NewWithOptions(opts Options) *Agent {
+func NewWithOptions(opts Options) (*Agent, error) {
+	if err := validateOptions(opts); err != nil {
+		return nil, err
+	}
 	p := opts.Platform
-	client := opts.Client
 	modeModels := opts.ModeModels
 	providers := opts.Providers
 	statePath := opts.StatePath
@@ -108,22 +124,18 @@ func NewWithOptions(opts Options) *Agent {
 	prefixes := opts.CommandPrefixes
 	sessionCfg := opts.SessionConfig
 	namingSelection := opts.NamingSelection
-	namingClient := opts.NamingClient
-	namingModel := opts.NamingModel
 	namingNotifier := opts.NamingNotifier
 	soulPath := opts.SoulPath
 	llmRequestConfig := opts.LLMRequestConfig
 	hookService := opts.HookService
 	workModel := modeModels[storage.SessionModeWork]
-	if workModel.Provider == "" || workModel.Model == "" {
-		panic("mode_models.work provider/model is required")
+	provider := providers[workModel.Provider]
+	clients := make(map[string]llm.LLM, len(opts.Clients))
+	for name, configured := range opts.Clients {
+		clients[name] = configured
 	}
-	provider, ok := providers[workModel.Provider]
-	if !ok {
-		panic("provider not found: " + workModel.Provider)
-	}
-	titleGen := &titleGenerator{primary: client, primaryModel: workModel.Model, naming: namingClient, namingModel: namingModel}
-	clients := map[string]llm.LLM{workModel.Provider: client}
+	client := clients[workModel.Provider]
+	titleGen := &titleGenerator{primary: client, primaryModel: workModel.Model, naming: clients[namingSelection.Provider], namingModel: namingSelection.Model}
 	promptSoul := SoulProvider(staticSoulProvider{Prompt: "You are a helpful assistant."})
 	if soulPath != "" {
 		promptSoul = &FileSoulProvider{Path: soulPath}
@@ -132,11 +144,20 @@ func NewWithOptions(opts Options) *Agent {
 	requests := request.NewManager(0)
 	turns := turn.NewManager()
 	sessions := session.NewServiceWithConfig(store, sessionCfg, titleGen, namingNotifier)
-	sessionCommands := agentcommands.NewSessionCommandState(config.Default().View.SessionListPageSize, 30)
+	sessionCommands := agentcommands.NewSessionCommandState(opts.SessionListPageSize, opts.CleanupRetentionDays)
+	policy := opts.SecurityPolicy
+	hookManager := hookRunner(opts.HookManager)
+	if hookManager == nil {
+		hookManager = hook.NoopManager{}
+	}
+	outputs := opts.OutputManager
+	if outputs.Sender == nil && outputs.Logger == nil {
+		outputs = delivery.NewManager(nil, nil)
+	}
 	a := &Agent{
 		platform:               p,
 		platformSenders:        map[string]delivery.MessageSender{},
-		modelRuntime:           newModelRuntimeState(client, workModel.Model, workModel.Provider, provider, llmRequestConfig, providers, modeModels, clients),
+		modelRuntime:           newModelRuntimeState(client, workModel.Model, workModel.Provider, provider, providers, modeModels, clients),
 		statePath:              statePath,
 		stateModTime:           stateModTime,
 		store:                  store,
@@ -145,10 +166,11 @@ func NewWithOptions(opts Options) *Agent {
 		turns:                  turns,
 		commands:               command.NewRouter(prefixes),
 		soul:                   promptSoul,
-		securityPolicy:         security.DefaultPolicy(),
+		securityPolicy:         policy,
 		contextRuntime:         newContextRuntimeState(store, sessions, requests, turns),
-		hooks:                  hook.NoopManager{},
-		outputs:                delivery.NewManager(nil, nil),
+		hooks:                  hookManager,
+		hookRuntime:            opts.HookRuntime,
+		outputs:                outputs,
 		namingModel:            namingSelection,
 		runtimeStatus:          map[string]runtimestatus.Snapshot{},
 		autoConfirmSession:     map[string]bool{},
@@ -159,20 +181,33 @@ func NewWithOptions(opts Options) *Agent {
 		discoveredTools: map[string]map[string]llm.ToolSchema{},
 
 		sessionCommands: sessionCommands,
-		idleExpiration:  sessionIdleExpirationConfig(config.Default().Session.IdleExpiration),
-		sandboxRoot:     config.Default().Sandbox.Root,
+		idleExpiration:  sessionIdleExpirationConfig(opts.SessionIdleExpiration),
+		sandboxRoot:     filepath.Clean(strings.TrimSpace(opts.SandboxRoot)),
 		actorID:         "cli:local",
 		scopeID:         "local",
 	}
+	if opts.Logs != nil {
+		a.SetLogManager(opts.Logs)
+	}
+	if defaultManager, ok := opts.HookManager.(*hook.DefaultManager); ok {
+		defaultManager.SetWakeupFunc(a.hookWakeup)
+		defaultManager.SetObserver(a.observeHookRun)
+	}
+	if opts.ToolRegistry != nil || opts.Skills != nil {
+		a.SetToolRuntime(opts.ToolRegistry, opts.Skills)
+	} else if opts.ToolProvider != nil {
+		a.SetToolProvider(opts.ToolProvider)
+	}
+	a.SetToolConfig(opts.ToolsConfig)
+	a.SetToolTagConfig(opts.ToolTagsPath, opts.ToolTags)
 	a.rebuildSystemPrompt()
-	a.attachLLMRetryNotifier(client, workModel.Provider)
-	if namingClient != nil && namingClient != client {
-		a.attachLLMRetryNotifier(namingClient, namingSelection.Provider)
+	for name, configured := range clients {
+		a.attachLLMRetryNotifier(configured, name)
 	}
 	if p != nil {
 		a.platformSenders[p.Name()] = p
 	}
-	a.SetContextOptions(config.Default().Context, config.ModelMetadataConfig{}, providers, config.ModelSelection{})
+	a.SetContextOptions(opts.ContextConfig, opts.ModelMetadata, providers, opts.CompactModel)
 	if err := agentcommands.RegisterDefaultModules(a.commands, agentcommands.Deps{
 		Router:        a.commands,
 		Sessions:      a.sessions,
@@ -190,7 +225,7 @@ func NewWithOptions(opts Options) *Agent {
 		Logs:          a,
 		RuntimeStatus: a.runtimeStatusForSession,
 	}); err != nil {
-		panic(err)
+		return nil, err
 	}
 	a.commandExecutor = &commandExecutor{
 		router:        a.commands,
@@ -220,7 +255,7 @@ func NewWithOptions(opts Options) *Agent {
 		completion.RouterSource{Router: a.commands},
 	)
 
-	return a
+	return a, nil
 }
 
 type staticSoulProvider struct {
