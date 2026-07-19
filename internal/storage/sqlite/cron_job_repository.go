@@ -48,14 +48,17 @@ func (r *CronJobRepository) Upsert(ctx context.Context, req storage.UpsertCronJo
 	job.Metadata = req.Metadata
 	job.NextRunAt = req.NextRunAt
 	job.UpdatedAt = now
-	if err := r.update(ctx, job); err != nil {
+	if err := r.update(ctx, job, req.ResetDelivery); err != nil {
 		return nil, err
 	}
-	return job, nil
+	return r.GetByName(ctx, req.Name)
 }
 
 func cronJobMatchesUpsert(job *storage.CronJob, req storage.UpsertCronJobRequest) bool {
 	if job == nil {
+		return false
+	}
+	if req.ResetDelivery && (job.DeliveryState != "" || job.DeliveryToken != "") {
 		return false
 	}
 	return job.Handler == req.Handler &&
@@ -75,7 +78,7 @@ func optionalTimeEqual(a, b *time.Time) bool {
 func (r *CronJobRepository) GetByName(ctx context.Context, name string) (*storage.CronJob, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT id, name, handler, schedule, enabled, metadata, last_run_at, next_run_at,
-       run_count, last_error, created_at, updated_at
+       run_count, last_error, created_at, updated_at, delivery_state, delivery_token
 FROM cron_jobs
 WHERE name = ?`, name)
 	job, err := scanCronJob(row)
@@ -91,7 +94,7 @@ WHERE name = ?`, name)
 func (r *CronJobRepository) List(ctx context.Context, includeDisabled bool) ([]storage.CronJob, error) {
 	query := `
 SELECT id, name, handler, schedule, enabled, metadata, last_run_at, next_run_at,
-       run_count, last_error, created_at, updated_at
+       run_count, last_error, created_at, updated_at, delivery_state, delivery_token
 FROM cron_jobs`
 	args := []any{}
 	if !includeDisabled {
@@ -164,6 +167,27 @@ WHERE id = ?`,
 	return nil
 }
 
+func (r *CronJobRepository) CompareAndSwapDelivery(ctx context.Context, id, expectedToken, nextToken, deliveryState string) (bool, error) {
+	res, err := r.db.ExecContext(ctx, `
+UPDATE cron_jobs
+SET delivery_state = ?, delivery_token = ?, updated_at = ?
+WHERE id = ? AND enabled = 1 AND COALESCE(delivery_token, '') = ?`,
+		nullString(deliveryState),
+		nullString(nextToken),
+		storage.FormatTime(storage.Now()),
+		id,
+		expectedToken,
+	)
+	if err != nil {
+		return false, fmt.Errorf("compare and swap cron delivery: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("compare and swap cron delivery rows: %w", err)
+	}
+	return n > 0, nil
+}
+
 func (r *CronJobRepository) DisableByName(ctx context.Context, name string) error {
 	res, err := r.db.ExecContext(ctx, `
 UPDATE cron_jobs
@@ -176,6 +200,22 @@ WHERE name = ?`, storage.FormatTime(storage.Now()), name)
 		return storage.ErrNotFound
 	}
 	return nil
+}
+
+func (r *CronJobRepository) DisableByNameIfDeliveryToken(ctx context.Context, name, deliveryToken string) (bool, error) {
+	res, err := r.db.ExecContext(ctx, `
+UPDATE cron_jobs
+SET enabled = 0, next_run_at = NULL, updated_at = ?
+WHERE name = ? AND enabled = 1 AND COALESCE(delivery_token, '') = ?`,
+		storage.FormatTime(storage.Now()), name, deliveryToken)
+	if err != nil {
+		return false, fmt.Errorf("disable cron job by delivery token: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("disable cron job by delivery token rows: %w", err)
+	}
+	return n > 0, nil
 }
 
 func (r *CronJobRepository) DeleteByName(ctx context.Context, name string) error {
@@ -214,19 +254,24 @@ INSERT INTO cron_jobs (
 	return nil
 }
 
-func (r *CronJobRepository) update(ctx context.Context, job *storage.CronJob) error {
-	res, err := r.db.ExecContext(ctx, `
+func (r *CronJobRepository) update(ctx context.Context, job *storage.CronJob, resetDelivery bool) error {
+	query := `
 UPDATE cron_jobs
-SET handler = ?, schedule = ?, enabled = ?, metadata = ?, next_run_at = ?, updated_at = ?
-WHERE id = ?`,
+SET handler = ?, schedule = ?, enabled = ?, metadata = ?, next_run_at = ?, updated_at = ?`
+	args := []any{
 		job.Handler,
 		job.Schedule,
 		boolInt(job.Enabled),
 		nullString(job.Metadata),
 		nullTime(job.NextRunAt),
 		storage.FormatTime(job.UpdatedAt),
-		job.ID,
-	)
+	}
+	if resetDelivery {
+		query += ", delivery_state = NULL, delivery_token = NULL"
+	}
+	query += "\nWHERE id = ?"
+	args = append(args, job.ID)
+	res, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("update cron job: %w", err)
 	}
@@ -239,7 +284,7 @@ WHERE id = ?`,
 func scanCronJob(row interface{ Scan(dest ...any) error }) (*storage.CronJob, error) {
 	var job storage.CronJob
 	var enabled int
-	var metadata, lastRunAt, nextRunAt, lastError sql.NullString
+	var metadata, deliveryState, deliveryToken, lastRunAt, nextRunAt, lastError sql.NullString
 	var createdAt, updatedAt string
 	if err := row.Scan(
 		&job.ID,
@@ -254,11 +299,15 @@ func scanCronJob(row interface{ Scan(dest ...any) error }) (*storage.CronJob, er
 		&lastError,
 		&createdAt,
 		&updatedAt,
+		&deliveryState,
+		&deliveryToken,
 	); err != nil {
 		return nil, err
 	}
 	job.Enabled = enabled != 0
 	job.Metadata = metadata.String
+	job.DeliveryState = deliveryState.String
+	job.DeliveryToken = deliveryToken.String
 	job.LastError = lastError.String
 
 	parsedCreatedAt, err := storage.ParseTime(createdAt)

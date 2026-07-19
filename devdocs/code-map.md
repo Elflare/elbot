@@ -351,7 +351,11 @@ rg -n "Elvena|Elwisp|/elvena/v2/events|direct|segments|session_mode|background" 
 
 先看：
 
-- `internal/cron/`
+- `internal/cron/service.go`：Cron Service 装配、CRUD 与公开入口。
+- `internal/cron/model.go`：任务 Metadata、Delivery 状态类型、校验与规范化。
+- `internal/cron/execution.go`：Direct/LLM 执行、报告生成和 JSON 格式重试。
+- `internal/cron/delivery.go`：逐目标逐输出发送、状态持久化、降级与 receipt mapping。
+- `internal/cron/recovery.go`：平台连接跟踪、过期 once 扫描与补发入口。
 - `internal/maintenance/`
 - `internal/agent/cron*.go`：Agent 后台 runner 和后台工具确认特例。
 - `internal/tool/builtin/cron.go`：cron 内置工具。

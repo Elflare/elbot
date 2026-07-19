@@ -403,6 +403,45 @@ func TestCronJobRepositoryUpsertSkipsUnchangedUpdate(t *testing.T) {
 	}
 }
 
+func TestCronJobRepositoryDeliveryCASAndReset(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	req := storage.UpsertCronJobRequest{Name: "user.cron.delivery", Handler: "builtin.cron", Schedule: "0 3 * * *", Enabled: true, Metadata: `{"title":"old"}`}
+	job, err := store.CronJobs().Upsert(ctx, req)
+	if err != nil {
+		t.Fatalf("initial upsert: %v", err)
+	}
+
+	swapped, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "", "session-1", `{"report_ready":true}`)
+	if err != nil || !swapped {
+		t.Fatalf("claim delivery: swapped=%v err=%v", swapped, err)
+	}
+	if swapped, err = store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "wrong", "session-2", `{}`); err != nil || swapped {
+		t.Fatalf("stale delivery swap: swapped=%v err=%v", swapped, err)
+	}
+
+	req.Metadata = `{"title":"new"}`
+	preserved, err := store.CronJobs().Upsert(ctx, req)
+	if err != nil {
+		t.Fatalf("upsert preserving delivery: %v", err)
+	}
+	if preserved.DeliveryToken != "session-1" || preserved.DeliveryState != `{"report_ready":true}` {
+		t.Fatalf("delivery was overwritten: %#v", preserved)
+	}
+
+	req.ResetDelivery = true
+	reset, err := store.CronJobs().Upsert(ctx, req)
+	if err != nil {
+		t.Fatalf("upsert resetting delivery: %v", err)
+	}
+	if reset.DeliveryToken != "" || reset.DeliveryState != "" {
+		t.Fatalf("delivery was not reset: %#v", reset)
+	}
+	if disabled, err := store.CronJobs().DisableByNameIfDeliveryToken(ctx, job.Name, "session-1"); err != nil || disabled {
+		t.Fatalf("stale conditional disable: disabled=%v err=%v", disabled, err)
+	}
+}
+
 func TestToolCallRepositoryUsageBySession(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()

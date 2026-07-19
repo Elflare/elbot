@@ -95,6 +95,15 @@ func (m *Manager) DisableJob(ctx context.Context, name string) error {
 	return nil
 }
 
+func (m *Manager) DisableJobIfDeliveryToken(ctx context.Context, name, deliveryToken string) (bool, error) {
+	disabled, err := m.repo.DisableByNameIfDeliveryToken(ctx, name, deliveryToken)
+	if err != nil || !disabled {
+		return disabled, err
+	}
+	m.removeEntry(name)
+	return true, nil
+}
+
 func (m *Manager) DeleteJob(ctx context.Context, name string) error {
 	m.removeEntry(name)
 	return m.repo.DeleteByName(ctx, name)

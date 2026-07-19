@@ -26,6 +26,10 @@ func (r *fakeCronRepo) Upsert(ctx context.Context, req storage.UpsertCronJobRequ
 		job.Enabled = req.Enabled
 		job.Metadata = req.Metadata
 		job.NextRunAt = req.NextRunAt
+		if req.ResetDelivery {
+			job.DeliveryState = ""
+			job.DeliveryToken = ""
+		}
 		job.UpdatedAt = storage.Now()
 		return job, nil
 	}
@@ -83,6 +87,18 @@ func (r *fakeCronRepo) UpdateRunState(ctx context.Context, id string, state stor
 	return storage.ErrNotFound
 }
 
+func (r *fakeCronRepo) CompareAndSwapDelivery(ctx context.Context, id, expectedToken, nextToken, deliveryState string) (bool, error) {
+	for _, job := range r.jobs {
+		if job.ID == id && job.Enabled && job.DeliveryToken == expectedToken {
+			job.DeliveryToken = nextToken
+			job.DeliveryState = deliveryState
+			job.UpdatedAt = storage.Now()
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (r *fakeCronRepo) DisableByName(ctx context.Context, name string) error {
 	job, ok := r.jobs[name]
 	if !ok {
@@ -91,6 +107,16 @@ func (r *fakeCronRepo) DisableByName(ctx context.Context, name string) error {
 	job.Enabled = false
 	job.NextRunAt = nil
 	return nil
+}
+
+func (r *fakeCronRepo) DisableByNameIfDeliveryToken(ctx context.Context, name, deliveryToken string) (bool, error) {
+	job, ok := r.jobs[name]
+	if !ok || !job.Enabled || job.DeliveryToken != deliveryToken {
+		return false, nil
+	}
+	job.Enabled = false
+	job.NextRunAt = nil
+	return true, nil
 }
 
 func (r *fakeCronRepo) DeleteByName(ctx context.Context, name string) error {

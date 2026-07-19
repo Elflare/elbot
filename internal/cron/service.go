@@ -3,11 +3,9 @@ package cron
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -16,10 +14,8 @@ import (
 	"elbot/internal/background"
 	"elbot/internal/delivery"
 	"elbot/internal/elyph"
-	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 )
 
 const (
@@ -72,6 +68,7 @@ type Service struct {
 
 	mu                 sync.Mutex
 	connectedPlatforms map[string]bool
+	deliveryGates      map[string]*sync.Mutex
 }
 
 type Options struct {
@@ -85,120 +82,12 @@ type Options struct {
 	SandboxRoot      string
 }
 
-type ScheduleMode string
-
-const (
-	ScheduleOnce ScheduleMode = "once"
-	ScheduleCron ScheduleMode = "cron"
-)
-
-type TriggerMode string
-
-const (
-	TriggerDirect TriggerMode = "direct"
-	TriggerLLM    TriggerMode = "llm"
-)
-
-type Metadata struct {
-	Kind      string               `json:"kind"`
-	Version   int                  `json:"version"`
-	Title     string               `json:"title"`
-	CreatedBy CronActor            `json:"created_by"`
-	Schedule  CronSchedule         `json:"schedule"`
-	Trigger   CronTrigger          `json:"trigger"`
-	Target    CronTarget           `json:"target"`
-	LLM       CronLLMMetadata      `json:"llm,omitempty"`
-	Delivery  CronDeliveryMetadata `json:"delivery,omitempty"`
-}
-
-type CronActor struct {
-	ActorID        string `json:"actor_id"`
-	Platform       string `json:"platform"`
-	PlatformUserID string `json:"platform_user_id"`
-	DisplayName    string `json:"display_name,omitempty"`
-}
-
-type CronSchedule struct {
-	Mode     ScheduleMode `json:"mode"`
-	RunAt    string       `json:"run_at,omitempty"`
-	CronExpr string       `json:"cron_expr,omitempty"`
-}
-
-type CronTrigger struct {
-	Mode    TriggerMode `json:"mode"`
-	Message string      `json:"message"`
-}
-
-type CronTarget struct {
-	AllEnabledPlatforms bool   `json:"all_enabled_platforms"`
-	SourcePlatform      string `json:"source_platform"`
-}
-
-type CronLLMMetadata struct {
-	ToolListNames []string `json:"tool_list_names,omitempty"`
-	SessionMode   string   `json:"session_mode,omitempty"`
-}
-
-type CronDeliveryMetadata struct {
-	Completed          bool                 `json:"completed,omitempty"`
-	Report             string               `json:"report,omitempty"`
-	ReportSegments     []llm.MessageSegment `json:"report_segments,omitempty"`
-	ReportSessionID    string               `json:"report_session_id,omitempty"`
-	ReportMessageID    string               `json:"report_message_id,omitempty"`
-	DeliveredPlatforms []string             `json:"delivered_platforms,omitempty"`
-}
-
-type UpsertRequest struct {
-	Name                string
-	Title               string
-	ScheduleMode        ScheduleMode
-	RunAt               string
-	CronExpr            string
-	TriggerMode         TriggerMode
-	Message             string
-	ToolListNames       []string
-	SessionMode         string
-	AllEnabledPlatforms bool
-
-	Enabled        bool
-	Actor          security.Actor
-	SourcePlatform string
-}
-
-type PatchRequest struct {
-	Name                string
-	Title               *string
-	ScheduleMode        *ScheduleMode
-	RunAt               *string
-	CronExpr            *string
-	TriggerMode         *TriggerMode
-	Message             *string
-	ToolListNames       *[]string
-	SessionMode         *string
-	AllEnabledPlatforms *bool
-
-	Enabled *bool
-	Actor   security.Actor
-}
-
-type JobView struct {
-	Job      storage.CronJob `json:"job"`
-	Metadata Metadata        `json:"metadata"`
-}
-
-type CronLLMResult = background.JSONResult
-
-type cronReport struct {
-	Text     string
-	Segments []llm.MessageSegment
-}
-
 func NewService(opts Options) *Service {
 	sandboxRoot := strings.TrimSpace(opts.SandboxRoot)
 	if sandboxRoot == "" {
 		sandboxRoot = filepath.Join("data", "sandbox")
 	}
-	s := &Service{manager: opts.Manager, store: opts.Store, logger: opts.Logger, audit: opts.Audit, sendTarget: opts.SendTarget, runner: opts.Runner, sandboxRoot: sandboxRoot, now: time.Now, connectedPlatforms: map[string]bool{}}
+	s := &Service{manager: opts.Manager, store: opts.Store, logger: opts.Logger, audit: opts.Audit, sendTarget: opts.SendTarget, runner: opts.Runner, sandboxRoot: sandboxRoot, now: time.Now, connectedPlatforms: map[string]bool{}, deliveryGates: map[string]*sync.Mutex{}}
 	s.enabledPlatforms = normalizePlatformTargets(opts.EnabledPlatforms)
 	return s
 }
@@ -206,6 +95,16 @@ func NewService(opts Options) *Service {
 func (s *Service) SetRunner(runner LLMRunner) { s.runner = runner }
 
 func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
+	unlock := s.lockDeliveryJob(job.Name)
+	defer unlock()
+	latest, err := s.store.CronJobs().GetByName(ctx, job.Name)
+	if err != nil {
+		return err
+	}
+	if !latest.Enabled {
+		return nil
+	}
+	job = *latest
 	meta, err := decodeMetadata(job.Metadata)
 	if err != nil {
 		s.logWarn("cron metadata parse failed", "job", job.Name, "error", err)
@@ -221,11 +120,6 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 		runErr = s.runLLM(ctx, job, meta)
 	default:
 		runErr = fmt.Errorf("unsupported trigger mode %q", meta.Trigger.Mode)
-	}
-	if meta.Schedule.Mode == ScheduleOnce && runErr == nil && s.manager != nil {
-		if err := s.manager.DisableJob(ctx, job.Name); err != nil {
-			s.logWarn("disable once cron after run failed", "job", job.Name, "error", err)
-		}
 	}
 	if runErr != nil {
 		s.auditEvent("cron.trigger_failed", s.cronAuditAttrs(job.Name, meta, "error", runErr.Error())...)
@@ -252,7 +146,7 @@ func (s *Service) Create(ctx context.Context, req UpsertRequest) (*storage.CronJ
 			return nil, err
 		}
 	}
-	job, err := s.upsert(ctx, req.Name, meta, req.Enabled)
+	job, err := s.upsert(ctx, req.Name, meta, req.Enabled, true)
 	if err != nil {
 		return nil, err
 	}
@@ -319,10 +213,8 @@ func (s *Service) Update(ctx context.Context, req PatchRequest) (*storage.CronJo
 			return nil, err
 		}
 	}
-	if startsNewDeliveryCycle(previousMeta, meta, req, enabled) {
-		meta.Delivery = CronDeliveryMetadata{}
-	}
-	updated, err := s.upsert(ctx, name, meta, enabled)
+	resetDelivery := startsNewDeliveryCycle(previousMeta, meta, req, enabled)
+	updated, err := s.upsert(ctx, name, meta, enabled, resetDelivery)
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +269,11 @@ func (s *Service) Get(ctx context.Context, name string, actor security.Actor) (J
 	if err != nil {
 		return JobView{}, err
 	}
-	return JobView{Job: *job, Metadata: meta}, nil
+	deliveryState, err := decodeDeliveryState(job.DeliveryState)
+	if err != nil {
+		return JobView{}, err
+	}
+	return JobView{Job: *job, Metadata: meta, Delivery: deliveryState}, nil
 }
 
 func (s *Service) List(ctx context.Context, includeDisabled, includeCompleted bool, actor security.Actor) ([]JobView, error) {
@@ -395,10 +291,14 @@ func (s *Service) List(ctx context.Context, includeDisabled, includeCompleted bo
 		if err != nil || meta.Kind != metadataKind {
 			continue
 		}
-		if !includeCompleted && s.isCompletedCron(job, meta) {
+		deliveryState, stateErr := decodeDeliveryState(job.DeliveryState)
+		if stateErr != nil {
 			continue
 		}
-		views = append(views, JobView{Job: job, Metadata: meta})
+		if !includeCompleted && s.isCompletedCron(job, meta, deliveryState) {
+			continue
+		}
+		views = append(views, JobView{Job: job, Metadata: meta, Delivery: deliveryState})
 	}
 	return views, nil
 }
@@ -438,24 +338,21 @@ func (s *Service) validateUserSchedule(meta *Metadata) error {
 	return nil
 }
 
-func (s *Service) isCompletedCron(job storage.CronJob, meta Metadata) bool {
+func (s *Service) isCompletedCron(job storage.CronJob, meta Metadata, state CronDeliveryState) bool {
 	if meta.Schedule.Mode != ScheduleOnce {
 		return false
 	}
-	if job.Enabled && !meta.Delivery.Completed {
-		return false
-	}
-	return job.RunCount > 0 || meta.Delivery.Completed || !job.Enabled
+	return !job.Enabled || (state.ReportReady && s.deliveryComplete(meta, state))
 }
 
 func startsNewDeliveryCycle(before, after Metadata, req PatchRequest, enabled bool) bool {
-	if !enabled || !hasDeliveryState(before.Delivery) {
+	if !enabled {
 		return false
 	}
 	if req.Enabled != nil && *req.Enabled {
 		return true
 	}
-	if before.Schedule != after.Schedule || before.Trigger != after.Trigger {
+	if before.Schedule != after.Schedule || before.Trigger != after.Trigger || before.Target != after.Target {
 		return true
 	}
 	if before.LLM.SessionMode != after.LLM.SessionMode || strings.Join(before.LLM.ToolListNames, "\x00") != strings.Join(after.LLM.ToolListNames, "\x00") {
@@ -464,148 +361,7 @@ func startsNewDeliveryCycle(before, after Metadata, req PatchRequest, enabled bo
 	return false
 }
 
-func hasDeliveryState(delivery CronDeliveryMetadata) bool {
-	return delivery.Completed || delivery.Report != "" || len(delivery.ReportSegments) > 0 || delivery.ReportSessionID != "" || delivery.ReportMessageID != "" || len(delivery.DeliveredPlatforms) > 0
-}
-
-func (s *Service) RunMissedOnce(ctx context.Context) {
-	for _, platformName := range s.connectedPlatformNames() {
-		s.runMissedOnceForPlatform(ctx, platformName)
-	}
-}
-
-func (s *Service) NotifyPlatformConnected(ctx context.Context, platformName string) {
-	platformName = strings.TrimSpace(platformName)
-	if platformName == "" {
-		return
-	}
-	s.mu.Lock()
-	if s.connectedPlatforms == nil {
-		s.connectedPlatforms = map[string]bool{}
-	}
-	s.connectedPlatforms[platformName] = true
-	s.mu.Unlock()
-	s.logInfo("cron platform connected", "platform", platformName)
-	s.runMissedOnceForPlatform(ctx, platformName)
-}
-
-func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName string) {
-	jobs, err := s.store.CronJobs().ListEnabled(ctx)
-	if err != nil {
-		s.logWarn("list cron jobs for missed once failed", "platform", platformName, "error", err)
-		return
-	}
-	for _, job := range jobs {
-		meta, err := decodeMetadata(job.Metadata)
-		if err != nil || meta.Kind != metadataKind || meta.Schedule.Mode != ScheduleOnce {
-			continue
-		}
-		runAt, err := parseRunAt(meta.Schedule.RunAt)
-		// 平台重连或多平台恢复时，missed once 可能被重复扫描。
-		// delivered_platforms 用于按平台去重，避免同一个 once 对同一平台重复投递。
-		if err != nil || runAt.After(s.now()) || !containsString(s.targetPlatformNames(meta), platformName) || hasDeliveredPlatform(meta, platformName) {
-			continue
-		}
-		s.auditEvent("cron.missed_delivery_started", s.cronAuditAttrs(job.Name, meta, "platform", platformName)...)
-		s.logInfo("cron missed delivery started", s.cronLogAttrs(job.Name, meta, "platform", platformName)...)
-		if err := s.deliverMissedOnce(ctx, job, meta, platformName); err != nil {
-			s.auditEvent("cron.missed_delivery_failed", s.cronAuditAttrs(job.Name, meta, "platform", platformName, "error", err.Error())...)
-			s.logWarn("missed cron run failed", "job", job.Name, "platform", platformName, "error", err)
-			_ = s.sendToPlatforms(context.Background(), job.Name, []string{"cli"}, fmt.Sprintf("cron 补跑失败：%s\n错误：%v", job.Name, err))
-			continue
-		}
-		latest, err := s.store.CronJobs().GetByName(ctx, job.Name)
-		if err == nil {
-			if latestMeta, metaErr := decodeMetadata(latest.Metadata); metaErr == nil {
-				s.auditEvent("cron.missed_delivery_completed", s.cronAuditAttrs(job.Name, latestMeta, "platform", platformName, "delivered_platforms", strings.Join(latestMeta.Delivery.DeliveredPlatforms, ","))...)
-				s.logInfo("cron missed delivery completed", s.cronLogAttrs(job.Name, latestMeta, "platform", platformName, "delivered_platforms", strings.Join(latestMeta.Delivery.DeliveredPlatforms, ","))...)
-				if !latest.Enabled {
-					s.auditEvent("cron.missed_delivery_all_completed", s.cronAuditAttrs(job.Name, latestMeta)...)
-					s.logInfo("cron missed delivery all completed", s.cronLogAttrs(job.Name, latestMeta)...)
-				}
-			}
-		}
-	}
-}
-
-func (s *Service) deliverMissedOnce(ctx context.Context, job storage.CronJob, meta Metadata, platformName string) error {
-	report := strings.TrimSpace(meta.Delivery.Report)
-	if meta.Trigger.Mode == TriggerDirect {
-		meta.Delivery.Completed = true
-		report = strings.TrimSpace(meta.Trigger.Message)
-		meta.Delivery.Report = report
-	} else if meta.Trigger.Mode == TriggerLLM {
-		generatedLLM := false
-		if !meta.Delivery.Completed {
-			updated, llmReport, err := s.runLLMReport(ctx, job, meta)
-			meta = updated
-			report = strings.TrimSpace(llmReport)
-			meta.Delivery.Completed = true
-			meta.Delivery.Report = report
-			generatedLLM = true
-			if _, persistErr := s.upsert(ctx, job.Name, meta, job.Enabled); persistErr != nil {
-				s.logWarn("persist cron delivery report failed", "job", job.Name, "error", persistErr)
-			}
-			if err != nil {
-				return err
-			}
-		}
-		defer func() {
-			if generatedLLM {
-				for _, connected := range s.connectedPlatformNames() {
-					if connected != platformName && containsString(s.targetPlatformNames(meta), connected) {
-						s.runMissedOnceForPlatform(context.Background(), connected)
-					}
-				}
-			}
-		}()
-	} else {
-		return fmt.Errorf("unsupported trigger mode %q", meta.Trigger.Mode)
-	}
-	if report != "" || len(meta.Delivery.ReportSegments) > 0 {
-		if err := s.sendReportToPlatforms(ctx, job.Name, []string{platformName}, missedOnceReportText(platformName, report), meta.Delivery.ReportSegments); err != nil {
-			return err
-		}
-	}
-	meta.Delivery.DeliveredPlatforms = addUniqueString(meta.Delivery.DeliveredPlatforms, platformName)
-	if _, err := s.upsert(ctx, job.Name, meta, job.Enabled); err != nil {
-		return err
-	}
-	if s.allDelivered(meta) {
-		if s.manager != nil {
-			if err := s.manager.DisableJob(ctx, job.Name); err != nil {
-				return err
-			}
-		} else if err := s.store.CronJobs().DisableByName(ctx, job.Name); err != nil {
-			return err
-		}
-		meta.Delivery.DeliveredPlatforms = uniqueStrings(meta.Delivery.DeliveredPlatforms)
-		return nil
-	}
-	return nil
-}
-
-func missedOnceReportText(platformName, report string) string {
-	prefix := fmt.Sprintf("cron 补发平台：%s", strings.TrimSpace(platformName))
-	report = strings.TrimSpace(report)
-	if report == "" {
-		return prefix
-	}
-	return prefix + "\n\n" + report
-}
-
-func (s *Service) connectedPlatformNames() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := []string{}
-	for platformName := range s.connectedPlatforms {
-		out = append(out, platformName)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func (s *Service) upsert(ctx context.Context, name string, meta Metadata, enabled bool) (*storage.CronJob, error) {
+func (s *Service) upsert(ctx context.Context, name string, meta Metadata, enabled, resetDelivery bool) (*storage.CronJob, error) {
 	name = normalizeJobName(name)
 	if name == "" {
 		return nil, fmt.Errorf("cron name is required")
@@ -616,8 +372,8 @@ func (s *Service) upsert(ctx context.Context, name string, meta Metadata, enable
 	if meta.Kind == "" {
 		meta.Kind = metadataKind
 	}
-	if meta.Version == 0 {
-		meta.Version = 1
+	if meta.Version < 2 {
+		meta.Version = 2
 	}
 	schedule, err := scheduleExpr(meta.Schedule)
 	if err != nil {
@@ -631,501 +387,13 @@ func (s *Service) upsert(ctx context.Context, name string, meta Metadata, enable
 		return nil, err
 	}
 	if s.manager != nil {
-		return s.manager.UpsertJob(ctx, UpsertJobRequest{Name: name, Handler: UserHandlerName, Schedule: schedule, Enabled: enabled, Metadata: string(data)})
+		return s.manager.UpsertJob(ctx, UpsertJobRequest{Name: name, Handler: UserHandlerName, Schedule: schedule, Enabled: enabled, Metadata: string(data), ResetDelivery: resetDelivery})
 	}
 	nextRun, err := computeNextRunAt(schedule, string(data), enabled, s.now())
 	if err != nil {
 		return nil, err
 	}
-	return s.store.CronJobs().Upsert(ctx, storage.UpsertCronJobRequest{Name: name, Handler: UserHandlerName, Schedule: schedule, Enabled: enabled, Metadata: string(data), NextRunAt: nextRun})
-}
-
-func (s *Service) runDirect(ctx context.Context, job storage.CronJob, meta Metadata) error {
-	report := strings.TrimSpace(meta.Trigger.Message)
-	if err := s.sendToTargets(ctx, job.Name, meta, report); err != nil {
-		return err
-	}
-	if meta.Schedule.Mode == ScheduleOnce {
-		meta.Delivery.Completed = true
-		meta.Delivery.Report = report
-		meta.Delivery.DeliveredPlatforms = addUniqueStrings(meta.Delivery.DeliveredPlatforms, s.targetPlatformNames(meta))
-		if _, err := s.upsert(ctx, job.Name, meta, job.Enabled); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Service) runLLM(ctx context.Context, job storage.CronJob, meta Metadata) error {
-	updated, report, err := s.runLLMReport(ctx, job, meta)
-	if _, persistErr := s.upsert(ctx, job.Name, updated, job.Enabled); persistErr != nil {
-		s.logWarn("persist cron delivery report failed", "job", job.Name, "error", persistErr)
-	}
-	if err != nil {
-		if report != "" || len(updated.Delivery.ReportSegments) > 0 {
-			if sendErr := s.sendReportToTargets(ctx, job.Name, updated, report, updated.Delivery.ReportSegments); sendErr != nil {
-				return errors.Join(err, sendErr)
-			}
-		}
-		return err
-	}
-	if report == "" && len(updated.Delivery.ReportSegments) == 0 {
-		return nil
-	}
-	if err := s.sendReportToTargets(ctx, job.Name, updated, report, updated.Delivery.ReportSegments); err != nil {
-		return err
-	}
-	if updated.Schedule.Mode == ScheduleOnce {
-		updated.Delivery.DeliveredPlatforms = addUniqueStrings(updated.Delivery.DeliveredPlatforms, s.targetPlatformNames(updated))
-		if _, persistErr := s.upsert(ctx, job.Name, updated, job.Enabled); persistErr != nil {
-			s.logWarn("persist cron delivery platforms failed", "job", job.Name, "error", persistErr)
-		}
-	}
-	return nil
-}
-
-func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Metadata) (Metadata, string, error) {
-	reusable := meta.Schedule.Mode == ScheduleOnce
-	if s.runner == nil {
-		return meta, "", fmt.Errorf("cron llm runner is not configured")
-	}
-	actor := security.Actor{ID: security.ActorID(meta.CreatedBy.Platform, meta.CreatedBy.PlatformUserID), Platform: meta.CreatedBy.Platform, PlatformUserID: meta.CreatedBy.PlatformUserID, DisplayName: meta.CreatedBy.DisplayName, Role: security.RoleSuperadmin}
-	prompt := cronPrompt(meta.Trigger.Message)
-	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), Prompt: prompt, ToolListNames: meta.LLM.ToolListNames, SessionMode: meta.LLM.SessionMode, SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}})
-
-	if err != nil {
-		return meta, "", err
-	}
-	parsed, err := parseLLMResult(result.Text)
-	if err != nil {
-		result, parsed, err = s.retryLLMResultFormat(ctx, job, meta, actor, result.SessionID)
-	}
-	if err != nil {
-		message := cronParseFailedMessage(meta.Title, result.SessionID, err)
-		meta.Delivery.Completed = reusable
-		meta.Delivery.Report = message
-		meta.Delivery.ReportSegments = nil
-		meta.Delivery.ReportSessionID = result.SessionID
-		meta.Delivery.ReportMessageID = result.MessageID
-		return meta, message, err
-	}
-	if meta.Target.AllEnabledPlatforms {
-		if err := s.copySessionToBroadcastTargets(ctx, result.SessionID, meta, job.Name); err != nil {
-			s.logWarn("copy cron session failed", "job", job.Name, "error", err)
-		}
-	}
-	meta.Delivery.Completed = reusable && parsed.Completed
-	meta.Delivery.ReportSegments = parsed.ReportSegments
-	meta.Delivery.ReportSessionID = result.SessionID
-	meta.Delivery.ReportMessageID = result.MessageID
-	if parsed.Completed {
-		report := strings.TrimSpace(parsed.Report)
-		meta.Delivery.Report = report
-		return meta, report, nil
-	}
-	report := strings.TrimSpace(parsed.Report)
-	if report == "" {
-		report = "任务未完成。"
-	}
-	report += fmt.Sprintf("\n可 /resume 到 cron session 查看详情。\nsession: %s", result.SessionID)
-	meta.Delivery.Report = report
-	return meta, report, nil
-}
-
-func (s *Service) retryLLMResultFormat(ctx context.Context, job storage.CronJob, meta Metadata, actor security.Actor, sessionID string) (background.RunResult, CronLLMResult, error) {
-	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), SessionID: sessionID, Prompt: cronFormatRetryPrompt(), ToolListNames: meta.LLM.ToolListNames, SessionMode: meta.LLM.SessionMode, SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}})
-	if err != nil {
-		return result, CronLLMResult{}, err
-	}
-	if result.SessionID == "" {
-		result.SessionID = sessionID
-	}
-	parsed, err := parseLLMResult(result.Text)
-	return result, parsed, err
-}
-
-func cronParseFailedMessage(title, sessionID string, err error) string {
-	return fmt.Sprintf("cron 任务 %s 解析格式失败，请 /resume 到 cron session 查看详情。\nsession: %s\n错误：%v", title, sessionID, err)
-}
-
-func (s *Service) sendReportToTargets(ctx context.Context, jobName string, meta Metadata, text string, segments []llm.MessageSegment) error {
-	if meta.Target.AllEnabledPlatforms {
-		return s.sendReportToPlatformTargets(ctx, jobName, s.enabledPlatforms, text, segments, meta.Delivery.ReportSessionID, meta.Delivery.ReportMessageID)
-	}
-	target := PlatformTarget{Name: meta.Target.SourcePlatform}
-	if id := strings.TrimSpace(meta.CreatedBy.PlatformUserID); id != "" {
-		target.SuperadminIDs = []string{id}
-	}
-	return s.sendReportToPlatformTargets(ctx, jobName, []PlatformTarget{target}, text, segments, meta.Delivery.ReportSessionID, meta.Delivery.ReportMessageID)
-}
-
-func (s *Service) sendReportToPlatforms(ctx context.Context, jobName string, platforms []string, text string, segments []llm.MessageSegment) error {
-	outputs, err := background.BuildReportOutputs(text, segments, tool.SandboxContext{Dir: filepath.Join(s.sandboxRoot, filepath.FromSlash(cronSandboxSubdir(jobName))), Background: true, BackgroundKind: tool.BackgroundKindCron})
-	if err != nil {
-		return err
-	}
-	return s.sendOutputsToPlatforms(ctx, jobName, platforms, outputs)
-}
-
-func (s *Service) sendReportToPlatformsMapped(ctx context.Context, jobName string, platforms []string, text string, segments []llm.MessageSegment, sessionID, messageID string) error {
-	outputs, err := background.BuildReportOutputs(text, segments, tool.SandboxContext{Dir: filepath.Join(s.sandboxRoot, filepath.FromSlash(cronSandboxSubdir(jobName))), Background: true, BackgroundKind: tool.BackgroundKindCron})
-	if err != nil {
-		return err
-	}
-	return s.sendOutputsToPlatformsMapped(ctx, jobName, platforms, outputs, sessionID, messageID)
-}
-
-func (s *Service) sendReportToPlatformTargets(ctx context.Context, jobName string, platforms []PlatformTarget, text string, segments []llm.MessageSegment, sessionID, messageID string) error {
-	outputs, err := background.BuildReportOutputs(text, segments, tool.SandboxContext{Dir: filepath.Join(s.sandboxRoot, filepath.FromSlash(cronSandboxSubdir(jobName))), Background: true, BackgroundKind: tool.BackgroundKindCron})
-	if err != nil {
-		return err
-	}
-	return s.sendOutputsToPlatformTargets(ctx, jobName, platforms, outputs, sessionID, messageID)
-}
-
-func (s *Service) sendToTargets(ctx context.Context, jobName string, meta Metadata, text string) error {
-	if meta.Target.AllEnabledPlatforms {
-		return s.sendToPlatforms(ctx, jobName, s.enabledPlatformNames(), text)
-	}
-	return s.sendToPlatforms(ctx, jobName, []string{meta.Target.SourcePlatform}, text)
-}
-
-func (s *Service) sendToPlatforms(ctx context.Context, jobName string, platforms []string, text string) error {
-	return s.sendOutputsToPlatforms(ctx, jobName, platforms, []delivery.Output{delivery.Text(text)})
-}
-
-func (s *Service) sendOutputsToPlatforms(ctx context.Context, jobName string, platforms []string, outputs []delivery.Output) error {
-	return s.sendOutputsToPlatformsMapped(ctx, jobName, platforms, outputs, "", "")
-}
-
-func (s *Service) sendOutputsToPlatformTargets(ctx context.Context, jobName string, platforms []PlatformTarget, outputs []delivery.Output, sessionID, messageID string) error {
-	if s.sendTarget == nil {
-		return fmt.Errorf("cron target sender is not configured")
-	}
-	var errs []error
-	for _, platform := range platforms {
-		platformName := strings.TrimSpace(platform.Name)
-		if platformName == "" {
-			continue
-		}
-		ids := uniqueStrings(platform.SuperadminIDs)
-		if len(ids) == 0 {
-			errs = append(errs, s.sendOutputsToPlatformTarget(ctx, jobName, platformName, delivery.Target{Platform: platformName, Superadmins: true}, outputs, sessionID, messageID, cronScopeID(jobName)))
-			continue
-		}
-		for _, id := range ids {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
-			}
-			target := delivery.Target{Platform: platformName, PrivateUserID: id}
-			errs = append(errs, s.sendOutputsToPlatformTarget(ctx, jobName, platformName, target, outputs, sessionID, messageID, privateScopeID(platformName, id)))
-		}
-	}
-	return errors.Join(errs...)
-}
-
-func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, platformName string, target delivery.Target, outputs []delivery.Output, sessionID, messageID, mapScopeID string) error {
-	var errs []error
-	for _, out := range outputs {
-		attrs := []any{"job", jobName, "platform", platformName, "target", cronTargetLabel(target), "kind", out.Kind}
-		s.auditEvent("cron.send_started", attrs...)
-		s.logInfo("cron send started", attrs...)
-		receipt, err := s.sendTarget(ctx, target, out)
-		if err != nil {
-			err = fmt.Errorf("send %s: %w", platformName, err)
-			errs = append(errs, err)
-			s.auditEvent("cron.send_failed", append(attrs, "error", err.Error())...)
-			s.logWarn("cron send failed", append(attrs, "error", err.Error())...)
-			continue
-		}
-		s.mapReportReceipt(ctx, jobName, platformName, mapScopeID, sessionID, messageID, receipt)
-		s.auditEvent("cron.send_completed", attrs...)
-		s.logInfo("cron send completed", attrs...)
-	}
-	return errors.Join(errs...)
-}
-
-func (s *Service) sendOutputsToPlatformsMapped(ctx context.Context, jobName string, platforms []string, outputs []delivery.Output, sessionID, messageID string) error {
-	if s.sendTarget == nil {
-		return fmt.Errorf("cron target sender is not configured")
-	}
-	var errs []error
-	for _, platformName := range uniqueStrings(platforms) {
-		if platformName == "" {
-			continue
-		}
-		for _, out := range outputs {
-			attrs := []any{"job", jobName, "platform", platformName, "target", "superadmins", "kind", out.Kind}
-			s.auditEvent("cron.send_started", attrs...)
-			s.logInfo("cron send started", attrs...)
-			receipt, err := s.sendTarget(ctx, delivery.Target{Platform: platformName, Superadmins: true}, out)
-			if err != nil {
-				err = fmt.Errorf("send %s: %w", platformName, err)
-				errs = append(errs, err)
-				s.auditEvent("cron.send_failed", "job", jobName, "platform", platformName, "target", "superadmins", "kind", out.Kind, "error", err.Error())
-				s.logWarn("cron send failed", "job", jobName, "platform", platformName, "target", "superadmins", "kind", out.Kind, "error", err.Error())
-				continue
-			}
-			s.mapReportReceipt(ctx, jobName, platformName, cronScopeID(jobName), sessionID, messageID, receipt)
-			s.auditEvent("cron.send_completed", attrs...)
-			s.logInfo("cron send completed", attrs...)
-		}
-	}
-	return errors.Join(errs...)
-}
-
-func (s *Service) mapReportReceipt(ctx context.Context, jobName, platformName, scopeID, sessionID, messageID string, receipt delivery.Receipt) {
-	if sessionID == "" || messageID == "" || s.store == nil || s.store.Messages() == nil {
-		return
-	}
-	scopeID = strings.TrimSpace(scopeID)
-	if scopeID == "" {
-		scopeID = cronScopeID(jobName)
-	}
-	for _, platformMessageID := range receipt.PlatformMessageIDs {
-		platformMessageID = strings.TrimSpace(platformMessageID)
-		if platformMessageID == "" {
-			continue
-		}
-		mapping := storage.PlatformMessageMap{Platform: platformName, PlatformScopeID: scopeID, PlatformMessageID: platformMessageID, SessionID: sessionID, MessageID: messageID}
-		if err := s.store.Messages().MapPlatformMessage(ctx, mapping); err != nil {
-			s.auditEvent("cron.report_map_failed", "job", jobName, "platform", platformName, "scope_id", scopeID, "platform_message_id", platformMessageID, "session_id", sessionID, "message_id", messageID, "error", err.Error())
-			s.logWarn("map cron report message failed", "job", jobName, "platform", platformName, "scope_id", scopeID, "platform_message_id", platformMessageID, "session_id", sessionID, "message_id", messageID, "error", err.Error())
-		}
-	}
-}
-
-func cronTargetLabel(target delivery.Target) string {
-	if target.Superadmins {
-		return "superadmins"
-	}
-	if target.PrivateUserID != "" {
-		return "private"
-	}
-	if target.GroupID != "" {
-		return "group"
-	}
-	return "unknown"
-}
-
-func privateScopeID(platformName, id string) string {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return ""
-	}
-	if strings.TrimSpace(platformName) == "qqofficial" {
-		return "c2c:" + id
-	}
-	return "private:" + id
-}
-
-func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessionID string, meta Metadata, jobName string) error {
-	if sourceSessionID == "" || s.store == nil || s.store.Sessions() == nil || s.store.Messages() == nil {
-		return nil
-	}
-	source, err := s.store.Sessions().Get(ctx, sourceSessionID)
-	if err != nil {
-		return err
-	}
-	messages, err := s.store.Messages().ListBySession(ctx, sourceSessionID)
-	if err != nil {
-		return err
-	}
-	for _, target := range s.enabledPlatforms {
-		if target.Name == "" || target.Name == source.Platform {
-			continue
-		}
-		owner := targetOwnerID(target)
-		if owner == "" {
-			continue
-		}
-		copySession := &storage.Session{OwnerID: owner, Platform: target.Name, PlatformScopeID: cronScopeID(jobName), Mode: source.Mode, Title: meta.Title, Status: storage.SessionStatusActive, Metadata: cronSessionMetadata(jobName, sourceSessionID, true)}
-		if err := s.store.Sessions().Create(ctx, copySession); err != nil {
-			return err
-		}
-		for _, msg := range messages {
-			msg.ID = ""
-			msg.SessionID = copySession.ID
-			msg.ParentMessageID = ""
-			msg.ReplyToMessageID = ""
-			msg.ReplyToPlatformMessageID = ""
-			if err := s.store.Messages().Append(ctx, &msg); err != nil {
-				return err
-			}
-		}
-		s.auditEvent("cron.session_copied", "job", jobName, "source_session_id", sourceSessionID, "target_session_id", copySession.ID, "platform", target.Name)
-	}
-	return nil
-}
-
-func decodeMetadata(raw string) (Metadata, error) {
-	var meta Metadata
-	if err := json.Unmarshal([]byte(raw), &meta); err != nil {
-		return Metadata{}, err
-	}
-	if meta.Kind != metadataKind {
-		return Metadata{}, fmt.Errorf("unsupported cron metadata kind %q", meta.Kind)
-	}
-	return meta, nil
-}
-
-func validateMetadata(meta Metadata) error {
-	if strings.TrimSpace(meta.Trigger.Message) == "" {
-		return fmt.Errorf("message is required")
-	}
-	if meta.Trigger.Mode != TriggerDirect && meta.Trigger.Mode != TriggerLLM {
-		return fmt.Errorf("unsupported trigger mode %q", meta.Trigger.Mode)
-	}
-	if meta.Target.SourcePlatform == "" {
-		return fmt.Errorf("source platform is required")
-	}
-	_, err := scheduleExpr(meta.Schedule)
-	return err
-}
-
-func scheduleExpr(schedule CronSchedule) (string, error) {
-	switch schedule.Mode {
-	case ScheduleOnce:
-		runAt, err := parseRunAt(schedule.RunAt)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("%d %d %d %d *", runAt.Minute(), runAt.Hour(), runAt.Day(), int(runAt.Month())), nil
-	case ScheduleCron:
-		expr := strings.TrimSpace(schedule.CronExpr)
-		if expr == "" {
-			return "", fmt.Errorf("cron_expr is required")
-		}
-		if len(strings.Fields(expr)) != 5 {
-			return "", fmt.Errorf("cron_expr must be a 5-field cron expression")
-		}
-		return expr, nil
-	default:
-		return "", fmt.Errorf("unsupported schedule mode %q", schedule.Mode)
-	}
-}
-
-func parseRunAt(value string) (time.Time, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return time.Time{}, fmt.Errorf("run_at is required")
-	}
-	runAt, err := time.ParseInLocation(timeLayout, value, time.Local)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("run_at must use YYYY-MM-DD HH:MM:SS: %w", err)
-	}
-	return runAt, nil
-}
-
-func normalizeJobName(name string) string {
-	name = strings.TrimSpace(name)
-	name = strings.TrimPrefix(name, "user.cron.")
-	name = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`).ReplaceAllString(name, "_")
-	name = strings.Trim(name, "._-")
-	if name == "" {
-		return ""
-	}
-	return "user.cron." + name
-}
-
-func cronSandboxSubdir(jobName string) string {
-	name := strings.TrimPrefix(normalizeJobName(jobName), "user.cron.")
-	name = regexp.MustCompile(`[^a-zA-Z0-9_-]+`).ReplaceAllString(name, "_")
-	name = strings.Trim(name, "_-")
-	if name == "" {
-		name = "default"
-	}
-	return filepath.ToSlash(filepath.Join("cron", name))
-}
-
-func cronScopeID(jobName string) string { return "cron:" + normalizeJobName(jobName) }
-
-func cronSessionMetadata(jobName, sourceSessionID string, copied bool) string {
-	data, _ := json.Marshal(map[string]any{"title_renamed": true, "title_source": "cron", "cron_job_name": jobName, "cron_source_session_id": sourceSessionID, "cron_broadcast_copy": copied})
-	return string(data)
-}
-
-func actorMetadata(actor security.Actor) CronActor {
-	return CronActor{ActorID: actor.ID, Platform: actor.Platform, PlatformUserID: actor.PlatformUserID, DisplayName: actor.DisplayName}
-}
-
-func requireSuperadmin(actor security.Actor) error {
-	if actor.Role != security.RoleSuperadmin {
-		return fmt.Errorf("cron requires superadmin role")
-	}
-	return nil
-}
-
-func normalizeToolListNames(names []string) []string {
-	out := make([]string, 0, len(names))
-	seen := map[string]bool{}
-	for _, name := range names {
-		name = strings.TrimSpace(name)
-		if name == "" || seen[name] {
-			continue
-		}
-		seen[name] = true
-		out = append(out, name)
-	}
-	return out
-}
-
-func validateLLMSessionMode(mode string) (string, error) {
-	mode = strings.TrimSpace(mode)
-	switch mode {
-	case "":
-		return "", nil
-	case storage.SessionModeWork, storage.SessionModeChat:
-		return mode, nil
-	default:
-		return "", fmt.Errorf("unsupported session_mode %q", mode)
-	}
-}
-
-func normalizeLLMSessionMode(mode string) string {
-	mode, err := validateLLMSessionMode(mode)
-	if err != nil || mode == "" {
-		return ""
-	}
-	return mode
-}
-
-func cronPrompt(message string) string {
-
-	return `[系统 Cron 后台任务]
-
-` + elyph.RuleCard() + `
-
-** “Cron 任务内容”必须是 ELyph #task <name> - 描述 任务文本
-** 按“Cron 任务内容”中的 ELyph 任务自主执行
-** Cron 任务内容不需要包含最终 JSON 格式或汇报字段要求
-** 信息不足时，在最终 JSON 的 report 填写失败或阻塞原因
-** 需要使用工具时直接使用工具
-** 所有路径参数必须使用相对路径，基于当前任务工作目录解析；不要使用绝对路径、~、.. 或 cd。
-** 有投递目标、任务要求通知或产生需要目标知道的结果/失败/阻塞原因时，应设置 need_report=true 并在 report 写自然语言汇报
-** 最终回复必须是严格 JSON
-** JSON 格式：{"completed":true,"need_report":false,"report":"","report_segments":[]}
-** report_segments 可选数组，元素为 {"type":"image|file","url":"相对路径"}，用于附带图片或文件。图片/文件须先保存在当前任务工作目录内
-** completed 表示是否完成任务
-** need_report 表示是否需要向目标平台汇报；成功、失败或阻塞都可以请求汇报
-** report 为需要发给用户的汇报，可填写处理结果、失败原因或阻塞原因
-~ 把任务当作前台用户对话
-~ 闲聊
-~ 向用户提问
-~ 输出 Markdown 代码块
-~ 输出 JSON 外的任何文字
-
-Cron 任务内容：
-` + strings.TrimSpace(message)
-}
-
-func cronFormatRetryPrompt() string {
-	return background.DefaultJSONRetryPrompt()
-}
-
-func parseLLMResult(text string) (CronLLMResult, error) {
-	return background.ParseJSONResult(text)
+	return s.store.CronJobs().Upsert(ctx, storage.UpsertCronJobRequest{Name: name, Handler: UserHandlerName, Schedule: schedule, Enabled: enabled, Metadata: string(data), NextRunAt: nextRun, ResetDelivery: resetDelivery})
 }
 
 func normalizePlatformTargets(targets []PlatformTarget) []PlatformTarget {
@@ -1220,48 +488,6 @@ func (s *Service) targetPlatformNames(meta Metadata) []string {
 		return s.enabledPlatformNames()
 	}
 	return uniqueStrings([]string{meta.Target.SourcePlatform})
-}
-
-func (s *Service) allDelivered(meta Metadata) bool {
-	if !meta.Delivery.Completed {
-		return false
-	}
-	for _, platformName := range s.targetPlatformNames(meta) {
-		if !hasDeliveredPlatform(meta, platformName) {
-			return false
-		}
-	}
-	return true
-}
-
-func hasDeliveredPlatform(meta Metadata, platformName string) bool {
-	platformName = strings.TrimSpace(platformName)
-	for _, delivered := range meta.Delivery.DeliveredPlatforms {
-		if strings.TrimSpace(delivered) == platformName {
-			return true
-		}
-	}
-	return false
-}
-
-func addUniqueString(values []string, value string) []string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return values
-	}
-	for _, existing := range values {
-		if strings.TrimSpace(existing) == value {
-			return values
-		}
-	}
-	return append(values, value)
-}
-
-func addUniqueStrings(values []string, additions []string) []string {
-	for _, value := range additions {
-		values = addUniqueString(values, value)
-	}
-	return values
 }
 
 func containsString(values []string, value string) bool {

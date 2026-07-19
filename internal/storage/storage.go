@@ -85,18 +85,20 @@ type ToolCallRecord struct {
 }
 
 type CronJob struct {
-	ID        string
-	Name      string
-	Handler   string
-	Schedule  string
-	Enabled   bool
-	Metadata  string
-	LastRunAt *time.Time
-	NextRunAt *time.Time
-	RunCount  int
-	LastError string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID            string
+	Name          string
+	Handler       string
+	Schedule      string
+	Enabled       bool
+	Metadata      string
+	DeliveryState string
+	DeliveryToken string
+	LastRunAt     *time.Time
+	NextRunAt     *time.Time
+	RunCount      int
+	LastError     string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type ElnisEvent struct {
@@ -190,12 +192,13 @@ type CronJobRunState struct {
 }
 
 type UpsertCronJobRequest struct {
-	Name      string
-	Handler   string
-	Schedule  string
-	Enabled   bool
-	Metadata  string
-	NextRunAt *time.Time
+	Name          string
+	Handler       string
+	Schedule      string
+	Enabled       bool
+	Metadata      string
+	NextRunAt     *time.Time
+	ResetDelivery bool
 }
 
 type CreateElnisEventRequest struct {
@@ -334,7 +337,9 @@ type CronJobRepository interface {
 	ListEnabled(ctx context.Context) ([]CronJob, error)
 	UpdateNextRunAt(ctx context.Context, id string, nextRunAt *time.Time, updatedAt time.Time) error
 	UpdateRunState(ctx context.Context, id string, state CronJobRunState) error
+	CompareAndSwapDelivery(ctx context.Context, id, expectedToken, nextToken, deliveryState string) (bool, error)
 	DisableByName(ctx context.Context, name string) error
+	DisableByNameIfDeliveryToken(ctx context.Context, name, deliveryToken string) (bool, error)
 	DeleteByName(ctx context.Context, name string) error
 }
 
