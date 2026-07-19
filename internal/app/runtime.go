@@ -39,7 +39,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		return agt.SendNotice(ctx, target, outputs)
 	}
 
-	cronService, err := buildCronService(foundation, sendNotice)
+	cronService, err := buildCronService(ctx, foundation, sendNotice)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	}, nil
 }
 
-func buildCronService(foundation *FoundationComponents, send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)) (*elcron.Service, error) {
+func buildCronService(ctx context.Context, foundation *FoundationComponents, send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)) (*elcron.Service, error) {
 	cfg := foundation.Config
 	service := elcron.NewService(elcron.Options{
 		Manager:          foundation.CronManager,
@@ -122,6 +122,9 @@ func buildCronService(foundation *FoundationComponents, send func(context.Contex
 			return send(ctx, target, []delivery.Output{out})
 		},
 	})
+	if err := service.MigrateLegacyDeliveryState(ctx); err != nil {
+		return nil, err
+	}
 	if err := foundation.CronManager.RegisterHandler(elcron.UserHandlerName, service.Handler); err != nil {
 		return nil, err
 	}
