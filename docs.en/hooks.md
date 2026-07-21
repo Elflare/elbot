@@ -263,6 +263,7 @@ timing = "after_assistant"
 outputs = [
   { kind = "text", text = "检测到关键词" },
   { kind = "image", path = "assets/alert.png", name = "alert.png" },
+  { kind = "record", path = "assets/alert.mp3", name = "alert.mp3" },
   { kind = "at", user_id = "10001" },
   { kind = "reply", message_id = "456", text = "引用回复" },
 ]
@@ -282,10 +283,10 @@ Process Hook responses and `output.send` use the same structure:
 
 | Field | Description |
 | --- | --- |
-| `kind` | `text`, `image`, `file`, `emoticon`, `at`, `reply`; default `text`. |
+| `kind` | `text`, `image`, `file`, `record`, `emoticon`, `at`, `reply`; default is `text`. |
 | `text` | Text, media fallback, reply body, or native emoji fallback. |
-| `url` / `path` / `base64` | `image` and `file` must and can only choose one source. `url` only accepts HTTP(S), `path` only accepts filesystem paths resolved relative to the plugin directory, and `base64` has a maximum size of 10 MiB after decoding. |
-| `name` / `mime_type` | Display name and MIME type of the image or file; `name` can also serve as the readable name of a native emoji. |
+| `url` / `path` / `base64` | One and only one source must be selected from `image`, `file`, or `record`. `url` only accepts HTTP(S), `path` only accepts filesystem paths resolved relative to the plugin directory, and `base64` has a maximum size of 10 MiB after decoding. |
+| `name` / `mime_type` | The display name and MIME type of images, files, or voice messages; `name` can also serve as the readable name for native emojis. |
 | `user_id` | Non-empty platform user ID of `kind = "at"`. |
 | `message_id` | Non-empty platform message ID of `kind = "reply"`. |
 | `emoticon_id` | Non-empty platform native emoji or sticker ID of `kind = "emoticon"`; native emojis do not accept media sources. |
@@ -431,6 +432,18 @@ One-time exec Hooks share an in-process JSON KV with all Worker Hooks:
 The key must be non-empty after trimming leading and trailing whitespace, with a maximum length of 256 bytes. It is recommended to use prefixes such as `users/<platform>/<id>` and `cache/<name>` to avoid conflicts, but prefixes are not permission boundaries. The value must be valid JSON, with a maximum size of 1 MiB per value after compression; The shared area supports up to 10,000 entries, with a combined maximum size of 32 MiB for keys and values.
 
 When the limit is reached, expired items are deleted first, and then the coldest data is evicted based on the most recent usage time; `ttl_seconds = 0` may also be evicted. CAS performs atomic comparisons based on the compressed JSON; Omitting `expected` indicates writing only when the key does not exist; explicitly providing `expected: null` only matches JSON `null`. Shared state is preserved across Hook restarts and `/hooks reload`, and is cleared after ElBot restarts; Write to the plugin directory or `_shared/` when persistence is required.
+
+### Process Environment
+
+One-off exec, Persistent Worker, and Transient Worker use the same set of environments: they first inherit the ElBot service process environment, and then supplement variables that do not yet exist in the configuration root directory `.env`. Variables with the same name in the service process take priority, so `Environment=` in systemd will not be overwritten by `.env`. All process Hooks will obtain the variables in `.env`, including the keys therein; Only trusted Hook code should be executed.
+
+`PATH` is an exception: ElBot will append the PATH directory of `.env` to the service process PATH; after deduplication, it is used both for searching `command[0]` and as the PATH for child processes. For example, it can be configured when systemd cannot see the user-level `uv`:
+
+```dotenv
+PATH=/home/elbot/.local/bin
+```
+
+ElBot will not load interactive shell initializations such as `.bashrc`, `.profile`, mise/asdf, nor will it expand `$PATH` or `~` in the PATH; Please fill in the actual directory. `.env` is read when ElBot starts; the service needs to be restarted after modification. Executing `/hooks reload` separately will not refresh the environment.
 
 ### One-time exec Hook
 
