@@ -172,6 +172,8 @@ OPENAI_API_KEY=your-api-key
 
 Do not commit actual keys to the repository.
 
+Process Hooks will inherit the ElBot process environment and obtain all variables in the configuration directory `.env`; Variables with the same name in the system environment take priority. The PATH of `.env` will serve as a supplementary directory for the service process PATH; for details, see [Hook Process Environment](hooks.md#进程环境). After modifying `.env`, the ElBot service needs to be restarted.
+
 ## CLI Remote Configuration
 
 `[platform.cli]` stores both CLI server and client configurations. `server` is the configuration read when the current ElBot runs as a server, and `clients` is the configuration read when the current command connects to the server as a CLI client.
@@ -588,8 +590,10 @@ enabled = true
 ws_url = "ws://127.0.0.1:6700/"
 access_token = ""
 trigger_keywords = ["bot"]
-send_file_mode = "base64" # base64 is available across machines; shared file systems can be changed to file_uri
+send_file_mode = "base64" # Local images, files, and voice messages use base64 by default; for shared file systems, this can be changed to file_uri
 ```
+
+`send_file_mode` simultaneously controls the sending method for QQ OneBot local images, files, and `record` voice messages. `base64` is suitable for deployments where ElBot and OneBot do not share a file system; `file_uri` is only applicable in scenarios where both parties can access the same local path.
 
 Telegram uses Bot API long polling. Minimum configuration example:
 
