@@ -165,37 +165,147 @@ func TestLLMInterruptKeepsAppendConfirmationUntilConfirm(t *testing.T) {
 	}
 }
 
-func TestAppendConfirmationBlocksNewSessionCommand(t *testing.T) {
+func TestActiveTurnBlocksNewSessionCommand(t *testing.T) {
+	tests := []struct {
+		name  string
+		phase turn.Phase
+		start func(*testing.T, *Agent, string)
+	}{
+		{name: "llm", phase: turn.PhaseLLM, start: func(t *testing.T, a *Agent, sessionID string) {
+			if !a.turns.StartLLM(sessionID, "input") {
+				t.Fatal("StartLLM returned false")
+			}
+		}},
+		{name: "tool", phase: turn.PhaseTool, start: func(t *testing.T, a *Agent, sessionID string) {
+			if !a.turns.StartLLM(sessionID, "input") || !a.turns.StartToolPhase(sessionID) {
+				t.Fatal("failed to enter tool phase")
+			}
+		}},
+		{name: "await_append_confirm", phase: turn.PhaseAwaitAppendConfirm, start: func(t *testing.T, a *Agent, sessionID string) {
+			if !a.turns.StartLLM(sessionID, "input") || !a.turns.InterruptLLM(sessionID, "more") {
+				t.Fatal("failed to enter append confirmation phase")
+			}
+		}},
+		{name: "await_risk_confirm", phase: turn.PhaseAwaitRiskConfirm, start: func(t *testing.T, a *Agent, sessionID string) {
+			if !a.turns.StartLLM(sessionID, "input") || !a.turns.StartToolPhase(sessionID) {
+				t.Fatal("failed to enter tool phase")
+			}
+			done := make(chan struct{})
+			go func() {
+				_, _ = a.turns.AwaitRiskConfirmation(sessionID, turn.RiskConfirmation{ID: "call_1", ToolName: "shell"})
+				close(done)
+			}()
+			deadline := time.Now().Add(time.Second)
+			for time.Now().Before(deadline) && a.turns.Snapshot(sessionID).Phase != turn.PhaseAwaitRiskConfirm {
+				time.Sleep(10 * time.Millisecond)
+			}
+			if a.turns.Snapshot(sessionID).Phase != turn.PhaseAwaitRiskConfirm {
+				t.Fatal("did not enter risk confirmation phase")
+			}
+			t.Cleanup(func() {
+				a.turns.StopSession(sessionID)
+				select {
+				case <-done:
+				case <-time.After(time.Second):
+					t.Error("risk confirmation did not stop")
+				}
+			})
+		}},
+		{name: "compact", phase: turn.PhaseCompact, start: func(t *testing.T, a *Agent, sessionID string) {
+			if !a.turns.StartCompact(sessionID) {
+				t.Fatal("StartCompact returned false")
+			}
+		}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			p := &fakePlatform{}
+			a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+			ctx := context.Background()
+			current, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "current"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			test.start(t, a, current.ID)
+
+			if err := a.HandleMessage(ctx, "/new"); err != nil {
+				t.Fatalf("/new: %v", err)
+			}
+			after, err := a.sessions.Current(ctx, a.scope(ctx))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if after.ID != current.ID {
+				t.Fatalf("current session = %s, want %s", after.ID, current.ID)
+			}
+			if got := a.turns.Snapshot(current.ID).Phase; got != test.phase {
+				t.Fatalf("turn phase = %s, want %s", got, test.phase)
+			}
+			if got := p.out.String(); got != activeTurnCommandBlockedText() {
+				t.Fatalf("output = %q, want %q", got, activeTurnCommandBlockedText())
+			}
+		})
+	}
+}
+
+func TestActiveTurnBlocksAllSessionSwitchCommands(t *testing.T) {
+	for _, text := range []string{"/new", "/resume", "/fork missing", "/work", "/chat"} {
+		t.Run(strings.TrimPrefix(text, "/"), func(t *testing.T) {
+			p := &fakePlatform{}
+			a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+			ctx := context.Background()
+			current, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "current"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !a.turns.StartLLM(current.ID, "input") {
+				t.Fatal("StartLLM returned false")
+			}
+
+			if err := a.HandleMessage(ctx, text); err != nil {
+				t.Fatalf("%s: %v", text, err)
+			}
+			after, err := a.sessions.Current(ctx, a.scope(ctx))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if after.ID != current.ID {
+				t.Fatalf("current session = %s, want %s", after.ID, current.ID)
+			}
+			if got := p.out.String(); got != activeTurnCommandBlockedText() {
+				t.Fatalf("output = %q, want %q", got, activeTurnCommandBlockedText())
+			}
+		})
+	}
+}
+
+func TestStopAllowsSessionSwitchAfterActiveTurn(t *testing.T) {
 	p := &fakePlatform{}
-	f := &fakeLLM{replies: []string{"confirmed"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
-	session, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "current"})
+	current, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "current"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !a.turns.StartLLM(session.ID, "1+1") {
+	if !a.turns.StartLLM(current.ID, "input") {
 		t.Fatal("StartLLM returned false")
 	}
-	if !a.turns.InterruptLLM(session.ID, "stop") {
-		t.Fatal("InterruptLLM returned false")
+	if err := a.HandleMessage(ctx, "/stop"); err != nil {
+		t.Fatalf("/stop: %v", err)
 	}
-
+	if got := a.turns.Snapshot(current.ID).Phase; got != turn.PhaseIdle {
+		t.Fatalf("turn phase = %s, want idle", got)
+	}
 	if err := a.HandleMessage(ctx, "/new"); err != nil {
 		t.Fatalf("/new: %v", err)
 	}
-	current, err := a.sessions.Current(ctx, a.scope(ctx))
+	after, err := a.sessions.Current(ctx, a.scope(ctx))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if current.ID != session.ID {
-		t.Fatalf("current session = %s, want %s", current.ID, session.ID)
-	}
-	if snapshot := a.turns.Snapshot(session.ID); snapshot.Phase != turn.PhaseAwaitAppendConfirm || snapshot.PendingCount != 1 {
-		t.Fatalf("snapshot = %#v", snapshot)
-	}
-	if got := p.out.String(); !strings.Contains(got, appendConfirmPrompt) {
-		t.Fatalf("output = %q, want append confirmation prompt", got)
+	if after.ID == current.ID {
+		t.Fatalf("current session remained %s after /stop and /new", current.ID)
 	}
 }
 

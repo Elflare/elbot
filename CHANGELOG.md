@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复当前会话仍在请求模型、执行工具或等待确认时仍可切换 Session 的问题；Session 切换命令现在会提示先使用 `/stop` 结束当前处理。
 - 修复 Linux service 下进程 Hook 只能使用服务进程 PATH、无法获得配置 `.env`，导致终端可用的 `uv` 等命令无法启动的问题；一次性 exec 与 Worker 现在共用合并后的环境和 PATH 查找规则。
 - 修复工具流程的最终 LLM 请求期间收到的 pending 消息会随当前 turn 结束而丢失的问题；当前回复现在正常结束，多条 pending 合并后自动开启下一轮请求。
 - 修复 `llm.request.prepared` 可以临时改写本 turn 初始输入或历史消息、pending 图片在排队时丢失且 Hook 修改未持久化的问题；request Hook 现在只修改本次新 drain 的 pending。

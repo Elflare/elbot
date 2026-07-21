@@ -33,21 +33,23 @@ func (e *commandExecutor) Handle(ctx context.Context, text string) (bool, error)
 	parsed := e.router.Parse(text)
 	info, hasInfo := e.router.CommandInfo(parsed.Name)
 	sessionRow, sessionErr := e.sessions.Current(ctx, e.scope(ctx))
+	snapshot := turn.Snapshot{Phase: turn.PhaseIdle}
+	if sessionErr == nil {
+		snapshot = e.turns.Snapshot(sessionRow.ID)
+	}
+	if sessionErr == nil && snapshot.Phase == turn.PhaseAwaitAppendConfirm && (turn.IsConfirm(text) || turn.IsCancel(text)) {
+		return true, e.handleAppend(ctx, sessionRow, text)
+	}
+	if sessionErr == nil && snapshot.Phase == turn.PhaseAwaitRiskConfirm && isRiskConfirmationCommand(text, e.router) {
+		return true, e.handleRisk(ctx, sessionRow.ID, text)
+	}
+	if sessionErr == nil && hasInfo && snapshot.Phase != turn.PhaseIdle && blocksDuringActiveTurn(info.SessionEffect) {
+		e.sendChat(ctx, activeTurnCommandBlockedText())
+		return true, nil
+	}
 	if sessionErr == nil && hasInfo && e.compactActive(sessionRow.ID) && blocksDuringCompact(info.SessionEffect) {
 		e.sendChat(ctx, compactCommandBlockedText(text))
 		return true, nil
-	}
-	if sessionErr == nil && e.turns.Snapshot(sessionRow.ID).Phase == turn.PhaseAwaitAppendConfirm {
-		if turn.IsConfirm(text) || turn.IsCancel(text) {
-			return true, e.handleAppend(ctx, sessionRow, text)
-		}
-		if hasInfo && blocksDuringAppendConfirmation(info.SessionEffect) {
-			e.sendChat(ctx, appendConfirmationCommandBlockedText(text))
-			return true, nil
-		}
-	}
-	if sessionErr == nil && e.turns.Snapshot(sessionRow.ID).Phase == turn.PhaseAwaitRiskConfirm && isRiskConfirmationCommand(text, e.router) {
-		return true, e.handleRisk(ctx, sessionRow.ID, text)
 	}
 
 	actor, _ := security.ActorFromContext(ctx)
@@ -75,7 +77,7 @@ func (e *commandExecutor) Handle(ctx context.Context, text string) (bool, error)
 	return true, nil
 }
 
-func blocksDuringAppendConfirmation(effect command.SessionEffect) bool {
+func blocksDuringActiveTurn(effect command.SessionEffect) bool {
 	return effect&command.SessionEffectSwitchCurrent != 0
 }
 
