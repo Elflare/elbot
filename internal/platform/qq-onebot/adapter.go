@@ -404,6 +404,12 @@ func outputSegments(sendFileMode string, outputs ...delivery.Output) ([]Segment,
 				data["name"] = name
 			}
 			segments = append(segments, Segment{Type: "file", Data: data})
+		case delivery.KindRecord:
+			file, err := oneBotSourceFile(out.Source, "record", sendFileMode)
+			if err != nil {
+				return nil, err
+			}
+			segments = append(segments, Segment{Type: "record", Data: map[string]any{"file": file}})
 		case delivery.KindAt:
 			qq := strings.TrimSpace(out.Name)
 			if qq == "" {

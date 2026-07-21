@@ -15,6 +15,7 @@ const (
 	KindEmoticon Kind = "emoticon"
 	KindImage    Kind = "image"
 	KindFile     Kind = "file"
+	KindRecord   Kind = "record"
 	KindAt       Kind = "at"
 	KindReply    Kind = "reply"
 )
@@ -135,6 +136,10 @@ func ImagePath(path string) Output {
 
 func FilePath(path string) Output {
 	return Output{Kind: KindFile, Source: Source{Path: path}}
+}
+
+func RecordPath(path string) Output {
+	return Output{Kind: KindRecord, Source: Source{Path: path}}
 }
 
 func At(userID string) Output {
@@ -321,9 +326,9 @@ func ValidateOutputs(outputs []Output) error {
 			if sourceCount != 0 {
 				return fmt.Errorf("outputs[%d]: text output cannot have a media source", i)
 			}
-		case KindImage, KindFile:
+		case KindImage, KindFile, KindRecord:
 			if sourceCount != 1 {
-				return fmt.Errorf("outputs[%d]: image/file output must have exactly one media source", i)
+				return fmt.Errorf("outputs[%d]: image/file/record output must have exactly one media source", i)
 			}
 			if path := strings.TrimSpace(out.Source.Path); strings.Contains(path, "://") {
 				return fmt.Errorf("outputs[%d]: media path must be a filesystem path, not a URI", i)
@@ -400,6 +405,12 @@ func FallbackText(out Output) string {
 			return "[文件]"
 		}
 		return fmt.Sprintf("[文件: %s]", label)
+	case KindRecord:
+		label := firstNonEmpty(out.Name, out.Source.URL, out.Source.Path, out.Text)
+		if label == "" {
+			return "[语音]"
+		}
+		return fmt.Sprintf("[语音: %s]", label)
 	default:
 		return firstNonEmpty(out.Text, out.Name, out.AltText)
 	}

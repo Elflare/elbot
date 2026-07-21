@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复 Linux service 下进程 Hook 只能使用服务进程 PATH、无法获得配置 `.env`，导致终端可用的 `uv` 等命令无法启动的问题；一次性 exec 与 Worker 现在共用合并后的环境和 PATH 查找规则。
 - 修复工具流程的最终 LLM 请求期间收到的 pending 消息会随当前 turn 结束而丢失的问题；当前回复现在正常结束，多条 pending 合并后自动开启下一轮请求。
 - 修复 `llm.request.prepared` 可以临时改写本 turn 初始输入或历史消息、pending 图片在排队时丢失且 Hook 修改未持久化的问题；request Hook 现在只修改本次新 drain 的 pending。
 - 修复工具 prepared Hook 改写后的参数没有同步到当前 LLM 上下文，以及进程内 Hook 可以改写工具 ID/名称的问题；实际执行、后续请求和 transcript 现在统一使用最终 arguments。
@@ -33,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `read_file` 的 `start_line` 兼容 LLM 偶尔生成的整数字符串，避免有效行号因 JSON 类型偏差导致读取失败。
 
 ### Added
+
 
 - **重构hook系统**
 - 工具完成 Hook 支持返回包含 URL、路径或 base64 图片的 `message.segments`；多模态工具结果可持久化并按 OpenAI Chat Completions 协议作为后续图片消息提供给模型。

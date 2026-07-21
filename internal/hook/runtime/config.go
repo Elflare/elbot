@@ -133,11 +133,12 @@ type Info struct {
 }
 
 type Options struct {
-	Registry  *tool.Registry
-	Logger    *slog.Logger
-	Audit     func(event string, attrs ...any)
-	Send      func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
-	SharedDir string
+	Registry   *tool.Registry
+	Logger     *slog.Logger
+	Audit      func(event string, attrs ...any)
+	Send       func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
+	SharedDir  string
+	ProcessEnv hook.ProcessEnvironment
 }
 
 func resolveCwd(dir, cwd string) (string, error) {

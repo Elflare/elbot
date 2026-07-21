@@ -108,7 +108,7 @@ func buildSegment(spec Segment, baseDir string, target delivery.Target, timing s
 			return out, err
 		}
 		out = delivery.Text(spec.Text)
-	case delivery.KindImage, delivery.KindFile:
+	case delivery.KindImage, delivery.KindFile, delivery.KindRecord:
 		if err := rejectFields(spec, "user_id", spec.UserID, "message_id", spec.MessageID, "emoticon_id", spec.EmoticonID); err != nil {
 			return out, err
 		}
@@ -156,7 +156,7 @@ func buildMediaSource(spec Segment, baseDir string) (delivery.Source, error) {
 		}
 	}
 	if count != 1 {
-		return delivery.Source{}, fmt.Errorf("image/file output must provide exactly one of path, url or base64")
+		return delivery.Source{}, fmt.Errorf("image/file/record output must provide exactly one of path, url or base64")
 	}
 	source := delivery.Source{MIMEType: spec.MIMEType}
 	if spec.Path != "" {

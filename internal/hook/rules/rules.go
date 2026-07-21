@@ -28,6 +28,7 @@ type Options struct {
 	Send            func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 	PlatformCallers PlatformCallerResolver
 	Runtime         *hookruntime.Manager
+	ProcessEnv      hook.ProcessEnvironment
 }
 
 type Config struct {

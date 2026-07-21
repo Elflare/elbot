@@ -49,6 +49,10 @@ func TestHookRuntimeHelperProcess(t *testing.T) {
 		switch method {
 		case "system.init":
 			hookID = helperHookID(frame)
+			if hookID == "env" && os.Getenv("ELBOT_WORKER_HOOK_ENV_TEST") != "from-dotenv" {
+				writeHelperError(id, "worker environment is missing")
+				continue
+			}
 			writeHelperResponse(id, map[string]any{})
 		case "event.handle":
 			eventCount++
@@ -123,6 +127,41 @@ func TestManagerBuildsCanonicalRuntimeMessageSegments(t *testing.T) {
 	}
 	if len(got.Message.Segments) != 2 || !strings.HasPrefix(got.Message.Segments[1].URL, "data:image/png;base64,") || got.Tool.Result != "截图完成" {
 		t.Fatalf("event = %#v", got)
+	}
+}
+
+func TestManagerWorkersUseConfiguredProcessEnvironment(t *testing.T) {
+	for _, mode := range []Mode{ModePersistent, ModeTransient} {
+		t.Run(string(mode), func(t *testing.T) {
+			manager := NewManager(Options{
+				SharedDir:  t.TempDir(),
+				ProcessEnv: hook.NewProcessEnvironment(os.Environ(), map[string]string{"ELBOT_WORKER_HOOK_ENV_TEST": "from-dotenv"}),
+			})
+			config := Config{
+				Mode:                   mode,
+				Command:                runtimeHelperCommand(),
+				Cwd:                    ".",
+				StartupTimeoutSeconds:  2,
+				ShutdownTimeoutSeconds: 2,
+				EventTimeoutSeconds:    2,
+				MaxWaitSeconds:         30,
+				Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
+				ID:                     "env",
+				Dir:                    t.TempDir(),
+			}
+			if err := manager.Apply([]Config{config}); err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			t.Cleanup(func() { manager.Close(context.Background()) })
+			if mode == ModePersistent {
+				waitForStatus(t, manager, "env", StatusReady)
+				return
+			}
+			event := hook.Event{Platform: hook.PlatformContext{Name: "test", ScopeID: "private:env"}, Actor: hook.ActorContext{ID: "test:env", UserID: "env"}}
+			if _, err := manager.Handle(context.Background(), "env", event, hook.Control{}); err != nil {
+				t.Fatalf("Handle: %v", err)
+			}
+		})
 	}
 }
 

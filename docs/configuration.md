@@ -170,6 +170,8 @@ OPENAI_API_KEY=your-api-key
 
 不要把真实 Key 提交到仓库。
 
+进程 Hook 会继承 ElBot 进程环境，并获得配置目录 `.env` 中的全部变量；系统环境中的同名变量优先。`.env` 的 PATH 会作为服务进程 PATH 的补充目录，详见 [Hook 进程环境](hooks.md#进程环境)。修改 `.env` 后需要重启 ElBot service。
+
 ## CLI 远程配置
 
 `[platform.cli]` 同时保存 CLI 服务端和客户端配置。`server` 是当前 ElBot 作为服务端运行时读取的配置，`clients` 是当前命令作为 CLI 客户端连接服务端时读取的配置。
@@ -586,8 +588,10 @@ enabled = true
 ws_url = "ws://127.0.0.1:6700/"
 access_token = ""
 trigger_keywords = ["bot"]
-send_file_mode = "base64" # base64 跨机器可用；共享文件系统可改为 file_uri
+send_file_mode = "base64" # 本地图片、文件、语音默认用 base64；共享文件系统可改为 file_uri
 ```
+
+`send_file_mode` 同时控制 QQ OneBot 本地图片、文件和 `record` 语音的发送方式。`base64` 适用于 ElBot 与 OneBot 不共享文件系统的部署；`file_uri` 仅适用于双方能访问同一本地路径的场景。
 
 Telegram 使用 Bot API long polling。最小配置示例：
 

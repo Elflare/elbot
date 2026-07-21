@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -31,6 +32,11 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	foundation := req.Foundation
 	cfg := foundation.Config
 	logger := foundation.Logger
+	dotEnv, err := config.LoadDotEnv(filepath.Dir(cfg.ConfigPath))
+	if err != nil {
+		return nil, fmt.Errorf("load hook process environment: %w", err)
+	}
+	hookProcessEnv := hook.NewProcessEnvironment(os.Environ(), dotEnv)
 	var agt *agent.Agent
 	sendNotice := func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 		if agt == nil {
@@ -77,14 +83,15 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	}
 
 	hookRuntime := hookruntime.NewManager(hookruntime.Options{
-		Registry:  toolRuntime.Registry,
-		Logger:    logger,
-		Audit:     auditFunc(foundation.Logs),
-		Send:      sendNotice,
-		SharedDir: filepath.Join(config.PluginConfigDir(cfg.ConfigPath), "_shared"),
+		Registry:   toolRuntime.Registry,
+		Logger:     logger,
+		Audit:      auditFunc(foundation.Logs),
+		Send:       sendNotice,
+		SharedDir:  filepath.Join(config.PluginConfigDir(cfg.ConfigPath), "_shared"),
+		ProcessEnv: hookProcessEnv,
 	})
 
-	hookService := buildHookService(foundation, req.Platforms, toolRuntime, cronService, hooks, hookRuntime, notifyHookIssue, sendNotice)
+	hookService := buildHookService(foundation, req.Platforms, toolRuntime, cronService, hooks, hookRuntime, hookProcessEnv, notifyHookIssue, sendNotice)
 	req.Profiler.Mark("hook register")
 
 	agt, err = buildAgent(foundation, req.Models, req.Platforms, toolRuntime, securityPolicy, hooks, hookRuntime, hookService)
@@ -138,6 +145,7 @@ func buildHookService(
 	cronService *elcron.Service,
 	hooks *hook.DefaultManager,
 	hookRuntime *hookruntime.Manager,
+	hookProcessEnv hook.ProcessEnvironment,
 	notifyHookIssue func(context.Context, string),
 	sendNotice func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error),
 ) *hookcontrol.Service {
@@ -151,6 +159,7 @@ func buildHookService(
 		Send:            sendNotice,
 		PlatformCallers: hookPlatformCallerResolver{runtimes: platforms.Runtimes},
 		Runtime:         hookRuntime,
+		ProcessEnv:      hookProcessEnv,
 	}
 
 	loadHooks := func(registrar hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {

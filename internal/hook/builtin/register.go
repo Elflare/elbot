@@ -22,6 +22,7 @@ type Options struct {
 	Send            func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 	PlatformCallers rules.PlatformCallerResolver
 	Runtime         *hookruntime.Manager
+	ProcessEnv      hook.ProcessEnvironment
 }
 
 func RegisterAll(registrar hook.Registrar, opts Options) ([]hookruntime.Config, error) {
@@ -37,6 +38,7 @@ func RegisterAll(registrar hook.Registrar, opts Options) ([]hookruntime.Config, 
 		Send:            opts.Send,
 		PlatformCallers: opts.PlatformCallers,
 		Runtime:         opts.Runtime,
+		ProcessEnv:      opts.ProcessEnv,
 	})
 	if err == nil {
 		if err := registerModule(registrar, opts, "rules", rulesModule); err != nil {
