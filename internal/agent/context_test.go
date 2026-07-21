@@ -309,7 +309,7 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 	if !a.shouldCompact(ctx, source, a.modelSelectionForTurn(ctx, source)) {
 		t.Fatal("usage no longer triggers compact after cancellation")
 	}
-	if got := p.out.String(); !strings.Contains(got, "暂不执行 /new") || !strings.Contains(got, "暂不执行 /delete") || !strings.Contains(got, "stopped 1 request") {
+	if got := p.out.String(); !strings.Contains(got, activeTurnCommandBlockedText()) || !strings.Contains(got, "暂不执行 /delete") || !strings.Contains(got, "stopped 1 request") {
 		t.Fatalf("output = %q", got)
 	}
 }
