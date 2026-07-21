@@ -42,6 +42,11 @@ func TestExecHelperProcess(t *testing.T) {
 	case "argv":
 		data, _ := json.Marshal(os.Args[marker+1:])
 		writeProtocolTestOutput(string(data))
+	case "env":
+		if marker+1 >= len(os.Args) {
+			os.Exit(2)
+		}
+		writeProtocolTestOutput(os.Getenv(os.Args[marker+1]))
 	case "done-message":
 		writeProtocolTestResult(map[string]any{"status": "completed", "result": "ok", "message": map[string]string{"text": "clean"}})
 	case "done-empty-message":

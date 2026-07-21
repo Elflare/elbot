@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -48,6 +49,18 @@ func TestExecCommandPreservesArgvAndRendersEachArgument(t *testing.T) {
 	want := []string{"上海 天气", "", `C:\hook dir\`, `"quoted"`}
 	if !reflect.DeepEqual(args, want) {
 		t.Fatalf("argv = %#v, want %#v", args, want)
+	}
+}
+
+func TestExecCommandUsesConfiguredProcessEnvironment(t *testing.T) {
+	const key = "ELBOT_EXEC_HOOK_ENV_TEST"
+	module := Module{Opts: Options{ProcessEnv: hook.NewProcessEnvironment(os.Environ(), map[string]string{key: "from-dotenv"})}}
+	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("env", key)}}}, hook.Event{})
+	if err != nil {
+		t.Fatalf("runRule: %v", err)
+	}
+	if len(got.Outputs) != 1 || got.Outputs[0].Text != "from-dotenv" {
+		t.Fatalf("outputs = %#v", got.Outputs)
 	}
 }
 

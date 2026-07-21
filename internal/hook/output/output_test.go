@@ -30,6 +30,21 @@ func TestBuildGroupMediaSources(t *testing.T) {
 				t.Fatalf("data = %q", out.Source.Data)
 			}
 		}},
+		{name: "record path", spec: Segment{Kind: "record", Path: "voice.mp3"}, check: func(t *testing.T, out delivery.Output) {
+			if out.Kind != delivery.KindRecord || out.Source.Path != filepath.Join(base, "voice.mp3") {
+				t.Fatalf("record = %#v", out)
+			}
+		}},
+		{name: "record url", spec: Segment{Kind: "record", URL: "https://example.com/voice.mp3"}, check: func(t *testing.T, out delivery.Output) {
+			if out.Kind != delivery.KindRecord || out.Source.URL != "https://example.com/voice.mp3" {
+				t.Fatalf("record = %#v", out)
+			}
+		}},
+		{name: "record base64", spec: Segment{Kind: "record", Base64: "dm9pY2U="}, check: func(t *testing.T, out delivery.Output) {
+			if out.Kind != delivery.KindRecord || string(out.Source.Data) != "voice" {
+				t.Fatalf("record = %#v", out)
+			}
+		}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -63,6 +78,8 @@ func TestBuildGroupRejectsInvalidSources(t *testing.T) {
 		{name: "uri path", spec: Segment{Kind: "image", Path: "file:///tmp/a"}, want: "filesystem path"},
 		{name: "http path", spec: Segment{Kind: "image", Path: "https://example.com/a"}, want: "filesystem path"},
 		{name: "bad url", spec: Segment{Kind: "image", URL: "ftp://example.com/a"}, want: "HTTP(S)"},
+		{name: "missing record", spec: Segment{Kind: "record"}, want: "exactly one"},
+		{name: "multiple record", spec: Segment{Kind: "record", Path: "voice.mp3", Base64: "dm9pY2U="}, want: "exactly one"},
 		{name: "media emoticon", spec: Segment{Kind: "emoticon", EmoticonID: "14", Base64: "YQ=="}, want: "base64"},
 		{name: "missing emoticon id", spec: Segment{Kind: "emoticon", Name: "微笑"}, want: "emoticon_id"},
 	}

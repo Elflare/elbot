@@ -56,6 +56,32 @@ func TestFallbackTextForTextKeepsContent(t *testing.T) {
 	}
 }
 
+func TestRecordOutputValidationAndFallback(t *testing.T) {
+	for _, out := range []Output{
+		RecordPath("voice.mp3"),
+		{Kind: KindRecord, Source: Source{URL: "https://example.com/voice.mp3"}},
+		{Kind: KindRecord, Source: Source{Data: []byte("voice")}},
+	} {
+		if err := ValidateOutputs([]Output{out}); err != nil {
+			t.Fatalf("ValidateOutputs(%#v): %v", out, err)
+		}
+	}
+	if err := ValidateOutputs([]Output{{Kind: KindRecord}}); err == nil {
+		t.Fatal("ValidateOutputs accepted record without a source")
+	}
+	if err := ValidateOutputs([]Output{{Kind: KindRecord, Source: Source{Path: "voice.mp3", URL: "https://example.com/voice.mp3"}}}); err == nil {
+		t.Fatal("ValidateOutputs accepted record with multiple sources")
+	}
+	out := RecordPath("voice.mp3")
+	out.Name = "问候.mp3"
+	if got := FallbackText(out); got != "[语音: 问候.mp3]" {
+		t.Fatalf("FallbackText = %q", got)
+	}
+	if got := FallbackText(Output{Kind: KindRecord, Source: Source{Data: []byte("voice")}}); got != "[语音]" {
+		t.Fatalf("FallbackText without label = %q", got)
+	}
+}
+
 func TestManagerSendsChat(t *testing.T) {
 	sender := &fakeSender{}
 	manager := NewManager(sender, nil)

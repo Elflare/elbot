@@ -191,6 +191,7 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 - `internal/hook/event.go`：Hook 点、事件 payload 和 Handler 基础类型。
 - `internal/hook/output/`：规则、一次性 exec 与 runtime 共用的输出协议、消息图片 segment 规范化、校验和 delivery 转换。
 - `internal/hook/protocol/`：进程 Hook 共用的 `hook.v2` 帧、ID 校验和 `event.handle` 公共结果字段。
+- `internal/hook/process.go`：进程 Hook 的环境合并、PATH 补充和可执行文件解析。
 - `internal/hook/match.go`：Hook 条件匹配、字段读取和模板值。
 - `internal/hook/manager.go`：普通 Hook 注册、排序、执行与原子 handler 快照替换。
 - `internal/hook/control/`：`/hooks` 的列表、重载和持久进程生命周期管理入口。
@@ -210,7 +211,7 @@ rg -n "Event|Handler|Control|plugins/hooks.toml|exec|hook.v2|runtime|SharedState
 <!-- locator:output -->
 ## Output、Delivery 与发送
 
-适用任务：输出意图结构、文本/图片/文件/at/reply/emoticon 发送、流式输出、notice、reasoning、runtime status。
+适用任务：输出意图结构、文本/图片/文件/语音/at/reply/emoticon 发送、流式输出、notice、reasoning、runtime status。
 
 先看：
 

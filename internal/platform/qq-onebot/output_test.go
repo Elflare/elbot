@@ -2,6 +2,8 @@ package qqonebot
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -141,6 +143,87 @@ func TestOutputSegmentsUsesBase64ForData(t *testing.T) {
 	file, _ := segments[0].Data["file"].(string)
 	if file != "base64://cG5n" {
 		t.Fatalf("file data = %q", file)
+	}
+}
+
+func TestOutputSegmentsRecordSources(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "voice.mp3")
+	if err := os.WriteFile(path, []byte("voice"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	type testCase struct {
+		name string
+		mode string
+		out  delivery.Output
+		want string
+	}
+	wantURI, err := localPathFileURI(path, "record")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []testCase{
+		{name: "url", mode: sendFileModeBase64, out: delivery.Output{Kind: delivery.KindRecord, Source: delivery.Source{URL: "https://example.com/voice.mp3"}}, want: "https://example.com/voice.mp3"},
+		{name: "data", mode: sendFileModeFileURI, out: delivery.Output{Kind: delivery.KindRecord, Source: delivery.Source{Data: []byte("voice")}}, want: "base64://dm9pY2U="},
+		{name: "path base64", mode: sendFileModeBase64, out: delivery.RecordPath(path), want: "base64://dm9pY2U="},
+		{name: "path file uri", mode: sendFileModeFileURI, out: delivery.RecordPath(path), want: wantURI},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			segments, err := outputSegments(tc.mode, tc.out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(segments) != 1 || segments[0].Type != "record" || segments[0].Data["file"] != tc.want {
+				t.Fatalf("segments = %#v", segments)
+			}
+		})
+	}
+}
+
+func TestSendRecordUsesPrivateAndGroupMessageAPIs(t *testing.T) {
+	tests := []struct {
+		name        string
+		target      target
+		wantAction  string
+		wantIDField string
+		wantID      string
+	}{
+		{name: "private", target: target{MessageType: "private", UserID: 123}, wantAction: "send_private_msg", wantIDField: "user_id", wantID: "123"},
+		{name: "group", target: target{MessageType: "group", GroupID: 456}, wantAction: "send_group_msg", wantIDField: "group_id", wantID: "456"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotAction string
+			var gotID string
+			var gotSegments []Segment
+			transport := newTestTransport(t, func(req request) response {
+				gotAction = req.Action
+				gotID = fmt.Sprint(req.Params[tc.wantIDField])
+				raw, _ := json.Marshal(req.Params["message"])
+				if err := json.Unmarshal(raw, &gotSegments); err != nil {
+					t.Fatalf("decode message: %v", err)
+				}
+				return response{Status: "ok", Data: []byte(`{"message_id":88}`), Echo: req.Echo}
+			})
+			adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
+			adapter.transport = transport
+			ctx := context.WithValue(context.Background(), targetKey{}, tc.target)
+			out := delivery.Output{Kind: delivery.KindRecord, Source: delivery.Source{URL: "https://example.com/voice.mp3"}}
+			receipt, err := adapter.SendChat(ctx, []delivery.Output{out})
+			if err != nil {
+				t.Fatalf("SendChat: %v", err)
+			}
+			if gotAction != tc.wantAction || gotID != tc.wantID {
+				t.Fatalf("request = action %q, id %q", gotAction, gotID)
+			}
+			if len(gotSegments) != 1 || gotSegments[0].Type != "record" || gotSegments[0].Data["file"] != "https://example.com/voice.mp3" {
+				t.Fatalf("segments = %#v", gotSegments)
+			}
+			if len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "88" {
+				t.Fatalf("receipt = %#v", receipt)
+			}
+		})
 	}
 }
 

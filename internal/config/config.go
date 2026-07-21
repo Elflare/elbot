@@ -311,16 +311,32 @@ func ConfigEnv(key, configDir string) (string, bool, error) {
 	return lookupDotEnv(key, filepath.Join(configDir, ".env"))
 }
 
+// LoadDotEnv reads all variables from the config directory .env file.
+// Earlier duplicate definitions win, matching ConfigEnv's existing behavior.
+func LoadDotEnv(configDir string) (map[string]string, error) {
+	return loadDotEnvFile(filepath.Join(configDir, ".env"))
+}
+
 func lookupDotEnv(key, path string) (string, bool, error) {
+	values, err := loadDotEnvFile(path)
+	if err != nil {
+		return "", false, err
+	}
+	value, ok := values[key]
+	return value, ok, nil
+}
+
+func loadDotEnvFile(path string) (map[string]string, error) {
+	values := map[string]string{}
 	if strings.TrimSpace(path) == "" {
-		return "", false, nil
+		return values, nil
 	}
 	file, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", false, nil
+			return values, nil
 		}
-		return "", false, fmt.Errorf("open env file %q: %w", path, err)
+		return nil, fmt.Errorf("open env file %q: %w", path, err)
 	}
 	defer file.Close()
 
@@ -331,15 +347,18 @@ func lookupDotEnv(key, path string) (string, bool, error) {
 			continue
 		}
 		name, value, ok := strings.Cut(line, "=")
-		if !ok || strings.TrimSpace(name) != key {
+		name = strings.TrimSpace(name)
+		if !ok || name == "" {
 			continue
 		}
-		return strings.TrimSpace(unquoteEnvValue(value)), true, nil
+		if _, exists := values[name]; !exists {
+			values[name] = strings.TrimSpace(unquoteEnvValue(value))
+		}
 	}
 	if err := scanner.Err(); err != nil {
-		return "", false, fmt.Errorf("read env file %q: %w", path, err)
+		return nil, fmt.Errorf("read env file %q: %w", path, err)
 	}
-	return "", false, nil
+	return values, nil
 }
 
 func unquoteEnvValue(value string) string {

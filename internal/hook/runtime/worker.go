@@ -120,7 +120,7 @@ func (w *worker) run() {
 		w.startFailed(err)
 		return
 	}
-	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd := w.manager.opts.ProcessEnv.Command(argv[0], argv[1:]...)
 	cmd.Dir = cwd
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

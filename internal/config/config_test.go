@@ -679,6 +679,47 @@ model = "deepseek-chat"
 	}
 }
 
+func TestLoadDotEnvReadsAllValuesAndKeepsFirstDuplicate(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, ".env"), `
+# comment
+FIRST='one'
+SECOND = "two=2"
+FIRST=later
+EMPTY=
+invalid
+`)
+
+	values, err := LoadDotEnv(dir)
+	if err != nil {
+		t.Fatalf("LoadDotEnv: %v", err)
+	}
+	want := map[string]string{"FIRST": "one", "SECOND": "two=2", "EMPTY": ""}
+	if !reflect.DeepEqual(values, want) {
+		t.Fatalf("values = %#v, want %#v", values, want)
+	}
+}
+
+func TestLoadDotEnvMissingFileReturnsEmpty(t *testing.T) {
+	values, err := LoadDotEnv(t.TempDir())
+	if err != nil {
+		t.Fatalf("LoadDotEnv: %v", err)
+	}
+	if len(values) != 0 {
+		t.Fatalf("values = %#v, want empty", values)
+	}
+}
+
+func TestLoadDotEnvReturnsReadError(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".env"), 0o755); err != nil {
+		t.Fatalf("mkdir .env: %v", err)
+	}
+	if _, err := LoadDotEnv(dir); err == nil {
+		t.Fatal("LoadDotEnv succeeded for a directory")
+	}
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
