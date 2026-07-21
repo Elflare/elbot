@@ -5,279 +5,258 @@ import (
 	"testing"
 )
 
-func applyMatch(t *testing.T, text string, edit Edit) (string, error) {
-	t.Helper()
-	return applyEdit(text, edit)
-}
-
-func TestApplyEditContentModeReplaceUnique(t *testing.T) {
-	text := "alpha\nbeta\ngamma\n"
-	got, err := applyMatch(t, text, Edit{Operation: "replace_match", OldContent: "beta", Content: "BETA"})
+func TestApplyEditsReplaceTextUniqueAndMultiline(t *testing.T) {
+	got, err := ApplyEdits("alpha\nbeta\ngamma\n", []Edit{{
+		Operation: "replace_text",
+		OldText:   "beta\ngamma",
+		NewText:   textPtr("BETA\nGAMMA"),
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "alpha\nBETA\ngamma\n" {
-		t.Fatalf("got %q", got)
+	if want := "alpha\nBETA\nGAMMA\n"; got != want {
+		t.Fatalf("ApplyEdits() = %q, want %q", got, want)
 	}
 }
 
-func TestApplyEditContentModeReplaceMultiLine(t *testing.T) {
-	text := "alpha\nbeta\ngamma\ndelta\n"
-	got, err := applyMatch(t, text, Edit{Operation: "replace_match", OldContent: "beta\ngamma", Content: "BETA\nGAMMA"})
+func TestApplyEditsReplaceTextCanDelete(t *testing.T) {
+	got, err := ApplyEdits("alpha\nbeta\ngamma\n", []Edit{{
+		Operation: "replace_text",
+		OldText:   "beta\n",
+		NewText:   textPtr(""),
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "alpha\nBETA\nGAMMA\ndelta\n" {
-		t.Fatalf("got %q", got)
+	if want := "alpha\ngamma\n"; got != want {
+		t.Fatalf("ApplyEdits() = %q, want %q", got, want)
 	}
 }
 
-func TestApplyEditContentModeMultipleMatchesNoIndex(t *testing.T) {
-	text := "alpha\nbeta\nbeta\ngamma\n"
-	_, err := applyMatch(t, text, Edit{Operation: "replace_match", OldContent: "beta", Content: "BETA"})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "matched 2 locations") {
-		t.Fatalf("expected matched 2 locations, got %v", err)
-	}
-	if !strings.Contains(err.Error(), "#1") || !strings.Contains(err.Error(), "#2") {
-		t.Fatalf("expected index hints, got %v", err)
-	}
-	if !strings.Contains(err.Error(), "L2") || !strings.Contains(err.Error(), "L3") {
-		t.Fatalf("expected line numbers, got %v", err)
+func TestApplyEditsMatchAmbiguityShowsCandidates(t *testing.T) {
+	_, err := ApplyEdits("beta one\nbeta two\n", []Edit{{
+		Operation: "replace_text",
+		OldText:   "beta",
+		NewText:   textPtr("BETA"),
+	}})
+	if err == nil || !strings.Contains(err.Error(), "matched 2 locations") || !strings.Contains(err.Error(), "#1") || !strings.Contains(err.Error(), "#2") {
+		t.Fatalf("expected candidate error, got %v", err)
 	}
 }
 
-func TestApplyEditContentModeMultipleMatchesWithIndex(t *testing.T) {
-	text := "alpha\nbeta\nbeta\ngamma\n"
+func TestApplyEditsMatchIndexAndAllMatches(t *testing.T) {
 	two := 2
-	got, err := applyMatch(t, text, Edit{Operation: "replace_match", OldContent: "beta", Content: "BETA", Index: &two})
+	got, err := ApplyEdits("beta\nbeta\n", []Edit{{
+		Operation: "replace_text",
+		OldText:   "beta",
+		NewText:   textPtr("BETA"),
+		Index:     &two,
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "alpha\nbeta\nBETA\ngamma\n" {
-		t.Fatalf("got %q", got)
+	if want := "beta\nBETA\n"; got != want {
+		t.Fatalf("indexed result = %q, want %q", got, want)
 	}
-}
 
-func TestApplyEditContentModeIndexOutOfRange(t *testing.T) {
-	text := "alpha\nbeta\nbeta\n"
-	three := 3
-	_, err := applyMatch(t, text, Edit{Operation: "replace_match", OldContent: "beta", Content: "BETA", Index: &three})
-	if err == nil || !strings.Contains(err.Error(), "out of range") || !strings.Contains(err.Error(), "2") {
-		t.Fatalf("expected out of range error, got %v", err)
-	}
-}
-
-func TestApplyEditContentModeNotFound(t *testing.T) {
-	text := "alpha\nbeta\n"
-	_, err := applyMatch(t, text, Edit{Operation: "replace_match", OldContent: "missing", Content: "X"})
-	if err == nil || !strings.Contains(err.Error(), "not found") {
-		t.Fatalf("expected not found, got %v", err)
-	}
-}
-
-func TestApplyEditContentModeDeleteUnique(t *testing.T) {
-	text := "alpha\nbeta\ngamma\n"
-	got, err := applyMatch(t, text, Edit{Operation: "delete_match", OldContent: "beta\n"})
+	got, err = ApplyEdits("beta\nbeta\n", []Edit{{
+		Operation:  "replace_text",
+		OldText:    "beta",
+		NewText:    textPtr("BETA"),
+		AllMatches: true,
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "alpha\ngamma\n" {
-		t.Fatalf("got %q", got)
+	if want := "BETA\nBETA\n"; got != want {
+		t.Fatalf("all result = %q, want %q", got, want)
 	}
 }
 
-func TestApplyEditContentModeInsertBeforeAfter(t *testing.T) {
-	text := "alpha\ngamma\n"
-	got, err := applyMatch(t, text, Edit{Operation: "insert_before_match", Anchor: "gamma", Content: "beta\n"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err = applyMatch(t, got, Edit{Operation: "insert_after_match", Anchor: "gamma", Content: "\ndelta"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "alpha\nbeta\ngamma\ndelta\n" {
-		t.Fatalf("got %q", got)
-	}
-}
-
-func TestApplyEditLineModeReplaceUnique(t *testing.T) {
-	text := "alpha\nbeta\ngamma\n"
-	got, err := applyMatch(t, text, Edit{Operation: "replace_match", MatchMode: "line", OldContent: "be", Content: "BETA"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "alpha\nBETA\ngamma\n" {
-		t.Fatalf("got %q", got)
+func TestApplyEditsIndexAndAllMatchesAreExclusive(t *testing.T) {
+	one := 1
+	_, err := ApplyEdits("beta\n", []Edit{{
+		Operation:  "replace_text",
+		OldText:    "beta",
+		NewText:    textPtr("BETA"),
+		Index:      &one,
+		AllMatches: true,
+	}})
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("expected mutually exclusive error, got %v", err)
 	}
 }
 
-func TestApplyEditLineModeReplaceToleratesIndent(t *testing.T) {
-	text := "func main() {\n\tbeta := 1\n\tgamma := 2\n}\n"
-	got, err := applyMatch(t, text, Edit{Operation: "replace_match", MatchMode: "line", OldContent: "beta", Content: "\tbeta := 10"})
+func TestApplyEditsLineAnchorIgnoresIndentation(t *testing.T) {
+	got, err := ApplyEdits("func main() {\n\treturn\n}\n", []Edit{{
+		Operation: "replace_line",
+		Anchor:    "return",
+		NewText:   textPtr("\tfmt.Println(\"done\")\n\treturn"),
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "func main() {\n\tbeta := 10\n\tgamma := 2\n}\n" {
-		t.Fatalf("got %q", got)
+	if want := "func main() {\n\tfmt.Println(\"done\")\n\treturn\n}\n"; got != want {
+		t.Fatalf("ApplyEdits() = %q, want %q", got, want)
 	}
 }
 
-func TestApplyEditLineModeReplaceMultiLineContent(t *testing.T) {
-	text := "alpha\nbeta\ngamma\n"
-	got, err := applyMatch(t, text, Edit{Operation: "replace_match", MatchMode: "line", OldContent: "beta", Content: "BETA1\nBETA2"})
+func TestApplyEditsAnchorInsertHandlesLineBoundaries(t *testing.T) {
+	got, err := ApplyEdits("alpha\ngamma\n", []Edit{
+		{Operation: "insert_before", Anchor: "gamma", NewText: textPtr("  beta")},
+		{Operation: "insert_after", Anchor: "gamma", NewText: textPtr("delta")},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "alpha\nBETA1\nBETA2\ngamma\n" {
-		t.Fatalf("got %q", got)
+	if want := "alpha\n  beta\ngamma\ndelta\n"; got != want {
+		t.Fatalf("ApplyEdits() = %q, want %q", got, want)
 	}
 }
 
-func TestApplyEditLineModeDeleteUnique(t *testing.T) {
-	text := "alpha\nbeta\ngamma\n"
-	got, err := applyMatch(t, text, Edit{Operation: "delete_match", MatchMode: "line", OldContent: "beta"})
+func TestApplyEditsDeleteLineByAnchor(t *testing.T) {
+	got, err := ApplyEdits("alpha\n  beta\ngamma", []Edit{{Operation: "delete_line", Anchor: "beta"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "alpha\ngamma\n" {
-		t.Fatalf("got %q", got)
+	if want := "alpha\ngamma"; got != want {
+		t.Fatalf("ApplyEdits() = %q, want %q", got, want)
 	}
 }
 
-func TestApplyEditLineModeInsertBeforeAfter(t *testing.T) {
-	text := "alpha\ngamma\n"
-	got, err := applyMatch(t, text, Edit{Operation: "insert_before_match", MatchMode: "line", Anchor: "ga", Content: "beta"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err = applyMatch(t, got, Edit{Operation: "insert_after_match", MatchMode: "line", Anchor: "ga", Content: "delta"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "alpha\nbeta\ngamma\ndelta\n" {
-		t.Fatalf("got %q", got)
-	}
-}
-
-func TestApplyEditLineModeNeedleWithNewlineFails(t *testing.T) {
-	text := "alpha\nbeta\ngamma\n"
-	_, err := applyMatch(t, text, Edit{Operation: "replace_match", MatchMode: "line", OldContent: "beta\ngamma", Content: "X"})
+func TestApplyEditsAnchorMustBeSingleLine(t *testing.T) {
+	_, err := ApplyEdits("alpha\nbeta\n", []Edit{{
+		Operation: "replace_line",
+		Anchor:    "alpha\nbeta",
+		NewText:   textPtr("X"),
+	}})
 	if err == nil || !strings.Contains(err.Error(), "single-line prefix") {
-		t.Fatalf("expected single-line prefix error, got %v", err)
+		t.Fatalf("expected single-line anchor error, got %v", err)
 	}
 }
 
-func TestApplyEditLineModeMultipleMatchesNoIndex(t *testing.T) {
-	text := "func foo() error {\nfunc foo() error {\nfunc foo() error {\n"
-	_, err := applyMatch(t, text, Edit{Operation: "replace_match", MatchMode: "line", OldContent: "func foo", Content: "X"})
-	if err == nil {
-		t.Fatal("expected error")
+func TestApplyEditsInsertByPosition(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		line int
+		want string
+	}{
+		{name: "empty", text: "", line: 1, want: "X"},
+		{name: "start", text: "A\nB\n", line: 1, want: "X\nA\nB\n"},
+		{name: "middle", text: "A\nB\n", line: 2, want: "A\nX\nB\n"},
+		{name: "end with newline", text: "A\nB\n", line: 3, want: "A\nB\nX\n"},
+		{name: "end without newline", text: "A\nB", line: 3, want: "A\nB\nX"},
 	}
-	if !strings.Contains(err.Error(), "matched 3 locations") {
-		t.Fatalf("expected matched 3 locations, got %v", err)
-	}
-	if !strings.Contains(err.Error(), "#1") || !strings.Contains(err.Error(), "#3") {
-		t.Fatalf("expected index hints, got %v", err)
-	}
-	if !strings.Contains(err.Error(), "L1") || !strings.Contains(err.Error(), "L3") {
-		t.Fatalf("expected line numbers, got %v", err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := ApplyEdits(test.text, []Edit{{Operation: "insert", Line: test.line, NewText: textPtr("X")}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != test.want {
+				t.Fatalf("ApplyEdits() = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 
-func TestApplyEditLineModeMultipleMatchesWithIndex(t *testing.T) {
-	text := "alpha\nbeta\nbeta\ngamma\n"
-	two := 2
-	got, err := applyMatch(t, text, Edit{Operation: "replace_match", MatchMode: "line", OldContent: "beta", Content: "BETA", Index: &two})
+func TestApplyEditsDeleteLineRange(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		line int
+		end  int
+		want string
+	}{
+		{name: "middle", text: "A\nB\nC\nD\n", line: 2, end: 3, want: "A\nD\n"},
+		{name: "last without newline", text: "A\nB\nC", line: 3, want: "A\nB"},
+		{name: "last with newline", text: "A\nB\nC\n", line: 3, want: "A\nB\n"},
+		{name: "all", text: "A\nB", line: 1, end: 2, want: ""},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := ApplyEdits(test.text, []Edit{{Operation: "delete", Line: test.line, EndLine: test.end}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != test.want {
+				t.Fatalf("ApplyEdits() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestApplyEditsReplaceLineRangeUsesRawText(t *testing.T) {
+	tests := []struct {
+		name    string
+		text    string
+		line    int
+		endLine int
+		newText string
+		want    string
+	}{
+		{name: "single line with explicit newline", text: "A\nB\nC\n", line: 2, newText: "X\n", want: "A\nX\nC\n"},
+		{name: "single line without newline joins next line", text: "A\nB\nC\n", line: 2, newText: "X", want: "A\nXC\n"},
+		{name: "multiple lines", text: "A\nB\nC\nD\n", line: 2, endLine: 3, newText: "X\nY\n", want: "A\nX\nY\nD\n"},
+		{name: "empty text deletes range", text: "A\nB\nC\n", line: 2, newText: "", want: "A\nC\n"},
+		{name: "unterminated final line needs leading newline", text: "A\nB", line: 2, newText: "\nX", want: "A\nX"},
+		{name: "whole terminated file does not add newline", text: "A\nB\n", line: 1, endLine: 2, newText: "X", want: "X"},
+		{name: "whole unterminated file keeps explicit newline", text: "A\nB", line: 1, endLine: 2, newText: "X\n", want: "X\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := ApplyEdits(test.text, []Edit{{
+				Operation: "replace",
+				Line:      test.line,
+				EndLine:   test.endLine,
+				NewText:   textPtr(test.newText),
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != test.want {
+				t.Fatalf("ApplyEdits() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestApplyEditsReplaceLineRangeValidation(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		edit Edit
+		want string
+	}{
+		{name: "missing new text", text: "A\n", edit: Edit{Operation: "replace", Line: 1}, want: "new_text is required"},
+		{name: "reversed range", text: "A\nB\n", edit: Edit{Operation: "replace", Line: 2, EndLine: 1, NewText: textPtr("X")}, want: "end_line must be >= line"},
+		{name: "out of range", text: "A\n", edit: Edit{Operation: "replace", Line: 2, NewText: textPtr("X")}, want: "exceeds total lines"},
+		{name: "empty file", text: "", edit: Edit{Operation: "replace", Line: 1, NewText: textPtr("X")}, want: "file has no lines"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := ApplyEdits(test.text, []Edit{test.edit})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("expected %q error, got %v", test.want, err)
+			}
+		})
+	}
+}
+
+func TestApplyEditsOverwriteIsRaw(t *testing.T) {
+	got, err := ApplyEdits("old\n", []Edit{{Operation: "overwrite", NewText: textPtr("new\n\n")}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "alpha\nbeta\nBETA\ngamma\n" {
-		t.Fatalf("got %q", got)
+	if want := "new\n\n"; got != want {
+		t.Fatalf("ApplyEdits() = %q, want %q", got, want)
 	}
 }
 
-func TestApplyEditLineModeNotFound(t *testing.T) {
-	text := "alpha\nbeta\n"
-	_, err := applyMatch(t, text, Edit{Operation: "replace_match", MatchMode: "line", OldContent: "missing", Content: "X"})
-	if err == nil || !strings.Contains(err.Error(), "not found") {
-		t.Fatalf("expected not found, got %v", err)
-	}
-}
-
-func TestApplyEditLineModeIndexOneImplied(t *testing.T) {
-	text := "alpha\nbeta\ngamma\n"
-	one := 1
-	got, err := applyMatch(t, text, Edit{Operation: "replace_match", MatchMode: "line", OldContent: "beta", Content: "BETA", Index: &one})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "alpha\nBETA\ngamma\n" {
-		t.Fatalf("got %q", got)
-	}
-}
-
-func TestApplyEditInvalidMatchMode(t *testing.T) {
-	text := "alpha\nbeta\n"
-	_, err := applyMatch(t, text, Edit{Operation: "replace_match", MatchMode: "regex", OldContent: "beta", Content: "X"})
-	if err == nil || !strings.Contains(err.Error(), "match_mode must be") {
-		t.Fatalf("expected match_mode error, got %v", err)
-	}
-}
-
-func TestApplyEditNonMatchOpIgnoresMatchMode(t *testing.T) {
-	text := "alpha\nbeta\n"
-	got, err := applyMatch(t, text, Edit{Operation: "replace", StartLine: 2, MatchMode: "line", Content: "BETA"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "alpha\nBETA\n" {
-		t.Fatalf("got %q", got)
-	}
-}
-
-func TestApplyEditNonMatchOpRejectsInvalidMatchMode(t *testing.T) {
-	text := "alpha\nbeta\n"
-	_, err := applyMatch(t, text, Edit{Operation: "replace", StartLine: 2, MatchMode: "regex", Content: "BETA"})
-	if err == nil || !strings.Contains(err.Error(), "does not support match_mode") {
-		t.Fatalf("expected does not support match_mode, got %v", err)
-	}
-}
-
-func TestApplyEditNonMatchOpRejectsIndex(t *testing.T) {
-	text := "alpha\nbeta\n"
-	one := 1
-	_, err := applyMatch(t, text, Edit{Operation: "replace", StartLine: 2, Index: &one, Content: "BETA"})
-	if err == nil || !strings.Contains(err.Error(), "does not support index") {
-		t.Fatalf("expected does not support index, got %v", err)
-	}
-}
-
-func TestApplyEditContentModeMultipleMatchesPreviewTruncates(t *testing.T) {
-	longLine := strings.Repeat("x", 100)
-	text := "alpha\n" + longLine + "\n" + longLine + "\n"
-	_, err := applyMatch(t, text, Edit{Operation: "replace_match", OldContent: longLine, Content: "X"})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "...") {
-		t.Fatalf("expected truncated preview, got %v", err)
-	}
-}
-
-func TestApplyEditContentModeMultipleMatchesPreviewLimit(t *testing.T) {
-	text := ""
-	for i := 0; i < 10; i++ {
-		text += "beta\n"
-	}
-	_, err := applyMatch(t, text, Edit{Operation: "replace_match", OldContent: "beta", Content: "X"})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "and 5 more") {
-		t.Fatalf("expected preview limit message, got %v", err)
+func TestApplyEditsRejectsMissingNewText(t *testing.T) {
+	_, err := ApplyEdits("alpha\n", []Edit{{Operation: "replace_text", OldText: "alpha"}})
+	if err == nil || !strings.Contains(err.Error(), "new_text is required") {
+		t.Fatalf("expected new_text error, got %v", err)
 	}
 }

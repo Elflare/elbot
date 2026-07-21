@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -256,7 +257,8 @@ func TestReadFileToolASTRejectsUnsupportedLanguage(t *testing.T) {
 
 func TestEditFileToolRequiresEdits(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
-	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
+	original := []byte("alpha\n")
+	if err := os.WriteFile(path, original, 0644); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path})
@@ -268,17 +270,17 @@ func TestEditFileToolRequiresEdits(t *testing.T) {
 
 func TestEditFileToolBatchReplacesLinesAndReturnsDiff(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
-	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0644); err != nil {
+	original := []byte("alpha\nbeta\ngamma\n")
+	if err := os.WriteFile(path, original, 0644); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{
-		"path": path,
+		"path":              path,
+		"expected_revision": fileops.ContentRevision(original),
 		"edits": []map[string]any{{
-			"operation":        "replace",
-			"start_line":       2,
-			"end_line":         2,
-			"expected_content": "beta",
-			"content":          "BETA\nDELTA",
+			"operation": "replace",
+			"line":      2,
+			"new_text":  "BETA\nDELTA\n",
 		}},
 	})
 	result, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
@@ -300,7 +302,7 @@ func TestEditFileToolBatchReplacesLinesAndReturnsDiff(t *testing.T) {
 	}
 }
 
-func TestEditFileToolAcceptsStringLineNumbers(t *testing.T) {
+func TestEditFileToolRejectsStringLineNumbers(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
 	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -308,36 +310,28 @@ func TestEditFileToolAcceptsStringLineNumbers(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": path,
 		"edits": []map[string]any{{
-			"operation":  "replace",
-			"start_line": 2,
-			"end_line":   "2",
-			"content":    "BETA",
+			"operation": "insert",
+			"line":      "2",
+			"new_text":  "BETA",
 		}},
 	})
-	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
-		t.Fatal(err)
-	}
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := string(content); got != "alpha\nBETA\ngamma\n" {
-		t.Fatalf("file content = %q", got)
+	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "cannot unmarshal string") {
+		t.Fatalf("expected integer line error, got %v", err)
 	}
 }
 
-func TestEditFileToolEmptyExpectedContentMeansNoCheck(t *testing.T) {
+func TestEditFileToolAllMatches(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
-	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
+	if err := os.WriteFile(path, []byte("alpha\nalpha\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{
 		"path": path,
 		"edits": []map[string]any{{
-			"operation":        "replace",
-			"start_line":       1,
-			"expected_content": "",
-			"content":          "ALPHA",
+			"operation":   "replace_text",
+			"old_text":    "alpha",
+			"new_text":    "ALPHA",
+			"all_matches": true,
 		}},
 	})
 	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
@@ -347,12 +341,12 @@ func TestEditFileToolEmptyExpectedContentMeansNoCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(content); got != "ALPHA\n" {
+	if got := string(content); got != "ALPHA\nALPHA\n" {
 		t.Fatalf("file content = %q", got)
 	}
 }
 
-func TestEditFileToolExpectedContentMismatchDoesNotWrite(t *testing.T) {
+func TestEditFileToolMissingTextTargetDoesNotWrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
 	original := "alpha\nbeta\ngamma\n"
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
@@ -361,15 +355,14 @@ func TestEditFileToolExpectedContentMismatchDoesNotWrite(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": path,
 		"edits": []map[string]any{{
-			"operation":        "replace",
-			"start_line":       2,
-			"expected_content": "wrong",
-			"content":          "BETA",
+			"operation": "replace_text",
+			"old_text":  "wrong",
+			"new_text":  "BETA",
 		}},
 	})
 	_, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "target content mismatch") {
-		t.Fatalf("expected mismatch error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "old_text not found") {
+		t.Fatalf("expected missing target error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -380,17 +373,19 @@ func TestEditFileToolExpectedContentMismatchDoesNotWrite(t *testing.T) {
 	}
 }
 
-func TestEditFileToolDeletesThroughEnd(t *testing.T) {
+func TestEditFileToolDeletesLineRange(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
-	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0644); err != nil {
+	original := []byte("alpha\nbeta\ngamma\n")
+	if err := os.WriteFile(path, original, 0644); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{
-		"path": path,
+		"path":              path,
+		"expected_revision": fileops.ContentRevision(original),
 		"edits": []map[string]any{{
-			"operation":  "delete",
-			"start_line": 2,
-			"end_line":   "end",
+			"operation": "delete",
+			"line":      2,
+			"end_line":  3,
 		}},
 	})
 	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
@@ -413,9 +408,9 @@ func TestEditFileToolReplaceMatch(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": path,
 		"edits": []map[string]any{{
-			"operation":   "replace_match",
-			"old_content": "beta\ngamma",
-			"content":     "BETA\nGAMMA",
+			"operation": "replace_text",
+			"old_text":  "beta\ngamma",
+			"new_text":  "BETA\nGAMMA",
 		}},
 	})
 	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
@@ -439,9 +434,9 @@ func TestEditFileToolReplaceMatchRequiresUniqueMatch(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": path,
 		"edits": []map[string]any{{
-			"operation":   "replace_match",
-			"old_content": "beta",
-			"content":     "BETA",
+			"operation": "replace_text",
+			"old_text":  "beta",
+			"new_text":  "BETA",
 		}},
 	})
 	_, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
@@ -465,8 +460,9 @@ func TestEditFileToolDeleteMatch(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": path,
 		"edits": []map[string]any{{
-			"operation":   "delete_match",
-			"old_content": "beta\n",
+			"operation": "replace_text",
+			"old_text":  "beta\n",
+			"new_text":  "",
 		}},
 	})
 	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
@@ -489,8 +485,8 @@ func TestEditFileToolInsertBeforeAfterMatch(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": path,
 		"edits": []map[string]any{
-			{"operation": "insert_before_match", "anchor": "gamma", "content": "beta\n"},
-			{"operation": "insert_after_match", "anchor": "gamma", "content": "\ndelta"},
+			{"operation": "insert_before", "anchor": "gamma", "new_text": "beta"},
+			{"operation": "insert_after", "anchor": "gamma", "new_text": "delta"},
 		},
 	})
 	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
@@ -507,26 +503,26 @@ func TestEditFileToolInsertBeforeAfterMatch(t *testing.T) {
 
 func TestEditFileToolRiskDetailFormatsEdits(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
-	if err := os.WriteFile(path, []byte("alpha\nold line\nsecond old\n\tfunc main() {\nother\n\tfunc main() {\n"), 0644); err != nil {
+	original := []byte("alpha\nold line\nsecond old\n\tfunc main() {\nother\n\tfunc main() {\n")
+	if err := os.WriteFile(path, original, 0644); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{
-		"path":     path,
-		"encoding": "utf-8",
+		"path":              path,
+		"encoding":          "utf-8",
+		"expected_revision": fileops.ContentRevision(original),
 		"edits": []map[string]any{
 			{
-				"operation":        "replace",
-				"start_line":       2,
-				"end_line":         3,
-				"expected_content": "old line\nsecond old",
-				"content":          "new line 1\nnew line 2",
+				"operation": "replace",
+				"line":      2,
+				"end_line":  3,
+				"new_text":  "new line 1\nnew line 2\n",
 			},
 			{
-				"operation":  "insert_after_match",
-				"match_mode": "line",
-				"anchor":     "func main()",
-				"index":      2,
-				"content":    "fmt.Println(\"hello\")",
+				"operation": "insert_after",
+				"anchor":    "func main()",
+				"index":     2,
+				"new_text":  "fmt.Println(\"hello\")",
 			},
 		},
 	})
@@ -539,13 +535,10 @@ func TestEditFileToolRiskDetailFormatsEdits(t *testing.T) {
 		"模式：确认后写入；确认前已自动预检",
 		"编码：utf-8",
 		"编辑数：2",
-		"编辑 1/2：替换行",
-		"位置：2-3",
-		"旧内容校验：有",
-		"校验内容：\n  old line\n  second old\n",
+		"编辑 1/2：按行号范围替换",
+		"原始位置：2-3",
 		"新内容：\n  new line 1\n  new line 2\n",
-		"编辑 2/2：按匹配插入到后面",
-		"匹配方式：line",
+		"编辑 2/2：在 anchor 行后插入",
 		"第几处匹配：2",
 		"匹配内容：\n  func main()\n",
 		"插入内容：\n  fmt.Println(\"hello\")",
@@ -578,6 +571,46 @@ func TestEditFileToolSchemaOmitsDryRun(t *testing.T) {
 	if _, ok := properties["expected_sha256"]; ok {
 		t.Fatalf("edit_file schema should not expose expected_sha256: %#v", properties)
 	}
+	edits, ok := properties["edits"].(map[string]any)
+	if !ok {
+		t.Fatalf("edit_file edits schema missing: %#v", properties["edits"])
+	}
+	items, ok := edits["items"].(map[string]any)
+	if !ok {
+		t.Fatalf("edit_file edit item schema missing: %#v", edits)
+	}
+	editProperties, ok := items["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("edit_file edit properties missing: %#v", items)
+	}
+	for _, name := range []string{"line", "end_line", "new_text", "old_text", "anchor", "index", "all_matches"} {
+		if _, ok := editProperties[name]; !ok {
+			t.Fatalf("edit_file edit schema should expose %s: %#v", name, editProperties)
+		}
+	}
+	for _, name := range []string{"start_line", "expected_content", "match_mode", "old_content", "content"} {
+		if _, ok := editProperties[name]; ok {
+			t.Fatalf("edit_file edit schema should not expose legacy field %s: %#v", name, editProperties)
+		}
+	}
+	operation, ok := editProperties["operation"].(map[string]any)
+	if !ok {
+		t.Fatalf("edit_file operation schema missing: %#v", editProperties["operation"])
+	}
+	enum, ok := operation["enum"].([]string)
+	if !ok || !slices.Contains(enum, "replace") {
+		t.Fatalf("edit_file operation schema should expose replace: %#v", operation)
+	}
+	newText, ok := editProperties["new_text"].(map[string]any)
+	if !ok {
+		t.Fatalf("edit_file new_text schema missing: %#v", editProperties["new_text"])
+	}
+	description, _ := newText["description"].(string)
+	for _, want := range []string{"若需换行，需手动添加", "缩进需手动，换行自动追加"} {
+		if !strings.Contains(description, want) {
+			t.Fatalf("edit_file new_text description missing %q: %q", want, description)
+		}
+	}
 }
 
 func TestEditFileToolPreflightRejectsInvalidEdits(t *testing.T) {
@@ -589,13 +622,13 @@ func TestEditFileToolPreflightRejectsInvalidEdits(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": path,
 		"edits": []map[string]any{{
-			"operation":   "replace_match",
-			"old_content": "missing",
-			"content":     "MISSING",
+			"operation": "replace_text",
+			"old_text":  "missing",
+			"new_text":  "MISSING",
 		}},
 	})
 	err := NewEditFileTool().PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "preflight edit_file") || !strings.Contains(err.Error(), "old_content not found") {
+	if err == nil || !strings.Contains(err.Error(), "preflight edit_file") || !strings.Contains(err.Error(), "old_text not found") {
 		t.Fatalf("expected preflight match error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
@@ -616,12 +649,12 @@ func TestEditFileToolBatchFailureIsAtomic(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": path,
 		"edits": []map[string]any{
-			{"operation": "replace_match", "old_content": "beta", "content": "BETA"},
-			{"operation": "replace_match", "old_content": "missing", "content": "MISSING"},
+			{"operation": "replace_text", "old_text": "beta", "new_text": "BETA"},
+			{"operation": "replace_text", "old_text": "missing", "new_text": "MISSING"},
 		},
 	})
 	_, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "old_content not found") {
+	if err == nil || !strings.Contains(err.Error(), "old_text not found") {
 		t.Fatalf("expected missing match error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
@@ -643,9 +676,9 @@ func TestEditFileToolContextLinesAndHunkHeader(t *testing.T) {
 		"path":          path,
 		"context_lines": 1,
 		"edits": []map[string]any{{
-			"operation":  "replace",
-			"start_line": 4,
-			"content":    "FOUR",
+			"operation": "replace_text",
+			"old_text":  "four",
+			"new_text":  "FOUR",
 		}},
 	})
 	result, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
@@ -666,16 +699,18 @@ func TestEditFileToolCronRiskAndSandbox(t *testing.T) {
 	if err := os.MkdirAll(sandbox, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
+	original := []byte("alpha\n")
+	if err := os.WriteFile(path, original, 0644); err != nil {
 		t.Fatal(err)
 	}
 	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Dir: sandbox, Background: true, BackgroundKind: tool.BackgroundKindCron})
 	args, _ := json.Marshal(map[string]any{
-		"path": "sample.txt",
+		"path":              "sample.txt",
+		"expected_revision": fileops.ContentRevision(original),
 		"edits": []map[string]any{{
-			"operation":  "insert_line_after",
-			"start_line": 1,
-			"content":    "beta",
+			"operation": "insert",
+			"line":      2,
+			"new_text":  "beta",
 		}},
 	})
 	assessment, err := NewEditFileTool().AssessRisk(ctx, tool.CallRequest{Arguments: args})
@@ -697,7 +732,7 @@ func TestEditFileToolCronRiskAndSandbox(t *testing.T) {
 	}
 
 	outside := filepath.Join(t.TempDir(), "outside.txt")
-	outsideArgs, _ := json.Marshal(map[string]any{"path": outside, "edits": []map[string]any{{"operation": "delete", "start_line": 1}}})
+	outsideArgs, _ := json.Marshal(map[string]any{"path": outside, "edits": []map[string]any{{"operation": "delete", "line": 1}}})
 	if _, err := NewEditFileTool().AssessRisk(ctx, tool.CallRequest{Arguments: outsideArgs}); err == nil {
 		t.Fatal("expected sandbox escape error")
 	}
@@ -718,14 +753,14 @@ func TestReadFileToolEmptyFile(t *testing.T) {
 	}
 }
 
-func TestEditFileToolCreateAndAppend(t *testing.T) {
+func TestEditFileToolCreateAndOverwrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "created.txt")
 	args, _ := json.Marshal(map[string]any{
 		"path":   path,
 		"create": true,
 		"edits": []map[string]any{{
-			"operation": "append",
-			"content":   "alpha",
+			"operation": "overwrite",
+			"new_text":  "alpha",
 		}},
 	})
 	result, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
@@ -739,19 +774,19 @@ func TestEditFileToolCreateAndAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(content); got != "alpha\n" {
+	if got := string(content); got != "alpha" {
 		t.Fatalf("file content = %q", got)
 	}
 }
 
-func TestEditFileToolCreateAndAppendCreatesParentDirectory(t *testing.T) {
+func TestEditFileToolCreateAndOverwriteCreatesParentDirectory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing", "created.txt")
 	args, _ := json.Marshal(map[string]any{
 		"path":   path,
 		"create": true,
 		"edits": []map[string]any{{
-			"operation": "append",
-			"content":   "alpha",
+			"operation": "overwrite",
+			"new_text":  "alpha",
 		}},
 	})
 	result, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
@@ -765,7 +800,7 @@ func TestEditFileToolCreateAndAppendCreatesParentDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(content); got != "alpha\n" {
+	if got := string(content); got != "alpha" {
 		t.Fatalf("file content = %q", got)
 	}
 }
@@ -776,7 +811,7 @@ func TestEditFileToolCreateWithExpectedRevisionRequiresExistingFile(t *testing.T
 		"path":              path,
 		"create":            true,
 		"expected_revision": "deadbeefdeadbeef",
-		"edits":             []map[string]any{{"operation": "append", "content": "alpha"}},
+		"edits":             []map[string]any{{"operation": "overwrite", "new_text": "alpha"}},
 	})
 	_, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "stat file") {
@@ -828,7 +863,7 @@ func TestEditFileToolRejectsElSkillFileBeforeWrite(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	args, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "append", "content": "changed"}}})
+	args, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "overwrite", "new_text": "changed"}}})
 	edit := NewEditFileTool(NewFileGuard(NewElSkillFileGuardRule(root)))
 	if err := edit.PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
 		t.Fatalf("expected preflight modify_el_skill error, got %v", err)
@@ -855,7 +890,7 @@ func TestEditFileToolRejectsElSkillCodeSource(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	args, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "append", "content": "func main() {}"}}})
+	args, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "overwrite", "new_text": "func main() {}"}}})
 	_, err := NewEditFileTool(NewFileGuard(NewElSkillFileGuardRule(root))).Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
 		t.Fatalf("expected modify_el_skill error, got %v", err)
@@ -884,7 +919,7 @@ func TestFileToolsProtectResidentMemoryFile(t *testing.T) {
 	if text := tool.AppendWarnings(readResult.Content, readResult.Warnings); !strings.Contains(text, "resident_memory_read") {
 		t.Fatalf("expected resident_memory_read warning, got:\n%s", text)
 	}
-	editArgs, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "append", "content": "changed"}}})
+	editArgs, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "overwrite", "new_text": "changed"}}})
 	edit := NewEditFileTool(guard)
 	if err := edit.PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: editArgs}); err == nil || !strings.Contains(err.Error(), "resident_memory_normal") {
 		t.Fatalf("expected resident memory preflight error, got %v", err)
@@ -920,7 +955,7 @@ func TestFileToolsProtectLongMemoryMarkdown(t *testing.T) {
 	if text := tool.AppendWarnings(readResult.Content, readResult.Warnings); !strings.Contains(text, "long_memory_search") {
 		t.Fatalf("expected long_memory_search warning, got:\n%s", text)
 	}
-	editArgs, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "append", "content": "changed"}}})
+	editArgs, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "overwrite", "new_text": "changed"}}})
 	_, err = NewEditFileTool(guard).Call(context.Background(), tool.CallRequest{Arguments: editArgs})
 	if err == nil || !strings.Contains(err.Error(), "long_memory_write") {
 		t.Fatalf("expected long_memory_write error, got %v", err)
@@ -936,15 +971,17 @@ func TestFileToolsProtectLongMemoryMarkdown(t *testing.T) {
 
 func TestEditFileToolInsertLineAvoidsJoinedLines(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
-	if err := os.WriteFile(path, []byte("alpha\ngamma\n"), 0644); err != nil {
+	original := []byte("alpha\ngamma\n")
+	if err := os.WriteFile(path, original, 0644); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{
-		"path": path,
+		"path":              path,
+		"expected_revision": fileops.ContentRevision(original),
 		"edits": []map[string]any{{
-			"operation":  "insert_line_after",
-			"start_line": 1,
-			"content":    "beta",
+			"operation": "insert",
+			"line":      2,
+			"new_text":  "beta",
 		}},
 	})
 	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
@@ -969,8 +1006,8 @@ func TestEditFileToolMultiHunkDiff(t *testing.T) {
 		"path":          path,
 		"context_lines": 1,
 		"edits": []map[string]any{
-			{"operation": "replace", "start_line": 1, "content": "ONE"},
-			{"operation": "replace", "start_line": 7, "content": "SEVEN"},
+			{"operation": "replace_text", "old_text": "one", "new_text": "ONE"},
+			{"operation": "replace_text", "old_text": "seven", "new_text": "SEVEN"},
 		},
 	})
 	result, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
@@ -1002,10 +1039,9 @@ func TestEditFileToolLineModeReplacePrefix(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": path,
 		"edits": []map[string]any{{
-			"operation":   "replace_match",
-			"match_mode":  "line",
-			"old_content": "be",
-			"content":     "BETA",
+			"operation": "replace_line",
+			"anchor":    "be",
+			"new_text":  "BETA",
 		}},
 	})
 	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
@@ -1029,10 +1065,9 @@ func TestEditFileToolLineModeToleratesIndent(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": path,
 		"edits": []map[string]any{{
-			"operation":   "replace_match",
-			"match_mode":  "line",
-			"old_content": "beta",
-			"content":     "\tbeta := 10",
+			"operation": "replace_line",
+			"anchor":    "beta",
+			"new_text":  "\tbeta := 10",
 		}},
 	})
 	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
@@ -1055,10 +1090,9 @@ func TestEditFileToolLineModeMultiLineContentExpand(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": path,
 		"edits": []map[string]any{{
-			"operation":   "replace_match",
-			"match_mode":  "line",
-			"old_content": "beta",
-			"content":     "BETA1\nBETA2",
+			"operation": "replace_line",
+			"anchor":    "beta",
+			"new_text":  "BETA1\nBETA2",
 		}},
 	})
 	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
@@ -1081,11 +1115,10 @@ func TestEditFileToolLineModeMultipleMatchesWithIndex(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": path,
 		"edits": []map[string]any{{
-			"operation":   "replace_match",
-			"match_mode":  "line",
-			"old_content": "beta",
-			"content":     "BETA",
-			"index":       2,
+			"operation": "replace_line",
+			"anchor":    "beta",
+			"new_text":  "BETA",
+			"index":     2,
 		}},
 	})
 	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
@@ -1109,10 +1142,9 @@ func TestEditFileToolLineModeMultipleMatchesNoIndexError(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": path,
 		"edits": []map[string]any{{
-			"operation":   "replace_match",
-			"match_mode":  "line",
-			"old_content": "beta",
-			"content":     "BETA",
+			"operation": "replace_line",
+			"anchor":    "beta",
+			"new_text":  "BETA",
 		}},
 	})
 	_, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
@@ -1139,8 +1171,8 @@ func TestEditFileToolLineModeDeleteAndInsert(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": path,
 		"edits": []map[string]any{
-			{"operation": "insert_before_match", "match_mode": "line", "anchor": "ga", "content": "beta"},
-			{"operation": "insert_after_match", "match_mode": "line", "anchor": "ga", "content": "delta"},
+			{"operation": "insert_before", "anchor": "ga", "new_text": "beta"},
+			{"operation": "insert_after", "anchor": "ga", "new_text": "delta"},
 		},
 	})
 	if _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
@@ -1164,10 +1196,9 @@ func TestEditFileToolLineModeNeedleWithNewlineFails(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": path,
 		"edits": []map[string]any{{
-			"operation":   "replace_match",
-			"match_mode":  "line",
-			"old_content": "beta\ngamma",
-			"content":     "X",
+			"operation": "replace_line",
+			"anchor":    "beta\ngamma",
+			"new_text":  "X",
 		}},
 	})
 	_, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
@@ -1202,9 +1233,9 @@ func TestEditFileToolUsesWorkspaceRelativePath(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"path": "sample.txt",
 		"edits": []map[string]any{{
-			"operation":  "replace",
-			"start_line": 1,
-			"content":    "beta",
+			"operation": "replace_text",
+			"old_text":  "alpha",
+			"new_text":  "beta",
 		}},
 	})
 	if _, err := NewEditFileTool().Call(ctx, tool.CallRequest{Arguments: args}); err != nil {

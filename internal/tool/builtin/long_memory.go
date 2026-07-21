@@ -202,7 +202,7 @@ func (t LongMemoryWriteTool) Schema() llm.ToolSchema {
 		String("summary", "save 需要；update 时不填表示保持不变，填写表示修改摘要，建议 50 字以内。").
 		String("keywords", "save 需要；update 时不填表示保持不变，填写表示修改搜索关键词；用空格、逗号或换行分隔。").
 		String("content", "save 需要；update 时不填表示保持不变，填写表示整段替换正文；delete 会忽略。update 时不能和 content_edits 同时填写。").
-		ObjectArray("content_edits", "仅 update 有效；不能和 content 同时填写。", fileops.EditOperationProperties(), []string{"operation"}).
+		ObjectArray("content_edits", "仅 update 有效；不能和 content 同时填写。使用与 edit_file 相同的精确文本、anchor、行号插入/删除协议。", fileops.EditOperationProperties(), []string{"operation"}).
 		BuildSchema()
 }
 
@@ -238,7 +238,7 @@ func (t LongMemoryWriteTool) RiskDetail(ctx context.Context, req tool.CallReques
 	fmt.Fprintf(&b, "标题：%s\n", preview.After.Title)
 	b.WriteString("模式：确认后写入；确认前已自动预检\n")
 	if len(args.ContentEdits) > 0 {
-		b.WriteString("正文编辑：content_edits 只作用于正文，行号从正文第 1 行开始\n")
+		b.WriteString("正文编辑：content_edits 只作用于正文；所有目标均基于更新前正文解析\n")
 	}
 	if len(preview.Changes) > 0 {
 		b.WriteString("字段变化：\n")
@@ -554,8 +554,7 @@ func longMemoryInlineValue(value string) string {
 }
 
 func (s *longMemoryStore) writeUpdatePreviewLocked(ctx context.Context, preview longMemoryUpdatePreview) error {
-	expected := fileops.NormalizeEditText(preview.File.Text)
-	edit := fileops.Edit{Operation: "replace", StartLine: 1, EndLine: fileops.LineNumber{End: true}, Content: preview.FullContent, ExpectedContent: &expected}
+	edit := fileops.Edit{Operation: "overwrite", NewText: &preview.FullContent}
 	_, err := fileops.EditFile(preview.After.FilePath, preview.File.Encoding, fileops.ContentRevision(preview.File.Bytes), false, false, 3, []fileops.Edit{edit})
 	if err != nil {
 		return err

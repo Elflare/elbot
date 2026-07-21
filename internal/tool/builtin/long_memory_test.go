@@ -106,7 +106,7 @@ func TestLongMemoryUpdateContentEditsAndRiskDetail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args := []byte(`{"operation":"update","id":1,"summary":"新摘要","content_edits":[{"operation":"replace","start_line":2,"content":"第二行已更新","expected_content":"第二行"}]}`)
+	args := []byte(`{"operation":"update","id":1,"summary":"新摘要","content_edits":[{"operation":"replace","line":2,"new_text":"第二行已更新\n"}]}`)
 	if err := writeTool.PreflightConfirmation(ctx, tool.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestLongMemoryUpdateRejectsContentAndContentEditsTogether(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args := []byte(`{"operation":"update","id":1,"content":"整段正文","content_edits":[{"operation":"append","content":"追加"}]}`)
+	args := []byte(`{"operation":"update","id":1,"content":"整段正文","content_edits":[{"operation":"insert","line":2,"new_text":"追加"}]}`)
 	err = writeTool.PreflightConfirmation(ctx, tool.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "content and content_edits cannot be used together") {
 		t.Fatalf("expected conflict error, got %v", err)
