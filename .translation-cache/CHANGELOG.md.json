@@ -720,6 +720,14 @@
       "translation": "Fixed an issue where bash AST parsing failure for shell commands on Windows (when bash is missing) caused risk classification, sandbox validation, directory change interception, and warning analysis to all fail;",
       "updated_at": 1783128855
     },
+    "CHANGELOG.md:list:8fc3b487771ec2c9c4e83ed27ac28b3001082d3c2a4fb9780af37df1f1c67e58": {
+      "kind": "list",
+      "source": "修复当前会话仍在请求模型、执行工具或等待确认时仍可切换 Session 的问题；Session 切换命令现在会提示先使用 __ELBOT_CODE_0__ 结束当前处理。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "8fc3b487771ec2c9c4e83ed27ac28b3001082d3c2a4fb9780af37df1f1c67e58",
+      "translation": "Fixed the issue where the Session could still be switched while the current Session was requesting the model, executing a tool, or waiting for confirmation; the Session switching command now prompts to first use __ELBOT_CODE_0__ to end the current process.",
+      "updated_at": 1784637931
+    },
     "CHANGELOG.md:list:8ffa77eae1271a9d65560102a519441480c611c59382b37fe40218bdc1078f80": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 的高风险确认详情现在会按文件、模式和编辑步骤展示替换、新增、删除、匹配等操作。",
@@ -1258,8 +1266,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "d1385874f61d4de6625db18e1d43610e031529bdd82644b1db59d514da7829e4",
+  "source_hash": "a45315e5ee7b358522d181d386bcb2a203761794cec13d6d99655f8733313c00",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784611290,
+  "updated_at": 1784637931,
   "version": 2
 }
