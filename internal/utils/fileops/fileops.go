@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -23,8 +24,6 @@ const (
 	MaxFileSize          = 2 * 1024 * 1024
 	contentRevisionBytes = 8
 	maxDiffCells         = 2_000_000
-	matchModeContent     = "content"
-	matchModeLine        = "line"
 	matchPreviewLimit    = 5
 	matchPreviewWidth    = 40
 )
@@ -78,15 +77,14 @@ type File struct {
 }
 
 type Edit struct {
-	Operation       string     `json:"operation"`
-	StartLine       int        `json:"start_line"`
-	EndLine         LineNumber `json:"end_line"`
-	Content         string     `json:"content"`
-	ExpectedContent *string    `json:"expected_content"`
-	OldContent      string     `json:"old_content"`
-	Anchor          string     `json:"anchor"`
-	MatchMode       string     `json:"match_mode"`
-	Index           *int       `json:"index"`
+	Operation  string  `json:"operation"`
+	Line       int     `json:"line"`
+	EndLine    int     `json:"end_line"`
+	NewText    *string `json:"new_text"`
+	OldText    string  `json:"old_text"`
+	Anchor     string  `json:"anchor"`
+	Index      *int    `json:"index"`
+	AllMatches bool    `json:"all_matches"`
 }
 
 type EditResult struct {
@@ -102,15 +100,14 @@ type EditResult struct {
 
 func EditOperationProperties() map[string]any {
 	return map[string]any{
-		"operation":        map[string]any{"type": "string", "description": "编辑操作：replace、delete、insert_line_before、insert_line_after、prepend、append、replace_match、delete_match、insert_before_match、insert_after_match。edits 按顺序应用；行号操作的 start_line/end_line 均引用编辑前文件的原始行号，工具会自动补偿同一批内前序行号编辑造成的漂移。"},
-		"start_line":       map[string]any{"type": "integer", "description": "行号操作的起始行号，1-based，引用编辑前文件的原始行号。"},
-		"end_line":         map[string]any{"type": "string", "description": "行号 replace/delete 的结束行号，1-based 且包含该行，引用编辑前文件的原始行号；也可传 end；默认等于 start_line。"},
-		"content":          map[string]any{"type": "string", "description": "replace/insert 写入的文本；delete/delete_match 忽略此字段。insert_line_*、prepend、append 及 line 模式 insert_*_match 按整行插入并自动补换行，无需自加换行符；content 模式 insert_*_match 为字面插入，不自动加换行符。"},
-		"expected_content": map[string]any{"type": "string", "description": "replace/delete 前校验目标行范围原始文本；换行符按 \\n 规范化比较，用于防止行号漂移误改；不需要校验时请省略该字段，不要传空字符串。"},
-		"old_content":      map[string]any{"type": "string", "description": "replace_match/delete_match 的匹配文本。match_mode=content（默认）时为精确子串，写多少匹配/替换多少；match_mode=line 时为单行前缀，匹配并操作整行。"},
-		"anchor":           map[string]any{"type": "string", "description": "insert_before_match/insert_after_match 的匹配文本，语义同 old_content，受 match_mode 控制。"},
-		"match_mode":       map[string]any{"type": "string", "enum": []string{"content", "line"}, "description": "*_match 的匹配方式。content（默认）：精确子串，写多少替换多少，insert 为字面插入不自动加换行符。line：单行前缀匹配整行，容忍行首缩进，needle 不得含换行；操作整行，insert 按整行插入自动补换行，content 可多行展开。仅对 *_match 操作有效。*_match 后不要在同一批继续使用行号操作；如需继续按行号编辑，请拆成下一次 edit_file 调用。"},
-		"index":            map[string]any{"type": "integer", "description": "当 old_content/anchor 匹配到多处时，用 index 选择第几处，1-based。默认不填：唯一匹配时直接命中，多处匹配时报错并列出所有匹配位置供你更精准匹配或传入 index。仅对 *_match 操作有效。"},
+		"operation":   map[string]any{"type": "string", "enum": []string{"replace_text", "replace", "insert", "delete", "insert_before", "insert_after", "replace_line", "delete_line", "overwrite"}, "description": "编辑操作。所有目标都基于编辑前原文解析；overwrite 必须是批次中的唯一操作。"},
+		"line":        map[string]any{"type": "integer", "description": "replace/delete 的起始行或 insert 的行间位置，1-based。insert: 1=文件开头，N+1=文件末尾；空文件仅支持 1。"},
+		"end_line":    map[string]any{"type": "integer", "description": "replace/delete 的可选结束行，1-based 且包含该行；省略时只操作 line。"},
+		"new_text":    map[string]any{"type": "string", "description": "写入文本。replace_text/replace/overwrite 使用原样文本；replace 不自动补换行，若需换行，需手动添加。insert/insert_before/insert_after/replace_line 把内容作为完整行块，缩进需手动，换行自动追加。replace_text 和 replace 可传空字符串进行删除。"},
+		"old_text":    map[string]any{"type": "string", "description": "replace_text 的精确单行或多行匹配文本。"},
+		"anchor":      map[string]any{"type": "string", "description": "insert_before/insert_after/replace_line/delete_line 的单行前缀；匹配时忽略目标行的前导空格和 Tab。匹配多行但没传入index时，会返回index"},
+		"index":       map[string]any{"type": "integer", "description": "匹配到多处时选择第几处，1-based。与 all_matches 互斥。"},
+		"all_matches": map[string]any{"type": "boolean", "description": "对所有匹配执行操作。与 index 互斥；仅用于 old_text/anchor 操作。"},
 	}
 }
 
@@ -179,6 +176,9 @@ func EditFile(path, requestedEncoding, expectedRevision string, create, dryRun b
 	oldRevision := ContentRevision(file.Bytes)
 	if expectedRevision != "" && !strings.EqualFold(expectedRevision, oldRevision) {
 		return EditResult{}, fmt.Errorf("file revision mismatch: current %s", oldRevision)
+	}
+	if !created && expectedRevision == "" && editsRequireRevision(edits) {
+		return EditResult{}, fmt.Errorf("expected_revision is required for replace, insert, delete, and overwrite on existing files")
 	}
 	oldText := NormalizeEditText(file.Text)
 	newText, err := ApplyEdits(oldText, edits)
@@ -362,315 +362,13 @@ func NormalizeReadRange(total, start int, endLine LineNumber) (int, int, bool, e
 	return start, end, truncated, nil
 }
 
-func ApplyEdits(text string, edits []Edit) (string, error) {
-	if len(edits) == 0 {
-		return "", fmt.Errorf("edits is required")
-	}
-	current := NormalizeEditText(text)
-	mapper := newLineEditMapper(len(SplitLines(current)))
-	for i, edit := range edits {
-		mappedEdit, err := mapper.mapEdit(edit)
-		if err != nil {
-			return "", fmt.Errorf("edit %d: %w", i+1, err)
-		}
-		next, err := applyEdit(current, mappedEdit)
-		if err != nil {
-			return "", fmt.Errorf("edit %d: %w", i+1, err)
-		}
-		if err := mapper.recordEdit(edit); err != nil {
-			return "", fmt.Errorf("edit %d: %w", i+1, err)
-		}
-		current = next
-	}
-	return current, nil
-}
-
-type lineEditMapper struct {
-	originalLineCount int
-	deltas            []lineDelta
-	blocked           []lineRange
-	insertions        []int
-	afterLineInserts  map[int]int
-	seenMatchEdit     bool
-}
-
-type lineDelta struct {
-	threshold int
-	delta     int
-}
-
-type lineRange struct {
-	start int
-	end   int
-}
-
-func newLineEditMapper(originalLineCount int) *lineEditMapper {
-	return &lineEditMapper{originalLineCount: originalLineCount, afterLineInserts: map[int]int{}}
-}
-
-func (m *lineEditMapper) mapEdit(edit Edit) (Edit, error) {
-	operation := strings.ToLower(strings.TrimSpace(edit.Operation))
-	if usesOriginalLineNumbers(operation) && m.seenMatchEdit {
-		return Edit{}, fmt.Errorf("line-number operation %q cannot follow a match operation in the same batch; split it into a separate edit_file call or put line-number edits before match edits", edit.Operation)
-	}
-	mapped := edit
-	start, end := m.originalRange(edit, operation)
-	switch operation {
-	case "replace", "delete":
-		if err := m.ensureRangeAvailable(start, end); err != nil {
-			return Edit{}, err
-		}
-		if err := m.ensureNoInsertedContentInside(start, end); err != nil {
-			return Edit{}, err
-		}
-		mapped.StartLine = m.mapLine(start)
-		mapped.EndLine = LineNumber{Value: m.mapLine(end)}
-	case "insert_line_before":
-		if err := m.ensureRangeAvailable(start, start); err != nil {
-			return Edit{}, err
-		}
-		mapped.StartLine = m.mapLine(start)
-	case "insert_line_after":
-		if err := m.ensureRangeAvailable(start, start); err != nil {
-			return Edit{}, err
-		}
-		mapped.StartLine = m.mapInsertAfterLine(start)
-	}
-	return mapped, nil
-}
-
-func (m *lineEditMapper) recordEdit(edit Edit) error {
-	operation := strings.ToLower(strings.TrimSpace(edit.Operation))
-	start, end := m.originalRange(edit, operation)
-	switch operation {
-	case "replace":
-		oldCount := end - start + 1
-		newCount := editLineCount(edit.Content)
-		m.blocked = append(m.blocked, lineRange{start: start, end: end})
-		m.addDelta(end+1, newCount-oldCount)
-	case "delete":
-		oldCount := end - start + 1
-		m.blocked = append(m.blocked, lineRange{start: start, end: end})
-		m.addDelta(end+1, -oldCount)
-	case "insert_line_before":
-		m.recordInsertion(start, editLineCount(edit.Content))
-	case "insert_line_after":
-		count := editLineCount(edit.Content)
-		m.recordInsertion(start+1, count)
-		m.afterLineInserts[start] += count
-	case "prepend":
-		m.recordInsertion(1, editLineCount(edit.Content))
-	case "append":
-		m.recordInsertion(m.originalLineCount+1, editLineCount(edit.Content))
-	case "replace_match", "delete_match", "insert_before_match", "insert_after_match":
-		m.seenMatchEdit = true
-	}
-	return nil
-}
-
-func (m *lineEditMapper) originalRange(edit Edit, operation string) (int, int) {
-	start := edit.StartLine
-	end := edit.EndLine.Value
-	if edit.EndLine.End {
-		end = m.originalLineCount
-	} else if end == 0 || operation == "insert_line_before" || operation == "insert_line_after" {
-		end = start
-	}
-	return start, end
-}
-
-func (m *lineEditMapper) mapLine(line int) int {
-	mapped := line
-	for _, delta := range m.deltas {
-		if line >= delta.threshold {
-			mapped += delta.delta
-		}
-	}
-	return mapped
-}
-
-func (m *lineEditMapper) mapInsertAfterLine(line int) int {
-	return m.mapLine(line) + m.afterLineInserts[line]
-}
-
-func (m *lineEditMapper) recordInsertion(position, count int) {
-	if count == 0 {
-		return
-	}
-	m.insertions = append(m.insertions, position)
-	m.addDelta(position, count)
-}
-
-func (m *lineEditMapper) addDelta(threshold, delta int) {
-	if delta == 0 {
-		return
-	}
-	m.deltas = append(m.deltas, lineDelta{threshold: threshold, delta: delta})
-}
-
-func (m *lineEditMapper) ensureRangeAvailable(start, end int) error {
-	if start <= 0 || end < start {
-		return nil
-	}
-	for _, blocked := range m.blocked {
-		if start <= blocked.end && end >= blocked.start {
-			return fmt.Errorf("original lines %s were already modified by a previous line edit", formatOriginalRange(start, end))
-		}
-	}
-	return nil
-}
-
-func (m *lineEditMapper) ensureNoInsertedContentInside(start, end int) error {
-	if start <= 0 || end <= start {
-		return nil
-	}
-	for _, position := range m.insertions {
-		if position > start && position <= end {
-			return fmt.Errorf("original lines %s contain content inserted by a previous line edit; split the range edit into separate edits or put it before the insertion", formatOriginalRange(start, end))
-		}
-	}
-	return nil
-}
-
-func usesOriginalLineNumbers(operation string) bool {
-	switch operation {
-	case "replace", "delete", "insert_line_before", "insert_line_after":
-		return true
-	default:
-		return false
-	}
-}
-
-func editLineCount(content string) int {
-	return len(SplitLines(content))
-}
-
-func formatOriginalRange(start, end int) string {
-	if start == end {
-		return fmt.Sprintf("%d", start)
-	}
-	return fmt.Sprintf("%d-%d", start, end)
-}
-
-func applyEdit(text string, edit Edit) (string, error) {
-	operation := strings.ToLower(strings.TrimSpace(edit.Operation))
-	if operation == "" {
-		return "", fmt.Errorf("operation is required")
-	}
-	switch operation {
-	case "replace", "delete", "insert_line_before", "insert_line_after", "prepend", "append":
-		if strings.TrimSpace(edit.Anchor) != "" {
-			return "", fmt.Errorf("operation %q uses line numbers, not anchor; did you mean replace_match, delete_match, insert_before_match or insert_after_match?", edit.Operation)
-		}
-		if strings.TrimSpace(edit.MatchMode) != "" && !isMatchMode(edit.MatchMode) {
-			return "", fmt.Errorf("operation %q does not support match_mode", edit.Operation)
-		}
-		if edit.Index != nil {
-			return "", fmt.Errorf("operation %q does not support index", edit.Operation)
-		}
-		return applyLineEdit(text, edit)
-	case "replace_match", "delete_match", "insert_before_match", "insert_after_match":
-		return applyMatchEdit(text, edit)
-	default:
-		return "", fmt.Errorf("unsupported operation %q", edit.Operation)
-	}
-}
-
-func applyMatchEdit(text string, edit Edit) (string, error) {
-	operation := strings.ToLower(strings.TrimSpace(edit.Operation))
-	mode := strings.ToLower(strings.TrimSpace(edit.MatchMode))
-	if mode == "" {
-		mode = matchModeContent
-	}
-	if mode != matchModeContent && mode != matchModeLine {
-		return "", fmt.Errorf("match_mode must be %q or %q", matchModeContent, matchModeLine)
-	}
-	if mode == matchModeLine {
-		return applyLineMatchEdit(text, edit, operation)
-	}
-	return applyContentMatchEdit(text, edit, operation)
-}
-
-func applyContentMatchEdit(text string, edit Edit, operation string) (string, error) {
-	needle, label := matchNeedle(edit, operation)
-	matches := findContentMatches(text, needle)
-	loc, err := selectMatch(matches, edit.Index, label)
-	if err != nil {
-		return "", err
-	}
-	switch operation {
-	case "replace_match":
-		return text[:loc.byteStart] + NormalizeEditText(edit.Content) + text[loc.byteEnd:], nil
-	case "delete_match":
-		return text[:loc.byteStart] + text[loc.byteEnd:], nil
-	case "insert_before_match", "insert_after_match":
-		index := loc.byteStart
-		if operation == "insert_after_match" {
-			index = loc.byteEnd
-		}
-		return text[:index] + NormalizeEditText(edit.Content) + text[index:], nil
-	}
-	return "", fmt.Errorf("unsupported operation %q", operation)
-}
-
-func applyLineMatchEdit(text string, edit Edit, operation string) (string, error) {
-	needle, label := matchNeedle(edit, operation)
-	needleNorm := NormalizeEditText(needle)
-	if needleNorm == "" {
-		return "", fmt.Errorf("%s is required", label)
-	}
-	if strings.Contains(needleNorm, "\n") {
-		return "", fmt.Errorf("%s in line mode must be a single-line prefix; for multi-line matches use content mode", label)
-	}
-	lines := SplitLines(text)
-	endsNewline := strings.HasSuffix(text, "\n")
-	matches := findLineMatches(lines, needleNorm)
-	loc, err := selectMatch(matches, edit.Index, label)
-	if err != nil {
-		return "", err
-	}
-	targetLine := loc.startLine
-	switch operation {
-	case "replace_match":
-		contentLines := SplitLines(edit.Content)
-		out := append([]string{}, lines...)
-		out = ReplaceLines(out, targetLine, targetLine, contentLines)
-		return JoinLines(out, "\n", endsNewline), nil
-	case "delete_match":
-		out := append([]string{}, lines...)
-		out = ReplaceLines(out, targetLine, targetLine, nil)
-		return JoinLines(out, "\n", endsNewline), nil
-	case "insert_before_match", "insert_after_match":
-		lineContentLines := SplitLines(EnsureTrailingNewline(edit.Content))
-		out := append([]string{}, lines...)
-		index := targetLine - 1
-		if operation == "insert_after_match" {
-			index = targetLine
-		}
-		out = append(out[:index], append(lineContentLines, out[index:]...)...)
-		return JoinLines(out, "\n", endsNewline || len(lineContentLines) > 0), nil
-	}
-	return "", fmt.Errorf("unsupported operation %q", operation)
-}
-
-func isMatchMode(mode string) bool {
-	mode = strings.ToLower(strings.TrimSpace(mode))
-	return mode == matchModeContent || mode == matchModeLine
-}
-
-func matchNeedle(edit Edit, operation string) (string, string) {
-	if operation == "insert_before_match" || operation == "insert_after_match" {
-		return edit.Anchor, "anchor"
-	}
-	return edit.OldContent, "old_content"
-}
-
 type matchLocation struct {
 	byteStart int
 	byteEnd   int
 	startLine int
 	endLine   int
 	preview   string
+	lineIndex int
 }
 
 func findContentMatches(text, needle string) []matchLocation {
@@ -699,36 +397,45 @@ func findContentMatches(text, needle string) []matchLocation {
 	return locations
 }
 
-func findLineMatches(lines []string, needle string) []matchLocation {
+func findLineMatches(lines []editSourceLine, needle string) []matchLocation {
 	var locations []matchLocation
 	for i, line := range lines {
-		if strings.HasPrefix(strings.TrimLeft(line, " \t"), needle) {
+		if strings.HasPrefix(strings.TrimLeft(line.text, " \t"), needle) {
 			locations = append(locations, matchLocation{
+				byteStart: line.start,
+				byteEnd:   line.end,
 				startLine: i + 1,
 				endLine:   i + 1,
-				preview:   truncateLine(strings.TrimLeft(line, " \t")),
+				preview:   truncateLine(strings.TrimLeft(line.text, " \t")),
+				lineIndex: i,
 			})
 		}
 	}
 	return locations
 }
 
-func selectMatch(locations []matchLocation, index *int, label string) (matchLocation, error) {
+func selectMatches(locations []matchLocation, index *int, all bool, label string) ([]matchLocation, error) {
 	n := len(locations)
 	if n == 0 {
-		return matchLocation{}, fmt.Errorf("%s not found", label)
+		return nil, fmt.Errorf("%s not found", label)
 	}
-	if n == 1 {
-		return locations[0], nil
+	if index != nil && all {
+		return nil, fmt.Errorf("index and all_matches are mutually exclusive")
 	}
-	if index == nil {
-		return matchLocation{}, fmt.Errorf("%s matched %d locations; provide longer %s or pass index:\n%s", label, n, label, formatMatchLocations(locations))
+	if all {
+		return locations, nil
 	}
-	i := *index
-	if i < 1 || i > n {
-		return matchLocation{}, fmt.Errorf("index %d out of range: %d %s found, use 1-%d", i, n, label, n)
+	if index != nil {
+		i := *index
+		if i < 1 || i > n {
+			return nil, fmt.Errorf("index %d out of range: %d %s found, use 1-%d", i, n, label, n)
+		}
+		return []matchLocation{locations[i-1]}, nil
 	}
-	return locations[i-1], nil
+	if n > 1 {
+		return nil, fmt.Errorf("%s matched %d locations; provide a longer %s, index, or all_matches:\n%s", label, n, label, formatMatchLocations(locations))
+	}
+	return locations, nil
 }
 
 func formatMatchLocations(locations []matchLocation) string {
@@ -780,67 +487,330 @@ func truncateLine(s string) string {
 	return s
 }
 
-func applyLineEdit(text string, edit Edit) (string, error) {
-	lines := SplitLines(text)
-	endsNewline := strings.HasSuffix(text, "\n")
-	operation := strings.ToLower(strings.TrimSpace(edit.Operation))
-	start := edit.StartLine
-	end := edit.EndLine.Value
-	if edit.EndLine.End {
-		end = len(lines)
-	} else if end == 0 {
-		end = start
-	}
-	contentLines := SplitLines(edit.Content)
-	lineContentLines := SplitLines(EnsureTrailingNewline(edit.Content))
-	out := append([]string{}, lines...)
-	switch operation {
-	case "replace":
-		if err := ValidateLineRange(len(lines), start, end); err != nil {
-			return "", err
-		}
-		if err := validateExpectedContent(lines, start, end, edit.ExpectedContent); err != nil {
-			return "", err
-		}
-		out = ReplaceLines(out, start, end, contentLines)
-	case "delete":
-		if err := ValidateLineRange(len(lines), start, end); err != nil {
-			return "", err
-		}
-		if err := validateExpectedContent(lines, start, end, edit.ExpectedContent); err != nil {
-			return "", err
-		}
-		out = ReplaceLines(out, start, end, nil)
-	case "insert_line_before", "insert_line_after":
-		if err := ValidateInsertLine(len(lines), start); err != nil {
-			return "", err
-		}
-		index := start - 1
-		if operation == "insert_line_after" {
-			index = start
-		}
-		out = append(out[:index], append(lineContentLines, out[index:]...)...)
-		endsNewline = true
-	case "prepend":
-		out = append(lineContentLines, out...)
-		endsNewline = true
-	case "append":
-		out = append(out, lineContentLines...)
-		endsNewline = true
-	default:
-		return "", fmt.Errorf("unsupported operation %q", edit.Operation)
-	}
-	return JoinLines(out, "\n", endsNewline), nil
+type editSourceLine struct {
+	start   int
+	end     int
+	fullEnd int
+	text    string
 }
 
-func validateExpectedContent(lines []string, start, end int, expected *string) error {
-	if expected == nil || *expected == "" {
+type resolvedEdit struct {
+	start int
+	end   int
+	text  string
+	order int
+}
+
+func editsRequireRevision(edits []Edit) bool {
+	for _, edit := range edits {
+		switch strings.ToLower(strings.TrimSpace(edit.Operation)) {
+		case "replace", "insert", "delete", "overwrite":
+			return true
+		}
+	}
+	return false
+}
+
+func ApplyEdits(text string, edits []Edit) (string, error) {
+	if len(edits) == 0 {
+		return "", fmt.Errorf("edits is required")
+	}
+	text = NormalizeEditText(text)
+	if strings.EqualFold(strings.TrimSpace(edits[0].Operation), "overwrite") {
+		if len(edits) != 1 {
+			return "", fmt.Errorf("edit 1: overwrite must be the only edit")
+		}
+		if err := validateEditFields(edits[0], "overwrite"); err != nil {
+			return "", fmt.Errorf("edit 1: %w", err)
+		}
+		return NormalizeEditText(*edits[0].NewText), nil
+	}
+
+	lines := scanEditLines(text)
+	resolved := make([]resolvedEdit, 0, len(edits))
+	for i, edit := range edits {
+		operation := strings.ToLower(strings.TrimSpace(edit.Operation))
+		if operation == "overwrite" {
+			return "", fmt.Errorf("edit %d: overwrite must be the only edit", i+1)
+		}
+		items, err := resolveEdit(text, lines, edit, operation)
+		if err != nil {
+			return "", fmt.Errorf("edit %d: %w", i+1, err)
+		}
+		for _, item := range items {
+			item.order = len(resolved)
+			resolved = append(resolved, item)
+		}
+	}
+	if err := validateResolvedEdits(resolved); err != nil {
+		return "", err
+	}
+	sort.SliceStable(resolved, func(i, j int) bool {
+		if resolved[i].start != resolved[j].start {
+			return resolved[i].start > resolved[j].start
+		}
+		iInsert := resolved[i].start == resolved[i].end
+		jInsert := resolved[j].start == resolved[j].end
+		if iInsert != jInsert {
+			return !iInsert
+		}
+		return resolved[i].order > resolved[j].order
+	})
+	out := text
+	for _, edit := range resolved {
+		out = out[:edit.start] + edit.text + out[edit.end:]
+	}
+	return out, nil
+}
+
+func resolveEdit(text string, lines []editSourceLine, edit Edit, operation string) ([]resolvedEdit, error) {
+	if err := validateEditFields(edit, operation); err != nil {
+		return nil, err
+	}
+	switch operation {
+	case "replace_text":
+		oldText := NormalizeEditText(edit.OldText)
+		locations, err := selectMatches(findContentMatches(text, oldText), edit.Index, edit.AllMatches, "old_text")
+		if err != nil {
+			return nil, err
+		}
+		out := make([]resolvedEdit, 0, len(locations))
+		for _, loc := range locations {
+			out = append(out, resolvedEdit{start: loc.byteStart, end: loc.byteEnd, text: NormalizeEditText(*edit.NewText)})
+		}
+		return out, nil
+	case "replace":
+		endLine := edit.EndLine
+		if endLine == 0 {
+			endLine = edit.Line
+		}
+		if err := ValidateLineRange(len(lines), edit.Line, endLine); err != nil {
+			return nil, err
+		}
+		start, end := lineDeleteRange(lines, edit.Line, endLine)
+		return []resolvedEdit{{start: start, end: end, text: NormalizeEditText(*edit.NewText)}}, nil
+	case "insert":
+		block, err := normalizeLineBlock(*edit.NewText)
+		if err != nil {
+			return nil, err
+		}
+		start, inserted, err := resolveLineInsert(text, lines, edit.Line, block)
+		if err != nil {
+			return nil, err
+		}
+		return []resolvedEdit{{start: start, end: start, text: inserted}}, nil
+	case "delete":
+		endLine := edit.EndLine
+		if endLine == 0 {
+			endLine = edit.Line
+		}
+		if err := ValidateLineRange(len(lines), edit.Line, endLine); err != nil {
+			return nil, err
+		}
+		start, end := lineDeleteRange(lines, edit.Line, endLine)
+		return []resolvedEdit{{start: start, end: end}}, nil
+	case "insert_before", "insert_after", "replace_line", "delete_line":
+		anchor := NormalizeEditText(edit.Anchor)
+		locations, err := selectMatches(findLineMatches(lines, anchor), edit.Index, edit.AllMatches, "anchor")
+		if err != nil {
+			return nil, err
+		}
+		var block string
+		if operation != "delete_line" {
+			block, err = normalizeLineBlock(*edit.NewText)
+			if err != nil {
+				return nil, err
+			}
+		}
+		out := make([]resolvedEdit, 0, len(locations))
+		for _, loc := range locations {
+			line := lines[loc.lineIndex]
+			switch operation {
+			case "insert_before":
+				out = append(out, resolvedEdit{start: line.start, end: line.start, text: block + "\n"})
+			case "insert_after":
+				if line.fullEnd > line.end {
+					out = append(out, resolvedEdit{start: line.fullEnd, end: line.fullEnd, text: block + "\n"})
+				} else {
+					out = append(out, resolvedEdit{start: line.end, end: line.end, text: "\n" + block})
+				}
+			case "replace_line":
+				out = append(out, resolvedEdit{start: line.start, end: line.end, text: block})
+			case "delete_line":
+				start, end := lineDeleteRange(lines, loc.lineIndex+1, loc.lineIndex+1)
+				out = append(out, resolvedEdit{start: start, end: end})
+			}
+		}
+		return out, nil
+	default:
+		return nil, fmt.Errorf("unsupported operation %q", edit.Operation)
+	}
+}
+
+func validateEditFields(edit Edit, operation string) error {
+	if operation == "" {
+		return fmt.Errorf("operation is required")
+	}
+	if edit.Index != nil && edit.AllMatches {
+		return fmt.Errorf("index and all_matches are mutually exclusive")
+	}
+	rejectLineFields := func() error {
+		if edit.Line != 0 || edit.EndLine != 0 {
+			return fmt.Errorf("operation %q does not use line or end_line", operation)
+		}
 		return nil
 	}
-	actual := strings.Join(lines[start-1:end], "\n")
-	want := strings.TrimSuffix(NormalizeEditText(*expected), "\n")
-	if actual != want {
-		return fmt.Errorf("target content mismatch at lines %d-%d", start, end)
+	rejectMatchFields := func() error {
+		if edit.Index != nil || edit.AllMatches {
+			return fmt.Errorf("operation %q does not support index or all_matches", operation)
+		}
+		return nil
+	}
+	switch operation {
+	case "replace_text":
+		if NormalizeEditText(edit.OldText) == "" {
+			return fmt.Errorf("old_text is required")
+		}
+		if edit.NewText == nil {
+			return fmt.Errorf("new_text is required")
+		}
+		if strings.TrimSpace(edit.Anchor) != "" {
+			return fmt.Errorf("operation %q uses old_text, not anchor", operation)
+		}
+		return rejectLineFields()
+	case "replace":
+		if edit.Line < 1 {
+			return fmt.Errorf("line must be >= 1")
+		}
+		if edit.NewText == nil {
+			return fmt.Errorf("new_text is required")
+		}
+		if edit.OldText != "" || edit.Anchor != "" {
+			return fmt.Errorf("operation %q only uses line, optional end_line, and new_text", operation)
+		}
+		return rejectMatchFields()
+	case "insert":
+		if edit.Line < 1 {
+			return fmt.Errorf("line must be >= 1")
+		}
+		if edit.EndLine != 0 || edit.OldText != "" || edit.Anchor != "" {
+			return fmt.Errorf("operation %q only uses line and new_text", operation)
+		}
+		if edit.NewText == nil {
+			return fmt.Errorf("new_text is required")
+		}
+		return rejectMatchFields()
+	case "delete":
+		if edit.Line < 1 {
+			return fmt.Errorf("line must be >= 1")
+		}
+		if edit.NewText != nil || edit.OldText != "" || edit.Anchor != "" {
+			return fmt.Errorf("operation %q only uses line and optional end_line", operation)
+		}
+		return rejectMatchFields()
+	case "insert_before", "insert_after", "replace_line", "delete_line":
+		anchor := NormalizeEditText(edit.Anchor)
+		if anchor == "" {
+			return fmt.Errorf("anchor is required")
+		}
+		if strings.Contains(anchor, "\n") {
+			return fmt.Errorf("anchor must be a single-line prefix")
+		}
+		if edit.OldText != "" {
+			return fmt.Errorf("operation %q uses anchor, not old_text", operation)
+		}
+		if err := rejectLineFields(); err != nil {
+			return err
+		}
+		if operation == "delete_line" {
+			if edit.NewText != nil {
+				return fmt.Errorf("operation %q does not use new_text", operation)
+			}
+		} else if edit.NewText == nil {
+			return fmt.Errorf("new_text is required")
+		}
+		return nil
+	case "overwrite":
+		if edit.NewText == nil {
+			return fmt.Errorf("new_text is required")
+		}
+		if edit.Line != 0 || edit.EndLine != 0 || edit.OldText != "" || edit.Anchor != "" || edit.Index != nil || edit.AllMatches {
+			return fmt.Errorf("operation %q only uses new_text", operation)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported operation %q", edit.Operation)
+	}
+}
+
+func scanEditLines(text string) []editSourceLine {
+	if text == "" {
+		return nil
+	}
+	lines := make([]editSourceLine, 0, strings.Count(text, "\n")+1)
+	for start := 0; start < len(text); {
+		rel := strings.IndexByte(text[start:], '\n')
+		if rel < 0 {
+			lines = append(lines, editSourceLine{start: start, end: len(text), fullEnd: len(text), text: text[start:]})
+			break
+		}
+		end := start + rel
+		lines = append(lines, editSourceLine{start: start, end: end, fullEnd: end + 1, text: text[start:end]})
+		start = end + 1
+	}
+	return lines
+}
+
+func normalizeLineBlock(text string) (string, error) {
+	lines := SplitLines(EnsureTrailingNewline(text))
+	if len(lines) == 0 {
+		return "", fmt.Errorf("new_text must contain at least one line")
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
+func resolveLineInsert(text string, lines []editSourceLine, line int, block string) (int, string, error) {
+	total := len(lines)
+	if line < 1 || line > total+1 {
+		return 0, "", fmt.Errorf("insert line %d exceeds valid positions 1-%d", line, total+1)
+	}
+	if total == 0 {
+		return 0, block, nil
+	}
+	if line <= total {
+		return lines[line-1].start, block + "\n", nil
+	}
+	if strings.HasSuffix(text, "\n") {
+		return len(text), block + "\n", nil
+	}
+	return len(text), "\n" + block, nil
+}
+
+func lineDeleteRange(lines []editSourceLine, startLine, endLine int) (int, int) {
+	start := lines[startLine-1].start
+	end := lines[endLine-1].fullEnd
+	last := lines[endLine-1]
+	if endLine == len(lines) && last.fullEnd == last.end && startLine > 1 {
+		start = lines[startLine-2].end
+	}
+	return start, end
+}
+
+func validateResolvedEdits(edits []resolvedEdit) error {
+	for i := 0; i < len(edits); i++ {
+		for j := i + 1; j < len(edits); j++ {
+			a, b := edits[i], edits[j]
+			aInsert := a.start == a.end
+			bInsert := b.start == b.end
+			switch {
+			case !aInsert && !bInsert && a.start < b.end && b.start < a.end:
+				return fmt.Errorf("edits overlap in original content at byte ranges %d-%d and %d-%d", a.start, a.end, b.start, b.end)
+			case aInsert && !bInsert && a.start > b.start && a.start < b.end:
+				return fmt.Errorf("insertion at byte %d falls inside edited range %d-%d", a.start, b.start, b.end)
+			case bInsert && !aInsert && b.start > a.start && b.start < a.end:
+				return fmt.Errorf("insertion at byte %d falls inside edited range %d-%d", b.start, a.start, a.end)
+			}
+		}
 	}
 	return nil
 }
@@ -903,10 +873,10 @@ func NormalizeContextLines(value int) int {
 
 func ValidateLineRange(total, start, end int) error {
 	if start <= 0 {
-		return fmt.Errorf("start_line must be >= 1")
+		return fmt.Errorf("line must be >= 1")
 	}
 	if end < start {
-		return fmt.Errorf("end_line must be >= start_line")
+		return fmt.Errorf("end_line must be >= line")
 	}
 	if total == 0 {
 		return fmt.Errorf("file has no lines")
@@ -915,27 +885,6 @@ func ValidateLineRange(total, start, end int) error {
 		return fmt.Errorf("line range %d-%d exceeds total lines %d", start, end, total)
 	}
 	return nil
-}
-
-func ValidateInsertLine(total, line int) error {
-	if total == 0 {
-		if line == 1 {
-			return nil
-		}
-		return fmt.Errorf("empty file only supports insert at line 1")
-	}
-	if line < 1 || line > total {
-		return fmt.Errorf("insert line %d exceeds total lines %d", line, total)
-	}
-	return nil
-}
-
-func ReplaceLines(lines []string, start, end int, replacement []string) []string {
-	out := make([]string, 0, len(lines)-(end-start+1)+len(replacement))
-	out = append(out, lines[:start-1]...)
-	out = append(out, replacement...)
-	out = append(out, lines[end:]...)
-	return out
 }
 
 func SplitLines(text string) []string {
@@ -951,17 +900,6 @@ func SplitLines(text string) []string {
 		return []string{""}
 	}
 	return strings.Split(text, "\n")
-}
-
-func JoinLines(lines []string, lineEnding string, endsNewline bool) string {
-	if lineEnding == "" {
-		lineEnding = "\n"
-	}
-	text := strings.Join(lines, lineEnding)
-	if endsNewline && len(lines) > 0 {
-		text += lineEnding
-	}
-	return text
 }
 
 func DetectLineEnding(text string) string {

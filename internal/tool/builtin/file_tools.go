@@ -253,16 +253,16 @@ func (t EditFileTool) Schema() llm.ToolSchema {
 func editFileBuilder() *tool.Builder {
 	editProperties := fileops.EditOperationProperties()
 	return tool.NewBuilder("edit_file").
-		Description("批量编辑文本文件；使用 edits 一次提交多个修改，系统会在确认前自动预检并生成 diff，确认后才写入；成功后返回 unified diff。任一 edit 失败则不写文件。").
+		Description("批量编辑文本文件；使用 edits 一次提交多个修改；成功后返回 unified diff。任一 edit 失败则不写文件。").
 		Risk(tool.RiskHigh).
 		DependsOn("workspace").
 		Tags("files", "agent").
-		String("path", "要编辑的文件路径。", tool.Required()).
+		String("path", "要编辑的文件路径,基于当前 workspace 解析；也可传绝对路径。", tool.Required()).
 		String("encoding", "文本编码，默认 auto；非 UTF-8 文件应显式传入 gb18030、gbk、big5、shift_jis 等。").
 		String("expected_revision", "可选，编辑前读取到的revision；用于防止外部并发修改。").
 		Boolean("create", "为 true 时允许创建不存在的文本文件；提供 expected_revision 时仍要求文件已存在。").
 		Integer("context_lines", "diff 上下文行数，默认 3，范围 0-20。确认前自动预检和实际写入结果都会使用该上下文行数。").
-		ObjectArray("edits", "批量编辑列表，按顺序应用；行号操作引用编辑前文件的原始行号，工具会自动补偿同一批内前序行号编辑造成的漂移；*_match 后不要在同一批继续使用行号操作。行号 replace/delete 建议提供 expected_content。", editProperties, []string{"operation"}, tool.Required())
+		ObjectArray("edits", "批量编辑列表；所有目标均基于编辑前原文解析。编辑已有文件时，所有编辑操作均应提供由 `read_file` 返回的 `revision` 作为 `expected_revision`；创建新文件时不提供该字段。", editProperties, []string{"operation"}, tool.Required())
 }
 
 func (t EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
@@ -319,10 +319,6 @@ func (t EditFileTool) RiskDetail(ctx context.Context, req tool.CallRequest) (str
 	for i, edit := range args.Edits {
 		fmt.Fprintf(&b, "\n编辑 %d/%d：%s\n", i+1, len(args.Edits), editOperationTitle(edit.Operation))
 		writeEditLocation(&b, edit)
-		if edit.ExpectedContent != nil {
-			b.WriteString("旧内容校验：有\n")
-			writeIndentedBlock(&b, "校验内容：", *edit.ExpectedContent)
-		}
 		writeEditMatchDetail(&b, edit)
 		writeEditContentDetail(&b, edit)
 	}
@@ -347,26 +343,24 @@ func fileToolBoolText(value bool) string {
 
 func editOperationTitle(operation string) string {
 	switch operation {
+	case "replace_text":
+		return "精确文本替换"
 	case "replace":
-		return "替换行"
+		return "按行号范围替换"
+	case "insert":
+		return "按行间位置插入"
 	case "delete":
-		return "删除行"
-	case "insert_line_before":
-		return "在指定行前插入"
-	case "insert_line_after":
-		return "在指定行后插入"
-	case "prepend":
-		return "插入到文件开头"
-	case "append":
-		return "追加到文件末尾"
-	case "replace_match":
-		return "按匹配替换"
-	case "delete_match":
-		return "按匹配删除"
-	case "insert_before_match":
-		return "按匹配插入到前面"
-	case "insert_after_match":
-		return "按匹配插入到后面"
+		return "按行号删除"
+	case "insert_before":
+		return "在 anchor 行前插入"
+	case "insert_after":
+		return "在 anchor 行后插入"
+	case "replace_line":
+		return "替换 anchor 行"
+	case "delete_line":
+		return "删除 anchor 行"
+	case "overwrite":
+		return "覆盖整个文件"
 	default:
 		if strings.TrimSpace(operation) == "" {
 			return "未知操作"
@@ -377,62 +371,54 @@ func editOperationTitle(operation string) string {
 
 func writeEditLocation(b *strings.Builder, edit fileops.Edit) {
 	switch edit.Operation {
-	case "replace", "delete":
-		if edit.StartLine > 0 {
-			fmt.Fprintf(b, "原始位置：%s\n", editLineRangeText(edit.StartLine, edit.EndLine))
+	case "insert":
+		if edit.Line > 0 {
+			fmt.Fprintf(b, "原始行间位置：%d\n", edit.Line)
 		}
-	case "insert_line_before", "insert_line_after":
-		if edit.StartLine > 0 {
-			fmt.Fprintf(b, "原始位置：第 %d 行\n", edit.StartLine)
+	case "replace", "delete":
+		if edit.Line > 0 {
+			fmt.Fprintf(b, "原始位置：%s\n", editLineRangeText(edit.Line, edit.EndLine))
 		}
 	}
 }
 
-func editLineRangeText(start int, end fileops.LineNumber) string {
-	if end.End {
-		return fmt.Sprintf("%d-end", start)
-	}
-	if end.Value <= 0 || end.Value == start {
+func editLineRangeText(start, end int) string {
+	if end <= 0 || end == start {
 		return fmt.Sprintf("%d", start)
 	}
-	return fmt.Sprintf("%d-%d", start, end.Value)
+	return fmt.Sprintf("%d-%d", start, end)
 }
 
 func writeEditMatchDetail(b *strings.Builder, edit fileops.Edit) {
-	if !strings.Contains(edit.Operation, "_match") {
+	var matchText string
+	switch edit.Operation {
+	case "replace_text":
+		matchText = edit.OldText
+	case "insert_before", "insert_after", "replace_line", "delete_line":
+		matchText = edit.Anchor
+	default:
 		return
 	}
-	mode := strings.TrimSpace(edit.MatchMode)
-	if mode == "" {
-		mode = "content"
-	}
-	fmt.Fprintf(b, "匹配方式：%s\n", mode)
 	if edit.Index != nil {
 		fmt.Fprintf(b, "第几处匹配：%d\n", *edit.Index)
 	}
-	matchText := edit.OldContent
-	if edit.Operation == "insert_before_match" || edit.Operation == "insert_after_match" {
-		matchText = edit.Anchor
+	if edit.AllMatches {
+		b.WriteString("匹配范围：全部\n")
 	}
 	writeIndentedBlock(b, "匹配内容：", matchText)
 }
 
 func writeEditContentDetail(b *strings.Builder, edit fileops.Edit) {
-	switch edit.Operation {
-	case "delete", "delete_match":
+	if edit.NewText == nil {
 		return
-	case "replace", "replace_match":
-		writeIndentedBlock(b, "新内容：", edit.Content)
-	case "insert_line_before", "insert_line_after", "insert_before_match", "insert_after_match":
-		writeIndentedBlock(b, "插入内容：", edit.Content)
-	case "prepend":
-		writeIndentedBlock(b, "开头新增内容：", edit.Content)
-	case "append":
-		writeIndentedBlock(b, "末尾追加内容：", edit.Content)
+	}
+	switch edit.Operation {
+	case "insert", "insert_before", "insert_after":
+		writeIndentedBlock(b, "插入内容：", *edit.NewText)
+	case "overwrite":
+		writeIndentedBlock(b, "文件新内容：", *edit.NewText)
 	default:
-		if edit.Content != "" {
-			writeIndentedBlock(b, "内容：", edit.Content)
-		}
+		writeIndentedBlock(b, "新内容：", *edit.NewText)
 	}
 }
 

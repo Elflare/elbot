@@ -145,7 +145,7 @@ func (ModifyElSkillTool) Schema() llm.ToolSchema {
 	editProperties := fileops.EditOperationProperties()
 	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{
 		Name:        ModifyElSkillName,
-		Description: "修改 ElBot 原生 EL Skill 文件。target 可选：skill_elyph 修改 SKILL.elyph；code_source 修改 main.go；默认 skill_elyph。使用 edits 一次提交多个修改，按顺序应用；确认前自动预检并生成 diff。code_source 只写源码并返回 diff，不会格式化、编译或 reload；完成后调用 finalize_el_skill 检查。skill_elyph 会校验 ELyph 并 reload。",
+		Description: "修改 ElBot 原生 EL Skill 文件。target 可选：skill_elyph 修改 SKILL.elyph；code_source 修改 main.go；默认 skill_elyph。使用与 edit_file 相同的精确文本、anchor、行号插入/删除协议；所有目标基于编辑前原文解析，确认前自动预检并生成 diff。code_source 只写源码并返回 diff，不会格式化、编译或 reload；完成后调用 finalize_el_skill 检查。skill_elyph 会校验 ELyph 并 reload。",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -154,7 +154,7 @@ func (ModifyElSkillTool) Schema() llm.ToolSchema {
 				"encoding":          map[string]any{"type": "string", "description": "文本编码，默认 auto；非 UTF-8 文件应显式传入 gb18030、gbk、big5、shift_jis 等。"},
 				"expected_revision": map[string]any{"type": "string", "description": "可选，编辑前读取到的 revision；用于防止外部并发修改。"},
 				"context_lines":     map[string]any{"type": "integer", "description": "diff 上下文行数，默认 3，范围 0-20。确认前自动预检和实际写入结果都会使用该上下文行数。"},
-				"edits":             map[string]any{"type": "array", "description": "批量编辑列表，按顺序应用；连续编辑同一文件时优先使用 match/anchor 操作，行号 replace/delete 建议提供 expected_content。", "items": map[string]any{"type": "object", "properties": editProperties, "required": []string{"operation"}}},
+				"edits":             map[string]any{"type": "array", "description": "批量编辑列表；所有目标均基于编辑前原文解析。已有文件的 replace/insert/delete/overwrite 必须提供 expected_revision。", "items": map[string]any{"type": "object", "properties": editProperties, "required": []string{"operation"}}},
 			},
 			"required": []string{"name", "edits"},
 		},

@@ -55,9 +55,9 @@ func TestModifyElSkillWritesFullContent(t *testing.T) {
 		"name":              "writer",
 		"expected_revision": fileops.ContentRevision([]byte(original)),
 		"edits": []map[string]any{{
-			"operation":   "replace_match",
-			"old_content": "#skill writer - Old.\n** risk low\n<- $text:str!\n-> $result:str\n",
-			"content":     "#skill writer - New.\n** risk medium\n<- $input:str!\n-> $result:str\n",
+			"operation": "replace_text",
+			"old_text":  "#skill writer - Old.\n** risk low\n<- $text:str!\n-> $result:str\n",
+			"new_text":  "#skill writer - New.\n** risk medium\n<- $input:str!\n-> $result:str\n",
 		}},
 	})
 
@@ -89,10 +89,9 @@ func TestModifyElSkillRejectsStaleRevision(t *testing.T) {
 		"name":              "guarded_revision",
 		"expected_revision": staleRevision,
 		"edits": []map[string]any{{
-			"operation":  "replace",
-			"start_line": 1,
-			"end_line":   1,
-			"content":    "#skill guarded_revision - New.",
+			"operation": "replace_line",
+			"anchor":    "#skill guarded_revision - Current.",
+			"new_text":  "#skill guarded_revision - New.",
 		}},
 	})
 	_, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args})
@@ -116,9 +115,31 @@ func TestModifyElSkillSchemaUsesRevision(t *testing.T) {
 	if _, ok := properties["expected_sha256"]; ok {
 		t.Fatalf("modify_el_skill schema should not expose expected_sha256: %#v", properties)
 	}
+	edits, ok := properties["edits"].(map[string]any)
+	if !ok {
+		t.Fatalf("modify_el_skill edits schema missing: %#v", properties["edits"])
+	}
+	items, ok := edits["items"].(map[string]any)
+	if !ok {
+		t.Fatalf("modify_el_skill edit item schema missing: %#v", edits)
+	}
+	editProperties, ok := items["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("modify_el_skill edit properties missing: %#v", items)
+	}
+	for _, name := range []string{"line", "end_line", "new_text", "old_text", "anchor", "index", "all_matches"} {
+		if _, ok := editProperties[name]; !ok {
+			t.Fatalf("modify_el_skill edit schema should expose %s: %#v", name, editProperties)
+		}
+	}
+	for _, name := range []string{"start_line", "expected_content", "match_mode", "old_content", "content"} {
+		if _, ok := editProperties[name]; ok {
+			t.Fatalf("modify_el_skill edit schema should not expose legacy field %s: %#v", name, editProperties)
+		}
+	}
 
 	modifier := NewModifyElSkillTool(NewManager(t.TempDir(), tool.NewRegistry()))
-	_, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"missing","expected_sha256":"deadbeef","edits":[{"operation":"append","content":"x"}]}`)})
+	_, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"missing","expected_sha256":"deadbeef","edits":[{"operation":"overwrite","new_text":"x"}]}`)})
 	if err == nil || !strings.Contains(err.Error(), "unknown field \"expected_sha256\"") {
 		t.Fatalf("expected legacy field rejection, got %v", err)
 	}
@@ -131,10 +152,9 @@ func TestModifyElSkillDefersElyphWarningsToFinalize(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"name": "warn_patch",
 		"edits": []map[string]any{{
-			"operation":  "replace",
-			"start_line": 2,
-			"end_line":   2,
-			"content":    "** 清单：",
+			"operation": "replace_line",
+			"anchor":    "** risk low",
+			"new_text":  "** 清单：",
 		}},
 	})
 
@@ -158,8 +178,8 @@ func TestModifyElSkillEditsLines(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"name": "patcher",
 		"edits": []map[string]any{
-			{"operation": "replace", "start_line": 1, "end_line": 1, "content": "#skill patcher - New."},
-			{"operation": "replace", "start_line": 3, "end_line": 3, "content": "<- $input:str!"},
+			{"operation": "replace_text", "old_text": "#skill patcher - Old.", "new_text": "#skill patcher - New."},
+			{"operation": "replace_text", "old_text": "<- $text:str!", "new_text": "<- $input:str!"},
 		},
 	})
 
@@ -180,10 +200,9 @@ func TestModifyElSkillEditsCodeSourceWithoutBuild(t *testing.T) {
 		"name":   "patcher_code",
 		"target": "code_source",
 		"edits": []map[string]any{{
-			"operation":  "replace",
-			"start_line": 3,
-			"end_line":   3,
-			"content":    "func main(){ missing() }",
+			"operation": "replace_line",
+			"anchor":    "func main() {}",
+			"new_text":  "func main(){ missing() }",
 		}},
 	})
 
@@ -208,9 +227,9 @@ func TestModifyElSkillWritesInvalidCodeSourceWithoutBuild(t *testing.T) {
 		"name":   "broken",
 		"target": "code_source",
 		"edits": []map[string]any{{
-			"operation":   "replace_match",
-			"old_content": "package main\n\nfunc main() {}\n",
-			"content":     "package main\n\nfunc main() { missing() }\n",
+			"operation": "replace_text",
+			"old_text":  "package main\n\nfunc main() {}\n",
+			"new_text":  "package main\n\nfunc main() { missing() }\n",
 		}},
 	})
 
@@ -227,11 +246,12 @@ func TestModifyElSkillDeletesLines(t *testing.T) {
 	writeTestSkill(t, root, "delete_line", "#skill delete_line - Delete.\n** risk low\n// remove me\n<- $text:str!\n-> $result:str\n")
 	modifier := NewModifyElSkillTool(NewManager(root, tool.NewRegistry()))
 	args, _ := json.Marshal(map[string]any{
-		"name": "delete_line",
+		"name":              "delete_line",
+		"expected_revision": fileops.ContentRevision([]byte(readTestSkill(t, root, "delete_line"))),
 		"edits": []map[string]any{{
-			"operation":  "delete",
-			"start_line": 3,
-			"end_line":   3,
+			"operation": "delete",
+			"line":      3,
+			"end_line":  3,
 		}},
 	})
 
@@ -248,7 +268,7 @@ func TestModifyElSkillPreflightRejectsInvalidPatchWithoutWriting(t *testing.T) {
 	original := "#skill guarded_preflight - Guarded.\n** risk low\n<- $text:str!\n-> $result:str\n"
 	writeTestSkill(t, root, "guarded_preflight", original)
 	modifier := NewModifyElSkillTool(NewManager(root, tool.NewRegistry()))
-	err := modifier.PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"guarded_preflight","edits":[{"operation":"replace","start_line":9,"end_line":9,"content":"// x"}]}`)})
+	err := modifier.PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"guarded_preflight","edits":[{"operation":"replace_text","old_text":"not found","new_text":"// x"}]}`)})
 	if err == nil {
 		t.Fatal("expected preflight error")
 	}
@@ -265,9 +285,9 @@ func TestModifyElSkillPreflightRejectsInvalidElyphWithoutWriting(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"name": "guarded_elyph",
 		"edits": []map[string]any{{
-			"operation":   "replace_match",
-			"old_content": original,
-			"content":     "not a skill\n",
+			"operation": "replace_text",
+			"old_text":  original,
+			"new_text":  "not a skill\n",
 		}},
 	})
 	err := modifier.PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: args})
@@ -281,15 +301,16 @@ func TestModifyElSkillPreflightRejectsInvalidElyphWithoutWriting(t *testing.T) {
 
 func TestModifyElSkillRiskDetailIncludesDiff(t *testing.T) {
 	root := t.TempDir()
-	writeTestSkill(t, root, "detailer", "#skill detailer - Old.\n** risk low\n<- $text:str!\n-> $result:str\n")
+	original := "#skill detailer - Old.\n** risk low\n<- $text:str!\n-> $result:str\n"
+	writeTestSkill(t, root, "detailer", original)
 	modifier := NewModifyElSkillTool(NewManager(root, tool.NewRegistry()))
 	args, _ := json.Marshal(map[string]any{
-		"name": "detailer",
+		"name":              "detailer",
+		"expected_revision": fileops.ContentRevision([]byte(original)),
 		"edits": []map[string]any{{
-			"operation":  "replace",
-			"start_line": 1,
-			"end_line":   1,
-			"content":    "#skill detailer - New.",
+			"operation": "replace",
+			"line":      1,
+			"new_text":  "#skill detailer - New.\n",
 		}},
 	})
 	detail, err := modifier.RiskDetail(context.Background(), tool.CallRequest{Arguments: args})
@@ -311,9 +332,9 @@ func TestModifyElSkillPreflightRejectsNoop(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{
 		"name": "noop",
 		"edits": []map[string]any{{
-			"operation":   "replace_match",
-			"old_content": original,
-			"content":     original,
+			"operation": "replace_text",
+			"old_text":  original,
+			"new_text":  original,
 		}},
 	})
 	err := modifier.PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: args})
@@ -328,9 +349,9 @@ func TestModifyElSkillRejectsInvalidEditsWithoutWriting(t *testing.T) {
 	writeTestSkill(t, root, "guarded", original)
 	modifier := NewModifyElSkillTool(NewManager(root, tool.NewRegistry()))
 	cases := []string{
-		`{"name":"guarded","edits":[{"operation":"replace","start_line":9,"end_line":9,"content":"// x"}]}`,
-		`{"name":"guarded","edits":[{"operation":"replace","start_line":1,"end_line":1,"content":"missing header"}]}`,
-		`{"name":"guarded","edits":[{"operation":"replace_match","old_content":"not found","content":"#skill guarded"}]}`,
+		`{"name":"guarded","edits":[{"operation":"replace_text","old_text":"not found","new_text":"// x"}]}`,
+		`{"name":"guarded","edits":[{"operation":"replace_text","old_text":"#skill guarded - Guarded.","new_text":"missing header"}]}`,
+		`{"name":"guarded","edits":[{"operation":"replace_text","old_text":"not found","new_text":"#skill guarded"}]}`,
 		`{"name":"guarded"}`,
 	}
 	for _, raw := range cases {
@@ -345,7 +366,7 @@ func TestModifyElSkillRejectsInvalidEditsWithoutWriting(t *testing.T) {
 
 func TestModifyElSkillRejectsMissingSkill(t *testing.T) {
 	modifier := NewModifyElSkillTool(NewManager(t.TempDir(), tool.NewRegistry()))
-	_, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"missing","edits":[{"operation":"append","content":"#skill missing"}]}`)})
+	_, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"missing","edits":[{"operation":"overwrite","new_text":"#skill missing"}]}`)})
 	if err == nil {
 		t.Fatal("expected missing skill error")
 	}
