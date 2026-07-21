@@ -97,6 +97,7 @@ Example:
 Note:
 
 - `/resume 1` can directly restore the most recently updated Session other than the current one without first executing a bare `/resume`; indices are sorted by update time, are not affected by pinning, and remain continuous when paging.
+- While the current Session is processing, executing Session switching commands such as `/new`, `/resume`, `/fork`, `/chat`, and `/work` is not supported; If necessary, please use `/stop` to end the current processing first.
 - The indices displayed by `/sessions` can be reused by Session operation commands such as `/archive`, `/pin`, and `/delete`.
 - CLI serves as a local high-privilege entry point and can view Sessions across platforms; non-CLI platforms view Sessions under the current platform and scope by default.
 - Deletion is a permanent operation and requires explicit `--confirm`.
