@@ -152,6 +152,14 @@
       "translation": "Disconnection reconnection for QQ OneBot, QQ Official, and Telegram platforms has been changed to exponential backoff (starting at 3s, doubling, capped at 10s) with downgraded logging: consecutive failures are logged as 'warn' only on the first occurrence and 'info' upon recovery, preventing log flooding in every round.",
       "updated_at": 1782892198
     },
+    "CHANGELOG.md:list:273925de4249272e655fbfc98c5f7e446e7e47829e053f1a4ceeb005a6fa91c6": {
+      "kind": "list",
+      "source": "修复 Linux service 下进程 Hook 只能使用服务进程 PATH、无法获得配置 __ELBOT_CODE_0__，导致终端可用的 __ELBOT_CODE_1__ 等命令无法启动的问题；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "273925de4249272e655fbfc98c5f7e446e7e47829e053f1a4ceeb005a6fa91c6",
+      "translation": "Fixed an issue where process Hooks under Linux services could only use the service process PATH and were unable to obtain the configuration __ELBOT_CODE_0__, causing commands available in the terminal, such as __ELBOT_CODE_1__, to fail to start;",
+      "updated_at": 1784611290
+    },
     "CHANGELOG.md:list:280823f9e19a44bcbfe92547cc46408bbcf2b93e26cd0cfcf98c3d26afaa1c3e": {
       "kind": "list",
       "source": "**工具发现机制**：默认只暴露 __ELBOT_CODE_0__ 与工具名，按需注入完整 schema，减少无效上下文开销。",
@@ -928,6 +936,14 @@
       "translation": "Fixed an issue where OpenAI-compatible streaming responses that disconnected midway but were missing __ELBOT_CODE_0__ were treated as normal terminations; now it will explicitly notify that the LLM response was interrupted.",
       "updated_at": 1782298716
     },
+    "CHANGELOG.md:list:b96424f249f0fdeffb218eef737cc2ae780a59117df74c8d8b07646b53fd43b4": {
+      "kind": "list",
+      "source": "一次性 exec 与 Worker 现在共用合并后的环境和 PATH 查找规则。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "b96424f249f0fdeffb218eef737cc2ae780a59117df74c8d8b07646b53fd43b4",
+      "translation": "One-off execs and Workers now share the merged environment and PATH lookup rules.",
+      "updated_at": 1784611290
+    },
     "CHANGELOG.md:list:bbe69649fedf66fe55c50171fda1e0bafc56ed2f3759250fbef518fdf34acccf": {
       "kind": "list",
       "source": "没有 __ELBOT_CODE_0__ 时保持说明型 Skill，可按文档使用 shell 等通用工具；",
@@ -1242,8 +1258,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "6884feaa9a7e94ca939fa7d2037c769af595b7a174e31264beafe8ff7f7690f6",
+  "source_hash": "d1385874f61d4de6625db18e1d43610e031529bdd82644b1db59d514da7829e4",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784467084,
+  "updated_at": 1784611290,
   "version": 2
 }

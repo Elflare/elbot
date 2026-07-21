@@ -1,13 +1,5 @@
 {
   "segments": {
-    "docs/configuration.md:code-comment:toml:00d93f2106a4209ec1cea0c3d859353bd59ead58d6790d6ad1b3dacfb3225a37": {
-      "kind": "code-comment:toml",
-      "source": "base64 跨机器可用；共享文件系统可改为 file_uri",
-      "source_file": "docs/configuration.md",
-      "source_hash": "00d93f2106a4209ec1cea0c3d859353bd59ead58d6790d6ad1b3dacfb3225a37",
-      "translation": "base64 is available across machines; shared file systems can be changed to file_uri",
-      "updated_at": 1784209665
-    },
     "docs/configuration.md:code-comment:toml:4d2380e350c5b825b8290b38675e36e385481e1218ee92712655df3c414fe32b": {
       "kind": "code-comment:toml",
       "source": "手动补充模型列表（API 获取不到时使用）",
@@ -23,6 +15,14 @@
       "source_hash": "7296b2cd1c3a958a2308be6556465ad8a8ef8c2deee8d2eccf925d7cbd8ace97",
       "translation": "Optional, HTTP/SOCKS5 proxy address",
       "updated_at": 1782312356
+    },
+    "docs/configuration.md:code-comment:toml:8eeb526da0360e10dad8b502a48f432e244001297d31971e0ce2e66f3f4d56fd": {
+      "kind": "code-comment:toml",
+      "source": "本地图片、文件、语音默认用 base64；共享文件系统可改为 file_uri",
+      "source_file": "docs/configuration.md",
+      "source_hash": "8eeb526da0360e10dad8b502a48f432e244001297d31971e0ce2e66f3f4d56fd",
+      "translation": "Local images, files, and voice messages use base64 by default; for shared file systems, this can be changed to file_uri",
+      "updated_at": 1784611155
     },
     "docs/configuration.md:code-comment:toml:9b50dae0a3179ae39256c7fefa1defda7e0447886631dbc5020c8ae10a9391ea": {
       "kind": "code-comment:toml",
@@ -1168,6 +1168,14 @@
       "translation": "Once enabled, ElBot will start a local HTTP ingress to receive events delivered by Elwisp according to the Elvena protocol.",
       "updated_at": 1781749596
     },
+    "docs/configuration.md:paragraph:0b6eb9fa473aef565defa7222c29e7301bf9ef87504015a8d3628e1159da7c5c": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 仅适用于双方能访问同一本地路径的场景。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "0b6eb9fa473aef565defa7222c29e7301bf9ef87504015a8d3628e1159da7c5c",
+      "translation": "__ELBOT_CODE_0__ is only applicable in scenarios where both parties can access the same local path.\n",
+      "updated_at": 1784611155
+    },
     "docs/configuration.md:paragraph:0c5d3130dc3976cd6ede004b60eb7533c6a08baa5146ec02d3792b5086b44133": {
       "kind": "paragraph",
       "source": "如需使用临时配置文件，也可以显式指定 __ELBOT_CODE_0__。\n",
@@ -1215,6 +1223,14 @@
       "source_hash": "151056656c9b2a6fb3c0870fa2d50fd465cecc7fafd989215af4d48f716cd62d",
       "translation": "To restrict the visibility of a documentation-type Skill, or to register __ELBOT_CODE_0__ as a regular tool, add __ELBOT_CODE_1__ to the root directory of that Skill.",
       "updated_at": 1783479082
+    },
+    "docs/configuration.md:paragraph:15ff4b0e689bc4fb4a52ca9d60b204ad18aa2968c3b48c2bcc6b4654dadf964b": {
+      "kind": "paragraph",
+      "source": "修改 __ELBOT_CODE_0__ 后需要重启 ElBot service。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "15ff4b0e689bc4fb4a52ca9d60b204ad18aa2968c3b48c2bcc6b4654dadf964b",
+      "translation": "After modifying __ELBOT_CODE_0__, the ElBot service needs to be restarted.\n",
+      "updated_at": 1784611155
     },
     "docs/configuration.md:paragraph:1b1d63f6451566b1447a2aaaf1cdca290b9ce605850c0452d71f600b3239679f": {
       "kind": "paragraph",
@@ -1311,6 +1327,14 @@
       "source_hash": "3f6a9abcaf07c698521efe9e43023b0404d046d87936822dd4083fce5be6cabf",
       "translation": "Maintenance task examples:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:400a2636fca30965854208113fcb791ef921d0898d077f57e1ebf3b1592c1008": {
+      "kind": "paragraph",
+      "source": "进程 Hook 会继承 ElBot 进程环境，并获得配置目录 __ELBOT_CODE_0__ 中的全部变量；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "400a2636fca30965854208113fcb791ef921d0898d077f57e1ebf3b1592c1008",
+      "translation": "Process Hooks will inherit the ElBot process environment and obtain all variables in the configuration directory __ELBOT_CODE_0__;",
+      "updated_at": 1784611155
     },
     "docs/configuration.md:paragraph:409f4189f5a82cca3fb7edbf93119e885d6623f8fd1991e99189082102f46061": {
       "kind": "paragraph",
@@ -1504,6 +1528,14 @@
       "translation": "The main part of the filename must be uppercase __ELBOT_CODE_0__ or __ELBOT_CODE_1__, while the case of the __ELBOT_CODE_2__ suffix is unrestricted;",
       "updated_at": 1783178826
     },
+    "docs/configuration.md:paragraph:920c2b458b56968baafdc06b75c9c086ae39aeea7e14627ffb7020d59595d539": {
+      "kind": "paragraph",
+      "source": "系统环境中的同名变量优先。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "920c2b458b56968baafdc06b75c9c086ae39aeea7e14627ffb7020d59595d539",
+      "translation": "Variables with the same name in the system environment take priority.",
+      "updated_at": 1784611155
+    },
     "docs/configuration.md:paragraph:92e9ae62f8c6aafa6fd87f93ae3d06c46477e883a5b9962f7acb0ea1fd0419b6": {
       "kind": "paragraph",
       "source": "ElBot 使用一个主配置入口加载应用配置、Provider 配置和运行态状态。默认配置由程序内置 assets 生成到平台配置目录；已有配置文件不会被覆盖。\n",
@@ -1592,6 +1624,14 @@
       "translation": "If the explicitly specified configuration path does not exist, ElBot will report an error instead of silently generating it, to avoid masking path spelling errors.\n",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:paragraph:a785d861a280cf1ae7b2a9ac520c27edc15a2dc41ca90bdac84c3201f5f1172a": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 适用于 ElBot 与 OneBot 不共享文件系统的部署；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "a785d861a280cf1ae7b2a9ac520c27edc15a2dc41ca90bdac84c3201f5f1172a",
+      "translation": "__ELBOT_CODE_0__ is suitable for deployments where ElBot and OneBot do not share a file system;",
+      "updated_at": 1784611155
+    },
     "docs/configuration.md:paragraph:ab7f096105b4d8c21b405b3895bea7b4475703a5260f9f3b8e3a6935daef24bd": {
       "kind": "paragraph",
       "source": "未配置时回退为直接抓取：\n",
@@ -1664,6 +1704,14 @@
       "translation": "Configurations for QQ Official Bot, QQ OneBot, and Telegram are commented out by default in the examples.",
       "updated_at": 1783085288
     },
+    "docs/configuration.md:paragraph:be162f25851c3503919cc3805e4292e5a731e9d4998c1391d67c7bfb2587d5b1": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 同时控制 QQ OneBot 本地图片、文件和 __ELBOT_CODE_1__ 语音的发送方式。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "be162f25851c3503919cc3805e4292e5a731e9d4998c1391d67c7bfb2587d5b1",
+      "translation": "__ELBOT_CODE_0__ simultaneously controls the sending method for QQ OneBot local images, files, and __ELBOT_CODE_1__ voice messages.",
+      "updated_at": 1784611155
+    },
     "docs/configuration.md:paragraph:be766c22f4947d5d7e93ef58bac57b008c8c60eff96e5c43fb99fed53ee121b4": {
       "kind": "paragraph",
       "source": "CLI 默认启用：\n",
@@ -1695,6 +1743,14 @@
       "source_hash": "c17c1aeab624ca482bffd2d124696081d8f4404f654a0ff5183785f6d6ed3109",
       "translation": "Platform group owners or group administrators who are not in the superadmin list will still be handled according to the regular user rules.\n",
       "updated_at": 1783074493
+    },
+    "docs/configuration.md:paragraph:c5ea5efef2e26a0151a211a38a920aebaa8eac1dc064f888bfac9dd7f8e7010b": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 的 PATH 会作为服务进程 PATH 的补充目录，详见 [Hook 进程环境](hooks.md#进程环境)。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "c5ea5efef2e26a0151a211a38a920aebaa8eac1dc064f888bfac9dd7f8e7010b",
+      "translation": "The PATH of __ELBOT_CODE_0__ will serve as a supplementary directory for the service process PATH; for details, see [Hook Process Environment](hooks.md#进程环境).",
+      "updated_at": 1784611155
     },
     "docs/configuration.md:paragraph:c6184922d0b4486d752dd6cc799531d14e3d8046b9aff952d4613836b7a53995": {
       "kind": "paragraph",
@@ -1994,8 +2050,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "a463319639b49647e56df5c31a79e526a3ebc1c3e4b7c963c4a67c59e2058769",
+  "source_hash": "edd743ac5562dafb4e30f14004d7e3779fb64ecc07c40c2db6b5b9f1ac06a1b4",
   "target": "docs.en/configuration.md",
-  "updated_at": 1784340255,
+  "updated_at": 1784611155,
   "version": 2
 }
