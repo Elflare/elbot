@@ -135,7 +135,8 @@ rg -n "Phase|Request|Cancel|pending|confirm|runtime status|sending" internal/req
 - `internal/agent/tool_directive.go`：`@tool:` / `@skill:` 预处理。
 - `internal/agent/tool_tag_config.go`：工具 tag 配置。
 - `internal/security/`：工具权限和风险策略。
-- `internal/utils/fileops/`：文件读写编辑底层能力。
+- `internal/utils/fileops/{file,encoding,text}.go`：文件生命周期、编码与通用文本处理。
+- `internal/utils/fileops/{edit,match,diff}.go`：原子编辑解析、目标匹配与 unified diff。
 
 常用搜索：
 
