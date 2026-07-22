@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed the issue where the Session could still be switched while the current Session was requesting the model, executing a tool, or waiting for confirmation; the Session switching command now prompts to first use `/stop` to end the current process.
 - Fixed an issue where process Hooks under Linux services could only use the service process PATH and were unable to obtain the configuration `.env`, causing commands available in the terminal, such as `uv`, to fail to start; One-off execs and Workers now share the merged environment and PATH lookup rules.
 - Fixed an issue where pending messages received during the final LLM request of a tool flow were lost when the current turn ended; The current response now ends normally, and the next round of requests is automatically started after multiple pending messages are merged.
 - Fixed an issue where `llm.request.prepared` could temporarily rewrite the initial input or historical messages of the current turn, and pending images were lost during queuing while Hook modifications were not persisted; The request Hook now only modifies pending messages from the current new drain.

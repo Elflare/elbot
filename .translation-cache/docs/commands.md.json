@@ -96,6 +96,14 @@
       "translation": "A work Session with existing history cannot be switched directly to chat; you need to __ELBOT_CODE_0__ first, and then __ELBOT_CODE_1__.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:list:4a1867b2d4d09bf4e640b43485624cedc9e18b5b6717c49ab8cd4955e12dc015": {
+      "kind": "list",
+      "source": "如有必要，请先使用 __ELBOT_CODE_0__ 结束当前处理。",
+      "source_file": "docs/commands.md",
+      "source_hash": "4a1867b2d4d09bf4e640b43485624cedc9e18b5b6717c49ab8cd4955e12dc015",
+      "translation": "If necessary, please use __ELBOT_CODE_0__ to end the current processing first.",
+      "updated_at": 1784637910
+    },
     "docs/commands.md:list:618c24a7386c36940053553ef820dc60e8388b7ae4241071f56b8e02ec097504": {
       "kind": "list",
       "source": "CLI 作为本地高权限入口，可以跨平台查看 Session；非 CLI 平台默认只查看当前平台和作用域下的 Session。",
@@ -175,6 +183,14 @@
       "source_hash": "b697cfc2231f030876aacc244a6fe0b8292a272110153d88306d4e51e4c7af11",
       "translation": "__ELBOT_CODE_0__ mode does not inject tools, making it suitable for casual chat, companionship, and low-cost Q&A.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:list:c72e69840df5c81c854c6e1edbe9cb5144f2f9b7410e05d9c0463af9d02599bb": {
+      "kind": "list",
+      "source": "当前会话处理中时，不支持执行 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__ 等 Session 切换命令；",
+      "source_file": "docs/commands.md",
+      "source_hash": "c72e69840df5c81c854c6e1edbe9cb5144f2f9b7410e05d9c0463af9d02599bb",
+      "translation": "While the current Session is processing, executing Session switching commands such as __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, and __ELBOT_CODE_4__ is not supported;",
+      "updated_at": 1784637910
     },
     "docs/commands.md:list:cb73e0f2b874464a2ffa6a5b345d0b0c0b2f28d34a219af24e2ce824f6997095": {
       "kind": "list",
@@ -1042,8 +1058,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "05408cce1dd5d93691366bd8618e2708fad0079ec48eb9d64582545c0cfda800",
+  "source_hash": "02d9b37f07f8e48f1f68af994777fab8faa23c2ad9ee87524ab7724eb183d005",
   "target": "docs.en/commands.md",
-  "updated_at": 1784466598,
+  "updated_at": 1784637910,
   "version": 2
 }
