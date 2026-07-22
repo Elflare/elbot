@@ -262,7 +262,7 @@ func editFileBuilder() *tool.Builder {
 		String("expected_revision", "可选，编辑前读取到的revision；用于防止外部并发修改。").
 		Boolean("create", "为 true 时允许创建不存在的文本文件；提供 expected_revision 时仍要求文件已存在。").
 		Integer("context_lines", "diff 上下文行数，默认 3，范围 0-20。确认前自动预检和实际写入结果都会使用该上下文行数。").
-		ObjectArray("edits", "批量编辑列表；所有目标均基于编辑前原文解析。编辑已有文件时，所有编辑操作均应提供由 `read_file` 返回的 `revision` 作为 `expected_revision`；创建新文件时不提供该字段。", editProperties, []string{"operation"}, tool.Required())
+		ObjectArray("edits", "批量编辑列表；所有目标均基于编辑前原文解析。编辑已有文件时，应在本次调用的顶层传入 expected_revision，其值来自 read_file 返回的 revision; 创建新文件时不提供该字段。", editProperties, []string{"operation"}, tool.Required())
 }
 
 func (t EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
