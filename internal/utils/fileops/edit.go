@@ -19,7 +19,7 @@ type Edit struct {
 
 func EditOperationProperties() map[string]any {
 	return map[string]any{
-		"operation":   map[string]any{"type": "string", "enum": []string{"replace_text", "replace", "insert", "delete", "insert_before", "insert_after", "replace_line", "delete_line", "overwrite"}, "description": "编辑操作选择：replace_text 通过 old_text 精确定位并替换，可跨行；replace 通过 line/end_line 替换指定行范围，new_text 原样写入且不自动补换行，若需保留换行必须手动传入 \\n；replace_line 通过 anchor 匹配并替换一整行，缩进需手动，换行自动追加。所有目标都基于编辑前原文解析；overwrite 必须是批次中的唯一操作。"},
+		"operation":   map[string]any{"type": "string", "enum": []string{"replace_text", "replace", "insert", "delete", "insert_before", "insert_after", "replace_line", "delete_line", "overwrite"}, "description": "编辑操作选择：replace_text 通过 old_text 精确定位并替换，可跨行；replace 通过 line/end_line 替换指定行范围，new_text 原样写入且不自动补换行，若需保留换行必须手动传入 \\n；replace_line 通过 anchor 匹配并替换一整行，缩进需手动，换行自动追加。所有目标都基于编辑前原文解析，不能重叠目标；overwrite 必须是批次中的唯一操作。"},
 		"line":        map[string]any{"type": "integer", "description": "replace/delete 的起始行或 insert 的行间位置，1-based。insert: 1=文件开头，N+1=文件末尾；空文件仅支持 1。"},
 		"end_line":    map[string]any{"type": "integer", "description": "replace/delete 的可选结束行，1-based 且包含该行；省略时只操作 line。"},
 		"new_text":    map[string]any{"type": "string", "description": "写入文本。replace_text/replace/overwrite 使用原样文本；replace 不自动补换行，若需换行，需手动添加。insert/insert_before/insert_after/replace_line 把内容作为完整行块，缩进需手动，换行自动追加。replace_text 和 replace 可传空字符串进行删除。"},
