@@ -601,6 +601,17 @@ func TestEditFileToolSchemaOmitsDryRun(t *testing.T) {
 	if !ok || !slices.Contains(enum, "replace") {
 		t.Fatalf("edit_file operation schema should expose replace: %#v", operation)
 	}
+	operationDescription, _ := operation["description"].(string)
+	for _, want := range []string{
+		"replace_text 通过 old_text 精确定位并替换，可跨行",
+		"replace 通过 line/end_line 替换指定行范围",
+		"若需保留换行必须手动传入 \\n",
+		"replace_line 通过 anchor 匹配并替换一整行",
+	} {
+		if !strings.Contains(operationDescription, want) {
+			t.Fatalf("edit_file operation description missing %q: %q", want, operationDescription)
+		}
+	}
 	newText, ok := editProperties["new_text"].(map[string]any)
 	if !ok {
 		t.Fatalf("edit_file new_text schema missing: %#v", editProperties["new_text"])
