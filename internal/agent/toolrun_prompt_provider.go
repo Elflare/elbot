@@ -6,6 +6,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 )
 
@@ -20,9 +21,13 @@ func (p toolRunPromptProvider) Schemas(ctx context.Context, mode string, session
 	return p.agent.toolRunManager().BaseSchemas(ctx, toolrun.Context{Mode: mode, Session: session, Scope: scope, Actor: p.agent.actor(ctx), DisableBaseTools: isBackgroundSession(session)})
 }
 
-func (p toolRunPromptProvider) ToolNames(ctx context.Context, mode string, session *storage.Session, scope session.Scope) ([]string, error) {
+func (p toolRunPromptProvider) ToolNames(ctx context.Context, mode string, session *storage.Session, scope session.Scope) (PromptToolNames, error) {
 	if p.agent == nil || session == nil {
-		return nil, nil
+		return PromptToolNames{}, nil
 	}
-	return p.agent.toolRunManager().ToolNames(ctx, toolrun.Context{Mode: mode, Session: session, Scope: scope, Actor: p.agent.actor(ctx), DisableBaseTools: isBackgroundSession(session)})
+	infos, err := p.agent.toolRunManager().ToolInfos(ctx, toolrun.Context{Mode: mode, Session: session, Scope: scope, Actor: p.agent.actor(ctx), DisableBaseTools: isBackgroundSession(session)})
+	if err != nil {
+		return PromptToolNames{}, err
+	}
+	return tool.PromptNamesFromInfos(infos), nil
 }

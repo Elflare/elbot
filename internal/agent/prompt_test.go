@@ -70,7 +70,7 @@ func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	parts := []string{"SOUL_ORDER", toolNamesText([]string{"shell"}), "TAG_ALPHA", "TAG_BETA", "RESIDENT_ORDER"}
+	parts := []string{"SOUL_ORDER", toolNamesText(PromptToolNames{Tools: []string{"shell"}}), "TAG_ALPHA", "TAG_BETA", "RESIDENT_ORDER"}
 	previous := -1
 	for _, part := range parts {
 		index := strings.Index(got, part)
@@ -142,11 +142,30 @@ func TestPromptBuilderMergesToolNamesIntoSingleSystemMessage(t *testing.T) {
 	if len(messages) != 1 || messages[0].Role != llm.RoleSystem {
 		t.Fatalf("messages = %#v", messages)
 	}
-	if !strings.Contains(llm.SegmentsContentText(messages[0].Segments), "SOUL") || !strings.Contains(llm.SegmentsContentText(messages[0].Segments), "当前可用工具名称：shell") {
+	if !strings.Contains(llm.SegmentsContentText(messages[0].Segments), "SOUL") || !strings.Contains(llm.SegmentsContentText(messages[0].Segments), "tools: shell.") {
 		t.Fatalf("system content = %q", llm.SegmentsContentText(messages[0].Segments))
 	}
 }
 
+func TestToolNamesTextSeparatesToolsAndSkills(t *testing.T) {
+	tests := []struct {
+		name  string
+		names PromptToolNames
+		want  string
+	}{
+		{name: "mixed", names: PromptToolNames{Tools: []string{"shell", "web"}, Skills: []string{"code_review", "weather"}}, want: "tools: shell,web. skills: code_review,weather. Use discover_tool(names) for all possibly relevant tools/skills, including uncertain ones; prefer extras over omissions."},
+		{name: "tools only", names: PromptToolNames{Tools: []string{"shell"}}, want: "tools: shell. Use discover_tool(names) for all possibly relevant tools/skills, including uncertain ones; prefer extras over omissions."},
+		{name: "skills only", names: PromptToolNames{Skills: []string{"weather"}}, want: "skills: weather. Use discover_tool(names) for all possibly relevant tools/skills, including uncertain ones; prefer extras over omissions."},
+		{name: "empty", names: PromptToolNames{}, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := toolNamesText(tt.names); got != tt.want {
+				t.Fatalf("toolNamesText() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
 func TestPromptBuilderUsesAssistantRawTextFromMetadata(t *testing.T) {
 	builder := newTestPromptBuilder("SOUL")
 	messages, err := builder.Build(context.Background(), PromptBuildRequest{
@@ -323,8 +342,8 @@ func newTestPromptBuilder(soul string, names ...string) PromptBuilder {
 	return PromptBuilder{System: manager}
 }
 
-func (p staticToolNames) ToolNames(context.Context, string, *storage.Session, session.Scope) ([]string, error) {
-	return p.names, nil
+func (p staticToolNames) ToolNames(context.Context, string, *storage.Session, session.Scope) (PromptToolNames, error) {
+	return PromptToolNames{Tools: p.names}, nil
 }
 
 func (p *recordingToolProvider) Schemas(context.Context, string, *storage.Session, session.Scope) ([]llm.ToolSchema, error) {

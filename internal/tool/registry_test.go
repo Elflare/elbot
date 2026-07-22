@@ -196,13 +196,6 @@ func TestRegistryReplaceSourcesRejectsBuiltinSource(t *testing.T) {
 	}
 }
 
-func TestDiscoverToolDescriptionEncouragesSpeakingBeforeToolUse(t *testing.T) {
-	description := NewDiscoverTool(NewRegistry()).Info().Description
-	if !strings.Contains(description, "先用一句简短自然语言") {
-		t.Fatalf("description should guide model to speak before tool use: %q", description)
-	}
-}
-
 func TestDiscoverToolDoesNotExposeRisk(t *testing.T) {
 	registry := NewRegistry()
 	if err := registry.Register(NewDiscoverTool(registry)); err != nil {
@@ -251,8 +244,11 @@ func TestDiscoverToolSupportsBatchAndDependencies(t *testing.T) {
 	if err := registry.Register(fakeTool{name: "dep", source: SourceBuiltin, hidden: true}); err != nil {
 		t.Fatal(err)
 	}
+	if err := registry.Register(fakeTool{name: "second", source: SourceBuiltin}); err != nil {
+		t.Fatal(err)
+	}
 
-	args, _ := json.Marshal(map[string][]string{"names": []string{"main"}})
+	args, _ := json.Marshal(map[string][]string{"names": []string{"main", "second"}})
 	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
@@ -261,8 +257,13 @@ func TestDiscoverToolSupportsBatchAndDependencies(t *testing.T) {
 	if err := json.Unmarshal(result.Data, &discovery); err != nil {
 		t.Fatal(err)
 	}
-	if len(discovery.Tools) != 2 || discovery.Tools[0].Info.Name != "main" || discovery.Tools[1].Info.Name != "dep" {
+	if len(discovery.Tools) != 3 || discovery.Tools[0].Info.Name != "main" || discovery.Tools[1].Info.Name != "dep" || discovery.Tools[2].Info.Name != "second" {
 		t.Fatalf("unexpected details: %#v", discovery.Tools)
+	}
+	for _, discovered := range discovery.Tools {
+		if discovered.Schema == nil {
+			t.Fatalf("tool %q has no schema", discovered.Info.Name)
+		}
 	}
 }
 
@@ -539,7 +540,7 @@ func TestSchemaProviderDoesNotInjectHiddenToolNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	joined := strings.Join(names, ",")
+	joined := strings.Join(append(append([]string{}, names.Tools...), names.Skills...), ",")
 	if !strings.Contains(joined, "visible") || strings.Contains(joined, "hidden") {
 		t.Fatalf("names = %#v", names)
 	}
