@@ -2,6 +2,7 @@ package toolrun
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"elbot/internal/llm"
@@ -54,6 +55,44 @@ func TestForegroundOnlyToolHiddenInBackgroundSchemasAndNames(t *testing.T) {
 	}
 }
 
+func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) {
+	registry := tool.NewRegistry()
+	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(registry, security.DefaultPolicy())
+	view := Context{Mode: storage.SessionModeWork, Actor: security.Actor{Role: security.RoleSuperadmin}}
+	cached := func(name string) CachedTool {
+		return CachedTool{Name: name, Source: SourceKindNative, Schema: llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: name}}}
+	}
+	alpha := cached("alpha")
+	beta := cached("beta")
+	batch := NormalizeCachedTools([]CachedTool{beta, alpha})
+	incremental := MergeCachedTools(MergeCachedTools(nil, []CachedTool{beta}), []CachedTool{alpha})
+	reverseIncremental := MergeCachedTools(MergeCachedTools(nil, []CachedTool{alpha}), []CachedTool{beta})
+	restored := DecodeCache(EncodeCache(Cache{Tools: incremental})).Tools
+
+	for name, tools := range map[string][]CachedTool{
+		"batch":               batch,
+		"incremental":         incremental,
+		"reverse incremental": reverseIncremental,
+		"restored":            restored,
+	} {
+		t.Run(name, func(t *testing.T) {
+			schemas, err := manager.Schemas(context.Background(), view, tools)
+			if err != nil {
+				t.Fatal(err)
+			}
+			names := make([]string, 0, len(schemas))
+			for _, schema := range schemas {
+				names = append(names, schema.Function.Name)
+			}
+			if got := strings.Join(names, ","); got != "discover_tool,alpha,beta" {
+				t.Fatalf("schema order = %q", got)
+			}
+		})
+	}
+}
 func TestForegroundOnlyToolResolveRejectedInBackground(t *testing.T) {
 	registry := tool.NewRegistry()
 	if err := registry.Register(foregroundOnlyTestTool{}); err != nil {

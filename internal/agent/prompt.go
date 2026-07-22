@@ -12,6 +12,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/tool"
 )
 
 type SoulProvider interface {
@@ -77,8 +78,10 @@ type ToolSchemaProvider interface {
 	Schemas(ctx context.Context, mode string, session *storage.Session, scope session.Scope) ([]llm.ToolSchema, error)
 }
 
+type PromptToolNames = tool.PromptNames
+
 type ToolNameProvider interface {
-	ToolNames(ctx context.Context, mode string, session *storage.Session, scope session.Scope) ([]string, error)
+	ToolNames(ctx context.Context, mode string, session *storage.Session, scope session.Scope) (PromptToolNames, error)
 }
 
 type noopToolSchemaProvider struct{}
@@ -88,9 +91,9 @@ func (noopToolSchemaProvider) Schemas(context.Context, string, *storage.Session,
 	return nil, nil
 }
 
-func (noopToolSchemaProvider) ToolNames(context.Context, string, *storage.Session, session.Scope) ([]string, error) {
+func (noopToolSchemaProvider) ToolNames(context.Context, string, *storage.Session, session.Scope) (PromptToolNames, error) {
 	// Tool Runtime 未配置时不注入工具名称；实际实现由 tool.SchemaProvider 提供。
-	return nil, nil
+	return PromptToolNames{}, nil
 }
 
 type PromptBuilder struct {
@@ -192,8 +195,19 @@ func toolNameFromMetadata(metadata string) string {
 	return data["name"]
 }
 
-func toolNamesText(names []string) string {
-	return fmt.Sprintf("当前可用工具名称：%s。需要了解工具用途或参数时，先调用 discover_tool。", strings.Join(names, ", "))
+func toolNamesText(names PromptToolNames) string {
+	parts := make([]string, 0, 3)
+	if len(names.Tools) > 0 {
+		parts = append(parts, fmt.Sprintf("tools: %s.", strings.Join(names.Tools, ",")))
+	}
+	if len(names.Skills) > 0 {
+		parts = append(parts, fmt.Sprintf("skills: %s.", strings.Join(names.Skills, ",")))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	parts = append(parts, "Use discover_tool(names) for all possibly relevant tools/skills, including uncertain ones; prefer extras over omissions.")
+	return strings.Join(parts, " ")
 }
 
 func summaryUserPrefix(summary string) string {

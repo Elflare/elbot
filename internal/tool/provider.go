@@ -9,6 +9,27 @@ import (
 	"elbot/internal/storage"
 )
 
+type PromptNames struct {
+	Tools  []string
+	Skills []string
+}
+
+func PromptNamesFromInfos(infos []Info) PromptNames {
+	names := PromptNames{}
+	for _, info := range infos {
+		if info.Name == "discover_tool" || info.Hidden {
+			continue
+		}
+		switch info.Source {
+		case SourceSkillAgent, SourceSkillGo:
+			names.Skills = append(names.Skills, info.Name)
+		default:
+			names.Tools = append(names.Tools, info.Name)
+		}
+	}
+	return names
+}
+
 type SchemaProvider struct {
 	Registry *Registry
 	Policy   *security.Policy
@@ -26,22 +47,15 @@ func (p SchemaProvider) Schemas(ctx context.Context, mode string, session *stora
 	return p.Registry.Schemas(), nil
 }
 
-func (p SchemaProvider) ToolNames(ctx context.Context, mode string, session *storage.Session, scope session.Scope) ([]string, error) {
+func (p SchemaProvider) ToolNames(ctx context.Context, mode string, session *storage.Session, scope session.Scope) (PromptNames, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return PromptNames{}, err
 	}
 	if mode != storage.SessionModeWork || p.Registry == nil {
-		return nil, nil
+		return PromptNames{}, nil
 	}
 	actor := actorFromScope(ctx, scope)
-	infos := p.allowedInfos(actor)
-	names := make([]string, 0, len(infos))
-	for _, info := range infos {
-		if info.Name != "discover_tool" && !info.Hidden {
-			names = append(names, info.Name)
-		}
-	}
-	return names, nil
+	return PromptNamesFromInfos(p.allowedInfos(actor)), nil
 }
 
 func (p SchemaProvider) allowedInfos(actor security.Actor) []Info {

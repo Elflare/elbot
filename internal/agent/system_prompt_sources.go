@@ -75,8 +75,9 @@ func (s toolNamesSystemPromptSource) Parts(ctx context.Context, req SystemPrompt
 	if err != nil {
 		return nil, err
 	}
-	if len(names) == 0 {
+	content := toolNamesText(names)
+	if content == "" {
 		return nil, nil
 	}
-	return []SystemPromptPart{{Name: "tool_names", Content: toolNamesText(names)}}, nil
+	return []SystemPromptPart{{Name: "tool_names", Content: content}}, nil
 }

@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Soul 和常驻记忆统一由内置 System Prompt 来源按 turn 构建；常驻记忆不再注册为 Hook，普通 Hook 的 `llm.messages` 明确为只读上下文。
 - `workspace` 工具首次被发现或注入时也会加载当前目录的 `AGENTS.md`/`AGENT.md`；同一 Session 的同一路径与切换、重置入口共享一次性记录，不会重复注入。
 - 优化 `read_file` 工具，支持目录搜索、搜索结果编号选择，以及按 AST 函数名精确返回完整函数内容及其起止行号。
+- 优化system prompt
 
 ### Fixed
 

@@ -67,14 +67,26 @@ func NewManager(registry *tool.Registry, policy *security.Policy) *Manager {
 	return &Manager{Native: NewNativeSource(registry), Policy: policy}
 }
 
-func (m *Manager) ToolNames(ctx context.Context, view Context) ([]string, error) {
+func (m *Manager) ToolInfos(ctx context.Context, view Context) ([]tool.Info, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if view.DisableBaseTools || view.Mode != storage.SessionModeWork || m == nil || m.Native == nil {
 		return nil, nil
 	}
-	return m.Native.ToolNames(ctx, actorForView(ctx, view), policyForManager(ctx, m.Policy)), nil
+	return m.Native.ToolInfos(ctx, actorForView(ctx, view), policyForManager(ctx, m.Policy)), nil
+}
+
+func (m *Manager) ToolNames(ctx context.Context, view Context) ([]string, error) {
+	infos, err := m.ToolInfos(ctx, view)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(infos))
+	for _, info := range infos {
+		names = append(names, info.Name)
+	}
+	return names, nil
 }
 
 func (m *Manager) BaseSchemas(ctx context.Context, view Context) ([]llm.ToolSchema, error) {
