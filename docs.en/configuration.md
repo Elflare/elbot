@@ -618,11 +618,14 @@ Minimum configuration example for QQ OneBot:
 enabled = true
 ws_url = "ws://127.0.0.1:6700/"
 access_token = ""
+api_timeout_seconds = 15 # Base timeout for OneBot write and response wait
 trigger_keywords = ["bot"]
 send_file_mode = "base64" # Local images, files, and voice messages use base64 by default; for shared file systems, this can be changed to file_uri
 ```
 
 `send_file_mode` simultaneously controls the sending method for QQ OneBot local images, files, and `record` voice messages. `base64` is suitable for deployments where ElBot and OneBot do not share a file system; `file_uri` is only applicable in scenarios where both parties can access the same local path.
+
+`api_timeout_seconds` serves as the base timeout for OneBot frame writing and API response waiting, respectively. For large frame writes, 1 second will be added for every full 1 MiB of encoded size, up to a maximum of the base timeout itself; After a write failure or timeout, ElBot will disconnect and reconnect to OneBot to prevent a slow send from blocking subsequent messages for a long time. Sending will still synchronously wait for the platform receipt.
 
 Telegram uses Bot API long polling. Minimum configuration example:
 
