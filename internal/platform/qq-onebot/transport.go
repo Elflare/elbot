@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"sync"
@@ -19,11 +20,13 @@ type Transport struct {
 	AccessToken string
 	Timeout     time.Duration
 
-	mu      sync.Mutex
-	writeMu sync.Mutex
-	conn    *websocket.Conn
-	pending map[string]chan response
-	seq     atomic.Uint64
+	mu        sync.Mutex
+	logger    *slog.Logger
+	writeOnce sync.Once
+	writeGate chan struct{}
+	conn      *websocket.Conn
+	pending   map[string]chan response
+	seq       atomic.Uint64
 }
 
 type request struct {
@@ -205,12 +208,27 @@ func (t *Transport) sendMessage(ctx context.Context, action string, params map[s
 	return strconv.FormatInt(data.MessageID, 10), nil
 }
 
-func (t *Transport) call(ctx context.Context, action string, params map[string]any) (response, error) {
+func (t *Transport) call(ctx context.Context, action string, params map[string]any) (_ response, callErr error) {
+	startedAt := time.Now()
+	var encodedAt, acquiredAt, writtenAt time.Time
+	frameBytes := 0
+	defer func() {
+		t.logCall(ctx, action, frameBytes, startedAt, encodedAt, acquiredAt, writtenAt, callErr)
+	}()
+	if err := ctx.Err(); err != nil {
+		return response{}, err
+	}
 	conn := t.currentConn()
 	if conn == nil {
 		return response{}, fmt.Errorf("onebot websocket is not connected")
 	}
 	echo := fmt.Sprintf("elbot-%d", t.seq.Add(1))
+	frame, err := json.Marshal(request{Action: action, Params: params, Echo: echo})
+	encodedAt = time.Now()
+	if err != nil {
+		return response{}, fmt.Errorf("encode onebot action %s: %w", action, err)
+	}
+	frameBytes = len(frame)
 	ch := make(chan response, 1)
 	t.mu.Lock()
 	if t.pending == nil {
@@ -220,17 +238,27 @@ func (t *Transport) call(ctx context.Context, action string, params map[string]a
 	t.mu.Unlock()
 	defer t.removePending(echo)
 
-	t.writeMu.Lock()
-	err := wsjson.Write(ctx, conn, request{Action: action, Params: params, Echo: echo})
-	t.writeMu.Unlock()
+	writeCtx, cancelWrite := context.WithTimeout(ctx, t.writeTimeout(frameBytes))
+	release, err := t.acquireWrite(writeCtx)
 	if err != nil {
+		cancelWrite()
+		return response{}, fmt.Errorf("wait to send onebot action %s: %w", action, err)
+	}
+	acquiredAt = time.Now()
+	err = conn.Write(writeCtx, websocket.MessageText, frame)
+	writtenAt = time.Now()
+	release()
+	cancelWrite()
+	if err != nil {
+		_ = conn.CloseNow()
 		return response{}, fmt.Errorf("send onebot action %s: %w", action, err)
 	}
+
 	waitCtx := ctx
 	if t.Timeout > 0 {
-		var cancel context.CancelFunc
-		waitCtx, cancel = context.WithTimeout(ctx, t.Timeout)
-		defer cancel()
+		var cancelWait context.CancelFunc
+		waitCtx, cancelWait = context.WithTimeout(ctx, t.Timeout)
+		defer cancelWait()
 	}
 	select {
 	case <-waitCtx.Done():
@@ -244,6 +272,72 @@ func (t *Transport) call(ctx context.Context, action string, params map[string]a
 		}
 		return resp, nil
 	}
+}
+
+func (t *Transport) writeTimeout(frameBytes int) time.Duration {
+	base := t.Timeout
+	if base <= 0 {
+		base = 15 * time.Second
+	}
+	extra := time.Duration(frameBytes/(1024*1024)) * time.Second
+	if extra > base {
+		extra = base
+	}
+	return base + extra
+}
+
+func (t *Transport) acquireWrite(ctx context.Context) (func(), error) {
+	t.writeOnce.Do(func() {
+		t.writeGate = make(chan struct{}, 1)
+		t.writeGate <- struct{}{}
+	})
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-t.writeGate:
+		return func() { t.writeGate <- struct{}{} }, nil
+	}
+}
+
+func (t *Transport) logCall(ctx context.Context, action string, frameBytes int, startedAt, encodedAt, acquiredAt, writtenAt time.Time, err error) {
+	if t.logger == nil {
+		return
+	}
+	finishedAt := time.Now()
+	elapsed := finishedAt.Sub(startedAt)
+	if err == nil && elapsed < time.Second {
+		return
+	}
+	waitWriterEnd := acquiredAt
+	if waitWriterEnd.IsZero() && !encodedAt.IsZero() {
+		waitWriterEnd = finishedAt
+	}
+	writeEnd := writtenAt
+	if writeEnd.IsZero() && !acquiredAt.IsZero() {
+		writeEnd = finishedAt
+	}
+	attrs := []any{
+		"action", action,
+		"frame_bytes", frameBytes,
+		"encode_ms", elapsedMillisBetween(startedAt, encodedAt),
+		"wait_writer_ms", elapsedMillisBetween(encodedAt, waitWriterEnd),
+		"write_ms", elapsedMillisBetween(acquiredAt, writeEnd),
+		"response_ms", elapsedMillisBetween(writtenAt, finishedAt),
+		"elapsed_ms", elapsed.Milliseconds(),
+	}
+	if err != nil {
+		attrs = append(attrs, "error", err.Error())
+		t.logger.WarnContext(ctx, "onebot action failed", attrs...)
+		return
+	}
+	t.logger.DebugContext(ctx, "onebot action slow", attrs...)
+}
+
+func elapsedMillisBetween(start, end time.Time) int64 {
+	if start.IsZero() || end.IsZero() || end.Before(start) {
+		return 0
+	}
+	return end.Sub(start).Milliseconds()
 }
 
 func (t *Transport) currentConn() *websocket.Conn {

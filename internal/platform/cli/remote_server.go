@@ -44,10 +44,9 @@ type RemoteServer struct {
 }
 
 type remoteClientConn struct {
-	id      string
-	conn    *websocket.Conn
-	writeMu sync.Mutex
-	server  *RemoteServer
+	id     string
+	conn   *websocket.Conn
+	server *RemoteServer
 }
 
 type remoteClientKey struct{}
@@ -290,9 +289,9 @@ func (s *RemoteServer) writeClients(ctx context.Context, clients []*remoteClient
 }
 
 func (c *remoteClientConn) write(ctx context.Context, msg remoteMessage) error {
-	c.writeMu.Lock()
-	defer c.writeMu.Unlock()
-	return wsjson.Write(ctx, c.conn, msg)
+	writeCtx, cancel := context.WithTimeout(ctx, remoteWriteTimeout)
+	defer cancel()
+	return wsjson.Write(writeCtx, c.conn, msg)
 }
 
 func (s *RemoteServer) addClient(client *remoteClientConn) {

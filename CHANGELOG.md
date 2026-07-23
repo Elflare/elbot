@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 更新 Shell 与 Hook 的环境变量继承和分级 `.env` 配置。
 
+### Fixed
+
+- 修复 QQ OneBot 发送大体积图片等消息时，JSON 编码或 WebSocket 写入长期占住共享发送锁，导致斜杠命令和其他会话的回复一并无响应；OneBot 与远程 CLI 的写入等待现在可取消并有明确超时，失败后 OneBot 会重连。
+
 ## [v0.4.0 - 2026-07-23]
 
 ### Changed

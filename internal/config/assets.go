@@ -197,6 +197,7 @@ token_env = ["ELBOT_CLI_LOCAL_TOKEN"]
 # enabled = false
 # ws_url = "ws://127.0.0.1:6700/"
 # access_token = ""
+# api_timeout_seconds = 15 # base timeout for OneBot writes and API responses
 # trigger_keywords = ["bot"]
 # send_file_mode = "base64" # base64 works across machines; use file_uri for a shared filesystem
 
