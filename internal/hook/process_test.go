@@ -21,13 +21,29 @@ func TestNewProcessEnvironmentMergesDotEnvAndAppendsPath(t *testing.T) {
 		map[string]string{"PATH": extraPath, "TOKEN": "from-dotenv", "EXTRA": "available", "EMPTY": "from-dotenv"},
 	)
 
-	values := environmentMap(environment.environ)
-	if values[environmentKey("TOKEN")] != "from-process" || values[environmentKey("EMPTY")] != "" || values[environmentKey("EXTRA")] != "available" {
+	values := environmentMap(environment.Environ())
+	if values[testEnvironmentKey("TOKEN")] != "from-process" || values[testEnvironmentKey("EMPTY")] != "" || values[testEnvironmentKey("EXTRA")] != "available" {
 		t.Fatalf("environment = %#v", values)
 	}
 	wantPath := strings.Join([]string{first, second, third}, string(os.PathListSeparator))
-	if values[environmentKey("PATH")] != wantPath || environment.path != wantPath {
-		t.Fatalf("PATH = %q, want %q", environment.path, wantPath)
+	if values[testEnvironmentKey("PATH")] != wantPath {
+		t.Fatalf("PATH = %q, want %q", values[testEnvironmentKey("PATH")], wantPath)
+	}
+}
+
+func TestProcessEnvironmentOverlayReplacesValuesAndAppendsPath(t *testing.T) {
+	basePath := t.TempDir()
+	extraPath := t.TempDir()
+	environment := NewProcessEnvironment([]string{"PATH=" + basePath, "TOKEN=base"}, nil).
+		Overlay(map[string]string{"PATH": extraPath, "TOKEN": "shared"}).
+		Overlay(map[string]string{"TOKEN": "plugin"})
+	values := environmentMap(environment.Environ())
+	if values[testEnvironmentKey("TOKEN")] != "plugin" {
+		t.Fatalf("TOKEN = %q, want plugin", values[testEnvironmentKey("TOKEN")])
+	}
+	wantPath := strings.Join([]string{basePath, extraPath}, string(os.PathListSeparator))
+	if values[testEnvironmentKey("PATH")] != wantPath {
+		t.Fatalf("PATH = %q, want %q", values[testEnvironmentKey("PATH")], wantPath)
 	}
 }
 
@@ -67,12 +83,19 @@ func TestProcessEnvironmentHelper(t *testing.T) {
 	os.Exit(0)
 }
 
+func testEnvironmentKey(name string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToUpper(name)
+	}
+	return name
+}
+
 func environmentMap(environ []string) map[string]string {
 	values := make(map[string]string, len(environ))
 	for _, entry := range environ {
 		name, value, ok := strings.Cut(entry, "=")
 		if ok {
-			values[environmentKey(name)] = value
+			values[testEnvironmentKey(name)] = value
 		}
 	}
 	return values

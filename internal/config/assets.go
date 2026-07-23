@@ -20,6 +20,7 @@ var defaultConfigAssets = []defaultAsset{
 	{Path: "elnis.toml", Content: defaultElnisTOML},
 	{Path: "tool_tags.toml", Content: defaultToolTagsTOML},
 	{Path: "plugins/hooks.toml", Content: defaultHooksTOML},
+	{Path: "plugins/.env", Content: defaultHookEnv},
 	{Path: filepath.Join("skills", "agent", "agent_skill_creator", "SKILL.md"), Content: defaultAgentSkillCreatorSkillMD},
 	{Path: filepath.Join("skills", "agent", "agent_skill_creator", "ELBOT_SKILL.toml"), Content: defaultAgentSkillCreatorSkillTOML},
 	{Path: filepath.Join("skills", "agent", "write_elbot_hook", "SKILL.md"), Content: defaultWriteElbotHookSkillMD},
@@ -392,6 +393,7 @@ const defaultWriteElbotHookSkillTOML = `risk = "low"
 superadmin_only = true
 `
 const defaultEnvExample = `# Copy this file to .env or set these variables in your OS environment.
+# Variables in .env are also available to LLM shell commands.
 
 # Provider API keys
 DEEPSEEK_API_KEY=
@@ -427,6 +429,14 @@ MUST:
 - Touch only what must be changed; keep it simple.
 - Validate success criteria before and after implementation.
 """
+`
+
+const defaultHookEnv = `# Shared environment for Hook processes.
+# PATH only needs additional executable directories; inherited system paths are kept.
+# PATH=/absolute/path/to/bin
+# HTTP_PROXY=http://127.0.0.1:7890
+# HTTPS_PROXY=http://127.0.0.1:7890
+# NO_PROXY=localhost,127.0.0.1,::1
 `
 
 const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.

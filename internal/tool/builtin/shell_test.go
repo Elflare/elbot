@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/processenv"
 	"elbot/internal/tool"
 )
 
@@ -287,6 +288,23 @@ func TestShellToolRunsLS(t *testing.T) {
 	}
 }
 
+func TestShellToolUsesConfiguredEnvironment(t *testing.T) {
+	environment := processenv.New(os.Environ()).Overlay(map[string]string{"ELBOT_SHELL_ENV_TEST": "from-config"})
+	shell := NewShellToolWithEnvironment(environment)
+	cmdText := `printf %s "$ELBOT_SHELL_ENV_TEST"`
+	if runtime.GOOS == "windows" {
+		cmdText = `Write-Output $env:ELBOT_SHELL_ENV_TEST`
+	}
+	args, _ := json.Marshal(map[string]any{"cmd": cmdText})
+	result, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if !strings.Contains(result.Content, "from-config") {
+		t.Fatalf("shell result = %q", result.Content)
+	}
+}
+
 func TestPowerShellUTF8Command(t *testing.T) {
 	cmd := `Get-ChildItem -Name`
 	got := powershellUTF8Command("pwsh", cmd)
@@ -316,8 +334,12 @@ func TestResolveUnixShellPrefersBash(t *testing.T) {
 	} else if name != "sh" {
 		t.Fatalf("shell name = %q, want sh fallback", name)
 	}
-	if strings.Join(args, "\x00") != "-lc" {
-		t.Fatalf("shell args = %v, want [-lc]", args)
+	wantArgs := []string{"-c"}
+	if name == "bash" {
+		wantArgs = []string{"--noprofile", "--norc", "-c"}
+	}
+	if strings.Join(args, "\x00") != strings.Join(wantArgs, "\x00") {
+		t.Fatalf("shell args = %v, want %v", args, wantArgs)
 	}
 }
 
@@ -360,7 +382,7 @@ func TestDetectWindowsShellPrefersPwshThenBash(t *testing.T) {
 			name:     "bash when pwsh missing",
 			path:     bashDir,
 			wantName: "bash",
-			wantArgs: []string{"-lc"},
+			wantArgs: []string{"--noprofile", "--norc", "-c"},
 		},
 		{
 			name:     "powershell fallback",

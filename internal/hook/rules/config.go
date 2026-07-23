@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	appconfig "elbot/internal/config"
 	"elbot/internal/hook"
 )
 
@@ -25,7 +26,13 @@ func loadConfig(opts Options) (Config, string, error) {
 		return Config{}, path, err
 	}
 
-	rootSource := ruleSource{ConfigPath: path, BaseDir: configDir}
+	sharedEnvPath := filepath.Join(configDir, ".env")
+	sharedValues, err := appconfig.LoadEnvFile(sharedEnvPath)
+	if err != nil {
+		return Config{}, path, fmt.Errorf("load shared hook environment %q: %w", sharedEnvPath, err)
+	}
+	sharedProcessEnv := opts.ProcessEnv.Overlay(sharedValues)
+	rootSource := ruleSource{ConfigPath: path, BaseDir: configDir, ProcessEnv: sharedProcessEnv}
 	for i := range cfg.Rules {
 		block, err := cfg.Rules[i].blockPolicy()
 		if err != nil {
@@ -58,6 +65,13 @@ func loadConfig(opts Options) (Config, string, error) {
 			pcfg.Rules[i].clearBlockConfig()
 		}
 		pluginDir := filepath.Dir(pluginPath)
+		pluginEnvPath := filepath.Join(pluginDir, ".env")
+		pluginValues, err := appconfig.LoadEnvFile(pluginEnvPath)
+		if err != nil {
+			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginEnvPath, err)
+			continue
+		}
+		pluginProcessEnv := sharedProcessEnv.Overlay(pluginValues)
 		block, err := hook.NewBlockPolicy(pcfg.Plugin.BlockedPlatforms, pcfg.Plugin.BlockedGroups, pcfg.Plugin.BlockedIDs)
 		if err != nil {
 			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
@@ -71,6 +85,7 @@ func loadConfig(opts Options) (Config, string, error) {
 			runtimeConfig.Dir = pluginDir
 			runtimeConfig.ConfigPath = pluginPath
 			runtimeConfig.Block = block
+			runtimeConfig.ProcessEnv = pluginProcessEnv
 			if runtimeConfig.IsWorker() {
 				if err := runtimeConfig.Validate(); err != nil {
 					reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
@@ -88,6 +103,7 @@ func loadConfig(opts Options) (Config, string, error) {
 			StrictDir:         pluginDir,
 			RuntimeID:         runtimeID,
 			Block:             block,
+			ProcessEnv:        pluginProcessEnv,
 		}
 		for i := range pcfg.Rules {
 			pcfg.Rules[i].source = source

@@ -59,11 +59,12 @@ type Config struct {
 	Restart                RestartConfig `toml:"restart"`
 	Tools                  ToolsConfig   `toml:"tools"`
 
-	ID          string           `toml:"-"`
-	Description string           `toml:"-"`
-	Dir         string           `toml:"-"`
-	ConfigPath  string           `toml:"-"`
-	Block       hook.BlockPolicy `toml:"-"`
+	ID          string                  `toml:"-"`
+	Description string                  `toml:"-"`
+	Dir         string                  `toml:"-"`
+	ConfigPath  string                  `toml:"-"`
+	Block       hook.BlockPolicy        `toml:"-"`
+	ProcessEnv  hook.ProcessEnvironment `toml:"-"`
 }
 
 func (c Config) ModeOrOnce() Mode {

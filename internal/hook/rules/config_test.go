@@ -130,6 +130,99 @@ path = "assets/pic.png"
 	}
 }
 
+func TestLoadConfigLayersSharedAndPluginEnvironments(t *testing.T) {
+	dir := t.TempDir()
+	pluginDir := filepath.Join(dir, "demo")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("mkdir plugin: %v", err)
+	}
+	root := `[[plugins]]
+name = "demo"
+
+[[rules]]
+name = "root_exec"
+on = "llm.response.received"
+always = true
+action = "exec"
+command = ["root-hook"]
+`
+	plugin := `[plugin]
+name = "demo"
+
+[plugin.runtime]
+mode = "persistent"
+command = ["demo-hook"]
+cwd = "."
+startup_timeout_seconds = 5
+shutdown_timeout_seconds = 5
+event_timeout_seconds = 30
+max_wait_seconds = 60
+
+[plugin.runtime.restart]
+strategy = "never"
+initial_delay_seconds = 1
+max_delay_seconds = 1
+
+[[rules]]
+name = "plugin_trigger"
+on = "llm.response.received"
+always = true
+`
+	sharedPath := filepath.Join(dir, "shared-bin")
+	pluginPath := filepath.Join(dir, "plugin-bin")
+	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(root), 0o644); err != nil {
+		t.Fatalf("write root config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("TOKEN=shared\nPATH="+sharedPath+"\n"), 0o644); err != nil {
+		t.Fatalf("write shared env: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "hook.toml"), []byte(plugin), 0o644); err != nil {
+		t.Fatalf("write plugin config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, ".env"), []byte("TOKEN=plugin\nPATH="+pluginPath+"\n"), 0o644); err != nil {
+		t.Fatalf("write plugin env: %v", err)
+	}
+	basePath := filepath.Join(dir, "base-bin")
+	opts := Options{ConfigDir: dir, ProcessEnv: hook.NewProcessEnvironment([]string{"TOKEN=process", "PATH=" + basePath}, nil)}
+	cfg, _, err := loadConfig(opts)
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if len(cfg.Rules) != 2 || len(cfg.Runtimes) != 1 {
+		t.Fatalf("config = %#v", cfg)
+	}
+	if got := processEnvValue(cfg.Rules[0].source.ProcessEnv, "TOKEN"); got != "shared" {
+		t.Fatalf("root TOKEN = %q, want shared", got)
+	}
+	if got := processEnvValue(cfg.Rules[1].source.ProcessEnv, "TOKEN"); got != "plugin" {
+		t.Fatalf("plugin TOKEN = %q, want plugin", got)
+	}
+	wantPath := strings.Join([]string{basePath, sharedPath, pluginPath}, string(os.PathListSeparator))
+	if got := processEnvValue(cfg.Runtimes[0].ProcessEnv, "PATH"); got != wantPath {
+		t.Fatalf("runtime PATH = %q, want %q", got, wantPath)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, ".env"), []byte("TOKEN=reloaded\n"), 0o644); err != nil {
+		t.Fatalf("rewrite plugin env: %v", err)
+	}
+	reloaded, _, err := loadConfig(opts)
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	if got := processEnvValue(reloaded.Rules[1].source.ProcessEnv, "TOKEN"); got != "reloaded" {
+		t.Fatalf("reloaded TOKEN = %q, want reloaded", got)
+	}
+}
+
+func processEnvValue(environment hook.ProcessEnvironment, name string) string {
+	for _, entry := range environment.Environ() {
+		key, value, ok := strings.Cut(entry, "=")
+		if ok && strings.EqualFold(key, name) {
+			return value
+		}
+	}
+	return ""
+}
+
 func TestLoadConfigLoadsStatefulHookRuntimeAndTriggerRules(t *testing.T) {
 	dir := t.TempDir()
 	pluginDir := filepath.Join(dir, "weather")

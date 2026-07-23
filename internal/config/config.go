@@ -314,7 +314,12 @@ func ConfigEnv(key, configDir string) (string, bool, error) {
 // LoadDotEnv reads all variables from the config directory .env file.
 // Earlier duplicate definitions win, matching ConfigEnv's existing behavior.
 func LoadDotEnv(configDir string) (map[string]string, error) {
-	return loadDotEnvFile(filepath.Join(configDir, ".env"))
+	return LoadEnvFile(filepath.Join(configDir, ".env"))
+}
+
+// LoadEnvFile reads variables from an exact dotenv file path.
+func LoadEnvFile(path string) (map[string]string, error) {
+	return loadDotEnvFile(path)
 }
 
 func lookupDotEnv(key, path string) (string, bool, error) {
