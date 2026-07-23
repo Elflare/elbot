@@ -456,6 +456,14 @@
       "translation": "Fixed the issue where rule cards were repeatedly injected into the context when performing tool discovery or inline preloading of multiple ELyph Skills;",
       "updated_at": 1783334583
     },
+    "CHANGELOG.md:list:67ae63dbf2f51393cb281ef7f0bc542b6cc115feb6a128fbe07c9bcaf6691b42": {
+      "kind": "list",
+      "source": "修复 QQ OneBot 发送大体积图片等消息时，JSON 编码或 WebSocket 写入长期占住共享发送锁，导致斜杠命令和其他会话的回复一并无响应；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "67ae63dbf2f51393cb281ef7f0bc542b6cc115feb6a128fbe07c9bcaf6691b42",
+      "translation": "Fixed an issue where JSON encoding or WebSocket writes would hold the shared send lock for a long time when QQ OneBot sent messages such as large images, causing slash commands and replies from other Sessions to become unresponsive;",
+      "updated_at": 1784818775
+    },
     "CHANGELOG.md:list:6804ed012e3f61e166fecd47cad310a62710f88f0f1bc81b3d2be57e1e12aa4f": {
       "kind": "list",
       "source": "文件超过 64 KiB 时会提示缩短。",
@@ -1024,6 +1032,14 @@
       "translation": "__ELBOT_CODE_0__/__ELBOT_CODE_1__ will suggest using __ELBOT_CODE_2__ when reading EL Skill files;",
       "updated_at": 1782722558
     },
+    "CHANGELOG.md:list:c932df58ae0d60e638b7627a8d565a0131d7b67cb4fac5a817cf933dafeb8a36": {
+      "kind": "list",
+      "source": "OneBot 与远程 CLI 的写入等待现在可取消并有明确超时，失败后 OneBot 会重连。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "c932df58ae0d60e638b7627a8d565a0131d7b67cb4fac5a817cf933dafeb8a36",
+      "translation": "Write waits for OneBot and remote CLI are now cancellable and have a clear timeout; OneBot will reconnect upon failure.",
+      "updated_at": 1784818775
+    },
     "CHANGELOG.md:list:c975eb5ea81074e512045d3db3c8162aaabc288a0ffd73a973da3be406a6632d": {
       "kind": "list",
       "source": "修复已完成的一次性 LLM Cron 重新启用或重新调度后直接复用旧报告、未创建新后台 Session 的问题；通知失败和平台重连仍补发同一轮已持久化结果。",
@@ -1282,8 +1298,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "fcabd3b0c22ed431bd736fae4f9e4238525970604e13b9fcb9cbfb124e29681e",
+  "source_hash": "7e7a3d956e00ac4886cf2c1f14053f590b8e74002e5618816d4e956516db5857",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784812490,
+  "updated_at": 1784818775,
   "version": 2
 }
