@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Soul and resident memory are now uniformly constructed by turn from the built-in System Prompt source; Resident memory is no longer registered as a Hook; the `llm.messages` of ordinary Hooks is explicitly defined as read-only context.
 - `workspace` tools will also load the `AGENTS.md`/`AGENT.md` of the current directory when they are first discovered or injected; The same path within the same Session shares a one-time record with the switch and reset entries, so it will not be injected repeatedly.
 - Optimized the `read_file` tool, supporting directory search, selection of search results by index, and precise return of complete function content and its start and end line numbers based on AST function names.
+- Optimize system prompt
 
 ### Fixed
 
