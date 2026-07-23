@@ -157,6 +157,7 @@ func New(cfg Config, store storage.Store, chatHistory storage.ChatHistoryReposit
 			URL:         cfg.URL,
 			AccessToken: cfg.AccessToken,
 			Timeout:     timeout,
+			logger:      logger,
 		},
 		logger: logger,
 	}

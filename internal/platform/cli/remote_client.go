@@ -28,7 +28,6 @@ type RemoteClient struct {
 	profile   string
 	client    ClientConfig
 	conn      *websocket.Conn
-	writeMu   sync.Mutex
 	seq       atomic.Uint64
 	pendingMu sync.Mutex
 	pending   map[string]chan []completion.Item
@@ -154,9 +153,9 @@ func (c *RemoteClient) sendTUI(msg tea.Msg) {
 }
 
 func (c *RemoteClient) write(ctx context.Context, msg remoteMessage) error {
-	c.writeMu.Lock()
-	defer c.writeMu.Unlock()
-	return wsjson.Write(ctx, c.conn, msg)
+	writeCtx, cancel := context.WithTimeout(ctx, remoteWriteTimeout)
+	defer cancel()
+	return wsjson.Write(writeCtx, c.conn, msg)
 }
 
 func (c *RemoteClient) removePending(id string) {

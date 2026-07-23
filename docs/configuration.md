@@ -616,11 +616,14 @@ QQ OneBot 最小配置示例：
 enabled = true
 ws_url = "ws://127.0.0.1:6700/"
 access_token = ""
+api_timeout_seconds = 15 # OneBot 写入和响应等待的基础超时
 trigger_keywords = ["bot"]
 send_file_mode = "base64" # 本地图片、文件、语音默认用 base64；共享文件系统可改为 file_uri
 ```
 
 `send_file_mode` 同时控制 QQ OneBot 本地图片、文件和 `record` 语音的发送方式。`base64` 适用于 ElBot 与 OneBot 不共享文件系统的部署；`file_uri` 仅适用于双方能访问同一本地路径的场景。
+
+`api_timeout_seconds` 分别作为 OneBot 帧写入和 API 响应等待的基础超时。大帧写入会按编码后大小每完整 1 MiB 增加 1 秒，最多增加到基础超时本身；写入失败或超时后 ElBot 会断开并重连 OneBot，避免一个慢发送长期占住后续消息。发送仍会同步等待平台回执。
 
 Telegram 使用 Bot API long polling。最小配置示例：
 

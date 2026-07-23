@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"time"
+
 	"elbot/internal/completion"
 	runtimestatus "elbot/internal/runtime"
 )
@@ -19,6 +21,7 @@ const (
 	remoteMsgStreamReplace  = "stream_replace"
 	remoteMsgStreamFinish   = "stream_finish"
 	remoteMsgError          = "error"
+	remoteWriteTimeout      = 15 * time.Second
 )
 
 type remoteMessage struct {
