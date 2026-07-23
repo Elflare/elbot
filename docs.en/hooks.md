@@ -435,15 +435,9 @@ When the limit is reached, expired items are deleted first, and then the coldest
 
 ### Process Environment
 
-One-off exec, Persistent Worker, and Transient Worker use the same set of environments: they first inherit the ElBot service process environment, and then supplement variables that do not yet exist in the configuration root directory `.env`. Variables with the same name in the service process take priority, so `Environment=` in systemd will not be overwritten by `.env`. All process Hooks will obtain the variables in `.env`, including the keys therein; Only trusted Hook code should be executed.
+One-time exec, Persistent Worker, and Transient Worker all inherit the ElBot process environment, and are layeredly overridden by the Hook public `plugins/.env` and plugin directory `.env`; The configuration root `.env` will not inject Hooks. For full priority, `PATH` append rules, and effective timing, see [Process Environment Inheritance](configuration.md#进程环境继承).
 
-`PATH` is an exception: ElBot will append the PATH directory of `.env` to the service process PATH; after deduplication, it is used both for searching `command[0]` and as the PATH for child processes. For example, it can be configured when systemd cannot see the user-level `uv`:
-
-```dotenv
-PATH=/home/elbot/.local/bin
-```
-
-ElBot will not load interactive shell initializations such as `.bashrc`, `.profile`, mise/asdf, nor will it expand `$PATH` or `~` in the PATH; Please fill in the actual directory. `.env` is read when ElBot starts; the service needs to be restarted after modification. Executing `/hooks reload` separately will not refresh the environment.
+Hooks do not load interactive Shell initializations such as `.bashrc`, `.profile`, mise/asdf, etc. After modifying the Hook environment file, execute `/hooks reload` to apply the changes, and Workers will be rebuilt based on the new environment.
 
 ### One-time exec Hook
 
