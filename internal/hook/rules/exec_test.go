@@ -54,8 +54,13 @@ func TestExecCommandPreservesArgvAndRendersEachArgument(t *testing.T) {
 
 func TestExecCommandUsesConfiguredProcessEnvironment(t *testing.T) {
 	const key = "ELBOT_EXEC_HOOK_ENV_TEST"
-	module := Module{Opts: Options{ProcessEnv: hook.NewProcessEnvironment(os.Environ(), map[string]string{key: "from-dotenv"})}}
-	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("env", key)}}}, hook.Event{})
+	baseEnv := hook.NewProcessEnvironment(os.Environ(), map[string]string{key: "from-manager"})
+	module := Module{Opts: Options{ProcessEnv: baseEnv}}
+	rule := Rule{
+		Actions: []Action{{Type: "exec", Command: execHelperCommand("env", key)}},
+		source:  ruleSource{ProcessEnv: baseEnv.Overlay(map[string]string{key: "from-dotenv"})},
+	}
+	got, err := module.runRule(context.Background(), rule, hook.Event{})
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}

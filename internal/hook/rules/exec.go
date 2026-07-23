@@ -47,7 +47,11 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 	if err != nil {
 		return event, actionResult{Error: err.Error()}, err
 	}
-	cmd := m.Opts.ProcessEnv.CommandContext(runCtx, argv[0], argv[1:]...)
+	processEnv := m.Opts.ProcessEnv
+	if action.source.ProcessEnv.Configured() {
+		processEnv = action.source.ProcessEnv
+	}
+	cmd := processEnv.CommandContext(runCtx, argv[0], argv[1:]...)
 	cmd.Dir = cwd
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

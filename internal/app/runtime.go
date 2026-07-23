@@ -20,6 +20,7 @@ import (
 	hookcontrol "elbot/internal/hook/control"
 	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/memory/resident"
+	"elbot/internal/processenv"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/tool/builtin"
@@ -34,9 +35,11 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	logger := foundation.Logger
 	dotEnv, err := config.LoadDotEnv(filepath.Dir(cfg.ConfigPath))
 	if err != nil {
-		return nil, fmt.Errorf("load hook process environment: %w", err)
+		return nil, fmt.Errorf("load process environment: %w", err)
 	}
-	hookProcessEnv := hook.NewProcessEnvironment(os.Environ(), dotEnv)
+	baseProcessEnv := processenv.New(os.Environ())
+	shellProcessEnv := baseProcessEnv.Fill(dotEnv)
+	hookProcessEnv := hook.ProcessEnvironment(baseProcessEnv)
 	var agt *agent.Agent
 	sendNotice := func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 		if agt == nil {
@@ -60,6 +63,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		CronService:            cronService,
 		ChatHistory:            foundation.ChatHistory,
 		ResidentMemoryMaxUnits: resident.Limits{Core: cfg.ResidentMemory.CoreMaxUnits, Normal: cfg.ResidentMemory.NormalMaxUnits},
+		ProcessEnv:             shellProcessEnv,
 	})
 	if err != nil {
 		return nil, err

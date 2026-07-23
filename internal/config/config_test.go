@@ -69,7 +69,7 @@ func TestResolvePathGeneratesPlatformDefaultsWhenNoConfigExists(t *testing.T) {
 	if resolved != filepath.Clean(want) {
 		t.Fatalf("resolved path = %q, want %q", resolved, filepath.Clean(want))
 	}
-	for _, rel := range []string{"app.toml", "providers.toml", "state.toml", "SOUL.md", "memories.toml", "elnis.toml", filepath.Join("skills", "agent", "agent_skill_creator", "SKILL.md"), filepath.Join("skills", "agent", "agent_skill_creator", "ELBOT_SKILL.toml"), filepath.Join("skills", "agent", "write_elbot_hook", "SKILL.md"), filepath.Join("skills", "agent", "write_elbot_hook", "ELBOT_SKILL.toml"), ".env.example"} {
+	for _, rel := range []string{"app.toml", "providers.toml", "state.toml", "SOUL.md", "memories.toml", "elnis.toml", filepath.Join("skills", "agent", "agent_skill_creator", "SKILL.md"), filepath.Join("skills", "agent", "agent_skill_creator", "ELBOT_SKILL.toml"), filepath.Join("skills", "agent", "write_elbot_hook", "SKILL.md"), filepath.Join("skills", "agent", "write_elbot_hook", "ELBOT_SKILL.toml"), filepath.Join("plugins", ".env"), ".env.example"} {
 		if _, err := os.Stat(filepath.Join(filepath.Dir(want), rel)); err != nil {
 			t.Fatalf("expected generated file %s: %v", rel, err)
 		}
@@ -81,6 +81,13 @@ func TestResolvePathGeneratesPlatformDefaultsWhenNoConfigExists(t *testing.T) {
 	}
 	if !strings.Contains(string(envExampleData), "JINA_API_KEY=") {
 		t.Fatalf("generated .env.example is missing JINA_API_KEY: %q", string(envExampleData))
+	}
+	hookEnvData, err := os.ReadFile(filepath.Join(filepath.Dir(want), "plugins", ".env"))
+	if err != nil {
+		t.Fatalf("read generated plugins/.env: %v", err)
+	}
+	if !strings.Contains(string(hookEnvData), "# PATH=/absolute/path/to/bin") {
+		t.Fatalf("generated plugins/.env is missing PATH guidance: %q", string(hookEnvData))
 	}
 	elnisData, err := os.ReadFile(filepath.Join(filepath.Dir(want), "elnis.toml"))
 	if err != nil {
@@ -153,6 +160,9 @@ func TestEnsurePlatformDefaultsDoesNotOverwriteExistingFiles(t *testing.T) {
 	}
 	custom := "# custom app\n"
 	writeFile(t, configPath, custom)
+	customHookEnv := "TOKEN=custom\n"
+	hookEnvPath := filepath.Join(filepath.Dir(configPath), "plugins", ".env")
+	writeFile(t, hookEnvPath, customHookEnv)
 
 	generated, err := EnsurePlatformDefaults()
 	if err != nil {
@@ -167,6 +177,13 @@ func TestEnsurePlatformDefaultsDoesNotOverwriteExistingFiles(t *testing.T) {
 	}
 	if string(data) != custom {
 		t.Fatalf("existing app.toml was overwritten: %q", string(data))
+	}
+	hookEnvData, err := os.ReadFile(hookEnvPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(hookEnvData) != customHookEnv {
+		t.Fatalf("existing plugins/.env was overwritten: %q", string(hookEnvData))
 	}
 	if _, err := os.Stat(filepath.Join(filepath.Dir(configPath), "elnis.toml")); err != nil {
 		t.Fatalf("expected missing assets to be created: %v", err)

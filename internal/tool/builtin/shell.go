@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"elbot/internal/llm"
+	"elbot/internal/processenv"
 	"elbot/internal/tool"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -27,7 +28,8 @@ const (
 )
 
 type ShellTool struct {
-	FileGuard *FileGuard
+	FileGuard  *FileGuard
+	ProcessEnv processenv.Environment
 }
 
 type shellArgs struct {
@@ -42,7 +44,11 @@ type shellData struct {
 }
 
 func NewShellTool(fileGuard ...*FileGuard) ShellTool {
-	return ShellTool{FileGuard: firstFileGuard(fileGuard)}
+	return NewShellToolWithEnvironment(processenv.Environment{}, fileGuard...)
+}
+
+func NewShellToolWithEnvironment(environment processenv.Environment, fileGuard ...*FileGuard) ShellTool {
+	return ShellTool{FileGuard: firstFileGuard(fileGuard), ProcessEnv: environment}
 }
 
 func (ShellTool) Name() string {
@@ -140,7 +146,7 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result
 	if advice.blockErr != nil {
 		return nil, advice.blockErr
 	}
-	cmd := shellCommand(runCtx, cmdText)
+	cmd := shellCommand(runCtx, t.ProcessEnv, cmdText)
 	configureShellProcess(cmd)
 	cmd.Dir = workDir
 	var stdout bytes.Buffer
@@ -220,13 +226,13 @@ func rejectBashShellDirectoryChange(cmdText string) error {
 	return nil
 }
 
-func shellCommand(ctx context.Context, cmdText string) *exec.Cmd {
+func shellCommand(ctx context.Context, environment processenv.Environment, cmdText string) *exec.Cmd {
 	if runtime.GOOS == "windows" {
 		name, args := resolveWindowsShell()
-		return exec.CommandContext(ctx, name, append(args, powershellUTF8Command(name, cmdText))...)
+		return environment.CommandContext(ctx, name, append(args, powershellUTF8Command(name, cmdText))...)
 	}
 	name, args := resolveUnixShell()
-	return exec.CommandContext(ctx, name, append(args, cmdText)...)
+	return environment.CommandContext(ctx, name, append(args, cmdText)...)
 }
 
 func powershellUTF8Command(shellName, cmdText string) string {
@@ -268,16 +274,16 @@ func detectWindowsShell() windowsShell {
 		return windowsShell{name: "pwsh", args: []string{"-NoProfile", "-Command"}}
 	}
 	if _, err := exec.LookPath("bash"); err == nil {
-		return windowsShell{name: "bash", args: []string{"-lc"}}
+		return windowsShell{name: "bash", args: []string{"--noprofile", "--norc", "-c"}}
 	}
 	return windowsShell{name: "powershell.exe", args: []string{"-NoProfile", "-Command"}}
 }
 
 func resolveUnixShell() (string, []string) {
 	if _, err := exec.LookPath("bash"); err == nil {
-		return "bash", []string{"-lc"}
+		return "bash", []string{"--noprofile", "--norc", "-c"}
 	}
-	return "sh", []string{"-lc"}
+	return "sh", []string{"-c"}
 }
 
 func runShellCommand(ctx context.Context, cmd *exec.Cmd) error {

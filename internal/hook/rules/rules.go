@@ -145,6 +145,7 @@ type ruleSource struct {
 	FinalName         string
 	RuntimeID         string
 	Block             hook.BlockPolicy
+	ProcessEnv        hook.ProcessEnvironment
 }
 
 type PlatformAPICaller interface {

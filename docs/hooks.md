@@ -433,15 +433,9 @@ key 去除首尾空白后必须非空，最长 256 字节。建议使用 `users/
 
 ### 进程环境
 
-一次性 exec、Persistent Worker 和 Transient Worker 使用同一套环境：先继承 ElBot 服务进程环境，再补充配置根目录 `.env` 中尚未存在的变量。服务进程中的同名变量优先，因此 systemd 的 `Environment=` 不会被 `.env` 覆盖。所有进程 Hook 都会获得 `.env` 中的变量，包括其中的密钥；只应运行受信任的 Hook 代码。
+一次性 exec、Persistent Worker 和 Transient Worker 都继承 ElBot 进程环境，并按 Hook 公共 `plugins/.env` 与插件目录 `.env` 分层覆盖；配置根 `.env` 不会注入 Hook。完整的优先级、`PATH` 追加规则和生效时机见[进程环境继承](configuration.md#进程环境继承)。
 
-`PATH` 是例外：ElBot 会把 `.env` 的 PATH 目录追加到服务进程 PATH，去重后同时用于查找 `command[0]` 和作为子进程 PATH。例如 systemd 看不到用户级 `uv` 时可配置：
-
-```dotenv
-PATH=/home/elbot/.local/bin
-```
-
-ElBot 不会加载 `.bashrc`、`.profile`、mise/asdf 等交互式 shell 初始化，也不会展开 PATH 中的 `$PATH` 或 `~`；请填写实际目录。`.env` 在 ElBot 启动时读取，修改后需要重启服务，单独执行 `/hooks reload` 不会刷新环境。
+Hook 不加载 `.bashrc`、`.profile`、mise/asdf 等交互式 Shell 初始化。修改 Hook 环境文件后执行 `/hooks reload` 即可应用，并会按新环境重建 Worker。
 
 ### 一次性 exec Hook
 

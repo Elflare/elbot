@@ -120,7 +120,11 @@ func (w *worker) run() {
 		w.startFailed(err)
 		return
 	}
-	cmd := w.manager.opts.ProcessEnv.Command(argv[0], argv[1:]...)
+	processEnv := w.manager.opts.ProcessEnv
+	if w.config.ProcessEnv.Configured() {
+		processEnv = w.config.ProcessEnv
+	}
+	cmd := processEnv.Command(argv[0], argv[1:]...)
 	cmd.Dir = cwd
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

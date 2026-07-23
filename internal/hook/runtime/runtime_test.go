@@ -133,9 +133,10 @@ func TestManagerBuildsCanonicalRuntimeMessageSegments(t *testing.T) {
 func TestManagerWorkersUseConfiguredProcessEnvironment(t *testing.T) {
 	for _, mode := range []Mode{ModePersistent, ModeTransient} {
 		t.Run(string(mode), func(t *testing.T) {
+			baseEnv := hook.NewProcessEnvironment(os.Environ(), map[string]string{"ELBOT_WORKER_HOOK_ENV_TEST": "from-manager"})
 			manager := NewManager(Options{
 				SharedDir:  t.TempDir(),
-				ProcessEnv: hook.NewProcessEnvironment(os.Environ(), map[string]string{"ELBOT_WORKER_HOOK_ENV_TEST": "from-dotenv"}),
+				ProcessEnv: baseEnv,
 			})
 			config := Config{
 				Mode:                   mode,
@@ -148,6 +149,7 @@ func TestManagerWorkersUseConfiguredProcessEnvironment(t *testing.T) {
 				Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
 				ID:                     "env",
 				Dir:                    t.TempDir(),
+				ProcessEnv:             baseEnv.Overlay(map[string]string{"ELBOT_WORKER_HOOK_ENV_TEST": "from-dotenv"}),
 			}
 			if err := manager.Apply([]Config{config}); err != nil {
 				t.Fatalf("Apply: %v", err)
