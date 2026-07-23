@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## Unreleased
+## [v0.4.0 - 2026-07-23]
 
 ### Changed
 
@@ -36,7 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `read_file` 的 `start_line` 兼容 LLM 偶尔生成的整数字符串，避免有效行号因 JSON 类型偏差导致读取失败。
 
 ### Added
-
 
 - **重构hook系统**
 - 工具完成 Hook 支持返回包含 URL、路径或 base64 图片的 `message.segments`；多模态工具结果可持久化并按 OpenAI Chat Completions 协议作为后续图片消息提供给模型。
