@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- Update environment variable inheritance and hierarchical `.env` configuration for Shell and Hook.
+
 ## [v0.4.0 - 2026-07-23]
 
 ### Changed
