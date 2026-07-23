@@ -15,6 +15,7 @@ All configuration files are automatically generated from the program's built-in 
 | `tool_tags.toml` | Configuration file for adding tags and prompts to tools. |
 | `SOUL.md` | The System Prompt source file for the Agent. |
 | `.env` | Optional, local key file, not recommended for submission; the one automatically generated the first time is `.env.example`, and `.env` will not be generated directly. |
+| `plugins/.env` | Automatically generated Hook public environment file; by default, it contains only comments, but public variables and additional `PATH` can be added. |
 | `plugins/` | Hook and plugin configuration directory. |
 | `skills/` | User-side Skill directory, located in the configuration directory by default; The current subdirectories are `skills/agent/` and `skills/go/`. AgentSkill can place `ELBOT_SKILL.toml` in the root directory to configure visibility or register as a regular tool. |
 | `memories.toml` | Resident memory file, located in the configuration directory by default. |
@@ -31,7 +32,7 @@ The main configuration is searched in the following order upon startup:
 
 The content of the automatically generated default configuration comes from the program's built-in assets, and existing files will not be overwritten. Automatic generation is only triggered when there are no explicit `--config` and `ELBOT_CONFIG_FILE`. If the explicitly specified configuration path does not exist, ElBot will report an error instead of silently generating it, to avoid masking path spelling errors.
 
-Files automatically generated for the first time include: `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `memories.toml`, `elnis.toml`, `skills/agent/agent_skill_creator/SKILL.md`, `skills/agent/agent_skill_creator/ELBOT_SKILL.toml`, `skills/agent/write_elbot_hook/SKILL.md`, `skills/agent/write_elbot_hook/ELBOT_SKILL.toml`, and `.env.example`; At the same time, the directories `skills/`, `skills/agent/`, `skills/go/`, `plugins/`, and `long_memory/` will be created. Existing files will not be overwritten. `elnis.toml` defaults to `enabled=false`, and HTTP listening will not be started on the first run.
+Files automatically generated for the first time include: `app.toml`, `providers.toml`, `state.toml`, `SOUL.md`, `memories.toml`, `elnis.toml`, `skills/agent/agent_skill_creator/SKILL.md`, `skills/agent/agent_skill_creator/ELBOT_SKILL.toml`, `skills/agent/write_elbot_hook/SKILL.md`, `skills/agent/write_elbot_hook/ELBOT_SKILL.toml`, `plugins/.env`, and `.env.example`; At the same time, the directories `skills/`, `skills/agent/`, `skills/go/`, `plugins/`, and `long_memory/` will be created. Existing files will not be overwritten. `elnis.toml` defaults to `enabled=false`, and HTTP listening will not be started on the first run.
 
 
 During the development phase, you can run it directly to use the platform configuration directory; default configurations will be automatically generated upon the first run:
@@ -172,7 +173,35 @@ OPENAI_API_KEY=your-api-key
 
 Do not commit actual keys to the repository.
 
-Process Hooks will inherit the ElBot process environment and obtain all variables in the configuration directory `.env`; Variables with the same name in the system environment take priority. The PATH of `.env` will serve as a supplementary directory for the service process PATH; for details, see [Hook Process Environment](hooks.md#进程环境). After modifying `.env`, the ElBot service needs to be restarted.
+The configuration root `.env` will also be supplemented into the process environment of the LLM Shell; Variables with the same name in the ElBot process take priority. The Shell can read all variables within it, including the Provider Key; therefore, related tools should only be enabled when the current model and Shell permission policies are trusted. ElBot needs to be restarted after modifying the root `.env`.
+
+## Process Environment Inheritance
+
+| Process Entry Point | Environment Source and Priority |
+| --- | --- |
+| LLM Shell | Based on the ElBot process environment, the configuration root `.env` supplements variables that do not yet exist. |
+| Root Hook Rules | Based on the ElBot process environment, `plugins/.env` overrides variables with the same name. |
+| Plugin exec and Worker | Based on the root Hook environment, `.env` in the same directory as the plugin configuration file further overrides variables with the same name; the default path is `plugins/<插件 ID>/.env`. |
+
+`PATH` is not overridden like ordinary variables, but is instead appended and deduplicated sequentially according to the hierarchy mentioned above. System paths are preserved by default, so only additional directories need to be specified in the file, for example:
+
+```dotenv
+PATH=/home/elbot/.local/bin
+```
+
+Do not repeat the full system PATH, and do not fill in `$PATH`, `%PATH%`, or `~`, as dotenv does not perform variable or path expansion. `PATH` can be omitted when there are no additional directories.
+
+Standard variables can be set in the corresponding environment files when a proxy is needed; commands started by Shell or Hook will inherit them, although whether they are used still depends on the specific program:
+
+```dotenv
+HTTP_PROXY=http://127.0.0.1:7890
+HTTPS_PROXY=http://127.0.0.1:7890
+NO_PROXY=localhost,127.0.0.1,::1
+```
+
+The root configuration `.env` will not be injected into Hooks. Proxies, tool paths, or variables shared by all Hooks should be placed in `plugins/.env`; Keys used only by a single plugin should be placed in that plugin's `.env`. One-time exec, Persistent Workers, and Transient Workers follow the same rules.
+
+The root `.env` takes effect upon restarting ElBot; `plugins/.env` and plugin `.env` are reread during startup and `/hooks reload`; a reload will rebuild Workers based on the new environment. If the Hook environment file does not exist, it is treated as an empty configuration. Hook code is still trusted code; tiered `.env` only isolates configurations and is not a system-level security sandbox.
 
 ## CLI Remote Configuration
 
