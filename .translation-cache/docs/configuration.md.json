@@ -8,6 +8,14 @@
       "translation": "Manually supplemented model list (used when the API cannot retrieve them)",
       "updated_at": 1782312356
     },
+    "docs/configuration.md:code-comment:toml:56178a005a2cfc1e65a6d82584a66a23375ca64999c69d835b804569d1f75c5c": {
+      "kind": "code-comment:toml",
+      "source": "OneBot 写入和响应等待的基础超时",
+      "source_file": "docs/configuration.md",
+      "source_hash": "56178a005a2cfc1e65a6d82584a66a23375ca64999c69d835b804569d1f75c5c",
+      "translation": "Base timeout for OneBot write and response wait",
+      "updated_at": 1784818746
+    },
     "docs/configuration.md:code-comment:toml:7296b2cd1c3a958a2308be6556465ad8a8ef8c2deee8d2eccf925d7cbd8ace97": {
       "kind": "code-comment:toml",
       "source": "可选，HTTP/SOCKS5 代理地址",
@@ -1296,6 +1304,14 @@
       "translation": "When __ELBOT_CODE_0__/__ELBOT_CODE_1__/__ELBOT_CODE_2__ are not specified, it only serves as a visibility configuration and will not be registered as a regular tool;",
       "updated_at": 1783479082
     },
+    "docs/configuration.md:paragraph:291d29336c7e20bb9baeec629a7fa4088ea614a23888d1f9033441625e5e5985": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 分别作为 OneBot 帧写入和 API 响应等待的基础超时。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "291d29336c7e20bb9baeec629a7fa4088ea614a23888d1f9033441625e5e5985",
+      "translation": "__ELBOT_CODE_0__ serves as the base timeout for OneBot frame writing and API response waiting, respectively.",
+      "updated_at": 1784818746
+    },
     "docs/configuration.md:paragraph:2b27f119c1db9c1ab78424d2839be5830e9a2f5796cf9b44f9f2d0e4f7c4df91": {
       "kind": "paragraph",
       "source": "这会把 __ELBOT_CODE_0__ 下配置的工具预载到当前 Session。如果 __ELBOT_CODE_1__ 非空，也会从本轮开始追加到 system prompt。\n",
@@ -1528,6 +1544,14 @@
       "translation": "At the same time, the directories __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, and __ELBOT_CODE_4__ will be created.",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:paragraph:70cf66b1773b9b52236590db1f99369215636c296efca6a81690f976e80a6b00": {
+      "kind": "paragraph",
+      "source": "发送仍会同步等待平台回执。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "70cf66b1773b9b52236590db1f99369215636c296efca6a81690f976e80a6b00",
+      "translation": "Sending will still synchronously wait for the platform receipt.\n",
+      "updated_at": 1784818746
+    },
     "docs/configuration.md:paragraph:727cff03098042c367dd9f6f735d8ce42e73e95f9181c739d06db45c4742c6d9": {
       "kind": "paragraph",
       "source": "推荐方式：\n",
@@ -1583,6 +1607,14 @@
       "source_hash": "8b93dd73a21f53da48f4a2f3a619552dde5ad0a618598e7182579ebef7c77363",
       "translation": "Resident memory data is saved by default in __ELBOT_CODE_0__ of the configuration directory, and the file is generated when the program runs for the first time. The length limits for the two resident memory segments, core and normal, can be set in the main configuration:\n",
       "updated_at": 1782206047
+    },
+    "docs/configuration.md:paragraph:8f55a79f41da642503fc80e443ad38f640089984463c1b174e811f92925dc2f9": {
+      "kind": "paragraph",
+      "source": "大帧写入会按编码后大小每完整 1 MiB 增加 1 秒，最多增加到基础超时本身；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "8f55a79f41da642503fc80e443ad38f640089984463c1b174e811f92925dc2f9",
+      "translation": "For large frame writes, 1 second will be added for every full 1 MiB of encoded size, up to a maximum of the base timeout itself;",
+      "updated_at": 1784818746
     },
     "docs/configuration.md:paragraph:906a4f019eb5ff9868f5feb6e2fffa252172a1e7548fde00f159bf6a9896bf35": {
       "kind": "paragraph",
@@ -1711,6 +1743,14 @@
       "source_hash": "af2ed8d7797ba5d4a3513302777996f98df6bb7907561ad4aee246925d257513",
       "translation": "__ELBOT_CODE_0__ defaults to __ELBOT_CODE_1__, and HTTP listening will not be started on the first run.\n",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:paragraph:af3839527029ef707cb784ee761ae31af2d8cf02a3e2fb69c443ebe0ac53a852": {
+      "kind": "paragraph",
+      "source": "写入失败或超时后 ElBot 会断开并重连 OneBot，避免一个慢发送长期占住后续消息。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "af3839527029ef707cb784ee761ae31af2d8cf02a3e2fb69c443ebe0ac53a852",
+      "translation": "After a write failure or timeout, ElBot will disconnect and reconnect to OneBot to prevent a slow send from blocking subsequent messages for a long time.",
+      "updated_at": 1784818746
     },
     "docs/configuration.md:paragraph:af9ac3f3d6875afec577dacea2de41b97ae276355e0f11df38f9fdf3327c0d15": {
       "kind": "paragraph",
@@ -2210,8 +2250,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "a96de6d18ab9aa56a6c0fad0106a67e3bbf216673797989d4c9b68788cf69d8b",
+  "source_hash": "9f358776c92126885b25ca38985b6f77895d51904948d1d29b3b6182dcb848cc",
   "target": "docs.en/configuration.md",
-  "updated_at": 1784812412,
+  "updated_at": 1784818746,
   "version": 2
 }
