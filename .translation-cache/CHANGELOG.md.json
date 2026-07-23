@@ -664,6 +664,14 @@
       "translation": "In PowerShell environments, AST parsing is skipped, and risk classification directly returns high-risk, requiring user confirmation.",
       "updated_at": 1783128855
     },
+    "CHANGELOG.md:list:87527ab31c72c104c890630d2aa17f528f1c3c53f01c292b2e14000fa29c16f3": {
+      "kind": "list",
+      "source": "更新 Shell 与 Hook 的环境变量继承和分级 __ELBOT_CODE_0__ 配置。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "87527ab31c72c104c890630d2aa17f528f1c3c53f01c292b2e14000fa29c16f3",
+      "translation": "Update environment variable inheritance and hierarchical __ELBOT_CODE_0__ configuration for Shell and Hook.",
+      "updated_at": 1784812490
+    },
     "CHANGELOG.md:list:8a6b94368cf2dede5354c5ff825af2af6857a380c6456fdb37a5cae19284d736": {
       "kind": "list",
       "source": "Skill reload 现改为串行、完整验证并原子替换，名称冲突或候选失败时保留旧 registry、catalog 和 AgentSkill 配置。",
@@ -1274,8 +1282,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "b5a0f6ff5247717fd440c7fbe91c8d4a81e85f6e8a8858e1f46e90e19d01faa4",
+  "source_hash": "fcabd3b0c22ed431bd736fae4f9e4238525970604e13b9fcb9cbfb124e29681e",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784792121,
+  "updated_at": 1784812490,
   "version": 2
 }
