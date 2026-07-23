@@ -5,6 +5,7 @@ All notable changes to ElBot will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
 
 ## [v0.4.0 - 2026-07-23]
 
@@ -18,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `workspace` 工具首次被发现或注入时也会加载当前目录的 `AGENTS.md`/`AGENT.md`；同一 Session 的同一路径与切换、重置入口共享一次性记录，不会重复注入。
 - 优化 `read_file` 工具，支持目录搜索、搜索结果编号选择，以及按 AST 函数名精确返回完整函数内容及其起止行号。
 - 优化system prompt
+- AgentSkill 启动扫描不再常驻缓存 `SKILL.md` 正文，只保留摘要与路径；`discover_tool` 按名称发现或 `@skill` 预载时会读取当前正文，带 `ELBOT_SKILL.toml` 的工具化 Skill 同样如此。
+- `web_extract` 工具的代理参数从 `disable_proxy` 改为 `proxy`：不填时使用 `WEB_EXTRACT_PROXY` 或系统代理环境，填 `disabled` 禁用代理，填 URL 使用指定代理。
+- `send_file` 工具改为使用 `source` 参数发送文件，支持本地路径、`file://` URI 和 HTTP(S) URL，并会按 MIME/扩展名自动将图片作为图片消息发送。
+- AgentSkill 不再通过 `python_skill_run` 固定包装执行 Python 脚本；没有 `ELBOT_SKILL.toml` 时保持说明型 Skill，可按文档使用 shell 等通用工具；说明型 AgentSkill 不读取 `SKILL.md` 风险，工具化后以 `ELBOT_SKILL.toml` 的 `risk` 为准。
+- Skill 扫描改为启动后延迟执行，并在 `discover_tool` 首次使用时兜底确保扫描，减少启动阻塞。
+- Session 闲置过期改为 `[session.idle_expiration]` 四项配置，分别控制群聊/私聊下普通用户和超级管理员的当前 Session 过期时间；默认群聊所有用户过期，私聊超级管理员不过期。
+- `shell` 工具移除 `path` 参数，命令默认在当前 workspace 下执行；后台任务仍限制在各自 sandbox 内。
+- `read_file`、`edit_file`、`send_file` 的相对路径改为基于当前 workspace 解析；绝对路径仍可临时使用并返回 warning。
+- `llm_usage` 审计事件从 debug 级别改为 info 级别，默认 `log_level=info` 即可记录 token 消耗数据。
+- QQ OneBot、QQ 官方、Telegram 平台断线重连改为指数退避（3s 起，翻倍，封顶 10s）并日志降级：连续失败只在首次记 warn，恢复后记 info，不再每轮刷屏。
+- 平台媒体输出支持在 `path` 中识别 `base64://`、`file://`、`http://`、`https://` 源；普通本地路径仍按平台默认方式处理。
+- qq 官方收到图片现在直接使用url而不是base64
+- 重构hook，详情见docs。
+- Windows 下 `shell` 工具优先使用 `pwsh`，其次 `bash`，最后回退到 `powershell.exe`。
 
 ### Fixed
 
@@ -34,6 +49,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 补全默认 `.env.example` 中缺失的 `JINA_API_KEY`。
 - 修复 Session 删除、归档确认可能因列表或当前 Session 变化而作用到错误目标的问题，并让存储错误正确返回给调用方。
 - `read_file` 的 `start_line` 兼容 LLM 偶尔生成的整数字符串，避免有效行号因 JSON 类型偏差导致读取失败。
+- CLI TUI 执行 `/stop` 后会把当前运行状态收束为 `done` 并固定耗时，不再继续累加状态栏时间。
+- 修复发现或内联预载多个 ELyph Skill 时规则卡会重复注入上下文的问题；同一会话首次注入后只继续返回 Skill 内容，保留历史中的首次规则卡以利于缓存命中。
+- 修复同一时间戳下会话消息可能按 UUID 错序加载，导致历史上下文顺序不稳定的问题。
+- 修复 `workspace` 工具设置目录时不支持 `~`、`~/path`、Windows `~\path`、`$HOME` 和 `$HOME/path` 主目录路径的问题。
+- QQ OneBot 私聊文件段缺少 `url` 时会调用 `get_file`；若返回下载地址则保存到 ElBot，若只返回 OneBot 本地路径则直接提示该路径。
+- QQ OneBot 入站 @ 消息现在会优先显示群名片，其次普通昵称，格式为 `[at 名字 qq:<id>]`，无法获取时才回退 QQ 号。
+- 修复 Windows 下 `shell` 工具回退到 PowerShell 时中文输出可能乱码的问题。
+- 修复 Windows 下无 bash 时 shell 命令的 bash AST 解析失败导致风险分类、沙盒校验、目录切换拦截和警告分析全部异常的问题；PowerShell 环境下跳过 AST 解析，风险分类直接返回高风险需用户确认。
+- OneBot 发送图片失败时，不再出现可见 fallback，但仍会记录日志。
 
 ### Added
 
@@ -61,34 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `web_extract` 新增 `jina` 参数，默认使用 Jina Reader；传 `jina=false` 可手动改用直接爬取。
 - `web_extract` 新增 `force_refresh` 参数，可按需跳过缓存、重新获取网页并更新缓存内容。
 
-### Changed
 
-- AgentSkill 启动扫描不再常驻缓存 `SKILL.md` 正文，只保留摘要与路径；`discover_tool` 按名称发现或 `@skill` 预载时会读取当前正文，带 `ELBOT_SKILL.toml` 的工具化 Skill 同样如此。
-- `web_extract` 工具的代理参数从 `disable_proxy` 改为 `proxy`：不填时使用 `WEB_EXTRACT_PROXY` 或系统代理环境，填 `disabled` 禁用代理，填 URL 使用指定代理。
-- `send_file` 工具改为使用 `source` 参数发送文件，支持本地路径、`file://` URI 和 HTTP(S) URL，并会按 MIME/扩展名自动将图片作为图片消息发送。
-- AgentSkill 不再通过 `python_skill_run` 固定包装执行 Python 脚本；没有 `ELBOT_SKILL.toml` 时保持说明型 Skill，可按文档使用 shell 等通用工具；说明型 AgentSkill 不读取 `SKILL.md` 风险，工具化后以 `ELBOT_SKILL.toml` 的 `risk` 为准。
-- Skill 扫描改为启动后延迟执行，并在 `discover_tool` 首次使用时兜底确保扫描，减少启动阻塞。
-- Session 闲置过期改为 `[session.idle_expiration]` 四项配置，分别控制群聊/私聊下普通用户和超级管理员的当前 Session 过期时间；默认群聊所有用户过期，私聊超级管理员不过期。
-- `shell` 工具移除 `path` 参数，命令默认在当前 workspace 下执行；后台任务仍限制在各自 sandbox 内。
-- `read_file`、`edit_file`、`send_file` 的相对路径改为基于当前 workspace 解析；绝对路径仍可临时使用并返回 warning。
-- `llm_usage` 审计事件从 debug 级别改为 info 级别，默认 `log_level=info` 即可记录 token 消耗数据。
-- QQ OneBot、QQ 官方、Telegram 平台断线重连改为指数退避（3s 起，翻倍，封顶 10s）并日志降级：连续失败只在首次记 warn，恢复后记 info，不再每轮刷屏。
-- 平台媒体输出支持在 `path` 中识别 `base64://`、`file://`、`http://`、`https://` 源；普通本地路径仍按平台默认方式处理。
-- qq 官方收到图片现在直接使用url而不是base64
-- 重构hook，详情见docs。
-- Windows 下 `shell` 工具优先使用 `pwsh`，其次 `bash`，最后回退到 `powershell.exe`。
-
-### Fixed
-
-- CLI TUI 执行 `/stop` 后会把当前运行状态收束为 `done` 并固定耗时，不再继续累加状态栏时间。
-- 修复发现或内联预载多个 ELyph Skill 时规则卡会重复注入上下文的问题；同一会话首次注入后只继续返回 Skill 内容，保留历史中的首次规则卡以利于缓存命中。
-- 修复同一时间戳下会话消息可能按 UUID 错序加载，导致历史上下文顺序不稳定的问题。
-- 修复 `workspace` 工具设置目录时不支持 `~`、`~/path`、Windows `~\path`、`$HOME` 和 `$HOME/path` 主目录路径的问题。
-- QQ OneBot 私聊文件段缺少 `url` 时会调用 `get_file`；若返回下载地址则保存到 ElBot，若只返回 OneBot 本地路径则直接提示该路径。
-- QQ OneBot 入站 @ 消息现在会优先显示群名片，其次普通昵称，格式为 `[at 名字 qq:<id>]`，无法获取时才回退 QQ 号。
-- 修复 Windows 下 `shell` 工具回退到 PowerShell 时中文输出可能乱码的问题。
-- 修复 Windows 下无 bash 时 shell 命令的 bash AST 解析失败导致风险分类、沙盒校验、目录切换拦截和警告分析全部异常的问题；PowerShell 环境下跳过 AST 解析，风险分类直接返回高风险需用户确认。
-- OneBot 发送图片失败时，不再出现可见 fallback，但仍会记录日志。
 
 
 ## [v0.3.0-alpha - 2026-07-01]
