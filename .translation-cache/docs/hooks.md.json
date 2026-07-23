@@ -512,14 +512,6 @@
       "translation": "Fields unrelated to the current Hook point will be zero values, empty objects, or omitted; plugins must handle them as nullable values.\n",
       "updated_at": 1783771179
     },
-    "docs/hooks.md:paragraph:0e917e29c7a9fc9568af21df50444e2847d2b16738ac43c5c46d87c6ad80e543": {
-      "kind": "paragraph",
-      "source": "例如 systemd 看不到用户级 __ELBOT_CODE_0__ 时可配置：\n",
-      "source_file": "docs/hooks.md",
-      "source_hash": "0e917e29c7a9fc9568af21df50444e2847d2b16738ac43c5c46d87c6ad80e543",
-      "translation": "For example, it can be configured when systemd cannot see the user-level __ELBOT_CODE_0__:\n",
-      "updated_at": 1784611260
-    },
     "docs/hooks.md:paragraph:1047bb6cc155fe9c8200bdeb78b8f9fd931797f6de7cdc14ebc3dbb2680e0b69": {
       "kind": "paragraph",
       "source": "插件内规则的 __ELBOT_CODE_0__ 默认插件目录，只能使用插件内相对路径；",
@@ -736,6 +728,14 @@
       "translation": "All entry points that produce outputs use the same set of segments.\n",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:22bb0550762804cd4d4aabb6931f4cedc7cf020592b064f11dc579953844ee49": {
+      "kind": "paragraph",
+      "source": "Hook 不加载 __ELBOT_CODE_0__、__ELBOT_CODE_1__、mise/asdf 等交互式 Shell 初始化。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "22bb0550762804cd4d4aabb6931f4cedc7cf020592b064f11dc579953844ee49",
+      "translation": "Hooks do not load interactive Shell initializations such as __ELBOT_CODE_0__, __ELBOT_CODE_1__, mise/asdf, etc.",
+      "updated_at": 1784812467
+    },
     "docs/hooks.md:paragraph:270dcaa81b67f4ed521e5d0cdd9d0e3154712943641831006d8b8a5a070b46d3": {
       "kind": "paragraph",
       "source": "key 去除首尾空白后必须非空，最长 256 字节。",
@@ -840,14 +840,6 @@
       "translation": "When there is no valid __ELBOT_CODE_0__, an explicit __ELBOT_CODE_1__ must be provided.",
       "updated_at": 1783771179
     },
-    "docs/hooks.md:paragraph:34b1dc098b1e539d6c965254f2fcdfe9f2bf6374e027297b559b505b35b78fdf": {
-      "kind": "paragraph",
-      "source": "所有进程 Hook 都会获得 __ELBOT_CODE_0__ 中的变量，包括其中的密钥；",
-      "source_file": "docs/hooks.md",
-      "source_hash": "34b1dc098b1e539d6c965254f2fcdfe9f2bf6374e027297b559b505b35b78fdf",
-      "translation": "All process Hooks will obtain the variables in __ELBOT_CODE_0__, including the keys therein;",
-      "updated_at": 1784611260
-    },
     "docs/hooks.md:paragraph:350f740670d90b7cfcb3a74013c7a68e9bf18277ad58414e64a2811fd7769d93": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 省略时使用规则中的两个控制字段。\n",
@@ -903,14 +895,6 @@
       "source_hash": "3e8bfb5218a7cea6d492cb4b3f9a918241464c96bbc1439fa2993e84492b0e8c",
       "translation": "__ELBOT_CODE_0__ is the idle timeout: defaults to 600 seconds if omitted;",
       "updated_at": 1784025692
-    },
-    "docs/hooks.md:paragraph:3ecbb3579dc6bdcecb431eeb02116406ba5b58a2201a994ae41ee07ff0325ab0": {
-      "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 在 ElBot 启动时读取，修改后需要重启服务，单独执行 __ELBOT_CODE_1__ 不会刷新环境。\n",
-      "source_file": "docs/hooks.md",
-      "source_hash": "3ecbb3579dc6bdcecb431eeb02116406ba5b58a2201a994ae41ee07ff0325ab0",
-      "translation": "__ELBOT_CODE_0__ is read when ElBot starts; the service needs to be restarted after modification. Executing __ELBOT_CODE_1__ separately will not refresh the environment.\n",
-      "updated_at": 1784611260
     },
     "docs/hooks.md:paragraph:3f68ac22267ac6d4a4be2727f37a93b19ac762462f9a597743db35a213d36443": {
       "kind": "paragraph",
@@ -992,6 +976,14 @@
       "translation": "The __ELBOT_CODE_0__ of the response must be the same as the request.\n",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:4efee3b4e5b850ccbb9cebc67dd084c1e7ef78110cf31ef77a0475a2d63c4b26": {
+      "kind": "paragraph",
+      "source": "修改 Hook 环境文件后执行 __ELBOT_CODE_0__ 即可应用，并会按新环境重建 Worker。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "4efee3b4e5b850ccbb9cebc67dd084c1e7ef78110cf31ef77a0475a2d63c4b26",
+      "translation": "After modifying the Hook environment file, execute __ELBOT_CODE_0__ to apply the changes, and Workers will be rebuilt based on the new environment.\n",
+      "updated_at": 1784812467
+    },
     "docs/hooks.md:paragraph:510ee55c3720a4b98fbc15042b3359c6dd9a364b804b4ddc7405a82667fa4691": {
       "kind": "paragraph",
       "source": "图片可使用 HTTP(S) __ELBOT_CODE_0__、相对插件目录的 __ELBOT_CODE_1__ 或最大 10 MiB 的 __ELBOT_CODE_2__，path/base64 会规范化为模型可读取的数据 URL。",
@@ -1008,6 +1000,14 @@
       "translation": "The parameter field for inline __ELBOT_CODE_0__ is also __ELBOT_CODE_1__, not __ELBOT_CODE_2__.\n",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:544b9b7d9b89dbd1e8f0abb001e23ca9e6d71f09b60c15992eb1dcee7874ebeb": {
+      "kind": "paragraph",
+      "source": "配置根 __ELBOT_CODE_0__ 不会注入 Hook。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "544b9b7d9b89dbd1e8f0abb001e23ca9e6d71f09b60c15992eb1dcee7874ebeb",
+      "translation": "The configuration root __ELBOT_CODE_0__ will not inject Hooks.",
+      "updated_at": 1784812467
+    },
     "docs/hooks.md:paragraph:55578b40e72abf5c30e6cc6b5e1d07824f1367b5d6dc59adf4286fe6d2fd3ed0": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 和失败的 CAS 不刷新时间，过期 key 视为不存在。\n",
@@ -1023,6 +1023,14 @@
       "source_hash": "56241febfbba482afb28ebdf04196145bbc2c6dcaf50dcc7321dc7213be68fa5",
       "translation": "Tool completion Hooks can directly return text and images:\n",
       "updated_at": 1784466987
+    },
+    "docs/hooks.md:paragraph:599147f3cc580eb32ee6618f7ddb48f07abba2dc31b8178f3781e0e6e5792bff": {
+      "kind": "paragraph",
+      "source": "一次性 exec、Persistent Worker 和 Transient Worker 都继承 ElBot 进程环境，并按 Hook 公共 __ELBOT_CODE_0__ 与插件目录 __ELBOT_CODE_1__ 分层覆盖；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "599147f3cc580eb32ee6618f7ddb48f07abba2dc31b8178f3781e0e6e5792bff",
+      "translation": "One-time exec, Persistent Worker, and Transient Worker all inherit the ElBot process environment, and are layeredly overridden by the Hook public __ELBOT_CODE_0__ and plugin directory __ELBOT_CODE_1__;",
+      "updated_at": 1784812467
     },
     "docs/hooks.md:paragraph:5a328597d63aa31e7a98510c278e815e5e49ad50f59f8d9829fca4a08a26a090": {
       "kind": "paragraph",
@@ -1111,14 +1119,6 @@
       "source_hash": "6b1a7550f73229a4ae6cdb1b0656ff00cbd773e0238d04fce564d6159b85317d",
       "translation": "Both JSON and TOML targets use the snake_case fields mentioned above;",
       "updated_at": 1784025692
-    },
-    "docs/hooks.md:paragraph:6c26628504ae9f03913442b04ead77dbec1e756f2bad568a1e67b46bba37d6db": {
-      "kind": "paragraph",
-      "source": "ElBot 不会加载 __ELBOT_CODE_0__、__ELBOT_CODE_1__、mise/asdf 等交互式 shell 初始化，也不会展开 PATH 中的 __ELBOT_CODE_2__ 或 __ELBOT_CODE_3__；",
-      "source_file": "docs/hooks.md",
-      "source_hash": "6c26628504ae9f03913442b04ead77dbec1e756f2bad568a1e67b46bba37d6db",
-      "translation": "ElBot will not load interactive shell initializations such as __ELBOT_CODE_0__, __ELBOT_CODE_1__, mise/asdf, nor will it expand __ELBOT_CODE_2__ or __ELBOT_CODE_3__ in the PATH;",
-      "updated_at": 1784611260
     },
     "docs/hooks.md:paragraph:6cf769ecae02ee6706ce4f6ecb2ad55466f861f18162ed5629dbf45c22930832": {
       "kind": "paragraph",
@@ -1656,6 +1656,14 @@
       "translation": "__ELBOT_CODE_0__ is __ELBOT_CODE_1__ (default) or __ELBOT_CODE_2__; for the actual scope of effect, refer to the Hook point table.\n",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:b95af38c2e6421ac62f28bbfa50f931e93fd822b5cb0bd2a4a2d5cabd360eae3": {
+      "kind": "paragraph",
+      "source": "完整的优先级、__ELBOT_CODE_0__ 追加规则和生效时机见[进程环境继承](configuration.md#进程环境继承)。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "b95af38c2e6421ac62f28bbfa50f931e93fd822b5cb0bd2a4a2d5cabd360eae3",
+      "translation": "For full priority, __ELBOT_CODE_0__ append rules, and effective timing, see [Process Environment Inheritance](configuration.md#进程环境继承).\n",
+      "updated_at": 1784812467
+    },
     "docs/hooks.md:paragraph:b9813e64e2b4bc8bc48d7f20e2dee2747bb53e3d4926e146eca19a982cb2d8d2": {
       "kind": "paragraph",
       "source": "三项均为精确匹配且不支持通配符，__ELBOT_CODE_0__ 同时识别 __ELBOT_CODE_1__ 和 __ELBOT_CODE_2__ scope。\n",
@@ -1728,14 +1736,6 @@
       "translation": "This syntax is equivalent to a single-element __ELBOT_CODE_0__, and both cannot appear simultaneously. Multi-segment syntax:\n",
       "updated_at": 1784025692
     },
-    "docs/hooks.md:paragraph:c0b611488a29e0851cac7d5bf5658a6f4be7868a6c314fd69d0fa130285e3903": {
-      "kind": "paragraph",
-      "source": "只应运行受信任的 Hook 代码。\n",
-      "source_file": "docs/hooks.md",
-      "source_hash": "c0b611488a29e0851cac7d5bf5658a6f4be7868a6c314fd69d0fa130285e3903",
-      "translation": "Only trusted Hook code should be executed.\n",
-      "updated_at": 1784611260
-    },
     "docs/hooks.md:paragraph:c0def3e1535ccb7f7b61214cb269f4f4b967f7aebcc6dd7d395b3d0718d0c258": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 顶层包含 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__、__ELBOT_CODE_6__、__ELBOT_CODE_7__、__ELBOT_CODE_8__、__ELBOT_CODE_9__、__ELBOT_CODE_10__、__ELBOT_CODE_11__、__ELBOT_CODE_12__；",
@@ -1792,14 +1792,6 @@
       "translation": "Waiting continuation only captures the same platform, scope, and actor.",
       "updated_at": 1784025692
     },
-    "docs/hooks.md:paragraph:cbfcc005cda26f898fab70371632b055b9526dfe5ca29fe615f152bc0ddc0403": {
-      "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 是例外：ElBot 会把 __ELBOT_CODE_1__ 的 PATH 目录追加到服务进程 PATH，去重后同时用于查找 __ELBOT_CODE_2__ 和作为子进程 PATH。",
-      "source_file": "docs/hooks.md",
-      "source_hash": "cbfcc005cda26f898fab70371632b055b9526dfe5ca29fe615f152bc0ddc0403",
-      "translation": "__ELBOT_CODE_0__ is an exception: ElBot will append the PATH directory of __ELBOT_CODE_1__ to the service process PATH; after deduplication, it is used both for searching __ELBOT_CODE_2__ and as the PATH for child processes.",
-      "updated_at": 1784611260
-    },
     "docs/hooks.md:paragraph:cc539518b504c93ac6697235dae9868346c43d292a067891c5b6c6ef6734511b": {
       "kind": "paragraph",
       "source": "插件必须自行承担工具授权和风险控制。\n",
@@ -1839,14 +1831,6 @@
       "source_hash": "d36d33f4e3feeaf0bd1214dcbdb28fa4964e93e43b80aca5e9b3be5cd98a093d",
       "translation": "A one-time exec Hook will only be started if the rule is configured with __ELBOT_CODE_0__.",
       "updated_at": 1784025692
-    },
-    "docs/hooks.md:paragraph:d4e2e06d14c6400319e1f1e4f7b79792bebcdb12188b0729d274f9911a5fb321": {
-      "kind": "paragraph",
-      "source": "请填写实际目录。",
-      "source_file": "docs/hooks.md",
-      "source_hash": "d4e2e06d14c6400319e1f1e4f7b79792bebcdb12188b0729d274f9911a5fb321",
-      "translation": "Please fill in the actual directory.",
-      "updated_at": 1784611260
     },
     "docs/hooks.md:paragraph:d9394f73f44253549afc4570849e72051da20aa9938a81e621e546004e5f3d35": {
       "kind": "paragraph",
@@ -1911,14 +1895,6 @@
       "source_hash": "e25c1a384d43ad46e50e37488db15e3c1c51a21599be854c8e853ac3a5e83b57",
       "translation": "Worker trigger rule reuses the matching, role, priority, __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__ of the rule Hook;",
       "updated_at": 1784025692
-    },
-    "docs/hooks.md:paragraph:e2e947f3a3c944dd3e25eee86869ac17437b087f11192789a641f96d2966ae08": {
-      "kind": "paragraph",
-      "source": "一次性 exec、Persistent Worker 和 Transient Worker 使用同一套环境：先继承 ElBot 服务进程环境，再补充配置根目录 __ELBOT_CODE_0__ 中尚未存在的变量。",
-      "source_file": "docs/hooks.md",
-      "source_hash": "e2e947f3a3c944dd3e25eee86869ac17437b087f11192789a641f96d2966ae08",
-      "translation": "One-off exec, Persistent Worker, and Transient Worker use the same set of environments: they first inherit the ElBot service process environment, and then supplement variables that do not yet exist in the configuration root directory __ELBOT_CODE_0__.",
-      "updated_at": 1784611260
     },
     "docs/hooks.md:paragraph:e3d790dda76e6baca1a9b62f0c41ae3c8fadfdd0289e6eb26b108be4563a386e": {
       "kind": "paragraph",
@@ -2031,14 +2007,6 @@
       "source_hash": "f289d10151a9e7ed94fb9fbe28df6c5a7b3db88a190b6410e10da0f242e85025",
       "translation": "Rules for the root __ELBOT_CODE_0__ are relative to __ELBOT_CODE_1__.",
       "updated_at": 1784025692
-    },
-    "docs/hooks.md:paragraph:f366fbe16ce4583f1ad85b8972323b90fcd4cad7f61d14b90187da434d980e0d": {
-      "kind": "paragraph",
-      "source": "服务进程中的同名变量优先，因此 systemd 的 __ELBOT_CODE_0__ 不会被 __ELBOT_CODE_1__ 覆盖。",
-      "source_file": "docs/hooks.md",
-      "source_hash": "f366fbe16ce4583f1ad85b8972323b90fcd4cad7f61d14b90187da434d980e0d",
-      "translation": "Variables with the same name in the service process take priority, so __ELBOT_CODE_0__ in systemd will not be overwritten by __ELBOT_CODE_1__.",
-      "updated_at": 1784611260
     },
     "docs/hooks.md:paragraph:f391f70254dab377b8739a7d0c9c8202cf24a3a177e31a92cddb4eecff36fee7": {
       "kind": "paragraph",
@@ -3442,8 +3410,8 @@
     }
   },
   "source": "docs/hooks.md",
-  "source_hash": "43f617bd9006dd119d23a8b5dff01718d7ef0524268f96771ac78876e2cd5ec8",
+  "source_hash": "47e910a267c254dc9ca1d2ad78eb78a6e5c9dcd05ea1e7805adfdae8b84d83dc",
   "target": "docs.en/hooks.md",
-  "updated_at": 1784611260,
+  "updated_at": 1784812467,
   "version": 2
 }
