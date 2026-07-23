@@ -305,7 +305,7 @@ func (t *Transport) logCall(ctx context.Context, action string, frameBytes int, 
 	}
 	finishedAt := time.Now()
 	elapsed := finishedAt.Sub(startedAt)
-	if err == nil && elapsed < time.Second {
+	if err == nil && elapsed < 10*time.Second {
 		return
 	}
 	waitWriterEnd := acquiredAt
