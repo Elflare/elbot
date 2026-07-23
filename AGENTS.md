@@ -64,6 +64,7 @@ rg -n "locator:agent-chat" AGENTS.md devdocs/*.md
 - `devdocs/` 只给维护者和 Agent 看，不参与自动翻译。
 - `AGENTS.md` 只保留操作规则；不要把架构详解、逐文件说明重新写回这里。
 - 在已知代码的情况下，发现 code-map 或者 architecture 和代码有冲突或者内容太多，以代码为准，同时修改或者精简这两个文档。
+- 只有changelog.md执行补丁式写作：描述从旧状态怎样变化到新状态；其他文档只描述现在正确的状态。
 
 <!-- locator:testing -->
 ## 验证规则
@@ -76,5 +77,6 @@ rg -n "locator:agent-chat" AGENTS.md devdocs/*.md
 - 看diff时发现有和自己改动无关或者和记忆中不对的地方，可能是用户在同时修改，先向用户确认。
 
 ## 注意：
+
 - 所有非精确rg使用（如搜索内容中有多个|、内容简短等），必须加上限制，如-m，或者使用管道符过滤
 
