@@ -136,6 +136,14 @@
       "translation": "__ELBOT_CODE_0__ added __ELBOT_CODE_1__ and __ELBOT_CODE_2__ to filter and display __ELBOT_CODE_3__ logs.",
       "updated_at": 1784127057
     },
+    "CHANGELOG.md:list:1f43fc3e767815a7a2bb28d62158e9fa1f233ca2e46a43db188f31936f3bb56e": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 与 Session 闲置过期改为仅清除当前会话指针，首条普通消息到来时才创建新 Session；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "1f43fc3e767815a7a2bb28d62158e9fa1f233ca2e46a43db188f31936f3bb56e",
+      "translation": "__ELBOT_CODE_0__ and Session idle expiration are changed to only clear the current session pointer; a new Session is created only when the first ordinary message arrives;",
+      "updated_at": 1784863205
+    },
     "CHANGELOG.md:list:205884c043d4c2e9e93973f127b1382eef2d8f7e9adb05d5133c5559fdc974cf": {
       "kind": "list",
       "source": "优化system prompt",
@@ -1072,6 +1080,14 @@
       "translation": "**SQLite Persistence**: Unified storage for Sessions, messages, context summaries, tool call records, Cron jobs, and Elnis events.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:cba69058ca8cc2d51996903e3ce8d32a0c942a3d2965de242f0ef30bc780a151": {
+      "kind": "list",
+      "source": "过期历史会话不再立即删除，可直接通过 __ELBOT_CODE_0__ 恢复。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "cba69058ca8cc2d51996903e3ce8d32a0c942a3d2965de242f0ef30bc780a151",
+      "translation": "Expired historical Sessions are no longer deleted immediately and can be restored directly via __ELBOT_CODE_0__.",
+      "updated_at": 1784863205
+    },
     "CHANGELOG.md:list:cd8d247a2da615761263d4d1c775cd8b4f3bcb8dce6a38e69a1325d2c885c46b": {
       "kind": "list",
       "source": "实际执行、后续请求和 transcript 现在统一使用最终 arguments。",
@@ -1314,8 +1330,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "e00587781a956809e15c2984ad82096e8d7d5cc009d2dcb555214430295a5e38",
+  "source_hash": "360d4ab20d519bf1afeb3c37da74f2cbd26fbc4e4d1772b2db8f1a28c2dcd608",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784858252,
+  "updated_at": 1784863205,
   "version": 2
 }

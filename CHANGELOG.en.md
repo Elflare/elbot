@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `/new` and Session idle expiration are changed to only clear the current session pointer; a new Session is created only when the first ordinary message arrives; Expired historical Sessions are no longer deleted immediately and can be restored directly via `/resume`.
 - Update environment variable inheritance and hierarchical `.env` configuration for Shell and Hook.
 - `/hooks` list changed from displaying plugin rules item by item to aggregating them by plugin name; Worker status, all rules, and details are now expanded only when using `/hooks <插件名>`; root rules and built-in Hooks are still displayed separately.
 
