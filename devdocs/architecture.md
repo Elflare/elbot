@@ -245,7 +245,7 @@ Session 命令的分页选择记录和维护配置由 `SessionCommandState` 按 
 
 - Agent 入口需要从平台上下文解析 Actor/Scope，缺失时走 fallback。
 - Fork 上下文由 Session/Storage 支持，不在平台层拼接。
-- 闲置过期策略按群聊/私聊和普通用户/超管选择 TTL。
+- 闲置过期策略按群聊/私聊和普通用户/超管选择 TTL；过期与 `/new` 都只清除内存中的 current，首条普通消息才创建并持久化新 Session，恢复历史 Session 时重新刷新活跃时间。
 
 <!-- locator:context -->
 ## 上下文管理

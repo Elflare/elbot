@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -44,12 +45,8 @@ func compactCommandBlockedText(command string) string {
 func activeTurnCommandBlockedText() string {
 	return "当前会话处理中，暂不支持切换。如有必要，请先使用 /stop 结束当前处理。"
 }
+
 func (a *Agent) handleInput(ctx context.Context, text string) error {
-	if !hasForkFromMessage(ctx) {
-		if err := a.expireIdleCurrentSession(ctx); err != nil {
-			return err
-		}
-	}
 	session, err := a.sessionForInput(ctx, text)
 	if err != nil {
 		return err
@@ -129,6 +126,16 @@ func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session
 }
 
 func (a *Agent) expireIdleCurrentSession(ctx context.Context) error {
+	current, err := a.sessions.Current(ctx, a.scope(ctx))
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if a.turns.Snapshot(current.ID).Phase != turn.PhaseIdle {
+		return nil
+	}
 	actor := a.actor(ctx)
 	result, err := a.sessions.ExpireIdleCurrent(ctx, session.ExpireIdleRequest{
 		Scope:        a.scope(ctx),

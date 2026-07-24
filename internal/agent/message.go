@@ -77,6 +77,11 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 	text = a.stripWakeupPrefix(ctx, text)
 	segments = replaceInboundTextSegments(ctx, text)
 	ctx = withInboundSegments(ctx, segments)
+	if !hasForkFromMessage(ctx) {
+		if err := a.expireIdleCurrentSession(ctx); err != nil {
+			return err
+		}
+	}
 	if handled, err := a.commandExecutor.Handle(ctx, text); handled {
 		return err
 	}

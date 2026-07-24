@@ -107,6 +107,10 @@ func (s *Service) Resume(ctx context.Context, scope Scope, sessionID string) (*s
 	if !s.canAccess(scope, session) {
 		return nil, fmt.Errorf("session %s is not in current platform scope", sessionID)
 	}
+	session.UpdatedAt = storage.Now()
+	if err := s.store.Sessions().Update(ctx, session); err != nil {
+		return nil, err
+	}
 	s.setCurrent(scope, session.ID)
 	return session, nil
 }
@@ -130,6 +134,10 @@ func (s *Service) Touch(ctx context.Context, session *storage.Session) error {
 	return s.store.Sessions().Update(ctx, latest)
 }
 
+func (s *Service) ResetCurrent(scope Scope) {
+	s.clearCurrentIf(scope, "")
+}
+
 func (s *Service) setCurrent(scope Scope, sessionID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -140,7 +148,7 @@ func (s *Service) clearCurrentIf(scope Scope, sessionID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := s.scopeKey(scope)
-	if s.current[key] == sessionID {
+	if sessionID == "" || s.current[key] == sessionID {
 		delete(s.current, key)
 	}
 }
