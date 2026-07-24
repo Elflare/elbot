@@ -680,6 +680,14 @@
       "translation": "Update environment variable inheritance and hierarchical __ELBOT_CODE_0__ configuration for Shell and Hook.",
       "updated_at": 1784812490
     },
+    "CHANGELOG.md:list:885dcf54920f2bb1bcc4e6f6bd68c3b92db9074b55c972d4778a3e42fbf62e7e": {
+      "kind": "list",
+      "source": "使用 __ELBOT_CODE_0__ 时再展开 Worker 状态、全部规则和详情，根规则与内置 Hook 仍单独显示。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "885dcf54920f2bb1bcc4e6f6bd68c3b92db9074b55c972d4778a3e42fbf62e7e",
+      "translation": "Worker status, all rules, and details are now expanded only when using __ELBOT_CODE_0__; root rules and built-in Hooks are still displayed separately.",
+      "updated_at": 1784858252
+    },
     "CHANGELOG.md:list:8a6b94368cf2dede5354c5ff825af2af6857a380c6456fdb37a5cae19284d736": {
       "kind": "list",
       "source": "Skill reload 现改为串行、完整验证并原子替换，名称冲突或候选失败时保留旧 registry、catalog 和 AgentSkill 配置。",
@@ -791,6 +799,14 @@
       "source_hash": "982e715f6a8e303465255744e60589d5a93f784f31e748fbdb313c57f07a56e8",
       "translation": "Elvena LLM events and LLM Cron now support __ELBOT_CODE_0__ selecting background Session mode, with the default remaining __ELBOT_CODE_1__.",
       "updated_at": 1782699038
+    },
+    "CHANGELOG.md:list:99004b88c42dd7cb7dfaa0613f43eeb48749d28e47b53e94c9e1ec6c8997abb1": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 列表从逐条展示插件规则改为按插件名聚合；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "99004b88c42dd7cb7dfaa0613f43eeb48749d28e47b53e94c9e1ec6c8997abb1",
+      "translation": "__ELBOT_CODE_0__ list changed from displaying plugin rules item by item to aggregating them by plugin name;",
+      "updated_at": 1784858252
     },
     "CHANGELOG.md:list:9d5bd31f0053c4ae0a75ef9edef00162aa8c3f86f473d7a5b5a15df30dd4b93e": {
       "kind": "list",
@@ -1298,8 +1314,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "7e7a3d956e00ac4886cf2c1f14053f590b8e74002e5618816d4e956516db5857",
+  "source_hash": "e00587781a956809e15c2984ad82096e8d7d5cc009d2dcb555214430295a5e38",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784818775,
+  "updated_at": 1784858252,
   "version": 2
 }
