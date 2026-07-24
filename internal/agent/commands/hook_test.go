@@ -83,6 +83,56 @@ func TestHooksCommandCompletesRuleNameWithoutRulesPrefix(t *testing.T) {
 	}
 }
 
+func TestHooksCommandGroupsPluginRulesAndExpandsDetail(t *testing.T) {
+	hooks := &fakeHookService{
+		infos: []hook.Info{
+			{PluginID: "weather", Name: "forecast", Description: "weather plugin", Point: hook.PointPlatformMessageReceived, Priority: 1000, Detail: "on: platform.message.received\nmatch: forecast"},
+			{PluginID: "weather", Name: "weather_help", Description: "weather plugin", Point: hook.PointAgentInputPrepared, Priority: 900, Detail: "on: agent.input.prepared\nmatch: help", Active: 2},
+			{Name: "builtin.cron.missed_once", Description: "cron fallback", Point: hook.PointPlatformConnected},
+		},
+		runtimeInfos: []hookruntime.Info{{ID: "weather", Description: "weather plugin", Mode: hookruntime.ModePersistent, Status: hookruntime.StatusReady, Active: 1, Waiting: 1}},
+	}
+	cmd := NewHooks(Deps{Hooks: hooks})
+
+	result, err := cmd.Handle(context.Background(), command.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(result.Content, "\n  weather  ") != 1 || !strings.Contains(result.Content, "weather  [persistent:ready]  rules=2") {
+		t.Fatalf("grouped list = %q", result.Content)
+	}
+	if strings.Contains(result.Content, "forecast") || strings.Contains(result.Content, "weather_help") {
+		t.Fatalf("plugin rules leaked into list: %q", result.Content)
+	}
+	if !strings.Contains(result.Content, "builtin.cron.missed_once  [platform.connected]") {
+		t.Fatalf("standalone hook missing from list: %q", result.Content)
+	}
+
+	result, err = cmd.Handle(context.Background(), command.Request{Args: "weather"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"mode: persistent\nstatus: ready", "rules: 2", "rule: forecast", "rule: weather_help", "match: forecast", "match: help"} {
+		if !strings.Contains(result.Content, want) {
+			t.Fatalf("plugin detail missing %q: %q", want, result.Content)
+		}
+	}
+	if strings.Count(result.Content, "description: weather plugin") != 1 {
+		t.Fatalf("plugin description duplicated in %q", result.Content)
+	}
+
+	result, err = cmd.Handle(context.Background(), command.Request{Args: "forecast"})
+	if err != nil || !strings.Contains(result.Content, "name: forecast\npoint: platform.message.received") {
+		t.Fatalf("direct rule detail = %#v, %v", result, err)
+	}
+
+	completer := cmd.(command.Completer)
+	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/hooks w", Prefix: "/", Name: "hooks", Args: "w", Cursor: len("/hooks w")})
+	if len(got) != 1 || got[0].Text != "weather" || got[0].Description != "2 rules, persistent:ready" {
+		t.Fatalf("grouped completion = %#v", got)
+	}
+}
+
 func TestHooksReloadShowsWarnings(t *testing.T) {
 	hooks := &fakeHookService{reloadReport: hook.ReloadReport{Notices: []string{"Hook 插件 gpt_image 已跳过：bad field"}}}
 	cmd := NewHooks(Deps{Hooks: hooks})

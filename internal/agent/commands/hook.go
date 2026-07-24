@@ -3,11 +3,13 @@ package commands
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
 	"elbot/internal/command"
 	"elbot/internal/hook"
+	hookruntime "elbot/internal/hook/runtime"
 )
 
 const hookListDescriptionLimit = 60
@@ -18,6 +20,13 @@ func NewHooks(deps Deps) command.Handler {
 
 type hooksCommand struct {
 	deps Deps
+}
+
+type hookGroup struct {
+	name     string
+	plugin   bool
+	infos    []hook.Info
+	stateful *hookruntime.Info
 }
 
 func (c hooksCommand) Info() command.Info {
@@ -75,8 +84,9 @@ func (c hooksCommand) Complete(ctx context.Context, req command.CompletionReques
 	token := currentCompletionToken(req)
 	if isFirstArg(req, token) {
 		options := []completionOption{{Text: "reload", Description: "Reload all hooks"}, {Text: "start", Description: "Start a stateful hook"}, {Text: "stop", Description: "Stop a stateful hook"}, {Text: "restart", Description: "Restart a stateful hook"}}
-		for _, info := range c.deps.Hooks.HookList() {
-			options = append(options, completionOption{Text: info.Name, Description: string(info.Point)})
+		for _, group := range collectHookGroups(c.deps) {
+			description := hookCompletionDescription(group)
+			options = append(options, completionOption{Text: group.name, Description: description})
 		}
 		return completeStaticOptions(options, token.Text, token.Start, token.End, "hooks_arg")
 	}
@@ -91,38 +101,130 @@ func (c hooksCommand) Complete(ctx context.Context, req command.CompletionReques
 	return nil
 }
 
+func collectHookGroups(deps Deps) []*hookGroup {
+	groups := make([]*hookGroup, 0)
+	plugins := make(map[string]*hookGroup)
+	for _, info := range deps.Hooks.HookList() {
+		pluginID := strings.TrimSpace(info.PluginID)
+		if pluginID == "" {
+			groups = append(groups, &hookGroup{name: info.Name, infos: []hook.Info{info}})
+			continue
+		}
+		group := plugins[pluginID]
+		if group == nil {
+			group = &hookGroup{name: pluginID, plugin: true}
+			plugins[pluginID] = group
+			groups = append(groups, group)
+		}
+		group.infos = append(group.infos, info)
+	}
+	for _, info := range deps.Hooks.StatefulHooks() {
+		id := strings.TrimSpace(info.ID)
+		group := plugins[id]
+		if group == nil {
+			group = &hookGroup{name: id, plugin: true}
+			plugins[id] = group
+			groups = append(groups, group)
+		}
+		value := info
+		group.stateful = &value
+	}
+	sort.SliceStable(groups, func(i, j int) bool {
+		if groups[i].name == groups[j].name {
+			return groups[i].plugin && !groups[j].plugin
+		}
+		return groups[i].name < groups[j].name
+	})
+	return groups
+}
+
 func formatHookList(deps Deps) string {
-	infos := deps.Hooks.HookList()
-	stateful := deps.Hooks.StatefulHooks()
-	if len(infos) == 0 && len(stateful) == 0 {
+	groups := collectHookGroups(deps)
+	if len(groups) == 0 {
 		return "hooks: none"
 	}
 	var sb strings.Builder
 	sb.WriteString("hooks:\n")
-	for _, info := range infos {
-		sb.WriteString(fmt.Sprintf("  %s  [%s]  priority=%d", info.Name, info.Point, info.Priority))
-		if description := strings.TrimSpace(info.Description); description != "" {
-			sb.WriteString(" - " + truncateHookDescription(description))
+	for _, group := range groups {
+		if group.plugin {
+			writePluginHookListLine(&sb, group)
+			continue
 		}
-		if info.Active > 0 {
-			sb.WriteString(fmt.Sprintf(" | %d actived", info.Active))
-		}
-		sb.WriteString("\n")
-	}
-	for _, info := range stateful {
-		sb.WriteString(fmt.Sprintf("  %s  [%s:%s]", info.ID, info.Mode, info.Status))
-		if description := strings.TrimSpace(info.Description); description != "" {
-			sb.WriteString(" - " + truncateHookDescription(description))
-		}
-		if info.Active > 0 {
-			sb.WriteString(fmt.Sprintf(" | %d actived", info.Active))
-		}
-		if info.Waiting > 0 {
-			sb.WriteString(fmt.Sprintf(" | %d waiting", info.Waiting))
-		}
-		sb.WriteString("\n")
+		writeStandaloneHookListLine(&sb, group.infos[0])
 	}
 	return trimTrailingNewlines(sb.String())
+}
+
+func writePluginHookListLine(sb *strings.Builder, group *hookGroup) {
+	if group.stateful != nil {
+		fmt.Fprintf(sb, "  %s  [%s:%s]", group.name, group.stateful.Mode, group.stateful.Status)
+	} else {
+		fmt.Fprintf(sb, "  %s  [plugin]", group.name)
+	}
+	if len(group.infos) > 0 {
+		fmt.Fprintf(sb, "  rules=%d", len(group.infos))
+	}
+	if description := hookGroupDescription(group); description != "" {
+		sb.WriteString(" - " + truncateHookDescription(description))
+	}
+	if group.stateful != nil {
+		if group.stateful.Active > 0 {
+			fmt.Fprintf(sb, " | %d actived", group.stateful.Active)
+		}
+		if group.stateful.Waiting > 0 {
+			fmt.Fprintf(sb, " | %d waiting", group.stateful.Waiting)
+		}
+	} else if active := hookGroupActive(group); active > 0 {
+		fmt.Fprintf(sb, " | %d actived", active)
+	}
+	sb.WriteString("\n")
+}
+
+func writeStandaloneHookListLine(sb *strings.Builder, info hook.Info) {
+	fmt.Fprintf(sb, "  %s  [%s]  priority=%d", info.Name, info.Point, info.Priority)
+	if description := strings.TrimSpace(info.Description); description != "" {
+		sb.WriteString(" - " + truncateHookDescription(description))
+	}
+	if info.Active > 0 {
+		fmt.Fprintf(sb, " | %d actived", info.Active)
+	}
+	sb.WriteString("\n")
+}
+
+func hookGroupDescription(group *hookGroup) string {
+	if group.stateful != nil {
+		if description := strings.TrimSpace(group.stateful.Description); description != "" {
+			return description
+		}
+	}
+	for _, info := range group.infos {
+		if description := strings.TrimSpace(info.Description); description != "" {
+			return description
+		}
+	}
+	return ""
+}
+
+func hookGroupActive(group *hookGroup) int {
+	active := 0
+	for _, info := range group.infos {
+		active += info.Active
+	}
+	return active
+}
+
+func hookCompletionDescription(group *hookGroup) string {
+	if !group.plugin {
+		return string(group.infos[0].Point)
+	}
+	parts := make([]string, 0, 2)
+	if len(group.infos) > 0 {
+		parts = append(parts, fmt.Sprintf("%d rules", len(group.infos)))
+	}
+	if group.stateful != nil {
+		parts = append(parts, fmt.Sprintf("%s:%s", group.stateful.Mode, group.stateful.Status))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func formatHookReloadResult(report hook.ReloadReport) string {
@@ -144,39 +246,76 @@ func formatHookReloadResult(report hook.ReloadReport) string {
 }
 
 func formatHookDetail(deps Deps, name string) string {
-	for _, info := range deps.Hooks.StatefulHooks() {
-		if info.ID == name {
-			text := fmt.Sprintf("name: %s\nmode: %s\nstatus: %s", info.ID, info.Mode, info.Status)
-			if info.Active > 0 {
-				text += fmt.Sprintf("\nactive: %d", info.Active)
-			}
-			if info.Waiting > 0 {
-				text += fmt.Sprintf("\nwaiting: %d", info.Waiting)
-			}
-			if description := strings.TrimSpace(info.Description); description != "" {
-				text += "\ndescription: " + description
-			}
-			if detail := strings.TrimSpace(info.Detail); detail != "" {
-				text += "\ndetail: " + detail
-			}
-			return text
+	groups := collectHookGroups(deps)
+	for _, group := range groups {
+		if group.plugin && group.name == name {
+			return formatPluginHookDetail(group)
 		}
 	}
-	infos := deps.Hooks.HookList()
-	for _, info := range infos {
-		if info.Name == name {
-			var sb strings.Builder
-			sb.WriteString(fmt.Sprintf("name: %s\npoint: %s\npriority: %d", info.Name, info.Point, info.Priority))
-			if description := strings.TrimSpace(info.Description); description != "" {
-				sb.WriteString("\ndescription: " + description)
+	for _, group := range groups {
+		for _, info := range group.infos {
+			if info.Name == name {
+				return formatSingleHookDetail(info)
 			}
-			if detail := strings.TrimSpace(info.Detail); detail != "" {
-				sb.WriteString("\n" + detail)
-			}
-			return sb.String()
 		}
 	}
 	return fmt.Sprintf("hook %q not found. Use /hooks to list all hooks.", name)
+}
+
+func formatPluginHookDetail(group *hookGroup) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "name: %s", group.name)
+	if group.stateful != nil {
+		fmt.Fprintf(&sb, "\nmode: %s\nstatus: %s", group.stateful.Mode, group.stateful.Status)
+		if group.stateful.Active > 0 {
+			fmt.Fprintf(&sb, "\nactive: %d", group.stateful.Active)
+		}
+		if group.stateful.Waiting > 0 {
+			fmt.Fprintf(&sb, "\nwaiting: %d", group.stateful.Waiting)
+		}
+	}
+	description := hookGroupDescription(group)
+	if description != "" {
+		sb.WriteString("\ndescription: " + description)
+	}
+	if group.stateful != nil {
+		if detail := strings.TrimSpace(group.stateful.Detail); detail != "" {
+			sb.WriteString("\ndetail: " + detail)
+		}
+	}
+	if len(group.infos) > 0 {
+		fmt.Fprintf(&sb, "\nrules: %d", len(group.infos))
+		for _, info := range group.infos {
+			sb.WriteString("\n\n")
+			writePluginRuleDetail(&sb, info, description)
+		}
+	}
+	return sb.String()
+}
+
+func writePluginRuleDetail(sb *strings.Builder, info hook.Info, pluginDescription string) {
+	fmt.Fprintf(sb, "rule: %s\npoint: %s\npriority: %d", info.Name, info.Point, info.Priority)
+	if info.Active > 0 {
+		fmt.Fprintf(sb, "\nactive: %d", info.Active)
+	}
+	if description := strings.TrimSpace(info.Description); description != "" && description != pluginDescription {
+		sb.WriteString("\ndescription: " + description)
+	}
+	if detail := strings.TrimSpace(info.Detail); detail != "" {
+		sb.WriteString("\n" + detail)
+	}
+}
+
+func formatSingleHookDetail(info hook.Info) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "name: %s\npoint: %s\npriority: %d", info.Name, info.Point, info.Priority)
+	if description := strings.TrimSpace(info.Description); description != "" {
+		sb.WriteString("\ndescription: " + description)
+	}
+	if detail := strings.TrimSpace(info.Detail); detail != "" {
+		sb.WriteString("\n" + detail)
+	}
+	return sb.String()
 }
 
 func truncateHookDescription(description string) string {
