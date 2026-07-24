@@ -33,6 +33,11 @@ func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 		t.Fatalf("current = %s, want %s", current.ID, second.ID)
 	}
 
+	aged := time.Now().Add(-time.Hour)
+	first.UpdatedAt = aged
+	if err := store.Sessions().Update(ctx, first); err != nil {
+		t.Fatalf("age first session: %v", err)
+	}
 	if _, err := svc.Resume(ctx, scope, first.ID); err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
@@ -42,6 +47,9 @@ func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 	}
 	if current.ID != first.ID {
 		t.Fatalf("current = %s, want %s", current.ID, first.ID)
+	}
+	if !current.UpdatedAt.After(aged) {
+		t.Fatalf("resumed updated_at = %v, want after %v", current.UpdatedAt, aged)
 	}
 
 	if err := store.Messages().Append(ctx, &storage.Message{SessionID: first.ID, Role: storage.RoleUser, Content: "hello"}); err != nil {

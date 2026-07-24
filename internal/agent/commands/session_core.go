@@ -7,18 +7,14 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/security"
-	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
 
 func NewNew(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "new", Usage: "/new", Description: "Create and switch to a new session.", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: security.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
-		session, err := deps.Sessions.Create(ctx, deps.Scope(ctx), sessionpkg.CreateRequest{Title: "New session"})
-		if err != nil {
-			return nil, err
-		}
-		return &command.Result{Content: fmt.Sprintf("created new session:\n  id: %s\n  title: %s\n  mode: %s", session.ID, session.Title, session.Mode)}, nil
+	return command.NewFunc(command.Info{Name: "new", Usage: "/new", Description: "Reset the current session; the next message creates a new one.", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: security.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+		deps.Sessions.ResetCurrent(deps.Scope(ctx))
+		return &command.Result{Content: "new session ready; it will be created when you send the first message"}, nil
 	})
 }
 

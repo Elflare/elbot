@@ -5,6 +5,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 	"elbot/internal/turn"
@@ -283,10 +284,15 @@ func TestActiveTurnBlocksAllSessionSwitchCommands(t *testing.T) {
 func TestStopAllowsSessionSwitchAfterActiveTurn(t *testing.T) {
 	p := &fakePlatform{}
 	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
-	ctx := context.Background()
+	a.SetSessionIdleExpiration(config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 10})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "1", ScopeID: "group:9"})
 	current, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "current"})
 	if err != nil {
 		t.Fatal(err)
+	}
+	current.UpdatedAt = time.Now().Add(-11 * time.Minute)
+	if err := a.store.Sessions().Update(ctx, current); err != nil {
+		t.Fatalf("age current session: %v", err)
 	}
 	if !a.turns.StartLLM(current.ID, "input") {
 		t.Fatal("StartLLM returned false")
@@ -300,12 +306,8 @@ func TestStopAllowsSessionSwitchAfterActiveTurn(t *testing.T) {
 	if err := a.HandleMessage(ctx, "/new"); err != nil {
 		t.Fatalf("/new: %v", err)
 	}
-	after, err := a.sessions.Current(ctx, a.scope(ctx))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if after.ID == current.ID {
-		t.Fatalf("current session remained %s after /stop and /new", current.ID)
+	if _, err := a.sessions.Current(ctx, a.scope(ctx)); err == nil {
+		t.Fatal("current session still exists after /new")
 	}
 }
 

@@ -93,8 +93,8 @@ func TestSessionIdleExpiration(t *testing.T) {
 				t.Fatalf("current session: %v", err)
 			}
 			if tt.wantExpired {
-				if !errors.Is(oldErr, storage.ErrNotFound) {
-					t.Fatalf("old session err = %v, want not found", oldErr)
+				if oldErr != nil {
+					t.Fatalf("old session err = %v, want nil", oldErr)
 				}
 				if current.ID == oldSession.ID {
 					t.Fatal("current session was not replaced")
@@ -108,6 +108,62 @@ func TestSessionIdleExpiration(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestIdleExpirationClearsCurrentAndCanResume(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	a := New(p, &fakeLLM{replies: []string{"continued"}}, "test-model", config.ProviderConfig{}, store)
+	a.SetSessionIdleExpiration(config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 10})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "1", ScopeID: "group:9"})
+	oldSession, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "old conversation"})
+	if err != nil {
+		t.Fatalf("create old session: %v", err)
+	}
+	for _, message := range []*storage.Message{
+		{SessionID: oldSession.ID, Role: storage.RoleUser, Content: "old question"},
+		{SessionID: oldSession.ID, Role: storage.RoleAssistant, Content: "old answer"},
+	} {
+		if err := store.Messages().Append(ctx, message); err != nil {
+			t.Fatalf("append old message: %v", err)
+		}
+	}
+	oldSession.UpdatedAt = time.Now().Add(-11 * time.Minute)
+	if err := store.Sessions().Update(ctx, oldSession); err != nil {
+		t.Fatalf("age old session: %v", err)
+	}
+
+	if err := a.HandleMessage(ctx, "/status"); err != nil {
+		t.Fatalf("/status: %v", err)
+	}
+	if !strings.Contains(p.out.String(), "current session: none") {
+		t.Fatalf("/status output = %q", p.out.String())
+	}
+	if _, err := a.sessions.Current(ctx, a.scope(ctx)); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("current after expiration = %v, want not found", err)
+	}
+	if _, err := store.Sessions().Get(ctx, oldSession.ID); err != nil {
+		t.Fatalf("expired session was not preserved: %v", err)
+	}
+
+	p.out.Reset()
+	if err := a.HandleMessage(ctx, "/resume 1"); err != nil {
+		t.Fatalf("/resume 1: %v", err)
+	}
+	current, err := a.sessions.Current(ctx, a.scope(ctx))
+	if err != nil {
+		t.Fatalf("current after resume: %v", err)
+	}
+	if current.ID != oldSession.ID {
+		t.Fatalf("current after resume = %s, want %s", current.ID, oldSession.ID)
+	}
+	if err := a.HandleMessage(ctx, "continue"); err != nil {
+		t.Fatalf("continue resumed session: %v", err)
+	}
+	current, err = a.sessions.Current(ctx, a.scope(ctx))
+	if err != nil || current.ID != oldSession.ID {
+		t.Fatalf("current after continued chat = %#v, %v", current, err)
 	}
 }
 

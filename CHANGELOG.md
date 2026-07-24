@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `/new` 与 Session 闲置过期改为仅清除当前会话指针，首条普通消息到来时才创建新 Session；过期历史会话不再立即删除，可直接通过 `/resume` 恢复。
 - 更新 Shell 与 Hook 的环境变量继承和分级 `.env` 配置。
 - `/hooks` 列表从逐条展示插件规则改为按插件名聚合；使用 `/hooks <插件名>` 时再展开 Worker 状态、全部规则和详情，根规则与内置 Hook 仍单独显示。
 

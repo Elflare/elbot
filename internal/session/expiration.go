@@ -49,12 +49,14 @@ func (s *Service) ExpireIdleCurrent(ctx context.Context, req ExpireIdleRequest) 
 	if !session.UpdatedAt.Before(now.Add(-time.Duration(ttlMinutes) * time.Minute)) {
 		return ExpireIdleResult{}, nil
 	}
-	if err := s.Delete(ctx, req.Scope, session.ID); err != nil {
+	session.UpdatedAt = now
+	if err := s.store.Sessions().Update(ctx, session); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return ExpireIdleResult{}, nil
 		}
 		return ExpireIdleResult{}, err
 	}
+	s.clearCurrentIf(req.Scope, session.ID)
 	return ExpireIdleResult{Expired: true, SessionID: session.ID, TTLMinutes: ttlMinutes}, nil
 }
 
