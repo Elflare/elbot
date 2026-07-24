@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Update environment variable inheritance and hierarchical `.env` configuration for Shell and Hook.
+- `/hooks` list changed from displaying plugin rules item by item to aggregating them by plugin name; Worker status, all rules, and details are now expanded only when using `/hooks <插件名>`; root rules and built-in Hooks are still displayed separately.
 
 ### Fixed
 
