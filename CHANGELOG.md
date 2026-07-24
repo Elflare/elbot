@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - 修复 QQ OneBot 发送大体积图片等消息时，JSON 编码或 WebSocket 写入长期占住共享发送锁，导致斜杠命令和其他会话的回复一并无响应；OneBot 与远程 CLI 的写入等待现在可取消并有明确超时，失败后 OneBot 会重连。
+- 修复普通用户修改自己的高风险 core 常驻记忆时绕过确认；普通用户现在只能在工具权限校验通过后确认 `high`/`critical` 风险调用。
 
 ## [v0.4.0 - 2026-07-23]
 

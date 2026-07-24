@@ -31,3 +31,26 @@ func TestPolicyActorFallsBackToIDWhenPlatformUserIDMissing(t *testing.T) {
 		t.Fatalf("actor.PlatformUserID = %q, want user-1", actor.PlatformUserID)
 	}
 }
+
+func TestPolicyUsesSeparateConfirmationThresholdsByRole(t *testing.T) {
+	policy := NewPolicy("low", "critical", nil)
+	tests := []struct {
+		name  string
+		actor Actor
+		risk  RiskLevel
+		want  bool
+	}{
+		{name: "regular medium", actor: Actor{Role: RoleUser}, risk: RiskMedium},
+		{name: "regular high", actor: Actor{Role: RoleUser}, risk: RiskHigh, want: true},
+		{name: "regular critical", actor: Actor{Role: RoleUser}, risk: RiskCritical, want: true},
+		{name: "superadmin high", actor: Actor{Role: RoleSuperadmin}, risk: RiskHigh},
+		{name: "superadmin critical", actor: Actor{Role: RoleSuperadmin}, risk: RiskCritical, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := policy.NeedsToolConfirmation(tt.actor, tt.risk); got != tt.want {
+				t.Fatalf("NeedsToolConfirmation() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
