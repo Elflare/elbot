@@ -2,6 +2,12 @@ package agent
 
 import (
 	"context"
+	"errors"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/memory/resident"
@@ -12,10 +18,6 @@ import (
 	"elbot/internal/tool"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/turn"
-	"path/filepath"
-	"strings"
-	"testing"
-	"time"
 )
 
 func TestRiskConfirmationStopUsesStopCommandWithoutToolError(t *testing.T) {
@@ -185,7 +187,7 @@ func TestRiskConfirmationConfirmToolAndConfirmAllAliases(t *testing.T) {
 	})
 }
 
-func TestRegularUserCanCallOwnerScopedTool(t *testing.T) {
+func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{
@@ -205,21 +207,95 @@ func TestRegularUserCanCallOwnerScopedTool(t *testing.T) {
 		}
 	}
 	a.SetToolRuntime(registry, nil)
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "regular", ScopeID: "regular"})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "regular", ScopeID: "shared"})
 
-	if err := a.HandleMessage(ctx, "更新我的核心记忆为：我喜欢咖啡"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
+	done := make(chan error, 1)
+	go func() { done <- a.HandleMessage(ctx, "更新我的核心记忆为：我喜欢咖啡") }()
+
+	var current *storage.Session
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		sessionRow, err := a.sessions.Current(ctx, a.scope(ctx))
+		if err == nil && a.turns.Snapshot(sessionRow.ID).Phase == turn.PhaseAwaitRiskConfirm {
+			current = sessionRow
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if current == nil {
+		t.Fatal("regular user did not enter risk confirmation phase")
+	}
+
+	scope := resident.ActorScope(security.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: security.RoleUser})
+	if _, err := memStore.Read(ctx, scope); !errors.Is(err, resident.ErrNotFound) {
+		t.Fatalf("core memory changed before confirmation: %v", err)
+	}
+
+	otherCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "other", ScopeID: "shared"})
+	if err := a.HandleMessage(otherCtx, "/confirm"); err != nil {
+		t.Fatalf("other user confirm: %v", err)
+	}
+	if got := a.turns.Snapshot(current.ID).Phase; got != turn.PhaseAwaitRiskConfirm {
+		t.Fatalf("other user changed confirmation phase to %s", got)
+	}
+
+	if err := a.HandleMessage(ctx, "/confirm"); err != nil {
+		t.Fatalf("owner confirm: %v", err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("HandleMessage: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("chat did not continue after confirmation")
 	}
 	if !strings.Contains(p.out.String(), "已记下") {
 		t.Fatalf("owner-scoped tool should succeed for regular user, output = %q", p.out.String())
 	}
-	scope := resident.ActorScope(security.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: security.RoleUser})
 	mem, err := memStore.Read(ctx, scope)
 	if err != nil {
 		t.Fatalf("read memory: %v", err)
 	}
 	if mem.Core != "我喜欢咖啡" {
 		t.Fatalf("core memory = %q, want 我喜欢咖啡", mem.Core)
+	}
+}
+
+func TestRegularUserCanUpdateNormalMemoryWithoutConfirmation(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{
+		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "resident_memory_normal", Args: `{"action":"write","content":"用户喜欢短回复。"}`}}, FinishReason: "tool_calls"}},
+		{{DeltaContent: "已记下"}},
+	}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+	registry := tool.NewRegistry()
+	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
+		t.Fatal(err)
+	}
+	memStore := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	for _, tl := range builtin.NewResidentMemoryTools(memStore) {
+		if err := registry.Register(tl); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.SetToolRuntime(registry, nil)
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "regular", ScopeID: "regular"})
+
+	if err := a.HandleMessage(ctx, "更新我的普通记忆"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if strings.Contains(p.out.String(), "等待确认") {
+		t.Fatalf("normal memory should not require confirmation, output = %q", p.out.String())
+	}
+	scope := resident.ActorScope(security.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: security.RoleUser})
+	mem, err := memStore.Read(ctx, scope)
+	if err != nil {
+		t.Fatalf("read memory: %v", err)
+	}
+	if mem.Normal != "用户喜欢短回复。" {
+		t.Fatalf("normal memory = %q", mem.Normal)
 	}
 }
 
@@ -266,13 +342,16 @@ func TestRegularUserCannotCallSuperadminOnlyTool(t *testing.T) {
 	}
 }
 
-func TestSuperadminStillGetsConfirmationForHighRiskOwnerScopedTool(t *testing.T) {
+func TestAuthorizedActorsConfirmHighRiskTools(t *testing.T) {
 	policy := security.DefaultPolicy()
 	if !policy.NeedsToolConfirmation(security.Actor{Role: security.RoleSuperadmin}, security.RiskHigh) {
 		t.Fatalf("superadmin should need confirmation for high risk")
 	}
-	if policy.NeedsToolConfirmation(security.Actor{Role: security.RoleUser}, security.RiskHigh) {
-		t.Fatalf("regular user should never be prompted")
+	if !policy.NeedsToolConfirmation(security.Actor{Role: security.RoleUser}, security.RiskHigh) {
+		t.Fatalf("regular user should confirm high-risk authorized tools")
+	}
+	if policy.NeedsToolConfirmation(security.Actor{Role: security.RoleUser}, security.RiskMedium) {
+		t.Fatalf("regular user should not confirm medium-risk tools")
 	}
 	if !policy.CanUseTool(security.Actor{Role: security.RoleUser}, security.RiskHigh, true) {
 		t.Fatalf("regular user should be allowed for owner-scoped high risk")

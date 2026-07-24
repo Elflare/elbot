@@ -198,6 +198,61 @@ func (runnerImageTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Re
 	}}, nil
 }
 
+type runnerHighRiskTool struct {
+	name        string
+	ownerScoped bool
+}
+
+func (t runnerHighRiskTool) Name() string { return t.name }
+
+func (t runnerHighRiskTool) Info() tool.Info {
+	return tool.Info{Name: t.name, Risk: tool.RiskHigh, OwnerScoped: t.ownerScoped}
+}
+
+func (t runnerHighRiskTool) Schema() llm.ToolSchema {
+	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}}
+}
+
+func (runnerHighRiskTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
+	return &tool.Result{Content: "called"}, nil
+}
+
+func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {
+	tests := []struct {
+		name        string
+		userMaxRisk string
+		ownerScoped bool
+		wantConfirm bool
+		wantCalled  bool
+	}{
+		{name: "owner scoped", userMaxRisk: "low", ownerScoped: true, wantConfirm: true, wantCalled: true},
+		{name: "unauthorized non-owner", userMaxRisk: "low", wantConfirm: false, wantCalled: false},
+		{name: "authorized non-owner", userMaxRisk: "high", wantConfirm: true, wantCalled: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			registry := tool.NewRegistry()
+			toolName := "high_risk_" + strings.ReplaceAll(tt.name, " ", "_")
+			if err := registry.Register(runnerHighRiskTool{name: toolName, ownerScoped: tt.ownerScoped}); err != nil {
+				t.Fatal(err)
+			}
+			manager := NewManager(registry, security.NewPolicy(tt.userMaxRisk, "high", nil))
+			deps := &runnerTestDeps{}
+			result := manager.Run(context.Background(), deps, RunRequest{
+				Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
+				Actor:   security.Actor{Role: security.RoleUser},
+				Calls:   []llm.ToolCallRequest{{ID: "call-1", Name: toolName, Arguments: "{}"}},
+			})
+			if deps.confirmed != tt.wantConfirm {
+				t.Fatalf("confirmed = %v, want %v", deps.confirmed, tt.wantConfirm)
+			}
+			gotCalled := len(result.Messages) == 1 && llm.SegmentsContentText(result.Messages[0].Segments) == "called"
+			if gotCalled != tt.wantCalled {
+				t.Fatalf("called = %v, want %v; messages = %#v", gotCalled, tt.wantCalled, result.Messages)
+			}
+		})
+	}
+}
 func TestRunPreservesMultimodalToolSegments(t *testing.T) {
 	registry := tool.NewRegistry()
 	if err := registry.Register(runnerImageTool{}); err != nil {

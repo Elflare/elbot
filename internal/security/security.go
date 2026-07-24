@@ -155,11 +155,8 @@ func (p *Policy) CanUseTool(actor Actor, risk RiskLevel, ownerScoped bool) bool 
 }
 
 func (p *Policy) NeedsToolConfirmation(actor Actor, risk RiskLevel) bool {
-	if actor.Role != RoleSuperadmin {
-		return false
-	}
 	threshold := RiskHigh
-	if p != nil {
+	if actor.Role == RoleSuperadmin && p != nil {
 		threshold = p.SuperadminConfirmRisk
 	}
 	return CompareRisk(risk, threshold) >= 0
