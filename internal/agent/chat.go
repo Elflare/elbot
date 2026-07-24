@@ -301,7 +301,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	_, backgroundOutput := out.(backgroundTurnOutput)
 	emptyAssistantResponse := strings.TrimSpace(platformOutputText) == "" && strings.TrimSpace(finalText) == "" && len(deferredOutputs) == 0
 	if emptyAssistantResponse && !backgroundOutput {
-		platformOutputText = "模型这次没有返回可见内容，请重试或切换模型。"
+		platformOutputText = "模型这次没有返回可见内容。"
 	}
 	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseSending, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindTurn, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: storage.Now()})
 	if strings.TrimSpace(platformOutputText) != "" {
