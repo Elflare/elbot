@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed the issue where `/status` would display active requests from other users or Sessions within the process when the caller has no current Session; Now this status only displays `active requests: none`.
 - Fixed an issue where JSON encoding or WebSocket writes would hold the shared send lock for a long time when QQ OneBot sent messages such as large images, causing slash commands and replies from other Sessions to become unresponsive; Write waits for OneBot and remote CLI are now cancellable and have a clear timeout; OneBot will reconnect upon failure.
 - Fixed an issue where regular users could bypass confirmation when modifying their own high-risk core resident memory; regular users can now only confirm `high`/`critical` risk calls after tool permission validation passes.
 
