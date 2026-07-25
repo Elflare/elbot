@@ -223,7 +223,7 @@ func formatEmptyStatus(ctx context.Context, deps Deps) string {
 	scope := deps.Scope(ctx)
 	modeModel := deps.Models.CurrentModeModel()
 	compactModel := deps.Models.CurrentCompactModel()
-	active := formatActiveRequests(ctx, deps, deps.Requests.List())
+	active := formatActiveRequests(ctx, deps, nil)
 	return trimTrailingNewlines(fmt.Sprintf(`session status:
   current session: none
   default mode: %s
