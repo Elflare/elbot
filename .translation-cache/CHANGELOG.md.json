@@ -456,6 +456,14 @@
       "translation": "By default, all users in group chats expire, while superadmins in private chats do not expire.",
       "updated_at": 1783074551
     },
+    "CHANGELOG.md:list:5d5e1194ba0f4f1a5761b21d2e7cab957cb0e85df459dbd6188d6fa5d017f74b": {
+      "kind": "list",
+      "source": "修复调用者没有当前 Session 时，__ELBOT_CODE_0__ 会显示进程内其他用户或 Session 活跃请求的问题；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "5d5e1194ba0f4f1a5761b21d2e7cab957cb0e85df459dbd6188d6fa5d017f74b",
+      "translation": "Fixed the issue where __ELBOT_CODE_0__ would display active requests from other users or Sessions within the process when the caller has no current Session;",
+      "updated_at": 1784987067
+    },
     "CHANGELOG.md:list:611aafc7e8d828767ae2b38b0e5c3d0fead2cde039834d37560cbe5b03c27491": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 审计事件从 debug 级别改为 info 级别，默认 __ELBOT_CODE_1__ 即可记录 token 消耗数据。",
@@ -487,6 +495,14 @@
       "source_hash": "6804ed012e3f61e166fecd47cad310a62710f88f0f1bc81b3d2be57e1e12aa4f",
       "translation": "A prompt to shorten will be displayed when the file exceeds 64 KiB.",
       "updated_at": 1783178864
+    },
+    "CHANGELOG.md:list:683c236912cbac92700e9378c6475d962de3778446c670e5f7665bed5a8839be": {
+      "kind": "list",
+      "source": "现在该状态只展示 __ELBOT_CODE_0__。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "683c236912cbac92700e9378c6475d962de3778446c670e5f7665bed5a8839be",
+      "translation": "Now this status only displays __ELBOT_CODE_0__.",
+      "updated_at": 1784987067
     },
     "CHANGELOG.md:list:6970168418b00124c98288e227a6831f798c18ed573c05cb7a6f07fd850812c6": {
       "kind": "list",
@@ -1338,8 +1354,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "6bb298ddedfde08e51ab89d405dfc9e2b9c4238f72bf66485e5605adfae8643f",
+  "source_hash": "2f41f88bae478417cf45398acad19a8eaa8f38ec90c6656f8c9ef82494c8f2f7",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1784897153,
+  "updated_at": 1784987067,
   "version": 2
 }
