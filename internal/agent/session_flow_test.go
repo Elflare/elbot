@@ -5,6 +5,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
+	"elbot/internal/request"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -164,6 +165,54 @@ func TestIdleExpirationClearsCurrentAndCanResume(t *testing.T) {
 	current, err = a.sessions.Current(ctx, a.scope(ctx))
 	if err != nil || current.ID != oldSession.ID {
 		t.Fatalf("current after continued chat = %#v, %v", current, err)
+	}
+}
+
+func TestStatusDoesNotShowRequestsFromAnotherUserWithoutCurrentSession(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
+	activeCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:       "cli",
+		PlatformUserID: "1001",
+		ScopeID:        "group:9",
+	})
+	activeSession, err := a.sessions.Create(activeCtx, a.scope(activeCtx), session.CreateRequest{Title: "active user"})
+	if err != nil {
+		t.Fatalf("create active session: %v", err)
+	}
+	_, _, done, err := a.requests.Start(context.Background(), request.StartRequest{
+		SessionID: activeSession.ID,
+		Kind:      request.KindTurn,
+		Label:     "other-user-turn",
+	})
+	if err != nil {
+		t.Fatalf("start active request: %v", err)
+	}
+	defer done()
+
+	if err := a.HandleMessage(activeCtx, "/status"); err != nil {
+		t.Fatalf("active user /status: %v", err)
+	}
+	if got := p.out.String(); !strings.Contains(got, "other-user-turn") {
+		t.Fatalf("active user status missing own request: %q", got)
+	}
+
+	p.out.Reset()
+	idleCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:       "cli",
+		PlatformUserID: "1002",
+		ScopeID:        "group:9",
+	})
+	if err := a.HandleMessage(idleCtx, "/status"); err != nil {
+		t.Fatalf("idle user /status: %v", err)
+	}
+	got := p.out.String()
+	if !strings.Contains(got, "current session: none") || !strings.Contains(got, "active requests: none") {
+		t.Fatalf("idle user status = %q", got)
+	}
+	if strings.Contains(got, "other-user-turn") {
+		t.Fatalf("idle user status leaked another user request: %q", got)
 	}
 }
 
