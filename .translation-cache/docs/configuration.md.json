@@ -304,13 +304,13 @@
       "translation": "In group chats/supergroups, command prefixes, trigger keywords, __ELBOT_CODE_0__, or replying to bot messages will all trigger processing. Private chats are processed by default.",
       "updated_at": 1781839376
     },
-    "docs/configuration.md:list:121deebefceaedb2063599a1af3d2f33d8500ca15c12cf33792cc72508392792": {
+    "docs/configuration.md:list:0ca61a93d0b34234a48e2a4dc11e837bb717578d3934e353d29fbf20296e44e9": {
       "kind": "list",
-      "source": "超级管理员调用高风险工具时也需要确认。",
+      "source": "超级管理员的确认阈值由 __ELBOT_CODE_0__ 配置。",
       "source_file": "docs/configuration.md",
-      "source_hash": "121deebefceaedb2063599a1af3d2f33d8500ca15c12cf33792cc72508392792",
-      "translation": "Superadmins also need confirmation when calling high-risk tools.",
-      "updated_at": 1781515756
+      "source_hash": "0ca61a93d0b34234a48e2a4dc11e837bb717578d3934e353d29fbf20296e44e9",
+      "translation": "The confirmation threshold for the superadmin is configured by `__ELBOT_CODE_0__`.",
+      "updated_at": 1784897133
     },
     "docs/configuration.md:list:19873491cd420fec6a40558a8e05ed0c16f7bba136bdc485d731d09201462afc": {
       "kind": "list",
@@ -800,14 +800,6 @@
       "translation": "__ELBOT_CODE_0__: Optional, equivalent to categorizing the tool, which can be used for __ELBOT_CODE_1__ preloading.",
       "updated_at": 1783076156
     },
-    "docs/configuration.md:list:9356104be7e2173190aa205667e9f6013e011e4a85c8913418c49f5f0a5a2eb8": {
-      "kind": "list",
-      "source": "普通用户只能发现和调用允许风险范围内的工具。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "9356104be7e2173190aa205667e9f6013e011e4a85c8913418c49f5f0a5a2eb8",
-      "translation": "Regular users can only discover and call tools within the allowed risk range.",
-      "updated_at": 1781515756
-    },
     "docs/configuration.md:list:94b781836317d2424e94b1acf367fd5879f8587f7092dc91d030c29077eb4e7f": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 是服务端允许登录的 CLI client id 与 token 环境变量列表。",
@@ -831,6 +823,14 @@
       "source_hash": "95f0425bb70f8437ec10e7b2e3709d2dc2719eb94905fd761872378df243720c",
       "translation": "__ELBOT_CODE_0__ can be omitted, defaulting to __ELBOT_CODE_1__.",
       "updated_at": 1781962094
+    },
+    "docs/configuration.md:list:96129fd553cd8574f3b71b801af11ba15564bb288188441af7e7b3cc43352d71": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 工具只能访问调用者自己的数据，因此普通用户可以调用；其中 __ELBOT_CODE_1__/__ELBOT_CODE_2__ 风险操作仍需本人确认。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "96129fd553cd8574f3b71b801af11ba15564bb288188441af7e7b3cc43352d71",
+      "translation": "`__ELBOT_CODE_0__` tools can only access the caller's own data, so ordinary users can call them; among these, `__ELBOT_CODE_1__`/`__ELBOT_CODE_2__` risk operations still require confirmation by the user themselves.",
+      "updated_at": 1784897133
     },
     "docs/configuration.md:list:99014d75e582623e4c8d937cc0349a0a4206c08e2974ae44db5a67cf5e13b631": {
       "kind": "list",
@@ -1096,6 +1096,14 @@
       "translation": "You can also use __ELBOT_CODE_0__ to write the configuration directly, but it is not recommended to commit actual tokens.",
       "updated_at": 1781846628
     },
+    "docs/configuration.md:list:e3d3624a13b96a9b7a7f26c192a5aef0546bf25cfd2dabe2d58d5f382354f2ff": {
+      "kind": "list",
+      "source": "普通用户只能发现和调用允许风险范围内的工具；工具通过权限校验后，__ELBOT_CODE_0__/__ELBOT_CODE_1__ 风险调用还需要当前用户确认。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e3d3624a13b96a9b7a7f26c192a5aef0546bf25cfd2dabe2d58d5f382354f2ff",
+      "translation": "Ordinary users can only discover and call tools within the permitted risk range; after a tool passes permission verification, `__ELBOT_CODE_0__`/`__ELBOT_CODE_1__` risk calls still require confirmation by the current user.",
+      "updated_at": 1784897133
+    },
     "docs/configuration.md:list:e9fcf600642647100aad58e5dcbebc9273a69372cde521aab77a15018b85f8b1": {
       "kind": "list",
       "source": "文档型 Skill 未写时按 __ELBOT_CODE_0__ 处理。",
@@ -1207,6 +1215,14 @@
       "source_hash": "0b6eb9fa473aef565defa7222c29e7301bf9ef87504015a8d3628e1159da7c5c",
       "translation": "__ELBOT_CODE_0__ is only applicable in scenarios where both parties can access the same local path.\n",
       "updated_at": 1784611155
+    },
+    "docs/configuration.md:paragraph:0b9ebd7bc3096153a54a3c36219581aa55ffa0d429945979c0d59e12661b9e73": {
+      "kind": "paragraph",
+      "source": "normal 是可直接整理的低风险普通记忆，不需要确认；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "0b9ebd7bc3096153a54a3c36219581aa55ffa0d429945979c0d59e12661b9e73",
+      "translation": "`normal` is low-risk ordinary memory that can be organized directly and does not require confirmation;",
+      "updated_at": 1784897133
     },
     "docs/configuration.md:paragraph:0c5d3130dc3976cd6ede004b60eb7533c6a08baa5146ec02d3792b5086b44133": {
       "kind": "paragraph",
@@ -1375,6 +1391,14 @@
       "source_hash": "3f6a9abcaf07c698521efe9e43023b0404d046d87936822dd4083fce5be6cabf",
       "translation": "Maintenance task examples:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:4045a0575562a2312850444996e3a84a39d2410f28a1a18c9235b7e6b0714be5": {
+      "kind": "paragraph",
+      "source": "core 是高风险核心记忆，普通用户修改自己的 core 时也必须由本人确认。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "4045a0575562a2312850444996e3a84a39d2410f28a1a18c9235b7e6b0714be5",
+      "translation": "`core` is high-risk core memory; when ordinary users modify their own `core`, it must also be confirmed by the user themselves.",
+      "updated_at": 1784897133
     },
     "docs/configuration.md:paragraph:409f4189f5a82cca3fb7edbf93119e885d6623f8fd1991e99189082102f46061": {
       "kind": "paragraph",
@@ -2072,14 +2096,6 @@
       "translation": "Hooks should not send platform messages directly; they should return an output intent, which is then handed over to the Output Manager by the Agent for sending.\n",
       "updated_at": 1783678911
     },
-    "docs/configuration.md:paragraph:ffb80c4c463a0d4bcf6ebf5f1b9c4b3f84dda3528faeba688d0d7dcc41e5d78d": {
-      "kind": "paragraph",
-      "source": "core 用于需要高风险确认的核心记忆，normal 用于可整理的普通记忆；",
-      "source_file": "docs/configuration.md",
-      "source_hash": "ffb80c4c463a0d4bcf6ebf5f1b9c4b3f84dda3528faeba688d0d7dcc41e5d78d",
-      "translation": "core is used for core memories that require high-risk confirmation, and normal is used for ordinary memories that can be organized;",
-      "updated_at": 1782206047
-    },
     "docs/configuration.md:table:0e8e950a92d2b18e788d407dbfcc4a22a36763174123433c9d3ed06e7c49600e": {
       "kind": "table",
       "source": "环境来源与优先级",
@@ -2250,8 +2266,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "9f358776c92126885b25ca38985b6f77895d51904948d1d29b3b6182dcb848cc",
+  "source_hash": "f105f4cc6b4d49263ead0895d2538d931a7d797ea953c4d04211be4ee7376bf0",
   "target": "docs.en/configuration.md",
-  "updated_at": 1784818746,
+  "updated_at": 1784897133,
   "version": 2
 }

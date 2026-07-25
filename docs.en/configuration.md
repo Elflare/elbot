@@ -79,7 +79,7 @@ core_max_units = 200
 normal_max_units = 300
 ```
 
-The length unit `units` can be roughly understood as "Chinese by character count, English by word count": CJK characters are counted individually, and continuous segments of English/numbers are counted as one word. core is used for core memories that require high-risk confirmation, and normal is used for ordinary memories that can be organized; When injecting the Prompt, the two segments will be merged into a single piece of natural text.
+The length unit `units` can be roughly understood as "Chinese by character count, English by word count": CJK characters are counted individually, and continuous segments of English/numbers are counted as one word. `core` is high-risk core memory; when ordinary users modify their own `core`, it must also be confirmed by the user themselves. `normal` is low-risk ordinary memory that can be organized directly and does not require confirmation; When injecting the Prompt, the two segments will be merged into a single piece of natural text.
 
 ## Provider Configuration
 
@@ -492,8 +492,9 @@ superadmin_confirm_risk = "high"
 cli = ["local"]
 ```
 
-- Regular users can only discover and call tools within the allowed risk range.
-- Superadmins also need confirmation when calling high-risk tools.
+- Ordinary users can only discover and call tools within the permitted risk range; after a tool passes permission verification, ``high``/``critical`` risk calls still require confirmation by the current user.
+- ``OwnerScoped`` tools can only access the caller's own data, so ordinary users can call them; among these, ``high``/``critical`` risk operations still require confirmation by the user themselves.
+- The confirmation threshold for the superadmin is configured by ``superadmin_confirm_risk``.
 - The default local CLI user `local` is a superadmin.
 - `tool_tags.toml` is used to configure the tool groups that can be injected into `@tool:<tag>`, as well as the tool usage strategies appended to the system prompt after a tag is activated.
 
