@@ -272,6 +272,14 @@
       "translation": "__ELBOT_CODE_0__ in Elvena requests enters the validation, persistence, and execution chain; external tool names are still controlled by the denylist of individual Elwisps.",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:list:03414c18b4f807dada8ede0c69696a6c397618cc92bf326c86079f0a17472dc1": {
+      "kind": "list",
+      "source": "若显式指定的配置路径不存在，ElBot 会报错而不是偷偷生成，避免掩盖路径拼写错误。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "03414c18b4f807dada8ede0c69696a6c397618cc92bf326c86079f0a17472dc1",
+      "translation": "If the explicitly specified configuration path does not exist, ElBot will report an error instead of silently generating it, to avoid masking path spelling errors.",
+      "updated_at": 1785052888
+    },
     "docs/configuration.md:list:04b73bb686d2f43f538fa6d9bd405de7859fbb9dbad2eaa182684c637cd3502a": {
       "kind": "list",
       "source": "可包含 __ELBOT_CODE_0__ 持久运行配置。",
@@ -456,6 +464,14 @@
       "translation": "__ELBOT_CODE_0__ is used to configure the tool groups that can be injected into __ELBOT_CODE_1__, as well as the tool usage strategies appended to the system prompt after a tag is activated.",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:list:409f4189f5a82cca3fb7edbf93119e885d6623f8fd1991e99189082102f46061": {
+      "kind": "list",
+      "source": "自动生成只在没有显式 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 时触发。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "409f4189f5a82cca3fb7edbf93119e885d6623f8fd1991e99189082102f46061",
+      "translation": "Automatic generation is only triggered when there are no explicit __ELBOT_CODE_0__ and __ELBOT_CODE_1__.",
+      "updated_at": 1785052888
+    },
     "docs/configuration.md:list:40ca22a0cc1b1e5450e16b0cbb857b8d7ae1aae9e78880b28afb8b5555c1d030": {
       "kind": "list",
       "source": "激活的 tag 会写入 Session metadata，__ELBOT_CODE_0__ 后仍生效。",
@@ -583,6 +599,14 @@
       "source_hash": "5cf1b61b51a8551ebd4a24c193e94f46cfec4edc92fe41b1d243b75871408c20",
       "translation": "In __ELBOT_CODE_0__ mode, __ELBOT_CODE_1__ can be specified as __ELBOT_CODE_2__, __ELBOT_CODE_3__, or __ELBOT_CODE_4__ in Elvena requests;",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:list:61a563ce875c4ae4e518f0301c082e94f5fb63107b0eb37309bac6115f820444": {
+      "kind": "list",
+      "source": "已有配置不会被覆盖。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "61a563ce875c4ae4e518f0301c082e94f5fb63107b0eb37309bac6115f820444",
+      "translation": "Existing configurations will not be overwritten.",
+      "updated_at": 1785052888
     },
     "docs/configuration.md:list:6469645d8528221a2de47802bb56388902fba57b4612e918006f63b801f39de9": {
       "kind": "list",
@@ -1160,14 +1184,6 @@
       "translation": "__ELBOT_CODE_0__ stores both CLI server and client configurations.",
       "updated_at": 1781962094
     },
-    "docs/configuration.md:paragraph:00f557986b604234cdc9f87589bd18b3660b84279742586e06312e9be8be1d2f": {
-      "kind": "paragraph",
-      "source": "已有文件不会被覆盖。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "00f557986b604234cdc9f87589bd18b3660b84279742586e06312e9be8be1d2f",
-      "translation": "Existing files will not be overwritten.",
-      "updated_at": 1781779407
-    },
     "docs/configuration.md:paragraph:01f1bfa955794ef1c2fd69180c14c70e5eab27d060a94bd28eef48340299d6c4": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 使用 __ELBOT_CODE_1__：\n",
@@ -1288,6 +1304,14 @@
       "translation": "__ELBOT_CODE_0__ takes precedence over __ELBOT_CODE_1__.\n",
       "updated_at": 1783178826
     },
+    "docs/configuration.md:paragraph:1cc9b85e7c28ff9786bfca7e43ab8652154b438f4f638cf849bc509f8a9ea097": {
+      "kind": "paragraph",
+      "source": "开发期直接运行即可使用平台配置目录：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1cc9b85e7c28ff9786bfca7e43ab8652154b438f4f638cf849bc509f8a9ea097",
+      "translation": "During the development phase, you can use the platform configuration directory by running it directly:\n",
+      "updated_at": 1785052888
+    },
     "docs/configuration.md:paragraph:1ec87d4b5c7c2b92c42ede7bc9c709dfb495faa515e2855f4c3003e6a01040af": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 参数用于控制网页提取请求的代理：\n",
@@ -1400,14 +1424,6 @@
       "translation": "`core` is high-risk core memory; when ordinary users modify their own `core`, it must also be confirmed by the user themselves.",
       "updated_at": 1784897133
     },
-    "docs/configuration.md:paragraph:409f4189f5a82cca3fb7edbf93119e885d6623f8fd1991e99189082102f46061": {
-      "kind": "paragraph",
-      "source": "自动生成只在没有显式 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 时触发。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "409f4189f5a82cca3fb7edbf93119e885d6623f8fd1991e99189082102f46061",
-      "translation": "Automatic generation is only triggered when there are no explicit __ELBOT_CODE_0__ and __ELBOT_CODE_1__.",
-      "updated_at": 1781779407
-    },
     "docs/configuration.md:paragraph:42c35c3587db8bb5ceb55e6f1424c1a05e469844e3b3ea7b08dd60bd29d2650b": {
       "kind": "paragraph",
       "source": "长度单位 __ELBOT_CODE_0__ 可以近似理解为“中文按字数、英文按单词”：中日韩字符按单字计数，英文/数字连续片段按一个词计数。",
@@ -1448,14 +1464,6 @@
       "translation": "Plugin configurations are fixed under __ELBOT_CODE_0__ in the configuration directory:\n",
       "updated_at": 1781515756
     },
-    "docs/configuration.md:paragraph:4905aa059b294653622f55d7f4828ec9ebaf777ce3f5d5ad0843491446e1c819": {
-      "kind": "paragraph",
-      "source": "首次自动生成的文件包括：__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__、__ELBOT_CODE_6__、__ELBOT_CODE_7__、__ELBOT_CODE_8__、__ELBOT_CODE_9__、__ELBOT_CODE_10__ 和 __ELBOT_CODE_11__；",
-      "source_file": "docs/configuration.md",
-      "source_hash": "4905aa059b294653622f55d7f4828ec9ebaf777ce3f5d5ad0843491446e1c819",
-      "translation": "Files automatically generated for the first time include: __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, __ELBOT_CODE_5__, __ELBOT_CODE_6__, __ELBOT_CODE_7__, __ELBOT_CODE_8__, __ELBOT_CODE_9__, __ELBOT_CODE_10__, and __ELBOT_CODE_11__;",
-      "updated_at": 1784812412
-    },
     "docs/configuration.md:paragraph:4de595b7aa13aeb69b938039abf6a69e1eeff8ce9e2255558e463cba999e8d0a": {
       "kind": "paragraph",
       "source": "字段说明：\n",
@@ -1479,14 +1487,6 @@
       "source_hash": "544b9b7d9b89dbd1e8f0abb001e23ca9e6d71f09b60c15992eb1dcee7874ebeb",
       "translation": "The root configuration __ELBOT_CODE_0__ will not be injected into Hooks.",
       "updated_at": 1784812412
-    },
-    "docs/configuration.md:paragraph:55f6ab95af8b883536fe8cebfdb9c9e6c251d3a7fc9e70810044fa6fa83e412c": {
-      "kind": "paragraph",
-      "source": "规则与持久 Hook 的完整配置说明（action、hook.v2、生命周期、工具和多轮捕获）见 [Hook](hooks.md)。\n",
-      "source_file": "docs/configuration.md",
-      "source_hash": "55f6ab95af8b883536fe8cebfdb9c9e6c251d3a7fc9e70810044fa6fa83e412c",
-      "translation": "For complete configuration instructions for rules and persistent Hooks (action, hook.v2, lifecycle, tools, and multi-turn capture), see [Hook](hooks.md).\n",
-      "updated_at": 1783678911
     },
     "docs/configuration.md:paragraph:5aeb7fbf1f153f54353359dccc9852cfe83a928d764929990cfde5ecd023c911": {
       "kind": "paragraph",
@@ -1536,14 +1536,6 @@
       "translation": "Elnis is disabled by default.",
       "updated_at": 1781749596
     },
-    "docs/configuration.md:paragraph:6b98f7f3e2952ac1c8e7251fc98146d4d672a8db85baa398c0d5b83fb3e082c7": {
-      "kind": "paragraph",
-      "source": "开发期直接运行即可使用平台配置目录；首次运行会自动生成默认配置：\n",
-      "source_file": "docs/configuration.md",
-      "source_hash": "6b98f7f3e2952ac1c8e7251fc98146d4d672a8db85baa398c0d5b83fb3e082c7",
-      "translation": "During the development phase, you can run it directly to use the platform configuration directory; default configurations will be automatically generated upon the first run:\n",
-      "updated_at": 1781854884
-    },
     "docs/configuration.md:paragraph:6bb982aa636e650744f658b69823c6d2bdc7b902d1defd41552964b903c10b5c": {
       "kind": "paragraph",
       "source": "Hook 代码仍是受信任代码，分级 __ELBOT_CODE_0__ 只隔离配置，不是系统级安全沙箱。\n",
@@ -1559,14 +1551,6 @@
       "source_hash": "6f5fa3c39a4a50dd289886cf6c4f34e0b97770a2cf578e7a81f76adfd7334ed3",
       "translation": "Relative paths are resolved based on the directory of the main configuration file by default.\n",
       "updated_at": 1781515756
-    },
-    "docs/configuration.md:paragraph:6ffb3c57c9bc2e198b317bcec11c784b49cb32cc93b9bc1ab8b71136acbf842c": {
-      "kind": "paragraph",
-      "source": "同时会创建 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ 和 __ELBOT_CODE_4__ 目录。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "6ffb3c57c9bc2e198b317bcec11c784b49cb32cc93b9bc1ab8b71136acbf842c",
-      "translation": "At the same time, the directories __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, and __ELBOT_CODE_4__ will be created.",
-      "updated_at": 1781779407
     },
     "docs/configuration.md:paragraph:70cf66b1773b9b52236590db1f99369215636c296efca6a81690f976e80a6b00": {
       "kind": "paragraph",
@@ -1688,6 +1672,14 @@
       "translation": "Usage:\n",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:paragraph:9cf2d238909d45c5a7309a85e64f03bf96000138b2303647b96c79d119b130d8": {
+      "kind": "paragraph",
+      "source": "规则与持久 Hook 的完整配置说明见 [Hook](hooks.md)。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "9cf2d238909d45c5a7309a85e64f03bf96000138b2303647b96c79d119b130d8",
+      "translation": "For complete configuration instructions for rules and persistent Hooks, see [Hook](hooks.md).\n",
+      "updated_at": 1785052888
+    },
     "docs/configuration.md:paragraph:9df1d86d01117e8f6e59299abf97ac21668c92aa8e8e67bc53e8cfaf0251f30c": {
       "kind": "paragraph",
       "source": "旧版 __ELBOT_CODE_0__ 已移除；已有配置需要改为上述三个新字段。\n",
@@ -1728,14 +1720,6 @@
       "translation": "These paths will all be resolved to the directory where the main configuration file is located; by default, this is the platform configuration directory.\n",
       "updated_at": 1781854884
     },
-    "docs/configuration.md:paragraph:a728fb7fe1ecea412b0105ed9c33e4f287ba964cdfeb4efe7550a2682c580018": {
-      "kind": "paragraph",
-      "source": "若显式指定的配置路径不存在，ElBot 会报错而不是偷偷生成，避免掩盖路径拼写错误。\n",
-      "source_file": "docs/configuration.md",
-      "source_hash": "a728fb7fe1ecea412b0105ed9c33e4f287ba964cdfeb4efe7550a2682c580018",
-      "translation": "If the explicitly specified configuration path does not exist, ElBot will report an error instead of silently generating it, to avoid masking path spelling errors.\n",
-      "updated_at": 1781779407
-    },
     "docs/configuration.md:paragraph:a785d861a280cf1ae7b2a9ac520c27edc15a2dc41ca90bdac84c3201f5f1172a": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 适用于 ElBot 与 OneBot 不共享文件系统的部署；",
@@ -1759,14 +1743,6 @@
       "source_hash": "ad94f84e75a385d66574406eeac257dda1df6e2ec0dd1eb5d474460510359610",
       "translation": "By default, AgentSkill is used only as documentation;",
       "updated_at": 1783219308
-    },
-    "docs/configuration.md:paragraph:af2ed8d7797ba5d4a3513302777996f98df6bb7907561ad4aee246925d257513": {
-      "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 默认 __ELBOT_CODE_1__，不会在首次运行时启动 HTTP 监听。\n",
-      "source_file": "docs/configuration.md",
-      "source_hash": "af2ed8d7797ba5d4a3513302777996f98df6bb7907561ad4aee246925d257513",
-      "translation": "__ELBOT_CODE_0__ defaults to __ELBOT_CODE_1__, and HTTP listening will not be started on the first run.\n",
-      "updated_at": 1781779407
     },
     "docs/configuration.md:paragraph:af3839527029ef707cb784ee761ae31af2d8cf02a3e2fb69c443ebe0ac53a852": {
       "kind": "paragraph",
@@ -2016,14 +1992,6 @@
       "translation": "Do not commit actual keys to the repository.\n",
       "updated_at": 1781515756
     },
-    "docs/configuration.md:paragraph:eebb435604aee56dccc960079c087d80d49ec3fc8e0c57fc651c71dbde35ddf0": {
-      "kind": "paragraph",
-      "source": "自动生成的默认配置内容来自程序内置 assets，且已有文件不会被覆盖。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "eebb435604aee56dccc960079c087d80d49ec3fc8e0c57fc651c71dbde35ddf0",
-      "translation": "The content of the automatically generated default configuration comes from the program's built-in assets, and existing files will not be overwritten.",
-      "updated_at": 1781854884
-    },
     "docs/configuration.md:paragraph:f029aa2b74a012681841f18d5aa59e9cf2f12b8d539a9c04c70e951d6b7820e5": {
       "kind": "paragraph",
       "source": "启用时需要补齐平台自己的认证信息和触发关键词。",
@@ -2266,8 +2234,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "f105f4cc6b4d49263ead0895d2538d931a7d797ea953c4d04211be4ee7376bf0",
+  "source_hash": "92ed8d6f30e2ebe49c238b475cadb2740b925e93359a043b92e9930838b6b6fd",
   "target": "docs.en/configuration.md",
-  "updated_at": 1784897133,
+  "updated_at": 1785052888,
   "version": 2
 }
