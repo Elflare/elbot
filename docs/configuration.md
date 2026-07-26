@@ -26,14 +26,9 @@ ElBot 使用一个主配置入口加载应用配置、Provider 配置和运行�
 1. 命令行 `--config`。
 2. 环境变量 `ELBOT_CONFIG_FILE`。
 3. 平台配置目录：Windows `%APPDATA%/ElBot/app.toml`；Linux 使用 XDG 配置目录。
-4. 若平台配置不存在，则自动在平台配置目录生成默认配置文件。
+4. 若平台配置不存在，则自动在平台配置目录生成默认配置文件。已有配置不会被覆盖。自动生成只在没有显式 `--config` 和 `ELBOT_CONFIG_FILE` 时触发。若显式指定的配置路径不存在，ElBot 会报错而不是偷偷生成，避免掩盖路径拼写错误。
 
-自动生成的默认配置内容来自程序内置 assets，且已有文件不会被覆盖。自动生成只在没有显式 `--config` 和 `ELBOT_CONFIG_FILE` 时触发。若显式指定的配置路径不存在，ElBot 会报错而不是偷偷生成，避免掩盖路径拼写错误。
-
-首次自动生成的文件包括：`app.toml`、`providers.toml`、`state.toml`、`SOUL.md`、`memories.toml`、`elnis.toml`、`skills/agent/agent_skill_creator/SKILL.md`、`skills/agent/agent_skill_creator/ELBOT_SKILL.toml`、`skills/agent/write_elbot_hook/SKILL.md`、`skills/agent/write_elbot_hook/ELBOT_SKILL.toml`、`plugins/.env` 和 `.env.example`；同时会创建 `skills/`、`skills/agent/`、`skills/go/`、`plugins/` 和 `long_memory/` 目录。已有文件不会被覆盖。`elnis.toml` 默认 `enabled=false`，不会在首次运行时启动 HTTP 监听。
-
-
-开发期直接运行即可使用平台配置目录；首次运行会自动生成默认配置：
+开发期直接运行即可使用平台配置目录：
 
 ```bash
 go run ./cmd/elbot
@@ -666,7 +661,7 @@ stream_edit_interval_milliseconds = 250
 
 Hook 不要直接发平台消息，应返回输出意图，由 Agent 统一交给 Output Manager 发送。
 
-规则与持久 Hook 的完整配置说明（action、hook.v2、生命周期、工具和多轮捕获）见 [Hook](hooks.md)。
+规则与持久 Hook 的完整配置说明见 [Hook](hooks.md)。
 
 ## 建议的维护方式
 
