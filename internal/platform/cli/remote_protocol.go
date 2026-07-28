@@ -30,6 +30,7 @@ type remoteMessage struct {
 	ClientID string                 `json:"client_id,omitempty"`
 	Token    string                 `json:"token,omitempty"`
 	Text     string                 `json:"text,omitempty"`
+	Level    string                 `json:"level,omitempty"`
 	Cursor   int                    `json:"cursor,omitempty"`
 	Items    []completion.Item      `json:"items,omitempty"`
 	Snapshot runtimestatus.Snapshot `json:"snapshot,omitempty"`

@@ -238,7 +238,7 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		compactActive: a.compactActive,
 		sendChat:      a.sendChat,
 		sendNotice: func(ctx context.Context, text string) error {
-			return a.sendNotice(ctx, delivery.Target{}, []delivery.Output{delivery.Text(text)})
+			return a.sendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(text)}})
 		},
 		audit:         a.audit,
 		handleAppend:  a.handleAppendConfirmationInput,

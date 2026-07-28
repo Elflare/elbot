@@ -183,6 +183,6 @@ func (a elnisRuntimeAdapter) SendChat(context.Context, []delivery.Output) (deliv
 	return delivery.Receipt{}, fmt.Errorf("elnis cannot send chat output")
 }
 
-func (a elnisRuntimeAdapter) SendNotice(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+func (a elnisRuntimeAdapter) SendNotice(context.Context, delivery.Notice) (delivery.Receipt, error) {
 	return delivery.Receipt{}, fmt.Errorf("elnis cannot send notice output")
 }

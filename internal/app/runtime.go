@@ -45,7 +45,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		if agt == nil {
 			return delivery.Receipt{}, fmt.Errorf("agent is not ready")
 		}
-		return agt.SendNotice(ctx, target, outputs)
+		return agt.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
 	}
 
 	cronService, err := buildCronService(ctx, foundation, sendNotice)
@@ -83,7 +83,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 			startupHookNotices = append(startupHookNotices, text)
 			return
 		}
-		_, _ = agt.SendNotice(ctx, delivery.Target{}, []delivery.Output{delivery.Text(text)})
+		_, _ = agt.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(text)}, Level: slog.LevelWarn})
 	}
 
 	hookRuntime := hookruntime.NewManager(hookruntime.Options{

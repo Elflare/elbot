@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
@@ -173,13 +174,15 @@ func outputsText(outputs []delivery.Output) string {
 	return delivery.FallbackOutput(outputs).Text
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+	target := notice.Target
+	outputs := notice.Outputs
 	if platformName := strings.TrimSpace(target.Platform); platformName != "" && platformName != a.Name() {
 		return delivery.Receipt{}, fmt.Errorf("cli cannot send to platform %q", platformName)
 	}
 	text := outputsText(outputs)
 	if text != "" {
-		a.sendTUIMessage(tuiNoticeMsg(text), "[notice] "+text)
+		a.sendTUIMessage(tuiNoticeMsg{Text: text, Level: notice.Level}, "[notice] "+text)
 	}
 	return delivery.Receipt{}, nil
 }
@@ -189,7 +192,7 @@ func (a *Adapter) SendToolNotice(text string) {
 	if text == "" {
 		return
 	}
-	_, _ = a.SendNotice(context.Background(), delivery.Target{}, []delivery.Output{delivery.Text("[tool] " + text)})
+	_, _ = a.SendNotice(context.Background(), delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] " + text)}, Level: slog.LevelDebug})
 }
 
 func (a *Adapter) sendTUIMessage(msg tea.Msg, fallback string) {

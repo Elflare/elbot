@@ -43,13 +43,15 @@ func (s agentOutputSender) SendChat(ctx context.Context, outputs []delivery.Outp
 	return s.agent.platform.SendChat(s.ctx, outputs)
 }
 
-func (s agentOutputSender) SendNotice(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+func (s agentOutputSender) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+	target := notice.Target
+	outputs := notice.Outputs
 	if s.agent == nil {
 		return delivery.Receipt{}, fmt.Errorf("agent output sender is not configured")
 	}
 	if target.Empty() {
 		if msg, ok := platform.MessageContextFrom(s.ctx); ok && msg.Sender != nil {
-			return msg.Sender.SendNotice(s.ctx, target, outputs)
+			return msg.Sender.SendNotice(s.ctx, notice)
 		}
 	}
 	platformName := strings.TrimSpace(target.Platform)
@@ -68,8 +70,8 @@ func (s agentOutputSender) SendNotice(ctx context.Context, target delivery.Targe
 	if sender == nil {
 		return delivery.Receipt{}, fmt.Errorf("target platform %q is not configured", platformName)
 	}
-	target.Platform = platformName
-	return sender.SendNotice(ctx, target, outputs)
+	notice.Target.Platform = platformName
+	return sender.SendNotice(ctx, notice)
 }
 
 type contextTextSender struct {
@@ -81,16 +83,16 @@ func (s contextTextSender) SendChat(ctx context.Context, outputs []delivery.Outp
 	return s.sender.SendChat(s.ctx, outputs)
 }
 
-func (s contextTextSender) SendNotice(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-	return s.sender.SendNotice(s.ctx, target, outputs)
+func (s contextTextSender) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+	return s.sender.SendNotice(s.ctx, notice)
 }
 
 func (a *Agent) sendChat(ctx context.Context, text string) {
 	_, _ = a.sendChatWithReceipt(ctx, text)
 }
 
-func (a *Agent) sendNotice(ctx context.Context, target delivery.Target, outputs []delivery.Output) error {
-	_, err := a.SendNotice(ctx, target, outputs)
+func (a *Agent) sendNotice(ctx context.Context, notice delivery.Notice) error {
+	_, err := a.SendNotice(ctx, notice)
 	return err
 }
 
@@ -171,11 +173,11 @@ func (a *Agent) RegisterPlatformSender(name string, sender delivery.MessageSende
 	a.platformSenders[name] = sender
 }
 
-func (a *Agent) SendNotice(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+func (a *Agent) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
 	manager := a.outputs
 	manager.Sender = agentOutputSender{agent: a, ctx: ctx}
 	if manager.Logger == nil {
 		manager.Logger = a.logger
 	}
-	return manager.SendNotice(ctx, target, outputs)
+	return manager.SendNotice(ctx, notice)
 }

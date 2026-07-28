@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"sort"
 	"strconv"
@@ -396,7 +397,7 @@ func (a *Agent) attachLLMRetryNotifier(client llm.LLM, providerName string) {
 		if providerName != "" {
 			text = fmt.Sprintf("LLM 请求失败，正在重试 %d/%d（provider=%s，%s 后）：%v", event.Attempt, event.MaxRetries, providerName, event.Delay.Round(time.Millisecond), event.Err)
 		}
-		_, _ = a.SendNotice(ctx, delivery.Target{}, []delivery.Output{delivery.Text(text)})
+		_, _ = a.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(text)}, Level: slog.LevelWarn})
 	})
 }
 

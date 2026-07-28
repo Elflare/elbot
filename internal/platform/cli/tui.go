@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"log/slog"
 	"runtime"
 	"strconv"
 	"strings"
@@ -24,7 +25,10 @@ type tuiFinishAssistantMsg struct{}
 type tuiReasoningMsg string
 type tuiStatusMsg runtimestatus.Snapshot
 type tuiStatusTickMsg time.Time
-type tuiNoticeMsg string
+type tuiNoticeMsg struct {
+	Text  string
+	Level slog.Level
+}
 
 type tuiProgramSetter func(*tea.Program)
 
@@ -56,6 +60,10 @@ var (
 	tuiAssistantStyle          = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("217"))
 	tuiReasoningStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 	tuiNoticeStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	tuiDebugStyle              = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	tuiInfoStyle               = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	tuiWarnStyle               = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	tuiErrorStyle              = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 	tuiSeparatorStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	tuiPanelStyle              = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).BorderForeground(lipgloss.Color("8")).PaddingLeft(1)
 	tuiCompletionStyle         = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("62")).Padding(0, 1)
@@ -127,36 +135,42 @@ func (s completionState) currentText() string {
 	return s.items[s.index].Text
 }
 
+type tuiNotice struct {
+	Text  string
+	Level slog.Level
+}
+
 type tuiModel struct {
 	ctx     context.Context
 	handler platform.PlatformHandler
 	output  chan tea.Msg
 
-	copyState       copyModeState
-	clipboard       clipboardWriter
-	completion      completionProvider
-	localFiles      *localFileResolver
-	completionState completionState
-	content         string
-	notices         []string
-	history         []string
-	histPos         int
-	userName        string
-	assistantName   string
-	assistantOpen   bool
-	assistantStart  int
-	reasoningOpen   bool
-	runtimeStatus   runtimestatus.Snapshot
-	statusNow       time.Time
-	viewport        viewport.Model
-	noticeViewport  viewport.Model
-	input           textarea.Model
-	pasteBurst      tuiPasteBurst
-	inputNow        func() time.Time
-	width           int
-	height          int
-	noticeWidth     int
-	resizingNotice  bool
+	copyState          copyModeState
+	clipboard          clipboardWriter
+	completion         completionProvider
+	localFiles         *localFileResolver
+	completionState    completionState
+	content            string
+	notices            []tuiNotice
+	inlineNoticeLevels []slog.Level
+	history            []string
+	histPos            int
+	userName           string
+	assistantName      string
+	assistantOpen      bool
+	assistantStart     int
+	reasoningOpen      bool
+	runtimeStatus      runtimestatus.Snapshot
+	statusNow          time.Time
+	viewport           viewport.Model
+	noticeViewport     viewport.Model
+	input              textarea.Model
+	pasteBurst         tuiPasteBurst
+	inputNow           func() time.Time
+	width              int
+	height             int
+	noticeWidth        int
+	resizingNotice     bool
 }
 
 type completionProvider interface {
@@ -253,11 +267,11 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusNow = time.Time(msg)
 		return m, tickTUIStatus()
 	case tuiNoticeMsg:
-		m.appendNotice(string(msg))
+		m.appendNoticeLevel(msg.Text, msg.Level)
 		return m, waitTUIOutput(m.output)
 	case tuiClipboardMsg:
 		if msg.err != nil {
-			m.appendNotice("paste: " + msg.err.Error())
+			m.appendNoticeLevel("paste: "+msg.err.Error(), slog.LevelError)
 			return m, nil
 		}
 		oldInputContentHeight := m.inputContentHeight()
@@ -761,7 +775,7 @@ func (m tuiModel) submitInput() (tea.Model, tea.Cmd) {
 	sendText, err := m.expandLocalFileReferences(text)
 	if err != nil {
 		m.input.SetValue(m.input.Value())
-		m.appendNotice("local file reference: " + err.Error())
+		m.appendNoticeLevel("local file reference: "+err.Error(), slog.LevelError)
 		return m, nil
 	}
 	m.history = append(m.history, text)
@@ -771,7 +785,7 @@ func (m tuiModel) submitInput() (tea.Model, tea.Cmd) {
 	go func() {
 		if err := m.handler.HandleMessage(m.ctx, sendText); err != nil {
 			select {
-			case m.output <- tuiNoticeMsg("error: " + err.Error()):
+			case m.output <- tuiNoticeMsg{Text: "error: " + err.Error(), Level: slog.LevelError}:
 			case <-m.ctx.Done():
 			}
 		}
@@ -879,26 +893,31 @@ func (m *tuiModel) appendContent(text string) {
 }
 
 func (m *tuiModel) appendNotice(text string) {
+	m.appendNoticeLevel(text, slog.LevelInfo)
+}
+
+func (m *tuiModel) appendNoticeLevel(text string, level slog.Level) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return
 	}
 	if m.layoutNoticeVisible() {
-		m.notices = append(m.notices, text)
+		m.notices = append(m.notices, tuiNotice{Text: text, Level: level})
 		if len(m.notices) > 50 {
 			m.notices = m.notices[len(m.notices)-50:]
 		}
 		m.refreshNotices()
 		return
 	}
-	m.appendNoticeContent(text)
+	m.appendNoticeContent(text, level)
 }
 
-func (m *tuiModel) appendNoticeContent(text string) {
+func (m *tuiModel) appendNoticeContent(text string, level slog.Level) {
 	if strings.TrimSpace(m.content) != "" {
 		m.content += "\n" + m.separatorLine() + "\n"
 	}
 	m.content += "[notice] " + text
+	m.inlineNoticeLevels = append(m.inlineNoticeLevels, level)
 	m.assistantOpen = false
 	m.reasoningOpen = false
 	m.refreshContent()
@@ -931,11 +950,24 @@ func (m *tuiModel) refreshNotices() {
 		sb.WriteString("\n")
 		sb.WriteString(separator)
 		sb.WriteString("\n")
-		sb.WriteString(tuiNoticeStyle.Render("• "))
-		sb.WriteString(wrapDisplayWidth(notice, contentWidth))
+		sb.WriteString(tuiNoticeLevelStyle(notice.Level).Render("• "))
+		sb.WriteString(tuiNoticeLevelStyle(notice.Level).Render(wrapDisplayWidth(notice.Text, contentWidth)))
 	}
 	m.noticeViewport.SetContent(sb.String())
 	m.noticeViewport.GotoBottom()
+}
+
+func tuiNoticeLevelStyle(level slog.Level) lipgloss.Style {
+	switch {
+	case level >= slog.LevelError:
+		return tuiErrorStyle
+	case level >= slog.LevelWarn:
+		return tuiWarnStyle
+	case level >= slog.LevelInfo:
+		return tuiInfoStyle
+	default:
+		return tuiDebugStyle
+	}
 }
 
 func (m *tuiModel) refreshContent() {
@@ -963,24 +995,41 @@ func (m tuiModel) renderContent(content string) string {
 	}
 	lines := strings.Split(content, "\n")
 	inReasoning := false
+	inNotice := false
+	noticeIndex := 0
+	var noticeStyle lipgloss.Style
 	for i, line := range lines {
 		switch {
 		case strings.HasPrefix(line, m.userName+": "):
 			inReasoning = false
+			inNotice = false
 			lines[i] = renderSpeakerLine(line, m.userName, tuiUserStyle)
 		case strings.HasPrefix(line, m.assistantName+": "):
 			inReasoning = false
+			inNotice = false
 			lines[i] = renderSpeakerLine(line, m.assistantName, tuiAssistantStyle)
 		case strings.HasPrefix(line, "thinking: "):
 			inReasoning = true
+			inNotice = false
 			lines[i] = tuiReasoningStyle.Render(line)
 		case isSeparatorLine(line):
 			inReasoning = false
+			inNotice = false
 			lines[i] = tuiSeparatorStyle.Render(line)
 		case strings.HasPrefix(line, "[notice] "):
+			level := slog.LevelInfo
+			if noticeIndex < len(m.inlineNoticeLevels) {
+				level = m.inlineNoticeLevels[noticeIndex]
+			}
+			noticeIndex++
 			inReasoning = false
+			inNotice = true
+			noticeStyle = tuiNoticeLevelStyle(level)
+			lines[i] = noticeStyle.Render(line)
 		case inReasoning:
 			lines[i] = tuiReasoningStyle.Render(line)
+		case inNotice:
+			lines[i] = noticeStyle.Render(line)
 		}
 	}
 	return strings.Join(lines, "\n")

@@ -22,7 +22,7 @@ func (r fakeRuntimeWithCaller) SendChat(context.Context, []delivery.Output) (del
 	return delivery.Receipt{}, nil
 }
 
-func (r fakeRuntimeWithCaller) SendNotice(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+func (r fakeRuntimeWithCaller) SendNotice(context.Context, delivery.Notice) (delivery.Receipt, error) {
 	return delivery.Receipt{}, nil
 }
 

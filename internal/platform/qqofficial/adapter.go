@@ -87,7 +87,9 @@ func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (deli
 	return a.sendContextOutput(ctx, outputs)
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+	target := notice.Target
+	outputs := notice.Outputs
 	if target.Empty() {
 		return a.SendChat(ctx, outputs)
 	}

@@ -31,7 +31,7 @@ func newCopyTestModel() tuiModel {
 	}
 	m.resizeViewports()
 	m.content = "user: hello\nassistant: first line\nsecond error line\nthird line\n"
-	m.notices = []string{"notice one", "notice two error"}
+	m.notices = []tuiNotice{{Text: "notice one"}, {Text: "notice two error"}}
 	m.refreshContent()
 	m.refreshNotices()
 	return m

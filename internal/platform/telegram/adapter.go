@@ -238,7 +238,9 @@ func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[st
 	return a.client.callRaw(ctx, strings.TrimSpace(api), params)
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, outTarget delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+	outTarget := notice.Target
+	outputs := notice.Outputs
 	if outTarget.Empty() {
 		return a.SendChat(ctx, outputs)
 	}

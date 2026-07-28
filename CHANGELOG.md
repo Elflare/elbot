@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- CLI TUI 通知支持携带日志等级并按 Debug 白、Info 绿、Warn 黄、Error 红显示；远程 CLI 的 `notice` 消息同步新增可选 `level` 字段。
+
 ## [v0.4.1 - 2026-07-28]
 
 ### Changed

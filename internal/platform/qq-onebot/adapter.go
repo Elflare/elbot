@@ -236,7 +236,9 @@ func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[st
 	return resp.Data, nil
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, outTarget delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+	outTarget := notice.Target
+	outputs := notice.Outputs
 	if outTarget.Empty() && isGroupToolPreviewNotice(ctx, outputs) {
 		return delivery.Receipt{}, nil
 	}
@@ -258,7 +260,8 @@ func (a *Adapter) SendNotice(ctx context.Context, outTarget delivery.Target, out
 			copyTarget.PrivateUserID = id
 			copyTarget.GroupID = ""
 			copyTarget.ScopeID = ""
-			sent, err := a.SendNotice(ctx, copyTarget, outputs)
+			notice.Target = copyTarget
+			sent, err := a.SendNotice(ctx, notice)
 			if err != nil {
 				return delivery.Receipt{}, err
 			}
@@ -334,7 +337,7 @@ func (a *Adapter) sendSegments(ctx context.Context, t target, segments []Segment
 }
 
 func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, out delivery.Output) (delivery.Receipt, error) {
-	return a.SendNotice(ctx, outTarget, []delivery.Output{out})
+	return a.SendNotice(ctx, delivery.Notice{Target: outTarget, Outputs: []delivery.Output{out}})
 }
 
 func receiptWithMessageID(id string) delivery.Receipt {

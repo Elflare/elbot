@@ -44,6 +44,7 @@ Token 在 `[platform.cli.server.tokens]` 中按 client_id 映射到环境变量�
 | client_id | string | 客户端标识 |
 | token | string | 鉴权 token（仅 hello） |
 | text | string | 文本内容 |
+| level | string | 通知等级（仅 notice） |
 | cursor | int | 光标位置（仅补全请求） |
 | items | array | 补全候选列表（仅补全响应） |
 | snapshot | object | 运行状态快照（仅 status） |
@@ -81,10 +82,10 @@ Agent 完成处理后发送的完整回复消息。
 ### notice — 通知
 
 ```json
-{"type": "notice", "text": "Cron 任务已完成"}
+{"type": "notice", "level": "INFO", "text": "Cron 任务已完成"}
 ```
 
-非对话场景的通知消息，如 Cron 结果、Hook 输出、Elnis 事件报告等。
+非对话场景的通知消息，如 Cron 结果、Hook 输出、Elnis 事件报告等。`level` 可取 `DEBUG`、`INFO`、`WARN`、`ERROR`；省略时按 `INFO` 处理。
 
 ### reasoning — 推理过程
 

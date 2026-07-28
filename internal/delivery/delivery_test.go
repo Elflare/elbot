@@ -3,13 +3,14 @@ package delivery
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 )
 
 type fakeSender struct {
 	chats   [][]Output
-	notices [][]Output
+	notices []Notice
 	err     error
 }
 
@@ -20,18 +21,17 @@ func (s *fakeSender) SendChat(_ context.Context, outputs []Output) (Receipt, err
 	s.chats = append(s.chats, outputs)
 	return Receipt{}, nil
 }
-
-func (s *fakeSender) SendNotice(_ context.Context, target Target, outputs []Output) (Receipt, error) {
+func (s *fakeSender) SendNotice(_ context.Context, notice Notice) (Receipt, error) {
 	if s.err != nil {
 		return Receipt{}, s.err
 	}
-	if !target.Empty() {
-		outputs = append([]Output(nil), outputs...)
-		for i := range outputs {
-			outputs[i].Target = target
+	if !notice.Target.Empty() {
+		notice.Outputs = append([]Output(nil), notice.Outputs...)
+		for i := range notice.Outputs {
+			notice.Outputs[i].Target = notice.Target
 		}
 	}
-	s.notices = append(s.notices, outputs)
+	s.notices = append(s.notices, notice)
 	return Receipt{}, nil
 }
 
@@ -102,24 +102,35 @@ func TestManagerSendsNotices(t *testing.T) {
 	if err := manager.SendNotices(context.Background(), []Output{{Kind: KindText, Text: "hello"}, image}); err != nil {
 		t.Fatalf("SendNotices: %v", err)
 	}
-	if len(sender.notices) != 1 || len(sender.notices[0]) != 2 || sender.notices[0][0].Text != "hello" || sender.notices[0][1].Name != "pic" {
+	if len(sender.notices) != 1 || sender.notices[0].Level != slog.LevelInfo || len(sender.notices[0].Outputs) != 2 || sender.notices[0].Outputs[0].Text != "hello" || sender.notices[0].Outputs[1].Name != "pic" {
 		t.Fatalf("notices = %#v", sender.notices)
 	}
 }
 
+func TestManagerPreservesNoticeLevel(t *testing.T) {
+	sender := &fakeSender{}
+	manager := NewManager(sender, nil)
+	notice := Notice{Outputs: []Output{Text("careful")}, Level: slog.LevelWarn}
+	if _, err := manager.SendNotice(context.Background(), notice); err != nil {
+		t.Fatalf("SendNotice: %v", err)
+	}
+	if len(sender.notices) != 1 || sender.notices[0].Level != slog.LevelWarn {
+		t.Fatalf("notices = %#v", sender.notices)
+	}
+}
 func TestManagerWrapsNoticeOutputErrorWithHookName(t *testing.T) {
 	boom := errors.New("boom")
 	sender := &fakeSender{err: boom}
 	manager := NewManager(sender, nil)
 	err := func() error {
-		_, err := manager.SendNotice(context.Background(), Target{Platform: "qqonebot", PrivateUserID: "123"}, []Output{{
+		_, err := manager.SendNotice(context.Background(), Notice{Target: Target{Platform: "qqonebot", PrivateUserID: "123"}, Outputs: []Output{{
 			Kind: KindText,
 			Text: "hello",
 			Meta: map[string]any{
 				MetaHookName:  "notify.connected",
 				MetaHookPoint: "platform.connected",
 			},
-		}})
+		}}})
 		return err
 	}()
 	if !errors.Is(err, boom) {

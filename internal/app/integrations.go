@@ -40,7 +40,7 @@ func (defaultIntegrationFactory) Attach(ctx context.Context, req IntegrationRequ
 			PlatformCallers:  platformCallerResolver{runtimes: platforms.Runtimes},
 			Audit:            auditFunc(foundation.Logs),
 			Send: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
-				return runtime.Agent.SendNotice(ctx, target, []delivery.Output{out})
+				return runtime.Agent.SendNotice(ctx, delivery.Notice{Target: target, Outputs: []delivery.Output{out}})
 			},
 			Runner: runtime.Agent,
 			ResolveModel: func(slot string) config.ModelSelection {

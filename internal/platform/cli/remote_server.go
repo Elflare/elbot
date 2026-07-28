@@ -165,12 +165,13 @@ func (s *RemoteServer) SendChat(ctx context.Context, outputs []delivery.Output) 
 	return delivery.Receipt{}, fmt.Errorf("cli chat target missing")
 }
 
-func (s *RemoteServer) SendNotice(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+func (s *RemoteServer) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+	target := notice.Target
 	clients, err := s.targetClients(ctx, target)
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
-	msg := outputMessage(remoteMsgNotice, delivery.FallbackOutput(outputs))
+	msg := remoteNoticeMessage(notice)
 	return delivery.Receipt{}, s.writeClients(ctx, clients, msg)
 }
 
@@ -346,6 +347,12 @@ func (s *RemoteServer) validToken(clientID, token string) bool {
 		}
 	}
 	return false
+}
+
+func remoteNoticeMessage(notice delivery.Notice) remoteMessage {
+	msg := outputMessage(remoteMsgNotice, delivery.FallbackOutput(notice.Outputs))
+	msg.Level = notice.Level.String()
+	return msg
 }
 
 func outputMessage(kind string, out delivery.Output) remoteMessage {
