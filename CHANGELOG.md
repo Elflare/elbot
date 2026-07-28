@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v0.4.1 - 2026-07-28]
+
 ### Changed
 
 - `/new` 与 Session 闲置过期改为仅清除当前会话指针，首条普通消息到来时才创建新 Session；过期历史会话不再立即删除，可直接通过 `/resume` 恢复。
