@@ -46,6 +46,7 @@ All messages are in JSON and share the same structure:
 | client_id | string | Client identifier |
 | token | string | Authentication token (hello only) |
 | text | string | Text content |
+| level | string | Notification level (notice only) |
 | cursor | int | Cursor position (completion requests only) |
 | items | array | Completion candidates list (completion responses only) |
 | snapshot | object | Runtime status snapshot (status only) |
@@ -83,10 +84,10 @@ The complete reply message sent after the Agent finishes processing.
 ### notice — Notification
 
 ```json
-{"type": "notice", "text": "Cron 任务已完成"}
+{"type": "notice", "level": "INFO", "text": "Cron 任务已完成"}
 ```
 
-Notification messages for non-dialogue scenarios, such as Cron results, Hook output, Elnis event reports, etc.
+Notification messages for non-dialogue scenarios, such as Cron results, Hook output, Elnis event reports, etc. `level` can be `DEBUG`, `INFO`, `WARN`, or `ERROR`; When omitted, it is handled as `INFO`.
 
 ### reasoning — Reasoning Process
 
