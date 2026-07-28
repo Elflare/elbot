@@ -464,6 +464,14 @@
       "translation": "Fixed the issue where __ELBOT_CODE_0__ would display active requests from other users or Sessions within the process when the caller has no current Session;",
       "updated_at": 1784987067
     },
+    "CHANGELOG.md:list:60c8dfedb96e664a7360942d00f55f08ce458dd6ef1b154b5ff12cf4bb9ed704": {
+      "kind": "list",
+      "source": "CLI TUI 通知支持携带日志等级并按 Debug 白、Info 绿、Warn 黄、Error 红显示；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "60c8dfedb96e664a7360942d00f55f08ce458dd6ef1b154b5ff12cf4bb9ed704",
+      "translation": "CLI TUI notifications now support log levels and are displayed in White for Debug, Green for Info, Yellow for Warn, and Red for Error;",
+      "updated_at": 1785235309
+    },
     "CHANGELOG.md:list:611aafc7e8d828767ae2b38b0e5c3d0fead2cde039834d37560cbe5b03c27491": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 审计事件从 debug 级别改为 info 级别，默认 __ELBOT_CODE_1__ 即可记录 token 消耗数据。",
@@ -992,6 +1000,14 @@
       "translation": "Platform message Hook output will now be sent; __ELBOT_CODE_0__ can block subsequent command/LLM processing.",
       "updated_at": 1782376912
     },
+    "CHANGELOG.md:list:b29b7ec1f638060654625e733558f4030029e4f707216bb07123dbea0573d190": {
+      "kind": "list",
+      "source": "远程 CLI 的 __ELBOT_CODE_0__ 消息同步新增可选 __ELBOT_CODE_1__ 字段。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "b29b7ec1f638060654625e733558f4030029e4f707216bb07123dbea0573d190",
+      "translation": "Added an optional __ELBOT_CODE_1__ field to the __ELBOT_CODE_0__ message synchronization of the remote CLI.",
+      "updated_at": 1785235309
+    },
     "CHANGELOG.md:list:b3437ec56a0380e39408a1e249d70dd1aa1ceb8b073ecf965ae300d13d3297d2": {
       "kind": "list",
       "source": "工具结果支持统一 __ELBOT_CODE_0__ 输出，用于提示 LLM 后续优先使用更合适的工具。",
@@ -1354,8 +1370,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "869c1588f03c156dca87daf1f2697c6bcc7427cf399e71770574dc73e8287b30",
+  "source_hash": "0bbdcd2e817abbe6d1e38b74110e32da4603d4b1a27e18fea253cd2bab745318",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1785222031,
+  "updated_at": 1785235309,
   "version": 2
 }
