@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v0.4.1 - 2026-07-28]
+
 ### Changed
 
 - `/new` and Session idle expiration are changed to only clear the current session pointer; a new Session is created only when the first ordinary message arrives; Expired historical Sessions are no longer deleted immediately and can be restored directly via `/resume`.
