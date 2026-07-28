@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- CLI TUI notifications now support log levels and are displayed in White for Debug, Green for Info, Yellow for Warn, and Red for Error; Added an optional `level` field to the `notice` message synchronization of the remote CLI.
+
 ## [v0.4.1 - 2026-07-28]
 
 ### Changed
