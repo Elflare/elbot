@@ -296,14 +296,6 @@
       "translation": "Marks that the current streaming message has ended; the frontend can now pin this message.\n",
       "updated_at": 1782901460
     },
-    "docs/frontend-api.md:paragraph:adc6e62a5f040ab39ae50af75b7795b801bf8cbee04bfa0f9d5b608f190bfbe6": {
-      "kind": "paragraph",
-      "source": "非对话场景的通知消息，如 Cron 结果、Hook 输出、Elnis 事件报告等。\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "adc6e62a5f040ab39ae50af75b7795b801bf8cbee04bfa0f9d5b608f190bfbe6",
-      "translation": "Notification messages for non-dialogue scenarios, such as Cron results, Hook output, Elnis event reports, etc.\n",
-      "updated_at": 1782901460
-    },
     "docs/frontend-api.md:paragraph:b7ec5aa79f7feac3899c5678ac8ae25ffaad189f22324caf4c4cfccea1c39825": {
       "kind": "paragraph",
       "source": "Agent 完成处理后发送的完整回复消息。\n",
@@ -312,6 +304,14 @@
       "translation": "The complete reply message sent after the Agent finishes processing.\n",
       "updated_at": 1782901460
     },
+    "docs/frontend-api.md:paragraph:b8e31331bd84054e76653ee0dda1f8175ceaf6f47f83ae5d25bc57d067a6c3fc": {
+      "kind": "paragraph",
+      "source": "非对话场景的通知消息，如 Cron 结果、Hook 输出、Elnis 事件报告等。",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "b8e31331bd84054e76653ee0dda1f8175ceaf6f47f83ae5d25bc57d067a6c3fc",
+      "translation": "Notification messages for non-dialogue scenarios, such as Cron results, Hook output, Elnis event reports, etc.",
+      "updated_at": 1785235280
+    },
     "docs/frontend-api.md:paragraph:beddd3b0cb61ba1e2276cc7b9e8194ab03806e92e68e795fe0a9123f9de9d06c": {
       "kind": "paragraph",
       "source": "连接建立后，客户端必须立即发送一条 __ELBOT_CODE_0__ 消息：\n",
@@ -319,6 +319,14 @@
       "source_hash": "beddd3b0cb61ba1e2276cc7b9e8194ab03806e92e68e795fe0a9123f9de9d06c",
       "translation": "After the connection is established, the client must immediately send a __ELBOT_CODE_0__ message:\n",
       "updated_at": 1782901460
+    },
+    "docs/frontend-api.md:paragraph:c31d724cc5b0294c910c845d47f320bbab8a3a819fc057924c15735f07ce3553": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 可取 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__；",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "c31d724cc5b0294c910c845d47f320bbab8a3a819fc057924c15735f07ce3553",
+      "translation": "__ELBOT_CODE_0__ can be __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, or __ELBOT_CODE_4__;",
+      "updated_at": 1785235280
     },
     "docs/frontend-api.md:paragraph:c8861d11db55e8e2431a168019b157e859cf13ebee7ebcb34a2aef657aad39f1": {
       "kind": "paragraph",
@@ -343,6 +351,14 @@
       "source_hash": "d49cedeb924838e552674bb9b1dcf7f81c505541846bef91ace96aa613baecca",
       "translation": "After streaming ends, replace the previously accumulated streaming content with the final complete text. This may differ from the result of streaming concatenation (Hooks may have modified the output).\n",
       "updated_at": 1782901460
+    },
+    "docs/frontend-api.md:paragraph:d9c6b4dd1d784b8daad5cd325be4e121a4f67d315391c1631325c81d2f715810": {
+      "kind": "paragraph",
+      "source": "省略时按 __ELBOT_CODE_0__ 处理。\n",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "d9c6b4dd1d784b8daad5cd325be4e121a4f67d315391c1631325c81d2f715810",
+      "translation": "When omitted, it is handled as __ELBOT_CODE_0__.\n",
+      "updated_at": 1785235280
     },
     "docs/frontend-api.md:paragraph:ee24b5b4eaff5b66dfdc166fbea541a991b17968e5d2735a59d7b7ee0e1387c6": {
       "kind": "paragraph",
@@ -439,6 +455,14 @@
       "source_hash": "53e86ab7d5de37640bc5cc4e0ce3ddceaa94a2c3f94ad3dbc957e472bea84b19",
       "translation": "Cursor position (completion requests only)",
       "updated_at": 1782901460
+    },
+    "docs/frontend-api.md:table:632c729cb4054930b5a56b3935f81457c532a2411954a9e1d1b73458f4b0d1fe": {
+      "kind": "table",
+      "source": "通知等级（仅 notice）",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "632c729cb4054930b5a56b3935f81457c532a2411954a9e1d1b73458f4b0d1fe",
+      "translation": "Notification level (notice only)",
+      "updated_at": 1785235280
     },
     "docs/frontend-api.md:table:6f4689bf96fbe0aa6fd219cd8f7b665ce59dec2d4ca8321efe37b7039eec7142": {
       "kind": "table",
@@ -562,8 +586,8 @@
     }
   },
   "source": "docs/frontend-api.md",
-  "source_hash": "fb1484bf117ef414c3f1e703107788872f7124c69dc0e691796a722b16c53aa0",
+  "source_hash": "11b884639bc1362864f994701033b9bcff4510b871f0bd0e7120d081f1404880",
   "target": "docs.en/frontend-api.md",
-  "updated_at": 1782901460,
+  "updated_at": 1785235280,
   "version": 2
 }
