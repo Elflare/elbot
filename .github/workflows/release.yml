@@ -122,21 +122,45 @@ jobs:
               f { print }
             ' "$file"
           }
-          extract_section CHANGELOG.md > release-notes.md
-          if [ -f CHANGELOG.en.md ]; then
-            en_notes=$(extract_section CHANGELOG.en.md)
-            if [ -n "$en_notes" ]; then
-              printf '\n---\n\n' >> release-notes.md
-              printf '%s\n' "$en_notes" >> release-notes.md
-            fi
-          else
-            echo "WARNING: CHANGELOG.en.md missing; release notes will be Chinese-only." >&2
-          fi
-          if [ ! -s release-notes.md ]; then
-            echo "No CHANGELOG section for ${tag}; using tag name as fallback." >&2
-            echo "Release ${tag}." > release-notes.md
+          zh_notes=$(extract_section CHANGELOG.md)
+          if [ -z "$zh_notes" ]; then
+            echo "ERROR: CHANGELOG.md has no section for ${tag}." >&2
+            exit 1
           fi
 
+          en_notes=""
+          if [ -f CHANGELOG.en.md ]; then
+            en_notes=$(extract_section CHANGELOG.en.md)
+          fi
+
+          if [ -z "$en_notes" ]; then
+            echo "English notes for ${tag} are not in the tag; waiting for the translation on main."
+            max_attempts=80
+            for ((attempt=1; attempt<=max_attempts; attempt++)); do
+              if git fetch --quiet origin +refs/heads/main:refs/remotes/origin/main && \
+                 git show origin/main:CHANGELOG.en.md > /tmp/CHANGELOG.en.md 2>/dev/null; then
+                en_notes=$(extract_section /tmp/CHANGELOG.en.md)
+                if [ -n "$en_notes" ]; then
+                  echo "Found English notes for ${tag} on main."
+                  break
+                fi
+              else
+                echo "WARNING: failed to fetch English CHANGELOG from main (attempt ${attempt}/${max_attempts})." >&2
+              fi
+
+              if [ "$attempt" -lt "$max_attempts" ]; then
+                echo "English notes are not ready (attempt ${attempt}/${max_attempts}); retrying in 15 seconds."
+                sleep 15
+              fi
+            done
+          fi
+
+          if [ -z "$en_notes" ]; then
+            echo "ERROR: English CHANGELOG section for ${tag} was not available after 20 minutes." >&2
+            exit 1
+          fi
+
+          printf '%s\n\n---\n\n%s\n' "$zh_notes" "$en_notes" > release-notes.md
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
