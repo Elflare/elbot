@@ -24,6 +24,6 @@ func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (deli
 	return delivery.Receipt{}, fmt.Errorf("service platform cannot send chat output without a target platform")
 }
 
-func (a *Adapter) SendNotice(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) SendNotice(context.Context, delivery.Notice) (delivery.Receipt, error) {
 	return delivery.Receipt{}, fmt.Errorf("service platform cannot send notice without a target platform")
 }

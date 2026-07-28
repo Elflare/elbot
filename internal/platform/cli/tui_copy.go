@@ -231,7 +231,7 @@ func (m tuiModel) noticeCopyLines() []string {
 		if i > 0 {
 			lines = append(lines, "")
 		}
-		lines = append(lines, splitLines(wrapDisplayWidth(notice, width))...)
+		lines = append(lines, splitLines(wrapDisplayWidth(notice.Text, width))...)
 	}
 	return lines
 }

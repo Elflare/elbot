@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"elbot/internal/config"
@@ -85,7 +86,7 @@ func (a *Agent) handleTurnContextDone(ctx context.Context, sessionID string, err
 			a.logger.WarnContext(ctx, "turn response timeout", "session_id", sessionID, "error", err.Error())
 		}
 		a.audit("turn_response_timeout", "session_id", sessionID, "error", err.Error())
-		out.SendNotice(ctx, message)
+		out.SendNotice(ctx, slog.LevelWarn, message)
 	}
 	return nil
 }

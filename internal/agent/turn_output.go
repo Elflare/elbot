@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"elbot/internal/delivery"
@@ -18,7 +19,7 @@ type turnOutput interface {
 	ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, error)
 	SendAssistant(ctx context.Context, text string) (delivery.Receipt, error)
 	SendOutputs(ctx context.Context, outputs []delivery.Output) error
-	SendNotice(ctx context.Context, text string)
+	SendNotice(ctx context.Context, level slog.Level, text string)
 	SendPreview(ctx context.Context, text string)
 	SendReasoning(ctx context.Context, text string)
 	PublishRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot)
@@ -48,8 +49,8 @@ func (o foregroundTurnOutput) SendOutputs(ctx context.Context, outputs []deliver
 	return o.agent.sendOutputs(ctx, outputs)
 }
 
-func (o foregroundTurnOutput) SendNotice(ctx context.Context, text string) {
-	o.agent.sendTextNotice(ctx, text)
+func (o foregroundTurnOutput) SendNotice(ctx context.Context, level slog.Level, text string) {
+	o.agent.sendTextNotice(ctx, level, text)
 }
 
 func (o foregroundTurnOutput) SendPreview(ctx context.Context, text string) {
@@ -82,7 +83,7 @@ func (o backgroundTurnOutput) SendOutputs(ctx context.Context, outputs []deliver
 	return nil
 }
 
-func (o backgroundTurnOutput) SendNotice(ctx context.Context, text string) {}
+func (o backgroundTurnOutput) SendNotice(ctx context.Context, level slog.Level, text string) {}
 
 func (o backgroundTurnOutput) SendPreview(ctx context.Context, text string) {}
 
@@ -92,12 +93,12 @@ func (o backgroundTurnOutput) PublishRuntimeStatus(ctx context.Context, snapshot
 	o.agent.recordRuntimeStatus(snapshot)
 }
 
-func (a *Agent) sendTextNotice(ctx context.Context, text string) {
+func (a *Agent) sendTextNotice(ctx context.Context, level slog.Level, text string) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return
 	}
-	a.SendNotice(ctx, delivery.Target{}, []delivery.Output{delivery.Text(text)})
+	a.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(text)}, Level: level})
 }
 
 func (a *Agent) sendPreview(ctx context.Context, text string) {
@@ -114,7 +115,7 @@ func (a *Agent) sendPreview(ctx context.Context, text string) {
 		return
 	}
 	preview := formatToolPreview(body)
-	a.SendNotice(ctx, delivery.Target{}, []delivery.Output{delivery.Text(preview)})
+	a.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(preview)}, Level: slog.LevelDebug})
 	a.notifyHook(ctx, hook.Event{Point: hook.PointPlatformMessageSent, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(preview)}})
 }
 

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
 	"elbot/internal/completion"
@@ -360,10 +362,48 @@ func TestAppendNoticeContentUsesSeparator(t *testing.T) {
 	}
 }
 
+func TestTUINoticeLevelStyles(t *testing.T) {
+	tests := []struct {
+		level slog.Level
+		color lipgloss.Color
+	}{
+		{level: slog.LevelDebug, color: lipgloss.Color("15")},
+		{level: slog.LevelInfo, color: lipgloss.Color("10")},
+		{level: slog.LevelWarn, color: lipgloss.Color("11")},
+		{level: slog.LevelError, color: lipgloss.Color("9")},
+	}
+	for _, test := range tests {
+		if got := tuiNoticeLevelStyle(test.level).GetForeground(); got != test.color {
+			t.Errorf("level %s color = %v, want %v", test.level, got, test.color)
+		}
+	}
+}
+
+func TestNoticeLevelPreservedInWideAndInlineLayouts(t *testing.T) {
+	wide := tuiModel{input: newTUIInput(), width: 120, height: 20}
+	wide.resizeViewports()
+	wide.appendNoticeLevel("first\nsecond", slog.LevelError)
+	if len(wide.notices) != 1 || wide.notices[0].Level != slog.LevelError {
+		t.Fatalf("wide notices = %#v", wide.notices)
+	}
+	if got := strings.Join(wide.noticeCopyLines(), "\n"); got != "first\nsecond" {
+		t.Fatalf("copy text = %q", got)
+	}
+
+	narrow := tuiModel{input: newTUIInput(), width: 80, height: 20}
+	narrow.resizeViewports()
+	narrow.appendNoticeLevel("problem\ndetail", slog.LevelWarn)
+	if len(narrow.inlineNoticeLevels) != 1 || narrow.inlineNoticeLevels[0] != slog.LevelWarn {
+		t.Fatalf("inline levels = %#v", narrow.inlineNoticeLevels)
+	}
+	if !strings.Contains(narrow.content, "[notice] problem\ndetail") {
+		t.Fatalf("inline content = %q", narrow.content)
+	}
+}
 func TestRefreshNoticesUsesSeparator(t *testing.T) {
 	m := tuiModel{input: newTUIInput(), width: 120, height: 20}
 	m.resizeViewports()
-	m.notices = []string{"notice one", "notice two"}
+	m.notices = []tuiNotice{{Text: "notice one"}, {Text: "notice two"}}
 	m.refreshNotices()
 
 	got := m.noticeViewport.View()

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -107,7 +108,7 @@ func (c *RemoteClient) readLoop(ctx context.Context) {
 	for {
 		var msg remoteMessage
 		if err := wsjson.Read(ctx, c.conn, &msg); err != nil {
-			c.sendTUI(tuiNoticeMsg("cli server disconnected: " + err.Error()))
+			c.sendTUI(tuiNoticeMsg{Text: "cli server disconnected: " + err.Error(), Level: slog.LevelError})
 			return
 		}
 		c.handleServerMessage(msg)
@@ -119,7 +120,7 @@ func (c *RemoteClient) handleServerMessage(msg remoteMessage) {
 	case remoteMsgChat:
 		c.sendTUI(tuiOutputMsg(msg.Text))
 	case remoteMsgNotice:
-		c.sendTUI(tuiNoticeMsg(msg.Text))
+		c.sendTUI(tuiNoticeMsg{Text: msg.Text, Level: remoteNoticeLevel(msg.Level)})
 	case remoteMsgReasoning:
 		c.sendTUI(tuiReasoningMsg(msg.Text))
 	case remoteMsgStatus:
@@ -141,8 +142,19 @@ func (c *RemoteClient) handleServerMessage(msg remoteMessage) {
 			}
 		}
 	case remoteMsgError:
-		c.sendTUI(tuiNoticeMsg("error: " + msg.Text))
+		c.sendTUI(tuiNoticeMsg{Text: "error: " + msg.Text, Level: slog.LevelError})
 	}
+}
+
+func remoteNoticeLevel(text string) slog.Level {
+	var level slog.Level
+	if strings.TrimSpace(text) == "" {
+		return slog.LevelInfo
+	}
+	if err := level.UnmarshalText([]byte(text)); err != nil {
+		return slog.LevelInfo
+	}
+	return level
 }
 
 func (c *RemoteClient) sendTUI(msg tea.Msg) {

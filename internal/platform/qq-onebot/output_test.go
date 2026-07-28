@@ -23,7 +23,7 @@ func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
 	adapter.transport = transport
 	ctx := context.WithValue(context.Background(), targetKey{}, target{MessageType: "group", GroupID: 9})
 
-	receipt, err := adapter.SendNotice(ctx, delivery.Target{}, []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")})
+	receipt, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")}})
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestSendNoticeKeepsPrivateToolPreview(t *testing.T) {
 	adapter.transport = transport
 	ctx := context.WithValue(context.Background(), targetKey{}, target{MessageType: "private", UserID: 1})
 
-	receipt, err := adapter.SendNotice(ctx, delivery.Target{}, []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")})
+	receipt, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")}})
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}

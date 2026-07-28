@@ -20,6 +20,12 @@ const (
 	KindReply    Kind = "reply"
 )
 
+type Notice struct {
+	Target  Target
+	Outputs []Output
+	Level   slog.Level
+}
+
 type Target struct {
 	Platform      string `json:"platform,omitempty"`
 	ScopeID       string `json:"scope_id,omitempty"`
@@ -177,7 +183,7 @@ type MessageStream interface {
 // MessageSender sends one logical message, represented by ordered output segments.
 type MessageSender interface {
 	SendChat(ctx context.Context, outputs []Output) (Receipt, error)
-	SendNotice(ctx context.Context, target Target, outputs []Output) (Receipt, error)
+	SendNotice(ctx context.Context, notice Notice) (Receipt, error)
 }
 
 // ContextSender can send a reply using routing information carried by ctx.
@@ -197,7 +203,7 @@ func NewManager(sender Sender, logger *slog.Logger) Manager {
 }
 
 func (m Manager) SendNotices(ctx context.Context, outputs []Output) error {
-	_, err := m.SendNotice(ctx, Target{}, outputs)
+	_, err := m.SendNotice(ctx, Notice{Outputs: outputs})
 	return err
 }
 
@@ -214,30 +220,30 @@ func (m Manager) SendChat(ctx context.Context, outputs []Output) (Receipt, error
 	return m.Sender.SendChat(ctx, outputs)
 }
 
-func (m Manager) SendNotice(ctx context.Context, target Target, outputs []Output) (Receipt, error) {
+func (m Manager) SendNotice(ctx context.Context, notice Notice) (Receipt, error) {
 	if err := ctx.Err(); err != nil {
 		return Receipt{}, err
 	}
-	if m.Sender == nil || len(outputs) == 0 {
+	if m.Sender == nil || len(notice.Outputs) == 0 {
 		return Receipt{}, nil
 	}
-	if err := ValidateOutputs(outputs); err != nil {
+	if err := ValidateOutputs(notice.Outputs); err != nil {
 		return Receipt{}, err
 	}
-	configuredTarget, err := ValidateOutputsTarget(outputs)
+	configuredTarget, err := ValidateOutputsTarget(notice.Outputs)
 	if err != nil {
 		return Receipt{}, err
 	}
-	if target.Empty() {
-		target = configuredTarget
+	if notice.Target.Empty() {
+		notice.Target = configuredTarget
 	}
-	receipt, err := m.Sender.SendNotice(ctx, target, outputs)
+	receipt, err := m.Sender.SendNotice(ctx, notice)
 	if err != nil {
 		if m.Logger != nil {
-			attrs := outputLogAttrs(outputs[0], "platform", target.Platform, "error", err.Error())
+			attrs := outputLogAttrs(notice.Outputs[0], "platform", notice.Target.Platform, "error", err.Error())
 			m.Logger.WarnContext(ctx, "notice output failed", attrs...)
 		}
-		return Receipt{}, wrapOutputSourceError(outputs[0], err)
+		return Receipt{}, wrapOutputSourceError(notice.Outputs[0], err)
 	}
 	return receipt, nil
 }

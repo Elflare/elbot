@@ -13,7 +13,7 @@ func TestMouseWheelScrollsRegionUnderPointer(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		m.content += "line\n"
 	}
-	m.notices = []string{strings.Repeat("notice\n", 80)}
+	m.notices = []tuiNotice{{Text: strings.Repeat("notice\n", 80)}}
 	m.refreshContent()
 	m.refreshNotices()
 	chatBefore := m.viewport.YOffset
