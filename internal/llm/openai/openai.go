@@ -86,6 +86,7 @@ func NewWithOptions(baseURL, apiKey string, extraPayload map[string]any, modelEx
 	baseURL = strings.TrimRight(baseURL, "/")
 	opts = opts.withDefaults()
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
 	transport.ResponseHeaderTimeout = opts.FirstChunkTimeout
 	client := &http.Client{Transport: transport}
 	if strings.TrimSpace(opts.Proxy) != "" {

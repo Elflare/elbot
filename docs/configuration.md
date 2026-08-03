@@ -103,7 +103,7 @@ default_context_window = 256000
 
 - `base_url` 使用 Provider 的 OpenAI-compatible API 地址。
 - `api_key_env` 指向环境变量名，推荐用这种方式保存密钥。
-- `proxy` 可选，支持 `http://` 和 `socks5://` 代理地址。
+- `proxy` 可选，支持 `http://` 和 `socks5://` 代理地址；省略或留空时直连，不继承 ElBot 进程的 `HTTP_PROXY`、`HTTPS_PROXY` 等环境代理。该设置同时作用于模型列表和聊天请求。
 - `models` 是手动补充的模型名列表，当 Provider 的模型列表接口获取不到某些模型时使用。
 - `[providers.<name>.model_configs."<model>"]` 为特定模型配置 `context_window` 和 `extra_payload`，两者都是可选的。
 - `extra_payload` 会合并到 LLM 请求 JSON 中，模型级覆盖 Provider 级。

@@ -31,6 +31,31 @@ func TestNewWithOptionsReturnsInvalidProxyError(t *testing.T) {
 	}
 }
 
+func TestNewWithOptionsWithoutProxyDisablesEnvironmentProxy(t *testing.T) {
+	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:7890")
+	adapter := mustNewWithOptions(t, "https://example.invalid/v1", "key", nil, nil, RequestOptions{})
+	transport := adapter.client.Transport.(*http.Transport)
+	if transport.Proxy != nil {
+		t.Fatal("transport.Proxy is set; provider should not inherit the environment proxy")
+	}
+}
+
+func TestNewWithOptionsUsesProviderProxy(t *testing.T) {
+	adapter := mustNewWithOptions(t, "https://example.invalid/v1", "key", nil, nil, RequestOptions{Proxy: "http://127.0.0.1:7890"})
+	transport := adapter.client.Transport.(*http.Transport)
+	req, err := http.NewRequest(http.MethodGet, "https://example.invalid/v1/models", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	proxyURL, err := transport.Proxy(req)
+	if err != nil {
+		t.Fatalf("transport.Proxy: %v", err)
+	}
+	if got, want := proxyURL.String(), "http://127.0.0.1:7890"; got != want {
+		t.Fatalf("proxy URL = %q, want %q", got, want)
+	}
+}
+
 func TestChatStream_BasicContent(t *testing.T) {
 	var capturedPath string
 	var capturedBody []byte
