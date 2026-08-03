@@ -336,6 +336,14 @@
       "translation": "__ELBOT_CODE_0__ is the default value: uses standard __ELBOT_CODE_1__ + __ELBOT_CODE_2__, and performs a lightweight conversion of common Markdown to Telegram HTML;",
       "updated_at": 1781839376
     },
+    "docs/configuration.md:list:1c497741b0e47e95818608c4c6c8d78c5b36f010d1f626da32d3257db9ee5803": {
+      "kind": "list",
+      "source": "省略或留空时直连，不继承 ElBot 进程的 __ELBOT_CODE_0__、__ELBOT_CODE_1__ 等环境代理。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1c497741b0e47e95818608c4c6c8d78c5b36f010d1f626da32d3257db9ee5803",
+      "translation": "When omitted or left blank, it connects directly and does not inherit environment proxies such as __ELBOT_CODE_0__ and __ELBOT_CODE_1__ from the ElBot process.",
+      "updated_at": 1785763773
+    },
     "docs/configuration.md:list:1d33334f232d69671a32942f10509023fa5abe3cea531de73fd8a8a6929c014c": {
       "kind": "list",
       "source": "未指定或对应槽位未配置时回退到 __ELBOT_CODE_0__ 模型。",
@@ -415,6 +423,14 @@
       "source_hash": "30840ca097b9cdde0e25dcc1ab09335ae09bbf78b2df6bfe23d6f1e77bdf781f",
       "translation": "__ELBOT_CODE_0__ disables formatting and sends only plain text.",
       "updated_at": 1781839376
+    },
+    "docs/configuration.md:list:313657443635e5b1fa88c933f2ab3e7103668875e82fb42dce9e127968e9e028": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 可选，支持 __ELBOT_CODE_1__ 和 __ELBOT_CODE_2__ 代理地址；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "313657443635e5b1fa88c933f2ab3e7103668875e82fb42dce9e127968e9e028",
+      "translation": "__ELBOT_CODE_0__ is optional, supporting __ELBOT_CODE_1__ and __ELBOT_CODE_2__ proxy addresses;",
+      "updated_at": 1785763773
     },
     "docs/configuration.md:list:3300e1f18cd9839d63d3977ca550ab227b1c6bd7a977f08669a9d33b1ff13242": {
       "kind": "list",
@@ -1032,14 +1048,6 @@
       "translation": "__ELBOT_CODE_0__: Rule Hook configuration.",
       "updated_at": 1781515756
     },
-    "docs/configuration.md:list:d2b7fd98cacdd8bd2d7fabd7965dca11833689ad25e978acd14a409df88af236": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 可选，支持 __ELBOT_CODE_1__ 和 __ELBOT_CODE_2__ 代理地址。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "d2b7fd98cacdd8bd2d7fabd7965dca11833689ad25e978acd14a409df88af236",
-      "translation": "__ELBOT_CODE_0__ is optional and supports __ELBOT_CODE_1__ and __ELBOT_CODE_2__ proxy addresses.",
-      "updated_at": 1782312356
-    },
     "docs/configuration.md:list:d331edccb8c6af201cbc6e5894d92be741f88d46055210432f2ad48a8a9cb15e": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 用于建连或 HTTP 可重试失败，重试延迟按指数退避增长。",
@@ -1095,6 +1103,14 @@
       "source_hash": "dbcb6972b521ae2cb9ae667a5325188f2049859535dc007ff296210bb494cc07",
       "translation": "Setting any field to __ELBOT_CODE_0__ disables idle expiration for the corresponding scenario.",
       "updated_at": 1783074493
+    },
+    "docs/configuration.md:list:de78e104d2e64a1a31051edaaab11be5027232cefe7a415196323257e70ad6d7": {
+      "kind": "list",
+      "source": "该设置同时作用于模型列表和聊天请求。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "de78e104d2e64a1a31051edaaab11be5027232cefe7a415196323257e70ad6d7",
+      "translation": "This setting applies to both the model list and chat requests.",
+      "updated_at": 1785763773
     },
     "docs/configuration.md:list:e00e58dc6a9eeaacae6b0b301501c5cce0cf41a69b86653f42487b9c9db59918": {
       "kind": "list",
@@ -2234,8 +2250,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "92ed8d6f30e2ebe49c238b475cadb2740b925e93359a043b92e9930838b6b6fd",
+  "source_hash": "ff4528b44d628abdbce1b2cb659b0c71dfe77ab08a12852bf308bdfdc8497514",
   "target": "docs.en/configuration.md",
-  "updated_at": 1785052888,
+  "updated_at": 1785763773,
   "version": 2
 }
