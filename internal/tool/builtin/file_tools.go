@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -82,6 +83,39 @@ func (t ReadFileTool) Info() tool.Info {
 
 func (t ReadFileTool) Schema() llm.ToolSchema {
 	return readFileBuilder().BuildSchema()
+}
+
+func (t ReadFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
+	var args readFileArgs
+	if len(req.Arguments) > 0 {
+		if err := json.Unmarshal(req.Arguments, &args); err != nil {
+			return tool.RiskAssessment{}, fmt.Errorf("parse read_file arguments: %w", err)
+		}
+	}
+	mode, err := normalizeReadFileMode(args.Mode)
+	if err != nil {
+		return tool.RiskAssessment{}, err
+	}
+	resolved, err := tool.ResolveWorkspacePath(ctx, args.Path, tool.PathResolveOptions{AllowDirectory: mode != readFileModeRead})
+	if err != nil {
+		return tool.RiskAssessment{}, err
+	}
+	if isSensitiveReadFile(resolved.Path) {
+		return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"读取可能包含凭据的敏感文件，需要用户确认"}}, nil
+	}
+	return tool.RiskAssessment{Level: tool.RiskLow, Reasons: []string{"读取普通文本文件"}}, nil
+}
+
+func isSensitiveReadFile(path string) bool {
+	name := strings.ToLower(filepath.Base(path))
+	if name == ".env" || strings.HasPrefix(name, ".env.") {
+		return true
+	}
+	switch name {
+	case ".netrc", ".npmrc", ".pypirc", "credentials", "credentials.json", "kubeconfig", "id_rsa", "id_ed25519":
+		return true
+	}
+	return strings.Contains(name, "secret") || strings.Contains(name, "token") || strings.Contains(name, "credential")
 }
 
 func readFileBuilder() *tool.Builder {

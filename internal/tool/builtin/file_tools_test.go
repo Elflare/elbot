@@ -749,6 +749,39 @@ func TestEditFileToolCronRiskAndSandbox(t *testing.T) {
 	}
 }
 
+func TestReadFileToolSensitivePathRisk(t *testing.T) {
+	workspace := t.TempDir()
+	for _, name := range []string{".env", ".env.production", "api-token.txt", "credentials.json", "id_ed25519", "sample.txt"} {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte("value\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := tool.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
+	read := NewReadFileTool()
+	for _, tt := range []struct {
+		path string
+		risk tool.RiskLevel
+	}{
+		{path: ".env", risk: tool.RiskHigh},
+		{path: ".env.production", risk: tool.RiskHigh},
+		{path: "api-token.txt", risk: tool.RiskHigh},
+		{path: "credentials.json", risk: tool.RiskHigh},
+		{path: "id_ed25519", risk: tool.RiskHigh},
+		{path: "sample.txt", risk: tool.RiskLow},
+	} {
+		t.Run(tt.path, func(t *testing.T) {
+			args, _ := json.Marshal(map[string]any{"path": tt.path})
+			assessment, err := read.AssessRisk(ctx, tool.CallRequest{Arguments: args})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if assessment.Level != tt.risk {
+				t.Fatalf("risk = %s, want %s", assessment.Level, tt.risk)
+			}
+		})
+	}
+}
+
 func TestReadFileToolEmptyFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "empty.txt")
 	if err := os.WriteFile(path, nil, 0644); err != nil {
