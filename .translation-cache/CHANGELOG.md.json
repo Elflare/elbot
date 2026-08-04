@@ -1384,6 +1384,14 @@
       "translation": "Completed the missing __ELBOT_CODE_1__ in the default __ELBOT_CODE_0__.",
       "updated_at": 1784025711
     },
+    "CHANGELOG.md:list:ffea405479ecdf42f2de02ac5df8d702b35876490677884584d95b31ed5e348c": {
+      "kind": "list",
+      "source": "优化.env、平台secret、token解析逻辑",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ffea405479ecdf42f2de02ac5df8d702b35876490677884584d95b31ed5e348c",
+      "translation": "Optimized .env, platform secret, and token parsing logic",
+      "updated_at": 1785810751
+    },
     "CHANGELOG.md:paragraph:f4fdd49cee5a8975381d265d52b666a936b8a0b8d696502ff7ac1ebdda67c23c": {
       "kind": "paragraph",
       "source": "ElBot 的首个预发布版本。轻量 Agent/Chatbot 框架，目标是个人助手、平台机器人与可编排的自动化助手。\n",
@@ -1394,8 +1402,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "514ec1afae5607baf380b81c5bc24fd15af5b987f2af891abaa7c9f9dac25167",
+  "source_hash": "9651f4877e6013fbd6b4fe41fdb433c1ad6f4a269dae7f2e31ca01f52810b0bd",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1785806029,
+  "updated_at": 1785810751,
   "version": 2
 }
