@@ -25,7 +25,7 @@ func TestNewFromPlatformConfig(t *testing.T) {
 		"enabled":          true,
 		"ws_url":           "ws://example",
 		"trigger_keywords": []any{"芙莉丝"},
-	}, nil, nil, nil, nil, nil, t.TempDir(), 100*1024*1024, 60)
+	}, nil, nil, nil, nil, nil, t.TempDir(), t.TempDir(), 100*1024*1024, 60)
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestNewFromPlatformConfig(t *testing.T) {
 func TestNewFromPlatformConfigSendFileMode(t *testing.T) {
 	adapter, err := NewFromPlatformConfig(map[string]any{
 		"send_file_mode": "file_uri",
-	}, nil, nil, nil, nil, nil, t.TempDir(), 100*1024*1024, 60)
+	}, nil, nil, nil, nil, nil, t.TempDir(), t.TempDir(), 100*1024*1024, 60)
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestNewFromPlatformConfigSendFileMode(t *testing.T) {
 func TestNewFromPlatformConfigRejectsInvalidSendFileMode(t *testing.T) {
 	_, err := NewFromPlatformConfig(map[string]any{
 		"send_file_mode": "auto",
-	}, nil, nil, nil, nil, nil, t.TempDir(), 100*1024*1024, 60)
+	}, nil, nil, nil, nil, nil, t.TempDir(), t.TempDir(), 100*1024*1024, 60)
 	if err == nil || !strings.Contains(err.Error(), "send_file_mode") {
 		t.Fatalf("err = %v", err)
 	}

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/config"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
 )
@@ -35,7 +36,7 @@ type Config struct {
 	Superadmins              []string
 }
 
-func NewFromPlatformConfig(raw map[string]any, store storage.Store, logger Logger, superadmins []string, commandPrefixes []string, attachmentDir string, maxReceiveFileBytes int64, downloadTimeoutSecs int) (*Adapter, error) {
+func NewFromPlatformConfig(raw map[string]any, store storage.Store, logger Logger, superadmins []string, commandPrefixes []string, configEnvDir, attachmentDir string, maxReceiveFileBytes int64, downloadTimeoutSecs int) (*Adapter, error) {
 	var cfg Config
 	if err := platform.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode qqofficial config: %w", err)
@@ -50,11 +51,31 @@ func NewFromPlatformConfig(raw map[string]any, store storage.Store, logger Logge
 		if strings.TrimSpace(cfg.AppID) == "" {
 			return nil, fmt.Errorf("qqofficial app_id is required")
 		}
-		if strings.TrimSpace(cfg.secret()) == "" {
+		secret, err := resolveSecret(cfg, configEnvDir)
+		if err != nil {
+			return nil, err
+		}
+		if secret == "" {
 			return nil, fmt.Errorf("qqofficial client_secret or client_secret_env is required")
 		}
+		cfg.ClientSecret = secret
 	}
 	return New(cfg, store, logger), nil
+}
+
+func resolveSecret(cfg Config, configEnvDir string) (string, error) {
+	if value := strings.TrimSpace(cfg.ClientSecret); value != "" {
+		return value, nil
+	}
+	envName := strings.TrimSpace(cfg.ClientSecretEnv)
+	if envName == "" {
+		return "", nil
+	}
+	value, _, err := config.ConfigEnv(envName, configEnvDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve qqofficial client secret from %s: %w", envName, err)
+	}
+	return strings.TrimSpace(value), nil
 }
 
 func applyDefaults(cfg *Config) {
