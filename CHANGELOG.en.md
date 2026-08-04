@@ -11,8 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Optimized .env, platform secret, and token parsing logic
 - `read_file` now requires high-risk confirmation when reading `.env`, `.env.*`, and common credential filenames; reading other files remains low-risk.
-
 - Provider requests have been changed from defaulting to inheriting the process environment proxy to only using the explicit `proxy` of the corresponding Provider in `providers.toml`; Model lists and chat requests will connect directly when not configured or left blank.
 - CLI TUI notifications now support log levels and are displayed in White for Debug, Green for Info, Yellow for Warn, and Red for Error; Added an optional `level` field to the `notice` message synchronization of the remote CLI.
 
