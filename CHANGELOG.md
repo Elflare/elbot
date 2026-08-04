@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Provider 请求从默认继承进程环境代理改为仅使用 `providers.toml` 中对应 Provider 的显式 `proxy`；未配置或留空时模型列表和聊天请求均直连。
 - CLI TUI 通知支持携带日志等级并按 Debug 白、Info 绿、Warn 黄、Error 红显示；远程 CLI 的 `notice` 消息同步新增可选 `level` 字段。
 
+### Fixed
+
+- 修复群聊使用前缀唤起 LLM 后，后续输出 Hook 将已剥离前缀的消息误判为未唤起，导致 `agent.turn.output.prepared` 等默认规则不执行的问题。
+
 ## [v0.4.1 - 2026-07-28]
 
 ### Changed
