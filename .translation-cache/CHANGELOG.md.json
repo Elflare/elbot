@@ -1040,6 +1040,14 @@
       "translation": "Fixed an issue where OpenAI-compatible streaming responses that disconnected midway but were missing __ELBOT_CODE_0__ were treated as normal terminations; now it will explicitly notify that the LLM response was interrupted.",
       "updated_at": 1782298716
     },
+    "CHANGELOG.md:list:b924b7752c84535d4998c9c20dc147c773538278dda701551f6a589b2ca6892c": {
+      "kind": "list",
+      "source": "修复群聊使用前缀唤起 LLM 后，后续输出 Hook 将已剥离前缀的消息误判为未唤起，导致 __ELBOT_CODE_0__ 等默认规则不执行的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "b924b7752c84535d4998c9c20dc147c773538278dda701551f6a589b2ca6892c",
+      "translation": "Fixed an issue where in group chats, after triggering the LLM with a prefix, the subsequent output Hook misidentified messages with the stripped prefix as not triggered, preventing default rules such as __ELBOT_CODE_0__ from executing.",
+      "updated_at": 1785845869
+    },
     "CHANGELOG.md:list:b96424f249f0fdeffb218eef737cc2ae780a59117df74c8d8b07646b53fd43b4": {
       "kind": "list",
       "source": "一次性 exec 与 Worker 现在共用合并后的环境和 PATH 查找规则。",
@@ -1402,8 +1410,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "9651f4877e6013fbd6b4fe41fdb433c1ad6f4a269dae7f2e31ca01f52810b0bd",
+  "source_hash": "a03e7f59e9bee540463ad9232f52f88798db8dbf75d4d73295d94fcb9ae96a1f",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1785810751,
+  "updated_at": 1785845869,
   "version": 2
 }
