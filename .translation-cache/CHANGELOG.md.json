@@ -1024,6 +1024,14 @@
       "translation": "LLM Cron uses ELyph task descriptions to drive model execution, supporting one-time and periodic tasks, missed run recovery, and broadcasting.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:b58a4c6fcf1311375ac37e6a46c324d9359b9852d8c8fdb03ca177e72f0451a8": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 读取 __ELBOT_CODE_1__、__ELBOT_CODE_2__ 及常见凭据文件名时改为高风险确认；其他文件读取仍保持低风险。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "b58a4c6fcf1311375ac37e6a46c324d9359b9852d8c8fdb03ca177e72f0451a8",
+      "translation": "__ELBOT_CODE_0__ now requires high-risk confirmation when reading __ELBOT_CODE_1__, __ELBOT_CODE_2__, and common credential filenames; reading other files remains low-risk.",
+      "updated_at": 1785806029
+    },
     "CHANGELOG.md:list:b6c52e63dbdbc933d90f2fc0f1cfdd60ebce756de4f7acdf8ad3fbff5bceb9b7": {
       "kind": "list",
       "source": "修复 OpenAI-compatible 流式响应中途断开但缺失 __ELBOT_CODE_0__ 时被当作正常结束的问题；现在会明确通知 LLM 响应中断。",
@@ -1248,6 +1256,14 @@
       "translation": "Direct modification of EL Skill files by __ELBOT_CODE_0__ or shell will be rejected before confirmation or execution; __ELBOT_CODE_1__ should be used instead.",
       "updated_at": 1782722558
     },
+    "CHANGELOG.md:list:e19bfc0d2b899ea39f9fda53db0f8730f44bc366d9c2e816a1c0d6da48017f01": {
+      "kind": "list",
+      "source": "未配置或留空时模型列表和聊天请求均直连。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "e19bfc0d2b899ea39f9fda53db0f8730f44bc366d9c2e816a1c0d6da48017f01",
+      "translation": "Model lists and chat requests will connect directly when not configured or left blank.",
+      "updated_at": 1785763800
+    },
     "CHANGELOG.md:list:e1f8df1540d086ff32434c5a253720b069a12f2e8d92ef58e386b00c2a726bdd": {
       "kind": "list",
       "source": "修复 AgentSkill 配置写入后 reload 失败会留下磁盘与运行 registry 不一致的问题；",
@@ -1263,6 +1279,14 @@
       "source_hash": "e2bba3f2fbf67c598073f06e0fb772f830654cf2b0ceca05bbb54f0354aa94bd",
       "translation": "Platform media output now supports identifying __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, and __ELBOT_CODE_4__ sources in __ELBOT_CODE_0__;",
       "updated_at": 1783048564
+    },
+    "CHANGELOG.md:list:e4dc91ed6c636f0a5b482e7bae6d84b4d43e9b9965dbaa3d3e8d12a62d85cfa0": {
+      "kind": "list",
+      "source": "Provider 请求从默认继承进程环境代理改为仅使用 __ELBOT_CODE_0__ 中对应 Provider 的显式 __ELBOT_CODE_1__；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "e4dc91ed6c636f0a5b482e7bae6d84b4d43e9b9965dbaa3d3e8d12a62d85cfa0",
+      "translation": "Provider requests have been changed from defaulting to inheriting the process environment proxy to only using the explicit __ELBOT_CODE_1__ of the corresponding Provider in __ELBOT_CODE_0__;",
+      "updated_at": 1785763800
     },
     "CHANGELOG.md:list:e61e924ffeaf3af76674496454c2f62693c27ea3b0aa3815d172dae151b1521b": {
       "kind": "list",
@@ -1370,8 +1394,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "0bbdcd2e817abbe6d1e38b74110e32da4603d4b1a27e18fea253cd2bab745318",
+  "source_hash": "514ec1afae5607baf380b81c5bc24fd15af5b987f2af891abaa7c9f9dac25167",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1785235309,
+  "updated_at": 1785806029,
   "version": 2
 }

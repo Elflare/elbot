@@ -105,7 +105,7 @@ Note:
 
 - `base_url` uses the Provider's OpenAI-compatible API address.
 - `api_key_env` points to an environment variable name; this method is recommended for saving keys.
-- `proxy` is optional and supports `http://` and `socks5://` proxy addresses.
+- `proxy` is optional, supporting `http://` and `socks5://` proxy addresses; When omitted or left blank, it connects directly and does not inherit environment proxies such as `HTTP_PROXY` and `HTTPS_PROXY` from the ElBot process. This setting applies to both the model list and chat requests.
 - `models` is a manually supplemented list of model names, used when the Provider's model list interface cannot retrieve certain models.
 - `[providers.<name>.model_configs."<model>"]` configures `context_window` and `extra_payload` for specific models; both are optional.
 - `extra_payload` will be merged into the LLM request JSON, with model-level settings overriding provider-level settings.
