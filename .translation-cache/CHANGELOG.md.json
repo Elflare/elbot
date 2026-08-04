@@ -1024,6 +1024,14 @@
       "translation": "LLM Cron uses ELyph task descriptions to drive model execution, supporting one-time and periodic tasks, missed run recovery, and broadcasting.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:b58a4c6fcf1311375ac37e6a46c324d9359b9852d8c8fdb03ca177e72f0451a8": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 读取 __ELBOT_CODE_1__、__ELBOT_CODE_2__ 及常见凭据文件名时改为高风险确认；其他文件读取仍保持低风险。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "b58a4c6fcf1311375ac37e6a46c324d9359b9852d8c8fdb03ca177e72f0451a8",
+      "translation": "__ELBOT_CODE_0__ now requires high-risk confirmation when reading __ELBOT_CODE_1__, __ELBOT_CODE_2__, and common credential filenames; reading other files remains low-risk.",
+      "updated_at": 1785806029
+    },
     "CHANGELOG.md:list:b6c52e63dbdbc933d90f2fc0f1cfdd60ebce756de4f7acdf8ad3fbff5bceb9b7": {
       "kind": "list",
       "source": "修复 OpenAI-compatible 流式响应中途断开但缺失 __ELBOT_CODE_0__ 时被当作正常结束的问题；现在会明确通知 LLM 响应中断。",
@@ -1386,8 +1394,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "c73eb7123d52a82262919cba538b6042887fd63a11f8f81568a896b407f14f2c",
+  "source_hash": "514ec1afae5607baf380b81c5bc24fd15af5b987f2af891abaa7c9f9dac25167",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1785763800,
+  "updated_at": 1785806029,
   "version": 2
 }
