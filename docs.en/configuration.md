@@ -168,7 +168,7 @@ OPENAI_API_KEY=your-api-key
 
 Do not commit actual keys to the repository.
 
-The configuration root `.env` will also be supplemented into the process environment of the LLM Shell; Variables with the same name in the ElBot process take priority. The Shell can read all variables within it, including the Provider Key; therefore, related tools should only be enabled when the current model and Shell permission policies are trusted. ElBot needs to be restarted after modifying the root `.env`.
+The configuration root `.env` will also be supplemented into the process environment of the LLM Shell; Variables with the same name in the ElBot process take priority. The Shell can read all variables within it, including the Provider Key; therefore, related tools should only be enabled when the current model and Shell permission policies are trusted. ElBot needs to be restarted after modifying the root `.env`. The systemd unit does not need to load the same file via `EnvironmentFile` again.
 
 ## Process Environment Inheritance
 
@@ -607,16 +607,46 @@ enabled = true
 
 Configurations for QQ Official Bot, QQ OneBot, and Telegram are commented out by default in the examples. When enabled, the platform's own authentication information and trigger keywords must be provided. When files are received, download and save operations will be restricted according to `[platform_files]`.
 
+It is recommended to write the Provider Key, platform Secret, and LLM Shell environment collectively into the `.env` located in the main configuration file directory. The `*_env` fields for all platforms are parsed in the order of "process environment, configuration directory `.env`"; Values injected via systemd `EnvironmentFile` belong to the process environment and therefore naturally take priority. ElBot will read the configuration directory `.env` on its own; the systemd unit does not need to import the same file again; In this case, only the absolute directory to be appended needs to be filled in `PATH`.
+
+Minimum configuration example for the official QQ bot:
+
+```toml
+[platform.qqofficial]
+enabled = true
+app_id = "your-app-id"
+client_secret_env = "QQOFFICIAL_CLIENT_SECRET"
+```
+
+The corresponding configuration directory `.env`:
+
+```dotenv
+QQOFFICIAL_CLIENT_SECRET=your-client-secret
+```
+
+`client_secret_env` first reads the ElBot process environment, then reads the configuration directory `.env`; You can also use `client_secret` to write configurations directly, but it is not recommended to commit actual Secrets.
+
 Minimum configuration example for QQ OneBot:
 
 ```toml
 [platform.qqonebot]
 enabled = true
 ws_url = "ws://127.0.0.1:6700/"
-access_token = ""
+access_token_env = "QQONEBOT_ACCESS_TOKEN"
 api_timeout_seconds = 15 # Base timeout for OneBot write and response wait
 trigger_keywords = ["bot"]
 send_file_mode = "base64" # Local images, files, and voice messages use base64 by default; for shared file systems, this can be changed to file_uri
+```
+
+The `access_token_env` of QQ OneBot uses the same environment priority; The original `access_token` remains compatible and takes priority over `access_token_env`. When OneBot does not require authentication, both items can be omitted.
+
+The configuration directory `.env` can be used to centrally store platform credentials:
+
+```dotenv
+QQOFFICIAL_CLIENT_SECRET=your-client-secret
+QQONEBOT_ACCESS_TOKEN=your-access-token
+TELEGRAM_BOT_TOKEN=your-bot-token
+TELEGRAM_PROXY_URL=
 ```
 
 `send_file_mode` simultaneously controls the sending method for QQ OneBot local images, files, and `record` voice messages. `base64` is suitable for deployments where ElBot and OneBot do not share a file system; `file_uri` is only applicable in scenarios where both parties can access the same local path.
