@@ -18,6 +18,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
@@ -35,6 +36,7 @@ type Config struct {
 	Enabled                  bool     `toml:"enabled"`
 	URL                      string   `toml:"ws_url"`
 	AccessToken              string   `toml:"access_token"`
+	AccessTokenEnv           string   `toml:"access_token_env"`
 	ReconnectIntervalSeconds int      `toml:"reconnect_interval_seconds"`
 	APITimeoutSeconds        int      `toml:"api_timeout_seconds"`
 	TriggerKeywords          []string `toml:"trigger_keywords"`
@@ -91,7 +93,7 @@ type target struct {
 
 type targetKey struct{}
 
-func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, logger *slog.Logger, superadmins []string, commandPrefixes []string, attachmentDir string, maxReceiveFileBytes int64, downloadTimeoutSecs int) (*Adapter, error) {
+func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, logger *slog.Logger, superadmins []string, commandPrefixes []string, configEnvDir, attachmentDir string, maxReceiveFileBytes int64, downloadTimeoutSecs int) (*Adapter, error) {
 	var cfg Config
 	if err := platform.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode qqonebot config: %w", err)
@@ -104,6 +106,14 @@ func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory 
 	applyDefaults(&cfg)
 	if err := validateSendFileMode(cfg.SendFileMode); err != nil {
 		return nil, err
+	}
+	envName := strings.TrimSpace(cfg.AccessTokenEnv)
+	if strings.TrimSpace(cfg.AccessToken) == "" && envName != "" {
+		value, _, err := config.ConfigEnv(envName, configEnvDir)
+		if err != nil {
+			return nil, fmt.Errorf("resolve qqonebot access token from %s: %w", envName, err)
+		}
+		cfg.AccessToken = strings.TrimSpace(value)
 	}
 	return New(cfg, store, chatHistory, logger), nil
 }

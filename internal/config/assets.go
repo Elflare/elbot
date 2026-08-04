@@ -196,7 +196,8 @@ token_env = ["ELBOT_CLI_LOCAL_TOKEN"]
 # [platform.qqonebot]
 # enabled = false
 # ws_url = "ws://127.0.0.1:6700/"
-# access_token = ""
+# access_token = "" # legacy direct value; optional
+# access_token_env = "QQONEBOT_ACCESS_TOKEN" # optional; reads process env, then config .env
 # api_timeout_seconds = 15 # base timeout for OneBot writes and API responses
 # trigger_keywords = ["bot"]
 # send_file_mode = "base64" # base64 works across machines; use file_uri for a shared filesystem
@@ -401,6 +402,8 @@ DEEPSEEK_API_KEY=
 OPENAI_API_KEY=
 
 # Platform secrets
+QQOFFICIAL_CLIENT_SECRET=
+QQONEBOT_ACCESS_TOKEN=
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_PROXY_URL=
 

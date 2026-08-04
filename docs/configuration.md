@@ -166,7 +166,7 @@ OPENAI_API_KEY=your-api-key
 
 不要把真实 Key 提交到仓库。
 
-配置根 `.env` 还会补充到 LLM Shell 的进程环境；ElBot 进程中的同名变量优先。Shell 可以读取其中的全部变量，包括 Provider Key，因此只应在信任当前模型及 Shell 权限策略时启用相关工具。修改根 `.env` 后需要重启 ElBot。
+配置根 `.env` 还会补充到 LLM Shell 的进程环境；ElBot 进程中的同名变量优先。Shell 可以读取其中的全部变量，包括 Provider Key，因此只应在信任当前模型及 Shell 权限策略时启用相关工具。修改根 `.env` 后需要重启 ElBot。systemd unit 不需要再通过 `EnvironmentFile` 加载同一文件。
 
 ## 进程环境继承
 
@@ -605,16 +605,46 @@ enabled = true
 
 QQ 官方机器人、QQ OneBot 和 Telegram 配置在示例中默认注释。启用时需要补齐平台自己的认证信息和触发关键词。收到文件时会按 `[platform_files]` 限制下载保存。
 
+推荐将 Provider Key、平台 Secret 和 LLM Shell 环境统一写入主配置文件所在目录的 `.env`。所有平台的 `*_env` 字段都按“进程环境、配置目录 `.env`”顺序解析；systemd `EnvironmentFile` 注入的值属于进程环境，因此自然优先。ElBot 会自行读取配置目录 `.env`，systemd unit 不需要再重复导入同一文件；其中 `PATH` 只需填写要追加的绝对目录。
+
+QQ 官方机器人最小配置示例：
+
+```toml
+[platform.qqofficial]
+enabled = true
+app_id = "your-app-id"
+client_secret_env = "QQOFFICIAL_CLIENT_SECRET"
+```
+
+对应的配置目录 `.env`：
+
+```dotenv
+QQOFFICIAL_CLIENT_SECRET=your-client-secret
+```
+
+`client_secret_env` 先读 ElBot 进程环境，再读配置目录 `.env`；也可以用 `client_secret` 直接写入配置，但不建议提交真实 Secret。
+
 QQ OneBot 最小配置示例：
 
 ```toml
 [platform.qqonebot]
 enabled = true
 ws_url = "ws://127.0.0.1:6700/"
-access_token = ""
+access_token_env = "QQONEBOT_ACCESS_TOKEN"
 api_timeout_seconds = 15 # OneBot 写入和响应等待的基础超时
 trigger_keywords = ["bot"]
 send_file_mode = "base64" # 本地图片、文件、语音默认用 base64；共享文件系统可改为 file_uri
+```
+
+QQ OneBot 的 `access_token_env` 使用相同的环境优先级；原有 `access_token` 仍然兼容且优先于 `access_token_env`。OneBot 不要求鉴权时，两项都可省略。
+
+配置目录 `.env` 可以集中保存平台凭据：
+
+```dotenv
+QQOFFICIAL_CLIENT_SECRET=your-client-secret
+QQONEBOT_ACCESS_TOKEN=your-access-token
+TELEGRAM_BOT_TOKEN=your-bot-token
+TELEGRAM_PROXY_URL=
 ```
 
 `send_file_mode` 同时控制 QQ OneBot 本地图片、文件和 `record` 语音的发送方式。`base64` 适用于 ElBot 与 OneBot 不共享文件系统的部署；`file_uri` 仅适用于双方能访问同一本地路径的场景。
