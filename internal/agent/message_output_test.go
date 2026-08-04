@@ -135,6 +135,42 @@ func TestWokenGroupMessageSkipsForbiddenHookAndRunsLLM(t *testing.T) {
 	}
 }
 
+func TestPrefixWokenGroupMessageRunsTurnOutputHook(t *testing.T) {
+	p := &fakePlatform{}
+	f := &fakeLLM{replies: []string{"final"}}
+	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	manager := hook.NewManager()
+	if err := manager.Register(hook.Registration{
+		Point: hook.PointAgentTurnOutputPrepared,
+		Name:  "test.turn.output",
+		Match: hook.Always(),
+		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+			event.Message.Segments = llm.AppendSegmentText(event.Message.Segments, "suffix")
+			return event, nil
+		}),
+	}); err != nil {
+		t.Fatalf("Register turn output hook: %v", err)
+	}
+	a.SetHookManager(manager)
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform:              "qqonebot",
+		ScopeID:               "group:9",
+		ConversationKind:      platform.ConversationGroup,
+		Sender:                p,
+		BufferAssistantOutput: true,
+		RawText:               "芙莉丝 hello",
+		Segments:              []platform.MessageSegment{{Type: platform.SegmentText, Text: "芙莉丝 hello"}},
+		TriggerKeywords:       []string{"芙莉丝"},
+	})
+
+	if err := a.HandleMessage(ctx, "芙莉丝 hello"); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if got := p.out.String(); got != "finalsuffix" {
+		t.Fatalf("platform output = %q, want finalsuffix", got)
+	}
+}
+
 func TestPassiveHookCannotWakeLLMByEditingMessage(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}

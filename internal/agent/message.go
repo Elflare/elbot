@@ -33,6 +33,7 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 		}
 	}()
 	woken := a.messageWakeup(ctx, llm.SegmentsTextOnly(segments))
+	ctx = withMessageWakeup(ctx, woken)
 	if strings.TrimSpace(llm.SegmentsTextOnly(segments)) == "/cancel" {
 		cancelEvent := a.fillHookContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
 		if a.cancelHookRoute(cancelEvent) {

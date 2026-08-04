@@ -10,7 +10,21 @@ import (
 	"elbot/internal/storage"
 )
 
+type messageWakeupContextKey struct{}
+
+func withMessageWakeup(ctx context.Context, woken bool) context.Context {
+	return context.WithValue(ctx, messageWakeupContextKey{}, woken)
+}
+
+func messageWakeupFromContext(ctx context.Context) (bool, bool) {
+	woken, ok := ctx.Value(messageWakeupContextKey{}).(bool)
+	return woken, ok
+}
+
 func (a *Agent) hookWakeup(ctx context.Context, event hook.Event) bool {
+	if woken, ok := messageWakeupFromContext(ctx); ok {
+		return woken
+	}
 	text := strings.TrimSpace(llm.SegmentsTextOnly(event.Message.Segments))
 	if text == "" {
 		text = inboundRawText(ctx)
