@@ -433,7 +433,7 @@ key 去除首尾空白后必须非空，最长 256 字节。建议使用 `users/
 
 ### 进程环境
 
-一次性 exec、Persistent Worker 和 Transient Worker 都继承 ElBot 进程环境，并按 Hook 公共 `plugins/.env` 与插件目录 `.env` 分层覆盖；配置根 `.env` 不会注入 Hook。完整的优先级、`PATH` 追加规则和生效时机见[进程环境继承](configuration.md#进程环境继承)。
+一次性 exec、Persistent Worker 和 Transient Worker 都继承 ElBot 进程环境，并按 Hook 公共 `plugins/.env` 与插件目录 `.env` 分层覆盖；配置根 `.env` 不会注入 Hook。完整的优先级、`PATH` 规则和生效时机见[环境变量与进程环境继承](configuration.md#环境变量与进程环境继承)。
 
 Hook 不加载 `.bashrc`、`.profile`、mise/asdf 等交互式 Shell 初始化。修改 Hook 环境文件后执行 `/hooks reload` 即可应用，并会按新环境重建 Worker。
 
