@@ -54,6 +54,74 @@ path = "SOUL.md"
 
 这些路径都会解析到主配置文件所在目录下；默认情况下就是平台配置目录。
 
+## 环境变量与进程环境继承
+
+ElBot 使用以下环境来源：
+
+- ElBot 进程环境：由终端、服务管理器或容器在启动时提供。
+- 配置根 `.env`：与主配置文件同目录，用于 Provider Key、平台 Secret、CLI/Elnis token、内置工具变量和 LLM Shell。
+- `plugins/.env`：所有 Hook 共用的环境层。
+- `plugins/<plugin-id>/.env`：单个插件 exec 和 Worker 的环境层。
+
+### 配置变量与密钥
+
+`api_key_env`、`token_env`、`client_secret_env`、`access_token_env`、`bot_token_env`、`proxy_url_env` 等字段保存的是环境变量名。读取对应值时，优先级统一为：
+
+1. ElBot 进程环境。
+2. 配置根 `.env`。
+
+推荐把真实密钥放在系统环境或配置根 `.env`，不要直接写入 TOML 或提交到仓库。例如：
+
+```dotenv
+DEEPSEEK_API_KEY=your-api-key
+OPENAI_API_KEY=your-api-key
+QQOFFICIAL_CLIENT_SECRET=your-client-secret
+QQONEBOT_ACCESS_TOKEN=your-access-token
+TELEGRAM_BOT_TOKEN=your-bot-token
+ELBOT_CLI_LOCAL_TOKEN=your-cli-token
+ELNIS_HOME_TOKEN=your-elnis-token
+```
+
+配置根 `.env` 中的全部变量还会补充给 LLM Shell，因此只有在信任当前模型及 Shell 权限策略时才应启用相关工具。
+
+### Shell 与 Hook 环境
+
+| 进程入口 | 环境来源与优先级 |
+| --- | --- |
+| LLM Shell | ElBot 进程环境为基础，配置根 `.env` 只补充尚不存在的普通变量。 |
+| 根 Hook 规则 | ElBot 进程环境为基础，`plugins/.env` 覆盖同名普通变量。 |
+| 插件 exec 与 Worker | 根 Hook 环境为基础，插件配置文件同目录的 `.env` 再覆盖同名普通变量。 |
+
+ElBot 自行读取配置文件时，配置根 `.env` 不会注入 Hook。所有 Hook 共用的代理、工具路径或变量应放在 `plugins/.env`，仅供单个插件使用的变量应放在该插件的 `.env`。一次性 exec、Persistent Worker 和 Transient Worker 使用相同规则。
+
+需要代理时，可在对应环境层设置标准变量；子进程是否使用仍取决于具体程序：
+
+```dotenv
+HTTP_PROXY=http://127.0.0.1:7890
+HTTPS_PROXY=http://127.0.0.1:7890
+NO_PROXY=localhost,127.0.0.1,::1
+```
+
+### PATH 规则与 systemd
+
+ElBot 自行合并上述环境层时，`PATH` 不按普通变量覆盖，而是按照层级依次追加并去重。这里的基础 PATH 是 ElBot 启动时已经获得的进程 PATH；后续 `.env` 只需填写要增加的绝对目录：
+
+```dotenv
+PATH=/home/elbot/.local/bin:/usr/local/go/bin
+```
+
+不要填写 `$PATH`、`%PATH%` 或 `~`，dotenv 不执行变量替换或路径展开。没有额外目录时可以省略 `PATH`。
+
+systemd 用户服务没有显式设置 PATH 时，ElBot 使用服务管理器提供的 PATH。`EnvironmentFile` 本身不会影响 PATH，但文件中一旦包含 `PATH=`，systemd 会在启动 ElBot 前完整覆盖原值；ElBot 只能在这个结果上继续追加，无法恢复已经丢失的系统目录。systemd 的 `EnvironmentFile` 同样不会展开 `$PATH`。
+
+由 ElBot 自行读取配置根 `.env` 时，systemd unit 不需要重复加载该文件；其中的 PATH 按上面的追加规则处理。若 unit 使用 `EnvironmentFile` 加载同一文件，则其中的 PATH 必须写成完整值
+
+通过 `EnvironmentFile` 加载后，该文件中的全部变量都已经属于 ElBot 进程环境，因而也会被 Shell 和 Hook 继承，不再具有“配置根 `.env` 不注入 Hook”的隔离效果。
+
+### 生效时机
+
+配置根 `.env` 或 systemd 环境在重启 ElBot 后生效。`plugins/.env` 和插件 `.env` 在启动及 `/hooks reload` 时重新读取，reload 会按新环境重建 Worker；文件不存在时视为空配置。
+
 ## Workspace 工具
 
 在 work 模式中，超级管理员可以让 LLM 调用 `workspace` 工具切换当前 Session 的共享工作目录。切换后，`read_file`、`edit_file`、`send_file` 和前台 `shell` 等路径类工具会基于该目录解析相对路径，避免每次都传完整路径。
@@ -124,7 +192,7 @@ JINA_API_KEY=your_jina_api_key
 ```
 
 `web_extract` 的 `proxy` 参数用于控制网页提取请求的代理：
-如果希望所有默认 `web_extract` 调用都走固定代理，可以在配置目录 `.env` 或系统环境中设置：
+如果希望所有默认 `web_extract` 调用都走固定代理，可以设置 `WEB_EXTRACT_PROXY`：
 
 ```env
 WEB_EXTRACT_PROXY=http://127.0.0.1:7890
@@ -150,51 +218,6 @@ retry_initial_delay_seconds = 2
 
 旧版 `timeout_seconds` 已移除；已有配置需要改为上述三个新字段。
 
-## API Key 与 `.env`
-
-密钥读取优先级：
-
-1. 系统环境变量。
-2. 配置目录下的 `.env`。
-
-推荐方式：
-
-```dotenv
-DEEPSEEK_API_KEY=your-api-key
-OPENAI_API_KEY=your-api-key
-```
-
-不要把真实 Key 提交到仓库。
-
-配置根 `.env` 还会补充到 LLM Shell 的进程环境；ElBot 进程中的同名变量优先。Shell 可以读取其中的全部变量，包括 Provider Key，因此只应在信任当前模型及 Shell 权限策略时启用相关工具。修改根 `.env` 后需要重启 ElBot。systemd unit 不需要再通过 `EnvironmentFile` 加载同一文件。
-
-## 进程环境继承
-
-| 进程入口 | 环境来源与优先级 |
-| --- | --- |
-| LLM Shell | ElBot 进程环境为基础，配置根 `.env` 补充尚不存在的变量。 |
-| 根 Hook 规则 | ElBot 进程环境为基础，`plugins/.env` 覆盖同名变量。 |
-| 插件 exec 与 Worker | 根 Hook 环境为基础，插件配置文件同目录的 `.env` 再覆盖同名变量；默认路径为 `plugins/<插件 ID>/.env`。 |
-
-`PATH` 不按普通变量覆盖，而是按照上述层级依次追加并去重。系统路径本来就会保留，所以文件中只需填写额外目录，例如：
-
-```dotenv
-PATH=/home/elbot/.local/bin
-```
-
-不要重复完整系统 PATH，也不要填写 `$PATH`、`%PATH%` 或 `~`，dotenv 不执行变量和路径展开。没有额外目录时可以省略 `PATH`。
-
-需要代理时可在对应环境文件中设置标准变量；Shell 或 Hook 启动的命令会继承它们，是否使用仍取决于具体程序：
-
-```dotenv
-HTTP_PROXY=http://127.0.0.1:7890
-HTTPS_PROXY=http://127.0.0.1:7890
-NO_PROXY=localhost,127.0.0.1,::1
-```
-
-配置根 `.env` 不会注入 Hook。需要所有 Hook 共用的代理、工具路径或变量放在 `plugins/.env`；仅供单个插件使用的密钥放在该插件的 `.env`。一次性 exec、Persistent Worker 和 Transient Worker 遵循相同规则。
-
-根 `.env` 随 ElBot 重启生效；`plugins/.env` 和插件 `.env` 在启动及 `/hooks reload` 时重新读取，reload 会按新环境重建 Worker。Hook 环境文件不存在时视为空配置。Hook 代码仍是受信任代码，分级 `.env` 只隔离配置，不是系统级安全沙箱。
 
 ## CLI 远程配置
 
@@ -228,7 +251,6 @@ token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
 - `server.tokens` 是服务端允许登录的 CLI client id 与 token 环境变量列表。
 - `clients.<name>` 是客户端 profile；`id` 可省略，默认等于 `<name>`；`url` 可省略，默认使用 `default_url`。
 - `elbot cli -c <name>` 使用指定客户端 profile；未指定时使用 `default_client`。
-- CLI token 与 Provider API Key 一样，优先读系统环境变量，再读配置目录 `.env`。
 
 ## AgentSkill 工具化配置
 
@@ -278,7 +300,7 @@ ElBot 只读取 Skill 根目录下的 `ELBOT_SKILL.toml`，不递归扫描。执
 
 ## Go Skill 编译器路径
 
-修改 Go skill 的 `code_source` 后，ElBot 会自动执行 `gofmt`、`go build` 并 reload。若 ElBot 以 Linux service 运行，service 环境可能没有加载交互 shell 的 `PATH`，导致终端里可用的 `go` 在 ElBot 中不可见。
+修改 Go skill 的 `code_source` 后，ElBot 会自动执行 `gofmt`、`go build` 并 reload。Go 可执行文件按以下规则定位。
 
 推荐在配置目录 `.env` 中指定 Go 可执行文件：
 
@@ -294,8 +316,6 @@ ELBOT_GO_BINARY=/usr/local/go/bin/go
 4. ElBot 进程 `PATH` 中的 `go`。
 
 如果使用 asdf、mise、Nix、Linuxbrew、Snap 或自定义安装路径，推荐直接把实际 `go` 路径写入 `ELBOT_GO_BINARY`，不要依赖交互 shell 的初始化脚本。
-
-修改 `.env` 或 systemd 环境后，需要重启 ElBot service。
 
 高级部署也可以在 systemd service 中指定：
 
@@ -584,7 +604,7 @@ disabled_targets = [
 - 单个 Elwisp 若配置 `allowed_tools`，会覆盖全局默认。
 - 外部工具默认允许；只有单个 Elwisp 配置 `disabled_external_tools` 时才禁用指定外部工具。
 - Elnis 投递默认允许；`[delivery_disabled].targets` 和单 Elwisp `disabled_targets` 用于显式禁止平台、私聊或群聊，配置中的 platform-only 表示禁用整个平台所有投递。
-- token 从系统环境变量或配置目录 `.env` 读取，日志只记录 token name，不记录 token 原文。
+- Elnis 日志只记录 token name，不记录 token 原文。
 - `token_env` 支持写成列表，按顺序尝试多个环境变量名；适合临时切换 token 或做多环境兼容。
 - Elwisp 默认启用；只有显式配置 `enabled=false` 才会禁用对应 Elwisp。
 - 当前支持 `record`、`direct` 和 `llm` 模式；`llm` 模式使用后台 Session runner 执行。
@@ -605,8 +625,6 @@ enabled = true
 
 QQ 官方机器人、QQ OneBot 和 Telegram 配置在示例中默认注释。启用时需要补齐平台自己的认证信息和触发关键词。收到文件时会按 `[platform_files]` 限制下载保存。
 
-推荐将 Provider Key、平台 Secret 和 LLM Shell 环境统一写入主配置文件所在目录的 `.env`。所有平台的 `*_env` 字段都按“进程环境、配置目录 `.env`”顺序解析；systemd `EnvironmentFile` 注入的值属于进程环境，因此自然优先。ElBot 会自行读取配置目录 `.env`，systemd unit 不需要再重复导入同一文件；其中 `PATH` 只需填写要追加的绝对目录。
-
 QQ 官方机器人最小配置示例：
 
 ```toml
@@ -622,7 +640,7 @@ client_secret_env = "QQOFFICIAL_CLIENT_SECRET"
 QQOFFICIAL_CLIENT_SECRET=your-client-secret
 ```
 
-`client_secret_env` 先读 ElBot 进程环境，再读配置目录 `.env`；也可以用 `client_secret` 直接写入配置，但不建议提交真实 Secret。
+`client_secret_env` 指向保存 Client Secret 的环境变量名；也可以用 `client_secret` 直接写入配置，但不建议提交真实 Secret。
 
 QQ OneBot 最小配置示例：
 
@@ -636,16 +654,7 @@ trigger_keywords = ["bot"]
 send_file_mode = "base64" # 本地图片、文件、语音默认用 base64；共享文件系统可改为 file_uri
 ```
 
-QQ OneBot 的 `access_token_env` 使用相同的环境优先级；原有 `access_token` 仍然兼容且优先于 `access_token_env`。OneBot 不要求鉴权时，两项都可省略。
-
-配置目录 `.env` 可以集中保存平台凭据：
-
-```dotenv
-QQOFFICIAL_CLIENT_SECRET=your-client-secret
-QQONEBOT_ACCESS_TOKEN=your-access-token
-TELEGRAM_BOT_TOKEN=your-bot-token
-TELEGRAM_PROXY_URL=
-```
+`access_token_env` 指向保存 Access Token 的环境变量名；原有 `access_token` 仍然兼容且优先于 `access_token_env`。OneBot 不要求鉴权时，两项都可省略。
 
 `send_file_mode` 同时控制 QQ OneBot 本地图片、文件和 `record` 语音的发送方式。`base64` 适用于 ElBot 与 OneBot 不共享文件系统的部署；`file_uri` 仅适用于双方能访问同一本地路径的场景。
 
@@ -661,7 +670,7 @@ telegram = ["123456789"]
 [platform.telegram]
 enabled = true
 bot_token_env = "TELEGRAM_BOT_TOKEN"
-proxy_url_env = "TELEGRAM_PROXY_URL" # 可选；先读系统环境变量，再读配置目录 .env
+proxy_url_env = "TELEGRAM_PROXY_URL" # 可选
 trigger_keywords = ["bot"]
 format = "html" # html/plain/rich
 stream_edit_interval_milliseconds = 250
@@ -669,8 +678,8 @@ stream_edit_interval_milliseconds = 250
 
 说明：
 
-- `bot_token_env` 指向 Bot Token 的变量名，读取顺序为系统环境变量、配置目录 `.env`；也可以用 `bot_token` 直接写入配置，但不建议提交真实 token。
-- `proxy_url_env` 指向代理地址的变量名，读取顺序同样为系统环境变量、配置目录 `.env`；也可以用 `proxy_url` 直接写入配置。代理地址示例：`http://127.0.0.1:7890`、`socks5://127.0.0.1:1080`。
+- `bot_token_env` 指向保存 Bot Token 的环境变量名；也可以用 `bot_token` 直接写入配置，但不建议提交真实 token。
+- `proxy_url_env` 指向保存代理地址的环境变量名；也可以用 `proxy_url` 直接写入配置。代理地址示例：`http://127.0.0.1:7890`、`socks5://127.0.0.1:1080`。
 - `format="html"` 是默认值：使用普通 `sendMessage` + `parse_mode="HTML"`，并把常见 Markdown 轻量转换成 Telegram HTML；支持标题、引用、分割线、代码块和表格的可读渲染，失败时自动纯文本重试。
 - `format="plain"` 关闭格式化，只发送纯文本。
 - `format="rich"` 是实验模式：使用 `sendRichMessage` / 私聊 `sendRichMessageDraft`，Rich Message 失败时会自动退回 HTML；部分客户端可能无法查看 Rich Message。
@@ -697,6 +706,5 @@ Hook 不要直接发平台消息，应返回输出意图，由 Agent 统一交�
 
 
 - 用户可编辑配置集中放在平台配置目录，避免直接改源码示例。
-- 真实密钥放系统环境变量或 `.env`。
 - 新增配置项时同步更新本文档。
 - 改变默认路径或启动行为时同步更新 [快速开始](getting-started.md) 和 README。
