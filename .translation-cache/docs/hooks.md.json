@@ -1056,6 +1056,14 @@
       "translation": "The first call where the trigger rule has already matched usually does not require repeated validation of the same command;",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:61ebfeeae5710effa480ce2e42a02fd472b8f29bc12c1373117dc9c2f6b01645": {
+      "kind": "paragraph",
+      "source": "完整的优先级、__ELBOT_CODE_0__ 规则和生效时机见[环境变量与进程环境继承](configuration.md#环境变量与进程环境继承)。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "61ebfeeae5710effa480ce2e42a02fd472b8f29bc12c1373117dc9c2f6b01645",
+      "translation": "For complete priority, __ELBOT_CODE_0__ rules, and effective timing, see [Environment Variables and Process Environment Inheritance](configuration.md#环境变量与进程环境继承).\n",
+      "updated_at": 1785918808
+    },
     "docs/hooks.md:paragraph:6656d907ea58b6fe75266d9f587b87a9fc1e16dc05a404f6d9ef653df56ca182": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 包含 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__（JSON 字符串）、__ELBOT_CODE_4__、__ELBOT_CODE_5__、__ELBOT_CODE_6__。",
@@ -1655,14 +1663,6 @@
       "source_hash": "b92eb66a81c86f0491485b0863ae3a3e1f3ac1044c1c2b176c7bb401c4b7e3f8",
       "translation": "__ELBOT_CODE_0__ is __ELBOT_CODE_1__ (default) or __ELBOT_CODE_2__; for the actual scope of effect, refer to the Hook point table.\n",
       "updated_at": 1784025692
-    },
-    "docs/hooks.md:paragraph:b95af38c2e6421ac62f28bbfa50f931e93fd822b5cb0bd2a4a2d5cabd360eae3": {
-      "kind": "paragraph",
-      "source": "完整的优先级、__ELBOT_CODE_0__ 追加规则和生效时机见[进程环境继承](configuration.md#进程环境继承)。\n",
-      "source_file": "docs/hooks.md",
-      "source_hash": "b95af38c2e6421ac62f28bbfa50f931e93fd822b5cb0bd2a4a2d5cabd360eae3",
-      "translation": "For full priority, __ELBOT_CODE_0__ append rules, and effective timing, see [Process Environment Inheritance](configuration.md#进程环境继承).\n",
-      "updated_at": 1784812467
     },
     "docs/hooks.md:paragraph:b9813e64e2b4bc8bc48d7f20e2dee2747bb53e3d4926e146eca19a982cb2d8d2": {
       "kind": "paragraph",
@@ -3410,8 +3410,8 @@
     }
   },
   "source": "docs/hooks.md",
-  "source_hash": "47e910a267c254dc9ca1d2ad78eb78a6e5c9dcd05ea1e7805adfdae8b84d83dc",
+  "source_hash": "e11ee88245d425acba37d5322b8bf3397e0cf745fc7cbf0a62327484bc764ed9",
   "target": "docs.en/hooks.md",
-  "updated_at": 1784812467,
+  "updated_at": 1785918808,
   "version": 2
 }
