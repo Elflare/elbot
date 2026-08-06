@@ -56,6 +56,74 @@ path = "SOUL.md"
 
 These paths will all be resolved to the directory where the main configuration file is located; by default, this is the platform configuration directory.
 
+## Environment Variables and Process Environment Inheritance
+
+ElBot uses the following environment sources:
+
+- ElBot process environment: provided by the terminal, service manager, or container at startup.
+- Configuration root `.env`: located in the same directory as the main configuration file, used for Provider Keys, platform Secrets, CLI/Elnis tokens, built-in tool variables, and LLM Shell.
+- `plugins/.env`: an environment layer shared by all Hooks.
+- `plugins/<plugin-id>/.env`: an environment layer for individual plugin execs and Workers.
+
+### Configuration Variables and Keys
+
+Fields such as `api_key_env`, `token_env`, `client_secret_env`, `access_token_env`, `bot_token_env`, and `proxy_url_env` store environment variable names. When reading the corresponding values, the priority is unified as:
+
+1. ElBot process environment.
+2. Configuration root `.env`.
+
+It is recommended to place actual secrets in the system environment or the configuration root `.env`, rather than writing them directly into TOML or committing them to the repository. For example:
+
+```dotenv
+DEEPSEEK_API_KEY=your-api-key
+OPENAI_API_KEY=your-api-key
+QQOFFICIAL_CLIENT_SECRET=your-client-secret
+QQONEBOT_ACCESS_TOKEN=your-access-token
+TELEGRAM_BOT_TOKEN=your-bot-token
+ELBOT_CLI_LOCAL_TOKEN=your-cli-token
+ELNIS_HOME_TOKEN=your-elnis-token
+```
+
+All variables in the configuration root `.env` will also be supplemented to the LLM Shell; therefore, related tools should only be enabled when the current model and Shell permission policies are trusted.
+
+### Shell and Hook Environments
+
+| Process Entry Point | Environment Source and Priority |
+| --- | --- |
+| LLM Shell | Based on the ElBot process environment, the configuration root `.env` only supplements ordinary variables that do not yet exist. |
+| Root Hook Rules | Based on the ElBot process environment, `plugins/.env` overrides ordinary variables with the same name. |
+| Plugin exec and Worker | Based on the root Hook environment, the `.env` in the same directory as the plugin configuration file further overrides ordinary variables with the same name. |
+
+When ElBot reads configuration files on its own, the configuration root `.env` will not inject Hooks. Proxies, tool paths, or variables shared by all Hooks should be placed in `plugins/.env`, while variables used only by a single plugin should be placed in that plugin's `.env`. One-time exec, Persistent Worker, and Transient Worker follow the same rules.
+
+When a proxy is required, standard variables can be set in the corresponding environment layer; whether the child process uses them still depends on the specific program:
+
+```dotenv
+HTTP_PROXY=http://127.0.0.1:7890
+HTTPS_PROXY=http://127.0.0.1:7890
+NO_PROXY=localhost,127.0.0.1,::1
+```
+
+### PATH Rules and systemd
+
+When ElBot merges the above environment layers, `PATH` is not overridden like ordinary variables, but is instead appended sequentially by layer and deduplicated. The base PATH here is the process PATH that ElBot has already obtained upon startup; For subsequent `.env`, only fill in the absolute directories to be added:
+
+```dotenv
+PATH=/home/elbot/.local/bin:/usr/local/go/bin
+```
+
+Do not fill in `$PATH`, `%PATH%`, or `~`, as dotenv does not perform variable substitution or path expansion. `PATH` can be omitted if there are no additional directories.
+
+When a systemd user service does not explicitly set the PATH, ElBot uses the PATH provided by the service manager. `EnvironmentFile` itself does not affect the PATH, but once `PATH=` is included in the file, systemd will completely overwrite the original value before starting ElBot; ElBot can only continue to append to this result and cannot recover system directories that have already been lost. systemd's `EnvironmentFile` also does not expand `$PATH`.
+
+When ElBot reads the configuration root `.env` on its own, the systemd unit does not need to load the file again; The PATH within it is handled according to the append rules mentioned above. If the unit uses `EnvironmentFile` to load the same file, the PATH within it must be written as a full value
+
+After loading via `EnvironmentFile`, all variables in the file belong to the ElBot process environment and will therefore be inherited by the Shell and Hook, losing the isolation effect of "configuration root `.env` is not injected into Hooks."
+
+### Effective Timing
+
+The configuration root `.env` or systemd environment takes effect after restarting ElBot. `plugins/.env` and plugin `.env` are re-read during startup and `/hooks reload`; a reload will rebuild the Worker based on the new environment; If the file does not exist, it is treated as an empty configuration.
+
 ## Workspace Tools
 
 In work mode, the superadmin can allow the LLM to call the `workspace` tool to switch the shared working directory of the current Session. After switching, path-related tools such as `read_file`, `edit_file`, `send_file`, and the foreground `shell` will resolve relative paths based on this directory, avoiding the need to pass the full path every time.
@@ -126,7 +194,7 @@ JINA_API_KEY=your_jina_api_key
 ```
 
 The `proxy` parameter of `web_extract` is used to control the proxy for webpage extraction requests:
-If you want all default `web_extract` calls to go through a fixed proxy, you can set it in the configuration directory `.env` or in the system environment:
+If you want all default `web_extract` calls to go through a fixed proxy, you can set `WEB_EXTRACT_PROXY`:
 
 ```env
 WEB_EXTRACT_PROXY=http://127.0.0.1:7890
@@ -152,51 +220,6 @@ retry_initial_delay_seconds = 2
 
 The legacy `timeout_seconds` has been removed; existing configurations should be updated to the three new fields mentioned above.
 
-## API Key and `.env`
-
-Key reading priority:
-
-1. System environment variables.
-2. `.env` in the configuration directory.
-
-Recommended method:
-
-```dotenv
-DEEPSEEK_API_KEY=your-api-key
-OPENAI_API_KEY=your-api-key
-```
-
-Do not commit actual keys to the repository.
-
-The configuration root `.env` will also be supplemented into the process environment of the LLM Shell; Variables with the same name in the ElBot process take priority. The Shell can read all variables within it, including the Provider Key; therefore, related tools should only be enabled when the current model and Shell permission policies are trusted. ElBot needs to be restarted after modifying the root `.env`. The systemd unit does not need to load the same file via `EnvironmentFile` again.
-
-## Process Environment Inheritance
-
-| Process Entry Point | Environment Source and Priority |
-| --- | --- |
-| LLM Shell | Based on the ElBot process environment, the configuration root `.env` supplements variables that do not yet exist. |
-| Root Hook Rules | Based on the ElBot process environment, `plugins/.env` overrides variables with the same name. |
-| Plugin exec and Worker | Based on the root Hook environment, `.env` in the same directory as the plugin configuration file further overrides variables with the same name; the default path is `plugins/<插件 ID>/.env`. |
-
-`PATH` is not overridden like ordinary variables, but is instead appended and deduplicated sequentially according to the hierarchy mentioned above. System paths are preserved by default, so only additional directories need to be specified in the file, for example:
-
-```dotenv
-PATH=/home/elbot/.local/bin
-```
-
-Do not repeat the full system PATH, and do not fill in `$PATH`, `%PATH%`, or `~`, as dotenv does not perform variable or path expansion. `PATH` can be omitted when there are no additional directories.
-
-Standard variables can be set in the corresponding environment files when a proxy is needed; commands started by Shell or Hook will inherit them, although whether they are used still depends on the specific program:
-
-```dotenv
-HTTP_PROXY=http://127.0.0.1:7890
-HTTPS_PROXY=http://127.0.0.1:7890
-NO_PROXY=localhost,127.0.0.1,::1
-```
-
-The root configuration `.env` will not be injected into Hooks. Proxies, tool paths, or variables shared by all Hooks should be placed in `plugins/.env`; Keys used only by a single plugin should be placed in that plugin's `.env`. One-time exec, Persistent Workers, and Transient Workers follow the same rules.
-
-The root `.env` takes effect upon restarting ElBot; `plugins/.env` and plugin `.env` are reread during startup and `/hooks reload`; a reload will rebuild Workers based on the new environment. If the Hook environment file does not exist, it is treated as an empty configuration. Hook code is still trusted code; tiered `.env` only isolates configurations and is not a system-level security sandbox.
 
 ## CLI Remote Configuration
 
@@ -230,7 +253,6 @@ token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
 - `server.tokens` is the list of CLI client ID and token environment variables allowed to log in to the server.
 - `clients.<name>` is the client profile; `id` can be omitted, defaulting to `<name>`; `url` can be omitted, defaulting to `default_url`.
 - `elbot cli -c <name>` uses the specified client profile; if not specified, `default_client` is used.
-- Similar to the Provider API Key, the CLI token prioritizes system environment variables, then reads the configuration directory `.env`.
 
 ## AgentSkill Tooling Configuration
 
@@ -280,7 +302,7 @@ When writing configuration via the `agent_skill` meta-tool, ElBot will only conf
 
 ## Go Skill Compiler Path
 
-After modifying the `code_source` of the Go Skill, ElBot will automatically execute `gofmt`, `go build`, and reload. If ElBot is running as a Linux service, the service environment may not have loaded the `PATH` of the interactive shell, causing the `go` available in the terminal to be invisible to ElBot.
+After modifying the `code_source` of the Go Skill, ElBot will automatically execute `gofmt`, `go build`, and reload. The Go executable is located according to the following rules.
 
 It is recommended to specify the Go executable in the configuration directory `.env`:
 
@@ -296,8 +318,6 @@ Lookup order:
 4. `go` in the ElBot process `PATH`.
 
 If using asdf, mise, Nix, Linuxbrew, Snap, or a custom installation path, it is recommended to write the actual `go` path directly into `ELBOT_GO_BINARY`, rather than relying on the initialization scripts of an interactive shell.
-
-After modifying `.env` or the systemd environment, the ElBot service needs to be restarted.
 
 For advanced deployments, this can also be specified in the systemd service:
 
@@ -586,7 +606,7 @@ Note:
 - If a single Elwisp configures `allowed_tools`, it will override the global default.
 - External tools are allowed by default; specified external tools are only disabled when a single Elwisp configures `disabled_external_tools`.
 - Elnis delivery is allowed by default; `[delivery_disabled].targets` and single Elwisp `disabled_targets` are used to explicitly prohibit platforms, private chats, or group chats; `platform-only` in the configuration indicates that all deliveries for the entire platform are disabled.
-- The token is read from system environment variables or the configuration directory `.env`. Logs only record the token name, not the raw token.
+- Elnis logs only record the token name, not the original token text.
 - `token_env` can be written as a list to try multiple environment variable names in order; this is suitable for temporarily switching tokens or achieving multi-environment compatibility.
 - Elwisp is enabled by default; the corresponding Elwisp will only be disabled if `enabled=false` is explicitly configured.
 - Currently, `record`, `direct`, and `llm` modes are supported; `llm` mode is executed using a background Session runner.
@@ -607,8 +627,6 @@ enabled = true
 
 Configurations for QQ Official Bot, QQ OneBot, and Telegram are commented out by default in the examples. When enabled, the platform's own authentication information and trigger keywords must be provided. When files are received, download and save operations will be restricted according to `[platform_files]`.
 
-It is recommended to write the Provider Key, platform Secret, and LLM Shell environment collectively into the `.env` located in the main configuration file directory. The `*_env` fields for all platforms are parsed in the order of "process environment, configuration directory `.env`"; Values injected via systemd `EnvironmentFile` belong to the process environment and therefore naturally take priority. ElBot will read the configuration directory `.env` on its own; the systemd unit does not need to import the same file again; In this case, only the absolute directory to be appended needs to be filled in `PATH`.
-
 Minimum configuration example for the official QQ bot:
 
 ```toml
@@ -624,7 +642,7 @@ The corresponding configuration directory `.env`:
 QQOFFICIAL_CLIENT_SECRET=your-client-secret
 ```
 
-`client_secret_env` first reads the ElBot process environment, then reads the configuration directory `.env`; You can also use `client_secret` to write configurations directly, but it is not recommended to commit actual Secrets.
+`client_secret_env` points to the environment variable name that stores the Client Secret; You can also use `client_secret` to write configurations directly, but it is not recommended to commit actual Secrets.
 
 Minimum configuration example for QQ OneBot:
 
@@ -638,16 +656,7 @@ trigger_keywords = ["bot"]
 send_file_mode = "base64" # Local images, files, and voice messages use base64 by default; for shared file systems, this can be changed to file_uri
 ```
 
-The `access_token_env` of QQ OneBot uses the same environment priority; The original `access_token` remains compatible and takes priority over `access_token_env`. When OneBot does not require authentication, both items can be omitted.
-
-The configuration directory `.env` can be used to centrally store platform credentials:
-
-```dotenv
-QQOFFICIAL_CLIENT_SECRET=your-client-secret
-QQONEBOT_ACCESS_TOKEN=your-access-token
-TELEGRAM_BOT_TOKEN=your-bot-token
-TELEGRAM_PROXY_URL=
-```
+`access_token_env` points to the environment variable name that stores the Access Token; The original `access_token` remains compatible and takes priority over `access_token_env`. When OneBot does not require authentication, both items can be omitted.
 
 `send_file_mode` simultaneously controls the sending method for QQ OneBot local images, files, and `record` voice messages. `base64` is suitable for deployments where ElBot and OneBot do not share a file system; `file_uri` is only applicable in scenarios where both parties can access the same local path.
 
@@ -663,7 +672,7 @@ telegram = ["123456789"]
 [platform.telegram]
 enabled = true
 bot_token_env = "TELEGRAM_BOT_TOKEN"
-proxy_url_env = "TELEGRAM_PROXY_URL" # Optional; reads system environment variables first, then the .env file in the configuration directory
+proxy_url_env = "TELEGRAM_PROXY_URL" # Optional
 trigger_keywords = ["bot"]
 format = "html" # html/plain/rich
 stream_edit_interval_milliseconds = 250
@@ -671,8 +680,8 @@ stream_edit_interval_milliseconds = 250
 
 Note:
 
-- `bot_token_env` is the variable name pointing to the Bot Token; the reading order is system environment variables, then the configuration directory `.env`; You can also use `bot_token` to write the configuration directly, but it is not recommended to commit actual tokens.
-- `proxy_url_env` is the variable name pointing to the proxy address; the reading order is likewise system environment variables, then the configuration directory `.env`; You can also use `proxy_url` to write the configuration directly. Proxy address examples: `http://127.0.0.1:7890`, `socks5://127.0.0.1:1080`.
+- `bot_token_env` points to the environment variable name that stores the Bot Token; `bot_token` can also be used to write it directly into the configuration, but it is not recommended to commit actual tokens.
+- `proxy_url_env` points to the environment variable name that stores the proxy address; You can also use `proxy_url` to write the configuration directly. Proxy address examples: `http://127.0.0.1:7890`, `socks5://127.0.0.1:1080`.
 - `format="html"` is the default value: uses standard `sendMessage` + `parse_mode="HTML"`, and performs a lightweight conversion of common Markdown to Telegram HTML; Supports readable rendering of headings, quotes, horizontal rules, code blocks, and tables, with automatic plain text retry upon failure.
 - `format="plain"` disables formatting and sends only plain text.
 - `format="rich"` is an experimental mode: uses `sendRichMessage` / private chat `sendRichMessageDraft`, and automatically falls back to HTML if Rich Message fails; Some clients may not be able to view Rich Messages.
@@ -699,6 +708,5 @@ For complete configuration instructions for rules and persistent Hooks, see [Hoo
 
 
 - User-editable configurations should be centralized in the platform configuration directory to avoid directly modifying source code examples.
-- Place actual keys in system environment variables or `.env`.
 - Update this document synchronously when adding new configuration items.
 - Update [Quick Start](getting-started.md) and README synchronously when changing default paths or startup behavior.
