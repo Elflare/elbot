@@ -435,7 +435,7 @@ When the limit is reached, expired items are deleted first, and then the coldest
 
 ### Process Environment
 
-One-time exec, Persistent Worker, and Transient Worker all inherit the ElBot process environment, and are layeredly overridden by the Hook public `plugins/.env` and plugin directory `.env`; The configuration root `.env` will not inject Hooks. For full priority, `PATH` append rules, and effective timing, see [Process Environment Inheritance](configuration.md#进程环境继承).
+One-time exec, Persistent Worker, and Transient Worker all inherit the ElBot process environment, and are layeredly overridden by the Hook public `plugins/.env` and plugin directory `.env`; The configuration root `.env` will not inject Hooks. For complete priority, `PATH` rules, and effective timing, see [Environment Variables and Process Environment Inheritance](configuration.md#环境变量与进程环境继承).
 
 Hooks do not load interactive Shell initializations such as `.bashrc`, `.profile`, mise/asdf, etc. After modifying the Hook environment file, execute `/hooks reload` to apply the changes, and Workers will be rebuilt based on the new environment.
 
