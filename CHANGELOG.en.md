@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v0.4.2 - 2026-08-06]
+
 ### Changed
 
 - Optimized .env, platform secret, and token parsing logic
