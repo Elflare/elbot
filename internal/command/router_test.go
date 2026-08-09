@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"elbot/internal/security"
 )
 
 func TestRouterDispatchAndHelpInfo(t *testing.T) {
@@ -100,6 +102,33 @@ func TestRouterCompleteCommands(t *testing.T) {
 	assertComplete(t, r.Complete("hello"), nil)
 }
 
+func TestRouterFiltersCommandsForActor(t *testing.T) {
+	r := NewRouter([]string{"/"})
+	if err := r.Register(NewFunc(Info{Name: "public", Aliases: []string{"p"}, MinRole: security.RoleUser}, nil)); err != nil {
+		t.Fatalf("Register public: %v", err)
+	}
+	if err := r.Register(NewFunc(Info{Name: "secret", Aliases: []string{"s"}}, nil)); err != nil {
+		t.Fatalf("Register secret: %v", err)
+	}
+
+	user := security.Actor{Role: security.RoleUser}
+	if got := r.CommandsForActor(user); len(got) != 1 || got[0].Name != "public" {
+		t.Fatalf("CommandsForActor(user) = %#v", got)
+	}
+	if _, ok := r.CommandInfoForActor("s", user); ok {
+		t.Fatal("regular user should not resolve private command alias")
+	}
+	assertComplete(t, r.CompleteForActor("/", user), []string{"/public", "/p"})
+
+	admin := security.Actor{Role: security.RoleSuperadmin}
+	if got := r.CommandsForActor(admin); len(got) != 2 {
+		t.Fatalf("CommandsForActor(admin) = %#v", got)
+	}
+	if info, ok := r.CommandInfoForActor("s", admin); !ok || info.Name != "secret" {
+		t.Fatalf("CommandInfoForActor(admin) = %#v, %v", info, ok)
+	}
+	assertComplete(t, r.CompleteForActor("/s", admin), []string{"/secret", "/s"})
+}
 func assertComplete(t *testing.T, got []string, want []string) {
 	t.Helper()
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {

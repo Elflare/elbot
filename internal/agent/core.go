@@ -255,7 +255,7 @@ func NewWithOptions(opts Options) (*Agent, error) {
 			Tags:           a.completionToolTags,
 			ToolNamesByTag: a.completionToolNamesByTag,
 		},
-		completion.RouterSource{Router: a.commands},
+		completion.RouterSource{Router: a.commands, Actor: a.actor},
 	)
 
 	return a, nil

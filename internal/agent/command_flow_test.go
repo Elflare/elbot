@@ -119,6 +119,35 @@ func TestRegularUserCanUseOwnDataSlashCommands(t *testing.T) {
 	}
 }
 
+func TestRegularUserHelpHidesSuperadminCommands(t *testing.T) {
+	p := &fakePlatform{}
+	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "regular", ScopeID: "regular"})
+
+	if err := a.HandleMessage(ctx, "/help"); err != nil {
+		t.Fatalf("/help: %v", err)
+	}
+	if out := p.out.String(); !strings.Contains(out, "/new") || strings.Contains(out, "/model") {
+		t.Fatalf("regular user help = %q", out)
+	}
+
+	p.out.Reset()
+	if err := a.HandleMessage(ctx, "/help model"); err != nil {
+		t.Fatalf("/help model: %v", err)
+	}
+	if out := p.out.String(); !strings.Contains(out, "unknown command: model") || strings.Contains(out, "需要超级管理员权限") {
+		t.Fatalf("regular user model help = %q", out)
+	}
+
+	p.out.Reset()
+	if err := a.HandleMessage(ctx, "/help new"); err != nil {
+		t.Fatalf("/help new: %v", err)
+	}
+	if !strings.Contains(p.out.String(), "command: new") {
+		t.Fatalf("regular user public help = %q", p.out.String())
+	}
+}
 func TestRegularUserCannotUseSuperadminSlashCommands(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)

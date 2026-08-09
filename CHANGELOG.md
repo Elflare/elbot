@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- `/help`、详细帮助和 slash 命令补全现在按当前用户权限过滤；普通用户无法发现仅限超级管理员的命令。
+
 ## [v0.4.2 - 2026-08-06]
 
 ### Changed

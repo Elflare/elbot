@@ -18,6 +18,10 @@ type Info struct {
 	MinRole security.Role
 }
 
+func CanAccess(info Info, actor security.Actor) bool {
+	return info.MinRole == security.RoleUser || actor.Role == security.RoleSuperadmin
+}
+
 type SessionEffect uint8
 
 const SessionEffectNone SessionEffect = 0
