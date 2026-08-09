@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"elbot/internal/security"
 )
 
 type Router struct {
@@ -122,6 +124,13 @@ func (r *Router) CommandInfo(name string) (Info, bool) {
 	return info, true
 }
 
+func (r *Router) CommandInfoForActor(name string, actor security.Actor) (Info, bool) {
+	info, ok := r.CommandInfo(name)
+	if !ok || !CanAccess(info, actor) {
+		return Info{}, false
+	}
+	return info, true
+}
 func (r *Router) Handler(name string) (Handler, bool) {
 	h, ok := r.handlers[normalizeName(name)]
 	return h, ok
@@ -138,8 +147,27 @@ func (r *Router) Commands() []Info {
 	return infos
 }
 
+func (r *Router) CommandsForActor(actor security.Actor) []Info {
+	infos := r.Commands()
+	out := make([]Info, 0, len(infos))
+	for _, info := range infos {
+		if CanAccess(info, actor) {
+			out = append(out, info)
+		}
+	}
+	return out
+}
+
 // Complete returns full-line command completions for the current input.
 func (r *Router) Complete(text string) []string {
+	return r.complete(text, nil)
+}
+
+func (r *Router) CompleteForActor(text string, actor security.Actor) []string {
+	return r.complete(text, &actor)
+}
+
+func (r *Router) complete(text string, actor *security.Actor) []string {
 	for _, prefix := range r.prefixes {
 		if !strings.HasPrefix(text, prefix) {
 			continue
@@ -152,7 +180,7 @@ func (r *Router) Complete(text string) []string {
 
 		query := normalizeName(rest)
 		out := []string{}
-		for _, name := range r.completionNames() {
+		for _, name := range r.completionNames(actor) {
 			if strings.HasPrefix(name, query) {
 				out = append(out, prefix+name)
 			}
@@ -162,11 +190,14 @@ func (r *Router) Complete(text string) []string {
 	return nil
 }
 
-func (r *Router) completionNames() []string {
+func (r *Router) completionNames(actor *security.Actor) []string {
 	seen := map[string]bool{}
 	out := []string{}
 	for _, primaryName := range r.order {
 		info := r.handlers[primaryName].Info()
+		if actor != nil && !CanAccess(info, *actor) {
+			continue
+		}
 		names := append([]string{info.Name}, info.Aliases...)
 		for _, name := range names {
 			name = normalizeName(name)

@@ -36,12 +36,13 @@ Examples:
 func (h helpCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
 	arg := strings.TrimSpace(req.Args)
 	if arg != "" {
-		return detailedHelp(req.Prefix, h.deps, arg)
+		return detailedHelp(ctx, req.Prefix, h.deps, arg)
 	}
 
 	var sb strings.Builder
 	sb.WriteString("available commands:\n")
-	for _, info := range h.deps.Router.Commands() {
+	actor, _ := security.ActorFromContext(ctx)
+	for _, info := range h.deps.Router.CommandsForActor(actor) {
 		usage := commandUsage(req.Prefix, info)
 		sb.WriteString(fmt.Sprintf("  %-24s %s\n", usage, info.Description))
 	}
@@ -50,7 +51,6 @@ func (h helpCommand) Handle(ctx context.Context, req command.Request) (*command.
 }
 
 func (h helpCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
-	_ = ctx
 	if h.deps.Router == nil || strings.ContainsAny(strings.TrimSpace(req.Args), " \t") {
 		return nil
 	}
@@ -60,7 +60,8 @@ func (h helpCommand) Complete(ctx context.Context, req command.CompletionRequest
 		argsStart++
 	}
 	out := []command.Completion{}
-	for _, info := range h.deps.Router.Commands() {
+	actor, _ := security.ActorFromContext(ctx)
+	for _, info := range h.deps.Router.CommandsForActor(actor) {
 		name := strings.TrimSpace(info.Name)
 		if name == "" || !strings.HasPrefix(name, query) {
 			continue
@@ -70,8 +71,9 @@ func (h helpCommand) Complete(ctx context.Context, req command.CompletionRequest
 	return out
 }
 
-func detailedHelp(prefix string, deps Deps, name string) (*command.Result, error) {
-	info, ok := deps.Router.CommandInfo(name)
+func detailedHelp(ctx context.Context, prefix string, deps Deps, name string) (*command.Result, error) {
+	actor, _ := security.ActorFromContext(ctx)
+	info, ok := deps.Router.CommandInfoForActor(name, actor)
 	if !ok {
 		return &command.Result{Content: fmt.Sprintf("unknown command: %s", strings.TrimSpace(name))}, nil
 	}

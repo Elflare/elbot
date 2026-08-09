@@ -5,21 +5,26 @@ import (
 	"strings"
 
 	"elbot/internal/command"
+	"elbot/internal/security"
 )
 
 const KindCommand = "command"
 
 type RouterSource struct {
 	Router *command.Router
+	Actor  func(context.Context) security.Actor
 }
 
-func (s RouterSource) completeArgs(ctx context.Context, req Request) []Item {
+func (s RouterSource) completeArgs(ctx context.Context, req Request, actor security.Actor) []Item {
 	parsed := s.Router.Parse(req.Text)
 	if !parsed.OK || parsed.Name == "" || !strings.ContainsAny(strings.TrimPrefix(strings.TrimLeft(req.Text, " \t"), parsed.Prefix), " \t") {
 		return nil
 	}
 	h, ok := s.Router.Handler(parsed.Name)
 	if !ok {
+		return nil
+	}
+	if !command.CanAccess(h.Info(), actor) {
 		return nil
 	}
 	completer, ok := h.(command.Completer)
@@ -34,15 +39,22 @@ func (s RouterSource) completeArgs(ctx context.Context, req Request) []Item {
 	return out
 }
 
+func (s RouterSource) actor(ctx context.Context) security.Actor {
+	if s.Actor != nil {
+		return s.Actor(ctx)
+	}
+	actor, _ := security.ActorFromContext(ctx)
+	return actor
+}
 func (s RouterSource) Complete(ctx context.Context, req Request) []Item {
-	_ = ctx
 	if s.Router == nil {
 		return nil
 	}
-	if items := s.completeArgs(ctx, req); len(items) > 0 {
+	actor := s.actor(ctx)
+	if items := s.completeArgs(ctx, req, actor); len(items) > 0 {
 		return items
 	}
-	texts := s.Router.Complete(req.Text)
+	texts := s.Router.CompleteForActor(req.Text, actor)
 	if len(texts) == 0 {
 		return nil
 	}

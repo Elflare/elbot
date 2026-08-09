@@ -53,7 +53,7 @@ func (e *commandExecutor) Handle(ctx context.Context, text string) (bool, error)
 	}
 
 	actor, _ := security.ActorFromContext(ctx)
-	if hasInfo && info.MinRole != security.RoleUser && actor.Role != security.RoleSuperadmin {
+	if hasInfo && !command.CanAccess(info, actor) {
 		e.audit("permission_denied", "actor_id", actor.ID, "command", text, "reason", "slash_command_requires_superadmin")
 		e.sendChat(ctx, fmt.Sprintf("命令 %s%s 需要超级管理员权限。", parsed.Prefix, parsed.Name))
 		return true, nil

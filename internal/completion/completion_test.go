@@ -24,10 +24,10 @@ func TestServiceReturnsFirstNonEmptySource(t *testing.T) {
 
 func TestRouterSourceCompletesCommands(t *testing.T) {
 	router := command.NewRouter([]string{"/"})
-	if err := router.Register(command.NewFunc(command.Info{Name: "model", Aliases: []string{"m"}}, nil)); err != nil {
+	if err := router.Register(command.NewFunc(command.Info{Name: "model", Aliases: []string{"m"}, MinRole: security.RoleUser}, nil)); err != nil {
 		t.Fatalf("register model: %v", err)
 	}
-	if err := router.Register(command.NewFunc(command.Info{Name: "models"}, nil)); err != nil {
+	if err := router.Register(command.NewFunc(command.Info{Name: "models", MinRole: security.RoleUser}, nil)); err != nil {
 		t.Fatalf("register models: %v", err)
 	}
 	items := RouterSource{Router: router}.Complete(context.Background(), Request{Text: "/m"})
@@ -41,6 +41,38 @@ func TestRouterSourceCompletesCommands(t *testing.T) {
 	}
 }
 
+func TestRouterSourceFiltersCommandsByActor(t *testing.T) {
+	router := command.NewRouter([]string{"/"})
+	if err := router.Register(command.NewFunc(command.Info{Name: "public", Aliases: []string{"p"}, MinRole: security.RoleUser}, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := router.Register(command.NewFunc(command.Info{Name: "secret", Aliases: []string{"s"}}, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := router.Register(commandArgCompleter{}); err != nil {
+		t.Fatal(err)
+	}
+
+	userSource := RouterSource{Router: router, Actor: func(context.Context) security.Actor { return security.Actor{Role: security.RoleUser} }}
+	items := userSource.Complete(context.Background(), Request{Text: "/"})
+	if len(items) != 2 || items[0].Text != "/public" || items[1].Text != "/p" {
+		t.Fatalf("user command completions = %#v", items)
+	}
+	if got := userSource.Complete(context.Background(), Request{Text: "/s"}); len(got) != 0 {
+		t.Fatalf("user private command completions = %#v", got)
+	}
+	if got := userSource.Complete(context.Background(), Request{Text: "/help mo", Cursor: len("/help mo")}); len(got) != 0 {
+		t.Fatalf("user private argument completions = %#v", got)
+	}
+
+	adminSource := RouterSource{Router: router, Actor: func(context.Context) security.Actor { return security.Actor{Role: security.RoleSuperadmin} }}
+	if got := adminSource.Complete(context.Background(), Request{Text: "/s"}); len(got) != 2 || got[0].Text != "/secret" || got[1].Text != "/s" {
+		t.Fatalf("admin private command completions = %#v", got)
+	}
+	if got := adminSource.Complete(context.Background(), Request{Text: "/help mo", Cursor: len("/help mo")}); len(got) != 1 || got[0].Text != "model" {
+		t.Fatalf("admin private argument completions = %#v", got)
+	}
+}
 func TestToolDirectiveSourceCompletesOnlyPlainTools(t *testing.T) {
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -139,7 +171,7 @@ func TestRouterSourceCompletesCommandArgs(t *testing.T) {
 	if err := router.Register(commandArgCompleter{}); err != nil {
 		t.Fatal(err)
 	}
-	items := RouterSource{Router: router}.Complete(context.Background(), Request{Text: "/help mo", Cursor: len("/help mo")})
+	items := RouterSource{Router: router, Actor: func(context.Context) security.Actor { return security.Actor{Role: security.RoleSuperadmin} }}.Complete(context.Background(), Request{Text: "/help mo", Cursor: len("/help mo")})
 	if len(items) != 1 || items[0].Text != "model" || items[0].ReplaceStart != len("/help ") || items[0].ReplaceEnd != len("/help mo") {
 		t.Fatalf("Complete = %#v", items)
 	}
