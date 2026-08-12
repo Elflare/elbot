@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,12 @@ import (
 
 	"elbot/internal/llm"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func mustNewWithOptions(t *testing.T, baseURL, apiKey string, extraPayload map[string]any, modelExtraPayloads map[string]map[string]any, opts RequestOptions) *Adapter {
 	t.Helper()
@@ -916,6 +923,101 @@ func TestChatStream_HTTPError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid api key") {
 		t.Errorf("expected 'invalid api key' in error, got: %v", err)
+	}
+}
+
+func TestChatStream_ReadsHTTPErrorBodyBeforeCancel(t *testing.T) {
+	requestStarted := make(chan struct{})
+	releaseBody := make(chan struct{})
+	adapter := New("https://example.com", "bad-key", nil)
+	adapter.client = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		reader, writer := io.Pipe()
+		close(requestStarted)
+		go func() {
+			select {
+			case <-releaseBody:
+				_, _ = io.WriteString(writer, `{"error":{"message":"invalid image reference"}}`)
+				_ = writer.Close()
+			case <-req.Context().Done():
+				_ = writer.CloseWithError(req.Context().Err())
+			}
+		}()
+		return &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Status:     "400 Bad Request",
+			Header:     make(http.Header),
+			Body:       reader,
+			Request:    req,
+		}, nil
+	})}
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+			Model:    "test",
+			Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
+		})
+		errCh <- err
+	}()
+	<-requestStarted
+	select {
+	case err := <-errCh:
+		t.Fatalf("ChatStream returned before the error body was available: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(releaseBody)
+
+	select {
+	case err := <-errCh:
+		if err == nil || !strings.Contains(err.Error(), "invalid image reference") {
+			t.Fatalf("error = %v, want upstream error body", err)
+		}
+		if strings.Contains(err.Error(), "failed to read body") || strings.Contains(err.Error(), "context canceled") {
+			t.Fatalf("error body was canceled before reading: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("ChatStream did not return after the error body was released")
+	}
+}
+
+func TestChatStream_HTTPErrorBodyReadHonorsContextCancellation(t *testing.T) {
+	requestStarted := make(chan struct{})
+	adapter := New("https://example.com", "bad-key", nil)
+	adapter.client = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		reader, writer := io.Pipe()
+		close(requestStarted)
+		go func() {
+			<-req.Context().Done()
+			_ = writer.CloseWithError(req.Context().Err())
+		}()
+		return &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Status:     "400 Bad Request",
+			Header:     make(http.Header),
+			Body:       reader,
+			Request:    req,
+		}, nil
+	})}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := adapter.ChatStream(ctx, llm.ChatRequest{
+			Model:    "test",
+			Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
+		})
+		errCh <- err
+	}()
+	<-requestStarted
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error = %v, want context canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("ChatStream did not stop after context cancellation")
 	}
 }
 
