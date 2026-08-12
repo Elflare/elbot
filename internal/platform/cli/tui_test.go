@@ -296,7 +296,7 @@ func TestEnterExpandsLocalFileReferencesBeforeSending(t *testing.T) {
 	}
 }
 
-func TestEnterRestoresInputWhenLocalFileReferenceFails(t *testing.T) {
+func TestEnterSendsMissingLocalFileReferenceAsLiteralText(t *testing.T) {
 	root := t.TempDir()
 	handler := capturingHandler{messages: make(chan string, 1)}
 	m := tuiModel{ctx: context.Background(), handler: handler, output: make(chan tea.Msg, 1), localFiles: newLocalFileResolver(root), input: newTUIInput(), width: 80, height: 20}
@@ -305,19 +305,36 @@ func TestEnterRestoresInputWhenLocalFileReferenceFails(t *testing.T) {
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(tuiModel)
-	if got := m.input.Value(); got != "see #missing.txt" {
-		t.Fatalf("input after failed expansion = %q", got)
-	}
-	if len(m.history) != 0 {
-		t.Fatalf("history should remain empty: %#v", m.history)
-	}
-	if !strings.Contains(m.content, "local file reference:") {
-		t.Fatalf("notice missing from transcript: %q", m.content)
-	}
 	select {
 	case got := <-handler.messages:
-		t.Fatalf("message should not be sent: %q", got)
-	default:
+		if got != "see #missing.txt" {
+			t.Fatalf("message = %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("message was not sent")
+	}
+	if got := m.input.Value(); got != "" {
+		t.Fatalf("input after send = %q", got)
+	}
+	if len(m.history) != 1 || m.history[0] != "see #missing.txt" {
+		t.Fatalf("history = %#v", m.history)
+	}
+}
+
+func TestExpandReferencesExpandsExistingAndPreservesMissing(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, root, "foo.txt", "hello\n")
+	resolver := newLocalFileResolver(root)
+
+	got, err := resolver.expandReferences("use #foo.txt and #missing.txt and #\"missing file.txt\"")
+	if err != nil {
+		t.Fatalf("expand references: %v", err)
+	}
+	if !strings.Contains(got, "[file: foo.txt]") || !strings.Contains(got, "hello\n") {
+		t.Fatalf("existing reference was not expanded: %q", got)
+	}
+	if !strings.Contains(got, "#missing.txt") || !strings.Contains(got, "#\"missing file.txt\"") {
+		t.Fatalf("missing references were not preserved: %q", got)
 	}
 }
 

@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -280,6 +281,11 @@ func (r *localFileResolver) expandReferences(text string) (string, error) {
 			continue
 		}
 		expansion, err := r.expandReference(refPath, &total)
+		if errors.Is(err, fs.ErrNotExist) {
+			out.WriteString(text[i:end])
+			i = end
+			continue
+		}
 		if err != nil {
 			return "", err
 		}
