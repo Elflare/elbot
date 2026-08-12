@@ -94,7 +94,7 @@ func TestTurnHookMultimodalUserMessagePersistsWithoutChangingPlatformText(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) == 0 || !strings.Contains(messages[0].Content, "这是猫") || !strings.Contains(messages[0].Content, "cat.png") || !strings.Contains(messages[0].Segments, `"type":"image"`) {
+	if len(messages) == 0 || !strings.Contains(messages[0].Content, "这是猫 [图片 1；名称：cat.png；引用 URL：https://example.com/cat.png]") || !strings.Contains(messages[0].Segments, `"type":"image"`) || strings.Contains(messages[0].Segments, "reference_text") {
 		t.Fatalf("stored user message = %#v", messages)
 	}
 }

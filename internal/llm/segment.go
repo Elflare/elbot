@@ -1,6 +1,8 @@
 package llm
 
 import (
+	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 )
@@ -60,17 +62,51 @@ func SegmentsTextOnly(segments []MessageSegment) string {
 // SegmentsContentText returns readable plain text for storage, logs and summary.
 func SegmentsContentText(segments []MessageSegment) string {
 	var text strings.Builder
+	imageIndex := 0
 	for _, segment := range segments {
 		switch segment.Type {
 		case SegmentText:
 			text.WriteString(segment.Text)
 		case SegmentImage:
-			writeSegmentLabel(&text, "图片", displaySegmentURL(segment.URL), segment.Name, segment.Text, segment.MIMEType)
+			if strings.TrimSpace(segment.URL) != "" {
+				imageIndex++
+				writeSegmentText(&text, ImageReferenceText(segment, imageIndex))
+			} else {
+				writeSegmentLabel(&text, "图片", "", segment.Name, segment.Text, segment.MIMEType)
+			}
 		case SegmentFile:
 			writeSegmentLabel(&text, "文件", displaySegmentURL(segment.URL), segment.Name, segment.Text, segment.MIMEType)
 		}
 	}
 	return strings.TrimSpace(text.String())
+}
+
+// ImageReferenceText returns the text label paired with one image in an LLM request.
+func ImageReferenceText(segment MessageSegment, index int) string {
+	if segment.Type != SegmentImage || index < 1 || strings.TrimSpace(segment.URL) == "" {
+		return ""
+	}
+	parts := []string{fmt.Sprintf("图片 %d", index)}
+	if name := strings.TrimSpace(segment.Name); name != "" {
+		parts = append(parts, "名称："+name)
+	}
+	if reusableURL, ok := reusableImageURL(segment.URL); ok {
+		parts = append(parts, "引用 URL："+reusableURL)
+	} else if strings.HasPrefix(strings.ToLower(strings.TrimSpace(segment.URL)), "data:") {
+		parts = append(parts, "内嵌图片，无可复用 URL")
+	} else {
+		parts = append(parts, "无可复用 URL")
+	}
+	return "[" + strings.Join(parts, "；") + "]"
+}
+
+func reusableImageURL(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	u, err := url.Parse(value)
+	if err != nil || u.Host == "" || (!strings.EqualFold(u.Scheme, "http") && !strings.EqualFold(u.Scheme, "https")) {
+		return "", false
+	}
+	return value, true
 }
 
 func displaySegmentURL(value string) string {
@@ -242,6 +278,16 @@ func segmentsByType(segments []MessageSegment, typ MessageSegmentType) []Message
 		}
 	}
 	return out
+}
+
+func writeSegmentText(text *strings.Builder, value string) {
+	if value == "" {
+		return
+	}
+	if text.Len() > 0 {
+		text.WriteString(" ")
+	}
+	text.WriteString(value)
 }
 
 func writeSegmentLabel(text *strings.Builder, kind string, values ...string) {

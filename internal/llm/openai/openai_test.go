@@ -231,7 +231,7 @@ func TestChatStream_SendsMultimodalContentParts(t *testing.T) {
 		Model: "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{
 			{Type: llm.SegmentText, Text: "看图"},
-			{Type: llm.SegmentImage, URL: "https://example.com/a.png"},
+			{Type: llm.SegmentImage, URL: "https://example.com/a.png", Name: "a.png"},
 		}}},
 	})
 	if err != nil {
@@ -246,18 +246,50 @@ func TestChatStream_SendsMultimodalContentParts(t *testing.T) {
 	if err := json.Unmarshal(capturedBody, &body); err != nil {
 		t.Fatalf("unmarshal captured body: %v", err)
 	}
-	if len(body.Messages) != 1 || len(body.Messages[0].Content) != 2 {
+	if len(body.Messages) != 1 || len(body.Messages[0].Content) != 3 {
 		t.Fatalf("content parts = %#v", body.Messages)
 	}
 	if body.Messages[0].Content[0]["type"] != "text" || body.Messages[0].Content[0]["text"] != "看图" {
 		t.Fatalf("text part = %#v", body.Messages[0].Content[0])
 	}
-	imageURL, ok := body.Messages[0].Content[1]["image_url"].(map[string]any)
+	if body.Messages[0].Content[1]["type"] != "text" || body.Messages[0].Content[1]["text"] != "[图片 1；名称：a.png；引用 URL：https://example.com/a.png]" {
+		t.Fatalf("reference part = %#v", body.Messages[0].Content[1])
+	}
+	imageURL, ok := body.Messages[0].Content[2]["image_url"].(map[string]any)
 	if !ok || imageURL["url"] != "https://example.com/a.png" {
-		t.Fatalf("image part = %#v", body.Messages[0].Content[1])
+		t.Fatalf("image part = %#v", body.Messages[0].Content[2])
+	}
+	if bytes.Contains(capturedBody, []byte("reference_text")) {
+		t.Fatalf("internal reference field leaked into request: %s", capturedBody)
 	}
 }
 
+func TestToOpenAIMessagesDerivesImageNumbersPerMessage(t *testing.T) {
+	input := []llm.LLMMessage{
+		{Role: llm.RoleUser, Segments: []llm.MessageSegment{
+			{Type: llm.SegmentImage, URL: "https://example.com/a.png"},
+			{Type: llm.SegmentImage, URL: "https://example.com/b.png"},
+		}},
+		{Role: llm.RoleUser, Segments: []llm.MessageSegment{
+			{Type: llm.SegmentImage, URL: "https://example.com/c.png"},
+		}},
+	}
+	messages := toOpenAIMessages(input)
+	if len(messages) != 2 {
+		t.Fatalf("messages = %#v", messages)
+	}
+	first, ok := messages[0].Content.([]openAIContentPart)
+	if !ok || len(first) != 4 || !strings.Contains(first[0].Text, "图片 1") || !strings.Contains(first[2].Text, "图片 2") {
+		t.Fatalf("first message content = %#v", messages[0].Content)
+	}
+	second, ok := messages[1].Content.([]openAIContentPart)
+	if !ok || len(second) != 2 || !strings.Contains(second[0].Text, "图片 1") {
+		t.Fatalf("second message content = %#v", messages[1].Content)
+	}
+	if len(input[0].Segments) != 2 || input[0].Segments[0].Type != llm.SegmentImage {
+		t.Fatalf("input mutated: %#v", input)
+	}
+}
 func TestChatStream_IncludesEmptyContentField(t *testing.T) {
 
 	var capturedBody []byte
@@ -366,14 +398,20 @@ func TestToOpenAIMessagesMovesToolImagesIntoFollowingUserMessage(t *testing.T) {
 		t.Fatalf("image carrier = %#v", messages[3])
 	}
 	parts, ok := messages[3].Content.([]openAIContentPart)
-	if !ok || len(parts) != 4 {
+	if !ok || len(parts) != 6 {
 		t.Fatalf("carrier content = %#v", messages[3].Content)
 	}
-	if parts[0].Type != "text" || !strings.Contains(parts[0].Text, "screenshot") || !strings.Contains(parts[0].Text, "call_1") || parts[1].ImageURL.URL != "https://example.com/a.png" {
-		t.Fatalf("first image group = %#v", parts[:2])
+	if parts[0].Type != "text" || !strings.Contains(parts[0].Text, "screenshot") || !strings.Contains(parts[0].Text, "call_1") {
+		t.Fatalf("first image source = %#v", parts[0])
 	}
-	if parts[2].Type != "text" || !strings.Contains(parts[2].Text, "camera") || !strings.Contains(parts[2].Text, "call_2") || parts[3].ImageURL.URL != "data:image/png;base64,aGVsbG8=" {
-		t.Fatalf("second image group = %#v", parts[2:])
+	if parts[1].Text != "[图片 1；引用 URL：https://example.com/a.png]" || parts[2].ImageURL.URL != "https://example.com/a.png" {
+		t.Fatalf("first image reference = %#v", parts[1:3])
+	}
+	if parts[3].Type != "text" || !strings.Contains(parts[3].Text, "camera") || !strings.Contains(parts[3].Text, "call_2") {
+		t.Fatalf("second image source = %#v", parts[3])
+	}
+	if parts[4].Text != "[图片 1；内嵌图片，无可复用 URL]" || strings.Contains(parts[4].Text, "aGVsbG8=") || parts[5].ImageURL.URL != "data:image/png;base64,aGVsbG8=" {
+		t.Fatalf("second image reference = %#v", parts[4:])
 	}
 	if messages[4].Role != "assistant" || messages[4].Content != "我看到了" {
 		t.Fatalf("following assistant = %#v", messages[4])

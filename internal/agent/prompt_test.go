@@ -221,6 +221,9 @@ func TestStoredMessageSegmentsUsesStableLightweightJSON(t *testing.T) {
 			t.Fatalf("segments = %s, want contains %s", stored, want)
 		}
 	}
+	if strings.Contains(stored, "reference_text") {
+		t.Fatalf("segments contain derived reference field: %s", stored)
+	}
 	for _, forbidden := range []string{"Type", "Text", "URL", "MIMEType"} {
 		if strings.Contains(stored, forbidden) {
 			t.Fatalf("segments = %s, should not contain Go field name %s", stored, forbidden)
@@ -237,7 +240,7 @@ func TestToolResultStorageMessageUsesContentFastPath(t *testing.T) {
 		{Type: llm.SegmentText, Text: "done"},
 		{Type: llm.SegmentImage, URL: "data:image/png;base64,aGVsbG8=", Name: "result.png"},
 	}})
-	if multimodal.Content != "done [图片: result.png]" || !strings.Contains(multimodal.Segments, `"type":"image"`) {
+	if multimodal.Content != "done [图片 1；名称：result.png；内嵌图片，无可复用 URL]" || !strings.Contains(multimodal.Segments, `"type":"image"`) || strings.Contains(multimodal.Segments, "reference_text") {
 		t.Fatalf("multimodal message = %#v", multimodal)
 	}
 }
@@ -251,7 +254,7 @@ func TestPromptBuilderRestoresUserSegmentsFromStorage(t *testing.T) {
 	messages, err := builder.Build(context.Background(), PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
-			{Role: storage.RoleUser, Content: llm.SegmentsContentText(segments), Segments: storedMessageSegments(segments)},
+			{Role: storage.RoleUser, Content: "看图 [图片: https://example.com/a.png]", Segments: storedMessageSegments(segments)},
 		},
 	})
 	if err != nil {
@@ -263,6 +266,9 @@ func TestPromptBuilderRestoresUserSegmentsFromStorage(t *testing.T) {
 	user := messages[1]
 	if user.Role != llm.RoleUser || len(user.Segments) != 2 || user.Segments[1].Type != llm.SegmentImage || user.Segments[1].URL != "https://example.com/a.png" {
 		t.Fatalf("user message = %#v", user)
+	}
+	if got := llm.SegmentsContentText(user.Segments); got != "看图 [图片 1；引用 URL：https://example.com/a.png]" {
+		t.Fatalf("restored content projection = %q", got)
 	}
 }
 
