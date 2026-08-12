@@ -512,6 +512,14 @@
       "translation": "Fields unrelated to the current Hook point will be zero values, empty objects, or omitted; plugins must handle them as nullable values.\n",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:0cd433944c50233b6ea36d832fdd127389c95a4697f0e2d4e912fc755ecf120e": {
+      "kind": "paragraph",
+      "source": "当前调用取消时会收到 __ELBOT_CODE_0__，Worker 进程本身保持运行。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "0cd433944c50233b6ea36d832fdd127389c95a4697f0e2d4e912fc755ecf120e",
+      "translation": "When the current call is cancelled, __ELBOT_CODE_0__ will be received, and the Worker process itself remains running.\n",
+      "updated_at": 1786539358
+    },
     "docs/hooks.md:paragraph:1047bb6cc155fe9c8200bdeb78b8f9fd931797f6de7cdc14ebc3dbb2680e0b69": {
       "kind": "paragraph",
       "source": "插件内规则的 __ELBOT_CODE_0__ 默认插件目录，只能使用插件内相对路径；",
@@ -743,6 +751,14 @@
       "source_hash": "270dcaa81b67f4ed521e5d0cdd9d0e3154712943641831006d8b8a5a070b46d3",
       "translation": "The key must be non-empty after trimming leading and trailing whitespace, with a maximum length of 256 bytes.",
       "updated_at": 1784025692
+    },
+    "docs/hooks.md:paragraph:2799fcdafd945c3c733fdd8f2f40fe270a124ccd6ac62b17885f711c496cbfa5": {
+      "kind": "paragraph",
+      "source": "Worker Hook 可处理多次事件，并接收 __ELBOT_CODE_0__；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "2799fcdafd945c3c733fdd8f2f40fe270a124ccd6ac62b17885f711c496cbfa5",
+      "translation": "Worker Hooks can handle multiple events and receive __ELBOT_CODE_0__;",
+      "updated_at": 1786539358
     },
     "docs/hooks.md:paragraph:284365fb1f2218fd73ff9553e52c5d00d4f22a0ffef3314f34ee43fa3091beb8": {
       "kind": "paragraph",
@@ -1104,6 +1120,14 @@
       "translation": "Business parameters, authorization, and plugin permissions are still validated by the plugin.\n",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:6a5448f9aeffb65909fd87de45d72ce5df72c1182f0e5c668576547832d36cdc": {
+      "kind": "paragraph",
+      "source": "请求被 __ELBOT_CODE_0__、超时或上游 context 取消时，Host 会结束该次 exec 的完整进程树。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "6a5448f9aeffb65909fd87de45d72ce5df72c1182f0e5c668576547832d36cdc",
+      "translation": "When the request is __ELBOT_CODE_0__, timed out, or the upstream context is cancelled, the Host will terminate the complete process tree of that exec.",
+      "updated_at": 1786539358
+    },
     "docs/hooks.md:paragraph:6a55917c466346ee0a7db84f34a276dfb46ffba95a1234f524d0ba7515f91bcd": {
       "kind": "paragraph",
       "source": "Host 先发送 __ELBOT_CODE_0__，成功后发送 __ELBOT_CODE_1__。",
@@ -1399,14 +1423,6 @@
       "source_hash": "915b4886dded51c03b16a8b10247bd1e32df1d114da561b4023d4d4904d6bce4",
       "translation": "Text fields that can be used in __ELBOT_CODE_0__, __ELBOT_CODE_1__, and templates:\n",
       "updated_at": 1783771179
-    },
-    "docs/hooks.md:paragraph:92946b68a4ba554f2c14f03d0d37aad97e6294ba5902796b4a813f2d3f6edada": {
-      "kind": "paragraph",
-      "source": "Worker Hook 可处理多次事件，并接收 __ELBOT_CODE_0__ 和可能的 __ELBOT_CODE_1__。\n",
-      "source_file": "docs/hooks.md",
-      "source_hash": "92946b68a4ba554f2c14f03d0d37aad97e6294ba5902796b4a813f2d3f6edada",
-      "translation": "A Worker Hook can process multiple events and receives __ELBOT_CODE_0__ and potentially __ELBOT_CODE_1__.\n",
-      "updated_at": 1784025692
     },
     "docs/hooks.md:paragraph:97d54f103a29f122174bec87135f8d77b051f49c265a948063c6a5b49ad79c82": {
       "kind": "paragraph",
@@ -3410,8 +3426,8 @@
     }
   },
   "source": "docs/hooks.md",
-  "source_hash": "e11ee88245d425acba37d5322b8bf3397e0cf745fc7cbf0a62327484bc764ed9",
+  "source_hash": "317b2649f006cc7779b4dfc40e3fb15b769435efb57a471e8d6585ff55644566",
   "target": "docs.en/hooks.md",
-  "updated_at": 1785918808,
+  "updated_at": 1786539358,
   "version": 2
 }
