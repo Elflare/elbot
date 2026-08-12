@@ -320,6 +320,14 @@
       "translation": "Source files for resident memory and long-term memory are now included in general FileGuard protection; reading will suggest using memory tools, and direct writing via general file tools or shell will be rejected.",
       "updated_at": 1782722558
     },
+    "CHANGELOG.md:list:3f12d36ddeb77f5aa2c07362139ff4e2638f700877ec1fa53d908de5984c69a3": {
+      "kind": "list",
+      "source": "持久 Worker 则收到 __ELBOT_CODE_0__ 并继续复用。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "3f12d36ddeb77f5aa2c07362139ff4e2638f700877ec1fa53d908de5984c69a3",
+      "translation": "Persistent Workers will instead receive __ELBOT_CODE_0__ and continue to be reused.",
+      "updated_at": 1786539387
+    },
     "CHANGELOG.md:list:4044f046a8ac2f38149d91bf251a488e181b94d64f9a8f006b4abe16dfdce2b2": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 工具首次被发现或注入时也会加载当前目录的 __ELBOT_CODE_1__/__ELBOT_CODE_2__；",
@@ -343,6 +351,14 @@
       "source_hash": "423439494f92faf1b2877f3d54114488603b875cb08f29295101899fef57e0a8",
       "translation": "Elvena v3 action channel: Elnis supports __ELBOT_CODE_0__, initially supporting raw platform APIs as well as __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ capabilities; unsupported ones can directly call the messaging platform API.",
       "updated_at": 1782395477
+    },
+    "CHANGELOG.md:list:448f57190dce3ac30b1196dd0fd5e7d7a53196fbca432d4490c1c50121dd9277": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__、请求超时或上游取消现在会终止一次性 exec Hook 的完整进程树，避免 Hook 派生的子进程残留；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "448f57190dce3ac30b1196dd0fd5e7d7a53196fbca432d4490c1c50121dd9277",
+      "translation": "__ELBOT_CODE_0__, request timeouts, or upstream cancellations will now terminate the full process tree of one-time exec Hooks to avoid residual child processes spawned by the Hook;",
+      "updated_at": 1786539387
     },
     "CHANGELOG.md:list:44960cf8c2c2d97c3b07a6b6158788294f95befa9b8dd85dacca7ea066bfaecf": {
       "kind": "list",
@@ -1426,8 +1442,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "3451c4ea714470379e1b9eb6bedbaf4b2e9119e4b568fe6c877c3a349eb63adc",
+  "source_hash": "6de83dd3e280e47abb27deaf8aca44d1caac164f46e7af8a8cc6193e1d2f7deb",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1786532747,
+  "updated_at": 1786539387,
   "version": 2
 }
