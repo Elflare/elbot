@@ -85,6 +85,8 @@ Soul is the Agent's basic System Prompt, used to define personality, behavioral 
 
 The Prompt actually sent to the LLM contains not only Soul but also dynamically combines platform information, user identity, memory, tool hints, compaction summaries, and Session history based on the current Session.
 
+Messages containing images will send both the images and the text labels adjacent to the images to the vision model; Labels are numbered according to their order within the message and include the original HTTP(S) URL when reusable, allowing the model to accurately reference images during tool calls such as uploading or editing. Embedded images are only marked as having no reusable URL, and base64 data will not be expanded into the text; The behavior remains the same after restoring the Session.
+
 Therefore, Soul is only suitable for stable rules; dynamic information such as tool discovery, time, platform context, and temporary states should not be hard-coded into it.
 
 ## Memory

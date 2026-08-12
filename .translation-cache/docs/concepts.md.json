@@ -440,6 +440,14 @@
       "translation": "The old Session will not be modified, and there is no Fork relationship between the old and new Sessions.",
       "updated_at": 1784109334
     },
+    "docs/concepts.md:paragraph:34cd731a0bec855577756cb7c2d9d34502c7056497e27927b25f521949b77b6d": {
+      "kind": "paragraph",
+      "source": "带图片的消息会同时向视觉模型发送图片和紧邻图片的文本标签；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "34cd731a0bec855577756cb7c2d9d34502c7056497e27927b25f521949b77b6d",
+      "translation": "Messages containing images will send both the images and the text labels adjacent to the images to the vision model;",
+      "updated_at": 1786545111
+    },
     "docs/concepts.md:paragraph:3675d906273a9964659b88fe3ac3962a0f4e7750270277faa04bb8bfe1aaba68": {
       "kind": "paragraph",
       "source": "广播任务会为其他目标平台复制 Session，CLI 可查看全部平台 Session。\n",
@@ -455,6 +463,14 @@
       "source_hash": "381a3f69f52ea9af8eddd07647addf266fc1229def56e09ab8663c9f9fd6e638",
       "translation": "The platform adapter layer is only responsible for converting platform messages into a unified input and sending the output intent back to the platform. Agent Core does not depend on a specific platform.\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:3b68e81bf0a07d8e849737fc469f4f200c5695785e0424457835e7ee538dc83b": {
+      "kind": "paragraph",
+      "source": "内嵌图片只标明没有可复用 URL，不会把 base64 展开进文本；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "3b68e81bf0a07d8e849737fc469f4f200c5695785e0424457835e7ee538dc83b",
+      "translation": "Embedded images are only marked as having no reusable URL, and base64 data will not be expanded into the text;",
+      "updated_at": 1786545111
     },
     "docs/concepts.md:paragraph:4005a184ad7215f9a76d7f477da89860fc739ba650992a02d1cdd393a2b03941": {
       "kind": "paragraph",
@@ -688,6 +704,14 @@
       "translation": "ElBot divides memory into two categories:\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:b39eb495df6a025e3e7e3154f13448ef5f514702757e3924fe9e91d728dcd822": {
+      "kind": "paragraph",
+      "source": "标签按消息内顺序编号，并在可复用时包含原始 HTTP(S) URL，方便模型在上传、编辑等工具调用中准确引用图片。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "b39eb495df6a025e3e7e3154f13448ef5f514702757e3924fe9e91d728dcd822",
+      "translation": "Labels are numbered according to their order within the message and include the original HTTP(S) URL when reusable, allowing the model to accurately reference images during tool calls such as uploading or editing.",
+      "updated_at": 1786545111
+    },
     "docs/concepts.md:paragraph:bba7fced0f9c1143a23c84ff8aafe31b0724948cccece90fd16c05d218fce7a6": {
       "kind": "paragraph",
       "source": "ElBot 包含两层 Cron 能力：\n",
@@ -759,6 +783,14 @@
       "source_hash": "c80b27e50bcd682e039be9634d567850c31a8f311dc9e8f347c7b5b919a77d58",
       "translation": "Tools can be preloaded using __ELBOT_CODE_0__ or the shorthand __ELBOT_CODE_1__, and Skills can be preloaded using __ELBOT_CODE_2__ or the shorthand __ELBOT_CODE_3__;",
       "updated_at": 1783240887
+    },
+    "docs/concepts.md:paragraph:cc809e7a6b1eea5e1564f183b2d3130fd21743138526eb0563cc8b5e1023564e": {
+      "kind": "paragraph",
+      "source": "恢复 Session 后行为相同。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "cc809e7a6b1eea5e1564f183b2d3130fd21743138526eb0563cc8b5e1023564e",
+      "translation": "The behavior remains the same after restoring the Session.\n",
+      "updated_at": 1786545111
     },
     "docs/concepts.md:paragraph:d01dd6b9b007c1c478e3ca11cb4d84ab22fb3ddfe73b8193f6a649b115e9ecfe": {
       "kind": "paragraph",
@@ -1058,8 +1090,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "3a631064ded8d39c1d4b485b75f032ef734d5ed26d136310195ed10776643392",
+  "source_hash": "476bc36b4986247a96637fd108e21a9d4ebf9563783f12fd96835aef4a6ef1a7",
   "target": "docs.en/concepts.md",
-  "updated_at": 1784466634,
+  "updated_at": 1786545111,
   "version": 2
 }
