@@ -288,14 +288,6 @@
       "translation": "After starting, you can use __ELBOT_CODE_0__ or __ELBOT_CODE_1__ to refresh the model list.",
       "updated_at": 1781580008
     },
-    "docs/getting-started.md:list:d9e8e3e8c8694479e9c9d2888398fa6190958fa138cef4f1007b2408e75b19c2": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__：补全并引用本地文件。",
-      "source_file": "docs/getting-started.md",
-      "source_hash": "d9e8e3e8c8694479e9c9d2888398fa6190958fa138cef4f1007b2408e75b19c2",
-      "translation": "__ELBOT_CODE_0__: Complete and reference local files.",
-      "updated_at": 1783738456
-    },
     "docs/getting-started.md:list:da055f600dde151737e1dc8af0a47d237857c8e042d39efdd7fb4091b0c75e1c": {
       "kind": "list",
       "source": "Go 1.26 或更新版本。",
@@ -303,6 +295,14 @@
       "source_hash": "da055f600dde151737e1dc8af0a47d237857c8e042d39efdd7fb4091b0c75e1c",
       "translation": "Go 1.26 or a newer version.",
       "updated_at": 1781515975
+    },
+    "docs/getting-started.md:list:e05e6153c4ec26ed0c64e051f183aa413edc4ee471e2afe7e9f8f5357eadc33b": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：补全并引用本地文件；文件不存在时保留原文，按普通 __ELBOT_CODE_1__ 文本发送。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "e05e6153c4ec26ed0c64e051f183aa413edc4ee471e2afe7e9f8f5357eadc33b",
+      "translation": "__ELBOT_CODE_0__: Complete and reference local files; if the file does not exist, keep the original text and send it as plain __ELBOT_CODE_1__ text.",
+      "updated_at": 1786532727
     },
     "docs/getting-started.md:list:e1ec1575bc49350a0fe1fc39ad8c49f38572ade712b11cb8270e3febcae20b8b": {
       "kind": "list",
@@ -618,8 +618,8 @@
     }
   },
   "source": "docs/getting-started.md",
-  "source_hash": "2e331b09f97604f98a1bb17eaf2e06e014dfb1668efef6338f1481790be3721d",
+  "source_hash": "969377bc95ac7d1c57d4a8444a8c7465e9a9fd061e2b593887b159d907676f1e",
   "target": "docs.en/getting-started.md",
-  "updated_at": 1784085266,
+  "updated_at": 1786532727,
   "version": 2
 }
