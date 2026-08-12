@@ -1128,6 +1128,14 @@
       "translation": "Fixed an issue where a completed one-time LLM Cron would directly reuse the old report and fail to create a new background Session after being re-enabled or rescheduled; notification failures and platform reconnections still resend the same round of persisted results.",
       "updated_at": 1784340385
     },
+    "CHANGELOG.md:list:cad7699784210eb94d03a9c5d03500978edac0870f59b3c4be7afbea516f4838": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__、详细帮助和 slash 命令补全现在按当前用户权限过滤；普通用户无法发现仅限超级管理员的命令。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "cad7699784210eb94d03a9c5d03500978edac0870f59b3c4be7afbea516f4838",
+      "translation": "__ELBOT_CODE_0__, detailed help, and slash command completion are now filtered by the current user's permissions; regular users cannot discover commands restricted to superadmins.",
+      "updated_at": 1786239723
+    },
     "CHANGELOG.md:list:cb42950d3097afb350e0270a9241489518a607d30bcc8c00f788f103348b188a": {
       "kind": "list",
       "source": "**SQLite 持久化**：Session、消息、上下文摘要、工具调用记录、Cron job、Elnis 事件统一存储。",
@@ -1410,8 +1418,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "2ef136df4b61cb417fb3dd14acd2d75f886ae64974a62d98c8d871d222908471",
+  "source_hash": "fc1460a2370bf8bf5b88cb1fb76ff3178cb861e00b8c7924c62b7e2644872e99",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1785987714,
+  "updated_at": 1786239723,
   "version": 2
 }
