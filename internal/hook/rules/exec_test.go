@@ -128,6 +128,41 @@ func TestReadProtocolLineRejectsOversizedFrame(t *testing.T) {
 	}
 }
 
+func TestExecCancellationKillsDescendantProcesses(t *testing.T) {
+	root := t.TempDir()
+	survived := filepath.Join(root, "survived")
+	ready := filepath.Join(root, "ready")
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := (Module{}).runRule(ctx, Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("spawn-child-and-wait", survived, ready)}}}, hook.Event{})
+		errCh <- err
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, err := os.Stat(ready); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("child process did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("runRule error = %v, want context canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Hook did not stop after cancellation")
+	}
+	time.Sleep(700 * time.Millisecond)
+	if _, err := os.Stat(survived); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("descendant survived cancellation: %v", err)
+	}
+}
+
 func TestExecProcessErrorPreservesContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -140,7 +175,6 @@ func TestExecProcessErrorPreservesContextCanceled(t *testing.T) {
 		t.Fatalf("execProcessError text = %q, want canceled", err.Error())
 	}
 }
-
 func TestExecDoneMessageWritesConfiguredFieldAndResult(t *testing.T) {
 	module := Module{}
 	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "old"}}

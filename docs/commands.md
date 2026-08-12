@@ -121,7 +121,7 @@ Fork 会保留原会话，并从指定 assistant 消息位置创建新的上下�
 | 命令 | 作用 |
 | --- | --- |
 | `/requests` | 查看当前进程中的 active request，包括 turn、LLM、tool、hook 等请求；turn 会显示运行阶段和阶段耗时。 |
-| `/stop [request_id]` | 停止指定请求；也可使用 `/requests` 显示的编号；不传参数时停止当前 Session 的请求。 |
+| `/stop [request_id]` | 停止指定请求；也可使用 `/requests` 显示的编号；不传参数时停止当前 Session 的请求。停止一次性 exec Hook 时会结束该 Hook 的完整进程树；持久 Worker 只取消当前调用。 |
 | `/stopall` | 停止当前进程中的所有 active request。 |
 
 示例：

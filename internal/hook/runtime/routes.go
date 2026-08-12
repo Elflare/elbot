@@ -133,7 +133,9 @@ func (m *Manager) Cancel(event hook.Event) bool {
 		selected = transient
 	}
 	if selected != nil {
-		selected.notifyCancel(conversationID)
+		if !runningOK {
+			selected.notifyCancel(conversationID)
+		}
 		if selected.config.ModeOrOnce() == ModeTransient {
 			m.stopTransient(key, selected)
 		}

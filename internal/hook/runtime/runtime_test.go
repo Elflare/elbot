@@ -42,6 +42,9 @@ func TestHookRuntimeHelperProcess(t *testing.T) {
 			os.Exit(2)
 		}
 		if frame["type"] == "event" {
+			if frame["method"] == "event.cancel" && hookID == "cancel-aware" {
+				continue
+			}
 			continue
 		}
 		id, _ := frame["id"].(string)
@@ -55,6 +58,9 @@ func TestHookRuntimeHelperProcess(t *testing.T) {
 			}
 			writeHelperResponse(id, map[string]any{})
 		case "event.handle":
+			if helperActorID(frame) == "test:cancel" {
+				continue
+			}
 			eventCount++
 			if helperActorID(frame) == "test:output" {
 				writeHelperResponse(id, map[string]any{"status": "completed", "outputs": []map[string]any{{"kind": "image", "base64": "aGVsbG8=", "name": "hello.png"}}, "target": map[string]any{"platform": "qqonebot", "group_id": "42"}, "timing": "after_assistant"})
@@ -407,6 +413,36 @@ func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
 }
 
 var runtimeHelperArgs = []string{"space arg", "", `C:\hook dir\`, `"quoted"`}
+
+func TestWorkerRequestCancellationSendsEventCancelAndKeepsWorkerReady(t *testing.T) {
+	manager := NewManager(Options{SharedDir: t.TempDir()})
+	config := Config{Mode: ModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 5, MaxWaitSeconds: 30, Restart: RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}, ID: "cancel-aware", Dir: t.TempDir()}
+	if err := manager.Apply([]Config{config}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	t.Cleanup(func() { manager.Close(context.Background()) })
+	waitForStatus(t, manager, config.ID, StatusReady)
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := manager.Handle(ctx, config.ID, hook.Event{Platform: hook.PlatformContext{ConversationID: "cancel-me"}, Actor: hook.ActorContext{ID: "test:cancel"}}, hook.Control{})
+		errCh <- err
+	}()
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Handle error = %v, want context canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Worker invocation did not cancel")
+	}
+	waitForStatus(t, manager, config.ID, StatusReady)
+	if _, err := manager.Handle(context.Background(), config.ID, hook.Event{Actor: hook.ActorContext{ID: "test:defaults"}}, hook.Control{}); err != nil {
+		t.Fatalf("Worker was not reusable after cancellation: %v", err)
+	}
+}
 
 func runtimeHelperCommand() []string {
 	return append([]string{os.Args[0], "-test.run=TestHookRuntimeHelperProcess", "--", "hook-runtime-helper"}, runtimeHelperArgs...)

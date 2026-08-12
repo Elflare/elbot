@@ -375,6 +375,9 @@ func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool
 		ToolContext:       token,
 	}
 	response, err := w.request(requestCtx, "event.handle", params)
+	if errors.Is(err, context.Canceled) {
+		w.notifyCancel(event.Platform.ConversationID)
+	}
 	if err != nil {
 		return event, err
 	}

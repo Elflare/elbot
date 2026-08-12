@@ -311,7 +311,7 @@ JSON 与 TOML target 都使用上述 snake_case 字段；省略时沿用当前�
 
 进程 Hook 使用 `hook.v2` JSON Lines。stdin 和 stdout 每行一个 JSON 帧；stdout 只能写协议，日志写 stderr。Host request ID 使用 `host:*`，Hook request ID 使用 `plugin:*`，response 必须复用 request ID。
 
-Host 先发送 `system.init`，成功后发送 `event.handle`。一次性 exec Hook 处理一次事件后退出；Worker Hook 可处理多次事件，并接收 `system.shutdown` 和可能的 `event.cancel`。
+Host 先发送 `system.init`，成功后发送 `event.handle`。一次性 exec Hook 处理一次事件后退出；请求被 `/stop`、超时或上游 context 取消时，Host 会结束该次 exec 的完整进程树。Worker Hook 可处理多次事件，并接收 `system.shutdown`；当前调用取消时会收到 `event.cancel`，Worker 进程本身保持运行。
 
 ### 完整交互示例
 
