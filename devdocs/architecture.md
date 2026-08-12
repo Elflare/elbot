@@ -62,6 +62,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 关键约定：
 
 - user 与已完成工具 transcript 会阶段性落库；前置 Hook 绑定的当前消息在调用 LLM 前以最终 segments 落库。
+- 多模态消息的 `segments` 保存原始结构；`content` 由 segments 生成可读文本投影。请求 OpenAI-compatible 模型时，再按每条消息的图片顺序临时插入对应文本标签，不向 segment JSON 增加派生字段。
 - 流式输出最终由对话主流程用最终文本 replace。
 - 发送前会发布 `sending` phase，便于 `/requests` 区分 LLM 慢还是平台发送慢。
 - 普通输入在工具阶段不会打断工具，会以 text/image segments 进入 pending；下一次 LLM 调用前已有的 pending 会合并注入当前轮，最终 LLM 调用期间新到达的 pending 则在当前轮正常结束后作为新用户消息自动开启下一轮。
@@ -120,7 +121,7 @@ Slash 命令链路：
 - `Result.Content` 或 typed `Result.Segments` 回灌 LLM。
 - `Result.Data` 只供内部结构化消费，不进入 tool message。
 - 图片和文件必须显式返回 segment。
-- OpenAI Chat Completions 的 tool message 只发送文本；同一批工具图片在所有 tool message 后派生为一条带 `tool.name/tool_call_id` 说明的 user 多模态消息，该派生消息不持久化。
+- OpenAI Chat Completions 的 tool message 只发送文本；同一批工具图片在所有 tool message 后派生为一条带 `tool.name/tool_call_id` 说明的 user 多模态消息，且每张图片前临时插入含序号和可复用 URL 的文本标签；这些派生内容都不持久化。
 - Hook、Tool、插件都不要直接发平台消息，统一返回输出意图。
 
 <!-- locator:tool -->
@@ -284,7 +285,7 @@ SQLite 实现负责：
 约定：
 
 - 新持久化能力先扩展 storage interface，再落 SQLite repository。
-- Message 的 `content` 是纯文本快速路径；`segments` 仅在多模态内容存在时保存完整结构，读取时非空 segments 优先，否则直接使用 content。
+- Message 的 `segments` 是多模态消息的完整结构来源；`content` 是由 segments 生成的纯文本快速路径。仅多模态内容保存 segments，读取时非空 segments 优先，否则直接使用 content。
 - migration 需要可重复检测已应用版本。
 - 查询条件要保留平台隔离、归档过滤、Fork 范围等业务约束。
 

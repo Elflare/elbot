@@ -799,7 +799,7 @@
 ### 多模态
 
 - [x] 核心 LLM 请求改为 `MessageSegment`，支持文本、图片和文件占位。
-- [x] OpenAI-compatible adapter 支持图片 `image_url` 请求；模型不支持视觉时自动回滚为文本描述，CLI 同一 Session 只提示一次。
+- [x] OpenAI-compatible adapter 支持图片 `image_url` 请求，并在图片前派生含消息内序号与可复用 URL 的文本标签；模型不支持视觉时自动回滚为同一文本投影，CLI 同一 Session 只提示一次。
 - [x] QQ OneBot 解析图片 segment，并把语音、视频、普通文件统一作为 file segment 文本化处理。
 - [ ] 后续支持 CLI 图片输入，例如本地路径转图片 segment。
 

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 多模态图片此前只以 `image_url` 内容段发送，模型能看图却不知道可复用地址；现在每张图片前会派生带消息内序号、名称和 HTTP(S) URL 的用户文本标签，持久化 `content` 与视觉回退使用同一文本投影，`segments` 仍只保存原始结构且无需数据库迁移。
 - `/stop`、请求超时或上游取消现在会终止一次性 exec Hook 的完整进程树，避免 Hook 派生的子进程残留；持久 Worker 则收到 `event.cancel` 并继续复用。
 - CLI TUI 中不存在的 `#文件` 引用现在按普通文本原样发送，不再阻止消息提交；同一消息中存在的文件仍会正常展开。
 - `/help`、详细帮助和 slash 命令补全现在按当前用户权限过滤；普通用户无法发现仅限超级管理员的命令。

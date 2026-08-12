@@ -14,18 +14,50 @@ func TestSegmentsTextOnlyAndContentText(t *testing.T) {
 	if got := SegmentsTextOnly(segments); got != "看看" {
 		t.Fatalf("SegmentsTextOnly = %q", got)
 	}
-	if got := SegmentsContentText(segments); got != "看看 [图片: https://example.com/a.png] [文件: file:///tmp/report.pdf]" {
+	if got := SegmentsContentText(segments); got != "看看 [图片 1；名称：a.png；引用 URL：https://example.com/a.png] [文件: file:///tmp/report.pdf]" {
 		t.Fatalf("SegmentsContentText = %q", got)
 	}
 }
 
 func TestSegmentsContentTextDoesNotInlineDataURL(t *testing.T) {
 	segments := []MessageSegment{{Type: SegmentText, Text: "done"}, {Type: SegmentImage, URL: "data:image/png;base64,aGVsbG8=", Name: "result.png"}}
-	if got := SegmentsContentText(segments); got != "done [图片: result.png]" {
+	if got := SegmentsContentText(segments); got != "done [图片 1；名称：result.png；内嵌图片，无可复用 URL]" {
 		t.Fatalf("SegmentsContentText = %q", got)
 	}
 }
 
+func TestImageReferenceTextUsesReusableURLsOnly(t *testing.T) {
+	tests := []struct {
+		name    string
+		segment MessageSegment
+		index   int
+		want    string
+	}{
+		{name: "http", segment: MessageSegment{Type: SegmentImage, URL: "https://example.com/a.png", Name: "a.png"}, index: 1, want: "[图片 1；名称：a.png；引用 URL：https://example.com/a.png]"},
+		{name: "data", segment: MessageSegment{Type: SegmentImage, URL: "data:image/png;base64,aGVsbG8=", Name: "inline.png"}, index: 2, want: "[图片 2；名称：inline.png；内嵌图片，无可复用 URL]"},
+		{name: "non reusable", segment: MessageSegment{Type: SegmentImage, URL: "file:///tmp/a.png"}, index: 3, want: "[图片 3；无可复用 URL]"},
+		{name: "missing URL", segment: MessageSegment{Type: SegmentImage, Name: "missing.png"}, index: 4, want: ""},
+		{name: "not image", segment: MessageSegment{Type: SegmentFile, URL: "https://example.com/a.png"}, index: 1, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ImageReferenceText(tt.segment, tt.index); got != tt.want {
+				t.Fatalf("ImageReferenceText = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSegmentsContentTextNumbersOnlySendableImages(t *testing.T) {
+	segments := []MessageSegment{
+		{Type: SegmentImage, URL: "https://example.com/a.png"},
+		{Type: SegmentImage, Name: "missing.png"},
+		{Type: SegmentImage, URL: "https://example.com/b.png"},
+	}
+	if got := SegmentsContentText(segments); got != "[图片 1；引用 URL：https://example.com/a.png] [图片: missing.png] [图片 2；引用 URL：https://example.com/b.png]" {
+		t.Fatalf("SegmentsContentText = %q", got)
+	}
+}
 func TestSetSegmentTextKeepsMediaAndCollapsesTextSegments(t *testing.T) {
 	segments := []MessageSegment{{Type: SegmentText, Text: "old"}, {Type: SegmentImage, URL: "image"}, {Type: SegmentText, Text: "tail"}}
 	got := SetSegmentText(segments, "new")

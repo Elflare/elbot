@@ -483,7 +483,7 @@ func toOpenAIMessages(msgs []llm.LLMMessage) []openAIMessage {
 		if m.Role != llm.RoleTool {
 			out = append(out, openAIMessage{
 				Role:       string(m.Role),
-				Content:    toOpenAIContent(m.Segments),
+				Content:    toOpenAIContent(withOpenAIImageReferences(m.Segments)),
 				Name:       m.Name,
 				ToolCallID: m.ToolCallID,
 				ToolCalls:  toOpenAIToolCalls(m.ToolCalls),
@@ -508,7 +508,7 @@ func toOpenAIMessages(msgs []llm.LLMMessage) []openAIMessage {
 					Type: llm.SegmentText,
 					Text: fmt.Sprintf("以下图片来自工具 %s（tool_call_id: %s）：", toolMessage.Name, toolMessage.ToolCallID),
 				})
-				imageCarrier = append(imageCarrier, images...)
+				imageCarrier = append(imageCarrier, withOpenAIImageReferences(images)...)
 			}
 			i++
 		}
@@ -534,6 +534,21 @@ func openAIToolContent(segments []llm.MessageSegment) (string, []llm.MessageSegm
 		content = "工具返回了图片，见下一条多模态消息。"
 	}
 	return content, images
+}
+
+func withOpenAIImageReferences(segments []llm.MessageSegment) []llm.MessageSegment {
+	out := make([]llm.MessageSegment, 0, len(segments)*2)
+	imageIndex := 0
+	for _, segment := range segments {
+		if segment.Type == llm.SegmentImage {
+			if reference := llm.ImageReferenceText(segment, imageIndex+1); reference != "" {
+				imageIndex++
+				out = append(out, llm.MessageSegment{Type: llm.SegmentText, Text: reference})
+			}
+		}
+		out = append(out, segment)
+	}
+	return out
 }
 
 func toOpenAIContent(segments []llm.MessageSegment) any {
