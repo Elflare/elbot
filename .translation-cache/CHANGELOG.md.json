@@ -944,6 +944,14 @@
       "translation": "When the file segment in a QQ OneBot private chat is missing __ELBOT_CODE_0__, __ELBOT_CODE_1__ will be called;",
       "updated_at": 1783095128
     },
+    "CHANGELOG.md:list:a715989207d0188f53e9782c5f36d84e7a82900f4cb280d284f5ae84c96c215b": {
+      "kind": "list",
+      "source": "多模态图片此前只以 __ELBOT_CODE_0__ 内容段发送，模型能看图却不知道可复用地址；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a715989207d0188f53e9782c5f36d84e7a82900f4cb280d284f5ae84c96c215b",
+      "translation": "Multimodal images were previously only sent as __ELBOT_CODE_0__ content segments; the model could see the images but did not know the reusable addresses;",
+      "updated_at": 1786545145
+    },
     "CHANGELOG.md:list:a71cbc0c9f36ac911e0b5692c0166f7e157090086356a299746ba3b3ff1db19b": {
       "kind": "list",
       "source": "hook log日志不再重复记录",
@@ -1424,6 +1432,14 @@
       "translation": "Completed the missing __ELBOT_CODE_1__ in the default __ELBOT_CODE_0__.",
       "updated_at": 1784025711
     },
+    "CHANGELOG.md:list:fdd6686cda1a225c052b824ff627131111736279d200d7df4e709a722bcf70b0": {
+      "kind": "list",
+      "source": "现在每张图片前会派生带消息内序号、名称和 HTTP(S) URL 的用户文本标签，持久化 __ELBOT_CODE_0__ 与视觉回退使用同一文本投影，__ELBOT_CODE_1__ 仍只保存原始结构且无需数据库迁移。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "fdd6686cda1a225c052b824ff627131111736279d200d7df4e709a722bcf70b0",
+      "translation": "Now, a user text label containing the sequence number within the message, name, and HTTP(S) URL will be derived before each image; persistence __ELBOT_CODE_0__ and visual fallback use the same text projection, while __ELBOT_CODE_1__ still only saves the original structure and requires no database migration.",
+      "updated_at": 1786545145
+    },
     "CHANGELOG.md:list:ffea405479ecdf42f2de02ac5df8d702b35876490677884584d95b31ed5e348c": {
       "kind": "list",
       "source": "优化.env、平台secret、token解析逻辑",
@@ -1442,8 +1458,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "6de83dd3e280e47abb27deaf8aca44d1caac164f46e7af8a8cc6193e1d2f7deb",
+  "source_hash": "44b687e2d55204b9e2eef6936d05e95fee0e0e6cb9a39553b5b1ea3a6e5cb8dd",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1786539387,
+  "updated_at": 1786545145,
   "version": 2
 }
