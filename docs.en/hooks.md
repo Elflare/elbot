@@ -313,7 +313,7 @@ Relative media paths are resolved based on the plugin directory of the declared 
 
 Process Hook uses `hook.v2` JSON Lines. one JSON frame per line for stdin and stdout; stdout can only be used to write the protocol; logs should be written to stderr. Host request ID uses `host:*`, Hook request ID uses `plugin:*`, and the response must reuse the request ID.
 
-The Host first sends `system.init`, and then sends `event.handle` upon success. A one-time exec Hook exits after processing a single event; A Worker Hook can process multiple events and receives `system.shutdown` and potentially `event.cancel`.
+The Host first sends `system.init`, and then sends `event.handle` upon success. A one-time exec Hook exits after processing a single event; When the request is `/stop`, timed out, or the upstream context is cancelled, the Host will terminate the complete process tree of that exec. Worker Hooks can handle multiple events and receive `system.shutdown`; When the current call is cancelled, `event.cancel` will be received, and the Worker process itself remains running.
 
 ### Complete Interaction Example
 
