@@ -168,6 +168,14 @@
       "translation": "Fixed an issue where Session deletion or archive confirmation might affect the wrong target due to changes in the list or the current Session, and ensured that storage errors are correctly returned to the caller.",
       "updated_at": 1784276217
     },
+    "CHANGELOG.md:list:237b91862212953b9f5d58f94631a96debe0966c77da9f9dd41e0428a5262f6b": {
+      "kind": "list",
+      "source": "CLI TUI 中不存在的 __ELBOT_CODE_0__ 引用现在按普通文本原样发送，不再阻止消息提交；同一消息中存在的文件仍会正常展开。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "237b91862212953b9f5d58f94631a96debe0966c77da9f9dd41e0428a5262f6b",
+      "translation": "Non-existent __ELBOT_CODE_0__ references in the CLI TUI are now sent as plain text as-is and no longer block message submission; files that exist within the same message will still be expanded normally.",
+      "updated_at": 1786532747
+    },
     "CHANGELOG.md:list:26b222fc0d0b7e2913298c6c9031205f80eda52572d2f5f484ad632790632906": {
       "kind": "list",
       "source": "QQ OneBot、QQ 官方、Telegram 平台断线重连改为指数退避（3s 起，翻倍，封顶 10s）并日志降级：连续失败只在首次记 warn，恢复后记 info，不再每轮刷屏。",
@@ -1418,8 +1426,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "fc1460a2370bf8bf5b88cb1fb76ff3178cb861e00b8c7924c62b7e2644872e99",
+  "source_hash": "3451c4ea714470379e1b9eb6bedbaf4b2e9119e4b568fe6c877c3a349eb63adc",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1786239723,
+  "updated_at": 1786532747,
   "version": 2
 }
