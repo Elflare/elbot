@@ -123,7 +123,7 @@ Fork preserves the original Session and creates a new context branch from the sp
 | Command | Function |
 | --- | --- |
 | `/requests` | View active requests in the current process, including turn, LLM, tool, and hook requests; turns will display the execution stage and the time spent on each stage. |
-| `/stop [request_id]` | Stop a specified request; you can also use the ID displayed by `/requests`; if no parameters are passed, stop the requests of the current Session. |
+| `/stop [request_id]` | Stop the specified request; The ID displayed by `/requests` can also be used; Stops the request of the current Session when no parameters are passed. Stopping a one-time exec Hook will terminate the complete process tree of that Hook; For persistent Workers, only the current call is cancelled. |
 | `/stopall` | Stop all active requests in the current process. |
 
 Example:

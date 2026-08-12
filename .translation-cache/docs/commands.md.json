@@ -608,6 +608,14 @@
       "translation": "Filter by internal Elnis event ID.",
       "updated_at": 1781752948
     },
+    "docs/commands.md:table:4fcc69171642de602138d38d07fc153cd0f09e209c690a85b2c62256b170ea26": {
+      "kind": "table",
+      "source": "停止指定请求；",
+      "source_file": "docs/commands.md",
+      "source_hash": "4fcc69171642de602138d38d07fc153cd0f09e209c690a85b2c62256b170ea26",
+      "translation": "Stop the specified request;",
+      "updated_at": 1786539322
+    },
     "docs/commands.md:table:53fa3a6b3b254c4004e9ea9e02ac28a49a46344876ce9f9998f65096f8d61537": {
       "kind": "table",
       "source": "切换到 work 模式，或创建新的 work Session；提供消息时会切换后立即发送。",
@@ -647,14 +655,6 @@
       "source_hash": "5e6e0bf605e10eb3ab584ae0ae6cc6323c7a18ea890ffd3de66303f329dbc1a8",
       "translation": "Start a persistent Hook.",
       "updated_at": 1783678873
-    },
-    "docs/commands.md:table:629a1073c0066a3358615afbcf3145605f4ad8ed20696b995ae6d2121b9bfddd": {
-      "kind": "table",
-      "source": "停止指定请求；也可使用 __ELBOT_CODE_0__ 显示的编号；不传参数时停止当前 Session 的请求。",
-      "source_file": "docs/commands.md",
-      "source_hash": "629a1073c0066a3358615afbcf3145605f4ad8ed20696b995ae6d2121b9bfddd",
-      "translation": "Stop a specified request; you can also use the ID displayed by __ELBOT_CODE_0__; if no parameters are passed, stop the requests of the current Session.",
-      "updated_at": 1783571608
     },
     "docs/commands.md:table:662180bb3357d0b97297639a4fa15e277afffa7d24630a4aa8343a9db12e49c8": {
       "kind": "table",
@@ -703,6 +703,14 @@
       "source_hash": "76dfbb62693e2c649a9340e15e648db1c24e8f310cf2359a338d2b2c173937c7",
       "translation": "Switch the work mode model.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:7ba55c9b1cc421b2912accbcce6d0377c2ea9896dd8891b979fc8e467162f579": {
+      "kind": "table",
+      "source": "停止一次性 exec Hook 时会结束该 Hook 的完整进程树；",
+      "source_file": "docs/commands.md",
+      "source_hash": "7ba55c9b1cc421b2912accbcce6d0377c2ea9896dd8891b979fc8e467162f579",
+      "translation": "Stopping a one-time exec Hook will terminate the complete process tree of that Hook;",
+      "updated_at": 1786539322
     },
     "docs/commands.md:table:7c2a3e53187de152eca878c772c15121d046d1770f0bad67422f8ebdd89f1302": {
       "kind": "table",
@@ -759,6 +767,14 @@
       "source_hash": "8c15f471f2ed058be7a62495ecf71ab1dc41376d5abb176f333e0df50c5c2c74",
       "translation": "Reread rules and persistent Hook configurations, and re-coordinate the process lifecycle.",
       "updated_at": 1783678873
+    },
+    "docs/commands.md:table:8edf0a5b8324fdd812ea5207a3386db47e23a04b6d7b1804e0dc610176e52aa5": {
+      "kind": "table",
+      "source": "持久 Worker 只取消当前调用。",
+      "source_file": "docs/commands.md",
+      "source_hash": "8edf0a5b8324fdd812ea5207a3386db47e23a04b6d7b1804e0dc610176e52aa5",
+      "translation": "For persistent Workers, only the current call is cancelled.",
+      "updated_at": 1786539322
     },
     "docs/commands.md:table:8fa37aaa6c746fb53072b6f6a943149880a5a1c290cb57787c69e222e3cefaa4": {
       "kind": "table",
@@ -976,6 +992,14 @@
       "translation": "Level shortcuts.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:f0a41aed163185d10be30ebe8c46f209edef95ec5af244add4b8c8750cb97dfa": {
+      "kind": "table",
+      "source": "不传参数时停止当前 Session 的请求。",
+      "source_file": "docs/commands.md",
+      "source_hash": "f0a41aed163185d10be30ebe8c46f209edef95ec5af244add4b8c8750cb97dfa",
+      "translation": "Stops the request of the current Session when no parameters are passed.",
+      "updated_at": 1786539322
+    },
     "docs/commands.md:table:f44dc3d6e7a777fcdd14e34473754ad8430bb79d8f560857f31f95faea231e7b": {
       "kind": "table",
       "source": "筛选 Hook 事件。",
@@ -1048,6 +1072,14 @@
       "translation": "Confirm all pending tools in the current batch.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:ff085deeeb43e3244782f852a12ae9daa9ea5955d4e35cd503b8ed6eb219913d": {
+      "kind": "table",
+      "source": "也可使用 __ELBOT_CODE_0__ 显示的编号；",
+      "source_file": "docs/commands.md",
+      "source_hash": "ff085deeeb43e3244782f852a12ae9daa9ea5955d4e35cd503b8ed6eb219913d",
+      "translation": "The ID displayed by __ELBOT_CODE_0__ can also be used;",
+      "updated_at": 1786539322
+    },
     "docs/commands.md:table:ff991cd4dba8f3a4e6fefea17df3910897cd25d1bec1059eb0bc2c524e3da2ac": {
       "kind": "table",
       "source": "优雅停止一个 Hook。",
@@ -1058,8 +1090,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "02d9b37f07f8e48f1f68af994777fab8faa23c2ad9ee87524ab7724eb183d005",
+  "source_hash": "f1b72849785e52e53ce5946d12c4c4bcfdd0497698ee7c941c5ea84912dd2a9d",
   "target": "docs.en/commands.md",
-  "updated_at": 1784637910,
+  "updated_at": 1786539322,
   "version": 2
 }
