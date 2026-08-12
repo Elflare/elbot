@@ -191,8 +191,9 @@ func (a *Adapter) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan l
 
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
+		err := parseError(resp)
 		cancel()
-		return nil, parseError(resp)
+		return nil, err
 	}
 
 	ch := make(chan llm.StreamChunk)
