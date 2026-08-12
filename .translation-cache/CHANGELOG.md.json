@@ -1384,6 +1384,14 @@
       "translation": "The __ELBOT_CODE_0__ tool now uses the __ELBOT_CODE_1__ parameter to send files, supporting local paths, __ELBOT_CODE_2__ URIs, and HTTP(S) URLs, and will automatically send images as image messages based on MIME type/extension.",
       "updated_at": 1783081840
     },
+    "CHANGELOG.md:list:ebd59afa26abc933235b7719f83e6f5cb5bf71188d19d25afd81a6c7ba514874": {
+      "kind": "list",
+      "source": "修复 OpenAI-compatible 接口返回非 200 状态时，响应上下文在读取错误 body 前被提前取消，导致真实上游错误丢失并只显示 __ELBOT_CODE_0__ 的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ebd59afa26abc933235b7719f83e6f5cb5bf71188d19d25afd81a6c7ba514874",
+      "translation": "Fixed an issue where the response context was cancelled prematurely before reading the error body when the OpenAI-compatible interface returned a non-200 status, causing the actual upstream error to be lost and only __ELBOT_CODE_0__ to be displayed.",
+      "updated_at": 1786546221
+    },
     "CHANGELOG.md:list:ed3c6eabf99307e9b550f72edf9f95006bb9602d68c39639d54b35889096a8ff": {
       "kind": "list",
       "source": "Session 闲置过期改为 __ELBOT_CODE_0__ 四项配置，分别控制群聊/私聊下普通用户和超级管理员的当前 Session 过期时间；",
@@ -1458,8 +1466,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "44b687e2d55204b9e2eef6936d05e95fee0e0e6cb9a39553b5b1ea3a6e5cb8dd",
+  "source_hash": "fa759338eb03fea8ab5b6477b3eec0dbc4e3baa98c403ea8d7defaaa50e0104e",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1786545145,
+  "updated_at": 1786546221,
   "version": 2
 }
