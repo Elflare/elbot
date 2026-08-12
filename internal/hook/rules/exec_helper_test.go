@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,12 @@ var execHelperEventFrame map[string]any
 var execHelperEventID string
 
 func TestExecHelperProcess(t *testing.T) {
+	if len(os.Args) >= 3 && os.Args[len(os.Args)-3] == "elbot-exec-child" {
+		_ = os.WriteFile(os.Args[len(os.Args)-1], []byte("ready"), 0o644)
+		time.Sleep(500 * time.Millisecond)
+		_ = os.WriteFile(os.Args[len(os.Args)-2], []byte("survived"), 0o644)
+		os.Exit(0)
+	}
 	marker := -1
 	for i := 0; i+1 < len(os.Args); i++ {
 		if os.Args[i] == "--" && os.Args[i+1] == "elbot-exec-helper" {
@@ -144,6 +151,16 @@ func TestExecHelperProcess(t *testing.T) {
 			os.Exit(11)
 		}
 		writeProtocolTestResult(map[string]any{"status": "completed", "result": "shared-ok"})
+	case "spawn-child-and-wait":
+		if marker+2 >= len(os.Args) {
+			os.Exit(2)
+		}
+		child := exec.Command(os.Args[0], "-test.run=TestExecHelperProcess", "--", "elbot-exec-child", os.Args[marker+1], os.Args[marker+2])
+		if err := child.Start(); err != nil {
+			fmt.Fprint(os.Stderr, err)
+			os.Exit(1)
+		}
+		time.Sleep(5 * time.Second)
 	case "signal-and-wait":
 		if marker+2 >= len(os.Args) {
 			os.Exit(2)

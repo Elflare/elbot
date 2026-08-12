@@ -52,6 +52,11 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		processEnv = action.source.ProcessEnv
 	}
 	cmd := processEnv.CommandContext(runCtx, argv[0], argv[1:]...)
+	configureExecHookProcess(cmd)
+	cmd.Cancel = func() error {
+		killExecHookProcessTree(cmd)
+		return nil
+	}
 	cmd.Dir = cwd
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -79,9 +84,7 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		return err
 	}
 	fail := func(result actionResult, source error) (hook.Event, actionResult, error) {
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
+		killExecHookProcessTree(cmd)
 		waitErr := waitExec()
 		if contextErr := execContextError(runCtx, action); contextErr != nil {
 			source = contextErr

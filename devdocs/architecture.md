@@ -168,7 +168,7 @@ Reload 由 Skill Manager 串行执行：scanner 先构建并验证完整候选�
 常见来源：
 
 - 规则 Hook：读取 `plugins/hooks.toml`。
-- exec action：按 `hook.v2` 一次性 Pipe 协议执行，默认在 `plugins/` 目录直接启动 argv 命令，不隐式经过 shell。
+- exec action：按 `hook.v2` 一次性 Pipe 协议执行，默认在 `plugins/` 目录直接启动 argv 命令，不隐式经过 shell；取消或超时时终止该次调用的完整进程树。
 - 持久 Hook：在插件 `hook.toml` 的 `[plugin.runtime]` 声明；Hook runtime 管进程生命周期、双向 RPC、waiting 路由和进程内 SharedState。
 
 约定：
