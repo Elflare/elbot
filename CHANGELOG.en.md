@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Non-existent `#文件` references in the CLI TUI are now sent as plain text as-is and no longer block message submission; files that exist within the same message will still be expanded normally.
 - `/help`, detailed help, and slash command completion are now filtered by the current user's permissions; regular users cannot discover commands restricted to superadmins.
 
 ## [v0.4.2 - 2026-08-06]
