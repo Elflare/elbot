@@ -73,10 +73,10 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 			return err
 		}
 	}
-	if err := registry.Register(NewWebSearchTool()); err != nil {
+	if err := registry.Register(NewWebSearchTool(opts.ProcessEnv)); err != nil {
 		return err
 	}
-	if err := registry.Register(NewWebExtractTool()); err != nil {
+	if err := registry.Register(NewWebExtractTool(opts.ProcessEnv)); err != nil {
 		return err
 	}
 	fileGuard := NewFileGuard()
@@ -108,7 +108,7 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 	if err := registry.Register(skill.NewAgentSkillTool(opts.SkillManager)); err != nil {
 		return err
 	}
-	if err := registry.Register(skill.NewGoRunner(catalog)); err != nil {
+	if err := registry.Register(skill.NewGoRunner(catalog, opts.ProcessEnv)); err != nil {
 		return err
 	}
 	if opts.SkillManager != nil {

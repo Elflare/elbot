@@ -7,9 +7,10 @@ import (
 	"testing"
 
 	"elbot/internal/elyph"
+	"elbot/internal/processenv"
 )
 
-func TestResolveGoExecutableReadsConfigEnv(t *testing.T) {
+func TestResolveGoExecutableReadsSharedEnvironment(t *testing.T) {
 	configDir := t.TempDir()
 	skillRoot := filepath.Join(configDir, "skills", "go", "resolver")
 	if err := os.MkdirAll(skillRoot, 0o755); err != nil {
@@ -19,12 +20,8 @@ func TestResolveGoExecutableReadsConfigEnv(t *testing.T) {
 	if err := os.WriteFile(fakeGo, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, ".env"), []byte("ELBOT_GO_BINARY="+fakeGo+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv(goBinaryEnv, "")
 
-	path, err := resolveGoExecutable(skillRoot)
+	path, err := resolveGoExecutable(skillRoot, processenv.New([]string{goBinaryEnv + "=" + fakeGo}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,10 +40,8 @@ func TestResolveGoExecutableUsesGOROOT(t *testing.T) {
 	if err := os.WriteFile(fakeGo, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(goBinaryEnv, "")
-	t.Setenv("GOROOT", root)
 
-	path, err := resolveGoExecutable(t.TempDir())
+	path, err := resolveGoExecutable(t.TempDir(), processenv.New([]string{"GOROOT=" + root}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,9 +52,8 @@ func TestResolveGoExecutableUsesGOROOT(t *testing.T) {
 
 func TestResolveGoExecutableReportsInvalidConfiguredPath(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "missing-go")
-	t.Setenv(goBinaryEnv, missing)
 
-	_, err := resolveGoExecutable(t.TempDir())
+	_, err := resolveGoExecutable(t.TempDir(), processenv.New([]string{goBinaryEnv + "=" + missing}))
 	if err == nil {
 		t.Fatal("expected error")
 	}

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/processenv"
 	"elbot/internal/tool"
 )
 
@@ -38,6 +39,23 @@ func TestBuiltinEnvReadsConfigDotEnv(t *testing.T) {
 	}
 	if value != "from-dotenv" {
 		t.Fatalf("value = %q", value)
+	}
+}
+
+func TestWebSearchToolReadsSharedEnvironment(t *testing.T) {
+	environment := processenv.New([]string{"TAVILY_API_KEY=tvly-configured"})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer tvly-configured" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(tavilyResponse{Query: "configured"})
+	}))
+	defer server.Close()
+
+	search := NewWebSearchTool(environment)
+	search.endpoint = server.URL
+	if _, err := search.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"query":"configured"}`)}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -212,8 +230,8 @@ func TestWebExtractToolFailedForceRefreshPreservesCache(t *testing.T) {
 }
 
 func TestWebExtractDefaultClientUsesConfiguredProxy(t *testing.T) {
-	t.Setenv(webExtractProxyEnv, "http://127.0.0.1:9999")
-	proxy, err := resolveExtractProxy(context.Background(), "")
+	environment := processenv.New([]string{webExtractProxyEnv + "=http://127.0.0.1:9999"})
+	proxy, err := resolveExtractProxy(environment, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +269,7 @@ func TestWebExtractToolParsesFlatJinaResponse(t *testing.T) {
 }
 
 func TestWebExtractTransportUsesProxyArgument(t *testing.T) {
-	proxy, err := resolveExtractProxy(context.Background(), "http://127.0.0.1:7891")
+	proxy, err := resolveExtractProxy(processenv.Environment{}, "http://127.0.0.1:7891")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +288,7 @@ func TestWebExtractTransportUsesProxyArgument(t *testing.T) {
 }
 
 func TestWebExtractTransportDisablesProxyWithArgument(t *testing.T) {
-	proxy, err := resolveExtractProxy(context.Background(), "disabled")
+	proxy, err := resolveExtractProxy(processenv.Environment{}, "disabled")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +299,7 @@ func TestWebExtractTransportDisablesProxyWithArgument(t *testing.T) {
 }
 
 func TestWebExtractRejectsInvalidProxyURL(t *testing.T) {
-	_, err := resolveExtractProxy(context.Background(), "localhost:7890")
+	_, err := resolveExtractProxy(processenv.Environment{}, "localhost:7890")
 	if err == nil || !strings.Contains(err.Error(), "invalid web_extract proxy url") {
 		t.Fatalf("err = %v", err)
 	}
