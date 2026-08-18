@@ -90,7 +90,7 @@ All variables in the configuration root `.env` will also be supplemented to the 
 
 | Process Entry Point | Environment Source and Priority |
 | --- | --- |
-| LLM Shell | Based on the ElBot process environment, the configuration root `.env` only supplements ordinary variables that do not yet exist. |
+| Built-in tools and Go Skills (including LLM Shell) | Based on the ElBot process environment, the configuration root `.env` only supplements ordinary variables that do not yet exist. |
 | Root Hook Rules | Based on the ElBot process environment, `plugins/.env` overrides ordinary variables with the same name. |
 | Plugin exec and Worker | Based on the root Hook environment, the `.env` in the same directory as the plugin configuration file further overrides ordinary variables with the same name. |
 
