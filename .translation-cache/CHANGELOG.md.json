@@ -16,6 +16,14 @@
       "translation": "Tool completion Hook supports returning __ELBOT_CODE_0__ containing URLs, paths, or base64 images;",
       "updated_at": 1784467084
     },
+    "CHANGELOG.md:list:02e27fea67bca6075701b59206db6cfbb755a28eabbfc3afdcb03d38958bf057": {
+      "kind": "list",
+      "source": "修复内置工具与 Go Skill 的服务级环境变量读取不一致，导致部分工具无法读取配置目录 __ELBOT_CODE_0__ 的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "02e27fea67bca6075701b59206db6cfbb755a28eabbfc3afdcb03d38958bf057",
+      "translation": "Fixed the inconsistency in reading service-level environment variables between built-in tools and Go Skills, which caused some tools to be unable to read the configuration directory __ELBOT_CODE_0__.",
+      "updated_at": 1787058751
+    },
     "CHANGELOG.md:list:04792220a0453d2a80f396307ad2079f5a7ba1f001924b3ce14c678f7f132627": {
       "kind": "list",
       "source": "修复 Windows 下 __ELBOT_CODE_0__ 工具回退到 PowerShell 时中文输出可能乱码的问题。",
@@ -1466,8 +1474,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "fa759338eb03fea8ab5b6477b3eec0dbc4e3baa98c403ea8d7defaaa50e0104e",
+  "source_hash": "38acc808157091f45edd127b4d5c4ce8fad885aa6fdc4c1cdbb6f26636340d4d",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1786546221,
+  "updated_at": 1787058751,
   "version": 2
 }
