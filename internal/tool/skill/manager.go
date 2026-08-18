@@ -9,15 +9,17 @@ import (
 	"sync"
 	"time"
 
+	"elbot/internal/processenv"
 	"elbot/internal/tool"
 	"elbot/internal/utils/fileops"
 )
 
 type Manager struct {
-	Root     string
-	Catalog  *Catalog
-	Scanner  FilesystemScanner
-	Registry *tool.Registry
+	Root       string
+	Catalog    *Catalog
+	Scanner    FilesystemScanner
+	Registry   *tool.Registry
+	ProcessEnv processenv.Environment
 
 	reloadMu sync.Mutex
 	mu       sync.Mutex
@@ -27,9 +29,13 @@ type Manager struct {
 	lastErr  error
 }
 
-func NewManager(root string, registry *tool.Registry) *Manager {
+func NewManager(root string, registry *tool.Registry, environment ...processenv.Environment) *Manager {
+	var processEnv processenv.Environment
+	if len(environment) > 0 {
+		processEnv = environment[0]
+	}
 	scanner := NewFilesystemScanner(root)
-	return &Manager{Root: scanner.Root, Catalog: scanner.Catalog, Scanner: scanner, Registry: registry}
+	return &Manager{Root: scanner.Root, Catalog: scanner.Catalog, Scanner: scanner, Registry: registry, ProcessEnv: processEnv}
 }
 
 func (m *Manager) Reload(ctx context.Context) error {
