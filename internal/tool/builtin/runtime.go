@@ -49,7 +49,7 @@ func NewRuntime(opts RuntimeOptions) (*Runtime, error) {
 	info = info.Normalize()
 	registry := tool.NewRegistry()
 	residentStore := resident.NewStoreWithLimits(filepath.Join(opts.ConfigDir, "memories.toml"), opts.ResidentMemoryMaxUnits)
-	skillManager := skill.NewManager(filepath.Join(opts.ConfigDir, "skills"), registry)
+	skillManager := skill.NewManager(filepath.Join(opts.ConfigDir, "skills"), registry, opts.ProcessEnv)
 	fileManager := NewFileManager(info.SandboxRoot, info.FileDelivery)
 	runtime := &Runtime{Registry: registry, ResidentMemoryStore: residentStore, SkillManager: skillManager, FileManager: fileManager}
 	if err := RegisterAll(registry, RegisterOptions{

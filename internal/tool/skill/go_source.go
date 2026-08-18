@@ -8,13 +8,12 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
-	"elbot/internal/config"
+	"elbot/internal/processenv"
 )
 
 const goBinaryEnv = "ELBOT_GO_BINARY"
@@ -43,21 +42,22 @@ func validateGoMainSource(source string) error {
 	return nil
 }
 
-func resolveGoExecutable(skillRoot string) (string, error) {
-	configDir := goSkillConfigDir(skillRoot)
-	if value, ok, err := config.ConfigEnv(goBinaryEnv, configDir); err != nil {
-		return "", err
-	} else if ok {
+func resolveGoExecutable(skillRoot string, environments ...processenv.Environment) (string, error) {
+	var environment processenv.Environment
+	if len(environments) > 0 {
+		environment = environments[0]
+	}
+	if value, ok := environment.Lookup(goBinaryEnv); ok && strings.TrimSpace(value) != "" {
 		return validateGoExecutable(value, goBinaryEnv)
 	}
-	if goroot := strings.TrimSpace(os.Getenv("GOROOT")); goroot != "" {
+	if goroot, ok := environment.Lookup("GOROOT"); ok && strings.TrimSpace(goroot) != "" {
 		candidate := filepath.Join(goroot, "bin", executableName("go"))
 		if path, ok := existingExecutable(candidate); ok {
 			return path, nil
 		}
 		return "", fmt.Errorf("GOROOT is set but go executable is unavailable at %q; set %s=/path/to/go in system environment or config .env", candidate, goBinaryEnv)
 	}
-	if goPath, err := exec.LookPath("go"); err == nil {
+	if goPath, err := environment.LookPath("go"); err == nil {
 		return goPath, nil
 	}
 	return "", fmt.Errorf("go executable not found in ElBot service PATH; set %s=/path/to/go in system environment or config .env, or configure service PATH/GOROOT, then restart ElBot", goBinaryEnv)
@@ -115,8 +115,8 @@ type goBuildResult struct {
 	Err    error
 }
 
-func buildGoSkill(ctx context.Context, root, name string, timeoutMS int) error {
-	result, err := runGoBuild(ctx, root, name, timeoutMS)
+func buildGoSkill(ctx context.Context, root, name string, timeoutMS int, environments ...processenv.Environment) error {
+	result, err := runGoBuild(ctx, root, name, timeoutMS, environments...)
 	if err != nil {
 		return err
 	}
@@ -126,8 +126,12 @@ func buildGoSkill(ctx context.Context, root, name string, timeoutMS int) error {
 	return nil
 }
 
-func runGoBuild(ctx context.Context, root, name string, timeoutMS int) (goBuildResult, error) {
-	goPath, err := resolveGoExecutable(root)
+func runGoBuild(ctx context.Context, root, name string, timeoutMS int, environments ...processenv.Environment) (goBuildResult, error) {
+	var environment processenv.Environment
+	if len(environments) > 0 {
+		environment = environments[0]
+	}
+	goPath, err := resolveGoExecutable(root, environment)
 	if err != nil {
 		return goBuildResult{}, err
 	}
@@ -141,7 +145,7 @@ func runGoBuild(ctx context.Context, root, name string, timeoutMS int) (goBuildR
 	}
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(runCtx, goPath, "build", "-o", binary, ".")
+	cmd := environment.CommandContext(runCtx, goPath, "build", "-o", binary, ".")
 	cmd.Dir = root
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"elbot/internal/llm"
+	"elbot/internal/processenv"
 	"elbot/internal/tool"
 )
 
@@ -22,8 +23,9 @@ const (
 )
 
 type WebSearchTool struct {
-	client   *http.Client
-	endpoint string
+	client     *http.Client
+	endpoint   string
+	processEnv processenv.Environment
 }
 
 type webSearchArgs struct {
@@ -72,8 +74,12 @@ type tavilyResult struct {
 	Score   float64 `json:"score"`
 }
 
-func NewWebSearchTool() WebSearchTool {
-	return WebSearchTool{client: &http.Client{Timeout: 15 * time.Second}, endpoint: defaultSearchEndpoint}
+func NewWebSearchTool(environment ...processenv.Environment) WebSearchTool {
+	var processEnv processenv.Environment
+	if len(environment) > 0 {
+		processEnv = environment[0]
+	}
+	return WebSearchTool{client: &http.Client{Timeout: 15 * time.Second}, endpoint: defaultSearchEndpoint, processEnv: processEnv}
 }
 
 func (WebSearchTool) Name() string {
@@ -119,9 +125,9 @@ func (t WebSearchTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Re
 	if query == "" {
 		return nil, fmt.Errorf("query is required")
 	}
-	apiKey, err := builtinEnv(ctx, tavilyAPIKeyEnv)
-	if err != nil {
-		return nil, err
+	apiKey, ok := t.processEnv.Lookup(tavilyAPIKeyEnv)
+	if !ok || strings.TrimSpace(apiKey) == "" {
+		return nil, fmt.Errorf("%s is required; set it in environment or config .env", tavilyAPIKeyEnv)
 	}
 	payload := normalizeTavilyRequest(args, query)
 	body, err := json.Marshal(payload)

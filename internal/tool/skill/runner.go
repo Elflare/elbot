@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"elbot/internal/llm"
+	"elbot/internal/processenv"
 	"elbot/internal/tool"
 )
 
@@ -21,7 +22,8 @@ const (
 )
 
 type GoRunner struct {
-	Catalog *Catalog
+	Catalog    *Catalog
+	ProcessEnv processenv.Environment
 }
 
 type goRunnerArgs struct {
@@ -30,8 +32,12 @@ type goRunnerArgs struct {
 	Payload   json.RawMessage `json:"-"`
 }
 
-func NewGoRunner(catalog *Catalog) GoRunner {
-	return GoRunner{Catalog: catalog}
+func NewGoRunner(catalog *Catalog, environment ...processenv.Environment) GoRunner {
+	var processEnv processenv.Environment
+	if len(environment) > 0 {
+		processEnv = environment[0]
+	}
+	return GoRunner{Catalog: catalog, ProcessEnv: processEnv}
 }
 
 func (GoRunner) Name() string { return GoRunnerName }
@@ -93,7 +99,7 @@ func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (*tool.Result,
 	timeout := runnerTimeout(args.TimeoutMS)
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(runCtx, record.BinaryPath)
+	cmd := r.ProcessEnv.CommandContext(runCtx, record.BinaryPath)
 	cmd.Dir = record.Root
 	cmd.Stdin = bytes.NewReader(args.Payload)
 	return runCommand(runCtx, "go skill", cmd)
