@@ -128,6 +128,32 @@ func (e Environment) Environ() []string {
 	return append([]string(nil), e.environ...)
 }
 
+// Lookup returns a value from the effective environment.
+func (e Environment) Lookup(name string) (string, bool) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", false
+	}
+	for _, entry := range e.Environ() {
+		entryName, value, ok := strings.Cut(entry, "=")
+		if ok && environmentKey(entryName) == environmentKey(name) {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+// LookPath resolves an executable using the effective environment PATH.
+func (e Environment) LookPath(name string) (string, error) {
+	if e.configured {
+		if path, ok := findExecutable(name, e.path, e.pathExt); ok {
+			return path, nil
+		}
+		return "", exec.ErrNotFound
+	}
+	return exec.LookPath(name)
+}
+
 func (e Environment) Command(name string, args ...string) *exec.Cmd {
 	return e.CommandContext(context.Background(), name, args...)
 }
@@ -135,9 +161,7 @@ func (e Environment) Command(name string, args ...string) *exec.Cmd {
 func (e Environment) CommandContext(ctx context.Context, name string, args ...string) *exec.Cmd {
 	environ := e.Environ()
 	resolved := name
-	if path, err := exec.LookPath(name); err == nil {
-		resolved = path
-	} else if path, ok := findExecutable(name, e.path, e.pathExt); ok {
+	if path, err := e.LookPath(name); err == nil {
 		resolved = path
 	}
 	cmd := exec.CommandContext(ctx, resolved, args...)

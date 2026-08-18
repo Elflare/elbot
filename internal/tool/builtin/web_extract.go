@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"elbot/internal/llm"
+	"elbot/internal/processenv"
 	"elbot/internal/tool"
 )
 
@@ -28,9 +29,10 @@ const (
 )
 
 type WebExtractTool struct {
-	client   *http.Client
-	endpoint string
-	cache    *extractCache
+	client     *http.Client
+	endpoint   string
+	cache      *extractCache
+	processEnv processenv.Environment
 }
 
 type webExtractArgs struct {
@@ -92,8 +94,12 @@ type extractProxyConfig struct {
 	cacheKey string
 }
 
-func NewWebExtractTool() *WebExtractTool {
-	return &WebExtractTool{endpoint: defaultExtractEndpoint, cache: newExtractCache()}
+func NewWebExtractTool(environment ...processenv.Environment) *WebExtractTool {
+	var processEnv processenv.Environment
+	if len(environment) > 0 {
+		processEnv = environment[0]
+	}
+	return &WebExtractTool{endpoint: defaultExtractEndpoint, cache: newExtractCache(), processEnv: processEnv}
 }
 
 func (*WebExtractTool) Name() string {
@@ -142,7 +148,7 @@ func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.
 	if selector == "" {
 		selector = defaultRemoveSelector
 	}
-	proxy, err := resolveExtractProxy(ctx, args.Proxy)
+	proxy, err := resolveExtractProxy(t.processEnv, args.Proxy)
 	if err != nil {
 		return nil, err
 	}
@@ -154,11 +160,8 @@ func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.
 	apiKey := ""
 	hasJinaKey := false
 	if useJina {
-		var err error
-		apiKey, hasJinaKey, err = optionalBuiltinEnv(ctx, jinaAPIKeyEnv)
-		if err != nil {
-			return nil, err
-		}
+		apiKey, hasJinaKey = t.processEnv.Lookup(jinaAPIKeyEnv)
+		hasJinaKey = hasJinaKey && strings.TrimSpace(apiKey) != ""
 	}
 	source := "direct"
 	if useJina && hasJinaKey {
@@ -352,14 +355,10 @@ func (t *WebExtractTool) httpClient(proxy extractProxyConfig) *http.Client {
 	return &http.Client{Timeout: defaultExtractTimeout, Transport: extractTransport(proxy)}
 }
 
-func resolveExtractProxy(ctx context.Context, value string) (extractProxyConfig, error) {
+func resolveExtractProxy(environment processenv.Environment, value string) (extractProxyConfig, error) {
 	proxy := strings.TrimSpace(value)
 	if proxy == "" {
-		configured, ok, err := optionalBuiltinEnv(ctx, webExtractProxyEnv)
-		if err != nil {
-			return extractProxyConfig{}, err
-		}
-		if ok {
+		if configured, ok := environment.Lookup(webExtractProxyEnv); ok {
 			proxy = strings.TrimSpace(configured)
 		}
 	}

@@ -88,7 +88,7 @@ ELNIS_HOME_TOKEN=your-elnis-token
 
 | 进程入口 | 环境来源与优先级 |
 | --- | --- |
-| LLM Shell | ElBot 进程环境为基础，配置根 `.env` 只补充尚不存在的普通变量。 |
+| 内置工具与 Go Skill（含 LLM Shell） | ElBot 进程环境为基础，配置根 `.env` 只补充尚不存在的普通变量。 |
 | 根 Hook 规则 | ElBot 进程环境为基础，`plugins/.env` 覆盖同名普通变量。 |
 | 插件 exec 与 Worker | 根 Hook 环境为基础，插件配置文件同目录的 `.env` 再覆盖同名普通变量。 |
 

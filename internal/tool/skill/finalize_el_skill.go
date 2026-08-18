@@ -118,7 +118,7 @@ func (t FinalizeElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*t
 	b.WriteString("Go source validation: ok\n")
 
 	build := goBuildResult{}
-	build, err = runGoBuild(ctx, root, name, args.TimeoutMS)
+	build, err = runGoBuild(ctx, root, name, args.TimeoutMS, t.Manager.ProcessEnv)
 	if err != nil {
 		return nil, err
 	}

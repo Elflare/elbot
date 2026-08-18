@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复内置工具与 Go Skill 的服务级环境变量读取不一致，导致部分工具无法读取配置目录 `.env` 的问题。
 - 修复 OpenAI-compatible 接口返回非 200 状态时，响应上下文在读取错误 body 前被提前取消，导致真实上游错误丢失并只显示 `failed to read body: context canceled` 的问题。
 
 ## [v0.4.2 - 2026-08-06]
