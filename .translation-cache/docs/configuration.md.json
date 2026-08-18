@@ -2328,6 +2328,14 @@
       "translation": "Based on the ElBot process environment, the configuration root __ELBOT_CODE_0__ only supplements ordinary variables that do not yet exist.",
       "updated_at": 1785918785
     },
+    "docs/configuration.md:table:a8fbaaa890233ec808c0f6e85dca70e4e5de218aeea221d5a6b94413a9ae5a34": {
+      "kind": "table",
+      "source": "内置工具与 Go Skill（含 LLM Shell）",
+      "source_file": "docs/configuration.md",
+      "source_hash": "a8fbaaa890233ec808c0f6e85dca70e4e5de218aeea221d5a6b94413a9ae5a34",
+      "translation": "Built-in tools and Go Skills (including LLM Shell)",
+      "updated_at": 1787058728
+    },
     "docs/configuration.md:table:b1b88f35e0e28fc7b8c194e90b2ea2189033bce3f388067b502deef56a04f550": {
       "kind": "table",
       "source": "当前子目录为 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__。",
@@ -2378,8 +2386,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "d8423d30a03c1897a6e7c3397fc1392191093aed2a79b58482c41bd86f9c6e64",
+  "source_hash": "22f3a344a73e94f45a35ee80d7cad87213f87e9a95eebbc54d41b2577b3d6ae4",
   "target": "docs.en/configuration.md",
-  "updated_at": 1785918785,
+  "updated_at": 1787058728,
   "version": 2
 }
