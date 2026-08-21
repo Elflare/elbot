@@ -118,6 +118,23 @@ Common tool capabilities include:
 - Cron management.
 - Skill creation, modification, and execution.
 
+## System Prompt
+
+The system prompt is assembled in real-time into a system message for each request, with the parts arranged in the following order:
+
+1. Soul。
+2. Currently available tools and Skills.
+3. Activated Tool Tag prompts.
+4. The current user's resident memory.
+5. Meta information of the current Session.
+
+Meta information uses a single line of plain text, for example:
+
+```text
+meta: platform=qqonebot, conversation=group, id=9, display_name="群名片".
+```
+
+`id` represents the group ID in group chats and the user's platform ID in private chats. `display_name` prioritizes the group nickname in group chats, and uses the user's nickname when no group nickname is available; Use nicknames in private chats. Missing or indeterminate fields will not be written.
 
 ## Security Policy
 
