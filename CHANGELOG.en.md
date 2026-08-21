@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/stop`, request timeouts, or upstream cancellations will now terminate the full process tree of one-time exec Hooks to avoid residual child processes spawned by the Hook; Persistent Workers will instead receive `event.cancel` and continue to be reused.
 - Non-existent `#文件` references in the CLI TUI are now sent as plain text as-is and no longer block message submission; files that exist within the same message will still be expanded normally.
 - `/help`, detailed help, and slash command completion are now filtered by the current user's permissions; regular users cannot discover commands restricted to superadmins.
+- Modified System prompt structure and added meta information
 
 ### Fixed
 
