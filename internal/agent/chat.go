@@ -133,7 +133,8 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 
 	turnStartedAt := storage.Now()
 	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
-	llmMessages, err := a.promptBuilder.Build(ctx, PromptBuildRequest{Session: session, Scope: a.scope(ctx), ActorDisplayName: a.actor(ctx).DisplayName, Messages: messages, Summary: loaded.Summary})
+	scope := a.scope(ctx)
+	llmMessages, err := a.promptBuilder.Build(ctx, PromptBuildRequest{Session: session, Scope: scope, Meta: a.conversationMeta(ctx, scope), Messages: messages, Summary: loaded.Summary})
 	if err != nil {
 		return err
 	}

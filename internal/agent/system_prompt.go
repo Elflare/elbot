@@ -13,11 +13,18 @@ type SystemPromptPart struct {
 	Content string
 }
 
+type ConversationMeta struct {
+	Platform    string
+	Kind        string
+	ID          string
+	DisplayName string
+}
+
 type SystemPromptRequest struct {
-	Mode             string
-	Session          *storage.Session
-	Scope            session.Scope
-	ActorDisplayName string
+	Mode    string
+	Session *storage.Session
+	Scope   session.Scope
+	Meta    ConversationMeta
 }
 
 type SystemPromptSource interface {

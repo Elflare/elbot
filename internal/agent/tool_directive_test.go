@@ -643,7 +643,7 @@ func TestSoulPromptAndToolsByMode(t *testing.T) {
 	}
 	for _, req := range chatRequests {
 		systemPrompt := llm.SegmentsContentText(req.Messages[0].Segments)
-		if systemPrompt != "SOUL ONLY" {
+		if systemPrompt != "SOUL ONLY\n\nmeta: platform=cli." {
 			t.Fatalf("system prompt = %q", systemPrompt)
 		}
 		if strings.Contains(systemPrompt, "discover_tool") || strings.Contains(systemPrompt, "work") {

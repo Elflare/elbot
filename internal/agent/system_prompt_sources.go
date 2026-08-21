@@ -3,13 +3,43 @@ package agent
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strconv"
 	"strings"
 
 	"elbot/internal/memory/resident"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 )
+
+type conversationMetaSystemPromptSource struct{}
+
+func (conversationMetaSystemPromptSource) Parts(_ context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
+	meta := req.Meta
+	fields := make([]string, 0, 4)
+	for _, field := range []struct {
+		name  string
+		value string
+		quote bool
+	}{
+		{name: "platform", value: meta.Platform},
+		{name: "conversation", value: meta.Kind},
+		{name: "id", value: meta.ID},
+		{name: "display_name", value: meta.DisplayName, quote: true},
+	} {
+		value := strings.TrimSpace(field.value)
+		if value == "" {
+			continue
+		}
+		if field.quote {
+			value = strconv.Quote(strings.Join(strings.Fields(value), " "))
+		}
+		fields = append(fields, field.name+"="+value)
+	}
+	if len(fields) == 0 {
+		return nil, nil
+	}
+	return []SystemPromptPart{{Name: "conversation_meta", Content: "meta: " + strings.Join(fields, ", ") + "."}}, nil
+}
 
 type soulSystemPromptSource struct {
 	Soul SoulProvider
@@ -24,21 +54,13 @@ func (s residentMemorySystemPromptSource) Parts(ctx context.Context, req SystemP
 		return nil, nil
 	}
 	memory, err := s.Store.Read(ctx, req.Scope)
-	content := ""
 	if errors.Is(err, resident.ErrNotFound) {
-		name := strings.TrimSpace(req.ActorDisplayName)
-		if name == "" && req.Scope.IsCLI {
-			name = "管理员"
-		}
-		if name != "" {
-			content = fmt.Sprintf("用户名字：%s。", name)
-		}
-	} else if err != nil {
-		return nil, err
-	} else {
-		content = memory.Text()
+		return nil, nil
 	}
-	content = strings.TrimSpace(content)
+	if err != nil {
+		return nil, err
+	}
+	content := strings.TrimSpace(memory.Text())
 	if content == "" {
 		return nil, nil
 	}
