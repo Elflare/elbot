@@ -496,6 +496,14 @@
       "translation": "Fixed the issue where __ELBOT_CODE_0__ would display active requests from other users or Sessions within the process when the caller has no current Session;",
       "updated_at": 1784987067
     },
+    "CHANGELOG.md:list:60bd0875b57fac1eddc9b627c674bf06f753c9de9008945cdcfd9f6dee17d8f4": {
+      "kind": "list",
+      "source": "修改Systemp prompt结构，添加meta信息",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "60bd0875b57fac1eddc9b627c674bf06f753c9de9008945cdcfd9f6dee17d8f4",
+      "translation": "Modified System prompt structure and added meta information",
+      "updated_at": 1787305248
+    },
     "CHANGELOG.md:list:60c8dfedb96e664a7360942d00f55f08ce458dd6ef1b154b5ff12cf4bb9ed704": {
       "kind": "list",
       "source": "CLI TUI 通知支持携带日志等级并按 Debug 白、Info 绿、Warn 黄、Error 红显示；",
@@ -1474,8 +1482,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "38acc808157091f45edd127b4d5c4ce8fad885aa6fdc4c1cdbb6f26636340d4d",
+  "source_hash": "286f9eaf912967ceb58970621a889f912f72377a96192e43e676ab8a85309468",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1787058751,
+  "updated_at": 1787305248,
   "version": 2
 }
