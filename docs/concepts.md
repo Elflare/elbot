@@ -116,6 +116,23 @@ Tool Runtime 管理工具的注册、发现、权限、风险评估和执行。
 - Cron 管理。
 - Skill 创建、修改和运行。
 
+## System Prompt
+
+系统提示词在每轮请求时实时组装为一条 system message，各部分按以下顺序排列：
+
+1. Soul。
+2. 当前可用的工具与 Skill。
+3. 已激活的 Tool Tag 提示。
+4. 当前用户的常驻记忆。
+5. 当前会话的 Meta 信息。
+
+Meta 信息使用一行纯文本，例如：
+
+```text
+meta: platform=qqonebot, conversation=group, id=9, display_name="群名片".
+```
+
+`id` 在群聊中表示群 ID，在私聊中表示用户的平台 ID。`display_name` 在群聊中优先使用群名片，没有群名片时使用昵称；私聊中使用昵称。缺失或无法确定的字段不会写入。
 
 ## 安全策略
 

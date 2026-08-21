@@ -25,7 +25,7 @@ func TestResidentMemorySystemPromptSource(t *testing.T) {
 	if err := store.WriteNormal(context.Background(), scope, "用户喜欢简短回答。"); err != nil {
 		t.Fatalf("WriteNormal: %v", err)
 	}
-	parts, err := (residentMemorySystemPromptSource{Store: store}).Parts(context.Background(), SystemPromptRequest{Scope: scope, ActorDisplayName: "群名片"})
+	parts, err := (residentMemorySystemPromptSource{Store: store}).Parts(context.Background(), SystemPromptRequest{Scope: scope})
 	if err != nil {
 		t.Fatalf("Parts: %v", err)
 	}
@@ -34,14 +34,67 @@ func TestResidentMemorySystemPromptSource(t *testing.T) {
 	}
 }
 
-func TestResidentMemorySystemPromptSourceUsesDefaultDisplayName(t *testing.T) {
+func TestResidentMemorySystemPromptSourceDoesNotInjectDisplayName(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
 	parts, err := (residentMemorySystemPromptSource{Store: store}).Parts(context.Background(), SystemPromptRequest{Scope: session.Scope{Platform: "cli", ActorID: "cli:local", IsCLI: true}})
 	if err != nil {
 		t.Fatalf("Parts: %v", err)
 	}
-	if len(parts) != 1 || parts[0].Content != "用户名字：管理员。" {
+	if len(parts) != 0 {
 		t.Fatalf("parts = %#v", parts)
+	}
+}
+
+func TestConversationMetaSystemPromptSource(t *testing.T) {
+	parts, err := (conversationMetaSystemPromptSource{}).Parts(context.Background(), SystemPromptRequest{Meta: ConversationMeta{
+		Platform:    "qqonebot",
+		Kind:        "group",
+		ID:          "9",
+		DisplayName: "群名片, A=1\n下一行",
+	}})
+	if err != nil {
+		t.Fatalf("Parts: %v", err)
+	}
+	want := `meta: platform=qqonebot, conversation=group, id=9, display_name="群名片, A=1 下一行".`
+	if len(parts) != 1 || parts[0].Content != want {
+		t.Fatalf("parts = %#v, want %q", parts, want)
+	}
+}
+
+func TestConversationMetaFromPlatformContext(t *testing.T) {
+	a := &Agent{platform: &fakePlatform{}}
+	tests := []struct {
+		name  string
+		msg   platform.MessageContext
+		scope session.Scope
+		want  ConversationMeta
+	}{
+		{
+			name:  "group card",
+			msg:   platform.MessageContext{Platform: "qqonebot", PlatformUserID: "1001", Nickname: "昵称", GroupCard: "群名片", ConversationKind: platform.ConversationGroup},
+			scope: session.Scope{Platform: "qqonebot", PlatformScopeID: "group:9"},
+			want:  ConversationMeta{Platform: "qqonebot", Kind: "group", ID: "9", DisplayName: "群名片"},
+		},
+		{
+			name:  "group nickname fallback",
+			msg:   platform.MessageContext{Platform: "telegram", PlatformUserID: "1001", Nickname: "昵称"},
+			scope: session.Scope{Platform: "telegram", PlatformScopeID: "supergroup:-1009"},
+			want:  ConversationMeta{Platform: "telegram", Kind: "group", ID: "-1009", DisplayName: "昵称"},
+		},
+		{
+			name:  "private ignores group card",
+			msg:   platform.MessageContext{Platform: "qqofficial", PlatformUserID: "openid-1", Nickname: "昵称", GroupCard: "不应使用", ScopeID: "c2c:openid-1"},
+			scope: session.Scope{Platform: "qqofficial", PlatformScopeID: "c2c:openid-1"},
+			want:  ConversationMeta{Platform: "qqofficial", Kind: "private", ID: "openid-1", DisplayName: "昵称"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := platform.WithMessageContext(context.Background(), tt.msg)
+			if got := a.conversationMeta(ctx, tt.scope); got != tt.want {
+				t.Fatalf("conversationMeta() = %#v, want %#v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -65,12 +118,14 @@ func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
 		toolNamesSystemPromptSource{Tools: staticToolNames{names: []string{"shell"}}},
 		tagSource,
 		residentMemorySystemPromptSource{Store: memoryStore},
+		conversationMetaSystemPromptSource{},
 	)
-	got, err := manager.Build(ctx, SystemPromptRequest{Session: sessionRecord, Scope: scope})
+	meta := ConversationMeta{Platform: "cli"}
+	got, err := manager.Build(ctx, SystemPromptRequest{Session: sessionRecord, Scope: scope, Meta: meta})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	parts := []string{"SOUL_ORDER", toolNamesText(PromptToolNames{Tools: []string{"shell"}}), "TAG_ALPHA", "TAG_BETA", "RESIDENT_ORDER"}
+	parts := []string{"SOUL_ORDER", toolNamesText(PromptToolNames{Tools: []string{"shell"}}), "TAG_ALPHA", "TAG_BETA", "RESIDENT_ORDER", "meta: platform=cli."}
 	previous := -1
 	for _, part := range parts {
 		index := strings.Index(got, part)
