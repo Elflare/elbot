@@ -322,7 +322,8 @@
 - [x] Prompt Builder 预留常驻记忆接口，后续由 Memory 插件提供。
 - [x] Prompt Builder 预留工具 schema 注入接口；工具发现不写入 System Prompt。
 - [x] Prompt Builder 支持注入当前 Session 上下文。
-- [ ] 后续通过独立上下文消息或专用 builder 字段注入时间、环境等运行时信息，不污染 Soul System Prompt。
+- [x] 通过会话 Meta 注入固定的 Session 创建时间，不污染 Soul 内容，并避免动态时间影响 Prompt 缓存。
+- [ ] 后续通过独立上下文消息或专用 builder 字段注入其他环境运行时信息。
 
 ### `/work` 与 `/chat`
 

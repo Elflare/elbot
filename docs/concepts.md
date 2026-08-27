@@ -129,10 +129,11 @@ Tool Runtime 管理工具的注册、发现、权限、风险评估和执行。
 Meta 信息使用一行纯文本，例如：
 
 ```text
-meta: platform=qqonebot, conversation=group, id=9, display_name="群名片".
+meta: platform=qqonebot, conversation=group, id=9, display_name="群名片", session_created_at=2026-08-27T12:34:56.
 ```
 
 `id` 在群聊中表示群 ID，在私聊中表示用户的平台 ID。`display_name` 在群聊中优先使用群名片，没有群名片时使用昵称；私聊中使用昵称。缺失或无法确定的字段不会写入。
+`session_created_at` 是 Session 创建时的当地时间，精确到秒；该值在 Session 生命周期内保持不变，以免时间变化降低 Prompt 缓存命中率。
 
 ## 安全策略
 

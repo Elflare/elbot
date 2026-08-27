@@ -15,7 +15,7 @@ type conversationMetaSystemPromptSource struct{}
 
 func (conversationMetaSystemPromptSource) Parts(_ context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
 	meta := req.Meta
-	fields := make([]string, 0, 4)
+	fields := make([]string, 0, 5)
 	for _, field := range []struct {
 		name  string
 		value string
@@ -34,6 +34,9 @@ func (conversationMetaSystemPromptSource) Parts(_ context.Context, req SystemPro
 			value = strconv.Quote(strings.Join(strings.Fields(value), " "))
 		}
 		fields = append(fields, field.name+"="+value)
+	}
+	if req.Session != nil && !req.Session.CreatedAt.IsZero() {
+		fields = append(fields, "session_created_at="+req.Session.CreatedAt.Format("2006-01-02T15:04:05"))
 	}
 	if len(fields) == 0 {
 		return nil, nil
