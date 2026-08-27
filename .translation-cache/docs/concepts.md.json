@@ -288,6 +288,14 @@
       "translation": "Detailed development plans and task breakdowns are located in [__ELBOT_CODE_0__](../devdocs/).",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:list:c9c69069dfde56bd38286c7b8460575c037a7233f48534bfd826f269d405b9f4": {
+      "kind": "list",
+      "source": "已激活的 Tool Tag 提示。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "c9c69069dfde56bd38286c7b8460575c037a7233f48534bfd826f269d405b9f4",
+      "translation": "Activated Tool Tag prompts.",
+      "updated_at": 1787305228
+    },
     "docs/concepts.md:list:cb488dfb5f47d8f909d1e99208c8fd51a0a5528538b5e8507d70d7e4235da157": {
       "kind": "list",
       "source": "记忆管理。",
@@ -295,6 +303,30 @@
       "source_hash": "cb488dfb5f47d8f909d1e99208c8fd51a0a5528538b5e8507d70d7e4235da157",
       "translation": "Memory management.",
       "updated_at": 1783077374
+    },
+    "docs/concepts.md:list:ccaefd031153039c27410f3db71490af5bca99f8fed3b56a8c2887e0d00b9c98": {
+      "kind": "list",
+      "source": "当前可用的工具与 Skill。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "ccaefd031153039c27410f3db71490af5bca99f8fed3b56a8c2887e0d00b9c98",
+      "translation": "Currently available tools and Skills.",
+      "updated_at": 1787305228
+    },
+    "docs/concepts.md:list:d92c8cd1312d53030212cd9ade3887f61c97d9c4e3c6b7395ebacd7acfa59267": {
+      "kind": "list",
+      "source": "当前会话的 Meta 信息。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "d92c8cd1312d53030212cd9ade3887f61c97d9c4e3c6b7395ebacd7acfa59267",
+      "translation": "Meta information of the current Session.",
+      "updated_at": 1787305228
+    },
+    "docs/concepts.md:list:e18d8ddba9896f44c7e98a17ab30339a6179609de8f94cbd5f7ac4bad9f67336": {
+      "kind": "list",
+      "source": "当前用户的常驻记忆。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "e18d8ddba9896f44c7e98a17ab30339a6179609de8f94cbd5f7ac4bad9f67336",
+      "translation": "The current user's resident memory.",
+      "updated_at": 1787305228
     },
     "docs/concepts.md:list:e407aabae63e84334619d90a51ea6766395924fc315e3630b3ddd5c77edcdd6d": {
       "kind": "list",
@@ -384,6 +416,14 @@
       "translation": "Tools can come from built-in capabilities, Skills, external extensions, or listening events. ElBot does not stuff all tool details into the context by default, but exposes them on demand through tool discovery and preloading mechanisms.\n",
       "updated_at": 1783077374
     },
+    "docs/concepts.md:paragraph:1965604aa1d4af75d8f323d44c8f31e7a10cf0dd5227a14f830923add0c458a3": {
+      "kind": "paragraph",
+      "source": "缺失或无法确定的字段不会写入。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "1965604aa1d4af75d8f323d44c8f31e7a10cf0dd5227a14f830923add0c458a3",
+      "translation": "Missing or indeterminate fields will not be written.\n",
+      "updated_at": 1787305228
+    },
     "docs/concepts.md:paragraph:19a96fcf1ae209f6c875c5f51792aeabfc29d55a3575888c3cc3d3e093e2a7ed": {
       "kind": "paragraph",
       "source": "Fork 用于从历史对话中的某个 assistant 回复处分出新的对话分支。\n",
@@ -447,6 +487,14 @@
       "source_hash": "34cd731a0bec855577756cb7c2d9d34502c7056497e27927b25f521949b77b6d",
       "translation": "Messages containing images will send both the images and the text labels adjacent to the images to the vision model;",
       "updated_at": 1786545111
+    },
+    "docs/concepts.md:paragraph:3611ae21560aee921f025b1aab4f8612f42daf262faba98a758a3a741bd8dc30": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 在群聊中表示群 ID，在私聊中表示用户的平台 ID。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "3611ae21560aee921f025b1aab4f8612f42daf262faba98a758a3a741bd8dc30",
+      "translation": "__ELBOT_CODE_0__ represents the group ID in group chats and the user's platform ID in private chats.",
+      "updated_at": 1787305228
     },
     "docs/concepts.md:paragraph:3675d906273a9964659b88fe3ac3962a0f4e7750270277faa04bb8bfe1aaba68": {
       "kind": "paragraph",
@@ -576,6 +624,14 @@
       "translation": "ElBot's tool system includes risk levels and permission control.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:674639edf28b17a7f41532c762bae7a4096891287b2dc4c3775579c08825aa31": {
+      "kind": "paragraph",
+      "source": "私聊中使用昵称。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "674639edf28b17a7f41532c762bae7a4096891287b2dc4c3775579c08825aa31",
+      "translation": "Use nicknames in private chats.",
+      "updated_at": 1787305228
+    },
     "docs/concepts.md:paragraph:6d44113da741d20c4942ea1c332e5f11f6ff9f0a76ebc9185ae1ed36e8d57fa0": {
       "kind": "paragraph",
       "source": "冒号也可以写成中文全角冒号 __ELBOT_CODE_0__。\n",
@@ -704,6 +760,14 @@
       "translation": "ElBot divides memory into two categories:\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:b1a5916cfc6c7b79aff7652cca13e340238f19b2e25e3b8a5aa5a4c8d187802c": {
+      "kind": "paragraph",
+      "source": "系统提示词在每轮请求时实时组装为一条 system message，各部分按以下顺序排列：\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "b1a5916cfc6c7b79aff7652cca13e340238f19b2e25e3b8a5aa5a4c8d187802c",
+      "translation": "The system prompt is assembled in real-time into a system message for each request, with the parts arranged in the following order:\n",
+      "updated_at": 1787305228
+    },
     "docs/concepts.md:paragraph:b39eb495df6a025e3e7e3154f13448ef5f514702757e3924fe9e91d728dcd822": {
       "kind": "paragraph",
       "source": "标签按消息内顺序编号，并在可复用时包含原始 HTTP(S) URL，方便模型在上传、编辑等工具调用中准确引用图片。",
@@ -711,6 +775,22 @@
       "source_hash": "b39eb495df6a025e3e7e3154f13448ef5f514702757e3924fe9e91d728dcd822",
       "translation": "Labels are numbered according to their order within the message and include the original HTTP(S) URL when reusable, allowing the model to accurately reference images during tool calls such as uploading or editing.",
       "updated_at": 1786545111
+    },
+    "docs/concepts.md:paragraph:b568b1d1b7ee5d19b1adc58521553d6af26ada6cce210f99e10bb7d763f423de": {
+      "kind": "paragraph",
+      "source": "Meta 信息使用一行纯文本，例如：\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "b568b1d1b7ee5d19b1adc58521553d6af26ada6cce210f99e10bb7d763f423de",
+      "translation": "Meta information uses a single line of plain text, for example:\n",
+      "updated_at": 1787305228
+    },
+    "docs/concepts.md:paragraph:b7be870bab24776a9da112c7b13cef0a450b06709590e897ff3955ac94cf9665": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 在群聊中优先使用群名片，没有群名片时使用昵称；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "b7be870bab24776a9da112c7b13cef0a450b06709590e897ff3955ac94cf9665",
+      "translation": "__ELBOT_CODE_0__ prioritizes the group nickname in group chats, and uses the user's nickname when no group nickname is available;",
+      "updated_at": 1787305228
     },
     "docs/concepts.md:paragraph:bba7fced0f9c1143a23c84ff8aafe31b0724948cccece90fd16c05d218fce7a6": {
       "kind": "paragraph",
@@ -1090,8 +1170,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "476bc36b4986247a96637fd108e21a9d4ebf9563783f12fd96835aef4a6ef1a7",
+  "source_hash": "ed1ffbb6ab11c349bd2cdc09593f055db02632760b3a524099c8e6613151b3ae",
   "target": "docs.en/concepts.md",
-  "updated_at": 1786545111,
+  "updated_at": 1787305228,
   "version": 2
 }
