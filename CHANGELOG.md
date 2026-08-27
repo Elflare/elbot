@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI TUI 中不存在的 `#文件` 引用现在按普通文本原样发送，不再阻止消息提交；同一消息中存在的文件仍会正常展开。
 - `/help`、详细帮助和 slash 命令补全现在按当前用户权限过滤；普通用户无法发现仅限超级管理员的命令。
 - 修改Systemp prompt结构，添加meta信息
+- System prompt 的会话 Meta 现在会附带精确到秒的 Session 当地创建时间；该值不会随对话轮次变化，以保持 Prompt 缓存稳定。
 
 ### Fixed
 

@@ -46,16 +46,19 @@ func TestResidentMemorySystemPromptSourceDoesNotInjectDisplayName(t *testing.T) 
 }
 
 func TestConversationMetaSystemPromptSource(t *testing.T) {
-	parts, err := (conversationMetaSystemPromptSource{}).Parts(context.Background(), SystemPromptRequest{Meta: ConversationMeta{
-		Platform:    "qqonebot",
-		Kind:        "group",
-		ID:          "9",
-		DisplayName: "群名片, A=1\n下一行",
-	}})
+	parts, err := (conversationMetaSystemPromptSource{}).Parts(context.Background(), SystemPromptRequest{
+		Session: &storage.Session{CreatedAt: time.Date(2026, time.August, 27, 12, 34, 56, 789, time.FixedZone("CST", 8*60*60))},
+		Meta: ConversationMeta{
+			Platform:    "qqonebot",
+			Kind:        "group",
+			ID:          "9",
+			DisplayName: "群名片, A=1\n下一行",
+		},
+	})
 	if err != nil {
 		t.Fatalf("Parts: %v", err)
 	}
-	want := `meta: platform=qqonebot, conversation=group, id=9, display_name="群名片, A=1 下一行".`
+	want := `meta: platform=qqonebot, conversation=group, id=9, display_name="群名片, A=1 下一行", session_created_at=2026-08-27T12:34:56.`
 	if len(parts) != 1 || parts[0].Content != want {
 		t.Fatalf("parts = %#v, want %q", parts, want)
 	}
