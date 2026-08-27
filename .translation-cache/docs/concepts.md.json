@@ -536,6 +536,14 @@
       "translation": "Its purpose is to reduce the steps for the LLM to first discover tools and then call them, allowing clear tasks to enter the working state faster. After successful preloading, the relevant tools or Skills will enter the tool context of the current Session.\n",
       "updated_at": 1783077374
     },
+    "docs/concepts.md:paragraph:47691711f4310b0174021bb1517e2d782d81fe55aadd358875f955655f6776cb": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 是 Session 创建时的当地时间，精确到秒；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "47691711f4310b0174021bb1517e2d782d81fe55aadd358875f955655f6776cb",
+      "translation": "__ELBOT_CODE_0__ is the local time when the Session was created, precise to the second;",
+      "updated_at": 1787799457
+    },
     "docs/concepts.md:paragraph:4fd4bad82bf5e9316fe7e0f182ff9a9aac6b28ca0a7f5afaeee335945465d7d1": {
       "kind": "paragraph",
       "source": "它用更稳定的格式表达输入、输出、步骤、条件和约束，减少自然语言任务描述的歧义。\n",
@@ -647,6 +655,14 @@
       "source_hash": "6e42cc2f1a5cddf15b21787db94f70824aef56dc96fc8d4ad0d88ec625fe1b5a",
       "translation": "This document explains the main concepts of ElBot to help you understand how it organizes conversations, tools, context, and extensibility.\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:73d27afe4c68b14f6a519c20e5a9594bd2e36cad5fabd6b41f90dcf4d23a5564": {
+      "kind": "paragraph",
+      "source": "该值在 Session 生命周期内保持不变，以免时间变化降低 Prompt 缓存命中率。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "73d27afe4c68b14f6a519c20e5a9594bd2e36cad5fabd6b41f90dcf4d23a5564",
+      "translation": "This value remains unchanged throughout the Session lifecycle to prevent time changes from reducing the Prompt cache hit rate.\n",
+      "updated_at": 1787799457
     },
     "docs/concepts.md:paragraph:7fc746b0d913fc734edabcab044d768898397c98a0735b56dc3ebd4e765f1bef": {
       "kind": "paragraph",
@@ -1170,8 +1186,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "ed1ffbb6ab11c349bd2cdc09593f055db02632760b3a524099c8e6613151b3ae",
+  "source_hash": "cb3d4c4aa687f4dbc9ff518ce49c1f0e71f74f5284e655ec7308c5764dbc76d7",
   "target": "docs.en/concepts.md",
-  "updated_at": 1787305228,
+  "updated_at": 1787799457,
   "version": 2
 }
