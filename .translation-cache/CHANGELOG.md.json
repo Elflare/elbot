@@ -24,6 +24,14 @@
       "translation": "Fixed the inconsistency in reading service-level environment variables between built-in tools and Go Skills, which caused some tools to be unable to read the configuration directory __ELBOT_CODE_0__.",
       "updated_at": 1787058751
     },
+    "CHANGELOG.md:list:03845b94106990962e80f77f2cbbd35bc8777b044a8cf5f5a8653f9ee3139652": {
+      "kind": "list",
+      "source": "System prompt 的会话 Meta 现在会附带精确到秒的 Session 当地创建时间；该值不会随对话轮次变化，以保持 Prompt 缓存稳定。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "03845b94106990962e80f77f2cbbd35bc8777b044a8cf5f5a8653f9ee3139652",
+      "translation": "The Session Meta of the system prompt now includes the local creation time of the Session, accurate to the second; this value will not change with conversation turns to maintain Prompt cache stability.",
+      "updated_at": 1787799472
+    },
     "CHANGELOG.md:list:04792220a0453d2a80f396307ad2079f5a7ba1f001924b3ce14c678f7f132627": {
       "kind": "list",
       "source": "修复 Windows 下 __ELBOT_CODE_0__ 工具回退到 PowerShell 时中文输出可能乱码的问题。",
@@ -1482,8 +1490,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "286f9eaf912967ceb58970621a889f912f72377a96192e43e676ab8a85309468",
+  "source_hash": "57f715fd800574d5b07896aab7fbcec8172f90b5b51334d76255bf5f52b2219b",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1787305248,
+  "updated_at": 1787799472,
   "version": 2
 }
