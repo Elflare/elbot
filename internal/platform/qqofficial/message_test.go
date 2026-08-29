@@ -2,11 +2,13 @@ package qqofficial
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"elbot/internal/platform"
 	"elbot/internal/session"
@@ -25,12 +27,166 @@ func (h *captureHandler) HandleMessage(ctx context.Context, text string) error {
 	return nil
 }
 
-func TestHandleC2CMessageUsesCanonicalActorID(t *testing.T) {
-	adapter := New(Config{}, nil, nil)
+func TestHandleGroupAtMessageBuildsGroupContext(t *testing.T) {
+	raw := json.RawMessage(`{"id":"msg-1","group_openid":"group-1"}`)
+	adapter := New(Config{AppID: "bot-app", TriggerKeywords: []string{"芙莉丝"}}, nil, nil, nil)
 	handler := &captureHandler{}
-	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, c2cMessage{
+	adapter.handleGroupMessage(context.Background(), handler, payload{ID: "event-1", Type: eventGroupAtMessageCreate, Data: raw}, inboundMessage{
+		ID:          "msg-1",
+		GroupOpenID: "group-1",
+		Author:      inboundAuthor{MemberOpenID: "member-1"},
+		Content:     "@机器人 你好",
+	})
+
+	if handler.text != "你好" {
+		t.Fatalf("text = %q, want stripped group-at text", handler.text)
+	}
+	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	if msgCtx.ActorID != "qqofficial:member-1" || msgCtx.PlatformUserID != "member-1" {
+		t.Fatalf("actor/user = %q/%q", msgCtx.ActorID, msgCtx.PlatformUserID)
+	}
+	if msgCtx.ScopeID != "group:group-1" || msgCtx.ConversationKind != platform.ConversationGroup {
+		t.Fatalf("scope/conversation = %q/%q", msgCtx.ScopeID, msgCtx.ConversationKind)
+	}
+	if msgCtx.Bot.UserID != "bot-app" || len(msgCtx.Mentions) != 1 || msgCtx.Mentions[0].UserID != "bot-app" {
+		t.Fatalf("bot/mentions = %#v/%#v", msgCtx.Bot, msgCtx.Mentions)
+	}
+	if len(msgCtx.TriggerKeywords) != 1 || msgCtx.TriggerKeywords[0] != "芙莉丝" {
+		t.Fatalf("trigger keywords = %#v", msgCtx.TriggerKeywords)
+	}
+	if string(msgCtx.PlatformMessage) != string(raw) || msgCtx.RawText != "你好" {
+		t.Fatalf("raw context = %q/%q", msgCtx.PlatformMessage, msgCtx.RawText)
+	}
+	target, ok := handler.ctx.Value(targetKey{}).(sendTarget)
+	if !ok || target.Kind != targetGroup || target.OpenID != "group-1" || target.MsgID != "msg-1" {
+		t.Fatalf("target = %#v", target)
+	}
+}
+
+func TestHandleOrdinaryGroupMessageKeepsWakeupInputs(t *testing.T) {
+	adapter := New(Config{AppID: "bot-app", TriggerKeywords: []string{"芙莉丝"}}, nil, nil, nil)
+	handler := &captureHandler{}
+	adapter.handleGroupMessage(context.Background(), handler, payload{Type: eventGroupMessageCreate}, inboundMessage{
+		ID:          "msg-1",
+		GroupOpenID: "group-1",
+		Author:      inboundAuthor{MemberOpenID: "member-1"},
+		Content:     "芙莉丝，你好",
+	})
+
+	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	if handler.text != "芙莉丝，你好" || len(msgCtx.Mentions) != 0 {
+		t.Fatalf("text/mentions = %q/%#v", handler.text, msgCtx.Mentions)
+	}
+	if msgCtx.ReplyToMessageID != "" || len(msgCtx.TriggerKeywords) != 1 {
+		t.Fatalf("reply/keywords = %q/%#v", msgCtx.ReplyToMessageID, msgCtx.TriggerKeywords)
+	}
+}
+
+func TestHandleGroupMessageRecordsChatHistoryBeforeWakeup(t *testing.T) {
+	ctx := context.Background()
+	historyStore, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "chat-history.db"))
+	if err != nil {
+		t.Fatalf("new chat history: %v", err)
+	}
+	defer historyStore.Close()
+	history := historyStore.Repository()
+	adapter := New(Config{}, nil, history, nil)
+	handler := &captureHandler{}
+	adapter.handleGroupMessage(ctx, handler, payload{Type: eventGroupMessageCreate}, inboundMessage{
+		ID:          "msg-1",
+		GroupOpenID: "group-1",
+		Author:      inboundAuthor{MemberOpenID: "member-1"},
+		Content:     "普通消息",
+		Timestamp:   "2026-08-29T12:34:56+08:00",
+		MessageReference: &messageReference{
+			MessageID: "reply-1",
+		},
+	})
+
+	row, err := history.GetByPlatformMessage(ctx, platformName, "group:group-1", "msg-1")
+	if err != nil {
+		t.Fatalf("get chat history: %v", err)
+	}
+	if row.ScopeType != "group" || row.SenderID != "member-1" || row.Text != "普通消息" {
+		t.Fatalf("chat history = %#v", row)
+	}
+	if row.Raw != "普通消息" || row.ReplyToPlatformMessageID != "reply-1" {
+		t.Fatalf("chat history raw/reply = %q/%q", row.Raw, row.ReplyToPlatformMessageID)
+	}
+	wantTime := time.Date(2026, 8, 29, 12, 34, 56, 0, time.FixedZone("UTC+8", 8*60*60))
+	if !row.CreatedAt.Equal(wantTime) {
+		t.Fatalf("created at = %v, want %v", row.CreatedAt, wantTime)
+	}
+}
+
+func TestHandleGroupMessageAppliesAssistantReference(t *testing.T) {
+	ctx := context.Background()
+	store := newQQOfficialTestStore(t)
+	scope := session.Scope{ActorID: "qqofficial:member-1", Platform: platformName, PlatformScopeID: "group:group-1"}
+	first, _ := createQQOfficialAssistantMessages(t, ctx, store, scope)
+	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: platformName, PlatformScopeID: scope.PlatformScopeID, PlatformMessageID: "assistant-1", MessageID: first.ID, SessionID: first.SessionID}); err != nil {
+		t.Fatalf("map assistant: %v", err)
+	}
+	adapter := New(Config{}, store, nil, nil)
+	handler := &captureHandler{}
+	adapter.handleGroupMessage(ctx, handler, payload{Type: eventGroupMessageCreate}, inboundMessage{
+		ID:          "msg-1",
+		GroupOpenID: "group-1",
+		Author:      inboundAuthor{MemberOpenID: "member-1"},
+		Content:     "继续",
+		MessageReference: &messageReference{
+			MessageID: "assistant-1",
+		},
+	})
+
+	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	if msgCtx.ReplyToMessageID != "assistant-1" || msgCtx.ForkFromMessageID != first.ID {
+		t.Fatalf("reply/fork = %q/%q", msgCtx.ReplyToMessageID, msgCtx.ForkFromMessageID)
+	}
+}
+
+type asyncCaptureHandler struct {
+	result chan platform.MessageContext
+}
+
+func (h *asyncCaptureHandler) HandleMessage(ctx context.Context, _ string) error {
+	msg, _ := platform.MessageContextFrom(ctx)
+	h.result <- msg
+	return nil
+}
+
+func TestHandleDispatchRoutesOrdinaryGroupMessage(t *testing.T) {
+	adapter := New(Config{}, nil, nil, nil)
+	handler := &asyncCaptureHandler{result: make(chan platform.MessageContext, 1)}
+	data := json.RawMessage(`{"id":"msg-1","group_openid":"group-1","author":{"member_openid":"member-1"},"content":"hello"}`)
+	if err := adapter.handleDispatch(context.Background(), handler, payload{Type: eventGroupMessageCreate, Data: data}, &gatewayState{}); err != nil {
+		t.Fatalf("handle dispatch: %v", err)
+	}
+	select {
+	case msg := <-handler.result:
+		if msg.ScopeID != "group:group-1" {
+			t.Fatalf("scope = %q", msg.ScopeID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for group dispatch")
+	}
+}
+
+func TestHandleC2CMessageUsesCanonicalActorID(t *testing.T) {
+	adapter := New(Config{}, nil, nil, nil)
+	handler := &captureHandler{}
+	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:      "msg-1",
-		Author:  c2cAuthor{UserOpenID: "user-1"},
+		Author:  inboundAuthor{UserOpenID: "user-1"},
 		Content: "你好",
 	})
 	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
@@ -46,11 +202,11 @@ func TestHandleC2CMessageUsesCanonicalActorID(t *testing.T) {
 }
 
 func TestHandleC2CMessageAddsFallbackReferenceText(t *testing.T) {
-	adapter := New(Config{}, nil, nil)
+	adapter := New(Config{}, nil, nil, nil)
 	handler := &captureHandler{}
-	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, c2cMessage{
+	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:      "msg-1",
-		Author:  c2cAuthor{UserOpenID: "user-1"},
+		Author:  inboundAuthor{UserOpenID: "user-1"},
 		Content: "你看看有没",
 		MessageReference: &messageReference{
 			MessageID: "notice-1",
@@ -77,7 +233,7 @@ func TestHandleC2CMessageAddsFallbackReferenceText(t *testing.T) {
 func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
 	ctx := context.Background()
 	store := newQQOfficialTestStore(t)
-	adapter := New(Config{}, store, nil)
+	adapter := New(Config{}, store, nil, nil)
 	svc := session.NewService(store)
 	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: platformName, PlatformScopeID: "c2c:user-1"}
 	s, err := svc.Create(ctx, scope, session.CreateRequest{Title: "source"})
@@ -97,9 +253,9 @@ func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
 	}
 
 	handler := &captureHandler{}
-	adapter.handleC2CMessage(ctx, handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, c2cMessage{
+	adapter.handleC2CMessage(ctx, handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:               "msg-1",
-		Author:           c2cAuthor{UserOpenID: "user-1"},
+		Author:           inboundAuthor{UserOpenID: "user-1"},
 		Content:          "继续",
 		MessageReference: &messageReference{MessageID: "platform-old"},
 	})
@@ -117,11 +273,11 @@ func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
 
 func TestHandleC2CMessageImageAttachmentReachesHandler(t *testing.T) {
 	imageURL := "https://example.com/image.png"
-	adapter := New(Config{}, nil, nil)
+	adapter := New(Config{}, nil, nil, nil)
 	handler := &captureHandler{}
-	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, c2cMessage{
+	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:     "msg-1",
-		Author: c2cAuthor{UserOpenID: "user-1"},
+		Author: inboundAuthor{UserOpenID: "user-1"},
 		Attachments: []messageAttachment{{
 			URL:         imageURL,
 			ContentType: "image/png",
@@ -154,11 +310,11 @@ func TestHandleC2CMessageImageAttachmentReachesHandler(t *testing.T) {
 }
 
 func TestHandleC2CMessageStickerAttachmentStripsFaceFallback(t *testing.T) {
-	adapter := New(Config{}, nil, nil)
+	adapter := New(Config{}, nil, nil, nil)
 	handler := &captureHandler{}
-	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, c2cMessage{
+	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:      "msg-1",
-		Author:  c2cAuthor{UserOpenID: "user-1"},
+		Author:  inboundAuthor{UserOpenID: "user-1"},
 		Content: `<faceType=6,faceId="0",ext="eyJ0ZXh0IjoiIn0=">`,
 		Attachments: []messageAttachment{{
 			URL:         "https://example.com/sticker.jpg",
@@ -182,11 +338,11 @@ func TestHandleC2CMessageStickerAttachmentStripsFaceFallback(t *testing.T) {
 }
 
 func TestHandleC2CMessageTextAndStickerStripsOnlyFaceFallback(t *testing.T) {
-	adapter := New(Config{}, nil, nil)
+	adapter := New(Config{}, nil, nil, nil)
 	handler := &captureHandler{}
-	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, c2cMessage{
+	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:      "msg-1",
-		Author:  c2cAuthor{UserOpenID: "user-1"},
+		Author:  inboundAuthor{UserOpenID: "user-1"},
 		Content: `看看这个<faceType=6,faceId="0",ext="eyJ0ZXh0IjoiIn0=">`,
 		Attachments: []messageAttachment{{
 			URL:         "https://example.com/sticker.jpg",
@@ -216,7 +372,7 @@ func TestPrepareInboundAttachmentsSavesFileAttachment(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter := New(Config{AttachmentDir: t.TempDir()}, nil, nil)
+	adapter := New(Config{AttachmentDir: t.TempDir()}, nil, nil, nil)
 	adapter.client.http = server.Client()
 	prepared := adapter.prepareInboundAttachments(context.Background(), []messageAttachment{{
 		URL:         server.URL + "/file",
@@ -277,7 +433,7 @@ func TestPrepareSourceUsesStructuredSources(t *testing.T) {
 func TestHandleC2CMessageContinuesLatestAssistantReference(t *testing.T) {
 	ctx := context.Background()
 	store := newQQOfficialTestStore(t)
-	adapter := New(Config{}, store, nil)
+	adapter := New(Config{}, store, nil, nil)
 	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: platformName, PlatformScopeID: "c2c:user-1"}
 	_, latest := createQQOfficialAssistantMessages(t, ctx, store, scope)
 	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: platformName, PlatformScopeID: scope.PlatformScopeID, PlatformMessageID: "platform-latest", MessageID: latest.ID, SessionID: latest.SessionID}); err != nil {
@@ -285,9 +441,9 @@ func TestHandleC2CMessageContinuesLatestAssistantReference(t *testing.T) {
 	}
 
 	handler := &captureHandler{}
-	adapter.handleC2CMessage(ctx, handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, c2cMessage{
+	adapter.handleC2CMessage(ctx, handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:               "msg-1",
-		Author:           c2cAuthor{UserOpenID: "user-1"},
+		Author:           inboundAuthor{UserOpenID: "user-1"},
 		Content:          "继续",
 		MessageReference: &messageReference{MessageID: "platform-latest"},
 	})

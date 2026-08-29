@@ -15,14 +15,15 @@ import (
 )
 
 type apiClient struct {
-	cfg    Config
-	http   *http.Client
-	tokens *tokenSource
+	cfg     Config
+	http    *http.Client
+	tokens  *tokenSource
+	baseURL string
 }
 
 func newAPIClient(cfg Config) *apiClient {
 	h := &http.Client{Timeout: cfg.httpTimeout()}
-	return &apiClient{cfg: cfg, http: h, tokens: newTokenSource(cfg, h)}
+	return &apiClient{cfg: cfg, http: h, tokens: newTokenSource(cfg, h), baseURL: defaultAPIBaseURL}
 }
 
 func (c *apiClient) gateway(ctx context.Context) (string, error) {
@@ -36,16 +37,19 @@ func (c *apiClient) gateway(ctx context.Context) (string, error) {
 	return strings.TrimSpace(out.URL), nil
 }
 
-func (c *apiClient) sendMessage(ctx context.Context, openID string, msg messageToCreate) (messageResponse, error) {
+func (c *apiClient) sendMessage(ctx context.Context, target sendTarget, msg messageToCreate) (messageResponse, error) {
 	var out messageResponse
-	path := "/v2/users/" + url.PathEscape(openID) + "/messages"
+	path, err := targetAPIPath(target, "messages")
+	if err != nil {
+		return messageResponse{}, err
+	}
 	if err := c.doJSON(ctx, http.MethodPost, path, msg, &out); err != nil {
 		return messageResponse{}, err
 	}
 	return out, nil
 }
 
-func (c *apiClient) uploadFile(ctx context.Context, openID string, fileType int, source preparedSource) (uploadFileResponse, error) {
+func (c *apiClient) uploadFile(ctx context.Context, target sendTarget, fileType int, source preparedSource) (uploadFileResponse, error) {
 	reqBody := uploadFileRequest{FileType: fileType, SrvSendMsg: false}
 	if source.URL != "" {
 		reqBody.URL = source.URL
@@ -55,7 +59,10 @@ func (c *apiClient) uploadFile(ctx context.Context, openID string, fileType int,
 		return uploadFileResponse{}, fmt.Errorf("qqofficial media source is empty")
 	}
 	var out uploadFileResponse
-	path := "/v2/users/" + url.PathEscape(openID) + "/files"
+	path, err := targetAPIPath(target, "files")
+	if err != nil {
+		return uploadFileResponse{}, err
+	}
 	if err := c.doJSON(ctx, http.MethodPost, path, reqBody, &out); err != nil {
 		return uploadFileResponse{}, err
 	}
@@ -63,6 +70,23 @@ func (c *apiClient) uploadFile(ctx context.Context, openID string, fileType int,
 		return uploadFileResponse{}, fmt.Errorf("qqofficial upload returned empty file_info")
 	}
 	return out, nil
+}
+
+func targetAPIPath(target sendTarget, resource string) (string, error) {
+	openID := strings.TrimSpace(target.OpenID)
+	if openID == "" {
+		return "", fmt.Errorf("qqofficial target openid is empty")
+	}
+	var collection string
+	switch target.Kind {
+	case targetC2C:
+		collection = "users"
+	case targetGroup:
+		collection = "groups"
+	default:
+		return "", fmt.Errorf("qqofficial unsupported target kind %q", target.Kind)
+	}
+	return "/v2/" + collection + "/" + url.PathEscape(openID) + "/" + strings.TrimSpace(resource), nil
 }
 
 func (c *apiClient) doJSON(ctx context.Context, method, path string, in any, out any) error {
@@ -78,7 +102,11 @@ func (c *apiClient) doJSONWithRetry(ctx context.Context, method, path string, in
 		}
 		body = bytes.NewReader(data)
 	}
-	reqURL := strings.TrimRight(defaultAPIBaseURL, "/") + path
+	baseURL := strings.TrimRight(c.baseURL, "/")
+	if baseURL == "" {
+		baseURL = strings.TrimRight(defaultAPIBaseURL, "/")
+	}
+	reqURL := baseURL + path
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
 	if err != nil {
 		return err

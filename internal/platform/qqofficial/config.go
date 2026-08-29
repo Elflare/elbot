@@ -19,24 +19,25 @@ const (
 )
 
 type Config struct {
-	Enabled                  bool   `toml:"enabled"`
-	AppID                    string `toml:"app_id"`
-	ClientSecret             string `toml:"client_secret"`
-	ClientSecretEnv          string `toml:"client_secret_env"`
-	AllowProactive           *bool  `toml:"allow_proactive"`
-	MarkdownByDefault        *bool  `toml:"markdown_by_default"`
-	EnableKeyboard           *bool  `toml:"enable_keyboard"`
-	EnableArk                bool   `toml:"enable_ark"`
-	HTTPTimeoutSeconds       int    `toml:"http_timeout_seconds"`
-	ReconnectIntervalSeconds int    `toml:"reconnect_interval_seconds"`
-	AttachmentDir            string `toml:"-"`
-	MaxReceiveFileBytes      int64  `toml:"-"`
-	DownloadTimeoutSecs      int    `toml:"-"`
+	Enabled                  bool     `toml:"enabled"`
+	AppID                    string   `toml:"app_id"`
+	ClientSecret             string   `toml:"client_secret"`
+	ClientSecretEnv          string   `toml:"client_secret_env"`
+	AllowProactive           *bool    `toml:"allow_proactive"`
+	MarkdownByDefault        *bool    `toml:"markdown_by_default"`
+	EnableKeyboard           *bool    `toml:"enable_keyboard"`
+	EnableArk                bool     `toml:"enable_ark"`
+	HTTPTimeoutSeconds       int      `toml:"http_timeout_seconds"`
+	ReconnectIntervalSeconds int      `toml:"reconnect_interval_seconds"`
+	AttachmentDir            string   `toml:"-"`
+	MaxReceiveFileBytes      int64    `toml:"-"`
+	DownloadTimeoutSecs      int      `toml:"-"`
+	TriggerKeywords          []string `toml:"trigger_keywords"`
 	CommandPrefixes          []string
 	Superadmins              []string
 }
 
-func NewFromPlatformConfig(raw map[string]any, store storage.Store, logger Logger, superadmins []string, commandPrefixes []string, configEnvDir, attachmentDir string, maxReceiveFileBytes int64, downloadTimeoutSecs int) (*Adapter, error) {
+func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, logger Logger, superadmins []string, commandPrefixes []string, configEnvDir, attachmentDir string, maxReceiveFileBytes int64, downloadTimeoutSecs int) (*Adapter, error) {
 	var cfg Config
 	if err := platform.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode qqofficial config: %w", err)
@@ -60,7 +61,7 @@ func NewFromPlatformConfig(raw map[string]any, store storage.Store, logger Logge
 		}
 		cfg.ClientSecret = secret
 	}
-	return New(cfg, store, logger), nil
+	return New(cfg, store, chatHistory, logger), nil
 }
 
 func resolveSecret(cfg Config, configEnvDir string) (string, error) {

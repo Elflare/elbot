@@ -22,10 +22,11 @@ type Logger interface {
 }
 
 type Adapter struct {
-	cfg    Config
-	store  storage.Store
-	client *apiClient
-	logger Logger
+	cfg         Config
+	store       storage.Store
+	chatHistory storage.ChatHistoryRepository
+	client      *apiClient
+	logger      Logger
 
 	notify func(context.Context, string)
 
@@ -34,9 +35,9 @@ type Adapter struct {
 	wsWriteMu sync.Mutex
 }
 
-func New(cfg Config, store storage.Store, logger Logger) *Adapter {
+func New(cfg Config, store storage.Store, chatHistory storage.ChatHistoryRepository, logger Logger) *Adapter {
 	applyDefaults(&cfg)
-	return &Adapter{cfg: cfg, store: store, client: newAPIClient(cfg), logger: logger, seqByID: map[string]int{}}
+	return &Adapter{cfg: cfg, store: store, chatHistory: chatHistory, client: newAPIClient(cfg), logger: logger, seqByID: map[string]int{}}
 }
 
 func (a *Adapter) Name() string { return platformName }
@@ -90,16 +91,20 @@ func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (deli
 func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
 	target := notice.Target
 	outputs := notice.Outputs
+	if target.Empty() && isGroupToolPreviewNotice(ctx, outputs) {
+		return delivery.Receipt{}, nil
+	}
 	if target.Empty() {
 		return a.SendChat(ctx, outputs)
 	}
-	openIDs, err := a.targetOpenIDs(target)
+	targets, err := a.targets(target)
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
 	var receipt delivery.Receipt
-	for _, openID := range openIDs {
-		ctx := context.WithValue(ctx, targetKey{}, sendTarget{OpenID: openID, Proactive: true})
+	for _, target := range targets {
+		target.Proactive = true
+		ctx := context.WithValue(ctx, targetKey{}, target)
 		sent, err := a.sendContextOutput(ctx, outputs)
 		if err != nil {
 			return delivery.Receipt{}, err
@@ -109,30 +114,45 @@ func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (deliv
 	return receipt, nil
 }
 
-func (a *Adapter) targetOpenIDs(target delivery.Target) ([]string, error) {
+func (a *Adapter) targets(target delivery.Target) ([]sendTarget, error) {
 	if platformName := strings.TrimSpace(target.Platform); platformName != "" && platformName != a.Name() {
 		return nil, fmt.Errorf("qqofficial cannot send to platform %q", platformName)
 	}
 	if target.Superadmins {
-		ids := make([]string, 0, len(a.cfg.Superadmins))
+		targets := make([]sendTarget, 0, len(a.cfg.Superadmins))
 		for _, id := range a.cfg.Superadmins {
 			id = strings.TrimSpace(strings.TrimPrefix(id, platformName+":"))
 			if id != "" {
-				ids = append(ids, id)
+				targets = append(targets, sendTarget{Kind: targetC2C, OpenID: id})
 			}
 		}
-		if len(ids) == 0 {
+		if len(targets) == 0 {
 			return nil, fmt.Errorf("qqofficial superadmins are not configured")
 		}
-		return ids, nil
+		return targets, nil
 	}
 	if id := strings.TrimSpace(target.PrivateUserID); id != "" {
-		return []string{id}, nil
+		return []sendTarget{{Kind: targetC2C, OpenID: id}}, nil
 	}
-	if scope := strings.TrimSpace(target.ScopeID); strings.HasPrefix(scope, "c2c:") {
-		return []string{strings.TrimPrefix(scope, "c2c:")}, nil
+	if id := strings.TrimSpace(target.GroupID); id != "" {
+		return []sendTarget{{Kind: targetGroup, OpenID: id}}, nil
 	}
-	return nil, fmt.Errorf("qqofficial target missing private_user_id or c2c scope_id")
+	scope := strings.TrimSpace(target.ScopeID)
+	if strings.HasPrefix(scope, "c2c:") {
+		return []sendTarget{{Kind: targetC2C, OpenID: strings.TrimPrefix(scope, "c2c:")}}, nil
+	}
+	if strings.HasPrefix(scope, "group:") {
+		return []sendTarget{{Kind: targetGroup, OpenID: strings.TrimPrefix(scope, "group:")}}, nil
+	}
+	return nil, fmt.Errorf("qqofficial target missing private_user_id, group_id or scope_id")
+}
+
+func isGroupToolPreviewNotice(ctx context.Context, outputs []delivery.Output) bool {
+	if len(outputs) != 1 || outputs[0].Kind != delivery.KindText || !strings.HasPrefix(strings.TrimSpace(outputs[0].Text), "[tool]") {
+		return false
+	}
+	target, ok := ctx.Value(targetKey{}).(sendTarget)
+	return ok && target.Kind == targetGroup
 }
 
 func (a *Adapter) nextMsgSeq(msgID string) int {
@@ -167,11 +187,19 @@ func (a *Adapter) logWarn(ctx context.Context, msg string, attrs ...any) {
 }
 
 type sendTarget struct {
+	Kind      sendTargetKind
 	OpenID    string
 	MsgID     string
 	EventID   string
 	Proactive bool
 }
+
+type sendTargetKind string
+
+const (
+	targetC2C   sendTargetKind = "c2c"
+	targetGroup sendTargetKind = "group"
+)
 
 type targetKey struct{}
 

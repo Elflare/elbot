@@ -13,6 +13,7 @@ func killExecHookProcessTree(cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
-	_ = exec.Command("taskkill", "/T", "/F", "/PID", fmt.Sprint(cmd.Process.Pid)).Run()
+	out, err := exec.Command("taskkill", "/T", "/F", "/PID", fmt.Sprint(cmd.Process.Pid)).CombinedOutput()
+	fmt.Printf("taskkill pid=%d err=%v out=%s\n", cmd.Process.Pid, err, out)
 	_ = cmd.Process.Kill()
 }
