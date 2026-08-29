@@ -62,16 +62,20 @@ func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Out
 }
 
 func (a *Adapter) contextTarget(ctx context.Context) (sendTarget, error) {
-	if t, ok := ctx.Value(targetKey{}).(sendTarget); ok && strings.TrimSpace(t.OpenID) != "" {
+	if t, ok := ctx.Value(targetKey{}).(sendTarget); ok && t.Kind != "" && strings.TrimSpace(t.OpenID) != "" {
 		return t, nil
 	}
 	if msg, ok := platform.MessageContextFrom(ctx); ok {
-		openID := strings.TrimSpace(msg.PlatformUserID)
-		if strings.HasPrefix(openID, platformName+":") {
-			openID = strings.TrimPrefix(openID, platformName+":")
+		scope := strings.TrimSpace(msg.ScopeID)
+		if strings.HasPrefix(scope, "group:") {
+			return sendTarget{Kind: targetGroup, OpenID: strings.TrimPrefix(scope, "group:"), MsgID: metaString(msg.Meta, metaMsgID), EventID: metaString(msg.Meta, metaEventID)}, nil
 		}
+		if strings.HasPrefix(scope, "c2c:") {
+			return sendTarget{Kind: targetC2C, OpenID: strings.TrimPrefix(scope, "c2c:"), MsgID: metaString(msg.Meta, metaMsgID), EventID: metaString(msg.Meta, metaEventID)}, nil
+		}
+		openID := strings.TrimSpace(strings.TrimPrefix(msg.PlatformUserID, platformName+":"))
 		if openID != "" {
-			return sendTarget{OpenID: openID, MsgID: metaString(msg.Meta, metaMsgID), EventID: metaString(msg.Meta, metaEventID)}, nil
+			return sendTarget{Kind: targetC2C, OpenID: openID, MsgID: metaString(msg.Meta, metaMsgID), EventID: metaString(msg.Meta, metaEventID)}, nil
 		}
 	}
 	return sendTarget{}, fmt.Errorf("qqofficial send target missing")
@@ -92,7 +96,7 @@ func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) 
 		if a.cfg.enableKeyboard() && shouldAttachRiskKeyboard(text) {
 			msg.Keyboard = riskKeyboard(a.cfg.AppID)
 		}
-		resp, err := a.client.sendMessage(ctx, target.OpenID, msg)
+		resp, err := a.client.sendMessage(ctx, target, msg)
 		if err == nil {
 			return receiptWithMessageID(resp.ID), nil
 		}
@@ -101,7 +105,7 @@ func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) 
 	msg := a.baseMessage(target)
 	msg.MsgType = msgTypeText
 	msg.Content = text
-	resp, err := a.client.sendMessage(ctx, target.OpenID, msg)
+	resp, err := a.client.sendMessage(ctx, target, msg)
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
@@ -116,14 +120,14 @@ func (a *Adapter) sendMedia(ctx context.Context, target sendTarget, out delivery
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
-	uploaded, err := a.client.uploadFile(ctx, target.OpenID, fileType, source)
+	uploaded, err := a.client.uploadFile(ctx, target, fileType, source)
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
 	msg := a.baseMessage(target)
 	msg.MsgType = msgTypeMedia
 	msg.Media = &messageMedia{FileInfo: uploaded.FileInfo}
-	resp, err := a.client.sendMessage(ctx, target.OpenID, msg)
+	resp, err := a.client.sendMessage(ctx, target, msg)
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
@@ -148,7 +152,7 @@ func (a *Adapter) sendArk(ctx context.Context, target sendTarget, ark messageArk
 	msg := a.baseMessage(target)
 	msg.MsgType = msgTypeArk
 	msg.Ark = &ark
-	resp, err := a.client.sendMessage(ctx, target.OpenID, msg)
+	resp, err := a.client.sendMessage(ctx, target, msg)
 	if err != nil {
 		return delivery.Receipt{}, err
 	}

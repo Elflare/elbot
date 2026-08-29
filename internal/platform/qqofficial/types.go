@@ -14,9 +14,11 @@ const (
 
 	intentGroupAndC2C = 1 << 25
 
-	eventReady            = "READY"
-	eventResumed          = "RESUMED"
-	eventC2CMessageCreate = "C2C_MESSAGE_CREATE"
+	eventReady                = "READY"
+	eventResumed              = "RESUMED"
+	eventC2CMessageCreate     = "C2C_MESSAGE_CREATE"
+	eventGroupAtMessageCreate = "GROUP_AT_MESSAGE_CREATE"
+	eventGroupMessageCreate   = "GROUP_MESSAGE_CREATE"
 )
 
 type payload struct {
@@ -79,17 +81,19 @@ type apiErrorResponse struct {
 	Data    json.RawMessage `json:"data,omitempty"`
 }
 
-type c2cMessage struct {
+type inboundMessage struct {
 	ID               string              `json:"id"`
-	Author           c2cAuthor           `json:"author"`
+	GroupOpenID      string              `json:"group_openid,omitempty"`
+	Author           inboundAuthor       `json:"author"`
 	Content          string              `json:"content"`
 	Timestamp        string              `json:"timestamp"`
 	Attachments      []messageAttachment `json:"attachments"`
 	MessageReference *messageReference   `json:"message_reference,omitempty"`
 }
 
-type c2cAuthor struct {
-	UserOpenID string `json:"user_openid"`
+type inboundAuthor struct {
+	UserOpenID   string `json:"user_openid,omitempty"`
+	MemberOpenID string `json:"member_openid,omitempty"`
 }
 
 type messageAttachment struct {

@@ -165,11 +165,17 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler platform.PlatformH
 		state.resume = true
 		// a.logDebug(ctx, "qqofficial gateway resumed")
 	case eventC2CMessageCreate:
-		var msg c2cMessage
+		var msg inboundMessage
 		if err := json.Unmarshal(p.Data, &msg); err != nil {
 			return err
 		}
 		go a.handleC2CMessage(ctx, handler, p, msg)
+	case eventGroupAtMessageCreate, eventGroupMessageCreate:
+		var msg inboundMessage
+		if err := json.Unmarshal(p.Data, &msg); err != nil {
+			return err
+		}
+		go a.handleGroupMessage(ctx, handler, p, msg)
 	default:
 		if strings.TrimSpace(p.Type) != "" {
 			a.logDebug(ctx, "qqofficial dispatch ignored", "event", p.Type)

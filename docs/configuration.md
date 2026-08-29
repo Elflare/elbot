@@ -632,6 +632,7 @@ QQ 官方机器人最小配置示例：
 enabled = true
 app_id = "your-app-id"
 client_secret_env = "QQOFFICIAL_CLIENT_SECRET"
+trigger_keywords = ["bot"]
 ```
 
 对应的配置目录 `.env`：
@@ -641,6 +642,8 @@ QQOFFICIAL_CLIENT_SECRET=your-client-secret
 ```
 
 `client_secret_env` 指向保存 Client Secret 的环境变量名；也可以用 `client_secret` 直接写入配置，但不建议提交真实 Secret。
+
+QQ 官方机器人会处理私聊、群内 @ 和平台实际下发的普通群消息。群聊沿用统一唤醒规则：slash 命令、`trigger_keywords`、@ 机器人或引用机器人的历史回复会触发响应；未触发的普通群消息仍会写入聊天历史。普通群消息是否下发取决于 QQ 开放平台为机器人启用的群消息能力。
 
 QQ OneBot 最小配置示例：
 
