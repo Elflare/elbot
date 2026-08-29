@@ -48,6 +48,14 @@
       "translation": "Fixed an issue where pending messages received during the final LLM request of a tool flow were lost when the current turn ended;",
       "updated_at": 1784467084
     },
+    "CHANGELOG.md:list:04c00397a0a81099b04727ddb81250812b7c9ec2d9c2a6edce787a54c36414db": {
+      "kind": "list",
+      "source": "QQ 官方机器人此前只处理 C2C 私聊并忽略群事件；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "04c00397a0a81099b04727ddb81250812b7c9ec2d9c2a6edce787a54c36414db",
+      "translation": "The QQ official bot previously only handled C2C private chats and ignored group events;",
+      "updated_at": 1788011811
+    },
     "CHANGELOG.md:list:05a9e4447fd45b2d4076875eef3c2a7bdf6a16a84f6e8b476b1080ff1cffd0dd": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 不再向 LLM 暴露 __ELBOT_CODE_1__ 参数；系统会在用户确认前自动预检并生成 diff，预检失败不会进入确认或写入文件。",
@@ -247,6 +255,14 @@
       "source_hash": "2c14940f8f5aa7ab8978b0cd2dc3f461a7b7169821180297e66c8f8a73c700ea",
       "translation": "On Windows, the __ELBOT_CODE_0__ tool prioritizes __ELBOT_CODE_1__, followed by __ELBOT_CODE_2__, and finally falls back to __ELBOT_CODE_3__.",
       "updated_at": 1783334583
+    },
+    "CHANGELOG.md:list:2d2f8384bf21f69e676246aa8be9f8179209fbba541b604fe2ae2c83030290f0": {
+      "kind": "list",
+      "source": "现在支持群内 @ 和平台下发的普通群消息，按命令、触发词、@ 与引用回复唤醒，未唤醒消息也会进入聊天历史，并可向群聊回复或发送文本与媒体。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "2d2f8384bf21f69e676246aa8be9f8179209fbba541b604fe2ae2c83030290f0",
+      "translation": "Now supports @ mentions within groups and ordinary group messages delivered by the platform; awakening is triggered by commands, trigger words, @ mentions, and quoted replies. Messages that do not trigger awakening will also be added to the chat history, and the bot can now reply to or send text and media to group chats.",
+      "updated_at": 1788011811
     },
     "CHANGELOG.md:list:2f756ea7d8087b7077089523bb17dcc90b0b684370d97617d56618e4f644439c": {
       "kind": "list",
@@ -1490,8 +1506,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "57f715fd800574d5b07896aab7fbcec8172f90b5b51334d76255bf5f52b2219b",
+  "source_hash": "f2592dc0a0d36288d63376d659d7e08b2f308b71f6c22cae1436cb44915faabc",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1787799472,
+  "updated_at": 1788011811,
   "version": 2
 }

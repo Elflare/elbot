@@ -1552,6 +1552,14 @@
       "translation": "Proxies, tool paths, or variables shared by all Hooks should be placed in __ELBOT_CODE_0__, while variables used only by a single plugin should be placed in that plugin's __ELBOT_CODE_1__.",
       "updated_at": 1785918785
     },
+    "docs/configuration.md:paragraph:594e9a8654391b10807d6978df7e9887532a0525dbb2f4bbd3befeb0f48b32b5": {
+      "kind": "paragraph",
+      "source": "群聊沿用统一唤醒规则：slash 命令、__ELBOT_CODE_0__、@ 机器人或引用机器人的历史回复会触发响应；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "594e9a8654391b10807d6978df7e9887532a0525dbb2f4bbd3befeb0f48b32b5",
+      "translation": "Group chats follow the unified wake-up rules: slash commands, __ELBOT_CODE_0__, @ mentioning the bot, or quoting the bot's historical replies will trigger a response;",
+      "updated_at": 1788011776
+    },
     "docs/configuration.md:paragraph:5a5bec8bbef34f01cff918648d3bbcbc023eb3acebc6ab20ffb65af858842997": {
       "kind": "paragraph",
       "source": "对应的配置目录 __ELBOT_CODE_0__：\n",
@@ -1735,6 +1743,14 @@
       "source_hash": "8b93dd73a21f53da48f4a2f3a619552dde5ad0a618598e7182579ebef7c77363",
       "translation": "Resident memory data is saved by default in __ELBOT_CODE_0__ of the configuration directory, and the file is generated when the program runs for the first time. The length limits for the two resident memory segments, core and normal, can be set in the main configuration:\n",
       "updated_at": 1782206047
+    },
+    "docs/configuration.md:paragraph:8d4a3aa5a1bce6c9306825b96e3358b7ec0651b63fe2ddf04b9e478e09012931": {
+      "kind": "paragraph",
+      "source": "普通群消息是否下发取决于 QQ 开放平台为机器人启用的群消息能力。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "8d4a3aa5a1bce6c9306825b96e3358b7ec0651b63fe2ddf04b9e478e09012931",
+      "translation": "Whether ordinary group messages are delivered depends on the group message capabilities enabled for the bot by the QQ Open Platform.\n",
+      "updated_at": 1788011776
     },
     "docs/configuration.md:paragraph:8f55a79f41da642503fc80e443ad38f640089984463c1b174e811f92925dc2f9": {
       "kind": "paragraph",
@@ -1992,6 +2008,14 @@
       "translation": "Platform group owners or group administrators who are not in the superadmin list will still be handled according to the regular user rules.\n",
       "updated_at": 1783074493
     },
+    "docs/configuration.md:paragraph:c23a0a491bc82987ae425ba438821dc9d90afd9921a87e677d16cdd803da352d": {
+      "kind": "paragraph",
+      "source": "QQ 官方机器人会处理私聊、群内 @ 和平台实际下发的普通群消息。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "c23a0a491bc82987ae425ba438821dc9d90afd9921a87e677d16cdd803da352d",
+      "translation": "The QQ official bot handles private chats, @ mentions in groups, and ordinary group messages actually delivered by the platform.",
+      "updated_at": 1788011776
+    },
     "docs/configuration.md:paragraph:c306c9340d5dce66c699bc72b83b2579a553c3e5f115dd2a66472aa9ff8ab019": {
       "kind": "paragraph",
       "source": "Go 可执行文件按以下规则定位。\n",
@@ -2111,6 +2135,14 @@
       "source_hash": "e012d5bd70975db65cf5e7a4cedfe0ab37dd4d7faba5b2855774194f2f6f3979",
       "translation": "Runtime log configuration:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:eff1b3a214ad1f1428be0c4c00ed90a38f27635458f7426388951c2205ecf67c": {
+      "kind": "paragraph",
+      "source": "未触发的普通群消息仍会写入聊天历史。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "eff1b3a214ad1f1428be0c4c00ed90a38f27635458f7426388951c2205ecf67c",
+      "translation": "Ordinary group messages that do not trigger a response will still be written to the chat history.",
+      "updated_at": 1788011776
     },
     "docs/configuration.md:paragraph:f029aa2b74a012681841f18d5aa59e9cf2f12b8d539a9c04c70e951d6b7820e5": {
       "kind": "paragraph",
@@ -2386,8 +2418,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "22f3a344a73e94f45a35ee80d7cad87213f87e9a95eebbc54d41b2577b3d6ae4",
+  "source_hash": "742135cbd23e5acb683db6c294acdba3e7c93f39ec5f5054c80151958e3f01d0",
   "target": "docs.en/configuration.md",
-  "updated_at": 1787058728,
+  "updated_at": 1788011776,
   "version": 2
 }
