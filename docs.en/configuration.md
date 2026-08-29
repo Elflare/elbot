@@ -634,6 +634,7 @@ Minimum configuration example for the official QQ bot:
 enabled = true
 app_id = "your-app-id"
 client_secret_env = "QQOFFICIAL_CLIENT_SECRET"
+trigger_keywords = ["bot"]
 ```
 
 The corresponding configuration directory `.env`:
@@ -643,6 +644,8 @@ QQOFFICIAL_CLIENT_SECRET=your-client-secret
 ```
 
 `client_secret_env` points to the environment variable name that stores the Client Secret; You can also use `client_secret` to write configurations directly, but it is not recommended to commit actual Secrets.
+
+The QQ official bot handles private chats, @ mentions in groups, and ordinary group messages actually delivered by the platform. Group chats follow the unified wake-up rules: slash commands, `trigger_keywords`, @ mentioning the bot, or quoting the bot's historical replies will trigger a response; Ordinary group messages that do not trigger a response will still be written to the chat history. Whether ordinary group messages are delivered depends on the group message capabilities enabled for the bot by the QQ Open Platform.
 
 Minimum configuration example for QQ OneBot:
 
