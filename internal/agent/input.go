@@ -17,7 +17,43 @@ import (
 	"elbot/internal/turn"
 )
 
-const appendConfirmPrompt = "已停止当前处理。是否追加这条消息并重新发送？\n发送 $ / 是 / y / yes 确认；发送 取消 / 否 / n / no 放弃。\n也可以继续发送内容，发送完后再确认。"
+const defaultUserConfirmationTimeout = 10 * time.Minute
+
+func (a *Agent) confirmationWaitTimeout(ctx context.Context) time.Duration {
+	actor := a.actor(ctx)
+	isSuperadmin := actor.Role == security.RoleSuperadmin
+	ttlMinutes := a.idleExpiration.TTLMinutes(a.scope(ctx), isSuperadmin)
+	var sessionTimeout time.Duration
+	if ttlMinutes > 0 {
+		sessionTimeout = time.Duration(ttlMinutes) * time.Minute
+	}
+	if isSuperadmin {
+		return sessionTimeout
+	}
+	userTimeout := a.userConfirmationTimeout
+	if userTimeout <= 0 {
+		userTimeout = defaultUserConfirmationTimeout
+	}
+	if sessionTimeout > 0 && sessionTimeout < userTimeout {
+		return sessionTimeout
+	}
+	return userTimeout
+}
+
+func confirmationWaitDurationText(timeout time.Duration) string {
+	if timeout%time.Minute == 0 {
+		return fmt.Sprintf("%d 分钟", int(timeout/time.Minute))
+	}
+	return timeout.String()
+}
+
+func appendConfirmPromptText(timeout time.Duration) string {
+	text := "已停止当前处理。是否追加这条消息并重新发送？\n发送 $ / 是 / y / yes 确认；发送 取消 / 否 / n / no 放弃。\n也可以继续发送内容，发送完后再确认。"
+	if timeout > 0 {
+		text += fmt.Sprintf("\n超过 %s 没有继续发送内容或确认，将自动放弃。", confirmationWaitDurationText(timeout))
+	}
+	return text
+}
 
 func (a *Agent) handleAppendConfirmationInput(ctx context.Context, session *storage.Session, text string) error {
 	switch {
@@ -110,8 +146,19 @@ func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session
 		return a.handleAppendConfirmationInput(ctx, session, text)
 	case turn.PhaseLLM:
 		a.requests.CancelSession(session.ID)
-		a.turns.InterruptLLMInput(session.ID, inboundTurnInput(ctx, text))
-		a.sendChat(ctx, appendConfirmPrompt)
+		if !a.turns.InterruptLLMInput(session.ID, inboundTurnInput(ctx, text)) {
+			return nil
+		}
+		timeout := a.confirmationWaitTimeout(ctx)
+		a.sendChat(ctx, appendConfirmPromptText(timeout))
+		if timeout > 0 {
+			waitCtx := context.WithoutCancel(ctx)
+			go func() {
+				if a.turns.AwaitAppendExpiration(session.ID, timeout) {
+					a.sendChat(waitCtx, "追加确认已过期，待追加内容已丢弃，本轮处理已停止。")
+				}
+			}()
+		}
 		return nil
 	case turn.PhaseTool:
 		a.turns.AppendPendingInput(session.ID, inboundTurnInput(ctx, text))
@@ -183,6 +230,9 @@ func (a *Agent) handleRiskConfirmationInput(ctx context.Context, sessionID, text
 	parsed := a.commands.Parse(text)
 	switch parsed.Name {
 	case "detail", "details":
+		if !a.turns.RefreshRiskConfirmation(sessionID) {
+			return nil
+		}
 		a.logRiskConfirmationAction(sessionID, "detail", confirmation, "")
 		a.sendChat(ctx, riskConfirmationDetailText(confirmation))
 	case "confirm", "c":

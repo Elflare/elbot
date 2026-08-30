@@ -66,11 +66,12 @@ type Agent struct {
 	autoConfirmTools   map[string]map[string]bool
 	visionFallbackMu   sync.Mutex
 
-	visionFallbackNotified map[string]bool
-	responseTimeout        time.Duration
-	discoveredTools        map[string]map[string]llm.ToolSchema
-	actorID                string
-	scopeID                string
+	visionFallbackNotified  map[string]bool
+	responseTimeout         time.Duration
+	userConfirmationTimeout time.Duration
+	discoveredTools         map[string]map[string]llm.ToolSchema
+	actorID                 string
+	scopeID                 string
 }
 
 // New creates a new Agent.
@@ -157,29 +158,30 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		outputs = delivery.NewManager(nil, nil)
 	}
 	a := &Agent{
-		platform:               p,
-		platformSenders:        map[string]delivery.MessageSender{},
-		modelRuntime:           newModelRuntimeState(client, workModel.Model, workModel.Provider, provider, providers, modeModels, clients),
-		statePath:              statePath,
-		stateModTime:           stateModTime,
-		store:                  store,
-		sessions:               sessions,
-		requests:               requests,
-		turns:                  turns,
-		commands:               command.NewRouter(prefixes),
-		soul:                   promptSoul,
-		residentMemory:         opts.ResidentMemoryStore,
-		securityPolicy:         policy,
-		contextRuntime:         newContextRuntimeState(store, sessions, requests, turns),
-		hooks:                  hookManager,
-		hookRuntime:            opts.HookRuntime,
-		outputs:                outputs,
-		namingModel:            namingSelection,
-		runtimeStatus:          map[string]runtimestatus.Snapshot{},
-		autoConfirmSession:     map[string]bool{},
-		autoConfirmTools:       map[string]map[string]bool{},
-		visionFallbackNotified: map[string]bool{},
-		responseTimeout:        responseTimeout(llmRequestConfig),
+		platform:                p,
+		platformSenders:         map[string]delivery.MessageSender{},
+		modelRuntime:            newModelRuntimeState(client, workModel.Model, workModel.Provider, provider, providers, modeModels, clients),
+		statePath:               statePath,
+		stateModTime:            stateModTime,
+		store:                   store,
+		sessions:                sessions,
+		requests:                requests,
+		turns:                   turns,
+		commands:                command.NewRouter(prefixes),
+		soul:                    promptSoul,
+		residentMemory:          opts.ResidentMemoryStore,
+		securityPolicy:          policy,
+		contextRuntime:          newContextRuntimeState(store, sessions, requests, turns),
+		hooks:                   hookManager,
+		hookRuntime:             opts.HookRuntime,
+		outputs:                 outputs,
+		namingModel:             namingSelection,
+		runtimeStatus:           map[string]runtimestatus.Snapshot{},
+		autoConfirmSession:      map[string]bool{},
+		autoConfirmTools:        map[string]map[string]bool{},
+		visionFallbackNotified:  map[string]bool{},
+		responseTimeout:         responseTimeout(llmRequestConfig),
+		userConfirmationTimeout: defaultUserConfirmationTimeout,
 
 		discoveredTools: map[string]map[string]llm.ToolSchema{},
 

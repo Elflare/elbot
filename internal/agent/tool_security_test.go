@@ -20,6 +20,35 @@ import (
 	"elbot/internal/turn"
 )
 
+func TestRiskConfirmationExpiresAndStopsToolFlow(t *testing.T) {
+	p := &fakePlatform{}
+	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a.userConfirmationTimeout = 20 * time.Millisecond
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "regular", ScopeID: "private:regular"})
+	ctx = security.WithActor(ctx, security.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: security.RoleUser})
+	s, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "expiring confirmation"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.turns.StartLLM(s.ID, "run") || !a.turns.StartToolPhase(s.ID) {
+		t.Fatal("failed to enter tool phase")
+	}
+
+	result, err := (agentToolRunDeps{agent: a}).ConfirmToolCall(ctx, s.ID, llm.ToolCallRequest{ID: "call_1", Name: "owner_tool", Arguments: "{}"}, tool.RiskAssessment{Level: tool.RiskHigh}, "")
+	if err != nil {
+		t.Fatalf("ConfirmToolCall: %v", err)
+	}
+	if !result.Stopped || result.Allowed {
+		t.Fatalf("result = %#v", result)
+	}
+	if got := a.turns.Snapshot(s.ID).Phase; got != turn.PhaseIdle {
+		t.Fatalf("phase = %s", got)
+	}
+	output := p.out.String()
+	if !strings.Contains(output, "20ms") || !strings.Contains(output, "确认已过期") {
+		t.Fatalf("output = %q", output)
+	}
+}
 func TestRiskConfirmationStopUsesStopCommandWithoutToolError(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)

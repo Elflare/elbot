@@ -31,7 +31,7 @@ type ExpireIdleResult struct {
 }
 
 func (s *Service) ExpireIdleCurrent(ctx context.Context, req ExpireIdleRequest) (ExpireIdleResult, error) {
-	ttlMinutes := req.Config.ttlMinutes(req.Scope, req.IsSuperadmin)
+	ttlMinutes := req.Config.TTLMinutes(req.Scope, req.IsSuperadmin)
 	if ttlMinutes <= 0 {
 		return ExpireIdleResult{}, nil
 	}
@@ -60,7 +60,8 @@ func (s *Service) ExpireIdleCurrent(ctx context.Context, req ExpireIdleRequest) 
 	return ExpireIdleResult{Expired: true, SessionID: session.ID, TTLMinutes: ttlMinutes}, nil
 }
 
-func (c IdleExpirationConfig) ttlMinutes(scope Scope, isSuperadmin bool) int {
+// TTLMinutes returns the configured idle limit for the scope and role.
+func (c IdleExpirationConfig) TTLMinutes(scope Scope, isSuperadmin bool) int {
 	if isGroupScope(scope.PlatformScopeID) {
 		if isSuperadmin {
 			return c.GroupSuperadminTTLMinutes
