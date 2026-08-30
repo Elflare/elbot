@@ -64,6 +64,14 @@
       "translation": "__ELBOT_CODE_0__ no longer exposes the __ELBOT_CODE_1__ parameter to the LLM; the system will automatically pre-check and generate a diff before user confirmation, and if the pre-check fails, it will not proceed to confirmation or write to the file.",
       "updated_at": 1782631048
     },
+    "CHANGELOG.md:list:074bd5829a69931af8824fb7df435a2bcd12bcb2d75a1960fbd8c089259479c1": {
+      "kind": "list",
+      "source": "超级管理员不受额外的 10 分钟限制，但仍遵守已启用的 Session TTL。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "074bd5829a69931af8824fb7df435a2bcd12bcb2d75a1960fbd8c089259479c1",
+      "translation": "Superadmins are not subject to the additional 10-minute limit but still adhere to the enabled Session TTL.",
+      "updated_at": 1788078727
+    },
     "CHANGELOG.md:list:08a9f4bd4b91764404716cc4408cc3a4cebdbd94393d6470bde4721425c133b3": {
       "kind": "list",
       "source": "现在不在启动elbot的时候校验ELyph语法，免得拖慢启动速度",
@@ -744,6 +752,14 @@
       "translation": "Fixed an issue where API timeouts when sending images/emojis/files via QQ OneBot might cancel WebSocket writes and trigger disconnection and reconnection; a text notification will now be attempted to the same target when media sending fails.",
       "updated_at": 1782399367
     },
+    "CHANGELOG.md:list:821e087b489e1d99289c0a600c70df68d05142dd278f1e890080d9faf2539329": {
+      "kind": "list",
+      "source": "现在默认在 10 分钟无有效操作后停止，若对应 Session TTL 更短则以其为上限，追加内容或 __ELBOT_CODE_0__ 会续期。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "821e087b489e1d99289c0a600c70df68d05142dd278f1e890080d9faf2539329",
+      "translation": "Now, it stops by default after 10 minutes of no valid operation; if the corresponding Session TTL is shorter, that will be the limit. Appended content or __ELBOT_CODE_0__ will renew the timeout.",
+      "updated_at": 1788078727
+    },
     "CHANGELOG.md:list:83aa655090903e728d1214292cfd1dd5bdd99b5ae467bc2329b6108a14d1a622": {
       "kind": "list",
       "source": "**原生与外置 Skill**：__ELBOT_CODE_0__ 元工具支持 LLM 创建原生 EL Skill（纯 ELyph 或附带 Go 源码并编译）；",
@@ -871,6 +887,14 @@
       "source_hash": "8ffa77eae1271a9d65560102a519441480c611c59382b37fe40218bdc1078f80",
       "translation": "High-risk confirmation details for __ELBOT_CODE_0__ now display operations such as replace, add, delete, and match by file, mode, and editing step.",
       "updated_at": 1782631048
+    },
+    "CHANGELOG.md:list:922424784303fc3c45ac616053b3dfec7cfba11452ddf91c54812e855710eb0c": {
+      "kind": "list",
+      "source": "普通用户的追加重发与高风险工具确认此前会无限等待并长期占用当前 Turn；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "922424784303fc3c45ac616053b3dfec7cfba11452ddf91c54812e855710eb0c",
+      "translation": "Previously, append-and-resend for regular users and high-risk tool confirmations would wait indefinitely and occupy the current Turn for a long time;",
+      "updated_at": 1788078727
     },
     "CHANGELOG.md:list:92385f55b6d2a02dc7846f955909efbbdcebe6cd99af4be8ab209faab39b449b": {
       "kind": "list",
@@ -1506,8 +1530,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "f2592dc0a0d36288d63376d659d7e08b2f308b71f6c22cae1436cb44915faabc",
+  "source_hash": "8d9d8ac2c7f608b0af6004d05256f962701ca853c07a7d36932648a2ed067d8d",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1788011811,
+  "updated_at": 1788078727,
   "version": 2
 }
