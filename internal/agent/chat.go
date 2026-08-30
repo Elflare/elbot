@@ -284,6 +284,9 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		toolRounds++
 		execution := a.executeToolCalls(reqCtx, session, result.ToolCalls, assistantRawText, assistantRawText, out)
 		if execution.Stopped {
+			if err := reqCtx.Err(); err != nil {
+				return a.handleTurnContextDone(ctx, session.ID, err, out)
+			}
 			return nil
 		}
 		llmMessages[assistantToolCallIndex].ToolCalls = append([]llm.ToolCallRequest(nil), execution.PreparedCalls...)

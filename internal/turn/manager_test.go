@@ -1,6 +1,7 @@
 package turn
 
 import (
+	"context"
 	"elbot/internal/llm"
 	"testing"
 	"time"
@@ -209,6 +210,96 @@ func TestFinishRequestStopsRiskConfirmation(t *testing.T) {
 	}
 }
 
+func TestAppendConfirmationExpirationRefreshesOnContent(t *testing.T) {
+	m := NewManager()
+	m.StartLLM("s1", "start")
+	m.InterruptLLM("s1", "more")
+
+	expired := make(chan bool, 1)
+	go func() { expired <- m.AwaitAppendExpiration("s1", 80*time.Millisecond) }()
+	time.Sleep(50 * time.Millisecond)
+	if !m.AppendPending("s1", "latest") {
+		t.Fatal("append did not refresh confirmation wait")
+	}
+	time.Sleep(50 * time.Millisecond)
+	if got := m.Snapshot("s1").Phase; got != PhaseAwaitAppendConfirm {
+		t.Fatalf("phase after refresh = %s", got)
+	}
+
+	select {
+	case ok := <-expired:
+		if !ok {
+			t.Fatal("append wait ended without expiring")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("append wait did not expire")
+	}
+	if got := m.Snapshot("s1").Phase; got != PhaseIdle {
+		t.Fatalf("phase after expiry = %s", got)
+	}
+}
+
+func TestExpiredAppendWaitCannotRemoveNewTurn(t *testing.T) {
+	m := NewManager()
+	m.StartLLM("s1", "first")
+	m.InterruptLLM("s1", "more")
+	oldWait := make(chan bool, 1)
+	go func() { oldWait <- m.AwaitAppendExpiration("s1", 100*time.Millisecond) }()
+	time.Sleep(10 * time.Millisecond)
+	if !m.CancelAppend("s1") {
+		t.Fatal("cancel append failed")
+	}
+	if !m.StartLLM("s1", "second") || !m.InterruptLLM("s1", "new more") {
+		t.Fatal("failed to start replacement append wait")
+	}
+
+	select {
+	case expired := <-oldWait:
+		if expired {
+			t.Fatal("canceled append wait reported expiry")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled append waiter was not released")
+	}
+	time.Sleep(110 * time.Millisecond)
+	if got := m.Snapshot("s1").Phase; got != PhaseAwaitAppendConfirm {
+		t.Fatalf("replacement phase = %s", got)
+	}
+}
+func TestRiskConfirmationExpirationRefreshesOnDetail(t *testing.T) {
+	m := NewManager()
+	m.StartLLM("s1", "start")
+	m.StartToolPhase("s1")
+
+	result := make(chan RiskConfirmationResponse, 1)
+	go func() {
+		resp, _ := m.AwaitRiskConfirmationContext(context.Background(), "s1", RiskConfirmation{ID: "c1", ToolName: "shell"}, 80*time.Millisecond)
+		result <- resp
+	}()
+	waitForPhase(t, m, "s1", PhaseAwaitRiskConfirm)
+	time.Sleep(50 * time.Millisecond)
+	if !m.RefreshRiskConfirmation("s1") {
+		t.Fatal("detail did not refresh risk confirmation wait")
+	}
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case resp := <-result:
+		t.Fatalf("risk wait expired before refreshed deadline: %#v", resp)
+	default:
+	}
+
+	select {
+	case resp := <-result:
+		if !resp.Stopped || !resp.Expired {
+			t.Fatalf("response = %#v, want expired stop", resp)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("risk confirmation did not expire")
+	}
+	if got := m.Snapshot("s1").Phase; got != PhaseIdle {
+		t.Fatalf("phase after expiry = %s", got)
+	}
+}
 func waitForPhase(t *testing.T, m *Manager, sessionID string, phase Phase) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)

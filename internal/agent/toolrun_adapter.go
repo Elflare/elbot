@@ -94,9 +94,15 @@ func (d agentToolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string,
 	}
 	fullArgs := compactArguments(call.Arguments)
 	previewArgs := previewArguments(fullArgs)
+	timeout := d.agent.confirmationWaitTimeout(ctx)
 	d.agent.logRiskConfirmationWait(sessionID, call, assessment.Level, assessment.Reasons)
-	d.agent.sendChat(ctx, fmt.Sprintf("高风险工具调用等待确认\n工具：%s\n风险：%s\n参数：%s%s\n%s。", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText()))
-	resp, ok := d.agent.turns.AwaitRiskConfirmation(sessionID, turn.RiskConfirmation{ID: call.ID, ToolName: call.Name, Arguments: fullArgs, Risk: string(assessment.Level), Summary: fmt.Sprintf("%s %s", call.Name, previewArgs), Detail: detail})
+	d.agent.sendChat(ctx, fmt.Sprintf("高风险工具调用等待确认\n工具：%s\n风险：%s\n参数：%s%s\n%s。", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout)))
+	resp, ok := d.agent.turns.AwaitRiskConfirmationContext(ctx, sessionID, turn.RiskConfirmation{ID: call.ID, ToolName: call.Name, Arguments: fullArgs, Risk: string(assessment.Level), Summary: fmt.Sprintf("%s %s", call.Name, previewArgs), Detail: detail}, timeout)
+	if resp.Expired {
+		d.agent.logRiskConfirmationResult(sessionID, call, assessment.Level, "expire", resp.Extra, "confirmation wait expired")
+		d.agent.sendChat(context.WithoutCancel(ctx), "高风险工具确认已过期，当前处理已停止。")
+		return toolrun.ConfirmResult{Allowed: false, Extra: resp.Extra, Message: llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s confirmation expired", call.Name))}, Stopped: true}, nil
+	}
 	if !ok || resp.Stopped {
 		d.agent.logRiskConfirmationResult(sessionID, call, assessment.Level, "stop", resp.Extra, "")
 		return toolrun.ConfirmResult{Allowed: false, Extra: resp.Extra, Message: llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s stopped by user", call.Name))}, Stopped: true}, nil

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"elbot/internal/command"
 	"elbot/internal/turn"
@@ -38,8 +39,12 @@ func riskConfirmationCommandHelp() string {
 	return strings.Join(parts, "；")
 }
 
-func riskConfirmationPromptText() string {
-	return "可用指令：" + riskConfirmationCommandHelp()
+func riskConfirmationPromptText(timeout time.Duration) string {
+	text := "可用指令：" + riskConfirmationCommandHelp()
+	if timeout > 0 {
+		text += fmt.Sprintf("；超过 %s 没有执行有效操作将自动停止，/detail 可重新计时", confirmationWaitDurationText(timeout))
+	}
+	return text
 }
 
 func riskConfirmationWaitingText() string {
