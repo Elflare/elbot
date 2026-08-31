@@ -9,10 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- QQ official bot now supports group chats
+
 ### Changed
 
 - Previously, append-and-resend for regular users and high-risk tool confirmations would wait indefinitely and occupy the current Turn for a long time; Now, it stops by default after 10 minutes of no valid operation; if the corresponding Session TTL is shorter, that will be the limit. Appended content or `/detail` will renew the timeout. Superadmins are not subject to the additional 10-minute limit but still adhere to the enabled Session TTL.
-- The QQ official bot previously only handled C2C private chats and ignored group events; Now supports @ mentions within groups and ordinary group messages delivered by the platform; awakening is triggered by commands, trigger words, @ mentions, and quoted replies. Messages that do not trigger awakening will also be added to the chat history, and the bot can now reply to or send text and media to group chats.
 - Multimodal images were previously only sent as `image_url` content segments; the model could see the images but did not know the reusable addresses; Now, a user text label containing the sequence number within the message, name, and HTTP(S) URL will be derived before each image; persistence `content` and visual fallback use the same text projection, while `segments` still only saves the original structure and requires no database migration.
 - `/stop`, request timeouts, or upstream cancellations will now terminate the full process tree of one-time exec Hooks to avoid residual child processes spawned by the Hook; Persistent Workers will instead receive `event.cancel` and continue to be reused.
 - Non-existent `#文件` references in the CLI TUI are now sent as plain text as-is and no longer block message submission; files that exist within the same message will still be expanded normally.
