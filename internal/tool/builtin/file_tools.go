@@ -9,10 +9,17 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"elbot/internal/llm"
 	"elbot/internal/tool"
 	"elbot/internal/utils/fileops"
+)
+
+const (
+	fileToolDetailedMaxBytes = int64(fileops.MaxFileSize)
+	fileToolMaxBytes         = 100 * 1024 * 1024
+	editDetailMaxBytes       = 4 * 1024
 )
 
 type ReadFileTool struct {
@@ -162,12 +169,22 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		}
 		return readFileDirectorySearch(ctx, path, mode, args, resolved.Warnings, t.astCache)
 	}
-	file, err := fileops.ReadFile(path, args.Encoding)
+	if info.Size() > fileToolMaxBytes {
+		return nil, fmt.Errorf("file too large: %d bytes exceeds %d", info.Size(), fileToolMaxBytes)
+	}
+	largeFile := info.Size() > fileToolDetailedMaxBytes
+	if largeFile && (mode == readFileModeAST || mode == readFileModeASTFunction) {
+		return nil, fmt.Errorf("%s mode is disabled for this %d-byte file; use read or grep mode", mode, info.Size())
+	}
+	file, err := fileops.ReadFileWithLimit(path, args.Encoding, fileToolMaxBytes)
 	if err != nil {
 		return nil, err
 	}
 	lines := fileops.SplitLines(file.Text)
 	warnings := append(resolved.Warnings, t.FileGuard.ReadWarnings(path)...)
+	if largeFile {
+		warnings = append(warnings, fmt.Sprintf("large file: %d bytes; ast and ast_function modes are disabled", info.Size()))
+	}
 	switch mode {
 	case readFileModeGrep:
 		return readFileGrepResult(file, lines, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
@@ -464,11 +481,35 @@ func writeIndentedBlock(b *strings.Builder, title, text string) {
 		b.WriteString("  (空)\n")
 		return
 	}
-	for _, line := range strings.Split(text, "\n") {
+	originalBytes := len(text)
+	originalLines := strings.Count(text, "\n") + 1
+	displayed, truncated := truncateUTF8Bytes(text, editDetailMaxBytes)
+	for _, line := range strings.Split(displayed, "\n") {
 		b.WriteString("  " + line + "\n")
+	}
+	if truncated {
+		fmt.Fprintf(b, "  ...（已省略；原文 %d 字节，%d 行）\n", originalBytes, originalLines)
 	}
 }
 
+func truncateUTF8Bytes(text string, maxBytes int) (string, bool) {
+	if maxBytes <= 0 || len(text) <= maxBytes {
+		return text, false
+	}
+	end := maxBytes
+	for end > 0 && !utf8.RuneStart(text[end]) {
+		end--
+	}
+	return text[:end], true
+}
+
+func fileToolEditOptions() fileops.EditFileOptions {
+	return fileops.EditFileOptions{
+		MaxInputBytes:        fileToolMaxBytes,
+		MaxOutputBytes:       fileToolMaxBytes,
+		DetailedDiffMaxBytes: fileToolDetailedMaxBytes,
+	}
+}
 func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
@@ -483,7 +524,7 @@ func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	if err := t.FileGuard.CheckWrite(resolved.Path); err != nil {
 		return nil, err
 	}
-	result, err := fileops.EditFile(resolved.Path, args.Encoding, args.ExpectedRevision, args.Create, false, args.ContextLines, args.Edits)
+	result, err := fileops.EditFileWithOptions(resolved.Path, args.Encoding, args.ExpectedRevision, args.Create, false, args.ContextLines, args.Edits, fileToolEditOptions())
 	if err != nil {
 		return nil, err
 	}
@@ -499,7 +540,7 @@ func previewEditFile(ctx context.Context, args editFileArgs, fileGuard *FileGuar
 	if err := fileGuard.CheckWrite(resolved.Path); err != nil {
 		return fileops.EditResult{}, err
 	}
-	result, err := fileops.EditFile(resolved.Path, args.Encoding, args.ExpectedRevision, args.Create, true, args.ContextLines, args.Edits)
+	result, err := fileops.EditFileWithOptions(resolved.Path, args.Encoding, args.ExpectedRevision, args.Create, true, args.ContextLines, args.Edits, fileToolEditOptions())
 	if err != nil {
 		return fileops.EditResult{}, fmt.Errorf("preflight edit_file: %w", err)
 	}
