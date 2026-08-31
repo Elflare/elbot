@@ -680,6 +680,22 @@
       "translation": "Added __ELBOT_CODE_2__ and __ELBOT_CODE_3__ parameters to the __ELBOT_CODE_1__ operation of __ELBOT_CODE_0__: when __ELBOT_CODE_4__, it matches the entire line by single-line prefix (tolerating leading indentation to avoid newline character matching errors); __ELBOT_CODE_5__ (default) maintains exact substring semantics.",
       "updated_at": 1782298716
     },
+    "CHANGELOG.md:list:754ce0b1d37971727b96391f1b6da613a4c9541db3d18159066ee1bf0a085415": {
+      "kind": "list",
+      "source": "现在 2–100 MiB 文件可继续按行读取、grep 和编辑，仅在实际调用时根据文件大小禁用 AST、完整 diff 和过长确认内容，并保留 revision 校验、预检与原子写入。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "754ce0b1d37971727b96391f1b6da613a4c9541db3d18159066ee1bf0a085415",
+      "translation": "Now, files between 2–100 MiB can still be read line-by-line, grepped, and edited; AST, full diffs, and overly long confirmation content are disabled based on file size only during actual calls, while revision verification, pre-checks, and atomic writes are preserved.",
+      "updated_at": 1788138091
+    },
+    "CHANGELOG.md:list:77ae9951fcdb074ce3197606d3bcda43ebb29a1e7431e3226b28b8c30d008ce8": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 此前会完全拒绝超过 2 MiB 的文本文件；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "77ae9951fcdb074ce3197606d3bcda43ebb29a1e7431e3226b28b8c30d008ce8",
+      "translation": "__ELBOT_CODE_0__ and __ELBOT_CODE_1__ previously completely rejected text files exceeding 2 MiB;",
+      "updated_at": 1788138091
+    },
     "CHANGELOG.md:list:79e13956de2275bf7954e4071d4c7b43e177af53dfe03d7cdaac4cbd1cab4431": {
       "kind": "list",
       "source": "修复 __ELBOT_CODE_0__ 可以临时改写本 turn 初始输入或历史消息、pending 图片在排队时丢失且 Hook 修改未持久化的问题；",
@@ -1530,8 +1546,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "8d9d8ac2c7f608b0af6004d05256f962701ca853c07a7d36932648a2ed067d8d",
+  "source_hash": "c58d5346ab45f649e11c51e2ec6653f58b924cda9903e39614253412504d96ee",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1788078727,
+  "updated_at": 1788138091,
   "version": 2
 }
