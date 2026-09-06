@@ -45,6 +45,29 @@ type directoryASTFileState struct {
 	ModTime int64
 }
 
+func directoryLargeASTWarnings(files []directoryASTFileState, mode string) []string {
+	const previewLimit = 5
+	large := make([]string, 0, previewLimit)
+	count := 0
+	for _, file := range files {
+		if file.Size <= fileToolDetailedMaxBytes {
+			continue
+		}
+		count++
+		if len(large) < previewLimit {
+			large = append(large, fmt.Sprintf("%s (%d bytes)", file.Path, file.Size))
+		}
+	}
+	if count == 0 {
+		return nil
+	}
+	extra := ""
+	if count > len(large) {
+		extra = fmt.Sprintf("; %d more", count-len(large))
+	}
+	return []string{fmt.Sprintf("%s skipped %d large files: %s%s", mode, count, strings.Join(large, ", "), extra)}
+}
+
 type directoryASTCacheEntry struct {
 	Matches   []directorySearchMatch
 	Files     []directoryASTFileState
@@ -61,9 +84,9 @@ func newDirectoryASTCache() *directoryASTCache {
 	return &directoryASTCache{entries: make(map[directoryASTCacheKey]directoryASTCacheEntry)}
 }
 
-func (c *directoryASTCache) load(root, mode, query string) ([]directorySearchMatch, bool) {
+func (c *directoryASTCache) load(root, mode, query string) ([]directorySearchMatch, []string, bool) {
 	if c == nil {
-		return nil, false
+		return nil, nil, false
 	}
 	key := directoryASTCacheKey{Root: root, Mode: mode, Query: query}
 	c.mu.Lock()
@@ -71,15 +94,15 @@ func (c *directoryASTCache) load(root, mode, query string) ([]directorySearchMat
 	entry, ok := c.entries[key]
 	if !ok || time.Now().After(entry.ExpiresAt) {
 		delete(c.entries, key)
-		return nil, false
+		return nil, nil, false
 	}
 	if !directoryASTFilesMatch(root, entry.Files) {
 		delete(c.entries, key)
-		return nil, false
+		return nil, nil, false
 	}
 	entry.UsedAt = time.Now()
 	c.entries[key] = entry
-	return append([]directorySearchMatch(nil), entry.Matches...), true
+	return append([]directorySearchMatch(nil), entry.Matches...), directoryLargeASTWarnings(entry.Files, mode), true
 }
 
 func (c *directoryASTCache) store(root, mode, query string, matches []directorySearchMatch, files []directoryASTFileState) {
@@ -117,13 +140,15 @@ func readFileDirectorySearch(ctx context.Context, root, mode string, args readFi
 	case readFileModeGrep:
 		matches, err = findDirectoryGrepMatches(ctx, root, query)
 	case readFileModeAST, readFileModeASTFunction:
-		if cached, ok := astCache.load(root, mode, query); ok {
+		if cached, cachedWarnings, ok := astCache.load(root, mode, query); ok {
 			matches = cached
+			warnings = append(warnings, cachedWarnings...)
 		} else {
 			var files []directoryASTFileState
 			matches, files, err = findDirectoryASTMatches(root, query, mode)
 			if err == nil {
 				astCache.store(root, mode, query, matches, files)
+				warnings = append(warnings, directoryLargeASTWarnings(files, mode)...)
 			}
 		}
 	}
@@ -211,6 +236,9 @@ func findDirectoryASTMatches(root, query, mode string) ([]directorySearchMatch, 
 			return nil
 		}
 		files = append(files, directoryASTFileState{Path: filepath.ToSlash(rel), Size: info.Size(), ModTime: info.ModTime().UnixNano()})
+		if info.Size() > fileToolDetailedMaxBytes {
+			return nil
+		}
 		text, err := os.ReadFile(path)
 		if err != nil {
 			return nil
@@ -329,11 +357,18 @@ func formatDirectorySearchMatches(root, mode, query string, matches []directoryS
 
 func formatDirectorySearchSelection(b *strings.Builder, root, mode string, match directorySearchMatch, contextLines int, warnings []string) (*tool.Result, error) {
 	path := filepath.Join(root, filepath.FromSlash(match.Path))
-	file, err := fileops.ReadFile(path, "")
+	maxBytes := int64(fileops.MaxFileSize)
+	if mode == readFileModeGrep {
+		maxBytes = fileToolMaxBytes
+	}
+	file, err := fileops.ReadFileWithLimit(path, "", maxBytes)
 	if err != nil {
 		return nil, err
 	}
 	lines := fileops.SplitLines(file.Text)
+	if int64(len(file.Bytes)) > fileToolDetailedMaxBytes {
+		warnings = append(warnings, fmt.Sprintf("large file: %d bytes; ast and ast_function modes are disabled", len(file.Bytes)))
+	}
 	start, end := match.Line, match.EndLine
 	if mode != readFileModeASTFunction {
 		contextLines = fileops.NormalizeGrepContextLines(contextLines)

@@ -11,6 +11,12 @@ import (
 
 const MaxFileSize = 2 * 1024 * 1024
 
+type EditFileOptions struct {
+	MaxInputBytes        int64
+	MaxOutputBytes       int64
+	DetailedDiffMaxBytes int64
+}
+
 type File struct {
 	Path        string
 	Bytes       []byte
@@ -33,6 +39,10 @@ type EditResult struct {
 }
 
 func ReadFile(path, requestedEncoding string) (File, error) {
+	return ReadFileWithLimit(path, requestedEncoding, MaxFileSize)
+}
+
+func ReadFileWithLimit(path, requestedEncoding string, maxBytes int64) (File, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return File{}, fmt.Errorf("stat file: %w", err)
@@ -40,8 +50,8 @@ func ReadFile(path, requestedEncoding string) (File, error) {
 	if info.IsDir() {
 		return File{}, fmt.Errorf("path is a directory")
 	}
-	if info.Size() > MaxFileSize {
-		return File{}, fmt.Errorf("file too large: %d bytes exceeds %d", info.Size(), MaxFileSize)
+	if maxBytes > 0 && info.Size() > maxBytes {
+		return File{}, fmt.Errorf("file too large: %d bytes exceeds %d", info.Size(), maxBytes)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -58,7 +68,11 @@ func ReadFile(path, requestedEncoding string) (File, error) {
 }
 
 func ReadOrCreateFile(path, requestedEncoding string, create bool, hasExpectedRevision bool) (File, bool, error) {
-	file, err := ReadFile(path, requestedEncoding)
+	return ReadOrCreateFileWithLimit(path, requestedEncoding, create, hasExpectedRevision, MaxFileSize)
+}
+
+func ReadOrCreateFileWithLimit(path, requestedEncoding string, create bool, hasExpectedRevision bool, maxBytes int64) (File, bool, error) {
+	file, err := ReadFileWithLimit(path, requestedEncoding, maxBytes)
 	if err == nil {
 		return file, false, nil
 	}
@@ -81,6 +95,10 @@ func ReadOrCreateFile(path, requestedEncoding string, create bool, hasExpectedRe
 }
 
 func EditFile(path, requestedEncoding, expectedRevision string, create, dryRun bool, contextLines int, edits []Edit) (EditResult, error) {
+	return EditFileWithOptions(path, requestedEncoding, expectedRevision, create, dryRun, contextLines, edits, EditFileOptions{MaxInputBytes: MaxFileSize})
+}
+
+func EditFileWithOptions(path, requestedEncoding, expectedRevision string, create, dryRun bool, contextLines int, edits []Edit, options EditFileOptions) (EditResult, error) {
 	expectedRevision = strings.TrimSpace(expectedRevision)
 	if expectedRevision != "" {
 		if len(expectedRevision) != contentRevisionBytes*2 {
@@ -90,7 +108,7 @@ func EditFile(path, requestedEncoding, expectedRevision string, create, dryRun b
 			return EditResult{}, fmt.Errorf("expected_revision must be %d hexadecimal characters", contentRevisionBytes*2)
 		}
 	}
-	file, created, err := ReadOrCreateFile(path, requestedEncoding, create, expectedRevision != "")
+	file, created, err := ReadOrCreateFileWithLimit(path, requestedEncoding, create, expectedRevision != "", options.MaxInputBytes)
 	if err != nil {
 		return EditResult{}, err
 	}
@@ -114,6 +132,9 @@ func EditFile(path, requestedEncoding, expectedRevision string, create, dryRun b
 	if err != nil {
 		return EditResult{}, err
 	}
+	if options.MaxOutputBytes > 0 && int64(len(newBytes)) > options.MaxOutputBytes {
+		return EditResult{}, fmt.Errorf("edited file too large: %d bytes exceeds %d", len(newBytes), options.MaxOutputBytes)
+	}
 	contextLines = NormalizeContextLines(contextLines)
 	result := EditResult{
 		DryRun:         dryRun,
@@ -122,7 +143,7 @@ func EditFile(path, requestedEncoding, expectedRevision string, create, dryRun b
 		Encoding:       file.Encoding,
 		RevisionBefore: oldRevision,
 		RevisionAfter:  ContentRevision(newBytes),
-		Diff:           UnifiedDiff(file.Path, SplitLines(oldText), SplitLines(newText), contextLines),
+		Diff:           editDiff(file.Path, oldText, newText, len(file.Bytes), len(newBytes), contextLines, options.DetailedDiffMaxBytes),
 		NewBytes:       newBytes,
 	}
 	if dryRun {

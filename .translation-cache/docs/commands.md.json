@@ -232,6 +232,14 @@
       "translation": "Common options:\n",
       "updated_at": 1781514917
     },
+    "docs/commands.md:paragraph:126fb051d9a7da582c2f32b6b99b7bdd1eb5248d3d11124fa56099a2d6b46eb4": {
+      "kind": "paragraph",
+      "source": "超级管理员不受额外的 10 分钟限制，但仍遵守大于 0 的 Session TTL。",
+      "source_file": "docs/commands.md",
+      "source_hash": "126fb051d9a7da582c2f32b6b99b7bdd1eb5248d3d11124fa56099a2d6b46eb4",
+      "translation": "Superadmins are not subject to the additional 10-minute limit, but still adhere to a Session TTL greater than 0.",
+      "updated_at": 1788078696
+    },
     "docs/commands.md:paragraph:1632ad5994e509cb72b89875baee7e6d2c278fe2d83588aac7a40b6ba94ee105": {
       "kind": "paragraph",
       "source": "LLM 在 work 模式下可以通过 __ELBOT_CODE_0__ 按需发现工具详情。",
@@ -296,6 +304,14 @@
       "translation": "Model parameters can be a list number, model name, or __ELBOT_CODE_0__.\n",
       "updated_at": 1781514917
     },
+    "docs/commands.md:paragraph:8c5c5077a16881dfbf5ea9bf5e08c54fef9df8a072bbdb760176e9dce5696055": {
+      "kind": "paragraph",
+      "source": "过期后工具不会执行，当前处理会停止。\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "8c5c5077a16881dfbf5ea9bf5e08c54fef9df8a072bbdb760176e9dce5696055",
+      "translation": "After expiration, the tool will not be executed, and the current processing will stop.\n",
+      "updated_at": 1788078696
+    },
     "docs/commands.md:paragraph:970c185f8fd4da80594d1b54243c21f8aa313fb566a5e4779dfb28c1b6b82f1f": {
       "kind": "paragraph",
       "source": "若存在重名 Skill、与内置工具重名或读取失败，reload 会返回错误并保留原有工具集合。\n",
@@ -328,6 +344,22 @@
       "translation": "Options:\n",
       "updated_at": 1782884118
     },
+    "docs/commands.md:paragraph:da4003c2a4e9ff4612044559022a14bb6566e42d4d3647222ad0ee379705f695": {
+      "kind": "paragraph",
+      "source": "执行 __ELBOT_CODE_0__ 会重新计时；",
+      "source_file": "docs/commands.md",
+      "source_hash": "da4003c2a4e9ff4612044559022a14bb6566e42d4d3647222ad0ee379705f695",
+      "translation": "Executing __ELBOT_CODE_0__ will reset the timer;",
+      "updated_at": 1788078696
+    },
+    "docs/commands.md:paragraph:ee299422ccd6c0092ccaca687a6f3a1ad0576d25614ec31f2381608b17bd2776": {
+      "kind": "paragraph",
+      "source": "普通用户的确认等待默认在 10 分钟无有效操作后过期；",
+      "source_file": "docs/commands.md",
+      "source_hash": "ee299422ccd6c0092ccaca687a6f3a1ad0576d25614ec31f2381608b17bd2776",
+      "translation": "Confirmation wait for ordinary users expires by default after 10 minutes of no valid operation;",
+      "updated_at": 1788078696
+    },
     "docs/commands.md:paragraph:efbbd4966c0c303434edc3b217e6cfda57773255dffd9c245b854fa22e71165c": {
       "kind": "paragraph",
       "source": "ElBot 的 slash 命令由 Agent Core 统一处理，CLI、QQ、后续平台共享同一套语义。",
@@ -351,6 +383,14 @@
       "source_hash": "f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f",
       "translation": "Example:\n",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:paragraph:fbfa9766b8e3c2e7d341ffd08a854c20d0510ea88b8780303ff2ea3814767781": {
+      "kind": "paragraph",
+      "source": "若当前群聊或私聊的 Session TTL 更短，则使用更短的时限。",
+      "source_file": "docs/commands.md",
+      "source_hash": "fbfa9766b8e3c2e7d341ffd08a854c20d0510ea88b8780303ff2ea3814767781",
+      "translation": "If the Session TTL of the current group chat or private chat is shorter, the shorter time limit will be used.",
+      "updated_at": 1788078696
     },
     "docs/commands.md:paragraph:fd46fc8739d3b03d73dfe9915fef257fe25c994f1c6fd3bf1a96e95fddc2d0d6": {
       "kind": "paragraph",
@@ -1090,8 +1130,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "f1b72849785e52e53ce5946d12c4c4bcfdd0497698ee7c941c5ea84912dd2a9d",
+  "source_hash": "48c6d42995336cadb2a582ac3df191f4da49759ec60bffaf35c27ac391e3fbcf",
   "target": "docs.en/commands.md",
-  "updated_at": 1786539322,
+  "updated_at": 1788078696,
   "version": 2
 }

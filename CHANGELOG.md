@@ -7,16 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- QQ 官方机器人已支持群聊
+
 ### Changed
 
 - 普通用户的追加重发与高风险工具确认此前会无限等待并长期占用当前 Turn；现在默认在 10 分钟无有效操作后停止，若对应 Session TTL 更短则以其为上限，追加内容或 `/detail` 会续期。超级管理员不受额外的 10 分钟限制，但仍遵守已启用的 Session TTL。
-- QQ 官方机器人此前只处理 C2C 私聊并忽略群事件；现在支持群内 @ 和平台下发的普通群消息，按命令、触发词、@ 与引用回复唤醒，未唤醒消息也会进入聊天历史，并可向群聊回复或发送文本与媒体。
 - 多模态图片此前只以 `image_url` 内容段发送，模型能看图却不知道可复用地址；现在每张图片前会派生带消息内序号、名称和 HTTP(S) URL 的用户文本标签，持久化 `content` 与视觉回退使用同一文本投影，`segments` 仍只保存原始结构且无需数据库迁移。
 - `/stop`、请求超时或上游取消现在会终止一次性 exec Hook 的完整进程树，避免 Hook 派生的子进程残留；持久 Worker 则收到 `event.cancel` 并继续复用。
 - CLI TUI 中不存在的 `#文件` 引用现在按普通文本原样发送，不再阻止消息提交；同一消息中存在的文件仍会正常展开。
 - `/help`、详细帮助和 slash 命令补全现在按当前用户权限过滤；普通用户无法发现仅限超级管理员的命令。
 - 修改Systemp prompt结构，添加meta信息
 - System prompt 的会话 Meta 现在会附带精确到秒的 Session 当地创建时间；该值不会随对话轮次变化，以保持 Prompt 缓存稳定。
+- `read_file` 和 `edit_file` 此前会完全拒绝超过 2 MiB 的文本文件；现在 2–100 MiB 文件可继续按行读取、grep 和编辑，仅在实际调用时根据文件大小禁用 AST、完整 diff 和过长确认内容，并保留 revision 校验、预检与原子写入。
 
 ### Fixed
 

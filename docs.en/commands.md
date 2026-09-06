@@ -308,4 +308,6 @@ When a tool call triggers a high-risk confirmation, the Agent will prompt the av
 | `/reject` | Reject the current pending tool call. |
 | `/stop` | Stop the current request. |
 
+Confirmation wait for ordinary users expires by default after 10 minutes of no valid operation; If the Session TTL of the current group chat or private chat is shorter, the shorter time limit will be used. Superadmins are not subject to the additional 10-minute limit, but still adhere to a Session TTL greater than 0. Executing `/detail` will reset the timer; After expiration, the tool will not be executed, and the current processing will stop.
+
 Specific prompts are subject to the runtime output.

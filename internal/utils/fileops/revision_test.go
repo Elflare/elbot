@@ -96,3 +96,55 @@ func TestEditFileRejectsMalformedRevision(t *testing.T) {
 		}
 	}
 }
+
+func TestEditFileWithOptionsEnforcesInputAndOutputLimits(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	original := []byte("alpha\n")
+	if err := os.WriteFile(path, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	edit := []Edit{{Operation: "replace_text", OldText: "alpha", NewText: textPtr("beta-long")}}
+	_, err := EditFileWithOptions(path, "", "", false, false, 3, edit, EditFileOptions{MaxInputBytes: 3})
+	if err == nil || !strings.Contains(err.Error(), "file too large") {
+		t.Fatalf("expected input limit error, got %v", err)
+	}
+	_, err = EditFileWithOptions(path, "", "", false, false, 3, edit, EditFileOptions{MaxInputBytes: 1024, MaxOutputBytes: 5})
+	if err == nil || !strings.Contains(err.Error(), "edited file too large") {
+		t.Fatalf("expected output limit error, got %v", err)
+	}
+	data, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(data) != string(original) {
+		t.Fatalf("file changed after rejected edits: %q", data)
+	}
+}
+
+func TestEditFileWithOptionsOmitsDetailedDiffAboveLimit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	original := []byte("alpha\n")
+	if err := os.WriteFile(path, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := EditFileWithOptions(path, "", "", false, true, 3, []Edit{{Operation: "replace_text", OldText: "alpha", NewText: textPtr("beta")}}, EditFileOptions{
+		MaxInputBytes:        1024,
+		MaxOutputBytes:       1024,
+		DetailedDiffMaxBytes: 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Diff, "diff omitted: file exceeds detailed diff limit 5 bytes") || !strings.Contains(result.Diff, "old 6 bytes") {
+		t.Fatalf("unexpected omitted diff:\n%s", result.Diff)
+	}
+}
+
+func TestUnifiedDiffOmitsOversizedOutput(t *testing.T) {
+	oldLine := strings.Repeat("a", maxDiffOutputBytes)
+	newLine := strings.Repeat("b", maxDiffOutputBytes)
+	diff := UnifiedDiff("sample.txt", []string{oldLine}, []string{newLine}, 3)
+	if !strings.Contains(diff, "diff omitted: rendered diff exceeds") || strings.Contains(diff, oldLine) {
+		t.Fatalf("unexpected oversized diff result: %d bytes\n%s", len(diff), diff)
+	}
+}
