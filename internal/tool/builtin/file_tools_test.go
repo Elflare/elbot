@@ -319,6 +319,35 @@ func TestReadFileToolDirectoryGrepSelectsIndex(t *testing.T) {
 	}
 }
 
+func TestReadFileToolDirectoryGrepSkipsFilesAboveHardLimit(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("ripgrep is required for directory grep")
+	}
+	root := t.TempDir()
+	path := filepath.Join(root, "too-large.txt")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(fileToolMaxBytes + 1); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	args, _ := json.Marshal(map[string]any{"path": root, "mode": "grep", "query": "needle"})
+	result, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	warnings := strings.Join(result.Warnings, "\n")
+	if !strings.Contains(warnings, "too-large.txt") || !strings.Contains(warnings, "grep skipped") {
+		t.Fatalf("expected skipped-large-file warning, got %#v", result.Warnings)
+	}
+}
+
 func TestReadFileToolASTRejectsUnsupportedLanguage(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.py")
 	if err := os.WriteFile(path, []byte("target = 1\n"), 0644); err != nil {
