@@ -138,7 +138,9 @@ func readFileDirectorySearch(ctx context.Context, root, mode string, args readFi
 	var err error
 	switch mode {
 	case readFileModeGrep:
-		matches, err = findDirectoryGrepMatches(ctx, root, query)
+		var grepWarnings []string
+		matches, grepWarnings, err = findDirectoryGrepMatches(ctx, root, query)
+		warnings = append(warnings, grepWarnings...)
 	case readFileModeAST, readFileModeASTFunction:
 		if cached, cachedWarnings, ok := astCache.load(root, mode, query); ok {
 			matches = cached
@@ -164,17 +166,21 @@ func readFileDirectorySearch(ctx context.Context, root, mode string, args readFi
 	return formatDirectorySearchMatches(root, mode, query, matches, args.ContextLines, args.MaxMatches, args.Index, warnings)
 }
 
-func findDirectoryGrepMatches(ctx context.Context, root, query string) ([]directorySearchMatch, error) {
+func findDirectoryGrepMatches(ctx context.Context, root, query string) ([]directorySearchMatch, []string, error) {
+	warnings, err := directoryLargeFileWarnings(root, fileToolMaxBytes, "grep")
+	if err != nil {
+		return nil, nil, err
+	}
 	rg, err := exec.LookPath("rg")
 	if err != nil {
-		return nil, fmt.Errorf("directory grep requires ripgrep (rg), but rg was not found in PATH. Ask the user to install ripgrep and make `rg` available in PATH")
+		return nil, nil, fmt.Errorf("directory grep requires ripgrep (rg), but rg was not found in PATH. Ask the user to install ripgrep and make `rg` available in PATH")
 	}
-	cmd := exec.CommandContext(ctx, rg, "--json", "--fixed-strings", "--no-messages", "--glob", "!**/.git/**", "--glob", "!**/node_modules/**", "--glob", "!**/vendor/**", "--", query, root)
+	cmd := exec.CommandContext(ctx, rg, "--json", "--fixed-strings", "--no-messages", "--max-filesize", fmt.Sprintf("%d", fileToolMaxBytes), "--glob", "!**/.git/**", "--glob", "!**/node_modules/**", "--glob", "!**/vendor/**", "--", query, root)
 	output, err := cmd.Output()
 	if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() != 1 {
-		return nil, fmt.Errorf("run ripgrep: %w", err)
+		return nil, nil, fmt.Errorf("run ripgrep: %w", err)
 	} else if err != nil && !ok {
-		return nil, fmt.Errorf("run ripgrep: %w", err)
+		return nil, nil, fmt.Errorf("run ripgrep: %w", err)
 	}
 	matches := make([]directorySearchMatch, 0)
 	scanner := bufio.NewScanner(strings.NewReader(string(output)))
@@ -208,9 +214,54 @@ func findDirectoryGrepMatches(ctx context.Context, root, query string) ([]direct
 		matches = append(matches, directorySearchMatch{Path: filepath.ToSlash(path), Line: event.Data.LineNumber, Column: column, EndLine: event.Data.LineNumber, Kind: "grep", Text: strings.TrimSuffix(event.Data.Lines.Text, "\n")})
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read ripgrep output: %w", err)
+		return nil, nil, fmt.Errorf("read ripgrep output: %w", err)
 	}
-	return matches, nil
+	return matches, warnings, nil
+}
+
+func directoryLargeFileWarnings(root string, maxBytes int64, mode string) ([]string, error) {
+	const previewLimit = 5
+	large := make([]string, 0, previewLimit)
+	count := 0
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", "node_modules", "vendor":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil
+		}
+		if info.Size() <= maxBytes {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return nil
+		}
+		count++
+		if len(large) < previewLimit {
+			large = append(large, fmt.Sprintf("%s (%d bytes)", filepath.ToSlash(rel), info.Size()))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if count == 0 {
+		return nil, nil
+	}
+	extra := ""
+	if count > len(large) {
+		extra = fmt.Sprintf("; %d more", count-len(large))
+	}
+	return []string{fmt.Sprintf("%s skipped %d large files: %s%s", mode, count, strings.Join(large, ", "), extra)}, nil
 }
 
 func findDirectoryASTMatches(root, query, mode string) ([]directorySearchMatch, []directoryASTFileState, error) {
