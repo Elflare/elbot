@@ -1240,6 +1240,14 @@
       "translation": "__ELBOT_CODE_0__, detailed help, and slash command completion are now filtered by the current user's permissions; regular users cannot discover commands restricted to superadmins.",
       "updated_at": 1786239723
     },
+    "CHANGELOG.md:list:cb3bacc90377107c6869a20393bbc05e6b6b0db583a983da3c0940cec92cb8aa": {
+      "kind": "list",
+      "source": "修复读文件工具错误将部分非 UTF-8 文本编码识别为二进制文件的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "cb3bacc90377107c6869a20393bbc05e6b6b0db583a983da3c0940cec92cb8aa",
+      "translation": "Fixed an issue where the read file tool incorrectly identified some non-UTF-8 text encodings as binary files.",
+      "updated_at": 1788672976
+    },
     "CHANGELOG.md:list:cb42950d3097afb350e0270a9241489518a607d30bcc8c00f788f103348b188a": {
       "kind": "list",
       "source": "**SQLite 持久化**：Session、消息、上下文摘要、工具调用记录、Cron job、Elnis 事件统一存储。",
@@ -1538,8 +1546,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "bd9e4f02e80f1b0b687b39d31ddfdc2f8c08f2d7bbececab2ace96c4b59dc9f3",
+  "source_hash": "94a698d36a5e7206a1af8ea66ad7bde980cdc52ac745b12b66719a37c857b3eb",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1788168220,
+  "updated_at": 1788672976,
   "version": 2
 }
