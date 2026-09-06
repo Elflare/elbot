@@ -5,7 +5,21 @@ import (
 	"strings"
 )
 
-const maxDiffCells = 2_000_000
+const (
+	maxDiffCells       = 2_000_000
+	maxDiffOutputBytes = 64 * 1024
+)
+
+func editDiff(path, oldText, newText string, oldBytes, newBytes, contextLines int, detailedMaxBytes int64) string {
+	if detailedMaxBytes > 0 && (int64(oldBytes) > detailedMaxBytes || int64(newBytes) > detailedMaxBytes) {
+		return omittedDiff(path, fmt.Sprintf("file exceeds detailed diff limit %d bytes (old %d bytes, new %d bytes)", detailedMaxBytes, oldBytes, newBytes))
+	}
+	return UnifiedDiff(path, SplitLines(oldText), SplitLines(newText), contextLines)
+}
+
+func omittedDiff(path, reason string) string {
+	return fmt.Sprintf("--- %s\n+++ %s\n# diff omitted: %s\n", path, path, reason)
+}
 
 type DiffHunk struct {
 	ops      []diffOp
@@ -15,10 +29,13 @@ type DiffHunk struct {
 
 func UnifiedDiff(path string, oldLines, newLines []string, contextLines int) string {
 	if diffTooLarge(oldLines, newLines) {
-		return fmt.Sprintf("--- %s\n+++ %s\n# diff omitted: too many line comparisons (%d x %d)\n", path, path, len(oldLines), len(newLines))
+		return omittedDiff(path, fmt.Sprintf("too many line comparisons (%d x %d)", len(oldLines), len(newLines)))
 	}
 	ops := diffLines(oldLines, newLines)
 	hunks := buildDiffHunks(ops, contextLines)
+	if diffOutputTooLarge(path, hunks) {
+		return omittedDiff(path, fmt.Sprintf("rendered diff exceeds %d bytes", maxDiffOutputBytes))
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "--- %s\n", path)
 	fmt.Fprintf(&b, "+++ %s\n", path)
@@ -44,6 +61,20 @@ func diffTooLarge(oldLines, newLines []string) bool {
 		return false
 	}
 	return len(oldLines) > maxDiffCells/len(newLines)
+}
+
+func diffOutputTooLarge(path string, hunks []DiffHunk) bool {
+	size := len(path)*2 + len("--- \n+++ \n")
+	for _, hunk := range hunks {
+		size += 64
+		for _, op := range hunk.ops {
+			size += len(op.text) + 2
+			if size > maxDiffOutputBytes {
+				return true
+			}
+		}
+	}
+	return size > maxDiffOutputBytes
 }
 
 type diffKind int

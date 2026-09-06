@@ -56,6 +56,65 @@ func TestReadFileToolRejectsInvalidStringStartLine(t *testing.T) {
 	}
 }
 
+func TestReadFileToolReadsLargeFileAndReturnsRevision(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "large.txt")
+	content := []byte(strings.Repeat("x", fileops.MaxFileSize) + "\nneedle\n")
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path, "start_line": 2, "end_line": "2"})
+	result, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "2 | needle") {
+		t.Fatalf("unexpected large read output:\n%s", result.Content)
+	}
+	assertFileRevision(t, result.Content, content)
+	if len(result.Warnings) == 0 || !strings.Contains(strings.Join(result.Warnings, "\n"), "ast and ast_function modes are disabled") {
+		t.Fatalf("expected large-file warning, got %#v", result.Warnings)
+	}
+}
+
+func TestReadFileToolLargeFileDisablesASTButAllowsGrep(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "large.go")
+	content := strings.Repeat("x", fileops.MaxFileSize) + "\nneedle\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	astArgs, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "needle"})
+	if _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: astArgs}); err == nil || !strings.Contains(err.Error(), "AST") && !strings.Contains(err.Error(), "ast mode") {
+		t.Fatalf("expected large-file AST error, got %v", err)
+	}
+	grepArgs, _ := json.Marshal(map[string]any{"path": path, "mode": "grep", "query": "needle", "context_lines": 0})
+	result, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: grepArgs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "> 2 | needle") {
+		t.Fatalf("unexpected large grep output:\n%s", result.Content)
+	}
+}
+
+func TestReadFileToolRejectsFileAboveHardLimit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "too-large.txt")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(fileToolMaxBytes + 1); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": path})
+	_, err = NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "file too large") {
+		t.Fatalf("expected hard-limit error, got %v", err)
+	}
+}
 func TestReadFileToolGrepReturnsMatchesWithContext(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
 	content := strings.Join([]string{"one", "alpha", "two", "three", "beta", "four"}, "\n") + "\n"
@@ -196,6 +255,23 @@ func TestReadFileToolASTFunctionSearchesDirectoryAndSelectsIndex(t *testing.T) {
 	}
 }
 
+func TestReadFileToolDirectoryASTReportsSkippedLargeFiles(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "large.go")
+	content := "package sample\n" + strings.Repeat("x", fileops.MaxFileSize)
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"path": root, "mode": "ast", "query": "Target"})
+	result, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	warnings := strings.Join(result.Warnings, "\n")
+	if !strings.Contains(warnings, "large.go") || !strings.Contains(warnings, "bytes") || !strings.Contains(warnings, "skipped") {
+		t.Fatalf("expected skipped-large-file warning, got %#v", result.Warnings)
+	}
+}
 func TestReadFileToolDirectoryASTCacheInvalidatesWhenFilesChange(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "sample.go")
@@ -255,6 +331,86 @@ func TestReadFileToolASTRejectsUnsupportedLanguage(t *testing.T) {
 	}
 }
 
+func TestEditFileToolEditsLargeFileAndOmitsDiff(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "large.txt")
+	original := []byte(strings.Repeat("x", fileops.MaxFileSize) + "\ntarget\n")
+	if err := os.WriteFile(path, original, 0644); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path":              path,
+		"expected_revision": fileops.ContentRevision(original),
+		"edits": []map[string]any{{
+			"operation": "replace",
+			"line":      2,
+			"new_text":  "TARGET\n",
+		}},
+	})
+	result, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "diff omitted: file exceeds detailed diff limit") {
+		t.Fatalf("expected omitted diff, got:\n%s", result.Content)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(string(content), "\nTARGET\n") {
+		t.Fatalf("large file was not edited correctly")
+	}
+}
+
+func TestEditFileToolTruncatesLargeRiskDetailBlocks(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("target\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	newText := strings.Repeat("界", 30*1024)
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation": "replace_text",
+			"old_text":  "target",
+			"new_text":  newText,
+		}},
+	})
+	detail, err := NewEditFileTool().RiskDetail(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(detail, "已省略；原文") || strings.Contains(detail, newText) {
+		t.Fatalf("large detail was not truncated:\n%s", detail)
+	}
+}
+
+func TestEditFileToolRejectsFileAboveHardLimit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "too-large.txt")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(fileToolMaxBytes + 1); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"operation": "replace_text",
+			"old_text":  "target",
+			"new_text":  "TARGET",
+		}},
+	})
+	_, err = NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err == nil || !strings.Contains(err.Error(), "file too large") {
+		t.Fatalf("expected hard-limit error, got %v", err)
+	}
+}
 func TestEditFileToolRequiresEdits(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
 	original := []byte("alpha\n")
@@ -556,6 +712,20 @@ func TestEditFileToolRiskDetailFormatsEdits(t *testing.T) {
 	}
 }
 
+func TestFileToolSchemasDoNotExposeLargeFileThresholds(t *testing.T) {
+	for _, schema := range []any{NewReadFileTool().Schema(), NewEditFileTool().Schema()} {
+		data, err := json.Marshal(schema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(data)
+		for _, hidden := range []string{"MiB", "104857600", "file too large", "diff omitted"} {
+			if strings.Contains(text, hidden) {
+				t.Fatalf("tool schema exposes runtime size policy %q: %s", hidden, text)
+			}
+		}
+	}
+}
 func TestEditFileToolSchemaOmitsDryRun(t *testing.T) {
 	schema := NewEditFileTool().Schema()
 	properties, ok := schema.Function.Parameters["properties"].(map[string]any)
