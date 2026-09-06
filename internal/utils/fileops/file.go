@@ -47,12 +47,12 @@ func ReadFile(path, requestedEncoding string) (File, error) {
 	if err != nil {
 		return File{}, fmt.Errorf("read file: %w", err)
 	}
-	if LooksBinary(data) {
-		return File{}, fmt.Errorf("file appears to be binary")
-	}
 	text, encName, bom, err := DecodeBytes(data, requestedEncoding)
 	if err != nil {
 		return File{}, err
+	}
+	if isUTF8Encoding(encName) && LooksBinaryUTF8(text) {
+		return File{}, fmt.Errorf("file appears to be binary")
 	}
 	return File{Path: path, Bytes: data, Text: text, Encoding: encName, BOM: bom, LineEnding: DetectLineEnding(text), EndsNewline: strings.HasSuffix(text, "\n")}, nil
 }

@@ -181,12 +181,12 @@ func DetectLineEnding(text string) string {
 	return "\n"
 }
 
-func LooksBinary(data []byte) bool {
-	limit := len(data)
+func LooksBinaryUTF8(text string) bool {
+	limit := len(text)
 	if limit > 4096 {
 		limit = 4096
 	}
-	return bytes.Contains(data[:limit], []byte{0})
+	return bytes.Contains([]byte(text[:limit]), []byte{0})
 }
 
 func ContentRevision(data []byte) string {

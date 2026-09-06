@@ -11,6 +11,11 @@ import (
 	"golang.org/x/text/transform"
 )
 
+func isUTF8Encoding(name string) bool {
+	name = strings.ToLower(strings.TrimSpace(name))
+	return name == "utf-8" || name == "utf-8-bom"
+}
+
 func DecodeBytes(data []byte, requested string) (string, string, []byte, error) {
 	name := strings.ToLower(strings.TrimSpace(requested))
 	if name == "" || name == "auto" {
