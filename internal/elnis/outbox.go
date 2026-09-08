@@ -80,33 +80,51 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) error {
 	if err != nil {
 		return s.releaseReport(ctx, eventID, err)
 	}
-	for _, item := range deliveries {
+	for index := 0; index < len(deliveries); {
+		item := deliveries[index]
 		if item.Status == storage.ElnisReportDeliveryDelivered {
+			index++
 			continue
 		}
 		var target Target
 		if err := json.Unmarshal([]byte(item.Target), &target); err != nil {
 			return s.failReportDelivery(ctx, eventID, item.ID, fmt.Errorf("decode elnis report target: %w", err))
 		}
-		var output delivery.Output
-		if err := json.Unmarshal([]byte(item.Output), &output); err != nil {
-			return s.failReportDelivery(ctx, eventID, item.ID, fmt.Errorf("decode elnis report output: %w", err))
+		batch := []storage.ElnisReportDelivery{item}
+		index++
+		for index < len(deliveries) {
+			next := deliveries[index]
+			if next.Status == storage.ElnisReportDeliveryDelivered || next.Target != item.Target {
+				break
+			}
+			batch = append(batch, next)
+			index++
 		}
-		if err := repo.StartReportDelivery(ctx, item.ID); err != nil {
-			return s.failReportDelivery(ctx, eventID, item.ID, err)
+		outputs := make([]delivery.Output, 0, len(batch))
+		for _, deliveryItem := range batch {
+			var output delivery.Output
+			if err := json.Unmarshal([]byte(deliveryItem.Output), &output); err != nil {
+				return s.failReportDelivery(ctx, eventID, deliveryItem.ID, fmt.Errorf("decode elnis report output: %w", err))
+			}
+			if err := repo.StartReportDelivery(ctx, deliveryItem.ID); err != nil {
+				return s.failReportDelivery(ctx, eventID, deliveryItem.ID, err)
+			}
+			outputs = append(outputs, output)
 		}
-		receipt, err := s.send(ctx, target.ToDeliveryTarget(), output)
+		receipt, err := s.send(ctx, target.ToDeliveryTarget(), outputs)
 		if err != nil {
-			return s.failReportDelivery(ctx, eventID, item.ID, err)
+			return s.failReportDelivery(ctx, eventID, batch[0].ID, err)
 		}
 		receiptJSON, err := json.Marshal(receipt)
 		if err != nil {
-			return s.failReportDelivery(ctx, eventID, item.ID, fmt.Errorf("marshal elnis report receipt: %w", err))
+			return s.failReportDelivery(ctx, eventID, batch[0].ID, fmt.Errorf("marshal elnis report receipt: %w", err))
 		}
-		if err := repo.MarkReportDeliveryDelivered(ctx, item.ID, string(receiptJSON)); err != nil {
-			return s.releaseReport(ctx, eventID, err)
+		for _, deliveryItem := range batch {
+			if err := repo.MarkReportDeliveryDelivered(ctx, deliveryItem.ID, string(receiptJSON)); err != nil {
+				return s.releaseReport(ctx, eventID, err)
+			}
 		}
-		s.mapReportReceipt(ctx, event.EventKey, target, event.SessionID, item.MessageID, receipt)
+		s.mapReportReceipt(ctx, event.EventKey, target, event.SessionID, batch[0].MessageID, receipt)
 	}
 	if err := repo.CompleteReport(ctx, eventID, StatusDelivering, StatusCompleted); err != nil {
 		return s.releaseReport(ctx, eventID, err)

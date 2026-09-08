@@ -323,7 +323,7 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 		attrs := []any{"job", jobName, "platform", platformName, "target", cronTargetLabel(target), "kind", out.Kind}
 		s.auditEvent("cron.send_started", attrs...)
 		s.logInfo("cron send started", attrs...)
-		receipt, err := s.sendTarget(ctx, target, out)
+		receipt, err := s.sendTarget(ctx, target, []delivery.Output{out})
 		if err != nil {
 			err = fmt.Errorf("send %s: %w", platformName, err)
 			errs = append(errs, err)
@@ -351,7 +351,7 @@ func (s *Service) sendOutputsToPlatformsMapped(ctx context.Context, jobName stri
 			attrs := []any{"job", jobName, "platform", platformName, "target", "superadmins", "kind", out.Kind}
 			s.auditEvent("cron.send_started", attrs...)
 			s.logInfo("cron send started", attrs...)
-			receipt, err := s.sendTarget(ctx, delivery.Target{Platform: platformName, Superadmins: true}, out)
+			receipt, err := s.sendTarget(ctx, delivery.Target{Platform: platformName, Superadmins: true}, []delivery.Output{out})
 			if err != nil {
 				err = fmt.Errorf("send %s: %w", platformName, err)
 				errs = append(errs, err)

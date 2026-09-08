@@ -14,7 +14,7 @@ import (
 	"elbot/internal/storage"
 )
 
-type SenderFunc func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error)
+type SenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error)
 
 type AuditFunc func(event string, attrs ...any)
 
