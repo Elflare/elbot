@@ -67,15 +67,13 @@ func (s *Service) sendOutputsToTargets(ctx context.Context, targets []Target, ou
 }
 
 func (s *Service) sendOutputsToTargetsMapped(ctx context.Context, eventKey string, targets []Target, outputs []delivery.Output, sessionID, messageID string) error {
+	ctx = delivery.WithTemporaryConnection(ctx)
 	for _, target := range targets {
-		deliveryTarget := target.ToDeliveryTarget()
-		for _, out := range outputs {
-			receipt, err := s.send(ctx, deliveryTarget, out)
-			if err != nil {
-				return err
-			}
-			s.mapReportReceipt(ctx, eventKey, target, sessionID, messageID, receipt)
+		receipt, err := s.send(ctx, target.ToDeliveryTarget(), outputs)
+		if err != nil {
+			return err
 		}
+		s.mapReportReceipt(ctx, eventKey, target, sessionID, messageID, receipt)
 	}
 	return nil
 }

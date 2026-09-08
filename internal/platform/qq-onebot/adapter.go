@@ -246,7 +246,37 @@ func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[st
 	return resp.Data, nil
 }
 
+func (a *Adapter) sendTemporaryNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+	transport := &Transport{URL: a.cfg.URL, AccessToken: a.cfg.AccessToken, Timeout: time.Duration(a.cfg.APITimeoutSeconds) * time.Second, logger: a.logger}
+	if err := transport.Connect(ctx); err != nil {
+		return delivery.Receipt{}, err
+	}
+	defer transport.Close(websocket.StatusNormalClosure, "temporary elnis delivery done")
+	go transport.readResponses(ctx)
+	t, err := targetToQQ(notice.Target)
+	if err != nil {
+		return delivery.Receipt{}, err
+	}
+	segments, err := outputSegments(a.cfg.SendFileMode, notice.Outputs...)
+	if err != nil {
+		return delivery.Receipt{}, err
+	}
+	var id string
+	switch t.MessageType {
+	case "private":
+		id, err = transport.SendPrivateSegments(ctx, t.UserID, segments)
+	case "group":
+		id, err = transport.SendGroupSegments(ctx, t.GroupID, segments)
+	default:
+		err = fmt.Errorf("unsupported message target %q", t.MessageType)
+	}
+	return receiptWithMessageID(id), err
+}
+
 func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+	if delivery.UseTemporaryConnection(ctx) {
+		return a.sendTemporaryNotice(ctx, notice)
+	}
 	outTarget := notice.Target
 	outputs := notice.Outputs
 	if outTarget.Empty() && isGroupToolPreviewNotice(ctx, outputs) {

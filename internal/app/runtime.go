@@ -129,9 +129,7 @@ func buildCronService(ctx context.Context, foundation *FoundationComponents, sen
 		EnabledPlatforms: enabledCronPlatforms(cfg),
 		SandboxRoot:      cfg.Sandbox.Root,
 		Audit:            auditFunc(foundation.Logs),
-		SendTarget: func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error) {
-			return send(ctx, target, []delivery.Output{out})
-		},
+		SendTarget:       send,
 	})
 	if err := service.MigrateLegacyDeliveryState(ctx); err != nil {
 		return nil, err

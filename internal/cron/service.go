@@ -26,7 +26,7 @@ const (
 
 type AuditFunc func(event string, attrs ...any)
 
-type TargetSenderFunc func(ctx context.Context, target delivery.Target, out delivery.Output) (delivery.Receipt, error)
+type TargetSenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error)
 
 type PlatformTarget struct {
 	Name          string

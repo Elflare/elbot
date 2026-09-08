@@ -46,6 +46,17 @@ const (
 	DeliveryAfterAssistant = "after_assistant"
 )
 
+type temporaryConnectionKey struct{}
+
+func WithTemporaryConnection(ctx context.Context) context.Context {
+	return context.WithValue(ctx, temporaryConnectionKey{}, true)
+}
+
+func UseTemporaryConnection(ctx context.Context) bool {
+	value, _ := ctx.Value(temporaryConnectionKey{}).(bool)
+	return value
+}
+
 func (t Target) Empty() bool {
 	return strings.TrimSpace(t.Platform) == "" && strings.TrimSpace(t.ScopeID) == "" && strings.TrimSpace(t.PrivateUserID) == "" && strings.TrimSpace(t.GroupID) == "" && !t.Superadmins
 }

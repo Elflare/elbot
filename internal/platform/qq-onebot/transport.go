@@ -137,6 +137,14 @@ func (t *Transport) SendGroupSegments(ctx context.Context, groupID int64, segmen
 	return t.sendMessage(ctx, "send_group_msg", map[string]any{"group_id": groupID, "message": segments})
 }
 
+func (t *Transport) readResponses(ctx context.Context) {
+	for {
+		if _, err := t.Read(ctx); err != nil {
+			return
+		}
+	}
+}
+
 func (t *Transport) GetMessage(ctx context.Context, messageID string) (getMessageData, error) {
 	id, err := strconv.ParseInt(messageID, 10, 64)
 	if err != nil {
