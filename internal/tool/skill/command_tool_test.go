@@ -24,6 +24,32 @@ func TestCommandArgumentsBuildsFlagArgs(t *testing.T) {
 	}
 }
 
+func TestCommandArgumentsBuildsComplexFlagArgs(t *testing.T) {
+	manifest := AgentSkillManifest{
+		Args: map[string]string{"items": "--items", "options": "--options"},
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"items":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"options": map[string]any{"type": "object"},
+			},
+		},
+	}
+	args, err := commandArguments(manifest, json.RawMessage(`{"options": {"width": 1024, "nested": {"enabled": true}}, "items": ["a", "b"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"--items", `["a","b"]`, "--options", `{"width":1024,"nested":{"enabled":true}}`}
+	if len(args) != len(want) {
+		t.Fatalf("args = %#v, want %#v", args, want)
+	}
+	for i := range want {
+		if args[i] != want[i] {
+			t.Fatalf("args = %#v, want %#v", args, want)
+		}
+	}
+}
+
 func TestCommandToolRunsCommandAndReturnsText(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses sh")

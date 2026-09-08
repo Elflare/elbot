@@ -344,7 +344,9 @@ parameters = '''
   "required": ["input"],
   "properties": {
     "input": {"type": "string", "description": "输入文本"},
-    "mode": {"type": "string", "description": "处理模式"}
+    "mode": {"type": "string", "description": "处理模式"},
+    "items": {"type": "array", "items": {"type": "string"}, "description": "输入项列表"},
+    "options": {"type": "object", "description": "附加选项"}
   }
 }
 '''
@@ -352,10 +354,13 @@ parameters = '''
 [args]
 input = "--input"
 mode = "--mode"
+items = "--items"
+options = "--options"
 
 含义：
-工具调用 {"input":"abc","mode":"fast"} 会执行：
-python foo.py --input abc --mode fast
+工具调用 {"input":"abc","mode":"fast","items":["a","b"],"options":{"dry_run":true}} 会按参数名顺序执行：
+python foo.py --input abc --items ["a","b"] --mode fast --options {"dry_run":true}
+数组和对象会压缩为 JSON，并各自作为 flag 后的一个 argv 参数传入，不经过 shell。
 
 command 必须是字符串数组。
 parameters 必须是 JSON object schema。
