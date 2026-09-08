@@ -439,7 +439,11 @@ func (m tuiModel) inputSeparatorView() string {
 	keys := m.inputShortcutText()
 	maxKeysWidth := max(0, m.width-padding*2-minSeparatorWidth)
 	keys = truncateLeftDisplayWidth(keys, maxKeysWidth)
-	separatorWidth := max(0, m.width-padding*2-runewidth.StringWidth(keys))
+	keysWidth := runewidth.StringWidth(keys)
+	if m.width <= 80 {
+		keysWidth = lipgloss.Width(keys)
+	}
+	separatorWidth := max(0, m.width-padding*2-keysWidth)
 	return strings.Repeat(" ", padding) +
 		tuiInputSeparatorStyle.Render(strings.Repeat("─", separatorWidth)) +
 		strings.Repeat(" ", padding) +
