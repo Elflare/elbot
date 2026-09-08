@@ -20,6 +20,8 @@ type Store struct {
 	toolCalls        *ToolCallRepository
 	cronJobs         *CronJobRepository
 	elnisEvents      *ElnisEventRepository
+	media            *MediaRepository
+	mediaReferences  *MediaReferenceRepository
 }
 
 func New(ctx context.Context, path string) (*Store, error) {
@@ -43,6 +45,8 @@ func New(ctx context.Context, path string) (*Store, error) {
 	store.toolCalls = &ToolCallRepository{db: db}
 	store.cronJobs = &CronJobRepository{db: db}
 	store.elnisEvents = &ElnisEventRepository{db: db}
+	store.media = &MediaRepository{db: db}
+	store.mediaReferences = &MediaReferenceRepository{db: db}
 
 	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
 		_ = db.Close()
@@ -66,6 +70,14 @@ func (s *Store) Sessions() storage.SessionRepository {
 
 func (s *Store) Messages() storage.MessageRepository {
 	return s.messages
+}
+
+func (s *Store) Media() storage.MediaRepository {
+	return s.media
+}
+
+func (s *Store) MediaReferences() storage.MediaReferenceRepository {
+	return s.mediaReferences
 }
 
 func (s *Store) ContextSummaries() storage.ContextSummaryRepository {

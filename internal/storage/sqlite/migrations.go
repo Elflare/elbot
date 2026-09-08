@@ -278,6 +278,41 @@ WHERE role = 'user'
   AND json_type(CASE WHEN json_valid(metadata) THEN metadata END, '$.segments') = 'array';
 `,
 	},
+	{
+		version: 12,
+		name:    "create_media_and_references",
+		sql: `
+CREATE TABLE media (
+    id TEXT PRIMARY KEY,
+    name TEXT NULL,
+    mime_type TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    local_path TEXT NULL,
+    backend TEXT NOT NULL,
+    object_key TEXT NULL,
+    source_platform TEXT NULL,
+    source_url TEXT NULL,
+    source_file_id TEXT NULL,
+    created_at TEXT NOT NULL,
+    last_accessed_at TEXT NOT NULL,
+    expires_at TEXT NULL
+);
+
+CREATE TABLE media_references (
+    media_id TEXT NOT NULL,
+    owner_type TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    session_id TEXT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(media_id, owner_type, owner_id, purpose),
+    FOREIGN KEY(media_id) REFERENCES media(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_media_references_owner ON media_references(owner_type, owner_id);
+CREATE INDEX idx_media_references_session ON media_references(session_id);
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

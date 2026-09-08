@@ -58,6 +58,9 @@ func (s *ChatHistoryStore) Close() error {
 }
 
 func migrateChatHistory(ctx context.Context, db *sql.DB) error {
+	if _, err := db.ExecContext(ctx, `ALTER TABLE chat_messages ADD COLUMN segments TEXT NULL`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		return fmt.Errorf("add chat history segments: %w", err)
+	}
 	_, err := db.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS chat_messages (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,6 +73,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     sender_name TEXT NULL,
     text TEXT NOT NULL,
     raw TEXT NULL,
+    segments TEXT NULL,
     reply_to_platform_message_id TEXT NULL,
     metadata TEXT NULL,
     created_at TEXT NOT NULL,
@@ -105,14 +109,15 @@ func (r *ChatHistoryRepository) Append(ctx context.Context, message *storage.Cha
 	_, err := r.db.ExecContext(ctx, `
 INSERT INTO chat_messages (
     id, platform, platform_scope_id, scope_type, platform_message_id,
-    sender_id, sender_name, text, raw, reply_to_platform_message_id, metadata, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    sender_id, sender_name, text, raw, segments, reply_to_platform_message_id, metadata, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(platform, platform_scope_id, platform_message_id) DO UPDATE SET
     sender_id = excluded.sender_id,
     sender_name = excluded.sender_name,
     text = excluded.text,
     raw = excluded.raw,
     reply_to_platform_message_id = excluded.reply_to_platform_message_id,
+    segments = excluded.segments,
     metadata = excluded.metadata`,
 		message.ID,
 		message.Platform,
@@ -123,6 +128,7 @@ ON CONFLICT(platform, platform_scope_id, platform_message_id) DO UPDATE SET
 		nullString(message.SenderName),
 		message.Text,
 		nullString(message.Raw),
+		nullString(message.Segments),
 		nullString(message.ReplyToPlatformMessageID),
 		nullString(message.Metadata),
 		storage.FormatTime(message.CreatedAt),
@@ -136,7 +142,7 @@ ON CONFLICT(platform, platform_scope_id, platform_message_id) DO UPDATE SET
 func (r *ChatHistoryRepository) GetByPlatformMessage(ctx context.Context, platform, scopeID, platformMessageID string) (*storage.ChatMessage, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT seq, id, platform, platform_scope_id, scope_type, platform_message_id,
-       sender_id, sender_name, text, raw, reply_to_platform_message_id, metadata, created_at
+       sender_id, sender_name, text, raw, segments, reply_to_platform_message_id, metadata, created_at
 FROM chat_messages
 WHERE platform = ? AND platform_scope_id = ? AND platform_message_id = ?`, platform, scopeID, platformMessageID)
 	message, err := scanChatMessage(row)
@@ -193,7 +199,7 @@ func (r *ChatHistoryRepository) Search(ctx context.Context, req storage.ChatHist
 	params = append(params, limit)
 	rows, err := r.db.QueryContext(ctx, `
 SELECT seq, id, platform, platform_scope_id, scope_type, platform_message_id,
-       sender_id, sender_name, text, raw, reply_to_platform_message_id, metadata, created_at
+       sender_id, sender_name, text, raw, segments, reply_to_platform_message_id, metadata, created_at
 FROM chat_messages
 WHERE `+strings.Join(conditions, " AND ")+`
 ORDER BY seq DESC
@@ -255,7 +261,7 @@ func (r *ChatHistoryRepository) listAroundSide(ctx context.Context, platform, sc
 	}
 	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(`
 SELECT seq, id, platform, platform_scope_id, scope_type, platform_message_id,
-       sender_id, sender_name, text, raw, reply_to_platform_message_id, metadata, created_at
+       sender_id, sender_name, text, raw, segments, reply_to_platform_message_id, metadata, created_at
 FROM chat_messages
 WHERE platform = ? AND platform_scope_id = ? AND text != '' AND seq %s ?
 ORDER BY seq %s
@@ -293,7 +299,7 @@ func scanChatMessages(rows *sql.Rows) ([]storage.ChatMessage, error) {
 
 func scanChatMessage(row interface{ Scan(dest ...any) error }) (*storage.ChatMessage, error) {
 	var message storage.ChatMessage
-	var senderName, raw, replyToPlatformMessageID, metadata sql.NullString
+	var senderName, raw, segments, replyToPlatformMessageID, metadata sql.NullString
 	var createdAt string
 	if err := row.Scan(
 		&message.Seq,
@@ -306,6 +312,7 @@ func scanChatMessage(row interface{ Scan(dest ...any) error }) (*storage.ChatMes
 		&senderName,
 		&message.Text,
 		&raw,
+		&segments,
 		&replyToPlatformMessageID,
 		&metadata,
 		&createdAt,
@@ -314,6 +321,7 @@ func scanChatMessage(row interface{ Scan(dest ...any) error }) (*storage.ChatMes
 	}
 	message.SenderName = senderName.String
 	message.Raw = raw.String
+	message.Segments = segments.String
 	message.ReplyToPlatformMessageID = replyToPlatformMessageID.String
 	message.Metadata = metadata.String
 	var err error
