@@ -158,9 +158,35 @@ type ChatMessage struct {
 	SenderName               string
 	Text                     string
 	Raw                      string
+	Segments                 string
 	ReplyToPlatformMessageID string
 	Metadata                 string
 	CreatedAt                time.Time
+}
+
+type Media struct {
+	ID             string
+	Name           string
+	MIMEType       string
+	Size           int64
+	LocalPath      string
+	Backend        string
+	ObjectKey      string
+	SourcePlatform string
+	SourceURL      string
+	SourceFileID   string
+	CreatedAt      time.Time
+	LastAccessedAt time.Time
+	ExpiresAt      *time.Time
+}
+
+type MediaReference struct {
+	MediaID   string
+	OwnerType string
+	OwnerID   string
+	Purpose   string
+	SessionID string
+	CreatedAt time.Time
 }
 
 type ChatHistorySearchRequest struct {
@@ -298,6 +324,8 @@ type SessionSummary struct {
 type Store interface {
 	Sessions() SessionRepository
 	Messages() MessageRepository
+	Media() MediaRepository
+	MediaReferences() MediaReferenceRepository
 	ContextSummaries() ContextSummaryRepository
 	ToolCalls() ToolCallRepository
 	CronJobs() CronJobRepository
@@ -323,6 +351,19 @@ type MessageRepository interface {
 	ListBySessionAfterUpTo(ctx context.Context, sessionID, afterMessageID, toMessageID string) ([]Message, error)
 	MapPlatformMessage(ctx context.Context, mapping PlatformMessageMap) error
 	FindByPlatformMessage(ctx context.Context, platform, scopeID, platformMessageID string) (*Message, error)
+}
+
+type MediaRepository interface {
+	Get(ctx context.Context, id string) (*Media, error)
+	Upsert(ctx context.Context, media *Media) error
+	DeleteOrphans(ctx context.Context, cutoff time.Time) ([]Media, error)
+}
+
+type MediaReferenceRepository interface {
+	Add(ctx context.Context, reference *MediaReference) error
+	Remove(ctx context.Context, reference MediaReference) error
+	ListByOwner(ctx context.Context, ownerType, ownerID string) ([]MediaReference, error)
+	ListMediaIDs(ctx context.Context, mediaID string) ([]MediaReference, error)
 }
 
 type ToolCallRepository interface {

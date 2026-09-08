@@ -43,13 +43,15 @@ const (
 
 // MessageSegment is one typed part parsed from an inbound platform message.
 type MessageSegment struct {
-	Type     MessageSegmentType
-	Text     string
-	UserID   string
-	URL      string
-	MIMEType string
-	Name     string
-	Size     int64
+	Type           MessageSegmentType
+	Text           string
+	UserID         string
+	URL            string
+	MediaID        string
+	PlatformFileID string
+	MIMEType       string
+	Name           string
+	Size           int64
 }
 
 type ReplyContext struct {
