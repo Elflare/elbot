@@ -1096,6 +1096,14 @@
       "translation": "Display the current retry count via Notice when LLM connection/HTTP retriable requests fail.",
       "updated_at": 1782298716
     },
+    "CHANGELOG.md:list:afe2553606064d39abf0bf40a33a71cc6655ec21a19299326f5f05165c02bbab": {
+      "kind": "list",
+      "source": "现在 JSON 数组与对象会压缩为单个 argv 参数传给对应 __ELBOT_CODE_0__ flag。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "afe2553606064d39abf0bf40a33a71cc6655ec21a19299326f5f05165c02bbab",
+      "translation": "Now JSON arrays and objects will be compressed into a single argv parameter and passed to the corresponding __ELBOT_CODE_0__ flag.",
+      "updated_at": 1788869399
+    },
     "CHANGELOG.md:list:b25d3a78ad76a7e9f568addf9e30d0ac344415f9c084e850f2997f4c02617cad": {
       "kind": "list",
       "source": "平台消息 Hook 输出现在会发送，__ELBOT_CODE_0__ 可阻止后续命令/LLM 处理。",
@@ -1279,6 +1287,14 @@
       "source_hash": "ce3e9cc6dd15510c9cfe7dbcae094bd1f1cb641bc8875c00f0d3c95d4642854d",
       "translation": "**Elnis listening hub**: Receives external events delivered by Elwisp via the Elvena HTTP protocol, supporting three modes (record/direct/llm) and multi-target delivery.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:ced53b80d8d32780dd503a271ab2356b596837b1e3bbd2362c5684014fb827d2": {
+      "kind": "list",
+      "source": "工具化 AgentSkill 的命令参数此前只支持字符串、数字和布尔值；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ced53b80d8d32780dd503a271ab2356b596837b1e3bbd2362c5684014fb827d2",
+      "translation": "Command parameters for toolized AgentSkill previously only supported strings, numbers, and booleans;",
+      "updated_at": 1788869399
     },
     "CHANGELOG.md:list:d0175f70fdf81c63c972bdf310a17e8f41d2292f524be381fd252b494bcce468": {
       "kind": "list",
@@ -1546,8 +1562,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "94a698d36a5e7206a1af8ea66ad7bde980cdc52ac745b12b66719a37c857b3eb",
+  "source_hash": "cf59477f1b70854ebe2a32f1cbc55597af05b0f9565d21b3c05ef734ab57dee5",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1788672976,
+  "updated_at": 1788869399,
   "version": 2
 }
