@@ -448,6 +448,14 @@
       "translation": "By default, __ELBOT_CODE_0__ and __ELBOT_CODE_1__ Skills will generate TOML that is low-risk and visible only to the superadmin.",
       "updated_at": 1783479117
     },
+    "CHANGELOG.md:list:51ebac8be02eaf57a825f82fbed03d57a2e3bd9c821151304b70bb8dcbbb673e": {
+      "kind": "list",
+      "source": "修复elwisp发往qqonebot，文件太大导致全部阻塞的bug",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "51ebac8be02eaf57a825f82fbed03d57a2e3bd9c821151304b70bb8dcbbb673e",
+      "translation": "Fixed a bug where large files sent from Elwisp to qqonebot caused total blockage.",
+      "updated_at": 1788876182
+    },
     "CHANGELOG.md:list:544848e58ddf58eb94be259c382c90eb3999f62714ca2674072b8102baa6631a": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 修改 __ELBOT_CODE_1__ 后不再自动 reload；修改完成后需调用 __ELBOT_CODE_2__ 生效。",
@@ -1562,8 +1570,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "cf59477f1b70854ebe2a32f1cbc55597af05b0f9565d21b3c05ef734ab57dee5",
+  "source_hash": "9b632c0abfa3cf9b4374ccb86d2b1a5ca96c733b1c5cd9cd237f9b5627e39f37",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1788869399,
+  "updated_at": 1788876182,
   "version": 2
 }
