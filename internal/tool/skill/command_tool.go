@@ -130,5 +130,17 @@ func argumentText(raw json.RawMessage) (string, error) {
 		}
 		return "false", nil
 	}
-	return "", fmt.Errorf("must be string, number, or boolean")
+	var complex any
+	decoder = json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&complex); err == nil {
+		switch complex.(type) {
+		case []any, map[string]any:
+			var compact bytes.Buffer
+			if err := json.Compact(&compact, raw); err == nil {
+				return compact.String(), nil
+			}
+		}
+	}
+	return "", fmt.Errorf("must be string, number, boolean, array, or object")
 }
