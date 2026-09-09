@@ -1,0 +1,31 @@
+# Media Center 最近工作交接
+
+## 当前状态
+
+- 仓库：`C:/Users/Cirno/dev/elbot`，Go 项目。
+- active plan：`.codecompanion-plan/active/media-center-20260908-233759.md`。
+- plan detail 已恢复原文，并在末尾追加了计划维护规则、Hook/Skill 约定及本轮 bash Skill 方案；后续只能追加，或修改前先征得用户同意。
+- 第 1～3 项已完成；第 4 项 Hook 已完成并勾选；当前准备继续 Skill 阶段。Elnis 暂不开始。
+
+## 最近完成
+
+- Hook 现有 image/file 来源字段可承载完整 `media:<sha256>`，不新增独立字段、不升级 hook.v2；旧 URL/path/base64 行为保留。
+- Hook 相关测试已通过：`go test ./internal/hook/...`。
+- Hook 文档已同步更新。
+
+## 已确认的 Skill 方向
+
+- 普通 Agent Skill 可通过 prompt 指导 LLM 使用媒体。
+- bash 型 Skill 通过 shell Tool Runtime 的显式 `media_inputs` 使用媒体；不扫描或改写 `cmd`，不影响 LLM 原始调用记录。
+- `media_inputs` 只传 `media_id`；宿主导出/复用到 `data/sandbox` 专用目录，并注入 `ELBOT_MEDIA_1` 等环境变量。
+- 导出缓存复用 sandbox 清理域，调用期间保护，过期后专用清理；不提供目标 path/overwrite，不用独立 CLI、HTTP 或 RPC。
+- Go Skill 和 TOML 配置型 Skill 沿用 plan detail 中既定方案。
+
+## 下一步
+
+1. 实现 shell schema 的 `media_inputs` 与 Tool Runtime 媒体准备、环境变量注入、失败/超时清理。
+2. 实现 sandbox 专用媒体导出缓存及清理测试。
+3. 完成 Go Skill、TOML 配置型 Skill 的媒体适配与测试。
+4. Skill 阶段完成后勾选对应 plan 项并暂停；不要开始 Elnis。
+
+详细设计、边界和验收标准请直接查看 active plan detail。继续修改前先检查 `git status` 和相关 diff；Go 修改后运行 gofmt 与受影响测试，不要重置现有未提交改动。

@@ -296,6 +296,8 @@ input = "--input"
 
 ElBot 只读取 Skill 根目录下的 `ELBOT_SKILL.toml`，不递归扫描。执行时工作目录固定为该 Skill 根目录，stdout 会作为工具结果；若 stdout 是 `{"content":"..."}` JSON，会取 `content` 字段。
 
+媒体参数可在 `parameters.properties` 中声明为 `{"type":"media"}`，仍通过 `[args]` 映射 flag。LLM 看到字符串 schema 并传入完整 `media:<sha256>`，宿主仅在执行时将该参数导出为相对 Skill 根目录的临时文件路径。未声明为媒体的字符串不转换。stdout 还支持 `segments` 返回媒体 ID 或受控相对文件路径，具体格式与生命周期见 [Skill 使用媒体](concepts.md#skill-使用媒体)。
+
 通过 `agent_skill` 元工具写入配置时，ElBot 会在完整 reload 成功后才确认写入；若 reload 失败，会恢复原有 TOML，原先没有该文件时则删除本次新建文件。
 
 ## Go Skill 编译器路径

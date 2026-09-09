@@ -104,6 +104,12 @@ func hasInboundNonTextSegment(ctx context.Context) bool {
 	return false
 }
 
+func (a *Agent) materializeMedia(ctx context.Context, segments []llm.MessageSegment) []llm.MessageSegment {
+	if a.media == nil {
+		return append([]llm.MessageSegment(nil), segments...)
+	}
+	return a.media.Materialize(ctx, segments)
+}
 func llmSegmentsToPlatform(segments []llm.MessageSegment) []platform.MessageSegment {
 	out := make([]platform.MessageSegment, 0, len(segments))
 	for _, segment := range segments {
@@ -111,9 +117,9 @@ func llmSegmentsToPlatform(segments []llm.MessageSegment) []platform.MessageSegm
 		case llm.SegmentText:
 			out = append(out, platform.MessageSegment{Type: platform.SegmentText, Text: segment.Text})
 		case llm.SegmentImage:
-			out = append(out, platform.MessageSegment{Type: platform.SegmentImage, Text: segment.Text, URL: segment.URL, MIMEType: segment.MIMEType, Name: segment.Name})
+			out = append(out, platform.MessageSegment{Type: platform.SegmentImage, Text: segment.Text, URL: segment.URL, MediaID: segment.MediaID, MIMEType: segment.MIMEType, Name: segment.Name})
 		case llm.SegmentFile:
-			out = append(out, platform.MessageSegment{Type: platform.SegmentFile, Text: segment.Text, URL: segment.URL, MIMEType: segment.MIMEType, Name: segment.Name})
+			out = append(out, platform.MessageSegment{Type: platform.SegmentFile, Text: segment.Text, URL: segment.URL, MediaID: segment.MediaID, MIMEType: segment.MIMEType, Name: segment.Name})
 		}
 	}
 	return out

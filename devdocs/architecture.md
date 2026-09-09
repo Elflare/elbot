@@ -161,6 +161,10 @@ Skill 分三类：
 
 Reload 由 Skill Manager 串行执行：scanner 先构建并验证完整候选集，registry 在单次写锁内替换 Agent/Go Skill 快照，成功后再替换 catalog；任一步失败均保留旧运行快照。`agent_skill` 写入 `ELBOT_SKILL.toml` 后若 reload 失败，会在同一管理事务内恢复原文件。
 
+Skill 媒体处理发生在具体工具的执行阶段，权限/风险评估不导出文件。`tool.MediaRuntime` 复用 Media Center API 管理显式输入、调用期引用和临时导出；ToolRun 不递归替换任意字符串参数。shell 解析 `media_inputs` 并注入调用级 `ELBOT_MEDIA_N`；Go runner 处理 `payload.media_inputs`；TOML 工具只处理 `type=media` 的顶层参数，对 LLM 投影为字符串 schema。
+
+shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首次导出原子发布，复用时刷新 ModTime，直接沿用 sandbox 时间清理。Go/TOML 保持 Skill 根目录为 cwd，媒体输入使用调用专属子目录和相对路径。stdout 媒体段通过 `os.Root` 校验、导入并生成稳定 ID，随后清理调用目录和引用；落库沿用 message/tool_result 引用事务。普通文本中的 ID 不触发转换。
+
 <!-- locator:hook -->
 ## Hook 链路
 
@@ -178,6 +182,7 @@ Reload 由 Skill Manager 串行执行：scanner 先构建并验证完整候选�
 - 持久进程启动仍是异步生命周期，reload 提交后可短暂处于 `starting`，进程后续失败由既有状态和重启策略处理。
 - 所有进程 Hook 共用启动时构建的环境快照：进程环境优先补充配置 `.env`，PATH 按进程目录在前、`.env` 目录在后合并；argv 首项也用该 PATH 解析。
 - Hook 可返回控制字段和输出意图。
+- Go Hook 通过事件提供宿主 `MediaAPI`；进程 Hook 通过 `media.import`、`media.read`、`media.export` 和 `media.metadata` 使用媒体。稳定 `media_id` 可跨消息传递，Host 仅在发送边界导出为临时文件；临时 Hook 引用在过期或 runtime 关闭时释放，外部 Hook 不接触 SQLite、媒体根目录或 S3 凭据。
 - 入站消息的唤起状态在 Agent 消息入口计算一次并随 context 贯穿处理链；后续 Hook 不根据已改写的 user 文本或 assistant 输出重新推断。
 - `llm.messages` 对普通 Hook 只读并以深拷贝提供；turn Hook 只能修改当前初始 user，request Hook 只能修改本次请求前新 drain 的 pending。
 - 进程 Hook 可用 `message.segments` 替换当前绑定消息；用户/pending 修改在请求前落库，工具完成 Hook 的修改进入 transcript 和后续 LLM 请求。

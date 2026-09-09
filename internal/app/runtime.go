@@ -19,6 +19,7 @@ import (
 	hookbuiltin "elbot/internal/hook/builtin"
 	hookcontrol "elbot/internal/hook/control"
 	hookruntime "elbot/internal/hook/runtime"
+	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/processenv"
 	"elbot/internal/security"
@@ -53,6 +54,12 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		return nil, err
 	}
 
+	mediaCenter, err := media.NewConfigured(ctx, foundation.Store, filepath.Join(filepath.Dir(cfg.Sandbox.Root), "media"), cfg.FileDelivery)
+	if err != nil {
+		return nil, err
+	}
+	mediaCenter.MaxImportBytes = cfg.PlatformFiles.MaxReceiveFileBytes
+	mediaCenter.DownloadTimeout = time.Duration(cfg.PlatformFiles.DownloadTimeoutSecs) * time.Second
 	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{
 		ConfigDir: filepath.Dir(cfg.ConfigPath),
 		RuntimeInfo: runtimeinfo.Info{
@@ -62,6 +69,8 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		},
 		CronService:            cronService,
 		ChatHistory:            foundation.ChatHistory,
+		Store:                  foundation.Store,
+		Media:                  mediaCenter,
 		ResidentMemoryMaxUnits: resident.Limits{Core: cfg.ResidentMemory.CoreMaxUnits, Normal: cfg.ResidentMemory.NormalMaxUnits},
 		ProcessEnv:             shellProcessEnv,
 	})
@@ -87,6 +96,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	}
 
 	hookRuntime := hookruntime.NewManager(hookruntime.Options{
+		Media:      mediaCenter,
 		Registry:   toolRuntime.Registry,
 		Logger:     logger,
 		Audit:      auditFunc(foundation.Logs),
@@ -211,6 +221,7 @@ func buildAgent(
 		Providers:             cfg.Providers,
 		StatePath:             cfg.StateConfigPath,
 		Store:                 foundation.Store,
+		Media:                 toolRuntime.FileManager.Media,
 		CommandPrefixes:       cfg.Commands.Prefixes,
 		SessionConfig:         session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode},
 		NamingSelection:       cfg.NamingModel,

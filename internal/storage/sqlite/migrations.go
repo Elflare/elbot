@@ -313,6 +313,18 @@ CREATE INDEX idx_media_references_owner ON media_references(owner_type, owner_id
 CREATE INDEX idx_media_references_session ON media_references(session_id);
 `,
 	},
+	{
+		version: 13,
+		name:    "release_message_media_references",
+		sql: `
+CREATE TRIGGER release_message_media_references AFTER DELETE ON messages BEGIN
+    DELETE FROM media_references WHERE owner_id = OLD.id AND owner_type IN ('message', 'tool_result');
+END;
+CREATE TRIGGER release_session_media_references AFTER DELETE ON sessions BEGIN
+    DELETE FROM media_references WHERE session_id = OLD.id;
+END;
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

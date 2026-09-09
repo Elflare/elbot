@@ -58,9 +58,6 @@ func (s *ChatHistoryStore) Close() error {
 }
 
 func migrateChatHistory(ctx context.Context, db *sql.DB) error {
-	if _, err := db.ExecContext(ctx, `ALTER TABLE chat_messages ADD COLUMN segments TEXT NULL`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
-		return fmt.Errorf("add chat history segments: %w", err)
-	}
 	_, err := db.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS chat_messages (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,6 +91,9 @@ ON chat_messages(created_at);
 `)
 	if err != nil {
 		return fmt.Errorf("migrate chat history sqlite: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, `ALTER TABLE chat_messages ADD COLUMN segments TEXT NULL`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		return fmt.Errorf("add chat history segments: %w", err)
 	}
 	return nil
 }

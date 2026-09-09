@@ -23,6 +23,7 @@ type Manager struct {
 	running       map[routeKey]invocation
 	tokens        map[string]toolContext
 	shared        *SharedState
+	media         *mediaBridge
 	sharedCancel  context.CancelFunc
 	sharedDone    chan struct{}
 	prepareReload func(string) (func() error, error)
@@ -51,6 +52,7 @@ func NewManager(opts Options) *Manager {
 		running:      map[routeKey]invocation{},
 		tokens:       map[string]toolContext{},
 		shared:       NewSharedState(),
+		media:        newMediaBridge(opts.Media),
 		sharedCancel: cleanupCancel,
 		sharedDone:   make(chan struct{}),
 		rootCtx:      rootCtx,
@@ -71,6 +73,9 @@ func (m *Manager) cleanSharedState(ctx context.Context) {
 			return
 		case <-ticker.C:
 			m.shared.PruneExpired()
+			if err := m.media.prune(context.Background(), time.Now(), false); err != nil && m.opts.Logger != nil {
+				m.opts.Logger.Warn("prune hook media", "error", err)
+			}
 		}
 	}
 }
@@ -309,7 +314,7 @@ func (m *Manager) finishClose(workers []*worker) {
 	}
 
 	m.mu.Lock()
-	m.closeErr = errors.Join(workerErrs...)
+	m.closeErr = errors.Join(append(workerErrs, m.media.prune(context.Background(), time.Now(), true))...)
 	close(m.closeDone)
 	m.mu.Unlock()
 }

@@ -38,7 +38,7 @@ func hasSQLiteObject(t *testing.T, db *sql.DB, objectType, name string) bool {
 func TestNewRunsMigrations(t *testing.T) {
 	store := newTestStore(t)
 
-	for _, table := range []string{"schema_migrations", "sessions", "messages", "platform_message_map", "context_summaries", "tool_call_records", "cron_jobs", "elnis_events", "elnis_report_deliveries"} {
+	for _, table := range []string{"schema_migrations", "sessions", "messages", "platform_message_map", "context_summaries", "tool_call_records", "cron_jobs", "elnis_events", "elnis_report_deliveries", "media", "media_references"} {
 		var name string
 		err := store.db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&name)
 		if err != nil {
@@ -55,7 +55,7 @@ func TestNewRunsMigrations(t *testing.T) {
 	}
 
 	var version int
-	if err := store.db.QueryRow(`SELECT version FROM schema_migrations WHERE version = 11`).Scan(&version); err != nil {
+	if err := store.db.QueryRow(`SELECT version FROM schema_migrations WHERE version = 12`).Scan(&version); err != nil {
 		t.Fatalf("migration version missing: %v", err)
 	}
 }
@@ -638,6 +638,65 @@ func TestMessageRepositoryAndPlatformMap(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("platform maps after cascade = %d", count)
+	}
+}
+
+func TestMediaRepositoryAndReferences(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	createdAt := storage.Now().Add(-time.Minute)
+	media := &storage.Media{
+		ID:             "media:abc123",
+		Name:           "cat.png",
+		MIMEType:       "image/png",
+		Size:           42,
+		Backend:        "local",
+		LocalPath:      filepath.Join(t.TempDir(), "cat.png"),
+		SourcePlatform: "telegram",
+		SourceFileID:   "file-1",
+		CreatedAt:      createdAt,
+	}
+	if err := store.Media().Upsert(ctx, media); err != nil {
+		t.Fatalf("upsert media: %v", err)
+	}
+	got, err := store.Media().Get(ctx, media.ID)
+	if err != nil {
+		t.Fatalf("get media: %v", err)
+	}
+	if got.ID != media.ID || got.Name != media.Name || got.MIMEType != media.MIMEType || got.Size != media.Size || got.LocalPath != media.LocalPath {
+		t.Fatalf("media = %#v", got)
+	}
+
+	ref := &storage.MediaReference{MediaID: media.ID, OwnerType: "message", OwnerID: "message-1", Purpose: "input", SessionID: "session-1"}
+	if err := store.MediaReferences().Add(ctx, ref); err != nil {
+		t.Fatalf("add reference: %v", err)
+	}
+	if err := store.MediaReferences().Add(ctx, ref); err != nil {
+		t.Fatalf("add duplicate reference: %v", err)
+	}
+	refs, err := store.MediaReferences().ListByOwner(ctx, ref.OwnerType, ref.OwnerID)
+	if err != nil || len(refs) != 1 {
+		t.Fatalf("owner references = %#v, err=%v", refs, err)
+	}
+	refs, err = store.MediaReferences().ListMediaIDs(ctx, media.ID)
+	if err != nil || len(refs) != 1 {
+		t.Fatalf("media references = %#v, err=%v", refs, err)
+	}
+	if orphaned, err := store.Media().DeleteOrphans(ctx, storage.Now()); err != nil || len(orphaned) != 0 {
+		t.Fatalf("referenced media orphaned = %#v, err=%v", orphaned, err)
+	}
+	if err := store.MediaReferences().Remove(ctx, *ref); err != nil {
+		t.Fatalf("remove reference: %v", err)
+	}
+	orphaned, err := store.Media().DeleteOrphans(ctx, storage.Now())
+	if err != nil || len(orphaned) != 1 || orphaned[0].ID != media.ID {
+		t.Fatalf("orphaned media = %#v, err=%v", orphaned, err)
+	}
+	if _, err := store.db.ExecContext(ctx, `DELETE FROM media WHERE id = ?`, media.ID); err != nil {
+		t.Fatalf("delete media: %v", err)
+	}
+	if refs, err := store.MediaReferences().ListMediaIDs(ctx, media.ID); err != nil || len(refs) != 0 {
+		t.Fatalf("references after media delete = %#v, err=%v", refs, err)
 	}
 }
 

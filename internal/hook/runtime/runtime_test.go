@@ -62,6 +62,21 @@ func TestHookRuntimeHelperProcess(t *testing.T) {
 				continue
 			}
 			eventCount++
+			if helperActorID(frame) == "test:media" {
+				fmt.Fprintln(os.Stdout, `{"type":"request","id":"plugin:media","method":"media.import","params":{"base64":"aGVsbG8=","name":"hello.png","mime_type":"image/png"}}`)
+				line, err := reader.ReadString('\n')
+				var response struct {
+					OK     bool `json:"ok"`
+					Result struct {
+						MediaID string `json:"media_id"`
+					} `json:"result"`
+				}
+				if err != nil || json.Unmarshal([]byte(line), &response) != nil || !response.OK {
+					os.Exit(12)
+				}
+				writeHelperResponse(id, map[string]any{"status": "completed", "message": map[string]any{"segments": []map[string]any{{"type": "image", "base64": response.Result.MediaID}}}, "outputs": []map[string]any{{"kind": "image", "url": response.Result.MediaID}}})
+				continue
+			}
 			if helperActorID(frame) == "test:output" {
 				writeHelperResponse(id, map[string]any{"status": "completed", "outputs": []map[string]any{{"kind": "image", "base64": "aGVsbG8=", "name": "hello.png"}}, "target": map[string]any{"platform": "qqonebot", "group_id": "42"}, "timing": "after_assistant"})
 			} else if helperActorID(frame) == "test:message" {

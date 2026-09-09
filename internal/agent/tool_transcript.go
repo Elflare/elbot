@@ -29,6 +29,12 @@ func storedMessageSegments(segments []llm.MessageSegment) string {
 	if len(segments) == 0 || segmentsTextOnly(segments) {
 		return ""
 	}
+	segments = append([]llm.MessageSegment(nil), segments...)
+	for i := range segments {
+		if segments[i].MediaID != "" {
+			segments[i].URL = ""
+		}
+	}
 	data, _ := json.Marshal(segments)
 	return string(data)
 }
@@ -151,6 +157,11 @@ func metadataToolNames(value any) []string {
 }
 
 func (a *Agent) persistTurnMessage(ctx context.Context, message *storage.Message, operation string) error {
+	if a.media != nil && message.Segments != "" {
+		segments := a.materializeMedia(ctx, messageSegmentsFromStorage(message.Segments))
+		message.Segments = storedMessageSegments(segments)
+		message.Content = llm.SegmentsContentText(segments)
+	}
 	if err := a.store.Messages().Append(ctx, message); err != nil {
 		a.audit("persistence_error", "session_id", message.SessionID, "operation", operation, "error", err.Error())
 		return err

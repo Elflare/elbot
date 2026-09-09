@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -21,7 +22,12 @@ func (r *MessageRepository) Append(ctx context.Context, message *storage.Message
 		message.CreatedAt = storage.Now()
 	}
 
-	_, err := r.db.ExecContext(ctx, `
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `
 INSERT INTO messages (
     id, session_id, role, content, parent_message_id, reply_to_platform_message_id,
     reply_to_message_id, tool_call_id, segments, metadata, created_at
@@ -41,7 +47,27 @@ INSERT INTO messages (
 	if err != nil {
 		return fmt.Errorf("append message: %w", err)
 	}
-	return nil
+	var segments []struct {
+		MediaID string `json:"media_id"`
+	}
+	if message.Segments != "" {
+		if err := json.Unmarshal([]byte(message.Segments), &segments); err != nil {
+			return fmt.Errorf("decode message segments: %w", err)
+		}
+	}
+	ownerType := "message"
+	if message.Role == storage.RoleTool {
+		ownerType = "tool_result"
+	}
+	for _, segment := range segments {
+		if segment.MediaID == "" {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO media_references(media_id, owner_type, owner_id, purpose, session_id, created_at) VALUES (?, ?, ?, 'content', ?, ?) ON CONFLICT DO NOTHING`, segment.MediaID, ownerType, message.ID, message.SessionID, storage.FormatTime(message.CreatedAt)); err != nil {
+			return fmt.Errorf("append message media reference: %w", err)
+		}
+	}
+	return tx.Commit()
 }
 
 func (r *MessageRepository) Get(ctx context.Context, id string) (*storage.Message, error) {

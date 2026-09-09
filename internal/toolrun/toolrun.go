@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -24,6 +25,7 @@ const (
 type Manager struct {
 	Native *NativeSource
 	Policy *security.Policy
+	Media  *media.Manager
 }
 
 type Context struct {
@@ -238,6 +240,10 @@ func (m *Manager) Execute(ctx context.Context, call llm.ToolCallRequest, resolve
 		registry = m.Native.Registry
 	}
 	result := tool.Executor{Registry: registry, Actor: actor, Policy: policyForManager(ctx, m.Policy)}.Execute(ctx, call)
+	if result.Result != nil && m.Media != nil {
+		result.Message.Segments = m.Media.Materialize(ctx, result.Message.Segments)
+	}
+	result.Call = call
 	return ExecutionResult{Call: result.Call, Message: result.Message, Result: result.Result, Err: result.Err}
 }
 

@@ -296,6 +296,9 @@ func shortProtocolLine(line string) string {
 }
 
 func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, action Action, state state, method string, params json.RawMessage) (any, error) {
+	if strings.HasPrefix(method, "media.") {
+		return m.Opts.Runtime.MediaRequest(ctx, action.sourceBaseDir(), method, params)
+	}
 	if strings.HasPrefix(method, "shared.") {
 		if m.Opts.Runtime == nil {
 			return nil, fmt.Errorf("hook runtime is not configured")

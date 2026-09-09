@@ -16,6 +16,7 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
+	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/platform"
 	"elbot/internal/request"
@@ -35,6 +36,7 @@ type Agent struct {
 	statePath          string
 	stateModTime       time.Time
 	store              storage.Store
+	media              *media.Manager
 	sessions           *session.Service
 	requests           *request.Manager
 	turns              *turn.Manager
@@ -164,6 +166,7 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		statePath:               statePath,
 		stateModTime:            stateModTime,
 		store:                   store,
+		media:                   opts.Media,
 		sessions:                sessions,
 		requests:                requests,
 		turns:                   turns,

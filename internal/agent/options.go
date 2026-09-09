@@ -10,6 +10,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/platform"
 	"elbot/internal/security"
@@ -26,6 +27,7 @@ type Options struct {
 	Providers             map[string]config.ProviderConfig
 	StatePath             string
 	Store                 storage.Store
+	Media                 *media.Manager
 	CommandPrefixes       []string
 	SessionConfig         session.Config
 	NamingSelection       config.ModelSelection

@@ -17,6 +17,7 @@ const windowsAppDirName = "ElBot"
 const xdgAppDirName = "elbot"
 
 type FilesystemScanner struct {
+	Media   *tool.MediaRuntime
 	Root    string
 	Catalog *Catalog
 }
@@ -53,7 +54,7 @@ func (s FilesystemScanner) Scan(ctx context.Context) ([]tool.Tool, error) {
 	}
 	tools := make([]tool.Tool, 0, len(records))
 	for _, record := range records {
-		tools = append(tools, toolForRecord(record))
+		tools = append(tools, s.toolForRecord(record))
 	}
 	return tools, nil
 }
@@ -71,7 +72,7 @@ func (s FilesystemScanner) Reload(ctx context.Context, registry *tool.Registry) 
 	}
 	replacements := make([]tool.Tool, 0, len(records))
 	for _, record := range records {
-		replacements = append(replacements, toolForRecord(record))
+		replacements = append(replacements, s.toolForRecord(record))
 	}
 	if err := registry.ReplaceSources([]tool.Source{tool.SourceSkillAgent, tool.SourceSkillGo}, replacements); err != nil {
 		return err
@@ -237,6 +238,14 @@ func (s FilesystemScanner) withAgentManifest(record Record) Record {
 	return record
 }
 
+func (s FilesystemScanner) toolForRecord(record Record) tool.Tool {
+	target := toolForRecord(record)
+	if command, ok := target.(CommandTool); ok {
+		command.Media = s.Media
+		return command
+	}
+	return target
+}
 func toolForRecord(record Record) tool.Tool {
 	if record.Kind == KindAgent && record.ManifestFound && record.ManifestError == "" && record.Manifest.Callable {
 		return NewCommandTool(record)

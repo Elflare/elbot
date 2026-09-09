@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -28,13 +29,15 @@ const (
 )
 
 type ShellTool struct {
+	Media      *tool.MediaRuntime
 	FileGuard  *FileGuard
 	ProcessEnv processenv.Environment
 }
 
 type shellArgs struct {
-	Cmd       string `json:"cmd"`
-	TimeoutMS int    `json:"timeout_ms"`
+	MediaInputs []tool.MediaInput `json:"media_inputs"`
+	Cmd         string            `json:"cmd"`
+	TimeoutMS   int               `json:"timeout_ms"`
 }
 
 type shellData struct {
@@ -60,7 +63,11 @@ func (t ShellTool) Info() tool.Info {
 }
 
 func (t ShellTool) Schema() llm.ToolSchema {
-	return shellBuilder().BuildSchema()
+	schema := shellBuilder().BuildSchema()
+	properties := schema.Function.Parameters["properties"].(map[string]any)
+	inputs := properties["media_inputs"].(map[string]any)
+	inputs["items"].(map[string]any)["additionalProperties"] = false
+	return schema
 }
 
 func currentShellDesc() string {
@@ -89,7 +96,8 @@ func shellBuilder() *tool.Builder {
 		DependsOn("workspace").
 		Tags("agent").
 		String("cmd", "要执行的 shell 命令。", tool.Required()).
-		Integer("timeout_ms", "可选，命令超时时间，默认 10000。")
+		Integer("timeout_ms", "可选，命令超时时间，默认 10000。").
+		ObjectArray("media_inputs", "可选，显式媒体输入；宿主导出并注入 ELBOT_MEDIA_1 等环境变量，命令需按当前 shell 语法引用变量。", map[string]any{"media_id": map[string]any{"type": "string", "pattern": "^media:[0-9a-f]{64}$"}}, []string{"media_id"})
 }
 
 func (t ShellTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
@@ -122,7 +130,7 @@ func (t ShellTool) PreflightConfirmation(ctx context.Context, req tool.CallReque
 	return analyzeShellAdvice(cmdText, workDir, t.FileGuard).blockErr
 }
 
-func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, callErr error) {
 	args, cmdText, err := decodeShellArgs(req)
 	if err != nil {
 		return nil, err
@@ -146,7 +154,21 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result
 	if advice.blockErr != nil {
 		return nil, advice.blockErr
 	}
-	cmd := shellCommand(runCtx, t.ProcessEnv, cmdText)
+	environment := t.ProcessEnv
+	if len(args.MediaInputs) > 0 {
+		mediaCall := t.Media.NewCall()
+		defer func() { callErr = errors.Join(callErr, mediaCall.Close()) }()
+		variables := make(map[string]string, len(args.MediaInputs))
+		for i, input := range args.MediaInputs {
+			path, err := mediaCall.CachedExport(runCtx, input.MediaID)
+			if err != nil {
+				return nil, fmt.Errorf("prepare shell media: %w", err)
+			}
+			variables[fmt.Sprintf("ELBOT_MEDIA_%d", i+1)] = path
+		}
+		environment = environment.Overlay(variables)
+	}
+	cmd := shellCommand(runCtx, environment, cmdText)
 	configureShellProcess(cmd)
 	cmd.Dir = workDir
 	var stdout bytes.Buffer

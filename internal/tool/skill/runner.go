@@ -22,6 +22,7 @@ const (
 )
 
 type GoRunner struct {
+	Media      *tool.MediaRuntime
 	Catalog    *Catalog
 	ProcessEnv processenv.Environment
 }
@@ -53,9 +54,9 @@ func (GoRunner) Info() tool.Info {
 
 func (GoRunner) Schema() llm.ToolSchema {
 	return tool.NewBuilder(GoRunnerName).
-		Description("运行指定 Go skill，并把 payload JSON 原样写入 skill stdin。调用 Go skill 时必须通过本 runner：skill_name 选择 skill，payload 放业务参数对象，timeout_ms 设置超时。").
+		Description("运行指定 Go skill；skill_name 选择 skill，payload 放业务参数，timeout_ms 设置超时。可在 payload.media_inputs 显式传 [{\"media_id\":\"media:<sha256>\"}]；宿主补充相对路径、元数据、小文件 base64 和 media_workspace。stdout 可返回 content、segments（text/image/file，媒体使用 media_id 或 Skill 目录内相对 path）。").
 		String("skill_name", "Go skill 名称。", tool.Required()).
-		Object("payload", "业务参数 JSON 对象，会原样写入 Go skill 的 stdin。例如 {\"url\":\"xxx\"}。", tool.Required()).
+		Object("payload", "业务参数 JSON 对象；除显式媒体输入外原样写入 stdin。", tool.Required()).
 		Integer("timeout_ms", "可选，超时时间，默认 30000。").
 		BuildSchema()
 }
@@ -80,7 +81,7 @@ func (r GoRunner) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.Ri
 	return tool.RiskAssessment{Level: record.Risk}, nil
 }
 
-func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, callErr error) {
 	var args goRunnerArgs
 	if len(req.Arguments) > 0 {
 		var err error
@@ -99,10 +100,16 @@ func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (*tool.Result,
 	timeout := runnerTimeout(args.TimeoutMS)
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	mediaCall := r.Media.NewCall()
+	defer func() { callErr = errors.Join(callErr, mediaCall.Close()) }()
+	payload, err := prepareGoMedia(runCtx, args.Payload, mediaCall, record.Root)
+	if err != nil {
+		return nil, fmt.Errorf("prepare Go skill media: %w", err)
+	}
 	cmd := r.ProcessEnv.CommandContext(runCtx, record.BinaryPath)
 	cmd.Dir = record.Root
-	cmd.Stdin = bytes.NewReader(args.Payload)
-	return runCommand(runCtx, "go skill", cmd)
+	cmd.Stdin = bytes.NewReader(payload)
+	return runMediaCommand(runCtx, "go skill", cmd, mediaCall)
 }
 
 func parseGoRunnerArgs(data json.RawMessage) (goRunnerArgs, error) {
@@ -160,7 +167,7 @@ func safeRelativePath(root, rel string) (string, error) {
 	return clean, nil
 }
 
-func runCommand(ctx context.Context, label string, cmd *exec.Cmd) (*tool.Result, error) {
+func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall *tool.MediaCall) (*tool.Result, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -171,7 +178,7 @@ func runCommand(ctx context.Context, label string, cmd *exec.Cmd) (*tool.Result,
 	if err != nil {
 		return nil, commandError(ctx, label, err, out, errText)
 	}
-	return resultFromStdout(out)
+	return resultFromStdoutWithMedia(ctx, stdout.String(), mediaCall, cmd.Dir)
 }
 
 func commandError(ctx context.Context, label string, err error, stdout, stderr string) error {
@@ -202,17 +209,7 @@ func commandOutputSuffix(stdout, stderr string) string {
 }
 
 func resultFromStdout(out string) (*tool.Result, error) {
-	trimmed := strings.TrimSpace(out)
-	if trimmed == "" {
-		return &tool.Result{Content: ""}, nil
-	}
-	var structured struct {
-		Content string `json:"content"`
-	}
-	if err := json.Unmarshal([]byte(trimmed), &structured); err == nil && structured.Content != "" {
-		return &tool.Result{Content: structured.Content}, nil
-	}
-	return &tool.Result{Content: out}, nil
+	return resultFromStdoutWithMedia(context.Background(), out, nil, "")
 }
 
 func truncateOutput(text string) string {

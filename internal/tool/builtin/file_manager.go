@@ -8,11 +8,14 @@ import (
 	"strings"
 
 	"elbot/internal/config"
+	"elbot/internal/media"
+	"elbot/internal/storage"
 )
 
 type FileManager struct {
 	SandboxRoot string
 	Config      config.FileDeliveryConfig
+	Media       *media.Manager
 }
 
 type preparedFile struct {
@@ -37,6 +40,15 @@ func NewFileManager(sandboxRoot string, cfg config.FileDeliveryConfig) *FileMana
 		cfg.S3Region = defaults.S3Region
 	}
 	return &FileManager{SandboxRoot: filepath.Clean(sandboxRoot), Config: cfg}
+}
+
+func NewFileManagerWithMedia(sandboxRoot string, cfg config.FileDeliveryConfig, store storage.Store) *FileManager {
+	manager := NewFileManager(sandboxRoot, cfg)
+	if store != nil {
+		root := filepath.Join(manager.SandboxRoot, ".media")
+		manager.Media = media.NewManager(store, root, &media.LocalBackend{Root: root})
+	}
+	return manager
 }
 
 func (m *FileManager) Prepare(sourcePath, name, mimeType string) (preparedFile, error) {

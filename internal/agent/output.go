@@ -34,6 +34,12 @@ func (s agentOutputSender) SendChat(ctx context.Context, outputs []delivery.Outp
 	if s.agent == nil {
 		return delivery.Receipt{}, fmt.Errorf("agent output sender is not configured")
 	}
+	resolved, cleanup, err := s.agent.resolveMediaOutputs(ctx, outputs)
+	if err != nil {
+		return delivery.Receipt{}, err
+	}
+	defer cleanup()
+	outputs = resolved
 	if msg, ok := platform.MessageContextFrom(s.ctx); ok && msg.Sender != nil {
 		return msg.Sender.SendChat(s.ctx, outputs)
 	}
@@ -49,6 +55,13 @@ func (s agentOutputSender) SendNotice(ctx context.Context, notice delivery.Notic
 	if s.agent == nil {
 		return delivery.Receipt{}, fmt.Errorf("agent output sender is not configured")
 	}
+	resolved, cleanup, err := s.agent.resolveMediaOutputs(ctx, outputs)
+	if err != nil {
+		return delivery.Receipt{}, err
+	}
+	defer cleanup()
+	outputs = resolved
+	notice.Outputs = resolved
 	if target.Empty() {
 		if msg, ok := platform.MessageContextFrom(s.ctx); ok && msg.Sender != nil {
 			return msg.Sender.SendNotice(s.ctx, notice)

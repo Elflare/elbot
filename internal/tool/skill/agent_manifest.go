@@ -195,5 +195,25 @@ func normalizeManifestTags(tags []string) []string {
 }
 
 func (m AgentSkillManifest) Schema(name, description string) llm.ToolSchema {
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: name, Description: description, Parameters: m.Parameters}}
+	parameters := make(map[string]any, len(m.Parameters))
+	for key, value := range m.Parameters {
+		parameters[key] = value
+	}
+	if original, ok := m.Parameters["properties"].(map[string]any); ok {
+		properties := make(map[string]any, len(original))
+		for key, value := range original {
+			properties[key] = value
+			if spec, ok := value.(map[string]any); ok && spec["type"] == "media" {
+				copy := make(map[string]any, len(spec)+1)
+				for field, value := range spec {
+					copy[field] = value
+				}
+				copy["type"] = "string"
+				copy["pattern"] = "^media:[0-9a-f]{64}$"
+				properties[key] = copy
+			}
+		}
+		parameters["properties"] = properties
+	}
+	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: name, Description: description, Parameters: parameters}}
 }

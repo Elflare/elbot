@@ -55,6 +55,7 @@ func KnownPoint(point Point) bool {
 // Event carries the context available at a hook point. Fields are populated
 // according to Point; hook handlers should only rely on fields relevant there.
 type Event struct {
+	Media    MediaAPI       `json:"-"`
 	ID       string         `json:"id"`
 	Point    Point          `json:"point"`
 	Time     time.Time      `json:"time"`

@@ -14,6 +14,11 @@ import (
 )
 
 func (w *worker) pluginRequest(value frame) (any, error) {
+	if strings.HasPrefix(value.Method, "media.") {
+		ctx, cancel := context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
+		defer cancel()
+		return w.manager.MediaRequest(ctx, w.config.Dir, value.Method, value.Params)
+	}
 	if strings.HasPrefix(value.Method, "shared.") {
 		return w.manager.shared.HandleRequest(value.Method, value.Params)
 	}
