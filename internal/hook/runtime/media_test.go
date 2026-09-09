@@ -59,7 +59,7 @@ func TestMediaProtocolImportReadExportAndLeases(t *testing.T) {
 	ctx := context.Background()
 	small := []byte{0, 255, 128, 1}
 	imported := mediaCall(t, m, dir, "media.import", map[string]any{"base64": base64.StdEncoding.EncodeToString(small), "name": "tiny.png", "mime_type": "image/png"})
-	read := mediaCall(t, m, dir, "media.read", map[string]string{"media_id": imported.MediaID})
+	read := mediaCall(t, m, dir, "media.read", map[string]string{"media": imported.MediaID})
 	if read.Base64 != base64.StdEncoding.EncodeToString(small) || read.Path != "" {
 		t.Fatalf("read=%#v", read)
 	}
@@ -72,7 +72,7 @@ func TestMediaProtocolImportReadExportAndLeases(t *testing.T) {
 		t.Fatal(err)
 	}
 	importedLarge := mediaCall(t, m, dir, "media.import", map[string]string{"path": "large.bin"})
-	exported := mediaCall(t, m, dir, "media.read", map[string]string{"media_id": importedLarge.MediaID})
+	exported := mediaCall(t, m, dir, "media.read", map[string]string{"media": importedLarge.MediaID})
 	if exported.Base64 != "" || exported.Path == "" || strings.HasPrefix(exported.Path, center.Root) {
 		t.Fatalf("export=%#v", exported)
 	}
@@ -80,7 +80,7 @@ func TestMediaProtocolImportReadExportAndLeases(t *testing.T) {
 	if err != nil || !bytes.Equal(data, large) {
 		t.Fatalf("export bytes: %v", err)
 	}
-	repeated := mediaCall(t, m, dir, "media.export", map[string]string{"media_id": importedLarge.MediaID})
+	repeated := mediaCall(t, m, dir, "media.export", map[string]string{"media": importedLarge.MediaID})
 	if repeated.Path != exported.Path {
 		t.Fatal("export should reuse the lease")
 	}
@@ -104,7 +104,7 @@ func TestMediaProtocolImportReadExportAndLeases(t *testing.T) {
 		t.Fatalf("transcript refs=%#v %v", refs, err)
 	}
 	// Close also releases files and references, without deleting media bodies.
-	exported = mediaCall(t, m, dir, "media.export", map[string]string{"media_id": imported.MediaID})
+	exported = mediaCall(t, m, dir, "media.export", map[string]string{"media": imported.MediaID})
 	if err := m.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestMediaProtocolImportReadExportAndLeases(t *testing.T) {
 	if _, _, err := center.Read(ctx, imported.MediaID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.MediaRequest(ctx, dir, "media.metadata", mustJSON(map[string]string{"media_id": imported.MediaID})); err == nil {
+	if _, err := m.MediaRequest(ctx, dir, "media.metadata", mustJSON(map[string]string{"media": imported.MediaID})); err == nil {
 		t.Fatal("closed runtime accepted request")
 	}
 }
@@ -132,8 +132,8 @@ func TestMediaProtocolURLAndInvalidInputs(t *testing.T) {
 		{"media.import", `{}`}, {"media.import", `{"base64":"!"}`},
 		{"media.import", `{"base64":"YQ==","url":"https://example.com"}`},
 		{"media.import", `{"path":"../secret"}`}, {"media.import", `{"path":"."}`},
-		{"media.read", `{"media_id":"media:bad"}`}, {"media.metadata", `{"media_id":"media:bad"}`},
-		{"media.export", `{"media_id":"media:bad","path":"../../escape"}`},
+		{"media.read", `{"media":"media:bad"}`}, {"media.metadata", `{"media":"media:bad"}`},
+		{"media.export", `{"media":"media:bad","path":"../../escape"}`},
 		{"media.delete", `{}`}, {"media.import", `{"base64":"YQ==","object_key":"secret"}`},
 	}
 	for _, test := range tests {

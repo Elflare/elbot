@@ -97,7 +97,7 @@ func shellBuilder() *tool.Builder {
 		Tags("agent").
 		String("cmd", "要执行的 shell 命令。", tool.Required()).
 		Integer("timeout_ms", "可选，命令超时时间，默认 10000。").
-		ObjectArray("media_inputs", "可选，显式媒体输入；宿主导出并注入 ELBOT_MEDIA_1 等环境变量，命令需按当前 shell 语法引用变量。", map[string]any{"media_id": map[string]any{"type": "string", "pattern": "^media:[0-9a-f]{64}$"}}, []string{"media_id"})
+		ObjectArray("media_inputs", "可选，显式媒体输入；宿主导出并注入 ELBOT_MEDIA_1 等环境变量，命令需按当前 shell 语法引用变量。", map[string]any{"media": map[string]any{"type": "string", "pattern": "^media:[0-9a-f]{64}$"}}, []string{"media"})
 }
 
 func (t ShellTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {

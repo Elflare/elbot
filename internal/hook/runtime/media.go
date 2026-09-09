@@ -22,7 +22,7 @@ const mediaLeaseTTL = time.Hour
 
 // Only this projection is sent over the pipe, never storage.Media itself.
 type mediaResult struct {
-	MediaID   string    `json:"media_id"`
+	MediaID   string    `json:"media"`
 	Name      string    `json:"name"`
 	MIMEType  string    `json:"mime_type"`
 	Size      int64     `json:"size"`
@@ -133,7 +133,7 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 		}
 	case "media.read", "media.export", "media.metadata":
 		var params struct {
-			MediaID string `json:"media_id"`
+			MediaID string `json:"media"`
 		}
 		if err := hookoutput.DecodeJSON(raw, &params); err != nil {
 			return nil, err

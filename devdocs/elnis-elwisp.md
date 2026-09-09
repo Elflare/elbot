@@ -78,6 +78,14 @@ background runner 的输入应同时携带：
 
 当前实现中已新增 `internal/background` 作为公共后台执行类型与 JSON 结果解析层；Agent 提供通用 `RunBackground`，cron 通过薄适配继续保持原行为，Elnis HTTP runtime 通过队列 worker 调用同一后台 runner。
 
+## 媒体边界
+
+Elvena v3 image/file 的 `url` 支持 HTTP(S)、data URI 或完整 `media:<sha256>`；外部本地路径和媒体管理 RPC 不开放。record、重复、拒绝、仅排队的 URL 不下载。已有 ID 的排队任务建立事件引用；真正执行 LLM 时物化媒体。direct 有目标才导入/复用中心，不再通过 Elnis sandbox 下载副本发送。
+
+Elnis workspace 保留普通工作文件。宿主提供受控导入/导出，路径打开使用 `os.Root`；报告附件在准备 outbox 时导入，outbox 保存稳定 ID。发送期间、待重试、已发送缓存各有引用；精确回执建立平台/范围/消息 ID 关联，平台回复消费链路另行接入。
+
+缓存期限复用 sandbox retention_days，非正值不缓存。引用清理和后端删除由独立媒体维护完成，最后引用消失后至少保留 1 小时；删除失败保持可重试状态。Elwisp 的远端工具仅操作自身环境文件，不接受宿主媒体传输。
+
 ## Elvena v3 协议
 
 协议使用 JSON 外壳；`content` 支持 ELyph 或自然语言文本，`segments` 支持多模态 direct 投递，`calls` 支持调用平台 API。direct/record 请求中 `content`、`segments`、`calls` 至少提供一个；llm 模式仍必须提供 `content`。

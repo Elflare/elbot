@@ -58,8 +58,14 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	if err != nil {
 		return nil, err
 	}
+	if err := foundation.Store.Media().RecoverInterrupted(ctx); err != nil {
+		return nil, err
+	}
 	mediaCenter.MaxImportBytes = cfg.PlatformFiles.MaxReceiveFileBytes
 	mediaCenter.DownloadTimeout = time.Duration(cfg.PlatformFiles.DownloadTimeoutSecs) * time.Second
+	if foundation.Maintenance != nil {
+		foundation.Maintenance.Media = mediaCenter
+	}
 	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{
 		ConfigDir: filepath.Dir(cfg.ConfigPath),
 		RuntimeInfo: runtimeinfo.Info{
@@ -122,6 +128,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	req.Profiler.Mark("agent init")
 
 	return &RuntimeComponents{
+		Media:       mediaCenter,
 		Agent:       agt,
 		Handler:     agt,
 		CronService: cronService,

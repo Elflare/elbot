@@ -178,14 +178,17 @@ Elvena v3 支持通过 `segments` 字段发送图片和文件。`content` 保留
 | --- | ---: | :---: | --- |
 | `kind` | string | 是 | `text`、`image`、`file`。 |
 | `text` | string | text 必填 | 纯文本内容，不落盘。 |
-| `url` | string | image/file 必填 | `http://`、`https://` 或 `data:` base64 URI。 |
+| `url` | string | image/file 必填 | `http://`、`https://`、`data:` base64 URI，或已有媒体的完整 `media:<64 位小写 SHA-256>`。不会向外部 Elwisp 返回媒体内容。 |
 | `name` | string | 否 | 文件名，用于下载保存和展示。 |
 | `mime_type` | string | 否 | MIME 类型提示。 |
 
 ### 下载与存储
 
-- Elnis 接收后自动下载到 `sandbox/elnis/<elwisp名>/<事件id>/`。
-- 发送到 LLM 时使用原始 URL（多模态模型可直接看图），沙盒保留副本。
+- record、拒绝、重复或仅排队的事件不下载来源媒体。排队任务已有的媒体 ID 会建立引用。
+- direct 有实际投递目标时，导入或复用 Media Center 媒体，不保留 Elnis sandbox 下载副本。
+- LLM 输入在实际执行时物化为稳定媒体 ID，Session 保存 ID，请求发送前再解析。
+- workspace 普通工作文件继续由 sandbox 管理；报告附件在确定需要持久化投递时导入中心。
+- 文件名已有扩展名（包括 `.PNG`）时保留原名，仅无扩展名时补全。
 - direct 模式同样支持 image/file 输出，平台不支持时自动降级为文字描述。
 - 文件大小受 `elnis.toml` 的 `[segment].max_file_bytes` 限制（默认 100MB）。
 - `data:` URI 仅支持 base64 编码，解码后同样受限。
@@ -213,7 +216,7 @@ Elvena v3 支持通过 `segments` 字段发送图片和文件。`content` 保留
 
 ### LLM 结果中的 report_segments
 
-后台 LLM 处理事件后，`JSONResult` 的 `report_segments` 可附带图片/文件路径，Elnis 会在报告发送时一并投递。`url` 必须是当前任务工作目录内的相对路径，不能使用绝对路径、`~` 或 `..`。
+后台 LLM 处理事件后，`JSONResult` 的 `report_segments` 可附带图片/文件。使用 `url` 时填写当前任务工作目录内的相对路径，不能使用绝对路径、`~`、`..` 或逃逸目录的 symlink/junction；已有 HTTP(S) 来源仍兼容。也可在 `url` 中填写 `media:<sha256>` 引用中心资源。宿主在准备报告时导入附件，outbox 保存稳定媒体 ID，因此原 workspace 文件删除后仍可重试。
 
 
 ```json
@@ -228,6 +231,14 @@ Elvena v3 支持通过 `segments` 字段发送图片和文件。`content` 保留
 }
 ```
 
+
+### 输出关联与清理
+
+发送期间和 outbox 待重试期间，媒体保留有效引用。成功发送且回执能精确对应到一个平台消息时，记录“平台＋会话范围＋平台消息 ID → 媒体 ID”关联；无法确定对应关系时不建立猜测关联。
+
+已发送缓存保留期复用 `app.toml` 的 `[maintenance.sandbox_cleanup].retention_days`，非正值不保留发送后的缓存。缓存过期释放关联引用；Session、Transcript、fork 和待重试报告的独立引用仍保留。所有引用消失后经过 1 小时孤儿宽限期，媒体维护任务才清理本体和记录；失败保留删除状态供重试。宽限期起点保存在数据库，关闭 ElBot 的时间也计入，重启不重置；达到宽限期后在下一次媒体维护任务执行时清理，并非一小时整立即删除。该任务复用 sandbox 的清理时间表，但不按目录文件年龄删除 Media Center 内容。
+
+当前提供输出关联存储与查询，平台引用回复自动命中该关联的消费链路由平台适配阶段接入。Elwisp 远端工具仅操作自己的文件，不获得宿主媒体导出路径、RPC 或存储凭据。
 
 常用字段：
 

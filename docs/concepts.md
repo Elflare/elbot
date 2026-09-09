@@ -207,11 +207,11 @@ bash 脚本通过 `shell` 显式声明输入，例如：
 ```json
 {
   "cmd": "python generate.py --input \"$ELBOT_MEDIA_1\" --output result.png",
-  "media_inputs": [{"media_id": "media:<sha256>"}]
+  "media_inputs": [{"media": "media:<sha256>"}]
 }
 ```
 
-`media_inputs` 每项仅接受 `media_id`。宿主在 sandbox 的 `media-inputs/` 目录导出或复用文件，并为本次进程注入 `ELBOT_MEDIA_1`、`ELBOT_MEDIA_2` 等环境变量。PowerShell 使用 `$env:ELBOT_MEDIA_1`。脚本将输入视为只读，修改前先复制；缓存命中也刷新文件使用时间，闲置副本由既有 sandbox 保留期清理。原始命令和调用参数保持不变。
+`media_inputs` 每项仅接受 `media`。宿主在 sandbox 的 `media-inputs/` 目录导出或复用文件，并为本次进程注入 `ELBOT_MEDIA_1`、`ELBOT_MEDIA_2` 等环境变量。PowerShell 使用 `$env:ELBOT_MEDIA_1`。脚本将输入视为只读，修改前先复制；缓存命中也刷新文件使用时间，闲置副本由既有 sandbox 保留期清理。原始命令和调用参数保持不变。
 
 工具化 AgentSkill 在 `ELBOT_SKILL.toml` 的 `parameters.properties` 中使用 `{"type":"media"}` 声明媒体参数，并在 `[args]` 中映射命令行 flag。LLM 传入媒体 ID，实际进程收到相对 Skill 根目录的调用期文件路径；普通字符串参数不会自动转换。
 
@@ -223,7 +223,7 @@ Go/TOML Skill 的 stdout 可以返回媒体结果：
 {"content":"处理完成","segments":[{"type":"image","path":"result.png"}]}
 ```
 
-`segments` 支持 `text`、`image`、`file`；媒体段必须且只能提供 `media_id` 或 `path`。路径相对 Skill 根目录解析，拒绝绝对路径、`..` 和 symlink/junction 逃逸。宿主在返回前导入文件，Tool Transcript 保存稳定媒体 ID 并建立引用。调用专属目录及调用期引用在成功、失败、取消或超时后释放；Skill 根目录中的其他工作文件仍由 Skill 管理。Go Skill 建议把临时输出写入 `media_workspace`，TOML 脚本可写入收到的媒体输入所在目录。
+`segments` 支持 `text`、`image`、`file`；媒体段必须且只能提供 `media` 或 `path`。路径相对 Skill 根目录解析，拒绝绝对路径、`..` 和 symlink/junction 逃逸。宿主在返回前导入文件，Tool Transcript 保存稳定媒体 ID 并建立引用。调用专属目录及调用期引用在成功、失败、取消或超时后释放；Skill 根目录中的其他工作文件仍由 Skill 管理。Go Skill 建议把临时输出写入 `media_workspace`，TOML 脚本可写入收到的媒体输入所在目录。
 
 ## 平台适配
 

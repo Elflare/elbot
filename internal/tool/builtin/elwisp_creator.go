@@ -184,6 +184,9 @@ func buildElwispCreatorGuide(cfg elwispCreatorConfigSnapshot) string {
 // direct_record_fields: content/segments/calls 至少提供一个；llm 模式仍需要 content
 // optional_fields: elwisp.tags, created_at, title, format, model_slot, tool_list_names, tools, segments, calls, meta
 // modes: record 只记录；direct 直接通知；llm 进入后台 LLM Session。
+// media: image/file segment 使用 url，值为 HTTP(S)、data base64 或完整 media:<sha256>，不新增独立 media 字段。direct 实际发送才进入中心，不保留 sandbox 下载副本；已有扩展名不重复追加。
+// media_boundary: Elwisp 只管理自身文件，不提供媒体 RPC；其远端工具不接收 ElBot 媒体文件或导出路径。
+// report_media: report_segments 的 url 使用 workspace 相对路径或完整 media:<sha256>；宿主导入后 outbox 保存稳定 ID。
 // session_mode: 可选："work/chat"。默认work，不需要工具时设为chat
 // targets: 必填数组；{"platform":"cli"} 表示投递到 cli 超级管理员；{"platform":"telegram","type":"private","id":"123"} 表示指定私聊；{"platform":"all"} 表示所有已启用平台超级管理员。
 // model_slot: elwisp1 | elwisp2 | elwisp3；未配置时由 Elnis fallback。

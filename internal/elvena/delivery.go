@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"elbot/internal/delivery"
+	"elbot/internal/media"
 )
 
 func (t Target) ToDeliveryTarget() delivery.Target {
@@ -50,11 +51,17 @@ func SegmentsOutputs(segments []Segment, paths map[string]string) []delivery.Out
 		case SegmentKindImage:
 			localPath := PathForSegment(i, seg, paths)
 			o := delivery.ImagePath(localPath)
+			if media.ValidID(seg.URL) {
+				o.Source = delivery.Source{MediaID: seg.URL, MIMEType: seg.MIMEType}
+			}
 			o.Name = seg.Name
 			out = append(out, o)
 		case SegmentKindFile:
 			localPath := PathForSegment(i, seg, paths)
 			o := delivery.FilePath(localPath)
+			if media.ValidID(seg.URL) {
+				o.Source = delivery.Source{MediaID: seg.URL, MIMEType: seg.MIMEType}
+			}
 			o.Name = seg.Name
 			out = append(out, o)
 		}

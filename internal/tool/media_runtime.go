@@ -19,7 +19,7 @@ import (
 
 // MediaInput is an explicit input declaration, never inferred from command text.
 type MediaInput struct {
-	MediaID string `json:"media_id"`
+	MediaID string `json:"media"`
 }
 
 func (i *MediaInput) UnmarshalJSON(data []byte) error {
@@ -31,7 +31,7 @@ func (i *MediaInput) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	if !media.ValidID(value.MediaID) {
-		return fmt.Errorf("invalid media_id")
+		return fmt.Errorf("invalid media")
 	}
 	*i = MediaInput(value)
 	return nil
@@ -60,7 +60,7 @@ func (c *MediaCall) Retain(ctx context.Context, id string) (*storage.Media, erro
 		return nil, fmt.Errorf("media center is not configured")
 	}
 	if !media.ValidID(id) {
-		return nil, fmt.Errorf("invalid media_id")
+		return nil, fmt.Errorf("invalid media")
 	}
 	metadata, err := c.runtime.Center.Store.Media().Get(ctx, id)
 	if err != nil {

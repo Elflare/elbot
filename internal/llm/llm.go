@@ -28,7 +28,7 @@ type MessageSegment struct {
 	Type     MessageSegmentType `json:"type"`
 	Text     string             `json:"text,omitempty"`
 	URL      string             `json:"url,omitempty"`
-	MediaID  string             `json:"media_id,omitempty"`
+	MediaID  string             `json:"media,omitempty"`
 	MIMEType string             `json:"mime_type,omitempty"`
 	Name     string             `json:"name,omitempty"`
 }

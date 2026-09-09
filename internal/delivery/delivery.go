@@ -64,7 +64,7 @@ func (t Target) Empty() bool {
 type Source struct {
 	URL      string
 	Path     string
-	MediaID  string
+	MediaID  string `json:"media,omitempty"`
 	MIMEType string
 	Data     []byte
 }

@@ -3,6 +3,7 @@ package media
 import (
 	"context"
 	"io"
+	"sync"
 	"time"
 
 	"elbot/internal/config"
@@ -31,6 +32,7 @@ type Backend interface {
 }
 
 type Manager struct {
+	objects         *sync.Mutex
 	Store           storage.Store
 	Backend         Backend
 	Remote          Backend

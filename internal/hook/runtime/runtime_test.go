@@ -68,7 +68,7 @@ func TestHookRuntimeHelperProcess(t *testing.T) {
 				var response struct {
 					OK     bool `json:"ok"`
 					Result struct {
-						MediaID string `json:"media_id"`
+						MediaID string `json:"media"`
 					} `json:"result"`
 				}
 				if err != nil || json.Unmarshal([]byte(line), &response) != nil || !response.OK {

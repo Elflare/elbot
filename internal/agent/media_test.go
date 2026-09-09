@@ -112,7 +112,7 @@ func TestToolResultMediaPersistsID(t *testing.T) {
 			continue
 		}
 		found = true
-		if !strings.Contains(msg.Segments, `"media_id"`) || strings.Contains(msg.Segments, "data:") {
+		if !strings.Contains(msg.Segments, `"media"`) || strings.Contains(msg.Segments, "data:") {
 			t.Fatal(msg.Segments)
 		}
 		refs, err := store.MediaReferences().ListByOwner(ctx, "tool_result", msg.ID)

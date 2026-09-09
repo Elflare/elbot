@@ -7,6 +7,7 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/tool"
 )
 
@@ -41,6 +42,13 @@ func BuildReportSegmentOutput(segment llm.MessageSegment, sandbox tool.SandboxCo
 	}
 
 	out := delivery.Output{Kind: kind, Name: segment.Name, Source: delivery.Source{MIMEType: segment.MIMEType}}
+	if segment.MediaID != "" {
+		if segment.URL != "" || !media.ValidID(segment.MediaID) {
+			return delivery.Output{}, fmt.Errorf("invalid or mixed report media source")
+		}
+		out.Source.MediaID = segment.MediaID
+		return out, nil
+	}
 	if delivery.IsHTTPMediaSource(segment.URL) {
 		out.Source.URL = strings.TrimSpace(segment.URL)
 		return out, nil

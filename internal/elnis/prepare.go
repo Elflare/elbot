@@ -60,6 +60,11 @@ func (s *Service) prepareEvent(origin elvena.Origin, req Request) (Event, error)
 	if req.SessionMode != "" && !isElnisSessionMode(req.SessionMode) {
 		return Event{}, fmt.Errorf("unsupported session_mode %q", req.SessionMode)
 	}
+	for i, segment := range req.Segments {
+		if err := validateMediaSegment(segment); err != nil {
+			return Event{}, fmt.Errorf("segment %d: %w", i, err)
+		}
+	}
 	createdAt := time.Now()
 	if strings.TrimSpace(req.CreatedAt) != "" {
 		parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(req.CreatedAt))

@@ -165,6 +165,7 @@ type ChatMessage struct {
 }
 
 type Media struct {
+	Deleting       bool
 	ID             string
 	Name           string
 	MIMEType       string
@@ -229,6 +230,7 @@ type UpsertCronJobRequest struct {
 }
 
 type CreateElnisEventRequest struct {
+	MediaIDs         []string
 	EventKey         string
 	TokenName        string
 	ElwispName       string
@@ -353,10 +355,26 @@ type MessageRepository interface {
 	FindByPlatformMessage(ctx context.Context, platform, scopeID, platformMessageID string) (*Message, error)
 }
 
+type MediaOutput struct {
+	Platform  string
+	ScopeID   string
+	MessageID string
+	MediaID   string
+	ExpiresAt time.Time
+}
+
 type MediaRepository interface {
 	Get(ctx context.Context, id string) (*Media, error)
 	Upsert(ctx context.Context, media *Media) error
 	DeleteOrphans(ctx context.Context, cutoff time.Time) ([]Media, error)
+	ClaimOrphans(ctx context.Context, cutoff time.Time) ([]Media, error)
+	FinishDelete(ctx context.Context, id string) error
+	Touch(ctx context.Context, id string, now time.Time) error
+	SaveOutput(ctx context.Context, output MediaOutput) error
+	FindOutputs(ctx context.Context, platform, scopeID, messageID string, now time.Time) ([]string, error)
+	ExpireOutputs(ctx context.Context, now time.Time) error
+	CheckReferences(ctx context.Context) ([]string, error)
+	RecoverInterrupted(ctx context.Context) error
 }
 
 type MediaReferenceRepository interface {

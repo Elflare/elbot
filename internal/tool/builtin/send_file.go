@@ -22,7 +22,7 @@ type SendFileTool struct {
 
 type sendFileArgs struct {
 	Source   string `json:"source"`
-	MediaID  string `json:"media_id"`
+	MediaID  string `json:"media"`
 	Name     string `json:"name"`
 	MIMEType string `json:"mime_type"`
 }
@@ -42,8 +42,8 @@ func sendFileBuilder() *tool.Builder {
 		Description("发送文件。").
 		Risk(tool.RiskMedium).
 		SuperadminOnly().
-		String("source", "要发送的文件来源。可以是本地路径或 HTTP(S) URL；与 media_id 二选一。").
-		String("media_id", "可选，Media Center 媒体 ID；与 source 二选一。").
+		String("source", "要发送的文件来源。可以是本地路径或 HTTP(S) URL；与 media 二选一。").
+		String("media", "可选，Media Center 媒体 ID；与 source 二选一。").
 		String("name", "可选，发送时展示的文件名。").
 		String("mime_type", "可选，文件 MIME 类型；不填时按扩展名推断。")
 }
@@ -56,7 +56,7 @@ func (t SendFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 	source := args.source()
 	mediaID := strings.TrimSpace(args.MediaID)
 	if source != "" && mediaID != "" {
-		return tool.RiskAssessment{}, fmt.Errorf("source and media_id are mutually exclusive")
+		return tool.RiskAssessment{}, fmt.Errorf("source and media are mutually exclusive")
 	}
 	if source == "" && mediaID == "" {
 		return tool.RiskAssessment{}, fmt.Errorf("source is required")
@@ -89,7 +89,7 @@ func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	source := args.source()
 	mediaID := strings.TrimSpace(args.MediaID)
 	if source != "" && mediaID != "" {
-		return nil, fmt.Errorf("source and media_id are mutually exclusive")
+		return nil, fmt.Errorf("source and media are mutually exclusive")
 	}
 	if source == "" && mediaID == "" {
 		return nil, fmt.Errorf("source is required")

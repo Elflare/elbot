@@ -79,10 +79,10 @@ func TestMediaSourceDoesNotScanTextOrAddWireField(t *testing.T) {
 	if err != nil || outputs[0].Text != text || outputs[0].Source.MediaID != "" {
 		t.Fatalf("outputs=%#v err=%v", outputs, err)
 	}
-	if err := DecodeJSON([]byte(`{"type":"image","media_id":"media:bad"}`), &MessageSegment{}); err == nil {
-		t.Fatal("accepted independent message media_id field")
+	if err := DecodeJSON([]byte(`{"type":"image","media":"media:bad"}`), &MessageSegment{}); err == nil {
+		t.Fatal("accepted independent message media field")
 	}
-	if err := DecodeJSON([]byte(`{"kind":"image","media_id":"media:bad"}`), &Segment{}); err == nil {
-		t.Fatal("accepted independent output media_id field")
+	if err := DecodeJSON([]byte(`{"kind":"image","media":"media:bad"}`), &Segment{}); err == nil {
+		t.Fatal("accepted independent output media field")
 	}
 }

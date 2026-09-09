@@ -11,11 +11,13 @@ import (
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
 	"elbot/internal/logging"
+	"elbot/internal/media"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )
 
 type Service struct {
+	Media              *media.Manager
 	logs               *logging.Manager
 	store              storage.Store
 	chatHistory        storage.ChatHistoryRepository
@@ -56,6 +58,14 @@ func (s *Service) RegisterCronHandlers(manager *elcron.Manager) error {
 	}); err != nil {
 		return err
 	}
+	if err := manager.RegisterHandler("maintenance.media_cleanup", func(ctx context.Context, job storage.CronJob) error {
+		if s.Media == nil {
+			return nil
+		}
+		return s.Media.Cleanup(ctx)
+	}); err != nil {
+		return err
+	}
 	if err := manager.RegisterHandler("maintenance.chat_history_cleanup", func(ctx context.Context, job storage.CronJob) error {
 		return s.RunChatHistoryCleanup(ctx)
 	}); err != nil {
@@ -78,6 +88,9 @@ func SetupCron(ctx context.Context, manager *elcron.Manager, cfg *config.Config)
 		return err
 	}
 	if err := upsertOrDisable(ctx, manager, cfg.Maintenance.ChatHistoryCleanup.Enabled, "system.maintenance.chat_history_cleanup", "maintenance.chat_history_cleanup", cfg.Maintenance.ChatHistoryCleanup.Schedule); err != nil {
+		return err
+	}
+	if err := upsertOrDisable(ctx, manager, true, "system.maintenance.media_cleanup", "maintenance.media_cleanup", cfg.Maintenance.SandboxCleanup.Schedule); err != nil {
 		return err
 	}
 	return manager.Start(ctx)
