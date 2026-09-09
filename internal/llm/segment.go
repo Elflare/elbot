@@ -68,14 +68,18 @@ func SegmentsContentText(segments []MessageSegment) string {
 		case SegmentText:
 			text.WriteString(segment.Text)
 		case SegmentImage:
-			if strings.TrimSpace(segment.URL) != "" {
+			if strings.TrimSpace(segment.URL) != "" || segment.MediaID != "" {
 				imageIndex++
 				writeSegmentText(&text, ImageReferenceText(segment, imageIndex))
 			} else {
 				writeSegmentLabel(&text, "图片", "", segment.Name, segment.Text, segment.MIMEType)
 			}
 		case SegmentFile:
-			writeSegmentLabel(&text, "文件", displaySegmentURL(segment.URL), segment.Name, segment.Text, segment.MIMEType)
+			source := displaySegmentURL(segment.URL)
+			if segment.MediaID != "" {
+				source = segment.MediaID
+			}
+			writeSegmentLabel(&text, "文件", source, segment.Name, segment.Text, segment.MIMEType)
 		}
 	}
 	return strings.TrimSpace(text.String())
@@ -83,14 +87,16 @@ func SegmentsContentText(segments []MessageSegment) string {
 
 // ImageReferenceText returns the text label paired with one image in an LLM request.
 func ImageReferenceText(segment MessageSegment, index int) string {
-	if segment.Type != SegmentImage || index < 1 || strings.TrimSpace(segment.URL) == "" {
+	if segment.Type != SegmentImage || index < 1 || (strings.TrimSpace(segment.URL) == "" && segment.MediaID == "") {
 		return ""
 	}
 	parts := []string{fmt.Sprintf("图片 %d", index)}
 	if name := strings.TrimSpace(segment.Name); name != "" {
 		parts = append(parts, "名称："+name)
 	}
-	if reusableURL, ok := reusableImageURL(segment.URL); ok {
+	if segment.MediaID != "" {
+		parts = append(parts, "媒体 ID："+segment.MediaID)
+	} else if reusableURL, ok := reusableImageURL(segment.URL); ok {
 		parts = append(parts, "引用 URL："+reusableURL)
 	} else if strings.HasPrefix(strings.ToLower(strings.TrimSpace(segment.URL)), "data:") {
 		parts = append(parts, "内嵌图片，无可复用 URL")

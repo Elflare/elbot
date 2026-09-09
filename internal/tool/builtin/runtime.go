@@ -6,6 +6,7 @@ import (
 
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
+	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/processenv"
 	"elbot/internal/storage"
@@ -26,6 +27,8 @@ type RuntimeOptions struct {
 	RuntimeInfo            runtimeinfo.Info
 	CronService            *elcron.Service
 	ChatHistory            storage.ChatHistoryRepository
+	Store                  storage.Store
+	Media                  *media.Manager
 	SandboxRoot            string
 	FileDelivery           config.FileDeliveryConfig
 	ResidentMemoryMaxUnits resident.Limits
@@ -50,7 +53,10 @@ func NewRuntime(opts RuntimeOptions) (*Runtime, error) {
 	registry := tool.NewRegistry()
 	residentStore := resident.NewStoreWithLimits(filepath.Join(opts.ConfigDir, "memories.toml"), opts.ResidentMemoryMaxUnits)
 	skillManager := skill.NewManager(filepath.Join(opts.ConfigDir, "skills"), registry, opts.ProcessEnv)
-	fileManager := NewFileManager(info.SandboxRoot, info.FileDelivery)
+	fileManager := NewFileManagerWithMedia(info.SandboxRoot, info.FileDelivery, opts.Store)
+	if opts.Media != nil {
+		fileManager.Media = opts.Media
+	}
 	runtime := &Runtime{Registry: registry, ResidentMemoryStore: residentStore, SkillManager: skillManager, FileManager: fileManager}
 	if err := RegisterAll(registry, RegisterOptions{
 		RuntimeInfo:         info,

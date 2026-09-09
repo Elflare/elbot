@@ -56,12 +56,12 @@ func (d agentToolRunDeps) CompleteToolCall(ctx context.Context, session *storage
 		return nil, err
 	}
 	if !reflect.DeepEqual(event.Message.Segments, original) {
-		return event.Message.Segments, nil
+		return d.agent.materializeMedia(ctx, event.Message.Segments), nil
 	}
 	if event.Tool.Result != resultText {
-		return llm.SetSegmentText(original, event.Tool.Result), nil
+		return d.agent.materializeMedia(ctx, llm.SetSegmentText(original, event.Tool.Result)), nil
 	}
-	return original, nil
+	return d.agent.materializeMedia(ctx, original), nil
 }
 
 func (d agentToolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error) {
@@ -183,6 +183,7 @@ func (a *Agent) toolRunManager() *toolrun.Manager {
 	if a.toolRuntime.manager == nil {
 		a.toolRuntime.manager = toolrun.NewManager(a.toolRuntime.registry, a.securityPolicy)
 	}
+	a.toolRuntime.manager.Media = a.media
 	return a.toolRuntime.manager
 }
 

@@ -191,6 +191,9 @@ func (a *Agent) hookSession(session *storage.Session) hook.SessionContext {
 }
 
 func (a *Agent) fillHookContext(ctx context.Context, event hook.Event) hook.Event {
+	if a.media != nil {
+		event.Media = a.media
+	}
 	actor := a.actor(ctx)
 	platformName := a.platform.Name()
 	scopeID := a.scopeID

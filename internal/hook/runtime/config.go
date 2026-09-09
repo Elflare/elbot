@@ -134,6 +134,7 @@ type Info struct {
 }
 
 type Options struct {
+	Media      hook.MediaAPI
 	Registry   *tool.Registry
 	Logger     *slog.Logger
 	Audit      func(event string, attrs ...any)

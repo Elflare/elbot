@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"elbot/internal/delivery"
+	"elbot/internal/media"
 )
 
 const MaxBase64Bytes = 10 * 1024 * 1024
@@ -159,6 +160,15 @@ func buildMediaSource(spec Segment, baseDir string) (delivery.Source, error) {
 		return delivery.Source{}, fmt.Errorf("image/file/record output must provide exactly one of path, url or base64")
 	}
 	source := delivery.Source{MIMEType: spec.MIMEType}
+	for _, value := range []string{spec.Path, spec.URL, spec.Base64} {
+		if strings.HasPrefix(strings.ToLower(value), media.IDPrefix) {
+			if !media.ValidID(value) {
+				return source, fmt.Errorf("invalid media ID")
+			}
+			source.MediaID = value
+			return source, nil
+		}
+	}
 	if spec.Path != "" {
 		if strings.Contains(spec.Path, "://") {
 			return source, fmt.Errorf("path must be a filesystem path, not a URI")

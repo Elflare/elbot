@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - QQ 官方机器人已支持群聊
+- 新增媒体中心，统一管理所有媒体文件
 
 ### Changed
 

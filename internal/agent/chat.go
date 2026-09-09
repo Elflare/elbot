@@ -92,7 +92,7 @@ func (a *Agent) handleTurnContextDone(ctx context.Context, sessionID string, err
 }
 
 func (a *Agent) runChat(ctx context.Context, session *storage.Session, text string, out turnOutput, selection config.ModelSelection, completedPending *turn.Input) error {
-	userSegments := a.userMessageSegments(ctx, text)
+	userSegments := a.materializeMedia(ctx, inboundSegments(ctx, text))
 	userContent := llm.SegmentsContentText(userSegments)
 
 	userMessage := &storage.Message{
@@ -160,7 +160,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	selection.Model = turnEvent.LLM.Model
 	tools = turnEvent.LLM.Tools
 	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
-	canonicalUserSegments := append([]llm.MessageSegment(nil), turnEvent.Message.Segments...)
+	canonicalUserSegments := a.materializeMedia(ctx, turnEvent.Message.Segments)
 	promptUserSegments := canonicalUserSegments
 	if compactSeedOnCurrentUser || summaryOnCurrentUser {
 		promptUserSegments = llm.PrependSegmentText(promptUserSegments, summaryUserPrefix(loaded.Summary.Summary))

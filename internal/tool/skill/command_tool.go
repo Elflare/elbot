@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"sort"
@@ -15,6 +16,7 @@ import (
 )
 
 type CommandTool struct {
+	Media    *tool.MediaRuntime
 	Record   Record
 	Manifest AgentSkillManifest
 }
@@ -62,22 +64,28 @@ func (t CommandTool) ActivateTools() []string {
 	return []string{AgentSkillManagerName, t.Record.Name}
 }
 
-func (t CommandTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	args, err := commandArguments(t.Manifest, json.RawMessage(req.Arguments))
-	if err != nil {
-		return nil, err
-	}
-	command := append([]string(nil), t.Manifest.Command...)
-	command = append(command, args...)
+func (t CommandTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, callErr error) {
 	timeout := defaultRunnerTimeout
 	if t.Manifest.TimeoutSeconds > 0 {
 		timeout = time.Duration(t.Manifest.TimeoutSeconds) * time.Second
 	}
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	mediaCall := t.Media.NewCall()
+	defer func() { callErr = errors.Join(callErr, mediaCall.Close()) }()
+	raw, err := prepareCommandMedia(runCtx, req.Arguments, t.Manifest, mediaCall, t.Record.Root)
+	if err != nil {
+		return nil, err
+	}
+	args, err := commandArguments(t.Manifest, raw)
+	if err != nil {
+		return nil, err
+	}
+	command := append([]string(nil), t.Manifest.Command...)
+	command = append(command, args...)
 	cmd := exec.CommandContext(runCtx, command[0], command[1:]...)
 	cmd.Dir = t.Record.Root
-	return runCommand(runCtx, "AgentSkill command", cmd)
+	return runMediaCommand(runCtx, "AgentSkill command", cmd, mediaCall)
 }
 
 func commandArguments(manifest AgentSkillManifest, raw json.RawMessage) ([]string, error) {

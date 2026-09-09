@@ -993,6 +993,8 @@ type fakeCronStore struct{ cron storage.CronJobRepository }
 
 func (s fakeCronStore) Sessions() storage.SessionRepository                { return nil }
 func (s fakeCronStore) Messages() storage.MessageRepository                { return nil }
+func (s fakeCronStore) Media() storage.MediaRepository                     { return nil }
+func (s fakeCronStore) MediaReferences() storage.MediaReferenceRepository  { return nil }
 func (s fakeCronStore) ContextSummaries() storage.ContextSummaryRepository { return nil }
 func (s fakeCronStore) ToolCalls() storage.ToolCallRepository              { return nil }
 func (s fakeCronStore) CronJobs() storage.CronJobRepository                { return s.cron }

@@ -134,6 +134,32 @@ func TestExecHelperProcess(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		fmt.Fprintln(os.Stdout, `{"type":"request","id":"plugin:reply","method":"message.get_reply"}`)
 		time.Sleep(5 * time.Second)
+	case "media":
+		reader := bufio.NewReader(os.Stdin)
+		imported, err := execHelperHostRequest(reader, "plugin:import", "media.import", map[string]any{"base64": "aGVsbG8=", "name": "hello.png", "mime_type": "image/png"})
+		if err != nil {
+			fmt.Fprint(os.Stderr, err)
+			os.Exit(12)
+		}
+		id, _ := imported["media_id"].(string)
+		for _, method := range []string{"media.read", "media.metadata", "media.export"} {
+			result, err := execHelperHostRequest(reader, "plugin:"+method, method, map[string]any{"media_id": id})
+			if err != nil || result["media_id"] != id {
+				fmt.Fprint(os.Stderr, err)
+				os.Exit(12)
+			}
+			if method == "media.read" && result["base64"] != "aGVsbG8=" {
+				os.Exit(12)
+			}
+			if method == "media.export" {
+				path, _ := result["path"].(string)
+				data, err := os.ReadFile(path)
+				if err != nil || string(data) != "hello" {
+					os.Exit(12)
+				}
+			}
+		}
+		writeProtocolTestResult(map[string]any{"status": "completed", "message": map[string]any{"segments": []map[string]any{{"type": "image", "url": id}}}, "outputs": []map[string]any{{"kind": "image", "path": id}}})
 	case "shared-state":
 		reader := bufio.NewReader(os.Stdin)
 		getResult, err := execHelperHostRequest(reader, "plugin:get", "shared.get", map[string]any{"key": "worker-data"})

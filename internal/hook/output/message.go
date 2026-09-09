@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"elbot/internal/llm"
+	"elbot/internal/media"
 )
 
 // MessageSegment is the process Hook wire format for replacing message content.
@@ -66,6 +67,14 @@ func buildMessageImage(spec MessageSegment, baseDir string) (llm.MessageSegment,
 	}
 	if sourceCount != 1 {
 		return llm.MessageSegment{}, fmt.Errorf("image segment must provide exactly one of url, path or base64")
+	}
+	for _, value := range []string{spec.URL, spec.Path, spec.Base64} {
+		if strings.HasPrefix(strings.ToLower(value), media.IDPrefix) {
+			if !media.ValidID(value) {
+				return llm.MessageSegment{}, fmt.Errorf("invalid media ID")
+			}
+			return llm.MessageSegment{Type: llm.SegmentImage, Text: spec.Text, MediaID: value, Name: spec.Name, MIMEType: spec.MIMEType}, nil
+		}
 	}
 	segment := llm.MessageSegment{Type: llm.SegmentImage, Text: spec.Text, Name: spec.Name, MIMEType: spec.MIMEType}
 	if spec.URL != "" {

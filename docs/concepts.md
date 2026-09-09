@@ -198,6 +198,33 @@ ELyph Task Notation 是 ElBot 用来描述可复用任务的结构化表示法�
 
 工具化 AgentSkill 配置示例见 [配置说明：AgentSkill 工具化配置](configuration.md#agentskill-工具化配置)。ELyph 与 Skill 的关系见 [ELyph 任务表示法：与 Skill 的关系](elyph.md#与-skill-的关系)，完整语法见 [语法速查](elyph.md#语法速查)。
 
+### Skill 使用媒体
+
+媒体使用稳定标识 `media:<64 位小写 SHA-256>`。普通文档型 Skill 可以指导 Agent 将标识传给支持媒体的工具。
+
+bash 脚本通过 `shell` 显式声明输入，例如：
+
+```json
+{
+  "cmd": "python generate.py --input \"$ELBOT_MEDIA_1\" --output result.png",
+  "media_inputs": [{"media_id": "media:<sha256>"}]
+}
+```
+
+`media_inputs` 每项仅接受 `media_id`。宿主在 sandbox 的 `media-inputs/` 目录导出或复用文件，并为本次进程注入 `ELBOT_MEDIA_1`、`ELBOT_MEDIA_2` 等环境变量。PowerShell 使用 `$env:ELBOT_MEDIA_1`。脚本将输入视为只读，修改前先复制；缓存命中也刷新文件使用时间，闲置副本由既有 sandbox 保留期清理。原始命令和调用参数保持不变。
+
+工具化 AgentSkill 在 `ELBOT_SKILL.toml` 的 `parameters.properties` 中使用 `{"type":"media"}` 声明媒体参数，并在 `[args]` 中映射命令行 flag。LLM 传入媒体 ID，实际进程收到相对 Skill 根目录的调用期文件路径；普通字符串参数不会自动转换。
+
+Go Skill 在 `go_skill_run` 的 `payload.media_inputs` 中使用同样的输入列表。宿主在 stdin 的执行副本中为各项补充 `path`、`name`、`mime_type`、`size`，不超过 1 MiB 的文件还提供 `base64`。`payload.media_workspace` 是相对 Skill 根目录的调用专属目录；可以传空输入列表申请仅用于输出的目录。临时路径和 base64 不写回原始调用参数。
+
+Go/TOML Skill 的 stdout 可以返回媒体结果：
+
+```json
+{"content":"处理完成","segments":[{"type":"image","path":"result.png"}]}
+```
+
+`segments` 支持 `text`、`image`、`file`；媒体段必须且只能提供 `media_id` 或 `path`。路径相对 Skill 根目录解析，拒绝绝对路径、`..` 和 symlink/junction 逃逸。宿主在返回前导入文件，Tool Transcript 保存稳定媒体 ID 并建立引用。调用专属目录及调用期引用在成功、失败、取消或超时后释放；Skill 根目录中的其他工作文件仍由 Skill 管理。Go Skill 建议把临时输出写入 `media_workspace`，TOML 脚本可写入收到的媒体输入所在目录。
+
 ## 平台适配
 
 Platform Adapter 负责接入具体平台。

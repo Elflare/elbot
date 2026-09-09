@@ -125,6 +125,7 @@ rg -n "Phase|Request|Cancel|pending|confirm|runtime status|sending" internal/req
 先看：
 
 - `internal/tool/`：Tool Runtime 核心类型、builder、discover、executor、sandbox/workspace helper。
+- `internal/tool/media_runtime.go`：shell/Skill 的显式媒体准备、调用期引用、sandbox 导出缓存与受控结果导入；缓存复用刷新 ModTime，沿用既有 sandbox 清理。
 - `internal/tool/runtimeinfo/`：工具运行期常用信息入口，如配置路径、sandbox、文件发送配置、时间源和规则卡转发。
 - `internal/toolrun/`：工具调用中间层、工具视图、命名解析、风险确认。
 - `internal/tool/builtin/`：内置工具。
@@ -174,6 +175,7 @@ rg -n "ToolCall|tool message|transcript|ToolCallRecord|confirm|preview" internal
 - `internal/elyph/`：ELyph 语言层。
 - `internal/tool/skill/`：Skill 解析、扫描、catalog、创建、修改、finalize、runner。
 - `internal/tool/skill/agent_manifest.go`：AgentSkill 工具化 manifest。
+- `internal/tool/skill/media.go`：Go payload/TOML 媒体参数的执行副本转换和 stdout 媒体结果解析；`internal/config/assets.go` 中的 `defaultAgentSkillCreatorSkillMD` 是 Agent Skill Creator 的内置说明。
 - `internal/tool/skill/go_source.go`：原生 Go skill 源码维护和编译。
 
 常用搜索：
@@ -190,6 +192,7 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 先看：
 
 - `internal/hook/event.go`：Hook 点、事件 payload 和 Handler 基础类型。
+- `internal/hook/media.go`：Go Hook 使用的宿主 Media API；`internal/hook/runtime/media.go`：hook.v2 媒体 RPC、安全导出和临时引用生命周期。
 - `internal/hook/output/`：规则、一次性 exec 与 runtime 共用的输出协议、消息图片 segment 规范化、校验和 delivery 转换。
 - `internal/hook/protocol/`：进程 Hook 共用的 `hook.v2` 帧、ID 校验和 `event.handle` 公共结果字段。
 - `internal/processenv/`：Shell 与进程 Hook 共用的环境分层、PATH 补充和可执行文件解析；`internal/hook/process.go` 保留 Hook 侧适配入口。
@@ -201,6 +204,7 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 - `internal/hook/runtime/`：Worker Hook 配置、进程、双向 Pipe RPC、waiting 路由、工具桥接和进程内 SharedState。
 - `internal/agent/hooks.go`：Agent 的 Hook 执行、上下文和 continuation 接入。
 - `internal/agent/output.go`：Agent 的 Output Manager 与平台 sender 接入。
+- `internal/agent/media_output.go`：平台发送前解析 Hook/Tool 输出中的 media_id，并清理受控临时导出。
 - `docs/hooks.md`：用户侧 Hook 文档。
 
 常用搜索：

@@ -22,6 +22,7 @@ type SendFileTool struct {
 
 type sendFileArgs struct {
 	Source   string `json:"source"`
+	MediaID  string `json:"media_id"`
 	Name     string `json:"name"`
 	MIMEType string `json:"mime_type"`
 }
@@ -41,7 +42,8 @@ func sendFileBuilder() *tool.Builder {
 		Description("发送文件。").
 		Risk(tool.RiskMedium).
 		SuperadminOnly().
-		String("source", "要发送的文件来源。可以是本地路径或 HTTP(S) URL。", tool.Required()).
+		String("source", "要发送的文件来源。可以是本地路径或 HTTP(S) URL；与 media_id 二选一。").
+		String("media_id", "可选，Media Center 媒体 ID；与 source 二选一。").
 		String("name", "可选，发送时展示的文件名。").
 		String("mime_type", "可选，文件 MIME 类型；不填时按扩展名推断。")
 }
@@ -52,8 +54,15 @@ func (t SendFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 		return tool.RiskAssessment{}, err
 	}
 	source := args.source()
-	if source == "" {
+	mediaID := strings.TrimSpace(args.MediaID)
+	if source != "" && mediaID != "" {
+		return tool.RiskAssessment{}, fmt.Errorf("source and media_id are mutually exclusive")
+	}
+	if source == "" && mediaID == "" {
 		return tool.RiskAssessment{}, fmt.Errorf("source is required")
+	}
+	if mediaID != "" {
+		return tool.RiskAssessment{Level: tool.RiskMedium}, nil
 	}
 	if delivery.IsHTTPMediaSource(source) {
 		return tool.RiskAssessment{Level: tool.RiskMedium}, nil
@@ -78,7 +87,11 @@ func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		return nil, err
 	}
 	source := args.source()
-	if source == "" {
+	mediaID := strings.TrimSpace(args.MediaID)
+	if source != "" && mediaID != "" {
+		return nil, fmt.Errorf("source and media_id are mutually exclusive")
+	}
+	if source == "" && mediaID == "" {
 		return nil, fmt.Errorf("source is required")
 	}
 	sandbox, _ := tool.SandboxContextFromContext(ctx)
@@ -95,6 +108,31 @@ func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 }
 
 func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source string) (delivery.Output, []string, string, error) {
+	if mediaID := strings.TrimSpace(args.MediaID); mediaID != "" {
+		if t.files == nil || t.files.Media == nil {
+			return delivery.Output{}, nil, "", fmt.Errorf("media center is not configured")
+		}
+		media, err := t.files.Media.Store.Media().Get(ctx, mediaID)
+		if err != nil {
+			return delivery.Output{}, nil, "", err
+		}
+		path := ""
+		if media.Backend == "s3" {
+			out := outputForMediaType(media.MIMEType, "")
+			out.Source.URL, err = t.files.Media.PresignGet(ctx, mediaID, 0)
+			if err != nil {
+				return delivery.Output{}, nil, "", err
+			}
+			out.Name = safeFileName(firstNonEmptyString(args.Name, media.Name))
+			out.Source.MIMEType = media.MIMEType
+			return out, nil, out.Name, nil
+		}
+		path = media.LocalPath
+		out := outputForMediaType(media.MIMEType, path)
+		out.Name = safeFileName(firstNonEmptyString(args.Name, media.Name))
+		out.Source.MIMEType = media.MIMEType
+		return out, nil, out.Name, nil
+	}
 	if delivery.IsHTTPMediaSource(source) {
 		urlName := fileNameFromURL(source)
 		name := safeFileName(firstNonEmptyString(args.Name, urlName))

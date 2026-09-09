@@ -25,6 +25,13 @@ type RegisterOptions struct {
 
 func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 	info := opts.RuntimeInfo.Normalize()
+	var mediaRuntime *tool.MediaRuntime
+	if opts.FileManager != nil && opts.FileManager.Media != nil {
+		mediaRuntime = &tool.MediaRuntime{Center: opts.FileManager.Media, SandboxRoot: info.SandboxRoot}
+	}
+	if opts.SkillManager != nil {
+		opts.SkillManager.Scanner.Media = mediaRuntime
+	}
 	var beforeDiscover func(context.Context) error
 	if opts.SkillManager != nil {
 		beforeDiscover = opts.SkillManager.EnsureLoaded
@@ -95,7 +102,9 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 	if err := registry.Register(NewEditFileTool(fileGuard)); err != nil {
 		return err
 	}
-	if err := registry.Register(NewShellToolWithEnvironment(opts.ProcessEnv, fileGuard)); err != nil {
+	shell := NewShellToolWithEnvironment(opts.ProcessEnv, fileGuard)
+	shell.Media = mediaRuntime
+	if err := registry.Register(shell); err != nil {
 		return err
 	}
 	if err := registry.Register(NewElwispCreatorTool(info)); err != nil {
@@ -108,7 +117,9 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 	if err := registry.Register(skill.NewAgentSkillTool(opts.SkillManager)); err != nil {
 		return err
 	}
-	if err := registry.Register(skill.NewGoRunner(catalog, opts.ProcessEnv)); err != nil {
+	goRunner := skill.NewGoRunner(catalog, opts.ProcessEnv)
+	goRunner.Media = mediaRuntime
+	if err := registry.Register(goRunner); err != nil {
 		return err
 	}
 	if opts.SkillManager != nil {

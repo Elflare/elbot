@@ -16,7 +16,7 @@ type MediaReferenceRepository struct{ db *sql.DB }
 func (r *MediaRepository) Get(ctx context.Context, id string) (*storage.Media, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT id, name, mime_type, size, local_path, backend, object_key, source_platform, source_url, source_file_id, created_at, last_accessed_at, expires_at FROM media WHERE id = ?`, id)
 	var m storage.Media
-	var name, localPath, objectKey, sourcePlatform, sourceURL, sourceFileID, createdAt, lastAccessedAt string
+	var name, localPath, objectKey, sourcePlatform, sourceURL, sourceFileID, createdAt, lastAccessedAt sql.NullString
 	var expiresAt sql.NullString
 	if err := row.Scan(&m.ID, &name, &m.MIMEType, &m.Size, &localPath, &m.Backend, &objectKey, &sourcePlatform, &sourceURL, &sourceFileID, &createdAt, &lastAccessedAt, &expiresAt); err != nil {
 		if err == sql.ErrNoRows {
@@ -24,10 +24,10 @@ func (r *MediaRepository) Get(ctx context.Context, id string) (*storage.Media, e
 		}
 		return nil, fmt.Errorf("get media: %w", err)
 	}
-	m.Name, m.LocalPath, m.ObjectKey = name, localPath, objectKey
-	m.SourcePlatform, m.SourceURL, m.SourceFileID = sourcePlatform, sourceURL, sourceFileID
-	m.CreatedAt, _ = storage.ParseTime(createdAt)
-	m.LastAccessedAt, _ = storage.ParseTime(lastAccessedAt)
+	m.Name, m.LocalPath, m.ObjectKey = name.String, localPath.String, objectKey.String
+	m.SourcePlatform, m.SourceURL, m.SourceFileID = sourcePlatform.String, sourceURL.String, sourceFileID.String
+	m.CreatedAt, _ = storage.ParseTime(createdAt.String)
+	m.LastAccessedAt, _ = storage.ParseTime(lastAccessedAt.String)
 	if expiresAt.Valid {
 		value, err := storage.ParseTime(expiresAt.String)
 		if err == nil {
@@ -60,14 +60,14 @@ func (r *MediaRepository) DeleteOrphans(ctx context.Context, cutoff time.Time) (
 	var out []storage.Media
 	for rows.Next() {
 		var m storage.Media
-		var name, localPath, objectKey, sourcePlatform, sourceURL, sourceFileID, createdAt, lastAccessedAt string
+		var name, localPath, objectKey, sourcePlatform, sourceURL, sourceFileID, createdAt, lastAccessedAt sql.NullString
 		var expiresAt sql.NullString
 		if err := rows.Scan(&m.ID, &name, &m.MIMEType, &m.Size, &localPath, &m.Backend, &objectKey, &sourcePlatform, &sourceURL, &sourceFileID, &createdAt, &lastAccessedAt, &expiresAt); err != nil {
 			return nil, err
 		}
-		m.Name, m.LocalPath, m.ObjectKey, m.SourcePlatform, m.SourceURL, m.SourceFileID = name, localPath, objectKey, sourcePlatform, sourceURL, sourceFileID
-		m.CreatedAt, _ = storage.ParseTime(createdAt)
-		m.LastAccessedAt, _ = storage.ParseTime(lastAccessedAt)
+		m.Name, m.LocalPath, m.ObjectKey, m.SourcePlatform, m.SourceURL, m.SourceFileID = name.String, localPath.String, objectKey.String, sourcePlatform.String, sourceURL.String, sourceFileID.String
+		m.CreatedAt, _ = storage.ParseTime(createdAt.String)
+		m.LastAccessedAt, _ = storage.ParseTime(lastAccessedAt.String)
 		out = append(out, m)
 	}
 	if err := rows.Err(); err != nil {

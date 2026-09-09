@@ -64,6 +64,7 @@ func (t Target) Empty() bool {
 type Source struct {
 	URL      string
 	Path     string
+	MediaID  string
 	MIMEType string
 	Data     []byte
 }
@@ -330,6 +331,9 @@ func ValidateOutputs(outputs []Output) error {
 		}
 		sourceCount := 0
 		if strings.TrimSpace(out.Source.Path) != "" {
+			sourceCount++
+		}
+		if strings.TrimSpace(out.Source.MediaID) != "" {
 			sourceCount++
 		}
 		if strings.TrimSpace(out.Source.URL) != "" {

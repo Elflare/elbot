@@ -374,6 +374,14 @@ tags 可选，相当于为该工具分类。
 AgentSkill 适合文档型任务、外部脚本包装、临时或低频流程。
 如果要把该 AgentSkill 注册成普通工具，再为它创建 ELBOT_SKILL.toml。
 
+需要媒体的 Skill 才在其说明中加入以下约定：
+- 普通 AgentSkill 使用稳定的 media:<64位小写SHA-256>，将它传给支持媒体的工具。
+- bash 脚本通过 shell 的 media_inputs 显式声明输入，例如 {"cmd":"python generate.py --input \"$ELBOT_MEDIA_1\"","media_inputs":[{"media_id":"media:<sha256>"}]}。PowerShell 使用 $env:ELBOT_MEDIA_1。不要硬编码导出路径，不需要独立媒体 CLI。
+- media_inputs 每项只有 media_id，不接受 path 或 overwrite。宿主导出到 sandbox 媒体缓存；命中缓存也刷新使用时间，由既有 sandbox 保留期清理。脚本将输入视为只读，要修改时先复制到自己的输出文件。
+- TOML 工具在 parameters.properties 中用 {"type":"media"} 声明媒体参数，[args] 正常映射 flag。LLM 传媒体 ID，进程收到相对 Skill 根目录的临时路径；普通 string 参数不自动转换。
+- 工具 stdout 可返回 {"content":"完成","segments":[{"type":"file","path":"result.png"}]}；图片使用 type=image，也可用 media_id 替代 path。path 必须在 Skill 根目录内，禁止绝对路径、.. 和链接逃逸；宿主导入后返回稳定媒体 ID。
+- Go Skill 通过 go_skill_run 的 payload.media_inputs 声明同样的输入列表。stdin 中每项会获得 path、name、mime_type、size；不超过 1 MiB 还提供 base64。payload.media_workspace 是调用专属目录，输出到该目录后返回相对 Skill 根目录的 path；没有媒体输入也可用空列表申请输出目录。调用结束会清理该目录及临时引用。
+
 AgentSkill 和 EL Skill 分开选择：
 高性能、强结构化、需要校验/编译/长期维护的任务，优先使用 EL Skill。
 `
