@@ -84,6 +84,12 @@ flowchart LR
     output --> platforms
 ```
 
+## 媒体资源边界
+
+Elwisp 自己的文件由外部进程管理；Elnis workspace 保存临时计算和普通工作文件。真正进入 LLM、持久化报告或 direct 平台输出的媒体由共享 Media Center 管理，使用 `media:<sha256>` 标识，不重复保留 direct 的 sandbox 下载副本。
+
+Elvena v3 的 image/file segment 在 `url` 中填写 HTTP(S)、data URI 或完整 `media:<sha256>`，不新增独立 `media` 字段。Elwisp 不获得媒体管理 RPC，外部工具也不会收到宿主导出文件。报告 outbox 使用稳定媒体来源，待重试引用独立于有限期的已发送缓存。详见 [媒体使用与清理](elnis-usage.md#下载与存储)。
+
 ## 三个角色
 
 ### Elnis（艾露妮斯）

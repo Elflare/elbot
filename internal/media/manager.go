@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"elbot/internal/config"
@@ -20,7 +21,7 @@ import (
 
 func NewManager(store storage.Store, root string, backend Backend) *Manager {
 	defaults := config.Default()
-	return &Manager{Store: store, Root: filepath.Clean(root), Backend: backend, Now: storage.Now, FileDelivery: defaults.FileDelivery, MaxImportBytes: defaults.PlatformFiles.MaxReceiveFileBytes, DownloadTimeout: time.Duration(defaults.PlatformFiles.DownloadTimeoutSecs) * time.Second}
+	return &Manager{objects: &sync.Mutex{}, Store: store, Root: filepath.Clean(root), Backend: backend, Now: storage.Now, FileDelivery: defaults.FileDelivery, MaxImportBytes: defaults.PlatformFiles.MaxReceiveFileBytes, DownloadTimeout: time.Duration(defaults.PlatformFiles.DownloadTimeoutSecs) * time.Second}
 }
 
 func (m *Manager) ImportBytes(ctx context.Context, data []byte, input Input) (*storage.Media, error) {
@@ -89,7 +90,15 @@ func (m *Manager) ImportReader(ctx context.Context, input io.Reader, size int64,
 	}
 	sum := sha256.Sum256(data)
 	id := fmt.Sprintf("%s%x", IDPrefix, sum)
+	m.objects.Lock()
+	defer m.objects.Unlock()
 	if existing, err := m.Store.Media().Get(ctx, id); err == nil {
+		if existing.Deleting {
+			return nil, fmt.Errorf("media is being deleted")
+		}
+		if err := m.Store.Media().Touch(ctx, id, m.Now()); err != nil {
+			return nil, err
+		}
 		return existing, nil
 	} else if err != storage.ErrNotFound {
 		return nil, err
@@ -132,17 +141,28 @@ func (m *Manager) Open(ctx context.Context, id string) (io.ReadCloser, *storage.
 	if err != nil {
 		return nil, nil, err
 	}
+	if media.Deleting {
+		return nil, nil, fmt.Errorf("media is being deleted")
+	}
 	backend := m.Backend
 	if media.Backend == "local" {
 		backend = &LocalBackend{Root: m.Root}
 	} else if m.Remote != nil {
 		backend = m.Remote
 	}
-	reader, err := backend.Open(ctx, media)
+	if err := m.Store.Media().Touch(ctx, id, m.Now()); err != nil {
+		return nil, nil, err
+	}
+	release, err := m.Hold(ctx, id)
 	if err != nil {
 		return nil, nil, err
 	}
-	return reader, media, nil
+	reader, err := backend.Open(ctx, media)
+	if err != nil {
+		_ = release()
+		return nil, nil, err
+	}
+	return &referencedReader{ReadCloser: reader, release: release}, media, nil
 }
 
 func (m *Manager) Read(ctx context.Context, id string) ([]byte, *storage.Media, error) {
@@ -205,6 +225,9 @@ func (m *Manager) PresignGet(ctx context.Context, id string, expiry time.Duratio
 	metadata, err := m.Store.Media().Get(ctx, id)
 	if err != nil {
 		return "", err
+	}
+	if metadata.Deleting {
+		return "", fmt.Errorf("media is being deleted")
 	}
 	backend := m.Remote
 	if backend == nil {

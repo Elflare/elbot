@@ -325,6 +325,88 @@ CREATE TRIGGER release_session_media_references AFTER DELETE ON sessions BEGIN
 END;
 `,
 	},
+	{version: 14, name: "media_lifecycle", sql: `
+ALTER TABLE media ADD COLUMN orphaned_at TEXT NULL;
+ALTER TABLE media ADD COLUMN deleting INTEGER NOT NULL DEFAULT 0;
+UPDATE media SET orphaned_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ WHERE NOT EXISTS (SELECT 1 FROM media_references WHERE media_id=media.id);
+CREATE TRIGGER media_initial_orphan AFTER INSERT ON media BEGIN
+ UPDATE media SET orphaned_at=NEW.created_at WHERE id=NEW.id;
+END;
+CREATE TRIGGER media_reference_guard BEFORE INSERT ON media_references BEGIN
+ SELECT RAISE(ABORT,'media is being deleted') WHERE EXISTS(SELECT 1 FROM media WHERE id=NEW.media_id AND deleting=1);
+END;
+CREATE TRIGGER media_reference_added AFTER INSERT ON media_references BEGIN
+ UPDATE media SET orphaned_at=NULL WHERE id=NEW.media_id;
+END;
+CREATE TRIGGER media_reference_removed AFTER DELETE ON media_references BEGIN
+ UPDATE media SET orphaned_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=OLD.media_id
+ AND NOT EXISTS(SELECT 1 FROM media_references WHERE media_id=OLD.media_id);
+END;
+CREATE TRIGGER media_message_updated AFTER UPDATE OF segments ON messages BEGIN
+ DELETE FROM media_references WHERE owner_type IN ('message','tool_result') AND owner_id=NEW.id;
+ INSERT OR IGNORE INTO media_references(media_id,owner_type,owner_id,purpose,session_id,created_at)
+ SELECT json_extract(value,'$.media'),CASE WHEN NEW.role='tool' THEN 'tool_result' ELSE 'message' END,NEW.id,'content',NEW.session_id,NEW.created_at
+ FROM json_each(COALESCE(NEW.segments,'[]')) WHERE COALESCE(json_extract(value,'$.media'),'')<>'';
+END;
+CREATE VIEW media_fork_history AS
+ SELECT DISTINCT s.id AS session_id,r.media_id FROM sessions s
+ JOIN messages checkpoint ON checkpoint.id=s.fork_from_message_id AND checkpoint.session_id=s.parent_session_id
+ JOIN media_references r ON r.session_id=s.parent_session_id
+ LEFT JOIN messages m ON m.id=r.owner_id AND m.session_id=s.parent_session_id
+ WHERE (r.owner_type='session_fork' AND r.owner_id=s.parent_session_id)
+ OR (r.owner_type=CASE WHEN m.role='tool' THEN 'tool_result' ELSE 'message' END
+ AND (m.created_at<checkpoint.created_at OR (m.created_at=checkpoint.created_at AND m.rowid<=checkpoint.rowid)));
+CREATE TRIGGER media_fork_created AFTER INSERT ON sessions WHEN NEW.parent_session_id IS NOT NULL BEGIN
+ INSERT OR IGNORE INTO media_references(media_id,owner_type,owner_id,purpose,session_id,created_at)
+ SELECT media_id,'session_fork',NEW.id,'history',NEW.id,NEW.created_at FROM media_fork_history WHERE session_id=NEW.id;
+END;
+CREATE TRIGGER media_cron_insert AFTER INSERT ON cron_jobs BEGIN
+ INSERT OR IGNORE INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
+ SELECT json_extract(value,'$.media'),'cron',NEW.id,'report',strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ FROM json_each(CASE WHEN json_valid(NEW.delivery_state) THEN NEW.delivery_state ELSE '{}' END,'$.report_segments') WHERE COALESCE(json_extract(value,'$.media'),'')<>'';
+END;
+CREATE TRIGGER media_cron_update AFTER UPDATE OF delivery_state ON cron_jobs BEGIN
+ DELETE FROM media_references WHERE owner_type='cron' AND owner_id=NEW.id;
+ INSERT OR IGNORE INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
+ SELECT json_extract(value,'$.media'),'cron',NEW.id,'report',strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ FROM json_each(CASE WHEN json_valid(NEW.delivery_state) THEN NEW.delivery_state ELSE '{}' END,'$.report_segments') WHERE COALESCE(json_extract(value,'$.media'),'')<>'';
+END;
+CREATE TRIGGER media_cron_delete AFTER DELETE ON cron_jobs BEGIN
+ DELETE FROM media_references WHERE owner_type='cron' AND owner_id=OLD.id;
+END;
+CREATE TABLE media_outputs (
+ platform TEXT NOT NULL, scope_id TEXT NOT NULL, message_id TEXT NOT NULL,
+ media_id TEXT NOT NULL REFERENCES media(id), owner_id TEXT NOT NULL,
+ expires_at TEXT NOT NULL,
+ PRIMARY KEY(platform,scope_id,message_id,media_id)
+);
+CREATE INDEX idx_media_outputs_expiry ON media_outputs(expires_at);
+CREATE TRIGGER media_output_added AFTER INSERT ON media_outputs BEGIN
+ INSERT INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
+ VALUES(NEW.media_id,'output',NEW.owner_id,'cache',strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+END;
+CREATE TRIGGER media_output_removed AFTER DELETE ON media_outputs BEGIN
+ DELETE FROM media_references WHERE media_id=OLD.media_id AND owner_type='output' AND owner_id=OLD.owner_id AND purpose='cache';
+END;
+CREATE TRIGGER media_report_added AFTER INSERT ON elnis_report_deliveries
+ WHEN COALESCE(json_extract(NEW.output,'$.Source.media'),'')<>'' BEGIN
+ INSERT INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
+ VALUES(json_extract(NEW.output,'$.Source.media'),'elnis_report',NEW.id,'delivery',NEW.created_at);
+END;
+CREATE TRIGGER media_report_deleted AFTER DELETE ON elnis_report_deliveries BEGIN
+ DELETE FROM media_references WHERE owner_type='elnis_report' AND owner_id=OLD.id;
+END;
+CREATE TRIGGER media_report_completed AFTER UPDATE OF status ON elnis_events WHEN NEW.status='completed' BEGIN
+ DELETE FROM media_references WHERE owner_type='elnis_report' AND owner_id IN(SELECT id FROM elnis_report_deliveries WHERE event_id=NEW.id);
+END;
+CREATE TRIGGER media_event_finished AFTER UPDATE OF status ON elnis_events WHEN NEW.status IN ('completed','failed','result_ready') BEGIN
+ DELETE FROM media_references WHERE owner_type='elnis_event' AND owner_id=NEW.id;
+END;
+CREATE TRIGGER media_event_deleted AFTER DELETE ON elnis_events BEGIN
+ DELETE FROM media_references WHERE owner_type='elnis_event' AND owner_id=OLD.id;
+END;
+`},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

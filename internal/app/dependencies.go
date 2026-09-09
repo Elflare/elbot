@@ -12,6 +12,8 @@ import (
 	elcron "elbot/internal/cron"
 	"elbot/internal/elvena"
 	"elbot/internal/llm"
+	"elbot/internal/maintenance"
+	"elbot/internal/media"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
 )
@@ -52,6 +54,7 @@ type FoundationRequest struct {
 }
 
 type FoundationComponents struct {
+	Maintenance      *maintenance.Service
 	Config           *config.Config
 	Logs             LogManager
 	Logger           *slog.Logger
@@ -103,6 +106,7 @@ type RuntimeRequest struct {
 }
 
 type RuntimeComponents struct {
+	Media       *media.Manager
 	Agent       *agent.Agent
 	Handler     platform.PlatformHandler
 	CronService *elcron.Service

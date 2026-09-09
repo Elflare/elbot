@@ -20,7 +20,7 @@ func TestMessageMediaTransactionAndOwnerDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, role := range []string{storage.RoleUser, storage.RoleTool} {
-		msg := &storage.Message{SessionID: session.ID, Role: role, Segments: `[{"type":"image","media_id":"` + id + `"},{"type":"image","media_id":"` + id + `"}]`}
+		msg := &storage.Message{SessionID: session.ID, Role: role, Segments: `[{"type":"image","media":"` + id + `"},{"type":"image","media":"` + id + `"}]`}
 		if err := store.Messages().Append(ctx, msg); err != nil {
 			t.Fatal(err)
 		}
@@ -42,7 +42,7 @@ func TestMessageMediaTransactionAndOwnerDeletion(t *testing.T) {
 			}
 		}
 	}
-	bad := &storage.Message{SessionID: session.ID, Role: storage.RoleUser, Segments: `[{"type":"image","media_id":"media:missing"}]`}
+	bad := &storage.Message{SessionID: session.ID, Role: storage.RoleUser, Segments: `[{"type":"image","media":"media:missing"}]`}
 	if err := store.Messages().Append(ctx, bad); err == nil {
 		t.Fatal("accepted dangling media")
 	}

@@ -170,7 +170,7 @@ func main(){
 	if info, err := os.Stat(filepath.Join(dir, payload.Inputs[0].Path)); err != nil || info.Size() != large.Size {
 		t.Fatalf("large export %v %v", info, err)
 	}
-	known, err := resultFromStdoutWithMedia(ctx, fmt.Sprintf(`{"segments":[{"type":"file","media_id":%q}]}`, item.ID), call, dir)
+	known, err := resultFromStdoutWithMedia(ctx, fmt.Sprintf(`{"segments":[{"type":"file","media":%q}]}`, item.ID), call, dir)
 	if err != nil || known.Segments[0].MediaID != item.ID {
 		t.Fatalf("known media %#v %v", known, err)
 	}
@@ -192,7 +192,7 @@ func main(){
 			t.Fatalf("accepted %s", value)
 		}
 	}
-	for _, out := range []string{`{"segments":[{"type":"file"}]}`, `{"segments":[{"type":"file","path":"../escape"}]}`, `{"segments":[{"type":"file","path":"x","media_id":"bad"}]}`} {
+	for _, out := range []string{`{"segments":[{"type":"file"}]}`, `{"segments":[{"type":"file","path":"../escape"}]}`, `{"segments":[{"type":"file","path":"x","media":"bad"}]}`} {
 		if _, err := resultFromStdoutWithMedia(ctx, out, call, dir); err == nil {
 			t.Fatalf("accepted %s", out)
 		}

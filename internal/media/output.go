@@ -22,11 +22,16 @@ func (m *Manager) Metadata(ctx context.Context, id string) (*storage.Media, erro
 // The caller must keep it alive until sending completes, then call cleanup.
 // Unlike LLM resolution, this never produces a presigned URL.
 func (m *Manager) ResolveForOutput(ctx context.Context, id string) (delivery.Source, func(), error) {
-	dir, err := os.MkdirTemp("", "elbot-output-*")
+	release, err := m.Hold(ctx, id)
 	if err != nil {
 		return delivery.Source{}, nil, err
 	}
-	cleanup := func() { _ = os.RemoveAll(dir) }
+	dir, err := os.MkdirTemp("", "elbot-output-*")
+	if err != nil {
+		_ = release()
+		return delivery.Source{}, nil, err
+	}
+	cleanup := func() { _ = os.RemoveAll(dir); _ = release() }
 	path := filepath.Join(dir, "media")
 	metadata, err := m.Export(ctx, id, path)
 	if err != nil {

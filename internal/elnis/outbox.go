@@ -17,6 +17,20 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 	if err != nil {
 		return false, err
 	}
+	if len(resolved) == 0 {
+		return false, s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, sessionID, resultJSON, "")
+	}
+	if s.media != nil {
+		result.ReportSegments, err = s.importReportSegments(ctx, result.ReportSegments, eventID, filepath.Join(s.sandboxRoot, filepath.FromSlash(elnisSandboxSubdir(event.Request.Elwisp.Name))))
+		if err != nil {
+			return false, err
+		}
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			return false, err
+		}
+		resultJSON = string(encoded)
+	}
 	outputs, err := background.BuildReportOutputs(result.Report, result.ReportSegments, tool.SandboxContext{
 		Dir:            filepath.Join(s.sandboxRoot, filepath.FromSlash(elnisSandboxSubdir(event.Request.Elwisp.Name))),
 		Background:     true,
@@ -113,6 +127,9 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) error {
 		}
 		receipt, err := s.send(ctx, target.ToDeliveryTarget(), outputs)
 		if err != nil {
+			return s.failReportDelivery(ctx, eventID, batch[0].ID, err)
+		}
+		if err := s.cacheMediaReceipt(ctx, target, outputs, receipt); err != nil {
 			return s.failReportDelivery(ctx, eventID, batch[0].ID, err)
 		}
 		receiptJSON, err := json.Marshal(receipt)

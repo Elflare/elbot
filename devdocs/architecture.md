@@ -143,6 +143,16 @@ Tool Runtime 负责注册、schema、权限、风险、确认详情、用户侧 
 - 查询工具化 AgentSkill 会注入其 top-level schema。
 - 查询 Go skill 会按需激活 `go_skill_run`。
 
+### 媒体引用与清理
+
+媒体本体按 SHA-256 去重，`media_references` 是引用事实来源，不维护整数计数。消息追加/替换、Session 删除、fork、Cron 报告状态、Elnis 排队 ID/outbox、输出关联与引用通过事务及 SQLite 触发器同步。新 fork 按检查点的 created_at/rowid 边界为父消息媒体建立独立引用，并继承父 fork 的祖先历史引用；Chat History 的原始平台 URL/file ID 不构成中心引用。读取、LLM 请求和发送期间另有临时引用。
+
+Elnis direct 实际投递才导入中心，不生成 sandbox 下载副本；LLM 输入在执行时物化。workspace 普通文件不入库，报告附件准备投递时安全导入，outbox 只保存稳定 ID。成功且可明确关联的单消息回执建立平台/会话范围/消息 ID 到多个媒体的有限期映射，平台引用回复消费另由平台适配实现。
+
+输出缓存到期释放引用，待重试和 Session 引用独立保留。最后引用释放后记录 orphaned_at，无引用资源再次使用会刷新时间；宽限期固定 1 小时。清理认领与引用添加在 SQLite 写事务中互斥，认领后禁止新引用，先删除本地/远端对象再移除记录，失败保留状态供重试。共享 Manager 的后端导入/清理由同一锁串行化，防止删除和内容寻址重建交叉。
+
+媒体维护任务复用 sandbox 清理时间表，独立于按文件年龄清理的 workspace 任务；已发送缓存复用 retention_days，非正值不缓存。启动时在任务运行前恢复 Hook/Skill/request 临时引用，并将无法恢复的内存队列事件标记失败；持久化 outbox 保留。清理前只读检查消息、outbox、输出、Cron 报告及 fork 历史的缺失引用和悬空 owner，一致性异常时保守停止并报告。Elnis 终态写入使用独立于调用取消的有界清理 context，使失败状态和事件引用释放在同一事务内完成。
+
 <!-- locator:skill -->
 ## Skill 架构
 
@@ -182,7 +192,7 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 - 持久进程启动仍是异步生命周期，reload 提交后可短暂处于 `starting`，进程后续失败由既有状态和重启策略处理。
 - 所有进程 Hook 共用启动时构建的环境快照：进程环境优先补充配置 `.env`，PATH 按进程目录在前、`.env` 目录在后合并；argv 首项也用该 PATH 解析。
 - Hook 可返回控制字段和输出意图。
-- Go Hook 通过事件提供宿主 `MediaAPI`；进程 Hook 通过 `media.import`、`media.read`、`media.export` 和 `media.metadata` 使用媒体。稳定 `media_id` 可跨消息传递，Host 仅在发送边界导出为临时文件；临时 Hook 引用在过期或 runtime 关闭时释放，外部 Hook 不接触 SQLite、媒体根目录或 S3 凭据。
+- Go Hook 通过事件提供宿主 `MediaAPI`；进程 Hook 通过 `media.import`、`media.read`、`media.export` 和 `media.metadata` 使用媒体。稳定 `media` 引用可跨消息传递，Host 仅在发送边界导出为临时文件；临时 Hook 引用在过期或 runtime 关闭时释放，外部 Hook 不接触 SQLite、媒体根目录或 S3 凭据。
 - 入站消息的唤起状态在 Agent 消息入口计算一次并随 context 贯穿处理链；后续 Hook 不根据已改写的 user 文本或 assistant 输出重新推断。
 - `llm.messages` 对普通 Hook 只读并以深拷贝提供；turn Hook 只能修改当前初始 user，request Hook 只能修改本次请求前新 drain 的 pending。
 - 进程 Hook 可用 `message.segments` 替换当前绑定消息；用户/pending 修改在请求前落库，工具完成 Hook 的修改进入 transcript 和后续 LLM 请求。

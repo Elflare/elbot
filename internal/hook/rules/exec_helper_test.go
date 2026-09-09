@@ -141,10 +141,10 @@ func TestExecHelperProcess(t *testing.T) {
 			fmt.Fprint(os.Stderr, err)
 			os.Exit(12)
 		}
-		id, _ := imported["media_id"].(string)
+		id, _ := imported["media"].(string)
 		for _, method := range []string{"media.read", "media.metadata", "media.export"} {
-			result, err := execHelperHostRequest(reader, "plugin:"+method, method, map[string]any{"media_id": id})
-			if err != nil || result["media_id"] != id {
+			result, err := execHelperHostRequest(reader, "plugin:"+method, method, map[string]any{"media": id})
+			if err != nil || result["media"] != id {
 				fmt.Fprint(os.Stderr, err)
 				os.Exit(12)
 			}

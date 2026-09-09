@@ -204,7 +204,7 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 - `internal/hook/runtime/`：Worker Hook 配置、进程、双向 Pipe RPC、waiting 路由、工具桥接和进程内 SharedState。
 - `internal/agent/hooks.go`：Agent 的 Hook 执行、上下文和 continuation 接入。
 - `internal/agent/output.go`：Agent 的 Output Manager 与平台 sender 接入。
-- `internal/agent/media_output.go`：平台发送前解析 Hook/Tool 输出中的 media_id，并清理受控临时导出。
+- `internal/agent/media_output.go`：平台发送前解析 Hook/Tool 输出中的 media，并清理受控临时导出。
 - `docs/hooks.md`：用户侧 Hook 文档。
 
 常用搜索：
@@ -338,6 +338,8 @@ rg -n "Migration|Repository|Upsert|List|Archive|Fork|ToolCall|CronJob|ElnisEvent
 
 - `internal/elvena/`：公共协议层。
 - `internal/elnis/`：Elnis HTTP、鉴权、准备、投递和后台任务；`outbox.go` 负责 LLM 报告持久化投递、重试与恢复。
+- `internal/elnis/media.go`：Elvena 媒体来源校验、按需入库、宿主 workspace 双向读写及精确回执缓存。
+- `internal/media/lifecycle.go`、`reference.go`：引用保护、1 小时孤儿宽限期和可重试后端清理；`internal/storage/sqlite/media_lifecycle.go`：输出关联、清理认领、启动恢复和只读一致性检查；`media_json_test.go`、`media_fork_test.go` 验证媒体 JSON 引用事务和 fork 检查点范围。
 - `internal/storage/sqlite/elnis_event_repository.go`：Elnis event 与 report outbox 的事务、claim、receipt 和完成状态持久化。
 - `internal/background/`：cron/Elnis 共用后台 LLM 类型与结果 helper。
 - `internal/tool/builtin/elwisp_creator.go`：Elwisp 创建指南工具。

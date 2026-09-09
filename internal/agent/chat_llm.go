@@ -70,6 +70,20 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 	}
 	requestMessages := baseMessages
 	if a.media != nil {
+		seen := map[string]bool{}
+		for _, message := range baseMessages {
+			for _, segment := range message.Segments {
+				if segment.MediaID == "" || seen[segment.MediaID] {
+					continue
+				}
+				seen[segment.MediaID] = true
+				release, err := a.media.Hold(ctx, segment.MediaID)
+				if err != nil {
+					return llmCallResult{}, err
+				}
+				defer release()
+			}
+		}
 		requestMessages, err = a.media.ResolveForLLM(ctx, baseMessages)
 		if err != nil {
 			return llmCallResult{}, err

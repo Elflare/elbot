@@ -45,7 +45,12 @@ func (r *ElnisEventRepository) Create(ctx context.Context, req storage.CreateEln
 		CreatedAt:        createdAt,
 		UpdatedAt:        now,
 	}
-	_, err := r.db.ExecContext(ctx, `
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `
 INSERT INTO elnis_events (
     id, event_key, token_name, elwisp_name, source, source_id, tags, mode,
     model_slot, content_hash, tool_declarations, tool_hash, requested_targets, resolved_targets, status,
@@ -75,6 +80,14 @@ INSERT INTO elnis_events (
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create elnis event: %w", err)
+	}
+	for _, id := range req.MediaIDs {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO media_references(media_id,owner_type,owner_id,purpose,created_at) VALUES(?,'elnis_event',?,'input',?) ON CONFLICT DO NOTHING`, id, event.ID, storage.FormatTime(now)); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
 	}
 	return event, nil
 }

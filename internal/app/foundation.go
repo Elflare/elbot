@@ -72,6 +72,7 @@ func (defaultFoundationFactory) Build(ctx context.Context, req FoundationRequest
 	req.Profiler.Mark("cron async prepared")
 
 	return &FoundationComponents{
+		Maintenance:      maint,
 		Config:           cfg,
 		Logs:             logs,
 		Logger:           logger,

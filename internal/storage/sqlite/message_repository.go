@@ -48,7 +48,7 @@ INSERT INTO messages (
 		return fmt.Errorf("append message: %w", err)
 	}
 	var segments []struct {
-		MediaID string `json:"media_id"`
+		MediaID string `json:"media"`
 	}
 	if message.Segments != "" {
 		if err := json.Unmarshal([]byte(message.Segments), &segments); err != nil {

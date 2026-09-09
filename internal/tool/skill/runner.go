@@ -54,7 +54,7 @@ func (GoRunner) Info() tool.Info {
 
 func (GoRunner) Schema() llm.ToolSchema {
 	return tool.NewBuilder(GoRunnerName).
-		Description("运行指定 Go skill；skill_name 选择 skill，payload 放业务参数，timeout_ms 设置超时。可在 payload.media_inputs 显式传 [{\"media_id\":\"media:<sha256>\"}]；宿主补充相对路径、元数据、小文件 base64 和 media_workspace。stdout 可返回 content、segments（text/image/file，媒体使用 media_id 或 Skill 目录内相对 path）。").
+		Description("运行指定 Go skill；skill_name 选择 skill，payload 放业务参数，timeout_ms 设置超时。可在 payload.media_inputs 显式传 [{\"media\":\"media:<sha256>\"}]；宿主补充相对路径、元数据、小文件 base64 和 media_workspace。stdout 可返回 content、segments（text/image/file，媒体使用 media 或 Skill 目录内相对 path）。").
 		String("skill_name", "Go skill 名称。", tool.Required()).
 		Object("payload", "业务参数 JSON 对象；除显式媒体输入外原样写入 stdin。", tool.Required()).
 		Integer("timeout_ms", "可选，超时时间，默认 30000。").

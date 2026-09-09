@@ -345,7 +345,7 @@ Hook 返回处理结果：
 {"type":"response","id":"host:event","ok":true,"result":{"status":"completed","message":{"segments":[{"type":"text","text":"截图完成"},{"type":"image","path":"result.png","mime_type":"image/png"}]}}}
 ```
 
-图片 segment 必须且只能提供 `url`、`path`、`base64` 之一。任一来源字段都可以填写完整的 `media:<sha256>`，例如 `{"type":"image","url":"media:<sha256>"}`；Host 将其规范化为内部媒体引用，不把中心路径或 presigned URL 写入该引用。不增加独立的 segment `media_id` 字段，也不升级 hook.v2。媒体 ID 必须使用 64 位小写十六进制 SHA-256；不扫描普通文本中的 ID，混合来源会被拒绝。
+图片 segment 必须且只能提供 `url`、`path`、`base64` 之一。任一来源字段都可以填写完整的 `media:<sha256>`，例如 `{"type":"image","url":"media:<sha256>"}`；Host 将其规范化为内部媒体引用，不把中心路径或 presigned URL 写入该引用。不增加独立的 segment `media` 字段，也不升级 hook.v2。媒体 ID 必须使用 64 位小写十六进制 SHA-256；不扫描普通文本中的 ID，混合来源会被拒绝。
 
 其他来源保持原有行为：`url` 接受绝对 HTTP(S) URL 或 `data:image/...;base64,...`，相对 `path` 按插件目录解析；path、base64 和 data URL 解码后最大 10 MiB，并在进入 Agent canonical message 时由宿主按需物化。目前该替换协议支持 `text` 和 `image` segment。
 
@@ -414,14 +414,14 @@ Host 从 stdin 返回相同 `id`；`result` 的具体结构由平台 API 决定�
 | `hook.log` | 一次性 | params 作为日志内容；result 为 `{"ok":true}`。 |
 | `tool.call` | Worker | 调用 allowlist 中的 ElBot 工具，字段见“工具调用”。 |
 | `hooks.reload` | Worker | params 为空对象；重载当前插件，结果见“插件自身重载”。 |
-| `media.import` | 一次性/Worker | `url`、`path`（插件目录相对路径）或 `base64` 三选一，可选 `name`、`mime_type`；返回 `media_id` 和元数据。 |
-| `media.read` | 一次性/Worker | `media_id`；小于等于 1 MiB 返回 `base64`，较大媒体返回受控临时 `path`。 |
-| `media.export` | 一次性/Worker | `media_id`；返回受控临时文件 `path`。 |
-| `media.metadata` | 一次性/Worker | `media_id`；只返回名称、MIME 和大小等安全元数据。 |
+| `media.import` | 一次性/Worker | `url`、`path`（插件目录相对路径）或 `base64` 三选一，可选 `name`、`mime_type`；返回 `media` 和元数据。 |
+| `media.read` | 一次性/Worker | `media`；小于等于 1 MiB 返回 `base64`，较大媒体返回受控临时 `path`。 |
+| `media.export` | 一次性/Worker | `media`；返回受控临时文件 `path`。 |
+| `media.metadata` | 一次性/Worker | `media`；只返回名称、MIME 和大小等安全元数据。 |
 
 媒体临时引用在 Hook runtime 生命周期内管理，过期或关闭时释放；第一版不提供 `media.delete`。Hook 不可访问 SQLite、媒体根目录或 S3 凭据。
 
-`media.*` 请求与结果中的 `media_id` 是媒体 API 的标识参数，保留不变；将返回的 ID 用于消息替换或输出时，填写到现有 `url`、`path` 或 `base64` 字段之一。
+`media.*` 请求与结果中的 `media` 是媒体 API 的标识参数，保留不变；将返回的 ID 用于消息替换或输出时，填写到现有 `url`、`path` 或 `base64` 字段之一。
 
 ### 共享状态
 

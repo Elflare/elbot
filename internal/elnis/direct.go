@@ -15,10 +15,6 @@ func (s *Service) runDirect(ctx context.Context, event Event, eventID string) er
 		return fmt.Errorf("elnis sender is not configured")
 	}
 	req := event.Request
-	paths, err := s.downloadSegments(ctx, req.Elwisp.Name, req.ID, req.Segments)
-	if err != nil {
-		return fmt.Errorf("download segments: %w", err)
-	}
 	resolved, err := decodeResolvedTargets(event.ResolvedTargets)
 	if err != nil {
 		return err
@@ -26,8 +22,11 @@ func (s *Service) runDirect(ctx context.Context, event Event, eventID string) er
 	if err := s.executeCalls(ctx, resolved, req.Calls); err != nil {
 		return err
 	}
-	if strings.TrimSpace(req.Content) != "" || len(req.Segments) > 0 {
-		outputs := elvena.BuildDirectOutputs(req, paths)
+	if len(resolved) > 0 && (strings.TrimSpace(req.Content) != "" || len(req.Segments) > 0) {
+		outputs, err := s.directMediaOutputs(ctx, event, eventID)
+		if err != nil {
+			return err
+		}
 		if err := s.sendOutputsToTargets(ctx, resolved, outputs); err != nil {
 			return err
 		}
@@ -71,6 +70,9 @@ func (s *Service) sendOutputsToTargetsMapped(ctx context.Context, eventKey strin
 	for _, target := range targets {
 		receipt, err := s.send(ctx, target.ToDeliveryTarget(), outputs)
 		if err != nil {
+			return err
+		}
+		if err := s.cacheMediaReceipt(ctx, target, outputs, receipt); err != nil {
 			return err
 		}
 		s.mapReportReceipt(ctx, eventKey, target, sessionID, messageID, receipt)

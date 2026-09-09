@@ -30,7 +30,7 @@ func prepareGoMedia(ctx context.Context, raw json.RawMessage, call *tool.MediaCa
 		return nil, fmt.Errorf("media_inputs: %w", err)
 	}
 	type preparedInput struct {
-		MediaID  string `json:"media_id"`
+		MediaID  string `json:"media"`
 		Path     string `json:"path"`
 		Name     string `json:"name"`
 		MIMEType string `json:"mime_type"`
@@ -105,7 +105,7 @@ func resultFromStdoutWithMedia(ctx context.Context, out string, call *tool.Media
 		Segments []struct {
 			Type     llm.MessageSegmentType `json:"type"`
 			Text     string                 `json:"text"`
-			MediaID  string                 `json:"media_id"`
+			MediaID  string                 `json:"media"`
 			Path     string                 `json:"path"`
 			Name     string                 `json:"name"`
 			MIMEType string                 `json:"mime_type"`
@@ -134,7 +134,7 @@ func resultFromStdoutWithMedia(ctx context.Context, out string, call *tool.Media
 			return nil, fmt.Errorf("unsupported skill segment type %q", segment.Type)
 		}
 		if (segment.MediaID == "") == (segment.Path == "") {
-			return nil, fmt.Errorf("media segment requires exactly one of media_id or path")
+			return nil, fmt.Errorf("media segment requires exactly one of media or path")
 		}
 		if call == nil {
 			return nil, fmt.Errorf("skill media runtime is not configured")

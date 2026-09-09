@@ -11,6 +11,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/elvena"
+	"elbot/internal/media"
 	"elbot/internal/storage"
 )
 
@@ -28,20 +29,24 @@ type EnqueueLLMFunc func(ctx context.Context, event QueuedLLMEvent) error
 type ModelResolverFunc func(slot string) config.ModelSelection
 
 type Options struct {
-	Config           config.ElnisConfig
-	SandboxRoot      string
-	Tokens           map[string]string
-	Store            storage.Store
-	Logger           *slog.Logger
-	Audit            AuditFunc
-	Send             SenderFunc
-	Runner           background.Runner
-	ResolveModel     ModelResolverFunc
-	EnabledPlatforms []string
-	PlatformCallers  elvena.PlatformCallerResolver
+	Media              *media.Manager
+	MediaRetentionDays int
+	Config             config.ElnisConfig
+	SandboxRoot        string
+	Tokens             map[string]string
+	Store              storage.Store
+	Logger             *slog.Logger
+	Audit              AuditFunc
+	Send               SenderFunc
+	Runner             background.Runner
+	ResolveModel       ModelResolverFunc
+	EnabledPlatforms   []string
+	PlatformCallers    elvena.PlatformCallerResolver
 }
 
 type Service struct {
+	media            *media.Manager
+	retentionDays    int
 	cfg              config.ElnisConfig
 	sandboxRoot      string
 	tokens           map[string]string
@@ -67,6 +72,8 @@ func NewService(opts Options) (*Service, error) {
 		return nil, fmt.Errorf("elnis enabled but no tokens are configured")
 	}
 	return &Service{
+		media:            opts.Media,
+		retentionDays:    opts.MediaRetentionDays,
 		cfg:              opts.Config,
 		sandboxRoot:      opts.SandboxRoot,
 		tokens:           opts.Tokens,
@@ -135,7 +142,16 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 	if req.Mode == ModeLLM {
 		status = StatusQueued
 	}
+	var mediaIDs []string
+	if req.Mode != ModeRecord {
+		for _, seg := range req.Segments {
+			if media.ValidID(seg.URL) {
+				mediaIDs = append(mediaIDs, seg.URL)
+			}
+		}
+	}
 	record, err := s.store.ElnisEvents().Create(ctx, storage.CreateElnisEventRequest{
+		MediaIDs:         mediaIDs,
 		EventKey:         event.EventKey,
 		TokenName:        event.Origin.Label(),
 		ElwispName:       req.Elwisp.Name,

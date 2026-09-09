@@ -24,6 +24,11 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	}
 	s.auditEvent("elnis.llm_started", append(attrs, "event_id", eventID)...)
 	s.logInfo("elnis llm started", append(attrs, "event_id", eventID)...)
+	segments, err := s.materializeSegments(ctx, event.Request.Segments, eventID)
+	if err != nil {
+		_ = s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
+		return err
+	}
 	model := s.modelForEvent(event)
 	result, err := s.runner.RunBackground(ctx, background.RunRequest{
 		Kind:           background.KindElnis,
@@ -35,7 +40,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		ModelProvider:  model.Provider,
 		Model:          model.Model,
 		SessionMode:    event.Request.SessionMode,
-		PromptSegments: segmentsLLM(event.Request.Segments),
+		PromptSegments: segments,
 		Prompt:         s.llmPrompt(event),
 		ToolListNames:  event.Request.ToolListNames,
 		CachedTools:    s.elwispCachedTools(event),
@@ -127,7 +132,7 @@ func (s *Service) llmPrompt(event Event) string {
 		"** 有投递目标、任务要求通知或产生需要目标知道的结果/失败/阻塞原因时，应设置 need_report=true 并在 report 写自然语言汇报",
 		"** 最终回复必须是严格 JSON",
 		"** JSON 格式：{\"completed\":true,\"need_report\":false,\"report\":\"\",\"report_segments\":[]}",
-		"** report_segments 可选数组，元素为 {\"type\":\"image|file\",\"url\":\"相对路径\"}，用于附带图片或文件。图片/文件须先保存在当前任务工作目录内",
+		"** report_segments 可选数组，元素为 {\"type\":\"image|file\",\"url\":\"相对路径\"} 或 {\"type\":\"image|file\",\"url\":\"media:<sha256>\"}，来源二选一。文件路径必须位于当前任务工作目录内",
 		"** completed 表示是否完成任务",
 		"** need_report 表示是否需要向目标平台汇报；成功、失败或阻塞都可以请求汇报",
 		"** report 为需要发给目标平台的汇报，可填写处理结果、失败原因或阻塞原因",
