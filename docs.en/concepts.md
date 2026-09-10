@@ -200,6 +200,33 @@ ELyph Task Notation is a structured representation used by ElBot to describe reu
 
 For an example of AgentSkill toolization configuration, see [Configuration Guide: AgentSkill Toolization Configuration](configuration.md#agentskill-工具化配置). For the relationship between ELyph and Skill, see [ELyph Task Notation: Relationship with Skill](elyph.md#与-skill-的关系); for the complete syntax, see [Syntax Quick Reference](elyph.md#语法速查).
 
+### Skill Media Usage
+
+Media uses the stable identifier `media:<64 位小写 SHA-256>`. Standard document-based Skills can guide the Agent to pass the identifier to tools that support media.
+
+bash scripts explicitly declare inputs via `shell`, for example:
+
+```json
+{
+  "cmd": "python generate.py --input \"$ELBOT_MEDIA_1\" --output result.png",
+  "media_inputs": [{"media": "media:<sha256>"}]
+}
+```
+
+Each item in `media_inputs` only accepts `media`. The host exports or reuses files in the sandbox's `media-inputs/` directory and injects environment variables such as `ELBOT_MEDIA_1` and `ELBOT_MEDIA_2` for the current process. PowerShell uses `$env:ELBOT_MEDIA_1`. Scripts treat inputs as read-only and copy them before modification; Cache hits also refresh the file access time, and idle copies are cleaned up by the existing sandbox retention period. Original commands and call parameters remain unchanged.
+
+Tool-based AgentSkill uses `{"type":"media"}` to declare media parameters in `parameters.properties` of `ELBOT_SKILL.toml`, and maps command-line flags in `[args]`. The LLM passes the media ID, and the actual process receives the file path relative to the Skill root directory during the call; Ordinary string parameters will not be automatically converted.
+
+Go Skill uses the same input list in `payload.media_inputs` of `go_skill_run`. The host supplements `path`, `name`, `mime_type`, and `size` for each item in the execution copy of stdin; files not exceeding 1 MiB also provide `base64`. `payload.media_workspace` is a call-exclusive directory relative to the Skill root directory; An empty input list can be passed to request a directory used only for output. Temporary paths and base64 are not written back to the original call parameters.
+
+The stdout of Go/TOML Skills can return media results:
+
+```json
+{"content":"处理完成","segments":[{"type":"image","path":"result.png"}]}
+```
+
+`segments` supports `text`, `image`, and `file`; Media segments must and can only provide `media` or `path`. Paths are resolved relative to the Skill root directory; absolute paths, `..`, and symlink/junction escapes are rejected. The host imports files before returning; the Tool Transcript saves a stable media ID and establishes a reference. Call-specific directories and call-period references are released after success, failure, cancellation, or timeout; Other working files in the Skill root directory are still managed by the Skill. Go Skills are recommended to write temporary output to `media_workspace`, and TOML scripts can write to the directory where the received media input is located.
+
 ## Platform Adapter
 
 The Platform Adapter is responsible for integrating specific platforms.
