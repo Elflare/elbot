@@ -233,7 +233,8 @@ func (m *Manager) PresignGet(ctx context.Context, id string, expiry time.Duratio
 	if backend == nil {
 		backend = m.Backend
 	}
-	if metadata.ObjectKey == "" && backend != m.Backend {
+	// Stored media may still be local after the configured backend switches to S3.
+	if metadata.ObjectKey == "" && (backend != m.Backend || metadata.Backend != backendName(backend)) {
 		reader, _, err := m.Open(ctx, id)
 		if err != nil {
 			return "", err

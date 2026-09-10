@@ -87,6 +87,36 @@ func TestQQTextPagesSplitsChineseRunes(t *testing.T) {
 	}
 }
 
+func TestImageTextDoesNotRepeatPlaceholder(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		text string
+	}{
+		{name: "image only"},
+		{name: "caption", text: "看这张"},
+		{name: "literal placeholder", text: "[图片]是我写的"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			msg := normalizeSegments([]Segment{
+				{Type: "text", Data: map[string]any{"text": tc.text}},
+				{Type: "image", Data: map[string]any{"file": "a.png", "url": "https://example.com/a.png"}},
+			}, 1000)
+			if msg.Text != tc.text {
+				t.Fatalf("text = %q, want user text %q without generated image placeholder", msg.Text, tc.text)
+			}
+			segments := finalMessageSegments(msg.Text, msg.Segments, nil)
+			if len(segments) == 0 || segments[len(segments)-1].Type != platform.SegmentImage {
+				t.Fatalf("image lost: %#v", segments)
+			}
+			for _, segment := range segments {
+				if segment.Type == platform.SegmentText && segment.Text != tc.text {
+					t.Fatalf("unexpected text: %q", segment.Text)
+				}
+			}
+		})
+	}
+}
+
 func TestNormalizeArrayMessage(t *testing.T) {
 	msg := normalizeMessage([]byte(`[
 
@@ -95,7 +125,7 @@ func TestNormalizeArrayMessage(t *testing.T) {
 		{"type":"reply","data":{"id":"42"}},
 		{"type":"image","data":{"file":"a.jpg"}}
 	]`), "", 1000)
-	if msg.ReplyID != "42" || msg.Text != "hello [图片]" {
+	if msg.ReplyID != "42" || msg.Text != "hello" {
 		t.Fatalf("message = %#v", msg)
 	}
 	if len(msg.Mentions) != 1 || msg.Mentions[0].UserID != "1000" {
@@ -119,7 +149,7 @@ func TestNormalizeArrayImageAndFileSegments(t *testing.T) {
 		{"type":"image","data":{"file":"a.jpg","url":"https://example.com/a.jpg"}},
 		{"type":"record","data":{"file":"v.amr"}}
 	]`), "", 1000)
-	if msg.Text != "看[图片][语音]" {
+	if msg.Text != "看[语音]" {
 		t.Fatalf("text = %q", msg.Text)
 	}
 	if len(msg.Segments) != 3 || msg.Segments[1].Type != "image" || msg.Segments[1].URL != "https://example.com/a.jpg" || msg.Segments[2].Type != "file" || msg.Segments[2].Text != "语音" {
@@ -130,7 +160,7 @@ func TestNormalizeArrayImageAndFileSegments(t *testing.T) {
 func TestNormalizeStringifiedArrayImageIgnoresRawMessage(t *testing.T) {
 	raw := []byte(`"[{\"type\":\"image\",\"data\":{\"file\":\"E50BAC9EAA237E638057A4C662990635.jpg\",\"subType\":1,\"url\":\"https://multimedia.nt.qq.com.cn/download?appid=1406&fileid=abc&spec=0&rkey=xyz\",\"file_size\":\"1349\"}}]"`)
 	msg := normalizeMessage(raw, `raw fallback must not be used`, 1000)
-	if msg.Text != "[图片]" {
+	if msg.Text != "" {
 		t.Fatalf("text = %q", msg.Text)
 	}
 	if len(msg.Segments) != 1 || msg.Segments[0].Type != "image" {
