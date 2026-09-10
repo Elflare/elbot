@@ -59,13 +59,16 @@ func main(){
 	catalog.Replace([]Record{{Name: "media", Kind: KindGo, Root: dir, BinaryPath: binary}})
 	runner := NewGoRunner(catalog)
 	runner.Media = mediaRuntime
-	manifest := AgentSkillManifest{Command: []string{binary}, Args: map[string]string{"input": "--input", "mode": "--mode"}, Parameters: map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "media"}, "mode": map[string]any{"type": "string"}}}}
+	manifest := AgentSkillManifest{Command: []string{binary}, Args: map[string]string{"input": "--input", "inputs": "--inputs", "mode": "--mode"}, Parameters: map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "media"}, "inputs": map[string]any{"type": "array", "items": map[string]any{"type": "media"}, "maxItems": 10}, "mode": map[string]any{"type": "string"}}}}
 	command := NewCommandTool(Record{Name: "command", Kind: KindAgent, Root: dir, Manifest: manifest})
 	command.Media = mediaRuntime
 	schema := manifest.Schema("command", "")
 	props := schema.Function.Parameters["properties"].(map[string]any)
-	if props["input"].(map[string]any)["type"] != "string" || manifest.Parameters["properties"].(map[string]any)["input"].(map[string]any)["type"] != "media" {
-		t.Fatal("schema projection mutated manifest")
+	projectedInput := props["input"].(map[string]any)
+	projectedItems := props["inputs"].(map[string]any)["items"].(map[string]any)
+	manifestItems := manifest.Parameters["properties"].(map[string]any)["inputs"].(map[string]any)["items"].(map[string]any)
+	if projectedInput["type"] != "string" || projectedItems["type"] != "string" || projectedItems["pattern"] == "" || manifestItems["type"] != "media" {
+		t.Fatal("invalid schema projection or mutated manifest")
 	}
 	for _, kind := range []string{"go", "toml"} {
 		for _, mode := range []string{"ok", "fail", "escape", "wait", "cancel"} {
@@ -174,22 +177,32 @@ func main(){
 	if err != nil || known.Segments[0].MediaID != item.ID {
 		t.Fatalf("known media %#v %v", known, err)
 	}
-	explicitRaw, _ := json.Marshal(map[string]any{"input": item.ID, "mode": item.ID})
+	explicitRaw, _ := json.Marshal(map[string]any{"input": item.ID, "inputs": []string{item.ID, large.ID, item.ID}, "mode": item.ID})
 	explicit, err := prepareCommandMedia(ctx, explicitRaw, manifest, call, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var explicitArgs map[string]string
+	var explicitArgs struct {
+		Input  string   `json:"input"`
+		Inputs []string `json:"inputs"`
+		Mode   string   `json:"mode"`
+	}
 	if err := json.Unmarshal(explicit, &explicitArgs); err != nil {
 		t.Fatal(err)
 	}
-	if explicitArgs["mode"] != item.ID || explicitArgs["input"] == item.ID {
+	if explicitArgs.Mode != item.ID || explicitArgs.Input == item.ID || len(explicitArgs.Inputs) != 3 || explicitArgs.Inputs[0] != explicitArgs.Inputs[2] || explicitArgs.Inputs[1] == large.ID {
 		t.Fatalf("implicit conversion %s", explicit)
 	}
 	for _, value := range []string{`null`, `42`, `"bad"`, `"media:` + strings.Repeat("f", 64) + `"`} {
 		raw := json.RawMessage(`{"input":` + value + `}`)
 		if _, err := prepareCommandMedia(ctx, raw, manifest, call, dir); err == nil {
 			t.Fatalf("accepted %s", value)
+		}
+	}
+	for _, value := range []string{`null`, `42`, `[42]`, `["bad"]`} {
+		raw := json.RawMessage(`{"inputs":` + value + `}`)
+		if _, err := prepareCommandMedia(ctx, raw, manifest, call, dir); err == nil {
+			t.Fatalf("accepted media array %s", value)
 		}
 	}
 	for _, out := range []string{`{"segments":[{"type":"file"}]}`, `{"segments":[{"type":"file","path":"../escape"}]}`, `{"segments":[{"type":"file","path":"x","media":"bad"}]}`} {

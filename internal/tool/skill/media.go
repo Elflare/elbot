@@ -64,38 +64,98 @@ func prepareGoMedia(ctx context.Context, raw json.RawMessage, call *tool.MediaCa
 
 func prepareCommandMedia(ctx context.Context, raw json.RawMessage, manifest AgentSkillManifest, call *tool.MediaCall, base string) (json.RawMessage, error) {
 	properties, _ := manifest.Parameters["properties"].(map[string]any)
-	var values map[string]json.RawMessage
+	if !schemaContainsMedia(manifest.Parameters) || len(bytes.TrimSpace(raw)) == 0 {
+		return raw, nil
+	}
+	values := map[string]json.RawMessage{}
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return nil, err
+	}
 	for name, property := range properties {
-		spec, _ := property.(map[string]any)
-		if spec["type"] != "media" {
-			continue
-		}
-		if values == nil {
-			if len(bytes.TrimSpace(raw)) == 0 {
-				return raw, nil
-			}
-			if err := json.Unmarshal(raw, &values); err != nil {
-				return nil, err
-			}
-		}
 		value, ok := values[name]
-		if !ok {
+		if !ok || !schemaContainsMedia(property) {
 			continue
 		}
+		prepared, err := prepareMediaValue(ctx, value, property, call, base, name)
+		if err != nil {
+			return nil, err
+		}
+		values[name] = prepared
+	}
+	return json.Marshal(values)
+}
+
+func schemaContainsMedia(value any) bool {
+	schema, ok := value.(map[string]any)
+	if !ok {
+		return false
+	}
+	switch schema["type"] {
+	case "media":
+		return true
+	case "array":
+		return schemaContainsMedia(schema["items"])
+	case "object":
+		properties, _ := schema["properties"].(map[string]any)
+		for _, property := range properties {
+			if schemaContainsMedia(property) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func prepareMediaValue(ctx context.Context, raw json.RawMessage, schemaValue any, call *tool.MediaCall, base, name string) (json.RawMessage, error) {
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, fmt.Errorf("media argument %s must not be null", name)
+	}
+	schema, _ := schemaValue.(map[string]any)
+	switch schema["type"] {
+	case "media":
 		var id string
-		if err := json.Unmarshal(value, &id); err != nil {
+		if err := json.Unmarshal(raw, &id); err != nil {
 			return nil, fmt.Errorf("media argument %s must be a media ID", name)
 		}
 		path, _, err := call.Export(ctx, id, base)
 		if err != nil {
 			return nil, fmt.Errorf("media argument %s: %w", name, err)
 		}
-		values[name], _ = json.Marshal(filepath.ToSlash(path))
-	}
-	if values == nil {
+		return json.Marshal(filepath.ToSlash(path))
+	case "array":
+		var items []json.RawMessage
+		if err := json.Unmarshal(raw, &items); err != nil {
+			return nil, fmt.Errorf("media argument %s must be an array", name)
+		}
+		for i, item := range items {
+			prepared, err := prepareMediaValue(ctx, item, schema["items"], call, base, fmt.Sprintf("%s[%d]", name, i))
+			if err != nil {
+				return nil, err
+			}
+			items[i] = prepared
+		}
+		return json.Marshal(items)
+	case "object":
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return nil, fmt.Errorf("media argument %s must be an object", name)
+		}
+		properties, _ := schema["properties"].(map[string]any)
+		for field, property := range properties {
+			value, ok := fields[field]
+			if !ok || !schemaContainsMedia(property) {
+				continue
+			}
+			prepared, err := prepareMediaValue(ctx, value, property, call, base, name+"."+field)
+			if err != nil {
+				return nil, err
+			}
+			fields[field] = prepared
+		}
+		return json.Marshal(fields)
+	default:
 		return raw, nil
 	}
-	return json.Marshal(values)
 }
 
 func resultFromStdoutWithMedia(ctx context.Context, out string, call *tool.MediaCall, base string) (*tool.Result, error) {
