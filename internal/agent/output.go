@@ -34,19 +34,15 @@ func (s agentOutputSender) SendChat(ctx context.Context, outputs []delivery.Outp
 	if s.agent == nil {
 		return delivery.Receipt{}, fmt.Errorf("agent output sender is not configured")
 	}
-	resolved, cleanup, err := s.agent.resolveMediaOutputs(ctx, outputs)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	defer cleanup()
-	outputs = resolved
-	if msg, ok := platform.MessageContextFrom(s.ctx); ok && msg.Sender != nil {
-		return msg.Sender.SendChat(s.ctx, outputs)
-	}
-	if s.agent.platform == nil {
-		return delivery.Receipt{}, fmt.Errorf("chat output sender is not configured")
-	}
-	return s.agent.platform.SendChat(s.ctx, outputs)
+	return s.agent.sendPreparedMedia(s.ctx, outputs, func(resolved []delivery.Output) (delivery.Receipt, error) {
+		if msg, ok := platform.MessageContextFrom(s.ctx); ok && msg.Sender != nil {
+			return msg.Sender.SendChat(s.ctx, resolved)
+		}
+		if s.agent.platform == nil {
+			return delivery.Receipt{}, fmt.Errorf("chat output sender is not configured")
+		}
+		return s.agent.platform.SendChat(s.ctx, resolved)
+	})
 }
 
 func (s agentOutputSender) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
@@ -55,36 +51,32 @@ func (s agentOutputSender) SendNotice(ctx context.Context, notice delivery.Notic
 	if s.agent == nil {
 		return delivery.Receipt{}, fmt.Errorf("agent output sender is not configured")
 	}
-	resolved, cleanup, err := s.agent.resolveMediaOutputs(ctx, outputs)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	defer cleanup()
-	outputs = resolved
-	notice.Outputs = resolved
-	if target.Empty() {
-		if msg, ok := platform.MessageContextFrom(s.ctx); ok && msg.Sender != nil {
-			return msg.Sender.SendNotice(s.ctx, notice)
+	return s.agent.sendPreparedMedia(s.ctx, outputs, func(resolved []delivery.Output) (delivery.Receipt, error) {
+		notice.Outputs = resolved
+		if target.Empty() {
+			if msg, ok := platform.MessageContextFrom(s.ctx); ok && msg.Sender != nil {
+				return msg.Sender.SendNotice(s.ctx, notice)
+			}
 		}
-	}
-	platformName := strings.TrimSpace(target.Platform)
-	if platformName == "" {
-		if msg, ok := platform.MessageContextFrom(s.ctx); ok {
-			platformName = msg.Platform
+		platformName := strings.TrimSpace(target.Platform)
+		if platformName == "" {
+			if msg, ok := platform.MessageContextFrom(s.ctx); ok {
+				platformName = msg.Platform
+			}
 		}
-	}
-	if platformName == "" && s.agent.platform != nil {
-		platformName = s.agent.platform.Name()
-	}
-	if platformName == "" {
-		return s.SendChat(ctx, outputs)
-	}
-	sender := s.agent.platformSenders[platformName]
-	if sender == nil {
-		return delivery.Receipt{}, fmt.Errorf("target platform %q is not configured", platformName)
-	}
-	notice.Target.Platform = platformName
-	return sender.SendNotice(ctx, notice)
+		if platformName == "" && s.agent.platform != nil {
+			platformName = s.agent.platform.Name()
+		}
+		if platformName == "" {
+			return delivery.Receipt{}, fmt.Errorf("notice target platform is not configured")
+		}
+		sender := s.agent.platformSenders[platformName]
+		if sender == nil {
+			return delivery.Receipt{}, fmt.Errorf("target platform %q is not configured", platformName)
+		}
+		notice.Target.Platform = platformName
+		return sender.SendNotice(s.ctx, notice)
+	})
 }
 
 type contextTextSender struct {

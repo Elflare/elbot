@@ -1,33 +1,108 @@
-# Media Center 交接摘要
+# Media Center 代码 Review 工作说明
 
-## 当前状态
+## 状态与目标
 
-- Go 项目：`C:/Users/Cirno/dev/elbot`
-- Media Center、Hook、Skill、Elnis 媒体生命周期已完成；文档和测试已同步。
-- 当前停在平台适配之前，不开始平台消息引用回复消费。
-- active plan 已恢复：1、2、3、4、6 已完成；5 平台适配、7 引用回复消费未完成。
-- 详细设计、字段约定、边界和测试说明：阅读仓库根目录 `media_center_2.md`。
+- 项目：`C:/Users/Cirno/dev/elbot`，Go。
+- 实现计划 9/9 已完成并归档：`.codecompanion-plan/archive/media-center-20260908-233759.md`。
+- 本文件用于审查本轮未提交实现，不再作为续写代码的交接步骤。测试通过不等于独立 review 已完成。
+- Review 目标：核对统一媒体收发、生命周期和引用恢复是否符合下述语义，优先找真实行为缺陷、遗漏边界和不必要复杂度；不要顺手扩展功能或重构无关代码。
+- 审查应包含 staged、unstaged 和 untracked 文件。`internal/delivery/delivery.go` 已暂存，其余主要为未暂存改动；不要调整暂存区或提交代码。
 
-## 本轮关键决定
+## 已定语义
 
-- Elwisp image/file 复用 `url`：`url: "media:<sha256>"`，不新增独立媒体字段。
-- Hook segment 继续复用 `url/path/base64` 承载完整媒体 ID。
-- 显式媒体 API 统一使用字段 `media`，包括 `send_file`、Skill `media_inputs`、Hook `media.*` API。
-- 尚未发布的 Session、Tool Transcript、报告和 Cron JSON 使用 `media`；内部 Go `MediaID`、SQLite `media_id` 列保留。
-- 旧 Session、旧 fork、旧 Cron 不迁移、不批量下载、不回填媒体引用。
-- 媒体引用归零后保留持久化 1 小时孤儿宽限期；关闭进程不丢计时，下次维护任务继续处理。
+- `send_file` 仅有单一 `source`，支持 HTTP(S)、本地路径/`file://`、完整 `media:<sha256>`；没有独立 `media` 或 base64 参数。旧 plan details 的 data URI 支持描述已过时，不据此加回功能。实际发送是否转 base64 仍由发送配置决定。
+- 机器人媒体在发送前导入或复用 Media Center；发送使用临时解析副本，业务和持久化数据保留稳定媒体 ID。
+- 一个平台消息可对应多个有序媒体位置，同一媒体重复出现必须保留；关联保存 kind，不按媒体 ID 排序或集合化。
+- 普通未唤起群消息与普通观察 Hook 不下载媒体；实际唤起或 waiting Hook continuation 消费前才物化。纯图片、纯文件消息也进入 Chat History。
+- 引用优先级：本地输出索引 → Chat History 原始 segments → 平台能力兜底。机器人输出命中本地索引时不从平台重复下载。
+- 回复真实当前 Session 最新 assistant 等同普通续聊，不注入引用文本或媒体；较早 assistant 保留 fork，后台保留 resume，并恢复关联媒体；其他 Session 进入真实引用上下文。
+- 恢复图片进入视觉请求，Session 保存稳定 ID 和含 ID 的文本投影；普通文件保留文件 segment，不声称模型读取了不支持的内容。
 
-## 已验证
+## 审查范围与重点
 
-- `gofmt` 已执行。
-- 相关包测试通过。
-- `go test -p 1 ./...` 全部通过。
-- fork 检查点范围、Cron/消息引用审计、消息替换回滚、取消后的 Elnis 终态清理均有回归测试。
-- `git diff --check` 通过；`media_center_1.txt` 有 Windows LF/CRLF 提示，不是代码空白错误。
+### 1. 工具入口与统一发送
 
-## 接下来
+文件：
+- `internal/tool/builtin/send_file.go` 及相关测试。
+- `internal/agent/media_output.go`、`output.go`、`core.go`、`options.go`。
+- `internal/app/runtime.go`、`integrations.go`。
 
-1. 新窗口先阅读 `AGENTS.md`、`media_center_2.md`、本文件和当前 diff。
-2. 执行 active plan 第 5 项：QQ OneBot、QQ Official、Telegram 平台媒体适配，保持平台只提供原始来源并延迟物化。
-3. 检查平台发送 `media`、Chat History 原始媒体引用和真实唤起时机，补相关测试及中文文档；不要修改英文镜像或 CHANGELOG。
-4. 第 5 项完成后暂停，不开始第 7 项。
+检查：
+- source 解析、非法输入、workspace 路径和后台路径限制是否保持正确。
+- URL/Path/Data/MediaID 是否在实际发送前统一归一，失败时是否停止发送不可追踪副本。
+- 发送期间临时引用及导出文件是否释放；缓存持久化失败是否仅记录错误、不将成功发送误报为失败触发重发。
+- 没有结构化媒体回执的文本 fallback 不得猜测建立媒体关联。
+
+### 2. 结构化回执、输出关联与生命周期
+
+文件：
+- `internal/delivery/delivery.go`。
+- 三个平台的 `adapter.go`、QQ Official 的 `send.go`。
+- `internal/storage/storage.go`、`internal/storage/sqlite/media_lifecycle.go`、`migrations.go`。
+- `internal/elnis/direct.go`、`outbox.go`、`media.go`、`service.go`。
+
+检查：
+- OutputIndexes 是否对应真实发送媒体；OneBot 合并消息、Telegram/QQ Official 逐条发送的映射是否准确。
+- 多目标 scope 是否隔离；当前目标部分成功后失败时，外层是否保留成功回执。
+- segment index、kind、重复位置及每行引用是否一致；过期缓存是否正确释放引用。
+- Elnis 不再保留重复的专用输出缓存规则。
+- 缓存期限复用 sandbox retention，非正值不缓存；独立 Session/Transcript/outbox 引用与持久化 1 小时孤儿宽限期不受影响。
+
+### 3. 平台入站与敏感来源清洗
+
+文件：
+- `internal/platform/platform.go`、`media.go`。
+- `internal/agent/message.go`、`inbound_media.go`。
+- 三个平台的 `message.go`、`adapter.go`，OneBot/QQ Official 的 `attachment.go`，Telegram 的 `client.go`。
+
+检查：
+- wakeup 与只读 waiting route 检查是否先于物化，普通观察是否仍会间接触发媒体下载。
+- Chat History 是否保留原始媒体顺序及纯媒体消息；URL、file ID、name 和 Raw 等字段是否可能绕过清洗泄漏 base64、临时路径、token 或签名。
+- Telegram token URL是否只在 resolver 内使用，代理与超时是否保留，声明大小和实际响应体是否都受限。
+- OneBot URL是否优先于远端本地路径，get_image/get_file 是否按需执行；QQ Official 事件 URL直接导入，不额外抽象无必要的 resolver。
+- 缺失、失效或超限媒体是否明确降级，而非伪装成模型已看到内容。
+
+### 4. 引用恢复与当前 Session
+
+文件：
+- `internal/platform/refcontext/refcontext.go`。
+- `internal/agent/reference.go`、`wakeup.go`、`inbound_media.go`。
+- 三个平台引用上下文组装代码。
+
+检查：
+- 真实 CurrentSessionID 查询是否只读；同 actor/scope 的另一个 Session 不应误判为当前。
+- 最新当前 assistant 不注入引用；较早 assistant、其他 Session、后台输出及别人消息分别符合既有 fork/resume/引用语义。
+- 输出索引、Chat History、平台兜底之间的选择是否正确；历史只有部分可恢复信息或来源过期时的行为是否合理。
+- 同一媒体在不同位置是否保留，ContextSegments/Reply.Segments 的副本是否避免重复下载与原始上下文污染。
+- 仅有输出索引而没有 Session assistant 映射的机器人媒体回复，是否仍能正确唤起。
+
+## 验证依据
+
+已执行并通过：
+- 修改 Go 文件的 gofmt。
+- 相关包测试：Agent、Delivery、SQLite、Elnis、platform 全部子包、Hook runtime。
+- 最后发送回执边界修正后，`go test -p 1 ./...` 全量复跑。
+- `git diff --check` 与 `git diff --cached --check`。
+- 中文文档 locator 与禁改文件检查。
+
+重点回归测试入口：
+- `internal/agent/inbound_media_test.go`、`reference_test.go`、`media_receipt_test.go`、`hook_media_test.go`。
+- `internal/platform/media_test.go`、`internal/platform/refcontext/media_test.go`。
+- 三个平台 `inbound_media_test.go`，Telegram/QQ Official 的 `receipt_test.go`。
+- SQLite `media_lifecycle_test.go` 与 send_file 相关测试。
+
+以上为自动测试结果，未进行真实 QQ/Telegram 服务、远端 OneBot 文件系统或生产对象存储的联调。Review 如需验证这些环境，单独说明前提，不把自动测试通过等同于真实平台验证。
+
+## 文档与范围约束
+
+- `docs/configuration.md`、`docs/elnis-usage.md` 仅纠正失实描述，不展开适配器内部细节。
+- 内部架构和代码入口更新在 `devdocs/architecture.md`、`devdocs/code-map.md`。
+- 不修改英文镜像、README 或任何 CHANGELOG；不迁移或批量回填旧 Session/Chat History/输出媒体。
+- 平台 URL/file ID 可能过期；OneBot 无 URL 时依赖平台 API 与共享文件系统能力；QQ Official 没有任意历史消息拉取 API。
+
+## Review 输出要求
+
+- 先列实际发现，按严重程度排序，注明文件/符号、触发条件、影响和最小修复建议。
+- 对疑似问题给出测试或最小复现，区分已证实缺陷与需要真实平台验证的风险。
+- 没发现问题就明确说明，并列出未覆盖的环境或行为，不用泛泛的重构建议凑数。
+- Review 默认只读；需要修复时先说明范围，按仓库规则确认后实施。

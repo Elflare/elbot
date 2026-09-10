@@ -32,20 +32,13 @@ func TestStripBotMentionFromTextCaseInsensitive(t *testing.T) {
 	}
 }
 
-func TestDataURL(t *testing.T) {
-	url := dataURL([]byte("hello"))
-	if url != "data:text/plain; charset=utf-8;base64,aGVsbG8=" {
-		t.Fatalf("url = %q", url)
-	}
-}
-
 func TestNormalizeDocument(t *testing.T) {
 	msg := message{Document: &document{FileID: "file-id", FileName: "a.txt", MIMEType: "text/plain"}}
-	normalized := normalizeMessage(nil, nil, msg, "")
+	normalized := normalizeMessage(msg)
 	if normalized.Text != "[文件]" {
 		t.Fatalf("text = %q", normalized.Text)
 	}
-	if len(normalized.Segments) != 1 || normalized.Segments[0].Name != "a.txt" || normalized.Segments[0].MIMEType != "text/plain" {
+	if len(normalized.Segments) != 1 || normalized.Segments[0].Name != "a.txt" || normalized.Segments[0].MIMEType != "text/plain" || normalized.Segments[0].PlatformFileID != "file-id" || normalized.Segments[0].URL != "" {
 		t.Fatalf("segments = %#v", normalized.Segments)
 	}
 }

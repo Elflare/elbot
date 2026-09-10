@@ -3,12 +3,10 @@ package qqofficial
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
-	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/security"
@@ -52,8 +50,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 	text := normalizedInboundText(msg, mentionedBot)
 	replyID := inboundReplyID(msg)
 	a.recordChatMessage(ctx, msg, conversation, senderID, scopeID, text, replyID)
-	attachments := a.prepareInboundAttachments(ctx, msg.Attachments)
-	segments := inboundSegments(text, attachments.Segments)
+	segments := inboundSegments(text, inboundAttachmentSegments(msg.Attachments))
 	if text == "" && len(segments) == 0 {
 		return
 	}
@@ -96,40 +93,28 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 	msgCtx = context.WithValue(msgCtx, targetKey{}, target)
 	if replyID != "" {
 		ref := refcontext.Apply(msgCtx, refcontext.Options{
-			Store:           a.store,
-			Platform:        a.Name(),
-			ScopeID:         messageCtx.ScopeID,
-			ActorID:         actorID,
-			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, senderID),
-			ReplyID:         replyID,
-			Text:            text,
-			CommandPrefixes: a.cfg.CommandPrefixes,
-			Fetch:           inboundReferenceFetcher(msg),
+			Store:            a.store,
+			ChatHistory:      a.chatHistory,
+			CurrentSessionID: platform.HandlerCurrentSessionID(msgCtx, handler),
+			Platform:         a.Name(),
+			ScopeID:          messageCtx.ScopeID,
+			ActorID:          actorID,
+			IsSuperadmin:     isConfiguredSuperadmin(a.cfg.Superadmins, senderID),
+			ReplyID:          replyID,
+			Text:             text,
+			CommandPrefixes:  a.cfg.CommandPrefixes,
+			Fetch:            inboundReferenceFetcher(msg),
 		})
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
 		messageCtx.ContextText = ref.Text
 		messageCtx.Reply = ref.Reply
-		if strings.TrimSpace(ref.Text) != "" {
+		if strings.TrimSpace(ref.Text) != "" || len(ref.ReferenceSegments) > 0 {
 			messageCtx.ContextSegments = finalMessageSegments(ref.Text, segments, ref.ReferenceSegments)
 		}
 		messageCtx.Segments = finalMessageSegments(text, segments, nil)
 		msgCtx = platform.WithMessageContext(ctx, messageCtx)
 		msgCtx = context.WithValue(msgCtx, targetKey{}, target)
-	}
-	if len(attachments.TooLarge) > 0 {
-		if _, err := a.SendChat(msgCtx, []delivery.Output{platformTooLargeAttachmentsOutput(attachments.TooLarge, a.cfg.MaxReceiveFileBytes)}); err != nil {
-			a.logWarn(ctx, "send qqofficial attachment too large notice failed", "error", err, "message_id", msg.ID)
-		}
-	}
-	if text == "" && len(attachments.TooLarge) > 0 && !hasPlatformImageSegment(attachments.Segments) {
-		return
-	}
-	if text == "" && len(attachments.Saved) > 0 && !hasPlatformImageSegment(attachments.Segments) {
-		if _, err := a.SendChat(msgCtx, []delivery.Output{platformSavedAttachmentsOutput(attachments.Saved)}); err != nil {
-			a.logWarn(ctx, "send qqofficial attachment saved notice failed", "error", err, "message_id", msg.ID)
-		}
-		return
 	}
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
 		a.logWarn(ctx, "handle qqofficial message failed", "error", err, "message_id", msg.ID)
@@ -162,7 +147,7 @@ func inboundReplyID(msg inboundMessage) string {
 }
 
 func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, conversation platform.ConversationKind, senderID, scopeID, text, replyID string) {
-	if a.chatHistory == nil || strings.TrimSpace(text) == "" || strings.TrimSpace(msg.ID) == "" {
+	if a.chatHistory == nil || (strings.TrimSpace(text) == "" && len(msg.Attachments) == 0) || strings.TrimSpace(msg.ID) == "" {
 		return
 	}
 	createdAt := storage.Now()
@@ -183,21 +168,13 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 		SenderID:                 senderID,
 		Text:                     strings.TrimSpace(text),
 		Raw:                      msg.Content,
+		Segments:                 platform.MarshalChatSegments(inboundSegments(text, inboundAttachmentSegments(msg.Attachments))),
 		ReplyToPlatformMessageID: strings.TrimSpace(replyID),
 		CreatedAt:                createdAt,
 	}
 	if err := a.chatHistory.Append(ctx, history); err != nil {
 		a.logWarn(ctx, "record qqofficial chat message failed", "error", err, "message_id", msg.ID)
 	}
-}
-
-func hasPlatformImageSegment(segments []platform.MessageSegment) bool {
-	for _, segment := range segments {
-		if segment.Type == platform.SegmentImage {
-			return true
-		}
-	}
-	return false
 }
 
 func isConfiguredSuperadmin(superadmins []string, id string) bool {
@@ -253,33 +230,6 @@ func appendNonTextSegments(out []platform.MessageSegment, segments []platform.Me
 		}
 	}
 	return out
-}
-
-func platformSavedAttachmentsOutput(attachments []savedAttachment) delivery.Output {
-	var sb strings.Builder
-	for _, attachment := range attachments {
-		if attachment.Path == "" {
-			continue
-		}
-		name := attachment.Name
-		if name == "" {
-			name = attachment.Path
-		}
-		sb.WriteString(fmt.Sprintf("已保存附件：%s\n路径：%s\n", name, attachment.Path))
-	}
-	return delivery.Text(sb.String())
-}
-
-func platformTooLargeAttachmentsOutput(attachments []messageAttachment, maxBytes int64) delivery.Output {
-	var sb strings.Builder
-	for _, attachment := range attachments {
-		name := strings.TrimSpace(attachment.Filename)
-		if name == "" {
-			name = "附件"
-		}
-		sb.WriteString(fmt.Sprintf("文件过大，不会保存到服务器：%s（上限 %d 字节）\n", name, maxBytes))
-	}
-	return delivery.Text(sb.String())
 }
 
 func isImageURL(value string) bool {

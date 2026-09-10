@@ -43,15 +43,31 @@ const (
 
 // MessageSegment is one typed part parsed from an inbound platform message.
 type MessageSegment struct {
-	Type           MessageSegmentType
-	Text           string
-	UserID         string
-	URL            string
-	MediaID        string
-	PlatformFileID string
-	MIMEType       string
-	Name           string
-	Size           int64
+	Type           MessageSegmentType `json:"type"`
+	Text           string             `json:"text,omitempty"`
+	UserID         string             `json:"user_id,omitempty"`
+	URL            string             `json:"url,omitempty"`
+	MediaID        string             `json:"media,omitempty"`
+	PlatformFileID string             `json:"platform_file_id,omitempty"`
+	MIMEType       string             `json:"mime_type,omitempty"`
+	Name           string             `json:"name,omitempty"`
+	Size           int64              `json:"size,omitempty"`
+}
+
+type MediaResolver interface {
+	ResolveMedia(context.Context, MessageSegment, int64) (delivery.Source, error)
+}
+
+// CurrentSessionProvider is implemented by handlers that own session selection.
+type CurrentSessionProvider interface {
+	CurrentSessionID(context.Context) string
+}
+
+func HandlerCurrentSessionID(ctx context.Context, handler PlatformHandler) string {
+	if provider, ok := handler.(CurrentSessionProvider); ok {
+		return provider.CurrentSessionID(ctx)
+	}
+	return ""
 }
 
 type ReplyContext struct {
@@ -109,6 +125,7 @@ type MessageContext struct {
 	Bot                   Identity
 	Mentions              []Mention
 	TriggerKeywords       []string
+	MediaResolver         MediaResolver
 }
 
 type messageContextKey struct{}

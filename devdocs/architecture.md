@@ -147,7 +147,7 @@ Tool Runtime 负责注册、schema、权限、风险、确认详情、用户侧 
 
 媒体本体按 SHA-256 去重，`media_references` 是引用事实来源，不维护整数计数。消息追加/替换、Session 删除、fork、Cron 报告状态、Elnis 排队 ID/outbox、输出关联与引用通过事务及 SQLite 触发器同步。新 fork 按检查点的 created_at/rowid 边界为父消息媒体建立独立引用，并继承父 fork 的祖先历史引用；Chat History 的原始平台 URL/file ID 不构成中心引用。读取、LLM 请求和发送期间另有临时引用。
 
-Elnis direct 实际投递才导入中心，不生成 sandbox 下载副本；LLM 输入在执行时物化。workspace 普通文件不入库，报告附件准备投递时安全导入，outbox 只保存稳定 ID。成功且可明确关联的单消息回执建立平台/会话范围/消息 ID 到多个媒体的有限期映射，平台引用回复消费另由平台适配实现。
+Elnis direct 实际投递才导入中心，不生成 sandbox 下载副本；LLM 输入在执行时物化。workspace 普通文件不入库，报告附件准备投递时安全导入，outbox 只保存稳定 ID。Agent 通用发送边界以结构化回执建立平台/scope/消息 ID/segment index 到 kind/media ID 的有限期有序映射，重复媒体位置独立保留；Elnis 不再单独缓存发送关联。
 
 输出缓存到期释放引用，待重试和 Session 引用独立保留。最后引用释放后记录 orphaned_at，无引用资源再次使用会刷新时间；宽限期固定 1 小时。清理认领与引用添加在 SQLite 写事务中互斥，认领后禁止新引用，先删除本地/远端对象再移除记录，失败保留状态供重试。共享 Manager 的后端导入/清理由同一锁串行化，防止删除和内容寻址重建交叉。
 
@@ -216,6 +216,7 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 
 - 业务层返回输出意图，不直接调用平台 adapter。
 - 平台 adapter 负责把平台无关输出转换成平台 API。
+- Agent 在发送前统一把 URL/Path/Data 归一为 MediaID，发送副本经 `ResolveForOutput` 临时解析，回执按实际成功的输出索引建立关联。多目标 scope 由 adapter 明确提供；缓存期限复用 sandbox retention，非正值不缓存。
 - QQ OneBot 把 record 输出转换为原生语音段；暂不支持 record 的平台使用统一文字 fallback。
 - 流式输出、notice、reasoning、runtime status 由 Agent turn 输出适配层区分前后台发送。
 
@@ -227,12 +228,15 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 输入侧：
 
 - 解析 Actor、Scope、发送目标、群身份、引用、多模态消息段和平台 metadata。
-- 按平台规则决定是否触发 Agent。
+- 原始有序 segments 写入 Chat History，包括纯媒体消息；过滤 base64、临时本地路径和 token/签名 URL，不保证来源永久有效。
+- Agent 统一判断 wakeup，并只读检查 waiting Hook route；仅唤起或 waiting continuation 时物化媒体，普通观察 Hook 不下载。
+- Telegram resolver 内使用 token URL和代理，OneBot 按需 get_image/get_file；QQ Official 的事件 URL直接由 Media Center 导入，不引入额外 resolver 层。
+- 引用按输出索引 → Chat History → 平台能力恢复有序媒体，图片进入视觉输入，Session 仅保存稳定媒体 ID 与文本投影。平台通过 handler 的只读 `CurrentSessionID` 查询真实当前 Session；最新当前 assistant 不注入引用，较早 assistant fork、后台 resume 仍保留媒体，其他 Session 按真实引用处理。
 
 输出侧：
 
 - 实现统一 `SendChat` / `SendNotice`。
-- 返回可携带多条平台消息 ID 的 receipt。
+- receipt 同时返回平台消息 ID 和结构化 `SentMessages`（platform/scope/message ID/output indexes），部分成功保留成功项，文本降级不关联媒体。
 - 平台发送保持同步回执语义；不得把需要平台消息 ID 或错误的调用改成只入队即成功。
 - 支持平台能力差异下的 fallback。
 

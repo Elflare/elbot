@@ -72,9 +72,6 @@ func (s *Service) sendOutputsToTargetsMapped(ctx context.Context, eventKey strin
 		if err != nil {
 			return err
 		}
-		if err := s.cacheMediaReceipt(ctx, target, outputs, receipt); err != nil {
-			return err
-		}
 		s.mapReportReceipt(ctx, eventKey, target, sessionID, messageID, receipt)
 	}
 	return nil

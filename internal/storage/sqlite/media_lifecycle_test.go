@@ -65,27 +65,33 @@ func TestSharedMediaSessionsForkAndCleanupClaim(t *testing.T) {
 	}
 }
 
-func TestOutputMediaScopeExpiryAndDedup(t *testing.T) {
+func TestOutputMediaOrderScopeReplacementAndExpiry(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	now := time.Now()
 	var ids []string
-	for _, ch := range []string{"a", "b"} {
+	for _, ch := range []string{"a", "b", "c"} {
 		id := "media:" + strings.Repeat(ch, 64)
 		ids = append(ids, id)
 		if err := store.Media().Upsert(ctx, &storage.Media{ID: id, Backend: "local", MIMEType: "image/png"}); err != nil {
 			t.Fatal(err)
 		}
-		out := storage.MediaOutput{Platform: "p", ScopeID: "group:1", MessageID: "m", MediaID: id, ExpiresAt: now.Add(time.Hour)}
-		for range 2 {
-			if err := store.Media().SaveOutput(ctx, out); err != nil {
-				t.Fatal(err)
-			}
+	}
+	for _, out := range []storage.MediaOutput{
+		{Platform: "p", ScopeID: "group:1", MessageID: "m", SegmentIndex: 2, Kind: "image", MediaID: ids[0], ExpiresAt: now.Add(time.Hour)},
+		{Platform: "p", ScopeID: "group:1", MessageID: "m", SegmentIndex: 0, Kind: "file", MediaID: ids[1], ExpiresAt: now.Add(time.Hour)},
+		{Platform: "p", ScopeID: "group:1", MessageID: "m", SegmentIndex: 1, Kind: "image", MediaID: ids[0], ExpiresAt: now.Add(time.Hour)},
+	} {
+		if err := store.Media().SaveOutput(ctx, out); err != nil {
+			t.Fatal(err)
 		}
 	}
 	got, err := store.Media().FindOutputs(ctx, "p", "group:1", "m", now)
-	if err != nil || len(got) != 2 {
+	if err != nil || len(got) != 3 {
 		t.Fatalf("outputs %v %v", got, err)
+	}
+	if got[0].SegmentIndex != 0 || got[0].Kind != "file" || got[0].MediaID != ids[1] || got[1].MediaID != ids[0] || got[2].MediaID != ids[0] {
+		t.Fatalf("ordered outputs = %#v", got)
 	}
 	for _, scope := range []string{"group:2", "private:1"} {
 		got, err := store.Media().FindOutputs(ctx, "p", scope, "m", now)
@@ -93,17 +99,24 @@ func TestOutputMediaScopeExpiryAndDedup(t *testing.T) {
 			t.Fatalf("scope leak %v %v", got, err)
 		}
 	}
+	if err := store.Media().SaveOutput(ctx, storage.MediaOutput{Platform: "p", ScopeID: "group:1", MessageID: "m", SegmentIndex: 0, Kind: "image", MediaID: ids[2], ExpiresAt: now.Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	refs, _ := store.MediaReferences().ListMediaIDs(ctx, ids[1])
+	if len(refs) != 0 {
+		t.Fatalf("replaced cache reference leaked %v", refs)
+	}
 	if err := store.MediaReferences().Add(ctx, &storage.MediaReference{MediaID: ids[0], OwnerType: "test", OwnerID: "session", Purpose: "content"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Media().ExpireOutputs(ctx, now.Add(2*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	refs, _ := store.MediaReferences().ListMediaIDs(ctx, ids[0])
+	refs, _ = store.MediaReferences().ListMediaIDs(ctx, ids[0])
 	if len(refs) != 1 {
 		t.Fatalf("independent owner lost %v", refs)
 	}
-	refs, _ = store.MediaReferences().ListMediaIDs(ctx, ids[1])
+	refs, _ = store.MediaReferences().ListMediaIDs(ctx, ids[2])
 	if len(refs) != 0 {
 		t.Fatalf("cache leaked %v", refs)
 	}

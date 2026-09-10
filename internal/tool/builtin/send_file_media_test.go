@@ -27,22 +27,27 @@ func TestSendFileMediaIDBuildsLocalOutput(t *testing.T) {
 	}
 
 	toolValue := NewSendFileTool(files)
-	arguments, _ := json.Marshal(map[string]string{"media": resource.ID})
+	arguments, _ := json.Marshal(map[string]string{"source": resource.ID})
 	result, err := toolValue.Call(ctx, tool.CallRequest{Arguments: arguments})
 	if err != nil {
 		t.Fatalf("call send_file: %v", err)
 	}
-	if len(result.Outputs) != 1 || result.Outputs[0].Source.Path != resource.LocalPath || result.Outputs[0].Name != resource.Name {
+	if len(result.Outputs) != 1 || result.Outputs[0].Source.MediaID != resource.ID || result.Outputs[0].Source.Path != "" || result.Outputs[0].Name != resource.Name {
 		t.Fatalf("outputs = %#v", result.Outputs)
 	}
 }
 
-func TestSendFileRejectsSourceAndMediaIDTogether(t *testing.T) {
-	toolValue := NewSendFileTool(NewFileManager(t.TempDir(), DefaultFileDeliveryConfigForTest()))
-	arguments, _ := json.Marshal(map[string]string{"source": "file.txt", "media": "media:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"})
-	_, err := toolValue.Call(context.Background(), tool.CallRequest{Arguments: arguments})
-	if err == nil || err.Error() != "source and media are mutually exclusive" {
-		t.Fatalf("error = %v", err)
+func TestSendFileSchemaOnlyExposesSource(t *testing.T) {
+	schema := NewSendFileTool(NewFileManager(t.TempDir(), DefaultFileDeliveryConfigForTest())).Schema()
+	properties, ok := schema.Function.Parameters["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("schema properties missing: %#v", schema.Function.Parameters)
+	}
+	if _, ok := properties["source"]; !ok {
+		t.Fatal("source property missing")
+	}
+	if _, ok := properties["media"]; ok {
+		t.Fatal("media property must not be exposed")
 	}
 }
 

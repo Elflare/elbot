@@ -66,6 +66,9 @@ func TestSendNoticeUploadsGroupMediaToGroupAPI(t *testing.T) {
 	if len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "sent-media" {
 		t.Fatalf("receipt = %#v", receipt)
 	}
+	if len(receipt.SentMessages) != 1 || receipt.SentMessages[0].ScopeID != "group:group-1" || len(receipt.SentMessages[0].OutputIndexes) != 1 || receipt.SentMessages[0].OutputIndexes[0] != 0 {
+		t.Fatalf("structured receipt = %#v", receipt.SentMessages)
+	}
 	if len(paths) != 2 || paths[0] != "/v2/groups/group-1/files" || paths[1] != "/v2/groups/group-1/messages" {
 		t.Fatalf("paths = %#v", paths)
 	}

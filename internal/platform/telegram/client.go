@@ -111,7 +111,7 @@ func (c *apiClient) fileURL(filePath string) string {
 	return strings.TrimRight(c.cfg.FileBaseURL, "/") + "/bot" + c.token + "/" + strings.TrimLeft(filePath, "/")
 }
 
-func (c *apiClient) downloadFile(ctx context.Context, filePath string) ([]byte, error) {
+func (c *apiClient) downloadFile(ctx context.Context, filePath string, maxBytes int64) ([]byte, error) {
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithTimeout(ctx, c.cfg.apiTimeout())
 	defer cancel()
@@ -124,12 +124,15 @@ func (c *apiClient) downloadFile(ctx context.Context, filePath string) ([]byte, 
 		return nil, redactTelegramError(err, c.token)
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
 		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("telegram file download failed: http %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+		return nil, fmt.Errorf("telegram file download failed: http %d", resp.StatusCode)
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("telegram media exceeds import limit of %d bytes", maxBytes)
 	}
 	return data, nil
 }

@@ -42,6 +42,12 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 		}
 	}
 	event := a.fillHookContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
+	waiting := a.hookRuntime != nil && a.hookRuntime.RouteHookID(event) != ""
+	if woken || waiting {
+		ctx = a.materializePlatformMedia(ctx)
+		segments = inboundSegments(ctx, text)
+		event = a.fillHookContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
+	}
 	event, routed, routeErr := a.routeHook(ctx, event)
 	if routeErr != nil {
 		return routeErr

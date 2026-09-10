@@ -203,34 +203,3 @@ func (s *Service) importReportSegments(ctx context.Context, segments []llm.Messa
 	}
 	return out, nil
 }
-
-// Only an unambiguous receipt is associated; multiple returned IDs have no output mapping.
-func (s *Service) cacheMediaReceipt(ctx context.Context, target Target, outputs []delivery.Output, receipt delivery.Receipt) error {
-	if s.retentionDays <= 0 {
-		return nil
-	}
-	ids := map[string]bool{}
-	for _, id := range receipt.PlatformMessageIDs {
-		if strings.TrimSpace(id) != "" {
-			ids[id] = true
-		}
-	}
-	if len(ids) != 1 {
-		return nil
-	}
-	scope := elvena.TargetScopeID(target)
-	if scope == "" {
-		return nil
-	}
-	for messageID := range ids {
-		for _, out := range outputs {
-			if out.Source.MediaID == "" {
-				continue
-			}
-			if err := s.store.Media().SaveOutput(ctx, storage.MediaOutput{Platform: target.Platform, ScopeID: scope, MessageID: messageID, MediaID: out.Source.MediaID, ExpiresAt: time.Now().AddDate(0, 0, s.retentionDays)}); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}

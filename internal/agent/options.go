@@ -49,6 +49,7 @@ type Options struct {
 	CompactModel          config.ModelSelection
 	SessionListPageSize   int
 	CleanupRetentionDays  int
+	MediaRetentionDays    int
 	SessionIdleExpiration config.SessionIdleExpirationConfig
 	SandboxRoot           string
 	ToolsConfig           config.ToolsConfig

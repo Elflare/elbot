@@ -106,10 +106,11 @@ func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (deliv
 		target.Proactive = true
 		ctx := context.WithValue(ctx, targetKey{}, target)
 		sent, err := a.sendContextOutput(ctx, outputs)
-		if err != nil {
-			return delivery.Receipt{}, err
-		}
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
+		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
+		if err != nil {
+			return receipt, err
+		}
 	}
 	return receipt, nil
 }
