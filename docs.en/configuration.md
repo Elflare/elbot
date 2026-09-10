@@ -298,6 +298,8 @@ Field descriptions:
 
 ElBot only reads `ELBOT_SKILL.toml` in the Skill root directory and does not scan recursively. The working directory during execution is fixed to the Skill root directory, and stdout will serve as the tool result; If stdout is `{"content":"..."}` JSON, the `content` field will be used.
 
+Media parameters can be declared as `{"type":"media"}` in `parameters.properties`, and flags are still mapped via `[args]`. The LLM sees the string schema and passes the full `media:<sha256>`; the host only exports this parameter as a temporary file path relative to the Skill root directory during execution. Strings not declared as media are not converted. stdout also supports returning media IDs or controlled relative file paths via `segments`; for specific formats and lifecycles, see [Skill Using Media](concepts.md#skill-使用媒体).
+
 When writing configuration via the `agent_skill` meta-tool, ElBot will only confirm the write after a complete reload is successful; If the reload fails, the original TOML will be restored; if the file did not exist previously, the newly created file will be deleted.
 
 ## Go Skill Compiler Path
@@ -411,9 +413,9 @@ max_receive_file_bytes = 104857600
 download_timeout_secs = 60
 ```
 
-- `max_receive_file_bytes`: Maximum save size for platform inbound files, default 100MB; a prompt will be sent to the user when the limit is exceeded, and the file will not be saved to the server.
-- `download_timeout_secs`: Platform inbound file download timeout, default 60 seconds.
-- Inbound files are saved to the `platform/<platform name>` directory under sandbox by default, and will not trigger the LLM.
+- `max_receive_file_bytes`: Maximum media reception size, defaults to 100MB; a prompt indicating that the media is unavailable will be shown if the limit is exceeded or the media cannot be retrieved.
+- `download_timeout_secs`: Media download timeout, defaults to 60 seconds; Telegram uses the platform API timeout.
+- Platform media is only downloaded during actual processing and is not automatically saved to the sandbox upon receipt. Pure file messages are also handled according to the unified platform wake-up rules.
 
 
 ## Logs and Maintenance Tasks
@@ -625,7 +627,7 @@ CLI enabled by default:
 enabled = true
 ```
 
-Configurations for QQ Official Bot, QQ OneBot, and Telegram are commented out by default in the examples. When enabled, the platform's own authentication information and trigger keywords must be provided. When files are received, download and save operations will be restricted according to `[platform_files]`.
+Configurations for QQ Official Bot, QQ OneBot, and Telegram are commented out by default in the examples. When enabled, the platform's own authentication information and trigger keywords must be provided. Media is downloaded according to the `[platform_files]` limit during actual processing.
 
 Minimum configuration example for the official QQ bot:
 

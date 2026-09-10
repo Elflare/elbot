@@ -280,14 +280,6 @@
       "translation": "CLI Remote Configuration",
       "updated_at": 1781962094
     },
-    "docs/configuration.md:list:00cf80cb6f6b5f171a31dd557ed2f53ed2d6fdc4c42c9dbe9156b9eac4f4e41e": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__：平台入站文件下载超时，默认 60 秒。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "00cf80cb6f6b5f171a31dd557ed2f53ed2d6fdc4c42c9dbe9156b9eac4f4e41e",
-      "translation": "__ELBOT_CODE_0__: Platform inbound file download timeout, default 60 seconds.",
-      "updated_at": 1783085288
-    },
     "docs/configuration.md:list:02bc072cdf9df5e4bd3aa6a4fbb4ac5c8fc4460d528cdd1925861489f48d4ff8": {
       "kind": "list",
       "source": "Elvena 请求中的 __ELBOT_CODE_0__ 进入校验、持久化和执行链路；外部工具名仍需由单个 Elwisp 的禁用列表控制。",
@@ -519,6 +511,14 @@
       "source_hash": "43b36882e312fc05de927d1c84d2a2590c2ee29c409ba6536e90af33aa867107",
       "translation": "__ELBOT_CODE_0__ is the global fallback value, defaulting to __ELBOT_CODE_1__, and is used when __ELBOT_CODE_2__ is not configured in the model block.",
       "updated_at": 1784109369
+    },
+    "docs/configuration.md:list:43f7fa39319469722bcd3afcadc706ccd8806dfe575ff5e36d3f5c221806ca8f": {
+      "kind": "list",
+      "source": "平台媒体在实际处理时才下载，不会收到就自动保存到 sandbox。纯文件消息也按平台统一唤醒规则处理。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "43f7fa39319469722bcd3afcadc706ccd8806dfe575ff5e36d3f5c221806ca8f",
+      "translation": "Platform media is only downloaded during actual processing and is not automatically saved to the sandbox upon receipt. Pure file messages are also handled according to the unified platform wake-up rules.",
+      "updated_at": 1789009808
     },
     "docs/configuration.md:list:44c59b224eda5a6bdaa96713b6266b711f07026d0204e07227324d5ce52c72ff": {
       "kind": "list",
@@ -776,6 +776,14 @@
       "translation": "__ELBOT_CODE_0__ will be merged into the LLM request JSON, with model-level settings overriding provider-level settings.",
       "updated_at": 1782312356
     },
+    "docs/configuration.md:list:705b9282974e374b17a4be79db2a7eb215e1d99e440c7df85b9eb01f2576365c": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：媒体接收大小上限，默认 100MB；超过上限或无法取得时提示媒体不可用。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "705b9282974e374b17a4be79db2a7eb215e1d99e440c7df85b9eb01f2576365c",
+      "translation": "__ELBOT_CODE_0__: Maximum media reception size, defaults to 100MB; a prompt indicating that the media is unavailable will be shown if the limit is exceeded or the media cannot be retrieved.",
+      "updated_at": 1789009808
+    },
     "docs/configuration.md:list:72423cc57bde405f585d34927e4d4075aa51e7d13b0e3be4914c2e4fdae9530c": {
       "kind": "list",
       "source": "配置目录 __ELBOT_CODE_0__ 中的 __ELBOT_CODE_1__。",
@@ -1016,6 +1024,14 @@
       "translation": "__ELBOT_CODE_0__: The maximum silence duration between two events during streaming, defaulting to 60 seconds; the timer resets upon receiving each new event.",
       "updated_at": 1782461691
     },
+    "docs/configuration.md:list:be09304bc4f356e6ef6806cd1a6207fa945f9d0666057bc8a97565eac8943d25": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：媒体下载超时，默认 60 秒；Telegram 使用平台 API 超时。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "be09304bc4f356e6ef6806cd1a6207fa945f9d0666057bc8a97565eac8943d25",
+      "translation": "__ELBOT_CODE_0__: Media download timeout, defaults to 60 seconds; Telegram uses the platform API timeout.",
+      "updated_at": 1789009808
+    },
     "docs/configuration.md:list:bfa0df2dd496c9cdda4a014f316e6d436af150a4da3a6a28569036ca86cf92a1": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 支持写成列表，按顺序尝试多个环境变量名；适合临时切换 token 或做多环境兼容。",
@@ -1039,14 +1055,6 @@
       "source_hash": "c62e1f3b1a43d4cafa3316254544cdcf711aa4ca039ccde826170f9b036183cb",
       "translation": "__ELBOT_CODE_0__ controls the streaming refresh throttle interval, defaulting to 250ms, to avoid triggering platform rate limits.",
       "updated_at": 1781839376
-    },
-    "docs/configuration.md:list:c6f7825bb2d486429e3d45850c182cd4077663f0929a18267eea0a2cf56282ea": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__：平台入站文件最大保存大小，默认 100MB；超过上限时会给用户发送提示，不保存到服务器。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "c6f7825bb2d486429e3d45850c182cd4077663f0929a18267eea0a2cf56282ea",
-      "translation": "__ELBOT_CODE_0__: Maximum save size for platform inbound files, default 100MB; a prompt will be sent to the user when the limit is exceeded, and the file will not be saved to the server.",
-      "updated_at": 1783085288
     },
     "docs/configuration.md:list:c95ef3dd8d5beb79e4ec2cee7690f3ec93630a5b9f443f63be575fa98fd3f86d": {
       "kind": "list",
@@ -1127,14 +1135,6 @@
       "source_hash": "d3e9e843be1337f3ce26c3c204ade00db4610967bfc61f7fd42a1f4f03ff6336",
       "translation": "Platform configuration directory: Windows __ELBOT_CODE_0__; Linux uses the XDG configuration directory.",
       "updated_at": 1781515756
-    },
-    "docs/configuration.md:list:d7429ed7de9ee030775dc1c4247f70fad9278f789481c7734ce457241ed3c927": {
-      "kind": "list",
-      "source": "入站文件默认保存到 sandbox 下的 __ELBOT_CODE_0__ 目录，不会唤起llm。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "d7429ed7de9ee030775dc1c4247f70fad9278f789481c7734ce457241ed3c927",
-      "translation": "Inbound files are saved to the __ELBOT_CODE_0__ directory under sandbox by default, and will not trigger the LLM.",
-      "updated_at": 1783095034
     },
     "docs/configuration.md:list:d7c3bc1bddbe670e97da17432d835414d5e3c43e72affbf708fa4532cb2bb129": {
       "kind": "list",
@@ -1368,6 +1368,14 @@
       "translation": "__ELBOT_CODE_0__ takes precedence over __ELBOT_CODE_1__.\n",
       "updated_at": 1783178826
     },
+    "docs/configuration.md:paragraph:1c2e4c580c0dc1cb1cf1260d0e55df4efd872860d85be29e28af440a01b51359": {
+      "kind": "paragraph",
+      "source": "媒体参数可在 __ELBOT_CODE_0__ 中声明为 __ELBOT_CODE_1__，仍通过 __ELBOT_CODE_2__ 映射 flag。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1c2e4c580c0dc1cb1cf1260d0e55df4efd872860d85be29e28af440a01b51359",
+      "translation": "Media parameters can be declared as __ELBOT_CODE_1__ in __ELBOT_CODE_0__, and flags are still mapped via __ELBOT_CODE_2__.",
+      "updated_at": 1789009808
+    },
     "docs/configuration.md:paragraph:1cc9b85e7c28ff9786bfca7e43ab8652154b438f4f638cf849bc509f8a9ea097": {
       "kind": "paragraph",
       "source": "开发期直接运行即可使用平台配置目录：\n",
@@ -1455,6 +1463,14 @@
       "source_hash": "2e2afdf7a4e6c8843933950b1706b673ea98bb3bab5943b9e84d69348b8fc364",
       "translation": "The base PATH here is the process PATH that ElBot has already obtained upon startup;",
       "updated_at": 1785918785
+    },
+    "docs/configuration.md:paragraph:31b3d73cdb331f2d2034addc0c890ee44cca4488693001379fec4578130c77d2": {
+      "kind": "paragraph",
+      "source": "LLM 看到字符串 schema 并传入完整 __ELBOT_CODE_0__，宿主仅在执行时将该参数导出为相对 Skill 根目录的临时文件路径。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "31b3d73cdb331f2d2034addc0c890ee44cca4488693001379fec4578130c77d2",
+      "translation": "The LLM sees the string schema and passes the full __ELBOT_CODE_0__; the host only exports this parameter as a temporary file path relative to the Skill root directory during execution.",
+      "updated_at": 1789009808
     },
     "docs/configuration.md:paragraph:323f549485c3d3dd2ff5049a006e5b5e4a587f798db38ba90b3fbef6eca2e930": {
       "kind": "paragraph",
@@ -1728,6 +1744,22 @@
       "translation": "The PATH within it is handled according to the append rules mentioned above.",
       "updated_at": 1785918785
     },
+    "docs/configuration.md:paragraph:89503fe405578d70f42a08631eb474cc589aaed90d82ccbcdc0bcba933863085": {
+      "kind": "paragraph",
+      "source": "stdout 还支持 __ELBOT_CODE_0__ 返回媒体 ID 或受控相对文件路径，具体格式与生命周期见 [Skill 使用媒体](concepts.md#skill-使用媒体)。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "89503fe405578d70f42a08631eb474cc589aaed90d82ccbcdc0bcba933863085",
+      "translation": "stdout also supports returning media IDs or controlled relative file paths via __ELBOT_CODE_0__; for specific formats and lifecycles, see [Skill Using Media](concepts.md#skill-使用媒体).\n",
+      "updated_at": 1789009808
+    },
+    "docs/configuration.md:paragraph:8971fc620182100244d7327af6df62530bba6e9a0b6bf70a3127a9ca33d629b5": {
+      "kind": "paragraph",
+      "source": "媒体在实际处理时按 __ELBOT_CODE_0__ 限制下载。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "8971fc620182100244d7327af6df62530bba6e9a0b6bf70a3127a9ca33d629b5",
+      "translation": "Media is downloaded according to the __ELBOT_CODE_0__ limit during actual processing.\n",
+      "updated_at": 1789009808
+    },
     "docs/configuration.md:paragraph:8af22db26d8bb6ec1271742300d562b1cf4a554c6c05a448a6740478b64f340c": {
       "kind": "paragraph",
       "source": "留空时使用平台默认数据目录：\n",
@@ -1879,6 +1911,14 @@
       "source_hash": "a273c4a8d144a3443e3467920f35d01b3a9d1c89d9612c6b95849064f8025c23",
       "translation": "These paths will all be resolved to the directory where the main configuration file is located; by default, this is the platform configuration directory.\n",
       "updated_at": 1781854884
+    },
+    "docs/configuration.md:paragraph:a41a474bd3b32d981f84691edec2666ac8c056213862d8b9ad211d2db7b7cc3c": {
+      "kind": "paragraph",
+      "source": "未声明为媒体的字符串不转换。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "a41a474bd3b32d981f84691edec2666ac8c056213862d8b9ad211d2db7b7cc3c",
+      "translation": "Strings not declared as media are not converted.",
+      "updated_at": 1789009808
     },
     "docs/configuration.md:paragraph:a4f52d903dad990dabba0b78e2909db110077e024bac0aef9bda15e84ae06867": {
       "kind": "paragraph",
@@ -2103,14 +2143,6 @@
       "source_hash": "db6447a6fc68b7d6bfab6cdf3bfc15560dad6c8d81966e83364b0f5eeaf04e42",
       "translation": "When ElBot merges the above environment layers, __ELBOT_CODE_0__ is not overridden like ordinary variables, but is instead appended sequentially by layer and deduplicated.",
       "updated_at": 1785918785
-    },
-    "docs/configuration.md:paragraph:dc643146c79de739b15afebb25dfcae29ee0a3b9b9c51e39b480c915cf57ed90": {
-      "kind": "paragraph",
-      "source": "收到文件时会按 __ELBOT_CODE_0__ 限制下载保存。\n",
-      "source_file": "docs/configuration.md",
-      "source_hash": "dc643146c79de739b15afebb25dfcae29ee0a3b9b9c51e39b480c915cf57ed90",
-      "translation": "When files are received, download and save operations will be restricted according to __ELBOT_CODE_0__.\n",
-      "updated_at": 1783095034
     },
     "docs/configuration.md:paragraph:de6e2c43474b26ca7f71379ba4fb27b302e81ec9556deef3353d3d5f64745b54": {
       "kind": "paragraph",
@@ -2418,8 +2450,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "742135cbd23e5acb683db6c294acdba3e7c93f39ec5f5054c80151958e3f01d0",
+  "source_hash": "6dc3f7a623a5fa3d60ad5549eada321a4938a03870b510e61b4babea4ee26a08",
   "target": "docs.en/configuration.md",
-  "updated_at": 1788011776,
+  "updated_at": 1789009808,
   "version": 2
 }
