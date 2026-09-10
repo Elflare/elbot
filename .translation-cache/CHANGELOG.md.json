@@ -1048,6 +1048,14 @@
       "translation": "Hook platform context now populates the current platform message ID __ELBOT_CODE_0__ and the referenced/reply target message ID __ELBOT_CODE_1__, facilitating the processing of referenced messages by rule Hooks, such as recalling a referenced message.",
       "updated_at": 1782395477
     },
+    "CHANGELOG.md:list:a7e52b1d5e396c5785811e30fc84657b301e3fff959027918e68c882c5499953": {
+      "kind": "list",
+      "source": "新增媒体中心，统一管理所有媒体文件",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a7e52b1d5e396c5785811e30fc84657b301e3fff959027918e68c882c5499953",
+      "translation": "Added Media Center for unified management of all media files",
+      "updated_at": 1789010466
+    },
     "CHANGELOG.md:list:a9132ec799ad162e44f3624974b7fd5075c636df96835cdb8c1aec9d01061bbe": {
       "kind": "list",
       "source": "更新 __ELBOT_CODE_0__ 版本至 v3",
@@ -1570,8 +1578,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "9b632c0abfa3cf9b4374ccb86d2b1a5ca96c733b1c5cd9cd237f9b5627e39f37",
+  "source_hash": "ae7e0ee60a920546a269e5174a3e438463935d0f9dfab4299d7584459458b17d",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1788876182,
+  "updated_at": 1789010466,
   "version": 2
 }
