@@ -1240,14 +1240,6 @@
       "translation": "__ELBOT_CODE_0__ stores both CLI server and client configurations.",
       "updated_at": 1781962094
     },
-    "docs/configuration.md:paragraph:00fdf62f3a13c38d7a864b7e4b6ee37f046b0bce71423121a2146a002f19d592": {
-      "kind": "paragraph",
-      "source": "S3 交付使用 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 以及 __ELBOT_CODE_3__、__ELBOT_CODE_4__ 指定的环境变量。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "00fdf62f3a13c38d7a864b7e4b6ee37f046b0bce71423121a2146a002f19d592",
-      "translation": "S3 delivery uses environment variables specified by __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, as well as __ELBOT_CODE_3__ and __ELBOT_CODE_4__.",
-      "updated_at": 1789023374
-    },
     "docs/configuration.md:paragraph:01f1bfa955794ef1c2fd69180c14c70e5eab27d060a94bd28eef48340299d6c4": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 使用 __ELBOT_CODE_1__：\n",
@@ -1864,6 +1856,14 @@
       "translation": "systemd's __ELBOT_CODE_0__ also does not expand __ELBOT_CODE_1__.\n",
       "updated_at": 1785918785
     },
+    "docs/configuration.md:paragraph:973e2efe64585f063107dd3d9db8015bbd9554c32ec7f5a53b9f436bdee84fb7": {
+      "kind": "paragraph",
+      "source": "凭据先读取 ElBot 进程环境，未设置时读取主配置同目录的 __ELBOT_CODE_0__；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "973e2efe64585f063107dd3d9db8015bbd9554c32ec7f5a53b9f436bdee84fb7",
+      "translation": "Credentials are first read from the ElBot process environment; if not set, they are read from __ELBOT_CODE_0__ in the same directory as the main configuration;",
+      "updated_at": 1789043218
+    },
     "docs/configuration.md:paragraph:98eb7743b6382d1927f6e0c8096646fef84bd7543d6a077816680a510239c6c1": {
       "kind": "paragraph",
       "source": "默认维护任务包含日志、Session、sandbox 和聊天历史清理，例如 Session 清理默认保留 30 天，sandbox 默认每天 04:00 清理 7 天前内容，聊天历史默认每天 04:35 执行：\n",
@@ -2304,6 +2304,14 @@
       "translation": "When ElBot reads configuration files on its own, the configuration root __ELBOT_CODE_0__ will not inject Hooks.",
       "updated_at": 1785918785
     },
+    "docs/configuration.md:paragraph:fb4de41c21fdd341d0a1c914aa3121194af93ffe0d5d06726924f17860a11e3b": {
+      "kind": "paragraph",
+      "source": "S3 交付使用 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 以及 __ELBOT_CODE_3__、__ELBOT_CODE_4__ 指定的变量。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "fb4de41c21fdd341d0a1c914aa3121194af93ffe0d5d06726924f17860a11e3b",
+      "translation": "S3 delivery uses variables specified by __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, as well as __ELBOT_CODE_3__ and __ELBOT_CODE_4__.",
+      "updated_at": 1789043218
+    },
     "docs/configuration.md:paragraph:fd16041846ef78c1e35cde0ac959f8294920c1612453cac05c10d264a3e97833": {
       "kind": "paragraph",
       "source": "若 reload 失败，会恢复原有 TOML，原先没有该文件时则删除本次新建文件。\n",
@@ -2319,6 +2327,14 @@
       "source_hash": "fe3763737e369c201cf7cf50f1c19da604a37227e49113f9d433f7628d1094c4",
       "translation": "Hooks should not send platform messages directly; they should return an output intent, which is then handed over to the Output Manager by the Agent for sending.\n",
       "updated_at": 1783678911
+    },
+    "docs/configuration.md:paragraph:fedd26260b04f1b31e8a7e1cc7b4920d1d25df59d303a9b32cbd1787158739b9": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 缺少任一凭据会启动失败，__ELBOT_CODE_2__ 不读取 S3 凭据。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "fedd26260b04f1b31e8a7e1cc7b4920d1d25df59d303a9b32cbd1787158739b9",
+      "translation": "Startup will fail if any credentials for __ELBOT_CODE_0__ or __ELBOT_CODE_1__ are missing; __ELBOT_CODE_2__ does not read S3 credentials.",
+      "updated_at": 1789043218
     },
     "docs/configuration.md:paragraph:ffc6981858d2926b87002247d70035ed18ca78787062a22a64bcb20503efb982": {
       "kind": "paragraph",
@@ -2506,8 +2522,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "3ac003fe569652683ec25738bbcf4c3e0893a8190989f88e4d7cc0b26e8a3785",
+  "source_hash": "40bd4b63e1f167edb7fe00d112b8333221ee991d763bd53ceaa6c90a2a200693",
   "target": "docs.en/configuration.md",
-  "updated_at": 1789023374,
+  "updated_at": 1789043218,
   "version": 2
 }
