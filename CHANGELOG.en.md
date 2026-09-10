@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - QQ official bot now supports group chats
+- Added Media Center for unified management of all media files
 
 ### Changed
 

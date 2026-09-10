@@ -440,6 +440,14 @@
       "translation": "Worker status is __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, __ELBOT_CODE_5__, or __ELBOT_CODE_6__.",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:027c3fd2dc20a5f71b16fdcf02b21303f0e7c69c1e542087a819e8b2c81b677e": {
+      "kind": "paragraph",
+      "source": "第一版不提供 __ELBOT_CODE_0__。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "027c3fd2dc20a5f71b16fdcf02b21303f0e7c69c1e542087a819e8b2c81b677e",
+      "translation": "The first version does not provide __ELBOT_CODE_0__.",
+      "updated_at": 1789010427
+    },
     "docs/hooks.md:paragraph:05e4b90b8c61f6bb29a7292d82a7c5a5fd5afbcad07f9f2660f70141d7c157e9": {
       "kind": "paragraph",
       "source": "**不执行 ElBot 的风险分级、权限策略或交互确认**。",
@@ -744,6 +752,14 @@
       "translation": "Hooks do not load interactive Shell initializations such as __ELBOT_CODE_0__, __ELBOT_CODE_1__, mise/asdf, etc.",
       "updated_at": 1784812467
     },
+    "docs/hooks.md:paragraph:25a7a3522a636ce65aae76f48a08010d8e96fd3423a2b7138ded5c80ec43ede7": {
+      "kind": "paragraph",
+      "source": "媒体 ID 必须使用 64 位小写十六进制 SHA-256；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "25a7a3522a636ce65aae76f48a08010d8e96fd3423a2b7138ded5c80ec43ede7",
+      "translation": "Media IDs must use 64-bit lowercase hexadecimal SHA-256;",
+      "updated_at": 1789010427
+    },
     "docs/hooks.md:paragraph:270dcaa81b67f4ed521e5d0cdd9d0e3154712943641831006d8b8a5a070b46d3": {
       "kind": "paragraph",
       "source": "key 去除首尾空白后必须非空，最长 256 字节。",
@@ -880,6 +896,14 @@
       "translation": "When a single referenced plugin configuration is incorrect, that plugin will be skipped, and other plugins will be loaded as usual.",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:35f8cfbe42dc18c64302ba789d7299886f166b9d930892f40d2cc3538a68de7a": {
+      "kind": "paragraph",
+      "source": "path、base64 和 data URL 解码后最大 10 MiB，并在进入 Agent canonical message 时由宿主按需物化。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "35f8cfbe42dc18c64302ba789d7299886f166b9d930892f40d2cc3538a68de7a",
+      "translation": "path, base64, and data URL are up to 10 MiB after decoding, and are materialized by the host on demand when entering the Agent canonical message.",
+      "updated_at": 1789010427
+    },
     "docs/hooks.md:paragraph:39ca0fa91300c18f4e3204e8bcc3d197fb42c60ae877eb2f39b4e3c8d075ddfb": {
       "kind": "paragraph",
       "source": "CAS 按压缩后的 JSON 原子比较；",
@@ -1000,6 +1024,14 @@
       "translation": "After modifying the Hook environment file, execute __ELBOT_CODE_0__ to apply the changes, and Workers will be rebuilt based on the new environment.\n",
       "updated_at": 1784812467
     },
+    "docs/hooks.md:paragraph:4f7f5b3ef64e2614d82a2f2a8bf318056249ce33c329d43efee11596d3545f03": {
+      "kind": "paragraph",
+      "source": "其他来源保持原有行为：__ELBOT_CODE_0__ 接受绝对 HTTP(S) URL 或 __ELBOT_CODE_1__，相对 __ELBOT_CODE_2__ 按插件目录解析；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "4f7f5b3ef64e2614d82a2f2a8bf318056249ce33c329d43efee11596d3545f03",
+      "translation": "Other sources maintain their original behavior: __ELBOT_CODE_0__ accepts absolute HTTP(S) URLs or __ELBOT_CODE_1__, and relative __ELBOT_CODE_2__ are resolved according to the plugin directory;",
+      "updated_at": 1789010427
+    },
     "docs/hooks.md:paragraph:510ee55c3720a4b98fbc15042b3359c6dd9a364b804b4ddc7405a82667fa4691": {
       "kind": "paragraph",
       "source": "图片可使用 HTTP(S) __ELBOT_CODE_0__、相对插件目录的 __ELBOT_CODE_1__ 或最大 10 MiB 的 __ELBOT_CODE_2__，path/base64 会规范化为模型可读取的数据 URL。",
@@ -1040,6 +1072,14 @@
       "translation": "Tool completion Hooks can directly return text and images:\n",
       "updated_at": 1784466987
     },
+    "docs/hooks.md:paragraph:58941d3391fdb19b981f895561b9216f610c30c07a8729182e446b45a5eeb3a1": {
+      "kind": "paragraph",
+      "source": "不增加独立的 segment __ELBOT_CODE_0__ 字段，也不升级 hook.v2。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "58941d3391fdb19b981f895561b9216f610c30c07a8729182e446b45a5eeb3a1",
+      "translation": "No independent segment __ELBOT_CODE_0__ field is added, nor is hook.v2 upgraded.",
+      "updated_at": 1789010427
+    },
     "docs/hooks.md:paragraph:599147f3cc580eb32ee6618f7ddb48f07abba2dc31b8178f3781e0e6e5792bff": {
       "kind": "paragraph",
       "source": "一次性 exec、Persistent Worker 和 Transient Worker 都继承 ElBot 进程环境，并按 Hook 公共 __ELBOT_CODE_0__ 与插件目录 __ELBOT_CODE_1__ 分层覆盖；",
@@ -1063,6 +1103,14 @@
       "source_hash": "5bfaa81dad5467b6506eb9470f00c2e84d2b59f2ae7983bd54395cd25ea1bfb2",
       "translation": "The Host returns the same __ELBOT_CODE_0__ from stdin; the specific structure of __ELBOT_CODE_1__ is determined by the platform API:\n",
       "updated_at": 1784025692
+    },
+    "docs/hooks.md:paragraph:5d580738fd1a157a5bdeb784799354be85b0257dcbf831bb5334d95ba0aa72f5": {
+      "kind": "paragraph",
+      "source": "Host 将其规范化为内部媒体引用，不把中心路径或 presigned URL 写入该引用。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "5d580738fd1a157a5bdeb784799354be85b0257dcbf831bb5334d95ba0aa72f5",
+      "translation": "The Host normalizes it into an internal media reference, without writing the central path or presigned URL into that reference.",
+      "updated_at": 1789010427
     },
     "docs/hooks.md:paragraph:6139d824bfbb6500580740e49bfaed3e2350fced53ad58295294253dead9a383": {
       "kind": "paragraph",
@@ -1256,14 +1304,6 @@
       "translation": "__ELBOT_CODE_0__ modifies the LLM input and Session history;",
       "updated_at": 1784466987
     },
-    "docs/hooks.md:paragraph:7525336dc508ba708108da2ab0361c4ce251bdbf9054fa8275d3948df65aaefb": {
-      "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 接受绝对 HTTP(S) URL 或 __ELBOT_CODE_1__，相对 __ELBOT_CODE_2__ 按插件目录解析；",
-      "source_file": "docs/hooks.md",
-      "source_hash": "7525336dc508ba708108da2ab0361c4ce251bdbf9054fa8275d3948df65aaefb",
-      "translation": "__ELBOT_CODE_0__ accepts absolute HTTP(S) URLs or __ELBOT_CODE_1__; relative __ELBOT_CODE_2__ are resolved based on the plugin directory;",
-      "updated_at": 1784466987
-    },
     "docs/hooks.md:paragraph:7672a4198472ba160122f78cb1ef063db60b9cb45747141fb0e22cf7554ff746": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 可省略，省略等价于空 allowlist：\n",
@@ -1335,6 +1375,14 @@
       "source_hash": "827efb9ca591257af19363471df705c66dda63922513db4a23be13cf13af856c",
       "translation": "Parsing failure of the root __ELBOT_CODE_0__ will cause the current rule configuration loading to fail;",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:paragraph:8284846c406f6c222d408e458c6b1bece533fe3a985c2eb7f1aaaeac68c1b720": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 请求与结果中的 __ELBOT_CODE_1__ 是媒体 API 的标识参数，保留不变；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "8284846c406f6c222d408e458c6b1bece533fe3a985c2eb7f1aaaeac68c1b720",
+      "translation": "__ELBOT_CODE_0__ in requests and __ELBOT_CODE_1__ in results are identification parameters for the media API and remain unchanged;",
+      "updated_at": 1789010427
     },
     "docs/hooks.md:paragraph:84d766e1be2e9f1c706687a4a0685e0ddd2dd0e2256c393606dc7782f905d6f0": {
       "kind": "paragraph",
@@ -1496,6 +1544,14 @@
       "translation": "__ELBOT_CODE_0__ cannot be mixed with __ELBOT_CODE_1__.",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:a0792d4b2bdf0a493007a46898aab4c584f96c2b36df11d580ad6ae8283940e9": {
+      "kind": "paragraph",
+      "source": "Hook 不可访问 SQLite、媒体根目录或 S3 凭据。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "a0792d4b2bdf0a493007a46898aab4c584f96c2b36df11d580ad6ae8283940e9",
+      "translation": "Hooks cannot access SQLite, the media root directory, or S3 credentials.\n",
+      "updated_at": 1789010427
+    },
     "docs/hooks.md:paragraph:a083fa877738faa9e242ac66bc031fe6fe67243a71b81ac505fa104b2b4b8cd0": {
       "kind": "paragraph",
       "source": "正数会在成功 __ELBOT_CODE_0__、__ELBOT_CODE_1__ 或 CAS 时重新计时；",
@@ -1519,6 +1575,14 @@
       "source_hash": "a2acccd80932a623e24ff5d331d5ee926c105d0edde49386edccf1bd7cb9da8d",
       "translation": "Unnamed __ELBOT_CODE_0__ uses the tool name as the result name; unnamed __ELBOT_CODE_1__ uses __ELBOT_CODE_2__. Multiple unnamed execs within the same rule will overwrite the same result; they should be explicitly named when template referencing is required.\n",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:paragraph:a32f23c99447720510da8f22c3ac52478d553367d47070d75e562e5f65721b20": {
+      "kind": "paragraph",
+      "source": "不扫描普通文本中的 ID，混合来源会被拒绝。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "a32f23c99447720510da8f22c3ac52478d553367d47070d75e562e5f65721b20",
+      "translation": "IDs in plain text are not scanned, and mixed sources will be rejected.\n",
+      "updated_at": 1789010427
     },
     "docs/hooks.md:paragraph:a3da0937279fdcb377f3257f467970467013c3a4f563e42c6a1ae56c7fac3780": {
       "kind": "paragraph",
@@ -1608,14 +1672,6 @@
       "translation": "__ELBOT_CODE_0__ is a group of segments for a single message. Sending multiple messages requires multiple __ELBOT_CODE_1__ actions or multiple __ELBOT_CODE_2__.\n",
       "updated_at": 1784025692
     },
-    "docs/hooks.md:paragraph:af73847fca47f0d9134f195ee38101ea0a238af878c713c00468ed8aa60689d5": {
-      "kind": "paragraph",
-      "source": "path、base64 和 data URL 解码后最大 10 MiB，并在送入 LLM 前规范化为 data URL。",
-      "source_file": "docs/hooks.md",
-      "source_hash": "af73847fca47f0d9134f195ee38101ea0a238af878c713c00468ed8aa60689d5",
-      "translation": "path, base64, and data URLs have a maximum size of 10 MiB after decoding and are normalized to data URLs before being sent to the LLM.",
-      "updated_at": 1784466987
-    },
     "docs/hooks.md:paragraph:b0650ac499fb7955c25a983c741f55782568a9aa2bf68e72d22220524e5de07d": {
       "kind": "paragraph",
       "source": "Transient Worker 在 trigger rule 命中时启动。",
@@ -1688,6 +1744,14 @@
       "translation": "All three items are exact matches and do not support wildcards; __ELBOT_CODE_0__ recognizes both __ELBOT_CODE_1__ and __ELBOT_CODE_2__ scopes.\n",
       "updated_at": 1784194979
     },
+    "docs/hooks.md:paragraph:b9ec0fc6e26983110f7787c1d2a8dec8cbd300e2479ba4cdc0038d5263f5003e": {
+      "kind": "paragraph",
+      "source": "任一来源字段都可以填写完整的 __ELBOT_CODE_0__，例如 __ELBOT_CODE_1__；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "b9ec0fc6e26983110f7787c1d2a8dec8cbd300e2479ba4cdc0038d5263f5003e",
+      "translation": "Any source field can be filled with a complete __ELBOT_CODE_0__, for example __ELBOT_CODE_1__;",
+      "updated_at": 1789010427
+    },
     "docs/hooks.md:paragraph:ba25d37a0a7d8a63d80720a6d6c37acc1b2d86f8c427d5a2f5c200059d7303fe": {
       "kind": "paragraph",
       "source": "否则 Host 回写无人读取而死锁。",
@@ -1695,6 +1759,14 @@
       "source_hash": "ba25d37a0a7d8a63d80720a6d6c37acc1b2d86f8c427d5a2f5c200059d7303fe",
       "translation": "otherwise, the Host's write-back will have no reader, leading to a deadlock.",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:paragraph:ba857e61e35d0b91fd4018c6f282c46aefca21313172e2bbad3073913f6fea4c": {
+      "kind": "paragraph",
+      "source": "将返回的 ID 用于消息替换或输出时，填写到现有 __ELBOT_CODE_0__、__ELBOT_CODE_1__ 或 __ELBOT_CODE_2__ 字段之一。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "ba857e61e35d0b91fd4018c6f282c46aefca21313172e2bbad3073913f6fea4c",
+      "translation": "When using the returned ID for message replacement or output, fill it into one of the existing __ELBOT_CODE_0__, __ELBOT_CODE_1__, or __ELBOT_CODE_2__ fields.\n",
+      "updated_at": 1789010427
     },
     "docs/hooks.md:paragraph:babf217c5ac594a98dee7e1efde74a861bcee4dc283346b448fe14deaeb9ccd8": {
       "kind": "paragraph",
@@ -1831,6 +1903,14 @@
       "source_hash": "cfcc5546f5c88d92bb184c9b3fbbd52b1405b16e914325d7874c0e95ea9184d7",
       "translation": "It is not part of the method.",
       "updated_at": 1784025692
+    },
+    "docs/hooks.md:paragraph:d0cff9eb1c68505afa50eaab8486911ff5827b2c03e6e8554a7aa24a75b403e1": {
+      "kind": "paragraph",
+      "source": "媒体临时引用在 Hook runtime 生命周期内管理，过期或关闭时释放；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "d0cff9eb1c68505afa50eaab8486911ff5827b2c03e6e8554a7aa24a75b403e1",
+      "translation": "Temporary media references are managed within the Hook runtime lifecycle and are released upon expiration or closure;",
+      "updated_at": 1789010427
     },
     "docs/hooks.md:paragraph:d1b9e4e1ea210dc438783a0a92243f0d2626a8cdb36ae6e0a70b4ed92ab05ef8": {
       "kind": "paragraph",
@@ -2488,6 +2568,14 @@
       "translation": "None",
       "updated_at": 1783392421
     },
+    "docs/hooks.md:table:48999ee91d8e527a60cbcabcad212602dca8853ad73b478528a476dfd23ed27a": {
+      "kind": "table",
+      "source": "一次性/Worker",
+      "source_file": "docs/hooks.md",
+      "source_hash": "48999ee91d8e527a60cbcabcad212602dca8853ad73b478528a476dfd23ed27a",
+      "translation": "One-time/Worker",
+      "updated_at": 1789010427
+    },
     "docs/hooks.md:table:49ecd0e342d6d23bd00d67094e2ad0e9859dd17d7337b809300a7c912ccea764": {
       "kind": "table",
       "source": "字段",
@@ -2704,6 +2792,14 @@
       "translation": "Hook Point",
       "updated_at": 1782376842
     },
+    "docs/hooks.md:table:75fc5db2bceede7ab89f63bb2d1a90f32019fe4f5a6fade0a3f8af0d56e57c67": {
+      "kind": "table",
+      "source": "否则 __ELBOT_CODE_0__ 接受 HTTP(S)，__ELBOT_CODE_1__ 按文件系统路径相对插件目录解析，__ELBOT_CODE_2__ 解码后最大 10 MiB。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "75fc5db2bceede7ab89f63bb2d1a90f32019fe4f5a6fade0a3f8af0d56e57c67",
+      "translation": "Otherwise, __ELBOT_CODE_0__ accepts HTTP(S), __ELBOT_CODE_1__ is resolved as a file system path relative to the plugin directory, and __ELBOT_CODE_2__ has a maximum size of 10 MiB after decoding.",
+      "updated_at": 1789010427
+    },
     "docs/hooks.md:table:778ff5f9898e8ab3299969acea418b89f1762c6fce3e5efad4a3141fcd558626": {
       "kind": "table",
       "source": "使用者",
@@ -2856,6 +2952,14 @@
       "translation": "Before sending the final assistant output of the round",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:table:8e71e247ba527328d8a7318e22cffb9078348c00059f254a7489bf874ddaa76f": {
+      "kind": "table",
+      "source": "任一字段的完整值均可填写 __ELBOT_CODE_0__，由 Host 在发送边界解析；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "8e71e247ba527328d8a7318e22cffb9078348c00059f254a7489bf874ddaa76f",
+      "translation": "The full value of any field can be filled with __ELBOT_CODE_0__, which is resolved by the Host at the sending boundary;",
+      "updated_at": 1789010427
+    },
     "docs/hooks.md:table:92809fd4a3cc20d4703079d79397c022952800c288b929b62b648a05250bf5bc": {
       "kind": "table",
       "source": "相对插件目录，不能为绝对路径或逃出插件目录。通常为 __ELBOT_CODE_0__。",
@@ -2919,6 +3023,14 @@
       "source_hash": "9796ac6347e0968a40f9c8b54ca6911dfac53264b0da5ca4b8c4fc280318f942",
       "translation": "The entire field is strictly equal to the value.",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:table:98c572eb3728a3396008b46c322d1e74963eabb1f9bd86f985c14f9e7b41d1ba": {
+      "kind": "table",
+      "source": "__ELBOT_CODE_0__；返回受控临时文件 __ELBOT_CODE_1__。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "98c572eb3728a3396008b46c322d1e74963eabb1f9bd86f985c14f9e7b41d1ba",
+      "translation": "__ELBOT_CODE_0__; returns a controlled temporary file __ELBOT_CODE_1__.",
+      "updated_at": 1789010427
     },
     "docs/hooks.md:table:9a60ef5566eb0dca7e4353910bcc63c73b3fcd1e2e55121ec33cb7ad24575933": {
       "kind": "table",
@@ -3256,13 +3368,13 @@
       "translation": "Name",
       "updated_at": 1784025692
     },
-    "docs/hooks.md:table:d5485c3d71ec0d0e28798936bcdce5d1816b3d5f965cedb8e95a7e2529d5a701": {
+    "docs/hooks.md:table:d76f4cce48cf165a80f5c944cf99ab644d60d2548c143600ba7754e2a029b864": {
       "kind": "table",
-      "source": "__ELBOT_CODE_0__ 只接受 HTTP(S)，__ELBOT_CODE_1__ 只接受文件系统路径且相对插件目录解析，__ELBOT_CODE_2__ 解码后最大 10 MiB。",
+      "source": "__ELBOT_CODE_0__；小于等于 1 MiB 返回 __ELBOT_CODE_1__，较大媒体返回受控临时 __ELBOT_CODE_2__。",
       "source_file": "docs/hooks.md",
-      "source_hash": "d5485c3d71ec0d0e28798936bcdce5d1816b3d5f965cedb8e95a7e2529d5a701",
-      "translation": "__ELBOT_CODE_0__ only accepts HTTP(S), __ELBOT_CODE_1__ only accepts filesystem paths resolved relative to the plugin directory, and __ELBOT_CODE_2__ has a maximum size of 10 MiB after decoding.",
-      "updated_at": 1783853279
+      "source_hash": "d76f4cce48cf165a80f5c944cf99ab644d60d2548c143600ba7754e2a029b864",
+      "translation": "__ELBOT_CODE_0__; returns __ELBOT_CODE_1__ if less than or equal to 1 MiB, and returns a controlled temporary __ELBOT_CODE_2__ for larger media.",
+      "updated_at": 1789010427
     },
     "docs/hooks.md:table:d8d277cc91457476049b31865226fd1dbb98f3fb6b3fb68064c67cd01bdf139d": {
       "kind": "table",
@@ -3312,6 +3424,14 @@
       "translation": "The display name and MIME type of images, files, or voice messages; __ELBOT_CODE_0__ can also serve as the readable name for native emojis.",
       "updated_at": 1784611260
     },
+    "docs/hooks.md:table:df3e06b3faeef6880dae2e520eec5462872249b3a2b5d5a0bc05106ba95ca0c6": {
+      "kind": "table",
+      "source": "__ELBOT_CODE_0__；只返回名称、MIME 和大小等安全元数据。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "df3e06b3faeef6880dae2e520eec5462872249b3a2b5d5a0bc05106ba95ca0c6",
+      "translation": "__ELBOT_CODE_0__; only returns secure metadata such as name, MIME, and size.",
+      "updated_at": 1789010427
+    },
     "docs/hooks.md:table:dffe05ca90d81b6597f069703610de454654b4129ebe360fc9376efc445d3e7e": {
       "kind": "table",
       "source": "删除全部正则命中。",
@@ -3343,6 +3463,14 @@
       "source_hash": "e8c09517ddd410531a48896040cc40779f8dce82a2bf8b07849d94a52e607ab5",
       "translation": "Non-empty platform native emoji or sticker ID of __ELBOT_CODE_0__; native emojis do not accept media sources.",
       "updated_at": 1783853279
+    },
+    "docs/hooks.md:table:eabaf378ec5437ae7e3c1115c101e70a5329f7345c09a018f9fe8d481b1396f8": {
+      "kind": "table",
+      "source": "__ELBOT_CODE_0__、__ELBOT_CODE_1__（插件目录相对路径）或 __ELBOT_CODE_2__ 三选一，可选 __ELBOT_CODE_3__、__ELBOT_CODE_4__；返回 __ELBOT_CODE_5__ 和元数据。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "eabaf378ec5437ae7e3c1115c101e70a5329f7345c09a018f9fe8d481b1396f8",
+      "translation": "Choose one of __ELBOT_CODE_0__, __ELBOT_CODE_1__ (relative path of the plugin directory), or __ELBOT_CODE_2__; __ELBOT_CODE_3__ and __ELBOT_CODE_4__ are optional; returns __ELBOT_CODE_5__ and metadata.",
+      "updated_at": 1789010427
     },
     "docs/hooks.md:table:ead2be9c8055f0b4e805080f3d995351538b4bfa8c6c3ee1bcab7feb6d68800f": {
       "kind": "table",
@@ -3426,8 +3554,8 @@
     }
   },
   "source": "docs/hooks.md",
-  "source_hash": "317b2649f006cc7779b4dfc40e3fb15b769435efb57a471e8d6585ff55644566",
+  "source_hash": "5c9cac1d8d69ba0ff0443314336311e939285dfda9929618aadfe8a516eeec90",
   "target": "docs.en/hooks.md",
-  "updated_at": 1786539358,
+  "updated_at": 1789010427,
   "version": 2
 }

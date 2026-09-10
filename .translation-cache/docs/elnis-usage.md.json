@@ -200,6 +200,14 @@
       "translation": "Elnis Configuration and Usage",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:heading:96ba736fa90a961c21dd4a4ac928eac11531ad3bc3c6904db83abb113e5d134f": {
+      "kind": "heading",
+      "source": "输出关联与清理",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "96ba736fa90a961c21dd4a4ac928eac11531ad3bc3c6904db83abb113e5d134f",
+      "translation": "Output Association and Cleanup",
+      "updated_at": 1789010099
+    },
     "docs/elnis-usage.md:heading:a702afffbf1a9126bbd28cde21f1a0a32d2a4a7d2c660c1469e10278bf462299": {
       "kind": "heading",
       "source": "投递目标与安全边界",
@@ -231,6 +239,22 @@
       "source_hash": "1e556fd35e3587bfc10717bdd81cf532ae6c205f11fd14ebe299c7d71bfdc8ed",
       "translation": "When HTTP timeout configurations are less than or equal to 0, the aforementioned safe default values are used; timeouts cannot be disabled by using 0.",
       "updated_at": 1784340335
+    },
+    "docs/elnis-usage.md:list:23d7e90f17bfd92e6de6c2b8cbea9d971fb1926714fcaeb7936a4380f155fdea": {
+      "kind": "list",
+      "source": "direct 有实际投递目标时，导入或复用 Media Center 媒体，不保留 Elnis sandbox 下载副本。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "23d7e90f17bfd92e6de6c2b8cbea9d971fb1926714fcaeb7936a4380f155fdea",
+      "translation": "When 'direct' has an actual delivery target, Media Center media is imported or reused, and no download copy is kept in the Elnis sandbox.",
+      "updated_at": 1789010099
+    },
+    "docs/elnis-usage.md:list:2c6e314197913dc6a5531bee11394eb27b074241e1e5f9eb1fabcbf9acb50693": {
+      "kind": "list",
+      "source": "workspace 普通工作文件继续由 sandbox 管理；报告附件在确定需要持久化投递时导入中心。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "2c6e314197913dc6a5531bee11394eb27b074241e1e5f9eb1fabcbf9acb50693",
+      "translation": "Ordinary workspace files continue to be managed by the sandbox; report attachments are imported into the center when persistent delivery is determined to be necessary.",
+      "updated_at": 1789010099
     },
     "docs/elnis-usage.md:list:39d59267ebaab21e07dc512b5809024eda04a12d8a8151c63be19fe6532a4450": {
       "kind": "list",
@@ -295,6 +319,14 @@
       "source_hash": "807392aba7b653e590780106329588417c79b084974f2aeba3f6b3f6c3e4e534",
       "translation": "__ELBOT_CODE_0__: deliver to the superadmins of all enabled platforms; __ELBOT_CODE_1__ or __ELBOT_CODE_2__ cannot be written at the same time.",
       "updated_at": 1782033114
+    },
+    "docs/elnis-usage.md:list:841c4faf6c423b401421ac8b7a45865bbbf28e77833276fc8582e83bf6b1b578": {
+      "kind": "list",
+      "source": "record、拒绝、重复或仅排队的事件不下载来源媒体。排队任务已有的媒体 ID 会建立引用。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "841c4faf6c423b401421ac8b7a45865bbbf28e77833276fc8582e83bf6b1b578",
+      "translation": "Events that are recorded, rejected, duplicated, or only queued do not download source media. References will be established for existing media IDs of queued tasks.",
+      "updated_at": 1789010099
     },
     "docs/elnis-usage.md:list:8ae9e28aae0d922c05e2318b6bef3dc28c9ae1ac81151aa3bed6a8c15bc16bc5": {
       "kind": "list",
@@ -384,6 +416,22 @@
       "translation": "__ELBOT_CODE_0__ can contain multiple environment variable names, which will be tried in order.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:list:bd5b468cb508b1356236a784293a4c05381d89d17c737aed87ef39ecc34ed448": {
+      "kind": "list",
+      "source": "文件名已有扩展名（包括 __ELBOT_CODE_0__）时保留原名，仅无扩展名时补全。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "bd5b468cb508b1356236a784293a4c05381d89d17c737aed87ef39ecc34ed448",
+      "translation": "The original name is preserved if the filename already has an extension (including __ELBOT_CODE_0__); it is only completed when no extension exists.",
+      "updated_at": 1789010099
+    },
+    "docs/elnis-usage.md:list:bf6db6e8c643c084ea17d551c10f717b36c80f4834f5241f7093e96192edfe83": {
+      "kind": "list",
+      "source": "LLM 输入在实际执行时物化为稳定媒体 ID，Session 保存 ID，请求发送前再解析。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "bf6db6e8c643c084ea17d551c10f717b36c80f4834f5241f7093e96192edfe83",
+      "translation": "LLM input is materialized into a stable media ID during actual execution; the Session saves the ID, which is then resolved before the request is sent.",
+      "updated_at": 1789010099
+    },
     "docs/elnis-usage.md:list:c29df2c57475853231da13768368ce4696ea745b6bf979e548e40969b7289e27": {
       "kind": "list",
       "source": "顶层 __ELBOT_CODE_0__ 是 ElBot 内部工具默认白名单，单个 Elwisp 的 __ELBOT_CODE_1__ 存在时覆盖它。",
@@ -391,14 +439,6 @@
       "source_hash": "c29df2c57475853231da13768368ce4696ea745b6bf979e548e40969b7289e27",
       "translation": "The top-level __ELBOT_CODE_0__ is the default whitelist for ElBot internal tools; it is overridden when __ELBOT_CODE_1__ of an individual Elwisp exists.",
       "updated_at": 1781749660
-    },
-    "docs/elnis-usage.md:list:c4ed0195b6b6e8367e7b333fb2ab37937bdab84c4e0b7bfbb0afd7cc2dbea8c6": {
-      "kind": "list",
-      "source": "Elnis 接收后自动下载到 __ELBOT_CODE_0__。",
-      "source_file": "docs/elnis-usage.md",
-      "source_hash": "c4ed0195b6b6e8367e7b333fb2ab37937bdab84c4e0b7bfbb0afd7cc2dbea8c6",
-      "translation": "Elnis automatically downloads it to __ELBOT_CODE_0__ upon receipt.",
-      "updated_at": 1781929269
     },
     "docs/elnis-usage.md:list:ca55d61a6160292c9353d353d50f67c47d4b7b9386e07b1724c9cba2335e5889": {
       "kind": "list",
@@ -438,14 +478,6 @@
       "source_file": "docs/elnis-usage.md",
       "source_hash": "ed2ead06ed2b4af7accb26d94cedea99fde3455135bf3866b3b69a0fd2f2de4b",
       "translation": "__ELBOT_CODE_0__ URIs only support base64 encoding and are similarly restricted after decoding.",
-      "updated_at": 1781929269
-    },
-    "docs/elnis-usage.md:list:ef07a3cc0f033556036b21d346b4609a5d0e0e06792b845dc247cf1c4aec47c4": {
-      "kind": "list",
-      "source": "发送到 LLM 时使用原始 URL（多模态模型可直接看图），沙盒保留副本。",
-      "source_file": "docs/elnis-usage.md",
-      "source_hash": "ef07a3cc0f033556036b21d346b4609a5d0e0e06792b845dc247cf1c4aec47c4",
-      "translation": "The original URL is used when sending to the LLM (multimodal models can view images directly), and a copy is kept in the sandbox.",
       "updated_at": 1781929269
     },
     "docs/elnis-usage.md:list:f05de9594a7ea188ef802e22bb502f897346bf330b88ce6c87f1beb1ad71184a": {
@@ -488,21 +520,21 @@
       "translation": "__ELBOT_CODE_0__ is CLI-only mode; even with __ELBOT_CODE_1__, the Elnis HTTP runtime will not start;",
       "updated_at": 1781962160
     },
-    "docs/elnis-usage.md:paragraph:01132ca445e606d3dc2b64170c994478f851cadcbeec4629803a075ed810887e": {
+    "docs/elnis-usage.md:paragraph:042c6caa02c34d029eec91e364dac5bc3c3e29ab2d63490a03f1db7d5ca6bcf4": {
       "kind": "paragraph",
-      "source": "后台 LLM 处理事件后，__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 可附带图片/文件路径，Elnis 会在报告发送时一并投递。",
+      "source": "缓存过期释放关联引用；",
       "source_file": "docs/elnis-usage.md",
-      "source_hash": "01132ca445e606d3dc2b64170c994478f851cadcbeec4629803a075ed810887e",
-      "translation": "After the background LLM processes the event, the __ELBOT_CODE_1__ of __ELBOT_CODE_0__ can include image/file paths, which Elnis will deliver together when the report is sent.",
-      "updated_at": 1781949084
+      "source_hash": "042c6caa02c34d029eec91e364dac5bc3c3e29ab2d63490a03f1db7d5ca6bcf4",
+      "translation": "Association references are released upon cache expiration;",
+      "updated_at": 1789010099
     },
-    "docs/elnis-usage.md:paragraph:143cb8eb95395e1b1f5410bb1ed4ec3407281333e667515d9b872e8f2fbd04c9": {
+    "docs/elnis-usage.md:paragraph:12cd807fcdfef0b3de400914f7762b3f0b6936a5cb5505e297ee341c85c8b672": {
       "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 必须是当前任务工作目录内的相对路径，不能使用绝对路径、__ELBOT_CODE_1__ 或 __ELBOT_CODE_2__。\n",
+      "source": "QQ OneBot、QQ Official、Telegram 支持在引用回复中恢复关联媒体；",
       "source_file": "docs/elnis-usage.md",
-      "source_hash": "143cb8eb95395e1b1f5410bb1ed4ec3407281333e667515d9b872e8f2fbd04c9",
-      "translation": "__ELBOT_CODE_0__ must be a relative path within the current task working directory; absolute paths, __ELBOT_CODE_1__, or __ELBOT_CODE_2__ cannot be used.\n",
-      "updated_at": 1781949084
+      "source_hash": "12cd807fcdfef0b3de400914f7762b3f0b6936a5cb5505e297ee341c85c8b672",
+      "translation": "QQ OneBot, QQ Official, and Telegram support restoring associated media in quoted replies;",
+      "updated_at": 1789010099
     },
     "docs/elnis-usage.md:paragraph:164dc12a20c5f77e4831ecc3dc9452ef0b001cc78cd2abb73983e4398560321f": {
       "kind": "paragraph",
@@ -512,6 +544,22 @@
       "translation": "The HTTP response only indicates that Elnis has received or rejected the request, and does not wait for the LLM to complete.\n",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:paragraph:18c08da2b6baf753b30f261fb716130b6c2d1a1c1ad6b6b256e3ccb16a0f5ea9": {
+      "kind": "paragraph",
+      "source": "使用 __ELBOT_CODE_0__ 时填写当前任务工作目录内的相对路径，不能使用绝对路径、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 或逃逸目录的 symlink/junction；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "18c08da2b6baf753b30f261fb716130b6c2d1a1c1ad6b6b256e3ccb16a0f5ea9",
+      "translation": "When using __ELBOT_CODE_0__, fill in the relative path within the current task working directory; absolute paths, __ELBOT_CODE_1__, __ELBOT_CODE_2__, or symlinks/junctions that escape the directory cannot be used;",
+      "updated_at": 1789010099
+    },
+    "docs/elnis-usage.md:paragraph:1f02ccdbf482890fc7f09db180f014dc116b6a887caab19fded466f4ac01c306": {
+      "kind": "paragraph",
+      "source": "失败保留删除状态供重试。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "1f02ccdbf482890fc7f09db180f014dc116b6a887caab19fded466f4ac01c306",
+      "translation": "Failures retain the deletion status for retries.",
+      "updated_at": 1789010099
+    },
     "docs/elnis-usage.md:paragraph:1f7cad2a0b32403b701ce5e2db1e52b154887906b79080818cf2965a01b2605a": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 为空时行为不变，非空时优先 segments 渲染，content 作为附加文本。\n",
@@ -519,6 +567,22 @@
       "source_hash": "1f7cad2a0b32403b701ce5e2db1e52b154887906b79080818cf2965a01b2605a",
       "translation": "Behavior remains unchanged when __ELBOT_CODE_0__ is empty; when not empty, segments are rendered preferentially, and content serves as additional text.\n",
       "updated_at": 1781929269
+    },
+    "docs/elnis-usage.md:paragraph:214479bce0e6417da9688a361829c75add8b76252824cd27bd42b28631dc4843": {
+      "kind": "paragraph",
+      "source": "达到宽限期后在下一次媒体维护任务执行时清理，并非一小时整立即删除。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "214479bce0e6417da9688a361829c75add8b76252824cd27bd42b28631dc4843",
+      "translation": "Once the grace period is reached, cleanup occurs during the next execution of the media maintenance task, rather than being deleted immediately at exactly one hour.",
+      "updated_at": 1789010099
+    },
+    "docs/elnis-usage.md:paragraph:2f680df32fbf2b2743f7d08fab4e969892527cec7dfadca2a32ee2e084ec7532": {
+      "kind": "paragraph",
+      "source": "后台 LLM 处理事件后，__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 可附带图片/文件。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "2f680df32fbf2b2743f7d08fab4e969892527cec7dfadca2a32ee2e084ec7532",
+      "translation": "After the background LLM processes the event, the __ELBOT_CODE_1__ of __ELBOT_CODE_0__ can include images/files.",
+      "updated_at": 1789010099
     },
     "docs/elnis-usage.md:paragraph:2fe0efe6808e0e94fa09d078323e9dceee6d39f7ecb6c96fdcd155e2f49b8ab5": {
       "kind": "paragraph",
@@ -560,6 +624,14 @@
       "translation": "Elnis is disabled by default. When enabling it, first declare the configuration file entry in __ELBOT_CODE_0__:\n",
       "updated_at": 1781749660
     },
+    "docs/elnis-usage.md:paragraph:4d75e46a7114d667ac3d1deb2bbe41d2026307c2607a4491cefa692a012e76e9": {
+      "kind": "paragraph",
+      "source": "已发送缓存保留期复用 __ELBOT_CODE_0__ 的 __ELBOT_CODE_1__，非正值不保留发送后的缓存。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "4d75e46a7114d667ac3d1deb2bbe41d2026307c2607a4491cefa692a012e76e9",
+      "translation": "The retention period for sent cache reuses __ELBOT_CODE_1__ of __ELBOT_CODE_0__; cache after sending is not retained if the value is not positive.",
+      "updated_at": 1789010099
+    },
     "docs/elnis-usage.md:paragraph:515207d38c35cf9ff2a06be56e52c81117b9ccb1cde3b5ab88bf3301d820f5cb": {
       "kind": "paragraph",
       "source": "常用字段：\n",
@@ -567,6 +639,14 @@
       "source_hash": "515207d38c35cf9ff2a06be56e52c81117b9ccb1cde3b5ab88bf3301d820f5cb",
       "translation": "Common fields:\n",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:543e9121de9f096dd4272091c2054ce05b3e03f18c3810b8d16ebde59d8f152b": {
+      "kind": "paragraph",
+      "source": "回复当前 Session 最新 assistant 时按普通续聊处理。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "543e9121de9f096dd4272091c2054ce05b3e03f18c3810b8d16ebde59d8f152b",
+      "translation": "Replying to the latest assistant message in the current Session is handled as a normal continuation of the chat.",
+      "updated_at": 1789010099
     },
     "docs/elnis-usage.md:paragraph:5a9b0b92870dff0d3baafc1289ce15699f51e7c4b592c4cf901add78963c5153": {
       "kind": "paragraph",
@@ -584,6 +664,22 @@
       "translation": "__ELBOT_CODE_0__ example:\n",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:paragraph:5e9b28fae1fb49d0e0f86a328adec9ac6abbe282309c18bdfb5557029c0417c6": {
+      "kind": "paragraph",
+      "source": "宿主在准备报告时导入附件，outbox 保存稳定媒体 ID，因此原 workspace 文件删除后仍可重试。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "5e9b28fae1fb49d0e0f86a328adec9ac6abbe282309c18bdfb5557029c0417c6",
+      "translation": "The host imports attachments when preparing the report, and the outbox saves stable media IDs, so retries are still possible after the original workspace files are deleted.\n",
+      "updated_at": 1789010099
+    },
+    "docs/elnis-usage.md:paragraph:5f0e212a0788c567e7e2e15396416064cf73d76af625359adfef45f1812f79ab": {
+      "kind": "paragraph",
+      "source": "也可在 __ELBOT_CODE_0__ 中填写 __ELBOT_CODE_1__ 引用中心资源。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "5f0e212a0788c567e7e2e15396416064cf73d76af625359adfef45f1812f79ab",
+      "translation": "You can also fill in __ELBOT_CODE_1__ in __ELBOT_CODE_0__ to reference central resources.",
+      "updated_at": 1789010099
+    },
     "docs/elnis-usage.md:paragraph:6bedfd1be38f4429ef585d0cc5ca46ae9a4ec68731e48cedc6e0ef4e50fc3d08": {
       "kind": "paragraph",
       "source": "如果想让 ElBot 帮你生成 Elwisp 监听器，可以在 work 模式下向超级管理员会话提出需求，例如：\n",
@@ -599,6 +695,38 @@
       "source_hash": "74d9bfb1c1843b09c07c3521eb60ae7ad1d9ff7cc263f9e9782db377598fd539",
       "translation": "Setting __ELBOT_CODE_0__ in the disable configuration means disabling all deliveries for this platform.\n",
       "updated_at": 1782033114
+    },
+    "docs/elnis-usage.md:paragraph:757023806f8f4634f3586496895e19133d9f93073f66cee9fccc4ac3ccbea778": {
+      "kind": "paragraph",
+      "source": "已有 HTTP(S) 来源仍兼容。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "757023806f8f4634f3586496895e19133d9f93073f66cee9fccc4ac3ccbea778",
+      "translation": "Existing HTTP(S) sources remain compatible.",
+      "updated_at": 1789010099
+    },
+    "docs/elnis-usage.md:paragraph:809190ab2b04c89614fb42910b16043ea039551e19638b16ce1a4ad43b0d8b2a": {
+      "kind": "paragraph",
+      "source": "该任务复用 sandbox 的清理时间表，但不按目录文件年龄删除 Media Center 内容。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "809190ab2b04c89614fb42910b16043ea039551e19638b16ce1a4ad43b0d8b2a",
+      "translation": "This task reuses the sandbox cleanup schedule but does not delete Media Center content based on the age of directory files.\n",
+      "updated_at": 1789010099
+    },
+    "docs/elnis-usage.md:paragraph:83d95a3d2f8a916303f9af3f82c07f4e400a608afac44780ae94275ca20a0f95": {
+      "kind": "paragraph",
+      "source": "宽限期起点保存在数据库，关闭 ElBot 的时间也计入，重启不重置；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "83d95a3d2f8a916303f9af3f82c07f4e400a608afac44780ae94275ca20a0f95",
+      "translation": "The start of the grace period is saved in the database; time spent with ElBot shut down is also counted, and restarting does not reset it;",
+      "updated_at": 1789010099
+    },
+    "docs/elnis-usage.md:paragraph:84933dd8ebcf55a7fa93ae16c39fec00c0dbd3246a55d28bf682f4dccfc94e40": {
+      "kind": "paragraph",
+      "source": "发送期间和 outbox 待重试期间，媒体保留有效引用。成功发送的媒体会与对应平台消息关联，供后续引用回复使用；无法确定对应关系时不建立猜测关联。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "84933dd8ebcf55a7fa93ae16c39fec00c0dbd3246a55d28bf682f4dccfc94e40",
+      "translation": "During sending and while pending retry in the outbox, media retains valid references. Successfully sent media will be associated with the corresponding platform message for subsequent reference and replies; no speculative associations are created when the correspondence cannot be determined.\n",
+      "updated_at": 1789010099
     },
     "docs/elnis-usage.md:paragraph:887cee93ce128c97c968309c6c38be8a5626e37ebe2e23944a36cc6213096140": {
       "kind": "paragraph",
@@ -680,6 +808,30 @@
       "translation": "Semantics:\n",
       "updated_at": 1782033114
     },
+    "docs/elnis-usage.md:paragraph:d123f0b37756a85fe6bca4c81305c3339d55bd851d8835bcea9dbfc114b0ee43": {
+      "kind": "paragraph",
+      "source": "Elwisp 远端工具仅操作自己的文件，不获得宿主媒体导出路径、RPC 或存储凭据。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "d123f0b37756a85fe6bca4c81305c3339d55bd851d8835bcea9dbfc114b0ee43",
+      "translation": "Elwisp remote tools only operate on their own files and do not obtain host media export paths, RPC, or storage credentials.\n",
+      "updated_at": 1789010099
+    },
+    "docs/elnis-usage.md:paragraph:d5da1793a9cfa622c3f621735b3bcef053496f405b9dae6b31c470f071207a00": {
+      "kind": "paragraph",
+      "source": "所有引用消失后经过 1 小时孤儿宽限期，媒体维护任务才清理本体和记录；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "d5da1793a9cfa622c3f621735b3bcef053496f405b9dae6b31c470f071207a00",
+      "translation": "After all references disappear and a 1-hour orphan grace period passes, the media maintenance task will clean up the entity and its records;",
+      "updated_at": 1789010099
+    },
+    "docs/elnis-usage.md:paragraph:da82a931fcb4f637a43683540bbf40bfb470a5d771fcf7461fea6150fc2f65a8": {
+      "kind": "paragraph",
+      "source": "Session、Transcript、fork 和待重试报告的独立引用仍保留。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "da82a931fcb4f637a43683540bbf40bfb470a5d771fcf7461fea6150fc2f65a8",
+      "translation": "Independent references to Sessions, Transcripts, forks, and reports pending retry are still retained.",
+      "updated_at": 1789010099
+    },
     "docs/elnis-usage.md:paragraph:ddac502e5a9bf6effe2c663d9791e9d17620364e413cc20355177083ec692c93": {
       "kind": "paragraph",
       "source": "启动 ElBot 后，可以用 curl 测试一个 __ELBOT_CODE_0__ 事件：\n",
@@ -743,14 +895,6 @@
       "source_hash": "0748071790b55dd6b123f52b44f9540c9cc83eade6f63f1f0228d0accd080ff9",
       "translation": "Elvena v3 action call array.",
       "updated_at": 1782376360
-    },
-    "docs/elnis-usage.md:table:0782411550e5e713d6079490c3887ebdb14aa8ab900e91ffc93ce83aeb497768": {
-      "kind": "table",
-      "source": "__ELBOT_CODE_0__、__ELBOT_CODE_1__ 或 __ELBOT_CODE_2__ base64 URI。",
-      "source_file": "docs/elnis-usage.md",
-      "source_hash": "0782411550e5e713d6079490c3887ebdb14aa8ab900e91ffc93ce83aeb497768",
-      "translation": "__ELBOT_CODE_0__, __ELBOT_CODE_1__, or __ELBOT_CODE_2__ base64 URI.",
-      "updated_at": 1781929269
     },
     "docs/elnis-usage.md:table:0c70665b6eb65f1aebf3b59f684ce52ed3473b2443ed4b4e0b815e2e9d66b8c2": {
       "kind": "table",
@@ -920,6 +1064,14 @@
       "translation": "__ELBOT_CODE_0__, __ELBOT_CODE_1__, or __ELBOT_CODE_2__.",
       "updated_at": 1781709646
     },
+    "docs/elnis-usage.md:table:ae029a42570f0f779e7561240c5c4927c5e3d9df0df99c9ee087a969c225861b": {
+      "kind": "table",
+      "source": "不会向外部 Elwisp 返回媒体内容。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "ae029a42570f0f779e7561240c5c4927c5e3d9df0df99c9ee087a969c225861b",
+      "translation": "Media content will not be returned to external Elwisp.",
+      "updated_at": 1789010099
+    },
     "docs/elnis-usage.md:table:b5141d3d19e9a04855acdb2dd5218b0924254b73d3cb663557ed0f9f73403750": {
       "kind": "table",
       "source": "是",
@@ -927,6 +1079,14 @@
       "source_hash": "b5141d3d19e9a04855acdb2dd5218b0924254b73d3cb663557ed0f9f73403750",
       "translation": "Yes",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:table:b922f0b63fb50ff74eceb89a763feaf5548df499e4930827576e94fa46b425f3": {
+      "kind": "table",
+      "source": "__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ base64 URI，或已有媒体的完整 __ELBOT_CODE_3__。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "b922f0b63fb50ff74eceb89a763feaf5548df499e4930827576e94fa46b425f3",
+      "translation": "__ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__ base64 URI, or a complete __ELBOT_CODE_3__ of existing media.",
+      "updated_at": 1789010099
     },
     "docs/elnis-usage.md:table:b9b16d252007ede4f448bbca8f6da0ec9071652d73c770c6c5974e505d7aecee": {
       "kind": "table",
@@ -1002,8 +1162,8 @@
     }
   },
   "source": "docs/elnis-usage.md",
-  "source_hash": "765d2c3367a3e69ca0fdafed6c3a78a8fcb82ab97d28d710431a3ce743067d0e",
+  "source_hash": "66dad915e9079dad93cc4e5e3a4e5f378f930fec66c99ce15ee0379aded0d350",
   "target": "docs.en/elnis-usage.md",
-  "updated_at": 1784340335,
+  "updated_at": 1789010099,
   "version": 2
 }
