@@ -99,7 +99,6 @@ func normalizeSegments(segments []Segment, selfID int64) NormalizedMessage {
 		case "reply":
 			out.ReplyID = strings.TrimSpace(segmentDataString(seg.Data, "id"))
 		case "image":
-			parts = append(parts, "[图片]")
 			out.Segments = append(out.Segments, imageSegment(seg.Data))
 		case "record":
 			parts = append(parts, "[语音]")

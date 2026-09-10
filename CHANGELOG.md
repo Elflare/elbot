@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复已有本地媒体切换为 S3 交付后，误跳过上传却生成下载链接，导致模型取图返回 404 的问题。
+- 修复 QQ OneBot 入站图片同时生成 `[图片]` 占位文字和带名称、媒体 ID 的图片标签，造成描述重复的问题。
 - 修复内置工具与 Go Skill 的服务级环境变量读取不一致，导致部分工具无法读取配置目录 `.env` 的问题。
 - 修复 OpenAI-compatible 接口返回非 200 状态时，响应上下文在读取错误 body 前被提前取消，导致真实上游错误丢失并只显示 `failed to read body: context canceled` 的问题。
 - 修复读文件工具错误将部分非 UTF-8 文本编码识别为二进制文件的问题。
