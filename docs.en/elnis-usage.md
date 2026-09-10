@@ -180,14 +180,17 @@ Behavior remains unchanged when `segments` is empty; when not empty, segments ar
 | --- | ---: | :---: | --- |
 | `kind` | string | Yes | `text`、`image`、`file`。 |
 | `text` | string | text (Required) | Plain text content, not persisted to disk. |
-| `url` | string | image/file (Required) | `http://`, `https://`, or `data:` base64 URI. |
+| `url` | string | image/file (Required) | `http://`, `https://`, `data:` base64 URI, or a complete `media:<64 位小写 SHA-256>` of existing media. Media content will not be returned to external Elwisp. |
 | `name` | string | No | File name, used for downloading, saving, and displaying. |
 | `mime_type` | string | No | MIME type hint. |
 
 ### Download and Storage
 
-- Elnis automatically downloads it to `sandbox/elnis/<elwisp名>/<事件id>/` upon receipt.
-- The original URL is used when sending to the LLM (multimodal models can view images directly), and a copy is kept in the sandbox.
+- Events that are recorded, rejected, duplicated, or only queued do not download source media. References will be established for existing media IDs of queued tasks.
+- When 'direct' has an actual delivery target, Media Center media is imported or reused, and no download copy is kept in the Elnis sandbox.
+- LLM input is materialized into a stable media ID during actual execution; the Session saves the ID, which is then resolved before the request is sent.
+- Ordinary workspace files continue to be managed by the sandbox; report attachments are imported into the center when persistent delivery is determined to be necessary.
+- The original name is preserved if the filename already has an extension (including `.PNG`); it is only completed when no extension exists.
 - Direct mode also supports image/file output; it automatically degrades to a text description if the platform does not support it.
 - File size is limited by `[segment].max_file_bytes` of `elnis.toml` (default 100MB).
 - `data:` URIs only support base64 encoding and are similarly restricted after decoding.
@@ -215,7 +218,7 @@ Behavior remains unchanged when `segments` is empty; when not empty, segments ar
 
 ### report_segments in LLM results
 
-After the background LLM processes the event, the `report_segments` of `JSONResult` can include image/file paths, which Elnis will deliver together when the report is sent. `url` must be a relative path within the current task working directory; absolute paths, `~`, or `..` cannot be used.
+After the background LLM processes the event, the `report_segments` of `JSONResult` can include images/files. When using `url`, fill in the relative path within the current task working directory; absolute paths, `~`, `..`, or symlinks/junctions that escape the directory cannot be used; Existing HTTP(S) sources remain compatible. You can also fill in `media:<sha256>` in `url` to reference central resources. The host imports attachments when preparing the report, and the outbox saves stable media IDs, so retries are still possible after the original workspace files are deleted.
 
 
 ```json
@@ -230,6 +233,14 @@ After the background LLM processes the event, the `report_segments` of `JSONResu
 }
 ```
 
+
+### Output Association and Cleanup
+
+During sending and while pending retry in the outbox, media retains valid references. Successfully sent media will be associated with the corresponding platform message for subsequent reference and replies; no speculative associations are created when the correspondence cannot be determined.
+
+The retention period for sent cache reuses `[maintenance.sandbox_cleanup].retention_days` of `app.toml`; cache after sending is not retained if the value is not positive. Association references are released upon cache expiration; Independent references to Sessions, Transcripts, forks, and reports pending retry are still retained. After all references disappear and a 1-hour orphan grace period passes, the media maintenance task will clean up the entity and its records; Failures retain the deletion status for retries. The start of the grace period is saved in the database; time spent with ElBot shut down is also counted, and restarting does not reset it; Once the grace period is reached, cleanup occurs during the next execution of the media maintenance task, rather than being deleted immediately at exactly one hour. This task reuses the sandbox cleanup schedule but does not delete Media Center content based on the age of directory files.
+
+QQ OneBot, QQ Official, and Telegram support restoring associated media in quoted replies; Replying to the latest assistant message in the current Session is handled as a normal continuation of the chat. Elwisp remote tools only operate on their own files and do not obtain host media export paths, RPC, or storage credentials.
 
 Common fields:
 
