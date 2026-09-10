@@ -86,6 +86,12 @@ flowchart LR
     output --> platforms
 ```
 
+## Media Resource Boundary
+
+Elwisp's own files are managed by external processes; The Elnis workspace stores temporary computations and general work files. Media that actually enters the LLM, persisted reports, or direct platform outputs are managed by a shared Media Center and identified using `media:<sha256>`, avoiding redundant sandbox download copies from direct platforms.
+
+In Elvena v3, the image/file segment fills HTTP(S), data URIs, or full `media:<sha256>` in `url`, without adding a separate `media` field. Elwisp does not obtain media management RPCs, and external tools will not receive host-exported files. The report outbox uses stable media sources; references for retries are independent of the time-limited sent cache. See [Media Usage and Cleanup](elnis-usage.md#下载与存储) for details.
+
 ## Three Roles
 
 ### Elnis
