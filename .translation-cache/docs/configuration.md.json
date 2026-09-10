@@ -240,6 +240,14 @@
       "translation": "Plugin and Hook Configuration",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:heading:d58a06ce5dc905a939b6f3f25b6d38bc8f3aadb99a6811857609c8d55792356b": {
+      "kind": "heading",
+      "source": "媒体交付",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d58a06ce5dc905a939b6f3f25b6d38bc8f3aadb99a6811857609c8d55792356b",
+      "translation": "Media Delivery",
+      "updated_at": 1789023374
+    },
     "docs/configuration.md:heading:d81850505bb720b6da2477587242acb8ba6bbb6377be3bcb867bdd9258ce5717": {
       "kind": "heading",
       "source": "工具与安全",
@@ -1232,6 +1240,14 @@
       "translation": "__ELBOT_CODE_0__ stores both CLI server and client configurations.",
       "updated_at": 1781962094
     },
+    "docs/configuration.md:paragraph:00fdf62f3a13c38d7a864b7e4b6ee37f046b0bce71423121a2146a002f19d592": {
+      "kind": "paragraph",
+      "source": "S3 交付使用 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 以及 __ELBOT_CODE_3__、__ELBOT_CODE_4__ 指定的环境变量。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "00fdf62f3a13c38d7a864b7e4b6ee37f046b0bce71423121a2146a002f19d592",
+      "translation": "S3 delivery uses environment variables specified by __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, as well as __ELBOT_CODE_3__ and __ELBOT_CODE_4__.",
+      "updated_at": 1789023374
+    },
     "docs/configuration.md:paragraph:01f1bfa955794ef1c2fd69180c14c70e5eab27d060a94bd28eef48340299d6c4": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 使用 __ELBOT_CODE_1__：\n",
@@ -1351,6 +1367,14 @@
       "source_hash": "1995c538b813456f6f180052ecbc654bfea600bc28943887c51c919bf83d3e09",
       "translation": "When a proxy is required, standard variables can be set in the corresponding environment layer; whether the child process uses them still depends on the specific program:\n",
       "updated_at": 1785918785
+    },
+    "docs/configuration.md:paragraph:1a75e20e2c7f94bd96ece32b2c4f3597cfecd918928bbc5286d4c7fc57f9fca0": {
+      "kind": "paragraph",
+      "source": "切换到 S3 后，已有本地媒体会在需要远程交付时上传，并复用已记录的对象键。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1a75e20e2c7f94bd96ece32b2c4f3597cfecd918928bbc5286d4c7fc57f9fca0",
+      "translation": "After switching to S3, existing local media will be uploaded when remote delivery is required, reusing the recorded object keys.\n",
+      "updated_at": 1789023374
     },
     "docs/configuration.md:paragraph:1b1d63f6451566b1447a2aaaf1cdca290b9ce605850c0452d71f600b3239679f": {
       "kind": "paragraph",
@@ -1776,6 +1800,14 @@
       "translation": "Resident memory data is saved by default in __ELBOT_CODE_0__ of the configuration directory, and the file is generated when the program runs for the first time. The length limits for the two resident memory segments, core and normal, can be set in the main configuration:\n",
       "updated_at": 1782206047
     },
+    "docs/configuration.md:paragraph:8ba44fbfbdec25f68c58c2661ea76cbbe12364becb207cc4538c2893b20443cf": {
+      "kind": "paragraph",
+      "source": "Cloudflare R2 可保持 bucket 私有，无需开启公共访问；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "8ba44fbfbdec25f68c58c2661ea76cbbe12364becb207cc4538c2893b20443cf",
+      "translation": "Cloudflare R2 can keep the bucket private without needing to enable public access;",
+      "updated_at": 1789023374
+    },
     "docs/configuration.md:paragraph:8d4a3aa5a1bce6c9306825b96e3358b7ec0651b63fe2ddf04b9e478e09012931": {
       "kind": "paragraph",
       "source": "普通群消息是否下发取决于 QQ 开放平台为机器人启用的群消息能力。\n",
@@ -1839,6 +1871,14 @@
       "source_hash": "98eb7743b6382d1927f6e0c8096646fef84bd7543d6a077816680a510239c6c1",
       "translation": "Default maintenance tasks include the cleanup of logs, Sessions, sandboxes, and chat history. For example, Session cleanup defaults to a 30-day retention period, sandbox content older than 7 days is cleaned up daily at 04:00 by default, and chat history cleanup is executed daily at 04:35 by default:\n",
       "updated_at": 1782226057
+    },
+    "docs/configuration.md:paragraph:9959859a45473cfd1afd30ad2e55dc67b5afdd71c76d1d1d3a2dbaca36a6eb7b": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 控制模型请求中的媒体交付：__ELBOT_CODE_2__ 使用内嵌数据，__ELBOT_CODE_3__ 使用预签名下载链接，__ELBOT_CODE_4__ 在请求媒体总大小超过 __ELBOT_CODE_5__ 时使用 S3。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "9959859a45473cfd1afd30ad2e55dc67b5afdd71c76d1d1d3a2dbaca36a6eb7b",
+      "translation": "__ELBOT_CODE_1__ of __ELBOT_CODE_0__ controls media delivery in model requests: __ELBOT_CODE_2__ uses embedded data, __ELBOT_CODE_3__ uses pre-signed download links, and __ELBOT_CODE_4__ uses S3 when the total size of request media exceeds __ELBOT_CODE_5__.",
+      "updated_at": 1789023374
     },
     "docs/configuration.md:paragraph:9b5878230e34a540b3bc2f4b759f21a0bf924ce76763874851dd26916e8f921b": {
       "kind": "paragraph",
@@ -2168,6 +2208,22 @@
       "translation": "Runtime log configuration:\n",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:paragraph:e4f2cbe75fd0b955f1b02657a8e57ae2aa406cf5fe0c2368cbc387facd5aa3ef": {
+      "kind": "paragraph",
+      "source": "模型服务通过有效期为 1 小时的预签名 URL 下载对象，不需要另外提供密钥。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e4f2cbe75fd0b955f1b02657a8e57ae2aa406cf5fe0c2368cbc387facd5aa3ef",
+      "translation": "The model service downloads objects via pre-signed URLs valid for 1 hour, and no additional keys are required.",
+      "updated_at": 1789023374
+    },
+    "docs/configuration.md:paragraph:e791009aec850fc1e94bcf34e7f26d80126112f796ecb7f8c99120115c0e77bd": {
+      "kind": "paragraph",
+      "source": "实际下载文件的模型服务或中转服务必须能访问该链接。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e791009aec850fc1e94bcf34e7f26d80126112f796ecb7f8c99120115c0e77bd",
+      "translation": "The model service or relay service that actually downloads the files must be able to access the link.\n",
+      "updated_at": 1789023374
+    },
     "docs/configuration.md:paragraph:eff1b3a214ad1f1428be0c4c00ed90a38f27635458f7426388951c2205ecf67c": {
       "kind": "paragraph",
       "source": "未触发的普通群消息仍会写入聊天历史。",
@@ -2450,8 +2506,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "6dc3f7a623a5fa3d60ad5549eada321a4938a03870b510e61b4babea4ee26a08",
+  "source_hash": "3ac003fe569652683ec25738bbcf4c3e0893a8190989f88e4d7cc0b26e8a3785",
   "target": "docs.en/configuration.md",
-  "updated_at": 1789009808,
+  "updated_at": 1789023374,
   "version": 2
 }
