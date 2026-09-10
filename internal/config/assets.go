@@ -112,6 +112,7 @@ retention_days = 180
 root = ""
 
 [file_delivery]
+# Controls media delivery in model requests: base64 uses inline data, s3 uses presigned download URLs, and hybrid uses S3 when the total media size in a request exceeds max_direct_base64_bytes. After switching to S3, existing local media will be uploaded when remote delivery is required, and previously recorded object keys will be reused.
 # base64 will increase the file size by about 33%.
 max_direct_base64_bytes = 8388608
 backend = "base64"
