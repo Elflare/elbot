@@ -26,6 +26,8 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/tool/runtimeinfo"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 )
 
 type defaultRuntimeFactory struct{}
@@ -41,6 +43,10 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	baseProcessEnv := processenv.New(os.Environ())
 	shellProcessEnv := baseProcessEnv.Fill(dotEnv)
 	hookProcessEnv := hook.ProcessEnvironment(baseProcessEnv)
+	fileDeliveryCredentials, err := resolveFileDeliveryCredentials(cfg.FileDelivery, filepath.Dir(cfg.ConfigPath))
+	if err != nil {
+		return nil, err
+	}
 	var agt *agent.Agent
 	sendNotice := func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 		if agt == nil {
@@ -54,7 +60,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		return nil, err
 	}
 
-	mediaCenter, err := media.NewConfigured(ctx, foundation.Store, filepath.Join(filepath.Dir(cfg.Sandbox.Root), "media"), cfg.FileDelivery)
+	mediaCenter, err := media.NewConfigured(ctx, foundation.Store, filepath.Join(filepath.Dir(cfg.Sandbox.Root), "media"), cfg.FileDelivery, fileDeliveryCredentials)
 	if err != nil {
 		return nil, err
 	}
@@ -139,6 +145,40 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		ElvenaBus:   elvenaBus,
 		Lifecycle:   hookRuntimeLifecycle{runtime: hookRuntime},
 	}, nil
+}
+
+func resolveFileDeliveryCredentials(cfg config.FileDeliveryConfig, configDir string) (aws.CredentialsProvider, error) {
+	backend := strings.TrimSpace(cfg.Backend)
+	if backend == "" {
+		backend = config.Default().FileDelivery.Backend
+	}
+	if backend != "s3" && backend != "hybrid" {
+		return nil, nil
+	}
+	resolve := func(name, label string) (string, error) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return "", fmt.Errorf("%s environment variable name is empty", label)
+		}
+		value, ok, err := config.ConfigEnv(name, configDir)
+		if err != nil {
+			return "", fmt.Errorf("resolve %s environment variable %q: %w", label, name, err)
+		}
+		value = strings.TrimSpace(value)
+		if !ok || value == "" {
+			return "", fmt.Errorf("%s environment variable %q is not configured", label, name)
+		}
+		return value, nil
+	}
+	accessKey, err := resolve(cfg.S3AccessKeyEnv, "s3 access key")
+	if err != nil {
+		return nil, err
+	}
+	secretKey, err := resolve(cfg.S3SecretKeyEnv, "s3 secret key")
+	if err != nil {
+		return nil, err
+	}
+	return credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""), nil
 }
 
 func buildCronService(ctx context.Context, foundation *FoundationComponents, send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)) (*elcron.Service, error) {

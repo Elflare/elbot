@@ -88,3 +88,87 @@ func TestLatestCurrentAssistantSkipsMediaButOtherSessionRestores(t *testing.T) {
 		t.Fatalf("same owner other session = %#v", got)
 	}
 }
+
+func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
+	ctx := context.Background()
+	store := newRefTestStore(t)
+	root := t.TempDir()
+	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
+	image, err := center.ImportBytes(ctx, []byte("image body"), media.Input{Name: "image.png", MIMEType: "image/png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := center.ImportBytes(ctx, []byte("file body"), media.Input{Name: "file.txt", MIMEType: "text/plain"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer history.Close()
+
+	raw := []platform.MessageSegment{
+		{Type: platform.SegmentText, Text: "caption"},
+		{Type: platform.SegmentImage, URL: "https://cdn.example.com/image.png?rkey=expired-secret"},
+		{Type: platform.SegmentFile, PlatformFileID: "file-id"},
+		{Type: platform.SegmentImage, URL: "https://cdn.example.com/image.png?rkey=expired-secret"},
+		{Type: platform.SegmentFile, PlatformFileID: "stale-file-id"},
+	}
+	row := &storage.ChatMessage{
+		Platform:          "qqofficial",
+		PlatformScopeID:   "group:9",
+		PlatformMessageID: "history-associated",
+		SenderID:          "other",
+		Text:              "caption",
+		Segments:          platform.MarshalChatSegments(raw),
+	}
+	if err := history.Repository().Append(ctx, row); err != nil {
+		t.Fatal(err)
+	}
+	for _, association := range []storage.HistoryMedia{
+		{HistoryID: row.ID, Platform: row.Platform, ScopeID: row.PlatformScopeID, MessageID: row.PlatformMessageID, MediaIndex: 1, Kind: "image", MediaID: image.ID},
+		{HistoryID: row.ID, Platform: row.Platform, ScopeID: row.PlatformScopeID, MessageID: row.PlatformMessageID, MediaIndex: 2, Kind: "file", MediaID: file.ID},
+		{HistoryID: row.ID, Platform: row.Platform, ScopeID: row.PlatformScopeID, MessageID: row.PlatformMessageID, MediaIndex: 3, Kind: "image", MediaID: image.ID},
+		{HistoryID: "replaced-history-row", Platform: row.Platform, ScopeID: row.PlatformScopeID, MessageID: row.PlatformMessageID, MediaIndex: 4, Kind: "file", MediaID: file.ID},
+	} {
+		if err := store.Media().SaveHistory(ctx, association); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// An association with the same message ID in another scope must not leak in.
+	if err := store.Media().SaveHistory(ctx, storage.HistoryMedia{
+		HistoryID: "other-row", Platform: row.Platform, ScopeID: "group:other",
+		MessageID: row.PlatformMessageID, MediaIndex: 1, Kind: "image", MediaID: file.ID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	fetchCalls := 0
+	got := Apply(ctx, Options{
+		Store: store, ChatHistory: history.Repository(),
+		Platform: row.Platform, ScopeID: row.PlatformScopeID, ReplyID: row.PlatformMessageID,
+		Text: "看看", Fetch: func(context.Context, string) (ReferencedMessage, bool) {
+			fetchCalls++
+			return ReferencedMessage{}, false
+		},
+	})
+	if fetchCalls != 0 {
+		t.Fatalf("platform fetch called %d times", fetchCalls)
+	}
+	if len(got.ReferenceSegments) != len(raw) {
+		t.Fatalf("segments = %#v", got.ReferenceSegments)
+	}
+	if got.ReferenceSegments[0].Type != platform.SegmentText ||
+		got.ReferenceSegments[1].MediaID != image.ID ||
+		got.ReferenceSegments[2].MediaID != file.ID ||
+		got.ReferenceSegments[3].MediaID != image.ID {
+		t.Fatalf("restored segments = %#v", got.ReferenceSegments)
+	}
+	if got.ReferenceSegments[4].MediaID != "" || got.ReferenceSegments[4].PlatformFileID != "stale-file-id" {
+		t.Fatalf("stale association reused = %#v", got.ReferenceSegments[4])
+	}
+	if got.ReferenceSegments[1].URL != "" || got.ReferenceSegments[3].URL != "" {
+		t.Fatalf("expired URL survived history cleaning: %#v", got.ReferenceSegments)
+	}
+}

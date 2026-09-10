@@ -33,6 +33,7 @@ type Backend interface {
 
 type Manager struct {
 	objects         *sync.Mutex
+	local           Backend
 	Store           storage.Store
 	History         storage.ChatHistoryRepository
 	Backend         Backend

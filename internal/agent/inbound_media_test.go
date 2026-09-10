@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"elbot/internal/config"
@@ -88,14 +89,15 @@ func TestPlatformMediaUnavailableAndMetadata(t *testing.T) {
 		t.Fatalf("materialized metadata = %#v", got)
 	}
 	segment.Size = a.media.MaxImportBytes + 1
+	segment.Name = "https://example.com/private/photo.png?rkey=name-secret"
 	got = a.materializePlatformSegment(context.Background(), msg, segment)
-	if got.Type != platform.SegmentText || got.Text != "[媒体不可用；未知媒体]" || resolver.calls != 1 {
+	if got.Type != platform.SegmentText || got.Text != "[媒体不可用；photo.png]" || resolver.calls != 1 {
 		t.Fatalf("oversized media = %#v, calls = %d", got, resolver.calls)
 	}
 	msg.MediaResolver = nil
 	segment.Size = 0
 	got = a.materializePlatformSegment(context.Background(), msg, segment)
-	if got.Type != platform.SegmentText || got.Text != "[媒体不可用；未知媒体]" {
+	if got.Type != platform.SegmentText || got.Text != "[媒体不可用；photo.png]" || strings.Contains(got.Text, "name-secret") {
 		t.Fatalf("missing media = %#v", got)
 	}
 }

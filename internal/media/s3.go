@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -12,7 +11,6 @@ import (
 	"elbot/internal/storage"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
@@ -22,14 +20,20 @@ type S3Backend struct {
 	bucket  string
 }
 
-func NewS3Backend(ctx context.Context, cfg config.FileDeliveryConfig) (*S3Backend, error) {
-	accessKey, secretKey := os.Getenv(cfg.S3AccessKeyEnv), os.Getenv(cfg.S3SecretKeyEnv)
-	if strings.TrimSpace(accessKey) == "" || strings.TrimSpace(secretKey) == "" {
+func NewS3Backend(ctx context.Context, cfg config.FileDeliveryConfig, provider aws.CredentialsProvider) (*S3Backend, error) {
+	if provider == nil {
+		return nil, fmt.Errorf("s3 credentials are not configured")
+	}
+	value, err := provider.Retrieve(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("retrieve s3 credentials: %w", err)
+	}
+	if strings.TrimSpace(value.AccessKeyID) == "" || strings.TrimSpace(value.SecretAccessKey) == "" {
 		return nil, fmt.Errorf("s3 credentials are not configured")
 	}
 	loadOptions := []func(*awsconfig.LoadOptions) error{
 		awsconfig.WithRegion(cfg.S3Region),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
+		awsconfig.WithCredentialsProvider(provider),
 	}
 	if cfg.S3Endpoint != "" {
 		loadOptions = append(loadOptions, awsconfig.WithBaseEndpoint(cfg.S3Endpoint))

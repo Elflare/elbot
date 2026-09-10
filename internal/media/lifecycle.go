@@ -33,17 +33,33 @@ func (m *Manager) Cleanup(ctx context.Context) error {
 	var failures []error
 	for i := range items {
 		item := &items[i]
-		backend := m.Backend
-		if item.Backend == "local" {
-			backend = &LocalBackend{Root: m.Root}
-		}
-		if err := backend.Remove(ctx, item); err != nil {
-			failures = append(failures, err)
+		primary, err := m.backendForStoredMedia(item)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("delete media %q: %w", item.ID, err))
 			continue
 		}
-		if item.Backend == "local" && item.ObjectKey != "" && m.Remote != nil {
-			if err := m.Remote.Remove(ctx, item); err != nil {
-				failures = append(failures, err)
+		var localBackend, remoteBackend Backend
+		if item.Backend == "local" {
+			localBackend = primary
+		} else {
+			remoteBackend = primary
+		}
+		if item.ObjectKey != "" && remoteBackend == nil {
+			remoteBackend, err = m.remoteBackend()
+			if err != nil {
+				failures = append(failures, fmt.Errorf("delete media %q: %w", item.ID, err))
+				continue
+			}
+		}
+		if remoteBackend != nil {
+			if err := remoteBackend.Remove(ctx, item); err != nil {
+				failures = append(failures, fmt.Errorf("delete remote media %q: %w", item.ID, err))
+				continue
+			}
+		}
+		if localBackend != nil {
+			if err := localBackend.Remove(ctx, item); err != nil {
+				failures = append(failures, fmt.Errorf("delete local media %q: %w", item.ID, err))
 				continue
 			}
 		}
