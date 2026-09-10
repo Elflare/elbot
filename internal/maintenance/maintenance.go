@@ -139,6 +139,11 @@ func (s *Service) RunChatHistoryCleanup(ctx context.Context) error {
 		s.warn("maintenance chat history cleanup failed", "error", err, "retention_days", s.chatHistoryCleanup.RetentionDays)
 		return err
 	}
+	if s.Media != nil {
+		if err := s.Media.ReconcileHistory(ctx); err != nil {
+			return err
+		}
+	}
 	s.info("maintenance chat history cleanup completed", "deleted", deleted, "retention_days", s.chatHistoryCleanup.RetentionDays)
 	return nil
 }

@@ -127,6 +127,7 @@ func (r *MediaRepository) CheckReferences(ctx context.Context) ([]string, error)
  SELECT 'missing message reference: '||m.id FROM messages m,json_each(CASE WHEN json_valid(m.segments) THEN m.segments ELSE '[]' END) s
  WHERE COALESCE(json_extract(s.value,'$.media'),'')<>'' AND NOT EXISTS
  (SELECT 1 FROM media_references r WHERE r.media_id=json_extract(s.value,'$.media') AND r.owner_id=m.id AND r.owner_type=CASE WHEN m.role='tool' THEN 'tool_result' ELSE 'message' END)
+ UNION ALL SELECT 'missing history reference: '||h.owner_id FROM media_history h WHERE NOT EXISTS(SELECT 1 FROM media_references r WHERE r.media_id=h.media_id AND r.owner_type='chat_history' AND r.owner_id=h.owner_id AND r.purpose='content')
  UNION ALL SELECT 'missing output reference: '||o.owner_id FROM media_outputs o WHERE NOT EXISTS(SELECT 1 FROM media_references r WHERE r.media_id=o.media_id AND r.owner_type='output' AND r.owner_id=o.owner_id)
  UNION ALL SELECT 'missing report reference: '||d.id FROM elnis_report_deliveries d JOIN elnis_events e ON e.id=d.event_id WHERE e.status<>'completed' AND COALESCE(json_extract(d.output,'$.Source.media'),'')<>'' AND NOT EXISTS(SELECT 1 FROM media_references r WHERE r.owner_type='elnis_report' AND r.owner_id=d.id AND r.media_id=json_extract(d.output,'$.Source.media'))
 
@@ -136,6 +137,7 @@ func (r *MediaRepository) CheckReferences(ctx context.Context) ([]string, error)
  UNION ALL SELECT 'missing fork reference: '||f.session_id FROM media_fork_history f WHERE NOT EXISTS(SELECT 1 FROM media_references r WHERE r.owner_type='session_fork' AND r.owner_id=f.session_id AND r.media_id=f.media_id)
  UNION ALL SELECT 'dangling owner reference: '||r.owner_type||':'||r.owner_id FROM media_references r WHERE
  (r.owner_type IN ('message','tool_result') AND NOT EXISTS(SELECT 1 FROM messages WHERE id=r.owner_id)) OR
+ (r.owner_type='chat_history' AND NOT EXISTS(SELECT 1 FROM media_history WHERE owner_id=r.owner_id AND media_id=r.media_id)) OR
  (r.owner_type='output' AND NOT EXISTS(SELECT 1 FROM media_outputs WHERE owner_id=r.owner_id)) OR
  (r.owner_type='elnis_report' AND NOT EXISTS(SELECT 1 FROM elnis_report_deliveries WHERE id=r.owner_id)) OR
  (r.owner_type='elnis_event' AND NOT EXISTS(SELECT 1 FROM elnis_events WHERE id=r.owner_id)) OR

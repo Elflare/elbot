@@ -13,6 +13,9 @@ const OrphanGrace = time.Hour
 func (m *Manager) Cleanup(ctx context.Context) error {
 	m.objects.Lock()
 	defer m.objects.Unlock()
+	if err := m.ReconcileHistory(ctx); err != nil {
+		return err
+	}
 	if err := m.Store.Media().ExpireOutputs(ctx, m.Now()); err != nil {
 		return err
 	}

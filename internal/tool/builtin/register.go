@@ -70,10 +70,19 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 		}
 	}
 	if opts.ChatHistory != nil {
-		if err := registry.Register(NewSearchChatHistoryTool(opts.ChatHistory, info)); err != nil {
+		search := NewSearchChatHistoryTool(opts.ChatHistory, info)
+		around := NewGetChatHistoryAroundTool(opts.ChatHistory, info)
+		if opts.FileManager != nil {
+			search.center = opts.FileManager.Media
+			around.center = opts.FileManager.Media
+		}
+		if err := registry.Register(NewGetMediaTool(opts.ChatHistory, search.center)); err != nil {
 			return err
 		}
-		if err := registry.Register(NewGetChatHistoryAroundTool(opts.ChatHistory, info)); err != nil {
+		if err := registry.Register(search); err != nil {
+			return err
+		}
+		if err := registry.Register(around); err != nil {
 			return err
 		}
 		if err := registry.Register(NewReplyToChatHistoryMessageTool(opts.ChatHistory, info)); err != nil {

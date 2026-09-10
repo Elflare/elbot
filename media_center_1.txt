@@ -2,6 +2,7 @@
 
 ## 状态与目标
 
+- 总详细目标在media_center_2.md。
 - 项目：`C:/Users/Cirno/dev/elbot`，Go。
 - 实现计划 9/9 已完成并归档：`.codecompanion-plan/archive/media-center-20260908-233759.md`。
 - 本文件用于审查本轮未提交实现，不再作为续写代码的交接步骤。测试通过不等于独立 review 已完成。
