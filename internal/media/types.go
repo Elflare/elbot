@@ -34,6 +34,7 @@ type Backend interface {
 type Manager struct {
 	objects         *sync.Mutex
 	Store           storage.Store
+	History         storage.ChatHistoryRepository
 	Backend         Backend
 	Remote          Backend
 	MaxImportBytes  int64

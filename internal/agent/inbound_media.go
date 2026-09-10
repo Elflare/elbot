@@ -2,13 +2,9 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
-	"elbot/internal/delivery"
-	"elbot/internal/media"
 	"elbot/internal/platform"
-	"elbot/internal/storage"
 )
 
 func (a *Agent) materializePlatformMedia(ctx context.Context) context.Context {
@@ -33,51 +29,18 @@ func (a *Agent) materializePlatformMedia(ctx context.Context) context.Context {
 		}
 		return out
 	}
+	original := msg
 	msg.Segments = resolve(msg.Segments)
 	msg.ContextSegments = resolve(msg.ContextSegments)
 	msg.Reply.Segments = resolve(msg.Reply.Segments)
+	a.associateInboundHistory(ctx, msg, msg.PlatformMessageID, original.Segments, msg.Segments)
+	a.associateInboundHistory(ctx, msg, msg.Reply.MessageID, original.Reply.Segments, msg.Reply.Segments)
 	return platform.WithMessageContext(ctx, msg)
 }
 
 func (a *Agent) materializePlatformSegment(ctx context.Context, msg platform.MessageContext, segment platform.MessageSegment) platform.MessageSegment {
-	if segment.MediaID != "" {
-		item, err := a.media.Metadata(ctx, segment.MediaID)
-		if err != nil {
-			return unavailablePlatformSegment(segment)
-		}
-		segment.Name, segment.MIMEType, segment.Size = item.Name, item.MIMEType, item.Size
-		segment.URL, segment.PlatformFileID = "", ""
-		return segment
-	}
-	if segment.Size > a.media.MaxImportBytes {
-		return unavailablePlatformSegment(segment)
-	}
-	source := delivery.Source{URL: strings.TrimSpace(segment.URL)}
-	var err error
-	if source.URL == "" && msg.MediaResolver != nil {
-		source, err = msg.MediaResolver.ResolveMedia(ctx, segment, a.media.MaxImportBytes)
-	}
+	item, err := a.media.ImportPlatform(ctx, msg.Platform, msg.MediaResolver, segment)
 	if err != nil {
-		return unavailablePlatformSegment(segment)
-	}
-	input := media.Input{Name: segment.Name, MIMEType: segment.MIMEType, Source: media.Source{Platform: msg.Platform, URL: segment.URL, FileID: segment.PlatformFileID}}
-	if input.MIMEType == "" {
-		input.MIMEType = source.MIMEType
-	}
-	var item *storage.Media
-	switch {
-	case source.MediaID != "":
-		item, err = a.media.Metadata(ctx, source.MediaID)
-	case source.URL != "":
-		item, err = a.media.ImportURL(ctx, source.URL, input)
-	case source.Path != "":
-		item, err = a.media.ImportFile(ctx, source.Path, input)
-	case len(source.Data) > 0:
-		item, err = a.media.ImportBytes(ctx, source.Data, input)
-	default:
-		err = fmt.Errorf("platform media source unavailable")
-	}
-	if err != nil || item == nil {
 		return unavailablePlatformSegment(segment)
 	}
 	segment.MediaID = item.ID
@@ -89,6 +52,28 @@ func (a *Agent) materializePlatformSegment(ctx context.Context, msg platform.Mes
 	return segment
 }
 
+func (a *Agent) associateInboundHistory(ctx context.Context, msg platform.MessageContext, messageID string, original, resolved []platform.MessageSegment) {
+	if a.media.History == nil || messageID == "" {
+		return
+	}
+	row, err := a.media.History.GetByPlatformMessage(ctx, msg.Platform, msg.ScopeID, messageID)
+	if err != nil {
+		return
+	}
+	index := 0
+	for i, raw := range original {
+		if raw.Type != platform.SegmentImage && raw.Type != platform.SegmentFile {
+			continue
+		}
+		index++
+		if resolved[i].MediaID == "" {
+			continue
+		}
+		if err := a.media.AssociateHistory(ctx, *row, index, raw.Type, resolved[i].MediaID); err != nil && a.logger != nil {
+			a.logger.WarnContext(ctx, "associate inbound history media failed", "error", err)
+		}
+	}
+}
 func unavailablePlatformSegment(segment platform.MessageSegment) platform.MessageSegment {
 	label := strings.TrimSpace(segment.Name)
 	if label == "" {

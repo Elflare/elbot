@@ -61,6 +61,10 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	if err := foundation.Store.Media().RecoverInterrupted(ctx); err != nil {
 		return nil, err
 	}
+	mediaCenter.History = foundation.ChatHistory
+	if err := mediaCenter.ReconcileHistory(ctx); err != nil {
+		return nil, err
+	}
 	mediaCenter.MaxImportBytes = cfg.PlatformFiles.MaxReceiveFileBytes
 	mediaCenter.DownloadTimeout = time.Duration(cfg.PlatformFiles.DownloadTimeoutSecs) * time.Second
 	if foundation.Maintenance != nil {

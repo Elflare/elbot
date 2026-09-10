@@ -432,6 +432,25 @@ CREATE TRIGGER media_output_removed AFTER DELETE ON media_outputs BEGIN
 END;
 `,
 	},
+	{
+		version: 16,
+		name:    "chat_history_media_references",
+		sql: `
+CREATE TABLE media_history (
+ history_id TEXT NOT NULL, platform TEXT NOT NULL, scope_id TEXT NOT NULL, message_id TEXT NOT NULL,
+ media_index INTEGER NOT NULL CHECK(media_index>0), kind TEXT NOT NULL CHECK(kind IN ('image','file','record')),
+ media_id TEXT NOT NULL REFERENCES media(id), owner_id TEXT NOT NULL UNIQUE,
+ PRIMARY KEY(platform,scope_id,message_id,media_index)
+);
+CREATE TRIGGER media_history_added AFTER INSERT ON media_history BEGIN
+ INSERT INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
+ VALUES(NEW.media_id,'chat_history',NEW.owner_id,'content',strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+END;
+CREATE TRIGGER media_history_removed AFTER DELETE ON media_history BEGIN
+ DELETE FROM media_references WHERE media_id=OLD.media_id AND owner_type='chat_history' AND owner_id=OLD.owner_id AND purpose='content';
+END;
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

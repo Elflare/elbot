@@ -181,6 +181,17 @@ type Media struct {
 	ExpiresAt      *time.Time
 }
 
+// HistoryMedia associates one ordered media position with an observed chat message.
+type HistoryMedia struct {
+	HistoryID  string
+	Platform   string
+	ScopeID    string
+	MessageID  string
+	MediaIndex int
+	Kind       string
+	MediaID    string
+	OwnerID    string
+}
 type MediaReference struct {
 	MediaID   string
 	OwnerType string
@@ -367,6 +378,10 @@ type MediaOutput struct {
 }
 
 type MediaRepository interface {
+	SaveHistory(ctx context.Context, item HistoryMedia) error
+	FindHistory(ctx context.Context, platform, scopeID, messageID string) ([]HistoryMedia, error)
+	ListHistory(ctx context.Context, afterOwnerID string, limit int) ([]HistoryMedia, error)
+	DeleteHistory(ctx context.Context, ownerID string) error
 	Get(ctx context.Context, id string) (*Media, error)
 	Upsert(ctx context.Context, media *Media) error
 	DeleteOrphans(ctx context.Context, cutoff time.Time) ([]Media, error)

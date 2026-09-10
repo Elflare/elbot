@@ -63,6 +63,9 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 - `internal/agent/input.go`：普通输入预处理、命令 continuation、pending 和风险确认入口。
 - `internal/agent/segments.go`：平台入站 Segment 与 LLM Segment 转换。
 - `internal/agent/inbound_media.go`：实际消费前的平台 resolver 与 Media Center 桥接、大小校验和不可用降级。
+- `internal/tool/builtin/chat_history.go`：当前聊天历史查询与媒体位置/下载状态展示，查询不下载；`get_media.go`：显式选定媒体位置获取，仅返回文本 ID，单次最多 5 次未入库媒体获取尝试。
+- `internal/media/platform.go`：共享平台导入、历史媒体位置关联与本地 ID 查询；`history.go`：跨库历史 owner 分页对账。
+- `internal/storage/sqlite/media_history.go`：主库历史媒体关联与引用事务，区别于机器人发送输出索引。
 - `internal/agent/reference.go`：只读提供当前 Session ID，供平台引用续聊/fork 判定。
 - `internal/agent/media_output.go`：发送前归一、发送副本解析与有序媒体回执缓存。
 - `internal/agent/options.go`、`logging.go`、`identity.go`：运行配置、日志和 Actor/Scope 解析。
