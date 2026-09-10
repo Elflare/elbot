@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"elbot/internal/platform"
 	"elbot/internal/storage"
@@ -17,15 +18,17 @@ type ReferencedMessage struct {
 }
 
 type Options struct {
-	Store           storage.Store
-	Platform        string
-	ScopeID         string
-	ActorID         string
-	IsSuperadmin    bool
-	ReplyID         string
-	Text            string
-	CommandPrefixes []string
-	Fetch           func(context.Context, string) (ReferencedMessage, bool)
+	Store            storage.Store
+	ChatHistory      storage.ChatHistoryRepository
+	CurrentSessionID string
+	Platform         string
+	ScopeID          string
+	ActorID          string
+	IsSuperadmin     bool
+	ReplyID          string
+	Text             string
+	CommandPrefixes  []string
+	Fetch            func(context.Context, string) (ReferencedMessage, bool)
 }
 
 type Result struct {
@@ -64,13 +67,16 @@ func Apply(ctx context.Context, opts Options) Result {
 	if stored != nil && stored.Role == storage.RoleAssistant {
 		if session, ok := referencedSession(ctx, opts, stored); ok && opts.IsSuperadmin && isBackgroundSession(session) {
 			result.ResumeSessionID = session.ID
+			_, result.ReferenceSegments, result.Reply = fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
 			return result
 		}
 		if isOwnCurrentSession(ctx, opts, stored) {
 			if isLatestAssistant(ctx, opts.Store, stored) {
+				result.Reply = platform.ReplyContext{MessageID: replyID}
 				return result
 			}
 			result.ForkFromMessageID = stored.ID
+			_, result.ReferenceSegments, result.Reply = fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
 			return result
 		}
 	}
@@ -79,10 +85,8 @@ func Apply(ctx context.Context, opts Options) Result {
 	if reply.MessageID != "" {
 		result.Reply = reply
 	}
-	if strings.TrimSpace(text) != "" {
-		result.Text = text
-		result.ReferenceSegments = segments
-	}
+	result.Text = text
+	result.ReferenceSegments = segments
 	return result
 }
 
@@ -102,7 +106,7 @@ func isOwnCurrentSession(ctx context.Context, opts Options, msg *storage.Message
 	if !ok {
 		return false
 	}
-	return session.OwnerID == strings.TrimSpace(opts.ActorID) && session.Platform == strings.TrimSpace(opts.Platform) && session.PlatformScopeID == strings.TrimSpace(opts.ScopeID)
+	return session.ID == opts.CurrentSessionID && session.OwnerID == strings.TrimSpace(opts.ActorID) && session.Platform == strings.TrimSpace(opts.Platform) && session.PlatformScopeID == strings.TrimSpace(opts.ScopeID)
 }
 
 func referencedSession(ctx context.Context, opts Options, msg *storage.Message) (*storage.Session, bool) {
@@ -145,15 +149,13 @@ func fallbackReferenceText(ctx context.Context, opts Options, replyID string, st
 	content := ""
 	var segments []platform.MessageSegment
 	reply := platform.ReplyContext{MessageID: replyID}
-	if opts.Fetch != nil {
-		if ref, ok := opts.Fetch(ctx, replyID); ok {
-			if strings.TrimSpace(ref.Label) != "" {
-				label = strings.TrimSpace(ref.Label)
-			}
-			reply.SenderID = strings.TrimSpace(ref.SenderID)
-			content = ref.Text
-			segments = ref.Segments
+	if ref, ok := referenceSource(ctx, opts, replyID); ok {
+		if strings.TrimSpace(ref.Label) != "" {
+			label = strings.TrimSpace(ref.Label)
 		}
+		reply.SenderID = strings.TrimSpace(ref.SenderID)
+		content = ref.Text
+		segments = ref.Segments
 	}
 	if hasStored {
 		if stored.Role == storage.RoleAssistant && label == "引用" {
@@ -161,7 +163,6 @@ func fallbackReferenceText(ctx context.Context, opts Options, replyID string, st
 		}
 		if strings.TrimSpace(stored.Content) != "" {
 			content = stored.Content
-			segments = []platform.MessageSegment{{Type: platform.SegmentText, Text: content}}
 		}
 	}
 	content = strings.TrimSpace(content)
@@ -170,6 +171,10 @@ func fallbackReferenceText(ctx context.Context, opts Options, replyID string, st
 	if len(reply.Segments) == 0 && content != "" {
 		reply.Segments = []platform.MessageSegment{{Type: platform.SegmentText, Text: content}}
 	}
+	if content == "" && len(segments) > 0 {
+		content = "[媒体消息]"
+		reply.Text = content
+	}
 	if content == "" {
 		return opts.Text, segments, reply
 	}
@@ -177,4 +182,38 @@ func fallbackReferenceText(ctx context.Context, opts Options, replyID string, st
 		return fmt.Sprintf("[%s]：%s", label, content), segments, reply
 	}
 	return fmt.Sprintf("[%s]：%s\n\n%s", label, content, opts.Text), segments, reply
+}
+
+func referenceSource(ctx context.Context, opts Options, replyID string) (ReferencedMessage, bool) {
+	if opts.Store != nil && opts.Store.Media() != nil {
+		outputs, err := opts.Store.Media().FindOutputs(ctx, opts.Platform, opts.ScopeID, replyID, time.Now())
+		if err == nil && len(outputs) > 0 {
+			ref := ReferencedMessage{Label: "引用：bot"}
+			for _, output := range outputs {
+				kind := platform.SegmentFile
+				if output.Kind == "image" {
+					kind = platform.SegmentImage
+				}
+				ref.Segments = append(ref.Segments, platform.MessageSegment{Type: kind, MediaID: output.MediaID})
+			}
+			return ref, true
+		}
+	}
+	if opts.ChatHistory != nil {
+		row, err := opts.ChatHistory.GetByPlatformMessage(ctx, opts.Platform, opts.ScopeID, replyID)
+		if err == nil && row != nil {
+			segments := platform.UnmarshalChatSegments(row.Segments)
+			if len(segments) > 0 || strings.TrimSpace(row.Text) != "" {
+				label := "引用"
+				if row.SenderName != "" {
+					label += "：" + row.SenderName
+				}
+				return ReferencedMessage{SenderID: row.SenderID, Label: label, Text: row.Text, Segments: segments}, true
+			}
+		}
+	}
+	if opts.Fetch != nil {
+		return opts.Fetch(ctx, replyID)
+	}
+	return ReferencedMessage{}, false
 }

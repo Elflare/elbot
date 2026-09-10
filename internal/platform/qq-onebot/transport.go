@@ -59,6 +59,7 @@ type getMessageData struct {
 
 type getImageData struct {
 	File string `json:"file"`
+	URL  string `json:"url"`
 }
 
 type getFileData struct {

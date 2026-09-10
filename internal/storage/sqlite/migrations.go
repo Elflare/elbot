@@ -407,6 +407,31 @@ CREATE TRIGGER media_event_deleted AFTER DELETE ON elnis_events BEGIN
  DELETE FROM media_references WHERE owner_type='elnis_event' AND owner_id=OLD.id;
 END;
 `},
+	{
+		version: 15,
+		name:    "ordered_media_outputs",
+		sql: `
+DELETE FROM media_references WHERE owner_type='output';
+DROP TRIGGER media_output_added;
+DROP TRIGGER media_output_removed;
+DROP TABLE media_outputs;
+CREATE TABLE media_outputs (
+ platform TEXT NOT NULL, scope_id TEXT NOT NULL, message_id TEXT NOT NULL,
+ segment_index INTEGER NOT NULL, kind TEXT NOT NULL,
+ media_id TEXT NOT NULL REFERENCES media(id), owner_id TEXT NOT NULL,
+ expires_at TEXT NOT NULL,
+ PRIMARY KEY(platform,scope_id,message_id,segment_index)
+);
+CREATE INDEX idx_media_outputs_expiry ON media_outputs(expires_at);
+CREATE TRIGGER media_output_added AFTER INSERT ON media_outputs BEGIN
+ INSERT INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
+ VALUES(NEW.media_id,'output',NEW.owner_id,'cache',strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+END;
+CREATE TRIGGER media_output_removed AFTER DELETE ON media_outputs BEGIN
+ DELETE FROM media_references WHERE media_id=OLD.media_id AND owner_type='output' AND owner_id=OLD.owner_id AND purpose='cache';
+END;
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

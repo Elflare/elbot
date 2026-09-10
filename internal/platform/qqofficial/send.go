@@ -33,16 +33,35 @@ func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Outp
 		return delivery.Receipt{}, err
 	}
 	var receipt delivery.Receipt
-	for _, out := range outputs {
+	for i, out := range outputs {
 		sent, err := a.sendOutput(ctx, t, out)
 		if err != nil {
-			return delivery.Receipt{}, err
+			return receipt, err
 		}
+		sent = qqOfficialMediaReceipt(sent, t, out, i)
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
+		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 	}
 	return receipt, nil
 }
 
+func qqOfficialMediaReceipt(receipt delivery.Receipt, target sendTarget, out delivery.Output, outputIndex int) delivery.Receipt {
+	if len(receipt.PlatformMessageIDs) != 1 || (out.Kind != delivery.KindImage && out.Kind != delivery.KindFile) {
+		return receipt
+	}
+	receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: receipt.PlatformMessageIDs[0], Platform: platformName, ScopeID: qqOfficialTargetScope(target), OutputIndexes: []int{outputIndex}})
+	return receipt
+}
+
+func qqOfficialTargetScope(target sendTarget) string {
+	if target.Kind == targetGroup {
+		return "group:" + target.OpenID
+	}
+	if target.Kind == targetC2C {
+		return "c2c:" + target.OpenID
+	}
+	return ""
+}
 func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Output) (delivery.Receipt, error) {
 	switch out.Kind {
 	case delivery.KindText:

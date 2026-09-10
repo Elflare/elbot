@@ -124,5 +124,12 @@ func (a *Agent) isReplyToBot(ctx context.Context, msg platform.MessageContext) b
 		return false
 	}
 	mapped, err := a.store.Messages().FindByPlatformMessage(ctx, msg.Platform, msg.ScopeID, replyID)
-	return err == nil && mapped.Role == storage.RoleAssistant
+	if err == nil && mapped.Role == storage.RoleAssistant {
+		return true
+	}
+	if a.store.Media() != nil {
+		outputs, err := a.store.Media().FindOutputs(ctx, msg.Platform, msg.ScopeID, replyID, storage.Now())
+		return err == nil && len(outputs) > 0
+	}
+	return false
 }

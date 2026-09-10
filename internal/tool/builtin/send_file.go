@@ -8,10 +8,12 @@ import (
 	"net/url"
 	urlpath "path"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/platform"
 	"elbot/internal/tool"
 )
@@ -22,7 +24,6 @@ type SendFileTool struct {
 
 type sendFileArgs struct {
 	Source   string `json:"source"`
-	MediaID  string `json:"media"`
 	Name     string `json:"name"`
 	MIMEType string `json:"mime_type"`
 }
@@ -42,8 +43,7 @@ func sendFileBuilder() *tool.Builder {
 		Description("发送文件。").
 		Risk(tool.RiskMedium).
 		SuperadminOnly().
-		String("source", "要发送的文件来源。可以是本地路径或 HTTP(S) URL；与 media 二选一。").
-		String("media", "可选，Media Center 媒体 ID；与 source 二选一。").
+		String("source", "要发送的文件来源。支持本地路径、file URI、HTTP(S) URL 或 Media Center 媒体 ID。").
 		String("name", "可选，发送时展示的文件名。").
 		String("mime_type", "可选，文件 MIME 类型；不填时按扩展名推断。")
 }
@@ -54,14 +54,13 @@ func (t SendFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 		return tool.RiskAssessment{}, err
 	}
 	source := args.source()
-	mediaID := strings.TrimSpace(args.MediaID)
-	if source != "" && mediaID != "" {
-		return tool.RiskAssessment{}, fmt.Errorf("source and media are mutually exclusive")
-	}
-	if source == "" && mediaID == "" {
+	if source == "" {
 		return tool.RiskAssessment{}, fmt.Errorf("source is required")
 	}
-	if mediaID != "" {
+	if strings.HasPrefix(source, media.IDPrefix) {
+		if !media.ValidID(source) {
+			return tool.RiskAssessment{}, fmt.Errorf("invalid media ID")
+		}
 		return tool.RiskAssessment{Level: tool.RiskMedium}, nil
 	}
 	if delivery.IsHTTPMediaSource(source) {
@@ -87,11 +86,7 @@ func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		return nil, err
 	}
 	source := args.source()
-	mediaID := strings.TrimSpace(args.MediaID)
-	if source != "" && mediaID != "" {
-		return nil, fmt.Errorf("source and media are mutually exclusive")
-	}
-	if source == "" && mediaID == "" {
+	if source == "" {
 		return nil, fmt.Errorf("source is required")
 	}
 	sandbox, _ := tool.SandboxContextFromContext(ctx)
@@ -108,30 +103,22 @@ func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 }
 
 func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source string) (delivery.Output, []string, string, error) {
-	if mediaID := strings.TrimSpace(args.MediaID); mediaID != "" {
+	if strings.HasPrefix(source, media.IDPrefix) {
+		if !media.ValidID(source) {
+			return delivery.Output{}, nil, "", fmt.Errorf("invalid media ID")
+		}
 		if t.files == nil || t.files.Media == nil {
 			return delivery.Output{}, nil, "", fmt.Errorf("media center is not configured")
 		}
-		media, err := t.files.Media.Store.Media().Get(ctx, mediaID)
+		item, err := t.files.Media.Metadata(ctx, source)
 		if err != nil {
 			return delivery.Output{}, nil, "", err
 		}
-		path := ""
-		if media.Backend == "s3" {
-			out := outputForMediaType(media.MIMEType, "")
-			out.Source.URL, err = t.files.Media.PresignGet(ctx, mediaID, 0)
-			if err != nil {
-				return delivery.Output{}, nil, "", err
-			}
-			out.Name = safeFileName(firstNonEmptyString(args.Name, media.Name))
-			out.Source.MIMEType = media.MIMEType
-			return out, nil, out.Name, nil
-		}
-		path = media.LocalPath
-		out := outputForMediaType(media.MIMEType, path)
-		out.Name = safeFileName(firstNonEmptyString(args.Name, media.Name))
-		out.Source.MIMEType = media.MIMEType
-		return out, nil, out.Name, nil
+		name := safeFileName(firstNonEmptyString(args.Name, item.Name))
+		out := outputForMediaType(item.MIMEType, "")
+		out.Name = name
+		out.Source = delivery.Source{MediaID: item.ID, MIMEType: item.MIMEType}
+		return out, nil, name, nil
 	}
 	if delivery.IsHTTPMediaSource(source) {
 		urlName := fileNameFromURL(source)
@@ -185,10 +172,22 @@ func fileNameFromURL(value string) string {
 }
 
 func localSourcePath(source string) (string, error) {
-	if strings.Contains(strings.TrimSpace(source), "://") {
-		return "", fmt.Errorf("local source must be a filesystem path, not a URI")
+	source = strings.TrimSpace(source)
+	if !strings.HasPrefix(strings.ToLower(source), "file://") {
+		return source, nil
 	}
-	return source, nil
+	u, err := url.Parse(source)
+	if err != nil || u.Scheme != "file" || (u.Host != "" && u.Host != "localhost") || u.RawQuery != "" || u.Fragment != "" {
+		return "", fmt.Errorf("invalid file URI")
+	}
+	path := u.Path
+	if runtime.GOOS == "windows" && len(path) >= 3 && path[0] == '/' && path[2] == ':' {
+		path = path[1:]
+	}
+	if path == "" {
+		return "", fmt.Errorf("invalid file URI")
+	}
+	return filepath.FromSlash(path), nil
 }
 
 func (args sendFileArgs) source() string {

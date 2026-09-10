@@ -249,6 +249,7 @@ func buildAgent(
 		CompactModel:          cfg.CompactModel,
 		SessionListPageSize:   cfg.View.SessionListPageSize,
 		CleanupRetentionDays:  cfg.Maintenance.SessionCleanup.RetentionDays,
+		MediaRetentionDays:    cfg.Maintenance.SandboxCleanup.RetentionDays,
 		SessionIdleExpiration: cfg.Session.IdleExpiration,
 		SandboxRoot:           cfg.Sandbox.Root,
 		ToolsConfig:           cfg.Tools,

@@ -411,9 +411,9 @@ max_receive_file_bytes = 104857600
 download_timeout_secs = 60
 ```
 
-- `max_receive_file_bytes`：平台入站文件最大保存大小，默认 100MB；超过上限时会给用户发送提示，不保存到服务器。
-- `download_timeout_secs`：平台入站文件下载超时，默认 60 秒。
-- 入站文件默认保存到 sandbox 下的 `platform/<platform name>` 目录，不会唤起llm。
+- `max_receive_file_bytes`：媒体接收大小上限，默认 100MB；超过上限或无法取得时提示媒体不可用。
+- `download_timeout_secs`：媒体下载超时，默认 60 秒；Telegram 使用平台 API 超时。
+- 平台媒体在实际处理时才下载，不会收到就自动保存到 sandbox。纯文件消息也按平台统一唤醒规则处理。
 
 
 ## 日志与维护任务
@@ -625,7 +625,7 @@ CLI 默认启用：
 enabled = true
 ```
 
-QQ 官方机器人、QQ OneBot 和 Telegram 配置在示例中默认注释。启用时需要补齐平台自己的认证信息和触发关键词。收到文件时会按 `[platform_files]` 限制下载保存。
+QQ 官方机器人、QQ OneBot 和 Telegram 配置在示例中默认注释。启用时需要补齐平台自己的认证信息和触发关键词。媒体在实际处理时按 `[platform_files]` 限制下载。
 
 QQ 官方机器人最小配置示例：
 

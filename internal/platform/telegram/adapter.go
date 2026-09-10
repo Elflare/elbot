@@ -159,7 +159,7 @@ func (a *Adapter) handleCallbackQuery(ctx context.Context, handler platform.Plat
 }
 
 func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHandler, msg message) {
-	normalized := normalizeMessage(ctx, a.client, msg, a.botUsername)
+	normalized := normalizeMessage(msg)
 	a.recordChatMessage(ctx, msg, normalized)
 	if msg.Chat.Type != "private" && msg.Chat.Type != "group" && msg.Chat.Type != "supergroup" {
 		return
@@ -181,6 +181,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 		ReplyToSenderID:   userIDString(replySender(normalized.ReplyMessage)),
 
 		Sender:          a,
+		MediaResolver:   a,
 		Segments:        finalMessageSegments(text, normalized.Segments, nil),
 		RawText:         normalized.Text,
 		Bot:             platform.Identity{UserID: formatMessageID(a.botID), Username: a.botUsername},
@@ -197,26 +198,28 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 	var referenceSegments []platform.MessageSegment
 	if normalized.ReplyID != "" {
 		ref := refcontext.Apply(msgCtx, refcontext.Options{
-			Store:           a.store,
-			Platform:        a.Name(),
-			ScopeID:         messageCtx.ScopeID,
-			ActorID:         messageCtx.ActorID,
-			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, userIDString(msg.From)),
-			ReplyID:         normalized.ReplyID,
-			Text:            text,
-			CommandPrefixes: a.cfg.CommandPrefixes,
-			Fetch:           a.referenceFetcher(msg, normalized),
+			Store:            a.store,
+			ChatHistory:      a.chatHistory,
+			CurrentSessionID: platform.HandlerCurrentSessionID(msgCtx, handler),
+			Platform:         a.Name(),
+			ScopeID:          messageCtx.ScopeID,
+			ActorID:          messageCtx.ActorID,
+			IsSuperadmin:     isConfiguredSuperadmin(a.cfg.Superadmins, userIDString(msg.From)),
+			ReplyID:          normalized.ReplyID,
+			Text:             text,
+			CommandPrefixes:  a.cfg.CommandPrefixes,
+			Fetch:            a.referenceFetcher(msg, normalized),
 		})
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
 		messageCtx.ContextText = ref.Text
 		messageCtx.Reply = ref.Reply
 		referenceSegments = ref.ReferenceSegments
-		if strings.TrimSpace(ref.Text) != "" {
+		if strings.TrimSpace(ref.Text) != "" || len(referenceSegments) > 0 {
 			messageCtx.ContextSegments = finalMessageSegments(ref.Text, normalized.Segments, referenceSegments)
 		}
 	}
-	if strings.TrimSpace(text) == "" && strings.TrimSpace(messageCtx.ContextText) == "" {
+	if strings.TrimSpace(text) == "" && strings.TrimSpace(messageCtx.ContextText) == "" && len(messageCtx.ContextSegments) == 0 && len(normalized.Segments) == 0 {
 		return
 	}
 	messageCtx.Segments = finalMessageSegments(text, normalized.Segments, nil)
@@ -272,10 +275,11 @@ func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, out
 			copyTarget.GroupID = ""
 			copyTarget.ScopeID = ""
 			sent, err := a.sendTarget(ctx, copyTarget, outputs)
-			if err != nil {
-				return delivery.Receipt{}, err
-			}
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
+			receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
+			if err != nil {
+				return receipt, err
+			}
 		}
 		return receipt, nil
 	}
@@ -288,16 +292,29 @@ func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, out
 
 func (a *Adapter) sendOutputs(ctx context.Context, t target, outputs []delivery.Output) (delivery.Receipt, error) {
 	var receipt delivery.Receipt
-	for _, out := range outputs {
+	for i, out := range outputs {
 		sent, err := a.sendToTarget(ctx, t, out)
 		if err != nil {
-			return delivery.Receipt{}, err
+			return receipt, err
 		}
+		sent = telegramMediaReceipt(sent, t, out, i)
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
+		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 	}
 	return receipt, nil
 }
 
+func telegramMediaReceipt(receipt delivery.Receipt, target target, out delivery.Output, outputIndex int) delivery.Receipt {
+	if len(receipt.PlatformMessageIDs) != 1 || (out.Kind != delivery.KindImage && out.Kind != delivery.KindFile) {
+		return receipt
+	}
+	scope := strings.TrimSpace(target.ScopeID)
+	if scope == "" {
+		scope = "private:" + strconv.FormatInt(target.ChatID, 10)
+	}
+	receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: receipt.PlatformMessageIDs[0], Platform: platformName, ScopeID: scope, OutputIndexes: []int{outputIndex}})
+	return receipt
+}
 func (a *Adapter) sendToTarget(ctx context.Context, t target, out delivery.Output) (delivery.Receipt, error) {
 	switch out.Kind {
 	case delivery.KindText:
@@ -432,7 +449,15 @@ func targetFromDelivery(outTarget delivery.Target) (target, error) {
 	if err != nil {
 		return target{}, fmt.Errorf("parse telegram chat id: %w", err)
 	}
-	return target{ChatID: id, ScopeID: outTarget.ScopeID}, nil
+	scope := strings.TrimSpace(outTarget.ScopeID)
+	if scope == "" {
+		if strings.TrimSpace(outTarget.PrivateUserID) != "" {
+			scope = "private:" + strconv.FormatInt(id, 10)
+		} else {
+			scope = "group:" + strconv.FormatInt(id, 10)
+		}
+	}
+	return target{ChatID: id, ScopeID: scope}, nil
 }
 
 func sourceFromOutput(out delivery.Output) mediaSource {

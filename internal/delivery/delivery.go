@@ -174,8 +174,16 @@ func Reply(platformMessageID, text string) Output {
 }
 
 // Receipt describes platform messages produced by a send operation.
+type SentMessage struct {
+	PlatformMessageID string
+	Platform          string
+	ScopeID           string
+	OutputIndexes     []int
+}
+
 type Receipt struct {
 	PlatformMessageIDs []string
+	SentMessages       []SentMessage
 }
 
 // StreamingMessageSender is an optional platform capability for editable streaming delivery.

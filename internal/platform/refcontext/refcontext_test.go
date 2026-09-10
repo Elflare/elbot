@@ -35,7 +35,7 @@ func TestApplyForksOwnOlderAssistantReference(t *testing.T) {
 	first, _ := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "p-old", first)
 
-	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-old", Text: "继续"})
+	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, CurrentSessionID: first.SessionID, ReplyID: "p-old", Text: "继续"})
 	if result.ForkFromMessageID != first.ID {
 		t.Fatalf("fork = %q, want %q", result.ForkFromMessageID, first.ID)
 	}
@@ -51,7 +51,7 @@ func TestApplyLatestOwnAssistantReferenceContinues(t *testing.T) {
 	_, latest := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "p-latest", latest)
 
-	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-latest", Text: "继续"})
+	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, CurrentSessionID: latest.SessionID, ReplyID: "p-latest", Text: "继续"})
 	if result.ForkFromMessageID != "" {
 		t.Fatalf("fork = %q, want empty", result.ForkFromMessageID)
 	}

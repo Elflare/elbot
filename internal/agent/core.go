@@ -59,6 +59,7 @@ type Agent struct {
 	runtimeStatus      map[string]runtimestatus.Snapshot
 	sessionCommands    *agentcommands.SessionCommandState
 	idleExpiration     session.IdleExpirationConfig
+	mediaRetentionDays int
 	sandboxRoot        string
 	logger             *slog.Logger
 	auditLogger        *slog.Logger
@@ -100,6 +101,7 @@ func NewWithPrefixes(p platform.PlatformAdapter, client llm.LLM, modeModels map[
 		ContextConfig:         defaults.Context,
 		SessionListPageSize:   defaults.View.SessionListPageSize,
 		CleanupRetentionDays:  30,
+		MediaRetentionDays:    defaults.Maintenance.SandboxCleanup.RetentionDays,
 		SessionIdleExpiration: defaults.Session.IdleExpiration,
 		SandboxRoot:           defaults.Sandbox.Root,
 		ToolsConfig:           defaults.Tools,
@@ -167,6 +169,7 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		stateModTime:            stateModTime,
 		store:                   store,
 		media:                   opts.Media,
+		mediaRetentionDays:      opts.MediaRetentionDays,
 		sessions:                sessions,
 		requests:                requests,
 		turns:                   turns,

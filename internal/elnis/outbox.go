@@ -129,9 +129,6 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) error {
 		if err != nil {
 			return s.failReportDelivery(ctx, eventID, batch[0].ID, err)
 		}
-		if err := s.cacheMediaReceipt(ctx, target, outputs, receipt); err != nil {
-			return s.failReportDelivery(ctx, eventID, batch[0].ID, err)
-		}
 		receiptJSON, err := json.Marshal(receipt)
 		if err != nil {
 			return s.failReportDelivery(ctx, eventID, batch[0].ID, fmt.Errorf("marshal elnis report receipt: %w", err))

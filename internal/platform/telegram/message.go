@@ -2,13 +2,12 @@ package telegram
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/storage"
@@ -22,7 +21,7 @@ type normalizedMessage struct {
 	Segments     []platform.MessageSegment
 }
 
-func normalizeMessage(ctx context.Context, client *apiClient, msg message, botUsername string) normalizedMessage {
+func normalizeMessage(msg message) normalizedMessage {
 	var out normalizedMessage
 	text := strings.TrimSpace(firstNonEmpty(msg.Text, msg.Caption))
 	out.Mentions = mentionsFromText(text)
@@ -36,30 +35,16 @@ func normalizeMessage(ctx context.Context, client *apiClient, msg message, botUs
 	}
 	if len(msg.Photo) > 0 {
 		photo := largestPhoto(msg.Photo)
-		segment := platform.MessageSegment{Type: platform.SegmentImage, Name: photo.FileID}
-		if client != nil {
-			if file, err := client.getFile(ctx, photo.FileID); err == nil && strings.TrimSpace(file.FilePath) != "" {
-				if data, err := client.downloadFile(ctx, file.FilePath); err == nil {
-					segment.URL = dataURL(data)
-				}
-			}
-		}
+		segment := platform.MessageSegment{Type: platform.SegmentImage, Name: photo.FileID, PlatformFileID: photo.FileID, MIMEType: "image/jpeg", Size: photo.FileSize}
 		out.Segments = append(out.Segments, segment)
 		if out.Text == "" {
 			out.Text = "[图片]"
 		}
 	}
 	if msg.Document != nil {
-		segment := platform.MessageSegment{Type: platform.SegmentFile, Name: msg.Document.FileName, MIMEType: msg.Document.MIMEType}
+		segment := platform.MessageSegment{Type: platform.SegmentFile, Name: msg.Document.FileName, MIMEType: msg.Document.MIMEType, PlatformFileID: msg.Document.FileID, Size: msg.Document.FileSize}
 		if segment.Name == "" {
 			segment.Name = msg.Document.FileID
-		}
-		if client != nil {
-			if file, err := client.getFile(ctx, msg.Document.FileID); err == nil && strings.TrimSpace(file.FilePath) != "" {
-				if data, err := client.downloadFile(ctx, file.FilePath); err == nil {
-					segment.URL = dataURL(data)
-				}
-			}
 		}
 		out.Segments = append(out.Segments, segment)
 		if out.Text == "" {
@@ -150,7 +135,7 @@ func (a *Adapter) referenceFetcher(msg message, normalized normalizedMessage) fu
 		if normalized.ReplyMessage == nil || normalized.ReplyID != strings.TrimSpace(replyID) {
 			return refcontext.ReferencedMessage{}, false
 		}
-		ref := normalizeMessage(ctx, a.client, *normalized.ReplyMessage, a.botUsername)
+		ref := normalizeMessage(*normalized.ReplyMessage)
 		label := "引用"
 		if normalized.ReplyMessage.From != nil {
 			label = "引用：" + displayName(*normalized.ReplyMessage.From)
@@ -160,7 +145,7 @@ func (a *Adapter) referenceFetcher(msg message, normalized normalizedMessage) fu
 }
 
 func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized normalizedMessage) {
-	if a.chatHistory == nil || strings.TrimSpace(normalized.Text) == "" || msg.MessageID == 0 {
+	if a.chatHistory == nil || (strings.TrimSpace(normalized.Text) == "" && len(normalized.Segments) == 0) || msg.MessageID == 0 {
 		return
 	}
 	createdAt := storage.Now()
@@ -177,6 +162,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 		SenderName:               displayNamePtr(msg.From, ""),
 		Text:                     normalized.Text,
 		Raw:                      firstNonEmpty(msg.Text, msg.Caption),
+		Segments:                 platform.MarshalChatSegments(normalized.Segments),
 		ReplyToPlatformMessageID: normalized.ReplyID,
 		CreatedAt:                createdAt,
 	}
@@ -273,9 +259,19 @@ func cleanText(text string) string {
 	return strings.TrimSpace(strings.Join(strings.Fields(text), " "))
 }
 
-func dataURL(data []byte) string {
-	mimeType := http.DetectContentType(data)
-	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data)
+func (a *Adapter) ResolveMedia(ctx context.Context, segment platform.MessageSegment, maxBytes int64) (delivery.Source, error) {
+	file, err := a.client.getFile(ctx, segment.PlatformFileID)
+	if err != nil {
+		return delivery.Source{}, err
+	}
+	if strings.TrimSpace(file.FilePath) == "" {
+		return delivery.Source{}, fmt.Errorf("telegram file path is empty")
+	}
+	if file.FileSize > maxBytes {
+		return delivery.Source{}, fmt.Errorf("telegram media exceeds import limit of %d bytes", maxBytes)
+	}
+	data, err := a.client.downloadFile(ctx, file.FilePath, maxBytes)
+	return delivery.Source{Data: data, MIMEType: segment.MIMEType}, err
 }
 
 func firstNonEmpty(values ...string) string {

@@ -62,6 +62,9 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 - `internal/agent/command_runtime.go`：命令权限、Turn 冲突、通知和 continuation 的统一编排。
 - `internal/agent/input.go`：普通输入预处理、命令 continuation、pending 和风险确认入口。
 - `internal/agent/segments.go`：平台入站 Segment 与 LLM Segment 转换。
+- `internal/agent/inbound_media.go`：实际消费前的平台 resolver 与 Media Center 桥接、大小校验和不可用降级。
+- `internal/agent/reference.go`：只读提供当前 Session ID，供平台引用续聊/fork 判定。
+- `internal/agent/media_output.go`：发送前归一、发送副本解析与有序媒体回执缓存。
 - `internal/agent/options.go`、`logging.go`、`identity.go`：运行配置、日志和 Actor/Scope 解析。
 - `internal/agent/chat.go`：普通对话主流程。
 - `internal/agent/chat_llm.go`：LLM 调用和消息转换。
@@ -239,6 +242,8 @@ rg -n "Output|SendChat|SendNotice|Stream|Reasoning|emoticon|receipt" internal/de
 先看：
 
 - `internal/platform/platform.go`：平台抽象。
+- `internal/platform/media.go`：Chat History 原始有序 segments 编解码与敏感来源清洗。
+- `internal/platform/refcontext/`：按输出索引、Chat History、平台兜底恢复引用；当前 Session 最新 assistant 例外。
 - `internal/platform/config.go`：平台配置解码。
 - `internal/platform/builtin/`：内置平台装配。
 - `internal/platform/cli/`：本地/远程 CLI 和 TUI。
@@ -338,7 +343,7 @@ rg -n "Migration|Repository|Upsert|List|Archive|Fork|ToolCall|CronJob|ElnisEvent
 
 - `internal/elvena/`：公共协议层。
 - `internal/elnis/`：Elnis HTTP、鉴权、准备、投递和后台任务；`outbox.go` 负责 LLM 报告持久化投递、重试与恢复。
-- `internal/elnis/media.go`：Elvena 媒体来源校验、按需入库、宿主 workspace 双向读写及精确回执缓存。
+- `internal/elnis/media.go`：Elvena 媒体来源校验、按需入库、宿主 workspace 双向读写；发送回执缓存由 Agent 通用边界处理。
 - `internal/media/lifecycle.go`、`reference.go`：引用保护、1 小时孤儿宽限期和可重试后端清理；`internal/storage/sqlite/media_lifecycle.go`：输出关联、清理认领、启动恢复和只读一致性检查；`media_json_test.go`、`media_fork_test.go` 验证媒体 JSON 引用事务和 fork 检查点范围。
 - `internal/storage/sqlite/elnis_event_repository.go`：Elnis event 与 report outbox 的事务、claim、receipt 和完成状态持久化。
 - `internal/background/`：cron/Elnis 共用后台 LLM 类型与结果 helper。

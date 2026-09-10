@@ -356,11 +356,14 @@ type MessageRepository interface {
 }
 
 type MediaOutput struct {
-	Platform  string
-	ScopeID   string
-	MessageID string
-	MediaID   string
-	ExpiresAt time.Time
+	Platform     string
+	ScopeID      string
+	MessageID    string
+	SegmentIndex int
+	Kind         string
+	MediaID      string
+	OwnerID      string
+	ExpiresAt    time.Time
 }
 
 type MediaRepository interface {
@@ -371,7 +374,7 @@ type MediaRepository interface {
 	FinishDelete(ctx context.Context, id string) error
 	Touch(ctx context.Context, id string, now time.Time) error
 	SaveOutput(ctx context.Context, output MediaOutput) error
-	FindOutputs(ctx context.Context, platform, scopeID, messageID string, now time.Time) ([]string, error)
+	FindOutputs(ctx context.Context, platform, scopeID, messageID string, now time.Time) ([]MediaOutput, error)
 	ExpireOutputs(ctx context.Context, now time.Time) error
 	CheckReferences(ctx context.Context) ([]string, error)
 	RecoverInterrupted(ctx context.Context) error

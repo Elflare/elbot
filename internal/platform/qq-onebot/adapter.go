@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"mime"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -232,7 +230,8 @@ func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (deli
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
-	return a.sendSegments(ctx, t, segments)
+	receipt, err := a.sendSegments(ctx, t, segments)
+	return oneBotMediaReceipt(receipt, t, outputs), err
 }
 
 func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[string]any) (json.RawMessage, error) {
@@ -270,7 +269,8 @@ func (a *Adapter) sendTemporaryNotice(ctx context.Context, notice delivery.Notic
 	default:
 		err = fmt.Errorf("unsupported message target %q", t.MessageType)
 	}
-	return receiptWithMessageID(id), err
+	receipt := receiptWithMessageID(id)
+	return oneBotMediaReceipt(receipt, t, notice.Outputs), err
 }
 
 func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
@@ -303,9 +303,10 @@ func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (deliv
 			notice.Target = copyTarget
 			sent, err := a.SendNotice(ctx, notice)
 			if err != nil {
-				return delivery.Receipt{}, err
+				return receipt, err
 			}
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
+			receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 		}
 		return receipt, nil
 	}
@@ -317,7 +318,8 @@ func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (deliv
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
-	return a.sendSegments(ctx, t, segments)
+	receipt, err := a.sendSegments(ctx, t, segments)
+	return oneBotMediaReceipt(receipt, t, outputs), err
 }
 
 func textOutputs(outputs []delivery.Output) (string, bool) {
@@ -388,6 +390,32 @@ func receiptWithMessageID(id string) delivery.Receipt {
 	return delivery.Receipt{PlatformMessageIDs: []string{id}}
 }
 
+func oneBotMediaReceipt(receipt delivery.Receipt, target target, outputs []delivery.Output) delivery.Receipt {
+	if len(receipt.PlatformMessageIDs) != 1 {
+		return receipt
+	}
+	indexes := make([]int, 0, len(outputs))
+	for i, out := range outputs {
+		if out.Kind == delivery.KindImage || out.Kind == delivery.KindFile || out.Kind == delivery.KindRecord {
+			indexes = append(indexes, i)
+		}
+	}
+	if len(indexes) == 0 {
+		return receipt
+	}
+	receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: receipt.PlatformMessageIDs[0], Platform: "qqonebot", ScopeID: oneBotTargetScope(target), OutputIndexes: indexes})
+	return receipt
+}
+
+func oneBotTargetScope(target target) string {
+	if target.MessageType == "group" {
+		return "group:" + strconv.FormatInt(target.GroupID, 10)
+	}
+	if target.MessageType == "private" {
+		return "private:" + strconv.FormatInt(target.UserID, 10)
+	}
+	return ""
+}
 func targetToQQ(outTarget delivery.Target) (target, error) {
 	if strings.TrimSpace(outTarget.PrivateUserID) == "" && strings.TrimSpace(outTarget.GroupID) == "" {
 		scope := strings.TrimSpace(outTarget.ScopeID)
@@ -545,12 +573,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		return
 	}
 	text := normalized.Text
-	currentSegments := a.resolveImageSegments(ctx, normalized.Segments)
-	attachments := inboundAttachments{Segments: currentSegments}
-	if a.shouldAutoReceivePrivateFile(event) {
-		attachments = a.prepareInboundAttachments(ctx, currentSegments)
-		currentSegments = attachments.Segments
-	}
+	currentSegments := normalized.Segments
 	messageCtx := platform.MessageContext{
 		Platform:              a.Name(),
 		PlatformUserID:        strconv.FormatInt(event.UserID, 10),
@@ -562,7 +585,8 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		ConversationKind:      oneBotConversationKind(event),
 		PlatformMessageID:     strconv.FormatInt(event.MessageID, 10),
 		ReplyToMessageID:      normalized.ReplyID,
-		ReplyToSenderID:       a.replyToSenderID(ctx, normalized.ReplyID),
+		ReplyToSenderID:       a.replyToSenderID(ctx, event, normalized.ReplyID),
+		MediaResolver:         a,
 		Sender:                a,
 		BufferAssistantOutput: true,
 		Segments:              finalMessageSegments(text, currentSegments, nil),
@@ -584,46 +608,31 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 	var referenceSegments []platform.MessageSegment
 	if normalized.ReplyID != "" {
 		ref := refcontext.Apply(msgCtx, refcontext.Options{
-			Store:           a.store,
-			Platform:        a.Name(),
-			ScopeID:         messageCtx.ScopeID,
-			ActorID:         security.ActorID(a.Name(), strconv.FormatInt(event.UserID, 10)),
-			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, strconv.FormatInt(event.UserID, 10)),
-			ReplyID:         normalized.ReplyID,
-			Text:            text,
-			CommandPrefixes: a.cfg.CommandPrefixes,
-			Fetch:           a.referenceFetcher(event),
+			Store:            a.store,
+			ChatHistory:      a.chatHistory,
+			CurrentSessionID: platform.HandlerCurrentSessionID(msgCtx, handler),
+			Platform:         a.Name(),
+			ScopeID:          messageCtx.ScopeID,
+			ActorID:          security.ActorID(a.Name(), strconv.FormatInt(event.UserID, 10)),
+			IsSuperadmin:     isConfiguredSuperadmin(a.cfg.Superadmins, strconv.FormatInt(event.UserID, 10)),
+			ReplyID:          normalized.ReplyID,
+			Text:             text,
+			CommandPrefixes:  a.cfg.CommandPrefixes,
+			Fetch:            a.referenceFetcher(event),
 		})
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
 		messageCtx.ContextText = ref.Text
 		messageCtx.Reply = ref.Reply
 		referenceSegments = ref.ReferenceSegments
-		if strings.TrimSpace(ref.Text) != "" {
+		if strings.TrimSpace(ref.Text) != "" || len(referenceSegments) > 0 {
 			messageCtx.ContextSegments = finalMessageSegments(ref.Text, currentSegments, referenceSegments)
 		}
 	}
 	messageCtx.Segments = finalMessageSegments(text, currentSegments, nil)
 	msgCtx = platform.WithMessageContext(ctx, messageCtx)
 	msgCtx = context.WithValue(msgCtx, targetKey{}, target{MessageType: event.MessageType, UserID: event.UserID, GroupID: event.GroupID})
-	if len(attachments.TooLarge) > 0 {
-		if _, err := a.SendChat(msgCtx, []delivery.Output{platformTooLargeAttachmentsOutput(attachments.TooLarge, a.cfg.MaxReceiveFileBytes)}); err != nil {
-			a.logWarn("send onebot attachment too large notice failed", "error", err, "message_id", event.MessageID)
-		}
-	}
-	if !hasTextSegment(currentSegments) && !hasPlatformImageSegment(currentSegments) {
-		if len(attachments.TooLarge) > 0 {
-			return
-		}
-		if len(attachments.Saved) > 0 {
-			if _, err := a.SendChat(msgCtx, []delivery.Output{platformSavedAttachmentsOutput(attachments.Saved)}); err != nil {
-				a.logWarn("send onebot attachment saved notice failed", "error", err, "message_id", event.MessageID)
-			}
-			return
-		}
-		return
-	}
-	if strings.TrimSpace(text) == "" {
+	if strings.TrimSpace(text) == "" && len(currentSegments) == 0 {
 		return
 	}
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
@@ -669,42 +678,6 @@ func (a *Adapter) resolveAtSegments(ctx context.Context, event Event, msg Normal
 	return msg
 }
 
-func (a *Adapter) resolveImageSegments(ctx context.Context, segments []platform.MessageSegment) []platform.MessageSegment {
-	if len(segments) == 0 || a.transport == nil {
-		return segments
-	}
-	out := append([]platform.MessageSegment(nil), segments...)
-	for i := range out {
-		if out[i].Type != platform.SegmentImage || out[i].URL != "" || out[i].Name == "" {
-			continue
-		}
-		data, err := a.transport.GetImage(ctx, out[i].Name)
-		if err != nil {
-			a.logWarn("get qq image failed", "file", out[i].Name, "error", err)
-			continue
-		}
-		url, err := imageFileDataURL(data.File)
-		if err != nil {
-			a.logWarn("read qq image failed", "file", data.File, "error", err)
-			continue
-		}
-		out[i].URL = url
-	}
-	return out
-}
-
-func imageFileDataURL(path string) (string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	mimeType := mime.TypeByExtension(strings.ToLower(filepath.Ext(path)))
-	if mimeType == "" {
-		mimeType = http.DetectContentType(data)
-	}
-	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
-}
-
 func oneBotConversationKind(event Event) platform.ConversationKind {
 	switch event.MessageType {
 	case "private":
@@ -716,9 +689,25 @@ func oneBotConversationKind(event Event) platform.ConversationKind {
 	}
 }
 
-func (a *Adapter) replyToSenderID(ctx context.Context, replyID string) string {
+func (a *Adapter) replyToSenderID(ctx context.Context, event Event, replyID string) string {
 	replyID = strings.TrimSpace(replyID)
-	if replyID == "" || a.transport == nil {
+	if replyID == "" {
+		return ""
+	}
+	if a.store != nil {
+		if msg, err := a.store.Messages().FindByPlatformMessage(ctx, a.Name(), scopeID(event), replyID); err == nil && msg.Role == storage.RoleAssistant {
+			return strconv.FormatInt(event.SelfID, 10)
+		}
+		if outputs, err := a.store.Media().FindOutputs(ctx, a.Name(), scopeID(event), replyID, time.Now()); err == nil && len(outputs) > 0 {
+			return strconv.FormatInt(event.SelfID, 10)
+		}
+	}
+	if a.chatHistory != nil {
+		if msg, err := a.chatHistory.GetByPlatformMessage(ctx, a.Name(), scopeID(event), replyID); err == nil {
+			return msg.SenderID
+		}
+	}
+	if a.transport == nil {
 		return ""
 	}
 	data, err := a.transport.GetMessage(ctx, replyID)
@@ -742,12 +731,12 @@ func (a *Adapter) referenceFetcher(event Event) func(context.Context, string) (r
 		if data.UserID != 0 {
 			label = "引用：" + displayName(data.Sender, data.UserID)
 		}
-		return refcontext.ReferencedMessage{SenderID: strconv.FormatInt(data.UserID, 10), Label: label, Text: ref.Text, Segments: a.resolveImageSegments(ctx, ref.Segments)}, true
+		return refcontext.ReferencedMessage{SenderID: strconv.FormatInt(data.UserID, 10), Label: label, Text: ref.Text, Segments: ref.Segments}, true
 	}
 }
 
 func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized NormalizedMessage) {
-	if a.chatHistory == nil || strings.TrimSpace(normalized.Text) == "" || event.MessageID == 0 {
+	if a.chatHistory == nil || (strings.TrimSpace(normalized.Text) == "" && len(normalized.Segments) == 0) || event.MessageID == 0 {
 		return
 	}
 	createdAt := storage.Now()
@@ -762,7 +751,8 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 		SenderID:                 strconv.FormatInt(event.UserID, 10),
 		SenderName:               senderName(event.Sender),
 		Text:                     normalized.Text,
-		Raw:                      event.RawMessage,
+		Raw:                      normalized.Text,
+		Segments:                 platform.MarshalChatSegments(normalized.Segments),
 		ReplyToPlatformMessageID: normalized.ReplyID,
 		CreatedAt:                createdAt,
 	}
@@ -790,33 +780,8 @@ func appendNonTextSegments(out []platform.MessageSegment, segments []platform.Me
 	return out
 }
 
-func hasPlatformImageSegment(segments []platform.MessageSegment) bool {
-	for _, segment := range segments {
-		if segment.Type == platform.SegmentImage {
-			return true
-		}
-	}
-	return false
-}
-
-func hasTextSegment(segments []platform.MessageSegment) bool {
-	for _, segment := range segments {
-		if segment.Type == platform.SegmentText && strings.TrimSpace(segment.Text) != "" {
-			return true
-		}
-	}
-	return false
-}
-
 func (a *Adapter) isMessageEvent(event Event) bool {
 	return event.PostType == "message" && (event.MessageType == "private" || event.MessageType == "group")
-}
-
-func (a *Adapter) shouldAutoReceivePrivateFile(event Event) bool {
-	if event.MessageType != "private" {
-		return false
-	}
-	return isConfiguredSuperadmin(a.cfg.Superadmins, strconv.FormatInt(event.UserID, 10))
 }
 
 func scopeID(event Event) string {

@@ -17,10 +17,12 @@ import (
 )
 
 type captureHandler struct {
-	text string
-	ctx  context.Context
+	currentSessionID string
+	text             string
+	ctx              context.Context
 }
 
+func (h *captureHandler) CurrentSessionID(context.Context) string { return h.currentSessionID }
 func (h *captureHandler) HandleMessage(ctx context.Context, text string) error {
 	h.ctx = ctx
 	h.text = text
@@ -134,7 +136,7 @@ func TestHandleGroupMessageAppliesAssistantReference(t *testing.T) {
 		t.Fatalf("map assistant: %v", err)
 	}
 	adapter := New(Config{}, store, nil, nil)
-	handler := &captureHandler{}
+	handler := &captureHandler{currentSessionID: first.SessionID}
 	adapter.handleGroupMessage(ctx, handler, payload{Type: eventGroupMessageCreate}, inboundMessage{
 		ID:          "msg-1",
 		GroupOpenID: "group-1",
@@ -252,7 +254,7 @@ func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
 		t.Fatalf("map first: %v", err)
 	}
 
-	handler := &captureHandler{}
+	handler := &captureHandler{currentSessionID: s.ID}
 	adapter.handleC2CMessage(ctx, handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:               "msg-1",
 		Author:           inboundAuthor{UserOpenID: "user-1"},
@@ -365,37 +367,14 @@ func TestHandleC2CMessageTextAndStickerStripsOnlyFaceFallback(t *testing.T) {
 	}
 }
 
-func TestPrepareInboundAttachmentsSavesFileAttachment(t *testing.T) {
+func TestInboundAttachmentsKeepRawFileWithoutDownloading(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain")
-		_, _ = w.Write([]byte("test file"))
+		t.Error("normalization must not download attachments")
 	}))
 	defer server.Close()
-
-	adapter := New(Config{AttachmentDir: t.TempDir()}, nil, nil, nil)
-	adapter.client.http = server.Client()
-	prepared := adapter.prepareInboundAttachments(context.Background(), []messageAttachment{{
-		URL:         server.URL + "/file",
-		ContentType: "file",
-		Filename:    "test.txt",
-		Size:        9,
-	}})
-
-	if len(prepared.Saved) != 1 {
-		t.Fatalf("saved len = %d, want 1", len(prepared.Saved))
-	}
-	if filepath.Base(prepared.Saved[0].Path) != "test.txt" {
-		t.Fatalf("saved path = %q, want test.txt", prepared.Saved[0].Path)
-	}
-	data, err := os.ReadFile(prepared.Saved[0].Path)
-	if err != nil {
-		t.Fatalf("read saved file: %v", err)
-	}
-	if string(data) != "test file" {
-		t.Fatalf("saved data = %q, want test file", string(data))
-	}
-	if len(prepared.Segments) != 1 || prepared.Segments[0].Type != platform.SegmentFile {
-		t.Fatalf("segments = %#v, want file segment", prepared.Segments)
+	segments := inboundAttachmentSegments([]messageAttachment{{URL: server.URL + "/file", ContentType: "file", Filename: "test.txt", Size: 9}})
+	if len(segments) != 1 || segments[0].Type != platform.SegmentFile || segments[0].URL != server.URL+"/file" || segments[0].Name != "test.txt" || segments[0].Size != 9 || segments[0].MIMEType != "" {
+		t.Fatalf("raw segments = %#v", segments)
 	}
 }
 

@@ -132,7 +132,7 @@ func TestSendFileSendsExternalFileDirectly(t *testing.T) {
 	}
 }
 
-func TestSendFileRejectsFileURI(t *testing.T) {
+func TestSendFileAcceptsFileURI(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "sandbox")
 	source := filepath.Join(t.TempDir(), "external.txt")
 	if err := os.WriteFile(source, []byte("outside"), 0o644); err != nil {
@@ -140,9 +140,12 @@ func TestSendFileRejectsFileURI(t *testing.T) {
 	}
 	sendFile := NewSendFileTool(NewFileManager(root, config.FileDeliveryConfig{}))
 	args, _ := json.Marshal(map[string]any{"source": fileURI(source)})
-	_, err := sendFile.Call(context.Background(), tool.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "filesystem path") {
-		t.Fatalf("err = %v", err)
+	result, err := sendFile.Call(context.Background(), tool.CallRequest{Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result.Outputs[0].Source.Path; got != source {
+		t.Fatalf("path = %q, want %q", got, source)
 	}
 }
 

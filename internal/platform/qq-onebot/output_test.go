@@ -223,6 +223,9 @@ func TestSendRecordUsesPrivateAndGroupMessageAPIs(t *testing.T) {
 			if len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "88" {
 				t.Fatalf("receipt = %#v", receipt)
 			}
+			if len(receipt.SentMessages) != 1 || receipt.SentMessages[0].ScopeID != oneBotTargetScope(tc.target) || len(receipt.SentMessages[0].OutputIndexes) != 1 || receipt.SentMessages[0].OutputIndexes[0] != 0 {
+				t.Fatalf("structured receipt = %#v", receipt.SentMessages)
+			}
 		})
 	}
 }

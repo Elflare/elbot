@@ -3,7 +3,6 @@ package elnis
 import (
 	"context"
 	"elbot/internal/delivery"
-	"elbot/internal/elvena"
 	"elbot/internal/media"
 	"elbot/internal/storage"
 	"errors"
@@ -20,7 +19,6 @@ func enableMedia(t *testing.T, s *Service) {
 	t.Helper()
 	root := t.TempDir()
 	s.media = media.NewManager(s.store, root, &media.LocalBackend{Root: root})
-	s.retentionDays = 7
 }
 
 func TestDirectMediaCenterAndNoEagerDownloads(t *testing.T) {
@@ -62,10 +60,7 @@ func TestDirectMediaCenterAndNoEagerDownloads(t *testing.T) {
 	if _, err := os.Stat(s.sandboxRoot); !os.IsNotExist(err) {
 		t.Fatalf("sandbox copy created %v", err)
 	}
-	ids, err := s.store.Media().FindOutputs(ctx, "qqonebot", elvena.TargetScopeID(req.Targets[0]), "sent-1", time.Now())
-	if err != nil || len(ids) != 1 {
-		t.Fatalf("cache %v %v", ids, err)
-	}
+	id := sent[0].Source.MediaID
 	if _, err := s.Handle(ctx, "secret", req); err != nil {
 		t.Fatal(err)
 	}
@@ -73,14 +68,14 @@ func TestDirectMediaCenterAndNoEagerDownloads(t *testing.T) {
 		t.Fatal("duplicate downloads")
 	}
 	req.ID = "existing"
-	req.Segments[0].URL = ids[0]
+	req.Segments[0].URL = id
 	if _, err := s.Handle(ctx, "secret", req); err != nil {
 		t.Fatal(err)
 	}
 	if downloads != 1 {
 		t.Fatal("ID downloaded")
 	}
-	for _, seg := range []Segment{{Kind: SegmentKindImage, URL: "media:bad"}, {Kind: SegmentKindImage, URL: ids[0] + server.URL}, {Kind: SegmentKindImage, URL: "C:/outside.png"}, {Kind: SegmentKindImage, URL: "media:" + strings.Repeat("f", 64)}} {
+	for _, seg := range []Segment{{Kind: SegmentKindImage, URL: "media:bad"}, {Kind: SegmentKindImage, URL: id + server.URL}, {Kind: SegmentKindImage, URL: "C:/outside.png"}, {Kind: SegmentKindImage, URL: "media:" + strings.Repeat("f", 64)}} {
 		req.ID = storage.NewID()
 		req.Segments = []Segment{seg}
 		if _, err := s.Handle(ctx, "secret", req); err == nil {
@@ -150,15 +145,15 @@ func TestReportMediaSurvivesWorkspaceRemovalAndRetry(t *testing.T) {
 		t.Fatalf("lost media %q %v", data, err)
 	}
 	refs, err := s.store.MediaReferences().ListMediaIDs(ctx, id)
-	if err != nil || len(refs) != 1 || refs[0].OwnerType != "output" {
-		t.Fatalf("refs %v %v", refs, err)
+	if err != nil || len(refs) != 0 {
+		t.Fatalf("report refs %v %v", refs, err)
 	}
 	if issues, err := s.store.Media().CheckReferences(ctx); err != nil || len(issues) != 0 {
 		t.Fatalf("audit %v %v", issues, err)
 	}
 }
 
-func TestQueuedMediaReferencesAndNonpositiveOutputRetention(t *testing.T) {
+func TestQueuedMediaReferencesRecoverAfterInterruption(t *testing.T) {
 	ctx := context.Background()
 	s, close := newTestService(t, nil)
 	defer close()
@@ -179,24 +174,20 @@ func TestQueuedMediaReferencesAndNonpositiveOutputRetention(t *testing.T) {
 	if err := s.store.Media().RecoverInterrupted(ctx); err != nil {
 		t.Fatal(err)
 	}
-	for _, days := range []int{0, -1} {
-		s.retentionDays = days
-		if err := s.cacheMediaReceipt(ctx, Target{Platform: "qqonebot", Type: "group", ID: "123"}, []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{MediaID: item.ID}}}, delivery.Receipt{PlatformMessageIDs: []string{"m"}}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	refs, _ = s.store.MediaReferences().ListMediaIDs(ctx, item.ID)
-	if len(refs) != 0 {
-		t.Fatal(refs)
+	refs, err = s.store.MediaReferences().ListMediaIDs(ctx, item.ID)
+	if err != nil || len(refs) != 0 {
+		t.Fatalf("interrupted refs %v %v", refs, err)
 	}
 }
 
-func TestDirectPartialDeliveryReferences(t *testing.T) {
+func TestDirectPartialDeliveryReleasesEventReferences(t *testing.T) {
 	ctx := context.Background()
+	var sentID string
 	s, close := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 		if target.GroupID == "2" {
 			return delivery.Receipt{}, errors.New("offline")
 		}
+		sentID = outputs[0].Source.MediaID
 		return delivery.Receipt{PlatformMessageIDs: []string{"success"}}, nil
 	})
 	defer close()
@@ -207,12 +198,11 @@ func TestDirectPartialDeliveryReferences(t *testing.T) {
 	if _, err := s.Handle(ctx, "secret", req); err == nil {
 		t.Fatal("expected partial failure")
 	}
-	ids, err := s.store.Media().FindOutputs(ctx, "qqonebot", "group:1", "success", time.Now())
-	if err != nil || len(ids) != 1 {
-		t.Fatalf("successful output lost %v %v", ids, err)
+	if !media.ValidID(sentID) {
+		t.Fatalf("sent media ID = %q", sentID)
 	}
-	refs, err := s.store.MediaReferences().ListMediaIDs(ctx, ids[0])
-	if err != nil || len(refs) != 1 || refs[0].OwnerType != "output" {
+	refs, err := s.store.MediaReferences().ListMediaIDs(ctx, sentID)
+	if err != nil || len(refs) != 0 {
 		t.Fatalf("failed event refs %v %v", refs, err)
 	}
 }

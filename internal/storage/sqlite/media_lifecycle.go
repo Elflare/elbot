@@ -59,27 +59,46 @@ func (r *MediaRepository) FinishDelete(ctx context.Context, id string) error {
 	return err
 }
 func (r *MediaRepository) SaveOutput(ctx context.Context, out storage.MediaOutput) error {
-	if out.Platform == "" || out.ScopeID == "" || out.MessageID == "" {
-		return fmt.Errorf("output media requires platform, scope and message ID")
+	if out.Platform == "" || out.ScopeID == "" || out.MessageID == "" || out.SegmentIndex < 0 || out.Kind == "" || out.MediaID == "" {
+		return fmt.Errorf("output media requires platform, scope, message ID, segment index, kind and media ID")
 	}
-	_, err := r.db.ExecContext(ctx, `INSERT INTO media_outputs(platform,scope_id,message_id,media_id,owner_id,expires_at) VALUES(?,?,?,?,?,?) ON CONFLICT(platform,scope_id,message_id,media_id) DO UPDATE SET expires_at=excluded.expires_at`, out.Platform, out.ScopeID, out.MessageID, out.MediaID, storage.NewID(), storage.FormatTime(out.ExpiresAt))
-	return err
+	if out.OwnerID == "" {
+		out.OwnerID = storage.NewID()
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM media_outputs WHERE platform=? AND scope_id=? AND message_id=? AND segment_index=?`, out.Platform, out.ScopeID, out.MessageID, out.SegmentIndex); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO media_outputs(platform,scope_id,message_id,segment_index,kind,media_id,owner_id,expires_at) VALUES(?,?,?,?,?,?,?,?)`, out.Platform, out.ScopeID, out.MessageID, out.SegmentIndex, out.Kind, out.MediaID, out.OwnerID, storage.FormatTime(out.ExpiresAt)); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
-func (r *MediaRepository) FindOutputs(ctx context.Context, platform, scopeID, messageID string, now time.Time) ([]string, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT media_id FROM media_outputs WHERE platform=? AND scope_id=? AND message_id=? AND julianday(expires_at)>julianday(?) ORDER BY media_id`, platform, scopeID, messageID, storage.FormatTime(now))
+func (r *MediaRepository) FindOutputs(ctx context.Context, platform, scopeID, messageID string, now time.Time) ([]storage.MediaOutput, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT segment_index,kind,media_id,owner_id,expires_at FROM media_outputs WHERE platform=? AND scope_id=? AND message_id=? AND julianday(expires_at)>julianday(?) ORDER BY segment_index`, platform, scopeID, messageID, storage.FormatTime(now))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var ids []string
+	var outputs []storage.MediaOutput
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		out := storage.MediaOutput{Platform: platform, ScopeID: scopeID, MessageID: messageID}
+		var expiresAt string
+		if err := rows.Scan(&out.SegmentIndex, &out.Kind, &out.MediaID, &out.OwnerID, &expiresAt); err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		var err error
+		out.ExpiresAt, err = storage.ParseTime(expiresAt)
+		if err != nil {
+			return nil, err
+		}
+		outputs = append(outputs, out)
 	}
-	return ids, rows.Err()
+	return outputs, rows.Err()
 }
 func (r *MediaRepository) ExpireOutputs(ctx context.Context, now time.Time) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM media_outputs WHERE julianday(expires_at)<=julianday(?)`, storage.FormatTime(now))
