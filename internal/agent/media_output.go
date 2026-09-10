@@ -49,6 +49,8 @@ func (a *Agent) prepareMediaOutputs(ctx context.Context, outputs []delivery.Outp
 		prepared[i].Source = delivery.Source{MediaID: item.ID, MIMEType: item.MIMEType}
 		if prepared[i].Name == "" {
 			prepared[i].Name = item.Name
+		} else {
+			prepared[i].Name = media.SanitizeName(prepared[i].Name)
 		}
 	}
 	return prepared, nil

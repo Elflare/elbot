@@ -420,7 +420,7 @@ download_timeout_secs = 60
 
 `app.toml` 的 `[file_delivery]` 控制模型请求中的媒体交付：`base64` 使用内嵌数据，`s3` 使用预签名下载链接，`hybrid` 在请求媒体总大小超过 `max_direct_base64_bytes` 时使用 S3。切换到 S3 后，已有本地媒体会在需要远程交付时上传，并复用已记录的对象键。
 
-S3 交付使用 `s3_endpoint`、`s3_region`、`s3_bucket` 以及 `s3_access_key_env`、`s3_secret_key_env` 指定的环境变量。模型服务通过有效期为 1 小时的预签名 URL 下载对象，不需要另外提供密钥。Cloudflare R2 可保持 bucket 私有，无需开启公共访问；实际下载文件的模型服务或中转服务必须能访问该链接。
+S3 交付使用 `s3_endpoint`、`s3_region`、`s3_bucket` 以及 `s3_access_key_env`、`s3_secret_key_env` 指定的变量。凭据先读取 ElBot 进程环境，未设置时读取主配置同目录的 `.env`；`s3` 和 `hybrid` 缺少任一凭据会启动失败，`base64` 不读取 S3 凭据。模型服务通过有效期为 1 小时的预签名 URL 下载对象，不需要另外提供密钥。Cloudflare R2 可保持 bucket 私有，无需开启公共访问；实际下载文件的模型服务或中转服务必须能访问该链接。
 
 ## 日志与维护任务
 

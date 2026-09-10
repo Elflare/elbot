@@ -15,7 +15,11 @@ func (m *Manager) Metadata(ctx context.Context, id string) (*storage.Media, erro
 	if !ValidID(id) {
 		return nil, fmt.Errorf("invalid media ID")
 	}
-	return m.Store.Media().Get(ctx, id)
+	item, err := m.Store.Media().Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return sanitizeMediaMetadata(item), nil
 }
 
 // ResolveForOutput exports a temporary file for the existing platform senders.

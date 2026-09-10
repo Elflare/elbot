@@ -20,6 +20,9 @@ func (m *Manager) Materialize(ctx context.Context, segments []llm.MessageSegment
 		if segment.Type != llm.SegmentImage && segment.Type != llm.SegmentFile {
 			continue
 		}
+		if segment.Name != "" {
+			segment.Name = sanitizeMediaName(segment.Name)
+		}
 		var metadata *storage.Media
 		var err error
 		input := Input{Name: segment.Name, MIMEType: segment.MIMEType}
@@ -28,7 +31,7 @@ func (m *Manager) Materialize(ctx context.Context, segments []llm.MessageSegment
 			if !ValidID(segment.MediaID) {
 				err = fmt.Errorf("invalid media ID")
 			} else {
-				metadata, err = m.Store.Media().Get(ctx, segment.MediaID)
+				metadata, err = m.Metadata(ctx, segment.MediaID)
 			}
 		case strings.HasPrefix(segment.URL, "data:"):
 			header, body, ok := strings.Cut(segment.URL, ",")
@@ -88,7 +91,10 @@ func (m *Manager) Materialize(ctx context.Context, segments []llm.MessageSegment
 }
 
 func unavailable(segment llm.MessageSegment) llm.MessageSegment {
-	label := segment.Name
+	label := strings.TrimSpace(segment.Name)
+	if label != "" {
+		label = sanitizeMediaName(label)
+	}
 	if segment.MediaID != "" {
 		label += "；媒体 ID：" + segment.MediaID
 	}
@@ -101,14 +107,22 @@ func (m *Manager) ResolveForLLM(ctx context.Context, messages []llm.LLMMessage) 
 	metadata := map[string]*storage.Media{}
 	var total int64
 	for i := range out {
-		for j, segment := range out[i].Segments {
+		for j := range out[i].Segments {
+			segment := out[i].Segments[j]
+			if (segment.Type == llm.SegmentImage || segment.Type == llm.SegmentFile) && segment.Name != "" {
+				segment.Name = sanitizeMediaName(segment.Name)
+				out[i].Segments[j].Name = segment.Name
+			}
 			if segment.MediaID == "" {
 				continue
 			}
-			item, err := m.Store.Media().Get(ctx, segment.MediaID)
+			item, err := m.Metadata(ctx, segment.MediaID)
 			if err != nil {
 				out[i].Segments[j] = unavailable(segment)
 				continue
+			}
+			if out[i].Segments[j].Name == "" {
+				out[i].Segments[j].Name = item.Name
 			}
 			metadata[segment.MediaID] = item
 			total += item.Size

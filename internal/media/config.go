@@ -6,10 +6,11 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/storage"
+	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
 // NewConfigured shares one local content store and an optional S3-compatible backend.
-func NewConfigured(ctx context.Context, store storage.Store, root string, cfg config.FileDeliveryConfig) (*Manager, error) {
+func NewConfigured(ctx context.Context, store storage.Store, root string, cfg config.FileDeliveryConfig, credentials aws.CredentialsProvider) (*Manager, error) {
 	m := NewManager(store, root, &LocalBackend{Root: root})
 	defaults := config.Default().FileDelivery
 	if cfg.Backend == "" {
@@ -25,7 +26,7 @@ func NewConfigured(ctx context.Context, store storage.Store, root string, cfg co
 	switch cfg.Backend {
 	case "base64":
 	case "s3", "hybrid":
-		remote, err := NewS3Backend(ctx, cfg)
+		remote, err := NewS3Backend(ctx, cfg, credentials)
 		if err != nil {
 			return nil, err
 		}

@@ -91,6 +91,7 @@ func (s *hookMediaSender) SendNotice(ctx context.Context, n delivery.Notice) (de
 type orderedMediaSender struct {
 	t        *testing.T
 	contents []string
+	names    []string
 }
 
 func (s *orderedMediaSender) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
@@ -106,6 +107,7 @@ func (s *orderedMediaSender) SendChat(_ context.Context, outputs []delivery.Outp
 			s.t.Fatal(err)
 		}
 		s.contents = append(s.contents, string(data))
+		s.names = append(s.names, out.Name)
 	}
 	return delivery.Receipt{
 		PlatformMessageIDs: []string{"sent-1"},
@@ -143,7 +145,7 @@ func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
 	sender := &orderedMediaSender{t: t}
 	messageCtx := platform.WithMessageContext(ctx, platform.MessageContext{Platform: "qqonebot", ScopeID: "group:9", Sender: sender})
 	outputs := []delivery.Output{
-		{Kind: delivery.KindImage, Name: "remote.png", Source: delivery.Source{URL: server.URL}},
+		{Kind: delivery.KindImage, Name: "https://example.com/private/remote.png?rkey=name-secret", Source: delivery.Source{URL: server.URL}},
 		{Kind: delivery.KindFile, Name: "local.txt", Source: delivery.Source{Path: path}},
 		{Kind: delivery.KindRecord, Name: "voice.ogg", Source: delivery.Source{Data: []byte("data"), MIMEType: "audio/ogg"}},
 	}
@@ -152,6 +154,9 @@ func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
 	}
 	if got := strings.Join(sender.contents, ","); got != "url,path,data" {
 		t.Fatalf("sent contents = %q", got)
+	}
+	if got := strings.Join(sender.names, ","); got != "remote.png,local.txt,voice.ogg" || strings.Contains(got, "name-secret") {
+		t.Fatalf("sent names = %q", got)
 	}
 	cached, err := store.Media().FindOutputs(ctx, "qqonebot", "group:9", "sent-1", time.Now())
 	if err != nil {

@@ -16,6 +16,7 @@ import (
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
@@ -116,7 +117,9 @@ func TestImportURLUnknownSizeAndLimits(t *testing.T) {
 	defer store.Close()
 	root := t.TempDir()
 	m := NewManager(store, root, &LocalBackend{Root: root})
+	var requestedSignature string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedSignature = r.URL.Query().Get("X-Amz-Signature")
 		if r.URL.Path == "/missing" {
 			w.WriteHeader(404)
 			return
@@ -132,6 +135,9 @@ func TestImportURLUnknownSizeAndLimits(t *testing.T) {
 	}
 	if item.Size != 4 || item.SourceURL != "" || item.MIMEType != "image/png" {
 		t.Fatalf("metadata: %#v", item)
+	}
+	if requestedSignature != "secret" {
+		t.Fatalf("download request was sanitized: signature = %q", requestedSignature)
 	}
 	m.MaxImportBytes = 3
 	for _, source := range []string{server.URL + "/a.png", server.URL + "/missing", "file:///a"} {
@@ -213,13 +219,11 @@ func TestResolverUploadsLocalMediaAfterBackendChange(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			t.Setenv("ELBOT_TEST_S3_ACCESS", "access")
-			t.Setenv("ELBOT_TEST_S3_SECRET", "secret")
+			provider := credentials.NewStaticCredentialsProvider("access", "secret", "")
 			m, err := NewConfigured(ctx, store, root, config.FileDeliveryConfig{
 				Backend: mode, MaxDirectBase64Bytes: 1,
 				S3Endpoint: server.URL, S3Region: "auto", S3Bucket: "bucket",
-				S3AccessKeyEnv: "ELBOT_TEST_S3_ACCESS", S3SecretKeyEnv: "ELBOT_TEST_S3_SECRET",
-			})
+			}, provider)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -256,5 +260,58 @@ func TestResolverUploadsLocalMediaAfterBackendChange(t *testing.T) {
 				t.Fatalf("metadata = %#v, error %v", stored, err)
 			}
 		})
+	}
+}
+
+func TestMaterializeAndResolveSanitizeMediaNames(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	root := t.TempDir()
+	m := NewManager(store, root, &LocalBackend{Root: root})
+
+	sourceName := "https://example.com/private/photo.png?rkey=name-secret"
+	materialized := m.Materialize(ctx, []llm.MessageSegment{{
+		Type: llm.SegmentImage,
+		URL:  "data:image/png;base64,aW1hZ2U=",
+		Name: sourceName,
+	}})
+	if len(materialized) != 1 || materialized[0].MediaID == "" || materialized[0].URL != "" || materialized[0].Name != "photo.png" {
+		t.Fatalf("materialized = %#v", materialized)
+	}
+
+	input := []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{{
+		Type:    llm.SegmentImage,
+		MediaID: materialized[0].MediaID,
+		Name:    sourceName,
+	}}}}
+	m.FileDelivery.Backend = "base64"
+	m.FileDelivery.MaxDirectBase64Bytes = 1024
+	resolved, err := m.ResolveForLLM(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved[0].Segments[0].Name != "photo.png" || strings.Contains(llm.SegmentsContentText(resolved[0].Segments), "name-secret") {
+		t.Fatalf("resolved = %#v", resolved)
+	}
+	if input[0].Segments[0].Name != sourceName {
+		t.Fatal("canonical input was mutated")
+	}
+
+	missing := []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{{
+		Type:    llm.SegmentImage,
+		MediaID: IDPrefix + strings.Repeat("f", 64),
+		Name:    "https://example.com/missing.png?rkey=missing-secret",
+	}}}}
+	resolved, err = m.ResolveForLLM(ctx, missing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := llm.SegmentsContentText(resolved[0].Segments)
+	if strings.Contains(text, "missing-secret") || !strings.Contains(text, "missing.png") {
+		t.Fatalf("unavailable text = %q", text)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -21,7 +22,12 @@ import (
 
 func NewManager(store storage.Store, root string, backend Backend) *Manager {
 	defaults := config.Default()
-	return &Manager{objects: &sync.Mutex{}, Store: store, Root: filepath.Clean(root), Backend: backend, Now: storage.Now, FileDelivery: defaults.FileDelivery, MaxImportBytes: defaults.PlatformFiles.MaxReceiveFileBytes, DownloadTimeout: time.Duration(defaults.PlatformFiles.DownloadTimeoutSecs) * time.Second}
+	root = filepath.Clean(root)
+	local := Backend(&LocalBackend{Root: root})
+	if backend != nil && backendName(backend) == "local" {
+		local = backend
+	}
+	return &Manager{objects: &sync.Mutex{}, local: local, Store: store, Root: root, Backend: backend, Now: storage.Now, FileDelivery: defaults.FileDelivery, MaxImportBytes: defaults.PlatformFiles.MaxReceiveFileBytes, DownloadTimeout: time.Duration(defaults.PlatformFiles.DownloadTimeoutSecs) * time.Second}
 }
 
 func (m *Manager) ImportBytes(ctx context.Context, data []byte, input Input) (*storage.Media, error) {
@@ -99,24 +105,18 @@ func (m *Manager) ImportReader(ctx context.Context, input io.Reader, size int64,
 		if err := m.Store.Media().Touch(ctx, id, m.Now()); err != nil {
 			return nil, err
 		}
-		return existing, nil
+		return sanitizeMediaMetadata(existing), nil
 	} else if err != storage.ErrNotFound {
 		return nil, err
 	}
+	spec = sanitizeInput(spec)
 	if spec.MIMEType == "" {
 		spec.MIMEType = mime.TypeByExtension(filepath.Ext(spec.Name))
 	}
 	if spec.MIMEType == "" {
 		spec.MIMEType = http.DetectContentType(data)
 	}
-	if spec.Name == "" {
-		spec.Name = "file"
-	}
-	// Signed and inline transport URLs are never persisted as source metadata.
-	if u, err := url.Parse(spec.Source.URL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.RawQuery != "" {
-		spec.Source.URL = ""
-	}
-	media := &storage.Media{ID: id, Name: filepath.Base(spec.Name), MIMEType: spec.MIMEType, Size: size, Backend: backendName(m.Backend), SourcePlatform: spec.Source.Platform, SourceURL: spec.Source.URL, SourceFileID: spec.Source.FileID}
+	media := &storage.Media{ID: id, Name: spec.Name, MIMEType: spec.MIMEType, Size: size, Backend: backendName(m.Backend), SourcePlatform: spec.Source.Platform, SourceURL: spec.Source.URL, SourceFileID: spec.Source.FileID}
 	location, err := m.Backend.Put(ctx, id, bytes.NewReader(data), size, media.MIMEType)
 	if err != nil {
 		return nil, err
@@ -144,11 +144,9 @@ func (m *Manager) Open(ctx context.Context, id string) (io.ReadCloser, *storage.
 	if media.Deleting {
 		return nil, nil, fmt.Errorf("media is being deleted")
 	}
-	backend := m.Backend
-	if media.Backend == "local" {
-		backend = &LocalBackend{Root: m.Root}
-	} else if m.Remote != nil {
-		backend = m.Remote
+	backend, err := m.backendForStoredMedia(media)
+	if err != nil {
+		return nil, nil, err
 	}
 	if err := m.Store.Media().Touch(ctx, id, m.Now()); err != nil {
 		return nil, nil, err
@@ -162,7 +160,7 @@ func (m *Manager) Open(ctx context.Context, id string) (io.ReadCloser, *storage.
 		_ = release()
 		return nil, nil, err
 	}
-	return &referencedReader{ReadCloser: reader, release: release}, media, nil
+	return &referencedReader{ReadCloser: reader, release: release}, sanitizeMediaMetadata(media), nil
 }
 
 func (m *Manager) Read(ctx context.Context, id string) ([]byte, *storage.Media, error) {
@@ -229,12 +227,12 @@ func (m *Manager) PresignGet(ctx context.Context, id string, expiry time.Duratio
 	if metadata.Deleting {
 		return "", fmt.Errorf("media is being deleted")
 	}
-	backend := m.Remote
-	if backend == nil {
-		backend = m.Backend
+	backend, err := m.remoteBackend()
+	if err != nil {
+		return "", err
 	}
 	// Stored media may still be local after the configured backend switches to S3.
-	if metadata.ObjectKey == "" && (backend != m.Backend || metadata.Backend != backendName(backend)) {
+	if metadata.ObjectKey == "" && metadata.Backend != "s3" {
 		reader, _, err := m.Open(ctx, id)
 		if err != nil {
 			return "", err
@@ -249,6 +247,112 @@ func (m *Manager) PresignGet(ctx context.Context, id string, expiry time.Duratio
 		}
 	}
 	return backend.PresignGet(ctx, metadata, expiry)
+}
+
+func sanitizeInput(input Input) Input {
+	input.Name = sanitizeMediaName(input.Name)
+	input.Source.URL = sanitizeSourceURL(input.Source.URL)
+	input.Source.FileID = sanitizeSourceFileID(input.Source.FileID)
+	return input
+}
+
+func sanitizeMediaMetadata(item *storage.Media) *storage.Media {
+	if item == nil {
+		return nil
+	}
+	safe := *item
+	safe.Name = sanitizeMediaName(safe.Name)
+	safe.SourceURL = sanitizeSourceURL(safe.SourceURL)
+	safe.SourceFileID = sanitizeSourceFileID(safe.SourceFileID)
+	return &safe
+}
+
+// SanitizeName returns a basename suitable for persisted and model-visible media labels.
+func SanitizeName(value string) string {
+	return sanitizeMediaName(value)
+}
+
+func sanitizeMediaName(value string) string {
+	value = strings.TrimSpace(value)
+	lower := strings.ToLower(value)
+	if value == "" || strings.HasPrefix(lower, "data:") || strings.HasPrefix(lower, "base64:") {
+		return "file"
+	}
+	if parsed, err := url.Parse(value); err == nil {
+		switch strings.ToLower(parsed.Scheme) {
+		case "http", "https", "file":
+			value = parsed.Path
+		}
+	}
+	value = path.Base(strings.ReplaceAll(value, "\\", "/"))
+	if decoded, err := url.PathUnescape(value); err == nil {
+		value = path.Base(strings.ReplaceAll(decoded, "\\", "/"))
+	}
+	value = strings.TrimSpace(value)
+	if value == "" || value == "." || value == ".." || value == "/" {
+		return "file"
+	}
+	return value
+}
+
+func sanitizeSourceURL(value string) string {
+	value = strings.TrimSpace(value)
+	parsed, err := url.Parse(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
+		parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.RawFragment != "" {
+		return ""
+	}
+	for _, component := range strings.Split(parsed.Path, "/") {
+		component = strings.ToLower(component)
+		if strings.HasPrefix(component, "bot") && strings.Contains(component, ":") {
+			return ""
+		}
+	}
+	return parsed.String()
+}
+
+func sanitizeSourceFileID(value string) string {
+	value = strings.TrimSpace(value)
+	lower := strings.ToLower(value)
+	if value == "" || strings.HasPrefix(lower, "data:") || strings.HasPrefix(lower, "base64:") ||
+		strings.Contains(value, "://") || strings.ContainsAny(value, "/\\") {
+		return ""
+	}
+	if parsed, err := url.Parse(value); err == nil {
+		switch strings.ToLower(parsed.Scheme) {
+		case "http", "https", "file":
+			return ""
+		}
+	}
+	if len(value) >= 2 && value[1] == ':' &&
+		((value[0] >= 'a' && value[0] <= 'z') || (value[0] >= 'A' && value[0] <= 'Z')) {
+		return ""
+	}
+	return value
+}
+
+func (m *Manager) backendForStoredMedia(item *storage.Media) (Backend, error) {
+	switch item.Backend {
+	case "local":
+		if m.local != nil {
+			return m.local, nil
+		}
+		return &LocalBackend{Root: m.Root}, nil
+	case "s3":
+		return m.remoteBackend()
+	default:
+		return nil, fmt.Errorf("unsupported stored media backend %q", item.Backend)
+	}
+}
+
+func (m *Manager) remoteBackend() (Backend, error) {
+	if m.Remote != nil {
+		return m.Remote, nil
+	}
+	if backendName(m.Backend) == "s3" {
+		return m.Backend, nil
+	}
+	return nil, fmt.Errorf("remote media backend is unavailable")
 }
 
 func backendName(backend Backend) string {

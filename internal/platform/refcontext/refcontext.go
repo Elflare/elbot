@@ -184,6 +184,41 @@ func fallbackReferenceText(ctx context.Context, opts Options, replyID string, st
 	return fmt.Sprintf("[%s]：%s\n\n%s", label, content, opts.Text), segments, reply
 }
 
+func restoreHistoryMedia(ctx context.Context, opts Options, row storage.ChatMessage, segments []platform.MessageSegment) []platform.MessageSegment {
+	out := append([]platform.MessageSegment(nil), segments...)
+	if opts.Store == nil || opts.Store.Media() == nil {
+		return out
+	}
+	associations, err := opts.Store.Media().FindHistory(ctx, row.Platform, row.PlatformScopeID, row.PlatformMessageID)
+	if err != nil {
+		return out
+	}
+	byIndex := make(map[int]storage.HistoryMedia, len(associations))
+	for _, association := range associations {
+		if association.HistoryID == row.ID {
+			byIndex[association.MediaIndex] = association
+		}
+	}
+	mediaIndex := 0
+	for i := range out {
+		segment := &out[i]
+		if segment.Type != platform.SegmentImage && segment.Type != platform.SegmentFile {
+			continue
+		}
+		mediaIndex++
+		association, ok := byIndex[mediaIndex]
+		if !ok || association.Kind != string(segment.Type) {
+			continue
+		}
+		item, err := opts.Store.Media().Get(ctx, association.MediaID)
+		if err != nil || item.Deleting {
+			continue
+		}
+		segment.MediaID = association.MediaID
+	}
+	return out
+}
+
 func referenceSource(ctx context.Context, opts Options, replyID string) (ReferencedMessage, bool) {
 	if opts.Store != nil && opts.Store.Media() != nil {
 		outputs, err := opts.Store.Media().FindOutputs(ctx, opts.Platform, opts.ScopeID, replyID, time.Now())
@@ -202,7 +237,7 @@ func referenceSource(ctx context.Context, opts Options, replyID string) (Referen
 	if opts.ChatHistory != nil {
 		row, err := opts.ChatHistory.GetByPlatformMessage(ctx, opts.Platform, opts.ScopeID, replyID)
 		if err == nil && row != nil {
-			segments := platform.UnmarshalChatSegments(row.Segments)
+			segments := restoreHistoryMedia(ctx, opts, *row, platform.UnmarshalChatSegments(row.Segments))
 			if len(segments) > 0 || strings.TrimSpace(row.Text) != "" {
 				label := "引用"
 				if row.SenderName != "" {
