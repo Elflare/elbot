@@ -53,12 +53,15 @@ func (CreateElSkillTool) Info() tool.Info {
 
 func (CreateElSkillTool) Schema() llm.ToolSchema {
 	return tool.NewBuilder(CreateElSkillName).
-		Description("创建 ElBot 原生 ELyph skill。工具会写入 SKILL.elyph；提供 go_source 时写入 main.go 并编译 binary。Go skill 后续通过 go_skill_run 调用，skill_name 选择 skill，payload 对象会作为业务参数 JSON 写入 stdin。若有go脚本，在SKILL.elyph中注明使用go_skill_run调用").
+		Description("创建 ElBot 原生 ELyph Skill，可附带 go_source 并编译。Go Skill 通过 go_skill_run 调用，宿主处理 payload 后将其作为 JSON 写入进程 stdin。调用方用 payload.media_inputs 传入 [{\"media\":\"media:<sha256>\"}]；宿主补充 path、name、mime_type、size、可选 base64 和 media_workspace。无媒体输入但需要输出目录时传空 media_inputs。stdout 可返回 content 和 segments；image/file 使用稳定 media ID 或 Skill 目录内的相对 path，宿主导入 path 后返回稳定 ID。调用结束自动清理临时目录和引用。SKILL.elyph 必须写明 go_skill_run 的调用方式和业务 payload。").
 		String("name", "skill 名称，也是目录名和 binary 名；使用小写字母、数字、下划线或短横线。", tool.Required()).
 		String("description", "skill 的可复用能力简述。", tool.Required()).
 		String("risk", "风险等级：safe, low, medium, high, critical。", tool.Required()).
 		String("elyph", "完整 SKILL.elyph 内容。"+runtimeinfo.ElyphRuleCard(), tool.Required()).
-		String("go_source", "可选，Go main 包源码；提供时写入 main.go 并编译 binary。源码必须从 os.Stdin 读取业务参数 JSON；不要依赖 os.Args 传业务参数。不提供时创建纯 ELyph 文本 skill。").
+		String(
+			"go_source",
+			"可选的 Go main 包源码。程序从 os.Stdin 读取 payload JSON，不使用 os.Args 或 ELBOT_MEDIA_N；媒体从 media_inputs.path 读取，输出写入 media_workspace，并通过 stdout segments 返回相对 path。不提供时创建纯 ELyph 文本 Skill。",
+		).
 		Integer("timeout_ms", "可选，编译超时时间，默认 60000。").
 		BuildSchema()
 }
