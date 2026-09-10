@@ -285,7 +285,7 @@ Process Hook responses and `output.send` use the same structure:
 | --- | --- |
 | `kind` | `text`, `image`, `file`, `record`, `emoticon`, `at`, `reply`; default is `text`. |
 | `text` | Text, media fallback, reply body, or native emoji fallback. |
-| `url` / `path` / `base64` | One and only one source must be selected from `image`, `file`, or `record`. `url` only accepts HTTP(S), `path` only accepts filesystem paths resolved relative to the plugin directory, and `base64` has a maximum size of 10 MiB after decoding. |
+| `url` / `path` / `base64` | One and only one source must be selected from `image`, `file`, or `record`. The full value of any field can be filled with `media:<sha256>`, which is resolved by the Host at the sending boundary; Otherwise, `url` accepts HTTP(S), `path` is resolved as a file system path relative to the plugin directory, and `base64` has a maximum size of 10 MiB after decoding. |
 | `name` / `mime_type` | The display name and MIME type of images, files, or voice messages; `name` can also serve as the readable name for native emojis. |
 | `user_id` | Non-empty platform user ID of `kind = "at"`. |
 | `message_id` | Non-empty platform message ID of `kind = "reply"`. |
@@ -347,7 +347,9 @@ Tool completion Hooks can directly return text and images:
 {"type":"response","id":"host:event","ok":true,"result":{"status":"completed","message":{"segments":[{"type":"text","text":"截图完成"},{"type":"image","path":"result.png","mime_type":"image/png"}]}}}
 ```
 
-Image segments must provide one and only one of `url`, `path`, or `base64`. `url` accepts absolute HTTP(S) URLs or `data:image/...;base64,...`; relative `path` are resolved based on the plugin directory; path, base64, and data URLs have a maximum size of 10 MiB after decoding and are normalized to data URLs before being sent to the LLM. Currently, this replacement protocol supports `text` and `image` segments.
+Image segments must provide one and only one of `url`, `path`, or `base64`. Any source field can be filled with a complete `media:<sha256>`, for example `{"type":"image","url":"media:<sha256>"}`; The Host normalizes it into an internal media reference, without writing the central path or presigned URL into that reference. No independent segment `media` field is added, nor is hook.v2 upgraded. Media IDs must use 64-bit lowercase hexadecimal SHA-256; IDs in plain text are not scanned, and mixed sources will be rejected.
+
+Other sources maintain their original behavior: `url` accepts absolute HTTP(S) URLs or `data:image/...;base64,...`, and relative `path` are resolved according to the plugin directory; path, base64, and data URL are up to 10 MiB after decoding, and are materialized by the host on demand when entering the Agent canonical message. Currently, this replacement protocol supports `text` and `image` segments.
 
 When processing fails, omit `result` and return `{"type":"response","id":"host:event","ok":false,"error":"error message"}`. The `id` of the response must be the same as the request.
 
@@ -414,6 +416,14 @@ The Host returns the same `id` from stdin; the specific structure of `result` is
 | `hook.log` | One-time | params are used as log content; result is `{"ok":true}`. |
 | `tool.call` | Worker | Call ElBot tools in the allowlist; see "Tool Call" for fields. |
 | `hooks.reload` | Worker | params is an empty object; reload the current plugin; see "Plugin Self-Reload" for results. |
+| `media.import` | One-time/Worker | Choose one of `url`, `path` (relative path of the plugin directory), or `base64`; `name` and `mime_type` are optional; returns `media` and metadata. |
+| `media.read` | One-time/Worker | `media`; returns `base64` if less than or equal to 1 MiB, and returns a controlled temporary `path` for larger media. |
+| `media.export` | One-time/Worker | `media`; returns a controlled temporary file `path`. |
+| `media.metadata` | One-time/Worker | `media`; only returns secure metadata such as name, MIME, and size. |
+
+Temporary media references are managed within the Hook runtime lifecycle and are released upon expiration or closure; The first version does not provide `media.delete`. Hooks cannot access SQLite, the media root directory, or S3 credentials.
+
+`media.*` in requests and `media` in results are identification parameters for the media API and remain unchanged; When using the returned ID for message replacement or output, fill it into one of the existing `url`, `path`, or `base64` fields.
 
 ### Shared State
 

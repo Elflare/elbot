@@ -56,6 +56,14 @@
       "translation": "Three Roles",
       "updated_at": 1781710746
     },
+    "docs/elnis.md:heading:abea6e0ec636947097c29d41bffa75269b9597debcfa04cef55f70c5078c712d": {
+      "kind": "heading",
+      "source": "媒体资源边界",
+      "source_file": "docs/elnis.md",
+      "source_hash": "abea6e0ec636947097c29d41bffa75269b9597debcfa04cef55f70c5078c712d",
+      "translation": "Media Resource Boundary",
+      "updated_at": 1789010179
+    },
     "docs/elnis.md:heading:b244c08bb0f20b27df38ec27d7efa4d8f87d9674d2859106a6a9030360023daa": {
       "kind": "heading",
       "source": "事件会怎样被处理",
@@ -288,6 +296,14 @@
       "translation": "HTTP requests in __ELBOT_CODE_0__ mode will return quickly, and the actual processing is executed by a background worker. The LLM eventually needs to return a structured result:\n",
       "updated_at": 1781710746
     },
+    "docs/elnis.md:paragraph:07529485e6fbd77e02db5d9b6bb485d19fc9024ddff4889e4a6dff0a454d098e": {
+      "kind": "paragraph",
+      "source": "真正进入 LLM、持久化报告或 direct 平台输出的媒体由共享 Media Center 管理，使用 __ELBOT_CODE_0__ 标识，不重复保留 direct 的 sandbox 下载副本。\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "07529485e6fbd77e02db5d9b6bb485d19fc9024ddff4889e4a6dff0a454d098e",
+      "translation": "Media that actually enters the LLM, persisted reports, or direct platform outputs are managed by a shared Media Center and identified using __ELBOT_CODE_0__, avoiding redundant sandbox download copies from direct platforms.\n",
+      "updated_at": 1789010179
+    },
     "docs/elnis.md:paragraph:0927439e61f32efcc1dcee4fadaff5529509bfd7f3ff4bd2e767a56367f5ddb9": {
       "kind": "paragraph",
       "source": "它观察的“世界”不限定类型，包括但不限于：\n",
@@ -368,6 +384,14 @@
       "translation": "It uniformly receives external events and routes them to logs, notifications, or the background LLM; it is like a star around which all Elwisp signals converge, but the ultimate energy is controlled by ElBot.\n",
       "updated_at": 1781794504
     },
+    "docs/elnis.md:paragraph:4f8681313667ed9eac34a07d361e17c89cddf624bd7975b7c1854158f0678d3f": {
+      "kind": "paragraph",
+      "source": "Elvena v3 的 image/file segment 在 __ELBOT_CODE_0__ 中填写 HTTP(S)、data URI 或完整 __ELBOT_CODE_1__，不新增独立 __ELBOT_CODE_2__ 字段。",
+      "source_file": "docs/elnis.md",
+      "source_hash": "4f8681313667ed9eac34a07d361e17c89cddf624bd7975b7c1854158f0678d3f",
+      "translation": "In Elvena v3, the image/file segment fills HTTP(S), data URIs, or full __ELBOT_CODE_1__ in __ELBOT_CODE_0__, without adding a separate __ELBOT_CODE_2__ field.",
+      "updated_at": 1789010179
+    },
     "docs/elnis.md:paragraph:509b6cc30a8018ba4b61a30be1475c308497744ee7175969a2c3a7ec131ead16": {
       "kind": "paragraph",
       "source": "核心思想：\n",
@@ -392,6 +416,14 @@
       "translation": "This tool returns creation guides, Elvena event templates, Elnis configuration snippets, listener scaffolds, curl test commands, and security checklists;",
       "updated_at": 1781779501
     },
+    "docs/elnis.md:paragraph:714ef44c42fc0faa0c3240b2a8ba5709141652c87514b13f9be575007f13dd20": {
+      "kind": "paragraph",
+      "source": "Elnis workspace 保存临时计算和普通工作文件。",
+      "source_file": "docs/elnis.md",
+      "source_hash": "714ef44c42fc0faa0c3240b2a8ba5709141652c87514b13f9be575007f13dd20",
+      "translation": "The Elnis workspace stores temporary computations and general work files.",
+      "updated_at": 1789010179
+    },
     "docs/elnis.md:paragraph:7ff9d0ef9e57e4c67efc6620f4d2c83e0d1d68c8430e82eb68b1057fd5e7968d": {
       "kind": "paragraph",
       "source": "简单说，Elnis 把 ElBot 从“等用户说话的机器人”扩展成“能感知外部世界的 Agent 枢纽”。\n",
@@ -407,6 +439,14 @@
       "source_hash": "9986537e133dc0f6ed3dffddebe35416063688bd89421f1028b57d137f2261a9",
       "translation": "The actual writing of files or execution of commands is still handled by the file tool and shell tool.\n",
       "updated_at": 1781779501
+    },
+    "docs/elnis.md:paragraph:9c6ac13146b34d1dfb53184cf028c3f01bed0a734daaf039ce3da6165944d583": {
+      "kind": "paragraph",
+      "source": "报告 outbox 使用稳定媒体来源，待重试引用独立于有限期的已发送缓存。",
+      "source_file": "docs/elnis.md",
+      "source_hash": "9c6ac13146b34d1dfb53184cf028c3f01bed0a734daaf039ce3da6165944d583",
+      "translation": "The report outbox uses stable media sources; references for retries are independent of the time-limited sent cache.",
+      "updated_at": 1789010179
     },
     "docs/elnis.md:paragraph:aaea27431774bcd2c2b77ff06bfc1295f948331b590d2808f2bb0e72aace31d5": {
       "kind": "paragraph",
@@ -447,6 +487,14 @@
       "source_hash": "c235f80b7fef92338972f15c874cba0d2e2410167f4ef2eb2e6db6e4ec5ce465",
       "translation": "Elwisp is an external sub-listener.",
       "updated_at": 1781710746
+    },
+    "docs/elnis.md:paragraph:c74ba82a41c93659cbfca093593692d14c8e1dc29d662851ca5e752244f309d5": {
+      "kind": "paragraph",
+      "source": "详见 [媒体使用与清理](elnis-usage.md#下载与存储)。\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "c74ba82a41c93659cbfca093593692d14c8e1dc29d662851ca5e752244f309d5",
+      "translation": "See [Media Usage and Cleanup](elnis-usage.md#下载与存储) for details.\n",
+      "updated_at": 1789010179
     },
     "docs/elnis.md:paragraph:c9622566443e8cfc57507fb93091b584ea8d7763303696b4c1b4ed7b32f3276b": {
       "kind": "paragraph",
@@ -504,6 +552,14 @@
       "translation": "Elnis is responsible for:\n",
       "updated_at": 1781710746
     },
+    "docs/elnis.md:paragraph:edfa67e8209c68e6f952490b26b1ce591abcd3211cba6d962a553fc97a6519d7": {
+      "kind": "paragraph",
+      "source": "Elwisp 不获得媒体管理 RPC，外部工具也不会收到宿主导出文件。",
+      "source_file": "docs/elnis.md",
+      "source_hash": "edfa67e8209c68e6f952490b26b1ce591abcd3211cba6d962a553fc97a6519d7",
+      "translation": "Elwisp does not obtain media management RPCs, and external tools will not receive host-exported files.",
+      "updated_at": 1789010179
+    },
     "docs/elnis.md:paragraph:f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f": {
       "kind": "paragraph",
       "source": "示例：\n",
@@ -511,6 +567,14 @@
       "source_hash": "f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f",
       "translation": "Example:\n",
       "updated_at": 1781753001
+    },
+    "docs/elnis.md:paragraph:f8aa823d9abed3a8516ae94bd50fb98b2ffba1ba012bc76c362c91653e6e3855": {
+      "kind": "paragraph",
+      "source": "Elwisp 自己的文件由外部进程管理；",
+      "source_file": "docs/elnis.md",
+      "source_hash": "f8aa823d9abed3a8516ae94bd50fb98b2ffba1ba012bc76c362c91653e6e3855",
+      "translation": "Elwisp's own files are managed by external processes;",
+      "updated_at": 1789010179
     },
     "docs/elnis.md:paragraph:fc6b6e2ffe62b78a01706f31174bc10ba0d391abd6b5f337ec4b25057ab65e0f": {
       "kind": "paragraph",
@@ -674,8 +738,8 @@
     }
   },
   "source": "docs/elnis.md",
-  "source_hash": "9821d5f60ecf2588d334fb079ccf66f507e8c356730c34f69afb27bc22349817",
+  "source_hash": "167b0cd036b4966d1db2c2d8e0cd07344ce8c2160aadff474dcfddd9a4da80f5",
   "target": "docs.en/elnis.md",
-  "updated_at": 1783922709,
+  "updated_at": 1789010179,
   "version": 2
 }
