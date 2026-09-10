@@ -195,25 +195,35 @@ func normalizeManifestTags(tags []string) []string {
 }
 
 func (m AgentSkillManifest) Schema(name, description string) llm.ToolSchema {
-	parameters := make(map[string]any, len(m.Parameters))
-	for key, value := range m.Parameters {
-		parameters[key] = value
-	}
-	if original, ok := m.Parameters["properties"].(map[string]any); ok {
-		properties := make(map[string]any, len(original))
-		for key, value := range original {
-			properties[key] = value
-			if spec, ok := value.(map[string]any); ok && spec["type"] == "media" {
-				copy := make(map[string]any, len(spec)+1)
-				for field, value := range spec {
-					copy[field] = value
-				}
-				copy["type"] = "string"
-				copy["pattern"] = "^media:[0-9a-f]{64}$"
-				properties[key] = copy
-			}
-		}
-		parameters["properties"] = properties
-	}
+	parameters, _ := projectMediaSchema(m.Parameters).(map[string]any)
 	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: name, Description: description, Parameters: parameters}}
+}
+
+func projectMediaSchema(value any) any {
+	schema, ok := value.(map[string]any)
+	if !ok {
+		return value
+	}
+	projected := make(map[string]any, len(schema)+1)
+	for key, value := range schema {
+		projected[key] = value
+	}
+	switch schema["type"] {
+	case "media":
+		projected["type"] = "string"
+		projected["pattern"] = "^media:[0-9a-f]{64}$"
+	case "array":
+		if items, ok := schema["items"]; ok {
+			projected["items"] = projectMediaSchema(items)
+		}
+	case "object":
+		if properties, ok := schema["properties"].(map[string]any); ok {
+			projectedProperties := make(map[string]any, len(properties))
+			for name, property := range properties {
+				projectedProperties[name] = projectMediaSchema(property)
+			}
+			projected["properties"] = projectedProperties
+		}
+	}
+	return projected
 }
