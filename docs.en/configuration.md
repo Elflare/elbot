@@ -418,6 +418,12 @@ download_timeout_secs = 60
 - Platform media is only downloaded during actual processing and is not automatically saved to the sandbox upon receipt. Pure file messages are also handled according to the unified platform wake-up rules.
 
 
+### Media Delivery
+
+`[file_delivery]` of `app.toml` controls media delivery in model requests: `base64` uses embedded data, `s3` uses pre-signed download links, and `hybrid` uses S3 when the total size of request media exceeds `max_direct_base64_bytes`. After switching to S3, existing local media will be uploaded when remote delivery is required, reusing the recorded object keys.
+
+S3 delivery uses environment variables specified by `s3_endpoint`, `s3_region`, `s3_bucket`, as well as `s3_access_key_env` and `s3_secret_key_env`. The model service downloads objects via pre-signed URLs valid for 1 hour, and no additional keys are required. Cloudflare R2 can keep the bucket private without needing to enable public access; The model service or relay service that actually downloads the files must be able to access the link.
+
 ## Logs and Maintenance Tasks
 
 Runtime log configuration:

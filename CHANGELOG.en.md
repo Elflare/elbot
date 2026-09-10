@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed an issue where switching existing local media to S3 delivery mistakenly skipped the upload but generated a download link, causing the model to return a 404 error when retrieving the image.
+- Fixed an issue where incoming images from QQ OneBot simultaneously generated `[图片]` placeholder text and image tags with names and media IDs, resulting in duplicate descriptions.
 - Fixed the inconsistency in reading service-level environment variables between built-in tools and Go Skills, which caused some tools to be unable to read the configuration directory `.env`.
 - Fixed an issue where the response context was cancelled prematurely before reading the error body when the OpenAI-compatible interface returned a non-200 status, causing the actual upstream error to be lost and only `failed to read body: context canceled` to be displayed.
 - Fixed an issue where the read file tool incorrectly identified some non-UTF-8 text encodings as binary files.
