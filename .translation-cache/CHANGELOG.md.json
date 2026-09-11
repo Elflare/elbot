@@ -128,6 +128,14 @@
       "translation": "__ELBOT_CODE_0__'s __ELBOT_CODE_1__ now supports updating meta via filled fields, and __ELBOT_CODE_2__ has been added to reuse the edit operation of __ELBOT_CODE_3__ to modify the body;",
       "updated_at": 1782662506
     },
+    "CHANGELOG.md:list:139cedb063eab03bcc622e4f60bd575baa06a38c3746c40859486fd2ff89eac8": {
+      "kind": "list",
+      "source": "修复 Session 闲置过期、执行 __ELBOT_CODE_0__ 或切换会话后，引用原 Session 最后一条 assistant 回复会误建新 Session 的问题；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "139cedb063eab03bcc622e4f60bd575baa06a38c3746c40859486fd2ff89eac8",
+      "translation": "Fixed an issue where referencing the last assistant reply of the original Session would incorrectly create a new Session after the Session timed out due to inactivity, __ELBOT_CODE_0__ was executed, or the Session was switched;",
+      "updated_at": 1789088930
+    },
     "CHANGELOG.md:list:14cd896f3e686f14895d68bac5e89d2420b4109ebf71e29785677cc89a68d1a8": {
       "kind": "list",
       "source": "接口、配置与内部实现仍可能调整，更适合作为个人 Agent/bot 框架探索使用。",
@@ -759,6 +767,14 @@
       "source_hash": "7fe299a24d0dd37ffb215de8aee1f6068caf0d9c1a4e74ef554a7299256f3754",
       "translation": "Fixed an issue where long tool chains would be silently stopped by the Agent's internal 5-minute default request timeout; users will now be notified upon a full round timeout.",
       "updated_at": 1782574901
+    },
+    "CHANGELOG.md:list:7ff53fafc99cde8acf9671708919b9342117d8d6cd7da42cb799ac21e940d66e": {
+      "kind": "list",
+      "source": "现在会自动恢复该 Session，引用较早回复仍会 Fork。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "7ff53fafc99cde8acf9671708919b9342117d8d6cd7da42cb799ac21e940d66e",
+      "translation": "Now, the Session will be automatically restored; referencing an earlier reply will still result in a Fork.",
+      "updated_at": 1789088930
     },
     "CHANGELOG.md:list:804a20b9431dfd46cceb9e146447ae9d772bc44fb8be93b5eefe7498ef357e15": {
       "kind": "list",
@@ -1578,8 +1594,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "ae7e0ee60a920546a269e5174a3e438463935d0f9dfab4299d7584459458b17d",
+  "source_hash": "e5cedf747a4e32d3a7194422989bb0265ce04600cf034fd305b429be7ecb7903",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1789031297,
+  "updated_at": 1789088930,
   "version": 2
 }
