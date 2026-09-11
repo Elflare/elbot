@@ -240,7 +240,7 @@ During sending and while pending retry in the outbox, media retains valid refere
 
 The retention period for sent cache reuses `[maintenance.sandbox_cleanup].retention_days` of `app.toml`; cache after sending is not retained if the value is not positive. Association references are released upon cache expiration; Independent references to Sessions, Transcripts, forks, and reports pending retry are still retained. After all references disappear and a 1-hour orphan grace period passes, the media maintenance task will clean up the entity and its records; Failures retain the deletion status for retries. The start of the grace period is saved in the database; time spent with ElBot shut down is also counted, and restarting does not reset it; Once the grace period is reached, cleanup occurs during the next execution of the media maintenance task, rather than being deleted immediately at exactly one hour. This task reuses the sandbox cleanup schedule but does not delete Media Center content based on the age of directory files.
 
-QQ OneBot, QQ Official, and Telegram support restoring associated media in quoted replies; Replying to the latest assistant message in the current Session is handled as a normal continuation of the chat. Elwisp remote tools only operate on their own files and do not obtain host media export paths, RPC, or storage credentials.
+QQ OneBot, QQ Official, and Telegram support restoring associated media in quoted replies; Replying to the last assistant message of your own Session will automatically restore that Session, while replying to an earlier assistant message will Fork from that position. Elwisp remote tools only operate on their own files and do not obtain host media export paths, RPC, or storage credentials.
 
 Common fields:
 
