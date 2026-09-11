@@ -416,6 +416,14 @@
       "translation": "Inline preloading is used to prompt ElBot in normal input that the current task may require a certain type of tool or a specific Skill.\n",
       "updated_at": 1783077374
     },
+    "docs/concepts.md:paragraph:0accf37d50765d08207b743b29a45f16e64b5673b95996b4c7381f6bdf8c5fd8": {
+      "kind": "paragraph",
+      "source": "即使 Session 已因闲置过期或 __ELBOT_CODE_0__ 不再是当前会话，引用最后回复仍会恢复原 Session。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "0accf37d50765d08207b743b29a45f16e64b5673b95996b4c7381f6bdf8c5fd8",
+      "translation": "Even if the Session has expired due to inactivity or __ELBOT_CODE_0__ is no longer the current Session, quoting the last reply will still restore the original Session.\n",
+      "updated_at": 1789088838
+    },
     "docs/concepts.md:paragraph:0b62002a7a49943ccaa0b11242ec62635c645ec1e62014dee98125f5a15509c6": {
       "kind": "paragraph",
       "source": "它可以自动触发，也可以由用户手动触发。\n",
@@ -495,6 +503,14 @@
       "source_hash": "2629fde9657a9177cd946d5d0614870a4c64220d6593d16cbcbbf3a10c65f513",
       "translation": "ElBot distinguishes between:\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:2db735abf5771464a8d7e0f82ae79b4c28e33ff5b525de546121d217af910791": {
+      "kind": "paragraph",
+      "source": "回复更早的 assistant 消息会从该位置 Fork。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "2db735abf5771464a8d7e0f82ae79b4c28e33ff5b525de546121d217af910791",
+      "translation": "Replying to an earlier assistant message will Fork from that position.",
+      "updated_at": 1789088838
     },
     "docs/concepts.md:paragraph:2e4fa6324bfcc5f242708a90dcd72d7d9c5413488116cc51d796501771a8d966": {
       "kind": "paragraph",
@@ -952,6 +968,14 @@
       "translation": "Meta information uses a single line of plain text, for example:\n",
       "updated_at": 1787305228
     },
+    "docs/concepts.md:paragraph:b7b663d1943e3f7b1bcd0fa1d6d0e2f74682146674c5ef1ec059c91e5a593b9a": {
+      "kind": "paragraph",
+      "source": "在支持引用回复的平台中，回复自己在当前聊天作用域内某个 Session 的最后一条 assistant 消息会自动恢复该 Session；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "b7b663d1943e3f7b1bcd0fa1d6d0e2f74682146674c5ef1ec059c91e5a593b9a",
+      "translation": "On platforms that support quoted replies, replying to the last assistant message of a Session within the current chat scope will automatically restore that Session;",
+      "updated_at": 1789088838
+    },
     "docs/concepts.md:paragraph:b7be870bab24776a9da112c7b13cef0a450b06709590e897ff3955ac94cf9665": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 在群聊中优先使用群名片，没有群名片时使用昵称；",
@@ -1386,8 +1410,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "001ee5753b768d53efca59e01ece1a446a143090c7cbcc9a310c7d4e386c4699",
+  "source_hash": "8c9b88789d02668e9c3863e1e017f0d337df6fde8f0fd6ef20d79d834f2a58ee",
   "target": "docs.en/concepts.md",
-  "updated_at": 1789009687,
+  "updated_at": 1789088838,
   "version": 2
 }

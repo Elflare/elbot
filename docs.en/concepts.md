@@ -67,6 +67,8 @@ Different platforms and different chat scopes usually use their own Sessions to 
 
 For operations such as creating, restoring, archiving, pinning, and deleting Sessions, see [Command Quick Reference: Session](commands.md#session).
 
+On platforms that support quoted replies, replying to the last assistant message of a Session within the current chat scope will automatically restore that Session; Replying to an earlier assistant message will Fork from that position. Even if the Session has expired due to inactivity or `/new` is no longer the current Session, quoting the last reply will still restore the original Session.
+
 ## Fork
 
 Fork is used to branch out a new conversation branch from a specific assistant response in the conversation history.
