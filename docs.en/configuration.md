@@ -422,7 +422,7 @@ download_timeout_secs = 60
 
 `[file_delivery]` of `app.toml` controls media delivery in model requests: `base64` uses embedded data, `s3` uses pre-signed download links, and `hybrid` uses S3 when the total size of request media exceeds `max_direct_base64_bytes`. After switching to S3, existing local media will be uploaded when remote delivery is required, reusing the recorded object keys.
 
-S3 delivery uses environment variables specified by `s3_endpoint`, `s3_region`, `s3_bucket`, as well as `s3_access_key_env` and `s3_secret_key_env`. The model service downloads objects via pre-signed URLs valid for 1 hour, and no additional keys are required. Cloudflare R2 can keep the bucket private without needing to enable public access; The model service or relay service that actually downloads the files must be able to access the link.
+S3 delivery uses variables specified by `s3_endpoint`, `s3_region`, `s3_bucket`, as well as `s3_access_key_env` and `s3_secret_key_env`. Credentials are first read from the ElBot process environment; if not set, they are read from `.env` in the same directory as the main configuration; Startup will fail if any credentials for `s3` or `hybrid` are missing; `base64` does not read S3 credentials. The model service downloads objects via pre-signed URLs valid for 1 hour, and no additional keys are required. Cloudflare R2 can keep the bucket private without needing to enable public access; The model service or relay service that actually downloads the files must be able to access the link.
 
 ## Logs and Maintenance Tasks
 
