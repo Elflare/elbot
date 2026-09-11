@@ -246,7 +246,7 @@ rg -n "Output|SendChat|SendNotice|Stream|Reasoning|emoticon|receipt" internal/de
 
 - `internal/platform/platform.go`：平台抽象。
 - `internal/platform/media.go`：Chat History 原始有序 segments 编解码与敏感来源清洗。
-- `internal/platform/refcontext/`：按输出索引、Chat History、平台兜底恢复引用；当前 Session 最新 assistant 例外。
+- `internal/platform/refcontext/`：按输出索引、Chat History、平台兜底恢复引用；自己 Session 的最后一条 assistant 自动 Resume，较早 assistant 自动 Fork。
 - `internal/platform/config.go`：平台配置解码。
 - `internal/platform/builtin/`：内置平台装配。
 - `internal/platform/cli/`：本地/远程 CLI 和 TUI。

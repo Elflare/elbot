@@ -35,8 +35,8 @@ func TestApplyForksOwnOlderAssistantReference(t *testing.T) {
 	first, _ := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "p-old", first)
 
-	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, CurrentSessionID: first.SessionID, ReplyID: "p-old", Text: "继续"})
-	if result.ForkFromMessageID != first.ID {
+	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-old", Text: "继续"})
+	if result.ForkFromMessageID != first.ID || result.ResumeSessionID != "" {
 		t.Fatalf("fork = %q, want %q", result.ForkFromMessageID, first.ID)
 	}
 	if result.Text != "继续" {
@@ -44,19 +44,19 @@ func TestApplyForksOwnOlderAssistantReference(t *testing.T) {
 	}
 }
 
-func TestApplyLatestOwnAssistantReferenceContinues(t *testing.T) {
+func TestApplyLatestOwnAssistantReferenceResumes(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
 	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
 	_, latest := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "p-latest", latest)
 
-	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, CurrentSessionID: latest.SessionID, ReplyID: "p-latest", Text: "继续"})
-	if result.ForkFromMessageID != "" {
-		t.Fatalf("fork = %q, want empty", result.ForkFromMessageID)
+	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-latest", Text: "继续"})
+	if result.ResumeSessionID != latest.SessionID || result.ForkFromMessageID != "" {
+		t.Fatalf("result = %#v, want resume %q", result, latest.SessionID)
 	}
-	if result.Text != "继续" {
-		t.Fatalf("text = %q, want original", result.Text)
+	if result.Text != "继续" || result.Reply.MessageID != "p-latest" || result.Reply.Text != "" || len(result.Reply.Segments) != 0 {
+		t.Fatalf("resume reference = %#v", result)
 	}
 }
 
@@ -121,6 +121,22 @@ func TestApplyOtherSessionAssistantReferenceFallsBack(t *testing.T) {
 	}
 	if result.ForkFromMessageID != "" {
 		t.Fatalf("fork = %q, want empty", result.ForkFromMessageID)
+	}
+}
+
+func TestApplyOtherScopeAssistantReferenceFallsBack(t *testing.T) {
+	ctx := context.Background()
+	store := newRefTestStore(t)
+	currentScope := session.Scope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	otherScope := currentScope
+	otherScope.PlatformScopeID = "c2c:user-2"
+	msg, _ := createAssistantMessages(t, ctx, store, otherScope)
+	mapPlatformMessage(t, ctx, store, currentScope, "p-other-scope", msg)
+
+	result := Apply(ctx, Options{Store: store, Platform: currentScope.Platform, ScopeID: currentScope.PlatformScopeID, ActorID: currentScope.ActorID, ReplyID: "p-other-scope", Text: "继续"})
+	want := "[引用：bot]：old\n\n继续"
+	if result.Text != want || result.ResumeSessionID != "" || result.ForkFromMessageID != "" {
+		t.Fatalf("result = %#v, want fallback %q", result, want)
 	}
 }
 

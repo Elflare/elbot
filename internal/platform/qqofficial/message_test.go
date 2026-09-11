@@ -17,12 +17,10 @@ import (
 )
 
 type captureHandler struct {
-	currentSessionID string
-	text             string
-	ctx              context.Context
+	text string
+	ctx  context.Context
 }
 
-func (h *captureHandler) CurrentSessionID(context.Context) string { return h.currentSessionID }
 func (h *captureHandler) HandleMessage(ctx context.Context, text string) error {
 	h.ctx = ctx
 	h.text = text
@@ -136,7 +134,7 @@ func TestHandleGroupMessageAppliesAssistantReference(t *testing.T) {
 		t.Fatalf("map assistant: %v", err)
 	}
 	adapter := New(Config{}, store, nil, nil)
-	handler := &captureHandler{currentSessionID: first.SessionID}
+	handler := &captureHandler{}
 	adapter.handleGroupMessage(ctx, handler, payload{Type: eventGroupMessageCreate}, inboundMessage{
 		ID:          "msg-1",
 		GroupOpenID: "group-1",
@@ -254,7 +252,7 @@ func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
 		t.Fatalf("map first: %v", err)
 	}
 
-	handler := &captureHandler{currentSessionID: s.ID}
+	handler := &captureHandler{}
 	adapter.handleC2CMessage(ctx, handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:               "msg-1",
 		Author:           inboundAuthor{UserOpenID: "user-1"},
@@ -409,7 +407,7 @@ func TestPrepareSourceUsesStructuredSources(t *testing.T) {
 	}
 }
 
-func TestHandleC2CMessageContinuesLatestAssistantReference(t *testing.T) {
+func TestHandleC2CMessageResumesLatestAssistantReference(t *testing.T) {
 	ctx := context.Background()
 	store := newQQOfficialTestStore(t)
 	adapter := New(Config{}, store, nil, nil)
@@ -430,8 +428,8 @@ func TestHandleC2CMessageContinuesLatestAssistantReference(t *testing.T) {
 	if !ok {
 		t.Fatal("missing message context")
 	}
-	if msgCtx.ForkFromMessageID != "" {
-		t.Fatalf("fork = %q, want empty", msgCtx.ForkFromMessageID)
+	if msgCtx.ForkFromMessageID != "" || msgCtx.ResumeSessionID != latest.SessionID {
+		t.Fatalf("reference action = fork %q, resume %q", msgCtx.ForkFromMessageID, msgCtx.ResumeSessionID)
 	}
 	if handler.text != "继续" {
 		t.Fatalf("text = %q, want original", handler.text)

@@ -198,17 +198,16 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 	var referenceSegments []platform.MessageSegment
 	if normalized.ReplyID != "" {
 		ref := refcontext.Apply(msgCtx, refcontext.Options{
-			Store:            a.store,
-			ChatHistory:      a.chatHistory,
-			CurrentSessionID: platform.HandlerCurrentSessionID(msgCtx, handler),
-			Platform:         a.Name(),
-			ScopeID:          messageCtx.ScopeID,
-			ActorID:          messageCtx.ActorID,
-			IsSuperadmin:     isConfiguredSuperadmin(a.cfg.Superadmins, userIDString(msg.From)),
-			ReplyID:          normalized.ReplyID,
-			Text:             text,
-			CommandPrefixes:  a.cfg.CommandPrefixes,
-			Fetch:            a.referenceFetcher(msg, normalized),
+			Store:           a.store,
+			ChatHistory:     a.chatHistory,
+			Platform:        a.Name(),
+			ScopeID:         messageCtx.ScopeID,
+			ActorID:         messageCtx.ActorID,
+			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, userIDString(msg.From)),
+			ReplyID:         normalized.ReplyID,
+			Text:            text,
+			CommandPrefixes: a.cfg.CommandPrefixes,
+			Fetch:           a.referenceFetcher(msg, normalized),
 		})
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
