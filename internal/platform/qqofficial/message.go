@@ -93,17 +93,16 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 	msgCtx = context.WithValue(msgCtx, targetKey{}, target)
 	if replyID != "" {
 		ref := refcontext.Apply(msgCtx, refcontext.Options{
-			Store:            a.store,
-			ChatHistory:      a.chatHistory,
-			CurrentSessionID: platform.HandlerCurrentSessionID(msgCtx, handler),
-			Platform:         a.Name(),
-			ScopeID:          messageCtx.ScopeID,
-			ActorID:          actorID,
-			IsSuperadmin:     isConfiguredSuperadmin(a.cfg.Superadmins, senderID),
-			ReplyID:          replyID,
-			Text:             text,
-			CommandPrefixes:  a.cfg.CommandPrefixes,
-			Fetch:            inboundReferenceFetcher(msg),
+			Store:           a.store,
+			ChatHistory:     a.chatHistory,
+			Platform:        a.Name(),
+			ScopeID:         messageCtx.ScopeID,
+			ActorID:         actorID,
+			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, senderID),
+			ReplyID:         replyID,
+			Text:            text,
+			CommandPrefixes: a.cfg.CommandPrefixes,
+			Fetch:           inboundReferenceFetcher(msg),
 		})
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
 		messageCtx.ResumeSessionID = ref.ResumeSessionID

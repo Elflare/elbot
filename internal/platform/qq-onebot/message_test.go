@@ -338,13 +338,11 @@ func TestHandleEventAtFallsBackToNickname(t *testing.T) {
 }
 
 type captureHandler struct {
-	currentSessionID string
-	ctx              context.Context
-	text             string
-	count            int
+	ctx   context.Context
+	text  string
+	count int
 }
 
-func (h *captureHandler) CurrentSessionID(context.Context) string { return h.currentSessionID }
 func (h *captureHandler) HandleMessage(ctx context.Context, text string) error {
 	h.ctx = ctx
 	h.text = text
@@ -391,7 +389,7 @@ func TestForkableReferenceMessageIDRequiresOwnAssistantSession(t *testing.T) {
 
 	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, store, nil, nil)
 
-	handler := &captureHandler{currentSessionID: own.ID}
+	handler := &captureHandler{}
 	adapter.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: []byte(`[{"type":"reply","data":{"id":"first-assistant"}},{"type":"text","data":{"text":"继续"}}]`)})
 	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
 	if !ok {
@@ -404,14 +402,14 @@ func TestForkableReferenceMessageIDRequiresOwnAssistantSession(t *testing.T) {
 		t.Fatalf("historical assistant reference text = %q, want original", handler.text)
 	}
 
-	handler = &captureHandler{currentSessionID: own.ID}
+	handler = &captureHandler{}
 	adapter.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: []byte(`[{"type":"reply","data":{"id":"latest-assistant"}},{"type":"text","data":{"text":"继续"}}]`)})
 	msgCtx, ok = platform.MessageContextFrom(handler.ctx)
 	if !ok {
 		t.Fatal("missing message context")
 	}
-	if msgCtx.ForkFromMessageID != "" {
-		t.Fatalf("latest assistant should continue current conversation, got fork id %q", msgCtx.ForkFromMessageID)
+	if msgCtx.ForkFromMessageID != "" || msgCtx.ResumeSessionID != own.ID {
+		t.Fatalf("latest assistant action = fork %q, resume %q", msgCtx.ForkFromMessageID, msgCtx.ResumeSessionID)
 	}
 	if handler.text != "继续" {
 		t.Fatalf("latest assistant reference text = %q, want direct continuation", handler.text)

@@ -65,6 +65,8 @@ Session 是 ElBot 的持久化会话单位，用来保存一次连续对话的�
 
 Session 的创建、恢复、归档、置顶和删除等操作见 [命令速查：Session](commands.md#session)。
 
+在支持引用回复的平台中，回复自己在当前聊天作用域内某个 Session 的最后一条 assistant 消息会自动恢复该 Session；回复更早的 assistant 消息会从该位置 Fork。即使 Session 已因闲置过期或 `/new` 不再是当前会话，引用最后回复仍会恢复原 Session。
+
 ## Fork
 
 Fork 用于从历史对话中的某个 assistant 回复处分出新的对话分支。

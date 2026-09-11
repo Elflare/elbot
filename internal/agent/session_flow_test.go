@@ -5,6 +5,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
+	"elbot/internal/platform/refcontext"
 	"elbot/internal/request"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -165,6 +166,111 @@ func TestIdleExpirationClearsCurrentAndCanResume(t *testing.T) {
 	current, err = a.sessions.Current(ctx, a.scope(ctx))
 	if err != nil || current.ID != oldSession.ID {
 		t.Fatalf("current after continued chat = %#v, %v", current, err)
+	}
+}
+
+func TestLatestAssistantReferenceResumesExpiredOrResetCurrentSession(t *testing.T) {
+	p := &fakePlatform{}
+	store := newTestStore(t)
+	a := New(p, &fakeLLM{replies: []string{"continued", "continued after new"}}, "test-model", config.ProviderConfig{}, store)
+	a.RegisterPlatformSender("qq", p)
+	a.SetSessionIdleExpiration(config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 10})
+	baseCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform: "qq", PlatformUserID: "1", ScopeID: "group:9",
+	})
+	target, err := a.sessions.Create(baseCtx, a.scope(baseCtx), session.CreateRequest{Title: "target"})
+	if err != nil {
+		t.Fatalf("create target session: %v", err)
+	}
+	prior := []*storage.Message{
+		{SessionID: target.ID, Role: storage.RoleUser, Content: "old question"},
+		{SessionID: target.ID, Role: storage.RoleAssistant, Content: "old answer"},
+	}
+	for _, message := range prior {
+		if err := store.Messages().Append(baseCtx, message); err != nil {
+			t.Fatalf("append prior message: %v", err)
+		}
+	}
+	if err := store.Messages().MapPlatformMessage(baseCtx, storage.PlatformMessageMap{
+		Platform: "qq", PlatformScopeID: "group:9", PlatformMessageID: "old-answer",
+		MessageID: prior[1].ID, SessionID: target.ID,
+	}); err != nil {
+		t.Fatalf("map assistant message: %v", err)
+	}
+	target.UpdatedAt = time.Now().Add(-11 * time.Minute)
+	if err := store.Sessions().Update(baseCtx, target); err != nil {
+		t.Fatalf("age target session: %v", err)
+	}
+
+	reference := refcontext.Apply(baseCtx, refcontext.Options{
+		Store: store, Platform: "qq", ScopeID: "group:9", ActorID: "qq:1",
+		ReplyID: "old-answer", Text: "continue here",
+	})
+	if reference.ResumeSessionID != target.ID || reference.ForkFromMessageID != "" {
+		t.Fatalf("reference action = %#v", reference)
+	}
+	resumeCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform: "qq", PlatformUserID: "1", ScopeID: "group:9",
+		ReplyToMessageID: "old-answer", ResumeSessionID: reference.ResumeSessionID,
+	})
+	if err := a.HandleMessage(resumeCtx, "continue here"); err != nil {
+		t.Fatalf("handle referenced message: %v", err)
+	}
+
+	current, err := a.sessions.Current(resumeCtx, a.scope(resumeCtx))
+	if err != nil || current.ID != target.ID {
+		t.Fatalf("current session = %#v, err = %v", current, err)
+	}
+	messages, err := store.Messages().ListBySession(resumeCtx, target.ID)
+	if err != nil {
+		t.Fatalf("list target messages: %v", err)
+	}
+	if len(messages) != 4 || messages[2].Content != "continue here" || messages[3].Content != "continued" {
+		t.Fatalf("target messages = %#v", messages)
+	}
+	if err := a.HandleMessage(resumeCtx, "/new"); err != nil {
+		t.Fatalf("reset current session: %v", err)
+	}
+	if _, err := a.sessions.Current(resumeCtx, a.scope(resumeCtx)); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("current after /new = %v, want not found", err)
+	}
+	if err := store.Messages().MapPlatformMessage(resumeCtx, storage.PlatformMessageMap{
+		Platform: "qq", PlatformScopeID: "group:9", PlatformMessageID: "continued-answer",
+		MessageID: messages[3].ID, SessionID: target.ID,
+	}); err != nil {
+		t.Fatalf("map continued assistant message: %v", err)
+	}
+	reference = refcontext.Apply(resumeCtx, refcontext.Options{
+		Store: store, Platform: "qq", ScopeID: "group:9", ActorID: "qq:1",
+		ReplyID: "continued-answer", Text: "continue after new",
+	})
+	if reference.ResumeSessionID != target.ID || reference.ForkFromMessageID != "" {
+		t.Fatalf("reference after /new = %#v", reference)
+	}
+	resetCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Platform: "qq", PlatformUserID: "1", ScopeID: "group:9",
+		ReplyToMessageID: "continued-answer", ResumeSessionID: reference.ResumeSessionID,
+	})
+	if err := a.HandleMessage(resetCtx, "continue after new"); err != nil {
+		t.Fatalf("handle reference after /new: %v", err)
+	}
+	current, err = a.sessions.Current(resetCtx, a.scope(resetCtx))
+	if err != nil || current.ID != target.ID {
+		t.Fatalf("current after /new reference = %#v, err = %v", current, err)
+	}
+	messages, err = store.Messages().ListBySession(resetCtx, target.ID)
+	if err != nil {
+		t.Fatalf("list reset target messages: %v", err)
+	}
+	if len(messages) != 6 || messages[4].Content != "continue after new" || messages[5].Content != "continued after new" {
+		t.Fatalf("target messages after /new = %#v", messages)
+	}
+	sessions, err := store.Sessions().List(resumeCtx, storage.ListSessionsRequest{IncludeAllPlatforms: true, IncludeArchived: true, Limit: 10})
+	if err != nil {
+		t.Fatalf("list sessions: %v", err)
+	}
+	if len(sessions) != 1 || sessions[0].ID != target.ID {
+		t.Fatalf("sessions = %#v", sessions)
 	}
 }
 

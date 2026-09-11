@@ -58,18 +58,6 @@ type MediaResolver interface {
 	ResolveMedia(context.Context, MessageSegment, int64) (delivery.Source, error)
 }
 
-// CurrentSessionProvider is implemented by handlers that own session selection.
-type CurrentSessionProvider interface {
-	CurrentSessionID(context.Context) string
-}
-
-func HandlerCurrentSessionID(ctx context.Context, handler PlatformHandler) string {
-	if provider, ok := handler.(CurrentSessionProvider); ok {
-		return provider.CurrentSessionID(ctx)
-	}
-	return ""
-}
-
 type ReplyContext struct {
 	MessageID string
 	SenderID  string

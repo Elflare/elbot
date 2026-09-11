@@ -18,17 +18,16 @@ type ReferencedMessage struct {
 }
 
 type Options struct {
-	Store            storage.Store
-	ChatHistory      storage.ChatHistoryRepository
-	CurrentSessionID string
-	Platform         string
-	ScopeID          string
-	ActorID          string
-	IsSuperadmin     bool
-	ReplyID          string
-	Text             string
-	CommandPrefixes  []string
-	Fetch            func(context.Context, string) (ReferencedMessage, bool)
+	Store           storage.Store
+	ChatHistory     storage.ChatHistoryRepository
+	Platform        string
+	ScopeID         string
+	ActorID         string
+	IsSuperadmin    bool
+	ReplyID         string
+	Text            string
+	CommandPrefixes []string
+	Fetch           func(context.Context, string) (ReferencedMessage, bool)
 }
 
 type Result struct {
@@ -65,13 +64,15 @@ func Apply(ctx context.Context, opts Options) Result {
 	}
 
 	if stored != nil && stored.Role == storage.RoleAssistant {
-		if session, ok := referencedSession(ctx, opts, stored); ok && opts.IsSuperadmin && isBackgroundSession(session) {
+		session, ok := referencedSession(ctx, opts, stored)
+		if ok && opts.IsSuperadmin && isBackgroundSession(session) {
 			result.ResumeSessionID = session.ID
 			_, result.ReferenceSegments, result.Reply = fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
 			return result
 		}
-		if isOwnCurrentSession(ctx, opts, stored) {
+		if ok && isOwnPlatformSession(opts, session) {
 			if isLatestAssistant(ctx, opts.Store, stored) {
+				result.ResumeSessionID = session.ID
 				result.Reply = platform.ReplyContext{MessageID: replyID}
 				return result
 			}
@@ -80,7 +81,6 @@ func Apply(ctx context.Context, opts Options) Result {
 			return result
 		}
 	}
-
 	text, segments, reply := fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
 	if reply.MessageID != "" {
 		result.Reply = reply
@@ -101,12 +101,11 @@ func referencedMessage(ctx context.Context, opts Options, replyID string) (*stor
 	return msg, true
 }
 
-func isOwnCurrentSession(ctx context.Context, opts Options, msg *storage.Message) bool {
-	session, ok := referencedSession(ctx, opts, msg)
-	if !ok {
+func isOwnPlatformSession(opts Options, session *storage.Session) bool {
+	if session == nil || isBackgroundSession(session) {
 		return false
 	}
-	return session.ID == opts.CurrentSessionID && session.OwnerID == strings.TrimSpace(opts.ActorID) && session.Platform == strings.TrimSpace(opts.Platform) && session.PlatformScopeID == strings.TrimSpace(opts.ScopeID)
+	return session.OwnerID == strings.TrimSpace(opts.ActorID) && session.Platform == strings.TrimSpace(opts.Platform) && session.PlatformScopeID == strings.TrimSpace(opts.ScopeID)
 }
 
 func referencedSession(ctx context.Context, opts Options, msg *storage.Message) (*storage.Session, bool) {

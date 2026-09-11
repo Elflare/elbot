@@ -60,7 +60,7 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 	}
 }
 
-func TestLatestCurrentAssistantSkipsMediaButOtherSessionRestores(t *testing.T) {
+func TestLatestAssistantResumesWithoutMediaAndOlderForkRestores(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
 	scope := session.Scope{ActorID: "telegram:1", Platform: "telegram", PlatformScopeID: "group:9"}
@@ -68,23 +68,22 @@ func TestLatestCurrentAssistantSkipsMediaButOtherSessionRestores(t *testing.T) {
 	mapPlatformMessage(t, ctx, store, scope, "old", first)
 	mapPlatformMessage(t, ctx, store, scope, "latest", latest)
 	calls := 0
-	opts := Options{Store: store, Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, CurrentSessionID: latest.SessionID, ReplyID: "latest", Text: "继续", Fetch: func(context.Context, string) (ReferencedMessage, bool) {
+	opts := Options{Store: store, Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "latest", Text: "继续", Fetch: func(context.Context, string) (ReferencedMessage, bool) {
 		calls++
 		return ReferencedMessage{Segments: []platform.MessageSegment{{Type: platform.SegmentImage, PlatformFileID: "image"}}}, true
 	}}
 	got := Apply(ctx, opts)
-	if calls != 0 || got.Text != "继续" || len(got.ReferenceSegments) != 0 || len(got.Reply.Segments) != 0 || got.Reply.Text != "" {
+	if calls != 0 || got.ResumeSessionID != latest.SessionID || got.Text != "继续" || len(got.ReferenceSegments) != 0 || len(got.Reply.Segments) != 0 || got.Reply.Text != "" {
 		t.Fatalf("latest injected reference = %#v", got)
 	}
 	opts.ReplyID = "old"
 	got = Apply(ctx, opts)
-	if calls != 1 || got.ForkFromMessageID != first.ID || len(got.ReferenceSegments) != 1 || got.Text != "继续" {
+	if calls != 1 || got.ForkFromMessageID != first.ID || got.ResumeSessionID != "" || len(got.ReferenceSegments) != 1 || got.Text != "继续" {
 		t.Fatalf("older media fork = %#v", got)
 	}
-	opts.CurrentSessionID = "another-session"
 	opts.ReplyID = "latest"
 	got = Apply(ctx, opts)
-	if calls != 2 || got.ForkFromMessageID != "" || len(got.ReferenceSegments) != 1 || got.Text == "继续" {
+	if calls != 1 || got.ResumeSessionID != latest.SessionID || got.ForkFromMessageID != "" || len(got.ReferenceSegments) != 0 || got.Text != "继续" {
 		t.Fatalf("same owner other session = %#v", got)
 	}
 }

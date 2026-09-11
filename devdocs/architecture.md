@@ -237,7 +237,7 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 - 原始有序 segments 写入 Chat History，包括纯媒体消息；过滤 base64、临时本地路径和 token/签名 URL，不保证来源永久有效。
 - Agent 统一判断 wakeup，并只读检查 waiting Hook route；仅唤起或 waiting continuation 时物化媒体，普通观察 Hook 不下载。
 - Telegram resolver 内使用 token URL和代理，OneBot 按需 get_image/get_file；QQ Official 的事件 URL直接由 Media Center 导入，不引入额外 resolver 层。
-- 引用按输出索引 → Chat History → 平台能力恢复有序媒体，图片进入视觉输入，Session 仅保存稳定媒体 ID 与文本投影。平台通过 handler 的只读 `CurrentSessionID` 查询真实当前 Session；最新当前 assistant 不注入引用，较早 assistant fork、后台 resume 仍保留媒体，其他 Session 按真实引用处理。
+- 引用按输出索引 → Chat History → 平台能力恢复有序媒体，图片进入视觉输入，Session 仅保存稳定媒体 ID 与文本投影。同一 actor、平台和 scope 的最后一条 assistant 显式设置 `ResumeSessionID`，使 TTL 清理或 `/new` 清除 current 后仍恢复来源 Session，且不重复注入引用内容；较早 assistant 设置 `ForkFromMessageID` 并保留引用媒体。后台 Resume 和其他用户或 scope 的普通引用规则保持独立。
 
 输出侧：
 

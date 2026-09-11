@@ -238,7 +238,7 @@ Elvena v3 支持通过 `segments` 字段发送图片和文件。`content` 保留
 
 已发送缓存保留期复用 `app.toml` 的 `[maintenance.sandbox_cleanup].retention_days`，非正值不保留发送后的缓存。缓存过期释放关联引用；Session、Transcript、fork 和待重试报告的独立引用仍保留。所有引用消失后经过 1 小时孤儿宽限期，媒体维护任务才清理本体和记录；失败保留删除状态供重试。宽限期起点保存在数据库，关闭 ElBot 的时间也计入，重启不重置；达到宽限期后在下一次媒体维护任务执行时清理，并非一小时整立即删除。该任务复用 sandbox 的清理时间表，但不按目录文件年龄删除 Media Center 内容。
 
-QQ OneBot、QQ Official、Telegram 支持在引用回复中恢复关联媒体；回复当前 Session 最新 assistant 时按普通续聊处理。Elwisp 远端工具仅操作自己的文件，不获得宿主媒体导出路径、RPC 或存储凭据。
+QQ OneBot、QQ Official、Telegram 支持在引用回复中恢复关联媒体；回复自己 Session 的最后一条 assistant 消息会自动恢复该 Session，回复更早的 assistant 消息会从该位置 Fork。Elwisp 远端工具仅操作自己的文件，不获得宿主媒体导出路径、RPC 或存储凭据。
 
 常用字段：
 
