@@ -640,14 +640,6 @@
       "translation": "Common fields:\n",
       "updated_at": 1781709646
     },
-    "docs/elnis-usage.md:paragraph:543e9121de9f096dd4272091c2054ce05b3e03f18c3810b8d16ebde59d8f152b": {
-      "kind": "paragraph",
-      "source": "回复当前 Session 最新 assistant 时按普通续聊处理。",
-      "source_file": "docs/elnis-usage.md",
-      "source_hash": "543e9121de9f096dd4272091c2054ce05b3e03f18c3810b8d16ebde59d8f152b",
-      "translation": "Replying to the latest assistant message in the current Session is handled as a normal continuation of the chat.",
-      "updated_at": 1789010099
-    },
     "docs/elnis-usage.md:paragraph:5a9b0b92870dff0d3baafc1289ce15699f51e7c4b592c4cf901add78963c5153": {
       "kind": "paragraph",
       "source": "本文承接 [Elnis 监听枢纽](elnis.md)，讲如何启用 Elnis、配置 Elwisp 策略，并用 Elvena 投递事件。\n",
@@ -855,6 +847,14 @@
       "source_hash": "e9b088a20b3196f9c15eb69e11284b94638f0c0538ada2b9e49a0112519d875e",
       "translation": "Configuration description:\n",
       "updated_at": 1781709646
+    },
+    "docs/elnis-usage.md:paragraph:f8d5e10f52d438dc999d549dd109b20134f583ef685d43a6ec4c238d11c89e9a": {
+      "kind": "paragraph",
+      "source": "回复自己 Session 的最后一条 assistant 消息会自动恢复该 Session，回复更早的 assistant 消息会从该位置 Fork。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "f8d5e10f52d438dc999d549dd109b20134f583ef685d43a6ec4c238d11c89e9a",
+      "translation": "Replying to the last assistant message of your own Session will automatically restore that Session, while replying to an earlier assistant message will Fork from that position.",
+      "updated_at": 1789088877
     },
     "docs/elnis-usage.md:table:01645b79e16b3beaf68b98d444ca557a81b6a51ca10c0e86a85d1c55ff233347": {
       "kind": "table",
@@ -1162,8 +1162,8 @@
     }
   },
   "source": "docs/elnis-usage.md",
-  "source_hash": "66dad915e9079dad93cc4e5e3a4e5f378f930fec66c99ce15ee0379aded0d350",
+  "source_hash": "fd153333f4e33f50f4fa055a6ba70e2753ff93e5290ba125a290c1b0fe49d2ca",
   "target": "docs.en/elnis-usage.md",
-  "updated_at": 1789010099,
+  "updated_at": 1789088877,
   "version": 2
 }
