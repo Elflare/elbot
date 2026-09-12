@@ -96,11 +96,12 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	userContent := llm.SegmentsContentText(userSegments)
 
 	userMessage := &storage.Message{
-		ID:        storage.NewID(),
-		SessionID: session.ID,
-		Role:      storage.RoleUser,
-		Content:   userContent,
-		Segments:  storedMessageSegments(userSegments),
+		ID:                       storage.NewID(),
+		SessionID:                session.ID,
+		Role:                     storage.RoleUser,
+		Content:                  userContent,
+		Segments:                 storedMessageSegments(userSegments),
+		ReplyToPlatformMessageID: inboundReplyMessageID(ctx),
 	}
 	if a.logger != nil {
 		a.logger.Info("user input", "event", "user_message", "session_id", session.ID, "text", previewLogText(userContent))

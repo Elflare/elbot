@@ -568,8 +568,8 @@ func (a *Adapter) readLoop(ctx context.Context, handler platform.PlatformHandler
 func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHandler, event Event) {
 	normalized := normalizeMessage(event.Message, event.RawMessage, event.SelfID)
 	normalized = a.resolveAtSegments(ctx, event, normalized)
-	a.recordChatMessage(ctx, event, normalized)
 	if event.MessageType != "private" && event.MessageType != "group" {
+		a.recordChatMessage(ctx, event, normalized, platform.ReplyContext{})
 		return
 	}
 	text := normalized.Text
@@ -628,6 +628,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 			messageCtx.ContextSegments = finalMessageSegments(ref.Text, currentSegments, referenceSegments)
 		}
 	}
+	a.recordChatMessage(ctx, event, normalized, messageCtx.Reply)
 	messageCtx.Segments = finalMessageSegments(text, currentSegments, nil)
 	msgCtx = platform.WithMessageContext(ctx, messageCtx)
 	msgCtx = context.WithValue(msgCtx, targetKey{}, target{MessageType: event.MessageType, UserID: event.UserID, GroupID: event.GroupID})
@@ -730,11 +731,11 @@ func (a *Adapter) referenceFetcher(event Event) func(context.Context, string) (r
 		if data.UserID != 0 {
 			label = "引用：" + displayName(data.Sender, data.UserID)
 		}
-		return refcontext.ReferencedMessage{SenderID: strconv.FormatInt(data.UserID, 10), Label: label, Text: ref.Text, Segments: ref.Segments}, true
+		return refcontext.ReferencedMessage{SenderID: strconv.FormatInt(data.UserID, 10), SenderName: displayName(data.Sender, data.UserID), Label: label, Text: ref.Text, Segments: ref.Segments}, true
 	}
 }
 
-func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized NormalizedMessage) {
+func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized NormalizedMessage, reply platform.ReplyContext) {
 	if a.chatHistory == nil || (strings.TrimSpace(normalized.Text) == "" && len(normalized.Segments) == 0) || event.MessageID == 0 {
 		return
 	}
@@ -753,6 +754,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 		Raw:                      normalized.Text,
 		Segments:                 platform.MarshalChatSegments(normalized.Segments),
 		ReplyToPlatformMessageID: normalized.ReplyID,
+		Metadata:                 refcontext.MarshalChatMetadata(reply),
 		CreatedAt:                createdAt,
 	}
 	if err := a.chatHistory.Append(ctx, message); err != nil {

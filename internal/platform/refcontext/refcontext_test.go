@@ -13,13 +13,14 @@ import (
 
 func TestApplyFallsBackToReferencedText(t *testing.T) {
 	result := Apply(context.Background(), Options{
-		ReplyID: "notice-1",
-		Text:    "说：收到",
+		Platform: "qqonebot",
+		ReplyID:  "notice-1",
+		Text:     "说：收到",
 		Fetch: func(context.Context, string) (ReferencedMessage, bool) {
-			return ReferencedMessage{Label: "引用：通知", Text: "已保存附件：attachment-1", Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "已保存附件：attachment-1"}}}, true
+			return ReferencedMessage{SenderID: "123456", SenderName: "通知", Label: "引用：通知", Text: "已保存附件：attachment-1", Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "已保存附件：attachment-1"}}}, true
 		},
 	})
-	want := "[引用：通知]：已保存附件：attachment-1\n\n说：收到"
+	want := "[引用#notice-1：通知(qq:123456):已保存附件：attachment-1]\n\n说：收到"
 	if result.Text != want {
 		t.Fatalf("text = %q, want %q", result.Text, want)
 	}
@@ -98,7 +99,7 @@ func TestApplyUserBackgroundReferenceFallsBack(t *testing.T) {
 	mapPlatformMessage(t, ctx, store, scope, "p-bg-user", msg)
 
 	result := Apply(ctx, Options{Store: store, Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-bg-user", Text: "继续"})
-	want := "[引用：bot]：report\n\n继续"
+	want := "[引用#p-bg-user：bot:report]\n\n继续"
 	if result.Text != want {
 		t.Fatalf("text = %q, want %q", result.Text, want)
 	}
@@ -115,7 +116,7 @@ func TestApplyOtherSessionAssistantReferenceFallsBack(t *testing.T) {
 	mapPlatformMessage(t, ctx, store, otherScope, "p-other", msg)
 
 	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: otherScope.PlatformScopeID, ActorID: "qqofficial:user-1", ReplyID: "p-other", Text: "继续"})
-	want := "[引用：bot]：old\n\n继续"
+	want := "[引用#p-other：bot:old]\n\n继续"
 	if result.Text != want {
 		t.Fatalf("text = %q, want %q", result.Text, want)
 	}
@@ -134,7 +135,7 @@ func TestApplyOtherScopeAssistantReferenceFallsBack(t *testing.T) {
 	mapPlatformMessage(t, ctx, store, currentScope, "p-other-scope", msg)
 
 	result := Apply(ctx, Options{Store: store, Platform: currentScope.Platform, ScopeID: currentScope.PlatformScopeID, ActorID: currentScope.ActorID, ReplyID: "p-other-scope", Text: "继续"})
-	want := "[引用：bot]：old\n\n继续"
+	want := "[引用#p-other-scope：bot:old]\n\n继续"
 	if result.Text != want || result.ResumeSessionID != "" || result.ForkFromMessageID != "" {
 		t.Fatalf("result = %#v, want fallback %q", result, want)
 	}
@@ -151,6 +152,34 @@ func TestApplyForkCommandUsesReferencedAssistantID(t *testing.T) {
 	want := "/fork " + msg.ID
 	if result.Text != want {
 		t.Fatalf("text = %q, want %q", result.Text, want)
+	}
+}
+
+func TestFormatReferenceTextUsesPlatformIdentifierLabels(t *testing.T) {
+	reply := platform.ReplyContext{MessageID: "42", SenderID: "1001", SenderName: "小娅", Text: "原消息"}
+	tests := map[string]string{
+		"qqonebot": `[引用#42：小娅(qq:1001):原消息]
+
+新消息`,
+		"telegram": `[引用#42：小娅(tg:1001):原消息]
+
+新消息`,
+		"qqofficial": `[引用#42：小娅(openid:1001):原消息]
+
+新消息`,
+	}
+	for platformName, want := range tests {
+		if got := FormatReferenceText(platformName, reply, "新消息"); got != want {
+			t.Errorf("%s text = %q, want %q", platformName, got, want)
+		}
+	}
+}
+
+func TestChatMetadataPreservesReferenceSnapshot(t *testing.T) {
+	want := platform.ReplyContext{MessageID: "42", SenderID: "1001", SenderName: "小娅", Text: "原消息"}
+	message := storage.ChatMessage{ReplyToPlatformMessageID: want.MessageID, Metadata: MarshalChatMetadata(want)}
+	if got := ChatMessageReply(message); got.MessageID != want.MessageID || got.SenderID != want.SenderID || got.SenderName != want.SenderName || got.Text != want.Text {
+		t.Fatalf("reply = %#v, want %#v", got, want)
 	}
 }
 

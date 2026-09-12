@@ -15,6 +15,7 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
+	"elbot/internal/platform/refcontext"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -424,7 +425,7 @@ func TestForkableReferenceMessageIDRequiresOwnAssistantSession(t *testing.T) {
 	if handler.text != "继续" {
 		t.Fatalf("other assistant current text = %q, want current", handler.text)
 	}
-	if msgCtx.ContextText != "[引用：bot]：other answer\n\n继续" {
+	if msgCtx.ContextText != "[引用#other-assistant：bot:other answer]\n\n继续" {
 		t.Fatalf("other assistant context text = %q", msgCtx.ContextText)
 	}
 	if msgCtx.Reply.MessageID != "other-assistant" || msgCtx.Reply.Text != "other answer" {
@@ -441,7 +442,7 @@ func TestForkableReferenceMessageIDRequiresOwnAssistantSession(t *testing.T) {
 	if handler.text != "芙莉丝 继续" {
 		t.Fatalf("user current text = %q, want current", handler.text)
 	}
-	if msgCtx.ContextText != "[引用]：own user\n\n芙莉丝 继续" {
+	if msgCtx.ContextText != "[引用#own-user:own user]\n\n芙莉丝 继续" {
 		t.Fatalf("user context text = %q", msgCtx.ContextText)
 	}
 	if msgCtx.Reply.MessageID != "own-user" || msgCtx.Reply.Text != "own user" {
@@ -480,6 +481,47 @@ func TestOutputSegments(t *testing.T) {
 	}
 	if len(segments) != 1 || segments[0].Type != "at" || segments[0].Data["qq"] != "123456" {
 		t.Fatalf("at segments = %#v", segments)
+	}
+}
+
+func TestHandleEventStoresReferenceSnapshot(t *testing.T) {
+	ctx := context.Background()
+	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer history.Close()
+	repo := history.Repository()
+	if err := repo.Append(ctx, &storage.ChatMessage{
+		Platform: "qqonebot", PlatformScopeID: "group:9", ScopeType: "group", PlatformMessageID: "42",
+		SenderID: "1001", SenderName: "被引用者", Text: "被引用内容",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	adapter := New(Config{}, nil, repo, nil)
+	handler := &captureHandler{}
+	adapter.handleEvent(ctx, handler, Event{
+		MessageType: "group", SelfID: 9999, UserID: 2002, GroupID: 9, MessageID: 84,
+		Sender:  Sender{UserID: 2002, Nickname: "回复者"},
+		Message: []byte(`[{"type":"reply","data":{"id":"42"}},{"type":"text","data":{"text":"本次发送的内容"}}]`),
+	})
+	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	if !ok {
+		t.Fatal("missing message context")
+	}
+	wantText := `[引用#42：被引用者(qq:1001):被引用内容]
+
+本次发送的内容`
+	if msgCtx.ContextText != wantText {
+		t.Fatalf("context text = %q, want %q", msgCtx.ContextText, wantText)
+	}
+	row, err := repo.GetByPlatformMessage(ctx, "qqonebot", "group:9", "84")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply := refcontext.ChatMessageReply(*row)
+	if reply.MessageID != "42" || reply.SenderID != "1001" || reply.SenderName != "被引用者" || reply.Text != "被引用内容" {
+		t.Fatalf("stored reply = %#v", reply)
 	}
 }
 
@@ -540,6 +582,9 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	}
 	if ref.Label != "引用：用户" {
 		t.Fatalf("reference label = %q", ref.Label)
+	}
+	if ref.SenderID != "2" || ref.SenderName != "用户" {
+		t.Fatalf("reference sender = %#v", ref)
 	}
 	if len(ref.Segments) != 1 || ref.Segments[0].Type != platform.SegmentImage || ref.Segments[0].URL != "https://example.com/a.jpg" {
 		t.Fatalf("reference segments = %#v", ref.Segments)
