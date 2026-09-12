@@ -1376,6 +1376,14 @@
       "translation": "__ELBOT_CODE_0__ high-risk tool call details now support custom plain text display for tools;",
       "updated_at": 1782631048
     },
+    "CHANGELOG.md:list:dc2cf953d3d9353592ba0c3cfdc1f5bd7eff01a1b55aac0fda1fabea161858db": {
+      "kind": "list",
+      "source": "修复查询聊天记录查不到纯图片的bug",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "dc2cf953d3d9353592ba0c3cfdc1f5bd7eff01a1b55aac0fda1fabea161858db",
+      "translation": "Fixed bug where querying chat history could not find pure images.",
+      "updated_at": 1789178695
+    },
     "CHANGELOG.md:list:dc3765cc3b6cc516b17fb0be590317ce5a5fab8d064d6514066e8593e421b5eb": {
       "kind": "list",
       "source": "默认首个流式事件等待 180 秒、流式 idle 60 秒、整次响应不限总时长。",
@@ -1594,8 +1602,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "e5cedf747a4e32d3a7194422989bb0265ce04600cf034fd305b429be7ecb7903",
+  "source_hash": "e80dc1d49579f44387d0b0b8b67d733b192578e624a2d56867a255bcc0a53e29",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1789088930,
+  "updated_at": 1789178695,
   "version": 2
 }
