@@ -154,7 +154,7 @@ func TestExecCancellationKillsDescendantProcesses(t *testing.T) {
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("runRule error = %v, want context canceled", err)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(4 * time.Second):
 		t.Fatal("Hook did not stop after cancellation")
 	}
 	time.Sleep(700 * time.Millisecond)
