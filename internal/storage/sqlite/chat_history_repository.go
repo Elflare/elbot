@@ -160,7 +160,7 @@ func (r *ChatHistoryRepository) Search(ctx context.Context, req storage.ChatHist
 	if limit <= 0 {
 		limit = 10
 	}
-	conditions := []string{"platform = ?", "platform_scope_id = ?", "text != ''"}
+	conditions := []string{"platform = ?", "platform_scope_id = ?", "(text != '' OR COALESCE(segments, '') != '')"}
 	params := []any{req.Platform, req.PlatformScopeID}
 	if len(req.QueryTerms) > 0 {
 		op := "OR"
@@ -263,7 +263,7 @@ func (r *ChatHistoryRepository) listAroundSide(ctx context.Context, platform, sc
 SELECT seq, id, platform, platform_scope_id, scope_type, platform_message_id,
        sender_id, sender_name, text, raw, segments, reply_to_platform_message_id, metadata, created_at
 FROM chat_messages
-WHERE platform = ? AND platform_scope_id = ? AND text != '' AND seq %s ?
+WHERE platform = ? AND platform_scope_id = ? AND (text != '' OR COALESCE(segments, '') != '') AND seq %s ?
 ORDER BY seq %s
 LIMIT ?`, operator, order), platform, scopeID, seq, limit)
 	if err != nil {

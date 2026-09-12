@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 修复 OpenAI-compatible 接口返回非 200 状态时，响应上下文在读取错误 body 前被提前取消，导致真实上游错误丢失并只显示 `failed to read body: context canceled` 的问题。
 - 修复读文件工具错误将部分非 UTF-8 文本编码识别为二进制文件的问题。
 - 修复elwisp发往qqonebot，文件太大导致全部阻塞的bug
+- 修复查询聊天记录查不到纯图片的bug
 
 ## [v0.4.2 - 2026-08-06]
 
