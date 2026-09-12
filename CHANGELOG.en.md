@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed an issue where the response context was cancelled prematurely before reading the error body when the OpenAI-compatible interface returned a non-200 status, causing the actual upstream error to be lost and only `failed to read body: context canceled` to be displayed.
 - Fixed an issue where the read file tool incorrectly identified some non-UTF-8 text encodings as binary files.
 - Fixed a bug where large files sent from Elwisp to qqonebot caused total blockage.
+- Fixed bug where querying chat history could not find pure images.
 
 ## [v0.4.2 - 2026-08-06]
 
