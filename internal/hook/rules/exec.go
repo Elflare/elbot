@@ -53,8 +53,14 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 	}
 	cmd := processEnv.CommandContext(runCtx, argv[0], argv[1:]...)
 	configureExecHookProcess(cmd)
+	var killOnce sync.Once
+	killProcessTree := func() {
+		killOnce.Do(func() {
+			killExecHookProcessTree(cmd)
+		})
+	}
 	cmd.Cancel = func() error {
-		killExecHookProcessTree(cmd)
+		killProcessTree()
 		return nil
 	}
 	cmd.Dir = cwd
@@ -84,7 +90,7 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		return err
 	}
 	fail := func(result actionResult, source error) (hook.Event, actionResult, error) {
-		killExecHookProcessTree(cmd)
+		killProcessTree()
 		waitErr := waitExec()
 		if contextErr := execContextError(runCtx, action); contextErr != nil {
 			source = contextErr
