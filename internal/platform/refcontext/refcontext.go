@@ -2,7 +2,7 @@ package refcontext
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -11,10 +11,21 @@ import (
 )
 
 type ReferencedMessage struct {
-	SenderID string
-	Label    string
-	Text     string
-	Segments []platform.MessageSegment
+	SenderID   string
+	SenderName string
+	Label      string
+	Text       string
+	Segments   []platform.MessageSegment
+}
+
+type chatMetadata struct {
+	Reply *chatReplyMetadata `json:"reply,omitempty"`
+}
+
+type chatReplyMetadata struct {
+	SenderID   string `json:"sender_id,omitempty"`
+	SenderName string `json:"sender_name,omitempty"`
+	Text       string `json:"text,omitempty"`
 }
 
 type Options struct {
@@ -153,6 +164,7 @@ func fallbackReferenceText(ctx context.Context, opts Options, replyID string, st
 			label = strings.TrimSpace(ref.Label)
 		}
 		reply.SenderID = strings.TrimSpace(ref.SenderID)
+		reply.SenderName = strings.TrimSpace(ref.SenderName)
 		content = ref.Text
 		segments = ref.Segments
 	}
@@ -163,6 +175,9 @@ func fallbackReferenceText(ctx context.Context, opts Options, replyID string, st
 		if strings.TrimSpace(stored.Content) != "" {
 			content = stored.Content
 		}
+	}
+	if reply.SenderName == "" {
+		reply.SenderName = referenceSenderName(label)
 	}
 	content = strings.TrimSpace(content)
 	reply.Text = content
@@ -177,10 +192,81 @@ func fallbackReferenceText(ctx context.Context, opts Options, replyID string, st
 	if content == "" {
 		return opts.Text, segments, reply
 	}
-	if strings.TrimSpace(opts.Text) == "" {
-		return fmt.Sprintf("[%s]：%s", label, content), segments, reply
+	return FormatReferenceText(opts.Platform, reply, opts.Text), segments, reply
+}
+
+func FormatReferenceText(platformName string, reply platform.ReplyContext, currentText string) string {
+	header := "引用#" + strings.TrimSpace(reply.MessageID)
+	name := strings.TrimSpace(reply.SenderName)
+	id := strings.TrimSpace(reply.SenderID)
+	if id != "" {
+		kind := referenceIDKind(platformName)
+		if name != "" {
+			name += "(" + kind + ":" + id + ")"
+		} else {
+			name = kind + ":" + id
+		}
 	}
-	return fmt.Sprintf("[%s]：%s\n\n%s", label, content, opts.Text), segments, reply
+	if name != "" {
+		header += "：" + name
+	}
+	if content := strings.TrimSpace(reply.Text); content != "" {
+		header += ":" + content
+	}
+	formatted := "[" + header + "]"
+	if currentText = strings.TrimSpace(currentText); currentText != "" {
+		formatted += "\n\n" + currentText
+	}
+	return formatted
+}
+
+func MarshalChatMetadata(reply platform.ReplyContext) string {
+	if strings.TrimSpace(reply.MessageID) == "" {
+		return ""
+	}
+	metadata := chatMetadata{Reply: &chatReplyMetadata{
+		SenderID: strings.TrimSpace(reply.SenderID), SenderName: strings.TrimSpace(reply.SenderName), Text: strings.TrimSpace(reply.Text),
+	}}
+	data, err := json.Marshal(metadata)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func ChatMessageReply(message storage.ChatMessage) platform.ReplyContext {
+	reply := platform.ReplyContext{MessageID: strings.TrimSpace(message.ReplyToPlatformMessageID)}
+	var metadata chatMetadata
+	if json.Unmarshal([]byte(strings.TrimSpace(message.Metadata)), &metadata) == nil && metadata.Reply != nil {
+		reply.SenderID = strings.TrimSpace(metadata.Reply.SenderID)
+		reply.SenderName = strings.TrimSpace(metadata.Reply.SenderName)
+		reply.Text = strings.TrimSpace(metadata.Reply.Text)
+	}
+	return reply
+}
+
+func referenceSenderName(label string) string {
+	label = strings.TrimSpace(label)
+	if label == "引用" {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(label, "引用："))
+}
+
+func referenceIDKind(platformName string) string {
+	switch strings.TrimSpace(platformName) {
+	case "qqonebot":
+		return "qq"
+	case "telegram":
+		return "tg"
+	case "qqofficial":
+		return "openid"
+	default:
+		if platformName = strings.TrimSpace(platformName); platformName != "" {
+			return platformName
+		}
+		return "id"
+	}
 }
 
 func restoreHistoryMedia(ctx context.Context, opts Options, row storage.ChatMessage, segments []platform.MessageSegment) []platform.MessageSegment {
@@ -242,7 +328,7 @@ func referenceSource(ctx context.Context, opts Options, replyID string) (Referen
 				if row.SenderName != "" {
 					label += "：" + row.SenderName
 				}
-				return ReferencedMessage{SenderID: row.SenderID, Label: label, Text: row.Text, Segments: segments}, true
+				return ReferencedMessage{SenderID: row.SenderID, SenderName: row.SenderName, Label: label, Text: row.Text, Segments: segments}, true
 			}
 		}
 	}

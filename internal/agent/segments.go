@@ -60,6 +60,16 @@ func inboundContextSegments(ctx context.Context, text string) []llm.MessageSegme
 	return inboundSegments(ctx, text)
 }
 
+func inboundReplyMessageID(ctx context.Context) string {
+	if msg, ok := platform.MessageContextFrom(ctx); ok {
+		if id := strings.TrimSpace(msg.Reply.MessageID); id != "" {
+			return id
+		}
+		return strings.TrimSpace(msg.ReplyToMessageID)
+	}
+	return ""
+}
+
 func withInboundSegments(ctx context.Context, segments []llm.MessageSegment) context.Context {
 	input := inboundTurnInput(ctx, llm.SegmentsTextOnly(segments))
 	input.Text = llm.SegmentsTextOnly(segments)

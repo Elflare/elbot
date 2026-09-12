@@ -214,7 +214,7 @@ func TestHandleC2CMessageAddsFallbackReferenceText(t *testing.T) {
 		},
 	})
 
-	want := "[引用]：已保存附件：attachment-1\n路径：/tmp/attachment-1\n\n你看看有没"
+	want := "[引用#notice-1:已保存附件：attachment-1\n路径：/tmp/attachment-1]\n\n你看看有没"
 	if handler.text != "你看看有没" {
 		t.Fatalf("text = %q, want current text", handler.text)
 	}

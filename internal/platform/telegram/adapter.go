@@ -160,8 +160,8 @@ func (a *Adapter) handleCallbackQuery(ctx context.Context, handler platform.Plat
 
 func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHandler, msg message) {
 	normalized := normalizeMessage(msg)
-	a.recordChatMessage(ctx, msg, normalized)
 	if msg.Chat.Type != "private" && msg.Chat.Type != "group" && msg.Chat.Type != "supergroup" {
+		a.recordChatMessage(ctx, msg, normalized, platform.ReplyContext{})
 		return
 	}
 	text := normalized.Text
@@ -218,6 +218,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 			messageCtx.ContextSegments = finalMessageSegments(ref.Text, normalized.Segments, referenceSegments)
 		}
 	}
+	a.recordChatMessage(ctx, msg, normalized, messageCtx.Reply)
 	if strings.TrimSpace(text) == "" && strings.TrimSpace(messageCtx.ContextText) == "" && len(messageCtx.ContextSegments) == 0 && len(normalized.Segments) == 0 {
 		return
 	}

@@ -12,6 +12,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/platform"
+	"elbot/internal/platform/refcontext"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/tool/runtimeinfo"
@@ -402,7 +403,20 @@ func formatChatHistoryLine(row storage.ChatMessage, targetID string) string {
 	if name == "" {
 		name = row.SenderID
 	}
-	return fmt.Sprintf("%s[#%s] %s %s(%s): %s", prefix, row.PlatformMessageID, row.CreatedAt.Format("2006-01-02 15:04:05"), name, row.SenderID, truncateChatHistoryMessage(row.Text))
+	body := truncateChatHistoryMessage(row.Text)
+	if strings.TrimSpace(row.ReplyToPlatformMessageID) != "" {
+		body = truncateChatHistoryReference(refcontext.FormatReferenceText(row.Platform, refcontext.ChatMessageReply(row), row.Text))
+	}
+	return fmt.Sprintf("%s[#%s] %s %s(%s): %s", prefix, row.PlatformMessageID, row.CreatedAt.Format("2006-01-02 15:04:05"), name, row.SenderID, body)
+}
+
+func truncateChatHistoryReference(text string) string {
+	text = strings.TrimSpace(strings.ReplaceAll(text, "\r", ""))
+	if len([]rune(text)) <= chatHistoryMessageLimit {
+		return text
+	}
+	runes := []rune(text)
+	return string(runes[:chatHistoryMessageLimit]) + "...[单条消息过长，已截断]"
 }
 
 func truncateChatHistoryMessage(text string) string {

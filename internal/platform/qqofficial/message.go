@@ -49,7 +49,6 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 
 	text := normalizedInboundText(msg, mentionedBot)
 	replyID := inboundReplyID(msg)
-	a.recordChatMessage(ctx, msg, conversation, senderID, scopeID, text, replyID)
 	segments := inboundSegments(text, inboundAttachmentSegments(msg.Attachments))
 	if text == "" && len(segments) == 0 {
 		return
@@ -115,6 +114,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 		msgCtx = platform.WithMessageContext(ctx, messageCtx)
 		msgCtx = context.WithValue(msgCtx, targetKey{}, target)
 	}
+	a.recordChatMessage(ctx, msg, conversation, senderID, scopeID, text, replyID, messageCtx.Reply)
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
 		a.logWarn(ctx, "handle qqofficial message failed", "error", err, "message_id", msg.ID)
 	}
@@ -145,7 +145,7 @@ func inboundReplyID(msg inboundMessage) string {
 	return strings.TrimSpace(msg.MessageReference.MessageID)
 }
 
-func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, conversation platform.ConversationKind, senderID, scopeID, text, replyID string) {
+func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, conversation platform.ConversationKind, senderID, scopeID, text, replyID string, reply platform.ReplyContext) {
 	if a.chatHistory == nil || (strings.TrimSpace(text) == "" && len(msg.Attachments) == 0) || strings.TrimSpace(msg.ID) == "" {
 		return
 	}
@@ -169,6 +169,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 		Raw:                      msg.Content,
 		Segments:                 platform.MarshalChatSegments(inboundSegments(text, inboundAttachmentSegments(msg.Attachments))),
 		ReplyToPlatformMessageID: strings.TrimSpace(replyID),
+		Metadata:                 refcontext.MarshalChatMetadata(reply),
 		CreatedAt:                createdAt,
 	}
 	if err := a.chatHistory.Append(ctx, history); err != nil {

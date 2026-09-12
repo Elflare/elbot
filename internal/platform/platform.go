@@ -59,10 +59,11 @@ type MediaResolver interface {
 }
 
 type ReplyContext struct {
-	MessageID string
-	SenderID  string
-	Text      string
-	Segments  []MessageSegment
+	MessageID  string
+	SenderID   string
+	SenderName string
+	Text       string
+	Segments   []MessageSegment
 }
 
 type ConversationKind string

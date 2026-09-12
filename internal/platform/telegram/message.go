@@ -137,14 +137,16 @@ func (a *Adapter) referenceFetcher(msg message, normalized normalizedMessage) fu
 		}
 		ref := normalizeMessage(*normalized.ReplyMessage)
 		label := "引用"
+		senderName := ""
 		if normalized.ReplyMessage.From != nil {
-			label = "引用：" + displayName(*normalized.ReplyMessage.From)
+			senderName = displayName(*normalized.ReplyMessage.From)
+			label = "引用：" + senderName
 		}
-		return refcontext.ReferencedMessage{SenderID: userIDString(normalized.ReplyMessage.From), Label: label, Text: ref.Text, Segments: appendNonTextSegments(nil, ref.Segments)}, true
+		return refcontext.ReferencedMessage{SenderID: userIDString(normalized.ReplyMessage.From), SenderName: senderName, Label: label, Text: ref.Text, Segments: appendNonTextSegments(nil, ref.Segments)}, true
 	}
 }
 
-func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized normalizedMessage) {
+func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized normalizedMessage, reply platform.ReplyContext) {
 	if a.chatHistory == nil || (strings.TrimSpace(normalized.Text) == "" && len(normalized.Segments) == 0) || msg.MessageID == 0 {
 		return
 	}
@@ -164,6 +166,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 		Raw:                      firstNonEmpty(msg.Text, msg.Caption),
 		Segments:                 platform.MarshalChatSegments(normalized.Segments),
 		ReplyToPlatformMessageID: normalized.ReplyID,
+		Metadata:                 refcontext.MarshalChatMetadata(reply),
 		CreatedAt:                createdAt,
 	}
 	if err := a.chatHistory.Append(ctx, chatMessage); err != nil {
