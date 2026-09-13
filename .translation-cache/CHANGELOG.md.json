@@ -120,6 +120,14 @@
       "translation": "**Multi-platform adapter**: CLI (including client/server separation and remote connection), QQ OneBot v11, QQ Official Bot, Telegram Bot API.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:12d00ff7c67e4c2fce31b4815ea5571c66e797eb8a3143935803cc45147c166e": {
+      "kind": "list",
+      "source": "原始媒体和 Media ID 不变。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "12d00ff7c67e4c2fce31b4815ea5571c66e797eb8a3143935803cc45147c166e",
+      "translation": "Original media and Media IDs remain unchanged.",
+      "updated_at": 1789300308
+    },
     "CHANGELOG.md:list:1306f051df00fc640349a0d84e661928c55382bb10eb6763bf3c3f1865c2f524": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 支持填字段更新 meta，并新增 __ELBOT_CODE_2__ 复用 __ELBOT_CODE_3__ 的编辑操作修改正文；",
@@ -143,6 +151,14 @@
       "source_hash": "14cd896f3e686f14895d68bac5e89d2420b4109ebf71e29785677cc89a68d1a8",
       "translation": "Interfaces, configurations, and internal implementations may still be adjusted; it is more suitable for exploratory use as a personal Agent/bot framework.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:153bb41a5c2a76cac36cdfaa46fe514ac8125026bad589fb9dd88e942a020a20": {
+      "kind": "list",
+      "source": "修复 OpenAI-compatible 上游返回 HTTP 200 HTML/非 SSE 页面时被 Scanner 超长 token 错误掩盖的问题；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "153bb41a5c2a76cac36cdfaa46fe514ac8125026bad589fb9dd88e942a020a20",
+      "translation": "Fixed an issue where OpenAI-compatible upstreams returning HTTP 200 HTML/non-SSE pages were masked by Scanner's over-length token error;",
+      "updated_at": 1789300308
     },
     "CHANGELOG.md:list:172ce4a2b47495feea66fd71dd0d868f23fcc3fbe8c9aa01a58362342daddd52": {
       "kind": "list",
@@ -343,6 +359,14 @@
       "source_hash": "37d1b3ce5330e9258be430381efb3099ba1542f542eae9d94fc0586ef335848b",
       "translation": "Fixed an issue where OpenAI-compatible streaming requests used a single HTTP timeout, causing them to be incorrectly interrupted when the model's first token was slow or long outputs exceeded 60 seconds.",
       "updated_at": 1782461728
+    },
+    "CHANGELOG.md:list:3b4de8ae6969fdf508c1b29cc82bb09073d4eb0eb8fdb232c6add7a94df865e9": {
+      "kind": "list",
+      "source": "S3 后端改为按需初始化，配置不可用时仅告警，不再阻止 ElBot 启动。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "3b4de8ae6969fdf508c1b29cc82bb09073d4eb0eb8fdb232c6add7a94df865e9",
+      "translation": "The S3 backend is now initialized on demand; if the configuration is unavailable, only a warning is issued, and it no longer prevents ElBot from starting.",
+      "updated_at": 1789300308
     },
     "CHANGELOG.md:list:3bfc1afeffc284a26448c1c4b861effd798139382834e032c757e03c4de32170": {
       "kind": "list",
@@ -1344,6 +1368,14 @@
       "translation": "Use __ELBOT_CODE_0__ to cancel long-running Hooks; manual cancellations are recorded as normal cancellations.",
       "updated_at": 1783571675
     },
+    "CHANGELOG.md:list:d3c42bf81c2eaeda9ad085d96e8894b1378a6516cc98a9c6ca556d9e4f084183": {
+      "kind": "list",
+      "source": "现在会在流解析前识别异常响应，并只返回有限、脱敏的摘要。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d3c42bf81c2eaeda9ad085d96e8894b1378a6516cc98a9c6ca556d9e4f084183",
+      "translation": "Abnormal responses will now be identified before stream parsing, and only a limited, desensitized summary will be returned.",
+      "updated_at": 1789300308
+    },
     "CHANGELOG.md:list:d408cf85360e0661ed43f8e27b1c93b23ea162bb86b523ef7ac4e8bdfce07e49": {
       "kind": "list",
       "source": "修复工具 prepared Hook 改写后的参数没有同步到当前 LLM 上下文，以及进程内 Hook 可以改写工具 ID/名称的问题；",
@@ -1584,6 +1616,14 @@
       "translation": "Now, a user text label containing the sequence number within the message, name, and HTTP(S) URL will be derived before each image; persistence __ELBOT_CODE_0__ and visual fallback use the same text projection, while __ELBOT_CODE_1__ still only saves the original structure and requires no database migration.",
       "updated_at": 1786545145
     },
+    "CHANGELOG.md:list:fde27e52355a3907827c4d44234d35b1269bf4e8bbc0b2f59b1ec0e3f8f13d71": {
+      "kind": "list",
+      "source": "超过 __ELBOT_CODE_0__ 图片大小或边长限制的 LLM 输入现在会在请求内临时转为白底 JPEG，并按压缩后的实际大小选择 base64 或 S3；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "fde27e52355a3907827c4d44234d35b1269bf4e8bbc0b2f59b1ec0e3f8f13d71",
+      "translation": "LLM inputs exceeding the __ELBOT_CODE_0__ image size or dimension limits will now be temporarily converted to white-background JPEGs within the request, and will choose between base64 or S3 based on the actual compressed size;",
+      "updated_at": 1789300308
+    },
     "CHANGELOG.md:list:ffea405479ecdf42f2de02ac5df8d702b35876490677884584d95b31ed5e348c": {
       "kind": "list",
       "source": "优化.env、平台secret、token解析逻辑",
@@ -1602,8 +1642,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "e80dc1d49579f44387d0b0b8b67d733b192578e624a2d56867a255bcc0a53e29",
+  "source_hash": "adb73620089ca63b57de4625a77f99a8e7bf84027644c18b8815659f560866d9",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1789178695,
+  "updated_at": 1789300308,
   "version": 2
 }

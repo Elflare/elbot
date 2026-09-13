@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- LLM inputs exceeding the `[media]` image size or dimension limits will now be temporarily converted to white-background JPEGs within the request, and will choose between base64 or S3 based on the actual compressed size; Original media and Media IDs remain unchanged. The S3 backend is now initialized on demand; if the configuration is unavailable, only a warning is issued, and it no longer prevents ElBot from starting.
+
 - Command parameters for toolized AgentSkill previously only supported strings, numbers, and booleans; Now JSON arrays and objects will be compressed into a single argv parameter and passed to the corresponding `[args]` flag.
 - Previously, append-and-resend for regular users and high-risk tool confirmations would wait indefinitely and occupy the current Turn for a long time; Now, it stops by default after 10 minutes of no valid operation; if the corresponding Session TTL is shorter, that will be the limit. Appended content or `/detail` will renew the timeout. Superadmins are not subject to the additional 10-minute limit but still adhere to the enabled Session TTL.
 - Multimodal images were previously only sent as `image_url` content segments; the model could see the images but did not know the reusable addresses; Now, a user text label containing the sequence number within the message, name, and HTTP(S) URL will be derived before each image; persistence `content` and visual fallback use the same text projection, while `segments` still only saves the original structure and requires no database migration.
@@ -27,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `read_file` and `edit_file` previously completely rejected text files exceeding 2 MiB; Now, files between 2–100 MiB can still be read line-by-line, grepped, and edited; AST, full diffs, and overly long confirmation content are disabled based on file size only during actual calls, while revision verification, pre-checks, and atomic writes are preserved.
 
 ### Fixed
+
+- Fixed an issue where OpenAI-compatible upstreams returning HTTP 200 HTML/non-SSE pages were masked by Scanner's over-length token error; Abnormal responses will now be identified before stream parsing, and only a limited, desensitized summary will be returned.
 
 - Fixed an issue where referencing the last assistant reply of the original Session would incorrectly create a new Session after the Session timed out due to inactivity, `/new` was executed, or the Session was switched; Now, the Session will be automatically restored; referencing an earlier reply will still result in a Fork.
 - Fixed the inconsistency in reading service-level environment variables between built-in tools and Go Skills, which caused some tools to be unable to read the configuration directory `.env`.
