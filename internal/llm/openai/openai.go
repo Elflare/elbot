@@ -315,7 +315,7 @@ func latestMessageJSON(messages []llm.LLMMessage) string {
 	if len(messages) == 0 {
 		return ""
 	}
-	latest := toOpenAIMessages(messages[len(messages)-1:])
+	latest := toOpenAIMessages(logSafeMessages(messages[len(messages)-1:]))
 	data, err := marshalJSONNoEscape(latest[0])
 	if err != nil {
 		return ""
@@ -328,7 +328,7 @@ func firstSystemMessageJSON(messages []llm.LLMMessage) string {
 		if message.Role != llm.RoleSystem {
 			continue
 		}
-		converted := toOpenAIMessages([]llm.LLMMessage{message})
+		converted := toOpenAIMessages(logSafeMessages([]llm.LLMMessage{message}))
 		data, err := marshalJSONNoEscape(converted[0])
 		if err != nil {
 			return ""
@@ -336,6 +336,29 @@ func firstSystemMessageJSON(messages []llm.LLMMessage) string {
 		return string(data)
 	}
 	return ""
+}
+
+func logSafeMessages(messages []llm.LLMMessage) []llm.LLMMessage {
+	out := llm.CloneMessages(messages)
+	for i := range out {
+		for j := range out[i].Segments {
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(out[i].Segments[j].URL)), "data:") {
+				out[i].Segments[j].URL = redactDataURL(out[i].Segments[j].URL)
+			}
+		}
+	}
+	return out
+}
+
+func redactDataURL(value string) string {
+	value = strings.TrimSpace(value)
+	if comma := strings.IndexByte(value, ','); comma >= 0 {
+		return value[:comma] + ",…"
+	}
+	if len(value) > 128 {
+		return value[:128] + "…"
+	}
+	return value
 }
 
 func chatRequestLogSummary(req llm.ChatRequest, bodyBytes []byte) []any {

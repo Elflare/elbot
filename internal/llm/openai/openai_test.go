@@ -185,6 +185,44 @@ func TestChatStream_DebugLogIncludesLatestMessageJSON(t *testing.T) {
 	}
 }
 
+func TestChatStreamDebugLogRedactsDataURLButRequestKeepsIt(t *testing.T) {
+	const dataURL = "data:image/png;base64,log-secret-base64-payload"
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: [DONE]\n\n")
+		w.(http.Flusher).Flush()
+	}))
+	defer srv.Close()
+
+	var logs bytes.Buffer
+	adapter := New(srv.URL, "secret-key", nil)
+	adapter.SetLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+		Model: "test",
+		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{
+			{Type: llm.SegmentImage, URL: dataURL},
+		}}},
+	})
+	if err != nil {
+		t.Fatalf("ChatStream: %v", err)
+	}
+	for range ch {
+	}
+
+	logText := logs.String()
+	if !strings.Contains(logText, "data:image/png;base64,…") {
+		t.Fatalf("debug log did not keep redacted data URL prefix: %s", logText)
+	}
+	if strings.Contains(logText, "log-secret-base64-payload") {
+		t.Fatalf("debug log leaked data URL payload: %s", logText)
+	}
+	if !bytes.Contains(capturedBody, []byte(dataURL)) {
+		t.Fatalf("actual request body should keep complete data URL, got: %s", string(capturedBody))
+	}
+}
+
 func TestChatStreamLogsFirstSystemMessageOncePerSession(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.Copy(io.Discard, r.Body)

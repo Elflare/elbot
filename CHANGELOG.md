@@ -29,13 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - 修复 OpenAI-compatible 上游返回 HTTP 200 HTML/非 SSE 页面时被 Scanner 超长 token 错误掩盖的问题；现在会在流解析前识别异常响应，并只返回有限、脱敏的摘要。
-
 - 修复 Session 闲置过期、执行 `/new` 或切换会话后，引用原 Session 最后一条 assistant 回复会误建新 Session 的问题；现在会自动恢复该 Session，引用较早回复仍会 Fork。
 - 修复内置工具与 Go Skill 的服务级环境变量读取不一致，导致部分工具无法读取配置目录 `.env` 的问题。
 - 修复 OpenAI-compatible 接口返回非 200 状态时，响应上下文在读取错误 body 前被提前取消，导致真实上游错误丢失并只显示 `failed to read body: context canceled` 的问题。
 - 修复读文件工具错误将部分非 UTF-8 文本编码识别为二进制文件的问题。
 - 修复elwisp发往qqonebot，文件太大导致全部阻塞的bug
 - 修复查询聊天记录查不到纯图片的bug
+- 修复日志可能保存base64的bug
 
 ## [v0.4.2 - 2026-08-06]
 
