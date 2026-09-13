@@ -1040,6 +1040,14 @@
       "translation": "Optimized the __ELBOT_CODE_0__ tool, supporting directory search, selection of search results by index, and precise return of complete function content and its start and end line numbers based on AST function names.",
       "updated_at": 1784167898
     },
+    "CHANGELOG.md:list:a48c52ce6cc4da6f8dc182e99b2249390cd7cc2a842a32616a9b9ee9e98a3a6f": {
+      "kind": "list",
+      "source": "修复日志可能保存base64的bug",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a48c52ce6cc4da6f8dc182e99b2249390cd7cc2a842a32616a9b9ee9e98a3a6f",
+      "translation": "Fixed a bug where logs might be saved as base64",
+      "updated_at": 1789313626
+    },
     "CHANGELOG.md:list:a4d9db282b34bc855fb836df1e6af9afcc930d531a253435487b572420d5a595": {
       "kind": "list",
       "source": "当前回复现在正常结束，多条 pending 合并后自动开启下一轮请求。",
@@ -1642,8 +1650,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "adb73620089ca63b57de4625a77f99a8e7bf84027644c18b8815659f560866d9",
+  "source_hash": "99036ab1a0e0183ff75495764ecb09d0cb6c37a5d96c398fc45a951ad0cc01ee",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1789300308,
+  "updated_at": 1789313626,
   "version": 2
 }

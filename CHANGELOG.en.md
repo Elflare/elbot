@@ -31,13 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Fixed an issue where OpenAI-compatible upstreams returning HTTP 200 HTML/non-SSE pages were masked by Scanner's over-length token error; Abnormal responses will now be identified before stream parsing, and only a limited, desensitized summary will be returned.
-
 - Fixed an issue where referencing the last assistant reply of the original Session would incorrectly create a new Session after the Session timed out due to inactivity, `/new` was executed, or the Session was switched; Now, the Session will be automatically restored; referencing an earlier reply will still result in a Fork.
 - Fixed the inconsistency in reading service-level environment variables between built-in tools and Go Skills, which caused some tools to be unable to read the configuration directory `.env`.
 - Fixed an issue where the response context was cancelled prematurely before reading the error body when the OpenAI-compatible interface returned a non-200 status, causing the actual upstream error to be lost and only `failed to read body: context canceled` to be displayed.
 - Fixed an issue where the read file tool incorrectly identified some non-UTF-8 text encodings as binary files.
 - Fixed a bug where large files sent from Elwisp to qqonebot caused total blockage.
 - Fixed bug where querying chat history could not find pure images.
+- Fixed a bug where logs might be saved as base64
 
 ## [v0.4.2 - 2026-08-06]
 
