@@ -422,7 +422,11 @@ download_timeout_secs = 60
 
 `[file_delivery]` of `app.toml` controls media delivery in model requests: `base64` uses embedded data, `s3` uses pre-signed download links, and `hybrid` uses S3 when the total size of request media exceeds `max_direct_base64_bytes`. After switching to S3, existing local media will be uploaded when remote delivery is required, reusing the recorded object keys.
 
-S3 delivery uses variables specified by `s3_endpoint`, `s3_region`, `s3_bucket`, as well as `s3_access_key_env` and `s3_secret_key_env`. Credentials are first read from the ElBot process environment; if not set, they are read from `.env` in the same directory as the main configuration; Startup will fail if any credentials for `s3` or `hybrid` are missing; `base64` does not read S3 credentials. The model service downloads objects via pre-signed URLs valid for 1 hour, and no additional keys are required. Cloudflare R2 can keep the bucket private without needing to enable public access; The model service or relay service that actually downloads the files must be able to access the link.
+S3 delivery uses variables specified by `s3_endpoint`, `s3_region`, `s3_bucket`, as well as `s3_access_key_env` and `s3_secret_key_env`. The model service downloads objects via pre-signed URLs valid for 1 hour, and no additional keys are required. Cloudflare R2 can keep the bucket private without needing to enable public access; The model service or relay service that actually downloads the files must be able to access the link.
+
+`[media]` controls the image compression sent to the LLM: `llm_image_compression_threshold_bytes` is the original image size threshold that triggers compression, and `llm_image_max_length` is the upper limit for the width or height after compression. When an image exceeds any of the limits, it will be proportionally converted to a temporary JPEG, while the original media remains unchanged.
+
+In S3 mode, temporary JPEGs are deleted after the request ends; it is recommended to configure lifecycle rules for the `llm-temp/` prefix of the Bucket to clean up objects left behind when a process exits abnormally.
 
 ## Logs and Maintenance Tasks
 
