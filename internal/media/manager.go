@@ -27,7 +27,7 @@ func NewManager(store storage.Store, root string, backend Backend) *Manager {
 	if backend != nil && backendName(backend) == "local" {
 		local = backend
 	}
-	return &Manager{objects: &sync.Mutex{}, local: local, Store: store, Root: root, Backend: backend, Now: storage.Now, FileDelivery: defaults.FileDelivery, MaxImportBytes: defaults.PlatformFiles.MaxReceiveFileBytes, DownloadTimeout: time.Duration(defaults.PlatformFiles.DownloadTimeoutSecs) * time.Second}
+	return &Manager{objects: &sync.Mutex{}, local: local, Store: store, Root: root, Backend: backend, Now: storage.Now, FileDelivery: defaults.FileDelivery, Media: defaults.Media, MaxImportBytes: defaults.PlatformFiles.MaxReceiveFileBytes, DownloadTimeout: time.Duration(defaults.PlatformFiles.DownloadTimeoutSecs) * time.Second}
 }
 
 func (m *Manager) ImportBytes(ctx context.Context, data []byte, input Input) (*storage.Media, error) {
@@ -144,7 +144,7 @@ func (m *Manager) Open(ctx context.Context, id string) (io.ReadCloser, *storage.
 	if media.Deleting {
 		return nil, nil, fmt.Errorf("media is being deleted")
 	}
-	backend, err := m.backendForStoredMedia(media)
+	backend, err := m.backendForStoredMedia(ctx, media)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -227,7 +227,7 @@ func (m *Manager) PresignGet(ctx context.Context, id string, expiry time.Duratio
 	if metadata.Deleting {
 		return "", fmt.Errorf("media is being deleted")
 	}
-	backend, err := m.remoteBackend()
+	backend, err := m.remoteBackend(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -331,7 +331,7 @@ func sanitizeSourceFileID(value string) string {
 	return value
 }
 
-func (m *Manager) backendForStoredMedia(item *storage.Media) (Backend, error) {
+func (m *Manager) backendForStoredMedia(ctx context.Context, item *storage.Media) (Backend, error) {
 	switch item.Backend {
 	case "local":
 		if m.local != nil {
@@ -339,25 +339,35 @@ func (m *Manager) backendForStoredMedia(item *storage.Media) (Backend, error) {
 		}
 		return &LocalBackend{Root: m.Root}, nil
 	case "s3":
-		return m.remoteBackend()
+		return m.remoteBackend(ctx)
 	default:
 		return nil, fmt.Errorf("unsupported stored media backend %q", item.Backend)
 	}
 }
 
-func (m *Manager) remoteBackend() (Backend, error) {
+func (m *Manager) remoteBackend(ctx context.Context) (Backend, error) {
+	m.remoteMu.Lock()
+	defer m.remoteMu.Unlock()
 	if m.Remote != nil {
 		return m.Remote, nil
 	}
-	if backendName(m.Backend) == "s3" {
-		return m.Backend, nil
+	if m.remoteFactory == nil {
+		return nil, fmt.Errorf("remote media backend is unavailable")
 	}
-	return nil, fmt.Errorf("remote media backend is unavailable")
+	backend, err := m.remoteFactory(ctx)
+	if err != nil {
+		if m.Logger != nil {
+			m.Logger.Warn("initialize S3 media backend failed", "error", err)
+		}
+		return nil, err
+	}
+	m.Remote = backend
+	return backend, nil
 }
 
 func backendName(backend Backend) string {
 	switch backend.(type) {
-	case *S3Backend:
+	case *S3Backend, *lazyBackend:
 		return "s3"
 	default:
 		return "local"

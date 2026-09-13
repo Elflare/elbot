@@ -36,6 +36,7 @@ type Config struct {
 	LLMRequest          LLMRequestConfig          `toml:"llm_request"`
 	Maintenance         MaintenanceConfig         `toml:"maintenance"`
 	Sandbox             SandboxConfig             `toml:"sandbox"`
+	Media               MediaConfig               `toml:"media"`
 	FileDelivery        FileDeliveryConfig        `toml:"file_delivery"`
 	PlatformFiles       PlatformFilesConfig       `toml:"platform_files"`
 	Platform            PlatformConfig            `toml:"platform"`
@@ -171,6 +172,11 @@ type MaintenanceCleanupConfig struct {
 	Enabled       bool   `toml:"enabled"`
 	Schedule      string `toml:"schedule"`
 	RetentionDays int    `toml:"retention_days"`
+}
+
+type MediaConfig struct {
+	LLMImageCompressionThresholdBytes int64 `toml:"llm_image_compression_threshold_bytes"`
+	LLMImageMaxLength                 int   `toml:"llm_image_max_length"`
 }
 
 type FileDeliveryConfig struct {
@@ -640,6 +646,12 @@ func (c *Config) applyAppDefaults() {
 	}
 	if c.Sandbox.Root == "" {
 		c.Sandbox.Root = filepath.Join(platformDefaultDataDir(), "sandbox")
+	}
+	if c.Media.LLMImageCompressionThresholdBytes <= 0 {
+		c.Media.LLMImageCompressionThresholdBytes = 4 * 1024 * 1024
+	}
+	if c.Media.LLMImageMaxLength <= 0 {
+		c.Media.LLMImageMaxLength = 4096
 	}
 	if c.FileDelivery.MaxDirectBase64Bytes <= 0 {
 		c.FileDelivery.MaxDirectBase64Bytes = 8 * 1024 * 1024

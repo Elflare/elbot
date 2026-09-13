@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 超过 `[media]` 图片大小或边长限制的 LLM 输入现在会在请求内临时转为白底 JPEG，并按压缩后的实际大小选择 base64 或 S3；原始媒体和 Media ID 不变。S3 后端改为按需初始化，配置不可用时仅告警，不再阻止 ElBot 启动。
+
 - 工具化 AgentSkill 的命令参数此前只支持字符串、数字和布尔值；现在 JSON 数组与对象会压缩为单个 argv 参数传给对应 `[args]` flag。
 - 普通用户的追加重发与高风险工具确认此前会无限等待并长期占用当前 Turn；现在默认在 10 分钟无有效操作后停止，若对应 Session TTL 更短则以其为上限，追加内容或 `/detail` 会续期。超级管理员不受额外的 10 分钟限制，但仍遵守已启用的 Session TTL。
 - 多模态图片此前只以 `image_url` 内容段发送，模型能看图却不知道可复用地址；现在每张图片前会派生带消息内序号、名称和 HTTP(S) URL 的用户文本标签，持久化 `content` 与视觉回退使用同一文本投影，`segments` 仍只保存原始结构且无需数据库迁移。
@@ -25,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `read_file` 和 `edit_file` 此前会完全拒绝超过 2 MiB 的文本文件；现在 2–100 MiB 文件可继续按行读取、grep 和编辑，仅在实际调用时根据文件大小禁用 AST、完整 diff 和过长确认内容，并保留 revision 校验、预检与原子写入。
 
 ### Fixed
+
+- 修复 OpenAI-compatible 上游返回 HTTP 200 HTML/非 SSE 页面时被 Scanner 超长 token 错误掩盖的问题；现在会在流解析前识别异常响应，并只返回有限、脱敏的摘要。
 
 - 修复 Session 闲置过期、执行 `/new` 或切换会话后，引用原 Session 最后一条 assistant 回复会误建新 Session 的问题；现在会自动恢复该 Session，引用较早回复仍会 Fork。
 - 修复内置工具与 Go Skill 的服务级环境变量读取不一致，导致部分工具无法读取配置目录 `.env` 的问题。

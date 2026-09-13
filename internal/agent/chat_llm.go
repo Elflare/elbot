@@ -84,10 +84,12 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 				defer release()
 			}
 		}
-		requestMessages, err = a.media.ResolveForLLM(ctx, baseMessages)
+		var cleanup func()
+		requestMessages, cleanup, err = a.media.ResolveForLLM(ctx, baseMessages)
 		if err != nil {
 			return llmCallResult{}, err
 		}
+		defer cleanup()
 	}
 	req := llm.ChatRequest{
 		Model:     selection.Model,

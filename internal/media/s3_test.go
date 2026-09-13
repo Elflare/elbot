@@ -24,7 +24,7 @@ func TestNewS3BackendRequiresCredentials(t *testing.T) {
 	}
 }
 
-func TestNewConfiguredOnlyRequiresCredentialsForRemoteModes(t *testing.T) {
+func TestNewConfiguredDefersRemoteCredentialErrors(t *testing.T) {
 	ctx := context.Background()
 	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
@@ -36,8 +36,15 @@ func TestNewConfiguredOnlyRequiresCredentialsForRemoteModes(t *testing.T) {
 	}
 	for _, mode := range []string{"s3", "hybrid"} {
 		t.Run(mode, func(t *testing.T) {
-			if _, err := NewConfigured(ctx, store, t.TempDir(), config.FileDeliveryConfig{Backend: mode}, nil); err == nil {
-				t.Fatal("remote mode accepted missing credentials")
+			manager, err := NewConfigured(ctx, store, t.TempDir(), config.FileDeliveryConfig{Backend: mode}, nil)
+			if err != nil {
+				t.Fatalf("remote mode blocked startup: %v", err)
+			}
+			if manager.Remote != nil {
+				t.Fatal("remote backend initialized during startup")
+			}
+			if _, err := manager.remoteBackend(ctx); err == nil {
+				t.Fatal("remote operation accepted missing credentials")
 			}
 		})
 	}

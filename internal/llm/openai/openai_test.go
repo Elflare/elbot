@@ -425,6 +425,29 @@ func TestToOpenAIMessagesMovesToolImagesIntoFollowingUserMessage(t *testing.T) {
 	}
 }
 
+func TestChatStream_ResponsePrefixHonorsFirstChunkTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{
+		FirstChunkTimeout: 20 * time.Millisecond,
+		StreamIdleTimeout: time.Second,
+		MaxRetries:        1,
+		RetryInitialDelay: time.Millisecond,
+	})
+	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "test",
+		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "first stream chunk timeout") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestChatStream_FirstChunkCanArriveAfterIdleTimeout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -670,6 +693,109 @@ func TestListModelMetadata(t *testing.T) {
 	}
 	if len(models) != 2 || models[0].ContextWindow != 32000 || models[1].ContextWindow != 16000 {
 		t.Fatalf("metadata = %#v", models)
+	}
+}
+
+func TestChatStream_HTMLResponseReturnsReadableError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		io.WriteString(w, "<!doctype html><html><body><script>"+strings.Repeat("A", 1024*1024)+"</script></body></html>")
+	}))
+	defer srv.Close()
+
+	adapter := New(srv.URL, "test-key", nil)
+	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "test",
+		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "上游返回 HTML 而不是 API 响应") {
+		t.Fatalf("error = %v", err)
+	}
+	if strings.Contains(err.Error(), "AAAA") || len(err.Error()) > 200 {
+		t.Fatalf("HTML response leaked into error: %q", err)
+	}
+}
+
+func TestChatStream_HTMLBodyWithSSEContentTypeReturnsReadableError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "<html><body>gateway error</body></html>")
+	}))
+	defer srv.Close()
+
+	adapter := New(srv.URL, "test-key", nil)
+	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "test",
+		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "上游返回 HTML 而不是 API 响应") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestChatStream_JSONBodyWithSSEContentTypeIsRejected(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, `{"message":"not a stream"}`)
+	}))
+	defer srv.Close()
+
+	adapter := New(srv.URL, "test-key", nil)
+	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "test",
+		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "上游返回非 SSE API 响应") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestChatStream_NonSSEResponseReturnsBoundedSummary(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		io.WriteString(w, strings.Repeat("secret response ", 1000))
+	}))
+	defer srv.Close()
+
+	adapter := New(srv.URL, "test-key", nil)
+	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "test",
+		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "上游返回非 SSE API 响应") {
+		t.Fatalf("error = %v", err)
+	}
+	if len(err.Error()) > 400 || strings.Count(err.Error(), "secret response") > 20 {
+		t.Fatalf("response summary was not bounded: %q", err)
+	}
+}
+
+func TestChatStream_OverlongSSELineReturnsBoundedError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: "+strings.Repeat("A", maxStreamLineBytes)+"\\n\\n")
+	}))
+	defer srv.Close()
+
+	adapter := New(srv.URL, "test-key", nil)
+	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "test",
+		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
+	})
+	if err != nil {
+		t.Fatalf("ChatStream: %v", err)
+	}
+	var streamErr error
+	for chunk := range ch {
+		if chunk.Error != nil {
+			streamErr = chunk.Error
+		}
+	}
+	if streamErr == nil || !strings.Contains(streamErr.Error(), "SSE line exceeds maximum size") {
+		t.Fatalf("stream error = %v", streamErr)
+	}
+	if strings.Contains(streamErr.Error(), "token too long") {
+		t.Fatalf("scanner implementation error leaked: %v", streamErr)
 	}
 }
 

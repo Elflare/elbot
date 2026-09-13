@@ -45,7 +45,8 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	hookProcessEnv := hook.ProcessEnvironment(baseProcessEnv)
 	fileDeliveryCredentials, err := resolveFileDeliveryCredentials(cfg.FileDelivery, filepath.Dir(cfg.ConfigPath))
 	if err != nil {
-		return nil, err
+		logger.Warn("S3 media backend is unavailable; remote operations will fail until configuration is fixed", "error", err)
+		fileDeliveryCredentials = nil
 	}
 	var agt *agent.Agent
 	sendNotice := func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
@@ -73,6 +74,8 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	}
 	mediaCenter.MaxImportBytes = cfg.PlatformFiles.MaxReceiveFileBytes
 	mediaCenter.DownloadTimeout = time.Duration(cfg.PlatformFiles.DownloadTimeoutSecs) * time.Second
+	mediaCenter.Media = cfg.Media
+	mediaCenter.Logger = logger
 	if foundation.Maintenance != nil {
 		foundation.Maintenance.Media = mediaCenter
 	}

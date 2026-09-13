@@ -1,7 +1,12 @@
 package media
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -62,7 +67,8 @@ func TestResolverRequestTotalAndIsolation(t *testing.T) {
 	} {
 		t.Run(tc.backend+"/"+time.Duration(tc.limit).String(), func(t *testing.T) {
 			m.FileDelivery.Backend, m.FileDelivery.MaxDirectBase64Bytes = tc.backend, tc.limit
-			out, err := m.ResolveForLLM(ctx, input)
+			out, cleanup, err := m.ResolveForLLM(ctx, input)
+			cleanup()
 			if (err != nil) != tc.wantError {
 				t.Fatalf("error = %v", err)
 			}
@@ -99,13 +105,132 @@ func TestResolverRequestTotalAndIsolation(t *testing.T) {
 	m.FileDelivery.Backend = "base64"
 	m.FileDelivery.MaxDirectBase64Bytes = 100
 	missing := llm.LLMMessage{Role: llm.RoleUser, Segments: []llm.MessageSegment{{Type: llm.SegmentImage, MediaID: IDPrefix + strings.Repeat("0", 64)}}}
-	out, err := m.ResolveForLLM(ctx, []llm.LLMMessage{missing})
+	out, cleanup, err := m.ResolveForLLM(ctx, []llm.LLMMessage{missing})
+	cleanup()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(llm.SegmentsContentText(out[0].Segments), "媒体不可用") {
 		t.Fatal(out)
 	}
+}
+
+type temporaryResolverRemote struct {
+	resolverRemote
+	data    []byte
+	removed int
+}
+
+func (b *temporaryResolverRemote) PutTemporary(_ context.Context, r io.Reader, _ int64, _ string) (string, error) {
+	b.data, _ = io.ReadAll(r)
+	return "llm-temp/test.jpg", nil
+}
+
+func (b *temporaryResolverRemote) PresignTemporary(_ context.Context, key string, _ time.Duration) (string, error) {
+	return "https://s3.test/" + key, nil
+}
+
+func (b *temporaryResolverRemote) RemoveTemporary(_ context.Context, _ string) error {
+	b.removed++
+	return nil
+}
+
+func TestResolverCompressesImageOnlyForRequest(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	root := t.TempDir()
+	m := NewManager(store, root, &LocalBackend{Root: root})
+	m.Media = config.MediaConfig{LLMImageCompressionThresholdBytes: 1024 * 1024, LLMImageMaxLength: 32}
+	m.FileDelivery.Backend = "base64"
+	m.FileDelivery.MaxDirectBase64Bytes = 1024 * 1024
+
+	imageData := testPNG(t, 80, 40)
+	item, err := m.ImportBytes(ctx, imageData, Input{Name: "large.png", MIMEType: "image/png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{{Type: llm.SegmentImage, MediaID: item.ID, Name: item.Name}}}}
+	resolved, cleanup, err := m.ResolveForLLM(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	segment := resolved[0].Segments[0]
+	if segment.MediaID != item.ID || segment.Name != "large.jpg" || segment.MIMEType != "image/jpeg" || !strings.HasPrefix(segment.URL, "data:image/jpeg;base64,") {
+		t.Fatalf("resolved segment = %#v", segment)
+	}
+	encoded := strings.TrimPrefix(segment.URL, "data:image/jpeg;base64,")
+	jpegData, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	width, height, err := imageDimensions(jpegData)
+	if err != nil || width >= 32 || height >= 32 {
+		t.Fatalf("compressed dimensions = %dx%d, error %v", width, height, err)
+	}
+	original, stored, err := m.Read(ctx, item.ID)
+	if err != nil || !bytes.Equal(original, imageData) || stored.MIMEType != "image/png" || stored.Name != "large.png" {
+		t.Fatalf("original media changed: metadata=%#v error=%v", stored, err)
+	}
+	refs, err := store.MediaReferences().ListMediaIDs(ctx, item.ID)
+	if err != nil || len(refs) != 0 {
+		t.Fatalf("request compression persisted references: %#v, %v", refs, err)
+	}
+}
+
+func TestResolverHybridUsesCompressedSizeAndCleansTemporaryObject(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	root := t.TempDir()
+	m := NewManager(store, root, &LocalBackend{Root: root})
+	m.Media = config.MediaConfig{LLMImageCompressionThresholdBytes: 1024, LLMImageMaxLength: 64}
+	m.FileDelivery.Backend = "hybrid"
+	m.FileDelivery.MaxDirectBase64Bytes = 100
+	remote := &temporaryResolverRemote{resolverRemote: resolverRemote{LocalBackend: LocalBackend{Root: t.TempDir()}}}
+	m.Remote = remote
+	item, err := m.ImportBytes(ctx, testPNG(t, 80, 80), Input{Name: "large.png", MIMEType: "image/png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, cleanup, err := m.ResolveForLLM(ctx, []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{{Type: llm.SegmentImage, MediaID: item.ID}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resolved[0].Segments[0].URL; got != "https://s3.test/llm-temp/test.jpg" {
+		t.Fatalf("URL = %q, segment = %#v", got, resolved[0].Segments[0])
+	}
+	if len(remote.data) == 0 {
+		t.Fatal("temporary JPEG was not uploaded")
+	}
+	cleanup()
+	cleanup()
+	if remote.removed != 1 {
+		t.Fatalf("temporary removals = %d", remote.removed)
+	}
+}
+
+func testPNG(t *testing.T, width, height int) []byte {
+	t.Helper()
+	img := image.NewNRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.SetNRGBA(x, y, color.NRGBA{R: uint8(x * 3), G: uint8(y * 3), B: uint8(x + y), A: 255})
+		}
+	}
+	var output bytes.Buffer
+	if err := png.Encode(&output, img); err != nil {
+		t.Fatal(err)
+	}
+	return output.Bytes()
 }
 
 func TestImportURLUnknownSizeAndLimits(t *testing.T) {
@@ -227,7 +352,11 @@ func TestResolverUploadsLocalMediaAfterBackendChange(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			remote := m.Remote.(*S3Backend)
+			backend, err := m.remoteBackend(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			remote := backend.(*S3Backend)
 			options := remote.client.Options()
 			options.HTTPClient = server.Client()
 			// The test server stores raw bodies without S3 trailer decoding.
@@ -236,7 +365,8 @@ func TestResolverUploadsLocalMediaAfterBackendChange(t *testing.T) {
 			remote.presign = s3.NewPresignClient(remote.client)
 			input := []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{{Type: llm.SegmentImage, MediaID: item.ID}}}}
 			for i := 0; i < 2; i++ {
-				out, err := m.ResolveForLLM(ctx, input)
+				out, cleanup, err := m.ResolveForLLM(ctx, input)
+				cleanup()
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -290,7 +420,8 @@ func TestMaterializeAndResolveSanitizeMediaNames(t *testing.T) {
 	}}}}
 	m.FileDelivery.Backend = "base64"
 	m.FileDelivery.MaxDirectBase64Bytes = 1024
-	resolved, err := m.ResolveForLLM(ctx, input)
+	resolved, cleanup, err := m.ResolveForLLM(ctx, input)
+	cleanup()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +437,8 @@ func TestMaterializeAndResolveSanitizeMediaNames(t *testing.T) {
 		MediaID: IDPrefix + strings.Repeat("f", 64),
 		Name:    "https://example.com/missing.png?rkey=missing-secret",
 	}}}}
-	resolved, err = m.ResolveForLLM(ctx, missing)
+	resolved, cleanup, err = m.ResolveForLLM(ctx, missing)
+	cleanup()
 	if err != nil {
 		t.Fatal(err)
 	}
