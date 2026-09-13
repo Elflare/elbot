@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+
 	"elbot/internal/config"
 	"elbot/internal/storage"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
@@ -92,6 +93,31 @@ func (b *S3Backend) PresignGet(ctx context.Context, media *storage.Media, expiry
 		return "", fmt.Errorf("presign media object: %w", err)
 	}
 	return request.URL, nil
+}
+
+func (b *S3Backend) PutTemporary(ctx context.Context, input io.Reader, size int64, contentType string) (string, error) {
+	key := "llm-temp/" + storage.NewID() + ".jpg"
+	if _, err := b.client.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String(b.bucket), Key: aws.String(key), Body: input, ContentLength: aws.Int64(size), ContentType: aws.String(contentType)}); err != nil {
+		return "", fmt.Errorf("put temporary media object: %w", err)
+	}
+	return key, nil
+}
+
+func (b *S3Backend) PresignTemporary(ctx context.Context, key string, expiry time.Duration) (string, error) {
+	request, err := b.presign.PresignGetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(b.bucket), Key: aws.String(key)}, func(options *s3.PresignOptions) {
+		options.Expires = expiry
+	})
+	if err != nil {
+		return "", fmt.Errorf("presign temporary media object: %w", err)
+	}
+	return request.URL, nil
+}
+
+func (b *S3Backend) RemoveTemporary(ctx context.Context, key string) error {
+	if _, err := b.client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String(b.bucket), Key: aws.String(key)}); err != nil {
+		return fmt.Errorf("delete temporary media object: %w", err)
+	}
+	return nil
 }
 
 func objectKey(id string) string {

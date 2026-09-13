@@ -21,7 +21,7 @@ type MediaAPI interface {
 	Read(context.Context, string) ([]byte, *storage.Media, error)
 	Export(context.Context, string, string) (*storage.Media, error)
 	Metadata(context.Context, string) (*storage.Media, error)
-	ResolveForLLM(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, error)
+	ResolveForLLM(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, func(), error)
 	ResolveForOutput(context.Context, string) (delivery.Source, func(), error)
 	AddReference(context.Context, *storage.MediaReference) error
 	RemoveReference(context.Context, storage.MediaReference) error

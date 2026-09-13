@@ -33,7 +33,7 @@ func (m *Manager) Cleanup(ctx context.Context) error {
 	var failures []error
 	for i := range items {
 		item := &items[i]
-		primary, err := m.backendForStoredMedia(item)
+		primary, err := m.backendForStoredMedia(ctx, item)
 		if err != nil {
 			failures = append(failures, fmt.Errorf("delete media %q: %w", item.ID, err))
 			continue
@@ -45,7 +45,7 @@ func (m *Manager) Cleanup(ctx context.Context) error {
 			remoteBackend = primary
 		}
 		if item.ObjectKey != "" && remoteBackend == nil {
-			remoteBackend, err = m.remoteBackend()
+			remoteBackend, err = m.remoteBackend(ctx)
 			if err != nil {
 				failures = append(failures, fmt.Errorf("delete media %q: %w", item.ID, err))
 				continue
