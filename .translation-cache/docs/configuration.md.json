@@ -1328,6 +1328,14 @@
       "translation": "Relative paths are based on the directory where __ELBOT_CODE_0__ is located:\n",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:paragraph:12e6df6ce09698faf84252f22dfc7f4568d6671390ac70aec0b332942ee0017c": {
+      "kind": "paragraph",
+      "source": "图片超过任一限制时会按比例转为临时 JPEG，原始媒体不变。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "12e6df6ce09698faf84252f22dfc7f4568d6671390ac70aec0b332942ee0017c",
+      "translation": "When an image exceeds any of the limits, it will be proportionally converted to a temporary JPEG, while the original media remains unchanged.\n",
+      "updated_at": 1789300223
+    },
     "docs/configuration.md:paragraph:1348de618f0e0d0ee6e02cf28f370260454080fe4e7f5dbbe87c54feefef6abc": {
       "kind": "paragraph",
       "source": "自动附带的说明文件最大为 64 KiB。超过限制时不会读取内容，也不会标记为已附带，工具结果会提示需要缩短或拆分该文件后再切换 workspace。\n",
@@ -1856,14 +1864,6 @@
       "translation": "systemd's __ELBOT_CODE_0__ also does not expand __ELBOT_CODE_1__.\n",
       "updated_at": 1785918785
     },
-    "docs/configuration.md:paragraph:973e2efe64585f063107dd3d9db8015bbd9554c32ec7f5a53b9f436bdee84fb7": {
-      "kind": "paragraph",
-      "source": "凭据先读取 ElBot 进程环境，未设置时读取主配置同目录的 __ELBOT_CODE_0__；",
-      "source_file": "docs/configuration.md",
-      "source_hash": "973e2efe64585f063107dd3d9db8015bbd9554c32ec7f5a53b9f436bdee84fb7",
-      "translation": "Credentials are first read from the ElBot process environment; if not set, they are read from __ELBOT_CODE_0__ in the same directory as the main configuration;",
-      "updated_at": 1789043218
-    },
     "docs/configuration.md:paragraph:98eb7743b6382d1927f6e0c8096646fef84bd7543d6a077816680a510239c6c1": {
       "kind": "paragraph",
       "source": "默认维护任务包含日志、Session、sandbox 和聊天历史清理，例如 Session 清理默认保留 30 天，sandbox 默认每天 04:00 清理 7 天前内容，聊天历史默认每天 04:35 执行：\n",
@@ -1911,6 +1911,14 @@
       "source_hash": "9cf2d238909d45c5a7309a85e64f03bf96000138b2303647b96c79d119b130d8",
       "translation": "For complete configuration instructions for rules and persistent Hooks, see [Hook](hooks.md).\n",
       "updated_at": 1785052888
+    },
+    "docs/configuration.md:paragraph:9d7e01a030275d2506745e83c45f6aed4b7e6e851728ac818890dcb7738eee32": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 控制发送给 LLM 的图片压缩：__ELBOT_CODE_1__ 是触发压缩的原图大小阈值，__ELBOT_CODE_2__ 是压缩后宽度或高度的上限。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "9d7e01a030275d2506745e83c45f6aed4b7e6e851728ac818890dcb7738eee32",
+      "translation": "__ELBOT_CODE_0__ controls the image compression sent to the LLM: __ELBOT_CODE_1__ is the original image size threshold that triggers compression, and __ELBOT_CODE_2__ is the upper limit for the width or height after compression.",
+      "updated_at": 1789300223
     },
     "docs/configuration.md:paragraph:9df1d86d01117e8f6e59299abf97ac21668c92aa8e8e67bc53e8cfaf0251f30c": {
       "kind": "paragraph",
@@ -2192,6 +2200,14 @@
       "translation": "You can also use __ELBOT_CODE_0__ to write configurations directly, but it is not recommended to commit actual Secrets.\n",
       "updated_at": 1785810736
     },
+    "docs/configuration.md:paragraph:df1c3812bb9cf5ff2105946d6027227f715f9ad62082585a3d61da79a56517fc": {
+      "kind": "paragraph",
+      "source": "S3 模式下，临时 JPEG 在请求结束后删除；建议为 Bucket 的 __ELBOT_CODE_0__ 前缀配置生命周期规则，清理进程异常退出时遗留的对象。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "df1c3812bb9cf5ff2105946d6027227f715f9ad62082585a3d61da79a56517fc",
+      "translation": "In S3 mode, temporary JPEGs are deleted after the request ends; it is recommended to configure lifecycle rules for the __ELBOT_CODE_0__ prefix of the Bucket to clean up objects left behind when a process exits abnormally.\n",
+      "updated_at": 1789300223
+    },
     "docs/configuration.md:paragraph:df52157138754b59adf61b033670d7c0a44d72226b076873cea5872b20c0c149": {
       "kind": "paragraph",
       "source": "默认配置下，群聊中的普通用户和超级管理员都会在闲置 10 分钟后开启新 Session；",
@@ -2327,14 +2343,6 @@
       "source_hash": "fe3763737e369c201cf7cf50f1c19da604a37227e49113f9d433f7628d1094c4",
       "translation": "Hooks should not send platform messages directly; they should return an output intent, which is then handed over to the Output Manager by the Agent for sending.\n",
       "updated_at": 1783678911
-    },
-    "docs/configuration.md:paragraph:fedd26260b04f1b31e8a7e1cc7b4920d1d25df59d303a9b32cbd1787158739b9": {
-      "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 缺少任一凭据会启动失败，__ELBOT_CODE_2__ 不读取 S3 凭据。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "fedd26260b04f1b31e8a7e1cc7b4920d1d25df59d303a9b32cbd1787158739b9",
-      "translation": "Startup will fail if any credentials for __ELBOT_CODE_0__ or __ELBOT_CODE_1__ are missing; __ELBOT_CODE_2__ does not read S3 credentials.",
-      "updated_at": 1789043218
     },
     "docs/configuration.md:paragraph:ffc6981858d2926b87002247d70035ed18ca78787062a22a64bcb20503efb982": {
       "kind": "paragraph",
@@ -2522,8 +2530,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "40bd4b63e1f167edb7fe00d112b8333221ee991d763bd53ceaa6c90a2a200693",
+  "source_hash": "68345c1e7ee2bc3e952fdc4b809f6b60b089984245b6edc9b37fd86af528dd4c",
   "target": "docs.en/configuration.md",
-  "updated_at": 1789043218,
+  "updated_at": 1789300223,
   "version": 2
 }
