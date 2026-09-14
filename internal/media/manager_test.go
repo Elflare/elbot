@@ -2,11 +2,13 @@ package media
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
 
@@ -17,6 +19,67 @@ func TestValidID(t *testing.T) {
 		if got := ValidID(id); got != want {
 			t.Fatalf("ValidID(%q) = %v, want %v", id, got, want)
 		}
+	}
+}
+
+func TestArgumentMediaIDsUsesExactJSONValues(t *testing.T) {
+	first := IDPrefix + strings.Repeat("a", 64)
+	second := IDPrefix + strings.Repeat("b", 64)
+	arguments := fmt.Sprintf(`{"send_media":%q,"images":[%q,%q],%q:"ignored","prompt":%q}`, second, first, first, second, "prefix "+first)
+	if got := strings.Join(argumentMediaIDs(arguments), ","); got != first+","+second {
+		t.Fatalf("media IDs = %q", got)
+	}
+	if got := argumentMediaIDs(`{"source":"media:short"}`); len(got) != 0 {
+		t.Fatalf("invalid media IDs = %v", got)
+	}
+	if got := argumentMediaIDs(`{"source":`); len(got) != 0 {
+		t.Fatalf("invalid JSON media IDs = %v", got)
+	}
+}
+
+func TestRetainSessionToolArgumentsIsAtomicAndIdempotent(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	manager := NewManager(store, t.TempDir(), &LocalBackend{Root: t.TempDir()})
+	item, err := manager.ImportBytes(ctx, []byte("tool input"), Input{Name: "input.bin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := &storage.Session{OwnerID: "u", Platform: "test", PlatformScopeID: "s"}
+	if err := store.Sessions().Create(ctx, session); err != nil {
+		t.Fatal(err)
+	}
+	arguments := fmt.Sprintf(`{"source":%q,"again":%q}`, item.ID, item.ID)
+	for range 2 {
+		if err := manager.RetainSessionToolArguments(ctx, session.ID, arguments); err != nil {
+			t.Fatal(err)
+		}
+	}
+	refs, err := store.MediaReferences().ListByOwner(ctx, "session_tool", session.ID)
+	if err != nil || len(refs) != 1 || refs[0].MediaID != item.ID || refs[0].SessionID != session.ID {
+		t.Fatalf("references = %#v, %v", refs, err)
+	}
+
+	other := &storage.Session{OwnerID: "u", Platform: "test", PlatformScopeID: "s"}
+	if err := store.Sessions().Create(ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	missing := IDPrefix + strings.Repeat("f", 64)
+	if err := manager.RetainSessionToolArguments(ctx, other.ID, fmt.Sprintf(`[%q,%q]`, item.ID, missing)); err == nil {
+		t.Fatal("accepted a missing media ID")
+	}
+	if refs, err := store.MediaReferences().ListByOwner(ctx, "session_tool", other.ID); err != nil || len(refs) != 0 {
+		t.Fatalf("partial references = %#v, %v", refs, err)
+	}
+	if err := store.Sessions().Delete(ctx, session.ID); err != nil {
+		t.Fatal(err)
+	}
+	if refs, err := store.MediaReferences().ListByOwner(ctx, "session_tool", session.ID); err != nil || len(refs) != 0 {
+		t.Fatalf("deleted session references = %#v, %v", refs, err)
 	}
 }
 

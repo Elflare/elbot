@@ -133,7 +133,7 @@ rg -n "Phase|Request|Cancel|pending|confirm|runtime status|sending" internal/req
 - `internal/tool/`：Tool Runtime 核心类型、builder、discover、executor、sandbox/workspace helper。
 - `internal/tool/media_runtime.go`：shell/Skill 的显式媒体准备、调用期引用、sandbox 导出缓存与受控结果导入；缓存复用刷新 ModTime，沿用既有 sandbox 清理。
 - `internal/tool/runtimeinfo/`：工具运行期常用信息入口，如配置路径、sandbox、文件发送配置、时间源和规则卡转发。
-- `internal/toolrun/`：工具调用中间层、工具视图、命名解析、风险确认。
+- `internal/toolrun/`：工具调用中间层、工具视图、命名解析、风险确认，以及实际执行前的 Session 工具参数媒体引用。
 - `internal/tool/builtin/`：内置工具。
 - `internal/tool/builtin/file_tools_ast.go`：`read_file` 的 Go/Shell AST 名称搜索与结果渲染。
 - `internal/agent/tools.go`：Agent 工具运行态和命令依赖适配。

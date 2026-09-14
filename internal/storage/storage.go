@@ -397,6 +397,7 @@ type MediaRepository interface {
 
 type MediaReferenceRepository interface {
 	Add(ctx context.Context, reference *MediaReference) error
+	AddAll(ctx context.Context, references []MediaReference) error
 	Remove(ctx context.Context, reference MediaReference) error
 	ListByOwner(ctx context.Context, ownerType, ownerID string) ([]MediaReference, error)
 	ListMediaIDs(ctx context.Context, mediaID string) ([]MediaReference, error)

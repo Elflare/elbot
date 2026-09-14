@@ -451,6 +451,22 @@ CREATE TRIGGER media_history_removed AFTER DELETE ON media_history BEGIN
 END;
 `,
 	},
+	{
+		version: 17,
+		name:    "session_tool_media_references",
+		sql: `
+DROP VIEW media_fork_history;
+CREATE VIEW media_fork_history AS
+ SELECT DISTINCT s.id AS session_id,r.media_id FROM sessions s
+ JOIN messages checkpoint ON checkpoint.id=s.fork_from_message_id AND checkpoint.session_id=s.parent_session_id
+ JOIN media_references r ON r.session_id=s.parent_session_id
+ LEFT JOIN messages m ON m.id=r.owner_id AND m.session_id=s.parent_session_id
+ WHERE (r.owner_type='session_fork' AND r.owner_id=s.parent_session_id)
+ OR (r.owner_type='session_tool' AND r.owner_id=s.parent_session_id AND r.created_at<=checkpoint.created_at)
+ OR (r.owner_type=CASE WHEN m.role='tool' THEN 'tool_result' ELSE 'message' END
+ AND (m.created_at<checkpoint.created_at OR (m.created_at=checkpoint.created_at AND m.rowid<=checkpoint.rowid)));
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {
