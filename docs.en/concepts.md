@@ -219,6 +219,8 @@ Each item in `media_inputs` only accepts `media`. The host exports or reuses fil
 
 Tool-based AgentSkill uses `{"type":"media"}` to declare media parameters in `parameters.properties` of `ELBOT_SKILL.toml`, and maps command-line flags in `[args]`. The LLM passes the media ID, and the actual process receives the file path relative to the Skill root directory during the call; Ordinary string parameters will not be automatically converted.
 
+When calling a tool, if a JSON field uses a media ID, it will also be regarded as a reference to that Session. Plain text calls do not count.
+
 Go Skill uses the same input list in `payload.media_inputs` of `go_skill_run`. The host supplements `path`, `name`, `mime_type`, and `size` for each item in the execution copy of stdin; files not exceeding 1 MiB also provide `base64`. `payload.media_workspace` is a call-exclusive directory relative to the Skill root directory; An empty input list can be passed to request a directory used only for output. Temporary paths and base64 are not written back to the original call parameters.
 
 The stdout of Go/TOML Skills can return media results:
