@@ -888,6 +888,14 @@
       "translation": "Agent, Hook, and Tool do not directly depend on specific platforms to send messages; instead, they return a unified output intent, which is then passed to the corresponding platform adapter by the Output Manager for sending.\n",
       "updated_at": 1783077374
     },
+    "docs/concepts.md:paragraph:972b966e1145c5490521f070a75ad7bf89e55bd0f1ffab9b8cf60d90313a6674": {
+      "kind": "paragraph",
+      "source": "调用工具时，若json字段使用到了媒体id，也会视为该session的引用。纯文本的调用不算。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "972b966e1145c5490521f070a75ad7bf89e55bd0f1ffab9b8cf60d90313a6674",
+      "translation": "When calling a tool, if a JSON field uses a media ID, it will also be regarded as a reference to that Session. Plain text calls do not count.\n",
+      "updated_at": 1789362204
+    },
     "docs/concepts.md:paragraph:9d0fd6757d20ba131192002948c00af45f5542d65a626b612c0439ef7deb1853": {
       "kind": "paragraph",
       "source": "Tool Runtime 管理工具的注册、发现、权限、风险评估和执行。\n",
@@ -1410,8 +1418,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "8c9b88789d02668e9c3863e1e017f0d337df6fde8f0fd6ef20d79d834f2a58ee",
+  "source_hash": "f3bb8b8447a9d4be468d0b4a9e18da628f6ce1976fda6a5cad6d825fd962744f",
   "target": "docs.en/concepts.md",
-  "updated_at": 1789088838,
+  "updated_at": 1789362204,
   "version": 2
 }
