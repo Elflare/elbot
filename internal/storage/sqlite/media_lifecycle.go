@@ -142,6 +142,7 @@ func (r *MediaRepository) CheckReferences(ctx context.Context) ([]string, error)
  (r.owner_type='elnis_report' AND NOT EXISTS(SELECT 1 FROM elnis_report_deliveries WHERE id=r.owner_id)) OR
  (r.owner_type='elnis_event' AND NOT EXISTS(SELECT 1 FROM elnis_events WHERE id=r.owner_id)) OR
  (r.owner_type='session_fork' AND NOT EXISTS(SELECT 1 FROM sessions WHERE id=r.owner_id)) OR
+ (r.owner_type='session_tool' AND (r.session_id IS NULL OR r.session_id<>r.owner_id OR NOT EXISTS(SELECT 1 FROM sessions WHERE id=r.owner_id))) OR
  (r.owner_type='cron' AND NOT EXISTS(SELECT 1 FROM cron_jobs WHERE id=r.owner_id))`)
 	if err != nil {
 		return nil, err

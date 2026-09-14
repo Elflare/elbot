@@ -217,6 +217,8 @@ bash 脚本通过 `shell` 显式声明输入，例如：
 
 工具化 AgentSkill 在 `ELBOT_SKILL.toml` 的 `parameters.properties` 中使用 `{"type":"media"}` 声明媒体参数，并在 `[args]` 中映射命令行 flag。LLM 传入媒体 ID，实际进程收到相对 Skill 根目录的调用期文件路径；普通字符串参数不会自动转换。
 
+调用工具时，若json字段使用到了媒体id，也会视为该session的引用。纯文本的调用不算。
+
 Go Skill 在 `go_skill_run` 的 `payload.media_inputs` 中使用同样的输入列表。宿主在 stdin 的执行副本中为各项补充 `path`、`name`、`mime_type`、`size`，不超过 1 MiB 的文件还提供 `base64`。`payload.media_workspace` 是相对 Skill 根目录的调用专属目录；可以传空输入列表申请仅用于输出的目录。临时路径和 base64 不写回原始调用参数。
 
 Go/TOML Skill 的 stdout 可以返回媒体结果：

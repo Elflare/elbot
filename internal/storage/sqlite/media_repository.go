@@ -80,9 +80,28 @@ func (r *MediaReferenceRepository) Add(ctx context.Context, ref *storage.MediaRe
 	if ref.CreatedAt.IsZero() {
 		ref.CreatedAt = storage.Now()
 	}
-	_, err := r.db.ExecContext(ctx, `INSERT INTO media_references (media_id, owner_type, owner_id, purpose, session_id, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(media_id, owner_type, owner_id, purpose) DO NOTHING`, ref.MediaID, ref.OwnerType, ref.OwnerID, ref.Purpose, nullString(ref.SessionID), storage.FormatTime(ref.CreatedAt))
+	return r.AddAll(ctx, []storage.MediaReference{*ref})
+}
+
+func (r *MediaReferenceRepository) AddAll(ctx context.Context, refs []storage.MediaReference) error {
+	if len(refs) == 0 {
+		return nil
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("add media reference: %w", err)
+		return fmt.Errorf("begin media reference batch: %w", err)
+	}
+	defer tx.Rollback()
+	for i := range refs {
+		if refs[i].CreatedAt.IsZero() {
+			refs[i].CreatedAt = storage.Now()
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO media_references (media_id, owner_type, owner_id, purpose, session_id, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(media_id, owner_type, owner_id, purpose) DO NOTHING`, refs[i].MediaID, refs[i].OwnerType, refs[i].OwnerID, refs[i].Purpose, nullString(refs[i].SessionID), storage.FormatTime(refs[i].CreatedAt)); err != nil {
+			return fmt.Errorf("add media reference: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit media reference batch: %w", err)
 	}
 	return nil
 }

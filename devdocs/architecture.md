@@ -145,7 +145,7 @@ Tool Runtime 负责注册、schema、权限、风险、确认详情、用户侧 
 
 ### 媒体引用与清理
 
-媒体本体按 SHA-256 去重，`media_references` 是引用事实来源，不维护整数计数。消息追加/替换、Session 删除、fork、Cron 报告状态、Elnis 排队 ID/outbox、输出关联与引用通过事务及 SQLite 触发器同步。新 fork 按检查点的 created_at/rowid 边界为父消息媒体建立独立引用，并继承父 fork 的祖先历史引用；Chat History 的原始平台 URL/file ID 不构成中心引用。读取、LLM 请求和发送期间另有临时引用。
+媒体本体按 SHA-256 去重，`media_references` 是引用事实来源，不维护整数计数。消息追加/替换、Session 删除、fork、工具参数、Cron 报告状态、Elnis 排队 ID/outbox、输出关联与引用通过事务及 SQLite 触发器同步。工具通过确认并即将执行时，ToolRun 递归检查最终参数的 JSON 值，将完整且有效的媒体 ID 作为 `session_tool` owner 原子关联到当前 Session；同一 Session/媒体幂等，失败执行仍保留，执行前拒绝或跳过不关联。新 fork 按检查点边界继承父消息、祖先 fork 及此前的工具参数媒体；Chat History 的原始平台 URL/file ID 不构成中心引用。读取、LLM 请求和发送期间另有临时引用。
 
 媒体中心在持久化及对外返回副本时统一规范化名称和来源：名称只保留跨平台 basename，平台文件 ID 只保留不透明 ID，来源 URL 不保留用户信息、query、fragment 或 Telegram token 路径。实际下载仍使用清洗前的调用参数；旧记录按需清洗返回副本，不批量回写或重算媒体 ID。
 
@@ -179,7 +179,7 @@ Skill 分三类：
 
 Reload 由 Skill Manager 串行执行：scanner 先构建并验证完整候选集，registry 在单次写锁内替换 Agent/Go Skill 快照，成功后再替换 catalog；任一步失败均保留旧运行快照。`agent_skill` 写入 `ELBOT_SKILL.toml` 后若 reload 失败，会在同一管理事务内恢复原文件。
 
-Skill 媒体处理发生在具体工具的执行阶段，权限/风险评估不导出文件。`tool.MediaRuntime` 复用 Media Center API 管理显式输入、调用期引用和临时导出；ToolRun 不递归替换任意字符串参数。shell 解析 `media_inputs` 并注入调用级 `ELBOT_MEDIA_N`；Go runner 处理 `payload.media_inputs`；TOML 工具只处理 `type=media` 的顶层参数，对 LLM 投影为字符串 schema。
+Skill 媒体处理发生在具体工具的执行阶段，权限/风险评估不导出文件。`tool.MediaRuntime` 复用 Media Center API 管理显式输入、调用期引用和临时导出；ToolRun 会递归识别参数 JSON 中完整的媒体 ID 以建立 Session 引用，但不扫描自由文本，也不递归替换任意字符串参数。shell 解析 `media_inputs` 并注入调用级 `ELBOT_MEDIA_N`；Go runner 处理 `payload.media_inputs`；TOML 工具只处理 `type=media` 的顶层参数，对 LLM 投影为字符串 schema。
 
 shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首次导出原子发布，复用时刷新 ModTime，直接沿用 sandbox 时间清理。Go/TOML 保持 Skill 根目录为 cwd，媒体输入使用调用专属子目录和相对路径。stdout 媒体段通过 `os.Root` 校验、导入并生成稳定 ID，随后清理调用目录和引用；落库沿用 message/tool_result 引用事务。普通文本中的 ID 不触发转换。
 

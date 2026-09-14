@@ -121,6 +121,17 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			continue
 		}
 		runToolCtx = deps.PrepareToolContext(runToolCtx, req.Session, call)
+		if m.Media != nil {
+			if err := m.Media.RetainSessionToolArguments(runToolCtx, sessionID, call.Arguments); err != nil {
+				done()
+				message := toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s failed: retain media arguments: %v", call.Name, err))
+				content := llm.SegmentsContentText(message.Segments)
+				deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, content, err)
+				messages = append(messages, message)
+				transcript = append(transcript, deps.ToolResultMessage(sessionID, message))
+				continue
+			}
+		}
 		result := m.Execute(runToolCtx, call, resolved, req.Actor)
 		toolErr := runToolCtx.Err()
 		done()
