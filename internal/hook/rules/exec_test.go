@@ -11,7 +11,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -129,24 +131,33 @@ func TestReadProtocolLineRejectsOversizedFrame(t *testing.T) {
 }
 
 func TestExecCancellationKillsDescendantProcesses(t *testing.T) {
-	root := t.TempDir()
-	survived := filepath.Join(root, "survived")
-	ready := filepath.Join(root, "ready")
+	const waitLimit = 10 * time.Second
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	if err := listener.SetDeadline(time.Now().Add(waitLimit)); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := (Module{}).runRule(ctx, Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("spawn-child-and-wait", survived, ready)}}}, hook.Event{})
+		_, err := (Module{}).runRule(ctx, Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("spawn-child-and-wait", listener.Addr().String())}}}, hook.Event{})
 		errCh <- err
 	}()
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		if _, err := os.Stat(ready); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("child process did not start")
-		}
-		time.Sleep(10 * time.Millisecond)
+	conn, err := listener.AcceptTCP()
+	if err != nil {
+		t.Fatalf("child process did not connect: %v", err)
+	}
+	defer conn.Close()
+	if err := conn.SetReadDeadline(time.Now().Add(waitLimit)); err != nil {
+		t.Fatal(err)
+	}
+	var ready [5]byte
+	if _, err := io.ReadFull(conn, ready[:]); err != nil || string(ready[:]) != "ready" {
+		t.Fatalf("child process did not become ready: %q, %v", ready, err)
 	}
 	cancel()
 	select {
@@ -154,12 +165,18 @@ func TestExecCancellationKillsDescendantProcesses(t *testing.T) {
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("runRule error = %v, want context canceled", err)
 		}
-	case <-time.After(4 * time.Second):
+	case <-time.After(waitLimit):
 		t.Fatal("Hook did not stop after cancellation")
 	}
-	time.Sleep(700 * time.Millisecond)
-	if _, err := os.Stat(survived); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("descendant survived cancellation: %v", err)
+	// The child never closes voluntarily; EOF or a reset proves it was terminated.
+	if err := conn.SetReadDeadline(time.Now().Add(waitLimit)); err != nil {
+		t.Fatal(err)
+	}
+	var probe [1]byte
+	n, err := conn.Read(probe[:])
+	var netErr net.Error
+	if n != 0 || err == nil || (errors.As(err, &netErr) && netErr.Timeout()) {
+		t.Fatalf("descendant survived cancellation: read %d bytes, error %v", n, err)
 	}
 }
 

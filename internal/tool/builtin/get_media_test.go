@@ -1,9 +1,12 @@
 package builtin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +20,7 @@ import (
 )
 
 type getMediaResolver struct {
+	data  []byte
 	calls int
 	fail  bool
 }
@@ -25,6 +29,9 @@ func (r *getMediaResolver) ResolveMedia(_ context.Context, s platform.MessageSeg
 	r.calls++
 	if r.fail {
 		return delivery.Source{}, fmt.Errorf("https://secret-token/private")
+	}
+	if r.data != nil {
+		return delivery.Source{Data: r.data, MIMEType: "image/png"}, nil
 	}
 	return delivery.Source{Data: []byte(s.PlatformFileID), MIMEType: "image/png"}, nil
 }
@@ -143,5 +150,41 @@ func TestHistoryQueriesShowMediaWithoutDownload(t *testing.T) {
 	result, err := search.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{}`)})
 	if err != nil || resolver.calls != 1 || !strings.Contains(result.Content, "[图片 "+ids[1]+"]") {
 		t.Fatalf("downloaded history = %#v %v", result, err)
+	}
+}
+
+func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
+	ctx, tools, resolver := newHistoryMediaToolTest(t)
+	tools.center.Media.LLMImageMaxLength = 32
+	var data bytes.Buffer
+	if err := png.Encode(&data, image.NewNRGBA(image.Rect(0, 0, 80, 40))); err != nil {
+		t.Fatal(err)
+	}
+	resolver.data = data.Bytes()
+	request := tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)}
+	first, err := tools.Call(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := tools.history.GetByPlatformMessage(ctx, "p", "s", "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := tools.center.HistoryIDs(ctx, *row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, item, err := tools.center.Read(ctx, ids[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(stored))
+	if err != nil || format != "jpeg" || cfg.Width >= 32 || cfg.Height >= 32 || item.MIMEType != "image/jpeg" || !strings.Contains(first.Content, ids[1]) || len(first.Segments) != 0 {
+		t.Fatalf("compressed result = %#v, media %#v, dimensions %#v, %v", first, item, cfg, err)
+	}
+	tools.center.Media.LLMImageCompressionThresholdBytes = 1
+	again, err := tools.Call(ctx, request)
+	if err != nil || again.Content != first.Content || resolver.calls != 1 {
+		t.Fatalf("cached result = %#v, calls %d, error %v", again, resolver.calls, err)
 	}
 }

@@ -124,7 +124,7 @@ s3_secret_key_env = "ELBOT_S3_SECRET_ACCESS_KEY"
 s3_public_base_url = ""
 
 [media]
-# Images exceeding either limit are converted to temporary JPEG data for LLM requests.
+# Images exceeding either limit are stored as compressed JPEGs on import; originals are not kept.
 # Compression starts when the original image exceeds this byte threshold.
 llm_image_compression_threshold_bytes = 4194304
 # The maximum image width or height after compression.
