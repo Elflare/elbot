@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -20,10 +22,19 @@ var execHelperEventFrame map[string]any
 var execHelperEventID string
 
 func TestExecHelperProcess(t *testing.T) {
-	if len(os.Args) >= 3 && os.Args[len(os.Args)-3] == "elbot-exec-child" {
-		_ = os.WriteFile(os.Args[len(os.Args)-1], []byte("ready"), 0o644)
-		time.Sleep(500 * time.Millisecond)
-		_ = os.WriteFile(os.Args[len(os.Args)-2], []byte("survived"), 0o644)
+	if len(os.Args) >= 2 && os.Args[len(os.Args)-2] == "elbot-exec-child" {
+		conn, err := net.DialTimeout("tcp", os.Args[len(os.Args)-1], 10*time.Second)
+		if err != nil {
+			fmt.Fprint(os.Stderr, err)
+			os.Exit(1)
+		}
+		if _, err := conn.Write([]byte("ready")); err != nil {
+			fmt.Fprint(os.Stderr, err)
+			os.Exit(1)
+		}
+		// Stay alive until killed or the test closes its connection during cleanup.
+		_, _ = io.Copy(io.Discard, conn)
+		_ = conn.Close()
 		os.Exit(0)
 	}
 	marker := -1
@@ -178,15 +189,15 @@ func TestExecHelperProcess(t *testing.T) {
 		}
 		writeProtocolTestResult(map[string]any{"status": "completed", "result": "shared-ok"})
 	case "spawn-child-and-wait":
-		if marker+2 >= len(os.Args) {
+		if marker+1 >= len(os.Args) {
 			os.Exit(2)
 		}
-		child := exec.Command(os.Args[0], "-test.run=TestExecHelperProcess", "--", "elbot-exec-child", os.Args[marker+1], os.Args[marker+2])
+		child := exec.Command(os.Args[0], "-test.run=TestExecHelperProcess", "--", "elbot-exec-child", os.Args[marker+1])
 		if err := child.Start(); err != nil {
 			fmt.Fprint(os.Stderr, err)
 			os.Exit(1)
 		}
-		time.Sleep(5 * time.Second)
+		_ = child.Wait()
 	case "signal-and-wait":
 		if marker+2 >= len(os.Args) {
 			os.Exit(2)

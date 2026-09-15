@@ -422,9 +422,8 @@ download_timeout_secs = 60
 
 S3 交付使用 `s3_endpoint`、`s3_region`、`s3_bucket` 以及 `s3_access_key_env`、`s3_secret_key_env` 指定的变量。模型服务通过有效期为 1 小时的预签名 URL 下载对象，不需要另外提供密钥。Cloudflare R2 可保持 bucket 私有，无需开启公共访问；实际下载文件的模型服务或中转服务必须能访问该链接。
 
-`[media]` 控制发送给 LLM 的图片压缩：`llm_image_compression_threshold_bytes` 是触发压缩的原图大小阈值，`llm_image_max_length` 是压缩后宽度或高度的上限。图片超过任一限制时会按比例转为临时 JPEG，原始媒体不变。
+`[media]` 控制图片入库压缩：`llm_image_compression_threshold_bytes` 是触发压缩的原图字节数阈值（默认 4 MiB），`llm_image_max_length` 是边长限制（默认 4096）。原图字节数超过阈值或任一边长达到限制时，等比例压缩图片。
 
-S3 模式下，临时 JPEG 在请求结束后删除；建议为 Bucket 的 `llm-temp/` 前缀配置生命周期规则，清理进程异常退出时遗留的对象。
 
 ## 日志与维护任务
 

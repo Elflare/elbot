@@ -9,6 +9,10 @@ import (
 	_ "image/gif"
 	"image/jpeg"
 	_ "image/png"
+	"path/filepath"
+	"strings"
+
+	"elbot/internal/config"
 )
 
 func imageDimensions(data []byte) (int, int, error) {
@@ -130,4 +134,21 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func shouldCompressImage(data []byte, cfg config.MediaConfig) bool {
+	if int64(len(data)) > cfg.LLMImageCompressionThresholdBytes {
+		return true
+	}
+	width, height, err := imageDimensions(data)
+	return err == nil && (width >= cfg.LLMImageMaxLength || height >= cfg.LLMImageMaxLength)
+}
+
+func compressedName(name string) string {
+	name = sanitizeMediaName(name)
+	ext := filepath.Ext(name)
+	if ext == "" {
+		return name + ".jpg"
+	}
+	return strings.TrimSuffix(name, ext) + ".jpg"
 }

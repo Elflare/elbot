@@ -1,17 +1,14 @@
 package media
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
 	"net/url"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
-	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
 )
@@ -81,6 +78,10 @@ func (m *Manager) Materialize(ctx context.Context, segments []llm.MessageSegment
 			out[i] = unavailable(segment)
 			continue
 		}
+		if segment.MediaID == "" {
+			segment.Name = metadata.Name
+			segment.MIMEType = metadata.MIMEType
+		}
 		segment.MediaID, segment.URL = metadata.ID, ""
 		if segment.Name == "" {
 			segment.Name = metadata.Name
@@ -104,195 +105,68 @@ func unavailable(segment llm.MessageSegment) llm.MessageSegment {
 	return llm.MessageSegment{Type: llm.SegmentText, Text: "[媒体不可用；" + label + "]"}
 }
 
-type requestMedia struct {
-	metadata   *storage.Media
-	data       []byte
-	compressed bool
-}
-
-// ResolveForLLM only changes a request copy. The cleanup releases request-scoped remote objects.
+// ResolveForLLM only changes a request copy and uses media as stored.
 func (m *Manager) ResolveForLLM(ctx context.Context, messages []llm.LLMMessage) ([]llm.LLMMessage, func(), error) {
 	out := llm.CloneMessages(messages)
-	cleanup := &cleanupList{}
-	mediaByID := map[string]*requestMedia{}
+	cleanup := func() {}
+	mediaByID := map[string]*storage.Media{}
 	var total int64
 	for i := range out {
-		for j := range out[i].Segments {
-			segment := out[i].Segments[j]
+		for j, segment := range out[i].Segments {
 			if (segment.Type == llm.SegmentImage || segment.Type == llm.SegmentFile) && segment.Name != "" {
-				segment.Name = sanitizeMediaName(segment.Name)
-				out[i].Segments[j].Name = segment.Name
+				out[i].Segments[j].Name = sanitizeMediaName(segment.Name)
 			}
 			if segment.MediaID == "" {
 				continue
 			}
-			cacheKey := segment.MediaID + "\x00" + string(segment.Type)
-			item, ok := mediaByID[cacheKey]
+			metadata, ok := mediaByID[segment.MediaID]
 			if !ok {
-				metadata, err := m.Metadata(ctx, segment.MediaID)
+				var err error
+				metadata, err = m.Metadata(ctx, segment.MediaID)
 				if err != nil {
 					out[i].Segments[j] = unavailable(segment)
 					continue
 				}
-				item = &requestMedia{metadata: metadata}
-				if segment.Type == llm.SegmentImage {
-					data, _, err := m.Read(ctx, segment.MediaID)
-					if err != nil {
-						out[i].Segments[j] = unavailable(segment)
-						continue
-					}
-					item.data = data
-					if shouldCompressImage(metadata, data, m.Media) {
-						compressed, err := compressImage(data, m.Media.LLMImageCompressionThresholdBytes, m.Media.LLMImageMaxLength)
-						if err != nil {
-							out[i].Segments[j] = unavailable(segment)
-							continue
-						}
-						item.data = compressed
-						item.compressed = true
-						item.metadata = compressedMetadata(metadata, len(compressed))
-					}
-				}
-				mediaByID[cacheKey] = item
+				mediaByID[segment.MediaID] = metadata
 			}
-			if item.metadata == nil {
-				continue
+			if out[i].Segments[j].Name == "" {
+				out[i].Segments[j].Name = metadata.Name
 			}
-			if item.compressed {
-				out[i].Segments[j].Name = item.metadata.Name
-				out[i].Segments[j].MIMEType = item.metadata.MIMEType
-			} else if out[i].Segments[j].Name == "" {
-				out[i].Segments[j].Name = item.metadata.Name
-			}
-			total += itemSize(item)
+			out[i].Segments[j].MIMEType = metadata.MIMEType
+			total += metadata.Size
 		}
 	}
-
 	remote := m.FileDelivery.Backend == "s3" || (m.FileDelivery.Backend == "hybrid" && total > m.FileDelivery.MaxDirectBase64Bytes)
 	if !remote && total > m.FileDelivery.MaxDirectBase64Bytes {
-		return nil, func() {}, fmt.Errorf("media request is %d bytes, exceeds file_delivery.max_direct_base64_bytes=%d", total, m.FileDelivery.MaxDirectBase64Bytes)
+		return nil, cleanup, fmt.Errorf("media request is %d bytes, exceeds file_delivery.max_direct_base64_bytes=%d", total, m.FileDelivery.MaxDirectBase64Bytes)
 	}
 	urls := map[string]string{}
 	for i := range out {
 		for j, segment := range out[i].Segments {
-			if segment.MediaID == "" {
+			metadata := mediaByID[segment.MediaID]
+			if segment.MediaID == "" || metadata == nil {
 				continue
 			}
-			cacheKey := segment.MediaID + "\x00" + string(segment.Type)
-			item := mediaByID[cacheKey]
-			if item == nil || item.metadata == nil {
-				continue
-			}
-			urlKey := segment.MediaID + "\x00" + string(segment.Type)
-			value, ok := urls[urlKey]
+			value, ok := urls[segment.MediaID]
 			if !ok {
 				var err error
 				if remote {
-					if item.compressed {
-						backend, backendErr := m.remoteBackend(ctx)
-						if backendErr != nil {
-							err = backendErr
-						} else if temporary, ok := backend.(temporaryBackend); ok {
-							var key string
-							key, err = temporary.PutTemporary(ctx, bytes.NewReader(item.data), int64(len(item.data)), item.metadata.MIMEType)
-							if err == nil {
-								cleanup.add(func() {
-									cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-									defer cancel()
-									if err := temporary.RemoveTemporary(cleanupCtx, key); err != nil && m.Logger != nil {
-										m.Logger.Warn("remove temporary LLM media failed", "key", key, "error", err)
-									}
-								})
-								value, err = temporary.PresignTemporary(ctx, key, time.Hour)
-							}
-						} else {
-							err = fmt.Errorf("remote media backend does not support temporary objects")
-						}
-					} else {
-						value, err = m.PresignGet(ctx, segment.MediaID, time.Hour)
-					}
+					value, err = m.PresignGet(ctx, segment.MediaID, time.Hour)
 				} else {
-					data := item.data
-					if len(data) == 0 {
-						data, _, err = m.Read(ctx, segment.MediaID)
-					}
+					var data []byte
+					data, _, err = m.Read(ctx, segment.MediaID)
 					if err == nil {
-						value = "data:" + item.metadata.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(data)
+						value = "data:" + metadata.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(data)
 					}
 				}
 				if err != nil {
 					out[i].Segments[j] = unavailable(segment)
 					continue
 				}
-				urls[urlKey] = value
+				urls[segment.MediaID] = value
 			}
 			out[i].Segments[j].URL = value
 		}
 	}
-	return out, cleanup.run, nil
-}
-
-func shouldCompressImage(metadata *storage.Media, data []byte, cfg config.MediaConfig) bool {
-	if metadata == nil {
-		return false
-	}
-	if int64(len(data)) > cfg.LLMImageCompressionThresholdBytes {
-		return true
-	}
-	width, height, err := imageDimensions(data)
-	return err == nil && (width >= cfg.LLMImageMaxLength || height >= cfg.LLMImageMaxLength)
-}
-
-func compressedMetadata(metadata *storage.Media, size int) *storage.Media {
-	copy := *metadata
-	copy.Name = compressedName(metadata.Name)
-	copy.MIMEType = "image/jpeg"
-	copy.Size = int64(size)
-	return &copy
-}
-
-func compressedName(name string) string {
-	name = sanitizeMediaName(name)
-	ext := filepath.Ext(name)
-	if ext == "" {
-		return name + ".jpg"
-	}
-	return strings.TrimSuffix(name, ext) + ".jpg"
-}
-
-func itemSize(item *requestMedia) int64 {
-	if item.compressed {
-		return int64(len(item.data))
-	}
-	return item.metadata.Size
-}
-
-type cleanupList struct {
-	mu    sync.Mutex
-	items []func()
-	done  bool
-}
-
-func (c *cleanupList) add(cleanup func()) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.done {
-		cleanup()
-		return
-	}
-	c.items = append(c.items, cleanup)
-}
-
-func (c *cleanupList) run() {
-	c.mu.Lock()
-	if c.done {
-		c.mu.Unlock()
-		return
-	}
-	c.done = true
-	items := append([]func(){}, c.items...)
-	c.mu.Unlock()
-	for i := len(items) - 1; i >= 0; i-- {
-		items[i]()
-	}
+	return out, cleanup, nil
 }

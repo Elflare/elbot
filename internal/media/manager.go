@@ -94,6 +94,24 @@ func (m *Manager) ImportReader(ctx context.Context, input io.Reader, size int64,
 	if size > m.MaxImportBytes {
 		return nil, fmt.Errorf("media exceeds import limit of %d bytes", m.MaxImportBytes)
 	}
+	spec = sanitizeInput(spec)
+	if spec.MIMEType == "" {
+		spec.MIMEType = mime.TypeByExtension(filepath.Ext(spec.Name))
+	}
+	if spec.MIMEType == "" {
+		spec.MIMEType = http.DetectContentType(data)
+	}
+	if strings.HasPrefix(strings.ToLower(spec.MIMEType), "image/") || strings.HasPrefix(http.DetectContentType(data), "image/") {
+		if shouldCompressImage(data, m.Media) {
+			data, err = compressImage(data, m.Media.LLMImageCompressionThresholdBytes, m.Media.LLMImageMaxLength)
+			if err != nil {
+				return nil, fmt.Errorf("compress imported image: %w", err)
+			}
+			size = int64(len(data))
+			spec.Name = compressedName(spec.Name)
+			spec.MIMEType = "image/jpeg"
+		}
+	}
 	sum := sha256.Sum256(data)
 	id := fmt.Sprintf("%s%x", IDPrefix, sum)
 	m.objects.Lock()
@@ -108,13 +126,6 @@ func (m *Manager) ImportReader(ctx context.Context, input io.Reader, size int64,
 		return sanitizeMediaMetadata(existing), nil
 	} else if err != storage.ErrNotFound {
 		return nil, err
-	}
-	spec = sanitizeInput(spec)
-	if spec.MIMEType == "" {
-		spec.MIMEType = mime.TypeByExtension(filepath.Ext(spec.Name))
-	}
-	if spec.MIMEType == "" {
-		spec.MIMEType = http.DetectContentType(data)
 	}
 	media := &storage.Media{ID: id, Name: spec.Name, MIMEType: spec.MIMEType, Size: size, Backend: backendName(m.Backend), SourcePlatform: spec.Source.Platform, SourceURL: spec.Source.URL, SourceFileID: spec.Source.FileID}
 	location, err := m.Backend.Put(ctx, id, bytes.NewReader(data), size, media.MIMEType)

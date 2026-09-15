@@ -3,13 +3,16 @@ package media
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -115,27 +118,7 @@ func TestResolverRequestTotalAndIsolation(t *testing.T) {
 	}
 }
 
-type temporaryResolverRemote struct {
-	resolverRemote
-	data    []byte
-	removed int
-}
-
-func (b *temporaryResolverRemote) PutTemporary(_ context.Context, r io.Reader, _ int64, _ string) (string, error) {
-	b.data, _ = io.ReadAll(r)
-	return "llm-temp/test.jpg", nil
-}
-
-func (b *temporaryResolverRemote) PresignTemporary(_ context.Context, key string, _ time.Duration) (string, error) {
-	return "https://s3.test/" + key, nil
-}
-
-func (b *temporaryResolverRemote) RemoveTemporary(_ context.Context, _ string) error {
-	b.removed++
-	return nil
-}
-
-func TestResolverCompressesImageOnlyForRequest(t *testing.T) {
+func TestImportCompressionAndResolverReuse(t *testing.T) {
 	ctx := context.Background()
 	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
@@ -145,44 +128,125 @@ func TestResolverCompressesImageOnlyForRequest(t *testing.T) {
 	root := t.TempDir()
 	m := NewManager(store, root, &LocalBackend{Root: root})
 	m.Media = config.MediaConfig{LLMImageCompressionThresholdBytes: 1024 * 1024, LLMImageMaxLength: 32}
-	m.FileDelivery.Backend = "base64"
-	m.FileDelivery.MaxDirectBase64Bytes = 1024 * 1024
-
-	imageData := testPNG(t, 80, 40)
-	item, err := m.ImportBytes(ctx, imageData, Input{Name: "large.png", MIMEType: "image/png"})
+	data := testPNG(t, 80, 40)
+	materialized := m.Materialize(ctx, []llm.MessageSegment{{Type: llm.SegmentImage, Name: "large.png", MIMEType: "image/png", URL: "data:image/png;base64," + base64.StdEncoding.EncodeToString(data)}})
+	segment := materialized[0]
+	if segment.MediaID == "" || segment.Name != "large.jpg" || segment.MIMEType != "image/jpeg" || segment.URL != "" {
+		t.Fatalf("materialized = %#v", segment)
+	}
+	storedData, item, err := m.Read(ctx, segment.MediaID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{{Type: llm.SegmentImage, MediaID: item.ID, Name: item.Name}}}}
-	resolved, cleanup, err := m.ResolveForLLM(ctx, input)
-	if err != nil {
-		t.Fatal(err)
+	width, height, err := imageDimensions(storedData)
+	if err != nil || width >= 32 || height >= 32 || item.Size != int64(len(storedData)) || item.ID != fmt.Sprintf("%s%x", IDPrefix, sha256.Sum256(storedData)) {
+		t.Fatalf("compressed media = %#v, dimensions %dx%d, error %v", item, width, height, err)
 	}
-	defer cleanup()
-	segment := resolved[0].Segments[0]
-	if segment.MediaID != item.ID || segment.Name != "large.jpg" || segment.MIMEType != "image/jpeg" || !strings.HasPrefix(segment.URL, "data:image/jpeg;base64,") {
-		t.Fatalf("resolved segment = %#v", segment)
+	originalID := fmt.Sprintf("%s%x", IDPrefix, sha256.Sum256(data))
+	if _, err := m.Metadata(ctx, originalID); err != storage.ErrNotFound {
+		t.Fatalf("original persisted: %v", err)
 	}
-	encoded := strings.TrimPrefix(segment.URL, "data:image/jpeg;base64,")
-	jpegData, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		t.Fatal(err)
+	remote := &resolverRemote{LocalBackend: LocalBackend{Root: t.TempDir()}}
+	m.Remote = remote
+	input := []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{segment, segment}}}
+	// Tightening import limits must not recompress already stored media.
+	m.Media = config.MediaConfig{LLMImageCompressionThresholdBytes: 1, LLMImageMaxLength: 1}
+	for _, mode := range []string{"base64", "hybrid", "s3"} {
+		m.FileDelivery.Backend = mode
+		m.FileDelivery.MaxDirectBase64Bytes = item.Size * 2
+		for attempt := 0; attempt < 2; attempt++ {
+			out, cleanup, err := m.ResolveForLLM(ctx, input)
+			cleanup()
+			cleanup()
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := out[0].Segments[0]
+			want := "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(storedData)
+			if mode == "s3" {
+				want = "https://s3.test/" + item.ID + "?X-Amz-Signature=temporary"
+			}
+			if got.URL != want || got.MediaID != item.ID || out[0].Segments[1].URL != want {
+				t.Fatalf("%s resolved = %#v", mode, out)
+			}
+		}
 	}
-	width, height, err := imageDimensions(jpegData)
-	if err != nil || width >= 32 || height >= 32 {
-		t.Fatalf("compressed dimensions = %dx%d, error %v", width, height, err)
+	m.FileDelivery.Backend, m.FileDelivery.MaxDirectBase64Bytes = "hybrid", item.Size*2-1
+	out, cleanup, err := m.ResolveForLLM(ctx, input)
+	cleanup()
+	if err != nil || !strings.HasPrefix(out[0].Segments[0].URL, "https://s3.test/"+item.ID) || remote.puts != 1 {
+		t.Fatalf("remote reuse = %#v, uploads %d, error %v", out, remote.puts, err)
 	}
-	original, stored, err := m.Read(ctx, item.ID)
-	if err != nil || !bytes.Equal(original, imageData) || stored.MIMEType != "image/png" || stored.Name != "large.png" {
-		t.Fatalf("original media changed: metadata=%#v error=%v", stored, err)
-	}
-	refs, err := store.MediaReferences().ListMediaIDs(ctx, item.ID)
-	if err != nil || len(refs) != 0 {
-		t.Fatalf("request compression persisted references: %#v, %v", refs, err)
+	if input[0].Segments[0].URL != "" {
+		t.Fatal("canonical input mutated")
 	}
 }
 
-func TestResolverHybridUsesCompressedSizeAndCleansTemporaryObject(t *testing.T) {
+func TestImportImageLimits(t *testing.T) {
+	data := testPNG(t, 80, 40)
+	for _, tc := range []struct {
+		name                  string
+		data                  []byte
+		mime                  string
+		bytes                 int64
+		length                int
+		importLimit           int64
+		compressed, wantError bool
+	}{
+		{name: "unchanged", data: data, bytes: int64(len(data)) + 1, length: 81},
+		{name: "byte boundary", data: data, bytes: int64(len(data)), length: 81},
+		{name: "bytes", data: append(append([]byte(nil), data...), make([]byte, 4096)...), bytes: 2048, length: 81, compressed: true},
+		{name: "dimension boundary", data: data, bytes: 4096, length: 80, compressed: true},
+		{name: "generic MIME image", data: data, mime: "application/octet-stream", bytes: 4096, length: 32, compressed: true},
+		{name: "non image", data: []byte("ordinary file"), mime: "text/plain", bytes: 2, length: 2},
+		{name: "invalid image", data: []byte("invalid image"), mime: "image/png", bytes: 2, length: 32, wantError: true},
+		{name: "impossible compression", data: data, bytes: 1, length: 32, wantError: true},
+		{name: "hard import limit", data: data, bytes: 4096, length: 32, importLimit: int64(len(data)) - 1, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			backend := &resolverRemote{LocalBackend: LocalBackend{Root: t.TempDir()}}
+			m := NewManager(store, backend.Root, backend)
+			m.Media = config.MediaConfig{LLMImageCompressionThresholdBytes: tc.bytes, LLMImageMaxLength: tc.length}
+			if tc.importLimit > 0 {
+				m.MaxImportBytes = tc.importLimit
+			}
+			item, err := m.ImportReader(ctx, bytes.NewReader(tc.data), -1, Input{Name: "input", MIMEType: tc.mime})
+			if (err != nil) != tc.wantError {
+				t.Fatalf("import error = %v", err)
+			}
+			if tc.wantError {
+				if backend.puts != 0 {
+					t.Fatal("failed import persisted an object")
+				}
+				return
+			}
+			got, _, err := m.Read(ctx, item.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.compressed {
+				w, h, err := imageDimensions(got)
+				if err != nil || w >= tc.length || h >= tc.length || int64(len(got)) >= tc.bytes || item.MIMEType != "image/jpeg" || item.Name != "input.jpg" {
+					t.Fatalf("compressed = %#v, %dx%d, %v", item, w, h, err)
+				}
+			} else if !bytes.Equal(got, tc.data) {
+				t.Fatal("uncompressed content changed")
+			}
+			again, err := m.ImportBytes(ctx, tc.data, Input{Name: "input", MIMEType: tc.mime})
+			if err != nil || again.ID != item.ID || backend.puts != 1 {
+				t.Fatalf("dedup = %#v, %v, puts %d", again, err, backend.puts)
+			}
+		})
+	}
+}
+
+func TestResolverDoesNotCompressExistingMedia(t *testing.T) {
 	ctx := context.Background()
 	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
@@ -191,30 +255,53 @@ func TestResolverHybridUsesCompressedSizeAndCleansTemporaryObject(t *testing.T) 
 	defer store.Close()
 	root := t.TempDir()
 	m := NewManager(store, root, &LocalBackend{Root: root})
-	m.Media = config.MediaConfig{LLMImageCompressionThresholdBytes: 1024, LLMImageMaxLength: 64}
-	m.FileDelivery.Backend = "hybrid"
-	m.FileDelivery.MaxDirectBase64Bytes = 100
-	remote := &temporaryResolverRemote{resolverRemote: resolverRemote{LocalBackend: LocalBackend{Root: t.TempDir()}}}
-	m.Remote = remote
-	item, err := m.ImportBytes(ctx, testPNG(t, 80, 80), Input{Name: "large.png", MIMEType: "image/png"})
+	data := testPNG(t, 80, 40)
+	item, err := m.ImportBytes(ctx, data, Input{Name: "old.png"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	m.Media = config.MediaConfig{LLMImageCompressionThresholdBytes: 1, LLMImageMaxLength: 1}
+	input := []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{{Type: llm.SegmentImage, MediaID: item.ID}}}}
+	out, cleanup, err := m.ResolveForLLM(ctx, input)
+	cleanup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := out[0].Segments[0]; got.MediaID != item.ID || got.URL != "data:image/png;base64,"+base64.StdEncoding.EncodeToString(data) {
+		t.Fatalf("old media changed = %#v", got)
+	}
+}
 
-	resolved, cleanup, err := m.ResolveForLLM(ctx, []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{{Type: llm.SegmentImage, MediaID: item.ID}}}})
+func TestImportURLAndFileCompressIdentically(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := resolved[0].Segments[0].URL; got != "https://s3.test/llm-temp/test.jpg" {
-		t.Fatalf("URL = %q, segment = %#v", got, resolved[0].Segments[0])
+	defer store.Close()
+	root := t.TempDir()
+	m := NewManager(store, root, &LocalBackend{Root: root})
+	m.Media.LLMImageMaxLength = 32
+	data := testPNG(t, 80, 40)
+	path := filepath.Join(t.TempDir(), "photo.png")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
 	}
-	if len(remote.data) == 0 {
-		t.Fatal("temporary JPEG was not uploaded")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(data)
+	}))
+	defer server.Close()
+	fromURL, err := m.ImportURL(ctx, server.URL+"/photo.png", Input{})
+	if err != nil {
+		t.Fatal(err)
 	}
-	cleanup()
-	cleanup()
-	if remote.removed != 1 {
-		t.Fatalf("temporary removals = %d", remote.removed)
+	fromFile, err := m.ImportFile(ctx, path, Input{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromURL.ID != fromFile.ID || fromURL.Name != "photo.jpg" || fromURL.MIMEType != "image/jpeg" {
+		t.Fatalf("URL = %#v, file = %#v", fromURL, fromFile)
 	}
 }
 

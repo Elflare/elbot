@@ -149,7 +149,7 @@ Tool Runtime 负责注册、schema、权限、风险、确认详情、用户侧 
 
 媒体中心在持久化及对外返回副本时统一规范化名称和来源：名称只保留跨平台 basename，平台文件 ID 只保留不透明 ID，来源 URL 不保留用户信息、query、fragment 或 Telegram token 路径。实际下载仍使用清洗前的调用参数；旧记录按需清洗返回副本，不批量回写或重算媒体 ID。
 
-`ResolveForLLM` 会在图片原始大小或边长超过 `[media]` 限制时，按比例生成仅用于本次请求的白底 JPEG；原始媒体、Media ID 和引用不变。传输方式在压缩后按 `file_delivery` 重新判断：base64 只使用内存 data URL，S3/hybrid 需要远端时上传 `llm-temp/` 临时对象并在请求结束后删除。S3 后端按需初始化，配置不可用只告警并使实际远端操作失败，不阻止应用启动。
+`ImportReader` 在导入硬上限校验后、内容哈希和后端写入前统一检查图片；字节数超过 `[media]` 阈值或边长达到限制时，压缩为白底 JPEG，只保存压缩内容并返回对应 ID、名称、MIME 和大小。入站消息与历史关联直接保存该 ID。`ResolveForLLM` 物化请求副本，按持久化媒体大小选择 base64/S3/hybrid。S3 后端按需初始化，配置不可用只告警并使实际远端操作失败，不阻止应用启动。
 
 聊天历史查询不下载媒体：`search_chat_history` / `get_chat_history_around` 按媒体顺序展示编号和 `[图片 media:未下载]` 或已有媒体 ID。`get_media(message_id=[...], media_index=[[...],...])` 限定当前平台/scope；序号从 1 开始，省略索引时每消息取首个媒体。只有显式获取才下载，单次最多尝试 5 个未入库媒体，失败计数，缓存和同次重复位置不额外占额度；结果为纯文本，不返回图片内容。
 

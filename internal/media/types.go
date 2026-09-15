@@ -32,12 +32,6 @@ type Backend interface {
 	PresignGet(ctx context.Context, media *storage.Media, expiry time.Duration) (string, error)
 }
 
-type temporaryBackend interface {
-	PutTemporary(ctx context.Context, input io.Reader, size int64, contentType string) (key string, err error)
-	PresignTemporary(ctx context.Context, key string, expiry time.Duration) (string, error)
-	RemoveTemporary(ctx context.Context, key string) error
-}
-
 type lazyBackend struct {
 	manager *Manager
 }
