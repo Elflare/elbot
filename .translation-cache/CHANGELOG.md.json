@@ -120,14 +120,6 @@
       "translation": "**Multi-platform adapter**: CLI (including client/server separation and remote connection), QQ OneBot v11, QQ Official Bot, Telegram Bot API.",
       "updated_at": 1782270601
     },
-    "CHANGELOG.md:list:12d00ff7c67e4c2fce31b4815ea5571c66e797eb8a3143935803cc45147c166e": {
-      "kind": "list",
-      "source": "原始媒体和 Media ID 不变。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "12d00ff7c67e4c2fce31b4815ea5571c66e797eb8a3143935803cc45147c166e",
-      "translation": "Original media and Media IDs remain unchanged.",
-      "updated_at": 1789300308
-    },
     "CHANGELOG.md:list:1306f051df00fc640349a0d84e661928c55382bb10eb6763bf3c3f1865c2f524": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 支持填字段更新 meta，并新增 __ELBOT_CODE_2__ 复用 __ELBOT_CODE_3__ 的编辑操作修改正文；",
@@ -360,14 +352,6 @@
       "translation": "Fixed an issue where OpenAI-compatible streaming requests used a single HTTP timeout, causing them to be incorrectly interrupted when the model's first token was slow or long outputs exceeded 60 seconds.",
       "updated_at": 1782461728
     },
-    "CHANGELOG.md:list:3b4de8ae6969fdf508c1b29cc82bb09073d4eb0eb8fdb232c6add7a94df865e9": {
-      "kind": "list",
-      "source": "S3 后端改为按需初始化，配置不可用时仅告警，不再阻止 ElBot 启动。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "3b4de8ae6969fdf508c1b29cc82bb09073d4eb0eb8fdb232c6add7a94df865e9",
-      "translation": "The S3 backend is now initialized on demand; if the configuration is unavailable, only a warning is issued, and it no longer prevents ElBot from starting.",
-      "updated_at": 1789300308
-    },
     "CHANGELOG.md:list:3bfc1afeffc284a26448c1c4b861effd798139382834e032c757e03c4de32170": {
       "kind": "list",
       "source": "**日志与审计**：运行日志、审计日志与 Elnis 日志分离，支持结构化字段与按日期轮转。",
@@ -391,6 +375,14 @@
       "source_hash": "3f12d36ddeb77f5aa2c07362139ff4e2638f700877ec1fa53d908de5984c69a3",
       "translation": "Persistent Workers will instead receive __ELBOT_CODE_0__ and continue to be reused.",
       "updated_at": 1786539387
+    },
+    "CHANGELOG.md:list:3f5d0c97e8ab4cef1878e2da4229627dfe1a9c63387cf5d6f43ea6c83266d96b": {
+      "kind": "list",
+      "source": "现在会压缩超过设置大小的图片；原始媒体和 Media ID 不变。S3 后端改为按需初始化，配置不可用时仅告警，不再阻止 ElBot 启动。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "3f5d0c97e8ab4cef1878e2da4229627dfe1a9c63387cf5d6f43ea6c83266d96b",
+      "translation": "Now compresses images that exceed the configured size; original media and Media IDs remain unchanged. The S3 backend is now initialized on demand; it will only issue a warning if the configuration is unavailable, and will no longer prevent ElBot from starting.",
+      "updated_at": 1789433256
     },
     "CHANGELOG.md:list:4044f046a8ac2f38149d91bf251a488e181b94d64f9a8f006b4abe16dfdce2b2": {
       "kind": "list",
@@ -1624,14 +1616,6 @@
       "translation": "Now, a user text label containing the sequence number within the message, name, and HTTP(S) URL will be derived before each image; persistence __ELBOT_CODE_0__ and visual fallback use the same text projection, while __ELBOT_CODE_1__ still only saves the original structure and requires no database migration.",
       "updated_at": 1786545145
     },
-    "CHANGELOG.md:list:fde27e52355a3907827c4d44234d35b1269bf4e8bbc0b2f59b1ec0e3f8f13d71": {
-      "kind": "list",
-      "source": "超过 __ELBOT_CODE_0__ 图片大小或边长限制的 LLM 输入现在会在请求内临时转为白底 JPEG，并按压缩后的实际大小选择 base64 或 S3；",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "fde27e52355a3907827c4d44234d35b1269bf4e8bbc0b2f59b1ec0e3f8f13d71",
-      "translation": "LLM inputs exceeding the __ELBOT_CODE_0__ image size or dimension limits will now be temporarily converted to white-background JPEGs within the request, and will choose between base64 or S3 based on the actual compressed size;",
-      "updated_at": 1789300308
-    },
     "CHANGELOG.md:list:ffea405479ecdf42f2de02ac5df8d702b35876490677884584d95b31ed5e348c": {
       "kind": "list",
       "source": "优化.env、平台secret、token解析逻辑",
@@ -1650,8 +1634,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "99036ab1a0e0183ff75495764ecb09d0cb6c37a5d96c398fc45a951ad0cc01ee",
+  "source_hash": "35831f8c3b33c05085079b8681c351bb2d7485826df5299bf5b3b15d7e878873",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1789313626,
+  "updated_at": 1789433256,
   "version": 2
 }
