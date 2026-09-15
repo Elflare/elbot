@@ -424,9 +424,8 @@ download_timeout_secs = 60
 
 S3 delivery uses variables specified by `s3_endpoint`, `s3_region`, `s3_bucket`, as well as `s3_access_key_env` and `s3_secret_key_env`. The model service downloads objects via pre-signed URLs valid for 1 hour, and no additional keys are required. Cloudflare R2 can keep the bucket private without needing to enable public access; The model service or relay service that actually downloads the files must be able to access the link.
 
-`[media]` controls the image compression sent to the LLM: `llm_image_compression_threshold_bytes` is the original image size threshold that triggers compression, and `llm_image_max_length` is the upper limit for the width or height after compression. When an image exceeds any of the limits, it will be proportionally converted to a temporary JPEG, while the original media remains unchanged.
+`[media]` controls image compression upon storage: `llm_image_compression_threshold_bytes` is the original image byte size threshold that triggers compression (default 4 MiB), and `llm_image_max_length` is the side length limit (default 4096). Images are compressed proportionally when the original image byte size exceeds the threshold or any side length reaches the limit.
 
-In S3 mode, temporary JPEGs are deleted after the request ends; it is recommended to configure lifecycle rules for the `llm-temp/` prefix of the Bucket to clean up objects left behind when a process exits abnormally.
 
 ## Logs and Maintenance Tasks
 

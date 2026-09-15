@@ -1328,14 +1328,6 @@
       "translation": "Relative paths are based on the directory where __ELBOT_CODE_0__ is located:\n",
       "updated_at": 1781779407
     },
-    "docs/configuration.md:paragraph:12e6df6ce09698faf84252f22dfc7f4568d6671390ac70aec0b332942ee0017c": {
-      "kind": "paragraph",
-      "source": "图片超过任一限制时会按比例转为临时 JPEG，原始媒体不变。\n",
-      "source_file": "docs/configuration.md",
-      "source_hash": "12e6df6ce09698faf84252f22dfc7f4568d6671390ac70aec0b332942ee0017c",
-      "translation": "When an image exceeds any of the limits, it will be proportionally converted to a temporary JPEG, while the original media remains unchanged.\n",
-      "updated_at": 1789300223
-    },
     "docs/configuration.md:paragraph:1348de618f0e0d0ee6e02cf28f370260454080fe4e7f5dbbe87c54feefef6abc": {
       "kind": "paragraph",
       "source": "自动附带的说明文件最大为 64 KiB。超过限制时不会读取内容，也不会标记为已附带，工具结果会提示需要缩短或拆分该文件后再切换 workspace。\n",
@@ -1407,6 +1399,14 @@
       "source_hash": "1cc9b85e7c28ff9786bfca7e43ab8652154b438f4f638cf849bc509f8a9ea097",
       "translation": "During the development phase, you can use the platform configuration directory by running it directly:\n",
       "updated_at": 1785052888
+    },
+    "docs/configuration.md:paragraph:1d4f81c383d5f4d9cc9a2e26894809a138963503804513c4bdb228f67e8163e4": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 控制图片入库压缩：__ELBOT_CODE_1__ 是触发压缩的原图字节数阈值（默认 4 MiB），__ELBOT_CODE_2__ 是边长限制（默认 4096）。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1d4f81c383d5f4d9cc9a2e26894809a138963503804513c4bdb228f67e8163e4",
+      "translation": "__ELBOT_CODE_0__ controls image compression upon storage: __ELBOT_CODE_1__ is the original image byte size threshold that triggers compression (default 4 MiB), and __ELBOT_CODE_2__ is the side length limit (default 4096).",
+      "updated_at": 1789433212
     },
     "docs/configuration.md:paragraph:1d56c1d5c9270bc2229d1ef895ca3cb4e8c604438f9eec03aa3d507d0bbaf119": {
       "kind": "paragraph",
@@ -1912,14 +1912,6 @@
       "translation": "For complete configuration instructions for rules and persistent Hooks, see [Hook](hooks.md).\n",
       "updated_at": 1785052888
     },
-    "docs/configuration.md:paragraph:9d7e01a030275d2506745e83c45f6aed4b7e6e851728ac818890dcb7738eee32": {
-      "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 控制发送给 LLM 的图片压缩：__ELBOT_CODE_1__ 是触发压缩的原图大小阈值，__ELBOT_CODE_2__ 是压缩后宽度或高度的上限。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "9d7e01a030275d2506745e83c45f6aed4b7e6e851728ac818890dcb7738eee32",
-      "translation": "__ELBOT_CODE_0__ controls the image compression sent to the LLM: __ELBOT_CODE_1__ is the original image size threshold that triggers compression, and __ELBOT_CODE_2__ is the upper limit for the width or height after compression.",
-      "updated_at": 1789300223
-    },
     "docs/configuration.md:paragraph:9df1d86d01117e8f6e59299abf97ac21668c92aa8e8e67bc53e8cfaf0251f30c": {
       "kind": "paragraph",
       "source": "旧版 __ELBOT_CODE_0__ 已移除；已有配置需要改为上述三个新字段。\n",
@@ -2160,6 +2152,14 @@
       "translation": "__ELBOT_CODE_0__ points to the environment variable name that stores the Access Token;",
       "updated_at": 1785918785
     },
+    "docs/configuration.md:paragraph:d1e0b2740beb17f8a27ddbf19fe744c4ac50e8e3f32846c0caa19eaa36ea8f80": {
+      "kind": "paragraph",
+      "source": "原图字节数超过阈值或任一边长达到限制时，等比例压缩图片。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d1e0b2740beb17f8a27ddbf19fe744c4ac50e8e3f32846c0caa19eaa36ea8f80",
+      "translation": "Images are compressed proportionally when the original image byte size exceeds the threshold or any side length reaches the limit.\n",
+      "updated_at": 1789433212
+    },
     "docs/configuration.md:paragraph:d43f096208f1054da824c70c2f731293b37a7a8f539fd424033039d2d55c82d9": {
       "kind": "paragraph",
       "source": "所有配置文件均由程序内置 assets 首次运行时自动生成到平台配置目录，已有文件不会被覆盖；源码中不再保留 __ELBOT_CODE_0__ 目录。\n",
@@ -2199,14 +2199,6 @@
       "source_hash": "de6e2c43474b26ca7f71379ba4fb27b302e81ec9556deef3353d3d5f64745b54",
       "translation": "You can also use __ELBOT_CODE_0__ to write configurations directly, but it is not recommended to commit actual Secrets.\n",
       "updated_at": 1785810736
-    },
-    "docs/configuration.md:paragraph:df1c3812bb9cf5ff2105946d6027227f715f9ad62082585a3d61da79a56517fc": {
-      "kind": "paragraph",
-      "source": "S3 模式下，临时 JPEG 在请求结束后删除；建议为 Bucket 的 __ELBOT_CODE_0__ 前缀配置生命周期规则，清理进程异常退出时遗留的对象。\n",
-      "source_file": "docs/configuration.md",
-      "source_hash": "df1c3812bb9cf5ff2105946d6027227f715f9ad62082585a3d61da79a56517fc",
-      "translation": "In S3 mode, temporary JPEGs are deleted after the request ends; it is recommended to configure lifecycle rules for the __ELBOT_CODE_0__ prefix of the Bucket to clean up objects left behind when a process exits abnormally.\n",
-      "updated_at": 1789300223
     },
     "docs/configuration.md:paragraph:df52157138754b59adf61b033670d7c0a44d72226b076873cea5872b20c0c149": {
       "kind": "paragraph",
@@ -2530,8 +2522,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "68345c1e7ee2bc3e952fdc4b809f6b60b089984245b6edc9b37fd86af528dd4c",
+  "source_hash": "127a4677bc0f2977e99e8ecbb02563ad57beb5f077ee7c7cfdf88494f02f31fb",
   "target": "docs.en/configuration.md",
-  "updated_at": 1789300223,
+  "updated_at": 1789433212,
   "version": 2
 }
