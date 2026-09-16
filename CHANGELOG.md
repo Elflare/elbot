@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 优化给agent看的meta信息，现在显示平台、群号、群id、用户昵称、用户id
 - 现在会压缩超过设置大小的图片；原始媒体和 Media ID 不变。S3 后端改为按需初始化，配置不可用时仅告警，不再阻止 ElBot 启动。
 - 工具化 AgentSkill 的命令参数此前只支持字符串、数字和布尔值；现在 JSON 数组与对象会压缩为单个 argv 参数传给对应 `[args]` flag。
 - 普通用户的追加重发与高风险工具确认此前会无限等待并长期占用当前 Turn；现在默认在 10 分钟无有效操作后停止，若对应 Session TTL 更短则以其为上限，追加内容或 `/detail` 会续期。超级管理员不受额外的 10 分钟限制，但仍遵守已启用的 Session TTL。

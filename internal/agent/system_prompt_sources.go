@@ -15,23 +15,32 @@ type conversationMetaSystemPromptSource struct{}
 
 func (conversationMetaSystemPromptSource) Parts(_ context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
 	meta := req.Meta
-	fields := make([]string, 0, 5)
+	conversation := strings.TrimSpace(meta.Kind)
+	conversationID := ""
+	if conversation == "group" || conversation == "channel" {
+		conversationID = meta.ID
+	}
+	fields := make([]string, 0, 4)
 	for _, field := range []struct {
 		name  string
 		value string
+		id    string
 		quote bool
 	}{
 		{name: "platform", value: meta.Platform},
-		{name: "conversation", value: meta.Kind},
-		{name: "id", value: meta.ID},
-		{name: "display_name", value: meta.DisplayName, quote: true},
+		{name: "conversation", value: conversation, id: conversationID},
+		{name: "display_name", value: meta.DisplayName, id: meta.UserID, quote: true},
 	} {
 		value := strings.TrimSpace(field.value)
-		if value == "" {
+		id := strings.TrimSpace(field.id)
+		if value == "" && id == "" {
 			continue
 		}
 		if field.quote {
 			value = strconv.Quote(strings.Join(strings.Fields(value), " "))
+		}
+		if id != "" {
+			value += "(id:" + id + ")"
 		}
 		fields = append(fields, field.name+"="+value)
 	}

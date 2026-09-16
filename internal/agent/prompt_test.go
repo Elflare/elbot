@@ -52,15 +52,91 @@ func TestConversationMetaSystemPromptSource(t *testing.T) {
 			Platform:    "qqonebot",
 			Kind:        "group",
 			ID:          "9",
+			UserID:      "1001",
 			DisplayName: "群名片, A=1\n下一行",
 		},
 	})
 	if err != nil {
 		t.Fatalf("Parts: %v", err)
 	}
-	want := `meta: platform=qqonebot, conversation=group, id=9, display_name="群名片, A=1 下一行", session_created_at=2026-08-27T12:34:56.`
+	want := `meta: platform=qqonebot, conversation=group(id:9), display_name="群名片, A=1 下一行"(id:1001), session_created_at=2026-08-27T12:34:56.`
 	if len(parts) != 1 || parts[0].Content != want {
 		t.Fatalf("parts = %#v, want %q", parts, want)
+	}
+}
+
+func TestConversationMetaSystemPromptSourceFields(t *testing.T) {
+	tests := []struct {
+		name string
+		meta ConversationMeta
+		want string
+	}{
+		{
+			name: "private user ID",
+			meta: ConversationMeta{Platform: "qqonebot", Kind: "private", ID: "1001", UserID: "1001", DisplayName: "昵称"},
+			want: `meta: platform=qqonebot, conversation=private, display_name="昵称"(id:1001).`,
+		},
+		{
+			name: "official private OpenID",
+			meta: ConversationMeta{Platform: "qqofficial", Kind: "private", ID: "openid-1", UserID: "openid-1", DisplayName: "昵称"},
+			want: `meta: platform=qqofficial, conversation=private, display_name="昵称"(id:openid-1).`,
+		},
+		{
+			name: "channel and user IDs",
+			meta: ConversationMeta{Platform: "qqofficial", Kind: "channel", ID: "channel-1", UserID: "user-1", DisplayName: "昵称"},
+			want: `meta: platform=qqofficial, conversation=channel(id:channel-1), display_name="昵称"(id:user-1).`,
+		},
+		{
+			name: "missing user ID",
+			meta: ConversationMeta{Platform: "qqonebot", Kind: "group", ID: "9", DisplayName: "群名片"},
+			want: `meta: platform=qqonebot, conversation=group(id:9), display_name="群名片".`,
+		},
+		{
+			name: "missing conversation ID",
+			meta: ConversationMeta{Platform: "qqonebot", Kind: "group", UserID: "1001", DisplayName: "群名片"},
+			want: `meta: platform=qqonebot, conversation=group, display_name="群名片"(id:1001).`,
+		},
+		{
+			name: "missing display name",
+			meta: ConversationMeta{Platform: "qqonebot", Kind: "group", ID: "9", UserID: "1001", DisplayName: " \n\t"},
+			want: `meta: platform=qqonebot, conversation=group(id:9), display_name=""(id:1001).`,
+		},
+		{
+			name: "missing display name and user ID",
+			meta: ConversationMeta{Platform: "qqonebot", Kind: "private"},
+			want: "meta: platform=qqonebot, conversation=private.",
+		},
+		{
+			name: "quoted name and trimmed IDs",
+			meta: ConversationMeta{Platform: " qqonebot ", Kind: " group ", ID: " 9 ", UserID: " 1001 ", DisplayName: " 名\"称\\路径\n下一行\t"},
+			want: `meta: platform=qqonebot, conversation=group(id:9), display_name="名\"称\\路径 下一行"(id:1001).`,
+		},
+		{
+			name: "CLI",
+			meta: ConversationMeta{Platform: "cli"},
+			want: "meta: platform=cli.",
+		},
+		{
+			name: "empty",
+			meta: ConversationMeta{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parts, err := (conversationMetaSystemPromptSource{}).Parts(context.Background(), SystemPromptRequest{Meta: tt.meta})
+			if err != nil {
+				t.Fatalf("Parts: %v", err)
+			}
+			if tt.want == "" {
+				if len(parts) != 0 {
+					t.Fatalf("parts = %#v, want empty", parts)
+				}
+				return
+			}
+			if len(parts) != 1 || parts[0].Content != tt.want {
+				t.Fatalf("parts = %#v, want %q", parts, tt.want)
+			}
+		})
 	}
 }
 
@@ -76,19 +152,37 @@ func TestConversationMetaFromPlatformContext(t *testing.T) {
 			name:  "group card",
 			msg:   platform.MessageContext{Platform: "qqonebot", PlatformUserID: "1001", Nickname: "昵称", GroupCard: "群名片", ConversationKind: platform.ConversationGroup},
 			scope: session.Scope{Platform: "qqonebot", PlatformScopeID: "group:9"},
-			want:  ConversationMeta{Platform: "qqonebot", Kind: "group", ID: "9", DisplayName: "群名片"},
+			want:  ConversationMeta{Platform: "qqonebot", Kind: "group", ID: "9", UserID: "1001", DisplayName: "群名片"},
 		},
 		{
 			name:  "group nickname fallback",
 			msg:   platform.MessageContext{Platform: "telegram", PlatformUserID: "1001", Nickname: "昵称"},
 			scope: session.Scope{Platform: "telegram", PlatformScopeID: "supergroup:-1009"},
-			want:  ConversationMeta{Platform: "telegram", Kind: "group", ID: "-1009", DisplayName: "昵称"},
+			want:  ConversationMeta{Platform: "telegram", Kind: "group", ID: "-1009", UserID: "1001", DisplayName: "昵称"},
 		},
 		{
 			name:  "private ignores group card",
 			msg:   platform.MessageContext{Platform: "qqofficial", PlatformUserID: "openid-1", Nickname: "昵称", GroupCard: "不应使用", ScopeID: "c2c:openid-1"},
 			scope: session.Scope{Platform: "qqofficial", PlatformScopeID: "c2c:openid-1"},
-			want:  ConversationMeta{Platform: "qqofficial", Kind: "private", ID: "openid-1", DisplayName: "昵称"},
+			want:  ConversationMeta{Platform: "qqofficial", Kind: "private", ID: "openid-1", UserID: "openid-1", DisplayName: "昵称"},
+		},
+		{
+			name:  "channel",
+			msg:   platform.MessageContext{Platform: "qqofficial", PlatformUserID: "user-1", Nickname: "昵称", ConversationKind: platform.ConversationChannel},
+			scope: session.Scope{Platform: "qqofficial", PlatformScopeID: "channel:channel-1"},
+			want:  ConversationMeta{Platform: "qqofficial", Kind: "channel", ID: "channel-1", UserID: "user-1", DisplayName: "昵称"},
+		},
+		{
+			name:  "group missing nickname",
+			msg:   platform.MessageContext{Platform: "qqonebot", PlatformUserID: " 1001 ", ConversationKind: platform.ConversationGroup},
+			scope: session.Scope{Platform: "qqonebot", PlatformScopeID: "group:9"},
+			want:  ConversationMeta{Platform: "qqonebot", Kind: "group", ID: "9", UserID: "1001"},
+		},
+		{
+			name:  "group missing user ID",
+			msg:   platform.MessageContext{Platform: "qqonebot", Nickname: "昵称", ConversationKind: platform.ConversationGroup},
+			scope: session.Scope{Platform: "qqonebot", PlatformScopeID: "group:9"},
+			want:  ConversationMeta{Platform: "qqonebot", Kind: "group", ID: "9", DisplayName: "昵称"},
 		},
 	}
 	for _, tt := range tests {

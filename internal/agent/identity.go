@@ -49,6 +49,7 @@ func (a *Agent) conversationMeta(ctx context.Context, scope session.Scope) Conve
 	}
 
 	actor := a.actor(ctx)
+	meta.UserID = strings.TrimSpace(actor.PlatformUserID)
 	switch meta.Kind {
 	case "group":
 		meta.ID = conversationID(scope.PlatformScopeID, "group:", "supergroup:")

@@ -17,6 +17,7 @@ type ConversationMeta struct {
 	Platform    string
 	Kind        string
 	ID          string
+	UserID      string
 	DisplayName string
 }
 
