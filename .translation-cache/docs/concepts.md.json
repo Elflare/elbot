@@ -456,14 +456,6 @@
       "translation": "Ordinary string parameters will not be automatically converted.\n",
       "updated_at": 1789009687
     },
-    "docs/concepts.md:paragraph:1965604aa1d4af75d8f323d44c8f31e7a10cf0dd5227a14f830923add0c458a3": {
-      "kind": "paragraph",
-      "source": "缺失或无法确定的字段不会写入。\n",
-      "source_file": "docs/concepts.md",
-      "source_hash": "1965604aa1d4af75d8f323d44c8f31e7a10cf0dd5227a14f830923add0c458a3",
-      "translation": "Missing or indeterminate fields will not be written.\n",
-      "updated_at": 1787305228
-    },
     "docs/concepts.md:paragraph:19a96fcf1ae209f6c875c5f51792aeabfc29d55a3575888c3cc3d3e093e2a7ed": {
       "kind": "paragraph",
       "source": "Fork 用于从历史对话中的某个 assistant 回复处分出新的对话分支。\n",
@@ -479,6 +471,14 @@
       "source_hash": "1a55f82330b14e55ea67b58af7b2ad7655f3e6f6d979a8b8a4216b4e652143c9",
       "translation": "bash scripts explicitly declare inputs via __ELBOT_CODE_0__, for example:\n",
       "updated_at": 1789009687
+    },
+    "docs/concepts.md:paragraph:1d08f9a6cc5f6f056d0c7576c08c6d297b95ea7d988225655c18e7defbe6dea4": {
+      "kind": "paragraph",
+      "source": "没有展示名但有用户 ID 时输出 __ELBOT_CODE_0__，两者都缺失时省略该字段。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "1d08f9a6cc5f6f056d0c7576c08c6d297b95ea7d988225655c18e7defbe6dea4",
+      "translation": "Output __ELBOT_CODE_0__ when there is no display name but there is a user ID; omit the field when both are missing.\n",
+      "updated_at": 1789560876
     },
     "docs/concepts.md:paragraph:1df96174092e6f5d58987488e8d13c536ac35d2edfb40cf4f270a692d23126d8": {
       "kind": "paragraph",
@@ -559,14 +559,6 @@
       "source_hash": "34cd731a0bec855577756cb7c2d9d34502c7056497e27927b25f521949b77b6d",
       "translation": "Messages containing images will send both the images and the text labels adjacent to the images to the vision model;",
       "updated_at": 1786545111
-    },
-    "docs/concepts.md:paragraph:3611ae21560aee921f025b1aab4f8612f42daf262faba98a758a3a741bd8dc30": {
-      "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 在群聊中表示群 ID，在私聊中表示用户的平台 ID。",
-      "source_file": "docs/concepts.md",
-      "source_hash": "3611ae21560aee921f025b1aab4f8612f42daf262faba98a758a3a741bd8dc30",
-      "translation": "__ELBOT_CODE_0__ represents the group ID in group chats and the user's platform ID in private chats.",
-      "updated_at": 1787305228
     },
     "docs/concepts.md:paragraph:3675d906273a9964659b88fe3ac3962a0f4e7750270277faa04bb8bfe1aaba68": {
       "kind": "paragraph",
@@ -655,6 +647,22 @@
       "source_hash": "4b361ab24d403cf6041a6e9b5acb2a544798690309a88e44b6bbe4447eb46387",
       "translation": "Temporary paths and base64 are not written back to the original call parameters.\n",
       "updated_at": 1789009687
+    },
+    "docs/concepts.md:paragraph:4dc473962a54246670c2f9f0a1f3c947686f55a9494d41945c2655a4e1867a96": {
+      "kind": "paragraph",
+      "source": "缺失的 ID 不输出对应括号；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "4dc473962a54246670c2f9f0a1f3c947686f55a9494d41945c2655a4e1867a96",
+      "translation": "Do not output the corresponding brackets for missing IDs;",
+      "updated_at": 1789560876
+    },
+    "docs/concepts.md:paragraph:4e0b349df1382db6649cbbeefc370215c407f712f39a5300d5415c6446e1ad23": {
+      "kind": "paragraph",
+      "source": "私聊和频道中使用昵称。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "4e0b349df1382db6649cbbeefc370215c407f712f39a5300d5415c6446e1ad23",
+      "translation": "Use nicknames in private chats and channels.",
+      "updated_at": 1789560876
     },
     "docs/concepts.md:paragraph:4fd4bad82bf5e9316fe7e0f182ff9a9aac6b28ca0a7f5afaeee335945465d7d1": {
       "kind": "paragraph",
@@ -751,14 +759,6 @@
       "source_hash": "6614c3bc4ac4b18dba931bd7a6bcaa90ecbec01f7884e1fe656489af11e38f70",
       "translation": "ElBot's tool system includes risk levels and permission control.\n",
       "updated_at": 1781515483
-    },
-    "docs/concepts.md:paragraph:674639edf28b17a7f41532c762bae7a4096891287b2dc4c3775579c08825aa31": {
-      "kind": "paragraph",
-      "source": "私聊中使用昵称。",
-      "source_file": "docs/concepts.md",
-      "source_hash": "674639edf28b17a7f41532c762bae7a4096891287b2dc4c3775579c08825aa31",
-      "translation": "Use nicknames in private chats.",
-      "updated_at": 1787305228
     },
     "docs/concepts.md:paragraph:6d028ce751b01283fd67711659c56eee0d634fb334dad72f5303c6341706e40e": {
       "kind": "paragraph",
@@ -1418,8 +1418,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "f3bb8b8447a9d4be468d0b4a9e18da628f6ce1976fda6a5cad6d825fd962744f",
+  "source_hash": "be05445909cfdb40742b97c543d8c87deea8cb1eee626ab4babf84cea13628af",
   "target": "docs.en/concepts.md",
-  "updated_at": 1789362204,
+  "updated_at": 1789560876,
   "version": 2
 }

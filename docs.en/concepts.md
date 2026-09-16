@@ -133,11 +133,12 @@ The system prompt is assembled in real-time into a system message for each reque
 Meta information uses a single line of plain text, for example:
 
 ```text
-meta: platform=qqonebot, conversation=group, id=9, display_name="群名片", session_created_at=2026-08-27T12:34:56.
+meta: platform=qqonebot, conversation=private, display_name="昵称"(id:1001).
+meta: platform=qqonebot, conversation=group(id:9), display_name="群名片"(id:1001), session_created_at=2026-08-27T12:34:56.
 ```
 
-`id` represents the group ID in group chats and the user's platform ID in private chats. `display_name` prioritizes the group nickname in group chats, and uses the user's nickname when no group nickname is available; Use nicknames in private chats. Missing or indeterminate fields will not be written.
-`session_created_at` is the local time when the Session was created, precise to the second; This value remains unchanged throughout the Session lifecycle to prevent time changes from reducing the Prompt cache hit rate.
+`display_name` prioritizes the group nickname in group chats, and uses the user's nickname when no group nickname is available; Use nicknames in private chats and channels. Do not output the corresponding brackets for missing IDs; Output `display_name=""(id:xxx)` when there is no display name but there is a user ID; omit the field when both are missing.
+ `session_created_at` is the local time when the Session was created, precise to the second; This value remains unchanged throughout the Session lifecycle to prevent time changes from reducing the Prompt cache hit rate.
 
 ## Security Policy
 
