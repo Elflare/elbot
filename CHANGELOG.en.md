@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Optimized meta information for the Agent; it now displays the platform, group number, group ID, user nickname, and user ID.
 - Now compresses images that exceed the configured size; original media and Media IDs remain unchanged. The S3 backend is now initialized on demand; it will only issue a warning if the configuration is unavailable, and will no longer prevent ElBot from starting.
 - Command parameters for toolized AgentSkill previously only supported strings, numbers, and booleans; Now JSON arrays and objects will be compressed into a single argv parameter and passed to the corresponding `[args]` flag.
 - Previously, append-and-resend for regular users and high-risk tool confirmations would wait indefinitely and occupy the current Turn for a long time; Now, it stops by default after 10 minutes of no valid operation; if the corresponding Session TTL is shorter, that will be the limit. Appended content or `/detail` will renew the timeout. Superadmins are not subject to the additional 10-minute limit but still adhere to the enabled Session TTL.

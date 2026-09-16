@@ -104,6 +104,14 @@
       "translation": "Platform inbound context added a unified group identity __ELBOT_CODE_0__; QQ OneBot and Telegram will map group owner/administrator/ordinary member.",
       "updated_at": 1782376912
     },
+    "CHANGELOG.md:list:0d01c30f53fa434e9b3c2977f56cf7cdb19a98a6f08d95edea519178713b301e": {
+      "kind": "list",
+      "source": "优化给agent看的meta信息，现在显示平台、群号、群id、用户昵称、用户id",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "0d01c30f53fa434e9b3c2977f56cf7cdb19a98a6f08d95edea519178713b301e",
+      "translation": "Optimized meta information for the Agent; it now displays the platform, group number, group ID, user nickname, and user ID.",
+      "updated_at": 1789560899
+    },
     "CHANGELOG.md:list:11621501ea8bcfaddd39ec7e55a6251b636d07bf7fbcb7f3d2438f778362bf66": {
       "kind": "list",
       "source": "**记忆系统**：常驻记忆（core/normal 分层）按平台与 actor 注入；长期记忆基于 Markdown 源数据与 SQLite FTS 检索。",
@@ -1634,8 +1642,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "35831f8c3b33c05085079b8681c351bb2d7485826df5299bf5b3b15d7e878873",
+  "source_hash": "00f82bf070576cfc4ced227c82105bc5a26b09bfdc1409f5711f28f59bd2b402",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1789433256,
+  "updated_at": 1789560899,
   "version": 2
 }
