@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+
+## [v0.5.0 - 2026-09-28]
+
 ### Added
 
 - QQ 官方机器人已支持群聊
