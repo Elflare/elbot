@@ -41,6 +41,97 @@ func (b *resolverRemote) PresignGet(_ context.Context, item *storage.Media, _ ti
 	return "https://s3.test/" + item.ID + "?X-Amz-Signature=temporary", nil
 }
 
+func TestMaterializeWithLimitsIsolation(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	root := t.TempDir()
+	m := NewManager(store, root, &LocalBackend{Root: root})
+	m.MaxImportBytes = 4
+	m.DownloadTimeout = time.Second
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/chunked" {
+			w.(http.Flusher).Flush()
+		}
+		_, _ = io.WriteString(w, "1234")
+	}))
+	t.Cleanup(server.Close)
+	path := filepath.Join(t.TempDir(), "source.txt")
+	if err := os.WriteFile(path, []byte("1234"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for source, url := range map[string]string{
+		"http":    server.URL,
+		"chunked": server.URL + "/chunked",
+		"data":    "data:text/plain;base64,MTIzNA==",
+		"file":    path,
+	} {
+		for _, limit := range []int64{-1, 0, 1, 3, 4, 8} {
+			t.Run(fmt.Sprintf("%s/%d", source, limit), func(t *testing.T) {
+				t.Parallel()
+				out := m.MaterializeWithLimits(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: url}}, ImportLimits{MaxImportBytes: limit})
+				wantOK := limit <= 0 || limit >= 4
+				if len(out) != 1 || (out[0].MediaID != "") != wantOK {
+					t.Fatalf("limit %d: %#v", limit, out)
+				}
+				// A restricted call must not affect default imports on the same manager.
+				defaultOut := m.Materialize(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: url}})
+				if len(defaultOut) != 1 || defaultOut[0].MediaID == "" {
+					t.Fatalf("default import failed: %#v", defaultOut)
+				}
+				existing := m.MaterializeWithLimits(ctx, defaultOut, ImportLimits{MaxImportBytes: 1})
+				if len(existing) != 1 || existing[0].MediaID != defaultOut[0].MediaID {
+					t.Fatalf("existing ID rejected: %#v", existing)
+				}
+				if m.MaxImportBytes != 4 || m.DownloadTimeout != time.Second {
+					t.Fatal("shared manager settings changed")
+				}
+			})
+		}
+	}
+	t.Run("cannot increase global limit", func(t *testing.T) {
+		out := m.MaterializeWithLimits(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: "data:text/plain;base64,MTIzNDU="}}, ImportLimits{MaxImportBytes: 8})
+		if len(out) != 1 || out[0].MediaID != "" {
+			t.Fatalf("global limit bypassed: %#v", out)
+		}
+	})
+}
+
+func TestMaterializeWithLimitsDownloadTimeout(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	root := t.TempDir()
+	m := NewManager(store, root, &LocalBackend{Root: root})
+	m.DownloadTimeout = time.Second
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/stall" {
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
+			return
+		}
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer server.Close()
+	out := m.MaterializeWithLimits(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: server.URL + "/stall"}}, ImportLimits{DownloadTimeout: 25 * time.Millisecond})
+	if len(out) != 1 || out[0].MediaID != "" {
+		t.Fatalf("stalled download accepted: %#v", out)
+	}
+	if m.DownloadTimeout != time.Second {
+		t.Fatal("shared timeout changed")
+	}
+	out = m.Materialize(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: server.URL}})
+	if len(out) != 1 || out[0].MediaID == "" {
+		t.Fatalf("default download failed: %#v", out)
+	}
+}
+
 func TestResolverRequestTotalAndIsolation(t *testing.T) {
 	ctx := context.Background()
 	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))

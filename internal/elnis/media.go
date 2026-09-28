@@ -106,14 +106,6 @@ func (s *Service) materializeSegments(ctx context.Context, segments []Segment, e
 		if s.media == nil {
 			return nil, fmt.Errorf("elnis media center is not configured")
 		}
-		// Preserve Elnis receive limits without modifying the shared manager.
-		center := *s.media
-		if s.cfg.Segment.MaxFileBytes > 0 && s.cfg.Segment.MaxFileBytes < center.MaxImportBytes {
-			center.MaxImportBytes = s.cfg.Segment.MaxFileBytes
-		}
-		if s.cfg.Segment.DownloadTimeoutSecs > 0 {
-			center.DownloadTimeout = time.Duration(s.cfg.Segment.DownloadTimeoutSecs) * time.Second
-		}
 		if media.ValidID(seg.URL) {
 			out[i].MediaID = seg.URL
 			out[i].URL = ""
@@ -127,7 +119,10 @@ func (s *Service) materializeSegments(ctx context.Context, segments []Segment, e
 				out[i].Name += exts[0]
 			}
 		}
-		resolved := center.Materialize(ctx, []llm.MessageSegment{out[i]})
+		resolved := s.media.MaterializeWithLimits(ctx, []llm.MessageSegment{out[i]}, media.ImportLimits{
+			MaxImportBytes:  s.cfg.Segment.MaxFileBytes,
+			DownloadTimeout: time.Duration(s.cfg.Segment.DownloadTimeoutSecs) * time.Second,
+		})
 		if len(resolved) != 1 || resolved[0].MediaID == "" {
 			return nil, fmt.Errorf("segment %d media unavailable", i)
 		}

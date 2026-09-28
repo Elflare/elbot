@@ -346,7 +346,7 @@ rg -n "Migration|Repository|Upsert|List|Archive|Fork|ToolCall|CronJob|ElnisEvent
 
 - `internal/elvena/`：公共协议层。
 - `internal/elnis/`：Elnis HTTP、鉴权、准备、投递和后台任务；`outbox.go` 负责 LLM 报告持久化投递、重试与恢复。
-- `internal/elnis/media.go`：Elvena 媒体来源校验、按需入库、宿主 workspace 双向读写；发送回执缓存由 Agent 通用边界处理。
+- `internal/elnis/media.go`：Elvena 媒体来源校验、按需入库、宿主 workspace 双向读写；通过 `media.Manager.MaterializeWithLimits` 传递本次接收限制，复用共享 Manager；发送回执缓存由 Agent 通用边界处理。
 - `internal/media/lifecycle.go`、`reference.go`：引用保护、1 小时孤儿宽限期和可重试后端清理；`internal/storage/sqlite/media_lifecycle.go`：输出关联、清理认领、启动恢复和只读一致性检查；`media_json_test.go`、`media_fork_test.go` 验证媒体 JSON 引用事务和 fork 检查点范围。
 - `internal/storage/sqlite/elnis_event_repository.go`：Elnis event 与 report outbox 的事务、claim、receipt 和完成状态持久化。
 - `internal/background/`：cron/Elnis 共用后台 LLM 类型与结果 helper。
