@@ -19,6 +19,14 @@ type Source struct {
 	FileID   string
 }
 
+// ImportLimits overrides import settings for one materialization call.
+// Nonpositive values retain the manager defaults; MaxImportBytes can only
+// tighten the manager limit.
+type ImportLimits struct {
+	MaxImportBytes  int64
+	DownloadTimeout time.Duration
+}
+
 type Input struct {
 	Name     string
 	MIMEType string

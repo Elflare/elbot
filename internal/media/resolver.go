@@ -1,6 +1,7 @@
 package media
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -15,6 +16,18 @@ import (
 
 // Materialize replaces new inbound media sources with stable references.
 func (m *Manager) Materialize(ctx context.Context, segments []llm.MessageSegment) []llm.MessageSegment {
+	return m.MaterializeWithLimits(ctx, segments, ImportLimits{})
+}
+
+// MaterializeWithLimits materializes segments using per-call import limits
+// without changing the shared manager.
+func (m *Manager) MaterializeWithLimits(ctx context.Context, segments []llm.MessageSegment, limits ImportLimits) []llm.MessageSegment {
+	if limits.MaxImportBytes <= 0 || limits.MaxImportBytes > m.MaxImportBytes {
+		limits.MaxImportBytes = m.MaxImportBytes
+	}
+	if limits.DownloadTimeout <= 0 {
+		limits.DownloadTimeout = m.DownloadTimeout
+	}
 	out := append([]llm.MessageSegment(nil), segments...)
 	for i, segment := range out {
 		if segment.Type != llm.SegmentImage && segment.Type != llm.SegmentFile {
@@ -39,7 +52,7 @@ func (m *Manager) Materialize(ctx context.Context, segments []llm.MessageSegment
 				err = fmt.Errorf("invalid media data URL")
 				break
 			}
-			if int64(len(body)) > (m.MaxImportBytes+2)/3*4 {
+			if int64(len(body)) > (limits.MaxImportBytes+2)/3*4 {
 				err = fmt.Errorf("media exceeds import limit")
 				break
 			}
@@ -49,10 +62,10 @@ func (m *Manager) Materialize(ctx context.Context, segments []llm.MessageSegment
 				if input.MIMEType == "" {
 					input.MIMEType = strings.TrimSuffix(strings.TrimPrefix(header, "data:"), ";base64")
 				}
-				metadata, err = m.ImportBytes(ctx, data, input)
+				metadata, err = m.importReader(ctx, bytes.NewReader(data), int64(len(data)), input, limits.MaxImportBytes)
 			}
 		case strings.HasPrefix(segment.URL, "http://") || strings.HasPrefix(segment.URL, "https://"):
-			metadata, err = m.ImportURL(ctx, segment.URL, input)
+			metadata, err = m.importURL(ctx, segment.URL, input, limits)
 		case segment.URL != "":
 			path := segment.URL
 			if strings.HasPrefix(path, "file://") {
@@ -70,7 +83,7 @@ func (m *Manager) Materialize(ctx context.Context, segments []llm.MessageSegment
 					break
 				}
 			}
-			metadata, err = m.ImportFile(ctx, filepath.FromSlash(path), input)
+			metadata, err = m.importFile(ctx, filepath.FromSlash(path), input, limits.MaxImportBytes)
 		default:
 			continue
 		}

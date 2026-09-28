@@ -35,6 +35,10 @@ func (m *Manager) ImportBytes(ctx context.Context, data []byte, input Input) (*s
 }
 
 func (m *Manager) ImportURL(ctx context.Context, rawURL string, input Input) (*storage.Media, error) {
+	return m.importURL(ctx, rawURL, input, ImportLimits{MaxImportBytes: m.MaxImportBytes, DownloadTimeout: m.DownloadTimeout})
+}
+
+func (m *Manager) importURL(ctx context.Context, rawURL string, input Input, limits ImportLimits) (*storage.Media, error) {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 		return nil, fmt.Errorf("invalid media URL")
@@ -43,7 +47,7 @@ func (m *Manager) ImportURL(ctx context.Context, rawURL string, input Input) (*s
 	if err != nil {
 		return nil, fmt.Errorf("create media request: %w", err)
 	}
-	response, err := (&http.Client{Timeout: m.DownloadTimeout}).Do(request)
+	response, err := (&http.Client{Timeout: limits.DownloadTimeout}).Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("download media: %w", err)
 	}
@@ -60,10 +64,14 @@ func (m *Manager) ImportURL(ctx context.Context, rawURL string, input Input) (*s
 	if input.Name == "" {
 		input.Name = filepath.Base(u.Path)
 	}
-	return m.ImportReader(ctx, response.Body, response.ContentLength, input)
+	return m.importReader(ctx, response.Body, response.ContentLength, input, limits.MaxImportBytes)
 }
 
 func (m *Manager) ImportFile(ctx context.Context, path string, input Input) (*storage.Media, error) {
+	return m.importFile(ctx, path, input, m.MaxImportBytes)
+}
+
+func (m *Manager) importFile(ctx context.Context, path string, input Input, maxBytes int64) (*storage.Media, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open media source: %w", err)
@@ -79,20 +87,24 @@ func (m *Manager) ImportFile(ctx context.Context, path string, input Input) (*st
 	if input.Name == "" {
 		input.Name = filepath.Base(path)
 	}
-	return m.ImportReader(ctx, file, info.Size(), input)
+	return m.importReader(ctx, file, info.Size(), input, maxBytes)
 }
 
 func (m *Manager) ImportReader(ctx context.Context, input io.Reader, size int64, spec Input) (*storage.Media, error) {
-	if size > m.MaxImportBytes {
-		return nil, fmt.Errorf("media exceeds import limit of %d bytes", m.MaxImportBytes)
+	return m.importReader(ctx, input, size, spec, m.MaxImportBytes)
+}
+
+func (m *Manager) importReader(ctx context.Context, input io.Reader, size int64, spec Input, maxBytes int64) (*storage.Media, error) {
+	if size > maxBytes {
+		return nil, fmt.Errorf("media exceeds import limit of %d bytes", maxBytes)
 	}
-	data, err := io.ReadAll(io.LimitReader(input, m.MaxImportBytes+1))
+	data, err := io.ReadAll(io.LimitReader(input, maxBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read media: %w", err)
 	}
 	size = int64(len(data))
-	if size > m.MaxImportBytes {
-		return nil, fmt.Errorf("media exceeds import limit of %d bytes", m.MaxImportBytes)
+	if size > maxBytes {
+		return nil, fmt.Errorf("media exceeds import limit of %d bytes", maxBytes)
 	}
 	spec = sanitizeInput(spec)
 	if spec.MIMEType == "" {
