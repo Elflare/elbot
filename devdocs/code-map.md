@@ -347,7 +347,7 @@ rg -n "Migration|Repository|Upsert|List|Archive|Fork|ToolCall|CronJob|ElnisEvent
 - `internal/elvena/`：公共协议层。
 - `internal/elnis/`：Elnis HTTP、鉴权、准备、投递和后台任务；`outbox.go` 负责 LLM 报告持久化投递、重试与恢复。
 - `internal/elnis/media.go`：Elvena 媒体来源校验、按需入库、宿主 workspace 双向读写；通过 `media.Manager.MaterializeWithLimits` 传递本次接收限制，复用共享 Manager；发送回执缓存由 Agent 通用边界处理。
-- `internal/media/lifecycle.go`、`reference.go`：引用保护、1 小时孤儿宽限期和可重试后端清理；`internal/storage/sqlite/media_lifecycle.go`：输出关联、清理认领、启动恢复和只读一致性检查；`media_json_test.go`、`media_fork_test.go` 验证媒体 JSON 引用事务和 fork 检查点范围。
+- `internal/media/lifecycle.go`、`reference.go`：引用保护、1 小时孤儿宽限期和最多 4 个对象并发的可重试清理；`locks.go`：按媒体 ID 互斥、可取消等待及空闲锁回收；`concurrency_test.go`：跨对象并行、同对象互斥、上传保护及清理取消/重试验证；`internal/storage/sqlite/media_lifecycle.go`：输出关联、清理认领、启动恢复和只读一致性检查；`media_json_test.go`、`media_fork_test.go` 验证媒体 JSON 引用事务和 fork 检查点范围。
 - `internal/storage/sqlite/elnis_event_repository.go`：Elnis event 与 report outbox 的事务、claim、receipt 和完成状态持久化。
 - `internal/background/`：cron/Elnis 共用后台 LLM 类型与结果 helper。
 - `internal/tool/builtin/elwisp_creator.go`：Elwisp 创建指南工具。

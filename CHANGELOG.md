@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- 媒体清理由持有全局媒体锁逐个删除，改为最多同时处理 4 个对象并按媒体 ID 互斥；不同媒体的导入和按需上传不再等待整轮清理，同一媒体继续防止上传、删除与重新导入交叉。删除失败或取消后保留记录供后续重试。
+
 
 ## [v0.5.0 - 2026-09-28]
 

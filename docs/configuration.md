@@ -422,6 +422,8 @@ download_timeout_secs = 60
 
 S3 交付使用 `s3_endpoint`、`s3_region`、`s3_bucket` 以及 `s3_access_key_env`、`s3_secret_key_env` 指定的变量。模型服务通过有效期为 1 小时的预签名 URL 下载对象，不需要另外提供密钥。Cloudflare R2 可保持 bucket 私有，无需开启公共访问；实际下载文件的模型服务或中转服务必须能访问该链接。
 
+媒体中心在所有引用释放满 1 小时后，按 `[maintenance.sandbox_cleanup].schedule`（默认每天 04:00）清理对象；媒体清理独立启用，不受 sandbox 清理开关影响。删除失败会保留记录，后续清理重试；仍被 Session、聊天历史等引用的媒体不会删除。预签名 URL 到期仅影响链接访问，不会自动删除对象。
+
 `[media]` 控制图片入库压缩：`llm_image_compression_threshold_bytes` 是触发压缩的原图字节数阈值（默认 4 MiB），`llm_image_max_length` 是边长限制（默认 4096）。原图字节数超过阈值或任一边长达到限制时，等比例压缩图片。
 
 

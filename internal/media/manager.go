@@ -13,7 +13,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"elbot/internal/config"
@@ -27,7 +26,7 @@ func NewManager(store storage.Store, root string, backend Backend) *Manager {
 	if backend != nil && backendName(backend) == "local" {
 		local = backend
 	}
-	return &Manager{objects: &sync.Mutex{}, local: local, Store: store, Root: root, Backend: backend, Now: storage.Now, FileDelivery: defaults.FileDelivery, Media: defaults.Media, MaxImportBytes: defaults.PlatformFiles.MaxReceiveFileBytes, DownloadTimeout: time.Duration(defaults.PlatformFiles.DownloadTimeoutSecs) * time.Second}
+	return &Manager{local: local, Store: store, Root: root, Backend: backend, Now: storage.Now, FileDelivery: defaults.FileDelivery, Media: defaults.Media, MaxImportBytes: defaults.PlatformFiles.MaxReceiveFileBytes, DownloadTimeout: time.Duration(defaults.PlatformFiles.DownloadTimeoutSecs) * time.Second}
 }
 
 func (m *Manager) ImportBytes(ctx context.Context, data []byte, input Input) (*storage.Media, error) {
@@ -126,8 +125,11 @@ func (m *Manager) importReader(ctx context.Context, input io.Reader, size int64,
 	}
 	sum := sha256.Sum256(data)
 	id := fmt.Sprintf("%s%x", IDPrefix, sum)
-	m.objects.Lock()
-	defer m.objects.Unlock()
+	unlock, err := m.objects.acquire(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	if existing, err := m.Store.Media().Get(ctx, id); err == nil {
 		if existing.Deleting {
 			return nil, fmt.Errorf("media is being deleted")
@@ -243,6 +245,17 @@ func (m *Manager) PresignGet(ctx context.Context, id string, expiry time.Duratio
 	if expiry <= 0 {
 		expiry = time.Hour
 	}
+	unlock, err := m.objects.acquire(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	// Protect the object throughout upload, metadata persistence and signing.
+	release, err := m.Hold(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	metadata, err := m.Store.Media().Get(ctx, id)
 	if err != nil {
 		return "", err
