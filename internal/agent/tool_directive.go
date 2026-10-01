@@ -139,7 +139,7 @@ func (a *Agent) applySkillDirectives(ctx context.Context, session *storage.Sessi
 		}
 		detailer := candidate.(tool.DetailProvider)
 		if !seenSkills[name] {
-			block, err := skillDetailBlock(candidate, detailer)
+			block, err := skillDetailBlock(security.WithActor(ctx, actor), candidate, detailer)
 			if err != nil {
 				result.Invalid = append(result.Invalid, name)
 				a.audit("skill_preload_failed", "session_id", session.ID, "tool", name, "error", err)
@@ -278,9 +278,9 @@ func containsAny(text string, values ...string) bool {
 	return false
 }
 
-func skillDetailBlock(candidate tool.Tool, detailer tool.DetailProvider) (tool.DetailBlock, error) {
+func skillDetailBlock(ctx context.Context, candidate tool.Tool, detailer tool.DetailProvider) (tool.DetailBlock, error) {
 	if loader, ok := candidate.(tool.LazyDetailProvider); ok {
-		return loader.LoadDetail()
+		return loader.LoadDetail(ctx)
 	}
 	if structured, ok := candidate.(tool.StructuredDetailProvider); ok {
 		return structured.DetailBlock(), nil
@@ -313,7 +313,7 @@ func (a *Agent) preloadSkillWrapper(ctx context.Context, session *storage.Sessio
 }
 
 func (a *Agent) discoveryForToolNames(ctx context.Context, names []string, actor security.Actor, policy *security.Policy) (*tool.DiscoveryResult, bool) {
-	details, _ := a.toolRuntime.registry.DiscoverDetails(names, func(candidate tool.Tool) bool {
+	details, _ := a.toolRuntime.registry.DiscoverDetails(security.WithActor(ctx, actor), names, func(candidate tool.Tool) bool {
 		info := candidate.Info()
 		return tool.InfoAvailableInContext(ctx, info) && tool.CanAccessTool(actor, policy, info)
 	})

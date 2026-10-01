@@ -3,6 +3,7 @@ package skill
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -379,10 +380,58 @@ func TestFilesystemScannerRemoveDeletesDirectoryAndReloads(t *testing.T) {
 	}
 }
 
-func TestAgentDescriptorDetailAddsAgentSkillNotice(t *testing.T) {
+func TestAgentDescriptorDetailWithoutActor(t *testing.T) {
 	d := NewDescriptor(Record{Name: "docx", Detail: "# DOCX", Kind: KindAgent})
-	if !strings.Contains(d.Detail(), "agent_skill_creator") || len(d.ActivateTools()) != 1 || d.ActivateTools()[0] != AgentSkillManagerName {
+	if d.Detail() != "# DOCX" || d.DetailBlock().Content != "# DOCX" || len(d.ActivateTools()) != 1 || d.ActivateTools()[0] != AgentSkillManagerName {
 		t.Fatalf("detail=%q activate=%#v", d.Detail(), d.ActivateTools())
+	}
+}
+
+func TestAgentSkillCreatorNoticeDiscovery(t *testing.T) {
+	for _, invalidManifest := range []bool{false, true} {
+		registry := tool.NewRegistry()
+		record := Record{Name: "docx", Detail: "# DOCX", Kind: KindAgent, Risk: tool.RiskSafe}
+		if invalidManifest {
+			record.ManifestFound = true
+			record.ManifestError = "invalid manifest"
+		}
+		if err := registry.Register(NewDescriptor(record)); err != nil {
+			t.Fatal(err)
+		}
+		discover := tool.NewDiscoverTool(registry)
+		for _, role := range []security.Role{security.RoleUser, security.RoleSuperadmin, ""} {
+			t.Run(fmt.Sprintf("invalid=%t/role=%s", invalidManifest, role), func(t *testing.T) {
+				ctx := context.Background()
+				if role != "" {
+					ctx = security.WithActor(ctx, security.Actor{Role: role})
+				}
+				result, err := discover.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"name":"docx"}`)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var discovery tool.DiscoveryResult
+				if err := json.Unmarshal(result.Data, &discovery); err != nil {
+					t.Fatal(err)
+				}
+				if len(discovery.Tools) != 1 {
+					t.Fatalf("discovered tools = %#v", discovery.Tools)
+				}
+				for _, content := range []string{result.Content, discovery.Tools[0].Detail} {
+					if !strings.Contains(content, "# DOCX") {
+						t.Fatalf("missing skill body: %q", content)
+					}
+					if got := strings.Contains(content, "agent_skill_creator"); got != (role == security.RoleSuperadmin) {
+						t.Fatalf("creator notice for %q: %q", role, content)
+					}
+					if got := strings.Contains(content, "invalid manifest"); got != invalidManifest {
+						t.Fatalf("manifest diagnostic: %q", content)
+					}
+					if got := strings.Contains(content, "ElBot AgentSkill 使用提示："); got != (invalidManifest || role == security.RoleSuperadmin) {
+						t.Fatalf("notice heading: %q", content)
+					}
+				}
+			})
+		}
 	}
 }
 

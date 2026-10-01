@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 媒体清理由持有全局媒体锁逐个删除，改为最多同时处理 4 个对象并按媒体 ID 互斥；不同媒体的导入和按需上传不再等待整轮清理，同一媒体继续防止上传、删除与重新导入交叉。删除失败或取消后保留记录供后续重试。
 
 
+### Fixed
+
+- 文档型 AgentSkill 详情此前向所有用户追加发现 `agent_skill_creator` 的引导；现在仅向超级管理员追加，普通用户或身份缺失时隐藏。工具发现、`@skill:` 和后台预加载均生效，配置错误提示仍保留。
+
 ## [v0.5.0 - 2026-09-28]
 
 ### Added

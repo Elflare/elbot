@@ -155,7 +155,7 @@ func TestRegisterAllIncludesElwispCreator(t *testing.T) {
 	if got := strings.Join(registered.Info().DependsOn, ","); got != "read_file,edit_file,shell" {
 		t.Fatalf("depends_on = %q", got)
 	}
-	details, errors := registry.DiscoverDetails([]string{ElwispCreatorName}, func(tool.Tool) bool { return true })
+	details, errors := registry.DiscoverDetails(context.Background(), []string{ElwispCreatorName}, func(tool.Tool) bool { return true })
 	if len(errors) > 0 {
 		t.Fatalf("discover errors = %#v", errors)
 	}
