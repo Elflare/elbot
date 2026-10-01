@@ -40,6 +40,89 @@ func TestMessagePreviewTruncatesAndFlattensWhitespace(t *testing.T) {
 	}
 }
 
+func TestPreviewContentTruncatesLongMessages(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		text string
+		want string
+	}{
+		{name: "empty"},
+		{name: "short", text: "short message", want: "short message"},
+		{name: "whitespace", text: "  first\nsecond  ", want: "first second"},
+		{name: "at limit", text: strings.Repeat("a", 200), want: strings.Repeat("a", 200)},
+		{name: "over limit", text: strings.Repeat("a", 201), want: strings.Repeat("a", 200) + "..."},
+		{name: "unicode at limit", text: strings.Repeat("中😀", 100), want: strings.Repeat("中😀", 100)},
+		{name: "unicode over limit", text: strings.Repeat("中😀", 101), want: strings.Repeat("中😀", 100) + "..."},
+		{name: "trim before limit", text: "  " + strings.Repeat("中", 200) + "\n ", want: strings.Repeat("中", 200)},
+		{name: "newline before limit", text: strings.Repeat("中", 199) + "\n尾", want: strings.Repeat("中", 199) + " ..."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := previewContent(tc.text); got != tc.want {
+				t.Fatalf("previewContent() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResumeAndForkTruncateHistoryWithoutChangingMessages(t *testing.T) {
+	ctx := context.Background()
+	store := newCommandTestStore(t)
+	svc := session.NewService(store)
+	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	parent, err := svc.Create(ctx, scope, session.CreateRequest{Title: "parent"})
+	if err != nil {
+		t.Fatalf("create parent: %v", err)
+	}
+	original := strings.Repeat("中😀", 101)
+	messages := []*storage.Message{
+		{SessionID: parent.ID, Role: storage.RoleUser, Content: original},
+		{SessionID: parent.ID, Role: storage.RoleAssistant, Content: original},
+	}
+	for _, message := range messages {
+		if err := store.Messages().Append(ctx, message); err != nil {
+			t.Fatalf("append message: %v", err)
+		}
+	}
+	if _, err := svc.Create(ctx, scope, session.CreateRequest{Title: "current"}); err != nil {
+		t.Fatalf("create current: %v", err)
+	}
+	deps := Deps{
+		Sessions: svc,
+		Requests: request.NewManager(0),
+		Turns:    turn.NewManager(),
+		Store:    store,
+		Scope:    func(context.Context) session.Scope { return scope },
+	}
+	wantHistory := "recent messages:\n  user: " + strings.Repeat("中😀", 100) + "...\n  assistant: " + strings.Repeat("中😀", 100) + "..."
+	for _, tc := range []struct {
+		name    string
+		handler command.Handler
+		args    string
+	}{
+		{name: "resume", handler: NewResume(deps), args: parent.ID},
+		{name: "fork", handler: NewFork(deps), args: messages[1].ID},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := tc.handler.Handle(ctx, command.Request{Args: tc.args})
+			if err != nil {
+				t.Fatalf("handle: %v", err)
+			}
+			if !strings.HasSuffix(result.Content, wantHistory) {
+				t.Fatalf("unexpected history: %q", result.Content)
+			}
+			for _, message := range messages {
+				stored, err := store.Messages().Get(ctx, message.ID)
+				if err != nil {
+					t.Fatalf("get message: %v", err)
+				}
+				if stored.Content != original {
+					t.Fatalf("stored message changed: %q", stored.Content)
+				}
+			}
+		})
+	}
+}
+
 func TestResumeCommandCompletesSessionIDs(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)

@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `/resume` 与 `/fork` 返回的历史消息预览现在每条最多保留 200 个 Unicode 字符。
 - 文档型 AgentSkill 详情此前向所有用户追加发现 `agent_skill_creator` 的引导；现在仅向超级管理员追加，普通用户或身份缺失时隐藏。工具发现、`@skill:` 和后台预加载均生效，配置错误提示仍保留。
 
 ## [v0.5.0 - 2026-09-28]
