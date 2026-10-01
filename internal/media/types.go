@@ -46,7 +46,7 @@ type lazyBackend struct {
 
 type Manager struct {
 	objects         objectLocks
-	cleanupMu       sync.Mutex
+	cleanupMu       objectLocks
 	local           Backend
 	Store           storage.Store
 	History         storage.ChatHistoryRepository

@@ -263,6 +263,76 @@ func TestCleanupCancellationRetainsPendingObjectsForRetry(t *testing.T) {
 	}
 }
 
+func TestCleanupWaitingRoundCancellation(t *testing.T) {
+	m := newConcurrentTestManager(t)
+	data := seedCleanupMedia(t, m, 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	gate := make(chan struct{})
+	release := sync.OnceFunc(func() { close(gate) })
+	started := make(chan struct{}, 3)
+	m.Remote = &concurrentTestBackend{remove: func(ctx context.Context, _ *storage.Media) error {
+		started <- struct{}{}
+		select {
+		case <-gate:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}}
+	var rounds sync.WaitGroup
+	t.Cleanup(func() {
+		cancel()
+		release()
+		rounds.Wait()
+	})
+	run := func(ctx context.Context) <-chan error {
+		done := make(chan error, 1)
+		rounds.Add(1)
+		go func() {
+			defer rounds.Done()
+			done <- m.Cleanup(ctx)
+		}()
+		return done
+	}
+
+	first := run(ctx)
+	awaitMediaTest(t, started)
+	waitingCtx, cancelWaiting := context.WithCancel(ctx)
+	defer cancelWaiting()
+	second := run(waitingCtx)
+	waitObjectUsers(t, &m.cleanupMu, "cleanup", 2)
+	cancelWaiting()
+	if err := awaitMediaTest(t, second); !errors.Is(err, context.Canceled) {
+		t.Fatalf("waiting cleanup cancellation = %v", err)
+	}
+	waitObjectUsers(t, &m.cleanupMu, "cleanup", 1)
+	select {
+	case err := <-first:
+		t.Fatalf("first cleanup ended before release: %v", err)
+	default:
+	}
+
+	// Canceling a waiter must not release the active round lock.
+	third := run(ctx)
+	waitObjectUsers(t, &m.cleanupMu, "cleanup", 2)
+	release()
+	if err := awaitMediaTest(t, first); err != nil {
+		t.Fatalf("first cleanup: %v", err)
+	}
+	if err := awaitMediaTest(t, third); err != nil {
+		t.Fatalf("subsequent cleanup: %v", err)
+	}
+	waitObjectUsers(t, &m.cleanupMu, "cleanup", 0)
+	if len(started) != 0 {
+		t.Fatal("object deleted more than once")
+	}
+	for id := range data {
+		if _, err := m.Store.Media().Get(ctx, id); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("record survived cleanup: %v", err)
+		}
+	}
+}
+
 func TestCleanupConcurrentRoundsAndPartialFailure(t *testing.T) {
 	m := newConcurrentTestManager(t)
 	data := seedCleanupMedia(t, m, 7)

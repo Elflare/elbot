@@ -17,8 +17,11 @@ const cleanupConcurrency = 4
 
 func (m *Manager) Cleanup(ctx context.Context) error {
 	// Only cleanup rounds serialize here; media operations use per-ID locks.
-	m.cleanupMu.Lock()
-	defer m.cleanupMu.Unlock()
+	unlock, err := m.cleanupMu.acquire(ctx, "cleanup")
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
