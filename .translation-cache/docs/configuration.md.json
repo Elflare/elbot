@@ -1248,6 +1248,14 @@
       "translation": "__ELBOT_CODE_0__ uses __ELBOT_CODE_1__:\n",
       "updated_at": 1784194867
     },
+    "docs/configuration.md:paragraph:040ef778f70acf1d11f2bc36061f315ee3ce19decde1321f248181d75c2972ab": {
+      "kind": "paragraph",
+      "source": "删除失败会保留记录，后续清理重试；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "040ef778f70acf1d11f2bc36061f315ee3ce19decde1321f248181d75c2972ab",
+      "translation": "Failed deletions will be recorded and retried in subsequent cleanups;",
+      "updated_at": 1790860491
+    },
     "docs/configuration.md:paragraph:084b8ac421111c91f1c1288860dc246a47351620de634bccac58acbcd2b438e6": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 默认优先使用 Jina Reader。",
@@ -1447,6 +1455,14 @@
       "source_hash": "2275be5532b121cbdee3c68bba1c8720214133e2f6dab13f388b26c9439ea3ab",
       "translation": "When __ELBOT_CODE_0__/__ELBOT_CODE_1__/__ELBOT_CODE_2__ are not specified, it only serves as a visibility configuration and will not be registered as a regular tool;",
       "updated_at": 1783479082
+    },
+    "docs/configuration.md:paragraph:22ec375f18cce31f3534e2a5bc3d2ca2cda7a7de7046ba2a094c1c6ec8901026": {
+      "kind": "paragraph",
+      "source": "媒体中心在所有引用释放满 1 小时后，按 __ELBOT_CODE_0__（默认每天 04:00）清理对象；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "22ec375f18cce31f3534e2a5bc3d2ca2cda7a7de7046ba2a094c1c6ec8901026",
+      "translation": "The Media Center cleans up objects according to __ELBOT_CODE_0__ (default 04:00 daily) after all references have been released for 1 hour;",
+      "updated_at": 1790860491
     },
     "docs/configuration.md:paragraph:278f8b538196cdaa7a6872e7a9eeae761edfb480caa6b7cc9b8fb87602535876": {
       "kind": "paragraph",
@@ -1760,6 +1776,14 @@
       "translation": "Once any toolization field is specified, the complete toolization configuration must be provided.",
       "updated_at": 1783479082
     },
+    "docs/configuration.md:paragraph:8670fdd6f7d4eb6164f4b88aa5d1d944cb596a250686860bf09c14cff2198f26": {
+      "kind": "paragraph",
+      "source": "仍被 Session、聊天历史等引用的媒体不会删除。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "8670fdd6f7d4eb6164f4b88aa5d1d944cb596a250686860bf09c14cff2198f26",
+      "translation": "Media still referenced by Sessions, chat history, etc., will not be deleted.",
+      "updated_at": 1790860491
+    },
     "docs/configuration.md:paragraph:8788206be7b0af8f2678fe6ee78fced25b2abf43e64f8df0908da647cc95f183": {
       "kind": "paragraph",
       "source": "其中的 PATH 按上面的追加规则处理。",
@@ -1807,6 +1831,14 @@
       "source_hash": "8ba44fbfbdec25f68c58c2661ea76cbbe12364becb207cc4538c2893b20443cf",
       "translation": "Cloudflare R2 can keep the bucket private without needing to enable public access;",
       "updated_at": 1789023374
+    },
+    "docs/configuration.md:paragraph:8c4eebb0b83b05db1efd340dc243af01c2e623b918bc51403087fc0d841ee374": {
+      "kind": "paragraph",
+      "source": "媒体清理独立启用，不受 sandbox 清理开关影响。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "8c4eebb0b83b05db1efd340dc243af01c2e623b918bc51403087fc0d841ee374",
+      "translation": "Media cleanup is enabled independently and is not affected by the sandbox cleanup switch.",
+      "updated_at": 1790860491
     },
     "docs/configuration.md:paragraph:8d4a3aa5a1bce6c9306825b96e3358b7ec0651b63fe2ddf04b9e478e09012931": {
       "kind": "paragraph",
@@ -2159,6 +2191,14 @@
       "source_hash": "d1e0b2740beb17f8a27ddbf19fe744c4ac50e8e3f32846c0caa19eaa36ea8f80",
       "translation": "Images are compressed proportionally when the original image byte size exceeds the threshold or any side length reaches the limit.\n",
       "updated_at": 1789433212
+    },
+    "docs/configuration.md:paragraph:d3b5327f3aaccb4ad36273c510b994537607ddc8244311d53139f58148d3090a": {
+      "kind": "paragraph",
+      "source": "预签名 URL 到期仅影响链接访问，不会自动删除对象。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d3b5327f3aaccb4ad36273c510b994537607ddc8244311d53139f58148d3090a",
+      "translation": "The expiration of presigned URLs only affects link access and will not automatically delete objects.\n",
+      "updated_at": 1790860491
     },
     "docs/configuration.md:paragraph:d43f096208f1054da824c70c2f731293b37a7a8f539fd424033039d2d55c82d9": {
       "kind": "paragraph",
@@ -2522,8 +2562,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "127a4677bc0f2977e99e8ecbb02563ad57beb5f077ee7c7cfdf88494f02f31fb",
+  "source_hash": "2baa653be3ddf2107dc139d4fb64760b9049edbc8c59aa0974f5fb195f8fc907",
   "target": "docs.en/configuration.md",
-  "updated_at": 1789433212,
+  "updated_at": 1790860491,
   "version": 2
 }
