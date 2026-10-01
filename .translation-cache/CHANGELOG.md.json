@@ -256,6 +256,14 @@
       "translation": "**Tool Discovery Mechanism**: By default, only __ELBOT_CODE_0__ and the tool name are exposed, with the full schema injected on demand to reduce unnecessary context overhead.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:299e81b1ee44fc0ece59afba3586130f1e252a6e0ab07927d67d37c06732f6c1": {
+      "kind": "list",
+      "source": "删除失败或取消后保留记录供后续重试。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "299e81b1ee44fc0ece59afba3586130f1e252a6e0ab07927d67d37c06732f6c1",
+      "translation": "Records are retained for subsequent retries after deletion failure or cancellation.",
+      "updated_at": 1790860573
+    },
     "CHANGELOG.md:list:29d199145b36b120aac3bfe22147a8a3a6da9b52677cbbd283be284ab7d983ca": {
       "kind": "list",
       "source": "普通本地路径仍按平台默认方式处理。",
@@ -472,6 +480,14 @@
       "translation": "If a download URL is returned, it will be saved to ElBot; if only a OneBot local path is returned, that path will be displayed directly.",
       "updated_at": 1783095128
     },
+    "CHANGELOG.md:list:4c727e333f295b6de26fa26999ee5021b5193181e60496b7e336b9368ccce58e": {
+      "kind": "list",
+      "source": "工具发现、__ELBOT_CODE_0__ 和后台预加载均生效，配置错误提示仍保留。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "4c727e333f295b6de26fa26999ee5021b5193181e60496b7e336b9368ccce58e",
+      "translation": "Tool discovery, __ELBOT_CODE_0__, and background preloading are all effective; configuration error prompts are still retained.",
+      "updated_at": 1790860573
+    },
     "CHANGELOG.md:list:50e8edceef9ba9f05ab3e29be70643e7d1e29373c088d70a65ef6b30249494e3": {
       "kind": "list",
       "source": "默认 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ Skill 会生成仅超管可见、低风险的 TOML。",
@@ -583,6 +599,14 @@
       "source_hash": "611aafc7e8d828767ae2b38b0e5c3d0fead2cde039834d37560cbe5b03c27491",
       "translation": "__ELBOT_CODE_0__ audit events changed from debug level to info level; token consumption data can now be recorded by default with __ELBOT_CODE_1__.",
       "updated_at": 1782884148
+    },
+    "CHANGELOG.md:list:641f26256a18786f2ad6a9b6af66da8369220f69024a88ff8ce598e61bb271ca": {
+      "kind": "list",
+      "source": "媒体清理由持有全局媒体锁逐个删除，改为最多同时处理 4 个对象并按媒体 ID 互斥；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "641f26256a18786f2ad6a9b6af66da8369220f69024a88ff8ce598e61bb271ca",
+      "translation": "Media cleanup has been changed from deleting objects one by one using a global media lock to processing up to 4 objects simultaneously with mutual exclusion based on media ID;",
+      "updated_at": 1790860573
     },
     "CHANGELOG.md:list:6591817f82efe0b2c5e6a0f20415974f7b06b4e8cd819ab6c957df0b3a56c245": {
       "kind": "list",
@@ -719,6 +743,14 @@
       "source_hash": "754ce0b1d37971727b96391f1b6da613a4c9541db3d18159066ee1bf0a085415",
       "translation": "Now, files between 2–100 MiB can still be read line-by-line, grepped, and edited; AST, full diffs, and overly long confirmation content are disabled based on file size only during actual calls, while revision verification, pre-checks, and atomic writes are preserved.",
       "updated_at": 1788138091
+    },
+    "CHANGELOG.md:list:762097e61763e8660197ddecb1e3de64151bca8c54450624c69c47af3700bb80": {
+      "kind": "list",
+      "source": "文档型 AgentSkill 详情此前向所有用户追加发现 __ELBOT_CODE_0__ 的引导；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "762097e61763e8660197ddecb1e3de64151bca8c54450624c69c47af3700bb80",
+      "translation": "Previously, the details of document-type AgentSkills appended guidance for discovering __ELBOT_CODE_0__ to all users;",
+      "updated_at": 1790860573
     },
     "CHANGELOG.md:list:77ae9951fcdb074ce3197606d3bcda43ebb29a1e7431e3226b28b8c30d008ce8": {
       "kind": "list",
@@ -967,6 +999,14 @@
       "source_hash": "94517b0f2275ae4197728d971ccfb2f1a1a20c60f53243383ab713f3cbd12b8b",
       "translation": "**Hook Layer**: Inserts extension logic at key points such as Agent input, LLM request/response, and platform sending; includes built-in rule Hooks and resident memory Hooks.",
       "updated_at": 1782376912
+    },
+    "CHANGELOG.md:list:965094cb5f982d80882ef319f5e6edf76e8e7c8abf4a0da4c2b4af815caa86b0": {
+      "kind": "list",
+      "source": "不同媒体的导入和按需上传不再等待整轮清理，同一媒体继续防止上传、删除与重新导入交叉。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "965094cb5f982d80882ef319f5e6edf76e8e7c8abf4a0da4c2b4af815caa86b0",
+      "translation": "Import and on-demand upload of different media no longer wait for a full cleanup cycle; for the same media, overlaps between upload, deletion, and re-import are still prevented.",
+      "updated_at": 1790860573
     },
     "CHANGELOG.md:list:96773e2d260f3f80747946fd551439f8b2b94b07a20d94084ab7f1cc1d68a2e3": {
       "kind": "list",
@@ -1392,6 +1432,14 @@
       "translation": "Fixed an issue where parameters rewritten by the tool prepared Hook were not synchronized to the current LLM context, and in-process Hooks could rewrite tool IDs/names;",
       "updated_at": 1784467084
     },
+    "CHANGELOG.md:list:d61719b795c624caee4d83ed8a8a44cf2ed9659b71fc67926033f77654881552": {
+      "kind": "list",
+      "source": "现在仅向超级管理员追加，普通用户或身份缺失时隐藏。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d61719b795c624caee4d83ed8a8a44cf2ed9659b71fc67926033f77654881552",
+      "translation": "Now it is only appended for superadmins and hidden for regular users or when identity is missing.",
+      "updated_at": 1790860573
+    },
     "CHANGELOG.md:list:d645cf77c4ee588c46e1393622a3b1673b35ad938b425f17eba22044d2bdc5a7": {
       "kind": "list",
       "source": "Hook rules 可通过 __ELBOT_CODE_0__ action 执行脚本，并用 __ELBOT_CODE_1__ 经内部 Elvena Bus 触发 Elnis direct/LLM/calls；",
@@ -1642,8 +1690,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "04e1088566b7ff0430424003676c34efd5f6460214d9a10883691bf2825ec265",
+  "source_hash": "6fe3877ca9367a390252d4809dee6b4a982b0dd0affc7a1e733d096dbc019e25",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1790569266,
+  "updated_at": 1790860573,
   "version": 2
 }
