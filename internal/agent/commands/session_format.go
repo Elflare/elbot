@@ -139,7 +139,7 @@ func recentConversationMessages(ctx context.Context, deps Deps, sessionID string
 }
 
 func previewContent(text string) string {
-	return strings.TrimSpace(strings.ReplaceAll(text, "\n", " "))
+	return truncateRunes(strings.TrimSpace(strings.ReplaceAll(text, "\n", " ")), 200)
 }
 
 func assistantMessages(messages []storage.Message) []storage.Message {
