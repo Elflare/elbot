@@ -260,7 +260,12 @@ func (a *Agent) preloadBackgroundResources(ctx context.Context, session *storage
 				a.audit("background_preload_skipped", "session_id", session.ID, "name", name, "reason", "hidden_skill")
 				continue
 			}
-			detail := strings.TrimSpace(detailer.Detail())
+			block, err := skillDetailBlock(security.WithActor(ctx, actor), candidate, detailer)
+			if err != nil {
+				a.audit("background_preload_skipped", "session_id", session.ID, "name", name, "reason", "skill_detail_failed", "error", err)
+				continue
+			}
+			detail := strings.TrimSpace(tool.RenderDetailBlocks([]tool.DetailBlock{block}))
 			if detail == "" {
 				a.audit("background_preload_skipped", "session_id", session.ID, "name", name, "reason", "empty_skill_detail")
 				continue
@@ -316,7 +321,7 @@ func (a *Agent) preloadBackgroundTool(ctx context.Context, session *storage.Sess
 }
 
 func (a *Agent) discoveryForBackgroundToolNames(ctx context.Context, names []string, actor security.Actor, policy *security.Policy) (*tool.DiscoveryResult, bool) {
-	details, _ := a.toolRuntime.registry.DiscoverDetails(names, func(candidate tool.Tool) bool {
+	details, _ := a.toolRuntime.registry.DiscoverDetails(security.WithActor(ctx, actor), names, func(candidate tool.Tool) bool {
 		info := candidate.Info()
 		return tool.InfoAvailableInContext(ctx, info) && tool.CanAccessTool(actor, policy, info)
 	})

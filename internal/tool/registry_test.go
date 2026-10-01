@@ -521,7 +521,7 @@ func TestDiscoverDependenciesHandleCycles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	details, errors := registry.DiscoverDetails([]string{"a"}, nil)
+	details, errors := registry.DiscoverDetails(context.Background(), []string{"a"}, nil)
 	if len(errors) != 0 || len(details) != 2 {
 		t.Fatalf("details=%#v errors=%#v", details, errors)
 	}

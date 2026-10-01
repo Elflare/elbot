@@ -194,7 +194,7 @@ func TestCreateElSkillDiscoversMaintenanceTools(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	details, errors := registry.DiscoverDetails([]string{CreateElSkillName}, func(tool.Tool) bool { return true })
+	details, errors := registry.DiscoverDetails(context.Background(), []string{CreateElSkillName}, func(tool.Tool) bool { return true })
 	if len(errors) > 0 {
 		t.Fatalf("errors = %#v", errors)
 	}

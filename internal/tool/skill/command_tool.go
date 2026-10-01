@@ -36,7 +36,7 @@ func (t CommandTool) Schema() llm.ToolSchema {
 }
 
 func (t CommandTool) Detail() string {
-	block, err := t.LoadDetail()
+	block, err := t.LoadDetail(context.Background())
 	if err != nil {
 		return ""
 	}
@@ -44,11 +44,11 @@ func (t CommandTool) Detail() string {
 }
 
 func (t CommandTool) DetailBlock() tool.DetailBlock {
-	block, _ := t.LoadDetail()
+	block, _ := t.LoadDetail(context.Background())
 	return block
 }
 
-func (t CommandTool) LoadDetail() (tool.DetailBlock, error) {
+func (t CommandTool) LoadDetail(ctx context.Context) (tool.DetailBlock, error) {
 	block, err := loadRecordDetail(t.Record)
 	if err != nil {
 		return tool.DetailBlock{}, err

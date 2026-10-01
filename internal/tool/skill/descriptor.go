@@ -8,6 +8,7 @@ import (
 
 	"elbot/internal/elyph"
 	"elbot/internal/llm"
+	"elbot/internal/security"
 	"elbot/internal/tool"
 	"elbot/internal/tool/runtimeinfo"
 )
@@ -53,7 +54,7 @@ func (d Descriptor) Call(context.Context, tool.CallRequest) (*tool.Result, error
 }
 
 func (d Descriptor) Detail() string {
-	block, err := d.LoadDetail()
+	block, err := d.LoadDetail(context.Background())
 	if err != nil {
 		return ""
 	}
@@ -61,17 +62,17 @@ func (d Descriptor) Detail() string {
 }
 
 func (d Descriptor) DetailBlock() tool.DetailBlock {
-	block, _ := d.LoadDetail()
+	block, _ := d.LoadDetail(context.Background())
 	return block
 }
 
-func (d Descriptor) LoadDetail() (tool.DetailBlock, error) {
+func (d Descriptor) LoadDetail(ctx context.Context) (tool.DetailBlock, error) {
 	block, err := loadRecordDetail(d.Record)
 	if err != nil {
 		return tool.DetailBlock{}, err
 	}
 	if d.Record.Kind == KindAgent {
-		block.Content = strings.TrimSpace(block.Content + "\n\n" + agentSkillNotice(d.Record))
+		block.Content = strings.TrimSpace(block.Content + "\n\n" + agentSkillNotice(ctx, d.Record))
 	}
 	return block, nil
 }
@@ -90,12 +91,18 @@ func (d Descriptor) ActivateTools() []string {
 	}
 }
 
-func agentSkillNotice(record Record) string {
-	lines := []string{"ElBot AgentSkill 使用提示：", "", "- 如该文档有脚本，请发现 agent_skill_creator，参考其说明是否把他注册成普通工具。"}
+func agentSkillNotice(ctx context.Context, record Record) string {
+	var lines []string
+	if actor, ok := security.ActorFromContext(ctx); ok && actor.Role == security.RoleSuperadmin {
+		lines = append(lines, "- 如该文档有脚本，请发现 agent_skill_creator，参考其说明是否把他注册成普通工具。")
+	}
 	if record.ManifestFound && record.ManifestError != "" {
 		lines = append(lines, "- 当前 "+AgentSkillConfigFile+" 无效："+record.ManifestError)
 	}
-	return strings.Join(lines, "\n")
+	if len(lines) == 0 {
+		return ""
+	}
+	return "ElBot AgentSkill 使用提示：\n\n" + strings.Join(lines, "\n")
 }
 
 func loadRecordDetail(record Record) (tool.DetailBlock, error) {

@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"context"
 	"slices"
 	"testing"
 	"time"
@@ -33,7 +34,7 @@ func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
 					t.Fatalf("unexpected dependency on %s: %#v", other.Name(), info.DependsOn)
 				}
 			}
-			details, errs := registry.DiscoverDetails([]string{value.Name()}, nil)
+			details, errs := registry.DiscoverDetails(context.Background(), []string{value.Name()}, nil)
 			if info.Hidden {
 				if len(details) != 0 || len(errs) != 1 {
 					t.Fatalf("hidden tool exposed: %#v, errors = %#v", details, errs)

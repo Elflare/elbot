@@ -81,7 +81,7 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, error
 		}
 		result = &DiscoveryResult{Tools: out}
 	} else {
-		details, errors := t.registry.DiscoverDetails(names, func(candidate Tool) bool {
+		details, errors := t.registry.DiscoverDetails(security.WithActor(ctx, actor), names, func(candidate Tool) bool {
 			info := candidate.Info()
 			return InfoAvailableInContext(ctx, info) && CanAccessTool(actor, policy, info)
 		})

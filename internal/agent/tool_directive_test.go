@@ -8,6 +8,7 @@ import (
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/tool/builtin"
+	"elbot/internal/tool/skill"
 	"errors"
 	"os"
 	"path/filepath"
@@ -350,6 +351,48 @@ func TestToolDirectiveOnlyValidToolPreloadsNextTurn(t *testing.T) {
 	}
 	if toolNames(requests[0].Tools) != "discover_tool,web_extract" {
 		t.Fatalf("preloaded tools missing in next turn: %s", toolNames(requests[0].Tools))
+	}
+}
+
+func TestAgentSkillCreatorNoticePreloads(t *testing.T) {
+	for _, entry := range []string{"directive", "background"} {
+		for _, role := range []security.Role{security.RoleUser, security.RoleSuperadmin, ""} {
+			t.Run(entry+"/"+string(role), func(t *testing.T) {
+				a := New(&fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+				a.SetSecurityPolicy(security.NewPolicy("low", "critical", nil))
+				registry := tool.NewRegistry()
+				if err := registry.Register(skill.NewDescriptor(skill.Record{
+					Name: "docx", Detail: "# DOCX", Kind: skill.KindAgent, Risk: tool.RiskSafe,
+				})); err != nil {
+					t.Fatal(err)
+				}
+				a.SetToolRuntime(registry, nil)
+				ctx := context.Background()
+				if role != "" {
+					ctx = security.WithActor(ctx, security.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: role})
+				}
+				sessionRecord, err := a.sessionForInput(ctx, "prepare skill")
+				if err != nil {
+					t.Fatal(err)
+				}
+				sessionRecord.Mode = storage.SessionModeWork
+				var content string
+				if entry == "directive" {
+					content = a.applySkillDirectives(ctx, sessionRecord, "@skill:docx").Text
+				} else {
+					content = a.preloadBackgroundResources(ctx, sessionRecord, []string{"docx"}).SkillPrompt
+				}
+				if !strings.Contains(content, "# DOCX") {
+					t.Fatalf("missing skill body: %q", content)
+				}
+				if got := strings.Contains(content, "agent_skill_creator"); got != (role == security.RoleSuperadmin) {
+					t.Fatalf("creator notice for %q: %q", role, content)
+				}
+				if got := strings.Contains(content, "ElBot AgentSkill 使用提示："); got != (role == security.RoleSuperadmin) {
+					t.Fatalf("notice heading: %q", content)
+				}
+			})
+		}
 	}
 }
 
