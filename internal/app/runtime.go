@@ -19,9 +19,11 @@ import (
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
 	hookcontrol "elbot/internal/hook/control"
+	hookrules "elbot/internal/hook/rules"
 	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
+	platformbuiltin "elbot/internal/platform/builtin"
 	"elbot/internal/processenv"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -269,7 +271,8 @@ func buildAgent(
 	hookService *hookcontrol.Service,
 ) (*agent.Agent, error) {
 	cfg := foundation.Config
-	diagnostics, err := doctor.New(cfg.ConfigPath)
+	definitions := append(platformbuiltin.ConfigDefinitions(), hookrules.ConfigDefinition())
+	diagnostics, err := doctor.New(cfg.ConfigPath, config.NewInspector(definitions...))
 	if err != nil {
 		return nil, err
 	}

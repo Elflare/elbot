@@ -40,9 +40,11 @@ rg -n "func Run|service run|completion|--client|RunCron" cmd internal/app intern
 
 先看：
 
-- `internal/config/`
-- `internal/config/assets.go`：默认资产及只读 `DefaultAssets` 清单，供初始化和 Doctor 共用模板。
-- `internal/doctor/`：当前配置路径绑定、只读资产诊断、主配置字段校验与可复制处理请求的生成。
+- `internal/config/config.go`、`configuration.go`：启动入口及与诊断共用的读取、默认值、合并和来源记录。
+- `internal/config/assets.go`：默认资产、文件必要性与示例声明。
+- `internal/config/definition.go`、`config_definition.go`：规则类型、核心配置声明及共享校验；平台与 Hook 的 `config_definition.go` 由 app 显式装配。
+- `internal/config/inspect.go`、`inspect_toml.go`：只读诊断、TOML 检查和内置内容比较。
+- `internal/doctor/`：`doctor.go` 调用配置检查入口，`report.go` 按文件生成错误/提示报告。
 - `internal/logging/`
 - `docs/configuration.md`
 

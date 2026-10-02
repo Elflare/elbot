@@ -32,6 +32,16 @@ type Bundle struct {
 	Runtimes []platform.Runtime
 }
 
+// ConfigDefinitions exposes schemas for explicit app assembly.
+func ConfigDefinitions() []config.Definition {
+	return []config.Definition{
+		cli.ConfigDefinition(),
+		qqonebot.ConfigDefinition(),
+		qqofficial.ConfigDefinition(),
+		telegram.ConfigDefinition(),
+	}
+}
+
 func New(opts Options, cfg *config.Config, store storage.Store, chatHistory storage.ChatHistoryRepository, logger *slog.Logger) (Bundle, error) {
 	mode := opts.Mode
 	if mode == "" {
