@@ -19,6 +19,16 @@ Example:
 /help log
 ```
 
+## Configuration Diagnosis
+
+| Command | Function |
+| --- | --- |
+| `/doctor` | Performs a read-only check of the current service's configuration and built-in Skills, lists issues by file, and generates a processing request that can be copied to ElBot; available to superadmins only. |
+
+Send `/doctor` in the chat window; no parameters required. Checks the main configuration path selected when starting the current service; separate configurations are located according to `config_files` in the main file. When issues are found, the actual file path, specific problem, configuration description, and the GitHub raw address of the default template will be attached; Please copy the output request to an ElBot that has access to these files. The check itself will not modify files or automatically initiate repairs.
+
+If no issues are found, only `Everything is OK` will be returned. For the check scope and limitations, see [Configuration Diagnosis](configuration.md#配置诊断).
+
 ## Model
 
 | Command | Function |
