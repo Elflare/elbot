@@ -720,8 +720,21 @@ Hooks should not send platform messages directly; they should return an output i
 
 For complete configuration instructions for rules and persistent Hooks, see [Hook](hooks.md).
 
-## Recommended Maintenance Method
+## Configuration Diagnosis
 
+The superadmin can execute `/doctor` in the chat window. The command performs a read-only check of the main configuration currently used by the service and the separated configuration pointed to by `config_files`, supporting custom main configuration filenames, relative paths, and absolute paths; `SOUL.md` is located according to `soul.path`.
+
+Check scope:
+
+- Check for missing files in the default asset manifest.
+- Check the configuration TOML for format, duplicate definitions, and field types; the `ELBOT_SKILL.toml` of built-in Skills checks the TOML format.
+- `app.toml` will check unknown field settings
+- Built-in `SKILL.md` and accompanying `ELBOT_SKILL.toml` check for content differences; Skills added by the user are not included in the comparison.
+- SOUL, memory, and environment files are only checked for existence.
+
+`/doctor` is only available in started chat services. If a configuration error prevents ElBot from starting, you must first correct the error based on the startup output.
+
+## Recommended Maintenance Method
 
 - User-editable configurations should be centralized in the platform configuration directory to avoid directly modifying source code examples.
 - Update this document synchronously when adding new configuration items.

@@ -112,6 +112,14 @@
       "translation": "LLM Request and Round Timeout",
       "updated_at": 1782574866
     },
+    "docs/configuration.md:heading:6677ca25614bb5ae0c3042ca36862f3250ccdd430e24376fb0e21601e3486a1c": {
+      "kind": "heading",
+      "source": "配置诊断",
+      "source_file": "docs/configuration.md",
+      "source_hash": "6677ca25614bb5ae0c3042ca36862f3250ccdd430e24376fb0e21601e3486a1c",
+      "translation": "Configuration Diagnosis",
+      "updated_at": 1790906856
+    },
     "docs/configuration.md:heading:66d047a76b2b47960e4735109c58f717c3ae4ba351dbdac904db65bef047b717": {
       "kind": "heading",
       "source": "建议的维护方式",
@@ -320,6 +328,14 @@
       "translation": "You can also use __ELBOT_CODE_0__ to write the configuration directly.",
       "updated_at": 1781846628
     },
+    "docs/configuration.md:list:07eeca2b4f1ee0dd93225882dcab429f9578d7cd280bde39538c6788e25b4ff1": {
+      "kind": "list",
+      "source": "SOUL、记忆和环境文件只检查存在性。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "07eeca2b4f1ee0dd93225882dcab429f9578d7cd280bde39538c6788e25b4ff1",
+      "translation": "SOUL, memory, and environment files are only checked for existence.",
+      "updated_at": 1790906856
+    },
     "docs/configuration.md:list:0a7e2661c09f9163f6350d4f83d5ae5b7fe261948c814ae7159a1037a301cf68": {
       "kind": "list",
       "source": "Linux：__ELBOT_CODE_0__ 或 __ELBOT_CODE_1__",
@@ -456,6 +472,14 @@
       "translation": "__ELBOT_CODE_0__ is optional, supporting __ELBOT_CODE_1__ and __ELBOT_CODE_2__ proxy addresses;",
       "updated_at": 1785763773
     },
+    "docs/configuration.md:list:329c70b187503629538153be437210897776712aa88d09392f12fc2ae1a64bcd": {
+      "kind": "list",
+      "source": "内置 __ELBOT_CODE_0__ 及配套 __ELBOT_CODE_1__ 检查内容差异；用户自己添加的 Skill 不参与比较。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "329c70b187503629538153be437210897776712aa88d09392f12fc2ae1a64bcd",
+      "translation": "Built-in __ELBOT_CODE_0__ and accompanying __ELBOT_CODE_1__ check for content differences; Skills added by the user are not included in the comparison.",
+      "updated_at": 1790906856
+    },
     "docs/configuration.md:list:33bfeb03b05e6473bd052e077674f03762cd60be81dbf214f1724b8dfedb168e": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 为特定模型配置 __ELBOT_CODE_1__ 和 __ELBOT_CODE_2__，两者都是可选的。",
@@ -463,6 +487,14 @@
       "source_hash": "33bfeb03b05e6473bd052e077674f03762cd60be81dbf214f1724b8dfedb168e",
       "translation": "__ELBOT_CODE_0__ configures __ELBOT_CODE_1__ and __ELBOT_CODE_2__ for specific models; both are optional.",
       "updated_at": 1782312356
+    },
+    "docs/configuration.md:list:354d73c681d9d69dd46ecad7f82eb4abdfb63510f959b0906123bde50cfb8eac": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 会检查未知字段置",
+      "source_file": "docs/configuration.md",
+      "source_hash": "354d73c681d9d69dd46ecad7f82eb4abdfb63510f959b0906123bde50cfb8eac",
+      "translation": "__ELBOT_CODE_0__ will check unknown field settings",
+      "updated_at": 1790906856
     },
     "docs/configuration.md:list:3736c40e4461bdcf0502441f60ff595b46159a61793157992c801373793effab": {
       "kind": "list",
@@ -1144,6 +1176,14 @@
       "translation": "Platform configuration directory: Windows __ELBOT_CODE_0__; Linux uses the XDG configuration directory.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:d6160bee9eac1cab8ce453aee732187482c605124d189ebef5a093fbb13376ea": {
+      "kind": "list",
+      "source": "对配置 TOML 检查格式、重复定义和字段类型；内置 Skill 的 __ELBOT_CODE_0__ 检查 TOML 格式。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d6160bee9eac1cab8ce453aee732187482c605124d189ebef5a093fbb13376ea",
+      "translation": "Check the configuration TOML for format, duplicate definitions, and field types; the __ELBOT_CODE_0__ of built-in Skills checks the TOML format.",
+      "updated_at": 1790906856
+    },
     "docs/configuration.md:list:d7c3bc1bddbe670e97da17432d835414d5e3c43e72affbf708fa4532cb2bb129": {
       "kind": "list",
       "source": "部分客户端可能无法查看 Rich Message。",
@@ -1175,6 +1215,14 @@
       "source_hash": "de78e104d2e64a1a31051edaaab11be5027232cefe7a415196323257e70ad6d7",
       "translation": "This setting applies to both the model list and chat requests.",
       "updated_at": 1785763773
+    },
+    "docs/configuration.md:list:dff21d3061cac34d317453e0703c9cf3e08b23b3be183595b454d1d7b1a11b80": {
+      "kind": "list",
+      "source": "对默认资产清单中的文件检查是否缺失。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "dff21d3061cac34d317453e0703c9cf3e08b23b3be183595b454d1d7b1a11b80",
+      "translation": "Check for missing files in the default asset manifest.",
+      "updated_at": 1790906856
     },
     "docs/configuration.md:list:e00e58dc6a9eeaacae6b0b301501c5cce0cf41a69b86653f42487b9c9db59918": {
       "kind": "list",
@@ -1255,6 +1303,14 @@
       "source_hash": "040ef778f70acf1d11f2bc36061f315ee3ce19decde1321f248181d75c2972ab",
       "translation": "Failed deletions will be recorded and retried in subsequent cleanups;",
       "updated_at": 1790860491
+    },
+    "docs/configuration.md:paragraph:04a0ee5f6f9e11beac63c0016f34cd3c2127d739bfebc5bf4fc9a8e0215ee7f5": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 按 __ELBOT_CODE_1__ 定位。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "04a0ee5f6f9e11beac63c0016f34cd3c2127d739bfebc5bf4fc9a8e0215ee7f5",
+      "translation": "__ELBOT_CODE_0__ is located according to __ELBOT_CODE_1__.\n",
+      "updated_at": 1790906856
     },
     "docs/configuration.md:paragraph:084b8ac421111c91f1c1288860dc246a47351620de634bccac58acbcd2b438e6": {
       "kind": "paragraph",
@@ -1480,6 +1536,14 @@
       "translation": "__ELBOT_CODE_0__ serves as the base timeout for OneBot frame writing and API response waiting, respectively.",
       "updated_at": 1784818746
     },
+    "docs/configuration.md:paragraph:295672a48ecda817560dade2f9947edfb6098d695978c2ba84f73eb6ecfaa4bd": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 只在已启动的聊天服务中可用。如果配置错误导致 ElBot 无法启动，需要先根据启动输出修正错误。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "295672a48ecda817560dade2f9947edfb6098d695978c2ba84f73eb6ecfaa4bd",
+      "translation": "__ELBOT_CODE_0__ is only available in started chat services. If a configuration error prevents ElBot from starting, you must first correct the error based on the startup output.\n",
+      "updated_at": 1790906856
+    },
     "docs/configuration.md:paragraph:2b27f119c1db9c1ab78424d2839be5830e9a2f5796cf9b44f9f2d0e4f7c4df91": {
       "kind": "paragraph",
       "source": "这会把 __ELBOT_CODE_0__ 下配置的工具预载到当前 Session。如果 __ELBOT_CODE_1__ 非空，也会从本轮开始追加到 system prompt。\n",
@@ -1680,6 +1744,14 @@
       "translation": "For advanced deployments, this can also be specified in the systemd service:\n",
       "updated_at": 1781790272
     },
+    "docs/configuration.md:paragraph:68c08df666fe1e9cd2c9388978d0910cdede7c818052bf7f7cb3efa7039e7b53": {
+      "kind": "paragraph",
+      "source": "检查范围：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "68c08df666fe1e9cd2c9388978d0910cdede7c818052bf7f7cb3efa7039e7b53",
+      "translation": "Check scope:\n",
+      "updated_at": 1790906856
+    },
     "docs/configuration.md:paragraph:69e3746328812ea9a732113b9e6a00f9c1d475183b13d67db330339fde4cc06d": {
       "kind": "paragraph",
       "source": "Elnis 默认关闭。",
@@ -1735,6 +1807,14 @@
       "source_hash": "764d85255caea7854ea163538429dadf782cc6b076d052916bdf4ef1622e85c8",
       "translation": "Note:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:79d7f0508f54975e393ee15350e56d3211e874750e58fc6d168257af313cfb11": {
+      "kind": "paragraph",
+      "source": "命令只读检查当前服务实际使用的主配置及其 __ELBOT_CODE_0__ 指向的分离配置，支持自定义主配置文件名、相对路径和绝对路径；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "79d7f0508f54975e393ee15350e56d3211e874750e58fc6d168257af313cfb11",
+      "translation": "The command performs a read-only check of the main configuration currently used by the service and the separated configuration pointed to by __ELBOT_CODE_0__, supporting custom main configuration filenames, relative paths, and absolute paths;",
+      "updated_at": 1790906856
     },
     "docs/configuration.md:paragraph:7ffeca05eb8a1c8e3d72e97c8edc57ae2ccad327917426b2e6fa11dd6a7875e9": {
       "kind": "paragraph",
@@ -2087,6 +2167,14 @@
       "source_hash": "bd4044e2e31741854ecaef63e70289d046ac2ae08fa264f24d5a570e71b7aa0c",
       "translation": "Configurations for QQ Official Bot, QQ OneBot, and Telegram are commented out by default in the examples.",
       "updated_at": 1783085288
+    },
+    "docs/configuration.md:paragraph:bde36c57a3389da80c3df9443ac5162ce905a050640981e589de0a640519b46d": {
+      "kind": "paragraph",
+      "source": "超级管理员可以在聊天窗口执行 __ELBOT_CODE_0__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "bde36c57a3389da80c3df9443ac5162ce905a050640981e589de0a640519b46d",
+      "translation": "The superadmin can execute __ELBOT_CODE_0__ in the chat window.",
+      "updated_at": 1790906856
     },
     "docs/configuration.md:paragraph:be162f25851c3503919cc3805e4292e5a731e9d4998c1391d67c7bfb2587d5b1": {
       "kind": "paragraph",
@@ -2562,8 +2650,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "2baa653be3ddf2107dc139d4fb64760b9049edbc8c59aa0974f5fb195f8fc907",
+  "source_hash": "f22f8f4fe66ec3c5a955fe573510519800d20ae70ef084aa9f843ce232f6ec6b",
   "target": "docs.en/configuration.md",
-  "updated_at": 1790860491,
+  "updated_at": 1790906856,
   "version": 2
 }
