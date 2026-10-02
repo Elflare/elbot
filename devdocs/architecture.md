@@ -46,7 +46,9 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 2. `ELBOT_CONFIG_FILE`
 3. 平台配置目录
 
-配置诊断由 `internal/doctor` 独立负责。app 在 Runtime 装配阶段将实际 `ConfigPath` 绑定到 Doctor 服务，经 `agent.Options.Doctor` 和命令 `Deps.Doctor` 注入 `/doctor`。诊断每次读取磁盘，复用默认资产、配置结构及平台结构，不调用 `config.Load`、初始化文件或启动外部运行时。命令仅超级管理员可用，返回按文件聚合的问题及可复制的处理请求；不写文件、不调用 LLM，也不参与终端命令解析。
+配置要求由所属模块声明：默认可选，必需项显式标记，示例仅免除模板补齐。`config.Load` 与只读 `config.Inspector` 共用读取、路径、默认值和合并流程；条件校验复用配置自身方法。平台和 Hook 描述由 app 显式装配，配置包不导入具体模块。
+
+`internal/doctor` 仅将配置层结果按文件生成报告，经 `agent.Options.Doctor` 和命令 `Deps.Doctor` 注入 `/doctor`。必要问题报错，可选缺项及内置 Skill 差异提示；内容比较忽略全部 CR/LF，TOML 仍按原文解析。仅有 Elnis 相关条目时附说明链接。诊断只读磁盘，不读取密钥、初始化文件或启动外部运行时；命令仅超级管理员可用，不自动修复、不调用 LLM。
 
 <!-- locator:agent-chat -->
 ## Agent 对话链路

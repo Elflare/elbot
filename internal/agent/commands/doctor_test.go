@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"elbot/internal/command"
+	"elbot/internal/config"
 	"elbot/internal/doctor"
 	"elbot/internal/security"
 )
@@ -30,7 +31,7 @@ func TestDoctorCommandUsesDiagnosisAndRejectsArguments(t *testing.T) {
 	if err != nil || result.Content != "Everything is OK" || service.calls != 1 {
 		t.Fatalf("result=%#v, err=%v, calls=%d", result, err, service.calls)
 	}
-	service.report = doctor.Report{ConfigPath: "/config/app.toml", Files: []doctor.FileIssue{{Path: "/config/app.toml", Problems: []string{"文件缺失。"}}}}
+	service.report = doctor.Report{ConfigPath: "/config/app.toml", Files: []doctor.FileIssue{{Path: "/config/app.toml", Issues: []config.Issue{{Level: config.LevelError, Message: "文件缺失。"}}}}}
 	result, err = cmd.Handle(context.Background(), command.Request{})
 	if err != nil || result.Content != service.report.Text() {
 		t.Fatalf("result=%#v, err=%v", result, err)

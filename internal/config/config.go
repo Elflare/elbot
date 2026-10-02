@@ -2,6 +2,7 @@ package config
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -387,68 +388,17 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	cfg := defaultAppConfig()
-	if err := loadTOML(configPath, cfg); err != nil {
+	state := newConfiguration(configPath, nil)
+	if err := state.readCore(context.Background(), false); err != nil {
 		return nil, err
 	}
-	cfg.applyAppDefaults()
-
-	providersPath := resolveRelative(configPath, cfg.ConfigFiles.Providers)
-	providersCfg := &Config{}
-	if err := loadTOML(providersPath, providersCfg); err != nil {
+	if err := state.cfg.resolveProviderAPIKeys(filepath.Dir(configPath)); err != nil {
 		return nil, err
 	}
-	cfg.mergeProviders(providersCfg)
-	cfg.applyProviderDefaults()
-	if err := cfg.resolveProviderAPIKeys(filepath.Dir(configPath)); err != nil {
+	if err := FirstError(state.cfg.ValidateModels()); err != nil {
 		return nil, err
 	}
-
-	statePath := resolveRelative(configPath, cfg.ConfigFiles.State)
-	stateCfg := &StateConfig{}
-	if err := loadTOML(statePath, stateCfg); err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return nil, err
-		}
-	} else {
-		cfg.applyState(stateCfg)
-	}
-
-	elnisPath := resolveRelative(configPath, cfg.ConfigFiles.Elnis)
-	elnisCfg := &ElnisConfig{}
-	if err := loadTOML(elnisPath, elnisCfg); err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return nil, err
-		}
-	} else {
-		cfg.Elnis = *elnisCfg
-	}
-	cfg.applyElnisDefaults()
-
-	toolTagsPath := resolveRelative(configPath, cfg.ConfigFiles.ToolTags)
-	toolTagsCfg := &ToolTagsConfig{}
-	if err := loadTOML(toolTagsPath, toolTagsCfg); err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return nil, err
-		}
-	} else {
-		cfg.ToolTags = *toolTagsCfg
-	}
-
-	if err := cfg.validateModeModels(); err != nil {
-		return nil, err
-	}
-	cfg.Storage.SessionsSQLitePath = resolveRelative(configPath, cfg.Storage.SessionsSQLitePath)
-	cfg.Storage.ChatHistorySQLitePath = resolveRelative(configPath, cfg.Storage.ChatHistorySQLitePath)
-	cfg.Soul.Path = resolveRelative(configPath, cfg.Soul.Path)
-	cfg.Sandbox.Root = resolveRelative(configPath, cfg.Sandbox.Root)
-	cfg.ConfigPath = configPath
-	cfg.ProvidersConfigPath = providersPath
-	cfg.StateConfigPath = statePath
-	cfg.ElnisConfigPath = elnisPath
-	cfg.ToolTagsConfigPath = toolTagsPath
-	return cfg, nil
+	return state.cfg, nil
 }
 
 func PluginConfigDir(configPath string) string {
@@ -756,25 +706,6 @@ func (c *Config) resolveProviderAPIKeys(configDir string) error {
 		}
 		provider.APIKey = value
 		c.Providers[name] = provider
-	}
-	return nil
-}
-
-func (c *Config) validateModeModels() error {
-	if c.Session.DefaultMode == "" {
-		c.Session.DefaultMode = "work"
-	}
-	if c.Session.DefaultMode != "work" && c.Session.DefaultMode != "chat" {
-		return fmt.Errorf("session.default_mode must be work or chat, got %q", c.Session.DefaultMode)
-	}
-	if c.ModeModels == nil {
-		c.ModeModels = map[string]ModelSelection{}
-	}
-	for _, mode := range []string{"work", "chat"} {
-		selected := c.ModeModels[mode]
-		if selected.Provider == "" || selected.Model == "" {
-			return fmt.Errorf("mode_models.%s provider/model is required", mode)
-		}
 	}
 	return nil
 }

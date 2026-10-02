@@ -65,6 +65,9 @@ func (defaultIntegrationFactory) Attach(ctx context.Context, req IntegrationRequ
 }
 
 func resolveElnisTokens(cfg *config.Config) (map[string]string, error) {
+	if err := config.FirstError(cfg.Elnis.Validate()); err != nil {
+		return nil, err
+	}
 	out := map[string]string{}
 	configDir := filepath.Dir(cfg.ConfigPath)
 	for name, tokenCfg := range cfg.Elnis.Tokens {

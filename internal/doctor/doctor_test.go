@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"elbot/internal/config"
+	"elbot/internal/hook/rules"
+	"elbot/internal/platform/builtin"
 )
 
 func writeFile(t *testing.T, path, text string) {
@@ -43,7 +45,7 @@ func fixture(t *testing.T) (string, *Service) {
 	for _, asset := range config.DefaultAssets() {
 		writeFile(t, filepath.Join(dir, asset.Path), asset.Content)
 	}
-	service, err := New(filepath.Join(dir, "app.toml"))
+	service, err := New(filepath.Join(dir, "app.toml"), testInspector())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +124,7 @@ func TestCustomPathsAndOptionalFields(t *testing.T) {
 	editFile(t, mainPath, `state = "state.toml"`, `state = "nested/state.toml"`)
 	editFile(t, mainPath, `path = "SOUL.md"`, `path = "custom soul.md"`)
 	editFile(t, mainPath, "# Main application config.", "# Custom main configuration.")
-	service, err := New(mainPath)
+	service, err := New(mainPath, testInspector())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,6 +241,7 @@ func TestParseAndTypeErrorsDoNotBlockOtherFiles(t *testing.T) {
 		{"duplicate key", "[providers.custom]\nbase_url = 'a'\nbase_url = 'b'\n", "重复定义"},
 		{"duplicate table", "[providers.custom]\n[providers.custom]\n", "重复定义"},
 		{"type", "[model_metadata]\ndefault_context_window = 'wrong'\n", "字段类型错误"},
+		{"provider type", "[providers.custom]\nmodels = 123\n", "字段类型错误"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, service := fixture(t)
@@ -248,19 +251,10 @@ func TestParseAndTypeErrorsDoNotBlockOtherFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 			report := check(t, service)
-			if len(report.Files) != 2 || report.Files[0].Path != path || !strings.Contains(report.Files[0].Problems[0], tc.want) {
+			if len(report.Files) != 2 || report.Files[0].Path != path || !strings.Contains(report.Files[0].Issues[0].Message, tc.want) {
 				t.Fatal(report.Text())
 			}
 		})
-	}
-}
-
-func TestMissingTableIsReportedOnce(t *testing.T) {
-	dir, service := fixture(t)
-	writeFile(t, filepath.Join(dir, "providers.toml"), "[model_metadata]\ndefault_context_window = 256000\n")
-	report := check(t, service)
-	if len(report.Files) != 1 || !reflect.DeepEqual(report.Files[0].Problems, []string{"缺失节点：providers"}) {
-		t.Fatal(report.Text())
 	}
 }
 
@@ -290,12 +284,12 @@ func TestInvalidMainDoesNotGuessDependentPaths(t *testing.T) {
 func TestMissingDirectoryIsNotCreated(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "missing", "custom.toml")
-	service, err := New(path)
+	service, err := New(path, testInspector())
 	if err != nil {
 		t.Fatal(err)
 	}
 	report := check(t, service)
-	if len(report.Files) != len(config.DefaultAssets()) || report.Files[0].Path != path {
+	if len(report.Files) != 8 || report.Files[0].Path != path {
 		t.Fatal(report.Text())
 	}
 	if _, err := os.Stat(filepath.Dir(path)); !errors.Is(err, os.ErrNotExist) {
@@ -306,7 +300,7 @@ func TestMissingDirectoryIsNotCreated(t *testing.T) {
 func TestSkillLineEndingsAndMalformedMetadata(t *testing.T) {
 	dir, service := fixture(t)
 	for _, asset := range config.DefaultAssets() {
-		if isSkill(filepath.ToSlash(asset.Path)) {
+		if asset.CompareContent {
 			writeFile(t, filepath.Join(dir, asset.Path), strings.ReplaceAll(asset.Content, "\n", "\r\n"))
 		}
 	}
@@ -316,7 +310,7 @@ func TestSkillLineEndingsAndMalformedMetadata(t *testing.T) {
 	path := filepath.Join(dir, "skills", "agent", "agent_skill_creator", "ELBOT_SKILL.toml")
 	writeFile(t, path, "[invalid\n")
 	report := check(t, service)
-	if len(report.Files) != 1 || len(report.Files[0].Problems) != 2 || report.Files[0].Path != path {
+	if len(report.Files) != 1 || len(report.Files[0].Issues) != 1 || report.Files[0].Issues[0].Level != config.LevelError || report.Files[0].Path != path {
 		t.Fatal(report.Text())
 	}
 }
@@ -338,17 +332,22 @@ func TestReadFailureAndCancellation(t *testing.T) {
 	if _, err := service.Check(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation: %v", err)
 	}
-	if _, err := New(""); err == nil {
+	if _, err := New("", testInspector()); err == nil {
 		t.Fatal("accepted empty main config path")
 	}
 }
 
 func TestReportTextMatchesApprovedWording(t *testing.T) {
 	report := Report{ConfigPath: "/srv/mybot/custom.toml", Files: []FileIssue{
-		{Path: "/srv/mybot/custom.toml", Problems: []string{"缺失字段：media.llm_image_max_length", "未知字段：runtime.log_levle"}},
-		{Path: "/srv/mybot/skills/agent/agent_skill_creator/SKILL.md", Problems: []string{"内容与当前内置版本不同，需要查看差异。"}},
+		{Path: "/srv/mybot/custom.toml", Issues: []config.Issue{
+			{Level: config.LevelError, Message: "TOML 格式错误。"},
+			{Level: config.LevelHint, Message: "未完成相关配置检查。"},
+		}},
+		{Path: "/srv/mybot/skills/agent/agent_skill_creator/SKILL.md", Issues: []config.Issue{
+			{Level: config.LevelHint, Message: "内容与当前内置版本不同，需要查看差异。"},
+		}},
 	}}
-	want := `发现 2 个文件需要检查。请复制以下内容给 Elbot：
+	want := `发现 1 项错误、2 项提示，涉及 2 个文件。请复制以下内容给 Elbot：
 
 请参考以下资料，处理列出的 ElBot 配置问题：
 配置说明：https://raw.githubusercontent.com/Elflare/elbot/main/docs/configuration.md
@@ -358,14 +357,85 @@ func TestReportTextMatchesApprovedWording(t *testing.T) {
 
 检查结果：
 1. /srv/mybot/custom.toml
-   - 缺失字段：media.llm_image_max_length
-   - 未知字段：runtime.log_levle
+   - [错误] TOML 格式错误。
+   - [提示] 未完成相关配置检查。
 
 2. /srv/mybot/skills/agent/agent_skill_creator/SKILL.md
-   - 内容与当前内置版本不同，需要查看差异。
+   - [提示] 内容与当前内置版本不同，需要查看差异。
 
-修改前请备份；补齐缺失配置及对应注释，保留已有配置值和注释；格式错误、重复定义和未知节点先说明处理建议，Skill 差异只说明、不覆盖。`
+修改前请备份；补齐必要配置及对应注释，保留已有配置值和注释；可选项先说明作用，由用户决定是否补充；格式错误、重复定义和未知字段先说明处理建议，Skill 差异只说明、不覆盖。`
 	if got := report.Text(); got != want {
 		t.Fatalf("unexpected text:\n%s", got)
 	}
+}
+
+func TestContentComparisonIgnoresOnlyNewlines(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		change         func(string) string
+		wantDifference bool
+	}{
+		{"CRLF", func(s string) string { return strings.ReplaceAll(s, "\n", "\r\n") }, false},
+		{"CR", func(s string) string { return strings.ReplaceAll(s, "\n", "\r") }, false},
+		{"blank lines", func(s string) string { return strings.ReplaceAll(s, "\n", "\n\n\n") }, false},
+		{"no newlines", func(s string) string { return strings.ReplaceAll(s, "\n", "") }, false},
+		{"no final newline", func(s string) string { return strings.TrimRight(s, "\r\n") }, false},
+		{"shifted newlines", func(s string) string { return strings.Join(strings.Split(strings.ReplaceAll(s, "\n", ""), ""), "\r\n") }, false},
+		{"text", func(s string) string { return s + "changed" }, true},
+		{"space", func(s string) string { return s + " " }, true},
+		{"indent", func(s string) string { return "\t" + s }, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, service := fixture(t)
+			path := filepath.Join(dir, "skills", "agent", "agent_skill_creator", "SKILL.md")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			changed := tc.change(string(data))
+			writeFile(t, path, changed)
+			report := check(t, service)
+			if tc.wantDifference {
+				requireIssue(t, report, path, config.LevelHint, "内容与当前内置版本不同")
+			} else if report.Text() != "Everything is OK" {
+				t.Fatal(report.Text())
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || string(after) != changed {
+				t.Fatal("inspection modified file")
+			}
+		})
+	}
+}
+
+func TestNewlineComparisonDoesNotHideInvalidTOML(t *testing.T) {
+	dir, service := fixture(t)
+	path := filepath.Join(dir, "skills", "agent", "agent_skill_creator", "ELBOT_SKILL.toml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Removing this CR would reproduce the bundled file exactly.
+	writeFile(t, path, strings.Replace(string(data), "risk", "ri\rsk", 1))
+	report := check(t, service)
+	requireErrorCount(t, report, 1)
+	requireIssue(t, report, path, config.LevelError, "TOML 格式错误")
+}
+
+func TestPartialMainParseDoesNotSupplyPaths(t *testing.T) {
+	dir, service := fixture(t)
+	main := filepath.Join(dir, "app.toml")
+	writeFile(t, main, "[config_files]\nproviders='invented.toml'\n[invalid\n")
+	report := check(t, service)
+	requireErrorCount(t, report, 1)
+	for _, file := range report.Files {
+		if file.Path != main {
+			t.Fatal(report.Text())
+		}
+	}
+}
+
+func testInspector() *config.Inspector {
+	definitions := append(builtin.ConfigDefinitions(), rules.ConfigDefinition())
+	return config.NewInspector(definitions...)
 }

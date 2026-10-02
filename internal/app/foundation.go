@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 
 	"elbot/internal/config"
@@ -44,7 +43,7 @@ func (defaultFoundationFactory) Build(ctx context.Context, req FoundationRequest
 	req.Profiler.Mark("logging.NewManager")
 	logger := logs.Runtime()
 	logStartupConfiguration(logger, req.Options, cfg)
-	if err = validateWorkModel(cfg); err != nil {
+	if err = config.FirstError(cfg.ValidateModelProviders("work")); err != nil {
 		return nil, err
 	}
 
@@ -100,18 +99,6 @@ func logStartupConfiguration(logger *slog.Logger, opts Options, cfg *config.Conf
 		"sessions_sqlite_path", cfg.Storage.SessionsSQLitePath,
 		"chat_history_sqlite_path", cfg.Storage.ChatHistorySQLitePath,
 	)
-}
-
-func validateWorkModel(cfg *config.Config) error {
-	workModel := cfg.ModeModels["work"]
-	if workModel.Provider == "" || workModel.Model == "" {
-		fmt.Fprintf(os.Stderr, "elbot: no work model configured. Set [mode_models.work] provider/model in %s or %s\n", cfg.ProvidersConfigPath, cfg.StateConfigPath)
-		return fmt.Errorf("no work model configured")
-	}
-	if _, ok := cfg.Providers[workModel.Provider]; !ok {
-		return fmt.Errorf("provider %q not found in config", workModel.Provider)
-	}
-	return nil
 }
 
 type foundationLifecycle struct {
