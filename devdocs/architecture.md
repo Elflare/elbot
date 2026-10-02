@@ -46,6 +46,8 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 2. `ELBOT_CONFIG_FILE`
 3. 平台配置目录
 
+配置诊断由 `internal/doctor` 独立负责。app 在 Runtime 装配阶段将实际 `ConfigPath` 绑定到 Doctor 服务，经 `agent.Options.Doctor` 和命令 `Deps.Doctor` 注入 `/doctor`。诊断每次读取磁盘，复用默认资产、配置结构及平台结构，不调用 `config.Load`、初始化文件或启动外部运行时。命令仅超级管理员可用，返回按文件聚合的问题及可复制的处理请求；不写文件、不调用 LLM，也不参与终端命令解析。
+
 <!-- locator:agent-chat -->
 ## Agent 对话链路
 

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"elbot/internal/command"
+	"elbot/internal/doctor"
 	"elbot/internal/hook"
 	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/logging"
@@ -106,7 +107,12 @@ type LogService interface {
 	QueryLogs(ctx context.Context, query logging.LogQuery) ([]logging.LogEntry, error)
 }
 
+type DoctorService interface {
+	Check(context.Context) (doctor.Report, error)
+}
+
 type Deps struct {
+	Doctor        DoctorService
 	Router        *command.Router
 	Sessions      *session.Service
 	Requests      *request.Manager
@@ -145,6 +151,7 @@ func RegisterModules(registrar Registrar, deps Deps, modules ...Module) error {
 func DefaultModules() []Module {
 	return []Module{
 		HelpModule{},
+		DoctorModule{},
 		ModelModule{},
 		SessionModule{},
 		CompactModule{},

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- 新增仅超级管理员可用的聊天命令 `/doctor`，只读检查当前配置的缺失项、TOML 错误、主配置未知字段和内置 Skill 差异；按文件列出问题，并生成附配置说明和默认模板地址的 Elbot 处理请求。无问题时返回 `Everything is OK`，不会自动修改文件。
+
 ### Changed
 
 - 媒体清理由持有全局媒体锁逐个删除，改为最多同时处理 4 个对象并按媒体 ID 互斥；不同媒体的导入和按需上传不再等待整轮清理，同一媒体继续防止上传、删除与重新导入交叉。删除失败或取消后保留记录供后续重试。
