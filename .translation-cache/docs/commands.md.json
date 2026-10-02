@@ -16,6 +16,14 @@
       "translation": "Mode",
       "updated_at": 1781514917
     },
+    "docs/commands.md:heading:6677ca25614bb5ae0c3042ca36862f3250ccdd430e24376fb0e21601e3486a1c": {
+      "kind": "heading",
+      "source": "配置诊断",
+      "source_file": "docs/commands.md",
+      "source_hash": "6677ca25614bb5ae0c3042ca36862f3250ccdd430e24376fb0e21601e3486a1c",
+      "translation": "Configuration Diagnosis",
+      "updated_at": 1790906605
+    },
     "docs/commands.md:heading:9deec561b4c96ddf3bb5f90c149e7d45f1eaf5a5beb3273d882344d7a00069ee": {
       "kind": "heading",
       "source": "Token 消耗统计",
@@ -248,6 +256,14 @@
       "translation": "In work mode, the LLM can discover tool details on demand via __ELBOT_CODE_0__.",
       "updated_at": 1782205939
     },
+    "docs/commands.md:paragraph:168d707cec94f593c7413a26936e093d103b215713b8e62b486b2956441cb466": {
+      "kind": "paragraph",
+      "source": "没有发现问题时仅返回 __ELBOT_CODE_0__。检查范围及限制见 [配置诊断](configuration.md#配置诊断)。\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "168d707cec94f593c7413a26936e093d103b215713b8e62b486b2956441cb466",
+      "translation": "If no issues are found, only __ELBOT_CODE_0__ will be returned. For the check scope and limitations, see [Configuration Diagnosis](configuration.md#配置诊断).\n",
+      "updated_at": 1790906605
+    },
     "docs/commands.md:paragraph:19caab5401a0b047fafa861b656e5e6a9f3ed168c17ed61c83d61b63eaaa5289": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 额外支持：\n",
@@ -263,6 +279,14 @@
       "source_hash": "1b0f8169cc843fbcc717ad34f25992cf43f83d997f96080f5f99ba6afe1824d0",
       "translation": "Specific prompts are subject to the runtime output.\n",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:paragraph:29ca29484b42899782e0807a8011c92a25acdfc3ad371f1cd0a02263a184d3b2": {
+      "kind": "paragraph",
+      "source": "有问题时会附上实际文件路径、具体问题、配置说明和默认模板的 GitHub raw 地址；",
+      "source_file": "docs/commands.md",
+      "source_hash": "29ca29484b42899782e0807a8011c92a25acdfc3ad371f1cd0a02263a184d3b2",
+      "translation": "When issues are found, the actual file path, specific problem, configuration description, and the GitHub raw address of the default template will be attached;",
+      "updated_at": 1790906605
     },
     "docs/commands.md:paragraph:475e75cb3d56ea41c86811e552bb665f3895896d3971c72602ce76f2f647a7f5": {
       "kind": "paragraph",
@@ -312,6 +336,14 @@
       "translation": "After expiration, the tool will not be executed, and the current processing will stop.\n",
       "updated_at": 1788078696
     },
+    "docs/commands.md:paragraph:9464eba7dcac3a2d3d2871c752840ebbe3ec7753c40ad6560c4a2522bfce6f87": {
+      "kind": "paragraph",
+      "source": "检查本身不会修改文件或自动发起修复。\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "9464eba7dcac3a2d3d2871c752840ebbe3ec7753c40ad6560c4a2522bfce6f87",
+      "translation": "The check itself will not modify files or automatically initiate repairs.\n",
+      "updated_at": 1790906605
+    },
     "docs/commands.md:paragraph:970c185f8fd4da80594d1b54243c21f8aa313fb566a5e4779dfb28c1b6b82f1f": {
       "kind": "paragraph",
       "source": "若存在重名 Skill、与内置工具重名或读取失败，reload 会返回错误并保留原有工具集合。\n",
@@ -336,6 +368,14 @@
       "translation": "When a tool call triggers a high-risk confirmation, the Agent will prompt the available confirmation commands, for example:\n",
       "updated_at": 1781514917
     },
+    "docs/commands.md:paragraph:bf2d64d5127a8eb02f5f8e45c81cf97948a04d448f83c558967a61200db268cf": {
+      "kind": "paragraph",
+      "source": "请复制输出的请求给能访问这些文件的 Elbot。",
+      "source_file": "docs/commands.md",
+      "source_hash": "bf2d64d5127a8eb02f5f8e45c81cf97948a04d448f83c558967a61200db268cf",
+      "translation": "Please copy the output request to an ElBot that has access to these files.",
+      "updated_at": 1790906605
+    },
     "docs/commands.md:paragraph:d92add9bf20314c848464de8d5e45f4459a7b4a9041a4c845f46462c7d7b7bcb": {
       "kind": "paragraph",
       "source": "选项：\n",
@@ -351,6 +391,14 @@
       "source_hash": "da4003c2a4e9ff4612044559022a14bb6566e42d4d3647222ad0ee379705f695",
       "translation": "Executing __ELBOT_CODE_0__ will reset the timer;",
       "updated_at": 1788078696
+    },
+    "docs/commands.md:paragraph:ddb13a11f02d71f9a3be3c24e9ec08e74d9ace7dd15f78c4bb15ce5d27a62575": {
+      "kind": "paragraph",
+      "source": "在聊天窗口发送 __ELBOT_CODE_0__，无需参数。",
+      "source_file": "docs/commands.md",
+      "source_hash": "ddb13a11f02d71f9a3be3c24e9ec08e74d9ace7dd15f78c4bb15ce5d27a62575",
+      "translation": "Send __ELBOT_CODE_0__ in the chat window; no parameters required.",
+      "updated_at": 1790906605
     },
     "docs/commands.md:paragraph:ee299422ccd6c0092ccaca687a6f3a1ad0576d25614ec31f2381608b17bd2776": {
       "kind": "paragraph",
@@ -399,6 +447,14 @@
       "source_hash": "fd46fc8739d3b03d73dfe9915fef257fe25c994f1c6fd3bf1a96e95fddc2d0d6",
       "translation": "The default command prefix is __ELBOT_CODE_0__, which can be configured in __ELBOT_CODE_2__ of __ELBOT_CODE_1__.\n",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:paragraph:febcc98ceb9ca369f9a5d03b6ff9f5bd0c579a94ede70ffada5ea87611fd60a2": {
+      "kind": "paragraph",
+      "source": "检查使用当前服务启动时选定的主配置路径，分离配置按主文件中的 __ELBOT_CODE_0__ 定位。",
+      "source_file": "docs/commands.md",
+      "source_hash": "febcc98ceb9ca369f9a5d03b6ff9f5bd0c579a94ede70ffada5ea87611fd60a2",
+      "translation": "Checks the main configuration path selected when starting the current service; separate configurations are located according to __ELBOT_CODE_0__ in the main file.",
+      "updated_at": 1790906605
     },
     "docs/commands.md:table:03af39065d441408d43be4c157c84c77736fa517eedfac00caa9a31d9f4fa872": {
       "kind": "table",
@@ -872,6 +928,14 @@
       "translation": "Current Title] <New Title>`",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:a73b16b2d9da229e02f04227b74f19f9a119229b86599d6a6304e913bdd79941": {
+      "kind": "table",
+      "source": "只读检查当前服务的配置及内置 Skill，按文件列出问题并生成可复制给 Elbot 的处理请求；仅超级管理员可用。",
+      "source_file": "docs/commands.md",
+      "source_hash": "a73b16b2d9da229e02f04227b74f19f9a119229b86599d6a6304e913bdd79941",
+      "translation": "Performs a read-only check of the current service's configuration and built-in Skills, lists issues by file, and generates a processing request that can be copied to ElBot; available to superadmins only.",
+      "updated_at": 1790906605
+    },
     "docs/commands.md:table:afa95af16ab2e4a1052b346dd35430e392d838270bb26fd99f35b22cd73e0b9f": {
       "kind": "table",
       "source": "读取最近 n 天日志，默认 1。",
@@ -1130,8 +1194,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "48c6d42995336cadb2a582ac3df191f4da49759ec60bffaf35c27ac391e3fbcf",
+  "source_hash": "1ce6ce437484002e9b303a7145bc93404a4ce6fe8733989af91aeadf59dfe2f1",
   "target": "docs.en/commands.md",
-  "updated_at": 1788078696,
+  "updated_at": 1790906605,
   "version": 2
 }
