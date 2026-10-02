@@ -21,6 +21,7 @@ import (
 
 // Options groups the agent's construction-time dependencies and configuration.
 type Options struct {
+	Doctor                agentcommands.DoctorService
 	Platform              platform.PlatformAdapter
 	Clients               map[string]llm.LLM
 	ModeModels            map[string]config.ModelSelection

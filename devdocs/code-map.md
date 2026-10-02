@@ -41,6 +41,8 @@ rg -n "func Run|service run|completion|--client|RunCron" cmd internal/app intern
 先看：
 
 - `internal/config/`
+- `internal/config/assets.go`：默认资产及只读 `DefaultAssets` 清单，供初始化和 Doctor 共用模板。
+- `internal/doctor/`：当前配置路径绑定、只读资产诊断、主配置字段校验与可复制处理请求的生成。
 - `internal/logging/`
 - `docs/configuration.md`
 
@@ -96,6 +98,7 @@ rg -n "Handle|Run|Prompt|tool_calls|reasoning|usage|pending|prepared" internal/a
 - `internal/command/`：通用命令框架和 Router。
 - `internal/completion/`：平台补全服务。
 - `docs/commands.md`：用户侧命令文档。
+- `internal/agent/commands/doctor.go`：超级管理员 `/doctor` 入口，通过 `Deps.Doctor` 调用诊断服务。
 
 常用搜索：
 

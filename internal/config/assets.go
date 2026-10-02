@@ -6,12 +6,13 @@ import (
 	"path/filepath"
 )
 
-type defaultAsset struct {
+// DefaultAsset is a bundled configuration or user-editable asset.
+type DefaultAsset struct {
 	Path    string
 	Content string
 }
 
-var defaultConfigAssets = []defaultAsset{
+var defaultConfigAssets = []DefaultAsset{
 	{Path: "app.toml", Content: defaultAppTOML},
 	{Path: "providers.toml", Content: defaultProvidersTOML},
 	{Path: "state.toml", Content: defaultStateTOML},
@@ -26,6 +27,11 @@ var defaultConfigAssets = []defaultAsset{
 	{Path: filepath.Join("skills", "agent", "write_elbot_hook", "SKILL.md"), Content: defaultWriteElbotHookSkillMD},
 	{Path: filepath.Join("skills", "agent", "write_elbot_hook", "ELBOT_SKILL.toml"), Content: defaultWriteElbotHookSkillTOML},
 	{Path: ".env.example", Content: defaultEnvExample},
+}
+
+// DefaultAssets returns a copy of the bundled asset list without creating files.
+func DefaultAssets() []DefaultAsset {
+	return append([]DefaultAsset(nil), defaultConfigAssets...)
 }
 
 var defaultConfigDirs = []string{

@@ -14,6 +14,7 @@ import (
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
 	"elbot/internal/delivery"
+	"elbot/internal/doctor"
 	"elbot/internal/elvena"
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
@@ -268,7 +269,12 @@ func buildAgent(
 	hookService *hookcontrol.Service,
 ) (*agent.Agent, error) {
 	cfg := foundation.Config
+	diagnostics, err := doctor.New(cfg.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
 	agt, err := agent.NewWithOptions(agent.Options{
+		Doctor:                diagnostics,
 		Platform:              platforms.Primary,
 		Clients:               models.ByProvider,
 		ModeModels:            cfg.ModeModels,

@@ -220,6 +220,7 @@ func NewWithOptions(opts Options) (*Agent, error) {
 	}
 	a.SetContextOptions(opts.ContextConfig, opts.ModelMetadata, providers, opts.CompactModel)
 	if err := agentcommands.RegisterDefaultModules(a.commands, agentcommands.Deps{
+		Doctor:        opts.Doctor,
 		Router:        a.commands,
 		Sessions:      a.sessions,
 		Requests:      a.requests,
