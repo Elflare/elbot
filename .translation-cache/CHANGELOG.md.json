@@ -232,6 +232,14 @@
       "translation": "Non-existent __ELBOT_CODE_0__ references in the CLI TUI are now sent as plain text as-is and no longer block message submission; files that exist within the same message will still be expanded normally.",
       "updated_at": 1786532747
     },
+    "CHANGELOG.md:list:26549fe3cb4e55c3e26f0c12b54e06917b14512705b7dec21ea3b97dd83edaac": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 与 __ELBOT_CODE_1__ 返回的历史消息预览现在每条最多保留 200 个 Unicode 字符。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "26549fe3cb4e55c3e26f0c12b54e06917b14512705b7dec21ea3b97dd83edaac",
+      "translation": "Historical message previews returned by __ELBOT_CODE_0__ and __ELBOT_CODE_1__ now retain a maximum of 200 Unicode characters per message.",
+      "updated_at": 1790906933
+    },
     "CHANGELOG.md:list:26b222fc0d0b7e2913298c6c9031205f80eda52572d2f5f484ad632790632906": {
       "kind": "list",
       "source": "QQ OneBot、QQ 官方、Telegram 平台断线重连改为指数退避（3s 起，翻倍，封顶 10s）并日志降级：连续失败只在首次记 warn，恢复后记 info，不再每轮刷屏。",
@@ -335,6 +343,14 @@
       "source_hash": "322925afc27ccaaa17f6692c9b9951f250d0b5e6db87c4d64a77931805186eb6",
       "translation": "`__ELBOT_CODE_0__` tool removed the `__ELBOT_CODE_1__` parameter; commands are executed in the current workspace by default, while background tasks remain restricted to their respective sandboxes.",
       "updated_at": 1782958962
+    },
+    "CHANGELOG.md:list:3301a0a4db1f834d0d74491d7cde5f4925a0a8949fc3d670c1ecb7f61e05b8a3": {
+      "kind": "list",
+      "source": "按文件列出问题，并生成附配置说明和默认模板地址的 Elbot 处理请求。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "3301a0a4db1f834d0d74491d7cde5f4925a0a8949fc3d670c1ecb7f61e05b8a3",
+      "translation": "Lists issues by file and generates ElBot processing requests accompanied by configuration instructions and default template addresses.",
+      "updated_at": 1790906933
     },
     "CHANGELOG.md:list:33a2ed6142f63fac0076480da8ce2e21882df328c3016365afaea0d692d9c3b9": {
       "kind": "list",
@@ -767,6 +783,14 @@
       "source_hash": "79e13956de2275bf7954e4071d4c7b43e177af53dfe03d7cdaac4cbd1cab4431",
       "translation": "Fixed an issue where __ELBOT_CODE_0__ could temporarily rewrite the initial input or historical messages of the current turn, and pending images were lost during queuing while Hook modifications were not persisted;",
       "updated_at": 1784467084
+    },
+    "CHANGELOG.md:list:7c1e36327d1415f3bf9903c836c196ad46b734daed1aaa5fe58fdb9b99df34ee": {
+      "kind": "list",
+      "source": "无问题时返回 __ELBOT_CODE_0__，不会自动修改文件。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "7c1e36327d1415f3bf9903c836c196ad46b734daed1aaa5fe58fdb9b99df34ee",
+      "translation": "Returns __ELBOT_CODE_0__ when there are no issues, and will not automatically modify files.",
+      "updated_at": 1790906933
     },
     "CHANGELOG.md:list:7d4eb6c7f9421281249ea4260a8e00117bc3dc92316a27b354181c10219e5e5d": {
       "kind": "list",
@@ -1215,6 +1239,14 @@
       "source_hash": "b25d3a78ad76a7e9f568addf9e30d0ac344415f9c084e850f2997f4c02617cad",
       "translation": "Platform message Hook output will now be sent; __ELBOT_CODE_0__ can block subsequent command/LLM processing.",
       "updated_at": 1782376912
+    },
+    "CHANGELOG.md:list:b290adee38cc9cf01effc88194e345394cf3d633733b8dfd1c9f69cbee90a20f": {
+      "kind": "list",
+      "source": "新增仅超级管理员可用的聊天命令 __ELBOT_CODE_0__，只读检查当前配置的缺失项、TOML 错误、主配置未知字段和内置 Skill 差异；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "b290adee38cc9cf01effc88194e345394cf3d633733b8dfd1c9f69cbee90a20f",
+      "translation": "Added a chat command __ELBOT_CODE_0__ available only to superadmins, which performs a read-only check for missing items in the current configuration, TOML errors, unknown fields in the main configuration, and differences in built-in Skills;",
+      "updated_at": 1790906933
     },
     "CHANGELOG.md:list:b29b7ec1f638060654625e733558f4030029e4f707216bb07123dbea0573d190": {
       "kind": "list",
@@ -1690,8 +1722,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "6fe3877ca9367a390252d4809dee6b4a982b0dd0affc7a1e733d096dbc019e25",
+  "source_hash": "dd05bc4f4ba272e5a69b5856696a2805cbed4ebbdd2ceb37f39ff4984cdedb76",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1790860573,
+  "updated_at": 1790906933,
   "version": 2
 }

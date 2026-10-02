@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Added a chat command `/doctor` available only to superadmins, which performs a read-only check for missing items in the current configuration, TOML errors, unknown fields in the main configuration, and differences in built-in Skills; Lists issues by file and generates ElBot processing requests accompanied by configuration instructions and default template addresses. Returns `Everything is OK` when there are no issues, and will not automatically modify files.
+
 ### Changed
 
 - Media cleanup has been changed from deleting objects one by one using a global media lock to processing up to 4 objects simultaneously with mutual exclusion based on media ID; Import and on-demand upload of different media no longer wait for a full cleanup cycle; for the same media, overlaps between upload, deletion, and re-import are still prevented. Records are retained for subsequent retries after deletion failure or cancellation.
@@ -16,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Historical message previews returned by `/resume` and `/fork` now retain a maximum of 200 Unicode characters per message.
 - Previously, the details of document-type AgentSkills appended guidance for discovering `agent_skill_creator` to all users; Now it is only appended for superadmins and hidden for regular users or when identity is missing. Tool discovery, `@skill:`, and background preloading are all effective; configuration error prompts are still retained.
 
 ## [v0.5.0 - 2026-09-28]
