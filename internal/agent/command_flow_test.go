@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
@@ -84,7 +85,7 @@ func TestRegularUserCanUseOwnDataSlashCommands(t *testing.T) {
 	f := &fakeLLM{replies: []string{"ok"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "regular", ScopeID: "regular"})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 
 	if err := a.HandleMessage(ctx, "/new"); err != nil {
 		t.Fatalf("/new: %v", err)
@@ -123,7 +124,7 @@ func TestRegularUserHelpHidesSuperadminCommands(t *testing.T) {
 	p := &fakePlatform{}
 	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "regular", ScopeID: "regular"})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 
 	if err := a.HandleMessage(ctx, "/help"); err != nil {
 		t.Fatalf("/help: %v", err)
@@ -154,7 +155,7 @@ func TestRegularUserCannotUseSuperadminSlashCommands(t *testing.T) {
 	f := &fakeLLM{replies: []string{"ok"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "regular", ScopeID: "regular"})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 
 	for _, cmd := range []string{"/model", "/requests", "/audit", "/log", "/tools", "/clean"} {
 		p.out.Reset()

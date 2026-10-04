@@ -105,27 +105,6 @@ func registerCommandCatalogs(agt *agent.Agent, adapters []platformRuntime) {
 	}
 }
 
-func registerPlatformHooks(agt platformHookAgent, adapters []platformRuntime) {
-	if agt == nil {
-		return
-	}
-	for _, adapter := range adapters {
-		if adapter == nil {
-			continue
-		}
-		agt.RegisterPlatformSender(adapter.Name(), adapter)
-		if notifier, ok := adapter.(platform.ConnectNotifier); ok {
-			name := adapter.Name()
-			notifier.SetConnectNotifier(func(ctx context.Context, platformName string) {
-				if platformName == "" {
-					platformName = name
-				}
-				agt.NotifyPlatformConnected(ctx, platformName)
-			})
-		}
-	}
-}
-
 func platformStopsAppOnExit(adapter platformRuntime) bool {
 	lifecycle, ok := adapter.(platformLifecycle)
 	return ok && lifecycle.StopAppOnExit()

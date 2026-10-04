@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 平台连接后的 Hook／Cron 处理此前未统一参与退出收尾，现在按平台独立排队，退出时取消积压与在途处理，并共享 30 秒关闭预算。Cron 补发取消此前可能记录发送失败并追加失败通知，现在按正常取消处理；应用关闭预算耗尽也不再作为失败退出。
 - QQ OneBot 长文本分页现在只有非末页添加省略号。
 - `/resume` 与 `/fork` 返回的历史消息预览现在每条最多保留 200 个 Unicode 字符。
 - 文档型 AgentSkill 详情此前向所有用户追加发现 `agent_skill_creator` 的引导；现在仅向超级管理员追加，普通用户或身份缺失时隐藏。工具发现、`@skill:` 和后台预加载均生效，配置错误提示仍保留。

@@ -59,7 +59,12 @@ func (defaultIntegrationFactory) Attach(ctx context.Context, req IntegrationRequ
 
 	registerCompletionPlatforms(runtime.Agent, platforms.Runtimes)
 	registerCommandCatalogs(runtime.Agent, platforms.Runtimes)
-	registerPlatformHooks(runtime.Agent, platforms.Runtimes)
+	if runtime.Signals == nil {
+		return PlatformComponents{}, fmt.Errorf("app: runtime has no signal owner")
+	}
+	if err := runtime.Signals.connectPlatforms(runtime.Agent, platforms.Runtimes, foundation.Logger); err != nil {
+		return PlatformComponents{}, err
+	}
 	req.Profiler.Mark("platform hooks")
 	return platforms, nil
 }

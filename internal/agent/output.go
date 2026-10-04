@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -60,8 +61,8 @@ func (s agentOutputSender) SendNotice(ctx context.Context, notice delivery.Notic
 		}
 		platformName := strings.TrimSpace(target.Platform)
 		if platformName == "" {
-			if msg, ok := platform.MessageContextFrom(s.ctx); ok {
-				platformName = msg.Platform
+			if info, ok := chatinfo.FromContext(s.ctx); ok {
+				platformName = info.Source.Platform
 			}
 		}
 		if platformName == "" && s.agent.platform != nil {

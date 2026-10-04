@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"elbot/internal/background"
+	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
 	"elbot/internal/delivery"
@@ -66,7 +67,7 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 	if scopeID == "" {
 		scopeID = backgroundScopeID(req.Kind, req.Name)
 	}
-	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Platform: platformName, ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, DisplayName: actor.DisplayName, ScopeID: scopeID, Sender: discardSender{}, Segments: backgroundPromptSegments(req.PromptSegments)})
+	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: platformName, ScopeID: scopeID}, Identity: chatinfo.Identity{ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, DisplayName: actor.DisplayName}}, Sender: discardSender{}, Segments: backgroundPromptSegments(req.PromptSegments)})
 	ctx = security.WithPolicy(security.WithActor(ctx, actor), a.securityPolicy)
 
 	sandboxRoot := a.sandboxRoot

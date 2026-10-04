@@ -48,6 +48,9 @@ func TestInboundMediaHistoryAndDeferredResolver(t *testing.T) {
 	if calls != 0 || handler.calls != 1 || handler.msg.MediaResolver != a {
 		t.Fatalf("eager calls/handler = %d/%#v", calls, handler)
 	}
+	if handler.msg.Info.Source.ConversationID != "9" || handler.msg.Info.Source.ScopeID != "group:9" {
+		t.Fatalf("conversation source = %+v", handler.msg.Info.Source)
+	}
 	row, err := history.Repository().GetByPlatformMessage(ctx, platformName, "group:9", "1")
 	if err != nil {
 		t.Fatal(err)

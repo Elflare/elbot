@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -264,11 +264,11 @@ type chatHistoryContext struct {
 }
 
 func currentChatHistoryContext(ctx context.Context) (chatHistoryContext, error) {
-	msgCtx, ok := platform.MessageContextFrom(ctx)
-	if !ok || strings.TrimSpace(msgCtx.Platform) == "" || strings.TrimSpace(msgCtx.ScopeID) == "" {
+	info, ok := chatinfo.FromContext(ctx)
+	if !ok || strings.TrimSpace(info.Source.Platform) == "" || strings.TrimSpace(info.Source.ScopeID) == "" {
 		return chatHistoryContext{}, fmt.Errorf("当前上下文没有平台聊天信息，无法自动确定要查询哪个聊天。")
 	}
-	return chatHistoryContext{Platform: msgCtx.Platform, ScopeID: msgCtx.ScopeID, PlatformUserID: msgCtx.PlatformUserID}, nil
+	return chatHistoryContext{Platform: info.Source.Platform, ScopeID: info.Source.ScopeID, PlatformUserID: info.Identity.PlatformUserID}, nil
 }
 
 func chatHistoryUserFilter(user string, ctx chatHistoryContext) (senderID, senderName, errText string) {

@@ -12,6 +12,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/completion"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
@@ -219,13 +220,21 @@ func (s remoteMessageStream) Finish(ctx context.Context) (delivery.Receipt, erro
 
 func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientConn) context.Context {
 	msg := platform.MessageContext{
-		Platform:       s.Name(),
-		ActorID:        security.ActorID(s.Name(), client.id),
-		PlatformUserID: client.id,
-		Nickname:       client.id,
-		DisplayName:    client.id,
-		ScopeID:        client.id,
-		Sender:         s,
+		Info: chatinfo.Info{
+			Source: chatinfo.Source{
+				Platform:         s.Name(),
+				ScopeID:          client.id,
+				ConversationKind: chatinfo.ConversationUnknown,
+				ConversationID:   client.id,
+			},
+			Identity: chatinfo.Identity{
+				ActorID:        security.ActorID(s.Name(), client.id),
+				PlatformUserID: client.id,
+				Nickname:       client.id,
+				DisplayName:    client.id,
+			},
+		},
+		Sender: s,
 	}
 	ctx = platform.WithMessageContext(ctx, msg)
 	return context.WithValue(ctx, remoteClientKey{}, client)

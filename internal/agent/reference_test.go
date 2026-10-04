@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/media"
@@ -36,7 +37,7 @@ func TestReferencedOutputMediaReachesVisionAndCanonicalSession(t *testing.T) {
 	a := New(&fakePlatform{}, f, "test-model", config.ProviderConfig{}, store)
 	a.media = center
 	resolver := &inboundMediaResolver{}
-	msg := platform.MessageContext{Platform: "telegram", PlatformUserID: "1", ScopeID: "group:9", ConversationKind: platform.ConversationGroup, ReplyToMessageID: "sent", MediaResolver: resolver,
+	msg := platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "telegram", ScopeID: "group:9", ConversationKind: chatinfo.ConversationGroup}, Identity: chatinfo.Identity{PlatformUserID: "1"}}, ReplyToMessageID: "sent", MediaResolver: resolver,
 		Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "看看"}}, ContextText: ref.Text, Reply: ref.Reply,
 		ContextSegments: append([]platform.MessageSegment{{Type: platform.SegmentText, Text: ref.Text}}, ref.ReferenceSegments...),
 	}

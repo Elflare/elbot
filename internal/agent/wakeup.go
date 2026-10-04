@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
@@ -37,7 +38,7 @@ func (a *Agent) messageWakeup(ctx context.Context, text string) bool {
 	if !ok {
 		return true
 	}
-	if msg.ConversationKind == "" || msg.ConversationKind == platform.ConversationUnknown || msg.ConversationKind == platform.ConversationPrivate {
+	if msg.Info.Source.ConversationKind == "" || msg.Info.Source.ConversationKind == chatinfo.ConversationUnknown || msg.Info.Source.ConversationKind == chatinfo.ConversationPrivate {
 		return true
 	}
 	if a.commands != nil && a.commands.IsCommand(text) {
@@ -123,12 +124,12 @@ func (a *Agent) isReplyToBot(ctx context.Context, msg platform.MessageContext) b
 	if replyID == "" || a.store == nil || a.store.Messages() == nil {
 		return false
 	}
-	mapped, err := a.store.Messages().FindByPlatformMessage(ctx, msg.Platform, msg.ScopeID, replyID)
+	mapped, err := a.store.Messages().FindByPlatformMessage(ctx, msg.Info.Source.Platform, msg.Info.Source.ScopeID, replyID)
 	if err == nil && mapped.Role == storage.RoleAssistant {
 		return true
 	}
 	if a.store.Media() != nil {
-		outputs, err := a.store.Media().FindOutputs(ctx, msg.Platform, msg.ScopeID, replyID, storage.Now())
+		outputs, err := a.store.Media().FindOutputs(ctx, msg.Info.Source.Platform, msg.Info.Source.ScopeID, replyID, storage.Now())
 		return err == nil && len(outputs) > 0
 	}
 	return false

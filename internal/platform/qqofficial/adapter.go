@@ -11,6 +11,7 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
 
@@ -28,7 +29,8 @@ type Adapter struct {
 	client      *apiClient
 	logger      Logger
 
-	notify func(context.Context, string)
+	connectedOnce sync.Once
+	connected     *signal.Signal[platform.ConnectedEvent]
 
 	seqMu     sync.Mutex
 	seqByID   map[string]int
@@ -44,14 +46,17 @@ func (a *Adapter) Name() string { return platformName }
 
 func (a *Adapter) Enabled() bool { return a.cfg.Enabled }
 
-func (a *Adapter) SetConnectNotifier(notify func(context.Context, string)) {
-	a.notify = notify
+func (a *Adapter) ConnectedSignal() *signal.Signal[platform.ConnectedEvent] {
+	a.connectedOnce.Do(func() {
+		logger, _ := a.logger.(*slog.Logger)
+		a.connected = signal.New[platform.ConnectedEvent](a.Name()+".connected", logger)
+	})
+	return a.connected
 }
 
 func (a *Adapter) notifyConnected(ctx context.Context) {
-	if a.notify != nil {
-		a.notify(ctx, a.Name())
-	}
+	// Emit records dispatch failures; accepted callbacks run on app-owned queues.
+	_ = a.ConnectedSignal().Emit(ctx, platform.ConnectedEvent{Platform: a.Name()})
 }
 
 func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) error {

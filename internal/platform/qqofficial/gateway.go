@@ -160,7 +160,7 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler platform.PlatformH
 		state.sessionID = ready.SessionID
 		state.resume = true
 		a.logInfo(ctx, "qqofficial gateway ready", "bot_id", ready.User.ID, "bot_name", ready.User.Username)
-		go a.notifyConnected(ctx)
+		a.notifyConnected(ctx)
 	case eventResumed:
 		state.resume = true
 		// a.logDebug(ctx, "qqofficial gateway resumed")

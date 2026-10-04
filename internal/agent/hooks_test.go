@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
@@ -15,12 +16,10 @@ import (
 
 func TestFillHookContextAddsPlatformMessageIDs(t *testing.T) {
 	a := &Agent{platform: &fakePlatform{}, scopeID: "default"}
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
-		Platform:          "qq-onebot",
-		ScopeID:           "group:123",
-		PlatformMessageID: "456",
-		ReplyToMessageID:  "789",
-		PlatformMessage:   []byte(`[{"type":"json","data":{"data":"{}"}}]`),
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq-onebot",
+		ScopeID: "group:123"}}, PlatformMessageID: "456",
+		ReplyToMessageID: "789",
+		PlatformMessage:  []byte(`[{"type":"json","data":{"data":"{}"}}]`),
 	})
 
 	event := a.fillHookContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived})
@@ -62,11 +61,9 @@ func TestFillHookContextKeepsExplicitPlatformMessageIDs(t *testing.T) {
 
 func TestFillHookContextAddsIntentTextWithoutWakeupPrefix(t *testing.T) {
 	a := &Agent{platform: &fakePlatform{}, scopeID: "default"}
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
-		Platform:         "qq-onebot",
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq-onebot",
 		ScopeID:          "group:123",
-		ConversationKind: platform.ConversationGroup,
-		TriggerKeywords:  []string{"芙莉丝"},
+		ConversationKind: chatinfo.ConversationGroup}}, TriggerKeywords: []string{"芙莉丝"},
 	})
 
 	event := a.fillHookContext(ctx, hook.Event{
@@ -93,10 +90,8 @@ func TestRunHookErrorSendsFailureNotice(t *testing.T) {
 		t.Fatalf("register hook: %v", err)
 	}
 	a := &Agent{platform: p, hooks: manager}
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
-		Platform: "cli",
-		ScopeID:  "private:test",
-		Sender:   p,
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli",
+		ScopeID: "private:test"}}, Sender: p,
 	})
 
 	_, err := a.runHook(ctx, hook.Event{Point: hook.PointAgentInputPrepared})

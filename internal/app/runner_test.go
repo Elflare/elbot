@@ -157,8 +157,8 @@ func TestRunnerRunStopsBeforeEnvironmentWhenContextCanceled(t *testing.T) {
 	cancel()
 
 	err := runner.Run(ctx, Options{})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("Run() error = %v, want context.Canceled", err)
+	if err != nil {
+		t.Fatalf("normal cancellation returned an error: %v", err)
 	}
 	if len(events) != 0 {
 		t.Fatalf("events = %#v, want none", events)
@@ -202,15 +202,14 @@ func TestRunnerRunBoundsCleanupWithSharedTimeout(t *testing.T) {
 
 	started := time.Now()
 	err := runner.Run(context.Background(), Options{Mode: RunModeFull})
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("Run() error = %v, want deadline exceeded", err)
+	if err != nil {
+		t.Fatalf("shutdown deadline returned a failure: %v", err)
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("Run() cleanup took %v", elapsed)
 	}
-	wantTail := []string{"runtime-close", "foundation-close", "marker-close"}
-	if !reflect.DeepEqual(events[len(events)-len(wantTail):], wantTail) {
-		t.Fatalf("events = %#v, want tail %#v", events, wantTail)
+	if events[len(events)-1] != "runtime-close" {
+		t.Fatalf("dependencies closed after deadline: %v", events)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/security"
 )
@@ -18,11 +19,6 @@ type PlatformAdapter interface {
 // PlatformHandler processes incoming messages from a platform.
 type PlatformHandler interface {
 	HandleMessage(ctx context.Context, text string) error
-}
-
-// ConnectNotifier is implemented by adapters that can report successful platform connections.
-type ConnectNotifier interface {
-	SetConnectNotifier(func(context.Context, string))
 }
 
 // Runtime is the lifecycle and send surface shared by platform adapters.
@@ -66,15 +62,6 @@ type ReplyContext struct {
 	Segments   []MessageSegment
 }
 
-type ConversationKind string
-
-const (
-	ConversationUnknown ConversationKind = "unknown"
-	ConversationPrivate ConversationKind = "private"
-	ConversationGroup   ConversationKind = "group"
-	ConversationChannel ConversationKind = "channel"
-)
-
 type Identity struct {
 	UserID   string
 	Username string
@@ -88,15 +75,8 @@ type Mention struct {
 
 // MessageContext carries per-message platform routing and actor data.
 type MessageContext struct {
-	Platform              string
-	ActorID               string
-	PlatformUserID        string
-	Nickname              string
-	GroupCard             string
-	DisplayName           string
+	Info                  chatinfo.Info
 	GroupRole             security.GroupRole
-	ScopeID               string
-	ConversationKind      ConversationKind
 	PlatformMessageID     string
 	ReplyToMessageID      string
 	ReplyToSenderID       string
@@ -120,7 +100,7 @@ type MessageContext struct {
 type messageContextKey struct{}
 
 func WithMessageContext(ctx context.Context, msg MessageContext) context.Context {
-	return context.WithValue(ctx, messageContextKey{}, msg)
+	return context.WithValue(chatinfo.WithInfo(ctx, msg.Info), messageContextKey{}, msg)
 }
 
 func MessageContextFrom(ctx context.Context) (MessageContext, bool) {

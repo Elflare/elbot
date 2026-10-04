@@ -10,13 +10,15 @@ import (
 const defaultShutdownTimeout = 30 * time.Second
 
 type cleanupStep struct {
-	name  string
-	close func(context.Context) error
+	stopped func() bool
+	name    string
+	close   func(context.Context) error
 }
 
 func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	var cleanups []cleanupStep
 	defer func() {
+		runErr = withoutShutdownError(runErr, ctx.Err())
 		shutdownTimeout := r.shutdownTimeout
 		if shutdownTimeout <= 0 {
 			shutdownTimeout = defaultShutdownTimeout
@@ -24,8 +26,17 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 		for i := len(cleanups) - 1; i >= 0; i-- {
-			if err := cleanups[i].close(shutdownCtx); err != nil {
+			if shutdownCtx.Err() != nil {
+				break
+			}
+			err := cleanups[i].close(shutdownCtx)
+			if err = withoutShutdownError(err, shutdownCtx.Err()); err != nil {
 				runErr = errors.Join(runErr, fmt.Errorf("close %s: %w", cleanups[i].name, err))
+			}
+			// A callback may still be using every later dependency. Leave those
+			// resources to process exit; do not create a background cleanup chain.
+			if cleanups[i].stopped != nil && !cleanups[i].stopped() {
+				break
 			}
 		}
 	}()
@@ -83,6 +94,9 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 		return fmt.Errorf("app: runtime factory returned incomplete components")
 	}
 	cleanups = append(cleanups, cleanupStep{name: "runtime", close: runtime.Lifecycle.Close})
+	if runtime.Signals != nil {
+		cleanups = append(cleanups, cleanupStep{name: "signals", close: runtime.Signals.Close, stopped: runtime.Signals.stopped})
+	}
 	if runtime.Handler == nil {
 		return fmt.Errorf("app: runtime factory returned incomplete components")
 	}

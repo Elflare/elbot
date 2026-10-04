@@ -71,9 +71,6 @@ func main() {
 		StartedAt:  startedAt,
 		Mode:       opts.Mode,
 	}); err != nil {
-		if errors.Is(err, context.Canceled) {
-			return
-		}
 		fmt.Fprintf(os.Stderr, "elbot: %v\n", err)
 		os.Exit(1)
 	}

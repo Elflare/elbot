@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	agentcommands "elbot/internal/agent/commands"
+	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
@@ -297,7 +298,7 @@ func TestModelSwitchUsesMessagePlatformCurrentModeForGlobalState(t *testing.T) {
 	client := &fakeLLM{models: []string{"deepseek-chat"}}
 	a := mustNewWithOptions(t, Options{Platform: p, Clients: map[string]llm.LLM{"deepseek": client, "zhipu": client}, ModeModels: modeModels, Providers: providers, StatePath: statePath, Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
 	a.RegisterPlatformSender("qq", p)
-	qqCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qq", PlatformUserID: "admin", ScopeID: "group:9"})
+	qqCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "admin"}}})
 	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"qq": {"admin"}}))
 
 	qqSession, err := a.sessions.Create(qqCtx, a.scope(qqCtx), session.CreateRequest{Title: "qq chat"})

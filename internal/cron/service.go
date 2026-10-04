@@ -68,7 +68,7 @@ type Service struct {
 
 	mu                 sync.Mutex
 	connectedPlatforms map[string]bool
-	deliveryGates      map[string]*sync.Mutex
+	deliveryGates      map[string]chan struct{}
 }
 
 type Options struct {
@@ -87,7 +87,7 @@ func NewService(opts Options) *Service {
 	if sandboxRoot == "" {
 		sandboxRoot = filepath.Join("data", "sandbox")
 	}
-	s := &Service{manager: opts.Manager, store: opts.Store, logger: opts.Logger, audit: opts.Audit, sendTarget: opts.SendTarget, runner: opts.Runner, sandboxRoot: sandboxRoot, now: time.Now, connectedPlatforms: map[string]bool{}, deliveryGates: map[string]*sync.Mutex{}}
+	s := &Service{manager: opts.Manager, store: opts.Store, logger: opts.Logger, audit: opts.Audit, sendTarget: opts.SendTarget, runner: opts.Runner, sandboxRoot: sandboxRoot, now: time.Now, connectedPlatforms: map[string]bool{}, deliveryGates: map[string]chan struct{}{}}
 	s.enabledPlatforms = normalizePlatformTargets(opts.EnabledPlatforms)
 	return s
 }
@@ -95,7 +95,10 @@ func NewService(opts Options) *Service {
 func (s *Service) SetRunner(runner LLMRunner) { s.runner = runner }
 
 func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
-	unlock := s.lockDeliveryJob(job.Name)
+	unlock, err := s.lockDeliveryJob(ctx, job.Name)
+	if err != nil {
+		return err
+	}
 	defer unlock()
 	latest, err := s.store.CronJobs().GetByName(ctx, job.Name)
 	if err != nil {
@@ -122,6 +125,9 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 		runErr = fmt.Errorf("unsupported trigger mode %q", meta.Trigger.Mode)
 	}
 	if runErr != nil {
+		if isContextCancellation(ctx, runErr) {
+			return runErr
+		}
 		s.auditEvent("cron.trigger_failed", s.cronAuditAttrs(job.Name, meta, "error", runErr.Error())...)
 		s.logWarn("cron trigger failed", s.cronLogAttrs(job.Name, meta, "error", runErr.Error())...)
 		return runErr

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/memory/resident"
@@ -24,7 +25,7 @@ func TestRiskConfirmationExpiresAndStopsToolFlow(t *testing.T) {
 	p := &fakePlatform{}
 	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.userConfirmationTimeout = 20 * time.Millisecond
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "regular", ScopeID: "private:regular"})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "private:regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 	ctx = security.WithActor(ctx, security.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: security.RoleUser})
 	s, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "expiring confirmation"})
 	if err != nil {
@@ -236,7 +237,7 @@ func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 		}
 	}
 	a.SetToolRuntime(registry, nil)
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "regular", ScopeID: "shared"})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "shared"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 
 	done := make(chan error, 1)
 	go func() { done <- a.HandleMessage(ctx, "更新我的核心记忆为：我喜欢咖啡") }()
@@ -260,7 +261,7 @@ func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 		t.Fatalf("core memory changed before confirmation: %v", err)
 	}
 
-	otherCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "other", ScopeID: "shared"})
+	otherCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "shared"}, Identity: chatinfo.Identity{PlatformUserID: "other"}}})
 	if err := a.HandleMessage(otherCtx, "/confirm"); err != nil {
 		t.Fatalf("other user confirm: %v", err)
 	}
@@ -310,7 +311,7 @@ func TestRegularUserCanUpdateNormalMemoryWithoutConfirmation(t *testing.T) {
 		}
 	}
 	a.SetToolRuntime(registry, nil)
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "regular", ScopeID: "regular"})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 
 	if err := a.HandleMessage(ctx, "更新我的普通记忆"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -347,7 +348,7 @@ func TestRegularUserCannotCallSuperadminOnlyTool(t *testing.T) {
 		}
 	}
 	a.SetToolRuntime(registry, nil)
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "regular", ScopeID: "regular"})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 
 	if err := a.HandleMessage(ctx, "写长期记忆"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)

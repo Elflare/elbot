@@ -90,6 +90,8 @@ elbot service run  # Linux/headless 服务模式：不启动 CLI，启动已启�
 
 `elbot cli` 是独立本地进程，会使用同一套配置和 SQLite 数据，但不会接管 service 进程中的当前请求、确认状态或内存里的当前 Session。需要继续历史会话时，可用 `/list` 和 `/resume`。
 
+正常退出时会停止平台连接事件并取消相应处理，组件共享最多 30 秒的收尾预算；到期后停止等待并退出。预期取消和收尾超时不作为应用失败，真实运行或关闭错误仍会报告。
+
 CLI TUI 常用按键：
 
 - `PgUp` / `PgDn` / `Home` / `End`：滚动聊天输出。

@@ -26,12 +26,23 @@ rg -n "locator:tool" devdocs/code-map.md
 - `internal/app/app.go`、`runner.go`、`dependencies.go`：稳定启动入口、分阶段 Runner 和可替换依赖组。
 - `internal/app/foundation.go`、`models.go`、`runtime.go`：配置/存储基础设施、模型客户端，以及 Cron/Tool/Hook/Agent 核心装配。
 - `internal/app/platforms.go`、`integrations.go`：平台运行、Elnis 和平台能力接线；同目录还包含远程 CLI client 与 service marker。
+- `internal/app/signals.go`：平台连接信号接线、连接／队列所有权和共享预算关闭。
 
 常用搜索：
 
 ```bash
 rg -n "func Run|service run|completion|--client|RunCron" cmd internal/app internal/launcher
 ```
+
+<!-- locator:chatinfo -->
+<!-- locator:signal -->
+## 公共信息与信号
+
+- `internal/chatinfo/`：每条消息的来源与发送者值快照、context 存取；不承载权限或发送能力。
+- `internal/signal/`：泛型信号、连接句柄、有界串行执行器，以及独立的取消生命周期和关闭策略。
+- `internal/platform/signals.go`：平台 Connected 事件及发布接口；连接归 app 持有。
+- `internal/platform/platform.go`：组合公共 Info 的平台消息上下文及原回复信息。
+- `internal/platform/cli/message.go`：scanner／TUI 共用的本地身份入口。
 
 <!-- locator:config -->
 ## 配置、资产与日志

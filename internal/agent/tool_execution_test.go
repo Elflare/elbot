@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
@@ -405,7 +406,7 @@ func TestNonCLIChatToolCallWithAssistantTextSkipsToolArgumentPreview(t *testing.
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
 	a.SetToolRuntime(registry, nil)
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qq", PlatformUserID: "1", ActorID: "qq:1", ScopeID: "private:1"})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "private:1"}, Identity: chatinfo.Identity{PlatformUserID: "1", ActorID: "qq:1"}}})
 
 	if err := a.HandleMessage(ctx, "看看目录"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)

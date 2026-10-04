@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/platform"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -45,11 +46,11 @@ func TestHandleGroupAtMessageBuildsGroupContext(t *testing.T) {
 	if !ok {
 		t.Fatal("missing message context")
 	}
-	if msgCtx.ActorID != "qqofficial:member-1" || msgCtx.PlatformUserID != "member-1" {
-		t.Fatalf("actor/user = %q/%q", msgCtx.ActorID, msgCtx.PlatformUserID)
+	if msgCtx.Info.Identity.ActorID != "qqofficial:member-1" || msgCtx.Info.Identity.PlatformUserID != "member-1" {
+		t.Fatalf("actor/user = %q/%q", msgCtx.Info.Identity.ActorID, msgCtx.Info.Identity.PlatformUserID)
 	}
-	if msgCtx.ScopeID != "group:group-1" || msgCtx.ConversationKind != platform.ConversationGroup {
-		t.Fatalf("scope/conversation = %q/%q", msgCtx.ScopeID, msgCtx.ConversationKind)
+	if msgCtx.Info.Source.ScopeID != "group:group-1" || msgCtx.Info.Source.ConversationKind != chatinfo.ConversationGroup || msgCtx.Info.Source.ConversationID != "group-1" {
+		t.Fatalf("scope/conversation = %q/%q", msgCtx.Info.Source.ScopeID, msgCtx.Info.Source.ConversationKind)
 	}
 	if msgCtx.Bot.UserID != "bot-app" || len(msgCtx.Mentions) != 1 || msgCtx.Mentions[0].UserID != "bot-app" {
 		t.Fatalf("bot/mentions = %#v/%#v", msgCtx.Bot, msgCtx.Mentions)
@@ -173,8 +174,8 @@ func TestHandleDispatchRoutesOrdinaryGroupMessage(t *testing.T) {
 	}
 	select {
 	case msg := <-handler.result:
-		if msg.ScopeID != "group:group-1" {
-			t.Fatalf("scope = %q", msg.ScopeID)
+		if msg.Info.Source.ScopeID != "group:group-1" {
+			t.Fatalf("scope = %q", msg.Info.Source.ScopeID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for group dispatch")
@@ -193,11 +194,11 @@ func TestHandleC2CMessageUsesCanonicalActorID(t *testing.T) {
 	if !ok {
 		t.Fatal("missing message context")
 	}
-	if msgCtx.ActorID != "qqofficial:user-1" {
-		t.Fatalf("actor id = %q, want qqofficial:user-1", msgCtx.ActorID)
+	if msgCtx.Info.Identity.ActorID != "qqofficial:user-1" {
+		t.Fatalf("actor id = %q, want qqofficial:user-1", msgCtx.Info.Identity.ActorID)
 	}
-	if msgCtx.PlatformUserID != "user-1" {
-		t.Fatalf("platform user id = %q, want user-1", msgCtx.PlatformUserID)
+	if msgCtx.Info.Identity.PlatformUserID != "user-1" {
+		t.Fatalf("platform user id = %q, want user-1", msgCtx.Info.Identity.PlatformUserID)
 	}
 }
 

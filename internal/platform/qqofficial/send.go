@@ -85,14 +85,14 @@ func (a *Adapter) contextTarget(ctx context.Context) (sendTarget, error) {
 		return t, nil
 	}
 	if msg, ok := platform.MessageContextFrom(ctx); ok {
-		scope := strings.TrimSpace(msg.ScopeID)
+		scope := strings.TrimSpace(msg.Info.Source.ScopeID)
 		if strings.HasPrefix(scope, "group:") {
 			return sendTarget{Kind: targetGroup, OpenID: strings.TrimPrefix(scope, "group:"), MsgID: metaString(msg.Meta, metaMsgID), EventID: metaString(msg.Meta, metaEventID)}, nil
 		}
 		if strings.HasPrefix(scope, "c2c:") {
 			return sendTarget{Kind: targetC2C, OpenID: strings.TrimPrefix(scope, "c2c:"), MsgID: metaString(msg.Meta, metaMsgID), EventID: metaString(msg.Meta, metaEventID)}, nil
 		}
-		openID := strings.TrimSpace(strings.TrimPrefix(msg.PlatformUserID, platformName+":"))
+		openID := strings.TrimSpace(strings.TrimPrefix(msg.Info.Identity.PlatformUserID, platformName+":"))
 		if openID != "" {
 			return sendTarget{Kind: targetC2C, OpenID: openID, MsgID: metaString(msg.Meta, metaMsgID), EventID: metaString(msg.Meta, metaEventID)}, nil
 		}

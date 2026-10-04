@@ -106,6 +106,7 @@ type RuntimeRequest struct {
 }
 
 type RuntimeComponents struct {
+	Signals     *signalBindings
 	Media       *media.Manager
 	Agent       *agent.Agent
 	Handler     platform.PlatformHandler
