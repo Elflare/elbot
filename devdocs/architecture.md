@@ -134,7 +134,7 @@ Slash 命令链路：
 关键约定：
 
 - 风险等级用于内部权限和确认，不暴露给 LLM。
-- 单次工具调用的预检、确认详情和实际执行沿用派生的工具 context；撤销预检绑定路径及记录版本，确认期间记录或 workspace 变化时拒绝执行。
+- 单次工具调用的预检、确认详情和实际执行沿用派生的工具 context；编辑固定参数、解析路径、实际目标、存在状态及内容 revision，撤销另外固定备份编号。执行时原绑定失效、目标或内容变化即拒绝；workspace 本身不维护变更版本，绝对路径不变或切回后状态一致可继续。
 - `Result.Content` 或 typed `Result.Segments` 回灌 LLM。
 - `Result.Data` 只供内部结构化消费，不进入 tool message。
 - 图片和文件必须显式返回 segment。
@@ -161,7 +161,11 @@ Tool Runtime 负责注册、schema、权限、风险、确认详情、用户侧 
 - 查询 Go skill 会按需激活 `go_skill_run`。
 - `read_file`、`edit_file` 依赖隐藏的 `rollback_file`；依赖展开仍执行超管权限和前台限制，tag 为 `files`。
 
-文件撤销由内置 Runtime 持有共享 `FileRollbackService`，Agent 和命令通过装配复用。`fileops.RollbackManager` 从编辑的原始读取保留字节，成功写入后才登记，按实际目标串行化编辑与撤销；每个 Scope 的当前 Session 中每个目标只保留一份。内存上限为 256 MiB/1024 条，超限淘汰最旧记录。备份不进入工具结果、Session metadata 或存储层。
+文件编辑与撤销由 app 创建唯一共享 `fileops.Service`，注入内置 Runtime、Agent 和命令。`fileops.RollbackManager` 从编辑的原始读取保留字节，成功写入后才登记，按实际目标串行化编辑与撤销；每个 Scope 的当前 Session 中每个目标只保留一份。内存上限为 256 MiB/1024 条，超限淘汰最旧记录。备份不进入工具结果、Session metadata 或存储层。
+
+`workspace` 提供工作目录契约与路径解析，组合 `sandbox` 的后台限制；`session.WorkspaceStore` 通过 SessionID 和仓储读取最新状态，以短事务更新 workspace 及说明文件提示记录，不持有 Agent 或回写共享行快照。未知 metadata 保留原值，损坏数据拒绝读写；后台初始化不覆盖已有 workspace。
+
+文件提交顺序为目标路径锁 → Scope → SessionID → 备份状态锁，Session 准入期间不等待目标锁。读取、内容校验、diff 和临时输出准备在 Session 准入外；提交内复核原绑定、取消、解析目标、权限和文件身份／stat，再完成最终替换、写入或删除及备份登记。Session 切换、删除、清理和 `/stop` 与提交互斥，先进入提交则完成操作，失效或取消先发生则拒绝。普通 Turn 非 idle 仍禁止切换；idle 下 `/rollback` 在提交准入内再次检查忙闲。后台编辑共用目标锁及 SessionID 准入，不登记前台撤销备份。外部进程不参与这些锁。
 
 ### 媒体引用与清理
 

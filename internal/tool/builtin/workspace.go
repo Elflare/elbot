@@ -10,6 +10,7 @@ import (
 
 	"elbot/internal/llm"
 	"elbot/internal/tool"
+	"elbot/internal/workspace"
 )
 
 const maxWorkspaceAgentFileSize = 64 * 1024
@@ -32,15 +33,15 @@ func (WorkspaceTool) Info() tool.Info { return workspaceBuilder().BuildInfo() }
 func (WorkspaceTool) Schema() llm.ToolSchema { return workspaceBuilder().BuildSchema() }
 
 func (WorkspaceTool) DiscoveryContent(ctx context.Context) (string, bool, error) {
-	store, ok := tool.WorkspaceStoreFromContext(ctx)
+	store, ok := workspace.WorkspaceStoreFromContext(ctx)
 	if !ok {
 		return "", false, nil
 	}
-	noticeStore, ok := store.(tool.WorkspaceAgentNoticeStore)
+	noticeStore, ok := store.(workspace.WorkspaceAgentNoticeStore)
 	if !ok {
 		return "", false, nil
 	}
-	dir, err := tool.CurrentWorkspaceDir(ctx)
+	dir, err := workspace.CurrentWorkspaceDir(ctx)
 	if err != nil {
 		return "", false, err
 	}
@@ -74,7 +75,7 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resu
 			return nil, fmt.Errorf("parse workspace arguments: %w", err)
 		}
 	}
-	store, hasStore := tool.WorkspaceStoreFromContext(ctx)
+	store, hasStore := workspace.WorkspaceStoreFromContext(ctx)
 	if args.Reset {
 		dir, err := defaultWorkspaceDir()
 		if err != nil {
@@ -82,7 +83,7 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resu
 		}
 		content := fmt.Sprintf("workspace reset.\ncurrent workspace: %s", dir)
 		if hasStore {
-			if noticeStore, ok := store.(tool.WorkspaceAgentNoticeStore); ok {
+			if noticeStore, ok := store.(workspace.WorkspaceAgentNoticeStore); ok {
 				instructions, markNotice, err := workspaceAgentInstructions(ctx, noticeStore, dir)
 				if err != nil {
 					return nil, err
@@ -105,13 +106,13 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resu
 		if !hasStore {
 			return nil, fmt.Errorf("workspace is unavailable in this context")
 		}
-		dir, err := tool.ValidateWorkspaceDir(path)
+		dir, err := workspace.ValidateWorkspaceDir(path)
 		if err != nil {
 			return nil, err
 		}
 		content := fmt.Sprintf("workspace set.\ncurrent workspace: %s", dir)
 		markNotice := false
-		if noticeStore, ok := store.(tool.WorkspaceAgentNoticeStore); ok {
+		if noticeStore, ok := store.(workspace.WorkspaceAgentNoticeStore); ok {
 			instructions, mark, err := workspaceAgentInstructions(ctx, noticeStore, dir)
 			if err != nil {
 				return nil, err
@@ -130,7 +131,7 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resu
 		}
 		return &tool.Result{Content: content}, nil
 	}
-	dir, err := tool.CurrentWorkspaceDir(ctx)
+	dir, err := workspace.CurrentWorkspaceDir(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +146,7 @@ func defaultWorkspaceDir() (string, error) {
 	return filepath.Clean(dir), nil
 }
 
-func workspaceAgentInstructions(ctx context.Context, noticeStore tool.WorkspaceAgentNoticeStore, dir string) (string, bool, error) {
+func workspaceAgentInstructions(ctx context.Context, noticeStore workspace.WorkspaceAgentNoticeStore, dir string) (string, bool, error) {
 	dir = filepath.Clean(strings.TrimSpace(dir))
 	loaded, err := noticeStore.HasWorkspaceAgentNoticeDir(ctx, dir)
 	if err != nil {

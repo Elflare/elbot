@@ -7,16 +7,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"elbot/internal/command"
+	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/tool/builtin"
-	"elbot/internal/utils/fileops"
 )
 
 func rollbackAgentFixture(t *testing.T) (*Agent, *fakePlatform, context.Context, *storage.Session, string) {
@@ -24,7 +25,7 @@ func rollbackAgentFixture(t *testing.T) (*Agent, *fakePlatform, context.Context,
 	opts := validConstructorOptions(t)
 	p := &fakePlatform{}
 	opts.Platform = p
-	opts.FileRollback = tool.NewFileRollbackService(nil)
+	opts.FileRollback = fileops.NewService(nil)
 	opts.ToolRegistry = tool.NewRegistry()
 	if err := builtin.RegisterAll(opts.ToolRegistry, builtin.RegisterOptions{FileRollback: opts.FileRollback}); err != nil {
 		t.Fatal(err)
@@ -39,7 +40,7 @@ func rollbackAgentFixture(t *testing.T) (*Agent, *fakePlatform, context.Context,
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	if err := (sessionWorkspaceStore{agent: a, session: row}).SetWorkspaceDir(ctx, dir); err != nil {
+	if err := (a.workspaceStore(row)).SetWorkspaceDir(ctx, dir); err != nil {
 		t.Fatal(err)
 	}
 	return a, p, ctx, row, filepath.Join(dir, "file")
@@ -50,7 +51,7 @@ func editForRollback(t *testing.T, a *Agent, ctx context.Context, row *storage.S
 	args := map[string]any{"path": path, "create": true, "edits": []map[string]any{{"operation": "overwrite", "new_text": text}}}
 	absolute := path
 	if !filepath.IsAbs(path) {
-		dir, err := (sessionWorkspaceStore{agent: a, session: row}).GetWorkspaceDir(ctx)
+		dir, err := (a.workspaceStore(row)).GetWorkspaceDir(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -188,4 +189,37 @@ func TestRollbackCommandOldNumberDoesNotTargetNewEdit(t *testing.T) {
 	if string(data) != "one" {
 		t.Fatalf("wrong edit restored: %q", data)
 	}
+}
+
+func TestRollbackCommandRechecksIdleAtCommit(t *testing.T) {
+	a, _, ctx, row, path := rollbackAgentFixture(t)
+	editForRollback(t, a, ctx, row, "file", "created")
+	records, err := a.ListFileRollbacks(ctx)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("records=%+v err=%v", records, err)
+	}
+	var once sync.Once
+	a.toolRuntime.fileRollback.CheckWrite = func(string) error {
+		once.Do(func() {
+			locked, release, err := a.sessions.EnterActivation(ctx, a.scope(ctx), row.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = locked
+			a.turns.StartLLM(row.ID, "concurrent input")
+			release()
+		})
+		return nil
+	}
+	if _, err := a.RollbackFile(ctx, records[0].ID); err == nil || !strings.Contains(err.Error(), "仍在执行") {
+		t.Fatalf("rollback passed concurrent Turn: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "created" {
+		t.Fatalf("file=%q err=%v", data, err)
+	}
+	if records, err := a.ListFileRollbacks(ctx); err != nil || len(records) != 1 {
+		t.Fatalf("backup consumed: %+v %v", records, err)
+	}
+	a.turns.StopSession(row.ID)
 }

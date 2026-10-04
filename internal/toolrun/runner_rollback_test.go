@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"elbot/internal/delivery"
-	"elbot/internal/toolrun"
-
+	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/tool/builtin"
-	"elbot/internal/utils/fileops"
+	"elbot/internal/toolrun"
+	"elbot/internal/workspace"
 )
 
 type rollbackWorkspace struct{ dir string }
@@ -88,7 +88,7 @@ func (d *rollbackConfirmDeps) ConfirmToolCall(ctx context.Context, sessionID str
 func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 	for _, changed := range []bool{false, true} {
 		t.Run(fmt.Sprint(changed), func(t *testing.T) {
-			service := tool.NewFileRollbackService(nil)
+			service := fileops.NewService(nil)
 			binding := runnerRollbackBinding{}
 			lease, _ := service.Manager.Session(binding)
 			dir := t.TempDir()
@@ -113,7 +113,7 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 			base := security.WithActor(context.Background(), actor)
 			deps := &rollbackConfirmDeps{}
 			deps.prepareContext = func(ctx context.Context, _ *storage.Session, _ llm.ToolCallRequest) context.Context {
-				ctx = tool.WithWorkspaceStore(ctx, &rollbackWorkspace{dir: dir})
+				ctx = workspace.WithWorkspaceStore(ctx, &rollbackWorkspace{dir: dir})
 				return service.WithBinding(ctx, binding)
 			}
 			if changed {
@@ -145,3 +145,58 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 type runnerRollbackBinding struct{}
 
 func (runnerRollbackBinding) Valid() bool { return true }
+
+func TestRunEditPreservesConfirmationSnapshot(t *testing.T) {
+	for _, changed := range []bool{false, true} {
+		t.Run(fmt.Sprint(changed), func(t *testing.T) {
+			service := fileops.NewService(nil)
+			binding := runnerRollbackBinding{}
+			dir := t.TempDir()
+			path := filepath.Join(dir, "file")
+			if err := os.WriteFile(path, []byte("before"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			editor := builtin.NewEditFileTool()
+			editor.Rollback = service
+			registry := tool.NewRegistry()
+			if err := registry.Register(editor); err != nil {
+				t.Fatal(err)
+			}
+			manager := toolrun.NewManager(registry, security.NewPolicy("low", "high", nil))
+			actor := security.Actor{ID: "admin", Role: security.RoleSuperadmin}
+			deps := &rollbackConfirmDeps{}
+			deps.prepareContext = func(ctx context.Context, _ *storage.Session, _ llm.ToolCallRequest) context.Context {
+				ctx = workspace.WithWorkspaceStore(ctx, &rollbackWorkspace{dir: dir})
+				return service.WithBinding(ctx, binding)
+			}
+			if changed {
+				deps.duringConfirmation = func() {
+					if err := os.WriteFile(path, []byte("before changed"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			manager.Run(security.WithActor(context.Background(), actor), deps, toolrun.RunRequest{
+				Session: &storage.Session{ID: "session", Mode: storage.SessionModeWork}, Actor: actor,
+				Calls: []llm.ToolCallRequest{{ID: "edit", Name: "edit_file", Arguments: `{"path":"file","edits":[{"operation":"replace_text","old_text":"before","new_text":"after"}]}`}},
+			})
+			if !deps.confirmed || !strings.Contains(deps.detail, "-before") || !strings.Contains(deps.detail, "+after") {
+				t.Fatalf("confirmation=%q", deps.detail)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := "after"
+			if changed {
+				want = "before changed"
+			}
+			if string(data) != want {
+				t.Fatalf("file=%q want=%q", data, want)
+			}
+			if len(deps.recorded) != 1 || (deps.recorded[0].err != nil) != changed {
+				t.Fatalf("recorded=%+v", deps.recorded)
+			}
+		})
+	}
+}

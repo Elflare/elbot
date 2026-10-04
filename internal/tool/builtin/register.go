@@ -4,6 +4,7 @@ import (
 	"context"
 
 	elcron "elbot/internal/cron"
+	"elbot/internal/fileops"
 	"elbot/internal/memory/resident"
 	"elbot/internal/processenv"
 	"elbot/internal/storage"
@@ -20,7 +21,7 @@ type RegisterOptions struct {
 	ChatHistory         storage.ChatHistoryRepository
 	LongMemoryDir       string
 	FileManager         *FileManager
-	FileRollback        *tool.FileRollbackService
+	FileRollback        *fileops.Service
 	ProcessEnv          processenv.Environment
 }
 
@@ -111,7 +112,7 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 	}
 	rollback := opts.FileRollback
 	if rollback == nil {
-		rollback = tool.NewFileRollbackService(fileGuard.CheckWrite)
+		rollback = fileops.NewService(fileGuard.CheckWrite)
 	} else {
 		rollback.CheckWrite = fileGuard.CheckWrite
 	}

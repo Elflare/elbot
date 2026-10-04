@@ -10,11 +10,12 @@ import (
 
 	"elbot/internal/security"
 	"elbot/internal/tool"
+	"elbot/internal/workspace"
 )
 
 func TestWorkspaceToolQuerySetAndReset(t *testing.T) {
 	store := &testWorkspaceStore{}
-	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	workspace := NewWorkspaceTool()
 
 	result, err := workspace.Call(ctx, tool.CallRequest{})
@@ -47,7 +48,7 @@ func TestWorkspaceToolQuerySetAndReset(t *testing.T) {
 
 func TestWorkspaceToolAcceptsHomeShortcut(t *testing.T) {
 	store := &testWorkspaceStore{}
-	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -66,7 +67,7 @@ func TestWorkspaceToolAcceptsHomeShortcut(t *testing.T) {
 
 func TestWorkspaceToolAcceptsHomeSubpath(t *testing.T) {
 	store := &testWorkspaceStore{}
-	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -89,7 +90,7 @@ func TestWorkspaceToolAcceptsHomeSubpath(t *testing.T) {
 
 func TestWorkspaceToolDoesNotExpandHomePrefixWithoutBoundary(t *testing.T) {
 	store := &testWorkspaceStore{}
-	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -103,7 +104,7 @@ func TestWorkspaceToolDoesNotExpandHomePrefixWithoutBoundary(t *testing.T) {
 
 func TestWorkspaceToolRejectsMissingDirectory(t *testing.T) {
 	store := &testWorkspaceStore{}
-	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"path": filepath.Join(t.TempDir(), "missing")})
 	_, err := NewWorkspaceTool().Call(ctx, tool.CallRequest{Arguments: args})
 	if err == nil {
@@ -123,7 +124,7 @@ func TestWorkspaceToolLoadsAgentInstructionsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := &testWorkspaceStore{}
-	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"path": dir})
 
 	result, err := NewWorkspaceTool().Call(ctx, tool.CallRequest{Arguments: args})
@@ -146,7 +147,7 @@ func TestWorkspaceToolLoadsAgentInstructionsOnce(t *testing.T) {
 	}
 
 	resumedStore := &testWorkspaceStore{noticeDirs: append([]string(nil), store.noticeDirs...)}
-	resumedCtx := tool.WithWorkspaceStore(context.Background(), resumedStore)
+	resumedCtx := workspace.WithWorkspaceStore(context.Background(), resumedStore)
 	result, err = NewWorkspaceTool().Call(resumedCtx, tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
@@ -162,7 +163,7 @@ func TestWorkspaceToolDiscoveryLoadsAgentInstructionsOnceAcrossEntryPoints(t *te
 		t.Fatal(err)
 	}
 	store := &testWorkspaceStore{dir: dir}
-	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	workspace := NewWorkspaceTool()
 
 	content, override, err := workspace.DiscoveryContent(ctx)
@@ -200,7 +201,7 @@ func TestDiscoverWorkspaceLoadsCurrentAgentInstructions(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := &testWorkspaceStore{dir: dir}
-	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	ctx = security.WithPolicy(ctx, security.NewPolicy("low", "critical", map[string][]string{"cli": {"admin"}}))
 	ctx = security.WithActor(ctx, security.Actor{ID: "cli:admin", Platform: "cli", PlatformUserID: "admin", Role: security.RoleSuperadmin})
 	registry := tool.NewRegistry()
@@ -234,7 +235,7 @@ func TestWorkspaceToolAgentInstructionNameRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := &testWorkspaceStore{}
-	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"path": dir})
 
 	result, err := NewWorkspaceTool().Call(ctx, tool.CallRequest{Arguments: args})
@@ -252,7 +253,7 @@ func TestWorkspaceToolIgnoresLowercaseAgentNameUntilValidFileExists(t *testing.T
 		t.Fatal(err)
 	}
 	store := &testWorkspaceStore{}
-	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"path": dir})
 
 	result, err := NewWorkspaceTool().Call(ctx, tool.CallRequest{Arguments: args})
@@ -281,7 +282,7 @@ func TestWorkspaceToolSkipsLargeAgentInstructions(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := &testWorkspaceStore{}
-	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"path": dir})
 
 	result, err := NewWorkspaceTool().Call(ctx, tool.CallRequest{Arguments: args})
@@ -312,7 +313,7 @@ func TestWorkspaceToolResetLoadsAgentInstructionsOnce(t *testing.T) {
 	}()
 
 	store := &testWorkspaceStore{dir: filepath.Join(t.TempDir(), "other")}
-	ctx := tool.WithWorkspaceStore(context.Background(), store)
+	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"reset": true})
 
 	result, err := NewWorkspaceTool().Call(ctx, tool.CallRequest{Arguments: args})

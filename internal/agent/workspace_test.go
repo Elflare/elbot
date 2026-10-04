@@ -7,7 +7,7 @@ import (
 
 	"elbot/internal/llm"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
+	"elbot/internal/workspace"
 )
 
 func newWorkspaceTestSession(t *testing.T, ctx context.Context, store storage.Store, metadata string) *storage.Session {
@@ -32,7 +32,7 @@ func TestSessionWorkspaceStorePersistsWithoutDroppingMetadata(t *testing.T) {
 	store := newTestStore(t)
 	session := newWorkspaceTestSession(t, ctx, store, `{"unknown":"keep","tool_tags":["agent"]}`)
 	agent := &Agent{store: store}
-	workspaceStore := sessionWorkspaceStore{agent: agent, session: session}
+	workspaceStore := agent.workspaceStore(session)
 	if err := workspaceStore.SetWorkspaceDir(ctx, "C:/work/project"); err != nil {
 		t.Fatal(err)
 	}
@@ -41,8 +41,12 @@ func TestSessionWorkspaceStorePersistsWithoutDroppingMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	metadata := decodeSessionMetadata(latest.Metadata)
-	if metadata.WorkspaceDir != "C:/work/project" {
-		t.Fatalf("workspace dir = %q", metadata.WorkspaceDir)
+	state, err := workspace.DecodeState(latest.Metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Dir != "C:/work/project" {
+		t.Fatalf("workspace dir = %q", state.Dir)
 	}
 	if len(metadata.ToolTags) != 1 || metadata.ToolTags[0] != "agent" {
 		t.Fatalf("tool tags = %#v", metadata.ToolTags)
@@ -68,7 +72,7 @@ func TestSessionWorkspaceStoreClear(t *testing.T) {
 	store := newTestStore(t)
 	session := newWorkspaceTestSession(t, ctx, store, `{"workspace_dir":"C:/work/project","unknown":"keep"}`)
 	agent := &Agent{store: store}
-	workspaceStore := sessionWorkspaceStore{agent: agent, session: session}
+	workspaceStore := agent.workspaceStore(session)
 	if err := workspaceStore.ClearWorkspaceDir(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -76,9 +80,12 @@ func TestSessionWorkspaceStoreClear(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadata := decodeSessionMetadata(latest.Metadata)
-	if metadata.WorkspaceDir != "" {
-		t.Fatalf("workspace dir = %q", metadata.WorkspaceDir)
+	state, err := workspace.DecodeState(latest.Metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Dir != "" {
+		t.Fatalf("workspace dir = %q", state.Dir)
 	}
 	var raw map[string]any
 	if err := json.Unmarshal([]byte(latest.Metadata), &raw); err != nil {
@@ -94,7 +101,7 @@ func TestSessionWorkspaceStoreMarksNoticeWithoutChangingWorkspace(t *testing.T) 
 	store := newTestStore(t)
 	session := newWorkspaceTestSession(t, ctx, store, `{"workspace_dir":"C:/work/project"}`)
 	agent := &Agent{store: store}
-	workspaceStore := sessionWorkspaceStore{agent: agent, session: session}
+	workspaceStore := agent.workspaceStore(session)
 
 	if err := workspaceStore.MarkWorkspaceAgentNoticeDir(ctx, "C:/work/project"); err != nil {
 		t.Fatal(err)
@@ -106,12 +113,15 @@ func TestSessionWorkspaceStoreMarksNoticeWithoutChangingWorkspace(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadata := decodeSessionMetadata(latest.Metadata)
-	if metadata.WorkspaceDir != "C:/work/project" {
-		t.Fatalf("workspace dir changed: %q", metadata.WorkspaceDir)
+	state, err := workspace.DecodeState(latest.Metadata)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(metadata.WorkspaceAgentNoticeDirs) != 1 || metadata.WorkspaceAgentNoticeDirs[0] != "C:/work/project" {
-		t.Fatalf("notice dirs = %#v", metadata.WorkspaceAgentNoticeDirs)
+	if state.Dir != "C:/work/project" {
+		t.Fatalf("workspace dir changed: %q", state.Dir)
+	}
+	if len(state.AgentNoticeDirs) != 1 || state.AgentNoticeDirs[0] != "C:/work/project" {
+		t.Fatalf("notice dirs = %#v", state.AgentNoticeDirs)
 	}
 }
 
@@ -121,8 +131,8 @@ func TestSessionWorkspaceStoreIsSessionScoped(t *testing.T) {
 	first := newWorkspaceTestSession(t, ctx, store, "")
 	second := newWorkspaceTestSession(t, ctx, store, "")
 	agent := &Agent{store: store}
-	firstStore := sessionWorkspaceStore{agent: agent, session: first}
-	secondStore := sessionWorkspaceStore{agent: agent, session: second}
+	firstStore := agent.workspaceStore(first)
+	secondStore := agent.workspaceStore(second)
 	if err := firstStore.SetWorkspaceDir(ctx, "C:/first"); err != nil {
 		t.Fatal(err)
 	}
@@ -149,11 +159,11 @@ func TestAgentToolRunDepsInjectsWorkspaceStoreForForegroundOnly(t *testing.T) {
 	background := newWorkspaceTestSession(t, ctx, store, `{"background_kind":"cron"}`)
 	deps := agentToolRunDeps{agent: &Agent{store: store}}
 	withStore := deps.PrepareToolContext(ctx, foreground, llm.ToolCallRequest{Name: "read_file"})
-	if _, ok := tool.WorkspaceStoreFromContext(withStore); !ok {
+	if _, ok := workspace.WorkspaceStoreFromContext(withStore); !ok {
 		t.Fatal("expected foreground workspace store")
 	}
 	backgroundCtx := deps.PrepareToolContext(ctx, background, llm.ToolCallRequest{Name: "shell"})
-	if _, ok := tool.WorkspaceStoreFromContext(backgroundCtx); ok {
+	if _, ok := workspace.WorkspaceStoreFromContext(backgroundCtx); ok {
 		t.Fatal("background tool must not get foreground workspace store")
 	}
 }

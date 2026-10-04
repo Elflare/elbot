@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"elbot/internal/fileops"
 	"elbot/internal/processenv"
 	"elbot/internal/tool"
-	"elbot/internal/utils/fileops"
 )
 
 type Manager struct {

@@ -2,6 +2,9 @@ package agent
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,14 +15,13 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/turn"
-	"errors"
-	"os"
-	"path/filepath"
+	"elbot/internal/workspace"
 )
 
 type backgroundTestResult struct {
@@ -202,7 +204,11 @@ func TestBackgroundCompactHandoff(t *testing.T) {
 			if session.IsBackground(next) == promote || session.WasPromoted(next) != promote {
 				t.Fatalf("identity: %#v", next)
 			}
-			if decodeSessionMetadata(next.Metadata).WorkspaceDir == "" {
+			dir, err := a.workspaceStore(next).GetWorkspaceDir(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if dir == "" {
 				t.Fatal("workspace lost")
 			}
 			requests := f.chatRequests()
@@ -368,10 +374,10 @@ func TestTakeoverRefreshesNextToolInSameBatch(t *testing.T) {
 	case ctx := <-observed:
 		actor, _ := security.ActorFromContext(ctx)
 		binding, ok := session.BindingFromContext(ctx)
-		if tool.BackgroundContext(ctx) || actor.Role != security.RoleUser || !ok || !binding.Valid() || binding.SessionID() != id {
-			t.Fatalf("tool context: actor=%#v binding=%#v background=%v", actor, binding, tool.BackgroundContext(ctx))
+		if sandboxctx.BackgroundContext(ctx) || actor.Role != security.RoleUser || !ok || !binding.Valid() || binding.SessionID() != id {
+			t.Fatalf("tool context: actor=%#v binding=%#v background=%v", actor, binding, sandboxctx.BackgroundContext(ctx))
 		}
-		dir, err := tool.CurrentWorkspaceDir(context.WithoutCancel(ctx))
+		dir, err := workspace.CurrentWorkspaceDir(context.WithoutCancel(ctx))
 		if err != nil || dir == "" {
 			t.Fatalf("workspace: %q %v", dir, err)
 		}

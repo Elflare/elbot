@@ -899,8 +899,9 @@
 
 ### 阶段 3：文件与路径能力
 
-- [ ] 抽出 workspace 与 sandbox，统一路径入口并解除 workspace 持久化对 Agent 的依赖。
-- [ ] 将底层文件能力与共享编辑／撤销服务合并为 `internal/fileops`，接入 Session 绑定和命令／工具。
+- [x] 抽出 workspace 与 sandbox，统一路径入口并解除 workspace 持久化对 Agent 的依赖。
+- [x] 将底层文件能力与共享编辑／撤销服务合并为 `internal/fileops`，接入 Session 绑定和命令／工具。
+- [x] 完成提交与切换／删除／停止互斥、编辑确认状态固定及边界测试，通过相关包 race、全量测试并同步文档。
 - 完成标准：路径与权限规则保持正确，编辑／撤销共享服务，过期绑定和失效预检得到拒绝。详见 [阶段 3](core-refactor.md#phase-3)。
 
 ### 阶段 4：模型服务

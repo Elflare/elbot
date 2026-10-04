@@ -12,10 +12,12 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
+	sessionstate "elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 	"elbot/internal/turn"
+	"elbot/internal/workspace"
 )
 
 type agentToolRunDeps struct {
@@ -79,11 +81,11 @@ func (d agentToolRunDeps) PrepareToolContext(ctx context.Context, session *stora
 		return ctx
 	}
 	ctx = tool.WithShownRuleCardFormats(ctx, decodeSessionMetadata(session.Metadata).ShownRuleCardFormats)
+	ctx = d.agent.fileRollbackContext(ctx, session)
 	if isBackgroundSession(session) {
 		return ctx
 	}
-	ctx = d.agent.fileRollbackContext(ctx, session)
-	return tool.WithWorkspaceStore(ctx, sessionWorkspaceStore{agent: d.agent, session: session})
+	return workspace.WithWorkspaceStore(ctx, d.agent.workspaceStore(session))
 }
 
 func (d agentToolRunDeps) ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool {
@@ -219,4 +221,8 @@ func (a *Agent) cachedToolsForSession(session *storage.Session) []toolrun.Cached
 
 func (d agentToolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {
 	return d.agent.refreshExecution(ctx, row)
+}
+
+func (a *Agent) workspaceStore(row *storage.Session) *sessionstate.WorkspaceStore {
+	return sessionstate.NewWorkspaceStore(a.sessions, a.store.Sessions(), row.ID)
 }

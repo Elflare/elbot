@@ -15,12 +15,11 @@ import (
 	"unicode"
 
 	"github.com/pelletier/go-toml/v2"
+	_ "modernc.org/sqlite"
 
+	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/tool"
-	"elbot/internal/utils/fileops"
-
-	_ "modernc.org/sqlite"
 )
 
 const (

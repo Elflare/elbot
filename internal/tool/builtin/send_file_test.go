@@ -14,7 +14,9 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/tool"
+	workspacepath "elbot/internal/workspace"
 )
 
 func TestSendFileAssessRiskExternalPath(t *testing.T) {
@@ -51,7 +53,7 @@ func TestSendFileAssessRiskBackgroundAbsolutePath(t *testing.T) {
 	manager := NewFileManager(root, config.FileDeliveryConfig{})
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"source": filepath.Join(t.TempDir(), "report.txt")})
-	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Root: root, Dir: filepath.Join(root, "cron"), Background: true, BackgroundKind: tool.BackgroundKindCron})
+	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Root: root, Dir: filepath.Join(root, "cron"), Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
 	_, err := sendFile.AssessRisk(ctx, tool.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "background path must be relative") {
 		t.Fatalf("expected background absolute path rejection, got %v", err)
@@ -71,7 +73,7 @@ func TestSendFileSendsSandboxFile(t *testing.T) {
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"source": "report.txt"})
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot"}}})
-	ctx = tool.WithSandboxContext(ctx, tool.SandboxContext{Root: root, Dir: cronDir, Background: true, BackgroundKind: tool.BackgroundKindCron})
+	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Root: root, Dir: cronDir, Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
 	result, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +106,7 @@ func TestSendFileUsesWorkspaceRelativePath(t *testing.T) {
 	manager := NewFileManager(root, config.FileDeliveryConfig{})
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"source": "report.txt"})
-	ctx := tool.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
+	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	result, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
@@ -217,7 +219,7 @@ func TestSendFileHTTPFolderIsLocalPath(t *testing.T) {
 	}
 	sendFile := NewSendFileTool(NewFileManager(root, config.FileDeliveryConfig{}))
 	args, _ := json.Marshal(map[string]any{"source": "http/cat.png"})
-	ctx := tool.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
+	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	result, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
@@ -236,7 +238,7 @@ func TestSendFileSendsLocalImage(t *testing.T) {
 	}
 	sendFile := NewSendFileTool(NewFileManager(root, config.FileDeliveryConfig{}))
 	args, _ := json.Marshal(map[string]any{"source": "cat.png"})
-	ctx := tool.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
+	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	result, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
@@ -266,7 +268,7 @@ func TestSendFileBackgroundRejectsAbsolutePath(t *testing.T) {
 	}
 	sendFile := NewSendFileTool(NewFileManager(root, config.FileDeliveryConfig{}))
 	args, _ := json.Marshal(map[string]any{"source": file})
-	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Root: root, Dir: filepath.Join(root, "cron"), Background: true, BackgroundKind: tool.BackgroundKindCron})
+	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Root: root, Dir: filepath.Join(root, "cron"), Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
 	_, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "background path must be relative") {
 		t.Fatalf("expected background absolute path rejection, got %v", err)

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"elbot/internal/llm"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -33,7 +34,7 @@ func TestForegroundOnlyToolHiddenInBackgroundSchemasAndNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(registry, security.DefaultPolicy())
-	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Dir: t.TempDir(), Background: true, BackgroundKind: tool.BackgroundKindCron})
+	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Dir: t.TempDir(), Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
 	view := Context{Mode: storage.SessionModeWork, Actor: security.Actor{Role: security.RoleSuperadmin}}
 	names, err := manager.ToolNames(ctx, view)
 	if err != nil {
@@ -99,7 +100,7 @@ func TestForegroundOnlyToolResolveRejectedInBackground(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(registry, security.DefaultPolicy())
-	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Dir: t.TempDir(), Background: true, BackgroundKind: tool.BackgroundKindCron})
+	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Dir: t.TempDir(), Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
 	resolved := manager.Resolve(ctx, "foreground_only", nil)
 	if resolved.Available || resolved.Reason == "" {
 		t.Fatalf("resolved = %#v", resolved)

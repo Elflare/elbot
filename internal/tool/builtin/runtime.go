@@ -6,6 +6,7 @@ import (
 
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
+	"elbot/internal/fileops"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/processenv"
@@ -20,10 +21,11 @@ type Runtime struct {
 	ResidentMemoryStore *resident.Store
 	SkillManager        *skill.Manager
 	FileManager         *FileManager
-	FileRollback        *tool.FileRollbackService
+	FileRollback        *fileops.Service
 }
 
 type RuntimeOptions struct {
+	FileRollback           *fileops.Service
 	ConfigDir              string
 	RuntimeInfo            runtimeinfo.Info
 	CronService            *elcron.Service
@@ -37,6 +39,9 @@ type RuntimeOptions struct {
 }
 
 func NewRuntime(opts RuntimeOptions) (*Runtime, error) {
+	if opts.FileRollback == nil {
+		return nil, fmt.Errorf("builtin file service is required")
+	}
 	if opts.ConfigDir == "" {
 		return nil, fmt.Errorf("builtin runtime config dir is required")
 	}
@@ -58,7 +63,7 @@ func NewRuntime(opts RuntimeOptions) (*Runtime, error) {
 	if opts.Media != nil {
 		fileManager.Media = opts.Media
 	}
-	runtime := &Runtime{Registry: registry, ResidentMemoryStore: residentStore, SkillManager: skillManager, FileManager: fileManager, FileRollback: tool.NewFileRollbackService(nil)}
+	runtime := &Runtime{Registry: registry, ResidentMemoryStore: residentStore, SkillManager: skillManager, FileManager: fileManager, FileRollback: opts.FileRollback}
 	if err := RegisterAll(registry, RegisterOptions{
 		RuntimeInfo:         info,
 		FileRollback:        runtime.FileRollback,

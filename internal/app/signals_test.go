@@ -2,9 +2,6 @@ package app
 
 import (
 	"context"
-	"elbot/internal/session"
-	"elbot/internal/storage/sqlite"
-	"elbot/internal/utils/fileops"
 	"errors"
 	"io"
 	"log/slog"
@@ -13,8 +10,11 @@ import (
 	"time"
 
 	"elbot/internal/delivery"
+	"elbot/internal/fileops"
 	"elbot/internal/platform"
+	"elbot/internal/session"
 	"elbot/internal/signal"
+	"elbot/internal/storage/sqlite"
 )
 
 type signalPlatform struct {

@@ -5,11 +5,11 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
-	"elbot/internal/tool"
+	sandboxctx "elbot/internal/sandbox"
 )
 
 func TestBuildReportOutputsKeepsHTTPMediaURL(t *testing.T) {
-	outputs, err := BuildReportOutputs("报告", []llm.MessageSegment{{Type: llm.SegmentImage, URL: "https://example.com/chart.png", Name: "chart.png"}}, tool.SandboxContext{Dir: t.TempDir()})
+	outputs, err := BuildReportOutputs("报告", []llm.MessageSegment{{Type: llm.SegmentImage, URL: "https://example.com/chart.png", Name: "chart.png"}}, sandboxctx.SandboxContext{Dir: t.TempDir()})
 	if err != nil {
 		t.Fatalf("BuildReportOutputs: %v", err)
 	}

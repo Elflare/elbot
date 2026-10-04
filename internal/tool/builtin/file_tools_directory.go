@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"elbot/internal/fileops"
 	"elbot/internal/tool"
-	"elbot/internal/utils/fileops"
 )
 
 type directorySearchMatch struct {

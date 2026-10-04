@@ -11,9 +11,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"elbot/internal/fileops"
 	"elbot/internal/llm"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/tool"
-	"elbot/internal/utils/fileops"
+	"elbot/internal/workspace"
 )
 
 const (
@@ -29,7 +31,7 @@ type ReadFileTool struct {
 
 type EditFileTool struct {
 	FileGuard *FileGuard
-	Rollback  *tool.FileRollbackService
+	Rollback  *fileops.Service
 }
 
 type readFileArgs struct {
@@ -104,7 +106,7 @@ func (t ReadFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 	if err != nil {
 		return tool.RiskAssessment{}, err
 	}
-	resolved, err := tool.ResolveWorkspacePath(ctx, args.Path, tool.PathResolveOptions{AllowDirectory: mode != readFileModeRead})
+	resolved, err := workspace.ResolveWorkspacePath(ctx, args.Path, workspace.PathResolveOptions{AllowDirectory: mode != readFileModeRead})
 	if err != nil {
 		return tool.RiskAssessment{}, err
 	}
@@ -155,7 +157,7 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	if err != nil {
 		return nil, err
 	}
-	resolved, err := tool.ResolveWorkspacePath(ctx, args.Path, tool.PathResolveOptions{AllowDirectory: mode != readFileModeRead})
+	resolved, err := workspace.ResolveWorkspacePath(ctx, args.Path, workspace.PathResolveOptions{AllowDirectory: mode != readFileModeRead})
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +289,8 @@ func readFileGrepResult(file fileops.File, lines []string, grep string, contextL
 }
 
 func NewEditFileTool(fileGuard ...*FileGuard) EditFileTool {
-	return EditFileTool{FileGuard: firstFileGuard(fileGuard)}
+	guard := firstFileGuard(fileGuard)
+	return EditFileTool{FileGuard: guard, Rollback: fileops.NewService(guard.CheckWrite)}
 }
 
 func (EditFileTool) Name() string {
@@ -331,7 +334,7 @@ func (t EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 	if err := checkFileToolWrite(t.FileGuard, resolved.Path, args.Create); err != nil {
 		return tool.RiskAssessment{}, err
 	}
-	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.Background {
+	if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && sandbox.Background {
 		return tool.RiskAssessment{Level: tool.RiskMedium, Reasons: []string{"后台文件编辑限制在当前任务工作目录内"}}, nil
 	}
 	return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"文件内容写入操作需要确认"}}, nil
@@ -344,7 +347,7 @@ func (t EditFileTool) PreflightConfirmation(ctx context.Context, req tool.CallRe
 			return fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
-	_, err := previewEditFile(ctx, args, t.FileGuard)
+	_, err := previewEditFile(ctx, args, t.Rollback)
 	return err
 }
 
@@ -374,7 +377,7 @@ func (t EditFileTool) RiskDetail(ctx context.Context, req tool.CallRequest) (str
 		writeEditMatchDetail(&b, edit)
 		writeEditContentDetail(&b, edit)
 	}
-	preview, err := previewEditFile(ctx, args, t.FileGuard)
+	preview, err := previewEditFile(ctx, args, t.Rollback)
 	if err != nil {
 		return "", err
 	}
@@ -518,26 +521,7 @@ func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 			return nil, fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
-	resolved, err := resolveFileToolPath(ctx, args.Path, args.Create)
-	if err != nil {
-		return nil, err
-	}
-	if err := checkFileToolWrite(t.FileGuard, resolved.Path, args.Create); err != nil {
-		return nil, err
-	}
-	var result fileops.EditResult
-	var rollbackSession *fileops.RollbackSession
-	if t.Rollback != nil {
-		rollbackSession, err = t.Rollback.EditSession(ctx)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if rollbackSession != nil {
-		result, err = rollbackSession.EditFile(ctx, resolved.Path, args.Encoding, args.ExpectedRevision, args.Create, args.ContextLines, args.Edits, fileToolEditOptions(), t.FileGuard.CheckWrite)
-	} else {
-		result, err = fileops.EditFileWithOptions(resolved.Path, args.Encoding, args.ExpectedRevision, args.Create, false, args.ContextLines, args.Edits, fileToolEditOptions())
-	}
+	result, resolved, err := t.Rollback.Edit(ctx, editServiceRequest(args))
 	if err != nil {
 		return nil, err
 	}
@@ -546,25 +530,17 @@ func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	if result.RollbackEvicted > 0 {
 		resolved.Warnings = append(resolved.Warnings, fmt.Sprintf("撤销备份达到内存上限，已清理 %d 条最旧记录。", result.RollbackEvicted))
 	}
-	if rollbackSession != nil && !result.RollbackAvailable {
+	if lease, _ := t.Rollback.EditSession(ctx); lease != nil && !result.RollbackAvailable {
 		resolved.Warnings = append(resolved.Warnings, "文件已编辑，但撤销备份因会话失效或容量限制未保留。")
 	}
 	return &tool.Result{Content: content, Warnings: resolved.Warnings}, nil
 }
 
-func previewEditFile(ctx context.Context, args editFileArgs, fileGuard *FileGuard) (fileops.EditResult, error) {
-	resolved, err := resolveFileToolPath(ctx, args.Path, args.Create)
-	if err != nil {
-		return fileops.EditResult{}, err
-	}
-	if err := checkFileToolWrite(fileGuard, resolved.Path, args.Create); err != nil {
-		return fileops.EditResult{}, err
-	}
-	result, err := fileops.EditFileWithOptions(resolved.Path, args.Encoding, args.ExpectedRevision, args.Create, true, args.ContextLines, args.Edits, fileToolEditOptions())
-	if err != nil {
-		return fileops.EditResult{}, fmt.Errorf("preflight edit_file: %w", err)
-	}
-	return result, nil
+func previewEditFile(ctx context.Context, args editFileArgs, service *fileops.Service) (fileops.EditResult, error) {
+	return service.PreviewEdit(ctx, editServiceRequest(args))
+}
+func editServiceRequest(args editFileArgs) fileops.EditRequest {
+	return fileops.EditRequest{Path: args.Path, Encoding: args.Encoding, ExpectedRevision: args.ExpectedRevision, Create: args.Create, ContextLines: args.ContextLines, Edits: args.Edits, Options: fileToolEditOptions()}
 }
 
 func decodeStrictFileArgs(raw json.RawMessage, args any) error {
@@ -587,6 +563,6 @@ func checkFileToolWrite(guard *FileGuard, path string, create bool) error {
 	return guard.CheckWrite(target)
 }
 
-func resolveFileToolPath(ctx context.Context, rawPath string, allowCreate bool) (tool.ResolvedPath, error) {
-	return tool.ResolveWorkspacePath(ctx, rawPath, tool.PathResolveOptions{AllowCreate: allowCreate})
+func resolveFileToolPath(ctx context.Context, rawPath string, allowCreate bool) (workspace.ResolvedPath, error) {
+	return workspace.ResolveWorkspacePath(ctx, rawPath, workspace.PathResolveOptions{AllowCreate: allowCreate})
 }

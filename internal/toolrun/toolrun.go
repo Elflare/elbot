@@ -9,6 +9,7 @@ import (
 
 	"elbot/internal/llm"
 	"elbot/internal/media"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -129,11 +130,11 @@ func (m *Manager) Schemas(ctx context.Context, view Context, cached []CachedTool
 }
 
 func schemaForContext(ctx context.Context, schema llm.ToolSchema) llm.ToolSchema {
-	sandbox, ok := tool.SandboxContextFromContext(ctx)
+	sandbox, ok := sandboxctx.SandboxContextFromContext(ctx)
 	if !ok || !sandbox.Background || !backgroundPathSchema(schema.Function.Name) {
 		return schema
 	}
-	schema.Function.Description = strings.TrimSpace(schema.Function.Description + " " + tool.BackgroundPathInstruction())
+	schema.Function.Description = strings.TrimSpace(schema.Function.Description + " " + sandboxctx.BackgroundPathInstruction())
 	return schema
 }
 

@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/fileops"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-	"elbot/internal/utils/fileops"
 )
 
 func TestBindingInvalidatesRollbackAtLifecycleBoundary(t *testing.T) {

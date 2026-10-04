@@ -1,4 +1,4 @@
-package tool
+package sandbox
 
 import (
 	"context"
@@ -37,13 +37,6 @@ func SandboxContextFromContext(ctx context.Context) (SandboxContext, bool) {
 func BackgroundContext(ctx context.Context) bool {
 	sandbox, ok := SandboxContextFromContext(ctx)
 	return ok && (sandbox.Background || strings.TrimSpace(string(sandbox.BackgroundKind)) != "")
-}
-
-func InfoAvailableInContext(ctx context.Context, info Info) bool {
-	if info.ForegroundOnly && BackgroundContext(ctx) {
-		return false
-	}
-	return true
 }
 
 func BackgroundPathInstruction() string {

@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"elbot/internal/elyph"
+	"elbot/internal/fileops"
 	"elbot/internal/tool"
-	"elbot/internal/utils/fileops"
 )
 
 func TestReadElSkillReadsLineRanges(t *testing.T) {

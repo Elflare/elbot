@@ -7,7 +7,18 @@ import (
 )
 
 func AtomicWriteFile(path string, data []byte, mode os.FileMode) error {
+	return atomicWriteFile(path, data, mode, nil)
+}
+
+// beforeCommit runs after temporary output is ready, immediately before the
+// destination is changed. Symlink writes preserve the existing in-place rule.
+func atomicWriteFile(path string, data []byte, mode os.FileMode, beforeCommit func() error) error {
 	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		if beforeCommit != nil {
+			if err := beforeCommit(); err != nil {
+				return err
+			}
+		}
 		return os.WriteFile(path, data, mode)
 	}
 	dir := filepath.Dir(path)
@@ -37,6 +48,11 @@ func AtomicWriteFile(path string, data []byte, mode os.FileMode) error {
 	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp file: %w", err)
+	}
+	if beforeCommit != nil {
+		if err := beforeCommit(); err != nil {
+			return err
+		}
 	}
 	if err := replaceFileAtomic(tmpPath, path); err != nil {
 		return err

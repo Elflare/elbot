@@ -155,7 +155,15 @@ func (s *RollbackSession) List() ([]RollbackInfo, error) {
 // EditFile captures bytes from the edit's own read and publishes a backup only
 // after the write succeeds. The caller must check access to both path and target.
 func (s *RollbackSession) EditFile(ctx context.Context, path, encoding, revision string, create bool, contextLines int, edits []Edit, options EditFileOptions, checkWrite func(string) error) (EditResult, error) {
-	if err := s.check(ctx); err != nil {
+	return s.manager.editFile(ctx, s, path, encoding, revision, create, contextLines, edits, options, checkWrite)
+}
+
+func (m *RollbackManager) editFile(ctx context.Context, s *RollbackSession, path, encoding, revision string, create bool, contextLines int, edits []Edit, options EditFileOptions, checkWrite func(string) error) (EditResult, error) {
+	if s != nil {
+		if err := s.check(ctx); err != nil {
+			return EditResult{}, err
+		}
+	} else if err := ctx.Err(); err != nil {
 		return EditResult{}, err
 	}
 	path, err := filepath.Abs(path)
@@ -166,17 +174,41 @@ func (s *RollbackSession) EditFile(ctx context.Context, path, encoding, revision
 	if err != nil {
 		return EditResult{}, err
 	}
-	unlock, err := s.manager.lockTarget(ctx, target)
+	unlock, err := m.lockTarget(ctx, target)
 	if err != nil {
 		return EditResult{}, err
 	}
 	defer unlock()
 
+	var release func()
+	defer func() {
+		if release != nil {
+			release()
+		}
+	}()
+	validate := options.beforeWrite
 	var before File
 	var mode os.FileMode
 	options.beforeWrite = func(file File, created bool, originalMode os.FileMode) error {
-		if err := s.check(ctx); err != nil {
+		snapshot, err := inspectFileState(path, created, ContentRevision(file.Bytes), int64(len(file.Bytes)))
+		if err != nil {
 			return err
+		}
+		if validate != nil {
+			if err := validate(file, created, originalMode); err != nil {
+				return err
+			}
+		}
+		locked, leave, err := enterCommit(ctx)
+		if err != nil {
+			return err
+		}
+		release = leave
+		ctx = locked
+		if s != nil {
+			if err := s.check(ctx); err != nil {
+				return err
+			}
 		}
 		if err := checkFileTarget(path, target, created); err != nil {
 			return err
@@ -188,6 +220,12 @@ func (s *RollbackSession) EditFile(ctx context.Context, path, encoding, revision
 				}
 			}
 		}
+		if err := checkFileState(path, created, snapshot); err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		before, mode = file, originalMode
 		return nil
 	}
@@ -196,7 +234,9 @@ func (s *RollbackSession) EditFile(ctx context.Context, path, encoding, revision
 		return EditResult{}, err
 	}
 
-	m := s.manager
+	if s == nil {
+		return result, nil
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !s.validLocked() {
@@ -296,23 +336,62 @@ func (s *RollbackSession) Rollback(ctx context.Context, path string, expectedID 
 		return RollbackResult{}, err
 	}
 	defer unlock()
-	// Keep lifecycle invalidation and eviction from racing the final write.
+	var release func()
+	defer func() {
+		if release != nil {
+			release()
+		}
+	}()
 	m := s.manager
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if !s.validLocked() {
-		return RollbackResult{}, ErrRollbackExpired
-	}
-	if m.records[record.ID] != record {
-		return RollbackResult{}, ErrRollbackNotFound
-	}
-	if err := ctx.Err(); err != nil {
-		return RollbackResult{}, err
+	held := false
+	defer func() {
+		if held {
+			m.mu.Unlock()
+		}
+	}()
+	beforeCommit := func() error {
+		snapshot, err := inspectFileState(record.Target, false, record.RevisionAfter, record.afterSize)
+		if err != nil {
+			return err
+		}
+		locked, leave, err := enterCommit(ctx)
+		if err != nil {
+			return err
+		}
+		release = leave
+		ctx = locked
+		if err := checkFileTarget(path, record.Target, false); err != nil {
+			return err
+		}
+		if err := checkFileTarget(record.Path, record.Target, false); err != nil {
+			return err
+		}
+		if checkWrite != nil {
+			for _, p := range []string{path, record.Path, record.Target} {
+				if err := checkWrite(p); err != nil {
+					return err
+				}
+			}
+		}
+		if err := checkFileState(record.Target, false, snapshot); err != nil {
+			return err
+		}
+		m.mu.Lock()
+		held = true
+		if !s.validLocked() {
+			return ErrRollbackExpired
+		}
+		if m.records[record.ID] != record {
+			return ErrRollbackNotFound
+		}
+		return ctx.Err()
 	}
 	if record.Created {
-		err = os.Remove(record.Target)
+		if err = beforeCommit(); err == nil {
+			err = os.Remove(record.Target)
+		}
 	} else {
-		err = AtomicWriteFile(record.Target, record.before, record.mode)
+		err = atomicWriteFile(record.Target, record.before, record.mode, beforeCommit)
 	}
 	if err != nil {
 		return RollbackResult{}, fmt.Errorf("rollback file: %w", err)
@@ -473,6 +552,48 @@ func checkFileTarget(path, target string, allowCreate bool) error {
 	}
 	if current != target {
 		return fmt.Errorf("file target changed; operation refused")
+	}
+	return nil
+}
+
+// inspectFileState checks bytes outside Session admission. The final commit
+// only rechecks identity and stat information, so large reads cannot hold a
+// Session gate. The target lock serializes all writes through this service.
+func inspectFileState(path string, created bool, revision string, size int64) (os.FileInfo, error) {
+	if created {
+		return nil, checkFileState(path, true, nil)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() != size {
+		return nil, fmt.Errorf("file changed before commit")
+	}
+	data, err := readRevisionBytes(path, size)
+	if err != nil {
+		return nil, err
+	}
+	if ContentRevision(data) != revision {
+		return nil, fmt.Errorf("file changed before commit")
+	}
+	return info, checkFileState(path, false, info)
+}
+func checkFileState(path string, created bool, previous os.FileInfo) error {
+	if created {
+		if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+			return nil
+		} else if err != nil {
+			return err
+		}
+		return fmt.Errorf("file appeared after preflight; edit refused")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if previous == nil || !os.SameFile(previous, info) || info.Size() != previous.Size() || info.Mode() != previous.Mode() || !info.ModTime().Equal(previous.ModTime()) {
+		return fmt.Errorf("file changed before commit")
 	}
 	return nil
 }

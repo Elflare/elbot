@@ -158,17 +158,18 @@ func EditFileWithOptions(path, requestedEncoding, expectedRevision string, creat
 	} else if !created {
 		return EditResult{}, fmt.Errorf("stat file: %w", err)
 	}
-	if options.beforeWrite != nil {
-		if err := options.beforeWrite(file, created, mode); err != nil {
-			return EditResult{}, err
-		}
-	}
+
 	if created {
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 			return EditResult{}, fmt.Errorf("create parent directory: %w", err)
 		}
 	}
-	if err := AtomicWriteFile(path, newBytes, mode); err != nil {
+	if err := atomicWriteFile(path, newBytes, mode, func() error {
+		if options.beforeWrite != nil {
+			return options.beforeWrite(file, created, mode)
+		}
+		return nil
+	}); err != nil {
 		return EditResult{}, fmt.Errorf("write file: %w", err)
 	}
 	return result, nil
