@@ -5,17 +5,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/command"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/security"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
 
@@ -25,7 +29,8 @@ type Adapter struct {
 	chatHistory    storage.ChatHistoryRepository
 	client         *apiClient
 	logger         Logger
-	notify         func(context.Context, string)
+	connectedOnce  sync.Once
+	connected      *signal.Signal[platform.ConnectedEvent]
 	botID          int64
 	botUsername    string
 	commandCatalog []command.Info
@@ -47,8 +52,12 @@ func (a *Adapter) Name() string { return platformName }
 
 func (a *Adapter) Enabled() bool { return a.cfg.Enabled }
 
-func (a *Adapter) SetConnectNotifier(notify func(context.Context, string)) {
-	a.notify = notify
+func (a *Adapter) ConnectedSignal() *signal.Signal[platform.ConnectedEvent] {
+	a.connectedOnce.Do(func() {
+		logger, _ := a.logger.(*slog.Logger)
+		a.connected = signal.New[platform.ConnectedEvent](a.Name()+".connected", logger)
+	})
+	return a.connected
 }
 
 func (a *Adapter) SetCommandCatalog(infos []command.Info) {
@@ -56,9 +65,8 @@ func (a *Adapter) SetCommandCatalog(infos []command.Info) {
 }
 
 func (a *Adapter) notifyConnected(ctx context.Context) {
-	if a.notify != nil {
-		a.notify(ctx, a.Name())
-	}
+	// Emit records dispatch failures; accepted callbacks run on app-owned queues.
+	_ = a.ConnectedSignal().Emit(ctx, platform.ConnectedEvent{Platform: a.Name()})
 }
 
 func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) error {
@@ -88,7 +96,7 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 			a.logWarn("sync telegram bot commands failed", "error", err)
 		}
 		a.logInfo("telegram connected", "bot_id", me.ID, "bot_username", me.Username)
-		go a.notifyConnected(ctx)
+		a.notifyConnected(ctx)
 		for {
 			updates, err := a.client.getUpdates(ctx, offset)
 			if err != nil {
@@ -168,14 +176,21 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 	platformUserID := userIDString(msg.From)
 	groupRole := a.messageGroupRole(ctx, msg)
 	messageCtx := platform.MessageContext{
-		Platform:          a.Name(),
-		ActorID:           security.ActorID(a.Name(), platformUserID),
-		PlatformUserID:    platformUserID,
-		Nickname:          displayNamePtr(msg.From, ""),
-		DisplayName:       displayNamePtr(msg.From, ""),
+		Info: chatinfo.Info{
+			Source: chatinfo.Source{
+				Platform:         a.Name(),
+				ScopeID:          scopeID(msg.Chat),
+				ConversationKind: telegramConversationKind(msg.Chat),
+				ConversationID:   formatMessageID(msg.Chat.ID),
+			},
+			Identity: chatinfo.Identity{
+				ActorID:        security.ActorID(a.Name(), platformUserID),
+				PlatformUserID: platformUserID,
+				Nickname:       displayNamePtr(msg.From, ""),
+				DisplayName:    displayNamePtr(msg.From, ""),
+			},
+		},
 		GroupRole:         groupRole,
-		ScopeID:           scopeID(msg.Chat),
-		ConversationKind:  telegramConversationKind(msg.Chat),
 		PlatformMessageID: formatMessageID(msg.MessageID),
 		ReplyToMessageID:  normalized.ReplyID,
 		ReplyToSenderID:   userIDString(replySender(normalized.ReplyMessage)),
@@ -201,8 +216,8 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 			Store:           a.store,
 			ChatHistory:     a.chatHistory,
 			Platform:        a.Name(),
-			ScopeID:         messageCtx.ScopeID,
-			ActorID:         messageCtx.ActorID,
+			ScopeID:         messageCtx.Info.Source.ScopeID,
+			ActorID:         messageCtx.Info.Identity.ActorID,
 			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, userIDString(msg.From)),
 			ReplyID:         normalized.ReplyID,
 			Text:            text,

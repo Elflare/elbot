@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
@@ -117,10 +118,8 @@ func TestHandleMessageImageOnlyInputReachesLLM(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"ok"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
-		Platform: "qqofficial",
-		ScopeID:  "c2c:user-1",
-		Sender:   p,
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqofficial",
+		ScopeID: "c2c:user-1"}}, Sender: p,
 		Segments: []platform.MessageSegment{{Type: platform.SegmentImage, URL: "data:image/png;base64,abc", MIMEType: "image/png", Name: "image.png"}},
 	})
 
@@ -159,17 +158,15 @@ func TestReplyContextFallbackStillReachesLLMWhenNotConsumed(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
-		Platform:         "qqonebot",
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot",
 		ScopeID:          "group:9",
-		ConversationKind: platform.ConversationGroup,
-		Sender:           p,
-		RawText:          "芙莉丝 继续",
-		Segments:         []platform.MessageSegment{{Type: platform.SegmentText, Text: "芙莉丝 继续"}},
-		ContextText:      "[引用：通知]：通知内容\n\n芙莉丝 继续",
-		ContextSegments:  []platform.MessageSegment{{Type: platform.SegmentText, Text: "[引用：通知]：通知内容\n\n芙莉丝 继续"}},
-		Reply:            platform.ReplyContext{MessageID: "notice-1", Text: "通知内容", Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "通知内容"}}},
-		TriggerKeywords:  []string{"芙莉丝"},
+		ConversationKind: chatinfo.ConversationGroup}}, Sender: p,
+		RawText:         "芙莉丝 继续",
+		Segments:        []platform.MessageSegment{{Type: platform.SegmentText, Text: "芙莉丝 继续"}},
+		ContextText:     "[引用：通知]：通知内容\n\n芙莉丝 继续",
+		ContextSegments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "[引用：通知]：通知内容\n\n芙莉丝 继续"}},
+		Reply:           platform.ReplyContext{MessageID: "notice-1", Text: "通知内容", Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "通知内容"}}},
+		TriggerKeywords: []string{"芙莉丝"},
 	})
 
 	if err := a.HandleMessage(ctx, "芙莉丝 继续"); err != nil {
@@ -188,7 +185,7 @@ func TestHandleMessageSendsFallbackForEmptyLLMResponse(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{}}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qq-onebot", ScopeID: "private:test", Sender: p, BufferAssistantOutput: true})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq-onebot", ScopeID: "private:test"}}, Sender: p, BufferAssistantOutput: true})
 
 	if err := a.HandleMessage(ctx, "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -253,7 +250,7 @@ func TestMapSentAssistantMessageMapsAllReceiptIDs(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qqonebot", PlatformUserID: "1", ScopeID: "group:9"})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 	session, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "mapped"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)

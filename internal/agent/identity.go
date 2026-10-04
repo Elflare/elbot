@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/platform"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -13,12 +14,12 @@ func (a *Agent) scope(ctx context.Context) session.Scope {
 	actor := a.actor(ctx)
 	platformName := a.platform.Name()
 	scopeID := a.scopeID
-	if msg, ok := platform.MessageContextFrom(ctx); ok {
-		if msg.Platform != "" {
-			platformName = msg.Platform
+	if info, ok := chatinfo.FromContext(ctx); ok {
+		if info.Source.Platform != "" {
+			platformName = info.Source.Platform
 		}
-		if msg.ScopeID != "" {
-			scopeID = msg.ScopeID
+		if info.Source.ScopeID != "" {
+			scopeID = info.Source.ScopeID
 		}
 	}
 	return session.Scope{
@@ -31,59 +32,27 @@ func (a *Agent) scope(ctx context.Context) session.Scope {
 
 func (a *Agent) conversationMeta(ctx context.Context, scope session.Scope) ConversationMeta {
 	meta := ConversationMeta{Platform: strings.TrimSpace(scope.Platform)}
-	msg, ok := platform.MessageContextFrom(ctx)
+	info, ok := chatinfo.FromContext(ctx)
 	if !ok {
 		return meta
 	}
-
-	switch msg.ConversationKind {
-	case platform.ConversationGroup:
+	switch info.Source.ConversationKind {
+	case chatinfo.ConversationGroup:
 		meta.Kind = "group"
-	case platform.ConversationPrivate:
+	case chatinfo.ConversationPrivate:
 		meta.Kind = "private"
-	case platform.ConversationChannel:
+	case chatinfo.ConversationChannel:
 		meta.Kind = "channel"
 	}
-	if meta.Kind == "" {
-		meta.Kind = conversationKindFromScope(scope.PlatformScopeID)
-	}
-
+	meta.ID = strings.TrimSpace(info.Source.ConversationID)
 	actor := a.actor(ctx)
 	meta.UserID = strings.TrimSpace(actor.PlatformUserID)
-	switch meta.Kind {
-	case "group":
-		meta.ID = conversationID(scope.PlatformScopeID, "group:", "supergroup:")
+	if meta.Kind == "group" {
 		meta.DisplayName = firstNonEmpty(actor.GroupCard, actor.Nickname)
-	case "private":
-		meta.ID = strings.TrimSpace(actor.PlatformUserID)
-		meta.DisplayName = actor.Nickname
-	case "channel":
-		meta.ID = conversationID(scope.PlatformScopeID, "channel:")
+	} else if meta.Kind == "private" || meta.Kind == "channel" {
 		meta.DisplayName = actor.Nickname
 	}
 	return meta
-}
-
-func conversationKindFromScope(scopeID string) string {
-	switch {
-	case strings.HasPrefix(scopeID, "group:"), strings.HasPrefix(scopeID, "supergroup:"):
-		return "group"
-	case strings.HasPrefix(scopeID, "private:"), strings.HasPrefix(scopeID, "c2c:"):
-		return "private"
-	case strings.HasPrefix(scopeID, "channel:"):
-		return "channel"
-	default:
-		return ""
-	}
-}
-
-func conversationID(scopeID string, prefixes ...string) string {
-	for _, prefix := range prefixes {
-		if strings.HasPrefix(scopeID, prefix) {
-			return strings.TrimSpace(strings.TrimPrefix(scopeID, prefix))
-		}
-	}
-	return ""
 }
 
 func firstNonEmpty(values ...string) string {
@@ -101,22 +70,18 @@ func (a *Agent) actor(ctx context.Context) security.Actor {
 	}
 	platformName := a.platform.Name()
 	platformUserID := a.actorID
-	displayName := ""
-	actorID := ""
+	identity := chatinfo.Identity{}
+	if info, ok := chatinfo.FromContext(ctx); ok {
+		if info.Source.Platform != "" {
+			platformName = info.Source.Platform
+		}
+		if info.Identity.PlatformUserID != "" {
+			platformUserID = info.Identity.PlatformUserID
+		}
+		identity = info.Identity
+	}
 	groupRole := security.GroupRoleUnknown
-	nickname := ""
-	groupCard := ""
 	if msg, ok := platform.MessageContextFrom(ctx); ok {
-		if msg.Platform != "" {
-			platformName = msg.Platform
-		}
-		if msg.PlatformUserID != "" {
-			platformUserID = msg.PlatformUserID
-		}
-		actorID = msg.ActorID
-		displayName = msg.DisplayName
-		nickname = msg.Nickname
-		groupCard = msg.GroupCard
 		groupRole = security.ParseGroupRole(string(msg.GroupRole))
 	}
 	if prefix := platformName + ":"; strings.HasPrefix(platformUserID, prefix) {
@@ -126,9 +91,9 @@ func (a *Agent) actor(ctx context.Context) security.Actor {
 	if policy == nil {
 		policy = security.DefaultPolicy()
 	}
-	actor := policy.Actor(actorID, platformName, platformUserID, displayName)
-	actor.Nickname = nickname
-	actor.GroupCard = groupCard
+	actor := policy.Actor(identity.ActorID, platformName, platformUserID, identity.DisplayName)
+	actor.Nickname = identity.Nickname
+	actor.GroupCard = identity.GroupCard
 	actor.GroupRole = groupRole
 	return actor
 }

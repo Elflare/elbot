@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -34,7 +35,7 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			a := New(&fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 			a.SetSessionIdleExpiration(tt.cfg)
-			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "test", PlatformUserID: "1", ScopeID: tt.scopeID})
+			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "test", ScopeID: tt.scopeID}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 			ctx = security.WithActor(ctx, security.Actor{ID: "test:1", Role: tt.role})
 			if got := a.confirmationWaitTimeout(ctx); got != tt.want {
 				t.Fatalf("confirmation timeout = %s, want %s", got, tt.want)
@@ -312,7 +313,7 @@ func TestStopAllowsSessionSwitchAfterActiveTurn(t *testing.T) {
 	p := &fakePlatform{}
 	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.SetSessionIdleExpiration(config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 10})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "1", ScopeID: "group:9"})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 	current, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "current"})
 	if err != nil {
 		t.Fatal(err)

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"elbot/internal/background"
 	"elbot/internal/delivery"
@@ -79,7 +78,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job storage.CronJob, meta
 				}
 				continue
 			}
-			if !recovery {
+			if !recovery || isContextCancellation(ctx, buildErr) {
 				return buildErr
 			}
 
@@ -262,17 +261,28 @@ func decodeDeliveryState(raw string) (CronDeliveryState, error) {
 	return state, nil
 }
 
-func (s *Service) lockDeliveryJob(jobName string) func() {
+func (s *Service) lockDeliveryJob(ctx context.Context, jobName string) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	jobName = normalizeJobName(jobName)
 	s.mu.Lock()
 	gate := s.deliveryGates[jobName]
 	if gate == nil {
-		gate = &sync.Mutex{}
+		gate = make(chan struct{}, 1)
 		s.deliveryGates[jobName] = gate
 	}
 	s.mu.Unlock()
-	gate.Lock()
-	return gate.Unlock
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case gate <- struct{}{}:
+		if err := ctx.Err(); err != nil {
+			<-gate
+			return nil, err
+		}
+		return func() { <-gate }, nil
+	}
 }
 
 func (s *Service) sendToTargets(ctx context.Context, jobName string, meta Metadata, text string) error {
@@ -320,12 +330,18 @@ func (s *Service) sendOutputsToPlatformTargets(ctx context.Context, jobName stri
 func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, platformName string, target delivery.Target, outputs []delivery.Output, sessionID, messageID, mapScopeID string) error {
 	var errs []error
 	for _, out := range outputs {
+		if err := ctx.Err(); err != nil {
+			return errors.Join(append(errs, err)...)
+		}
 		attrs := []any{"job", jobName, "platform", platformName, "target", cronTargetLabel(target), "kind", out.Kind}
 		s.auditEvent("cron.send_started", attrs...)
 		s.logInfo("cron send started", attrs...)
 		receipt, err := s.sendTarget(ctx, target, []delivery.Output{out})
 		if err != nil {
 			err = fmt.Errorf("send %s: %w", platformName, err)
+			if isContextCancellation(ctx, err) {
+				return errors.Join(append(errs, err)...)
+			}
 			errs = append(errs, err)
 			s.auditEvent("cron.send_failed", append(attrs, "error", err.Error())...)
 			s.logWarn("cron send failed", append(attrs, "error", err.Error())...)
@@ -348,12 +364,18 @@ func (s *Service) sendOutputsToPlatformsMapped(ctx context.Context, jobName stri
 			continue
 		}
 		for _, out := range outputs {
+			if err := ctx.Err(); err != nil {
+				return errors.Join(append(errs, err)...)
+			}
 			attrs := []any{"job", jobName, "platform", platformName, "target", "superadmins", "kind", out.Kind}
 			s.auditEvent("cron.send_started", attrs...)
 			s.logInfo("cron send started", attrs...)
 			receipt, err := s.sendTarget(ctx, delivery.Target{Platform: platformName, Superadmins: true}, []delivery.Output{out})
 			if err != nil {
 				err = fmt.Errorf("send %s: %w", platformName, err)
+				if isContextCancellation(ctx, err) {
+					return errors.Join(append(errs, err)...)
+				}
 				errs = append(errs, err)
 				s.auditEvent("cron.send_failed", "job", jobName, "platform", platformName, "target", "superadmins", "kind", out.Kind, "error", err.Error())
 				s.logWarn("cron send failed", "job", jobName, "platform", platformName, "target", "superadmins", "kind", out.Kind, "error", err.Error())
@@ -382,6 +404,9 @@ func (s *Service) mapReportReceipt(ctx context.Context, jobName, platformName, s
 		}
 		mapping := storage.PlatformMessageMap{Platform: platformName, PlatformScopeID: scopeID, PlatformMessageID: platformMessageID, SessionID: sessionID, MessageID: messageID}
 		if err := s.store.Messages().MapPlatformMessage(ctx, mapping); err != nil {
+			if isContextCancellation(ctx, err) {
+				return
+			}
 			s.auditEvent("cron.report_map_failed", "job", jobName, "platform", platformName, "scope_id", scopeID, "platform_message_id", platformMessageID, "session_id", sessionID, "message_id", messageID, "error", err.Error())
 			s.logWarn("map cron report message failed", "job", jobName, "platform", platformName, "scope_id", scopeID, "platform_message_id", platformMessageID, "session_id", sessionID, "message_id", messageID, "error", err.Error())
 		}

@@ -11,10 +11,10 @@ import (
 	"runtime"
 	"strings"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/platform"
 	"elbot/internal/tool"
 )
 
@@ -95,8 +95,8 @@ func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		return nil, err
 	}
 	if sandbox.BackgroundKind == tool.BackgroundKindCron {
-		if msg, ok := platform.MessageContextFrom(ctx); ok && strings.TrimSpace(msg.Platform) != "" {
-			out.Target = delivery.Target{Platform: msg.Platform, Superadmins: true}
+		if info, ok := chatinfo.FromContext(ctx); ok && strings.TrimSpace(info.Source.Platform) != "" {
+			out.Target = delivery.Target{Platform: info.Source.Platform, Superadmins: true}
 		}
 	}
 	return &tool.Result{Content: fmt.Sprintf("已发送文件：%s", label), Warnings: warnings, Outputs: []delivery.Output{out}}, nil

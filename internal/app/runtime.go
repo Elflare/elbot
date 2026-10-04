@@ -144,6 +144,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	req.Profiler.Mark("agent init")
 
 	return &RuntimeComponents{
+		Signals:     &signalBindings{},
 		Media:       mediaCenter,
 		Agent:       agt,
 		Handler:     agt,

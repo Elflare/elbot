@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/memory/resident"
@@ -150,37 +151,37 @@ func TestConversationMetaFromPlatformContext(t *testing.T) {
 	}{
 		{
 			name:  "group card",
-			msg:   platform.MessageContext{Platform: "qqonebot", PlatformUserID: "1001", Nickname: "昵称", GroupCard: "群名片", ConversationKind: platform.ConversationGroup},
+			msg:   platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ConversationKind: chatinfo.ConversationGroup, ConversationID: "9"}, Identity: chatinfo.Identity{PlatformUserID: "1001", Nickname: "昵称", GroupCard: "群名片"}}},
 			scope: session.Scope{Platform: "qqonebot", PlatformScopeID: "group:9"},
 			want:  ConversationMeta{Platform: "qqonebot", Kind: "group", ID: "9", UserID: "1001", DisplayName: "群名片"},
 		},
 		{
 			name:  "group nickname fallback",
-			msg:   platform.MessageContext{Platform: "telegram", PlatformUserID: "1001", Nickname: "昵称"},
+			msg:   platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "telegram", ConversationKind: chatinfo.ConversationGroup, ConversationID: "-1009"}, Identity: chatinfo.Identity{PlatformUserID: "1001", Nickname: "昵称"}}},
 			scope: session.Scope{Platform: "telegram", PlatformScopeID: "supergroup:-1009"},
 			want:  ConversationMeta{Platform: "telegram", Kind: "group", ID: "-1009", UserID: "1001", DisplayName: "昵称"},
 		},
 		{
 			name:  "private ignores group card",
-			msg:   platform.MessageContext{Platform: "qqofficial", PlatformUserID: "openid-1", Nickname: "昵称", GroupCard: "不应使用", ScopeID: "c2c:openid-1"},
+			msg:   platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqofficial", ScopeID: "c2c:openid-1", ConversationKind: chatinfo.ConversationPrivate, ConversationID: "openid-1"}, Identity: chatinfo.Identity{PlatformUserID: "openid-1", Nickname: "昵称", GroupCard: "不应使用"}}},
 			scope: session.Scope{Platform: "qqofficial", PlatformScopeID: "c2c:openid-1"},
 			want:  ConversationMeta{Platform: "qqofficial", Kind: "private", ID: "openid-1", UserID: "openid-1", DisplayName: "昵称"},
 		},
 		{
 			name:  "channel",
-			msg:   platform.MessageContext{Platform: "qqofficial", PlatformUserID: "user-1", Nickname: "昵称", ConversationKind: platform.ConversationChannel},
+			msg:   platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqofficial", ConversationKind: chatinfo.ConversationChannel, ConversationID: "channel-1"}, Identity: chatinfo.Identity{PlatformUserID: "user-1", Nickname: "昵称"}}},
 			scope: session.Scope{Platform: "qqofficial", PlatformScopeID: "channel:channel-1"},
 			want:  ConversationMeta{Platform: "qqofficial", Kind: "channel", ID: "channel-1", UserID: "user-1", DisplayName: "昵称"},
 		},
 		{
 			name:  "group missing nickname",
-			msg:   platform.MessageContext{Platform: "qqonebot", PlatformUserID: " 1001 ", ConversationKind: platform.ConversationGroup},
+			msg:   platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ConversationKind: chatinfo.ConversationGroup, ConversationID: "9"}, Identity: chatinfo.Identity{PlatformUserID: " 1001 "}}},
 			scope: session.Scope{Platform: "qqonebot", PlatformScopeID: "group:9"},
 			want:  ConversationMeta{Platform: "qqonebot", Kind: "group", ID: "9", UserID: "1001"},
 		},
 		{
 			name:  "group missing user ID",
-			msg:   platform.MessageContext{Platform: "qqonebot", Nickname: "昵称", ConversationKind: platform.ConversationGroup},
+			msg:   platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ConversationKind: chatinfo.ConversationGroup, ConversationID: "9"}, Identity: chatinfo.Identity{Nickname: "昵称"}}},
 			scope: session.Scope{Platform: "qqonebot", PlatformScopeID: "group:9"},
 			want:  ConversationMeta{Platform: "qqonebot", Kind: "group", ID: "9", DisplayName: "昵称"},
 		},

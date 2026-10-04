@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -197,13 +198,15 @@ func (a *Agent) fillHookContext(ctx context.Context, event hook.Event) hook.Even
 	actor := a.actor(ctx)
 	platformName := a.platform.Name()
 	scopeID := a.scopeID
+	if info, ok := chatinfo.FromContext(ctx); ok {
+		if info.Source.Platform != "" {
+			platformName = info.Source.Platform
+		}
+		if info.Source.ScopeID != "" {
+			scopeID = info.Source.ScopeID
+		}
+	}
 	if msg, ok := platform.MessageContextFrom(ctx); ok {
-		if msg.Platform != "" {
-			platformName = msg.Platform
-		}
-		if msg.ScopeID != "" {
-			scopeID = msg.ScopeID
-		}
 		if event.Platform.PlatformMessageID == "" {
 			event.Platform.PlatformMessageID = msg.PlatformMessageID
 		}

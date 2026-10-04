@@ -12,15 +12,18 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/security"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
 
@@ -79,12 +82,13 @@ func (a *Adapter) sendQQText(ctx context.Context, t target, text string) (string
 }
 
 type Adapter struct {
-	cfg         Config
-	store       storage.Store
-	chatHistory storage.ChatHistoryRepository
-	transport   *Transport
-	logger      *slog.Logger
-	notify      func(context.Context, string)
+	cfg           Config
+	store         storage.Store
+	chatHistory   storage.ChatHistoryRepository
+	transport     *Transport
+	logger        *slog.Logger
+	connectedOnce sync.Once
+	connected     *signal.Signal[platform.ConnectedEvent]
 }
 
 type target struct {
@@ -179,14 +183,16 @@ func (a *Adapter) Name() string { return "qqonebot" }
 
 func (a *Adapter) Enabled() bool { return a.cfg.Enabled }
 
-func (a *Adapter) SetConnectNotifier(notify func(context.Context, string)) {
-	a.notify = notify
+func (a *Adapter) ConnectedSignal() *signal.Signal[platform.ConnectedEvent] {
+	a.connectedOnce.Do(func() {
+		a.connected = signal.New[platform.ConnectedEvent](a.Name()+".connected", a.logger)
+	})
+	return a.connected
 }
 
 func (a *Adapter) notifyConnected(ctx context.Context) {
-	if a.notify != nil {
-		a.notify(ctx, a.Name())
-	}
+	// Emit records dispatch failures; accepted callbacks run on app-owned queues.
+	_ = a.ConnectedSignal().Emit(ctx, platform.ConnectedEvent{Platform: a.Name()})
 }
 
 func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) error {
@@ -210,7 +216,7 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 		}
 		backoff.Reset()
 		a.logInfo("onebot connected", "url", a.cfg.URL)
-		go a.notifyConnected(ctx)
+		a.notifyConnected(ctx)
 		err := a.readLoop(ctx, handler)
 		a.transport.Close(websocket.StatusNormalClosure, "reconnect")
 		if err != nil && !errors.Is(err, context.Canceled) {
@@ -578,15 +584,27 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 	}
 	text := normalized.Text
 	currentSegments := normalized.Segments
+	conversationID := strconv.FormatInt(event.UserID, 10)
+	if event.MessageType == "group" {
+		conversationID = strconv.FormatInt(event.GroupID, 10)
+	}
 	messageCtx := platform.MessageContext{
-		Platform:              a.Name(),
-		PlatformUserID:        strconv.FormatInt(event.UserID, 10),
-		Nickname:              strings.TrimSpace(event.Sender.Nickname),
-		GroupCard:             strings.TrimSpace(event.Sender.Card),
-		DisplayName:           displayName(event.Sender, event.UserID),
+		Info: chatinfo.Info{
+			Source: chatinfo.Source{
+				Platform:         a.Name(),
+				ScopeID:          scopeID(event),
+				ConversationKind: oneBotConversationKind(event),
+				ConversationID:   conversationID,
+			},
+			Identity: chatinfo.Identity{
+				ActorID:        security.ActorID(a.Name(), strconv.FormatInt(event.UserID, 10)),
+				PlatformUserID: strconv.FormatInt(event.UserID, 10),
+				Nickname:       strings.TrimSpace(event.Sender.Nickname),
+				GroupCard:      strings.TrimSpace(event.Sender.Card),
+				DisplayName:    displayName(event.Sender, event.UserID),
+			},
+		},
 		GroupRole:             oneBotGroupRole(event),
-		ScopeID:               scopeID(event),
-		ConversationKind:      oneBotConversationKind(event),
 		PlatformMessageID:     strconv.FormatInt(event.MessageID, 10),
 		ReplyToMessageID:      normalized.ReplyID,
 		ReplyToSenderID:       a.replyToSenderID(ctx, event, normalized.ReplyID),
@@ -615,7 +633,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 			Store:           a.store,
 			ChatHistory:     a.chatHistory,
 			Platform:        a.Name(),
-			ScopeID:         messageCtx.ScopeID,
+			ScopeID:         messageCtx.Info.Source.ScopeID,
 			ActorID:         security.ActorID(a.Name(), strconv.FormatInt(event.UserID, 10)),
 			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, strconv.FormatInt(event.UserID, 10)),
 			ReplyID:         normalized.ReplyID,
@@ -682,14 +700,14 @@ func (a *Adapter) resolveAtSegments(ctx context.Context, event Event, msg Normal
 	return msg
 }
 
-func oneBotConversationKind(event Event) platform.ConversationKind {
+func oneBotConversationKind(event Event) chatinfo.ConversationKind {
 	switch event.MessageType {
 	case "private":
-		return platform.ConversationPrivate
+		return chatinfo.ConversationPrivate
 	case "group":
-		return platform.ConversationGroup
+		return chatinfo.ConversationGroup
 	default:
-		return platform.ConversationUnknown
+		return chatinfo.ConversationUnknown
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/media"
 	"elbot/internal/platform"
@@ -62,7 +63,7 @@ func newHistoryMediaToolTest(t *testing.T) (context.Context, GetMediaTool, *getM
 		}
 	}
 	resolver := &getMediaResolver{}
-	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Platform: "p", ScopeID: "s", MediaResolver: resolver})
+	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "p", ScopeID: "s"}}, MediaResolver: resolver})
 	return ctx, NewGetMediaTool(history.Repository(), center), resolver
 }
 
@@ -97,7 +98,7 @@ func TestGetMediaValidationAndFailureBudget(t *testing.T) {
 	if err != nil || resolver.calls != 5 || strings.Contains(result.Content, "secret-token") || !strings.Contains(result.Content, "序号越界") || !strings.Contains(result.Content, "达到本次") {
 		t.Fatalf("failure result = %#v %v calls=%d", result, err, resolver.calls)
 	}
-	other := platform.WithMessageContext(ctx, platform.MessageContext{Platform: "p", ScopeID: "other", MediaResolver: resolver})
+	other := platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "p", ScopeID: "other"}}, MediaResolver: resolver})
 	result, err = tools.Call(other, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)})
 	if err != nil || resolver.calls != 5 || !strings.Contains(result.Content, "没有该消息") {
 		t.Fatalf("scope leaked: %#v %v", result, err)

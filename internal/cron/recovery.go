@@ -100,10 +100,16 @@ func (s *Service) NotifyPlatformConnected(ctx context.Context, platformName stri
 func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName string) {
 	jobs, err := s.store.CronJobs().ListEnabled(ctx)
 	if err != nil {
+		if isContextCancellation(ctx, err) {
+			return
+		}
 		s.logWarn("list cron jobs for missed once failed", "platform", platformName, "error", err)
 		return
 	}
 	for _, job := range jobs {
+		if ctx.Err() != nil {
+			return
+		}
 		meta, err := decodeMetadata(job.Metadata)
 		if err != nil || meta.Kind != metadataKind || meta.Schedule.Mode != ScheduleOnce {
 			continue
@@ -112,7 +118,10 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 		if err != nil || runAt.After(s.now()) || !containsString(s.targetPlatformNames(meta), platformName) {
 			continue
 		}
-		unlock := s.lockDeliveryJob(job.Name)
+		unlock, lockErr := s.lockDeliveryJob(ctx, job.Name)
+		if lockErr != nil {
+			return
+		}
 		latest, loadErr := s.store.CronJobs().GetByName(ctx, job.Name)
 		if loadErr != nil || !latest.Enabled {
 			unlock()
@@ -129,9 +138,14 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 		deliverErr := s.deliverMissedOnce(ctx, *latest, latestMeta, platformName)
 		unlock()
 		if deliverErr != nil {
+			if isContextCancellation(ctx, deliverErr) {
+				return
+			}
 			s.auditEvent("cron.missed_delivery_failed", s.cronAuditAttrs(job.Name, latestMeta, "platform", platformName, "error", deliverErr.Error())...)
 			s.logWarn("missed cron run failed", "job", job.Name, "platform", platformName, "error", deliverErr)
-			_ = s.sendToPlatforms(context.Background(), job.Name, []string{"cli"}, fmt.Sprintf("cron 补跑失败：%s\n错误：%v", job.Name, deliverErr))
+			if ctx.Err() == nil {
+				_ = s.sendToPlatforms(ctx, job.Name, []string{"cli"}, fmt.Sprintf("cron 补跑失败：%s\n错误：%v", job.Name, deliverErr))
+			}
 			continue
 		}
 		s.auditEvent("cron.missed_delivery_completed", s.cronAuditAttrs(job.Name, latestMeta, "platform", platformName)...)
@@ -146,6 +160,25 @@ func (s *Service) deliverMissedOnce(ctx context.Context, job storage.CronJob, me
 	}
 	deliverErr := s.deliverPrepared(ctx, job, meta, state, platformName, true)
 	return errors.Join(prepareErr, deliverErr)
+}
+
+// isContextCancellation excludes mixed errors containing an actual failure.
+func isContextCancellation(ctx context.Context, err error) bool {
+	if ctx.Err() == nil || err == nil {
+		return false
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		for _, child := range joined.Unwrap() {
+			if child != nil && !isContextCancellation(ctx, child) {
+				return false
+			}
+		}
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok && wrapped.Unwrap() != nil {
+		return isContextCancellation(ctx, wrapped.Unwrap())
+	}
+	return errors.Is(err, ctx.Err())
 }
 
 func missedOnceReportText(title, report string) string {

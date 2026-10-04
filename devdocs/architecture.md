@@ -25,7 +25,19 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - launcher 只做命令行解析，不直接初始化复杂依赖。
 - 平台 adapter 只处理平台输入输出，不直接驱动 LLM。
 - `app.Run` 保持默认生产入口；需要替换启动阶段或做隔离测试时，使用 `NewRunner(Dependencies)` 注入分组工厂。
-- Runner 逆序释放已完成阶段：Hook runtime 先于 Cron，Cron 先于 SQLite 和日志；阶段失败不得启动后续阶段。
+- Runner 逆序释放已完成阶段：平台停止生产后，先断开信号并关闭队列，再关闭 Hook runtime、Cron、SQLite 和日志；阶段失败亦清理已装配的信号资源，不启动后续阶段。
+- 所有关闭步骤共享 30 秒预算。预算到期请求取消并停止等待；回调仍在运行时跳过其依赖的显式释放，交给进程退出，不启动后台收尾链。正常取消／关闭预算耗尽不视为应用失败，真实错误继续返回。
+
+<!-- locator:chatinfo -->
+<!-- locator:signal -->
+## 公共聊天信息与信号
+
+- `chatinfo.Info` 用值字段携带每条消息的 Source 与 Identity；平台会话 ID 不等于 ElBot Session ID。权限仍由 security 判定，公共身份不授予权限。
+- 平台 `MessageContext` 组合 Info，安装时同步提供公共快照；本地 CLI scanner／TUI 只安装公共信息。Agent 的 scope、Prompt、Hook 及聊天历史工具按需读取；原连接和平台回复 metadata 留在平台上下文。
+- `signal.Signal[T]` 锁内取得订阅快照，锁外依次调用或提交执行器；一次性连接最多投递一次，入队失败也消耗连接。断开不撤销已有快照或任务，可变事件数据由发布方形成稳定快照。
+- 异步连接显式选择 FollowEmit（保留发射取消）或 FollowExecutor（仅保留值）。Shutdown 独立选择 CancelPending（默认丢弃积压并取消在途）或 Drain（限时尝试完成）；底层取消始终优先。
+- 有界串行队列默认容量 256，满时拒绝入队；同队列 FIFO、不同队列独立。入队成功不代表执行或投递成功，Done 只表示 worker 实际结束。预期取消不记录失败，合并错误中的真实失败仍记录。
+- 平台 Connected 信号由 app 按平台分配独立队列，以 FollowExecutor + CancelPending 连接既有 Agent Hook／Cron 补发链路；连接事件无聊天来源。信号不替代事务、可改写 Hook 流水线或可靠投递状态。
 
 <!-- locator:config -->
 ## 配置与运行数据
@@ -359,8 +371,9 @@ LLM 报告使用 SQLite outbox：result 与逐目标、逐 output 的投递项�
 - 维护类任务集中注册在 maintenance 包。
 - LLM cron 每次实际调度触发都通过 Agent 后台 runner 创建新 Session；同一轮 JSON 格式重试才复用 Session。
 - 一次性 cron 的任务配置与 Delivery 状态分列持久化；Delivery 以 RunID/报告 Session ID 做条件更新，只写仍启用的当前轮次，不能覆盖配置或重新启用任务。
-- 已完整投递的任务条件禁用，未完整投递的任务沿用旧报告继续补发，不能重新执行 LLM。
+- 已完整投递的任务条件禁用；ReportReady 已持久化的未完整投递任务沿用旧报告补发，不重新执行 LLM。
 - 正常触发和平台连接补发共用逐实际收件目标、逐输出状态；`ReportReady` 表示报告可复用，LLM 的 `TaskCompleted` 只记录任务结论。
 - 补发读取最新任务配置且只由平台连接触发；附件失败在同次补发中降级为路径或 URL 文字，降级文字失败则等待下次连接，不做周期重试。
+- 同任务投递互斥支持 context 取消；补发取消后停止后续目标且不发送失败通知。ReportReady 及逐输出回执决定恢复位置；报告持久化前可能重新执行，发送成功但回执尚未持久化时可能重复投递。
 - LLM cron 可预注入工具或 Skill。
 - cron/Elnis 后台 shell 的非 critical 风险可自动确认，critical 直接返回提醒，不等待用户。

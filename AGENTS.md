@@ -46,6 +46,7 @@ rg -n "locator:agent-chat" AGENTS.md devdocs/*.md
 | Hook/插件 | `locator:hook` | `docs/hooks.md`, `devdocs/code-map.md` |
 | Output/发送 | `locator:output` | `devdocs/architecture.md`, `devdocs/code-map.md` |
 | 平台适配 | `locator:platform` | `devdocs/code-map.md` |
+| 公共信息/信号 | `locator:chatinfo`, `locator:signal` | `devdocs/code-map.md`, `devdocs/architecture.md` |
 | Session/上下文 | `locator:session`, `locator:context` | `devdocs/architecture.md`, `devdocs/code-map.md` |
 | SQLite/存储 | `locator:storage` | `devdocs/code-map.md` |
 | Elnis/Elvena/Elwisp | `locator:elnis` | `docs/elnis.md`, `docs/elnis-usage.md`, `devdocs/elnis-elwisp.md` |

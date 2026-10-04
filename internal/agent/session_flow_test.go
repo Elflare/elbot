@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
@@ -58,11 +59,11 @@ func TestSessionIdleExpiration(t *testing.T) {
 		cfg         config.SessionIdleExpirationConfig
 		wantExpired bool
 	}{
-		{name: "group user expires", ctx: platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "group:9"}, cfg: defaultIdleExpiration, wantExpired: true},
-		{name: "group superadmin expires", ctx: platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "group:9"}, superadmin: true, cfg: defaultIdleExpiration, wantExpired: true},
-		{name: "private user expires", ctx: platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "private:1"}, cfg: defaultIdleExpiration, wantExpired: true},
-		{name: "private superadmin keeps", ctx: platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "private:1"}, superadmin: true, cfg: defaultIdleExpiration, wantExpired: false},
-		{name: "disabled group user keeps", ctx: platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "group:9"}, cfg: config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 0, GroupSuperadminTTLMinutes: 10, PrivateUserTTLMinutes: 10}, wantExpired: false},
+		{name: "group user expires", ctx: platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}}, cfg: defaultIdleExpiration, wantExpired: true},
+		{name: "group superadmin expires", ctx: platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}}, superadmin: true, cfg: defaultIdleExpiration, wantExpired: true},
+		{name: "private user expires", ctx: platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "private:1"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}}, cfg: defaultIdleExpiration, wantExpired: true},
+		{name: "private superadmin keeps", ctx: platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "private:1"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}}, superadmin: true, cfg: defaultIdleExpiration, wantExpired: false},
+		{name: "disabled group user keeps", ctx: platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}}, cfg: config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 0, GroupSuperadminTTLMinutes: 10, PrivateUserTTLMinutes: 10}, wantExpired: false},
 	}
 
 	for _, tt := range tests {
@@ -118,7 +119,7 @@ func TestIdleExpirationClearsCurrentAndCanResume(t *testing.T) {
 	store := newTestStore(t)
 	a := New(p, &fakeLLM{replies: []string{"continued"}}, "test-model", config.ProviderConfig{}, store)
 	a.SetSessionIdleExpiration(config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 10})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "cli", PlatformUserID: "1", ScopeID: "group:9"})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 	oldSession, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "old conversation"})
 	if err != nil {
 		t.Fatalf("create old session: %v", err)
@@ -175,9 +176,7 @@ func TestLatestAssistantReferenceResumesExpiredOrResetCurrentSession(t *testing.
 	a := New(p, &fakeLLM{replies: []string{"continued", "continued after new"}}, "test-model", config.ProviderConfig{}, store)
 	a.RegisterPlatformSender("qq", p)
 	a.SetSessionIdleExpiration(config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 10})
-	baseCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{
-		Platform: "qq", PlatformUserID: "1", ScopeID: "group:9",
-	})
+	baseCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 	target, err := a.sessions.Create(baseCtx, a.scope(baseCtx), session.CreateRequest{Title: "target"})
 	if err != nil {
 		t.Fatalf("create target session: %v", err)
@@ -209,10 +208,7 @@ func TestLatestAssistantReferenceResumesExpiredOrResetCurrentSession(t *testing.
 	if reference.ResumeSessionID != target.ID || reference.ForkFromMessageID != "" {
 		t.Fatalf("reference action = %#v", reference)
 	}
-	resumeCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{
-		Platform: "qq", PlatformUserID: "1", ScopeID: "group:9",
-		ReplyToMessageID: "old-answer", ResumeSessionID: reference.ResumeSessionID,
-	})
+	resumeCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}, ReplyToMessageID: "old-answer", ResumeSessionID: reference.ResumeSessionID})
 	if err := a.HandleMessage(resumeCtx, "continue here"); err != nil {
 		t.Fatalf("handle referenced message: %v", err)
 	}
@@ -247,10 +243,7 @@ func TestLatestAssistantReferenceResumesExpiredOrResetCurrentSession(t *testing.
 	if reference.ResumeSessionID != target.ID || reference.ForkFromMessageID != "" {
 		t.Fatalf("reference after /new = %#v", reference)
 	}
-	resetCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{
-		Platform: "qq", PlatformUserID: "1", ScopeID: "group:9",
-		ReplyToMessageID: "continued-answer", ResumeSessionID: reference.ResumeSessionID,
-	})
+	resetCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}, ReplyToMessageID: "continued-answer", ResumeSessionID: reference.ResumeSessionID})
 	if err := a.HandleMessage(resetCtx, "continue after new"); err != nil {
 		t.Fatalf("handle reference after /new: %v", err)
 	}
@@ -278,10 +271,9 @@ func TestStatusDoesNotShowRequestsFromAnotherUserWithoutCurrentSession(t *testin
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
-	activeCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{
-		Platform:       "cli",
-		PlatformUserID: "1001",
-		ScopeID:        "group:9",
+	activeCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli",
+
+		ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1001"}},
 	})
 	activeSession, err := a.sessions.Create(activeCtx, a.scope(activeCtx), session.CreateRequest{Title: "active user"})
 	if err != nil {
@@ -305,10 +297,9 @@ func TestStatusDoesNotShowRequestsFromAnotherUserWithoutCurrentSession(t *testin
 	}
 
 	p.out.Reset()
-	idleCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{
-		Platform:       "cli",
-		PlatformUserID: "1002",
-		ScopeID:        "group:9",
+	idleCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli",
+
+		ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1002"}},
 	})
 	if err := a.HandleMessage(idleCtx, "/status"); err != nil {
 		t.Fatalf("idle user /status: %v", err)
@@ -327,13 +318,13 @@ func TestMessageContextResumeStartsTargetSession(t *testing.T) {
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"resume reply"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "group:9"})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 
 	bg := &storage.Session{OwnerID: "qq:1", Platform: "qq", PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "cron"}
 	if err := store.Sessions().Create(ctx, bg); err != nil {
 		t.Fatalf("create background session: %v", err)
 	}
-	resumeCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "group:9", ResumeSessionID: bg.ID})
+	resumeCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}, ResumeSessionID: bg.ID})
 	if err := a.HandleMessage(resumeCtx, "continue here"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
 	}
@@ -358,7 +349,7 @@ func TestMessageContextForkStartsForkSession(t *testing.T) {
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"fork reply"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "group:9"})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 
 	source, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "source"})
 	if err != nil {
@@ -368,7 +359,7 @@ func TestMessageContextForkStartsForkSession(t *testing.T) {
 	if err := store.Messages().Append(ctx, assistant); err != nil {
 		t.Fatalf("append assistant: %v", err)
 	}
-	forkCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Platform: "qq", PlatformUserID: "1", ScopeID: "group:9", ForkFromMessageID: assistant.ID})
+	forkCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}, ForkFromMessageID: assistant.ID})
 	if err := a.HandleMessage(forkCtx, "continue from here"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
 	}
@@ -522,10 +513,8 @@ func TestModeCommandContinuationPreservesNonTextSegments(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"described"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
-		Platform: "cli",
-		ScopeID:  "local",
-		Sender:   p,
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli",
+		ScopeID: "local"}}, Sender: p,
 		Segments: []platform.MessageSegment{
 			{Type: platform.SegmentText, Text: "/chat describe this"},
 			{Type: platform.SegmentImage, URL: "data:image/png;base64,abc", MIMEType: "image/png"},

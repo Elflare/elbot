@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
@@ -282,8 +283,8 @@ func fileSegmentText(name, fallback string) string {
 }
 
 func (a *Agent) isCLIContext(ctx context.Context) bool {
-	if msg, ok := platform.MessageContextFrom(ctx); ok {
-		return msg.Platform == "cli"
+	if info, ok := chatinfo.FromContext(ctx); ok {
+		return info.Source.Platform == "cli"
 	}
 	return a.platform != nil && a.platform.Name() == "cli"
 }

@@ -37,15 +37,16 @@ func TestRemoteWriteWaitingOnAnotherWriterRespectsContext(t *testing.T) {
 		t.Fatalf("dial websocket: %v", err)
 	}
 	client := &RemoteClient{conn: conn}
-	firstDone := make(chan error, 1)
-	go func() {
-		firstDone <- client.write(
-			context.Background(),
-			remoteMessage{Type: remoteMsgInput, Text: strings.Repeat("x", 16*1024*1024)},
-		)
+	// Writer returns only after acquiring the message write lock. Keep it open
+	// so the second write must wait, without relying on JSON speed or sleeps.
+	writer, err := conn.Writer(context.Background(), websocket.MessageText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = conn.CloseNow()
+		_ = writer.Close()
 	}()
-	time.Sleep(200 * time.Millisecond)
-
 	secondDone := make(chan error, 1)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
@@ -61,12 +62,5 @@ func TestRemoteWriteWaitingOnAnotherWriterRespectsContext(t *testing.T) {
 		_ = conn.CloseNow()
 		<-secondDone
 		t.Fatal("second write did not respect its context while another write was blocked")
-	}
-
-	_ = conn.CloseNow()
-	select {
-	case <-firstDone:
-	case <-time.After(time.Second):
-		t.Fatal("first write did not stop after closing the connection")
 	}
 }

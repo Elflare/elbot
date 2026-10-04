@@ -40,7 +40,7 @@ func (a *Agent) materializePlatformMedia(ctx context.Context) context.Context {
 }
 
 func (a *Agent) materializePlatformSegment(ctx context.Context, msg platform.MessageContext, segment platform.MessageSegment) platform.MessageSegment {
-	item, err := a.media.ImportPlatform(ctx, msg.Platform, msg.MediaResolver, segment)
+	item, err := a.media.ImportPlatform(ctx, msg.Info.Source.Platform, msg.MediaResolver, segment)
 	if err != nil {
 		return unavailablePlatformSegment(segment)
 	}
@@ -57,7 +57,7 @@ func (a *Agent) associateInboundHistory(ctx context.Context, msg platform.Messag
 	if a.media.History == nil || messageID == "" {
 		return
 	}
-	row, err := a.media.History.GetByPlatformMessage(ctx, msg.Platform, msg.ScopeID, messageID)
+	row, err := a.media.History.GetByPlatformMessage(ctx, msg.Info.Source.Platform, msg.Info.Source.ScopeID, messageID)
 	if err != nil {
 		return
 	}
