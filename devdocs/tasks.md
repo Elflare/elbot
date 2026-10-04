@@ -776,7 +776,7 @@
 - [ ] 支持子 Agent 限定工具组。
 - [x] 支持用户在聊天中@工具组直接把完整schema注入到prompt中
 
-### 子 Agent
+### 子 Agent（暂定不做，信息交接必然伴随信息损失）
 
 - [ ] 明确是否需要子 Agent。
 - [ ] 设计子 Agent Prompt。
