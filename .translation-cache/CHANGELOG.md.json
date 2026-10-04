@@ -504,6 +504,14 @@
       "translation": "Tool discovery, __ELBOT_CODE_0__, and background preloading are all effective; configuration error prompts are still retained.",
       "updated_at": 1790860573
     },
+    "CHANGELOG.md:list:4e4d8268e2dd23b0361e072fb908848596d76ef66e39cef03c7c046a02199110": {
+      "kind": "list",
+      "source": "QQ OneBot 长文本分页现在只有非末页添加省略号。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "4e4d8268e2dd23b0361e072fb908848596d76ef66e39cef03c7c046a02199110",
+      "translation": "QQ OneBot long text pagination now only adds ellipses to non-last pages.",
+      "updated_at": 1791081165
+    },
     "CHANGELOG.md:list:50e8edceef9ba9f05ab3e29be70643e7d1e29373c088d70a65ef6b30249494e3": {
       "kind": "list",
       "source": "默认 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ Skill 会生成仅超管可见、低风险的 TOML。",
@@ -1722,8 +1730,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "dd05bc4f4ba272e5a69b5856696a2805cbed4ebbdd2ceb37f39ff4984cdedb76",
+  "source_hash": "ca5ff8b22f4649d6f09f77ffd8eef4d178c3742f81230cfc79721a12edb6fc5a",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1790906933,
+  "updated_at": 1791081165,
   "version": 2
 }
