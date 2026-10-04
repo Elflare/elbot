@@ -67,13 +67,13 @@ func TestQQTextPagesSplitsLongText(t *testing.T) {
 	if len(pages) != 3 {
 		t.Fatalf("page count = %d", len(pages))
 	}
-	if !strings.HasSuffix(pages[0], "……（1/3）") || !strings.HasSuffix(pages[1], "……（2/3）") || !strings.HasSuffix(pages[2], "……（3/3）") {
+	if !strings.HasSuffix(pages[0], "……（1/3）") || !strings.HasSuffix(pages[1], "……（2/3）") || !strings.HasSuffix(pages[2], "（3/3）") {
 		t.Fatalf("pages = %#v", pages)
 	}
 	if got := len([]rune(strings.TrimSuffix(pages[0], "……（1/3）"))); got != qqTextPageRunes {
 		t.Fatalf("first page body runes = %d", got)
 	}
-	if got := len([]rune(strings.TrimSuffix(pages[2], "……（3/3）"))); got != 1 {
+	if got := len([]rune(strings.TrimSuffix(pages[2], "（3/3）"))); got != 1 {
 		t.Fatalf("last page body runes = %d", got)
 	}
 }
@@ -83,8 +83,46 @@ func TestQQTextPagesSplitsChineseRunes(t *testing.T) {
 	if len(pages) != 2 {
 		t.Fatalf("page count = %d", len(pages))
 	}
-	if !strings.HasPrefix(pages[1], "芙……（2/2）") {
+	if pages[1] != "芙（2/2）" {
 		t.Fatalf("second page = %q", pages[1])
+	}
+}
+
+func TestQQTextPagesExactBoundaries(t *testing.T) {
+	body := strings.Repeat("娅", qqTextPageRunes)
+	for _, tc := range []struct {
+		name string
+		text string
+		want []string
+	}{
+		{name: "one full page", text: body, want: []string{body}},
+		{name: "two full pages", text: body + body, want: []string{body + "……（1/2）", body + "（2/2）"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pages := qqTextPages(tc.text)
+			if len(pages) != len(tc.want) {
+				t.Fatalf("page count = %d, want %d", len(pages), len(tc.want))
+			}
+			for i, want := range tc.want {
+				if pages[i] != want {
+					t.Fatalf("page %d = %q, want %q", i+1, pages[i], want)
+				}
+			}
+		})
+	}
+}
+
+func TestQQTextPagesPreservesLastPageText(t *testing.T) {
+	for _, tail := range []string{"正文……", "内容。<"} {
+		t.Run(tail, func(t *testing.T) {
+			pages := qqTextPages(strings.Repeat("娅", qqTextPageRunes) + tail)
+			if len(pages) != 2 {
+				t.Fatalf("page count = %d, want 2", len(pages))
+			}
+			if want := tail + "（2/2）"; pages[1] != want {
+				t.Fatalf("last page = %q, want %q", pages[1], want)
+			}
+		})
 	}
 }
 
