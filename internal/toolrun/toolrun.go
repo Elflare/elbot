@@ -115,7 +115,7 @@ func (m *Manager) Schemas(ctx context.Context, view Context, cached []CachedTool
 			return
 		}
 		seen[name] = true
-		out = append(out, schemaForContext(ctx, schema))
+		out = append(out, schemaForContext(ctx, cloneSchema(schema)))
 	}
 	for _, schema := range base {
 		appendSchema(schema)

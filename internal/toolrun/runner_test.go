@@ -74,7 +74,8 @@ func (d *runnerTestDeps) RecordToolCall(ctx context.Context, sessionID string, c
 func (d *runnerTestDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string) {
 }
 
-func (d *runnerTestDeps) RememberDiscoveryResult(ctx context.Context, session *storage.Session, result *tool.Result) {
+func (d *runnerTestDeps) RememberDiscoveryResult(ctx context.Context, session *storage.Session, result *tool.Result) error {
+	return nil
 }
 
 func (d *runnerTestDeps) AddToolUse(sessionID, toolName string) {}

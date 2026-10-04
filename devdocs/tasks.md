@@ -913,8 +913,9 @@
 
 ### 阶段 5：上下文与工具状态
 
-- [ ] 将上下文状态收拢到 contextmgr，工具发现及 schema 缓存收拢到 toolrun。
-- [ ] 接入各模块持久化更新，保留 Agent 的 Request／Turn、pending、确认和执行编排。
+- [x] 将上下文状态收拢到 contextmgr，工具发现及 schema 缓存收拢到 toolrun。
+- [x] 接入各模块持久化更新，保留 Agent 的 Request／Turn、pending、确认和执行编排。
+- [x] 完成状态提交失败、恢复／Fork、压缩、并发字段保留与 schema 隔离验证，通过相关 race、全量测试并同步文档。
 - 完成标准：上下文与工具状态有明确所有者，恢复、压缩、缓存和并发行为验证通过。详见 [阶段 5](core-refactor.md#phase-5)。
 
 ### 阶段 6：发送与通知

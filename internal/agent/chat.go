@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"elbot/internal/config"
+	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -164,13 +165,17 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		a.logger.Info("user input", "event", "user_message", "session_id", session.ID, "text", previewLogText(userContent))
 	}
 
-	loaded, err := a.contextRuntime.load(ctx, session.ID)
+	loaded, err := a.contexts.Load(ctx, session.ID)
 	if err != nil {
 		return err
 	}
 	hasUserHistory := hasStorageUserMessage(loaded.Messages)
 	compactSeedOnCurrentUser := false
-	if seed := pendingContextCompact(session); seed != nil {
+	seed, err := contextmgr.PendingCompact(session)
+	if err != nil {
+		return err
+	}
+	if seed != nil {
 		if !hasUserHistory {
 			loaded.Summary = &storage.ContextSummary{Summary: seed.Summary}
 			compactSeedOnCurrentUser = true

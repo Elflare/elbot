@@ -14,6 +14,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/security"
 	"elbot/internal/tool"
+	"elbot/internal/toolrun"
 )
 
 type toolTagConfigSource struct {
@@ -41,7 +42,10 @@ func (s *toolTagConfigSource) Parts(ctx context.Context, req SystemPromptRequest
 	if s == nil || req.Session == nil {
 		return nil, nil
 	}
-	metadata := decodeSessionMetadata(req.Session.Metadata)
+	metadata, err := toolrun.DecodeState(req.Session.Metadata)
+	if err != nil {
+		return nil, err
+	}
 	if len(metadata.ToolTags) == 0 {
 		return nil, nil
 	}

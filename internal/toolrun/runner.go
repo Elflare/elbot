@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -27,7 +28,7 @@ type RunnerDeps interface {
 	SendOutputs(ctx context.Context, outputs []delivery.Output) error
 	RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error)
 	AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string)
-	RememberDiscoveryResult(ctx context.Context, session *storage.Session, result *tool.Result)
+	RememberDiscoveryResult(ctx context.Context, session *storage.Session, result *tool.Result) error
 	AddToolUse(sessionID, toolName string)
 	ToolResultMessage(sessionID string, message llm.LLMMessage) storage.Message
 	ToolCallMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest) storage.Message
@@ -170,12 +171,15 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 		} else {
 			result.Message.Segments = completedSegments
 		}
+		if call.Name == "discover_tool" && result.Result != nil {
+			if stateErr := deps.RememberDiscoveryResult(ctx, req.Session, result.Result); stateErr != nil {
+				result.Err = errors.Join(result.Err, stateErr)
+				result.Message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s: tool state was not saved; completed actions were not rolled back: %v", call.Name, result.Err))
+			}
+		}
 		resultText := llm.SegmentsContentText(result.Message.Segments)
 		deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, resultText, result.Err)
 		messages = append(messages, result.Message)
-		if call.Name == "discover_tool" && result.Result != nil {
-			deps.RememberDiscoveryResult(ctx, req.Session, result.Result)
-		}
 		transcript = append(transcript, deps.ToolResultMessage(sessionID, deps.PersistedToolMessage(result.Message)))
 		if result.Err != nil {
 			deps.SendPreview(ctx, fmt.Sprintf("%s 调用失败：%v", call.Name, result.Err))

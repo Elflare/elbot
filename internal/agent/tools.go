@@ -27,8 +27,9 @@ type toolRuntimeState struct {
 
 func newToolRuntimeState() toolRuntimeState {
 	return toolRuntimeState{
-		provider: noopToolSchemaProvider{},
-		config:   config.Default().Tools,
+		provider:        noopToolSchemaProvider{},
+		defaultProvider: true,
+		config:          config.Default().Tools,
 	}
 }
 
@@ -58,6 +59,7 @@ func (a *Agent) SetToolRuntime(registry *tool.Registry, skills SkillLifecycle) {
 	a.toolRuntime.registry = registry
 	a.toolRuntime.skills = skills
 	a.toolRuntime.manager = toolrun.NewManager(registry, a.securityPolicy)
+	a.toolRuntime.manager.Media = a.media
 	if registry != nil {
 		a.toolRuntime.provider = toolRunPromptProvider{agent: a}
 		a.toolRuntime.defaultProvider = true

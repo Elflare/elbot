@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 工具发现、预载现在是事务写入session。
 - 模型切换现在先原子保存 `state.toml` 再生效，并发切换不覆盖彼此更新。命名模型与 work fallback 改为每次操作从共享模型服务取得快照，后续命名跟随新选择，在途命名、对话和压缩保持本次选择。
 - Session 绑定由 Session 服务统一同步失效，修复旧工具／确认在切走再恢复后复活，以及延迟撤销清理影响新绑定的问题；运行中会话拒绝切离和删除，维护清理复用实时忙闲状态。
 - Session 整行快照写回改为事务内字段更新，防止活跃时间、workspace、缓存及命名互相覆盖，保留未知 metadata；手动改名优先于迟到的自动命名。

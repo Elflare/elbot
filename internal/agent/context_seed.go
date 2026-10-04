@@ -6,26 +6,11 @@ import (
 	"elbot/internal/storage"
 )
 
-func pendingContextCompact(session *storage.Session) *contextCompactState {
-	if session == nil {
-		return nil
-	}
-	compact := decodeSessionMetadata(session.Metadata).ContextCompact
-	if compact == nil || !compact.Pending || compact.Summary == "" {
-		return nil
-	}
-	return compact
-}
-
 func (a *Agent) consumeContextCompactSeed(ctx context.Context, session *storage.Session) {
 	if a.store == nil || session == nil {
 		return
 	}
-	latest, err := a.mutateSessionMetadata(ctx, session.ID, func(metadata *sessionMetadata) {
-		if metadata.ContextCompact != nil {
-			metadata.ContextCompact.Pending = false
-		}
-	})
+	latest, err := a.contexts.ConsumeSeed(ctx, session.ID)
 	if err != nil {
 		a.logContextCompactSeedError(ctx, session.ID, err)
 		return

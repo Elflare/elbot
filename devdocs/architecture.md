@@ -128,7 +128,7 @@ Slash 命令链路：
 2. Agent 进入工具执行阶段并记录工具调用请求。
 3. prepared Hook 只能改写 arguments；ToolRun 用最终参数做工具视图、命名解析、foreground-only 过滤、权限和风险确认，并把同一参数回灌当前 assistant tool call。
 4. Tool Runtime 执行具体工具，并按 Actor/Policy 做风险兜底校验。
-5. 已进入实际执行阶段的工具结果以 text/image segments 通过完成 Hook，随后写入 transcript；纯文本只存 `content`，多模态结果额外存 `segments`。执行前失败或拒绝不触发完成 Hook。
+5. 已进入实际执行阶段的工具结果以 text/image segments 通过完成 Hook；工具发现状态完成提交后，再统一记录最终结果并写入 transcript；纯文本只存 `content`，多模态结果额外存 `segments`。执行前失败或拒绝不触发完成 Hook。
 6. 如果工具有输出意图，交给 Output Manager 发送，而不是工具直接发平台消息。
 
 关键约定：
@@ -148,10 +148,13 @@ Tool Runtime 负责注册、schema、权限、风险、确认详情、用户侧 
 
 工具视图由 ToolRun 提供：
 
-- 管理 session 工具缓存。
+- `toolrun.StateService` 统一读取和提交 Session 的 `discovered_tools`、`tool_cache`、`tool_tags`、`shown_rule_card_formats`；metadata 是唯一事实来源，调用方只持有快照。
 - 合并 native/Elwisp 工具。
 - 按前台/后台过滤 foreground-only 工具。
 - 处理工具名解析、风险确认和批量工具预览。
+- 同一输入的 `@tool`／`@skill` 预加载及一次工具发现，各自在一次仓储 `Mutate` 中合并所有工具状态；成功才更新调用快照并报告注入成功。失败保留原状态并返回错误，已经完成的工具动作不回滚或自动重跑。
+- schema 对外返回独立副本，Hook 对嵌套参数的修改仅作用于本次调用；工具注册与 Skill 生命周期仍由原 Runtime 管理。
+- 恢复读取已有状态；Fork 按指定范围继承历史，不复制父 Session 工具状态或最近用量。
 
 `discover_tool` 的特殊约定：
 
@@ -307,12 +310,13 @@ Session 命令的分页选择和维护配置由 `SessionCommandState` 按 Scope 
 <!-- locator:context -->
 ## 上下文管理
 
-上下文管理负责：
+app 创建共享 `contextmgr.Service`，注入 Agent；服务不持有 Request／Turn 管理器。上下文管理负责：
 
 - 加载历史消息和 Fork 上下文。
 - 解析 context window。
 - 按当前模型的 context window 动态判断压缩阈值。
 - 格式化厂商 usage 状态。
+- 管理 `last_usage`、`context_compact` 的编解码和字段更新，准备压缩材料与结果。Agent 保留压缩准入、Request／Turn、取消和新 Session 交接。
 
 约定：
 
@@ -322,7 +326,7 @@ Session 命令的分页选择和维护配置由 `SessionCommandState` 按 Scope 
 - 新 Session metadata 暂存一次性 compact seed；首条用户输入时，Prompt Builder 将“压缩结果 + 历史用户原话 + 当前输入”物化为单条 user message，成功持久化后消耗 seed。
 - 模型选择在 turn 开始时快照；进行中的 `/model` 不改变当前 LLM/工具循环，下一轮按新模型重新解析窗口与阈值。后台转前台后解除后台模型覆盖和强制 JSON／无人值守提示，后续 LLM 调用使用前台身份。
 - System Prompt Manager 按优先级收集 Soul、工具名称、tag prompt 等片段。
-- 最近 usage 会写入 Session metadata，恢复会话后可展示。
+- 最近 usage 写入 Session metadata，恢复会话后可展示；服务按 Session 隔离观测值并返回副本，保存失败记录日志但仍保留已观测用量。seed 消耗只更新所属字段，压缩交接从最新 metadata 继承其他模块字段并移除旧用量。
 
 <!-- locator:storage -->
 ## Storage 与 SQLite

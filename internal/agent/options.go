@@ -7,6 +7,7 @@ import (
 
 	agentcommands "elbot/internal/agent/commands"
 	"elbot/internal/config"
+	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
 	"elbot/internal/fileops"
 	"elbot/internal/hook"
@@ -18,6 +19,7 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
+	"elbot/internal/toolrun"
 )
 
 // Options groups the agent's construction-time dependencies and configuration.
@@ -25,6 +27,8 @@ type Options struct {
 	Doctor                agentcommands.DoctorService
 	Platform              platform.PlatformAdapter
 	Models                *modelmgr.Service
+	Contexts              *contextmgr.Service
+	ToolState             *toolrun.StateService
 	Providers             map[string]config.ProviderConfig
 	Store                 storage.Store
 	Media                 *media.Manager

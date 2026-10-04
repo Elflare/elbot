@@ -157,7 +157,8 @@ rg -n "Phase|Request|Cancel|pending|confirm|runtime status|sending" internal/req
 - `internal/fileops/service.go`、`edit_service.go`：命令与工具共享的编辑／撤销服务、调用绑定、确认预检与提交准入；`internal/tool/builtin/file_rollback.go` 保留工具协议及风险确认。
 - `internal/agent/tools.go`：Agent 工具运行态和命令依赖适配。
 - `internal/agent/toolrun_*.go`：Agent 到 ToolRun 的桥接。
-- `internal/agent/tool_cache.go`：Session 级工具 schema 缓存。
+- `internal/toolrun/state.go`：Session 工具发现、schema、tag 和规则卡状态的统一读取与事务提交；`discovery.go` 解析发现结果与 wrapper 激活，`cache.go` 负责缓存项归一，`schema.go` 负责调用快照隔离。
+- `internal/agent/tool_cache.go`：工具状态服务的调用适配，成功提交后更新调用期 Session 快照。
 - `internal/agent/tool_directive.go`：`@tool:` / `@skill:` 预处理。
 - `internal/agent/tool_tag_config.go`：工具 tag 配置。
 - `internal/security/`：工具权限和风险策略。
@@ -297,7 +298,7 @@ rg -n "PlatformAdapter|SendChat|MessageSegment|Actor|Scope|remote|websocket|long
 - `internal/session/mode.go`：模式激活和 work 历史限制。
 - `internal/session/lifecycle.go`、`query.go`、`fork.go`、`expiration.go`：生命周期、查询、Fork 和闲置过期策略。
 - `internal/session/naming.go`：异步 Session 命名。
-- `internal/agent/session_metadata.go`：Agent 仍持有的工具／上下文等 metadata 编解码，不拥有 workspace 字段。
+- `internal/contextmgr/state.go`、`internal/toolrun/state.go`：分别解释上下文与工具 metadata，更新时保留其他模块及未知字段。
 - `internal/session/workspace.go`：workspace 持久化适配、原子字段更新及原绑定检查；`commit.go`：原绑定的短提交准入。
 - `internal/workspace/`：workspace 契约、context、metadata 状态与统一路径入口；`internal/sandbox/sandbox.go`：后台运行上下文及路径限制。
 
@@ -314,8 +315,8 @@ rg -n "Fork|Archive|Pinned|Expire|SessionMode|metadata|workspace|cron:" internal
 
 先看：
 
-- `internal/contextmgr/`：按加载/Fork、窗口、usage、压缩器和摘要 prompt 拆分的上下文基础能力。
-- `internal/agent/context_runtime.go`、`context_compact.go`、`context_seed.go`、`context_usage.go`：Agent 上下文运行态、独立 Session 压缩编排、首消息 seed 物化与 usage/动态阈值。
+- `internal/contextmgr/service.go`、`state.go`、`compact.go`：共享上下文服务、用量／压缩持久化状态、压缩材料与结果；复用 loader、window、compressor 和摘要 prompt。
+- `internal/agent/context_compact.go`：压缩 Request／Turn、取消、绑定准入与会话交接；`context_runtime.go`、`context_seed.go`、`context_usage.go` 保留配置、seed 消耗时机及状态展示适配。
 - `internal/agent/prompt.go`：Prompt Builder。
 - `internal/agent/system_prompt*.go`：system prompt 管理和来源。
 - `internal/llm/segment.go`：MessageSegment helper。

@@ -20,6 +20,7 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
+	"elbot/internal/toolrun"
 	"elbot/internal/turn"
 )
 
@@ -103,11 +104,19 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 			return background.RunResult{}, err
 		}
 	}
-	if len(req.CachedTools) > 0 {
-		a.rememberCachedTools(ctx, bgSession, req.CachedTools)
-		a.audit("background_external_tools_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "tools", cachedToolNames(req.CachedTools))
+	preloaded := a.preloadBackgroundResources(ctx, bgSession, backgroundToolListNames(req.ToolListNames), req.CachedTools)
+	if preloaded.Err != nil {
+		return background.RunResult{SessionID: bgSession.ID}, preloaded.Err
 	}
-	preloaded := a.preloadBackgroundResources(ctx, bgSession, backgroundToolListNames(req.ToolListNames))
+	if len(req.CachedTools) > 0 {
+		names := make([]string, 0, len(req.CachedTools))
+		for _, item := range req.CachedTools {
+			if item.Name != "" {
+				names = append(names, item.Name)
+			}
+		}
+		a.audit("background_external_tools_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "tools", names)
+	}
 	if len(preloaded.Tools) > 0 {
 		a.audit("background_tool_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "tools", preloaded.Tools)
 	}
@@ -257,14 +266,20 @@ func backgroundTitle(kind background.Kind, name string) string {
 }
 
 type backgroundPreloadResult struct {
+	Err         error
 	Tools       []string
 	Skills      []string
 	SkillPrompt string
 }
 
-func (a *Agent) preloadBackgroundResources(ctx context.Context, session *storage.Session, names []string) backgroundPreloadResult {
+func (a *Agent) preloadBackgroundResources(ctx context.Context, session *storage.Session, names []string, initial []toolrun.CachedTool) backgroundPreloadResult {
 	result := backgroundPreloadResult{}
-	if session == nil || session.Mode != storage.SessionModeWork || a.toolRuntime.registry == nil {
+	if session == nil || session.Mode != storage.SessionModeWork {
+		return result
+	}
+	if a.toolRuntime.registry == nil {
+		committed, err := a.commitToolState(ctx, session, toolrun.StateUpdate{Tools: initial})
+		result.Tools, result.Err = committed.Injected, err
 		return result
 	}
 	policy := a.securityPolicy
@@ -272,7 +287,7 @@ func (a *Agent) preloadBackgroundResources(ctx context.Context, session *storage
 		policy = security.DefaultPolicy()
 	}
 	actor := a.actor(ctx)
-	seenInjected := map[string]bool{}
+	update := toolrun.StateUpdate{Tools: initial}
 	seenSkills := map[string]bool{}
 	var skillSections []string
 	for _, name := range names {
@@ -306,19 +321,24 @@ func (a *Agent) preloadBackgroundResources(ctx context.Context, session *storage
 				skillSections = append(skillSections, "## Skill: "+name+"\n\n"+detail)
 			}
 			for _, wrapper := range detailer.ActivateTools() {
-				result.Tools = append(result.Tools, a.preloadBackgroundTool(ctx, session, wrapper, actor, policy, seenInjected, true)...)
+				update.Tools = append(update.Tools, a.preloadBackgroundTool(ctx, session, wrapper, actor, policy, true)...)
 			}
 			continue
 		}
-		result.Tools = append(result.Tools, a.preloadBackgroundTool(ctx, session, name, actor, policy, seenInjected, false)...)
+		update.Tools = append(update.Tools, a.preloadBackgroundTool(ctx, session, name, actor, policy, false)...)
 	}
+	committed, err := a.commitToolState(ctx, session, update)
+	if err != nil {
+		return backgroundPreloadResult{Err: err}
+	}
+	result.Tools = committed.Injected
 	if len(skillSections) > 0 {
 		result.SkillPrompt = strings.Join(skillSections, "\n\n---\n\n")
 	}
 	return result
 }
 
-func (a *Agent) preloadBackgroundTool(ctx context.Context, session *storage.Session, name string, actor security.Actor, policy *security.Policy, seen map[string]bool, allowHidden bool) []string {
+func (a *Agent) preloadBackgroundTool(ctx context.Context, session *storage.Session, name string, actor security.Actor, policy *security.Policy, allowHidden bool) []toolrun.CachedTool {
 	name = strings.TrimSpace(name)
 	if name == "" || name == "discover_tool" {
 		return nil
@@ -346,8 +366,7 @@ func (a *Agent) preloadBackgroundTool(ctx context.Context, session *storage.Sess
 		a.audit("background_preload_skipped", "session_id", session.ID, "name", name, "reason", "no_schema")
 		return nil
 	}
-	newTools, _ := a.rememberPreloadedDiscovery(ctx, session, discovery, seen)
-	return newTools
+	return toolrun.NativeCachedToolsFromDiscovery(discovery)
 }
 
 func (a *Agent) discoveryForBackgroundToolNames(ctx context.Context, names []string, actor security.Actor, policy *security.Policy) (*tool.DiscoveryResult, bool) {

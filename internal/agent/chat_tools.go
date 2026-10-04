@@ -43,12 +43,23 @@ func (a *Agent) drainPendingUserInput(sessionID string, messages []llm.LLMMessag
 }
 
 func (a *Agent) executeToolCalls(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string, out turnOutput) toolrun.RunResult {
+	cached, err := a.cachedToolsForSession(ctx, session)
+	if err != nil {
+		messages := make([]llm.LLMMessage, 0, len(calls))
+		transcript := []storage.Message{toolCallStorageMessage(session.ID, assistantText, assistantRawText, calls)}
+		for _, call := range calls {
+			message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s failed: load tool state: %v", call.Name, err))}
+			messages = append(messages, message)
+			transcript = append(transcript, toolResultStorageMessage(session.ID, message))
+		}
+		return toolrun.RunResult{Messages: messages, PreparedCalls: calls, Transcript: transcript}
+	}
 	return a.toolRunManager().Run(ctx, agentToolRunDeps{agent: a, output: out, attempt: turn.AttemptFromContext(ctx)}, toolrun.RunRequest{
 		Session:          session,
 		Calls:            calls,
 		AssistantText:    assistantText,
 		AssistantRawText: assistantRawText,
-		CachedTools:      a.cachedToolsForSession(session),
+		CachedTools:      cached,
 		Actor:            a.actor(ctx),
 	})
 }
@@ -256,7 +267,11 @@ func (a *Agent) toolsForSession(ctx context.Context, session *storage.Session) (
 	if a.toolRuntime.provider != nil && !a.toolRuntime.defaultProvider {
 		return a.toolRuntime.provider.Schemas(ctx, session.Mode, session, a.scope(ctx))
 	}
-	return a.toolRunManager().Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: a.scope(ctx), Actor: a.actor(ctx), DisableBaseTools: isBackgroundSession(session)}, a.cachedToolsForSession(session))
+	cached, err := a.cachedToolsForSession(ctx, session)
+	if err != nil {
+		return nil, err
+	}
+	return a.toolRunManager().Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: a.scope(ctx), Actor: a.actor(ctx), DisableBaseTools: isBackgroundSession(session)}, cached)
 }
 
 func isBackgroundSession(row *storage.Session) bool { return sessionpkg.IsBackground(row) }
