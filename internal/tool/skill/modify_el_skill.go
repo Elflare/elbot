@@ -10,9 +10,9 @@ import (
 	"strings"
 
 	"elbot/internal/elyph"
+	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/tool"
-	"elbot/internal/utils/fileops"
 )
 
 const (

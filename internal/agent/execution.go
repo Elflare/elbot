@@ -10,10 +10,10 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 	"elbot/internal/turn"
 )
 
@@ -43,7 +43,7 @@ func (a *Agent) executionContext(ctx context.Context) context.Context {
 	if binding, ok := session.BindingFromContext(foreground); ok {
 		ctx = session.WithBinding(ctx, binding)
 	}
-	ctx = tool.WithSandboxContext(ctx, tool.SandboxContext{})
+	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{})
 	ctx = context.WithValue(ctx, cronModelSelectionKey{}, config.ModelSelection{})
 	return ctx
 }
@@ -95,8 +95,11 @@ func (o executionTurnOutput) SendAssistant(ctx context.Context, text string) (de
 				if err != nil {
 					return delivery.Receipt{}, err
 				}
-				dir := decodeSessionMetadata(row.Metadata).WorkspaceDir
-				outputs, err := background.BuildReportOutputs("", parsed.ReportSegments, tool.SandboxContext{Root: dir, Dir: dir})
+				dir, err := o.agent.workspaceStore(row).GetWorkspaceDir(ctx)
+				if err != nil {
+					return delivery.Receipt{}, err
+				}
+				outputs, err := background.BuildReportOutputs("", parsed.ReportSegments, sandboxctx.SandboxContext{Root: dir, Dir: dir})
 				if err != nil {
 					return delivery.Receipt{}, err
 				}

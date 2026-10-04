@@ -10,12 +10,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+
 	"elbot/internal/agent"
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
 	"elbot/internal/delivery"
 	"elbot/internal/doctor"
 	"elbot/internal/elvena"
+	"elbot/internal/fileops"
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
 	hookcontrol "elbot/internal/hook/control"
@@ -29,8 +33,6 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/tool/runtimeinfo"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 )
 
 type defaultRuntimeFactory struct{}
@@ -82,8 +84,10 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	if foundation.Maintenance != nil {
 		foundation.Maintenance.Media = mediaCenter
 	}
+	files := fileops.NewService(nil)
 	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{
-		ConfigDir: filepath.Dir(cfg.ConfigPath),
+		FileRollback: files,
+		ConfigDir:    filepath.Dir(cfg.ConfigPath),
 		RuntimeInfo: runtimeinfo.Info{
 			ConfigPath:   cfg.ConfigPath,
 			SandboxRoot:  cfg.Sandbox.Root,

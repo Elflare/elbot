@@ -8,14 +8,14 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/tool"
+	sandboxctx "elbot/internal/sandbox"
 )
 
 func PathInstruction() string {
-	return tool.BackgroundPathInstruction()
+	return sandboxctx.BackgroundPathInstruction()
 }
 
-func BuildReportOutputs(report string, segments []llm.MessageSegment, sandbox tool.SandboxContext) ([]delivery.Output, error) {
+func BuildReportOutputs(report string, segments []llm.MessageSegment, sandbox sandboxctx.SandboxContext) ([]delivery.Output, error) {
 	outputs := []delivery.Output{}
 	if text := strings.TrimSpace(report); text != "" {
 		outputs = append(outputs, delivery.Text(text))
@@ -30,7 +30,7 @@ func BuildReportOutputs(report string, segments []llm.MessageSegment, sandbox to
 	return outputs, nil
 }
 
-func BuildReportSegmentOutput(segment llm.MessageSegment, sandbox tool.SandboxContext) (delivery.Output, error) {
+func BuildReportSegmentOutput(segment llm.MessageSegment, sandbox sandboxctx.SandboxContext) (delivery.Output, error) {
 	var kind delivery.Kind
 	switch segment.Type {
 	case llm.SegmentImage:
@@ -53,7 +53,7 @@ func BuildReportSegmentOutput(segment llm.MessageSegment, sandbox tool.SandboxCo
 		out.Source.URL = strings.TrimSpace(segment.URL)
 		return out, nil
 	}
-	path, err := tool.ResolveSandboxRelativePath(sandbox, segment.URL)
+	path, err := sandboxctx.ResolveSandboxRelativePath(sandbox, segment.URL)
 	if err != nil {
 		return delivery.Output{}, err
 	}

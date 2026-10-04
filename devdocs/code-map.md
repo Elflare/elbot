@@ -148,22 +148,22 @@ rg -n "Phase|Request|Cancel|pending|confirm|runtime status|sending" internal/req
 
 先看：
 
-- `internal/tool/`：Tool Runtime 核心类型、builder、discover、executor、sandbox/workspace helper。
+- `internal/tool/`：Tool Runtime 核心类型、builder、discover、executor 和工具可用性判断。
 - `internal/tool/media_runtime.go`：shell/Skill 的显式媒体准备、调用期引用、sandbox 导出缓存与受控结果导入；缓存复用刷新 ModTime，沿用既有 sandbox 清理。
 - `internal/tool/runtimeinfo/`：工具运行期常用信息入口，如配置路径、sandbox、文件发送配置、时间源和规则卡转发。
 - `internal/toolrun/`：工具调用中间层、工具视图、命名解析、风险确认，以及实际执行前的 Session 工具参数媒体引用。
 - `internal/tool/builtin/`：内置工具。
 - `internal/tool/builtin/file_tools_ast.go`：`read_file` 的 Go/Shell AST 名称搜索与结果渲染。
-- `internal/tool/file_rollback.go`：命令与工具共享的撤销服务、会话 context 和预检绑定；`internal/tool/builtin/file_rollback.go`：隐藏的 `rollback_file` 路径接口及风险确认。
+- `internal/fileops/service.go`、`edit_service.go`：命令与工具共享的编辑／撤销服务、调用绑定、确认预检与提交准入；`internal/tool/builtin/file_rollback.go` 保留工具协议及风险确认。
 - `internal/agent/tools.go`：Agent 工具运行态和命令依赖适配。
 - `internal/agent/toolrun_*.go`：Agent 到 ToolRun 的桥接。
 - `internal/agent/tool_cache.go`：Session 级工具 schema 缓存。
 - `internal/agent/tool_directive.go`：`@tool:` / `@skill:` 预处理。
 - `internal/agent/tool_tag_config.go`：工具 tag 配置。
 - `internal/security/`：工具权限和风险策略。
-- `internal/utils/fileops/{file,encoding,text}.go`：文件生命周期、编码与通用文本处理。
-- `internal/utils/fileops/{edit,match,diff}.go`：原子编辑解析、目标匹配与 unified diff。
-- `internal/utils/fileops/rollback.go`：有容量上限的内存备份、会话有效期、目标锁、revision/路径校验与原始字节恢复。
+- `internal/fileops/{file,encoding,text}.go`：文件生命周期、编码与通用文本处理。
+- `internal/fileops/{edit,match,diff}.go`：原子编辑解析、目标匹配与 unified diff。
+- `internal/fileops/rollback.go`：有容量上限的内存备份、会话有效期、目标锁、revision/路径校验与原始字节恢复。
 
 常用搜索：
 
@@ -297,9 +297,9 @@ rg -n "PlatformAdapter|SendChat|MessageSegment|Actor|Scope|remote|websocket|long
 - `internal/session/mode.go`：模式激活和 work 历史限制。
 - `internal/session/lifecycle.go`、`query.go`、`fork.go`、`expiration.go`：生命周期、查询、Fork 和闲置过期策略。
 - `internal/session/naming.go`：异步 Session 命名。
-- `internal/agent/session_metadata.go`：Session metadata 编解码。
-- `internal/agent/workspace.go`：Agent workspace 持久化适配。
-- `internal/tool/workspace.go`：工具 workspace context 和路径解析。
+- `internal/agent/session_metadata.go`：Agent 仍持有的工具／上下文等 metadata 编解码，不拥有 workspace 字段。
+- `internal/session/workspace.go`：workspace 持久化适配、原子字段更新及原绑定检查；`commit.go`：原绑定的短提交准入。
+- `internal/workspace/`：workspace 契约、context、metadata 状态与统一路径入口；`internal/sandbox/sandbox.go`：后台运行上下文及路径限制。
 
 常用搜索：
 

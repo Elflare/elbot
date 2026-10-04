@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -14,12 +15,12 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/turn"
-	"errors"
 )
 
 type cronModelSelectionKey struct{}
@@ -83,7 +84,7 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 	if sandboxSubdir == "" {
 		sandboxSubdir = "background"
 	}
-	ctx = tool.WithSandboxContext(ctx, tool.SandboxContext{Root: sandboxRoot, Dir: filepath.Join(sandboxRoot, filepath.FromSlash(sandboxSubdir)), Background: true, BackgroundKind: toolBackgroundKind(req.Kind)})
+	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Root: sandboxRoot, Dir: filepath.Join(sandboxRoot, filepath.FromSlash(sandboxSubdir)), Background: true, BackgroundKind: toolBackgroundKind(req.Kind)})
 
 	if req.ModelProvider != "" || req.Model != "" {
 		ctx = context.WithValue(ctx, cronModelSelectionKey{}, config.ModelSelection{Provider: req.ModelProvider, Model: req.Model})
@@ -97,16 +98,10 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 		}
 		return background.RunResult{}, err
 	}
-	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok {
-		latest, err := a.mutateSessionMetadata(ctx, bgSession.ID, func(m *sessionMetadata) {
-			if m.WorkspaceDir == "" {
-				m.WorkspaceDir = sandbox.Dir
-			}
-		})
-		if err != nil {
+	if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok {
+		if err := a.workspaceStore(bgSession).EnsureWorkspaceDir(ctx, sandbox.Dir); err != nil {
 			return background.RunResult{}, err
 		}
-		*bgSession = *latest
 	}
 	if len(req.CachedTools) > 0 {
 		a.rememberCachedTools(ctx, bgSession, req.CachedTools)
@@ -395,14 +390,14 @@ func backgroundToolListNames(names []string) []string {
 	return out
 }
 
-func toolBackgroundKind(kind background.Kind) tool.BackgroundKind {
+func toolBackgroundKind(kind background.Kind) sandboxctx.BackgroundKind {
 	switch kind {
 	case background.KindCron:
-		return tool.BackgroundKindCron
+		return sandboxctx.BackgroundKindCron
 	case background.KindElnis:
-		return tool.BackgroundKindElnis
+		return sandboxctx.BackgroundKindElnis
 	default:
-		return tool.BackgroundKind(strings.TrimSpace(string(kind)))
+		return sandboxctx.BackgroundKind(strings.TrimSpace(string(kind)))
 	}
 }
 

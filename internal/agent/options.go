@@ -8,6 +8,7 @@ import (
 	agentcommands "elbot/internal/agent/commands"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
+	"elbot/internal/fileops"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
@@ -42,7 +43,7 @@ type Options struct {
 	OutputManager         delivery.Manager
 	Logs                  LogManager
 	ToolRegistry          *tool.Registry
-	FileRollback          *tool.FileRollbackService
+	FileRollback          *fileops.Service
 	Skills                SkillLifecycle
 	ToolProvider          ToolSchemaProvider
 	SecurityPolicy        *security.Policy

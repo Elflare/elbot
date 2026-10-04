@@ -2,6 +2,12 @@ package agent
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/security"
@@ -9,11 +15,7 @@ import (
 	"elbot/internal/tool"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/tool/skill"
-	"errors"
-	"os"
-	"path/filepath"
-	"strings"
-	"testing"
+	"elbot/internal/workspace"
 )
 
 func TestDiscoveredToolsAreInjectedIntoTopLevelTools(t *testing.T) {
@@ -164,7 +166,7 @@ func TestWorkspaceToolDirectiveLoadsInstructionsOnce(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := (sessionWorkspaceStore{agent: a, session: sessionRecord}).SetWorkspaceDir(ctx, dir); err != nil {
+			if err := (a.workspaceStore(sessionRecord)).SetWorkspaceDir(ctx, dir); err != nil {
 				t.Fatal(err)
 			}
 
@@ -191,9 +193,12 @@ func TestWorkspaceToolDirectiveLoadsInstructionsOnce(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			metadata := decodeSessionMetadata(latestSession.Metadata)
-			if len(metadata.WorkspaceAgentNoticeDirs) != 1 || metadata.WorkspaceAgentNoticeDirs[0] != filepath.Clean(dir) {
-				t.Fatalf("notice dirs = %#v", metadata.WorkspaceAgentNoticeDirs)
+			workspaceState, err := workspace.DecodeState(latestSession.Metadata)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(workspaceState.AgentNoticeDirs) != 1 || workspaceState.AgentNoticeDirs[0] != filepath.Clean(dir) {
+				t.Fatalf("notice dirs = %#v", workspaceState.AgentNoticeDirs)
 			}
 		})
 	}

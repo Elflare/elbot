@@ -14,10 +14,13 @@ import (
 	"sync"
 	"time"
 
+	"mvdan.cc/sh/v3/syntax"
+
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/tool"
-	"mvdan.cc/sh/v3/syntax"
+	"elbot/internal/workspace"
 )
 
 const (
@@ -106,7 +109,7 @@ func (t ShellTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.R
 		return tool.RiskAssessment{}, err
 	}
 	assessment := classifyShellCommand(cmdText)
-	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.Background {
+	if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && sandbox.Background {
 		assessment = applyShellSandboxRisk(cmdText, assessment)
 	}
 	if assessment.Level == "" {
@@ -201,13 +204,13 @@ func decodeShellArgs(req tool.CallRequest) (shellArgs, string, error) {
 }
 
 func resolveShellWorkDir(ctx context.Context) (string, error) {
-	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && strings.TrimSpace(sandbox.Dir) != "" {
+	if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && strings.TrimSpace(sandbox.Dir) != "" {
 		if err := os.MkdirAll(sandbox.Dir, 0755); err != nil {
 			return "", fmt.Errorf("create shell sandbox: %w", err)
 		}
 		return filepath.Clean(sandbox.Dir), nil
 	}
-	return tool.CurrentWorkspaceDir(ctx)
+	return workspace.CurrentWorkspaceDir(ctx)
 }
 
 func rejectShellDirectoryChange(cmdText string) error {

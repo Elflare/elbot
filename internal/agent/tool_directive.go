@@ -10,6 +10,7 @@ import (
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
+	"elbot/internal/workspace"
 )
 
 type toolDirectiveResult struct {
@@ -34,7 +35,7 @@ func (a *Agent) applyToolDirectives(ctx context.Context, session *storage.Sessio
 		return result
 	}
 	if !isBackgroundSession(session) {
-		ctx = tool.WithWorkspaceStore(ctx, sessionWorkspaceStore{agent: a, session: session})
+		ctx = workspace.WithWorkspaceStore(ctx, a.workspaceStore(session))
 	}
 	matches := directive.ToolMatches(text)
 	if len(matches) == 0 {

@@ -15,7 +15,9 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/tool"
+	"elbot/internal/workspace"
 )
 
 type SendFileTool struct {
@@ -70,7 +72,7 @@ func (t SendFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 	if err != nil {
 		return tool.RiskAssessment{}, err
 	}
-	resolved, err := tool.ResolveWorkspacePath(ctx, localSource, tool.PathResolveOptions{})
+	resolved, err := workspace.ResolveWorkspacePath(ctx, localSource, workspace.PathResolveOptions{})
 	if err != nil {
 		return tool.RiskAssessment{}, err
 	}
@@ -89,12 +91,12 @@ func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	if source == "" {
 		return nil, fmt.Errorf("source is required")
 	}
-	sandbox, _ := tool.SandboxContextFromContext(ctx)
+	sandbox, _ := sandboxctx.SandboxContextFromContext(ctx)
 	out, warnings, label, err := t.buildOutput(ctx, args, source)
 	if err != nil {
 		return nil, err
 	}
-	if sandbox.BackgroundKind == tool.BackgroundKindCron {
+	if sandbox.BackgroundKind == sandboxctx.BackgroundKindCron {
 		if info, ok := chatinfo.FromContext(ctx); ok && strings.TrimSpace(info.Source.Platform) != "" {
 			out.Target = delivery.Target{Platform: info.Source.Platform, Superadmins: true}
 		}
@@ -134,7 +136,7 @@ func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source
 	if err != nil {
 		return delivery.Output{}, nil, "", err
 	}
-	resolved, err := tool.ResolveWorkspacePath(ctx, localSource, tool.PathResolveOptions{})
+	resolved, err := workspace.ResolveWorkspacePath(ctx, localSource, workspace.PathResolveOptions{})
 	if err != nil {
 		return delivery.Output{}, nil, "", err
 	}

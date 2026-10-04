@@ -4,15 +4,16 @@ import (
 	"context"
 
 	"elbot/internal/llm"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/tool"
 )
 
 func (a *Agent) confirmBackgroundSandboxShell(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, message *llm.LLMMessage) (bool, bool) {
-	sandbox, ok := tool.SandboxContextFromContext(ctx)
+	sandbox, ok := sandboxctx.SandboxContextFromContext(ctx)
 	if !ok || !sandbox.Background || call.Name != "shell" {
 		return false, false
 	}
-	if sandbox.BackgroundKind != tool.BackgroundKindCron && sandbox.BackgroundKind != tool.BackgroundKindElnis {
+	if sandbox.BackgroundKind != sandboxctx.BackgroundKindCron && sandbox.BackgroundKind != sandboxctx.BackgroundKindElnis {
 		return false, false
 	}
 	kind := string(sandbox.BackgroundKind)

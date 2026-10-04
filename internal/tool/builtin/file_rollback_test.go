@@ -12,14 +12,16 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"elbot/internal/fileops"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/tool"
-	"elbot/internal/utils/fileops"
+	workspacepath "elbot/internal/workspace"
 )
 
 type rollbackFixture struct {
 	binding   *rollbackTestBinding
-	service   *tool.FileRollbackService
+	service   *fileops.Service
 	edit      EditFileTool
 	rollback  RollbackFileTool
 	workspace *testWorkspaceStore
@@ -29,10 +31,10 @@ type rollbackFixture struct {
 func newRollbackFixture(t *testing.T) *rollbackFixture {
 	t.Helper()
 	guard := NewFileGuard()
-	service := tool.NewFileRollbackService(guard.CheckWrite)
+	service := fileops.NewService(guard.CheckWrite)
 	binding := newRollbackTestBinding()
 	workspace := &testWorkspaceStore{dir: t.TempDir()}
-	base := tool.WithWorkspaceStore(security.WithActor(context.Background(), security.Actor{ID: "admin", Role: security.RoleSuperadmin}), workspace)
+	base := workspacepath.WithWorkspaceStore(security.WithActor(context.Background(), security.Actor{ID: "admin", Role: security.RoleSuperadmin}), workspace)
 	edit := NewEditFileTool(guard)
 	edit.Rollback = service
 	return &rollbackFixture{binding: binding, service: service, edit: edit, rollback: NewRollbackFileTool(service), workspace: workspace, base: base}
@@ -139,7 +141,7 @@ func TestRollbackToolPermissionsAndSessionExpiry(t *testing.T) {
 	if _, err := f.rollback.Call(userCtx, rollbackRequest("file")); err == nil || !strings.Contains(err.Error(), "superadmin") {
 		t.Fatalf("user: %v", err)
 	}
-	background := tool.WithSandboxContext(ctx, tool.SandboxContext{Background: true, Dir: f.workspace.dir})
+	background := sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Background: true, Dir: f.workspace.dir})
 	if _, err := f.rollback.Call(background, rollbackRequest("file")); err == nil {
 		t.Fatal("background rollback allowed")
 	}

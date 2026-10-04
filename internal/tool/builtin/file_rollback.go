@@ -5,19 +5,20 @@ import (
 	"fmt"
 	"strings"
 
+	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/tool"
 )
 
 type RollbackFileTool struct {
-	Service *tool.FileRollbackService
+	Service *fileops.Service
 }
 
 type rollbackFileArgs struct {
 	Path string `json:"path"`
 }
 
-func NewRollbackFileTool(service *tool.FileRollbackService) RollbackFileTool {
+func NewRollbackFileTool(service *fileops.Service) RollbackFileTool {
 	return RollbackFileTool{Service: service}
 }
 

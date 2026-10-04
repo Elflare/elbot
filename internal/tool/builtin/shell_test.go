@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"elbot/internal/processenv"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/tool"
+	workspacepath "elbot/internal/workspace"
 )
 
 func TestShellToolMissingCmdHintsExpectedArgument(t *testing.T) {
@@ -188,7 +190,7 @@ func TestShellToolUsesWorkspaceDir(t *testing.T) {
 	if err := os.MkdirAll(workspace, 0755); err != nil {
 		t.Fatal(err)
 	}
-	ctx := tool.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
+	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	shell := NewShellTool()
 	args, _ := json.Marshal(map[string]any{"cmd": "echo workspace > workspace.txt"})
 	if _, err := shell.Call(ctx, tool.CallRequest{Arguments: args}); err != nil {
@@ -222,7 +224,7 @@ func TestShellToolUsesSandboxDir(t *testing.T) {
 	sandboxDir := filepath.Join(t.TempDir(), "sandbox", "cron")
 	shell := NewShellTool()
 	args, _ := json.Marshal(map[string]any{"cmd": "pwd > cwd.txt"})
-	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Dir: sandboxDir, Background: true, BackgroundKind: tool.BackgroundKindCron})
+	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Dir: sandboxDir, Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
 	if _, err := shell.Call(ctx, tool.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +240,7 @@ func TestShellToolUsesSandboxDir(t *testing.T) {
 func TestShellToolCancelReturnsQuickly(t *testing.T) {
 	workspace := t.TempDir()
 	shell := NewShellTool()
-	ctx := tool.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
+	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	ctx, cancel := context.WithCancel(ctx)
 	args, _ := json.Marshal(map[string]any{"cmd": "echo started > started.txt; sleep 5", "timeout_ms": 10000})
 	done := make(chan error, 1)

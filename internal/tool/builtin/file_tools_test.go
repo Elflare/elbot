@@ -10,8 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/fileops"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/tool"
-	"elbot/internal/utils/fileops"
+	workspacepath "elbot/internal/workspace"
 )
 
 func TestReadFileToolReturnsLineNumbersAndEndRange(t *testing.T) {
@@ -913,7 +915,7 @@ func TestEditFileToolCronRiskAndSandbox(t *testing.T) {
 	if err := os.WriteFile(path, original, 0644); err != nil {
 		t.Fatal(err)
 	}
-	ctx := tool.WithSandboxContext(context.Background(), tool.SandboxContext{Dir: sandbox, Background: true, BackgroundKind: tool.BackgroundKindCron})
+	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Dir: sandbox, Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
 	args, _ := json.Marshal(map[string]any{
 		"path":              "sample.txt",
 		"expected_revision": fileops.ContentRevision(original),
@@ -955,7 +957,7 @@ func TestReadFileToolSensitivePathRisk(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	ctx := tool.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
+	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	read := NewReadFileTool()
 	for _, tt := range []struct {
 		path string
@@ -1455,7 +1457,7 @@ func TestReadFileToolUsesWorkspaceRelativePath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "sample.txt"), []byte("workspace\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	ctx := tool.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
+	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	args, _ := json.Marshal(map[string]any{"path": "sample.txt"})
 	result, err := NewReadFileTool().Call(ctx, tool.CallRequest{Arguments: args})
 	if err != nil {
@@ -1472,7 +1474,7 @@ func TestEditFileToolUsesWorkspaceRelativePath(t *testing.T) {
 	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	ctx := tool.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
+	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	args, _ := json.Marshal(map[string]any{
 		"path": "sample.txt",
 		"edits": []map[string]any{{

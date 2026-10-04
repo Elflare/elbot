@@ -5,17 +5,22 @@ import (
 	"errors"
 	"fmt"
 
+	"elbot/internal/fileops"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 	"elbot/internal/turn"
-	"elbot/internal/utils/fileops"
+	"elbot/internal/workspace"
 )
 
-func (a *Agent) fileRollbackContext(ctx context.Context, row *storage.Session) context.Context {
-	if row == nil || isBackgroundSession(row) || a.toolRuntime.fileRollback == nil {
+func (a *Agent) fileRollbackContext(ctx context.Context, row *storage.Session, idleOnly ...bool) context.Context {
+	if row == nil || a.toolRuntime.fileRollback == nil {
 		return ctx
+	}
+	if isBackgroundSession(row) {
+		return a.toolRuntime.fileRollback.WithBinding(ctx, nil, func(ctx context.Context) (context.Context, func(), error) {
+			return a.sessions.EnterSessions(ctx, row.ID)
+		})
 	}
 	binding, ok := session.BindingFromContext(ctx)
 	if !ok {
@@ -24,7 +29,17 @@ func (a *Agent) fileRollbackContext(ctx context.Context, row *storage.Session) c
 			binding = current
 		}
 	}
-	return a.toolRuntime.fileRollback.WithBinding(ctx, binding)
+	return a.toolRuntime.fileRollback.WithBinding(ctx, binding, func(ctx context.Context) (context.Context, func(), error) {
+		locked, release, err := a.sessions.EnterBinding(ctx, binding)
+		if err != nil {
+			return ctx, nil, err
+		}
+		if len(idleOnly) > 0 && idleOnly[0] && (a.turns.Snapshot(row.ID).Phase != turn.PhaseIdle || a.compactActive(row.ID)) {
+			release()
+			return ctx, nil, fmt.Errorf("当前会话仍在执行任务或压缩；请等待完成，或先 /stop")
+		}
+		return locked, release, nil
+	})
 }
 
 func (a *Agent) ListFileRollbacks(ctx context.Context) ([]fileops.RollbackInfo, error) {
@@ -62,8 +77,8 @@ func (a *Agent) RollbackFile(ctx context.Context, id uint64) (fileops.RollbackRe
 	if a.turns.Snapshot(session.ID).Phase != turn.PhaseIdle || a.compactActive(session.ID) {
 		return fileops.RollbackResult{}, fmt.Errorf("当前会话仍在执行任务或压缩；请等待完成，或先 /stop")
 	}
-	ctx = a.fileRollbackContext(security.WithActor(ctx, a.actor(ctx)), session)
-	ctx = tool.WithWorkspaceStore(ctx, sessionWorkspaceStore{agent: a, session: session})
+	ctx = a.fileRollbackContext(security.WithActor(ctx, a.actor(ctx)), session, true)
+	ctx = workspace.WithWorkspaceStore(ctx, a.workspaceStore(session))
 	records, err := a.toolRuntime.fileRollback.List(ctx)
 	if err != nil {
 		return fileops.RollbackResult{}, err

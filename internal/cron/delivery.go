@@ -11,8 +11,8 @@ import (
 	"elbot/internal/background"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 )
 
 type resolvedCronTarget struct {
@@ -270,8 +270,8 @@ func reportSegmentFallbackText(segment llm.MessageSegment) string {
 	return fmt.Sprintf("路径 %s 附件发送失败", value)
 }
 
-func (s *Service) cronSandbox(jobName string) tool.SandboxContext {
-	return tool.SandboxContext{Dir: filepath.Join(s.sandboxRoot, filepath.FromSlash(cronSandboxSubdir(jobName))), Background: true, BackgroundKind: tool.BackgroundKindCron}
+func (s *Service) cronSandbox(jobName string) sandboxctx.SandboxContext {
+	return sandboxctx.SandboxContext{Dir: filepath.Join(s.sandboxRoot, filepath.FromSlash(cronSandboxSubdir(jobName))), Background: true, BackgroundKind: sandboxctx.BackgroundKindCron}
 }
 
 func encodeDeliveryState(state CronDeliveryState) (string, error) {

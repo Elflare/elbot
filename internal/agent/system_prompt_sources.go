@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"elbot/internal/memory/resident"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 )
 
 type conversationMetaSystemPromptSource struct{}
@@ -102,7 +102,7 @@ func (s toolNamesSystemPromptSource) Parts(ctx context.Context, req SystemPrompt
 	if s.Tools == nil || req.Session == nil {
 		return nil, nil
 	}
-	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.Background {
+	if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && sandbox.Background {
 		return nil, nil
 	}
 	names, err := s.Tools.ToolNames(ctx, req.Mode, req.Session, req.Scope)

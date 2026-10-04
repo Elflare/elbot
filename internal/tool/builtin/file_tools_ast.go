@@ -11,9 +11,10 @@ import (
 	"sort"
 	"strings"
 
-	"elbot/internal/tool"
-	"elbot/internal/utils/fileops"
 	"mvdan.cc/sh/v3/syntax"
+
+	"elbot/internal/fileops"
+	"elbot/internal/tool"
 )
 
 const (

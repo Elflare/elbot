@@ -11,10 +11,11 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool"
+	"elbot/internal/workspace"
 )
 
 func TestShellMediaInputsAndCleanup(t *testing.T) {
-	ctx := tool.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: t.TempDir()})
+	ctx := workspace.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: t.TempDir()})
 	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatal(err)

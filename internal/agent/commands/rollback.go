@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"elbot/internal/command"
+	"elbot/internal/fileops"
 	"elbot/internal/security"
-	"elbot/internal/utils/fileops"
 )
 
 type FileRollbackService interface {

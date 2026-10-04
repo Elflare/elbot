@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"elbot/internal/config"
+	"elbot/internal/fileops"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 )
@@ -17,7 +18,7 @@ type toolRuntimeState struct {
 	provider        ToolSchemaProvider
 	manager         *toolrun.Manager
 	registry        *tool.Registry
-	fileRollback    *tool.FileRollbackService
+	fileRollback    *fileops.Service
 	skills          SkillLifecycle
 	config          config.ToolsConfig
 	toolTags        *toolTagConfigSource

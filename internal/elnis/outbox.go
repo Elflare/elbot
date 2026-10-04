@@ -8,8 +8,8 @@ import (
 
 	"elbot/internal/background"
 	"elbot/internal/delivery"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 )
 
 func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resultJSON, sessionID, messageID string, result background.JSONResult) (bool, error) {
@@ -36,10 +36,10 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 		}
 		resultJSON = string(encoded)
 	}
-	outputs, err := background.BuildReportOutputs(result.Report, result.ReportSegments, tool.SandboxContext{
+	outputs, err := background.BuildReportOutputs(result.Report, result.ReportSegments, sandboxctx.SandboxContext{
 		Dir:            filepath.Join(s.sandboxRoot, filepath.FromSlash(elnisSandboxSubdir(event.Request.Elwisp.Name))),
 		Background:     true,
-		BackgroundKind: tool.BackgroundKindElnis,
+		BackgroundKind: sandboxctx.BackgroundKindElnis,
 	})
 	if err != nil {
 		return false, err

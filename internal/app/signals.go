@@ -5,10 +5,10 @@ import (
 	"errors"
 	"log/slog"
 
+	"elbot/internal/fileops"
 	"elbot/internal/platform"
 	"elbot/internal/session"
 	"elbot/internal/signal"
-	"elbot/internal/utils/fileops"
 )
 
 // signalBindings is assembled before platforms run and closed after they stop.
