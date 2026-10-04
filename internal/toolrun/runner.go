@@ -69,6 +69,21 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 	var confirmationExtra string
 	batchPreviewSent := sendBatchToolPreview(ctx, deps, req)
 	for _, original := range req.Calls {
+		if ctx.Err() != nil {
+			return RunResult{Messages: messages, PreparedCalls: preparedCalls, Transcript: transcript, Stopped: true}
+		}
+		if refresh, ok := deps.(interface {
+			RefreshExecution(context.Context, *storage.Session) (context.Context, error)
+		}); ok {
+			updated, err := refresh.RefreshExecution(ctx, req.Session)
+			if err != nil {
+				return RunResult{Messages: messages, PreparedCalls: preparedCalls, Transcript: transcript, Stopped: true}
+			}
+			ctx = updated
+			if actor, ok := security.ActorFromContext(ctx); ok {
+				req.Actor = actor
+			}
+		}
 		startedAt := storage.Now()
 		call, err := deps.PrepareToolCall(ctx, req.Session, original)
 		if err != nil {

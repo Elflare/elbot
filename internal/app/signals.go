@@ -6,7 +6,9 @@ import (
 	"log/slog"
 
 	"elbot/internal/platform"
+	"elbot/internal/session"
 	"elbot/internal/signal"
+	"elbot/internal/utils/fileops"
 )
 
 // signalBindings is assembled before platforms run and closed after they stop.
@@ -14,6 +16,28 @@ import (
 type signalBindings struct {
 	connections []*signal.Connection
 	queues      []*signal.Queue
+}
+
+func (b *signalBindings) connectSession(sessions *session.Service, rollback *fileops.RollbackManager, logger *slog.Logger) error {
+	if rollback == nil {
+		return nil
+	}
+	queue, err := signal.NewQueue(signal.QueueOptions{Name: "session.rollback_cleanup", Logger: logger})
+	if err != nil {
+		return err
+	}
+	b.queues = append(b.queues, queue)
+	connection, err := sessions.BindingChanged().Connect(func(ctx context.Context, event session.BindingChangedEvent) error {
+		if event.Old != nil {
+			rollback.Forget(event.Old)
+		}
+		return nil
+	}, signal.ConnectOptions{Executor: queue, Lifetime: signal.FollowExecutor, Shutdown: signal.CancelPending})
+	if err != nil {
+		return err
+	}
+	b.connections = append(b.connections, connection)
+	return nil
 }
 
 func (b *signalBindings) connectPlatforms(agt platformHookAgent, adapters []platformRuntime, logger *slog.Logger) error {

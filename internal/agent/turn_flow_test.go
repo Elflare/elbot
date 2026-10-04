@@ -10,6 +10,7 @@ import (
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/security"
 	"elbot/internal/session"
+	"elbot/internal/storage"
 	"elbot/internal/turn"
 	"regexp"
 	"strings"
@@ -319,7 +320,7 @@ func TestStopAllowsSessionSwitchAfterActiveTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	current.UpdatedAt = time.Now().Add(-11 * time.Minute)
-	if err := a.store.Sessions().Update(ctx, current); err != nil {
+	if _, err := a.store.Sessions().Mutate(ctx, current.ID, func(latest *storage.Session) error { *latest = *current; return nil }); err != nil {
 		t.Fatalf("age current session: %v", err)
 	}
 	if !a.turns.StartLLM(current.ID, "input") {

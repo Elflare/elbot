@@ -425,3 +425,44 @@ func TestModelSwitchReevaluatesCompactWindow(t *testing.T) {
 		t.Fatal("large model reused the old model compact decision")
 	}
 }
+
+func TestCancelledCompactLateResultCannotSwitchNewCurrent(t *testing.T) {
+	ctx := context.Background()
+	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{}), ignoreCancellation: true}
+	f := &fakeLLM{replies: []string{"late summary"}, chatBlocks: []fakeLLMBlock{block}}
+	a := New(&fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t))
+	old, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.store.Messages().Append(ctx, &storage.Message{SessionID: old.ID, Role: storage.RoleUser, Content: "history"}); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { _, err := a.CompactCurrent(ctx, "manual"); done <- err }()
+	select {
+	case <-block.started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("compact did not start")
+	}
+	if err := a.HandleMessage(ctx, "/stop"); err != nil {
+		t.Fatal(err)
+	}
+	next, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "new current"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	close(block.release)
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("compact error: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("compact did not stop")
+	}
+	current, err := a.sessions.Current(ctx, a.scope(ctx))
+	if err != nil || current.ID != next.ID {
+		t.Fatalf("current: %#v %v", current, err)
+	}
+}

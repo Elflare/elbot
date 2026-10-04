@@ -3,24 +3,27 @@ package session
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 	"unicode/utf8"
 
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
 
 type Service struct {
-	store            storage.Store
-	mu               sync.Mutex
-	current          map[string]string
-	onCurrentChanged func(scopeKey, sessionID string)
-	namingConfig     NamingConfig
-	titleGen         TitleGenerator
-	notifier         NamingNotifier
-	namingStates     map[string]namingState
-	defaultMode      string
+	store                storage.Store
+	mu                   sync.Mutex
+	current              map[string]*Binding
+	gates                map[string]*scopeGate
+	changed              *signal.Signal[BindingChangedEvent]
+	activeSessionIDs     func() []string
+	foregroundActivation func(context.Context, *storage.Session, *Binding)
+	namingConfig         NamingConfig
+	titleGen             TitleGenerator
+	notifier             NamingNotifier
+	namingStates         map[string]namingState
+	defaultMode          string
 }
 
 func NewService(store storage.Store) *Service {
@@ -46,7 +49,9 @@ func NewServiceWithConfig(store storage.Store, cfg Config, titleGen TitleGenerat
 	}
 	return &Service{
 		store:        store,
-		current:      map[string]string{},
+		current:      map[string]*Binding{},
+		gates:        map[string]*scopeGate{},
+		changed:      signal.New[BindingChangedEvent]("session.binding_changed", nil),
 		namingConfig: cfg.NamingConfig,
 		titleGen:     titleGen,
 		notifier:     notifier,
@@ -56,6 +61,11 @@ func NewServiceWithConfig(store storage.Store, cfg Config, titleGen TitleGenerat
 }
 
 func (s *Service) GetOrCreateCurrent(ctx context.Context, scope Scope, firstMessage string) (*storage.Session, error) {
+	ctx, release, err := s.EnterActivation(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	current, err := s.Current(ctx, scope)
 	if err == nil {
 		return current, nil
@@ -68,6 +78,14 @@ func (s *Service) GetOrCreateCurrent(ctx context.Context, scope Scope, firstMess
 }
 
 func (s *Service) Create(ctx context.Context, scope Scope, req CreateRequest) (*storage.Session, error) {
+	ctx, release, err := s.EnterActivation(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	if err := s.canReplaceCurrent(scope, ""); err != nil {
+		return nil, err
+	}
 	if req.Mode == "" {
 		req.Mode = s.defaultMode
 	}
@@ -78,6 +96,7 @@ func (s *Service) Create(ctx context.Context, scope Scope, req CreateRequest) (*
 		req.Title = "New session"
 	}
 	session := &storage.Session{
+		ID:              req.ID,
 		OwnerID:         scope.ActorID,
 		Platform:        scope.Platform,
 		PlatformScopeID: scope.PlatformScopeID,
@@ -89,7 +108,7 @@ func (s *Service) Create(ctx context.Context, scope Scope, req CreateRequest) (*
 	if err := s.store.Sessions().Create(ctx, session); err != nil {
 		return nil, err
 	}
-	s.setCurrent(scope, session.ID)
+	s.setCurrent(ctx, scope, session.ID, ChangeCreate)
 	return session, nil
 }
 
@@ -101,89 +120,30 @@ func (s *Service) DefaultMode() string {
 }
 
 func (s *Service) Resume(ctx context.Context, scope Scope, sessionID string) (*storage.Session, error) {
-	session, err := s.store.Sessions().Get(ctx, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	if !s.canAccess(scope, session) {
-		return nil, fmt.Errorf("session %s is not in current platform scope", sessionID)
-	}
-	session.UpdatedAt = storage.Now()
-	if err := s.store.Sessions().Update(ctx, session); err != nil {
-		return nil, err
-	}
-	s.setCurrent(scope, session.ID)
-	return session, nil
+	return s.activateExisting(ctx, scope, sessionID, false)
 }
 
 func (s *Service) Current(ctx context.Context, scope Scope) (*storage.Session, error) {
-	s.mu.Lock()
-	id := s.current[s.scopeKey(scope)]
-	s.mu.Unlock()
-	if id == "" {
-		return nil, storage.ErrNotFound
-	}
-	current, err := s.store.Sessions().Get(ctx, id)
-	if errors.Is(err, storage.ErrNotFound) {
-		s.clearCurrentIf(scope, id)
-	}
-	return current, err
+	row, _, err := s.CurrentBound(ctx, scope)
+	return row, err
 }
 
 func (s *Service) Touch(ctx context.Context, session *storage.Session) error {
-	latest, err := s.store.Sessions().Get(ctx, session.ID)
+	_, err := s.store.Sessions().Mutate(ctx, session.ID, func(row *storage.Session) error { row.UpdatedAt = storage.Now(); return nil })
+	return err
+}
+
+func (s *Service) ResetCurrent(ctx context.Context, scope Scope) error {
+	ctx, release, err := s.EnterActivation(ctx, scope)
 	if err != nil {
 		return err
 	}
-	latest.UpdatedAt = storage.Now()
-	return s.store.Sessions().Update(ctx, latest)
-}
-
-func (s *Service) ResetCurrent(scope Scope) {
-	s.clearCurrentIf(scope, "")
-}
-
-// SetCurrentObserver installs an in-memory lifecycle observer and replays current
-// activations. Calls are ordered under the session mutex; the observer must not
-// reenter Service or perform file/database I/O.
-func (s *Service) SetCurrentObserver(observer func(scopeKey, sessionID string)) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.onCurrentChanged = observer
-	if observer != nil {
-		for key, id := range s.current {
-			observer(key, id)
-		}
+	defer release()
+	if err := s.canReplaceCurrent(scope, ""); err != nil {
+		return err
 	}
-}
-
-func (s *Service) updateCurrentLocked(key, sessionID string) {
-	if s.current[key] == sessionID {
-		return
-	}
-	if sessionID == "" {
-		delete(s.current, key)
-	} else {
-		s.current[key] = sessionID
-	}
-	if s.onCurrentChanged != nil {
-		s.onCurrentChanged(key, sessionID)
-	}
-}
-
-func (s *Service) setCurrent(scope Scope, sessionID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.updateCurrentLocked(s.scopeKey(scope), sessionID)
-}
-
-func (s *Service) clearCurrentIf(scope Scope, sessionID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	key := s.scopeKey(scope)
-	if sessionID == "" || s.current[key] == sessionID {
-		s.updateCurrentLocked(key, "")
-	}
+	s.setCurrent(ctx, scope, "", ChangeReset)
+	return nil
 }
 
 func (s *Service) scopeKey(scope Scope) string {
@@ -197,16 +157,10 @@ func (s *Service) canAccess(scope Scope, session *storage.Session) bool {
 	if session.OwnerID != scope.ActorID || session.Platform != scope.Platform {
 		return false
 	}
-	return session.PlatformScopeID == scope.PlatformScopeID || isBackgroundSession(session)
+	return session.PlatformScopeID == scope.PlatformScopeID || (scope.acceptsBackground() && IsBackground(session))
 }
 
-func isBackgroundSession(session *storage.Session) bool {
-	if session == nil {
-		return false
-	}
-	scopeID := strings.TrimSpace(session.PlatformScopeID)
-	return strings.HasPrefix(scopeID, "cron:") || strings.HasPrefix(scopeID, "elnis:")
-}
+func isBackgroundSession(row *storage.Session) bool { return IsBackground(row) }
 
 func forkTitle(title string) string {
 	title = strings.TrimSpace(title)

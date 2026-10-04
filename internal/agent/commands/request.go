@@ -72,6 +72,15 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 			return &command.Result{Content: fmt.Sprintf("request not found: %s", arg)}, nil
 		}
 		stopped, _ := deps.Requests.Get(id)
+		locked, release, err := deps.Sessions.EnterSessions(ctx, stopped.SessionID)
+		if err != nil {
+			return nil, err
+		}
+		defer release()
+		ctx = locked
+		if _, exists := deps.Requests.Get(id); !exists {
+			return &command.Result{Content: "request already stopped"}, nil
+		}
 		if stopped.Kind == request.KindTurn {
 			count := deps.Requests.CancelSession(stopped.SessionID)
 			deps.Turns.StopSession(stopped.SessionID)
@@ -83,6 +92,12 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 		return &command.Result{Content: "stopped 1 request"}, nil
 	}
 
+	locked, release, err := deps.Sessions.EnterActivation(ctx, deps.Scope(ctx))
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	ctx = locked
 	current, err := deps.Sessions.Current(ctx, deps.Scope(ctx))
 	if err != nil {
 		return nil, err
@@ -107,8 +122,28 @@ func NewStopAll(deps Deps) command.Handler {
 		Usage:       "/stopall",
 		Description: "Stop all active requests in this process.",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
-		count := deps.Requests.CancelAll()
-		deps.Turns.StopAll()
+		ids := []string{}
+		seen := map[string]bool{}
+		for _, active := range deps.Turns.SnapshotAll() {
+			seen[active.SessionID] = true
+		}
+		requests := deps.Requests.List()
+		for _, active := range requests {
+			seen[active.SessionID] = true
+		}
+		for id := range seen {
+			ids = append(ids, id)
+		}
+		_, release, err := deps.Sessions.EnterSessions(ctx, ids...)
+		if err != nil {
+			return nil, err
+		}
+		defer release()
+		count := 0
+		for _, id := range ids {
+			count += deps.Requests.CancelSession(id)
+			deps.Turns.StopSession(id)
+		}
 		return &command.Result{Content: fmt.Sprintf("stopped %d request%s", count, plural(count))}, nil
 	})
 }

@@ -2,16 +2,18 @@ package session
 
 import (
 	"context"
+	"elbot/internal/chatinfo"
 	"time"
 
 	"elbot/internal/storage"
 )
 
 type Scope struct {
-	ActorID         string
-	Platform        string
-	PlatformScopeID string
-	IsCLI           bool
+	ConversationKind chatinfo.ConversationKind
+	ActorID          string
+	Platform         string
+	PlatformScopeID  string
+	IsCLI            bool
 }
 
 // Key identifies the actor/platform/scope that owns a current session.
@@ -20,6 +22,8 @@ func (s Scope) Key() string {
 }
 
 type CreateRequest struct {
+	// ID may be preallocated for an execution handoff holding both session gates.
+	ID       string
 	Title    string
 	Mode     string
 	Metadata string

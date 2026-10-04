@@ -302,18 +302,18 @@ type PlatformMessageMap struct {
 }
 
 type ListSessionsRequest struct {
-	ActorID                 string
-	Platform                string
-	PlatformScopeID         string
-	IncludeAllPlatforms     bool
-	IncludeSamePlatformCron bool
-	IncludeArchived         bool
-	ArchivedOnly            bool
-	ExcludeSessionID        string
-	OrderByUpdatedAt        bool
-	Query                   string
-	Limit                   int
-	Offset                  int
+	ActorID                       string
+	Platform                      string
+	PlatformScopeID               string
+	IncludeAllPlatforms           bool
+	IncludeSamePlatformBackground bool
+	IncludeArchived               bool
+	ArchivedOnly                  bool
+	ExcludeSessionID              string
+	OrderByUpdatedAt              bool
+	Query                         string
+	Limit                         int
+	Offset                        int
 }
 
 type SessionSummary struct {
@@ -349,10 +349,11 @@ type Store interface {
 type SessionRepository interface {
 	Create(ctx context.Context, session *Session) error
 	Get(ctx context.Context, id string) (*Session, error)
-	Update(ctx context.Context, session *Session) error
+	Mutate(ctx context.Context, id string, update func(*Session) error) (*Session, error)
 	List(ctx context.Context, req ListSessionsRequest) ([]SessionSummary, error)
 	Delete(ctx context.Context, id string) error
-	DeleteExpired(ctx context.Context, cutoff time.Time) (int, error)
+	ListExpiredIDs(ctx context.Context, cutoff time.Time) ([]string, error)
+	DeleteIfExpired(ctx context.Context, id string, cutoff time.Time) (bool, error)
 }
 
 type MessageRepository interface {

@@ -137,7 +137,7 @@ func TestSessionRepositoryCRUDAndScope(t *testing.T) {
 	}
 
 	got.Title = "renamed"
-	if err := store.Sessions().Update(ctx, got); err != nil {
+	if _, err := store.Sessions().Mutate(ctx, got.ID, func(latest *storage.Session) error { *latest = *got; return nil }); err != nil {
 		t.Fatalf("update s1: %v", err)
 	}
 	got, err = store.Sessions().Get(ctx, s1.ID)
@@ -218,7 +218,20 @@ func TestSessionRepositoryArchivePinAndCleanup(t *testing.T) {
 		t.Fatalf("archives = %#v", archives)
 	}
 
-	deleted, err := store.Sessions().DeleteExpired(ctx, storage.Now().AddDate(0, 0, -30))
+	ids, err := store.Sessions().ListExpiredIDs(ctx, storage.Now().AddDate(0, 0, -30))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleted := 0
+	for _, id := range ids {
+		ok, deleteErr := store.Sessions().DeleteIfExpired(ctx, id, storage.Now().AddDate(0, 0, -30))
+		if deleteErr != nil {
+			t.Fatal(deleteErr)
+		}
+		if ok {
+			deleted++
+		}
+	}
 	if err != nil {
 		t.Fatalf("delete expired: %v", err)
 	}

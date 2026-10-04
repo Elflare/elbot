@@ -40,6 +40,9 @@ type RunRequest struct {
 }
 
 type RunResult struct {
+	RunID     string
+	TakenOver bool
+	Outcome   string
 	SessionID string
 	MessageID string
 	Text      string

@@ -19,8 +19,9 @@ import (
 )
 
 type agentToolRunDeps struct {
-	agent  *Agent
-	output turnOutput
+	agent   *Agent
+	output  turnOutput
+	attempt string
 }
 
 func (d agentToolRunDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error) {
@@ -98,7 +99,7 @@ func (d agentToolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string,
 	timeout := d.agent.confirmationWaitTimeout(ctx)
 	d.agent.logRiskConfirmationWait(sessionID, call, assessment.Level, assessment.Reasons)
 	d.agent.sendChat(ctx, fmt.Sprintf("高风险工具调用等待确认\n工具：%s\n风险：%s\n参数：%s%s\n%s。", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout)))
-	resp, ok := d.agent.turns.AwaitRiskConfirmationContext(ctx, sessionID, turn.RiskConfirmation{ID: call.ID, ToolName: call.Name, Arguments: fullArgs, Risk: string(assessment.Level), Summary: fmt.Sprintf("%s %s", call.Name, previewArgs), Detail: detail}, timeout)
+	resp, ok := d.agent.turns.AwaitRiskConfirmationContext(ctx, sessionID, turn.RiskConfirmation{ID: call.ID, ToolName: call.Name, Arguments: fullArgs, Risk: string(assessment.Level), Summary: fmt.Sprintf("%s %s", call.Name, previewArgs), Detail: detail}, timeout, turn.AttemptFromContext(ctx))
 	if resp.Expired {
 		d.agent.logRiskConfirmationResult(sessionID, call, assessment.Level, "expire", resp.Extra, "confirmation wait expired")
 		d.agent.sendChat(context.WithoutCancel(ctx), "高风险工具确认已过期，当前处理已停止。")
@@ -165,7 +166,7 @@ func (d agentToolRunDeps) RememberDiscoveryResult(ctx context.Context, session *
 }
 
 func (d agentToolRunDeps) AddToolUse(sessionID, toolName string) {
-	d.agent.turns.AddToolUse(sessionID, toolName)
+	d.agent.turns.AddToolUse(sessionID, toolName, d.attempt)
 }
 
 func (d agentToolRunDeps) ToolResultMessage(sessionID string, message llm.LLMMessage) storage.Message {
@@ -193,7 +194,7 @@ func (a *Agent) cachedToolsForSession(session *storage.Session) []toolrun.Cached
 		return nil
 	}
 	metadata := decodeSessionMetadata(session.Metadata)
-	backgroundSession := strings.TrimSpace(metadata.BackgroundKind) != ""
+	backgroundSession := isBackgroundSession(session)
 	cached := []toolrun.CachedTool{}
 	for _, item := range metadata.ToolCache {
 		if backgroundSession && item.Name == "discover_tool" {
@@ -214,4 +215,8 @@ func (a *Agent) cachedToolsForSession(session *storage.Session) []toolrun.Cached
 		}
 	}
 	return toolrun.NormalizeCachedTools(cached)
+}
+
+func (d agentToolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {
+	return d.agent.refreshExecution(ctx, row)
 }

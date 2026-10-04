@@ -6,17 +6,25 @@ import (
 	"fmt"
 
 	"elbot/internal/security"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/turn"
 	"elbot/internal/utils/fileops"
 )
 
-func (a *Agent) fileRollbackContext(ctx context.Context, session *storage.Session) context.Context {
-	if session == nil || isBackgroundSession(session) || a.toolRuntime.fileRollback == nil {
+func (a *Agent) fileRollbackContext(ctx context.Context, row *storage.Session) context.Context {
+	if row == nil || isBackgroundSession(row) || a.toolRuntime.fileRollback == nil {
 		return ctx
 	}
-	return a.toolRuntime.fileRollback.WithSession(ctx, a.scope(ctx).Key(), session.ID)
+	binding, ok := session.BindingFromContext(ctx)
+	if !ok {
+		_, current, err := a.sessions.CurrentBound(ctx, a.scope(ctx))
+		if err == nil && current.SessionID() == row.ID {
+			binding = current
+		}
+	}
+	return a.toolRuntime.fileRollback.WithBinding(ctx, binding)
 }
 
 func (a *Agent) ListFileRollbacks(ctx context.Context) ([]fileops.RollbackInfo, error) {

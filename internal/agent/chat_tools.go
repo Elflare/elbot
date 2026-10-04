@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"elbot/internal/llm"
+	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
+	"elbot/internal/turn"
 )
 
 type pendingUserMessage struct {
@@ -20,8 +22,8 @@ type pendingUserMessage struct {
 	platformText string
 }
 
-func (a *Agent) drainPendingUserInput(sessionID string, messages []llm.LLMMessage) ([]llm.LLMMessage, *pendingUserMessage) {
-	pending := a.turns.DrainMergedInput(sessionID)
+func (a *Agent) drainPendingUserInput(sessionID string, messages []llm.LLMMessage, expected ...string) ([]llm.LLMMessage, *pendingUserMessage) {
+	pending := a.turns.DrainMergedInput(sessionID, expected...)
 	if pending.Text == "" && len(pending.Segments) == 0 {
 		return messages, nil
 	}
@@ -41,7 +43,7 @@ func (a *Agent) drainPendingUserInput(sessionID string, messages []llm.LLMMessag
 }
 
 func (a *Agent) executeToolCalls(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string, out turnOutput) toolrun.RunResult {
-	return a.toolRunManager().Run(ctx, agentToolRunDeps{agent: a, output: out}, toolrun.RunRequest{
+	return a.toolRunManager().Run(ctx, agentToolRunDeps{agent: a, output: out, attempt: turn.AttemptFromContext(ctx)}, toolrun.RunRequest{
 		Session:          session,
 		Calls:            calls,
 		AssistantText:    assistantText,
@@ -257,9 +259,4 @@ func (a *Agent) toolsForSession(ctx context.Context, session *storage.Session) (
 	return a.toolRunManager().Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: a.scope(ctx), Actor: a.actor(ctx), DisableBaseTools: isBackgroundSession(session)}, a.cachedToolsForSession(session))
 }
 
-func isBackgroundSession(session *storage.Session) bool {
-	if session == nil {
-		return false
-	}
-	return strings.TrimSpace(decodeSessionMetadata(session.Metadata).BackgroundKind) != ""
-}
+func isBackgroundSession(row *storage.Session) bool { return sessionpkg.IsBackground(row) }

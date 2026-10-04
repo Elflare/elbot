@@ -17,6 +17,7 @@ import (
 )
 
 type Service struct {
+	Sessions           *session.Service
 	Media              *media.Manager
 	logs               *logging.Manager
 	store              storage.Store
@@ -29,14 +30,14 @@ type Service struct {
 }
 
 func NewService(logs *logging.Manager, store storage.Store, sessionCleanup config.MaintenanceCleanupConfig, logger *slog.Logger) *Service {
-	return &Service{logs: logs, store: store, sessionCleanup: sessionCleanup, logger: logger}
+	return &Service{Sessions: session.NewService(store), logs: logs, store: store, sessionCleanup: sessionCleanup, logger: logger}
 }
 
 func NewServiceWithConfig(logs *logging.Manager, store storage.Store, chatHistory storage.ChatHistoryRepository, cfg *config.Config, logger *slog.Logger) *Service {
 	if cfg == nil {
 		return NewService(logs, store, config.MaintenanceCleanupConfig{}, logger)
 	}
-	return &Service{logs: logs, store: store, chatHistory: chatHistory, sessionCleanup: cfg.Maintenance.SessionCleanup, chatHistoryCleanup: cfg.Maintenance.ChatHistoryCleanup, sandboxRoot: cfg.Sandbox.Root, sandboxCleanup: cfg.Maintenance.SandboxCleanup, logger: logger}
+	return &Service{Sessions: session.NewService(store), logs: logs, store: store, chatHistory: chatHistory, sessionCleanup: cfg.Maintenance.SessionCleanup, chatHistoryCleanup: cfg.Maintenance.ChatHistoryCleanup, sandboxRoot: cfg.Sandbox.Root, sandboxCleanup: cfg.Maintenance.SandboxCleanup, logger: logger}
 }
 
 func (s *Service) RegisterCronHandlers(manager *elcron.Manager) error {
@@ -120,7 +121,7 @@ func (s *Service) RunSessionCleanup(ctx context.Context) error {
 	if !s.sessionCleanup.Enabled {
 		return nil
 	}
-	deleted, err := session.NewService(s.store).CleanupExpired(ctx, time.Now().AddDate(0, 0, -s.sessionCleanup.RetentionDays))
+	deleted, err := s.Sessions.CleanupExpired(ctx, time.Now().AddDate(0, 0, -s.sessionCleanup.RetentionDays))
 	if err != nil {
 		s.warn("maintenance session cleanup failed", "error", err, "retention_days", s.sessionCleanup.RetentionDays)
 		return err

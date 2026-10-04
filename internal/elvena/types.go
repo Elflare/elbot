@@ -20,6 +20,7 @@ const (
 	StatusResultReady = "result_ready"
 	StatusDelivering  = "delivering"
 	StatusCompleted   = "completed"
+	StatusTakenOver   = "taken_over"
 	StatusFailed      = "failed"
 	StatusDuplicate   = "duplicate"
 	StatusUnsupported = "unsupported"

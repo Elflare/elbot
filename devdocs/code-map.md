@@ -128,7 +128,8 @@ rg -n "Register|Info\{|Help:|Complete|Alias|/requests|/model" internal/agent/com
 先看：
 
 - `internal/request/`
-- `internal/turn/`
+- `internal/turn/manager.go`、`execution.go`：阶段、pending、确认及跨请求的逻辑执行身份与结果。
+- `internal/agent/execution.go`、`session_binding.go`：前台接管上下文／输出适配和原绑定准入。
 - `internal/runtime/`
 - `internal/agent/status.go`：Agent runtime status 发布。
 - `internal/agent/request_context.go`：父子 request context。
@@ -289,6 +290,10 @@ rg -n "PlatformAdapter|SendChat|MessageSegment|Actor|Scope|remote|websocket|long
 先看：
 
 - `internal/session/service.go`、`types.go`：Session 服务主体和领域请求/结果类型。
+- `internal/session/binding.go`、`signals.go`、`coordination.go`、`activity.go`：当前绑定、锁外变化信号、Scope／SessionID 短准入及忙闲检查。
+- `internal/session/promotion.go`：后台可见性、永久前台归属和在途接管入口。
+- `internal/storage/session_metadata.go`、`sqlite/session_repository.go`：metadata 原值保留与 Session 原子字段更新。
+- `internal/background/takeover.go`：后台修正及投递入口的持久化接管检查。
 - `internal/session/mode.go`：模式激活和 work 历史限制。
 - `internal/session/lifecycle.go`、`query.go`、`fork.go`、`expiration.go`：生命周期、查询、Fork 和闲置过期策略。
 - `internal/session/naming.go`：异步 Session 命名。
@@ -427,4 +432,3 @@ rg -n "Cron|Job|Schedule|RunCron|maintenance|include_completed|tool_list_names" 
 ```bash
 rg -n "locator:|CHANGELOG|docs.en|translate" AGENT.md docs devdocs scripts
 ```
-

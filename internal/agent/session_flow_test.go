@@ -83,7 +83,7 @@ func TestSessionIdleExpiration(t *testing.T) {
 				t.Fatalf("create old session: %v", err)
 			}
 			oldSession.UpdatedAt = time.Now().Add(-11 * time.Minute)
-			if err := store.Sessions().Update(ctx, oldSession); err != nil {
+			if _, err := store.Sessions().Mutate(ctx, oldSession.ID, func(latest *storage.Session) error { *latest = *oldSession; return nil }); err != nil {
 				t.Fatalf("age old session: %v", err)
 			}
 
@@ -133,7 +133,7 @@ func TestIdleExpirationClearsCurrentAndCanResume(t *testing.T) {
 		}
 	}
 	oldSession.UpdatedAt = time.Now().Add(-11 * time.Minute)
-	if err := store.Sessions().Update(ctx, oldSession); err != nil {
+	if _, err := store.Sessions().Mutate(ctx, oldSession.ID, func(latest *storage.Session) error { *latest = *oldSession; return nil }); err != nil {
 		t.Fatalf("age old session: %v", err)
 	}
 
@@ -197,7 +197,7 @@ func TestLatestAssistantReferenceResumesExpiredOrResetCurrentSession(t *testing.
 		t.Fatalf("map assistant message: %v", err)
 	}
 	target.UpdatedAt = time.Now().Add(-11 * time.Minute)
-	if err := store.Sessions().Update(baseCtx, target); err != nil {
+	if _, err := store.Sessions().Mutate(baseCtx, target.ID, func(latest *storage.Session) error { *latest = *target; return nil }); err != nil {
 		t.Fatalf("age target session: %v", err)
 	}
 
@@ -318,13 +318,13 @@ func TestMessageContextResumeStartsTargetSession(t *testing.T) {
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"resume reply"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "private:1", ConversationKind: chatinfo.ConversationPrivate}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 
 	bg := &storage.Session{OwnerID: "qq:1", Platform: "qq", PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "cron"}
 	if err := store.Sessions().Create(ctx, bg); err != nil {
 		t.Fatalf("create background session: %v", err)
 	}
-	resumeCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}, ResumeSessionID: bg.ID})
+	resumeCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "private:1", ConversationKind: chatinfo.ConversationPrivate}, Identity: chatinfo.Identity{PlatformUserID: "1"}}, ResumeSessionID: bg.ID})
 	if err := a.HandleMessage(resumeCtx, "continue here"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
 	}

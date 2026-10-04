@@ -55,21 +55,35 @@ func appendConfirmPromptText(timeout time.Duration) string {
 	return text
 }
 
-func (a *Agent) handleAppendConfirmationInput(ctx context.Context, session *storage.Session, text string) error {
+func (a *Agent) handleAppendConfirmationInput(ctx context.Context, row *storage.Session, text string) error {
+	locked, release, err := a.sessions.EnterActivation(ctx, a.scope(ctx), row.ID)
+	if err != nil {
+		return err
+	}
+	locked, err = a.captureSessionBinding(locked, row)
+	if err != nil {
+		release()
+		return err
+	}
 	switch {
 	case turn.IsConfirm(text):
-		merged, ok := a.turns.ConfirmAppendInput(session.ID)
+		merged, execution, ok := a.turns.ResumeAppend(row.ID)
+		ctx = turn.WithExecution(locked, execution)
 		if !ok || (merged.Text == "" && len(merged.Segments) == 0) {
+			release()
 			return nil
 		}
 		ctx = withInboundTurnInput(ctx, merged)
-		return a.startChat(ctx, session, merged.Text)
+		release()
+		return a.startChat(ctx, row, merged.Text)
 	case turn.IsCancel(text):
-		a.turns.CancelAppend(session.ID)
+		a.turns.CancelAppend(row.ID)
+		release()
 		a.sendChat(ctx, "已取消追加，本轮处理已停止。")
 		return nil
 	default:
-		a.turns.AppendPendingInput(session.ID, inboundTurnInput(ctx, text))
+		a.turns.AppendPendingInput(row.ID, inboundTurnInput(ctx, text))
+		release()
 		return nil
 	}
 }
@@ -83,7 +97,7 @@ func activeTurnCommandBlockedText() string {
 }
 
 func (a *Agent) handleInput(ctx context.Context, text string) error {
-	session, err := a.sessionForInput(ctx, text)
+	ctx, session, err := a.resolveInput(ctx, text)
 	if err != nil {
 		return err
 	}
@@ -91,13 +105,23 @@ func (a *Agent) handleInput(ctx context.Context, text string) error {
 }
 
 func (a *Agent) continueCommandInput(ctx context.Context, continuation command.Continuation) error {
-	session, err := a.sessions.Resume(ctx, a.scope(ctx), continuation.SessionID)
+	locked, release, err := a.sessions.EnterActivation(ctx, a.scope(ctx), continuation.SessionID)
+	if err != nil {
+		return err
+	}
+	row, err := a.sessions.Resume(locked, a.scope(ctx), continuation.SessionID)
+	if err == nil {
+		_, binding, bindErr := a.sessions.CurrentBound(locked, a.scope(ctx))
+		err = bindErr
+		ctx = session.WithBinding(locked, binding)
+	}
+	release()
 	if err != nil {
 		return err
 	}
 	segments := replaceInboundTextSegments(ctx, continuation.Text)
 	ctx = withInboundSegments(ctx, segments)
-	return a.handleSessionInput(ctx, session, continuation.Text)
+	return a.handleSessionInput(ctx, row, continuation.Text)
 }
 
 func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session, text string) error {
@@ -139,16 +163,31 @@ func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session
 		}
 	}
 
+	locked, release, err := a.sessions.EnterActivation(ctx, a.scope(ctx), session.ID)
+	if err != nil {
+		return err
+	}
+	locked, err = a.captureSessionBinding(locked, session)
+	if err != nil {
+		release()
+		return err
+	}
+	ctx = locked
+	snapshot = a.turns.Snapshot(session.ID)
 	switch snapshot.Phase {
 	case turn.PhaseAwaitRiskConfirm:
+		release()
 		return a.handleRiskConfirmationInput(ctx, session.ID, text)
 	case turn.PhaseAwaitAppendConfirm:
+		release()
 		return a.handleAppendConfirmationInput(ctx, session, text)
 	case turn.PhaseLLM:
-		a.requests.CancelSession(session.ID)
 		if !a.turns.InterruptLLMInput(session.ID, inboundTurnInput(ctx, text)) {
+			release()
 			return nil
 		}
+		a.requests.CancelSession(session.ID)
+		release()
 		timeout := a.confirmationWaitTimeout(ctx)
 		a.sendChat(ctx, appendConfirmPromptText(timeout))
 		if timeout > 0 {
@@ -162,12 +201,15 @@ func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session
 		return nil
 	case turn.PhaseTool:
 		a.turns.AppendPendingInput(session.ID, inboundTurnInput(ctx, text))
+		release()
 		a.sendChat(ctx, "已追加，将在当前流程下一次模型调用时带上。发送 /stop 可打断当前流程。")
 		return nil
 	case turn.PhaseCompact:
+		release()
 		a.sendChat(ctx, "正在压缩上下文，请稍后再发送。可使用 /stop 取消当前请求。")
 		return nil
 	default:
+		release()
 		return a.startChat(ctx, session, text)
 	}
 }
@@ -217,12 +259,27 @@ func (a *Agent) sessionForInput(ctx context.Context, text string) (*storage.Sess
 }
 
 func (a *Agent) handleRiskConfirmationInput(ctx context.Context, sessionID, text string) error {
+	locked, release, err := a.sessions.EnterActivation(ctx, a.scope(ctx), sessionID)
+	if err != nil {
+		return err
+	}
+	locked, err = a.captureSessionBinding(locked, &storage.Session{ID: sessionID})
+	if err != nil {
+		release()
+		return err
+	}
+	ctx = locked
 	confirmation, hasConfirmation := a.turns.PendingRiskConfirmation(sessionID)
+	if !hasConfirmation {
+		release()
+		return nil
+	}
 	// 风险确认等待期间只接受确认/拒绝/详情/停止类命令。
 	// 普通文本不能混入当前 turn，避免被误当作高风险工具的隐式确认
 	// 或污染下一次 LLM 调用上下文。
 	if !a.commands.IsCommand(text) {
 		a.logRiskConfirmationAction(sessionID, "invalid_text", confirmation, "")
+		release()
 		a.sendChat(ctx, riskConfirmationWaitingText())
 		return nil
 	}
@@ -231,9 +288,11 @@ func (a *Agent) handleRiskConfirmationInput(ctx context.Context, sessionID, text
 	switch parsed.Name {
 	case "detail", "details":
 		if !a.turns.RefreshRiskConfirmation(sessionID) {
+			release()
 			return nil
 		}
 		a.logRiskConfirmationAction(sessionID, "detail", confirmation, "")
+		release()
 		a.sendChat(ctx, riskConfirmationDetailText(confirmation))
 	case "confirm", "c":
 		a.logRiskConfirmationAction(sessionID, "confirm", confirmation, parsed.Args)
@@ -252,6 +311,7 @@ func (a *Agent) handleRiskConfirmationInput(ctx context.Context, sessionID, text
 		a.logRiskConfirmationAction(sessionID, "stop", confirmation, "")
 		a.requests.CancelSession(sessionID)
 		a.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Stopped: true})
+		release()
 		a.sendChat(ctx, "stopped")
 	default:
 		if hasConfirmation {
@@ -260,6 +320,7 @@ func (a *Agent) handleRiskConfirmationInput(ctx context.Context, sessionID, text
 		a.sendChat(ctx, riskConfirmationWaitingText())
 
 	}
+	release()
 	return nil
 }
 

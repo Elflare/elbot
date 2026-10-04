@@ -198,9 +198,16 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		scopeID:         "local",
 	}
 	a.toolRuntime.fileRollback = opts.FileRollback
-	if opts.FileRollback != nil && opts.FileRollback.Manager != nil {
-		sessions.SetCurrentObserver(opts.FileRollback.Manager.SetCurrent)
-	}
+	sessions.SetForegroundActivation(a.adoptForeground)
+	sessions.SetActivitySource(func() []string {
+		var ids []string
+		for _, active := range turns.SnapshotAll() {
+			if active.Phase != turn.PhaseIdle {
+				ids = append(ids, active.SessionID)
+			}
+		}
+		return ids
+	})
 	if opts.Logs != nil {
 		a.SetLogManager(opts.Logs)
 	}

@@ -358,7 +358,7 @@ func TestCopyCronSessionIsVisibleOnBroadcastPlatformsAndCLI(t *testing.T) {
 		t.Fatalf("copySessionToBroadcastTargets: %v", err)
 	}
 
-	qqSessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: security.ActorID("qq-onebot", "1001"), Platform: "qq-onebot", PlatformScopeID: "private:1001", IncludeSamePlatformCron: true, Limit: 20})
+	qqSessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: security.ActorID("qq-onebot", "1001"), Platform: "qq-onebot", PlatformScopeID: "private:1001", IncludeSamePlatformBackground: true, Limit: 20})
 	if err != nil {
 		t.Fatalf("list qq sessions: %v", err)
 	}

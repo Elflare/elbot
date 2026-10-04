@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/utils/fileops"
 )
 
-func TestCurrentObserverInvalidatesRollbackAtLifecycleBoundary(t *testing.T) {
+func TestBindingInvalidatesRollbackAtLifecycleBoundary(t *testing.T) {
 	for _, action := range []string{"reset", "create", "resume", "fork", "idle", "delete", "cleanup", "missing"} {
 		t.Run(action, func(t *testing.T) {
 			svc, store := newTestService(t)
@@ -21,10 +22,14 @@ func TestCurrentObserverInvalidatesRollbackAtLifecycleBoundary(t *testing.T) {
 				t.Fatal(err)
 			}
 			manager := fileops.NewRollbackManager()
-			svc.SetCurrentObserver(manager.SetCurrent) // Also initializes already-active sessions.
-			lease, ok := manager.Session(scope.Key(), first.ID)
+			_, binding, _ := svc.CurrentBound(ctx, scope)
+			_, err = svc.BindingChanged().Connect(func(_ context.Context, event BindingChangedEvent) error { manager.Forget(event.Old); return nil }, signal.ConnectOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			lease, ok := manager.Session(binding)
 			if !ok {
-				t.Fatal("observer did not replay current")
+				t.Fatal("current binding was not accepted")
 			}
 			if _, err := svc.Resume(ctx, scope, first.ID); err != nil {
 				t.Fatal(err)
@@ -39,7 +44,7 @@ func TestCurrentObserverInvalidatesRollbackAtLifecycleBoundary(t *testing.T) {
 			}
 			switch action {
 			case "reset":
-				svc.ResetCurrent(scope)
+				svc.ResetCurrent(ctx, scope)
 			case "create":
 				_, err = svc.Create(ctx, scope, CreateRequest{Title: "next"})
 			case "resume":
@@ -54,7 +59,7 @@ func TestCurrentObserverInvalidatesRollbackAtLifecycleBoundary(t *testing.T) {
 				}
 			case "idle":
 				first.UpdatedAt = time.Now().Add(-2 * time.Hour)
-				if err = store.Sessions().Update(ctx, first); err == nil {
+				if _, err = store.Sessions().Mutate(ctx, first.ID, func(latest *storage.Session) error { *latest = *first; return nil }); err == nil {
 					var result ExpireIdleResult
 					result, err = svc.ExpireIdleCurrent(ctx, ExpireIdleRequest{Scope: scope, Config: IdleExpirationConfig{PrivateUserTTLMinutes: 1}})
 					if err == nil && !result.Expired {
@@ -65,7 +70,7 @@ func TestCurrentObserverInvalidatesRollbackAtLifecycleBoundary(t *testing.T) {
 				err = svc.Delete(ctx, scope, first.ID)
 			case "cleanup":
 				first.UpdatedAt = time.Now().Add(-2 * time.Hour)
-				if err = store.Sessions().Update(ctx, first); err == nil {
+				if _, err = store.Sessions().Mutate(ctx, first.ID, func(latest *storage.Session) error { *latest = *first; return nil }); err == nil {
 					_, err = svc.CleanupExpired(ctx, time.Now().Add(-time.Hour))
 				}
 			case "missing":
@@ -82,7 +87,11 @@ func TestCurrentObserverInvalidatesRollbackAtLifecycleBoundary(t *testing.T) {
 			if _, err := lease.List(); !errors.Is(err, fileops.ErrRollbackExpired) {
 				t.Fatalf("lease still valid after %s: %v", action, err)
 			}
-			if _, ok := manager.Session(otherScope.Key(), other.ID); !ok {
+			_, otherBinding, _ := svc.CurrentBound(ctx, otherScope)
+			if otherBinding.SessionID() != other.ID {
+				t.Fatal("other current changed")
+			}
+			if _, ok := manager.Session(otherBinding); !ok {
 				t.Fatal("other scope invalidated")
 			}
 			if action != "delete" && action != "cleanup" && action != "missing" {
@@ -92,7 +101,8 @@ func TestCurrentObserverInvalidatesRollbackAtLifecycleBoundary(t *testing.T) {
 				if _, err := lease.List(); !errors.Is(err, fileops.ErrRollbackExpired) {
 					t.Fatal("old lease revived")
 				}
-				if _, ok := manager.Session(scope.Key(), first.ID); !ok {
+				_, fresh, _ := svc.CurrentBound(ctx, scope)
+				if _, ok := manager.Session(fresh); !ok {
 					t.Fatal("fresh lease missing")
 				}
 			}
@@ -100,25 +110,32 @@ func TestCurrentObserverInvalidatesRollbackAtLifecycleBoundary(t *testing.T) {
 	}
 }
 
-func TestCurrentObserverIgnoresFailedAndConditionalTransitions(t *testing.T) {
+func TestBindingIgnoresFailedAndConditionalTransitions(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
 	scope := Scope{ActorID: "user", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	var transitions []string
-	svc.SetCurrentObserver(func(key, id string) { transitions = append(transitions, key+"="+id) })
+	_, _ = svc.BindingChanged().Connect(func(_ context.Context, e BindingChangedEvent) error {
+		id := ""
+		if e.New != nil {
+			id = e.New.SessionID()
+		}
+		transitions = append(transitions, scope.Key()+"="+id)
+		return nil
+	}, signal.ConnectOptions{})
 	row, err := svc.Create(ctx, scope, CreateRequest{Title: "first"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc.clearCurrentIf(scope, "not-current")
+	svc.clearBinding(ctx, &Binding{scope: scope, sessionID: "not-current"}, ChangeReset)
 	if _, err := svc.Resume(ctx, scope, "missing"); err == nil {
 		t.Fatal("resume missing succeeded")
 	}
 	if len(transitions) != 1 {
 		t.Fatalf("unexpected transitions: %v", transitions)
 	}
-	svc.ResetCurrent(scope)
-	svc.ResetCurrent(scope)
+	svc.ResetCurrent(ctx, scope)
+	svc.ResetCurrent(ctx, scope)
 	if len(transitions) != 2 || transitions[1] != scope.Key()+"=" {
 		t.Fatalf("reset transitions: %v; row %s", transitions, row.ID)
 	}

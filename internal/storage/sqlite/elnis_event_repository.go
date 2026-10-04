@@ -127,7 +127,12 @@ WHERE elwisp_name = ? AND source = ? AND source_id = ?`, elwispName, source, sou
 }
 
 func (r *ElnisEventRepository) Update(ctx context.Context, req storage.UpdateElnisEventRequest) error {
-	res, err := r.db.ExecContext(ctx, `
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `
 UPDATE elnis_events
 SET resolved_targets = ?, status = ?, session_id = ?, result = ?, error = ?, updated_at = ?
 WHERE id = ?`,
@@ -145,7 +150,14 @@ WHERE id = ?`,
 	if n, err := res.RowsAffected(); err == nil && n == 0 {
 		return storage.ErrNotFound
 	}
-	return nil
+	if req.Status == "taken_over" {
+		// The existing terminal-state triggers predate foreground takeover.
+		// Release the abandoned outbox/event references in this same transaction.
+		if _, err := tx.ExecContext(ctx, "DELETE FROM media_references WHERE (owner_type='elnis_event' AND owner_id=?) OR (owner_type='elnis_report' AND owner_id IN (SELECT id FROM elnis_report_deliveries WHERE event_id=?))", req.ID, req.ID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (r *ElnisEventRepository) PrepareReport(ctx context.Context, req storage.PrepareElnisReportRequest) error {

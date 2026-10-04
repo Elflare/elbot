@@ -52,6 +52,14 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 			"elnis_source_id": event.Request.ID,
 		},
 	})
+	if taken, lookupErr := background.SessionTakenOver(context.WithoutCancel(ctx), s.store, result.SessionID); lookupErr != nil {
+		return lookupErr
+	} else if taken {
+		result.TakenOver = true
+	}
+	if result.TakenOver {
+		return s.completeTakeover(ctx, eventID, event.ResolvedTargets, result, err)
+	}
 	if err != nil {
 		_ = s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
 		s.auditEvent("elnis.llm_failed", append(attrs, "event_id", eventID, "error", err.Error())...)
@@ -61,6 +69,9 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	parsed, parseErr := background.ParseJSONResult(result.Text)
 	if parseErr != nil {
 		result, parsed, parseErr = s.retryLLMResultFormat(ctx, event, result.SessionID, model)
+	}
+	if result.TakenOver {
+		return s.completeTakeover(ctx, eventID, event.ResolvedTargets, result, parseErr)
 	}
 	if parseErr != nil {
 		message := fmt.Sprintf("Elnis 事件 %s 解析格式失败，请查看后台 session。\nsession: %s\n错误：%v", event.EventKey, result.SessionID, parseErr)
@@ -93,6 +104,9 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 }
 
 func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, sessionID string, model config.ModelSelection) (background.RunResult, background.JSONResult, error) {
+	if taken, err := background.SessionTakenOver(ctx, s.store, sessionID); err != nil || taken {
+		return background.RunResult{SessionID: sessionID, TakenOver: taken, Outcome: "taken_over"}, background.JSONResult{}, err
+	}
 	result, err := s.runner.RunBackground(ctx, background.RunRequest{
 		Kind:          background.KindElnis,
 		Name:          event.EventKey,
@@ -110,6 +124,9 @@ func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, session
 	})
 	if err != nil {
 		return result, background.JSONResult{}, err
+	}
+	if result.TakenOver {
+		return result, background.JSONResult{}, nil
 	}
 	parsed, err := background.ParseJSONResult(result.Text)
 	return result, parsed, err
@@ -169,4 +186,19 @@ func (s *Service) modelForEvent(event Event) config.ModelSelection {
 		selected = s.resolveModel("work")
 	}
 	return selected
+}
+
+func (s *Service) completeTakeover(ctx context.Context, eventID, resolved string, result background.RunResult, runErr error) error {
+	payload, err := json.Marshal(map[string]any{"taken_over": true, "run_id": result.RunID, "outcome": result.Outcome, "text": result.Text, "message_id": result.MessageID})
+	if err != nil {
+		return err
+	}
+	message := ""
+	if runErr != nil {
+		message = runErr.Error()
+	}
+	if err := s.completeEventWithSession(context.WithoutCancel(ctx), eventID, resolved, StatusTakenOver, result.SessionID, string(payload), message); err != nil {
+		return err
+	}
+	return runErr
 }

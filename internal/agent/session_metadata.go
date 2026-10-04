@@ -1,7 +1,11 @@
 package agent
 
 import (
+	"bytes"
+	"context"
+	"elbot/internal/storage"
 	"encoding/json"
+	"fmt"
 	"sort"
 
 	"elbot/internal/llm"
@@ -143,4 +147,55 @@ func sortedUnique(values []string) []string {
 
 func toolCacheItemsNormalized(items []toolrun.CachedTool) []toolrun.CachedTool {
 	return toolrun.NormalizeCachedTools(items)
+}
+
+// mutateSessionMetadata changes only owned keys from a transaction's fresh row.
+func (a *Agent) mutateSessionMetadata(ctx context.Context, id string, update func(*sessionMetadata)) (*storage.Session, error) {
+	return a.store.Sessions().Mutate(ctx, id, func(row *storage.Session) error {
+		fields, err := storage.DecodeSessionMetadata(row.Metadata)
+		if err != nil {
+			return err
+		}
+		var metadata sessionMetadata
+		if row.Metadata != "" {
+			if err := json.Unmarshal([]byte(row.Metadata), &metadata); err != nil {
+				return fmt.Errorf("decode owned session metadata: %w", err)
+			}
+		}
+		before, err := json.Marshal(metadata)
+		if err != nil {
+			return err
+		}
+		update(&metadata)
+		after, err := json.Marshal(metadata)
+		if err != nil {
+			return err
+		}
+		var oldFields, newFields map[string]json.RawMessage
+		if err := json.Unmarshal(before, &oldFields); err != nil {
+			return err
+		}
+		if err := json.Unmarshal(after, &newFields); err != nil {
+			return err
+		}
+		for key := range oldFields {
+			if _, ok := newFields[key]; !ok {
+				delete(fields, key)
+			}
+		}
+		for key, raw := range newFields {
+			if !bytes.Equal(oldFields[key], raw) {
+				fields[key] = raw
+			}
+		}
+		encoded, err := fields.Encode()
+		if err != nil {
+			return err
+		}
+		if encoded != row.Metadata {
+			row.Metadata = encoded
+			row.UpdatedAt = storage.Now()
+		}
+		return nil
+	})
 }

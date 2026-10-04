@@ -13,6 +13,11 @@ import (
 )
 
 func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resultJSON, sessionID, messageID string, result background.JSONResult) (bool, error) {
+	if taken, err := background.SessionTakenOver(ctx, s.store, sessionID); err != nil {
+		return false, err
+	} else if taken {
+		return false, s.completeTakeover(ctx, eventID, event.ResolvedTargets, background.RunResult{SessionID: sessionID, MessageID: messageID, TakenOver: true, Outcome: "taken_over", Text: resultJSON}, nil)
+	}
 	resolved, err := decodeResolvedTargets(event.ResolvedTargets)
 	if err != nil {
 		return false, err
@@ -95,6 +100,11 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) error {
 		return s.releaseReport(ctx, eventID, err)
 	}
 	for index := 0; index < len(deliveries); {
+		if taken, err := background.SessionTakenOver(ctx, s.store, event.SessionID); err != nil {
+			return s.releaseReport(ctx, eventID, err)
+		} else if taken {
+			return s.completeTakeover(ctx, eventID, event.ResolvedTargets, background.RunResult{SessionID: event.SessionID, TakenOver: true, Outcome: "taken_over", Text: event.Result}, nil)
+		}
 		item := deliveries[index]
 		if item.Status == storage.ElnisReportDeliveryDelivered {
 			index++

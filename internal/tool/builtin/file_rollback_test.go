@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"elbot/internal/security"
@@ -17,6 +18,7 @@ import (
 )
 
 type rollbackFixture struct {
+	binding   *rollbackTestBinding
 	service   *tool.FileRollbackService
 	edit      EditFileTool
 	rollback  RollbackFileTool
@@ -28,16 +30,16 @@ func newRollbackFixture(t *testing.T) *rollbackFixture {
 	t.Helper()
 	guard := NewFileGuard()
 	service := tool.NewFileRollbackService(guard.CheckWrite)
-	service.Manager.SetCurrent("scope", "session")
+	binding := newRollbackTestBinding()
 	workspace := &testWorkspaceStore{dir: t.TempDir()}
 	base := tool.WithWorkspaceStore(security.WithActor(context.Background(), security.Actor{ID: "admin", Role: security.RoleSuperadmin}), workspace)
 	edit := NewEditFileTool(guard)
 	edit.Rollback = service
-	return &rollbackFixture{service: service, edit: edit, rollback: NewRollbackFileTool(service), workspace: workspace, base: base}
+	return &rollbackFixture{binding: binding, service: service, edit: edit, rollback: NewRollbackFileTool(service), workspace: workspace, base: base}
 }
 
 func (f *rollbackFixture) ctx() context.Context {
-	return f.service.WithSession(f.base, "scope", "session")
+	return f.service.WithBinding(f.base, f.binding)
 }
 
 func (f *rollbackFixture) write(t *testing.T, path, text string) {
@@ -110,7 +112,7 @@ func TestRollbackToolPreflightPinsRecordAndWorkspace(t *testing.T) {
 		t.Fatalf("detail: %s %v", detail, err)
 	}
 	f.write(t, "file", "two")
-	derived := f.service.WithSession(context.WithValue(ctx, struct{}{}, "request"), "scope", "session")
+	derived := f.service.WithBinding(context.WithValue(ctx, struct{}{}, "request"), f.binding)
 	if _, err := f.rollback.Call(derived, req); !errors.Is(err, fileops.ErrRollbackNotFound) {
 		t.Fatalf("stale preflight: %v", err)
 	}
@@ -144,9 +146,9 @@ func TestRollbackToolPermissionsAndSessionExpiry(t *testing.T) {
 	if session, err := f.service.EditSession(background); err != nil || session != nil {
 		t.Fatalf("background recording: %v %v", session, err)
 	}
-	f.service.Manager.SetCurrent("scope", "next")
-	f.service.Manager.SetCurrent("scope", "session")
-	if _, err := f.rollback.Call(f.service.WithSession(ctx, "scope", "session"), rollbackRequest("file")); !errors.Is(err, fileops.ErrRollbackExpired) {
+	f.binding.valid.Store(false)
+	f.binding = newRollbackTestBinding()
+	if _, err := f.rollback.Call(f.service.WithBinding(ctx, f.binding), rollbackRequest("file")); !errors.Is(err, fileops.ErrRollbackExpired) {
 		t.Fatalf("lease revived: %v", err)
 	}
 	if _, err := f.rollback.Call(f.ctx(), rollbackRequest("file")); !errors.Is(err, fileops.ErrRollbackNotFound) {
@@ -245,4 +247,13 @@ func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 			t.Fatal("user discovered superadmin dependency")
 		}
 	}
+}
+
+type rollbackTestBinding struct{ valid atomic.Bool }
+
+func (b *rollbackTestBinding) Valid() bool { return b.valid.Load() }
+func newRollbackTestBinding() *rollbackTestBinding {
+	b := &rollbackTestBinding{}
+	b.valid.Store(true)
+	return b
 }

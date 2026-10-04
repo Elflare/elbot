@@ -200,7 +200,7 @@ func TestResumeCommandUsesRecentNonCurrentGlobalIndex(t *testing.T) {
 	}
 	older.UpdatedAt = now.Add(-2 * time.Hour)
 	older.PinnedAt = &now
-	if err := store.Sessions().Update(ctx, older); err != nil {
+	if _, err := store.Sessions().Mutate(ctx, older.ID, func(latest *storage.Session) error { *latest = *older; return nil }); err != nil {
 		t.Fatalf("update older: %v", err)
 	}
 	recent, err := svc.Create(ctx, scope, session.CreateRequest{Title: "recent"})
@@ -208,7 +208,7 @@ func TestResumeCommandUsesRecentNonCurrentGlobalIndex(t *testing.T) {
 		t.Fatalf("create recent: %v", err)
 	}
 	recent.UpdatedAt = now.Add(-time.Hour)
-	if err := store.Sessions().Update(ctx, recent); err != nil {
+	if _, err := store.Sessions().Mutate(ctx, recent.ID, func(latest *storage.Session) error { *latest = *recent; return nil }); err != nil {
 		t.Fatalf("update recent: %v", err)
 	}
 	current, err := svc.Create(ctx, scope, session.CreateRequest{Title: "current"})

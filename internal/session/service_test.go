@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"elbot/internal/chatinfo"
 	"elbot/internal/storage"
 	"errors"
 	"testing"
@@ -35,7 +36,7 @@ func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 
 	aged := time.Now().Add(-time.Hour)
 	first.UpdatedAt = aged
-	if err := store.Sessions().Update(ctx, first); err != nil {
+	if _, err := store.Sessions().Mutate(ctx, first.ID, func(latest *storage.Session) error { *latest = *first; return nil }); err != nil {
 		t.Fatalf("age first session: %v", err)
 	}
 	if _, err := svc.Resume(ctx, scope, first.ID); err != nil {
@@ -79,7 +80,7 @@ func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 func TestPlatformScopeCanListAndResumeSamePlatformCronSessions(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{ActorID: "qq:user1", Platform: "qq-onebot", PlatformScopeID: "private:user1"}
+	scope := Scope{ConversationKind: chatinfo.ConversationPrivate, ActorID: "qq:user1", Platform: "qq-onebot", PlatformScopeID: "private:user1"}
 	otherScope := Scope{ActorID: "qq:user1", Platform: "qq-onebot", PlatformScopeID: "group:g1"}
 
 	front, err := svc.Create(ctx, scope, CreateRequest{Title: "front"})
@@ -187,7 +188,7 @@ func TestServiceGetOrCreateCurrentReturnsStorageError(t *testing.T) {
 	store := storeWithSessionRepository{Store: base, sessions: failingGetSessionRepository{SessionRepository: base.Sessions(), err: wantErr}}
 	svc := NewService(store)
 	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
-	svc.setCurrent(scope, "current")
+	svc.setCurrent(context.Background(), scope, "current", ChangeResume)
 
 	if _, err := svc.GetOrCreateCurrent(context.Background(), scope, "must not create"); !errors.Is(err, wantErr) {
 		t.Fatalf("GetOrCreateCurrent error = %v, want %v", err, wantErr)
@@ -213,7 +214,7 @@ func TestServiceListResumablePageUsesRecentNonCurrentOrder(t *testing.T) {
 	}
 	older.UpdatedAt = now.Add(-2 * time.Hour)
 	older.PinnedAt = &now
-	if err := store.Sessions().Update(ctx, older); err != nil {
+	if _, err := store.Sessions().Mutate(ctx, older.ID, func(latest *storage.Session) error { *latest = *older; return nil }); err != nil {
 		t.Fatalf("update older: %v", err)
 	}
 	recent, err := svc.Create(ctx, scope, CreateRequest{Title: "recent"})
@@ -221,7 +222,7 @@ func TestServiceListResumablePageUsesRecentNonCurrentOrder(t *testing.T) {
 		t.Fatalf("create recent: %v", err)
 	}
 	recent.UpdatedAt = now.Add(-time.Hour)
-	if err := store.Sessions().Update(ctx, recent); err != nil {
+	if _, err := store.Sessions().Mutate(ctx, recent.ID, func(latest *storage.Session) error { *latest = *recent; return nil }); err != nil {
 		t.Fatalf("update recent: %v", err)
 	}
 	current, err := svc.Create(ctx, scope, CreateRequest{Title: "current"})

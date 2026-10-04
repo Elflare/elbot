@@ -42,10 +42,11 @@ type rollbackRecord struct {
 	afterSize int64
 }
 
+type Binding interface{ Valid() bool }
+
 type rollbackScope struct {
-	key       string
-	sessionID string
-	files     map[string]*rollbackRecord
+	binding Binding
+	files   map[string]*rollbackRecord
 }
 
 type rollbackLock struct {
@@ -56,7 +57,7 @@ type rollbackLock struct {
 // RollbackManager owns bounded, process-local backups. It does not own session lifecycle.
 type RollbackManager struct {
 	mu         sync.Mutex
-	scopes     map[string]*rollbackScope
+	scopes     map[Binding]*rollbackScope
 	records    map[uint64]*rollbackRecord
 	locks      map[string]*rollbackLock
 	nextID     uint64
@@ -74,7 +75,7 @@ type RollbackSession struct {
 
 func NewRollbackManager() *RollbackManager {
 	return &RollbackManager{
-		scopes:     make(map[string]*rollbackScope),
+		scopes:     make(map[Binding]*rollbackScope),
 		records:    make(map[uint64]*rollbackRecord),
 		locks:      make(map[string]*rollbackLock),
 		maxBytes:   rollbackMaxBytes,
@@ -82,37 +83,47 @@ func NewRollbackManager() *RollbackManager {
 	}
 }
 
-// SetCurrent must be called in session-transition order. It performs no file I/O.
-func (m *RollbackManager) SetCurrent(scope, sessionID string) {
+// Forget releases only the records owned by this activation.
+func (m *RollbackManager) Forget(binding Binding) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	old := m.scopes[scope]
-	if old != nil && old.sessionID == sessionID {
-		return
-	}
-	if old != nil {
-		for _, record := range old.files {
-			m.removeLocked(record)
-		}
-		delete(m.scopes, scope)
-	}
-	if sessionID != "" {
-		m.scopes[scope] = &rollbackScope{key: scope, sessionID: sessionID, files: make(map[string]*rollbackRecord)}
-	}
+	m.forgetLocked(binding)
 }
 
-func (m *RollbackManager) Session(scope, sessionID string) (*RollbackSession, bool) {
+func (m *RollbackManager) forgetLocked(binding Binding) {
+	scope := m.scopes[binding]
+	if scope == nil {
+		return
+	}
+	for _, record := range scope.files {
+		m.removeLocked(record)
+	}
+	delete(m.scopes, binding)
+}
+
+// Session captures the publisher-owned binding; it never creates validity.
+func (m *RollbackManager) Session(binding Binding) (*RollbackSession, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	current := m.scopes[scope]
-	if current == nil || current.sessionID != sessionID {
+	if binding == nil || !binding.Valid() {
 		return nil, false
 	}
-	return &RollbackSession{manager: m, scope: current}, true
+	// Also reclaim missed cleanup events when the next activation is used.
+	for old := range m.scopes {
+		if !old.Valid() {
+			m.forgetLocked(old)
+		}
+	}
+	scope := m.scopes[binding]
+	if scope == nil {
+		scope = &rollbackScope{binding: binding, files: make(map[string]*rollbackRecord)}
+		m.scopes[binding] = scope
+	}
+	return &RollbackSession{manager: m, scope: scope}, true
 }
 
 func (s *RollbackSession) validLocked() bool {
-	return s.manager.scopes[s.scope.key] == s.scope
+	return s.scope.binding.Valid() && s.manager.scopes[s.scope.binding] == s.scope
 }
 
 func (s *RollbackSession) check(ctx context.Context) error {

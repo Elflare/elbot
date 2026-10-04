@@ -26,7 +26,7 @@ func (s *Service) completeEvent(ctx context.Context, id, resolvedTargets, status
 }
 
 func (s *Service) completeEventWithSession(ctx context.Context, id, resolvedTargets, status, sessionID, result, eventErr string) error {
-	if status == StatusFailed || status == StatusCompleted {
+	if status == StatusFailed || status == StatusCompleted || status == StatusTakenOver {
 		// Persist terminal state and release event references even after cancellation.
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()

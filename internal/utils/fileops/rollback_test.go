@@ -8,12 +8,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
-func rollbackTestSession(t *testing.T) (*RollbackManager, *RollbackSession) {
+func rollbackTestSession(t *testing.T) (*testRollbackManager, *RollbackSession) {
 	t.Helper()
-	m := NewRollbackManager()
+	m := newTestRollbackManager()
 	m.SetCurrent("user", "session")
 	s, ok := m.Session("user", "session")
 	if !ok {
@@ -426,4 +427,43 @@ func TestRollbackWaitCancellation(t *testing.T) {
 	if len(m.locks) != 0 {
 		t.Fatal("leaked lock")
 	}
+}
+
+type testRollbackBinding struct {
+	id    string
+	valid atomic.Bool
+}
+
+func (b *testRollbackBinding) Valid() bool { return b != nil && b.valid.Load() }
+
+type testRollbackManager struct {
+	*RollbackManager
+	bindings map[string]*testRollbackBinding
+}
+
+func newTestRollbackManager() *testRollbackManager {
+	return &testRollbackManager{RollbackManager: NewRollbackManager(), bindings: map[string]*testRollbackBinding{}}
+}
+func (m *testRollbackManager) SetCurrent(scope, id string) {
+	old := m.bindings[scope]
+	if old != nil && old.id == id {
+		return
+	}
+	if old != nil {
+		old.valid.Store(false)
+		m.Forget(old)
+	}
+	delete(m.bindings, scope)
+	if id != "" {
+		b := &testRollbackBinding{id: id}
+		b.valid.Store(true)
+		m.bindings[scope] = b
+	}
+}
+func (m *testRollbackManager) Session(scope, id string) (*RollbackSession, bool) {
+	b := m.bindings[scope]
+	if b == nil || b.id != id {
+		return nil, false
+	}
+	return m.RollbackManager.Session(b)
 }

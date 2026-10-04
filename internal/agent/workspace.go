@@ -49,23 +49,14 @@ func (s sessionWorkspaceStore) HasWorkspaceAgentNoticeDir(ctx context.Context, d
 
 func (s sessionWorkspaceStore) MarkWorkspaceAgentNoticeDir(ctx context.Context, dir string) error {
 	dir = strings.TrimSpace(dir)
-	if dir == "" {
+	if dir == "" || s.agent == nil || s.session == nil || s.session.ID == "" {
 		return nil
 	}
-	if s.agent == nil || s.agent.store == nil || s.session == nil || s.session.ID == "" {
-		return nil
-	}
-	latest, err := s.agent.store.Sessions().Get(ctx, s.session.ID)
-	if err != nil {
-		return err
-	}
-	metadata := decodeSessionMetadata(latest.Metadata)
-	if slices.Contains(metadata.WorkspaceAgentNoticeDirs, dir) {
-		s.session.Metadata = latest.Metadata
-		return nil
-	}
-	metadata.WorkspaceAgentNoticeDirs = append(metadata.WorkspaceAgentNoticeDirs, dir)
-	return s.save(ctx, latest, metadata)
+	return s.save(ctx, func(metadata *sessionMetadata) {
+		if !slices.Contains(metadata.WorkspaceAgentNoticeDirs, dir) {
+			metadata.WorkspaceAgentNoticeDirs = append(metadata.WorkspaceAgentNoticeDirs, dir)
+		}
+	})
 }
 
 func (s sessionWorkspaceStore) SetWorkspaceDirWithAgentNotice(ctx context.Context, dir string, markNotice bool) error {
@@ -84,35 +75,19 @@ func (s sessionWorkspaceStore) saveWorkspaceDirWithAgentNotice(ctx context.Conte
 	if s.agent == nil || s.agent.store == nil || s.session == nil || s.session.ID == "" {
 		return nil
 	}
-	latest, err := s.agent.store.Sessions().Get(ctx, s.session.ID)
+	return s.save(ctx, func(metadata *sessionMetadata) {
+		metadata.WorkspaceDir = workspaceDir
+		if markNotice && noticeDir != "" && !slices.Contains(metadata.WorkspaceAgentNoticeDirs, noticeDir) {
+			metadata.WorkspaceAgentNoticeDirs = append(metadata.WorkspaceAgentNoticeDirs, noticeDir)
+		}
+	})
+}
+
+func (s sessionWorkspaceStore) save(ctx context.Context, update func(*sessionMetadata)) error {
+	latest, err := s.agent.mutateSessionMetadata(ctx, s.session.ID, update)
 	if err != nil {
 		return err
 	}
-	metadata := decodeSessionMetadata(latest.Metadata)
-	changed := metadata.WorkspaceDir != workspaceDir
-	metadata.WorkspaceDir = workspaceDir
-	if markNotice && noticeDir != "" && !slices.Contains(metadata.WorkspaceAgentNoticeDirs, noticeDir) {
-		metadata.WorkspaceAgentNoticeDirs = append(metadata.WorkspaceAgentNoticeDirs, noticeDir)
-		changed = true
-	}
-	if !changed {
-		s.session.Metadata = latest.Metadata
-		return nil
-	}
-	return s.save(ctx, latest, metadata)
-}
-
-func (s sessionWorkspaceStore) save(ctx context.Context, latest *storage.Session, metadata sessionMetadata) error {
-	encoded := encodeSessionMetadataInto(latest.Metadata, metadata)
-	if encoded == latest.Metadata {
-		s.session.Metadata = latest.Metadata
-		return nil
-	}
-	latest.Metadata = encoded
-	latest.UpdatedAt = storage.Now()
-	if err := s.agent.store.Sessions().Update(ctx, latest); err != nil {
-		return err
-	}
-	s.session.Metadata = encoded
+	s.session.Metadata = latest.Metadata
 	return nil
 }

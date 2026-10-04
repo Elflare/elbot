@@ -108,28 +108,20 @@ func (a *Agent) restoreDiscoveredToolsFromMetadata(session *storage.Session) {
 }
 
 func (a *Agent) persistCachedTools(ctx context.Context, session *storage.Session, cached []toolrun.CachedTool) {
-	latest, err := a.store.Sessions().Get(ctx, session.ID)
+	if session == nil || session.ID == "" || len(cached) == 0 {
+		return
+	}
+	latest, err := a.mutateSessionMetadata(ctx, session.ID, func(metadata *sessionMetadata) {
+		metadata.ToolCache = toolrun.MergeCachedTools(metadata.ToolCache, cached)
+		metadata.DiscoveredTools = sortedUnique(append(metadata.DiscoveredTools, cachedToolNames(cached)...))
+	})
 	if err != nil {
 		if a.logger != nil {
-			a.logger.Warn("load session for cached tools failed", "session_id", session.ID, "error", err)
+			a.logger.Warn("persist cached tools failed", "session_id", session.ID, "error", err)
 		}
 		return
 	}
-	metadata := decodeSessionMetadata(latest.Metadata)
-	metadata.ToolCache = toolrun.MergeCachedTools(metadata.ToolCache, cached)
-	metadata.DiscoveredTools = sortedUnique(append(metadata.DiscoveredTools, cachedToolNames(cached)...))
-	encoded := encodeSessionMetadataInto(latest.Metadata, metadata)
-	if encoded == latest.Metadata {
-		session.Metadata = latest.Metadata
-		return
-	}
-	latest.Metadata = encoded
-	latest.UpdatedAt = storage.Now()
-	if err := a.store.Sessions().Update(ctx, latest); err != nil && a.logger != nil {
-		a.logger.Warn("persist cached tools failed", "session_id", session.ID, "error", err)
-		return
-	}
-	session.Metadata = encoded
+	session.Metadata = latest.Metadata
 }
 
 func cachedToolNames(items []toolrun.CachedTool) []string {
@@ -178,56 +170,28 @@ func (a *Agent) persistToolTags(ctx context.Context, session *storage.Session, t
 	if session == nil || session.ID == "" || len(tags) == 0 {
 		return
 	}
-	latest, err := a.store.Sessions().Get(ctx, session.ID)
+	latest, err := a.mutateSessionMetadata(ctx, session.ID, func(metadata *sessionMetadata) { metadata.ToolTags = sortedUnique(append(metadata.ToolTags, tags...)) })
 	if err != nil {
-		if a.logger != nil {
-			a.logger.Warn("load session for tool tags failed", "session_id", session.ID, "error", err)
-		}
-		return
-	}
-	metadata := decodeSessionMetadata(latest.Metadata)
-	metadata.ToolTags = sortedUnique(append(metadata.ToolTags, tags...))
-	encoded := encodeSessionMetadataInto(latest.Metadata, metadata)
-	if encoded == latest.Metadata {
-		session.Metadata = latest.Metadata
-		return
-	}
-	latest.Metadata = encoded
-	latest.UpdatedAt = storage.Now()
-	if err := a.store.Sessions().Update(ctx, latest); err != nil {
 		if a.logger != nil {
 			a.logger.Warn("persist tool tags failed", "session_id", session.ID, "error", err)
 		}
 		return
 	}
-	session.Metadata = encoded
+	session.Metadata = latest.Metadata
 }
 
 func (a *Agent) persistShownRuleCardFormats(ctx context.Context, session *storage.Session, formats []string) {
 	if session == nil || session.ID == "" || len(formats) == 0 {
 		return
 	}
-	latest, err := a.store.Sessions().Get(ctx, session.ID)
+	latest, err := a.mutateSessionMetadata(ctx, session.ID, func(metadata *sessionMetadata) {
+		metadata.ShownRuleCardFormats = sortedUnique(append(metadata.ShownRuleCardFormats, formats...))
+	})
 	if err != nil {
-		if a.logger != nil {
-			a.logger.Warn("load session for rule card formats failed", "session_id", session.ID, "error", err)
-		}
-		return
-	}
-	metadata := decodeSessionMetadata(latest.Metadata)
-	metadata.ShownRuleCardFormats = sortedUnique(append(metadata.ShownRuleCardFormats, formats...))
-	encoded := encodeSessionMetadataInto(latest.Metadata, metadata)
-	if encoded == latest.Metadata {
-		session.Metadata = latest.Metadata
-		return
-	}
-	latest.Metadata = encoded
-	latest.UpdatedAt = storage.Now()
-	if err := a.store.Sessions().Update(ctx, latest); err != nil {
 		if a.logger != nil {
 			a.logger.Warn("persist rule card formats failed", "session_id", session.ID, "error", err)
 		}
 		return
 	}
-	session.Metadata = encoded
+	session.Metadata = latest.Metadata
 }

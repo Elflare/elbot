@@ -108,7 +108,9 @@ ElBot 的 slash 命令由 Agent Core 统一处理，CLI、QQ、后续平台共�
 - 当前会话处理中时，不支持执行 `/new`、`/resume`、`/fork`、`/chat`、`/work` 等 Session 切换命令；如有必要，请先使用 `/stop` 结束当前处理。
 - `/sessions` 展示的编号可被 `/archive`、`/pin`、`/delete` 等 Session 操作命令复用。
 - CLI 作为本地高权限入口，可以跨平台查看 Session；非 CLI 平台默认只查看当前平台和作用域下的 Session。
-- 删除是永久操作，需要显式 `--confirm`。
+- 删除是永久操作，需要显式 `--confirm`；执行中的会话不能删除，自动清理也会跳过。
+- Cron／Elnis 后台会话仅能由所属用户在同平台私聊恢复，或从 CLI 管理入口恢复；群聊、频道不显示，也不能通过直接 ID、引用消息或解除归档绕过。
+- 首次恢复后台会话会永久转为当前前台归属，保留历史和原工作目录。若目标仍在运行，会接入原执行：工具阶段追加 pending，LLM 阶段进入追加确认，压缩阶段拒绝新输入；后续输出直接发到前台。切走不会恢复后台身份。
 
 ## Fork
 
@@ -153,7 +155,7 @@ Fork 会保留原会话，并从指定 assistant 消息位置创建新的上下�
 说明：
 
 - 自动压缩由 `[context] compact_enabled` 和 `compact_trigger_ratio` 控制。
-- 压缩会保留历史用户原话、忽略工具返回值，成功后创建并切换到独立的 `原标题 compacted-N` Session；旧 Session 不修改。
+- 压缩会保留历史用户原话、忽略工具返回值，成功后创建并切换到独立的 `原标题 compacted-N` Session；旧 Session 不修改。可用 `/stop` 取消
 
 ## 工具与 Skill
 

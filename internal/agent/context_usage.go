@@ -104,22 +104,8 @@ func (a *Agent) persistUsage(ctx context.Context, sessionID string, usage *llm.U
 	if a.store == nil || usage == nil || sessionID == "" {
 		return
 	}
-	session, err := a.store.Sessions().Get(ctx, sessionID)
-	if err != nil {
-		if a.logger != nil {
-			a.logger.Warn("load session for usage failed", "session_id", sessionID, "error", err)
-		}
-		return
-	}
-	metadata := decodeSessionMetadata(session.Metadata)
-	metadata.LastUsage = usage
-	encoded := encodeSessionMetadataInto(session.Metadata, metadata)
-	if encoded == session.Metadata {
-		return
-	}
-	session.Metadata = encoded
-	session.UpdatedAt = storage.Now()
-	if err := a.store.Sessions().Update(ctx, session); err != nil && a.logger != nil {
+	_, err := a.mutateSessionMetadata(ctx, sessionID, func(metadata *sessionMetadata) { metadata.LastUsage = usage })
+	if err != nil && a.logger != nil {
 		a.logger.Warn("persist usage failed", "session_id", sessionID, "error", err)
 	}
 }

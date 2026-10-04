@@ -77,13 +77,15 @@ func (s *Service) generateTitle(ctx context.Context, sessionID string, messages 
 		return
 	}
 
-	session.Title = title
-	session.UpdatedAt = storage.Now()
-	if err := s.store.Sessions().Update(ctx, session); err != nil {
+	_, applied, err := s.saveGeneratedTitle(ctx, sessionID, title, false)
+	if err != nil {
 		s.handleNamingFailure(ctx, session, messages, "update title", err, "storage_update", result.RawTitle, title)
 		return
 	}
 	s.markNamingDone(sessionID)
+	if !applied {
+		return
+	}
 	s.notifyNamingCompleted(ctx, NamingCompletedEvent{SessionID: sessionID, Title: title, TriggeredAt: storage.Now(), MessageCount: len(messages)})
 }
 
@@ -121,38 +123,25 @@ func (s *Service) markNamingFailed(sessionID string) int {
 func (s *Service) handleNamingFailure(ctx context.Context, session *storage.Session, messages []storage.Message, reason string, err error, stage, rawTitle, normalizedTitle string) {
 	failures := s.markNamingFailed(session.ID)
 	event := NamingFailedEvent{
-		SessionID:                session.ID,
-		Title:                    session.Title,
-		Stage:                    stage,
-		LLMCall:                  llmCallStatus(err),
-		GeneratedTitleRaw:        rawTitle,
-		GeneratedTitleNormalized: normalizedTitle,
-		InvalidReason:            invalidTitleReason(normalizedTitle),
-		Reason:                   reason,
-		Err:                      err,
-		TriggeredAt:              storage.Now(),
-		MessageCount:             len(messages),
-		FailureCount:             failures,
-		MaxFailures:              maxNamingFailures,
+		SessionID: session.ID, Title: session.Title, Stage: stage, LLMCall: llmCallStatus(err),
+		GeneratedTitleRaw: rawTitle, GeneratedTitleNormalized: normalizedTitle,
+		InvalidReason: invalidTitleReason(normalizedTitle), Reason: reason, Err: err,
+		TriggeredAt: storage.Now(), MessageCount: len(messages), FailureCount: failures, MaxFailures: maxNamingFailures,
 	}
-	shouldFallback := failures >= maxNamingFailures || isPlaceholderTitle(session.Title)
-	if shouldFallback {
-		event.FallbackTitle = fallbackTitle(messages)
-		event.FallbackApplied = event.FallbackTitle != ""
-		s.markNamingDone(session.ID)
-	}
-	s.notifyNamingFailed(ctx, event)
-	if !shouldFallback {
-		return
-	}
-
-	if event.FallbackTitle != "" {
-		session.Title = event.FallbackTitle
-		session.UpdatedAt = storage.Now()
-		if updateErr := s.store.Sessions().Update(ctx, session); updateErr != nil {
-			s.notifyNamingFailed(ctx, NamingFailedEvent{SessionID: session.ID, Title: session.Title, Reason: "fallback title", Err: updateErr, TriggeredAt: storage.Now(), MessageCount: len(messages)})
+	fallback := fallbackTitle(messages)
+	if fallback != "" {
+		latest, applied, updateErr := s.saveGeneratedTitle(ctx, session.ID, fallback, failures < maxNamingFailures)
+		if updateErr != nil {
+			event.Reason, event.Err = "fallback title", updateErr
+		} else {
+			event.Title = latest.Title
+			if applied {
+				event.FallbackTitle, event.FallbackApplied = fallback, true
+				s.markNamingDone(session.ID)
+			}
 		}
 	}
+	s.notifyNamingFailed(ctx, event)
 }
 
 func (s *Service) notifyNamingScheduled(ctx context.Context, event NamingScheduledEvent) {
@@ -220,4 +209,29 @@ func fallbackTitle(messages []storage.Message) string {
 		}
 	}
 	return ""
+}
+
+// The manual-title flag is checked in the same transaction as both normal and
+// fallback title writes, after any slow model request has completed.
+func (s *Service) saveGeneratedTitle(ctx context.Context, id, title string, onlyPlaceholder bool) (*storage.Session, bool, error) {
+	applied := false
+	row, err := s.store.Sessions().Mutate(ctx, id, func(row *storage.Session) error {
+		fields, err := storage.DecodeSessionMetadata(row.Metadata)
+		if err != nil {
+			return err
+		}
+		var renamed bool
+		if raw, ok := fields["title_renamed"]; ok {
+			if err := json.Unmarshal(raw, &renamed); err != nil {
+				return err
+			}
+		}
+		if renamed || (onlyPlaceholder && !isPlaceholderTitle(row.Title)) {
+			return nil
+		}
+		row.Title, row.UpdatedAt = title, storage.Now()
+		applied = true
+		return nil
+	})
+	return row, applied, err
 }

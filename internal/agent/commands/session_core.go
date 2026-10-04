@@ -13,7 +13,9 @@ import (
 
 func NewNew(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{Name: "new", Usage: "/new", Description: "Reset the current session; the next message creates a new one.", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: security.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
-		deps.Sessions.ResetCurrent(deps.Scope(ctx))
+		if err := deps.Sessions.ResetCurrent(ctx, deps.Scope(ctx)); err != nil {
+			return nil, err
+		}
 		return &command.Result{Content: "new session ready; it will be created when you send the first message"}, nil
 	})
 }

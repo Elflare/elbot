@@ -13,16 +13,17 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
+	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
 
 func (a *Agent) handleChat(ctx context.Context, text string) error {
-	session, err := a.sessions.GetOrCreateCurrent(ctx, a.scope(ctx), text)
+	ctx, row, err := a.resolveInput(ctx, text)
 	if err != nil {
 		return err
 	}
-	return a.startChat(ctx, session, text)
+	return a.startChat(ctx, row, text)
 }
 
 func (a *Agent) startChat(ctx context.Context, session *storage.Session, text string) error {
@@ -33,38 +34,88 @@ func (a *Agent) startBackgroundChat(ctx context.Context, session *storage.Sessio
 	return a.startChatWithOutput(ctx, session, text, backgroundTurnOutput{agent: a})
 }
 
-func (a *Agent) startChatWithOutput(ctx context.Context, session *storage.Session, text string, out turnOutput) error {
+func (a *Agent) startChatWithOutput(ctx context.Context, row *storage.Session, text string, out turnOutput) error {
+	execution := turn.ExecutionFromContext(ctx)
+	if execution == nil {
+		execution = turn.NewExecution(storage.NewID())
+		ctx = turn.WithExecution(ctx, execution)
+	}
+	out = executionTurnOutput{agent: a, execution: execution, fallback: out}
 	for {
-		nextSession, pending, err := a.runChatTurnWithOutput(ctx, session, text, out)
+		next, pending, err := a.runChatTurnWithOutput(ctx, row, text, out)
 		if err != nil {
+			execution.Finish(err)
 			return err
 		}
 		if pending.Text == "" && len(pending.Segments) == 0 {
+			if a.turns.Execution(next.ID) != execution {
+				execution.Finish(nil)
+			}
 			return nil
 		}
-		session = nextSession
+		ctx = a.executionContext(ctx)
+		if next.ID != row.ID && !isBackgroundSession(next) {
+			_, binding, err := a.sessions.CurrentBound(ctx, a.scope(ctx))
+			if err != nil {
+				return err
+			}
+			if binding.SessionID() != next.ID {
+				return errSessionBindingChanged
+			}
+			ctx = sessionpkg.WithBinding(ctx, binding)
+		}
+		row = next
 		text = pending.Text
 		ctx = withInboundTurnInput(ctx, pending)
 	}
 }
 
 func (a *Agent) runChatTurnWithOutput(ctx context.Context, session *storage.Session, text string, out turnOutput) (*storage.Session, turn.Input, error) {
+	ctx, release, err := a.enterTurn(ctx, session, out)
+	if err != nil {
+		return session, turn.Input{}, err
+	}
+	release()
 	selection := a.modelSelectionForTurn(ctx, session)
-	if a.shouldCompact(ctx, session, selection) {
-		next, content, err := a.compactSession(ctx, session, "auto", selection)
+	if a.turns.CanCompact(session.ID, turn.ExecutionFromContext(ctx)) && a.shouldCompact(ctx, session, selection) {
+		next, content, err := a.compactSession(withInboundTurnInput(ctx, inboundTurnInput(ctx, text)), session, "auto", selection)
 		if err != nil {
 			return session, turn.Input{}, err
 		}
 		session = next
+		ctx = a.executionContext(ctx)
+		if !isBackgroundSession(session) {
+			_, binding, err := a.sessions.CurrentBound(ctx, a.scope(ctx))
+			if err != nil {
+				return session, turn.Input{}, err
+			}
+			ctx = sessionpkg.WithBinding(ctx, binding)
+		}
 		_, _ = out.SendAssistant(ctx, content)
 	}
-	if !a.turns.StartLLMInput(session.ID, inboundTurnInput(ctx, text)) {
-		return session, turn.Input{}, nil
+	ctx, release, err = a.enterTurn(ctx, session, out)
+	if err != nil {
+		return session, turn.Input{}, err
 	}
-	defer a.turns.FinishRequest(session.ID)
+	attempt := storage.NewID()
+	ctx = turn.WithAttempt(ctx, attempt)
+	execution := turn.ExecutionFromContext(ctx)
+	started := a.turns.StartExecution(session.ID, inboundTurnInput(ctx, text), execution, attempt)
+	release()
+	if !started {
+		if a.turns.Execution(session.ID) == execution {
+			return session, turn.Input{}, nil
+		}
+		return session, turn.Input{}, sessionpkg.ErrSessionBusy
+	}
+	defer a.turns.FinishRequest(session.ID, attempt)
 	var pending turn.Input
 	if err := a.runChat(ctx, session, text, out, selection, &pending); err != nil {
-		a.turns.StopSession(session.ID)
+		if !a.turns.MatchesAttempt(session.ID, attempt) || a.turns.Snapshot(session.ID).Phase == turn.PhaseAwaitAppendConfirm {
+			return session, turn.Input{}, nil
+		}
+		execution.Finish(err)
+		a.turns.StopSession(session.ID, attempt)
 		status := a.runtimeStatusForSession(session.ID)
 		status.Phase = runtimestatus.PhaseError
 		status.FinishedAt = storage.Now()
@@ -73,13 +124,18 @@ func (a *Agent) runChatTurnWithOutput(ctx context.Context, session *storage.Sess
 		return session, turn.Input{}, err
 	}
 	status := a.runtimeStatusForSession(session.ID)
-	if status.Running() {
+	if status.Running() && (a.turns.Snapshot(session.ID).Phase == turn.PhaseIdle || a.turns.MatchesAttempt(session.ID, attempt)) {
 		out.PublishRuntimeStatus(ctx, runtimeDoneStatus(status, storage.Now()))
 	}
 	return session, pending, nil
 }
 
 func (a *Agent) handleTurnContextDone(ctx context.Context, sessionID string, err error, out turnOutput) error {
+	if a.turns.Execution(sessionID) != turn.ExecutionFromContext(ctx) || (a.turns.Snapshot(sessionID).Phase != turn.PhaseAwaitAppendConfirm && a.turns.MatchesAttempt(sessionID, turn.AttemptFromContext(ctx))) {
+		if e := turn.ExecutionFromContext(ctx); e != nil {
+			e.Finish(err)
+		}
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		message := "本轮处理已超时停止，可继续发送消息恢复或重试。"
 		if a.logger != nil {
@@ -125,7 +181,16 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	messages := append([]storage.Message{}, loaded.Messages...)
 	messages = append(messages, *userMessage)
 
-	reqCtxInfo, reqCtx, done, err := a.requests.Start(ctx, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: a.responseTimeout})
+	locked, releaseRequest, err := a.sessions.EnterSessions(ctx, session.ID)
+	if err != nil {
+		return err
+	}
+	if !a.turns.MatchesAttempt(session.ID, turn.AttemptFromContext(ctx)) {
+		releaseRequest()
+		return context.Canceled
+	}
+	reqCtxInfo, reqCtx, done, err := a.requests.Start(locked, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: a.responseTimeout})
+	releaseRequest()
 	if err != nil {
 		return err
 	}
@@ -191,10 +256,43 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	var usage *llm.Usage
 	toolRounds := 0
 	inToolPhase := false
+	foregroundPrepared := false
 	for {
+		var refreshErr error
+		reqCtx, refreshErr = a.refreshExecution(reqCtx, session)
+		if refreshErr != nil {
+			return refreshErr
+		}
+		ctx = a.executionContext(ctx)
+		if sessionpkg.WasPromoted(session) && !foregroundPrepared {
+			foregroundPrepared = true
+			scope := a.scope(reqCtx)
+			prompt, err := a.promptBuilder.Build(reqCtx, PromptBuildRequest{Session: session, Scope: scope, Meta: a.conversationMeta(reqCtx, scope)})
+			if err != nil {
+				return err
+			}
+			updated := make([]llm.LLMMessage, 0, len(llmMessages)+len(prompt))
+			for _, message := range prompt {
+				if message.Role == llm.RoleSystem {
+					updated = append(updated, message)
+				}
+			}
+			for _, message := range llmMessages {
+				if message.Role != llm.RoleSystem {
+					updated = append(updated, message)
+				}
+			}
+			llmMessages = updated
+			selection = a.modelSelectionForTurn(reqCtx, session)
+			llmMessages = withForegroundInstructions(llmMessages)
+			tools, err = a.toolsForSession(reqCtx, session)
+			if err != nil {
+				return err
+			}
+		}
 		var pending *pendingUserMessage
 		if inToolPhase {
-			llmMessages, pending = a.drainPendingUserInput(session.ID, llmMessages)
+			llmMessages, pending = a.drainPendingUserInput(session.ID, llmMessages, turn.AttemptFromContext(ctx))
 		}
 		stream := out.StartStream(reqCtx)
 		llmStageStartedAt := storage.Now()
@@ -237,7 +335,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			return err
 		}
 		if !inToolPhase {
-			if !a.turns.StartToolPhase(session.ID) {
+			if !a.turns.StartToolPhase(session.ID, turn.AttemptFromContext(ctx)) {
 				return nil
 			}
 			inToolPhase = true
@@ -248,7 +346,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			out.SendPreview(ctx, fmt.Sprintf("已达到 max_rounds_per_turn=%d，后续工具调用未执行，正在请求模型总结当前进度。", a.maxToolRoundsPerTurn()))
 			llmMessages = append(llmMessages, skippedToolMessages(result.ToolCalls, a.maxToolRoundsPerTurn())...)
 			var summaryPending *pendingUserMessage
-			llmMessages, summaryPending = a.drainPendingUserInput(session.ID, llmMessages)
+			llmMessages, summaryPending = a.drainPendingUserInput(session.ID, llmMessages, turn.AttemptFromContext(ctx))
 			llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("工具调用轮次已达到上限，可以询问用户是否继续或者基于已有工具结果和当前上下文总结当前进度。")})
 			tools = nil
 			stream := out.StartStream(reqCtx)
@@ -303,8 +401,11 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("补充：" + execution.ConfirmationExtra)})
 		}
 	}
+	if err := reqCtx.Err(); err != nil {
+		return a.handleTurnContextDone(ctx, session.ID, err, out)
+	}
 	platformOutputText := platformFinalText
-	_, backgroundOutput := out.(backgroundTurnOutput)
+	backgroundOutput := isBackgroundSession(session)
 	emptyAssistantResponse := strings.TrimSpace(platformOutputText) == "" && strings.TrimSpace(finalText) == "" && len(deferredOutputs) == 0
 	if emptyAssistantResponse && !backgroundOutput {
 		platformOutputText = "模型这次没有返回可见内容。"
@@ -344,13 +445,6 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		Content:   finalText,
 		Metadata:  assistantRawTextMetadata(finalText, finalRawText),
 	}
-	pending, completed := a.turns.CompleteLLMInput(session.ID)
-	if !completed {
-		return nil
-	}
-	if completedPending != nil {
-		*completedPending = pending
-	}
 	persistedAssistant := false
 	if !emptyAssistantResponse {
 		if err := a.persistTurnMessage(ctx, assistantMessage, "append_assistant_message"); err != nil {
@@ -385,6 +479,16 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	nextSelection := a.modelSelectionForTurn(ctx, session)
 	if a.shouldCompact(ctx, session, nextSelection) {
 		_, _ = out.SendAssistant(ctx, "compact status: will compact before next request")
+	}
+	pending, completed := a.turns.CompleteLLMInput(session.ID, turn.AttemptFromContext(ctx))
+	if !completed {
+		return nil
+	}
+	if completedPending != nil {
+		*completedPending = pending
+	}
+	if execution := turn.ExecutionFromContext(ctx); execution != nil {
+		execution.SetResult(session.ID, assistantMessage.ID, finalRawText)
 	}
 	a.sessions.MaybeScheduleNaming(ctx, session.ID)
 	return nil
