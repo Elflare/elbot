@@ -14,6 +14,11 @@ type Scope struct {
 	IsCLI           bool
 }
 
+// Key identifies the actor/platform/scope that owns a current session.
+func (s Scope) Key() string {
+	return s.ActorID + "\x00" + s.Platform + "\x00" + s.PlatformScopeID
+}
+
 type CreateRequest struct {
 	Title    string
 	Mode     string

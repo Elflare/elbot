@@ -12,14 +12,15 @@ import (
 )
 
 type Service struct {
-	store        storage.Store
-	mu           sync.Mutex
-	current      map[string]string
-	namingConfig NamingConfig
-	titleGen     TitleGenerator
-	notifier     NamingNotifier
-	namingStates map[string]namingState
-	defaultMode  string
+	store            storage.Store
+	mu               sync.Mutex
+	current          map[string]string
+	onCurrentChanged func(scopeKey, sessionID string)
+	namingConfig     NamingConfig
+	titleGen         TitleGenerator
+	notifier         NamingNotifier
+	namingStates     map[string]namingState
+	defaultMode      string
 }
 
 func NewService(store storage.Store) *Service {
@@ -122,7 +123,11 @@ func (s *Service) Current(ctx context.Context, scope Scope) (*storage.Session, e
 	if id == "" {
 		return nil, storage.ErrNotFound
 	}
-	return s.store.Sessions().Get(ctx, id)
+	current, err := s.store.Sessions().Get(ctx, id)
+	if errors.Is(err, storage.ErrNotFound) {
+		s.clearCurrentIf(scope, id)
+	}
+	return current, err
 }
 
 func (s *Service) Touch(ctx context.Context, session *storage.Session) error {
@@ -138,10 +143,38 @@ func (s *Service) ResetCurrent(scope Scope) {
 	s.clearCurrentIf(scope, "")
 }
 
+// SetCurrentObserver installs an in-memory lifecycle observer and replays current
+// activations. Calls are ordered under the session mutex; the observer must not
+// reenter Service or perform file/database I/O.
+func (s *Service) SetCurrentObserver(observer func(scopeKey, sessionID string)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onCurrentChanged = observer
+	if observer != nil {
+		for key, id := range s.current {
+			observer(key, id)
+		}
+	}
+}
+
+func (s *Service) updateCurrentLocked(key, sessionID string) {
+	if s.current[key] == sessionID {
+		return
+	}
+	if sessionID == "" {
+		delete(s.current, key)
+	} else {
+		s.current[key] = sessionID
+	}
+	if s.onCurrentChanged != nil {
+		s.onCurrentChanged(key, sessionID)
+	}
+}
+
 func (s *Service) setCurrent(scope Scope, sessionID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.current[s.scopeKey(scope)] = sessionID
+	s.updateCurrentLocked(s.scopeKey(scope), sessionID)
 }
 
 func (s *Service) clearCurrentIf(scope Scope, sessionID string) {
@@ -149,12 +182,12 @@ func (s *Service) clearCurrentIf(scope Scope, sessionID string) {
 	defer s.mu.Unlock()
 	key := s.scopeKey(scope)
 	if sessionID == "" || s.current[key] == sessionID {
-		delete(s.current, key)
+		s.updateCurrentLocked(key, "")
 	}
 }
 
 func (s *Service) scopeKey(scope Scope) string {
-	return scope.ActorID + "\x00" + scope.Platform + "\x00" + scope.PlatformScopeID
+	return scope.Key()
 }
 
 func (s *Service) canAccess(scope Scope, session *storage.Session) bool {

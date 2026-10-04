@@ -94,7 +94,7 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 		if !batchPreviewSent && deps.ShouldSendPreview(ctx, req.Session, call, req.AssistantText) {
 			deps.SendPreview(ctx, fmt.Sprintf("正在调用 %s：%s", call.Name, previewArguments(call.Arguments)))
 		}
-		confirm, err := m.confirm(ctx, deps, req.Actor, sessionID, call, resolved, assessment)
+		confirm, err := m.confirm(toolCtx, deps, req.Actor, sessionID, call, resolved, assessment)
 		if !confirm.Allowed {
 			if confirm.Stopped {
 				return RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra, Transcript: transcript, Stopped: true}
@@ -111,7 +111,7 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			continue
 		}
 		confirmationExtra = joinAssistantText(confirmationExtra, confirm.Extra)
-		runToolCtx, _, done, err := deps.StartToolRequest(ctx, sessionID, call.Name)
+		runToolCtx, _, done, err := deps.StartToolRequest(toolCtx, sessionID, call.Name)
 		if err != nil {
 			content := fmt.Sprintf("tool call %s failed: %v", call.Name, err)
 			message := toolMessage(call.Name, call.ID, content)

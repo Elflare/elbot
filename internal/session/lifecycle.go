@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -124,7 +125,29 @@ func (s *Service) Delete(ctx context.Context, scope Scope, sessionID string) err
 }
 
 func (s *Service) CleanupExpired(ctx context.Context, cutoff time.Time) (int, error) {
-	return s.store.Sessions().DeleteExpired(ctx, cutoff)
+	deleted, err := s.store.Sessions().DeleteExpired(ctx, cutoff)
+	if err != nil {
+		return deleted, err
+	}
+	s.mu.Lock()
+	current := make(map[string]string, len(s.current))
+	for key, id := range s.current {
+		current[key] = id
+	}
+	s.mu.Unlock()
+	for key, id := range current {
+		_, err := s.store.Sessions().Get(ctx, id)
+		if errors.Is(err, storage.ErrNotFound) {
+			s.mu.Lock()
+			if s.current[key] == id {
+				s.updateCurrentLocked(key, "")
+			}
+			s.mu.Unlock()
+		} else if err != nil {
+			return deleted, err
+		}
+	}
+	return deleted, nil
 }
 
 func (s *Service) targetSession(ctx context.Context, scope Scope, sessionID string) (*storage.Session, error) {

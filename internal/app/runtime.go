@@ -298,6 +298,7 @@ func buildAgent(
 		OutputManager:         delivery.NewManager(nil, foundation.Logger),
 		Logs:                  foundation.Logs,
 		ToolRegistry:          toolRuntime.Registry,
+		FileRollback:          toolRuntime.FileRollback,
 		Skills:                toolRuntime.SkillManager,
 		SecurityPolicy:        securityPolicy,
 		ContextConfig:         cfg.Context,

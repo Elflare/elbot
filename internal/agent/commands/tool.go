@@ -105,5 +105,5 @@ func hasFlag(fields []string, flag string) bool {
 type ToolModule struct{}
 
 func (ToolModule) RegisterCommands(registrar Registrar, deps Deps) error {
-	return RegisterFactories(registrar, deps, NewTools)
+	return RegisterFactories(registrar, deps, NewTools, NewRollback)
 }

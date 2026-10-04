@@ -42,6 +42,7 @@ type Options struct {
 	OutputManager         delivery.Manager
 	Logs                  LogManager
 	ToolRegistry          *tool.Registry
+	FileRollback          *tool.FileRollbackService
 	Skills                SkillLifecycle
 	ToolProvider          ToolSchemaProvider
 	SecurityPolicy        *security.Policy

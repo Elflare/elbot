@@ -123,6 +123,7 @@ type Deps struct {
 	Compact       CompactService
 	ContextStatus ContextStatusService
 	Tools         ToolService
+	FileRollback  FileRollbackService
 	Hooks         HookService
 	SessionState  *SessionCommandState
 	Audit         func(event string, attrs ...any)

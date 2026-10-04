@@ -20,6 +20,7 @@ type Runtime struct {
 	ResidentMemoryStore *resident.Store
 	SkillManager        *skill.Manager
 	FileManager         *FileManager
+	FileRollback        *tool.FileRollbackService
 }
 
 type RuntimeOptions struct {
@@ -57,9 +58,10 @@ func NewRuntime(opts RuntimeOptions) (*Runtime, error) {
 	if opts.Media != nil {
 		fileManager.Media = opts.Media
 	}
-	runtime := &Runtime{Registry: registry, ResidentMemoryStore: residentStore, SkillManager: skillManager, FileManager: fileManager}
+	runtime := &Runtime{Registry: registry, ResidentMemoryStore: residentStore, SkillManager: skillManager, FileManager: fileManager, FileRollback: tool.NewFileRollbackService(nil)}
 	if err := RegisterAll(registry, RegisterOptions{
 		RuntimeInfo:         info,
+		FileRollback:        runtime.FileRollback,
 		ResidentMemoryStore: residentStore,
 		SkillManager:        skillManager,
 		CronService:         opts.CronService,

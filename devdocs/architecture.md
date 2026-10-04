@@ -122,6 +122,7 @@ Slash 命令链路：
 关键约定：
 
 - 风险等级用于内部权限和确认，不暴露给 LLM。
+- 单次工具调用的预检、确认详情和实际执行沿用派生的工具 context；撤销预检绑定路径及记录版本，确认期间记录或 workspace 变化时拒绝执行。
 - `Result.Content` 或 typed `Result.Segments` 回灌 LLM。
 - `Result.Data` 只供内部结构化消费，不进入 tool message。
 - 图片和文件必须显式返回 segment。
@@ -146,6 +147,9 @@ Tool Runtime 负责注册、schema、权限、风险、确认详情、用户侧 
 - 查询说明型 AgentSkill 会激活 `agent_skill` 元工具。
 - 查询工具化 AgentSkill 会注入其 top-level schema。
 - 查询 Go skill 会按需激活 `go_skill_run`。
+- `read_file`、`edit_file` 依赖隐藏的 `rollback_file`；依赖展开仍执行超管权限和前台限制，tag 为 `files`。
+
+文件撤销由内置 Runtime 持有共享 `FileRollbackService`，Agent 和命令通过装配复用。`fileops.RollbackManager` 从编辑的原始读取保留字节，成功写入后才登记，按实际目标串行化编辑与撤销；每个 Scope 的当前 Session 中每个目标只保留一份。内存上限为 256 MiB/1024 条，超限淘汰最旧记录。备份不进入工具结果、Session metadata 或存储层。
 
 ### 媒体引用与清理
 
@@ -273,6 +277,8 @@ Session 服务管理：
 - cron session 可见性和 CLI 全平台列表可见性。
 
 Session 命令的分页选择记录和维护配置由 `SessionCommandState` 按 Scope 保存，不使用跨用户的包级状态。
+
+`Service` 在底层 current 更新/清除时同步通知内存状态观察者，重复设置同一 Session 不发通知。文件撤销管理器据此清理该 Scope 并使旧调用的有效期标识失效，切回旧 Session 不恢复记录；各上层命令与闲置过期无需单独清理。批量历史清理后和发现 current 已被存储层删除时，也通过相同入口清除映射。观察者在 Session 锁内按序执行，不得重入 Service 或执行文件/数据库 I/O。
 
 约定：
 
