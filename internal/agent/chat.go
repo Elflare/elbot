@@ -11,6 +11,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	sessionpkg "elbot/internal/session"
@@ -147,7 +148,7 @@ func (a *Agent) handleTurnContextDone(ctx context.Context, sessionID string, err
 	return nil
 }
 
-func (a *Agent) runChat(ctx context.Context, session *storage.Session, text string, out turnOutput, selection config.ModelSelection, completedPending *turn.Input) error {
+func (a *Agent) runChat(ctx context.Context, session *storage.Session, text string, out turnOutput, selection modelmgr.Selection, completedPending *turn.Input) error {
 	userSegments := a.materializeMedia(ctx, inboundSegments(ctx, text))
 	userContent := llm.SegmentsContentText(userSegments)
 
@@ -494,12 +495,12 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	return nil
 }
 
-func (a *Agent) modelSelectionForTurn(ctx context.Context, session *storage.Session) config.ModelSelection {
+func (a *Agent) modelSelectionForTurn(ctx context.Context, session *storage.Session) modelmgr.Selection {
 	mode := storage.SessionModeWork
 	if session != nil && session.Mode != "" {
 		mode = session.Mode
 	}
-	selection := a.modelForMode(mode)
+	selection := a.models.ResolveMode(mode).ModelSelection
 	if override, ok := ctx.Value(cronModelSelectionKey{}).(config.ModelSelection); ok {
 		if override.Provider != "" {
 			selection.Provider = override.Provider
@@ -508,7 +509,7 @@ func (a *Agent) modelSelectionForTurn(ctx context.Context, session *storage.Sess
 			selection.Model = override.Model
 		}
 	}
-	return selection
+	return a.models.Resolve(selection)
 }
 
 func hasStorageUserMessage(messages []storage.Message) bool {

@@ -45,6 +45,8 @@ ElBot 的 slash 命令由 Agent Core 统一处理，CLI、QQ、后续平台共�
 
 模型参数可以是列表编号、模型名或 `provider/model`。
 
+模型选择按模式／槽位全局生效，`/model` 未指定目标时使用当前 Session 的模式，无当前 Session 时使用默认模式。切换成功会保存到 `state.toml。
+
 示例：
 
 ```text

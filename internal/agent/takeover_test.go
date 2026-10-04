@@ -168,7 +168,7 @@ func TestBackgroundCompactHandoff(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil, config.ModelSelection{})
+			a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 			a.recordUsage(row.ID, &llm.Usage{TotalTokens: 80})
 			done := make(chan backgroundTestResult, 1)
 			go func() {
@@ -425,7 +425,7 @@ func TestTakeoverPendingContinuesThroughAutomaticCompact(t *testing.T) {
 	_ = registry.Register(slowTool{started: toolStarted, release: toolRelease})
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	a.SetToolRuntime(registry, nil)
-	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil, config.ModelSelection{})
+	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 	done := startTakeoverTest(a)
 	select {
 	case <-toolStarted:

@@ -221,8 +221,8 @@ func sessionMarkers(s storage.SessionSummary, currentID string) string {
 
 func formatEmptyStatus(ctx context.Context, deps Deps) string {
 	scope := deps.Scope(ctx)
-	modeModel := deps.Models.CurrentModeModel()
-	compactModel := deps.Models.CurrentCompactModel()
+	modeModel := deps.Models.CurrentModelForMode(deps.Sessions.DefaultMode())
+	compactModel := deps.Models.CurrentCompactModel(deps.Sessions.DefaultMode())
 	active := formatActiveRequests(ctx, deps, nil)
 	return trimTrailingNewlines(fmt.Sprintf(`session status:
   current session: none

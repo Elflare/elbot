@@ -6,6 +6,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/llm"
+	"elbot/internal/modelmgr"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -17,12 +18,8 @@ func TestNewWithOptionsValidatesRequiredDependencies(t *testing.T) {
 		change func(*Options)
 		want   string
 	}{
-		{name: "work model", change: func(opts *Options) { opts.ModeModels[storage.SessionModeWork] = config.ModelSelection{} }, want: "mode_models.work"},
+		{name: "models", change: func(opts *Options) { opts.Models = nil }, want: "model service is required"},
 		{name: "store", change: func(opts *Options) { opts.Store = nil }, want: "store is required"},
-		{name: "client", change: func(opts *Options) { opts.Clients = nil }, want: `client not found for provider "default"`},
-		{name: "provider", change: func(opts *Options) {
-			opts.ModeModels[storage.SessionModeWork] = config.ModelSelection{Provider: "missing", Model: "model"}
-		}, want: `provider "missing" not found`},
 		{name: "page size", change: func(opts *Options) { opts.SessionListPageSize = 0 }, want: "page size must be positive"},
 		{name: "retention", change: func(opts *Options) { opts.CleanupRetentionDays = 0 }, want: "retention days must be positive"},
 		{name: "sandbox", change: func(opts *Options) { opts.SandboxRoot = "" }, want: "sandbox root is required"},
@@ -42,27 +39,18 @@ func TestNewWithOptionsValidatesRequiredDependencies(t *testing.T) {
 	}
 }
 
-func TestNewWithOptionsCopiesProviderClients(t *testing.T) {
-	opts := validConstructorOptions(t)
-	clients := opts.Clients
-	agent, err := NewWithOptions(opts)
-	if err != nil {
-		t.Fatalf("NewWithOptions: %v", err)
-	}
-	delete(clients, "default")
-	if agent.clientForProvider("default") == nil {
-		t.Fatal("agent retained the caller's mutable clients map")
-	}
-}
-
 func validConstructorOptions(t *testing.T) Options {
 	t.Helper()
 	return Options{
-		Clients: map[string]llm.LLM{"default": &fakeLLM{}},
-		ModeModels: map[string]config.ModelSelection{
-			storage.SessionModeWork: {Provider: "default", Model: "model"},
-			storage.SessionModeChat: {Provider: "default", Model: "model"},
-		},
+		Models: newTestModels(t, modelmgr.Options{
+			Clients:   map[string]llm.LLM{"default": &fakeLLM{}},
+			Providers: map[string]config.ProviderConfig{"default": {}},
+			ModeModels: map[string]config.ModelSelection{
+				storage.SessionModeWork: {Provider: "default", Model: "model"},
+				storage.SessionModeChat: {Provider: "default", Model: "model"},
+			},
+			DefaultMode: storage.SessionModeWork,
+		}),
 		Providers:            map[string]config.ProviderConfig{"default": {}},
 		Store:                newTestStore(t),
 		CommandPrefixes:      []string{"/"},

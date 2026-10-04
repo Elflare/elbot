@@ -130,9 +130,9 @@ func TestRollbackCommandUsesSharedRecordsWithoutLLM(t *testing.T) {
 	if records, err := a.ListFileRollbacks(ctx); err != nil || len(records) != 0 {
 		t.Fatalf("remaining: %+v %v", records, err)
 	}
-	if a.modelRuntime.clients["default"] != nil {
+	if a.models.ClientForProvider("default") != nil {
 		// The command never needs the language model; its fake would otherwise receive a request.
-		if f, ok := a.modelRuntime.clients["default"].(*fakeLLM); ok && f.requestCount() != 0 {
+		if f, ok := a.models.ClientForProvider("default").(*fakeLLM); ok && f.requestCount() != 0 {
 			t.Fatal("command called LLM")
 		}
 	}

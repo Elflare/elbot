@@ -386,7 +386,8 @@ model = "deepseek-chat"
 - `work` 模式启用工具发现和工具调用。
 - `chat` 模式不注入工具，适合闲聊和低成本对话。
 - `elwisp1`、`elwisp2`、`elwisp3` 是 Elnis LLM 事件可选模型槽位；Elvena 请求可通过 `model_slot` 指定，未配置时回退到 `work`。
-- 运行时使用 `/model` 切换模型后，状态会写回 `state.toml`。
+- 运行时使用 `/model` 切换模型会同时保存至 `state.toml`。
+- `state.toml` 在启动时读取。运行中手动修改文件需要重启生效。
 
 ## 存储与运行数据
 

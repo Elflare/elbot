@@ -9,6 +9,7 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/llm/openai"
+	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -222,9 +223,9 @@ func TestDynamicProviderClientUsesAgentLogger(t *testing.T) {
 		t.Fatalf("create zhipu client: %v", err)
 	}
 	zhipu.SetLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	a := mustNewWithOptions(t, Options{Platform: &fakePlatform{}, Clients: map[string]llm.LLM{"deepseek": &fakeLLM{}, "zhipu": zhipu}, ModeModels: modeModels, Providers: providers, Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
+	a := mustNewWithOptions(t, Options{Platform: &fakePlatform{}, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"deepseek": &fakeLLM{}, "zhipu": zhipu}, ModeModels: modeModels, Providers: providers, DefaultMode: storage.SessionModeWork}), Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
 
-	ch, err := a.clientForProvider("zhipu").ChatStream(context.Background(), llm.ChatRequest{
+	ch, err := a.models.ClientForProvider("zhipu").ChatStream(context.Background(), llm.ChatRequest{
 		Model:    "glm-4-flash",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("动态 provider 请求")}},
 	})

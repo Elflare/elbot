@@ -6,39 +6,48 @@ import (
 	"testing"
 
 	"elbot/internal/command"
+	"elbot/internal/modelmgr"
 )
 
 type fakeModelService struct {
-	models []ModelOption
+	models []modelmgr.ModelOption
 }
 
 func (s fakeModelService) CurrentModel() string                   { return "" }
 func (s fakeModelService) CurrentProvider() string                { return "" }
-func (s fakeModelService) CurrentModeModel() ModelOption          { return ModelOption{} }
-func (s fakeModelService) CurrentModelForMode(string) ModelOption { return ModelOption{} }
-func (s fakeModelService) CurrentCompactModel() ModelOption       { return ModelOption{} }
-func (s fakeModelService) CurrentNamingModel() ModelOption        { return ModelOption{} }
-func (s fakeModelService) SelectModel(context.Context, string) (ModelOption, error) {
-	return ModelOption{}, nil
+func (s fakeModelService) CurrentModeModel() modelmgr.ModelOption { return modelmgr.ModelOption{} }
+func (s fakeModelService) CurrentModelForMode(string) modelmgr.ModelOption {
+	return modelmgr.ModelOption{}
 }
-func (s fakeModelService) SelectCompactModel(string) (ModelOption, error) { return ModelOption{}, nil }
-func (s fakeModelService) SelectNamingModel(string) (ModelOption, error)  { return ModelOption{}, nil }
-func (s fakeModelService) SelectModelForMode(string, string) (ModelOption, error) {
-	return ModelOption{}, nil
+func (s fakeModelService) CurrentCompactModel(string) modelmgr.ModelOption {
+	return modelmgr.ModelOption{}
 }
-func (s fakeModelService) Models(query string) []ModelOption {
-	return s.ModelList(query, ModelListOptions{}).Options
+func (s fakeModelService) CurrentNamingModel() modelmgr.ModelOption { return modelmgr.ModelOption{} }
+func (s fakeModelService) SelectModel(context.Context, string) (modelmgr.ModelOption, error) {
+	return modelmgr.ModelOption{}, nil
 }
-func (s fakeModelService) ModelList(query string, opts ModelListOptions) ModelListResult {
+func (s fakeModelService) SelectCompactModel(string) (modelmgr.ModelOption, error) {
+	return modelmgr.ModelOption{}, nil
+}
+func (s fakeModelService) SelectNamingModel(string) (modelmgr.ModelOption, error) {
+	return modelmgr.ModelOption{}, nil
+}
+func (s fakeModelService) SelectModelForMode(string, string) (modelmgr.ModelOption, error) {
+	return modelmgr.ModelOption{}, nil
+}
+func (s fakeModelService) Models(query string) []modelmgr.ModelOption {
+	return s.ModelList(query, modelmgr.ModelListOptions{}).Options
+}
+func (s fakeModelService) ModelList(query string, opts modelmgr.ModelListOptions) modelmgr.ModelListResult {
 	query = strings.ToLower(strings.TrimSpace(query))
-	out := []ModelOption{}
+	out := []modelmgr.ModelOption{}
 	for _, model := range s.models {
 		value := strings.ToLower(model.Provider + "/" + model.Model)
 		if query == "" || strings.Contains(value, query) {
 			out = append(out, model)
 		}
 	}
-	return ModelListResult{Options: out}
+	return modelmgr.ModelListResult{Options: out}
 }
 
 func TestModelCommandCompletesOptions(t *testing.T) {
@@ -64,7 +73,7 @@ func TestModelCommandCompletesElwispOptions(t *testing.T) {
 }
 
 func TestModelCommandCompletesModelNames(t *testing.T) {
-	models := fakeModelService{models: []ModelOption{{Provider: "openai", Model: "gpt-4o"}, {Provider: "anthropic", Model: "claude-sonnet"}}}
+	models := fakeModelService{models: []modelmgr.ModelOption{{Provider: "openai", Model: "gpt-4o"}, {Provider: "anthropic", Model: "claude-sonnet"}}}
 	completer := NewModel(Deps{Models: models}).(command.Completer)
 	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model gp", Prefix: "/", Name: "model", Args: "gp", Cursor: len("/model gp")})
 	if len(got) != 1 {
@@ -76,7 +85,7 @@ func TestModelCommandCompletesModelNames(t *testing.T) {
 }
 
 func TestModelCommandCompletesModelAfterTargetOption(t *testing.T) {
-	models := fakeModelService{models: []ModelOption{{Provider: "openai", Model: "gpt-4o"}, {Provider: "anthropic", Model: "claude-sonnet"}}}
+	models := fakeModelService{models: []modelmgr.ModelOption{{Provider: "openai", Model: "gpt-4o"}, {Provider: "anthropic", Model: "claude-sonnet"}}}
 	completer := NewModel(Deps{Models: models}).(command.Completer)
 	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model --chat cla", Prefix: "/", Name: "model", Args: "--chat cla", Cursor: len("/model --chat cla")})
 	if len(got) != 1 {
@@ -88,7 +97,7 @@ func TestModelCommandCompletesModelAfterTargetOption(t *testing.T) {
 }
 
 func TestModelCommandFuzzyCompletesAbbreviation(t *testing.T) {
-	models := fakeModelService{models: []ModelOption{{Provider: "deepseek", Model: "deepseek-v3"}, {Provider: "openai", Model: "gpt-4o"}}}
+	models := fakeModelService{models: []modelmgr.ModelOption{{Provider: "deepseek", Model: "deepseek-v3"}, {Provider: "openai", Model: "gpt-4o"}}}
 	completer := NewModel(Deps{Models: models}).(command.Completer)
 	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model dpsk", Prefix: "/", Name: "model", Args: "dpsk", Cursor: len("/model dpsk")})
 	if len(got) != 1 {
@@ -100,7 +109,7 @@ func TestModelCommandFuzzyCompletesAbbreviation(t *testing.T) {
 }
 
 func TestModelCommandDoesNotCompleteModelImmediatelyAfterOption(t *testing.T) {
-	models := fakeModelService{models: []ModelOption{{Provider: "openai", Model: "gpt-4o"}}}
+	models := fakeModelService{models: []modelmgr.ModelOption{{Provider: "openai", Model: "gpt-4o"}}}
 	completer := NewModel(Deps{Models: models}).(command.Completer)
 	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model --chat", Prefix: "/", Name: "model", Args: "--chat", Cursor: len("/model --chat")})
 	if len(got) != 1 || got[0].Text != "--chat" {
@@ -123,7 +132,7 @@ func TestModelCommandSwitchesElwispSlot(t *testing.T) {
 }
 
 func TestModelSuffixUsesModeMarks(t *testing.T) {
-	got := modelSuffix(ModelOption{ModeMarks: []string{"work", "elwisp2"}, Compact: true})
+	got := modelSuffix(modelmgr.ModelOption{ModeMarks: []string{"work", "elwisp2"}, Compact: true})
 	if got != " (work, elwisp2, compact)" {
 		t.Fatalf("modelSuffix = %q", got)
 	}
@@ -135,8 +144,8 @@ type recordingModelService struct {
 	arg  string
 }
 
-func (s *recordingModelService) SelectModelForMode(mode, arg string) (ModelOption, error) {
+func (s *recordingModelService) SelectModelForMode(mode, arg string) (modelmgr.ModelOption, error) {
 	s.mode = mode
 	s.arg = arg
-	return ModelOption{Provider: "openai", Model: "gpt-4.1"}, nil
+	return modelmgr.ModelOption{Provider: "openai", Model: "gpt-4.1"}, nil
 }

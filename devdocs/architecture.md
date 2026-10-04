@@ -46,7 +46,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 
 - 静态配置：`app.toml`。
 - Provider 配置：同目录 `providers.toml`。
-- 运行时模型状态：同目录 `state.toml`。
+- 运行时模型状态：同目录 `state.toml`，启动时加载；运行中通过模型命令保存，不自动重载外部修改。
 - 工具 tag 配置：同目录 `tool_tags.toml`。
 - 用户可编辑资产：配置目录下的 `memories.toml`、`long_memory/`、`skills/`、`plugins/`。
 - Hook 配置：入口为配置目录 `plugins/hooks.toml`；被引用插件使用 `plugins/<plugin-id>/hook.toml`，持久 Hook 在其中声明 `[plugin.runtime]`。
@@ -294,6 +294,15 @@ Session 服务唯一管理 current 绑定及其同步失效。绑定只公开 `S
 接管后的原后台任务等待该逻辑执行的最终完成、取消或失败。Cron／Elnis 保存实际 RunID、消息和结果并标记接管，不将其直接算作任务成功；停止 JSON 修正、自动汇报与未开始的补投递。再次使用已接管 SessionID 不会重新设置后台身份，独立定时触发仍创建新后台 Session。
 
 Session 命令的分页选择和维护配置由 `SessionCommandState` 按 Scope 保存。闲置 TTL 按会话类型与角色选择；过期和 `/new` 只清除 current，下一条普通输入才创建记录。恢复刷新活跃时间，Fork 上下文由 Session／Storage 处理。
+
+<!-- locator:llm -->
+## 模型服务
+
+- app 构造共享 `modelmgr.Service`，注入 Agent、模型命令及 Elnis 槽位解析。服务唯一持有模式／槽位、compact、naming 选择，provider 客户端和模型目录缓存；不依赖 Agent、Session 或命令包。
+- 命令用 Session／Scope 确定当前模式，模型匹配和切换由服务执行。目录按 provider 并行查询，缓存模型与错误，显式刷新；配置模型始终参与合并，编号在筛选前统一分配。目录结果和选择状态以独立快照交付。
+- 切换串行构建候选状态，调用 `config.SaveState` 原子替换状态文件后再发布内存状态；失败保留旧选择。写盘不持有状态读锁，读取方继续使用旧快照。状态文件保留原有字段及默认 Session 模式；未配置路径的独立实例仅更新内存。
+- `Selection` 固定 provider、模型和客户端。对话固定本次 Turn 选择；压缩固定专用选择或本次对话 fallback；命名同时固定专用选择及 work fallback。LLM Hook 仍可按既有协议改写单次请求。
+- 标题生成与压缩调度留在原模块，不保存独立模型选择。重试提示由 Agent 的 `llm_retry.go` 接入既有通知发送；客户端配置在启动后保持不变。
 
 <!-- locator:context -->
 ## 上下文管理

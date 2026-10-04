@@ -45,8 +45,7 @@ func (defaultIntegrationFactory) Attach(ctx context.Context, req IntegrationRequ
 			},
 			Runner: runtime.Agent,
 			ResolveModel: func(slot string) config.ModelSelection {
-				selected := runtime.Agent.CurrentModelForMode(slot)
-				return config.ModelSelection{Provider: selected.Provider, Model: selected.Model}
+				return runtime.Models.ResolveMode(slot).ModelSelection
 			},
 		})
 		if err != nil {

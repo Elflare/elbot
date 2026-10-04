@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"elbot/internal/command"
+	"elbot/internal/modelmgr"
 	"elbot/internal/storage"
 )
 
@@ -58,7 +59,7 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 	if err != nil {
 		return nil, err
 	}
-	var selected ModelOption
+	var selected modelmgr.ModelOption
 	switch target {
 	case modelTargetChat:
 		selected, err = deps.Models.SelectModelForMode(storage.SessionModeChat, args)
@@ -71,7 +72,11 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 	case modelTargetNaming:
 		selected, err = deps.Models.SelectNamingModel(args)
 	default:
-		selected, err = deps.Models.SelectModel(ctx, args)
+		mode := deps.Sessions.DefaultMode()
+		if current, currentErr := deps.Sessions.Current(ctx, deps.Scope(ctx)); currentErr == nil && current.Mode != "" {
+			mode = current.Mode
+		}
+		selected, err = deps.Models.SelectModelForMode(mode, args)
 	}
 	if err != nil {
 		return nil, err
@@ -109,7 +114,7 @@ func (c modelCommand) Complete(ctx context.Context, req command.CompletionReques
 	if optionOnlyModelArgs(req.Args) || c.deps.Models == nil {
 		return nil
 	}
-	result := c.deps.Models.ModelList(query, ModelListOptions{})
+	result := c.deps.Models.ModelList(query, modelmgr.ModelListOptions{})
 	items := result.Options
 	if len(items) == 0 {
 		items = c.fuzzyModelOptions(query)
@@ -127,13 +132,13 @@ func (c modelCommand) Complete(ctx context.Context, req command.CompletionReques
 	return out
 }
 
-func (c modelCommand) fuzzyModelOptions(query string) []ModelOption {
+func (c modelCommand) fuzzyModelOptions(query string) []modelmgr.ModelOption {
 	query = strings.ToLower(strings.TrimSpace(query))
 	if query == "" || c.deps.Models == nil {
 		return nil
 	}
-	items := c.deps.Models.ModelList("", ModelListOptions{}).Options
-	out := make([]ModelOption, 0, len(items))
+	items := c.deps.Models.ModelList("", modelmgr.ModelListOptions{}).Options
+	out := make([]modelmgr.ModelOption, 0, len(items))
 	for _, model := range items {
 		providerModel := strings.ToLower(model.Provider + "/" + model.Model)
 		if fuzzySubsequenceMatch(providerModel, query) || fuzzySubsequenceMatch(strings.ToLower(model.Model), query) || fuzzySubsequenceMatch(strings.ToLower(model.Provider), query) {
@@ -207,7 +212,7 @@ Examples:
   /models --refresh`),
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		args, fresh := parseModelListArgs(req.Args)
-		result := deps.Models.ModelList(args, ModelListOptions{Fresh: fresh})
+		result := deps.Models.ModelList(args, modelmgr.ModelListOptions{Fresh: fresh})
 
 		models := result.Options
 		if len(models) == 0 {
@@ -247,7 +252,7 @@ Examples:
 	})
 }
 
-func appendModelProviderErrors(sb *strings.Builder, errors []ModelProviderError) {
+func appendModelProviderErrors(sb *strings.Builder, errors []modelmgr.ModelProviderError) {
 	hasError := false
 	for _, providerErr := range errors {
 		if providerErr.Err == nil {
@@ -261,7 +266,7 @@ func appendModelProviderErrors(sb *strings.Builder, errors []ModelProviderError)
 	}
 }
 
-func modelSuffix(m ModelOption) string {
+func modelSuffix(m modelmgr.ModelOption) string {
 	marks := append([]string{}, m.ModeMarks...)
 	if len(marks) == 0 {
 		if m.ChatCurrent {

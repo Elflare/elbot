@@ -24,7 +24,7 @@ rg -n "locator:tool" devdocs/code-map.md
 - `cmd/elbot/main.go`：程序入口。
 - `internal/launcher/cli.go`：命令行解析和补全生成。
 - `internal/app/app.go`、`runner.go`、`dependencies.go`：稳定启动入口、分阶段 Runner 和可替换依赖组。
-- `internal/app/foundation.go`、`models.go`、`runtime.go`：配置/存储基础设施、模型客户端，以及 Cron/Tool/Hook/Agent 核心装配。
+- `internal/app/foundation.go`、`models.go`、`runtime.go`：配置/存储基础设施、provider 客户端、共享模型服务，以及 Cron/Tool/Hook/Agent 核心装配。
 - `internal/app/platforms.go`、`integrations.go`：平台运行、Elnis 和平台能力接线；同目录还包含远程 CLI client 与 service marker。
 - `internal/app/signals.go`：平台连接信号接线、连接／队列所有权和共享预算关闭。
 
@@ -327,21 +327,23 @@ rg -n "ContextLoader|Compress|Window|System Prompt|MessageSegment|usage" interna
 ```
 
 <!-- locator:llm -->
-## LLM Adapter
+## 模型服务与 LLM Adapter
 
-适用任务：LLM 抽象、OpenAI-compatible 请求、SSE、usage、reasoning、tool call delta、多模态消息转换。
+适用任务：模型列表与切换、运行状态持久化、LLM 抽象、OpenAI-compatible 请求、SSE、usage、reasoning、tool call delta、多模态消息转换。
 
 先看：
 
 - `internal/llm/`：LLM 抽象和 MessageSegment。
 - `internal/llm/openai/`：OpenAI-compatible adapter。
-- `internal/agent/model.go`：模型运行态、模型切换、provider client 缓存。
-- `internal/agent/chat_llm.go`：Agent LLM 调用适配。
+- `internal/modelmgr/service.go`、`selection.go`：共享服务与构造校验，模式／槽位、压缩和命名选择及请求快照。
+- `internal/modelmgr/catalog.go`、`state.go`：模型目录缓存、筛选与 provider 错误，串行保存后发布选择状态；原子文件写入复用 `config.SaveState` 和 `fileops`。
+- `internal/agent/chat_llm.go`、`llm_retry.go`：Agent LLM 调用适配与现有重试通知接线。
+- `internal/agent/title.go`：标题生成，开始时从模型服务取得命名与 work fallback 快照。
 
 常用搜索：
 
 ```bash
-rg -n "ChatCompletion|Stream|SSE|reasoning|usage|ToolCall|MessageSegment|Models" internal/llm internal/agent
+rg -n -m 20 "ChatCompletion|Stream|SSE|reasoning|usage|ToolCall|MessageSegment|ModelList|ResolveMode" internal/llm internal/modelmgr internal/agent
 ```
 
 <!-- locator:storage -->

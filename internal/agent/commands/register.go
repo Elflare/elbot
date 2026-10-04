@@ -8,6 +8,7 @@ import (
 	"elbot/internal/hook"
 	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/logging"
+	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
@@ -38,45 +39,13 @@ func (g CommandGroup) RegisterCommands(registrar Registrar, deps Deps) error {
 	return RegisterFactories(registrar, deps, g.Factories...)
 }
 
-type ModelOption struct {
-	Index       int
-	Provider    string
-	Model       string
-	Current     bool
-	ChatCurrent bool
-	WorkCurrent bool
-	ModeMarks   []string
-	Compact     bool
-	Naming      bool
-}
-
-type ModelProviderError struct {
-	Provider string
-	Err      error
-}
-
-type ModelListOptions struct {
-	Fresh bool
-}
-
-type ModelListResult struct {
-	Options []ModelOption
-	Errors  []ModelProviderError
-}
-
 type ModelService interface {
-	CurrentModel() string
-	CurrentProvider() string
-	CurrentModeModel() ModelOption
-	CurrentModelForMode(mode string) ModelOption
-	CurrentCompactModel() ModelOption
-	CurrentNamingModel() ModelOption
-	SelectModel(ctx context.Context, arg string) (ModelOption, error)
-	SelectModelForMode(mode, arg string) (ModelOption, error)
-	SelectCompactModel(arg string) (ModelOption, error)
-	SelectNamingModel(arg string) (ModelOption, error)
-	Models(query string) []ModelOption
-	ModelList(query string, opts ModelListOptions) ModelListResult
+	CurrentModelForMode(mode string) modelmgr.ModelOption
+	CurrentCompactModel(mode string) modelmgr.ModelOption
+	SelectModelForMode(mode, arg string) (modelmgr.ModelOption, error)
+	SelectCompactModel(arg string) (modelmgr.ModelOption, error)
+	SelectNamingModel(arg string) (modelmgr.ModelOption, error)
+	ModelList(query string, opts modelmgr.ModelListOptions) modelmgr.ModelListResult
 }
 
 type ContextStatusService interface {
