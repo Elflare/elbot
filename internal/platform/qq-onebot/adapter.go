@@ -58,7 +58,11 @@ func qqTextPages(text string) []string {
 		if end > len(runes) {
 			end = len(runes)
 		}
-		pages = append(pages, fmt.Sprintf("%s……（%d/%d）", string(runes[start:end]), len(pages)+1, total))
+		page := string(runes[start:end])
+		if end < len(runes) {
+			page += "……"
+		}
+		pages = append(pages, fmt.Sprintf("%s（%d/%d）", page, len(pages)+1, total))
 	}
 	return pages
 }
