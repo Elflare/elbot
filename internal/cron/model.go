@@ -77,6 +77,10 @@ const (
 )
 
 type CronDeliveryState struct {
+	ExecutionRunID  string                    `json:"execution_run_id,omitempty"`
+	TakenOver       bool                      `json:"taken_over,omitempty"`
+	Outcome         string                    `json:"outcome,omitempty"`
+	ExecutionResult string                    `json:"execution_result,omitempty"`
 	RunID           string                    `json:"run_id"`
 	ReportReady     bool                      `json:"report_ready,omitempty"`
 	TaskCompleted   bool                      `json:"task_completed,omitempty"`

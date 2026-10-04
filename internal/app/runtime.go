@@ -143,8 +143,15 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	}
 	req.Profiler.Mark("agent init")
 
+	bindings := &signalBindings{}
+	if err := bindings.connectSession(agt.SessionService(), toolRuntime.FileRollback.Manager, foundation.Logger); err != nil {
+		return nil, errors.Join(err, bindings.Close(context.Background()), hookRuntime.Close(context.Background()))
+	}
+	if foundation.Maintenance != nil {
+		foundation.Maintenance.Sessions = agt.SessionService()
+	}
 	return &RuntimeComponents{
-		Signals:     &signalBindings{},
+		Signals:     bindings,
 		Media:       mediaCenter,
 		Agent:       agt,
 		Handler:     agt,

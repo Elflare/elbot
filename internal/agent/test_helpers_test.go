@@ -176,8 +176,9 @@ func (s *fakeMessageStream) Finish(ctx context.Context) (delivery.Receipt, error
 }
 
 type fakeLLMBlock struct {
-	started chan struct{}
-	release chan struct{}
+	ignoreCancellation bool
+	started            chan struct{}
+	release            chan struct{}
 }
 
 type fakeLLM struct {
@@ -245,6 +246,10 @@ func waitFakeLLMBlock(ctx context.Context, block fakeLLMBlock) error {
 		close(block.started)
 	}
 	if block.release == nil {
+		return nil
+	}
+	if block.ignoreCancellation {
+		<-block.release
 		return nil
 	}
 	select {

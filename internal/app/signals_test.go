@@ -2,9 +2,13 @@ package app
 
 import (
 	"context"
+	"elbot/internal/session"
+	"elbot/internal/storage/sqlite"
+	"elbot/internal/utils/fileops"
 	"errors"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -165,5 +169,79 @@ func TestRunnerRetainsRealErrorAlongsideCancellation(t *testing.T) {
 	err := runner.Run(ctx, Options{})
 	if !errors.Is(err, want) || errors.Is(err, context.Canceled) {
 		t.Fatalf("Run=%v", err)
+	}
+}
+
+func TestDelayedSessionCleanupCannotInvalidateNewRollbackBinding(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	sessions := session.NewService(store)
+	scope := session.Scope{ActorID: "u", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	row, err := sessions.Create(ctx, scope, session.CreateRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, old, err := sessions.CurrentBound(ctx, scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rollback := fileops.NewRollbackManager()
+	oldLease, _ := rollback.Session(old)
+	bindings := &signalBindings{}
+	if err := bindings.connectSession(sessions, rollback, nil); err != nil {
+		t.Fatal(err)
+	}
+	defer bindings.Close(ctx)
+	started, release := make(chan struct{}), make(chan struct{})
+	if err := bindings.queues[0].Submit(ctx, signal.Task{Run: func(ctx context.Context) error {
+		close(started)
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	if err := sessions.ResetCurrent(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	if old.Valid() {
+		t.Fatal("binding remained valid while cleanup blocked")
+	}
+	if _, err := oldLease.List(); !errors.Is(err, fileops.ErrRollbackExpired) {
+		t.Fatalf("old lease: %v", err)
+	}
+	if _, err := sessions.Resume(ctx, scope, row.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, current, err := sessions.CurrentBound(ctx, scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, _ := rollback.Session(current)
+	content := "new binding content"
+	path := filepath.Join(t.TempDir(), "file")
+	if _, err := lease.EditFile(ctx, path, "", "", true, 3, []fileops.Edit{{Operation: "overwrite", NewText: &content}}, fileops.EditFileOptions{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	drained := make(chan struct{})
+	if err := bindings.queues[0].Submit(ctx, signal.Task{Run: func(context.Context) error { close(drained); return nil }}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-drained:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cleanup did not drain")
+	}
+	items, err := lease.List()
+	if err != nil || len(items) != 1 || !current.Valid() {
+		t.Fatalf("new records: %#v %v", items, err)
 	}
 }

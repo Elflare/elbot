@@ -2,6 +2,10 @@ package maintenance
 
 import (
 	"context"
+	"elbot/internal/config"
+	"elbot/internal/session"
+	"elbot/internal/storage"
+	"elbot/internal/storage/sqlite"
 	"os"
 	"path/filepath"
 	"testing"
@@ -52,5 +56,50 @@ func TestCleanupSandboxDeletesOldFilesAndEmptyDirs(t *testing.T) {
 	if _, err := os.Stat(newFile); err != nil {
 
 		t.Fatalf("new file missing: %v", err)
+	}
+}
+
+func TestCleanupUsesInjectedLiveSessionService(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	live := session.NewService(store)
+	scope := session.Scope{ActorID: "u", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	row, err := live.Create(ctx, scope, session.CreateRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, binding, err := live.CurrentBound(ctx, scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.Sessions().Mutate(ctx, row.ID, func(row *storage.Session) error { row.UpdatedAt = time.Now().AddDate(0, 0, -10); return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	busy := true
+	live.SetActivitySource(func() []string {
+		if busy {
+			return []string{row.ID}
+		}
+		return nil
+	})
+	svc := NewService(nil, store, config.MaintenanceCleanupConfig{Enabled: true, RetentionDays: 1}, nil)
+	svc.Sessions = live
+	if err := svc.RunSessionCleanup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !binding.Valid() {
+		t.Fatal("busy current was deleted")
+	}
+	busy = false
+	if err := svc.RunSessionCleanup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if binding.Valid() {
+		t.Fatal("idle cleanup did not invalidate live binding")
 	}
 }

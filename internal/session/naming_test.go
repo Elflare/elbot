@@ -19,7 +19,7 @@ func TestServiceRenameMarksManualTitleAndPreservesMetadata(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	session.Metadata = `{"discovered_tools":["web_search"]}`
-	if err := store.Sessions().Update(ctx, session); err != nil {
+	if _, err := store.Sessions().Mutate(ctx, session.ID, func(latest *storage.Session) error { *latest = *session; return nil }); err != nil {
 		t.Fatalf("update metadata: %v", err)
 	}
 
@@ -133,7 +133,7 @@ func TestServiceMaybeScheduleNamingSkipsRenamedTitle(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 	session.Metadata = `{"title_renamed":true,"title_source":"cron"}`
-	if err := store.Sessions().Update(ctx, session); err != nil {
+	if _, err := store.Sessions().Mutate(ctx, session.ID, func(latest *storage.Session) error { *latest = *session; return nil }); err != nil {
 		t.Fatalf("update session metadata: %v", err)
 	}
 	if err := store.Messages().Append(ctx, &storage.Message{SessionID: session.ID, Role: storage.RoleUser, Content: "hello"}); err != nil {

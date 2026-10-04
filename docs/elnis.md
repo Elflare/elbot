@@ -162,7 +162,7 @@ Elnis 收到事件后，会按 `mode` 决定处理方式。
 }
 ```
 
-`need_report=true` 时，Elnis 会按裁决后的目标发送 `report`。
+未被接管时，`need_report=true` 会按裁决后的目标发送 `report`。所属用户在同平台私聊（或 CLI 管理入口）恢复后台 Session 后，该会话永久转为普通前台会话；执行变为前台逻辑，不再自动汇报或补投递。
 
 ## 查看 Elwisp 日志
 
@@ -196,4 +196,3 @@ Elnis 收到事件后，会按 `mode` 决定处理方式。
 ## 下一步：配置与使用
 
 - [Elnis 配置与使用](elnis-usage.md)：启用 Elnis、配置 Elwisp 策略、发送 Elvena 请求，并了解请求字段和投递边界。
-

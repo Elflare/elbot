@@ -8,6 +8,7 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/request"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -102,7 +103,7 @@ func TestStopCommandCancelsNumberedHookRequest(t *testing.T) {
 		t.Fatalf("start hook: %v", err)
 	}
 
-	cmd := NewStop(Deps{Requests: manager, Turns: turn.NewManager()})
+	cmd := NewStop(Deps{Sessions: session.NewService(newCommandTestStore(t)), Requests: manager, Turns: turn.NewManager()})
 	if _, err := cmd.Handle(ctx, command.Request{Args: "1.1"}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -127,7 +128,7 @@ func TestStopCommandCancelsNumberedChildRequest(t *testing.T) {
 		t.Fatalf("start tool: %v", err)
 	}
 
-	cmd := NewStop(Deps{Requests: manager, Turns: turn.NewManager()})
+	cmd := NewStop(Deps{Sessions: session.NewService(newCommandTestStore(t)), Requests: manager, Turns: turn.NewManager()})
 	if _, err := cmd.Handle(ctx, command.Request{Args: "1.1"}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -151,7 +152,7 @@ func TestStopCommandCancelsNumberedTurnAndChildren(t *testing.T) {
 		t.Fatalf("start tool: %v", err)
 	}
 
-	cmd := NewStop(Deps{Requests: manager, Turns: turn.NewManager()})
+	cmd := NewStop(Deps{Sessions: session.NewService(newCommandTestStore(t)), Requests: manager, Turns: turn.NewManager()})
 	if _, err := cmd.Handle(ctx, command.Request{Args: "1"}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -170,7 +171,7 @@ func TestStopCommandCompletesRequestIDs(t *testing.T) {
 	}
 	defer done()
 
-	cmd := NewStop(Deps{Requests: manager}).(command.Completer)
+	cmd := NewStop(Deps{Sessions: session.NewService(newCommandTestStore(t)), Requests: manager}).(command.Completer)
 	prefix := started.ID[:8]
 	got := cmd.Complete(context.Background(), command.CompletionRequest{Raw: "/stop " + prefix, Prefix: "/", Name: "stop", Args: prefix, Cursor: len("/stop ") + len(prefix)})
 	if len(got) != 1 || got[0].Text != started.ID || got[0].Kind != "request_id" {

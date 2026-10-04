@@ -176,7 +176,7 @@ ElBot 包含两层 Cron 能力：
 | Direct Cron | 按计划直接发送固定内容。 |
 | LLM Cron | 按任务描述驱动模型执行，并可使用工具。 |
 
-LLM Cron 每次调度触发都会创建独立的后台 Session，把任务作为新输入执行，并在完成后发送本轮结果。Session 可在创建 Cron 的平台通过 `/sessions`、`/resume` 查看；广播任务会为其他目标平台复制 Session，CLI 可查看全部平台 Session。
+LLM Cron 每次调度触发都会创建独立的后台 Session，把任务作为新输入执行，并在完成后发送本轮结果。所属用户可在同平台私聊通过 `/sessions`、`/resume` 查看，CLI 可管理全部平台 Session；群聊和频道不能恢复后台会话。首次恢复会永久转为普通前台会话，运行中的原任务继续等待此次执行完成。接管后不再汇报或补投递；定时任务下一次独立触发仍使用新后台 Session。
 
 
 

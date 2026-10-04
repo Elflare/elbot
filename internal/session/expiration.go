@@ -31,6 +31,15 @@ type ExpireIdleResult struct {
 }
 
 func (s *Service) ExpireIdleCurrent(ctx context.Context, req ExpireIdleRequest) (ExpireIdleResult, error) {
+	ctx, release, enterErr := s.EnterActivation(ctx, req.Scope)
+	if enterErr != nil {
+		return ExpireIdleResult{}, enterErr
+	}
+	defer release()
+
+	if err := s.canReplaceCurrent(req.Scope, ""); err != nil {
+		return ExpireIdleResult{}, nil
+	}
 	ttlMinutes := req.Config.TTLMinutes(req.Scope, req.IsSuperadmin)
 	if ttlMinutes <= 0 {
 		return ExpireIdleResult{}, nil
@@ -49,14 +58,24 @@ func (s *Service) ExpireIdleCurrent(ctx context.Context, req ExpireIdleRequest) 
 	if !session.UpdatedAt.Before(now.Add(-time.Duration(ttlMinutes) * time.Minute)) {
 		return ExpireIdleResult{}, nil
 	}
-	session.UpdatedAt = now
-	if err := s.store.Sessions().Update(ctx, session); err != nil {
+	expired := false
+	_, err = s.store.Sessions().Mutate(ctx, session.ID, func(row *storage.Session) error {
+		if row.UpdatedAt.Before(now.Add(-time.Duration(ttlMinutes) * time.Minute)) {
+			row.UpdatedAt = now
+			expired = true
+		}
+		return nil
+	})
+	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return ExpireIdleResult{}, nil
 		}
 		return ExpireIdleResult{}, err
 	}
-	s.clearCurrentIf(req.Scope, session.ID)
+	if !expired {
+		return ExpireIdleResult{}, nil
+	}
+	s.setCurrent(ctx, req.Scope, "", ChangeExpire)
 	return ExpireIdleResult{Expired: true, SessionID: session.ID, TTLMinutes: ttlMinutes}, nil
 }
 

@@ -13,6 +13,7 @@ const (
 	StatusResultReady = elvena.StatusResultReady
 	StatusDelivering  = elvena.StatusDelivering
 	StatusCompleted   = elvena.StatusCompleted
+	StatusTakenOver   = elvena.StatusTakenOver
 	StatusFailed      = elvena.StatusFailed
 	StatusDuplicate   = elvena.StatusDuplicate
 	StatusUnsupported = elvena.StatusUnsupported

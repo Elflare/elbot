@@ -61,6 +61,10 @@ type Manager struct {
 }
 
 type state struct {
+	execution     *Execution
+	compactReady  bool
+	reserved      bool
+	compactRun    string
 	phase         Phase
 	originalInput Input
 	pending       []Input
@@ -76,23 +80,33 @@ func NewManager() *Manager {
 }
 
 func (m *Manager) StartCompact(sessionID string) bool {
+	return m.StartCompactRun(sessionID, "")
+}
+
+func (m *Manager) StartCompactRun(sessionID, runID string, execution ...*Execution) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, exists := m.turns[sessionID]; exists {
-		return false
+	if old := m.turns[sessionID]; old != nil {
+		if len(execution) == 0 || !old.reserved || !old.compactReady || old.phase != PhaseLLM || old.execution != execution[0] {
+			return false
+		}
 	}
-	m.turns[sessionID] = &state{phase: PhaseCompact, tools: map[string]int{}}
+	m.turns[sessionID] = &state{phase: PhaseCompact, compactRun: runID, tools: map[string]int{}}
 	return true
 }
 
 func (m *Manager) CompleteCompact(sessionID string) bool {
+	return m.CompleteCompactRun(sessionID, "")
+}
+
+func (m *Manager) CompleteCompactRun(sessionID, runID string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase != PhaseCompact {
+	if !ok || turn.phase != PhaseCompact || turn.compactRun != runID {
 		return false
 	}
-	removeTurn(m.turns, sessionID, turn)
+	removeTurn(m.turns, sessionID, turn, true)
 	return true
 }
 
@@ -213,14 +227,14 @@ func (m *Manager) AwaitRiskConfirmation(sessionID string, confirmation RiskConfi
 	return m.AwaitRiskConfirmationContext(context.Background(), sessionID, confirmation, 0)
 }
 
-func (m *Manager) AwaitRiskConfirmationContext(ctx context.Context, sessionID string, confirmation RiskConfirmation, timeout time.Duration) (RiskConfirmationResponse, bool) {
+func (m *Manager) AwaitRiskConfirmationContext(ctx context.Context, sessionID string, confirmation RiskConfirmation, timeout time.Duration, expected ...string) (RiskConfirmationResponse, bool) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	ch := make(chan RiskConfirmationResponse, 1)
 	m.mu.Lock()
 	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase != PhaseTool {
+	if !ok || !matches(turn, expected) || turn.phase != PhaseTool {
 		m.mu.Unlock()
 		return RiskConfirmationResponse{Stopped: true}, false
 	}
@@ -293,8 +307,12 @@ func (m *Manager) ResolveRiskConfirmation(sessionID string, resp RiskConfirmatio
 	if !ok || turn.phase != PhaseAwaitRiskConfirm || turn.riskResponse == nil {
 		return false
 	}
-	turn.riskResponse <- resp
-	return true
+	select {
+	case turn.riskResponse <- resp:
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *Manager) RefreshRiskConfirmation(sessionID string) bool {
@@ -317,11 +335,11 @@ func (m *Manager) PendingRiskConfirmation(sessionID string) (RiskConfirmation, b
 	return *turn.riskConfirm, true
 }
 
-func (m *Manager) StartToolPhase(sessionID string) bool {
+func (m *Manager) StartToolPhase(sessionID string, expected ...string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase != PhaseLLM {
+	if !ok || !matches(turn, expected) || turn.phase != PhaseLLM {
 		return false
 	}
 	turn.phase = PhaseTool
@@ -333,32 +351,40 @@ func (m *Manager) CompleteLLM(sessionID string) (string, bool) {
 	return input.Text, ok
 }
 
-func (m *Manager) CompleteLLMInput(sessionID string) (Input, bool) {
+func (m *Manager) CompleteLLMInput(sessionID string, expected ...string) (Input, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
-	if !ok || (turn.phase != PhaseLLM && turn.phase != PhaseTool && turn.phase != PhaseAwaitRiskConfirm) {
+	if !ok || !matches(turn, expected) || (turn.phase != PhaseLLM && turn.phase != PhaseTool && turn.phase != PhaseAwaitRiskConfirm) {
 		return Input{}, false
 	}
 	pending := mergeInputs(turn.pending)
-	removeTurn(m.turns, sessionID, turn)
+	if turn.execution == nil {
+		removeTurn(m.turns, sessionID, turn)
+	} else if pending.Text != "" || len(pending.Segments) > 0 {
+		m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: pending, tools: map[string]int{}, execution: turn.execution, reserved: true, compactReady: true}
+	} else {
+		removeTurn(m.turns, sessionID, turn, true)
+	}
 	return pending, true
 }
 
-func (m *Manager) FinishRequest(sessionID string) {
+func (m *Manager) FinishRequest(sessionID string, expected ...string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase == PhaseAwaitAppendConfirm {
+	if !ok || !matches(turn, expected) || turn.phase == PhaseAwaitAppendConfirm {
 		return
 	}
 	removeTurn(m.turns, sessionID, turn)
 }
 
-func (m *Manager) StopSession(sessionID string) {
+func (m *Manager) StopSession(sessionID string, expected ...string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	removeTurn(m.turns, sessionID, m.turns[sessionID])
+	if matches(m.turns[sessionID], expected) {
+		removeTurn(m.turns, sessionID, m.turns[sessionID])
+	}
 }
 
 func (m *Manager) StopAll() {
@@ -373,11 +399,11 @@ func (m *Manager) DrainMerged(sessionID string) string {
 	return m.DrainMergedInput(sessionID).Text
 }
 
-func (m *Manager) DrainMergedInput(sessionID string) Input {
+func (m *Manager) DrainMergedInput(sessionID string, expected ...string) Input {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
-	if !ok || len(turn.pending) == 0 {
+	if !ok || !matches(turn, expected) || len(turn.pending) == 0 {
 		return Input{}
 	}
 	merged := mergeInputs(turn.pending)
@@ -385,10 +411,13 @@ func (m *Manager) DrainMergedInput(sessionID string) Input {
 	return merged
 }
 
-func (m *Manager) AddToolUse(sessionID, name string) {
+func (m *Manager) AddToolUse(sessionID, name string, expected ...string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn := m.turns[sessionID]
+	if len(expected) > 0 && !matches(turn, expected) {
+		return
+	}
 	if turn == nil {
 		turn = &state{phase: PhaseTool, tools: map[string]int{}}
 		m.turns[sessionID] = turn
@@ -546,10 +575,13 @@ func resetTimer(timer *time.Timer, timeout time.Duration) {
 	timer.Reset(timeout)
 }
 
-func removeTurn(turns map[string]*state, sessionID string, turn *state) {
+func removeTurn(turns map[string]*state, sessionID string, turn *state, preserve ...bool) {
 	if turn == nil {
 		delete(turns, sessionID)
 		return
+	}
+	if turn.execution != nil && (len(preserve) == 0 || !preserve[0]) {
+		turn.execution.Finish(context.Canceled)
 	}
 	stopTurn(turn)
 	if turn.appendDone != nil {

@@ -11,6 +11,15 @@ import (
 var ErrChatModeRequiresEmptySession = errors.New("chat mode requires an empty work session")
 
 func (s *Service) ActivateMode(ctx context.Context, scope Scope, req ActivateModeRequest) (ActivateModeResult, error) {
+	ctx, release, enterErr := s.EnterActivation(ctx, scope)
+	if enterErr != nil {
+		return ActivateModeResult{}, enterErr
+	}
+	defer release()
+
+	if err := s.canReplaceCurrent(scope, ""); err != nil {
+		return ActivateModeResult{}, err
+	}
 	if err := validateMode(req.Mode); err != nil {
 		return ActivateModeResult{}, err
 	}
@@ -37,9 +46,8 @@ func (s *Service) ActivateMode(ctx context.Context, scope Scope, req ActivateMod
 			return ActivateModeResult{}, ErrChatModeRequiresEmptySession
 		}
 	}
-	session.Mode = req.Mode
-	session.UpdatedAt = storage.Now()
-	if err := s.store.Sessions().Update(ctx, session); err != nil {
+	session, err = s.store.Sessions().Mutate(ctx, session.ID, func(row *storage.Session) error { row.Mode = req.Mode; row.UpdatedAt = storage.Now(); return nil })
+	if err != nil {
 		return ActivateModeResult{}, err
 	}
 	return ActivateModeResult{Session: session}, nil

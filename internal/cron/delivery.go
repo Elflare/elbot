@@ -26,8 +26,31 @@ func (s *Service) deliverPrepared(ctx context.Context, job storage.CronJob, meta
 	if !state.ReportReady {
 		return nil
 	}
+	if taken, err := background.SessionTakenOver(ctx, s.store, state.ReportSessionID); err != nil {
+		return err
+	} else if taken {
+		state.TakenOver = true
+	}
+	if state.TakenOver {
+		state.Report = ""
+		state.ReportSegments = nil
+		_, err := s.persistDeliveryState(ctx, &job, state)
+		if err != nil {
+			return err
+		}
+		if meta.Schedule.Mode == ScheduleOnce {
+			return s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
+		}
+		return nil
+	}
 	targets := s.resolveDeliveryTargets(meta, job.Name)
 	for _, resolved := range targets {
+		if taken, err := background.SessionTakenOver(ctx, s.store, state.ReportSessionID); err != nil {
+			return err
+		} else if taken {
+			state.TakenOver = true
+			return s.deliverPrepared(ctx, job, meta, state, platformFilter, recovery)
+		}
 		if platformFilter != "" && resolved.platform != platformFilter {
 			continue
 		}
@@ -50,6 +73,12 @@ func (s *Service) deliverPrepared(ctx context.Context, job storage.CronJob, meta
 			}
 		}
 		for index, segment := range state.ReportSegments {
+			if taken, err := background.SessionTakenOver(ctx, s.store, state.ReportSessionID); err != nil {
+				return err
+			} else if taken {
+				state.TakenOver = true
+				return s.deliverPrepared(ctx, job, meta, state, platformFilter, recovery)
+			}
 			outputState := ensureDeliveryOutputState(targetState, fmt.Sprintf("segment:%d", index))
 			if deliveryStatusDone(outputState.Status) {
 				continue
@@ -162,6 +191,9 @@ func (s *Service) resolveDeliveryTargets(meta Metadata, jobName string) []resolv
 }
 
 func (s *Service) deliveryComplete(meta Metadata, state CronDeliveryState) bool {
+	if state.TakenOver {
+		return true
+	}
 	if !state.ReportReady {
 		return false
 	}

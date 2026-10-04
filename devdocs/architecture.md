@@ -110,7 +110,7 @@ Slash 命令链路：
 职责分层：
 
 - Request manager 管 active request 树、父子关系、取消、超时和完成清理。
-- Turn manager 管单个 Session 当前 turn 的阶段、原始输入、pending 追加、确认状态和工具计数。
+- Turn manager 管单个 Session 当前 turn 的阶段、原始输入、pending 追加、确认状态和工具计数；Execution 保存跨追加确认与自动压缩的稳定 RunID、前台接管上下文和一次性结果。具体请求另有 attempt 身份，迟到完成不能清除续接的新 Turn；已接收的 pending 在续接间隙保留忙碌状态，自动压缩交接也预留下一轮执行。
 - Runtime status 是状态快照，供 CLI 状态栏、`/requests` 和日志展示。
 
 运行约定：
@@ -279,24 +279,17 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 <!-- locator:session -->
 ## Session 生命周期
 
-Session 服务管理：
+Session 服务唯一管理 current 绑定及其同步失效。绑定只公开 `Scope()`、`SessionID()`、`Valid()`，不提供取消；`CurrentBound` 一并返回持久化快照和原绑定。切离后旧绑定永久无效，切回同一 Session 获得新绑定；未变化的 current 不重复发信号。输入、工具和确认续接传递原绑定，普通旧调用不能重新捕获 current 而复活。
 
-- 当前 session。
-- 创建、恢复、Fork。
-- 分页列表、置顶、归档、删除、过期清理。
-- 模式切换和手动重命名。
-- 平台隔离。
-- cron session 可见性和 CLI 全平台列表可见性。
+仅发布 `BindingChanged{Old, New, Reason}`，覆盖创建、恢复、Fork、重置、删除、过期和记录缺失导致的 current 变化，不发布一般字段或持久化增删事件。删除会失效所有指向该记录的绑定。信号在状态与准入锁释放后发出，允许回调重入。app 持有独立撤销清理队列及订阅，以 `FollowExecutor + CancelPending` 清理指定旧绑定；队列延迟不影响同步失效，关闭沿用共享 30 秒预算。维护任务复用运行中的 Session 服务。
 
-Session 命令的分页选择记录和维护配置由 `SessionCommandState` 按 Scope 保存，不使用跨用户的包级状态。
+短准入按 Scope → 排序后的 SessionID → 状态锁取得。Scope 保护 current 解析与切换，SessionID 协调 Turn 启动、停止、交接、删除和清理；LLM、工具、Hook、发送和信号回调均在锁外。Session 通过注入的只读执行状态判断忙闲，当前非 idle 时禁止切离，显式删除拒绝执行中的 Session，维护清理跳过忙碌项并在条件删除时复核归档、置顶和时间。不同 Scope 不共用全局准入锁。
 
-`Service` 在底层 current 更新/清除时同步通知内存状态观察者，重复设置同一 Session 不发通知。文件撤销管理器据此清理该 Scope 并使旧调用的有效期标识失效，切回旧 Session 不恢复记录；各上层命令与闲置过期无需单独清理。批量历史清理后和发现 current 已被存储层删除时，也通过相同入口清除映射。观察者在 Session 锁内按序执行，不得重入 Service 或执行文件/数据库 I/O。
+后台 Session 只向所属用户的同平台私聊及 CLI 管理入口开放，群聊、频道和未知类型不可列出或直接恢复。首次恢复在原子更新中将归属永久改为前台 Scope，记录 `foreground_origin` 并清除活动后台身份；保留历史、模式、缓存和 workspace，切走或重启不会恢复后台身份。运行中的目标可被空闲前台接管，原 Execution 同步取得前台身份、绑定和输出目标；已发出的请求与工具不重启，后续执行边界使用前台工具及确认规则。
 
-约定：
+接管后的原后台任务等待该逻辑执行的最终完成、取消或失败。Cron／Elnis 保存实际 RunID、消息和结果并标记接管，不将其直接算作任务成功；停止 JSON 修正、自动汇报与未开始的补投递。再次使用已接管 SessionID 不会重新设置后台身份，独立定时触发仍创建新后台 Session。
 
-- Agent 入口需要从平台上下文解析 Actor/Scope，缺失时走 fallback。
-- Fork 上下文由 Session/Storage 支持，不在平台层拼接。
-- 闲置过期策略按群聊/私聊和普通用户/超管选择 TTL；过期与 `/new` 都只清除内存中的 current，首条普通消息才创建并持久化新 Session，恢复历史 Session 时重新刷新活跃时间。
+Session 命令的分页选择和维护配置由 `SessionCommandState` 按 Scope 保存。闲置 TTL 按会话类型与角色选择；过期和 `/new` 只清除 current，下一条普通输入才创建记录。恢复刷新活跃时间，Fork 上下文由 Session／Storage 处理。
 
 <!-- locator:context -->
 ## 上下文管理
@@ -311,9 +304,10 @@ Session 命令的分页选择记录和维护配置由 `SessionCommandState` 按 
 约定：
 
 - Prompt Builder 只生成单条 system prompt，并组合历史、工具 transcript、多模态 metadata 和摘要。
-- 压缩以可取消 request 保护生命周期，仅总结有效对话与成功工具调用。成功后创建并切换到无 Parent/Fork 关系的新 Session，旧 Session 保持不变。
+- 压缩以可取消 Request 和执行身份保护生命周期，仅总结有效对话与成功工具调用。交接在短准入内复核取消、绑定和身份，先使旧 Turn idle，再创建无 Parent/Fork 关系的新 Session；旧记录保留。前台激活新绑定，后台保持无 current 的后台执行，接管事实及 workspace 随交接保留，旧 token 用量不带入。
+- 压缩期间拒绝新输入，支持停止；取消先于交接生效时不能切换 current。自动压缩继续此前已接收的输入和工具 pending，手动压缩不自动聊天。
 - 新 Session metadata 暂存一次性 compact seed；首条用户输入时，Prompt Builder 将“压缩结果 + 历史用户原话 + 当前输入”物化为单条 user message，成功持久化后消耗 seed。
-- 模型选择在 turn 开始时快照；进行中的 `/model` 不改变当前 LLM/工具循环，下一轮按新模型重新解析窗口与阈值。
+- 模型选择在 turn 开始时快照；进行中的 `/model` 不改变当前 LLM/工具循环，下一轮按新模型重新解析窗口与阈值。后台转前台后解除后台模型覆盖和强制 JSON／无人值守提示，后续 LLM 调用使用前台身份。
 - System Prompt Manager 按优先级收集 Soul、工具名称、tag prompt 等片段。
 - 最近 usage 会写入 Session metadata，恢复会话后可展示。
 
@@ -334,6 +328,7 @@ SQLite 实现负责：
 约定：
 
 - 新持久化能力先扩展 storage interface，再落 SQLite repository。
+- Session 写入统一使用 `Mutate(ctx, id, updateFn)`：短事务读取最新行、修改负责字段并返回新快照，回调错误回滚；回调不做 I/O、模型调用或嵌套仓储操作。metadata 使用 RawMessage 保留未知字段及数值精度，解码失败拒绝写入；集合合并、接管条件和手动命名优先检查均基于事务内最新值。
 - Message 的 `segments` 是多模态消息的完整结构来源；`content` 是由 segments 生成的纯文本快速路径。仅多模态内容保存 segments，读取时非空 segments 优先，否则直接使用 content。
 - migration 需要可重复检测已应用版本。
 - 查询条件要保留平台隔离、归档过滤、Fork 范围等业务约束。

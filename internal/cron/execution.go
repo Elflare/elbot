@@ -17,6 +17,9 @@ func (s *Service) runDirect(ctx context.Context, job storage.CronJob, meta Metad
 	if !state.ReportReady {
 		return prepareErr
 	}
+	if state.TakenOver {
+		ctx = context.WithoutCancel(ctx)
+	}
 	return errors.Join(prepareErr, s.deliverPrepared(ctx, job, meta, state, "", false))
 }
 
@@ -24,6 +27,9 @@ func (s *Service) runLLM(ctx context.Context, job storage.CronJob, meta Metadata
 	job, state, prepareErr := s.prepareDelivery(ctx, job, meta)
 	if !state.ReportReady {
 		return prepareErr
+	}
+	if state.TakenOver {
+		ctx = context.WithoutCancel(ctx)
 	}
 	return errors.Join(prepareErr, s.deliverPrepared(ctx, job, meta, state, "", false))
 }
@@ -65,6 +71,9 @@ func (s *Service) prepareDelivery(ctx context.Context, job storage.CronJob, meta
 	if meta.Trigger.Mode == TriggerLLM && !state.ReportReady {
 		return job, state, err
 	}
+	if state.TakenOver {
+		ctx = context.WithoutCancel(ctx)
+	}
 	nextToken := firstNonEmpty(state.ReportSessionID, state.RunID)
 	encoded, encodeErr := encodeDeliveryState(state)
 	if encodeErr != nil {
@@ -88,12 +97,23 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 	}
 	actor := security.Actor{ID: security.ActorID(meta.CreatedBy.Platform, meta.CreatedBy.PlatformUserID), Platform: meta.CreatedBy.Platform, PlatformUserID: meta.CreatedBy.PlatformUserID, DisplayName: meta.CreatedBy.DisplayName, Role: security.RoleSuperadmin}
 	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), Prompt: cronPrompt(meta.Trigger.Message), ToolListNames: meta.LLM.ToolListNames, SessionMode: meta.LLM.SessionMode, SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}})
+	if taken, lookupErr := background.SessionTakenOver(context.WithoutCancel(ctx), s.store, result.SessionID); lookupErr != nil {
+		return state, "", lookupErr
+	} else if taken {
+		result.TakenOver = true
+	}
+	if result.TakenOver {
+		return takeoverState(state, result), "", err
+	}
 	if err != nil {
 		return state, "", err
 	}
 	parsed, err := parseLLMResult(result.Text)
 	if err != nil {
 		result, parsed, err = s.retryLLMResultFormat(ctx, job, meta, actor, result.SessionID)
+	}
+	if result.TakenOver {
+		return takeoverState(state, result), "", err
 	}
 	if err != nil {
 		message := cronParseFailedMessage(meta.Title, result.SessionID, err)
@@ -127,12 +147,18 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 }
 
 func (s *Service) retryLLMResultFormat(ctx context.Context, job storage.CronJob, meta Metadata, actor security.Actor, sessionID string) (background.RunResult, CronLLMResult, error) {
+	if taken, err := background.SessionTakenOver(ctx, s.store, sessionID); err != nil || taken {
+		return background.RunResult{SessionID: sessionID, TakenOver: taken, Outcome: "taken_over"}, CronLLMResult{}, err
+	}
 	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), SessionID: sessionID, Prompt: cronFormatRetryPrompt(), ToolListNames: meta.LLM.ToolListNames, SessionMode: meta.LLM.SessionMode, SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}})
 	if err != nil {
 		return result, CronLLMResult{}, err
 	}
 	if result.SessionID == "" {
 		result.SessionID = sessionID
+	}
+	if result.TakenOver {
+		return result, CronLLMResult{}, nil
 	}
 	parsed, err := parseLLMResult(result.Text)
 	return result, parsed, err
@@ -176,4 +202,18 @@ func cronFormatRetryPrompt() string {
 
 func parseLLMResult(text string) (CronLLMResult, error) {
 	return background.ParseJSONResult(text)
+}
+
+func takeoverState(state CronDeliveryState, result background.RunResult) CronDeliveryState {
+	state.TakenOver = true
+	state.ExecutionRunID = result.RunID
+	state.Outcome = result.Outcome
+	state.ExecutionResult = result.Text
+	state.ReportReady = true
+	state.TaskCompleted = false
+	state.Report = ""
+	state.ReportSegments = nil
+	state.ReportSessionID = result.SessionID
+	state.ReportMessageID = result.MessageID
+	return state
 }

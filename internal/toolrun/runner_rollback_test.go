@@ -89,8 +89,8 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 	for _, changed := range []bool{false, true} {
 		t.Run(fmt.Sprint(changed), func(t *testing.T) {
 			service := tool.NewFileRollbackService(nil)
-			service.Manager.SetCurrent("scope", "session")
-			lease, _ := service.Manager.Session("scope", "session")
+			binding := runnerRollbackBinding{}
+			lease, _ := service.Manager.Session(binding)
 			dir := t.TempDir()
 			path := filepath.Join(dir, "file")
 			if err := os.WriteFile(path, []byte("before"), 0600); err != nil {
@@ -114,7 +114,7 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 			deps := &rollbackConfirmDeps{}
 			deps.prepareContext = func(ctx context.Context, _ *storage.Session, _ llm.ToolCallRequest) context.Context {
 				ctx = tool.WithWorkspaceStore(ctx, &rollbackWorkspace{dir: dir})
-				return service.WithSession(ctx, "scope", "session")
+				return service.WithBinding(ctx, binding)
 			}
 			if changed {
 				deps.duringConfirmation = func() { edit("after", "latest") }
@@ -141,3 +141,7 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 		})
 	}
 }
+
+type runnerRollbackBinding struct{}
+
+func (runnerRollbackBinding) Valid() bool { return true }

@@ -13,15 +13,15 @@ func (s *Service) List(ctx context.Context, scope Scope, query string, limit int
 
 func (s *Service) ListPage(ctx context.Context, scope Scope, query string, limit, offset int, archivedOnly bool) ([]storage.SessionSummary, error) {
 	return s.store.Sessions().List(ctx, storage.ListSessionsRequest{
-		ActorID:                 scope.ActorID,
-		Platform:                scope.Platform,
-		PlatformScopeID:         scope.PlatformScopeID,
-		IncludeAllPlatforms:     scope.IsCLI,
-		IncludeSamePlatformCron: !scope.IsCLI,
-		ArchivedOnly:            archivedOnly,
-		Query:                   query,
-		Limit:                   limit,
-		Offset:                  offset,
+		ActorID:                       scope.ActorID,
+		Platform:                      scope.Platform,
+		PlatformScopeID:               scope.PlatformScopeID,
+		IncludeAllPlatforms:           scope.IsCLI,
+		IncludeSamePlatformBackground: !scope.IsCLI && scope.acceptsBackground(),
+		ArchivedOnly:                  archivedOnly,
+		Query:                         query,
+		Limit:                         limit,
+		Offset:                        offset,
 	})
 }
 
@@ -34,15 +34,15 @@ func (s *Service) ListResumablePage(ctx context.Context, scope Scope, limit, off
 		return nil, err
 	}
 	return s.store.Sessions().List(ctx, storage.ListSessionsRequest{
-		ActorID:                 scope.ActorID,
-		Platform:                scope.Platform,
-		PlatformScopeID:         scope.PlatformScopeID,
-		IncludeAllPlatforms:     scope.IsCLI,
-		IncludeSamePlatformCron: !scope.IsCLI,
-		ExcludeSessionID:        currentID,
-		OrderByUpdatedAt:        true,
-		Limit:                   limit,
-		Offset:                  offset,
+		ActorID:                       scope.ActorID,
+		Platform:                      scope.Platform,
+		PlatformScopeID:               scope.PlatformScopeID,
+		IncludeAllPlatforms:           scope.IsCLI,
+		IncludeSamePlatformBackground: !scope.IsCLI && scope.acceptsBackground(),
+		ExcludeSessionID:              currentID,
+		OrderByUpdatedAt:              true,
+		Limit:                         limit,
+		Offset:                        offset,
 	})
 }
 

@@ -18,6 +18,8 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
+	"elbot/internal/turn"
+	"errors"
 )
 
 type cronModelSelectionKey struct{}
@@ -90,7 +92,21 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 	scope := session.Scope{ActorID: actor.ID, Platform: platformName, PlatformScopeID: scopeID, IsCLI: platformName == "cli"}
 	bgSession, err := a.backgroundSession(ctx, req, scope)
 	if err != nil {
+		if errors.Is(err, session.ErrForegroundSession) {
+			return background.RunResult{SessionID: req.SessionID, TakenOver: true, Outcome: "taken_over"}, nil
+		}
 		return background.RunResult{}, err
+	}
+	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok {
+		latest, err := a.mutateSessionMetadata(ctx, bgSession.ID, func(m *sessionMetadata) {
+			if m.WorkspaceDir == "" {
+				m.WorkspaceDir = sandbox.Dir
+			}
+		})
+		if err != nil {
+			return background.RunResult{}, err
+		}
+		*bgSession = *latest
 	}
 	if len(req.CachedTools) > 0 {
 		a.rememberCachedTools(ctx, bgSession, req.CachedTools)
@@ -104,18 +120,28 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 		a.audit("background_skill_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "skills", preloaded.Skills)
 	}
 	prompt := backgroundPromptWithSkills(req.Prompt, preloaded.SkillPrompt)
-	if err := a.startBackgroundChat(ctx, bgSession, prompt); err != nil {
-		return background.RunResult{}, err
-	}
-	message, err := a.latestAssistantMessage(ctx, bgSession.ID)
+	execution := turn.NewExecution(storage.NewID())
+	execution.SetResult(bgSession.ID, "", "")
+	ctx = turn.WithExecution(ctx, execution)
+	err = a.startBackgroundChat(ctx, bgSession, prompt)
 	if err != nil {
-		return background.RunResult{}, err
+		execution.Finish(err)
 	}
-	text := message.Content
-	if rawText := assistantRawTextFromMetadata(message.Metadata); rawText != "" {
-		text = rawText
+	result := execution.Wait(ctx)
+	if latest, loadErr := a.store.Sessions().Get(context.WithoutCancel(ctx), bgSession.ID); loadErr == nil && session.WasPromoted(latest) {
+		result.TakenOver = true
 	}
-	return background.RunResult{SessionID: bgSession.ID, MessageID: message.ID, Text: text}, nil
+	if result.Err != nil && ctx.Err() != nil {
+		_, release, lockErr := a.sessions.EnterSessions(context.WithoutCancel(ctx), result.SessionID)
+		if lockErr == nil {
+			if a.turns.Execution(result.SessionID) == execution {
+				a.requests.CancelSession(result.SessionID)
+				a.turns.StopSession(result.SessionID)
+			}
+			release()
+		}
+	}
+	return background.RunResult{RunID: result.RunID, SessionID: result.SessionID, MessageID: result.MessageID, Text: result.Text, TakenOver: result.TakenOver, Outcome: result.Outcome}, result.Err
 }
 
 func (a *Agent) backgroundSession(ctx context.Context, req background.RunRequest, scope session.Scope) (*storage.Session, error) {
@@ -141,18 +167,26 @@ func (a *Agent) ensureBackgroundSession(ctx context.Context, bgSession *storage.
 	if bgSession == nil {
 		return nil, storage.ErrNotFound
 	}
-	metadata := mergeBackgroundSessionMetadata(bgSession.Metadata, req)
-	mode := normalizeBackgroundSessionMode(req.SessionMode)
-	if bgSession.Mode == mode && bgSession.Metadata == metadata {
-		return bgSession, nil
-	}
-	bgSession.Mode = mode
-	bgSession.Metadata = metadata
-	bgSession.UpdatedAt = storage.Now()
-	if err := a.store.Sessions().Update(ctx, bgSession); err != nil {
-		return nil, err
-	}
-	return bgSession, nil
+	return a.store.Sessions().Mutate(ctx, bgSession.ID, func(row *storage.Session) error {
+		if session.WasPromoted(row) {
+			return session.ErrForegroundSession
+		}
+		fields, err := storage.DecodeSessionMetadata(row.Metadata)
+		if err != nil {
+			return err
+		}
+		for key, value := range backgroundMetadataMap(req) {
+			if err := fields.Set(key, value); err != nil {
+				return err
+			}
+		}
+		metadata, err := fields.Encode()
+		if err != nil {
+			return err
+		}
+		row.Mode, row.Metadata, row.UpdatedAt = normalizeBackgroundSessionMode(req.SessionMode), metadata, storage.Now()
+		return nil
+	})
 }
 
 func (a *Agent) latestAssistantMessage(ctx context.Context, sessionID string) (storage.Message, error) {
@@ -374,18 +408,6 @@ func toolBackgroundKind(kind background.Kind) tool.BackgroundKind {
 
 func backgroundSessionMetadata(req background.RunRequest) string {
 	data := backgroundMetadataMap(req)
-	encoded, _ := json.Marshal(data)
-	return string(encoded)
-}
-
-func mergeBackgroundSessionMetadata(raw string, req background.RunRequest) string {
-	data := map[string]any{}
-	if strings.TrimSpace(raw) != "" {
-		_ = json.Unmarshal([]byte(raw), &data)
-	}
-	for key, value := range backgroundMetadataMap(req) {
-		data[key] = value
-	}
 	encoded, _ := json.Marshal(data)
 	return string(encoded)
 }

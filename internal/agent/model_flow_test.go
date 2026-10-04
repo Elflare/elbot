@@ -306,7 +306,7 @@ func TestModelSwitchUsesMessagePlatformCurrentModeForGlobalState(t *testing.T) {
 		t.Fatalf("create qq session: %v", err)
 	}
 	qqSession.Mode = storage.SessionModeChat
-	if err := store.Sessions().Update(qqCtx, qqSession); err != nil {
+	if _, err := store.Sessions().Mutate(qqCtx, qqSession.ID, func(latest *storage.Session) error { *latest = *qqSession; return nil }); err != nil {
 		t.Fatalf("update qq session mode: %v", err)
 	}
 

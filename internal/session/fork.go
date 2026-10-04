@@ -9,6 +9,19 @@ import (
 )
 
 func (s *Service) Fork(ctx context.Context, scope Scope, fromMessageID string) (*storage.Session, error) {
+	sourceMessage, err := s.store.Messages().Get(ctx, strings.TrimSpace(fromMessageID))
+	if err != nil {
+		return nil, err
+	}
+	ctx, release, enterErr := s.EnterActivation(ctx, scope, sourceMessage.SessionID)
+	if enterErr != nil {
+		return nil, enterErr
+	}
+	defer release()
+
+	if err := s.canReplaceCurrent(scope, ""); err != nil {
+		return nil, err
+	}
 	fromMessageID = strings.TrimSpace(fromMessageID)
 	if fromMessageID == "" {
 		return nil, fmt.Errorf("message id is required")
@@ -41,6 +54,6 @@ func (s *Service) Fork(ctx context.Context, scope Scope, fromMessageID string) (
 	if err := s.store.Sessions().Create(ctx, fork); err != nil {
 		return nil, err
 	}
-	s.setCurrent(scope, fork.ID)
+	s.setCurrent(ctx, scope, fork.ID, ChangeFork)
 	return fork, nil
 }

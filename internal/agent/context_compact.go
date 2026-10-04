@@ -32,33 +32,28 @@ func (a *Agent) compactSession(ctx context.Context, current *storage.Session, tr
 }
 
 func (r *contextRuntimeState) compactSession(ctx context.Context, current *storage.Session, scope session.Scope, triggerReason string, selection config.ModelSelection) (*storage.Session, error) {
-	if len(r.requests.ListBySession(current.ID)) > 0 {
-		return nil, fmt.Errorf("当前会话有正在运行的请求，无法压缩")
-	}
-	_, reqCtx, done, err := r.requests.Start(ctx, request.StartRequest{SessionID: current.ID, Kind: request.KindCompress, Label: "compact"})
+	locked, scope, release, err := r.enterCompact(ctx, current, scope)
 	if err != nil {
 		return nil, err
 	}
-	lifecycleClosed := false
-	turnStarted := false
-	closeLifecycle := func() {
-		if lifecycleClosed {
-			return
-		}
-		if turnStarted {
-			r.turns.CompleteCompact(current.ID)
-		}
-		done()
-		lifecycleClosed = true
+	if len(r.requests.ListBySession(current.ID)) > 0 {
+		release()
+		return nil, fmt.Errorf("当前会话有正在运行的请求，无法压缩")
 	}
-	defer closeLifecycle()
-	if err := reqCtx.Err(); err != nil {
+	info, reqCtx, done, err := r.requests.Start(locked, request.StartRequest{SessionID: current.ID, Kind: request.KindCompress, Label: "compact"})
+	if err != nil {
+		release()
 		return nil, err
 	}
-	if !r.turns.StartCompact(current.ID) {
+	if !r.turns.StartCompactRun(current.ID, info.ID, turn.ExecutionFromContext(ctx)) {
+		done()
+		release()
 		return nil, fmt.Errorf("当前会话正在处理其他任务，无法压缩")
 	}
-	turnStarted = true
+	r.turns.AttachExecution(current.ID, info.ID, turn.ExecutionFromContext(ctx))
+	release()
+	defer done()
+	defer r.turns.CompleteCompactRun(current.ID, info.ID)
 	if err := reqCtx.Err(); err != nil {
 		return nil, err
 	}
@@ -117,16 +112,108 @@ func (r *contextRuntimeState) compactSession(ctx context.Context, current *stora
 		metadata.ContextCompact.TotalTokens = result.Usage.TotalTokens
 		metadata.ContextCompact.CacheHitTokens = result.Usage.CacheHitTokens
 	}
-	next, err := r.sessions.Create(reqCtx, scope, session.CreateRequest{
-		Title:    title,
-		Mode:     current.Mode,
-		Metadata: encodeSessionMetadata(metadata),
-	})
+	nextID := storage.NewID()
+	locked, scope, release, err = r.enterCompact(reqCtx, current, scope, nextID)
 	if err != nil {
 		return nil, err
 	}
-	closeLifecycle()
+	defer release()
+	if err := reqCtx.Err(); err != nil {
+		return nil, err
+	}
+
+	if !r.turns.CompleteCompactRun(current.ID, info.ID) {
+		return nil, context.Canceled
+	}
+	// Carry field-owned metadata (including workspace and permanent promotion)
+	// forward while replacing the compression seed.
+	fields, err := storage.DecodeSessionMetadata(current.Metadata)
+	if err != nil {
+		return nil, err
+	}
+	seed, err := storage.DecodeSessionMetadata(encodeSessionMetadata(metadata))
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range seed {
+		fields[key] = value
+	}
+	delete(fields, "last_usage")
+	encoded, err := fields.Encode()
+	if err != nil {
+		return nil, err
+	}
+	var next *storage.Session
+	if session.IsBackground(current) {
+		next = &storage.Session{ID: nextID, OwnerID: current.OwnerID, Platform: current.Platform, PlatformScopeID: current.PlatformScopeID, Title: title, Mode: current.Mode, Status: storage.SessionStatusActive, Metadata: encoded}
+		err = r.store.Sessions().Create(locked, next)
+	} else {
+		next, err = r.sessions.Create(locked, scope, session.CreateRequest{ID: nextID, Title: title, Mode: current.Mode, Metadata: encoded})
+	}
+	if err != nil {
+		return nil, err
+	}
+	if e := turn.ExecutionFromContext(ctx); e != nil {
+		e.SetResult(next.ID, "", "")
+		if !r.turns.ReserveExecution(next.ID, inboundTurnInput(ctx, ""), e) {
+			return nil, session.ErrSessionBusy
+		}
+	}
+	if e := turn.ExecutionFromContext(ctx); e != nil && e.Foreground() != nil {
+		_, nextBinding, err := r.sessions.CurrentBound(locked, scope)
+		if err != nil {
+			return nil, err
+		}
+		e.Adopt(session.WithBinding(e.Foreground(), nextBinding))
+	}
 	return next, nil
+}
+
+func (r *contextRuntimeState) enterCompact(ctx context.Context, row *storage.Session, scope session.Scope, targets ...string) (context.Context, session.Scope, func(), error) {
+	for {
+		if e := turn.ExecutionFromContext(ctx); e != nil && e.Foreground() != nil {
+			if binding, ok := session.BindingFromContext(e.Foreground()); ok {
+				ctx = session.WithBinding(ctx, binding)
+				scope = binding.Scope()
+			}
+		}
+		background := session.IsBackground(row)
+		var locked context.Context
+		var release func()
+		var err error
+		if background {
+			locked, release, err = r.sessions.EnterSessions(ctx, append([]string{row.ID}, targets...)...)
+		} else {
+			locked, release, err = r.sessions.EnterActivation(ctx, scope, append([]string{row.ID}, targets...)...)
+		}
+		if err != nil {
+			return ctx, scope, nil, err
+		}
+		latest, err := r.store.Sessions().Get(locked, row.ID)
+		if err != nil {
+			release()
+			return ctx, scope, nil, err
+		}
+		*row = *latest
+		if background && !session.IsBackground(row) {
+			release()
+			continue
+		}
+		if !background {
+			_, binding, err := r.sessions.CurrentBound(locked, scope)
+			if err != nil {
+				release()
+				return ctx, scope, nil, err
+			}
+			original, hasOriginal := session.BindingFromContext(ctx)
+			if binding.SessionID() != row.ID || (hasOriginal && (original != binding || !original.Valid())) {
+				release()
+				return ctx, scope, nil, errSessionBindingChanged
+			}
+			locked = session.WithBinding(locked, binding)
+		}
+		return locked, scope, release, nil
+	}
 }
 
 func nextCompactedTitle(source *storage.Session) (title string, generation int, baseTitle string) {

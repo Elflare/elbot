@@ -2,8 +2,6 @@ package session
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -16,138 +14,165 @@ func (s *Service) Rename(ctx context.Context, scope Scope, sessionID, title stri
 	if title == "" {
 		return nil, fmt.Errorf("title is required")
 	}
-	session, err := s.targetSession(ctx, scope, sessionID)
+	target, err := s.targetSession(ctx, scope, sessionID)
 	if err != nil {
 		return nil, err
 	}
-	metadata, err := renameMetadata(session.Metadata)
-	if err != nil {
-		return nil, err
-	}
-	session.Title = title
-	session.Metadata = metadata
-	session.UpdatedAt = storage.Now()
-	if err := s.store.Sessions().Update(ctx, session); err != nil {
-		return nil, err
-	}
-	return session, nil
+	return s.store.Sessions().Mutate(ctx, target.ID, func(row *storage.Session) error {
+		if !s.canAccess(scope, row) {
+			return fmt.Errorf("session is not in current platform scope")
+		}
+		metadata, err := renameMetadata(row.Metadata)
+		if err != nil {
+			return err
+		}
+		row.Title, row.Metadata, row.UpdatedAt = title, metadata, storage.Now()
+		return nil
+	})
 }
 
 func renameMetadata(raw string) (string, error) {
-	metadata := map[string]any{}
-	if strings.TrimSpace(raw) != "" {
-		if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
-			return "", fmt.Errorf("decode session metadata: %w", err)
-		}
-	}
-	metadata["title_renamed"] = true
-	metadata["title_source"] = "manual"
-	encoded, err := json.Marshal(metadata)
+	metadata, err := storage.DecodeSessionMetadata(raw)
 	if err != nil {
-		return "", fmt.Errorf("encode session metadata: %w", err)
+		return "", err
 	}
-	return string(encoded), nil
+	if err := metadata.Set("title_renamed", true); err != nil {
+		return "", err
+	}
+	if err := metadata.Set("title_source", "manual"); err != nil {
+		return "", err
+	}
+	return metadata.Encode()
 }
 
 func (s *Service) Archive(ctx context.Context, scope Scope, sessionID string) (*storage.Session, error) {
-	session, err := s.targetSession(ctx, scope, sessionID)
+	target, err := s.targetSession(ctx, scope, sessionID)
 	if err != nil {
 		return nil, err
 	}
-	if session.ArchivedAt == nil {
-		now := storage.Now()
-		session.ArchivedAt = &now
-		session.UpdatedAt = now
-		if err := s.store.Sessions().Update(ctx, session); err != nil {
-			return nil, err
+	row, err := s.store.Sessions().Mutate(ctx, target.ID, func(row *storage.Session) error {
+		if !s.canAccess(scope, row) {
+			return fmt.Errorf("session is not in current platform scope")
 		}
+		if row.ArchivedAt == nil {
+			now := storage.Now()
+			row.ArchivedAt = &now
+			row.UpdatedAt = now
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return session, nil
+
+	return row, nil
 }
 
 func (s *Service) Unarchive(ctx context.Context, scope Scope, sessionID string) (*storage.Session, error) {
-	session, err := s.targetSession(ctx, scope, sessionID)
+	ctx, release, err := s.EnterScope(ctx, scope)
 	if err != nil {
 		return nil, err
 	}
-	if session.ArchivedAt != nil {
-		session.ArchivedAt = nil
-		session.UpdatedAt = storage.Now()
-		if err := s.store.Sessions().Update(ctx, session); err != nil {
-			return nil, err
-		}
+	defer release()
+	row, err := s.targetSession(ctx, scope, sessionID)
+	if err != nil {
+		return nil, err
 	}
-	s.setCurrent(scope, session.ID)
-	return session, nil
+	return s.activateExisting(ctx, scope, row.ID, true)
 }
 
 func (s *Service) Pin(ctx context.Context, scope Scope, sessionID string) (*storage.Session, error) {
-	session, err := s.targetSession(ctx, scope, sessionID)
+	target, err := s.targetSession(ctx, scope, sessionID)
 	if err != nil {
 		return nil, err
 	}
-	if session.PinnedAt == nil {
-		now := storage.Now()
-		session.PinnedAt = &now
-		session.UpdatedAt = now
-		if err := s.store.Sessions().Update(ctx, session); err != nil {
-			return nil, err
+	row, err := s.store.Sessions().Mutate(ctx, target.ID, func(row *storage.Session) error {
+		if !s.canAccess(scope, row) {
+			return fmt.Errorf("session is not in current platform scope")
 		}
+		if row.PinnedAt == nil {
+			now := storage.Now()
+			row.PinnedAt = &now
+			row.UpdatedAt = now
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return session, nil
+
+	return row, nil
 }
 
 func (s *Service) Unpin(ctx context.Context, scope Scope, sessionID string) (*storage.Session, error) {
-	session, err := s.targetSession(ctx, scope, sessionID)
+	target, err := s.targetSession(ctx, scope, sessionID)
 	if err != nil {
 		return nil, err
 	}
-	if session.PinnedAt != nil {
-		session.PinnedAt = nil
-		session.UpdatedAt = storage.Now()
-		if err := s.store.Sessions().Update(ctx, session); err != nil {
-			return nil, err
+	row, err := s.store.Sessions().Mutate(ctx, target.ID, func(row *storage.Session) error {
+		if !s.canAccess(scope, row) {
+			return fmt.Errorf("session is not in current platform scope")
 		}
+		if row.PinnedAt != nil {
+			now := storage.Now()
+			row.PinnedAt = nil
+			row.UpdatedAt = now
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return session, nil
+
+	return row, nil
 }
 
 func (s *Service) Delete(ctx context.Context, scope Scope, sessionID string) error {
-	session, err := s.targetSession(ctx, scope, sessionID)
+	ctx, release, err := s.EnterActivation(ctx, scope, sessionID)
 	if err != nil {
 		return err
 	}
-	if err := s.store.Sessions().Delete(ctx, session.ID); err != nil {
+	defer release()
+	row, err := s.targetSession(ctx, scope, sessionID)
+	if err != nil {
 		return err
 	}
-	s.clearCurrentIf(scope, session.ID)
+	if err := s.requireIdle(row.ID); err != nil {
+		return err
+	}
+	if err := s.store.Sessions().Delete(ctx, row.ID); err != nil {
+		return err
+	}
+	s.clearSessionBindings(ctx, row.ID, ChangeDelete)
 	return nil
 }
 
 func (s *Service) CleanupExpired(ctx context.Context, cutoff time.Time) (int, error) {
-	deleted, err := s.store.Sessions().DeleteExpired(ctx, cutoff)
+	ids, err := s.store.Sessions().ListExpiredIDs(ctx, cutoff)
 	if err != nil {
-		return deleted, err
+		return 0, err
 	}
-	s.mu.Lock()
-	current := make(map[string]string, len(s.current))
-	for key, id := range s.current {
-		current[key] = id
-	}
-	s.mu.Unlock()
-	for key, id := range current {
-		_, err := s.store.Sessions().Get(ctx, id)
-		if errors.Is(err, storage.ErrNotFound) {
-			s.mu.Lock()
-			if s.current[key] == id {
-				s.updateCurrentLocked(key, "")
-			}
-			s.mu.Unlock()
-		} else if err != nil {
-			return deleted, err
+	count := 0
+	for _, id := range ids {
+		locked, release, err := s.EnterSessions(ctx, id)
+		if err != nil {
+			return count, err
+		}
+		if s.requireIdle(id) != nil {
+			release()
+			continue
+		}
+		deleted, err := s.store.Sessions().DeleteIfExpired(locked, id, cutoff)
+		if err == nil && deleted {
+			s.clearSessionBindings(locked, id, ChangeCleanup)
+			count++
+		}
+		release()
+		if err != nil {
+			return count, err
 		}
 	}
-	return deleted, nil
+	return count, nil
 }
 
 func (s *Service) targetSession(ctx context.Context, scope Scope, sessionID string) (*storage.Session, error) {

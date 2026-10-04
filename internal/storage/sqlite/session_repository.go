@@ -77,11 +77,35 @@ WHERE id = ?`, id)
 	return session, nil
 }
 
-func (r *SessionRepository) Update(ctx context.Context, session *storage.Session) error {
+func (r *SessionRepository) Mutate(ctx context.Context, id string, update func(*storage.Session) error) (*storage.Session, error) {
+	if update == nil {
+		return nil, fmt.Errorf("mutate session: nil update")
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin session update: %w", err)
+	}
+	defer tx.Rollback()
+	session, err := scanSession(tx.QueryRowContext(ctx, `
+SELECT id, parent_session_id, fork_from_message_id, owner_id, platform, platform_scope_id,
+       mode, title, status, metadata, created_at, updated_at, archived_at, pinned_at
+FROM sessions WHERE id = ?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, storage.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load session for update: %w", err)
+	}
+	if err := update(session); err != nil {
+		return nil, err
+	}
+	if session.ID != id {
+		return nil, fmt.Errorf("mutate session: cannot change ID")
+	}
 	if session.UpdatedAt.IsZero() {
 		session.UpdatedAt = storage.Now()
 	}
-	res, err := r.db.ExecContext(ctx, `
+	res, err := tx.ExecContext(ctx, `
 UPDATE sessions
 SET parent_session_id = ?, fork_from_message_id = ?, owner_id = ?, platform = ?, platform_scope_id = ?,
     mode = ?, title = ?, status = ?, metadata = ?, created_at = ?, updated_at = ?, archived_at = ?, pinned_at = ?
@@ -102,12 +126,15 @@ WHERE id = ?`,
 		session.ID,
 	)
 	if err != nil {
-		return fmt.Errorf("update session: %w", err)
+		return nil, fmt.Errorf("update session: %w", err)
 	}
 	if n, err := res.RowsAffected(); err == nil && n == 0 {
-		return storage.ErrNotFound
+		return nil, storage.ErrNotFound
 	}
-	return nil
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit session update: %w", err)
+	}
+	return session, nil
 }
 
 func (r *SessionRepository) List(ctx context.Context, req storage.ListSessionsRequest) ([]storage.SessionSummary, error) {
@@ -121,11 +148,14 @@ func (r *SessionRepository) List(ctx context.Context, req storage.ListSessionsRe
 	if !req.IncludeAllPlatforms {
 		where = append(where, "owner_id = ?", "platform = ?")
 		args = append(args, req.ActorID, req.Platform)
-		if req.IncludeSamePlatformCron {
-			where = append(where, "(platform_scope_id = ? OR platform_scope_id LIKE 'cron:%')")
+		// Metadata classifies custom background scopes as well as cron/elnis
+		// prefixes; promotion is persistent and takes precedence.
+		backgroundExpr := "(COALESCE(CASE WHEN json_valid(s.metadata) THEN json_type(s.metadata, '$.foreground_origin') END, '') = '' AND (platform_scope_id LIKE 'cron:%' OR platform_scope_id LIKE 'elnis:%' OR COALESCE(CASE WHEN json_valid(s.metadata) THEN trim(json_extract(s.metadata, '$.background_kind')) END, '') <> ''))"
+		if req.IncludeSamePlatformBackground {
+			where = append(where, "(platform_scope_id = ? OR "+backgroundExpr+")")
 			args = append(args, req.PlatformScopeID)
 		} else {
-			where = append(where, "platform_scope_id = ?")
+			where = append(where, "platform_scope_id = ?", "NOT "+backgroundExpr)
 			args = append(args, req.PlatformScopeID)
 		}
 	}
@@ -296,20 +326,30 @@ func (r *SessionRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (r *SessionRepository) DeleteExpired(ctx context.Context, cutoff time.Time) (int, error) {
-	res, err := r.db.ExecContext(ctx, `
-DELETE FROM sessions
-WHERE archived_at IS NULL
-  AND pinned_at IS NULL
-  AND updated_at < ?`, storage.FormatTime(cutoff))
+func (r *SessionRepository) ListExpiredIDs(ctx context.Context, cutoff time.Time) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx, "SELECT id FROM sessions WHERE archived_at IS NULL AND pinned_at IS NULL AND updated_at < ?", storage.FormatTime(cutoff))
 	if err != nil {
-		return 0, fmt.Errorf("delete expired sessions: %w", err)
+		return nil, err
 	}
-	rows, err := res.RowsAffected()
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func (r *SessionRepository) DeleteIfExpired(ctx context.Context, id string, cutoff time.Time) (bool, error) {
+	result, err := r.db.ExecContext(ctx, "DELETE FROM sessions WHERE id = ? AND archived_at IS NULL AND pinned_at IS NULL AND updated_at < ?", id, storage.FormatTime(cutoff))
 	if err != nil {
-		return 0, nil
+		return false, err
 	}
-	return int(rows), nil
+	n, err := result.RowsAffected()
+	return n > 0, err
 }
 
 func scanSession(row interface{ Scan(dest ...any) error }) (*storage.Session, error) {

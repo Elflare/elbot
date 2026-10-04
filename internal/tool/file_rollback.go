@@ -10,7 +10,7 @@ import (
 )
 
 // FileRollbackService shares path policy and memory backups between tools and
-// slash commands. Session lifecycle is supplied by Agent, not by model arguments.
+// slash commands. Session binding is supplied by Agent, not by model arguments.
 type FileRollbackService struct {
 	Manager    *fileops.RollbackManager
 	CheckWrite func(string) error
@@ -23,29 +23,24 @@ func NewFileRollbackService(checkWrite func(string) error) *FileRollbackService 
 type fileRollbackContextKey struct{}
 
 type fileRollbackCall struct {
-	service   *FileRollbackService
-	scopeKey  string
-	sessionID string
-	session   *fileops.RollbackSession
-	mu        sync.Mutex
-	path      string
-	id        uint64
+	service *FileRollbackService
+	session *fileops.RollbackSession
+	mu      sync.Mutex
+	path    string
+	id      uint64
 }
 
-// WithSession preserves the original lease and preview when a tool request
+// WithBinding preserves the original lease and preview when a tool request
 // context is derived after confirmation. A switched-away lease cannot revive.
-func (s *FileRollbackService) WithSession(ctx context.Context, scopeKey, sessionID string) context.Context {
+func (s *FileRollbackService) WithBinding(ctx context.Context, binding fileops.Binding) context.Context {
 	if s == nil || s.Manager == nil {
 		return ctx
 	}
-	if previous, ok := ctx.Value(fileRollbackContextKey{}).(*fileRollbackCall); ok &&
-		previous.service == s && previous.scopeKey == scopeKey && previous.sessionID == sessionID {
+	if previous, ok := ctx.Value(fileRollbackContextKey{}).(*fileRollbackCall); ok && previous.service == s {
 		return ctx
 	}
-	session, _ := s.Manager.Session(scopeKey, sessionID)
-	return context.WithValue(ctx, fileRollbackContextKey{}, &fileRollbackCall{
-		service: s, scopeKey: scopeKey, sessionID: sessionID, session: session,
-	})
+	lease, _ := s.Manager.Session(binding)
+	return context.WithValue(ctx, fileRollbackContextKey{}, &fileRollbackCall{service: s, session: lease})
 }
 
 // EditSession returns nil when recording is not enabled for this call (for

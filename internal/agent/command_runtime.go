@@ -32,7 +32,10 @@ func (e *commandExecutor) Handle(ctx context.Context, text string) (bool, error)
 
 	parsed := e.router.Parse(text)
 	info, hasInfo := e.router.CommandInfo(parsed.Name)
-	sessionRow, sessionErr := e.sessions.Current(ctx, e.scope(ctx))
+	sessionRow, binding, sessionErr := e.sessions.CurrentBound(ctx, e.scope(ctx))
+	if sessionErr == nil {
+		ctx = session.WithBinding(ctx, binding)
+	}
 	snapshot := turn.Snapshot{Phase: turn.PhaseIdle}
 	if sessionErr == nil {
 		snapshot = e.turns.Snapshot(sessionRow.ID)

@@ -14,7 +14,9 @@ func (a *Agent) scope(ctx context.Context) session.Scope {
 	actor := a.actor(ctx)
 	platformName := a.platform.Name()
 	scopeID := a.scopeID
+	kind := chatinfo.ConversationUnknown
 	if info, ok := chatinfo.FromContext(ctx); ok {
+		kind = info.Source.ConversationKind
 		if info.Source.Platform != "" {
 			platformName = info.Source.Platform
 		}
@@ -23,10 +25,11 @@ func (a *Agent) scope(ctx context.Context) session.Scope {
 		}
 	}
 	return session.Scope{
-		ActorID:         actor.ID,
-		Platform:        platformName,
-		PlatformScopeID: scopeID,
-		IsCLI:           platformName == "cli" && actor.Role == security.RoleSuperadmin,
+		ConversationKind: kind,
+		ActorID:          actor.ID,
+		Platform:         platformName,
+		PlatformScopeID:  scopeID,
+		IsCLI:            platformName == "cli" && actor.Role == security.RoleSuperadmin,
 	}
 }
 
