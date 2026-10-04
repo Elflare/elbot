@@ -10,9 +10,9 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/fileops"
 	"elbot/internal/hook"
-	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
+	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -24,15 +24,12 @@ import (
 type Options struct {
 	Doctor                agentcommands.DoctorService
 	Platform              platform.PlatformAdapter
-	Clients               map[string]llm.LLM
-	ModeModels            map[string]config.ModelSelection
+	Models                *modelmgr.Service
 	Providers             map[string]config.ProviderConfig
-	StatePath             string
 	Store                 storage.Store
 	Media                 *media.Manager
 	CommandPrefixes       []string
 	SessionConfig         session.Config
-	NamingSelection       config.ModelSelection
 	NamingNotifier        session.NamingNotifier
 	SoulPath              string
 	ResidentMemoryStore   *resident.Store
@@ -49,7 +46,6 @@ type Options struct {
 	SecurityPolicy        *security.Policy
 	ContextConfig         config.ContextConfig
 	ModelMetadata         config.ModelMetadataConfig
-	CompactModel          config.ModelSelection
 	SessionListPageSize   int
 	CleanupRetentionDays  int
 	MediaRetentionDays    int
@@ -61,31 +57,11 @@ type Options struct {
 }
 
 func validateOptions(opts Options) error {
-	workModel := opts.ModeModels[storage.SessionModeWork]
-	if workModel.Provider == "" || workModel.Model == "" {
-		return fmt.Errorf("mode_models.work provider/model is required")
+	if opts.Models == nil {
+		return fmt.Errorf("model service is required")
 	}
 	if opts.Store == nil {
 		return fmt.Errorf("store is required")
-	}
-	if len(opts.Providers) == 0 {
-		return fmt.Errorf("at least one provider is required")
-	}
-	for name := range opts.Providers {
-		if opts.Clients[name] == nil {
-			return fmt.Errorf("client not found for provider %q", name)
-		}
-	}
-	for mode, selection := range opts.ModeModels {
-		if err := validateModelSelection("mode_models."+mode, selection, opts.Providers); err != nil {
-			return err
-		}
-	}
-	if err := validateOptionalModelSelection("naming_model", opts.NamingSelection, opts.Providers); err != nil {
-		return err
-	}
-	if err := validateOptionalModelSelection("compact_model", opts.CompactModel, opts.Providers); err != nil {
-		return err
 	}
 	if opts.SessionConfig.DefaultMode == "" {
 		return fmt.Errorf("session default mode is required")
@@ -104,23 +80,6 @@ func validateOptions(opts Options) error {
 	}
 	if opts.SecurityPolicy == nil {
 		return fmt.Errorf("security policy is required")
-	}
-	return nil
-}
-
-func validateOptionalModelSelection(name string, selection config.ModelSelection, providers map[string]config.ProviderConfig) error {
-	if selection.Provider == "" && selection.Model == "" {
-		return nil
-	}
-	return validateModelSelection(name, selection, providers)
-}
-
-func validateModelSelection(name string, selection config.ModelSelection, providers map[string]config.ProviderConfig) error {
-	if selection.Provider == "" || selection.Model == "" {
-		return fmt.Errorf("%s provider/model must both be set", name)
-	}
-	if _, ok := providers[selection.Provider]; !ok {
-		return fmt.Errorf("%s provider %q not found", name, selection.Provider)
 	}
 	return nil
 }

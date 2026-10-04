@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/config"
 	"elbot/internal/contextmgr"
+	"elbot/internal/llm"
+	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -22,8 +23,8 @@ func (a *Agent) CompactCurrent(ctx context.Context, triggerReason string) (strin
 	return content, err
 }
 
-func (a *Agent) compactSession(ctx context.Context, current *storage.Session, triggerReason string, fallback config.ModelSelection) (*storage.Session, string, error) {
-	selection := a.contextRuntime.compactSelection(fallback)
+func (a *Agent) compactSession(ctx context.Context, current *storage.Session, triggerReason string, fallback modelmgr.Selection) (*storage.Session, string, error) {
+	selection := a.models.ResolveCompact(fallback)
 	next, err := a.contextRuntime.compactSession(ctx, current, a.scope(ctx), triggerReason, selection)
 	if err != nil {
 		return nil, "", err
@@ -31,7 +32,7 @@ func (a *Agent) compactSession(ctx context.Context, current *storage.Session, tr
 	return next, fmt.Sprintf("上下文压缩完成。\nnew session: %s", next.ID), nil
 }
 
-func (r *contextRuntimeState) compactSession(ctx context.Context, current *storage.Session, scope session.Scope, triggerReason string, selection config.ModelSelection) (*storage.Session, error) {
+func (r *contextRuntimeState) compactSession(ctx context.Context, current *storage.Session, scope session.Scope, triggerReason string, selection modelmgr.Selection) (*storage.Session, error) {
 	locked, scope, release, err := r.enterCompact(ctx, current, scope)
 	if err != nil {
 		return nil, err
@@ -75,6 +76,7 @@ func (r *contextRuntimeState) compactSession(ctx context.Context, current *stora
 	}
 	r.mu.Lock()
 	compressor := r.compressor
+	compressor.ClientFor = func(string) llm.LLM { return selection.Client }
 	r.mu.Unlock()
 	result, err := compressor.Compact(reqCtx, contextmgr.CompactRequest{
 		Provider:   selection.Provider,

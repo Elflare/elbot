@@ -7,6 +7,7 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/llm/openai"
+	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/security"
@@ -24,18 +25,6 @@ import (
 
 func mustNewWithOptions(t *testing.T, opts Options) *Agent {
 	t.Helper()
-	if opts.Clients == nil {
-		opts.Clients = map[string]llm.LLM{}
-	}
-	for name, provider := range opts.Providers {
-		if opts.Clients[name] == nil && provider.BaseURL != "" {
-			client, err := openai.NewWithOptions(provider.BaseURL, provider.APIKey, provider.ExtraPayload, nil, openai.RequestOptions{Proxy: provider.Proxy})
-			if err != nil {
-				t.Fatalf("create test provider %s: %v", name, err)
-			}
-			opts.Clients[name] = client
-		}
-	}
 	defaults := config.Default()
 	if opts.SessionListPageSize <= 0 {
 		opts.SessionListPageSize = defaults.View.SessionListPageSize
@@ -57,6 +46,28 @@ func mustNewWithOptions(t *testing.T, opts Options) *Agent {
 		t.Fatalf("NewWithOptions: %v", err)
 	}
 	return agent
+}
+
+func newTestModels(t *testing.T, opts modelmgr.Options) *modelmgr.Service {
+	t.Helper()
+	if opts.Clients == nil {
+		opts.Clients = map[string]llm.LLM{}
+	}
+	for name, provider := range opts.Providers {
+		if opts.Clients[name] == nil && provider.BaseURL != "" {
+			client, err := openai.NewWithOptions(provider.BaseURL, provider.APIKey, provider.ExtraPayload, nil, openai.RequestOptions{Proxy: provider.Proxy})
+			if err != nil {
+				t.Fatalf("create test provider %s: %v", name, err)
+			}
+			opts.Clients[name] = client
+		}
+	}
+
+	models, err := modelmgr.New(opts)
+	if err != nil {
+		t.Fatalf("modelmgr.New: %v", err)
+	}
+	return models
 }
 
 type fakePlatform struct {

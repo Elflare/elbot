@@ -18,6 +18,7 @@ import (
 	"elbot/internal/logging"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
+	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
@@ -32,9 +33,7 @@ import (
 type Agent struct {
 	platform           platform.PlatformAdapter
 	platformSenders    map[string]delivery.MessageSender
-	modelRuntime       modelRuntimeState
-	statePath          string
-	stateModTime       time.Time
+	models             *modelmgr.Service
 	store              storage.Store
 	media              *media.Manager
 	sessions           *session.Service
@@ -43,7 +42,6 @@ type Agent struct {
 	commands           *command.Router
 	commandExecutor    *commandExecutor
 	completion         *completion.Service
-	titleGen           *titleGenerator
 	soul               SoulProvider
 	residentMemory     *resident.Store
 	promptBuilder      PromptBuilder
@@ -53,8 +51,6 @@ type Agent struct {
 	hooks              hookRunner
 	hookRuntime        HookRouter
 	outputs            delivery.Manager
-	namingModelMu      sync.RWMutex
-	namingModel        config.ModelSelection
 	statusMu           sync.Mutex
 	runtimeStatus      map[string]runtimestatus.Snapshot
 	sessionCommands    *agentcommands.SessionCommandState
@@ -88,10 +84,13 @@ func New(p platform.PlatformAdapter, client llm.LLM, model string, provider conf
 
 func NewWithPrefixes(p platform.PlatformAdapter, client llm.LLM, modeModels map[string]config.ModelSelection, provider config.ProviderConfig, store storage.Store, prefixes []string) *Agent {
 	defaults := config.Default()
+	models, err := modelmgr.New(modelmgr.Options{Clients: map[string]llm.LLM{"default": client}, Providers: map[string]config.ProviderConfig{"default": provider}, ModeModels: modeModels, DefaultMode: storage.SessionModeWork})
+	if err != nil {
+		panic(err)
+	}
 	agent, err := NewWithOptions(Options{
 		Platform:              p,
-		Clients:               map[string]llm.LLM{"default": client},
-		ModeModels:            modeModels,
+		Models:                models,
 		Providers:             map[string]config.ProviderConfig{"default": provider},
 		Store:                 store,
 		CommandPrefixes:       prefixes,
@@ -124,30 +123,19 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		return nil, err
 	}
 	p := opts.Platform
-	modeModels := opts.ModeModels
 	providers := opts.Providers
-	statePath := opts.StatePath
 	store := opts.Store
 	prefixes := opts.CommandPrefixes
 	sessionCfg := opts.SessionConfig
-	namingSelection := opts.NamingSelection
 	namingNotifier := opts.NamingNotifier
 	soulPath := opts.SoulPath
 	llmRequestConfig := opts.LLMRequestConfig
 	hookService := opts.HookService
-	workModel := modeModels[storage.SessionModeWork]
-	provider := providers[workModel.Provider]
-	clients := make(map[string]llm.LLM, len(opts.Clients))
-	for name, configured := range opts.Clients {
-		clients[name] = configured
-	}
-	client := clients[workModel.Provider]
-	titleGen := &titleGenerator{primary: client, primaryModel: workModel.Model, naming: clients[namingSelection.Provider], namingModel: namingSelection.Model}
+	titleGen := &titleGenerator{models: opts.Models}
 	promptSoul := SoulProvider(staticSoulProvider{Prompt: "You are a helpful assistant."})
 	if soulPath != "" {
 		promptSoul = &FileSoulProvider{Path: soulPath}
 	}
-	stateModTime := initialStateModTime(statePath)
 	requests := request.NewManager(0)
 	turns := turn.NewManager()
 	sessions := session.NewServiceWithConfig(store, sessionCfg, titleGen, namingNotifier)
@@ -164,9 +152,7 @@ func NewWithOptions(opts Options) (*Agent, error) {
 	a := &Agent{
 		platform:                p,
 		platformSenders:         map[string]delivery.MessageSender{},
-		modelRuntime:            newModelRuntimeState(client, workModel.Model, workModel.Provider, provider, providers, modeModels, clients),
-		statePath:               statePath,
-		stateModTime:            stateModTime,
+		models:                  opts.Models,
 		store:                   store,
 		media:                   opts.Media,
 		mediaRetentionDays:      opts.MediaRetentionDays,
@@ -181,7 +167,6 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		hooks:                   hookManager,
 		hookRuntime:             opts.HookRuntime,
 		outputs:                 outputs,
-		namingModel:             namingSelection,
 		runtimeStatus:           map[string]runtimestatus.Snapshot{},
 		autoConfirmSession:      map[string]bool{},
 		autoConfirmTools:        map[string]map[string]bool{},
@@ -223,13 +208,11 @@ func NewWithOptions(opts Options) (*Agent, error) {
 	a.SetToolConfig(opts.ToolsConfig)
 	a.SetToolTagConfig(opts.ToolTagsPath, opts.ToolTags)
 	a.rebuildSystemPrompt()
-	for name, configured := range clients {
-		a.attachLLMRetryNotifier(configured, name)
-	}
+	opts.Models.SetRetryNotifier(a.notifyLLMRetry)
 	if p != nil {
 		a.platformSenders[p.Name()] = p
 	}
-	a.SetContextOptions(opts.ContextConfig, opts.ModelMetadata, providers, opts.CompactModel)
+	a.SetContextOptions(opts.ContextConfig, opts.ModelMetadata, providers)
 	if err := agentcommands.RegisterDefaultModules(a.commands, agentcommands.Deps{
 		Doctor:        opts.Doctor,
 		Router:        a.commands,
@@ -238,7 +221,7 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		Turns:         a.turns,
 		Store:         a.store,
 		Scope:         a.scope,
-		Models:        a,
+		Models:        opts.Models,
 		Compact:       a,
 		ContextStatus: a,
 		Tools:         a,
@@ -288,12 +271,4 @@ type staticSoulProvider struct {
 
 func (p staticSoulProvider) SystemPrompt(context.Context, string) (string, error) {
 	return p.Prompt, nil
-}
-
-func cloneModeModels(models map[string]config.ModelSelection) map[string]config.ModelSelection {
-	out := map[string]config.ModelSelection{}
-	for mode, model := range models {
-		out[mode] = model
-	}
-	return out
 }

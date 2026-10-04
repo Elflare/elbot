@@ -568,7 +568,7 @@ func TestDefaultModeFromStateAppliesToNewSessions(t *testing.T) {
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"chat reply"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	a.sessions = session.NewServiceWithConfig(store, session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeChat}, a.titleGen, nil)
+	a.sessions = session.NewServiceWithConfig(store, session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeChat}, &titleGenerator{models: a.models}, nil)
 	ctx := context.Background()
 
 	if err := a.HandleMessage(ctx, "hello default chat"); err != nil {

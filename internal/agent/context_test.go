@@ -84,7 +84,7 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 			t.Fatalf("append message: %v", err)
 		}
 	}
-	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil, config.ModelSelection{})
+	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 	a.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
 
 	if err := a.HandleMessage(ctx, "J"); err != nil {
@@ -263,7 +263,7 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 			t.Fatalf("append message: %v", err)
 		}
 	}
-	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil, config.ModelSelection{})
+	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 	a.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
 
 	done := make(chan error, 1)
@@ -327,7 +327,7 @@ func TestAutoCompactFailureKeepsSourceSession(t *testing.T) {
 			t.Fatalf("append message: %v", err)
 		}
 	}
-	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil, config.ModelSelection{})
+	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 	a.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
 	if err := a.HandleMessage(ctx, "J"); err == nil {
 		t.Fatal("auto compact unexpectedly succeeded")
@@ -409,7 +409,7 @@ func TestModelSwitchReevaluatesCompactWindow(t *testing.T) {
 		},
 	}
 	a := New(&fakePlatform{}, &fakeLLM{models: []string{"small", "large"}}, "small", provider, newTestStore(t))
-	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, map[string]config.ProviderConfig{"default": provider}, config.ModelSelection{})
+	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, map[string]config.ProviderConfig{"default": provider})
 	current, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "model window"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -418,7 +418,7 @@ func TestModelSwitchReevaluatesCompactWindow(t *testing.T) {
 	if !a.shouldCompact(ctx, current, a.modelSelectionForTurn(ctx, current)) {
 		t.Fatal("small model did not trigger compact")
 	}
-	if _, err := a.SelectModel(ctx, "large"); err != nil {
+	if _, err := a.models.SelectModelForMode(storage.SessionModeWork, "large"); err != nil {
 		t.Fatalf("select large model: %v", err)
 	}
 	if a.shouldCompact(ctx, current, a.modelSelectionForTurn(ctx, current)) {

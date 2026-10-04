@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"elbot/internal/chatinfo"
-	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 )
 
@@ -26,7 +26,7 @@ type llmCallResult struct {
 	Stream    delivery.MessageStream
 }
 
-func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.ModelSelection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *pendingUserMessage, stream delivery.MessageStream, out turnOutput) (llmCallResult, error) {
+func (a *Agent) callLLM(ctx context.Context, sessionID string, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *pendingUserMessage, stream delivery.MessageStream, out turnOutput) (llmCallResult, error) {
 	startedAt := time.Now()
 	baseMessages := llm.CloneMessages(messages)
 	hookMessage := hook.MessagePayload{}
@@ -56,6 +56,9 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 			}
 		}
 		return llmCallResult{}, fmt.Errorf("llm request hook: %w", err)
+	}
+	if selection.Provider != event.LLM.Provider {
+		selection.Client = a.models.ClientForProvider(event.LLM.Provider)
 	}
 	selection.Provider = event.LLM.Provider
 	selection.Model = event.LLM.Model
@@ -98,7 +101,10 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 		Messages:  requestMessages,
 		Tools:     tools,
 	}
-	ch, err := a.clientForProvider(selection.Provider).ChatStream(ctx, req)
+	if selection.Client == nil {
+		return llmCallResult{}, fmt.Errorf("client not found for provider %q", selection.Provider)
+	}
+	ch, err := selection.Client.ChatStream(ctx, req)
 	if err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return llmCallResult{Messages: baseMessages, Stream: stream}, nil
@@ -183,7 +189,7 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection config.
 	return llmCallResult{Text: finalText, RawText: content, Usage: usage, ToolCalls: toolCalls, Outputs: event.Outputs, Messages: baseMessages, Stream: stream}, nil
 }
 
-func (a *Agent) logLLMOutput(sessionID string, selection config.ModelSelection, text, rawText string, toolCallCount int, elapsedMs int64) {
+func (a *Agent) logLLMOutput(sessionID string, selection modelmgr.Selection, text, rawText string, toolCallCount int, elapsedMs int64) {
 	if a.logger == nil {
 		return
 	}
@@ -312,7 +318,7 @@ func (a *Agent) sendCLIReasoning(ctx context.Context, text string) {
 	}
 }
 
-func (a *Agent) auditUsage(sessionID string, selection config.ModelSelection, usage *llm.Usage, elapsedMs int64) {
+func (a *Agent) auditUsage(sessionID string, selection modelmgr.Selection, usage *llm.Usage, elapsedMs int64) {
 	attrs := []any{"session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMs}
 	if usage != nil {
 		attrs = append(attrs,

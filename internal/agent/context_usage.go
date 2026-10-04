@@ -9,12 +9,13 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
+	"elbot/internal/modelmgr"
 	"elbot/internal/storage"
 )
 
 func (a *Agent) ContextStatus(ctx context.Context, session *storage.Session) string {
 	usage := a.usageForSession(session)
-	return a.contextRuntime.status(ctx, session.ID, usage, a.modelForMode(session.Mode))
+	return a.contextRuntime.status(ctx, session.ID, usage, a.models.ResolveMode(session.Mode).ModelSelection)
 }
 
 func (r *contextRuntimeState) status(ctx context.Context, sessionID string, usage *llm.Usage, selection config.ModelSelection) string {
@@ -110,8 +111,8 @@ func (a *Agent) persistUsage(ctx context.Context, sessionID string, usage *llm.U
 	}
 }
 
-func (a *Agent) shouldCompact(ctx context.Context, session *storage.Session, selection config.ModelSelection) bool {
-	return session != nil && a.contextRuntime.reachedCompactThreshold(ctx, a.usageForSession(session), selection)
+func (a *Agent) shouldCompact(ctx context.Context, session *storage.Session, selection modelmgr.Selection) bool {
+	return session != nil && a.contextRuntime.reachedCompactThreshold(ctx, a.usageForSession(session), selection.ModelSelection)
 }
 
 func (r *contextRuntimeState) reachedCompactThreshold(ctx context.Context, usage *llm.Usage, selection config.ModelSelection) bool {

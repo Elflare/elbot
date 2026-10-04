@@ -27,6 +27,7 @@ import (
 	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
+	"elbot/internal/modelmgr"
 	platformbuiltin "elbot/internal/platform/builtin"
 	"elbot/internal/processenv"
 	"elbot/internal/security"
@@ -41,6 +42,14 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	foundation := req.Foundation
 	cfg := foundation.Config
 	logger := foundation.Logger
+	models, err := modelmgr.New(modelmgr.Options{
+		Clients: req.Models.ByProvider, Providers: cfg.Providers, ModeModels: cfg.ModeModels,
+		CompactModel: cfg.CompactModel, NamingModel: cfg.NamingModel,
+		StatePath: cfg.StateConfigPath, DefaultMode: cfg.Session.DefaultMode,
+	})
+	if err != nil {
+		return nil, err
+	}
 	dotEnv, err := config.LoadDotEnv(filepath.Dir(cfg.ConfigPath))
 	if err != nil {
 		return nil, fmt.Errorf("load process environment: %w", err)
@@ -134,7 +143,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	hookService := buildHookService(foundation, req.Platforms, toolRuntime, cronService, hooks, hookRuntime, hookProcessEnv, notifyHookIssue, sendNotice)
 	req.Profiler.Mark("hook register")
 
-	agt, err = buildAgent(foundation, req.Models, req.Platforms, toolRuntime, securityPolicy, hooks, hookRuntime, hookService)
+	agt, err = buildAgent(foundation, models, req.Platforms, toolRuntime, securityPolicy, hooks, hookRuntime, hookService)
 	if err != nil {
 		if closeErr := hookRuntime.Close(context.Background()); closeErr != nil {
 			err = errors.Join(err, fmt.Errorf("cleanup hook runtime after agent build: %w", closeErr))
@@ -155,6 +164,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		foundation.Maintenance.Sessions = agt.SessionService()
 	}
 	return &RuntimeComponents{
+		Models:      models,
 		Signals:     bindings,
 		Media:       mediaCenter,
 		Agent:       agt,
@@ -274,7 +284,7 @@ func buildHookService(
 
 func buildAgent(
 	foundation *FoundationComponents,
-	models ModelClients,
+	models *modelmgr.Service,
 	platforms PlatformComponents,
 	toolRuntime *builtin.Runtime,
 	securityPolicy *security.Policy,
@@ -291,15 +301,12 @@ func buildAgent(
 	agt, err := agent.NewWithOptions(agent.Options{
 		Doctor:                diagnostics,
 		Platform:              platforms.Primary,
-		Clients:               models.ByProvider,
-		ModeModels:            cfg.ModeModels,
+		Models:                models,
 		Providers:             cfg.Providers,
-		StatePath:             cfg.StateConfigPath,
 		Store:                 foundation.Store,
 		Media:                 toolRuntime.FileManager.Media,
 		CommandPrefixes:       cfg.Commands.Prefixes,
 		SessionConfig:         session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode},
-		NamingSelection:       cfg.NamingModel,
 		NamingNotifier:        namingLogger{logger: foundation.Logger},
 		SoulPath:              cfg.Soul.Path,
 		ResidentMemoryStore:   toolRuntime.ResidentMemoryStore,
@@ -315,7 +322,6 @@ func buildAgent(
 		SecurityPolicy:        securityPolicy,
 		ContextConfig:         cfg.Context,
 		ModelMetadata:         cfg.ModelMetadata,
-		CompactModel:          cfg.CompactModel,
 		SessionListPageSize:   cfg.View.SessionListPageSize,
 		CleanupRetentionDays:  cfg.Maintenance.SessionCleanup.RetentionDays,
 		MediaRetentionDays:    cfg.Maintenance.SandboxCleanup.RetentionDays,

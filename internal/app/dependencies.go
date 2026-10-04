@@ -14,6 +14,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/maintenance"
 	"elbot/internal/media"
+	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
 )
@@ -106,6 +107,7 @@ type RuntimeRequest struct {
 }
 
 type RuntimeComponents struct {
+	Models      *modelmgr.Service
 	Signals     *signalBindings
 	Media       *media.Manager
 	Agent       *agent.Agent

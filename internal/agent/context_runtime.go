@@ -25,7 +25,6 @@ type contextRuntimeState struct {
 	mu            sync.Mutex
 	config        config.ContextConfig
 	modelMetadata config.ModelMetadataConfig
-	compactModel  config.ModelSelection
 	lastUsage     map[string]*llm.Usage
 }
 
@@ -41,11 +40,10 @@ func newContextRuntimeState(store storage.Store, sessions *session.Service, requ
 	}
 }
 
-func (r *contextRuntimeState) configure(ctxCfg config.ContextConfig, metadata config.ModelMetadataConfig, providers map[string]config.ProviderConfig, compactModel config.ModelSelection, clientFor contextmgr.ClientProvider) {
+func (r *contextRuntimeState) configure(ctxCfg config.ContextConfig, metadata config.ModelMetadataConfig, providers map[string]config.ProviderConfig, clientFor contextmgr.ClientProvider) {
 	r.mu.Lock()
 	r.config = ctxCfg
 	r.modelMetadata = metadata
-	r.compactModel = compactModel
 	r.loader = contextmgr.Loader{Store: r.store}
 	r.windowResolver = contextmgr.NewWindowResolver(metadata, providers, clientFor)
 	r.compressor = contextmgr.Compressor{ClientFor: clientFor}
@@ -66,36 +64,6 @@ func (r *contextRuntimeState) loadRawMessages(ctx context.Context, sessionID str
 	return loader.LoadRawMessages(ctx, sessionID)
 }
 
-func (r *contextRuntimeState) compactSelection(fallback config.ModelSelection) config.ModelSelection {
-	r.mu.Lock()
-	selected := r.compactModel
-	r.mu.Unlock()
-	if selected.Provider != "" && selected.Model != "" {
-		return selected
-	}
-	return fallback
-}
-
-func (r *contextRuntimeState) configuredCompactModel() config.ModelSelection {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.compactModel
-}
-
-func (r *contextRuntimeState) setCompactModel(selection config.ModelSelection) {
-	r.mu.Lock()
-	r.compactModel = selection
-	r.mu.Unlock()
-}
-
-func (a *Agent) SetContextOptions(ctxCfg config.ContextConfig, metadata config.ModelMetadataConfig, providers map[string]config.ProviderConfig, compactModel config.ModelSelection) {
-	a.contextRuntime.configure(ctxCfg, metadata, providers, compactModel, a.clientForProvider)
-}
-
-func (a *Agent) compactSelectionForSession(session *storage.Session) config.ModelSelection {
-	mode := storage.SessionModeWork
-	if session != nil && session.Mode != "" {
-		mode = session.Mode
-	}
-	return a.contextRuntime.compactSelection(a.modelForMode(mode))
+func (a *Agent) SetContextOptions(ctxCfg config.ContextConfig, metadata config.ModelMetadataConfig, providers map[string]config.ProviderConfig) {
+	a.contextRuntime.configure(ctxCfg, metadata, providers, a.models.ClientForProvider)
 }
