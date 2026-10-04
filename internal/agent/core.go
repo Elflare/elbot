@@ -197,6 +197,10 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		actorID:         "cli:local",
 		scopeID:         "local",
 	}
+	a.toolRuntime.fileRollback = opts.FileRollback
+	if opts.FileRollback != nil && opts.FileRollback.Manager != nil {
+		sessions.SetCurrentObserver(opts.FileRollback.Manager.SetCurrent)
+	}
 	if opts.Logs != nil {
 		a.SetLogManager(opts.Logs)
 	}
@@ -231,6 +235,7 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		Compact:       a,
 		ContextStatus: a,
 		Tools:         a,
+		FileRollback:  a,
 		Hooks:         hookService,
 		SessionState:  sessionCommands,
 		Audit:         a.audit,

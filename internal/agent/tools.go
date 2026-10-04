@@ -17,6 +17,7 @@ type toolRuntimeState struct {
 	provider        ToolSchemaProvider
 	manager         *toolrun.Manager
 	registry        *tool.Registry
+	fileRollback    *tool.FileRollbackService
 	skills          SkillLifecycle
 	config          config.ToolsConfig
 	toolTags        *toolTagConfigSource

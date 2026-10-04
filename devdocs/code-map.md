@@ -101,6 +101,7 @@ rg -n "Handle|Run|Prompt|tool_calls|reasoning|usage|pending|prepared" internal/a
 - `internal/completion/`：平台补全服务。
 - `docs/commands.md`：用户侧命令文档。
 - `internal/agent/commands/doctor.go`：超级管理员 `/doctor` 入口，通过 `Deps.Doctor` 调用诊断服务。
+- `internal/agent/commands/rollback.go`：超管 `/rollback` 清单、编号选择和补全；`internal/agent/file_rollback.go` 适配当前会话、运行状态检查及共享撤销服务。
 
 常用搜索：
 
@@ -141,6 +142,7 @@ rg -n "Phase|Request|Cancel|pending|confirm|runtime status|sending" internal/req
 - `internal/toolrun/`：工具调用中间层、工具视图、命名解析、风险确认，以及实际执行前的 Session 工具参数媒体引用。
 - `internal/tool/builtin/`：内置工具。
 - `internal/tool/builtin/file_tools_ast.go`：`read_file` 的 Go/Shell AST 名称搜索与结果渲染。
+- `internal/tool/file_rollback.go`：命令与工具共享的撤销服务、会话 context 和预检绑定；`internal/tool/builtin/file_rollback.go`：隐藏的 `rollback_file` 路径接口及风险确认。
 - `internal/agent/tools.go`：Agent 工具运行态和命令依赖适配。
 - `internal/agent/toolrun_*.go`：Agent 到 ToolRun 的桥接。
 - `internal/agent/tool_cache.go`：Session 级工具 schema 缓存。
@@ -149,6 +151,7 @@ rg -n "Phase|Request|Cancel|pending|confirm|runtime status|sending" internal/req
 - `internal/security/`：工具权限和风险策略。
 - `internal/utils/fileops/{file,encoding,text}.go`：文件生命周期、编码与通用文本处理。
 - `internal/utils/fileops/{edit,match,diff}.go`：原子编辑解析、目标匹配与 unified diff。
+- `internal/utils/fileops/rollback.go`：有容量上限的内存备份、会话有效期、目标锁、revision/路径校验与原始字节恢复。
 
 常用搜索：
 

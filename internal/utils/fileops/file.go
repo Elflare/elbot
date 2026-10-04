@@ -15,6 +15,7 @@ type EditFileOptions struct {
 	MaxInputBytes        int64
 	MaxOutputBytes       int64
 	DetailedDiffMaxBytes int64
+	beforeWrite          func(File, bool, os.FileMode) error
 }
 
 type File struct {
@@ -28,14 +29,16 @@ type File struct {
 }
 
 type EditResult struct {
-	DryRun         bool
-	Path           string
-	Created        bool
-	Encoding       string
-	RevisionBefore string
-	RevisionAfter  string
-	Diff           string
-	NewBytes       []byte
+	DryRun            bool
+	Path              string
+	Created           bool
+	Encoding          string
+	RevisionBefore    string
+	RevisionAfter     string
+	Diff              string
+	NewBytes          []byte
+	RollbackAvailable bool
+	RollbackEvicted   int
 }
 
 func ReadFile(path, requestedEncoding string) (File, error) {
@@ -149,16 +152,21 @@ func EditFileWithOptions(path, requestedEncoding, expectedRevision string, creat
 	if dryRun {
 		return result, nil
 	}
-	if created {
-		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-			return EditResult{}, fmt.Errorf("create parent directory: %w", err)
-		}
-	}
 	mode := os.FileMode(0644)
 	if info, err := os.Stat(path); err == nil {
 		mode = info.Mode()
 	} else if !created {
 		return EditResult{}, fmt.Errorf("stat file: %w", err)
+	}
+	if options.beforeWrite != nil {
+		if err := options.beforeWrite(file, created, mode); err != nil {
+			return EditResult{}, err
+		}
+	}
+	if created {
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return EditResult{}, fmt.Errorf("create parent directory: %w", err)
+		}
 	}
 	if err := AtomicWriteFile(path, newBytes, mode); err != nil {
 		return EditResult{}, fmt.Errorf("write file: %w", err)

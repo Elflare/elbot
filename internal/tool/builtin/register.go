@@ -20,6 +20,7 @@ type RegisterOptions struct {
 	ChatHistory         storage.ChatHistoryRepository
 	LongMemoryDir       string
 	FileManager         *FileManager
+	FileRollback        *tool.FileRollbackService
 	ProcessEnv          processenv.Environment
 }
 
@@ -108,7 +109,18 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 	if err := registry.Register(NewReadFileTool(fileGuard)); err != nil {
 		return err
 	}
-	if err := registry.Register(NewEditFileTool(fileGuard)); err != nil {
+	rollback := opts.FileRollback
+	if rollback == nil {
+		rollback = tool.NewFileRollbackService(fileGuard.CheckWrite)
+	} else {
+		rollback.CheckWrite = fileGuard.CheckWrite
+	}
+	editFile := NewEditFileTool(fileGuard)
+	editFile.Rollback = rollback
+	if err := registry.Register(editFile); err != nil {
+		return err
+	}
+	if err := registry.Register(NewRollbackFileTool(rollback)); err != nil {
 		return err
 	}
 	shell := NewShellToolWithEnvironment(opts.ProcessEnv, fileGuard)

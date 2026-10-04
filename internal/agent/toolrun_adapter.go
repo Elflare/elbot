@@ -81,6 +81,7 @@ func (d agentToolRunDeps) PrepareToolContext(ctx context.Context, session *stora
 	if isBackgroundSession(session) {
 		return ctx
 	}
+	ctx = d.agent.fileRollbackContext(ctx, session)
 	return tool.WithWorkspaceStore(ctx, sessionWorkspaceStore{agent: d.agent, session: session})
 }
 

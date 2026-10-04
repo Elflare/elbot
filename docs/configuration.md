@@ -124,11 +124,13 @@ systemd 用户服务没有显式设置 PATH 时，ElBot 使用服务管理器提
 
 ## Workspace 工具
 
-在 work 模式中，超级管理员可以让 LLM 调用 `workspace` 工具切换当前 Session 的共享工作目录。切换后，`read_file`、`edit_file`、`send_file` 和前台 `shell` 等路径类工具会基于该目录解析相对路径，避免每次都传完整路径。
+在 work 模式中，超级管理员可以让 LLM 调用 `workspace` 工具切换当前 Session 的共享工作目录。切换后，`read_file`、`edit_file`、`rollback_file`、`send_file` 和前台 `shell` 等路径类工具会基于该目录解析相对路径，避免每次都传完整路径。
 
 某个目录的 `workspace` 工具首次被发现或注入，或者首次切换、重置到该目录时，如果目录根部存在 `AGENTS.md` 或 `AGENT.md`，系统会自动把文件内容附带给 LLM，供其读取当前目录的工作约定。文件名主体必须是大写 `AGENTS` 或 `AGENT`，`.md` 后缀大小写不限；`AGENTS.md` 优先于 `AGENT.md`。
 
 自动附带的说明文件最大为 64 KiB。超过限制时不会读取内容，也不会标记为已附带，工具结果会提示需要缩短或拆分该文件后再切换 workspace。
+
+文件编辑的撤销备份按实际目标的绝对路径保存；切换 workspace 不清空备份，但相同相对路径会按新的 workspace 解析。撤销原目录中的文件时，可以切回原 workspace 或传绝对路径。未设置 workspace 时沿用进程工作目录。使用方式见[文件编辑撤销](commands.md#文件编辑撤销)。
 
 ## 常驻记忆配置
 

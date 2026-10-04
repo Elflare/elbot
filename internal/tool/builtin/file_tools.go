@@ -29,6 +29,7 @@ type ReadFileTool struct {
 
 type EditFileTool struct {
 	FileGuard *FileGuard
+	Rollback  *tool.FileRollbackService
 }
 
 type readFileArgs struct {
@@ -131,7 +132,7 @@ func readFileBuilder() *tool.Builder {
 		Risk(tool.RiskLow).
 		SuperadminOnly().
 		Tags("files", "agent").
-		DependsOn("workspace").
+		DependsOn("workspace", "rollback_file").
 		String("path", "文件或目录路径；read 模式仅支持文件，搜索模式可递归搜索目录。", tool.Required()).
 		String("encoding", "文本编码，默认 auto。").
 		String("mode", "模式：read（默认，可不填）、grep、ast、ast_function；ast/ast_function 仅支持 Go 和 Shell。", tool.Enum("read", "grep", "ast", "ast_function")).
@@ -306,7 +307,7 @@ func editFileBuilder() *tool.Builder {
 	return tool.NewBuilder("edit_file").
 		Description("批量编辑文本文件；使用 edits 一次提交多个修改；成功后返回 unified diff。任一 edit 失败则不写文件。").
 		Risk(tool.RiskHigh).
-		DependsOn("workspace").
+		DependsOn("workspace", "rollback_file").
 		Tags("files", "agent").
 		String("path", "要编辑的文件路径,基于当前 workspace 解析；也可传绝对路径。", tool.Required()).
 		String("encoding", "文本编码，默认 auto；非 UTF-8 文件应显式传入 gb18030、gbk、big5、shift_jis 等。").
@@ -319,7 +320,7 @@ func editFileBuilder() *tool.Builder {
 func (t EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
-		if err := decodeEditArgs(req.Arguments, &args); err != nil {
+		if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {
 			return tool.RiskAssessment{}, fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
@@ -327,7 +328,7 @@ func (t EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 	if err != nil {
 		return tool.RiskAssessment{}, err
 	}
-	if err := t.FileGuard.CheckWrite(resolved.Path); err != nil {
+	if err := checkFileToolWrite(t.FileGuard, resolved.Path, args.Create); err != nil {
 		return tool.RiskAssessment{}, err
 	}
 	if sandbox, ok := tool.SandboxContextFromContext(ctx); ok && sandbox.Background {
@@ -339,7 +340,7 @@ func (t EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 func (t EditFileTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
-		if err := decodeEditArgs(req.Arguments, &args); err != nil {
+		if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {
 			return fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
@@ -350,7 +351,7 @@ func (t EditFileTool) PreflightConfirmation(ctx context.Context, req tool.CallRe
 func (t EditFileTool) RiskDetail(ctx context.Context, req tool.CallRequest) (string, error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
-		if err := decodeEditArgs(req.Arguments, &args); err != nil {
+		if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {
 			return "", fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
@@ -513,7 +514,7 @@ func fileToolEditOptions() fileops.EditFileOptions {
 func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
-		if err := decodeEditArgs(req.Arguments, &args); err != nil {
+		if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {
 			return nil, fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
@@ -521,14 +522,33 @@ func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	if err != nil {
 		return nil, err
 	}
-	if err := t.FileGuard.CheckWrite(resolved.Path); err != nil {
+	if err := checkFileToolWrite(t.FileGuard, resolved.Path, args.Create); err != nil {
 		return nil, err
 	}
-	result, err := fileops.EditFileWithOptions(resolved.Path, args.Encoding, args.ExpectedRevision, args.Create, false, args.ContextLines, args.Edits, fileToolEditOptions())
+	var result fileops.EditResult
+	var rollbackSession *fileops.RollbackSession
+	if t.Rollback != nil {
+		rollbackSession, err = t.Rollback.EditSession(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if rollbackSession != nil {
+		result, err = rollbackSession.EditFile(ctx, resolved.Path, args.Encoding, args.ExpectedRevision, args.Create, args.ContextLines, args.Edits, fileToolEditOptions(), t.FileGuard.CheckWrite)
+	} else {
+		result, err = fileops.EditFileWithOptions(resolved.Path, args.Encoding, args.ExpectedRevision, args.Create, false, args.ContextLines, args.Edits, fileToolEditOptions())
+	}
 	if err != nil {
 		return nil, err
 	}
 	content := fmt.Sprintf("dry_run: %t\nedited: %s\ncreated: %t\nencoding: %s\nrevision_before: %s\nrevision_after: %s\ndiff:\n%s", result.DryRun, result.Path, result.Created, result.Encoding, result.RevisionBefore, result.RevisionAfter, result.Diff)
+	content += fmt.Sprintf("\nrollback_available: %t", result.RollbackAvailable)
+	if result.RollbackEvicted > 0 {
+		resolved.Warnings = append(resolved.Warnings, fmt.Sprintf("撤销备份达到内存上限，已清理 %d 条最旧记录。", result.RollbackEvicted))
+	}
+	if rollbackSession != nil && !result.RollbackAvailable {
+		resolved.Warnings = append(resolved.Warnings, "文件已编辑，但撤销备份因会话失效或容量限制未保留。")
+	}
 	return &tool.Result{Content: content, Warnings: resolved.Warnings}, nil
 }
 
@@ -537,7 +557,7 @@ func previewEditFile(ctx context.Context, args editFileArgs, fileGuard *FileGuar
 	if err != nil {
 		return fileops.EditResult{}, err
 	}
-	if err := fileGuard.CheckWrite(resolved.Path); err != nil {
+	if err := checkFileToolWrite(fileGuard, resolved.Path, args.Create); err != nil {
 		return fileops.EditResult{}, err
 	}
 	result, err := fileops.EditFileWithOptions(resolved.Path, args.Encoding, args.ExpectedRevision, args.Create, true, args.ContextLines, args.Edits, fileToolEditOptions())
@@ -547,13 +567,24 @@ func previewEditFile(ctx context.Context, args editFileArgs, fileGuard *FileGuar
 	return result, nil
 }
 
-func decodeEditArgs(raw json.RawMessage, args *editFileArgs) error {
+func decodeStrictFileArgs(raw json.RawMessage, args any) error {
 	if len(raw) == 0 {
 		return nil
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	return dec.Decode(args)
+}
+
+func checkFileToolWrite(guard *FileGuard, path string, create bool) error {
+	if err := guard.CheckWrite(path); err != nil {
+		return err
+	}
+	target, err := fileops.ResolveFileTarget(path, create)
+	if err != nil {
+		return err
+	}
+	return guard.CheckWrite(target)
 }
 
 func resolveFileToolPath(ctx context.Context, rawPath string, allowCreate bool) (tool.ResolvedPath, error) {

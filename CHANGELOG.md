@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `edit_file` 为每个文件保留最近一次编辑前的内存备份。新增仅超管可用的 `/rollback [编号]` 和工具 `rollback_file`，发现读写文件工具时自动展开；切换 Session、重启或容量淘汰后记录失效。不覆盖 Shell 或外部程序的修改。
 - 新增仅超级管理员可用的聊天命令 `/doctor`，只读检查当前配置的缺失项、TOML 错误、主配置未知字段和内置 Skill 差异；按文件列出问题，并生成附配置说明和默认模板地址的 Elbot 处理请求。无问题时返回 `Everything is OK`，不会自动修改文件。
 
 ### Changed
