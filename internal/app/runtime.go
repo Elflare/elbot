@@ -15,6 +15,7 @@ import (
 
 	"elbot/internal/agent"
 	"elbot/internal/config"
+	"elbot/internal/contextmgr"
 	elcron "elbot/internal/cron"
 	"elbot/internal/delivery"
 	"elbot/internal/doctor"
@@ -34,6 +35,7 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/tool/runtimeinfo"
+	"elbot/internal/toolrun"
 )
 
 type defaultRuntimeFactory struct{}
@@ -302,6 +304,8 @@ func buildAgent(
 		Doctor:                diagnostics,
 		Platform:              platforms.Primary,
 		Models:                models,
+		Contexts:              contextmgr.New(contextmgr.Options{Store: foundation.Store, Models: models, Config: cfg.Context, Metadata: cfg.ModelMetadata, Providers: cfg.Providers}),
+		ToolState:             toolrun.NewStateService(foundation.Store),
 		Providers:             cfg.Providers,
 		Store:                 foundation.Store,
 		Media:                 toolRuntime.FileManager.Media,

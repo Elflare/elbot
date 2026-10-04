@@ -15,6 +15,7 @@ import (
 	"elbot/internal/tool"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/tool/skill"
+	"elbot/internal/toolrun"
 	"elbot/internal/workspace"
 )
 
@@ -243,7 +244,10 @@ func TestToolDirectiveInjectsConfiguredTagPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadata := decodeSessionMetadata(sessionRecord.Metadata)
+	metadata, err := toolrun.DecodeState(sessionRecord.Metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(metadata.ToolTags) != 1 || metadata.ToolTags[0] != "worker" {
 		t.Fatalf("tool tags metadata = %#v", metadata.ToolTags)
 	}
@@ -383,9 +387,13 @@ func TestAgentSkillCreatorNoticePreloads(t *testing.T) {
 				sessionRecord.Mode = storage.SessionModeWork
 				var content string
 				if entry == "directive" {
-					content = a.applySkillDirectives(ctx, sessionRecord, "@skill:docx").Text
+					_, result, err := a.applyInputDirectives(ctx, sessionRecord, "@skill:docx")
+					if err != nil {
+						t.Fatal(err)
+					}
+					content = result.Text
 				} else {
-					content = a.preloadBackgroundResources(ctx, sessionRecord, []string{"docx"}).SkillPrompt
+					content = a.preloadBackgroundResources(ctx, sessionRecord, []string{"docx"}, nil).SkillPrompt
 				}
 				if !strings.Contains(content, "# DOCX") {
 					t.Fatalf("missing skill body: %q", content)

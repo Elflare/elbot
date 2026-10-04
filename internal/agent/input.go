@@ -139,15 +139,13 @@ func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session
 
 	snapshot := a.turns.Snapshot(session.ID)
 	if snapshot.Phase != turn.PhaseAwaitRiskConfirm {
-		directives := a.applyToolDirectives(ctx, session, text)
-		if directives.Err != nil {
-			return directives.Err
+		directives, skillDirectives, err := a.applyInputDirectives(ctx, session, text)
+		if err != nil {
+			return err
 		}
 		if len(directives.Injected) > 0 || len(directives.Existing) > 0 || len(directives.Invalid) > 0 {
 			a.notifyToolDirectiveResult(ctx, directives)
 		}
-		text = directives.Text
-		skillDirectives := a.applySkillDirectives(ctx, session, text)
 		if len(skillDirectives.Skills) > 0 || len(skillDirectives.InjectedWrappers) > 0 || len(skillDirectives.ExistingWrappers) > 0 || len(skillDirectives.Invalid) > 0 {
 			a.notifySkillDirectiveResult(ctx, skillDirectives)
 		}

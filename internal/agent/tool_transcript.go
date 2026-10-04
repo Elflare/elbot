@@ -6,9 +6,9 @@ import (
 	"fmt"
 
 	"elbot/internal/llm"
-	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
+	"elbot/internal/toolrun"
 )
 
 type assistantMetadata struct {
@@ -94,66 +94,16 @@ func persistedToolMessage(message llm.LLMMessage) llm.LLMMessage {
 	return message
 }
 
-func (a *Agent) rememberDiscoveryResult(ctx context.Context, session *storage.Session, result *tool.Result) {
-	if result == nil {
-		return
-	}
-	if len(result.Data) > 0 {
-		var discovery tool.DiscoveryResult
-		if err := json.Unmarshal(result.Data, &discovery); err == nil {
-			a.rememberDiscoveredTools(ctx, session, &discovery)
-		}
-	}
-	a.rememberActivatedTools(ctx, session, result.Metadata)
-	a.persistShownRuleCardFormats(ctx, session, metadataToolNames(result.Metadata[tool.MetadataShownRuleCardFormats]))
-}
-
-func (a *Agent) rememberActivatedTools(ctx context.Context, session *storage.Session, metadata map[string]any) {
-	if len(metadata) == 0 || session == nil || a.toolRuntime.registry == nil {
-		return
-	}
-	names := metadataToolNames(metadata[tool.MetadataActivateTools])
-	if len(names) == 0 {
-		return
-	}
-	policy := a.securityPolicy
-	if policy == nil {
-		policy = security.DefaultPolicy()
-	}
-	actor := a.actor(ctx)
-	discovery := &tool.DiscoveryResult{}
-	for _, name := range names {
-		if t, ok := a.toolRuntime.registry.Get(name); ok {
-			info := t.Info()
-			risk := info.Risk
-			if risk == "" {
-				risk = tool.RiskHigh
-			}
-			if !tool.InfoAvailableInContext(ctx, info) || !policy.CanUseTool(actor, risk, info.OwnerScoped) {
-				continue
-			}
-			schema := t.Schema()
-			discovery.Tools = append(discovery.Tools, tool.DiscoveredTool{Info: tool.PublicInfo{Name: name, Description: info.Description, Source: string(info.Source), ForegroundOnly: info.ForegroundOnly}, Schema: &schema})
-		}
-	}
-	a.rememberDiscoveredTools(ctx, session, discovery)
-}
-
-func metadataToolNames(value any) []string {
-	switch names := value.(type) {
-	case []string:
-		return names
-	case []any:
-		out := make([]string, 0, len(names))
-		for _, name := range names {
-			if text, ok := name.(string); ok {
-				out = append(out, text)
-			}
-		}
-		return out
-	default:
+func (a *Agent) rememberDiscoveryResult(ctx context.Context, row *storage.Session, result *tool.Result) error {
+	if row == nil {
 		return nil
 	}
+	update, err := toolrun.DiscoveryStateUpdate(ctx, result, a.toolRuntime.registry, a.actor(ctx), a.securityPolicy)
+	if err != nil {
+		return err
+	}
+	_, err = a.commitToolState(ctx, row, update)
+	return err
 }
 
 func (a *Agent) persistTurnMessage(ctx context.Context, message *storage.Message, operation string) error {

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"elbot/internal/directive"
@@ -14,6 +15,7 @@ import (
 )
 
 type toolDirectiveResult struct {
+	update   toolrun.StateUpdate
 	Text     string
 	Injected []string
 	Existing []string
@@ -22,6 +24,8 @@ type toolDirectiveResult struct {
 }
 
 type skillDirectiveResult struct {
+	update           toolrun.StateUpdate
+	Err              error
 	Text             string
 	Skills           []string
 	InjectedWrappers []string
@@ -29,7 +33,7 @@ type skillDirectiveResult struct {
 	Invalid          []string
 }
 
-func (a *Agent) applyToolDirectives(ctx context.Context, session *storage.Session, text string) toolDirectiveResult {
+func (a *Agent) prepareToolDirectives(ctx context.Context, session *storage.Session, text string) toolDirectiveResult {
 	result := toolDirectiveResult{Text: text}
 	if session == nil || session.Mode != storage.SessionModeWork || a.toolRuntime.registry == nil || !containsAny(text, directive.ToolPrefix, directive.ToolFullPrefix, directive.ToolShortPrefix, directive.ToolShortFull) {
 		return result
@@ -43,7 +47,7 @@ func (a *Agent) applyToolDirectives(ctx context.Context, session *storage.Sessio
 	}
 
 	remove := make([]bool, len(matches))
-	seenInjected := map[string]bool{}
+	update := toolrun.StateUpdate{}
 	seenDiscoveryContent := map[string]bool{}
 	discoveryContent := []string{}
 	for i, match := range matches {
@@ -61,17 +65,16 @@ func (a *Agent) applyToolDirectives(ctx context.Context, session *storage.Sessio
 		if strings.TrimSpace(content) != "" {
 			discoveryContent = append(discoveryContent, content)
 		}
-		injected, existing := a.rememberPreloadedDiscovery(ctx, session, discovery, seenInjected)
-		result.Injected = append(result.Injected, injected...)
-		result.Existing = append(result.Existing, existing...)
+		update.Tools = append(update.Tools, toolrun.NativeCachedToolsFromDiscovery(discovery)...)
 		if tagName != "" {
-			a.persistToolTags(ctx, session, []string{tagName})
+			update.Tags = append(update.Tags, tagName)
 		}
 		remove[i] = true
 	}
-	if len(result.Injected) == 0 && len(result.Existing) == 0 {
+	if len(update.Tools) == 0 {
 		return result
 	}
+	result.update = update
 	result.Text = directive.StripToolMatches(text, matches, remove)
 	if len(discoveryContent) > 0 {
 		if strings.TrimSpace(result.Text) == "" {
@@ -112,7 +115,7 @@ func (a *Agent) preloadedContextDiscoveryContent(ctx context.Context, discovery 
 	return strings.Join(parts, "\n\n"), nil
 }
 
-func (a *Agent) applySkillDirectives(ctx context.Context, session *storage.Session, text string) skillDirectiveResult {
+func (a *Agent) prepareSkillDirectives(ctx context.Context, session *storage.Session, text string) skillDirectiveResult {
 	result := skillDirectiveResult{Text: text}
 	if session == nil || session.Mode != storage.SessionModeWork || a.toolRuntime.registry == nil || !containsAny(text, directive.SkillPrefix, directive.SkillFullPrefix, directive.SkillShortPrefix, directive.SkillShortFull) {
 		return result
@@ -121,7 +124,12 @@ func (a *Agent) applySkillDirectives(ctx context.Context, session *storage.Sessi
 	if len(matches) == 0 {
 		return result
 	}
-	ctx = tool.WithShownRuleCardFormats(ctx, decodeSessionMetadata(session.Metadata).ShownRuleCardFormats)
+	state, err := a.toolState.Snapshot(ctx, session.ID)
+	if err != nil {
+		result.Err = err
+		return result
+	}
+	ctx = tool.WithShownRuleCardFormats(ctx, state.ShownRuleCardFormats)
 	policy := a.securityPolicy
 	if policy == nil {
 		policy = security.DefaultPolicy()
@@ -129,7 +137,7 @@ func (a *Agent) applySkillDirectives(ctx context.Context, session *storage.Sessi
 	actor := a.actor(ctx)
 	remove := make([]bool, len(matches))
 	seenSkills := map[string]bool{}
-	seenInjected := map[string]bool{}
+	update := toolrun.StateUpdate{}
 	blocks := []tool.DetailBlock{}
 	for i, match := range matches {
 		name := strings.TrimSpace(match.Name)
@@ -151,9 +159,7 @@ func (a *Agent) applySkillDirectives(ctx context.Context, session *storage.Sessi
 			blocks = append(blocks, block)
 		}
 		for _, wrapper := range detailer.ActivateTools() {
-			injected, existing := a.preloadSkillWrapper(ctx, session, wrapper, actor, policy, seenInjected)
-			result.InjectedWrappers = append(result.InjectedWrappers, injected...)
-			result.ExistingWrappers = append(result.ExistingWrappers, existing...)
+			update.Tools = append(update.Tools, a.preloadSkillWrapper(ctx, session, wrapper, actor, policy)...)
 		}
 		remove[i] = true
 	}
@@ -168,7 +174,8 @@ func (a *Agent) applySkillDirectives(ctx context.Context, session *storage.Sessi
 			stripped = strings.TrimSpace(stripped) + "\n\n" + detailText
 		}
 	}
-	a.persistShownRuleCardFormats(ctx, session, tool.NewRuleCardFormatsFromContext(ctx))
+	update.ShownRuleCardFormats = tool.NewRuleCardFormatsFromContext(ctx)
+	result.update = update
 	result.Text = stripped
 	return result
 }
@@ -199,57 +206,6 @@ func (a *Agent) discoveryForToolDirective(ctx context.Context, value string) (*t
 	}
 	discovery, ok := a.discoveryForToolNames(ctx, names, actor, policy)
 	return discovery, tagName, ok
-}
-
-func (a *Agent) preloadToolNames(ctx context.Context, session *storage.Session, names []string) []string {
-	if session == nil || session.Mode != storage.SessionModeWork || a.toolRuntime.registry == nil {
-		return nil
-	}
-	policy := a.securityPolicy
-	if policy == nil {
-		policy = security.DefaultPolicy()
-	}
-	actor := a.actor(ctx)
-	seenInjected := map[string]bool{}
-	injected := []string{}
-	for _, name := range names {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
-		}
-		root, ok := a.toolRuntime.registry.Get(name)
-		if !ok || !a.canPreloadToolRoot(actor, policy, root) {
-			a.audit("tool_preload_skipped", "session_id", session.ID, "tool", name, "reason", "not_found_or_not_allowed")
-			continue
-		}
-		discovery, ok := a.discoveryForToolNames(ctx, []string{name}, actor, policy)
-		if !ok || discovery == nil || len(discovery.Tools) == 0 {
-			a.audit("tool_preload_skipped", "session_id", session.ID, "tool", name, "reason", "no_schema")
-			continue
-		}
-		newTools, _ := a.rememberPreloadedDiscovery(ctx, session, discovery, seenInjected)
-		injected = append(injected, newTools...)
-	}
-	return injected
-}
-
-func (a *Agent) rememberPreloadedDiscovery(ctx context.Context, session *storage.Session, discovery *tool.DiscoveryResult, seen map[string]bool) ([]string, []string) {
-	cachedBefore := a.cachedToolNameSet(ctx, session)
-	a.rememberCachedTools(ctx, session, toolrun.NativeCachedToolsFromDiscovery(discovery))
-	injected := []string{}
-	existing := []string{}
-	for _, discovered := range discovery.Tools {
-		if discovered.Schema == nil || discovered.Info.Name == "" || seen[discovered.Info.Name] {
-			continue
-		}
-		seen[discovered.Info.Name] = true
-		if cachedBefore[discovered.Info.Name] {
-			existing = append(existing, discovered.Info.Name)
-		} else {
-			injected = append(injected, discovered.Info.Name)
-		}
-	}
-	return injected, existing
 }
 
 func (a *Agent) canPreloadToolRoot(actor security.Actor, policy *security.Policy, candidate tool.Tool) bool {
@@ -289,28 +245,28 @@ func skillDetailBlock(ctx context.Context, candidate tool.Tool, detailer tool.De
 	return tool.DetailBlock{Content: detailer.Detail()}, nil
 }
 
-func (a *Agent) preloadSkillWrapper(ctx context.Context, session *storage.Session, name string, actor security.Actor, policy *security.Policy, seen map[string]bool) ([]string, []string) {
+func (a *Agent) preloadSkillWrapper(ctx context.Context, session *storage.Session, name string, actor security.Actor, policy *security.Policy) []toolrun.CachedTool {
 	name = strings.TrimSpace(name)
 	if name == "" || name == "discover_tool" || a.toolRuntime.registry == nil {
-		return nil, nil
+		return nil
 	}
 	candidate, ok := a.toolRuntime.registry.Get(name)
 	if !ok || !tool.InfoAvailableInContext(ctx, candidate.Info()) || !tool.CanAccessTool(actor, policy, candidate.Info()) {
 		a.audit("skill_wrapper_preload_skipped", "session_id", session.ID, "tool", name, "reason", "not_found_or_not_allowed")
-		return nil, nil
+		return nil
 	}
 	if _, isSkillLike := candidate.(tool.DetailProvider); isSkillLike {
 		a.audit("skill_wrapper_preload_skipped", "session_id", session.ID, "tool", name, "reason", "skill_has_no_schema")
-		return nil, nil
+		return nil
 	}
 	schema := candidate.Schema()
 	if schema.Function.Name == "" {
 		a.audit("skill_wrapper_preload_skipped", "session_id", session.ID, "tool", name, "reason", "empty_schema")
-		return nil, nil
+		return nil
 	}
 	info := candidate.Info()
 	discovery := &tool.DiscoveryResult{Tools: []tool.DiscoveredTool{{Info: tool.PublicInfo{Name: info.Name, Description: info.Description, Source: string(info.Source), ForegroundOnly: info.ForegroundOnly}, Schema: &schema}}}
-	return a.rememberPreloadedDiscovery(ctx, session, discovery, seen)
+	return toolrun.NativeCachedToolsFromDiscovery(discovery)
 }
 
 func (a *Agent) discoveryForToolNames(ctx context.Context, names []string, actor security.Actor, policy *security.Policy) (*tool.DiscoveryResult, bool) {
@@ -366,4 +322,64 @@ func (a *Agent) notifySkillDirectiveResult(ctx context.Context, result skillDire
 		return
 	}
 	a.sendChat(ctx, strings.Join(parts, "\n"))
+}
+func sortedUnique(values []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
+}
+func (a *Agent) applyInputDirectives(ctx context.Context, row *storage.Session, text string) (toolDirectiveResult, skillDirectiveResult, error) {
+	tools := a.prepareToolDirectives(ctx, row, text)
+	if tools.Err != nil {
+		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, tools.Err
+	}
+	skills := a.prepareSkillDirectives(ctx, row, tools.Text)
+	if skills.Err != nil {
+		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, skills.Err
+	}
+	update := toolrun.StateUpdate{
+		Tools: append(append([]toolrun.CachedTool(nil), tools.update.Tools...), skills.update.Tools...),
+		Tags:  tools.update.Tags, ShownRuleCardFormats: skills.update.ShownRuleCardFormats,
+	}
+	committed, err := a.commitToolState(ctx, row, update)
+	if err != nil {
+		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err
+	}
+	toolNames := map[string]bool{}
+	skillNames := map[string]bool{}
+	for _, item := range tools.update.Tools {
+		toolNames[item.Name] = true
+	}
+	for _, item := range skills.update.Tools {
+		skillNames[item.Name] = true
+	}
+	for _, name := range committed.Injected {
+		if toolNames[name] {
+			tools.Injected = append(tools.Injected, name)
+		}
+		if skillNames[name] {
+			if toolNames[name] {
+				skills.ExistingWrappers = append(skills.ExistingWrappers, name)
+			} else {
+				skills.InjectedWrappers = append(skills.InjectedWrappers, name)
+			}
+		}
+	}
+	for _, name := range committed.Existing {
+		if toolNames[name] {
+			tools.Existing = append(tools.Existing, name)
+		}
+		if skillNames[name] {
+			skills.ExistingWrappers = append(skills.ExistingWrappers, name)
+		}
+	}
+	return tools, skills, nil
 }

@@ -12,6 +12,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/config"
+	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -26,6 +27,7 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
+	"elbot/internal/toolrun"
 	"elbot/internal/turn"
 )
 
@@ -47,7 +49,8 @@ type Agent struct {
 	promptBuilder      PromptBuilder
 	toolRuntime        toolRuntimeState
 	securityPolicy     *security.Policy
-	contextRuntime     contextRuntimeState
+	contexts           *contextmgr.Service
+	toolState          *toolrun.StateService
 	hooks              hookRunner
 	hookRuntime        HookRouter
 	outputs            delivery.Manager
@@ -68,7 +71,6 @@ type Agent struct {
 	visionFallbackNotified  map[string]bool
 	responseTimeout         time.Duration
 	userConfirmationTimeout time.Duration
-	discoveredTools         map[string]map[string]llm.ToolSchema
 	actorID                 string
 	scopeID                 string
 }
@@ -123,7 +125,6 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		return nil, err
 	}
 	p := opts.Platform
-	providers := opts.Providers
 	store := opts.Store
 	prefixes := opts.CommandPrefixes
 	sessionCfg := opts.SessionConfig
@@ -163,7 +164,8 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		soul:                    promptSoul,
 		residentMemory:          opts.ResidentMemoryStore,
 		securityPolicy:          policy,
-		contextRuntime:          newContextRuntimeState(store, sessions, requests, turns),
+		contexts:                opts.Contexts,
+		toolState:               opts.ToolState,
 		hooks:                   hookManager,
 		hookRuntime:             opts.HookRuntime,
 		outputs:                 outputs,
@@ -174,14 +176,21 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		responseTimeout:         responseTimeout(llmRequestConfig),
 		userConfirmationTimeout: defaultUserConfirmationTimeout,
 
-		discoveredTools: map[string]map[string]llm.ToolSchema{},
-
 		sessionCommands: sessionCommands,
 		idleExpiration:  sessionIdleExpirationConfig(opts.SessionIdleExpiration),
 		sandboxRoot:     filepath.Clean(strings.TrimSpace(opts.SandboxRoot)),
 		actorID:         "cli:local",
 		scopeID:         "local",
 	}
+	if a.contexts == nil {
+		a.contexts = contextmgr.New(contextmgr.Options{Store: store, Models: opts.Models, Config: opts.ContextConfig, Metadata: opts.ModelMetadata, Providers: opts.Providers})
+	}
+	if a.toolState == nil {
+		a.toolState = toolrun.NewStateService(store)
+	}
+	a.toolRuntime = newToolRuntimeState()
+	a.toolRuntime.manager = toolrun.NewManager(nil, policy)
+	a.toolRuntime.manager.Media = opts.Media
 	a.toolRuntime.fileRollback = opts.FileRollback
 	sessions.SetForegroundActivation(a.adoptForeground)
 	sessions.SetActivitySource(func() []string {
@@ -212,7 +221,6 @@ func NewWithOptions(opts Options) (*Agent, error) {
 	if p != nil {
 		a.platformSenders[p.Name()] = p
 	}
-	a.SetContextOptions(opts.ContextConfig, opts.ModelMetadata, providers)
 	if err := agentcommands.RegisterDefaultModules(a.commands, agentcommands.Deps{
 		Doctor:        opts.Doctor,
 		Router:        a.commands,

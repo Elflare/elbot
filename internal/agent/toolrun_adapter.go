@@ -80,7 +80,10 @@ func (d agentToolRunDeps) PrepareToolContext(ctx context.Context, session *stora
 	if session == nil {
 		return ctx
 	}
-	ctx = tool.WithShownRuleCardFormats(ctx, decodeSessionMetadata(session.Metadata).ShownRuleCardFormats)
+	state, err := toolrun.DecodeState(session.Metadata)
+	if err == nil {
+		ctx = tool.WithShownRuleCardFormats(ctx, state.ShownRuleCardFormats)
+	}
 	ctx = d.agent.fileRollbackContext(ctx, session)
 	if isBackgroundSession(session) {
 		return ctx
@@ -163,8 +166,8 @@ func (d agentToolRunDeps) AuditToolDenied(ctx context.Context, sessionID string,
 	d.agent.audit("permission_denied", "actor_id", d.agent.actor(ctx).ID, "session_id", sessionID, "tool", call.Name, "risk", risk, "reason", reason)
 }
 
-func (d agentToolRunDeps) RememberDiscoveryResult(ctx context.Context, session *storage.Session, result *tool.Result) {
-	d.agent.rememberDiscoveryResult(ctx, session, result)
+func (d agentToolRunDeps) RememberDiscoveryResult(ctx context.Context, session *storage.Session, result *tool.Result) error {
+	return d.agent.rememberDiscoveryResult(ctx, session, result)
 }
 
 func (d agentToolRunDeps) AddToolUse(sessionID, toolName string) {
@@ -183,41 +186,7 @@ func (d agentToolRunDeps) PersistedToolMessage(message llm.LLMMessage) llm.LLMMe
 	return persistedToolMessage(message)
 }
 
-func (a *Agent) toolRunManager() *toolrun.Manager {
-	if a.toolRuntime.manager == nil {
-		a.toolRuntime.manager = toolrun.NewManager(a.toolRuntime.registry, a.securityPolicy)
-	}
-	a.toolRuntime.manager.Media = a.media
-	return a.toolRuntime.manager
-}
-
-func (a *Agent) cachedToolsForSession(session *storage.Session) []toolrun.CachedTool {
-	if session == nil {
-		return nil
-	}
-	metadata := decodeSessionMetadata(session.Metadata)
-	backgroundSession := isBackgroundSession(session)
-	cached := []toolrun.CachedTool{}
-	for _, item := range metadata.ToolCache {
-		if backgroundSession && item.Name == "discover_tool" {
-			continue
-		}
-		cached = append(cached, item)
-	}
-	for _, name := range metadata.DiscoveredTools {
-		if backgroundSession && name == "discover_tool" {
-			continue
-		}
-		if a.toolRuntime.registry == nil {
-			continue
-		}
-		if t, ok := a.toolRuntime.registry.Get(name); ok {
-			schema := t.Schema()
-			cached = append(cached, toolrun.CachedTool{Name: name, Source: toolrun.SourceKindNative, Description: t.Info().Description, Schema: schema})
-		}
-	}
-	return toolrun.NormalizeCachedTools(cached)
-}
+func (a *Agent) toolRunManager() *toolrun.Manager { return a.toolRuntime.manager }
 
 func (d agentToolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {
 	return d.agent.refreshExecution(ctx, row)

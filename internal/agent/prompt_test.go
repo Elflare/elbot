@@ -209,7 +209,7 @@ func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
 	}})
 	sessionRecord := &storage.Session{
 		Mode:     storage.SessionModeWork,
-		Metadata: encodeSessionMetadata(sessionMetadata{ToolTags: []string{"beta", "alpha"}}),
+		Metadata: `{"tool_tags":["beta","alpha"]}`,
 	}
 	manager := NewSystemPromptManager(
 		soulSystemPromptSource{Soul: staticSoulProvider{Prompt: "SOUL_ORDER"}},

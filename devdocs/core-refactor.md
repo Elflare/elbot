@@ -45,7 +45,7 @@
 | `sandbox/` | `sandbox.go` | 从 Tool 提取后台路径限制和沙箱上下文；复用原有规则 |
 | `fileops/` | `service.go`、`rollback.go`，迁入现有文件操作文件 | 统一底层文件操作和命令／工具共享的编辑撤销服务 |
 | `command/builtin/` | 沿用现有命令文件名 | 接收 `agent/commands`；具体命令依赖领域服务 |
-| `toolrun/` | 收拢 `cache.go` 等状态职责 | 接收 Agent 的工具发现状态、schema 缓存及对应持久化适配 |
+| `toolrun/` | `state.go`、`discovery.go`、`schema.go`，复用 `cache.go` | 工具发现状态、schema 快照、事务提交与恢复 |
 | `platform/` | 增加 `signals.go`，调整各 adapter | 提供公共来源信息和连接信号，保留平台协议与连接细节 |
 | `app/` | `services.go`、`signals.go`，调整现有装配文件 | 构建共享服务、连接信号、配置执行器和关闭顺序 |
 | `agent/` | 保留消息、对话、工具循环、命令执行和 Turn 输出适配文件 | 编排上述服务；`core.go` 保留 Agent 自身状态和依赖 |
@@ -227,10 +227,13 @@ Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记�
 <a id="phase-5"></a>
 ### 阶段 5：上下文与工具状态
 
-- 扩展现有 `contextmgr` 和 `toolrun`，接收 Agent 内对应的运行状态和持久化适配，使用阶段 2 的字段更新能力。
-- Agent 保留压缩时机、Request／Turn、pending、工具循环和确认编排，调用领域服务获取结果。
-- 清理重复可写状态，保持工具 schema、Hook 改写与 transcript 的同步时序。
-- 验收：恢复／Fork、自动／手动压缩、用量统计、工具发现与缓存恢复正确；取消、确认和 pending 输入不串线；metadata 不丢失其他模块字段。
+- app 创建共享 `contextmgr.Service` 和 `toolrun.StateService` 并注入 Agent；上下文服务拥有加载、窗口、用量、压缩材料及 seed 状态，工具状态服务拥有发现结果、schema 缓存、tag 和规则卡展示记录。
+- Agent 保留压缩时机、Request／Turn、取消、绑定准入及会话交接，以及 pending、确认、Hook 和 transcript 编排；命令状态查询复用服务，命令包迁移留在阶段 7。
+- 工具 metadata 为唯一事实来源，删除重复内存 schema 表和无调用的恢复链路。一次输入的工具／Skill 预加载或一次发现结果，通过一次 `Mutate` 合并提交；成功后同步更新调用快照再报告成功，失败保留原状态并返回错误。
+- 工具执行及完成 Hook 顺序保留；状态提交发生在最终调用记录、返回消息与 transcript 定稿前。已经完成的动作不回滚、不自动重跑，错误明确区分执行结果与状态保存失败。
+- 各模块只解码、更新所属字段，保留原格式和未知字段，损坏 metadata 拒绝覆盖；不增加迁移、缓存 TTL 或重试。schema 和用量对外返回独立副本；用量保存失败保留实际观测值并记日志。
+- 保留压缩模型快照与 fallback、成功工具调用过滤、后台交接及 seed 物化规则；新会话继承应保留状态并清除旧用量。恢复加载已有状态；Fork 继承指定范围历史，不复制父会话工具缓存和用量。
+- 验收覆盖恢复／Fork、自动／手动压缩、用量与 seed、发现／预加载／后台缓存、提交失败、并发字段保留和 Hook 快照隔离；确认、取消和 pending 不串线，运行相关 race 与全量测试。
 
 <a id="phase-6"></a>
 ### 阶段 6：发送与通知

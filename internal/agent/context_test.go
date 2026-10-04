@@ -37,8 +37,8 @@ func TestCompactMessagesFiltersToolResultsAndFailedCalls(t *testing.T) {
 		{ID: "missing", Name: "shell", Arguments: `{"command":"missing"}`},
 	}
 	toolCall := toolCallStorageMessage(session.ID, "C", "C", calls)
-	runtime := contextRuntimeState{store: store}
-	messages, err := runtime.compactMessages(ctx, &contextmgr.LoadedContext{
+	runtime := contextmgr.New(contextmgr.Options{Store: store})
+	messages, err := runtime.CompactMessages(ctx, &contextmgr.LoadedContext{
 		Summary: &storage.ContextSummary{Summary: "I"},
 		Messages: []storage.Message{
 			{Role: storage.RoleUser, Content: "J"},
@@ -150,7 +150,11 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload compacted session: %v", err)
 	}
-	compactMetadata := decodeSessionMetadata(compacted.Metadata).ContextCompact
+	state, err := contextmgr.DecodeState(compacted.Metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compactMetadata := state.Compact
 	if compactMetadata == nil || compactMetadata.Pending || compactMetadata.Generation != 1 || compactMetadata.SourceSessionID != source.ID {
 		t.Fatalf("compact metadata = %#v", compactMetadata)
 	}
@@ -212,7 +216,7 @@ func TestManualCompactDefersSeedUntilNextUserMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}
-	if seed := pendingContextCompact(next); next.ID == old.ID || seed == nil || !seed.Pending {
+	if seed, err := contextmgr.PendingCompact(next); err != nil || next.ID == old.ID || seed == nil || !seed.Pending {
 		t.Fatalf("pending compacted session = %#v", next)
 	}
 	if messages, err := store.Messages().ListBySession(ctx, next.ID); err != nil || len(messages) != 0 {
@@ -236,7 +240,11 @@ func TestManualCompactDefersSeedUntilNextUserMessage(t *testing.T) {
 		t.Fatalf("persisted first user = %#v, err = %v", messages, err)
 	}
 	latest, _ := store.Sessions().Get(ctx, next.ID)
-	if compact := decodeSessionMetadata(latest.Metadata).ContextCompact; compact == nil || compact.Pending {
+	state, err := contextmgr.DecodeState(latest.Metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compact := state.Compact; compact == nil || compact.Pending {
 		t.Fatalf("compact seed was not consumed: %#v", compact)
 	}
 	if got := p.out.String(); !strings.Contains(got, "new session: "+next.ID) {

@@ -60,8 +60,10 @@ func (d *runnerTestDeps) RecordToolCall(_ context.Context, _ string, _ llm.ToolC
 }
 func (d *runnerTestDeps) AuditToolDenied(context.Context, string, llm.ToolCallRequest, tool.RiskLevel, string) {
 }
-func (d *runnerTestDeps) RememberDiscoveryResult(context.Context, *storage.Session, *tool.Result) {}
-func (d *runnerTestDeps) AddToolUse(string, string)                                               {}
+func (d *runnerTestDeps) RememberDiscoveryResult(context.Context, *storage.Session, *tool.Result) error {
+	return nil
+}
+func (d *runnerTestDeps) AddToolUse(string, string) {}
 func (d *runnerTestDeps) ToolResultMessage(id string, message llm.LLMMessage) storage.Message {
 	return storage.Message{SessionID: id, Role: storage.RoleTool, Content: llm.SegmentsContentText(message.Segments)}
 }
