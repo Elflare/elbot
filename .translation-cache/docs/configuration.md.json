@@ -312,6 +312,14 @@
       "translation": "If the explicitly specified configuration path does not exist, ElBot will report an error instead of silently generating it, to avoid masking path spelling errors.",
       "updated_at": 1785052888
     },
+    "docs/configuration.md:list:03d9ed06357b8ecfced8e7fce81dd143799e91aedf97f996a3a8620d016211c7": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 在启动时读取。运行中手动修改文件需要重启生效。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "03d9ed06357b8ecfced8e7fce81dd143799e91aedf97f996a3a8620d016211c7",
+      "translation": "__ELBOT_CODE_0__ is read at startup. Manually modifying the file during runtime requires a restart to take effect.",
+      "updated_at": 1791193831
+    },
     "docs/configuration.md:list:04b73bb686d2f43f538fa6d9bd405de7859fbb9dbad2eaa182684c637cd3502a": {
       "kind": "list",
       "source": "可包含 __ELBOT_CODE_0__ 持久运行配置。",
@@ -888,14 +896,6 @@
       "translation": "User-editable configurations should be centralized in the platform configuration directory to avoid directly modifying source code examples.",
       "updated_at": 1781515756
     },
-    "docs/configuration.md:list:8282f9bd1ed78f6be33d5f3aaa9b6e3faabe3d617a3a789097dd6d27809372f5": {
-      "kind": "list",
-      "source": "运行时使用 __ELBOT_CODE_0__ 切换模型后，状态会写回 __ELBOT_CODE_1__。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "8282f9bd1ed78f6be33d5f3aaa9b6e3faabe3d617a3a789097dd6d27809372f5",
-      "translation": "After switching models using __ELBOT_CODE_0__ at runtime, the state will be written back to __ELBOT_CODE_1__.",
-      "updated_at": 1781515756
-    },
     "docs/configuration.md:list:82e581473bd3a6ee5421d5b83f622f08445287fb8013d3044c0992c6a2efdbbf": {
       "kind": "list",
       "source": "高风险工具确认消息会附带 Telegram inline keyboard，点击按钮会转换为 __ELBOT_CODE_0__、__ELBOT_CODE_1__ 等现有确认命令。",
@@ -1104,6 +1104,14 @@
       "translation": "When enabled, compaction will be triggered when the Session context approaches the window limit.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:c9e05ed04763f70e6075f96e5b8abbc7e9b6ee2e51bb817e9769319435fb4560": {
+      "kind": "list",
+      "source": "运行时使用 __ELBOT_CODE_0__ 切换模型会同时保存至 __ELBOT_CODE_1__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "c9e05ed04763f70e6075f96e5b8abbc7e9b6ee2e51bb817e9769319435fb4560",
+      "translation": "Switching the model using __ELBOT_CODE_0__ at runtime will also be saved to __ELBOT_CODE_1__.",
+      "updated_at": 1791193831
+    },
     "docs/configuration.md:list:cb73e0f2b874464a2ffa6a5b345d0b0c0b2f28d34a219af24e2ce824f6997095": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 模式启用工具发现和工具调用。",
@@ -1288,6 +1296,14 @@
       "translation": "__ELBOT_CODE_0__ stores both CLI server and client configurations.",
       "updated_at": 1781962094
     },
+    "docs/configuration.md:paragraph:0025cead1b4f749679835fe19c20bce31b13d519528cfd991e40b3c1a4b1b6f2": {
+      "kind": "paragraph",
+      "source": "文件编辑的撤销备份按实际目标的绝对路径保存；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "0025cead1b4f749679835fe19c20bce31b13d519528cfd991e40b3c1a4b1b6f2",
+      "translation": "Undo backups for file editing are saved according to the absolute path of the actual target;",
+      "updated_at": 1791193831
+    },
     "docs/configuration.md:paragraph:01f1bfa955794ef1c2fd69180c14c70e5eab27d060a94bd28eef48340299d6c4": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 使用 __ELBOT_CODE_1__：\n",
@@ -1391,6 +1407,14 @@
       "source_hash": "123944ca45d38bc86a9c93ce2b88c68c450d4a5d8272799cf282d21b0bcace4a",
       "translation": "Relative paths are based on the directory where __ELBOT_CODE_0__ is located:\n",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:paragraph:12a4bb6b933580f1b80292e45b188a7f816170a602b44ee2b15c30103cb245b8": {
+      "kind": "paragraph",
+      "source": "未设置 workspace 时沿用进程工作目录。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "12a4bb6b933580f1b80292e45b188a7f816170a602b44ee2b15c30103cb245b8",
+      "translation": "When no workspace is set, the process working directory is used.",
+      "updated_at": 1791193831
     },
     "docs/configuration.md:paragraph:1348de618f0e0d0ee6e02cf28f370260454080fe4e7f5dbbe87c54feefef6abc": {
       "kind": "paragraph",
@@ -1952,6 +1976,14 @@
       "translation": "The main part of the filename must be uppercase __ELBOT_CODE_0__ or __ELBOT_CODE_1__, while the case of the __ELBOT_CODE_2__ suffix is unrestricted;",
       "updated_at": 1783178826
     },
+    "docs/configuration.md:paragraph:9094abe1198ffdbb5ed7d6497760e7a0702fca57dc4006c434b8aebcd1684657": {
+      "kind": "paragraph",
+      "source": "撤销原目录中的文件时，可以切回原 workspace 或传绝对路径。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "9094abe1198ffdbb5ed7d6497760e7a0702fca57dc4006c434b8aebcd1684657",
+      "translation": "When undoing files in the original directory, you can switch back to the original workspace or pass the absolute path.",
+      "updated_at": 1791193831
+    },
     "docs/configuration.md:paragraph:92e9ae62f8c6aafa6fd87f93ae3d06c46477e883a5b9962f7acb0ea1fd0419b6": {
       "kind": "paragraph",
       "source": "ElBot 使用一个主配置入口加载应用配置、Provider 配置和运行态状态。默认配置由程序内置 assets 生成到平台配置目录；已有配置文件不会被覆盖。\n",
@@ -1975,6 +2007,14 @@
       "source_hash": "93daaf967746bde87f6a6e2615a14dc5e9aab7cc3865e12efa5e9090258e31e0",
       "translation": "systemd's __ELBOT_CODE_0__ also does not expand __ELBOT_CODE_1__.\n",
       "updated_at": 1785918785
+    },
+    "docs/configuration.md:paragraph:9416def3d8243e87f45858304ca9e17afcd1a78c41c3ac66e83c34ef4dd94bef": {
+      "kind": "paragraph",
+      "source": "切换 workspace 不清空备份，但相同相对路径会按新的 workspace 解析。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "9416def3d8243e87f45858304ca9e17afcd1a78c41c3ac66e83c34ef4dd94bef",
+      "translation": "Switching the workspace does not clear backups, but the same relative path will be resolved according to the new workspace.",
+      "updated_at": 1791193831
     },
     "docs/configuration.md:paragraph:98eb7743b6382d1927f6e0c8096646fef84bd7543d6a077816680a510239c6c1": {
       "kind": "paragraph",
@@ -2040,14 +2080,6 @@
       "translation": "If using asdf, mise, Nix, Linuxbrew, Snap, or a custom installation path, it is recommended to write the actual __ELBOT_CODE_0__ path directly into __ELBOT_CODE_1__, rather than relying on the initialization scripts of an interactive shell.\n",
       "updated_at": 1781790272
     },
-    "docs/configuration.md:paragraph:9efef8f32aa834a7a61b0ec24a9a1603743013cefb7fe258814234d49f771e9c": {
-      "kind": "paragraph",
-      "source": "切换后，__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 和前台 __ELBOT_CODE_3__ 等路径类工具会基于该目录解析相对路径，避免每次都传完整路径。\n",
-      "source_file": "docs/configuration.md",
-      "source_hash": "9efef8f32aa834a7a61b0ec24a9a1603743013cefb7fe258814234d49f771e9c",
-      "translation": "After switching, path-related tools such as __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, and the foreground __ELBOT_CODE_3__ will resolve relative paths based on this directory, avoiding the need to pass the full path every time.\n",
-      "updated_at": 1783178826
-    },
     "docs/configuration.md:paragraph:a09a6a292ecdf93b446713171e074b39ad603ce3b20d526cc00df1009962c1c3": {
       "kind": "paragraph",
       "source": "Cron 表达式由内部 Cron Runtime 调度，使用 Linux crontab 风格的 5 字段格式：__ELBOT_CODE_0__。",
@@ -2095,6 +2127,14 @@
       "source_hash": "ab7f096105b4d8c21b405b3895bea7b4475703a5260f9f3b8e3a6935daef24bd",
       "translation": "When not configured, it falls back to direct scraping:\n",
       "updated_at": 1784024475
+    },
+    "docs/configuration.md:paragraph:abc9ccf1b70e89fc1b401694fdc6ec6e57abeea20bff42b3948ad98bc1ec9203": {
+      "kind": "paragraph",
+      "source": "切换后，__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ 和前台 __ELBOT_CODE_4__ 等路径类工具会基于该目录解析相对路径，避免每次都传完整路径。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "abc9ccf1b70e89fc1b401694fdc6ec6e57abeea20bff42b3948ad98bc1ec9203",
+      "translation": "After switching, path-related tools such as __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, and the foreground __ELBOT_CODE_4__ will resolve relative paths based on this directory to avoid passing the full path every time.\n",
+      "updated_at": 1791193831
     },
     "docs/configuration.md:paragraph:ad94f84e75a385d66574406eeac257dda1df6e2ec0dd1eb5d474460510359610": {
       "kind": "paragraph",
@@ -2247,6 +2287,14 @@
       "source_hash": "cce0681b233c3afc06096fb1c291b6ecb3768ecb605772fd205f738b4c58d4f1",
       "translation": "The main configuration is searched in the following order upon startup:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:cddb0854cfbabdb615438e3c4a4b324e0fd4c50b63f9a534aa00eb1464023d96": {
+      "kind": "paragraph",
+      "source": "使用方式见[文件编辑撤销](commands.md#文件编辑撤销)。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "cddb0854cfbabdb615438e3c4a4b324e0fd4c50b63f9a534aa00eb1464023d96",
+      "translation": "For usage, see [Undo File Editing](commands.md#文件编辑撤销).\n",
+      "updated_at": 1791193831
     },
     "docs/configuration.md:paragraph:cdf2112da1f7968748307c88e0aa0aa145429a9cff3097b57cecb0ebf758e66b": {
       "kind": "paragraph",
@@ -2650,8 +2698,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "f22f8f4fe66ec3c5a955fe573510519800d20ae70ef084aa9f843ce232f6ec6b",
+  "source_hash": "e69e551ebb2cce723cf27e5f07b4dbc080d49278ff7ecb2209637e12877c4e55",
   "target": "docs.en/configuration.md",
-  "updated_at": 1790906856,
+  "updated_at": 1791193831,
   "version": 2
 }

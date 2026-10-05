@@ -126,11 +126,13 @@ The configuration root `.env` or systemd environment takes effect after restarti
 
 ## Workspace Tools
 
-In work mode, the superadmin can allow the LLM to call the `workspace` tool to switch the shared working directory of the current Session. After switching, path-related tools such as `read_file`, `edit_file`, `send_file`, and the foreground `shell` will resolve relative paths based on this directory, avoiding the need to pass the full path every time.
+In work mode, the superadmin can allow the LLM to call the `workspace` tool to switch the shared working directory of the current Session. After switching, path-related tools such as `read_file`, `edit_file`, `rollback_file`, `send_file`, and the foreground `shell` will resolve relative paths based on this directory to avoid passing the full path every time.
 
 When a `workspace` tool in a directory is first discovered or injected, or when switching to or resetting to that directory for the first time, if `AGENTS.md` or `AGENT.md` exists at the root of the directory, the system will automatically attach the file content to the LLM so that it can read the working conventions of the current directory. The main part of the filename must be uppercase `AGENTS` or `AGENT`, while the case of the `.md` suffix is unrestricted; `AGENTS.md` takes precedence over `AGENT.md`.
 
 The maximum size for the automatically attached instruction file is 64 KiB. If the limit is exceeded, the content will not be read, nor will it be marked as attached; the tool result will indicate that the file needs to be shortened or split before switching the workspace.
+
+Undo backups for file editing are saved according to the absolute path of the actual target; Switching the workspace does not clear backups, but the same relative path will be resolved according to the new workspace. When undoing files in the original directory, you can switch back to the original workspace or pass the absolute path. When no workspace is set, the process working directory is used. For usage, see [Undo File Editing](commands.md#文件编辑撤销).
 
 ## Resident Memory Configuration
 
@@ -386,7 +388,8 @@ model = "deepseek-chat"
 - `work` mode enables tool discovery and tool calling.
 - `chat` mode does not inject tools, making it suitable for casual chatting and low-cost conversations.
 - `elwisp1`, `elwisp2`, and `elwisp3` are optional model slots for Elnis LLM events; Elvena requests can be specified via `model_slot`, falling back to `work` when not configured.
-- After switching models using `/model` at runtime, the state will be written back to `state.toml`.
+- Switching the model using `/model` at runtime will also be saved to `state.toml`.
+- `state.toml` is read at startup. Manually modifying the file during runtime requires a restart to take effect.
 
 ## Storage and Runtime Data
 
