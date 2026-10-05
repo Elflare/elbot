@@ -120,7 +120,7 @@ type componentLogs struct{ logger *slog.Logger }
 func (l componentLogs) Runtime() *slog.Logger { return l.logger }
 func (l componentLogs) Audit() *slog.Logger   { return l.logger }
 
-func TestComponentLoggerReplacementReachesHookAndOutput(t *testing.T) {
+func TestComponentLoggerReplacementReachesHookOutputAndReply(t *testing.T) {
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t))
 	manager := hook.NewManager()
 	if err := manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "failing", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
@@ -129,6 +129,8 @@ func TestComponentLoggerReplacementReachesHookAndOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.setTestHookManager(manager)
+	var replyEvents []string
+	a.replies.messages = &replyTestRepository{MessageRepository: a.store.Messages(), events: &replyEvents, mapErr: errors.New("association failure")}
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Sender: mediaSendFunc(func([]delivery.Output) (delivery.Receipt, error) {
 		return delivery.Receipt{}, errors.New("send failure")
 	})})
@@ -137,17 +139,18 @@ func TestComponentLoggerReplacementReachesHookAndOutput(t *testing.T) {
 		if _, err := a.output.SendAssistant(ctx, "hello"); err == nil {
 			t.Fatal("expected send failure")
 		}
+		a.replies.associateReceipt(ctx, "session", "message", delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "qq", ScopeID: "private:1", PlatformMessageID: "sent"}}})
 	}
 	var before, after bytes.Buffer
 	a.SetLogger(slog.New(slog.NewTextHandler(&before, nil)))
 	emit()
-	if !strings.Contains(before.String(), "hook error") || !strings.Contains(before.String(), "chat send failed") {
-		t.Fatalf("SetLogger did not reach both components: %s", before.String())
+	if !strings.Contains(before.String(), "hook error") || !strings.Contains(before.String(), "chat send failed") || !strings.Contains(before.String(), "map platform message failed") {
+		t.Fatalf("SetLogger did not reach all components: %s", before.String())
 	}
 	before.Reset()
 	a.SetLogManager(componentLogs{slog.New(slog.NewTextHandler(&after, nil))})
 	emit()
-	if before.Len() != 0 || strings.Count(after.String(), "hook error") != 1 || strings.Count(after.String(), "chat send failed") != 1 {
+	if before.Len() != 0 || strings.Count(after.String(), "hook error") != 1 || strings.Count(after.String(), "chat send failed") != 1 || strings.Count(after.String(), "map platform message failed") != 1 || strings.Count(after.String(), "map_platform_message") != 1 {
 		t.Fatalf("logger replacement: old=%s new=%s", before.String(), after.String())
 	}
 	after.Reset()

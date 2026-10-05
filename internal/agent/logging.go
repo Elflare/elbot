@@ -18,16 +18,25 @@ func (a *Agent) SetLogger(logger *slog.Logger) {
 	if a.output != nil {
 		a.output.logger = logger
 	}
+	if a.replies != nil {
+		a.replies.logger = logger
+	}
 }
 
 func (a *Agent) SetLogManager(logs LogManager) {
 	if logs == nil {
 		a.SetLogger(nil)
 		a.auditLogger = nil
+		if a.replies != nil {
+			a.replies.auditLogger = nil
+		}
 		return
 	}
 	a.SetLogger(logs.Runtime())
 	a.auditLogger = logs.Audit()
+	if a.replies != nil {
+		a.replies.auditLogger = a.auditLogger
+	}
 }
 
 func (a *Agent) audit(event string, attrs ...any) {
@@ -47,9 +56,13 @@ func (a *Agent) auditError(event string, attrs ...any) {
 }
 
 func (a *Agent) auditLog(level slog.Level, event string, attrs ...any) {
-	if a.auditLogger == nil {
+	writeAudit(a.auditLogger, level, event, attrs...)
+}
+
+func writeAudit(logger *slog.Logger, level slog.Level, event string, attrs ...any) {
+	if logger == nil {
 		return
 	}
 	attrs = append([]any{"event", event}, attrs...)
-	a.auditLogger.Log(context.Background(), level, "audit event", attrs...)
+	logger.Log(context.Background(), level, "audit event", attrs...)
 }
