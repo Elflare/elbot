@@ -57,7 +57,7 @@ func TestPlatformSignalsAreIsolatedAndCancelledOnClose(t *testing.T) {
 		}
 	}}
 	b := &signalBindings{}
-	if err := b.connectPlatforms(agt, []platformRuntime{one, two}, logger); err != nil {
+	if err := b.connectPlatforms(agt, nil, []platformRuntime{one, two}, logger); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -95,7 +95,7 @@ func TestRunnerCleansSignalBindingsOnAttachFailure(t *testing.T) {
 	want := errors.New("attach failed")
 	runner.deps.Integrations = integrationFactoryFunc(func(_ context.Context, req IntegrationRequest) (PlatformComponents, error) {
 		agt := &signalAgent{notify: func(ctx context.Context, _ string) { close(started); <-ctx.Done() }}
-		if err := b.connectPlatforms(agt, []platformRuntime{p}, logger); err != nil {
+		if err := b.connectPlatforms(agt, nil, []platformRuntime{p}, logger); err != nil {
 			return PlatformComponents{}, err
 		}
 		if err := p.connected.Emit(context.Background(), platform.ConnectedEvent{}); err != nil {

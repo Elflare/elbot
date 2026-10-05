@@ -53,6 +53,7 @@ func TestServiceRenameSkipsAutomaticNaming(t *testing.T) {
 
 	generator := &fakeTitleGenerator{calls: make(chan []storage.Message, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, generator, nil)
+	startTestNaming(t, svc)
 	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	session, err := svc.Create(ctx, scope, CreateRequest{Title: "old title"})
 	if err != nil {
@@ -96,6 +97,7 @@ func TestServiceNamingTriggerSteps(t *testing.T) {
 			store := newTestStore(t)
 			generator := &fakeTitleGenerator{titles: []string{"generated title"}, calls: make(chan []storage.Message, 1)}
 			svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: tc.triggerStep}, generator, nil)
+			startTestNaming(t, svc)
 			session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, CreateRequest{Title: "fallback"})
 			if err != nil {
 				t.Fatalf("create session: %v", err)
@@ -128,6 +130,7 @@ func TestServiceMaybeScheduleNamingSkipsRenamedTitle(t *testing.T) {
 
 	generator := &fakeTitleGenerator{calls: make(chan []storage.Message, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, generator, nil)
+	startTestNaming(t, svc)
 	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, CreateRequest{Title: "Cron title"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -151,6 +154,7 @@ func TestServiceNamingFailureNotifiesAndKeepsFallbackTitle(t *testing.T) {
 	generator := &fakeTitleGenerator{errs: []error{fmt.Errorf("boom")}, calls: make(chan []storage.Message, 1)}
 	notifier := &fakeNamingNotifier{failures: make(chan NamingFailedEvent, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, generator, notifier)
+	startTestNaming(t, svc)
 	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, CreateRequest{Title: "fallback"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -189,6 +193,7 @@ func TestServiceNamingFailureCanRetryAndSuccessStopsRepeats(t *testing.T) {
 	}
 	notifier := &fakeNamingNotifier{failures: make(chan NamingFailedEvent, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, generator, notifier)
+	startTestNaming(t, svc)
 	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, CreateRequest{Title: "fallback"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -222,6 +227,7 @@ func TestServiceNamingUsesOnlyTriggerStepMessages(t *testing.T) {
 
 	generator := &fakeTitleGenerator{titles: []string{"generated title"}, calls: make(chan []storage.Message, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, generator, nil)
+	startTestNaming(t, svc)
 	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, CreateRequest{Title: "fallback"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -254,6 +260,7 @@ func TestServiceNamingPlaceholderFallbacksImmediately(t *testing.T) {
 	}
 	notifier := &fakeNamingNotifier{failures: make(chan NamingFailedEvent, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, generator, notifier)
+	startTestNaming(t, svc)
 	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, CreateRequest{Title: "New session"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -284,6 +291,7 @@ func TestServiceNamingSkipsBlankMessages(t *testing.T) {
 
 	generator := &fakeTitleGenerator{titles: []string{"generated title"}, calls: make(chan []storage.Message, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 2}, generator, nil)
+	startTestNaming(t, svc)
 	session, err := svc.Create(ctx, Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, CreateRequest{Title: "fallback"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)

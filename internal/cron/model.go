@@ -258,11 +258,6 @@ func cronSandboxSubdir(jobName string) string {
 
 func cronScopeID(jobName string) string { return "cron:" + normalizeJobName(jobName) }
 
-func cronSessionMetadata(jobName, sourceSessionID string, copied bool) string {
-	data, _ := json.Marshal(map[string]any{"title_renamed": true, "title_source": "cron", "cron_job_name": jobName, "cron_source_session_id": sourceSessionID, "cron_broadcast_copy": copied})
-	return string(data)
-}
-
 func actorMetadata(actor security.Actor) CronActor {
 	return CronActor{ActorID: actor.ID, Platform: actor.Platform, PlatformUserID: actor.PlatformUserID, DisplayName: actor.DisplayName}
 }

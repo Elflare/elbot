@@ -21,27 +21,6 @@ func (t Target) ToDeliveryTarget() delivery.Target {
 	return out
 }
 
-func TargetScopeID(target Target) string {
-	id := strings.TrimSpace(target.ID)
-	switch strings.TrimSpace(target.Type) {
-	case "private":
-		if id == "" {
-			return ""
-		}
-		if strings.TrimSpace(target.Platform) == "qqofficial" {
-			return "c2c:" + id
-		}
-		return "private:" + id
-	case "group":
-		if id == "" {
-			return ""
-		}
-		return "group:" + id
-	default:
-		return ""
-	}
-}
-
 func SegmentsOutputs(segments []Segment, paths map[string]string) []delivery.Output {
 	var out []delivery.Output
 	for i, seg := range segments {

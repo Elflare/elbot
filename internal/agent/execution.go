@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"elbot/internal/background"
+	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
@@ -35,9 +36,14 @@ func (a *Agent) executionContext(ctx context.Context) context.Context {
 	if foreground == nil {
 		return ctx
 	}
-	if msg, ok := platform.MessageContextFrom(foreground); ok {
-		ctx = platform.WithMessageContext(ctx, msg)
+	// Replace the entire routing snapshot, including an absent platform context.
+	// Local CLI supplies only Info; inheriting the background discard sender
+	// would silently lose every subsequent foreground output.
+	msg, _ := platform.MessageContextFrom(foreground)
+	if info, ok := chatinfo.FromContext(foreground); ok {
+		msg.Info = info
 	}
+	ctx = platform.WithMessageContext(ctx, msg)
 	if actor, ok := security.ActorFromContext(foreground); ok {
 		ctx = security.WithActor(ctx, actor)
 	}

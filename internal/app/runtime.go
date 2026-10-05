@@ -24,6 +24,7 @@ import (
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
 	"elbot/internal/processenv"
+	"elbot/internal/session"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/tool/runtimeinfo"
 	"elbot/internal/toolrun"
@@ -42,6 +43,8 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	if err != nil {
 		return components, err
 	}
+	lifecycle.sessions = services.Sessions
+	services.Sessions.StartNaming(ctx)
 	dotEnv, err := config.LoadDotEnv(filepath.Dir(cfg.ConfigPath))
 	if err != nil {
 		return components, fmt.Errorf("load process environment: %w", err)
@@ -52,7 +55,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	sendNotice := func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 		return services.Dispatcher.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
 	}
-	cronService, err := buildCronService(ctx, foundation, services.Models, sendNotice)
+	cronService, err := buildCronService(ctx, foundation, services.Models, services.Sessions, sendNotice)
 	if err != nil {
 		return components, err
 	}
@@ -97,7 +100,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	})
 
 	lifecycle.hooks = hookRuntime
-	hookService := buildHookService(foundation, req.Platforms, toolRuntime, cronService, hooks, hookRuntime, hookProcessEnv, notifyHookIssue, sendNotice)
+	hookService := buildHookService(foundation, req.Platforms, toolRuntime, hooks, hookRuntime, hookProcessEnv, notifyHookIssue, sendNotice)
 	req.Profiler.Mark("hook register")
 
 	agt, err := buildAgent(foundation, req.Platforms, services, toolRuntime, hooks, hookRuntime)
@@ -165,7 +168,7 @@ func resolveFileDeliveryCredentials(cfg config.FileDeliveryConfig, configDir str
 	return credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""), nil
 }
 
-func buildCronService(ctx context.Context, foundation *FoundationComponents, models *modelmgr.Service, send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)) (*elcron.Service, error) {
+func buildCronService(ctx context.Context, foundation *FoundationComponents, models *modelmgr.Service, sessions *session.Service, send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)) (*elcron.Service, error) {
 	cfg := foundation.Config
 	service := elcron.NewService(elcron.Options{
 		Manager:          foundation.CronManager,
@@ -176,6 +179,7 @@ func buildCronService(ctx context.Context, foundation *FoundationComponents, mod
 		Audit:            auditFunc(foundation.Logs),
 		SendTarget:       send,
 		Models:           models,
+		Sessions:         sessions,
 	})
 	if err := service.MigrateLegacyDeliveryState(ctx); err != nil {
 		return nil, err
@@ -190,7 +194,6 @@ func buildHookService(
 	foundation *FoundationComponents,
 	platforms PlatformComponents,
 	toolRuntime *builtin.Runtime,
-	cronService *elcron.Service,
 	hooks *hook.DefaultManager,
 	hookRuntime *hookruntime.Manager,
 	hookProcessEnv hook.ProcessEnvironment,
@@ -220,9 +223,6 @@ func buildHookService(
 			}
 		}
 		configs, err := hookbuiltin.RegisterAll(registrar, loadOpts)
-		if err == nil {
-			err = registerCronPlatformHook(registrar, cronService)
-		}
 		return hook.ReloadReport{Notices: notices}, configs, err
 	}
 	hookService := hookcontrol.New(hooks, hookRuntime, loadHooks)

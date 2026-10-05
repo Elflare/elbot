@@ -24,6 +24,18 @@ func newTestStore(t *testing.T) storage.Store {
 	return store
 }
 
+func startTestNaming(t *testing.T, svc *Service) {
+	t.Helper()
+	svc.StartNaming(context.Background())
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := svc.Close(ctx); err != nil {
+			t.Error(err)
+		}
+	})
+}
+
 type storeWithSessionRepository struct {
 	storage.Store
 	sessions storage.SessionRepository

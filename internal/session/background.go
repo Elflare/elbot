@@ -40,6 +40,13 @@ func (s *Service) PrepareBackground(ctx context.Context, scope Scope, req Backgr
 	if err != nil {
 		return nil, err
 	}
+	return s.createBackground(ctx, scope, req, metadata)
+}
+
+func (s *Service) createBackground(ctx context.Context, scope Scope, req BackgroundRequest, metadata string) (*storage.Session, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
 		title = backgroundTitle(req.Kind, req.Name)

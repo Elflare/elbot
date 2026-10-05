@@ -17,9 +17,9 @@ func TestPartialReportMapsSuccessAndRemainsRetryable(t *testing.T) {
 	s, cleanup := newTestServiceWithRunner(t, runner, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
 		calls++
 		if calls == 1 {
-			return delivery.Receipt{PlatformMessageIDs: []string{"partial"}}, wantErr
+			return delivery.Receipt{PlatformMessageIDs: []string{"partial"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ScopeID: "private:1001", PlatformMessageID: "partial"}}}, wantErr
 		}
-		return delivery.Receipt{PlatformMessageIDs: []string{"retry"}}, nil
+		return delivery.Receipt{PlatformMessageIDs: []string{"retry"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ScopeID: "private:1001", PlatformMessageID: "retry"}}}, nil
 	})
 	defer cleanup()
 	row := &storage.Session{ID: "bg-session", OwnerID: "elnis:home", Platform: "qqonebot", PlatformScopeID: "elnis:watcher:source:event-1", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive}

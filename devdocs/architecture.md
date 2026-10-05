@@ -29,7 +29,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - 共享 Session、Request、Turn、模型、上下文、工具状态、文件、发送、通知及命令实例由 app 创建。Agent 的 `NewWithOptions` 要求注入必需依赖，不补建服务或注册内置命令；测试装配位于测试文件中。
 - app 在平台启动前安装 Session 前台接管、活动会话查询和 Hook 唤醒／执行观察回调；这些执行回调遵守原有同步准入约束，生命周期通知另走信号。Agent 自身的 Prompt、命令执行器和补全组件由 Agent 组装。
 - Foundation／Runtime 工厂即使返回错误，也返回已取得资源的 Lifecycle。Runner 接管部分构建的清理责任，不启动后续阶段；延迟 Skill 加载同时提供取消上下文和实际完成信号。
-- 关闭时应用上下文立即取消 Cron handler 并停止新调度。Runner 先通过 Foundation 的 `StopCron(ctx)` 等待异步启动及在途执行（含状态保存）真正结束，再断开信号并关闭队列、关闭 Hook runtime、等待 Skill 加载结束，最后关闭 SQLite 和日志。重复停止等待同一完成结果，关闭后迟到的启动不能重新开放调度。
+- 关闭时应用上下文立即取消 Cron handler 和 Session 命名任务，并停止新调度。Runner 先通过 Foundation 的 `StopCron(ctx)` 等待异步启动及在途执行（含状态保存）真正结束，再断开信号并关闭队列、等待命名退出、关闭 Hook runtime、等待 Skill 加载结束，最后关闭 SQLite 和日志。重复停止等待同一完成结果，关闭后迟到的启动不能重新开放调度。
 - 平台退出、Cron 和后续清理共享 30 秒预算。预算到期停止等待；平台、Cron 或回调仍在运行时跳过其依赖的显式释放，交给进程退出，不启动后台收尾链。正常取消／关闭预算耗尽不视为应用失败，Cron 正常取消不报告任务失败；真实错误继续返回。
 
 <!-- locator:chatinfo -->
@@ -43,7 +43,8 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - `signal.Signal[T]` 锁内取得订阅快照，锁外依次调用或提交执行器；一次性连接最多投递一次，入队失败也消耗连接。断开不撤销已有快照或任务，可变事件数据由发布方形成稳定快照。
 - 异步连接显式选择 FollowEmit（保留发射取消）或 FollowExecutor（仅保留值）。Shutdown 独立选择 CancelPending（默认丢弃积压并取消在途）或 Drain（限时尝试完成）；底层取消始终优先。
 - 有界串行队列默认容量 256，满时拒绝入队；同队列 FIFO、不同队列独立。入队成功不代表执行或投递成功，Done 只表示 worker 实际结束。预期取消不记录失败，合并错误中的真实失败仍记录。
-- 平台 Connected 信号由 app 按平台分配独立队列，以 FollowExecutor + CancelPending 连接既有 Agent Hook／Cron 补发链路；连接事件无聊天来源。信号不替代事务、可改写 Hook 流水线或可靠投递状态。
+- 平台 Connected 信号由 app 为每个平台的 Hook、Cron 恢复分别订阅并分配独立队列，使用 FollowExecutor + CancelPending。用户 Hook 的阻塞、错误和截断不影响 Cron；补跑、投递状态和任务互斥仍由 Cron 管理。连接事件无聊天来源，信号不替代事务、可改写 Hook 流水线或可靠投递状态。
+- 前台接管独立复制公共 Info，并替换整份平台上下文；本地 CLI 没有平台扩展时也清除后台 Sender 与消息残留。执行自身的取消保持不变。
 
 <!-- locator:config -->
 ## 配置与运行数据
@@ -274,6 +275,7 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 - 通知意图携带原 Info、原 Sender 覆盖和按需提供的 Session Binding；过期绑定或取消 context 拒绝发送。同步调用等待实际回执，平台连接沿用独立信号执行器，没有额外通知队列或可靠投递中间件。
 - Router 在发送前把 URL/Path/Data 归一为 MediaID，发送副本经 `ResolveForOutput` 临时解析，并释放临时导出。回执按实际成功的输出索引建立媒体关联；多目标 scope 由 adapter 明确提供，缓存期限复用 sandbox retention，非正值不缓存。
 - 部分失败同时返回成功 Receipt 与 error；Agent／Cron／Elnis 关联已成功的平台消息，错误仍返回，任务不会因此整体成功。缓存失败只记录日志，不重发平台消息；通知发送失败不再触发通知。
+- Cron／Elnis 的报告关联使用 `Receipt.SentMessages` 提供的实际平台、ScopeID 和消息 ID；不根据触发来源或目标类型自行拼 Scope，缺少完整来源的回执不建立关联。任务指定目标与触发消息的 Info 分别保留各自语义。
 - QQ OneBot 把 record 输出转换为原生语音段；暂不支持 record 的平台使用统一文字 fallback。
 - 流式输出、notice、reasoning、runtime status 由 Agent turn 输出适配层区分前后台发送。
 
@@ -311,6 +313,10 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 Session 服务唯一管理 current 绑定及其同步失效。绑定只公开 `Scope()`、`SessionID()`、`Valid()`，不提供取消；`CurrentBound` 一并返回持久化快照和原绑定。切离后旧绑定永久无效，切回同一 Session 获得新绑定；未变化的 current 不重复发信号。输入、工具和确认续接传递原绑定，普通旧调用不能重新捕获 current 而复活。
 
 `PrepareBackground` 创建或复用后台会话，在同一 `Session.Mode` 字段固定 `background`，管理标题及后台身份 metadata，不激活前台 current；复用时保留其他模块字段，拒绝已被前台接管的会话。首次后台工具状态由调用方另交 StateService 提交。
+
+`CopyBackground` 在来源 Session 准入内复核后台状态，复用后台创建规则并复制历史、清除旧消息引用。Cron 只决定目标归属和业务 metadata；Session 统一设置后台模式与命名标记，副本不改变前台 current，不继承工具或执行状态。来源已被接管时拒绝复制。
+
+命名任务由 Session 的 `StartNaming`、`Close`、`Done` 管理，app 注入应用生命周期并等待实际退出。关闭后不接收新命名，准备阶段和在途生成均纳入退出等待；Turn 结束不取消命名，应用取消后的迟到结果不写标题、不执行 fallback、不报告命名失败。命名通知保留日志回调，暂不发布信号。
 
 `CreateCompacted` 接收来源 Session ID、预分配的新 ID、标题与已准备的 metadata，在准入内复核来源及前台原绑定，继承归属和模式，统一设置命名字段并保存新会话。前台更新 current，后台不创建前台绑定；保存失败不改变绑定。Session 不依赖 contextmgr，摘要、seed、代数及压缩标题材料仍归上下文服务，执行交接仍归 Agent。Fork 保留来源模式。
 

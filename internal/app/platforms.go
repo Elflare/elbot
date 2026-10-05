@@ -10,9 +10,7 @@ import (
 	"elbot/internal/agent"
 	"elbot/internal/command"
 	"elbot/internal/completion"
-	elcron "elbot/internal/cron"
 	"elbot/internal/delivery"
-	"elbot/internal/hook"
 	"elbot/internal/platform"
 	platformbuiltin "elbot/internal/platform/builtin"
 )
@@ -71,22 +69,6 @@ func registerCompletionPlatforms(agt *agent.Agent, adapters []platformRuntime) {
 			completer.SetCompleter(agt.CompletionService())
 		}
 	}
-}
-
-func registerCronPlatformHook(hooks hook.Registrar, service *elcron.Service) error {
-	if hooks == nil || service == nil {
-		return nil
-	}
-	return hooks.Register(hook.Registration{
-		Point:       hook.PointPlatformConnected,
-		Name:        "builtin.cron.missed_once",
-		Description: "平台连接时补投递 missed once cron",
-		Match:       hook.Always(),
-		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
-			service.NotifyPlatformConnected(ctx, event.Platform.Name)
-			return event, nil
-		}),
-	})
 }
 
 func registerCommandCatalogs(router *command.Router, adapters []platformRuntime) {

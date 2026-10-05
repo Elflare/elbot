@@ -136,7 +136,7 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) error {
 			outputs = append(outputs, output)
 		}
 		receipt, err := s.send(ctx, target.ToDeliveryTarget(), outputs)
-		s.mapReportReceipt(ctx, event.EventKey, target, event.SessionID, batch[0].MessageID, receipt)
+		s.mapReportReceipt(ctx, event.EventKey, event.SessionID, batch[0].MessageID, receipt)
 		if err != nil {
 			return s.failReportDelivery(ctx, eventID, batch[0].ID, err)
 		}
