@@ -33,7 +33,7 @@ type skillDirectiveResult struct {
 }
 
 func (a *Agent) preloadContext(ctx context.Context) context.Context {
-	return security.WithActor(security.WithPolicy(ctx, a.securityPolicy), a.actor(ctx))
+	return security.WithActor(security.WithPolicy(ctx, a.identity.policy), a.identity.Actor(ctx))
 }
 
 func (a *Agent) prepareToolDirectives(ctx context.Context, row *storage.Session, text string) toolDirectiveResult {
@@ -132,7 +132,7 @@ func (a *Agent) notifyToolDirectiveResult(ctx context.Context, result toolDirect
 	if len(parts) == 0 {
 		return
 	}
-	a.sendChat(ctx, strings.Join(parts, "\n"))
+	a.output.SendChat(ctx, strings.Join(parts, "\n"))
 }
 
 func (a *Agent) notifySkillDirectiveResult(ctx context.Context, result skillDirectiveResult) {
@@ -152,7 +152,7 @@ func (a *Agent) notifySkillDirectiveResult(ctx context.Context, result skillDire
 	if len(parts) == 0 {
 		return
 	}
-	a.sendChat(ctx, strings.Join(parts, "\n"))
+	a.output.SendChat(ctx, strings.Join(parts, "\n"))
 }
 func sortedUnique(values []string) []string {
 	seen := map[string]bool{}

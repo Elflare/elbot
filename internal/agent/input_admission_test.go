@@ -58,7 +58,7 @@ func TestInputPreloadRechecksAdmissionAfterPreparation(t *testing.T) {
 				}
 				a.SetToolRuntime(registry, nil)
 				a.SetToolTagConfig("", config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}}}})
-				row, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Metadata: `{"unknown":9007199254740993}`})
+				row, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Metadata: `{"unknown":9007199254740993}`})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -80,11 +80,11 @@ func TestInputPreloadRechecksAdmissionAfterPreparation(t *testing.T) {
 						}
 					}
 				case "mode":
-					if _, err := a.sessions.ActivateMode(changeCtx, a.scope(changeCtx), session.ActivateModeRequest{Mode: storage.SessionModeChat}); err != nil {
+					if _, err := a.sessions.ActivateMode(changeCtx, a.identity.Scope(changeCtx), session.ActivateModeRequest{Mode: storage.SessionModeChat}); err != nil {
 						t.Fatal(err)
 					}
 				case "compact":
-					_, leave, err := a.sessions.EnterActivation(changeCtx, a.scope(changeCtx), row.ID)
+					_, leave, err := a.sessions.EnterActivation(changeCtx, a.identity.Scope(changeCtx), row.ID)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -146,7 +146,7 @@ func TestCompactingInputSkipsInputHookAndPreparation(t *testing.T) {
 				t.Fatal(err)
 			}
 			a.SetToolRuntime(registry, nil)
-			row, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{})
+			row, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -30,11 +30,11 @@ func (a *Agent) handleChat(ctx context.Context, text string) error {
 }
 
 func (a *Agent) startChat(ctx context.Context, session *storage.Session, text string) error {
-	return a.startChatWithOutput(ctx, session, text, foregroundTurnOutput{agent: a})
+	return a.startChatWithOutput(ctx, session, text, foregroundTurnOutput{sender: a.output, status: a.status})
 }
 
 func (a *Agent) startBackgroundChat(ctx context.Context, session *storage.Session, text string) error {
-	return a.startChatWithOutput(ctx, session, text, backgroundTurnOutput{agent: a})
+	return a.startChatWithOutput(ctx, session, text, backgroundTurnOutput{status: a.status})
 }
 
 func (a *Agent) startChatWithOutput(ctx context.Context, row *storage.Session, text string, out turnOutput) error {
@@ -43,7 +43,7 @@ func (a *Agent) startChatWithOutput(ctx context.Context, row *storage.Session, t
 		execution = turn.NewExecution(storage.NewID())
 		ctx = turn.WithExecution(ctx, execution)
 	}
-	out = executionTurnOutput{agent: a, execution: execution, fallback: out}
+	out = executionTurnOutput{view: a.view, sessions: a.sessions, foreground: foregroundTurnOutput{sender: a.output, status: a.status}, execution: execution, fallback: out}
 	for {
 		next, pending, err := a.runChatTurnWithOutput(ctx, row, text, out)
 		if err != nil {
@@ -56,9 +56,9 @@ func (a *Agent) startChatWithOutput(ctx context.Context, row *storage.Session, t
 			}
 			return nil
 		}
-		ctx = a.executionContext(ctx)
+		ctx = a.view.Context(ctx)
 		if next.ID != row.ID && !isBackgroundSession(next) {
-			_, binding, err := a.sessions.CurrentBound(ctx, a.scope(ctx))
+			_, binding, err := a.sessions.CurrentBound(ctx, a.identity.Scope(ctx))
 			if err != nil {
 				return err
 			}
@@ -86,9 +86,9 @@ func (a *Agent) runChatTurnWithOutput(ctx context.Context, session *storage.Sess
 			return session, turn.Input{}, err
 		}
 		session = next
-		ctx = a.executionContext(ctx)
+		ctx = a.view.Context(ctx)
 		if !isBackgroundSession(session) {
-			_, binding, err := a.sessions.CurrentBound(ctx, a.scope(ctx))
+			_, binding, err := a.sessions.CurrentBound(ctx, a.identity.Scope(ctx))
 			if err != nil {
 				return session, turn.Input{}, err
 			}
@@ -205,7 +205,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 
 	turnStartedAt := storage.Now()
 	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
-	scope := a.scope(ctx)
+	scope := a.identity.Scope(ctx)
 	llmMessages, err := a.promptBuilder.Build(ctx, PromptBuildRequest{Session: session, Scope: scope, Messages: messages, Summary: loaded.Summary})
 	if err != nil {
 		return err
@@ -214,7 +214,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	if err != nil {
 		return err
 	}
-	turnEvent, err := a.runHook(ctx, hook.Event{
+	turnEvent, err := a.hooks.Run(ctx, hook.Event{
 		Point:   hook.PointLLMTurnPrepared,
 		Session: hook.SessionContext{ID: session.ID},
 		Message: hook.MessagePayload{ID: userMessage.ID, Role: string(llm.RoleUser), PlatformText: inboundTurnInput(ctx, text).PlatformText, Segments: append([]llm.MessageSegment(nil), userSegments...)},
@@ -265,14 +265,14 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	foregroundPrepared := false
 	for {
 		var refreshErr error
-		reqCtx, refreshErr = a.refreshExecution(reqCtx, session)
+		reqCtx, refreshErr = a.view.RefreshSession(reqCtx, session)
 		if refreshErr != nil {
 			return refreshErr
 		}
-		ctx = a.executionContext(ctx)
+		ctx = a.view.Context(ctx)
 		if sessionpkg.WasPromoted(session) && !foregroundPrepared {
 			foregroundPrepared = true
-			scope := a.scope(reqCtx)
+			scope := a.identity.Scope(reqCtx)
 			prompt, err := a.promptBuilder.Build(reqCtx, PromptBuildRequest{Session: session, Scope: scope})
 			if err != nil {
 				return err
@@ -413,11 +413,11 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	platformOutputText := platformFinalText
 	// Adoption can happen while the final model request is in flight, without
 	// another loop iteration to refresh the identity before output hooks.
-	reqCtx, err = a.refreshExecution(reqCtx, session)
+	reqCtx, err = a.view.RefreshSession(reqCtx, session)
 	if err != nil {
 		return err
 	}
-	ctx = a.executionContext(ctx)
+	ctx = a.view.Context(ctx)
 	bufferOutput = bufferAssistantOutput(ctx)
 	var finalSendErr error
 	backgroundOutput := isBackgroundSession(session)
@@ -428,7 +428,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseSending, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindTurn, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: storage.Now()})
 	if strings.TrimSpace(platformOutputText) != "" {
 		var err error
-		platformOutputText, err = a.prepareAssistantOutput(ctx, hook.PointAgentTurnOutputPrepared, platformOutputText)
+		platformOutputText, err = a.output.PrepareAssistant(ctx, hook.PointAgentTurnOutputPrepared, platformOutputText)
 		if err != nil {
 			return fmt.Errorf("turn output hook: %w", err)
 		}

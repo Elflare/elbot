@@ -303,7 +303,7 @@ Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记�
 <!-- locator:agent-components -->
 ## 阶段 9–15：Agent 内部职责与旁路信号
 
-本节描述待实施的目标结构，不代表当前代码已经迁移。阶段 9–14 逐步完成接入，最后单列阶段 15 Review；不能用末尾 Review 代替各阶段验证。
+本节描述阶段 9–15 的目标结构；阶段 9 的基础组件已接入，阶段 10–15 仍待实施。当前代码职责以 architecture.md 和 code-map.md 为准。阶段 9–14 逐步完成接入，最后单列阶段 15 Review；不能用末尾 Review 代替各阶段验证。
 
 ### 范围与依赖约束
 
@@ -644,17 +644,17 @@ app 在平台等生产者启动前连接订阅，并持有 Connection 和 Queue�
 <a id="phase-9"></a>
 ### 阶段 9：拆除内部组件对 Agent 的依赖
 
-目标：建立可以直接组合的基础组件，为主流程迁移准备真实依赖。
+状态：基础组件已接入，目标是为主流程迁移提供可直接组合的真实依赖。
 
-实施顺序：
+当前实现：
 
-1. 抽出 identityResolver、hookBridge、statusRecorder 和 outputSender，迁移各自实际使用的方法及状态。
-2. foregroundTurnOutput/backgroundTurnOutput 改接收发送与状态能力；从 execution.go 分离接管 context 视图和输出适配。
-3. toolRunPromptProvider 直接注入 ToolRun 和身份解析；不再借 Agent 获取服务。
-4. 更新构造、配置传递和测试装配；Hook 唤醒、Request 观察等仍由 app 安装同步参与者。
-5. 相关辅助函数使用显式依赖；本阶段不事件化状态或通知，先保持现有调用顺序。
+1. identityResolver 拥有默认身份和安全策略；hookBridge 拥有 Hook manager/router 及执行适配；statusRecorder 拥有快照 map 和锁；outputSender 直接使用共享发送服务。
+2. foregroundTurnOutput/backgroundTurnOutput 只依赖发送与状态能力；execution_context.go 和 execution_output.go 分别承载执行视图与接管输出，保留原取消链和报告附件转换。
+3. toolRunPromptProvider 直接注入 ToolRun 和身份解析；配置 setter 更新实际拥有者，媒体测试通过构造注入共享服务。
+4. app 安装的 Hook 唤醒、Request 观察等仍是同步参与者；纯上下文和 Session payload 转换使用包内函数。
+5. 状态与通知沿用同步调用顺序；assistant 历史提交和消息映射仍归对话主流程，工具执行适配器仍按阶段 12 迁移，旧 attempt 过滤及展示版本按阶段 13 实施。
 
-验收：新组件能用必要服务独立构造，无 Agent 字段、嵌入或绑定 Agent 的回调集合；原来源发送、CLI 原连接、后台静默、无来源 Hook、错误事件和本地状态先写后读保持一致。运行相关 Agent、app、delivery、notification、Hook 测试；涉及锁和共享快照的部分运行 race。同步代码地图及已落地架构。
+验收：基础组件能用必要服务独立构造，无 Agent 字段、嵌入或绑定 Agent 的回调集合；原来源发送、CLI 原连接、后台静默、无来源 Hook、错误事件和本地状态先写后读保持一致。组件边界回归覆盖同步状态读写、策略／日志配置更新及接管取消链；Agent、app、delivery、notification、Hook、ToolRun 相关测试和 Agent／app race 通过，代码地图与已落地架构已同步。
 
 <a id="phase-10"></a>
 ### 阶段 10：收拢最终回复提交

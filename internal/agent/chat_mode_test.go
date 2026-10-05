@@ -44,7 +44,7 @@ func TestChatModeIgnoresForcedHookToolsAndModelCalls(t *testing.T) {
 		a.setTestHookManager(hooks)
 		var id string
 		{
-			row, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Mode: storage.SessionModeChat})
+			row, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Mode: storage.SessionModeChat})
 			if err != nil {
 				t.Fatal(err)
 			}

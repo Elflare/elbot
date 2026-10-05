@@ -26,7 +26,7 @@ func TestReviewCompactRejectsDirectiveBeforeStateMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.SetToolRuntime(registry, nil)
-	row, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "test"})
+	row, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestStopCompletionUsesResolvedActorAndCurrentSession(t *testing.T) {
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "m", config.ProviderConfig{}, newTestStore(t))
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	user := platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "user"}, Identity: chatinfo.Identity{PlatformUserID: "user"}}})
-	row, err := a.sessions.Create(user, a.scope(user), session.CreateRequest{})
+	row, err := a.sessions.Create(user, a.identity.Scope(user), session.CreateRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestReviewOldInputCannotCommitToolsAfterBindingSwitch(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.SetToolRuntime(registry, nil)
-	row, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "old"})
+	row, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "old"})
 	if err != nil {
 		t.Fatal(err)
 	}

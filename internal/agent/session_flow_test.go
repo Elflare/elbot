@@ -24,7 +24,7 @@ func TestCompleteForkMessageID(t *testing.T) {
 	a := newTestAgent(t, p, f, "m", config.ProviderConfig{}, store)
 	ctx := context.Background()
 
-	session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "completion"})
+	session, err := a.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "completion"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -72,14 +72,14 @@ func TestSessionIdleExpiration(t *testing.T) {
 			store := newTestStore(t)
 			f := &fakeLLM{replies: []string{"fresh reply"}}
 			a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-			a.dispatcher.RegisterPlatformSender("qq", p)
+			a.output.dispatcher.RegisterPlatformSender("qq", p)
 			if tt.superadmin {
 				a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"qq": {"1"}}))
 			}
 			a.SetSessionIdleExpiration(tt.cfg)
 			ctx := platform.WithMessageContext(context.Background(), tt.ctx)
 
-			oldSession, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "old"})
+			oldSession, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "old"})
 			if err != nil {
 				t.Fatalf("create old session: %v", err)
 			}
@@ -92,7 +92,7 @@ func TestSessionIdleExpiration(t *testing.T) {
 				t.Fatalf("HandleMessage: %v", err)
 			}
 			_, oldErr := store.Sessions().Get(ctx, oldSession.ID)
-			current, err := a.sessions.Current(ctx, a.scope(ctx))
+			current, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
 			if err != nil {
 				t.Fatalf("current session: %v", err)
 			}
@@ -121,7 +121,7 @@ func TestIdleExpirationClearsCurrentAndCanResume(t *testing.T) {
 	a := newTestAgent(t, p, &fakeLLM{replies: []string{"continued"}}, "test-model", config.ProviderConfig{}, store)
 	a.SetSessionIdleExpiration(config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 10})
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
-	oldSession, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "old conversation"})
+	oldSession, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "old conversation"})
 	if err != nil {
 		t.Fatalf("create old session: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestIdleExpirationClearsCurrentAndCanResume(t *testing.T) {
 	if !strings.Contains(p.out.String(), "current session: none") {
 		t.Fatalf("/status output = %q", p.out.String())
 	}
-	if _, err := a.sessions.Current(ctx, a.scope(ctx)); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := a.sessions.Current(ctx, a.identity.Scope(ctx)); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("current after expiration = %v, want not found", err)
 	}
 	if _, err := store.Sessions().Get(ctx, oldSession.ID); err != nil {
@@ -155,7 +155,7 @@ func TestIdleExpirationClearsCurrentAndCanResume(t *testing.T) {
 	if err := a.HandleMessage(ctx, "/resume 1"); err != nil {
 		t.Fatalf("/resume 1: %v", err)
 	}
-	current, err := a.sessions.Current(ctx, a.scope(ctx))
+	current, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
 	if err != nil {
 		t.Fatalf("current after resume: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestIdleExpirationClearsCurrentAndCanResume(t *testing.T) {
 	if err := a.HandleMessage(ctx, "continue"); err != nil {
 		t.Fatalf("continue resumed session: %v", err)
 	}
-	current, err = a.sessions.Current(ctx, a.scope(ctx))
+	current, err = a.sessions.Current(ctx, a.identity.Scope(ctx))
 	if err != nil || current.ID != oldSession.ID {
 		t.Fatalf("current after continued chat = %#v, %v", current, err)
 	}
@@ -175,10 +175,10 @@ func TestLatestAssistantReferenceResumesExpiredOrResetCurrentSession(t *testing.
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	a := newTestAgent(t, p, &fakeLLM{replies: []string{"continued", "continued after new"}}, "test-model", config.ProviderConfig{}, store)
-	a.dispatcher.RegisterPlatformSender("qq", p)
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	a.SetSessionIdleExpiration(config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 10})
 	baseCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
-	target, err := a.sessions.Create(baseCtx, a.scope(baseCtx), session.CreateRequest{Title: "target"})
+	target, err := a.sessions.Create(baseCtx, a.identity.Scope(baseCtx), session.CreateRequest{Title: "target"})
 	if err != nil {
 		t.Fatalf("create target session: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestLatestAssistantReferenceResumesExpiredOrResetCurrentSession(t *testing.
 		t.Fatalf("handle referenced message: %v", err)
 	}
 
-	current, err := a.sessions.Current(resumeCtx, a.scope(resumeCtx))
+	current, err := a.sessions.Current(resumeCtx, a.identity.Scope(resumeCtx))
 	if err != nil || current.ID != target.ID {
 		t.Fatalf("current session = %#v, err = %v", current, err)
 	}
@@ -228,7 +228,7 @@ func TestLatestAssistantReferenceResumesExpiredOrResetCurrentSession(t *testing.
 	if err := a.HandleMessage(resumeCtx, "/new"); err != nil {
 		t.Fatalf("reset current session: %v", err)
 	}
-	if _, err := a.sessions.Current(resumeCtx, a.scope(resumeCtx)); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := a.sessions.Current(resumeCtx, a.identity.Scope(resumeCtx)); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("current after /new = %v, want not found", err)
 	}
 	if err := store.Messages().MapPlatformMessage(resumeCtx, storage.PlatformMessageMap{
@@ -248,7 +248,7 @@ func TestLatestAssistantReferenceResumesExpiredOrResetCurrentSession(t *testing.
 	if err := a.HandleMessage(resetCtx, "continue after new"); err != nil {
 		t.Fatalf("handle reference after /new: %v", err)
 	}
-	current, err = a.sessions.Current(resetCtx, a.scope(resetCtx))
+	current, err = a.sessions.Current(resetCtx, a.identity.Scope(resetCtx))
 	if err != nil || current.ID != target.ID {
 		t.Fatalf("current after /new reference = %#v, err = %v", current, err)
 	}
@@ -276,7 +276,7 @@ func TestStatusDoesNotShowRequestsFromAnotherUserWithoutCurrentSession(t *testin
 
 		ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1001"}},
 	})
-	activeSession, err := a.sessions.Create(activeCtx, a.scope(activeCtx), session.CreateRequest{Title: "active user"})
+	activeSession, err := a.sessions.Create(activeCtx, a.identity.Scope(activeCtx), session.CreateRequest{Title: "active user"})
 	if err != nil {
 		t.Fatalf("create active session: %v", err)
 	}
@@ -319,7 +319,7 @@ func TestMessageContextResumeStartsTargetSession(t *testing.T) {
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"resume reply"}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.dispatcher.RegisterPlatformSender("qq", p)
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "private:1", ConversationKind: chatinfo.ConversationPrivate}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 
 	bg := &storage.Session{OwnerID: "qq:1", Platform: "qq", PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "cron"}
@@ -330,7 +330,7 @@ func TestMessageContextResumeStartsTargetSession(t *testing.T) {
 	if err := a.HandleMessage(resumeCtx, "continue here"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
 	}
-	current, err := a.sessions.Current(resumeCtx, a.scope(resumeCtx))
+	current, err := a.sessions.Current(resumeCtx, a.identity.Scope(resumeCtx))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}
@@ -351,10 +351,10 @@ func TestMessageContextForkStartsForkSession(t *testing.T) {
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"fork reply"}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.dispatcher.RegisterPlatformSender("qq", p)
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 
-	source, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "source"})
+	source, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "source"})
 	if err != nil {
 		t.Fatalf("create source: %v", err)
 	}
@@ -366,7 +366,7 @@ func TestMessageContextForkStartsForkSession(t *testing.T) {
 	if err := a.HandleMessage(forkCtx, "continue from here"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
 	}
-	current, err := a.sessions.Current(forkCtx, a.scope(forkCtx))
+	current, err := a.sessions.Current(forkCtx, a.identity.Scope(forkCtx))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}
@@ -481,7 +481,7 @@ func TestModeCommandContinuesWithMessageInActivatedSession(t *testing.T) {
 			if got := len(requests[0].Tools) > 0; got != tt.wantTools {
 				t.Fatalf("has tools = %v, want %v", got, tt.wantTools)
 			}
-			current, err := a.sessions.Current(context.Background(), a.scope(context.Background()))
+			current, err := a.sessions.Current(context.Background(), a.identity.Scope(context.Background()))
 			if err != nil {
 				t.Fatalf("Current: %v", err)
 			}
@@ -554,7 +554,7 @@ func TestChatCommandSuggestsNewForWorkHistory(t *testing.T) {
 	if !strings.Contains(p.out.String(), "run /new then /chat") {
 		t.Fatalf("unexpected chat output: %q", p.out.String())
 	}
-	current, err := a.sessions.Current(ctx, a.scope(context.Background()))
+	current, err := a.sessions.Current(ctx, a.identity.Scope(context.Background()))
 	if err != nil {
 		t.Fatalf("Current: %v", err)
 	}
@@ -579,7 +579,7 @@ func TestDefaultModeFromStateAppliesToNewSessions(t *testing.T) {
 	if err := a.HandleMessage(ctx, "hello default chat"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
 	}
-	current, err := a.sessions.Current(ctx, a.scope(context.Background()))
+	current, err := a.sessions.Current(ctx, a.identity.Scope(context.Background()))
 	if err != nil {
 		t.Fatalf("Current: %v", err)
 	}

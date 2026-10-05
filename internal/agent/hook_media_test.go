@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"elbot/internal/chatinfo"
-	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/hook"
@@ -26,9 +25,8 @@ func TestGoHookMediaAPIAndCanonicalMessage(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	p := &fakePlatform{}
-	a := newTestAgent(t, p, &fakeLLM{replies: []string{"done"}}, "test-model", config.ProviderConfig{}, store)
 	root := t.TempDir()
-	a.media = media.NewManager(store, root, &media.LocalBackend{Root: root})
+	a := newTestMediaAgent(t, p, &fakeLLM{replies: []string{"done"}}, store, media.NewManager(store, root, &media.LocalBackend{Root: root}))
 	hooks := hook.NewManager()
 	var id string
 	if err := hooks.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "media", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
@@ -141,9 +139,7 @@ func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
 	}))
 	defer server.Close()
 
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
-	a.media = center
-	a.dispatcher = dispatch.New(dispatch.Options{Store: store, Media: a.media, MediaRetentionDays: 7})
+	dispatcher := dispatch.New(dispatch.Options{Store: store, Media: center, MediaRetentionDays: 7})
 	sender := &orderedMediaSender{t: t}
 	messageCtx := platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ScopeID: "group:9"}}, Sender: sender})
 	outputs := []delivery.Output{
@@ -151,7 +147,7 @@ func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
 		{Kind: delivery.KindFile, Name: "local.txt", Source: delivery.Source{Path: path}},
 		{Kind: delivery.KindRecord, Name: "voice.ogg", Source: delivery.Source{Data: []byte("data"), MIMEType: "audio/ogg"}},
 	}
-	if _, err := a.dispatcher.SendChat(messageCtx, outputs); err != nil {
+	if _, err := dispatcher.SendChat(messageCtx, outputs); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.Join(sender.contents, ","); got != "url,path,data" {
@@ -178,10 +174,9 @@ func TestMediaReceiptKeepsDuplicatesAndPartialSuccess(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	root := t.TempDir()
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
-	a.media = media.NewManager(store, root, &media.LocalBackend{Root: root})
-	a.dispatcher = dispatch.New(dispatch.Options{Store: store, Media: a.media, MediaRetentionDays: 7})
-	item, err := a.media.ImportBytes(ctx, []byte("same"), media.Input{Name: "same.png", MIMEType: "image/png"})
+	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
+	dispatcher := dispatch.New(dispatch.Options{Store: store, Media: center, MediaRetentionDays: 7})
+	item, err := center.ImportBytes(ctx, []byte("same"), media.Input{Name: "same.png", MIMEType: "image/png"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +189,7 @@ func TestMediaReceiptKeepsDuplicatesAndPartialSuccess(t *testing.T) {
 		return receipt, fmt.Errorf("later output failed")
 	})
 	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Sender: sender})
-	got, sendErr := a.dispatcher.SendNotice(ctx, delivery.Notice{Outputs: outputs})
+	got, sendErr := dispatcher.SendNotice(ctx, delivery.Notice{Outputs: outputs})
 	if sendErr == nil || len(got.PlatformMessageIDs) != 1 {
 		t.Fatalf("receipt/error = %#v/%v", got, sendErr)
 	}
@@ -208,11 +203,9 @@ func TestHookMediaOutputDoesNotCreateSessionAndCleansExport(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	p := &fakePlatform{}
-	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
 	root := t.TempDir()
-	a.media = media.NewManager(store, root, &media.LocalBackend{Root: root})
+	a := newTestMediaAgent(t, p, &fakeLLM{}, store, media.NewManager(store, root, &media.LocalBackend{Root: root}))
 	data := []byte{0, 255, 128, 1}
-	a.dispatcher = dispatch.New(dispatch.Options{Primary: p, Store: store, Media: a.media, MediaRetentionDays: 7})
 	metadata, err := a.media.ImportBytes(ctx, data, media.Input{Name: "hook.png", MIMEType: "image/png"})
 	if err != nil {
 		t.Fatal(err)
@@ -241,7 +234,7 @@ func TestHookMediaOutputDoesNotCreateSessionAndCleansExport(t *testing.T) {
 	if output.Source.MediaID != metadata.ID || output.Source.Path != "" {
 		t.Fatal("mutated original output")
 	}
-	if _, err := a.sessions.Current(ctx, a.scope(ctx)); err == nil {
+	if _, err := a.sessions.Current(ctx, a.identity.Scope(ctx)); err == nil {
 		t.Fatal("output created a session")
 	}
 }

@@ -252,7 +252,7 @@ func TestMapSentAssistantMessageUsesOnlyCompleteReceiptSources(t *testing.T) {
 	store := newTestStore(t)
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
-	session, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "mapped"})
+	session, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "mapped"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}

@@ -51,7 +51,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	_ = registry.Register(agentDetailTool{name: "doc", source: tool.SourceSkillAgent, detail: "#skill doc", format: "elyph", ruleCard: "RULE", activate: []string{"wrapper"}})
 	a.SetToolRuntime(registry, nil)
 	a.SetToolTagConfig("", config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}, Prompt: "TAG"}}})
-	row, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "state", Metadata: `{"unknown":9007199254740993}`})
+	row, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "state", Metadata: `{"unknown":9007199254740993}`})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestForkKeepsHistoryWithoutCopyingToolOrUsageState(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, store)
-	source, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "source", Metadata: `{"tool_cache":[{"name":"old","source":"native","schema":{"type":"function","function":{"name":"old"}}}],"last_usage":{"TotalTokens":100}}`})
+	source, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "source", Metadata: `{"tool_cache":[{"name":"old","source":"native","schema":{"type":"function","function":{"name":"old"}}}],"last_usage":{"TotalTokens":100}}`})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestForkKeepsHistoryWithoutCopyingToolOrUsageState(t *testing.T) {
 	if err := store.Messages().Append(ctx, message); err != nil {
 		t.Fatal(err)
 	}
-	fork, err := a.sessions.Fork(ctx, a.scope(ctx), message.ID)
+	fork, err := a.sessions.Fork(ctx, a.identity.Scope(ctx), message.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

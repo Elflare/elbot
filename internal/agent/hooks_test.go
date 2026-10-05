@@ -16,13 +16,13 @@ import (
 )
 
 func TestFillHookContextAddsPlatformMessageIDs(t *testing.T) {
-	a := &Agent{platform: &fakePlatform{}, scopeID: "default"}
+	bridge := &hookBridge{identity: &identityResolver{scopeID: "default"}}
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq-onebot",
 		ScopeID: "group:123"}, PlatformMessageID: "456",
 		ReplyToMessageID: "789"},
 		PlatformMessage: []byte(`[{"type":"json","data":{"data":"{}"}}]`)})
 
-	event := a.fillHookContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived})
+	event := bridge.fillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived})
 
 	if event.Platform.PlatformMessageID != "456" {
 		t.Fatalf("platform message id = %q, want %q", event.Platform.PlatformMessageID, "456")
@@ -33,19 +33,19 @@ func TestFillHookContextAddsPlatformMessageIDs(t *testing.T) {
 	if got := string(event.Message.PlatformMessage); got != `[{"type":"json","data":{"data":"{}"}}]` {
 		t.Fatalf("platform message = %q", got)
 	}
-	other := a.fillHookContext(ctx, hook.Event{Point: hook.PointAgentInputPrepared})
+	other := bridge.fillContext(ctx, hook.Event{Point: hook.PointAgentInputPrepared})
 	if len(other.Message.PlatformMessage) != 0 {
 		t.Fatalf("non-platform hook message = %s", other.Message.PlatformMessage)
 	}
 }
 
 func TestFillHookContextKeepsExplicitPlatformMessageIDs(t *testing.T) {
-	a := &Agent{platform: &fakePlatform{}, scopeID: "default"}
+	bridge := &hookBridge{identity: &identityResolver{scopeID: "default"}}
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{
 		PlatformMessageID: "from-context",
 		ReplyToMessageID:  "reply-from-context"}})
 
-	event := a.fillHookContext(ctx, hook.Event{Platform: hook.PlatformContext{
+	event := bridge.fillContext(ctx, hook.Event{Platform: hook.PlatformContext{
 		PlatformMessageID: "explicit",
 		ReplyToMessageID:  "explicit-reply",
 	}})
@@ -59,13 +59,13 @@ func TestFillHookContextKeepsExplicitPlatformMessageIDs(t *testing.T) {
 }
 
 func TestFillHookContextAddsIntentTextWithoutWakeupPrefix(t *testing.T) {
-	a := &Agent{platform: &fakePlatform{}, scopeID: "default"}
+	bridge := &hookBridge{identity: &identityResolver{scopeID: "default"}}
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq-onebot",
 		ScopeID:          "group:123",
 		ConversationKind: chatinfo.ConversationGroup}}, TriggerKeywords: []string{"芙莉丝"},
 	})
 
-	event := a.fillHookContext(ctx, hook.Event{
+	event := bridge.fillContext(ctx, hook.Event{
 		Point:   hook.PointPlatformMessageReceived,
 		Message: hook.MessagePayload{Role: "user", Segments: llm.TextSegments("芙莉丝 咩")},
 	})
@@ -94,7 +94,7 @@ func TestRunHookErrorSendsFailureNotice(t *testing.T) {
 		ScopeID: "private:test"}}, Sender: p,
 	})
 
-	_, err := a.runHook(ctx, hook.Event{Point: hook.PointAgentInputPrepared})
+	_, err := a.hooks.Run(ctx, hook.Event{Point: hook.PointAgentInputPrepared})
 	if err == nil {
 		t.Fatal("expected hook error")
 	}
@@ -108,7 +108,8 @@ func TestRunHookErrorSendsFailureNotice(t *testing.T) {
 
 func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
 	manager := hook.NewManager()
-	a := &Agent{platform: &fakePlatform{}, requests: request.NewManager(time.Minute)}
+	requests := request.NewManager(time.Minute)
+	a := &Agent{requests: requests, hooks: &hookBridge{requests: requests}}
 	a.setTestHookManager(manager)
 	parent, parentCtx, parentDone, err := a.requests.Start(context.Background(), request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	if err != nil {
@@ -153,7 +154,8 @@ func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
 
 func TestStopCanCancelTrackedHookRequest(t *testing.T) {
 	manager := hook.NewManager()
-	a := &Agent{platform: &fakePlatform{}, requests: request.NewManager(time.Minute)}
+	requests := request.NewManager(time.Minute)
+	a := &Agent{requests: requests, hooks: &hookBridge{requests: requests}}
 	a.setTestHookManager(manager)
 	entered := make(chan struct{})
 	if err := manager.Register(hook.Registration{

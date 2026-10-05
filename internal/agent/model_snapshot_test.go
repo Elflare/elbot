@@ -181,7 +181,7 @@ func TestCompactUsesOriginalSelectionDuringModelSwitch(t *testing.T) {
 	a := mustNewWithOptions(t, opts)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	source, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "compact"})
+	source, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "compact"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,13 +10,22 @@ import (
 	"elbot/internal/session"
 )
 
-// Scope resolves the same execution identity for commands and message handling.
-func (a *Agent) Scope(ctx context.Context) session.Scope { return a.scope(ctx) }
+// identityResolver owns entry defaults and the policy used to resolve actors.
+// SourceActor deliberately does not apply entry defaults to source-free Hooks.
+type identityResolver struct {
+	platformName string
+	actorID      string
+	scopeID      string
+	policy       *security.Policy
+}
 
-func (a *Agent) scope(ctx context.Context) session.Scope {
-	actor := a.actor(ctx)
-	platformName := a.platform.Name()
-	scopeID := a.scopeID
+// Scope resolves the same execution identity for commands and message handling.
+func (a *Agent) Scope(ctx context.Context) session.Scope { return a.identity.Scope(ctx) }
+
+func (r *identityResolver) Scope(ctx context.Context) session.Scope {
+	actor := r.Actor(ctx)
+	platformName := r.platformName
+	scopeID := r.scopeID
 	kind := chatinfo.ConversationUnknown
 	if info, ok := chatinfo.FromContext(ctx); ok {
 		kind = info.Source.ConversationKind
@@ -45,12 +54,12 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func (a *Agent) actor(ctx context.Context) security.Actor {
+func (r *identityResolver) Actor(ctx context.Context) security.Actor {
 	if actor, ok := security.ActorFromContext(ctx); ok && (actor.ID != "" || actor.Role != "") {
 		return actor
 	}
-	platformName := a.platform.Name()
-	platformUserID := a.actorID
+	platformName := r.platformName
+	platformUserID := r.actorID
 	identity := chatinfo.Identity{}
 	if info, ok := chatinfo.FromContext(ctx); ok {
 		if info.Source.Platform != "" {
@@ -68,7 +77,7 @@ func (a *Agent) actor(ctx context.Context) security.Actor {
 	if prefix := platformName + ":"; strings.HasPrefix(platformUserID, prefix) {
 		platformUserID = strings.TrimPrefix(platformUserID, prefix)
 	}
-	policy := a.securityPolicy
+	policy := r.policy
 	if policy == nil {
 		policy = security.DefaultPolicy()
 	}
@@ -77,4 +86,27 @@ func (a *Agent) actor(ctx context.Context) security.Actor {
 	actor.GroupCard = identity.GroupCard
 	actor.GroupRole = groupRole
 	return actor
+}
+
+func (r *identityResolver) SourceActor(ctx context.Context) security.Actor {
+	actor, hasActor := security.ActorFromContext(ctx)
+	if info, ok := chatinfo.FromContext(ctx); ok && !hasActor && (info.Identity.PlatformUserID != "" || info.Identity.ActorID != "") {
+		policy := r.policy
+		if policy == nil {
+			policy = security.DefaultPolicy()
+		}
+		actor = policy.Actor(info.Identity.ActorID, info.Source.Platform, info.Identity.PlatformUserID, info.Identity.DisplayName)
+		actor.Nickname, actor.GroupCard = info.Identity.Nickname, info.Identity.GroupCard
+		if msg, ok := platform.MessageContextFrom(ctx); ok {
+			actor.GroupRole = msg.GroupRole
+		}
+	}
+	return actor
+}
+
+func (r *identityResolver) IsCLI(ctx context.Context) bool {
+	if info, ok := chatinfo.FromContext(ctx); ok {
+		return info.Source.Platform == "cli"
+	}
+	return r.platformName == "cli"
 }

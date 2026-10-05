@@ -23,9 +23,9 @@ var errInputCompacting = errors.New("正在压缩上下文，请稍后再发送�
 var errInputArchived = errors.New("当前会话已归档，不能继续聊天。若要继续，请先使用 /unarchive。")
 
 func (a *Agent) confirmationWaitTimeout(ctx context.Context) time.Duration {
-	actor := a.actor(ctx)
+	actor := a.identity.Actor(ctx)
 	isSuperadmin := actor.Role == security.RoleSuperadmin
-	ttlMinutes := a.idleExpiration.TTLMinutes(a.scope(ctx), isSuperadmin)
+	ttlMinutes := a.idleExpiration.TTLMinutes(a.identity.Scope(ctx), isSuperadmin)
 	var sessionTimeout time.Duration
 	if ttlMinutes > 0 {
 		sessionTimeout = time.Duration(ttlMinutes) * time.Minute
@@ -59,7 +59,7 @@ func appendConfirmPromptText(timeout time.Duration) string {
 }
 
 func (a *Agent) handleAppendConfirmationInput(ctx context.Context, row *storage.Session, text string) error {
-	locked, release, err := a.sessions.EnterActivation(ctx, a.scope(ctx), row.ID)
+	locked, release, err := a.sessions.EnterActivation(ctx, a.identity.Scope(ctx), row.ID)
 	if err != nil {
 		return err
 	}
@@ -82,7 +82,7 @@ func (a *Agent) handleAppendConfirmationInput(ctx context.Context, row *storage.
 	case turn.IsCancel(text):
 		a.turns.CancelAppend(row.ID)
 		release()
-		a.sendChat(ctx, "已取消追加，本轮处理已停止。")
+		a.output.SendChat(ctx, "已取消追加，本轮处理已停止。")
 		return nil
 	default:
 		a.turns.AppendPendingInput(row.ID, inboundTurnInput(ctx, text))
@@ -108,13 +108,13 @@ func (a *Agent) handleInput(ctx context.Context, text string) error {
 }
 
 func (a *Agent) continueCommandInput(ctx context.Context, continuation command.Continuation) error {
-	locked, release, err := a.sessions.EnterActivation(ctx, a.scope(ctx), continuation.SessionID)
+	locked, release, err := a.sessions.EnterActivation(ctx, a.identity.Scope(ctx), continuation.SessionID)
 	if err != nil {
 		return err
 	}
-	row, err := a.sessions.Resume(locked, a.scope(ctx), continuation.SessionID)
+	row, err := a.sessions.Resume(locked, a.identity.Scope(ctx), continuation.SessionID)
 	if err == nil {
-		_, binding, bindErr := a.sessions.CurrentBound(locked, a.scope(ctx))
+		_, binding, bindErr := a.sessions.CurrentBound(locked, a.identity.Scope(ctx))
 		err = bindErr
 		ctx = session.WithBinding(locked, binding)
 	}
@@ -130,7 +130,7 @@ func (a *Agent) continueCommandInput(ctx context.Context, continuation command.C
 func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session, text string) error {
 	locked, release, err := a.enterInput(ctx, session)
 	if errors.Is(err, errInputCompacting) || errors.Is(err, errInputArchived) {
-		a.sendChat(ctx, err.Error())
+		a.output.SendChat(ctx, err.Error())
 		return nil
 	}
 	if err != nil {
@@ -138,7 +138,7 @@ func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session
 	}
 	ctx = locked
 	release()
-	event, err := a.runHook(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Session: a.hookSession(session), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: inboundSegments(ctx, text)}})
+	event, err := a.hooks.Run(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Session: hookSession(session), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: inboundSegments(ctx, text)}})
 	if err != nil {
 		return err
 	}
@@ -190,12 +190,12 @@ func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session
 		a.requests.CancelSession(session.ID)
 		release()
 		timeout := a.confirmationWaitTimeout(ctx)
-		a.sendChat(ctx, appendConfirmPromptText(timeout))
+		a.output.SendChat(ctx, appendConfirmPromptText(timeout))
 		if timeout > 0 {
 			waitCtx := context.WithoutCancel(ctx)
 			go func() {
 				if a.turns.AwaitAppendExpiration(session.ID, timeout) {
-					a.sendChat(waitCtx, "追加确认已过期，待追加内容已丢弃，本轮处理已停止。")
+					a.output.SendChat(waitCtx, "追加确认已过期，待追加内容已丢弃，本轮处理已停止。")
 				}
 			}()
 		}
@@ -203,7 +203,7 @@ func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session
 	case turn.PhaseTool:
 		a.turns.AppendPendingInput(session.ID, inboundTurnInput(ctx, text))
 		release()
-		a.sendChat(ctx, "已追加，将在当前流程下一次模型调用时带上。发送 /stop 可打断当前流程。")
+		a.output.SendChat(ctx, "已追加，将在当前流程下一次模型调用时带上。发送 /stop 可打断当前流程。")
 		return nil
 	default:
 		release()
@@ -214,7 +214,7 @@ func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session
 // Preparation runs outside admission. Both entry and commit validate the same
 // activation and mode so an old input cannot write into a newly resumed session.
 func (a *Agent) enterInput(ctx context.Context, row *storage.Session) (context.Context, func(), error) {
-	locked, release, err := a.sessions.EnterActivation(ctx, a.scope(ctx), row.ID)
+	locked, release, err := a.sessions.EnterActivation(ctx, a.identity.Scope(ctx), row.ID)
 	if err != nil {
 		return ctx, nil, err
 	}
@@ -244,7 +244,7 @@ func (a *Agent) enterInput(ctx context.Context, row *storage.Session) (context.C
 }
 
 func (a *Agent) expireIdleCurrentSession(ctx context.Context) error {
-	current, err := a.sessions.Current(ctx, a.scope(ctx))
+	current, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
 	if errors.Is(err, storage.ErrNotFound) {
 		return nil
 	}
@@ -254,9 +254,9 @@ func (a *Agent) expireIdleCurrentSession(ctx context.Context) error {
 	if a.turns.Snapshot(current.ID).Phase != turn.PhaseIdle {
 		return nil
 	}
-	actor := a.actor(ctx)
+	actor := a.identity.Actor(ctx)
 	result, err := a.sessions.ExpireIdleCurrent(ctx, session.ExpireIdleRequest{
-		Scope:        a.scope(ctx),
+		Scope:        a.identity.Scope(ctx),
 		IsSuperadmin: actor.Role == security.RoleSuperadmin,
 		Config:       a.idleExpiration,
 		Now:          time.Now(),
@@ -278,17 +278,17 @@ func hasForkFromMessage(ctx context.Context) bool {
 func (a *Agent) sessionForInput(ctx context.Context, text string) (*storage.Session, error) {
 	if msg, ok := platform.MessageContextFrom(ctx); ok {
 		if msg.ResumeSessionID != "" {
-			return a.sessions.Resume(ctx, a.scope(ctx), msg.ResumeSessionID)
+			return a.sessions.Resume(ctx, a.identity.Scope(ctx), msg.ResumeSessionID)
 		}
 		if msg.ForkFromMessageID != "" {
-			return a.sessions.Fork(ctx, a.scope(ctx), msg.ForkFromMessageID)
+			return a.sessions.Fork(ctx, a.identity.Scope(ctx), msg.ForkFromMessageID)
 		}
 	}
-	return a.sessions.GetOrCreateCurrent(ctx, a.scope(ctx), text)
+	return a.sessions.GetOrCreateCurrent(ctx, a.identity.Scope(ctx), text)
 }
 
 func (a *Agent) handleRiskConfirmationInput(ctx context.Context, sessionID, text string) error {
-	locked, release, err := a.sessions.EnterActivation(ctx, a.scope(ctx), sessionID)
+	locked, release, err := a.sessions.EnterActivation(ctx, a.identity.Scope(ctx), sessionID)
 	if err != nil {
 		return err
 	}
@@ -309,7 +309,7 @@ func (a *Agent) handleRiskConfirmationInput(ctx context.Context, sessionID, text
 	if !a.commands.IsCommand(text) {
 		a.logRiskConfirmationAction(sessionID, "invalid_text", confirmation, "")
 		release()
-		a.sendChat(ctx, riskConfirmationWaitingText())
+		a.output.SendChat(ctx, riskConfirmationWaitingText())
 		return nil
 	}
 
@@ -322,7 +322,7 @@ func (a *Agent) handleRiskConfirmationInput(ctx context.Context, sessionID, text
 		}
 		a.logRiskConfirmationAction(sessionID, "detail", confirmation, "")
 		release()
-		a.sendChat(ctx, riskConfirmationDetailText(confirmation))
+		a.output.SendChat(ctx, riskConfirmationDetailText(confirmation))
 	case "confirm", "c":
 		a.logRiskConfirmationAction(sessionID, "confirm", confirmation, parsed.Args)
 		a.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Confirmed: true, Extra: parsed.Args})
@@ -341,12 +341,12 @@ func (a *Agent) handleRiskConfirmationInput(ctx context.Context, sessionID, text
 		a.requests.CancelSession(sessionID)
 		a.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Stopped: true})
 		release()
-		a.sendChat(ctx, "stopped")
+		a.output.SendChat(ctx, "stopped")
 	default:
 		if hasConfirmation {
 			a.logRiskConfirmationAction(sessionID, "invalid_command", confirmation, parsed.Name)
 		}
-		a.sendChat(ctx, riskConfirmationWaitingText())
+		a.output.SendChat(ctx, riskConfirmationWaitingText())
 
 	}
 	release()

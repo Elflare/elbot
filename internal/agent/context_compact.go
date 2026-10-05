@@ -13,7 +13,7 @@ import (
 )
 
 func (a *Agent) CompactCurrent(ctx context.Context, triggerReason string) (string, error) {
-	current, err := a.sessions.Current(ctx, a.scope(ctx))
+	current, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
 	if err != nil {
 		return "", err
 	}
@@ -22,7 +22,7 @@ func (a *Agent) CompactCurrent(ctx context.Context, triggerReason string) (strin
 }
 
 func (a *Agent) compactSession(ctx context.Context, current *storage.Session, triggerReason string, fallback modelmgr.Selection) (*storage.Session, string, error) {
-	next, err := a.runCompact(ctx, current, a.scope(ctx), triggerReason, fallback)
+	next, err := a.runCompact(ctx, current, a.identity.Scope(ctx), triggerReason, fallback)
 	if err != nil {
 		return nil, "", err
 	}

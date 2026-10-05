@@ -297,11 +297,11 @@ func TestModelSwitchUsesMessagePlatformCurrentModeForGlobalState(t *testing.T) {
 	}
 	client := &fakeLLM{models: []string{"deepseek-chat"}}
 	a := mustNewWithOptions(t, testAgentOptions{Platform: p, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"deepseek": client, "zhipu": client}, ModeModels: modeModels, Providers: providers, StatePath: statePath, DefaultMode: storage.SessionModeWork}), Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
-	a.dispatcher.RegisterPlatformSender("qq", p)
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	qqCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "admin"}}})
 	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"qq": {"admin"}}))
 
-	qqSession, err := a.sessions.Create(qqCtx, a.scope(qqCtx), session.CreateRequest{Title: "qq chat"})
+	qqSession, err := a.sessions.Create(qqCtx, a.identity.Scope(qqCtx), session.CreateRequest{Title: "qq chat"})
 	if err != nil {
 		t.Fatalf("create qq session: %v", err)
 	}

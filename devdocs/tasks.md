@@ -947,10 +947,10 @@
 
 ### 阶段 9：拆除内部组件对 Agent 的依赖
 
-- [ ] 抽出 identityResolver、hookBridge、statusRecorder、outputSender，并迁移实际方法与状态。
-- [ ] 输出适配器改用必要服务，分离 executionView 与接管输出适配，保持原请求取消和来源规则。
-- [ ] toolRunPromptProvider 直接使用 ToolRun 与身份解析，更新构造、配置和测试装配，禁止变相捕获整个 Agent。
-- [ ] 完成来源、CLI、后台静默、Hook 与同步状态回归、相关 race 和开发文档同步。
+- [x] 抽出 identityResolver、hookBridge、statusRecorder、outputSender，并迁移实际方法与状态。
+- [x] 输出适配器改用必要服务，分离 executionView 与接管输出适配，保持原请求取消和来源规则。
+- [x] toolRunPromptProvider 直接使用 ToolRun 与身份解析，更新构造、配置和测试装配，禁止变相捕获整个 Agent。
+- [x] 完成来源、CLI、后台静默、Hook、同步状态和配置更新回归；Agent、app、delivery、notification、Hook、ToolRun 相关测试及 Agent／app race 通过，开发文档已同步。
 - 完成标准：基础组件能通过必需依赖独立构造，已迁移组件不持有 Agent，实际接线保持既有行为。详见 [阶段 9](core-refactor.md#phase-9)。
 
 ### 阶段 10：收拢最终回复提交
@@ -1007,4 +1007,5 @@
 - [ ] 同步 Review 结果、实际架构和任务状态，确认所有完成标准满足后再勾选本阶段。
 - 完成标准：阶段 9–14 已实际接入并通过复核，发现的问题完成修正，依赖、状态、核心同步和旁路通知边界均符合方案。详见 [阶段 15](core-refactor.md#phase-15)。
 
+目录、代码结构可看locator:agent-components
 每阶段同步已落地的 `architecture.md`、`code-map.md` 与相关内部约定，过时/矛盾的文档直接删除或者修改，不保留；任务通过验收后再勾选。方案落盘不代表任何代码重构任务已完成。

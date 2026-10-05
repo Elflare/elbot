@@ -13,7 +13,7 @@ var errSessionBindingChanged = errors.New("当前会话已切换，请重新发�
 
 // Existing execution contexts keep their original binding across confirmation.
 func (a *Agent) captureSessionBinding(ctx context.Context, row *storage.Session) (context.Context, error) {
-	current, binding, err := a.sessions.CurrentBound(ctx, a.scope(ctx))
+	current, binding, err := a.sessions.CurrentBound(ctx, a.identity.Scope(ctx))
 	if err != nil {
 		return ctx, err
 	}
@@ -30,7 +30,7 @@ func (a *Agent) captureSessionBinding(ctx context.Context, row *storage.Session)
 }
 
 func (a *Agent) resolveInput(ctx context.Context, text string) (context.Context, *storage.Session, error) {
-	locked, release, err := a.sessions.EnterScope(ctx, a.scope(ctx))
+	locked, release, err := a.sessions.EnterScope(ctx, a.identity.Scope(ctx))
 	if err != nil {
 		return ctx, nil, err
 	}
@@ -44,8 +44,8 @@ func (a *Agent) resolveInput(ctx context.Context, text string) (context.Context,
 }
 
 func (a *Agent) enterTurn(ctx context.Context, row *storage.Session, out turnOutput) (context.Context, func(), error) {
-	ctx = a.executionContext(ctx)
-	scope := a.scope(ctx)
+	ctx = a.view.Context(ctx)
+	scope := a.identity.Scope(ctx)
 	background := isBackgroundSession(row)
 	var locked context.Context
 	var release func()
@@ -72,8 +72,8 @@ func (a *Agent) enterTurn(ctx context.Context, row *storage.Session, out turnOut
 		default:
 		}
 	}
-	refreshed := a.executionContext(locked)
-	if a.scope(refreshed).Key() != scope.Key() || (background && !isBackgroundSession(row)) {
+	refreshed := a.view.Context(locked)
+	if a.identity.Scope(refreshed).Key() != scope.Key() || (background && !isBackgroundSession(row)) {
 		release()
 		if e := turn.ExecutionFromContext(ctx); e == nil || e.Foreground() == nil {
 			return ctx, nil, errSessionBindingChanged

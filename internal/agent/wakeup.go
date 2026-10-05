@@ -54,7 +54,7 @@ func (a *Agent) messageWakeup(ctx context.Context, text string) bool {
 	return a.isReplyToBot(ctx, msg)
 }
 
-func (a *Agent) stripWakeupPrefix(ctx context.Context, text string) string {
+func stripWakeupPrefix(ctx context.Context, text string) string {
 	if msg, ok := platform.MessageContextFrom(ctx); ok {
 		return stripWakeupPrefixFromText(text, msg)
 	}

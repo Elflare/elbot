@@ -32,7 +32,7 @@ func rollbackAgentFixture(t *testing.T) (*Agent, *fakePlatform, context.Context,
 	}
 	a := mustNewWithOptions(t, opts)
 	ctx := security.WithActor(context.Background(), security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin})
-	row, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "files"})
+	row, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "files"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestRollbackCommandInvalidatesOnNewAndDeniesRegularUsers(t *testing.T) {
 	if err := a.HandleMessage(ctx, "/new"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.sessions.Resume(ctx, a.scope(ctx), row.ID); err != nil {
+	if _, err := a.sessions.Resume(ctx, a.identity.Scope(ctx), row.ID); err != nil {
 		t.Fatal(err)
 	}
 	if records, err := listTestFileRollbacks(a, ctx); err != nil || len(records) != 0 {
@@ -214,7 +214,7 @@ func testRollbackCommandRechecksIdleAtCommit(t *testing.T, prepared bool) {
 	var once sync.Once
 	a.toolRuntime.fileRollback.CheckWrite = func(string) error {
 		once.Do(func() {
-			locked, release, err := a.sessions.EnterActivation(ctx, a.scope(ctx), row.ID)
+			locked, release, err := a.sessions.EnterActivation(ctx, a.identity.Scope(ctx), row.ID)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -253,7 +253,7 @@ func TestActiveTurnBlocksNewSessionCommand(t *testing.T) {
 			p := &fakePlatform{}
 			a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 			ctx := context.Background()
-			current, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "current"})
+			current, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "current"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -262,7 +262,7 @@ func TestActiveTurnBlocksNewSessionCommand(t *testing.T) {
 			if err := a.HandleMessage(ctx, "/new"); err != nil {
 				t.Fatalf("/new: %v", err)
 			}
-			after, err := a.sessions.Current(ctx, a.scope(ctx))
+			after, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -285,7 +285,7 @@ func TestActiveTurnBlocksAllSessionSwitchCommands(t *testing.T) {
 			p := &fakePlatform{}
 			a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 			ctx := context.Background()
-			current, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "current"})
+			current, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "current"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -296,7 +296,7 @@ func TestActiveTurnBlocksAllSessionSwitchCommands(t *testing.T) {
 			if err := a.HandleMessage(ctx, text); err != nil {
 				t.Fatalf("%s: %v", text, err)
 			}
-			after, err := a.sessions.Current(ctx, a.scope(ctx))
+			after, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -315,7 +315,7 @@ func TestStopAllowsSessionSwitchAfterActiveTurn(t *testing.T) {
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.SetSessionIdleExpiration(config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 10})
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
-	current, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "current"})
+	current, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "current"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +335,7 @@ func TestStopAllowsSessionSwitchAfterActiveTurn(t *testing.T) {
 	if err := a.HandleMessage(ctx, "/new"); err != nil {
 		t.Fatalf("/new: %v", err)
 	}
-	if _, err := a.sessions.Current(ctx, a.scope(ctx)); err == nil {
+	if _, err := a.sessions.Current(ctx, a.identity.Scope(ctx)); err == nil {
 		t.Fatal("current session still exists after /new")
 	}
 }
@@ -387,7 +387,7 @@ func TestRiskConfirmationDetailShowsFullArgumentsWithoutResolving(t *testing.T) 
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
-	session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm detail"})
+	session, err := a.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm detail"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -444,7 +444,7 @@ func TestRiskConfirmationDetailFormatsEscapedNewlines(t *testing.T) {
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
-	session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm detail newlines"})
+	session, err := a.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm detail newlines"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -487,7 +487,7 @@ func TestRiskConfirmationCompletionAndConfirmAlias(t *testing.T) {
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
-	session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm completion"})
+	session, err := a.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm completion"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}

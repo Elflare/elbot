@@ -74,7 +74,7 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 
 先看：
 
-- `internal/agent/core.go`：Agent 自身状态、依赖注入和执行编排接线；`Options` 要求调用方提供共享服务，内置命令在 app 注册。
+- `internal/agent/core.go`：Agent 入口及执行编排接线，装配身份、Hook、状态、发送和执行视图组件；`Options` 要求调用方提供共享服务，内置命令在 app 注册。
 - `internal/agent/message.go`：消息入口、slash/普通输入分发和用户错误通知。
 - `internal/agent/command_runtime.go`：命令权限、Turn 冲突、通知和 continuation 的统一编排。
 - `internal/agent/input.go`、`tool_directive.go`：普通输入与预加载的原绑定准入、锁外准备及提交复核，命令 continuation、pending 和风险确认入口。
@@ -85,11 +85,13 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 - `internal/storage/sqlite/media_history.go`：主库历史媒体关联与引用事务，区别于机器人发送输出索引。
 - `internal/agent/reference.go`：只读提供当前 Session ID，供平台引用续聊/fork 判定。
 - `internal/delivery/dispatch/media.go`：发送前归一、发送副本解析与有序媒体回执缓存。
-- `internal/agent/options.go`、`logging.go`、`identity.go`：运行配置、日志和 Actor/Scope 解析。
+- `internal/agent/options.go`、`logging.go`：运行配置 setter 和日志接线，更新实际组件拥有者及日志调用者。
+- `internal/agent/identity.go`：identityResolver 拥有入口默认身份与安全策略；区分普通入口和无默认身份的 Hook 来源解析。
+- `internal/agent/toolrun_prompt_provider.go`：直接注入 ToolRun 与身份解析的 Prompt provider。
 - `internal/agent/chat.go`：普通对话主流程。
 - `internal/agent/chat_llm.go`：LLM 调用和消息转换。
 - `internal/agent/chat_tools.go`：工具执行与确认。
-- `internal/agent/turn_output.go`：turn 输出适配。
+- `internal/agent/turn_output.go`：只依赖发送与状态组件的前后台 turn 输出适配。
 - `internal/agent/prompt.go`：Prompt 构建。
 - `internal/agent/system_prompt*.go`：Soul、常驻记忆、工具提示等 system prompt 来源和组合。
 - `internal/agent/tool_transcript.go`：工具 transcript 持久化。
@@ -132,9 +134,11 @@ rg -n "Register|Info\{|Help:|Complete|Alias|/requests|/model" internal/command/b
 
 - `internal/request/`
 - `internal/turn/manager.go`、`execution.go`：阶段、pending、确认及跨请求的逻辑执行身份与结果。
-- `internal/agent/execution.go`、`session_binding.go`：前台接管上下文／输出适配和原绑定准入。
+- `internal/agent/execution.go`：前台接管同步入口和前台指令材料。
+- `internal/agent/execution_context.go`、`execution_output.go`：executionView 刷新来源与 Session，executionTurnOutput 切换前后台输出并转换后台报告；保留原请求取消，不拥有第二份执行状态。
+- `internal/agent/session_binding.go`：原绑定准入和输入提交复核。
 - `internal/runtime/`
-- `internal/agent/status.go`：Agent runtime status 发布。
+- `internal/agent/status.go`：statusRecorder 拥有 runtime status map、锁、同步合并与查询，Agent 对外查询薄委托。
 - `internal/agent/request_context.go`：父子 request context。
 - `internal/agent/risk_confirmation.go`：高风险确认命令文案和识别。
 
@@ -234,8 +238,8 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 - `internal/hook/builtin/`、`internal/hook/plugins/`：内置 Hook 注册与内置插件。
 - `internal/hook/rules/`：规则 Hook；`rules.go` 提供类型和模块入口，`config.go`/`toml_error.go` 负责配置加载与诊断，`rule.go`/`action.go`/`exec.go` 负责规则及 Action 执行，`exec_process_*.go` 负责一次性 exec 的跨平台进程树终止，`detail.go` 负责列表详情。
 - `internal/hook/runtime/`：Worker Hook 配置、进程、双向 Pipe RPC、waiting 路由、工具桥接和进程内 SharedState。
-- `internal/agent/hooks.go`：Agent 的 Hook 执行、上下文和 continuation 接入。
-- `internal/agent/output.go`：assistant 输出 Hook 编排、共享发送服务调用与 Session 消息关联。
+- `internal/agent/hooks.go`：hookBridge 负责 Hook 执行、事件补全、continuation、同步 Request 观察和错误处理；对外接线保留 Agent 薄委托。
+- `internal/agent/output.go`：outputSender 编排发送 Hook 并调用共享发送服务；文件内另保留由对话主流程调用的 Session 消息关联。
 - `internal/delivery/dispatch/media.go`：平台发送前解析 Hook/Tool 输出中的 media，并清理受控临时导出。
 - `docs/hooks.md`：用户侧 Hook 文档。
 
@@ -258,8 +262,8 @@ rg -n "Event|Handler|Control|plugins/hooks.toml|exec|hook.v2|runtime|SharedState
 - `internal/notification/manager.go`：通知意图、来源／Binding／Sender 覆盖捕获、取消／失效检查、无来源 service 日志策略；不另建发送器或媒体实现。
 - `internal/notification/rules/`：平台连接 Hook 输出、Hook 失败、模型重试／降级和执行错误文案。
 - `internal/app/services.go`、`integrations.go`、`signals.go`：共享发送／通知服务装配、外部宿主接入和平台连接执行器。
-- `internal/agent/turn_output.go`：Agent turn 输出适配。
-- `internal/agent/output.go`：Agent 的输出 Hook 编排；按结构化回执中的实际平台、Scope 和消息 ID 建立 Session 消息关联。
+- `internal/agent/turn_output.go`、`execution_output.go`：前后台发送策略与接管输出适配；后台保持静默但同步记录状态。
+- `internal/agent/output.go`：outputSender 的普通／流式发送和输出 Hook；保留部分成功回执。Session 消息关联仍由对话主流程调用，使用回执中的实际平台、Scope 和消息 ID。
 - `internal/platform/platform.go`：平台发送抽象。
 
 常用搜索：

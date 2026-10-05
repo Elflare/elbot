@@ -80,7 +80,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 4. LLM 返回文本、reasoning 或 tool call。
 5. 如果有 tool call，Agent 进入工具执行链路；工具结果写入 transcript 后继续 LLM 循环。
 6. 生成最终 assistant 输出前，先跑输出预处理 Hook。
-7. Output Manager 负责实际发送，成功后保存最终 assistant 消息。
+7. outputSender 调用共享 Dispatcher 发送；对话主流程按直接／缓冲输出路径完成 assistant 落库和实际回执关联。
 
 关键约定：
 
@@ -90,6 +90,19 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - 发送前会发布 `sending` phase，便于 `/requests` 区分 LLM 慢还是平台发送慢。
 - 普通输入在工具阶段不会打断工具，会以 text/image segments 进入 pending；下一次 LLM 调用前已有的 pending 会合并注入当前轮，最终 LLM 调用期间新到达的 pending 则在当前轮正常结束后作为新用户消息自动开启下一轮。
 - Prompt Builder 每个 turn 从 Soul、工具提示、工具标签和当前 actor 的常驻记忆构建一次 system message；该消息只在当前 turn 内复用，不进入会话历史。
+
+基础组件在 `internal/agent` 内直接组合，不持有 Agent 或绑定 Agent 的回调：
+
+| 组件 | 当前职责与状态 |
+|---|---|
+| identityResolver | 拥有入口默认身份和安全策略，统一 Actor／Scope／CLI 判断；无来源 Hook 使用不带入口默认值的来源身份解析。 |
+| hookBridge | 使用 Hook manager/router、Request、身份、Media 和通知服务，负责事件补全、可改写 Hook、continuation、请求观察和错误处理。 |
+| statusRecorder | 拥有运行快照 map 及锁，同步合并、记录和查询；前台在解锁后展示，后台只记录。 |
+| outputSender | 使用共享 Dispatcher、通知服务和 hookBridge，处理普通／流式输出、发送 Hook、preview、notice、reasoning 和状态展示。 |
+| executionView / executionTurnOutput | 读取已有 Execution 的接管身份、刷新 Session，并选择前后台输出；保留原请求取消链，接管时清除后台路由、模型和 sandbox 覆盖。 |
+| toolRunPromptProvider | 直接使用 ToolRun 和 identityResolver 查询 schema 与工具名。 |
+
+Agent 仍拥有输入与执行编排、单轮模型／工具循环和最终回复提交；自动确认与视觉提示去重状态仍在 Agent。对外 Scope、状态查询、Hook 观察和连接通知薄委托到组件。配置 setter 更新实际拥有者，日志 setter 更新现有日志调用者；app 保持同步参与者的安装和共享服务生命周期所有权。
 
 <!-- locator:commands -->
 ## 命令链路
@@ -246,6 +259,7 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 - Hook 可返回控制字段和输出意图。
 - Go Hook 通过事件提供宿主 `MediaAPI`；进程 Hook 通过 `media.import`、`media.read`、`media.export` 和 `media.metadata` 使用媒体。稳定 `media` 引用可跨消息传递，Host 仅在发送边界导出为临时文件；临时 Hook 引用在过期或 runtime 关闭时释放，外部 Hook 不接触 SQLite、媒体根目录或 S3 凭据。
 - 入站消息的唤起状态在 Agent 消息入口计算一次并随 context 贯穿处理链；后续 Hook 不根据已改写的 user 文本或 assistant 输出重新推断。
+- hookBridge 同步执行 Hook 及 Request 观察，保留派生 context 和结束清理；app 安装唤起判断与观察接口。唤醒前缀处理是显式接收 context 的包内函数。
 - Hook 来源优先保留事件显式字段，缺失字段从公共 Info 和显式安全 Actor 补齐，不依赖平台扩展。平台连接等没有聊天来源的事件及其错误 Hook 保留空 Scope／Actor，不填充默认 CLI 身份。
 - `llm.messages` 对普通 Hook 只读并以深拷贝提供；turn Hook 只能修改当前初始 user，request Hook 只能修改本次请求前新 drain 的 pending。
 - 进程 Hook 可用 `message.segments` 替换当前绑定消息；用户/pending 修改在请求前落库，工具完成 Hook 的修改进入 transcript 和后续 LLM 请求。
@@ -265,7 +279,7 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 - 定义 text/image/file/record/at/reply/emoticon 等平台无关输出类型。
 - 提供媒体源前缀、fallback 文本、delivery timing 元数据。
 - `delivery/dispatch.Router` 统一选择平台发送器，执行媒体准备、普通发送、流式发送、reasoning 和 runtime status 的平台调用。
-- `notification.Manager` 消费通知意图，复用 Router；`notification/rules` 维护平台连接、插件／Hook、模型和执行错误的通知规则与文案。业务模块决定触发时机，Agent 保留需要 Hook 改写的输出编排。
+- `notification.Manager` 消费通知意图，复用 Router；`notification/rules` 维护平台连接、插件／Hook、模型和执行错误的通知规则与文案。业务模块决定触发时机，outputSender 经 hookBridge 完成发送 Hook，对话主流程负责最终提交。
 
 约定：
 
@@ -279,7 +293,7 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 - Agent 的 assistant 消息及 Cron／Elnis 的报告关联使用 `Receipt.SentMessages` 提供的实际平台、ScopeID 和消息 ID；不根据触发来源或目标类型自行拼 Scope，缺少完整来源的回执不建立关联。任务指定目标与触发消息的 Info 分别保留各自语义。
 - QQ OneBot 把 record 输出转换为原生语音段；暂不支持 record 的平台使用统一文字 fallback。
 - QQ OneBot 纯文本发送超过 3000 个 Unicode 字符时按原文分节点，单次调用群聊／私聊 forward API；回复、显式目标、管理员通知和临时连接共用该规则。回执只关联外层 `message_id`，不关联转发资源 ID 或节点；失败不退回分条发送。
-- 流式输出、notice、reasoning、runtime status 由 Agent turn 输出适配层区分前后台发送。
+- 前后台 turn 输出适配器只依赖 outputSender 和 statusRecorder；接管输出另外使用 executionView 与 Session 工作目录能力。状态始终先同步记录，再按前后台策略决定是否展示。
 
 <!-- locator:platform -->
 ## 平台适配层

@@ -112,5 +112,5 @@ func (a *Agent) SetSecurityPolicy(policy *security.Policy) {
 	if policy == nil {
 		policy = security.DefaultPolicy()
 	}
-	a.securityPolicy = policy
+	a.identity.policy = policy
 }

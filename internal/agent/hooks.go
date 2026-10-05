@@ -7,8 +7,11 @@ import (
 	"strings"
 
 	"elbot/internal/chatinfo"
+	"elbot/internal/delivery/dispatch"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/media"
+	"elbot/internal/notification"
 	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/platform"
 	"elbot/internal/request"
@@ -27,69 +30,80 @@ type HookRouter interface {
 	RouteHookID(hook.Event) string
 }
 
+type hookBridge struct {
+	manager       hookRunner
+	router        HookRouter
+	requests      *request.Manager
+	identity      *identityResolver
+	media         *media.Manager
+	notifications *notification.Manager
+	dispatcher    *dispatch.Router
+	logger        *slog.Logger
+}
+
 // SetHookRuntime attaches stateful Hook continuation routing. Process lifecycle
 // management remains outside Agent in the Hook control service.
 func (a *Agent) SetHookRuntime(router HookRouter) {
-	a.hookRuntime = router
+	a.hooks.router = router
 }
 
-func (a *Agent) cancelHookRoute(event hook.Event) bool {
-	return a.hookRuntime != nil && a.hookRuntime.Cancel(event)
+func (h *hookBridge) CancelRoute(event hook.Event) bool {
+	return h.router != nil && h.router.Cancel(event)
 }
 
-func (a *Agent) routeHook(ctx context.Context, event hook.Event) (hook.Event, bool, error) {
-	if a.hookRuntime == nil {
+func (h *hookBridge) Route(ctx context.Context, event hook.Event) (hook.Event, bool, error) {
+	if h.router == nil {
 		return event, false, nil
 	}
-	if id := a.hookRuntime.RouteHookID(event); id != "" && a.requests != nil {
-		_, requestCtx, done, err := a.requests.Start(ctx, request.StartRequest{ParentID: turnRequestIDFromContext(ctx), Kind: request.KindHook, Label: id + " continuation"})
+	if id := h.router.RouteHookID(event); id != "" && h.requests != nil {
+		_, requestCtx, done, err := h.requests.Start(ctx, request.StartRequest{ParentID: turnRequestIDFromContext(ctx), Kind: request.KindHook, Label: id + " continuation"})
 		if err == nil {
 			defer done()
 			ctx = requestCtx
 		}
 	}
-	return a.hookRuntime.Route(ctx, event)
+	return h.router.Route(ctx, event)
 }
 
-func (a *Agent) runHook(ctx context.Context, event hook.Event) (hook.Event, error) {
-	manager := a.hooks
+func (h *hookBridge) Run(ctx context.Context, event hook.Event) (hook.Event, error) {
+	manager := h.manager
 	if manager == nil {
 		manager = hook.NoopManager{}
 	}
-	event = a.fillHookContext(ctx, event)
+	event = h.fillContext(ctx, event)
 	updated, err := manager.Run(ctx, event)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return event, err
 		}
-		a.notifyHookError(ctx, event, err)
-		a.sendHookFailureNotice(ctx, event, err)
+		h.notifyError(ctx, event, err)
+		h.sendFailureNotice(ctx, event, err)
 		return event, err
 	}
 	return updated, nil
 }
 
-func (a *Agent) notifyHook(ctx context.Context, event hook.Event) {
-	manager := a.hooks
+func (h *hookBridge) Notify(ctx context.Context, event hook.Event) {
+	manager := h.manager
 	if manager == nil {
 		manager = hook.NoopManager{}
 	}
-	event = a.fillHookContext(ctx, event)
+	event = h.fillContext(ctx, event)
 	if err := manager.Notify(ctx, event); err != nil {
-		a.logHookError(event.Point, err)
+		h.logError(event.Point, err)
 		if errors.Is(err, context.Canceled) {
 			return
 		}
 		if event.Point != hook.PointErrorOccurred {
-			a.notifyHookError(ctx, event, err)
-			a.sendHookFailureNotice(ctx, event, err)
+			h.notifyError(ctx, event, err)
+			h.sendFailureNotice(ctx, event, err)
 		}
 	}
 }
 
-// ObserveHookRun participates in request tracking; app installs it on the Hook manager.
-func (a *Agent) ObserveHookRun(ctx context.Context, event hook.Event, info hook.ObserverInfo) (context.Context, func()) {
-	if a == nil || a.requests == nil {
+// ObserveRun participates synchronously in request tracking.
+func (h *hookBridge) ObserveRun(ctx context.Context, event hook.Event, info hook.ObserverInfo) (context.Context, func()) {
+	if h == nil || h.requests == nil {
 		return ctx, func() {}
 	}
 	sessionID := strings.TrimSpace(event.Session.ID)
@@ -100,57 +114,57 @@ func (a *Agent) ObserveHookRun(ctx context.Context, event hook.Event, info hook.
 	if label == "" {
 		label = strings.TrimSpace(string(info.Point))
 	}
-	_, reqCtx, done, err := a.requests.Start(ctx, request.StartRequest{
+	_, reqCtx, done, err := h.requests.Start(ctx, request.StartRequest{
 		ParentID:  turnRequestIDFromContext(ctx),
 		SessionID: sessionID,
 		Kind:      request.KindHook,
 		Label:     label,
 	})
 	if err != nil {
-		if a.logger != nil {
-			a.logger.WarnContext(ctx, "hook request tracking failed", "hook", label, "point", string(info.Point), "error", err.Error())
+		if h.logger != nil {
+			h.logger.WarnContext(ctx, "hook request tracking failed", "hook", label, "point", string(info.Point), "error", err.Error())
 		}
 		return ctx, func() {}
 	}
 	return reqCtx, done
 }
 
-func (a *Agent) notifyHookError(ctx context.Context, source hook.Event, err error) {
+func (h *hookBridge) notifyError(ctx context.Context, source hook.Event, err error) {
 	if source.Point == hook.PointErrorOccurred {
 		return
 	}
 	event := source
 	event.Point = hook.PointErrorOccurred
 	event.Error = err
-	a.notifyHook(ctx, event)
+	h.Notify(ctx, event)
 }
 
-func (a *Agent) sendHookFailureNotice(ctx context.Context, event hook.Event, err error) {
-	if sendErr := notificationrules.HookFailure(ctx, a.notifications, event, err); sendErr != nil && a.logger != nil {
-		a.logger.WarnContext(ctx, "hook failure notice failed", "point", string(event.Point), "error", sendErr.Error())
+func (h *hookBridge) sendFailureNotice(ctx context.Context, event hook.Event, err error) {
+	if sendErr := notificationrules.HookFailure(ctx, h.notifications, event, err); sendErr != nil && h.logger != nil {
+		h.logger.WarnContext(ctx, "hook failure notice failed", "point", string(event.Point), "error", sendErr.Error())
 	}
 }
 
-func (a *Agent) NotifyPlatformConnected(ctx context.Context, platformName string) {
-	if err := notificationrules.PlatformConnected(ctx, platformName, a.runHook, a.dispatcher); err != nil {
-		a.logHookError(hook.PointPlatformConnected, err)
+func (h *hookBridge) PlatformConnected(ctx context.Context, platformName string) {
+	if err := notificationrules.PlatformConnected(ctx, platformName, h.Run, h.dispatcher); err != nil {
+		h.logError(hook.PointPlatformConnected, err)
 	}
 }
 
-func (a *Agent) hookSession(session *storage.Session) hook.SessionContext {
+func hookSession(session *storage.Session) hook.SessionContext {
 	if session == nil {
 		return hook.SessionContext{}
 	}
 	return hook.SessionContext{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status}
 }
 
-func (a *Agent) fillHookContext(ctx context.Context, event hook.Event) hook.Event {
-	if a.media != nil {
-		event.Media = a.media
+func (h *hookBridge) fillContext(ctx context.Context, event hook.Event) hook.Event {
+	if h.media != nil {
+		event.Media = h.media
 	}
 	// Connection and other source-free events must not inherit the Agent's
 	// default local identity. Only message facts or an explicit actor apply.
-	actor, hasActor := security.ActorFromContext(ctx)
+	actor := h.identity.SourceActor(ctx)
 	if info, ok := chatinfo.FromContext(ctx); ok {
 		if event.Platform.Name == "" {
 			event.Platform.Name = info.Source.Platform
@@ -166,17 +180,6 @@ func (a *Agent) fillHookContext(ctx context.Context, event hook.Event) hook.Even
 		}
 		if event.Platform.ReplyToMessageID == "" {
 			event.Platform.ReplyToMessageID = info.ReplyToMessageID
-		}
-		if !hasActor && (info.Identity.PlatformUserID != "" || info.Identity.ActorID != "") {
-			policy := a.securityPolicy
-			if policy == nil {
-				policy = security.DefaultPolicy()
-			}
-			actor = policy.Actor(info.Identity.ActorID, info.Source.Platform, info.Identity.PlatformUserID, info.Identity.DisplayName)
-			actor.Nickname, actor.GroupCard = info.Identity.Nickname, info.Identity.GroupCard
-			if msg, ok := platform.MessageContextFrom(ctx); ok {
-				actor.GroupRole = msg.GroupRole
-			}
 		}
 	}
 	if msg, ok := platform.MessageContextFrom(ctx); ok {
@@ -198,7 +201,7 @@ func (a *Agent) fillHookContext(ctx context.Context, event hook.Event) hook.Even
 		}
 	}
 	if event.Message.IntentText == "" && event.Message.Role == string(llm.RoleUser) {
-		event.Message.IntentText = a.stripWakeupPrefix(ctx, llm.SegmentsTextOnly(event.Message.Segments))
+		event.Message.IntentText = stripWakeupPrefix(ctx, llm.SegmentsTextOnly(event.Message.Segments))
 	}
 	if event.Platform.UserID == "" {
 		event.Platform.UserID = actor.PlatformUserID
@@ -211,19 +214,30 @@ func (a *Agent) fillHookContext(ctx context.Context, event hook.Event) hook.Even
 	return event
 }
 
-func (a *Agent) logHookError(point hook.Point, err error) {
+func (h *hookBridge) logError(point hook.Point, err error) {
 	if err == nil {
 		return
 	}
-	if a.logger != nil {
+	if h.logger != nil {
 		if errors.Is(err, context.Canceled) {
-			a.logger.Info("hook canceled", slog.String("point", string(point)), slog.String("error", err.Error()))
+			h.logger.Info("hook canceled", slog.String("point", string(point)), slog.String("error", err.Error()))
 			return
 		}
-		a.logger.Warn("hook error", slog.String("point", string(point)), slog.String("error", err.Error()))
+		h.logger.Warn("hook error", slog.String("point", string(point)), slog.String("error", err.Error()))
 	}
 }
 
 func actorContext(actor security.Actor) hook.ActorContext {
 	return hook.ActorContext{ID: actor.ID, Role: string(actor.Role), GroupRole: string(actor.GroupRole), UserID: actor.PlatformUserID, Nickname: actor.Nickname, GroupCard: actor.GroupCard, DisplayName: actor.DisplayName}
+}
+
+func (a *Agent) ObserveHookRun(ctx context.Context, event hook.Event, info hook.ObserverInfo) (context.Context, func()) {
+	if a == nil || a.hooks == nil {
+		return ctx, func() {}
+	}
+	return a.hooks.ObserveRun(ctx, event, info)
+}
+
+func (a *Agent) NotifyPlatformConnected(ctx context.Context, platformName string) {
+	a.hooks.PlatformConnected(ctx, platformName)
 }

@@ -20,7 +20,7 @@ func TestLocalCLITakeoverDeliversFinalOutput(t *testing.T) {
 		{{DeltaContent: "foreground final"}},
 	}}
 	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.dispatcher.RegisterPlatformSender("qq", p)
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	registry := tool.NewRegistry()
 	_ = registry.Register(slowTool{started: started, release: release})
 	_ = registry.Register(tool.NewDiscoverTool(registry))

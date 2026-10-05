@@ -14,6 +14,7 @@ import (
 	"elbot/internal/fileops"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	"elbot/internal/notification"
 	notificationrules "elbot/internal/notification/rules"
@@ -31,6 +32,7 @@ import (
 // the application supplies already assembled shared services.
 type testAgentOptions struct {
 	Platform        platform.PlatformAdapter
+	Media           *media.Manager
 	Models          *modelmgr.Service
 	Store           storage.Store
 	Providers       map[string]config.ProviderConfig
@@ -57,11 +59,11 @@ func assembleTestOptions(opts testAgentOptions) Options {
 	if opts.ToolsConfig.MaxRoundsPerTurn <= 0 {
 		opts.ToolsConfig = defaults.Tools
 	}
-	dispatcher := dispatch.New(dispatch.Options{Primary: opts.Platform, Store: opts.Store, MediaRetentionDays: defaults.Maintenance.SandboxCleanup.RetentionDays})
+	dispatcher := dispatch.New(dispatch.Options{Primary: opts.Platform, Store: opts.Store, Media: opts.Media, MediaRetentionDays: defaults.Maintenance.SandboxCleanup.RetentionDays})
 	notices := notification.New(dispatcher, nil, false)
 	opts.Models.SetRetryNotifier(notificationrules.ModelRetry(notices))
 	return Options{
-		Platform: opts.Platform, Models: opts.Models, Store: opts.Store,
+		Platform: opts.Platform, Models: opts.Models, Store: opts.Store, Media: opts.Media,
 		Sessions: session.NewServiceWithConfig(opts.Store, opts.SessionConfig, session.NewTitleGenerator(opts.Models), nil),
 		Commands: command.NewRouter(opts.CommandPrefixes), Requests: request.NewManager(0), Turns: turn.NewManager(),
 		Contexts:  contextmgr.New(contextmgr.Options{Store: opts.Store, Models: opts.Models, Config: defaults.Context, Metadata: defaults.ModelMetadata, Providers: opts.Providers}),
@@ -128,6 +130,23 @@ func newTestAgentWithPrefixes(t *testing.T, p platform.PlatformAdapter, client l
 	})
 }
 
+func newTestMediaAgent(t *testing.T, p platform.PlatformAdapter, client llm.LLM, store storage.Store, center *media.Manager) *Agent {
+	t.Helper()
+	return mustNewWithOptions(t, testAgentOptions{
+		Platform: p, Store: store, Media: center, CommandPrefixes: []string{"/"},
+		Models: newTestModels(t, modelmgr.Options{
+			Clients:   map[string]llm.LLM{"default": client},
+			Providers: map[string]config.ProviderConfig{"default": {}},
+			ModeModels: map[string]config.ModelSelection{
+				storage.SessionModeWork: {Provider: "default", Model: "test-model"},
+				storage.SessionModeChat: {Provider: "default", Model: "test-model"},
+			},
+			DefaultMode: storage.SessionModeWork,
+		}),
+		SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork},
+	})
+}
+
 // Some execution tests replace the registry after creating the Agent. This
 // test-only adapter keeps their command view attached to that registry.
 type testToolRegistry struct{ a *Agent }
@@ -148,10 +167,10 @@ func (r testToolRegistry) Unregister(name string) error {
 func (a *Agent) SetToolRuntime(registry *tool.Registry, _ any) {
 	a.toolRuntime.registry = registry
 	a.toolRuntime.preloader = toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry, Audit: a.audit})
-	a.toolRuntime.manager = toolrun.NewManager(registry, a.securityPolicy)
+	a.toolRuntime.manager = toolrun.NewManager(registry, a.identity.policy)
 	a.toolRuntime.manager.Media = a.media
 	if registry != nil {
-		a.toolRuntime.provider = toolRunPromptProvider{agent: a}
+		a.toolRuntime.provider = toolRunPromptProvider{tools: a.toolRuntime.manager, identity: a.identity}
 		a.toolRuntime.defaultProvider = true
 	}
 	a.rebuildSystemPrompt()
@@ -188,5 +207,5 @@ func (a *Agent) setTestHookManager(manager hook.Manager) {
 		concrete.SetWakeupFunc(a.HookWakeup)
 		concrete.SetObserver(a.ObserveHookRun)
 	}
-	a.hooks = manager
+	a.hooks.manager = manager
 }

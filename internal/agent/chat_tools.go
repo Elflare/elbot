@@ -63,7 +63,7 @@ func (a *Agent) executeToolCalls(ctx context.Context, session *storage.Session, 
 		AssistantText:    assistantText,
 		AssistantRawText: assistantRawText,
 		CachedTools:      cached,
-		Actor:            a.actor(ctx),
+		Actor:            a.identity.Actor(ctx),
 	})
 }
 
@@ -150,7 +150,7 @@ func (a *Agent) recordToolCall(ctx context.Context, sessionID string, call llm.T
 		SessionID:     sessionID,
 		ToolCallID:    call.ID,
 		ToolName:      call.Name,
-		ActorID:       a.actor(ctx).ID,
+		ActorID:       a.identity.Actor(ctx).ID,
 		RiskLevel:     risk,
 		Success:       callErr == nil,
 		ResultPreview: previewLogText(result),
@@ -268,13 +268,13 @@ func (a *Agent) toolsForSession(ctx context.Context, session *storage.Session) (
 		return nil, nil
 	}
 	if session.Mode == storage.SessionModeWork && a.toolRuntime.provider != nil && !a.toolRuntime.defaultProvider {
-		return a.toolRuntime.provider.Schemas(ctx, session.Mode, session, a.scope(ctx))
+		return a.toolRuntime.provider.Schemas(ctx, session.Mode, session, a.identity.Scope(ctx))
 	}
 	cached, err := a.cachedToolsForSession(ctx, session)
 	if err != nil {
 		return nil, err
 	}
-	return a.toolRunManager().Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: a.scope(ctx), Actor: a.actor(ctx), DisableBaseTools: isBackgroundSession(session)}, cached)
+	return a.toolRunManager().Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: a.identity.Scope(ctx), Actor: a.identity.Actor(ctx), DisableBaseTools: isBackgroundSession(session)}, cached)
 }
 
 func isBackgroundSession(row *storage.Session) bool { return sessionpkg.IsBackground(row) }
