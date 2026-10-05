@@ -328,7 +328,11 @@ func (a *Adapter) sendOutputs(ctx context.Context, t target, outputs []delivery.
 	var receipt delivery.Receipt
 	for i, out := range outputs {
 		sent, err := a.sendToTarget(ctx, t, out)
-		sent = telegramMediaReceipt(sent, t, out, i)
+		var mediaIndexes []int
+		if out.Kind == delivery.KindImage || out.Kind == delivery.KindFile {
+			mediaIndexes = []int{i}
+		}
+		sent = telegramReceipt(sent, t, mediaIndexes...)
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 		if err != nil {
@@ -338,15 +342,14 @@ func (a *Adapter) sendOutputs(ctx context.Context, t target, outputs []delivery.
 	return receipt, nil
 }
 
-func telegramMediaReceipt(receipt delivery.Receipt, target target, out delivery.Output, outputIndex int) delivery.Receipt {
-	if len(receipt.PlatformMessageIDs) != 1 || (out.Kind != delivery.KindImage && out.Kind != delivery.KindFile) {
-		return receipt
-	}
+// Every sent message has a source; only actual media outputs have media indexes.
+func telegramReceipt(receipt delivery.Receipt, target target, mediaIndexes ...int) delivery.Receipt {
 	scope := strings.TrimSpace(target.ScopeID)
-	if scope == "" {
-		scope = "private:" + strconv.FormatInt(target.ChatID, 10)
+	for _, id := range receipt.PlatformMessageIDs {
+		if id = strings.TrimSpace(id); id != "" {
+			receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: platformName, ScopeID: scope, OutputIndexes: append([]int(nil), mediaIndexes...)})
+		}
 	}
-	receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: receipt.PlatformMessageIDs[0], Platform: platformName, ScopeID: scope, OutputIndexes: []int{outputIndex}})
 	return receipt
 }
 func (a *Adapter) sendToTarget(ctx context.Context, t target, out delivery.Output) (delivery.Receipt, error) {

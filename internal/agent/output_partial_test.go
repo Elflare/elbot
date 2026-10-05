@@ -18,7 +18,7 @@ func TestPartialAssistantSendKeepsMessageAssociation(t *testing.T) {
 			a := newTestAgent(t, &fakePlatform{}, &fakeLLM{replies: []string{"long answer"}}, "test-model", config.ProviderConfig{}, store)
 			wantErr := errors.New("later page failed")
 			sender := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, error) {
-				return delivery.Receipt{PlatformMessageIDs: []string{"first-page"}}, wantErr
+				return delivery.Receipt{PlatformMessageIDs: []string{"first-page"}, SentMessages: []delivery.SentMessage{{Platform: "test", ScopeID: "group:old", PlatformMessageID: "first-page"}}}, wantErr
 			})
 			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "test", ScopeID: "group:old"}, Identity: chatinfo.Identity{PlatformUserID: "user"}}, Sender: sender, BufferAssistantOutput: buffered})
 			if err := a.HandleMessage(ctx, "question"); !errors.Is(err, wantErr) {

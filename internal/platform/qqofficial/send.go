@@ -39,7 +39,11 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 	var receipt delivery.Receipt
 	for i, out := range outputs {
 		sent, err := a.sendOutput(ctx, t, out)
-		sent = qqOfficialMediaReceipt(sent, t, out, i)
+		var mediaIndexes []int
+		if out.Kind == delivery.KindImage || out.Kind == delivery.KindFile {
+			mediaIndexes = []int{i}
+		}
+		sent = qqOfficialReceipt(sent, t, mediaIndexes...)
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 		if err != nil {
@@ -49,11 +53,12 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 	return receipt, nil
 }
 
-func qqOfficialMediaReceipt(receipt delivery.Receipt, target sendTarget, out delivery.Output, outputIndex int) delivery.Receipt {
-	if len(receipt.PlatformMessageIDs) != 1 || (out.Kind != delivery.KindImage && out.Kind != delivery.KindFile) {
-		return receipt
+func qqOfficialReceipt(receipt delivery.Receipt, target sendTarget, mediaIndexes ...int) delivery.Receipt {
+	for _, id := range receipt.PlatformMessageIDs {
+		if id = strings.TrimSpace(id); id != "" {
+			receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: platformName, ScopeID: qqOfficialTargetScope(target), OutputIndexes: append([]int(nil), mediaIndexes...)})
+		}
 	}
-	receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: receipt.PlatformMessageIDs[0], Platform: platformName, ScopeID: qqOfficialTargetScope(target), OutputIndexes: []int{outputIndex}})
 	return receipt
 }
 

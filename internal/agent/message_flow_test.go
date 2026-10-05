@@ -247,7 +247,7 @@ func TestDynamicProviderClientUsesAgentLogger(t *testing.T) {
 	}
 }
 
-func TestMapSentAssistantMessageMapsAllReceiptIDs(t *testing.T) {
+func TestMapSentAssistantMessageUsesOnlyCompleteReceiptSources(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
@@ -261,14 +261,29 @@ func TestMapSentAssistantMessageMapsAllReceiptIDs(t *testing.T) {
 		t.Fatalf("append assistant: %v", err)
 	}
 
-	a.mapSentAssistantMessage(ctx, session.ID, assistant.ID, delivery.Receipt{PlatformMessageIDs: []string{"101", "", "102"}})
-	for _, platformMessageID := range []string{"101", "102"} {
-		got, err := store.Messages().FindByPlatformMessage(ctx, "qqonebot", "group:9", platformMessageID)
+	sent := []delivery.SentMessage{
+		{Platform: "qqofficial", ScopeID: "c2c:1", PlatformMessageID: "101"},
+		{Platform: "telegram", ScopeID: "private:1", PlatformMessageID: "101"},
+		{Platform: "telegram", ScopeID: "supergroup:-2", PlatformMessageID: "101"},
+	}
+	a.mapSentAssistantMessage(ctx, session.ID, assistant.ID, delivery.Receipt{SentMessages: sent})
+	a.mapSentAssistantMessage(ctx, session.ID, assistant.ID, delivery.Receipt{PlatformMessageIDs: []string{"legacy"}, SentMessages: []delivery.SentMessage{
+		{Platform: "qqonebot", PlatformMessageID: "incomplete"},
+		{ScopeID: "group:9", PlatformMessageID: "incomplete"},
+		{Platform: "qqonebot", ScopeID: "group:9"},
+	}})
+	for _, message := range sent {
+		got, err := store.Messages().FindByPlatformMessage(ctx, message.Platform, message.ScopeID, message.PlatformMessageID)
 		if err != nil {
-			t.Fatalf("find platform message %s: %v", platformMessageID, err)
+			t.Fatalf("find platform message %#v: %v", message, err)
 		}
 		if got.ID != assistant.ID {
-			t.Fatalf("platform message %s mapped to %s, want %s", platformMessageID, got.ID, assistant.ID)
+			t.Fatalf("platform message %#v mapped to %s, want %s", message, got.ID, assistant.ID)
+		}
+	}
+	for _, id := range []string{"101", "legacy", "incomplete", ""} {
+		if _, err := store.Messages().FindByPlatformMessage(ctx, "qqonebot", "group:9", id); err == nil {
+			t.Fatalf("invented mapping from context for %q", id)
 		}
 	}
 }

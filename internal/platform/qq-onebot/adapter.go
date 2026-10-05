@@ -239,7 +239,7 @@ func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (deli
 		return delivery.Receipt{}, err
 	}
 	receipt, err := a.sendSegments(ctx, t, segments)
-	return oneBotMediaReceipt(receipt, t, outputs), err
+	return oneBotReceipt(receipt, t, outputs), err
 }
 
 func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[string]any) (json.RawMessage, error) {
@@ -278,7 +278,7 @@ func (a *Adapter) sendTemporaryNotice(ctx context.Context, notice delivery.Notic
 		err = fmt.Errorf("unsupported message target %q", t.MessageType)
 	}
 	receipt := receiptWithMessageID(id)
-	return oneBotMediaReceipt(receipt, t, notice.Outputs), err
+	return oneBotReceipt(receipt, t, notice.Outputs), err
 }
 
 func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
@@ -327,7 +327,7 @@ func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (deliv
 		return delivery.Receipt{}, err
 	}
 	receipt, err := a.sendSegments(ctx, t, segments)
-	return oneBotMediaReceipt(receipt, t, outputs), err
+	return oneBotReceipt(receipt, t, outputs), err
 }
 
 func textOutputs(outputs []delivery.Output) (string, bool) {
@@ -360,13 +360,13 @@ func (a *Adapter) sendContextText(ctx context.Context, text string) (delivery.Re
 	for _, page := range qqTextPages(text) {
 		id, err := a.sendQQText(ctx, t, page)
 		if err != nil {
-			return receipt, err
+			return oneBotReceipt(receipt, t, nil), err
 		}
 		if strings.TrimSpace(id) != "" {
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, id)
 		}
 	}
-	return receipt, nil
+	return oneBotReceipt(receipt, t, nil), nil
 }
 
 func (a *Adapter) sendContextOutput(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
@@ -398,20 +398,18 @@ func receiptWithMessageID(id string) delivery.Receipt {
 	return delivery.Receipt{PlatformMessageIDs: []string{id}}
 }
 
-func oneBotMediaReceipt(receipt delivery.Receipt, target target, outputs []delivery.Output) delivery.Receipt {
-	if len(receipt.PlatformMessageIDs) != 1 {
-		return receipt
-	}
+func oneBotReceipt(receipt delivery.Receipt, target target, outputs []delivery.Output) delivery.Receipt {
 	indexes := make([]int, 0, len(outputs))
 	for i, out := range outputs {
 		if out.Kind == delivery.KindImage || out.Kind == delivery.KindFile || out.Kind == delivery.KindRecord {
 			indexes = append(indexes, i)
 		}
 	}
-	if len(indexes) == 0 {
-		return receipt
+	for _, id := range receipt.PlatformMessageIDs {
+		if id = strings.TrimSpace(id); id != "" {
+			receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: "qqonebot", ScopeID: oneBotTargetScope(target), OutputIndexes: append([]int(nil), indexes...)})
+		}
 	}
-	receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: receipt.PlatformMessageIDs[0], Platform: "qqonebot", ScopeID: oneBotTargetScope(target), OutputIndexes: indexes})
 	return receipt
 }
 

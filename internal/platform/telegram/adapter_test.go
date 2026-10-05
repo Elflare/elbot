@@ -331,12 +331,12 @@ func TestTelegramMediaReceiptAndTargetScope(t *testing.T) {
 	if target.ScopeID != "group:-100123" {
 		t.Fatalf("scope = %q", target.ScopeID)
 	}
-	receipt := telegramMediaReceipt(delivery.Receipt{PlatformMessageIDs: []string{"10"}}, target, delivery.Output{Kind: delivery.KindImage}, 2)
+	receipt := telegramReceipt(delivery.Receipt{PlatformMessageIDs: []string{"10"}}, target, 2)
 	if len(receipt.SentMessages) != 1 || receipt.SentMessages[0].ScopeID != target.ScopeID || receipt.SentMessages[0].OutputIndexes[0] != 2 {
 		t.Fatalf("receipt = %#v", receipt)
 	}
-	fallback := telegramMediaReceipt(delivery.Receipt{PlatformMessageIDs: []string{"11"}}, target, delivery.Output{Kind: delivery.KindRecord}, 3)
-	if len(fallback.SentMessages) != 0 {
+	fallback := telegramReceipt(delivery.Receipt{PlatformMessageIDs: []string{"11"}}, target)
+	if len(fallback.SentMessages) != 1 || len(fallback.SentMessages[0].OutputIndexes) != 0 {
 		t.Fatalf("record fallback receipt = %#v", fallback)
 	}
 }

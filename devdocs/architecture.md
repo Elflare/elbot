@@ -246,6 +246,7 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 - Hook 可返回控制字段和输出意图。
 - Go Hook 通过事件提供宿主 `MediaAPI`；进程 Hook 通过 `media.import`、`media.read`、`media.export` 和 `media.metadata` 使用媒体。稳定 `media` 引用可跨消息传递，Host 仅在发送边界导出为临时文件；临时 Hook 引用在过期或 runtime 关闭时释放，外部 Hook 不接触 SQLite、媒体根目录或 S3 凭据。
 - 入站消息的唤起状态在 Agent 消息入口计算一次并随 context 贯穿处理链；后续 Hook 不根据已改写的 user 文本或 assistant 输出重新推断。
+- Hook 来源优先保留事件显式字段，缺失字段从公共 Info 和显式安全 Actor 补齐，不依赖平台扩展。平台连接等没有聊天来源的事件及其错误 Hook 保留空 Scope／Actor，不填充默认 CLI 身份。
 - `llm.messages` 对普通 Hook 只读并以深拷贝提供；turn Hook 只能修改当前初始 user，request Hook 只能修改本次请求前新 drain 的 pending。
 - 进程 Hook 可用 `message.segments` 替换当前绑定消息；用户/pending 修改在请求前落库，工具完成 Hook 的修改进入 transcript 和后续 LLM 请求。
 - Hook 不直接发平台消息。
@@ -275,7 +276,7 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 - 通知意图携带原 Info、原 Sender 覆盖和按需提供的 Session Binding；过期绑定或取消 context 拒绝发送。同步调用等待实际回执，平台连接沿用独立信号执行器，没有额外通知队列或可靠投递中间件。
 - Router 在发送前把 URL/Path/Data 归一为 MediaID，发送副本经 `ResolveForOutput` 临时解析，并释放临时导出。回执按实际成功的输出索引建立媒体关联；多目标 scope 由 adapter 明确提供，缓存期限复用 sandbox retention，非正值不缓存。
 - 部分失败同时返回成功 Receipt 与 error；Agent／Cron／Elnis 关联已成功的平台消息，错误仍返回，任务不会因此整体成功。缓存失败只记录日志，不重发平台消息；通知发送失败不再触发通知。
-- Cron／Elnis 的报告关联使用 `Receipt.SentMessages` 提供的实际平台、ScopeID 和消息 ID；不根据触发来源或目标类型自行拼 Scope，缺少完整来源的回执不建立关联。任务指定目标与触发消息的 Info 分别保留各自语义。
+- Agent 的 assistant 消息及 Cron／Elnis 的报告关联使用 `Receipt.SentMessages` 提供的实际平台、ScopeID 和消息 ID；不根据触发来源或目标类型自行拼 Scope，缺少完整来源的回执不建立关联。任务指定目标与触发消息的 Info 分别保留各自语义。
 - QQ OneBot 把 record 输出转换为原生语音段；暂不支持 record 的平台使用统一文字 fallback。
 - 流式输出、notice、reasoning、runtime status 由 Agent turn 输出适配层区分前后台发送。
 
@@ -295,7 +296,8 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 输出侧：
 
 - 实现统一 `SendChat` / `SendNotice`。
-- receipt 同时返回平台消息 ID 和结构化 `SentMessages`（platform/scope/message ID/output indexes），部分成功保留成功项，文本降级不关联媒体。
+- QQ OneBot、QQ Official 和 Telegram 的成功发送同时返回平台消息 ID 和结构化 `SentMessages`（platform/scope/message ID/output indexes），覆盖文本、回复、分页及 Telegram 流式完成。部分失败保留成功项及实际目标来源；output indexes 只关联实际发送的媒体，文本降级仍有消息回执但不关联媒体。CLI 保持空回执。
+- Telegram 流式分页失败返回已发送页面的回执和错误，不因后续页失败而重新发送整段文本。
 - 平台发送保持同步回执语义；不得把需要平台消息 ID 或错误的调用改成只入队即成功。
 - 支持平台能力差异下的 fallback。
 
@@ -325,6 +327,8 @@ Session 服务唯一管理 current 绑定及其同步失效。绑定只公开 `S
 短准入按 Scope → 排序后的 SessionID → 状态锁取得。Scope 保护 current 解析与切换，SessionID 协调 Turn 启动、停止、交接、删除和清理；LLM、工具、Hook、发送和信号回调均在锁外。Session 通过注入的只读执行状态判断忙闲，当前非 idle 时禁止切离，显式删除拒绝执行中的 Session，维护清理跳过忙碌项并在条件删除时复核归档、置顶和时间。不同 Scope 不共用全局准入锁。
 
 后台 Session 只向所属用户的同平台私聊及 CLI 管理入口开放，群聊、频道和未知类型不可列出或直接恢复。首次恢复在原子更新中将归属永久改为前台 Scope、模式改为 `work`，记录 `foreground_origin` 并清除活动后台身份；保留历史、缓存和 workspace，切走或重启不会恢复后台身份。运行中的目标可被空闲前台接管，原 Execution 同步取得前台身份、绑定和输出目标；已发出的请求与工具不重启，后续请求使用 work 模型及前台工具、确认规则。
+
+最后一轮 LLM 返回后，最终输出和 Turn 完成 Hook 前再次刷新 Execution 来源与输出策略；等待响应期间发生的前台接管同样使用前台 Scope／Actor，并保留原执行的取消链。
 
 接管后的原后台任务等待该逻辑执行的最终完成、取消或失败。Cron／Elnis 保存实际 RunID、消息和结果并标记接管，不将其直接算作任务成功；停止 JSON 修正、自动汇报与未开始的补投递。再次使用已接管 SessionID 不会重新设置后台身份，独立定时触发仍创建新后台 Session。
 

@@ -94,9 +94,9 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 			_, _ = s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.ChatID, MessageID: s.message, Text: "回复已生成："})
 		}
 		receipt, err := s.adapter.sendRichText(ctx, s.target, text, 0, false)
-		if err == nil {
+		if err == nil || len(receipt.PlatformMessageIDs) > 0 {
 			s.finished = true
-			return receipt, nil
+			return telegramReceipt(receipt, s.target), err
 		}
 		s.adapter.logWarn("telegram rich stream final failed, fallback to sendMessage", "error", err)
 	}
@@ -119,14 +119,15 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 		pageText, pageParseMode := s.adapter.streamPreviewPayload(page)
 		sent, err := s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: s.target.ChatID, Text: pageText, ParseMode: pageParseMode})
 		if err != nil {
-			return delivery.Receipt{}, err
+			s.finished = true
+			return telegramReceipt(receipt, s.target), err
 		}
 		if sent.MessageID != 0 {
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, formatMessageID(sent.MessageID))
 		}
 	}
 	s.finished = true
-	return receipt, nil
+	return telegramReceipt(receipt, s.target), nil
 }
 
 func (s *messageStream) Finish(ctx context.Context) (delivery.Receipt, error) {
@@ -136,7 +137,7 @@ func (s *messageStream) Finish(ctx context.Context) (delivery.Receipt, error) {
 	if s.message == 0 {
 		return delivery.Receipt{}, nil
 	}
-	return delivery.Receipt{PlatformMessageIDs: []string{formatMessageID(s.message)}}, nil
+	return telegramReceipt(delivery.Receipt{PlatformMessageIDs: []string{formatMessageID(s.message)}}, s.target), nil
 }
 
 func (a *Adapter) streamPreviewPayload(text string) (string, string) {

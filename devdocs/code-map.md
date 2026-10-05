@@ -259,7 +259,7 @@ rg -n "Event|Handler|Control|plugins/hooks.toml|exec|hook.v2|runtime|SharedState
 - `internal/notification/rules/`：平台连接 Hook 输出、Hook 失败、模型重试／降级和执行错误文案。
 - `internal/app/services.go`、`integrations.go`、`signals.go`：共享发送／通知服务装配、外部宿主接入和平台连接执行器。
 - `internal/agent/turn_output.go`：Agent turn 输出适配。
-- `internal/agent/output.go`：Agent 的输出 Hook 编排和 Session 平台消息关联。
+- `internal/agent/output.go`：Agent 的输出 Hook 编排；按结构化回执中的实际平台、Scope 和消息 ID 建立 Session 消息关联。
 - `internal/platform/platform.go`：平台发送抽象。
 
 常用搜索：
