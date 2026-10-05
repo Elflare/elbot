@@ -26,7 +26,6 @@ func TestGoHookMediaAPIAndCanonicalMessage(t *testing.T) {
 	store := newTestStore(t)
 	p := &fakePlatform{}
 	root := t.TempDir()
-	a := newTestMediaAgent(t, p, &fakeLLM{replies: []string{"done"}}, store, media.NewManager(store, root, &media.LocalBackend{Root: root}))
 	hooks := hook.NewManager()
 	var id string
 	if err := hooks.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "media", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
@@ -34,7 +33,7 @@ func TestGoHookMediaAPIAndCanonicalMessage(t *testing.T) {
 			t.Fatal("missing host API")
 		}
 		raw, err := json.Marshal(event)
-		if err != nil || strings.Contains(string(raw), a.media.Root) {
+		if err != nil || strings.Contains(string(raw), root) {
 			t.Fatalf("host API leaked: %s %v", raw, err)
 		}
 		metadata, err := event.Media.ImportBytes(ctx, []byte{0, 255, 128, 1}, media.Input{Name: "hook.png", MIMEType: "image/png"})
@@ -47,7 +46,9 @@ func TestGoHookMediaAPIAndCanonicalMessage(t *testing.T) {
 	})}); err != nil {
 		t.Fatal(err)
 	}
-	a.setTestHookManager(hooks)
+	a := newTestMediaAgent(t, p, &fakeLLM{replies: []string{"done"}}, store, media.NewManager(store, root, &media.LocalBackend{Root: root}), func(cfg *testAgentOptions) {
+		cfg.HookManager = hooks
+	})
 	if err := a.HandleMessage(ctx, "hello"); err != nil {
 		t.Fatal(err)
 	}
@@ -204,9 +205,9 @@ func TestHookMediaOutputDoesNotCreateSessionAndCleansExport(t *testing.T) {
 	store := newTestStore(t)
 	p := &fakePlatform{}
 	root := t.TempDir()
-	a := newTestMediaAgent(t, p, &fakeLLM{}, store, media.NewManager(store, root, &media.LocalBackend{Root: root}))
+	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
 	data := []byte{0, 255, 128, 1}
-	metadata, err := a.media.ImportBytes(ctx, data, media.Input{Name: "hook.png", MIMEType: "image/png"})
+	metadata, err := center.ImportBytes(ctx, data, media.Input{Name: "hook.png", MIMEType: "image/png"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +220,9 @@ func TestHookMediaOutputDoesNotCreateSessionAndCleansExport(t *testing.T) {
 	})}); err != nil {
 		t.Fatal(err)
 	}
-	a.setTestHookManager(hooks)
+	a := newTestMediaAgent(t, p, &fakeLLM{}, store, center, func(cfg *testAgentOptions) {
+		cfg.HookManager = hooks
+	})
 	sender := &hookMediaSender{t: t, data: data}
 	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Sender: sender})
 	if err := a.HandleMessage(ctx, "send"); err != nil {
@@ -234,7 +237,7 @@ func TestHookMediaOutputDoesNotCreateSessionAndCleansExport(t *testing.T) {
 	if output.Source.MediaID != metadata.ID || output.Source.Path != "" {
 		t.Fatal("mutated original output")
 	}
-	if _, err := a.sessions.Current(ctx, a.identity.Scope(ctx)); err == nil {
+	if _, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx)); err == nil {
 		t.Fatal("output created a session")
 	}
 }

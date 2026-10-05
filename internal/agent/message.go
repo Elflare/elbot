@@ -3,56 +3,75 @@ package agent
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"reflect"
 	"strings"
 
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/security"
+	"elbot/internal/storage"
 )
 
+type messageHandler struct {
+	identity  *identityResolver
+	hooks     *hookBridge
+	output    *outputSender
+	commands  *commandExecutor
+	input     *inputCoordinator
+	media     *media.Manager
+	messages  storage.MessageRepository
+	mediaRows storage.MediaRepository
+	logger    *slog.Logger
+}
+
+func (a *Agent) HandleMessage(ctx context.Context, text string) error {
+	return a.message.HandleMessage(ctx, text)
+}
+
 // HandleMessage dispatches commands and chat messages.
-func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
-	actor := a.identity.Actor(ctx)
-	ctx = security.WithPolicy(security.WithActor(ctx, actor), a.identity.policy)
+func (h *messageHandler) HandleMessage(ctx context.Context, text string) (err error) {
+	actor := h.identity.Actor(ctx)
+	ctx = security.WithPolicy(security.WithActor(ctx, actor), h.identity.policy)
 	segments := inboundSegments(ctx, text)
 	defer func() {
 		if err != nil {
-			a.hooks.notifyError(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}}, err)
+			h.hooks.notifyError(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}}, err)
 			if shouldNotifyUserError(err) {
-				a.output.SendChat(ctx, notificationrules.ExecutionFailure(err))
+				h.output.SendChat(ctx, notificationrules.ExecutionFailure(err))
 			}
 		}
 	}()
-	woken := a.messageWakeup(ctx, llm.SegmentsTextOnly(segments))
+	woken := h.messageWakeup(ctx, llm.SegmentsTextOnly(segments))
 	ctx = withMessageWakeup(ctx, woken)
 	if strings.TrimSpace(llm.SegmentsTextOnly(segments)) == "/cancel" {
-		cancelEvent := a.hooks.fillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
-		if a.hooks.CancelRoute(cancelEvent) {
-			a.output.SendChat(ctx, "已取消当前 Hook 会话。")
+		cancelEvent := h.hooks.fillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
+		if h.hooks.CancelRoute(cancelEvent) {
+			h.output.SendChat(ctx, "已取消当前 Hook 会话。")
 			return nil
 		}
 	}
-	event := a.hooks.fillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
-	waiting := a.hooks.router != nil && a.hooks.router.RouteHookID(event) != ""
+	event := h.hooks.fillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
+	waiting := h.hooks.router != nil && h.hooks.router.RouteHookID(event) != ""
 	if woken || waiting {
-		ctx = a.materializePlatformMedia(ctx)
+		ctx = h.materializePlatformMedia(ctx)
 		segments = inboundSegments(ctx, text)
-		event = a.hooks.fillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
+		event = h.hooks.fillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
 	}
-	event, routed, routeErr := a.hooks.Route(ctx, event)
+	event, routed, routeErr := h.hooks.Route(ctx, event)
 	if routeErr != nil {
 		return routeErr
 	}
 	if !routed || !event.Control.StopPropagation {
-		event, err = a.hooks.Run(ctx, event)
+		event, err = h.hooks.Run(ctx, event)
 		if err != nil {
 			return err
 		}
 	}
 	if len(event.Outputs) > 0 {
-		if err := a.output.SendOutputs(ctx, event.Outputs); err != nil {
+		if err := h.output.SendOutputs(ctx, event.Outputs); err != nil {
 			return err
 		}
 	}
@@ -67,8 +86,8 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 	}
 	ctx = withInboundSegments(ctx, segments)
 	text = llm.SegmentsTextOnly(segments)
-	if strings.TrimSpace(text) == "/cancel" && a.hooks.CancelRoute(event) {
-		a.output.SendChat(ctx, "已取消当前 Hook 会话。")
+	if strings.TrimSpace(text) == "/cancel" && h.hooks.CancelRoute(event) {
+		h.output.SendChat(ctx, "已取消当前 Hook 会话。")
 		return nil
 	}
 	if !woken {
@@ -78,14 +97,14 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 	segments = replaceInboundTextSegments(ctx, text)
 	ctx = withInboundSegments(ctx, segments)
 	if !hasForkFromMessage(ctx) {
-		if err := a.expireIdleCurrentSession(ctx); err != nil {
+		if err := h.input.expireIdleCurrentSession(ctx); err != nil {
 			return err
 		}
 	}
-	if handled, err := a.commandExecutor.Handle(ctx, text); handled {
+	if handled, err := h.commands.Handle(ctx, text); handled {
 		return err
 	}
-	return a.handleInput(ctx, text)
+	return h.input.handleInput(ctx, text)
 }
 
 func shouldNotifyUserError(err error) bool {

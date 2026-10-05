@@ -88,8 +88,10 @@ func TestRunHookErrorSendsFailureNotice(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("register hook: %v", err)
 	}
-	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.setTestHookManager(manager)
+
+	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.HookManager = manager
+	})
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli",
 		ScopeID: "private:test"}}, Sender: p,
 	})
@@ -109,9 +111,9 @@ func TestRunHookErrorSendsFailureNotice(t *testing.T) {
 func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
 	manager := hook.NewManager()
 	requests := request.NewManager(time.Minute)
-	a := &Agent{requests: requests, hooks: &hookBridge{requests: requests}}
-	a.setTestHookManager(manager)
-	parent, parentCtx, parentDone, err := a.requests.Start(context.Background(), request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
+	bridge := &hookBridge{requests: requests}
+	manager.SetObserver(bridge.ObserveRun)
+	parent, parentCtx, parentDone, err := requests.Start(context.Background(), request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	if err != nil {
 		t.Fatalf("start turn: %v", err)
 	}
@@ -124,7 +126,7 @@ func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
 		Match: hook.Always(),
 		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 			var hookReq request.Request
-			for _, req := range a.requests.List() {
+			for _, req := range requests.List() {
 				if req.Kind == request.KindHook {
 					hookReq = req
 					break
@@ -145,7 +147,7 @@ func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
 	if _, err := manager.Run(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Session: hook.SessionContext{ID: "s1"}}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	for _, req := range a.requests.List() {
+	for _, req := range requests.List() {
 		if req.Kind == request.KindHook {
 			t.Fatalf("hook request leaked after handler finished: %#v", req)
 		}
@@ -155,8 +157,8 @@ func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
 func TestStopCanCancelTrackedHookRequest(t *testing.T) {
 	manager := hook.NewManager()
 	requests := request.NewManager(time.Minute)
-	a := &Agent{requests: requests, hooks: &hookBridge{requests: requests}}
-	a.setTestHookManager(manager)
+	bridge := &hookBridge{requests: requests}
+	manager.SetObserver(bridge.ObserveRun)
 	entered := make(chan struct{})
 	if err := manager.Register(hook.Registration{
 		Point: hook.PointAgentInputPrepared,
@@ -182,7 +184,7 @@ func TestStopCanCancelTrackedHookRequest(t *testing.T) {
 		t.Fatal("hook handler did not start")
 	}
 	var hookReq request.Request
-	for _, req := range a.requests.List() {
+	for _, req := range requests.List() {
 		if req.Kind == request.KindHook {
 			hookReq = req
 			break
@@ -191,7 +193,7 @@ func TestStopCanCancelTrackedHookRequest(t *testing.T) {
 	if hookReq.ID == "" {
 		t.Fatal("hook request not found")
 	}
-	if !a.requests.Cancel(hookReq.ID) {
+	if !requests.Cancel(hookReq.ID) {
 		t.Fatal("Cancel returned false for hook request")
 	}
 	select {

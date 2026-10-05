@@ -24,6 +24,10 @@ func messageWakeupFromContext(ctx context.Context) (bool, bool) {
 
 // HookWakeup exposes the message wakeup decision for app's Hook wiring.
 func (a *Agent) HookWakeup(ctx context.Context, event hook.Event) bool {
+	return a.message.HookWakeup(ctx, event)
+}
+
+func (h *messageHandler) HookWakeup(ctx context.Context, event hook.Event) bool {
 	if woken, ok := messageWakeupFromContext(ctx); ok {
 		return woken
 	}
@@ -31,10 +35,10 @@ func (a *Agent) HookWakeup(ctx context.Context, event hook.Event) bool {
 	if text == "" {
 		text = inboundRawText(ctx)
 	}
-	return a.messageWakeup(ctx, text)
+	return h.messageWakeup(ctx, text)
 }
 
-func (a *Agent) messageWakeup(ctx context.Context, text string) bool {
+func (h *messageHandler) messageWakeup(ctx context.Context, text string) bool {
 	msg, ok := platform.MessageContextFrom(ctx)
 	if !ok {
 		return true
@@ -42,7 +46,7 @@ func (a *Agent) messageWakeup(ctx context.Context, text string) bool {
 	if msg.Info.Source.ConversationKind == "" || msg.Info.Source.ConversationKind == chatinfo.ConversationUnknown || msg.Info.Source.ConversationKind == chatinfo.ConversationPrivate {
 		return true
 	}
-	if a.commands != nil && a.commands.IsCommand(text) {
+	if h.commands.router != nil && h.commands.router.IsCommand(text) {
 		return true
 	}
 	if _, ok := platform.StripTriggerKeyword(text, msg.TriggerKeywords); ok {
@@ -51,7 +55,7 @@ func (a *Agent) messageWakeup(ctx context.Context, text string) bool {
 	if mentionsBot(msg) {
 		return true
 	}
-	return a.isReplyToBot(ctx, msg)
+	return h.isReplyToBot(ctx, msg)
 }
 
 func stripWakeupPrefix(ctx context.Context, text string) string {
@@ -117,20 +121,20 @@ func stripBotMention(text string, msg platform.MessageContext) string {
 	return strings.TrimSpace(strings.Join(kept, " "))
 }
 
-func (a *Agent) isReplyToBot(ctx context.Context, msg platform.MessageContext) bool {
+func (h *messageHandler) isReplyToBot(ctx context.Context, msg platform.MessageContext) bool {
 	if strings.TrimSpace(msg.ReplyToSenderID) != "" && strings.TrimSpace(msg.ReplyToSenderID) == strings.TrimSpace(msg.Bot.UserID) {
 		return true
 	}
 	replyID := strings.TrimSpace(msg.ReplyToMessageID)
-	if replyID == "" || a.store == nil || a.store.Messages() == nil {
+	if replyID == "" || h.messages == nil {
 		return false
 	}
-	mapped, err := a.store.Messages().FindByPlatformMessage(ctx, msg.Info.Source.Platform, msg.Info.Source.ScopeID, replyID)
+	mapped, err := h.messages.FindByPlatformMessage(ctx, msg.Info.Source.Platform, msg.Info.Source.ScopeID, replyID)
 	if err == nil && mapped.Role == storage.RoleAssistant {
 		return true
 	}
-	if a.store.Media() != nil {
-		outputs, err := a.store.Media().FindOutputs(ctx, msg.Info.Source.Platform, msg.Info.Source.ScopeID, replyID, storage.Now())
+	if h.mediaRows != nil {
+		outputs, err := h.mediaRows.FindOutputs(ctx, msg.Info.Source.Platform, msg.Info.Source.ScopeID, replyID, storage.Now())
 		return err == nil && len(outputs) > 0
 	}
 	return false

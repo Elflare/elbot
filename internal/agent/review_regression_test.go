@@ -20,24 +20,26 @@ import (
 func TestReviewCompactRejectsDirectiveBeforeStateMutation(t *testing.T) {
 	ctx := context.Background()
 	p := &fakePlatform{}
-	a := newTestAgent(t, p, &fakeLLM{}, "m", config.ProviderConfig{}, newTestStore(t))
+
 	registry := tool.NewRegistry()
 	if err := registry.Register(builtin.NewWebSearchTool()); err != nil {
 		t.Fatal(err)
 	}
-	a.SetToolRuntime(registry, nil)
-	row, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "test"})
+	a := newTestAgent(t, p, &fakeLLM{}, "m", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.ToolRegistry = registry
+	})
+	row, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !a.turns.StartCompactRun(row.ID, "compact") {
+	if !a.execution.turns.StartCompactRun(row.ID, "compact") {
 		t.Fatal("cannot start compact")
 	}
-	defer a.turns.CompleteCompactRun(row.ID, "compact")
+	defer a.execution.turns.CompleteCompactRun(row.ID, "compact")
 	if err := a.HandleMessage(ctx, "@tool:web_search"); err != nil {
 		t.Fatal(err)
 	}
-	state, err := a.toolState.Snapshot(ctx, row.ID)
+	state, err := a.execution.chat.toolState.Snapshot(ctx, row.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,19 +50,21 @@ func TestReviewCompactRejectsDirectiveBeforeStateMutation(t *testing.T) {
 
 func TestStopCompletionUsesResolvedActorAndCurrentSession(t *testing.T) {
 	ctx := context.Background()
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "m", config.ProviderConfig{}, newTestStore(t))
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "m", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+	})
 	user := platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "user"}, Identity: chatinfo.Identity{PlatformUserID: "user"}}})
-	row, err := a.sessions.Create(user, a.identity.Scope(user), session.CreateRequest{})
+	row, err := a.execution.sessions.Create(user, a.identity.Scope(user), session.CreateRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreign, _, done, err := a.requests.Start(ctx, request.StartRequest{SessionID: "foreign", Kind: request.KindTurn})
+	foreign, _, done, err := a.execution.requests.Start(ctx, request.StartRequest{SessionID: "foreign", Kind: request.KindTurn})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer done()
-	current, _, done, err := a.requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn})
+	current, _, done, err := a.execution.requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +93,7 @@ func testReadonlyHookSelection(t *testing.T, point hook.Point) {
 	opts := validConstructorOptions(t)
 	opts.Models = models
 	opts.SessionConfig.NamingConfig.TriggerStep = 100
-	a := mustNewWithOptions(t, opts)
+
 	h := hook.NewManager()
 	if err := h.Register(hook.Registration{Point: point, Name: "review", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, e hook.Event) (hook.Event, error) {
 		e.LLM.Provider = "next"
@@ -99,7 +103,9 @@ func testReadonlyHookSelection(t *testing.T, point hook.Point) {
 	})}); err != nil {
 		t.Fatal(err)
 	}
-	a.setTestHookManager(h)
+	a := mustNewWithOptions(t, opts, func(cfg *testAgentOptions) {
+		cfg.HookManager = h
+	})
 	if err := a.HandleMessage(context.Background(), "hi"); err != nil {
 		t.Fatal(err)
 	}
@@ -115,13 +121,15 @@ func testReadonlyHookSelection(t *testing.T, point hook.Point) {
 func TestReviewStopCannotCancelOtherUsersRequest(t *testing.T) {
 	ctx := context.Background()
 	p := &fakePlatform{}
-	a := newTestAgent(t, p, &fakeLLM{}, "m", config.ProviderConfig{}, newTestStore(t))
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
-	victim, err := a.sessions.Create(ctx, session.Scope{ActorID: "cli:victim", Platform: "cli", PlatformScopeID: "victim"}, session.CreateRequest{Title: "victim"})
+
+	a := newTestAgent(t, p, &fakeLLM{}, "m", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+	})
+	victim, err := a.execution.sessions.Create(ctx, session.Scope{ActorID: "cli:victim", Platform: "cli", PlatformScopeID: "victim"}, session.CreateRequest{Title: "victim"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, victimCtx, done, err := a.requests.Start(ctx, request.StartRequest{SessionID: victim.ID, Kind: request.KindTurn, Label: "victim"})
+	_, victimCtx, done, err := a.execution.requests.Start(ctx, request.StartRequest{SessionID: victim.ID, Kind: request.KindTurn, Label: "victim"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,14 +146,9 @@ func TestReviewStopCannotCancelOtherUsersRequest(t *testing.T) {
 func TestReviewOldInputCannotCommitToolsAfterBindingSwitch(t *testing.T) {
 	ctx := context.Background()
 	p := &fakePlatform{}
-	a := newTestAgent(t, p, &fakeLLM{}, "m", config.ProviderConfig{}, newTestStore(t))
+
 	registry := tool.NewRegistry()
 	if err := registry.Register(builtin.NewWebSearchTool()); err != nil {
-		t.Fatal(err)
-	}
-	a.SetToolRuntime(registry, nil)
-	row, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "old"})
-	if err != nil {
 		t.Fatal(err)
 	}
 	started, release, unblock := modelBarrier(t)
@@ -153,7 +156,14 @@ func TestReviewOldInputCannotCommitToolsAfterBindingSwitch(t *testing.T) {
 	if err := h.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "review.block", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, e hook.Event) (hook.Event, error) { close(started); <-release; return e, nil })}); err != nil {
 		t.Fatal(err)
 	}
-	a.setTestHookManager(h)
+	a := newTestAgent(t, p, &fakeLLM{}, "m", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.ToolRegistry = registry
+		cfg.HookManager = h
+	})
+	row, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "old"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	done := make(chan error, 1)
 	go func() { done <- a.HandleMessage(ctx, "@tool:web_search") }()
 	awaitModelBarrier(t, started)
@@ -164,7 +174,7 @@ func TestReviewOldInputCannotCommitToolsAfterBindingSwitch(t *testing.T) {
 	if err := <-done; err == nil {
 		t.Fatal("stale input was accepted")
 	}
-	state, err := a.toolState.Snapshot(ctx, row.ID)
+	state, err := a.execution.chat.toolState.Snapshot(ctx, row.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

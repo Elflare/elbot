@@ -19,12 +19,9 @@ import (
 	runtimestatus "elbot/internal/runtime"
 )
 
-type fakeCompletingHandler struct {
-	candidates []string
-}
+type fakeCompletingHandler struct{}
 
 func (h fakeCompletingHandler) HandleMessage(context.Context, string) error { return nil }
-func (h fakeCompletingHandler) Complete(string) []string                    { return h.candidates }
 
 type capturingHandler struct {
 	messages chan string
@@ -119,7 +116,7 @@ func TestTUIStatusCopyHintMatchesNoticePanel(t *testing.T) {
 }
 
 func TestCompleteInputCyclesCandidates(t *testing.T) {
-	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, input: newTUIInput(), width: 80, height: 20}
+	m := tuiModel{completion: completion.NewService(staticCompletionSource{{Text: "/chat"}, {Text: "/checkmodel"}}), input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/c")
 
 	updated, _ := m.completeInput(1)
@@ -148,7 +145,7 @@ func TestCompleteInputCyclesCandidates(t *testing.T) {
 }
 
 func TestCompletionSelectionUsesArrowKeysWhenPopupVisible(t *testing.T) {
-	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, input: newTUIInput(), width: 80, height: 20}
+	m := tuiModel{completion: completion.NewService(staticCompletionSource{{Text: "/chat"}, {Text: "/checkmodel"}}), input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/c")
 	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
@@ -166,9 +163,9 @@ func TestCompletionSelectionUsesArrowKeysWhenPopupVisible(t *testing.T) {
 	}
 }
 
-func TestCompletionServicePreferredOverLegacyHandler(t *testing.T) {
+func TestCompletionServiceWorksWithoutHandler(t *testing.T) {
 	service := completion.NewService(staticCompletionSource{{Text: "/service"}, {Text: "/service2"}})
-	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/legacy"}}, completion: service, input: newTUIInput(), width: 80, height: 20}
+	m := tuiModel{completion: service, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/s")
 	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
@@ -178,7 +175,7 @@ func TestCompletionServicePreferredOverLegacyHandler(t *testing.T) {
 }
 
 func TestCompletionShiftTabSelectsPreviousCandidate(t *testing.T) {
-	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, input: newTUIInput(), width: 80, height: 20}
+	m := tuiModel{completion: completion.NewService(staticCompletionSource{{Text: "/chat"}, {Text: "/checkmodel"}}), input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/c")
 	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
@@ -339,7 +336,7 @@ func TestExpandReferencesExpandsExistingAndPreservesMissing(t *testing.T) {
 }
 
 func TestCancelKeyClearsCompletionOrInputBeforeQuit(t *testing.T) {
-	m := tuiModel{handler: fakeCompletingHandler{candidates: []string{"/chat", "/checkmodel"}}, input: newTUIInput(), width: 80, height: 20}
+	m := tuiModel{completion: completion.NewService(staticCompletionSource{{Text: "/chat"}, {Text: "/checkmodel"}}), input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/c")
 	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)

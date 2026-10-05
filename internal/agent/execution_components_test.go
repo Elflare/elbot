@@ -51,8 +51,7 @@ func newExecutionFixture(t *testing.T, client llm.LLM, store storage.Store) *exe
 		identity: identity, output: output, policy: policy,
 		autoConfirmSession: map[string]bool{}, autoConfirmTools: map[string]map[string]bool{},
 	}
-	runtime := newToolRuntimeState()
-	runtime.manager, runtime.preloader = opts.ToolRunner, opts.ToolPreloader
+	runtime := toolRuntimeState{provider: noopToolSchemaProvider{}, defaultProvider: true, config: opts.ToolsConfig, manager: opts.ToolRunner}
 	deps := &toolRunDeps{hooks: bridge, requests: opts.Requests, turns: opts.Turns, identity: identity,
 		state: opts.ToolState, runtime: &runtime, sessions: opts.Sessions, store: store, confirmations: confirmations, view: view}
 	caller := &modelCaller{messages: store.Messages(), hooks: bridge, identity: identity, toolState: opts.ToolState, toolRuntime: &runtime}

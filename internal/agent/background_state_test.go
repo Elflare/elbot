@@ -26,12 +26,14 @@ func TestBackgroundStateFreezesInitialTools(t *testing.T) {
 			ctx := context.Background()
 			store := newTestStore(t)
 			f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: "first"}}, {{DeltaContent: "second"}}}}
-			a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, store)
-			a.SetSandboxRoot(t.TempDir())
+
 			registry := tool.NewRegistry()
 			_ = registry.Register(agentWrapperTool{name: "native_old"})
 			_ = registry.Register(agentDetailTool{name: "doc", source: tool.SourceSkillAgent, detail: "SHOULD_NOT_BE_PRELOADED"})
-			a.SetToolRuntime(registry, nil)
+			a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+				cfg.SandboxRoot = t.TempDir()
+				cfg.ToolRegistry = registry
+			})
 			req := background.RunRequest{Kind: background.KindElnis, Name: "freeze", Platform: "cli",
 				Actor: security.Actor{ID: "cli:local", Role: security.RoleSuperadmin}, Prompt: "run"}
 			if !empty {
@@ -41,7 +43,7 @@ func TestBackgroundStateFreezesInitialTools(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			before, err := a.toolState.Snapshot(ctx, first.SessionID)
+			before, err := a.execution.chat.toolState.Snapshot(ctx, first.SessionID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -53,7 +55,7 @@ func TestBackgroundStateFreezesInitialTools(t *testing.T) {
 			if _, err := a.RunBackground(ctx, req); err != nil {
 				t.Fatal(err)
 			}
-			after, err := a.toolState.Snapshot(ctx, first.SessionID)
+			after, err := a.execution.chat.toolState.Snapshot(ctx, first.SessionID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -84,8 +86,10 @@ func TestBackgroundStateFailureDoesNotPrewriteCache(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	f := &fakeLLM{}
-	a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, store)
-	a.SetSandboxRoot(t.TempDir())
+
+	a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SandboxRoot = t.TempDir()
+	})
 	failure := errors.New("background tool state commit rejected")
 	repo := &toolStateFaultRepo{SessionRepository: store.Sessions(), failure: failure}
 	setTestToolState(a, toolrun.NewStateService(toolStateFaultStore{Store: store, repo: repo}))

@@ -54,7 +54,7 @@ func TestMediaCanonicalPersistenceAndSessionRestore(t *testing.T) {
 	resumed := &fakeLLM{replies: []string{"restored"}}
 	b := newTestMediaAgent(t, p, resumed, store, media.NewManager(store, root, &media.LocalBackend{Root: root}))
 	resumeCtx := platform.WithMessageContext(ctx, platform.MessageContext{Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "继续"}}})
-	if _, err := b.sessions.Resume(resumeCtx, b.identity.Scope(resumeCtx), record.ID); err != nil {
+	if _, err := b.execution.sessions.Resume(resumeCtx, b.identity.Scope(resumeCtx), record.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := b.HandleMessage(resumeCtx, "继续"); err != nil {
@@ -79,12 +79,12 @@ func TestToolResultMediaPersistsID(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "prepared_args", Args: `{"q":"test"}`}}, FinishReason: "tool_calls"}}, {{DeltaContent: "done"}}}}
 	root := t.TempDir()
-	a := newTestMediaAgent(t, p, f, store, media.NewManager(store, root, &media.LocalBackend{Root: root}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	var arguments string
 	_ = registry.Register(preparedArgumentTool{arguments: &arguments})
-	a.SetToolRuntime(registry, nil)
+
 	hooks := hook.NewManager()
 	err := hooks.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "test.media", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 		event.Message.Segments = append(event.Message.Segments, llm.MessageSegment{Type: llm.SegmentImage, URL: "data:image/png;base64,AP+AAQ==", Name: "result.png"})
@@ -93,7 +93,10 @@ func TestToolResultMediaPersistsID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.setTestHookManager(hooks)
+	a := newTestMediaAgent(t, p, f, store, media.NewManager(store, root, &media.LocalBackend{Root: root}), func(cfg *testAgentOptions) {
+		cfg.ToolRegistry = registry
+		cfg.HookManager = hooks
+	})
 	if err := a.HandleMessage(ctx, "run"); err != nil {
 		t.Fatal(err)
 	}

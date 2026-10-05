@@ -44,9 +44,9 @@ func TestCompactSaveFailureReleasesExecutionAndKeepsSource(t *testing.T) {
 			var source *storage.Session
 			var err error
 			if backgroundRun {
-				source, err = a.sessions.PrepareBackground(ctx, session.Scope{ActorID: "cli:local", Platform: "cli", PlatformScopeID: "cron:save"}, session.BackgroundRequest{Kind: "cron", Name: "save"})
+				source, err = a.execution.sessions.PrepareBackground(ctx, session.Scope{ActorID: "cli:local", Platform: "cli", PlatformScopeID: "cron:save"}, session.BackgroundRequest{Kind: "cron", Name: "save"})
 			} else {
-				source, err = a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "source"})
+				source, err = a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "source"})
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -56,7 +56,7 @@ func TestCompactSaveFailureReleasesExecutionAndKeepsSource(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			a.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
+			a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 			a.execution.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
 			failure := errors.New("compact save rejected")
 			repo.failure = failure
@@ -68,10 +68,10 @@ func TestCompactSaveFailureReleasesExecutionAndKeepsSource(t *testing.T) {
 			if !errors.Is(err, failure) {
 				t.Fatalf("compact error=%v", err)
 			}
-			if len(a.requests.List()) != 0 || a.turns.Snapshot(source.ID).Phase != turn.PhaseIdle {
+			if len(a.execution.requests.List()) != 0 || a.execution.turns.Snapshot(source.ID).Phase != turn.PhaseIdle {
 				t.Fatal("failed compact retained execution")
 			}
-			current, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
+			current, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx))
 			if backgroundRun {
 				if !errors.Is(err, storage.ErrNotFound) {
 					t.Fatalf("failed background compact activated current: %+v %v", current, err)

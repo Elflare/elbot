@@ -19,12 +19,14 @@ func TestLocalCLITakeoverDeliversFinalOutput(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "slow-call", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "foreground final"}},
 	}}
-	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.output.dispatcher.RegisterPlatformSender("qq", p)
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(slowTool{started: started, release: release})
 	_ = registry.Register(tool.NewDiscoverTool(registry))
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.ToolRegistry = registry
+	})
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	done := startTakeoverTest(a)
 	select {
 	case <-started:

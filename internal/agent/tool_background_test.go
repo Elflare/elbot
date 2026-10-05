@@ -22,12 +22,14 @@ func TestRunBackgroundPreloadsShellWithContextActorAndAutoConfirmsSandboxShell(t
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo 'ok' > ./elnis_shell_tool_test.txt"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: `{"completed":true,"need_report":true,"report":"done"}`}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.SetToolConfig(config.ToolsConfig{MaxRoundsPerTurn: 2})
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.ToolsConfig = config.ToolsConfig{MaxRoundsPerTurn: 2}
+		cfg.ToolRegistry = registry
+	})
 
 	_, err := a.RunBackground(context.Background(), background.RunRequest{
 		Kind:          background.KindElnis,
@@ -78,13 +80,15 @@ func TestRunBackgroundPreloadsSkillDetailAndActivatedHiddenWrapper(t *testing.T)
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
 	platform := &fakePlatform{}
-	a := newTestAgent(t, platform, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(agentDetailTool{name: "docx", source: tool.SourceSkillAgent, detail: "# DOCX\n\nUse scripts/convert.py", activate: []string{"python_skill_run"}})
 	_ = registry.Register(agentWrapperTool{name: "python_skill_run", hidden: true})
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, platform, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 
 	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "skill-test", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"docx"}})
 	if err != nil {
@@ -120,12 +124,14 @@ func TestRunBackgroundUsesBackgroundModeWhenDefaultModeIsChat(t *testing.T) {
 		storage.SessionModeWork: {Provider: "default", Model: "test-model"},
 		storage.SessionModeChat: {Provider: "default", Model: "test-model"},
 	}
-	a := mustNewWithOptions(t, testAgentOptions{Platform: platform, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"default": f}, ModeModels: modeModels, Providers: map[string]config.ProviderConfig{"default": {}}, DefaultMode: storage.SessionModeWork}), Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeChat}})
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(builtin.NewWebExtractTool())
-	a.SetToolRuntime(registry, nil)
+	a := mustNewWithOptions(t, testAgentOptions{Platform: platform, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"default": f}, ModeModels: modeModels, Providers: map[string]config.ProviderConfig{"default": {}}, DefaultMode: storage.SessionModeWork}), Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeChat}}, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 
 	result, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "chat-default", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"web_extract"}})
 	if err != nil {
@@ -202,12 +208,14 @@ func TestRunBackgroundRepairsReusedSessionModeAndMetadata(t *testing.T) {
 	}
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":false,"report":"ok"}`}}}}
 	platform := &fakePlatform{}
-	a := newTestAgent(t, platform, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(builtin.NewWebExtractTool())
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, platform, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 
 	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "old", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, ScopeID: "cron:old", SessionID: oldSession.ID, Prompt: "run", ToolListNames: []string{"web_extract"}, Metadata: map[string]string{"cron_job_name": "old"}})
 	if err != nil {
@@ -234,14 +242,16 @@ func TestRunBackgroundPreloadsMixedToolAndSkillWithoutSkillSchema(t *testing.T) 
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
 	platform := &fakePlatform{}
-	a := newTestAgent(t, platform, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(builtin.NewWebExtractTool())
 	_ = registry.Register(agentDetailTool{name: "docx", source: tool.SourceSkillAgent, detail: "# DOCX", activate: []string{"python_skill_run"}})
 	_ = registry.Register(agentWrapperTool{name: "python_skill_run", hidden: true})
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, platform, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 
 	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "mixed-test", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"web_extract", "docx"}})
 	if err != nil {
@@ -265,13 +275,15 @@ func TestRunBackgroundPreloadsToolListNamesWithoutDiscoverTool(t *testing.T) {
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
 	platform := &fakePlatform{}
-	a := newTestAgent(t, platform, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(builtin.NewWebSearchTool())
 	_ = registry.Register(builtin.NewWebExtractTool())
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, platform, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 
 	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "test", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"web_search", "web"}})
 	if err != nil {
@@ -303,12 +315,14 @@ func TestRunBackgroundToolPhaseDoesNotPublishRuntimeStatus(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call-1", Name: "discover_tool", Args: `{"name":"web_search"}`}}}},
 		{{DeltaContent: `{"completed":true,"need_report":false,"report":"ok"}`}},
 	}}
-	a := newTestAgent(t, platform, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(builtin.NewWebSearchTool())
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, platform, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 
 	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "tool-status", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run"})
 	if err != nil {
@@ -325,8 +339,7 @@ func TestRunBackgroundToolPhaseDoesNotPublishRuntimeStatus(t *testing.T) {
 func TestRunBackgroundReturnsRawAssistantTextForJSONParsing(t *testing.T) {
 	ctx := context.Background()
 	const raw = `{"completed":true,"need_report":true,"report":"ok"}`
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: raw}}}}, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.SetSandboxRoot(t.TempDir())
+
 	hooks := hook.NewManager()
 	if err := hooks.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "visible-text", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
 		event.LLM.Text = "可见文本"
@@ -334,7 +347,10 @@ func TestRunBackgroundReturnsRawAssistantTextForJSONParsing(t *testing.T) {
 	})}); err != nil {
 		t.Fatal(err)
 	}
-	a.setTestHookManager(hooks)
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: raw}}}}, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.SandboxRoot = t.TempDir()
+		cfg.HookManager = hooks
+	})
 	result, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "raw-result", Platform: "cli", Actor: security.Actor{ID: "cli:local", Role: security.RoleSuperadmin}, Prompt: "run"})
 	if err != nil {
 		t.Fatal(err)
@@ -342,7 +358,7 @@ func TestRunBackgroundReturnsRawAssistantTextForJSONParsing(t *testing.T) {
 	if result.Text != raw || result.MessageID == "" || result.RunID == "" {
 		t.Fatalf("result=%+v", result)
 	}
-	messages, err := a.store.Messages().ListBySession(ctx, result.SessionID)
+	messages, err := a.execution.chat.messages.ListBySession(ctx, result.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}

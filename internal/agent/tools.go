@@ -3,6 +3,7 @@ package agent
 import (
 	"elbot/internal/config"
 	"elbot/internal/fileops"
+	"elbot/internal/memory/resident"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 )
@@ -13,43 +14,22 @@ type toolRuntimeState struct {
 	registry        *tool.Registry
 	fileRollback    *fileops.Service
 	config          config.ToolsConfig
-	preloader       *toolrun.PreloadService
 	defaultProvider bool
 }
 
-func newToolRuntimeState() toolRuntimeState {
-	return toolRuntimeState{
-		provider:        noopToolSchemaProvider{},
-		defaultProvider: true,
-		config:          config.Default().Tools,
+func buildPrompt(soulPath string, memory *resident.Store, provider ToolSchemaProvider, preloader *toolrun.PreloadService) PromptBuilder {
+	soul := SoulProvider(staticSoulProvider{Prompt: "You are a helpful assistant."})
+	if soulPath != "" {
+		soul = &FileSoulProvider{Path: soulPath}
 	}
-}
-
-func (a *Agent) rebuildSystemPrompt() {
-	manager := NewSystemPromptManager(soulSystemPromptSource{Soul: a.soul})
-	if nameProvider, ok := a.toolRuntime.provider.(ToolNameProvider); ok {
+	manager := NewSystemPromptManager(soulSystemPromptSource{Soul: soul})
+	if nameProvider, ok := provider.(ToolNameProvider); ok {
 		manager.AddSource(toolNamesSystemPromptSource{Tools: nameProvider})
 	}
-	if a.toolRuntime.preloader != nil {
-		manager.AddSource(toolTagsSystemPromptSource{Preloader: a.toolRuntime.preloader})
+	if preloader != nil {
+		manager.AddSource(toolTagsSystemPromptSource{Preloader: preloader})
 	}
-	manager.AddSource(residentMemorySystemPromptSource{Store: a.residentMemory})
+	manager.AddSource(residentMemorySystemPromptSource{Store: memory})
 	manager.AddSource(conversationMetaSystemPromptSource{})
-	a.chat.promptBuilder.System = manager
-}
-
-func (a *Agent) SetToolProvider(provider ToolSchemaProvider) {
-	if provider == nil {
-		provider = noopToolSchemaProvider{}
-	}
-	a.toolRuntime.provider = provider
-	a.toolRuntime.defaultProvider = false
-	a.rebuildSystemPrompt()
-}
-
-func (a *Agent) SetToolConfig(cfg config.ToolsConfig) {
-	if cfg.MaxRoundsPerTurn <= 0 {
-		cfg.MaxRoundsPerTurn = 2
-	}
-	a.toolRuntime.config = cfg
+	return PromptBuilder{System: manager}
 }

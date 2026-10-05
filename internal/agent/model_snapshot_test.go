@@ -67,13 +67,15 @@ func TestModelCommandKeepsInFlightToolLoopOnOriginalSelection(t *testing.T) {
 	opts.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
 	// Naming has its own snapshot boundary and is not part of this assertion.
 	opts.SessionConfig.NamingConfig.TriggerStep = 100
-	a := mustNewWithOptions(t, opts)
+
 	registry := tool.NewRegistry()
 	arguments := ""
 	if err := registry.Register(preparedArgumentTool{arguments: &arguments}); err != nil {
 		t.Fatal(err)
 	}
-	a.SetToolRuntime(registry, nil)
+	a := mustNewWithOptions(t, opts, func(cfg *testAgentOptions) {
+		cfg.ToolRegistry = registry
+	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
@@ -181,11 +183,11 @@ func TestCompactUsesOriginalSelectionDuringModelSwitch(t *testing.T) {
 	a := mustNewWithOptions(t, opts)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	source, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "compact"})
+	source, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "compact"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.store.Messages().Append(ctx, &storage.Message{SessionID: source.ID, Role: storage.RoleUser, Content: "keep me"}); err != nil {
+	if err := a.execution.chat.messages.Append(ctx, &storage.Message{SessionID: source.ID, Role: storage.RoleUser, Content: "keep me"}); err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)

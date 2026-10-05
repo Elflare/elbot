@@ -41,12 +41,6 @@ type hookBridge struct {
 	logger     *slog.Logger
 }
 
-// SetHookRuntime attaches stateful Hook continuation routing. Process lifecycle
-// management remains outside Agent in the Hook control service.
-func (a *Agent) SetHookRuntime(router HookRouter) {
-	a.hooks.router = router
-}
-
 func (h *hookBridge) CancelRoute(event hook.Event) bool {
 	return h.router != nil && h.router.Cancel(event)
 }

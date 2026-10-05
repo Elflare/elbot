@@ -3,11 +3,12 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"elbot/internal/command"
+	"elbot/internal/delivery"
 	"elbot/internal/security"
 	"elbot/internal/session"
-	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
 
@@ -15,14 +16,12 @@ type commandExecutor struct {
 	router        *command.Router
 	sessions      *session.Service
 	turns         *turn.Manager
-	scope         func(context.Context) session.Scope
-	compactActive func(string) bool
-	sendChat      func(context.Context, string)
-	sendNotice    func(context.Context, string) error
-	audit         func(string, ...any)
-	handleAppend  func(context.Context, *storage.Session, string) error
-	handleRisk    func(context.Context, string, string) error
-	continueInput func(context.Context, command.Continuation) error
+	identity      *identityResolver
+	execution     *executionCoordinator
+	output        *outputSender
+	confirmations *confirmationCoordinator
+	input         *inputCoordinator
+	auditLogger   *slog.Logger
 }
 
 func (e *commandExecutor) Handle(ctx context.Context, text string) (bool, error) {
@@ -32,7 +31,7 @@ func (e *commandExecutor) Handle(ctx context.Context, text string) (bool, error)
 
 	parsed := e.router.Parse(text)
 	info, hasInfo := e.router.CommandInfo(parsed.Name)
-	sessionRow, binding, sessionErr := e.sessions.CurrentBound(ctx, e.scope(ctx))
+	sessionRow, binding, sessionErr := e.sessions.CurrentBound(ctx, e.identity.Scope(ctx))
 	if sessionErr == nil {
 		ctx = session.WithBinding(ctx, binding)
 	}
@@ -41,24 +40,24 @@ func (e *commandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		snapshot = e.turns.Snapshot(sessionRow.ID)
 	}
 	if sessionErr == nil && snapshot.Phase == turn.PhaseAwaitAppendConfirm && (turn.IsConfirm(text) || turn.IsCancel(text)) {
-		return true, e.handleAppend(ctx, sessionRow, text)
+		return true, e.execution.ResumeAppend(ctx, sessionRow, text)
 	}
 	if sessionErr == nil && snapshot.Phase == turn.PhaseAwaitRiskConfirm && isRiskConfirmationCommand(text, e.router) {
-		return true, e.handleRisk(ctx, sessionRow.ID, text)
+		return true, e.confirmations.SubmitResponse(ctx, sessionRow.ID, text)
 	}
 	if sessionErr == nil && hasInfo && snapshot.Phase != turn.PhaseIdle && blocksDuringActiveTurn(info.SessionEffect) {
-		e.sendChat(ctx, activeTurnCommandBlockedText())
+		e.output.SendChat(ctx, activeTurnCommandBlockedText())
 		return true, nil
 	}
-	if sessionErr == nil && hasInfo && e.compactActive(sessionRow.ID) && blocksDuringCompact(info.SessionEffect) {
-		e.sendChat(ctx, compactCommandBlockedText(text))
+	if sessionErr == nil && hasInfo && e.execution.compactActive(sessionRow.ID) && blocksDuringCompact(info.SessionEffect) {
+		e.output.SendChat(ctx, compactCommandBlockedText(text))
 		return true, nil
 	}
 
 	actor, _ := security.ActorFromContext(ctx)
 	if hasInfo && !command.CanAccess(info, actor) {
-		e.audit("permission_denied", "actor_id", actor.ID, "command", text, "reason", "slash_command_requires_superadmin")
-		e.sendChat(ctx, fmt.Sprintf("命令 %s%s 需要超级管理员权限。", parsed.Prefix, parsed.Name))
+		writeAudit(e.auditLogger, slog.LevelInfo, "permission_denied", "actor_id", actor.ID, "command", text, "reason", "slash_command_requires_superadmin")
+		e.output.SendChat(ctx, fmt.Sprintf("命令 %s%s 需要超级管理员权限。", parsed.Prefix, parsed.Name))
 		return true, nil
 	}
 
@@ -70,12 +69,12 @@ func (e *commandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		return true, nil
 	}
 	if result.Content != "" {
-		if err := e.sendNotice(ctx, result.Content); err != nil {
+		if err := e.output.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(result.Content)}}); err != nil {
 			return true, err
 		}
 	}
 	if result.Continuation != nil {
-		return true, e.continueInput(ctx, *result.Continuation)
+		return true, e.input.continueCommandInput(ctx, *result.Continuation)
 	}
 	return true, nil
 }

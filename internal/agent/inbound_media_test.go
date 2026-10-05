@@ -59,10 +59,12 @@ func TestPlatformMediaMaterializesOnlyWhenConsumed(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newTestStore(t)
 			root := t.TempDir()
-			a := newTestMediaAgent(t, &fakePlatform{}, &fakeLLM{}, store, media.NewManager(store, root, &media.LocalBackend{Root: root}))
+
 			resolver := &inboundMediaResolver{}
 			route := &inboundMediaRoute{waiting: tc.waiting}
-			a.SetHookRuntime(route)
+			a := newTestMediaAgent(t, &fakePlatform{}, &fakeLLM{}, store, media.NewManager(store, root, &media.LocalBackend{Root: root}), func(cfg *testAgentOptions) {
+				cfg.HookRuntime = route
+			})
 			conversation := chatinfo.ConversationGroup
 			if tc.private {
 				conversation = chatinfo.ConversationPrivate
@@ -85,7 +87,7 @@ func TestPlatformMediaMaterializesOnlyWhenConsumed(t *testing.T) {
 func TestPlatformMediaUnavailableAndMetadata(t *testing.T) {
 	store := newTestStore(t)
 	root := t.TempDir()
-	a := &Agent{media: media.NewManager(store, root, &media.LocalBackend{Root: root})}
+	a := &messageHandler{media: media.NewManager(store, root, &media.LocalBackend{Root: root})}
 	resolver := &inboundMediaResolver{}
 	msg := platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "telegram"}}, MediaResolver: resolver}
 	segment := platform.MessageSegment{Type: platform.SegmentImage, PlatformFileID: "image"}
@@ -110,7 +112,7 @@ func TestPlatformMediaUnavailableAndMetadata(t *testing.T) {
 func TestPlatformMediaCopiesShareResolutionWithoutDroppingPositions(t *testing.T) {
 	store := newTestStore(t)
 	root := t.TempDir()
-	a := &Agent{media: media.NewManager(store, root, &media.LocalBackend{Root: root})}
+	a := &messageHandler{media: media.NewManager(store, root, &media.LocalBackend{Root: root})}
 	a.media.Media.LLMImageMaxLength = 32
 	var data bytes.Buffer
 	if err := png.Encode(&data, image.NewNRGBA(image.Rect(0, 0, 80, 40))); err != nil {
