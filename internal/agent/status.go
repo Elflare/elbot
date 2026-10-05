@@ -1,37 +1,71 @@
 package agent
 
 import (
+	"context"
 	"sync"
 	"time"
 
 	runtimestatus "elbot/internal/runtime"
+	"elbot/internal/signal"
+	"elbot/internal/turn"
 )
 
 // statusRecorder is the synchronous source of runtime snapshots. Display
 // delivery happens after Record returns and never while its mutex is held.
 type statusRecorder struct {
+	publishMu sync.Mutex
 	mu        sync.Mutex
 	snapshots map[string]runtimestatus.Snapshot
+	owners    map[string]EventMeta
+	version   uint64
+	turns     *turn.Manager
+	changed   *signal.Signal[StatusChangedEvent]
 }
 
-func (r *statusRecorder) Record(snapshot runtimestatus.Snapshot) runtimestatus.Snapshot {
+func (r *statusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snapshot, display bool) {
+	// Status subscribers only update in-memory projections. Serialize publication
+	// so a retired target cannot be recreated by an older concurrent emission.
+	r.publishMu.Lock()
+	defer r.publishMu.Unlock()
 	if snapshot.SessionID == "" {
-		return snapshot
+		return
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	owner := eventMeta(ctx, snapshot.SessionID)
+	if r.turns != nil {
+		e, attempt, active := r.turns.ExecutionAttempt(snapshot.SessionID)
+		previous := r.owners[snapshot.SessionID]
+		terminal := snapshot.Phase == runtimestatus.PhaseDone || snapshot.Phase == runtimestatus.PhaseError
+		valid := active && e == turn.ExecutionFromContext(ctx) && attempt == owner.Attempt
+		if !active {
+			valid = terminal && owner.Attempt != "" && previous.Attempt == owner.Attempt && previous.RunID == owner.RunID
+		}
+		if !valid {
+			r.mu.Unlock()
+			return
+		}
+	}
 	if r.snapshots == nil {
 		r.snapshots = make(map[string]runtimestatus.Snapshot)
+		r.owners = make(map[string]EventMeta)
 	}
 	snapshot = mergeRuntimeStatus(r.snapshots[snapshot.SessionID], snapshot)
+	snapshot.Usage = cloneUsage(snapshot.Usage)
 	r.snapshots[snapshot.SessionID] = snapshot
-	return snapshot
+	r.owners[snapshot.SessionID] = owner
+	r.version++
+	version := r.version
+	r.mu.Unlock()
+	snapshot.Usage = cloneUsage(snapshot.Usage)
+	emitFact(ctx, r.changed, StatusChangedEvent{Snapshot: snapshot, Version: version, Display: display})
 }
 
 func (r *statusRecorder) Snapshot(sessionID string) runtimestatus.Snapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.snapshots[sessionID]
+	snapshot := r.snapshots[sessionID]
+	snapshot.Usage = cloneUsage(snapshot.Usage)
+	return snapshot
 }
 
 func (a *Agent) RuntimeStatus(sessionID string) runtimestatus.Snapshot {

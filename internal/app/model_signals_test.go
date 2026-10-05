@@ -1,0 +1,142 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"elbot/internal/chatinfo"
+	"elbot/internal/delivery"
+	"elbot/internal/llm"
+	"elbot/internal/platform"
+	"elbot/internal/session"
+	"elbot/internal/storage"
+)
+
+type retryCall struct {
+	ctx     context.Context
+	release chan struct{}
+}
+type retryModel struct {
+	notify func(context.Context, llm.RetryEvent)
+	calls  chan retryCall
+}
+
+func (m *retryModel) SetRetryNotifier(fn func(context.Context, llm.RetryEvent)) { m.notify = fn }
+func (*retryModel) ListModels(context.Context) ([]string, error)                { return []string{"first"}, nil }
+func (m *retryModel) ChatStream(ctx context.Context, _ llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	call := retryCall{ctx: ctx, release: make(chan struct{})}
+	m.notify(ctx, llm.RetryEvent{Attempt: 1, MaxRetries: 2, Delay: time.Millisecond, Err: errors.New("retryable")})
+	m.calls <- call
+	stream := make(chan llm.StreamChunk)
+	go func() {
+		defer close(stream)
+		defer cancel()
+		select {
+		case <-ctx.Done():
+			return
+		case <-call.release:
+		}
+		select {
+		case stream <- llm.StreamChunk{DeltaContent: "summary and title"}:
+		case <-ctx.Done():
+		}
+	}()
+	return stream, nil
+}
+
+type retryNoticePlatform struct {
+	assemblyPlatform
+	retryNotices chan string
+}
+
+func (p *retryNoticePlatform) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+	text := delivery.FallbackOutput(notice.Outputs).Text
+	if strings.Contains(text, "正在重试") {
+		info, _ := chatinfo.FromContext(ctx)
+		p.retryNotices <- info.Source.ScopeID
+	}
+	return p.assemblyPlatform.SendNotice(ctx, notice)
+}
+
+func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
+	req, _, _ := runtimeAssemblyFixture(t)
+	model := &retryModel{calls: make(chan retryCall, 4)}
+	p := &retryNoticePlatform{retryNotices: make(chan string, 5)}
+	req.Models.ByProvider["test"] = model
+	req.Platforms = PlatformComponents{Primary: p, Runtimes: []platform.Runtime{p}}
+	runtime, err := (defaultRuntimeFactory{}).Build(context.Background(), req)
+	t.Cleanup(func() { closeAssembledRuntime(t, runtime) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "local"}, Identity: chatinfo.Identity{PlatformUserID: "local"}})
+	for _, name := range []string{"chat", "compact", "naming"} {
+		result := make(chan error, 1)
+		go func() {
+			switch name {
+			case "chat":
+				result <- runtime.Agent.HandleMessage(ctx, "hello")
+			case "compact":
+				_, err := runtime.Agent.CompactCurrent(ctx, "test")
+				result <- err
+			case "naming":
+				_, err := session.NewTitleGenerator(runtime.Models).GenerateTitle(ctx, []storage.Message{{Role: storage.RoleUser, Content: "hello"}})
+				result <- err
+			}
+		}()
+		var call retryCall
+		select {
+		case call = <-model.calls:
+		case <-time.After(time.Second):
+			t.Fatalf("%s did not invoke shared client", name)
+		}
+		select {
+		case scope := <-p.retryNotices:
+			if scope != "local" {
+				t.Fatal("lost original source", scope)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("%s retry never reached subscriber", name)
+		}
+		close(call.release)
+		select {
+		case err := <-result:
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("%s did not finish", name)
+		}
+		select {
+		case <-call.ctx.Done():
+		case <-time.After(time.Second):
+			t.Fatal("call context remained alive")
+		}
+	}
+	if len(p.retryNotices) != 0 {
+		t.Fatal("duplicate retries")
+	}
+	// Delay a retry until its own call finishes while the parent remains alive.
+	release := holdObserverQueue(t, runtime.Signals.queues[1]) // naming logs precede the shared model notification queue.
+	stream, err := runtime.Models.ClientForProvider("test").ChatStream(ctx, llm.ChatRequest{Model: "first"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := <-model.calls
+	close(call.release)
+	for range stream {
+	}
+	<-call.ctx.Done()
+	if ctx.Err() != nil {
+		t.Fatal("test canceled parent instead of call")
+	}
+	release()
+	flushObserverQueue(t, runtime.Signals.queues[1])
+	if len(p.retryNotices) != 0 {
+		t.Fatal("finished call displayed stale retry")
+	}
+}

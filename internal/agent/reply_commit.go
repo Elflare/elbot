@@ -3,20 +3,20 @@ package agent
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
 
 // replyCommitter owns the final reply's send/save order, not the turn lifecycle.
 type replyCommitter struct {
-	messages    storage.MessageRepository
-	output      *outputSender
-	logger      *slog.Logger
-	auditLogger *slog.Logger
+	messages  storage.MessageRepository
+	output    *outputSender
+	delivered *signal.Signal[ReplyDeliveredEvent]
+	committed *signal.Signal[ReplyCommittedEvent]
 }
 
 type replyCommitInput struct {
@@ -42,8 +42,11 @@ type replyCommitResult struct {
 
 // Commit requires contexts and Session refreshed through executionView by the
 // caller. streamCtx retains the model request's original cancellation chain.
-func (c *replyCommitter) Commit(ctx, streamCtx context.Context, in replyCommitInput, out turnOutput) (replyCommitResult, error) {
-	result := replyCommitResult{RawText: in.RawText}
+func (c *replyCommitter) Commit(ctx, streamCtx context.Context, in replyCommitInput, out turnOutput) (result replyCommitResult, commitErr error) {
+	result.RawText = in.RawText
+	defer func() {
+		emitFact(ctx, c.committed, ReplyCommittedEvent{EventMeta: eventMeta(ctx, in.Session.ID), MessageID: result.MessageID, Persisted: result.Persisted, PersistErr: result.PersistErr, Err: commitErr, AssociationErrors: append([]error(nil), result.AssociationErrors...), Receipt: cloneReceipt(result.Receipt)})
+	}()
 	buffered := bufferAssistantOutput(ctx)
 	text := in.PlatformText
 	empty := strings.TrimSpace(text) == "" && strings.TrimSpace(in.Text) == "" && len(in.Outputs) == 0
@@ -62,6 +65,7 @@ func (c *replyCommitter) Commit(ctx, streamCtx context.Context, in replyCommitIn
 			} else {
 				result.Receipt, result.SendErr = out.SendAssistant(ctx, text)
 			}
+			c.observeDelivery(ctx, in.Session.ID, "send_assistant_message", buffered, result.Receipt, result.SendErr)
 			if result.SendErr != nil && !hasReplyReceipt(result.Receipt) {
 				return result, result.SendErr
 			}
@@ -69,6 +73,9 @@ func (c *replyCommitter) Commit(ctx, streamCtx context.Context, in replyCommitIn
 	}
 	if !buffered && result.SendErr == nil {
 		result.SendErr = out.SendOutputs(ctx, in.Outputs)
+		if len(in.Outputs) > 0 {
+			c.observeDelivery(ctx, in.Session.ID, "send_outputs", buffered, delivery.Receipt{}, result.SendErr)
+		}
 		if result.SendErr != nil && !hasReplyReceipt(result.Receipt) {
 			return result, result.SendErr
 		}
@@ -83,7 +90,6 @@ func (c *replyCommitter) Commit(ctx, streamCtx context.Context, in replyCommitIn
 	if !empty {
 		result.PersistErr = c.messages.Append(ctx, message)
 		if result.PersistErr != nil {
-			c.audit("persistence_error", "session_id", in.Session.ID, "operation", "append_assistant_message", "error", result.PersistErr.Error())
 			return result, result.PersistErr
 		}
 		result.MessageID = message.ID
@@ -92,15 +98,18 @@ func (c *replyCommitter) Commit(ctx, streamCtx context.Context, in replyCommitIn
 	if buffered {
 		if strings.TrimSpace(text) != "" {
 			result.Receipt, result.SendErr = out.SendAssistant(ctx, text)
+			c.observeDelivery(ctx, in.Session.ID, "send_assistant_message", buffered, result.Receipt, result.SendErr)
 			if result.Persisted {
 				result.AssociationErrors = c.associateReceipt(ctx, in.Session.ID, result.MessageID, result.Receipt)
 			}
 			if result.SendErr != nil {
-				c.audit("platform_send_error", "session_id", in.Session.ID, "operation", "send_assistant_message", "error", result.SendErr.Error())
 				return result, result.SendErr
 			}
 		}
 		result.SendErr = out.SendOutputs(ctx, in.Outputs)
+		if len(in.Outputs) > 0 {
+			c.observeDelivery(ctx, in.Session.ID, "send_outputs", buffered, delivery.Receipt{}, result.SendErr)
+		}
 	} else if result.Persisted {
 		result.AssociationErrors = c.associateReceipt(ctx, in.Session.ID, result.MessageID, result.Receipt)
 	}
@@ -126,16 +135,12 @@ func (c *replyCommitter) associateReceipt(ctx context.Context, sessionID, messag
 			MessageID: messageID, SessionID: sessionID,
 		}
 		if err := c.messages.MapPlatformMessage(ctx, mapping); err != nil {
-			failures = append(failures, fmt.Errorf("map platform message %s/%s/%s: %w", platformName, scopeID, platformMessageID, err))
-			c.audit("persistence_error", "session_id", sessionID, "operation", "map_platform_message", "platform_message_id", platformMessageID, "error", err.Error())
-			if c.logger != nil {
-				c.logger.WarnContext(ctx, "map platform message failed", "session_id", sessionID, "platform_message_id", platformMessageID, "error", err.Error())
-			}
+			failures = append(failures, AssociationFailure{Platform: platformName, ScopeID: scopeID, PlatformMessageID: platformMessageID, Err: err})
 		}
 	}
 	return failures
 }
 
-func (c *replyCommitter) audit(event string, attrs ...any) {
-	writeAudit(c.auditLogger, slog.LevelInfo, event, attrs...)
+func (c *replyCommitter) observeDelivery(ctx context.Context, sessionID, operation string, buffered bool, receipt delivery.Receipt, err error) {
+	emitFact(ctx, c.delivered, ReplyDeliveredEvent{EventMeta: eventMeta(ctx, sessionID), Operation: operation, Buffered: buffered, Receipt: cloneReceipt(receipt), Err: err})
 }

@@ -15,21 +15,22 @@ import (
 	"elbot/internal/modelmgr"
 	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/platform"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/toolrun"
 )
 
 // modelCaller owns one model request. Selection is a caller-provided snapshot.
 type modelCaller struct {
-	messages    storage.MessageRepository
-	media       *media.Manager
-	hooks       *hookBridge
-	identity    *identityResolver
-	output      *outputSender
-	toolState   *toolrun.StateService
-	toolRuntime *toolRuntimeState
-	logger      *slog.Logger
-	auditLogger *slog.Logger
+	messages          storage.MessageRepository
+	media             *media.Manager
+	hooks             *hookBridge
+	identity          *identityResolver
+	toolState         *toolrun.StateService
+	toolRuntime       *toolRuntimeState
+	completed         *signal.Signal[ModelCallCompletedEvent]
+	vision            *signal.Signal[VisionFallbackUsedEvent]
+	persistenceFailed *signal.Signal[PersistenceFailedEvent]
 }
 
 type llmCallResult struct {
@@ -42,13 +43,31 @@ type llmCallResult struct {
 	Stream    delivery.MessageStream
 }
 
-func (c *modelCaller) Call(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *pendingUserMessage, stream delivery.MessageStream, out turnOutput) (llmCallResult, error) {
+func (c *modelCaller) Call(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *pendingUserMessage, stream delivery.MessageStream, out turnOutput) (result llmCallResult, callErr error) {
 	sessionID := session.ID
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
 	if !toolsEnabled {
 		tools = nil
 	}
 	startedAt := time.Now()
+	completed := ModelCallCompletedEvent{Provider: selection.Provider, Model: selection.Model, ElapsedMS: -1}
+	published := false
+	publishCompleted := func() {
+		if published {
+			return
+		}
+		published = true
+		completed.EventMeta = eventMeta(ctx, sessionID)
+		if completed.ElapsedMS < 0 {
+			completed.ElapsedMS = elapsedMillis(startedAt)
+		}
+		completed.Usage = cloneUsage(completed.Usage)
+		if completed.Err == nil {
+			completed.Err = callErr
+		}
+		emitFact(ctx, c.completed, completed)
+	}
+	defer publishCompleted()
 	var allowedTools map[string]bool
 	if session.Mode == storage.SessionModeBackground {
 		cached, err := cachedToolsForSession(ctx, c.toolState, c.toolRuntime.registry, session)
@@ -80,7 +99,7 @@ func (c *modelCaller) Call(ctx context.Context, session *storage.Session, select
 	})
 	if err != nil {
 		if pending != nil {
-			if persistErr := persistTurnMessage(ctx, c.messages, c.media, c.auditLogger, &pending.message, "append_pending_user_message"); persistErr != nil {
+			if persistErr := persistTurnMessage(ctx, c.messages, c.media, c.persistenceFailed, &pending.message, "append_pending_user_message"); persistErr != nil {
 				err = errors.Join(err, persistErr)
 			}
 		}
@@ -105,7 +124,7 @@ func (c *modelCaller) Call(ctx context.Context, session *storage.Session, select
 		baseMessages[pending.messageIndex].Segments = segments
 		pending.message.Content = llm.SegmentsContentText(segments)
 		pending.message.Segments = storedMessageSegments(segments)
-		if err := persistTurnMessage(ctx, c.messages, c.media, c.auditLogger, &pending.message, "append_pending_user_message"); err != nil {
+		if err := persistTurnMessage(ctx, c.messages, c.media, c.persistenceFailed, &pending.message, "append_pending_user_message"); err != nil {
 			return llmCallResult{}, err
 		}
 	}
@@ -147,10 +166,13 @@ func (c *modelCaller) Call(ctx context.Context, session *storage.Session, select
 			return llmCallResult{Messages: baseMessages, Stream: stream}, nil
 		}
 		if shouldFallbackVision(requestMessages, err) {
-			c.output.notifyVisionFallbackOnce(ctx, sessionID, out)
+			completed.Err, completed.VisionFallback = err, true
+			publishCompleted()
+			emitFact((executionView{}).Context(ctx), c.vision, VisionFallbackUsedEvent{EventMeta: eventMeta(ctx, sessionID), Visible: c.identity.IsCLI(ctx) && !isBackgroundSession(session)})
 			return c.Call(ctx, session, selection, fallbackVisionMessages(baseMessages), tools, nil, stream, out)
 		}
-		c.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", err.Error())
+		completed.ProviderError, completed.Err = true, err
+		completed.ElapsedMS = elapsedMillis(startedAt)
 		c.hooks.notifyError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, ElapsedMS: elapsedMillis(startedAt)}}, err)
 		return llmCallResult{}, fmt.Errorf("chat: %w", err)
 	}
@@ -166,10 +188,13 @@ func (c *modelCaller) Call(ctx context.Context, session *storage.Session, select
 				return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages, Stream: stream}, nil
 			}
 			if shouldFallbackVision(requestMessages, chunk.Error) {
-				c.output.notifyVisionFallbackOnce(ctx, sessionID, out)
+				completed.Err, completed.VisionFallback = chunk.Error, true
+				publishCompleted()
+				emitFact((executionView{}).Context(ctx), c.vision, VisionFallbackUsedEvent{EventMeta: eventMeta(ctx, sessionID), Visible: c.identity.IsCLI(ctx) && !isBackgroundSession(session)})
 				return c.Call(ctx, session, selection, fallbackVisionMessages(baseMessages), tools, nil, stream, out)
 			}
-			c.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", chunk.Error.Error())
+			completed.ProviderError, completed.Err = true, chunk.Error
+			completed.ElapsedMS = elapsedMillis(startedAt)
 			c.hooks.notifyError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, SourceText: assistant.String(), Text: assistant.String(), ToolCalls: toolCalls, Usage: usage, ElapsedMS: elapsedMillis(startedAt)}}, chunk.Error)
 			out.SendNotice(ctx, slog.LevelError, notificationrules.ModelInterrupted(chunk.Error))
 
@@ -202,6 +227,7 @@ func (c *modelCaller) Call(ctx context.Context, session *storage.Session, select
 		out.SendReasoning(ctx, "[/thinking]\n\n")
 	}
 	elapsedMs := elapsedMillis(startedAt)
+	completed.ElapsedMS = elapsedMs
 	content := assistant.String()
 	event, err = c.hooks.Run(ctx, hook.Event{
 		Point:   hook.PointLLMResponseReceived,
@@ -225,26 +251,9 @@ func (c *modelCaller) Call(ctx context.Context, session *storage.Session, select
 		toolCalls = nil
 	}
 	finalText := event.LLM.Text
-	c.logLLMOutput(sessionID, selection, finalText, event.LLM.SourceText, len(toolCalls), elapsedMs)
-
-	c.auditUsage(sessionID, selection, usage, elapsedMs)
+	completed.OutputReady = true
+	completed.Text, completed.SourceText, completed.ToolCallCount, completed.Usage = finalText, event.LLM.SourceText, len(toolCalls), usage
 	return llmCallResult{Text: finalText, RawText: content, Usage: usage, ToolCalls: toolCalls, Outputs: event.Outputs, Messages: baseMessages, Stream: stream}, nil
-}
-
-func (c *modelCaller) logLLMOutput(sessionID string, selection modelmgr.Selection, text, rawText string, toolCallCount int, elapsedMs int64) {
-	if c.logger == nil {
-		return
-	}
-	c.logger.Info("llm output",
-		"event", "assistant_message",
-		"session_id", sessionID,
-		"provider", selection.Provider,
-		"model", selection.Model,
-		"elapsed_ms", elapsedMs,
-		"text", previewLogText(text),
-		"raw_text", previewLogText(rawText),
-		"tool_call_count", toolCallCount,
-	)
 }
 
 func shouldFallbackVision(messages []llm.LLMMessage, err error) bool {
@@ -309,23 +318,6 @@ func fileSegmentText(name, fallback string) string {
 	return fmt.Sprintf("[%s: %s]", fallback, name)
 }
 
-func (c *modelCaller) auditUsage(sessionID string, selection modelmgr.Selection, usage *llm.Usage, elapsedMs int64) {
-	attrs := []any{"session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMs}
-	if usage != nil {
-		attrs = append(attrs,
-			"prompt_tokens", usage.PromptTokens,
-			"completion_tokens", usage.CompletionTokens,
-			"total_tokens", usage.TotalTokens,
-			"cache_hit_tokens", usage.CacheHitTokens,
-		)
-	}
-	c.audit("llm_usage", attrs...)
-}
-
 func elapsedMillis(startedAt time.Time) int64 {
 	return time.Since(startedAt).Milliseconds()
-}
-
-func (c *modelCaller) audit(event string, attrs ...any) {
-	writeAudit(c.auditLogger, slog.LevelInfo, event, attrs...)
 }

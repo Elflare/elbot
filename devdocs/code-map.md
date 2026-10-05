@@ -27,7 +27,7 @@ rg -n "locator:tool" devdocs/code-map.md
 - `internal/app/foundation.go`、`models.go`：配置／存储基础设施和 provider 客户端。
 - `internal/app/services.go`、`runtime.go`：共享服务创建、内置命令注册、Cron／Tool／Hook／Agent 装配及 Session／Hook 执行回调接线；先完成注册和接线再开放平台入口。
 - `internal/app/platforms.go`、`integrations.go`：平台运行、Elnis 和平台能力接线；同目录还包含远程 CLI client 与 service marker。
-- `internal/app/signals.go`、`lifecycle.go`：平台 Hook／Cron 恢复的独立订阅和队列，Session 命名、Hook 与延迟 Skill 加载的取消和完成等待；Runner 统一清理部分启动资源并共享关闭预算。
+- `internal/app/signals.go`、`lifecycle.go`：订阅、队列和状态 worker 的统一所有权，平台 Hook／Cron 独立订阅及命名、Hook、Skill 的退出等待；Runner 先 BeginClose 唤醒背压生产者，再共享预算清理部分启动资源。
 - `internal/app/foundation.go`、`runner.go`：独立 StopCron 取消并等待启动及在途任务，完成后才释放 runtime／Hook 和存储；超时保留存活任务依赖。
 
 常用搜索：
@@ -37,14 +37,20 @@ rg -n "func Run|service run|completion|--client|RunCron" cmd internal/app intern
 ```
 
 <!-- locator:chatinfo -->
-<!-- locator:signal -->
-## 公共信息与信号
+## 公共聊天信息
 
 - `internal/chatinfo/`：每条消息的来源、发送者、公共消息／回复 ID、平台扩展及 context 存取；扩展遵守必要、不可变、不序列化的约定，不承载权限或 Sender。
-- `internal/signal/`：泛型信号、连接句柄、有界串行执行器，以及独立的取消生命周期和关闭策略。
-- `internal/platform/signals.go`：平台 Connected 事件及发布接口；连接归 app 持有。
 - `internal/platform/platform.go`：嵌入公共 Info 的平台消息上下文、正文和 Sender 覆盖。
 - `internal/platform/cli/message.go`：scanner／TUI 共用的本地身份入口。
+
+<!-- locator:signal -->
+## 信号与订阅
+
+- `internal/signal/`：泛型信号、连接句柄、有界串行执行器、可选 WaitForCapacity 背压，以及独立的取消生命周期、BeginClose 和关闭策略。
+- `internal/agent/events.go`：Agent 类型化事实、Signals 入口及 Usage／Receipt 发布快照。
+- `internal/app/agent_signals.go`、`agent_logging.go`、`log_record.go`：普通／审计日志的背压订阅、字段映射和实际写入错误处理。
+- `internal/app/agent_notifications.go`、`agent_status.go`、`model_signals.go`、`naming.go`：过程／失败通知、按目标合并状态、共享模型重试和命名日志订阅。
+- `internal/platform/signals.go`：平台 Connected 事件及发布接口；连接归 app 持有。
 
 <!-- locator:config -->
 ## 配置、资产与日志
@@ -141,7 +147,7 @@ rg -n "Register|Info\{|Help:|Complete|Alias|/requests|/model" internal/command/b
 - `internal/agent/execution_context.go`、`execution_output.go`：executionView 刷新来源与 Session，executionTurnOutput 切换前后台输出并转换后台报告；保留原请求取消，不拥有第二份执行状态。
 - `internal/agent/execution_admission.go`：Scope／Session 准入、原绑定与模式复核、输入解析和 Turn 启动检查。
 - `internal/runtime/`
-- `internal/agent/status.go`：statusRecorder 拥有 runtime status map、锁、同步合并与查询，Agent 对外查询薄委托。
+- `internal/agent/status.go`：statusRecorder 校验 attempt 归属、同步保存／查询及发布带版本状态；`internal/app/agent_status.go` 合并最新展示值，调度终态并隔离原连接目标。
 - `internal/agent/request_context.go`：父子 request context。
 - `internal/agent/risk_confirmation.go`：高风险确认命令文案和识别。
 
@@ -263,7 +269,7 @@ rg -n "Event|Handler|Control|plugins/hooks.toml|exec|hook.v2|runtime|SharedState
 - `internal/delivery/`：平台无关输出意图、Target、Receipt、校验和发送契约。
 - `internal/delivery/dispatch/router.go`、`media.go`：共享平台路由、可选流式／状态能力、媒体准备和回执缓存；普通失败与部分成功都保留实际结果。
 - `internal/notification/manager.go`：通知意图、来源／Binding／Sender 覆盖捕获、取消／失效检查、无来源 service 日志策略；不另建发送器或媒体实现。
-- `internal/notification/rules/`：平台连接 Hook 输出、Hook 失败、模型重试／降级和执行错误文案。
+- `internal/notification/rules/`：平台连接 Hook 输出、Hook 失败、模型重试和执行错误文案；`vision.go` 拥有视觉降级提示去重，复用窄 SendAssistant 能力保留输出 Hook。
 - `internal/app/services.go`、`integrations.go`、`signals.go`：共享发送／通知服务装配、外部宿主接入和平台连接执行器。
 - `internal/agent/turn_output.go`、`execution_output.go`：前后台发送策略与接管输出适配；后台保持静默但同步记录状态。
 - `internal/agent/output.go`：outputSender 的普通／流式发送和输出 Hook，保留部分成功回执；不负责 assistant 历史提交。
@@ -318,7 +324,7 @@ rg -n "PlatformAdapter|SendChat|MessageSegment|Actor|Scope|remote|websocket|long
 - `internal/session/mode.go`：模式激活和 work 历史限制。
 - `internal/session/lifecycle.go`、`query.go`、`fork.go`、`expiration.go`：生命周期、查询、Fork 和闲置过期策略。
 - `internal/session/background_copy.go`：后台广播副本的来源复核、创建与历史复制，不激活前台 current。
-- `internal/session/naming.go`、`naming_lifecycle.go`：异步命名、应用级取消及准备／生成退出等待；命名事件仍通过日志回调处理。
+- `internal/session/naming.go`、`naming_lifecycle.go`、`naming_signals.go`：异步命名、应用级取消及准备／生成退出等待，发布 Scheduled／Completed／Failed；app 接入日志消费者。
 - `internal/contextmgr/state.go`、`internal/toolrun/state.go`：分别解释上下文与工具 metadata，更新时保留其他模块及未知字段。
 - `internal/session/workspace.go`：workspace 持久化适配、原子字段更新及原绑定检查；`commit.go`：原绑定的短提交准入。
 - `internal/workspace/`：workspace 契约、context、metadata 状态与统一路径入口；`internal/sandbox/sandbox.go`：后台运行上下文及路径限制。
@@ -358,6 +364,7 @@ rg -n "ContextLoader|Compress|Window|System Prompt|MessageSegment|usage" interna
 - `internal/llm/`：LLM 抽象和 MessageSegment。
 - `internal/llm/openai/`：OpenAI-compatible adapter。
 - `internal/modelmgr/service.go`、`selection.go`：共享服务与构造校验，模式／槽位、压缩和命名选择及请求快照。
+- `internal/modelmgr/signals.go`：共享客户端重试事实，供对话／压缩／命名统一消费；订阅归 app 所有。
 - `internal/modelmgr/catalog.go`、`state.go`：模型目录缓存、筛选与 provider 错误，串行保存后发布选择状态；原子文件写入复用 `config.SaveState` 和 `fileops`。
 - `internal/agent/chat_llm.go`：Agent LLM 调用适配；`internal/notification/rules/model.go`：模型重试／降级提示。
 - `internal/session/title.go`：标题生成，开始时从模型服务取得命名与 work fallback 快照。

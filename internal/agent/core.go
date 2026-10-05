@@ -46,6 +46,7 @@ type Agent struct {
 	identity        *identityResolver
 	hooks           *hookBridge
 	status          *statusRecorder
+	signals         Signals
 	output          *outputSender
 	execution       *executionCoordinator
 	chat            *chatRunner
@@ -102,19 +103,20 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		sandboxRoot: filepath.Clean(strings.TrimSpace(opts.SandboxRoot)),
 	}
 
+	a.signals = newSignals()
 	a.identity = &identityResolver{platformName: p.Name(), actorID: "cli:local", scopeID: "local", policy: policy}
 	a.hooks = &hookBridge{
 		manager: hookManager, router: opts.HookRuntime, requests: requests,
-		identity: a.identity, media: opts.Media, notifications: opts.Notifications, dispatcher: opts.Dispatcher,
+		identity: a.identity, media: opts.Media, failed: a.signals.HookFailed, dispatcher: opts.Dispatcher,
 	}
-	a.status = &statusRecorder{}
+	a.status = &statusRecorder{turns: turns, changed: a.signals.StatusChanged}
 	a.output = &outputSender{dispatcher: opts.Dispatcher, notifications: opts.Notifications, hooks: a.hooks, identity: a.identity}
 	a.view = executionView{sessions: store.Sessions()}
-	a.replies = &replyCommitter{messages: store.Messages(), output: a.output}
+	a.replies = &replyCommitter{messages: store.Messages(), output: a.output, delivered: a.signals.ReplyDelivered, committed: a.signals.ReplyCommitted}
 	a.waitPolicy = &confirmationPolicy{identity: a.identity, idleExpiration: sessionIdleExpirationConfig(opts.SessionIdleExpiration), userConfirmationTimeout: defaultUserConfirmationTimeout}
 	a.confirmations = &confirmationCoordinator{
 		sessions: sessions, requests: requests, turns: turns, commands: a.commands,
-		identity: a.identity, output: a.output, policy: a.waitPolicy,
+		identity: a.identity, output: a.output, policy: a.waitPolicy, changed: a.signals.ConfirmationChanged,
 		autoConfirmSession: map[string]bool{}, autoConfirmTools: map[string]map[string]bool{},
 	}
 	a.toolRuntime = newToolRuntimeState()
@@ -125,21 +127,21 @@ func NewWithOptions(opts Options) (*Agent, error) {
 	a.toolDeps = &toolRunDeps{
 		hooks: a.hooks, requests: requests, turns: turns, identity: a.identity, media: opts.Media,
 		state: a.toolState, runtime: &a.toolRuntime, sessions: sessions, store: store,
-		confirmations: a.confirmations, view: a.view,
+		confirmations: a.confirmations, view: a.view, completed: a.signals.ToolCallCompleted, denied: a.signals.ToolDenied,
 	}
 	a.caller = &modelCaller{
 		messages: store.Messages(), media: opts.Media, hooks: a.hooks, identity: a.identity,
-		output: a.output, toolState: a.toolState, toolRuntime: &a.toolRuntime,
+		toolState: a.toolState, toolRuntime: &a.toolRuntime, completed: a.signals.ModelCallCompleted, vision: a.signals.VisionFallbackUsed, persistenceFailed: a.signals.PersistenceFailed,
 	}
 	a.chat = &chatRunner{
 		messages: store.Messages(), media: opts.Media, contexts: a.contexts, models: a.models, turns: turns, identity: a.identity,
 		hooks: a.hooks, view: a.view, toolRuntime: &a.toolRuntime, toolState: a.toolState,
-		toolDeps: a.toolDeps, caller: a.caller, replies: a.replies,
+		toolDeps: a.toolDeps, caller: a.caller, replies: a.replies, inputReceived: a.signals.UserInputReceived, persistenceFailed: a.signals.PersistenceFailed,
 	}
 	a.execution = &executionCoordinator{
 		sessions: sessions, sessionRows: store.Sessions(), turns: turns, requests: requests, contexts: a.contexts,
 		models: a.models, chat: a.chat, identity: a.identity, view: a.view, output: a.output, status: a.status,
-		waitPolicy: a.waitPolicy, responseTimeout: responseTimeout(llmRequestConfig),
+		waitPolicy: a.waitPolicy, responseTimeout: responseTimeout(llmRequestConfig), persistenceFailed: a.signals.PersistenceFailed, timedOut: a.signals.TurnTimedOut,
 	}
 	if opts.Logs != nil {
 		a.SetLogManager(opts.Logs)

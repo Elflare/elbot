@@ -57,12 +57,12 @@ func (c *executionCoordinator) finishAttempt(ctx context.Context, session *stora
 			return nil
 		}
 		execution.Finish(err)
-		c.turns.StopSession(session.ID, attempt)
 		status := c.status.Snapshot(session.ID)
 		status.Phase = runtimestatus.PhaseError
 		status.FinishedAt = storage.Now()
 		status.Error = err.Error()
 		out.PublishRuntimeStatus(ctx, status)
+		c.turns.StopSession(session.ID, attempt)
 		return err
 	}
 	status := c.status.Snapshot(session.ID)
@@ -112,7 +112,7 @@ func (c *executionCoordinator) finishCompletedTurn(ctx context.Context, session 
 	ctx = c.view.Context(ctx)
 	selection, usage, turnStartedAt, committed := result.Selection, result.Usage, result.StartedAt, result.Committed
 	if err := c.sessions.Touch(ctx, session); err != nil {
-		c.audit("persistence_error", "session_id", session.ID, "operation", "touch_session", "error", err.Error())
+		emitFact(ctx, c.persistenceFailed, PersistenceFailedEvent{EventMeta: eventMeta(ctx, session.ID), Operation: "touch_session", Err: err})
 		return turn.Input{}, err
 	}
 	c.recordUsage(session.ID, usage)
@@ -140,10 +140,7 @@ func (c *executionCoordinator) handleTurnContextDone(ctx context.Context, sessio
 		}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		if c.logger != nil {
-			c.logger.WarnContext(ctx, "turn response timeout", "session_id", sessionID, "error", err.Error())
-		}
-		c.audit("turn_response_timeout", "session_id", sessionID, "error", err.Error())
+		emitFact(ctx, c.timedOut, TurnTimedOutEvent{EventMeta: eventMeta(ctx, sessionID), Err: err})
 		out.SendNotice(ctx, slog.LevelWarn, notificationrules.TurnTimeout)
 	}
 }

@@ -44,7 +44,8 @@ func TestNamingOutlivesTurnButStopsWithApplication(t *testing.T) {
 				return TitleResult{RawTitle: "late title"}, nil
 			})
 			notifier := &fakeNamingNotifier{failures: make(chan NamingFailedEvent, 2)}
-			svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, gen, notifier)
+			svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, gen)
+			notifier.connect(t, svc)
 			appCtx, stopApp := context.WithCancel(context.Background())
 			defer stopApp()
 			svc.StartNaming(appCtx)
@@ -112,7 +113,7 @@ func TestNamingStopRacesAdmission(t *testing.T) {
 		calls.Add(1)
 		<-ctx.Done()
 		return TitleResult{}, ctx.Err()
-	}), nil)
+	}))
 	svc.StartNaming(context.Background())
 	row := namingRow(t, svc, store)
 	var wg sync.WaitGroup
@@ -155,7 +156,7 @@ func TestNamingCloseWaitsForPreparation(t *testing.T) {
 	svc := NewServiceWithNaming(namingPreparationStore{store, namingPreparationRepo{store.Messages(), started, release}}, NamingConfig{TriggerStep: 1}, namingGeneratorFunc(func(context.Context, []storage.Message) (TitleResult, error) {
 		t.Error("unexpected generator")
 		return TitleResult{}, nil
-	}), nil)
+	}))
 	svc.StartNaming(context.Background())
 	row := namingRow(t, svc, store)
 	done := make(chan struct{})

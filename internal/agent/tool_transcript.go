@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 
 	"elbot/internal/llm"
 	"elbot/internal/media"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 )
@@ -95,23 +95,23 @@ func persistedToolMessage(message llm.LLMMessage) llm.LLMMessage {
 	return message
 }
 
-func persistTurnMessage(ctx context.Context, messages storage.MessageRepository, media *media.Manager, auditLogger *slog.Logger, message *storage.Message, operation string) error {
+func persistTurnMessage(ctx context.Context, messages storage.MessageRepository, media *media.Manager, failed *signal.Signal[PersistenceFailedEvent], message *storage.Message, operation string) error {
 	if media != nil && message.Segments != "" {
 		segments := materializeMedia(ctx, media, messageSegmentsFromStorage(message.Segments))
 		message.Segments = storedMessageSegments(segments)
 		message.Content = llm.SegmentsContentText(segments)
 	}
 	if err := messages.Append(ctx, message); err != nil {
-		writeAudit(auditLogger, slog.LevelInfo, "persistence_error", "session_id", message.SessionID, "operation", operation, "error", err.Error())
+		emitFact(ctx, failed, PersistenceFailedEvent{EventMeta: eventMeta(ctx, message.SessionID), Operation: operation, Err: err})
 		return err
 	}
 	return nil
 }
 
-func persistTurnMessages(ctx context.Context, repository storage.MessageRepository, media *media.Manager, auditLogger *slog.Logger, sessionID, operation string, messages []storage.Message) error {
+func persistTurnMessages(ctx context.Context, repository storage.MessageRepository, media *media.Manager, failed *signal.Signal[PersistenceFailedEvent], sessionID, operation string, messages []storage.Message) error {
 	for i := range messages {
 		messages[i].SessionID = sessionID
-		if err := persistTurnMessage(ctx, repository, media, auditLogger, &messages[i], operation); err != nil {
+		if err := persistTurnMessage(ctx, repository, media, failed, &messages[i], operation); err != nil {
 			return err
 		}
 	}

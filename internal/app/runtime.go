@@ -44,6 +44,12 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		return components, err
 	}
 	lifecycle.sessions = services.Sessions
+	if err := components.Signals.connectNaming(services.Sessions, logger); err != nil {
+		return components, err
+	}
+	if err := components.Signals.connectModels(services.Models, services.Notifications, logger); err != nil {
+		return components, err
+	}
 	services.Sessions.StartNaming(ctx)
 	dotEnv, err := config.LoadDotEnv(filepath.Dir(cfg.ConfigPath))
 	if err != nil {
@@ -114,6 +120,15 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	req.Profiler.Mark("agent init")
 
 	bindings := components.Signals
+	if err := bindings.connectAgentLogs(agt.Signals(), logger, foundation.Logs.Audit()); err != nil {
+		return components, err
+	}
+	if err := bindings.connectAgentNotifications(agt.Signals(), services.Notifications, agt.NotificationSender(), logger); err != nil {
+		return components, err
+	}
+	if err := bindings.connectStatus(agt.Signals(), services.Sessions, services.Dispatcher, logger); err != nil {
+		return components, err
+	}
 	if err := bindings.connectSession(services.Sessions, toolRuntime.FileRollback.Manager, foundation.Logger); err != nil {
 		return components, err
 	}

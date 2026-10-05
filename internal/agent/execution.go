@@ -11,6 +11,7 @@ import (
 	"elbot/internal/request"
 	"elbot/internal/security"
 	"elbot/internal/session"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -34,21 +35,22 @@ func (c *executionCoordinator) AdoptForeground(ctx context.Context, row *storage
 // executionCoordinator owns cross-turn admission and handoffs; domain managers
 // remain the source of truth for requests, attempts and logical execution state.
 type executionCoordinator struct {
-	sessions        *session.Service
-	sessionRows     storage.SessionRepository
-	turns           *turn.Manager
-	requests        *request.Manager
-	contexts        *contextmgr.Service
-	models          *modelmgr.Service
-	chat            *chatRunner
-	identity        *identityResolver
-	view            executionView
-	output          *outputSender
-	status          *statusRecorder
-	waitPolicy      *confirmationPolicy
-	responseTimeout time.Duration
-	logger          *slog.Logger
-	auditLogger     *slog.Logger
+	logger            *slog.Logger // Context usage diagnostics.
+	sessions          *session.Service
+	sessionRows       storage.SessionRepository
+	turns             *turn.Manager
+	requests          *request.Manager
+	contexts          *contextmgr.Service
+	models            *modelmgr.Service
+	chat              *chatRunner
+	identity          *identityResolver
+	view              executionView
+	output            *outputSender
+	status            *statusRecorder
+	waitPolicy        *confirmationPolicy
+	responseTimeout   time.Duration
+	persistenceFailed *signal.Signal[PersistenceFailedEvent]
+	timedOut          *signal.Signal[TurnTimedOutEvent]
 }
 
 const foregroundInstructions = "此会话已由用户接管，当前是普通前台对话。保留原任务目标和历史，但后台无人值守、自动汇报及强制 JSON 输出要求已经解除；按当前用户要求正常回复，工具遵循前台权限和确认规则。"
@@ -122,8 +124,4 @@ func (c *executionCoordinator) RunBackground(ctx context.Context, row *storage.S
 		}
 	}
 	return result
-}
-
-func (c *executionCoordinator) audit(event string, attrs ...any) {
-	writeAudit(c.auditLogger, slog.LevelInfo, event, attrs...)
 }

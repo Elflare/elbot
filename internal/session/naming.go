@@ -16,12 +16,6 @@ type namingState struct {
 	failures int
 }
 
-type noopNamingNotifier struct{}
-
-func (noopNamingNotifier) NotifyNamingScheduled(context.Context, NamingScheduledEvent) {}
-func (noopNamingNotifier) NotifyNamingCompleted(context.Context, NamingCompletedEvent) {}
-func (noopNamingNotifier) NotifyNamingFailed(context.Context, NamingFailedEvent)       {}
-
 func (s *Service) MaybeScheduleNaming(ctx context.Context, sessionID string) {
 	if s.titleGen == nil {
 		return
@@ -194,21 +188,15 @@ func (s *Service) handleNamingFailure(ctx context.Context, session *storage.Sess
 }
 
 func (s *Service) notifyNamingScheduled(ctx context.Context, event NamingScheduledEvent) {
-	if s.notifier != nil {
-		s.notifier.NotifyNamingScheduled(ctx, event)
-	}
+	_ = s.namingSignals.Scheduled.Emit(ctx, event)
 }
 
 func (s *Service) notifyNamingCompleted(ctx context.Context, event NamingCompletedEvent) {
-	if s.notifier != nil {
-		s.notifier.NotifyNamingCompleted(ctx, event)
-	}
+	_ = s.namingSignals.Completed.Emit(ctx, event)
 }
 
 func (s *Service) notifyNamingFailed(ctx context.Context, event NamingFailedEvent) {
-	if s.notifier != nil {
-		s.notifier.NotifyNamingFailed(ctx, event)
-	}
+	_ = s.namingSignals.Failed.Emit(ctx, event)
 }
 
 func filterConversationMessages(messages []storage.Message) []storage.Message {

@@ -22,6 +22,7 @@ import (
 	"elbot/internal/request"
 	"elbot/internal/security"
 	"elbot/internal/session"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
@@ -61,10 +62,13 @@ func assembleTestOptions(opts testAgentOptions) Options {
 	}
 	dispatcher := dispatch.New(dispatch.Options{Primary: opts.Platform, Store: opts.Store, Media: opts.Media, MediaRetentionDays: defaults.Maintenance.SandboxCleanup.RetentionDays})
 	notices := notification.New(dispatcher, nil, false)
-	opts.Models.SetRetryNotifier(notificationrules.ModelRetry(notices))
+	_, _ = opts.Models.ModelRetrying().Connect(func(ctx context.Context, event modelmgr.ModelRetryingEvent) error {
+		notificationrules.ModelRetry(notices)(ctx, event.Provider, event.Retry)
+		return nil
+	}, signal.ConnectOptions{})
 	return Options{
 		Platform: opts.Platform, Models: opts.Models, Store: opts.Store, Media: opts.Media,
-		Sessions: session.NewServiceWithConfig(opts.Store, opts.SessionConfig, session.NewTitleGenerator(opts.Models), nil),
+		Sessions: session.NewServiceWithConfig(opts.Store, opts.SessionConfig, session.NewTitleGenerator(opts.Models)),
 		Commands: command.NewRouter(opts.CommandPrefixes), Requests: request.NewManager(0), Turns: turn.NewManager(),
 		Contexts:  contextmgr.New(contextmgr.Options{Store: opts.Store, Models: opts.Models, Config: defaults.Context, Metadata: defaults.ModelMetadata, Providers: opts.Providers}),
 		ToolState: toolrun.NewStateService(opts.Store), ToolRunner: toolrun.NewManager(opts.ToolRegistry, opts.SecurityPolicy),
@@ -82,6 +86,7 @@ func mustNewWithOptions(t *testing.T, cfg testAgentOptions) *Agent {
 	if err != nil {
 		t.Fatal(err)
 	}
+	connectTestObservers(a, assembleObserverOptions{notifications: a.output.notifications, dispatcher: a.output.dispatcher})
 	a.sessions.SetForegroundActivation(a.AdoptForeground)
 	a.sessions.StartNaming(context.Background())
 	ownedSessions := a.sessions

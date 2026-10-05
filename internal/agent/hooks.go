@@ -11,11 +11,11 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/notification"
 	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/platform"
 	"elbot/internal/request"
 	"elbot/internal/security"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
 
@@ -31,14 +31,14 @@ type HookRouter interface {
 }
 
 type hookBridge struct {
-	manager       hookRunner
-	router        HookRouter
-	requests      *request.Manager
-	identity      *identityResolver
-	media         *media.Manager
-	notifications *notification.Manager
-	dispatcher    *dispatch.Router
-	logger        *slog.Logger
+	manager    hookRunner
+	router     HookRouter
+	requests   *request.Manager
+	identity   *identityResolver
+	media      *media.Manager
+	failed     *signal.Signal[HookFailedEvent]
+	dispatcher *dispatch.Router
+	logger     *slog.Logger
 }
 
 // SetHookRuntime attaches stateful Hook continuation routing. Process lifecycle
@@ -77,7 +77,7 @@ func (h *hookBridge) Run(ctx context.Context, event hook.Event) (hook.Event, err
 			return event, err
 		}
 		h.notifyError(ctx, event, err)
-		h.sendFailureNotice(ctx, event, err)
+		h.publishFailure(ctx, event, err, false, true)
 		return event, err
 	}
 	return updated, nil
@@ -90,13 +90,12 @@ func (h *hookBridge) Notify(ctx context.Context, event hook.Event) {
 	}
 	event = h.fillContext(ctx, event)
 	if err := manager.Notify(ctx, event); err != nil {
-		h.logError(event.Point, err)
+		h.publishFailure(ctx, event, err, true, !errors.Is(err, context.Canceled) && event.Point != hook.PointErrorOccurred)
 		if errors.Is(err, context.Canceled) {
 			return
 		}
 		if event.Point != hook.PointErrorOccurred {
 			h.notifyError(ctx, event, err)
-			h.sendFailureNotice(ctx, event, err)
 		}
 	}
 }
@@ -139,15 +138,13 @@ func (h *hookBridge) notifyError(ctx context.Context, source hook.Event, err err
 	h.Notify(ctx, event)
 }
 
-func (h *hookBridge) sendFailureNotice(ctx context.Context, event hook.Event, err error) {
-	if sendErr := notificationrules.HookFailure(ctx, h.notifications, event, err); sendErr != nil && h.logger != nil {
-		h.logger.WarnContext(ctx, "hook failure notice failed", "point", string(event.Point), "error", sendErr.Error())
-	}
+func (h *hookBridge) publishFailure(ctx context.Context, event hook.Event, err error, log, notice bool) {
+	emitFact(ctx, h.failed, HookFailedEvent{EventMeta: eventMeta(ctx, event.Session.ID), Point: event.Point, Platform: event.Platform, Err: err, Log: log, Notice: notice})
 }
 
 func (h *hookBridge) PlatformConnected(ctx context.Context, platformName string) {
 	if err := notificationrules.PlatformConnected(ctx, platformName, h.Run, h.dispatcher); err != nil {
-		h.logError(hook.PointPlatformConnected, err)
+		h.publishFailure(ctx, hook.Event{Point: hook.PointPlatformConnected, Platform: hook.PlatformContext{Name: platformName}}, err, true, false)
 	}
 }
 
@@ -212,19 +209,6 @@ func (h *hookBridge) fillContext(ctx context.Context, event hook.Event) hook.Eve
 		event.Actor.DisplayName = actor.DisplayName
 	}
 	return event
-}
-
-func (h *hookBridge) logError(point hook.Point, err error) {
-	if err == nil {
-		return
-	}
-	if h.logger != nil {
-		if errors.Is(err, context.Canceled) {
-			h.logger.Info("hook canceled", slog.String("point", string(point)), slog.String("error", err.Error()))
-			return
-		}
-		h.logger.Warn("hook error", slog.String("point", string(point)), slog.String("error", err.Error()))
-	}
 }
 
 func actorContext(actor security.Actor) hook.ActorContext {

@@ -35,11 +35,11 @@
 | `chatinfo/` | `source.go`、`identity.go`、`context.go` | 公共平台／会话来源、发送者身份、消息／回复 ID、平台扩展和 context 存取 |
 | `signal/` | `signal.go`、`connection.go`、`executor.go`、`queue.go` | 泛型信号、连接句柄、执行器契约、串行队列；不导入业务模块 |
 | `notification/` | `manager.go` | 通知意图、原来源与 Binding 捕获及通知策略；通过发送接口交付 |
-| `notification/rules/` | `platform.go`、`hook.go`、`model.go`、`execution.go` | 将相关业务事件转换为通知，维护通知文案和触发规则 |
+| `notification/rules/` | `platform.go`、`hook.go`、`model.go`、`vision.go`、`execution.go` | 将相关业务事件转换为通知，维护通知文案、触发规则和视觉提示去重 |
 | `delivery/` | 保留现有类型和 Manager | 平台无关输出、目标、回执、校验和发送契约 |
 | `delivery/dispatch/` | `router.go`、`media.go` | 接收 Agent 的平台路由、媒体发送准备及媒体回执关联职责 |
-| `session/` | `binding.go`、`signals.go`、`workspace.go`、`background.go` | 当前绑定、生命周期信号、workspace 持久化适配和后台会话准备；保留已有创建、恢复、命名和查询职责 |
-| `modelmgr/` | `service.go`、`selection.go`、`catalog.go`、`state.go` | 从 Agent 抽出模型选择、客户端缓存、模型列表和运行状态读写 |
+| `session/` | `binding.go`、`signals.go`、`naming_signals.go`、`workspace.go`、`background.go` | 当前绑定、生命周期与命名信号、workspace 持久化适配和后台会话准备；保留已有创建、恢复、命名和查询职责 |
+| `modelmgr/` | `service.go`、`selection.go`、`catalog.go`、`state.go`、`signals.go` | 模型选择、客户端缓存、模型列表、运行状态读写及共享调用重试信号 |
 | `contextmgr/` | 增加 `service.go`、`state.go`，复用现有职责文件 | 收拢上下文加载、窗口、用量和压缩状态；执行调度保留在 Agent |
 | `workspace/` | `workspace.go`、`resolve.go` | 从 Tool 提取已有 workspace 契约和路径解析，统一入口组合 sandbox 限制 |
 | `sandbox/` | `sandbox.go` | 从 Tool 提取后台路径限制和沙箱上下文；复用原有规则 |
@@ -88,7 +88,7 @@ OneBot／Telegram 从公共会话信息恢复默认目标，QQ 官方区分默�
 | 回调锁边界 | 锁内取得连接快照，锁外执行回调或提交执行器；业务模块也不得持有自己的状态锁执行外部回调 |
 | 一次性订阅 | 需要时使用一次性连接；在执行回调前断开，避免递归发射重复触发 |
 | 顺序与隔离 | 同一串行执行器按入队顺序执行；不同执行器独立，不承诺跨执行器的完成顺序 |
-| 容量 | 队列有上限，默认满时明确反馈入队失败；阶段 13 为日志显式增加等待容量的背压策略，不能无界积压、丢弃日志或绕过队列写入 |
+| 容量 | 队列有上限，默认满时明确反馈入队失败；日志显式启用 WaitForCapacity 等待容量，不能无界积压、丢弃日志或绕过队列写入 |
 | 错误 | 一个订阅者执行失败不妨碍其他订阅者；执行错误记录到日志，入队成功不表示回调或消息发送成功 |
 | 断开 | 停止后续发射中的投递；已取得的发射快照与已入队任务不自动撤销，取消由执行器／业务生命周期处理 |
 | 关闭 | 停止新事件来源并断开订阅，及时关闭入队、解除背压等待，再等待生产者退出并限时处理队列；超时取消待执行任务并请求在途任务协作退出 |
@@ -183,12 +183,12 @@ Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记�
 - `platform.MessageContext` 组合 `Info`，安装平台上下文时同时安装公共快照。适配器显式提供会话类型和原生 ID，Agent 和实际消费者读取公共信息；保留会话键、权限优先级、内部无来源 fallback 与平台专属回复上下文。本地 CLI 的 scanner／TUI 共用入口提供本地身份。
 - 信号接口为 `New[T](name, logger)`、`Connect(Handler[T], ConnectOptions) (*Connection, error)`、`Emit(ctx, event) error` 和幂等 `Disconnect()`；`Handler[T]` 返回 error，连接选项为 Executor／Once／Lifetime／Shutdown。空回调及无效选项报错；直接连接不接受异步生命周期或非默认关闭策略。
 - 同一次发射按注册顺序取得快照、锁外调用；并发发射无全局顺序，直接回调可能并发。一次性连接在取得快照时原子移除，最多投递一次，入队失败也消耗连接；断开不撤销已取得的快照或队列任务。
-- 执行器提供 `Submit(ctx, Task) error`，Task 携带回调与关闭策略；串行队列提供 `NewQueue(QueueOptions)`、`Close(ctx) error`、`Done()`。选项包含名称、容量、日志器；容量 0 默认 256，负数报错，容量只计算等待任务。默认拒绝策略下，队满／关闭分别返回 `ErrQueueFull`／`ErrClosed`，不阻塞入队、不隐式重试；阶段 13 的日志消费者显式选择等待容量策略，其他消费者默认行为不变。
+- 执行器提供 `Submit(ctx, Task) error`，Task 携带回调与关闭策略；串行队列提供 `NewQueue(QueueOptions)`、`BeginClose()`、`Close(ctx) error`、`Done()`。选项包含名称、容量、日志器和 WaitForCapacity；容量 0 默认 256，负数报错，容量只计算等待任务。默认拒绝策略下，队满／关闭分别返回 `ErrQueueFull`／`ErrClosed`，不阻塞入队、不隐式重试；日志消费者显式启用等待容量，等待可由 context 取消或 BeginClose 唤醒。
 - 异步连接显式选择 `FollowEmit` 或 `FollowExecutor`；前者保留发射 context 的取消与截止时间，后者保留值但脱离该取消。关闭策略独立选择：`CancelPending`（默认）丢弃等待任务、取消在途任务并限时等其退出；`Drain` 尝试完成等待及在途任务，预算耗尽时全部取消。同一队列可混用策略，保留任务仍按入队顺序执行。
 - 底层取消始终优先于 Drain；执行前跳过已取消任务，不拆分取消树来保证排空。context 值和事件对象不自动深拷贝。
-- 同步回调及入队失败通过 `errors.Join` 返回，仍继续其他订阅者；异步执行错误由队列记录。与当前 context 匹配的取消及关闭后的入队拒绝不记录失败日志，真实错误（含与取消合并的错误）保留。默认日志器为 slog.Default；不恢复程序 panic。
+- 同步回调及入队失败通过 `errors.Join` 返回，仍继续其他订阅者；异步执行错误由队列记录。与当前 context 匹配的取消及 CancelPending 订阅关闭后的入队拒绝不记录失败日志；Drain 订阅的入队关闭错误、背压日志未排空及真实错误（含与取消合并的错误）明确诊断。默认日志器为 slog.Default；不恢复程序 panic。
 - 平台模块发布 `ConnectedEvent{Platform}`。app 为每个平台的 Agent 连接 Hook 与 Cron 恢复创建独立订阅和队列，使用 `FollowExecutor + CancelPending`；平台连接事件不伪造聊天来源。Cron 不依赖用户 Hook 的结果，任务投递锁支持取消等待，取消补发不追加失败通知。
-- app 持有连接和队列，装配失败亦清理。平台停止生产后断开连接，各队列共享 Runner 原有 30 秒总预算并行关闭；Done 仅在 worker 实际退出后关闭。
+- app 持有连接和队列，装配失败亦清理。开始关闭即断开连接并 BeginClose，先解除生产者的背压等待，再等待平台／Cron 和队列退出；各队列共享 Runner 原有 30 秒总预算并行关闭，Done 仅在 worker 实际退出后关闭。
 - 预算到期请求取消并停止等待；仍有回调使用依赖时，跳过后续依赖的显式释放，由进程退出结束，不增加后台收尾链。Queue.Close 保留未完全关闭的错误供调用方识别，Runner 将正常取消和关闭预算耗尽视为正常退出；真实启动／关闭错误继续返回。
 - 验收覆盖公共来源／身份隔离、原连接回复、权限与消费者回归，信号重入／并发／一次性／错误隔离，生命周期与关闭策略组合、混合队列、取消等待、装配失败和超时依赖保护；用同步屏障控制并发测试，执行相关 race 与全量 Go 测试。
 
@@ -303,7 +303,7 @@ Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记�
 <!-- locator:agent-components -->
 ## 阶段 9–15：Agent 内部职责与旁路信号
 
-本节描述阶段 9–15 的目标结构；阶段 9–12 的基础、回复提交、执行协调、单轮对话、确认和模型调用组件已接入，阶段 13–15 仍待实施。当前代码职责以 architecture.md 和 code-map.md 为准。阶段 9–14 逐步完成接入，最后单列阶段 15 Review；不能用末尾 Review 代替各阶段验证。
+本节描述阶段 9–15 的结构；阶段 9–13 的基础、回复提交、执行协调、单轮对话、确认、模型调用和旁路订阅已接入，阶段 14–15 仍待实施。当前代码职责以 architecture.md 和 code-map.md 为准。阶段 14 完成剩余装配核对与清理，最后单列阶段 15 Review；不能用末尾 Review 代替各阶段验证。
 
 ### 范围与依赖约束
 
@@ -516,6 +516,7 @@ internal/
 │   ├── signals.go                       # 连接、队列和关闭所有权
 │   ├── agent_signals.go                 # 连接 Agent 信号
 │   ├── agent_logging.go                 # 日志和审计订阅者
+│   ├── log_record.go                    # 保留事件时间，返回实际日志写入错误
 │   ├── agent_notifications.go           # 事件到通知规则的薄适配
 │   ├── agent_status.go                  # 状态展示订阅者
 │   ├── model_signals.go                 # 共享模型重试订阅，覆盖对话、压缩和命名
@@ -558,7 +559,7 @@ internal/
 
 ### 接口与返回结果
 
-- Agent 对外入口及生产使用的能力保持；新增 `Agent.Signals()` 返回 Agent 自有的具体类型化信号集合，供 app 连接订阅。共享模型重试信号由 modelmgr 单独提供，不能为了重试通知让共享客户端反向依赖 Agent。
+- Agent 对外入口及生产使用的能力保持；`Agent.Signals()` 返回 Agent 自有的具体类型化信号集合，供 app 连接订阅。`NotificationSender()` 仅提供 outputSender 的 SendAssistant 能力，供视觉提示保留输出 Hook，不持有或回调 Agent。共享模型重试信号由 modelmgr 单独提供，不能为了重试通知让共享客户端反向依赖 Agent。
 - `chatRunner.RunTurn` 接收当前 context、Session 快照、模型选择、executionView 与 turnOutput，返回结构化单轮结果；明确表达完成、等待追加确认、停止、取消和失败，携带已提交 assistant 标识、原始结果和 Usage，不能通过 `nil` 错误猜测是否完成。
 - `replyCommitter.Commit` 接收原始文本、平台展示文本、最终 stream 与延迟 outputs，返回消息标识、实际 receipt、持久化结果及错误。保留部分成功，不把“发送成功”和“历史提交成功”合并成一个布尔值。
 - `toolRunDeps` 直接组合所需 Hook、确认、Request、工具状态、文件能力、executionView 和本轮输出；Prompt provider 直接使用 ToolRun 与身份解析。
@@ -585,6 +586,9 @@ internal/
 
 | 事件 | 发布边界 | 消费者 |
 |---|---|---|
+| UserInputReceived | 当前输入进入单轮对话时 | 用户输入审计日志 |
+| PersistenceFailed | 核心同步保存操作失败后，原错误仍沿调用链返回 | 持久化失败审计日志 |
+| TurnTimedOut | 执行超时确定后 | 超时审计日志 |
 | ModelCallCompleted | 单次调用完成，包含实际成功／失败、模型、Usage、耗时和必要文本快照；不改变原始文本与 Hook 改写结果的区别 | 模型日志、Usage 审计展示 |
 | ToolCallCompleted | 原有工具记录处理结束后，区分工具执行错误与记录错误 | 工具运行日志和审计日志 |
 | ConfirmationChanged | 等待、确认、拒绝、停止或过期事实确定后 | 确认审计日志 |
@@ -654,7 +658,7 @@ app 在平台等生产者启动前连接订阅，并持有 Connection 和 Queue�
 2. foregroundTurnOutput/backgroundTurnOutput 只依赖发送与状态能力；execution_context.go 和 execution_output.go 分别承载执行视图与接管输出，保留原取消链和报告附件转换。
 3. toolRunPromptProvider 直接注入 ToolRun 和身份解析；配置 setter 更新实际拥有者，媒体测试通过构造注入共享服务。
 4. app 安装的 Hook 唤醒、Request 观察等仍是同步参与者；纯上下文和 Session payload 转换使用包内函数。
-5. 状态与通知沿用同步调用顺序；assistant 历史提交和消息映射由阶段 10 的 replyCommitter 承接，工具执行适配器由阶段 12 的 toolRunDeps 承接，状态展示的旧 attempt 过滤及版本控制按阶段 13 实施。
+5. assistant 历史提交和消息映射由 replyCommitter 承接，工具执行适配器由 toolRunDeps 承接；状态同步记录及旧 attempt 过滤归 statusRecorder，展示与旁路通知由 app 订阅。
 
 验收：基础组件能用必要服务独立构造，无 Agent 字段、嵌入或绑定 Agent 的回调集合；原来源发送、CLI 原连接、后台静默、无来源 Hook、错误事件和本地状态先写后读保持一致。组件边界回归覆盖同步状态读写、策略／日志配置更新及接管取消链；Agent、app、delivery、notification、Hook、ToolRun 相关测试和 Agent／app race 通过，代码地图与已落地架构已同步。
 
@@ -665,11 +669,11 @@ app 在平台等生产者启动前连接订阅，并持有 Connection 和 Queue�
 
 当前实现：
 
-1. replyCommitter 直接注入消息仓库、outputSender 和日志，Commit 显式接收本轮输出及已刷新的业务／请求 context；不持有 Agent 或绑定 Agent 的回调。
+1. replyCommitter 直接注入消息仓库、outputSender 和回复事实信号，Commit 显式接收本轮输出及已刷新的业务／请求 context；不持有 Agent 或绑定 Agent 的回调。
 2. 提交输入区分历史正文、原始模型文本、展示文本、最终 stream 和延迟 outputs；结果保留消息标识、原始文本、实际 assistant receipt、持久化标记及发送／保存／关联错误，返回错误沿用原优先级。
 3. 组件负责最终 Hook、空回复、流式收尾、延迟 outputs、assistant 落库及回执关联。直接输出先发送再落库，缓冲输出先落库再发送；部分成功不重发，关联只消费完整结构化来源，关联失败不终止对话。
 4. chatRunner 在提交前应用 executionView 并发布 sending，覆盖最后一轮 LLM 等待期间发生的接管。最终 Hook 归提交层，普通发送 Hook 归输出适配层，保持既有调用条件与顺序。
-5. executionCoordinator 使用 chatRunner 返回的提交结果继续 Touch、Usage、状态、pending、Execution 结果及命名；自动压缩和执行完成不进入提交组件。日志 setter 更新提交组件的实际日志依赖。
+5. executionCoordinator 使用 chatRunner 返回的提交结果继续 Touch、Usage、状态、pending、Execution 结果及命名；自动压缩和执行完成不进入提交组件。回复日志由 app 消费交付与提交事实，原错误和部分成功结果保持直接返回。
 
 验收：独立组件测试覆盖直接／缓冲／流式提交顺序、Hook 改写及取消、空回复、后台静默、仅延迟输出、保存／发送／关联失败和部分成功；真实 Agent 入口验证保存失败不误完成 Execution，既有接管及真实 adapter、Cron、Elnis 回执回归继续通过。Agent、app、delivery、Hook、平台 adapter、Cron、Elnis 相关包测试与 Agent／app race 通过，开发文档已同步。
 
@@ -699,17 +703,17 @@ app 在平台等生产者启动前连接订阅，并持有 Connection 和 Queue�
 1. confirmationCoordinator 拥有风险确认交互、响应、自动确认记录及锁；等待对象仍由 Turn 管理，追加确认归 executionCoordinator。确认超时与 Session 过期共享策略，setter 不复制配置。
 2. toolRunDeps 直接使用 Hook、Request、Turn、身份、Media、工具状态、FileOps、确认组件和执行视图；工具数据库记录及发现状态仍同步提交，无 Agent 字段或反向调用。
 3. modelCaller.Call 处理单次请求、流消费、媒体持有／释放、请求／响应 Hook 和视觉降级；选择快照由调用方传入，Prepared Hook 不改选模型，chat 禁用工具与 background 白名单规则保持。
-4. chatRunner 拥有 Prompt Builder；运行配置通过共享对象访问，日志 setter 更新执行、单轮、模型、工具、确认与提交组件，支持替换和清空。
-5. 日志及通知仍同步调用；视觉提示去重当前归 outputSender，旁路信号、提示规则所有权和订阅生命周期留待阶段 13。
+4. chatRunner 拥有 Prompt Builder；运行配置通过共享对象访问，日志 setter 更新仍需直接诊断的执行、单轮、Hook 和输出拥有者，支持替换和清空。
+5. 模型、工具、确认和回复观察由 app 订阅类型化事实，视觉提示去重归通知规则；核心提交、终止错误与已通知标记继续直接协调。
 
 验收：确认、confirmtool／confirmall、拒绝、停止、过期、补充输入、模型错误／取消／fallback、媒体释放、工具白名单、预检固定和文件提交准入回归通过；独立组件测试验证自动确认作用域及实际日志调用的替换／清空。阶段 11–12 的全仓 Go 测试和 Agent、app、Turn、Session、Request、ContextManager、ToolRun、Hook、Media、FileOps race 均通过。
 
 <a id="phase-13"></a>
 ### 阶段 13：旁路信号与订阅生命周期
 
-目标：将观察逻辑从核心组件移到明确拥有者管理的订阅者。
+状态：类型化事实、app 订阅和统一关闭生命周期已接入。
 
-实施顺序：
+当前实现：
 
 1. 建立 Agent 自有事件及 Agent.Signals()，按发布边界制作稳定快照；共享模型重试信号单独归 modelmgr，从既有客户端重试入口接入 app 订阅，覆盖对话、压缩和命名。
 2. 迁移模型、工具、确认和拒绝日志，保留既有字段、级别及正常运行时的记录次数；为普通、审计及命名日志显式接入有界背压，满时等待容量，禁止丢弃或绕过队列直接写入。工具记录和 Usage 更新保持同步。
@@ -718,9 +722,9 @@ app 在平台等生产者启动前连接订阅，并持有 Connection 和 Queue�
 5. 回复提交发布实际交付与提交结果，日志区分发送、存储及关联错误，不把部分成功描述成全部失败或全部成功。
 6. Session 命名 notifier 替换为命名信号，保留现有命名事件字段、直接触发、标题更新和取消／退出等待。
 7. app 在生产者启动前订阅，统一管理连接和队列；关闭时先解除背压入队等待，再等待相关生产者退出和消费者排空，复用共享预算；保持 Cron 与用户 Hook 的平台连接订阅隔离。
-8. 删除被替代的直调，避免同一事实重复记录或发送；订阅清理接入部分启动失败与共享关闭预算。
+8. 被替代的直调、modelmgr 重试 setter、Session NamingNotifier 及 outputSender 的视觉去重／状态展示入口已删除；订阅清理接入部分启动失败与共享关闭预算，不保留兼容壳。
 
-验收：覆盖发布后原对象改变、消费者失败隔离、对话／压缩／命名重试各通知一次、旧状态过滤、旧重试提示抑制及请求正常结束后失败事实仍可消费。以小容量队列和可控慢消费者验证 A/B 已入队、C 满时等待，释放容量后按成功入队顺序写入、不丢弃、不重复、不越过；关闭能唤醒等待者，写入失败明确报告。状态验证慢消费者期间多次更新合并、最后 done/error 无后续事件仍被调度及发送期间更新不漏唤醒。保留原来源／binding／CLI 连接、Drain、CancelPending、断开后在途任务、部分启动回收和共享预算测试；入队成功不能当作发送成功，回调未退出时保护依赖。运行 Agent、app、modelmgr、Session、signal、notification、delivery 相关测试及 race。
+验收已通过：事件快照与消费者失败隔离，真实 app 对话只记录一次，共享客户端对话／压缩／命名重试各通知一次；容量 1 的日志队列验证等待、FIFO、写入失败诊断及关闭唤醒。状态测试覆盖旧 attempt／版本、慢展示合并、最后 done/error、发送期间更新及投影回收；通知测试覆盖调用取消、请求结束后失败事实、原来源／binding 和不同远程 CLI 连接。保留 Drain／CancelPending、部分启动回收、关闭先唤醒生产者和依赖保护回归。全仓 `go test ./...` 与 Agent、app、modelmgr、Session、signal、notification、delivery、CLI、Turn 的相关 race 均通过。
 
 <a id="phase-14"></a>
 ### 阶段 14：最终装配与残留清理

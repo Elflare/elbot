@@ -29,22 +29,26 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - 共享 Session、Request、Turn、模型、上下文、工具状态、文件、发送、通知及命令实例由 app 创建。Agent 的 `NewWithOptions` 要求注入必需依赖，不补建服务或注册内置命令；测试装配位于测试文件中。
 - app 在平台启动前安装 Session 前台接管、活动会话查询和 Hook 唤醒／执行观察回调；这些执行回调遵守原有同步准入约束，生命周期通知另走信号。Agent 自身的 Prompt、命令执行器和补全组件由 Agent 组装。
 - Foundation／Runtime 工厂即使返回错误，也返回已取得资源的 Lifecycle。Runner 接管部分构建的清理责任，不启动后续阶段；延迟 Skill 加载同时提供取消上下文和实际完成信号。
-- 关闭时应用上下文立即取消 Cron handler 和 Session 命名任务，并停止新调度。Runner 先通过 Foundation 的 `StopCron(ctx)` 等待异步启动及在途执行（含状态保存）真正结束，再断开信号并关闭队列、等待命名退出、关闭 Hook runtime、等待 Skill 加载结束，最后关闭 SQLite 和日志。重复停止等待同一完成结果，关闭后迟到的启动不能重新开放调度。
+- 关闭时应用上下文立即取消 Cron handler 和 Session 命名任务，并停止新调度。Runner 先对订阅调用 `BeginClose`，断开连接、关闭队列接收并唤醒等待入队的生产者，再等待平台与 Foundation 的 `StopCron(ctx)` 结束，随后等待队列、命名及 Hook runtime 退出、等待 Skill 加载结束，最后关闭 SQLite 和日志。重复停止等待同一完成结果，关闭后迟到的启动不能重新开放调度。
 - 平台退出、Cron 和后续清理共享 30 秒预算。预算到期停止等待；平台、Cron 或回调仍在运行时跳过其依赖的显式释放，交给进程退出，不启动后台收尾链。正常取消／关闭预算耗尽不视为应用失败，Cron 正常取消不报告任务失败；真实错误继续返回。
 
 <!-- locator:chatinfo -->
-<!-- locator:signal -->
-## 公共聊天信息与信号
+## 公共聊天信息
 
 - `chatinfo.Info` 携带每条消息的 Source、Identity、平台消息／回复 ID 和 `PlatformData any`；平台会话 ID 不等于 ElBot Session ID。权限仍由 security 判定，公共身份不授予权限。
 - 平台 `MessageContext` 嵌入 Info，公共消息标识只有一个所有者；安装时同步提供公共快照，本地 CLI scanner／TUI 只安装公共信息。Prompt 直接读取 Info 并格式化公共字段，不再通过 ConversationMeta 中转，也不展开平台扩展。
 - `PlatformData` 由平台定义私有类型，优先只放公共字段无法表达的必要信息。发布后不改写；可变数据由生产者制作稳定快照，公共层不通用深拷贝、不序列化扩展。连接引用保留平台管理的生命周期，不代表持久投递地址。
 - OneBot／Telegram 从公共会话信息恢复目标，QQ 官方从公共消息 ID 与扩展恢复回复。远程 CLI 扩展保存原连接引用：默认回复只到原连接，断开即失败；显式用户／管理员目标才按原有多连接规则发送。
+- 前台接管独立复制公共 Info，并替换整份平台上下文；本地 CLI 没有平台扩展时也清除后台 Sender 与消息残留。执行自身的取消保持不变。
+
+<!-- locator:signal -->
+## 信号与订阅
+
 - `signal.Signal[T]` 锁内取得订阅快照，锁外依次调用或提交执行器；一次性连接最多投递一次，入队失败也消耗连接。断开不撤销已有快照或任务，可变事件数据由发布方形成稳定快照。
 - 异步连接显式选择 FollowEmit（保留发射取消）或 FollowExecutor（仅保留值）。Shutdown 独立选择 CancelPending（默认丢弃积压并取消在途）或 Drain（限时尝试完成）；底层取消始终优先。
-- 有界串行队列默认容量 256，满时拒绝入队；同队列 FIFO、不同队列独立。入队成功不代表执行或投递成功，Done 只表示 worker 实际结束。预期取消不记录失败，合并错误中的真实失败仍记录。
+- 有界串行队列默认容量 256，默认满时拒绝入队；普通、审计及命名日志显式启用 `WaitForCapacity`，满时等待容量，按成功入队顺序写入，不丢弃、不绕过队列。`BeginClose` 立即停止接收并唤醒等待者；已入队日志使用 FollowExecutor + Drain。入队成功不代表写入或投递成功，写入失败、日志入队被关闭拒绝及预算耗尽时未排空的日志明确诊断；Done 只表示 worker 实际结束。正常取消不报告业务失败，合并错误中的真实失败仍记录。
+- Agent 的类型化事实、modelmgr 的共享模型重试和 Session 的命名信号由 app 订阅，事件携带发布时的稳定快照。核心 Usage、工具数据库记录、消息提交与回执关联仍直接执行；可改写 Hook 和需要返回结果的调用不改成旁路信号。
 - 平台 Connected 信号由 app 为每个平台的 Hook、Cron 恢复分别订阅并分配独立队列，使用 FollowExecutor + CancelPending。用户 Hook 的阻塞、错误和截断不影响 Cron；补跑、投递状态和任务互斥仍由 Cron 管理。连接事件无聊天来源，信号不替代事务、可改写 Hook 流水线或可靠投递状态。
-- 前台接管独立复制公共 Info，并替换整份平台上下文；本地 CLI 没有平台扩展时也清除后台 Sender 与消息残留。执行自身的取消保持不变。
 
 <!-- locator:config -->
 ## 配置与运行数据
@@ -104,14 +108,16 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 | confirmationCoordinator | 处理风险确认响应、等待及结果转换，拥有自动确认记录与锁；等待对象仍归 Turn，超时策略与追加确认、Session 过期共用。 |
 | toolRunDeps | 直接组合工具执行所需服务、确认组件和执行视图，登记工具子请求，同步写工具调用记录和发现状态。 |
 | identityResolver | 拥有入口默认身份和安全策略，统一 Actor／Scope／CLI 判断；无来源 Hook 使用不带入口默认值的来源身份解析。 |
-| hookBridge | 使用 Hook manager/router、Request、身份、Media 和通知服务，负责事件补全、可改写 Hook、continuation、请求观察和错误处理。 |
-| statusRecorder | 拥有运行快照 map 及锁，同步合并、记录和查询；前台在解锁后展示，后台只记录。 |
-| outputSender | 使用共享 Dispatcher、通知服务和 hookBridge，处理普通／流式输出、发送 Hook、preview、notice、reasoning 和状态展示；拥有当前 Session 级视觉降级提示去重。 |
+| hookBridge | 使用 Hook manager/router、Request、身份和 Media，负责事件补全、可改写 Hook、continuation、请求观察和错误链路；失败日志与提示发布为事实。 |
+| statusRecorder | 同步校验执行归属、合并和保存快照，拒绝旧 attempt，发布带单调版本的 StatusChanged；Agent 查询仍同步读取本地快照。 |
+| outputSender | 使用共享 Dispatcher、通知服务和 hookBridge，处理普通／流式输出、发送 Hook、preview、notice 和 reasoning；向通知规则提供窄 SendAssistant 能力。 |
 | replyCommitter | 直接使用消息仓库、outputSender 和本轮 turnOutput，处理最终 Hook、空回复、延迟 outputs、发送／落库顺序及回执关联；返回消息标识、原始文本、实际 assistant 回执、持久化结果和分阶段错误。 |
 | executionView / executionTurnOutput | 读取已有 Execution 的接管身份、刷新 Session，并选择前后台输出；保留原请求取消链，接管时清除后台路由、模型和 sandbox 覆盖。 |
 | toolRunPromptProvider | 直接使用 ToolRun 和 identityResolver 查询 schema 与工具名。 |
 
-Agent 保留前后台入口、输入准备、命令分发与内部装配；对外压缩、接管、Scope、状态查询和 Hook 观察薄委托到组件。配置 setter 更新实际拥有者，工具运行配置和确认超时策略使用共享对象；日志 setter 同步更新组件并支持清空。日志、状态展示和通知仍同步调用，app 保持同步参与者的安装和共享服务生命周期所有权。
+Agent 保留前后台入口、输入准备、命令分发与内部装配；对外压缩、接管、Scope、状态查询和 Hook 观察薄委托到组件。配置 setter 更新实际拥有者，工具运行配置和确认超时策略使用共享对象；日志 setter 只更新仍需直接诊断的拥有者。`Agent.Signals()` 暴露输入、模型、工具、确认、拒绝、持久化失败、超时、状态、提示及回复事实；app 的日志订阅保留既有字段、级别和记录次数，消费者错误不改变核心结果。
+
+状态展示由 app 按 Session、原来源和实际展示目标保存最新版本，后台 worker 合并发送；同一用户的不同远程 CLI 连接仍是不同目标。发送期间的新状态会再次调度，最后 done/error 不依赖后续事件唤醒、不因队列容量丢失；后台只记录不展示，绑定失效时清理积压。视觉降级去重由通知规则按 Session 管理。
 
 <!-- locator:commands -->
 ## 命令链路
@@ -296,13 +302,13 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 - 平台 adapter 负责把平台无关输出转换成平台 API。
 - app 在 Hook 注册及 Agent 创建前装配共享 Router 和通知管理器；Hook／脚本、Cron、Elnis 直接使用 Router，不经 Agent 宿主发送闭包。无来源启动告警在交互模式显示于本地 CLI，在 service 模式记录实际告警内容，不广播管理员。
 - 显式目标优先；无显式目标时使用原消息发送器覆盖或 Info 的平台来源。后台丢弃发送器仍有效；原消息信息随任务保存，实际发送使用任务自身的 context，不查询当前 Session 重建旧目标。
-- 通知意图携带原 Info、原 Sender 覆盖和按需提供的 Session Binding；过期绑定或取消 context 拒绝发送。同步调用等待实际回执，平台连接沿用独立信号执行器，没有额外通知队列或可靠投递中间件。
+- 通知意图携带原 Info、原 Sender 覆盖和按需提供的 Session Binding；过期绑定或取消 context 拒绝发送。同步调用等待实际回执；app 为模型重试、视觉进度及 Hook 失败事实安装旁路消费者，过程提示 FollowEmit，失败事实 FollowExecutor，均使用 CancelPending。请求正常结束不取消已入队的失败事实；消费者复核原绑定与目标，不另建可靠投递中间件。
 - Router 在发送前把 URL/Path/Data 归一为 MediaID，发送副本经 `ResolveForOutput` 临时解析，并释放临时导出。回执按实际成功的输出索引建立媒体关联；多目标 scope 由 adapter 明确提供，缓存期限复用 sandbox retention，非正值不缓存。
 - 部分失败同时返回成功 Receipt 与 error；Agent／Cron／Elnis 关联已成功的平台消息，错误仍返回，任务不会因此整体成功。缓存失败只记录日志，不重发平台消息；通知发送失败不再触发通知。
 - Agent 的 assistant 消息及 Cron／Elnis 的报告关联使用 `Receipt.SentMessages` 提供的实际平台、ScopeID 和消息 ID；不根据触发来源或目标类型自行拼 Scope，缺少完整来源的回执不建立关联。任务指定目标与触发消息的 Info 分别保留各自语义。
 - QQ OneBot 把 record 输出转换为原生语音段；暂不支持 record 的平台使用统一文字 fallback。
 - QQ OneBot 纯文本发送超过 3000 个 Unicode 字符时按原文分节点，单次调用群聊／私聊 forward API；回复、显式目标、管理员通知和临时连接共用该规则。回执只关联外层 `message_id`，不关联转发资源 ID 或节点；失败不退回分条发送。
-- 前后台 turn 输出适配器只依赖 outputSender 和 statusRecorder；接管输出另外使用 executionView 与 Session 工作目录能力。状态始终先同步记录，再按前后台策略决定是否展示。
+- 前后台 turn 输出适配器只依赖 outputSender 和 statusRecorder；接管输出另外使用 executionView 与 Session 工作目录能力。状态始终先同步记录再发布，展示由 app 合并调度；实际回复发送、落库及关联完成后才发布对应观察事实。
 
 <!-- locator:platform -->
 ## 平台适配层
@@ -345,11 +351,11 @@ Session 服务唯一管理 current 绑定及其同步失效。绑定只公开 `S
 
 `CopyBackground` 在来源 Session 准入内复核后台状态，复用后台创建规则并复制历史、清除旧消息引用。Cron 只决定目标归属和业务 metadata；Session 统一设置后台模式与命名标记，副本不改变前台 current，不继承工具或执行状态。来源已被接管时拒绝复制。
 
-命名任务由 Session 的 `StartNaming`、`Close`、`Done` 管理，app 注入应用生命周期并等待实际退出。关闭后不接收新命名，准备阶段和在途生成均纳入退出等待；Turn 结束不取消命名，应用取消后的迟到结果不写标题、不执行 fallback、不报告命名失败。命名通知保留日志回调，暂不发布信号。
+命名任务由 Session 的 `StartNaming`、`Close`、`Done` 管理，app 注入应用生命周期并等待实际退出。关闭后不接收新命名，准备阶段和在途生成均纳入退出等待；Turn 结束不取消命名，应用取消后的迟到结果不写标题、不执行 fallback、不报告命名失败。`NamingSignals()` 发布 Scheduled／Completed／Failed，app 在命名启动前接入有界背压日志消费者；标题更新与命名触发仍直接执行。
 
 `CreateCompacted` 接收来源 Session ID、预分配的新 ID、标题与已准备的 metadata，在准入内复核来源及前台原绑定，继承归属和模式，统一设置命名字段并保存新会话。前台更新 current，后台不创建前台绑定；保存失败不改变绑定。Session 不依赖 contextmgr，摘要、seed、代数及压缩标题材料仍归上下文服务，执行交接仍归 Agent。Fork 保留来源模式。
 
-仅发布 `BindingChanged{Old, New, Reason}`，覆盖创建、恢复、Fork、重置、删除、过期和记录缺失导致的 current 变化，不发布一般字段或持久化增删事件。删除会失效所有指向该记录的绑定。信号在状态与准入锁释放后发出，允许回调重入。app 持有独立撤销清理队列及订阅，以 `FollowExecutor + CancelPending` 清理指定旧绑定；队列延迟不影响同步失效，关闭沿用共享 30 秒预算。维护任务复用运行中的 Session 服务。
+绑定变化发布 `BindingChanged{Old, New, Reason}`，覆盖创建、恢复、Fork、重置、删除、过期和记录缺失导致的 current 变化，不发布一般字段或持久化增删事件。删除会失效所有指向该记录的绑定。信号在状态与准入锁释放后发出，允许回调重入。app 持有独立撤销清理队列及订阅，以 `FollowExecutor + CancelPending` 清理指定旧绑定；队列延迟不影响同步失效，关闭沿用共享 30 秒预算。维护任务复用运行中的 Session 服务。
 
 短准入按 Scope → 排序后的 SessionID → 状态锁取得。Scope 保护 current 解析与切换，SessionID 协调 Turn 启动、停止、交接、删除和清理；LLM、工具、Hook、发送和信号回调均在锁外。Session 通过注入的只读执行状态判断忙闲，当前非 idle 时禁止切离，显式删除拒绝执行中的 Session，维护清理跳过忙碌项并在条件删除时复核归档、置顶和时间。不同 Scope 不共用全局准入锁。
 
@@ -369,7 +375,7 @@ Session 命令的分页选择和维护配置由 `SessionCommandState` 按 Scope 
 - 切换串行构建候选状态，调用 `config.SaveState` 原子替换状态文件后再发布内存状态；失败保留旧选择。写盘不持有状态读锁，读取方继续使用旧快照。状态文件保留原有字段及默认 Session 模式；未配置路径的独立实例仅更新内存。
 - `Selection` 固定 provider、模型和客户端。对话固定本次 Turn 选择；压缩固定专用选择或本次对话 fallback；命名同时固定专用选择及 work fallback。Turn／Request Prepared Hook 的 provider/model 只读，Go Handler 的相关修改不回写模型快照；当前消息仍按各 Hook 点的原契约修改。前台接管保留明确的重新选择边界。
 - `background` 只是 Session 模式，没有对应模型槽位。默认后台选择 work 模型；Elnis 保留 elwisp1/2/3 槽位及缺省回退 work。Cron 任务可显式指定 provider/model，由共享 modelmgr 校验，不改变全局选择。
-- 标题生成与压缩调度留在原模块，不保存独立模型选择。app 将模型服务的重试回调接入 `notification/rules.ModelRetry`；客户端配置在启动后保持不变。
+- 标题生成与压缩调度留在原模块，不保存独立模型选择。modelmgr 在共享客户端入口统一发布 `ModelRetrying`，覆盖对话、压缩和命名；app 经独立队列接入 `notification/rules.ModelRetry`，保留单次调用的取消和原来源，过期重试不再提示。客户端配置在启动后保持不变。
 
 <!-- locator:context -->
 ## 上下文管理

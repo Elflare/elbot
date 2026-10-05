@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"testing"
@@ -81,15 +82,19 @@ type fakeNamingNotifier struct {
 	failures chan NamingFailedEvent
 }
 
-func (n *fakeNamingNotifier) NotifyNamingScheduled(context.Context, NamingScheduledEvent) {}
-
-func (n *fakeNamingNotifier) NotifyNamingCompleted(context.Context, NamingCompletedEvent) {}
-
-func (n *fakeNamingNotifier) NotifyNamingFailed(ctx context.Context, event NamingFailedEvent) {
-	select {
-	case n.failures <- event:
-	case <-ctx.Done():
+func (n *fakeNamingNotifier) connect(t *testing.T, svc *Service) {
+	t.Helper()
+	c, err := svc.NamingSignals().Failed.Connect(func(ctx context.Context, event NamingFailedEvent) error {
+		select {
+		case n.failures <- event:
+		case <-ctx.Done():
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
 	}
+	t.Cleanup(c.Disconnect)
 }
 
 func waitTitle(t *testing.T, store storage.Store, sessionID, want string) {

@@ -36,7 +36,7 @@ func TestRunnerOwnsNamingExitAndPartialStartup(t *testing.T) {
 			}
 			defer store.Close()
 			gen := lifecycleTitleGenerator{started: make(chan struct{}), release: make(chan struct{}), stubborn: mode == "timeout"}
-			svc := session.NewServiceWithNaming(store, session.NamingConfig{TriggerStep: 1}, gen, nil)
+			svc := session.NewServiceWithNaming(store, session.NamingConfig{TriggerStep: 1}, gen)
 			var unblock sync.Once
 			defer func() { unblock.Do(func() { close(gen.release) }); _ = svc.Close(context.Background()) }()
 			row, err := svc.Create(context.Background(), session.Scope{ActorID: "cli:local", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, session.CreateRequest{})
