@@ -657,6 +657,18 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 	}
 	msgCtx := platform.WithMessageContext(ctx, messageCtx)
 
+	var currentDisplay []platform.MessageSegment
+	if event.MessageType == "private" && !platform.HasCommandPrefix(text, a.cfg.CommandPrefixes) {
+		if segments, ok := decodeMessageSegments(event.Message); ok {
+			currentDisplay = a.expandForwardSegments(msgCtx, segments, event.SelfID, currentSegments)
+		}
+	}
+	// An expanded current message is composed after the reference view. Commands
+	// keep the original path so refcontext can still interpret /fork and others.
+	referenceInputText, referenceInputSegments := text, currentSegments
+	if len(currentDisplay) > 0 {
+		referenceInputText, referenceInputSegments = "", nil
+	}
 	var referenceSegments []platform.MessageSegment
 	if normalized.ReplyID != "" {
 		ref := refcontext.Apply(msgCtx, refcontext.Options{
@@ -667,7 +679,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 			ActorID:         security.ActorID(a.Name(), strconv.FormatInt(event.UserID, 10)),
 			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, strconv.FormatInt(event.UserID, 10)),
 			ReplyID:         normalized.ReplyID,
-			Text:            text,
+			Text:            referenceInputText,
 			CommandPrefixes: a.cfg.CommandPrefixes,
 			Fetch:           a.referenceFetcher(event),
 			Enrich:          a.expandForwardReference(event),
@@ -678,10 +690,20 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		messageCtx.Reply = ref.Reply
 		referenceSegments = ref.ReferenceSegments
 		if len(ref.DisplaySegments) > 0 {
-			messageCtx.ContextSegments = forwardContextSegments(ref.DisplaySegments, currentSegments, text)
+			messageCtx.ContextSegments = forwardContextSegments(ref.DisplaySegments, referenceInputSegments, referenceInputText)
 		} else if strings.TrimSpace(ref.Text) != "" || len(referenceSegments) > 0 {
-			messageCtx.ContextSegments = finalMessageSegments(ref.Text, currentSegments, referenceSegments)
+			messageCtx.ContextSegments = finalMessageSegments(ref.Text, referenceInputSegments, referenceSegments)
 		}
+	}
+	if len(currentDisplay) > 0 {
+		messageCtx.ContextSegments = forwardContextSegments(messageCtx.ContextSegments, currentDisplay, "")
+		var displayText strings.Builder
+		for _, segment := range messageCtx.ContextSegments {
+			if segment.Type == platform.SegmentText {
+				displayText.WriteString(segment.Text)
+			}
+		}
+		messageCtx.ContextText = displayText.String()
 	}
 	a.recordChatMessage(ctx, event, normalized, messageCtx.Reply)
 	messageCtx.Segments = finalMessageSegments(text, currentSegments, nil)

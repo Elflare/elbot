@@ -282,7 +282,7 @@ rg -n "Output|SendChat|SendNotice|Stream|Reasoning|emoticon|receipt" internal/de
 - `internal/platform/builtin/`：内置平台装配。
 - `internal/platform/cli/`：本地/远程 CLI 和 TUI。
 - `internal/platform/cli/tui.go`、`tui_mouse.go`、`tui_copy.go`：TUI 主模型、鼠标交互与 copy mode。
-- `internal/platform/qq-onebot/`：OneBot 输入归一化、纯文本长消息合并转发、发送回执和媒体解析；`message.go` 定义协议数据并解码消息，`conversion.go` 统一消息类型映射、媒体字段提取和占位文案，按普通输入／转发节点场景生成内部消息段；`forward.go` 通过公共引用补全回调获取并展开一层 forward，组织节点署名和保序的图文展示段。
+- `internal/platform/qq-onebot/`：OneBot 输入归一化、纯文本长消息合并转发、发送回执和媒体解析；`message.go` 定义协议数据并解码消息，`conversion.go` 统一消息类型映射、媒体字段提取和占位文案，按普通输入／转发节点场景生成内部消息段；`forward.go` 为私聊直发和显式引用共用的一层 forward 展开，组织节点署名和保序的图文展示段。
 - `internal/platform/qqofficial/`
 - `internal/platform/telegram/`
 - `internal/platform/headless/`
