@@ -13,7 +13,6 @@ import (
 	"elbot/internal/notification"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
-	"elbot/internal/storage"
 )
 
 type outputSender struct {
@@ -70,30 +69,6 @@ func bufferAssistantOutput(ctx context.Context) bool {
 	return ok && msg.BufferAssistantOutput
 }
 
-func (a *Agent) mapSentAssistantMessage(ctx context.Context, sessionID, messageID string, receipt delivery.Receipt) {
-	if sessionID == "" || messageID == "" || a.store == nil || a.store.Messages() == nil {
-		return
-	}
-	for _, sent := range receipt.SentMessages {
-		platformName, scopeID, platformMessageID := strings.TrimSpace(sent.Platform), strings.TrimSpace(sent.ScopeID), strings.TrimSpace(sent.PlatformMessageID)
-		if platformName == "" || scopeID == "" || platformMessageID == "" {
-			continue
-		}
-		mapping := storage.PlatformMessageMap{
-			Platform:          platformName,
-			PlatformScopeID:   scopeID,
-			PlatformMessageID: platformMessageID,
-			MessageID:         messageID,
-			SessionID:         sessionID,
-		}
-		if err := a.store.Messages().MapPlatformMessage(ctx, mapping); err != nil {
-			a.audit("persistence_error", "session_id", sessionID, "operation", "map_platform_message", "platform_message_id", platformMessageID, "error", err.Error())
-			if a.logger != nil {
-				a.logger.WarnContext(ctx, "map platform message failed", "session_id", sessionID, "platform_message_id", platformMessageID, "error", err.Error())
-			}
-		}
-	}
-}
 func (o *outputSender) TextNotice(ctx context.Context, level slog.Level, text string) {
 	o.notifications.Text(ctx, level, text)
 }

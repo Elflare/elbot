@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
@@ -252,12 +251,10 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		a.consumeContextCompactSeed(ctx, session)
 	}
 
-	bufferOutput := bufferAssistantOutput(ctx)
 	var finalText string
 	var finalRawText string
 	var platformFinalText string
 	var finalStream delivery.MessageStream
-	var finalReceipt delivery.Receipt
 	var deferredOutputs []delivery.Output
 	var usage *llm.Usage
 	toolRounds := 0
@@ -410,7 +407,6 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	if err := reqCtx.Err(); err != nil {
 		return a.handleTurnContextDone(ctx, session.ID, err, out)
 	}
-	platformOutputText := platformFinalText
 	// Adoption can happen while the final model request is in flight, without
 	// another loop iteration to refresh the identity before output hooks.
 	reqCtx, err = a.view.RefreshSession(reqCtx, session)
@@ -418,72 +414,13 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		return err
 	}
 	ctx = a.view.Context(ctx)
-	bufferOutput = bufferAssistantOutput(ctx)
-	var finalSendErr error
-	backgroundOutput := isBackgroundSession(session)
-	emptyAssistantResponse := strings.TrimSpace(platformOutputText) == "" && strings.TrimSpace(finalText) == "" && len(deferredOutputs) == 0
-	if emptyAssistantResponse && !backgroundOutput {
-		platformOutputText = "模型这次没有返回可见内容。"
-	}
 	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseSending, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindTurn, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: storage.Now()})
-	if strings.TrimSpace(platformOutputText) != "" {
-		var err error
-		platformOutputText, err = a.output.PrepareAssistant(ctx, hook.PointAgentTurnOutputPrepared, platformOutputText)
-		if err != nil {
-			return fmt.Errorf("turn output hook: %w", err)
-		}
-		if !bufferOutput {
-			if finalStream != nil {
-				finalReceipt, finalSendErr = out.ReplaceAndFinishStream(ctx, reqCtx, finalStream, platformOutputText)
-			} else {
-				finalReceipt, finalSendErr = out.SendAssistant(ctx, platformOutputText)
-			}
-			if finalSendErr != nil && len(finalReceipt.PlatformMessageIDs) == 0 && len(finalReceipt.SentMessages) == 0 {
-				return finalSendErr
-			}
-		}
-	}
-
-	if !bufferOutput && finalSendErr == nil {
-		finalSendErr = out.SendOutputs(ctx, deferredOutputs)
-		if finalSendErr != nil && len(finalReceipt.PlatformMessageIDs) == 0 && len(finalReceipt.SentMessages) == 0 {
-			return finalSendErr
-		}
-	}
-
-	// 工具调用消息按 OpenAI messages 形态保存；discover 结果持久化时会压缩 schema，避免历史上下文膨胀。
-	assistantMessage := &storage.Message{
-		SessionID: session.ID,
-		Role:      storage.RoleAssistant,
-		Content:   finalText,
-		Metadata:  assistantRawTextMetadata(finalText, finalRawText),
-	}
-	persistedAssistant := false
-	if !emptyAssistantResponse {
-		if err := a.persistTurnMessage(ctx, assistantMessage, "append_assistant_message"); err != nil {
-			return err
-		}
-		persistedAssistant = true
-	}
-	if bufferOutput {
-		if strings.TrimSpace(platformOutputText) != "" {
-			receipt, err := out.SendAssistant(ctx, platformOutputText)
-			if persistedAssistant {
-				a.mapSentAssistantMessage(ctx, session.ID, assistantMessage.ID, receipt)
-			}
-			if err != nil {
-				a.audit("platform_send_error", "session_id", session.ID, "operation", "send_assistant_message", "error", err.Error())
-				return err
-			}
-		}
-		if err := out.SendOutputs(ctx, deferredOutputs); err != nil {
-			return err
-		}
-	} else if persistedAssistant {
-		a.mapSentAssistantMessage(ctx, session.ID, assistantMessage.ID, finalReceipt)
-	}
-	if finalSendErr != nil {
-		return finalSendErr
+	committed, err := a.replies.Commit(ctx, reqCtx, replyCommitInput{
+		Session: session, Text: finalText, RawText: finalRawText, PlatformText: platformFinalText,
+		Stream: finalStream, Outputs: deferredOutputs,
+	}, out)
+	if err != nil {
+		return err
 	}
 	if err := a.sessions.Touch(ctx, session); err != nil {
 		a.audit("persistence_error", "session_id", session.ID, "operation", "touch_session", "error", err.Error())
@@ -504,7 +441,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		*completedPending = pending
 	}
 	if execution := turn.ExecutionFromContext(ctx); execution != nil {
-		execution.SetResult(session.ID, assistantMessage.ID, finalRawText)
+		execution.SetResult(session.ID, committed.MessageID, committed.RawText)
 	}
 	a.sessions.MaybeScheduleNaming(ctx, session.ID)
 	return nil

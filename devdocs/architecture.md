@@ -79,14 +79,15 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 3. 普通对话加载 Session 上下文、构建 Prompt、选择模型并调用 LLM。
 4. LLM 返回文本、reasoning 或 tool call。
 5. 如果有 tool call，Agent 进入工具执行链路；工具结果写入 transcript 后继续 LLM 循环。
-6. 生成最终 assistant 输出前，先跑输出预处理 Hook。
-7. outputSender 调用共享 Dispatcher 发送；对话主流程按直接／缓冲输出路径完成 assistant 落库和实际回执关联。
+6. 最终输出前，主流程通过 executionView 刷新接管来源和 Session，发布 sending 状态，再调用 replyCommitter。
+7. replyCommitter 执行最终输出 Hook，通过 turnOutput／outputSender 发送并按直接／缓冲路径完成 assistant 落库及实际回执关联；主流程使用提交结果继续执行收尾。
 
 关键约定：
 
 - user 与已完成工具 transcript 会阶段性落库；前置 Hook 绑定的当前消息在调用 LLM 前以最终 segments 落库。
 - 多模态消息的 `segments` 保存原始结构；`content` 由 segments 生成可读文本投影。请求 OpenAI-compatible 模型时，再按每条消息的图片顺序临时插入对应文本标签，不向 segment JSON 增加派生字段。
-- 流式输出最终由对话主流程用最终文本 replace。
+- replyCommitter 用最终展示文本调用输出适配器完成流式 replace／finish；历史正文与原始模型文本不受展示 Hook 改写影响。
+- 直接输出先发送及投递延迟 outputs，再落库、关联；缓冲输出先落库，再发送、关联及投递延迟 outputs。提交失败仍保留实际 assistant 回执和持久化结果，不重发已成功内容；只用回执中的完整平台、Scope 和消息 ID 关联，关联失败记录但不终止对话。
 - 发送前会发布 `sending` phase，便于 `/requests` 区分 LLM 慢还是平台发送慢。
 - 普通输入在工具阶段不会打断工具，会以 text/image segments 进入 pending；下一次 LLM 调用前已有的 pending 会合并注入当前轮，最终 LLM 调用期间新到达的 pending 则在当前轮正常结束后作为新用户消息自动开启下一轮。
 - Prompt Builder 每个 turn 从 Soul、工具提示、工具标签和当前 actor 的常驻记忆构建一次 system message；该消息只在当前 turn 内复用，不进入会话历史。
@@ -99,10 +100,11 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 | hookBridge | 使用 Hook manager/router、Request、身份、Media 和通知服务，负责事件补全、可改写 Hook、continuation、请求观察和错误处理。 |
 | statusRecorder | 拥有运行快照 map 及锁，同步合并、记录和查询；前台在解锁后展示，后台只记录。 |
 | outputSender | 使用共享 Dispatcher、通知服务和 hookBridge，处理普通／流式输出、发送 Hook、preview、notice、reasoning 和状态展示。 |
+| replyCommitter | 直接使用消息仓库、outputSender 和本轮 turnOutput，处理最终 Hook、空回复、延迟 outputs、发送／落库顺序及回执关联；返回消息标识、原始文本、实际 assistant 回执、持久化结果和分阶段错误。 |
 | executionView / executionTurnOutput | 读取已有 Execution 的接管身份、刷新 Session，并选择前后台输出；保留原请求取消链，接管时清除后台路由、模型和 sandbox 覆盖。 |
 | toolRunPromptProvider | 直接使用 ToolRun 和 identityResolver 查询 schema 与工具名。 |
 
-Agent 仍拥有输入与执行编排、单轮模型／工具循环和最终回复提交；自动确认与视觉提示去重状态仍在 Agent。对外 Scope、状态查询、Hook 观察和连接通知薄委托到组件。配置 setter 更新实际拥有者，日志 setter 更新现有日志调用者；app 保持同步参与者的安装和共享服务生命周期所有权。
+Agent 仍拥有输入与执行编排、单轮模型／工具循环，以及提交后的 Touch、Usage、状态、pending、压缩判断、Execution 结果和命名；自动确认与视觉提示去重状态仍在 Agent。对外 Scope、状态查询、Hook 观察和连接通知薄委托到组件。配置 setter 更新实际拥有者，日志 setter 更新现有日志调用者；app 保持同步参与者的安装和共享服务生命周期所有权。
 
 <!-- locator:commands -->
 ## 命令链路

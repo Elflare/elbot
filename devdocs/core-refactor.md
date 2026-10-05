@@ -303,7 +303,7 @@ Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记�
 <!-- locator:agent-components -->
 ## 阶段 9–15：Agent 内部职责与旁路信号
 
-本节描述阶段 9–15 的目标结构；阶段 9 的基础组件已接入，阶段 10–15 仍待实施。当前代码职责以 architecture.md 和 code-map.md 为准。阶段 9–14 逐步完成接入，最后单列阶段 15 Review；不能用末尾 Review 代替各阶段验证。
+本节描述阶段 9–15 的目标结构；阶段 9 的基础组件及阶段 10 的回复提交组件已接入，阶段 11–15 仍待实施。当前代码职责以 architecture.md 和 code-map.md 为准。阶段 9–14 逐步完成接入，最后单列阶段 15 Review；不能用末尾 Review 代替各阶段验证。
 
 ### 范围与依赖约束
 
@@ -652,24 +652,24 @@ app 在平台等生产者启动前连接订阅，并持有 Connection 和 Queue�
 2. foregroundTurnOutput/backgroundTurnOutput 只依赖发送与状态能力；execution_context.go 和 execution_output.go 分别承载执行视图与接管输出，保留原取消链和报告附件转换。
 3. toolRunPromptProvider 直接注入 ToolRun 和身份解析；配置 setter 更新实际拥有者，媒体测试通过构造注入共享服务。
 4. app 安装的 Hook 唤醒、Request 观察等仍是同步参与者；纯上下文和 Session payload 转换使用包内函数。
-5. 状态与通知沿用同步调用顺序；assistant 历史提交和消息映射仍归对话主流程，工具执行适配器仍按阶段 12 迁移，旧 attempt 过滤及展示版本按阶段 13 实施。
+5. 状态与通知沿用同步调用顺序；assistant 历史提交和消息映射由阶段 10 的 replyCommitter 承接，工具执行适配器仍按阶段 12 迁移，旧 attempt 过滤及展示版本按阶段 13 实施。
 
 验收：基础组件能用必要服务独立构造，无 Agent 字段、嵌入或绑定 Agent 的回调集合；原来源发送、CLI 原连接、后台静默、无来源 Hook、错误事件和本地状态先写后读保持一致。组件边界回归覆盖同步状态读写、策略／日志配置更新及接管取消链；Agent、app、delivery、notification、Hook、ToolRun 相关测试和 Agent／app race 通过，代码地图与已落地架构已同步。
 
 <a id="phase-10"></a>
 ### 阶段 10：收拢最终回复提交
 
-目标：从 runChat 移出最终发送与历史提交规则。
+状态：replyCommitter 已接入，最终发送与历史提交规则由组件负责。
 
-实施顺序：
+当前实现：
 
-1. 建立 replyCommitter 及明确的提交输入／结果，迁移最终输出 Hook、空回复、流式收尾、延迟 outputs、assistant 落库和回执关联。
-2. 保留原始模型文本与展示文本区别，以及直接／缓冲输出现有的发送和落库顺序。
-3. 保留部分成功 receipt，不重发已成功内容；只用实际结构化来源关联消息。
-4. 提交前应用执行视图，覆盖最后一轮 LLM 等待期间发生的接管；普通输出适配与提交层分别保留既有 Hook 时机，不重复触发。
-5. runChat 使用结构化提交结果继续收尾；Execution 完成、pending、自动压缩和命名不进入提交组件。
+1. replyCommitter 直接注入消息仓库、outputSender 和日志，Commit 显式接收本轮输出及已刷新的业务／请求 context；不持有 Agent 或绑定 Agent 的回调。
+2. 提交输入区分历史正文、原始模型文本、展示文本、最终 stream 和延迟 outputs；结果保留消息标识、原始文本、实际 assistant receipt、持久化标记及发送／保存／关联错误，返回错误沿用原优先级。
+3. 组件负责最终 Hook、空回复、流式收尾、延迟 outputs、assistant 落库及回执关联。直接输出先发送再落库，缓冲输出先落库再发送；部分成功不重发，关联只消费完整结构化来源，关联失败不终止对话。
+4. runChat 在提交前应用 executionView 并发布 sending，覆盖最后一轮 LLM 等待期间发生的接管。最终 Hook 归提交层，普通发送 Hook 归输出适配层，保持既有调用条件与顺序。
+5. runChat 使用提交结果继续 Touch、Usage、状态、pending、Execution 结果及命名；自动压缩和执行完成不进入提交组件。日志 setter 更新提交组件的实际日志依赖。
 
-验收：直接／缓冲、流式／非流式、前后台和接管组合通过；空回复、输出 Hook 改写、保存失败、发送失败及部分成功行为保持。复用已有真实 adapter、Cron、Elnis 回执回归，验证不同 Scope 下相同平台 ID 的正确关联，不仅依赖 mock。运行相关包测试；并发接管与输出边界运行 race。
+验收：独立组件测试覆盖直接／缓冲／流式提交顺序、Hook 改写及取消、空回复、后台静默、仅延迟输出、保存／发送／关联失败和部分成功；真实 Agent 入口验证保存失败不误完成 Execution，既有接管及真实 adapter、Cron、Elnis 回执回归继续通过。Agent、app、delivery、Hook、平台 adapter、Cron、Elnis 相关包测试与 Agent／app race 通过，开发文档已同步。
 
 <a id="phase-11"></a>
 ### 阶段 11：收拢执行交接与单轮对话

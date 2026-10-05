@@ -74,7 +74,7 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 
 先看：
 
-- `internal/agent/core.go`：Agent 入口及执行编排接线，装配身份、Hook、状态、发送和执行视图组件；`Options` 要求调用方提供共享服务，内置命令在 app 注册。
+- `internal/agent/core.go`：Agent 入口及执行编排接线，装配身份、Hook、状态、发送、回复提交和执行视图组件；`Options` 要求调用方提供共享服务，内置命令在 app 注册。
 - `internal/agent/message.go`：消息入口、slash/普通输入分发和用户错误通知。
 - `internal/agent/command_runtime.go`：命令权限、Turn 冲突、通知和 continuation 的统一编排。
 - `internal/agent/input.go`、`tool_directive.go`：普通输入与预加载的原绑定准入、锁外准备及提交复核，命令 continuation、pending 和风险确认入口。
@@ -88,13 +88,14 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 - `internal/agent/options.go`、`logging.go`：运行配置 setter 和日志接线，更新实际组件拥有者及日志调用者。
 - `internal/agent/identity.go`：identityResolver 拥有入口默认身份与安全策略；区分普通入口和无默认身份的 Hook 来源解析。
 - `internal/agent/toolrun_prompt_provider.go`：直接注入 ToolRun 与身份解析的 Prompt provider。
-- `internal/agent/chat.go`：普通对话主流程。
+- `internal/agent/chat.go`：普通对话主流程；最终提交前刷新执行视图，使用提交结果继续 Session／Execution 收尾。
+- `internal/agent/reply_commit.go`：replyCommitter 的提交输入／结果、最终 Hook、空回复、发送／落库顺序、延迟 outputs 和实际回执关联。
 - `internal/agent/chat_llm.go`：LLM 调用和消息转换。
 - `internal/agent/chat_tools.go`：工具执行与确认。
 - `internal/agent/turn_output.go`：只依赖发送与状态组件的前后台 turn 输出适配。
 - `internal/agent/prompt.go`：Prompt 构建。
 - `internal/agent/system_prompt*.go`：Soul、常驻记忆、工具提示等 system prompt 来源和组合。
-- `internal/agent/tool_transcript.go`：工具 transcript 持久化。
+- `internal/agent/tool_transcript.go`：用户／工具 transcript 持久化和消息 metadata 编解码。
 
 常用搜索：
 
@@ -263,7 +264,8 @@ rg -n "Event|Handler|Control|plugins/hooks.toml|exec|hook.v2|runtime|SharedState
 - `internal/notification/rules/`：平台连接 Hook 输出、Hook 失败、模型重试／降级和执行错误文案。
 - `internal/app/services.go`、`integrations.go`、`signals.go`：共享发送／通知服务装配、外部宿主接入和平台连接执行器。
 - `internal/agent/turn_output.go`、`execution_output.go`：前后台发送策略与接管输出适配；后台保持静默但同步记录状态。
-- `internal/agent/output.go`：outputSender 的普通／流式发送和输出 Hook；保留部分成功回执。Session 消息关联仍由对话主流程调用，使用回执中的实际平台、Scope 和消息 ID。
+- `internal/agent/output.go`：outputSender 的普通／流式发送和输出 Hook，保留部分成功回执；不负责 assistant 历史提交。
+- `internal/agent/reply_commit.go`：最终回复提交与 Session 消息关联，只消费回执中的实际平台、Scope 和消息 ID；错误结果保留实际发送与落库事实。
 - `internal/platform/platform.go`：平台发送抽象。
 
 常用搜索：

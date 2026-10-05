@@ -49,6 +49,7 @@ type Agent struct {
 	hooks              *hookBridge
 	status             *statusRecorder
 	output             *outputSender
+	replies            *replyCommitter
 	view               executionView
 	idleExpiration     session.IdleExpirationConfig
 	sandboxRoot        string
@@ -120,6 +121,7 @@ func NewWithOptions(opts Options) (*Agent, error) {
 	a.status = &statusRecorder{}
 	a.output = &outputSender{dispatcher: opts.Dispatcher, notifications: opts.Notifications, hooks: a.hooks, identity: a.identity}
 	a.view = executionView{sessions: store.Sessions()}
+	a.replies = &replyCommitter{messages: store.Messages(), output: a.output}
 	a.toolRuntime = newToolRuntimeState()
 	a.toolRuntime.manager = opts.ToolRunner
 	a.toolRuntime.preloader = opts.ToolPreloader
