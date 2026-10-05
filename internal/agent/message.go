@@ -9,6 +9,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/security"
 )
 
@@ -28,7 +29,7 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {
 		if err != nil {
 			a.notifyHookError(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}}, err)
 			if shouldNotifyUserError(err) {
-				a.sendChat(ctx, "请求失败："+err.Error())
+				a.sendChat(ctx, notificationrules.ExecutionFailure(err))
 			}
 		}
 	}()

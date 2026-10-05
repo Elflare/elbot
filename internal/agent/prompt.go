@@ -103,7 +103,6 @@ type PromptBuilder struct {
 type PromptBuildRequest struct {
 	Session  *storage.Session
 	Scope    session.Scope
-	Meta     ConversationMeta
 	Messages []storage.Message
 	Summary  *storage.ContextSummary
 }
@@ -113,7 +112,7 @@ func (b PromptBuilder) Build(ctx context.Context, req PromptBuildRequest) ([]llm
 	if req.Session != nil && req.Session.Mode != "" {
 		mode = req.Session.Mode
 	}
-	systemPrompt, err := b.System.Build(ctx, SystemPromptRequest{Mode: mode, Session: req.Session, Scope: req.Scope, Meta: req.Meta})
+	systemPrompt, err := b.System.Build(ctx, SystemPromptRequest{Mode: mode, Session: req.Session, Scope: req.Scope})
 	if err != nil {
 		return nil, err
 	}

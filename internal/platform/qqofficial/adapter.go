@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/signal"
@@ -109,8 +110,7 @@ func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (deliv
 	var receipt delivery.Receipt
 	for _, target := range targets {
 		target.Proactive = true
-		ctx := context.WithValue(ctx, targetKey{}, target)
-		sent, err := a.sendContextOutput(ctx, outputs)
+		sent, err := a.sendOutputs(ctx, target, outputs)
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 		if err != nil {
@@ -157,8 +157,8 @@ func isGroupToolPreviewNotice(ctx context.Context, outputs []delivery.Output) bo
 	if len(outputs) != 1 || outputs[0].Kind != delivery.KindText || !strings.HasPrefix(strings.TrimSpace(outputs[0].Text), "[tool]") {
 		return false
 	}
-	target, ok := ctx.Value(targetKey{}).(sendTarget)
-	return ok && target.Kind == targetGroup
+	info, ok := chatinfo.FromContext(ctx)
+	return ok && info.Source.Platform == platformName && info.Source.ConversationKind == chatinfo.ConversationGroup
 }
 
 func (a *Adapter) nextMsgSeq(msgID string) int {
@@ -207,7 +207,12 @@ const (
 	targetGroup sendTargetKind = "group"
 )
 
-type targetKey struct{}
+// messageData is immutable after the inbound Info is published. Message and
+// conversation IDs live in the common fields, not in this extension.
+type messageData struct {
+	EventID   string
+	EventType string
+}
 
 func sleepContext(ctx context.Context, d time.Duration) bool {
 	t := time.NewTimer(d)

@@ -75,11 +75,8 @@ type Mention struct {
 
 // MessageContext carries per-message platform routing and actor data.
 type MessageContext struct {
-	Info                  chatinfo.Info
+	chatinfo.Info
 	GroupRole             security.GroupRole
-	PlatformMessageID     string
-	ReplyToMessageID      string
-	ReplyToSenderID       string
 	Sender                delivery.ContextSender
 	BufferAssistantOutput bool
 	ForkFromMessageID     string

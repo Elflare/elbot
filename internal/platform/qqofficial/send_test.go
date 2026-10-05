@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/delivery"
 )
 
@@ -26,7 +27,7 @@ func TestSendChatUsesGroupMessageAPI(t *testing.T) {
 	defer server.Close()
 
 	adapter := newQQOfficialSendTestAdapter(server)
-	ctx := context.WithValue(context.Background(), targetKey{}, sendTarget{Kind: targetGroup, OpenID: "group-1", MsgID: "incoming-1"})
+	ctx := chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: platformName, ConversationKind: chatinfo.ConversationGroup, ConversationID: "group-1"}, PlatformMessageID: "incoming-1"})
 	receipt, err := adapter.SendChat(ctx, []delivery.Output{delivery.Text("hello")})
 	if err != nil {
 		t.Fatalf("SendChat: %v", err)
@@ -83,7 +84,7 @@ func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
 	defer server.Close()
 
 	adapter := newQQOfficialSendTestAdapter(server)
-	ctx := context.WithValue(context.Background(), targetKey{}, sendTarget{Kind: targetGroup, OpenID: "group-1"})
+	ctx := chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: platformName, ConversationKind: chatinfo.ConversationGroup, ConversationID: "group-1"}})
 	receipt, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")}})
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
@@ -121,4 +122,29 @@ func newQQOfficialSendTestAdapter(server *httptest.Server) *Adapter {
 	adapter.client.tokens.token = "token"
 	adapter.client.tokens.expiresAt = time.Now().Add(time.Hour)
 	return adapter
+}
+
+func TestExplicitNoticeDoesNotReuseReplySnapshot(t *testing.T) {
+	var bodies []messageToCreate
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body messageToCreate
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		bodies = append(bodies, body)
+		_, _ = w.Write([]byte(`{"id":"sent"}`))
+	}))
+	defer server.Close()
+	adapter := newQQOfficialSendTestAdapter(server)
+	info := chatinfo.Info{Source: chatinfo.Source{Platform: platformName, ScopeID: "group:original"}, PlatformMessageID: "original-message", PlatformData: messageData{EventID: "event"}}
+	ctx := chatinfo.WithInfo(context.Background(), info)
+	if _, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("reply")}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.SendNotice(ctx, delivery.Notice{Target: delivery.Target{GroupID: "other"}, Outputs: []delivery.Output{delivery.Text("proactive")}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(bodies) != 2 || bodies[0].MsgID != "original-message" || bodies[0].EventID != "" || bodies[1].MsgID != "" || bodies[1].EventID != "" {
+		t.Fatalf("reply/proactive bodies = %#v", bodies)
+	}
 }

@@ -2,10 +2,8 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
-	"elbot/internal/chatinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -13,86 +11,10 @@ import (
 	"elbot/internal/storage"
 )
 
-func (a *Agent) SetOutputManager(manager delivery.Manager) {
-	a.outputs = manager
-}
-
 func (a *Agent) sendOutputs(ctx context.Context, outputs []delivery.Output) error {
-	manager := a.outputs
-	manager.Sender = agentOutputSender{agent: a, ctx: ctx}
-	if manager.Logger == nil {
-		manager.Logger = a.logger
-	}
-	return manager.SendNotices(ctx, outputs)
+	_, err := a.dispatcher.SendNotice(ctx, delivery.Notice{Outputs: outputs})
+	return err
 }
-
-type agentOutputSender struct {
-	agent *Agent
-	ctx   context.Context
-}
-
-func (s agentOutputSender) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
-	if s.agent == nil {
-		return delivery.Receipt{}, fmt.Errorf("agent output sender is not configured")
-	}
-	return s.agent.sendPreparedMedia(s.ctx, outputs, func(resolved []delivery.Output) (delivery.Receipt, error) {
-		if msg, ok := platform.MessageContextFrom(s.ctx); ok && msg.Sender != nil {
-			return msg.Sender.SendChat(s.ctx, resolved)
-		}
-		if s.agent.platform == nil {
-			return delivery.Receipt{}, fmt.Errorf("chat output sender is not configured")
-		}
-		return s.agent.platform.SendChat(s.ctx, resolved)
-	})
-}
-
-func (s agentOutputSender) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
-	target := notice.Target
-	outputs := notice.Outputs
-	if s.agent == nil {
-		return delivery.Receipt{}, fmt.Errorf("agent output sender is not configured")
-	}
-	return s.agent.sendPreparedMedia(s.ctx, outputs, func(resolved []delivery.Output) (delivery.Receipt, error) {
-		notice.Outputs = resolved
-		if target.Empty() {
-			if msg, ok := platform.MessageContextFrom(s.ctx); ok && msg.Sender != nil {
-				return msg.Sender.SendNotice(s.ctx, notice)
-			}
-		}
-		platformName := strings.TrimSpace(target.Platform)
-		if platformName == "" {
-			if info, ok := chatinfo.FromContext(s.ctx); ok {
-				platformName = info.Source.Platform
-			}
-		}
-		if platformName == "" && s.agent.platform != nil {
-			platformName = s.agent.platform.Name()
-		}
-		if platformName == "" {
-			return delivery.Receipt{}, fmt.Errorf("notice target platform is not configured")
-		}
-		sender := s.agent.platformSenders[platformName]
-		if sender == nil {
-			return delivery.Receipt{}, fmt.Errorf("target platform %q is not configured", platformName)
-		}
-		notice.Target.Platform = platformName
-		return sender.SendNotice(s.ctx, notice)
-	})
-}
-
-type contextTextSender struct {
-	ctx    context.Context
-	sender delivery.ContextSender
-}
-
-func (s contextTextSender) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
-	return s.sender.SendChat(s.ctx, outputs)
-}
-
-func (s contextTextSender) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
-	return s.sender.SendNotice(s.ctx, notice)
-}
-
 func (a *Agent) sendChat(ctx context.Context, text string) {
 	_, _ = a.sendChatWithReceipt(ctx, text)
 }
@@ -118,19 +40,12 @@ func (a *Agent) sendChatWithReceipt(ctx context.Context, text string) (delivery.
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
-	manager := a.outputs
-
-	manager.Sender = agentOutputSender{agent: a, ctx: ctx}
-	if manager.Logger == nil {
-		manager.Logger = a.logger
-	}
-	receipt, err := manager.SendChat(ctx, []delivery.Output{delivery.Text(preparedText)})
-
+	receipt, err := a.dispatcher.SendChat(ctx, []delivery.Output{delivery.Text(preparedText)})
 	if err != nil {
 		if a.logger != nil {
 			a.logger.WarnContext(ctx, "chat send failed", "error", err.Error())
 		}
-		return delivery.Receipt{}, err
+		return receipt, err
 	}
 	a.notifyHook(ctx, hook.Event{Point: hook.PointPlatformMessageSent, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(preparedText)}})
 
@@ -169,21 +84,9 @@ func (a *Agent) mapSentAssistantMessage(ctx context.Context, sessionID, messageI
 }
 
 func (a *Agent) RegisterPlatformSender(name string, sender delivery.MessageSender) {
-	name = strings.TrimSpace(name)
-	if name == "" || sender == nil {
-		return
-	}
-	if a.platformSenders == nil {
-		a.platformSenders = map[string]delivery.MessageSender{}
-	}
-	a.platformSenders[name] = sender
+	a.dispatcher.RegisterPlatformSender(name, sender)
 }
 
 func (a *Agent) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
-	manager := a.outputs
-	manager.Sender = agentOutputSender{agent: a, ctx: ctx}
-	if manager.Logger == nil {
-		manager.Logger = a.logger
-	}
-	return manager.SendNotice(ctx, notice)
+	return a.dispatcher.SendNotice(ctx, notice)
 }

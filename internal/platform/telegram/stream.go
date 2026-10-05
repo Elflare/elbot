@@ -24,9 +24,9 @@ type messageStream struct {
 }
 
 func (a *Adapter) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	t, ok := ctx.Value(targetKey{}).(target)
-	if !ok || t.ChatID == 0 {
-		return nil, fmt.Errorf("telegram stream target missing")
+	t, err := contextTarget(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("telegram stream target: %w", err)
 	}
 	return &messageStream{adapter: a, target: t, draftID: time.Now().UnixNano(), useDraft: strings.HasPrefix(t.ScopeID, "private:") && a.cfg.richMessageEnabled()}, nil
 }

@@ -23,9 +23,9 @@ func TestPublicChatInfoConsumersAndSecurityPrecedence(t *testing.T) {
 	if scope.Platform != "qqonebot" || scope.PlatformScopeID != "group:9" || scope.ActorID != actor.ID || scope.IsCLI {
 		t.Fatalf("scope = %+v", scope)
 	}
-	meta := a.conversationMeta(ctx, scope)
-	if meta.Kind != "group" || meta.ID != "9" || meta.UserID != "123" || meta.DisplayName != "名片" {
-		t.Fatalf("prompt meta = %+v", meta)
+	parts, err := (conversationMetaSystemPromptSource{}).Parts(ctx, SystemPromptRequest{Scope: scope})
+	if err != nil || len(parts) != 1 || parts[0].Content != `meta: platform=qqonebot, conversation=group(id:9), display_name="名片"(id:123).` {
+		t.Fatalf("prompt meta = %+v, %v", parts, err)
 	}
 	event := a.fillHookContext(ctx, hook.Event{})
 	if event.Platform.Name != "qqonebot" || event.Platform.ScopeID != "group:9" {

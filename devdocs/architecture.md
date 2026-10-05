@@ -32,8 +32,10 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 <!-- locator:signal -->
 ## 公共聊天信息与信号
 
-- `chatinfo.Info` 用值字段携带每条消息的 Source 与 Identity；平台会话 ID 不等于 ElBot Session ID。权限仍由 security 判定，公共身份不授予权限。
-- 平台 `MessageContext` 组合 Info，安装时同步提供公共快照；本地 CLI scanner／TUI 只安装公共信息。Agent 的 scope、Prompt、Hook 及聊天历史工具按需读取；原连接和平台回复 metadata 留在平台上下文。
+- `chatinfo.Info` 携带每条消息的 Source、Identity、平台消息／回复 ID 和 `PlatformData any`；平台会话 ID 不等于 ElBot Session ID。权限仍由 security 判定，公共身份不授予权限。
+- 平台 `MessageContext` 嵌入 Info，公共消息标识只有一个所有者；安装时同步提供公共快照，本地 CLI scanner／TUI 只安装公共信息。Prompt 直接读取 Info 并格式化公共字段，不再通过 ConversationMeta 中转，也不展开平台扩展。
+- `PlatformData` 由平台定义私有类型，优先只放公共字段无法表达的必要信息。发布后不改写；可变数据由生产者制作稳定快照，公共层不通用深拷贝、不序列化扩展。连接引用保留平台管理的生命周期，不代表持久投递地址。
+- OneBot／Telegram 从公共会话信息恢复目标，QQ 官方从公共消息 ID 与扩展恢复回复。远程 CLI 扩展保存原连接引用：默认回复只到原连接，断开即失败；显式用户／管理员目标才按原有多连接规则发送。
 - `signal.Signal[T]` 锁内取得订阅快照，锁外依次调用或提交执行器；一次性连接最多投递一次，入队失败也消耗连接。断开不撤销已有快照或任务，可变事件数据由发布方形成稳定快照。
 - 异步连接显式选择 FollowEmit（保留发射取消）或 FollowExecutor（仅保留值）。Shutdown 独立选择 CancelPending（默认丢弃积压并取消在途）或 Drain（限时尝试完成）；底层取消始终优先。
 - 有界串行队列默认容量 256，满时拒绝入队；同队列 FIFO、不同队列独立。入队成功不代表执行或投递成功，Done 只表示 worker 实际结束。预期取消不记录失败，合并错误中的真实失败仍记录。
@@ -237,6 +239,7 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 - Hook 用户文档优先看 `docs/hooks.md`。
 
 <!-- locator:output -->
+<!-- locator:notification -->
 ## Output 与发送链路
 
 输出层把 Agent、Hook、Tool、Elnis 等来源的输出意图统一发送到平台。
@@ -245,13 +248,18 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 
 - 定义 text/image/file/record/at/reply/emoticon 等平台无关输出类型。
 - 提供媒体源前缀、fallback 文本、delivery timing 元数据。
-- 统一处理发送回执、流式发送和普通发送。
+- `delivery/dispatch.Router` 统一选择平台发送器，执行媒体准备、普通发送、流式发送、reasoning 和 runtime status 的平台调用。
+- `notification.Manager` 消费通知意图，复用 Router；`notification/rules` 维护平台连接、插件／Hook、模型和执行错误的通知规则与文案。业务模块决定触发时机，Agent 保留需要 Hook 改写的输出编排。
 
 约定：
 
 - 业务层返回输出意图，不直接调用平台 adapter。
 - 平台 adapter 负责把平台无关输出转换成平台 API。
-- Agent 在发送前统一把 URL/Path/Data 归一为 MediaID，发送副本经 `ResolveForOutput` 临时解析，回执按实际成功的输出索引建立关联。多目标 scope 由 adapter 明确提供；缓存期限复用 sandbox retention，非正值不缓存。
+- app 在 Hook 注册及 Agent 创建前装配共享 Router 和通知管理器；Hook／脚本、Cron、Elnis 直接使用 Router，不经 Agent 宿主发送闭包。无来源启动告警在交互模式显示于本地 CLI，在 service 模式记录实际告警内容，不广播管理员。
+- 显式目标优先；无显式目标时使用原消息发送器覆盖或 Info 的平台来源。后台丢弃发送器仍有效；原消息信息随任务保存，实际发送使用任务自身的 context，不查询当前 Session 重建旧目标。
+- 通知意图携带原 Info、原 Sender 覆盖和按需提供的 Session Binding；过期绑定或取消 context 拒绝发送。同步调用等待实际回执，平台连接沿用独立信号执行器，没有额外通知队列或可靠投递中间件。
+- Router 在发送前把 URL/Path/Data 归一为 MediaID，发送副本经 `ResolveForOutput` 临时解析，并释放临时导出。回执按实际成功的输出索引建立媒体关联；多目标 scope 由 adapter 明确提供，缓存期限复用 sandbox retention，非正值不缓存。
+- 部分失败同时返回成功 Receipt 与 error；Agent／Cron／Elnis 关联已成功的平台消息，错误仍返回，任务不会因此整体成功。缓存失败只记录日志，不重发平台消息；通知发送失败不再触发通知。
 - QQ OneBot 把 record 输出转换为原生语音段；暂不支持 record 的平台使用统一文字 fallback。
 - 流式输出、notice、reasoning、runtime status 由 Agent turn 输出适配层区分前后台发送。
 
@@ -305,7 +313,7 @@ Session 命令的分页选择和维护配置由 `SessionCommandState` 按 Scope 
 - 命令用 Session／Scope 确定当前模式，模型匹配和切换由服务执行。目录按 provider 并行查询，缓存模型与错误，显式刷新；配置模型始终参与合并，编号在筛选前统一分配。目录结果和选择状态以独立快照交付。
 - 切换串行构建候选状态，调用 `config.SaveState` 原子替换状态文件后再发布内存状态；失败保留旧选择。写盘不持有状态读锁，读取方继续使用旧快照。状态文件保留原有字段及默认 Session 模式；未配置路径的独立实例仅更新内存。
 - `Selection` 固定 provider、模型和客户端。对话固定本次 Turn 选择；压缩固定专用选择或本次对话 fallback；命名同时固定专用选择及 work fallback。LLM Hook 仍可按既有协议改写单次请求。
-- 标题生成与压缩调度留在原模块，不保存独立模型选择。重试提示由 Agent 的 `llm_retry.go` 接入既有通知发送；客户端配置在启动后保持不变。
+- 标题生成与压缩调度留在原模块，不保存独立模型选择。app 将模型服务的重试回调接入 `notification/rules.ModelRetry`；客户端配置在启动后保持不变。
 
 <!-- locator:context -->
 ## 上下文管理

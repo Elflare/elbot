@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/command"
 	"elbot/internal/delivery"
 )
@@ -32,6 +33,51 @@ func TestTelegramTextPages(t *testing.T) {
 	for _, page := range pages {
 		if len([]rune(page)) > telegramTextPageRunes {
 			t.Fatalf("page too long: %d", len([]rune(page)))
+		}
+	}
+}
+
+func TestPartialTextSendKeepsReceiptWithoutRestartingFallback(t *testing.T) {
+	for _, format := range []string{"plain", "html", "rich"} {
+		t.Run(format, func(t *testing.T) {
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				w.Header().Set("Content-Type", "application/json")
+				if calls == 1 {
+					_ = json.NewEncoder(w).Encode(apiResponse[sentMessage]{OK: true, Result: sentMessage{MessageID: 71}})
+					return
+				}
+				_ = json.NewEncoder(w).Encode(apiResponse[sentMessage]{OK: false, ErrorCode: 500, Description: "later page failed"})
+			}))
+			defer server.Close()
+			adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: format}, nil, nil, nil)
+			ctx := chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: platformName, ConversationKind: chatinfo.ConversationGroup, ConversationID: "-19", ScopeID: "group:-19"}})
+			receipt, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(strings.Repeat("a", telegramRichTextRunes+1))}})
+			if err == nil || len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "71" || calls != 2 {
+				t.Fatalf("receipt=%#v error=%v calls=%d", receipt, err, calls)
+			}
+		})
+	}
+}
+
+func TestContextTargetUsesPublicConversationAndScope(t *testing.T) {
+	for _, tc := range []struct {
+		kind      chatinfo.ConversationKind
+		id, scope string
+		wantID    int64
+		wantScope string
+	}{
+		{chatinfo.ConversationPrivate, "19", "", 19, "private:19"},
+		{chatinfo.ConversationGroup, "-19", "", -19, "group:-19"},
+		{chatinfo.ConversationChannel, "-20", "", -20, "channel:-20"},
+		{chatinfo.ConversationGroup, "-21", "supergroup:-21", -21, "supergroup:-21"},
+		{chatinfo.ConversationUnknown, "", "private:22", 22, "private:22"},
+	} {
+		ctx := chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: platformName, ConversationKind: tc.kind, ConversationID: tc.id, ScopeID: tc.scope}})
+		got, err := contextTarget(ctx)
+		if err != nil || got.ChatID != tc.wantID || got.ScopeID != tc.wantScope {
+			t.Fatalf("source=%#v target=%#v error=%v", tc, got, err)
 		}
 	}
 }

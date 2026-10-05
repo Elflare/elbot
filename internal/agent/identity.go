@@ -33,31 +33,6 @@ func (a *Agent) scope(ctx context.Context) session.Scope {
 	}
 }
 
-func (a *Agent) conversationMeta(ctx context.Context, scope session.Scope) ConversationMeta {
-	meta := ConversationMeta{Platform: strings.TrimSpace(scope.Platform)}
-	info, ok := chatinfo.FromContext(ctx)
-	if !ok {
-		return meta
-	}
-	switch info.Source.ConversationKind {
-	case chatinfo.ConversationGroup:
-		meta.Kind = "group"
-	case chatinfo.ConversationPrivate:
-		meta.Kind = "private"
-	case chatinfo.ConversationChannel:
-		meta.Kind = "channel"
-	}
-	meta.ID = strings.TrimSpace(info.Source.ConversationID)
-	actor := a.actor(ctx)
-	meta.UserID = strings.TrimSpace(actor.PlatformUserID)
-	if meta.Kind == "group" {
-		meta.DisplayName = firstNonEmpty(actor.GroupCard, actor.Nickname)
-	} else if meta.Kind == "private" || meta.Kind == "channel" {
-		meta.DisplayName = actor.Nickname
-	}
-	return meta
-}
-
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if value = strings.TrimSpace(value); value != "" {

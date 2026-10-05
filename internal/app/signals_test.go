@@ -35,13 +35,9 @@ func (p *signalPlatform) ConnectedSignal() *signal.Signal[platform.ConnectedEven
 }
 
 type signalAgent struct {
-	senders []string
-	notify  func(context.Context, string)
+	notify func(context.Context, string)
 }
 
-func (a *signalAgent) RegisterPlatformSender(name string, _ delivery.MessageSender) {
-	a.senders = append(a.senders, name)
-}
 func (a *signalAgent) NotifyPlatformConnected(ctx context.Context, name string) { a.notify(ctx, name) }
 
 func TestPlatformSignalsAreIsolatedAndCancelledOnClose(t *testing.T) {
@@ -78,7 +74,7 @@ func TestPlatformSignalsAreIsolatedAndCancelledOnClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-cancelled
-	if !b.stopped() || len(agt.senders) != 2 {
+	if !b.stopped() {
 		t.Fatal("incomplete ownership/close")
 	}
 	if err := one.connected.Emit(context.Background(), platform.ConnectedEvent{Platform: "one"}); err != nil {

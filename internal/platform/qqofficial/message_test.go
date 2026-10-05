@@ -61,8 +61,8 @@ func TestHandleGroupAtMessageBuildsGroupContext(t *testing.T) {
 	if string(msgCtx.PlatformMessage) != string(raw) || msgCtx.RawText != "你好" {
 		t.Fatalf("raw context = %q/%q", msgCtx.PlatformMessage, msgCtx.RawText)
 	}
-	target, ok := handler.ctx.Value(targetKey{}).(sendTarget)
-	if !ok || target.Kind != targetGroup || target.OpenID != "group-1" || target.MsgID != "msg-1" {
+	target, err := adapter.contextTarget(handler.ctx)
+	if err != nil || target.Kind != targetGroup || target.OpenID != "group-1" || target.MsgID != "msg-1" {
 		t.Fatalf("target = %#v", target)
 	}
 }

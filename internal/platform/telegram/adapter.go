@@ -41,8 +41,6 @@ type target struct {
 	ScopeID string
 }
 
-type targetKey struct{}
-
 func New(cfg Config, store storage.Store, chatHistory storage.ChatHistoryRepository, logger Logger) *Adapter {
 	applyDefaults(&cfg)
 	return &Adapter{cfg: cfg, store: store, chatHistory: chatHistory, client: newAPIClient(cfg), logger: logger}
@@ -189,11 +187,11 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 				Nickname:       displayNamePtr(msg.From, ""),
 				DisplayName:    displayNamePtr(msg.From, ""),
 			},
+			PlatformMessageID: formatMessageID(msg.MessageID),
+			ReplyToMessageID:  normalized.ReplyID,
+			ReplyToSenderID:   userIDString(replySender(normalized.ReplyMessage)),
 		},
-		GroupRole:         groupRole,
-		PlatformMessageID: formatMessageID(msg.MessageID),
-		ReplyToMessageID:  normalized.ReplyID,
-		ReplyToSenderID:   userIDString(replySender(normalized.ReplyMessage)),
+		GroupRole: groupRole,
 
 		Sender:          a,
 		MediaResolver:   a,
@@ -208,7 +206,6 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 		},
 	}
 	msgCtx := platform.WithMessageContext(ctx, messageCtx)
-	msgCtx = context.WithValue(msgCtx, targetKey{}, target{ChatID: msg.Chat.ID, ScopeID: scopeID(msg.Chat)})
 
 	var referenceSegments []platform.MessageSegment
 	if normalized.ReplyID != "" {
@@ -239,7 +236,6 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 	}
 	messageCtx.Segments = finalMessageSegments(text, normalized.Segments, nil)
 	msgCtx = platform.WithMessageContext(ctx, messageCtx)
-	msgCtx = context.WithValue(msgCtx, targetKey{}, target{ChatID: msg.Chat.ID, ScopeID: scopeID(msg.Chat)})
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
 		a.logWarn("handle telegram message failed", "error", err, "message_id", msg.MessageID)
 	}
@@ -266,11 +262,34 @@ func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (deliv
 }
 
 func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
-	t, ok := ctx.Value(targetKey{}).(target)
-	if !ok || t.ChatID == 0 {
-		return delivery.Receipt{}, fmt.Errorf("telegram send target missing")
+	t, err := contextTarget(ctx)
+	if err != nil {
+		return delivery.Receipt{}, err
 	}
 	return a.sendOutputs(ctx, t, outputs)
+}
+
+func contextTarget(ctx context.Context) (target, error) {
+	info, ok := chatinfo.FromContext(ctx)
+	if !ok || info.Source.Platform != platformName {
+		return target{}, fmt.Errorf("telegram send target missing")
+	}
+	t, err := targetFromDelivery(delivery.Target{ScopeID: info.Source.ScopeID})
+	if info.Source.ConversationID != "" {
+		id, parseErr := strconv.ParseInt(info.Source.ConversationID, 10, 64)
+		if parseErr != nil || id == 0 {
+			return target{}, fmt.Errorf("telegram invalid conversation ID %q", info.Source.ConversationID)
+		}
+		t = target{ChatID: id, ScopeID: info.Source.ScopeID}
+		if t.ScopeID == "" {
+			switch info.Source.ConversationKind {
+			case chatinfo.ConversationPrivate, chatinfo.ConversationGroup, chatinfo.ConversationChannel:
+				t.ScopeID = string(info.Source.ConversationKind) + ":" + strconv.FormatInt(id, 10)
+			}
+		}
+		err = nil
+	}
+	return t, err
 }
 
 func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
@@ -309,12 +328,12 @@ func (a *Adapter) sendOutputs(ctx context.Context, t target, outputs []delivery.
 	var receipt delivery.Receipt
 	for i, out := range outputs {
 		sent, err := a.sendToTarget(ctx, t, out)
-		if err != nil {
-			return receipt, err
-		}
 		sent = telegramMediaReceipt(sent, t, out, i)
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
+		if err != nil {
+			return receipt, err
+		}
 	}
 	return receipt, nil
 }
@@ -356,8 +375,8 @@ func (a *Adapter) sendText(ctx context.Context, t target, text string, replyTo i
 	switch a.cfg.format() {
 	case "rich":
 		receipt, err := a.sendRichText(ctx, t, text, replyTo, keyboard)
-		if err == nil {
-			return receipt, nil
+		if err == nil || len(receipt.PlatformMessageIDs) > 0 {
+			return receipt, err
 		}
 		a.logWarn("telegram rich message failed, fallback to html", "error", err)
 		return a.sendHTMLText(ctx, t, text, replyTo, keyboard)
@@ -383,7 +402,7 @@ func (a *Adapter) sendRichText(ctx context.Context, t target, text string, reply
 		}
 		msg, err := a.client.sendRichMessage(ctx, req)
 		if err != nil {
-			return delivery.Receipt{}, err
+			return receipt, err
 		}
 		if msg.MessageID != 0 {
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, formatMessageID(msg.MessageID))
@@ -394,8 +413,8 @@ func (a *Adapter) sendRichText(ctx context.Context, t target, text string, reply
 
 func (a *Adapter) sendHTMLText(ctx context.Context, t target, text string, replyTo int64, keyboard bool) (delivery.Receipt, error) {
 	receipt, err := a.sendFormattedText(ctx, t, telegramHTMLFromMarkdown(text), "HTML", replyTo, keyboard)
-	if err == nil {
-		return receipt, nil
+	if err == nil || len(receipt.PlatformMessageIDs) > 0 {
+		return receipt, err
 	}
 	a.logWarn("telegram html message failed, fallback to plain", "error", err)
 	return a.sendPlainText(ctx, t, text, replyTo, keyboard)
@@ -418,7 +437,7 @@ func (a *Adapter) sendFormattedText(ctx context.Context, t target, text, parseMo
 		}
 		msg, err := a.client.sendMessage(ctx, req)
 		if err != nil {
-			return delivery.Receipt{}, err
+			return receipt, err
 		}
 		if msg.MessageID != 0 {
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, formatMessageID(msg.MessageID))

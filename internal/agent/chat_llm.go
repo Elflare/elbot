@@ -13,6 +13,7 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
+	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/platform"
 )
 
@@ -134,7 +135,7 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection modelmg
 			}
 			a.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", chunk.Error.Error())
 			a.notifyHookError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, SourceText: assistant.String(), Text: assistant.String(), ToolCalls: toolCalls, Usage: usage, ElapsedMS: elapsedMillis(startedAt)}}, chunk.Error)
-			out.SendNotice(ctx, slog.LevelError, fmt.Sprintf("LLM 响应中断：%v", chunk.Error))
+			out.SendNotice(ctx, slog.LevelError, notificationrules.ModelInterrupted(chunk.Error))
 
 			return llmCallResult{}, markUserNotified(fmt.Errorf("chat stream: %w", chunk.Error))
 		}
@@ -241,7 +242,7 @@ func (a *Agent) notifyVisionFallbackOnce(ctx context.Context, sessionID string, 
 	}
 	a.visionFallbackNotified[sessionID] = true
 	a.visionFallbackMu.Unlock()
-	_, _ = out.SendAssistant(ctx, "当前模型似乎不支持视觉，图片已按文本描述处理。")
+	_, _ = out.SendAssistant(ctx, notificationrules.VisionFallback)
 }
 
 func (a *Agent) userMessageSegments(ctx context.Context, text string) []llm.MessageSegment {
@@ -299,23 +300,11 @@ func (a *Agent) shouldShowCLIReasoning(ctx context.Context) bool {
 	return a.isCLIContext(ctx)
 }
 
-type cliReasoningSender interface {
-	SendReasoning(context.Context, string) error
-}
-
 func (a *Agent) sendCLIReasoning(ctx context.Context, text string) {
 	if !a.shouldShowCLIReasoning(ctx) || text == "" {
 		return
 	}
-	if msg, ok := platform.MessageContextFrom(ctx); ok {
-		if sender, ok := msg.Sender.(cliReasoningSender); ok {
-			_ = sender.SendReasoning(ctx, text)
-			return
-		}
-	}
-	if sender, ok := a.platform.(cliReasoningSender); ok {
-		_ = sender.SendReasoning(ctx, text)
-	}
+	_ = a.dispatcher.SendReasoning(ctx, text)
 }
 
 func (a *Agent) auditUsage(sessionID string, selection modelmgr.Selection, usage *llm.Usage, elapsedMs int64) {

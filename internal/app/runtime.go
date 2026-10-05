@@ -18,6 +18,7 @@ import (
 	"elbot/internal/contextmgr"
 	elcron "elbot/internal/cron"
 	"elbot/internal/delivery"
+	"elbot/internal/delivery/dispatch"
 	"elbot/internal/doctor"
 	"elbot/internal/elvena"
 	"elbot/internal/fileops"
@@ -29,6 +30,8 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
+	"elbot/internal/notification"
+	notificationrules "elbot/internal/notification/rules"
 	platformbuiltin "elbot/internal/platform/builtin"
 	"elbot/internal/processenv"
 	"elbot/internal/security"
@@ -64,19 +67,6 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		logger.Warn("S3 media backend is unavailable; remote operations will fail until configuration is fixed", "error", err)
 		fileDeliveryCredentials = nil
 	}
-	var agt *agent.Agent
-	sendNotice := func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-		if agt == nil {
-			return delivery.Receipt{}, fmt.Errorf("agent is not ready")
-		}
-		return agt.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
-	}
-
-	cronService, err := buildCronService(ctx, foundation, sendNotice)
-	if err != nil {
-		return nil, err
-	}
-
 	mediaCenter, err := media.NewConfigured(ctx, foundation.Store, filepath.Join(filepath.Dir(cfg.Sandbox.Root), "media"), cfg.FileDelivery, fileDeliveryCredentials)
 	if err != nil {
 		return nil, err
@@ -94,6 +84,21 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	mediaCenter.Logger = logger
 	if foundation.Maintenance != nil {
 		foundation.Maintenance.Media = mediaCenter
+	}
+	dispatcher := dispatch.New(dispatch.Options{Primary: req.Platforms.Primary, Store: foundation.Store, Media: mediaCenter, MediaRetentionDays: cfg.Maintenance.SandboxCleanup.RetentionDays, Logger: logger})
+	for _, adapter := range req.Platforms.Runtimes {
+		if adapter != nil {
+			dispatcher.RegisterPlatformSender(adapter.Name(), adapter)
+		}
+	}
+	notices := notification.New(dispatcher, logger, req.Platforms.Primary != nil && req.Platforms.Primary.Name() == "service")
+	models.SetRetryNotifier(notificationrules.ModelRetry(notices))
+	sendNotice := func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+		return dispatcher.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
+	}
+	cronService, err := buildCronService(ctx, foundation, sendNotice)
+	if err != nil {
+		return nil, err
 	}
 	files := fileops.NewService(nil)
 	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{
@@ -123,13 +128,8 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	securityPolicy := security.NewPolicy(cfg.Security.UserMaxToolRisk, cfg.Security.SuperadminConfirmRisk, cfg.Security.Superadmins)
 	elvenaBus := elvena.NewBus()
 
-	startupHookNotices := []string{}
 	notifyHookIssue := func(ctx context.Context, text string) {
-		if agt == nil {
-			startupHookNotices = append(startupHookNotices, text)
-			return
-		}
-		_, _ = agt.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(text)}, Level: slog.LevelWarn})
+		notices.Text(ctx, slog.LevelWarn, text)
 	}
 
 	hookRuntime := hookruntime.NewManager(hookruntime.Options{
@@ -145,7 +145,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	hookService := buildHookService(foundation, req.Platforms, toolRuntime, cronService, hooks, hookRuntime, hookProcessEnv, notifyHookIssue, sendNotice)
 	req.Profiler.Mark("hook register")
 
-	agt, err = buildAgent(foundation, models, req.Platforms, toolRuntime, securityPolicy, hooks, hookRuntime, hookService)
+	agt, err := buildAgent(foundation, models, req.Platforms, toolRuntime, securityPolicy, hooks, hookRuntime, hookService, dispatcher, notices)
 	if err != nil {
 		if closeErr := hookRuntime.Close(context.Background()); closeErr != nil {
 			err = errors.Join(err, fmt.Errorf("cleanup hook runtime after agent build: %w", closeErr))
@@ -153,9 +153,6 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		return nil, err
 	}
 	cronService.SetRunner(agt)
-	for _, notice := range startupHookNotices {
-		notifyHookIssue(context.Background(), notice)
-	}
 	req.Profiler.Mark("agent init")
 
 	bindings := &signalBindings{}
@@ -166,14 +163,16 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		foundation.Maintenance.Sessions = agt.SessionService()
 	}
 	return &RuntimeComponents{
-		Models:      models,
-		Signals:     bindings,
-		Media:       mediaCenter,
-		Agent:       agt,
-		Handler:     agt,
-		CronService: cronService,
-		ElvenaBus:   elvenaBus,
-		Lifecycle:   hookRuntimeLifecycle{runtime: hookRuntime},
+		Dispatcher:    dispatcher,
+		Notifications: notices,
+		Models:        models,
+		Signals:       bindings,
+		Media:         mediaCenter,
+		Agent:         agt,
+		Handler:       agt,
+		CronService:   cronService,
+		ElvenaBus:     elvenaBus,
+		Lifecycle:     hookRuntimeLifecycle{runtime: hookRuntime},
 	}, nil
 }
 
@@ -293,6 +292,8 @@ func buildAgent(
 	hooks *hook.DefaultManager,
 	hookRuntime *hookruntime.Manager,
 	hookService *hookcontrol.Service,
+	dispatcher *dispatch.Router,
+	notices *notification.Manager,
 ) (*agent.Agent, error) {
 	cfg := foundation.Config
 	definitions := append(platformbuiltin.ConfigDefinitions(), hookrules.ConfigDefinition())
@@ -318,7 +319,8 @@ func buildAgent(
 		HookService:           hookService,
 		HookManager:           hooks,
 		HookRuntime:           hookRuntime,
-		OutputManager:         delivery.NewManager(nil, foundation.Logger),
+		Dispatcher:            dispatcher,
+		Notifications:         notices,
 		Logs:                  foundation.Logs,
 		ToolRegistry:          toolRuntime.Registry,
 		FileRollback:          toolRuntime.FileRollback,

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/memory/resident"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/storage"
@@ -13,12 +14,25 @@ import (
 
 type conversationMetaSystemPromptSource struct{}
 
-func (conversationMetaSystemPromptSource) Parts(_ context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
-	meta := req.Meta
-	conversation := strings.TrimSpace(meta.Kind)
+func (conversationMetaSystemPromptSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
+	info, ok := chatinfo.FromContext(ctx)
+	if !ok {
+		info.Source.Platform = req.Scope.Platform
+	}
+	conversation := strings.TrimSpace(string(info.Source.ConversationKind))
+	displayName := ""
+	switch conversation {
+	case "group":
+		displayName = firstNonEmpty(info.Identity.GroupCard, info.Identity.Nickname)
+	case "private", "channel":
+		displayName = info.Identity.Nickname
+	default:
+		conversation = ""
+	}
+	userID := strings.TrimPrefix(strings.TrimSpace(info.Identity.PlatformUserID), strings.TrimSpace(info.Source.Platform)+":")
 	conversationID := ""
 	if conversation == "group" || conversation == "channel" {
-		conversationID = meta.ID
+		conversationID = info.Source.ConversationID
 	}
 	fields := make([]string, 0, 4)
 	for _, field := range []struct {
@@ -27,9 +41,9 @@ func (conversationMetaSystemPromptSource) Parts(_ context.Context, req SystemPro
 		id    string
 		quote bool
 	}{
-		{name: "platform", value: meta.Platform},
+		{name: "platform", value: info.Source.Platform},
 		{name: "conversation", value: conversation, id: conversationID},
-		{name: "display_name", value: meta.DisplayName, id: meta.UserID, quote: true},
+		{name: "display_name", value: displayName, id: userID, quote: true},
 	} {
 		value := strings.TrimSpace(field.value)
 		id := strings.TrimSpace(field.id)

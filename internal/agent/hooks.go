@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"elbot/internal/chatinfo"
-	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/platform"
 	"elbot/internal/request"
 	"elbot/internal/security"
@@ -136,51 +136,14 @@ func (a *Agent) notifyHookError(ctx context.Context, source hook.Event, err erro
 }
 
 func (a *Agent) sendHookFailureNotice(ctx context.Context, event hook.Event, err error) {
-	if err == nil || event.Point == hook.PointErrorOccurred || errors.Is(err, context.Canceled) {
-		return
-	}
-	text := hookFailureNoticeText(event, err)
-	if strings.TrimSpace(text) == "" {
-		return
-	}
-	target := delivery.Target{}
-	if _, ok := platform.MessageContextFrom(ctx); !ok {
-		target.Platform = event.Platform.Name
-		target.ScopeID = event.Platform.ScopeID
-	}
-	if sendErr := a.sendNotice(ctx, delivery.Notice{Target: target, Outputs: []delivery.Output{delivery.Text(text)}, Level: slog.LevelError}); sendErr != nil && a.logger != nil {
+	if sendErr := notificationrules.HookFailure(ctx, a.notifications, event, err); sendErr != nil && a.logger != nil {
 		a.logger.WarnContext(ctx, "hook failure notice failed", "point", string(event.Point), "error", sendErr.Error())
 	}
 }
 
-func hookFailureNoticeText(event hook.Event, err error) string {
-	point := strings.TrimSpace(string(event.Point))
-	if point == "" {
-		point = "unknown"
-	}
-	return "Hook 执行失败（" + point + "）：\n" + trimHookNoticeText(err.Error())
-}
-
-func trimHookNoticeText(text string) string {
-	text = strings.TrimSpace(text)
-	const max = 1200
-	runes := []rune(text)
-	if len(runes) <= max {
-		return text
-	}
-	return string(runes[:max]) + "\n...（已截断）"
-}
-
 func (a *Agent) NotifyPlatformConnected(ctx context.Context, platformName string) {
-	event, err := a.runHook(ctx, hook.Event{Point: hook.PointPlatformConnected, Platform: hook.PlatformContext{Name: platformName}})
-	if err != nil {
+	if err := notificationrules.PlatformConnected(ctx, platformName, a.runHook, a.dispatcher); err != nil {
 		a.logHookError(hook.PointPlatformConnected, err)
-		return
-	}
-	if len(event.Outputs) > 0 {
-		if err := a.sendOutputs(ctx, event.Outputs); err != nil {
-			a.logHookError(hook.PointPlatformConnected, err)
-		}
 	}
 }
 

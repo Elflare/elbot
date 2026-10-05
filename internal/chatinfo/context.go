@@ -3,8 +3,16 @@ package chatinfo
 import "context"
 
 type Info struct {
-	Source   Source
-	Identity Identity
+	Source            Source
+	Identity          Identity
+	PlatformMessageID string
+	ReplyToMessageID  string
+	ReplyToSenderID   string
+	// PlatformData carries only information that cannot be represented by the
+	// common fields. Each platform owns its type and treats published data as
+	// immutable. Resource references (such as an original connection) retain
+	// their platform-managed lifetime; they are not persistent delivery targets.
+	PlatformData any `json:"-"`
 }
 
 type contextKey struct{}

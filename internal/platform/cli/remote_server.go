@@ -50,7 +50,16 @@ type remoteClientConn struct {
 	server *RemoteServer
 }
 
-type remoteClientKey struct{}
+type messageData struct{ client *remoteClientConn }
+
+func originalClient(ctx context.Context) (*remoteClientConn, bool) {
+	info, ok := chatinfo.FromContext(ctx)
+	if !ok || info.Source.Platform != "cli" {
+		return nil, false
+	}
+	data, ok := info.PlatformData.(messageData)
+	return data.client, ok && data.client != nil
+}
 
 func NewRemoteServer(opts RemoteServerOptions) (*RemoteServer, error) {
 	cfg := opts.Config
@@ -160,7 +169,7 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler platform
 }
 
 func (s *RemoteServer) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
-	if client, ok := ctx.Value(remoteClientKey{}).(*remoteClientConn); ok && client != nil {
+	if client, ok := originalClient(ctx); ok && client != nil {
 		return delivery.Receipt{}, client.write(ctx, outputMessage(remoteMsgChat, delivery.FallbackOutput(outputs)))
 	}
 	return delivery.Receipt{}, fmt.Errorf("cli chat target missing")
@@ -177,7 +186,7 @@ func (s *RemoteServer) SendNotice(ctx context.Context, notice delivery.Notice) (
 }
 
 func (s *RemoteServer) SetRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
-	if client, ok := ctx.Value(remoteClientKey{}).(*remoteClientConn); ok && client != nil {
+	if client, ok := originalClient(ctx); ok && client != nil {
 		return client.write(ctx, remoteMessage{Type: remoteMsgStatus, Snapshot: snapshot})
 	}
 	return nil
@@ -187,14 +196,14 @@ func (s *RemoteServer) SendReasoning(ctx context.Context, text string) error {
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
-	if client, ok := ctx.Value(remoteClientKey{}).(*remoteClientConn); ok && client != nil {
+	if client, ok := originalClient(ctx); ok && client != nil {
 		return client.write(ctx, remoteMessage{Type: remoteMsgReasoning, Text: text})
 	}
 	return nil
 }
 
 func (s *RemoteServer) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	client, ok := ctx.Value(remoteClientKey{}).(*remoteClientConn)
+	client, ok := originalClient(ctx)
 	if !ok || client == nil {
 		return nil, fmt.Errorf("cli stream target missing")
 	}
@@ -227,6 +236,7 @@ func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientC
 				ConversationKind: chatinfo.ConversationUnknown,
 				ConversationID:   client.id,
 			},
+			PlatformData: messageData{client: client},
 			Identity: chatinfo.Identity{
 				ActorID:        security.ActorID(s.Name(), client.id),
 				PlatformUserID: client.id,
@@ -236,8 +246,7 @@ func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientC
 		},
 		Sender: s,
 	}
-	ctx = platform.WithMessageContext(ctx, msg)
-	return context.WithValue(ctx, remoteClientKey{}, client)
+	return platform.WithMessageContext(ctx, msg)
 }
 
 func (s *RemoteServer) targetClients(ctx context.Context, target delivery.Target) ([]*remoteClientConn, error) {
@@ -245,7 +254,7 @@ func (s *RemoteServer) targetClients(ctx context.Context, target delivery.Target
 		return nil, fmt.Errorf("cli cannot send to platform %q", platformName)
 	}
 	if target.Empty() {
-		if client, ok := ctx.Value(remoteClientKey{}).(*remoteClientConn); ok && client != nil {
+		if client, ok := originalClient(ctx); ok && client != nil {
 			return []*remoteClientConn{client}, nil
 		}
 		return nil, fmt.Errorf("cli target missing")

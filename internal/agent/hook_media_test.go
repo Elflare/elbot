@@ -15,6 +15,7 @@ import (
 	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
+	"elbot/internal/delivery/dispatch"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
@@ -142,7 +143,7 @@ func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
 
 	a := New(&fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
 	a.media = center
-	a.mediaRetentionDays = 7
+	a.dispatcher = dispatch.New(dispatch.Options{Store: store, Media: a.media, MediaRetentionDays: 7})
 	sender := &orderedMediaSender{t: t}
 	messageCtx := platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ScopeID: "group:9"}}, Sender: sender})
 	outputs := []delivery.Output{
@@ -150,7 +151,7 @@ func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
 		{Kind: delivery.KindFile, Name: "local.txt", Source: delivery.Source{Path: path}},
 		{Kind: delivery.KindRecord, Name: "voice.ogg", Source: delivery.Source{Data: []byte("data"), MIMEType: "audio/ogg"}},
 	}
-	if _, err := (agentOutputSender{agent: a, ctx: messageCtx}).SendChat(ctx, outputs); err != nil {
+	if _, err := a.dispatcher.SendChat(messageCtx, outputs); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.Join(sender.contents, ","); got != "url,path,data" {
@@ -179,7 +180,7 @@ func TestMediaReceiptKeepsDuplicatesAndPartialSuccess(t *testing.T) {
 	root := t.TempDir()
 	a := New(&fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
 	a.media = media.NewManager(store, root, &media.LocalBackend{Root: root})
-	a.mediaRetentionDays = 7
+	a.dispatcher = dispatch.New(dispatch.Options{Store: store, Media: a.media, MediaRetentionDays: 7})
 	item, err := a.media.ImportBytes(ctx, []byte("same"), media.Input{Name: "same.png", MIMEType: "image/png"})
 	if err != nil {
 		t.Fatal(err)
@@ -189,9 +190,11 @@ func TestMediaReceiptKeepsDuplicatesAndPartialSuccess(t *testing.T) {
 		{Kind: delivery.KindImage, Source: delivery.Source{MediaID: item.ID}},
 	}
 	receipt := delivery.Receipt{PlatformMessageIDs: []string{"sent"}, SentMessages: []delivery.SentMessage{{PlatformMessageID: "sent", Platform: "qqonebot", ScopeID: "group:1", OutputIndexes: []int{0, 1}}}}
-	got, sendErr := a.sendPreparedMedia(ctx, outputs, func([]delivery.Output) (delivery.Receipt, error) {
+	sender := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, error) {
 		return receipt, fmt.Errorf("later output failed")
 	})
+	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Sender: sender})
+	got, sendErr := a.dispatcher.SendNotice(ctx, delivery.Notice{Outputs: outputs})
 	if sendErr == nil || len(got.PlatformMessageIDs) != 1 {
 		t.Fatalf("receipt/error = %#v/%v", got, sendErr)
 	}
@@ -209,6 +212,7 @@ func TestHookMediaOutputDoesNotCreateSessionAndCleansExport(t *testing.T) {
 	root := t.TempDir()
 	a.media = media.NewManager(store, root, &media.LocalBackend{Root: root})
 	data := []byte{0, 255, 128, 1}
+	a.dispatcher = dispatch.New(dispatch.Options{Primary: p, Store: store, Media: a.media, MediaRetentionDays: 7})
 	metadata, err := a.media.ImportBytes(ctx, data, media.Input{Name: "hook.png", MIMEType: "image/png"})
 	if err != nil {
 		t.Fatal(err)

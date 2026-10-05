@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/platform"
 )
 
 const (
@@ -32,15 +32,19 @@ func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Outp
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
+	return a.sendOutputs(ctx, t, outputs)
+}
+
+func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []delivery.Output) (delivery.Receipt, error) {
 	var receipt delivery.Receipt
 	for i, out := range outputs {
 		sent, err := a.sendOutput(ctx, t, out)
-		if err != nil {
-			return receipt, err
-		}
 		sent = qqOfficialMediaReceipt(sent, t, out, i)
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
+		if err != nil {
+			return receipt, err
+		}
 	}
 	return receipt, nil
 }
@@ -81,23 +85,30 @@ func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Out
 }
 
 func (a *Adapter) contextTarget(ctx context.Context) (sendTarget, error) {
-	if t, ok := ctx.Value(targetKey{}).(sendTarget); ok && t.Kind != "" && strings.TrimSpace(t.OpenID) != "" {
-		return t, nil
+	info, ok := chatinfo.FromContext(ctx)
+	if !ok || info.Source.Platform != platformName {
+		return sendTarget{}, fmt.Errorf("qqofficial send target missing")
 	}
-	if msg, ok := platform.MessageContextFrom(ctx); ok {
-		scope := strings.TrimSpace(msg.Info.Source.ScopeID)
-		if strings.HasPrefix(scope, "group:") {
-			return sendTarget{Kind: targetGroup, OpenID: strings.TrimPrefix(scope, "group:"), MsgID: metaString(msg.Meta, metaMsgID), EventID: metaString(msg.Meta, metaEventID)}, nil
-		}
-		if strings.HasPrefix(scope, "c2c:") {
-			return sendTarget{Kind: targetC2C, OpenID: strings.TrimPrefix(scope, "c2c:"), MsgID: metaString(msg.Meta, metaMsgID), EventID: metaString(msg.Meta, metaEventID)}, nil
-		}
-		openID := strings.TrimSpace(strings.TrimPrefix(msg.Info.Identity.PlatformUserID, platformName+":"))
-		if openID != "" {
-			return sendTarget{Kind: targetC2C, OpenID: openID, MsgID: metaString(msg.Meta, metaMsgID), EventID: metaString(msg.Meta, metaEventID)}, nil
+	out := delivery.Target{ScopeID: info.Source.ScopeID}
+	if id := strings.TrimSpace(info.Source.ConversationID); id != "" {
+		switch info.Source.ConversationKind {
+		case chatinfo.ConversationGroup:
+			out.GroupID = id
+		case chatinfo.ConversationPrivate:
+			out.PrivateUserID = id
 		}
 	}
-	return sendTarget{}, fmt.Errorf("qqofficial send target missing")
+	targets, err := a.targets(out)
+	if err != nil {
+		return sendTarget{}, err
+	}
+	t := targets[0]
+	t.MsgID = info.PlatformMessageID
+	// Ordinary messages reply with msg_id. Event-only sources use event_id.
+	if data, ok := info.PlatformData.(messageData); ok && t.MsgID == "" {
+		t.EventID = data.EventID
+	}
+	return t, nil
 }
 
 func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) (delivery.Receipt, error) {
