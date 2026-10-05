@@ -2,7 +2,7 @@ package agent
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 	"reflect"
 	"strings"
 	"time"
@@ -10,6 +10,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	sessionstate "elbot/internal/session"
@@ -20,14 +21,31 @@ import (
 	"elbot/internal/workspace"
 )
 
-type agentToolRunDeps struct {
-	agent   *Agent
-	output  turnOutput
-	attempt string
+type toolRunDeps struct {
+	hooks         *hookBridge
+	requests      *request.Manager
+	turns         *turn.Manager
+	identity      *identityResolver
+	media         *media.Manager
+	state         *toolrun.StateService
+	runtime       *toolRuntimeState
+	sessions      *sessionstate.Service
+	store         storage.Store
+	confirmations *confirmationCoordinator
+	view          executionView
+	output        turnOutput
+	attempt       string
+	logger        *slog.Logger
+	auditLogger   *slog.Logger
 }
 
-func (d agentToolRunDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error) {
-	event, err := d.agent.hooks.Run(ctx, hook.Event{
+func (d toolRunDeps) forTurn(out turnOutput, attempt string) toolRunDeps {
+	d.output, d.attempt = out, attempt
+	return d
+}
+
+func (d toolRunDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error) {
+	event, err := d.hooks.Run(ctx, hook.Event{
 		Point:   hook.PointToolCallPrepared,
 		Session: hookSession(session),
 		Tool:    hook.ToolPayload{ID: call.ID, Name: call.Name, Arguments: call.Arguments},
@@ -39,10 +57,10 @@ func (d agentToolRunDeps) PrepareToolCall(ctx context.Context, session *storage.
 	return call, nil
 }
 
-func (d agentToolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error) {
+func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error) {
 	original := append([]llm.MessageSegment(nil), segments...)
 	resultText := llm.SegmentsTextOnly(original)
-	event, err := d.agent.hooks.Run(ctx, hook.Event{
+	event, err := d.hooks.Run(ctx, hook.Event{
 		Point:   hook.PointToolCallCompleted,
 		Session: hookSession(session),
 		Message: hook.MessagePayload{Role: string(llm.RoleTool), Segments: original},
@@ -59,16 +77,16 @@ func (d agentToolRunDeps) CompleteToolCall(ctx context.Context, session *storage
 		return nil, err
 	}
 	if !reflect.DeepEqual(event.Message.Segments, original) {
-		return d.agent.materializeMedia(ctx, event.Message.Segments), nil
+		return materializeMedia(ctx, d.media, event.Message.Segments), nil
 	}
 	if event.Tool.Result != resultText {
-		return d.agent.materializeMedia(ctx, llm.SetSegmentText(original, event.Tool.Result)), nil
+		return materializeMedia(ctx, d.media, llm.SetSegmentText(original, event.Tool.Result)), nil
 	}
-	return d.agent.materializeMedia(ctx, original), nil
+	return materializeMedia(ctx, d.media, original), nil
 }
 
-func (d agentToolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error) {
-	toolReq, toolCtx, done, err := d.agent.requests.Start(ctx, request.StartRequest{ParentID: turnRequestIDFromContext(ctx), SessionID: sessionID, Kind: request.KindTool, Label: toolName})
+func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error) {
+	toolReq, toolCtx, done, err := d.requests.Start(ctx, request.StartRequest{ParentID: turnRequestIDFromContext(ctx), SessionID: sessionID, Kind: request.KindTool, Label: toolName})
 	if err != nil {
 		return ctx, time.Time{}, func() {}, err
 	}
@@ -76,7 +94,7 @@ func (d agentToolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolN
 	return toolCtx, toolReq.StartedAt, done, nil
 }
 
-func (d agentToolRunDeps) PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
+func (d toolRunDeps) PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
 	if session == nil {
 		return ctx
 	}
@@ -84,114 +102,122 @@ func (d agentToolRunDeps) PrepareToolContext(ctx context.Context, session *stora
 	if err == nil {
 		ctx = tool.WithShownRuleCardFormats(ctx, state.ShownRuleCardFormats)
 	}
-	ctx = d.agent.fileRollbackContext(ctx, session)
+	ctx = fileRollbackContext(ctx, d.runtime.fileRollback, d.sessions, d.turns, d.requests, d.identity, session)
 	if isBackgroundSession(session) {
 		return ctx
 	}
-	return workspace.WithWorkspaceStore(ctx, d.agent.workspaceStore(session))
+	return workspace.WithWorkspaceStore(ctx, sessionstate.NewWorkspaceStore(d.sessions, d.store.Sessions(), session.ID))
 }
 
-func (d agentToolRunDeps) ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool {
-	return d.agent.identity.IsCLI(ctx) || strings.TrimSpace(assistantText) == ""
+func (d toolRunDeps) ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool {
+	return d.identity.IsCLI(ctx) || strings.TrimSpace(assistantText) == ""
 }
 
-func (d agentToolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (toolrun.ConfirmResult, error) {
-	if d.agent.isSessionAutoConfirmed(sessionID) || d.agent.isToolAutoConfirmed(sessionID, call.Name) {
-		return toolrun.ConfirmResult{Allowed: true}, nil
-	}
-	fullArgs := compactArguments(call.Arguments)
-	previewArgs := previewArguments(fullArgs)
-	timeout := d.agent.confirmationWaitTimeout(ctx)
-	d.agent.logRiskConfirmationWait(sessionID, call, assessment.Level, assessment.Reasons)
-	d.agent.output.SendChat(ctx, fmt.Sprintf("高风险工具调用等待确认\n工具：%s\n风险：%s\n参数：%s%s\n%s。", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout)))
-	resp, ok := d.agent.turns.AwaitRiskConfirmationContext(ctx, sessionID, turn.RiskConfirmation{ID: call.ID, ToolName: call.Name, Arguments: fullArgs, Risk: string(assessment.Level), Summary: fmt.Sprintf("%s %s", call.Name, previewArgs), Detail: detail}, timeout, turn.AttemptFromContext(ctx))
-	if resp.Expired {
-		d.agent.logRiskConfirmationResult(sessionID, call, assessment.Level, "expire", resp.Extra, "confirmation wait expired")
-		d.agent.output.SendChat(context.WithoutCancel(ctx), "高风险工具确认已过期，当前处理已停止。")
-		return toolrun.ConfirmResult{Allowed: false, Extra: resp.Extra, Message: llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s confirmation expired", call.Name))}, Stopped: true}, nil
-	}
-	if !ok || resp.Stopped {
-		d.agent.logRiskConfirmationResult(sessionID, call, assessment.Level, "stop", resp.Extra, "")
-		return toolrun.ConfirmResult{Allowed: false, Extra: resp.Extra, Message: llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s stopped by user", call.Name))}, Stopped: true}, nil
-	}
-	if resp.ConfirmTool {
-		d.agent.setToolAutoConfirmed(sessionID, call.Name)
-		d.agent.output.SendChat(ctx, fmt.Sprintf("已为当前 Session 自动确认后续 %s 工具调用。", call.Name))
-	}
-	if resp.ConfirmAll {
-		d.agent.setSessionAutoConfirmed(sessionID)
-		d.agent.output.SendChat(ctx, "已为当前 Session 自动确认后续高风险工具调用。")
-	}
-	if resp.Rejected {
-		reason := strings.TrimSpace(resp.Reason)
-		if reason == "" {
-			reason = "user rejected"
-		}
-		d.agent.logRiskConfirmationResult(sessionID, call, assessment.Level, "reject", resp.Extra, reason)
-		return toolrun.ConfirmResult{Allowed: false, Extra: resp.Extra, Message: llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s rejected by user: %s", call.Name, reason))}}, nil
-	}
-	action := "confirm"
-	if resp.ConfirmTool {
-		action = "confirmtool"
-	}
-	if resp.ConfirmAll {
-		action = "confirmall"
-	}
-	d.agent.logRiskConfirmationResult(sessionID, call, assessment.Level, action, resp.Extra, "")
-	return toolrun.ConfirmResult{Allowed: true, Extra: resp.Extra}, nil
+func (d toolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (toolrun.ConfirmResult, error) {
+	return d.confirmations.AwaitToolConfirmation(ctx, sessionID, call, assessment, detail)
 }
 
-func (d agentToolRunDeps) ConfirmBackgroundTool(ctx context.Context, sessionID string, call llm.ToolCallRequest, resolved toolrun.ResolvedTool, assessment tool.RiskAssessment) (toolrun.ConfirmResult, bool) {
+func (d toolRunDeps) ConfirmBackgroundTool(ctx context.Context, sessionID string, call llm.ToolCallRequest, resolved toolrun.ResolvedTool, assessment tool.RiskAssessment) (toolrun.ConfirmResult, bool) {
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
-	allowed, handled := d.agent.confirmBackgroundSandboxShell(ctx, sessionID, call, assessment.Level, &message)
+	allowed, handled := d.confirmations.confirmBackgroundSandboxShell(ctx, sessionID, call, assessment.Level, &message)
 	if !handled {
 		return toolrun.ConfirmResult{}, false
 	}
 	return toolrun.ConfirmResult{Allowed: allowed, Message: message}, true
 }
 
-func (d agentToolRunDeps) SendPreview(ctx context.Context, text string) {
+func (d toolRunDeps) SendPreview(ctx context.Context, text string) {
 	d.output.SendPreview(ctx, text)
 }
 
-func (d agentToolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
+func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
 	return d.output.SendOutputs(ctx, outputs)
 }
 
-func (d agentToolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) {
-	d.agent.recordToolCall(ctx, sessionID, call, risk, startedAt, result, callErr)
+func (d toolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) {
+	record := &storage.ToolCallRecord{
+		SessionID:     sessionID,
+		ToolCallID:    call.ID,
+		ToolName:      call.Name,
+		ActorID:       d.identity.Actor(ctx).ID,
+		RiskLevel:     risk,
+		Success:       callErr == nil,
+		ResultPreview: previewLogText(result),
+		StartedAt:     startedAt,
+		FinishedAt:    storage.Now(),
+	}
+	if callErr != nil {
+		record.Error = callErr.Error()
+	}
+	if d.store != nil && d.store.ToolCalls() != nil {
+		if err := d.store.ToolCalls().Create(ctx, record); err != nil && d.logger != nil {
+			d.logger.Warn("record tool call failed", "session_id", sessionID, "tool", call.Name, "error", err)
+		}
+	}
+	if d.logger != nil {
+		d.logger.Info("tool call",
+			"event", "tool_call",
+			"session_id", sessionID,
+			"arguments", previewArguments(call.Arguments),
+			"result", previewLogText(result),
+			"tool", call.Name,
+			"tool_call_id", call.ID,
+			"actor_id", record.ActorID,
+			"risk", risk,
+			"success", record.Success,
+			"elapsed_ms", record.FinishedAt.Sub(record.StartedAt).Milliseconds(),
+			"error", record.Error,
+		)
+	}
+	d.audit("tool_call",
+		"session_id", sessionID,
+		"arguments", previewArguments(call.Arguments),
+		"tool", call.Name,
+		"tool_call_id", call.ID,
+		"actor_id", record.ActorID,
+		"risk", risk,
+		"success", record.Success,
+		"elapsed_ms", record.FinishedAt.Sub(record.StartedAt).Milliseconds(),
+		"error", record.Error,
+	)
 }
 
-func (d agentToolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string) {
-	d.agent.audit("permission_denied", "actor_id", d.agent.identity.Actor(ctx).ID, "session_id", sessionID, "tool", call.Name, "risk", risk, "reason", reason)
+func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string) {
+	d.audit("permission_denied", "actor_id", d.identity.Actor(ctx).ID, "session_id", sessionID, "tool", call.Name, "risk", risk, "reason", reason)
 }
 
-func (d agentToolRunDeps) RememberDiscoveryResult(ctx context.Context, session *storage.Session, result *tool.Result) error {
-	return d.agent.rememberDiscoveryResult(ctx, session, result)
+func (d toolRunDeps) RememberDiscoveryResult(ctx context.Context, row *storage.Session, result *tool.Result) error {
+	if row == nil {
+		return nil
+	}
+	update, err := toolrun.DiscoveryStateUpdate(ctx, result, d.runtime.registry, d.identity.Actor(ctx), d.identity.policy)
+	if err != nil {
+		return err
+	}
+	_, err = commitToolState(ctx, d.state, row, update)
+	return err
 }
 
-func (d agentToolRunDeps) AddToolUse(sessionID, toolName string) {
-	d.agent.turns.AddToolUse(sessionID, toolName, d.attempt)
+func (d toolRunDeps) AddToolUse(sessionID, toolName string) {
+	d.turns.AddToolUse(sessionID, toolName, d.attempt)
 }
 
-func (d agentToolRunDeps) ToolResultMessage(sessionID string, message llm.LLMMessage) storage.Message {
+func (d toolRunDeps) ToolResultMessage(sessionID string, message llm.LLMMessage) storage.Message {
 	return toolResultStorageMessage(sessionID, message)
 }
 
-func (d agentToolRunDeps) ToolCallMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest) storage.Message {
+func (d toolRunDeps) ToolCallMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest) storage.Message {
 	return toolCallStorageMessage(sessionID, content, rawText, calls)
 }
 
-func (d agentToolRunDeps) PersistedToolMessage(message llm.LLMMessage) llm.LLMMessage {
+func (d toolRunDeps) PersistedToolMessage(message llm.LLMMessage) llm.LLMMessage {
 	return persistedToolMessage(message)
 }
 
-func (a *Agent) toolRunManager() *toolrun.Manager { return a.toolRuntime.manager }
-
-func (d agentToolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {
-	return d.agent.view.RefreshSession(ctx, row)
+func (d toolRunDeps) audit(event string, attrs ...any) {
+	writeAudit(d.auditLogger, slog.LevelInfo, event, attrs...)
 }
 
-func (a *Agent) workspaceStore(row *storage.Session) *sessionstate.WorkspaceStore {
-	return sessionstate.NewWorkspaceStore(a.sessions, a.store.Sessions(), row.ID)
+func (d toolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {
+	return d.view.RefreshSession(ctx, row)
 }

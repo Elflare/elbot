@@ -68,7 +68,7 @@ func TestDiscoveredToolsAreInjectedIntoTopLevelTools(t *testing.T) {
 
 	resumedAgent := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
 	resumedAgent.SetToolRuntime(registry, nil)
-	resumed, err := resumedAgent.toolsForSession(context.Background(), sessionRecord)
+	resumed, err := resumedAgent.chat.toolsForSession(context.Background(), sessionRecord)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestWorkspaceToolDirectiveLoadsInstructionsOnce(t *testing.T) {
 			a.SetToolRuntime(registry, nil)
 
 			ctx := context.Background()
-			sessionRecord, err := a.sessionForInput(ctx, "prepare workspace")
+			sessionRecord, err := a.execution.sessionForInput(ctx, "prepare workspace")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -380,7 +380,7 @@ func TestAgentSkillCreatorNoticePreloads(t *testing.T) {
 				if role != "" {
 					ctx = security.WithActor(ctx, security.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: role})
 				}
-				sessionRecord, err := a.sessionForInput(ctx, "prepare skill")
+				sessionRecord, err := a.execution.sessionForInput(ctx, "prepare skill")
 				if err != nil {
 					t.Fatal(err)
 				}

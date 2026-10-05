@@ -46,7 +46,7 @@ func TestBackgroundStateFreezesInitialTools(t *testing.T) {
 				t.Fatal(err)
 			}
 			repo := &toolStateFaultRepo{SessionRepository: store.Sessions(), failure: errors.New("retry must not write tools")}
-			a.toolState = toolrun.NewStateService(toolStateFaultStore{Store: store, repo: repo})
+			setTestToolState(a, toolrun.NewStateService(toolStateFaultStore{Store: store, repo: repo}))
 			req.SessionID = first.SessionID
 			req.ToolListNames = []string{"native_old", "doc"}
 			req.CachedTools = []toolrun.CachedTool{backgroundCachedTool("external_new", toolrun.SourceKindELwisp)}
@@ -88,7 +88,7 @@ func TestBackgroundStateFailureDoesNotPrewriteCache(t *testing.T) {
 	a.SetSandboxRoot(t.TempDir())
 	failure := errors.New("background tool state commit rejected")
 	repo := &toolStateFaultRepo{SessionRepository: store.Sessions(), failure: failure}
-	a.toolState = toolrun.NewStateService(toolStateFaultStore{Store: store, repo: repo})
+	setTestToolState(a, toolrun.NewStateService(toolStateFaultStore{Store: store, repo: repo}))
 	result, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindElnis, Name: "failure", Platform: "cli",
 		Actor: security.Actor{ID: "cli:local", Role: security.RoleSuperadmin}, Prompt: "run",
 		CachedTools: []toolrun.CachedTool{backgroundCachedTool("new", toolrun.SourceKindELwisp)}})

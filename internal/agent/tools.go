@@ -35,7 +35,7 @@ func (a *Agent) rebuildSystemPrompt() {
 	}
 	manager.AddSource(residentMemorySystemPromptSource{Store: a.residentMemory})
 	manager.AddSource(conversationMetaSystemPromptSource{})
-	a.promptBuilder.System = manager
+	a.chat.promptBuilder.System = manager
 }
 
 func (a *Agent) SetToolProvider(provider ToolSchemaProvider) {

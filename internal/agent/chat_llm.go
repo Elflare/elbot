@@ -11,12 +11,26 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
 	"elbot/internal/toolrun"
 )
+
+// modelCaller owns one model request. Selection is a caller-provided snapshot.
+type modelCaller struct {
+	messages    storage.MessageRepository
+	media       *media.Manager
+	hooks       *hookBridge
+	identity    *identityResolver
+	output      *outputSender
+	toolState   *toolrun.StateService
+	toolRuntime *toolRuntimeState
+	logger      *slog.Logger
+	auditLogger *slog.Logger
+}
 
 type llmCallResult struct {
 	Text      string
@@ -28,7 +42,7 @@ type llmCallResult struct {
 	Stream    delivery.MessageStream
 }
 
-func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *pendingUserMessage, stream delivery.MessageStream, out turnOutput) (llmCallResult, error) {
+func (c *modelCaller) Call(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *pendingUserMessage, stream delivery.MessageStream, out turnOutput) (llmCallResult, error) {
 	sessionID := session.ID
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
 	if !toolsEnabled {
@@ -37,7 +51,7 @@ func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection
 	startedAt := time.Now()
 	var allowedTools map[string]bool
 	if session.Mode == storage.SessionModeBackground {
-		cached, err := a.cachedToolsForSession(ctx, session)
+		cached, err := cachedToolsForSession(ctx, c.toolState, c.toolRuntime.registry, session)
 		if err != nil {
 			return llmCallResult{}, err
 		}
@@ -53,7 +67,7 @@ func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection
 			Segments:     append([]llm.MessageSegment(nil), baseMessages[pending.messageIndex].Segments...),
 		}
 	}
-	event, err := a.hooks.Run(ctx, hook.Event{
+	event, err := c.hooks.Run(ctx, hook.Event{
 		Point:   hook.PointLLMRequestPrepared,
 		Session: hook.SessionContext{ID: sessionID},
 		Message: hookMessage,
@@ -66,7 +80,7 @@ func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection
 	})
 	if err != nil {
 		if pending != nil {
-			if persistErr := a.persistTurnMessage(ctx, &pending.message, "append_pending_user_message"); persistErr != nil {
+			if persistErr := persistTurnMessage(ctx, c.messages, c.media, c.auditLogger, &pending.message, "append_pending_user_message"); persistErr != nil {
 				err = errors.Join(err, persistErr)
 			}
 		}
@@ -87,16 +101,16 @@ func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection
 		tools = nil
 	}
 	if pending != nil {
-		segments := a.materializeMedia(ctx, event.Message.Segments)
+		segments := materializeMedia(ctx, c.media, event.Message.Segments)
 		baseMessages[pending.messageIndex].Segments = segments
 		pending.message.Content = llm.SegmentsContentText(segments)
 		pending.message.Segments = storedMessageSegments(segments)
-		if err := a.persistTurnMessage(ctx, &pending.message, "append_pending_user_message"); err != nil {
+		if err := persistTurnMessage(ctx, c.messages, c.media, c.auditLogger, &pending.message, "append_pending_user_message"); err != nil {
 			return llmCallResult{}, err
 		}
 	}
 	requestMessages := baseMessages
-	if a.media != nil {
+	if c.media != nil {
 		seen := map[string]bool{}
 		for _, message := range baseMessages {
 			for _, segment := range message.Segments {
@@ -104,7 +118,7 @@ func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection
 					continue
 				}
 				seen[segment.MediaID] = true
-				release, err := a.media.Hold(ctx, segment.MediaID)
+				release, err := c.media.Hold(ctx, segment.MediaID)
 				if err != nil {
 					return llmCallResult{}, err
 				}
@@ -112,7 +126,7 @@ func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection
 			}
 		}
 		var cleanup func()
-		requestMessages, cleanup, err = a.media.ResolveForLLM(ctx, baseMessages)
+		requestMessages, cleanup, err = c.media.ResolveForLLM(ctx, baseMessages)
 		if err != nil {
 			return llmCallResult{}, err
 		}
@@ -133,17 +147,17 @@ func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection
 			return llmCallResult{Messages: baseMessages, Stream: stream}, nil
 		}
 		if shouldFallbackVision(requestMessages, err) {
-			a.notifyVisionFallbackOnce(ctx, sessionID, out)
-			return a.callLLM(ctx, session, selection, fallbackVisionMessages(baseMessages), tools, nil, stream, out)
+			c.output.notifyVisionFallbackOnce(ctx, sessionID, out)
+			return c.Call(ctx, session, selection, fallbackVisionMessages(baseMessages), tools, nil, stream, out)
 		}
-		a.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", err.Error())
-		a.hooks.notifyError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, ElapsedMS: elapsedMillis(startedAt)}}, err)
+		c.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", err.Error())
+		c.hooks.notifyError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, ElapsedMS: elapsedMillis(startedAt)}}, err)
 		return llmCallResult{}, fmt.Errorf("chat: %w", err)
 	}
 	var assistant strings.Builder
 	var usage *llm.Usage
 	var toolCalls []llm.ToolCallRequest
-	showReasoning := a.identity.IsCLI(ctx)
+	showReasoning := c.identity.IsCLI(ctx)
 	reasoningOpen := false
 	for chunk := range ch {
 		if chunk.Error != nil {
@@ -152,11 +166,11 @@ func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection
 				return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages, Stream: stream}, nil
 			}
 			if shouldFallbackVision(requestMessages, chunk.Error) {
-				a.notifyVisionFallbackOnce(ctx, sessionID, out)
-				return a.callLLM(ctx, session, selection, fallbackVisionMessages(baseMessages), tools, nil, stream, out)
+				c.output.notifyVisionFallbackOnce(ctx, sessionID, out)
+				return c.Call(ctx, session, selection, fallbackVisionMessages(baseMessages), tools, nil, stream, out)
 			}
-			a.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", chunk.Error.Error())
-			a.hooks.notifyError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, SourceText: assistant.String(), Text: assistant.String(), ToolCalls: toolCalls, Usage: usage, ElapsedMS: elapsedMillis(startedAt)}}, chunk.Error)
+			c.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", chunk.Error.Error())
+			c.hooks.notifyError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, SourceText: assistant.String(), Text: assistant.String(), ToolCalls: toolCalls, Usage: usage, ElapsedMS: elapsedMillis(startedAt)}}, chunk.Error)
 			out.SendNotice(ctx, slog.LevelError, notificationrules.ModelInterrupted(chunk.Error))
 
 			return llmCallResult{}, markUserNotified(fmt.Errorf("chat stream: %w", chunk.Error))
@@ -189,7 +203,7 @@ func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection
 	}
 	elapsedMs := elapsedMillis(startedAt)
 	content := assistant.String()
-	event, err = a.hooks.Run(ctx, hook.Event{
+	event, err = c.hooks.Run(ctx, hook.Event{
 		Point:   hook.PointLLMResponseReceived,
 		Session: hook.SessionContext{ID: sessionID},
 		LLM: hook.LLMPayload{
@@ -211,17 +225,17 @@ func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection
 		toolCalls = nil
 	}
 	finalText := event.LLM.Text
-	a.logLLMOutput(sessionID, selection, finalText, event.LLM.SourceText, len(toolCalls), elapsedMs)
+	c.logLLMOutput(sessionID, selection, finalText, event.LLM.SourceText, len(toolCalls), elapsedMs)
 
-	a.auditUsage(sessionID, selection, usage, elapsedMs)
+	c.auditUsage(sessionID, selection, usage, elapsedMs)
 	return llmCallResult{Text: finalText, RawText: content, Usage: usage, ToolCalls: toolCalls, Outputs: event.Outputs, Messages: baseMessages, Stream: stream}, nil
 }
 
-func (a *Agent) logLLMOutput(sessionID string, selection modelmgr.Selection, text, rawText string, toolCallCount int, elapsedMs int64) {
-	if a.logger == nil {
+func (c *modelCaller) logLLMOutput(sessionID string, selection modelmgr.Selection, text, rawText string, toolCallCount int, elapsedMs int64) {
+	if c.logger == nil {
 		return
 	}
-	a.logger.Info("llm output",
+	c.logger.Info("llm output",
 		"event", "assistant_message",
 		"session_id", sessionID,
 		"provider", selection.Provider,
@@ -256,27 +270,6 @@ func fallbackVisionMessages(messages []llm.LLMMessage) []llm.LLMMessage {
 		out[i].Segments = llm.TextSegments(llm.SegmentsContentText(out[i].Segments))
 	}
 	return out
-}
-
-func (a *Agent) notifyVisionFallbackOnce(ctx context.Context, sessionID string, out turnOutput) {
-	if !a.identity.IsCLI(ctx) {
-		return
-	}
-	a.visionFallbackMu.Lock()
-	if a.visionFallbackNotified[sessionID] {
-		a.visionFallbackMu.Unlock()
-		return
-	}
-	a.visionFallbackNotified[sessionID] = true
-	a.visionFallbackMu.Unlock()
-	_, _ = out.SendAssistant(ctx, notificationrules.VisionFallback)
-}
-
-func (a *Agent) userMessageSegments(ctx context.Context, text string) []llm.MessageSegment {
-	if msg, ok := platform.MessageContextFrom(ctx); ok && len(msg.Segments) > 0 {
-		return platformSegmentsToLLM(msg.Segments, text)
-	}
-	return llm.TextSegments(text)
 }
 
 func platformSegmentsToLLM(segments []platform.MessageSegment, fallbackText string) []llm.MessageSegment {
@@ -316,7 +309,7 @@ func fileSegmentText(name, fallback string) string {
 	return fmt.Sprintf("[%s: %s]", fallback, name)
 }
 
-func (a *Agent) auditUsage(sessionID string, selection modelmgr.Selection, usage *llm.Usage, elapsedMs int64) {
+func (c *modelCaller) auditUsage(sessionID string, selection modelmgr.Selection, usage *llm.Usage, elapsedMs int64) {
 	attrs := []any{"session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMs}
 	if usage != nil {
 		attrs = append(attrs,
@@ -326,9 +319,13 @@ func (a *Agent) auditUsage(sessionID string, selection modelmgr.Selection, usage
 			"cache_hit_tokens", usage.CacheHitTokens,
 		)
 	}
-	a.audit("llm_usage", attrs...)
+	c.audit("llm_usage", attrs...)
 }
 
 func elapsedMillis(startedAt time.Time) int64 {
 	return time.Since(startedAt).Milliseconds()
+}
+
+func (c *modelCaller) audit(event string, attrs ...any) {
+	writeAudit(c.auditLogger, slog.LevelInfo, event, attrs...)
 }

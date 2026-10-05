@@ -2,19 +2,21 @@ package agent
 
 import (
 	"context"
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
 	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	"elbot/internal/llm"
+	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/request"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"errors"
-	"strings"
-	"testing"
-	"time"
 )
 
 func TestCompleteForkMessageID(t *testing.T) {
@@ -570,10 +572,19 @@ func TestDefaultModeFromStateAppliesToNewSessions(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"chat reply"}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.sessions = session.NewServiceWithConfig(store, session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeChat}, session.NewTitleGenerator(a.models), nil)
-	a.sessions.StartNaming(context.Background())
-	t.Cleanup(func() { _ = a.sessions.Close(context.Background()) })
+	a := mustNewWithOptions(t, testAgentOptions{
+		Platform: p, Store: store, CommandPrefixes: []string{"/"},
+		Models: newTestModels(t, modelmgr.Options{
+			Clients:   map[string]llm.LLM{"default": f},
+			Providers: map[string]config.ProviderConfig{"default": {}},
+			ModeModels: map[string]config.ModelSelection{
+				storage.SessionModeWork: {Provider: "default", Model: "test-model"},
+				storage.SessionModeChat: {Provider: "default", Model: "test-model"},
+			},
+			DefaultMode: storage.SessionModeChat,
+		}),
+		SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeChat},
+	})
 	ctx := context.Background()
 
 	if err := a.HandleMessage(ctx, "hello default chat"); err != nil {

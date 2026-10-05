@@ -58,7 +58,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	before := row.Metadata
 	failure := errors.New("commit rejected")
 	repo := &toolStateFaultRepo{SessionRepository: store.Sessions(), failure: failure}
-	a.toolState = toolrun.NewStateService(toolStateFaultStore{Store: store, repo: repo})
+	setTestToolState(a, toolrun.NewStateService(toolStateFaultStore{Store: store, repo: repo}))
 	input := "question @tool:worker @skill:doc"
 	tools, skills, err := a.applyInputDirectives(ctx, row, input)
 	if !errors.Is(err, failure) || repo.writes != 1 {
@@ -68,7 +68,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	if row.Metadata != before || latest.Metadata != before || tools.Text != input || skills.Text != input || len(tools.Injected) > 0 || len(skills.Skills) > 0 {
 		t.Fatalf("failed commit leaked state: tools=%+v skills=%+v row=%s", tools, skills, row.Metadata)
 	}
-	schemas, err := a.toolsForSession(ctx, row)
+	schemas, err := a.chat.toolsForSession(ctx, row)
 	if err != nil || toolNames(schemas) != "discover_tool" {
 		t.Fatalf("failed schema published: %s %v", toolNames(schemas), err)
 	}
@@ -111,7 +111,7 @@ func TestFailedDiscoveryMatchesTranscriptAndNextSchema(t *testing.T) {
 	_ = registry.Register(agentWrapperTool{name: "alpha"})
 	a.SetToolRuntime(registry, nil)
 	failure := errors.New("tool state commit rejected")
-	a.toolState = toolrun.NewStateService(toolStateFaultStore{Store: store, repo: &toolStateFaultRepo{SessionRepository: store.Sessions(), failure: failure}})
+	setTestToolState(a, toolrun.NewStateService(toolStateFaultStore{Store: store, repo: &toolStateFaultRepo{SessionRepository: store.Sessions(), failure: failure}}))
 	if err := a.HandleMessage(ctx, "discover"); err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestForkKeepsHistoryWithoutCopyingToolOrUsageState(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, err := a.toolState.Snapshot(ctx, fork.ID)
-	if err != nil || len(state.ToolCache) != 0 || a.usageForSession(fork) != nil {
+	if err != nil || len(state.ToolCache) != 0 || a.execution.usageForSession(fork) != nil {
 		t.Fatalf("fork inherited state: %+v err=%v", state, err)
 	}
 	loaded, err := a.contexts.Load(ctx, fork.ID)

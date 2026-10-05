@@ -17,7 +17,6 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/toolrun"
-	"elbot/internal/turn"
 )
 
 type backgroundModelSelectionKey struct{}
@@ -95,27 +94,7 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 		a.audit("background_skill_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "skills", preloaded.Skills)
 	}
 	prompt := backgroundPromptWithSkills(req.Prompt, preloaded.SkillPrompt)
-	execution := turn.NewExecution(storage.NewID())
-	execution.SetResult(bgSession.ID, "", "")
-	ctx = turn.WithExecution(ctx, execution)
-	err = a.startBackgroundChat(ctx, bgSession, prompt)
-	if err != nil {
-		execution.Finish(err)
-	}
-	result := execution.Wait(ctx)
-	if latest, loadErr := a.store.Sessions().Get(context.WithoutCancel(ctx), bgSession.ID); loadErr == nil && session.WasPromoted(latest) {
-		result.TakenOver = true
-	}
-	if result.Err != nil && ctx.Err() != nil {
-		_, release, lockErr := a.sessions.EnterSessions(context.WithoutCancel(ctx), result.SessionID)
-		if lockErr == nil {
-			if a.turns.Execution(result.SessionID) == execution {
-				a.requests.CancelSession(result.SessionID)
-				a.turns.StopSession(result.SessionID)
-			}
-			release()
-		}
-	}
+	result := a.execution.RunBackground(ctx, bgSession, prompt)
 	return background.RunResult{RunID: result.RunID, SessionID: result.SessionID, MessageID: result.MessageID, Text: result.Text, TakenOver: result.TakenOver, Outcome: result.Outcome}, result.Err
 }
 
@@ -160,7 +139,7 @@ func (a *Agent) preloadBackgroundResources(ctx context.Context, row *storage.Ses
 	prepared := a.toolRuntime.preloader.PrepareBackground(a.preloadContext(ctx), row.ID, names, allowed)
 	prepared.Update.Tools = append(toolrun.BackgroundCachedTools(ctx, initial), prepared.Update.Tools...)
 	prepared.Update.Tools = toolrun.BackgroundCachedTools(ctx, prepared.Update.Tools)
-	committed, err := a.commitToolState(ctx, row, prepared.Update)
+	committed, err := commitToolState(ctx, a.toolState, row, prepared.Update)
 	if err != nil {
 		return backgroundPreloadResult{Err: err}
 	}

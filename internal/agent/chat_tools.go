@@ -6,12 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"elbot/internal/llm"
 	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 	"elbot/internal/turn"
 )
@@ -22,8 +20,8 @@ type pendingUserMessage struct {
 	platformText string
 }
 
-func (a *Agent) drainPendingUserInput(sessionID string, messages []llm.LLMMessage, expected ...string) ([]llm.LLMMessage, *pendingUserMessage) {
-	pending := a.turns.DrainMergedInput(sessionID, expected...)
+func (r *chatRunner) drainPendingUserInput(sessionID string, messages []llm.LLMMessage, expected ...string) ([]llm.LLMMessage, *pendingUserMessage) {
+	pending := r.turns.DrainMergedInput(sessionID, expected...)
 	if pending.Text == "" && len(pending.Segments) == 0 {
 		return messages, nil
 	}
@@ -42,11 +40,11 @@ func (a *Agent) drainPendingUserInput(sessionID string, messages []llm.LLMMessag
 	return append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: segments}), binding
 }
 
-func (a *Agent) executeToolCalls(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string, out turnOutput) toolrun.RunResult {
+func (r *chatRunner) executeToolCalls(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string, out turnOutput) toolrun.RunResult {
 	if session == nil || (session.Mode != storage.SessionModeWork && session.Mode != storage.SessionModeBackground) {
 		return toolrun.RunResult{}
 	}
-	cached, err := a.cachedToolsForSession(ctx, session)
+	cached, err := cachedToolsForSession(ctx, r.toolState, r.toolRuntime.registry, session)
 	if err != nil {
 		messages := make([]llm.LLMMessage, 0, len(calls))
 		transcript := []storage.Message{toolCallStorageMessage(session.ID, assistantText, assistantRawText, calls)}
@@ -57,13 +55,13 @@ func (a *Agent) executeToolCalls(ctx context.Context, session *storage.Session, 
 		}
 		return toolrun.RunResult{Messages: messages, PreparedCalls: calls, Transcript: transcript}
 	}
-	return a.toolRunManager().Run(ctx, agentToolRunDeps{agent: a, output: out, attempt: turn.AttemptFromContext(ctx)}, toolrun.RunRequest{
+	return r.toolRuntime.manager.Run(ctx, r.toolDeps.forTurn(out, turn.AttemptFromContext(ctx)), toolrun.RunRequest{
 		Session:          session,
 		Calls:            calls,
 		AssistantText:    assistantText,
 		AssistantRawText: assistantRawText,
 		CachedTools:      cached,
-		Actor:            a.identity.Actor(ctx),
+		Actor:            r.identity.Actor(ctx),
 	})
 }
 
@@ -83,38 +81,11 @@ func riskReasonsText(reasons []string) string {
 	return sb.String()
 }
 
-func (a *Agent) isSessionAutoConfirmed(sessionID string) bool {
-	a.autoConfirmMu.Lock()
-	defer a.autoConfirmMu.Unlock()
-	return a.autoConfirmSession[sessionID]
-}
-
-func (a *Agent) setSessionAutoConfirmed(sessionID string) {
-	a.autoConfirmMu.Lock()
-	defer a.autoConfirmMu.Unlock()
-	a.autoConfirmSession[sessionID] = true
-}
-
-func (a *Agent) isToolAutoConfirmed(sessionID, toolName string) bool {
-	a.autoConfirmMu.Lock()
-	defer a.autoConfirmMu.Unlock()
-	return a.autoConfirmTools[sessionID] != nil && a.autoConfirmTools[sessionID][toolName]
-}
-
-func (a *Agent) setToolAutoConfirmed(sessionID, toolName string) {
-	a.autoConfirmMu.Lock()
-	defer a.autoConfirmMu.Unlock()
-	if a.autoConfirmTools[sessionID] == nil {
-		a.autoConfirmTools[sessionID] = map[string]bool{}
-	}
-	a.autoConfirmTools[sessionID][toolName] = true
-}
-
-func (a *Agent) maxToolRoundsPerTurn() int {
-	if a.toolRuntime.config.MaxRoundsPerTurn <= 0 {
+func (r *chatRunner) maxToolRoundsPerTurn() int {
+	if r.toolRuntime.config.MaxRoundsPerTurn <= 0 {
 		return 2
 	}
-	return a.toolRuntime.config.MaxRoundsPerTurn
+	return r.toolRuntime.config.MaxRoundsPerTurn
 }
 
 func skippedToolMessages(calls []llm.ToolCallRequest, maxRounds int) []llm.LLMMessage {
@@ -128,81 +99,6 @@ func skippedToolMessages(calls []llm.ToolCallRequest, maxRounds int) []llm.LLMMe
 		})
 	}
 	return messages
-}
-
-func (a *Agent) toolCallRisk(ctx context.Context, call llm.ToolCallRequest) string {
-	if a.toolRuntime.registry == nil {
-		return "unknown"
-	}
-	t, ok := a.toolRuntime.registry.Get(call.Name)
-	if !ok {
-		return "unknown"
-	}
-	assessment, err := tool.AssessRisk(ctx, t, tool.CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)})
-	if err != nil {
-		return "unknown"
-	}
-	return string(assessment.Level)
-}
-
-func (a *Agent) recordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) {
-	record := &storage.ToolCallRecord{
-		SessionID:     sessionID,
-		ToolCallID:    call.ID,
-		ToolName:      call.Name,
-		ActorID:       a.identity.Actor(ctx).ID,
-		RiskLevel:     risk,
-		Success:       callErr == nil,
-		ResultPreview: previewLogText(result),
-		StartedAt:     startedAt,
-		FinishedAt:    storage.Now(),
-	}
-	if callErr != nil {
-		record.Error = callErr.Error()
-	}
-	if a.store != nil && a.store.ToolCalls() != nil {
-		if err := a.store.ToolCalls().Create(ctx, record); err != nil && a.logger != nil {
-			a.logger.Warn("record tool call failed", "session_id", sessionID, "tool", call.Name, "error", err)
-		}
-	}
-	if a.logger != nil {
-		a.logger.Info("tool call",
-			"event", "tool_call",
-			"session_id", sessionID,
-			"arguments", previewArguments(call.Arguments),
-			"result", previewLogText(result),
-			"tool", call.Name,
-			"tool_call_id", call.ID,
-			"actor_id", record.ActorID,
-			"risk", risk,
-			"success", record.Success,
-			"elapsed_ms", record.FinishedAt.Sub(record.StartedAt).Milliseconds(),
-			"error", record.Error,
-		)
-	}
-	a.audit("tool_call",
-		"session_id", sessionID,
-		"arguments", previewArguments(call.Arguments),
-		"tool", call.Name,
-		"tool_call_id", call.ID,
-		"actor_id", record.ActorID,
-		"risk", risk,
-		"success", record.Success,
-		"elapsed_ms", record.FinishedAt.Sub(record.StartedAt).Milliseconds(),
-		"error", record.Error,
-	)
-}
-
-func (a *Agent) logRiskConfirmationWait(sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reasons []string) {
-	auditAttrs := []any{"session_id", sessionID, "tool", call.Name, "risk", risk, "arguments", previewArguments(call.Arguments)}
-	if len(reasons) > 0 {
-		auditAttrs = append(auditAttrs, "risk_reasons", strings.Join(reasons, "; "))
-	}
-	a.audit("risk_confirmation_wait", auditAttrs...)
-}
-
-func (a *Agent) logRiskConfirmationResult(sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, action, extra, reason string) {
-	a.audit("risk_confirmation_result", "session_id", sessionID, "tool", call.Name, "risk", risk, "action", action, "extra", extra, "reason", reason)
 }
 
 func previewLogText(text string) string {
@@ -263,18 +159,18 @@ func previewArguments(args string) string {
 	return string(runes[:maxPreviewRunes]) + "..."
 }
 
-func (a *Agent) toolsForSession(ctx context.Context, session *storage.Session) ([]llm.ToolSchema, error) {
+func (r *chatRunner) toolsForSession(ctx context.Context, session *storage.Session) ([]llm.ToolSchema, error) {
 	if session == nil || (session.Mode != storage.SessionModeWork && session.Mode != storage.SessionModeBackground) {
 		return nil, nil
 	}
-	if session.Mode == storage.SessionModeWork && a.toolRuntime.provider != nil && !a.toolRuntime.defaultProvider {
-		return a.toolRuntime.provider.Schemas(ctx, session.Mode, session, a.identity.Scope(ctx))
+	if session.Mode == storage.SessionModeWork && r.toolRuntime.provider != nil && !r.toolRuntime.defaultProvider {
+		return r.toolRuntime.provider.Schemas(ctx, session.Mode, session, r.identity.Scope(ctx))
 	}
-	cached, err := a.cachedToolsForSession(ctx, session)
+	cached, err := cachedToolsForSession(ctx, r.toolState, r.toolRuntime.registry, session)
 	if err != nil {
 		return nil, err
 	}
-	return a.toolRunManager().Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: a.identity.Scope(ctx), Actor: a.identity.Actor(ctx), DisableBaseTools: isBackgroundSession(session)}, cached)
+	return r.toolRuntime.manager.Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: r.identity.Scope(ctx), Actor: r.identity.Actor(ctx), DisableBaseTools: isBackgroundSession(session)}, cached)
 }
 
 func isBackgroundSession(row *storage.Session) bool { return sessionpkg.IsBackground(row) }

@@ -22,27 +22,6 @@ const defaultUserConfirmationTimeout = 10 * time.Minute
 var errInputCompacting = errors.New("正在压缩上下文，请稍后再发送。可使用 /stop 取消当前请求。")
 var errInputArchived = errors.New("当前会话已归档，不能继续聊天。若要继续，请先使用 /unarchive。")
 
-func (a *Agent) confirmationWaitTimeout(ctx context.Context) time.Duration {
-	actor := a.identity.Actor(ctx)
-	isSuperadmin := actor.Role == security.RoleSuperadmin
-	ttlMinutes := a.idleExpiration.TTLMinutes(a.identity.Scope(ctx), isSuperadmin)
-	var sessionTimeout time.Duration
-	if ttlMinutes > 0 {
-		sessionTimeout = time.Duration(ttlMinutes) * time.Minute
-	}
-	if isSuperadmin {
-		return sessionTimeout
-	}
-	userTimeout := a.userConfirmationTimeout
-	if userTimeout <= 0 {
-		userTimeout = defaultUserConfirmationTimeout
-	}
-	if sessionTimeout > 0 && sessionTimeout < userTimeout {
-		return sessionTimeout
-	}
-	return userTimeout
-}
-
 func confirmationWaitDurationText(timeout time.Duration) string {
 	if timeout%time.Minute == 0 {
 		return fmt.Sprintf("%d 分钟", int(timeout/time.Minute))
@@ -58,39 +37,6 @@ func appendConfirmPromptText(timeout time.Duration) string {
 	return text
 }
 
-func (a *Agent) handleAppendConfirmationInput(ctx context.Context, row *storage.Session, text string) error {
-	locked, release, err := a.sessions.EnterActivation(ctx, a.identity.Scope(ctx), row.ID)
-	if err != nil {
-		return err
-	}
-	locked, err = a.captureSessionBinding(locked, row)
-	if err != nil {
-		release()
-		return err
-	}
-	switch {
-	case turn.IsConfirm(text):
-		merged, execution, ok := a.turns.ResumeAppend(row.ID)
-		ctx = turn.WithExecution(locked, execution)
-		if !ok || (merged.Text == "" && len(merged.Segments) == 0) {
-			release()
-			return nil
-		}
-		ctx = withInboundTurnInput(ctx, merged)
-		release()
-		return a.startChat(ctx, row, merged.Text)
-	case turn.IsCancel(text):
-		a.turns.CancelAppend(row.ID)
-		release()
-		a.output.SendChat(ctx, "已取消追加，本轮处理已停止。")
-		return nil
-	default:
-		a.turns.AppendPendingInput(row.ID, inboundTurnInput(ctx, text))
-		release()
-		return nil
-	}
-}
-
 func compactCommandBlockedText(command string) string {
 	return fmt.Sprintf("正在压缩当前会话，暂不执行 %s。请等待压缩完成，或先使用 /stop 取消。", command)
 }
@@ -100,7 +46,7 @@ func activeTurnCommandBlockedText() string {
 }
 
 func (a *Agent) handleInput(ctx context.Context, text string) error {
-	ctx, session, err := a.resolveInput(ctx, text)
+	ctx, session, err := a.execution.resolveInput(ctx, text)
 	if err != nil {
 		return err
 	}
@@ -128,7 +74,7 @@ func (a *Agent) continueCommandInput(ctx context.Context, continuation command.C
 }
 
 func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session, text string) error {
-	locked, release, err := a.enterInput(ctx, session)
+	locked, release, err := a.execution.enterInput(ctx, session)
 	if errors.Is(err, errInputCompacting) || errors.Is(err, errInputArchived) {
 		a.output.SendChat(ctx, err.Error())
 		return nil
@@ -169,78 +115,14 @@ func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session
 		}
 	}
 
-	locked, release, err = a.enterInput(ctx, session)
+	disposition, err := a.execution.AcceptInput(ctx, session, text)
 	if err != nil {
 		return err
 	}
-	ctx = locked
-	snapshot = a.turns.Snapshot(session.ID)
-	switch snapshot.Phase {
-	case turn.PhaseAwaitRiskConfirm:
-		release()
-		return a.handleRiskConfirmationInput(ctx, session.ID, text)
-	case turn.PhaseAwaitAppendConfirm:
-		release()
-		return a.handleAppendConfirmationInput(ctx, session, text)
-	case turn.PhaseLLM:
-		if !a.turns.InterruptLLMInput(session.ID, inboundTurnInput(ctx, text)) {
-			release()
-			return nil
-		}
-		a.requests.CancelSession(session.ID)
-		release()
-		timeout := a.confirmationWaitTimeout(ctx)
-		a.output.SendChat(ctx, appendConfirmPromptText(timeout))
-		if timeout > 0 {
-			waitCtx := context.WithoutCancel(ctx)
-			go func() {
-				if a.turns.AwaitAppendExpiration(session.ID, timeout) {
-					a.output.SendChat(waitCtx, "追加确认已过期，待追加内容已丢弃，本轮处理已停止。")
-				}
-			}()
-		}
-		return nil
-	case turn.PhaseTool:
-		a.turns.AppendPendingInput(session.ID, inboundTurnInput(ctx, text))
-		release()
-		a.output.SendChat(ctx, "已追加，将在当前流程下一次模型调用时带上。发送 /stop 可打断当前流程。")
-		return nil
-	default:
-		release()
-		return a.startChat(ctx, session, text)
+	if disposition == inputRiskConfirmation {
+		return a.confirmations.SubmitResponse(ctx, session.ID, text)
 	}
-}
-
-// Preparation runs outside admission. Both entry and commit validate the same
-// activation and mode so an old input cannot write into a newly resumed session.
-func (a *Agent) enterInput(ctx context.Context, row *storage.Session) (context.Context, func(), error) {
-	locked, release, err := a.sessions.EnterActivation(ctx, a.identity.Scope(ctx), row.ID)
-	if err != nil {
-		return ctx, nil, err
-	}
-	locked, err = a.captureSessionBinding(locked, row)
-	if err == nil {
-		var latest *storage.Session
-		latest, err = a.store.Sessions().Get(locked, row.ID)
-		if err == nil {
-			switch {
-			case latest.Mode != row.Mode:
-				err = errors.New("当前会话模式已切换，请重新发送消息")
-			case latest.ArchivedAt != nil:
-				err = errInputArchived
-			case a.compactActive(row.ID):
-				err = errInputCompacting
-			}
-		}
-	}
-	if err == nil {
-		err = ctx.Err()
-	}
-	if err != nil {
-		release()
-		return ctx, nil, err
-	}
-	return locked, release, nil
+	return nil
 }
 
 func (a *Agent) expireIdleCurrentSession(ctx context.Context) error {
@@ -258,7 +140,7 @@ func (a *Agent) expireIdleCurrentSession(ctx context.Context) error {
 	result, err := a.sessions.ExpireIdleCurrent(ctx, session.ExpireIdleRequest{
 		Scope:        a.identity.Scope(ctx),
 		IsSuperadmin: actor.Role == security.RoleSuperadmin,
-		Config:       a.idleExpiration,
+		Config:       a.waitPolicy.idleExpiration,
 		Now:          time.Now(),
 	})
 	if err != nil {
@@ -273,86 +155,4 @@ func (a *Agent) expireIdleCurrentSession(ctx context.Context) error {
 func hasForkFromMessage(ctx context.Context) bool {
 	msg, ok := platform.MessageContextFrom(ctx)
 	return ok && msg.ForkFromMessageID != ""
-}
-
-func (a *Agent) sessionForInput(ctx context.Context, text string) (*storage.Session, error) {
-	if msg, ok := platform.MessageContextFrom(ctx); ok {
-		if msg.ResumeSessionID != "" {
-			return a.sessions.Resume(ctx, a.identity.Scope(ctx), msg.ResumeSessionID)
-		}
-		if msg.ForkFromMessageID != "" {
-			return a.sessions.Fork(ctx, a.identity.Scope(ctx), msg.ForkFromMessageID)
-		}
-	}
-	return a.sessions.GetOrCreateCurrent(ctx, a.identity.Scope(ctx), text)
-}
-
-func (a *Agent) handleRiskConfirmationInput(ctx context.Context, sessionID, text string) error {
-	locked, release, err := a.sessions.EnterActivation(ctx, a.identity.Scope(ctx), sessionID)
-	if err != nil {
-		return err
-	}
-	locked, err = a.captureSessionBinding(locked, &storage.Session{ID: sessionID})
-	if err != nil {
-		release()
-		return err
-	}
-	ctx = locked
-	confirmation, hasConfirmation := a.turns.PendingRiskConfirmation(sessionID)
-	if !hasConfirmation {
-		release()
-		return nil
-	}
-	// 风险确认等待期间只接受确认/拒绝/详情/停止类命令。
-	// 普通文本不能混入当前 turn，避免被误当作高风险工具的隐式确认
-	// 或污染下一次 LLM 调用上下文。
-	if !a.commands.IsCommand(text) {
-		a.logRiskConfirmationAction(sessionID, "invalid_text", confirmation, "")
-		release()
-		a.output.SendChat(ctx, riskConfirmationWaitingText())
-		return nil
-	}
-
-	parsed := a.commands.Parse(text)
-	switch parsed.Name {
-	case "detail", "details":
-		if !a.turns.RefreshRiskConfirmation(sessionID) {
-			release()
-			return nil
-		}
-		a.logRiskConfirmationAction(sessionID, "detail", confirmation, "")
-		release()
-		a.output.SendChat(ctx, riskConfirmationDetailText(confirmation))
-	case "confirm", "c":
-		a.logRiskConfirmationAction(sessionID, "confirm", confirmation, parsed.Args)
-		a.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Confirmed: true, Extra: parsed.Args})
-	case "confirmtool", "ct":
-		a.logRiskConfirmationAction(sessionID, "confirmtool", confirmation, parsed.Args)
-		a.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Confirmed: true, ConfirmTool: true, Extra: parsed.Args})
-	case "confirmall", "ca":
-		a.logRiskConfirmationAction(sessionID, "confirmall", confirmation, parsed.Args)
-		a.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Confirmed: true, ConfirmAll: true, Extra: parsed.Args})
-
-	case "reject":
-		a.logRiskConfirmationAction(sessionID, "reject", confirmation, parsed.Args)
-		a.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Rejected: true, Reason: parsed.Args})
-	case "stop":
-		a.logRiskConfirmationAction(sessionID, "stop", confirmation, "")
-		a.requests.CancelSession(sessionID)
-		a.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Stopped: true})
-		release()
-		a.output.SendChat(ctx, "stopped")
-	default:
-		if hasConfirmation {
-			a.logRiskConfirmationAction(sessionID, "invalid_command", confirmation, parsed.Name)
-		}
-		a.output.SendChat(ctx, riskConfirmationWaitingText())
-
-	}
-	release()
-	return nil
-}
-
-func (a *Agent) logRiskConfirmationAction(sessionID, action string, confirmation turn.RiskConfirmation, extra string) {
-	a.audit("risk_confirmation_command", "session_id", sessionID, "action", action, "tool", confirmation.ToolName, "risk", confirmation.Risk, "extra", extra)
 }

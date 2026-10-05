@@ -303,7 +303,7 @@ Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记�
 <!-- locator:agent-components -->
 ## 阶段 9–15：Agent 内部职责与旁路信号
 
-本节描述阶段 9–15 的目标结构；阶段 9 的基础组件及阶段 10 的回复提交组件已接入，阶段 11–15 仍待实施。当前代码职责以 architecture.md 和 code-map.md 为准。阶段 9–14 逐步完成接入，最后单列阶段 15 Review；不能用末尾 Review 代替各阶段验证。
+本节描述阶段 9–15 的目标结构；阶段 9–12 的基础、回复提交、执行协调、单轮对话、确认和模型调用组件已接入，阶段 13–15 仍待实施。当前代码职责以 architecture.md 和 code-map.md 为准。阶段 9–14 逐步完成接入，最后单列阶段 15 Review；不能用末尾 Review 代替各阶段验证。
 
 ### 范围与依赖约束
 
@@ -414,20 +414,21 @@ internal/
 │   ├── execution.go
 │   │   ├── executionCoordinator
 │   │   ├── Run()
-│   │   ├── AcceptInput()
-│   │   ├── ResumeAppend()
 │   │   └── AdoptForeground()
+│   ├── execution_input.go
+│   │   ├── AcceptInput()
+│   │   └── ResumeAppend()
 │   ├── execution_run.go
 │   │   ├── runAttempt()
 │   │   └── finishAttempt()
 │   ├── execution_admission.go
 │   │   ├── enterInput()
 │   │   ├── enterTurn()
-│   │   └── captureBinding()
+│   │   └── captureSessionBinding()
 │   ├── execution_compact.go
 │   │   ├── CompactCurrent()
 │   │   ├── compactBeforeTurn()
-│   │   └── compactAndHandoff()
+│   │   └── runCompact()
 │   ├── execution_context.go
 │   │   ├── executionView
 │   │   ├── Context()
@@ -439,7 +440,8 @@ internal/
 │   │   ├── chatRunner
 │   │   └── RunTurn()
 │   ├── chat_prepare.go
-│   │   └── prepareTurn()
+│   │   ├── prepareTurn()
+│   │   └── prepareMessages()
 │   ├── chat_loop.go
 │   │   └── runLoop()
 │   ├── chat_tools.go
@@ -652,7 +654,7 @@ app 在平台等生产者启动前连接订阅，并持有 Connection 和 Queue�
 2. foregroundTurnOutput/backgroundTurnOutput 只依赖发送与状态能力；execution_context.go 和 execution_output.go 分别承载执行视图与接管输出，保留原取消链和报告附件转换。
 3. toolRunPromptProvider 直接注入 ToolRun 和身份解析；配置 setter 更新实际拥有者，媒体测试通过构造注入共享服务。
 4. app 安装的 Hook 唤醒、Request 观察等仍是同步参与者；纯上下文和 Session payload 转换使用包内函数。
-5. 状态与通知沿用同步调用顺序；assistant 历史提交和消息映射由阶段 10 的 replyCommitter 承接，工具执行适配器仍按阶段 12 迁移，旧 attempt 过滤及展示版本按阶段 13 实施。
+5. 状态与通知沿用同步调用顺序；assistant 历史提交和消息映射由阶段 10 的 replyCommitter 承接，工具执行适配器由阶段 12 的 toolRunDeps 承接，状态展示的旧 attempt 过滤及版本控制按阶段 13 实施。
 
 验收：基础组件能用必要服务独立构造，无 Agent 字段、嵌入或绑定 Agent 的回调集合；原来源发送、CLI 原连接、后台静默、无来源 Hook、错误事件和本地状态先写后读保持一致。组件边界回归覆盖同步状态读写、策略／日志配置更新及接管取消链；Agent、app、delivery、notification、Hook、ToolRun 相关测试和 Agent／app race 通过，代码地图与已落地架构已同步。
 
@@ -666,44 +668,41 @@ app 在平台等生产者启动前连接订阅，并持有 Connection 和 Queue�
 1. replyCommitter 直接注入消息仓库、outputSender 和日志，Commit 显式接收本轮输出及已刷新的业务／请求 context；不持有 Agent 或绑定 Agent 的回调。
 2. 提交输入区分历史正文、原始模型文本、展示文本、最终 stream 和延迟 outputs；结果保留消息标识、原始文本、实际 assistant receipt、持久化标记及发送／保存／关联错误，返回错误沿用原优先级。
 3. 组件负责最终 Hook、空回复、流式收尾、延迟 outputs、assistant 落库及回执关联。直接输出先发送再落库，缓冲输出先落库再发送；部分成功不重发，关联只消费完整结构化来源，关联失败不终止对话。
-4. runChat 在提交前应用 executionView 并发布 sending，覆盖最后一轮 LLM 等待期间发生的接管。最终 Hook 归提交层，普通发送 Hook 归输出适配层，保持既有调用条件与顺序。
-5. runChat 使用提交结果继续 Touch、Usage、状态、pending、Execution 结果及命名；自动压缩和执行完成不进入提交组件。日志 setter 更新提交组件的实际日志依赖。
+4. chatRunner 在提交前应用 executionView 并发布 sending，覆盖最后一轮 LLM 等待期间发生的接管。最终 Hook 归提交层，普通发送 Hook 归输出适配层，保持既有调用条件与顺序。
+5. executionCoordinator 使用 chatRunner 返回的提交结果继续 Touch、Usage、状态、pending、Execution 结果及命名；自动压缩和执行完成不进入提交组件。日志 setter 更新提交组件的实际日志依赖。
 
 验收：独立组件测试覆盖直接／缓冲／流式提交顺序、Hook 改写及取消、空回复、后台静默、仅延迟输出、保存／发送／关联失败和部分成功；真实 Agent 入口验证保存失败不误完成 Execution，既有接管及真实 adapter、Cron、Elnis 回执回归继续通过。Agent、app、delivery、Hook、平台 adapter、Cron、Elnis 相关包测试与 Agent／app race 通过，开发文档已同步。
 
 <a id="phase-11"></a>
 ### 阶段 11：收拢执行交接与单轮对话
 
-目标：跨轮规则归 executionCoordinator，单轮聊天归 chatRunner。
+状态：与阶段 12 合并接入；执行协调与单轮聊天职责已分离。
 
-实施顺序：
+当前实现：
 
-1. 迁移启动、追加确认续跑、pending 下一轮、压缩交接和最终完成规则；前后台入口调用同一执行协调。
-2. 原 runChat 按 prepareTurn、runLoop 和回复提交拆分，归 chatRunner.RunTurn；结构化返回暂停、停止、完成、取消和错误。
-3. Request 创建、attempt 和结束清理归执行协调；工具子请求仍在 ToolRun 适配层登记。
-4. 输入准备保留锁外执行，准备前与提交前复核同一 binding、模式、取消和压缩状态；保持现有准入及锁顺序。
-5. 压缩材料由 ContextManager 生成，新 Session 由 Session 创建，执行预留和绑定更新由执行协调完成。
-6. executionView 在模型循环、工具边界和最终输出复用；刷新前台身份、清除后台覆盖值，但保留原请求取消链。
-7. chatRunner 所需媒体、工具状态及 transcript 辅助逻辑迁到相应接收者或显式依赖函数；不通过 Agent 回调启动模型、执行工具或读取状态。modelCaller 正式抽出前，相关调用可先成为 chatRunner 的方法。
-8. 保持 Usage、Touch、状态更新、pending 交接、Execution 结果及命名触发的既有顺序；旧 attempt 的迟到完成不能结束续接的新执行。
+1. executionCoordinator 统一前后台准入、启动、attempt、Request 创建与清理、追加确认、pending 下一轮、压缩交接及最终完成；后台入口等待真实 Execution 结果。
+2. chatRunner 通过 prepareTurn 加载 Request 登记前材料，再执行 Prompt／Hook 准备、runLoop 和回复提交；返回完成、暂停、停止、取消、失败或 attempt 已失效，并保留提交事实、Usage、模型与计时。
+3. 输入准备在锁外，准备前和提交前复核同一 binding、模式、取消与压缩状态；保持 Scope → 排序后的 SessionID → 状态锁顺序。
+4. ContextManager 生成压缩材料，Session 创建新会话；协调器负责执行预留、binding 更新及取消／迟到返回保护。模型循环、工具边界和最终输出共用 executionView，接管保留原请求取消链。
+5. 回复后按 Touch、Usage、状态、压缩提示、pending 交接、Execution 结果、命名的顺序收尾；提交期间出现追加确认仍保留成功提交及用量，旧 attempt 不结束续接执行。
+6. 单轮媒体、工具状态和 transcript 使用明确接收者或显式依赖函数；旧主流程和准入／压缩平行实现已删除，Agent 的压缩和接管对外入口为薄委托。
 
-验收：LLM 追加打断／确认／取消／过期、工具 pending 注入、最终 LLM 期间 pending 新开轮、pending 穿越自动压缩、前后台接管均通过。接管不重启在途请求或工具，下一边界更新前台模型和权限；覆盖压缩取消、保存失败、切离再恢复和迟到返回。运行 Agent、Turn、Session、Request、ContextManager 相关测试和 race，并检查后台实际入口等待真实执行结果。
+验收：独立构造测试覆盖六类单轮结果、不误结束 Execution、不清理协调器 Request、不消费下一轮 pending、登记时机、加载／用户消息保存失败清理及提交中追加确认。既有追加确认、pending、自动压缩、前后台接管、切离再恢复、保存失败和迟到返回回归通过。
 
 <a id="phase-12"></a>
 ### 阶段 12：拆出确认交互与单次模型调用
 
-目标：移走独立交互状态，完成工具适配器去 Agent 化。
+状态：与阶段 11 合并接入；确认、模型调用和工具适配均直接组合必要服务。
 
-实施顺序：
+当前实现：
 
-1. 建立 confirmationCoordinator，迁移风险确认等待、响应、自动确认记录及结果转换；追加确认仍归执行协调。
-2. risk_confirmation.go 保留命令解析、详情和提示格式化；等待中的对象保持由 Turn 管理。
-3. agentToolRunDeps 调整为 toolRunDeps，直接组合必要依赖；工具数据库记录仍同步写入，日志准备在下一阶段分离。
-4. 抽出 modelCaller.Call，包含单次请求、流消费、媒体生命周期、请求／响应 Hook 和视觉降级。
-5. 模型选择快照由调用方传入，Prepared Hook 不修改模型选择；保持 chat 禁用工具与 background 白名单规则。
-6. 本阶段保留必要通知调用，下一阶段再迁移旁路提示，不同时改变确认交互和通知投递机制。
+1. confirmationCoordinator 拥有风险确认交互、响应、自动确认记录及锁；等待对象仍由 Turn 管理，追加确认归 executionCoordinator。确认超时与 Session 过期共享策略，setter 不复制配置。
+2. toolRunDeps 直接使用 Hook、Request、Turn、身份、Media、工具状态、FileOps、确认组件和执行视图；工具数据库记录及发现状态仍同步提交，无 Agent 字段或反向调用。
+3. modelCaller.Call 处理单次请求、流消费、媒体持有／释放、请求／响应 Hook 和视觉降级；选择快照由调用方传入，Prepared Hook 不改选模型，chat 禁用工具与 background 白名单规则保持。
+4. chatRunner 拥有 Prompt Builder；运行配置通过共享对象访问，日志 setter 更新执行、单轮、模型、工具、确认与提交组件，支持替换和清空。
+5. 日志及通知仍同步调用；视觉提示去重当前归 outputSender，旁路信号、提示规则所有权和订阅生命周期留待阶段 13。
 
-验收：确认、confirmtool/confirmall、拒绝、停止、超时及补充输入通过，自动确认作用域不扩大、不增加持久化；模型取消、错误、fallback 和媒体释放通过。Prepared Hook、后台白名单、预检固定和文件提交准入通过，ToolRun 和 Prompt 适配器不再依赖 Agent。运行相关 Agent、ToolRun、Hook、Media、FileOps 测试及涉及确认并发的 race。
+验收：确认、confirmtool／confirmall、拒绝、停止、过期、补充输入、模型错误／取消／fallback、媒体释放、工具白名单、预检固定和文件提交准入回归通过；独立组件测试验证自动确认作用域及实际日志调用的替换／清空。阶段 11–12 的全仓 Go 测试和 Agent、app、Turn、Session、Request、ContextManager、ToolRun、Hook、Media、FileOps race 均通过。
 
 <a id="phase-13"></a>
 ### 阶段 13：旁路信号与订阅生命周期

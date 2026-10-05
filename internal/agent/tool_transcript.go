@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
-	"elbot/internal/toolrun"
 )
 
 type assistantMetadata struct {
@@ -94,35 +95,23 @@ func persistedToolMessage(message llm.LLMMessage) llm.LLMMessage {
 	return message
 }
 
-func (a *Agent) rememberDiscoveryResult(ctx context.Context, row *storage.Session, result *tool.Result) error {
-	if row == nil {
-		return nil
-	}
-	update, err := toolrun.DiscoveryStateUpdate(ctx, result, a.toolRuntime.registry, a.identity.Actor(ctx), a.identity.policy)
-	if err != nil {
-		return err
-	}
-	_, err = a.commitToolState(ctx, row, update)
-	return err
-}
-
-func (a *Agent) persistTurnMessage(ctx context.Context, message *storage.Message, operation string) error {
-	if a.media != nil && message.Segments != "" {
-		segments := a.materializeMedia(ctx, messageSegmentsFromStorage(message.Segments))
+func persistTurnMessage(ctx context.Context, messages storage.MessageRepository, media *media.Manager, auditLogger *slog.Logger, message *storage.Message, operation string) error {
+	if media != nil && message.Segments != "" {
+		segments := materializeMedia(ctx, media, messageSegmentsFromStorage(message.Segments))
 		message.Segments = storedMessageSegments(segments)
 		message.Content = llm.SegmentsContentText(segments)
 	}
-	if err := a.store.Messages().Append(ctx, message); err != nil {
-		a.audit("persistence_error", "session_id", message.SessionID, "operation", operation, "error", err.Error())
+	if err := messages.Append(ctx, message); err != nil {
+		writeAudit(auditLogger, slog.LevelInfo, "persistence_error", "session_id", message.SessionID, "operation", operation, "error", err.Error())
 		return err
 	}
 	return nil
 }
 
-func (a *Agent) persistTurnMessages(ctx context.Context, sessionID, operation string, messages []storage.Message) error {
+func persistTurnMessages(ctx context.Context, repository storage.MessageRepository, media *media.Manager, auditLogger *slog.Logger, sessionID, operation string, messages []storage.Message) error {
 	for i := range messages {
 		messages[i].SessionID = sessionID
-		if err := a.persistTurnMessage(ctx, &messages[i], operation); err != nil {
+		if err := persistTurnMessage(ctx, repository, media, auditLogger, &messages[i], operation); err != nil {
 			return err
 		}
 	}

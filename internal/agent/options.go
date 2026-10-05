@@ -88,7 +88,7 @@ func validateOptions(opts Options) error {
 }
 
 func (a *Agent) SetSessionIdleExpiration(cfg config.SessionIdleExpirationConfig) {
-	a.idleExpiration = sessionIdleExpirationConfig(cfg)
+	a.waitPolicy.idleExpiration = sessionIdleExpirationConfig(cfg)
 }
 
 func sessionIdleExpirationConfig(cfg config.SessionIdleExpirationConfig) session.IdleExpirationConfig {

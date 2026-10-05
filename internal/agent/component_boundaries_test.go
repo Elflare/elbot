@@ -16,6 +16,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/hook"
+	"elbot/internal/llm"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 	sandboxctx "elbot/internal/sandbox"
@@ -191,5 +192,51 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 	cancelRequest()
 	if !errors.Is(refreshed.Err(), context.Canceled) || !errors.Is(view.Context(ctx).Err(), context.Canceled) {
 		t.Fatal("execution view detached request cancellation")
+	}
+}
+
+func TestComponentLoggerReplacementReachesExecutionChatModelToolsAndConfirmation(t *testing.T) {
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{replies: []string{"one", "two", "three"}}, "model", config.ProviderConfig{}, newTestStore(t))
+	ctx, row, err := a.execution.resolveInput(context.Background(), "logging")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := foregroundTurnOutput{sender: a.output, status: a.status}
+	emit := func() {
+		if _, err := a.chat.prepareTurn(ctx, row, "input"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := a.caller.Call(ctx, row, modelSelectionForTurn(ctx, a.models, row), nil, nil, nil, nil, out); err != nil {
+			t.Fatal(err)
+		}
+		call := llm.ToolCallRequest{ID: "call", Name: "test_tool", Arguments: "{}"}
+		a.toolDeps.RecordToolCall(ctx, row.ID, call, "low", storage.Now(), "done", nil)
+		a.confirmations.logRiskConfirmationWait(row.ID, call, tool.RiskHigh, nil)
+		a.execution.handleTurnContextDone(ctx, row.ID, context.DeadlineExceeded, out)
+	}
+	var before, after bytes.Buffer
+	a.SetLogger(slog.New(slog.NewTextHandler(&before, nil)))
+	emit()
+	for _, message := range []string{"user input", "llm output", "turn response timeout", "msg=\"tool call\""} {
+		if strings.Count(before.String(), message) != 1 {
+			t.Fatalf("runtime message %q: %s", message, before.String())
+		}
+	}
+	before.Reset()
+	a.SetLogManager(componentLogs{slog.New(slog.NewTextHandler(&after, nil))})
+	emit()
+	if before.Len() != 0 {
+		t.Fatal("component retained replaced logger")
+	}
+	for _, message := range []string{"user input", "llm output", "turn response timeout", "msg=\"tool call\"", "event=risk_confirmation_wait", "event=turn_response_timeout", "event=llm_usage"} {
+		if strings.Count(after.String(), message) != 1 {
+			t.Fatalf("replacement message %q: %s", message, after.String())
+		}
+	}
+	after.Reset()
+	a.SetLogManager(nil)
+	emit()
+	if after.Len() != 0 {
+		t.Fatal("component retained cleared logger")
 	}
 }

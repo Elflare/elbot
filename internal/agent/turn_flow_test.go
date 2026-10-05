@@ -38,7 +38,7 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 			a.SetSessionIdleExpiration(tt.cfg)
 			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "test", ScopeID: tt.scopeID}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 			ctx = security.WithActor(ctx, security.Actor{ID: "test:1", Role: tt.role})
-			if got := a.confirmationWaitTimeout(ctx); got != tt.want {
+			if got := a.waitPolicy.WaitTimeout(ctx); got != tt.want {
 				t.Fatalf("confirmation timeout = %s, want %s", got, tt.want)
 			}
 		})
@@ -48,7 +48,7 @@ func TestTurnResponseTimeoutNotifiesUser(t *testing.T) {
 	p := &fakePlatform{}
 	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
 	a := newTestAgent(t, p, &fakeLLM{chatBlocks: []fakeLLMBlock{block}}, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.responseTimeout = 10 * time.Millisecond
+	a.execution.responseTimeout = 10 * time.Millisecond
 
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -63,7 +63,7 @@ func TestTurnResponseTimeoutZeroAllowsLongTurn(t *testing.T) {
 	p := &fakePlatform{}
 	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
 	a := newTestAgent(t, p, &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"done"}}, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.responseTimeout = 0
+	a.execution.responseTimeout = 0
 
 	done := make(chan error, 1)
 	go func() { done <- a.HandleMessage(context.Background(), "hello") }()

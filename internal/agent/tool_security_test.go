@@ -24,7 +24,7 @@ import (
 func TestRiskConfirmationExpiresAndStopsToolFlow(t *testing.T) {
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.userConfirmationTimeout = 20 * time.Millisecond
+	a.waitPolicy.userConfirmationTimeout = 20 * time.Millisecond
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "private:regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 	ctx = security.WithActor(ctx, security.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: security.RoleUser})
 	s, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "expiring confirmation"})
@@ -35,7 +35,7 @@ func TestRiskConfirmationExpiresAndStopsToolFlow(t *testing.T) {
 		t.Fatal("failed to enter tool phase")
 	}
 
-	result, err := (agentToolRunDeps{agent: a}).ConfirmToolCall(ctx, s.ID, llm.ToolCallRequest{ID: "call_1", Name: "owner_tool", Arguments: "{}"}, tool.RiskAssessment{Level: tool.RiskHigh}, "")
+	result, err := (*a.toolDeps).ConfirmToolCall(ctx, s.ID, llm.ToolCallRequest{ID: "call_1", Name: "owner_tool", Arguments: "{}"}, tool.RiskAssessment{Level: tool.RiskHigh}, "")
 	if err != nil {
 		t.Fatalf("ConfirmToolCall: %v", err)
 	}

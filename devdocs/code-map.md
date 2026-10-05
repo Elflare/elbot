@@ -74,10 +74,10 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 
 先看：
 
-- `internal/agent/core.go`：Agent 入口及执行编排接线，装配身份、Hook、状态、发送、回复提交和执行视图组件；`Options` 要求调用方提供共享服务，内置命令在 app 注册。
+- `internal/agent/core.go`：Agent 入口及执行编排接线，装配身份、Hook、状态、发送、执行协调、单轮对话、模型调用、确认、工具适配、回复提交和执行视图组件；`Options` 要求调用方提供共享服务，内置命令在 app 注册。
 - `internal/agent/message.go`：消息入口、slash/普通输入分发和用户错误通知。
 - `internal/agent/command_runtime.go`：命令权限、Turn 冲突、通知和 continuation 的统一编排。
-- `internal/agent/input.go`、`tool_directive.go`：普通输入与预加载的原绑定准入、锁外准备及提交复核，命令 continuation、pending 和风险确认入口。
+- `internal/agent/input.go`、`tool_directive.go`：普通输入 Hook／预加载的锁外准备及命令 continuation；准入复核与 pending 分发交执行协调，风险响应交确认组件。
 - `internal/agent/segments.go`：平台入站 Segment 与 LLM Segment 转换；文字不变时保留原段，去除唤醒词或工具指令时只替换变化的文本跨度，保留周围图文位置。
 - `internal/agent/inbound_media.go`：实际消费前的平台 resolver 与 Media Center 桥接、大小校验和不可用降级。
 - `internal/tool/builtin/chat_history.go`：当前聊天历史查询与媒体位置/下载状态展示，查询不下载；`get_media.go`：显式选定媒体位置获取，仅返回文本 ID，单次最多 5 次未入库媒体获取尝试。
@@ -88,10 +88,11 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 - `internal/agent/options.go`、`logging.go`：运行配置 setter 和日志接线，更新实际组件拥有者及日志调用者。
 - `internal/agent/identity.go`：identityResolver 拥有入口默认身份与安全策略；区分普通入口和无默认身份的 Hook 来源解析。
 - `internal/agent/toolrun_prompt_provider.go`：直接注入 ToolRun 与身份解析的 Prompt provider。
-- `internal/agent/chat.go`：普通对话主流程；最终提交前刷新执行视图，使用提交结果继续 Session／Execution 收尾。
+- `internal/agent/chat.go`、`chat_prepare.go`、`chat_loop.go`：chatRunner、单轮结果类型、Request 登记前材料及登记后 Prompt／Hook 准备、模型／工具循环和回复提交；不完成跨轮 Execution。
 - `internal/agent/reply_commit.go`：replyCommitter 的提交输入／结果、最终 Hook、空回复、发送／落库顺序、延迟 outputs 和实际回执关联。
-- `internal/agent/chat_llm.go`：LLM 调用和消息转换。
-- `internal/agent/chat_tools.go`：工具执行与确认。
+- `internal/agent/chat_llm.go`：modelCaller 的单次请求、流消费、媒体生命周期、模型 Hook 和视觉降级；`model_selection.go`：显式依赖模型服务的选择快照。
+- `internal/agent/chat_tools.go`：单轮工具执行、schema 和 pending 注入；`toolrun_adapter.go`：直接组合服务的 toolRunDeps，负责工具 Hook、子请求、文件上下文、确认适配、调用记录和状态提交。
+- `internal/agent/confirmation.go`、`background_tools.go`：confirmationCoordinator 的前后台风险确认、响应、自动确认记录及共享超时策略；等待状态仍归 Turn。
 - `internal/agent/turn_output.go`：只依赖发送与状态组件的前后台 turn 输出适配。
 - `internal/agent/prompt.go`：Prompt 构建。
 - `internal/agent/system_prompt*.go`：Soul、常驻记忆、工具提示等 system prompt 来源和组合。
@@ -135,9 +136,10 @@ rg -n "Register|Info\{|Help:|Complete|Alias|/requests|/model" internal/command/b
 
 - `internal/request/`
 - `internal/turn/manager.go`、`execution.go`：阶段、pending、确认及跨请求的逻辑执行身份与结果。
-- `internal/agent/execution.go`：前台接管同步入口和前台指令材料。
+- `internal/agent/execution.go`、`execution_run.go`：executionCoordinator 的前后台执行、接管、attempt／Request 生命周期及提交后收尾；后台等待跨追加确认和压缩的真实执行结果。
+- `internal/agent/execution_input.go`：输入接受、追加打断／确认／过期和 pending 分发。
 - `internal/agent/execution_context.go`、`execution_output.go`：executionView 刷新来源与 Session，executionTurnOutput 切换前后台输出并转换后台报告；保留原请求取消，不拥有第二份执行状态。
-- `internal/agent/session_binding.go`：原绑定准入和输入提交复核。
+- `internal/agent/execution_admission.go`：Scope／Session 准入、原绑定与模式复核、输入解析和 Turn 启动检查。
 - `internal/runtime/`
 - `internal/agent/status.go`：statusRecorder 拥有 runtime status map、锁、同步合并与查询，Agent 对外查询薄委托。
 - `internal/agent/request_context.go`：父子 request context。
@@ -335,7 +337,7 @@ rg -n "Fork|Archive|Pinned|Expire|SessionMode|metadata|workspace|cron:" internal
 先看：
 
 - `internal/contextmgr/service.go`、`state.go`、`compact.go`：共享上下文服务、用量／压缩持久化状态、压缩材料与结果；复用 loader、window、compressor 和摘要 prompt。
-- `internal/agent/context_compact.go`：压缩 Request／Turn、取消、绑定准入与会话交接；`context_seed.go`、`context_usage.go` 保留 seed 消耗时机、用量记录和压缩阈值检查。命令直接读取 contextmgr。
+- `internal/agent/execution_compact.go`：协调手动／自动压缩的 Request／Turn、取消、绑定准入和会话交接；`context_usage.go`：协调器的用量记录与压缩阈值检查；`context_seed.go`：chatRunner 的 seed 消耗时机。命令直接读取 contextmgr。
 - `internal/agent/prompt.go`：Prompt Builder。
 - `internal/agent/system_prompt*.go`：system prompt 管理和来源。
 - `internal/llm/segment.go`：MessageSegment helper。

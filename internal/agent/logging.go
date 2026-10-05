@@ -12,6 +12,18 @@ type LogManager interface {
 
 func (a *Agent) SetLogger(logger *slog.Logger) {
 	a.logger = logger
+	if a.execution != nil {
+		a.execution.logger = logger
+	}
+	if a.chat != nil {
+		a.chat.logger = logger
+	}
+	if a.caller != nil {
+		a.caller.logger = logger
+	}
+	if a.toolDeps != nil {
+		a.toolDeps.logger = logger
+	}
 	if a.hooks != nil {
 		a.hooks.logger = logger
 	}
@@ -27,6 +39,21 @@ func (a *Agent) SetLogManager(logs LogManager) {
 	if logs == nil {
 		a.SetLogger(nil)
 		a.auditLogger = nil
+		if a.execution != nil {
+			a.execution.auditLogger = nil
+		}
+		if a.chat != nil {
+			a.chat.auditLogger = nil
+		}
+		if a.caller != nil {
+			a.caller.auditLogger = nil
+		}
+		if a.confirmations != nil {
+			a.confirmations.auditLogger = nil
+		}
+		if a.toolDeps != nil {
+			a.toolDeps.auditLogger = nil
+		}
 		if a.replies != nil {
 			a.replies.auditLogger = nil
 		}
@@ -34,6 +61,21 @@ func (a *Agent) SetLogManager(logs LogManager) {
 	}
 	a.SetLogger(logs.Runtime())
 	a.auditLogger = logs.Audit()
+	if a.execution != nil {
+		a.execution.auditLogger = a.auditLogger
+	}
+	if a.chat != nil {
+		a.chat.auditLogger = a.auditLogger
+	}
+	if a.caller != nil {
+		a.caller.auditLogger = a.auditLogger
+	}
+	if a.confirmations != nil {
+		a.confirmations.auditLogger = a.auditLogger
+	}
+	if a.toolDeps != nil {
+		a.toolDeps.auditLogger = a.auditLogger
+	}
 	if a.replies != nil {
 		a.replies.auditLogger = a.auditLogger
 	}
