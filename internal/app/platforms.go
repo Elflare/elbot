@@ -38,7 +38,7 @@ func (defaultPlatformFactory) Build(req PlatformRequest) (PlatformComponents, er
 type defaultPlatformExecutor struct{}
 
 func (defaultPlatformExecutor) Run(ctx context.Context, req PlatformRunRequest) error {
-	return runPlatforms(ctx, req.Handler, req.Logger, req.Runtimes, req.AfterStart)
+	return runPlatforms(ctx, req.Handler, req.Logger, req.Runtimes, req.AfterStart, req.Stop)
 }
 
 type platformRuntime = platform.Runtime
@@ -89,11 +89,11 @@ func registerCronPlatformHook(hooks hook.Registrar, service *elcron.Service) err
 	})
 }
 
-func registerCommandCatalogs(agt *agent.Agent, adapters []platformRuntime) {
-	if agt == nil {
+func registerCommandCatalogs(router *command.Router, adapters []platformRuntime) {
+	if router == nil {
 		return
 	}
-	commands := agt.CommandInfos()
+	commands := router.Commands()
 	for _, adapter := range adapters {
 		if adapter == nil {
 			continue
@@ -109,7 +109,7 @@ func platformStopsAppOnExit(adapter platformRuntime) bool {
 	return ok && lifecycle.StopAppOnExit()
 }
 
-func runPlatforms(ctx context.Context, handler platform.PlatformHandler, logger *slog.Logger, adapters []platformRuntime, afterStart func(context.Context)) error {
+func runPlatforms(ctx context.Context, handler platform.PlatformHandler, logger *slog.Logger, adapters []platformRuntime, afterStart func(context.Context), stop context.CancelFunc) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -124,6 +124,9 @@ func runPlatforms(ctx context.Context, handler platform.PlatformHandler, logger 
 			}
 			if platformStopsAppOnExit(adapter) {
 				cancel()
+				if stop != nil {
+					stop()
+				}
 			}
 		}()
 	}

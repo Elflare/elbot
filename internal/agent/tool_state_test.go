@@ -42,7 +42,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	p := &fakePlatform{}
-	a := New(p, &fakeLLM{}, "model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, &fakeLLM{}, "model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -105,7 +105,7 @@ func TestFailedDiscoveryMatchesTranscriptAndNextSchema(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "discovery", Name: "discover_tool", Args: `{"name":"alpha"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
-	a := New(p, f, "model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, store)
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(agentWrapperTool{name: "alpha"})
@@ -155,7 +155,7 @@ func TestFailedDiscoveryMatchesTranscriptAndNextSchema(t *testing.T) {
 func TestForkKeepsHistoryWithoutCopyingToolOrUsageState(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
-	a := New(&fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, store)
 	source, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "source", Metadata: `{"tool_cache":[{"name":"old","source":"native","schema":{"type":"function","function":{"name":"old"}}}],"last_usage":{"TotalTokens":100}}`})
 	if err != nil {
 		t.Fatal(err)

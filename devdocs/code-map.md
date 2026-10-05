@@ -24,9 +24,10 @@ rg -n "locator:tool" devdocs/code-map.md
 - `cmd/elbot/main.go`：程序入口。
 - `internal/launcher/cli.go`：命令行解析和补全生成。
 - `internal/app/app.go`、`runner.go`、`dependencies.go`：稳定启动入口、分阶段 Runner 和可替换依赖组。
-- `internal/app/foundation.go`、`models.go`、`runtime.go`：配置/存储基础设施、provider 客户端、共享模型服务，以及 Cron/Tool/Hook/Agent 核心装配。
+- `internal/app/foundation.go`、`models.go`：配置／存储基础设施和 provider 客户端。
+- `internal/app/services.go`、`runtime.go`：共享服务创建、内置命令注册，以及 Cron／Tool／Hook／Agent 装配；先注册完命令再开放平台入口。
 - `internal/app/platforms.go`、`integrations.go`：平台运行、Elnis 和平台能力接线；同目录还包含远程 CLI client 与 service marker。
-- `internal/app/signals.go`：平台连接信号接线、连接／队列所有权和共享预算关闭。
+- `internal/app/signals.go`、`lifecycle.go`：信号连接／队列所有权、Hook 与延迟 Skill 加载取消和完成等待；Runner 统一清理部分启动资源并共享关闭预算。
 
 常用搜索：
 
@@ -72,7 +73,7 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 
 先看：
 
-- `internal/agent/core.go`：Agent 状态和构造装配；构造参数集中在 `Options`。
+- `internal/agent/core.go`：Agent 自身状态、依赖注入和执行编排接线；`Options` 要求调用方提供共享服务，内置命令在 app 注册。
 - `internal/agent/message.go`：消息入口、slash/普通输入分发和用户错误通知。
 - `internal/agent/command_runtime.go`：命令权限、Turn 冲突、通知和 continuation 的统一编排。
 - `internal/agent/input.go`：普通输入预处理、命令 continuation、pending 和风险确认入口。
@@ -105,19 +106,19 @@ rg -n "Handle|Run|Prompt|tool_calls|reasoning|usage|pending|prepared" internal/a
 
 先看：
 
-- `internal/agent/commands/`：内置命令实现。
-- `internal/agent/commands/register.go`：命令模块注册入口。
-- `internal/agent/commands/session_*.go`：按模式、核心、导航、生命周期和格式化拆分的 Session 命令；共享状态由 `SessionCommandState` 按 Scope 隔离。
+- `internal/command/builtin/`：内置命令实现。
+- `internal/command/builtin/register.go`：命令模块注册入口。
+- `internal/command/builtin/session_*.go`：按模式、核心、导航、生命周期和格式化拆分的 Session 命令；共享状态由 `SessionCommandState` 按 Scope 隔离。
 - `internal/command/`：通用命令框架和 Router。
 - `internal/completion/`：平台补全服务。
 - `docs/commands.md`：用户侧命令文档。
-- `internal/agent/commands/doctor.go`：超级管理员 `/doctor` 入口，通过 `Deps.Doctor` 调用诊断服务。
-- `internal/agent/commands/rollback.go`：超管 `/rollback` 清单、编号选择和补全；`internal/agent/file_rollback.go` 适配当前会话、运行状态检查及共享撤销服务。
+- `internal/command/builtin/doctor.go`：超级管理员 `/doctor` 入口，通过 `Deps.Doctor` 调用诊断服务。
+- `internal/command/builtin/rollback.go`：超管 `/rollback` 参数、展示、补全与审计，直接调用 fileops；`internal/agent/file_rollback.go` 提供原绑定、workspace 与提交准入。
 
 常用搜索：
 
 ```bash
-rg -n "Register|Info\{|Help:|Complete|Alias|/requests|/model" internal/agent/commands internal/command internal/completion docs/commands.md
+rg -n "Register|Info\{|Help:|Complete|Alias|/requests|/model" internal/command/builtin internal/command internal/completion docs/commands.md
 ```
 
 <!-- locator:request-turn -->
@@ -252,7 +253,7 @@ rg -n "Event|Handler|Control|plugins/hooks.toml|exec|hook.v2|runtime|SharedState
 - `internal/delivery/dispatch/router.go`、`media.go`：共享平台路由、可选流式／状态能力、媒体准备和回执缓存；普通失败与部分成功都保留实际结果。
 - `internal/notification/manager.go`：通知意图、来源／Binding／Sender 覆盖捕获、取消／失效检查、无来源 service 日志策略；不另建发送器或媒体实现。
 - `internal/notification/rules/`：平台连接 Hook 输出、Hook 失败、模型重试／降级和执行错误文案。
-- `internal/app/runtime.go`、`integrations.go`、`signals.go`：共享发送／通知服务装配、外部宿主接入和平台连接执行器。
+- `internal/app/services.go`、`integrations.go`、`signals.go`：共享发送／通知服务装配、外部宿主接入和平台连接执行器。
 - `internal/agent/turn_output.go`：Agent turn 输出适配。
 - `internal/agent/output.go`：Agent 的输出 Hook 编排和 Session 平台消息关联。
 - `internal/platform/platform.go`：平台发送抽象。
@@ -321,7 +322,7 @@ rg -n "Fork|Archive|Pinned|Expire|SessionMode|metadata|workspace|cron:" internal
 先看：
 
 - `internal/contextmgr/service.go`、`state.go`、`compact.go`：共享上下文服务、用量／压缩持久化状态、压缩材料与结果；复用 loader、window、compressor 和摘要 prompt。
-- `internal/agent/context_compact.go`：压缩 Request／Turn、取消、绑定准入与会话交接；`context_runtime.go`、`context_seed.go`、`context_usage.go` 保留配置、seed 消耗时机及状态展示适配。
+- `internal/agent/context_compact.go`：压缩 Request／Turn、取消、绑定准入与会话交接；`context_seed.go`、`context_usage.go` 保留 seed 消耗时机、用量记录和压缩阈值检查。命令直接读取 contextmgr。
 - `internal/agent/prompt.go`：Prompt Builder。
 - `internal/agent/system_prompt*.go`：system prompt 管理和来源。
 - `internal/llm/segment.go`：MessageSegment helper。
@@ -344,7 +345,7 @@ rg -n "ContextLoader|Compress|Window|System Prompt|MessageSegment|usage" interna
 - `internal/modelmgr/service.go`、`selection.go`：共享服务与构造校验，模式／槽位、压缩和命名选择及请求快照。
 - `internal/modelmgr/catalog.go`、`state.go`：模型目录缓存、筛选与 provider 错误，串行保存后发布选择状态；原子文件写入复用 `config.SaveState` 和 `fileops`。
 - `internal/agent/chat_llm.go`：Agent LLM 调用适配；`internal/notification/rules/model.go`：模型重试／降级提示。
-- `internal/agent/title.go`：标题生成，开始时从模型服务取得命名与 work fallback 快照。
+- `internal/session/title.go`：标题生成，开始时从模型服务取得命名与 work fallback 快照。
 
 常用搜索：
 

@@ -251,8 +251,12 @@ Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记�
 <a id="phase-7"></a>
 ### 阶段 7：命令与最终装配整理
 
-- 迁移到 `command/builtin`，具体命令直接依赖领域服务；Agent 命令执行器继续协调权限、Turn 冲突、通知和 continuation。
-- 收拢 app 的共享服务、信号连接、启动失败清理和关闭流程；清除各阶段迁移后不再使用的构造与适配代码。
+- 内置命令位于 `command/builtin`，直接依赖领域服务；Agent 命令执行器协调权限、Turn 冲突、通知和 continuation。Session 列表编号等展示状态归命令模块，app 创建并注入。
+- 共享服务和 Router 统一由 app 创建。Agent 仅保留严格注入的 `NewWithOptions`，不补建服务或注册命令；测试通过测试辅助函数装配。创建 Agent 后注册命令，再接入信号、补全与平台目录，最后启动平台。
+- `/rollback` 直接调用 fileops 的列表及按编号撤销入口，命令负责展示和审计。Agent 提供原 Binding、workspace 与提交准入，保留等待目标锁后的绑定、Turn／压缩复核；手动压缩仍由 Agent 编排。
+- Session 拥有标题生成，命名模型及 fallback 从 modelmgr 取得操作快照。日志 Reader、上下文状态、工具 Registry／Skill Manager 直接注入命令，清除 Agent 的失效转发与构造代码。
+- app 统一拥有信号和后台装配任务。Foundation／Runtime 构建失败也返回已取得资源的 Lifecycle，由 Runner 接管；延迟 Skill 加载可取消并等待实际结束。
+- 平台退出等待、信号、Hook／Skill、Cron 和存储清理共享 30 秒预算；在途工作未结束时跳过其依赖释放，不增加后台收尾链，真实启动错误保留。
 - 检查 Agent 只剩自身状态与编排，业务模块无反向依赖，事件对象和 metadata 无重复所有者。
 - 验收：全量测试及相关并发测试通过；完成“消息 → 命令／工具 → 状态更新 → 通知”的串联验证，并覆盖 Session 切换、文件撤销、模型切换、后台任务与启动关闭。
 
@@ -265,7 +269,7 @@ Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记�
 
 ## 实施前需讨论的细节
 
-阶段 6 的来源转换、原连接／回复信息及 `PlatformData any` 约定已明确，见公共信息章节。后续实施出现新的多种实现方式或歧义时，仍须先与用户讨论。
+阶段 6 的公共信息边界，以及阶段 7 的 app 统一构造和命令直连文件服务约定均已明确，见对应章节。后续实施出现新的多种实现方式或歧义时，仍须先与用户讨论。
 
 ## 验证与文档维护
 

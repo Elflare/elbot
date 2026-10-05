@@ -119,14 +119,14 @@ func (a *Agent) runChatTurnWithOutput(ctx context.Context, session *storage.Sess
 		}
 		execution.Finish(err)
 		a.turns.StopSession(session.ID, attempt)
-		status := a.runtimeStatusForSession(session.ID)
+		status := a.RuntimeStatus(session.ID)
 		status.Phase = runtimestatus.PhaseError
 		status.FinishedAt = storage.Now()
 		status.Error = err.Error()
 		out.PublishRuntimeStatus(ctx, status)
 		return session, turn.Input{}, err
 	}
-	status := a.runtimeStatusForSession(session.ID)
+	status := a.RuntimeStatus(session.ID)
 	if status.Running() && (a.turns.Snapshot(session.ID).Phase == turn.PhaseIdle || a.turns.MatchesAttempt(session.ID, attempt)) {
 		out.PublishRuntimeStatus(ctx, runtimeDoneStatus(status, storage.Now()))
 	}

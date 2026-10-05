@@ -3,14 +3,11 @@ package agent
 import (
 	"context"
 	"log/slog"
-
-	"elbot/internal/logging"
 )
 
 type LogManager interface {
 	Runtime() *slog.Logger
 	Audit() *slog.Logger
-	LogDir() string
 }
 
 func (a *Agent) SetLogger(logger *slog.Logger) {
@@ -25,11 +22,6 @@ func (a *Agent) SetLogManager(logs LogManager) {
 	}
 	a.logger = logs.Runtime()
 	a.auditLogger = logs.Audit()
-	a.logReader = logging.Reader{Dir: logs.LogDir()}
-}
-
-func (a *Agent) QueryLogs(ctx context.Context, query logging.LogQuery) ([]logging.LogEntry, error) {
-	return a.logReader.Query(ctx, query)
 }
 
 func (a *Agent) audit(event string, attrs ...any) {

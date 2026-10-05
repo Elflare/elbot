@@ -30,10 +30,7 @@ func rollbackAgentFixture(t *testing.T) (*Agent, *fakePlatform, context.Context,
 	if err := builtin.RegisterAll(opts.ToolRegistry, builtin.RegisterOptions{FileRollback: opts.FileRollback}); err != nil {
 		t.Fatal(err)
 	}
-	a, err := NewWithOptions(opts)
-	if err != nil {
-		t.Fatal(err)
-	}
+	a := mustNewWithOptions(t, opts)
 	ctx := security.WithActor(context.Background(), security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin})
 	row, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "files"})
 	if err != nil {
@@ -75,7 +72,7 @@ func TestRollbackCommandUsesSharedRecordsWithoutLLM(t *testing.T) {
 		t.Fatal(err)
 	}
 	editForRollback(t, a, ctx, row, "file", "after")
-	records, err := a.ListFileRollbacks(ctx)
+	records, err := listTestFileRollbacks(a, ctx)
 	if err != nil || len(records) != 1 {
 		t.Fatalf("records: %+v %v", records, err)
 	}
@@ -127,7 +124,7 @@ func TestRollbackCommandUsesSharedRecordsWithoutLLM(t *testing.T) {
 	if string(data) != "before" {
 		t.Fatalf("restored: %q", data)
 	}
-	if records, err := a.ListFileRollbacks(ctx); err != nil || len(records) != 0 {
+	if records, err := listTestFileRollbacks(a, ctx); err != nil || len(records) != 0 {
 		t.Fatalf("remaining: %+v %v", records, err)
 	}
 	if a.models.ClientForProvider("default") != nil {
@@ -141,7 +138,7 @@ func TestRollbackCommandUsesSharedRecordsWithoutLLM(t *testing.T) {
 func TestRollbackCommandInvalidatesOnNewAndDeniesRegularUsers(t *testing.T) {
 	a, p, ctx, row, path := rollbackAgentFixture(t)
 	editForRollback(t, a, ctx, row, "file", "created")
-	records, _ := a.ListFileRollbacks(ctx)
+	records, _ := listTestFileRollbacks(a, ctx)
 	id := records[0].ID
 	userCtx := security.WithActor(ctx, security.Actor{ID: "regular", Role: security.RoleUser})
 	if err := a.HandleMessage(userCtx, "/rollback"); err != nil {
@@ -157,10 +154,10 @@ func TestRollbackCommandInvalidatesOnNewAndDeniesRegularUsers(t *testing.T) {
 	if _, err := a.sessions.Resume(ctx, a.scope(ctx), row.ID); err != nil {
 		t.Fatal(err)
 	}
-	if records, err := a.ListFileRollbacks(ctx); err != nil || len(records) != 0 {
+	if records, err := listTestFileRollbacks(a, ctx); err != nil || len(records) != 0 {
 		t.Fatalf("records survived switch: %+v %v", records, err)
 	}
-	if _, err := a.RollbackFile(ctx, id); err == nil {
+	if _, err := rollbackTestFile(a, ctx, id); err == nil {
 		t.Fatal("old ID revived")
 	}
 	data, _ := os.ReadFile(path)
@@ -172,17 +169,17 @@ func TestRollbackCommandInvalidatesOnNewAndDeniesRegularUsers(t *testing.T) {
 func TestRollbackCommandOldNumberDoesNotTargetNewEdit(t *testing.T) {
 	a, _, ctx, row, path := rollbackAgentFixture(t)
 	editForRollback(t, a, ctx, row, "file", "one")
-	records, _ := a.ListFileRollbacks(ctx)
+	records, _ := listTestFileRollbacks(a, ctx)
 	old := records[0].ID
 	editForRollback(t, a, ctx, row, "file", "two")
-	if _, err := a.RollbackFile(ctx, old); err == nil {
+	if _, err := rollbackTestFile(a, ctx, old); err == nil {
 		t.Fatal("stale ID accepted")
 	}
-	records, _ = a.ListFileRollbacks(ctx)
+	records, _ = listTestFileRollbacks(a, ctx)
 	if len(records) != 1 || records[0].ID == old {
 		t.Fatalf("IDs: %+v", records)
 	}
-	if _, err := a.RollbackFile(ctx, records[0].ID); err != nil {
+	if _, err := rollbackTestFile(a, ctx, records[0].ID); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(path)
@@ -192,9 +189,25 @@ func TestRollbackCommandOldNumberDoesNotTargetNewEdit(t *testing.T) {
 }
 
 func TestRollbackCommandRechecksIdleAtCommit(t *testing.T) {
+	testRollbackCommandRechecksIdleAtCommit(t, false)
+}
+
+func TestPreparedFileCommandRechecksIdleAtCommit(t *testing.T) {
+	testRollbackCommandRechecksIdleAtCommit(t, true)
+}
+
+func testRollbackCommandRechecksIdleAtCommit(t *testing.T, prepared bool) {
+	t.Helper()
 	a, _, ctx, row, path := rollbackAgentFixture(t)
 	editForRollback(t, a, ctx, row, "file", "created")
-	records, err := a.ListFileRollbacks(ctx)
+	if prepared {
+		var err error
+		ctx, err = a.PrepareFileCommand(ctx, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	records, err := listTestFileRollbacks(a, ctx)
 	if err != nil || len(records) != 1 {
 		t.Fatalf("records=%+v err=%v", records, err)
 	}
@@ -211,14 +224,14 @@ func TestRollbackCommandRechecksIdleAtCommit(t *testing.T) {
 		})
 		return nil
 	}
-	if _, err := a.RollbackFile(ctx, records[0].ID); err == nil || !strings.Contains(err.Error(), "仍在执行") {
+	if _, err := rollbackTestFile(a, ctx, records[0].ID); err == nil || !strings.Contains(err.Error(), "仍在执行") {
 		t.Fatalf("rollback passed concurrent Turn: %v", err)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil || string(data) != "created" {
 		t.Fatalf("file=%q err=%v", data, err)
 	}
-	if records, err := a.ListFileRollbacks(ctx); err != nil || len(records) != 1 {
+	if records, err := listTestFileRollbacks(a, ctx); err != nil || len(records) != 1 {
 		t.Fatalf("backup consumed: %+v %v", records, err)
 	}
 	a.turns.StopSession(row.ID)

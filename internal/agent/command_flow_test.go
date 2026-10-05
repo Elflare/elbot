@@ -18,7 +18,7 @@ import (
 func TestPlatformMessageReceivedHookConsumeSkipsCommandAndLLM(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	manager := hook.NewManager()
 	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.received.consume", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 		event.Outputs = append(event.Outputs, delivery.Text("consumed"))
@@ -47,7 +47,7 @@ func TestPlatformMessageReceivedHookConsumeSkipsCommandAndLLM(t *testing.T) {
 func TestUnknownCommandDoesNotCallLLM(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 
 	if err := a.HandleMessage(context.Background(), "/doesnotexist"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -63,7 +63,7 @@ func TestUnknownCommandDoesNotCallLLM(t *testing.T) {
 func TestConfiguredCommandPrefixAlias(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{models: []string{"alpha"}}
-	a := NewWithPrefixes(p, f, map[string]config.ModelSelection{
+	a := newTestAgentWithPrefixes(t, p, f, map[string]config.ModelSelection{
 		storage.SessionModeWork: {Provider: "default", Model: "alpha"},
 		storage.SessionModeChat: {Provider: "default", Model: "alpha"},
 	}, config.ProviderConfig{}, newTestStore(t), []string{"/", "-"})
@@ -83,7 +83,7 @@ func TestRegularUserCanUseOwnDataSlashCommands(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"ok"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 
@@ -122,7 +122,7 @@ func TestRegularUserCanUseOwnDataSlashCommands(t *testing.T) {
 
 func TestRegularUserHelpHidesSuperadminCommands(t *testing.T) {
 	p := &fakePlatform{}
-	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 
@@ -153,7 +153,7 @@ func TestRegularUserCannotUseSuperadminSlashCommands(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"ok"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 

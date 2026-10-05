@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"elbot/internal/agent"
+	"elbot/internal/command"
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
 	"elbot/internal/delivery/dispatch"
@@ -70,6 +71,7 @@ type FoundationComponents struct {
 }
 
 type FoundationFactory interface {
+	// Build returns acquired lifecycle resources even when construction fails.
 	Build(context.Context, FoundationRequest) (*FoundationComponents, error)
 }
 
@@ -109,6 +111,7 @@ type RuntimeRequest struct {
 }
 
 type RuntimeComponents struct {
+	Commands      *command.Router
 	Dispatcher    *dispatch.Router
 	Notifications *notification.Manager
 	Models        *modelmgr.Service
@@ -122,6 +125,7 @@ type RuntimeComponents struct {
 }
 
 type RuntimeFactory interface {
+	// Build returns acquired lifecycle resources even when construction fails.
 	Build(context.Context, RuntimeRequest) (*RuntimeComponents, error)
 }
 
@@ -142,6 +146,8 @@ type PlatformRunRequest struct {
 	Logger     *slog.Logger
 	Runtimes   []platform.Runtime
 	AfterStart func(context.Context)
+	// Stop requests application shutdown, including its shared shutdown budget.
+	Stop context.CancelFunc
 }
 
 type PlatformExecutor interface {

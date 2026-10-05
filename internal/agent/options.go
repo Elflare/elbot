@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	agentcommands "elbot/internal/agent/commands"
+	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery/dispatch"
@@ -16,30 +16,31 @@ import (
 	"elbot/internal/modelmgr"
 	"elbot/internal/notification"
 	"elbot/internal/platform"
+	"elbot/internal/request"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
+	"elbot/internal/turn"
 )
 
 // Options groups the agent's construction-time dependencies and configuration.
 type Options struct {
-	Doctor                agentcommands.DoctorService
+	Commands              *command.Router
+	Sessions              *session.Service
+	Requests              *request.Manager
+	Turns                 *turn.Manager
+	ToolRunner            *toolrun.Manager
 	Platform              platform.PlatformAdapter
 	Models                *modelmgr.Service
 	Contexts              *contextmgr.Service
 	ToolState             *toolrun.StateService
-	Providers             map[string]config.ProviderConfig
 	Store                 storage.Store
 	Media                 *media.Manager
-	CommandPrefixes       []string
-	SessionConfig         session.Config
-	NamingNotifier        session.NamingNotifier
 	SoulPath              string
 	ResidentMemoryStore   *resident.Store
 	LLMRequestConfig      config.LLMRequestConfig
-	HookService           agentcommands.HookService
 	HookManager           hook.Manager
 	HookRuntime           HookRouter
 	Dispatcher            *dispatch.Router
@@ -47,14 +48,8 @@ type Options struct {
 	Logs                  LogManager
 	ToolRegistry          *tool.Registry
 	FileRollback          *fileops.Service
-	Skills                SkillLifecycle
 	ToolProvider          ToolSchemaProvider
 	SecurityPolicy        *security.Policy
-	ContextConfig         config.ContextConfig
-	ModelMetadata         config.ModelMetadataConfig
-	SessionListPageSize   int
-	CleanupRetentionDays  int
-	MediaRetentionDays    int
 	SessionIdleExpiration config.SessionIdleExpirationConfig
 	SandboxRoot           string
 	ToolsConfig           config.ToolsConfig
@@ -69,14 +64,17 @@ func validateOptions(opts Options) error {
 	if opts.Store == nil {
 		return fmt.Errorf("store is required")
 	}
-	if opts.SessionConfig.DefaultMode == "" {
-		return fmt.Errorf("session default mode is required")
+	if opts.Platform == nil {
+		return fmt.Errorf("platform is required")
 	}
-	if opts.SessionListPageSize <= 0 {
-		return fmt.Errorf("session list page size must be positive")
+	if opts.Sessions == nil || opts.Requests == nil || opts.Turns == nil || opts.Commands == nil {
+		return fmt.Errorf("session, request, turn and command services are required")
 	}
-	if opts.CleanupRetentionDays <= 0 {
-		return fmt.Errorf("cleanup retention days must be positive")
+	if opts.Contexts == nil || opts.ToolState == nil || opts.ToolRunner == nil {
+		return fmt.Errorf("context and tool services are required")
+	}
+	if opts.Dispatcher == nil || opts.Notifications == nil {
+		return fmt.Errorf("delivery and notification services are required")
 	}
 	if strings.TrimSpace(opts.SandboxRoot) == "" {
 		return fmt.Errorf("sandbox root is required")
@@ -88,20 +86,6 @@ func validateOptions(opts Options) error {
 		return fmt.Errorf("security policy is required")
 	}
 	return nil
-}
-
-func (a *Agent) SetSessionListPageSize(size int) {
-	if size <= 0 {
-		size = config.Default().View.SessionListPageSize
-	}
-	a.sessionCommands.SetListPageSize(size)
-}
-
-func (a *Agent) SetCleanupRetentionDays(days int) {
-	if days <= 0 {
-		days = 30
-	}
-	a.sessionCommands.SetRetentionDays(days)
 }
 
 func (a *Agent) SetSessionIdleExpiration(cfg config.SessionIdleExpirationConfig) {

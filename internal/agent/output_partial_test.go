@@ -15,7 +15,7 @@ func TestPartialAssistantSendKeepsMessageAssociation(t *testing.T) {
 	for _, buffered := range []bool{false, true} {
 		t.Run(map[bool]string{false: "direct", true: "buffered"}[buffered], func(t *testing.T) {
 			store := newTestStore(t)
-			a := New(&fakePlatform{}, &fakeLLM{replies: []string{"long answer"}}, "test-model", config.ProviderConfig{}, store)
+			a := newTestAgent(t, &fakePlatform{}, &fakeLLM{replies: []string{"long answer"}}, "test-model", config.ProviderConfig{}, store)
 			wantErr := errors.New("later page failed")
 			sender := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, error) {
 				return delivery.Receipt{PlatformMessageIDs: []string{"first-page"}}, wantErr

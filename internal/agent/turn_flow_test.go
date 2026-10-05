@@ -34,7 +34,7 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := New(&fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+			a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 			a.SetSessionIdleExpiration(tt.cfg)
 			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "test", ScopeID: tt.scopeID}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 			ctx = security.WithActor(ctx, security.Actor{ID: "test:1", Role: tt.role})
@@ -47,7 +47,7 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 func TestTurnResponseTimeoutNotifiesUser(t *testing.T) {
 	p := &fakePlatform{}
 	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
-	a := New(p, &fakeLLM{chatBlocks: []fakeLLMBlock{block}}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, &fakeLLM{chatBlocks: []fakeLLMBlock{block}}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.responseTimeout = 10 * time.Millisecond
 
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
@@ -62,7 +62,7 @@ func TestTurnResponseTimeoutNotifiesUser(t *testing.T) {
 func TestTurnResponseTimeoutZeroAllowsLongTurn(t *testing.T) {
 	p := &fakePlatform{}
 	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
-	a := New(p, &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"done"}}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"done"}}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.responseTimeout = 0
 
 	done := make(chan error, 1)
@@ -90,7 +90,7 @@ func TestStreamingOutputAppendsRawAndReplacesHookText(t *testing.T) {
 		{DeltaContent: "hello "},
 		{DeltaContent: "[[wave]]"},
 	}}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	manager := hook.NewManager()
 	if err := manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "test.replace", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 		event.LLM.Text = strings.ReplaceAll(event.LLM.Text, "[[wave]]", "world")
@@ -120,7 +120,7 @@ func TestStreamingOutputAppendsRawAndReplacesHookText(t *testing.T) {
 func TestTurnOutputPreparedHookReplacesFinalStreamingMessage(t *testing.T) {
 	p := &fakeStreamingPlatform{}
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: "猫"}}}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	manager := hook.NewManager()
 	if err := manager.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "test.turn_output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 		event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, regexp.MustCompile("猫"), "狗", true)
@@ -145,7 +145,7 @@ func TestLLMInterruptKeepsAppendConfirmationUntilConfirm(t *testing.T) {
 	p := &fakePlatform{}
 	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
 	f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"interrupted", "confirmed"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
 
 	done := make(chan error, 1)
@@ -251,7 +251,7 @@ func TestActiveTurnBlocksNewSessionCommand(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			p := &fakePlatform{}
-			a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+			a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 			ctx := context.Background()
 			current, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "current"})
 			if err != nil {
@@ -283,7 +283,7 @@ func TestActiveTurnBlocksAllSessionSwitchCommands(t *testing.T) {
 	for _, text := range []string{"/new", "/resume", "/fork missing", "/work", "/chat"} {
 		t.Run(strings.TrimPrefix(text, "/"), func(t *testing.T) {
 			p := &fakePlatform{}
-			a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+			a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 			ctx := context.Background()
 			current, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "current"})
 			if err != nil {
@@ -312,7 +312,7 @@ func TestActiveTurnBlocksAllSessionSwitchCommands(t *testing.T) {
 
 func TestStopAllowsSessionSwitchAfterActiveTurn(t *testing.T) {
 	p := &fakePlatform{}
-	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.SetSessionIdleExpiration(config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 10})
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 	current, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "current"})
@@ -348,7 +348,7 @@ func TestStopFinishesRuntimeStatus(t *testing.T) {
 		replies:    []string{"should not finish"},
 		chatBlocks: []fakeLLMBlock{{started: started, release: release}},
 	}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
 
 	done := make(chan error, 1)
@@ -385,7 +385,7 @@ func TestStopFinishesRuntimeStatus(t *testing.T) {
 
 func TestRiskConfirmationDetailShowsFullArgumentsWithoutResolving(t *testing.T) {
 	p := &fakePlatform{}
-	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
 	session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm detail"})
 	if err != nil {
@@ -442,7 +442,7 @@ func TestRiskConfirmationDetailShowsFullArgumentsWithoutResolving(t *testing.T) 
 
 func TestRiskConfirmationDetailFormatsEscapedNewlines(t *testing.T) {
 	p := &fakePlatform{}
-	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
 	session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm detail newlines"})
 	if err != nil {
@@ -485,7 +485,7 @@ func TestRiskConfirmationDetailFormatsEscapedNewlines(t *testing.T) {
 func TestRiskConfirmationCompletionAndConfirmAlias(t *testing.T) {
 
 	p := &fakePlatform{}
-	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
 	session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm completion"})
 	if err != nil {

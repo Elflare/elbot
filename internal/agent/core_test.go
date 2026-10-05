@@ -20,8 +20,12 @@ func TestNewWithOptionsValidatesRequiredDependencies(t *testing.T) {
 	}{
 		{name: "models", change: func(opts *Options) { opts.Models = nil }, want: "model service is required"},
 		{name: "store", change: func(opts *Options) { opts.Store = nil }, want: "store is required"},
-		{name: "page size", change: func(opts *Options) { opts.SessionListPageSize = 0 }, want: "page size must be positive"},
-		{name: "retention", change: func(opts *Options) { opts.CleanupRetentionDays = 0 }, want: "retention days must be positive"},
+		{name: "sessions", change: func(opts *Options) { opts.Sessions = nil }, want: "services are required"},
+		{name: "commands", change: func(opts *Options) { opts.Commands = nil }, want: "services are required"},
+		{name: "contexts", change: func(opts *Options) { opts.Contexts = nil }, want: "services are required"},
+		{name: "tool state", change: func(opts *Options) { opts.ToolState = nil }, want: "services are required"},
+		{name: "dispatcher", change: func(opts *Options) { opts.Dispatcher = nil }, want: "services are required"},
+		{name: "notifications", change: func(opts *Options) { opts.Notifications = nil }, want: "services are required"},
 		{name: "sandbox", change: func(opts *Options) { opts.SandboxRoot = "" }, want: "sandbox root is required"},
 		{name: "tools", change: func(opts *Options) { opts.ToolsConfig.MaxRoundsPerTurn = 0 }, want: "max rounds per turn must be positive"},
 		{name: "security", change: func(opts *Options) { opts.SecurityPolicy = nil }, want: "security policy is required"},
@@ -29,7 +33,7 @@ func TestNewWithOptionsValidatesRequiredDependencies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			opts := validConstructorOptions(t)
+			opts := assembleTestOptions(validConstructorOptions(t))
 			tt.change(&opts)
 			_, err := NewWithOptions(opts)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
@@ -39,9 +43,9 @@ func TestNewWithOptionsValidatesRequiredDependencies(t *testing.T) {
 	}
 }
 
-func validConstructorOptions(t *testing.T) Options {
+func validConstructorOptions(t *testing.T) testAgentOptions {
 	t.Helper()
-	return Options{
+	return testAgentOptions{
 		Models: newTestModels(t, modelmgr.Options{
 			Clients:   map[string]llm.LLM{"default": &fakeLLM{}},
 			Providers: map[string]config.ProviderConfig{"default": {}},
@@ -51,14 +55,12 @@ func validConstructorOptions(t *testing.T) Options {
 			},
 			DefaultMode: storage.SessionModeWork,
 		}),
-		Providers:            map[string]config.ProviderConfig{"default": {}},
-		Store:                newTestStore(t),
-		CommandPrefixes:      []string{"/"},
-		SessionConfig:        session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork},
-		SecurityPolicy:       security.DefaultPolicy(),
-		SessionListPageSize:  10,
-		CleanupRetentionDays: 30,
-		SandboxRoot:          "data/sandbox",
-		ToolsConfig:          config.ToolsConfig{MaxRoundsPerTurn: 2},
+		Providers:       map[string]config.ProviderConfig{"default": {}},
+		Store:           newTestStore(t),
+		CommandPrefixes: []string{"/"},
+		SessionConfig:   session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork},
+		SecurityPolicy:  security.DefaultPolicy(),
+		SandboxRoot:     "data/sandbox",
+		ToolsConfig:     config.ToolsConfig{MaxRoundsPerTurn: 2},
 	}
 }

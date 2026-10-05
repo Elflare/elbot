@@ -57,7 +57,7 @@ func (defaultIntegrationFactory) Attach(ctx context.Context, req IntegrationRequ
 	}
 
 	registerCompletionPlatforms(runtime.Agent, platforms.Runtimes)
-	registerCommandCatalogs(runtime.Agent, platforms.Runtimes)
+	registerCommandCatalogs(runtime.Commands, platforms.Runtimes)
 	if runtime.Signals == nil {
 		return PlatformComponents{}, fmt.Errorf("app: runtime has no signal owner")
 	}

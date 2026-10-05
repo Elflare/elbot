@@ -10,6 +10,9 @@ import (
 	"elbot/internal/session"
 )
 
+// Scope resolves the same execution identity for commands and message handling.
+func (a *Agent) Scope(ctx context.Context) session.Scope { return a.scope(ctx) }
+
 func (a *Agent) scope(ctx context.Context) session.Scope {
 	actor := a.actor(ctx)
 	platformName := a.platform.Name()

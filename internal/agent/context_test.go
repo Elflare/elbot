@@ -71,7 +71,7 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"K", "answer J", "answer L", "K2", "answer M"}}
 	store := newTestStore(t)
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	source, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "compact"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -84,7 +84,7 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 			t.Fatalf("append message: %v", err)
 		}
 	}
-	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
+	a.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 	a.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
 
 	if err := a.HandleMessage(ctx, "J"); err != nil {
@@ -199,7 +199,7 @@ func TestManualCompactDefersSeedUntilNextUserMessage(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"K", "answer J"}}
 	store := newTestStore(t)
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	old, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "manual"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -258,7 +258,7 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 	started := make(chan struct{})
 	f := &fakeLLM{replies: []string{"K"}, chatBlocks: []fakeLLMBlock{{started: started, release: make(chan struct{})}}}
 	store := newTestStore(t)
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	source, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "compact"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -271,7 +271,7 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 			t.Fatalf("append message: %v", err)
 		}
 	}
-	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
+	a.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 	a.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
 
 	done := make(chan error, 1)
@@ -325,7 +325,7 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 func TestAutoCompactFailureKeepsSourceSession(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
-	a := New(&fakePlatform{}, &fakeLLM{replies: []string{"__ERR__"}}, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{replies: []string{"__ERR__"}}, "test-model", config.ProviderConfig{}, store)
 	source, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "failure"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -335,7 +335,7 @@ func TestAutoCompactFailureKeepsSourceSession(t *testing.T) {
 			t.Fatalf("append message: %v", err)
 		}
 	}
-	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
+	a.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 	a.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
 	if err := a.HandleMessage(ctx, "J"); err == nil {
 		t.Fatal("auto compact unexpectedly succeeded")
@@ -374,7 +374,7 @@ func TestModelSwitchDuringTurnAppliesOnNextTurn(t *testing.T) {
 		replies:    []string{"first answer", "second answer"},
 		chatBlocks: []fakeLLMBlock{{started: started, release: release}},
 	}
-	a := New(&fakePlatform{}, f, "old", config.ProviderConfig{Models: []string{"old", "new"}}, newTestStore(t))
+	a := newTestAgent(t, &fakePlatform{}, f, "old", config.ProviderConfig{Models: []string{"old", "new"}}, newTestStore(t))
 
 	done := make(chan error, 1)
 	go func() { done <- a.HandleMessage(ctx, "first") }()
@@ -416,8 +416,8 @@ func TestModelSwitchReevaluatesCompactWindow(t *testing.T) {
 			"large": {ContextWindow: 1000},
 		},
 	}
-	a := New(&fakePlatform{}, &fakeLLM{models: []string{"small", "large"}}, "small", provider, newTestStore(t))
-	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, map[string]config.ProviderConfig{"default": provider})
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{models: []string{"small", "large"}}, "small", provider, newTestStore(t))
+	a.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, map[string]config.ProviderConfig{"default": provider})
 	current, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "model window"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -438,7 +438,7 @@ func TestCancelledCompactLateResultCannotSwitchNewCurrent(t *testing.T) {
 	ctx := context.Background()
 	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{}), ignoreCancellation: true}
 	f := &fakeLLM{replies: []string{"late summary"}, chatBlocks: []fakeLLMBlock{block}}
-	a := New(&fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t))
 	old, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{})
 	if err != nil {
 		t.Fatal(err)

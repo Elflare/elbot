@@ -31,7 +31,7 @@ func TestMediaCanonicalPersistenceAndSessionRestore(t *testing.T) {
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
 	f := &fakeLLM{replies: []string{"first"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	a.media = center
 	input := platform.WithMessageContext(ctx, platform.MessageContext{Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "看图"}, {Type: platform.SegmentImage, URL: server.URL + "/cat.png", Name: "cat.png"}}})
 	if err := a.HandleMessage(input, "看图"); err != nil {
@@ -54,7 +54,7 @@ func TestMediaCanonicalPersistenceAndSessionRestore(t *testing.T) {
 		t.Fatalf("refs: %#v %v", refs, err)
 	}
 	resumed := &fakeLLM{replies: []string{"restored"}}
-	b := New(p, resumed, "test-model", config.ProviderConfig{}, store)
+	b := newTestAgent(t, p, resumed, "test-model", config.ProviderConfig{}, store)
 	b.media = media.NewManager(store, root, &media.LocalBackend{Root: root})
 	resumeCtx := platform.WithMessageContext(ctx, platform.MessageContext{Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "继续"}}})
 	if _, err := b.sessions.Resume(resumeCtx, b.scope(resumeCtx), record.ID); err != nil {
@@ -81,7 +81,7 @@ func TestToolResultMediaPersistsID(t *testing.T) {
 	store := newTestStore(t)
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "prepared_args", Args: `{"q":"test"}`}}, FinishReason: "tool_calls"}}, {{DeltaContent: "done"}}}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	root := t.TempDir()
 	a.media = media.NewManager(store, root, &media.LocalBackend{Root: root})
 	registry := tool.NewRegistry()

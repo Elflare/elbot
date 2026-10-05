@@ -92,6 +92,26 @@ func (s *Service) List(ctx context.Context) ([]RollbackInfo, error) {
 	return call.session.List()
 }
 
+// RollbackByID resolves a human-facing backup number through the same lease and
+// commit checks as tool rollback. On a selected record's failure, Path remains
+// available for the caller's audit entry.
+func (s *Service) RollbackByID(ctx context.Context, id uint64) (RollbackResult, error) {
+	records, err := s.List(ctx)
+	if err != nil {
+		return RollbackResult{}, err
+	}
+	for _, record := range records {
+		if record.ID == id {
+			result, err := s.Rollback(ctx, record.Path, id)
+			if err != nil {
+				return RollbackResult{Path: record.Path}, err
+			}
+			return result, nil
+		}
+	}
+	return RollbackResult{}, ErrRollbackNotFound
+}
+
 func (s *Service) Preview(ctx context.Context, rawPath string) (RollbackPreview, error) {
 	call, err := s.current(ctx)
 	if err != nil {

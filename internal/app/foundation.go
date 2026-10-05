@@ -32,31 +32,25 @@ func (defaultFoundationFactory) Build(ctx context.Context, req FoundationRequest
 		return nil, err
 	}
 	lifecycle := &foundationLifecycle{cfg: cfg, logs: logs}
-	defer func() {
-		if err != nil {
-			if closeErr := lifecycle.Close(context.Background()); closeErr != nil {
-				err = errors.Join(err, fmt.Errorf("cleanup incomplete foundation: %w", closeErr))
-			}
-		}
-	}()
+	partial := &FoundationComponents{Lifecycle: lifecycle}
 
 	req.Profiler.Mark("logging.NewManager")
 	logger := logs.Runtime()
 	logStartupConfiguration(logger, req.Options, cfg)
 	if err = config.FirstError(cfg.ValidateModelProviders("work")); err != nil {
-		return nil, err
+		return partial, err
 	}
 
 	store, err := sqlite.New(ctx, cfg.Storage.SessionsSQLitePath)
 	if err != nil {
-		return nil, err
+		return partial, err
 	}
 	lifecycle.store = store
 	req.Profiler.Mark("sqlite.New")
 
 	chatHistoryStore, err := sqlite.NewChatHistory(ctx, cfg.Storage.ChatHistorySQLitePath)
 	if err != nil {
-		return nil, err
+		return partial, err
 	}
 	lifecycle.chatHistoryStore = chatHistoryStore
 	req.Profiler.Mark("chat history sqlite.New")
@@ -66,7 +60,7 @@ func (defaultFoundationFactory) Build(ctx context.Context, req FoundationRequest
 	cronManager := elcron.NewManager(store.CronJobs(), logger)
 	lifecycle.cronManager = cronManager
 	if err = maint.RegisterCronHandlers(cronManager); err != nil {
-		return nil, err
+		return partial, err
 	}
 	req.Profiler.Mark("cron async prepared")
 
@@ -126,14 +120,14 @@ func (l *foundationLifecycle) Close(ctx context.Context) error {
 		select {
 		case <-l.cronStartupDone:
 		case <-ctx.Done():
-			errs = append(errs, fmt.Errorf("wait cron startup: %w", ctx.Err()))
+			return fmt.Errorf("wait cron startup: %w", ctx.Err())
 		}
 	}
 	if l.cronManager != nil {
 		select {
 		case <-l.cronManager.Stop().Done():
 		case <-ctx.Done():
-			errs = append(errs, fmt.Errorf("stop cron manager: %w", ctx.Err()))
+			return fmt.Errorf("stop cron manager: %w", ctx.Err())
 		}
 	}
 	if l.chatHistoryStore != nil {

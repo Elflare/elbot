@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"elbot/internal/fileops"
@@ -42,58 +41,34 @@ func (a *Agent) fileRollbackContext(ctx context.Context, row *storage.Session, i
 	})
 }
 
-func (a *Agent) ListFileRollbacks(ctx context.Context) ([]fileops.RollbackInfo, error) {
+// PrepareFileCommand captures the original binding and execution admission for
+// file commands. The file service owns record lookup and the actual operation.
+func (a *Agent) PrepareFileCommand(ctx context.Context, idleOnly bool) (context.Context, error) {
 	if a.actor(ctx).Role != security.RoleSuperadmin {
-		return nil, fmt.Errorf("rollback requires superadmin role")
+		return ctx, fmt.Errorf("rollback requires superadmin role")
 	}
 	if a.toolRuntime.fileRollback == nil {
-		return nil, fmt.Errorf("file rollback is not configured")
+		return ctx, fmt.Errorf("file rollback is not configured")
 	}
-	session, err := a.sessions.Current(ctx, a.scope(ctx))
-	if errors.Is(err, storage.ErrNotFound) {
-		return nil, nil
-	}
+	row, binding, err := a.sessions.CurrentBound(ctx, a.scope(ctx))
 	if err != nil {
-		return nil, err
+		return ctx, err
 	}
-	if isBackgroundSession(session) {
-		return nil, nil
-	}
-	ctx = a.fileRollbackContext(security.WithActor(ctx, a.actor(ctx)), session)
-	return a.toolRuntime.fileRollback.List(ctx)
-}
-
-func (a *Agent) RollbackFile(ctx context.Context, id uint64) (fileops.RollbackResult, error) {
-	if a.actor(ctx).Role != security.RoleSuperadmin {
-		return fileops.RollbackResult{}, fmt.Errorf("rollback requires superadmin role")
-	}
-	if a.toolRuntime.fileRollback == nil {
-		return fileops.RollbackResult{}, fmt.Errorf("file rollback is not configured")
-	}
-	session, err := a.sessions.Current(ctx, a.scope(ctx))
-	if err != nil {
-		return fileops.RollbackResult{}, err
-	}
-	if a.turns.Snapshot(session.ID).Phase != turn.PhaseIdle || a.compactActive(session.ID) {
-		return fileops.RollbackResult{}, fmt.Errorf("当前会话仍在执行任务或压缩；请等待完成，或先 /stop")
-	}
-	ctx = a.fileRollbackContext(security.WithActor(ctx, a.actor(ctx)), session, true)
-	ctx = workspace.WithWorkspaceStore(ctx, a.workspaceStore(session))
-	records, err := a.toolRuntime.fileRollback.List(ctx)
-	if err != nil {
-		return fileops.RollbackResult{}, err
-	}
-	for _, record := range records {
-		if record.ID != id {
-			continue
+	if isBackgroundSession(row) {
+		if !idleOnly {
+			return ctx, storage.ErrNotFound
 		}
-		result, err := a.toolRuntime.fileRollback.Rollback(ctx, record.Path, id)
-		if err != nil {
-			a.audit("file_rollback_failed", "actor_id", a.actor(ctx).ID, "session_id", session.ID, "path", record.Path, "error", err.Error())
-			return fileops.RollbackResult{}, err
-		}
-		a.audit("file_rollback", "actor_id", a.actor(ctx).ID, "session_id", session.ID, "path", result.Path, "deleted", result.Deleted)
-		return result, nil
+		return ctx, fmt.Errorf("rollback is only available in foreground sessions")
 	}
-	return fileops.RollbackResult{}, fileops.ErrRollbackNotFound
+	if original, ok := session.BindingFromContext(ctx); ok && original != binding {
+		return ctx, fileops.ErrRollbackExpired
+	}
+	if idleOnly && (a.turns.Snapshot(row.ID).Phase != turn.PhaseIdle || a.compactActive(row.ID)) {
+		return ctx, fmt.Errorf("当前会话仍在执行任务或压缩；请等待完成，或先 /stop")
+	}
+	ctx = session.WithBinding(security.WithActor(ctx, a.actor(ctx)), binding)
+	// Listing never enters commit admission, but a reused command context must
+	// still reject a write if a Turn begins while it waits for the target lock.
+	ctx = a.fileRollbackContext(ctx, row, true)
+	return workspace.WithWorkspaceStore(ctx, a.workspaceStore(row)), nil
 }

@@ -59,7 +59,7 @@ func TestPlatformMediaMaterializesOnlyWhenConsumed(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newTestStore(t)
-			a := New(&fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
+			a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
 			root := t.TempDir()
 			a.media = media.NewManager(store, root, &media.LocalBackend{Root: root})
 			resolver := &inboundMediaResolver{}

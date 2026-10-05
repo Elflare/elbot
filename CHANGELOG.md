@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 启动中途失败时，已经创建的 Hook／信号和延迟 Skill 加载现在统一取消并清理；平台退出等待也纳入共享 30 秒预算，超时不提前关闭仍被在途工作使用的存储和日志。
 - 统一发送链路现在同时保留成功结果与错误。Telegram 已发出部分分页时不再从头降级重发，避免重复消息。
 - 启动插件告警不再等待 Agent 创建后补发；交互模式直接显示于本地 CLI，service 模式记录实际告警内容。
 - 工具发现、预载现在是事务写入session。

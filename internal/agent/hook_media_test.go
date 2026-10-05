@@ -26,7 +26,7 @@ func TestGoHookMediaAPIAndCanonicalMessage(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	p := &fakePlatform{}
-	a := New(p, &fakeLLM{replies: []string{"done"}}, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, &fakeLLM{replies: []string{"done"}}, "test-model", config.ProviderConfig{}, store)
 	root := t.TempDir()
 	a.media = media.NewManager(store, root, &media.LocalBackend{Root: root})
 	hooks := hook.NewManager()
@@ -141,7 +141,7 @@ func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
 	}))
 	defer server.Close()
 
-	a := New(&fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
 	a.media = center
 	a.dispatcher = dispatch.New(dispatch.Options{Store: store, Media: a.media, MediaRetentionDays: 7})
 	sender := &orderedMediaSender{t: t}
@@ -178,7 +178,7 @@ func TestMediaReceiptKeepsDuplicatesAndPartialSuccess(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	root := t.TempDir()
-	a := New(&fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
 	a.media = media.NewManager(store, root, &media.LocalBackend{Root: root})
 	a.dispatcher = dispatch.New(dispatch.Options{Store: store, Media: a.media, MediaRetentionDays: 7})
 	item, err := a.media.ImportBytes(ctx, []byte("same"), media.Input{Name: "same.png", MIMEType: "image/png"})
@@ -208,7 +208,7 @@ func TestHookMediaOutputDoesNotCreateSessionAndCleansExport(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	p := &fakePlatform{}
-	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
 	root := t.TempDir()
 	a.media = media.NewManager(store, root, &media.LocalBackend{Root: root})
 	data := []byte{0, 255, 128, 1}

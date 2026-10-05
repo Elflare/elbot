@@ -11,8 +11,6 @@ import (
 
 var errSessionBindingChanged = errors.New("当前会话已切换，请重新发送消息")
 
-func (a *Agent) SessionService() *session.Service { return a.sessions }
-
 // Existing execution contexts keep their original binding across confirmation.
 func (a *Agent) captureSessionBinding(ctx context.Context, row *storage.Session) (context.Context, error) {
 	current, binding, err := a.sessions.CurrentBound(ctx, a.scope(ctx))

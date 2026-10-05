@@ -97,11 +97,14 @@ func (m *Manager) EnsureLoaded(ctx context.Context) error {
 	return err
 }
 
-func (m *Manager) StartDelayedReload(ctx context.Context, delay time.Duration) {
+func (m *Manager) StartDelayedReload(ctx context.Context, delay time.Duration) <-chan struct{} {
+	done := make(chan struct{})
 	if m == nil {
-		return
+		close(done)
+		return done
 	}
 	go func() {
+		defer close(done)
 		if delay > 0 {
 			timer := time.NewTimer(delay)
 			select {
@@ -113,6 +116,7 @@ func (m *Manager) StartDelayedReload(ctx context.Context, delay time.Duration) {
 		}
 		_ = m.EnsureLoaded(ctx)
 	}()
+	return done
 }
 
 func (m *Manager) Remove(ctx context.Context, name string) error {

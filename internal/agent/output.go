@@ -20,7 +20,7 @@ func (a *Agent) sendChat(ctx context.Context, text string) {
 }
 
 func (a *Agent) sendNotice(ctx context.Context, notice delivery.Notice) error {
-	_, err := a.SendNotice(ctx, notice)
+	_, err := a.dispatcher.SendNotice(ctx, notice)
 	return err
 }
 
@@ -81,12 +81,4 @@ func (a *Agent) mapSentAssistantMessage(ctx context.Context, sessionID, messageI
 			}
 		}
 	}
-}
-
-func (a *Agent) RegisterPlatformSender(name string, sender delivery.MessageSender) {
-	a.dispatcher.RegisterPlatformSender(name, sender)
-}
-
-func (a *Agent) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
-	return a.dispatcher.SendNotice(ctx, notice)
 }
