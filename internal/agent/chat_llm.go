@@ -73,11 +73,6 @@ func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection
 		}
 		return llmCallResult{}, fmt.Errorf("llm request hook: %w", err)
 	}
-	if selection.Provider != event.LLM.Provider {
-		selection.Client = a.models.ClientForProvider(event.LLM.Provider)
-	}
-	selection.Provider = event.LLM.Provider
-	selection.Model = event.LLM.Model
 	tools = event.LLM.Tools
 	if allowedTools != nil {
 		filtered := make([]llm.ToolSchema, 0, len(tools))

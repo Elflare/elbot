@@ -12,6 +12,7 @@ import (
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/security"
+	"elbot/internal/session"
 	"elbot/internal/turn"
 )
 
@@ -66,19 +67,28 @@ func (c stopCommand) Info() command.Info {
 func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
 	deps := c.deps
 	arg := strings.TrimSpace(req.Args)
+	requests, binding := stoppableRequests(ctx, deps)
 	if arg != "" {
-		id, ok := resolveRequestArg(deps, arg)
+		id, ok := resolveRequestArg(requests, arg)
 		if !ok {
 			return &command.Result{Content: fmt.Sprintf("request not found: %s", arg)}, nil
 		}
 		stopped, _ := deps.Requests.Get(id)
-		locked, release, err := deps.Sessions.EnterSessions(ctx, stopped.SessionID)
+		var locked context.Context
+		var release func()
+		var err error
+		if binding != nil {
+			locked, release, err = deps.Sessions.EnterBinding(ctx, binding)
+		} else {
+			locked, release, err = deps.Sessions.EnterSessions(ctx, stopped.SessionID)
+		}
 		if err != nil {
 			return nil, err
 		}
 		defer release()
 		ctx = locked
-		if _, exists := deps.Requests.Get(id); !exists {
+		latest, exists := deps.Requests.Get(id)
+		if !exists || latest.SessionID != stopped.SessionID || (binding != nil && latest.SessionID != binding.SessionID()) {
 			return &command.Result{Content: "request already stopped"}, nil
 		}
 		if stopped.Kind == request.KindTurn {
@@ -92,7 +102,14 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 		return &command.Result{Content: "stopped 1 request"}, nil
 	}
 
-	locked, release, err := deps.Sessions.EnterActivation(ctx, deps.Scope(ctx))
+	actor, _ := security.ActorFromContext(ctx)
+	if binding == nil && actor.Role == security.RoleSuperadmin {
+		_, binding, _ = deps.Sessions.CurrentBound(ctx, deps.Scope(ctx))
+	}
+	if binding == nil {
+		return &command.Result{Content: "no current session"}, nil
+	}
+	locked, release, err := deps.Sessions.EnterBinding(ctx, binding)
 	if err != nil {
 		return nil, err
 	}
@@ -108,12 +125,12 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 }
 
 func (c stopCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
-	_ = ctx
 	token := currentCompletionToken(req)
 	if !isFirstArg(req, token) {
 		return nil
 	}
-	return completeRequestIDs(c.deps, token.Text, token.Start, token.End)
+	requests, _ := stoppableRequests(ctx, c.deps)
+	return completeRequestIDs(requests, token.Text, token.Start, token.End)
 }
 
 func NewStopAll(deps Deps) command.Handler {
@@ -220,14 +237,31 @@ func writeRequestLine(sb *strings.Builder, ctx context.Context, deps Deps, numbe
 	}
 }
 
-func resolveRequestArg(deps Deps, arg string) (string, bool) {
+// Both argument resolution and completion use the caller's cancellation scope.
+func stoppableRequests(ctx context.Context, deps Deps) ([]request.Request, *session.Binding) {
 	if deps.Requests == nil {
-		return "", false
+		return nil, nil
 	}
-	if req, ok := deps.Requests.Get(arg); ok {
-		return req.ID, true
+	if actor, _ := security.ActorFromContext(ctx); actor.Role == security.RoleSuperadmin {
+		return deps.Requests.List(), nil
 	}
-	tree := buildRequestTree(deps.Requests.List())
+	_, binding, err := deps.Sessions.CurrentBound(ctx, deps.Scope(ctx))
+	if err != nil {
+		return nil, nil
+	}
+	if original, ok := session.BindingFromContext(ctx); ok && (original != binding || !original.Valid()) {
+		return nil, nil
+	}
+	return deps.Requests.ListBySession(binding.SessionID()), binding
+}
+
+func resolveRequestArg(requests []request.Request, arg string) (string, bool) {
+	for _, req := range requests {
+		if req.ID == arg {
+			return req.ID, true
+		}
+	}
+	tree := buildRequestTree(requests)
 	req, ok := tree.ByNumber[arg]
 	if !ok {
 		return "", false

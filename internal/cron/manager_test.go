@@ -145,6 +145,10 @@ func TestManagerRunsRegisteredHandlerAndUpdatesState(t *testing.T) {
 		t.Fatalf("upsert job: %v", err)
 	}
 
+	if err := manager.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { <-manager.Stop().Done() }()
 	manager.runJob(job.Name)
 	if !called {
 		t.Fatal("handler was not called")
@@ -169,6 +173,10 @@ func TestManagerStoresHandlerError(t *testing.T) {
 		t.Fatalf("upsert job: %v", err)
 	}
 
+	if err := manager.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { <-manager.Stop().Done() }()
 	manager.runJob(job.Name)
 	got := repo.jobs[job.Name]
 	if got.RunCount != 1 || got.LastError != "boom" {
@@ -207,6 +215,10 @@ func TestManagerRunJobDoesNotReenableJobDisabledByHandler(t *testing.T) {
 		t.Fatalf("upsert job: %v", err)
 	}
 
+	if err := manager.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { <-manager.Stop().Done() }()
 	manager.runJob(job.Name)
 	got := repo.jobs[job.Name]
 	if got.Enabled {
@@ -249,6 +261,10 @@ func TestManagerSkipsUnregisteredHandler(t *testing.T) {
 		t.Fatalf("upsert job: %v", err)
 	}
 
+	if err := manager.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { <-manager.Stop().Done() }()
 	manager.runJob(job.Name)
 	got := repo.jobs[job.Name]
 	if got.RunCount != 0 || got.LastRunAt != nil {

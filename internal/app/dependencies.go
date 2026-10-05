@@ -68,6 +68,7 @@ type FoundationComponents struct {
 	ChatHistory      storage.ChatHistoryRepository
 	CronManager      *elcron.Manager
 	StartCron        func(context.Context, *elcron.Service)
+	StopCron         func(context.Context) error
 	Lifecycle        Lifecycle
 }
 

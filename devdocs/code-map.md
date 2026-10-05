@@ -28,6 +28,7 @@ rg -n "locator:tool" devdocs/code-map.md
 - `internal/app/services.go`、`runtime.go`：共享服务创建、内置命令注册、Cron／Tool／Hook／Agent 装配及 Session／Hook 执行回调接线；先完成注册和接线再开放平台入口。
 - `internal/app/platforms.go`、`integrations.go`：平台运行、Elnis 和平台能力接线；同目录还包含远程 CLI client 与 service marker。
 - `internal/app/signals.go`、`lifecycle.go`：信号连接／队列所有权、Hook 与延迟 Skill 加载取消和完成等待；Runner 统一清理部分启动资源并共享关闭预算。
+- `internal/app/foundation.go`、`runner.go`：独立 StopCron 取消并等待启动及在途任务，完成后才释放 runtime／Hook 和存储；超时保留存活任务依赖。
 
 常用搜索：
 
@@ -76,7 +77,7 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 - `internal/agent/core.go`：Agent 自身状态、依赖注入和执行编排接线；`Options` 要求调用方提供共享服务，内置命令在 app 注册。
 - `internal/agent/message.go`：消息入口、slash/普通输入分发和用户错误通知。
 - `internal/agent/command_runtime.go`：命令权限、Turn 冲突、通知和 continuation 的统一编排。
-- `internal/agent/input.go`：普通输入预处理、命令 continuation、pending 和风险确认入口。
+- `internal/agent/input.go`、`tool_directive.go`：普通输入与预加载的原绑定准入、锁外准备及提交复核，命令 continuation、pending 和风险确认入口。
 - `internal/agent/segments.go`：平台入站 Segment 与 LLM Segment 转换。
 - `internal/agent/inbound_media.go`：实际消费前的平台 resolver 与 Media Center 桥接、大小校验和不可用降级。
 - `internal/tool/builtin/chat_history.go`：当前聊天历史查询与媒体位置/下载状态展示，查询不下载；`get_media.go`：显式选定媒体位置获取，仅返回文本 ID，单次最多 5 次未入库媒体获取尝试。
@@ -108,6 +109,7 @@ rg -n "Handle|Run|Prompt|tool_calls|reasoning|usage|pending|prepared" internal/a
 
 - `internal/command/builtin/`：内置命令实现。
 - `internal/command/builtin/register.go`：命令模块注册入口。
+- `internal/command/builtin/request.go`：请求展示、停止与补全；普通用户限定当前 Session，取消前复核原绑定，超级管理员保留全局范围。
 - `internal/command/builtin/session_*.go`：按模式、核心、导航、生命周期和格式化拆分的 Session 命令；共享状态由 `SessionCommandState` 按 Scope 隔离。
 - `internal/command/`：通用命令框架和 Router。
 - `internal/completion/`：平台补全服务。
@@ -302,6 +304,7 @@ rg -n "PlatformAdapter|SendChat|MessageSegment|Actor|Scope|remote|websocket|long
 - `internal/session/binding.go`、`signals.go`、`coordination.go`、`activity.go`：当前绑定、锁外变化信号、Scope／SessionID 短准入及忙闲检查。
 - `internal/session/promotion.go`：后台可见性、永久前台归属和在途接管入口。
 - `internal/session/background.go`：后台 Session 创建／复用、模式、标题和后台身份 metadata，不修改前台 current，不处理工具状态。
+- `internal/session/compact.go`：CreateCompacted 的来源／绑定复核、归属及模式继承、命名字段与保存；只为前台结果激活 current。
 - `internal/storage/session_metadata.go`、`sqlite/session_repository.go`：metadata 原值保留与 Session 原子字段更新。
 - `internal/background/takeover.go`：后台修正及投递入口的持久化接管检查。
 - `internal/session/mode.go`：模式激活和 work 历史限制。
@@ -405,6 +408,7 @@ rg -n -m 20 "Elvena|Elwisp|/elvena/v2/events|direct|segments|background" interna
 先看：
 
 - `internal/cron/service.go`：Cron Service 装配、CRUD 与公开入口。
+- `internal/cron/manager.go`：应用上下文控制的调度与执行生命周期，停止后禁止再启动，重复停止共享实际完成信号。
 - `internal/cron/model.go`：任务 Metadata、Delivery 状态类型、校验与规范化。
 - `internal/cron/models.go`：任务专用模型成对校验和 work 默认快照，复用 app 注入的 modelmgr 服务。
 - `internal/cron/execution.go`：Direct/LLM 执行、报告生成和 JSON 格式重试。

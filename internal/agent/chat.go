@@ -228,8 +228,6 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	if err != nil {
 		return fmt.Errorf("llm turn hook: %w", err)
 	}
-	selection.Provider = turnEvent.LLM.Provider
-	selection.Model = turnEvent.LLM.Model
 	if session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground {
 		tools = turnEvent.LLM.Tools
 	}
