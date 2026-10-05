@@ -31,11 +31,20 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	}
 	platformsStopped := true
 	var cleanups []cleanupStep
+	var stopCron func(context.Context) error
 	defer func() {
 		runErr = withoutShutdownError(runErr, ctx.Err())
 		cancel()
 		beginShutdown()
 		defer shutdownCancel()
+		if stopCron != nil {
+			if err := stopCron(shutdownCtx); err != nil {
+				if err = withoutShutdownError(err, shutdownCtx.Err()); err != nil {
+					runErr = errors.Join(runErr, fmt.Errorf("stop cron: %w", err))
+				}
+				return
+			}
+		}
 		if !platformsStopped {
 			return
 		}
@@ -75,6 +84,9 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 		return fmt.Errorf("app: environment returned nil startup profiler")
 	}
 	foundation, err := r.deps.Foundation.Build(ctx, FoundationRequest{Options: opts, Mode: mode, Profiler: profiler})
+	if foundation != nil {
+		stopCron = foundation.StopCron
+	}
 	if foundation != nil && foundation.Lifecycle != nil {
 		cleanups = append(cleanups, cleanupStep{name: "foundation", close: foundation.Lifecycle.Close})
 	}

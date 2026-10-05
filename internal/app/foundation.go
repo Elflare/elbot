@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"sync"
 
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
@@ -32,7 +33,7 @@ func (defaultFoundationFactory) Build(ctx context.Context, req FoundationRequest
 		return nil, err
 	}
 	lifecycle := &foundationLifecycle{cfg: cfg, logs: logs}
-	partial := &FoundationComponents{Lifecycle: lifecycle}
+	partial := &FoundationComponents{Lifecycle: lifecycle, StopCron: lifecycle.StopCron}
 
 	req.Profiler.Mark("logging.NewManager")
 	logger := logs.Runtime()
@@ -74,6 +75,7 @@ func (defaultFoundationFactory) Build(ctx context.Context, req FoundationRequest
 		ChatHistory:      chatHistory,
 		CronManager:      cronManager,
 		StartCron:        lifecycle.startCron,
+		StopCron:         lifecycle.StopCron,
 		Lifecycle:        lifecycle,
 	}, nil
 }
@@ -103,33 +105,59 @@ type foundationLifecycle struct {
 	cronManager      *elcron.Manager
 	cronStartupDone  chan struct{}
 	cronScheduled    bool
+	cronMu           sync.Mutex
+	cronStopped      bool
+	cronCancel       context.CancelFunc
 }
 
 func (l *foundationLifecycle) startCron(ctx context.Context, service *elcron.Service) {
-	if l.cronManager == nil || service == nil || l.cronScheduled {
+	l.cronMu.Lock()
+	defer l.cronMu.Unlock()
+	if l.cronManager == nil || service == nil || l.cronScheduled || l.cronStopped {
 		return
 	}
+	ctx, l.cronCancel = context.WithCancel(ctx)
 	l.cronScheduled = true
 	l.cronStartupDone = make(chan struct{})
 	startCronAsync(ctx, l.cronManager, service, l.cfg, l.logs.Runtime(), l.cronStartupDone)
 }
 
-func (l *foundationLifecycle) Close(ctx context.Context) error {
-	var errs []error
-	if l.cronScheduled {
+// StopCron stops the producer before Runner releases runtime/Hook dependencies.
+// Every caller waits on the same startup and manager completion signals.
+func (l *foundationLifecycle) StopCron(ctx context.Context) error {
+	l.cronMu.Lock()
+	l.cronStopped = true
+	if l.cronCancel != nil {
+		l.cronCancel()
+	}
+	startupDone := l.cronStartupDone
+	var stopped context.Context
+	if l.cronManager != nil {
+		stopped = l.cronManager.Stop()
+	}
+	l.cronMu.Unlock()
+	if startupDone != nil {
 		select {
-		case <-l.cronStartupDone:
+		case <-startupDone:
 		case <-ctx.Done():
 			return fmt.Errorf("wait cron startup: %w", ctx.Err())
 		}
 	}
-	if l.cronManager != nil {
+	if stopped != nil {
 		select {
-		case <-l.cronManager.Stop().Done():
+		case <-stopped.Done():
 		case <-ctx.Done():
 			return fmt.Errorf("stop cron manager: %w", ctx.Err())
 		}
 	}
+	return nil
+}
+
+func (l *foundationLifecycle) Close(ctx context.Context) error {
+	if err := l.StopCron(ctx); err != nil {
+		return err
+	}
+	var errs []error
 	if l.chatHistoryStore != nil {
 		if err := l.chatHistoryStore.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("close chat history store: %w", err))

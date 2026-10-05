@@ -79,27 +79,7 @@ func (a *Agent) runCompact(ctx context.Context, current *storage.Session, scope 
 	if err != nil {
 		return nil, err
 	}
-	fields, err := storage.DecodeSessionMetadata(encoded)
-	if err != nil {
-		return nil, err
-	}
-	if err := fields.Set("title_renamed", true); err != nil {
-		return nil, err
-	}
-	if err := fields.Set("title_source", "compact"); err != nil {
-		return nil, err
-	}
-	encoded, err = fields.Encode()
-	if err != nil {
-		return nil, err
-	}
-	var next *storage.Session
-	if session.IsBackground(current) {
-		next = &storage.Session{ID: nextID, OwnerID: current.OwnerID, Platform: current.Platform, PlatformScopeID: current.PlatformScopeID, Title: prepared.Title, Mode: current.Mode, Status: storage.SessionStatusActive, Metadata: encoded}
-		err = a.store.Sessions().Create(locked, next)
-	} else {
-		next, err = a.sessions.Create(locked, scope, session.CreateRequest{ID: nextID, Title: prepared.Title, Mode: current.Mode, Metadata: encoded})
-	}
+	next, err := a.sessions.CreateCompacted(locked, scope, current.ID, session.CompactedRequest{ID: nextID, Title: prepared.Title, Metadata: encoded})
 	if err != nil {
 		return nil, err
 	}

@@ -278,6 +278,8 @@ Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记�
 
 #### 验收
 
+后续 Review 的五项边界：普通用户 `/stop` 的编号、ID、补全和取消限定当前原绑定；输入 Hook／预加载前及一次性提交前由 Agent 复核准入；Cron 取消、启动等待和在途退出先于 runtime／Hook 释放且共享关闭预算；Prepared Hook 不回写模型操作快照；压缩创建与命名字段统一由 Session `CreateCompacted` 管理。Fork 保留来源模式，contextmgr 保留压缩材料，Session 不依赖 contextmgr。
+
 - 通过实际后台入口验证首轮工具提交、续跑冻结、初始空白名单和提交失败；验证模型强行调用、schema Hook 注入及准备 Hook 改名都不能越权，前台 chat 继续禁用工具。
 - 回归前后台工具／Skill 预加载、标签、补全及权限，保持隐藏工具、后台限制和既有提示行为。
 - 验证后台结果、前台接管、Session 切换、Hook 唤醒与启动装配；检查旧入口、重复实现、metadata 所有权及反向依赖。
@@ -286,10 +288,11 @@ Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记�
 #### Review 验证结果
 
 - 公共信息／信号：基础包不依赖业务模块；平台来源快照、按平台队列和关闭取消仍走既有契约。
-- Session／文件：绑定同步失效、提交准入和后台接管保持原顺序；实际 app 装配测试覆盖忙碌保护、后台执行接管与 Hook 观察回调。
-- 模型／上下文：模型先持久化再发布快照，上下文 metadata 按字段更新；相关并发与压缩交接回归通过。
+- Session／文件：绑定同步失效、提交准入和后台接管保持原顺序；实际 app 装配测试覆盖忙碌保护、后台执行接管与 Hook 观察回调。压缩创建统一归 Session，前后台、接管、取消、保存失败和未知 metadata 保留均有回归覆盖。
+- 模型／上下文：模型先持久化再发布快照，上下文 metadata 按字段更新；Turn／Request Prepared 的 Go Handler 不能修改模型选择，允许的消息修改继续生效，前台接管仍显式重新选择。
 - 工具状态：生产代码的工具 metadata 读写集中于 StateService；前后台预加载共用服务。实际后台入口覆盖首轮提交、续跑冻结、空白名单、显式 tag、Hook／模型越权和真实沙盒文件读写；Session 恢复验证模式切换，Cron 验证任务模型 CRUD 及格式重试快照。
-- 发送／命令／装配：领域服务及内置命令没有反向依赖 Agent；原来源投递、部分回执、共享服务和启动失败清理回归通过。旧后台适配器、重复发现与旧缓存序列化入口均无生产引用。
+- 输入／命令：跨用户 `/stop` 被拒绝，普通用户的当前子请求、编号／ID、补全及超级管理员全局管理通过实际入口验证。预加载在压缩期、准备期间切换会话／模式、切离再恢复和取消时不提交状态或成功提示。
+- 发送／装配：领域服务及内置命令没有反向依赖 Agent；原来源投递、部分回执和共享服务回归通过。Cron 测试覆盖重复停止、启动失败、迟到启动、取消与状态保存等待，以及共享预算耗尽后保留依赖且不后台收尾。旧后台适配器、重复发现、旧缓存序列化、Agent 压缩创建／命名写入及 Hook 模型回写入口均无生产引用。
 - `go test ./...` 通过；Agent、app、Session、toolrun、Cron、Elnis、signal、fileops、modelmgr、contextmgr、delivery、notification、command、platform、Turn 及 SQLite 的相关 `-race` 测试通过。
 
 

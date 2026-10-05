@@ -26,11 +26,18 @@ type Manager struct {
 	logger    *slog.Logger
 	scheduler *robfigcron.Cron
 
-	mu       sync.Mutex
-	handlers map[string]Handler
-	entries  map[string]robfigcron.EntryID
-	running  map[string]bool
-	started  bool
+	mu        sync.Mutex
+	handlers  map[string]Handler
+	entries   map[string]robfigcron.EntryID
+	running   map[string]bool
+	started   bool
+	stopped   bool
+	runCtx    context.Context
+	cancel    context.CancelFunc
+	startDone chan struct{}
+	startErr  error
+	stopDone  context.Context
+	workers   sync.WaitGroup
 }
 
 type UpsertJobRequest = storage.UpsertCronJobRequest
@@ -111,39 +118,78 @@ func (m *Manager) DeleteJob(ctx context.Context, name string) error {
 
 func (m *Manager) Start(ctx context.Context) error {
 	m.mu.Lock()
-	if m.started {
+	if m.stopped {
 		m.mu.Unlock()
-		return nil
+		return context.Canceled
+	}
+	if m.started {
+		done := m.startDone
+		m.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-done:
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			return m.startErr
+		}
 	}
 	m.scheduler = robfigcron.New()
+	m.runCtx, m.cancel = context.WithCancel(ctx)
+	m.startDone = make(chan struct{})
 	m.started = true
+	m.workers.Add(1)
+	context.AfterFunc(m.runCtx, func() { m.Stop() })
+	runCtx := m.runCtx
 	m.mu.Unlock()
-
-	if err := m.reloadEnabled(ctx); err != nil {
+	defer m.workers.Done()
+	err := m.reloadEnabled(runCtx)
+	m.mu.Lock()
+	if err == nil {
+		err = runCtx.Err()
+	}
+	if err == nil && !m.stopped {
+		m.scheduler.Start()
+	}
+	m.startErr = err
+	close(m.startDone)
+	m.mu.Unlock()
+	if err != nil {
+		m.Stop()
 		return err
 	}
-	m.scheduler.Start()
 	m.logInfo("cron manager started")
 	return nil
 }
 
 func (m *Manager) Stop() context.Context {
 	m.mu.Lock()
-	if !m.started || m.scheduler == nil {
-		m.started = false
+	if m.stopDone != nil {
+		done := m.stopDone
 		m.mu.Unlock()
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		return ctx
+		return done
 	}
-
-	scheduler := m.scheduler
+	m.stopped = true
 	m.started = false
-	m.scheduler = nil
-	m.entries = map[string]robfigcron.EntryID{}
+	if m.cancel != nil {
+		m.cancel()
+	}
+	done, finish := context.WithCancel(context.Background())
+	m.stopDone = done
+	var schedulerDone context.Context
+	if m.scheduler != nil {
+		schedulerDone = m.scheduler.Stop()
+	}
 	m.mu.Unlock()
 	m.logInfo("cron manager stopping")
-	return scheduler.Stop()
+	go func() {
+		if schedulerDone != nil {
+			<-schedulerDone.Done()
+		}
+		m.workers.Wait()
+		finish()
+	}()
+	return done
 }
 
 func (m *Manager) reloadEnabled(ctx context.Context) error {
@@ -190,17 +236,13 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 		m.updateNextRunAt(context.Background(), job, nil)
 		return nil
 	}
-	scheduler := m.scheduler
-	m.mu.Unlock()
-
-	entryID, err := scheduler.AddFunc(job.Schedule, func() {
+	entryID, err := m.scheduler.AddFunc(job.Schedule, func() {
 		m.runJob(job.Name)
 	})
 	if err != nil {
+		m.mu.Unlock()
 		return fmt.Errorf("schedule cron job %q: %w", job.Name, err)
 	}
-
-	m.mu.Lock()
 	m.entries[job.Name] = entryID
 	m.mu.Unlock()
 	m.updateNextRunAt(context.Background(), job, nextRun)
@@ -209,10 +251,20 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 }
 
 func (m *Manager) runJob(name string) {
-	ctx := context.Background()
+	m.mu.Lock()
+	if !m.started || m.stopped || m.runCtx.Err() != nil {
+		m.mu.Unlock()
+		return
+	}
+	ctx := m.runCtx
+	m.workers.Add(1)
+	m.mu.Unlock()
+	defer m.workers.Done()
 	job, err := m.repo.GetByName(ctx, name)
 	if err != nil {
-		m.logWarn("cron job load failed", "job", name, "error", err)
+		if !isContextCancellation(ctx, err) {
+			m.logWarn("cron job load failed", "job", name, "error", err)
+		}
 		return
 	}
 	if !job.Enabled {
@@ -221,6 +273,10 @@ func (m *Manager) runJob(name string) {
 	}
 
 	m.mu.Lock()
+	if m.stopped || ctx.Err() != nil {
+		m.mu.Unlock()
+		return
+	}
 	if m.running[job.Name] {
 		m.mu.Unlock()
 		m.logWarn("cron job skipped because previous run is still running", "job", job.Name, "handler", job.Handler)
@@ -234,16 +290,26 @@ func (m *Manager) runJob(name string) {
 	}
 	m.running[job.Name] = true
 	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		delete(m.running, job.Name)
+		m.mu.Unlock()
+	}()
 
 	startedAt := time.Now()
 	m.logInfo("cron job started", "job", job.Name, "handler", job.Handler)
 	runErr := handler(ctx, *job)
 	duration := time.Since(startedAt)
+	canceled := isContextCancellation(ctx, runErr)
+	// Final bookkeeping remains part of the tracked invocation after cancel.
+	ctx = context.WithoutCancel(ctx)
 
 	m.mu.Lock()
-	delete(m.running, job.Name)
 	entryID := m.entries[job.Name]
 	scheduler := m.scheduler
+	if m.stopped {
+		scheduler = nil
+	}
 	m.mu.Unlock()
 
 	stateJob := job
@@ -254,7 +320,7 @@ func (m *Manager) runJob(name string) {
 	}
 
 	lastError := ""
-	if runErr != nil {
+	if runErr != nil && !canceled {
 		lastError = runErr.Error()
 		m.logWarn("cron job failed", "job", job.Name, "handler", job.Handler, "duration", duration.String(), "error", runErr)
 	} else {

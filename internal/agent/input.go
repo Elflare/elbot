@@ -19,6 +19,9 @@ import (
 
 const defaultUserConfirmationTimeout = 10 * time.Minute
 
+var errInputCompacting = errors.New("正在压缩上下文，请稍后再发送。可使用 /stop 取消当前请求。")
+var errInputArchived = errors.New("当前会话已归档，不能继续聊天。若要继续，请先使用 /unarchive。")
+
 func (a *Agent) confirmationWaitTimeout(ctx context.Context) time.Duration {
 	actor := a.actor(ctx)
 	isSuperadmin := actor.Role == security.RoleSuperadmin
@@ -125,17 +128,22 @@ func (a *Agent) continueCommandInput(ctx context.Context, continuation command.C
 }
 
 func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session, text string) error {
+	locked, release, err := a.enterInput(ctx, session)
+	if errors.Is(err, errInputCompacting) || errors.Is(err, errInputArchived) {
+		a.sendChat(ctx, err.Error())
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	ctx = locked
+	release()
 	event, err := a.runHook(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Session: a.hookSession(session), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: inboundSegments(ctx, text)}})
 	if err != nil {
 		return err
 	}
 	ctx = withInboundSegments(ctx, event.Message.Segments)
 	text = llm.SegmentsTextOnly(event.Message.Segments)
-
-	if session.ArchivedAt != nil {
-		a.sendChat(ctx, "当前会话已归档，不能继续聊天。若要继续，请先使用 /unarchive。")
-		return nil
-	}
 
 	snapshot := a.turns.Snapshot(session.ID)
 	if snapshot.Phase != turn.PhaseAwaitRiskConfirm {
@@ -161,13 +169,8 @@ func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session
 		}
 	}
 
-	locked, release, err := a.sessions.EnterActivation(ctx, a.scope(ctx), session.ID)
+	locked, release, err = a.enterInput(ctx, session)
 	if err != nil {
-		return err
-	}
-	locked, err = a.captureSessionBinding(locked, session)
-	if err != nil {
-		release()
 		return err
 	}
 	ctx = locked
@@ -202,14 +205,42 @@ func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session
 		release()
 		a.sendChat(ctx, "已追加，将在当前流程下一次模型调用时带上。发送 /stop 可打断当前流程。")
 		return nil
-	case turn.PhaseCompact:
-		release()
-		a.sendChat(ctx, "正在压缩上下文，请稍后再发送。可使用 /stop 取消当前请求。")
-		return nil
 	default:
 		release()
 		return a.startChat(ctx, session, text)
 	}
+}
+
+// Preparation runs outside admission. Both entry and commit validate the same
+// activation and mode so an old input cannot write into a newly resumed session.
+func (a *Agent) enterInput(ctx context.Context, row *storage.Session) (context.Context, func(), error) {
+	locked, release, err := a.sessions.EnterActivation(ctx, a.scope(ctx), row.ID)
+	if err != nil {
+		return ctx, nil, err
+	}
+	locked, err = a.captureSessionBinding(locked, row)
+	if err == nil {
+		var latest *storage.Session
+		latest, err = a.store.Sessions().Get(locked, row.ID)
+		if err == nil {
+			switch {
+			case latest.Mode != row.Mode:
+				err = errors.New("当前会话模式已切换，请重新发送消息")
+			case latest.ArchivedAt != nil:
+				err = errInputArchived
+			case a.compactActive(row.ID):
+				err = errInputCompacting
+			}
+		}
+	}
+	if err == nil {
+		err = ctx.Err()
+	}
+	if err != nil {
+		release()
+		return ctx, nil, err
+	}
+	return locked, release, nil
 }
 
 func (a *Agent) expireIdleCurrentSession(ctx context.Context) error {

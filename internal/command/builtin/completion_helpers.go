@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"elbot/internal/command"
+	"elbot/internal/request"
 )
 
 type completionToken struct {
@@ -71,12 +72,9 @@ func completeSessionIDs(ctx context.Context, deps Deps, query string, archived b
 	return out
 }
 
-func completeRequestIDs(deps Deps, query string, start, end int) []command.Completion {
-	if deps.Requests == nil {
-		return nil
-	}
+func completeRequestIDs(requests []request.Request, query string, start, end int) []command.Completion {
 	out := []command.Completion{}
-	for _, req := range deps.Requests.List() {
+	for _, req := range requests {
 		if query != "" && !strings.HasPrefix(req.ID, query) {
 			continue
 		}

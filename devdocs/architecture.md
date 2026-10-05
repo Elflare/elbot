@@ -29,8 +29,8 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - 共享 Session、Request、Turn、模型、上下文、工具状态、文件、发送、通知及命令实例由 app 创建。Agent 的 `NewWithOptions` 要求注入必需依赖，不补建服务或注册内置命令；测试装配位于测试文件中。
 - app 在平台启动前安装 Session 前台接管、活动会话查询和 Hook 唤醒／执行观察回调；这些执行回调遵守原有同步准入约束，生命周期通知另走信号。Agent 自身的 Prompt、命令执行器和补全组件由 Agent 组装。
 - Foundation／Runtime 工厂即使返回错误，也返回已取得资源的 Lifecycle。Runner 接管部分构建的清理责任，不启动后续阶段；延迟 Skill 加载同时提供取消上下文和实际完成信号。
-- Runner 逆序释放资源：平台停止生产后，先断开信号并关闭队列，再关闭 Hook runtime、等待 Skill 加载结束，最后关闭 Cron、SQLite 和日志。
-- 平台退出等待和后续清理共享 30 秒预算。预算到期停止等待；平台或回调仍在运行时跳过其依赖的显式释放，交给进程退出，不启动后台收尾链。正常取消／关闭预算耗尽不视为应用失败，真实错误继续返回。
+- 关闭时应用上下文立即取消 Cron handler 并停止新调度。Runner 先通过 Foundation 的 `StopCron(ctx)` 等待异步启动及在途执行（含状态保存）真正结束，再断开信号并关闭队列、关闭 Hook runtime、等待 Skill 加载结束，最后关闭 SQLite 和日志。重复停止等待同一完成结果，关闭后迟到的启动不能重新开放调度。
+- 平台退出、Cron 和后续清理共享 30 秒预算。预算到期停止等待；平台、Cron 或回调仍在运行时跳过其依赖的显式释放，交给进程退出，不启动后台收尾链。正常取消／关闭预算耗尽不视为应用失败，Cron 正常取消不报告任务失败；真实错误继续返回。
 
 <!-- locator:chatinfo -->
 <!-- locator:signal -->
@@ -107,6 +107,7 @@ Slash 命令链路：
 - 新命令优先做成 `internal/command/builtin/` 模块。
 - 手动压缩、Scope 解析、运行状态查询和文件提交准入通过窄接口／回调接入 Agent，不将 Agent 作为领域服务转发器。
 - 会改变或切换 Session 的命令必须声明 `command.Info.SessionEffect`，命令执行器据此处理压缩和 pending 确认冲突，不维护命令名白名单。
+- `/stop` 的请求编号、ID 及补全对普通用户只使用当前 Session；超级管理员保留全局管理。取消前在 Session 准入内复核原绑定和目标请求，切离再恢复也不能复用旧绑定。补全 Router 将解析后的 Actor 传给命令参数补全。
 - Session 规则放在 `session.Service`；命令只解析参数和格式化结果，Agent 只编排命令与普通输入。
 - 命令详细帮助写在 `command.Info.Help`。
 - 用户可见命令变化要同步 `docs/commands.md` 和 `CHANGELOG.md`。
@@ -161,6 +162,7 @@ Tool Runtime 负责注册、schema、权限、风险、确认详情、用户侧 
 - 按前台/后台过滤 foreground-only 工具。
 - 处理工具名解析、风险确认和批量工具预览。
 - 同一输入的 `@tool`／`@skill` 预加载、一次工具发现或后台预加载，各自在一次 StateService 提交中合并所有工具状态；后台原生和 Elwisp 工具一起合并。成功才更新调用快照并报告注入成功。失败保留原工具状态并返回错误，已经完成的工具动作不回滚或自动重跑。
+- Agent 在输入 Hook 和预加载前拒绝压缩期输入；耗时准备在锁外，提交前重新取得原绑定准入，检查取消、绑定、模式和压缩状态。纯指令输入同样检查；拒绝时不保存缓存、tag 或规则卡展示状态，也不报告注入成功。准入规则不进入 PreloadService／StateService。
 - 前台 chat 不预加载 Skill、不读写工具状态，也不注入工具标签提示。LLM 请求与响应边界丢弃强行注入的 schema／tool calls，不进入工具循环。
 - 后台 Session 固定为 `background`。首次创建时将显式工具、外部工具、Skill runner 及必要依赖一并交 StateService 提交；同 Session 的续跑和格式重试只恢复此状态，忽略新工具参数。首轮没有工具即始终没有工具，直到前台接管。
 - 后台 schema 只取允许的缓存项，禁止 `discover_tool`、`workspace` 和 ForegroundOnly 工具；请求 Hook 不能扩大 schema 集合。工具调用在准备 Hook 改名之后、风险评估和副作用之前按缓存白名单检查，不回退全 Registry。
@@ -310,6 +312,8 @@ Session 服务唯一管理 current 绑定及其同步失效。绑定只公开 `S
 
 `PrepareBackground` 创建或复用后台会话，在同一 `Session.Mode` 字段固定 `background`，管理标题及后台身份 metadata，不激活前台 current；复用时保留其他模块字段，拒绝已被前台接管的会话。首次后台工具状态由调用方另交 StateService 提交。
 
+`CreateCompacted` 接收来源 Session ID、预分配的新 ID、标题与已准备的 metadata，在准入内复核来源及前台原绑定，继承归属和模式，统一设置命名字段并保存新会话。前台更新 current，后台不创建前台绑定；保存失败不改变绑定。Session 不依赖 contextmgr，摘要、seed、代数及压缩标题材料仍归上下文服务，执行交接仍归 Agent。Fork 保留来源模式。
+
 仅发布 `BindingChanged{Old, New, Reason}`，覆盖创建、恢复、Fork、重置、删除、过期和记录缺失导致的 current 变化，不发布一般字段或持久化增删事件。删除会失效所有指向该记录的绑定。信号在状态与准入锁释放后发出，允许回调重入。app 持有独立撤销清理队列及订阅，以 `FollowExecutor + CancelPending` 清理指定旧绑定；队列延迟不影响同步失效，关闭沿用共享 30 秒预算。维护任务复用运行中的 Session 服务。
 
 短准入按 Scope → 排序后的 SessionID → 状态锁取得。Scope 保护 current 解析与切换，SessionID 协调 Turn 启动、停止、交接、删除和清理；LLM、工具、Hook、发送和信号回调均在锁外。Session 通过注入的只读执行状态判断忙闲，当前非 idle 时禁止切离，显式删除拒绝执行中的 Session，维护清理跳过忙碌项并在条件删除时复核归档、置顶和时间。不同 Scope 不共用全局准入锁。
@@ -326,7 +330,7 @@ Session 命令的分页选择和维护配置由 `SessionCommandState` 按 Scope 
 - app 构造共享 `modelmgr.Service`，注入 Agent、模型命令及 Elnis 槽位解析。服务唯一持有模式／槽位、compact、naming 选择，provider 客户端和模型目录缓存；不依赖 Agent、Session 或命令包。
 - 命令用 Session／Scope 确定当前模式，模型匹配和切换由服务执行。目录按 provider 并行查询，缓存模型与错误，显式刷新；配置模型始终参与合并，编号在筛选前统一分配。目录结果和选择状态以独立快照交付。
 - 切换串行构建候选状态，调用 `config.SaveState` 原子替换状态文件后再发布内存状态；失败保留旧选择。写盘不持有状态读锁，读取方继续使用旧快照。状态文件保留原有字段及默认 Session 模式；未配置路径的独立实例仅更新内存。
-- `Selection` 固定 provider、模型和客户端。对话固定本次 Turn 选择；压缩固定专用选择或本次对话 fallback；命名同时固定专用选择及 work fallback。LLM Hook 仍可按既有协议改写单次请求。
+- `Selection` 固定 provider、模型和客户端。对话固定本次 Turn 选择；压缩固定专用选择或本次对话 fallback；命名同时固定专用选择及 work fallback。Turn／Request Prepared Hook 的 provider/model 只读，Go Handler 的相关修改不回写模型快照；当前消息仍按各 Hook 点的原契约修改。前台接管保留明确的重新选择边界。
 - `background` 只是 Session 模式，没有对应模型槽位。默认后台选择 work 模型；Elnis 保留 elwisp1/2/3 槽位及缺省回退 work。Cron 任务可显式指定 provider/model，由共享 modelmgr 校验，不改变全局选择。
 - 标题生成与压缩调度留在原模块，不保存独立模型选择。app 将模型服务的重试回调接入 `notification/rules.ModelRetry`；客户端配置在启动后保持不变。
 

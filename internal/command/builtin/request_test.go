@@ -8,6 +8,7 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/request"
+	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
@@ -91,7 +92,7 @@ func TestFormatActiveRequestsUsesTree(t *testing.T) {
 }
 
 func TestStopCommandCancelsNumberedHookRequest(t *testing.T) {
-	ctx := context.Background()
+	ctx := security.WithActor(context.Background(), security.Actor{Role: security.RoleSuperadmin})
 	manager := request.NewManager(time.Minute)
 	turnReq, turnCtx, turnDone, err := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	if err != nil {
@@ -116,7 +117,7 @@ func TestStopCommandCancelsNumberedHookRequest(t *testing.T) {
 }
 
 func TestStopCommandCancelsNumberedChildRequest(t *testing.T) {
-	ctx := context.Background()
+	ctx := security.WithActor(context.Background(), security.Actor{Role: security.RoleSuperadmin})
 	manager := request.NewManager(time.Minute)
 	turnReq, turnCtx, turnDone, err := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	if err != nil {
@@ -141,7 +142,7 @@ func TestStopCommandCancelsNumberedChildRequest(t *testing.T) {
 }
 
 func TestStopCommandCancelsNumberedTurnAndChildren(t *testing.T) {
-	ctx := context.Background()
+	ctx := security.WithActor(context.Background(), security.Actor{Role: security.RoleSuperadmin})
 	manager := request.NewManager(time.Minute)
 	turnReq, turnCtx, _, err := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	if err != nil {
@@ -173,7 +174,7 @@ func TestStopCommandCompletesRequestIDs(t *testing.T) {
 
 	cmd := NewStop(Deps{Sessions: session.NewService(newCommandTestStore(t)), Requests: manager}).(command.Completer)
 	prefix := started.ID[:8]
-	got := cmd.Complete(context.Background(), command.CompletionRequest{Raw: "/stop " + prefix, Prefix: "/", Name: "stop", Args: prefix, Cursor: len("/stop ") + len(prefix)})
+	got := cmd.Complete(security.WithActor(context.Background(), security.Actor{Role: security.RoleSuperadmin}), command.CompletionRequest{Raw: "/stop " + prefix, Prefix: "/", Name: "stop", Args: prefix, Cursor: len("/stop ") + len(prefix)})
 	if len(got) != 1 || got[0].Text != started.ID || got[0].Kind != "request_id" {
 		t.Fatalf("Complete = %#v", got)
 	}
