@@ -10,10 +10,20 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"elbot/internal/chatinfo"
 	"elbot/internal/delivery"
 )
 
+func testTargetContext(t target) context.Context {
+	id := t.UserID
+	if t.MessageType == "group" {
+		id = t.GroupID
+	}
+	return chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ScopeID: oneBotTargetScope(t), ConversationKind: chatinfo.ConversationKind(t.MessageType), ConversationID: fmt.Sprint(id)}})
+}
+
 func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
+
 	var calls atomic.Int64
 	transport := newTestTransport(t, func(req request) response {
 		calls.Add(1)
@@ -21,7 +31,7 @@ func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
 	})
 	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
 	adapter.transport = transport
-	ctx := context.WithValue(context.Background(), targetKey{}, target{MessageType: "group", GroupID: 9})
+	ctx := testTargetContext(target{MessageType: "group", GroupID: 9})
 
 	receipt, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")}})
 	if err != nil {
@@ -43,7 +53,7 @@ func TestSendNoticeKeepsPrivateToolPreview(t *testing.T) {
 	})
 	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
 	adapter.transport = transport
-	ctx := context.WithValue(context.Background(), targetKey{}, target{MessageType: "private", UserID: 1})
+	ctx := testTargetContext(target{MessageType: "private", UserID: 1})
 
 	receipt, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")}})
 	if err != nil {
@@ -208,7 +218,7 @@ func TestSendRecordUsesPrivateAndGroupMessageAPIs(t *testing.T) {
 			})
 			adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
 			adapter.transport = transport
-			ctx := context.WithValue(context.Background(), targetKey{}, tc.target)
+			ctx := testTargetContext(tc.target)
 			out := delivery.Output{Kind: delivery.KindRecord, Source: delivery.Source{URL: "https://example.com/voice.mp3"}}
 			receipt, err := adapter.SendChat(ctx, []delivery.Output{out})
 			if err != nil {
@@ -250,7 +260,7 @@ func TestSendContextOutputReturnsSendFailureWithoutFallbackMessage(t *testing.T)
 	})
 	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
 	adapter.transport = transport
-	ctx := context.WithValue(context.Background(), targetKey{}, target{MessageType: "private", UserID: 1})
+	ctx := testTargetContext(target{MessageType: "private", UserID: 1})
 
 	_, err := adapter.SendChat(ctx, []delivery.Output{delivery.Emoticon("14", "开心", "")})
 	if err == nil {

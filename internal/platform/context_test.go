@@ -8,7 +8,7 @@ import (
 )
 
 func TestMessageContextInstallsPublicSnapshot(t *testing.T) {
-	msg := MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ScopeID: "group:7", ConversationID: "7", ConversationKind: chatinfo.ConversationGroup}, Identity: chatinfo.Identity{PlatformUserID: "10"}}, PlatformMessageID: "original"}
+	msg := MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ScopeID: "group:7", ConversationID: "7", ConversationKind: chatinfo.ConversationGroup}, Identity: chatinfo.Identity{PlatformUserID: "10"}, PlatformMessageID: "original"}}
 	ctx := WithMessageContext(context.Background(), msg)
 	want := msg.Info
 	msg.Info.Identity.PlatformUserID = "other"

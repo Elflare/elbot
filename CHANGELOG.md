@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 统一发送链路现在同时保留成功结果与错误。Telegram 已发出部分分页时不再从头降级重发，避免重复消息。
+- 启动插件告警不再等待 Agent 创建后补发；交互模式直接显示于本地 CLI，service 模式记录实际告警内容。
 - 工具发现、预载现在是事务写入session。
 - 模型切换现在先原子保存 `state.toml` 再生效，并发切换不覆盖彼此更新。命名模型与 work fallback 改为每次操作从共享模型服务取得快照，后续命名跟随新选择，在途命名、对话和压缩保持本次选择。
 - Session 绑定由 Session 服务统一同步失效，修复旧工具／确认在切走再恢复后复活，以及延迟撤销清理影响新绑定的问题；运行中会话拒绝切离和删除，维护清理复用实时忙闲状态。

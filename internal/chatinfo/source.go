@@ -1,5 +1,6 @@
-// Package chatinfo carries immutable, per-message conversation and sender facts.
-// It deliberately has no dependency on permissions, sessions or delivery.
+// Package chatinfo carries per-message conversation, sender and reply facts.
+// Platforms own opaque extensions. It has no dependency on permissions,
+// sessions, delivery or concrete platform implementations.
 package chatinfo
 
 type ConversationKind string

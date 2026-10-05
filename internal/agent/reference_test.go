@@ -35,12 +35,12 @@ func TestReferencedOutputMediaReachesVisionAndCanonicalSession(t *testing.T) {
 	}})
 	f := &fakeLLM{replies: []string{"done"}}
 	a := New(&fakePlatform{}, f, "test-model", config.ProviderConfig{}, store)
+	a.RegisterPlatformSender("telegram", a.platform)
 	a.media = center
 	resolver := &inboundMediaResolver{}
-	msg := platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "telegram", ScopeID: "group:9", ConversationKind: chatinfo.ConversationGroup}, Identity: chatinfo.Identity{PlatformUserID: "1"}}, ReplyToMessageID: "sent", MediaResolver: resolver,
+	msg := platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "telegram", ScopeID: "group:9", ConversationKind: chatinfo.ConversationGroup}, Identity: chatinfo.Identity{PlatformUserID: "1"}, ReplyToMessageID: "sent"}, MediaResolver: resolver,
 		Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "看看"}}, ContextText: ref.Text, Reply: ref.Reply,
-		ContextSegments: append([]platform.MessageSegment{{Type: platform.SegmentText, Text: ref.Text}}, ref.ReferenceSegments...),
-	}
+		ContextSegments: append([]platform.MessageSegment{{Type: platform.SegmentText, Text: ref.Text}}, ref.ReferenceSegments...)}
 	ctx = platform.WithMessageContext(ctx, msg)
 	if err := a.HandleMessage(ctx, "看看"); err != nil {
 		t.Fatal(err)

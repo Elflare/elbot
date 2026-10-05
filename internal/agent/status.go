@@ -4,13 +4,8 @@ import (
 	"context"
 	"time"
 
-	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 )
-
-type runtimeStatusSender interface {
-	SetRuntimeStatus(context.Context, runtimestatus.Snapshot) error
-}
 
 func (a *Agent) updateRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) {
 	foregroundTurnOutput{agent: a}.PublishRuntimeStatus(ctx, snapshot)
@@ -33,27 +28,13 @@ func (a *Agent) publishRuntimeStatus(ctx context.Context, snapshot runtimestatus
 	if snapshot.SessionID == "" {
 		return
 	}
-	if sender := a.runtimeStatusSender(ctx); sender != nil {
-		_ = sender.SetRuntimeStatus(ctx, snapshot)
-	}
+	_ = a.dispatcher.SetRuntimeStatus(ctx, snapshot)
 }
 
 func (a *Agent) runtimeStatusForSession(sessionID string) runtimestatus.Snapshot {
 	a.statusMu.Lock()
 	defer a.statusMu.Unlock()
 	return a.runtimeStatus[sessionID]
-}
-
-func (a *Agent) runtimeStatusSender(ctx context.Context) runtimeStatusSender {
-	if msg, ok := platform.MessageContextFrom(ctx); ok {
-		if sender, ok := msg.Sender.(runtimeStatusSender); ok {
-			return sender
-		}
-	}
-	if sender, ok := a.platform.(runtimeStatusSender); ok {
-		return sender
-	}
-	return nil
 }
 
 func mergeRuntimeStatus(previous, next runtimestatus.Snapshot) runtimestatus.Snapshot {

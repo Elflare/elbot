@@ -41,7 +41,7 @@ func (defaultIntegrationFactory) Attach(ctx context.Context, req IntegrationRequ
 			PlatformCallers:  platformCallerResolver{runtimes: platforms.Runtimes},
 			Audit:            auditFunc(foundation.Logs),
 			Send: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-				return runtime.Agent.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
+				return runtime.Dispatcher.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
 			},
 			Runner: runtime.Agent,
 			ResolveModel: func(slot string) config.ModelSelection {
@@ -60,6 +60,14 @@ func (defaultIntegrationFactory) Attach(ctx context.Context, req IntegrationRequ
 	registerCommandCatalogs(runtime.Agent, platforms.Runtimes)
 	if runtime.Signals == nil {
 		return PlatformComponents{}, fmt.Errorf("app: runtime has no signal owner")
+	}
+	if runtime.Dispatcher == nil {
+		return PlatformComponents{}, fmt.Errorf("app: runtime has no dispatcher")
+	}
+	for _, adapter := range platforms.Runtimes {
+		if adapter != nil {
+			runtime.Dispatcher.RegisterPlatformSender(adapter.Name(), adapter)
+		}
 	}
 	if err := runtime.Signals.connectPlatforms(runtime.Agent, platforms.Runtimes, foundation.Logger); err != nil {
 		return PlatformComponents{}, err

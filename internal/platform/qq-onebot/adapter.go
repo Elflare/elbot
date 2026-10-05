@@ -97,8 +97,6 @@ type target struct {
 	GroupID     int64
 }
 
-type targetKey struct{}
-
 func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, logger *slog.Logger, superadmins []string, commandPrefixes []string, configEnvDir, attachmentDir string, maxReceiveFileBytes int64, downloadTimeoutSecs int) (*Adapter, error) {
 	var cfg Config
 	if err := platform.DecodeConfig(raw, &cfg); err != nil {
@@ -232,9 +230,9 @@ func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (deli
 	if text, ok := textOutputs(outputs); ok {
 		return a.sendContextText(ctx, text)
 	}
-	t, ok := ctx.Value(targetKey{}).(target)
-	if !ok {
-		return delivery.Receipt{}, fmt.Errorf("qq send target missing")
+	t, err := contextTarget(ctx)
+	if err != nil {
+		return delivery.Receipt{}, err
 	}
 	segments, err := outputSegments(a.cfg.SendFileMode, outputs...)
 	if err != nil {
@@ -312,11 +310,11 @@ func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (deliv
 			copyTarget.ScopeID = ""
 			notice.Target = copyTarget
 			sent, err := a.SendNotice(ctx, notice)
+			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
+			receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 			if err != nil {
 				return receipt, err
 			}
-			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
-			receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 		}
 		return receipt, nil
 	}
@@ -346,23 +344,23 @@ func isGroupToolPreviewNotice(ctx context.Context, outputs []delivery.Output) bo
 	if len(outputs) != 1 || outputs[0].Kind != delivery.KindText || !strings.HasPrefix(strings.TrimSpace(outputs[0].Text), "[tool]") {
 		return false
 	}
-	t, ok := ctx.Value(targetKey{}).(target)
-	return ok && t.MessageType == "group"
+	t, err := contextTarget(ctx)
+	return err == nil && t.MessageType == "group"
 }
 
 func (a *Adapter) sendContextText(ctx context.Context, text string) (delivery.Receipt, error) {
 	if strings.TrimSpace(text) == "" {
 		return delivery.Receipt{}, nil
 	}
-	t, ok := ctx.Value(targetKey{}).(target)
-	if !ok {
-		return delivery.Receipt{}, fmt.Errorf("qq send target missing")
+	t, err := contextTarget(ctx)
+	if err != nil {
+		return delivery.Receipt{}, err
 	}
 	var receipt delivery.Receipt
 	for _, page := range qqTextPages(text) {
 		id, err := a.sendQQText(ctx, t, page)
 		if err != nil {
-			return delivery.Receipt{}, err
+			return receipt, err
 		}
 		if strings.TrimSpace(id) != "" {
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, id)
@@ -426,6 +424,23 @@ func oneBotTargetScope(target target) string {
 	}
 	return ""
 }
+func contextTarget(ctx context.Context) (target, error) {
+	info, ok := chatinfo.FromContext(ctx)
+	if !ok || info.Source.Platform != "qqonebot" {
+		return target{}, fmt.Errorf("qq send target missing")
+	}
+	out := delivery.Target{ScopeID: info.Source.ScopeID}
+	if info.Source.ConversationID != "" {
+		switch info.Source.ConversationKind {
+		case chatinfo.ConversationGroup:
+			out.GroupID = info.Source.ConversationID
+		case chatinfo.ConversationPrivate:
+			out.PrivateUserID = info.Source.ConversationID
+		}
+	}
+	return targetToQQ(out)
+}
+
 func targetToQQ(outTarget delivery.Target) (target, error) {
 	if strings.TrimSpace(outTarget.PrivateUserID) == "" && strings.TrimSpace(outTarget.GroupID) == "" {
 		scope := strings.TrimSpace(outTarget.ScopeID)
@@ -603,11 +618,11 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 				GroupCard:      strings.TrimSpace(event.Sender.Card),
 				DisplayName:    displayName(event.Sender, event.UserID),
 			},
+			PlatformMessageID: strconv.FormatInt(event.MessageID, 10),
+			ReplyToMessageID:  normalized.ReplyID,
+			ReplyToSenderID:   a.replyToSenderID(ctx, event, normalized.ReplyID),
 		},
 		GroupRole:             oneBotGroupRole(event),
-		PlatformMessageID:     strconv.FormatInt(event.MessageID, 10),
-		ReplyToMessageID:      normalized.ReplyID,
-		ReplyToSenderID:       a.replyToSenderID(ctx, event, normalized.ReplyID),
 		MediaResolver:         a,
 		Sender:                a,
 		BufferAssistantOutput: true,
@@ -625,7 +640,6 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		},
 	}
 	msgCtx := platform.WithMessageContext(ctx, messageCtx)
-	msgCtx = context.WithValue(msgCtx, targetKey{}, target{MessageType: event.MessageType, UserID: event.UserID, GroupID: event.GroupID})
 
 	var referenceSegments []platform.MessageSegment
 	if normalized.ReplyID != "" {
@@ -653,7 +667,6 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 	a.recordChatMessage(ctx, event, normalized, messageCtx.Reply)
 	messageCtx.Segments = finalMessageSegments(text, currentSegments, nil)
 	msgCtx = platform.WithMessageContext(ctx, messageCtx)
-	msgCtx = context.WithValue(msgCtx, targetKey{}, target{MessageType: event.MessageType, UserID: event.UserID, GroupID: event.GroupID})
 	if strings.TrimSpace(text) == "" && len(currentSegments) == 0 {
 		return
 	}

@@ -34,7 +34,7 @@ func (a *Adapter) handleGroupMessage(ctx context.Context, handler platform.Platf
 }
 
 func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.PlatformHandler, p payload, msg inboundMessage, conversation chatinfo.ConversationKind, mentionedBot bool) {
-	senderID, scopeID, targetKind, targetID := inboundRoute(msg, conversation)
+	senderID, scopeID, _, targetID := inboundRoute(msg, conversation)
 	if senderID == "" {
 		label := "member_openid"
 		if conversation == chatinfo.ConversationPrivate {
@@ -76,9 +76,10 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 				ActorID:        actorID,
 				PlatformUserID: senderID,
 			},
+			PlatformMessageID: strings.TrimSpace(msg.ID),
+			ReplyToMessageID:  replyID,
+			PlatformData:      messageData{EventID: strings.TrimSpace(p.ID), EventType: p.Type},
 		},
-		PlatformMessageID:     strings.TrimSpace(msg.ID),
-		ReplyToMessageID:      replyID,
 		Sender:                a,
 		BufferAssistantOutput: true,
 		Segments:              segments,
@@ -96,8 +97,6 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 		},
 	}
 	msgCtx := platform.WithMessageContext(ctx, messageCtx)
-	target := sendTarget{Kind: targetKind, OpenID: targetID, MsgID: msg.ID}
-	msgCtx = context.WithValue(msgCtx, targetKey{}, target)
 	if replyID != "" {
 		ref := refcontext.Apply(msgCtx, refcontext.Options{
 			Store:           a.store,
@@ -120,7 +119,6 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 		}
 		messageCtx.Segments = finalMessageSegments(text, segments, nil)
 		msgCtx = platform.WithMessageContext(ctx, messageCtx)
-		msgCtx = context.WithValue(msgCtx, targetKey{}, target)
 	}
 	a.recordChatMessage(ctx, msg, conversation, senderID, scopeID, text, replyID, messageCtx.Reply)
 	if err := handler.HandleMessage(msgCtx, text); err != nil {

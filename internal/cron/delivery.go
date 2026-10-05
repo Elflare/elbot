@@ -369,6 +369,7 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 		s.auditEvent("cron.send_started", attrs...)
 		s.logInfo("cron send started", attrs...)
 		receipt, err := s.sendTarget(ctx, target, []delivery.Output{out})
+		s.mapReportReceipt(ctx, jobName, platformName, mapScopeID, sessionID, messageID, receipt)
 		if err != nil {
 			err = fmt.Errorf("send %s: %w", platformName, err)
 			if isContextCancellation(ctx, err) {
@@ -379,7 +380,6 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 			s.logWarn("cron send failed", append(attrs, "error", err.Error())...)
 			continue
 		}
-		s.mapReportReceipt(ctx, jobName, platformName, mapScopeID, sessionID, messageID, receipt)
 		s.auditEvent("cron.send_completed", attrs...)
 		s.logInfo("cron send completed", attrs...)
 	}
@@ -403,6 +403,7 @@ func (s *Service) sendOutputsToPlatformsMapped(ctx context.Context, jobName stri
 			s.auditEvent("cron.send_started", attrs...)
 			s.logInfo("cron send started", attrs...)
 			receipt, err := s.sendTarget(ctx, delivery.Target{Platform: platformName, Superadmins: true}, []delivery.Output{out})
+			s.mapReportReceipt(ctx, jobName, platformName, cronScopeID(jobName), sessionID, messageID, receipt)
 			if err != nil {
 				err = fmt.Errorf("send %s: %w", platformName, err)
 				if isContextCancellation(ctx, err) {
@@ -413,7 +414,6 @@ func (s *Service) sendOutputsToPlatformsMapped(ctx context.Context, jobName stri
 				s.logWarn("cron send failed", "job", jobName, "platform", platformName, "target", "superadmins", "kind", out.Kind, "error", err.Error())
 				continue
 			}
-			s.mapReportReceipt(ctx, jobName, platformName, cronScopeID(jobName), sessionID, messageID, receipt)
 			s.auditEvent("cron.send_completed", attrs...)
 			s.logInfo("cron send completed", attrs...)
 		}

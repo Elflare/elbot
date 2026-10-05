@@ -402,6 +402,7 @@ func TestNonCLIChatToolCallWithAssistantTextSkipsToolArgumentPreview(t *testing.
 	}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"qq": {"1"}}))
+	a.RegisterPlatformSender("qq", p)
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())

@@ -30,7 +30,7 @@ func TestInboundMediaAssociatesHistoryPositions(t *testing.T) {
 	if err := center.History.Append(ctx, row); err != nil {
 		t.Fatal(err)
 	}
-	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "p", ScopeID: "s"}}, PlatformMessageID: "1", Segments: segments, MediaResolver: resolver})
+	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "p", ScopeID: "s"}, PlatformMessageID: "1"}, Segments: segments, MediaResolver: resolver})
 	resolved, _ := platform.MessageContextFrom(a.materializePlatformMedia(ctx))
 	ids, err := center.HistoryIDs(ctx, *row)
 	if err != nil || len(ids) != 1 || ids[2] != resolved.Segments[2].MediaID {

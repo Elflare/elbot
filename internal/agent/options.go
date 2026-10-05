@@ -8,12 +8,13 @@ import (
 	agentcommands "elbot/internal/agent/commands"
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
-	"elbot/internal/delivery"
+	"elbot/internal/delivery/dispatch"
 	"elbot/internal/fileops"
 	"elbot/internal/hook"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
+	"elbot/internal/notification"
 	"elbot/internal/platform"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -41,7 +42,8 @@ type Options struct {
 	HookService           agentcommands.HookService
 	HookManager           hook.Manager
 	HookRuntime           HookRouter
-	OutputManager         delivery.Manager
+	Dispatcher            *dispatch.Router
+	Notifications         *notification.Manager
 	Logs                  LogManager
 	ToolRegistry          *tool.Registry
 	FileRollback          *fileops.Service

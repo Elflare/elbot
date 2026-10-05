@@ -38,10 +38,10 @@ rg -n "func Run|service run|completion|--client|RunCron" cmd internal/app intern
 <!-- locator:signal -->
 ## 公共信息与信号
 
-- `internal/chatinfo/`：每条消息的来源与发送者值快照、context 存取；不承载权限或发送能力。
+- `internal/chatinfo/`：每条消息的来源、发送者、公共消息／回复 ID、平台扩展及 context 存取；扩展遵守必要、不可变、不序列化的约定，不承载权限或 Sender。
 - `internal/signal/`：泛型信号、连接句柄、有界串行执行器，以及独立的取消生命周期和关闭策略。
 - `internal/platform/signals.go`：平台 Connected 事件及发布接口；连接归 app 持有。
-- `internal/platform/platform.go`：组合公共 Info 的平台消息上下文及原回复信息。
+- `internal/platform/platform.go`：嵌入公共 Info 的平台消息上下文、正文和 Sender 覆盖。
 - `internal/platform/cli/message.go`：scanner／TUI 共用的本地身份入口。
 
 <!-- locator:config -->
@@ -82,7 +82,7 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 - `internal/media/platform.go`：共享平台导入、历史媒体位置关联与本地 ID 查询；`manager.go`、`image.go`：统一媒体入库和持久化前图片压缩；`resolver.go`：LLM 媒体解析与传输选择；`history.go`：跨库历史 owner 分页对账。
 - `internal/storage/sqlite/media_history.go`：主库历史媒体关联与引用事务，区别于机器人发送输出索引。
 - `internal/agent/reference.go`：只读提供当前 Session ID，供平台引用续聊/fork 判定。
-- `internal/agent/media_output.go`：发送前归一、发送副本解析与有序媒体回执缓存。
+- `internal/delivery/dispatch/media.go`：发送前归一、发送副本解析与有序媒体回执缓存。
 - `internal/agent/options.go`、`logging.go`、`identity.go`：运行配置、日志和 Actor/Scope 解析。
 - `internal/agent/chat.go`：普通对话主流程。
 - `internal/agent/chat_llm.go`：LLM 调用和消息转换。
@@ -230,8 +230,8 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 - `internal/hook/rules/`：规则 Hook；`rules.go` 提供类型和模块入口，`config.go`/`toml_error.go` 负责配置加载与诊断，`rule.go`/`action.go`/`exec.go` 负责规则及 Action 执行，`exec_process_*.go` 负责一次性 exec 的跨平台进程树终止，`detail.go` 负责列表详情。
 - `internal/hook/runtime/`：Worker Hook 配置、进程、双向 Pipe RPC、waiting 路由、工具桥接和进程内 SharedState。
 - `internal/agent/hooks.go`：Agent 的 Hook 执行、上下文和 continuation 接入。
-- `internal/agent/output.go`：Agent 的 Output Manager 与平台 sender 接入。
-- `internal/agent/media_output.go`：平台发送前解析 Hook/Tool 输出中的 media，并清理受控临时导出。
+- `internal/agent/output.go`：assistant 输出 Hook 编排、共享发送服务调用与 Session 消息关联。
+- `internal/delivery/dispatch/media.go`：平台发送前解析 Hook/Tool 输出中的 media，并清理受控临时导出。
 - `docs/hooks.md`：用户侧 Hook 文档。
 
 常用搜索：
@@ -241,15 +241,20 @@ rg -n "Event|Handler|Control|plugins/hooks.toml|exec|hook.v2|runtime|SharedState
 ```
 
 <!-- locator:output -->
+<!-- locator:notification -->
 ## Output、Delivery 与发送
 
 适用任务：输出意图结构、文本/图片/文件/语音/at/reply/emoticon 发送、流式输出、notice、reasoning、runtime status。
 
 先看：
 
-- `internal/delivery/`：平台无关输出意图和发送管理。
+- `internal/delivery/`：平台无关输出意图、Target、Receipt、校验和发送契约。
+- `internal/delivery/dispatch/router.go`、`media.go`：共享平台路由、可选流式／状态能力、媒体准备和回执缓存；普通失败与部分成功都保留实际结果。
+- `internal/notification/manager.go`：通知意图、来源／Binding／Sender 覆盖捕获、取消／失效检查、无来源 service 日志策略；不另建发送器或媒体实现。
+- `internal/notification/rules/`：平台连接 Hook 输出、Hook 失败、模型重试／降级和执行错误文案。
+- `internal/app/runtime.go`、`integrations.go`、`signals.go`：共享发送／通知服务装配、外部宿主接入和平台连接执行器。
 - `internal/agent/turn_output.go`：Agent turn 输出适配。
-- `internal/agent/output.go`：Agent 的 Hook/工具输出意图和平台 sender 接入。
+- `internal/agent/output.go`：Agent 的输出 Hook 编排和 Session 平台消息关联。
 - `internal/platform/platform.go`：平台发送抽象。
 
 常用搜索：
@@ -338,7 +343,7 @@ rg -n "ContextLoader|Compress|Window|System Prompt|MessageSegment|usage" interna
 - `internal/llm/openai/`：OpenAI-compatible adapter。
 - `internal/modelmgr/service.go`、`selection.go`：共享服务与构造校验，模式／槽位、压缩和命名选择及请求快照。
 - `internal/modelmgr/catalog.go`、`state.go`：模型目录缓存、筛选与 provider 错误，串行保存后发布选择状态；原子文件写入复用 `config.SaveState` 和 `fileops`。
-- `internal/agent/chat_llm.go`、`llm_retry.go`：Agent LLM 调用适配与现有重试通知接线。
+- `internal/agent/chat_llm.go`：Agent LLM 调用适配；`internal/notification/rules/model.go`：模型重试／降级提示。
 - `internal/agent/title.go`：标题生成，开始时从模型服务取得命名与 work fallback 快照。
 
 常用搜索：

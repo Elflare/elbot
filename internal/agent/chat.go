@@ -13,6 +13,7 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
+	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	sessionpkg "elbot/internal/session"
@@ -139,12 +140,11 @@ func (a *Agent) handleTurnContextDone(ctx context.Context, sessionID string, err
 		}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		message := "本轮处理已超时停止，可继续发送消息恢复或重试。"
 		if a.logger != nil {
 			a.logger.WarnContext(ctx, "turn response timeout", "session_id", sessionID, "error", err.Error())
 		}
 		a.audit("turn_response_timeout", "session_id", sessionID, "error", err.Error())
-		out.SendNotice(ctx, slog.LevelWarn, message)
+		out.SendNotice(ctx, slog.LevelWarn, notificationrules.TurnTimeout)
 	}
 	return nil
 }
@@ -206,7 +206,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	turnStartedAt := storage.Now()
 	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
 	scope := a.scope(ctx)
-	llmMessages, err := a.promptBuilder.Build(ctx, PromptBuildRequest{Session: session, Scope: scope, Meta: a.conversationMeta(ctx, scope), Messages: messages, Summary: loaded.Summary})
+	llmMessages, err := a.promptBuilder.Build(ctx, PromptBuildRequest{Session: session, Scope: scope, Messages: messages, Summary: loaded.Summary})
 	if err != nil {
 		return err
 	}
@@ -273,7 +273,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		if sessionpkg.WasPromoted(session) && !foregroundPrepared {
 			foregroundPrepared = true
 			scope := a.scope(reqCtx)
-			prompt, err := a.promptBuilder.Build(reqCtx, PromptBuildRequest{Session: session, Scope: scope, Meta: a.conversationMeta(reqCtx, scope)})
+			prompt, err := a.promptBuilder.Build(reqCtx, PromptBuildRequest{Session: session, Scope: scope})
 			if err != nil {
 				return err
 			}
@@ -411,6 +411,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		return a.handleTurnContextDone(ctx, session.ID, err, out)
 	}
 	platformOutputText := platformFinalText
+	var finalSendErr error
 	backgroundOutput := isBackgroundSession(session)
 	emptyAssistantResponse := strings.TrimSpace(platformOutputText) == "" && strings.TrimSpace(finalText) == "" && len(deferredOutputs) == 0
 	if emptyAssistantResponse && !backgroundOutput {
@@ -425,22 +426,20 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		}
 		if !bufferOutput {
 			if finalStream != nil {
-				receipt, err := out.ReplaceAndFinishStream(ctx, reqCtx, finalStream, platformOutputText)
-				if err != nil {
-					return err
-				}
-				finalReceipt = receipt
-			} else if receipt, err := out.SendAssistant(ctx, platformOutputText); err != nil {
-				return err
+				finalReceipt, finalSendErr = out.ReplaceAndFinishStream(ctx, reqCtx, finalStream, platformOutputText)
 			} else {
-				finalReceipt = receipt
+				finalReceipt, finalSendErr = out.SendAssistant(ctx, platformOutputText)
+			}
+			if finalSendErr != nil && len(finalReceipt.PlatformMessageIDs) == 0 {
+				return finalSendErr
 			}
 		}
 	}
 
-	if !bufferOutput {
-		if err := out.SendOutputs(ctx, deferredOutputs); err != nil {
-			return err
+	if !bufferOutput && finalSendErr == nil {
+		finalSendErr = out.SendOutputs(ctx, deferredOutputs)
+		if finalSendErr != nil && len(finalReceipt.PlatformMessageIDs) == 0 {
+			return finalSendErr
 		}
 	}
 
@@ -461,12 +460,12 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	if bufferOutput {
 		if strings.TrimSpace(platformOutputText) != "" {
 			receipt, err := out.SendAssistant(ctx, platformOutputText)
+			if persistedAssistant {
+				a.mapSentAssistantMessage(ctx, session.ID, assistantMessage.ID, receipt)
+			}
 			if err != nil {
 				a.audit("platform_send_error", "session_id", session.ID, "operation", "send_assistant_message", "error", err.Error())
 				return err
-			}
-			if persistedAssistant {
-				a.mapSentAssistantMessage(ctx, session.ID, assistantMessage.ID, receipt)
 			}
 		}
 		if err := out.SendOutputs(ctx, deferredOutputs); err != nil {
@@ -474,6 +473,9 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		}
 	} else if persistedAssistant {
 		a.mapSentAssistantMessage(ctx, session.ID, assistantMessage.ID, finalReceipt)
+	}
+	if finalSendErr != nil {
+		return finalSendErr
 	}
 	if err := a.sessions.Touch(ctx, session); err != nil {
 		a.audit("persistence_error", "session_id", session.ID, "operation", "touch_session", "error", err.Error())

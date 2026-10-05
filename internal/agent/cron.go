@@ -71,7 +71,7 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 	if scopeID == "" {
 		scopeID = backgroundScopeID(req.Kind, req.Name)
 	}
-	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: platformName, ScopeID: scopeID}, Identity: chatinfo.Identity{ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, DisplayName: actor.DisplayName}}, Sender: discardSender{}, Segments: backgroundPromptSegments(req.PromptSegments)})
+	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: platformName, ScopeID: scopeID}, Identity: chatinfo.Identity{ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, Nickname: actor.Nickname, GroupCard: actor.GroupCard, DisplayName: actor.DisplayName}}, Sender: discardSender{}, Segments: backgroundPromptSegments(req.PromptSegments)})
 	ctx = security.WithPolicy(security.WithActor(ctx, actor), a.securityPolicy)
 
 	sandboxRoot := a.sandboxRoot

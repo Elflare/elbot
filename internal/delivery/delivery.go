@@ -263,7 +263,7 @@ func (m Manager) SendNotice(ctx context.Context, notice Notice) (Receipt, error)
 			attrs := outputLogAttrs(notice.Outputs[0], "platform", notice.Target.Platform, "error", err.Error())
 			m.Logger.WarnContext(ctx, "notice output failed", attrs...)
 		}
-		return Receipt{}, wrapOutputSourceError(notice.Outputs[0], err)
+		return receipt, wrapOutputSourceError(notice.Outputs[0], err)
 	}
 	return receipt, nil
 }

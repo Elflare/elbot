@@ -45,7 +45,6 @@ func (b *signalBindings) connectPlatforms(agt platformHookAgent, adapters []plat
 		if adapter == nil {
 			continue
 		}
-		agt.RegisterPlatformSender(adapter.Name(), adapter)
 		source, ok := adapter.(platform.ConnectionSource)
 		if !ok {
 			continue

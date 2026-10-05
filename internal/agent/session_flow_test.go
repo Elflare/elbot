@@ -72,6 +72,7 @@ func TestSessionIdleExpiration(t *testing.T) {
 			store := newTestStore(t)
 			f := &fakeLLM{replies: []string{"fresh reply"}}
 			a := New(p, f, "test-model", config.ProviderConfig{}, store)
+			a.RegisterPlatformSender("qq", p)
 			if tt.superadmin {
 				a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"qq": {"1"}}))
 			}
@@ -208,7 +209,7 @@ func TestLatestAssistantReferenceResumesExpiredOrResetCurrentSession(t *testing.
 	if reference.ResumeSessionID != target.ID || reference.ForkFromMessageID != "" {
 		t.Fatalf("reference action = %#v", reference)
 	}
-	resumeCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}, ReplyToMessageID: "old-answer", ResumeSessionID: reference.ResumeSessionID})
+	resumeCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}, ReplyToMessageID: "old-answer"}, ResumeSessionID: reference.ResumeSessionID})
 	if err := a.HandleMessage(resumeCtx, "continue here"); err != nil {
 		t.Fatalf("handle referenced message: %v", err)
 	}
@@ -243,7 +244,7 @@ func TestLatestAssistantReferenceResumesExpiredOrResetCurrentSession(t *testing.
 	if reference.ResumeSessionID != target.ID || reference.ForkFromMessageID != "" {
 		t.Fatalf("reference after /new = %#v", reference)
 	}
-	resetCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}, ReplyToMessageID: "continued-answer", ResumeSessionID: reference.ResumeSessionID})
+	resetCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}, ReplyToMessageID: "continued-answer"}, ResumeSessionID: reference.ResumeSessionID})
 	if err := a.HandleMessage(resetCtx, "continue after new"); err != nil {
 		t.Fatalf("handle reference after /new: %v", err)
 	}
@@ -318,6 +319,7 @@ func TestMessageContextResumeStartsTargetSession(t *testing.T) {
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"resume reply"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.RegisterPlatformSender("qq", p)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "private:1", ConversationKind: chatinfo.ConversationPrivate}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 
 	bg := &storage.Session{OwnerID: "qq:1", Platform: "qq", PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "cron"}
@@ -349,6 +351,7 @@ func TestMessageContextForkStartsForkSession(t *testing.T) {
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"fork reply"}}
 	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a.RegisterPlatformSender("qq", p)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 
 	source, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "source"})

@@ -10,11 +10,13 @@ import (
 	"elbot/internal/agent"
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
+	"elbot/internal/delivery/dispatch"
 	"elbot/internal/elvena"
 	"elbot/internal/llm"
 	"elbot/internal/maintenance"
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
+	"elbot/internal/notification"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
 )
@@ -107,14 +109,16 @@ type RuntimeRequest struct {
 }
 
 type RuntimeComponents struct {
-	Models      *modelmgr.Service
-	Signals     *signalBindings
-	Media       *media.Manager
-	Agent       *agent.Agent
-	Handler     platform.PlatformHandler
-	CronService *elcron.Service
-	ElvenaBus   *elvena.Bus
-	Lifecycle   Lifecycle
+	Dispatcher    *dispatch.Router
+	Notifications *notification.Manager
+	Models        *modelmgr.Service
+	Signals       *signalBindings
+	Media         *media.Manager
+	Agent         *agent.Agent
+	Handler       platform.PlatformHandler
+	CronService   *elcron.Service
+	ElvenaBus     *elvena.Bus
+	Lifecycle     Lifecycle
 }
 
 type RuntimeFactory interface {

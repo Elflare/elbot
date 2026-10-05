@@ -14,12 +14,15 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
+	"elbot/internal/delivery/dispatch"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
+	"elbot/internal/notification"
+	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/platform"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
@@ -34,7 +37,8 @@ import (
 // Agent is the minimal agent core that handles messages and commands.
 type Agent struct {
 	platform           platform.PlatformAdapter
-	platformSenders    map[string]delivery.MessageSender
+	dispatcher         *dispatch.Router
+	notifications      *notification.Manager
 	models             *modelmgr.Service
 	store              storage.Store
 	media              *media.Manager
@@ -53,12 +57,10 @@ type Agent struct {
 	toolState          *toolrun.StateService
 	hooks              hookRunner
 	hookRuntime        HookRouter
-	outputs            delivery.Manager
 	statusMu           sync.Mutex
 	runtimeStatus      map[string]runtimestatus.Snapshot
 	sessionCommands    *agentcommands.SessionCommandState
 	idleExpiration     session.IdleExpirationConfig
-	mediaRetentionDays int
 	sandboxRoot        string
 	logger             *slog.Logger
 	auditLogger        *slog.Logger
@@ -146,17 +148,25 @@ func NewWithOptions(opts Options) (*Agent, error) {
 	if hookManager == nil {
 		hookManager = hook.NoopManager{}
 	}
-	outputs := opts.OutputManager
-	if outputs.Sender == nil && outputs.Logger == nil {
-		outputs = delivery.NewManager(nil, nil)
+	dispatcher := opts.Dispatcher
+	var logger *slog.Logger
+	if opts.Logs != nil {
+		logger = opts.Logs.Runtime()
+	}
+	if dispatcher == nil {
+		dispatcher = dispatch.New(dispatch.Options{Primary: p, Store: store, Media: opts.Media, MediaRetentionDays: opts.MediaRetentionDays, Logger: logger})
+	}
+	notifications := opts.Notifications
+	if notifications == nil {
+		notifications = notification.New(dispatcher, logger, p != nil && p.Name() == "service")
 	}
 	a := &Agent{
 		platform:                p,
-		platformSenders:         map[string]delivery.MessageSender{},
+		dispatcher:              dispatcher,
+		notifications:           notifications,
 		models:                  opts.Models,
 		store:                   store,
 		media:                   opts.Media,
-		mediaRetentionDays:      opts.MediaRetentionDays,
 		sessions:                sessions,
 		requests:                requests,
 		turns:                   turns,
@@ -168,7 +178,6 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		toolState:               opts.ToolState,
 		hooks:                   hookManager,
 		hookRuntime:             opts.HookRuntime,
-		outputs:                 outputs,
 		runtimeStatus:           map[string]runtimestatus.Snapshot{},
 		autoConfirmSession:      map[string]bool{},
 		autoConfirmTools:        map[string]map[string]bool{},
@@ -217,9 +226,8 @@ func NewWithOptions(opts Options) (*Agent, error) {
 	a.SetToolConfig(opts.ToolsConfig)
 	a.SetToolTagConfig(opts.ToolTagsPath, opts.ToolTags)
 	a.rebuildSystemPrompt()
-	opts.Models.SetRetryNotifier(a.notifyLLMRetry)
-	if p != nil {
-		a.platformSenders[p.Name()] = p
+	if opts.Notifications == nil {
+		opts.Models.SetRetryNotifier(notificationrules.ModelRetry(notifications))
 	}
 	if err := agentcommands.RegisterDefaultModules(a.commands, agentcommands.Deps{
 		Doctor:        opts.Doctor,

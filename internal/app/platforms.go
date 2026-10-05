@@ -48,7 +48,6 @@ type platformLifecycle interface {
 }
 
 type platformHookAgent interface {
-	RegisterPlatformSender(name string, sender delivery.MessageSender)
 	NotifyPlatformConnected(ctx context.Context, platformName string)
 }
 

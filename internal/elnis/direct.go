@@ -69,10 +69,10 @@ func (s *Service) sendOutputsToTargetsMapped(ctx context.Context, eventKey strin
 	ctx = delivery.WithTemporaryConnection(ctx)
 	for _, target := range targets {
 		receipt, err := s.send(ctx, target.ToDeliveryTarget(), outputs)
+		s.mapReportReceipt(ctx, eventKey, target, sessionID, messageID, receipt)
 		if err != nil {
 			return err
 		}
-		s.mapReportReceipt(ctx, eventKey, target, sessionID, messageID, receipt)
 	}
 	return nil
 }

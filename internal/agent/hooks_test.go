@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"elbot/internal/chatinfo"
+	"elbot/internal/config"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
@@ -17,10 +18,9 @@ import (
 func TestFillHookContextAddsPlatformMessageIDs(t *testing.T) {
 	a := &Agent{platform: &fakePlatform{}, scopeID: "default"}
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq-onebot",
-		ScopeID: "group:123"}}, PlatformMessageID: "456",
-		ReplyToMessageID: "789",
-		PlatformMessage:  []byte(`[{"type":"json","data":{"data":"{}"}}]`),
-	})
+		ScopeID: "group:123"}, PlatformMessageID: "456",
+		ReplyToMessageID: "789"},
+		PlatformMessage: []byte(`[{"type":"json","data":{"data":"{}"}}]`)})
 
 	event := a.fillHookContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived})
 
@@ -41,10 +41,9 @@ func TestFillHookContextAddsPlatformMessageIDs(t *testing.T) {
 
 func TestFillHookContextKeepsExplicitPlatformMessageIDs(t *testing.T) {
 	a := &Agent{platform: &fakePlatform{}, scopeID: "default"}
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{
 		PlatformMessageID: "from-context",
-		ReplyToMessageID:  "reply-from-context",
-	})
+		ReplyToMessageID:  "reply-from-context"}})
 
 	event := a.fillHookContext(ctx, hook.Event{Platform: hook.PlatformContext{
 		PlatformMessageID: "explicit",
@@ -89,7 +88,8 @@ func TestRunHookErrorSendsFailureNotice(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("register hook: %v", err)
 	}
-	a := &Agent{platform: p, hooks: manager}
+	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a.SetHookManager(manager)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli",
 		ScopeID: "private:test"}}, Sender: p,
 	})

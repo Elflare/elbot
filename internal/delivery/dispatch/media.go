@@ -1,4 +1,4 @@
-package agent
+package dispatch
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"elbot/internal/storage"
 )
 
-func (a *Agent) prepareMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, error) {
+func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, error) {
 	if err := delivery.ValidateOutputs(outputs); err != nil {
 		return nil, err
 	}
@@ -57,7 +57,7 @@ func (a *Agent) prepareMediaOutputs(ctx context.Context, outputs []delivery.Outp
 }
 
 // Resolve only the send copy; Hook events and queued outputs keep media IDs.
-func (a *Agent) resolveMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, func(), error) {
+func (a *Router) resolveMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, func(), error) {
 	resolved := append([]delivery.Output(nil), outputs...)
 	var cleanups []func()
 	cleanup := func() {
@@ -80,7 +80,7 @@ func (a *Agent) resolveMediaOutputs(ctx context.Context, outputs []delivery.Outp
 	return resolved, cleanup, nil
 }
 
-func (a *Agent) sendPreparedMedia(ctx context.Context, outputs []delivery.Output, send func([]delivery.Output) (delivery.Receipt, error)) (delivery.Receipt, error) {
+func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Output, send func([]delivery.Output) (delivery.Receipt, error)) (delivery.Receipt, error) {
 	prepared, err := a.prepareMediaOutputs(ctx, outputs)
 	if err != nil {
 		return delivery.Receipt{}, err
@@ -99,7 +99,7 @@ func (a *Agent) sendPreparedMedia(ctx context.Context, outputs []delivery.Output
 	return receipt, sendErr
 }
 
-func (a *Agent) cacheMediaReceipt(ctx context.Context, outputs []delivery.Output, receipt delivery.Receipt) error {
+func (a *Router) cacheMediaReceipt(ctx context.Context, outputs []delivery.Output, receipt delivery.Receipt) error {
 	if a.store == nil || a.store.Media() == nil || a.mediaRetentionDays <= 0 {
 		return nil
 	}

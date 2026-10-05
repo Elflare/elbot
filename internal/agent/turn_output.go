@@ -9,7 +9,6 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 )
 
@@ -94,11 +93,7 @@ func (o backgroundTurnOutput) PublishRuntimeStatus(ctx context.Context, snapshot
 }
 
 func (a *Agent) sendTextNotice(ctx context.Context, level slog.Level, text string) {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return
-	}
-	a.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(text)}, Level: level})
+	a.notifications.Text(ctx, level, text)
 }
 
 func (a *Agent) sendPreview(ctx context.Context, text string) {
@@ -153,16 +148,13 @@ func (a *Agent) replaceAndFinishStream(ctx context.Context, streamCtx context.Co
 	}
 	receipt, err := stream.Replace(streamCtx, prepared)
 	if err != nil {
-		return delivery.Receipt{}, fmt.Errorf("stream replace: %w", err)
+		return receipt, fmt.Errorf("stream replace: %w", err)
 	}
 	finishReceipt, err := stream.Finish(streamCtx)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
 	if len(receipt.PlatformMessageIDs) == 0 {
 		receipt = finishReceipt
 	}
-	return receipt, nil
+	return receipt, err
 }
 
 func (a *Agent) replaceStreamOutput(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) error {
@@ -180,19 +172,9 @@ func (a *Agent) startMessageStream(ctx context.Context) delivery.MessageStream {
 	if bufferAssistantOutput(ctx) {
 		return nil
 	}
-	if msg, ok := platform.MessageContextFrom(ctx); ok && msg.Sender != nil {
-		if sender, ok := msg.Sender.(delivery.StreamingMessageSender); ok {
-			stream, err := sender.StartStream(ctx)
-			if err == nil {
-				return stream
-			}
-		}
+	stream, err := a.dispatcher.StartStream(ctx)
+	if err != nil {
+		return nil
 	}
-	if sender, ok := a.platform.(delivery.StreamingMessageSender); ok {
-		stream, err := sender.StartStream(ctx)
-		if err == nil {
-			return stream
-		}
-	}
-	return nil
+	return stream
 }
