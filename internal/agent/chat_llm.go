@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"elbot/internal/chatinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -54,7 +53,7 @@ func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection
 			Segments:     append([]llm.MessageSegment(nil), baseMessages[pending.messageIndex].Segments...),
 		}
 	}
-	event, err := a.runHook(ctx, hook.Event{
+	event, err := a.hooks.Run(ctx, hook.Event{
 		Point:   hook.PointLLMRequestPrepared,
 		Session: hook.SessionContext{ID: sessionID},
 		Message: hookMessage,
@@ -138,13 +137,13 @@ func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection
 			return a.callLLM(ctx, session, selection, fallbackVisionMessages(baseMessages), tools, nil, stream, out)
 		}
 		a.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", err.Error())
-		a.notifyHookError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, ElapsedMS: elapsedMillis(startedAt)}}, err)
+		a.hooks.notifyError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, ElapsedMS: elapsedMillis(startedAt)}}, err)
 		return llmCallResult{}, fmt.Errorf("chat: %w", err)
 	}
 	var assistant strings.Builder
 	var usage *llm.Usage
 	var toolCalls []llm.ToolCallRequest
-	showReasoning := a.shouldShowCLIReasoning(ctx)
+	showReasoning := a.identity.IsCLI(ctx)
 	reasoningOpen := false
 	for chunk := range ch {
 		if chunk.Error != nil {
@@ -157,7 +156,7 @@ func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection
 				return a.callLLM(ctx, session, selection, fallbackVisionMessages(baseMessages), tools, nil, stream, out)
 			}
 			a.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", chunk.Error.Error())
-			a.notifyHookError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, SourceText: assistant.String(), Text: assistant.String(), ToolCalls: toolCalls, Usage: usage, ElapsedMS: elapsedMillis(startedAt)}}, chunk.Error)
+			a.hooks.notifyError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, SourceText: assistant.String(), Text: assistant.String(), ToolCalls: toolCalls, Usage: usage, ElapsedMS: elapsedMillis(startedAt)}}, chunk.Error)
 			out.SendNotice(ctx, slog.LevelError, notificationrules.ModelInterrupted(chunk.Error))
 
 			return llmCallResult{}, markUserNotified(fmt.Errorf("chat stream: %w", chunk.Error))
@@ -190,7 +189,7 @@ func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection
 	}
 	elapsedMs := elapsedMillis(startedAt)
 	content := assistant.String()
-	event, err = a.runHook(ctx, hook.Event{
+	event, err = a.hooks.Run(ctx, hook.Event{
 		Point:   hook.PointLLMResponseReceived,
 		Session: hook.SessionContext{ID: sessionID},
 		LLM: hook.LLMPayload{
@@ -260,7 +259,7 @@ func fallbackVisionMessages(messages []llm.LLMMessage) []llm.LLMMessage {
 }
 
 func (a *Agent) notifyVisionFallbackOnce(ctx context.Context, sessionID string, out turnOutput) {
-	if !a.shouldShowCLIReasoning(ctx) {
+	if !a.identity.IsCLI(ctx) {
 		return
 	}
 	a.visionFallbackMu.Lock()
@@ -315,24 +314,6 @@ func fileSegmentText(name, fallback string) string {
 		return "[" + fallback + "]"
 	}
 	return fmt.Sprintf("[%s: %s]", fallback, name)
-}
-
-func (a *Agent) isCLIContext(ctx context.Context) bool {
-	if info, ok := chatinfo.FromContext(ctx); ok {
-		return info.Source.Platform == "cli"
-	}
-	return a.platform != nil && a.platform.Name() == "cli"
-}
-
-func (a *Agent) shouldShowCLIReasoning(ctx context.Context) bool {
-	return a.isCLIContext(ctx)
-}
-
-func (a *Agent) sendCLIReasoning(ctx context.Context, text string) {
-	if !a.shouldShowCLIReasoning(ctx) || text == "" {
-		return
-	}
-	_ = a.dispatcher.SendReasoning(ctx, text)
 }
 
 func (a *Agent) auditUsage(sessionID string, selection modelmgr.Selection, usage *llm.Usage, elapsedMs int64) {

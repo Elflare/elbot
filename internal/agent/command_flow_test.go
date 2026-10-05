@@ -93,10 +93,10 @@ func TestRegularUserCanUseOwnDataSlashCommands(t *testing.T) {
 	if !strings.Contains(p.out.String(), "new session ready") {
 		t.Fatalf("/new output = %q", p.out.String())
 	}
-	if _, err := a.sessions.Current(ctx, a.scope(ctx)); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := a.sessions.Current(ctx, a.identity.Scope(ctx)); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("current after /new = %v, want not found", err)
 	}
-	sessions, err := a.sessions.List(ctx, a.scope(ctx), "", 20)
+	sessions, err := a.sessions.List(ctx, a.identity.Scope(ctx), "", 20)
 	if err != nil {
 		t.Fatalf("list sessions after /new: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestRegularUserCanUseOwnDataSlashCommands(t *testing.T) {
 	}
 	p.out.Reset()
 
-	if _, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "mine"}); err != nil {
+	if _, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "mine"}); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 	if err := a.HandleMessage(ctx, "/sessions"); err != nil {

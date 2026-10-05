@@ -27,7 +27,7 @@ func TestRiskConfirmationExpiresAndStopsToolFlow(t *testing.T) {
 	a.userConfirmationTimeout = 20 * time.Millisecond
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "private:regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 	ctx = security.WithActor(ctx, security.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: security.RoleUser})
-	s, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "expiring confirmation"})
+	s, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "expiring confirmation"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestRiskConfirmationStopUsesStopCommandWithoutToolError(t *testing.T) {
 	var current *storage.Session
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		session, err := a.sessions.Current(ctx, a.scope(context.Background()))
+		session, err := a.sessions.Current(ctx, a.identity.Scope(context.Background()))
 		if err == nil && a.turns.Snapshot(session.ID).Phase == turn.PhaseAwaitRiskConfirm {
 			current = session
 			break
@@ -111,7 +111,7 @@ func TestRiskConfirmationDetailUsesToolProvidedDetail(t *testing.T) {
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
-	session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm custom detail"})
+	session, err := a.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm custom detail"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestRiskConfirmationConfirmToolAndConfirmAllAliases(t *testing.T) {
 		p := &fakePlatform{}
 		a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 		ctx := context.Background()
-		session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm tool"})
+		session, err := a.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm tool"})
 		if err != nil {
 			t.Fatalf("create session: %v", err)
 		}
@@ -187,7 +187,7 @@ func TestRiskConfirmationConfirmToolAndConfirmAllAliases(t *testing.T) {
 		p := &fakePlatform{}
 		a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 		ctx := context.Background()
-		session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm all"})
+		session, err := a.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm all"})
 		if err != nil {
 			t.Fatalf("create session: %v", err)
 		}
@@ -245,7 +245,7 @@ func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 	var current *storage.Session
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		sessionRow, err := a.sessions.Current(ctx, a.scope(ctx))
+		sessionRow, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
 		if err == nil && a.turns.Snapshot(sessionRow.ID).Phase == turn.PhaseAwaitRiskConfirm {
 			current = sessionRow
 			break

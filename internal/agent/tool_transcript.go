@@ -98,7 +98,7 @@ func (a *Agent) rememberDiscoveryResult(ctx context.Context, row *storage.Sessio
 	if row == nil {
 		return nil
 	}
-	update, err := toolrun.DiscoveryStateUpdate(ctx, result, a.toolRuntime.registry, a.actor(ctx), a.securityPolicy)
+	update, err := toolrun.DiscoveryStateUpdate(ctx, result, a.toolRuntime.registry, a.identity.Actor(ctx), a.identity.policy)
 	if err != nil {
 		return err
 	}

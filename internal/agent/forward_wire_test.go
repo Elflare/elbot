@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"elbot/internal/chatinfo"
-	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/llm/openai"
 	"elbot/internal/media"
@@ -57,8 +56,7 @@ func TestForwardDisplayReachesVendorInOrder(t *testing.T) {
 	}))
 	defer server.Close()
 	p := &fakePlatform{}
-	a := newTestAgent(t, p, openai.New(server.URL, "test", nil), "test-model", config.ProviderConfig{}, store)
-	a.media = center
+	a := newTestMediaAgent(t, p, openai.New(server.URL, "test", nil), store, center)
 	current := []platform.MessageSegment{{Type: platform.SegmentText, Text: "芙莉丝 比较这些图片"}, {Type: platform.SegmentImage, MediaID: images[2].ID}}
 	display := []platform.MessageSegment{
 		{Type: platform.SegmentText, Text: "<forward_message>\n小明：文字 A\n"},
@@ -156,7 +154,7 @@ func TestForwardDisplayReachesVendorInOrder(t *testing.T) {
 	if err != nil || unchanged.Text != "[forward]" || unchanged.Segments != row.Segments {
 		t.Fatalf("source history changed: %#v, %v", unchanged, err)
 	}
-	currentSession, err := a.sessions.Current(inputCtx, a.scope(inputCtx))
+	currentSession, err := a.sessions.Current(inputCtx, a.identity.Scope(inputCtx))
 	if err != nil {
 		t.Fatal(err)
 	}

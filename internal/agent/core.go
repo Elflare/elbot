@@ -13,15 +13,12 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
-	"elbot/internal/delivery/dispatch"
 	"elbot/internal/hook"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
-	"elbot/internal/notification"
 	"elbot/internal/platform"
 	"elbot/internal/request"
-	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -33,8 +30,6 @@ import (
 // Agent is the minimal agent core that handles messages and commands.
 type Agent struct {
 	platform           platform.PlatformAdapter
-	dispatcher         *dispatch.Router
-	notifications      *notification.Manager
 	models             *modelmgr.Service
 	store              storage.Store
 	media              *media.Manager
@@ -48,13 +43,13 @@ type Agent struct {
 	residentMemory     *resident.Store
 	promptBuilder      PromptBuilder
 	toolRuntime        toolRuntimeState
-	securityPolicy     *security.Policy
 	contexts           *contextmgr.Service
 	toolState          *toolrun.StateService
-	hooks              hookRunner
-	hookRuntime        HookRouter
-	statusMu           sync.Mutex
-	runtimeStatus      map[string]runtimestatus.Snapshot
+	identity           *identityResolver
+	hooks              *hookBridge
+	status             *statusRecorder
+	output             *outputSender
+	view               executionView
 	idleExpiration     session.IdleExpirationConfig
 	sandboxRoot        string
 	logger             *slog.Logger
@@ -67,8 +62,6 @@ type Agent struct {
 	visionFallbackNotified  map[string]bool
 	responseTimeout         time.Duration
 	userConfirmationTimeout time.Duration
-	actorID                 string
-	scopeID                 string
 }
 
 func responseTimeout(cfg config.LLMRequestConfig) time.Duration {
@@ -98,8 +91,6 @@ func NewWithOptions(opts Options) (*Agent, error) {
 	}
 	a := &Agent{
 		platform:                p,
-		dispatcher:              opts.Dispatcher,
-		notifications:           opts.Notifications,
 		models:                  opts.Models,
 		store:                   store,
 		media:                   opts.Media,
@@ -109,12 +100,8 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		commands:                opts.Commands,
 		soul:                    promptSoul,
 		residentMemory:          opts.ResidentMemoryStore,
-		securityPolicy:          policy,
 		contexts:                opts.Contexts,
 		toolState:               opts.ToolState,
-		hooks:                   hookManager,
-		hookRuntime:             opts.HookRuntime,
-		runtimeStatus:           map[string]runtimestatus.Snapshot{},
 		autoConfirmSession:      map[string]bool{},
 		autoConfirmTools:        map[string]map[string]bool{},
 		visionFallbackNotified:  map[string]bool{},
@@ -123,9 +110,16 @@ func NewWithOptions(opts Options) (*Agent, error) {
 
 		idleExpiration: sessionIdleExpirationConfig(opts.SessionIdleExpiration),
 		sandboxRoot:    filepath.Clean(strings.TrimSpace(opts.SandboxRoot)),
-		actorID:        "cli:local",
-		scopeID:        "local",
 	}
+
+	a.identity = &identityResolver{platformName: p.Name(), actorID: "cli:local", scopeID: "local", policy: policy}
+	a.hooks = &hookBridge{
+		manager: hookManager, router: opts.HookRuntime, requests: requests,
+		identity: a.identity, media: opts.Media, notifications: opts.Notifications, dispatcher: opts.Dispatcher,
+	}
+	a.status = &statusRecorder{}
+	a.output = &outputSender{dispatcher: opts.Dispatcher, notifications: opts.Notifications, hooks: a.hooks, identity: a.identity}
+	a.view = executionView{sessions: store.Sessions()}
 	a.toolRuntime = newToolRuntimeState()
 	a.toolRuntime.manager = opts.ToolRunner
 	a.toolRuntime.preloader = opts.ToolPreloader
@@ -135,7 +129,7 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		a.SetLogManager(opts.Logs)
 	}
 	if opts.ToolRegistry != nil {
-		a.toolRuntime.provider = toolRunPromptProvider{agent: a}
+		a.toolRuntime.provider = toolRunPromptProvider{tools: a.toolRuntime.manager, identity: a.identity}
 	} else if opts.ToolProvider != nil {
 		a.SetToolProvider(opts.ToolProvider)
 	}
@@ -145,11 +139,11 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		router:        a.commands,
 		sessions:      a.sessions,
 		turns:         a.turns,
-		scope:         a.scope,
+		scope:         a.identity.Scope,
 		compactActive: a.compactActive,
-		sendChat:      a.sendChat,
+		sendChat:      a.output.SendChat,
 		sendNotice: func(ctx context.Context, text string) error {
-			return a.sendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(text)}})
+			return a.output.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(text)}})
 		},
 		audit:         a.audit,
 		handleAppend:  a.handleAppendConfirmationInput,
@@ -157,12 +151,12 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		continueInput: a.continueCommandInput,
 	}
 	a.completion = completion.NewService(
-		completion.RiskConfirmationSource{Router: a.commands, Sessions: a.sessions, Turns: a.turns, Scope: a.scope, CommandNames: riskConfirmationCommandNames()},
-		completion.ForkMessageSource{Router: a.commands, Sessions: a.sessions, Store: a.store, Scope: a.scope},
+		completion.RiskConfirmationSource{Router: a.commands, Sessions: a.sessions, Turns: a.turns, Scope: a.identity.Scope, CommandNames: riskConfirmationCommandNames()},
+		completion.ForkMessageSource{Router: a.commands, Sessions: a.sessions, Store: a.store, Scope: a.identity.Scope},
 		completion.ToolDirectiveSource{
 			Registry: func() *tool.Registry { return a.toolRuntime.registry },
-			Actor:    a.actor,
-			Policy:   func() *security.Policy { return a.securityPolicy },
+			Actor:    a.identity.Actor,
+			Policy:   func() *security.Policy { return a.identity.policy },
 			Tags: func(ctx context.Context, _ *tool.Registry, actor security.Actor, policy *security.Policy) []string {
 				return a.toolRuntime.preloader.Tags(security.WithActor(security.WithPolicy(ctx, policy), actor))
 			},
@@ -170,7 +164,7 @@ func NewWithOptions(opts Options) (*Agent, error) {
 				return a.toolRuntime.preloader.ToolNamesByTag(ctx, tag, allowed)
 			},
 		},
-		completion.RouterSource{Router: a.commands, Actor: a.actor},
+		completion.RouterSource{Router: a.commands, Actor: a.identity.Actor},
 	)
 
 	return a, nil

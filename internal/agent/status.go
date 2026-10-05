@@ -1,40 +1,41 @@
 package agent
 
 import (
-	"context"
+	"sync"
 	"time"
 
 	runtimestatus "elbot/internal/runtime"
 )
 
-func (a *Agent) updateRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) {
-	foregroundTurnOutput{agent: a}.PublishRuntimeStatus(ctx, snapshot)
+// statusRecorder is the synchronous source of runtime snapshots. Display
+// delivery happens after Record returns and never while its mutex is held.
+type statusRecorder struct {
+	mu        sync.Mutex
+	snapshots map[string]runtimestatus.Snapshot
 }
 
-func (a *Agent) recordRuntimeStatus(snapshot runtimestatus.Snapshot) runtimestatus.Snapshot {
+func (r *statusRecorder) Record(snapshot runtimestatus.Snapshot) runtimestatus.Snapshot {
 	if snapshot.SessionID == "" {
 		return snapshot
 	}
-	a.statusMu.Lock()
-	previous := a.runtimeStatus[snapshot.SessionID]
-	snapshot = mergeRuntimeStatus(previous, snapshot)
-	a.runtimeStatus[snapshot.SessionID] = snapshot
-	a.statusMu.Unlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.snapshots == nil {
+		r.snapshots = make(map[string]runtimestatus.Snapshot)
+	}
+	snapshot = mergeRuntimeStatus(r.snapshots[snapshot.SessionID], snapshot)
+	r.snapshots[snapshot.SessionID] = snapshot
 	return snapshot
 }
 
-func (a *Agent) publishRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) {
-	snapshot = a.recordRuntimeStatus(snapshot)
-	if snapshot.SessionID == "" {
-		return
-	}
-	_ = a.dispatcher.SetRuntimeStatus(ctx, snapshot)
+func (r *statusRecorder) Snapshot(sessionID string) runtimestatus.Snapshot {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.snapshots[sessionID]
 }
 
 func (a *Agent) RuntimeStatus(sessionID string) runtimestatus.Snapshot {
-	a.statusMu.Lock()
-	defer a.statusMu.Unlock()
-	return a.runtimeStatus[sessionID]
+	return a.status.Snapshot(sessionID)
 }
 
 func mergeRuntimeStatus(previous, next runtimestatus.Snapshot) runtimestatus.Snapshot {

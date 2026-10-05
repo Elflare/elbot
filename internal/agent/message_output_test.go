@@ -389,7 +389,7 @@ func TestLLMResponseHookRewritesOutputButPersistsRawAssistantContent(t *testing.
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
 	}
-	session, err := a.sessions.Current(context.Background(), a.scope(context.Background()))
+	session, err := a.sessions.Current(context.Background(), a.identity.Scope(context.Background()))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}
@@ -487,7 +487,7 @@ actions = [
 	if strings.Contains(out, "[[微笑]]") {
 		t.Fatalf("platform output still contains raw token: %q", out)
 	}
-	session, err := a.sessions.Current(context.Background(), a.scope(context.Background()))
+	session, err := a.sessions.Current(context.Background(), a.identity.Scope(context.Background()))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}

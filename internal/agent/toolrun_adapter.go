@@ -27,9 +27,9 @@ type agentToolRunDeps struct {
 }
 
 func (d agentToolRunDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error) {
-	event, err := d.agent.runHook(ctx, hook.Event{
+	event, err := d.agent.hooks.Run(ctx, hook.Event{
 		Point:   hook.PointToolCallPrepared,
-		Session: d.agent.hookSession(session),
+		Session: hookSession(session),
 		Tool:    hook.ToolPayload{ID: call.ID, Name: call.Name, Arguments: call.Arguments},
 	})
 	if err != nil {
@@ -42,9 +42,9 @@ func (d agentToolRunDeps) PrepareToolCall(ctx context.Context, session *storage.
 func (d agentToolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error) {
 	original := append([]llm.MessageSegment(nil), segments...)
 	resultText := llm.SegmentsTextOnly(original)
-	event, err := d.agent.runHook(ctx, hook.Event{
+	event, err := d.agent.hooks.Run(ctx, hook.Event{
 		Point:   hook.PointToolCallCompleted,
-		Session: d.agent.hookSession(session),
+		Session: hookSession(session),
 		Message: hook.MessagePayload{Role: string(llm.RoleTool), Segments: original},
 		Tool: hook.ToolPayload{
 			ID:        call.ID,
@@ -92,7 +92,7 @@ func (d agentToolRunDeps) PrepareToolContext(ctx context.Context, session *stora
 }
 
 func (d agentToolRunDeps) ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool {
-	return d.agent.isCLIContext(ctx) || strings.TrimSpace(assistantText) == ""
+	return d.agent.identity.IsCLI(ctx) || strings.TrimSpace(assistantText) == ""
 }
 
 func (d agentToolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (toolrun.ConfirmResult, error) {
@@ -103,11 +103,11 @@ func (d agentToolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string,
 	previewArgs := previewArguments(fullArgs)
 	timeout := d.agent.confirmationWaitTimeout(ctx)
 	d.agent.logRiskConfirmationWait(sessionID, call, assessment.Level, assessment.Reasons)
-	d.agent.sendChat(ctx, fmt.Sprintf("高风险工具调用等待确认\n工具：%s\n风险：%s\n参数：%s%s\n%s。", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout)))
+	d.agent.output.SendChat(ctx, fmt.Sprintf("高风险工具调用等待确认\n工具：%s\n风险：%s\n参数：%s%s\n%s。", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout)))
 	resp, ok := d.agent.turns.AwaitRiskConfirmationContext(ctx, sessionID, turn.RiskConfirmation{ID: call.ID, ToolName: call.Name, Arguments: fullArgs, Risk: string(assessment.Level), Summary: fmt.Sprintf("%s %s", call.Name, previewArgs), Detail: detail}, timeout, turn.AttemptFromContext(ctx))
 	if resp.Expired {
 		d.agent.logRiskConfirmationResult(sessionID, call, assessment.Level, "expire", resp.Extra, "confirmation wait expired")
-		d.agent.sendChat(context.WithoutCancel(ctx), "高风险工具确认已过期，当前处理已停止。")
+		d.agent.output.SendChat(context.WithoutCancel(ctx), "高风险工具确认已过期，当前处理已停止。")
 		return toolrun.ConfirmResult{Allowed: false, Extra: resp.Extra, Message: llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s confirmation expired", call.Name))}, Stopped: true}, nil
 	}
 	if !ok || resp.Stopped {
@@ -116,11 +116,11 @@ func (d agentToolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string,
 	}
 	if resp.ConfirmTool {
 		d.agent.setToolAutoConfirmed(sessionID, call.Name)
-		d.agent.sendChat(ctx, fmt.Sprintf("已为当前 Session 自动确认后续 %s 工具调用。", call.Name))
+		d.agent.output.SendChat(ctx, fmt.Sprintf("已为当前 Session 自动确认后续 %s 工具调用。", call.Name))
 	}
 	if resp.ConfirmAll {
 		d.agent.setSessionAutoConfirmed(sessionID)
-		d.agent.sendChat(ctx, "已为当前 Session 自动确认后续高风险工具调用。")
+		d.agent.output.SendChat(ctx, "已为当前 Session 自动确认后续高风险工具调用。")
 	}
 	if resp.Rejected {
 		reason := strings.TrimSpace(resp.Reason)
@@ -163,7 +163,7 @@ func (d agentToolRunDeps) RecordToolCall(ctx context.Context, sessionID string, 
 }
 
 func (d agentToolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string) {
-	d.agent.audit("permission_denied", "actor_id", d.agent.actor(ctx).ID, "session_id", sessionID, "tool", call.Name, "risk", risk, "reason", reason)
+	d.agent.audit("permission_denied", "actor_id", d.agent.identity.Actor(ctx).ID, "session_id", sessionID, "tool", call.Name, "risk", risk, "reason", reason)
 }
 
 func (d agentToolRunDeps) RememberDiscoveryResult(ctx context.Context, session *storage.Session, result *tool.Result) error {
@@ -189,7 +189,7 @@ func (d agentToolRunDeps) PersistedToolMessage(message llm.LLMMessage) llm.LLMMe
 func (a *Agent) toolRunManager() *toolrun.Manager { return a.toolRuntime.manager }
 
 func (d agentToolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {
-	return d.agent.refreshExecution(ctx, row)
+	return d.agent.view.RefreshSession(ctx, row)
 }
 
 func (a *Agent) workspaceStore(row *storage.Session) *sessionstate.WorkspaceStore {

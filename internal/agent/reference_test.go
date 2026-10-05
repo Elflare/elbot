@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"elbot/internal/chatinfo"
-	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/platform"
@@ -34,9 +33,8 @@ func TestReferencedOutputMediaReachesVisionAndCanonicalSession(t *testing.T) {
 		return refcontext.ReferencedMessage{}, false
 	}})
 	f := &fakeLLM{replies: []string{"done"}}
-	a := newTestAgent(t, &fakePlatform{}, f, "test-model", config.ProviderConfig{}, store)
-	a.dispatcher.RegisterPlatformSender("telegram", a.platform)
-	a.media = center
+	a := newTestMediaAgent(t, &fakePlatform{}, f, store, center)
+	a.output.dispatcher.RegisterPlatformSender("telegram", a.platform)
 	resolver := &inboundMediaResolver{}
 	msg := platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "telegram", ScopeID: "group:9", ConversationKind: chatinfo.ConversationGroup}, Identity: chatinfo.Identity{PlatformUserID: "1"}, ReplyToMessageID: "sent"}, MediaResolver: resolver,
 		Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "看看"}}, ContextText: ref.Text, Reply: ref.Reply,
@@ -48,7 +46,7 @@ func TestReferencedOutputMediaReachesVisionAndCanonicalSession(t *testing.T) {
 	if resolver.calls != 0 {
 		t.Fatal("stable output redownloaded")
 	}
-	current, err := a.sessions.Current(ctx, a.scope(ctx))
+	current, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
 	if err != nil {
 		t.Fatal(err)
 	}

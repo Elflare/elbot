@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"elbot/internal/config"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
@@ -31,8 +30,7 @@ func TestMediaCanonicalPersistenceAndSessionRestore(t *testing.T) {
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
 	f := &fakeLLM{replies: []string{"first"}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.media = center
+	a := newTestMediaAgent(t, p, f, store, center)
 	input := platform.WithMessageContext(ctx, platform.MessageContext{Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "看图"}, {Type: platform.SegmentImage, URL: server.URL + "/cat.png", Name: "cat.png"}}})
 	if err := a.HandleMessage(input, "看图"); err != nil {
 		t.Fatal(err)
@@ -54,10 +52,9 @@ func TestMediaCanonicalPersistenceAndSessionRestore(t *testing.T) {
 		t.Fatalf("refs: %#v %v", refs, err)
 	}
 	resumed := &fakeLLM{replies: []string{"restored"}}
-	b := newTestAgent(t, p, resumed, "test-model", config.ProviderConfig{}, store)
-	b.media = media.NewManager(store, root, &media.LocalBackend{Root: root})
+	b := newTestMediaAgent(t, p, resumed, store, media.NewManager(store, root, &media.LocalBackend{Root: root}))
 	resumeCtx := platform.WithMessageContext(ctx, platform.MessageContext{Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "继续"}}})
-	if _, err := b.sessions.Resume(resumeCtx, b.scope(resumeCtx), record.ID); err != nil {
+	if _, err := b.sessions.Resume(resumeCtx, b.identity.Scope(resumeCtx), record.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := b.HandleMessage(resumeCtx, "继续"); err != nil {
@@ -81,9 +78,8 @@ func TestToolResultMediaPersistsID(t *testing.T) {
 	store := newTestStore(t)
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "prepared_args", Args: `{"q":"test"}`}}, FinishReason: "tool_calls"}}, {{DeltaContent: "done"}}}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	root := t.TempDir()
-	a.media = media.NewManager(store, root, &media.LocalBackend{Root: root})
+	a := newTestMediaAgent(t, p, f, store, media.NewManager(store, root, &media.LocalBackend{Root: root}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	var arguments string

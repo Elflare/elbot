@@ -402,7 +402,7 @@ func TestNonCLIChatToolCallWithAssistantTextSkipsToolArgumentPreview(t *testing.
 	}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"qq": {"1"}}))
-	a.dispatcher.RegisterPlatformSender("qq", p)
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
@@ -491,7 +491,7 @@ actions = [
 	if strings.Contains(out, "[[微笑]]") {
 		t.Fatalf("platform output still contains raw token: %q", out)
 	}
-	session, err := a.sessions.Current(context.Background(), a.scope(context.Background()))
+	session, err := a.sessions.Current(context.Background(), a.identity.Scope(context.Background()))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}

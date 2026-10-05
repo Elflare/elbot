@@ -133,7 +133,7 @@ func TestToolPhasePendingInputInjectedBeforeFollowupLLM(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("tool did not start")
 	}
-	current, err := a.sessions.Current(ctx, a.scope(context.Background()))
+	current, err := a.sessions.Current(ctx, a.identity.Scope(context.Background()))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestToolPhasePendingInputPersistsWhenRequestHookFails(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("tool did not start")
 	}
-	current, err := a.sessions.Current(ctx, a.scope(context.Background()))
+	current, err := a.sessions.Current(ctx, a.identity.Scope(context.Background()))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}
@@ -344,7 +344,7 @@ func TestTurnRequestCancelStopsWithoutPersistingToolTranscript(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("tool did not start")
 	}
-	current, err := a.sessions.Current(ctx, a.scope(context.Background()))
+	current, err := a.sessions.Current(ctx, a.identity.Scope(context.Background()))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}
@@ -406,7 +406,7 @@ func TestToolPhasePendingInputDuringFinalLLMStartsNewTurn(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("followup LLM did not start")
 	}
-	current, err := a.sessions.Current(ctx, a.scope(context.Background()))
+	current, err := a.sessions.Current(ctx, a.identity.Scope(context.Background()))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}
@@ -499,7 +499,7 @@ func TestToolPhasePendingInputIncludedInMaxRoundsSummary(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("second LLM did not start")
 	}
-	current, err := a.sessions.Current(ctx, a.scope(context.Background()))
+	current, err := a.sessions.Current(ctx, a.identity.Scope(context.Background()))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}

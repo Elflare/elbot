@@ -46,7 +46,7 @@ func TestCompactSaveFailureReleasesExecutionAndKeepsSource(t *testing.T) {
 			if backgroundRun {
 				source, err = a.sessions.PrepareBackground(ctx, session.Scope{ActorID: "cli:local", Platform: "cli", PlatformScopeID: "cron:save"}, session.BackgroundRequest{Kind: "cron", Name: "save"})
 			} else {
-				source, err = a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "source"})
+				source, err = a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "source"})
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -71,7 +71,7 @@ func TestCompactSaveFailureReleasesExecutionAndKeepsSource(t *testing.T) {
 			if len(a.requests.List()) != 0 || a.turns.Snapshot(source.ID).Phase != turn.PhaseIdle {
 				t.Fatal("failed compact retained execution")
 			}
-			current, err := a.sessions.Current(ctx, a.scope(ctx))
+			current, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
 			if backgroundRun {
 				if !errors.Is(err, storage.ErrNotFound) {
 					t.Fatalf("failed background compact activated current: %+v %v", current, err)

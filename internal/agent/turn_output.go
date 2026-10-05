@@ -2,13 +2,9 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"strings"
 
 	"elbot/internal/delivery"
-	"elbot/internal/hook"
-	"elbot/internal/llm"
 	runtimestatus "elbot/internal/runtime"
 )
 
@@ -24,44 +20,47 @@ type turnOutput interface {
 	PublishRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot)
 }
 
-type foregroundTurnOutput struct{ agent *Agent }
+type foregroundTurnOutput struct {
+	sender *outputSender
+	status *statusRecorder
+}
 
-type backgroundTurnOutput struct{ agent *Agent }
+type backgroundTurnOutput struct{ status *statusRecorder }
 
 func (o foregroundTurnOutput) StartStream(ctx context.Context) delivery.MessageStream {
-	return o.agent.startMessageStream(ctx)
+	return o.sender.StartStream(ctx)
 }
 
 func (o foregroundTurnOutput) FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string, streaming bool) error {
-	return o.agent.finishIntermediateOutput(ctx, streamCtx, stream, text, streaming)
+	return o.sender.FinishIntermediate(ctx, streamCtx, stream, text, streaming)
 }
 
 func (o foregroundTurnOutput) ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, error) {
-	return o.agent.replaceAndFinishStream(ctx, streamCtx, stream, text)
+	return o.sender.ReplaceAndFinishStream(ctx, streamCtx, stream, text)
 }
 
 func (o foregroundTurnOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, error) {
-	return o.agent.sendChatWithReceipt(ctx, text)
+	return o.sender.SendAssistant(ctx, text)
 }
 
 func (o foregroundTurnOutput) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
-	return o.agent.sendOutputs(ctx, outputs)
+	return o.sender.SendOutputs(ctx, outputs)
 }
 
 func (o foregroundTurnOutput) SendNotice(ctx context.Context, level slog.Level, text string) {
-	o.agent.sendTextNotice(ctx, level, text)
+	o.sender.TextNotice(ctx, level, text)
 }
 
 func (o foregroundTurnOutput) SendPreview(ctx context.Context, text string) {
-	o.agent.sendPreview(ctx, text)
+	o.sender.Preview(ctx, text)
 }
 
 func (o foregroundTurnOutput) SendReasoning(ctx context.Context, text string) {
-	o.agent.sendCLIReasoning(ctx, text)
+	o.sender.Reasoning(ctx, text)
 }
 
 func (o foregroundTurnOutput) PublishRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) {
-	o.agent.publishRuntimeStatus(ctx, snapshot)
+	o.sender.PublishRuntimeStatus(ctx, o.status.Record(snapshot))
 }
 
 func (o backgroundTurnOutput) StartStream(ctx context.Context) delivery.MessageStream { return nil }
@@ -89,92 +88,5 @@ func (o backgroundTurnOutput) SendPreview(ctx context.Context, text string) {}
 func (o backgroundTurnOutput) SendReasoning(ctx context.Context, text string) {}
 
 func (o backgroundTurnOutput) PublishRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) {
-	o.agent.recordRuntimeStatus(snapshot)
-}
-
-func (a *Agent) sendTextNotice(ctx context.Context, level slog.Level, text string) {
-	a.notifications.Text(ctx, level, text)
-}
-
-func (a *Agent) sendPreview(ctx context.Context, text string) {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return
-	}
-	event, err := a.runHook(ctx, hook.Event{Point: hook.PointAgentOutputPrepared, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(text)}})
-	if err != nil {
-		return
-	}
-	body := strings.TrimSpace(llm.SegmentsTextOnly(event.Message.Segments))
-	if body == "" {
-		return
-	}
-	preview := formatToolPreview(body)
-	a.dispatcher.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(preview)}, Level: slog.LevelDebug})
-	a.notifyHook(ctx, hook.Event{Point: hook.PointPlatformMessageSent, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(preview)}})
-}
-
-func formatToolPreview(text string) string {
-	lines := strings.Split(strings.TrimSpace(text), "\n")
-	for i, line := range lines {
-		lines[i] = "[tool] " + strings.TrimSpace(line)
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (a *Agent) finishIntermediateOutput(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string, streaming bool) error {
-	if streaming {
-		if strings.TrimSpace(text) != "" {
-			if err := a.replaceStreamOutput(ctx, streamCtx, stream, text); err != nil {
-				return err
-			}
-		}
-		_, err := stream.Finish(streamCtx)
-		return err
-	}
-	if strings.TrimSpace(text) == "" {
-		return nil
-	}
-	if _, err := a.sendChatWithReceipt(ctx, text); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (a *Agent) replaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, error) {
-	prepared, err := a.prepareAssistantOutput(ctx, hook.PointAgentOutputPrepared, text)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	receipt, err := stream.Replace(streamCtx, prepared)
-	if err != nil {
-		return receipt, fmt.Errorf("stream replace: %w", err)
-	}
-	finishReceipt, err := stream.Finish(streamCtx)
-	if len(receipt.PlatformMessageIDs) == 0 {
-		receipt = finishReceipt
-	}
-	return receipt, err
-}
-
-func (a *Agent) replaceStreamOutput(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) error {
-	prepared, err := a.prepareAssistantOutput(ctx, hook.PointAgentOutputPrepared, text)
-	if err != nil {
-		return err
-	}
-	if _, err := stream.Replace(streamCtx, prepared); err != nil {
-		return fmt.Errorf("stream replace: %w", err)
-	}
-	return nil
-}
-
-func (a *Agent) startMessageStream(ctx context.Context) delivery.MessageStream {
-	if bufferAssistantOutput(ctx) {
-		return nil
-	}
-	stream, err := a.dispatcher.StartStream(ctx)
-	if err != nil {
-		return nil
-	}
-	return stream
+	o.status.Record(snapshot)
 }

@@ -62,7 +62,7 @@ func TestBackgroundTakeoverDuringToolSharesPending(t *testing.T) {
 		{{DeltaContent: "foreground final"}},
 	}}
 	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.dispatcher.RegisterPlatformSender("qq", p)
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	registry := tool.NewRegistry()
 	_ = registry.Register(slowTool{started: started, release: release})
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -119,7 +119,7 @@ func TestBackgroundTakeoverSwitchesTaskModelToWork(t *testing.T) {
 		{{DeltaContent: "foreground final"}},
 	}}
 	a := newTestAgent(t, p, f, "work-model", config.ProviderConfig{}, newTestStore(t))
-	a.dispatcher.RegisterPlatformSender("qq", p)
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	registry := tool.NewRegistry()
 	_ = registry.Register(slowTool{started: started, release: release})
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -156,7 +156,7 @@ func TestBackgroundTakeoverWaitsForAppendConfirmation(t *testing.T) {
 	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
 	f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"discarded", "confirmed foreground result"}}
 	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.dispatcher.RegisterPlatformSender("qq", p)
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	done := startTakeoverTest(a)
 	select {
 	case <-block.started:
@@ -196,7 +196,7 @@ func TestBackgroundCompactHandoff(t *testing.T) {
 			block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
 			f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"compressed history", "finished after compact"}}
 			a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
-			a.dispatcher.RegisterPlatformSender("qq", p)
+			a.output.dispatcher.RegisterPlatformSender("qq", p)
 			req := background.RunRequest{Kind: background.KindCron, Name: "compact", Platform: "qq", Actor: security.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: security.RoleSuperadmin}, Prompt: "accepted input"}
 			row, err := a.sessions.PrepareBackground(context.Background(), session.Scope{ActorID: "qq:1", Platform: "qq", PlatformScopeID: "cron:compact"}, session.BackgroundRequest{Kind: string(req.Kind), Name: req.Name})
 			if err != nil {
@@ -275,7 +275,7 @@ func TestBackgroundTakeoverStopRecordsCancellation(t *testing.T) {
 	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
 	f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"never returned"}}
 	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.dispatcher.RegisterPlatformSender("qq", p)
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	done := startTakeoverTest(a)
 	select {
 	case <-block.started:
@@ -306,7 +306,7 @@ func TestLateInterruptedRequestCannotFinishResumedExecution(t *testing.T) {
 	next := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
 	f := &fakeLLM{chatBlocks: []fakeLLMBlock{old, next}, replies: []string{"late discarded answer", "current answer"}}
 	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.dispatcher.RegisterPlatformSender("qq", p)
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	done := startTakeoverTest(a)
 	select {
 	case <-old.started:
@@ -388,7 +388,7 @@ func TestTakeoverRefreshesNextToolInSameBatch(t *testing.T) {
 		{{DeltaContent: "done"}},
 	}}
 	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.dispatcher.RegisterPlatformSender("qq", p)
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	a.sandboxRoot = sandboxRoot
 	registry := tool.NewRegistry()
 	_ = registry.Register(slowTool{started: started, release: release})
@@ -460,7 +460,7 @@ func TestTakeoverPendingContinuesThroughAutomaticCompact(t *testing.T) {
 		{{DeltaContent: "second final"}},
 	}}
 	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.dispatcher.RegisterPlatformSender("qq", p)
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	registry := tool.NewRegistry()
 	_ = registry.Register(slowTool{started: toolStarted, release: toolRelease})
 	_ = registry.Register(tool.NewDiscoverTool(registry))

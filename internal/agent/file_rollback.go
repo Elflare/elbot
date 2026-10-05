@@ -23,7 +23,7 @@ func (a *Agent) fileRollbackContext(ctx context.Context, row *storage.Session, i
 	}
 	binding, ok := session.BindingFromContext(ctx)
 	if !ok {
-		_, current, err := a.sessions.CurrentBound(ctx, a.scope(ctx))
+		_, current, err := a.sessions.CurrentBound(ctx, a.identity.Scope(ctx))
 		if err == nil && current.SessionID() == row.ID {
 			binding = current
 		}
@@ -44,13 +44,13 @@ func (a *Agent) fileRollbackContext(ctx context.Context, row *storage.Session, i
 // PrepareFileCommand captures the original binding and execution admission for
 // file commands. The file service owns record lookup and the actual operation.
 func (a *Agent) PrepareFileCommand(ctx context.Context, idleOnly bool) (context.Context, error) {
-	if a.actor(ctx).Role != security.RoleSuperadmin {
+	if a.identity.Actor(ctx).Role != security.RoleSuperadmin {
 		return ctx, fmt.Errorf("rollback requires superadmin role")
 	}
 	if a.toolRuntime.fileRollback == nil {
 		return ctx, fmt.Errorf("file rollback is not configured")
 	}
-	row, binding, err := a.sessions.CurrentBound(ctx, a.scope(ctx))
+	row, binding, err := a.sessions.CurrentBound(ctx, a.identity.Scope(ctx))
 	if err != nil {
 		return ctx, err
 	}
@@ -66,7 +66,7 @@ func (a *Agent) PrepareFileCommand(ctx context.Context, idleOnly bool) (context.
 	if idleOnly && (a.turns.Snapshot(row.ID).Phase != turn.PhaseIdle || a.compactActive(row.ID)) {
 		return ctx, fmt.Errorf("当前会话仍在执行任务或压缩；请等待完成，或先 /stop")
 	}
-	ctx = session.WithBinding(security.WithActor(ctx, a.actor(ctx)), binding)
+	ctx = session.WithBinding(security.WithActor(ctx, a.identity.Actor(ctx)), binding)
 	// Listing never enters commit admission, but a reused command context must
 	// still reject a write if a Turn begins while it waits for the target lock.
 	ctx = a.fileRollbackContext(ctx, row, true)
