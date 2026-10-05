@@ -35,7 +35,7 @@ func takeoverPrivateContext() context.Context {
 func startTakeoverTest(a *Agent) <-chan backgroundTestResult {
 	done := make(chan backgroundTestResult, 1)
 	go func() {
-		r, err := a.RunBackground(context.Background(), background.RunRequest{Kind: background.KindCron, Name: "takeover", Platform: "qq", Actor: security.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: security.RoleSuperadmin}, Prompt: "original background task"})
+		r, err := a.RunBackground(context.Background(), background.RunRequest{Kind: background.KindCron, Name: "takeover", Platform: "qq", Actor: security.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: security.RoleSuperadmin}, Prompt: "original background task", ToolListNames: []string{"slow"}})
 		done <- backgroundTestResult{r, err}
 	}()
 	return done
@@ -103,11 +103,51 @@ func TestBackgroundTakeoverDuringToolSharesPending(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.IsBackground(row) || !session.WasPromoted(row) || row.PlatformScopeID != "private:1" {
+	if session.IsBackground(row) || !session.WasPromoted(row) || row.PlatformScopeID != "private:1" || row.Mode != storage.SessionModeWork {
 		t.Fatalf("not permanently promoted: %#v", row)
 	}
 	if !strings.Contains(p.out.String(), "foreground final") {
 		t.Fatalf("output: %s", p.out.String())
+	}
+}
+
+func TestBackgroundTakeoverSwitchesTaskModelToWork(t *testing.T) {
+	p := &fakePlatform{}
+	started, release := make(chan struct{}), make(chan struct{})
+	f := &fakeLLM{chunks: [][]llm.StreamChunk{
+		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "slow-call", Name: "slow", Args: `{}`}}}},
+		{{DeltaContent: "foreground final"}},
+	}}
+	a := newTestAgent(t, p, f, "work-model", config.ProviderConfig{}, newTestStore(t))
+	a.dispatcher.RegisterPlatformSender("qq", p)
+	registry := tool.NewRegistry()
+	_ = registry.Register(slowTool{started: started, release: release})
+	_ = registry.Register(tool.NewDiscoverTool(registry))
+	a.SetToolRuntime(registry, nil)
+	done := make(chan backgroundTestResult, 1)
+	go func() {
+		r, err := a.RunBackground(context.Background(), background.RunRequest{Kind: background.KindCron, Name: "models", Platform: "qq", Actor: security.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"slow"}, Model: "task-model"})
+		done <- backgroundTestResult{r, err}
+	}()
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("tool did not start")
+	}
+	first := f.chatRequests()[0]
+	if first.Model != "task-model" {
+		t.Fatalf("initial model=%s", first.Model)
+	}
+	if err := a.HandleMessage(takeoverPrivateContext(), "/resume "+first.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	if result := awaitTakeover(t, done); !result.TakenOver {
+		t.Fatal("not taken over")
+	}
+	requests := f.chatRequests()
+	if len(requests) != 2 || requests[1].Model != "work-model" || !strings.Contains(toolNames(requests[1].Tools), "discover_tool") {
+		t.Fatalf("foreground model/tools did not switch: %+v", requests)
 	}
 }
 
@@ -158,7 +198,7 @@ func TestBackgroundCompactHandoff(t *testing.T) {
 			a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
 			a.dispatcher.RegisterPlatformSender("qq", p)
 			req := background.RunRequest{Kind: background.KindCron, Name: "compact", Platform: "qq", Actor: security.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: security.RoleSuperadmin}, Prompt: "accepted input"}
-			row, err := a.backgroundSession(context.Background(), req, session.Scope{ActorID: "qq:1", Platform: "qq", PlatformScopeID: "cron:compact"})
+			row, err := a.sessions.PrepareBackground(context.Background(), session.Scope{ActorID: "qq:1", Platform: "qq", PlatformScopeID: "cron:compact"}, session.BackgroundRequest{Kind: string(req.Kind), Name: req.Name})
 			if err != nil {
 				t.Fatal(err)
 			}

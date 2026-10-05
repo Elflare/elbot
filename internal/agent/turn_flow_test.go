@@ -98,7 +98,7 @@ func TestStreamingOutputAppendsRawAndReplacesHookText(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register response hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -128,7 +128,7 @@ func TestTurnOutputPreparedHookReplacesFinalStreamingMessage(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register turn output hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)

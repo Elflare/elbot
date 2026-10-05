@@ -27,7 +27,7 @@ func TestPlatformMessageReceivedHookSendsOutputs(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register received hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -49,7 +49,7 @@ func TestUnwokenGroupMessageSkipsLLMButAllowsPassiveHook(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register passive hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot",
 		ScopeID:          "group:9",
 		ConversationKind: chatinfo.ConversationGroup}}, Sender: p,
@@ -79,7 +79,7 @@ func TestUnwokenGroupMessageSkipsDefaultHook(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register default hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot",
 		ScopeID:          "group:9",
 		ConversationKind: chatinfo.ConversationGroup}}, Sender: p,
@@ -110,7 +110,7 @@ func TestWokenGroupMessageSkipsForbiddenHookAndRunsLLM(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register passive-only hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot",
 		ScopeID:          "group:9",
 		ConversationKind: chatinfo.ConversationGroup}}, Sender: p,
@@ -146,7 +146,7 @@ func TestPrefixWokenGroupMessageRunsTurnOutputHook(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Register turn output hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot",
 		ScopeID:          "group:9",
 		ConversationKind: chatinfo.ConversationGroup}}, Sender: p,
@@ -175,7 +175,7 @@ func TestPassiveHookCannotWakeLLMByEditingMessage(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register passive hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot",
 		ScopeID:          "group:9",
 		ConversationKind: chatinfo.ConversationGroup}}, Sender: p,
@@ -243,7 +243,7 @@ func TestPlatformMessageReceivedHookMatchesCurrentTextWithReplyContext(t *testin
 	}); err != nil {
 		t.Fatalf("Register recall hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot",
 		ScopeID:          "group:9",
 		ConversationKind: chatinfo.ConversationGroup}}, Sender: p,
@@ -282,7 +282,7 @@ func TestWaitingContinuationPassThroughReachesLaterHooksAndLLM(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Register hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -306,7 +306,7 @@ func TestStreamingOutputPreparedHookReplacesFinalMessage(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register output hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -333,7 +333,7 @@ func TestNonStreamingPlatformSendsOnlyHookText(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register response hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -358,7 +358,7 @@ func TestAfterAssistantOutputsAreSentAfterFinalText(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register response hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -384,7 +384,7 @@ func TestLLMResponseHookRewritesOutputButPersistsRawAssistantContent(t *testing.
 	})}); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -419,7 +419,7 @@ func TestAgentOutputHookCanRewritePlatformOutput(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -473,7 +473,7 @@ actions = [
 	if _, err := hookbuiltin.RegisterAll(manager, hookbuiltin.Options{ConfigDir: configDir}); err != nil {
 		t.Fatalf("RegisterAll: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 
 	if err := a.HandleMessage(context.Background(), "说个微笑"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)

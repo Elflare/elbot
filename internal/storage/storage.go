@@ -9,8 +9,9 @@ import (
 var ErrNotFound = errors.New("not found")
 
 const (
-	SessionModeWork = "work"
-	SessionModeChat = "chat"
+	SessionModeWork       = "work"
+	SessionModeChat       = "chat"
+	SessionModeBackground = "background"
 
 	SessionStatusActive = "active"
 	SessionStatusPaused = "paused"

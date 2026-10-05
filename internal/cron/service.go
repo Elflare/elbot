@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"elbot/internal/background"
+	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/elyph"
+	"elbot/internal/modelmgr"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 )
@@ -37,22 +39,9 @@ type LLMRunner interface {
 	background.Runner
 }
 
-type RunCronMessageRequest struct {
-	JobName       string
-	Title         string
-	Platform      string
-	Actor         security.Actor
-	ScopeID       string
-	SessionID     string
-	ModelProvider string
-	Model         string
-	Prompt        string
-	ToolListNames []string
-}
-
-type RunCronMessageResult struct {
-	SessionID string
-	Text      string
+type Models interface {
+	ResolveMode(string) modelmgr.Selection
+	ValidateSelection(config.ModelSelection) error
 }
 
 type Service struct {
@@ -62,6 +51,7 @@ type Service struct {
 	audit            AuditFunc
 	sendTarget       TargetSenderFunc
 	runner           LLMRunner
+	models           Models
 	enabledPlatforms []PlatformTarget
 	sandboxRoot      string
 	now              func() time.Time
@@ -78,6 +68,7 @@ type Options struct {
 	Audit            AuditFunc
 	SendTarget       TargetSenderFunc
 	Runner           LLMRunner
+	Models           Models
 	EnabledPlatforms []PlatformTarget
 	SandboxRoot      string
 }
@@ -89,6 +80,7 @@ func NewService(opts Options) *Service {
 	}
 	s := &Service{manager: opts.Manager, store: opts.Store, logger: opts.Logger, audit: opts.Audit, sendTarget: opts.SendTarget, runner: opts.Runner, sandboxRoot: sandboxRoot, now: time.Now, connectedPlatforms: map[string]bool{}, deliveryGates: map[string]chan struct{}{}}
 	s.enabledPlatforms = normalizePlatformTargets(opts.EnabledPlatforms)
+	s.models = opts.Models
 	return s
 }
 
@@ -142,7 +134,7 @@ func (s *Service) Create(ctx context.Context, req UpsertRequest) (*storage.CronJ
 		s.auditEvent("cron.permission_denied", "operation", "create", "actor_id", req.Actor.ID, "reason", err.Error())
 		return nil, err
 	}
-	meta := Metadata{Kind: metadataKind, Version: 1, Title: strings.TrimSpace(req.Title), CreatedBy: actorMetadata(req.Actor), Schedule: CronSchedule{Mode: req.ScheduleMode, RunAt: strings.TrimSpace(req.RunAt), CronExpr: strings.TrimSpace(req.CronExpr)}, Trigger: CronTrigger{Mode: req.TriggerMode, Message: strings.TrimSpace(req.Message)}, Target: CronTarget{AllEnabledPlatforms: req.AllEnabledPlatforms, SourcePlatform: firstNonEmpty(req.SourcePlatform, req.Actor.Platform)}, LLM: CronLLMMetadata{ToolListNames: normalizeToolListNames(req.ToolListNames), SessionMode: normalizeLLMSessionMode(req.SessionMode)}}
+	meta := Metadata{Kind: metadataKind, Version: 1, Title: strings.TrimSpace(req.Title), CreatedBy: actorMetadata(req.Actor), Schedule: CronSchedule{Mode: req.ScheduleMode, RunAt: strings.TrimSpace(req.RunAt), CronExpr: strings.TrimSpace(req.CronExpr)}, Trigger: CronTrigger{Mode: req.TriggerMode, Message: strings.TrimSpace(req.Message)}, Target: CronTarget{AllEnabledPlatforms: req.AllEnabledPlatforms, SourcePlatform: firstNonEmpty(req.SourcePlatform, req.Actor.Platform)}, LLM: CronLLMMetadata{ToolListNames: normalizeToolListNames(req.ToolListNames), ModelProvider: strings.TrimSpace(req.ModelProvider), Model: strings.TrimSpace(req.Model)}}
 
 	if err := validateElyphCronTask(meta); err != nil {
 		return nil, err
@@ -196,12 +188,11 @@ func (s *Service) Update(ctx context.Context, req PatchRequest) (*storage.CronJo
 	if req.ToolListNames != nil {
 		meta.LLM.ToolListNames = normalizeToolListNames(*req.ToolListNames)
 	}
-	if req.SessionMode != nil {
-		mode, err := validateLLMSessionMode(*req.SessionMode)
-		if err != nil {
-			return nil, err
+	if req.ModelProvider != nil || req.Model != nil {
+		if req.ModelProvider == nil || req.Model == nil {
+			return nil, fmt.Errorf("model_provider and model must be updated together")
 		}
-		meta.LLM.SessionMode = mode
+		meta.LLM.ModelProvider, meta.LLM.Model = strings.TrimSpace(*req.ModelProvider), strings.TrimSpace(*req.Model)
 	}
 	if req.AllEnabledPlatforms != nil {
 
@@ -361,13 +352,16 @@ func startsNewDeliveryCycle(before, after Metadata, req PatchRequest, enabled bo
 	if before.Schedule != after.Schedule || before.Trigger != after.Trigger || before.Target != after.Target {
 		return true
 	}
-	if before.LLM.SessionMode != after.LLM.SessionMode || strings.Join(before.LLM.ToolListNames, "\x00") != strings.Join(after.LLM.ToolListNames, "\x00") {
+	if before.LLM.ModelProvider != after.LLM.ModelProvider || before.LLM.Model != after.LLM.Model || strings.Join(before.LLM.ToolListNames, "\x00") != strings.Join(after.LLM.ToolListNames, "\x00") {
 		return true
 	}
 	return false
 }
 
 func (s *Service) upsert(ctx context.Context, name string, meta Metadata, enabled, resetDelivery bool) (*storage.CronJob, error) {
+	if err := s.validateModel(meta.LLM); err != nil {
+		return nil, err
+	}
 	name = normalizeJobName(name)
 	if name == "" {
 		return nil, fmt.Errorf("cron name is required")

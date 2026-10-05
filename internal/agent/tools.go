@@ -13,7 +13,7 @@ type toolRuntimeState struct {
 	registry        *tool.Registry
 	fileRollback    *fileops.Service
 	config          config.ToolsConfig
-	toolTags        *toolTagConfigSource
+	preloader       *toolrun.PreloadService
 	defaultProvider bool
 }
 
@@ -30,8 +30,8 @@ func (a *Agent) rebuildSystemPrompt() {
 	if nameProvider, ok := a.toolRuntime.provider.(ToolNameProvider); ok {
 		manager.AddSource(toolNamesSystemPromptSource{Tools: nameProvider})
 	}
-	if a.toolRuntime.toolTags != nil {
-		manager.AddSource(a.toolRuntime.toolTags)
+	if a.toolRuntime.preloader != nil {
+		manager.AddSource(toolTagsSystemPromptSource{Preloader: a.toolRuntime.preloader})
 	}
 	manager.AddSource(residentMemorySystemPromptSource{Store: a.residentMemory})
 	manager.AddSource(conversationMetaSystemPromptSource{})
@@ -52,9 +52,4 @@ func (a *Agent) SetToolConfig(cfg config.ToolsConfig) {
 		cfg.MaxRoundsPerTurn = 2
 	}
 	a.toolRuntime.config = cfg
-}
-
-func (a *Agent) SetToolTagConfig(path string, cfg config.ToolTagsConfig) {
-	a.toolRuntime.toolTags = newToolTagConfigSource(path, cfg)
-	a.rebuildSystemPrompt()
 }

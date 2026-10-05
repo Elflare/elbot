@@ -32,6 +32,17 @@ func (s *Service) Resolve(selected config.ModelSelection) Selection {
 	return Selection{ModelSelection: selected, Client: s.clients[selected.Provider]}
 }
 
+// ValidateSelection checks an explicit task choice without changing shared state.
+func (s *Service) ValidateSelection(selected config.ModelSelection) error {
+	if selected.Provider == "" || selected.Model == "" {
+		return fmt.Errorf("model provider/model must both be set")
+	}
+	if s.clients[selected.Provider] == nil {
+		return fmt.Errorf("model provider %q not found", selected.Provider)
+	}
+	return nil
+}
+
 func (s *Service) ResolveMode(mode string) Selection {
 	s.mu.RLock()
 	selected := s.state.mode(mode)

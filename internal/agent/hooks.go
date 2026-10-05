@@ -27,17 +27,6 @@ type HookRouter interface {
 	RouteHookID(hook.Event) string
 }
 
-func (a *Agent) SetHookManager(manager hook.Manager) {
-	if manager == nil {
-		manager = hook.NoopManager{}
-	}
-	if defaultManager, ok := manager.(*hook.DefaultManager); ok {
-		defaultManager.SetWakeupFunc(a.hookWakeup)
-		defaultManager.SetObserver(a.observeHookRun)
-	}
-	a.hooks = manager
-}
-
 // SetHookRuntime attaches stateful Hook continuation routing. Process lifecycle
 // management remains outside Agent in the Hook control service.
 func (a *Agent) SetHookRuntime(router HookRouter) {
@@ -98,7 +87,8 @@ func (a *Agent) notifyHook(ctx context.Context, event hook.Event) {
 	}
 }
 
-func (a *Agent) observeHookRun(ctx context.Context, event hook.Event, info hook.ObserverInfo) (context.Context, func()) {
+// ObserveHookRun participates in request tracking; app installs it on the Hook manager.
+func (a *Agent) ObserveHookRun(ctx context.Context, event hook.Event, info hook.ObserverInfo) (context.Context, func()) {
 	if a == nil || a.requests == nil {
 		return ctx, func() {}
 	}

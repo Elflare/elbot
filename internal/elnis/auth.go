@@ -1,11 +1,13 @@
 package elnis
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
 
 	"elbot/internal/elvena"
+	"elbot/internal/security"
 	"elbot/internal/toolrun"
 )
 
@@ -45,14 +47,14 @@ func (s *Service) authorizeElwisp(event Event) error {
 	return fmt.Errorf("token %q is not allowed for elwisp %q", event.Origin.Name, event.Request.Elwisp.Name)
 }
 
-func (s *Service) authorizeInternalTools(event Event) error {
+func (s *Service) authorizeInternalTools(ctx context.Context, event Event) error {
 	allowed := s.allowedInternalTools(event.Request.Elwisp.Name)
-	for _, name := range backgroundToolNames(event.Request.ToolListNames) {
-		if name == "discover_tool" {
-			continue
-		}
-		if !allowed[name] {
-			return fmt.Errorf("tool %q is not allowed for elwisp %q", name, event.Request.Elwisp.Name)
+	ctx = security.WithActor(ctx, elnisActor(event))
+	for _, selection := range s.toolPreloader.BackgroundSelections(ctx, event.Request.ToolListNames) {
+		for _, name := range selection.Names {
+			if !allowed[name] {
+				return fmt.Errorf("tool %q is not allowed for elwisp %q", name, event.Request.Elwisp.Name)
+			}
 		}
 	}
 	return nil

@@ -24,6 +24,7 @@ func TestNewWithOptionsValidatesRequiredDependencies(t *testing.T) {
 		{name: "commands", change: func(opts *Options) { opts.Commands = nil }, want: "services are required"},
 		{name: "contexts", change: func(opts *Options) { opts.Contexts = nil }, want: "services are required"},
 		{name: "tool state", change: func(opts *Options) { opts.ToolState = nil }, want: "services are required"},
+		{name: "tool preloader", change: func(opts *Options) { opts.ToolPreloader = nil }, want: "services are required"},
 		{name: "dispatcher", change: func(opts *Options) { opts.Dispatcher = nil }, want: "services are required"},
 		{name: "notifications", change: func(opts *Options) { opts.Notifications = nil }, want: "services are required"},
 		{name: "sandbox", change: func(opts *Options) { opts.SandboxRoot = "" }, want: "sandbox root is required"},

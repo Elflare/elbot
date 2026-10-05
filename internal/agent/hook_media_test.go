@@ -49,7 +49,7 @@ func TestGoHookMediaAPIAndCanonicalMessage(t *testing.T) {
 	})}); err != nil {
 		t.Fatal(err)
 	}
-	a.SetHookManager(hooks)
+	a.setTestHookManager(hooks)
 	if err := a.HandleMessage(ctx, "hello"); err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestHookMediaOutputDoesNotCreateSessionAndCleansExport(t *testing.T) {
 	})}); err != nil {
 		t.Fatal(err)
 	}
-	a.SetHookManager(hooks)
+	a.setTestHookManager(hooks)
 	sender := &hookMediaSender{t: t, data: data}
 	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Sender: sender})
 	if err := a.HandleMessage(ctx, "send"); err != nil {

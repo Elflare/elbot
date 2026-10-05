@@ -2,6 +2,7 @@ package toolrun
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -71,13 +72,20 @@ func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) 
 	batch := NormalizeCachedTools([]CachedTool{beta, alpha})
 	incremental := MergeCachedTools(MergeCachedTools(nil, []CachedTool{beta}), []CachedTool{alpha})
 	reverseIncremental := MergeCachedTools(MergeCachedTools(nil, []CachedTool{alpha}), []CachedTool{beta})
-	restored := DecodeCache(EncodeCache(Cache{Tools: incremental})).Tools
+	metadata, err := json.Marshal(map[string]any{"tool_cache": incremental})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, err := DecodeState(string(metadata))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	for name, tools := range map[string][]CachedTool{
 		"batch":               batch,
 		"incremental":         incremental,
 		"reverse incremental": reverseIncremental,
-		"restored":            restored,
+		"restored":            restored.ToolCache,
 	} {
 		t.Run(name, func(t *testing.T) {
 			schemas, err := manager.Schemas(context.Background(), view, tools)
@@ -101,11 +109,11 @@ func TestForegroundOnlyToolResolveRejectedInBackground(t *testing.T) {
 	}
 	manager := NewManager(registry, security.DefaultPolicy())
 	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Dir: t.TempDir(), Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
-	resolved := manager.Resolve(ctx, "foreground_only", nil)
+	resolved := manager.Resolve(ctx, "foreground_only", nil, storage.SessionModeBackground)
 	if resolved.Available || resolved.Reason == "" {
 		t.Fatalf("resolved = %#v", resolved)
 	}
-	cached := manager.Resolve(ctx, "cached_foreground", []CachedTool{{Name: "cached_foreground", Source: SourceKindELwisp, Endpoint: "http://127.0.0.1", ForegroundOnly: true}})
+	cached := manager.Resolve(ctx, "cached_foreground", []CachedTool{{Name: "cached_foreground", Source: SourceKindELwisp, Endpoint: "http://127.0.0.1", ForegroundOnly: true}}, storage.SessionModeBackground)
 	if cached.Available || cached.Reason == "" {
 		t.Fatalf("cached resolved = %#v", cached)
 	}

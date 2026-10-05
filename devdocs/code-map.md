@@ -25,7 +25,7 @@ rg -n "locator:tool" devdocs/code-map.md
 - `internal/launcher/cli.go`：命令行解析和补全生成。
 - `internal/app/app.go`、`runner.go`、`dependencies.go`：稳定启动入口、分阶段 Runner 和可替换依赖组。
 - `internal/app/foundation.go`、`models.go`：配置／存储基础设施和 provider 客户端。
-- `internal/app/services.go`、`runtime.go`：共享服务创建、内置命令注册，以及 Cron／Tool／Hook／Agent 装配；先注册完命令再开放平台入口。
+- `internal/app/services.go`、`runtime.go`：共享服务创建、内置命令注册、Cron／Tool／Hook／Agent 装配及 Session／Hook 执行回调接线；先完成注册和接线再开放平台入口。
 - `internal/app/platforms.go`、`integrations.go`：平台运行、Elnis 和平台能力接线；同目录还包含远程 CLI client 与 service marker。
 - `internal/app/signals.go`、`lifecycle.go`：信号连接／队列所有权、Hook 与延迟 Skill 加载取消和完成等待；Runner 统一清理部分启动资源并共享关闭预算。
 
@@ -159,9 +159,11 @@ rg -n "Phase|Request|Cancel|pending|confirm|runtime status|sending" internal/req
 - `internal/agent/tools.go`：Agent 工具运行态和命令依赖适配。
 - `internal/agent/toolrun_*.go`：Agent 到 ToolRun 的桥接。
 - `internal/toolrun/state.go`：Session 工具发现、schema、tag 和规则卡状态的统一读取与事务提交；`discovery.go` 解析发现结果与 wrapper 激活，`cache.go` 负责缓存项归一，`schema.go` 负责调用快照隔离。
+- `internal/toolrun/preload.go`、`tags.go`：独立预加载服务，共享前后台工具发现、Skill 激活、标签配置读取及查询；只返回待提交状态和展示材料。
+- `internal/toolrun/background.go`：后台缓存过滤和 schema 白名单；Manager 在准备 Hook 后按 Session 模式限制工具解析。
 - `internal/agent/tool_cache.go`：工具状态服务的调用适配，成功提交后更新调用期 Session 快照。
-- `internal/agent/tool_directive.go`：`@tool:` / `@skill:` 预处理。
-- `internal/agent/tool_tag_config.go`：工具 tag 配置。
+- `internal/agent/tool_directive.go`：`@tool:` / `@skill:` 输入解析、统一提交与通知编排。
+- `internal/agent/tool_tag_prompt.go`：将工具服务提供的标签提示放入 work 模式 Prompt。
 - `internal/security/`：工具权限和风险策略。
 - `internal/fileops/{file,encoding,text}.go`：文件生命周期、编码与通用文本处理。
 - `internal/fileops/{edit,match,diff}.go`：原子编辑解析、目标匹配与 unified diff。
@@ -299,6 +301,7 @@ rg -n "PlatformAdapter|SendChat|MessageSegment|Actor|Scope|remote|websocket|long
 - `internal/session/service.go`、`types.go`：Session 服务主体和领域请求/结果类型。
 - `internal/session/binding.go`、`signals.go`、`coordination.go`、`activity.go`：当前绑定、锁外变化信号、Scope／SessionID 短准入及忙闲检查。
 - `internal/session/promotion.go`：后台可见性、永久前台归属和在途接管入口。
+- `internal/session/background.go`：后台 Session 创建／复用、模式、标题和后台身份 metadata，不修改前台 current，不处理工具状态。
 - `internal/storage/session_metadata.go`、`sqlite/session_repository.go`：metadata 原值保留与 Session 原子字段更新。
 - `internal/background/takeover.go`：后台修正及投递入口的持久化接管检查。
 - `internal/session/mode.go`：模式激活和 work 历史限制。
@@ -391,7 +394,7 @@ rg -n "Migration|Repository|Upsert|List|Archive|Fork|ToolCall|CronJob|ElnisEvent
 常用搜索：
 
 ```bash
-rg -n "Elvena|Elwisp|/elvena/v2/events|direct|segments|session_mode|background" internal/elvena internal/elnis internal/background docs devdocs
+rg -n -m 20 "Elvena|Elwisp|/elvena/v2/events|direct|segments|background" internal/elvena internal/elnis internal/background docs devdocs
 ```
 
 <!-- locator:cron -->
@@ -403,12 +406,13 @@ rg -n "Elvena|Elwisp|/elvena/v2/events|direct|segments|session_mode|background" 
 
 - `internal/cron/service.go`：Cron Service 装配、CRUD 与公开入口。
 - `internal/cron/model.go`：任务 Metadata、Delivery 状态类型、校验与规范化。
+- `internal/cron/models.go`：任务专用模型成对校验和 work 默认快照，复用 app 注入的 modelmgr 服务。
 - `internal/cron/execution.go`：Direct/LLM 执行、报告生成和 JSON 格式重试。
 - `internal/cron/delivery.go`：逐目标逐输出发送、状态持久化、降级与 receipt mapping。
 
 - `internal/cron/recovery.go`：平台连接跟踪、过期 once 扫描与补发入口。
 - `internal/maintenance/`
-- `internal/agent/cron*.go`：Agent 后台 runner 和后台工具确认特例。
+- `internal/agent/background.go`、`background_tools.go`：通用后台执行编排、预加载提交及后台工具确认。
 - `internal/tool/builtin/cron.go`：cron 内置工具。
 - `internal/storage/sqlite/cron_job_repository.go`：cron job 持久化。
 

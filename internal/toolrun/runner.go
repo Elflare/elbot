@@ -60,7 +60,7 @@ type RunResult struct {
 }
 
 func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunResult {
-	if req.Session == nil || deps == nil {
+	if req.Session == nil || req.Session.Mode == storage.SessionModeChat || deps == nil {
 		return RunResult{}
 	}
 	sessionID := req.Session.ID
@@ -95,7 +95,15 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			continue
 		}
 		preparedCalls = append(preparedCalls, call)
-		resolved := m.Resolve(ctx, call.Name, req.CachedTools)
+		resolved := m.Resolve(ctx, call.Name, req.CachedTools, req.Session.Mode)
+		if !resolved.Available {
+			err := fmt.Errorf("%s", resolved.Reason)
+			message := toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
+			deps.RecordToolCall(ctx, sessionID, call, "", startedAt, llm.SegmentsContentText(message.Segments), err)
+			messages = append(messages, message)
+			transcript = append(transcript, deps.ToolResultMessage(sessionID, message))
+			continue
+		}
 		toolCtx := deps.PrepareToolContext(ctx, req.Session, call)
 		assessment, riskText := m.assessForRun(toolCtx, resolved, call)
 		deps.AddToolUse(sessionID, call.Name)

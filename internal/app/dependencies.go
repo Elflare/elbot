@@ -20,6 +20,7 @@ import (
 	"elbot/internal/notification"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
+	"elbot/internal/toolrun"
 )
 
 type StartupProfiler interface {
@@ -118,6 +119,7 @@ type RuntimeComponents struct {
 	Signals       *signalBindings
 	Media         *media.Manager
 	Agent         *agent.Agent
+	ToolPreloader *toolrun.PreloadService
 	Handler       platform.PlatformHandler
 	CronService   *elcron.Service
 	ElvenaBus     *elvena.Bus

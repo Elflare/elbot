@@ -89,7 +89,7 @@ func TestRunHookErrorSendsFailureNotice(t *testing.T) {
 		t.Fatalf("register hook: %v", err)
 	}
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli",
 		ScopeID: "private:test"}}, Sender: p,
 	})
@@ -109,7 +109,7 @@ func TestRunHookErrorSendsFailureNotice(t *testing.T) {
 func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
 	manager := hook.NewManager()
 	a := &Agent{platform: &fakePlatform{}, requests: request.NewManager(time.Minute)}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 	parent, parentCtx, parentDone, err := a.requests.Start(context.Background(), request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	if err != nil {
 		t.Fatalf("start turn: %v", err)
@@ -154,7 +154,7 @@ func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
 func TestStopCanCancelTrackedHookRequest(t *testing.T) {
 	manager := hook.NewManager()
 	a := &Agent{platform: &fakePlatform{}, requests: request.NewManager(time.Minute)}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 	entered := make(chan struct{})
 	if err := manager.Register(hook.Registration{
 		Point: hook.PointAgentInputPrepared,

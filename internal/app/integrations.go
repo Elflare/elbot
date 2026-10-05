@@ -43,7 +43,8 @@ func (defaultIntegrationFactory) Attach(ctx context.Context, req IntegrationRequ
 			Send: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 				return runtime.Dispatcher.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
 			},
-			Runner: runtime.Agent,
+			Runner:        runtime.Agent,
+			ToolPreloader: runtime.ToolPreloader,
 			ResolveModel: func(slot string) config.ModelSelection {
 				return runtime.Models.ResolveMode(slot).ModelSelection
 			},

@@ -173,12 +173,12 @@ func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 func TestSchemasAreDetachedForPreparedHook(t *testing.T) {
 	item := stateTestTool("tool")
 	manager := NewManager(nil, nil)
-	schemas, err := manager.Schemas(context.Background(), Context{}, []CachedTool{item})
+	schemas, err := manager.Schemas(context.Background(), Context{Mode: storage.SessionModeWork}, []CachedTool{item})
 	if err != nil {
 		t.Fatal(err)
 	}
 	schemas[0].Function.Parameters["properties"].(map[string]any)["path"].(map[string]any)["type"] = "number"
-	next, err := manager.Schemas(context.Background(), Context{}, []CachedTool{item})
+	next, err := manager.Schemas(context.Background(), Context{Mode: storage.SessionModeWork}, []CachedTool{item})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -34,7 +34,7 @@ func IsBackground(row *storage.Session) bool {
 	fields, _ := storage.DecodeSessionMetadata(row.Metadata)
 	var kind string
 	_ = json.Unmarshal(fields["background_kind"], &kind)
-	return strings.TrimSpace(kind) != "" || strings.HasPrefix(row.PlatformScopeID, "cron:") || strings.HasPrefix(row.PlatformScopeID, "elnis:")
+	return row.Mode == storage.SessionModeBackground || strings.TrimSpace(kind) != "" || strings.HasPrefix(row.PlatformScopeID, "cron:") || strings.HasPrefix(row.PlatformScopeID, "elnis:")
 }
 
 func (scope Scope) acceptsBackground() bool {
@@ -78,6 +78,7 @@ func (s *Service) activateExisting(ctx context.Context, scope Scope, id string, 
 				return err
 			}
 			row.OwnerID, row.Platform, row.PlatformScopeID = scope.ActorID, scope.Platform, scope.PlatformScopeID
+			row.Mode = storage.SessionModeWork
 			promoted = true
 		}
 		if unarchive {

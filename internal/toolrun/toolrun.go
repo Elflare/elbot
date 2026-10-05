@@ -103,6 +103,9 @@ func (m *Manager) BaseSchemas(ctx context.Context, view Context) ([]llm.ToolSche
 }
 
 func (m *Manager) Schemas(ctx context.Context, view Context, cached []CachedTool) ([]llm.ToolSchema, error) {
+	if view.Mode != storage.SessionModeWork && view.Mode != storage.SessionModeBackground {
+		return nil, nil
+	}
 	base, err := m.BaseSchemas(ctx, view)
 	if err != nil {
 		return nil, err
@@ -121,6 +124,9 @@ func (m *Manager) Schemas(ctx context.Context, view Context, cached []CachedTool
 		appendSchema(schema)
 	}
 	for _, cachedTool := range cached {
+		if view.Mode == storage.SessionModeBackground && !backgroundToolAllowed(ctx, cachedTool) {
+			continue
+		}
 		if !cachedToolAvailable(ctx, cachedTool) {
 			continue
 		}
@@ -151,13 +157,16 @@ func cachedToolAvailable(ctx context.Context, cached CachedTool) bool {
 	return AvailableInContext(ctx, tool.Info{ForegroundOnly: cached.ForegroundOnly})
 }
 
-func (m *Manager) Resolve(ctx context.Context, name string, cached []CachedTool) ResolvedTool {
+func (m *Manager) Resolve(ctx context.Context, name string, cached []CachedTool, mode string) ResolvedTool {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return ResolvedTool{Name: name, Available: false, Reason: "tool name is empty"}
 	}
 	for _, cachedTool := range cached {
 		if cachedTool.Name != name && cachedTool.CanonicalName != name {
+			continue
+		}
+		if mode == storage.SessionModeBackground && !backgroundToolAllowed(ctx, cachedTool) {
 			continue
 		}
 		cachedCopy := cachedTool
@@ -180,6 +189,9 @@ func (m *Manager) Resolve(ctx context.Context, name string, cached []CachedTool)
 			}
 		}
 		return ResolvedTool{Name: cachedCopy.Name, Source: SourceKindNative, Cached: &cachedCopy, Available: false, Reason: "native tool is no longer available"}
+	}
+	if mode == storage.SessionModeBackground {
+		return ResolvedTool{Name: name, Reason: "tool is not allowed in this background task"}
 	}
 	if m != nil && m.Native != nil {
 		if nativeTool, ok := m.Native.Get(name); ok {
@@ -257,7 +269,7 @@ func NativeCachedToolsFromDiscovery(result *tool.DiscoveryResult) []CachedTool {
 		if discovered.Schema == nil || discovered.Info.Name == "" {
 			continue
 		}
-		out = append(out, CachedTool{Name: discovered.Info.Name, Source: SourceKindNative, Description: discovered.Info.Description, Schema: *discovered.Schema, ForegroundOnly: discovered.Info.ForegroundOnly})
+		out = append(out, CachedTool{Name: discovered.Info.Name, Source: SourceKindNative, Description: discovered.Info.Description, Schema: cloneSchema(*discovered.Schema), ForegroundOnly: discovered.Info.ForegroundOnly})
 	}
 	return out
 }

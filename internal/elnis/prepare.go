@@ -22,7 +22,6 @@ func (s *Service) prepareEvent(origin elvena.Origin, req Request) (Event, error)
 	req.Mode = strings.TrimSpace(req.Mode)
 	req.Format = strings.TrimSpace(req.Format)
 	req.ModelSlot = strings.TrimSpace(req.ModelSlot)
-	req.SessionMode = strings.TrimSpace(req.SessionMode)
 	req.Content = strings.TrimSpace(req.Content)
 	if req.Version != elvena.VersionV2 && req.Version != elvena.VersionV3 {
 		return Event{}, fmt.Errorf("unsupported ELvena version %q", req.Version)
@@ -56,9 +55,6 @@ func (s *Service) prepareEvent(origin elvena.Origin, req Request) (Event, error)
 	}
 	if req.ModelSlot != "" && !isElnisModelSlot(req.ModelSlot) {
 		return Event{}, fmt.Errorf("unsupported model_slot %q", req.ModelSlot)
-	}
-	if req.SessionMode != "" && !isElnisSessionMode(req.SessionMode) {
-		return Event{}, fmt.Errorf("unsupported session_mode %q", req.SessionMode)
 	}
 	for i, segment := range req.Segments {
 		if err := validateMediaSegment(segment); err != nil {

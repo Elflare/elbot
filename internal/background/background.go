@@ -29,14 +29,16 @@ type RunRequest struct {
 	SessionID      string
 	ModelProvider  string
 	Model          string
-	SessionMode    string
 	PromptSegments []llm.MessageSegment
 	Prompt         string
 	RetryPrompt    string
-	ToolListNames  []string
-	CachedTools    []toolrun.CachedTool
-	SandboxSubdir  string
-	Metadata       map[string]string
+	// Tool inputs initialize new sessions only; continuations inherit committed state.
+	// AllowedToolNames optionally restricts root tools (nil means unrestricted).
+	ToolListNames    []string
+	AllowedToolNames []string
+	CachedTools      []toolrun.CachedTool
+	SandboxSubdir    string
+	Metadata         map[string]string
 }
 
 type RunResult struct {

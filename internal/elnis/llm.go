@@ -30,7 +30,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		return err
 	}
 	model := s.modelForEvent(event)
-	result, err := s.runner.RunBackground(ctx, background.RunRequest{
+	runRequest := background.RunRequest{
 		Kind:           background.KindElnis,
 		Name:           event.EventKey,
 		Title:          firstNonEmpty(event.Request.Title, "Elnis: "+event.Request.Source),
@@ -39,11 +39,8 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		ScopeID:        "elnis:" + event.EventKey,
 		ModelProvider:  model.Provider,
 		Model:          model.Model,
-		SessionMode:    event.Request.SessionMode,
 		PromptSegments: segments,
 		Prompt:         s.llmPrompt(event),
-		ToolListNames:  event.Request.ToolListNames,
-		CachedTools:    s.elwispCachedTools(event),
 		SandboxSubdir:  elnisSandboxSubdir(event.Request.Elwisp.Name),
 		Metadata: map[string]string{
 			"elnis_event_key": event.EventKey,
@@ -51,7 +48,14 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 			"elnis_source":    event.Request.Source,
 			"elnis_source_id": event.Request.ID,
 		},
-	})
+	}
+	runRequest.ToolListNames = event.Request.ToolListNames
+	runRequest.CachedTools = s.elwispCachedTools(event)
+	runRequest.AllowedToolNames = make([]string, 0)
+	for name := range s.allowedInternalTools(event.Request.Elwisp.Name) {
+		runRequest.AllowedToolNames = append(runRequest.AllowedToolNames, name)
+	}
+	result, err := s.runner.RunBackground(ctx, runRequest)
 	if taken, lookupErr := background.SessionTakenOver(context.WithoutCancel(ctx), s.store, result.SessionID); lookupErr != nil {
 		return lookupErr
 	} else if taken {
@@ -117,7 +121,6 @@ func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, session
 		SessionID:     sessionID,
 		ModelProvider: model.Provider,
 		Model:         model.Model,
-		SessionMode:   event.Request.SessionMode,
 		Prompt:        background.DefaultJSONRetryPrompt(),
 		SandboxSubdir: elnisSandboxSubdir(event.Request.Elwisp.Name),
 		Metadata:      map[string]string{"elnis_event_key": event.EventKey, "elwisp_name": event.Request.Elwisp.Name},
@@ -141,10 +144,10 @@ func (s *Service) llmPrompt(event Event) string {
 	if format == "elyph" {
 		parts = append(parts, elyph.RuleCard(), "")
 	}
+	parts = append(parts, "** 只能调用本任务提供的工具；没有提供工具时，基于已有信息完成或报告阻塞")
 	parts = append(parts,
 		"** 按事件内容自主处理，当前无人值守",
 		"** 信息不足时，在最终 JSON 的 report 填写失败或阻塞原因",
-		"** 需要使用工具时直接使用工具",
 		"** 所有路径参数必须使用相对路径",
 		"** 有投递目标、任务要求通知或产生需要目标知道的结果/失败/阻塞原因时，应设置 need_report=true 并在 report 写自然语言汇报",
 		"** 最终回复必须是严格 JSON",

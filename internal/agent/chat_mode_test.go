@@ -1,0 +1,73 @@
+package agent
+
+import (
+	"context"
+	"testing"
+
+	"elbot/internal/config"
+	"elbot/internal/hook"
+	"elbot/internal/llm"
+	"elbot/internal/session"
+	"elbot/internal/storage"
+	"elbot/internal/tool"
+)
+
+func TestChatModeIgnoresForcedHookToolsAndModelCalls(t *testing.T) {
+	t.Run("foreground", func(t *testing.T) {
+		ctx := context.Background()
+		var executed string
+		candidate := preparedArgumentTool{arguments: &executed}
+		registry := tool.NewRegistry()
+		if err := registry.Register(candidate); err != nil {
+			t.Fatal(err)
+		}
+		f := &fakeLLM{chunks: [][]llm.StreamChunk{
+			{{DeltaContent: "plain answer", ToolCallDeltas: []llm.ToolCallDelta{{ID: "model-call", Name: candidate.Name(), Args: "{}"}}}},
+			{{DeltaContent: "unexpected followup"}},
+		}}
+		a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t))
+		a.SetSandboxRoot(t.TempDir())
+		a.SetToolRuntime(registry, nil)
+		hooks := hook.NewManager()
+		for _, point := range []hook.Point{hook.PointLLMTurnPrepared, hook.PointLLMRequestPrepared, hook.PointLLMResponseReceived} {
+			if err := hooks.Register(hook.Registration{Point: point, Name: "force-tools", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
+				if event.Point == hook.PointLLMResponseReceived {
+					event.LLM.ToolCalls = append(event.LLM.ToolCalls, llm.ToolCallRequest{ID: "hook-call", Name: candidate.Name(), Arguments: "{}"})
+				} else {
+					event.LLM.Tools = []llm.ToolSchema{candidate.Schema()}
+				}
+				return event, nil
+			})}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		a.setTestHookManager(hooks)
+		var id string
+		{
+			row, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Mode: storage.SessionModeChat})
+			if err != nil {
+				t.Fatal(err)
+			}
+			id = row.ID
+			if err := a.HandleMessage(ctx, "hello"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if executed != "" {
+			t.Fatalf("chat executed tool: %q", executed)
+		}
+		requests := f.chatRequests()
+		if len(requests) != 1 || len(requests[0].Tools) != 0 {
+			t.Fatalf("chat sent tools or entered tool loop: requests=%+v", requests)
+		}
+		messages, err := a.store.Messages().ListBySession(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, message := range messages {
+			if message.Role == storage.RoleTool {
+				t.Fatal("chat persisted tool transcript")
+			}
+		}
+	})
+}

@@ -97,7 +97,7 @@ func TestToolResultMediaPersistsID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.SetHookManager(hooks)
+	a.setTestHookManager(hooks)
 	if err := a.HandleMessage(ctx, "run"); err != nil {
 		t.Fatal(err)
 	}

@@ -27,6 +27,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - 平台 adapter 只处理平台输入输出，不直接驱动 LLM。
 - `app.Run` 保持默认生产入口；需要替换启动阶段或做隔离测试时，使用 `NewRunner(Dependencies)` 注入分组工厂。
 - 共享 Session、Request、Turn、模型、上下文、工具状态、文件、发送、通知及命令实例由 app 创建。Agent 的 `NewWithOptions` 要求注入必需依赖，不补建服务或注册内置命令；测试装配位于测试文件中。
+- app 在平台启动前安装 Session 前台接管、活动会话查询和 Hook 唤醒／执行观察回调；这些执行回调遵守原有同步准入约束，生命周期通知另走信号。Agent 自身的 Prompt、命令执行器和补全组件由 Agent 组装。
 - Foundation／Runtime 工厂即使返回错误，也返回已取得资源的 Lifecycle。Runner 接管部分构建的清理责任，不启动后续阶段；延迟 Skill 加载同时提供取消上下文和实际完成信号。
 - Runner 逆序释放资源：平台停止生产后，先断开信号并关闭队列，再关闭 Hook runtime、等待 Skill 加载结束，最后关闭 Cron、SQLite 和日志。
 - 平台退出等待和后续清理共享 30 秒预算。预算到期停止等待；平台或回调仍在运行时跳过其依赖的显式释放，交给进程退出，不启动后台收尾链。正常取消／关闭预算耗尽不视为应用失败，真实错误继续返回。
@@ -65,7 +66,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 
 配置要求由所属模块声明：默认可选，必需项显式标记，示例仅免除模板补齐。`config.Load` 与只读 `config.Inspector` 共用读取、路径、默认值和合并流程；条件校验复用配置自身方法。平台和 Hook 描述由 app 显式装配，配置包不导入具体模块。
 
-`internal/doctor` 仅将配置层结果按文件生成报告，经 `agent.Options.Doctor` 和命令 `Deps.Doctor` 注入 `/doctor`。必要问题报错，可选缺项及内置 Skill 差异提示；内容比较忽略全部 CR/LF，TOML 仍按原文解析。仅有 Elnis 相关条目时附说明链接。诊断只读磁盘，不读取密钥、初始化文件或启动外部运行时；命令仅超级管理员可用，不自动修复、不调用 LLM。
+`internal/doctor` 仅将配置层结果按文件生成报告，由 app 创建并经命令 `Deps.Doctor` 注入 `/doctor`。必要问题报错，可选缺项及内置 Skill 差异提示；内容比较忽略全部 CR/LF，TOML 仍按原文解析。仅有 Elnis 相关条目时附说明链接。诊断只读磁盘，不读取密钥、初始化文件或启动外部运行时；命令仅超级管理员可用，不自动修复、不调用 LLM。
 
 <!-- locator:agent-chat -->
 ## Agent 对话链路
@@ -155,10 +156,15 @@ Tool Runtime 负责注册、schema、权限、风险、确认详情、用户侧 
 工具视图由 ToolRun 提供：
 
 - `toolrun.StateService` 统一读取和提交 Session 的 `discovered_tools`、`tool_cache`、`tool_tags`、`shown_rule_card_formats`；metadata 是唯一事实来源，调用方只持有快照。
+- 独立的 `toolrun.PreloadService` 负责前后台发现、Skill 激活、标签文件读取及标签查询，返回待提交状态和展示材料；Agent 保留输入解析、提交与输出时序。预加载服务不写 Session，工具执行仍由 Manager 负责。
 - 合并 native/Elwisp 工具。
 - 按前台/后台过滤 foreground-only 工具。
 - 处理工具名解析、风险确认和批量工具预览。
-- 同一输入的 `@tool`／`@skill` 预加载及一次工具发现，各自在一次仓储 `Mutate` 中合并所有工具状态；成功才更新调用快照并报告注入成功。失败保留原状态并返回错误，已经完成的工具动作不回滚或自动重跑。
+- 同一输入的 `@tool`／`@skill` 预加载、一次工具发现或后台预加载，各自在一次 StateService 提交中合并所有工具状态；后台原生和 Elwisp 工具一起合并。成功才更新调用快照并报告注入成功。失败保留原工具状态并返回错误，已经完成的工具动作不回滚或自动重跑。
+- 前台 chat 不预加载 Skill、不读写工具状态，也不注入工具标签提示。LLM 请求与响应边界丢弃强行注入的 schema／tool calls，不进入工具循环。
+- 后台 Session 固定为 `background`。首次创建时将显式工具、外部工具、Skill runner 及必要依赖一并交 StateService 提交；同 Session 的续跑和格式重试只恢复此状态，忽略新工具参数。首轮没有工具即始终没有工具，直到前台接管。
+- 后台 schema 只取允许的缓存项，禁止 `discover_tool`、`workspace` 和 ForegroundOnly 工具；请求 Hook 不能扩大 schema 集合。工具调用在准备 Hook 改名之后、风险评估和副作用之前按缓存白名单检查，不回退全 Registry。
+- `tool_list_names` 优先匹配工具／Skill 名，再匹配标签；只有显式选择的标签注入提示，直接选择工具不附带关联标签。Elnis 与 Agent 使用同一 PreloadService 展开标签，每个根工具仍受 `allowed_tools` 限制，执行前再次按已授权根工具过滤。任务正文中的 `@tool`／`@skill` 不扩大权限。
 - schema 对外返回独立副本，Hook 对嵌套参数的修改仅作用于本次调用；工具注册与 Skill 生命周期仍由原 Runtime 管理。
 - 恢复读取已有状态；Fork 按指定范围继承历史，不复制父 Session 工具状态或最近用量。
 
@@ -302,11 +308,13 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 
 Session 服务唯一管理 current 绑定及其同步失效。绑定只公开 `Scope()`、`SessionID()`、`Valid()`，不提供取消；`CurrentBound` 一并返回持久化快照和原绑定。切离后旧绑定永久无效，切回同一 Session 获得新绑定；未变化的 current 不重复发信号。输入、工具和确认续接传递原绑定，普通旧调用不能重新捕获 current 而复活。
 
+`PrepareBackground` 创建或复用后台会话，在同一 `Session.Mode` 字段固定 `background`，管理标题及后台身份 metadata，不激活前台 current；复用时保留其他模块字段，拒绝已被前台接管的会话。首次后台工具状态由调用方另交 StateService 提交。
+
 仅发布 `BindingChanged{Old, New, Reason}`，覆盖创建、恢复、Fork、重置、删除、过期和记录缺失导致的 current 变化，不发布一般字段或持久化增删事件。删除会失效所有指向该记录的绑定。信号在状态与准入锁释放后发出，允许回调重入。app 持有独立撤销清理队列及订阅，以 `FollowExecutor + CancelPending` 清理指定旧绑定；队列延迟不影响同步失效，关闭沿用共享 30 秒预算。维护任务复用运行中的 Session 服务。
 
 短准入按 Scope → 排序后的 SessionID → 状态锁取得。Scope 保护 current 解析与切换，SessionID 协调 Turn 启动、停止、交接、删除和清理；LLM、工具、Hook、发送和信号回调均在锁外。Session 通过注入的只读执行状态判断忙闲，当前非 idle 时禁止切离，显式删除拒绝执行中的 Session，维护清理跳过忙碌项并在条件删除时复核归档、置顶和时间。不同 Scope 不共用全局准入锁。
 
-后台 Session 只向所属用户的同平台私聊及 CLI 管理入口开放，群聊、频道和未知类型不可列出或直接恢复。首次恢复在原子更新中将归属永久改为前台 Scope，记录 `foreground_origin` 并清除活动后台身份；保留历史、模式、缓存和 workspace，切走或重启不会恢复后台身份。运行中的目标可被空闲前台接管，原 Execution 同步取得前台身份、绑定和输出目标；已发出的请求与工具不重启，后续执行边界使用前台工具及确认规则。
+后台 Session 只向所属用户的同平台私聊及 CLI 管理入口开放，群聊、频道和未知类型不可列出或直接恢复。首次恢复在原子更新中将归属永久改为前台 Scope、模式改为 `work`，记录 `foreground_origin` 并清除活动后台身份；保留历史、缓存和 workspace，切走或重启不会恢复后台身份。运行中的目标可被空闲前台接管，原 Execution 同步取得前台身份、绑定和输出目标；已发出的请求与工具不重启，后续请求使用 work 模型及前台工具、确认规则。
 
 接管后的原后台任务等待该逻辑执行的最终完成、取消或失败。Cron／Elnis 保存实际 RunID、消息和结果并标记接管，不将其直接算作任务成功；停止 JSON 修正、自动汇报与未开始的补投递。再次使用已接管 SessionID 不会重新设置后台身份，独立定时触发仍创建新后台 Session。
 
@@ -319,6 +327,7 @@ Session 命令的分页选择和维护配置由 `SessionCommandState` 按 Scope 
 - 命令用 Session／Scope 确定当前模式，模型匹配和切换由服务执行。目录按 provider 并行查询，缓存模型与错误，显式刷新；配置模型始终参与合并，编号在筛选前统一分配。目录结果和选择状态以独立快照交付。
 - 切换串行构建候选状态，调用 `config.SaveState` 原子替换状态文件后再发布内存状态；失败保留旧选择。写盘不持有状态读锁，读取方继续使用旧快照。状态文件保留原有字段及默认 Session 模式；未配置路径的独立实例仅更新内存。
 - `Selection` 固定 provider、模型和客户端。对话固定本次 Turn 选择；压缩固定专用选择或本次对话 fallback；命名同时固定专用选择及 work fallback。LLM Hook 仍可按既有协议改写单次请求。
+- `background` 只是 Session 模式，没有对应模型槽位。默认后台选择 work 模型；Elnis 保留 elwisp1/2/3 槽位及缺省回退 work。Cron 任务可显式指定 provider/model，由共享 modelmgr 校验，不改变全局选择。
 - 标题生成与压缩调度留在原模块，不保存独立模型选择。app 将模型服务的重试回调接入 `notification/rules.ModelRetry`；客户端配置在启动后保持不变。
 
 <!-- locator:context -->
@@ -376,7 +385,7 @@ Elnis 是监听枢纽，Elvena 是公共协议层，Elwisp 是外部事件/能�
 3. prepare 校验 v2/v3 request，规范化 target/tool/calls，生成事件 key/hash。
 4. service 去重后分发 record/direct/llm。
 5. direct 发送 content/segments 或执行 raw/capability calls。
-6. llm 后台任务按 session_mode 运行，并投递结果报告。
+6. llm 后台任务以固定 background 模式运行，并投递结果报告。
 
 LLM 报告使用 SQLite outbox：result 与逐目标、逐 output 的投递项原子落库，投递期间状态为 `result_ready/delivering`，所有 receipt 持久化后才进入 `completed`。Runtime 定时重试未完成项，并在启动时恢复被中断的投递；语义为至少一次。
 
@@ -384,7 +393,7 @@ LLM 报告使用 SQLite outbox：result 与逐目标、逐 output 的投递项�
 
 - 公共协议类型放在 `internal/elvena`，Elnis 复用别名。
 - segment 下载和 URL/data URI 校验集中处理。
-- 背景 LLM 要使用后台 actor、sandbox subdir 和对应 session_mode。
+- 后台 LLM 使用后台 actor、固定 sandbox subdir 和 background 模式，协议不选择 Session 模式。shell／文件工具的相对路径解析到对应 `elnis/<elwisp>` 沙盒；后台无 workspace 工具、不读取 AGENTS.md，SOUL、常驻记忆、Skill 说明及显式 tag 提示复用现有 Prompt 链路。
 - 报告发送不能先写 `completed`；外部平台未提供幂等能力时允许恢复产生重复消息，但不能静默丢失待投递项。
 
 <!-- locator:cron -->
@@ -401,5 +410,6 @@ LLM 报告使用 SQLite outbox：result 与逐目标、逐 output 的投递项�
 - 正常触发和平台连接补发共用逐实际收件目标、逐输出状态；`ReportReady` 表示报告可复用，LLM 的 `TaskCompleted` 只记录任务结论。
 - 补发读取最新任务配置且只由平台连接触发；附件失败在同次补发中降级为路径或 URL 文字，降级文字失败则等待下次连接，不做周期重试。
 - 同任务投递互斥支持 context 取消；补发取消后停止后续目标且不发送失败通知。ReportReady 及逐输出回执决定恢复位置；报告持久化前可能重新执行，发送成功但回执尚未持久化时可能重复投递。
-- LLM cron 可预注入工具或 Skill。
+- LLM cron 首轮可指定工具、Skill 或标签，续跑沿用首轮工具状态。
+- Cron metadata 保存可选 `model_provider`／`model`，创建和更新必须成对设置；更新省略则保留，两者同时清空则恢复 work 默认。每轮执行解析一次模型，格式重试复用相同模型和 Session；任务专用选择不修改全局模型。
 - cron/Elnis 后台 shell 的非 critical 风险可自动确认，critical 直接返回提醒，不等待用户。

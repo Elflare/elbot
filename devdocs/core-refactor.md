@@ -38,14 +38,14 @@
 | `notification/rules/` | `platform.go`、`hook.go`、`model.go`、`execution.go` | 将相关业务事件转换为通知，维护通知文案和触发规则 |
 | `delivery/` | 保留现有类型和 Manager | 平台无关输出、目标、回执、校验和发送契约 |
 | `delivery/dispatch/` | `router.go`、`media.go` | 接收 Agent 的平台路由、媒体发送准备及媒体回执关联职责 |
-| `session/` | 增加 `binding.go`、`signals.go`、`workspace.go` | 当前绑定、生命周期信号、workspace 持久化适配；保留已有创建、恢复、命名和查询职责 |
+| `session/` | `binding.go`、`signals.go`、`workspace.go`、`background.go` | 当前绑定、生命周期信号、workspace 持久化适配和后台会话准备；保留已有创建、恢复、命名和查询职责 |
 | `modelmgr/` | `service.go`、`selection.go`、`catalog.go`、`state.go` | 从 Agent 抽出模型选择、客户端缓存、模型列表和运行状态读写 |
 | `contextmgr/` | 增加 `service.go`、`state.go`，复用现有职责文件 | 收拢上下文加载、窗口、用量和压缩状态；执行调度保留在 Agent |
 | `workspace/` | `workspace.go`、`resolve.go` | 从 Tool 提取已有 workspace 契约和路径解析，统一入口组合 sandbox 限制 |
 | `sandbox/` | `sandbox.go` | 从 Tool 提取后台路径限制和沙箱上下文；复用原有规则 |
 | `fileops/` | `service.go`、`rollback.go`，迁入现有文件操作文件 | 统一底层文件操作和命令／工具共享的编辑撤销服务 |
 | `command/builtin/` | 沿用现有命令文件名 | 接收 `agent/commands`；具体命令依赖领域服务 |
-| `toolrun/` | `state.go`、`discovery.go`、`schema.go`，复用 `cache.go` | 工具发现状态、schema 快照、事务提交与恢复 |
+| `toolrun/` | `state.go`、`discovery.go`、`schema.go`、`cache.go`、`preload.go`、`tags.go` | StateService 统一持久化；独立 PreloadService 管理前后台预加载和标签查询，Manager 管理工具调用 |
 | `platform/` | 增加 `signals.go`，调整各 adapter | 提供公共来源信息和连接信号，保留平台协议与连接细节 |
 | `app/` | `services.go`、`signals.go`，调整现有装配文件 | 构建共享服务、连接信号、配置执行器和关闭顺序 |
 | `agent/` | 保留消息、对话、工具循环、命令执行和 Turn 输出适配文件 | 编排上述服务；`core.go` 保留 Agent 自身状态和依赖 |
@@ -261,15 +261,41 @@ Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记�
 - 验收：全量测试及相关并发测试通过；完成“消息 → 命令／工具 → 状态更新 → 通知”的串联验证，并覆盖 Session 切换、文件撤销、模型切换、后台任务与启动关闭。
 
 <a id="phase-8"></a>
-### 阶段8: Review
+### 阶段 8：Review 与职责收尾
 
-- 检查旧逻辑和代码，应该统一使用重构后的代码逻辑，不再散落自造逻辑或者不必要的路径和依赖。
-- review 最近7个step的改动，是否还有逻辑bug，是否符合设定和构想。架构是否合理，边界、职责是否明确，包名、文件位置是否合理
+复核前七阶段的实际调用链、逻辑正确性、职责边界、依赖方向和文件归属。验收以业务规则真正归位、旧路径消失为准，不以缩短 `core.go` 或把字段包装进另一层结构为目标。
+
+#### 已发现的问题与处理约定
+
+- 后台工具状态统一由 `toolrun.StateService` 提交，不通过 Session 仓储提前写缓存。首次任务的原生／外部工具及必要依赖一次提交，失败不启动 LLM；续跑和格式重试只恢复首轮状态，新工具参数不生效。首轮为空即没有工具。
+- Cron／Elnis 在同一 `Session.Mode` 字段固定 background，协议不选择模式；恢复前台时原子改为 work。background 不新增模型槽位，默认沿用 work；Elnis 保留 elwisp 槽位与 work fallback，Cron 支持任务级 provider/model 成对设置、清空及执行快照。
+- 后台禁止 discover_tool、workspace 和 ForegroundOnly 工具，schema Hook 不能扩大白名单；准备工具 Hook 改名后再次检查缓存，禁止 Registry fallback，并在风险评估及副作用前拒绝。前台 chat 继续忽略 schema／tool calls，不读取工具缓存或标签提示。
+- 工具选择复用 `tool_list_names`：工具／Skill 名优先，标签展开后逐根工具授权；仅显式标签注入 tag 提示。Skill 说明、runner、SOUL 和记忆复用现有链路。后台不加载 AGENTS.md，相对路径固定到对应任务沙盒。
+- 前后台工具发现及 Skill 预加载存在重复实现；Agent 还拥有标签文件读取、解析、缓存和查询。新增独立的 `toolrun` 预加载服务，复用 Registry、权限及已有工具实现，共用发现、Skill 激活、标签配置和查询。服务返回待提交状态与展示材料，StateService 保持独立并统一负责持久化；Agent 保留输入解析、提交和输出时序编排。
+- 后台会话创建、复用、模式、标题及后台身份 metadata 归现有 `session.Service`，提供不改变前台 current 的后台入口；Session 不依赖工具类型、不写工具字段。Agent 保留后台执行、Request／Turn、取消和前台接管协调，通用后台执行文件按实际职责命名。
+- 删除 Agent 的 `RunCronMessage` 及仅供它使用的请求／结果类型，相关测试迁到实际 `RunBackground` 入口；删除只剩测试使用的 `latestAssistantMessage`、`assistantRawTextFromMetadata`，结果测试验证当前执行结果返回链路。删除 Agent 内无调用的 `cronSessionMetadata`，保留 Cron 模块实际使用的实现。删除前复核引用，不保留只为旧测试存在的生产代码。
+- app 在平台启动前安装 Session 前台接管、活动会话查询及 Hook 唤醒／执行观察回调。Agent 构造器和 `SetHookManager` 不再识别具体 Hook Manager 或替共享服务安装回调；通过窄回调接线，保留原有同步、锁及准入约束。Agent 自身字段初始化、Prompt、命令执行器及补全组件组装仍归 Agent；测试装配同步遵守这些边界。
+
+#### 验收
+
+- 通过实际后台入口验证首轮工具提交、续跑冻结、初始空白名单和提交失败；验证模型强行调用、schema Hook 注入及准备 Hook 改名都不能越权，前台 chat 继续禁用工具。
+- 回归前后台工具／Skill 预加载、标签、补全及权限，保持隐藏工具、后台限制和既有提示行为。
+- 验证后台结果、前台接管、Session 切换、Hook 唤醒与启动装配；检查旧入口、重复实现、metadata 所有权及反向依赖。
+- 执行相关包、race 和全量测试，继续复核前七阶段其他链路；不能以本批问题修完代替全部 Review。本次按用户约定只同步开发文档，用户文档仅删除协议中已取消的模式说明，不扩写用户手册或 CHANGELOG。
+
+#### Review 验证结果
+
+- 公共信息／信号：基础包不依赖业务模块；平台来源快照、按平台队列和关闭取消仍走既有契约。
+- Session／文件：绑定同步失效、提交准入和后台接管保持原顺序；实际 app 装配测试覆盖忙碌保护、后台执行接管与 Hook 观察回调。
+- 模型／上下文：模型先持久化再发布快照，上下文 metadata 按字段更新；相关并发与压缩交接回归通过。
+- 工具状态：生产代码的工具 metadata 读写集中于 StateService；前后台预加载共用服务。实际后台入口覆盖首轮提交、续跑冻结、空白名单、显式 tag、Hook／模型越权和真实沙盒文件读写；Session 恢复验证模式切换，Cron 验证任务模型 CRUD 及格式重试快照。
+- 发送／命令／装配：领域服务及内置命令没有反向依赖 Agent；原来源投递、部分回执、共享服务和启动失败清理回归通过。旧后台适配器、重复发现与旧缓存序列化入口均无生产引用。
+- `go test ./...` 通过；Agent、app、Session、toolrun、Cron、Elnis、signal、fileops、modelmgr、contextmgr、delivery、notification、command、platform、Turn 及 SQLite 的相关 `-race` 测试通过。
 
 
 ## 实施前需讨论的细节
 
-阶段 6 的公共信息边界，以及阶段 7 的 app 统一构造和命令直连文件服务约定均已明确，见对应章节。后续实施出现新的多种实现方式或歧义时，仍须先与用户讨论。
+阶段 6 的公共信息边界、阶段 7 的统一构造，以及阶段 8 的独立预加载服务、StateService 统一持久化和 Session 后台入口均已明确，见对应章节。后续实施出现新的多种实现方式或歧义时，仍须先与用户讨论。
 
 ## 验证与文档维护
 

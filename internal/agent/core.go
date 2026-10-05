@@ -128,24 +128,11 @@ func NewWithOptions(opts Options) (*Agent, error) {
 	}
 	a.toolRuntime = newToolRuntimeState()
 	a.toolRuntime.manager = opts.ToolRunner
+	a.toolRuntime.preloader = opts.ToolPreloader
 	a.toolRuntime.registry = opts.ToolRegistry
 	a.toolRuntime.fileRollback = opts.FileRollback
-	sessions.SetForegroundActivation(a.adoptForeground)
-	sessions.SetActivitySource(func() []string {
-		var ids []string
-		for _, active := range turns.SnapshotAll() {
-			if active.Phase != turn.PhaseIdle {
-				ids = append(ids, active.SessionID)
-			}
-		}
-		return ids
-	})
 	if opts.Logs != nil {
 		a.SetLogManager(opts.Logs)
-	}
-	if defaultManager, ok := opts.HookManager.(*hook.DefaultManager); ok {
-		defaultManager.SetWakeupFunc(a.hookWakeup)
-		defaultManager.SetObserver(a.observeHookRun)
 	}
 	if opts.ToolRegistry != nil {
 		a.toolRuntime.provider = toolRunPromptProvider{agent: a}
@@ -153,7 +140,6 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		a.SetToolProvider(opts.ToolProvider)
 	}
 	a.SetToolConfig(opts.ToolsConfig)
-	a.SetToolTagConfig(opts.ToolTagsPath, opts.ToolTags)
 	a.rebuildSystemPrompt()
 	a.commandExecutor = &commandExecutor{
 		router:        a.commands,
@@ -174,11 +160,15 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		completion.RiskConfirmationSource{Router: a.commands, Sessions: a.sessions, Turns: a.turns, Scope: a.scope, CommandNames: riskConfirmationCommandNames()},
 		completion.ForkMessageSource{Router: a.commands, Sessions: a.sessions, Store: a.store, Scope: a.scope},
 		completion.ToolDirectiveSource{
-			Registry:       func() *tool.Registry { return a.toolRuntime.registry },
-			Actor:          a.actor,
-			Policy:         func() *security.Policy { return a.securityPolicy },
-			Tags:           a.completionToolTags,
-			ToolNamesByTag: a.completionToolNamesByTag,
+			Registry: func() *tool.Registry { return a.toolRuntime.registry },
+			Actor:    a.actor,
+			Policy:   func() *security.Policy { return a.securityPolicy },
+			Tags: func(ctx context.Context, _ *tool.Registry, actor security.Actor, policy *security.Policy) []string {
+				return a.toolRuntime.preloader.Tags(security.WithActor(security.WithPolicy(ctx, policy), actor))
+			},
+			ToolNamesByTag: func(ctx context.Context, _ *tool.Registry, tag string, allowed func(tool.Tool) bool) []string {
+				return a.toolRuntime.preloader.ToolNamesByTag(ctx, tag, allowed)
+			},
 		},
 		completion.RouterSource{Router: a.commands, Actor: a.actor},
 	)
