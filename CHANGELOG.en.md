@@ -9,17 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Hilight
+
+- Significantly refactored the underlying architecture, optimizing the responsibilities and boundaries of each package
+- Added event system
+
 ### Added
 
+- `edit_file` keeps an in-memory backup of each file before its most recent edit. Added `/rollback [编号]` and tool `rollback_file` available only to superadmins, which automatically expand when file read/write tools are discovered; Records become invalid after switching Sessions, restarting, or capacity eviction. Does not overwrite modifications made by Shell or external programs.
 - Added a chat command `/doctor` available only to superadmins, which performs a read-only check for missing items in the current configuration, TOML errors, unknown fields in the main configuration, and differences in built-in Skills; Lists issues by file and generates ElBot processing requests accompanied by configuration instructions and default template addresses. Returns `Everything is OK` when there are no issues, and will not automatically modify files.
 
 ### Changed
 
+- QQ OneBot messages exceeding 3000 characters will be converted to merged messages
+- Cron/Elnis now permanently convert to ordinary foreground Sessions upon the first recovery in a private chat on the same platform as the owner or via CLI, and reconnect to the original execution. Subsequent output, permissions, and confirmations now use foreground rules; the original task waits for the final result and records the takeover, while JSON correction, automatic reporting, and unstarted supplementary deliveries are stopped. Group chats and channels no longer list or allow the restoration of background Sessions.
 - Media cleanup has been changed from deleting objects one by one using a global media lock to processing up to 4 objects simultaneously with mutual exclusion based on media ID; Import and on-demand upload of different media no longer wait for a full cleanup cycle; for the same media, overlaps between upload, deletion, and re-import are still prevented. Records are retained for subsequent retries after deletion failure or cancellation.
 
 ### Fixed
 
+- QQ OneBot: LLM can now see merged messages in quoted replies, expanding only one level of content.
 - QQ OneBot long text pagination now only adds ellipses to non-last pages.
+- Fixed an issue where the Agent would merge all text segments and disrupt the positioning of text and images when removing wake words or tool commands.
+- Fixed a tool caching bug in background tasks.
+- Tools can no longer be passed into chat mode.
+- Fixed a bug where regular users could stop requests from other users.
+- Fixed a bug where tools could be preloaded during compaction.
+- When startup fails midway, already created Hooks/signals and delayed Skill loading are now uniformly canceled and cleaned up; Platform exit waiting is now included in the shared 30-second budget; storage and logs still used by in-flight work will not be closed prematurely upon timeout.
+- The unified sending pipeline now retains both success results and errors. For Telegram, if some pages have already been sent, it will no longer fallback to resending from the beginning, avoiding duplicate messages.
+- Plugin startup alerts no longer wait for Agent creation to be sent; they are displayed directly in the local CLI in interactive mode and recorded as actual alert content in service mode.
+- Tool discovery and preloading are now written to the Session transactionally.
+- Model switching now atomically saves `state.toml` before taking effect, ensuring concurrent switches do not overwrite each other's updates. Named models and work fallback now obtain a snapshot from the shared model service for each operation; subsequent naming follows the new selection, while in-flight naming, chats, and compaction maintain the current selection.
+- Session bindings are now synchronized for invalidation by the Session service, fixing issues where old tools/confirmations were revived after being switched away and then restored, as well as delayed revocation cleanup affecting new bindings; Running Sessions now reject detachment and deletion to maintain, clean, and reuse real-time busy/idle status.
+- Session full-row snapshot write-back has been changed to transactional field updates to prevent active time, workspace, cache, and naming from overwriting each other, while preserving unknown metadata; manual renaming now takes priority over delayed automatic naming.
+- Compaction handovers now end the old Turn before activating the new Session, and verify the identity of cancellation and execution; continuation after background compaction and takeover preserves the correct identity, and delayed requests cannot end a new Turn.
+- Hook/Cron processing after platform connection is now queued independently by platform; pending and in-flight processing is cancelled upon exit, sharing a 30-second shutdown budget. Cron retry cancellation, which previously might have recorded a sending failure and appended a failure notification, is now handled as a normal cancellation; Application exit due to shutdown budget exhaustion is no longer treated as a failure exit.
 - Historical message previews returned by `/resume` and `/fork` now retain a maximum of 200 Unicode characters per message.
 - Previously, the details of document-type AgentSkills appended guidance for discovering `agent_skill_creator` to all users; Now it is only appended for superadmins and hidden for regular users or when identity is missing. Tool discovery, `@skill:`, and background preloading are all effective; configuration error prompts are still retained.
 
