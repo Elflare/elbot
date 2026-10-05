@@ -57,7 +57,7 @@ func TestCompactSaveFailureReleasesExecutionAndKeepsSource(t *testing.T) {
 				}
 			}
 			a.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
-			a.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
+			a.execution.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
 			failure := errors.New("compact save rejected")
 			repo.failure = failure
 			if backgroundRun {

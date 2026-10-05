@@ -168,7 +168,7 @@ func sortedUnique(values []string) []string {
 	return out
 }
 func (a *Agent) applyInputDirectives(ctx context.Context, row *storage.Session, text string) (toolDirectiveResult, skillDirectiveResult, error) {
-	locked, release, err := a.enterInput(ctx, row)
+	locked, release, err := a.execution.enterInput(ctx, row)
 	if err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err
 	}
@@ -186,11 +186,11 @@ func (a *Agent) applyInputDirectives(ctx context.Context, row *storage.Session, 
 		Tools: append(append([]toolrun.CachedTool(nil), tools.update.Tools...), skills.update.Tools...),
 		Tags:  tools.update.Tags, ShownRuleCardFormats: skills.update.ShownRuleCardFormats,
 	}
-	locked, release, err = a.enterInput(ctx, row)
+	locked, release, err = a.execution.enterInput(ctx, row)
 	if err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err
 	}
-	committed, err := a.commitToolState(locked, row, update)
+	committed, err := commitToolState(locked, a.toolState, row, update)
 	release()
 	if err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err

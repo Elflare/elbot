@@ -76,11 +76,11 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 
 1. 平台 adapter 收到消息并交给 Agent。
 2. Agent core 判断 slash 命令、普通输入、工具 pending 输入和风险确认命令。
-3. 普通对话加载 Session 上下文、构建 Prompt、选择模型并调用 LLM。
+3. executionCoordinator 准入并启动 attempt，chatRunner 加载单轮材料；协调器登记 Request 后，chatRunner 构建 Prompt 并通过 modelCaller 调用已选定的模型。
 4. LLM 返回文本、reasoning 或 tool call。
-5. 如果有 tool call，Agent 进入工具执行链路；工具结果写入 transcript 后继续 LLM 循环。
-6. 最终输出前，主流程通过 executionView 刷新接管来源和 Session，发布 sending 状态，再调用 replyCommitter。
-7. replyCommitter 执行最终输出 Hook，通过 turnOutput／outputSender 发送并按直接／缓冲路径完成 assistant 落库及实际回执关联；主流程使用提交结果继续执行收尾。
+5. 如果有 tool call，chatRunner 通过 ToolRun 和 toolRunDeps 执行工具；工具结果写入 transcript 后继续 LLM 循环。
+6. 最终输出前，chatRunner 通过 executionView 刷新接管来源和 Session，发布 sending 状态，再调用 replyCommitter。
+7. replyCommitter 执行最终输出 Hook，通过 turnOutput／outputSender 发送并按直接／缓冲路径完成 assistant 落库及实际回执关联；chatRunner 返回单轮结果，由 executionCoordinator 继续执行收尾。
 
 关键约定：
 
@@ -90,21 +90,28 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - 直接输出先发送及投递延迟 outputs，再落库、关联；缓冲输出先落库，再发送、关联及投递延迟 outputs。提交失败仍保留实际 assistant 回执和持久化结果，不重发已成功内容；只用回执中的完整平台、Scope 和消息 ID 关联，关联失败记录但不终止对话。
 - 发送前会发布 `sending` phase，便于 `/requests` 区分 LLM 慢还是平台发送慢。
 - 普通输入在工具阶段不会打断工具，会以 text/image segments 进入 pending；下一次 LLM 调用前已有的 pending 会合并注入当前轮，最终 LLM 调用期间新到达的 pending 则在当前轮正常结束后作为新用户消息自动开启下一轮。
-- Prompt Builder 每个 turn 从 Soul、工具提示、工具标签和当前 actor 的常驻记忆构建一次 system message；该消息只在当前 turn 内复用，不进入会话历史。
+- chatRunner 拥有 Prompt Builder；每个 turn 从 Soul、工具提示、工具标签和当前 actor 的常驻记忆构建一次 system message，该消息只在当前 turn 内复用，不进入会话历史。
+- 单轮结果区分完成、暂停、停止、取消、失败与 attempt 已失效，保留提交事实、Usage、模型和计时。回复成功后，协调器依次处理 Touch、Usage、完成状态、压缩提示、pending 交接、Execution 结果和命名；提交期间进入追加确认也不会丢失已成功提交的用量。
+- 单轮材料加载在 Request 登记前，Prompt／Hook 和用户消息落库在登记后；Request 及 attempt 清理由执行协调器负责，chatRunner 不结束跨轮 Execution。
 
 基础组件在 `internal/agent` 内直接组合，不持有 Agent 或绑定 Agent 的回调：
 
 | 组件 | 当前职责与状态 |
 |---|---|
+| executionCoordinator | 统一前后台准入、attempt、Request 生命周期、追加确认、pending 续跑、压缩交接和执行完成；后台入口等待真实 Execution 结果，不复制领域状态。 |
+| chatRunner | 拥有 Prompt Builder 和单轮局部材料，执行模型／工具循环及回复提交；媒体、工具状态和 transcript 使用显式依赖，不回调 Agent。 |
+| modelCaller | 接收模型选择快照，执行单次请求、流消费、请求／响应 Hook、媒体持有／释放和视觉降级；保留 chat 工具禁用及后台白名单约束。 |
+| confirmationCoordinator | 处理风险确认响应、等待及结果转换，拥有自动确认记录与锁；等待对象仍归 Turn，超时策略与追加确认、Session 过期共用。 |
+| toolRunDeps | 直接组合工具执行所需服务、确认组件和执行视图，登记工具子请求，同步写工具调用记录和发现状态。 |
 | identityResolver | 拥有入口默认身份和安全策略，统一 Actor／Scope／CLI 判断；无来源 Hook 使用不带入口默认值的来源身份解析。 |
 | hookBridge | 使用 Hook manager/router、Request、身份、Media 和通知服务，负责事件补全、可改写 Hook、continuation、请求观察和错误处理。 |
 | statusRecorder | 拥有运行快照 map 及锁，同步合并、记录和查询；前台在解锁后展示，后台只记录。 |
-| outputSender | 使用共享 Dispatcher、通知服务和 hookBridge，处理普通／流式输出、发送 Hook、preview、notice、reasoning 和状态展示。 |
+| outputSender | 使用共享 Dispatcher、通知服务和 hookBridge，处理普通／流式输出、发送 Hook、preview、notice、reasoning 和状态展示；拥有当前 Session 级视觉降级提示去重。 |
 | replyCommitter | 直接使用消息仓库、outputSender 和本轮 turnOutput，处理最终 Hook、空回复、延迟 outputs、发送／落库顺序及回执关联；返回消息标识、原始文本、实际 assistant 回执、持久化结果和分阶段错误。 |
 | executionView / executionTurnOutput | 读取已有 Execution 的接管身份、刷新 Session，并选择前后台输出；保留原请求取消链，接管时清除后台路由、模型和 sandbox 覆盖。 |
 | toolRunPromptProvider | 直接使用 ToolRun 和 identityResolver 查询 schema 与工具名。 |
 
-Agent 仍拥有输入与执行编排、单轮模型／工具循环，以及提交后的 Touch、Usage、状态、pending、压缩判断、Execution 结果和命名；自动确认与视觉提示去重状态仍在 Agent。对外 Scope、状态查询、Hook 观察和连接通知薄委托到组件。配置 setter 更新实际拥有者，日志 setter 更新现有日志调用者；app 保持同步参与者的安装和共享服务生命周期所有权。
+Agent 保留前后台入口、输入准备、命令分发与内部装配；对外压缩、接管、Scope、状态查询和 Hook 观察薄委托到组件。配置 setter 更新实际拥有者，工具运行配置和确认超时策略使用共享对象；日志 setter 同步更新组件并支持清空。日志、状态展示和通知仍同步调用，app 保持同步参与者的安装和共享服务生命周期所有权。
 
 <!-- locator:commands -->
 ## 命令链路
@@ -149,7 +156,7 @@ Slash 命令链路：
 简化链路：
 
 1. LLM 返回 tool call。
-2. Agent 进入工具执行阶段并记录工具调用请求。
+2. chatRunner 进入工具阶段，由 toolRunDeps 登记工具子请求并记录实际调用。
 3. prepared Hook 只能改写 arguments；ToolRun 用最终参数做工具视图、命名解析、foreground-only 过滤、权限和风险确认，并把同一参数回灌当前 assistant tool call。
 4. Tool Runtime 执行具体工具，并按 Actor/Policy 做风险兜底校验。
 5. 已进入实际执行阶段的工具结果以 text/image segments 通过完成 Hook；工具发现状态完成提交后，再统一记录最终结果并写入 transcript；纯文本只存 `content`，多模态结果额外存 `segments`。执行前失败或拒绝不触发完成 Hook。
@@ -373,7 +380,7 @@ app 创建共享 `contextmgr.Service`，注入 Agent；服务不持有 Request�
 - 解析 context window。
 - 按当前模型的 context window 动态判断压缩阈值。
 - 格式化厂商 usage 状态。
-- 管理 `last_usage`、`context_compact` 的编解码和字段更新，准备压缩材料与结果。Agent 保留压缩准入、Request／Turn、取消和新 Session 交接。
+- 管理 `last_usage`、`context_compact` 的编解码和字段更新，准备压缩材料与结果。executionCoordinator 负责压缩准入、Request／Turn、取消和新 Session 交接。
 
 约定：
 

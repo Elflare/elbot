@@ -209,3 +209,11 @@ func (a *Agent) setTestHookManager(manager hook.Manager) {
 	}
 	a.hooks.manager = manager
 }
+
+// Test fault injection must replace the shared service at every consumer.
+func setTestToolState(a *Agent, state *toolrun.StateService) {
+	a.toolState = state
+	a.toolDeps.state = state
+	a.caller.toolState = state
+	a.chat.toolState = state
+}

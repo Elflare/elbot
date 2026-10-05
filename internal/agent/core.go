@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"elbot/internal/command"
@@ -29,40 +28,36 @@ import (
 
 // Agent is the minimal agent core that handles messages and commands.
 type Agent struct {
-	platform           platform.PlatformAdapter
-	models             *modelmgr.Service
-	store              storage.Store
-	media              *media.Manager
-	sessions           *session.Service
-	requests           *request.Manager
-	turns              *turn.Manager
-	commands           *command.Router
-	commandExecutor    *commandExecutor
-	completion         *completion.Service
-	soul               SoulProvider
-	residentMemory     *resident.Store
-	promptBuilder      PromptBuilder
-	toolRuntime        toolRuntimeState
-	contexts           *contextmgr.Service
-	toolState          *toolrun.StateService
-	identity           *identityResolver
-	hooks              *hookBridge
-	status             *statusRecorder
-	output             *outputSender
-	replies            *replyCommitter
-	view               executionView
-	idleExpiration     session.IdleExpirationConfig
-	sandboxRoot        string
-	logger             *slog.Logger
-	auditLogger        *slog.Logger
-	autoConfirmMu      sync.Mutex
-	autoConfirmSession map[string]bool
-	autoConfirmTools   map[string]map[string]bool
-	visionFallbackMu   sync.Mutex
-
-	visionFallbackNotified  map[string]bool
-	responseTimeout         time.Duration
-	userConfirmationTimeout time.Duration
+	platform        platform.PlatformAdapter
+	models          *modelmgr.Service
+	store           storage.Store
+	media           *media.Manager
+	sessions        *session.Service
+	requests        *request.Manager
+	turns           *turn.Manager
+	commands        *command.Router
+	commandExecutor *commandExecutor
+	completion      *completion.Service
+	soul            SoulProvider
+	residentMemory  *resident.Store
+	toolRuntime     toolRuntimeState
+	contexts        *contextmgr.Service
+	toolState       *toolrun.StateService
+	identity        *identityResolver
+	hooks           *hookBridge
+	status          *statusRecorder
+	output          *outputSender
+	execution       *executionCoordinator
+	chat            *chatRunner
+	caller          *modelCaller
+	replies         *replyCommitter
+	view            executionView
+	waitPolicy      *confirmationPolicy
+	confirmations   *confirmationCoordinator
+	toolDeps        *toolRunDeps
+	sandboxRoot     string
+	logger          *slog.Logger
+	auditLogger     *slog.Logger
 }
 
 func responseTimeout(cfg config.LLMRequestConfig) time.Duration {
@@ -91,26 +86,20 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		hookManager = hook.NoopManager{}
 	}
 	a := &Agent{
-		platform:                p,
-		models:                  opts.Models,
-		store:                   store,
-		media:                   opts.Media,
-		sessions:                sessions,
-		requests:                requests,
-		turns:                   turns,
-		commands:                opts.Commands,
-		soul:                    promptSoul,
-		residentMemory:          opts.ResidentMemoryStore,
-		contexts:                opts.Contexts,
-		toolState:               opts.ToolState,
-		autoConfirmSession:      map[string]bool{},
-		autoConfirmTools:        map[string]map[string]bool{},
-		visionFallbackNotified:  map[string]bool{},
-		responseTimeout:         responseTimeout(llmRequestConfig),
-		userConfirmationTimeout: defaultUserConfirmationTimeout,
+		platform:       p,
+		models:         opts.Models,
+		store:          store,
+		media:          opts.Media,
+		sessions:       sessions,
+		requests:       requests,
+		turns:          turns,
+		commands:       opts.Commands,
+		soul:           promptSoul,
+		residentMemory: opts.ResidentMemoryStore,
+		contexts:       opts.Contexts,
+		toolState:      opts.ToolState,
 
-		idleExpiration: sessionIdleExpirationConfig(opts.SessionIdleExpiration),
-		sandboxRoot:    filepath.Clean(strings.TrimSpace(opts.SandboxRoot)),
+		sandboxRoot: filepath.Clean(strings.TrimSpace(opts.SandboxRoot)),
 	}
 
 	a.identity = &identityResolver{platformName: p.Name(), actorID: "cli:local", scopeID: "local", policy: policy}
@@ -122,11 +111,36 @@ func NewWithOptions(opts Options) (*Agent, error) {
 	a.output = &outputSender{dispatcher: opts.Dispatcher, notifications: opts.Notifications, hooks: a.hooks, identity: a.identity}
 	a.view = executionView{sessions: store.Sessions()}
 	a.replies = &replyCommitter{messages: store.Messages(), output: a.output}
+	a.waitPolicy = &confirmationPolicy{identity: a.identity, idleExpiration: sessionIdleExpirationConfig(opts.SessionIdleExpiration), userConfirmationTimeout: defaultUserConfirmationTimeout}
+	a.confirmations = &confirmationCoordinator{
+		sessions: sessions, requests: requests, turns: turns, commands: a.commands,
+		identity: a.identity, output: a.output, policy: a.waitPolicy,
+		autoConfirmSession: map[string]bool{}, autoConfirmTools: map[string]map[string]bool{},
+	}
 	a.toolRuntime = newToolRuntimeState()
 	a.toolRuntime.manager = opts.ToolRunner
 	a.toolRuntime.preloader = opts.ToolPreloader
 	a.toolRuntime.registry = opts.ToolRegistry
 	a.toolRuntime.fileRollback = opts.FileRollback
+	a.toolDeps = &toolRunDeps{
+		hooks: a.hooks, requests: requests, turns: turns, identity: a.identity, media: opts.Media,
+		state: a.toolState, runtime: &a.toolRuntime, sessions: sessions, store: store,
+		confirmations: a.confirmations, view: a.view,
+	}
+	a.caller = &modelCaller{
+		messages: store.Messages(), media: opts.Media, hooks: a.hooks, identity: a.identity,
+		output: a.output, toolState: a.toolState, toolRuntime: &a.toolRuntime,
+	}
+	a.chat = &chatRunner{
+		messages: store.Messages(), media: opts.Media, contexts: a.contexts, models: a.models, turns: turns, identity: a.identity,
+		hooks: a.hooks, view: a.view, toolRuntime: &a.toolRuntime, toolState: a.toolState,
+		toolDeps: a.toolDeps, caller: a.caller, replies: a.replies,
+	}
+	a.execution = &executionCoordinator{
+		sessions: sessions, sessionRows: store.Sessions(), turns: turns, requests: requests, contexts: a.contexts,
+		models: a.models, chat: a.chat, identity: a.identity, view: a.view, output: a.output, status: a.status,
+		waitPolicy: a.waitPolicy, responseTimeout: responseTimeout(llmRequestConfig),
+	}
 	if opts.Logs != nil {
 		a.SetLogManager(opts.Logs)
 	}
@@ -142,14 +156,14 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		sessions:      a.sessions,
 		turns:         a.turns,
 		scope:         a.identity.Scope,
-		compactActive: a.compactActive,
+		compactActive: a.execution.compactActive,
 		sendChat:      a.output.SendChat,
 		sendNotice: func(ctx context.Context, text string) error {
 			return a.output.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(text)}})
 		},
 		audit:         a.audit,
-		handleAppend:  a.handleAppendConfirmationInput,
-		handleRisk:    a.handleRiskConfirmationInput,
+		handleAppend:  a.execution.ResumeAppend,
+		handleRisk:    a.confirmations.SubmitResponse,
 		continueInput: a.continueCommandInput,
 	}
 	a.completion = completion.NewService(

@@ -959,23 +959,23 @@
 - [x] 保留原始／展示文本、直接／缓冲提交顺序、部分成功与最终输出前的接管刷新。
 - [x] 保持 Execution 完成、pending 和压缩在提交组件之外，删除被替代的重复收尾实现。
 - [x] 完成直接／缓冲／流式／接管、保存／发送失败及真实 adapter、Cron、Elnis 回执回归；相关包测试及 Agent／app race 通过，开发文档已同步。
-- 完成标准：runChat 使用提交结果继续收尾，实际成功回执不丢失、不重发，映射只消费真实来源。详见 [阶段 10](core-refactor.md#phase-10)。
+- 完成标准：chatRunner 调用提交组件，executionCoordinator 使用提交结果继续收尾，实际成功回执不丢失、不重发，映射只消费真实来源。详见 [阶段 10](core-refactor.md#phase-10)。
 
 ### 阶段 11：收拢执行交接与单轮对话
 
-- [ ] executionCoordinator 统一准入、attempt、Request 生命周期、追加确认、pending 续跑、压缩交接及执行完成。
-- [ ] chatRunner 承接单轮准备、模型／工具循环及回复提交，以结构化结果区分完成、暂停、停止、取消和失败。
-- [ ] 保持原 binding 双重准入、锁外准备、锁顺序、原请求取消和旧 attempt 保护，前后台共用执行协调。
-- [ ] 将模型循环、工具边界与输出接到 executionView，移除主流程对 Agent 辅助方法的反向调用。
-- [ ] 完成 pending、压缩、接管、保存失败、切离再恢复和迟到返回回归及相关 race，同步文档。
+- [x] executionCoordinator 统一准入、attempt、Request 生命周期、追加确认、pending 续跑、压缩交接及执行完成。
+- [x] chatRunner 承接单轮准备、模型／工具循环及回复提交，以结构化结果区分完成、暂停、停止、取消、失败和 attempt 已失效。
+- [x] 保持原 binding 双重准入、锁外准备、锁顺序、原请求取消和旧 attempt 保护，前后台共用执行协调。
+- [x] 将模型循环、工具边界与输出接到 executionView，移除主流程对 Agent 辅助方法的反向调用。
+- [x] 完成 pending、压缩、接管、保存失败、切离再恢复和迟到返回回归及相关 race，同步文档。
 - 完成标准：跨轮执行和单轮聊天职责分离，已有输入与执行结果不丢失、不重复启动，领域状态仍由原服务拥有。详见 [阶段 11](core-refactor.md#phase-11)。
 
 ### 阶段 12：拆出确认交互与单次模型调用
 
-- [ ] confirmationCoordinator 统一风险确认交互、响应和自动确认记录，等待状态仍归 Turn，追加确认仍归执行协调。
-- [ ] toolRunDeps 直接组合必要服务，去除 Agent 依赖；工具调用数据库记录保持同步。
-- [ ] modelCaller 承接单次请求、流消费、媒体生命周期、模型 Hook 和视觉降级，保留模型快照及工具白名单约束。
-- [ ] 完成确认／拒绝／停止／过期、模型错误／取消／fallback、媒体释放和工具安全回归及相关 race，同步文档。
+- [x] confirmationCoordinator 统一风险确认交互、响应和自动确认记录，等待状态仍归 Turn，追加确认仍归执行协调。
+- [x] toolRunDeps 直接组合必要服务，去除 Agent 依赖；工具调用数据库记录保持同步。
+- [x] modelCaller 承接单次请求、流消费、媒体生命周期、模型 Hook 和视觉降级，保留模型快照及工具白名单约束。
+- [x] 完成确认／拒绝／停止／过期、模型错误／取消／fallback、媒体释放和工具安全回归；全仓测试及相关包 race 通过，开发文档已同步。
 - 完成标准：确认状态与单次模型调用有明确拥有者，适配器和 provider 不依赖 Agent，权限和交互语义保持。详见 [阶段 12](core-refactor.md#phase-12)。
 
 ### 阶段 13：旁路信号与订阅生命周期

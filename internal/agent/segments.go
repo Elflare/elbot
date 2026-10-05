@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/platform"
 	"elbot/internal/turn"
 )
@@ -150,11 +151,11 @@ func hasInboundNonTextSegment(ctx context.Context) bool {
 	return false
 }
 
-func (a *Agent) materializeMedia(ctx context.Context, segments []llm.MessageSegment) []llm.MessageSegment {
-	if a.media == nil {
+func materializeMedia(ctx context.Context, manager *media.Manager, segments []llm.MessageSegment) []llm.MessageSegment {
+	if manager == nil {
 		return append([]llm.MessageSegment(nil), segments...)
 	}
-	return a.media.Materialize(ctx, segments)
+	return manager.Materialize(ctx, segments)
 }
 func llmSegmentsToPlatform(segments []llm.MessageSegment) []platform.MessageSegment {
 	out := make([]platform.MessageSegment, 0, len(segments))

@@ -3,472 +3,129 @@ package agent
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
+	"time"
 
-	"elbot/internal/config"
 	"elbot/internal/contextmgr"
-	"elbot/internal/delivery"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/modelmgr"
-	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
-	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/toolrun"
 	"elbot/internal/turn"
 )
 
-func (a *Agent) handleChat(ctx context.Context, text string) error {
-	ctx, row, err := a.resolveInput(ctx, text)
-	if err != nil {
-		return err
-	}
-	return a.startChat(ctx, row, text)
+type chatRunner struct {
+	messages      storage.MessageRepository
+	media         *media.Manager
+	contexts      *contextmgr.Service
+	models        *modelmgr.Service
+	turns         *turn.Manager
+	identity      *identityResolver
+	hooks         *hookBridge
+	view          executionView
+	promptBuilder PromptBuilder
+	toolRuntime   *toolRuntimeState
+	toolState     *toolrun.StateService
+	toolDeps      *toolRunDeps
+	caller        *modelCaller
+	replies       *replyCommitter
+	logger        *slog.Logger
+	auditLogger   *slog.Logger
 }
 
-func (a *Agent) startChat(ctx context.Context, session *storage.Session, text string) error {
-	return a.startChatWithOutput(ctx, session, text, foregroundTurnOutput{sender: a.output, status: a.status})
+type chatTurnOutcome uint8
+
+const (
+	chatTurnCompleted chatTurnOutcome = iota
+	chatTurnPaused
+	chatTurnStopped
+	chatTurnCanceled
+	chatTurnFailed
+	chatTurnSuperseded
+)
+
+type chatTurnInput struct {
+	Session   *storage.Session
+	Text      string
+	Selection modelmgr.Selection
+	RequestID string
+	Prepared  *preparedTurn
 }
 
-func (a *Agent) startBackgroundChat(ctx context.Context, session *storage.Session, text string) error {
-	return a.startChatWithOutput(ctx, session, text, backgroundTurnOutput{status: a.status})
+// QuietCancellation preserves cancellation handled at a request boundary: it
+// finishes the logical execution without returning an additional user error.
+type chatTurnResult struct {
+	Outcome           chatTurnOutcome
+	Err               error
+	QuietCancellation bool
+	Committed         replyCommitResult
+	Usage             *llm.Usage
+	Selection         modelmgr.Selection
+	StartedAt         time.Time
 }
 
-func (a *Agent) startChatWithOutput(ctx context.Context, row *storage.Session, text string, out turnOutput) error {
-	execution := turn.ExecutionFromContext(ctx)
-	if execution == nil {
-		execution = turn.NewExecution(storage.NewID())
-		ctx = turn.WithExecution(ctx, execution)
-	}
-	out = executionTurnOutput{view: a.view, sessions: a.sessions, foreground: foregroundTurnOutput{sender: a.output, status: a.status}, execution: execution, fallback: out}
-	for {
-		next, pending, err := a.runChatTurnWithOutput(ctx, row, text, out)
-		if err != nil {
-			execution.Finish(err)
-			return err
-		}
-		if pending.Text == "" && len(pending.Segments) == 0 {
-			if a.turns.Execution(next.ID) != execution {
-				execution.Finish(nil)
-			}
-			return nil
-		}
-		ctx = a.view.Context(ctx)
-		if next.ID != row.ID && !isBackgroundSession(next) {
-			_, binding, err := a.sessions.CurrentBound(ctx, a.identity.Scope(ctx))
-			if err != nil {
-				return err
-			}
-			if binding.SessionID() != next.ID {
-				return errSessionBindingChanged
-			}
-			ctx = sessionpkg.WithBinding(ctx, binding)
-		}
-		row = next
-		text = pending.Text
-		ctx = withInboundTurnInput(ctx, pending)
-	}
+type chatTurnState struct {
+	ctx        context.Context
+	requestCtx context.Context
+	session    *storage.Session
+	text       string
+	output     turnOutput
+	selection  modelmgr.Selection
+	requestID  string
+	startedAt  time.Time
+	messages   []llm.LLMMessage
+	tools      []llm.ToolSchema
+	usage      *llm.Usage
 }
 
-func (a *Agent) runChatTurnWithOutput(ctx context.Context, session *storage.Session, text string, out turnOutput) (*storage.Session, turn.Input, error) {
-	ctx, release, err := a.enterTurn(ctx, session, out)
-	if err != nil {
-		return session, turn.Input{}, err
+func failedChatOutcome(err error) chatTurnOutcome {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return chatTurnCanceled
 	}
-	release()
-	selection := a.modelSelectionForTurn(ctx, session)
-	if a.turns.CanCompact(session.ID, turn.ExecutionFromContext(ctx)) && a.shouldCompact(ctx, session, selection) {
-		next, content, err := a.compactSession(withInboundTurnInput(ctx, inboundTurnInput(ctx, text)), session, "auto", selection)
-		if err != nil {
-			return session, turn.Input{}, err
-		}
-		session = next
-		ctx = a.view.Context(ctx)
-		if !isBackgroundSession(session) {
-			_, binding, err := a.sessions.CurrentBound(ctx, a.identity.Scope(ctx))
-			if err != nil {
-				return session, turn.Input{}, err
-			}
-			ctx = sessionpkg.WithBinding(ctx, binding)
-		}
-		_, _ = out.SendAssistant(ctx, content)
-	}
-	ctx, release, err = a.enterTurn(ctx, session, out)
-	if err != nil {
-		return session, turn.Input{}, err
-	}
-	attempt := storage.NewID()
-	ctx = turn.WithAttempt(ctx, attempt)
-	execution := turn.ExecutionFromContext(ctx)
-	started := a.turns.StartExecution(session.ID, inboundTurnInput(ctx, text), execution, attempt)
-	release()
-	if !started {
-		if a.turns.Execution(session.ID) == execution {
-			return session, turn.Input{}, nil
-		}
-		return session, turn.Input{}, sessionpkg.ErrSessionBusy
-	}
-	defer a.turns.FinishRequest(session.ID, attempt)
-	var pending turn.Input
-	if err := a.runChat(ctx, session, text, out, selection, &pending); err != nil {
-		if !a.turns.MatchesAttempt(session.ID, attempt) || a.turns.Snapshot(session.ID).Phase == turn.PhaseAwaitAppendConfirm {
-			return session, turn.Input{}, nil
-		}
-		execution.Finish(err)
-		a.turns.StopSession(session.ID, attempt)
-		status := a.RuntimeStatus(session.ID)
-		status.Phase = runtimestatus.PhaseError
-		status.FinishedAt = storage.Now()
-		status.Error = err.Error()
-		out.PublishRuntimeStatus(ctx, status)
-		return session, turn.Input{}, err
-	}
-	status := a.RuntimeStatus(session.ID)
-	if status.Running() && (a.turns.Snapshot(session.ID).Phase == turn.PhaseIdle || a.turns.MatchesAttempt(session.ID, attempt)) {
-		out.PublishRuntimeStatus(ctx, runtimeDoneStatus(status, storage.Now()))
-	}
-	return session, pending, nil
+	return chatTurnFailed
 }
 
-func (a *Agent) handleTurnContextDone(ctx context.Context, sessionID string, err error, out turnOutput) error {
-	if a.turns.Execution(sessionID) != turn.ExecutionFromContext(ctx) || (a.turns.Snapshot(sessionID).Phase != turn.PhaseAwaitAppendConfirm && a.turns.MatchesAttempt(sessionID, turn.AttemptFromContext(ctx))) {
-		if e := turn.ExecutionFromContext(ctx); e != nil {
-			e.Finish(err)
+func (r *chatRunner) RunTurn(ctx, requestCtx context.Context, in chatTurnInput, out turnOutput) (result chatTurnResult) {
+	s := &chatTurnState{ctx: ctx, requestCtx: requestCtx, session: in.Session, text: in.Text, output: out,
+		selection: in.Selection, requestID: in.RequestID, startedAt: storage.Now()}
+	defer func() {
+		result.Usage, result.Selection, result.StartedAt = s.usage, s.selection, s.startedAt
+		// A committed reply remains a successful turn even if input interrupts
+		// during output. The coordinator still records usage before handing off.
+		if result.Outcome == chatTurnCompleted {
+			return
 		}
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		if a.logger != nil {
-			a.logger.WarnContext(ctx, "turn response timeout", "session_id", sessionID, "error", err.Error())
+		execution := r.turns.Execution(in.Session.ID)
+		if execution != nil && execution == turn.ExecutionFromContext(ctx) && r.turns.Snapshot(in.Session.ID).Phase == turn.PhaseAwaitAppendConfirm {
+			result.Outcome = chatTurnPaused
+		} else if execution != nil && !r.turns.MatchesAttempt(in.Session.ID, turn.AttemptFromContext(ctx)) {
+			result.Outcome = chatTurnSuperseded
 		}
-		a.audit("turn_response_timeout", "session_id", sessionID, "error", err.Error())
-		out.SendNotice(ctx, slog.LevelWarn, notificationrules.TurnTimeout)
+	}()
+	if err := r.prepareMessages(s, in.Prepared); err != nil {
+		return chatTurnResult{Outcome: failedChatOutcome(err), Err: err}
 	}
-	return nil
-}
-
-func (a *Agent) runChat(ctx context.Context, session *storage.Session, text string, out turnOutput, selection modelmgr.Selection, completedPending *turn.Input) error {
-	userSegments := a.materializeMedia(ctx, inboundSegments(ctx, text))
-	userContent := llm.SegmentsContentText(userSegments)
-
-	userMessage := &storage.Message{
-		ID:                       storage.NewID(),
-		SessionID:                session.ID,
-		Role:                     storage.RoleUser,
-		Content:                  userContent,
-		Segments:                 storedMessageSegments(userSegments),
-		ReplyToPlatformMessageID: inboundReplyMessageID(ctx),
+	loop := r.runLoop(s)
+	result.Outcome, result.Err, result.QuietCancellation = loop.Outcome, loop.Err, loop.QuietCancellation
+	if loop.Outcome != chatTurnCompleted {
+		return result
 	}
-	if a.logger != nil {
-		a.logger.Info("user input", "event", "user_message", "session_id", session.ID, "text", previewLogText(userContent))
-	}
-
-	loaded, err := a.contexts.Load(ctx, session.ID)
+	var err error
+	s.requestCtx, err = r.view.RefreshSession(s.requestCtx, s.session)
 	if err != nil {
-		return err
+		result.Outcome, result.Err = failedChatOutcome(err), err
+		return result
 	}
-	hasUserHistory := hasStorageUserMessage(loaded.Messages)
-	compactSeedOnCurrentUser := false
-	seed, err := contextmgr.PendingCompact(session)
+	s.ctx = r.view.Context(s.ctx)
+	out.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{SessionID: s.session.ID, Phase: runtimestatus.PhaseSending,
+		Provider: s.selection.Provider, Model: s.selection.Model, Mode: s.session.Mode, RequestID: s.requestID,
+		Kind: request.KindTurn, Label: "chat", TurnStartedAt: s.startedAt, StageStartedAt: storage.Now()})
+	result.Committed, err = r.replies.Commit(s.ctx, s.requestCtx, loop.Commit, out)
 	if err != nil {
-		return err
+		result.Outcome, result.Err = failedChatOutcome(err), err
 	}
-	if seed != nil {
-		if !hasUserHistory {
-			loaded.Summary = &storage.ContextSummary{Summary: seed.Summary}
-			compactSeedOnCurrentUser = true
-		} else {
-			a.consumeContextCompactSeed(ctx, session)
-		}
-	}
-	summaryOnCurrentUser := loaded.Summary != nil && !hasUserHistory && !compactSeedOnCurrentUser
-	messages := append([]storage.Message{}, loaded.Messages...)
-	messages = append(messages, *userMessage)
-
-	locked, releaseRequest, err := a.sessions.EnterSessions(ctx, session.ID)
-	if err != nil {
-		return err
-	}
-	if !a.turns.MatchesAttempt(session.ID, turn.AttemptFromContext(ctx)) {
-		releaseRequest()
-		return context.Canceled
-	}
-	reqCtxInfo, reqCtx, done, err := a.requests.Start(locked, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: a.responseTimeout})
-	releaseRequest()
-	if err != nil {
-		return err
-	}
-	defer done()
-	reqCtx = withTurnRequestID(reqCtx, reqCtxInfo.ID)
-
-	turnStartedAt := storage.Now()
-	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
-	scope := a.identity.Scope(ctx)
-	llmMessages, err := a.promptBuilder.Build(ctx, PromptBuildRequest{Session: session, Scope: scope, Messages: messages, Summary: loaded.Summary})
-	if err != nil {
-		return err
-	}
-	tools, err := a.toolsForSession(ctx, session)
-	if err != nil {
-		return err
-	}
-	turnEvent, err := a.hooks.Run(ctx, hook.Event{
-		Point:   hook.PointLLMTurnPrepared,
-		Session: hook.SessionContext{ID: session.ID},
-		Message: hook.MessagePayload{ID: userMessage.ID, Role: string(llm.RoleUser), PlatformText: inboundTurnInput(ctx, text).PlatformText, Segments: append([]llm.MessageSegment(nil), userSegments...)},
-		LLM: hook.LLMPayload{
-			Provider: selection.Provider,
-			Model:    selection.Model,
-			Messages: llm.CloneMessages(llmMessages),
-			Tools:    tools,
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("llm turn hook: %w", err)
-	}
-	if session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground {
-		tools = turnEvent.LLM.Tools
-	}
-	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
-	canonicalUserSegments := a.materializeMedia(ctx, turnEvent.Message.Segments)
-	promptUserSegments := canonicalUserSegments
-	if compactSeedOnCurrentUser || summaryOnCurrentUser {
-		promptUserSegments = llm.PrependSegmentText(promptUserSegments, summaryUserPrefix(loaded.Summary.Summary))
-	}
-	llmMessages = llm.SetLatestUserSegments(llmMessages, promptUserSegments)
-	if compactSeedOnCurrentUser {
-		userMessage.Content = llm.SegmentsContentText(promptUserSegments)
-		userMessage.Segments = storedMessageSegments(promptUserSegments)
-	} else {
-		userMessage.Content = llm.SegmentsContentText(canonicalUserSegments)
-		userMessage.Segments = storedMessageSegments(canonicalUserSegments)
-	}
-	if err := a.persistTurnMessage(ctx, userMessage, "append_user_message"); err != nil {
-		return err
-	}
-	if compactSeedOnCurrentUser {
-		a.consumeContextCompactSeed(ctx, session)
-	}
-
-	var finalText string
-	var finalRawText string
-	var platformFinalText string
-	var finalStream delivery.MessageStream
-	var deferredOutputs []delivery.Output
-	var usage *llm.Usage
-	toolRounds := 0
-	inToolPhase := false
-	foregroundPrepared := false
-	for {
-		var refreshErr error
-		reqCtx, refreshErr = a.view.RefreshSession(reqCtx, session)
-		if refreshErr != nil {
-			return refreshErr
-		}
-		ctx = a.view.Context(ctx)
-		if sessionpkg.WasPromoted(session) && !foregroundPrepared {
-			foregroundPrepared = true
-			scope := a.identity.Scope(reqCtx)
-			prompt, err := a.promptBuilder.Build(reqCtx, PromptBuildRequest{Session: session, Scope: scope})
-			if err != nil {
-				return err
-			}
-			updated := make([]llm.LLMMessage, 0, len(llmMessages)+len(prompt))
-			for _, message := range prompt {
-				if message.Role == llm.RoleSystem {
-					updated = append(updated, message)
-				}
-			}
-			for _, message := range llmMessages {
-				if message.Role != llm.RoleSystem {
-					updated = append(updated, message)
-				}
-			}
-			llmMessages = updated
-			selection = a.modelSelectionForTurn(reqCtx, session)
-			llmMessages = withForegroundInstructions(llmMessages)
-			tools, err = a.toolsForSession(reqCtx, session)
-			if err != nil {
-				return err
-			}
-		}
-		var pending *pendingUserMessage
-		if inToolPhase {
-			llmMessages, pending = a.drainPendingUserInput(session.ID, llmMessages, turn.AttemptFromContext(ctx))
-		}
-		stream := out.StartStream(reqCtx)
-		llmStageStartedAt := storage.Now()
-		out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseLLM, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindTurn, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: llmStageStartedAt, Usage: usage})
-		result, err := a.callLLM(reqCtx, session, selection, llmMessages, tools, pending, stream, out)
-		if len(result.Messages) > 0 {
-			llmMessages = result.Messages
-		}
-		if err != nil {
-			return err
-		}
-		streaming := result.Stream != nil
-		if err := reqCtx.Err(); err != nil {
-			return a.handleTurnContextDone(ctx, session.ID, err, out)
-		}
-		assistantText := result.Text
-		assistantRawText := result.RawText
-		if result.Usage != nil {
-			usage = result.Usage
-		}
-		out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseLLM, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindTurn, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: llmStageStartedAt, Usage: usage})
-		immediateOutputs, laterOutputs := delivery.SplitByDeliveryTiming(result.Outputs)
-		if len(result.ToolCalls) == 0 {
-			deferredOutputs = append(deferredOutputs, laterOutputs...)
-		}
-		if err := out.SendOutputs(ctx, immediateOutputs); err != nil {
-			return err
-		}
-		if len(result.ToolCalls) == 0 {
-			finalText = joinAssistantText(finalText, assistantRawText)
-			finalRawText = joinAssistantText(finalRawText, assistantRawText)
-			platformFinalText = joinAssistantText(platformFinalText, assistantText)
-			finalStream = result.Stream
-			break
-		}
-		if err := out.FinishIntermediate(ctx, reqCtx, result.Stream, assistantText, streaming); err != nil {
-			return err
-		}
-		if err := out.SendOutputs(ctx, laterOutputs); err != nil {
-			return err
-		}
-		if !inToolPhase {
-			if !a.turns.StartToolPhase(session.ID, turn.AttemptFromContext(ctx)) {
-				return nil
-			}
-			inToolPhase = true
-		}
-		assistantToolCallIndex := len(llmMessages)
-		llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleAssistant, Segments: llm.TextSegments(assistantRawText), ToolCalls: result.ToolCalls})
-		if toolRounds >= a.maxToolRoundsPerTurn() {
-			out.SendPreview(ctx, fmt.Sprintf("已达到 max_rounds_per_turn=%d，后续工具调用未执行，正在请求模型总结当前进度。", a.maxToolRoundsPerTurn()))
-			llmMessages = append(llmMessages, skippedToolMessages(result.ToolCalls, a.maxToolRoundsPerTurn())...)
-			var summaryPending *pendingUserMessage
-			llmMessages, summaryPending = a.drainPendingUserInput(session.ID, llmMessages, turn.AttemptFromContext(ctx))
-			llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("工具调用轮次已达到上限，可以询问用户是否继续或者基于已有工具结果和当前上下文总结当前进度。")})
-			tools = nil
-			stream := out.StartStream(reqCtx)
-			summary, err := a.callLLM(reqCtx, session, selection, llmMessages, tools, summaryPending, stream, out)
-			if err != nil {
-				return err
-			}
-			if len(summary.ToolCalls) > 0 {
-				// TODO: 后续支持强制 tool_choice=none；当前总结请求已不传 tools，若仍返回工具调用则忽略。
-				out.SendPreview(ctx, "总结请求仍返回了工具调用，已忽略。")
-			}
-			immediateOutputs, laterOutputs := delivery.SplitByDeliveryTiming(summary.Outputs)
-			deferredOutputs = append(deferredOutputs, laterOutputs...)
-			if err := out.SendOutputs(ctx, immediateOutputs); err != nil {
-				return err
-			}
-			summaryText := summary.Text
-			summaryRawText := summary.RawText
-			if summaryText == "" {
-				summaryText = "工具调用轮次已达到上限，当前流程已停止。"
-				if summaryRawText == "" {
-					summaryRawText = summaryText
-				}
-			}
-			if summary.Usage != nil {
-				usage = summary.Usage
-			}
-			finalText = joinAssistantText(finalText, summaryRawText)
-			finalRawText = joinAssistantText(finalRawText, summaryRawText)
-			platformFinalText = joinAssistantText(platformFinalText, summaryText)
-			finalStream = summary.Stream
-			break
-		}
-		toolRounds++
-		execution := a.executeToolCalls(reqCtx, session, result.ToolCalls, assistantRawText, assistantRawText, out)
-		if execution.Stopped {
-			if err := reqCtx.Err(); err != nil {
-				return a.handleTurnContextDone(ctx, session.ID, err, out)
-			}
-			return nil
-		}
-		llmMessages[assistantToolCallIndex].ToolCalls = append([]llm.ToolCallRequest(nil), execution.PreparedCalls...)
-		llmMessages = append(llmMessages, execution.Messages...)
-		if err := a.persistTurnMessages(ctx, session.ID, "append_tool_transcript", execution.Transcript); err != nil {
-			return err
-		}
-		tools, err = a.toolsForSession(ctx, session)
-		if err != nil {
-			return err
-		}
-		if execution.ConfirmationExtra != "" {
-			llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("补充：" + execution.ConfirmationExtra)})
-		}
-	}
-	if err := reqCtx.Err(); err != nil {
-		return a.handleTurnContextDone(ctx, session.ID, err, out)
-	}
-	// Adoption can happen while the final model request is in flight, without
-	// another loop iteration to refresh the identity before output hooks.
-	reqCtx, err = a.view.RefreshSession(reqCtx, session)
-	if err != nil {
-		return err
-	}
-	ctx = a.view.Context(ctx)
-	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseSending, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindTurn, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: storage.Now()})
-	committed, err := a.replies.Commit(ctx, reqCtx, replyCommitInput{
-		Session: session, Text: finalText, RawText: finalRawText, PlatformText: platformFinalText,
-		Stream: finalStream, Outputs: deferredOutputs,
-	}, out)
-	if err != nil {
-		return err
-	}
-	if err := a.sessions.Touch(ctx, session); err != nil {
-		a.audit("persistence_error", "session_id", session.ID, "operation", "touch_session", "error", err.Error())
-		return err
-	}
-	a.recordUsage(session.ID, usage)
-	doneStatus := runtimeDoneStatus(runtimestatus.Snapshot{SessionID: session.ID, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt, Usage: usage}, storage.Now())
-	out.PublishRuntimeStatus(ctx, doneStatus)
-	nextSelection := a.modelSelectionForTurn(ctx, session)
-	if a.shouldCompact(ctx, session, nextSelection) {
-		_, _ = out.SendAssistant(ctx, "compact status: will compact before next request")
-	}
-	pending, completed := a.turns.CompleteLLMInput(session.ID, turn.AttemptFromContext(ctx))
-	if !completed {
-		return nil
-	}
-	if completedPending != nil {
-		*completedPending = pending
-	}
-	if execution := turn.ExecutionFromContext(ctx); execution != nil {
-		execution.SetResult(session.ID, committed.MessageID, committed.RawText)
-	}
-	a.sessions.MaybeScheduleNaming(ctx, session.ID)
-	return nil
-}
-
-func (a *Agent) modelSelectionForTurn(ctx context.Context, session *storage.Session) modelmgr.Selection {
-	mode := storage.SessionModeWork
-	if session != nil && session.Mode != "" && session.Mode != storage.SessionModeBackground {
-		mode = session.Mode
-	}
-	selection := a.models.ResolveMode(mode).ModelSelection
-	if override, ok := ctx.Value(backgroundModelSelectionKey{}).(config.ModelSelection); ok {
-		if override.Provider != "" {
-			selection.Provider = override.Provider
-		}
-		if override.Model != "" {
-			selection.Model = override.Model
-		}
-	}
-	return a.models.Resolve(selection)
-}
-
-func hasStorageUserMessage(messages []storage.Message) bool {
-	for _, message := range messages {
-		if message.Role == storage.RoleUser {
-			return true
-		}
-	}
-	return false
+	return result
 }

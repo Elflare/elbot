@@ -479,7 +479,7 @@ func TestConfirmAppendOverridesConfirmationSegments(t *testing.T) {
 	merged := "补充信息：\n1. A\n2. B"
 	ctx = withInboundSegments(ctx, llm.TextSegments(merged))
 
-	segments := (&Agent{}).userMessageSegments(ctx, merged)
+	segments := inboundSegments(ctx, merged)
 	if got := llm.SegmentsTextOnly(segments); got != merged {
 		t.Fatalf("segments text = %q, want %q", got, merged)
 	}
