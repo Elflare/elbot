@@ -408,6 +408,22 @@
       "translation": "In work mode, the superadmin can let ElBot use the built-in tool __ELBOT_CODE_0__ to assist in creating Elwisp.",
       "updated_at": 1781779501
     },
+    "docs/elnis.md:paragraph:585e0557a679941bd1cd34246f236124195a477e7e67b09727a951634aef210f": {
+      "kind": "paragraph",
+      "source": "未被接管时，__ELBOT_CODE_0__ 会按裁决后的目标发送 __ELBOT_CODE_1__。",
+      "source_file": "docs/elnis.md",
+      "source_hash": "585e0557a679941bd1cd34246f236124195a477e7e67b09727a951634aef210f",
+      "translation": "When not taken over, __ELBOT_CODE_0__ will send __ELBOT_CODE_1__ according to the adjudicated target.",
+      "updated_at": 1791193988
+    },
+    "docs/elnis.md:paragraph:61ef89a3b1a10abeefaf4103b38101dce4190400c0130cb226026b4542a02e82": {
+      "kind": "paragraph",
+      "source": "所属用户在同平台私聊（或 CLI 管理入口）恢复后台 Session 后，该会话永久转为普通前台会话；",
+      "source_file": "docs/elnis.md",
+      "source_hash": "61ef89a3b1a10abeefaf4103b38101dce4190400c0130cb226026b4542a02e82",
+      "translation": "After the associated user restores the background Session in a private chat on the same platform (or via the CLI management entry), the Session permanently converts to a normal foreground Session;",
+      "updated_at": 1791193988
+    },
     "docs/elnis.md:paragraph:695148bdd3a5cccf1382ef265c97fe80863c1b0b09aa2727b1b892fc67855062": {
       "kind": "paragraph",
       "source": "该工具会返回创建指南、Elvena 事件模板、Elnis 配置片段、监听器脚手架、curl 测试命令和安全检查清单；",
@@ -462,14 +478,6 @@
       "source_file": "docs/elnis.md",
       "source_hash": "adef3d9013f4f87cbcd06bb22cf5a2535a1649b89d32a882c4fd4aa22aea893d",
       "translation": "Elnis allows ElBot to respond to the external world.\n",
-      "updated_at": 1781710746
-    },
-    "docs/elnis.md:paragraph:b3a11302390f0fe1b098f268e2c006c8c6fcfd2397c7cf6a18dae3609c3980c5": {
-      "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 时，Elnis 会按裁决后的目标发送 __ELBOT_CODE_1__。\n",
-      "source_file": "docs/elnis.md",
-      "source_hash": "b3a11302390f0fe1b098f268e2c006c8c6fcfd2397c7cf6a18dae3609c3980c5",
-      "translation": "During __ELBOT_CODE_0__, Elnis will send __ELBOT_CODE_1__ according to the adjudicated target.\n",
       "updated_at": 1781710746
     },
     "docs/elnis.md:paragraph:b6a7786f7bade05cc424e23f71fbffde88e8dd767455f668ea54c1aa0fb87d08": {
@@ -559,6 +567,14 @@
       "source_hash": "edfa67e8209c68e6f952490b26b1ce591abcd3211cba6d962a553fc97a6519d7",
       "translation": "Elwisp does not obtain media management RPCs, and external tools will not receive host-exported files.",
       "updated_at": 1789010179
+    },
+    "docs/elnis.md:paragraph:f59bd193111b5d8db94e5bfdbe82e76e9661e64bc73fe33e043a7ea71e9e3eda": {
+      "kind": "paragraph",
+      "source": "执行变为前台逻辑，不再自动汇报或补投递。\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "f59bd193111b5d8db94e5bfdbe82e76e9661e64bc73fe33e043a7ea71e9e3eda",
+      "translation": "Execution changes to foreground logic, and it will no longer automatically report or re-deliver.\n",
+      "updated_at": 1791193988
     },
     "docs/elnis.md:paragraph:f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f": {
       "kind": "paragraph",
@@ -738,8 +754,8 @@
     }
   },
   "source": "docs/elnis.md",
-  "source_hash": "167b0cd036b4966d1db2c2d8e0cd07344ce8c2160aadff474dcfddd9a4da80f5",
+  "source_hash": "04ddc1e2163e6106947d91ed845c9f02d121463d7b01dcfbb50667454e9525d4",
   "target": "docs.en/elnis.md",
-  "updated_at": 1789010179,
+  "updated_at": 1791193988,
   "version": 2
 }

@@ -164,7 +164,7 @@ HTTP requests in `llm` mode will return quickly, and the actual processing is ex
 }
 ```
 
-During `need_report=true`, Elnis will send `report` according to the adjudicated target.
+When not taken over, `need_report=true` will send `report` according to the adjudicated target. After the associated user restores the background Session in a private chat on the same platform (or via the CLI management entry), the Session permanently converts to a normal foreground Session; Execution changes to foreground logic, and it will no longer automatically report or re-deliver.
 
 ## View Elwisp logs
 
@@ -198,4 +198,3 @@ For ready-made Elwisp examples, protocol documentation, and templates, please re
 ## Next Step: Configuration and Usage
 
 - [Elnis Configuration and Usage](elnis-usage.md): Enable Elnis, configure Elwisp policies, send Elvena requests, and understand request fields and delivery boundaries.
-
