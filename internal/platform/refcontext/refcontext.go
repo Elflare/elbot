@@ -16,6 +16,9 @@ type ReferencedMessage struct {
 	Label      string
 	Text       string
 	Segments   []platform.MessageSegment
+	// CanonicalContent means Text already contains the stored assistant answer.
+	// Enrichers may render it, but must not fetch and inject another copy.
+	CanonicalContent bool
 }
 
 type chatMetadata struct {
@@ -39,6 +42,9 @@ type Options struct {
 	Text            string
 	CommandPrefixes []string
 	Fetch           func(context.Context, string) (ReferencedMessage, bool)
+	// Enrich optionally renders an ordered reference view. It must not mutate the
+	// original segments, whose media positions belong to the source history row.
+	Enrich func(context.Context, string, ReferencedMessage) []platform.MessageSegment
 }
 
 type Result struct {
@@ -46,7 +52,10 @@ type Result struct {
 	ForkFromMessageID string
 	ResumeSessionID   string
 	ReferenceSegments []platform.MessageSegment
-	Reply             platform.ReplyContext
+	// DisplaySegments is an optional ordered reference view, without current input.
+	// Reply.Segments remains the original reference for history media association.
+	DisplaySegments []platform.MessageSegment
+	Reply           platform.ReplyContext
 }
 
 func Apply(ctx context.Context, opts Options) Result {
@@ -78,7 +87,7 @@ func Apply(ctx context.Context, opts Options) Result {
 		session, ok := referencedSession(ctx, opts, stored)
 		if ok && opts.IsSuperadmin && isBackgroundSession(session) {
 			result.ResumeSessionID = session.ID
-			_, result.ReferenceSegments, result.Reply = fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
+			_, result.ReferenceSegments, result.Reply, _ = fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
 			return result
 		}
 		if ok && isOwnPlatformSession(opts, session) {
@@ -88,16 +97,17 @@ func Apply(ctx context.Context, opts Options) Result {
 				return result
 			}
 			result.ForkFromMessageID = stored.ID
-			_, result.ReferenceSegments, result.Reply = fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
+			_, result.ReferenceSegments, result.Reply, _ = fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
 			return result
 		}
 	}
-	text, segments, reply := fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
+	text, segments, reply, display := fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
 	if reply.MessageID != "" {
 		result.Reply = reply
 	}
 	result.Text = text
 	result.ReferenceSegments = segments
+	result.DisplaySegments = display
 	return result
 }
 
@@ -154,7 +164,7 @@ func isLatestAssistant(ctx context.Context, store storage.Store, msg *storage.Me
 	return true
 }
 
-func fallbackReferenceText(ctx context.Context, opts Options, replyID string, stored *storage.Message, hasStored bool) (string, []platform.MessageSegment, platform.ReplyContext) {
+func fallbackReferenceText(ctx context.Context, opts Options, replyID string, stored *storage.Message, hasStored bool) (string, []platform.MessageSegment, platform.ReplyContext, []platform.MessageSegment) {
 	label := "引用"
 	content := ""
 	var segments []platform.MessageSegment
@@ -189,10 +199,31 @@ func fallbackReferenceText(ctx context.Context, opts Options, replyID string, st
 		content = "[媒体消息]"
 		reply.Text = content
 	}
-	if content == "" {
-		return opts.Text, segments, reply
+	// A mapped assistant already has its canonical content. In particular,
+	// enriching it must not duplicate the text of an automatic resume or fork.
+	if opts.Enrich != nil {
+		display := opts.Enrich(ctx, replyID, ReferencedMessage{
+			SenderID: reply.SenderID, SenderName: reply.SenderName, Label: label,
+			Text: content, Segments: reply.Segments,
+			CanonicalContent: hasStored && stored.Role == storage.RoleAssistant && strings.TrimSpace(stored.Content) != "",
+		})
+		if len(display) > 0 {
+			var text strings.Builder
+			for _, segment := range display {
+				if segment.Type == platform.SegmentText {
+					text.WriteString(segment.Text)
+				}
+			}
+			if strings.TrimSpace(opts.Text) != "" {
+				text.WriteString("\n\n" + opts.Text)
+			}
+			return strings.TrimSpace(text.String()), segments, reply, display
+		}
 	}
-	return FormatReferenceText(opts.Platform, reply, opts.Text), segments, reply
+	if content == "" {
+		return opts.Text, segments, reply, nil
+	}
+	return FormatReferenceText(opts.Platform, reply, opts.Text), segments, reply, nil
 }
 
 func FormatReferenceText(platformName string, reply platform.ReplyContext, currentText string) string {

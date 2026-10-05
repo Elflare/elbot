@@ -87,20 +87,56 @@ func withInboundSegments(ctx context.Context, segments []llm.MessageSegment) con
 
 func replaceInboundTextSegments(ctx context.Context, text string) []llm.MessageSegment {
 	segments := inboundSegments(ctx, text)
-	out := make([]llm.MessageSegment, 0, len(segments)+1)
-	textAdded := false
+	if llm.SegmentsTextOnly(segments) == text {
+		return segments
+	}
+	var original strings.Builder
 	for _, segment := range segments {
 		if segment.Type == llm.SegmentText {
-			if !textAdded && strings.TrimSpace(text) != "" {
-				out = append(out, llm.MessageSegment{Type: llm.SegmentText, Text: text})
-				textAdded = true
-			}
+			original.WriteString(segment.Text)
+		}
+	}
+	before, after := []rune(original.String()), []rune(text)
+	if len(before) == 0 {
+		if text != "" {
+			return append([]llm.MessageSegment{{Type: llm.SegmentText, Text: text}}, segments...)
+		}
+		return segments
+	}
+	// Locate the changed text span, retaining the surrounding text in its
+	// original segments. Prefix/directive removal must not move quoted images.
+	start := 0
+	for start < len(before) && start < len(after) && before[start] == after[start] {
+		start++
+	}
+	end, newEnd := len(before), len(after)
+	for end > start && newEnd > start && before[end-1] == after[newEnd-1] {
+		end--
+		newEnd--
+	}
+	replacement := string(after[start:newEnd])
+	out := make([]llm.MessageSegment, 0, len(segments))
+	offset := 0
+	inserted := false
+	for _, segment := range segments {
+		if segment.Type != llm.SegmentText {
+			out = append(out, segment)
 			continue
 		}
-		out = append(out, segment)
-	}
-	if !textAdded && strings.TrimSpace(text) != "" {
-		out = append([]llm.MessageSegment{{Type: llm.SegmentText, Text: text}}, out...)
+		runes := []rune(segment.Text)
+		left := min(max(start-offset, 0), len(runes))
+		right := min(max(end-offset, 0), len(runes))
+		updated := string(runes[:left])
+		if !inserted && offset+len(runes) >= start {
+			updated += replacement
+			inserted = true
+		}
+		updated += string(runes[right:])
+		offset += len(runes)
+		if updated != "" {
+			segment.Text = updated
+			out = append(out, segment)
+		}
 	}
 	return out
 }

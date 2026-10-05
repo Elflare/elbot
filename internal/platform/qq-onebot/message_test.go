@@ -68,13 +68,13 @@ func TestQQTextPagesSplitsLongText(t *testing.T) {
 	if len(pages) != 3 {
 		t.Fatalf("page count = %d", len(pages))
 	}
-	if !strings.HasSuffix(pages[0], "……（1/3）") || !strings.HasSuffix(pages[1], "……（2/3）") || !strings.HasSuffix(pages[2], "（3/3）") {
-		t.Fatalf("pages = %#v", pages)
+	if strings.Join(pages, "") != strings.Repeat("a", qqTextPageRunes*2+1) {
+		t.Fatal("pages changed the original text")
 	}
-	if got := len([]rune(strings.TrimSuffix(pages[0], "……（1/3）"))); got != qqTextPageRunes {
+	if got := len([]rune(pages[0])); got != qqTextPageRunes {
 		t.Fatalf("first page body runes = %d", got)
 	}
-	if got := len([]rune(strings.TrimSuffix(pages[2], "（3/3）"))); got != 1 {
+	if got := len([]rune(pages[2])); got != 1 {
 		t.Fatalf("last page body runes = %d", got)
 	}
 }
@@ -84,7 +84,7 @@ func TestQQTextPagesSplitsChineseRunes(t *testing.T) {
 	if len(pages) != 2 {
 		t.Fatalf("page count = %d", len(pages))
 	}
-	if pages[1] != "芙（2/2）" {
+	if pages[1] != "芙" {
 		t.Fatalf("second page = %q", pages[1])
 	}
 }
@@ -97,7 +97,7 @@ func TestQQTextPagesExactBoundaries(t *testing.T) {
 		want []string
 	}{
 		{name: "one full page", text: body, want: []string{body}},
-		{name: "two full pages", text: body + body, want: []string{body + "……（1/2）", body + "（2/2）"}},
+		{name: "two full pages", text: body + body, want: []string{body, body}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pages := qqTextPages(tc.text)
@@ -114,13 +114,13 @@ func TestQQTextPagesExactBoundaries(t *testing.T) {
 }
 
 func TestQQTextPagesPreservesLastPageText(t *testing.T) {
-	for _, tail := range []string{"正文……", "内容。<"} {
+	for _, tail := range []string{"正文……", "内容。<", "🔥\n\n  "} {
 		t.Run(tail, func(t *testing.T) {
 			pages := qqTextPages(strings.Repeat("娅", qqTextPageRunes) + tail)
 			if len(pages) != 2 {
 				t.Fatalf("page count = %d, want 2", len(pages))
 			}
-			if want := tail + "（2/2）"; pages[1] != want {
+			if want := tail; pages[1] != want {
 				t.Fatalf("last page = %q, want %q", pages[1], want)
 			}
 		})
@@ -137,10 +137,10 @@ func TestImageTextDoesNotRepeatPlaceholder(t *testing.T) {
 		{name: "literal placeholder", text: "[图片]是我写的"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			msg := normalizeSegments([]Segment{
+			msg := convertSegments([]Segment{
 				{Type: "text", Data: map[string]any{"text": tc.text}},
 				{Type: "image", Data: map[string]any{"file": "a.png", "url": "https://example.com/a.png"}},
-			}, 1000)
+			}, 1000, ordinaryInput)
 			if msg.Text != tc.text {
 				t.Fatalf("text = %q, want user text %q without generated image placeholder", msg.Text, tc.text)
 			}
