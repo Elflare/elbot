@@ -23,7 +23,7 @@ func TestFinalLLMTakeoverUsesForegroundHookAndReceipt(t *testing.T) {
 			var release sync.Once
 			t.Cleanup(func() { release.Do(func() { close(block.release) }) })
 			f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"foreground final"}}
-			a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t))
+
 			manager := hook.NewManager()
 			var outputEvent hook.Event
 			if err := manager.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "capture", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, error) {
@@ -32,7 +32,9 @@ func TestFinalLLMTakeoverUsesForegroundHookAndReceipt(t *testing.T) {
 			})}); err != nil {
 				t.Fatal(err)
 			}
-			a.setTestHookManager(manager)
+			a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+				cfg.HookManager = manager
+			})
 			done := startTakeoverTest(a)
 			select {
 			case <-block.started:
@@ -58,11 +60,11 @@ func TestFinalLLMTakeoverUsesForegroundHookAndReceipt(t *testing.T) {
 			if outputEvent.Platform.ScopeID != "private:1" || outputEvent.Actor.ID != "qq:1" {
 				t.Errorf("output hook retained background identity: %#v / %#v", outputEvent.Platform, outputEvent.Actor)
 			}
-			mapped, err := a.store.Messages().FindByPlatformMessage(ctx, "qq", "private:1", "sent")
+			mapped, err := a.execution.chat.messages.FindByPlatformMessage(ctx, "qq", "private:1", "sent")
 			if err != nil || mapped.ID != result.MessageID {
 				t.Errorf("foreground mapping=%#v/%v", mapped, err)
 			}
-			if _, err := a.store.Messages().FindByPlatformMessage(ctx, "qq", "cron:takeover", "sent"); !errors.Is(err, storage.ErrNotFound) {
+			if _, err := a.execution.chat.messages.FindByPlatformMessage(ctx, "qq", "cron:takeover", "sent"); !errors.Is(err, storage.ErrNotFound) {
 				t.Errorf("background mapping remained: %v", err)
 			}
 		})
@@ -70,7 +72,6 @@ func TestFinalLLMTakeoverUsesForegroundHookAndReceipt(t *testing.T) {
 }
 
 func TestConnectedHooksKeepAbsentChatIdentity(t *testing.T) {
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t))
 	manager := hook.NewManager()
 	var events []hook.Event
 	for _, point := range []hook.Point{hook.PointPlatformConnected, hook.PointErrorOccurred} {
@@ -84,7 +85,9 @@ func TestConnectedHooksKeepAbsentChatIdentity(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	a.setTestHookManager(manager)
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.HookManager = manager
+	})
 	a.NotifyPlatformConnected(context.Background(), "telegram")
 	if len(events) != 2 {
 		t.Fatalf("events=%#v", events)

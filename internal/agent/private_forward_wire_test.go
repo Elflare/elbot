@@ -107,7 +107,7 @@ func TestPrivateOneBotForwardReachesVendor(t *testing.T) {
 			defer onebot.Close()
 			root := t.TempDir()
 			a := newTestMediaAgent(t, &fakePlatform{}, openai.New(vendor.URL, "test", nil), store, media.NewManager(store, root, &media.LocalBackend{Root: root}))
-			a.media.History = history.Repository()
+			a.message.media.History = history.Repository()
 			adapter := qqonebot.New(qqonebot.Config{Enabled: true, URL: "ws" + strings.TrimPrefix(onebot.URL, "http")}, store, history.Repository(), nil)
 			completed := make(chan error, 1)
 			runDone := make(chan error, 1)

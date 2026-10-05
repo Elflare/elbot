@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -14,10 +15,30 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/tool"
+	"elbot/internal/toolrun"
 	"elbot/internal/turn"
 )
 
 const defaultUserConfirmationTimeout = 10 * time.Minute
+
+// inputCoordinator prepares input outside admission and delegates execution state
+// changes to executionCoordinator and the existing Session/Turn services.
+type inputCoordinator struct {
+	sessions      *session.Service
+	sessionRows   storage.SessionRepository
+	turns         *turn.Manager
+	identity      *identityResolver
+	hooks         *hookBridge
+	output        *outputSender
+	execution     *executionCoordinator
+	confirmations *confirmationCoordinator
+	registry      *tool.Registry
+	preloader     *toolrun.PreloadService
+	toolState     *toolrun.StateService
+	waitPolicy    *confirmationPolicy
+	auditLogger   *slog.Logger
+}
 
 var errInputCompacting = errors.New("正在压缩上下文，请稍后再发送。可使用 /stop 取消当前请求。")
 var errInputArchived = errors.New("当前会话已归档，不能继续聊天。若要继续，请先使用 /unarchive。")
@@ -45,22 +66,22 @@ func activeTurnCommandBlockedText() string {
 	return "当前会话处理中，暂不支持切换。如有必要，请先使用 /stop 结束当前处理。"
 }
 
-func (a *Agent) handleInput(ctx context.Context, text string) error {
-	ctx, session, err := a.execution.resolveInput(ctx, text)
+func (c *inputCoordinator) handleInput(ctx context.Context, text string) error {
+	ctx, session, err := c.execution.resolveInput(ctx, text)
 	if err != nil {
 		return err
 	}
-	return a.handleSessionInput(ctx, session, text)
+	return c.handleSessionInput(ctx, session, text)
 }
 
-func (a *Agent) continueCommandInput(ctx context.Context, continuation command.Continuation) error {
-	locked, release, err := a.sessions.EnterActivation(ctx, a.identity.Scope(ctx), continuation.SessionID)
+func (c *inputCoordinator) continueCommandInput(ctx context.Context, continuation command.Continuation) error {
+	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), continuation.SessionID)
 	if err != nil {
 		return err
 	}
-	row, err := a.sessions.Resume(locked, a.identity.Scope(ctx), continuation.SessionID)
+	row, err := c.sessions.Resume(locked, c.identity.Scope(ctx), continuation.SessionID)
 	if err == nil {
-		_, binding, bindErr := a.sessions.CurrentBound(locked, a.identity.Scope(ctx))
+		_, binding, bindErr := c.sessions.CurrentBound(locked, c.identity.Scope(ctx))
 		err = bindErr
 		ctx = session.WithBinding(locked, binding)
 	}
@@ -70,13 +91,13 @@ func (a *Agent) continueCommandInput(ctx context.Context, continuation command.C
 	}
 	segments := replaceInboundTextSegments(ctx, continuation.Text)
 	ctx = withInboundSegments(ctx, segments)
-	return a.handleSessionInput(ctx, row, continuation.Text)
+	return c.handleSessionInput(ctx, row, continuation.Text)
 }
 
-func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session, text string) error {
-	locked, release, err := a.execution.enterInput(ctx, session)
+func (c *inputCoordinator) handleSessionInput(ctx context.Context, session *storage.Session, text string) error {
+	locked, release, err := c.execution.enterInput(ctx, session)
 	if errors.Is(err, errInputCompacting) || errors.Is(err, errInputArchived) {
-		a.output.SendChat(ctx, err.Error())
+		c.output.SendChat(ctx, err.Error())
 		return nil
 	}
 	if err != nil {
@@ -84,30 +105,30 @@ func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session
 	}
 	ctx = locked
 	release()
-	event, err := a.hooks.Run(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Session: hookSession(session), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: inboundSegments(ctx, text)}})
+	event, err := c.hooks.Run(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Session: hookSession(session), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: inboundSegments(ctx, text)}})
 	if err != nil {
 		return err
 	}
 	ctx = withInboundSegments(ctx, event.Message.Segments)
 	text = llm.SegmentsTextOnly(event.Message.Segments)
 
-	snapshot := a.turns.Snapshot(session.ID)
+	snapshot := c.turns.Snapshot(session.ID)
 	if snapshot.Phase != turn.PhaseAwaitRiskConfirm {
-		directives, skillDirectives, err := a.applyInputDirectives(ctx, session, text)
+		directives, skillDirectives, err := c.applyInputDirectives(ctx, session, text)
 		if err != nil {
 			return err
 		}
 		if len(directives.Injected) > 0 || len(directives.Existing) > 0 || len(directives.Invalid) > 0 {
-			a.notifyToolDirectiveResult(ctx, directives)
+			c.notifyToolDirectiveResult(ctx, directives)
 		}
 		if len(skillDirectives.Skills) > 0 || len(skillDirectives.InjectedWrappers) > 0 || len(skillDirectives.ExistingWrappers) > 0 || len(skillDirectives.Invalid) > 0 {
-			a.notifySkillDirectiveResult(ctx, skillDirectives)
+			c.notifySkillDirectiveResult(ctx, skillDirectives)
 		}
 		text = skillDirectives.Text
 		ctx = withInboundSegments(ctx, replaceInboundTextSegments(ctx, text))
 		if strings.TrimSpace(text) == "" && !hasInboundNonTextSegment(ctx) {
 			if len(directives.Injected) > 0 || len(skillDirectives.InjectedWrappers) > 0 {
-				if latest, err := a.store.Sessions().Get(ctx, session.ID); err == nil {
+				if latest, err := c.sessionRows.Get(ctx, session.ID); err == nil {
 					*session = *latest
 				}
 			}
@@ -115,39 +136,39 @@ func (a *Agent) handleSessionInput(ctx context.Context, session *storage.Session
 		}
 	}
 
-	disposition, err := a.execution.AcceptInput(ctx, session, text)
+	disposition, err := c.execution.AcceptInput(ctx, session, text)
 	if err != nil {
 		return err
 	}
 	if disposition == inputRiskConfirmation {
-		return a.confirmations.SubmitResponse(ctx, session.ID, text)
+		return c.confirmations.SubmitResponse(ctx, session.ID, text)
 	}
 	return nil
 }
 
-func (a *Agent) expireIdleCurrentSession(ctx context.Context) error {
-	current, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
+func (c *inputCoordinator) expireIdleCurrentSession(ctx context.Context) error {
+	current, err := c.sessions.Current(ctx, c.identity.Scope(ctx))
 	if errors.Is(err, storage.ErrNotFound) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if a.turns.Snapshot(current.ID).Phase != turn.PhaseIdle {
+	if c.turns.Snapshot(current.ID).Phase != turn.PhaseIdle {
 		return nil
 	}
-	actor := a.identity.Actor(ctx)
-	result, err := a.sessions.ExpireIdleCurrent(ctx, session.ExpireIdleRequest{
-		Scope:        a.identity.Scope(ctx),
+	actor := c.identity.Actor(ctx)
+	result, err := c.sessions.ExpireIdleCurrent(ctx, session.ExpireIdleRequest{
+		Scope:        c.identity.Scope(ctx),
 		IsSuperadmin: actor.Role == security.RoleSuperadmin,
-		Config:       a.waitPolicy.idleExpiration,
+		Config:       c.waitPolicy.idleExpiration,
 		Now:          time.Now(),
 	})
 	if err != nil {
 		return err
 	}
 	if result.Expired {
-		a.audit("session_idle_expired", "session_id", result.SessionID, "actor_id", actor.ID, "ttl_minutes", result.TTLMinutes)
+		writeAudit(c.auditLogger, slog.LevelInfo, "session_idle_expired", "session_id", result.SessionID, "actor_id", actor.ID, "ttl_minutes", result.TTLMinutes)
 	}
 	return nil
 }

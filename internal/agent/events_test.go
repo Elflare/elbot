@@ -59,7 +59,7 @@ func TestModelCompletionSnapshotAndObserverFailureDoNotChangeResult(t *testing.T
 		t.Fatal(err)
 	}
 	out := foregroundTurnOutput{sender: a.output, status: a.status}
-	result, err := a.caller.Call(ctx, row, modelSelectionForTurn(ctx, a.models, row), nil, nil, nil, nil, out)
+	result, err := a.execution.chat.caller.Call(ctx, row, modelSelectionForTurn(ctx, a.execution.models, row), nil, nil, nil, nil, out)
 	if err != nil || result.Text != "source" || !event.OutputReady {
 		t.Fatalf("observation changed result: %+v / %v", result, err)
 	}
@@ -98,16 +98,16 @@ func TestConfirmationPublishesAfterAdmissionRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.turns.StartLLM(row.ID, "hello")
-	a.turns.StartToolPhase(row.ID)
+	a.execution.turns.StartLLM(row.ID, "hello")
+	a.execution.turns.StartToolPhase(row.ID)
 	finished := make(chan struct{})
 	go func() {
-		_, _ = a.turns.AwaitRiskConfirmationContext(ctx, row.ID, turn.RiskConfirmation{ID: "c", ToolName: "tool"}, time.Second)
+		_, _ = a.execution.turns.AwaitRiskConfirmationContext(ctx, row.ID, turn.RiskConfirmation{ID: "c", ToolName: "tool"}, time.Second)
 		close(finished)
 	}()
 	deadline := time.Now().Add(time.Second)
 	for {
-		if _, ok := a.turns.PendingRiskConfirmation(row.ID); ok {
+		if _, ok := a.execution.turns.PendingRiskConfirmation(row.ID); ok {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -121,7 +121,7 @@ func TestConfirmationPublishesAfterAdmissionRelease(t *testing.T) {
 		}
 		lockCtx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		_, release, err := a.sessions.EnterActivation(lockCtx, a.identity.Scope(ctx), row.ID)
+		_, release, err := a.execution.sessions.EnterActivation(lockCtx, a.identity.Scope(ctx), row.ID)
 		if err != nil {
 			t.Error("confirmation event emitted with admission held:", err)
 			return err
@@ -129,7 +129,7 @@ func TestConfirmationPublishesAfterAdmissionRelease(t *testing.T) {
 		release()
 		return nil
 	}, signal.ConnectOptions{})
-	if err := a.confirmations.SubmitResponse(ctx, row.ID, "/confirm"); err != nil {
+	if err := a.message.input.confirmations.SubmitResponse(ctx, row.ID, "/confirm"); err != nil {
 		t.Fatal(err)
 	}
 	<-finished

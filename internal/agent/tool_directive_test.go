@@ -11,6 +11,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/security"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/tool/builtin"
@@ -26,13 +27,15 @@ func TestDiscoveredToolsAreInjectedIntoTopLevelTools(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "discover_tool", Args: `{"name":"web_search"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(builtin.NewWebSearchTool())
 	_ = registry.Register(builtin.NewWebExtractTool())
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 
 	if err := a.HandleMessage(context.Background(), "测试工具"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -66,9 +69,10 @@ func TestDiscoveredToolsAreInjectedIntoTopLevelTools(t *testing.T) {
 		t.Fatalf("session metadata should persist discovered tool names: %q", sessionRecord.Metadata)
 	}
 
-	resumedAgent := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
-	resumedAgent.SetToolRuntime(registry, nil)
-	resumed, err := resumedAgent.chat.toolsForSession(context.Background(), sessionRecord)
+	resumedAgent := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.ToolRegistry = registry
+	})
+	resumed, err := resumedAgent.execution.chat.toolsForSession(context.Background(), sessionRecord)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,13 +87,15 @@ func TestToolDirectiveInjectsAndStripsValidTools(t *testing.T) {
 			p := &fakePlatform{}
 			store := newTestStore(t)
 			f := &fakeLLM{replies: []string{"done"}}
-			a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-			a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 			registry := tool.NewRegistry()
 			_ = registry.Register(tool.NewDiscoverTool(registry))
 			_ = registry.Register(builtin.NewWebSearchTool())
 			_ = registry.Register(builtin.NewWebExtractTool())
-			a.SetToolRuntime(registry, nil)
+			a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+				cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+				cfg.ToolRegistry = registry
+			})
 
 			if err := a.HandleMessage(context.Background(), "查资料 "+directive); err != nil {
 				t.Fatalf("HandleMessage: %v", err)
@@ -124,14 +130,16 @@ func TestToolDirectiveInjectsTaggedTools(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"done"}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(agentWrapperTool{name: "alpha", tags: []string{"web"}})
 	_ = registry.Register(agentWrapperTool{name: "beta", tags: []string{"web"}})
 	_ = registry.Register(agentDetailTool{name: "skill_web", source: tool.SourceSkillAgent, detail: "# skill", activate: []string{"python_skill_run"}})
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 
 	if err := a.HandleMessage(context.Background(), "查资料 @tool:web"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -155,19 +163,21 @@ func TestWorkspaceToolDirectiveLoadsInstructionsOnce(t *testing.T) {
 			p := &fakePlatform{}
 			store := newTestStore(t)
 			f := &fakeLLM{replies: []string{"done"}}
-			a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-			a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 			registry := tool.NewRegistry()
 			_ = registry.Register(tool.NewDiscoverTool(registry))
 			_ = registry.Register(builtin.NewWorkspaceTool())
-			a.SetToolRuntime(registry, nil)
+			a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+				cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+				cfg.ToolRegistry = registry
+			})
 
 			ctx := context.Background()
 			sessionRecord, err := a.execution.sessionForInput(ctx, "prepare workspace")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := (a.workspaceStore(sessionRecord)).SetWorkspaceDir(ctx, dir); err != nil {
+			if err := (session.NewWorkspaceStore(a.execution.sessions, a.execution.sessionRows, sessionRecord.ID)).SetWorkspaceDir(ctx, dir); err != nil {
 				t.Fatal(err)
 			}
 
@@ -209,15 +219,19 @@ func TestToolDirectiveInjectsConfiguredTagPrompt(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"done"}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(agentWrapperTool{name: "alpha"})
-	a.SetToolRuntime(registry, nil)
-	a.SetToolTagConfig("", config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
-		"worker": {Tools: []string{"alpha"}, Prompt: "Use alpha carefully."},
-	}})
+
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+		cfg.ToolTagsPath = ""
+		cfg.ToolTags = config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
+			"worker": {Tools: []string{"alpha"}, Prompt: "Use alpha carefully."},
+		}}
+	})
 
 	if err := a.HandleMessage(context.Background(), "处理 @tool:worker"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -257,15 +271,19 @@ func TestToolDirectiveDirectToolDoesNotActivateConfiguredTagPrompt(t *testing.T)
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"done"}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(agentWrapperTool{name: "alpha"})
-	a.SetToolRuntime(registry, nil)
-	a.SetToolTagConfig("", config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
-		"worker": {Tools: []string{"alpha"}, Prompt: "Use alpha carefully."},
-	}})
+
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+		cfg.ToolTagsPath = ""
+		cfg.ToolTags = config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
+			"worker": {Tools: []string{"alpha"}, Prompt: "Use alpha carefully."},
+		}}
+	})
 
 	if err := a.HandleMessage(context.Background(), "处理 @tool:alpha"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -284,12 +302,14 @@ func TestToolDirectiveReportsExistingTools(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"done"}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(agentWrapperTool{name: "alpha"})
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 
 	if err := a.HandleMessage(context.Background(), "先处理 @tool:alpha"); err != nil {
 		t.Fatalf("HandleMessage first: %v", err)
@@ -308,10 +328,12 @@ func TestToolDirectiveInvalidStaysAsText(t *testing.T) {
 			p := &fakePlatform{}
 			store := newTestStore(t)
 			f := &fakeLLM{replies: []string{"done"}}
-			a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
+
 			registry := tool.NewRegistry()
 			_ = registry.Register(tool.NewDiscoverTool(registry))
-			a.SetToolRuntime(registry, nil)
+			a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+				cfg.ToolRegistry = registry
+			})
 
 			if err := a.HandleMessage(context.Background(), "hello "+directive); err != nil {
 				t.Fatalf("HandleMessage: %v", err)
@@ -335,12 +357,14 @@ func TestToolDirectiveOnlyValidToolPreloadsNextTurn(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"done"}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(builtin.NewWebExtractTool())
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 
 	if err := a.HandleMessage(context.Background(), "@tool:web_extract"); err != nil {
 		t.Fatalf("HandleMessage preload: %v", err)
@@ -367,15 +391,17 @@ func TestAgentSkillCreatorNoticePreloads(t *testing.T) {
 	for _, entry := range []string{"directive", "background"} {
 		for _, role := range []security.Role{security.RoleUser, security.RoleSuperadmin, ""} {
 			t.Run(entry+"/"+string(role), func(t *testing.T) {
-				a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
-				a.SetSecurityPolicy(security.NewPolicy("low", "critical", nil))
+
 				registry := tool.NewRegistry()
 				if err := registry.Register(skill.NewDescriptor(skill.Record{
 					Name: "docx", Detail: "# DOCX", Kind: skill.KindAgent, Risk: tool.RiskSafe,
 				})); err != nil {
 					t.Fatal(err)
 				}
-				a.SetToolRuntime(registry, nil)
+				a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+					cfg.SecurityPolicy = security.NewPolicy("low", "critical", nil)
+					cfg.ToolRegistry = registry
+				})
 				ctx := context.Background()
 				if role != "" {
 					ctx = security.WithActor(ctx, security.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: role})
@@ -387,14 +413,14 @@ func TestAgentSkillCreatorNoticePreloads(t *testing.T) {
 				sessionRecord.Mode = storage.SessionModeWork
 				var content string
 				if entry == "directive" {
-					_, result, err := a.applyInputDirectives(ctx, sessionRecord, "@skill:docx")
+					_, result, err := a.message.input.applyInputDirectives(ctx, sessionRecord, "@skill:docx")
 					if err != nil {
 						t.Fatal(err)
 					}
 					content = result.Text
 				} else {
 					sessionRecord.Mode = storage.SessionModeBackground
-					content = a.preloadBackgroundResources(ctx, sessionRecord, []string{"docx"}, nil, nil).SkillPrompt
+					content = a.background.preloadBackgroundResources(ctx, sessionRecord, []string{"docx"}, nil, nil).SkillPrompt
 				}
 				if !strings.Contains(content, "# DOCX") {
 					t.Fatalf("missing skill body: %q", content)
@@ -416,13 +442,15 @@ func TestSkillDirectiveInjectsDetailAndWrapper(t *testing.T) {
 			p := &fakePlatform{}
 			store := newTestStore(t)
 			f := &fakeLLM{replies: []string{"done"}}
-			a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-			a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 			registry := tool.NewRegistry()
 			_ = registry.Register(tool.NewDiscoverTool(registry))
 			_ = registry.Register(agentDetailTool{name: "docx", source: tool.SourceSkillAgent, detail: "# DOCX", activate: []string{"python_skill_run"}})
 			_ = registry.Register(agentWrapperTool{name: "python_skill_run", hidden: true})
-			a.SetToolRuntime(registry, nil)
+			a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+				cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+				cfg.ToolRegistry = registry
+			})
 
 			if err := a.HandleMessage(context.Background(), "处理这个 "+directive); err != nil {
 				t.Fatalf("HandleMessage: %v", err)
@@ -450,13 +478,15 @@ func TestSkillDirectiveDeduplicatesElyphRuleCards(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"done"}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(agentDetailTool{name: "alpha", source: tool.SourceSkillAgent, detail: "#skill alpha - A", format: "elyph", ruleCard: "ELyph RULE"})
 	_ = registry.Register(agentDetailTool{name: "beta", source: tool.SourceSkillAgent, detail: "#skill beta - B", format: "elyph", ruleCard: "ELyph RULE"})
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 
 	if err := a.HandleMessage(context.Background(), "处理这个 @skill:alpha @skill:beta"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -478,13 +508,15 @@ func TestSkillDirectiveDoesNotRepeatElyphRuleCardAcrossTurns(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"done alpha", "done beta"}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(agentDetailTool{name: "alpha", source: tool.SourceSkillAgent, detail: "#skill alpha - A", format: "elyph", ruleCard: "ELyph RULE"})
 	_ = registry.Register(agentDetailTool{name: "beta", source: tool.SourceSkillAgent, detail: "#skill beta - B", format: "elyph", ruleCard: "ELyph RULE"})
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 
 	if err := a.HandleMessage(context.Background(), "处理这个 @skill:alpha"); err != nil {
 		t.Fatalf("HandleMessage alpha: %v", err)
@@ -519,10 +551,12 @@ func TestSkillDirectiveInvalidStaysAsText(t *testing.T) {
 			p := &fakePlatform{}
 			store := newTestStore(t)
 			f := &fakeLLM{replies: []string{"done"}}
-			a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
+
 			registry := tool.NewRegistry()
 			_ = registry.Register(tool.NewDiscoverTool(registry))
-			a.SetToolRuntime(registry, nil)
+			a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+				cfg.ToolRegistry = registry
+			})
 
 			if err := a.HandleMessage(context.Background(), "hello "+directive); err != nil {
 				t.Fatalf("HandleMessage: %v", err)
@@ -546,14 +580,16 @@ func TestSkillDirectiveLazyDetailFailureStaysAsText(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"done"}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(agentLazyDetailTool{
 		agentDetailTool: agentDetailTool{name: "broken", source: tool.SourceSkillAgent},
 		err:             errors.New("read SKILL.md: missing"),
 	})
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.ToolRegistry = registry
+	})
 
 	if err := a.HandleMessage(context.Background(), "hello @skill:broken"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -575,13 +611,15 @@ func TestSkillDirectiveOnlySkillSendsDetailAsUserMessage(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"done"}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(agentDetailTool{name: "docx", source: tool.SourceSkillAgent, detail: "# DOCX", activate: []string{"python_skill_run"}})
 	_ = registry.Register(agentWrapperTool{name: "python_skill_run", hidden: true})
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 
 	if err := a.HandleMessage(context.Background(), "@skill:docx"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -610,13 +648,15 @@ func TestSkillDiscoveryActivatesHiddenWrapperInSameTurn(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_2", Name: "python_skill_run", Args: `{"skill":"docx","script":"scripts/a.py"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(agentDetailTool{name: "docx", source: tool.SourceSkillAgent, detail: "# DOCX", activate: []string{"python_skill_run"}})
 	_ = registry.Register(agentWrapperTool{name: "python_skill_run", hidden: true})
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 
 	if err := a.HandleMessage(context.Background(), "处理 docx"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -650,10 +690,12 @@ func TestSkillDiscoveryActivatesHiddenWrapperInSameTurn(t *testing.T) {
 func TestWorkSessionKeepsDiscoverTool(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"ok"}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.ToolRegistry = registry
+	})
 
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -674,11 +716,14 @@ func TestSoulPromptAndToolsByMode(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"work reply", "chat reply"}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.soul = staticSoulProvider{Prompt: "SOUL ONLY"}
-	a.rebuildSystemPrompt()
+	soulPath := filepath.Join(t.TempDir(), "SOUL.md")
+	if err := os.WriteFile(soulPath, []byte("SOUL ONLY"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	tools := &recordingToolProvider{tools: []llm.ToolSchema{{Function: llm.ToolFunctionSchema{Name: "discover_tool", Description: "discover tools", Parameters: map[string]any{"type": "object"}}}}}
-	a.SetToolProvider(tools)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SoulPath, cfg.ToolProvider = soulPath, tools
+	})
 	ctx := context.Background()
 
 	if err := a.HandleMessage(ctx, "hello work"); err != nil {

@@ -2,7 +2,6 @@ package agent
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"elbot/internal/command"
@@ -87,10 +86,6 @@ func validateOptions(opts Options) error {
 	return nil
 }
 
-func (a *Agent) SetSessionIdleExpiration(cfg config.SessionIdleExpirationConfig) {
-	a.waitPolicy.idleExpiration = sessionIdleExpirationConfig(cfg)
-}
-
 func sessionIdleExpirationConfig(cfg config.SessionIdleExpirationConfig) session.IdleExpirationConfig {
 	return session.IdleExpirationConfig{
 		GroupUserTTLMinutes:         cfg.GroupUserTTLMinutes,
@@ -98,19 +93,4 @@ func sessionIdleExpirationConfig(cfg config.SessionIdleExpirationConfig) session
 		PrivateUserTTLMinutes:       cfg.PrivateUserTTLMinutes,
 		PrivateSuperadminTTLMinutes: cfg.PrivateSuperadminTTLMinutes,
 	}
-}
-
-func (a *Agent) SetSandboxRoot(root string) {
-	root = filepath.Clean(root)
-	if root == "." || root == "" {
-		root = config.Default().Sandbox.Root
-	}
-	a.sandboxRoot = root
-}
-
-func (a *Agent) SetSecurityPolicy(policy *security.Policy) {
-	if policy == nil {
-		policy = security.DefaultPolicy()
-	}
-	a.identity.policy = policy
 }

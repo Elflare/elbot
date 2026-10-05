@@ -44,9 +44,11 @@ func TestBackgroundRejectsUndeclaredNativeTool(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "forced", Name: candidate.Name(), Args: "{}"}}}},
 		{{DeltaContent: "finished"}},
 	}}
-	a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.SetSandboxRoot(t.TempDir())
-	a.SetToolRuntime(registry, nil)
+
+	a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.SandboxRoot = t.TempDir()
+		cfg.ToolRegistry = registry
+	})
 	result, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindElnis, Name: "restricted", Platform: "cli", Actor: security.Actor{ID: "cli:local", Role: security.RoleSuperadmin}, Prompt: "run"})
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +56,7 @@ func TestBackgroundRejectsUndeclaredNativeTool(t *testing.T) {
 	if executed != "" || assessed || preflight {
 		t.Fatalf("undeclared tool reached execution/preflight/risk: %q %v %v", executed, preflight, assessed)
 	}
-	row, err := a.store.Sessions().Get(ctx, result.SessionID)
+	row, err := a.execution.sessionRows.Get(ctx, result.SessionID)
 	if err != nil || row.Mode != "background" {
 		t.Fatalf("mode=%v err=%v", row, err)
 	}
@@ -66,10 +68,9 @@ func TestBackgroundRelativeFilesUseElwispSandbox(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "read", Name: "read_file", Args: `{"path":"result.txt"}`}}}},
 		{{DeltaContent: "done"}},
 	}}
-	a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t))
+
 	root := t.TempDir()
-	a.SetSandboxRoot(root)
-	a.SetToolConfig(config.ToolsConfig{MaxRoundsPerTurn: 3})
+
 	dir := filepath.Join(root, "elnis", "watcher")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
@@ -82,7 +83,11 @@ func TestBackgroundRelativeFilesUseElwispSandbox(t *testing.T) {
 	_ = registry.Register(builtin.NewReadFileTool())
 	_ = registry.Register(builtin.NewWorkspaceTool())
 	_ = registry.Register(tool.NewDiscoverTool(registry))
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.SandboxRoot = root
+		cfg.ToolsConfig = config.ToolsConfig{MaxRoundsPerTurn: 3}
+		cfg.ToolRegistry = registry
+	})
 	if _, err := a.RunBackground(context.Background(), background.RunRequest{Kind: background.KindElnis, Name: "files", Platform: "cli", Actor: security.Actor{ID: "cli:local", Role: security.RoleSuperadmin}, SandboxSubdir: "elnis/watcher", Prompt: "write and read", ToolListNames: []string{"shell", "read_file", "workspace", "discover_tool"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -128,9 +133,7 @@ func TestBackgroundHooksCannotExpandTools(t *testing.T) {
 				{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call", Name: callName, Args: "{}"}}}},
 				{{DeltaContent: "done"}},
 			}}
-			a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t))
-			a.SetSandboxRoot(t.TempDir())
-			a.SetToolRuntime(registry, nil)
+
 			manager := hook.NewManager()
 			responseInjected := false
 			if err := manager.Register(hook.Registration{Point: point, Name: "expand", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
@@ -149,7 +152,11 @@ func TestBackgroundHooksCannotExpandTools(t *testing.T) {
 			})}); err != nil {
 				t.Fatal(err)
 			}
-			a.setTestHookManager(manager)
+			a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+				cfg.SandboxRoot = t.TempDir()
+				cfg.ToolRegistry = registry
+				cfg.HookManager = manager
+			})
 			if _, err := a.RunBackground(context.Background(), background.RunRequest{Kind: background.KindElnis, Name: "hooks", Platform: "cli", Actor: security.Actor{ID: "cli:local", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"allowed"}}); err != nil {
 				t.Fatal(err)
 			}
@@ -170,13 +177,17 @@ func TestBackgroundTagPromptRequiresExplicitSelection(t *testing.T) {
 		t.Run(selector, func(t *testing.T) {
 			ctx := context.Background()
 			f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: "first"}}, {{DeltaContent: "second"}}}}
-			a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t))
-			a.SetSandboxRoot(t.TempDir())
+
 			registry := tool.NewRegistry()
 			_ = registry.Register(agentWrapperTool{name: "alpha"})
 			_ = registry.Register(tool.NewDiscoverTool(registry))
-			a.SetToolRuntime(registry, nil)
-			a.SetToolTagConfig("", config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}, Prompt: "EXPLICIT_TAG_PROMPT"}}})
+
+			a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+				cfg.SandboxRoot = t.TempDir()
+				cfg.ToolRegistry = registry
+				cfg.ToolTagsPath = ""
+				cfg.ToolTags = config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}, Prompt: "EXPLICIT_TAG_PROMPT"}}}
+			})
 			req := background.RunRequest{Kind: background.KindElnis, Name: "tag", Platform: "cli", Actor: security.Actor{ID: "cli:local", Role: security.RoleSuperadmin}, Prompt: "@tool:worker @skill:doc", ToolListNames: []string{selector}}
 			first, err := a.RunBackground(ctx, req)
 			if err != nil {

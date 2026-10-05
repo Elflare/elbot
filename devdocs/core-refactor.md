@@ -17,7 +17,7 @@
 
 重构范围为 Agent、命令、工具、Session、模型、上下文、发送通知及 app 装配。目标是让业务模块拥有自己的状态和规则，Agent 作为应用级入口，通过职责明确的内部组件完成执行编排。阶段 1–8 的实施与 Review 记录保留；阶段 9–15 的目标设计和验收要求见后文，实际完成情况以任务清单为准。
 
-- Agent 负责消息分流、前后台入口和内部组件装配；执行交接、单轮对话、模型调用、确认及回复提交分别由内部组件负责，不通过持有整个 Agent 访问能力。
+- Agent 提供对外薄入口，构造函数组合内部组件；消息分流、输入准备、后台准备、执行交接、单轮对话、模型调用、确认及回复提交分别由所属组件负责，不通过持有整个 Agent 访问能力。
 - 命令和工具入口负责参数、协议与结果展示，具体能力交给对应服务。
 - 公共信息包描述来源、发送者身份和消息／回复 ID，并允许必要的平台扩展；平台主动提供标准信息。
 - Session 管理持久化会话和当前绑定；Request／Turn 管理本次执行。
@@ -303,7 +303,7 @@ Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记�
 <!-- locator:agent-components -->
 ## 阶段 9–15：Agent 内部职责与旁路信号
 
-本节描述阶段 9–15 的结构；阶段 9–13 的基础、回复提交、执行协调、单轮对话、确认、模型调用和旁路订阅已接入，阶段 14–15 仍待实施。当前代码职责以 architecture.md 和 code-map.md 为准。阶段 14 完成剩余装配核对与清理，最后单列阶段 15 Review；不能用末尾 Review 代替各阶段验证。
+本节描述阶段 9–15 的结构；阶段 9–14 的基础、回复提交、执行协调、单轮对话、确认、模型调用、旁路订阅和薄入口装配已接入。阶段 15 Review 仍待实施；不能用末尾 Review 代替各阶段验证。当前代码职责以 architecture.md 和 code-map.md 为准。
 
 ### 范围与依赖约束
 
@@ -313,7 +313,7 @@ Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记�
 - 单个必要的窄接口可以使用；单轮执行由 `chatRunner` 实现，不把 `Agent.runChat` 包装成回调交回执行协调器。
 - Session、Turn、Request、ContextManager、ToolRun、Media 与 FileOps 保持现有事实来源，不在新组件复制状态机或缓存。
 - Agent 对外仍被生产代码使用的方法可以保留薄委托；无调用的旧入口删除，不为旧测试保留生产兼容层。
-- 配置 setter 更新真正拥有该配置的组件，不能形成 Agent 与组件两份可变配置。Prompt 重建及测试装配随调用方迁移。
+- 配置通过 Options 在构造时注入实际拥有者，不提供 Agent 运行时 setter，不形成两份可变配置。Prompt Builder 在装配时建立来源，每轮仍读取当前 Soul、常驻记忆和工具材料；测试通过构造参数或直接组件装配验证。
 - 每阶段必须实际接入并保持可编译、可运行；不能先建立一批空组件，再把所有接线推迟到最后。
 
 ### 目标架构
@@ -323,7 +323,11 @@ Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记�
 ```mermaid
 flowchart TD
     App["app：共享服务、装配、订阅和关闭"]
-    Agent["Agent：前后台入口、输入准备和分发"]
+    Agent["Agent：对外薄入口"]
+    Message["messageHandler：唤醒、媒体和消息分发"]
+    Input["inputCoordinator：输入准备和 continuation"]
+    Background["backgroundRunner：后台请求准备"]
+    Files["fileCommandPreparer：文件命令准入"]
     Command["commandExecutor"]
     Exec["executionCoordinator：准入与执行交接"]
     Chat["chatRunner：单轮对话"]
@@ -348,8 +352,21 @@ flowchart TD
 
     App --> Agent
     App --> Models
-    Agent --> Command
+    Agent --> Message
+    Agent --> Background
+    Agent --> Files
     Agent --> Exec
+    Message --> Command
+    Message --> Input
+    Message --> Hooks
+    Command --> Input
+    Command --> Exec
+    Command --> Confirm
+    Input --> Exec
+    Input --> Confirm
+    Background --> Exec
+    Background --> Session
+    Files --> Session
     Exec --> Chat
     Exec --> Session
     Exec --> Turn
@@ -366,7 +383,7 @@ flowchart TD
     Output --> View
     Model --> Hooks
     Tools --> Hooks
-    Reply --> Hooks
+    Output --> Hooks
     Reply --> Output
     Output --> Dispatch
     Model -.-> Events
@@ -390,7 +407,7 @@ app 负责跨模块接线和订阅生命周期；业务规则继续归领域服�
 
 ### 文件、类型与主要方法树
 
-下面是目标落点；方法名表示职责入口，纯辅助函数不穷举。已有文件优先复用，新增文件仅在实际迁入对应职责时创建。测试跟随职责文件组织，并保留真实入口的集成回归。
+下面是实际组件落点；方法名表示职责入口，纯辅助函数不穷举。测试跟随职责文件组织，并保留真实入口的集成回归。
 
 ```text
 internal/
@@ -402,14 +419,28 @@ internal/
 │   │   ├── Options
 │   │   └── validateOptions()
 │   ├── message.go
-│   │   └── Agent.HandleMessage()
+│   │   ├── messageHandler.HandleMessage()
+│   │   └── Agent.HandleMessage()         # 薄委托
+│   ├── wakeup.go / inbound_media.go
+│   │   └── messageHandler 的唤醒、媒体解析和历史关联
 │   ├── input.go
-│   │   ├── Agent.handleInput()
-│   │   └── Agent.handleSessionInput()
+│   │   ├── inputCoordinator
+│   │   ├── handleInput() / handleSessionInput()
+│   │   └── continueCommandInput() / expireIdleCurrentSession()
 │   ├── background.go
-│   │   └── Agent.RunBackground()
+│   │   ├── backgroundRunner.RunBackground()
+│   │   └── Agent.RunBackground()         # 薄委托
 │   ├── command_runtime.go
 │   │   └── commandExecutor
+│   ├── file_rollback.go
+│   │   ├── fileCommandPreparer.PrepareFileCommand()
+│   │   └── fileRollbackContext()
+│   ├── completion.go
+│   │   ├── newCompletion()
+│   │   └── Agent.CompletionService()
+│   ├── tools.go
+│   │   ├── toolRuntimeState
+│   │   └── buildPrompt()
 │   │
 │   ├── execution.go
 │   │   ├── executionCoordinator
@@ -508,9 +539,9 @@ internal/
 │       ├── prompt.go / system_prompt*.go
 │       ├── tool_directive.go / tool_cache.go
 │       ├── tool_transcript.go
-│       ├── inbound_media.go / segments.go
+│       ├── segments.go
 │       ├── context_seed.go / context_usage.go
-│       └── file_rollback.go / request_context.go
+│       └── request_context.go
 ├── app/
 │   ├── services.go / runtime.go         # 共享服务及组件装配
 │   ├── signals.go                       # 连接、队列和关闭所有权
@@ -536,13 +567,18 @@ internal/
     └── delivery/、signal/
 ```
 
-辅助方法的迁移规则：纯格式化、转换和编解码保留为包内函数；只调用单个已有服务的帮助方法显式接收服务或由调用方直接调用；准入与绑定检查归执行协调；单轮材料和 transcript 编排归 chatRunner。Agent 可保留输入准备，但其他组件不能通过回调重新进入 Agent 获取这些能力。`session_binding.go`、`context_compact.go` 等旧文件的生产职责全部迁移后删除，不能留下平行实现。
+辅助方法的归属：纯格式化、转换和编解码使用包内函数；单个服务操作显式接收服务或由调用方直接调用。输入准备归 inputCoordinator，后台准备归 backgroundRunner，文件命令准入归 fileCommandPreparer；执行准入与交接归 executionCoordinator，单轮材料和 transcript 编排归 chatRunner。组件不回调 Agent 获取能力，旧入口与平行实现不保留。
 
 ### 组件职责、状态与直接依赖
 
 | 组件 | 职责与主要直接依赖 | 状态归属和限制 |
 |---|---|---|
-| Agent | 对外消息入口、输入准备、命令分发、后台请求转换与内部装配 | 不拥有自动确认、运行快照、视觉提示去重或 LLM 循环状态 |
+| Agent | 对外薄委托与能力暴露；NewWithOptions 负责内部组件装配 | 仅保留入口组件引用和 Signals，不保存共享服务、构造中间组件、配置或 Prompt 材料 |
+| messageHandler | 使用身份、Hook、媒体、消息／媒体仓库、命令及输入组件，处理唤醒和消息分发 | 媒体解析缓存只在当前消息处理期间存在，不拥有执行状态 |
+| inputCoordinator | 使用 Session、Turn、身份、Hook、预加载、工具状态、执行与确认组件，准备输入和 continuation | 锁外准备、锁内提交，原绑定和取消复核保持不变 |
+| backgroundRunner | 后台来源、身份、sandbox、Session 和资源预加载，再交执行协调器等待结果 | sandbox 根目录由构造配置确定，执行状态仍归 Turn／Execution |
+| commandExecutor | Router、Session、Turn、身份、执行、确认、输入及输出组件 | 直接调用组件，不保存绑定 Agent 的回调集合 |
+| fileCommandPreparer | 文件服务、Session、Turn、Request、身份和 Session 仓库 | 捕获原绑定与提交准入，实际文件操作及记录归 FileOps |
 | executionCoordinator | 依赖 Session、Turn、Request、ContextManager、模型选择、chatRunner 与状态记录；统一执行准入、attempt、pending 续跑、压缩和接管 | 不复制 Turn 状态机，不直接调用模型或执行工具 |
 | executionView | 使用现有 Execution 和必要的 Session 读取能力，应用接管身份、保留取消并刷新 Session 快照 | 不创建第二份执行身份或接管状态；保留后台 Sender、模型 override 和 sandbox 清除规则 |
 | chatRunner | 使用 Prompt、ContextManager、ToolRun、工具状态、Media、Hook、modelCaller、replyCommitter 和本轮输出完成单轮对话 | messages、tools、usage、轮次计数和最终文本均为单轮局部状态；不决定跨轮逻辑执行的结束 |
@@ -553,7 +589,7 @@ internal/
 | hookBridge | 使用 Hook manager/router、Request、身份和 Media，完成事件补全、执行适配、请求观察与错误事件 | 可改写 Hook 保持原顺序；ObserveRun 的 context 和清理函数仍为同步执行参与者 |
 | statusRecorder | 拒绝旧 attempt 更新，同步合并、记录和查询状态，分配展示版本 | 拥有 runtimeStatus 及锁；不是业务状态机，平台展示订阅后按目标合并最新快照 |
 | identityResolver | 从明确上下文与安全策略解析 Actor/Scope，保留已有入口默认值规则 | 不维护全局当前用户；无来源 Hook 不套用普通 CLI 入口默认身份 |
-| 日志／通知／状态订阅者 | app 接线，日志统一排队写入，通知复用 rules 和 Manager，展示使用 Dispatcher | 不回调 Agent 驱动执行；视觉提示去重归通知规则拥有者；状态订阅者只持有待展示最新快照，不成为业务事实来源 |
+| 日志／通知／状态订阅者 | app 接线，旁路日志排队写入，通知复用 rules 和 Manager，展示使用 Dispatcher | 不回调 Agent 驱动执行；视觉提示去重归通知规则拥有者；状态订阅者只持有待展示最新快照，不成为业务事实来源 |
 | modelmgr 重试信号 | 在共享客户端重试入口发布事实，app 连接通知订阅 | 覆盖对话、压缩和命名；不依赖 Agent.Signals 或 Agent 的执行身份 |
 | 已有领域服务 | Session/binding、Request、Turn/Execution、Usage、工具状态、媒体和文件能力 | 保持唯一事实来源；不把领域状态搬入 Agent 的新组件 |
 
@@ -656,11 +692,11 @@ app 在平台等生产者启动前连接订阅，并持有 Connection 和 Queue�
 
 1. identityResolver 拥有默认身份和安全策略；hookBridge 拥有 Hook manager/router 及执行适配；statusRecorder 拥有快照 map 和锁；outputSender 直接使用共享发送服务。
 2. foregroundTurnOutput/backgroundTurnOutput 只依赖发送与状态能力；execution_context.go 和 execution_output.go 分别承载执行视图与接管输出，保留原取消链和报告附件转换。
-3. toolRunPromptProvider 直接注入 ToolRun 和身份解析；配置 setter 更新实际拥有者，媒体测试通过构造注入共享服务。
+3. toolRunPromptProvider 直接注入 ToolRun 和身份解析；配置、媒体与日志通过构造注入实际拥有者。
 4. app 安装的 Hook 唤醒、Request 观察等仍是同步参与者；纯上下文和 Session payload 转换使用包内函数。
 5. assistant 历史提交和消息映射由 replyCommitter 承接，工具执行适配器由 toolRunDeps 承接；状态同步记录及旧 attempt 过滤归 statusRecorder，展示与旁路通知由 app 订阅。
 
-验收：基础组件能用必要服务独立构造，无 Agent 字段、嵌入或绑定 Agent 的回调集合；原来源发送、CLI 原连接、后台静默、无来源 Hook、错误事件和本地状态先写后读保持一致。组件边界回归覆盖同步状态读写、策略／日志配置更新及接管取消链；Agent、app、delivery、notification、Hook、ToolRun 相关测试和 Agent／app race 通过，代码地图与已落地架构已同步。
+验收：基础组件能用必要服务独立构造，无 Agent 字段、嵌入或绑定 Agent 的回调集合；原来源发送、CLI 原连接、后台静默、无来源 Hook、错误事件和本地状态先写后读保持一致。组件边界回归覆盖同步状态读写、策略／日志构造注入及接管取消链；Agent、app、delivery、notification、Hook、ToolRun 相关测试和 Agent／app race 通过，代码地图与已落地架构已同步。
 
 <a id="phase-10"></a>
 ### 阶段 10：收拢最终回复提交
@@ -700,13 +736,13 @@ app 在平台等生产者启动前连接订阅，并持有 Connection 和 Queue�
 
 当前实现：
 
-1. confirmationCoordinator 拥有风险确认交互、响应、自动确认记录及锁；等待对象仍由 Turn 管理，追加确认归 executionCoordinator。确认超时与 Session 过期共享策略，setter 不复制配置。
+1. confirmationCoordinator 拥有风险确认交互、响应、自动确认记录及锁；等待对象仍由 Turn 管理，追加确认归 executionCoordinator。确认超时与 Session 过期共享构造时建立的策略。
 2. toolRunDeps 直接使用 Hook、Request、Turn、身份、Media、工具状态、FileOps、确认组件和执行视图；工具数据库记录及发现状态仍同步提交，无 Agent 字段或反向调用。
 3. modelCaller.Call 处理单次请求、流消费、媒体持有／释放、请求／响应 Hook 和视觉降级；选择快照由调用方传入，Prepared Hook 不改选模型，chat 禁用工具与 background 白名单规则保持。
-4. chatRunner 拥有 Prompt Builder；运行配置通过共享对象访问，日志 setter 更新仍需直接诊断的执行、单轮、Hook 和输出拥有者，支持替换和清空。
+4. chatRunner 拥有 Prompt Builder；运行配置通过共享对象访问，执行、单轮、Hook 和输出组件直接接收所需诊断 Logger，不依赖 Agent 转发配置。
 5. 模型、工具、确认和回复观察由 app 订阅类型化事实，视觉提示去重归通知规则；核心提交、终止错误与已通知标记继续直接协调。
 
-验收：确认、confirmtool／confirmall、拒绝、停止、过期、补充输入、模型错误／取消／fallback、媒体释放、工具白名单、预检固定和文件提交准入回归通过；独立组件测试验证自动确认作用域及实际日志调用的替换／清空。阶段 11–12 的全仓 Go 测试和 Agent、app、Turn、Session、Request、ContextManager、ToolRun、Hook、Media、FileOps race 均通过。
+验收：确认、confirmtool／confirmall、拒绝、停止、过期、补充输入、模型错误／取消／fallback、媒体释放、工具白名单、预检固定和文件提交准入回归通过；独立组件测试验证自动确认作用域、诊断日志构造注入及旁路日志隔离。阶段 11–12 的全仓 Go 测试和 Agent、app、Turn、Session、Request、ContextManager、ToolRun、Hook、Media、FileOps race 均通过。
 
 <a id="phase-13"></a>
 ### 阶段 13：旁路信号与订阅生命周期
@@ -729,18 +765,18 @@ app 在平台等生产者启动前连接订阅，并持有 Connection 和 Queue�
 <a id="phase-14"></a>
 ### 阶段 14：最终装配与残留清理
 
-目标：完成真实生产接线并删除过渡实现，为最后 Review 提供完整、可验证的代码。
+状态：薄入口、职责归属和生产装配已接入，组件继续位于 internal/agent。
 
-实施顺序：
+当前实现：
 
-1. 清理 Agent 已迁出的服务字段、锁、map 和旧辅助方法；仍被外部使用的入口只保留必要薄委托。
-2. 核对 setter、Prompt 重建、后台入口、命令能力、补全及测试构造，消除重复配置和隐式 Agent 捕获。
-3. 检查组件、适配器和 provider 的依赖，删除反向 Agent 引用、巨型 deps 和重复状态机；无生产调用的旧入口及测试专用生产兼容代码删除。
-4. 检查事件与直接调用边界，确保关键提交、Usage、工具记录、Hook 结果和取消链仍由核心显式处理。
-5. 底层诊断、信号机制本身的错误等保留必要 Logger，不机械地把所有日志转换成业务事件。
-6. 同步实际文件／方法树、架构和代码地图，检查文档与生产接线一致。
+1. Agent 只保存消息、后台、执行、文件命令、身份、Hook、输出、状态、补全和信号入口；生产对外方法均为薄委托或能力暴露，无共享服务或构造中间组件字段。
+2. messageHandler、inputCoordinator、backgroundRunner 和 fileCommandPreparer 分别拥有消息分发、输入准备、后台准备及文件命令准入；commandExecutor 直接连接输入、执行、确认和输出组件，不回调 Agent。
+3. Options 在构造时注入配置与日志，Prompt Builder 直接交给 chatRunner；输入、后台预加载及补全使用具体 Registry／Preloader。无 Agent setter、Prompt 重建入口或配置副本。
+4. 平台统一使用结构化 completion.Service，Agent.Complete 与 CLI legacyCompleter 已删除；本地文件补全仍优先。测试通过构造配置或直接组件装配验证，不保留生产兼容入口。
+5. Usage、工具记录、回复提交、Hook 改写结果、binding 和取消继续直接处理；既有旁路订阅保持，必要诊断和入口审计归实际组件。
+6. 实际组件树、架构与代码地图已同步，清除失效文件说明；测试中的配置 setter 和 Agent 字段依赖已迁移。
 
-验收：前后台、命令、工具及实际 app 装配可运行，阶段 9–13 的相关测试继续通过；完成全量 Go 测试、相关 race 及启动／关闭验证。以依赖和状态真正归位为准，不以 Agent 字段数或文件行数作为完成标准。本阶段完成不代表最终 Review 完成。
+验收已通过：全仓 go test ./...；Agent、app、CLI、completion、Session、Turn、Request、ToolRun、FileOps、signal 的相关 race。回归覆盖唤醒／媒体／Hook、命令 continuation、预加载、确认、压缩、接管、文件准入和回复部分成功；真实 app 装配、Runner 正常／部分失败关闭及背压退出继续通过。静态检查确认内部类型／函数不依赖 Agent，13 个生产能力方法只作委托或暴露组件；Hook 观察入口保留原 nil 保护。本阶段不代表最终 Review 完成。
 
 <a id="phase-15"></a>
 ### 阶段 15：Review 与整体验收

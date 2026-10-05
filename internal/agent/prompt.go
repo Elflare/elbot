@@ -19,6 +19,12 @@ type SoulProvider interface {
 	SystemPrompt(ctx context.Context, mode string) (string, error)
 }
 
+type staticSoulProvider struct{ Prompt string }
+
+func (p staticSoulProvider) SystemPrompt(context.Context, string) (string, error) {
+	return p.Prompt, nil
+}
+
 type FileSoulProvider struct {
 	Path  string
 	mu    sync.Mutex

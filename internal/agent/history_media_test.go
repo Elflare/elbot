@@ -23,7 +23,7 @@ func TestInboundMediaAssociatesHistoryPositions(t *testing.T) {
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
 	center.History = history.Repository()
-	a := &Agent{media: center}
+	a := &messageHandler{media: center}
 	resolver := &inboundMediaResolver{}
 	segments := []platform.MessageSegment{{Type: platform.SegmentImage, PlatformFileID: "bad", Size: center.MaxImportBytes + 1}, {Type: platform.SegmentText, Text: "hello"}, {Type: platform.SegmentImage, PlatformFileID: "good"}}
 	row := &storage.ChatMessage{Platform: "p", PlatformScopeID: "s", PlatformMessageID: "1", SenderID: "u", Segments: platform.MarshalChatSegments(segments)}

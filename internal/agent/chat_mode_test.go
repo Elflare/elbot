@@ -25,9 +25,7 @@ func TestChatModeIgnoresForcedHookToolsAndModelCalls(t *testing.T) {
 			{{DeltaContent: "plain answer", ToolCallDeltas: []llm.ToolCallDelta{{ID: "model-call", Name: candidate.Name(), Args: "{}"}}}},
 			{{DeltaContent: "unexpected followup"}},
 		}}
-		a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t))
-		a.SetSandboxRoot(t.TempDir())
-		a.SetToolRuntime(registry, nil)
+
 		hooks := hook.NewManager()
 		for _, point := range []hook.Point{hook.PointLLMTurnPrepared, hook.PointLLMRequestPrepared, hook.PointLLMResponseReceived} {
 			if err := hooks.Register(hook.Registration{Point: point, Name: "force-tools", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
@@ -41,10 +39,14 @@ func TestChatModeIgnoresForcedHookToolsAndModelCalls(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		a.setTestHookManager(hooks)
+		a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+			cfg.SandboxRoot = t.TempDir()
+			cfg.ToolRegistry = registry
+			cfg.HookManager = hooks
+		})
 		var id string
 		{
-			row, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Mode: storage.SessionModeChat})
+			row, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Mode: storage.SessionModeChat})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -60,7 +62,7 @@ func TestChatModeIgnoresForcedHookToolsAndModelCalls(t *testing.T) {
 		if len(requests) != 1 || len(requests[0].Tools) != 0 {
 			t.Fatalf("chat sent tools or entered tool loop: requests=%+v", requests)
 		}
-		messages, err := a.store.Messages().ListBySession(ctx, id)
+		messages, err := a.execution.chat.messages.ListBySession(ctx, id)
 		if err != nil {
 			t.Fatal(err)
 		}

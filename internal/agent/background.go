@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -21,6 +22,21 @@ import (
 
 type backgroundModelSelectionKey struct{}
 
+type backgroundRunner struct {
+	sessions    *session.Service
+	sessionRows storage.SessionRepository
+	identity    *identityResolver
+	execution   *executionCoordinator
+	preloader   *toolrun.PreloadService
+	toolState   *toolrun.StateService
+	sandboxRoot string
+	auditLogger *slog.Logger
+}
+
+func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
+	return a.background.RunBackground(ctx, req)
+}
+
 type discardSender struct{}
 
 func (discardSender) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
@@ -31,7 +47,7 @@ func (discardSender) SendNotice(context.Context, delivery.Notice) (delivery.Rece
 	return delivery.Receipt{}, nil
 }
 
-func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
+func (r *backgroundRunner) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
 	actor := req.Actor
 	if actor.Role == "" {
 		actor.Role = security.RoleSuperadmin
@@ -40,17 +56,17 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 	if platformName == "" {
 		platformName = actor.Platform
 	}
-	if platformName == "" && a.platform != nil {
-		platformName = a.platform.Name()
+	if platformName == "" {
+		platformName = r.identity.platformName
 	}
 	scopeID := req.ScopeID
 	if scopeID == "" {
 		scopeID = backgroundScopeID(req.Kind, req.Name)
 	}
 	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: platformName, ScopeID: scopeID}, Identity: chatinfo.Identity{ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, Nickname: actor.Nickname, GroupCard: actor.GroupCard, DisplayName: actor.DisplayName}}, Sender: discardSender{}, Segments: backgroundPromptSegments(req.PromptSegments)})
-	ctx = security.WithPolicy(security.WithActor(ctx, actor), a.identity.policy)
+	ctx = security.WithPolicy(security.WithActor(ctx, actor), r.identity.policy)
 
-	sandboxRoot := a.sandboxRoot
+	sandboxRoot := r.sandboxRoot
 	if sandboxRoot == "" {
 		sandboxRoot = filepath.Join("data", "sandbox")
 	}
@@ -68,7 +84,7 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 	}
 
 	scope := session.Scope{ActorID: actor.ID, Platform: platformName, PlatformScopeID: scopeID, IsCLI: platformName == "cli"}
-	bgSession, err := a.sessions.PrepareBackground(ctx, scope, session.BackgroundRequest{SessionID: req.SessionID, Kind: string(req.Kind), Name: req.Name, Title: req.Title, Metadata: req.Metadata})
+	bgSession, err := r.sessions.PrepareBackground(ctx, scope, session.BackgroundRequest{SessionID: req.SessionID, Kind: string(req.Kind), Name: req.Name, Title: req.Title, Metadata: req.Metadata})
 	if err != nil {
 		if errors.Is(err, session.ErrForegroundSession) {
 			return background.RunResult{SessionID: req.SessionID, TakenOver: true, Outcome: "taken_over"}, nil
@@ -76,25 +92,25 @@ func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (b
 		return background.RunResult{}, err
 	}
 	if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok {
-		if err := a.workspaceStore(bgSession).EnsureWorkspaceDir(ctx, sandbox.Dir); err != nil {
+		if err := session.NewWorkspaceStore(r.sessions, r.sessionRows, bgSession.ID).EnsureWorkspaceDir(ctx, sandbox.Dir); err != nil {
 			return background.RunResult{}, err
 		}
 	}
 	var preloaded backgroundPreloadResult
 	if req.SessionID == "" {
-		preloaded = a.preloadBackgroundResources(ctx, bgSession, req.ToolListNames, req.CachedTools, req.AllowedToolNames)
+		preloaded = r.preloadBackgroundResources(ctx, bgSession, req.ToolListNames, req.CachedTools, req.AllowedToolNames)
 	}
 	if preloaded.Err != nil {
 		return background.RunResult{SessionID: bgSession.ID}, preloaded.Err
 	}
 	if len(preloaded.Tools) > 0 {
-		a.audit("background_tool_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "tools", preloaded.Tools)
+		writeAudit(r.auditLogger, slog.LevelInfo, "background_tool_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "tools", preloaded.Tools)
 	}
 	if len(preloaded.Skills) > 0 {
-		a.audit("background_skill_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "skills", preloaded.Skills)
+		writeAudit(r.auditLogger, slog.LevelInfo, "background_skill_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "skills", preloaded.Skills)
 	}
 	prompt := backgroundPromptWithSkills(req.Prompt, preloaded.SkillPrompt)
-	result := a.execution.RunBackground(ctx, bgSession, prompt)
+	result := r.execution.RunBackground(ctx, bgSession, prompt)
 	return background.RunResult{RunID: result.RunID, SessionID: result.SessionID, MessageID: result.MessageID, Text: result.Text, TakenOver: result.TakenOver, Outcome: result.Outcome}, result.Err
 }
 
@@ -132,14 +148,15 @@ type backgroundPreloadResult struct {
 	SkillPrompt string
 }
 
-func (a *Agent) preloadBackgroundResources(ctx context.Context, row *storage.Session, names []string, initial []toolrun.CachedTool, allowed []string) backgroundPreloadResult {
+func (r *backgroundRunner) preloadBackgroundResources(ctx context.Context, row *storage.Session, names []string, initial []toolrun.CachedTool, allowed []string) backgroundPreloadResult {
 	if row == nil || row.Mode != storage.SessionModeBackground {
 		return backgroundPreloadResult{}
 	}
-	prepared := a.toolRuntime.preloader.PrepareBackground(a.preloadContext(ctx), row.ID, names, allowed)
+	preloadCtx := security.WithActor(security.WithPolicy(ctx, r.identity.policy), r.identity.Actor(ctx))
+	prepared := r.preloader.PrepareBackground(preloadCtx, row.ID, names, allowed)
 	prepared.Update.Tools = append(toolrun.BackgroundCachedTools(ctx, initial), prepared.Update.Tools...)
 	prepared.Update.Tools = toolrun.BackgroundCachedTools(ctx, prepared.Update.Tools)
-	committed, err := commitToolState(ctx, a.toolState, row, prepared.Update)
+	committed, err := commitToolState(ctx, r.toolState, row, prepared.Update)
 	if err != nil {
 		return backgroundPreloadResult{Err: err}
 	}

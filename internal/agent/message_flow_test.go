@@ -42,7 +42,7 @@ func TestTurnHookMultimodalUserMessagePersistsWithoutChangingPlatformText(t *tes
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"first", "second"}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
+
 	manager := hook.NewManager()
 	var platformText string
 	if err := manager.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "test.user_segments", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
@@ -60,7 +60,9 @@ func TestTurnHookMultimodalUserMessagePersistsWithoutChangingPlatformText(t *tes
 	})}); err != nil {
 		t.Fatalf("Register turn hook: %v", err)
 	}
-	a.setTestHookManager(manager)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.HookManager = manager
+	})
 
 	if err := a.HandleMessage(context.Background(), "这是狗"); err != nil {
 		t.Fatalf("first HandleMessage: %v", err)
@@ -225,7 +227,7 @@ func TestDynamicProviderClientUsesAgentLogger(t *testing.T) {
 	zhipu.SetLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	a := mustNewWithOptions(t, testAgentOptions{Platform: &fakePlatform{}, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"deepseek": &fakeLLM{}, "zhipu": zhipu}, ModeModels: modeModels, Providers: providers, DefaultMode: storage.SessionModeWork}), Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
 
-	ch, err := a.models.ClientForProvider("zhipu").ChatStream(context.Background(), llm.ChatRequest{
+	ch, err := a.execution.models.ClientForProvider("zhipu").ChatStream(context.Background(), llm.ChatRequest{
 		Model:    "glm-4-flash",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("动态 provider 请求")}},
 	})
@@ -252,7 +254,7 @@ func TestMapSentAssistantMessageUsesOnlyCompleteReceiptSources(t *testing.T) {
 	store := newTestStore(t)
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
-	session, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "mapped"})
+	session, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "mapped"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -266,8 +268,8 @@ func TestMapSentAssistantMessageUsesOnlyCompleteReceiptSources(t *testing.T) {
 		{Platform: "telegram", ScopeID: "private:1", PlatformMessageID: "101"},
 		{Platform: "telegram", ScopeID: "supergroup:-2", PlatformMessageID: "101"},
 	}
-	a.replies.associateReceipt(ctx, session.ID, assistant.ID, delivery.Receipt{SentMessages: sent})
-	a.replies.associateReceipt(ctx, session.ID, assistant.ID, delivery.Receipt{PlatformMessageIDs: []string{"legacy"}, SentMessages: []delivery.SentMessage{
+	a.execution.chat.replies.associateReceipt(ctx, session.ID, assistant.ID, delivery.Receipt{SentMessages: sent})
+	a.execution.chat.replies.associateReceipt(ctx, session.ID, assistant.ID, delivery.Receipt{PlatformMessageIDs: []string{"legacy"}, SentMessages: []delivery.SentMessage{
 		{Platform: "qqonebot", PlatformMessageID: "incomplete"},
 		{ScopeID: "group:9", PlatformMessageID: "incomplete"},
 		{Platform: "qqonebot", ScopeID: "group:9"},

@@ -72,10 +72,6 @@ var (
 	tuiInputSeparatorStyle     = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#989898", Dark: "#666666"})
 )
 
-type legacyCompleter interface {
-	Complete(text string) []string
-}
-
 type completionState struct {
 	base  string
 	items []completion.Item
@@ -614,16 +610,7 @@ func (m tuiModel) complete(value string) []completion.Item {
 		return m.completion.Complete(m.ctx, completion.Request{Text: value, Cursor: cursor})
 	}
 
-	c, ok := m.handler.(legacyCompleter)
-	if !ok {
-		return nil
-	}
-	texts := c.Complete(value)
-	items := make([]completion.Item, 0, len(texts))
-	for _, text := range texts {
-		items = append(items, completion.Item{Text: text})
-	}
-	return items
+	return nil
 }
 
 func (m tuiModel) localFileResolver() *localFileResolver {

@@ -398,11 +398,11 @@ func TestChatReplySaveFailureKeepsExecutionFailed(t *testing.T) {
 			if !errors.Is(result.Err, failure) || result.Outcome != "failed" || result.MessageID != "" || result.Text != "" {
 				t.Fatalf("execution=%+v", result)
 			}
-			row, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
+			row, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if a.RuntimeStatus(row.ID).Phase != runtimestatus.PhaseError || a.turns.Snapshot(row.ID).Phase != turn.PhaseIdle || len(a.requests.List()) != 0 {
+			if a.RuntimeStatus(row.ID).Phase != runtimestatus.PhaseError || a.execution.turns.Snapshot(row.ID).Phase != turn.PhaseIdle || len(a.execution.requests.List()) != 0 {
 				t.Fatal("failed reply retained execution or published success")
 			}
 			messages, err := base.Messages().ListBySession(ctx, row.ID)
@@ -422,7 +422,7 @@ func TestChatReplySaveFailureKeepsExecutionFailed(t *testing.T) {
 			if answers != wantAnswers {
 				t.Fatalf("assistant sends=%d want=%d texts=%q", answers, wantAnswers, p.texts)
 			}
-			if err := a.sessions.Close(waitCtx); err != nil {
+			if err := a.execution.sessions.Close(waitCtx); err != nil {
 				t.Fatal(err)
 			}
 			if model.requestCount() != 1 {

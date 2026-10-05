@@ -24,25 +24,25 @@ import (
 func TestRiskConfirmationExpiresAndStopsToolFlow(t *testing.T) {
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.waitPolicy.userConfirmationTimeout = 20 * time.Millisecond
+	a.execution.waitPolicy.userConfirmationTimeout = 20 * time.Millisecond
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "private:regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 	ctx = security.WithActor(ctx, security.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: security.RoleUser})
-	s, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "expiring confirmation"})
+	s, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "expiring confirmation"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !a.turns.StartLLM(s.ID, "run") || !a.turns.StartToolPhase(s.ID) {
+	if !a.execution.turns.StartLLM(s.ID, "run") || !a.execution.turns.StartToolPhase(s.ID) {
 		t.Fatal("failed to enter tool phase")
 	}
 
-	result, err := (*a.toolDeps).ConfirmToolCall(ctx, s.ID, llm.ToolCallRequest{ID: "call_1", Name: "owner_tool", Arguments: "{}"}, tool.RiskAssessment{Level: tool.RiskHigh}, "")
+	result, err := (*a.execution.chat.toolDeps).ConfirmToolCall(ctx, s.ID, llm.ToolCallRequest{ID: "call_1", Name: "owner_tool", Arguments: "{}"}, tool.RiskAssessment{Level: tool.RiskHigh}, "")
 	if err != nil {
 		t.Fatalf("ConfirmToolCall: %v", err)
 	}
 	if !result.Stopped || result.Allowed {
 		t.Fatalf("result = %#v", result)
 	}
-	if got := a.turns.Snapshot(s.ID).Phase; got != turn.PhaseIdle {
+	if got := a.execution.turns.Snapshot(s.ID).Phase; got != turn.PhaseIdle {
 		t.Fatalf("phase = %s", got)
 	}
 	output := p.out.String()
@@ -57,11 +57,13 @@ func TestRiskConfirmationStopUsesStopCommandWithoutToolError(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"rm out.txt"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "should not continue"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.ToolRegistry = registry
+	})
 	ctx := context.Background()
 
 	done := make(chan error, 1)
@@ -70,8 +72,8 @@ func TestRiskConfirmationStopUsesStopCommandWithoutToolError(t *testing.T) {
 	var current *storage.Session
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		session, err := a.sessions.Current(ctx, a.identity.Scope(context.Background()))
-		if err == nil && a.turns.Snapshot(session.ID).Phase == turn.PhaseAwaitRiskConfirm {
+		session, err := a.execution.sessions.Current(ctx, a.identity.Scope(context.Background()))
+		if err == nil && a.execution.turns.Snapshot(session.ID).Phase == turn.PhaseAwaitRiskConfirm {
 			current = session
 			break
 		}
@@ -92,7 +94,7 @@ func TestRiskConfirmationStopUsesStopCommandWithoutToolError(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("chat did not stop")
 	}
-	if got := a.turns.Snapshot(current.ID).Phase; got != turn.PhaseIdle {
+	if got := a.execution.turns.Snapshot(current.ID).Phase; got != turn.PhaseIdle {
 		t.Fatalf("turn phase = %s", got)
 	}
 	if requests := f.chatRequests(); len(requests) != 1 {
@@ -111,23 +113,23 @@ func TestRiskConfirmationDetailUsesToolProvidedDetail(t *testing.T) {
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
-	session, err := a.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm custom detail"})
+	session, err := a.execution.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm custom detail"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	if !a.turns.StartLLM(session.ID, "run tool") || !a.turns.StartToolPhase(session.ID) {
+	if !a.execution.turns.StartLLM(session.ID, "run tool") || !a.execution.turns.StartToolPhase(session.ID) {
 		t.Fatal("failed to enter tool phase")
 	}
 	done := make(chan turn.RiskConfirmationResponse, 1)
 	go func() {
-		resp, _ := a.turns.AwaitRiskConfirmation(session.ID, turn.RiskConfirmation{ID: "call_1", ToolName: "edit_file", Arguments: `{"path":"a.txt"}`, Risk: "high", Detail: "文件：a.txt\n编辑 1/1：替换行\n新内容：\n  line 1\n  line 2"})
+		resp, _ := a.execution.turns.AwaitRiskConfirmation(session.ID, turn.RiskConfirmation{ID: "call_1", ToolName: "edit_file", Arguments: `{"path":"a.txt"}`, Risk: "high", Detail: "文件：a.txt\n编辑 1/1：替换行\n新内容：\n  line 1\n  line 2"})
 		done <- resp
 	}()
 	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) && a.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
+	for time.Now().Before(deadline) && a.execution.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
 		time.Sleep(10 * time.Millisecond)
 	}
-	if a.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
+	if a.execution.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
 		t.Fatal("did not enter risk confirmation phase")
 	}
 	if err := a.HandleMessage(ctx, "/detail"); err != nil {
@@ -154,20 +156,20 @@ func TestRiskConfirmationConfirmToolAndConfirmAllAliases(t *testing.T) {
 		p := &fakePlatform{}
 		a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 		ctx := context.Background()
-		session, err := a.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm tool"})
+		session, err := a.execution.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm tool"})
 		if err != nil {
 			t.Fatalf("create session: %v", err)
 		}
-		if !a.turns.StartLLM(session.ID, "run tool") || !a.turns.StartToolPhase(session.ID) {
+		if !a.execution.turns.StartLLM(session.ID, "run tool") || !a.execution.turns.StartToolPhase(session.ID) {
 			t.Fatal("failed to enter tool phase")
 		}
 		done := make(chan turn.RiskConfirmationResponse, 1)
 		go func() {
-			resp, _ := a.turns.AwaitRiskConfirmation(session.ID, turn.RiskConfirmation{ID: "call_1", ToolName: "shell", Arguments: `{"cmd":"rm x"}`, Risk: "high"})
+			resp, _ := a.execution.turns.AwaitRiskConfirmation(session.ID, turn.RiskConfirmation{ID: "call_1", ToolName: "shell", Arguments: `{"cmd":"rm x"}`, Risk: "high"})
 			done <- resp
 		}()
 		deadline := time.Now().Add(time.Second)
-		for time.Now().Before(deadline) && a.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
+		for time.Now().Before(deadline) && a.execution.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
 			time.Sleep(10 * time.Millisecond)
 		}
 		if err := a.HandleMessage(ctx, "/ct"); err != nil {
@@ -187,20 +189,20 @@ func TestRiskConfirmationConfirmToolAndConfirmAllAliases(t *testing.T) {
 		p := &fakePlatform{}
 		a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 		ctx := context.Background()
-		session, err := a.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm all"})
+		session, err := a.execution.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm all"})
 		if err != nil {
 			t.Fatalf("create session: %v", err)
 		}
-		if !a.turns.StartLLM(session.ID, "run tool") || !a.turns.StartToolPhase(session.ID) {
+		if !a.execution.turns.StartLLM(session.ID, "run tool") || !a.execution.turns.StartToolPhase(session.ID) {
 			t.Fatal("failed to enter tool phase")
 		}
 		done := make(chan turn.RiskConfirmationResponse, 1)
 		go func() {
-			resp, _ := a.turns.AwaitRiskConfirmation(session.ID, turn.RiskConfirmation{ID: "call_2", ToolName: "cron", Arguments: `{}`, Risk: "high"})
+			resp, _ := a.execution.turns.AwaitRiskConfirmation(session.ID, turn.RiskConfirmation{ID: "call_2", ToolName: "cron", Arguments: `{}`, Risk: "high"})
 			done <- resp
 		}()
 		deadline := time.Now().Add(time.Second)
-		for time.Now().Before(deadline) && a.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
+		for time.Now().Before(deadline) && a.execution.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
 			time.Sleep(10 * time.Millisecond)
 		}
 		if err := a.HandleMessage(ctx, "/ca"); err != nil {
@@ -224,8 +226,7 @@ func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "resident_memory_core", Args: `{"content":"我喜欢咖啡"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "已记下"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
 		t.Fatal(err)
@@ -236,7 +237,10 @@ func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "shared"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 
 	done := make(chan error, 1)
@@ -245,8 +249,8 @@ func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 	var current *storage.Session
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		sessionRow, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
-		if err == nil && a.turns.Snapshot(sessionRow.ID).Phase == turn.PhaseAwaitRiskConfirm {
+		sessionRow, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx))
+		if err == nil && a.execution.turns.Snapshot(sessionRow.ID).Phase == turn.PhaseAwaitRiskConfirm {
 			current = sessionRow
 			break
 		}
@@ -265,7 +269,7 @@ func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 	if err := a.HandleMessage(otherCtx, "/confirm"); err != nil {
 		t.Fatalf("other user confirm: %v", err)
 	}
-	if got := a.turns.Snapshot(current.ID).Phase; got != turn.PhaseAwaitRiskConfirm {
+	if got := a.execution.turns.Snapshot(current.ID).Phase; got != turn.PhaseAwaitRiskConfirm {
 		t.Fatalf("other user changed confirmation phase to %s", got)
 	}
 
@@ -298,8 +302,7 @@ func TestRegularUserCanUpdateNormalMemoryWithoutConfirmation(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "resident_memory_normal", Args: `{"action":"write","content":"用户喜欢短回复。"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "已记下"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
 		t.Fatal(err)
@@ -310,7 +313,10 @@ func TestRegularUserCanUpdateNormalMemoryWithoutConfirmation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 
 	if err := a.HandleMessage(ctx, "更新我的普通记忆"); err != nil {
@@ -336,8 +342,7 @@ func TestRegularUserCannotCallSuperadminOnlyTool(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "long_memory_write", Args: `{"category":"x","title":"t","summary":"s","content":"c"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "fallback"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
 		t.Fatal(err)
@@ -347,7 +352,10 @@ func TestRegularUserCannotCallSuperadminOnlyTool(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 
 	if err := a.HandleMessage(ctx, "写长期记忆"); err != nil {

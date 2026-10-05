@@ -71,8 +71,8 @@ func TestModelsGroupsProvidersAndSwitchPersistsState(t *testing.T) {
 	if !strings.Contains(p.out.String(), "switched to model: zhipu/glm-4-flash") {
 		t.Fatalf("unexpected switch output: %q", p.out.String())
 	}
-	if a.models.ResolveMode(storage.SessionModeWork).Provider != "zhipu" || a.models.ResolveMode(storage.SessionModeWork).Model != "glm-4-flash" {
-		t.Fatalf("current model = %s/%s", a.models.ResolveMode(storage.SessionModeWork).Provider, a.models.ResolveMode(storage.SessionModeWork).Model)
+	if a.execution.models.ResolveMode(storage.SessionModeWork).Provider != "zhipu" || a.execution.models.ResolveMode(storage.SessionModeWork).Model != "glm-4-flash" {
+		t.Fatalf("current model = %s/%s", a.execution.models.ResolveMode(storage.SessionModeWork).Provider, a.execution.models.ResolveMode(storage.SessionModeWork).Model)
 	}
 	data, err := os.ReadFile(statePath)
 	if err != nil {
@@ -236,7 +236,7 @@ func TestModelOptionsFetchesProvidersInParallel(t *testing.T) {
 	a := mustNewWithOptions(t, testAgentOptions{Platform: &fakePlatform{}, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"local": &fakeLLM{models: []string{"local-model"}}}, ModeModels: modeModels, Providers: providers, DefaultMode: storage.SessionModeWork}), Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
 
 	startedAt := time.Now()
-	options := a.models.ModelList("", modelmgr.ModelListOptions{}).Options
+	options := a.execution.models.ModelList("", modelmgr.ModelListOptions{}).Options
 	elapsed := time.Since(startedAt)
 
 	if elapsed >= 250*time.Millisecond {
@@ -271,9 +271,9 @@ func TestModelOptionsCachesProviderModelsUntilFresh(t *testing.T) {
 	}
 	a := mustNewWithOptions(t, testAgentOptions{Platform: &fakePlatform{}, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"local": &fakeLLM{models: []string{"local-model"}}}, ModeModels: modeModels, Providers: providers, DefaultMode: storage.SessionModeWork}), Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
 
-	first := a.models.ModelList("", modelmgr.ModelListOptions{})
-	second := a.models.ModelList("", modelmgr.ModelListOptions{})
-	fresh := a.models.ModelList("", modelmgr.ModelListOptions{Fresh: true})
+	first := a.execution.models.ModelList("", modelmgr.ModelListOptions{})
+	second := a.execution.models.ModelList("", modelmgr.ModelListOptions{})
+	fresh := a.execution.models.ModelList("", modelmgr.ModelListOptions{Fresh: true})
 
 	if requests != 2 {
 		t.Fatalf("provider model requests = %d, want 2", requests)
@@ -296,12 +296,14 @@ func TestModelSwitchUsesMessagePlatformCurrentModeForGlobalState(t *testing.T) {
 		storage.SessionModeChat: {Provider: "deepseek", Model: "deepseek-chat"},
 	}
 	client := &fakeLLM{models: []string{"deepseek-chat"}}
-	a := mustNewWithOptions(t, testAgentOptions{Platform: p, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"deepseek": client, "zhipu": client}, ModeModels: modeModels, Providers: providers, StatePath: statePath, DefaultMode: storage.SessionModeWork}), Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
-	a.output.dispatcher.RegisterPlatformSender("qq", p)
-	qqCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "admin"}}})
-	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"qq": {"admin"}}))
 
-	qqSession, err := a.sessions.Create(qqCtx, a.identity.Scope(qqCtx), session.CreateRequest{Title: "qq chat"})
+	qqCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "admin"}}})
+	a := mustNewWithOptions(t, testAgentOptions{Platform: p, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"deepseek": client, "zhipu": client}, ModeModels: modeModels, Providers: providers, StatePath: statePath, DefaultMode: storage.SessionModeWork}), Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}}, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "high", map[string][]string{"qq": {"admin"}})
+	})
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
+
+	qqSession, err := a.execution.sessions.Create(qqCtx, a.identity.Scope(qqCtx), session.CreateRequest{Title: "qq chat"})
 	if err != nil {
 		t.Fatalf("create qq session: %v", err)
 	}
@@ -316,10 +318,10 @@ func TestModelSwitchUsesMessagePlatformCurrentModeForGlobalState(t *testing.T) {
 	if !strings.Contains(p.out.String(), "switched to model: zhipu/glm-4-flash") {
 		t.Fatalf("unexpected switch output: %q", p.out.String())
 	}
-	if got := a.models.CurrentModelForMode(storage.SessionModeChat); got.Provider != "zhipu" || got.Model != "glm-4-flash" {
+	if got := a.execution.models.CurrentModelForMode(storage.SessionModeChat); got.Provider != "zhipu" || got.Model != "glm-4-flash" {
 		t.Fatalf("chat model = %#v", got)
 	}
-	if got := a.models.CurrentModelForMode(storage.SessionModeWork); got.Provider != "deepseek" || got.Model != "deepseek-chat" {
+	if got := a.execution.models.CurrentModelForMode(storage.SessionModeWork); got.Provider != "deepseek" || got.Model != "deepseek-chat" {
 		t.Fatalf("work model = %#v", got)
 	}
 	data, err := os.ReadFile(statePath)

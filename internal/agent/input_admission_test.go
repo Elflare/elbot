@@ -42,7 +42,7 @@ func TestInputPreloadRechecksAdmissionAfterPreparation(t *testing.T) {
 				defer cancel()
 				p := &fakePlatform{}
 				f := &fakeLLM{}
-				a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
+
 				started, release, unblock := modelBarrier(t)
 				var once sync.Once
 				block := func() { once.Do(func() { close(started); <-release }) }
@@ -56,9 +56,13 @@ func TestInputPreloadRechecksAdmissionAfterPreparation(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				a.SetToolRuntime(registry, nil)
-				a.SetToolTagConfig("", config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}}}})
-				row, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Metadata: `{"unknown":9007199254740993}`})
+
+				a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+					cfg.ToolRegistry = registry
+					cfg.ToolTagsPath = ""
+					cfg.ToolTags = config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}}}}
+				})
+				row, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Metadata: `{"unknown":9007199254740993}`})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -80,20 +84,20 @@ func TestInputPreloadRechecksAdmissionAfterPreparation(t *testing.T) {
 						}
 					}
 				case "mode":
-					if _, err := a.sessions.ActivateMode(changeCtx, a.identity.Scope(changeCtx), session.ActivateModeRequest{Mode: storage.SessionModeChat}); err != nil {
+					if _, err := a.execution.sessions.ActivateMode(changeCtx, a.identity.Scope(changeCtx), session.ActivateModeRequest{Mode: storage.SessionModeChat}); err != nil {
 						t.Fatal(err)
 					}
 				case "compact":
-					_, leave, err := a.sessions.EnterActivation(changeCtx, a.identity.Scope(changeCtx), row.ID)
+					_, leave, err := a.execution.sessions.EnterActivation(changeCtx, a.identity.Scope(changeCtx), row.ID)
 					if err != nil {
 						t.Fatal(err)
 					}
-					started := a.turns.StartCompactRun(row.ID, "compact")
+					started := a.execution.turns.StartCompactRun(row.ID, "compact")
 					leave()
 					if !started {
 						t.Fatal("compact admission failed")
 					}
-					defer a.turns.CompleteCompactRun(row.ID, "compact")
+					defer a.execution.turns.CompleteCompactRun(row.ID, "compact")
 				case "cancel":
 					cancel()
 				}
@@ -106,7 +110,7 @@ func TestInputPreloadRechecksAdmissionAfterPreparation(t *testing.T) {
 				case <-time.After(3 * time.Second):
 					t.Fatal("input did not finish")
 				}
-				latest, err := a.store.Sessions().Get(context.Background(), row.ID)
+				latest, err := a.execution.sessionRows.Get(context.Background(), row.ID)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -128,7 +132,7 @@ func TestCompactingInputSkipsInputHookAndPreparation(t *testing.T) {
 	for _, input := range []string{"hello", "@tool:alpha", "@skill:doc"} {
 		t.Run(input, func(t *testing.T) {
 			ctx := context.Background()
-			a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t))
+
 			hooks := hook.NewManager()
 			if err := hooks.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "must-not-run", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, error) {
 				t.Error("input hook ran during compaction")
@@ -136,7 +140,7 @@ func TestCompactingInputSkipsInputHookAndPreparation(t *testing.T) {
 			})}); err != nil {
 				t.Fatal(err)
 			}
-			a.setTestHookManager(hooks)
+
 			registry := tool.NewRegistry()
 			block := func() { t.Error("preparation ran during compaction") }
 			if err := registry.Register(inputBlockingTool{agentWrapperTool: agentWrapperTool{name: "alpha"}, prepare: block}); err != nil {
@@ -145,15 +149,18 @@ func TestCompactingInputSkipsInputHookAndPreparation(t *testing.T) {
 			if err := registry.Register(inputBlockingSkill{agentDetailTool: agentDetailTool{name: "doc", detail: "DETAIL", source: tool.SourceSkillAgent}, prepare: block}); err != nil {
 				t.Fatal(err)
 			}
-			a.SetToolRuntime(registry, nil)
-			row, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{})
+			a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+				cfg.HookManager = hooks
+				cfg.ToolRegistry = registry
+			})
+			row, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !a.turns.StartCompactRun(row.ID, "compact") {
+			if !a.execution.turns.StartCompactRun(row.ID, "compact") {
 				t.Fatal("compact not started")
 			}
-			defer a.turns.CompleteCompactRun(row.ID, "compact")
+			defer a.execution.turns.CompleteCompactRun(row.ID, "compact")
 			if err := a.HandleMessage(ctx, input); err != nil {
 				t.Fatal(err)
 			}

@@ -72,7 +72,7 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 	f := &fakeLLM{replies: []string{"K", "answer J", "answer L", "K2", "answer M"}}
 	store := newTestStore(t)
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	source, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "compact"})
+	source, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "compact"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 			t.Fatalf("append message: %v", err)
 		}
 	}
-	a.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
+	a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 	a.execution.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
 
 	if err := a.HandleMessage(ctx, "J"); err != nil {
@@ -100,7 +100,7 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 			t.Fatalf("compact payload missing %q:\n%s", want, compactPayload)
 		}
 	}
-	compacted, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
+	compacted, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx))
 	if err != nil {
 		t.Fatalf("current compacted session: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 	if strings.Contains(repeatedPayload, "已有摘要") || strings.Contains(repeatedPayload, "已有较早摘要") {
 		t.Fatalf("repeated compact used a special previous-summary field:\n%s", repeatedPayload)
 	}
-	repeated, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
+	repeated, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx))
 	if err != nil {
 		t.Fatalf("current repeated session: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestManualCompactDefersSeedUntilNextUserMessage(t *testing.T) {
 	f := &fakeLLM{replies: []string{"K", "answer J"}}
 	store := newTestStore(t)
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	old, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "manual"})
+	old, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "manual"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestManualCompactDefersSeedUntilNextUserMessage(t *testing.T) {
 	if err := a.HandleMessage(ctx, "/compact"); err != nil {
 		t.Fatalf("manual compact: %v", err)
 	}
-	next, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
+	next, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 	f := &fakeLLM{replies: []string{"K"}, chatBlocks: []fakeLLMBlock{{started: started, release: make(chan struct{})}}}
 	store := newTestStore(t)
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	source, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "compact"})
+	source, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "compact"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -271,7 +271,7 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 			t.Fatalf("append message: %v", err)
 		}
 	}
-	a.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
+	a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 	a.execution.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
 
 	done := make(chan error, 1)
@@ -287,7 +287,7 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 	if err := a.HandleMessage(ctx, "/delete "+source.ID+" --confirm"); err != nil {
 		t.Fatalf("blocked /delete: %v", err)
 	}
-	current, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
+	current, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx))
 	if err != nil || current.ID != source.ID {
 		t.Fatalf("current session = %#v, err = %v", current, err)
 	}
@@ -305,16 +305,16 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("compact did not stop")
 	}
-	if got := a.turns.Snapshot(source.ID).Phase; got != turn.PhaseIdle {
+	if got := a.execution.turns.Snapshot(source.ID).Phase; got != turn.PhaseIdle {
 		t.Fatalf("turn phase = %s", got)
 	}
-	if got := len(a.requests.ListBySession(source.ID)); got != 0 {
+	if got := len(a.execution.requests.ListBySession(source.ID)); got != 0 {
 		t.Fatalf("active requests = %d", got)
 	}
 	if _, err := store.ContextSummaries().LatestBySession(ctx, source.ID); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("summary after cancel err = %v", err)
 	}
-	if !a.execution.shouldCompact(ctx, source, modelSelectionForTurn(ctx, a.models, source)) {
+	if !a.execution.shouldCompact(ctx, source, modelSelectionForTurn(ctx, a.execution.models, source)) {
 		t.Fatal("usage no longer triggers compact after cancellation")
 	}
 	if got := p.out.String(); !strings.Contains(got, activeTurnCommandBlockedText()) || !strings.Contains(got, "暂不执行 /delete") || !strings.Contains(got, "stopped 1 request") {
@@ -326,7 +326,7 @@ func TestAutoCompactFailureKeepsSourceSession(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{replies: []string{"__ERR__"}}, "test-model", config.ProviderConfig{}, store)
-	source, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "failure"})
+	source, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "failure"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -335,12 +335,12 @@ func TestAutoCompactFailureKeepsSourceSession(t *testing.T) {
 			t.Fatalf("append message: %v", err)
 		}
 	}
-	a.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
+	a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 	a.execution.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
 	if err := a.HandleMessage(ctx, "J"); err == nil {
 		t.Fatal("auto compact unexpectedly succeeded")
 	}
-	current, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
+	current, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx))
 	if err != nil || current.ID != source.ID {
 		t.Fatalf("current session = %#v, err = %v", current, err)
 	}
@@ -348,7 +348,7 @@ func TestAutoCompactFailureKeepsSourceSession(t *testing.T) {
 	if err != nil || len(messages) != 2 {
 		t.Fatalf("source messages = %#v, err = %v", messages, err)
 	}
-	sessions, err := a.sessions.List(ctx, a.identity.Scope(ctx), "", 10)
+	sessions, err := a.execution.sessions.List(ctx, a.identity.Scope(ctx), "", 10)
 	if err != nil || len(sessions) != 1 {
 		t.Fatalf("sessions = %#v, err = %v", sessions, err)
 	}
@@ -417,19 +417,19 @@ func TestModelSwitchReevaluatesCompactWindow(t *testing.T) {
 		},
 	}
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{models: []string{"small", "large"}}, "small", provider, newTestStore(t))
-	a.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, map[string]config.ProviderConfig{"default": provider})
-	current, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "model window"})
+	a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, map[string]config.ProviderConfig{"default": provider})
+	current, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "model window"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 	a.execution.recordUsage(current.ID, &llm.Usage{TotalTokens: 80})
-	if !a.execution.shouldCompact(ctx, current, modelSelectionForTurn(ctx, a.models, current)) {
+	if !a.execution.shouldCompact(ctx, current, modelSelectionForTurn(ctx, a.execution.models, current)) {
 		t.Fatal("small model did not trigger compact")
 	}
-	if _, err := a.models.SelectModelForMode(storage.SessionModeWork, "large"); err != nil {
+	if _, err := a.execution.models.SelectModelForMode(storage.SessionModeWork, "large"); err != nil {
 		t.Fatalf("select large model: %v", err)
 	}
-	if a.execution.shouldCompact(ctx, current, modelSelectionForTurn(ctx, a.models, current)) {
+	if a.execution.shouldCompact(ctx, current, modelSelectionForTurn(ctx, a.execution.models, current)) {
 		t.Fatal("large model reused the old model compact decision")
 	}
 }
@@ -439,11 +439,11 @@ func TestCancelledCompactLateResultCannotSwitchNewCurrent(t *testing.T) {
 	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{}), ignoreCancellation: true}
 	f := &fakeLLM{replies: []string{"late summary"}, chatBlocks: []fakeLLMBlock{block}}
 	a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t))
-	old, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{})
+	old, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.store.Messages().Append(ctx, &storage.Message{SessionID: old.ID, Role: storage.RoleUser, Content: "history"}); err != nil {
+	if err := a.execution.chat.messages.Append(ctx, &storage.Message{SessionID: old.ID, Role: storage.RoleUser, Content: "history"}); err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
@@ -456,7 +456,7 @@ func TestCancelledCompactLateResultCannotSwitchNewCurrent(t *testing.T) {
 	if err := a.HandleMessage(ctx, "/stop"); err != nil {
 		t.Fatal(err)
 	}
-	next, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "new current"})
+	next, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "new current"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -469,7 +469,7 @@ func TestCancelledCompactLateResultCannotSwitchNewCurrent(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("compact did not stop")
 	}
-	current, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
+	current, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx))
 	if err != nil || current.ID != next.ID {
 		t.Fatalf("current: %#v %v", current, err)
 	}

@@ -96,32 +96,33 @@ func (t componentAdminTool) Info() tool.Info {
 	return info
 }
 
-func TestComponentPolicyUpdateReachesHookAndPrompt(t *testing.T) {
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t))
+func TestComponentPolicyOptionsReachHookAndPrompt(t *testing.T) {
 	registry := tool.NewRegistry()
 	if err := registry.Register(componentAdminTool{agentDetailTool{name: "admin_only"}}); err != nil {
 		t.Fatal(err)
 	}
-	a.SetToolRuntime(registry, nil)
-	provider := a.toolRuntime.provider.(toolRunPromptProvider)
 	ctx := chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "private:1"}, Identity: chatinfo.Identity{PlatformUserID: "1"}})
-	for _, admin := range []bool{false, true, false} {
+	for _, admin := range []bool{false, true} {
 		admins := map[string][]string{}
 		if admin {
 			admins["qq"] = []string{"1"}
 		}
-		a.SetSecurityPolicy(security.NewPolicy("low", "high", admins))
+		a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+			cfg.ToolRegistry = registry
+			cfg.SecurityPolicy = security.NewPolicy("low", "high", admins)
+		})
+		provider := a.execution.chat.toolRuntime.provider.(toolRunPromptProvider)
 		actor := a.identity.Actor(ctx)
 		event := a.hooks.fillContext(ctx, hook.Event{})
 		if (actor.Role == security.RoleSuperadmin) != admin || event.Actor.Role != string(actor.Role) {
-			t.Fatalf("identity and Hook diverged after policy update: %+v / %+v", actor, event.Actor)
+			t.Fatalf("identity and Hook disagree with configured policy: %+v / %+v", actor, event.Actor)
 		}
 		names, err := provider.ToolNames(ctx, storage.SessionModeWork, &storage.Session{ID: "s1"}, a.Scope(ctx))
 		if err != nil || slices.Contains(names.Tools, "admin_only") != admin {
-			t.Fatalf("Prompt kept stale identity: %+v / %v", names, err)
+			t.Fatalf("Prompt did not use configured identity: %+v / %v", names, err)
 		}
 		if sourceFree := a.hooks.fillContext(context.Background(), hook.Event{}); sourceFree.Actor.ID != "" {
-			t.Fatal("policy update introduced a default Hook identity")
+			t.Fatal("configured policy introduced a default Hook identity")
 		}
 	}
 }
@@ -131,44 +132,40 @@ type componentLogs struct{ logger *slog.Logger }
 func (l componentLogs) Runtime() *slog.Logger { return l.logger }
 func (l componentLogs) Audit() *slog.Logger   { return l.logger }
 
-func TestDiagnosticLoggerReplacementAndRetiredObservationLogs(t *testing.T) {
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t))
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "failing", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
-		return event, errors.New("hook failure")
-	})}); err != nil {
-		t.Fatal(err)
-	}
-	a.setTestHookManager(manager)
-	var replyEvents []string
-	a.replies.messages = &replyTestRepository{MessageRepository: a.store.Messages(), events: &replyEvents, mapErr: errors.New("association failure")}
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Sender: mediaSendFunc(func([]delivery.Output) (delivery.Receipt, error) {
-		return delivery.Receipt{}, errors.New("send failure")
-	})})
-	emit := func() {
+func TestDiagnosticLoggerOptionsAndRetiredObservationLogs(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		manager := hook.NewManager()
+		if err := manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "failing", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
+			return event, errors.New("hook failure")
+		})}); err != nil {
+			t.Fatal(err)
+		}
+		var logs bytes.Buffer
+		a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+			cfg.HookManager = manager
+			if enabled {
+				cfg.Logs = componentLogs{slog.New(slog.NewTextHandler(&logs, nil))}
+			}
+		})
+		var replyEvents []string
+		a.execution.chat.replies.messages = &replyTestRepository{MessageRepository: a.execution.chat.messages, events: &replyEvents, mapErr: errors.New("association failure")}
+		ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Sender: mediaSendFunc(func([]delivery.Output) (delivery.Receipt, error) {
+			return delivery.Receipt{}, errors.New("send failure")
+		})})
 		a.hooks.Notify(ctx, hook.Event{Point: hook.PointErrorOccurred})
 		if _, err := a.output.SendAssistant(ctx, "hello"); err == nil {
 			t.Fatal("expected send failure")
 		}
-		a.replies.associateReceipt(ctx, "session", "message", delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "qq", ScopeID: "private:1", PlatformMessageID: "sent"}}})
-	}
-	var before, after bytes.Buffer
-	a.SetLogger(slog.New(slog.NewTextHandler(&before, nil)))
-	emit()
-	if !strings.Contains(before.String(), "chat send failed") || strings.Contains(before.String(), "hook error") || strings.Contains(before.String(), "map platform message failed") {
-		t.Fatalf("SetLogger did not reach all components: %s", before.String())
-	}
-	before.Reset()
-	a.SetLogManager(componentLogs{slog.New(slog.NewTextHandler(&after, nil))})
-	emit()
-	if before.Len() != 0 || strings.Count(after.String(), "hook error") != 0 || strings.Count(after.String(), "chat send failed") != 1 || strings.Count(after.String(), "map platform message failed") != 0 || strings.Count(after.String(), "map_platform_message") != 0 {
-		t.Fatalf("logger replacement: old=%s new=%s", before.String(), after.String())
-	}
-	after.Reset()
-	a.SetLogManager(nil)
-	emit()
-	if after.Len() != 0 {
-		t.Fatal("component retained cleared logger")
+		a.execution.chat.replies.associateReceipt(ctx, "session", "message", delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "qq", ScopeID: "private:1", PlatformMessageID: "sent"}}})
+		if !enabled {
+			if logs.Len() != 0 {
+				t.Fatal("unconfigured diagnostic logger wrote a record")
+			}
+			continue
+		}
+		if strings.Count(logs.String(), "chat send failed") != 1 || strings.Contains(logs.String(), "hook error") || strings.Contains(logs.String(), "map platform message failed") || strings.Contains(logs.String(), "map_platform_message") {
+			t.Fatalf("diagnostic and retired observation logs mixed: %s", logs.String())
+		}
 	}
 }
 
@@ -206,7 +203,10 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 }
 
 func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{replies: []string{"one"}}, "model", config.ProviderConfig{}, newTestStore(t))
+	var legacy bytes.Buffer
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{replies: []string{"one"}}, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.Logs = componentLogs{slog.New(slog.NewTextHandler(&legacy, nil))}
+	})
 	ctx, row, err := a.execution.resolveInput(context.Background(), "logging")
 	if err != nil {
 		t.Fatal(err)
@@ -217,18 +217,16 @@ func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
 	_, _ = a.signals.ToolCallCompleted.Connect(func(context.Context, ToolCallCompletedEvent) error { counts["tool"]++; return nil }, signal.ConnectOptions{})
 	_, _ = a.signals.ConfirmationChanged.Connect(func(context.Context, ConfirmationChangedEvent) error { counts["confirm"]++; return nil }, signal.ConnectOptions{})
 	_, _ = a.signals.TurnTimedOut.Connect(func(context.Context, TurnTimedOutEvent) error { counts["timeout"]++; return nil }, signal.ConnectOptions{})
-	var legacy bytes.Buffer
-	a.SetLogManager(componentLogs{slog.New(slog.NewTextHandler(&legacy, nil))})
 	out := foregroundTurnOutput{sender: a.output, status: a.status}
-	if _, err := a.chat.prepareTurn(ctx, row, "input"); err != nil {
+	if _, err := a.execution.chat.prepareTurn(ctx, row, "input"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.caller.Call(ctx, row, modelSelectionForTurn(ctx, a.models, row), nil, nil, nil, nil, out); err != nil {
+	if _, err := a.execution.chat.caller.Call(ctx, row, modelSelectionForTurn(ctx, a.execution.models, row), nil, nil, nil, nil, out); err != nil {
 		t.Fatal(err)
 	}
 	call := llm.ToolCallRequest{ID: "call", Name: "test_tool", Arguments: "{}"}
-	a.toolDeps.RecordToolCall(ctx, row.ID, call, "low", storage.Now(), "done", nil)
-	a.confirmations.publishConfirmationWait(ctx, row.ID, call, tool.RiskHigh, nil)
+	a.execution.chat.toolDeps.RecordToolCall(ctx, row.ID, call, "low", storage.Now(), "done", nil)
+	a.message.input.confirmations.publishConfirmationWait(ctx, row.ID, call, tool.RiskHigh, nil)
 	a.execution.handleTurnContextDone(ctx, row.ID, context.DeadlineExceeded, out)
 	for _, event := range []string{"input", "model", "tool", "confirm", "timeout"} {
 		if counts[event] != 1 {

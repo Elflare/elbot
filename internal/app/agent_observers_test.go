@@ -118,17 +118,24 @@ func TestAgentLoggingSubscribersPreserveFactsAndFields(t *testing.T) {
 	}
 }
 
+type observerTestLogs struct {
+	LogManager
+	runtime *slog.Logger
+}
+
+func (l observerTestLogs) Runtime() *slog.Logger { return l.runtime }
+
 func TestProductionAssemblyObservesConversationExactlyOnce(t *testing.T) {
 	req, _, _ := runtimeAssemblyFixture(t)
 	records := make(chan slog.Record, 512)
 	logger := slog.New(recordHandler{records: records})
 	req.Foundation.Logger = logger
+	req.Foundation.Logs = observerTestLogs{LogManager: req.Foundation.Logs, runtime: logger}
 	runtime, err := (defaultRuntimeFactory{}).Build(context.Background(), req)
 	t.Cleanup(func() { closeAssembledRuntime(t, runtime) })
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime.Agent.SetLogger(logger)
 	if err := runtime.Agent.HandleMessage(context.Background(), "observe this"); err != nil {
 		t.Fatal(err)
 	}

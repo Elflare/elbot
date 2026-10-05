@@ -34,11 +34,14 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
-			a.SetSessionIdleExpiration(tt.cfg)
+
+			a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+				idleExpiration := tt.cfg
+				cfg.SessionIdleExpiration = &idleExpiration
+			})
 			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "test", ScopeID: tt.scopeID}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 			ctx = security.WithActor(ctx, security.Actor{ID: "test:1", Role: tt.role})
-			if got := a.waitPolicy.WaitTimeout(ctx); got != tt.want {
+			if got := a.execution.waitPolicy.WaitTimeout(ctx); got != tt.want {
 				t.Fatalf("confirmation timeout = %s, want %s", got, tt.want)
 			}
 		})
@@ -90,7 +93,7 @@ func TestStreamingOutputAppendsRawAndReplacesHookText(t *testing.T) {
 		{DeltaContent: "hello "},
 		{DeltaContent: "[[wave]]"},
 	}}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+
 	manager := hook.NewManager()
 	if err := manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "test.replace", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 		event.LLM.Text = strings.ReplaceAll(event.LLM.Text, "[[wave]]", "world")
@@ -98,7 +101,9 @@ func TestStreamingOutputAppendsRawAndReplacesHookText(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register response hook: %v", err)
 	}
-	a.setTestHookManager(manager)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.HookManager = manager
+	})
 
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -120,7 +125,7 @@ func TestStreamingOutputAppendsRawAndReplacesHookText(t *testing.T) {
 func TestTurnOutputPreparedHookReplacesFinalStreamingMessage(t *testing.T) {
 	p := &fakeStreamingPlatform{}
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: "猫"}}}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+
 	manager := hook.NewManager()
 	if err := manager.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "test.turn_output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 		event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, regexp.MustCompile("猫"), "狗", true)
@@ -128,7 +133,9 @@ func TestTurnOutputPreparedHookReplacesFinalStreamingMessage(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register turn output hook: %v", err)
 	}
-	a.setTestHookManager(manager)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.HookManager = manager
+	})
 
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -202,38 +209,38 @@ func TestActiveTurnBlocksNewSessionCommand(t *testing.T) {
 		start func(*testing.T, *Agent, string)
 	}{
 		{name: "llm", phase: turn.PhaseLLM, start: func(t *testing.T, a *Agent, sessionID string) {
-			if !a.turns.StartLLM(sessionID, "input") {
+			if !a.execution.turns.StartLLM(sessionID, "input") {
 				t.Fatal("StartLLM returned false")
 			}
 		}},
 		{name: "tool", phase: turn.PhaseTool, start: func(t *testing.T, a *Agent, sessionID string) {
-			if !a.turns.StartLLM(sessionID, "input") || !a.turns.StartToolPhase(sessionID) {
+			if !a.execution.turns.StartLLM(sessionID, "input") || !a.execution.turns.StartToolPhase(sessionID) {
 				t.Fatal("failed to enter tool phase")
 			}
 		}},
 		{name: "await_append_confirm", phase: turn.PhaseAwaitAppendConfirm, start: func(t *testing.T, a *Agent, sessionID string) {
-			if !a.turns.StartLLM(sessionID, "input") || !a.turns.InterruptLLM(sessionID, "more") {
+			if !a.execution.turns.StartLLM(sessionID, "input") || !a.execution.turns.InterruptLLM(sessionID, "more") {
 				t.Fatal("failed to enter append confirmation phase")
 			}
 		}},
 		{name: "await_risk_confirm", phase: turn.PhaseAwaitRiskConfirm, start: func(t *testing.T, a *Agent, sessionID string) {
-			if !a.turns.StartLLM(sessionID, "input") || !a.turns.StartToolPhase(sessionID) {
+			if !a.execution.turns.StartLLM(sessionID, "input") || !a.execution.turns.StartToolPhase(sessionID) {
 				t.Fatal("failed to enter tool phase")
 			}
 			done := make(chan struct{})
 			go func() {
-				_, _ = a.turns.AwaitRiskConfirmation(sessionID, turn.RiskConfirmation{ID: "call_1", ToolName: "shell"})
+				_, _ = a.execution.turns.AwaitRiskConfirmation(sessionID, turn.RiskConfirmation{ID: "call_1", ToolName: "shell"})
 				close(done)
 			}()
 			deadline := time.Now().Add(time.Second)
-			for time.Now().Before(deadline) && a.turns.Snapshot(sessionID).Phase != turn.PhaseAwaitRiskConfirm {
+			for time.Now().Before(deadline) && a.execution.turns.Snapshot(sessionID).Phase != turn.PhaseAwaitRiskConfirm {
 				time.Sleep(10 * time.Millisecond)
 			}
-			if a.turns.Snapshot(sessionID).Phase != turn.PhaseAwaitRiskConfirm {
+			if a.execution.turns.Snapshot(sessionID).Phase != turn.PhaseAwaitRiskConfirm {
 				t.Fatal("did not enter risk confirmation phase")
 			}
 			t.Cleanup(func() {
-				a.turns.StopSession(sessionID)
+				a.execution.turns.StopSession(sessionID)
 				select {
 				case <-done:
 				case <-time.After(time.Second):
@@ -242,7 +249,7 @@ func TestActiveTurnBlocksNewSessionCommand(t *testing.T) {
 			})
 		}},
 		{name: "compact", phase: turn.PhaseCompact, start: func(t *testing.T, a *Agent, sessionID string) {
-			if !a.turns.StartCompact(sessionID) {
+			if !a.execution.turns.StartCompact(sessionID) {
 				t.Fatal("StartCompact returned false")
 			}
 		}},
@@ -253,7 +260,7 @@ func TestActiveTurnBlocksNewSessionCommand(t *testing.T) {
 			p := &fakePlatform{}
 			a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 			ctx := context.Background()
-			current, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "current"})
+			current, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "current"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -262,14 +269,14 @@ func TestActiveTurnBlocksNewSessionCommand(t *testing.T) {
 			if err := a.HandleMessage(ctx, "/new"); err != nil {
 				t.Fatalf("/new: %v", err)
 			}
-			after, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
+			after, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if after.ID != current.ID {
 				t.Fatalf("current session = %s, want %s", after.ID, current.ID)
 			}
-			if got := a.turns.Snapshot(current.ID).Phase; got != test.phase {
+			if got := a.execution.turns.Snapshot(current.ID).Phase; got != test.phase {
 				t.Fatalf("turn phase = %s, want %s", got, test.phase)
 			}
 			if got := p.out.String(); got != activeTurnCommandBlockedText() {
@@ -285,18 +292,18 @@ func TestActiveTurnBlocksAllSessionSwitchCommands(t *testing.T) {
 			p := &fakePlatform{}
 			a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 			ctx := context.Background()
-			current, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "current"})
+			current, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "current"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !a.turns.StartLLM(current.ID, "input") {
+			if !a.execution.turns.StartLLM(current.ID, "input") {
 				t.Fatal("StartLLM returned false")
 			}
 
 			if err := a.HandleMessage(ctx, text); err != nil {
 				t.Fatalf("%s: %v", text, err)
 			}
-			after, err := a.sessions.Current(ctx, a.identity.Scope(ctx))
+			after, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -312,30 +319,33 @@ func TestActiveTurnBlocksAllSessionSwitchCommands(t *testing.T) {
 
 func TestStopAllowsSessionSwitchAfterActiveTurn(t *testing.T) {
 	p := &fakePlatform{}
-	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.SetSessionIdleExpiration(config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 10})
+
+	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		idleExpiration := config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 10}
+		cfg.SessionIdleExpiration = &idleExpiration
+	})
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
-	current, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "current"})
+	current, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "current"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	current.UpdatedAt = time.Now().Add(-11 * time.Minute)
-	if _, err := a.store.Sessions().Mutate(ctx, current.ID, func(latest *storage.Session) error { *latest = *current; return nil }); err != nil {
+	if _, err := a.execution.sessionRows.Mutate(ctx, current.ID, func(latest *storage.Session) error { *latest = *current; return nil }); err != nil {
 		t.Fatalf("age current session: %v", err)
 	}
-	if !a.turns.StartLLM(current.ID, "input") {
+	if !a.execution.turns.StartLLM(current.ID, "input") {
 		t.Fatal("StartLLM returned false")
 	}
 	if err := a.HandleMessage(ctx, "/stop"); err != nil {
 		t.Fatalf("/stop: %v", err)
 	}
-	if got := a.turns.Snapshot(current.ID).Phase; got != turn.PhaseIdle {
+	if got := a.execution.turns.Snapshot(current.ID).Phase; got != turn.PhaseIdle {
 		t.Fatalf("turn phase = %s, want idle", got)
 	}
 	if err := a.HandleMessage(ctx, "/new"); err != nil {
 		t.Fatalf("/new: %v", err)
 	}
-	if _, err := a.sessions.Current(ctx, a.identity.Scope(ctx)); err == nil {
+	if _, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx)); err == nil {
 		t.Fatal("current session still exists after /new")
 	}
 }
@@ -387,24 +397,24 @@ func TestRiskConfirmationDetailShowsFullArgumentsWithoutResolving(t *testing.T) 
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
-	session, err := a.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm detail"})
+	session, err := a.execution.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm detail"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	if !a.turns.StartLLM(session.ID, "run tool") || !a.turns.StartToolPhase(session.ID) {
+	if !a.execution.turns.StartLLM(session.ID, "run tool") || !a.execution.turns.StartToolPhase(session.ID) {
 		t.Fatal("failed to enter tool phase")
 	}
 	fullArgs := `{"cmd":"echo 12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890 > out.txt"}`
 	done := make(chan turn.RiskConfirmationResponse, 1)
 	go func() {
-		resp, _ := a.turns.AwaitRiskConfirmation(session.ID, turn.RiskConfirmation{ID: "call_1", ToolName: "shell", Arguments: fullArgs, Risk: "high"})
+		resp, _ := a.execution.turns.AwaitRiskConfirmation(session.ID, turn.RiskConfirmation{ID: "call_1", ToolName: "shell", Arguments: fullArgs, Risk: "high"})
 		done <- resp
 	}()
 	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) && a.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
+	for time.Now().Before(deadline) && a.execution.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
 		time.Sleep(10 * time.Millisecond)
 	}
-	if a.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
+	if a.execution.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
 		t.Fatal("did not enter risk confirmation phase")
 	}
 	if err := a.HandleMessage(ctx, "/detail"); err != nil {
@@ -424,7 +434,7 @@ func TestRiskConfirmationDetailShowsFullArgumentsWithoutResolving(t *testing.T) 
 		t.Fatalf("detail should not resolve confirmation: %#v", resp)
 	default:
 	}
-	if got := a.turns.Snapshot(session.ID).Phase; got != turn.PhaseAwaitRiskConfirm {
+	if got := a.execution.turns.Snapshot(session.ID).Phase; got != turn.PhaseAwaitRiskConfirm {
 		t.Fatalf("phase = %s, want await risk confirm", got)
 	}
 	if err := a.HandleMessage(ctx, "/confirm"); err != nil {
@@ -444,23 +454,23 @@ func TestRiskConfirmationDetailFormatsEscapedNewlines(t *testing.T) {
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
-	session, err := a.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm detail newlines"})
+	session, err := a.execution.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm detail newlines"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	if !a.turns.StartLLM(session.ID, "run tool") || !a.turns.StartToolPhase(session.ID) {
+	if !a.execution.turns.StartLLM(session.ID, "run tool") || !a.execution.turns.StartToolPhase(session.ID) {
 		t.Fatal("failed to enter tool phase")
 	}
 	done := make(chan turn.RiskConfirmationResponse, 1)
 	go func() {
-		resp, _ := a.turns.AwaitRiskConfirmation(session.ID, turn.RiskConfirmation{ID: "call_1", ToolName: "edit_file", Arguments: `{"path":"a.txt","content":"line 1\nline 2\nline 3"}`, Risk: "high"})
+		resp, _ := a.execution.turns.AwaitRiskConfirmation(session.ID, turn.RiskConfirmation{ID: "call_1", ToolName: "edit_file", Arguments: `{"path":"a.txt","content":"line 1\nline 2\nline 3"}`, Risk: "high"})
 		done <- resp
 	}()
 	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) && a.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
+	for time.Now().Before(deadline) && a.execution.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
 		time.Sleep(10 * time.Millisecond)
 	}
-	if a.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
+	if a.execution.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
 		t.Fatal("did not enter risk confirmation phase")
 	}
 	if err := a.HandleMessage(ctx, "/detail"); err != nil {
@@ -483,35 +493,34 @@ func TestRiskConfirmationDetailFormatsEscapedNewlines(t *testing.T) {
 }
 
 func TestRiskConfirmationCompletionAndConfirmAlias(t *testing.T) {
-
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
-	session, err := a.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm completion"})
+	session, err := a.execution.sessions.Create(ctx, a.identity.Scope(context.Background()), session.CreateRequest{Title: "confirm completion"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	if !a.turns.StartLLM(session.ID, "run tool") || !a.turns.StartToolPhase(session.ID) {
+	if !a.execution.turns.StartLLM(session.ID, "run tool") || !a.execution.turns.StartToolPhase(session.ID) {
 		t.Fatal("failed to enter tool phase")
 	}
 	done := make(chan turn.RiskConfirmationResponse, 1)
 	go func() {
-		resp, _ := a.turns.AwaitRiskConfirmation(session.ID, turn.RiskConfirmation{ID: "call_1", ToolName: "shell", Arguments: `{\"cmd\":\"rm x\"}`, Risk: "high"})
+		resp, _ := a.execution.turns.AwaitRiskConfirmation(session.ID, turn.RiskConfirmation{ID: "call_1", ToolName: "shell", Arguments: `{\"cmd\":\"rm x\"}`, Risk: "high"})
 		done <- resp
 	}()
 	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) && a.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
+	for time.Now().Before(deadline) && a.execution.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
 		time.Sleep(10 * time.Millisecond)
 	}
-	if a.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
+	if a.execution.turns.Snapshot(session.ID).Phase != turn.PhaseAwaitRiskConfirm {
 		t.Fatal("did not enter risk confirmation phase")
 	}
-	if !containsAll(a.Complete("/c"), []string{"/confirm", "/c", "/confirmtool", "/ct", "/confirmall", "/ca"}) {
-		t.Fatalf("confirm completion /c = %#v", a.Complete("/c"))
+	if !containsAll(completeTest(a.CompletionService(), "/c"), []string{"/confirm", "/c", "/confirmtool", "/ct", "/confirmall", "/ca"}) {
+		t.Fatalf("confirm completion /c = %#v", completeTest(a.CompletionService(), "/c"))
 	}
 	for _, command := range []string{"detail", "details", "confirm", "c", "confirmtool", "ct", "confirmall", "ca", "reject", "stop"} {
 
-		if got := a.Complete("/" + command); len(got) == 0 {
+		if got := completeTest(a.CompletionService(), "/"+command); len(got) == 0 {
 			t.Fatalf("missing completion for %s", command)
 		}
 	}

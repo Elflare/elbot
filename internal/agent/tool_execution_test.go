@@ -47,8 +47,7 @@ func TestChatExecutesToolAndFollowsUp(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "目录已查看"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
 		t.Fatal(err)
@@ -56,7 +55,10 @@ func TestChatExecutesToolAndFollowsUp(t *testing.T) {
 	if err := registry.Register(newAgentShellTool()); err != nil {
 		t.Fatal(err)
 	}
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 	ctx := context.Background()
 
 	if err := a.HandleMessage(ctx, "看看目录"); err != nil {
@@ -127,12 +129,12 @@ func TestPreparedToolArgumentsReachExecutionLLMAndTranscript(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "prepared_args", Args: `{"q":"original"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	var executedArguments string
 	_ = registry.Register(preparedArgumentTool{arguments: &executedArguments})
-	a.SetToolRuntime(registry, nil)
+
 	manager := hook.NewManager()
 	if err := manager.Register(hook.Registration{Point: hook.PointToolCallPrepared, Name: "test.arguments", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 		event.Tool.Arguments = `{"q":"prepared"}`
@@ -146,7 +148,10 @@ func TestPreparedToolArgumentsReachExecutionLLMAndTranscript(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register completed hook: %v", err)
 	}
-	a.setTestHookManager(manager)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.ToolRegistry = registry
+		cfg.HookManager = manager
+	})
 
 	if err := a.HandleMessage(context.Background(), "run tool"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -195,12 +200,14 @@ func TestToolTranscriptPersistsWhenFollowupLLMFails(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo saved"}`}}, FinishReason: "tool_calls"}},
 		{{Error: fmt.Errorf("followup failed")}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 	ctx := context.Background()
 
 	err := a.HandleMessage(ctx, "run and save")
@@ -238,12 +245,11 @@ func TestTurnHookCannotModifySystemDuringToolFollowup(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo hi"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
-	a.SetToolRuntime(registry, nil)
+
 	manager := hook.NewManager()
 	if err := manager.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "test.turn", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 		event.LLM.Messages = llm.AppendSystemSegmentText(event.LLM.Messages, "TURN_MEMORY")
@@ -251,7 +257,11 @@ func TestTurnHookCannotModifySystemDuringToolFollowup(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register turn hook: %v", err)
 	}
-	a.setTestHookManager(manager)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+		cfg.HookManager = manager
+	})
 
 	if err := a.HandleMessage(context.Background(), "run tool"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -275,18 +285,19 @@ func TestResidentMemoryAppearsOnceAcrossToolFollowupAndTurns(t *testing.T) {
 		{{DeltaContent: "done"}},
 		{{DeltaContent: "next"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
-	a.SetToolRuntime(registry, nil)
 	memoryStore := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
 	if err := memoryStore.WriteCore(context.Background(), session.Scope{Platform: "cli", ActorID: "cli:local"}, "用户喜欢简短回答。"); err != nil {
 		t.Fatalf("WriteCore: %v", err)
 	}
-	a.residentMemory = memoryStore
-	a.rebuildSystemPrompt()
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+		cfg.ResidentMemoryStore = memoryStore
+	})
 
 	if err := a.HandleMessage(context.Background(), "run tool"); err != nil {
 		t.Fatalf("first HandleMessage: %v", err)
@@ -328,13 +339,15 @@ func TestDiscoverToolDoesNotRepeatElyphRuleCardAcrossTurns(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_2", Name: "discover_tool", Args: `{"name":"beta"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done beta"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(agentDetailTool{name: "alpha", source: tool.SourceSkillAgent, detail: "#skill alpha - A", format: "elyph", ruleCard: "ELyph RULE"})
 	_ = registry.Register(agentDetailTool{name: "beta", source: tool.SourceSkillAgent, detail: "#skill beta - B", format: "elyph", ruleCard: "ELyph RULE"})
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 
 	if err := a.HandleMessage(context.Background(), "发现 alpha"); err != nil {
 		t.Fatalf("HandleMessage alpha: %v", err)
@@ -373,12 +386,14 @@ func TestChatToolCallWithAssistantTextSkipsFallbackPreview(t *testing.T) {
 		{{DeltaContent: "我先看一下。"}, {ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "看完了"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 
 	if err := a.HandleMessage(context.Background(), "看看目录"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -400,13 +415,16 @@ func TestNonCLIChatToolCallWithAssistantTextSkipsToolArgumentPreview(t *testing.
 		{{DeltaContent: "我先看一下。"}, {ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "看完了"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"qq": {"1"}}))
-	a.output.dispatcher.RegisterPlatformSender("qq", p)
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"qq": {"1"}})
+	}, func(cfg *testAgentOptions) {
+		cfg.ToolRegistry = registry
+	})
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "private:1"}, Identity: chatinfo.Identity{PlatformUserID: "1", ActorID: "qq:1"}}})
 
 	if err := a.HandleMessage(ctx, "看看目录"); err != nil {
@@ -427,12 +445,11 @@ func TestToolCallAssistantEmoticonSendsBeforeFinalResponse(t *testing.T) {
 		{{DeltaContent: "查完了"}},
 	}}
 	store := newTestStore(t)
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
-	a.SetToolRuntime(registry, nil)
+
 	manager := hook.NewManager()
 	configDir := t.TempDir()
 	emoticonDir := filepath.Join(configDir, "emoticons", "微笑")
@@ -473,7 +490,11 @@ actions = [
 	if _, err := hookbuiltin.RegisterAll(manager, hookbuiltin.Options{ConfigDir: configDir}); err != nil {
 		t.Fatalf("RegisterAll: %v", err)
 	}
-	a.setTestHookManager(manager)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+		cfg.HookManager = manager
+	})
 
 	if err := a.HandleMessage(context.Background(), "看看目录"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -491,7 +512,7 @@ actions = [
 	if strings.Contains(out, "[[微笑]]") {
 		t.Fatalf("platform output still contains raw token: %q", out)
 	}
-	session, err := a.sessions.Current(context.Background(), a.identity.Scope(context.Background()))
+	session, err := a.execution.sessions.Current(context.Background(), a.identity.Scope(context.Background()))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}
@@ -519,13 +540,15 @@ func TestChatExecutesAllToolCallsInSameRound(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}, {ID: "call_2", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
-	a.SetToolConfig(config.ToolsConfig{MaxRoundsPerTurn: 1})
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolsConfig = config.ToolsConfig{MaxRoundsPerTurn: 1}
+		cfg.ToolRegistry = registry
+	})
 
 	if err := a.HandleMessage(context.Background(), "看看目录"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)

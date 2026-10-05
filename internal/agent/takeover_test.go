@@ -61,12 +61,14 @@ func TestBackgroundTakeoverDuringToolSharesPending(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "slow-call", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "foreground final"}},
 	}}
-	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.output.dispatcher.RegisterPlatformSender("qq", p)
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(slowTool{started: started, release: release})
 	_ = registry.Register(tool.NewDiscoverTool(registry))
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.ToolRegistry = registry
+	})
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	done := startTakeoverTest(a)
 	select {
 	case <-started:
@@ -99,7 +101,7 @@ func TestBackgroundTakeoverDuringToolSharesPending(t *testing.T) {
 	if !found {
 		t.Fatal("pending input missing")
 	}
-	row, err := a.store.Sessions().Get(ctx, id)
+	row, err := a.execution.sessionRows.Get(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,12 +120,14 @@ func TestBackgroundTakeoverSwitchesTaskModelToWork(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "slow-call", Name: "slow", Args: `{}`}}}},
 		{{DeltaContent: "foreground final"}},
 	}}
-	a := newTestAgent(t, p, f, "work-model", config.ProviderConfig{}, newTestStore(t))
-	a.output.dispatcher.RegisterPlatformSender("qq", p)
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(slowTool{started: started, release: release})
 	_ = registry.Register(tool.NewDiscoverTool(registry))
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "work-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.ToolRegistry = registry
+	})
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	done := make(chan backgroundTestResult, 1)
 	go func() {
 		r, err := a.RunBackground(context.Background(), background.RunRequest{Kind: background.KindCron, Name: "models", Platform: "qq", Actor: security.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"slow"}, Model: "task-model"})
@@ -198,17 +202,17 @@ func TestBackgroundCompactHandoff(t *testing.T) {
 			a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
 			a.output.dispatcher.RegisterPlatformSender("qq", p)
 			req := background.RunRequest{Kind: background.KindCron, Name: "compact", Platform: "qq", Actor: security.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: security.RoleSuperadmin}, Prompt: "accepted input"}
-			row, err := a.sessions.PrepareBackground(context.Background(), session.Scope{ActorID: "qq:1", Platform: "qq", PlatformScopeID: "cron:compact"}, session.BackgroundRequest{Kind: string(req.Kind), Name: req.Name})
+			row, err := a.execution.sessions.PrepareBackground(context.Background(), session.Scope{ActorID: "qq:1", Platform: "qq", PlatformScopeID: "cron:compact"}, session.BackgroundRequest{Kind: string(req.Kind), Name: req.Name})
 			if err != nil {
 				t.Fatal(err)
 			}
 			req.SessionID = row.ID
 			for _, m := range []*storage.Message{{SessionID: row.ID, Role: storage.RoleUser, Content: "history"}, {SessionID: row.ID, Role: storage.RoleAssistant, Content: "old answer"}} {
-				if err := a.store.Messages().Append(context.Background(), m); err != nil {
+				if err := a.execution.chat.messages.Append(context.Background(), m); err != nil {
 					t.Fatal(err)
 				}
 			}
-			a.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
+			a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 			a.execution.recordUsage(row.ID, &llm.Usage{TotalTokens: 80})
 			done := make(chan backgroundTestResult, 1)
 			go func() {
@@ -234,17 +238,17 @@ func TestBackgroundCompactHandoff(t *testing.T) {
 			if result.SessionID == row.ID || result.Text != "finished after compact" || result.TakenOver != promote {
 				t.Fatalf("result: %#v", result)
 			}
-			if phase := a.turns.Snapshot(row.ID).Phase; phase != turn.PhaseIdle {
+			if phase := a.execution.turns.Snapshot(row.ID).Phase; phase != turn.PhaseIdle {
 				t.Fatalf("old turn: %s", phase)
 			}
-			next, err := a.store.Sessions().Get(ctx, result.SessionID)
+			next, err := a.execution.sessionRows.Get(ctx, result.SessionID)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if session.IsBackground(next) == promote || session.WasPromoted(next) != promote {
 				t.Fatalf("identity: %#v", next)
 			}
-			dir, err := a.workspaceStore(next).GetWorkspaceDir(ctx)
+			dir, err := session.NewWorkspaceStore(a.execution.sessions, a.execution.sessionRows, next.ID).GetWorkspaceDir(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -328,17 +332,17 @@ func TestLateInterruptedRequestCannotFinishResumedExecution(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("resumed request did not start")
 	}
-	execution := a.turns.Execution(id)
+	execution := a.execution.turns.Execution(id)
 	close(old.release)
 	// Wait for the old registered request to finish while the replacement is blocked.
 	deadline := time.Now().Add(3 * time.Second)
-	for len(a.requests.ListBySession(id)) > 1 && time.Now().Before(deadline) {
+	for len(a.execution.requests.ListBySession(id)) > 1 && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
-	if len(a.requests.ListBySession(id)) > 1 {
+	if len(a.execution.requests.ListBySession(id)) > 1 {
 		t.Fatal("old request did not finish")
 	}
-	if execution == nil || a.turns.Execution(id) != execution {
+	if execution == nil || a.execution.turns.Execution(id) != execution {
 		t.Fatal("late request removed resumed execution")
 	}
 	select {
@@ -387,14 +391,16 @@ func TestTakeoverRefreshesNextToolInSameBatch(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{Index: 0, ID: "slow-call", Name: "slow", Args: "{}"}, {Index: 1, ID: "probe-call", Name: "foreground_probe", Args: "{}"}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
-	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.output.dispatcher.RegisterPlatformSender("qq", p)
-	a.sandboxRoot = sandboxRoot
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(slowTool{started: started, release: release})
 	_ = registry.Register(foregroundContextProbe{observed})
 	_ = registry.Register(tool.NewDiscoverTool(registry))
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.SandboxRoot = sandboxRoot
+		cfg.ToolRegistry = registry
+	})
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	done := startTakeoverTest(a)
 	select {
 	case <-started:
@@ -459,13 +465,15 @@ func TestTakeoverPendingContinuesThroughAutomaticCompact(t *testing.T) {
 		{{DeltaContent: "summary"}},
 		{{DeltaContent: "second final"}},
 	}}
-	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.output.dispatcher.RegisterPlatformSender("qq", p)
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(slowTool{started: toolStarted, release: toolRelease})
 	_ = registry.Register(tool.NewDiscoverTool(registry))
-	a.SetToolRuntime(registry, nil)
-	a.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
+	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.ToolRegistry = registry
+	})
+	a.output.dispatcher.RegisterPlatformSender("qq", p)
+	a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 	done := startTakeoverTest(a)
 	select {
 	case <-toolStarted:
@@ -477,7 +485,7 @@ func TestTakeoverPendingContinuesThroughAutomaticCompact(t *testing.T) {
 	if err := a.HandleMessage(ctx, "/resume "+id); err != nil {
 		t.Fatal(err)
 	}
-	runID := a.turns.Execution(id).ID
+	runID := a.execution.turns.Execution(id).ID
 	close(toolRelease)
 	select {
 	case <-p.started:

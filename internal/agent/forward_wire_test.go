@@ -154,7 +154,7 @@ func TestForwardDisplayReachesVendorInOrder(t *testing.T) {
 	if err != nil || unchanged.Text != "[forward]" || unchanged.Segments != row.Segments {
 		t.Fatalf("source history changed: %#v, %v", unchanged, err)
 	}
-	currentSession, err := a.sessions.Current(inputCtx, a.identity.Scope(inputCtx))
+	currentSession, err := a.execution.sessions.Current(inputCtx, a.identity.Scope(inputCtx))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"elbot/internal/llm"
+	sessionstate "elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/toolrun"
 	"elbot/internal/workspace"
@@ -32,8 +33,7 @@ func TestSessionWorkspaceStorePersistsWithoutDroppingMetadata(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	session := newWorkspaceTestSession(t, ctx, store, `{"unknown":"keep","tool_tags":["agent"]}`)
-	agent := &Agent{store: store}
-	workspaceStore := agent.workspaceStore(session)
+	workspaceStore := sessionstate.NewWorkspaceStore(nil, store.Sessions(), session.ID)
 	if err := workspaceStore.SetWorkspaceDir(ctx, "C:/work/project"); err != nil {
 		t.Fatal(err)
 	}
@@ -75,8 +75,7 @@ func TestSessionWorkspaceStoreClear(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	session := newWorkspaceTestSession(t, ctx, store, `{"workspace_dir":"C:/work/project","unknown":"keep"}`)
-	agent := &Agent{store: store}
-	workspaceStore := agent.workspaceStore(session)
+	workspaceStore := sessionstate.NewWorkspaceStore(nil, store.Sessions(), session.ID)
 	if err := workspaceStore.ClearWorkspaceDir(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -104,8 +103,7 @@ func TestSessionWorkspaceStoreMarksNoticeWithoutChangingWorkspace(t *testing.T) 
 	ctx := context.Background()
 	store := newTestStore(t)
 	session := newWorkspaceTestSession(t, ctx, store, `{"workspace_dir":"C:/work/project"}`)
-	agent := &Agent{store: store}
-	workspaceStore := agent.workspaceStore(session)
+	workspaceStore := sessionstate.NewWorkspaceStore(nil, store.Sessions(), session.ID)
 
 	if err := workspaceStore.MarkWorkspaceAgentNoticeDir(ctx, "C:/work/project"); err != nil {
 		t.Fatal(err)
@@ -134,9 +132,8 @@ func TestSessionWorkspaceStoreIsSessionScoped(t *testing.T) {
 	store := newTestStore(t)
 	first := newWorkspaceTestSession(t, ctx, store, "")
 	second := newWorkspaceTestSession(t, ctx, store, "")
-	agent := &Agent{store: store}
-	firstStore := agent.workspaceStore(first)
-	secondStore := agent.workspaceStore(second)
+	firstStore := sessionstate.NewWorkspaceStore(nil, store.Sessions(), first.ID)
+	secondStore := sessionstate.NewWorkspaceStore(nil, store.Sessions(), second.ID)
 	if err := firstStore.SetWorkspaceDir(ctx, "C:/first"); err != nil {
 		t.Fatal(err)
 	}

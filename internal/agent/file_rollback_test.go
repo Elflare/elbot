@@ -32,12 +32,12 @@ func rollbackAgentFixture(t *testing.T) (*Agent, *fakePlatform, context.Context,
 	}
 	a := mustNewWithOptions(t, opts)
 	ctx := security.WithActor(context.Background(), security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin})
-	row, err := a.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "files"})
+	row, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "files"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	if err := (a.workspaceStore(row)).SetWorkspaceDir(ctx, dir); err != nil {
+	if err := (session.NewWorkspaceStore(a.execution.sessions, a.execution.sessionRows, row.ID)).SetWorkspaceDir(ctx, dir); err != nil {
 		t.Fatal(err)
 	}
 	return a, p, ctx, row, filepath.Join(dir, "file")
@@ -48,7 +48,7 @@ func editForRollback(t *testing.T, a *Agent, ctx context.Context, row *storage.S
 	args := map[string]any{"path": path, "create": true, "edits": []map[string]any{{"operation": "overwrite", "new_text": text}}}
 	absolute := path
 	if !filepath.IsAbs(path) {
-		dir, err := (a.workspaceStore(row)).GetWorkspaceDir(ctx)
+		dir, err := (session.NewWorkspaceStore(a.execution.sessions, a.execution.sessionRows, row.ID)).GetWorkspaceDir(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -59,8 +59,8 @@ func editForRollback(t *testing.T, a *Agent, ctx context.Context, row *storage.S
 	}
 	raw, _ := json.Marshal(args)
 	call := llm.ToolCallRequest{ID: "edit", Name: "edit_file", Arguments: string(raw)}
-	ctx = a.toolDeps.PrepareToolContext(ctx, row, call)
-	editor, _ := a.toolRuntime.registry.Get("edit_file")
+	ctx = a.execution.chat.toolDeps.PrepareToolContext(ctx, row, call)
+	editor, _ := a.execution.chat.toolRuntime.registry.Get("edit_file")
 	if _, err := editor.Call(ctx, tool.CallRequest{ID: call.ID, Arguments: raw}); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestRollbackCommandUsesSharedRecordsWithoutLLM(t *testing.T) {
 	if !strings.Contains(p.out.String(), path) || !strings.Contains(p.out.String(), fmt.Sprint(id)) {
 		t.Fatalf("list: %s", p.out.String())
 	}
-	completer, _ := a.commands.Handler("rollback")
+	completer, _ := a.message.commands.router.Handler("rollback")
 	completions := completer.(command.Completer).Complete(ctx, command.CompletionRequest{Raw: "/rollback ", Prefix: "/", Name: "rollback", Cursor: len("/rollback ")})
 	if len(completions) != 1 || completions[0].Text != fmt.Sprint(id) {
 		t.Fatalf("completion: %+v", completions)
@@ -91,9 +91,9 @@ func TestRollbackCommandUsesSharedRecordsWithoutLLM(t *testing.T) {
 	for _, phase := range []string{"turn", "compact"} {
 		p.out.Reset()
 		if phase == "turn" {
-			a.turns.StartLLM(row.ID, "running")
+			a.execution.turns.StartLLM(row.ID, "running")
 		} else {
-			a.turns.StartCompact(row.ID)
+			a.execution.turns.StartCompact(row.ID)
 		}
 		if err := a.HandleMessage(ctx, "/rollback"); err != nil {
 			t.Fatal(err)
@@ -111,7 +111,7 @@ func TestRollbackCommandUsesSharedRecordsWithoutLLM(t *testing.T) {
 		if string(data) != "after" {
 			t.Fatal("busy command changed file")
 		}
-		a.turns.FinishRequest(row.ID)
+		a.execution.turns.FinishRequest(row.ID)
 	}
 	p.out.Reset()
 	if err := a.HandleMessage(ctx, fmt.Sprintf("/rollback %d", id)); err != nil {
@@ -127,9 +127,9 @@ func TestRollbackCommandUsesSharedRecordsWithoutLLM(t *testing.T) {
 	if records, err := listTestFileRollbacks(a, ctx); err != nil || len(records) != 0 {
 		t.Fatalf("remaining: %+v %v", records, err)
 	}
-	if a.models.ClientForProvider("default") != nil {
+	if a.execution.models.ClientForProvider("default") != nil {
 		// The command never needs the language model; its fake would otherwise receive a request.
-		if f, ok := a.models.ClientForProvider("default").(*fakeLLM); ok && f.requestCount() != 0 {
+		if f, ok := a.execution.models.ClientForProvider("default").(*fakeLLM); ok && f.requestCount() != 0 {
 			t.Fatal("command called LLM")
 		}
 	}
@@ -151,7 +151,7 @@ func TestRollbackCommandInvalidatesOnNewAndDeniesRegularUsers(t *testing.T) {
 	if err := a.HandleMessage(ctx, "/new"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.sessions.Resume(ctx, a.identity.Scope(ctx), row.ID); err != nil {
+	if _, err := a.execution.sessions.Resume(ctx, a.identity.Scope(ctx), row.ID); err != nil {
 		t.Fatal(err)
 	}
 	if records, err := listTestFileRollbacks(a, ctx); err != nil || len(records) != 0 {
@@ -212,14 +212,14 @@ func testRollbackCommandRechecksIdleAtCommit(t *testing.T, prepared bool) {
 		t.Fatalf("records=%+v err=%v", records, err)
 	}
 	var once sync.Once
-	a.toolRuntime.fileRollback.CheckWrite = func(string) error {
+	a.execution.chat.toolRuntime.fileRollback.CheckWrite = func(string) error {
 		once.Do(func() {
-			locked, release, err := a.sessions.EnterActivation(ctx, a.identity.Scope(ctx), row.ID)
+			locked, release, err := a.execution.sessions.EnterActivation(ctx, a.identity.Scope(ctx), row.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
 			_ = locked
-			a.turns.StartLLM(row.ID, "concurrent input")
+			a.execution.turns.StartLLM(row.ID, "concurrent input")
 			release()
 		})
 		return nil
@@ -234,5 +234,5 @@ func testRollbackCommandRechecksIdleAtCommit(t *testing.T, prepared bool) {
 	if records, err := listTestFileRollbacks(a, ctx); err != nil || len(records) != 1 {
 		t.Fatalf("backup consumed: %+v %v", records, err)
 	}
-	a.turns.StopSession(row.ID)
+	a.execution.turns.StopSession(row.ID)
 }

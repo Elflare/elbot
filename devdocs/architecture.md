@@ -27,7 +27,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - 平台 adapter 只处理平台输入输出，不直接驱动 LLM。
 - `app.Run` 保持默认生产入口；需要替换启动阶段或做隔离测试时，使用 `NewRunner(Dependencies)` 注入分组工厂。
 - 共享 Session、Request、Turn、模型、上下文、工具状态、文件、发送、通知及命令实例由 app 创建。Agent 的 `NewWithOptions` 要求注入必需依赖，不补建服务或注册内置命令；测试装配位于测试文件中。
-- app 在平台启动前安装 Session 前台接管、活动会话查询和 Hook 唤醒／执行观察回调；这些执行回调遵守原有同步准入约束，生命周期通知另走信号。Agent 自身的 Prompt、命令执行器和补全组件由 Agent 组装。
+- app 在平台启动前安装 Session 前台接管、活动会话查询和 Hook 唤醒／执行观察回调；这些执行回调遵守原有同步准入约束，生命周期通知另走信号。`NewWithOptions` 组合内部组件，Prompt、命令执行器和补全直接使用所属依赖。
 - Foundation／Runtime 工厂即使返回错误，也返回已取得资源的 Lifecycle。Runner 接管部分构建的清理责任，不启动后续阶段；延迟 Skill 加载同时提供取消上下文和实际完成信号。
 - 关闭时应用上下文立即取消 Cron handler 和 Session 命名任务，并停止新调度。Runner 先对订阅调用 `BeginClose`，断开连接、关闭队列接收并唤醒等待入队的生产者，再等待平台与 Foundation 的 `StopCron(ctx)` 结束，随后等待队列、命名及 Hook runtime 退出、等待 Skill 加载结束，最后关闭 SQLite 和日志。重复停止等待同一完成结果，关闭后迟到的启动不能重新开放调度。
 - 平台退出、Cron 和后续清理共享 30 秒预算。预算到期停止等待；平台、Cron 或回调仍在运行时跳过其依赖的显式释放，交给进程退出，不启动后台收尾链。正常取消／关闭预算耗尽不视为应用失败，Cron 正常取消不报告任务失败；真实错误继续返回。
@@ -79,7 +79,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 普通输入简化链路：
 
 1. 平台 adapter 收到消息并交给 Agent。
-2. Agent core 判断 slash 命令、普通输入、工具 pending 输入和风险确认命令。
+2. Agent 委托 messageHandler 处理唤醒、入站媒体与平台 Hook；commandExecutor 分发命令，inputCoordinator 准备普通输入，执行与确认组件处理 pending 和确认响应。
 3. executionCoordinator 准入并启动 attempt，chatRunner 加载单轮材料；协调器登记 Request 后，chatRunner 构建 Prompt 并通过 modelCaller 调用已选定的模型。
 4. LLM 返回文本、reasoning 或 tool call。
 5. 如果有 tool call，chatRunner 通过 ToolRun 和 toolRunDeps 执行工具；工具结果写入 transcript 后继续 LLM 循环。
@@ -102,6 +102,11 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 
 | 组件 | 当前职责与状态 |
 |---|---|
+| messageHandler | 唤醒判断、按需解析入站媒体、平台消息 Hook、命令／普通输入分发和入口错误通知。 |
+| inputCoordinator | 普通输入 Hook、工具／Skill 预加载、命令 continuation 和闲置过期检查；锁外准备、锁内提交与原 binding 复核保持原边界。 |
+| backgroundRunner | 后台身份、来源、sandbox、Session 与资源预加载准备，委托执行协调器等待最终结果。 |
+| commandExecutor | 直接连接 Router、身份、执行、确认、输入和输出组件，处理权限、Turn 冲突与 continuation，不回调 Agent。 |
+| fileCommandPreparer | 文件命令权限、原绑定、workspace 与提交准入；文件操作仍归 FileOps。 |
 | executionCoordinator | 统一前后台准入、attempt、Request 生命周期、追加确认、pending 续跑、压缩交接和执行完成；后台入口等待真实 Execution 结果，不复制领域状态。 |
 | chatRunner | 拥有 Prompt Builder 和单轮局部材料，执行模型／工具循环及回复提交；媒体、工具状态和 transcript 使用显式依赖，不回调 Agent。 |
 | modelCaller | 接收模型选择快照，执行单次请求、流消费、请求／响应 Hook、媒体持有／释放和视觉降级；保留 chat 工具禁用及后台白名单约束。 |
@@ -115,7 +120,9 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 | executionView / executionTurnOutput | 读取已有 Execution 的接管身份、刷新 Session，并选择前后台输出；保留原请求取消链，接管时清除后台路由、模型和 sandbox 覆盖。 |
 | toolRunPromptProvider | 直接使用 ToolRun 和 identityResolver 查询 schema 与工具名。 |
 
-Agent 保留前后台入口、输入准备、命令分发与内部装配；对外压缩、接管、Scope、状态查询和 Hook 观察薄委托到组件。配置 setter 更新实际拥有者，工具运行配置和确认超时策略使用共享对象；日志 setter 只更新仍需直接诊断的拥有者。`Agent.Signals()` 暴露输入、模型、工具、确认、拒绝、持久化失败、超时、状态、提示及回复事实；app 的日志订阅保留既有字段、级别和记录次数，消费者错误不改变核心结果。
+Agent 只保存对外能力所需的组件引用和信号集合；消息、后台、压缩、接管、文件命令、Scope、状态查询和 Hook 入口均为薄委托。配置由 `Options` 在构造时注入，Agent 不提供运行时 setter，不保留共享服务、Prompt 材料或构造中间组件的副本。工具运行配置和确认超时策略由实际消费者共享，输入／后台预加载和补全直接使用 Registry、Preloader；必要诊断与入口审计的 Logger 也直接注入所属组件。
+
+`Agent.Signals()` 暴露输入、模型、工具、确认、拒绝、持久化失败、超时、状态、提示及回复事实；app 的日志订阅保留既有字段、级别和记录次数，消费者错误不改变核心结果。关键提交、Usage、工具记录、Hook 改写结果和取消仍直接处理。
 
 状态展示由 app 按 Session、原来源和实际展示目标保存最新版本，后台 worker 合并发送；同一用户的不同远程 CLI 连接仍是不同目标。发送期间的新状态会再次调度，最后 done/error 不依赖后续事件唤醒、不因队列容量丢失；后台只记录不展示，绑定失效时清理积压。视觉降级去重由通知规则按 Session 管理。
 
@@ -128,8 +135,8 @@ Slash 命令链路：
 2. `internal/command/router.go` 负责解析命令名、alias、参数文本和分发。
 3. app 将 `internal/command/builtin/` 的模块注册到共享 Router。
 4. 命令通过 deps 直接访问 Session、模型、上下文、Hook、工具 Registry／Skill Manager、日志 Reader、文件及请求管理服务。Session 列表编号按 Scope 保存在命令模块的展示状态中。
-5. 命令可通过 `command.Result.Continuation` 请求在指定 Session 中继续处理一条普通输入；模式切换、历史限制等策略先由 Session 服务完成，Agent core 不识别具体 Session 命令名。
-6. 平台补全通过中央 completion 服务组合命令名、命令参数、风险确认、fork message ID 和 `@tool:` 候选。
+5. 命令可通过 `command.Result.Continuation` 请求在指定 Session 中继续处理一条普通输入；commandExecutor 直接交给 inputCoordinator，模式切换、历史限制等策略由 Session 服务完成。
+6. 平台补全统一使用结构化 completion 服务，组合命令名、命令参数、风险确认、fork message ID 和 `@tool:` 候选；CLI 本地文件补全仍优先。
 
 约定：
 
@@ -137,7 +144,7 @@ Slash 命令链路：
 - 手动压缩、Scope 解析、运行状态查询和文件提交准入通过窄接口／回调接入 Agent，不将 Agent 作为领域服务转发器。
 - 会改变或切换 Session 的命令必须声明 `command.Info.SessionEffect`，命令执行器据此处理压缩和 pending 确认冲突，不维护命令名白名单。
 - `/stop` 的请求编号、ID 及补全对普通用户只使用当前 Session；超级管理员保留全局管理。取消前在 Session 准入内复核原绑定和目标请求，切离再恢复也不能复用旧绑定。补全 Router 将解析后的 Actor 传给命令参数补全。
-- Session 规则放在 `session.Service`；命令只解析参数和格式化结果，Agent 只编排命令与普通输入。
+- Session 规则放在 `session.Service`；命令只解析参数和格式化结果，消息、命令与输入组件负责各自的编排。
 - 命令详细帮助写在 `command.Info.Help`。
 - 用户可见命令变化要同步 `docs/commands.md` 和 `CHANGELOG.md`。
 

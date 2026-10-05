@@ -7,6 +7,7 @@ import (
 
 	"elbot/internal/directive"
 	"elbot/internal/security"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
@@ -32,13 +33,13 @@ type skillDirectiveResult struct {
 	Invalid          []string
 }
 
-func (a *Agent) preloadContext(ctx context.Context) context.Context {
-	return security.WithActor(security.WithPolicy(ctx, a.identity.policy), a.identity.Actor(ctx))
+func (c *inputCoordinator) preloadContext(ctx context.Context) context.Context {
+	return security.WithActor(security.WithPolicy(ctx, c.identity.policy), c.identity.Actor(ctx))
 }
 
-func (a *Agent) prepareToolDirectives(ctx context.Context, row *storage.Session, text string) toolDirectiveResult {
+func (c *inputCoordinator) prepareToolDirectives(ctx context.Context, row *storage.Session, text string) toolDirectiveResult {
 	result := toolDirectiveResult{Text: text}
-	if row == nil || row.Mode != storage.SessionModeWork || a.toolRuntime.registry == nil || !containsAny(text, directive.ToolPrefix, directive.ToolFullPrefix, directive.ToolShortPrefix, directive.ToolShortFull) {
+	if row == nil || row.Mode != storage.SessionModeWork || c.registry == nil || !containsAny(text, directive.ToolPrefix, directive.ToolFullPrefix, directive.ToolShortPrefix, directive.ToolShortFull) {
 		return result
 	}
 	matches := directive.ToolMatches(text)
@@ -46,13 +47,13 @@ func (a *Agent) prepareToolDirectives(ctx context.Context, row *storage.Session,
 		return result
 	}
 	if !isBackgroundSession(row) {
-		ctx = workspace.WithWorkspaceStore(ctx, a.workspaceStore(row))
+		ctx = workspace.WithWorkspaceStore(ctx, session.NewWorkspaceStore(c.sessions, c.sessionRows, row.ID))
 	}
 	names := make([]string, len(matches))
 	for i, match := range matches {
 		names[i] = match.Name
 	}
-	prepared, err := a.toolRuntime.preloader.PrepareTools(a.preloadContext(ctx), names)
+	prepared, err := c.preloader.PrepareTools(c.preloadContext(ctx), names)
 	if err != nil {
 		result.Err = err
 		return result
@@ -73,26 +74,26 @@ func (a *Agent) prepareToolDirectives(ctx context.Context, row *storage.Session,
 	return result
 }
 
-func (a *Agent) prepareSkillDirectives(ctx context.Context, row *storage.Session, text string) skillDirectiveResult {
+func (c *inputCoordinator) prepareSkillDirectives(ctx context.Context, row *storage.Session, text string) skillDirectiveResult {
 	result := skillDirectiveResult{Text: text}
-	if row == nil || row.Mode != storage.SessionModeWork || a.toolRuntime.registry == nil || !containsAny(text, directive.SkillPrefix, directive.SkillFullPrefix, directive.SkillShortPrefix, directive.SkillShortFull) {
+	if row == nil || row.Mode != storage.SessionModeWork || c.registry == nil || !containsAny(text, directive.SkillPrefix, directive.SkillFullPrefix, directive.SkillShortPrefix, directive.SkillShortFull) {
 		return result
 	}
 	matches := directive.SkillMatches(text)
 	if len(matches) == 0 {
 		return result
 	}
-	state, err := a.toolState.Snapshot(ctx, row.ID)
+	state, err := c.toolState.Snapshot(ctx, row.ID)
 	if err != nil {
 		result.Err = err
 		return result
 	}
-	ctx = tool.WithShownRuleCardFormats(a.preloadContext(ctx), state.ShownRuleCardFormats)
+	ctx = tool.WithShownRuleCardFormats(c.preloadContext(ctx), state.ShownRuleCardFormats)
 	names := make([]string, len(matches))
 	for i, match := range matches {
 		names[i] = match.Name
 	}
-	prepared := a.toolRuntime.preloader.PrepareSkills(ctx, row.ID, names)
+	prepared := c.preloader.PrepareSkills(ctx, row.ID, names)
 	result.Invalid = prepared.Invalid
 	if len(prepared.Names) == 0 {
 		return result
@@ -118,7 +119,7 @@ func containsAny(text string, values ...string) bool {
 	return false
 }
 
-func (a *Agent) notifyToolDirectiveResult(ctx context.Context, result toolDirectiveResult) {
+func (c *inputCoordinator) notifyToolDirectiveResult(ctx context.Context, result toolDirectiveResult) {
 	parts := []string{}
 	if len(result.Injected) > 0 {
 		parts = append(parts, "已注入工具："+strings.Join(sortedUnique(result.Injected), ", "))
@@ -132,10 +133,10 @@ func (a *Agent) notifyToolDirectiveResult(ctx context.Context, result toolDirect
 	if len(parts) == 0 {
 		return
 	}
-	a.output.SendChat(ctx, strings.Join(parts, "\n"))
+	c.output.SendChat(ctx, strings.Join(parts, "\n"))
 }
 
-func (a *Agent) notifySkillDirectiveResult(ctx context.Context, result skillDirectiveResult) {
+func (c *inputCoordinator) notifySkillDirectiveResult(ctx context.Context, result skillDirectiveResult) {
 	parts := []string{}
 	if len(result.Skills) > 0 {
 		parts = append(parts, "已注入 Skill："+strings.Join(sortedUnique(result.Skills), ", "))
@@ -152,7 +153,7 @@ func (a *Agent) notifySkillDirectiveResult(ctx context.Context, result skillDire
 	if len(parts) == 0 {
 		return
 	}
-	a.output.SendChat(ctx, strings.Join(parts, "\n"))
+	c.output.SendChat(ctx, strings.Join(parts, "\n"))
 }
 func sortedUnique(values []string) []string {
 	seen := map[string]bool{}
@@ -167,18 +168,18 @@ func sortedUnique(values []string) []string {
 	sort.Strings(out)
 	return out
 }
-func (a *Agent) applyInputDirectives(ctx context.Context, row *storage.Session, text string) (toolDirectiveResult, skillDirectiveResult, error) {
-	locked, release, err := a.execution.enterInput(ctx, row)
+func (c *inputCoordinator) applyInputDirectives(ctx context.Context, row *storage.Session, text string) (toolDirectiveResult, skillDirectiveResult, error) {
+	locked, release, err := c.execution.enterInput(ctx, row)
 	if err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err
 	}
 	ctx = locked
 	release()
-	tools := a.prepareToolDirectives(ctx, row, text)
+	tools := c.prepareToolDirectives(ctx, row, text)
 	if tools.Err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, tools.Err
 	}
-	skills := a.prepareSkillDirectives(ctx, row, tools.Text)
+	skills := c.prepareSkillDirectives(ctx, row, tools.Text)
 	if skills.Err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, skills.Err
 	}
@@ -186,11 +187,11 @@ func (a *Agent) applyInputDirectives(ctx context.Context, row *storage.Session, 
 		Tools: append(append([]toolrun.CachedTool(nil), tools.update.Tools...), skills.update.Tools...),
 		Tags:  tools.update.Tags, ShownRuleCardFormats: skills.update.ShownRuleCardFormats,
 	}
-	locked, release, err = a.execution.enterInput(ctx, row)
+	locked, release, err = c.execution.enterInput(ctx, row)
 	if err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err
 	}
-	committed, err := commitToolState(locked, a.toolState, row, update)
+	committed, err := commitToolState(locked, c.toolState, row, update)
 	release()
 	if err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err

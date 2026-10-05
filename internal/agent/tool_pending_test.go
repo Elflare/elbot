@@ -26,13 +26,15 @@ func TestChatToolMaxRoundsPerTurnRequestsSummary(t *testing.T) {
 		},
 		chatBlocks: []fakeLLMBlock{{}, {started: secondStarted, release: secondRelease}},
 	}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
-	a.SetToolConfig(config.ToolsConfig{MaxRoundsPerTurn: 1})
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolsConfig = config.ToolsConfig{MaxRoundsPerTurn: 1}
+		cfg.ToolRegistry = registry
+	})
 	ctx := context.Background()
 
 	done := make(chan error, 1)
@@ -96,7 +98,7 @@ func TestToolPhasePendingInputInjectedBeforeFollowupLLM(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "final"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
+
 	manager := hook.NewManager()
 	var pendingPlatformText string
 	if err := manager.Register(hook.Registration{Point: hook.PointLLMRequestPrepared, Name: "test.pending", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
@@ -117,13 +119,16 @@ func TestToolPhasePendingInputInjectedBeforeFollowupLLM(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register request hook: %v", err)
 	}
-	a.setTestHookManager(manager)
+
 	started := make(chan struct{})
 	release := make(chan struct{})
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(slowTool{started: started, release: release})
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.HookManager = manager
+		cfg.ToolRegistry = registry
+	})
 	ctx := context.Background()
 
 	done := make(chan error, 1)
@@ -133,11 +138,11 @@ func TestToolPhasePendingInputInjectedBeforeFollowupLLM(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("tool did not start")
 	}
-	current, err := a.sessions.Current(ctx, a.identity.Scope(context.Background()))
+	current, err := a.execution.sessions.Current(ctx, a.identity.Scope(context.Background()))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}
-	active := a.requests.ListBySession(current.ID)
+	active := a.execution.requests.ListBySession(current.ID)
 	if len(active) == 0 {
 		t.Fatal("expected active tool request")
 	}
@@ -197,7 +202,7 @@ func TestToolPhasePendingInputPersistsWhenRequestHookFails(t *testing.T) {
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
+
 	manager := hook.NewManager()
 	if err := manager.Register(hook.Registration{Point: hook.PointLLMRequestPrepared, Name: "test.fail-pending", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
 		if event.Message.Role == string(llm.RoleUser) {
@@ -207,13 +212,16 @@ func TestToolPhasePendingInputPersistsWhenRequestHookFails(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register request hook: %v", err)
 	}
-	a.setTestHookManager(manager)
+
 	started := make(chan struct{})
 	release := make(chan struct{})
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(slowTool{started: started, release: release})
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.HookManager = manager
+		cfg.ToolRegistry = registry
+	})
 	ctx := context.Background()
 
 	done := make(chan error, 1)
@@ -223,7 +231,7 @@ func TestToolPhasePendingInputPersistsWhenRequestHookFails(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("tool did not start")
 	}
-	current, err := a.sessions.Current(ctx, a.identity.Scope(context.Background()))
+	current, err := a.execution.sessions.Current(ctx, a.identity.Scope(context.Background()))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}
@@ -259,13 +267,13 @@ func TestToolChildRequestCancelReturnsToolMessageAndContinuesTurn(t *testing.T) 
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "final after cancel"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
+
 	started := make(chan struct{})
 	release := make(chan struct{})
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(slowTool{started: started, release: release})
-	a.SetToolRuntime(registry, nil)
+
 	manager := hook.NewManager()
 	completedCalls := 0
 	if err := manager.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "test.cancel-result", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
@@ -277,7 +285,10 @@ func TestToolChildRequestCancelReturnsToolMessageAndContinuesTurn(t *testing.T) 
 	})}); err != nil {
 		t.Fatalf("Register completed hook: %v", err)
 	}
-	a.setTestHookManager(manager)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.ToolRegistry = registry
+		cfg.HookManager = manager
+	})
 	ctx := context.Background()
 
 	done := make(chan error, 1)
@@ -328,13 +339,15 @@ func TestTurnRequestCancelStopsWithoutPersistingToolTranscript(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "should not run"}},
 	}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
+
 	started := make(chan struct{})
 	release := make(chan struct{})
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(slowTool{started: started, release: release})
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.ToolRegistry = registry
+	})
 	ctx := context.Background()
 
 	done := make(chan error, 1)
@@ -344,7 +357,7 @@ func TestTurnRequestCancelStopsWithoutPersistingToolTranscript(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("tool did not start")
 	}
-	current, err := a.sessions.Current(ctx, a.identity.Scope(context.Background()))
+	current, err := a.execution.sessions.Current(ctx, a.identity.Scope(context.Background()))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}
@@ -391,12 +404,14 @@ func TestToolPhasePendingInputDuringFinalLLMStartsNewTurn(t *testing.T) {
 		},
 		chatBlocks: []fakeLLMBlock{{}, {started: followupStarted, release: followupRelease}},
 	}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolRegistry = registry
+	})
 	ctx := context.Background()
 
 	done := make(chan error, 1)
@@ -406,7 +421,7 @@ func TestToolPhasePendingInputDuringFinalLLMStartsNewTurn(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("followup LLM did not start")
 	}
-	current, err := a.sessions.Current(ctx, a.identity.Scope(context.Background()))
+	current, err := a.execution.sessions.Current(ctx, a.identity.Scope(context.Background()))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}
@@ -483,13 +498,15 @@ func TestToolPhasePendingInputIncludedInMaxRoundsSummary(t *testing.T) {
 		},
 		chatBlocks: []fakeLLMBlock{{}, {started: secondStarted, release: secondRelease}},
 	}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
-	a.SetToolConfig(config.ToolsConfig{MaxRoundsPerTurn: 1})
+
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
-	a.SetToolRuntime(registry, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+		cfg.ToolsConfig = config.ToolsConfig{MaxRoundsPerTurn: 1}
+		cfg.ToolRegistry = registry
+	})
 	ctx := context.Background()
 
 	done := make(chan error, 1)
@@ -499,7 +516,7 @@ func TestToolPhasePendingInputIncludedInMaxRoundsSummary(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("second LLM did not start")
 	}
-	current, err := a.sessions.Current(ctx, a.identity.Scope(context.Background()))
+	current, err := a.execution.sessions.Current(ctx, a.identity.Scope(context.Background()))
 	if err != nil {
 		t.Fatalf("current session: %v", err)
 	}

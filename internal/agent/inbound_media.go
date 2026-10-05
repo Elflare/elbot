@@ -8,9 +8,9 @@ import (
 	"elbot/internal/platform"
 )
 
-func (a *Agent) materializePlatformMedia(ctx context.Context) context.Context {
+func (h *messageHandler) materializePlatformMedia(ctx context.Context) context.Context {
 	msg, ok := platform.MessageContextFrom(ctx)
-	if !ok || a.media == nil {
+	if !ok || h.media == nil {
 		return ctx
 	}
 	cache := map[platform.MessageSegment]platform.MessageSegment{}
@@ -24,7 +24,7 @@ func (a *Agent) materializePlatformMedia(ctx context.Context) context.Context {
 				out[i] = resolved
 				continue
 			}
-			resolved := a.materializePlatformSegment(ctx, msg, segment)
+			resolved := h.materializePlatformSegment(ctx, msg, segment)
 			cache[segment] = resolved
 			out[i] = resolved
 		}
@@ -34,13 +34,13 @@ func (a *Agent) materializePlatformMedia(ctx context.Context) context.Context {
 	msg.Segments = resolve(msg.Segments)
 	msg.ContextSegments = resolve(msg.ContextSegments)
 	msg.Reply.Segments = resolve(msg.Reply.Segments)
-	a.associateInboundHistory(ctx, msg, msg.PlatformMessageID, original.Segments, msg.Segments)
-	a.associateInboundHistory(ctx, msg, msg.Reply.MessageID, original.Reply.Segments, msg.Reply.Segments)
+	h.associateInboundHistory(ctx, msg, msg.PlatformMessageID, original.Segments, msg.Segments)
+	h.associateInboundHistory(ctx, msg, msg.Reply.MessageID, original.Reply.Segments, msg.Reply.Segments)
 	return platform.WithMessageContext(ctx, msg)
 }
 
-func (a *Agent) materializePlatformSegment(ctx context.Context, msg platform.MessageContext, segment platform.MessageSegment) platform.MessageSegment {
-	item, err := a.media.ImportPlatform(ctx, msg.Info.Source.Platform, msg.MediaResolver, segment)
+func (h *messageHandler) materializePlatformSegment(ctx context.Context, msg platform.MessageContext, segment platform.MessageSegment) platform.MessageSegment {
+	item, err := h.media.ImportPlatform(ctx, msg.Info.Source.Platform, msg.MediaResolver, segment)
 	if err != nil {
 		return unavailablePlatformSegment(segment)
 	}
@@ -53,11 +53,11 @@ func (a *Agent) materializePlatformSegment(ctx context.Context, msg platform.Mes
 	return segment
 }
 
-func (a *Agent) associateInboundHistory(ctx context.Context, msg platform.MessageContext, messageID string, original, resolved []platform.MessageSegment) {
-	if a.media.History == nil || messageID == "" {
+func (h *messageHandler) associateInboundHistory(ctx context.Context, msg platform.MessageContext, messageID string, original, resolved []platform.MessageSegment) {
+	if h.media.History == nil || messageID == "" {
 		return
 	}
-	row, err := a.media.History.GetByPlatformMessage(ctx, msg.Info.Source.Platform, msg.Info.Source.ScopeID, messageID)
+	row, err := h.media.History.GetByPlatformMessage(ctx, msg.Info.Source.Platform, msg.Info.Source.ScopeID, messageID)
 	if err != nil {
 		return
 	}
@@ -70,8 +70,8 @@ func (a *Agent) associateInboundHistory(ctx context.Context, msg platform.Messag
 		if resolved[i].MediaID == "" {
 			continue
 		}
-		if err := a.media.AssociateHistory(ctx, *row, index, raw.Type, resolved[i].MediaID); err != nil && a.logger != nil {
-			a.logger.WarnContext(ctx, "associate inbound history media failed", "error", err)
+		if err := h.media.AssociateHistory(ctx, *row, index, raw.Type, resolved[i].MediaID); err != nil && h.logger != nil {
+			h.logger.WarnContext(ctx, "associate inbound history media failed", "error", err)
 		}
 	}
 }
