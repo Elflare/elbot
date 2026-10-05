@@ -360,6 +360,14 @@
       "translation": "If using other Providers, you need to synchronously modify __ELBOT_CODE_0__ and __ELBOT_CODE_1__.\n",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:paragraph:1764c45ccdf9752d90fb85d4f8f10eac4884ee3a0f2b04a849a6afcf60213beb": {
+      "kind": "paragraph",
+      "source": "到期后停止等待并退出。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "1764c45ccdf9752d90fb85d4f8f10eac4884ee3a0f2b04a849a6afcf60213beb",
+      "translation": "stop waiting and exit after the timeout expires.",
+      "updated_at": 1791194071
+    },
     "docs/getting-started.md:paragraph:196b8190cdc27860f073549b9b80c13718beb92ba249e8313b93b64fe256b364": {
       "kind": "paragraph",
       "source": "如需使用临时配置文件，可以显式指定：\n",
@@ -440,6 +448,14 @@
       "translation": "Common running modes:\n",
       "updated_at": 1781575108
     },
+    "docs/getting-started.md:paragraph:7a25c9d3a9616d92a52a65a4050e83bdf0c4c832e27969b43f4425e992647a4c": {
+      "kind": "paragraph",
+      "source": "预期取消和收尾超时不作为应用失败，真实运行或关闭错误仍会报告。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "7a25c9d3a9616d92a52a65a4050e83bdf0c4c832e27969b43f4425e992647a4c",
+      "translation": "Expected cancellations and cleanup timeouts are not treated as application failures; actual runtime or shutdown errors will still be reported.\n",
+      "updated_at": 1791194071
+    },
     "docs/getting-started.md:paragraph:7bd09adb76891246e11b404932655ad4bd07eae98fdc9861dbf8ca409ea2ce9d": {
       "kind": "paragraph",
       "source": "示例：nushell\n",
@@ -447,6 +463,14 @@
       "source_hash": "7bd09adb76891246e11b404932655ad4bd07eae98fdc9861dbf8ca409ea2ce9d",
       "translation": "Example: nushell\n",
       "updated_at": 1781575108
+    },
+    "docs/getting-started.md:paragraph:7dc52493c1ee933bc4688324821bb2227fa2e510632081d5012e9c3e97d55bfa": {
+      "kind": "paragraph",
+      "source": "正常退出时会停止平台连接事件并取消相应处理，组件共享最多 30 秒的收尾预算；",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "7dc52493c1ee933bc4688324821bb2227fa2e510632081d5012e9c3e97d55bfa",
+      "translation": "Upon normal exit, platform connection events will be stopped and corresponding processing will be canceled; components share a cleanup budget of up to 30 seconds;",
+      "updated_at": 1791194071
     },
     "docs/getting-started.md:paragraph:8429e5040d047904b63a1e7135a5b45e7348f29018bd9dd79f6cb7deca6c39bd": {
       "kind": "paragraph",
@@ -618,8 +642,8 @@
     }
   },
   "source": "docs/getting-started.md",
-  "source_hash": "969377bc95ac7d1c57d4a8444a8c7465e9a9fd061e2b593887b159d907676f1e",
+  "source_hash": "ad6b5e3c04d80bfb141869fc6100478b9e6bd0e80bfb4ca3dae84a7cb73e96f1",
   "target": "docs.en/getting-started.md",
-  "updated_at": 1786532727,
+  "updated_at": 1791194071,
   "version": 2
 }
