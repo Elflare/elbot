@@ -272,14 +272,6 @@
       "translation": "__ELBOT_CODE_0__ restricts which tokens can represent the Elwisp to deliver events; if not specified, any authenticated token is allowed.",
       "updated_at": 1781709646
     },
-    "docs/elnis-usage.md:list:4df54398bc8b1532dafee25af6fb8c9f087ee72898883833b90a74e1de092cca": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 只允许 __ELBOT_CODE_1__ 或 __ELBOT_CODE_2__，不影响模型槽位。",
-      "source_file": "docs/elnis-usage.md",
-      "source_hash": "4df54398bc8b1532dafee25af6fb8c9f087ee72898883833b90a74e1de092cca",
-      "translation": "__ELBOT_CODE_0__ only allows __ELBOT_CODE_1__ or __ELBOT_CODE_2__, and does not affect model slots.",
-      "updated_at": 1782699001
-    },
     "docs/elnis-usage.md:list:5aa752857d96b5f52c36cbb528333af31ba8f223a2014a279fcd3b40e8c6af35": {
       "kind": "list",
       "source": "非 loopback 地址应放在反向代理后，由代理负责 TLS、连接上限和请求速率限制；应用层超时不能代替这些边界。",
@@ -303,6 +295,14 @@
       "source_hash": "62a744b0b6e7b92d8dbbcd8e90e9629cc7b9559928dd5a174d5230161839816b",
       "translation": "Local protocols such as __ELBOT_CODE_0__ are prohibited.",
       "updated_at": 1781929269
+    },
+    "docs/elnis-usage.md:list:660911e77f107b6d094a4303be8d11e07fd3abca675e7313c9c4caeaad5a9edd": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 只能选择 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__，不能指定任意内部模式名。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "660911e77f107b6d094a4303be8d11e07fd3abca675e7313c9c4caeaad5a9edd",
+      "translation": "__ELBOT_CODE_0__ can only select __ELBOT_CODE_1__, __ELBOT_CODE_2__, or __ELBOT_CODE_3__, and cannot specify an arbitrary internal mode name.",
+      "updated_at": 1791193891
     },
     "docs/elnis-usage.md:list:72f74d2a2cdd5caf8ef124febb51d2ce5a60e9564d67a1cd7ec35871ca7661a1": {
       "kind": "list",
@@ -359,14 +359,6 @@
       "source_hash": "941b47c124f28568676f917e8c5888ee172fb075178020544dcd7b6cd4b9cfc2",
       "translation": "Direct mode also supports image/file output; it automatically degrades to a text description if the platform does not support it.",
       "updated_at": 1781929269
-    },
-    "docs/elnis-usage.md:list:962954418322bb5fe296423201c91aed6119c7c461caeb8235924a42019716a3": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 只能选择 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__，不能指定任意内部模式名；",
-      "source_file": "docs/elnis-usage.md",
-      "source_hash": "962954418322bb5fe296423201c91aed6119c7c461caeb8235924a42019716a3",
-      "translation": "__ELBOT_CODE_0__ can only choose __ELBOT_CODE_1__, __ELBOT_CODE_2__, or __ELBOT_CODE_3__, and cannot specify an arbitrary internal mode name;",
-      "updated_at": 1782699001
     },
     "docs/elnis-usage.md:list:99267342faabbf97989dd67144b49b108747bb74c3bb997c45ee2cbe8cdc8d7f": {
       "kind": "list",
@@ -936,14 +928,6 @@
       "translation": "Protocol version, currently __ELBOT_CODE_0__.",
       "updated_at": 1781709646
     },
-    "docs/elnis-usage.md:table:226a892571e4cbccbec33c7b0227dfb8014edc9948d9964da3cdae886ab1b2ab": {
-      "kind": "table",
-      "source": "LLM 后台 Session 模式：__ELBOT_CODE_0__ 或 __ELBOT_CODE_1__，默认 __ELBOT_CODE_2__；__ELBOT_CODE_3__ 不注入工具 schema，适合不需要工具的低成本后台处理。",
-      "source_file": "docs/elnis-usage.md",
-      "source_hash": "226a892571e4cbccbec33c7b0227dfb8014edc9948d9964da3cdae886ab1b2ab",
-      "translation": "LLM background Session mode: __ELBOT_CODE_0__ or __ELBOT_CODE_1__, default __ELBOT_CODE_2__; __ELBOT_CODE_3__ does not inject tool schema, suitable for low-cost background processing that does not require tools.",
-      "updated_at": 1782699001
-    },
     "docs/elnis-usage.md:table:2cb9d988869c02ef5c567ce28e299b343d67b138d4f8d22d515bb8302ff9c409": {
       "kind": "table",
       "source": "Elwisp 随事件声明的外部工具；默认允许，命中该 Elwisp 的 __ELBOT_CODE_0__ 时拒绝。",
@@ -1162,8 +1146,8 @@
     }
   },
   "source": "docs/elnis-usage.md",
-  "source_hash": "fd153333f4e33f50f4fa055a6ba70e2753ff93e5290ba125a290c1b0fe49d2ca",
+  "source_hash": "06cf26b4508091a84d0c12d450519ab1129dd6b7915c4c58b20db7eb75bb56c0",
   "target": "docs.en/elnis-usage.md",
-  "updated_at": 1789088877,
+  "updated_at": 1791193891,
   "version": 2
 }
