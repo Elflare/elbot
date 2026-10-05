@@ -15,7 +15,7 @@ import (
 	"elbot/internal/storage/sqlite"
 )
 
-func TestForwardHistoryKeepsPlaceholderWithoutFetching(t *testing.T) {
+func TestGroupForwardHistoryKeepsPlaceholderWithoutFetching(t *testing.T) {
 	ctx := context.Background()
 	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
@@ -29,11 +29,11 @@ func TestForwardHistoryKeepsPlaceholderWithoutFetching(t *testing.T) {
 	})
 	raw := json.RawMessage(`[{"type":"text","data":{"text":"前"}},{"type":"forward","data":{"id":"secret-forward-resource"}},{"type":"image","data":{"file":"outside-image"}},{"type":"text","data":{"text":"后"}}]`)
 	handler := &captureHandler{}
-	a.handleEvent(ctx, handler, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 123, Message: raw})
+	a.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 123, Message: raw})
 	if handler.text != "前[forward]后" {
 		t.Fatalf("text=%q", handler.text)
 	}
-	row, err := history.Repository().GetByPlatformMessage(ctx, "qqonebot", "private:1", "123")
+	row, err := history.Repository().GetByPlatformMessage(ctx, "qqonebot", "group:9", "123")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -207,12 +207,24 @@ func (t *Transport) GetForwardMessage(ctx context.Context, forwardID string) ([]
 		return nil, err
 	}
 	var data struct {
-		Messages []forwardNode `json:"messages"`
+		Messages []struct {
+			Message json.RawMessage `json:"message"`
+			Content json.RawMessage `json:"content"`
+			Sender  Sender          `json:"sender"`
+		} `json:"messages"`
 	}
 	if err := json.Unmarshal(resp.Data, &data); err != nil {
 		return nil, fmt.Errorf("decode get_forward_msg response: %w", err)
 	}
-	return data.Messages, nil
+	nodes := make([]forwardNode, 0, len(data.Messages))
+	for _, node := range data.Messages {
+		body := node.Message
+		if len(body) == 0 || strings.TrimSpace(string(body)) == "null" {
+			body = node.Content
+		}
+		nodes = append(nodes, forwardNode{Content: body, Sender: node.Sender})
+	}
+	return nodes, nil
 }
 
 func (t *Transport) GetFile(ctx context.Context, file string) (getFileData, error) {
