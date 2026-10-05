@@ -1,30 +1,5 @@
 package toolrun
 
-import "encoding/json"
-
-type Cache struct {
-	Tools []CachedTool `json:"tools,omitempty"`
-}
-
-func DecodeCache(raw json.RawMessage) Cache {
-	if len(raw) == 0 {
-		return Cache{}
-	}
-	var cache Cache
-	_ = json.Unmarshal(raw, &cache)
-	cache.Tools = NormalizeCachedTools(cache.Tools)
-	return cache
-}
-
-func EncodeCache(cache Cache) json.RawMessage {
-	cache.Tools = NormalizeCachedTools(cache.Tools)
-	if len(cache.Tools) == 0 {
-		return nil
-	}
-	data, _ := json.Marshal(cache)
-	return data
-}
-
 func NormalizeCachedTools(tools []CachedTool) []CachedTool {
 	seen := map[string]bool{}
 	out := make([]CachedTool, 0, len(tools))

@@ -17,7 +17,8 @@ import (
 	"elbot/internal/turn"
 )
 
-func (a *Agent) adoptForeground(ctx context.Context, row *storage.Session, binding *session.Binding) {
+// AdoptForeground is installed by app as Session's synchronous execution participant.
+func (a *Agent) AdoptForeground(ctx context.Context, row *storage.Session, binding *session.Binding) {
 	if execution := a.turns.Execution(row.ID); execution != nil {
 		ctx = security.WithActor(ctx, a.actor(ctx))
 		execution.Adopt(session.WithBinding(ctx, binding))
@@ -44,7 +45,7 @@ func (a *Agent) executionContext(ctx context.Context) context.Context {
 		ctx = session.WithBinding(ctx, binding)
 	}
 	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{})
-	ctx = context.WithValue(ctx, cronModelSelectionKey{}, config.ModelSelection{})
+	ctx = context.WithValue(ctx, backgroundModelSelectionKey{}, config.ModelSelection{})
 	return ctx
 }
 

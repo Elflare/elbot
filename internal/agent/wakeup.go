@@ -22,7 +22,8 @@ func messageWakeupFromContext(ctx context.Context) (bool, bool) {
 	return woken, ok
 }
 
-func (a *Agent) hookWakeup(ctx context.Context, event hook.Event) bool {
+// HookWakeup exposes the message wakeup decision for app's Hook wiring.
+func (a *Agent) HookWakeup(ctx context.Context, event hook.Event) bool {
 	if woken, ok := messageWakeupFromContext(ctx); ok {
 		return woken
 	}

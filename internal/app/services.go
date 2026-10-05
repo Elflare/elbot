@@ -13,6 +13,7 @@ import (
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/doctor"
 	"elbot/internal/fileops"
+	"elbot/internal/hook"
 	hookcontrol "elbot/internal/hook/control"
 	hookrules "elbot/internal/hook/rules"
 	"elbot/internal/logging"
@@ -35,6 +36,7 @@ type sharedServices struct {
 	Models          *modelmgr.Service
 	Contexts        *contextmgr.Service
 	ToolState       *toolrun.StateService
+	ToolPreloader   *toolrun.PreloadService
 	Sessions        *session.Service
 	Requests        *request.Manager
 	Turns           *turn.Manager
@@ -121,4 +123,21 @@ func registerBuiltinCommands(foundation *FoundationComponents, s *sharedServices
 		Hooks: hooks, SessionState: s.SessionCommands, Audit: auditFunc(foundation.Logs),
 		Logs: logging.Reader{Dir: foundation.Logs.LogDir()}, RuntimeStatus: agt.RuntimeStatus,
 	})
+}
+
+// Execution participants run synchronously under their owners' contracts;
+// lifecycle notifications continue to use the separately owned signal bindings.
+func bindAgentExecution(s *sharedServices, agt *agent.Agent, hooks *hook.DefaultManager) {
+	s.Sessions.SetForegroundActivation(agt.AdoptForeground)
+	s.Sessions.SetActivitySource(func() []string {
+		var ids []string
+		for _, active := range s.Turns.SnapshotAll() {
+			if active.Phase != turn.PhaseIdle {
+				ids = append(ids, active.SessionID)
+			}
+		}
+		return ids
+	})
+	hooks.SetWakeupFunc(agt.HookWakeup)
+	hooks.SetObserver(agt.ObserveHookRun)
 }

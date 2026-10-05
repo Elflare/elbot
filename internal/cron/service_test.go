@@ -699,7 +699,7 @@ func TestRunLLMReportRetriesInvalidJSONOnce(t *testing.T) {
 	if runner.requests[1].SessionID != "cron-session" {
 		t.Fatalf("retry session id = %q", runner.requests[1].SessionID)
 	}
-	if strings.Join(runner.requests[1].ToolListNames, ",") != "web_search" {
+	if len(runner.requests[1].ToolListNames) != 0 {
 		t.Fatalf("retry tool list = %#v", runner.requests[1].ToolListNames)
 	}
 	if !strings.Contains(runner.requests[1].Prompt, "你返回的格式有误") {

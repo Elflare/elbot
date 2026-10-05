@@ -32,6 +32,7 @@ type Options struct {
 	Requests              *request.Manager
 	Turns                 *turn.Manager
 	ToolRunner            *toolrun.Manager
+	ToolPreloader         *toolrun.PreloadService
 	Platform              platform.PlatformAdapter
 	Models                *modelmgr.Service
 	Contexts              *contextmgr.Service
@@ -53,8 +54,6 @@ type Options struct {
 	SessionIdleExpiration config.SessionIdleExpirationConfig
 	SandboxRoot           string
 	ToolsConfig           config.ToolsConfig
-	ToolTagsPath          string
-	ToolTags              config.ToolTagsConfig
 }
 
 func validateOptions(opts Options) error {
@@ -70,7 +69,7 @@ func validateOptions(opts Options) error {
 	if opts.Sessions == nil || opts.Requests == nil || opts.Turns == nil || opts.Commands == nil {
 		return fmt.Errorf("session, request, turn and command services are required")
 	}
-	if opts.Contexts == nil || opts.ToolState == nil || opts.ToolRunner == nil {
+	if opts.Contexts == nil || opts.ToolState == nil || opts.ToolRunner == nil || opts.ToolPreloader == nil {
 		return fmt.Errorf("context and tool services are required")
 	}
 	if opts.Dispatcher == nil || opts.Notifications == nil {

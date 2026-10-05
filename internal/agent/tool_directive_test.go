@@ -393,7 +393,8 @@ func TestAgentSkillCreatorNoticePreloads(t *testing.T) {
 					}
 					content = result.Text
 				} else {
-					content = a.preloadBackgroundResources(ctx, sessionRecord, []string{"docx"}, nil).SkillPrompt
+					sessionRecord.Mode = storage.SessionModeBackground
+					content = a.preloadBackgroundResources(ctx, sessionRecord, []string{"docx"}, nil, nil).SkillPrompt
 				}
 				if !strings.Contains(content, "# DOCX") {
 					t.Fatalf("missing skill body: %q", content)

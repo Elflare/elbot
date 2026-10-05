@@ -13,6 +13,7 @@ import (
 	"elbot/internal/elvena"
 	"elbot/internal/media"
 	"elbot/internal/storage"
+	"elbot/internal/toolrun"
 )
 
 type SenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error)
@@ -39,6 +40,7 @@ type Options struct {
 	Send             SenderFunc
 	Runner           background.Runner
 	ResolveModel     ModelResolverFunc
+	ToolPreloader    *toolrun.PreloadService
 	EnabledPlatforms []string
 	PlatformCallers  elvena.PlatformCallerResolver
 }
@@ -54,6 +56,7 @@ type Service struct {
 	send             SenderFunc
 	runner           background.Runner
 	resolveModel     ModelResolverFunc
+	toolPreloader    *toolrun.PreloadService
 	enabledPlatforms []string
 	platformCallers  elvena.PlatformCallerResolver
 	enqueueLLM       EnqueueLLMFunc
@@ -80,6 +83,7 @@ func NewService(opts Options) (*Service, error) {
 		send:             opts.Send,
 		runner:           opts.Runner,
 		resolveModel:     opts.ResolveModel,
+		toolPreloader:    opts.ToolPreloader,
 		enabledPlatforms: uniqueSorted(opts.EnabledPlatforms),
 		platformCallers:  opts.PlatformCallers,
 	}, nil
@@ -118,7 +122,7 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 		s.logWarn("elnis permission denied", append(attrs, "error", err.Error())...)
 		return Response{Accepted: false, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
 	}
-	if err := s.authorizeInternalTools(event); err != nil {
+	if err := s.authorizeInternalTools(ctx, event); err != nil {
 		s.auditEvent("elnis.tool_denied", append(attrs, "error", err.Error())...)
 		s.logWarn("elnis internal tool denied", append(attrs, "error", err.Error())...)
 		return Response{Accepted: false, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err

@@ -117,7 +117,7 @@ func TestToolPhasePendingInputInjectedBeforeFollowupLLM(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register request hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 	started := make(chan struct{})
 	release := make(chan struct{})
 	registry := tool.NewRegistry()
@@ -207,7 +207,7 @@ func TestToolPhasePendingInputPersistsWhenRequestHookFails(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register request hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 	started := make(chan struct{})
 	release := make(chan struct{})
 	registry := tool.NewRegistry()
@@ -277,7 +277,7 @@ func TestToolChildRequestCancelReturnsToolMessageAndContinuesTurn(t *testing.T) 
 	})}); err != nil {
 		t.Fatalf("Register completed hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 	ctx := context.Background()
 
 	done := make(chan error, 1)

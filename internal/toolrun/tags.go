@@ -1,4 +1,4 @@
-package agent
+package toolrun
 
 import (
 	"context"
@@ -12,9 +12,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"elbot/internal/config"
-	"elbot/internal/security"
 	"elbot/internal/tool"
-	"elbot/internal/toolrun"
 )
 
 type toolTagConfigSource struct {
@@ -38,32 +36,6 @@ func newToolTagConfigSource(path string, initial config.ToolTagsConfig) *toolTag
 	return &toolTagConfigSource{path: strings.TrimSpace(path), cache: toolTagConfigCache{loaded: path == "", config: normalizeToolTagsConfig(initial)}}
 }
 
-func (s *toolTagConfigSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
-	if s == nil || req.Session == nil {
-		return nil, nil
-	}
-	metadata, err := toolrun.DecodeState(req.Session.Metadata)
-	if err != nil {
-		return nil, err
-	}
-	if len(metadata.ToolTags) == 0 {
-		return nil, nil
-	}
-	cfg, err := s.load(ctx)
-	if err != nil {
-		return nil, err
-	}
-	parts := []SystemPromptPart{}
-	for _, tag := range metadata.ToolTags {
-		entry, ok := cfg.Tags[normalizeToolTag(tag)]
-		if !ok || strings.TrimSpace(entry.Prompt) == "" {
-			continue
-		}
-		parts = append(parts, SystemPromptPart{Name: "tool_tag_prompt:" + tag, Content: entry.Prompt})
-	}
-	return parts, nil
-}
-
 func (s *toolTagConfigSource) configuredTags(ctx context.Context) []string {
 	cfg, err := s.load(ctx)
 	if err != nil {
@@ -75,27 +47,6 @@ func (s *toolTagConfigSource) configuredTags(ctx context.Context) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-func (s *toolTagConfigSource) configuredTagsForTool(ctx context.Context, name string) []string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil
-	}
-	cfg, err := s.load(ctx)
-	if err != nil {
-		return nil
-	}
-	out := []string{}
-	for tag, entry := range cfg.Tags {
-		for _, toolName := range entry.Tools {
-			if toolName == name {
-				out = append(out, tag)
-				break
-			}
-		}
-	}
-	return sortedUnique(out)
 }
 
 func (s *toolTagConfigSource) configuredToolNamesByTag(ctx context.Context, tag string) []string {
@@ -169,7 +120,7 @@ func normalizeToolTagsConfig(cfg config.ToolTagsConfig) config.ToolTagsConfig {
 		if tag == "" {
 			continue
 		}
-		tools := sortedUnique(entry.Tools)
+		tools := uniqueNames(entry.Tools)
 		if len(tools) == 0 && strings.TrimSpace(entry.Prompt) == "" {
 			continue
 		}
@@ -192,61 +143,54 @@ func normalizeToolTag(tag string) string {
 	return tag
 }
 
-func (a *Agent) namesByToolTag(ctx context.Context, tag string, allowed func(tool.Tool) bool) []string {
-	if a.toolRuntime.registry == nil {
+// TagPrompt is display material; the caller owns placement in its prompt.
+type TagPrompt struct {
+	Tag    string
+	Prompt string
+}
+
+func (s *PreloadService) TagPrompts(ctx context.Context, tags []string) ([]TagPrompt, error) {
+	if s == nil || len(tags) == 0 {
+		return nil, nil
+	}
+	cfg, err := s.tags.load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var result []TagPrompt
+	for _, tag := range tags {
+		if entry, ok := cfg.Tags[normalizeToolTag(tag)]; ok && strings.TrimSpace(entry.Prompt) != "" {
+			result = append(result, TagPrompt{Tag: tag, Prompt: entry.Prompt})
+		}
+	}
+	return result, nil
+}
+
+// ToolNamesByTag uses the same configured and built-in tags for discovery and completion.
+func (s *PreloadService) ToolNamesByTag(ctx context.Context, tag string, allowed func(tool.Tool) bool) []string {
+	if s == nil || s.registry == nil {
 		return nil
 	}
-	names := a.toolRuntime.registry.NamesByTag(tag, allowed)
-	if a.toolRuntime.toolTags != nil {
-		for _, name := range a.toolRuntime.toolTags.configuredToolNamesByTag(ctx, tag) {
-			candidate, ok := a.toolRuntime.registry.Get(name)
-			if !ok || allowed != nil && !allowed(candidate) {
-				continue
-			}
+	names := s.registry.NamesByTag(tag, allowed)
+	for _, name := range s.tags.configuredToolNamesByTag(ctx, tag) {
+		candidate, ok := s.registry.Get(name)
+		if ok && (allowed == nil || allowed(candidate)) {
 			names = append(names, name)
 		}
 	}
-	return sortedUnique(names)
+	return uniqueNames(names)
 }
 
-func (a *Agent) completionToolTags(ctx context.Context, registry *tool.Registry, actor security.Actor, policy *security.Policy) []string {
-	if registry == nil {
+func (s *PreloadService) Tags(ctx context.Context) []string {
+	if s == nil || s.registry == nil {
 		return nil
 	}
-	seen := map[string]bool{}
-	for _, tag := range registry.Tags() {
-		if len(a.completionToolNamesByTag(ctx, registry, tag, func(candidate tool.Tool) bool { return a.canPreloadToolRoot(actor, policy, candidate) })) > 0 {
-			seen[tag] = true
+	tags := append(s.registry.Tags(), s.tags.configuredTags(ctx)...)
+	var result []string
+	for _, tag := range uniqueNames(tags) {
+		if len(s.ToolNamesByTag(ctx, tag, func(candidate tool.Tool) bool { return canPreloadTool(ctx, candidate) })) > 0 {
+			result = append(result, tag)
 		}
 	}
-	if a.toolRuntime.toolTags != nil {
-		for _, tag := range a.toolRuntime.toolTags.configuredTags(ctx) {
-			if len(a.completionToolNamesByTag(ctx, registry, tag, func(candidate tool.Tool) bool { return a.canPreloadToolRoot(actor, policy, candidate) })) > 0 {
-				seen[tag] = true
-			}
-		}
-	}
-	out := make([]string, 0, len(seen))
-	for tag := range seen {
-		out = append(out, tag)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func (a *Agent) completionToolNamesByTag(ctx context.Context, registry *tool.Registry, tag string, allowed func(tool.Tool) bool) []string {
-	if registry == nil {
-		return nil
-	}
-	names := registry.NamesByTag(tag, allowed)
-	if a.toolRuntime.toolTags != nil {
-		for _, name := range a.toolRuntime.toolTags.configuredToolNamesByTag(ctx, tag) {
-			candidate, ok := registry.Get(name)
-			if !ok || allowed != nil && !allowed(candidate) {
-				continue
-			}
-			names = append(names, name)
-		}
-	}
-	return sortedUnique(names)
+	return result
 }

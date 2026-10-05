@@ -43,6 +43,9 @@ func (a *Agent) drainPendingUserInput(sessionID string, messages []llm.LLMMessag
 }
 
 func (a *Agent) executeToolCalls(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string, out turnOutput) toolrun.RunResult {
+	if session == nil || (session.Mode != storage.SessionModeWork && session.Mode != storage.SessionModeBackground) {
+		return toolrun.RunResult{}
+	}
 	cached, err := a.cachedToolsForSession(ctx, session)
 	if err != nil {
 		messages := make([]llm.LLMMessage, 0, len(calls))
@@ -261,10 +264,10 @@ func previewArguments(args string) string {
 }
 
 func (a *Agent) toolsForSession(ctx context.Context, session *storage.Session) ([]llm.ToolSchema, error) {
-	if session == nil || session.Mode != storage.SessionModeWork {
+	if session == nil || (session.Mode != storage.SessionModeWork && session.Mode != storage.SessionModeBackground) {
 		return nil, nil
 	}
-	if a.toolRuntime.provider != nil && !a.toolRuntime.defaultProvider {
+	if session.Mode == storage.SessionModeWork && a.toolRuntime.provider != nil && !a.toolRuntime.defaultProvider {
 		return a.toolRuntime.provider.Schemas(ctx, session.Mode, session, a.scope(ctx))
 	}
 	cached, err := a.cachedToolsForSession(ctx, session)

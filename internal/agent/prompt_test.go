@@ -15,6 +15,7 @@ import (
 	"elbot/internal/platform"
 	"elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/toolrun"
 )
 
 func TestResidentMemorySystemPromptSource(t *testing.T) {
@@ -198,10 +199,10 @@ func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
 	if err := memoryStore.WriteCore(ctx, scope, "RESIDENT_ORDER"); err != nil {
 		t.Fatalf("WriteCore: %v", err)
 	}
-	tagSource := newToolTagConfigSource("", config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
+	tagSource := toolTagsSystemPromptSource{Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
 		"alpha": {Prompt: "TAG_ALPHA"},
 		"beta":  {Prompt: "TAG_BETA"},
-	}})
+	}}})}
 	sessionRecord := &storage.Session{
 		Mode:     storage.SessionModeWork,
 		Metadata: `{"tool_tags":["beta","alpha"]}`,

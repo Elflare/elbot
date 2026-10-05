@@ -4,7 +4,7 @@ import (
 	"context"
 	"elbot/internal/background"
 	"elbot/internal/config"
-	elcron "elbot/internal/cron"
+	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/security"
@@ -111,7 +111,7 @@ func TestRunBackgroundPreloadsSkillDetailAndActivatedHiddenWrapper(t *testing.T)
 	}
 }
 
-func TestRunBackgroundUsesWorkModeWhenDefaultModeIsChat(t *testing.T) {
+func TestRunBackgroundUsesBackgroundModeWhenDefaultModeIsChat(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":false,"report":"ok"}`}}}}
@@ -135,7 +135,7 @@ func TestRunBackgroundUsesWorkModeWhenDefaultModeIsChat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sessionRecord.Mode != storage.SessionModeWork {
+	if sessionRecord.Mode != storage.SessionModeBackground {
 		t.Fatalf("background mode = %q", sessionRecord.Mode)
 	}
 	if !strings.Contains(sessionRecord.Metadata, `"background_kind":"cron"`) {
@@ -217,14 +217,14 @@ func TestRunBackgroundRepairsReusedSessionModeAndMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if repaired.Mode != storage.SessionModeWork {
+	if repaired.Mode != storage.SessionModeBackground {
 		t.Fatalf("repaired mode = %q", repaired.Mode)
 	}
 	if !strings.Contains(repaired.Metadata, `"background_kind":"cron"`) || !strings.Contains(repaired.Metadata, `"cron_job_name":"old"`) {
 		t.Fatalf("repaired metadata = %q", repaired.Metadata)
 	}
 	requests := f.chatRequests()
-	if len(requests) != 1 || toolNames(requests[0].Tools) != "web_extract" {
+	if len(requests) != 1 || len(requests[0].Tools) != 0 {
 		t.Fatalf("requests=%d tools=%q", len(requests), toolNames(requests[0].Tools))
 	}
 }
@@ -260,7 +260,7 @@ func TestRunBackgroundPreloadsMixedToolAndSkillWithoutSkillSchema(t *testing.T) 
 	}
 }
 
-func TestRunCronMessagePreloadsToolListNamesWithoutDiscoverTool(t *testing.T) {
+func TestRunBackgroundPreloadsToolListNamesWithoutDiscoverTool(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
@@ -273,9 +273,9 @@ func TestRunCronMessagePreloadsToolListNamesWithoutDiscoverTool(t *testing.T) {
 	_ = registry.Register(builtin.NewWebExtractTool())
 	a.SetToolRuntime(registry, nil)
 
-	_, err := a.RunCronMessage(ctx, elcron.RunCronMessageRequest{JobName: "test", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"web_search", "web"}})
+	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "test", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"web_search", "web"}})
 	if err != nil {
-		t.Fatalf("RunCronMessage: %v", err)
+		t.Fatalf("RunBackground: %v", err)
 	}
 	requests := f.chatRequests()
 	if len(requests) != 1 {
@@ -295,7 +295,7 @@ func TestRunCronMessagePreloadsToolListNamesWithoutDiscoverTool(t *testing.T) {
 	}
 }
 
-func TestRunCronMessageToolPhaseDoesNotPublishRuntimeStatus(t *testing.T) {
+func TestRunBackgroundToolPhaseDoesNotPublishRuntimeStatus(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	platform := &fakePlatform{}
@@ -310,9 +310,9 @@ func TestRunCronMessageToolPhaseDoesNotPublishRuntimeStatus(t *testing.T) {
 	_ = registry.Register(builtin.NewWebSearchTool())
 	a.SetToolRuntime(registry, nil)
 
-	_, err := a.RunCronMessage(ctx, elcron.RunCronMessageRequest{JobName: "tool-status", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run"})
+	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "tool-status", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run"})
 	if err != nil {
-		t.Fatalf("RunCronMessage: %v", err)
+		t.Fatalf("RunBackground: %v", err)
 	}
 	if got := platform.out.String(); got != "" {
 		t.Fatalf("background cron tool phase wrote platform output: %q", got)
@@ -322,26 +322,31 @@ func TestRunCronMessageToolPhaseDoesNotPublishRuntimeStatus(t *testing.T) {
 	}
 }
 
-func TestRunCronMessageReturnsRawAssistantTextForJSONParsing(t *testing.T) {
+func TestRunBackgroundReturnsRawAssistantTextForJSONParsing(t *testing.T) {
 	ctx := context.Background()
-	store := newTestStore(t)
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}, "test-model", config.ProviderConfig{}, store)
-	cronSession := &storage.Session{OwnerID: "cli:local", Platform: "cli", PlatformScopeID: "cron:test", Mode: storage.SessionModeWork, Title: "Cron", Status: storage.SessionStatusActive}
-	if err := store.Sessions().Create(ctx, cronSession); err != nil {
-		t.Fatalf("create session: %v", err)
+	const raw = `{"completed":true,"need_report":true,"report":"ok"}`
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: raw}}}}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a.SetSandboxRoot(t.TempDir())
+	hooks := hook.NewManager()
+	if err := hooks.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "visible-text", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
+		event.LLM.Text = "可见文本"
+		return event, nil
+	})}); err != nil {
+		t.Fatal(err)
 	}
-	if err := store.Messages().Append(ctx, &storage.Message{SessionID: cronSession.ID, Role: storage.RoleAssistant, Content: "可见文本", Metadata: assistantRawTextMetadata("可见文本", `{"completed":true,"need_report":true,"report":"ok"}`)}); err != nil {
-		t.Fatalf("append assistant: %v", err)
-	}
-	message, err := a.latestAssistantMessage(ctx, cronSession.ID)
+	a.setTestHookManager(hooks)
+	result, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "raw-result", Platform: "cli", Actor: security.Actor{ID: "cli:local", Role: security.RoleSuperadmin}, Prompt: "run"})
 	if err != nil {
-		t.Fatalf("latestAssistantMessage: %v", err)
+		t.Fatal(err)
 	}
-	text := message.Content
-	if rawText := assistantRawTextFromMetadata(message.Metadata); rawText != "" {
-		text = rawText
+	if result.Text != raw || result.MessageID == "" || result.RunID == "" {
+		t.Fatalf("result=%+v", result)
 	}
-	if text != `{"completed":true,"need_report":true,"report":"ok"}` {
-		t.Fatalf("text = %q", text)
+	messages, err := a.store.Messages().ListBySession(ctx, result.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 2 || messages[1].ID != result.MessageID || messages[1].Role != storage.RoleAssistant {
+		t.Fatalf("result does not identify saved assistant: %+v", messages)
 	}
 }

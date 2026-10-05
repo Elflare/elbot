@@ -64,7 +64,8 @@ type CronTarget struct {
 
 type CronLLMMetadata struct {
 	ToolListNames []string `json:"tool_list_names,omitempty"`
-	SessionMode   string   `json:"session_mode,omitempty"`
+	ModelProvider string   `json:"model_provider,omitempty"`
+	Model         string   `json:"model,omitempty"`
 }
 
 type DeliveryStatus string
@@ -124,7 +125,8 @@ type UpsertRequest struct {
 	TriggerMode         TriggerMode
 	Message             string
 	ToolListNames       []string
-	SessionMode         string
+	ModelProvider       string
+	Model               string
 	AllEnabledPlatforms bool
 
 	Enabled        bool
@@ -141,7 +143,8 @@ type PatchRequest struct {
 	TriggerMode         *TriggerMode
 	Message             *string
 	ToolListNames       *[]string
-	SessionMode         *string
+	ModelProvider       *string
+	Model               *string
 	AllEnabledPlatforms *bool
 
 	Enabled *bool
@@ -283,24 +286,4 @@ func normalizeToolListNames(names []string) []string {
 		out = append(out, name)
 	}
 	return out
-}
-
-func validateLLMSessionMode(mode string) (string, error) {
-	mode = strings.TrimSpace(mode)
-	switch mode {
-	case "":
-		return "", nil
-	case storage.SessionModeWork, storage.SessionModeChat:
-		return mode, nil
-	default:
-		return "", fmt.Errorf("unsupported session_mode %q", mode)
-	}
-}
-
-func normalizeLLMSessionMode(mode string) string {
-	mode, err := validateLLMSessionMode(mode)
-	if err != nil || mode == "" {
-		return ""
-	}
-	return mode
 }

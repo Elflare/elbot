@@ -11,6 +11,7 @@ import (
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/fileops"
+	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/notification"
@@ -64,7 +65,8 @@ func assembleTestOptions(opts testAgentOptions) Options {
 		Commands: command.NewRouter(opts.CommandPrefixes), Requests: request.NewManager(0), Turns: turn.NewManager(),
 		Contexts:  contextmgr.New(contextmgr.Options{Store: opts.Store, Models: opts.Models, Config: defaults.Context, Metadata: defaults.ModelMetadata, Providers: opts.Providers}),
 		ToolState: toolrun.NewStateService(opts.Store), ToolRunner: toolrun.NewManager(opts.ToolRegistry, opts.SecurityPolicy),
-		ToolRegistry: opts.ToolRegistry, FileRollback: opts.FileRollback,
+		ToolPreloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: opts.ToolRegistry}),
+		ToolRegistry:  opts.ToolRegistry, FileRollback: opts.FileRollback,
 		Dispatcher: dispatcher, Notifications: notices, SecurityPolicy: opts.SecurityPolicy,
 		SandboxRoot: opts.SandboxRoot, ToolsConfig: opts.ToolsConfig,
 		LLMRequestConfig: defaults.LLMRequest, SessionIdleExpiration: defaults.Session.IdleExpiration,
@@ -77,6 +79,16 @@ func mustNewWithOptions(t *testing.T, cfg testAgentOptions) *Agent {
 	if err != nil {
 		t.Fatal(err)
 	}
+	a.sessions.SetForegroundActivation(a.AdoptForeground)
+	a.sessions.SetActivitySource(func() []string {
+		var ids []string
+		for _, active := range a.turns.SnapshotAll() {
+			if active.Phase != turn.PhaseIdle {
+				ids = append(ids, active.SessionID)
+			}
+		}
+		return ids
+	})
 	if err := commandbuiltin.RegisterDefaultModules(a.commands, commandbuiltin.Deps{
 		Router: a.commands, Sessions: a.sessions, Requests: a.requests, Turns: a.turns, Store: a.store,
 		Scope: a.Scope, Models: a.models, Contexts: a.contexts, Compact: a,
@@ -125,6 +137,7 @@ func (r testToolRegistry) Unregister(name string) error {
 
 func (a *Agent) SetToolRuntime(registry *tool.Registry, _ any) {
 	a.toolRuntime.registry = registry
+	a.toolRuntime.preloader = toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry, Audit: a.audit})
 	a.toolRuntime.manager = toolrun.NewManager(registry, a.securityPolicy)
 	a.toolRuntime.manager.Media = a.media
 	if registry != nil {
@@ -151,4 +164,19 @@ func rollbackTestFile(a *Agent, ctx context.Context, id uint64) (fileops.Rollbac
 		return fileops.RollbackResult{}, err
 	}
 	return a.toolRuntime.fileRollback.RollbackByID(ctx, id)
+}
+func (a *Agent) SetToolTagConfig(path string, cfg config.ToolTagsConfig) {
+	a.toolRuntime.preloader = toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: a.toolRuntime.registry, TagsPath: path, Tags: cfg, Audit: a.audit})
+	a.rebuildSystemPrompt()
+}
+
+func (a *Agent) setTestHookManager(manager hook.Manager) {
+	if manager == nil {
+		manager = hook.NoopManager{}
+	}
+	if concrete, ok := manager.(*hook.DefaultManager); ok {
+		concrete.SetWakeupFunc(a.HookWakeup)
+		concrete.SetObserver(a.ObserveHookRun)
+	}
+	a.hooks = manager
 }

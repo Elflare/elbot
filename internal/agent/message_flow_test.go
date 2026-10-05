@@ -60,7 +60,7 @@ func TestTurnHookMultimodalUserMessagePersistsWithoutChangingPlatformText(t *tes
 	})}); err != nil {
 		t.Fatalf("Register turn hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 
 	if err := a.HandleMessage(context.Background(), "这是狗"); err != nil {
 		t.Fatalf("first HandleMessage: %v", err)

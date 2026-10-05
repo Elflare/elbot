@@ -230,7 +230,9 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 	}
 	selection.Provider = turnEvent.LLM.Provider
 	selection.Model = turnEvent.LLM.Model
-	tools = turnEvent.LLM.Tools
+	if session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground {
+		tools = turnEvent.LLM.Tools
+	}
 	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhasePreparing, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt})
 	canonicalUserSegments := a.materializeMedia(ctx, turnEvent.Message.Segments)
 	promptUserSegments := canonicalUserSegments
@@ -303,7 +305,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		stream := out.StartStream(reqCtx)
 		llmStageStartedAt := storage.Now()
 		out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: session.ID, Phase: runtimestatus.PhaseLLM, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, RequestID: reqCtxInfo.ID, Kind: request.KindTurn, Label: "chat", TurnStartedAt: turnStartedAt, StageStartedAt: llmStageStartedAt, Usage: usage})
-		result, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, pending, stream, out)
+		result, err := a.callLLM(reqCtx, session, selection, llmMessages, tools, pending, stream, out)
 		if len(result.Messages) > 0 {
 			llmMessages = result.Messages
 		}
@@ -356,7 +358,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			llmMessages = append(llmMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("工具调用轮次已达到上限，可以询问用户是否继续或者基于已有工具结果和当前上下文总结当前进度。")})
 			tools = nil
 			stream := out.StartStream(reqCtx)
-			summary, err := a.callLLM(reqCtx, session.ID, selection, llmMessages, tools, summaryPending, stream, out)
+			summary, err := a.callLLM(reqCtx, session, selection, llmMessages, tools, summaryPending, stream, out)
 			if err != nil {
 				return err
 			}
@@ -504,11 +506,11 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 
 func (a *Agent) modelSelectionForTurn(ctx context.Context, session *storage.Session) modelmgr.Selection {
 	mode := storage.SessionModeWork
-	if session != nil && session.Mode != "" {
+	if session != nil && session.Mode != "" && session.Mode != storage.SessionModeBackground {
 		mode = session.Mode
 	}
 	selection := a.models.ResolveMode(mode).ModelSelection
-	if override, ok := ctx.Value(cronModelSelectionKey{}).(config.ModelSelection); ok {
+	if override, ok := ctx.Value(backgroundModelSelectionKey{}).(config.ModelSelection); ok {
 		if override.Provider != "" {
 			selection.Provider = override.Provider
 		}

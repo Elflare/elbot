@@ -22,6 +22,7 @@ import (
 	hookcontrol "elbot/internal/hook/control"
 	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/memory/resident"
+	"elbot/internal/modelmgr"
 	"elbot/internal/processenv"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/tool/runtimeinfo"
@@ -51,7 +52,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	sendNotice := func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 		return services.Dispatcher.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
 	}
-	cronService, err := buildCronService(ctx, foundation, sendNotice)
+	cronService, err := buildCronService(ctx, foundation, services.Models, sendNotice)
 	if err != nil {
 		return components, err
 	}
@@ -118,6 +119,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		Dispatcher:    services.Dispatcher,
 		Notifications: services.Notifications,
 		Models:        services.Models,
+		ToolPreloader: services.ToolPreloader,
 		Signals:       bindings,
 		Media:         services.Media,
 		Agent:         agt,
@@ -163,7 +165,7 @@ func resolveFileDeliveryCredentials(cfg config.FileDeliveryConfig, configDir str
 	return credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""), nil
 }
 
-func buildCronService(ctx context.Context, foundation *FoundationComponents, send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)) (*elcron.Service, error) {
+func buildCronService(ctx context.Context, foundation *FoundationComponents, models *modelmgr.Service, send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)) (*elcron.Service, error) {
 	cfg := foundation.Config
 	service := elcron.NewService(elcron.Options{
 		Manager:          foundation.CronManager,
@@ -173,6 +175,7 @@ func buildCronService(ctx context.Context, foundation *FoundationComponents, sen
 		SandboxRoot:      cfg.Sandbox.Root,
 		Audit:            auditFunc(foundation.Logs),
 		SendTarget:       send,
+		Models:           models,
 	})
 	if err := service.MigrateLegacyDeliveryState(ctx); err != nil {
 		return nil, err
@@ -240,7 +243,9 @@ func buildAgent(foundation *FoundationComponents, platforms PlatformComponents, 
 	cfg := foundation.Config
 	runner := toolrun.NewManager(tools.Registry, services.Policy)
 	runner.Media = services.Media
-	return agent.NewWithOptions(agent.Options{
+	preloader := toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: tools.Registry, TagsPath: cfg.ToolTagsConfigPath, Tags: cfg.ToolTags, Audit: auditFunc(foundation.Logs)})
+	services.ToolPreloader = preloader
+	agt, err := agent.NewWithOptions(agent.Options{
 		Platform: platforms.Primary, Models: services.Models,
 		Contexts: services.Contexts, ToolState: services.ToolState,
 		Sessions: services.Sessions, Requests: services.Requests, Turns: services.Turns, Commands: services.Commands,
@@ -248,10 +253,15 @@ func buildAgent(foundation *FoundationComponents, platforms PlatformComponents, 
 		SoulPath: cfg.Soul.Path, ResidentMemoryStore: tools.ResidentMemoryStore,
 		LLMRequestConfig: cfg.LLMRequest, HookManager: hooks, HookRuntime: hookRuntime,
 		Dispatcher: services.Dispatcher, Notifications: services.Notifications,
-		Logs: foundation.Logs, ToolRegistry: tools.Registry, ToolRunner: runner, FileRollback: services.Files,
+		Logs: foundation.Logs, ToolRegistry: tools.Registry, ToolRunner: runner, ToolPreloader: preloader, FileRollback: services.Files,
 		SecurityPolicy: services.Policy, SessionIdleExpiration: cfg.Session.IdleExpiration,
-		SandboxRoot: cfg.Sandbox.Root, ToolsConfig: cfg.Tools, ToolTagsPath: cfg.ToolTagsConfigPath, ToolTags: cfg.ToolTags,
+		SandboxRoot: cfg.Sandbox.Root, ToolsConfig: cfg.Tools,
 	})
+	if err != nil {
+		return nil, err
+	}
+	bindAgentExecution(services, agt, hooks)
+	return agt, nil
 }
 
 func auditFunc(logs LogManager) func(string, ...any) {

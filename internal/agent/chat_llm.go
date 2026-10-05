@@ -15,6 +15,8 @@ import (
 	"elbot/internal/modelmgr"
 	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/platform"
+	"elbot/internal/storage"
+	"elbot/internal/toolrun"
 )
 
 type llmCallResult struct {
@@ -27,8 +29,21 @@ type llmCallResult struct {
 	Stream    delivery.MessageStream
 }
 
-func (a *Agent) callLLM(ctx context.Context, sessionID string, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *pendingUserMessage, stream delivery.MessageStream, out turnOutput) (llmCallResult, error) {
+func (a *Agent) callLLM(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *pendingUserMessage, stream delivery.MessageStream, out turnOutput) (llmCallResult, error) {
+	sessionID := session.ID
+	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
+	if !toolsEnabled {
+		tools = nil
+	}
 	startedAt := time.Now()
+	var allowedTools map[string]bool
+	if session.Mode == storage.SessionModeBackground {
+		cached, err := a.cachedToolsForSession(ctx, session)
+		if err != nil {
+			return llmCallResult{}, err
+		}
+		allowedTools = toolrun.BackgroundToolNames(ctx, cached)
+	}
 	baseMessages := llm.CloneMessages(messages)
 	hookMessage := hook.MessagePayload{}
 	if pending != nil {
@@ -64,6 +79,19 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection modelmg
 	selection.Provider = event.LLM.Provider
 	selection.Model = event.LLM.Model
 	tools = event.LLM.Tools
+	if allowedTools != nil {
+		filtered := make([]llm.ToolSchema, 0, len(tools))
+		for _, schema := range tools {
+			if allowedTools[schema.Function.Name] {
+				filtered = append(filtered, schema)
+			}
+		}
+		tools = filtered
+	}
+	// Hooks may customize tools in work mode, but cannot enable them in chat.
+	if !toolsEnabled {
+		tools = nil
+	}
 	if pending != nil {
 		segments := a.materializeMedia(ctx, event.Message.Segments)
 		baseMessages[pending.messageIndex].Segments = segments
@@ -112,7 +140,7 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection modelmg
 		}
 		if shouldFallbackVision(requestMessages, err) {
 			a.notifyVisionFallbackOnce(ctx, sessionID, out)
-			return a.callLLM(ctx, sessionID, selection, fallbackVisionMessages(baseMessages), tools, nil, stream, out)
+			return a.callLLM(ctx, session, selection, fallbackVisionMessages(baseMessages), tools, nil, stream, out)
 		}
 		a.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", err.Error())
 		a.notifyHookError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, ElapsedMS: elapsedMillis(startedAt)}}, err)
@@ -131,7 +159,7 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection modelmg
 			}
 			if shouldFallbackVision(requestMessages, chunk.Error) {
 				a.notifyVisionFallbackOnce(ctx, sessionID, out)
-				return a.callLLM(ctx, sessionID, selection, fallbackVisionMessages(baseMessages), tools, nil, stream, out)
+				return a.callLLM(ctx, session, selection, fallbackVisionMessages(baseMessages), tools, nil, stream, out)
 			}
 			a.audit("llm_error", "session_id", sessionID, "provider", selection.Provider, "model", selection.Model, "elapsed_ms", elapsedMillis(startedAt), "error", chunk.Error.Error())
 			a.notifyHookError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, SourceText: assistant.String(), Text: assistant.String(), ToolCalls: toolCalls, Usage: usage, ElapsedMS: elapsedMillis(startedAt)}}, chunk.Error)
@@ -149,8 +177,10 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection modelmg
 			}
 			out.SendReasoning(ctx, chunk.DeltaReasoningContent)
 		}
-		for _, delta := range chunk.ToolCallDeltas {
-			toolCalls = append(toolCalls, llm.ToolCallRequest{ID: delta.ID, Name: delta.Name, Arguments: delta.Args})
+		if toolsEnabled {
+			for _, delta := range chunk.ToolCallDeltas {
+				toolCalls = append(toolCalls, llm.ToolCallRequest{ID: delta.ID, Name: delta.Name, Arguments: delta.Args})
+			}
 		}
 		delta := chunk.DeltaContent
 		assistant.WriteString(delta)
@@ -183,6 +213,9 @@ func (a *Agent) callLLM(ctx context.Context, sessionID string, selection modelmg
 	}
 	usage = event.LLM.Usage
 	toolCalls = event.LLM.ToolCalls
+	if !toolsEnabled {
+		toolCalls = nil
+	}
 	finalText := event.LLM.Text
 	a.logLLMOutput(sessionID, selection, finalText, event.LLM.SourceText, len(toolCalls), elapsedMs)
 

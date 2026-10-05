@@ -27,7 +27,7 @@ func TestPlatformMessageReceivedHookConsumeSkipsCommandAndLLM(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register received hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 
 	if err := a.HandleMessage(context.Background(), "/help"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)

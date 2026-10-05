@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"elbot/internal/background"
+	"elbot/internal/config"
 	"elbot/internal/elyph"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -95,8 +96,15 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 	if s.runner == nil {
 		return state, "", fmt.Errorf("cron llm runner is not configured")
 	}
+	model, err := s.modelForTask(meta.LLM)
+	if err != nil {
+		return state, "", err
+	}
 	actor := security.Actor{ID: security.ActorID(meta.CreatedBy.Platform, meta.CreatedBy.PlatformUserID), Platform: meta.CreatedBy.Platform, PlatformUserID: meta.CreatedBy.PlatformUserID, DisplayName: meta.CreatedBy.DisplayName, Role: security.RoleSuperadmin}
-	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), Prompt: cronPrompt(meta.Trigger.Message), ToolListNames: meta.LLM.ToolListNames, SessionMode: meta.LLM.SessionMode, SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}})
+	runRequest := background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), Prompt: cronPrompt(meta.Trigger.Message), SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}}
+	runRequest.ToolListNames = meta.LLM.ToolListNames
+	runRequest.ModelProvider, runRequest.Model = model.Provider, model.Model
+	result, err := s.runner.RunBackground(ctx, runRequest)
 	if taken, lookupErr := background.SessionTakenOver(context.WithoutCancel(ctx), s.store, result.SessionID); lookupErr != nil {
 		return state, "", lookupErr
 	} else if taken {
@@ -110,7 +118,7 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 	}
 	parsed, err := parseLLMResult(result.Text)
 	if err != nil {
-		result, parsed, err = s.retryLLMResultFormat(ctx, job, meta, actor, result.SessionID)
+		result, parsed, err = s.retryLLMResultFormat(ctx, job, meta, actor, result.SessionID, model)
 	}
 	if result.TakenOver {
 		return takeoverState(state, result), "", err
@@ -146,11 +154,13 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 	return state, report, nil
 }
 
-func (s *Service) retryLLMResultFormat(ctx context.Context, job storage.CronJob, meta Metadata, actor security.Actor, sessionID string) (background.RunResult, CronLLMResult, error) {
+func (s *Service) retryLLMResultFormat(ctx context.Context, job storage.CronJob, meta Metadata, actor security.Actor, sessionID string, model config.ModelSelection) (background.RunResult, CronLLMResult, error) {
 	if taken, err := background.SessionTakenOver(ctx, s.store, sessionID); err != nil || taken {
 		return background.RunResult{SessionID: sessionID, TakenOver: taken, Outcome: "taken_over"}, CronLLMResult{}, err
 	}
-	result, err := s.runner.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), SessionID: sessionID, Prompt: cronFormatRetryPrompt(), ToolListNames: meta.LLM.ToolListNames, SessionMode: meta.LLM.SessionMode, SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}})
+	runRequest := background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), SessionID: sessionID, Prompt: cronFormatRetryPrompt(), SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}}
+	runRequest.ModelProvider, runRequest.Model = model.Provider, model.Model
+	result, err := s.runner.RunBackground(ctx, runRequest)
 	if err != nil {
 		return result, CronLLMResult{}, err
 	}
@@ -177,7 +187,7 @@ func cronPrompt(message string) string {
 ** 按“Cron 任务内容”中的 ELyph 任务自主执行
 ** Cron 任务内容不需要包含最终 JSON 格式或汇报字段要求
 ** 信息不足时，在最终 JSON 的 report 填写失败或阻塞原因
-** 需要使用工具时直接使用工具
+** 只能调用本任务提供的工具；没有提供工具时，基于已有信息完成或报告阻塞
 ** 所有路径参数必须使用相对路径，基于当前任务工作目录解析；不要使用绝对路径、~、.. 或 cd。
 ** 有投递目标、任务要求通知或产生需要目标知道的结果/失败/阻塞原因时，应设置 need_report=true 并在 report 写自然语言汇报
 ** 最终回复必须是严格 JSON

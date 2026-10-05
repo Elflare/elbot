@@ -146,7 +146,7 @@ func TestPreparedToolArgumentsReachExecutionLLMAndTranscript(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register completed hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 
 	if err := a.HandleMessage(context.Background(), "run tool"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -251,7 +251,7 @@ func TestTurnHookCannotModifySystemDuringToolFollowup(t *testing.T) {
 	})}); err != nil {
 		t.Fatalf("Register turn hook: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 
 	if err := a.HandleMessage(context.Background(), "run tool"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -473,7 +473,7 @@ actions = [
 	if _, err := hookbuiltin.RegisterAll(manager, hookbuiltin.Options{ConfigDir: configDir}); err != nil {
 		t.Fatalf("RegisterAll: %v", err)
 	}
-	a.SetHookManager(manager)
+	a.setTestHookManager(manager)
 
 	if err := a.HandleMessage(context.Background(), "看看目录"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
