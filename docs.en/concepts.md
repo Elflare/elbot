@@ -138,7 +138,7 @@ meta: platform=qqonebot, conversation=group(id:9), display_name="群名片"(id:1
 ```
 
 `display_name` prioritizes the group nickname in group chats, and uses the user's nickname when no group nickname is available; Use nicknames in private chats and channels. Do not output the corresponding brackets for missing IDs; Output `display_name=""(id:xxx)` when there is no display name but there is a user ID; omit the field when both are missing.
- `session_created_at` is the local time when the Session was created, precise to the second; This value remains unchanged throughout the Session lifecycle to prevent time changes from reducing the Prompt cache hit rate.
+`session_created_at` is the local time when the Session was created, precise to the second; This value remains unchanged throughout the Session lifecycle to prevent time changes from reducing the Prompt cache hit rate.
 
 ## Security Policy
 
@@ -178,7 +178,7 @@ ElBot includes two layers of Cron capabilities:
 | Direct Cron | Send fixed content directly according to a schedule. |
 | LLM Cron | Drive model execution based on task descriptions, with the ability to use tools. |
 
-Each schedule trigger of LLM Cron creates an independent background Session, executes the task as a new input, and sends the result of the current round upon completion. Sessions can be viewed on the platform where the Cron was created via `/sessions` and `/resume`; Broadcast tasks will duplicate the Session for other target platforms; the CLI can be used to view Sessions across all platforms.
+Each schedule trigger of LLM Cron creates an independent background Session, executes the task as a new input, and sends the result of the current round upon completion. The associated user can view this via `/sessions` and `/resume` in a private chat on the same platform; the CLI can manage Sessions across all platforms; Group chats and channels cannot restore background Sessions. The first restoration will permanently convert it into an ordinary foreground Session; the original task currently running will continue to wait for this execution to complete. After takeover, it will no longer report or perform supplementary delivery; The next independent trigger of the scheduled task will still use a new background Session.
 
 
 

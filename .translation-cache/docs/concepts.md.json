@@ -416,6 +416,14 @@
       "translation": "Inline preloading is used to prompt ElBot in normal input that the current task may require a certain type of tool or a specific Skill.\n",
       "updated_at": 1783077374
     },
+    "docs/concepts.md:paragraph:08d4d6f397ab172294e8637a3fb57731e4dcee258cc9265362d9b04f42be42c8": {
+      "kind": "paragraph",
+      "source": "群聊和频道不能恢复后台会话。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "08d4d6f397ab172294e8637a3fb57731e4dcee258cc9265362d9b04f42be42c8",
+      "translation": "Group chats and channels cannot restore background Sessions.",
+      "updated_at": 1791193690
+    },
     "docs/concepts.md:paragraph:0accf37d50765d08207b743b29a45f16e64b5673b95996b4c7381f6bdf8c5fd8": {
       "kind": "paragraph",
       "source": "即使 Session 已因闲置过期或 __ELBOT_CODE_0__ 不再是当前会话，引用最后回复仍会恢复原 Session。\n",
@@ -431,6 +439,14 @@
       "source_hash": "0b62002a7a49943ccaa0b11242ec62635c645ec1e62014dee98125f5a15509c6",
       "translation": "It can be triggered automatically or manually by the user.\n",
       "updated_at": 1784109334
+    },
+    "docs/concepts.md:paragraph:100216e1add448f480dd0ac48fc11d44e266b3b4c63311c30702a7dd5421e8f2": {
+      "kind": "paragraph",
+      "source": "接管后不再汇报或补投递；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "100216e1add448f480dd0ac48fc11d44e266b3b4c63311c30702a7dd5421e8f2",
+      "translation": "After takeover, it will no longer report or perform supplementary delivery;",
+      "updated_at": 1791193690
     },
     "docs/concepts.md:paragraph:1224d17a0dab45dab25e3de52570b4f9f9f106eddba575789dfbec218759dde2": {
       "kind": "paragraph",
@@ -471,6 +487,14 @@
       "source_hash": "1a55f82330b14e55ea67b58af7b2ad7655f3e6f6d979a8b8a4216b4e652143c9",
       "translation": "bash scripts explicitly declare inputs via __ELBOT_CODE_0__, for example:\n",
       "updated_at": 1789009687
+    },
+    "docs/concepts.md:paragraph:1c970c52ff2cb06cf894bf9b208e67fbb1de52ebac9515fac3f45b10f39a1e04": {
+      "kind": "paragraph",
+      "source": "所属用户可在同平台私聊通过 __ELBOT_CODE_0__、__ELBOT_CODE_1__ 查看，CLI 可管理全部平台 Session；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "1c970c52ff2cb06cf894bf9b208e67fbb1de52ebac9515fac3f45b10f39a1e04",
+      "translation": "The associated user can view this via __ELBOT_CODE_0__ and __ELBOT_CODE_1__ in a private chat on the same platform; the CLI can manage Sessions across all platforms;",
+      "updated_at": 1791193690
     },
     "docs/concepts.md:paragraph:1d08f9a6cc5f6f056d0c7576c08c6d297b95ea7d988225655c18e7defbe6dea4": {
       "kind": "paragraph",
@@ -560,14 +584,6 @@
       "translation": "Messages containing images will send both the images and the text labels adjacent to the images to the vision model;",
       "updated_at": 1786545111
     },
-    "docs/concepts.md:paragraph:3675d906273a9964659b88fe3ac3962a0f4e7750270277faa04bb8bfe1aaba68": {
-      "kind": "paragraph",
-      "source": "广播任务会为其他目标平台复制 Session，CLI 可查看全部平台 Session。\n",
-      "source_file": "docs/concepts.md",
-      "source_hash": "3675d906273a9964659b88fe3ac3962a0f4e7750270277faa04bb8bfe1aaba68",
-      "translation": "Broadcast tasks will duplicate the Session for other target platforms; the CLI can be used to view Sessions across all platforms.\n",
-      "updated_at": 1784340226
-    },
     "docs/concepts.md:paragraph:381a3f69f52ea9af8eddd07647addf266fc1229def56e09ab8663c9f9fd6e638": {
       "kind": "paragraph",
       "source": "平台适配层只负责把平台消息转换为统一输入，以及把输出意图发送回平台。Agent Core 不依赖具体平台。\n",
@@ -599,14 +615,6 @@
       "source_hash": "3c4bfe321d096ce2e0ac525853661003b04e9c1e00ecf881beba062d5946ef36",
       "translation": "Call-specific directories and call-period references are released after success, failure, cancellation, or timeout;",
       "updated_at": 1789009687
-    },
-    "docs/concepts.md:paragraph:4005a184ad7215f9a76d7f477da89860fc739ba650992a02d1cdd393a2b03941": {
-      "kind": "paragraph",
-      "source": "Session 可在创建 Cron 的平台通过 __ELBOT_CODE_0__、__ELBOT_CODE_1__ 查看；",
-      "source_file": "docs/concepts.md",
-      "source_hash": "4005a184ad7215f9a76d7f477da89860fc739ba650992a02d1cdd393a2b03941",
-      "translation": "Sessions can be viewed on the platform where the Cron was created via __ELBOT_CODE_0__ and __ELBOT_CODE_1__;",
-      "updated_at": 1784340226
     },
     "docs/concepts.md:paragraph:40af8b9959008c9f5c70ee017b78d16f3aef6bbf46211a08cb05f209ffd33732": {
       "kind": "paragraph",
@@ -992,6 +1000,14 @@
       "translation": "__ELBOT_CODE_0__ prioritizes the group nickname in group chats, and uses the user's nickname when no group nickname is available;",
       "updated_at": 1787305228
     },
+    "docs/concepts.md:paragraph:ba4f3f02581da5d01715fd981b111681c1c62d7c599227ee652dd964152d86fc": {
+      "kind": "paragraph",
+      "source": "定时任务下一次独立触发仍使用新后台 Session。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "ba4f3f02581da5d01715fd981b111681c1c62d7c599227ee652dd964152d86fc",
+      "translation": "The next independent trigger of the scheduled task will still use a new background Session.\n",
+      "updated_at": 1791193690
+    },
     "docs/concepts.md:paragraph:bba7fced0f9c1143a23c84ff8aafe31b0724948cccece90fd16c05d218fce7a6": {
       "kind": "paragraph",
       "source": "ElBot 包含两层 Cron 能力：\n",
@@ -1167,6 +1183,14 @@
       "source_hash": "ee04889c7c9e1111f857e42abceae72ca49aeb066e283867551324bbf2dfec09",
       "translation": "For specific syntax and examples, see [Command Quick Reference: Tools and Skills](commands.md#工具与-skill).\n",
       "updated_at": 1783077374
+    },
+    "docs/concepts.md:paragraph:eed441d23475d26e7148530fcb9b335327ef930fbe417d68296daad9d98e445d": {
+      "kind": "paragraph",
+      "source": "首次恢复会永久转为普通前台会话，运行中的原任务继续等待此次执行完成。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "eed441d23475d26e7148530fcb9b335327ef930fbe417d68296daad9d98e445d",
+      "translation": "The first restoration will permanently convert it into an ordinary foreground Session; the original task currently running will continue to wait for this execution to complete.",
+      "updated_at": 1791193690
     },
     "docs/concepts.md:paragraph:ef0042c9b2a0794284af7d02eb33592633dc63c6625e47cddc55a0bcc2af7f4d": {
       "kind": "paragraph",
@@ -1418,8 +1442,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "be05445909cfdb40742b97c543d8c87deea8cb1eee626ab4babf84cea13628af",
+  "source_hash": "bdf5f4712cf11752ceefd100c0a48a967ac9992cd6be218de9eee9e509ff5580",
   "target": "docs.en/concepts.md",
-  "updated_at": 1789560876,
+  "updated_at": 1791193690,
   "version": 2
 }
