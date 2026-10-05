@@ -47,6 +47,8 @@ If no issues are found, only `Everything is OK` will be returned. For the check 
 
 Model parameters can be a list number, model name, or `provider/model`.
 
+Model selection takes effect globally by mode/slot. `/model` uses the mode of the current Session when no target is specified, and the default mode when there is no current Session. Successful switches will be saved to `state.toml`.
+
 Example:
 
 ```text
@@ -110,7 +112,9 @@ Note:
 - While the current Session is processing, executing Session switching commands such as `/new`, `/resume`, `/fork`, `/chat`, and `/work` is not supported; If necessary, please use `/stop` to end the current processing first.
 - The indices displayed by `/sessions` can be reused by Session operation commands such as `/archive`, `/pin`, and `/delete`.
 - CLI serves as a local high-privilege entry point and can view Sessions across platforms; non-CLI platforms view Sessions under the current platform and scope by default.
-- Deletion is a permanent operation and requires explicit `--confirm`.
+- Deletion is a permanent operation and requires explicit `--confirm`; Sessions currently executing cannot be deleted and will be skipped by automatic cleanup.
+- Cron/Elnis background Sessions can only be restored by the owning user via private chat on the same platform or through the CLI management entry; they are not displayed in group chats or channels, and cannot be bypassed via direct ID, message quoting, or unarchiving.
+- The first time a background Session is restored, it will be permanently transferred to the current foreground ownership, preserving history and the original working directory. If the target is still running, it will connect to the original execution: pending is appended during the tool stage, additional confirmation is entered during the LLM stage, and new input is rejected during the compaction stage; Subsequent output will be sent directly to the foreground. Switching away will not restore the background identity.
 
 ## Fork
 
@@ -155,7 +159,7 @@ Example:
 Note:
 
 - Automatic compaction is controlled by `[context] compact_enabled` and `compact_trigger_ratio`.
-- Compaction preserves the original user history and ignores tool return values; upon success, it creates and switches to an independent `原标题 compacted-N` Session, while the old Session remains unmodified.
+- Context compaction preserves historical user utterances and ignores tool return values; upon success, it creates and switches to an independent `原标题 compacted-N` Session; The old Session is not modified. Use `/stop` to cancel
 
 ## Tools and Skills
 
@@ -177,6 +181,21 @@ Example:
 `/tools reload` will first fully scan and verify the candidate Skills, and then replace the current set all at once. If there are duplicate Skill names, names that conflict with built-in tools, or if reading fails, reload will return an error and preserve the original tool set.
 
 In work mode, the LLM can discover tool details on demand via `discover_tool`. In a chat, you can also use `@tool:<name-or-tag>` (shorthand `@t:<name-or-tag>`) to preload tools, or use `@skill:<name>` (shorthand `@s:<name>`) to add Skill documentation to the current round of messages and preload the corresponding runtime wrapper. The colon can also be written as a full-width Chinese colon `：`.
+
+## Undo File Edits
+
+The following commands are only available to superadmins:
+
+| Command | Function |
+| --- | --- |
+| `/rollback` | List files that can be undone in the current Session, showing the index, absolute path, edit time, and undo action. |
+| `/rollback <编号>` | Directly undo the file edit corresponding to the index. |
+
+For each file, the most recent successful `edit_file` modification is retained. Existing files are restored to their original content and permissions before editing; Newly created files are deleted, while the parent directory is retained. Backups are consumed after a successful undo; consecutive undos or redos are not supported.
+
+IDs are bound to specific modifications: editing the same file again will generate a new ID, and the old ID will become invalid; IDs are not reused within the process. Undo will be rejected after the file has been modified again. An actual undo requires that the current Session has no running tasks or compaction; you can wait for them to complete or use `/stop` first.
+
+Backups are stored only in memory and are isolated by user, platform Scope, and the current Session. After switching or clearing the Session, the original backup becomes invalid immediately and cannot be recovered even after switching back; Restarting also invalidates it. The entire process retains a maximum of 256 MiB of original content and 1024 records; once the limit is exceeded, the oldest records are discarded, and a notification is provided in the editing results. Failures and previews do not replace existing backups.
 
 ## Hook
 
