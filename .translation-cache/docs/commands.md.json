@@ -24,6 +24,14 @@
       "translation": "Configuration Diagnosis",
       "updated_at": 1790906605
     },
+    "docs/commands.md:heading:96975886f2fcbea6f55e5477207e8cf55615b5bc1b59b178750e91dfa7d4be6a": {
+      "kind": "heading",
+      "source": "文件编辑撤销",
+      "source_file": "docs/commands.md",
+      "source_hash": "96975886f2fcbea6f55e5477207e8cf55615b5bc1b59b178750e91dfa7d4be6a",
+      "translation": "Undo File Edits",
+      "updated_at": 1791193592
+    },
     "docs/commands.md:heading:9deec561b4c96ddf3bb5f90c149e7d45f1eaf5a5beb3273d882344d7a00069ee": {
       "kind": "heading",
       "source": "Token 消耗统计",
@@ -96,6 +104,14 @@
       "translation": "__ELBOT_CODE_0__ is a superadmin command.",
       "updated_at": 1782444282
     },
+    "docs/commands.md:list:129dcb355b61d82b28869258271a3ce132b1f9128b0befb5a612849702036228": {
+      "kind": "list",
+      "source": "若目标仍在运行，会接入原执行：工具阶段追加 pending，LLM 阶段进入追加确认，压缩阶段拒绝新输入；",
+      "source_file": "docs/commands.md",
+      "source_hash": "129dcb355b61d82b28869258271a3ce132b1f9128b0befb5a612849702036228",
+      "translation": "If the target is still running, it will connect to the original execution: pending is appended during the tool stage, additional confirmation is entered during the LLM stage, and new input is rejected during the compaction stage;",
+      "updated_at": 1791193592
+    },
     "docs/commands.md:list:184cff66666bbc12475709d9a2de0e36a43d1f1430698bc732c362722f37a713": {
       "kind": "list",
       "source": "已有历史的 work Session 不能直接切到 chat；需要先 __ELBOT_CODE_0__，再 __ELBOT_CODE_1__。",
@@ -103,6 +119,38 @@
       "source_hash": "184cff66666bbc12475709d9a2de0e36a43d1f1430698bc732c362722f37a713",
       "translation": "A work Session with existing history cannot be switched directly to chat; you need to __ELBOT_CODE_0__ first, and then __ELBOT_CODE_1__.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:list:34ff5e129a848fb9b45bf7813a8e85bcb0f6599b6825e7b500815e27fdf16efe": {
+      "kind": "list",
+      "source": "可用 __ELBOT_CODE_0__ 取消",
+      "source_file": "docs/commands.md",
+      "source_hash": "34ff5e129a848fb9b45bf7813a8e85bcb0f6599b6825e7b500815e27fdf16efe",
+      "translation": "Use __ELBOT_CODE_0__ to cancel",
+      "updated_at": 1791193592
+    },
+    "docs/commands.md:list:3745deb94f9bc6ef9e79683058fe2d069b7ad029b2eeb34fdc0a3903c7b2a61d": {
+      "kind": "list",
+      "source": "首次恢复后台会话会永久转为当前前台归属，保留历史和原工作目录。",
+      "source_file": "docs/commands.md",
+      "source_hash": "3745deb94f9bc6ef9e79683058fe2d069b7ad029b2eeb34fdc0a3903c7b2a61d",
+      "translation": "The first time a background Session is restored, it will be permanently transferred to the current foreground ownership, preserving history and the original working directory.",
+      "updated_at": 1791193592
+    },
+    "docs/commands.md:list:41547d18f46d3f0d9a96bb972a7498fbc0757fd06c612c4abc66ff0e9470baab": {
+      "kind": "list",
+      "source": "压缩会保留历史用户原话、忽略工具返回值，成功后创建并切换到独立的 __ELBOT_CODE_0__ Session；",
+      "source_file": "docs/commands.md",
+      "source_hash": "41547d18f46d3f0d9a96bb972a7498fbc0757fd06c612c4abc66ff0e9470baab",
+      "translation": "Context compaction preserves historical user utterances and ignores tool return values; upon success, it creates and switches to an independent __ELBOT_CODE_0__ Session;",
+      "updated_at": 1791193592
+    },
+    "docs/commands.md:list:4727d8c961a162a387d6e9a3db13853c3b64fa98a0dc796b826b177d65612eeb": {
+      "kind": "list",
+      "source": "切走不会恢复后台身份。",
+      "source_file": "docs/commands.md",
+      "source_hash": "4727d8c961a162a387d6e9a3db13853c3b64fa98a0dc796b826b177d65612eeb",
+      "translation": "Switching away will not restore the background identity.",
+      "updated_at": 1791193592
     },
     "docs/commands.md:list:4a1867b2d4d09bf4e640b43485624cedc9e18b5b6717c49ab8cd4955e12dc015": {
       "kind": "list",
@@ -120,6 +168,14 @@
       "translation": "CLI serves as a local high-privilege entry point and can view Sessions across platforms; non-CLI platforms view Sessions under the current platform and scope by default.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:list:62146f7a640d9f2b5658eb601431d1e4f07ca585a2726ec55fb7289c58a31d76": {
+      "kind": "list",
+      "source": "Cron／Elnis 后台会话仅能由所属用户在同平台私聊恢复，或从 CLI 管理入口恢复；群聊、频道不显示，也不能通过直接 ID、引用消息或解除归档绕过。",
+      "source_file": "docs/commands.md",
+      "source_hash": "62146f7a640d9f2b5658eb601431d1e4f07ca585a2726ec55fb7289c58a31d76",
+      "translation": "Cron/Elnis background Sessions can only be restored by the owning user via private chat on the same platform or through the CLI management entry; they are not displayed in group chats or channels, and cannot be bypassed via direct ID, message quoting, or unarchiving.",
+      "updated_at": 1791193592
+    },
     "docs/commands.md:list:6474db69037797ece1c045a96537d8381a30c5b7d095eb4f8e03d2de4b2bf50e": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 可以直接恢复最近更新的非当前 Session，无需先执行裸 __ELBOT_CODE_1__；编号按更新时间排列，不受置顶影响，翻页时编号连续。",
@@ -135,6 +191,14 @@
       "source_hash": "67a80dc961c39a456c1c849cbd68209626ed5711bc03748b0df4153e8f0447c5",
       "translation": "Rule Hooks directly use __ELBOT_CODE_0__ from the configuration; built-in Hooks use __ELBOT_CODE_1__ names, for example __ELBOT_CODE_2__.",
       "updated_at": 1784466598
+    },
+    "docs/commands.md:list:681135f7e84b87b4df8f9febcba1ec404e3f18953f5aa7053a6b3f39257ae7ae": {
+      "kind": "list",
+      "source": "旧 Session 不修改。",
+      "source_file": "docs/commands.md",
+      "source_hash": "681135f7e84b87b4df8f9febcba1ec404e3f18953f5aa7053a6b3f39257ae7ae",
+      "translation": "The old Session is not modified.",
+      "updated_at": 1791193592
     },
     "docs/commands.md:list:86f4b0d40783395da1758f840cbcc66650a856e5369c4fedfbb386d7ef46feb4": {
       "kind": "list",
@@ -152,14 +216,6 @@
       "translation": "Available to superadmins only.",
       "updated_at": 1782884118
     },
-    "docs/commands.md:list:9bb8cb699b4337c2b627fa62837be2876ed6f421289c58268fff61b68abcf498": {
-      "kind": "list",
-      "source": "压缩会保留历史用户原话、忽略工具返回值，成功后创建并切换到独立的 __ELBOT_CODE_0__ Session；旧 Session 不修改。",
-      "source_file": "docs/commands.md",
-      "source_hash": "9bb8cb699b4337c2b627fa62837be2876ed6f421289c58268fff61b68abcf498",
-      "translation": "Compaction preserves the original user history and ignores tool return values; upon success, it creates and switches to an independent __ELBOT_CODE_0__ Session, while the old Session remains unmodified.",
-      "updated_at": 1784109294
-    },
     "docs/commands.md:list:a0b5430c1b57bff3b15d0f05598d4fb48dd807a396c4627a0b3f97a23697a81c": {
       "kind": "list",
       "source": "自动压缩由 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ 控制。",
@@ -176,14 +232,6 @@
       "translation": "For example, __ELBOT_CODE_0__ will first switch to chat mode, then send \"Just chatting\" as the same user message to the model; if the mode switch is rejected, the message will not be sent.",
       "updated_at": 1784276178
     },
-    "docs/commands.md:list:a9cf3d8b3aa047986187e2776b1d230f8024f8e67e006db91b2fed1a8603cac2": {
-      "kind": "list",
-      "source": "删除是永久操作，需要显式 __ELBOT_CODE_0__。",
-      "source_file": "docs/commands.md",
-      "source_hash": "a9cf3d8b3aa047986187e2776b1d230f8024f8e67e006db91b2fed1a8603cac2",
-      "translation": "Deletion is a permanent operation and requires explicit __ELBOT_CODE_0__.",
-      "updated_at": 1781514917
-    },
     "docs/commands.md:list:b697cfc2231f030876aacc244a6fe0b8292a272110153d88306d4e51e4c7af11": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 模式不注入工具，适合闲聊、陪伴和低成本问答。",
@@ -191,6 +239,14 @@
       "source_hash": "b697cfc2231f030876aacc244a6fe0b8292a272110153d88306d4e51e4c7af11",
       "translation": "__ELBOT_CODE_0__ mode does not inject tools, making it suitable for casual chat, companionship, and low-cost Q&A.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:list:be15b6c64d5dba2a8382b538a9b2e58fab244d45427ceb51bcf51f47d4ff2c69": {
+      "kind": "list",
+      "source": "删除是永久操作，需要显式 __ELBOT_CODE_0__；执行中的会话不能删除，自动清理也会跳过。",
+      "source_file": "docs/commands.md",
+      "source_hash": "be15b6c64d5dba2a8382b538a9b2e58fab244d45427ceb51bcf51f47d4ff2c69",
+      "translation": "Deletion is a permanent operation and requires explicit __ELBOT_CODE_0__; Sessions currently executing cannot be deleted and will be skipped by automatic cleanup.",
+      "updated_at": 1791193592
     },
     "docs/commands.md:list:c72e69840df5c81c854c6e1edbe9cb5144f2f9b7410e05d9c0463af9d02599bb": {
       "kind": "list",
@@ -207,6 +263,14 @@
       "source_hash": "cb73e0f2b874464a2ffa6a5b345d0b0c0b2f28d34a219af24e2ce824f6997095",
       "translation": "__ELBOT_CODE_0__ mode enables tool discovery and tool calling.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:list:cd098146a5166c86f4f43369ee142d6afa951594733581afd3aa97f29454e7c4": {
+      "kind": "list",
+      "source": "后续输出直接发到前台。",
+      "source_file": "docs/commands.md",
+      "source_hash": "cd098146a5166c86f4f43369ee142d6afa951594733581afd3aa97f29454e7c4",
+      "translation": "Subsequent output will be sent directly to the foreground.",
+      "updated_at": 1791193592
     },
     "docs/commands.md:list:f09b27469f6c5b3a4aed39e01ef19ff88d1b7b67a2a7234105026a61371182d4": {
       "kind": "list",
@@ -231,6 +295,22 @@
       "source_hash": "f8edef1dd92025bd8f485f8622b7aff963a7eee3025a9f0974b1a36c16f459e5",
       "translation": "The indices displayed by __ELBOT_CODE_0__ can be reused by Session operation commands such as __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__.",
       "updated_at": 1784276178
+    },
+    "docs/commands.md:paragraph:0941c017ea0c802e2449b8edcdaaae4322e421fe79c844573b8d7b88887ffb6a": {
+      "kind": "paragraph",
+      "source": "备份仅保存在内存中，按用户、平台 Scope 和当前 Session 隔离。",
+      "source_file": "docs/commands.md",
+      "source_hash": "0941c017ea0c802e2449b8edcdaaae4322e421fe79c844573b8d7b88887ffb6a",
+      "translation": "Backups are stored only in memory and are isolated by user, platform Scope, and the current Session.",
+      "updated_at": 1791193592
+    },
+    "docs/commands.md:paragraph:0d633881d8709a973827021f7d39d2fabd090f4c43de347bd774ac9f89471906": {
+      "kind": "paragraph",
+      "source": "整个进程最多保留 256 MiB 原始内容、1024 条记录，超限淘汰最旧记录并在编辑结果中提示。",
+      "source_file": "docs/commands.md",
+      "source_hash": "0d633881d8709a973827021f7d39d2fabd090f4c43de347bd774ac9f89471906",
+      "translation": "The entire process retains a maximum of 256 MiB of original content and 1024 records; once the limit is exceeded, the oldest records are discarded, and a notification is provided in the editing results.",
+      "updated_at": 1791193592
     },
     "docs/commands.md:paragraph:11949f500527ac1c11f5031f858cfb0a5bfb8bf7f0a9644ef049ccfb83459f01": {
       "kind": "paragraph",
@@ -288,6 +368,30 @@
       "translation": "When issues are found, the actual file path, specific problem, configuration description, and the GitHub raw address of the default template will be attached;",
       "updated_at": 1790906605
     },
+    "docs/commands.md:paragraph:30a073eca168e662632607041c6eac2de15b84a2aa6a0127d253f7bd0b2b0e48": {
+      "kind": "paragraph",
+      "source": "切换成功会保存到 `state.toml。\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "30a073eca168e662632607041c6eac2de15b84a2aa6a0127d253f7bd0b2b0e48",
+      "translation": "Successful switches will be saved to `state.toml`.\n",
+      "updated_at": 1791193592
+    },
+    "docs/commands.md:paragraph:38158497f1311894f2e6163e2e42c9256c78e250e52acd61c7b9063fa800b62f": {
+      "kind": "paragraph",
+      "source": "重启同样失效。",
+      "source_file": "docs/commands.md",
+      "source_hash": "38158497f1311894f2e6163e2e42c9256c78e250e52acd61c7b9063fa800b62f",
+      "translation": "Restarting also invalidates it.",
+      "updated_at": 1791193592
+    },
+    "docs/commands.md:paragraph:3b82e4383721dedf21e2d7e5ec847d614a303d90e36a596baf17b9282da6723e": {
+      "kind": "paragraph",
+      "source": "模型选择按模式／槽位全局生效，__ELBOT_CODE_0__ 未指定目标时使用当前 Session 的模式，无当前 Session 时使用默认模式。",
+      "source_file": "docs/commands.md",
+      "source_hash": "3b82e4383721dedf21e2d7e5ec847d614a303d90e36a596baf17b9282da6723e",
+      "translation": "Model selection takes effect globally by mode/slot. __ELBOT_CODE_0__ uses the mode of the current Session when no target is specified, and the default mode when there is no current Session.",
+      "updated_at": 1791193592
+    },
     "docs/commands.md:paragraph:475e75cb3d56ea41c86811e552bb665f3895896d3971c72602ce76f2f647a7f5": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 会先完整扫描并验证候选 Skill，再一次性替换当前集合。",
@@ -304,6 +408,14 @@
       "translation": "In a chat, you can also use __ELBOT_CODE_0__ (shorthand __ELBOT_CODE_1__) to preload tools, or use __ELBOT_CODE_2__ (shorthand __ELBOT_CODE_3__) to add Skill documentation to the current round of messages and preload the corresponding runtime wrapper.",
       "updated_at": 1783240856
     },
+    "docs/commands.md:paragraph:5e84c90ae2320a63819c965d8f514bc83091ac957c70e1667c0174ecbd26d7c1": {
+      "kind": "paragraph",
+      "source": "已有文件恢复编辑前的原始内容和权限；",
+      "source_file": "docs/commands.md",
+      "source_hash": "5e84c90ae2320a63819c965d8f514bc83091ac957c70e1667c0174ecbd26d7c1",
+      "translation": "Existing files are restored to their original content and permissions before editing;",
+      "updated_at": 1791193592
+    },
     "docs/commands.md:paragraph:6d44113da741d20c4942ea1c332e5f11f6ff9f0a76ebc9185ae1ed36e8d57fa0": {
       "kind": "paragraph",
       "source": "冒号也可以写成中文全角冒号 __ELBOT_CODE_0__。\n",
@@ -311,6 +423,14 @@
       "source_hash": "6d44113da741d20c4942ea1c332e5f11f6ff9f0a76ebc9185ae1ed36e8d57fa0",
       "translation": "The colon can also be written as a full-width Chinese colon __ELBOT_CODE_0__.\n",
       "updated_at": 1783240856
+    },
+    "docs/commands.md:paragraph:6d9faed08c567a078b82b00f7b0bb1578a626c1f989502870cab6524e53cbc73": {
+      "kind": "paragraph",
+      "source": "撤销成功后备份消耗，不支持连续撤销或重做。\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "6d9faed08c567a078b82b00f7b0bb1578a626c1f989502870cab6524e53cbc73",
+      "translation": "Backups are consumed after a successful undo; consecutive undos or redos are not supported.\n",
+      "updated_at": 1791193592
     },
     "docs/commands.md:paragraph:764d85255caea7854ea163538429dadf782cc6b076d052916bdf4ef1622e85c8": {
       "kind": "paragraph",
@@ -327,6 +447,14 @@
       "source_hash": "7b5dd9c95b68cb3548a0f0e25535be58a906d86b0cf2f779f87f54f4e0931e29",
       "translation": "Model parameters can be a list number, model name, or __ELBOT_CODE_0__.\n",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:paragraph:7c77e7245100b5df960b6371188215d97a0b5fa0a72daf5e2c8af940e96f297c": {
+      "kind": "paragraph",
+      "source": "失败与预览不替换已有备份。\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "7c77e7245100b5df960b6371188215d97a0b5fa0a72daf5e2c8af940e96f297c",
+      "translation": "Failures and previews do not replace existing backups.\n",
+      "updated_at": 1791193592
     },
     "docs/commands.md:paragraph:8c5c5077a16881dfbf5ea9bf5e08c54fef9df8a072bbdb760176e9dce5696055": {
       "kind": "paragraph",
@@ -360,6 +488,14 @@
       "translation": "__ELBOT_CODE_0__ queries __ELBOT_CODE_1__, with additional support for:\n",
       "updated_at": 1781752948
     },
+    "docs/commands.md:paragraph:a0006ee3873bf40f51b7ec2eec825346452482f2c95651a805c96768a0f79d6b": {
+      "kind": "paragraph",
+      "source": "编号绑定具体修改：同一文件再次编辑会获得新编号，旧编号失效；",
+      "source_file": "docs/commands.md",
+      "source_hash": "a0006ee3873bf40f51b7ec2eec825346452482f2c95651a805c96768a0f79d6b",
+      "translation": "IDs are bound to specific modifications: editing the same file again will generate a new ID, and the old ID will become invalid;",
+      "updated_at": 1791193592
+    },
     "docs/commands.md:paragraph:b14afe6a70f51142e0bae242dcc2ce09ddf662a9e7ffc2fc3edc636f27af2569": {
       "kind": "paragraph",
       "source": "当工具调用触发高风险确认时，Agent 会提示可用确认命令，例如：\n",
@@ -368,6 +504,14 @@
       "translation": "When a tool call triggers a high-risk confirmation, the Agent will prompt the available confirmation commands, for example:\n",
       "updated_at": 1781514917
     },
+    "docs/commands.md:paragraph:b2c6491cc529495c14c070aa01eea8b8fb6ebb69660ba87d9bb930d87493bc06": {
+      "kind": "paragraph",
+      "source": "以下命令仅超级管理员可用：\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "b2c6491cc529495c14c070aa01eea8b8fb6ebb69660ba87d9bb930d87493bc06",
+      "translation": "The following commands are only available to superadmins:\n",
+      "updated_at": 1791193592
+    },
     "docs/commands.md:paragraph:bf2d64d5127a8eb02f5f8e45c81cf97948a04d448f83c558967a61200db268cf": {
       "kind": "paragraph",
       "source": "请复制输出的请求给能访问这些文件的 Elbot。",
@@ -375,6 +519,30 @@
       "source_hash": "bf2d64d5127a8eb02f5f8e45c81cf97948a04d448f83c558967a61200db268cf",
       "translation": "Please copy the output request to an ElBot that has access to these files.",
       "updated_at": 1790906605
+    },
+    "docs/commands.md:paragraph:cede950929c18b4f2066997364784e46d632720706422455aa339a896bf33da8": {
+      "kind": "paragraph",
+      "source": "文件再被修改后会拒绝撤销。",
+      "source_file": "docs/commands.md",
+      "source_hash": "cede950929c18b4f2066997364784e46d632720706422455aa339a896bf33da8",
+      "translation": "Undo will be rejected after the file has been modified again.",
+      "updated_at": 1791193592
+    },
+    "docs/commands.md:paragraph:d23438f2a2b8b51f53e62dc6ffb172cc4e5fa159712d5711a5c7044f9233ce6d": {
+      "kind": "paragraph",
+      "source": "每个文件保留最近一次成功的 __ELBOT_CODE_0__ 修改。",
+      "source_file": "docs/commands.md",
+      "source_hash": "d23438f2a2b8b51f53e62dc6ffb172cc4e5fa159712d5711a5c7044f9233ce6d",
+      "translation": "For each file, the most recent successful __ELBOT_CODE_0__ modification is retained.",
+      "updated_at": 1791193592
+    },
+    "docs/commands.md:paragraph:d3ffe0ae93abf54aed54e0ce8184b693318eb3fbf38d6eb757e3e8a70c623576": {
+      "kind": "paragraph",
+      "source": "实际撤销要求当前会话没有运行中的任务或压缩，可以等待完成或先 __ELBOT_CODE_0__。\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "d3ffe0ae93abf54aed54e0ce8184b693318eb3fbf38d6eb757e3e8a70c623576",
+      "translation": "An actual undo requires that the current Session has no running tasks or compaction; you can wait for them to complete or use __ELBOT_CODE_0__ first.\n",
+      "updated_at": 1791193592
     },
     "docs/commands.md:paragraph:d92add9bf20314c848464de8d5e45f4459a7b4a9041a4c845f46462c7d7b7bcb": {
       "kind": "paragraph",
@@ -399,6 +567,22 @@
       "source_hash": "ddb13a11f02d71f9a3be3c24e9ec08e74d9ace7dd15f78c4bb15ce5d27a62575",
       "translation": "Send __ELBOT_CODE_0__ in the chat window; no parameters required.",
       "updated_at": 1790906605
+    },
+    "docs/commands.md:paragraph:e7932001652119b40b574cb73e5e8b1f152e2d6278e9f792cdc19eeaf16918eb": {
+      "kind": "paragraph",
+      "source": "切换或清空 Session 后原备份立即失效，切回来也不能恢复；",
+      "source_file": "docs/commands.md",
+      "source_hash": "e7932001652119b40b574cb73e5e8b1f152e2d6278e9f792cdc19eeaf16918eb",
+      "translation": "After switching or clearing the Session, the original backup becomes invalid immediately and cannot be recovered even after switching back;",
+      "updated_at": 1791193592
+    },
+    "docs/commands.md:paragraph:ea7a5ad8f448c627d0eac2934f38b58d084e57382a22cf3866fc4e6828dae60a": {
+      "kind": "paragraph",
+      "source": "新建文件删除，父目录保留。",
+      "source_file": "docs/commands.md",
+      "source_hash": "ea7a5ad8f448c627d0eac2934f38b58d084e57382a22cf3866fc4e6828dae60a",
+      "translation": "Newly created files are deleted, while the parent directory is retained.",
+      "updated_at": 1791193592
     },
     "docs/commands.md:paragraph:ee299422ccd6c0092ccaca687a6f3a1ad0576d25614ec31f2381608b17bd2776": {
       "kind": "paragraph",
@@ -431,6 +615,14 @@
       "source_hash": "f79441b74e80c8b88c96cfbb9143ba9d9d314d8576e77e9883f0450f86b7c54f",
       "translation": "Example:\n",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:paragraph:facf255bc598b92bdf88224feedaa175f22f802aa3c60266f70512f034e0e377": {
+      "kind": "paragraph",
+      "source": "编号在进程内不复用。",
+      "source_file": "docs/commands.md",
+      "source_hash": "facf255bc598b92bdf88224feedaa175f22f802aa3c60266f70512f034e0e377",
+      "translation": "IDs are not reused within the process.",
+      "updated_at": 1791193592
     },
     "docs/commands.md:paragraph:fbfa9766b8e3c2e7d341ffd08a854c20d0510ea88b8780303ff2ea3814767781": {
       "kind": "paragraph",
@@ -535,6 +727,14 @@
       "source_hash": "171f6e4fe2aacef03bf09f9c9a70f5fd3465cb82498eb3ace86243e8fd621f5e",
       "translation": "Filter by actor ID.",
       "updated_at": 1781514917
+    },
+    "docs/commands.md:table:192dc0b571e353cedc672b69ff44a5d42cfb5032bb933b3b7f1f0bf6d5a43048": {
+      "kind": "table",
+      "source": "列出当前会话可撤销的文件，显示编号、绝对路径、编辑时间和撤销动作。",
+      "source_file": "docs/commands.md",
+      "source_hash": "192dc0b571e353cedc672b69ff44a5d42cfb5032bb933b3b7f1f0bf6d5a43048",
+      "translation": "List files that can be undone in the current Session, showing the index, absolute path, edit time, and undo action.",
+      "updated_at": 1791193592
     },
     "docs/commands.md:table:1b9b7ec543db3d789cde242022594ae6f500b1e5d56ae6346058c3dad298de77": {
       "kind": "table",
@@ -920,6 +1120,14 @@
       "translation": "List registered tools and external Skills.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:a3df0563107877c36fe5da76ca49638d699a5526cfb3377b9bdf8857c21dc080": {
+      "kind": "table",
+      "source": "直接撤销该编号对应的文件编辑。",
+      "source_file": "docs/commands.md",
+      "source_hash": "a3df0563107877c36fe5da76ca49638d699a5526cfb3377b9bdf8857c21dc080",
+      "translation": "Directly undo the file edit corresponding to the index.",
+      "updated_at": 1791193592
+    },
     "docs/commands.md:table:a4e0df64e6b23c369567a2a2e270feeaec43b996d8d58a4fe37b852585f65d10": {
       "kind": "table",
       "source": "当前标题] <新标题>`",
@@ -1194,8 +1402,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "1ce6ce437484002e9b303a7145bc93404a4ce6fe8733989af91aeadf59dfe2f1",
+  "source_hash": "c7c2112169734d2b43049cc58785c8a675555665a609647623266aade3414bd4",
   "target": "docs.en/commands.md",
-  "updated_at": 1790906605,
+  "updated_at": 1791193592,
   "version": 2
 }
