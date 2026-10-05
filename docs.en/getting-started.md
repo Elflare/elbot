@@ -92,6 +92,8 @@ In automatic mode, if Linux detects that the current user already has `elbot ser
 
 `elbot cli` is an independent local process that uses the same set of configurations and SQLite data, but it will not take over current requests, confirmation states, or the current Session in memory from the service process. When you need to continue a historical Session, you can use `/list` and `/resume`.
 
+Upon normal exit, platform connection events will be stopped and corresponding processing will be canceled; components share a cleanup budget of up to 30 seconds; stop waiting and exit after the timeout expires. Expected cancellations and cleanup timeouts are not treated as application failures; actual runtime or shutdown errors will still be reported.
+
 Common CLI TUI keys:
 
 - `PgUp` / `PgDn` / `Home` / `End`: Scroll chat output.
