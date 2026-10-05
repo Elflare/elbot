@@ -61,24 +61,9 @@ func qqTextPages(text string) []string {
 		if end > len(runes) {
 			end = len(runes)
 		}
-		page := string(runes[start:end])
-		if end < len(runes) {
-			page += "……"
-		}
-		pages = append(pages, fmt.Sprintf("%s（%d/%d）", page, len(pages)+1, total))
+		pages = append(pages, string(runes[start:end]))
 	}
 	return pages
-}
-
-func (a *Adapter) sendQQText(ctx context.Context, t target, text string) (string, error) {
-	switch t.MessageType {
-	case "private":
-		return a.transport.SendPrivateMessage(ctx, t.UserID, text)
-	case "group":
-		return a.transport.SendGroupMessage(ctx, t.GroupID, text)
-	default:
-		return "", fmt.Errorf("unsupported message target %q", t.MessageType)
-	}
 }
 
 type Adapter struct {
@@ -261,8 +246,14 @@ func (a *Adapter) sendTemporaryNotice(ctx context.Context, notice delivery.Notic
 	defer transport.Close(websocket.StatusNormalClosure, "temporary elnis delivery done")
 	go transport.readResponses(ctx)
 	t, err := targetToQQ(notice.Target)
+	if notice.Target.Empty() {
+		t, err = contextTarget(ctx)
+	}
 	if err != nil {
 		return delivery.Receipt{}, err
+	}
+	if text, ok := textOutputs(notice.Outputs); ok {
+		return sendText(ctx, transport, t, text)
 	}
 	segments, err := outputSegments(a.cfg.SendFileMode, notice.Outputs...)
 	if err != nil {
@@ -282,16 +273,10 @@ func (a *Adapter) sendTemporaryNotice(ctx context.Context, notice delivery.Notic
 }
 
 func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
-	if delivery.UseTemporaryConnection(ctx) {
-		return a.sendTemporaryNotice(ctx, notice)
-	}
 	outTarget := notice.Target
 	outputs := notice.Outputs
 	if outTarget.Empty() && isGroupToolPreviewNotice(ctx, outputs) {
 		return delivery.Receipt{}, nil
-	}
-	if outTarget.Empty() {
-		return a.SendChat(ctx, outputs)
 	}
 	if outTarget.Superadmins {
 		if len(a.cfg.Superadmins) == 0 {
@@ -318,9 +303,18 @@ func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (deliv
 		}
 		return receipt, nil
 	}
+	if delivery.UseTemporaryConnection(ctx) {
+		return a.sendTemporaryNotice(ctx, notice)
+	}
+	if outTarget.Empty() {
+		return a.SendChat(ctx, outputs)
+	}
 	t, err := targetToQQ(outTarget)
 	if err != nil {
 		return delivery.Receipt{}, err
+	}
+	if text, ok := textOutputs(outputs); ok {
+		return sendText(ctx, a.transport, t, text)
 	}
 	segments, err := outputSegments(a.cfg.SendFileMode, outputs...)
 	if err != nil {
@@ -356,17 +350,41 @@ func (a *Adapter) sendContextText(ctx context.Context, text string) (delivery.Re
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
-	var receipt delivery.Receipt
-	for _, page := range qqTextPages(text) {
-		id, err := a.sendQQText(ctx, t, page)
-		if err != nil {
-			return oneBotReceipt(receipt, t, nil), err
-		}
-		if strings.TrimSpace(id) != "" {
-			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, id)
+	return sendText(ctx, a.transport, t, text)
+}
+
+func sendText(ctx context.Context, transport *Transport, t target, text string) (delivery.Receipt, error) {
+	if strings.TrimSpace(text) == "" {
+		return delivery.Receipt{}, nil
+	}
+	pages := qqTextPages(text)
+	var nodes []Segment
+	if len(pages) > 1 {
+		for _, page := range pages {
+			nodes = append(nodes, Segment{Type: "node", Data: map[string]any{
+				"content": []Segment{{Type: "text", Data: map[string]any{"text": page}}},
+			}})
 		}
 	}
-	return oneBotReceipt(receipt, t, nil), nil
+	var id string
+	var err error
+	switch t.MessageType {
+	case "private":
+		if len(nodes) > 0 {
+			id, err = transport.SendPrivateForwardMessage(ctx, t.UserID, nodes)
+		} else {
+			id, err = transport.SendPrivateMessage(ctx, t.UserID, text)
+		}
+	case "group":
+		if len(nodes) > 0 {
+			id, err = transport.SendGroupForwardMessage(ctx, t.GroupID, nodes)
+		} else {
+			id, err = transport.SendGroupMessage(ctx, t.GroupID, text)
+		}
+	default:
+		err = fmt.Errorf("unsupported message target %q", t.MessageType)
+	}
+	return oneBotReceipt(receiptWithMessageID(id), t, nil), err
 }
 
 func (a *Adapter) sendContextOutput(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
@@ -652,13 +670,16 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 			Text:            text,
 			CommandPrefixes: a.cfg.CommandPrefixes,
 			Fetch:           a.referenceFetcher(event),
+			Enrich:          a.expandForwardReference(event),
 		})
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
 		messageCtx.ContextText = ref.Text
 		messageCtx.Reply = ref.Reply
 		referenceSegments = ref.ReferenceSegments
-		if strings.TrimSpace(ref.Text) != "" || len(referenceSegments) > 0 {
+		if len(ref.DisplaySegments) > 0 {
+			messageCtx.ContextSegments = forwardContextSegments(ref.DisplaySegments, currentSegments, text)
+		} else if strings.TrimSpace(ref.Text) != "" || len(referenceSegments) > 0 {
 			messageCtx.ContextSegments = finalMessageSegments(ref.Text, currentSegments, referenceSegments)
 		}
 	}

@@ -78,7 +78,7 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 - `internal/agent/message.go`：消息入口、slash/普通输入分发和用户错误通知。
 - `internal/agent/command_runtime.go`：命令权限、Turn 冲突、通知和 continuation 的统一编排。
 - `internal/agent/input.go`、`tool_directive.go`：普通输入与预加载的原绑定准入、锁外准备及提交复核，命令 continuation、pending 和风险确认入口。
-- `internal/agent/segments.go`：平台入站 Segment 与 LLM Segment 转换。
+- `internal/agent/segments.go`：平台入站 Segment 与 LLM Segment 转换；文字不变时保留原段，去除唤醒词或工具指令时只替换变化的文本跨度，保留周围图文位置。
 - `internal/agent/inbound_media.go`：实际消费前的平台 resolver 与 Media Center 桥接、大小校验和不可用降级。
 - `internal/tool/builtin/chat_history.go`：当前聊天历史查询与媒体位置/下载状态展示，查询不下载；`get_media.go`：显式选定媒体位置获取，仅返回文本 ID，单次最多 5 次未入库媒体获取尝试。
 - `internal/media/platform.go`：共享平台导入、历史媒体位置关联与本地 ID 查询；`manager.go`、`image.go`：统一媒体入库和持久化前图片压缩；`resolver.go`：LLM 媒体解析与传输选择；`history.go`：跨库历史 owner 分页对账。
@@ -282,7 +282,7 @@ rg -n "Output|SendChat|SendNotice|Stream|Reasoning|emoticon|receipt" internal/de
 - `internal/platform/builtin/`：内置平台装配。
 - `internal/platform/cli/`：本地/远程 CLI 和 TUI。
 - `internal/platform/cli/tui.go`、`tui_mouse.go`、`tui_copy.go`：TUI 主模型、鼠标交互与 copy mode。
-- `internal/platform/qq-onebot/`
+- `internal/platform/qq-onebot/`：OneBot 输入归一化、纯文本长消息合并转发、发送回执和媒体解析；`message.go` 定义协议数据并解码消息，`conversion.go` 统一消息类型映射、媒体字段提取和占位文案，按普通输入／转发节点场景生成内部消息段；`forward.go` 通过公共引用补全回调获取并展开一层 forward，组织节点署名和保序的图文展示段。
 - `internal/platform/qqofficial/`
 - `internal/platform/telegram/`
 - `internal/platform/headless/`

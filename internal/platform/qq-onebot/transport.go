@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -44,6 +45,11 @@ type response struct {
 
 type sendMessageData struct {
 	MessageID int64 `json:"message_id"`
+}
+
+type forwardNode struct {
+	Content json.RawMessage `json:"content"`
+	Sender  Sender          `json:"sender"`
 }
 
 type getMessageData struct {
@@ -138,6 +144,22 @@ func (t *Transport) SendGroupSegments(ctx context.Context, groupID int64, segmen
 	return t.sendMessage(ctx, "send_group_msg", map[string]any{"group_id": groupID, "message": segments})
 }
 
+func (t *Transport) SendPrivateForwardMessage(ctx context.Context, userID int64, nodes []Segment) (string, error) {
+	return t.sendForwardMessage(ctx, "send_private_forward_msg", map[string]any{"user_id": userID, "messages": nodes})
+}
+
+func (t *Transport) SendGroupForwardMessage(ctx context.Context, groupID int64, nodes []Segment) (string, error) {
+	return t.sendForwardMessage(ctx, "send_group_forward_msg", map[string]any{"group_id": groupID, "messages": nodes})
+}
+
+func (t *Transport) sendForwardMessage(ctx context.Context, action string, params map[string]any) (string, error) {
+	id, err := t.sendMessage(ctx, action, params)
+	if err == nil && id == "" {
+		return "", fmt.Errorf("%s response has no message_id", action)
+	}
+	return id, err
+}
+
 func (t *Transport) readResponses(ctx context.Context) {
 	for {
 		if _, err := t.Read(ctx); err != nil {
@@ -172,6 +194,25 @@ func (t *Transport) GetImage(ctx context.Context, file string) (getImageData, er
 		return getImageData{}, fmt.Errorf("decode get_image response: %w", err)
 	}
 	return data, nil
+}
+
+func (t *Transport) GetForwardMessage(ctx context.Context, forwardID string) ([]forwardNode, error) {
+	forwardID = strings.TrimSpace(forwardID)
+	if forwardID == "" {
+		return nil, fmt.Errorf("forward resource id is empty")
+	}
+	// OneBot calls this parameter message_id, but requires the forward resource ID.
+	resp, err := t.call(ctx, "get_forward_msg", map[string]any{"message_id": forwardID})
+	if err != nil {
+		return nil, err
+	}
+	var data struct {
+		Messages []forwardNode `json:"messages"`
+	}
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		return nil, fmt.Errorf("decode get_forward_msg response: %w", err)
+	}
+	return data.Messages, nil
 }
 
 func (t *Transport) GetFile(ctx context.Context, file string) (getFileData, error) {

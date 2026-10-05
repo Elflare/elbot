@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Hilight
+
+- 大幅重构底层，优化各包职责与边界
+- 添加事件系统
+
 ### Added
 
 - `edit_file` 为每个文件保留最近一次编辑前的内存备份。新增仅超管可用的 `/rollback [编号]` 和工具 `rollback_file`，发现读写文件工具时自动展开；切换 Session、重启或容量淘汰后记录失效。不覆盖 Shell 或外部程序的修改。
@@ -14,11 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- QQ OneBot 消息超过 3000 将转为合并消息
 - Cron／Elnis 现在首次在所属用户同平台私聊或 CLI 恢复时永久转为普通前台会话，并接入原执行。后续输出、权限和确认使用前台规则，原任务等待最终结果并记录接管，停止 JSON 修正、自动汇报及未开始的补投递；群聊、频道不再列出或允许恢复后台会话。
 - 媒体清理由持有全局媒体锁逐个删除，改为最多同时处理 4 个对象并按媒体 ID 互斥；不同媒体的导入和按需上传不再等待整轮清理，同一媒体继续防止上传、删除与重新导入交叉。删除失败或取消后保留记录供后续重试。
 
 ### Fixed
 
+- QQ OneBot：llm现在能看到引用回复的合并消息了，只展开一层内容。
+- QQ OneBot 长文本分页现在只有非末页添加省略号。
+- 修复 Agent 去除唤醒词或工具指令时会合并全部文字段、打乱图文位置的问题。
 - 修复后台任务工具缓存bug。
 - chat 模式不再能传入工具。
 - 修复普通用户能stop其他用户的请求的bug。
@@ -32,7 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session 整行快照写回改为事务内字段更新，防止活跃时间、workspace、缓存及命名互相覆盖，保留未知 metadata；手动改名优先于迟到的自动命名。
 - 压缩交接现在先结束旧 Turn 再激活新会话，并校验取消与执行身份；后台压缩及接管后的续接保留正确身份，迟到请求不能结束新 Turn。
 - 平台连接后的 Hook／Cron 处理现在按平台独立排队，退出时取消积压与在途处理，并共享 30 秒关闭预算。Cron 补发取消此前可能记录发送失败并追加失败通知，现在按正常取消处理；应用关闭预算耗尽也不再作为失败退出。
-- QQ OneBot 长文本分页现在只有非末页添加省略号。
 - `/resume` 与 `/fork` 返回的历史消息预览现在每条最多保留 200 个 Unicode 字符。
 - 文档型 AgentSkill 详情此前向所有用户追加发现 `agent_skill_creator` 的引导；现在仅向超级管理员追加，普通用户或身份缺失时隐藏。工具发现、`@skill:` 和后台预加载均生效，配置错误提示仍保留。
 

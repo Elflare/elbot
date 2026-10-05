@@ -278,6 +278,7 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 - 部分失败同时返回成功 Receipt 与 error；Agent／Cron／Elnis 关联已成功的平台消息，错误仍返回，任务不会因此整体成功。缓存失败只记录日志，不重发平台消息；通知发送失败不再触发通知。
 - Agent 的 assistant 消息及 Cron／Elnis 的报告关联使用 `Receipt.SentMessages` 提供的实际平台、ScopeID 和消息 ID；不根据触发来源或目标类型自行拼 Scope，缺少完整来源的回执不建立关联。任务指定目标与触发消息的 Info 分别保留各自语义。
 - QQ OneBot 把 record 输出转换为原生语音段；暂不支持 record 的平台使用统一文字 fallback。
+- QQ OneBot 纯文本发送超过 3000 个 Unicode 字符时按原文分节点，单次调用群聊／私聊 forward API；回复、显式目标、管理员通知和临时连接共用该规则。回执只关联外层 `message_id`，不关联转发资源 ID 或节点；失败不退回分条发送。
 - 流式输出、notice、reasoning、runtime status 由 Agent turn 输出适配层区分前后台发送。
 
 <!-- locator:platform -->
@@ -291,6 +292,9 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 - 原始有序 segments 写入 Chat History，包括纯媒体消息；过滤 base64、临时本地路径和 token/签名 URL，不保证来源永久有效。
 - Agent 统一判断 wakeup，并只读检查 waiting Hook route；仅唤起或 waiting continuation 时物化媒体，普通观察 Hook 不下载。
 - Telegram resolver 内使用 token URL和代理，OneBot 按需 get_image/get_file；QQ Official 的事件 URL直接由 Media Center 导入，不引入额外 resolver 层。
+- OneBot 普通输入、引用的平台兜底和转发节点共用适配器内部转换层，统一协议类型、媒体字段和占位文案，直接生成 `platform.MessageSegment`，转换期间不获取资源。普通输入保留文件段并提取提及、回复信息；转发节点保留原始文字和图片，其余类型显示占位，不产生当前消息的提及或回复信息。转发资源获取与节点组织独立于类型转换，输出继续通过 `delivery.Output` 编码为 OneBot 消息段。
+- `refcontext.Options.Enrich` 在来源恢复及已有内容确定后提供可选的有序引用展示段，默认不改变其他平台行为。QQ OneBot 的 forward 普通输入和 Chat History 仅保留 `[forward]`；显式引用时通过 `get_msg` 和 `get_forward_msg` 展开一层，以 `<forward_message>` 标签包裹，图片沿用正常媒体链路，其他类型及嵌套 forward 使用占位。展示正文不包含协议消息 ID；工具通用的历史行头仍可使用外层消息 ID。
+- 引用的 `DisplaySegments` 保留节点内图文顺序，适配器在其后附加当前输入；`Reply.Segments` 保留原始引用媒体位置，展开内部图片不登记为原消息的顶层历史媒体索引。Agent 去除唤醒词或工具指令时保留未改变的文字段和图片位置；存储和厂商请求继续使用有序 segments。
 - 引用按输出索引 → Chat History → 平台能力恢复有序媒体，图片进入视觉输入，Session 仅保存稳定媒体 ID 与文本投影。同一 actor、平台和 scope 的最后一条 assistant 显式设置 `ResumeSessionID`，使 TTL 清理或 `/new` 清除 current 后仍恢复来源 Session，且不重复注入引用内容；较早 assistant 设置 `ForkFromMessageID` 并保留引用媒体。后台 Resume 和其他用户或 scope 的普通引用规则保持独立。
 
 输出侧：
