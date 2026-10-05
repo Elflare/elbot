@@ -12,28 +12,30 @@ import (
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/toolrun"
 	"elbot/internal/turn"
 )
 
 type chatRunner struct {
-	messages      storage.MessageRepository
-	media         *media.Manager
-	contexts      *contextmgr.Service
-	models        *modelmgr.Service
-	turns         *turn.Manager
-	identity      *identityResolver
-	hooks         *hookBridge
-	view          executionView
-	promptBuilder PromptBuilder
-	toolRuntime   *toolRuntimeState
-	toolState     *toolrun.StateService
-	toolDeps      *toolRunDeps
-	caller        *modelCaller
-	replies       *replyCommitter
-	logger        *slog.Logger
-	auditLogger   *slog.Logger
+	logger            *slog.Logger // Context seed diagnostics, not business observation logs.
+	messages          storage.MessageRepository
+	media             *media.Manager
+	contexts          *contextmgr.Service
+	models            *modelmgr.Service
+	turns             *turn.Manager
+	identity          *identityResolver
+	hooks             *hookBridge
+	view              executionView
+	promptBuilder     PromptBuilder
+	toolRuntime       *toolRuntimeState
+	toolState         *toolrun.StateService
+	toolDeps          *toolRunDeps
+	caller            *modelCaller
+	replies           *replyCommitter
+	inputReceived     *signal.Signal[UserInputReceivedEvent]
+	persistenceFailed *signal.Signal[PersistenceFailedEvent]
 }
 
 type chatTurnOutcome uint8

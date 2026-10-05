@@ -94,9 +94,3 @@ type NamingFailedEvent struct {
 	FallbackApplied          bool
 	FallbackTitle            string
 }
-
-type NamingNotifier interface {
-	NotifyNamingScheduled(ctx context.Context, event NamingScheduledEvent)
-	NotifyNamingCompleted(ctx context.Context, event NamingCompletedEvent)
-	NotifyNamingFailed(ctx context.Context, event NamingFailedEvent)
-}

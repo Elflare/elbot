@@ -156,6 +156,17 @@ func (m *Manager) MatchesAttempt(sessionID, attempt string) bool {
 	return matches(m.turns[sessionID], []string{attempt})
 }
 
+// ExecutionAttempt reads both owners under the same lock for status validation.
+func (m *Manager) ExecutionAttempt(sessionID string) (*Execution, string, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.turns[sessionID]
+	if s == nil {
+		return nil, "", false
+	}
+	return s.execution, s.compactRun, true
+}
+
 func (m *Manager) ReserveExecution(sessionID string, input Input, e *Execution) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()

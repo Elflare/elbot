@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"log/slog"
 	"reflect"
 	"strings"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	sessionstate "elbot/internal/session"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
@@ -35,8 +35,8 @@ type toolRunDeps struct {
 	view          executionView
 	output        turnOutput
 	attempt       string
-	logger        *slog.Logger
-	auditLogger   *slog.Logger
+	completed     *signal.Signal[ToolCallCompletedEvent]
+	denied        *signal.Signal[ToolDeniedEvent]
 }
 
 func (d toolRunDeps) forTurn(out turnOutput, attempt string) toolRunDeps {
@@ -149,41 +149,15 @@ func (d toolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call 
 	if callErr != nil {
 		record.Error = callErr.Error()
 	}
+	var recordErr error
 	if d.store != nil && d.store.ToolCalls() != nil {
-		if err := d.store.ToolCalls().Create(ctx, record); err != nil && d.logger != nil {
-			d.logger.Warn("record tool call failed", "session_id", sessionID, "tool", call.Name, "error", err)
-		}
+		recordErr = d.store.ToolCalls().Create(ctx, record)
 	}
-	if d.logger != nil {
-		d.logger.Info("tool call",
-			"event", "tool_call",
-			"session_id", sessionID,
-			"arguments", previewArguments(call.Arguments),
-			"result", previewLogText(result),
-			"tool", call.Name,
-			"tool_call_id", call.ID,
-			"actor_id", record.ActorID,
-			"risk", risk,
-			"success", record.Success,
-			"elapsed_ms", record.FinishedAt.Sub(record.StartedAt).Milliseconds(),
-			"error", record.Error,
-		)
-	}
-	d.audit("tool_call",
-		"session_id", sessionID,
-		"arguments", previewArguments(call.Arguments),
-		"tool", call.Name,
-		"tool_call_id", call.ID,
-		"actor_id", record.ActorID,
-		"risk", risk,
-		"success", record.Success,
-		"elapsed_ms", record.FinishedAt.Sub(record.StartedAt).Milliseconds(),
-		"error", record.Error,
-	)
+	emitFact(ctx, d.completed, ToolCallCompletedEvent{EventMeta: eventMeta(ctx, sessionID), Record: *record, Arguments: call.Arguments, RecordErr: recordErr})
 }
 
 func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string) {
-	d.audit("permission_denied", "actor_id", d.identity.Actor(ctx).ID, "session_id", sessionID, "tool", call.Name, "risk", risk, "reason", reason)
+	emitFact(ctx, d.denied, ToolDeniedEvent{EventMeta: eventMeta(ctx, sessionID), ActorID: d.identity.Actor(ctx).ID, Tool: call.Name, Risk: string(risk), Reason: reason})
 }
 
 func (d toolRunDeps) RememberDiscoveryResult(ctx context.Context, row *storage.Session, result *tool.Result) error {
@@ -212,10 +186,6 @@ func (d toolRunDeps) ToolCallMessage(sessionID, content, rawText string, calls [
 
 func (d toolRunDeps) PersistedToolMessage(message llm.LLMMessage) llm.LLMMessage {
 	return persistedToolMessage(message)
-}
-
-func (d toolRunDeps) audit(event string, attrs ...any) {
-	writeAudit(d.auditLogger, slog.LevelInfo, event, attrs...)
 }
 
 func (d toolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {

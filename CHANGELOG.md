@@ -7,10 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-### Hilight
-
-- 大幅重构底层，优化各包职责与边界
-- 添加事件系统
 
 ### Added
 
@@ -19,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 大幅重构底层，优化各包职责与边界
 - QQ OneBot 消息超过 3000 将转为合并消息
 - Cron／Elnis 现在首次在所属用户同平台私聊或 CLI 恢复时永久转为普通前台会话，并接入原执行。后续输出、权限和确认使用前台规则，原任务等待最终结果并记录接管，停止 JSON 修正、自动汇报及未开始的补投递；群聊、频道不再列出或允许恢复后台会话。
 - 媒体清理由持有全局媒体锁逐个删除，改为最多同时处理 4 个对象并按媒体 ID 互斥；不同媒体的导入和按需上传不再等待整轮清理，同一媒体继续防止上传、删除与重新导入交叉。删除失败或取消后保留记录供后续重试。

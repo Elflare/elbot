@@ -78,6 +78,11 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 	}
 	firstCtx, secondCtx := snapshot(first), snapshot(second)
 	router := dispatch.New(dispatch.Options{Primary: s})
+	firstTarget, firstTargetErr := router.RuntimeStatusTarget(firstCtx)
+	secondTarget, secondTargetErr := router.RuntimeStatusTarget(secondCtx)
+	if firstTargetErr != nil || secondTargetErr != nil || firstTarget == "" || firstTarget == secondTarget {
+		t.Fatalf("status targets merged original CLI connections: %q / %q", firstTarget, secondTarget)
+	}
 	read := func(conn *websocket.Conn, want string) {
 		var msg remoteMessage
 		if err := wsjson.Read(ctx, conn, &msg); err != nil {

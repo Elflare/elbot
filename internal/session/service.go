@@ -21,21 +21,21 @@ type Service struct {
 	foregroundActivation func(context.Context, *storage.Session, *Binding)
 	namingConfig         NamingConfig
 	titleGen             TitleGenerator
-	notifier             NamingNotifier
+	namingSignals        NamingSignals
 	namingStates         map[string]namingState
 	naming               namingLifecycle
 	defaultMode          string
 }
 
 func NewService(store storage.Store) *Service {
-	return NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, nil, nil)
+	return NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, nil)
 }
 
-func NewServiceWithNaming(store storage.Store, cfg NamingConfig, titleGen TitleGenerator, notifier NamingNotifier) *Service {
-	return NewServiceWithConfig(store, Config{NamingConfig: cfg, DefaultMode: storage.SessionModeWork}, titleGen, notifier)
+func NewServiceWithNaming(store storage.Store, cfg NamingConfig, titleGen TitleGenerator) *Service {
+	return NewServiceWithConfig(store, Config{NamingConfig: cfg, DefaultMode: storage.SessionModeWork}, titleGen)
 }
 
-func NewServiceWithConfig(store storage.Store, cfg Config, titleGen TitleGenerator, notifier NamingNotifier) *Service {
+func NewServiceWithConfig(store storage.Store, cfg Config, titleGen TitleGenerator) *Service {
 	if cfg.TriggerStep <= 0 {
 		cfg.TriggerStep = 1
 	}
@@ -45,20 +45,17 @@ func NewServiceWithConfig(store storage.Store, cfg Config, titleGen TitleGenerat
 	if err := validateMode(cfg.DefaultMode); err != nil {
 		cfg.DefaultMode = storage.SessionModeWork
 	}
-	if notifier == nil {
-		notifier = noopNamingNotifier{}
-	}
 	return &Service{
-		store:        store,
-		current:      map[string]*Binding{},
-		gates:        map[string]*scopeGate{},
-		changed:      signal.New[BindingChangedEvent]("session.binding_changed", nil),
-		namingConfig: cfg.NamingConfig,
-		titleGen:     titleGen,
-		notifier:     notifier,
-		namingStates: map[string]namingState{},
-		naming:       namingLifecycle{done: make(chan struct{})},
-		defaultMode:  cfg.DefaultMode,
+		store:         store,
+		current:       map[string]*Binding{},
+		gates:         map[string]*scopeGate{},
+		changed:       signal.New[BindingChangedEvent]("session.binding_changed", nil),
+		namingConfig:  cfg.NamingConfig,
+		titleGen:      titleGen,
+		namingSignals: newNamingSignals(),
+		namingStates:  map[string]namingState{},
+		naming:        namingLifecycle{done: make(chan struct{})},
+		defaultMode:   cfg.DefaultMode,
 	}
 }
 

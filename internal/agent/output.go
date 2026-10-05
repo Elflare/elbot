@@ -5,26 +5,21 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
 
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/notification"
-	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/platform"
-	runtimestatus "elbot/internal/runtime"
 )
 
 type outputSender struct {
-	dispatcher             *dispatch.Router
-	notifications          *notification.Manager
-	hooks                  *hookBridge
-	identity               *identityResolver
-	logger                 *slog.Logger
-	visionFallbackMu       sync.Mutex
-	visionFallbackNotified map[string]bool
+	dispatcher    *dispatch.Router
+	notifications *notification.Manager
+	hooks         *hookBridge
+	identity      *identityResolver
+	logger        *slog.Logger
 }
 
 func (o *outputSender) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
@@ -166,25 +161,10 @@ func (o *outputSender) Reasoning(ctx context.Context, text string) {
 	}
 }
 
-func (o *outputSender) PublishRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) {
-	if snapshot.SessionID != "" {
-		_ = o.dispatcher.SetRuntimeStatus(ctx, snapshot)
-	}
-}
-
-func (o *outputSender) notifyVisionFallbackOnce(ctx context.Context, sessionID string, out turnOutput) {
-	if !o.identity.IsCLI(ctx) {
-		return
-	}
-	o.visionFallbackMu.Lock()
-	if o.visionFallbackNotified[sessionID] {
-		o.visionFallbackMu.Unlock()
-		return
-	}
-	if o.visionFallbackNotified == nil {
-		o.visionFallbackNotified = map[string]bool{}
-	}
-	o.visionFallbackNotified[sessionID] = true
-	o.visionFallbackMu.Unlock()
-	_, _ = out.SendAssistant(ctx, notificationrules.VisionFallback)
+// NotificationSender exposes the output component, never the Agent execution
+// entrypoint. Notice consumers retain normal output Hooks and physical routing.
+func (a *Agent) NotificationSender() interface {
+	SendAssistant(context.Context, string) (delivery.Receipt, error)
+} {
+	return a.output
 }

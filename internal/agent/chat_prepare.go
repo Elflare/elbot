@@ -33,9 +33,7 @@ func (r *chatRunner) prepareTurn(ctx context.Context, session *storage.Session, 
 		Segments:                 storedMessageSegments(userSegments),
 		ReplyToPlatformMessageID: inboundReplyMessageID(ctx),
 	}
-	if r.logger != nil {
-		r.logger.Info("user input", "event", "user_message", "session_id", session.ID, "text", previewLogText(userContent))
-	}
+	emitFact(ctx, r.inputReceived, UserInputReceivedEvent{EventMeta: eventMeta(ctx, session.ID), Text: userContent})
 
 	loaded, err := r.contexts.Load(ctx, session.ID)
 	if err != nil {
@@ -110,7 +108,7 @@ func (r *chatRunner) prepareMessages(s *chatTurnState, prepared *preparedTurn) e
 		userMessage.Content = llm.SegmentsContentText(canonicalUserSegments)
 		userMessage.Segments = storedMessageSegments(canonicalUserSegments)
 	}
-	if err := persistTurnMessage(s.ctx, r.messages, r.media, r.auditLogger, userMessage, "append_user_message"); err != nil {
+	if err := persistTurnMessage(s.ctx, r.messages, r.media, r.persistenceFailed, userMessage, "append_user_message"); err != nil {
 		return err
 	}
 	if compactSeedOnCurrentUser {

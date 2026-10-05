@@ -17,6 +17,8 @@ type QueueOptions struct {
 	Name     string
 	Capacity int
 	Logger   *slog.Logger
+	// WaitForCapacity applies backpressure instead of returning ErrQueueFull.
+	WaitForCapacity bool
 }
 type job struct {
 	ctx  context.Context
@@ -24,16 +26,17 @@ type job struct {
 }
 
 type Queue struct {
-	mu             sync.Mutex
-	ready          *sync.Cond
-	closed         bool
-	jobs           []job
-	capacity       int
-	activeCancel   context.CancelFunc
-	activeShutdown ShutdownPolicy
-	done           chan struct{}
-	name           string
-	logger         *slog.Logger
+	mu              sync.Mutex
+	ready           *sync.Cond
+	closed          bool
+	jobs            []job
+	capacity        int
+	activeCancel    context.CancelFunc
+	activeShutdown  ShutdownPolicy
+	done            chan struct{}
+	name            string
+	logger          *slog.Logger
+	waitForCapacity bool
 }
 
 func NewQueue(options QueueOptions) (*Queue, error) {
@@ -49,6 +52,7 @@ func NewQueue(options QueueOptions) (*Queue, error) {
 	q := &Queue{
 		jobs: make([]job, 0, options.Capacity), capacity: options.Capacity,
 		done: make(chan struct{}), name: options.Name, logger: options.Logger,
+		waitForCapacity: options.WaitForCapacity,
 	}
 	q.ready = sync.NewCond(&q.mu)
 	go q.work()
@@ -70,11 +74,27 @@ func (q *Queue) Submit(ctx context.Context, task Task) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if len(q.jobs) == q.capacity {
+	if q.waitForCapacity {
+		stop := context.AfterFunc(ctx, func() {
+			q.mu.Lock()
+			q.ready.Broadcast()
+			q.mu.Unlock()
+		})
+		defer stop()
+		for len(q.jobs) == q.capacity && !q.closed && ctx.Err() == nil {
+			q.ready.Wait()
+		}
+		if q.closed {
+			return ErrClosed
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	} else if len(q.jobs) == q.capacity {
 		return ErrQueueFull
 	}
 	q.jobs = append(q.jobs, job{ctx: ctx, task: task})
-	q.ready.Signal()
+	q.ready.Broadcast()
 	return nil
 }
 
@@ -93,6 +113,7 @@ func (q *Queue) work() {
 		copy(q.jobs, q.jobs[1:])
 		q.jobs[len(q.jobs)-1] = job{}
 		q.jobs = q.jobs[:len(q.jobs)-1]
+		q.ready.Broadcast()
 		ctx, cancel := context.WithCancel(entry.ctx)
 		q.activeCancel = cancel
 		q.activeShutdown = entry.task.Shutdown
@@ -114,9 +135,9 @@ func (q *Queue) work() {
 	}
 }
 
-// Close rejects new work and applies each subscription's shutdown policy.
-// A deadline stops waiting and requests cancellation; only Done proves exit.
-func (q *Queue) Close(ctx context.Context) error {
+// BeginClose stops admission and wakes blocked producers without waiting for
+// callbacks. Call it before waiting for producers that may be backpressured.
+func (q *Queue) BeginClose() {
 	q.mu.Lock()
 	if !q.closed {
 		q.closed = true
@@ -134,6 +155,12 @@ func (q *Queue) Close(ctx context.Context) error {
 		q.ready.Broadcast()
 	}
 	q.mu.Unlock()
+}
+
+// Close rejects new work and applies each subscription's shutdown policy.
+// A deadline stops waiting and requests cancellation; only Done proves exit.
+func (q *Queue) Close(ctx context.Context) error {
+	q.BeginClose()
 	select {
 	case <-q.done:
 		return nil
@@ -144,6 +171,7 @@ func (q *Queue) Close(ctx context.Context) error {
 		return nil
 	case <-ctx.Done():
 		q.mu.Lock()
+		pending, active := len(q.jobs), q.activeCancel != nil
 		clear(q.jobs)
 		q.jobs = nil
 		if q.activeCancel != nil {
@@ -151,6 +179,9 @@ func (q *Queue) Close(ctx context.Context) error {
 		}
 		q.ready.Broadcast()
 		q.mu.Unlock()
+		if q.waitForCapacity && (pending > 0 || active) {
+			q.logger.ErrorContext(context.WithoutCancel(ctx), "signal log drain incomplete", "queue", q.name, "pending", pending, "active", active, "error", ctx.Err())
+		}
 		return fmt.Errorf("signal queue %s not fully closed: %w", q.name, ctx.Err())
 	}
 }

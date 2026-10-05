@@ -99,7 +99,7 @@ func (s *Signal[T]) Emit(ctx context.Context, event T) error {
 		}
 		if err != nil {
 			unexpected, _ := filterErrors(err, func(leaf error) bool {
-				return (entry.options.Executor != nil && errors.Is(leaf, ErrClosed)) || (ctx.Err() != nil && errors.Is(leaf, ctx.Err()))
+				return (entry.options.Executor != nil && entry.options.Shutdown != Drain && errors.Is(leaf, ErrClosed)) || (ctx.Err() != nil && errors.Is(leaf, ctx.Err()))
 			})
 			if unexpected != nil {
 				s.logger.ErrorContext(ctx, "signal dispatch failed", "signal", s.name, "error", unexpected)

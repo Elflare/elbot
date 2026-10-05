@@ -20,7 +20,6 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	"elbot/internal/notification"
-	notificationrules "elbot/internal/notification/rules"
 	platformbuiltin "elbot/internal/platform/builtin"
 	"elbot/internal/request"
 	"elbot/internal/security"
@@ -88,7 +87,6 @@ func buildSharedServices(ctx context.Context, req RuntimeRequest) (*sharedServic
 		}
 	}
 	notices := notification.New(dispatcher, logger, req.Platforms.Primary != nil && req.Platforms.Primary.Name() == "service")
-	models.SetRetryNotifier(notificationrules.ModelRetry(notices))
 	definitions := append(platformbuiltin.ConfigDefinitions(), hookrules.ConfigDefinition())
 	diagnostics, err := doctor.New(cfg.ConfigPath, config.NewInspector(definitions...))
 	if err != nil {
@@ -98,7 +96,7 @@ func buildSharedServices(ctx context.Context, req RuntimeRequest) (*sharedServic
 		Models:    models,
 		Contexts:  contextmgr.New(contextmgr.Options{Store: foundation.Store, Models: models, Config: cfg.Context, Metadata: cfg.ModelMetadata, Providers: cfg.Providers}),
 		ToolState: toolrun.NewStateService(foundation.Store),
-		Sessions:  session.NewServiceWithConfig(foundation.Store, session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode}, session.NewTitleGenerator(models), namingLogger{logger: logger}),
+		Sessions:  session.NewServiceWithConfig(foundation.Store, session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode}, session.NewTitleGenerator(models)),
 		Requests:  request.NewManager(0), Turns: turn.NewManager(),
 		Commands:        command.NewRouter(cfg.Commands.Prefixes),
 		SessionCommands: commandbuiltin.NewSessionCommandState(cfg.View.SessionListPageSize, cfg.Maintenance.SessionCleanup.RetentionDays),

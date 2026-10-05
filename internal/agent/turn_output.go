@@ -60,7 +60,7 @@ func (o foregroundTurnOutput) SendReasoning(ctx context.Context, text string) {
 }
 
 func (o foregroundTurnOutput) PublishRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) {
-	o.sender.PublishRuntimeStatus(ctx, o.status.Record(snapshot))
+	o.status.Record(ctx, snapshot, true)
 }
 
 func (o backgroundTurnOutput) StartStream(ctx context.Context) delivery.MessageStream { return nil }
@@ -88,5 +88,5 @@ func (o backgroundTurnOutput) SendPreview(ctx context.Context, text string) {}
 func (o backgroundTurnOutput) SendReasoning(ctx context.Context, text string) {}
 
 func (o backgroundTurnOutput) PublishRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) {
-	o.status.Record(snapshot)
+	o.status.Record(ctx, snapshot, false)
 }

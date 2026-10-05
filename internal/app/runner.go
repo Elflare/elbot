@@ -19,7 +19,11 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	var shutdownCtx context.Context
 	var shutdownCancel context.CancelFunc
+	var bindings *signalBindings
 	beginShutdown := func() {
+		if bindings != nil {
+			bindings.BeginClose()
+		}
 		if shutdownCtx != nil {
 			return
 		}
@@ -113,6 +117,7 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	}
 	runtime, err := r.deps.Runtime.Build(ctx, RuntimeRequest{Foundation: foundation, Models: models, Platforms: platforms, Profiler: profiler})
 	if runtime != nil {
+		bindings = runtime.Signals
 		if runtime.Lifecycle != nil {
 			step := cleanupStep{name: "runtime", close: runtime.Lifecycle.Close}
 			if lifecycle, ok := runtime.Lifecycle.(interface{ stopped() bool }); ok {

@@ -21,6 +21,7 @@ import (
 	runtimestatus "elbot/internal/runtime"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/turn"
@@ -38,9 +39,18 @@ func (p *statusReadingPlatform) SetRuntimeStatus(_ context.Context, sent runtime
 }
 
 func TestComponentStatusRecordedBeforeDisplayAndBackgroundStaysSilent(t *testing.T) {
-	recorder := &statusRecorder{}
+	recorder := &statusRecorder{changed: signal.New[StatusChangedEvent]("test.status", nil)}
 	p := &statusReadingPlatform{recorder: recorder, observed: make(chan runtimestatus.Snapshot, 2)}
 	foreground := foregroundTurnOutput{sender: &outputSender{dispatcher: dispatch.New(dispatch.Options{Primary: p})}, status: recorder}
+	_, err := recorder.changed.Connect(func(ctx context.Context, event StatusChangedEvent) error {
+		if event.Display {
+			return foreground.sender.dispatcher.SetRuntimeStatus(ctx, event.Snapshot)
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	background := backgroundTurnOutput{status: recorder}
 	started := time.Now()
 	background.PublishRuntimeStatus(context.Background(), runtimestatus.Snapshot{SessionID: "s1", Model: "model", TurnStartedAt: started, Phase: runtimestatus.PhaseLLM})
@@ -70,7 +80,7 @@ func TestComponentStatusRecordedBeforeDisplayAndBackgroundStaysSilent(t *testing
 	for _, id := range []string{"s1", "s2", "s3"} {
 		wg.Go(func() {
 			for range 30 {
-				recorder.Record(runtimestatus.Snapshot{SessionID: id, Phase: runtimestatus.PhaseLLM})
+				recorder.Record(context.Background(), runtimestatus.Snapshot{SessionID: id, Phase: runtimestatus.PhaseLLM}, false)
 				_ = recorder.Snapshot(id)
 			}
 		})
@@ -121,7 +131,7 @@ type componentLogs struct{ logger *slog.Logger }
 func (l componentLogs) Runtime() *slog.Logger { return l.logger }
 func (l componentLogs) Audit() *slog.Logger   { return l.logger }
 
-func TestComponentLoggerReplacementReachesHookOutputAndReply(t *testing.T) {
+func TestDiagnosticLoggerReplacementAndRetiredObservationLogs(t *testing.T) {
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t))
 	manager := hook.NewManager()
 	if err := manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "failing", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
@@ -145,13 +155,13 @@ func TestComponentLoggerReplacementReachesHookOutputAndReply(t *testing.T) {
 	var before, after bytes.Buffer
 	a.SetLogger(slog.New(slog.NewTextHandler(&before, nil)))
 	emit()
-	if !strings.Contains(before.String(), "hook error") || !strings.Contains(before.String(), "chat send failed") || !strings.Contains(before.String(), "map platform message failed") {
+	if !strings.Contains(before.String(), "chat send failed") || strings.Contains(before.String(), "hook error") || strings.Contains(before.String(), "map platform message failed") {
 		t.Fatalf("SetLogger did not reach all components: %s", before.String())
 	}
 	before.Reset()
 	a.SetLogManager(componentLogs{slog.New(slog.NewTextHandler(&after, nil))})
 	emit()
-	if before.Len() != 0 || strings.Count(after.String(), "hook error") != 1 || strings.Count(after.String(), "chat send failed") != 1 || strings.Count(after.String(), "map platform message failed") != 1 || strings.Count(after.String(), "map_platform_message") != 1 {
+	if before.Len() != 0 || strings.Count(after.String(), "hook error") != 0 || strings.Count(after.String(), "chat send failed") != 1 || strings.Count(after.String(), "map platform message failed") != 0 || strings.Count(after.String(), "map_platform_message") != 0 {
 		t.Fatalf("logger replacement: old=%s new=%s", before.String(), after.String())
 	}
 	after.Reset()
@@ -195,48 +205,37 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 	}
 }
 
-func TestComponentLoggerReplacementReachesExecutionChatModelToolsAndConfirmation(t *testing.T) {
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{replies: []string{"one", "two", "three"}}, "model", config.ProviderConfig{}, newTestStore(t))
+func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{replies: []string{"one"}}, "model", config.ProviderConfig{}, newTestStore(t))
 	ctx, row, err := a.execution.resolveInput(context.Background(), "logging")
 	if err != nil {
 		t.Fatal(err)
 	}
+	counts := map[string]int{}
+	_, _ = a.signals.UserInputReceived.Connect(func(context.Context, UserInputReceivedEvent) error { counts["input"]++; return nil }, signal.ConnectOptions{})
+	_, _ = a.signals.ModelCallCompleted.Connect(func(context.Context, ModelCallCompletedEvent) error { counts["model"]++; return nil }, signal.ConnectOptions{})
+	_, _ = a.signals.ToolCallCompleted.Connect(func(context.Context, ToolCallCompletedEvent) error { counts["tool"]++; return nil }, signal.ConnectOptions{})
+	_, _ = a.signals.ConfirmationChanged.Connect(func(context.Context, ConfirmationChangedEvent) error { counts["confirm"]++; return nil }, signal.ConnectOptions{})
+	_, _ = a.signals.TurnTimedOut.Connect(func(context.Context, TurnTimedOutEvent) error { counts["timeout"]++; return nil }, signal.ConnectOptions{})
+	var legacy bytes.Buffer
+	a.SetLogManager(componentLogs{slog.New(slog.NewTextHandler(&legacy, nil))})
 	out := foregroundTurnOutput{sender: a.output, status: a.status}
-	emit := func() {
-		if _, err := a.chat.prepareTurn(ctx, row, "input"); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := a.caller.Call(ctx, row, modelSelectionForTurn(ctx, a.models, row), nil, nil, nil, nil, out); err != nil {
-			t.Fatal(err)
-		}
-		call := llm.ToolCallRequest{ID: "call", Name: "test_tool", Arguments: "{}"}
-		a.toolDeps.RecordToolCall(ctx, row.ID, call, "low", storage.Now(), "done", nil)
-		a.confirmations.logRiskConfirmationWait(row.ID, call, tool.RiskHigh, nil)
-		a.execution.handleTurnContextDone(ctx, row.ID, context.DeadlineExceeded, out)
+	if _, err := a.chat.prepareTurn(ctx, row, "input"); err != nil {
+		t.Fatal(err)
 	}
-	var before, after bytes.Buffer
-	a.SetLogger(slog.New(slog.NewTextHandler(&before, nil)))
-	emit()
-	for _, message := range []string{"user input", "llm output", "turn response timeout", "msg=\"tool call\""} {
-		if strings.Count(before.String(), message) != 1 {
-			t.Fatalf("runtime message %q: %s", message, before.String())
+	if _, err := a.caller.Call(ctx, row, modelSelectionForTurn(ctx, a.models, row), nil, nil, nil, nil, out); err != nil {
+		t.Fatal(err)
+	}
+	call := llm.ToolCallRequest{ID: "call", Name: "test_tool", Arguments: "{}"}
+	a.toolDeps.RecordToolCall(ctx, row.ID, call, "low", storage.Now(), "done", nil)
+	a.confirmations.publishConfirmationWait(ctx, row.ID, call, tool.RiskHigh, nil)
+	a.execution.handleTurnContextDone(ctx, row.ID, context.DeadlineExceeded, out)
+	for _, event := range []string{"input", "model", "tool", "confirm", "timeout"} {
+		if counts[event] != 1 {
+			t.Fatalf("%s events = %d", event, counts[event])
 		}
 	}
-	before.Reset()
-	a.SetLogManager(componentLogs{slog.New(slog.NewTextHandler(&after, nil))})
-	emit()
-	if before.Len() != 0 {
-		t.Fatal("component retained replaced logger")
-	}
-	for _, message := range []string{"user input", "llm output", "turn response timeout", "msg=\"tool call\"", "event=risk_confirmation_wait", "event=turn_response_timeout", "event=llm_usage"} {
-		if strings.Count(after.String(), message) != 1 {
-			t.Fatalf("replacement message %q: %s", message, after.String())
-		}
-	}
-	after.Reset()
-	a.SetLogManager(nil)
-	emit()
-	if after.Len() != 0 {
-		t.Fatal("component retained cleared logger")
+	if legacy.Len() != 0 {
+		t.Fatalf("retired direct logs remain: %s", legacy.String())
 	}
 }

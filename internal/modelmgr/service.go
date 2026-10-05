@@ -8,6 +8,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/llm"
+	"elbot/internal/signal"
 )
 
 type Options struct {
@@ -31,6 +32,7 @@ type Service struct {
 	save         func(string, config.StateConfig) error
 	clients      map[string]llm.LLM
 	providers    map[string]*providerCatalog
+	retrying     *signal.Signal[ModelRetryingEvent]
 }
 
 func New(opts Options) (*Service, error) {
@@ -60,6 +62,7 @@ func New(opts Options) (*Service, error) {
 		save:         config.SaveState,
 		clients:      make(map[string]llm.LLM, len(opts.Providers)),
 		providers:    make(map[string]*providerCatalog, len(opts.Providers)),
+		retrying:     signal.New[ModelRetryingEvent]("model.retrying", nil),
 	}
 	for name, provider := range opts.Providers {
 		client := opts.Clients[name]
@@ -70,6 +73,13 @@ func New(opts Options) (*Service, error) {
 		s.providers[name] = &providerCatalog{
 			baseURL: provider.BaseURL, apiKey: provider.APIKey, apiKeyEnv: provider.APIKeyEnv,
 			configured: append([]string(nil), provider.Models...),
+		}
+	}
+	for provider, client := range s.clients {
+		if notifier, ok := client.(llm.RetryNotifier); ok {
+			notifier.SetRetryNotifier(func(ctx context.Context, event llm.RetryEvent) {
+				_ = s.retrying.Emit(ctx, ModelRetryingEvent{Provider: provider, Retry: event})
+			})
 		}
 	}
 	return s, nil
@@ -86,17 +96,3 @@ func validateSelection(name string, selected config.ModelSelection, providers ma
 }
 
 func (s *Service) ClientForProvider(provider string) llm.LLM { return s.clients[provider] }
-
-// SetRetryNotifier connects the existing output integration at startup. Neither
-// this callback nor provider I/O is invoked while holding selection locks.
-func (s *Service) SetRetryNotifier(notify func(context.Context, string, llm.RetryEvent)) {
-	for provider, client := range s.clients {
-		if notifier, ok := client.(llm.RetryNotifier); ok {
-			if notify == nil {
-				notifier.SetRetryNotifier(nil)
-				continue
-			}
-			notifier.SetRetryNotifier(func(ctx context.Context, event llm.RetryEvent) { notify(ctx, provider, event) })
-		}
-	}
-}

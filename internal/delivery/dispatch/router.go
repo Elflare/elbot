@@ -150,3 +150,21 @@ func (r *Router) SetRuntimeStatus(ctx context.Context, snapshot runtimestatus.Sn
 	}
 	return nil
 }
+
+// RuntimeStatusTarget identifies the actual display without doing platform I/O.
+// Remote adapters include their original connection, rather than just a user ID.
+func (r *Router) RuntimeStatusTarget(ctx context.Context) (string, error) {
+	sender, err := r.sender(ctx, delivery.Target{})
+	if err != nil {
+		return "", err
+	}
+	if _, ok := sender.(interface {
+		SetRuntimeStatus(context.Context, runtimestatus.Snapshot) error
+	}); !ok {
+		return "", nil
+	}
+	if target, ok := sender.(interface{ RuntimeStatusTarget(context.Context) string }); ok {
+		return target.RuntimeStatusTarget(ctx), nil
+	}
+	return fmt.Sprintf("%T:%p", sender, sender), nil
+}

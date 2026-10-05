@@ -41,7 +41,7 @@ func newExecutionFixture(t *testing.T, client llm.LLM, store storage.Store) *exe
 	opts := assembleTestOptions(testAgentOptions{Models: models, Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{DefaultMode: storage.SessionModeWork}})
 	identity := &identityResolver{platformName: "cli", actorID: "cli:local", scopeID: "local", policy: opts.SecurityPolicy}
 	hooks := hook.NewManager()
-	bridge := &hookBridge{manager: hooks, requests: opts.Requests, identity: identity, notifications: opts.Notifications, dispatcher: opts.Dispatcher}
+	bridge := &hookBridge{manager: hooks, requests: opts.Requests, identity: identity, dispatcher: opts.Dispatcher}
 	status := &statusRecorder{}
 	output := &outputSender{dispatcher: opts.Dispatcher, notifications: opts.Notifications, hooks: bridge, identity: identity}
 	view := executionView{sessions: store.Sessions()}
@@ -55,7 +55,7 @@ func newExecutionFixture(t *testing.T, client llm.LLM, store storage.Store) *exe
 	runtime.manager, runtime.preloader = opts.ToolRunner, opts.ToolPreloader
 	deps := &toolRunDeps{hooks: bridge, requests: opts.Requests, turns: opts.Turns, identity: identity,
 		state: opts.ToolState, runtime: &runtime, sessions: opts.Sessions, store: store, confirmations: confirmations, view: view}
-	caller := &modelCaller{messages: store.Messages(), hooks: bridge, identity: identity, output: output, toolState: opts.ToolState, toolRuntime: &runtime}
+	caller := &modelCaller{messages: store.Messages(), hooks: bridge, identity: identity, toolState: opts.ToolState, toolRuntime: &runtime}
 	chat := &chatRunner{
 		messages: store.Messages(), contexts: opts.Contexts, models: models, turns: opts.Turns, identity: identity,
 		hooks: bridge, view: view, toolRuntime: &runtime, toolState: opts.ToolState, toolDeps: deps, caller: caller,

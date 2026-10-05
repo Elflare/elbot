@@ -192,6 +192,13 @@ func (s *RemoteServer) SetRuntimeStatus(ctx context.Context, snapshot runtimesta
 	return nil
 }
 
+func (s *RemoteServer) RuntimeStatusTarget(ctx context.Context) string {
+	if client, ok := originalClient(ctx); ok {
+		return fmt.Sprintf("cli.remote:%p", client)
+	}
+	return ""
+}
+
 func (s *RemoteServer) SendReasoning(ctx context.Context, text string) error {
 	if strings.TrimSpace(text) == "" {
 		return nil

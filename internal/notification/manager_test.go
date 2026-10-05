@@ -38,7 +38,7 @@ func TestNotificationSourceSurvivesNewContextAndRejectsExpiredBinding(t *testing
 		t.Fatal(err)
 	}
 	defer store.Close()
-	sessions := session.NewServiceWithConfig(store, session.Config{DefaultMode: "work"}, nil, nil)
+	sessions := session.NewServiceWithConfig(store, session.Config{DefaultMode: "work"}, nil)
 	scope := session.Scope{ActorID: "test:one", Platform: "test", PlatformScopeID: "old"}
 	if _, err := sessions.Create(ctx, scope, session.CreateRequest{Title: "old"}); err != nil {
 		t.Fatal(err)

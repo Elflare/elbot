@@ -165,7 +165,7 @@ func (r *chatRunner) runLoop(s *chatTurnState) chatLoopResult {
 		}
 		s.messages[assistantToolCallIndex].ToolCalls = append([]llm.ToolCallRequest(nil), execution.PreparedCalls...)
 		s.messages = append(s.messages, execution.Messages...)
-		if err := persistTurnMessages(s.ctx, r.messages, r.media, r.auditLogger, s.session.ID, "append_tool_transcript", execution.Transcript); err != nil {
+		if err := persistTurnMessages(s.ctx, r.messages, r.media, r.persistenceFailed, s.session.ID, "append_tool_transcript", execution.Transcript); err != nil {
 			return failedChatLoop(err)
 		}
 		s.tools, err = r.toolsForSession(s.ctx, s.session)

@@ -5,39 +5,31 @@ import (
 	"log/slog"
 
 	"elbot/internal/session"
+	"elbot/internal/signal"
 )
 
 type namingLogger struct {
 	logger *slog.Logger
 }
 
-func (n namingLogger) NotifyNamingScheduled(ctx context.Context, event session.NamingScheduledEvent) {
-	if n.logger == nil {
-		return
-	}
-	n.logger.InfoContext(ctx, "session naming scheduled",
+func (n namingLogger) scheduled(ctx context.Context, event session.NamingScheduledEvent) error {
+	return writeLog(ctx, n.logger, event.TriggeredAt, slog.LevelInfo, "session naming scheduled",
 		"session_id", event.SessionID,
 		"message_count", event.MessageCount,
 		"trigger_step", event.TriggerStep,
 	)
 }
 
-func (n namingLogger) NotifyNamingCompleted(ctx context.Context, event session.NamingCompletedEvent) {
-	if n.logger == nil {
-		return
-	}
-	n.logger.InfoContext(ctx, "session naming completed",
+func (n namingLogger) completed(ctx context.Context, event session.NamingCompletedEvent) error {
+	return writeLog(ctx, n.logger, event.TriggeredAt, slog.LevelInfo, "session naming completed",
 		"session_id", event.SessionID,
 		"title", event.Title,
 		"message_count", event.MessageCount,
 	)
 }
 
-func (n namingLogger) NotifyNamingFailed(ctx context.Context, event session.NamingFailedEvent) {
-	if n.logger == nil {
-		return
-	}
-	n.logger.WarnContext(ctx, "session naming failed",
+func (n namingLogger) failed(ctx context.Context, event session.NamingFailedEvent) error {
+	return writeLog(ctx, n.logger, event.TriggeredAt, slog.LevelWarn, "session naming failed",
 		"session_id", event.SessionID,
 		"stage", event.Stage,
 		"llm_call", event.LLMCall,
@@ -54,4 +46,20 @@ func (n namingLogger) NotifyNamingFailed(ctx context.Context, event session.Nami
 		"error", event.Err,
 	)
 
+}
+
+func (b *signalBindings) connectNaming(sessions *session.Service, logger *slog.Logger) error {
+	queue, err := b.newQueue("session.naming_logs", logger, true)
+	if err != nil {
+		return err
+	}
+	options := signal.ConnectOptions{Executor: queue, Lifetime: signal.FollowExecutor, Shutdown: signal.Drain}
+	logs, events := namingLogger{logger: logger}, sessions.NamingSignals()
+	if err := connectSignal(b, events.Scheduled, logs.scheduled, options); err != nil {
+		return err
+	}
+	if err := connectSignal(b, events.Completed, logs.completed, options); err != nil {
+		return err
+	}
+	return connectSignal(b, events.Failed, logs.failed, options)
 }

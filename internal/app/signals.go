@@ -12,11 +12,12 @@ import (
 	"elbot/internal/signal"
 )
 
-// signalBindings is assembled before platforms run and closed after they stop.
-// It owns subscriptions and queues even if subsequent startup stages fail.
+// signalBindings owns subscriptions and queues before platforms start, including
+// partial startup failures. BeginClose wakes producers before waiting for exit.
 type signalBindings struct {
 	connections []*signal.Connection
 	queues      []*signal.Queue
+	displays    []*statusDisplay
 }
 
 func (b *signalBindings) connectSession(sessions *session.Service, rollback *fileops.RollbackManager, logger *slog.Logger) error {
@@ -84,22 +85,40 @@ func (b *signalBindings) connectPlatforms(agt platformHookAgent, cron *elcron.Se
 	return nil
 }
 
-func (b *signalBindings) Close(ctx context.Context) error {
+func (b *signalBindings) BeginClose() {
 	for _, connection := range b.connections {
 		connection.Disconnect()
 	}
-	results := make(chan error, len(b.queues))
+	for _, queue := range b.queues {
+		queue.BeginClose()
+	}
+	for _, display := range b.displays {
+		display.BeginClose()
+	}
+}
+
+func (b *signalBindings) Close(ctx context.Context) error {
+	b.BeginClose()
+	results := make(chan error, len(b.queues)+len(b.displays))
+	for _, display := range b.displays {
+		go func() { results <- display.Close(ctx) }()
+	}
 	for _, queue := range b.queues {
 		go func() { results <- queue.Close(ctx) }()
 	}
 	var errs []error
-	for range b.queues {
+	for range len(b.queues) + len(b.displays) {
 		errs = append(errs, <-results)
 	}
 	return errors.Join(errs...)
 }
 
 func (b *signalBindings) stopped() bool {
+	for _, display := range b.displays {
+		if !display.stopped() {
+			return false
+		}
+	}
 	for _, queue := range b.queues {
 		select {
 		case <-queue.Done():
