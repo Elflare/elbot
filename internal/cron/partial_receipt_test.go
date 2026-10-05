@@ -21,9 +21,9 @@ func TestPartialSendMapsSuccessAndReturnsFailure(t *testing.T) {
 	}
 	wantErr := errors.New("later page failed")
 	s := NewService(Options{Store: store, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
-		return delivery.Receipt{PlatformMessageIDs: []string{"partial"}}, wantErr
+		return delivery.Receipt{PlatformMessageIDs: []string{"partial"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ScopeID: "private:1001", PlatformMessageID: "partial"}}}, wantErr
 	}})
-	if err := s.sendOutputsToPlatformTarget(ctx, "partial", "qqonebot", delivery.Target{PrivateUserID: "1001"}, []delivery.Output{delivery.Text("report")}, row.ID, "cron-message", "private:1001"); !errors.Is(err, wantErr) {
+	if err := s.sendOutputsToPlatformTarget(ctx, "partial", "qqonebot", delivery.Target{PrivateUserID: "1001"}, []delivery.Output{delivery.Text("report")}, row.ID, "cron-message"); !errors.Is(err, wantErr) {
 		t.Fatalf("send error=%v", err)
 	}
 	msg, err := store.Messages().FindByPlatformMessage(ctx, "qqonebot", "private:1001", "partial")

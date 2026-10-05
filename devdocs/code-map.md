@@ -27,7 +27,7 @@ rg -n "locator:tool" devdocs/code-map.md
 - `internal/app/foundation.go`、`models.go`：配置／存储基础设施和 provider 客户端。
 - `internal/app/services.go`、`runtime.go`：共享服务创建、内置命令注册、Cron／Tool／Hook／Agent 装配及 Session／Hook 执行回调接线；先完成注册和接线再开放平台入口。
 - `internal/app/platforms.go`、`integrations.go`：平台运行、Elnis 和平台能力接线；同目录还包含远程 CLI client 与 service marker。
-- `internal/app/signals.go`、`lifecycle.go`：信号连接／队列所有权、Hook 与延迟 Skill 加载取消和完成等待；Runner 统一清理部分启动资源并共享关闭预算。
+- `internal/app/signals.go`、`lifecycle.go`：平台 Hook／Cron 恢复的独立订阅和队列，Session 命名、Hook 与延迟 Skill 加载的取消和完成等待；Runner 统一清理部分启动资源并共享关闭预算。
 - `internal/app/foundation.go`、`runner.go`：独立 StopCron 取消并等待启动及在途任务，完成后才释放 runtime／Hook 和存储；超时保留存活任务依赖。
 
 常用搜索：
@@ -309,7 +309,8 @@ rg -n "PlatformAdapter|SendChat|MessageSegment|Actor|Scope|remote|websocket|long
 - `internal/background/takeover.go`：后台修正及投递入口的持久化接管检查。
 - `internal/session/mode.go`：模式激活和 work 历史限制。
 - `internal/session/lifecycle.go`、`query.go`、`fork.go`、`expiration.go`：生命周期、查询、Fork 和闲置过期策略。
-- `internal/session/naming.go`：异步 Session 命名。
+- `internal/session/background_copy.go`：后台广播副本的来源复核、创建与历史复制，不激活前台 current。
+- `internal/session/naming.go`、`naming_lifecycle.go`：异步命名、应用级取消及准备／生成退出等待；命名事件仍通过日志回调处理。
 - `internal/contextmgr/state.go`、`internal/toolrun/state.go`：分别解释上下文与工具 metadata，更新时保留其他模块及未知字段。
 - `internal/session/workspace.go`：workspace 持久化适配、原子字段更新及原绑定检查；`commit.go`：原绑定的短提交准入。
 - `internal/workspace/`：workspace 契约、context、metadata 状态与统一路径入口；`internal/sandbox/sandbox.go`：后台运行上下文及路径限制。

@@ -23,6 +23,7 @@ type Service struct {
 	titleGen             TitleGenerator
 	notifier             NamingNotifier
 	namingStates         map[string]namingState
+	naming               namingLifecycle
 	defaultMode          string
 }
 
@@ -56,6 +57,7 @@ func NewServiceWithConfig(store storage.Store, cfg Config, titleGen TitleGenerat
 		titleGen:     titleGen,
 		notifier:     notifier,
 		namingStates: map[string]namingState{},
+		naming:       namingLifecycle{done: make(chan struct{})},
 		defaultMode:  cfg.DefaultMode,
 	}
 }

@@ -23,12 +23,30 @@ func (noopNamingNotifier) NotifyNamingCompleted(context.Context, NamingCompleted
 func (noopNamingNotifier) NotifyNamingFailed(context.Context, NamingFailedEvent)       {}
 
 func (s *Service) MaybeScheduleNaming(ctx context.Context, sessionID string) {
-	if s.titleRenamed(ctx, sessionID) || s.titleGen == nil {
+	if s.titleGen == nil {
+		return
+	}
+	workerCtx, finish, ok := s.beginNaming()
+	if !ok {
+		return
+	}
+	ctx, cancelPreparation := context.WithCancel(ctx)
+	stopPreparation := context.AfterFunc(workerCtx, cancelPreparation)
+	defer func() { stopPreparation(); cancelPreparation() }()
+	scheduled := false
+	defer func() {
+		if !scheduled {
+			finish()
+		}
+	}()
+	if ctx.Err() != nil || s.titleRenamed(ctx, sessionID) {
 		return
 	}
 	messages, err := s.store.Messages().ListBySession(ctx, sessionID)
 	if err != nil {
-		s.notifyNamingFailed(ctx, NamingFailedEvent{SessionID: sessionID, Reason: "load messages", Err: err, TriggeredAt: storage.Now()})
+		if ctx.Err() == nil && workerCtx.Err() == nil {
+			s.notifyNamingFailed(ctx, NamingFailedEvent{SessionID: sessionID, Reason: "load messages", Err: err, TriggeredAt: storage.Now()})
+		}
 		return
 	}
 	conversationMessages := filterConversationMessages(messages)
@@ -36,12 +54,26 @@ func (s *Service) MaybeScheduleNaming(ctx context.Context, sessionID string) {
 		return
 	}
 	namingMessages := append([]storage.Message(nil), conversationMessages[:s.namingConfig.TriggerStep]...)
-	if !s.markNamingInFlight(sessionID) {
+	if workerCtx.Err() != nil || !s.markNamingInFlight(sessionID) {
 		return
 	}
 
 	s.notifyNamingScheduled(ctx, NamingScheduledEvent{SessionID: sessionID, TriggeredAt: storage.Now(), MessageCount: len(namingMessages), TriggerStep: s.namingConfig.TriggerStep})
-	go s.generateTitle(context.Background(), sessionID, namingMessages)
+	scheduled = true
+	go func() {
+		defer finish()
+		defer func() {
+			if workerCtx.Err() == nil {
+				return
+			}
+			s.mu.Lock()
+			state := s.namingStates[sessionID]
+			state.inFlight = false
+			s.namingStates[sessionID] = state
+			s.mu.Unlock()
+		}()
+		s.generateTitle(workerCtx, sessionID, namingMessages)
+	}()
 }
 
 func (s *Service) titleRenamed(ctx context.Context, sessionID string) bool {
@@ -59,7 +91,13 @@ func (s *Service) titleRenamed(ctx context.Context, sessionID string) bool {
 }
 
 func (s *Service) generateTitle(ctx context.Context, sessionID string, messages []storage.Message) {
+	if ctx.Err() != nil {
+		return
+	}
 	session, err := s.store.Sessions().Get(ctx, sessionID)
+	if ctx.Err() != nil {
+		return
+	}
 	if err != nil {
 		s.markNamingFailed(sessionID)
 		s.notifyNamingFailed(ctx, NamingFailedEvent{SessionID: sessionID, Reason: "load session", Err: err, TriggeredAt: storage.Now(), MessageCount: len(messages)})
@@ -67,6 +105,9 @@ func (s *Service) generateTitle(ctx context.Context, sessionID string, messages 
 	}
 
 	result, err := s.titleGen.GenerateTitle(ctx, messages)
+	if ctx.Err() != nil {
+		return
+	}
 	if err != nil {
 		s.handleNamingFailure(ctx, session, messages, "generate title", err, "llm_error", "", "")
 		return
@@ -78,6 +119,9 @@ func (s *Service) generateTitle(ctx context.Context, sessionID string, messages 
 	}
 
 	_, applied, err := s.saveGeneratedTitle(ctx, sessionID, title, false)
+	if ctx.Err() != nil {
+		return
+	}
 	if err != nil {
 		s.handleNamingFailure(ctx, session, messages, "update title", err, "storage_update", result.RawTitle, title)
 		return
@@ -121,6 +165,9 @@ func (s *Service) markNamingFailed(sessionID string) int {
 }
 
 func (s *Service) handleNamingFailure(ctx context.Context, session *storage.Session, messages []storage.Message, reason string, err error, stage, rawTitle, normalizedTitle string) {
+	if ctx.Err() != nil {
+		return
+	}
 	failures := s.markNamingFailed(session.ID)
 	event := NamingFailedEvent{
 		SessionID: session.ID, Title: session.Title, Stage: stage, LLMCall: llmCallStatus(err),
@@ -141,7 +188,9 @@ func (s *Service) handleNamingFailure(ctx context.Context, session *storage.Sess
 			}
 		}
 	}
-	s.notifyNamingFailed(ctx, event)
+	if ctx.Err() == nil {
+		s.notifyNamingFailed(ctx, event)
+	}
 }
 
 func (s *Service) notifyNamingScheduled(ctx context.Context, event NamingScheduledEvent) {
@@ -214,8 +263,14 @@ func fallbackTitle(messages []storage.Message) string {
 // The manual-title flag is checked in the same transaction as both normal and
 // fallback title writes, after any slow model request has completed.
 func (s *Service) saveGeneratedTitle(ctx context.Context, id, title string, onlyPlaceholder bool) (*storage.Session, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
 	applied := false
 	row, err := s.store.Sessions().Mutate(ctx, id, func(row *storage.Session) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		fields, err := storage.DecodeSessionMetadata(row.Metadata)
 		if err != nil {
 			return err

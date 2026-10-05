@@ -15,6 +15,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/security"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -302,7 +303,7 @@ func TestRunLLMMapsReportNoticeToBackgroundMessage(t *testing.T) {
 		EnabledPlatforms: []PlatformTarget{{Name: "qq-onebot", SuperadminIDs: []string{"1001"}}},
 		SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 			if target.Platform == "qq-onebot" && target.PrivateUserID == "1001" {
-				return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}}, nil
+				return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}, SentMessages: []delivery.SentMessage{{Platform: "qq-onebot", ScopeID: "private:1001", PlatformMessageID: "notice-1"}}}, nil
 			}
 			return delivery.Receipt{}, nil
 		},
@@ -347,7 +348,8 @@ func TestCopyCronSessionIsVisibleOnBroadcastPlatformsAndCLI(t *testing.T) {
 		}
 	}
 	svc := NewService(Options{
-		Store: store,
+		Store:    store,
+		Sessions: session.NewService(store),
 		EnabledPlatforms: []PlatformTarget{
 			{Name: "qq-onebot", SuperadminIDs: []string{"1001"}},
 			{Name: "telegram", SuperadminIDs: []string{"2002"}},

@@ -10,6 +10,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/elyph"
 	"elbot/internal/security"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 )
 
@@ -133,6 +134,10 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 	}
 	if meta.Target.AllEnabledPlatforms {
 		if err := s.copySessionToBroadcastTargets(ctx, result.SessionID, meta, job.Name); err != nil {
+			if errors.Is(err, session.ErrForegroundSession) {
+				result.TakenOver = true
+				return takeoverState(state, result), "", nil
+			}
 			s.logWarn("copy cron session failed", "job", job.Name, "error", err)
 		}
 	}

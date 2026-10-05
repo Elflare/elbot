@@ -17,6 +17,7 @@ import (
 	"elbot/internal/elyph"
 	"elbot/internal/modelmgr"
 	"elbot/internal/security"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 )
 
@@ -52,6 +53,7 @@ type Service struct {
 	sendTarget       TargetSenderFunc
 	runner           LLMRunner
 	models           Models
+	sessions         *session.Service
 	enabledPlatforms []PlatformTarget
 	sandboxRoot      string
 	now              func() time.Time
@@ -69,6 +71,7 @@ type Options struct {
 	SendTarget       TargetSenderFunc
 	Runner           LLMRunner
 	Models           Models
+	Sessions         *session.Service
 	EnabledPlatforms []PlatformTarget
 	SandboxRoot      string
 }
@@ -81,6 +84,7 @@ func NewService(opts Options) *Service {
 	s := &Service{manager: opts.Manager, store: opts.Store, logger: opts.Logger, audit: opts.Audit, sendTarget: opts.SendTarget, runner: opts.Runner, sandboxRoot: sandboxRoot, now: time.Now, connectedPlatforms: map[string]bool{}, deliveryGates: map[string]chan struct{}{}}
 	s.enabledPlatforms = normalizePlatformTargets(opts.EnabledPlatforms)
 	s.models = opts.Models
+	s.sessions = opts.Sessions
 	return s
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"elbot/internal/command"
 	commandbuiltin "elbot/internal/command/builtin"
@@ -80,6 +81,15 @@ func mustNewWithOptions(t *testing.T, cfg testAgentOptions) *Agent {
 		t.Fatal(err)
 	}
 	a.sessions.SetForegroundActivation(a.AdoptForeground)
+	a.sessions.StartNaming(context.Background())
+	ownedSessions := a.sessions
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := ownedSessions.Close(ctx); err != nil {
+			t.Error(err)
+		}
+	})
 	a.sessions.SetActivitySource(func() []string {
 		var ids []string
 		for _, active := range a.turns.SnapshotAll() {

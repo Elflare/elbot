@@ -350,7 +350,7 @@ func TestRunLLMEventMapsReportNoticeToBackgroundMessage(t *testing.T) {
 		if target.Platform != "qq-onebot" || target.PrivateUserID != "1001" {
 			t.Fatalf("target = %#v", target)
 		}
-		return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}}, nil
+		return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}, SentMessages: []delivery.SentMessage{{Platform: "qq-onebot", ScopeID: "private:1001", PlatformMessageID: "notice-1"}}}, nil
 	})
 	defer cleanup()
 	bgSession := &storage.Session{ID: "bg-session", OwnerID: "elnis:home", Platform: "qq-onebot", PlatformScopeID: "elnis:watcher:source:event-1", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "elnis"}

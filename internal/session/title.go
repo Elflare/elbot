@@ -29,6 +29,9 @@ func (g *titleGenerator) GenerateTitle(ctx context.Context, messages []storage.M
 		if title, err := g.generate(ctx, naming, namingModel, messages); err == nil {
 			return TitleResult{RawTitle: title}, nil
 		}
+		if err := ctx.Err(); err != nil {
+			return TitleResult{}, err
+		}
 		// 专门命名模型失败时继续回退主模型，避免命名功能影响主对话。
 	}
 	if primary == nil || primaryModel == "" {
@@ -53,13 +56,20 @@ func (g *titleGenerator) generate(ctx context.Context, client llm.LLM, model str
 		return "", err
 	}
 	var title strings.Builder
-	for chunk := range ch {
-		if chunk.Error != nil {
-			return "", chunk.Error
+	for {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case chunk, ok := <-ch:
+			if !ok {
+				return title.String(), ctx.Err()
+			}
+			if chunk.Error != nil {
+				return "", chunk.Error
+			}
+			title.WriteString(chunk.DeltaContent)
 		}
-		title.WriteString(chunk.DeltaContent)
 	}
-	return title.String(), nil
 }
 
 func titlePrompt(messages []storage.Message) string {

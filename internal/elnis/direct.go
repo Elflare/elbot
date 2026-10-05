@@ -69,7 +69,7 @@ func (s *Service) sendOutputsToTargetsMapped(ctx context.Context, eventKey strin
 	ctx = delivery.WithTemporaryConnection(ctx)
 	for _, target := range targets {
 		receipt, err := s.send(ctx, target.ToDeliveryTarget(), outputs)
-		s.mapReportReceipt(ctx, eventKey, target, sessionID, messageID, receipt)
+		s.mapReportReceipt(ctx, eventKey, sessionID, messageID, receipt)
 		if err != nil {
 			return err
 		}
@@ -77,23 +77,19 @@ func (s *Service) sendOutputsToTargetsMapped(ctx context.Context, eventKey strin
 	return nil
 }
 
-func (s *Service) mapReportReceipt(ctx context.Context, eventKey string, target Target, sessionID, messageID string, receipt delivery.Receipt) {
+func (s *Service) mapReportReceipt(ctx context.Context, eventKey, sessionID, messageID string, receipt delivery.Receipt) {
 	if sessionID == "" || messageID == "" || s.store == nil || s.store.Messages() == nil {
 		return
 	}
-	scopeID := elvena.TargetScopeID(target)
-	if scopeID == "" {
-		return
-	}
-	for _, platformMessageID := range receipt.PlatformMessageIDs {
-		platformMessageID = strings.TrimSpace(platformMessageID)
-		if platformMessageID == "" {
+	for _, sent := range receipt.SentMessages {
+		platformName, scopeID, platformMessageID := strings.TrimSpace(sent.Platform), strings.TrimSpace(sent.ScopeID), strings.TrimSpace(sent.PlatformMessageID)
+		if platformName == "" || scopeID == "" || platformMessageID == "" {
 			continue
 		}
-		mapping := storage.PlatformMessageMap{Platform: target.Platform, PlatformScopeID: scopeID, PlatformMessageID: platformMessageID, SessionID: sessionID, MessageID: messageID}
+		mapping := storage.PlatformMessageMap{Platform: platformName, PlatformScopeID: scopeID, PlatformMessageID: platformMessageID, SessionID: sessionID, MessageID: messageID}
 		if err := s.store.Messages().MapPlatformMessage(ctx, mapping); err != nil {
-			s.auditEvent("elnis.report_map_failed", "event_key", eventKey, "platform", target.Platform, "scope_id", scopeID, "platform_message_id", platformMessageID, "session_id", sessionID, "message_id", messageID, "error", err.Error())
-			s.logWarn("map elnis report message failed", "event_key", eventKey, "platform", target.Platform, "scope_id", scopeID, "platform_message_id", platformMessageID, "session_id", sessionID, "message_id", messageID, "error", err.Error())
+			s.auditEvent("elnis.report_map_failed", "event_key", eventKey, "platform", platformName, "scope_id", scopeID, "platform_message_id", platformMessageID, "session_id", sessionID, "message_id", messageID, "error", err.Error())
+			s.logWarn("map elnis report message failed", "event_key", eventKey, "platform", platformName, "scope_id", scopeID, "platform_message_id", platformMessageID, "session_id", sessionID, "message_id", messageID, "error", err.Error())
 		}
 	}
 }
