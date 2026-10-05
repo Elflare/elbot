@@ -31,7 +31,7 @@ func (a *Agent) publishRuntimeStatus(ctx context.Context, snapshot runtimestatus
 	_ = a.dispatcher.SetRuntimeStatus(ctx, snapshot)
 }
 
-func (a *Agent) runtimeStatusForSession(sessionID string) runtimestatus.Snapshot {
+func (a *Agent) RuntimeStatus(sessionID string) runtimestatus.Snapshot {
 	a.statusMu.Lock()
 	defer a.statusMu.Unlock()
 	return a.runtimeStatus[sessionID]

@@ -256,6 +256,9 @@ func (m *Manager) ReplacePlugin(config Config) error {
 	return nil
 }
 
+// Done closes after workers and shared resources actually finish shutting down.
+func (m *Manager) Done() <-chan struct{} { return m.closeDone }
+
 func (m *Manager) Close(ctx context.Context) error {
 	if m == nil {
 		return nil

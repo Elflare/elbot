@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	agentcommands "elbot/internal/agent/commands"
 	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/config"
@@ -16,13 +15,10 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/hook"
-	"elbot/internal/llm"
-	"elbot/internal/logging"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
 	"elbot/internal/notification"
-	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/platform"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
@@ -59,12 +55,10 @@ type Agent struct {
 	hookRuntime        HookRouter
 	statusMu           sync.Mutex
 	runtimeStatus      map[string]runtimestatus.Snapshot
-	sessionCommands    *agentcommands.SessionCommandState
 	idleExpiration     session.IdleExpirationConfig
 	sandboxRoot        string
 	logger             *slog.Logger
 	auditLogger        *slog.Logger
-	logReader          logging.Reader
 	autoConfirmMu      sync.Mutex
 	autoConfirmSession map[string]bool
 	autoConfirmTools   map[string]map[string]bool
@@ -75,44 +69,6 @@ type Agent struct {
 	userConfirmationTimeout time.Duration
 	actorID                 string
 	scopeID                 string
-}
-
-// New creates a new Agent.
-func New(p platform.PlatformAdapter, client llm.LLM, model string, provider config.ProviderConfig, store storage.Store) *Agent {
-	modeModels := map[string]config.ModelSelection{
-		storage.SessionModeWork: {Provider: "default", Model: model},
-		storage.SessionModeChat: {Provider: "default", Model: model},
-	}
-	return NewWithPrefixes(p, client, modeModels, provider, store, []string{"/"})
-}
-
-func NewWithPrefixes(p platform.PlatformAdapter, client llm.LLM, modeModels map[string]config.ModelSelection, provider config.ProviderConfig, store storage.Store, prefixes []string) *Agent {
-	defaults := config.Default()
-	models, err := modelmgr.New(modelmgr.Options{Clients: map[string]llm.LLM{"default": client}, Providers: map[string]config.ProviderConfig{"default": provider}, ModeModels: modeModels, DefaultMode: storage.SessionModeWork})
-	if err != nil {
-		panic(err)
-	}
-	agent, err := NewWithOptions(Options{
-		Platform:              p,
-		Models:                models,
-		Providers:             map[string]config.ProviderConfig{"default": provider},
-		Store:                 store,
-		CommandPrefixes:       prefixes,
-		SessionConfig:         session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork},
-		LLMRequestConfig:      defaults.LLMRequest,
-		SecurityPolicy:        security.DefaultPolicy(),
-		ContextConfig:         defaults.Context,
-		SessionListPageSize:   defaults.View.SessionListPageSize,
-		CleanupRetentionDays:  30,
-		MediaRetentionDays:    defaults.Maintenance.SandboxCleanup.RetentionDays,
-		SessionIdleExpiration: defaults.Session.IdleExpiration,
-		SandboxRoot:           defaults.Sandbox.Root,
-		ToolsConfig:           defaults.Tools,
-	})
-	if err != nil {
-		panic(err)
-	}
-	return agent
 }
 
 func responseTimeout(cfg config.LLMRequestConfig) time.Duration {
@@ -128,49 +84,29 @@ func NewWithOptions(opts Options) (*Agent, error) {
 	}
 	p := opts.Platform
 	store := opts.Store
-	prefixes := opts.CommandPrefixes
-	sessionCfg := opts.SessionConfig
-	namingNotifier := opts.NamingNotifier
 	soulPath := opts.SoulPath
 	llmRequestConfig := opts.LLMRequestConfig
-	hookService := opts.HookService
-	titleGen := &titleGenerator{models: opts.Models}
 	promptSoul := SoulProvider(staticSoulProvider{Prompt: "You are a helpful assistant."})
 	if soulPath != "" {
 		promptSoul = &FileSoulProvider{Path: soulPath}
 	}
-	requests := request.NewManager(0)
-	turns := turn.NewManager()
-	sessions := session.NewServiceWithConfig(store, sessionCfg, titleGen, namingNotifier)
-	sessionCommands := agentcommands.NewSessionCommandState(opts.SessionListPageSize, opts.CleanupRetentionDays)
+	requests, turns, sessions := opts.Requests, opts.Turns, opts.Sessions
 	policy := opts.SecurityPolicy
 	hookManager := hookRunner(opts.HookManager)
 	if hookManager == nil {
 		hookManager = hook.NoopManager{}
 	}
-	dispatcher := opts.Dispatcher
-	var logger *slog.Logger
-	if opts.Logs != nil {
-		logger = opts.Logs.Runtime()
-	}
-	if dispatcher == nil {
-		dispatcher = dispatch.New(dispatch.Options{Primary: p, Store: store, Media: opts.Media, MediaRetentionDays: opts.MediaRetentionDays, Logger: logger})
-	}
-	notifications := opts.Notifications
-	if notifications == nil {
-		notifications = notification.New(dispatcher, logger, p != nil && p.Name() == "service")
-	}
 	a := &Agent{
 		platform:                p,
-		dispatcher:              dispatcher,
-		notifications:           notifications,
+		dispatcher:              opts.Dispatcher,
+		notifications:           opts.Notifications,
 		models:                  opts.Models,
 		store:                   store,
 		media:                   opts.Media,
 		sessions:                sessions,
 		requests:                requests,
 		turns:                   turns,
-		commands:                command.NewRouter(prefixes),
+		commands:                opts.Commands,
 		soul:                    promptSoul,
 		residentMemory:          opts.ResidentMemoryStore,
 		securityPolicy:          policy,
@@ -185,21 +121,14 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		responseTimeout:         responseTimeout(llmRequestConfig),
 		userConfirmationTimeout: defaultUserConfirmationTimeout,
 
-		sessionCommands: sessionCommands,
-		idleExpiration:  sessionIdleExpirationConfig(opts.SessionIdleExpiration),
-		sandboxRoot:     filepath.Clean(strings.TrimSpace(opts.SandboxRoot)),
-		actorID:         "cli:local",
-		scopeID:         "local",
-	}
-	if a.contexts == nil {
-		a.contexts = contextmgr.New(contextmgr.Options{Store: store, Models: opts.Models, Config: opts.ContextConfig, Metadata: opts.ModelMetadata, Providers: opts.Providers})
-	}
-	if a.toolState == nil {
-		a.toolState = toolrun.NewStateService(store)
+		idleExpiration: sessionIdleExpirationConfig(opts.SessionIdleExpiration),
+		sandboxRoot:    filepath.Clean(strings.TrimSpace(opts.SandboxRoot)),
+		actorID:        "cli:local",
+		scopeID:        "local",
 	}
 	a.toolRuntime = newToolRuntimeState()
-	a.toolRuntime.manager = toolrun.NewManager(nil, policy)
-	a.toolRuntime.manager.Media = opts.Media
+	a.toolRuntime.manager = opts.ToolRunner
+	a.toolRuntime.registry = opts.ToolRegistry
 	a.toolRuntime.fileRollback = opts.FileRollback
 	sessions.SetForegroundActivation(a.adoptForeground)
 	sessions.SetActivitySource(func() []string {
@@ -218,38 +147,14 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		defaultManager.SetWakeupFunc(a.hookWakeup)
 		defaultManager.SetObserver(a.observeHookRun)
 	}
-	if opts.ToolRegistry != nil || opts.Skills != nil {
-		a.SetToolRuntime(opts.ToolRegistry, opts.Skills)
+	if opts.ToolRegistry != nil {
+		a.toolRuntime.provider = toolRunPromptProvider{agent: a}
 	} else if opts.ToolProvider != nil {
 		a.SetToolProvider(opts.ToolProvider)
 	}
 	a.SetToolConfig(opts.ToolsConfig)
 	a.SetToolTagConfig(opts.ToolTagsPath, opts.ToolTags)
 	a.rebuildSystemPrompt()
-	if opts.Notifications == nil {
-		opts.Models.SetRetryNotifier(notificationrules.ModelRetry(notifications))
-	}
-	if err := agentcommands.RegisterDefaultModules(a.commands, agentcommands.Deps{
-		Doctor:        opts.Doctor,
-		Router:        a.commands,
-		Sessions:      a.sessions,
-		Requests:      a.requests,
-		Turns:         a.turns,
-		Store:         a.store,
-		Scope:         a.scope,
-		Models:        opts.Models,
-		Compact:       a,
-		ContextStatus: a,
-		Tools:         a,
-		FileRollback:  a,
-		Hooks:         hookService,
-		SessionState:  sessionCommands,
-		Audit:         a.audit,
-		Logs:          a,
-		RuntimeStatus: a.runtimeStatusForSession,
-	}); err != nil {
-		return nil, err
-	}
 	a.commandExecutor = &commandExecutor{
 		router:        a.commands,
 		sessions:      a.sessions,

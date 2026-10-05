@@ -6,19 +6,11 @@ import (
 	"reflect"
 	"strings"
 
-	"elbot/internal/command"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/security"
 )
-
-func (a *Agent) CommandInfos() []command.Info {
-	if a == nil || a.commands == nil {
-		return nil
-	}
-	return a.commands.Commands()
-}
 
 // HandleMessage dispatches commands and chat messages.
 func (a *Agent) HandleMessage(ctx context.Context, text string) (err error) {

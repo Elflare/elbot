@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -15,27 +14,15 @@ import (
 
 	"elbot/internal/agent"
 	"elbot/internal/config"
-	"elbot/internal/contextmgr"
 	elcron "elbot/internal/cron"
 	"elbot/internal/delivery"
-	"elbot/internal/delivery/dispatch"
-	"elbot/internal/doctor"
 	"elbot/internal/elvena"
-	"elbot/internal/fileops"
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
 	hookcontrol "elbot/internal/hook/control"
-	hookrules "elbot/internal/hook/rules"
 	hookruntime "elbot/internal/hook/runtime"
-	"elbot/internal/media"
 	"elbot/internal/memory/resident"
-	"elbot/internal/modelmgr"
-	"elbot/internal/notification"
-	notificationrules "elbot/internal/notification/rules"
-	platformbuiltin "elbot/internal/platform/builtin"
 	"elbot/internal/processenv"
-	"elbot/internal/security"
-	"elbot/internal/session"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/tool/runtimeinfo"
 	"elbot/internal/toolrun"
@@ -44,65 +31,32 @@ import (
 type defaultRuntimeFactory struct{}
 
 func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*RuntimeComponents, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	lifecycle := &runtimeLifecycle{cancel: cancel}
+	components := &RuntimeComponents{Lifecycle: lifecycle, Signals: &signalBindings{}}
 	foundation := req.Foundation
 	cfg := foundation.Config
 	logger := foundation.Logger
-	models, err := modelmgr.New(modelmgr.Options{
-		Clients: req.Models.ByProvider, Providers: cfg.Providers, ModeModels: cfg.ModeModels,
-		CompactModel: cfg.CompactModel, NamingModel: cfg.NamingModel,
-		StatePath: cfg.StateConfigPath, DefaultMode: cfg.Session.DefaultMode,
-	})
+	services, err := buildSharedServices(ctx, req)
 	if err != nil {
-		return nil, err
+		return components, err
 	}
 	dotEnv, err := config.LoadDotEnv(filepath.Dir(cfg.ConfigPath))
 	if err != nil {
-		return nil, fmt.Errorf("load process environment: %w", err)
+		return components, fmt.Errorf("load process environment: %w", err)
 	}
 	baseProcessEnv := processenv.New(os.Environ())
 	shellProcessEnv := baseProcessEnv.Fill(dotEnv)
 	hookProcessEnv := hook.ProcessEnvironment(baseProcessEnv)
-	fileDeliveryCredentials, err := resolveFileDeliveryCredentials(cfg.FileDelivery, filepath.Dir(cfg.ConfigPath))
-	if err != nil {
-		logger.Warn("S3 media backend is unavailable; remote operations will fail until configuration is fixed", "error", err)
-		fileDeliveryCredentials = nil
-	}
-	mediaCenter, err := media.NewConfigured(ctx, foundation.Store, filepath.Join(filepath.Dir(cfg.Sandbox.Root), "media"), cfg.FileDelivery, fileDeliveryCredentials)
-	if err != nil {
-		return nil, err
-	}
-	if err := foundation.Store.Media().RecoverInterrupted(ctx); err != nil {
-		return nil, err
-	}
-	mediaCenter.History = foundation.ChatHistory
-	if err := mediaCenter.ReconcileHistory(ctx); err != nil {
-		return nil, err
-	}
-	mediaCenter.MaxImportBytes = cfg.PlatformFiles.MaxReceiveFileBytes
-	mediaCenter.DownloadTimeout = time.Duration(cfg.PlatformFiles.DownloadTimeoutSecs) * time.Second
-	mediaCenter.Media = cfg.Media
-	mediaCenter.Logger = logger
-	if foundation.Maintenance != nil {
-		foundation.Maintenance.Media = mediaCenter
-	}
-	dispatcher := dispatch.New(dispatch.Options{Primary: req.Platforms.Primary, Store: foundation.Store, Media: mediaCenter, MediaRetentionDays: cfg.Maintenance.SandboxCleanup.RetentionDays, Logger: logger})
-	for _, adapter := range req.Platforms.Runtimes {
-		if adapter != nil {
-			dispatcher.RegisterPlatformSender(adapter.Name(), adapter)
-		}
-	}
-	notices := notification.New(dispatcher, logger, req.Platforms.Primary != nil && req.Platforms.Primary.Name() == "service")
-	models.SetRetryNotifier(notificationrules.ModelRetry(notices))
 	sendNotice := func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-		return dispatcher.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
+		return services.Dispatcher.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
 	}
 	cronService, err := buildCronService(ctx, foundation, sendNotice)
 	if err != nil {
-		return nil, err
+		return components, err
 	}
-	files := fileops.NewService(nil)
 	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{
-		FileRollback: files,
+		FileRollback: services.Files,
 		ConfigDir:    filepath.Dir(cfg.ConfigPath),
 		RuntimeInfo: runtimeinfo.Info{
 			ConfigPath:   cfg.ConfigPath,
@@ -112,28 +66,27 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		CronService:            cronService,
 		ChatHistory:            foundation.ChatHistory,
 		Store:                  foundation.Store,
-		Media:                  mediaCenter,
+		Media:                  services.Media,
 		ResidentMemoryMaxUnits: resident.Limits{Core: cfg.ResidentMemory.CoreMaxUnits, Normal: cfg.ResidentMemory.NormalMaxUnits},
 		ProcessEnv:             shellProcessEnv,
 	})
 	if err != nil {
-		return nil, err
+		return components, err
 	}
 	req.Profiler.Mark("builtin tools register")
-	toolRuntime.SkillManager.StartDelayedReload(ctx, time.Second)
+	lifecycle.skillDone = toolRuntime.SkillManager.StartDelayedReload(ctx, time.Second)
 	req.Profiler.Mark("skill reload scheduled")
 
 	hooks := hook.NewManager()
 	hooks.SetLogger(logger)
-	securityPolicy := security.NewPolicy(cfg.Security.UserMaxToolRisk, cfg.Security.SuperadminConfirmRisk, cfg.Security.Superadmins)
 	elvenaBus := elvena.NewBus()
 
 	notifyHookIssue := func(ctx context.Context, text string) {
-		notices.Text(ctx, slog.LevelWarn, text)
+		services.Notifications.Text(ctx, slog.LevelWarn, text)
 	}
 
 	hookRuntime := hookruntime.NewManager(hookruntime.Options{
-		Media:      mediaCenter,
+		Media:      services.Media,
 		Registry:   toolRuntime.Registry,
 		Logger:     logger,
 		Audit:      auditFunc(foundation.Logs),
@@ -142,38 +95,38 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		ProcessEnv: hookProcessEnv,
 	})
 
+	lifecycle.hooks = hookRuntime
 	hookService := buildHookService(foundation, req.Platforms, toolRuntime, cronService, hooks, hookRuntime, hookProcessEnv, notifyHookIssue, sendNotice)
 	req.Profiler.Mark("hook register")
 
-	agt, err := buildAgent(foundation, models, req.Platforms, toolRuntime, securityPolicy, hooks, hookRuntime, hookService, dispatcher, notices)
+	agt, err := buildAgent(foundation, req.Platforms, services, toolRuntime, hooks, hookRuntime)
 	if err != nil {
-		if closeErr := hookRuntime.Close(context.Background()); closeErr != nil {
-			err = errors.Join(err, fmt.Errorf("cleanup hook runtime after agent build: %w", closeErr))
-		}
-		return nil, err
+		return components, err
+	}
+	if err := registerBuiltinCommands(foundation, services, agt, toolRuntime, hookService); err != nil {
+		return components, err
 	}
 	cronService.SetRunner(agt)
 	req.Profiler.Mark("agent init")
 
-	bindings := &signalBindings{}
-	if err := bindings.connectSession(agt.SessionService(), toolRuntime.FileRollback.Manager, foundation.Logger); err != nil {
-		return nil, errors.Join(err, bindings.Close(context.Background()), hookRuntime.Close(context.Background()))
+	bindings := components.Signals
+	if err := bindings.connectSession(services.Sessions, toolRuntime.FileRollback.Manager, foundation.Logger); err != nil {
+		return components, err
 	}
-	if foundation.Maintenance != nil {
-		foundation.Maintenance.Sessions = agt.SessionService()
-	}
-	return &RuntimeComponents{
-		Dispatcher:    dispatcher,
-		Notifications: notices,
-		Models:        models,
+	*components = RuntimeComponents{
+		Commands:      services.Commands,
+		Dispatcher:    services.Dispatcher,
+		Notifications: services.Notifications,
+		Models:        services.Models,
 		Signals:       bindings,
-		Media:         mediaCenter,
+		Media:         services.Media,
 		Agent:         agt,
 		Handler:       agt,
 		CronService:   cronService,
 		ElvenaBus:     elvenaBus,
-		Lifecycle:     hookRuntimeLifecycle{runtime: hookRuntime},
-	}, nil
+		Lifecycle:     lifecycle,
+	}
+	return components, nil
 }
 
 func resolveFileDeliveryCredentials(cfg config.FileDeliveryConfig, configDir string) (aws.CredentialsProvider, error) {
@@ -283,76 +236,26 @@ func buildHookService(
 	return hookService
 }
 
-func buildAgent(
-	foundation *FoundationComponents,
-	models *modelmgr.Service,
-	platforms PlatformComponents,
-	toolRuntime *builtin.Runtime,
-	securityPolicy *security.Policy,
-	hooks *hook.DefaultManager,
-	hookRuntime *hookruntime.Manager,
-	hookService *hookcontrol.Service,
-	dispatcher *dispatch.Router,
-	notices *notification.Manager,
-) (*agent.Agent, error) {
+func buildAgent(foundation *FoundationComponents, platforms PlatformComponents, services *sharedServices, tools *builtin.Runtime, hooks *hook.DefaultManager, hookRuntime *hookruntime.Manager) (*agent.Agent, error) {
 	cfg := foundation.Config
-	definitions := append(platformbuiltin.ConfigDefinitions(), hookrules.ConfigDefinition())
-	diagnostics, err := doctor.New(cfg.ConfigPath, config.NewInspector(definitions...))
-	if err != nil {
-		return nil, err
-	}
-	agt, err := agent.NewWithOptions(agent.Options{
-		Doctor:                diagnostics,
-		Platform:              platforms.Primary,
-		Models:                models,
-		Contexts:              contextmgr.New(contextmgr.Options{Store: foundation.Store, Models: models, Config: cfg.Context, Metadata: cfg.ModelMetadata, Providers: cfg.Providers}),
-		ToolState:             toolrun.NewStateService(foundation.Store),
-		Providers:             cfg.Providers,
-		Store:                 foundation.Store,
-		Media:                 toolRuntime.FileManager.Media,
-		CommandPrefixes:       cfg.Commands.Prefixes,
-		SessionConfig:         session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode},
-		NamingNotifier:        namingLogger{logger: foundation.Logger},
-		SoulPath:              cfg.Soul.Path,
-		ResidentMemoryStore:   toolRuntime.ResidentMemoryStore,
-		LLMRequestConfig:      cfg.LLMRequest,
-		HookService:           hookService,
-		HookManager:           hooks,
-		HookRuntime:           hookRuntime,
-		Dispatcher:            dispatcher,
-		Notifications:         notices,
-		Logs:                  foundation.Logs,
-		ToolRegistry:          toolRuntime.Registry,
-		FileRollback:          toolRuntime.FileRollback,
-		Skills:                toolRuntime.SkillManager,
-		SecurityPolicy:        securityPolicy,
-		ContextConfig:         cfg.Context,
-		ModelMetadata:         cfg.ModelMetadata,
-		SessionListPageSize:   cfg.View.SessionListPageSize,
-		CleanupRetentionDays:  cfg.Maintenance.SessionCleanup.RetentionDays,
-		MediaRetentionDays:    cfg.Maintenance.SandboxCleanup.RetentionDays,
-		SessionIdleExpiration: cfg.Session.IdleExpiration,
-		SandboxRoot:           cfg.Sandbox.Root,
-		ToolsConfig:           cfg.Tools,
-		ToolTagsPath:          cfg.ToolTagsConfigPath,
-		ToolTags:              cfg.ToolTags,
+	runner := toolrun.NewManager(tools.Registry, services.Policy)
+	runner.Media = services.Media
+	return agent.NewWithOptions(agent.Options{
+		Platform: platforms.Primary, Models: services.Models,
+		Contexts: services.Contexts, ToolState: services.ToolState,
+		Sessions: services.Sessions, Requests: services.Requests, Turns: services.Turns, Commands: services.Commands,
+		Store: foundation.Store, Media: services.Media,
+		SoulPath: cfg.Soul.Path, ResidentMemoryStore: tools.ResidentMemoryStore,
+		LLMRequestConfig: cfg.LLMRequest, HookManager: hooks, HookRuntime: hookRuntime,
+		Dispatcher: services.Dispatcher, Notifications: services.Notifications,
+		Logs: foundation.Logs, ToolRegistry: tools.Registry, ToolRunner: runner, FileRollback: services.Files,
+		SecurityPolicy: services.Policy, SessionIdleExpiration: cfg.Session.IdleExpiration,
+		SandboxRoot: cfg.Sandbox.Root, ToolsConfig: cfg.Tools, ToolTagsPath: cfg.ToolTagsConfigPath, ToolTags: cfg.ToolTags,
 	})
-	if err != nil {
-		return nil, err
-	}
-	return agt, nil
 }
 
 func auditFunc(logs LogManager) func(string, ...any) {
 	return func(event string, attrs ...any) {
 		logs.Audit().Log(context.Background(), slog.LevelInfo, "audit event", append([]any{"event", event}, attrs...)...)
 	}
-}
-
-type hookRuntimeLifecycle struct {
-	runtime *hookruntime.Manager
-}
-
-func (l hookRuntimeLifecycle) Close(ctx context.Context) error {
-	return l.runtime.Close(ctx)
 }

@@ -34,8 +34,8 @@ func TestReferencedOutputMediaReachesVisionAndCanonicalSession(t *testing.T) {
 		return refcontext.ReferencedMessage{}, false
 	}})
 	f := &fakeLLM{replies: []string{"done"}}
-	a := New(&fakePlatform{}, f, "test-model", config.ProviderConfig{}, store)
-	a.RegisterPlatformSender("telegram", a.platform)
+	a := newTestAgent(t, &fakePlatform{}, f, "test-model", config.ProviderConfig{}, store)
+	a.dispatcher.RegisterPlatformSender("telegram", a.platform)
 	a.media = center
 	resolver := &inboundMediaResolver{}
 	msg := platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "telegram", ScopeID: "group:9", ConversationKind: chatinfo.ConversationGroup}, Identity: chatinfo.Identity{PlatformUserID: "1"}, ReplyToMessageID: "sent"}, MediaResolver: resolver,

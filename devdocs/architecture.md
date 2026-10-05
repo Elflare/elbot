@@ -17,7 +17,8 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 2. `internal/launcher/cli.go` 解析 `run`、`cli`、`service run`、补全和远程 CLI 参数。
 3. 普通运行进入 `internal/app.Run`，由默认 `Runner` 执行；远程 CLI 进入 `internal/app` 的 CLI client 入口。
 4. Runner 按 Environment、Foundation、Models、Platforms、Runtime、Integrations 阶段装配配置、日志、SQLite、LLM、Agent、Tool、Platform、Hook、Output、Cron 和 Elnis。
-5. app 层按运行模式启动平台 runtime，并在平台启动后异步启动 Cron runtime。
+5. app 创建共享服务和命令 Router，创建 Agent 后注册内置命令，再连接信号、补全与平台命令目录；注册完成前不启动平台。
+6. app 层按运行模式启动平台 runtime，并在平台启动后异步启动 Cron runtime。
 
 设计边界：
 
@@ -25,8 +26,10 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - launcher 只做命令行解析，不直接初始化复杂依赖。
 - 平台 adapter 只处理平台输入输出，不直接驱动 LLM。
 - `app.Run` 保持默认生产入口；需要替换启动阶段或做隔离测试时，使用 `NewRunner(Dependencies)` 注入分组工厂。
-- Runner 逆序释放已完成阶段：平台停止生产后，先断开信号并关闭队列，再关闭 Hook runtime、Cron、SQLite 和日志；阶段失败亦清理已装配的信号资源，不启动后续阶段。
-- 所有关闭步骤共享 30 秒预算。预算到期请求取消并停止等待；回调仍在运行时跳过其依赖的显式释放，交给进程退出，不启动后台收尾链。正常取消／关闭预算耗尽不视为应用失败，真实错误继续返回。
+- 共享 Session、Request、Turn、模型、上下文、工具状态、文件、发送、通知及命令实例由 app 创建。Agent 的 `NewWithOptions` 要求注入必需依赖，不补建服务或注册内置命令；测试装配位于测试文件中。
+- Foundation／Runtime 工厂即使返回错误，也返回已取得资源的 Lifecycle。Runner 接管部分构建的清理责任，不启动后续阶段；延迟 Skill 加载同时提供取消上下文和实际完成信号。
+- Runner 逆序释放资源：平台停止生产后，先断开信号并关闭队列，再关闭 Hook runtime、等待 Skill 加载结束，最后关闭 Cron、SQLite 和日志。
+- 平台退出等待和后续清理共享 30 秒预算。预算到期停止等待；平台或回调仍在运行时跳过其依赖的显式释放，交给进程退出，不启动后台收尾链。正常取消／关闭预算耗尽不视为应用失败，真实错误继续返回。
 
 <!-- locator:chatinfo -->
 <!-- locator:signal -->
@@ -93,14 +96,15 @@ Slash 命令链路：
 
 1. `internal/agent/command_runtime.go` 的命令执行器识别命令前缀，并统一处理权限、Turn 冲突和用户通知。
 2. `internal/command/router.go` 负责解析命令名、alias、参数文本和分发。
-3. `internal/agent/commands/` 的模块注册具体命令。
-4. 命令通过 deps 访问 Session、模型、Hook、工具、日志、请求管理等能力。
+3. app 将 `internal/command/builtin/` 的模块注册到共享 Router。
+4. 命令通过 deps 直接访问 Session、模型、上下文、Hook、工具 Registry／Skill Manager、日志 Reader、文件及请求管理服务。Session 列表编号按 Scope 保存在命令模块的展示状态中。
 5. 命令可通过 `command.Result.Continuation` 请求在指定 Session 中继续处理一条普通输入；模式切换、历史限制等策略先由 Session 服务完成，Agent core 不识别具体 Session 命令名。
 6. 平台补全通过中央 completion 服务组合命令名、命令参数、风险确认、fork message ID 和 `@tool:` 候选。
 
 约定：
 
-- 新命令优先做成 `internal/agent/commands/` 模块。
+- 新命令优先做成 `internal/command/builtin/` 模块。
+- 手动压缩、Scope 解析、运行状态查询和文件提交准入通过窄接口／回调接入 Agent，不将 Agent 作为领域服务转发器。
 - 会改变或切换 Session 的命令必须声明 `command.Info.SessionEffect`，命令执行器据此处理压缩和 pending 确认冲突，不维护命令名白名单。
 - Session 规则放在 `session.Service`；命令只解析参数和格式化结果，Agent 只编排命令与普通输入。
 - 命令详细帮助写在 `command.Info.Help`。
@@ -167,6 +171,8 @@ Tool Runtime 负责注册、schema、权限、风险、确认详情、用户侧 
 - `read_file`、`edit_file` 依赖隐藏的 `rollback_file`；依赖展开仍执行超管权限和前台限制，tag 为 `files`。
 
 文件编辑与撤销由 app 创建唯一共享 `fileops.Service`，注入内置 Runtime、Agent 和命令。`fileops.RollbackManager` 从编辑的原始读取保留字节，成功写入后才登记，按实际目标串行化编辑与撤销；每个 Scope 的当前 Session 中每个目标只保留一份。内存上限为 256 MiB/1024 条，超限淘汰最旧记录。备份不进入工具结果、Session metadata 或存储层。
+
+`/rollback` 直接调用文件服务的列表与按编号撤销入口，负责展示和审计。Agent 的 `PrepareFileCommand` 捕获原 Binding、workspace 与提交准入；文件服务查找编号并复用路径、revision 和提交校验，不能在执行时改用新的当前绑定。
 
 `workspace` 提供工作目录契约与路径解析，组合 `sandbox` 的后台限制；`session.WorkspaceStore` 通过 SessionID 和仓储读取最新状态，以短事务更新 workspace 及说明文件提示记录，不持有 Agent 或回写共享行快照。未知 metadata 保留原值，损坏数据拒绝读写；后台初始化不覆盖已有 workspace。
 

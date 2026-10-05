@@ -88,7 +88,7 @@ func TestRunHookErrorSendsFailureNotice(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("register hook: %v", err)
 	}
-	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.SetHookManager(manager)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli",
 		ScopeID: "private:test"}}, Sender: p,

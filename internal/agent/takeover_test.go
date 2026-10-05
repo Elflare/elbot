@@ -61,8 +61,8 @@ func TestBackgroundTakeoverDuringToolSharesPending(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "slow-call", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "foreground final"}},
 	}}
-	a := New(p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.RegisterPlatformSender("qq", p)
+	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
+	a.dispatcher.RegisterPlatformSender("qq", p)
 	registry := tool.NewRegistry()
 	_ = registry.Register(slowTool{started: started, release: release})
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -115,8 +115,8 @@ func TestBackgroundTakeoverWaitsForAppendConfirmation(t *testing.T) {
 	p := &fakePlatform{}
 	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
 	f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"discarded", "confirmed foreground result"}}
-	a := New(p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.RegisterPlatformSender("qq", p)
+	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
+	a.dispatcher.RegisterPlatformSender("qq", p)
 	done := startTakeoverTest(a)
 	select {
 	case <-block.started:
@@ -155,8 +155,8 @@ func TestBackgroundCompactHandoff(t *testing.T) {
 			p := &fakePlatform{}
 			block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
 			f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"compressed history", "finished after compact"}}
-			a := New(p, f, "model", config.ProviderConfig{}, newTestStore(t))
-			a.RegisterPlatformSender("qq", p)
+			a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
+			a.dispatcher.RegisterPlatformSender("qq", p)
 			req := background.RunRequest{Kind: background.KindCron, Name: "compact", Platform: "qq", Actor: security.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: security.RoleSuperadmin}, Prompt: "accepted input"}
 			row, err := a.backgroundSession(context.Background(), req, session.Scope{ActorID: "qq:1", Platform: "qq", PlatformScopeID: "cron:compact"})
 			if err != nil {
@@ -168,7 +168,7 @@ func TestBackgroundCompactHandoff(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
+			a.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 			a.recordUsage(row.ID, &llm.Usage{TotalTokens: 80})
 			done := make(chan backgroundTestResult, 1)
 			go func() {
@@ -234,8 +234,8 @@ func TestBackgroundTakeoverStopRecordsCancellation(t *testing.T) {
 	p := &fakePlatform{}
 	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
 	f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"never returned"}}
-	a := New(p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.RegisterPlatformSender("qq", p)
+	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
+	a.dispatcher.RegisterPlatformSender("qq", p)
 	done := startTakeoverTest(a)
 	select {
 	case <-block.started:
@@ -265,8 +265,8 @@ func TestLateInterruptedRequestCannotFinishResumedExecution(t *testing.T) {
 	old := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{}), ignoreCancellation: true}
 	next := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
 	f := &fakeLLM{chatBlocks: []fakeLLMBlock{old, next}, replies: []string{"late discarded answer", "current answer"}}
-	a := New(p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.RegisterPlatformSender("qq", p)
+	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
+	a.dispatcher.RegisterPlatformSender("qq", p)
 	done := startTakeoverTest(a)
 	select {
 	case <-old.started:
@@ -347,8 +347,8 @@ func TestTakeoverRefreshesNextToolInSameBatch(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{Index: 0, ID: "slow-call", Name: "slow", Args: "{}"}, {Index: 1, ID: "probe-call", Name: "foreground_probe", Args: "{}"}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
-	a := New(p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.RegisterPlatformSender("qq", p)
+	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
+	a.dispatcher.RegisterPlatformSender("qq", p)
 	a.sandboxRoot = sandboxRoot
 	registry := tool.NewRegistry()
 	_ = registry.Register(slowTool{started: started, release: release})
@@ -419,13 +419,13 @@ func TestTakeoverPendingContinuesThroughAutomaticCompact(t *testing.T) {
 		{{DeltaContent: "summary"}},
 		{{DeltaContent: "second final"}},
 	}}
-	a := New(p, f, "model", config.ProviderConfig{}, newTestStore(t))
-	a.RegisterPlatformSender("qq", p)
+	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
+	a.dispatcher.RegisterPlatformSender("qq", p)
 	registry := tool.NewRegistry()
 	_ = registry.Register(slowTool{started: toolStarted, release: toolRelease})
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	a.SetToolRuntime(registry, nil)
-	a.SetContextOptions(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
+	a.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 	done := startTakeoverTest(a)
 	select {
 	case <-toolStarted:

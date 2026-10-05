@@ -21,7 +21,7 @@ func TestCompleteForkMessageID(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{}
 	store := newTestStore(t)
-	a := New(p, f, "m", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "m", config.ProviderConfig{}, store)
 	ctx := context.Background()
 
 	session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "completion"})
@@ -71,8 +71,8 @@ func TestSessionIdleExpiration(t *testing.T) {
 			p := &fakePlatform{}
 			store := newTestStore(t)
 			f := &fakeLLM{replies: []string{"fresh reply"}}
-			a := New(p, f, "test-model", config.ProviderConfig{}, store)
-			a.RegisterPlatformSender("qq", p)
+			a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
+			a.dispatcher.RegisterPlatformSender("qq", p)
 			if tt.superadmin {
 				a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"qq": {"1"}}))
 			}
@@ -118,7 +118,7 @@ func TestSessionIdleExpiration(t *testing.T) {
 func TestIdleExpirationClearsCurrentAndCanResume(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	a := New(p, &fakeLLM{replies: []string{"continued"}}, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, &fakeLLM{replies: []string{"continued"}}, "test-model", config.ProviderConfig{}, store)
 	a.SetSessionIdleExpiration(config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 10})
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 	oldSession, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "old conversation"})
@@ -174,8 +174,8 @@ func TestIdleExpirationClearsCurrentAndCanResume(t *testing.T) {
 func TestLatestAssistantReferenceResumesExpiredOrResetCurrentSession(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	a := New(p, &fakeLLM{replies: []string{"continued", "continued after new"}}, "test-model", config.ProviderConfig{}, store)
-	a.RegisterPlatformSender("qq", p)
+	a := newTestAgent(t, p, &fakeLLM{replies: []string{"continued", "continued after new"}}, "test-model", config.ProviderConfig{}, store)
+	a.dispatcher.RegisterPlatformSender("qq", p)
 	a.SetSessionIdleExpiration(config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 10})
 	baseCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 	target, err := a.sessions.Create(baseCtx, a.scope(baseCtx), session.CreateRequest{Title: "target"})
@@ -271,7 +271,7 @@ func TestLatestAssistantReferenceResumesExpiredOrResetCurrentSession(t *testing.
 func TestStatusDoesNotShowRequestsFromAnotherUserWithoutCurrentSession(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
 	activeCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli",
 
 		ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1001"}},
@@ -318,8 +318,8 @@ func TestMessageContextResumeStartsTargetSession(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"resume reply"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	a.RegisterPlatformSender("qq", p)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
+	a.dispatcher.RegisterPlatformSender("qq", p)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "private:1", ConversationKind: chatinfo.ConversationPrivate}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 
 	bg := &storage.Session{OwnerID: "qq:1", Platform: "qq", PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "cron"}
@@ -350,8 +350,8 @@ func TestMessageContextForkStartsForkSession(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"fork reply"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	a.RegisterPlatformSender("qq", p)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
+	a.dispatcher.RegisterPlatformSender("qq", p)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 
 	source, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "source"})
@@ -386,7 +386,7 @@ func TestChatSchedulesAsyncNamingAndSessionsShowPreview(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"main reply"}, titleReplies: []string{"generated title"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	ctx := context.Background()
 
 	if err := a.HandleMessage(ctx, "hello naming"); err != nil {
@@ -426,7 +426,7 @@ func TestStatusRestoresUsageFromSessionMetadata(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: "reply", Usage: &llm.Usage{TotalTokens: 123, CacheHitTokens: 7}}}}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 
 	if err := a.HandleMessage(context.Background(), "hello usage"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -435,7 +435,7 @@ func TestStatusRestoresUsageFromSessionMetadata(t *testing.T) {
 	if err != nil || len(sessions) == 0 {
 		t.Fatalf("list sessions: %#v err=%v", sessions, err)
 	}
-	resumed := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
+	resumed := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
 	if err := resumed.HandleMessage(context.Background(), "/resume "+sessions[0].ID); err != nil {
 		t.Fatalf("resume: %v", err)
 	}
@@ -464,7 +464,7 @@ func TestModeCommandContinuesWithMessageInActivatedSession(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &fakePlatform{}
 			f := &fakeLLM{replies: []string{"model reply"}}
-			a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+			a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 			a.SetToolProvider(&recordingToolProvider{tools: []llm.ToolSchema{{Function: llm.ToolFunctionSchema{Name: "discover_tool", Parameters: map[string]any{"type": "object"}}}}})
 
 			if err := a.HandleMessage(context.Background(), tt.input); err != nil {
@@ -501,7 +501,7 @@ func TestModeCommandWithoutMessageOnlySwitchesMode(t *testing.T) {
 		t.Run(input, func(t *testing.T) {
 			p := &fakePlatform{}
 			f := &fakeLLM{replies: []string{"unexpected"}}
-			a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+			a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 			if err := a.HandleMessage(context.Background(), input); err != nil {
 				t.Fatalf("HandleMessage: %v", err)
 			}
@@ -515,7 +515,7 @@ func TestModeCommandWithoutMessageOnlySwitchesMode(t *testing.T) {
 func TestModeCommandContinuationPreservesNonTextSegments(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"described"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli",
 		ScopeID: "local"}}, Sender: p,
 		Segments: []platform.MessageSegment{
@@ -541,7 +541,7 @@ func TestChatCommandSuggestsNewForWorkHistory(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"reply"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	ctx := context.Background()
 
 	if err := a.HandleMessage(ctx, "work history"); err != nil {
@@ -570,8 +570,8 @@ func TestDefaultModeFromStateAppliesToNewSessions(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"chat reply"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
-	a.sessions = session.NewServiceWithConfig(store, session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeChat}, &titleGenerator{models: a.models}, nil)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
+	a.sessions = session.NewServiceWithConfig(store, session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeChat}, session.NewTitleGenerator(a.models), nil)
 	ctx := context.Background()
 
 	if err := a.HandleMessage(ctx, "hello default chat"); err != nil {
@@ -590,7 +590,7 @@ func TestNewSessionsResumeCommands(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"first", "second"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	ctx := context.Background()
 
 	if err := a.HandleMessage(ctx, "hello"); err != nil {

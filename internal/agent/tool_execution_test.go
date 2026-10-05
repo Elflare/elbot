@@ -47,7 +47,7 @@ func TestChatExecutesToolAndFollowsUp(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "目录已查看"}},
 	}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
@@ -107,7 +107,7 @@ func TestChatExecutesToolAndFollowsUp(t *testing.T) {
 		t.Fatalf("status missing tool usage: %q", p.out.String())
 	}
 
-	resumedAgent := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
+	resumedAgent := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
 	if err := resumedAgent.HandleMessage(ctx, "/resume "+sessions[0].ID); err != nil {
 		t.Fatalf("resume: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestPreparedToolArgumentsReachExecutionLLMAndTranscript(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "prepared_args", Args: `{"q":"original"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	var executedArguments string
@@ -195,7 +195,7 @@ func TestToolTranscriptPersistsWhenFollowupLLMFails(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo saved"}`}}, FinishReason: "tool_calls"}},
 		{{Error: fmt.Errorf("followup failed")}},
 	}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -238,7 +238,7 @@ func TestTurnHookCannotModifySystemDuringToolFollowup(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo hi"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -275,7 +275,7 @@ func TestResidentMemoryAppearsOnceAcrossToolFollowupAndTurns(t *testing.T) {
 		{{DeltaContent: "done"}},
 		{{DeltaContent: "next"}},
 	}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -328,7 +328,7 @@ func TestDiscoverToolDoesNotRepeatElyphRuleCardAcrossTurns(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_2", Name: "discover_tool", Args: `{"name":"beta"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done beta"}},
 	}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -373,7 +373,7 @@ func TestChatToolCallWithAssistantTextSkipsFallbackPreview(t *testing.T) {
 		{{DeltaContent: "我先看一下。"}, {ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "看完了"}},
 	}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -400,9 +400,9 @@ func TestNonCLIChatToolCallWithAssistantTextSkipsToolArgumentPreview(t *testing.
 		{{DeltaContent: "我先看一下。"}, {ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "看完了"}},
 	}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"qq": {"1"}}))
-	a.RegisterPlatformSender("qq", p)
+	a.dispatcher.RegisterPlatformSender("qq", p)
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
@@ -427,7 +427,7 @@ func TestToolCallAssistantEmoticonSendsBeforeFinalResponse(t *testing.T) {
 		{{DeltaContent: "查完了"}},
 	}}
 	store := newTestStore(t)
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -519,7 +519,7 @@ func TestChatExecutesAllToolCallsInSameRound(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}, {ID: "call_2", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	a.SetToolConfig(config.ToolsConfig{MaxRoundsPerTurn: 1})
 	registry := tool.NewRegistry()

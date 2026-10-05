@@ -16,15 +16,29 @@ type cleanupStep struct {
 }
 
 func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
+	ctx, cancel := context.WithCancel(ctx)
+	var shutdownCtx context.Context
+	var shutdownCancel context.CancelFunc
+	beginShutdown := func() {
+		if shutdownCtx != nil {
+			return
+		}
+		timeout := r.shutdownTimeout
+		if timeout <= 0 {
+			timeout = defaultShutdownTimeout
+		}
+		shutdownCtx, shutdownCancel = context.WithTimeout(context.Background(), timeout)
+	}
+	platformsStopped := true
 	var cleanups []cleanupStep
 	defer func() {
 		runErr = withoutShutdownError(runErr, ctx.Err())
-		shutdownTimeout := r.shutdownTimeout
-		if shutdownTimeout <= 0 {
-			shutdownTimeout = defaultShutdownTimeout
+		cancel()
+		beginShutdown()
+		defer shutdownCancel()
+		if !platformsStopped {
+			return
 		}
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		defer cancel()
 		for i := len(cleanups) - 1; i >= 0; i-- {
 			if shutdownCtx.Err() != nil {
 				break
@@ -61,6 +75,9 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 		return fmt.Errorf("app: environment returned nil startup profiler")
 	}
 	foundation, err := r.deps.Foundation.Build(ctx, FoundationRequest{Options: opts, Mode: mode, Profiler: profiler})
+	if foundation != nil && foundation.Lifecycle != nil {
+		cleanups = append(cleanups, cleanupStep{name: "foundation", close: foundation.Lifecycle.Close})
+	}
 	if err != nil {
 		return err
 	}
@@ -70,7 +87,6 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	if foundation.Lifecycle == nil {
 		return fmt.Errorf("app: foundation factory returned incomplete components")
 	}
-	cleanups = append(cleanups, cleanupStep{name: "foundation", close: foundation.Lifecycle.Close})
 	if foundation.Logger == nil {
 		return fmt.Errorf("app: foundation factory returned incomplete components")
 	}
@@ -84,6 +100,18 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 		return err
 	}
 	runtime, err := r.deps.Runtime.Build(ctx, RuntimeRequest{Foundation: foundation, Models: models, Platforms: platforms, Profiler: profiler})
+	if runtime != nil {
+		if runtime.Lifecycle != nil {
+			step := cleanupStep{name: "runtime", close: runtime.Lifecycle.Close}
+			if lifecycle, ok := runtime.Lifecycle.(interface{ stopped() bool }); ok {
+				step.stopped = lifecycle.stopped
+			}
+			cleanups = append(cleanups, step)
+		}
+		if runtime.Signals != nil {
+			cleanups = append(cleanups, cleanupStep{name: "signals", close: runtime.Signals.Close, stopped: runtime.Signals.stopped})
+		}
+	}
 	if err != nil {
 		return err
 	}
@@ -92,10 +120,6 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	}
 	if runtime.Lifecycle == nil {
 		return fmt.Errorf("app: runtime factory returned incomplete components")
-	}
-	cleanups = append(cleanups, cleanupStep{name: "runtime", close: runtime.Lifecycle.Close})
-	if runtime.Signals != nil {
-		cleanups = append(cleanups, cleanupStep{name: "signals", close: runtime.Signals.Close, stopped: runtime.Signals.stopped})
 	}
 	if runtime.Handler == nil {
 		return fmt.Errorf("app: runtime factory returned incomplete components")
@@ -120,10 +144,29 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 			foundation.StartCron(ctx, runtime.CronService)
 		}
 	}
-	return r.deps.Executor.Run(ctx, PlatformRunRequest{
-		Handler:    runtime.Handler,
-		Logger:     foundation.Logger,
-		Runtimes:   platforms.Runtimes,
-		AfterStart: afterStart,
-	})
+	done := make(chan error, 1)
+	platformsStopped = false
+	go func() {
+		done <- r.deps.Executor.Run(ctx, PlatformRunRequest{
+			Handler:    runtime.Handler,
+			Logger:     foundation.Logger,
+			Runtimes:   platforms.Runtimes,
+			AfterStart: afterStart,
+			Stop:       cancel,
+		})
+	}()
+	select {
+	case err := <-done:
+		platformsStopped = true
+		return err
+	case <-ctx.Done():
+		beginShutdown()
+		select {
+		case err := <-done:
+			platformsStopped = true
+			return err
+		case <-shutdownCtx.Done():
+			return ctx.Err()
+		}
+	}
 }

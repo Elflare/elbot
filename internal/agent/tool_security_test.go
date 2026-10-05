@@ -23,7 +23,7 @@ import (
 
 func TestRiskConfirmationExpiresAndStopsToolFlow(t *testing.T) {
 	p := &fakePlatform{}
-	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.userConfirmationTimeout = 20 * time.Millisecond
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "private:regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
 	ctx = security.WithActor(ctx, security.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: security.RoleUser})
@@ -57,7 +57,7 @@ func TestRiskConfirmationStopUsesStopCommandWithoutToolError(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"rm out.txt"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "should not continue"}},
 	}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
@@ -109,7 +109,7 @@ func TestRiskConfirmationStopUsesStopCommandWithoutToolError(t *testing.T) {
 
 func TestRiskConfirmationDetailUsesToolProvidedDetail(t *testing.T) {
 	p := &fakePlatform{}
-	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := context.Background()
 	session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm custom detail"})
 	if err != nil {
@@ -152,7 +152,7 @@ func TestRiskConfirmationDetailUsesToolProvidedDetail(t *testing.T) {
 func TestRiskConfirmationConfirmToolAndConfirmAllAliases(t *testing.T) {
 	t.Run("confirm tool alias", func(t *testing.T) {
 		p := &fakePlatform{}
-		a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+		a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 		ctx := context.Background()
 		session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm tool"})
 		if err != nil {
@@ -185,7 +185,7 @@ func TestRiskConfirmationConfirmToolAndConfirmAllAliases(t *testing.T) {
 
 	t.Run("confirm all alias", func(t *testing.T) {
 		p := &fakePlatform{}
-		a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
+		a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 		ctx := context.Background()
 		session, err := a.sessions.Create(ctx, a.scope(context.Background()), session.CreateRequest{Title: "confirm all"})
 		if err != nil {
@@ -224,7 +224,7 @@ func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "resident_memory_core", Args: `{"content":"我喜欢咖啡"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "已记下"}},
 	}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
@@ -298,7 +298,7 @@ func TestRegularUserCanUpdateNormalMemoryWithoutConfirmation(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "resident_memory_normal", Args: `{"action":"write","content":"用户喜欢短回复。"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "已记下"}},
 	}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
@@ -336,7 +336,7 @@ func TestRegularUserCannotCallSuperadminOnlyTool(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "long_memory_write", Args: `{"category":"x","title":"t","summary":"s","content":"c"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "fallback"}},
 	}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {

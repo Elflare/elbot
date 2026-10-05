@@ -22,7 +22,7 @@ func TestRunBackgroundPreloadsShellWithContextActorAndAutoConfirmsSandboxShell(t
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo 'ok' > ./elnis_shell_tool_test.txt"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: `{"completed":true,"need_report":true,"report":"done"}`}},
 	}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.SetToolConfig(config.ToolsConfig{MaxRoundsPerTurn: 2})
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -78,7 +78,7 @@ func TestRunBackgroundPreloadsSkillDetailAndActivatedHiddenWrapper(t *testing.T)
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
 	platform := &fakePlatform{}
-	a := New(platform, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, platform, f, "test-model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -120,7 +120,7 @@ func TestRunBackgroundUsesWorkModeWhenDefaultModeIsChat(t *testing.T) {
 		storage.SessionModeWork: {Provider: "default", Model: "test-model"},
 		storage.SessionModeChat: {Provider: "default", Model: "test-model"},
 	}
-	a := mustNewWithOptions(t, Options{Platform: platform, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"default": f}, ModeModels: modeModels, Providers: map[string]config.ProviderConfig{"default": {}}, DefaultMode: storage.SessionModeWork}), Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeChat}})
+	a := mustNewWithOptions(t, testAgentOptions{Platform: platform, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"default": f}, ModeModels: modeModels, Providers: map[string]config.ProviderConfig{"default": {}}, DefaultMode: storage.SessionModeWork}), Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeChat}})
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -161,7 +161,7 @@ func TestRunBackgroundCreatesFreshSessionForEachCronTrigger(t *testing.T) {
 		{{DeltaContent: `{"completed":true,"need_report":true,"report":"first"}`}},
 		{{DeltaContent: `{"completed":true,"need_report":true,"report":"second"}`}},
 	}}
-	a := New(&fakePlatform{}, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, &fakePlatform{}, f, "test-model", config.ProviderConfig{}, store)
 	req := background.RunRequest{
 		Kind:     background.KindCron,
 		Name:     "fresh-session",
@@ -202,7 +202,7 @@ func TestRunBackgroundRepairsReusedSessionModeAndMetadata(t *testing.T) {
 	}
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":false,"report":"ok"}`}}}}
 	platform := &fakePlatform{}
-	a := New(platform, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, platform, f, "test-model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -234,7 +234,7 @@ func TestRunBackgroundPreloadsMixedToolAndSkillWithoutSkillSchema(t *testing.T) 
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
 	platform := &fakePlatform{}
-	a := New(platform, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, platform, f, "test-model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -265,7 +265,7 @@ func TestRunCronMessagePreloadsToolListNamesWithoutDiscoverTool(t *testing.T) {
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
 	platform := &fakePlatform{}
-	a := New(platform, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, platform, f, "test-model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -303,7 +303,7 @@ func TestRunCronMessageToolPhaseDoesNotPublishRuntimeStatus(t *testing.T) {
 		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call-1", Name: "discover_tool", Args: `{"name":"web_search"}`}}}},
 		{{DeltaContent: `{"completed":true,"need_report":false,"report":"ok"}`}},
 	}}
-	a := New(platform, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, platform, f, "test-model", config.ProviderConfig{}, store)
 	a.SetSecurityPolicy(security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}}))
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
@@ -325,7 +325,7 @@ func TestRunCronMessageToolPhaseDoesNotPublishRuntimeStatus(t *testing.T) {
 func TestRunCronMessageReturnsRawAssistantTextForJSONParsing(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
-	a := New(&fakePlatform{}, &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}, "test-model", config.ProviderConfig{}, store)
 	cronSession := &storage.Session{OwnerID: "cli:local", Platform: "cli", PlatformScopeID: "cron:test", Mode: storage.SessionModeWork, Title: "Cron", Status: storage.SessionStatusActive}
 	if err := store.Sessions().Create(ctx, cronSession); err != nil {
 		t.Fatalf("create session: %v", err)

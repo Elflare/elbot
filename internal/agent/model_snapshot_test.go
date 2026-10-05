@@ -131,7 +131,7 @@ func TestNamingFallbackKeepsOriginalWorkSelectionAcrossSwitch(t *testing.T) {
 		ModeModels:  map[string]config.ModelSelection{storage.SessionModeWork: {Provider: "old", Model: "first"}},
 		NamingModel: config.ModelSelection{Provider: "naming", Model: "title"},
 	})
-	g := &titleGenerator{models: models}
+	g := session.NewTitleGenerator(models)
 	messages := []storage.Message{{Role: storage.RoleUser, Content: "name this"}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

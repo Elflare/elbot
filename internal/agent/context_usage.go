@@ -8,9 +8,6 @@ import (
 	"elbot/internal/storage"
 )
 
-func (a *Agent) ContextStatus(ctx context.Context, row *storage.Session) string {
-	return a.contexts.Status(ctx, a.usageForSession(row), a.models.ResolveMode(row.Mode).ModelSelection)
-}
 func (a *Agent) recordUsage(id string, usage *llm.Usage) {
 	if err := a.contexts.RecordUsage(context.Background(), id, usage); err != nil && a.logger != nil {
 		a.logger.Warn("persist usage failed", "session_id", id, "error", err)

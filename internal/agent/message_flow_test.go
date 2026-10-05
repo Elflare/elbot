@@ -42,7 +42,7 @@ func TestTurnHookMultimodalUserMessagePersistsWithoutChangingPlatformText(t *tes
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"first", "second"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	manager := hook.NewManager()
 	var platformText string
 	if err := manager.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "test.user_segments", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
@@ -103,7 +103,7 @@ func TestTurnHookMultimodalUserMessagePersistsWithoutChangingPlatformText(t *tes
 
 func TestHandleMessageSendsLLMErrorToPlatform(t *testing.T) {
 	p := &fakePlatform{}
-	a := New(p, &fakeLLM{replies: []string{"__ERR__"}}, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, &fakeLLM{replies: []string{"__ERR__"}}, "test-model", config.ProviderConfig{}, newTestStore(t))
 
 	err := a.HandleMessage(context.Background(), "hello")
 	if err == nil || !strings.Contains(err.Error(), "fake stream error") {
@@ -118,7 +118,7 @@ func TestHandleMessageSendsLLMErrorToPlatform(t *testing.T) {
 func TestHandleMessageImageOnlyInputReachesLLM(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"ok"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqofficial",
 		ScopeID: "c2c:user-1"}}, Sender: p,
 		Segments: []platform.MessageSegment{{Type: platform.SegmentImage, URL: "data:image/png;base64,abc", MIMEType: "image/png", Name: "image.png"}},
@@ -158,7 +158,7 @@ func TestReplaceInboundTextSegmentsPreservesImage(t *testing.T) {
 func TestReplyContextFallbackStillReachesLLMWhenNotConsumed(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot",
 		ScopeID:          "group:9",
 		ConversationKind: chatinfo.ConversationGroup}}, Sender: p,
@@ -185,7 +185,7 @@ func TestReplyContextFallbackStillReachesLLMWhenNotConsumed(t *testing.T) {
 func TestHandleMessageSendsFallbackForEmptyLLMResponse(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]llm.StreamChunk{{}}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq-onebot", ScopeID: "private:test"}}, Sender: p, BufferAssistantOutput: true})
 
 	if err := a.HandleMessage(ctx, "hello"); err != nil {
@@ -223,7 +223,7 @@ func TestDynamicProviderClientUsesAgentLogger(t *testing.T) {
 		t.Fatalf("create zhipu client: %v", err)
 	}
 	zhipu.SetLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	a := mustNewWithOptions(t, Options{Platform: &fakePlatform{}, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"deepseek": &fakeLLM{}, "zhipu": zhipu}, ModeModels: modeModels, Providers: providers, DefaultMode: storage.SessionModeWork}), Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
+	a := mustNewWithOptions(t, testAgentOptions{Platform: &fakePlatform{}, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"deepseek": &fakeLLM{}, "zhipu": zhipu}, ModeModels: modeModels, Providers: providers, DefaultMode: storage.SessionModeWork}), Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
 
 	ch, err := a.models.ClientForProvider("zhipu").ChatStream(context.Background(), llm.ChatRequest{
 		Model:    "glm-4-flash",
@@ -250,7 +250,7 @@ func TestDynamicProviderClientUsesAgentLogger(t *testing.T) {
 func TestMapSentAssistantMessageMapsAllReceiptIDs(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	a := New(p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
 	session, err := a.sessions.Create(ctx, a.scope(ctx), session.CreateRequest{Title: "mapped"})
 	if err != nil {
@@ -277,7 +277,7 @@ func TestChatPersistsMessagesAndLoadsHistory(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"hi", "again"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	ctx := context.Background()
 
 	if err := a.HandleMessage(ctx, "hello"); err != nil {
@@ -339,7 +339,7 @@ func TestChatFailureDoesNotScheduleNaming(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"__ERR__"}, titleReplies: []string{"should not be used"}}
-	a := New(p, f, "test-model", config.ProviderConfig{}, store)
+	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 
 	if err := a.HandleMessage(context.Background(), "hello naming"); err == nil {
 		t.Fatal("expected chat error")

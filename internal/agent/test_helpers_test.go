@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -10,7 +9,6 @@ import (
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
-	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool"
@@ -22,31 +20,6 @@ import (
 	"testing"
 	"time"
 )
-
-func mustNewWithOptions(t *testing.T, opts Options) *Agent {
-	t.Helper()
-	defaults := config.Default()
-	if opts.SessionListPageSize <= 0 {
-		opts.SessionListPageSize = defaults.View.SessionListPageSize
-	}
-	if opts.CleanupRetentionDays <= 0 {
-		opts.CleanupRetentionDays = 30
-	}
-	if opts.SandboxRoot == "" {
-		opts.SandboxRoot = defaults.Sandbox.Root
-	}
-	if opts.ToolsConfig.MaxRoundsPerTurn <= 0 {
-		opts.ToolsConfig = defaults.Tools
-	}
-	if opts.SecurityPolicy == nil {
-		opts.SecurityPolicy = security.DefaultPolicy()
-	}
-	agent, err := NewWithOptions(opts)
-	if err != nil {
-		t.Fatalf("NewWithOptions: %v", err)
-	}
-	return agent
-}
 
 func newTestModels(t *testing.T, opts modelmgr.Options) *modelmgr.Service {
 	t.Helper()
