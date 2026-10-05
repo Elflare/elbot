@@ -411,6 +411,14 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 		return a.handleTurnContextDone(ctx, session.ID, err, out)
 	}
 	platformOutputText := platformFinalText
+	// Adoption can happen while the final model request is in flight, without
+	// another loop iteration to refresh the identity before output hooks.
+	reqCtx, err = a.refreshExecution(reqCtx, session)
+	if err != nil {
+		return err
+	}
+	ctx = a.executionContext(ctx)
+	bufferOutput = bufferAssistantOutput(ctx)
 	var finalSendErr error
 	backgroundOutput := isBackgroundSession(session)
 	emptyAssistantResponse := strings.TrimSpace(platformOutputText) == "" && strings.TrimSpace(finalText) == "" && len(deferredOutputs) == 0
@@ -430,7 +438,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 			} else {
 				finalReceipt, finalSendErr = out.SendAssistant(ctx, platformOutputText)
 			}
-			if finalSendErr != nil && len(finalReceipt.PlatformMessageIDs) == 0 {
+			if finalSendErr != nil && len(finalReceipt.PlatformMessageIDs) == 0 && len(finalReceipt.SentMessages) == 0 {
 				return finalSendErr
 			}
 		}
@@ -438,7 +446,7 @@ func (a *Agent) runChat(ctx context.Context, session *storage.Session, text stri
 
 	if !bufferOutput && finalSendErr == nil {
 		finalSendErr = out.SendOutputs(ctx, deferredOutputs)
-		if finalSendErr != nil && len(finalReceipt.PlatformMessageIDs) == 0 {
+		if finalSendErr != nil && len(finalReceipt.PlatformMessageIDs) == 0 && len(finalReceipt.SentMessages) == 0 {
 			return finalSendErr
 		}
 	}

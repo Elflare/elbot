@@ -281,7 +281,7 @@ Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记�
 
 后续 Review 的五项边界：普通用户 `/stop` 的编号、ID、补全和取消限定当前原绑定；输入 Hook／预加载前及一次性提交前由 Agent 复核准入；Cron 取消、启动等待和在途退出先于 runtime／Hook 释放且共享关闭预算；Prepared Hook 不回写模型操作快照；压缩创建与命名字段统一由 Session `CreateCompacted` 管理。Fork 保留来源模式，contextmgr 保留压缩材料，Session 不依赖 contextmgr。
 
-公共来源与事件复核边界：前台接管完整替换 Info／平台发送上下文；Cron／Elnis 报告关联只消费实际结构化回执；平台连接的 Cron 恢复与用户 Hook 使用独立信号订阅；Session 命名具备应用级取消与实际退出等待；后台广播副本统一由 Session 创建且不激活前台绑定。命名通知暂不发信号。
+公共来源与事件复核边界：前台接管完整替换 Info／平台发送上下文，最终 LLM 返回后再次刷新来源；Agent／Cron／Elnis 消息关联只消费实际结构化回执，平台文本、分页和流式发送提供实际来源；无聊天来源的 Hook 及其错误事件保持空 Scope／Actor；平台连接的 Cron 恢复与用户 Hook 使用独立信号订阅；Session 命名具备应用级取消与实际退出等待；后台广播副本统一由 Session 创建且不激活前台绑定。命名通知暂不发信号。
 
 - 通过实际后台入口验证首轮工具提交、续跑冻结、初始空白名单和提交失败；验证模型强行调用、schema Hook 注入及准备 Hook 改名都不能越权，前台 chat 继续禁用工具。
 - 回归前后台工具／Skill 预加载、标签、补全及权限，保持隐藏工具、后台限制和既有提示行为。
@@ -290,12 +290,13 @@ Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记�
 
 #### Review 验证结果
 
-- 公共信息／信号：基础包不依赖业务模块；平台来源快照、按平台队列和关闭取消仍走既有契约。
+- 公共信息／信号：基础包不依赖业务模块；平台来源快照、按平台队列和关闭取消仍走既有契约。公共 Info 无平台扩展、事件显式字段、部分来源及无来源连接 Hook／错误 Hook 均有回归覆盖。
 - Session／文件：绑定同步失效、提交准入和后台接管保持原顺序；实际 app 装配测试覆盖忙碌保护、后台执行接管与 Hook 观察回调。压缩创建统一归 Session，前后台、接管、取消、保存失败和未知 metadata 保留均有回归覆盖。
 - 模型／上下文：模型先持久化再发布快照，上下文 metadata 按字段更新；Turn／Request Prepared 的 Go Handler 不能修改模型选择，允许的消息修改继续生效，前台接管仍显式重新选择。
 - 工具状态：生产代码的工具 metadata 读写集中于 StateService；前后台预加载共用服务。实际后台入口覆盖首轮提交、续跑冻结、空白名单、显式 tag、Hook／模型越权和真实沙盒文件读写；Session 恢复验证模式切换，Cron 验证任务模型 CRUD 及格式重试快照。
 - 输入／命令：跨用户 `/stop` 被拒绝，普通用户的当前子请求、编号／ID、补全及超级管理员全局管理通过实际入口验证。预加载在压缩期、准备期间切换会话／模式、切离再恢复和取消时不提交状态或成功提示。
 - 发送／装配：领域服务及内置命令没有反向依赖 Agent；原来源投递、部分回执和共享服务回归通过。Cron 测试覆盖重复停止、启动失败、迟到启动、取消与状态保存等待，以及共享预算耗尽后保留依赖且不后台收尾。旧后台适配器、重复发现、旧缓存序列化、Agent 压缩创建／命名写入及 Hook 模型回写入口均无生产引用。
+- 最终输出／回执：直接与缓冲输出覆盖最后一轮 LLM 等待期间的前台接管，最终 Hook 使用前台来源，消息按实际回执关联。QQ OneBot、QQ Official、Telegram 的真实 adapter 经本地 WebSocket／HTTP 服务验证文本、回复、分页、部分成功和 Telegram 流式回执；Cron 的管理员部分失败与 Elnis 多管理员报告经 Router、Telegram adapter 和 SQLite 验证实际消息关联。
 - `go test ./...` 通过；Agent、app、Session、toolrun、Cron、Elnis、signal、fileops、modelmgr、contextmgr、delivery、notification、command、platform、Turn 及 SQLite 的相关 `-race` 测试通过。
 
 

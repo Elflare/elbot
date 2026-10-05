@@ -58,18 +58,17 @@ func bufferAssistantOutput(ctx context.Context) bool {
 }
 
 func (a *Agent) mapSentAssistantMessage(ctx context.Context, sessionID, messageID string, receipt delivery.Receipt) {
-	if len(receipt.PlatformMessageIDs) == 0 || a.store == nil || a.store.Messages() == nil {
+	if sessionID == "" || messageID == "" || a.store == nil || a.store.Messages() == nil {
 		return
 	}
-	scope := a.scope(ctx)
-	for _, platformMessageID := range receipt.PlatformMessageIDs {
-		platformMessageID = strings.TrimSpace(platformMessageID)
-		if platformMessageID == "" {
+	for _, sent := range receipt.SentMessages {
+		platformName, scopeID, platformMessageID := strings.TrimSpace(sent.Platform), strings.TrimSpace(sent.ScopeID), strings.TrimSpace(sent.PlatformMessageID)
+		if platformName == "" || scopeID == "" || platformMessageID == "" {
 			continue
 		}
 		mapping := storage.PlatformMessageMap{
-			Platform:          scope.Platform,
-			PlatformScopeID:   scope.PlatformScopeID,
+			Platform:          platformName,
+			PlatformScopeID:   scopeID,
 			PlatformMessageID: platformMessageID,
 			MessageID:         messageID,
 			SessionID:         sessionID,

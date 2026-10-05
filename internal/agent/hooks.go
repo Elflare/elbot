@@ -148,24 +148,38 @@ func (a *Agent) fillHookContext(ctx context.Context, event hook.Event) hook.Even
 	if a.media != nil {
 		event.Media = a.media
 	}
-	actor := a.actor(ctx)
-	platformName := a.platform.Name()
-	scopeID := a.scopeID
+	// Connection and other source-free events must not inherit the Agent's
+	// default local identity. Only message facts or an explicit actor apply.
+	actor, hasActor := security.ActorFromContext(ctx)
 	if info, ok := chatinfo.FromContext(ctx); ok {
-		if info.Source.Platform != "" {
-			platformName = info.Source.Platform
+		if event.Platform.Name == "" {
+			event.Platform.Name = info.Source.Platform
 		}
-		if info.Source.ScopeID != "" {
-			scopeID = info.Source.ScopeID
+		if event.Platform.ScopeID == "" {
+			event.Platform.ScopeID = info.Source.ScopeID
+		}
+		if event.Platform.ConversationID == "" {
+			event.Platform.ConversationID = info.Source.ConversationID
+		}
+		if event.Platform.PlatformMessageID == "" {
+			event.Platform.PlatformMessageID = info.PlatformMessageID
+		}
+		if event.Platform.ReplyToMessageID == "" {
+			event.Platform.ReplyToMessageID = info.ReplyToMessageID
+		}
+		if !hasActor && (info.Identity.PlatformUserID != "" || info.Identity.ActorID != "") {
+			policy := a.securityPolicy
+			if policy == nil {
+				policy = security.DefaultPolicy()
+			}
+			actor = policy.Actor(info.Identity.ActorID, info.Source.Platform, info.Identity.PlatformUserID, info.Identity.DisplayName)
+			actor.Nickname, actor.GroupCard = info.Identity.Nickname, info.Identity.GroupCard
+			if msg, ok := platform.MessageContextFrom(ctx); ok {
+				actor.GroupRole = msg.GroupRole
+			}
 		}
 	}
 	if msg, ok := platform.MessageContextFrom(ctx); ok {
-		if event.Platform.PlatformMessageID == "" {
-			event.Platform.PlatformMessageID = msg.PlatformMessageID
-		}
-		if event.Platform.ReplyToMessageID == "" {
-			event.Platform.ReplyToMessageID = msg.ReplyToMessageID
-		}
 		if event.Message.PlatformText == "" {
 			event.Message.PlatformText = msg.RawText
 		}
@@ -185,12 +199,6 @@ func (a *Agent) fillHookContext(ctx context.Context, event hook.Event) hook.Even
 	}
 	if event.Message.IntentText == "" && event.Message.Role == string(llm.RoleUser) {
 		event.Message.IntentText = a.stripWakeupPrefix(ctx, llm.SegmentsTextOnly(event.Message.Segments))
-	}
-	if event.Platform.Name == "" {
-		event.Platform.Name = platformName
-	}
-	if event.Platform.ScopeID == "" {
-		event.Platform.ScopeID = scopeID
 	}
 	if event.Platform.UserID == "" {
 		event.Platform.UserID = actor.PlatformUserID
