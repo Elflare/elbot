@@ -32,6 +32,14 @@
       "translation": "The Session Meta of the system prompt now includes the local creation time of the Session, accurate to the second; this value will not change with conversation turns to maintain Prompt cache stability.",
       "updated_at": 1787799472
     },
+    "CHANGELOG.md:list:03c7c41dcaf6c5bb09b7ec6fae904bf148c0a1aa743dea11e7a6041a9c6b2725": {
+      "kind": "list",
+      "source": "添加事件系统",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "03c7c41dcaf6c5bb09b7ec6fae904bf148c0a1aa743dea11e7a6041a9c6b2725",
+      "translation": "Added event system",
+      "updated_at": 1791194538
+    },
     "CHANGELOG.md:list:04792220a0453d2a80f396307ad2079f5a7ba1f001924b3ce14c678f7f132627": {
       "kind": "list",
       "source": "修复 Windows 下 __ELBOT_CODE_0__ 工具回退到 PowerShell 时中文输出可能乱码的问题。",
@@ -143,6 +151,14 @@
       "source_hash": "139cedb063eab03bcc622e4f60bd575baa06a38c3746c40859486fd2ff89eac8",
       "translation": "Fixed an issue where referencing the last assistant reply of the original Session would incorrectly create a new Session after the Session timed out due to inactivity, __ELBOT_CODE_0__ was executed, or the Session was switched;",
       "updated_at": 1789088930
+    },
+    "CHANGELOG.md:list:13bd9c9caff5ad61cfe1ad9950041750f330095b02504d7062a59b03ef14728d": {
+      "kind": "list",
+      "source": "启动中途失败时，已经创建的 Hook／信号和延迟 Skill 加载现在统一取消并清理；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "13bd9c9caff5ad61cfe1ad9950041750f330095b02504d7062a59b03ef14728d",
+      "translation": "When startup fails midway, already created Hooks/signals and delayed Skill loading are now uniformly canceled and cleaned up;",
+      "updated_at": 1791194538
     },
     "CHANGELOG.md:list:14cd896f3e686f14895d68bac5e89d2420b4109ebf71e29785677cc89a68d1a8": {
       "kind": "list",
@@ -312,6 +328,14 @@
       "translation": "Absolute paths can still be used temporarily and will return a warning.",
       "updated_at": 1782958962
     },
+    "CHANGELOG.md:list:2fdface24ec2403c0f8d40bf14b2fafc88281eaec9d91434b2963fc5ba2e76a3": {
+      "kind": "list",
+      "source": "修复普通用户能stop其他用户的请求的bug。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "2fdface24ec2403c0f8d40bf14b2fafc88281eaec9d91434b2963fc5ba2e76a3",
+      "translation": "Fixed a bug where regular users could stop requests from other users.",
+      "updated_at": 1791194538
+    },
     "CHANGELOG.md:list:3113c27f20b53241bc3c9f28cfe562a2fa63ad88463bbb3f33c3ef5fe21eb55f": {
       "kind": "list",
       "source": "CLI TUI 执行 __ELBOT_CODE_0__ 后会把当前运行状态收束为 __ELBOT_CODE_1__ 并固定耗时，不再继续累加状态栏时间。",
@@ -360,6 +384,22 @@
       "translation": "A single LLM streaming request is controlled only by the first packet and idle timeout.",
       "updated_at": 1782574901
     },
+    "CHANGELOG.md:list:33c01297b328b36b18379bd2333cb74e29d10ab32928fe42ffb14a88157fc6fd": {
+      "kind": "list",
+      "source": "群聊、频道不再列出或允许恢复后台会话。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "33c01297b328b36b18379bd2333cb74e29d10ab32928fe42ffb14a88157fc6fd",
+      "translation": "Group chats and channels no longer list or allow the restoration of background Sessions.",
+      "updated_at": 1791194538
+    },
+    "CHANGELOG.md:list:342429b7b7fcf5433a32985c52cfe244076dbf12b77ffe5ad0392e776b33d772": {
+      "kind": "list",
+      "source": "工具发现、预载现在是事务写入session。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "342429b7b7fcf5433a32985c52cfe244076dbf12b77ffe5ad0392e776b33d772",
+      "translation": "Tool discovery and preloading are now written to the Session transactionally.",
+      "updated_at": 1791194538
+    },
     "CHANGELOG.md:list:36326ca18c13f00375cdf8134055082ca8bcb7fac1c0539ced4864dc039700ee": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 新增 __ELBOT_CODE_1__ 参数，默认使用 Jina Reader；传 __ELBOT_CODE_2__ 可手动改用直接爬取。",
@@ -383,6 +423,14 @@
       "source_hash": "37d1b3ce5330e9258be430381efb3099ba1542f542eae9d94fc0586ef335848b",
       "translation": "Fixed an issue where OpenAI-compatible streaming requests used a single HTTP timeout, causing them to be incorrectly interrupted when the model's first token was slow or long outputs exceeded 60 seconds.",
       "updated_at": 1782461728
+    },
+    "CHANGELOG.md:list:3a665428a103a7948e59a691e7095a55a077368a41cc94507dddaf8e9a9ec63c": {
+      "kind": "list",
+      "source": "模型切换现在先原子保存 __ELBOT_CODE_0__ 再生效，并发切换不覆盖彼此更新。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "3a665428a103a7948e59a691e7095a55a077368a41cc94507dddaf8e9a9ec63c",
+      "translation": "Model switching now atomically saves __ELBOT_CODE_0__ before taking effect, ensuring concurrent switches do not overwrite each other's updates.",
+      "updated_at": 1791194538
     },
     "CHANGELOG.md:list:3bfc1afeffc284a26448c1c4b861effd798139382834e032c757e03c4de32170": {
       "kind": "list",
@@ -456,6 +504,14 @@
       "translation": "Hook Actor now provides platform nicknames, group nicknames, and pure display names; chat history is saved and searched separately by platform user ID and name.",
       "updated_at": 1783856514
     },
+    "CHANGELOG.md:list:44aca765996fa18a319f7c31583efcf666fb99fa4a23e309a731bd37ca6c6bdb": {
+      "kind": "list",
+      "source": "启动插件告警不再等待 Agent 创建后补发；交互模式直接显示于本地 CLI，service 模式记录实际告警内容。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "44aca765996fa18a319f7c31583efcf666fb99fa4a23e309a731bd37ca6c6bdb",
+      "translation": "Plugin startup alerts no longer wait for Agent creation to be sent; they are displayed directly in the local CLI in interactive mode and recorded as actual alert content in service mode.",
+      "updated_at": 1791194538
+    },
     "CHANGELOG.md:list:452192294ae296b84042bb201edbf0936231be05a01c5ff72cc9a3409d6ce4d4": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 新增 __ELBOT_CODE_1__，可对 Go 和 Shell 文件按名称进行轻量 AST 搜索；",
@@ -528,6 +584,14 @@
       "translation": "Fixed a bug where large files sent from Elwisp to qqonebot caused total blockage.",
       "updated_at": 1788876182
     },
+    "CHANGELOG.md:list:52958935082f3f74da761c874b50c751492953922f96365b2668bd473f60c011": {
+      "kind": "list",
+      "source": "修复 Agent 去除唤醒词或工具指令时会合并全部文字段、打乱图文位置的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "52958935082f3f74da761c874b50c751492953922f96365b2668bd473f60c011",
+      "translation": "Fixed an issue where the Agent would merge all text segments and disrupt the positioning of text and images when removing wake words or tool commands.",
+      "updated_at": 1791194538
+    },
     "CHANGELOG.md:list:544848e58ddf58eb94be259c382c90eb3999f62714ca2674072b8102baa6631a": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 修改 __ELBOT_CODE_1__ 后不再自动 reload；修改完成后需调用 __ELBOT_CODE_2__ 生效。",
@@ -535,6 +599,14 @@
       "source_hash": "544848e58ddf58eb94be259c382c90eb3999f62714ca2674072b8102baa6631a",
       "translation": "__ELBOT_CODE_0__ no longer automatically reloads after modifying __ELBOT_CODE_1__; __ELBOT_CODE_2__ must be called after modification to take effect.",
       "updated_at": 1782722558
+    },
+    "CHANGELOG.md:list:5458bc7a23cf8ea24b4226b812665e7817786867a6731cd6b8078d51513261a0": {
+      "kind": "list",
+      "source": "后续输出、权限和确认使用前台规则，原任务等待最终结果并记录接管，停止 JSON 修正、自动汇报及未开始的补投递；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "5458bc7a23cf8ea24b4226b812665e7817786867a6731cd6b8078d51513261a0",
+      "translation": "Subsequent output, permissions, and confirmations now use foreground rules; the original task waits for the final result and records the takeover, while JSON correction, automatic reporting, and unstarted supplementary deliveries are stopped.",
+      "updated_at": 1791194538
     },
     "CHANGELOG.md:list:55588c10892a80f8b20bb9511361dfb0fd9904db00b20534f96cb5989862a0df": {
       "kind": "list",
@@ -567,6 +639,14 @@
       "source_hash": "57c02c13c5ed82c755fc0eeb729dc126624508a010829430deda85b6046bb549",
       "translation": "Added __ELBOT_CODE_0__ configuration to uniformly control the maximum save size and download timeout for platform inbound files.",
       "updated_at": 1783085325
+    },
+    "CHANGELOG.md:list:583e72e902dd9f3a3ab36377879e8efe58d88eaff76871f60e024c3a725c6b4a": {
+      "kind": "list",
+      "source": "切换 Session、重启或容量淘汰后记录失效。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "583e72e902dd9f3a3ab36377879e8efe58d88eaff76871f60e024c3a725c6b4a",
+      "translation": "Records become invalid after switching Sessions, restarting, or capacity eviction.",
+      "updated_at": 1791194538
     },
     "CHANGELOG.md:list:596d47758ef03bb54d3851c1b678f8eb5459a7effda0ffd3212b24fe71d2804c": {
       "kind": "list",
@@ -623,6 +703,14 @@
       "source_hash": "611aafc7e8d828767ae2b38b0e5c3d0fead2cde039834d37560cbe5b03c27491",
       "translation": "__ELBOT_CODE_0__ audit events changed from debug level to info level; token consumption data can now be recorded by default with __ELBOT_CODE_1__.",
       "updated_at": 1782884148
+    },
+    "CHANGELOG.md:list:6334b714c49767d658140327c9bf03a57a985af5160608af63cbecdc94c619b2": {
+      "kind": "list",
+      "source": "Session 绑定由 Session 服务统一同步失效，修复旧工具／确认在切走再恢复后复活，以及延迟撤销清理影响新绑定的问题；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "6334b714c49767d658140327c9bf03a57a985af5160608af63cbecdc94c619b2",
+      "translation": "Session bindings are now synchronized for invalidation by the Session service, fixing issues where old tools/confirmations were revived after being switched away and then restored, as well as delayed revocation cleanup affecting new bindings;",
+      "updated_at": 1791194538
     },
     "CHANGELOG.md:list:641f26256a18786f2ad6a9b6af66da8369220f69024a88ff8ce598e61bb271ca": {
       "kind": "list",
@@ -719,6 +807,14 @@
       "source_hash": "70f1550f6bf2f281c0cb0927e41c0bb07572e4e28e171b808ba30dfe69f1597f",
       "translation": "__ELBOT_CODE_0__ is also unified into three reading modes: __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__.",
       "updated_at": 1783658112
+    },
+    "CHANGELOG.md:list:712b9df49654743ac6b32d170906b5613fc5a2fab489e02091ebab18ec9cb4ba": {
+      "kind": "list",
+      "source": "应用关闭预算耗尽也不再作为失败退出。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "712b9df49654743ac6b32d170906b5613fc5a2fab489e02091ebab18ec9cb4ba",
+      "translation": "Application exit due to shutdown budget exhaustion is no longer treated as a failure exit.",
+      "updated_at": 1791194538
     },
     "CHANGELOG.md:list:714c6568883b5a6b6d519ae10020e60c5d54a73ae7f39b8f6636810137a32aeb": {
       "kind": "list",
@@ -880,6 +976,14 @@
       "translation": "Now, it stops by default after 10 minutes of no valid operation; if the corresponding Session TTL is shorter, that will be the limit. Appended content or __ELBOT_CODE_0__ will renew the timeout.",
       "updated_at": 1788078727
     },
+    "CHANGELOG.md:list:822601c04dd2e1f7bd5e0cefdd67a0a251d1376750c0f73c61636f8d4ffe244e": {
+      "kind": "list",
+      "source": "chat 模式不再能传入工具。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "822601c04dd2e1f7bd5e0cefdd67a0a251d1376750c0f73c61636f8d4ffe244e",
+      "translation": "Tools can no longer be passed into chat mode.",
+      "updated_at": 1791194538
+    },
     "CHANGELOG.md:list:83aa655090903e728d1214292cfd1dd5bdd99b5ae467bc2329b6108a14d1a622": {
       "kind": "list",
       "source": "**原生与外置 Skill**：__ELBOT_CODE_0__ 元工具支持 LLM 创建原生 EL Skill（纯 ELyph 或附带 Go 源码并编译）；",
@@ -984,6 +1088,14 @@
       "translation": "QQ OneBot now supports automatically saving inbound files from superadmins in private chats; messages containing only files will only reply with the save path or a \"too large\" prompt without invoking the LLM; group files are not automatically saved.",
       "updated_at": 1783095128
     },
+    "CHANGELOG.md:list:8e94c1b7ae0df341e8022a0e6e2c9678686d9cfeba78b21aa33fda010083e6ec": {
+      "kind": "list",
+      "source": "运行中会话拒绝切离和删除，维护清理复用实时忙闲状态。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "8e94c1b7ae0df341e8022a0e6e2c9678686d9cfeba78b21aa33fda010083e6ec",
+      "translation": "Running Sessions now reject detachment and deletion to maintain, clean, and reuse real-time busy/idle status.",
+      "updated_at": 1791194538
+    },
     "CHANGELOG.md:list:8f644b4d62f870ef3dfe3516897d00d013099f137e00fcbcab03ddcfea8f969e": {
       "kind": "list",
       "source": "修复 Windows 下无 bash 时 shell 命令的 bash AST 解析失败导致风险分类、沙盒校验、目录切换拦截和警告分析全部异常的问题；",
@@ -1024,6 +1136,14 @@
       "translation": "**Chat/Work Dual Mode**: chat mode disables tools, suitable for daily chatting and low-cost conversations; work mode enables tool discovery and invocation; models can be configured independently for both modes.",
       "updated_at": 1782270601
     },
+    "CHANGELOG.md:list:92d38e28d00e5970ab5c2d85f8035f2a0bbf7323ee2772b55761665d2287a566": {
+      "kind": "list",
+      "source": "修复压缩期间能预载工具的bug。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "92d38e28d00e5970ab5c2d85f8035f2a0bbf7323ee2772b55761665d2287a566",
+      "translation": "Fixed a bug where tools could be preloaded during compaction.",
+      "updated_at": 1791194538
+    },
     "CHANGELOG.md:list:94517b0f2275ae4197728d971ccfb2f1a1a20c60f53243383ab713f3cbd12b8b": {
       "kind": "list",
       "source": "**Hook Layer**：在 Agent 输入、LLM 请求/响应、平台发送等关键点插入扩展逻辑；内置规则 Hook 与常驻记忆 Hook。",
@@ -1063,6 +1183,22 @@
       "source_hash": "99004b88c42dd7cb7dfaa0613f43eeb48749d28e47b53e94c9e1ec6c8997abb1",
       "translation": "__ELBOT_CODE_0__ list changed from displaying plugin rules item by item to aggregating them by plugin name;",
       "updated_at": 1784858252
+    },
+    "CHANGELOG.md:list:9a193930bfb84d1531bd6d20029f3b19bb5a4da0d310ade16ce897a0a0d28052": {
+      "kind": "list",
+      "source": "QQ OneBot：llm现在能看到引用回复的合并消息了，只展开一层内容。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "9a193930bfb84d1531bd6d20029f3b19bb5a4da0d310ade16ce897a0a0d28052",
+      "translation": "QQ OneBot: LLM can now see merged messages in quoted replies, expanding only one level of content.",
+      "updated_at": 1791194538
+    },
+    "CHANGELOG.md:list:9bf35b1265c7d9545bd7a1cebcea86dd66f5ba9b6e85f1025d73416e1f62718b": {
+      "kind": "list",
+      "source": "压缩交接现在先结束旧 Turn 再激活新会话，并校验取消与执行身份；后台压缩及接管后的续接保留正确身份，迟到请求不能结束新 Turn。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "9bf35b1265c7d9545bd7a1cebcea86dd66f5ba9b6e85f1025d73416e1f62718b",
+      "translation": "Compaction handovers now end the old Turn before activating the new Session, and verify the identity of cancellation and execution; continuation after background compaction and takeover preserves the correct identity, and delayed requests cannot end a new Turn.",
+      "updated_at": 1791194538
     },
     "CHANGELOG.md:list:9d5bd31f0053c4ae0a75ef9edef00162aa8c3f86f473d7a5b5a15df30dd4b93e": {
       "kind": "list",
@@ -1136,6 +1272,14 @@
       "translation": "The same path within the same Session shares a one-time record with the switch and reset entries, so it will not be injected repeatedly.",
       "updated_at": 1783833527
     },
+    "CHANGELOG.md:list:a5d3154c5ec1f8795a492d3c0496039557c12eec929a875ed9401e86f526a772": {
+      "kind": "list",
+      "source": "统一发送链路现在同时保留成功结果与错误。Telegram 已发出部分分页时不再从头降级重发，避免重复消息。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a5d3154c5ec1f8795a492d3c0496039557c12eec929a875ed9401e86f526a772",
+      "translation": "The unified sending pipeline now retains both success results and errors. For Telegram, if some pages have already been sent, it will no longer fallback to resending from the beginning, avoiding duplicate messages.",
+      "updated_at": 1791194538
+    },
     "CHANGELOG.md:list:a702b552baa7d522668a76b859a98b2272294fa7c56518f23019ef1e2e4ee45e": {
       "kind": "list",
       "source": "QQ OneBot 私聊文件段缺少 __ELBOT_CODE_0__ 时会调用 __ELBOT_CODE_1__；",
@@ -1143,6 +1287,14 @@
       "source_hash": "a702b552baa7d522668a76b859a98b2272294fa7c56518f23019ef1e2e4ee45e",
       "translation": "When the file segment in a QQ OneBot private chat is missing __ELBOT_CODE_0__, __ELBOT_CODE_1__ will be called;",
       "updated_at": 1783095128
+    },
+    "CHANGELOG.md:list:a70389ad51895fe9c710032b7090f23a1c8a9a747419702281b3efd8a2107c90": {
+      "kind": "list",
+      "source": "Cron／Elnis 现在首次在所属用户同平台私聊或 CLI 恢复时永久转为普通前台会话，并接入原执行。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a70389ad51895fe9c710032b7090f23a1c8a9a747419702281b3efd8a2107c90",
+      "translation": "Cron/Elnis now permanently convert to ordinary foreground Sessions upon the first recovery in a private chat on the same platform as the owner or via CLI, and reconnect to the original execution.",
+      "updated_at": 1791194538
     },
     "CHANGELOG.md:list:a715989207d0188f53e9782c5f36d84e7a82900f4cb280d284f5ae84c96c215b": {
       "kind": "list",
@@ -1216,6 +1368,14 @@
       "translation": "__ELBOT_CODE_0__ now reuses the __ELBOT_CODE_2__ editing instructions and execution capabilities of __ELBOT_CODE_1__, and pre-checks edits, ELyph syntax, and no-op modifications before confirmation, displaying the pre-check diff in the high-risk confirmation details.",
       "updated_at": 1782699038
     },
+    "CHANGELOG.md:list:ac6bc56d3a8b7b444d0ecbcd736e59c6933f8b8b3522d693e74fa057b6927b19": {
+      "kind": "list",
+      "source": "修复后台任务工具缓存bug。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ac6bc56d3a8b7b444d0ecbcd736e59c6933f8b8b3522d693e74fa057b6927b19",
+      "translation": "Fixed a tool caching bug in background tasks.",
+      "updated_at": 1791194538
+    },
     "CHANGELOG.md:list:ac8feca5e8bd2d6bf810555d7b339671c93bf8b03e518f9cabab44e2af7bf9aa": {
       "kind": "list",
       "source": "同一会话首次注入后只继续返回 Skill 内容，保留历史中的首次规则卡以利于缓存命中。",
@@ -1239,6 +1399,14 @@
       "source_hash": "afe2553606064d39abf0bf40a33a71cc6655ec21a19299326f5f05165c02bbab",
       "translation": "Now JSON arrays and objects will be compressed into a single argv parameter and passed to the corresponding __ELBOT_CODE_0__ flag.",
       "updated_at": 1788869399
+    },
+    "CHANGELOG.md:list:b092b1ca80d349920aca29ab8484e2821631ed1c5992b5449db3e8150a3c430a": {
+      "kind": "list",
+      "source": "不覆盖 Shell 或外部程序的修改。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "b092b1ca80d349920aca29ab8484e2821631ed1c5992b5449db3e8150a3c430a",
+      "translation": "Does not overwrite modifications made by Shell or external programs.",
+      "updated_at": 1791194538
     },
     "CHANGELOG.md:list:b25d3a78ad76a7e9f568addf9e30d0ac344415f9c084e850f2997f4c02617cad": {
       "kind": "list",
@@ -1279,6 +1447,14 @@
       "source_hash": "b38bc9c4a4c1c59fabd0af61273ce28f1bda9c70b72de6986bc430d0e30f60aa",
       "translation": "LLM Cron uses ELyph task descriptions to drive model execution, supporting one-time and periodic tasks, missed run recovery, and broadcasting.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:b4f490ad01780511d2a78d1c34ffc5c77290469d21fa33efac1de1973500e898": {
+      "kind": "list",
+      "source": "平台退出等待也纳入共享 30 秒预算，超时不提前关闭仍被在途工作使用的存储和日志。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "b4f490ad01780511d2a78d1c34ffc5c77290469d21fa33efac1de1973500e898",
+      "translation": "Platform exit waiting is now included in the shared 30-second budget; storage and logs still used by in-flight work will not be closed prematurely upon timeout.",
+      "updated_at": 1791194538
     },
     "CHANGELOG.md:list:b58a4c6fcf1311375ac37e6a46c324d9359b9852d8c8fdb03ca177e72f0451a8": {
       "kind": "list",
@@ -1352,6 +1528,14 @@
       "translation": "When the context window cannot be identified from model metadata or configuration, the default window is adjusted to 256k.",
       "updated_at": 1784109405
     },
+    "CHANGELOG.md:list:c08a4cba010bef9e14f8c29350378056d7124d22ff824398102681842bb45433": {
+      "kind": "list",
+      "source": "大幅重构底层，优化各包职责与边界",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "c08a4cba010bef9e14f8c29350378056d7124d22ff824398102681842bb45433",
+      "translation": "Significantly refactored the underlying architecture, optimizing the responsibilities and boundaries of each package",
+      "updated_at": 1791194538
+    },
     "CHANGELOG.md:list:c1f3b644091065de80d300d76b09ba465097fb8b0f28ef5f7ce2c3d3a7051ce7": {
       "kind": "list",
       "source": "AgentSkill 的 __ELBOT_CODE_0__ 支持只写 __ELBOT_CODE_1__ / __ELBOT_CODE_2__ 做文档可见性限制，不写工具化字段时不会注册为普通工具；",
@@ -1367,6 +1551,14 @@
       "source_hash": "c5677ef83020b6879bc81ba0896f3ae4a390a95cc8329831e1008ad10406bf25",
       "translation": "__ELBOT_CODE_0__/__ELBOT_CODE_1__ will suggest using __ELBOT_CODE_2__ when reading EL Skill files;",
       "updated_at": 1782722558
+    },
+    "CHANGELOG.md:list:c8caa4604192fa2705ae457135450fd0c77029af02d7cb5eff966ae062bcebed": {
+      "kind": "list",
+      "source": "命名模型与 work fallback 改为每次操作从共享模型服务取得快照，后续命名跟随新选择，在途命名、对话和压缩保持本次选择。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "c8caa4604192fa2705ae457135450fd0c77029af02d7cb5eff966ae062bcebed",
+      "translation": "Named models and work fallback now obtain a snapshot from the shared model service for each operation; subsequent naming follows the new selection, while in-flight naming, chats, and compaction maintain the current selection.",
+      "updated_at": 1791194538
     },
     "CHANGELOG.md:list:c932df58ae0d60e638b7627a8d565a0131d7b67cb4fac5a817cf933dafeb8a36": {
       "kind": "list",
@@ -1439,6 +1631,14 @@
       "source_hash": "ced53b80d8d32780dd503a271ab2356b596837b1e3bbd2362c5684014fb827d2",
       "translation": "Command parameters for toolized AgentSkill previously only supported strings, numbers, and booleans;",
       "updated_at": 1788869399
+    },
+    "CHANGELOG.md:list:cf03b31ce9e4dbcf020456dd9f0195ae4011dec56084bc469a530d4106554ae5": {
+      "kind": "list",
+      "source": "平台连接后的 Hook／Cron 处理现在按平台独立排队，退出时取消积压与在途处理，并共享 30 秒关闭预算。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "cf03b31ce9e4dbcf020456dd9f0195ae4011dec56084bc469a530d4106554ae5",
+      "translation": "Hook/Cron processing after platform connection is now queued independently by platform; pending and in-flight processing is cancelled upon exit, sharing a 30-second shutdown budget.",
+      "updated_at": 1791194538
     },
     "CHANGELOG.md:list:d0175f70fdf81c63c972bdf310a17e8f41d2292f524be381fd252b494bcce468": {
       "kind": "list",
@@ -1528,6 +1728,14 @@
       "translation": "Fixed the issue where __ELBOT_CODE_0__ tools did not support __ELBOT_CODE_1__, __ELBOT_CODE_2__, Windows __ELBOT_CODE_3__, __ELBOT_CODE_4__, and __ELBOT_CODE_5__ home directory paths when setting the directory.",
       "updated_at": 1783859074
     },
+    "CHANGELOG.md:list:dd6e2fafd471adee9ac691e6ca40ad55b4fab8b7a20aff2095299cfa69c1f939": {
+      "kind": "list",
+      "source": "新增仅超管可用的 __ELBOT_CODE_0__ 和工具 __ELBOT_CODE_1__，发现读写文件工具时自动展开；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "dd6e2fafd471adee9ac691e6ca40ad55b4fab8b7a20aff2095299cfa69c1f939",
+      "translation": "Added __ELBOT_CODE_0__ and tool __ELBOT_CODE_1__ available only to superadmins, which automatically expand when file read/write tools are discovered;",
+      "updated_at": 1791194538
+    },
     "CHANGELOG.md:list:dd95926df3a6e0e7ff20bafd8926f476218ede01e566243f30897cf14688ae78": {
       "kind": "list",
       "source": "补齐 Elnis HTTP 请求头、请求读取、响应写入和空闲连接超时，并拒绝请求体中的尾随第二个 JSON 值；未知字段继续作为无语义字段忽略。",
@@ -1600,6 +1808,14 @@
       "translation": "Provider requests have been changed from defaulting to inheriting the process environment proxy to only using the explicit __ELBOT_CODE_1__ of the corresponding Provider in __ELBOT_CODE_0__;",
       "updated_at": 1785763800
     },
+    "CHANGELOG.md:list:e5a116b5c718f1faaa55d1e186b4e7539af0eaec107b9dbb117e44cb82cb0b21": {
+      "kind": "list",
+      "source": "Session 整行快照写回改为事务内字段更新，防止活跃时间、workspace、缓存及命名互相覆盖，保留未知 metadata；手动改名优先于迟到的自动命名。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "e5a116b5c718f1faaa55d1e186b4e7539af0eaec107b9dbb117e44cb82cb0b21",
+      "translation": "Session full-row snapshot write-back has been changed to transactional field updates to prevent active time, workspace, cache, and naming from overwriting each other, while preserving unknown metadata; manual renaming now takes priority over delayed automatic naming.",
+      "updated_at": 1791194538
+    },
     "CHANGELOG.md:list:e61e924ffeaf3af76674496454c2f62693c27ea3b0aa3815d172dae151b1521b": {
       "kind": "list",
       "source": "多模态工具结果可持久化并按 OpenAI Chat Completions 协议作为后续图片消息提供给模型。",
@@ -1664,6 +1880,14 @@
       "translation": "Session idle expiration is now managed by four __ELBOT_CODE_0__ configurations, which separately control the current Session expiration time for ordinary users and superadmins in group chats and private chats;",
       "updated_at": 1783074551
     },
+    "CHANGELOG.md:list:eda0f8d71e56b31daf9d666d5f59508919ec39cdd311d27c2b477eeda7eb564b": {
+      "kind": "list",
+      "source": "Cron 补发取消此前可能记录发送失败并追加失败通知，现在按正常取消处理；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "eda0f8d71e56b31daf9d666d5f59508919ec39cdd311d27c2b477eeda7eb564b",
+      "translation": "Cron retry cancellation, which previously might have recorded a sending failure and appended a failure notification, is now handled as a normal cancellation;",
+      "updated_at": 1791194538
+    },
     "CHANGELOG.md:list:ef6588782632f866ab4b19fd530b98068c98b122ae747795f4ea20470edff7e6": {
       "kind": "list",
       "source": "上下文压缩改为保留历史用户原话、过滤工具结果，成功后切换到 __ELBOT_CODE_0__ 独立 Session，并将压缩内容与新输入固定物化为首条用户消息；",
@@ -1679,6 +1903,22 @@
       "source_hash": "f191a10fa95a661a532ab05af86e47b4652486eaaadeac994e312f48821af516",
       "translation": "The __ELBOT_CODE_0__ command now displays the current execution stage (preparing/llm/tool/sending) and the duration of each stage for every turn, allowing you to distinguish whether the LLM is slow or the platform delivery is stuck.",
       "updated_at": 1782952540
+    },
+    "CHANGELOG.md:list:f25012a4639f42dd3e0e2d3b9999a686ff7f6f5a14e20dd307413aa0cedc9e96": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 为每个文件保留最近一次编辑前的内存备份。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "f25012a4639f42dd3e0e2d3b9999a686ff7f6f5a14e20dd307413aa0cedc9e96",
+      "translation": "__ELBOT_CODE_0__ keeps an in-memory backup of each file before its most recent edit.",
+      "updated_at": 1791194538
+    },
+    "CHANGELOG.md:list:f54e41c97142fe284768b0df124124865bc178b9a54010d074dbb21a34c980d9": {
+      "kind": "list",
+      "source": "QQ OneBot 消息超过 3000 将转为合并消息",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "f54e41c97142fe284768b0df124124865bc178b9a54010d074dbb21a34c980d9",
+      "translation": "QQ OneBot messages exceeding 3000 characters will be converted to merged messages",
+      "updated_at": 1791194538
     },
     "CHANGELOG.md:list:f6c1cb497ae4f2ad103aff727d2c39baae1e5a5217229da9cedaecc67ef9c4ce": {
       "kind": "list",
@@ -1730,8 +1970,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "ca5ff8b22f4649d6f09f77ffd8eef4d178c3742f81230cfc79721a12edb6fc5a",
+  "source_hash": "20412a09681103960b7301a0abbddc03ebb9f348f7163e0075cde3a32268cb1a",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1791081165,
+  "updated_at": 1791194538,
   "version": 2
 }
