@@ -48,6 +48,24 @@ func (r *Registry) Register(binding Binding) error {
 	return nil
 }
 
+// CheckProviderBinding lets composition retain an explicitly supplied route
+// only when it uses the exact configured identity and client.
+func (r *Registry) CheckProviderBinding(origin llm.Origin, client llm.Client) (bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.sealed {
+		return false, fmt.Errorf("provider bindings are sealed")
+	}
+	binding, exists := r.providers[origin.Provider]
+	if !exists {
+		return false, nil
+	}
+	if binding.Origin != origin || isNil(client) || !reflect.TypeOf(client).Comparable() || binding.Client != client {
+		return false, fmt.Errorf("provider %q binding does not match configured identity and client", origin.Provider)
+	}
+	return true, nil
+}
+
 // RegisterCompactor installs the source-material capability independently of
 // configured provider aliases. In particular, migrated Chat material remains
 // compressible when its old provider has been removed or changed.

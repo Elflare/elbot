@@ -36,6 +36,7 @@ type nativeTestRequest struct {
 	Store              bool              `json:"store"`
 	Input              []json.RawMessage `json:"input"`
 	Tools              []json.RawMessage `json:"tools"`
+	Include            []string          `json:"include"`
 }
 type nativeFixture struct {
 	agent    *Agent
@@ -60,6 +61,9 @@ func newNativeFixture(t *testing.T, respond func(int, nativeTestRequest, http.Re
 			return
 		}
 		request.Endpoint = r.URL.Path
+		if request.Endpoint == "/responses" && !containsNativeInclude(request.Include, "reasoning.encrypted_content") {
+			t.Error("main dialogue omitted encrypted reasoning material")
+		}
 		f.mu.Lock()
 		f.requests = append(f.requests, request)
 		index := len(f.requests) - 1
@@ -79,6 +83,14 @@ func newNativeFixture(t *testing.T, respond func(int, nativeTestRequest, http.Re
 	opts.Models = newTestModels(t, modelmgr.Options{Clients: map[string]llm.Client{"native": client}, Providers: map[string]config.ProviderConfig{"native": {APIMode: "response", BaseURL: server.URL, Models: []string{"m", "new-model", "task-model"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "native", Model: "m"}, "chat": {Provider: "native", Model: "m"}}})
 	f.agent = mustNewWithOptions(t, opts, configure...)
 	return f
+}
+func containsNativeInclude(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 func (f *nativeFixture) captured() []nativeTestRequest {
 	f.mu.Lock()
@@ -229,6 +241,7 @@ func TestResponsesPendingAndRoundLimitKeepFixedModelAndSkipUnexecutedCalls(t *te
 func TestResponsesBackgroundTakeoverSharesPendingAndChangesTaskModel(t *testing.T) {
 	started, release, unblock := modelBarrier(t)
 	registry := tool.NewRegistry()
+	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(nativeTool{name: "slow", run: func(context.Context, tool.CallRequest) (*tool.Result, error) {
 		close(started)
 		<-release
@@ -269,6 +282,29 @@ func TestResponsesBackgroundTakeoverSharesPendingAndChangesTaskModel(t *testing.
 	raw, _ := json.Marshal(requests[1].Input)
 	if !strings.Contains(string(raw), "takeover detail") {
 		t.Fatalf("pending missing: %s", raw)
+	}
+	tools, _ := json.Marshal(requests[1].Tools)
+	if strings.Contains(requests[1].Instructions, "强制 JSON 输出要求已经解除") || !strings.Contains(string(tools), "discover_tool") {
+		t.Fatalf("stale foreground instructions/tools: %+v", requests[1])
+	}
+	var notice struct {
+		Role    string             `json:"role"`
+		Content []api.InputContent `json:"content"`
+	}
+	if err := json.Unmarshal(requests[1].Input[len(requests[1].Input)-1], &notice); err != nil {
+		t.Fatal(err)
+	}
+	if notice.Role != "user" || len(notice.Content) != 1 || !strings.Contains(notice.Content[0].Text, "[系统提示]") || !strings.Contains(notice.Content[0].Text, "强制 JSON 输出要求已经解除") {
+		t.Fatalf("notice must be the last user item: %+v", requests[1])
+	}
+	messages, err := f.store.Messages().ListBySession(t.Context(), rows[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range messages {
+		if strings.Contains(message.Content, "[系统提示]") {
+			t.Fatalf("synthetic notice became user history: %+v", message)
+		}
 	}
 }
 
@@ -388,7 +424,14 @@ func (r nativeAuditRepository) CreateExchange(ctx context.Context, row *storage.
 func TestResponsesCanceledAPIKeepsAuditWithoutAdvancingCheckpoint(t *testing.T) {
 	started, release, unblock := modelBarrier(t)
 	created := make(chan string, 1)
-	f := newNativeFixture(t, func(_ int, _ nativeTestRequest, w http.ResponseWriter) {
+	f := newNativeFixture(t, func(index int, request nativeTestRequest, w http.ResponseWriter) {
+		if index > 0 {
+			if request.PreviousResponseID != "" || len(request.Input) != 2 {
+				t.Errorf("canceled recovery=%+v", request)
+			}
+			emitNative(w, "recovered", "completed", nativeText("recovered"))
+			return
+		}
 		fmt.Fprint(w, "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"r\",\"status\":\"in_progress\"}}\n\n")
 		w.(http.Flusher).Flush()
 		close(started)
@@ -421,6 +464,9 @@ func TestResponsesCanceledAPIKeepsAuditWithoutAdvancingCheckpoint(t *testing.T) 
 	checkpoint, err := f.store.Dialogues().CurrentCheckpoint(t.Context(), exchange.SessionID)
 	if err != nil || checkpoint != nil {
 		t.Fatalf("canceled checkpoint=%+v %v", checkpoint, err)
+	}
+	if err := f.agent.HandleMessage(t.Context(), "continue"); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -527,7 +573,15 @@ func TestResponsesRejectsToolArgumentHookButKeepsDisplayAndResultHooks(t *testin
 func TestResponsesIncompleteAndEOFDoNotAdvanceCheckpoint(t *testing.T) {
 	for _, kind := range []string{"incomplete", "eof"} {
 		t.Run(kind, func(t *testing.T) {
-			f := newNativeFixture(t, func(_ int, _ nativeTestRequest, w http.ResponseWriter) {
+			f := newNativeFixture(t, func(index int, request nativeTestRequest, w http.ResponseWriter) {
+				if index > 0 {
+					body := inputJSON(request)
+					if request.PreviousResponseID != "" || strings.Count(body, `"text":"input"`) != 1 || strings.Count(body, `"text":"retry"`) != 1 {
+						t.Errorf("retry lost or repeated queued input: %s", body)
+					}
+					emitNative(w, "recovered", "completed", nativeText("done"))
+					return
+				}
 				if kind == "incomplete" {
 					emitNative(w, "r", "incomplete", nativeText("partial"))
 				} else {
@@ -548,6 +602,9 @@ func TestResponsesIncompleteAndEOFDoNotAdvanceCheckpoint(t *testing.T) {
 			messages, err := f.store.Messages().ListBySession(t.Context(), row.ID)
 			if err != nil || len(messages) != 1 {
 				t.Fatalf("partial display=%+v %v", messages, err)
+			}
+			if err := f.agent.HandleMessage(t.Context(), "retry"); err != nil {
+				t.Fatalf("fresh session was poisoned by failed request: %v", err)
 			}
 		})
 	}
@@ -607,6 +664,30 @@ func TestResponsesStoppedToolRoundKeepsCompletedResultsWithoutReexecution(t *tes
 	}
 	if !strings.Contains(string(requests[1].Input[0]), "saved first") || !strings.Contains(string(requests[1].Input[1]), "outcome is unknown") {
 		t.Fatalf("lost stopped results: %+v", requests[1])
+	}
+	row := fixtureSession(t, f)
+	messages, err := f.store.Messages().ListBySession(t.Context(), row.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pairs int
+	for i, message := range messages {
+		if strings.Contains(message.Metadata, `"ID":"two"`) || message.ToolCallID == "two" {
+			t.Fatalf("native closure leaked into display history: %+v", messages)
+		}
+		if message.ToolCallID == "one" {
+			pairs++
+			if i == 0 {
+				t.Fatal("orphan tool result")
+			}
+			id, err := storage.ToolResultMessageID(messages[i-1])
+			if err != nil || id != message.ID {
+				t.Fatalf("unpaired result: %+v", messages)
+			}
+		}
+	}
+	if pairs != 1 {
+		t.Fatalf("completed pairs=%d", pairs)
 	}
 }
 

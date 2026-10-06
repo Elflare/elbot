@@ -20,6 +20,19 @@ func (s *Service) Fork(ctx context.Context, scope Scope, fromMessageID string) (
 	if message.Role != storage.RoleAssistant {
 		return nil, fmt.Errorf("can only fork from assistant messages")
 	}
+	boundary := message.ID
+	if resultID, err := storage.ToolResultMessageID(*message); err != nil {
+		return nil, err
+	} else if resultID != "" {
+		result, err := s.store.Messages().Get(ctx, resultID)
+		if err != nil {
+			return nil, err
+		}
+		if result.SessionID != message.SessionID || result.Role != storage.RoleTool {
+			return nil, fmt.Errorf("invalid tool pair fork boundary")
+		}
+		boundary = result.ID
+	}
 	locked, release, err := s.EnterActivation(ctx, scope, message.SessionID)
 	if err != nil {
 		return nil, err
@@ -80,7 +93,7 @@ func (s *Service) Fork(ctx context.Context, scope Scope, fromMessageID string) (
 	if err != nil {
 		return nil, err
 	}
-	fork := &storage.Session{ID: nextID, ParentSessionID: source.ID, ForkFromMessageID: message.ID,
+	fork := &storage.Session{ID: nextID, ParentSessionID: source.ID, ForkFromMessageID: boundary,
 		OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID,
 		Mode: latest.Mode, Status: storage.SessionStatusActive, Title: forkTitle(latest.Title), Metadata: metadata}
 	if err := locked.Err(); err != nil {

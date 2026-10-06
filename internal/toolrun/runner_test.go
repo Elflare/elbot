@@ -45,6 +45,10 @@ type runnerTestRecord struct {
 	err  error
 }
 
+func (d *runnerTestDeps) RefreshExecution(ctx context.Context, _ *storage.Session) (context.Context, error) {
+	return ctx, nil
+}
+
 func (d *runnerTestDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error) {
 	return call, nil
 }

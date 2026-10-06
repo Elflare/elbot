@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 )
 
@@ -36,11 +35,9 @@ type NativeCheckpoint struct {
 	CreatedAt                                                  time.Time
 }
 
-// ToolCallUpdate changes only one call in an existing business transcript head.
-type ToolCallUpdate struct {
-	MessageID string
-	Index     int
-	Call      json.RawMessage
+// ToolPair is one immutable display-history unit, committed atomically.
+type ToolPair struct {
+	Call, Result *Message
 }
 
 // NativeCommit advances only a locally committed cursor. ExpectedCheckpointID
@@ -48,10 +45,12 @@ type ToolCallUpdate struct {
 type NativeCommit struct {
 	ExpectedCheckpointID string
 	Checkpoint           NativeCheckpoint
-	Inputs               []NativeInput
-	Calls                []NativeCall
-	ConsumedInputs       []string
-	ConsumeSeedID        string
+	// Snapshot retains a historical message boundary without advancing the cursor.
+	Snapshot       *NativeCheckpoint
+	Inputs         []NativeInput
+	Calls          []NativeCall
+	ConsumedInputs []string
+	ConsumeSeedID  string
 }
 
 // NativeSeed owns a complete route-defined root window independently of the
@@ -78,8 +77,16 @@ type SessionMaterialCreate struct {
 type DialogueCommit struct {
 	SessionID string
 	Messages  []*Message
-	ToolCall  *ToolCallUpdate
+	ToolPair  *ToolPair
 	Native    *NativeCommit
+}
+
+func (c DialogueCommit) MessageRows() []*Message {
+	rows := append([]*Message(nil), c.Messages...)
+	if c.ToolPair != nil {
+		rows = append(rows, c.ToolPair.Call, c.ToolPair.Result)
+	}
+	return rows
 }
 
 type DialogueRepository interface {
@@ -91,6 +98,7 @@ type DialogueRepository interface {
 	GetCheckpoint(context.Context, string) (*NativeCheckpoint, error)
 	CheckpointForMessage(context.Context, string, string) (*NativeCheckpoint, error)
 	InputsForExchange(context.Context, string) ([]NativeInput, error)
+	GetInput(context.Context, string) (*NativeInput, error)
 	Seed(context.Context, string) (*NativeSeed, error)
 	PendingInputs(context.Context, string) ([]NativeInput, error)
 	Calls(context.Context, string) ([]NativeCall, error)

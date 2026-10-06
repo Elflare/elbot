@@ -1,7 +1,6 @@
 package sqlite
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -124,20 +123,48 @@ func TestNativeFailedExchangeCannotBecomeCheckpointAndTerminalIsImmutable(t *tes
 		t.Fatalf("partial incomplete display=%+v %v", rows, err)
 	}
 }
-
-func TestDialogueToolPreparationUpdatesOnlyItsCall(t *testing.T) {
-	store, _ := nativeStorageFixture(t)
-	ctx := context.Background()
-	head := &storage.Message{ID: "head", SessionID: "s", Role: storage.RoleAssistant, Metadata: `{"tool_calls":[{"ID":"one","Name":"tool","Arguments":"{}"},{"ID":"two","Name":"tool","Arguments":"{}"}],"unknown":9007199254740993}`}
-	if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", Messages: []*storage.Message{head}}); err != nil {
-		t.Fatal(err)
-	}
-	patch := &storage.ToolCallUpdate{MessageID: "head", Index: 1, Call: []byte(`{"ID":"two","Name":"tool","Arguments":"{\"actual\":true}"}`)}
-	if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", ToolCall: patch}); err != nil {
-		t.Fatal(err)
-	}
-	row, err := store.Messages().Get(ctx, "head")
-	if err != nil || !strings.Contains(row.Metadata, "9007199254740993") || !strings.Contains(row.Metadata, "actual") || !strings.Contains(row.Metadata, `"ID":"one"`) {
-		t.Fatalf("tool update=%+v %v", row, err)
+func TestDialogueToolPairIsAtomic(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(map[bool]string{false: "success", true: "result_write_failure"}[fail], func(t *testing.T) {
+			store, _ := nativeStorageFixture(t)
+			ctx := t.Context()
+			if fail {
+				if _, err := store.db.ExecContext(ctx, `CREATE TRIGGER reject_tool BEFORE INSERT ON messages WHEN NEW.role='tool' BEGIN SELECT RAISE(ABORT,'tool result failed'); END`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			pair := &storage.ToolPair{
+				Call:   &storage.Message{ID: "head", SessionID: "s", Role: storage.RoleAssistant, Metadata: `{"tool_calls":[{"ID":"one","Name":"tool","Arguments":"{}"}],"tool_result_message_id":"result"}`},
+				Result: &storage.Message{ID: "result", SessionID: "s", Role: storage.RoleTool, ToolCallID: "one", Content: "done"},
+			}
+			mediaID := "media:" + strings.Repeat("b", 64)
+			if err := store.Media().Upsert(ctx, &storage.Media{ID: mediaID, MIMEType: "image/png", Backend: "local"}); err != nil {
+				t.Fatal(err)
+			}
+			pair.Call.Segments = `[{"type":"image","media":"` + mediaID + `"}]`
+			pair.Result.Segments = pair.Call.Segments
+			err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", ToolPair: pair})
+			if (err != nil) != fail {
+				t.Fatalf("commit error=%v", err)
+			}
+			rows, err := store.Messages().ListBySession(ctx, "s")
+			want := 2
+			if fail {
+				want = 0
+			}
+			if err != nil || len(rows) != want {
+				t.Fatalf("partial tool pair=%+v error=%v", rows, err)
+			}
+			for owner, id := range map[string]string{"message": pair.Call.ID, "tool_result": pair.Result.ID} {
+				refs, err := store.MediaReferences().ListByOwner(ctx, owner, id)
+				wantRefs := 1
+				if fail {
+					wantRefs = 0
+				}
+				if err != nil || len(refs) != wantRefs {
+					t.Fatalf("partial media refs=%+v %v", refs, err)
+				}
+			}
+		})
 	}
 }

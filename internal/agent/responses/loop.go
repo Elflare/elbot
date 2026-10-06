@@ -60,8 +60,10 @@ func (r *Loop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials
 	if err != nil {
 		return nil, err
 	}
-	if checkpoint == nil && seed == nil && len(materials.Loaded.Messages) != 0 {
-		return nil, fmt.Errorf("Responses 会话有历史但缺少完整原生 checkpoint 或 seed")
+	if checkpoint == nil && seed == nil {
+		if err := r.validateInitialInputs(ctx, materials.Session, materials.Loaded.Messages); err != nil {
+			return nil, err
+		}
 	}
 	if checkpoint == nil && seed != nil && seed.Consumed {
 		return nil, fmt.Errorf("原生 seed 已消费但缺少 checkpoint")
@@ -171,6 +173,21 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			if err != nil {
 				return fail(err)
 			}
+			s.tools, err = s.route.Tools.Schemas(s.requestCtx, s.session)
+			if err != nil {
+				return fail(err)
+			}
+			instructions, err := s.instructions(s.requestCtx)
+			if err != nil {
+				return fail(err)
+			}
+			updated := []llm.LLMMessage{{Role: llm.RoleSystem, Segments: llm.TextSegments(instructions)}}
+			for _, message := range s.projection {
+				if message.Role != llm.RoleSystem {
+					updated = append(updated, message)
+				}
+			}
+			s.projection = updated
 		}
 		result.Selection = s.selection
 		if err := s.route.View.CheckSelection(s.session, s.selection); err != nil {

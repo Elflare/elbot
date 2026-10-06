@@ -78,7 +78,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	}
 	cleanup := func() {}
 	if c.Media != nil {
-		input.RequestMessages, cleanup, err = c.Media.AcquireForLLM(ctx, input.Messages)
+		input.RequestMessages, cleanup, err = c.Media.AcquireForLLM(ctx, input.RequestMessages)
 	}
 	return input, cleanup, err
 }
@@ -100,6 +100,10 @@ func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.
 		allowedTools = toolrun.BackgroundToolNames(ctx, cached)
 	}
 	baseMessages := llm.CloneMessages(messages)
+	requestMessages := llm.CloneMessages(baseMessages)
+	if notice, ok := ForegroundNotice(session); ok {
+		requestMessages = append(requestMessages, notice)
+	}
 	hookMessage := hook.MessagePayload{}
 	if pending != nil {
 		hookMessage = hook.MessagePayload{
@@ -116,7 +120,7 @@ func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.
 		LLM: hook.LLMPayload{
 			Provider: selection.Provider,
 			Model:    selection.Model,
-			Messages: llm.CloneMessages(baseMessages),
+			Messages: llm.CloneMessages(requestMessages),
 			Tools:    tools,
 		},
 	})
@@ -145,13 +149,14 @@ func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.
 	if pending != nil {
 		segments := materialize(ctx, c.Media, event.Message.Segments)
 		baseMessages[pending.MessageIndex].Segments = segments
+		requestMessages[pending.MessageIndex].Segments = segments
 		pending.Message.Content = llm.SegmentsContentText(segments)
 		pending.Message.Segments = StoredMessageSegments(segments)
 		if err := persistence.Commit(ctx, &pending.Message); err != nil {
 			return CallInput{}, err
 		}
 	}
-	return CallInput{Messages: baseMessages, RequestMessages: baseMessages, Tools: tools}, nil
+	return CallInput{Messages: baseMessages, RequestMessages: requestMessages, Tools: tools}, nil
 }
 
 func (c *CallProcessor) CompleteCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, content string, usage *llm.Usage, toolCalls []llm.ToolCallRequest, elapsedMs int64) (CallOutput, error) {

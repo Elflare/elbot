@@ -74,9 +74,6 @@ func New(opts Options) (*Service, error) {
 			return nil, fmt.Errorf("client not found for provider %q", name)
 		}
 		mode := provider.EffectiveAPIMode()
-		if mode != "chat" && mode != "response" {
-			return nil, fmt.Errorf("provider %q has invalid api_mode %q", name, mode)
-		}
 		s.clients[name] = client
 		s.origins[name] = llm.Origin{Provider: name, Protocol: llm.ProtocolID(mode), BaseURL: strings.TrimRight(provider.BaseURL, "/")}
 		s.providers[name] = &providerCatalog{

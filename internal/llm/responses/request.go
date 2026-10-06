@@ -17,6 +17,7 @@ type Request struct {
 	Store              *bool
 	MaxOutputTokens    int
 	Temperature        *float64
+	Include            []string
 	ExtraBody          map[string]any
 }
 

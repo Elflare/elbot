@@ -2,7 +2,6 @@ package responses
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -33,7 +32,11 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	if err != nil {
 		return final, err
 	}
-	sort.SliceStable(inputs, func(i, j int) bool { return inputs[i].CallID != "" && inputs[j].CallID == "" })
+	inputs, err = s.queueForegroundNotice(ctx, inputs)
+	if err != nil {
+		return final, err
+	}
+	sort.SliceStable(inputs, func(i, j int) bool { return inputOrder(inputs[i]) < inputOrder(inputs[j]) })
 	messages := make([]llm.LLMMessage, 0, len(inputs))
 	for _, input := range inputs {
 		segments, err := inputSegments(input)
@@ -66,7 +69,7 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 		return final, err
 	}
 	store := true
-	request := api.Request{Model: s.selection.Model, Instructions: instructions, Input: items, Tools: api.FunctionTools(s.tools), Store: &store}
+	request := api.Request{Model: s.selection.Model, Instructions: instructions, Input: items, Tools: api.FunctionTools(s.tools), Store: &store, Include: []string{"reasoning.encrypted_content"}}
 	origin, err := s.route.View.Providers.OriginFor(s.selection.Provider)
 	if err != nil {
 		return final, err
@@ -81,11 +84,14 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 		baseURL = exchange.BaseURL
 	} else if s.seed != nil {
 		request.PreviousResponseID, baseURL = s.seed.ResponseID, s.seed.BaseURL
-		var prefix []api.Item
-		if err := json.Unmarshal([]byte(s.seed.ContinuationJSON), &prefix); err != nil {
-			return final, err
+		if request.PreviousResponseID != "" && baseURL == origin.BaseURL {
+			prefix, release, err := s.route.Context.resolveContinuation(ctx, s.seed)
+			if err != nil {
+				return final, err
+			}
+			defer release()
+			request.Input = append(prefix, items...)
 		}
-		request.Input = append(prefix, items...)
 	}
 	replay := request.PreviousResponseID == "" && s.seed != nil || request.PreviousResponseID != "" && baseURL != origin.BaseURL
 	if replay {

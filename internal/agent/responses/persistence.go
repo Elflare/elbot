@@ -2,7 +2,6 @@ package responses
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"elbot/internal/agent/dialogue"
@@ -78,23 +77,24 @@ func (c replyCommitter) Commit(ctx context.Context, message *storage.Message) er
 }
 
 type toolCommitter struct {
-	state  *turnState
-	headID string
-	calls  []storage.NativeCall
+	state *turnState
+	calls []storage.NativeCall
 }
 
 func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) error {
 	s := c.state
-	if head.ID == "" {
-		head.ID = storage.NewID()
+	text := dialogue.ToolBatchText(head)
+	var rows []*storage.Message
+	id := ""
+	if text != nil {
+		rows, id = []*storage.Message{text}, text.ID
 	}
-	c.headID = head.ID
-	native := s.advance(head.ID)
+	native := s.advance(id)
 	for i, call := range s.calls {
 		c.calls = append(c.calls, storage.NativeCall{ExchangeID: s.exchange.ID, CallID: call.ID, Name: call.Name, Arguments: call.Arguments, Ordinal: i, Status: "pending"})
 	}
 	native.Calls = append([]storage.NativeCall(nil), c.calls...)
-	if err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Messages: []*storage.Message{head}, Native: &native}, "append_tool_transcript"); err != nil {
+	if err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Messages: rows, Native: &native}, "append_tool_transcript"); err != nil {
 		return err
 	}
 	s.consumed = nil
@@ -104,11 +104,7 @@ func (c *toolCommitter) Prepared(ctx context.Context, index int, call llm.ToolCa
 	if index < 0 || index >= len(c.calls) || call.ID != c.calls[index].CallID || call.Name != c.calls[index].Name || call.Arguments != c.calls[index].Arguments {
 		return fmt.Errorf("native tool calls are read-only")
 	}
-	raw, err := json.Marshal(call)
-	if err != nil {
-		return err
-	}
-	return c.state.commit(ctx, storage.DialogueCommit{SessionID: c.state.session.ID, ToolCall: &storage.ToolCallUpdate{MessageID: c.headID, Index: index, Call: raw}, Native: &storage.NativeCommit{ExpectedCheckpointID: c.state.checkpointID()}}, "update_tool_transcript")
+	return nil
 }
 func (c *toolCommitter) Started(ctx context.Context, index int, _ llm.ToolCallRequest) error {
 	call := c.calls[index]
@@ -119,8 +115,11 @@ func (c *toolCommitter) Started(ctx context.Context, index int, _ llm.ToolCallRe
 	c.calls[index] = call
 	return nil
 }
-func (c *toolCommitter) Result(ctx context.Context, index int, _ llm.ToolCallRequest, message llm.LLMMessage, stored *storage.Message) error {
+func (c *toolCommitter) Result(ctx context.Context, index int, request llm.ToolCallRequest, message llm.LLMMessage, stored *storage.Message) error {
 	s := c.state
+	if err := c.Prepared(ctx, index, request); err != nil {
+		return err
+	}
 	if stored.ID == "" {
 		stored.ID = storage.NewID()
 	}
@@ -135,8 +134,12 @@ func (c *toolCommitter) Result(ctx context.Context, index int, _ llm.ToolCallReq
 	call := c.calls[index]
 	call.Status = "completed"
 	call.ResultInputID = input.ID
-	native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Inputs: []storage.NativeInput{input}, Calls: []storage.NativeCall{call}}
-	if err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Messages: []*storage.Message{stored}, Native: &native}, "append_tool_transcript"); err != nil {
+	pair := dialogue.NewToolPair(s.session.ID, request, stored)
+	snapshot := *s.checkpoint
+	snapshot.ID, snapshot.MessageID = storage.NewID(), pair.Call.ID
+	snapshot.CreatedAt = pair.Call.CreatedAt
+	native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Inputs: []storage.NativeInput{input}, Calls: []storage.NativeCall{call}, Snapshot: &snapshot}
+	if err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, ToolPair: pair, Native: &native}, "append_tool_transcript"); err != nil {
 		return err
 	}
 	c.calls[index] = call
@@ -161,16 +164,14 @@ func (s *turnState) closeInterruptedCalls(ctx context.Context) error {
 			text = fmt.Sprintf("tool call %s outcome is unknown: previous turn stopped before its result was saved; do not assume it succeeded", call.Name)
 		}
 		message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.CallID, Segments: llm.TextSegments(text)}
-		stored := dialogue.ToolResultStorageMessage(s.session.ID, message)
-		stored.ID = storage.NewID()
-		input, err := queuedInput(s.session.ID, stored.ID, call.ExchangeID, call.CallID, message.Segments)
+		input, err := queuedInput(s.session.ID, "", call.ExchangeID, call.CallID, message.Segments)
 		if err != nil {
 			return err
 		}
 		call.Status = "interrupted"
 		call.ResultInputID = input.ID
 		native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Inputs: []storage.NativeInput{input}, Calls: []storage.NativeCall{call}}
-		if err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Messages: []*storage.Message{&stored}, Native: &native}, "close_interrupted_native_tool"); err != nil {
+		if err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Native: &native}, "close_interrupted_native_tool"); err != nil {
 			return err
 		}
 	}

@@ -44,39 +44,14 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			return fmt.Errorf("native checkpoint changed")
 		}
 	}
-	for _, message := range commit.Messages {
+	if err := validateToolPair(commit); err != nil {
+		return err
+	}
+	for _, message := range commit.MessageRows() {
 		if message == nil || message.SessionID != commit.SessionID {
 			return fmt.Errorf("dialogue message session mismatch")
 		}
 		if err := appendMessageTx(ctx, tx, message); err != nil {
-			return err
-		}
-	}
-	if patch := commit.ToolCall; patch != nil {
-		var raw string
-		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(metadata,'') FROM messages WHERE id=? AND session_id=? AND role='assistant'`, patch.MessageID, commit.SessionID).Scan(&raw); err != nil {
-			return err
-		}
-		fields, err := storage.DecodeSessionMetadata(raw)
-		if err != nil {
-			return err
-		}
-		var calls []json.RawMessage
-		if err := json.Unmarshal(fields["tool_calls"], &calls); err != nil {
-			return err
-		}
-		if patch.Index < 0 || patch.Index >= len(calls) || !json.Valid(patch.Call) {
-			return fmt.Errorf("invalid tool transcript update")
-		}
-		calls[patch.Index] = append(json.RawMessage(nil), patch.Call...)
-		if err := fields.Set("tool_calls", calls); err != nil {
-			return err
-		}
-		encoded, err := fields.Encode()
-		if err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE messages SET metadata=? WHERE id=?`, encoded, patch.MessageID); err != nil {
 			return err
 		}
 	}
@@ -127,6 +102,11 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			}
 			if n, err := result.RowsAffected(); err != nil || n != 1 {
 				return fmt.Errorf("native call identity changed")
+			}
+		}
+		if native.Snapshot != nil {
+			if err := appendNativeSnapshot(ctx, tx, commit); err != nil {
+				return err
 			}
 		}
 		checkpoint := &native.Checkpoint

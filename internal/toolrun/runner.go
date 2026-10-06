@@ -17,6 +17,7 @@ import (
 )
 
 type RunnerDeps interface {
+	RefreshExecution(context.Context, *storage.Session) (context.Context, error)
 	PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error)
 	ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool
 	ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (ConfirmResult, error)
@@ -66,7 +67,6 @@ type RunResult struct {
 	Messages          []llm.LLMMessage
 	PreparedCalls     []llm.ToolCallRequest
 	ConfirmationExtra string
-	Transcript        []storage.Message
 	Stopped           bool
 }
 
@@ -84,30 +84,27 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 	if err := req.Committer.Begin(ctx, &head); err != nil {
 		return RunResult{Err: err}
 	}
-	transcript := []storage.Message{head}
 	persistResult := func(index int, call llm.ToolCallRequest) error {
-		return req.Committer.Result(ctx, index, call, messages[len(messages)-1], &transcript[len(transcript)-1])
+		message := messages[len(messages)-1]
+		stored := deps.ToolResultMessage(sessionID, deps.PersistedToolMessage(message))
+		return req.Committer.Result(ctx, index, call, message, &stored)
 	}
 	persistenceFailure := func(err error) RunResult {
-		return RunResult{Messages: messages, PreparedCalls: preparedCalls, Transcript: transcript, Err: err}
+		return RunResult{Messages: messages, PreparedCalls: preparedCalls, Err: err}
 	}
 	var confirmationExtra string
 	batchPreviewSent := sendBatchToolPreview(ctx, deps, req)
 	for index, original := range req.Calls {
 		if ctx.Err() != nil {
-			return RunResult{Messages: messages, PreparedCalls: preparedCalls, Transcript: transcript, Stopped: true}
+			return RunResult{Messages: messages, PreparedCalls: preparedCalls, Stopped: true}
 		}
-		if refresh, ok := deps.(interface {
-			RefreshExecution(context.Context, *storage.Session) (context.Context, error)
-		}); ok {
-			updated, err := refresh.RefreshExecution(ctx, req.Session)
-			if err != nil {
-				return RunResult{Messages: messages, PreparedCalls: preparedCalls, Transcript: transcript, Stopped: true}
-			}
-			ctx = updated
-			if actor, ok := contextinfo.ActorFromContext(ctx); ok {
-				req.Actor = actor
-			}
+		updated, err := deps.RefreshExecution(ctx, req.Session)
+		if err != nil {
+			return RunResult{Messages: messages, PreparedCalls: preparedCalls, Stopped: true}
+		}
+		ctx = updated
+		if actor, ok := contextinfo.ActorFromContext(ctx); ok {
+			req.Actor = actor
 		}
 		startedAt := storage.Now()
 		call, err := deps.PrepareToolCall(ctx, req.Session, original)
@@ -115,7 +112,6 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			preparedCalls = append(preparedCalls, original)
 			message := toolMessage(original.Name, original.ID, fmt.Sprintf("tool call %s failed: hook: %v", original.Name, err))
 			messages = append(messages, message)
-			transcript = append(transcript, deps.ToolResultMessage(sessionID, message))
 			if err := persistResult(index, original); err != nil {
 				return persistenceFailure(err)
 			}
@@ -131,7 +127,6 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			message := toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
 			deps.RecordToolCall(ctx, sessionID, call, "", startedAt, llm.SegmentsContentText(message.Segments), err)
 			messages = append(messages, message)
-			transcript = append(transcript, deps.ToolResultMessage(sessionID, message))
 			if err := persistResult(index, call); err != nil {
 				return persistenceFailure(err)
 			}
@@ -145,7 +140,6 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			content := llm.SegmentsContentText(message.Segments)
 			deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, content, err)
 			messages = append(messages, message)
-			transcript = append(transcript, deps.ToolResultMessage(sessionID, message))
 			if err := persistResult(index, call); err != nil {
 				return persistenceFailure(err)
 			}
@@ -157,7 +151,7 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 		confirm, err := m.confirm(toolCtx, deps, req.Actor, sessionID, call, resolved, assessment)
 		if !confirm.Allowed {
 			if confirm.Stopped {
-				return RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra, Transcript: transcript, Stopped: true}
+				return RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra, Stopped: true}
 			}
 			message := confirm.Message
 			if len(message.Segments) == 0 {
@@ -166,7 +160,6 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			messageText := llm.SegmentsContentText(message.Segments)
 			deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, messageText, err)
 			messages = append(messages, message)
-			transcript = append(transcript, deps.ToolResultMessage(sessionID, message))
 			confirmationExtra = joinAssistantText(confirmationExtra, confirm.Extra)
 			if err := persistResult(index, call); err != nil {
 				return persistenceFailure(err)
@@ -180,7 +173,6 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			message := toolMessage(call.Name, call.ID, content)
 			deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, content, err)
 			messages = append(messages, message)
-			transcript = append(transcript, deps.ToolResultMessage(sessionID, message))
 			if err := persistResult(index, call); err != nil {
 				return persistenceFailure(err)
 			}
@@ -194,7 +186,6 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 				content := llm.SegmentsContentText(message.Segments)
 				deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, content, err)
 				messages = append(messages, message)
-				transcript = append(transcript, deps.ToolResultMessage(sessionID, message))
 				if err := persistResult(index, call); err != nil {
 					return persistenceFailure(err)
 				}
@@ -210,7 +201,7 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 		done()
 		if err := toolErr; err != nil {
 			if ctx.Err() != nil {
-				return RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra, Transcript: transcript, Stopped: true}
+				return RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra, Stopped: true}
 			}
 			result.Err = err
 			result.Message = toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s canceled by user", call.Name))
@@ -237,7 +228,6 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 		resultText := llm.SegmentsContentText(result.Message.Segments)
 		deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, resultText, result.Err)
 		messages = append(messages, result.Message)
-		transcript = append(transcript, deps.ToolResultMessage(sessionID, deps.PersistedToolMessage(result.Message)))
 		if err := persistResult(index, call); err != nil {
 			return persistenceFailure(err)
 		}
@@ -245,10 +235,7 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			deps.SendPreview(ctx, fmt.Sprintf("%s 调用失败：%v", call.Name, result.Err))
 		}
 	}
-	preparedHead := deps.ToolCallMessage(sessionID, req.AssistantText, req.AssistantRawText, preparedCalls)
-	preparedHead.ID = head.ID
-	transcript[0] = preparedHead
-	return RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra, Transcript: transcript}
+	return RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra}
 }
 
 func sendBatchToolPreview(ctx context.Context, deps RunnerDeps, req RunRequest) bool {
