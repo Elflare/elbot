@@ -1,5 +1,13 @@
 {
   "segments": {
+    "docs/configuration.md:code-comment:toml:0a5b1d2c445485453482a49cc9d168fc4468f3050977fcdab2e169ecc3f711b8": {
+      "kind": "code-comment:toml",
+      "source": "可选：chat / response，省略为 chat",
+      "source_file": "docs/configuration.md",
+      "source_hash": "0a5b1d2c445485453482a49cc9d168fc4468f3050977fcdab2e169ecc3f711b8",
+      "translation": "Optional: chat / response, defaults to chat",
+      "updated_at": 1791301591
+    },
     "docs/configuration.md:code-comment:toml:4d2380e350c5b825b8290b38675e36e385481e1218ee92712655df3c414fe32b": {
       "kind": "code-comment:toml",
       "source": "手动补充模型列表（API 获取不到时使用）",
@@ -424,6 +432,14 @@
       "translation": "__ELBOT_CODE_0__: The maximum wait time from the start of the response to the first streaming event, defaulting to 180 seconds, suitable for models with slower first-token generation.",
       "updated_at": 1782461691
     },
+    "docs/configuration.md:list:2301af91e9b9f362d9feae76f39a20517583468498d5ddbff19aa2c279998c2b": {
+      "kind": "list",
+      "source": "分别调用 Chat Completions 或 Responses API。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "2301af91e9b9f362d9feae76f39a20517583468498d5ddbff19aa2c279998c2b",
+      "translation": "Calls the Chat Completions or Responses API respectively.",
+      "updated_at": 1791301591
+    },
     "docs/configuration.md:list:24d279fce38a15b849ee54bafde4bef42d4bb015e20c16be54345ae359232504": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__：可选，允许 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__；",
@@ -495,6 +511,14 @@
       "source_hash": "33bfeb03b05e6473bd052e077674f03762cd60be81dbf214f1724b8dfedb168e",
       "translation": "__ELBOT_CODE_0__ configures __ELBOT_CODE_1__ and __ELBOT_CODE_2__ for specific models; both are optional.",
       "updated_at": 1782312356
+    },
+    "docs/configuration.md:list:3419d4ce36499e505c39c705f5a7277f55e589f8f23df66851517e992a465864": {
+      "kind": "list",
+      "source": "provider 和模型级共用 __ELBOT_CODE_0__，按 __ELBOT_CODE_1__ 填写该 API／模型支持的原生参数。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "3419d4ce36499e505c39c705f5a7277f55e589f8f23df66851517e992a465864",
+      "translation": "The provider and model levels share __ELBOT_CODE_0__; fill in the native parameters supported by the API/model according to __ELBOT_CODE_1__.",
+      "updated_at": 1791301591
     },
     "docs/configuration.md:list:354d73c681d9d69dd46ecad7f82eb4abdfb63510f959b0906123bde50cfb8eac": {
       "kind": "list",
@@ -648,6 +672,14 @@
       "translation": "Elnis delivery is allowed by default;",
       "updated_at": 1782033039
     },
+    "docs/configuration.md:list:552df26d965103cfa00333ecec639b31b1a3797d6ae32e39536718e0df9af275": {
+      "kind": "list",
+      "source": "两种协议共用上述开关、阈值和当前模型的窗口配置。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "552df26d965103cfa00333ecec639b31b1a3797d6ae32e39536718e0df9af275",
+      "translation": "Both protocols share the aforementioned switches, thresholds, and window configurations of the current model.",
+      "updated_at": 1791301591
+    },
     "docs/configuration.md:list:57426e34c2e413f380fb392cb765178b195dd72a9c078cd6256d31a1cc34a4de": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 指向保存代理地址的环境变量名；",
@@ -655,14 +687,6 @@
       "source_hash": "57426e34c2e413f380fb392cb765178b195dd72a9c078cd6256d31a1cc34a4de",
       "translation": "__ELBOT_CODE_0__ points to the environment variable name that stores the proxy address;",
       "updated_at": 1785918785
-    },
-    "docs/configuration.md:list:5835750295f3c1081c1bec90105e092281976076963efb99aad106abccb93607": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 使用 Provider 的 OpenAI-compatible API 地址。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "5835750295f3c1081c1bec90105e092281976076963efb99aad106abccb93607",
-      "translation": "__ELBOT_CODE_0__ uses the Provider's OpenAI-compatible API address.",
-      "updated_at": 1781515756
     },
     "docs/configuration.md:list:58543b52b0496f6a1dda7a50795edce80efa187265ba2f6f845f79f89854d8dd": {
       "kind": "list",
@@ -727,6 +751,14 @@
       "source_hash": "61a563ce875c4ae4e518f0301c082e94f5fb63107b0eb37309bac6115f820444",
       "translation": "Existing configurations will not be overwritten.",
       "updated_at": 1785052888
+    },
+    "docs/configuration.md:list:6297b385ac7f23e3482442a1d8ad46fc73a16d25a0853d8b518fa35496fc6c80": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 仅接受 __ELBOT_CODE_1__ 或 __ELBOT_CODE_2__，省略为 __ELBOT_CODE_3__；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "6297b385ac7f23e3482442a1d8ad46fc73a16d25a0853d8b518fa35496fc6c80",
+      "translation": "__ELBOT_CODE_0__ only accepts __ELBOT_CODE_1__ or __ELBOT_CODE_2__, defaults to __ELBOT_CODE_3__;",
+      "updated_at": 1791301591
     },
     "docs/configuration.md:list:6469645d8528221a2de47802bb56388902fba57b4612e918006f63b801f39de9": {
       "kind": "list",
@@ -847,6 +879,14 @@
       "source_hash": "75a4c5af06fd40f543549456b5ffc8311c622d2c85f949a8b1ce5c7b9be86b0f",
       "translation": "A single LLM streaming request is not limited by this field.",
       "updated_at": 1782574866
+    },
+    "docs/configuration.md:list:797d2994d3e5e5a92f285d58de1b6636ae07b4f6eed7ae3d3c7242850c952fed": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 使用 Provider 对应 API 的基础地址。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "797d2994d3e5e5a92f285d58de1b6636ae07b4f6eed7ae3d3c7242850c952fed",
+      "translation": "__ELBOT_CODE_0__ uses the base address of the Provider's corresponding API.",
+      "updated_at": 1791301591
     },
     "docs/configuration.md:list:7b608c2d93f0ad25046af3b1afe1af872d5718000a2f8a085e0f619e3911e77b": {
       "kind": "list",
@@ -1256,6 +1296,14 @@
       "translation": "Ordinary users can only discover and call tools within the permitted risk range; after a tool passes permission verification, `__ELBOT_CODE_0__`/`__ELBOT_CODE_1__` risk calls still require confirmation by the current user.",
       "updated_at": 1784897133
     },
+    "docs/configuration.md:list:e7e6ecd0735d3563997562272b00dc603152090d84ef6248139dc1c5e3c24e29": {
+      "kind": "list",
+      "source": "Responses 调用当前对话模型的 __ELBOT_CODE_0__，保留整个原生返回窗口作为新会话起点。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e7e6ecd0735d3563997562272b00dc603152090d84ef6248139dc1c5e3c24e29",
+      "translation": "Responses calls the __ELBOT_CODE_0__ of the current conversation model, retaining the entire native return window as the starting point for the new Session.",
+      "updated_at": 1791301591
+    },
     "docs/configuration.md:list:e9fcf600642647100aad58e5dcbebc9273a69372cde521aab77a15018b85f8b1": {
       "kind": "list",
       "source": "文档型 Skill 未写时按 __ELBOT_CODE_0__ 处理。",
@@ -1624,6 +1672,14 @@
       "translation": "If the unit uses __ELBOT_CODE_0__ to load the same file, the PATH within it must be written as a full value\n",
       "updated_at": 1785918785
     },
+    "docs/configuration.md:paragraph:3a835710557129d6a49a83a29884cf0a42f881b4486196f833fb2a483a004706": {
+      "kind": "paragraph",
+      "source": "Responses 会话使用当前对话模型进行原生压缩，不使用 __ELBOT_CODE_0__ 的选择。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "3a835710557129d6a49a83a29884cf0a42f881b4486196f833fb2a483a004706",
+      "translation": "Responses Sessions use the current conversation model for native compression, ignoring the selection of __ELBOT_CODE_0__.\n",
+      "updated_at": 1791301591
+    },
     "docs/configuration.md:paragraph:3ab1c1881e6e0f5702725c8670d0daf993dd01b5cdc785917f0628694e714a65": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 本身不会影响 PATH，但文件中一旦包含 __ELBOT_CODE_1__，systemd 会在启动 ElBot 前完整覆盖原值；",
@@ -1671,6 +1727,14 @@
       "source_hash": "4415bbd95e886ca661a316be3165162ebe5eba80a2d4bc50a605000d946720db",
       "translation": "__ELBOT_CODE_0__ saves the runtime model selection:\n",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:paragraph:44325c63455391d3199339d398d546e6f62d4496361c8441707d5be8023fc562": {
+      "kind": "paragraph",
+      "source": "Responses 的配置示例：\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "44325c63455391d3199339d398d546e6f62d4496361c8441707d5be8023fc562",
+      "translation": "Configuration example for Responses:\n",
+      "updated_at": 1791301591
     },
     "docs/configuration.md:paragraph:48feb0d802388154b442421a14fc3a9baf92dc20fb8d95b1abfad8dfd5e74204": {
       "kind": "paragraph",
@@ -1840,6 +1904,14 @@
       "translation": "The command performs a read-only check of the main configuration currently used by the service and the separated configuration pointed to by __ELBOT_CODE_0__, supporting custom main configuration filenames, relative paths, and absolute paths;",
       "updated_at": 1790906856
     },
+    "docs/configuration.md:paragraph:7f0487ab1fd94e82a4b4b1aa33d73a683a38549a149015940d3412f8194ec608": {
+      "kind": "paragraph",
+      "source": "跨协议或跨 Responses 厂商需要新建会话。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "7f0487ab1fd94e82a4b4b1aa33d73a683a38549a149015940d3412f8194ec608",
+      "translation": "A new Session must be created for cross-protocol or cross-Responses provider changes.",
+      "updated_at": 1791301591
+    },
     "docs/configuration.md:paragraph:7ffeca05eb8a1c8e3d72e97c8edc57ae2ccad327917426b2e6fa11dd6a7875e9": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 控制 OpenAI-compatible 流式请求、整轮处理和重试：\n",
@@ -1911,6 +1983,14 @@
       "source_hash": "8971fc620182100244d7327af6df62530bba6e9a0b6bf70a3127a9ca33d629b5",
       "translation": "Media is downloaded according to the __ELBOT_CODE_0__ limit during actual processing.\n",
       "updated_at": 1789009808
+    },
+    "docs/configuration.md:paragraph:8a5bfacc804da4cb304a56f9cc8e78e16598bd19fa3c23efb9f9615cdf547dd5": {
+      "kind": "paragraph",
+      "source": "Responses 会话只能切换同一节点下的 Responses 模型。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "8a5bfacc804da4cb304a56f9cc8e78e16598bd19fa3c23efb9f9615cdf547dd5",
+      "translation": "Responses Sessions can only be switched to Responses models under the same node.",
+      "updated_at": 1791301591
     },
     "docs/configuration.md:paragraph:8af22db26d8bb6ec1271742300d562b1cf4a554c6c05a448a6740478b64f340c": {
       "kind": "paragraph",
@@ -2016,6 +2096,14 @@
       "translation": "Switching the workspace does not clear backups, but the same relative path will be resolved according to the new workspace.",
       "updated_at": 1791193831
     },
+    "docs/configuration.md:paragraph:95755188ea8e01d267a52107d659855fcbb008678d0ae5dc7a0367bef9195f30": {
+      "kind": "paragraph",
+      "source": "Chat Completions 和 Responses 客户端都可用于命名及 Chat 会话的文字摘要。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "95755188ea8e01d267a52107d659855fcbb008678d0ae5dc7a0367bef9195f30",
+      "translation": "Both Chat Completions and Responses clients can be used for naming and text summaries of Chat Sessions.",
+      "updated_at": 1791301591
+    },
     "docs/configuration.md:paragraph:98eb7743b6382d1927f6e0c8096646fef84bd7543d6a077816680a510239c6c1": {
       "kind": "paragraph",
       "source": "默认维护任务包含日志、Session、sandbox 和聊天历史清理，例如 Session 清理默认保留 30 天，sandbox 默认每天 04:00 清理 7 天前内容，聊天历史默认每天 04:35 执行：\n",
@@ -2031,6 +2119,14 @@
       "source_hash": "9959859a45473cfd1afd30ad2e55dc67b5afdd71c76d1d1d3a2dbaca36a6eb7b",
       "translation": "__ELBOT_CODE_1__ of __ELBOT_CODE_0__ controls media delivery in model requests: __ELBOT_CODE_2__ uses embedded data, __ELBOT_CODE_3__ uses pre-signed download links, and __ELBOT_CODE_4__ uses S3 when the total size of request media exceeds __ELBOT_CODE_5__.",
       "updated_at": 1789023374
+    },
+    "docs/configuration.md:paragraph:9a346cc66eb715c06bb91c7dddf1f74d3d0b4ac36ad5129dd7ae71aa2337515b": {
+      "kind": "paragraph",
+      "source": "已有会话的协议和厂商在首次对话时固定。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "9a346cc66eb715c06bb91c7dddf1f74d3d0b4ac36ad5129dd7ae71aa2337515b",
+      "translation": "The protocol and provider of an existing Session are fixed during the first conversation.",
+      "updated_at": 1791301591
     },
     "docs/configuration.md:paragraph:9b5878230e34a540b3bc2f4b759f21a0bf924ce76763874851dd26916e8f921b": {
       "kind": "paragraph",
@@ -2143,6 +2239,14 @@
       "source_hash": "ad94f84e75a385d66574406eeac257dda1df6e2ec0dd1eb5d474460510359610",
       "translation": "By default, AgentSkill is used only as documentation;",
       "updated_at": 1783219308
+    },
+    "docs/configuration.md:paragraph:adfb57e04084537964e5051105159fd5d384ece4a4f7144b4b9612273401295b": {
+      "kind": "paragraph",
+      "source": "同一节点的 __ELBOT_CODE_0__ 变化时，Responses 用完整本地原生材料重建链。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "adfb57e04084537964e5051105159fd5d384ece4a4f7144b4b9612273401295b",
+      "translation": "When __ELBOT_CODE_0__ of the same node changes, Responses rebuilds the chain using complete local native materials.\n",
+      "updated_at": 1791301591
     },
     "docs/configuration.md:paragraph:af3839527029ef707cb784ee761ae31af2d8cf02a3e2fb69c443ebe0ac53a852": {
       "kind": "paragraph",
@@ -2432,6 +2536,14 @@
       "translation": "__ELBOT_CODE_0__ is a standalone configuration file, with its path specified by __ELBOT_CODE_1__.",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:paragraph:f3a345c7c757fe681fc399ee57bc2f252b36dddfb25c11bfe32bb95c5adbef8e": {
+      "kind": "paragraph",
+      "source": "厂商就是 __ELBOT_CODE_0__ 的节点名：Chat 会话可切换到其他 Chat 厂商；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "f3a345c7c757fe681fc399ee57bc2f252b36dddfb25c11bfe32bb95c5adbef8e",
+      "translation": "The provider is the node name of __ELBOT_CODE_0__: Chat Sessions can be switched to other Chat providers;",
+      "updated_at": 1791301591
+    },
     "docs/configuration.md:paragraph:f3e6ebbdca7c74e391b3f6b1281ec0b299d31d6ae0f0a6dfc4ef15006de4952d": {
       "kind": "paragraph",
       "source": "若 stdout 是 __ELBOT_CODE_0__ JSON，会取 __ELBOT_CODE_1__ 字段。\n",
@@ -2698,8 +2810,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "e69e551ebb2cce723cf27e5f07b4dbc080d49278ff7ecb2209637e12877c4e55",
+  "source_hash": "e5a14635125acf5ac259735219635b09a6ee39cb0d3438cff06168f92e27f9d3",
   "target": "docs.en/configuration.md",
-  "updated_at": 1791193831,
+  "updated_at": 1791301591,
   "version": 2
 }
