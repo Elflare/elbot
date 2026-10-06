@@ -432,14 +432,6 @@
       "translation": "Even if the Session has expired due to inactivity or __ELBOT_CODE_0__ is no longer the current Session, quoting the last reply will still restore the original Session.\n",
       "updated_at": 1789088838
     },
-    "docs/concepts.md:paragraph:0b62002a7a49943ccaa0b11242ec62635c645ec1e62014dee98125f5a15509c6": {
-      "kind": "paragraph",
-      "source": "它可以自动触发，也可以由用户手动触发。\n",
-      "source_file": "docs/concepts.md",
-      "source_hash": "0b62002a7a49943ccaa0b11242ec62635c645ec1e62014dee98125f5a15509c6",
-      "translation": "It can be triggered automatically or manually by the user.\n",
-      "updated_at": 1784109334
-    },
     "docs/concepts.md:paragraph:100216e1add448f480dd0ac48fc11d44e266b3b4c63311c30702a7dd5421e8f2": {
       "kind": "paragraph",
       "source": "接管后不再汇报或补投递；",
@@ -488,6 +480,14 @@
       "translation": "bash scripts explicitly declare inputs via __ELBOT_CODE_0__, for example:\n",
       "updated_at": 1789009687
     },
+    "docs/concepts.md:paragraph:1a7d116cf01b0d45beaf694fe774edd3ab5b5bbf98319e3f7822430decd2dde1": {
+      "kind": "paragraph",
+      "source": "两种协议共用自动压缩开关和阈值，也都支持 `/compact。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "1a7d116cf01b0d45beaf694fe774edd3ab5b5bbf98319e3f7822430decd2dde1",
+      "translation": "Both protocols share the automatic compression switch and threshold, and both support `/compact`.",
+      "updated_at": 1791301387
+    },
     "docs/concepts.md:paragraph:1c970c52ff2cb06cf894bf9b208e67fbb1de52ebac9515fac3f45b10f39a1e04": {
       "kind": "paragraph",
       "source": "所属用户可在同平台私聊通过 __ELBOT_CODE_0__、__ELBOT_CODE_1__ 查看，CLI 可管理全部平台 Session；",
@@ -520,6 +520,14 @@
       "translation": "This allows the same Agent logic to be reused across CLI, chat platforms, and future new platforms.\n",
       "updated_at": 1783077374
     },
+    "docs/concepts.md:paragraph:242d4174164fbf86a422d1f66ee7e0c083b1fc340003a409f20395966553cf0c": {
+      "kind": "paragraph",
+      "source": "压缩模型可以使用任一种协议客户端。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "242d4174164fbf86a422d1f66ee7e0c083b1fc340003a409f20395966553cf0c",
+      "translation": "The compaction model can use any protocol client.",
+      "updated_at": 1791301387
+    },
     "docs/concepts.md:paragraph:2629fde9657a9177cd946d5d0614870a4c64220d6593d16cbcbbf3a10c65f513": {
       "kind": "paragraph",
       "source": "ElBot 区分：\n",
@@ -527,6 +535,14 @@
       "source_hash": "2629fde9657a9177cd946d5d0614870a4c64220d6593d16cbcbbf3a10c65f513",
       "translation": "ElBot distinguishes between:\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:2c5b5d74d373d0c3f8d32d2fda96f4508a383aeab53a9e1ab8ce22740653ef60": {
+      "kind": "paragraph",
+      "source": "会话模式与 Provider 的 __ELBOT_CODE_0__ 相互独立。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "2c5b5d74d373d0c3f8d32d2fda96f4508a383aeab53a9e1ab8ce22740653ef60",
+      "translation": "Session mode and the Provider's __ELBOT_CODE_0__ are independent of each other.",
+      "updated_at": 1791301387
     },
     "docs/concepts.md:paragraph:2db735abf5771464a8d7e0f82ae79b4c28e33ff5b525de546121d217af910791": {
       "kind": "paragraph",
@@ -543,6 +559,14 @@
       "source_hash": "2e4fa6324bfcc5f242708a90dcd72d7d9c5413488116cc51d796501771a8d966",
       "translation": "The host exports or reuses files in the sandbox's __ELBOT_CODE_0__ directory and injects environment variables such as __ELBOT_CODE_1__ and __ELBOT_CODE_2__ for the current process.",
       "updated_at": 1789009687
+    },
+    "docs/concepts.md:paragraph:2f054ee65d8de1fbdad0691cebac2da51de0d2b79236367f23aaa465c505c562": {
+      "kind": "paragraph",
+      "source": "Responses 会话使用当前对话模型的原生压缩能力。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "2f054ee65d8de1fbdad0691cebac2da51de0d2b79236367f23aaa465c505c562",
+      "translation": "Responses Sessions use the native compaction capabilities of the current conversation model.\n",
+      "updated_at": 1791301387
     },
     "docs/concepts.md:paragraph:2f5c3e0bfec728dc6fedd2e10704f6a1093976fe47f514f6be311b3c9d285010": {
       "kind": "paragraph",
@@ -567,14 +591,6 @@
       "source_hash": "32926a738ef481b25eb7a0d2e0046b257069b16e2f08e1a21b712e7e6254b7fe",
       "translation": "Original commands and call parameters remain unchanged.\n",
       "updated_at": 1789009687
-    },
-    "docs/concepts.md:paragraph:33c6282903004422aa20f26ab2dc8cabe8f7211e011354cb77fe2365d1ac837e": {
-      "kind": "paragraph",
-      "source": "旧 Session 不会被修改，新旧 Session 也没有 Fork 关系。",
-      "source_file": "docs/concepts.md",
-      "source_hash": "33c6282903004422aa20f26ab2dc8cabe8f7211e011354cb77fe2365d1ac837e",
-      "translation": "The old Session will not be modified, and there is no Fork relationship between the old and new Sessions.",
-      "updated_at": 1784109334
     },
     "docs/concepts.md:paragraph:34cd731a0bec855577756cb7c2d9d34502c7056497e27927b25f521949b77b6d": {
       "kind": "paragraph",
@@ -656,6 +672,14 @@
       "translation": "Temporary paths and base64 are not written back to the original call parameters.\n",
       "updated_at": 1789009687
     },
+    "docs/concepts.md:paragraph:4ccaec7e0de84344b0cbc73f0214ca58a911bbddcfe141723abedfb15662887a": {
+      "kind": "paragraph",
+      "source": "Chat 将压缩内容与下一条用户消息合并保存；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "4ccaec7e0de84344b0cbc73f0214ca58a911bbddcfe141723abedfb15662887a",
+      "translation": "Chat will merge the compressed content with the next user message for saving;",
+      "updated_at": 1791301387
+    },
     "docs/concepts.md:paragraph:4dc473962a54246670c2f9f0a1f3c947686f55a9494d41945c2655a4e1867a96": {
       "kind": "paragraph",
       "source": "缺失的 ID 不输出对应括号；",
@@ -696,6 +720,14 @@
       "translation": "Each schedule trigger of LLM Cron creates an independent background Session, executes the task as a new input, and sends the result of the current round upon completion.",
       "updated_at": 1784340226
     },
+    "docs/concepts.md:paragraph:54284c9bb47c5522d1c0a24e0277133e2b552ef21f1820dc44f854fbab450821": {
+      "kind": "paragraph",
+      "source": "Responses 从原生窗口开始新链，后续沿新链继续。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "54284c9bb47c5522d1c0a24e0277133e2b552ef21f1820dc44f854fbab450821",
+      "translation": "Responses start a new chain from the native window, and subsequent interactions continue along the new chain.",
+      "updated_at": 1791301387
+    },
     "docs/concepts.md:paragraph:542f19c4a9014218bd7b4dac80ba1258ced8cf42e52e83429f64321c7570c428": {
       "kind": "paragraph",
       "source": "Skill 是 ElBot 的可复用任务扩展。它可以是一段给 Agent 阅读的任务说明，也可以被包装成结构化工具供 LLM 调用。\n",
@@ -703,14 +735,6 @@
       "source_hash": "542f19c4a9014218bd7b4dac80ba1258ced8cf42e52e83429f64321c7570c428",
       "translation": "Skill is a reusable task extension of ElBot. It can be a set of task instructions for the Agent to read, or it can be wrapped as a structured tool for LLM invocation.\n",
       "updated_at": 1783077374
-    },
-    "docs/concepts.md:paragraph:546913aab3b77e996c6dd4424294e31217a94f471632659ff2585109a2926f05": {
-      "kind": "paragraph",
-      "source": "长对话会逐渐接近模型上下文窗口。上下文压缩会用压缩模型整理当前对话，再把压缩结果与所有历史用户原话组装为新的上下文起点。\n",
-      "source_file": "docs/concepts.md",
-      "source_hash": "546913aab3b77e996c6dd4424294e31217a94f471632659ff2585109a2926f05",
-      "translation": "Long conversations will gradually approach the model's context window. Context compaction uses a compression model to organize the current conversation, then assembles the compression result with all historical original user messages as a new context starting point.\n",
-      "updated_at": 1784109334
     },
     "docs/concepts.md:paragraph:579c747e55499fd4ee0c05c419d41d64ce4d7f2bd786a037a5a378066001a228": {
       "kind": "paragraph",
@@ -735,6 +759,14 @@
       "source_hash": "5ba4da839fa3f25bcd34f0278b8ea37627a49716117a52482134983a3bb7bcce",
       "translation": "The host imports files before returning; the Tool Transcript saves a stable media ID and establishes a reference.",
       "updated_at": 1789009687
+    },
+    "docs/concepts.md:paragraph:62d9bd381b94700503cd588c8135a94d202a2757e1c326d7362fbb0ac79f7604": {
+      "kind": "paragraph",
+      "source": "跨协议或跨 Responses 厂商需先新建会话。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "62d9bd381b94700503cd588c8135a94d202a2757e1c326d7362fbb0ac79f7604",
+      "translation": "A new Session must be created first when switching across protocols or Responses providers.\n",
+      "updated_at": 1791301387
     },
     "docs/concepts.md:paragraph:63a1153b4a9de5e3a2520571f9171a37d194712a82239dded628de64cc038def": {
       "kind": "paragraph",
@@ -768,6 +800,14 @@
       "translation": "ElBot's tool system includes risk levels and permission control.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:6a674966e7f4cff4a0315756cb5662e2d9be6272af70b9809d70b910679abe05": {
+      "kind": "paragraph",
+      "source": "Chat 会话使用压缩模型生成文字摘要，并保留历史用户原话；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "6a674966e7f4cff4a0315756cb5662e2d9be6272af70b9809d70b910679abe05",
+      "translation": "Chat Sessions use a compaction model to generate text summaries while preserving the original user utterances from history;",
+      "updated_at": 1791301387
+    },
     "docs/concepts.md:paragraph:6d028ce751b01283fd67711659c56eee0d634fb334dad72f5303c6341706e40e": {
       "kind": "paragraph",
       "source": "Go/TOML Skill 的 stdout 可以返回媒体结果：\n",
@@ -792,6 +832,14 @@
       "translation": "This document explains the main concepts of ElBot to help you understand how it organizes conversations, tools, context, and extensibility.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:71fd7c84b7b2577af7236976b92b4922f8d8e0022e172473ea6a5a51496597af": {
+      "kind": "paragraph",
+      "source": "长对话会逐渐接近模型上下文窗口。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "71fd7c84b7b2577af7236976b92b4922f8d8e0022e172473ea6a5a51496597af",
+      "translation": "Long conversations will gradually approach the model's context window.",
+      "updated_at": 1791301387
+    },
     "docs/concepts.md:paragraph:73d27afe4c68b14f6a519c20e5a9594bd2e36cad5fabd6b41f90dcf4d23a5564": {
       "kind": "paragraph",
       "source": "该值在 Session 生命周期内保持不变，以免时间变化降低 Prompt 缓存命中率。\n",
@@ -807,6 +855,14 @@
       "source_hash": "760276971149aa197a1bcca261358eddfd3def0153ff1e933f944a3ec3750f2b",
       "translation": "Go Skills are recommended to write temporary output to __ELBOT_CODE_0__, and TOML scripts can write to the directory where the received media input is located.\n",
       "updated_at": 1789009687
+    },
+    "docs/concepts.md:paragraph:7e86cfad2894816675db748bc890c323d025d3247b488aa2bb497c3c852825ce": {
+      "kind": "paragraph",
+      "source": "Responses 服务端明确报告旧链失效且尚未生成新内容时，会用同厂商的完整本地原生窗口自动恢复一次。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "7e86cfad2894816675db748bc890c323d025d3247b488aa2bb497c3c852825ce",
+      "translation": "When the Responses server explicitly reports that the old chain has expired and no new content has been generated, it will automatically recover once using a complete local native window from the same provider.",
+      "updated_at": 1791301387
     },
     "docs/concepts.md:paragraph:7fc746b0d913fc734edabcab044d768898397c98a0735b56dc3ebd4e765f1bef": {
       "kind": "paragraph",
@@ -960,6 +1016,14 @@
       "translation": "The system prompt is assembled in real-time into a system message for each request, with the parts arranged in the following order:\n",
       "updated_at": 1787305228
     },
+    "docs/concepts.md:paragraph:b2cde2ad1919b9a849db90881e25789e71423e018f9db3eb132d26d1e832933a": {
+      "kind": "paragraph",
+      "source": "恢复不会重跑历史工具或重复执行本轮 Hook；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "b2cde2ad1919b9a849db90881e25789e71423e018f9db3eb132d26d1e832933a",
+      "translation": "Recovery will not rerun historical tools or repeat the execution of the current round's Hook;",
+      "updated_at": 1791301387
+    },
     "docs/concepts.md:paragraph:b39eb495df6a025e3e7e3154f13448ef5f514702757e3924fe9e91d728dcd822": {
       "kind": "paragraph",
       "source": "标签按消息内顺序编号，并在可复用时包含原始 HTTP(S) URL，方便模型在上传、编辑等工具调用中准确引用图片。",
@@ -1007,6 +1071,14 @@
       "source_hash": "ba4f3f02581da5d01715fd981b111681c1c62d7c599227ee652dd964152d86fc",
       "translation": "The next independent trigger of the scheduled task will still use a new background Session.\n",
       "updated_at": 1791193690
+    },
+    "docs/concepts.md:paragraph:bb7002a7c5ea1440918dc27d2705ab71d8596862965d753a1cb00d3eedf5a73c": {
+      "kind": "paragraph",
+      "source": "已有 Chat 会话可在 Chat 厂商之间切换；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "bb7002a7c5ea1440918dc27d2705ab71d8596862965d753a1cb00d3eedf5a73c",
+      "translation": "Existing Chat Sessions can be switched between Chat providers;",
+      "updated_at": 1791301387
     },
     "docs/concepts.md:paragraph:bba7fced0f9c1143a23c84ff8aafe31b0724948cccece90fd16c05d218fce7a6": {
       "kind": "paragraph",
@@ -1144,14 +1216,6 @@
       "translation": "Session is ElBot's persistent session unit, used to save the context, mode, message history, and tool call records of a continuous conversation.\n",
       "updated_at": 1784109334
     },
-    "docs/concepts.md:paragraph:e043c18031797429a305499c616a04bce396b669a143745f98fe8635da9ce331": {
-      "kind": "paragraph",
-      "source": "用户下一条消息会和组装后的压缩内容合并成新 Session 的第一条用户消息。",
-      "source_file": "docs/concepts.md",
-      "source_hash": "e043c18031797429a305499c616a04bce396b669a143745f98fe8635da9ce331",
-      "translation": "The user's next message will be merged with the assembled compressed content to become the first user message of the new Session.",
-      "updated_at": 1784109334
-    },
     "docs/concepts.md:paragraph:e45efa9dc37cb8606f132205f9ce326e935a9cb43bd594cd460408dd3b75c7b5": {
       "kind": "paragraph",
       "source": "Skill 根目录中的其他工作文件仍由 Skill 管理。",
@@ -1199,6 +1263,14 @@
       "source_hash": "ef0042c9b2a0794284af7d02eb33592633dc63c6625e47cddc55a0bcc2af7f4d",
       "translation": "Elwisp is an external sub-listener responsible for observing the external world, such as servers, Webhooks, RSS, logs, or script outputs.",
       "updated_at": 1781709276
+    },
+    "docs/concepts.md:paragraph:f0aacaa5c76dfbff0bec1a3b620bf1e79cc1a1a2b21f92cbef93bf16e542348c": {
+      "kind": "paragraph",
+      "source": "已有 Responses 会话可在同一 Provider 节点内切换 Responses 模型。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "f0aacaa5c76dfbff0bec1a3b620bf1e79cc1a1a2b21f92cbef93bf16e542348c",
+      "translation": "Existing Responses Sessions can switch Responses models within the same Provider node.",
+      "updated_at": 1791301387
     },
     "docs/concepts.md:paragraph:f130df4e2b2078db4b319ae35ddfc2417ddfc986acdbeb67e754121d15516d4c": {
       "kind": "paragraph",
@@ -1263,6 +1335,14 @@
       "source_hash": "fcc810a11d16dc0f7bef2d6afa1b8476097eada26bbf119f9990b08c6ffde811",
       "translation": "ELyph Task Notation is a structured representation used by ElBot to describe reusable tasks.",
       "updated_at": 1783077374
+    },
+    "docs/concepts.md:paragraph:fd30bbfb3c88676d772c502a32da1e3fd98542131b185cf1fe8567ea3e8acdda": {
+      "kind": "paragraph",
+      "source": "推理或素材缺失时会报错，不改用文字历史继续。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "fd30bbfb3c88676d772c502a32da1e3fd98542131b185cf1fe8567ea3e8acdda",
+      "translation": "An error will be reported if reasoning or materials are missing, instead of continuing with text history.\n",
+      "updated_at": 1791301387
     },
     "docs/concepts.md:paragraph:ffed157c866ec8765be1b40969a89ebf76fc1cc2d6f1f5a419820bf20e716d6c": {
       "kind": "paragraph",
@@ -1442,8 +1522,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "bdf5f4712cf11752ceefd100c0a48a967ac9992cd6be218de9eee9e509ff5580",
+  "source_hash": "9cf4ce706769ae8663d9220544f29e4f6f714fff9bc8f2722457b4d45387e71d",
   "target": "docs.en/concepts.md",
-  "updated_at": 1791193690,
+  "updated_at": 1791301387,
   "version": 2
 }
