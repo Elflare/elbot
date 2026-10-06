@@ -12,7 +12,7 @@ import (
 )
 
 type Options struct {
-	Clients      map[string]llm.LLM
+	Clients      map[string]llm.Client
 	Providers    map[string]config.ProviderConfig
 	ModeModels   map[string]config.ModelSelection
 	CompactModel config.ModelSelection
@@ -30,7 +30,7 @@ type Service struct {
 	statePath    string
 	sessionState config.StateSessionConfig
 	save         func(string, config.StateConfig) error
-	clients      map[string]llm.LLM
+	clients      map[string]llm.Client
 	providers    map[string]*providerCatalog
 	retrying     *signal.Signal[ModelRetryingEvent]
 }
@@ -60,7 +60,7 @@ func New(opts Options) (*Service, error) {
 		statePath:    opts.StatePath,
 		sessionState: config.StateSessionConfig{DefaultMode: opts.DefaultMode},
 		save:         config.SaveState,
-		clients:      make(map[string]llm.LLM, len(opts.Providers)),
+		clients:      make(map[string]llm.Client, len(opts.Providers)),
 		providers:    make(map[string]*providerCatalog, len(opts.Providers)),
 		retrying:     signal.New[ModelRetryingEvent]("model.retrying", nil),
 	}
@@ -68,6 +68,13 @@ func New(opts Options) (*Service, error) {
 		client := opts.Clients[name]
 		if client == nil {
 			return nil, fmt.Errorf("client not found for provider %q", name)
+		}
+		mode := provider.EffectiveAPIMode()
+		if mode != "chat" && mode != "response" {
+			return nil, fmt.Errorf("provider %q has invalid api_mode %q", name, mode)
+		}
+		if client.Protocol() != llm.ProtocolID(mode) {
+			return nil, fmt.Errorf("provider %q api_mode %q does not match client protocol %q", name, mode, client.Protocol())
 		}
 		s.clients[name] = client
 		s.providers[name] = &providerCatalog{
@@ -95,4 +102,4 @@ func validateSelection(name string, selected config.ModelSelection, providers ma
 	return nil
 }
 
-func (s *Service) ClientForProvider(provider string) llm.LLM { return s.clients[provider] }
+func (s *Service) ClientForProvider(provider string) llm.Client { return s.clients[provider] }

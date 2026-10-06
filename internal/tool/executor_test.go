@@ -97,7 +97,7 @@ type segmentTool struct{}
 func (segmentTool) Name() string { return "segments" }
 func (segmentTool) Info() Info   { return Info{Name: "segments", Source: SourceBuiltin, Risk: RiskLow} }
 func (segmentTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Function: llm.ToolFunctionSchema{Name: "segments"}}
+	return llm.ToolSchema{Name: "segments"}
 }
 func (segmentTool) Call(context.Context, CallRequest) (*Result, error) {
 	return &Result{Segments: []llm.MessageSegment{

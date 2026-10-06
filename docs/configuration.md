@@ -150,6 +150,7 @@ Provider 写在 `providers.toml`：
 
 ```toml
 [providers.deepseek]
+api_mode = "chat"                  # 可选：chat / response，省略为 chat
 base_url = "https://api.deepseek.com"
 api_key_env = "DEEPSEEK_API_KEY"
 proxy = ""                          # 可选，HTTP/SOCKS5 代理地址
@@ -171,13 +172,27 @@ default_context_window = 256000
 
 说明：
 
-- `base_url` 使用 Provider 的 OpenAI-compatible API 地址。
+- `api_mode` 仅接受 `chat` 或 `response`，省略为 `chat`；分别调用 Chat Completions 或 Responses API。
+- `base_url` 使用 Provider 对应 API 的基础地址。
 - `api_key_env` 指向环境变量名，推荐用这种方式保存密钥。
 - `proxy` 可选，支持 `http://` 和 `socks5://` 代理地址；省略或留空时直连，不继承 ElBot 进程的 `HTTP_PROXY`、`HTTPS_PROXY` 等环境代理。该设置同时作用于模型列表和聊天请求。
 - `models` 是手动补充的模型名列表，当 Provider 的模型列表接口获取不到某些模型时使用。
 - `[providers.<name>.model_configs."<model>"]` 为特定模型配置 `context_window` 和 `extra_payload`，两者都是可选的。
+- provider 和模型级共用 `extra_payload`，按 `api_mode` 填写该 API／模型支持的原生参数。
 - `extra_payload` 会合并到 LLM 请求 JSON 中，模型级覆盖 Provider 级。
 - `[model_metadata]` 的 `default_context_window` 是全局回退值，默认 `256000`，没有在 `model_configs` 里配 `context_window` 时使用。
+
+Responses 的配置示例：
+
+```toml
+[providers.native_text]
+api_mode = "response"
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+extra_payload = { reasoning = { effort = "medium" } }
+```
+
+该 provider 可用于命名模型或 Chat 会话的文字摘要模型，独立调用不续接主会话。采样、reasoning、输出格式等参数由上游 API／模型决定是否支持，不支持时返回实际错误。
 
 ## 内置 Web 工具配置
 

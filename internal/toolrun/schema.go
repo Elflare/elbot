@@ -8,8 +8,8 @@ import (
 
 // Schemas are JSON trees. Preserve scalar Go types while detaching containers.
 func cloneSchema(schema llm.ToolSchema) llm.ToolSchema {
-	if schema.Function.Parameters != nil {
-		schema.Function.Parameters = cloneSchemaValue(reflect.ValueOf(schema.Function.Parameters)).Interface().(map[string]any)
+	if schema.Parameters != nil {
+		schema.Parameters = cloneSchemaValue(reflect.ValueOf(schema.Parameters)).Interface().(map[string]any)
 	}
 	return schema
 }

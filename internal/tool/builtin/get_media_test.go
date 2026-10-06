@@ -107,7 +107,7 @@ func TestGetMediaValidationAndFailureBudget(t *testing.T) {
 
 func TestGetMediaSchemaAndHistoryIDTruncation(t *testing.T) {
 	schema := (GetMediaTool{}).Schema()
-	properties := schema.Function.Parameters["properties"].(map[string]any)
+	properties := schema.Parameters["properties"].(map[string]any)
 	outer := properties["media_index"].(map[string]any)
 	inner := outer["items"].(map[string]any)
 	item := inner["items"].(map[string]any)

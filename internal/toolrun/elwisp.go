@@ -42,7 +42,7 @@ func CachedToolsFromELwisp(injection ELwispInjection) []CachedTool {
 			CanonicalName:  canonical,
 			Source:         SourceKindELwisp,
 			Description:    declared.Description,
-			Schema:         llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: canonical, Description: declared.Description, Parameters: declared.Schema}},
+			Schema:         llm.ToolSchema{Name: canonical, Description: declared.Description, Parameters: declared.Schema},
 			ELwispName:     elwispName,
 			EventKey:       injection.EventKey,
 			Endpoint:       strings.TrimSpace(declared.Endpoint),

@@ -8,6 +8,7 @@ import (
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/platform"
 	"os"
 	"path/filepath"
@@ -313,7 +314,7 @@ func TestWaitingContinuationPassThroughReachesLaterHooksAndLLM(t *testing.T) {
 
 func TestStreamingOutputPreparedHookReplacesFinalMessage(t *testing.T) {
 	p := &fakeStreamingPlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: "猫"}}}}
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "猫"}}}}
 
 	manager := hook.NewManager()
 	if err := manager.Register(hook.Registration{Point: hook.PointAgentOutputPrepared, Name: "test.output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
@@ -339,7 +340,7 @@ func TestStreamingOutputPreparedHookReplacesFinalMessage(t *testing.T) {
 
 func TestNonStreamingPlatformSendsOnlyHookText(t *testing.T) {
 	p := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{{
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{
 		{DeltaContent: "hello "},
 		{DeltaContent: "[[wave]]"},
 	}}}

@@ -187,7 +187,7 @@ func (*hookActionTestTool) Info() tool.Info {
 }
 
 func (*hookActionTestTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: "hook_test_critical", Parameters: map[string]any{"type": "object"}}}
+	return llm.ToolSchema{Name: "hook_test_critical", Parameters: map[string]any{"type": "object"}}
 }
 
 func (t *hookActionTestTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {

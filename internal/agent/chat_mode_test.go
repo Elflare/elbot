@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"testing"
 
 	"elbot/internal/config"
@@ -21,8 +22,8 @@ func TestChatModeIgnoresForcedHookToolsAndModelCalls(t *testing.T) {
 		if err := registry.Register(candidate); err != nil {
 			t.Fatal(err)
 		}
-		f := &fakeLLM{chunks: [][]llm.StreamChunk{
-			{{DeltaContent: "plain answer", ToolCallDeltas: []llm.ToolCallDelta{{ID: "model-call", Name: candidate.Name(), Args: "{}"}}}},
+		f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+			{{DeltaContent: "plain answer", ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "model-call", Name: candidate.Name(), Args: "{}"}}}},
 			{{DeltaContent: "unexpected followup"}},
 		}}
 

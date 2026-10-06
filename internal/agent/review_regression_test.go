@@ -89,7 +89,7 @@ func TestReviewTurnHookReadonlySelection(t *testing.T) {
 func testReadonlyHookSelection(t *testing.T, point hook.Point) {
 	old := &fakeLLM{replies: []string{"old"}}
 	next := &fakeLLM{replies: []string{"next"}}
-	models := newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"old": old, "next": next}, Providers: map[string]config.ProviderConfig{"old": {Models: []string{"first"}}, "next": {Models: []string{"second"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "old", Model: "first"}}})
+	models := newTestModels(t, modelmgr.Options{Clients: map[string]llm.Client{"old": old, "next": next}, Providers: map[string]config.ProviderConfig{"old": {Models: []string{"first"}}, "next": {Models: []string{"second"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "old", Model: "first"}}})
 	opts := validConstructorOptions(t)
 	opts.Models = models
 	opts.SessionConfig.NamingConfig.TriggerStep = 100

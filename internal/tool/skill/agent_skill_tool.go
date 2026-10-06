@@ -37,7 +37,7 @@ func (AgentSkillTool) Info() tool.Info {
 }
 
 func (AgentSkillTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{
+	return llm.ToolSchema{
 		Name:        AgentSkillManagerName,
 		Description: agentSkillToolDescription(),
 		Parameters: map[string]any{
@@ -49,7 +49,7 @@ func (AgentSkillTool) Schema() llm.ToolSchema {
 			},
 			"required": []string{"action", "name"},
 		},
-	}}
+	}
 }
 
 func agentSkillToolDescription() string {

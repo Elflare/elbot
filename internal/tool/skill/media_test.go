@@ -63,7 +63,7 @@ func main(){
 	command := NewCommandTool(Record{Name: "command", Kind: KindAgent, Root: dir, Manifest: manifest})
 	command.Media = mediaRuntime
 	schema := manifest.Schema("command", "")
-	props := schema.Function.Parameters["properties"].(map[string]any)
+	props := schema.Parameters["properties"].(map[string]any)
 	projectedInput := props["input"].(map[string]any)
 	projectedItems := props["inputs"].(map[string]any)["items"].(map[string]any)
 	manifestItems := manifest.Parameters["properties"].(map[string]any)["inputs"].(map[string]any)["items"].(map[string]any)

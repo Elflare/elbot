@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"strings"
 	"testing"
@@ -26,12 +27,12 @@ type retryModel struct {
 
 func (m *retryModel) SetRetryNotifier(fn func(context.Context, llm.RetryEvent)) { m.notify = fn }
 func (*retryModel) ListModels(context.Context) ([]string, error)                { return []string{"first"}, nil }
-func (m *retryModel) ChatStream(ctx context.Context, _ llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+func (m *retryModel) Stream(ctx context.Context, _ chatcompletions.Request) (<-chan chatcompletions.Chunk, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	call := retryCall{ctx: ctx, release: make(chan struct{})}
 	m.notify(ctx, llm.RetryEvent{Attempt: 1, MaxRetries: 2, Delay: time.Millisecond, Err: errors.New("retryable")})
 	m.calls <- call
-	stream := make(chan llm.StreamChunk)
+	stream := make(chan chatcompletions.Chunk)
 	go func() {
 		defer close(stream)
 		defer cancel()
@@ -41,7 +42,7 @@ func (m *retryModel) ChatStream(ctx context.Context, _ llm.ChatRequest) (<-chan 
 		case <-call.release:
 		}
 		select {
-		case stream <- llm.StreamChunk{DeltaContent: "summary and title"}:
+		case stream <- chatcompletions.Chunk{DeltaContent: "summary and title"}:
 		case <-ctx.Done():
 		}
 	}()
@@ -122,7 +123,7 @@ func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
 	}
 	// Delay a retry until its own call finishes while the parent remains alive.
 	release := holdObserverQueue(t, runtime.Signals.queues[1]) // naming logs precede the shared model notification queue.
-	stream, err := runtime.Models.ClientForProvider("test").ChatStream(ctx, llm.ChatRequest{Model: "first"})
+	stream, err := runtime.Models.ClientForProvider("test").(chatcompletions.Streamer).Stream(ctx, chatcompletions.Request{Model: "first"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,4 +140,28 @@ func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
 	if len(p.retryNotices) != 0 {
 		t.Fatal("finished call displayed stale retry")
 	}
+}
+
+func (m *retryModel) Protocol() llm.ProtocolID { return llm.ProtocolChat }
+func (m *retryModel) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {
+	messages := []llm.LLMMessage{}
+	if req.Instructions != "" {
+		messages = append(messages, llm.LLMMessage{Role: llm.RoleSystem, Segments: llm.TextSegments(req.Instructions)})
+	}
+	messages = append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments(req.Input)})
+	chunks, err := m.Stream(ctx, chatcompletions.Request{Model: req.Model, Messages: messages, MaxTokens: req.MaxOutputTokens, ExtraBody: req.ExtraBody})
+	if err != nil {
+		return llm.TextResult{}, err
+	}
+	result := llm.TextResult{}
+	for chunk := range chunks {
+		if chunk.Error != nil {
+			return llm.TextResult{}, chunk.Error
+		}
+		result.Text += chunk.DeltaContent
+		if chunk.Usage != nil {
+			result.Usage = chunk.Usage
+		}
+	}
+	return result, ctx.Err()
 }

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -53,8 +54,8 @@ func TestRiskConfirmationExpiresAndStopsToolFlow(t *testing.T) {
 func TestRiskConfirmationStopUsesStopCommandWithoutToolError(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"rm out.txt"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"rm out.txt"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "should not continue"}},
 	}}
 
@@ -222,8 +223,8 @@ func TestRiskConfirmationConfirmToolAndConfirmAllAliases(t *testing.T) {
 func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "resident_memory_core", Args: `{"content":"我喜欢咖啡"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "resident_memory_core", Args: `{"content":"我喜欢咖啡"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "已记下"}},
 	}}
 
@@ -298,8 +299,8 @@ func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 
 func TestRegularUserCanUpdateNormalMemoryWithoutConfirmation(t *testing.T) {
 	p := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "resident_memory_normal", Args: `{"action":"write","content":"用户喜欢短回复。"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "resident_memory_normal", Args: `{"action":"write","content":"用户喜欢短回复。"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "已记下"}},
 	}}
 
@@ -338,8 +339,8 @@ func TestRegularUserCanUpdateNormalMemoryWithoutConfirmation(t *testing.T) {
 func TestRegularUserCannotCallSuperadminOnlyTool(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "long_memory_write", Args: `{"category":"x","title":"t","summary":"s","content":"c"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "long_memory_write", Args: `{"category":"x","title":"t","summary":"s","content":"c"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "fallback"}},
 	}}
 

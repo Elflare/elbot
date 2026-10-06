@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"testing"
 	"time"
@@ -53,7 +54,7 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 
 func TestModelCompletionSnapshotAndObserverFailureDoNotChangeResult(t *testing.T) {
 	usage := &llm.Usage{TotalTokens: 7}
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: "source", Usage: usage}}}}, "model", config.ProviderConfig{}, newTestStore(t))
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "source", Usage: usage}}}}, "model", config.ProviderConfig{}, newTestStore(t))
 	var event agentevents.ModelCallCompletedEvent
 	_, _ = a.Signals().ModelCallCompleted.Connect(func(_ context.Context, e agentevents.ModelCallCompletedEvent) error {
 		event = e

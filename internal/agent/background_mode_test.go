@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,8 +41,8 @@ func TestBackgroundRejectsUndeclaredNativeTool(t *testing.T) {
 	if err := registry.Register(candidate); err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "forced", Name: candidate.Name(), Args: "{}"}}}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "forced", Name: candidate.Name(), Args: "{}"}}}},
 		{{DeltaContent: "finished"}},
 	}}
 
@@ -63,9 +64,9 @@ func TestBackgroundRejectsUndeclaredNativeTool(t *testing.T) {
 }
 
 func TestBackgroundRelativeFilesUseElwispSandbox(t *testing.T) {
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "write", Name: "shell", Args: `{"cmd":"printf sandbox-ok > result.txt"}`}}}},
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "read", Name: "read_file", Args: `{"path":"result.txt"}`}}}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "write", Name: "shell", Args: `{"cmd":"printf sandbox-ok > result.txt"}`}}}},
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "read", Name: "read_file", Args: `{"path":"result.txt"}`}}}},
 		{{DeltaContent: "done"}},
 	}}
 
@@ -98,8 +99,8 @@ func TestBackgroundRelativeFilesUseElwispSandbox(t *testing.T) {
 	read := false
 	for _, request := range f.chatRequests() {
 		for _, schema := range request.Tools {
-			if schema.Function.Name == "workspace" || schema.Function.Name == "discover_tool" {
-				t.Fatalf("forbidden schema: %s", schema.Function.Name)
+			if schema.Name == "workspace" || schema.Name == "discover_tool" {
+				t.Fatalf("forbidden schema: %s", schema.Name)
 			}
 		}
 		for _, message := range request.Messages {
@@ -129,8 +130,8 @@ func TestBackgroundHooksCannotExpandTools(t *testing.T) {
 			if point == hook.PointToolCallPrepared {
 				callName = "allowed"
 			}
-			f := &fakeLLM{chunks: [][]llm.StreamChunk{
-				{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call", Name: callName, Args: "{}"}}}},
+			f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+				{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call", Name: callName, Args: "{}"}}}},
 				{{DeltaContent: "done"}},
 			}}
 
@@ -176,7 +177,7 @@ func TestBackgroundTagPromptRequiresExplicitSelection(t *testing.T) {
 	for _, selector := range []string{"alpha", "worker", ""} {
 		t.Run(selector, func(t *testing.T) {
 			ctx := context.Background()
-			f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: "first"}}, {{DeltaContent: "second"}}}}
+			f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "first"}}, {{DeltaContent: "second"}}}}
 
 			registry := tool.NewRegistry()
 			_ = registry.Register(agentWrapperTool{name: "alpha"})

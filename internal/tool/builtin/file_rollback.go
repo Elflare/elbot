@@ -26,7 +26,7 @@ func (RollbackFileTool) Name() string    { return "rollback_file" }
 func (RollbackFileTool) Info() tool.Info { return rollbackFileBuilder().BuildInfo() }
 func (RollbackFileTool) Schema() llm.ToolSchema {
 	schema := rollbackFileBuilder().BuildSchema()
-	schema.Function.Parameters["additionalProperties"] = false
+	schema.Parameters["additionalProperties"] = false
 	return schema
 }
 

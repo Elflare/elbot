@@ -133,12 +133,9 @@ func (b *Builder) BuildSchema() llm.ToolSchema {
 		parameters["required"] = append([]string(nil), b.required...)
 	}
 	return llm.ToolSchema{
-		Type: "function",
-		Function: llm.ToolFunctionSchema{
-			Name:        b.name,
-			Description: b.description,
-			Parameters:  parameters,
-		},
+		Name:        b.name,
+		Description: b.description,
+		Parameters:  parameters,
 	}
 }
 

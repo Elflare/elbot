@@ -5,7 +5,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/llm/openai"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
@@ -24,11 +24,11 @@ import (
 func newTestModels(t *testing.T, opts modelmgr.Options) *modelmgr.Service {
 	t.Helper()
 	if opts.Clients == nil {
-		opts.Clients = map[string]llm.LLM{}
+		opts.Clients = map[string]llm.Client{}
 	}
 	for name, provider := range opts.Providers {
 		if opts.Clients[name] == nil && provider.BaseURL != "" {
-			client, err := openai.NewWithOptions(provider.BaseURL, provider.APIKey, provider.ExtraPayload, nil, openai.RequestOptions{Proxy: provider.Proxy})
+			client, err := chatcompletions.New(provider.BaseURL, provider.APIKey, provider.ExtraPayload, nil, chatcompletions.RequestOptions{Proxy: provider.Proxy})
 			if err != nil {
 				t.Fatalf("create test provider %s: %v", name, err)
 			}
@@ -168,15 +168,15 @@ type fakeLLMBlock struct {
 type fakeLLM struct {
 	models        []string
 	replies       []string
-	chunks        [][]llm.StreamChunk
+	chunks        [][]chatcompletions.Chunk
 	titleReplies  []string
 	chatBlocks    []fakeLLMBlock
-	requests      []llm.ChatRequest
+	requests      []chatcompletions.Request
 	requestNotify chan struct{}
 	mu            sync.Mutex
 }
 
-func (f *fakeLLM) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+func (f *fakeLLM) Stream(ctx context.Context, req chatcompletions.Request) (<-chan chatcompletions.Chunk, error) {
 	f.mu.Lock()
 	f.requests = append(f.requests, req)
 	f.notifyRequestLocked()
@@ -201,7 +201,7 @@ func (f *fakeLLM) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan l
 		if err := waitFakeLLMBlock(ctx, block); err != nil {
 			return fakeLLMErrorStream(err), nil
 		}
-		ch := make(chan llm.StreamChunk, len(chunks))
+		ch := make(chan chatcompletions.Chunk, len(chunks))
 		for _, chunk := range chunks {
 			ch <- chunk
 		}
@@ -215,11 +215,11 @@ func (f *fakeLLM) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan l
 	if err := waitFakeLLMBlock(ctx, block); err != nil {
 		return fakeLLMErrorStream(err), nil
 	}
-	ch := make(chan llm.StreamChunk, 1)
+	ch := make(chan chatcompletions.Chunk, 1)
 	if reply == "__ERR__" {
-		ch <- llm.StreamChunk{Error: fmt.Errorf("fake stream error")}
+		ch <- chatcompletions.Chunk{Error: fmt.Errorf("fake stream error")}
 	} else {
-		ch <- llm.StreamChunk{DeltaContent: reply}
+		ch <- chatcompletions.Chunk{DeltaContent: reply}
 	}
 	close(ch)
 	return ch, nil
@@ -244,9 +244,9 @@ func waitFakeLLMBlock(ctx context.Context, block fakeLLMBlock) error {
 	}
 }
 
-func fakeLLMErrorStream(err error) <-chan llm.StreamChunk {
-	ch := make(chan llm.StreamChunk, 1)
-	ch <- llm.StreamChunk{Error: err}
+func fakeLLMErrorStream(err error) <-chan chatcompletions.Chunk {
+	ch := make(chan chatcompletions.Chunk, 1)
+	ch <- chatcompletions.Chunk{Error: err}
 	close(ch)
 	return ch
 }
@@ -259,10 +259,10 @@ func (f *fakeLLM) requestCount() int {
 	return len(f.requests)
 }
 
-func (f *fakeLLM) chatRequests() []llm.ChatRequest {
+func (f *fakeLLM) chatRequests() []chatcompletions.Request {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	out := []llm.ChatRequest{}
+	out := []chatcompletions.Request{}
 	for _, req := range f.requests {
 		if !isTitleRequest(req) {
 			out = append(out, req)
@@ -271,7 +271,7 @@ func (f *fakeLLM) chatRequests() []llm.ChatRequest {
 	return out
 }
 
-func isTitleRequest(req llm.ChatRequest) bool {
+func isTitleRequest(req chatcompletions.Request) bool {
 	return len(req.Messages) > 0 && strings.Contains(llm.SegmentsContentText(req.Messages[0].Segments), "会话命名助手")
 }
 
@@ -347,7 +347,7 @@ func TestNewTestStoreUsesIndependentMemoryDatabase(t *testing.T) {
 	}
 }
 
-func firstRequestSystemText(req llm.ChatRequest) string {
+func firstRequestSystemText(req chatcompletions.Request) string {
 	for _, message := range req.Messages {
 		if message.Role == llm.RoleSystem {
 			return llm.SegmentsContentText(message.Segments)
@@ -356,7 +356,7 @@ func firstRequestSystemText(req llm.ChatRequest) string {
 	return ""
 }
 
-func chatRequestText(req llm.ChatRequest) string {
+func chatRequestText(req chatcompletions.Request) string {
 	parts := make([]string, 0, len(req.Messages))
 	for _, message := range req.Messages {
 		if text := llm.SegmentsContentText(message.Segments); text != "" {
@@ -383,7 +383,7 @@ func toolNames(schemas []llm.ToolSchema) string {
 
 	names := make([]string, 0, len(schemas))
 	for _, schema := range schemas {
-		names = append(names, schema.Function.Name)
+		names = append(names, schema.Name)
 	}
 	return strings.Join(names, ",")
 }
@@ -444,7 +444,7 @@ func (t agentWrapperTool) Info() tool.Info {
 }
 
 func (t agentWrapperTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}}
+	return llm.ToolSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}
 }
 
 func (t agentWrapperTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
@@ -469,7 +469,7 @@ func (agentShellTool) Info() tool.Info {
 }
 
 func (agentShellTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Function: llm.ToolFunctionSchema{Name: "shell", Parameters: map[string]any{"type": "object"}}}
+	return llm.ToolSchema{Name: "shell", Parameters: map[string]any{"type": "object"}}
 }
 
 func (agentShellTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
@@ -494,7 +494,7 @@ func (t slowTool) Info() tool.Info {
 }
 
 func (t slowTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Function: llm.ToolFunctionSchema{Name: "slow", Parameters: map[string]any{"type": "object"}}}
+	return llm.ToolSchema{Name: "slow", Parameters: map[string]any{"type": "object"}}
 }
 
 func (t slowTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
@@ -505,4 +505,37 @@ func (t slowTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result,
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+func (f *fakeLLM) Protocol() llm.ProtocolID { return llm.ProtocolChat }
+func (f *fakeLLM) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {
+	messages := []llm.LLMMessage{}
+	if req.Instructions != "" {
+		messages = append(messages, llm.LLMMessage{Role: llm.RoleSystem, Segments: llm.TextSegments(req.Instructions)})
+	}
+	messages = append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments(req.Input)})
+	chunks, err := f.Stream(ctx, chatcompletions.Request{Model: req.Model, Messages: messages, MaxTokens: req.MaxOutputTokens, ExtraBody: req.ExtraBody})
+	if err != nil {
+		return llm.TextResult{}, err
+	}
+	result := llm.TextResult{}
+	for chunk := range chunks {
+		if chunk.Error != nil {
+			return llm.TextResult{}, chunk.Error
+		}
+		result.Text += chunk.DeltaContent
+		if chunk.Usage != nil {
+			result.Usage = chunk.Usage
+		}
+	}
+	return result, ctx.Err()
+}
+
+func mustChatClient(t *testing.T, baseURL, key string, extras map[string]any) *chatcompletions.Client {
+	t.Helper()
+	client, err := chatcompletions.New(baseURL, key, extras, nil, chatcompletions.RequestOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return client
 }

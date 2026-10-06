@@ -35,7 +35,7 @@ func getMediaBuilder() *tool.Builder {
 func (GetMediaTool) Info() tool.Info { return getMediaBuilder().BuildInfo() }
 func (GetMediaTool) Schema() llm.ToolSchema {
 	schema := getMediaBuilder().BuildSchema()
-	properties := schema.Function.Parameters["properties"].(map[string]any)
+	properties := schema.Parameters["properties"].(map[string]any)
 	properties["media_index"] = map[string]any{"type": "array", "description": "与 message_id 一一对应的媒体序号数组。序号从1开始，只计算图片/文件等媒体，不计文字；每个内层数组非空。省略时每条消息默认 [1]。", "items": map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "integer", "minimum": 1}}}
 	return schema
 }

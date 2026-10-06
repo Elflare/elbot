@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"os"
 	"path/filepath"
@@ -23,8 +24,8 @@ import (
 func TestDiscoveredToolsAreInjectedIntoTopLevelTools(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "discover_tool", Args: `{"name":"web_search"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "discover_tool", Args: `{"name":"web_search"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
 
@@ -643,9 +644,9 @@ func TestSkillDirectiveOnlySkillSendsDetailAsUserMessage(t *testing.T) {
 func TestSkillDiscoveryActivatesHiddenWrapperInSameTurn(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "discover_tool", Args: `{"name":"docx"}`}}, FinishReason: "tool_calls"}},
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_2", Name: "python_skill_run", Args: `{"skill":"docx","script":"scripts/a.py"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "discover_tool", Args: `{"name":"docx"}`}}, FinishReason: "tool_calls"}},
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_2", Name: "python_skill_run", Args: `{"skill":"docx","script":"scripts/a.py"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
 
@@ -705,7 +706,7 @@ func TestWorkSessionKeepsDiscoverTool(t *testing.T) {
 		t.Fatal("no chat requests")
 	}
 	for _, schema := range requests[0].Tools {
-		if schema.Function.Name == "discover_tool" {
+		if schema.Name == "discover_tool" {
 			return
 		}
 	}
@@ -720,7 +721,7 @@ func TestSoulPromptAndToolsByMode(t *testing.T) {
 	if err := os.WriteFile(soulPath, []byte("SOUL ONLY"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	tools := &recordingToolProvider{tools: []llm.ToolSchema{{Function: llm.ToolFunctionSchema{Name: "discover_tool", Description: "discover tools", Parameters: map[string]any{"type": "object"}}}}}
+	tools := &recordingToolProvider{tools: []llm.ToolSchema{{Name: "discover_tool", Description: "discover tools", Parameters: map[string]any{"type": "object"}}}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
 		cfg.SoulPath, cfg.ToolProvider = soulPath, tools
 	})
@@ -752,7 +753,7 @@ func TestSoulPromptAndToolsByMode(t *testing.T) {
 			t.Fatalf("system prompt polluted: %q", systemPrompt)
 		}
 	}
-	if len(chatRequests[0].Tools) != 1 || chatRequests[0].Tools[0].Function.Name != "discover_tool" {
+	if len(chatRequests[0].Tools) != 1 || chatRequests[0].Tools[0].Name != "discover_tool" {
 		t.Fatalf("work tools = %#v", chatRequests[0].Tools)
 	}
 	if len(chatRequests[1].Tools) != 0 {

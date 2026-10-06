@@ -99,7 +99,7 @@ func (runnerPreflightTool) Info() tool.Info {
 }
 
 func (runnerPreflightTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: "preflight_tool", Parameters: map[string]any{"type": "object"}}}
+	return llm.ToolSchema{Name: "preflight_tool", Parameters: map[string]any{"type": "object"}}
 }
 
 func (runnerPreflightTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
@@ -119,7 +119,7 @@ func (runnerShellPreflightTool) Info() tool.Info {
 }
 
 func (runnerShellPreflightTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: "shell", Parameters: map[string]any{"type": "object"}}}
+	return llm.ToolSchema{Name: "shell", Parameters: map[string]any{"type": "object"}}
 }
 
 func (runnerShellPreflightTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
@@ -143,7 +143,7 @@ func (runnerContextPreflightTool) Info() tool.Info {
 }
 
 func (runnerContextPreflightTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: "context_preflight", Parameters: map[string]any{"type": "object"}}}
+	return llm.ToolSchema{Name: "context_preflight", Parameters: map[string]any{"type": "object"}}
 }
 
 func (runnerContextPreflightTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
@@ -169,7 +169,7 @@ func (runnerRiskErrorTool) Info() tool.Info {
 }
 
 func (runnerRiskErrorTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: "risk_error", Parameters: map[string]any{"type": "object"}}}
+	return llm.ToolSchema{Name: "risk_error", Parameters: map[string]any{"type": "object"}}
 }
 
 func (runnerRiskErrorTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
@@ -189,7 +189,7 @@ func (runnerImageTool) Info() tool.Info {
 }
 
 func (runnerImageTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: "image_tool", Parameters: map[string]any{"type": "object"}}}
+	return llm.ToolSchema{Name: "image_tool", Parameters: map[string]any{"type": "object"}}
 }
 
 func (runnerImageTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
@@ -211,7 +211,7 @@ func (t runnerHighRiskTool) Info() tool.Info {
 }
 
 func (t runnerHighRiskTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}}
+	return llm.ToolSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}
 }
 
 func (runnerHighRiskTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {

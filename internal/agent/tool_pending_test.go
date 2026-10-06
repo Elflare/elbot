@@ -5,6 +5,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -19,9 +20,9 @@ func TestChatToolMaxRoundsPerTurnRequestsSummary(t *testing.T) {
 	secondStarted := make(chan struct{})
 	secondRelease := make(chan struct{})
 	f := &fakeLLM{
-		chunks: [][]llm.StreamChunk{
-			{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
-			{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_2", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
+		chunks: [][]chatcompletions.Chunk{
+			{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
+			{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_2", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
 			{{DeltaContent: "summary"}},
 		},
 		chatBlocks: []fakeLLMBlock{{}, {started: secondStarted, release: secondRelease}},
@@ -94,8 +95,8 @@ func TestChatToolMaxRoundsPerTurnRequestsSummary(t *testing.T) {
 func TestToolPhasePendingInputInjectedBeforeFollowupLLM(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "final"}},
 	}}
 
@@ -199,8 +200,8 @@ func TestToolPhasePendingInputInjectedBeforeFollowupLLM(t *testing.T) {
 func TestToolPhasePendingInputPersistsWhenRequestHookFails(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
 	}}
 
 	manager := hook.NewManager()
@@ -263,8 +264,8 @@ func TestToolPhasePendingInputPersistsWhenRequestHookFails(t *testing.T) {
 func TestToolChildRequestCancelReturnsToolMessageAndContinuesTurn(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "final after cancel"}},
 	}}
 
@@ -335,8 +336,8 @@ func TestToolChildRequestCancelReturnsToolMessageAndContinuesTurn(t *testing.T) 
 func TestTurnRequestCancelStopsWithoutPersistingToolTranscript(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "should not run"}},
 	}}
 
@@ -397,8 +398,8 @@ func TestToolPhasePendingInputDuringFinalLLMStartsNewTurn(t *testing.T) {
 	followupStarted := make(chan struct{})
 	followupRelease := make(chan struct{})
 	f := &fakeLLM{
-		chunks: [][]llm.StreamChunk{
-			{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
+		chunks: [][]chatcompletions.Chunk{
+			{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
 			{{DeltaContent: "almost final"}},
 			{{DeltaContent: "final with pending"}},
 		},
@@ -491,9 +492,9 @@ func TestToolPhasePendingInputIncludedInMaxRoundsSummary(t *testing.T) {
 	secondStarted := make(chan struct{})
 	secondRelease := make(chan struct{})
 	f := &fakeLLM{
-		chunks: [][]llm.StreamChunk{
-			{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
-			{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_2", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
+		chunks: [][]chatcompletions.Chunk{
+			{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
+			{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_2", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
 			{{DeltaContent: "summary with pending"}},
 		},
 		chatBlocks: []fakeLLMBlock{{}, {started: secondStarted, release: secondRelease}},

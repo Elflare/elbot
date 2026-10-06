@@ -64,7 +64,7 @@ func TestCatalogFetchesProvidersConcurrently(t *testing.T) {
 		}
 		return []string{"remote"}, nil
 	}}
-	opts.Clients = map[string]llm.LLM{"p": client, "q": client}
+	opts.Clients = map[string]llm.Client{"p": client, "q": client}
 	opts.Providers["q"] = config.ProviderConfig{BaseURL: "https://invalid.example", APIKey: "key"}
 	s := newTestService(t, opts)
 	go func() { s.ModelList("", ModelListOptions{}); close(done) }()

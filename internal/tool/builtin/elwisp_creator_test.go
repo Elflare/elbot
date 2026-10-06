@@ -34,18 +34,18 @@ func TestElwispCreatorToolInfo(t *testing.T) {
 
 func TestElwispCreatorToolSchemaHasNoParameters(t *testing.T) {
 	schema := NewElwispCreatorTool().Schema()
-	if schema.Function.Name != ElwispCreatorName {
-		t.Fatalf("schema name = %q", schema.Function.Name)
+	if schema.Name != ElwispCreatorName {
+		t.Fatalf("schema name = %q", schema.Name)
 	}
-	properties, ok := schema.Function.Parameters["properties"].(map[string]any)
+	properties, ok := schema.Parameters["properties"].(map[string]any)
 	if !ok {
-		t.Fatalf("properties = %#v", schema.Function.Parameters["properties"])
+		t.Fatalf("properties = %#v", schema.Parameters["properties"])
 	}
 	if len(properties) != 0 {
 		t.Fatalf("expected no parameters, got %#v", properties)
 	}
-	if _, ok := schema.Function.Parameters["required"]; ok {
-		t.Fatalf("unexpected required parameters: %#v", schema.Function.Parameters["required"])
+	if _, ok := schema.Parameters["required"]; ok {
+		t.Fatalf("unexpected required parameters: %#v", schema.Parameters["required"])
 	}
 }
 

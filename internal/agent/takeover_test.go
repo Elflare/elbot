@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"os"
 	"path/filepath"
@@ -57,8 +58,8 @@ func awaitTakeover(t *testing.T, done <-chan backgroundTestResult) background.Ru
 func TestBackgroundTakeoverDuringToolSharesPending(t *testing.T) {
 	p := &fakePlatform{}
 	started, release := make(chan struct{}), make(chan struct{})
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "slow-call", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "slow-call", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "foreground final"}},
 	}}
 
@@ -116,8 +117,8 @@ func TestBackgroundTakeoverDuringToolSharesPending(t *testing.T) {
 func TestBackgroundTakeoverSwitchesTaskModelToWork(t *testing.T) {
 	p := &fakePlatform{}
 	started, release := make(chan struct{}), make(chan struct{})
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "slow-call", Name: "slow", Args: `{}`}}}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "slow-call", Name: "slow", Args: `{}`}}}},
 		{{DeltaContent: "foreground final"}},
 	}}
 
@@ -372,7 +373,7 @@ func (t foregroundContextProbe) Info() tool.Info {
 	return tool.Info{Name: t.Name(), Source: tool.SourceBuiltin, Risk: tool.RiskLow, ForegroundOnly: true, OwnerScoped: true}
 }
 func (t foregroundContextProbe) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Function: llm.ToolFunctionSchema{Name: t.Name(), Parameters: map[string]any{"type": "object"}}}
+	return llm.ToolSchema{Name: t.Name(), Parameters: map[string]any{"type": "object"}}
 }
 func (t foregroundContextProbe) Call(ctx context.Context, _ tool.CallRequest) (*tool.Result, error) {
 	t.observed <- ctx
@@ -387,8 +388,8 @@ func TestTakeoverRefreshesNextToolInSameBatch(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(sandboxRoot, "cron"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{Index: 0, ID: "slow-call", Name: "slow", Args: "{}"}, {Index: 1, ID: "probe-call", Name: "foreground_probe", Args: "{}"}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{Index: 0, ID: "slow-call", Name: "slow", Args: "{}"}, {Index: 1, ID: "probe-call", Name: "foreground_probe", Args: "{}"}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
 
@@ -459,8 +460,8 @@ func (p *takeoverFinalGate) SendChat(ctx context.Context, outputs []delivery.Out
 func TestTakeoverPendingContinuesThroughAutomaticCompact(t *testing.T) {
 	p := &takeoverFinalGate{fakePlatform: &fakePlatform{}, started: make(chan struct{}), release: make(chan struct{})}
 	toolStarted, toolRelease := make(chan struct{}), make(chan struct{})
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "slow", Name: "slow", Args: "{}"}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "slow", Name: "slow", Args: "{}"}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "first final", Usage: &llm.Usage{TotalTokens: 80}}},
 		{{DeltaContent: "summary"}},
 		{{DeltaContent: "second final"}},

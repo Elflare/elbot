@@ -74,7 +74,7 @@ func TestRollbackToolPathOnlyAndWorkspace(t *testing.T) {
 	firstDir := f.workspace.dir
 	f.write(t, "file", "original")
 	f.write(t, "file", "edited")
-	params := f.rollback.Schema().Function.Parameters
+	params := f.rollback.Schema().Parameters
 	props := params["properties"].(map[string]any)
 	if len(props) != 1 || props["path"] == nil || params["additionalProperties"] != false {
 		t.Fatalf("schema: %#v", params)

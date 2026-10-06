@@ -759,9 +759,9 @@ func TestFileToolSchemasDoNotExposeLargeFileThresholds(t *testing.T) {
 }
 func TestEditFileToolSchemaOmitsDryRun(t *testing.T) {
 	schema := NewEditFileTool().Schema()
-	properties, ok := schema.Function.Parameters["properties"].(map[string]any)
+	properties, ok := schema.Parameters["properties"].(map[string]any)
 	if !ok {
-		t.Fatalf("schema properties missing: %#v", schema.Function.Parameters)
+		t.Fatalf("schema properties missing: %#v", schema.Parameters)
 	}
 	if _, ok := properties["dry_run"]; ok {
 		t.Fatalf("edit_file schema should not expose dry_run: %#v", properties["dry_run"])

@@ -189,7 +189,7 @@ func (t completionTestTool) Info() tool.Info {
 	return tool.Info{Name: t.name, Description: t.description, Risk: tool.RiskLow, Hidden: t.hidden, Tags: t.tags}
 }
 func (t completionTestTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: t.name}}
+	return llm.ToolSchema{Name: t.name}
 }
 func (t completionTestTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
 	return nil, nil

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -78,7 +79,7 @@ func TestToolResultMediaPersistsID(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	p := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "prepared_args", Args: `{"q":"test"}`}}, FinishReason: "tool_calls"}}, {{DeltaContent: "done"}}}}
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "prepared_args", Args: `{"q":"test"}`}}, FinishReason: "tool_calls"}}, {{DeltaContent: "done"}}}}
 	root := t.TempDir()
 
 	registry := tool.NewRegistry()

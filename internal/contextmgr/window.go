@@ -8,7 +8,7 @@ import (
 	"elbot/internal/llm"
 )
 
-type ClientProvider func(provider string) llm.LLM
+type ClientProvider func(provider string) llm.Client
 
 type WindowResolver struct {
 	DefaultWindow int

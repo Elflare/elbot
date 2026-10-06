@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"reflect"
 	"testing"
@@ -34,10 +35,10 @@ type executionFixture struct {
 	out           dialogue.Output
 }
 
-func newExecutionFixture(t *testing.T, client llm.LLM, store storage.Store) *executionFixture {
+func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *executionFixture {
 	t.Helper()
 	models := newTestModels(t, modelmgr.Options{
-		Clients: map[string]llm.LLM{"default": client}, Providers: map[string]config.ProviderConfig{"default": {}},
+		Clients: map[string]llm.Client{"default": client}, Providers: map[string]config.ProviderConfig{"default": {}},
 		ModeModels: map[string]config.ModelSelection{
 			storage.SessionModeWork: {Provider: "default", Model: "model"},
 			storage.SessionModeChat: {Provider: "default", Model: "model"},
@@ -179,7 +180,7 @@ func TestDialogueRunnerStructuredOutcomes(t *testing.T) {
 }
 
 func TestExecutionCommitDuringAppendKeepsUsage(t *testing.T) {
-	f := newExecutionFixture(t, &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: "committed", Usage: &llm.Usage{TotalTokens: 7}}}}}, newTestStore(t))
+	f := newExecutionFixture(t, &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "committed", Usage: &llm.Usage{TotalTokens: 7}}}}}, newTestStore(t))
 	ctx, row, err := f.execution.resolveInput(context.Background(), "hello")
 	if err != nil {
 		t.Fatal(err)

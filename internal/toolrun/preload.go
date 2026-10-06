@@ -317,7 +317,7 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 		return NativeCachedToolsFromDiscovery(s.discoverNames(ctx, []string{name}))
 	}
 	schema, info := candidate.Schema(), candidate.Info()
-	if schema.Function.Name == "" {
+	if schema.Name == "" {
 		skip("empty_schema")
 		return nil
 	}

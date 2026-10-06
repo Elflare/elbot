@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -43,7 +44,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	}
 	defer cleanup()
 	baseMessages, requestMessages, tools := input.Messages, input.RequestMessages, input.Tools
-	req := llm.ChatRequest{
+	req := chatcompletions.Request{
 		Model:     selection.Model,
 		SessionID: sessionID,
 		Messages:  requestMessages,
@@ -52,7 +53,11 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	if selection.Client == nil {
 		return llmCallResult{}, fmt.Errorf("client not found for provider %q", selection.Provider)
 	}
-	ch, err := selection.Client.ChatStream(ctx, req)
+	client, ok := selection.Client.(chatcompletions.Streamer)
+	if !ok || selection.Protocol != llm.ProtocolChat {
+		return llmCallResult{}, fmt.Errorf("provider %q does not provide the Chat streaming capability", selection.Provider)
+	}
+	ch, err := client.Stream(ctx, req)
 	if err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return llmCallResult{Messages: baseMessages, Stream: stream}, nil

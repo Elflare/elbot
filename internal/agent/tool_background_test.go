@@ -6,6 +6,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -18,8 +19,8 @@ import (
 
 func TestRunBackgroundPreloadsShellWithContextActorAndAutoConfirmsSandboxShell(t *testing.T) {
 	p := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo 'ok' > ./elnis_shell_tool_test.txt"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo 'ok' > ./elnis_shell_tool_test.txt"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: `{"completed":true,"need_report":true,"report":"done"}`}},
 	}}
 
@@ -51,18 +52,18 @@ func TestRunBackgroundPreloadsShellWithContextActorAndAutoConfirmsSandboxShell(t
 	}
 	var shellSchema llm.ToolSchema
 	for _, schema := range requests[0].Tools {
-		if schema.Function.Name == "discover_tool" {
+		if schema.Name == "discover_tool" {
 			t.Fatalf("background request should not include discover_tool: %#v", requests[0].Tools)
 		}
-		if schema.Function.Name == "shell" {
+		if schema.Name == "shell" {
 			shellSchema = schema
 		}
 	}
-	if shellSchema.Function.Name == "" {
+	if shellSchema.Name == "" {
 		t.Fatalf("first request tools did not include preloaded shell: %#v", requests[0].Tools)
 	}
-	if !strings.Contains(shellSchema.Function.Description, "相对路径") {
-		t.Fatalf("background shell schema description should mention relative paths: %q", shellSchema.Function.Description)
+	if !strings.Contains(shellSchema.Description, "相对路径") {
+		t.Fatalf("background shell schema description should mention relative paths: %q", shellSchema.Description)
 	}
 	var shellResult string
 	for _, msg := range requests[1].Messages {
@@ -78,7 +79,7 @@ func TestRunBackgroundPreloadsShellWithContextActorAndAutoConfirmsSandboxShell(t
 func TestRunBackgroundPreloadsSkillDetailAndActivatedHiddenWrapper(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
 	platform := &fakePlatform{}
 
 	registry := tool.NewRegistry()
@@ -118,7 +119,7 @@ func TestRunBackgroundPreloadsSkillDetailAndActivatedHiddenWrapper(t *testing.T)
 func TestRunBackgroundUsesBackgroundModeWhenDefaultModeIsChat(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":false,"report":"ok"}`}}}}
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: `{"completed":true,"need_report":false,"report":"ok"}`}}}}
 	platform := &fakePlatform{}
 	modeModels := map[string]config.ModelSelection{
 		storage.SessionModeWork: {Provider: "default", Model: "test-model"},
@@ -128,7 +129,7 @@ func TestRunBackgroundUsesBackgroundModeWhenDefaultModeIsChat(t *testing.T) {
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(builtin.NewWebExtractTool())
-	a := mustNewWithOptions(t, testAgentOptions{Platform: platform, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"default": f}, ModeModels: modeModels, Providers: map[string]config.ProviderConfig{"default": {}}, DefaultMode: storage.SessionModeWork}), Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeChat}}, func(cfg *testAgentOptions) {
+	a := mustNewWithOptions(t, testAgentOptions{Platform: platform, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.Client{"default": f}, ModeModels: modeModels, Providers: map[string]config.ProviderConfig{"default": {}}, DefaultMode: storage.SessionModeWork}), Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeChat}}, func(cfg *testAgentOptions) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
 		cfg.ToolRegistry = registry
 	})
@@ -163,7 +164,7 @@ func TestRunBackgroundUsesBackgroundModeWhenDefaultModeIsChat(t *testing.T) {
 func TestRunBackgroundCreatesFreshSessionForEachCronTrigger(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
 		{{DeltaContent: `{"completed":true,"need_report":true,"report":"first"}`}},
 		{{DeltaContent: `{"completed":true,"need_report":true,"report":"second"}`}},
 	}}
@@ -206,7 +207,7 @@ func TestRunBackgroundRepairsReusedSessionModeAndMetadata(t *testing.T) {
 	if err := store.Sessions().Create(ctx, oldSession); err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":false,"report":"ok"}`}}}}
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: `{"completed":true,"need_report":false,"report":"ok"}`}}}}
 	platform := &fakePlatform{}
 
 	registry := tool.NewRegistry()
@@ -240,7 +241,7 @@ func TestRunBackgroundRepairsReusedSessionModeAndMetadata(t *testing.T) {
 func TestRunBackgroundPreloadsMixedToolAndSkillWithoutSkillSchema(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
 	platform := &fakePlatform{}
 
 	registry := tool.NewRegistry()
@@ -273,7 +274,7 @@ func TestRunBackgroundPreloadsMixedToolAndSkillWithoutSkillSchema(t *testing.T) 
 func TestRunBackgroundPreloadsToolListNamesWithoutDiscoverTool(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: `{"completed":true,"need_report":true,"report":"ok"}`}}}}
 	platform := &fakePlatform{}
 
 	registry := tool.NewRegistry()
@@ -311,8 +312,8 @@ func TestRunBackgroundToolPhaseDoesNotPublishRuntimeStatus(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	platform := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call-1", Name: "discover_tool", Args: `{"name":"web_search"}`}}}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call-1", Name: "discover_tool", Args: `{"name":"web_search"}`}}}},
 		{{DeltaContent: `{"completed":true,"need_report":false,"report":"ok"}`}},
 	}}
 
@@ -347,7 +348,7 @@ func TestRunBackgroundReturnsRawAssistantTextForJSONParsing(t *testing.T) {
 	})}); err != nil {
 		t.Fatal(err)
 	}
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: raw}}}}, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: raw}}}}, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.SandboxRoot = t.TempDir()
 		cfg.HookManager = hooks
 	})

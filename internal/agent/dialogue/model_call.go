@@ -118,7 +118,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	if allowedTools != nil {
 		filtered := make([]llm.ToolSchema, 0, len(tools))
 		for _, schema := range tools {
-			if allowedTools[schema.Function.Name] {
+			if allowedTools[schema.Name] {
 				filtered = append(filtered, schema)
 			}
 		}

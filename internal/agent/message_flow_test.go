@@ -8,7 +8,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/llm/openai"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 	"elbot/internal/session"
@@ -186,7 +186,7 @@ func TestReplyContextFallbackStillReachesLLMWhenNotConsumed(t *testing.T) {
 
 func TestHandleMessageSendsFallbackForEmptyLLMResponse(t *testing.T) {
 	p := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{{}}}
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{}}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq-onebot", ScopeID: "private:test"}}, Sender: p, BufferAssistantOutput: true})
 
@@ -220,14 +220,14 @@ func TestDynamicProviderClientUsesAgentLogger(t *testing.T) {
 		storage.SessionModeWork: {Provider: "deepseek", Model: "deepseek-chat"},
 		storage.SessionModeChat: {Provider: "zhipu", Model: "glm-4-flash"},
 	}
-	zhipu, err := openai.NewWithOptions(srv.URL, "secret-key", nil, nil, openai.RequestOptions{})
+	zhipu, err := chatcompletions.New(srv.URL, "secret-key", nil, nil, chatcompletions.RequestOptions{})
 	if err != nil {
 		t.Fatalf("create zhipu client: %v", err)
 	}
 	zhipu.SetLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	a := mustNewWithOptions(t, testAgentOptions{Platform: &fakePlatform{}, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"deepseek": &fakeLLM{}, "zhipu": zhipu}, ModeModels: modeModels, Providers: providers, DefaultMode: storage.SessionModeWork}), Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
+	a := mustNewWithOptions(t, testAgentOptions{Platform: &fakePlatform{}, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.Client{"deepseek": &fakeLLM{}, "zhipu": zhipu}, ModeModels: modeModels, Providers: providers, DefaultMode: storage.SessionModeWork}), Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
 
-	ch, err := a.execution.models.ClientForProvider("zhipu").ChatStream(context.Background(), llm.ChatRequest{
+	ch, err := a.execution.models.ClientForProvider("zhipu").(chatcompletions.Streamer).Stream(context.Background(), chatcompletions.Request{
 		Model:    "glm-4-flash",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("动态 provider 请求")}},
 	})

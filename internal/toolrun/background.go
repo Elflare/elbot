@@ -3,7 +3,7 @@ package toolrun
 import "context"
 
 func backgroundToolAllowed(ctx context.Context, item CachedTool) bool {
-	for _, name := range []string{item.Name, item.CanonicalName, item.Schema.Function.Name} {
+	for _, name := range []string{item.Name, item.CanonicalName, item.Schema.Name} {
 		if name == "discover_tool" || name == "workspace" {
 			return false
 		}
@@ -25,7 +25,7 @@ func BackgroundCachedTools(ctx context.Context, items []CachedTool) []CachedTool
 func BackgroundToolNames(ctx context.Context, items []CachedTool) map[string]bool {
 	names := map[string]bool{}
 	for _, item := range BackgroundCachedTools(ctx, items) {
-		if name := item.Schema.Function.Name; name != "" {
+		if name := item.Schema.Name; name != "" {
 			names[name] = true
 		}
 	}

@@ -56,7 +56,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 配置约定：
 
 - 静态配置：`app.toml`。
-- Provider 配置：同目录 `providers.toml`。
+- Provider 配置：同目录 `providers.toml`；`api_mode` 仅接受 chat／response，省略为 chat，启动与只读诊断共用校验。app 据此构造实际客户端。
 - 运行时模型状态：同目录 `state.toml`，启动时加载；运行中通过模型命令保存，不自动重载外部修改。
 - 工具 tag 配置：同目录 `tool_tags.toml`。
 - 用户可编辑资产：配置目录下的 `memories.toml`、`long_memory/`、`skills/`、`plugins/`。
@@ -135,12 +135,17 @@ Agent 只保存对外能力所需的组件引用和信号集合；消息、后�
 <!-- locator:protocol-routing -->
 ## 协议路线与压缩分派
 
-- `llm.ProtocolID` 与 Session 的 chat/work/background 模式独立；模型选择快照携带协议。本阶段只实际登记 Chat，provider 配置及 Responses 客户端在后续步骤接入。
+- `llm.ProtocolID` 与 Session 的 chat/work/background 模式独立；当前模型快照保存实际客户端及其 Protocol，modelmgr 构造时校验客户端声明与 provider.api_mode 一致。
+- Chat Completions 与 Responses 客户端分别位于 llm/chatcompletions、llm/responses；各自编码原生请求和消费流。公共 llm.Client 只提供协议声明、模型列表及独立 GenerateText，公共消息／工具定义不包含协议 JSON 包装。
+- httpclient 仅负责 HTTP、显式代理、可取消重试、SSE 分帧及超时；协议包负责鉴权、API 错误和成功终态。断流不重放请求，Extra 只补充字段，已有字段、受控名称或不同层级重名在发送前拒绝。
+- 命名与 Chat 文字摘要使用 GenerateText，可选择任一已配置客户端；Responses 独立调用使用 store=false，不续接主会话或执行工具。当前仅登记 Chat 业务 Loop／Compactor；缺失主对话能力时在自动压缩、保存输入和请求前拒绝。
 - `agent/routes.Registry` 在一处登记 Protocol、Loop、Compactor；Register 拒绝重复及缺失必需 Loop，Seal 后不能修改，封闭前不能执行能力查询。可选能力缺失时查询明确报错。
 - dialogue 只依赖 LoopResolver，contextmgr 只依赖 CompactorResolver；注册表依赖公共契约，公共层不导入注册表实现、Agent 根包或具体路线。
 - app 在创建上下文服务前建立注册表，Agent 装配内部路线并封闭注册表，验证 Chat 压缩接线成功后返回。注册表不保存执行、会话或工具状态，不提供完整依赖容器。
 - `/compact` 与自动阈值继续进入 executionCoordinator，公共 contextmgr.Compact 按源协议查询 Compactor；Chat 私有实现负责历史筛选、摘要提示、模型选择和 seed 准备。公共层负责命名信息与统计，执行／Session 负责创建、继承、保存和交接。
 - Chat 保留当前文字摘要与 seed 格式、成功保存后消费 seed 的语义。Responses 原生记录、seed、兼容检查和恢复仍属后续步骤，不能视为已接入。
+
+已确认的 provider 预绑定及移除 Selection.Protocol 方案尚未实施，目标约定见 [阶段 16](core-refactor.md#phase-16)；本节描述当前代码。
 
 <!-- locator:commands -->
 ## 命令链路
