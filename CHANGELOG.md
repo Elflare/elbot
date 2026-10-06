@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复高风险确认的bug。
+- 修复追加确认等待的bug。
 - QQ OneBot：llm现在能看到引用回复的合并消息了，只展开一层内容。
 - QQ OneBot 长文本分页现在只有非末页添加省略号。
 - 修复 Agent 去除唤醒词或工具指令时会合并全部文字段、打乱图文位置的问题。

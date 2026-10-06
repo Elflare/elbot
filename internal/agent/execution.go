@@ -48,6 +48,7 @@ type executionCoordinator struct {
 	output            *outputSender
 	status            *statusRecorder
 	waitPolicy        *confirmationPolicy
+	appendWaits       *appendWaitLifecycle
 	responseTimeout   time.Duration
 	persistenceFailed *signal.Signal[PersistenceFailedEvent]
 	timedOut          *signal.Signal[TurnTimedOutEvent]

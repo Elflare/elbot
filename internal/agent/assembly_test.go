@@ -35,6 +35,7 @@ import (
 // Test configuration is intentionally separate from the production constructor:
 // the application supplies already assembled shared services.
 type testAgentOptions struct {
+	RuntimeContext        context.Context
 	Platform              platform.PlatformAdapter
 	Media                 *media.Manager
 	Models                *modelmgr.Service
@@ -79,7 +80,8 @@ func assembleTestOptions(opts testAgentOptions) Options {
 		return nil
 	}, signal.ConnectOptions{})
 	optsResult := Options{
-		Platform: opts.Platform, Models: opts.Models, Store: opts.Store, Media: opts.Media,
+		RuntimeContext: opts.RuntimeContext,
+		Platform:       opts.Platform, Models: opts.Models, Store: opts.Store, Media: opts.Media,
 		Sessions: session.NewServiceWithConfig(opts.Store, opts.SessionConfig, session.NewTitleGenerator(opts.Models)),
 		Commands: command.NewRouter(opts.CommandPrefixes), Requests: request.NewManager(0), Turns: turn.NewManager(),
 		Contexts:  contextmgr.New(contextmgr.Options{Store: opts.Store, Models: opts.Models, Config: defaults.Context, Metadata: defaults.ModelMetadata, Providers: opts.Providers}),
@@ -116,6 +118,9 @@ func mustNewWithOptions(t *testing.T, cfg testAgentOptions, configure ...func(*t
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
+		if err := a.Close(ctx); err != nil {
+			t.Error(err)
+		}
 		if err := ownedSessions.Close(ctx); err != nil {
 			t.Error(err)
 		}

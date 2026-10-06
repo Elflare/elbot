@@ -29,7 +29,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - 共享 Session、Request、Turn、模型、上下文、工具状态、文件、发送、通知及命令实例由 app 创建。Agent 的 `NewWithOptions` 要求注入必需依赖，不补建服务或注册内置命令；测试装配位于测试文件中。
 - app 在平台启动前安装 Session 前台接管、活动会话查询和 Hook 唤醒／执行观察回调；这些执行回调遵守原有同步准入约束，生命周期通知另走信号。`NewWithOptions` 组合内部组件，Prompt、命令执行器和补全直接使用所属依赖。
 - Foundation／Runtime 工厂即使返回错误，也返回已取得资源的 Lifecycle。Runner 接管部分构建的清理责任，不启动后续阶段；延迟 Skill 加载同时提供取消上下文和实际完成信号。
-- 关闭时应用上下文立即取消 Cron handler 和 Session 命名任务，并停止新调度。Runner 先对订阅调用 `BeginClose`，断开连接、关闭队列接收并唤醒等待入队的生产者，再等待平台与 Foundation 的 `StopCron(ctx)` 结束，随后等待队列、命名及 Hook runtime 退出、等待 Skill 加载结束，最后关闭 SQLite 和日志。重复停止等待同一完成结果，关闭后迟到的启动不能重新开放调度。
+- 关闭时应用上下文立即取消 Cron handler、Session 命名和追加确认等待，并停止新调度。Runner 先对订阅调用 `BeginClose`，断开连接、关闭队列接收并唤醒等待入队的生产者，再等待平台与 Foundation 的 `StopCron(ctx)` 结束，随后等待队列、追加确认及其在途提示、命名和 Hook runtime 退出、等待 Skill 加载结束，最后关闭 SQLite 和日志。重复停止等待同一完成结果，关闭后迟到的启动不能重新开放调度。
 - 平台退出、Cron 和后续清理共享 30 秒预算。预算到期停止等待；平台、Cron 或回调仍在运行时跳过其依赖的显式释放，交给进程退出，不启动后台收尾链。正常取消／关闭预算耗尽不视为应用失败，Cron 正常取消不报告任务失败；真实错误继续返回。
 
 <!-- locator:chatinfo -->
@@ -97,6 +97,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - chatRunner 拥有 Prompt Builder；每个 turn 从 Soul、工具提示、工具标签和当前 actor 的常驻记忆构建一次 system message，该消息只在当前 turn 内复用，不进入会话历史。
 - 单轮结果区分完成、暂停、停止、取消、失败与 attempt 已失效，保留提交事实、Usage、模型和计时。回复成功后，协调器依次处理 Touch、Usage、完成状态、压缩提示、pending 交接、Execution 结果和命名；提交期间进入追加确认也不会丢失已成功提交的用量。
 - 单轮材料加载在 Request 登记前，Prompt／Hook 和用户消息落库在登记后；Request 及 attempt 清理由执行协调器负责，chatRunner 不结束跨轮 Execution。
+- 登记后的 Prompt、工具准备、`llm.turn.prepared`、媒体归一与用户消息落库使用 Turn Request context；准备阶段检查取消，Hook 子请求继承父请求 ID。状态发布和已完成回复提交沿用执行 context，保证已提交事实不被模型请求取消吞掉。
 
 基础组件在 `internal/agent` 内直接组合，不持有 Agent 或绑定 Agent 的回调：
 
@@ -107,7 +108,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 | backgroundRunner | 后台身份、来源、sandbox、Session 与资源预加载准备，委托执行协调器等待最终结果。 |
 | commandExecutor | 直接连接 Router、身份、执行、确认、输入和输出组件，处理权限、Turn 冲突与 continuation，不回调 Agent。 |
 | fileCommandPreparer | 文件命令权限、原绑定、workspace 与提交准入；文件操作仍归 FileOps。 |
-| executionCoordinator | 统一前后台准入、attempt、Request 生命周期、追加确认、pending 续跑、压缩交接和执行完成；后台入口等待真实 Execution 结果，不复制领域状态。 |
+| executionCoordinator | 统一前后台准入、attempt、Request 生命周期、追加确认、pending 续跑、压缩交接和执行完成；拥有追加确认等待任务的生命周期，后台入口等待真实 Execution 结果，不复制领域状态。 |
 | chatRunner | 拥有 Prompt Builder 和单轮局部材料，执行模型／工具循环及回复提交；媒体、工具状态和 transcript 使用显式依赖，不回调 Agent。 |
 | modelCaller | 接收模型选择快照，执行单次请求、流消费、请求／响应 Hook、媒体持有／释放和视觉降级；保留 chat 工具禁用及后台白名单约束。 |
 | confirmationCoordinator | 处理风险确认响应、等待及结果转换，拥有自动确认记录与锁；等待对象仍归 Turn，超时策略与追加确认、Session 过期共用。 |
@@ -121,6 +122,8 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 | toolRunPromptProvider | 直接使用 ToolRun 和 identityResolver 查询 schema 与工具名。 |
 
 Agent 只保存对外能力所需的组件引用和信号集合；消息、后台、压缩、接管、文件命令、Scope、状态查询和 Hook 入口均为薄委托。配置由 `Options` 在构造时注入，Agent 不提供运行时 setter，不保留共享服务、Prompt 材料或构造中间组件的副本。工具运行配置和确认超时策略由实际消费者共享，输入／后台预加载和补全直接使用 Registry、Preloader；必要诊断与入口审计的 Logger 也直接注入所属组件。
+
+追加确认通过 Turn 的 `AppendWait` 固定本次等待对象；取消或过期只处理该对象，不能移除已恢复的执行或后续确认。executionCoordinator 的 `appendWaitLifecycle` 保留原 context 的来源／binding，取消链由 `Options.RuntimeContext` 提供；不受单次请求结束影响，无过期时限的等待也纳入关闭。Agent 的 `Close(ctx)`／`Done()` 为薄委托，app 在释放依赖前按共享预算等待定时任务和过期提示实际退出；未退出则保留 Hook 等依赖。非 app 装配若未提供 RuntimeContext，必须显式 Close。
 
 `Agent.Signals()` 暴露输入、模型、工具、确认、拒绝、持久化失败、超时、状态、提示及回复事实；app 的日志订阅保留既有字段、级别和记录次数，消费者错误不改变核心结果。关键提交、Usage、工具记录、Hook 改写结果和取消仍直接处理。
 
@@ -179,6 +182,7 @@ Slash 命令链路：
 
 - 风险等级用于内部权限和确认，不暴露给 LLM。
 - 单次工具调用的预检、确认详情和实际执行沿用派生的工具 context；编辑固定参数、解析路径、实际目标、存在状态及内容 revision，撤销另外固定备份编号。执行时原绑定失效、目标或内容变化即拒绝；workspace 本身不维护变更版本，绝对路径不变或切回后状态一致可继续。
+- 风险确认先在 Turn 锁内校验 attempt 并登记状态、响应通道和刷新通道，再在锁外发布等待事实及发送提示；提示发送期间的响应保存在通道中。等待对象固定 Turn 与通道身份，取消或发送失败只清理该对象，迟到清理不影响后续确认。
 - `Result.Content` 或 typed `Result.Segments` 回灌 LLM。
 - `Result.Data` 只供内部结构化消费，不进入 tool message。
 - 图片和文件必须显式返回 segment。

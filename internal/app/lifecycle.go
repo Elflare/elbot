@@ -10,7 +10,11 @@ import (
 )
 
 type runtimeLifecycle struct {
-	cancel    context.CancelFunc
+	cancel context.CancelFunc
+	agent  interface {
+		Close(context.Context) error
+		Done() <-chan struct{}
+	}
 	skillDone <-chan struct{}
 	hooks     *hookruntime.Manager
 	sessions  *session.Service
@@ -19,6 +23,17 @@ type runtimeLifecycle struct {
 func (l *runtimeLifecycle) Close(ctx context.Context) error {
 	l.cancel()
 	var errs []error
+	if l.agent != nil {
+		if err := l.agent.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("close append confirmation waits: %w", err))
+		}
+		select {
+		case <-l.agent.Done():
+		default:
+			// Expiry output may still be using Hooks, storage or senders.
+			return errors.Join(errs...)
+		}
+	}
 	if l.sessions != nil {
 		if err := l.sessions.Close(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("close session naming: %w", err))
@@ -40,6 +55,13 @@ func (l *runtimeLifecycle) Close(ctx context.Context) error {
 }
 
 func (l *runtimeLifecycle) stopped() bool {
+	if l.agent != nil {
+		select {
+		case <-l.agent.Done():
+		default:
+			return false
+		}
+	}
 	if l.sessions != nil {
 		select {
 		case <-l.sessions.Done():

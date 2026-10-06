@@ -141,9 +141,10 @@ rg -n "Register|Info\{|Help:|Complete|Alias|/requests|/model" internal/command/b
 先看：
 
 - `internal/request/`
-- `internal/turn/manager.go`、`execution.go`：阶段、pending、确认及跨请求的逻辑执行身份与结果。
+- `internal/turn/manager.go`、`execution.go`：阶段、pending、确认及跨请求的逻辑执行身份与结果；`BeginRiskConfirmation` 在发提示前登记 attempt 与响应通道，等待对象按 Turn／通道身份处理响应与清理。
 - `internal/agent/execution.go`、`execution_run.go`：executionCoordinator 的前后台执行、接管、attempt／Request 生命周期及提交后收尾；后台等待跨追加确认和压缩的真实执行结果。
 - `internal/agent/execution_input.go`：输入接受、追加打断／确认／过期和 pending 分发。
+- `internal/agent/execution_lifecycle.go`：executionCoordinator 拥有的追加确认等待任务，原来源保留、应用取消、登记／关闭互斥以及在途过期提示退出等待；Agent.Close／Done 薄委托，app 负责关闭接线。
 - `internal/agent/execution_context.go`、`execution_output.go`：executionView 刷新来源与 Session，executionTurnOutput 切换前后台输出并转换后台报告；保留原请求取消，不拥有第二份执行状态。
 - `internal/agent/execution_admission.go`：Scope／Session 准入、原绑定与模式复核、输入解析和 Turn 启动检查。
 - `internal/runtime/`

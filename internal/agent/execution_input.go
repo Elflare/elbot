@@ -64,22 +64,27 @@ func (c *executionCoordinator) AcceptInput(ctx context.Context, session *storage
 		release()
 		return inputHandled, c.ResumeAppend(ctx, session, text)
 	case turn.PhaseLLM:
+		waitCtx, finishWait, accepted := c.appendWaits.begin(ctx)
+		if !accepted {
+			release()
+			return inputHandled, context.Canceled
+		}
 		if !c.turns.InterruptLLMInput(session.ID, inboundTurnInput(ctx, text)) {
+			finishWait()
 			release()
 			return inputHandled, nil
 		}
+		wait := c.turns.AppendWait(session.ID)
 		c.requests.CancelSession(session.ID)
 		release()
 		timeout := c.waitPolicy.WaitTimeout(ctx)
 		c.output.SendChat(ctx, appendConfirmPromptText(timeout))
-		if timeout > 0 {
-			waitCtx := context.WithoutCancel(ctx)
-			go func() {
-				if c.turns.AwaitAppendExpiration(session.ID, timeout) {
-					c.output.SendChat(waitCtx, "追加确认已过期，待追加内容已丢弃，本轮处理已停止。")
-				}
-			}()
-		}
+		go func() {
+			defer finishWait()
+			if wait.Wait(waitCtx, timeout) {
+				c.output.SendChat(waitCtx, "追加确认已过期，待追加内容已丢弃，本轮处理已停止。")
+			}
+		}()
 		return inputHandled, nil
 	case turn.PhaseTool:
 		c.turns.AppendPendingInput(session.ID, inboundTurnInput(ctx, text))

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -26,6 +27,8 @@ import (
 
 // Options groups the agent's construction-time dependencies and configuration.
 type Options struct {
+	// RuntimeContext owns append-confirmation workers; nil requires explicit Close.
+	RuntimeContext        context.Context
 	Commands              *command.Router
 	Sessions              *session.Service
 	Requests              *request.Manager
