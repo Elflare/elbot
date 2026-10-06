@@ -1,882 +1,188 @@
 # 核心职责重构方案
 
-本文记录已确认的目标设计、实施顺序和验收要求。方案落盘不代表代码已经完成重构；实施进度统一在 [任务清单](tasks.md#core-refactor) 勾选，已落地架构和代码入口分别见 [architecture.md](architecture.md) 与 [code-map.md](code-map.md)。
+本文只维护后续目标与未决问题。进度见[任务清单](tasks.md#core-refactor)，当前实现与文件入口见 [architecture.md](architecture.md) 和 [code-map.md](code-map.md)。
 
 <!-- locator:core-refactor -->
-## 执行约束
-
-**执行过程中遇到多种实现方式、存在歧义，或需要改变已确认约定的地方，不能自作主张，必须先与用户讨论并得到明确结论，再继续相关改动。** 不得把自己的偏好写成已经确认的决定。讨论结论同步到本文及受影响的任务项；不依赖该决定的工作可以继续。
-
-本文明确的职责、包名与行为约定作为实施依据。尚未确定的技术细节集中列在“实施前需讨论的细节”，应在对应阶段开始前讨论，不能用默认猜测补齐。
-
-每个阶段均完成实际接入、相关验证和开发文档同步后再勾选；保留项目可编译、可运行的状态，不把全部接线推迟到最后。
-
-**开发文档若有过时的或者冲突的，直接删除或修改为新版，以新的代码为准**。
-
-## 目标与范围
-
-重构范围为 Agent、命令、工具、Session、模型、上下文、发送通知及 app 装配。目标是让业务模块拥有自己的状态和规则，Agent 作为应用级入口，通过职责明确的内部组件完成执行编排。阶段 1–8 的实施与 Review 记录保留；阶段 9–15 的目标设计和验收要求见后文；阶段 16 的协议路线扩展见 [独立目标设计](#phase-16)。实际完成情况以任务清单为准。
-
-- Agent 提供对外薄入口，构造函数组合内部组件；消息分流、输入准备、后台准备、执行交接、单轮对话、模型调用、确认及回复提交分别由所属组件负责，不通过持有整个 Agent 访问能力。
-- 命令和工具入口负责参数、协议与结果展示，具体能力交给对应服务。
-- 公共信息包描述来源、发送者身份和消息／回复 ID，并允许必要的平台扩展；平台主动提供标准信息。
-- Session 管理持久化会话和当前绑定；Request／Turn 管理本次执行。
-- 信号传递事件对象，通知管理器消费通知意图，发送层执行平台交付。
-- app 创建共享组件、注入依赖、连接信号并管理生命周期。
-
-本轮以保留现有用户行为、权限边界、配置语义和持久化数据为基线。复用现有接口与实现，不为未来能力引入投机性代码，不另建可靠消息中间件。通知开关、模板编辑、免打扰等新用户功能不属于本轮。
-
-## 包与文件归属
-
-下表路径均相对于 `internal/`。表中新增文件按职责组织；现有职责文件继续复用。
-
-| 包／目录 | 文件落点 | 职责与迁移来源 |
-|---|---|---|
-| `chatinfo/` | `source.go`、`identity.go`、`context.go` | 公共平台／会话来源、发送者身份、消息／回复 ID、平台扩展和 context 存取 |
-| `signal/` | `signal.go`、`connection.go`、`executor.go`、`queue.go` | 泛型信号、连接句柄、执行器契约、串行队列；不导入业务模块 |
-| `notification/` | `manager.go` | 通知意图、原来源与 Binding 捕获及通知策略；通过发送接口交付 |
-| `notification/rules/` | `platform.go`、`hook.go`、`model.go`、`vision.go`、`execution.go` | 将相关业务事件转换为通知，维护通知文案、触发规则和视觉提示去重 |
-| `delivery/` | 保留现有类型和 Manager | 平台无关输出、目标、回执、校验和发送契约 |
-| `delivery/dispatch/` | `router.go`、`media.go` | 接收 Agent 的平台路由、媒体发送准备及媒体回执关联职责 |
-| `session/` | `binding.go`、`signals.go`、`naming_signals.go`、`workspace.go`、`background.go` | 当前绑定、生命周期与命名信号、workspace 持久化适配和后台会话准备；保留已有创建、恢复、命名和查询职责 |
-| `modelmgr/` | `service.go`、`selection.go`、`catalog.go`、`state.go`、`signals.go` | 模型选择、客户端缓存、模型列表、运行状态读写及共享调用重试信号 |
-| `contextmgr/` | 增加 `service.go`、`state.go`，复用现有职责文件 | 收拢上下文加载、窗口、用量和压缩状态；执行调度保留在 Agent |
-| `workspace/` | `workspace.go`、`resolve.go` | 从 Tool 提取已有 workspace 契约和路径解析，统一入口组合 sandbox 限制 |
-| `sandbox/` | `sandbox.go` | 从 Tool 提取后台路径限制和沙箱上下文；复用原有规则 |
-| `fileops/` | `service.go`、`rollback.go`，迁入现有文件操作文件 | 统一底层文件操作和命令／工具共享的编辑撤销服务 |
-| `command/builtin/` | 沿用现有命令文件名 | 接收 `agent/commands`；具体命令依赖领域服务 |
-| `toolrun/` | `state.go`、`discovery.go`、`schema.go`、`cache.go`、`preload.go`、`tags.go` | StateService 统一持久化；独立 PreloadService 管理前后台预加载和标签查询，Manager 管理工具调用 |
-| `platform/` | 增加 `signals.go`，调整各 adapter | 提供公共来源信息和连接信号，保留平台协议与连接细节 |
-| `app/` | `services.go`、`signals.go`，调整现有装配文件 | 构建共享服务、连接信号、配置执行器和关闭顺序 |
-| `agent/` | 保留消息、命令及前后台入口；阶段 9–15 按后文文件树收拢组件，阶段 16 按独立目标树分出 `dialogue`、`chat`、`responses` | 内部组件只注入必要依赖；Agent 不再集中拥有组件状态，观察逻辑通过类型化信号接入 |
-
-### 依赖边界
-
-- `chatinfo` 和 `signal` 是基础契约，不依赖 Agent、Session、通知或具体平台实现。
-- 具体事件类型由来源模块定义，例如 `session/signals.go`、`platform/signals.go`；其他模块需要新增信号时也遵守这一归属。
-- `notification/rules` 可以组合来源模块与通知管理器；来源模块不反向导入通知规则。app 负责连接，业务文案不写进 app。
-- `delivery/dispatch` 组合 `delivery`、媒体中心和平台发送能力。媒体中心已经依赖 `delivery`，不能把依赖媒体中心的发送实现直接放回根 `delivery` 包形成循环引用。
-- Agent、通知、Cron 和 Hook 通过发送接口复用同一发送能力；通知管理器不再实现第二套媒体处理和平台 sender。
-- 文件操作统一在 `fileops` 内按文件分工。基础字节／文本操作不读取当前 Session，共享服务入口接收调用所需的绑定信息。
-- 命令依赖服务接口，模型等领域类型由所属服务提供；领域服务不依赖命令包的展示类型。
-
-## 公共信息与事件对象
-
-公共来源信息包含平台标识、ScopeID、平台会话类型及会话 ID；发送者身份包含平台用户 ID、内部身份关联和昵称、群名片等显示信息。Info 同时拥有 PlatformMessageID、ReplyToMessageID、ReplyToSenderID 和 PlatformData any。平台会话标识与 ElBot 持久化 Session ID 是不同概念。
-
-公共包不承载消息正文、配置、workspace、权限判定结果、发送器或 Session 生命周期。权限仍由安全策略处理。聊天历史工具和 Prompt 等实际消费者按需读取公共信息，普通工具不被要求依赖它。
-
-平台在消息进入系统时构造来源与身份对象，随该条消息传递。异步任务保存触发它的那份来源信息；禁止保存全局“当前用户”，也不能在发送时重新查询当前会话来决定旧通知的目标。
-
-信号使用 `Signal[T]` 传递各模块自己的事件对象。对象可以包含公共来源信息、结果或错误，以及确有需要的 Session 绑定标识。无需拆开重拼公共信息，也不设计包含所有业务字段的万能事件或另一套通知上下文。
-
-事件发布后，其用于消费的数据保持不可变：不可变对象可以共享引用；可变的 map、slice 或结构状态需由发布者形成稳定快照。信号内核不负责猜测并深拷贝任意对象。绑定有效性等有意保留的动态能力由所属模块控制，订阅者只能按公开契约查询。
-
-平台自行定义 `PlatformData` 的私有类型，优先只放公共字段无法表达的必要信息，不重复公共字段。生产者保证发布后的稳定快照；公共层不解释、不序列化、不通用深拷贝 any。远程 CLI 的原连接引用放在扩展中，QQ 官方的原消息 ID 使用公共字段，事件信息留在扩展。默认回复不能扩大为该用户所有连接广播，原连接断开后返回失败。
-
-OneBot／Telegram 从公共会话信息恢复默认目标，QQ 官方区分默认原消息回复与显式主动发送。Prompt 直接消费公共 Info，不保留 ConversationMeta 转换层，也不把平台扩展写入 Prompt。
-
-## 信号与执行器
-
-### 已确认的行为
-
-| 项目 | 约定 |
-|---|---|
-| 连接与发射 | 提供连接、发射和显式断开能力；每个信号有明确的事件类型 |
-| 普通连接 | 在发射调用中直接执行，适用于已确认快速、无 I/O 的回调 |
-| 延迟执行 | 连接时指定执行器；信号本身不为每次调用创建 goroutine |
-| 回调锁边界 | 锁内取得连接快照，锁外执行回调或提交执行器；业务模块也不得持有自己的状态锁执行外部回调 |
-| 一次性订阅 | 需要时使用一次性连接；在执行回调前断开，避免递归发射重复触发 |
-| 顺序与隔离 | 同一串行执行器按入队顺序执行；不同执行器独立，不承诺跨执行器的完成顺序 |
-| 容量 | 队列有上限，默认满时明确反馈入队失败；日志显式启用 WaitForCapacity 等待容量，不能无界积压、丢弃日志或绕过队列写入 |
-| 错误 | 一个订阅者执行失败不妨碍其他订阅者；执行错误记录到日志，入队成功不表示回调或消息发送成功 |
-| 断开 | 停止后续发射中的投递；已取得的发射快照与已入队任务不自动撤销，取消由执行器／业务生命周期处理 |
-| 关闭 | 停止新事件来源并断开订阅，及时关闭入队、解除背压等待，再等待生产者退出并限时处理队列；超时取消待执行任务并请求在途任务协作退出 |
-
-耗时消费者分别使用执行器，包括通知发送、Cron 补跑、外部 Hook 和可能等待文件操作锁的撤销清理。Go 使用显式连接句柄及关闭流程，不依赖 GC 推断订阅对象的生命周期。
-
-信号不承担命令调用、可改写结果的 Hook 流水线、事务提交或可靠消息投递。Cron／Elnis 的持久化状态、重试和回执关联继续由原有业务负责。关键状态必须先由所属服务完成，再发信号通知其他模块。
-
-关闭流程接入现有 Runner 生命周期；当前总关闭预算为 30 秒，各组件共享剩余预算，不能为每个执行器重新延长总时限。使用发送器、存储和日志的回调实际结束后，才释放对应资源。预算到期仍有回调在途时停止等待，跳过其依赖的显式释放，由进程退出结束；不增加后台收尾链。正常取消和预算耗尽不作为应用失败。
-
-### 参考Godot
-
-- Godot 信号属于对象，发射时可以携带参数，连接保存回调和执行选项。[Signal 文档](https://docs.godotengine.org/en/stable/classes/class_signal.html)
-- 普通连接立即执行，`CONNECT_DEFERRED` 在空闲阶段处理；延迟执行不等于创建工作线程。[连接选项](https://docs.godotengine.org/en/stable/classes/class_object.html#enum-object-connectflags)
-- 发射实现先复制连接列表，一次性连接先断开，再在锁外调用；单个调用出错后继续处理其他连接。[Godot 4.6 发射实现](https://github.com/godotengine/godot/blob/4.6-stable/core/object/object.cpp#L1200)
-- 延迟队列保存回调与参数，顺序消费，容量耗尽时报错；从实现可见，断开信号不等于删除已入队调用。[Godot 4.6 队列实现](https://github.com/godotengine/godot/blob/4.6-stable/core/object/message_queue.cpp#L80)
-
-ElBot 借鉴信号归属、参数携带和连接执行方式；独立执行器、类型化事件对象、显式取消及服务关闭流程属于 Go 服务的适配。事件数据不可变是 ElBot 的约定，不代表 Godot 会自动深拷贝任意对象。Godot 的持久连接选项也不等于可靠事件投递。
-
-## Session、持久化与文件能力
-
-### 三种生命周期
-
-| 生命周期 | 所属状态 | 约束 |
-|---|---|---|
-| 当前绑定 | 文件撤销备份、预检租约等临时状态 | 离开该绑定即失效；恢复同一个持久化 Session 不能复活旧调用 |
-| 持久化 Session | 历史消息、workspace、对应工具和上下文状态 | 恢复会话时保留；按所属模块解释和更新 |
-| Request／Turn | 取消、超时、pending、等待确认 | 跟随本次执行，由现有 Request／Turn 管理 |
-
-Session 是当前绑定有效性的唯一所有者。切换或清除 current 时，先同步使旧绑定失效，释放状态锁后再发出生命周期事件。清理回调的速度不决定旧调用是否可用。重复设置尚未变化的同一 current 不制造额外切换；切离后再恢复则是新绑定。
-
-生命周期事件携带发生变化的绑定对象；清理消费者针对旧绑定处理，不能因为延迟事件到达就把 Scope 的“当前状态”回写为过期状态，也不能清除新绑定的数据。现有删除、批量清理、存储记录缺失和闲置过期入口统一遵守这一规则；闲置过期策略保持现状。
-
-### metadata 更新边界
-
-workspace、工具发现／缓存、上下文压缩／用量和会话命名字段分别由对应模块解释，不能把 Agent 的混合 metadata 类型整体搬入 Session，让 Session 反向依赖全部模块。
-
-Session 仓储通过 `Mutate(ctx, id, updateFn)` 在短事务中读取最新记录，按字段所有权更新并返回新快照。命名、模式、活跃时间、置顶和 metadata 调用方均使用该入口，回调错误回滚。
-
-保留现有持久化字段含义和有效数据；更新一个模块的字段时保留其他字段，错误解码不能静默变成空 metadata 后覆盖存量内容。回调仅作同步计算，不执行 I/O、LLM 或嵌套仓储操作。
-
-### workspace、sandbox 与 fileops
-
-复用现有 `WorkspaceStore`、workspace 获取／设置和路径解析能力，持久化适配依赖 Session／仓储，不再持有整个 Agent。workspace 管工作目录，sandbox 管后台限制，公共路径入口组合两者；各模块不能自行拼出绕过检查的路径。
-
-`fileops` 统一底层文件操作与共享编辑／撤销服务。保留原始字节和编码、revision 校验、目标路径锁、容量上限和成功写入后登记备份的行为。编辑预检保留原调用绑定、参数、解析路径、实际目标、存在状态和内容 revision，撤销另外保留记录编号；执行时绑定失效、目标、内容或记录变化则拒绝。workspace 不记录变更版本，绝对路径不变或切回后状态一致可继续。
-
-后台限制、超管权限及命令／工具的风险确认继续生效。Session 只管理绑定有效性，文件备份内容、编辑和撤销规则由 `fileops` 管理。
-
-## 模型、上下文与工具状态
-
-`modelmgr` 统一拥有对话／模式、压缩、命名及 Elnis 槽位选择、provider 客户端缓存、模型列表和相关运行状态持久化。保留现有配置加载与模型 fallback 语义，模型命令只负责参数与展示。模型选择对象由服务提供，调用方在一次请求内使用确定的选择，避免并发切换影响在途请求。
-
-`contextmgr` 拥有上下文加载、窗口计算、压缩算法、用量和压缩状态。Agent 决定何时在对话流程中加载或压缩，登记 Request、协调 Turn 和取消；`contextmgr` 不接管主对话调度。压缩模型从模型服务取得，避免两处独立维护选择状态。
-
-`toolrun` 收拢工具发现、schema 缓存与状态恢复；Tool Runtime 继续负责工具注册和执行。命令、工具和 Agent 复用同一份状态，不保留各自可写的副本。准备／完成 Hook 的改写、工具 transcript、确认和 pending 时序沿用现有流程。
-
-## 发送与通知
-
-业务模块发布携带所需信息的事件，通知规则选择需要告知用户的事件并生成通知意图；脚本也可以通过宿主提交通知意图。通知管理器根据意图和已有来源确定目标、级别及现有静默策略，交由统一发送层执行。
-
-默认目标来自触发任务时保存的公共来源对象；明确指定管理员、私聊或群聊目标时使用该目标。需要随 Session 绑定失效的通知额外携带绑定信息。进程启动告警等无消息来源的通知沿用已有目标策略，不能猜测一个“当前用户”。
-
-| 输出类别 | 接入方式 |
-|---|---|
-| 平台连接、Session 绑定变更 | 发布业务信号，由 app 连接消费者；平台 Hook 与 Cron 恢复独立执行 |
-| Session 命名 | 暂不迁移信号，保留日志通知回调；任务取消和退出由应用生命周期管理 |
-| 插件告警、模型重试／降级、执行错误提示 | 按既有触发条件接入通知管理器 |
-| 命令回复、风险确认、assistant 输出和流式输出 | 保留执行顺序、取消和回执要求，复用统一发送能力 |
-| Cron／Elnis 报告 | 保留实际发送结果、逐目标状态、重试及 Session 消息关联 |
-| Hook／脚本 outputs、`output.send` | 保留宿主协议、发送时机和回执反馈，统一转交发送服务 |
-
-统一入口不意味着所有输出都改成发完即返回的异步信号。需要实际回执的调用继续等待交付结果；异步通知已入队也不能当作消息已送达。后台过程提示屏蔽、Hook 输出 timing、平台回复关联和媒体回执关联均需保留。
-
-通知发送失败写入日志及调用结果，不递归生成同类失败通知。重复通知控制沿用现有规则，不在本轮擅自新增抑制或重试策略。启动期通知服务与发送依赖由 app 装配，消除“必须等 Agent 创建后才能交付”的依赖；平台可用性仍按实际生命周期处理。
-
-## 分阶段实施与验收
-
-阶段 1–7 完成领域服务拆分，阶段 8 为对应的 Review 与职责收尾；后续按 9 → 10 → 11 → 12 → 13 → 14 → 15 执行，阶段 15 为最终 Review。阶段内若发现新的实现选择或歧义，先按执行约束讨论。每个阶段都同步已落地的架构与代码地图，不等最后集中补文档。
-
-<a id="phase-1"></a>
-### 阶段 1：公共信息与信号基础
-
-- 建立 `chatinfo` 和 `signal`，定义平台提供公共信息的入口及泛型事件、连接和执行器契约。
-- 平台、Agent 与实际消费者复用公共来源和身份；安全判断、消息正文及平台发送上下文保持各自归属。
-- 实现直接连接、显式断开和可指定的串行执行器，并将约定写入开发文档。
-- 验收：多平台来源隔离；两个并发消息的身份互不污染；回调内连接／断开、递归发射、一次性订阅、队列满、错误继续处理和关闭场景通过测试。
-
-#### 第 1 阶段实施细则（已确认）
-
-- 公共信息采用 `chatinfo.Source{Platform, ScopeID, ConversationKind, ConversationID}`、`Identity{ActorID, PlatformUserID, Nickname, GroupCard, DisplayName}` 和 `Info{Source, Identity}`；提供 `WithInfo`／`FromContext`。全部采用值字段，公共包不依赖平台、安全策略或 Session。
-- `platform.MessageContext` 组合 `Info`，安装平台上下文时同时安装公共快照。适配器显式提供会话类型和原生 ID，Agent 和实际消费者读取公共信息；保留会话键、权限优先级、内部无来源 fallback 与平台专属回复上下文。本地 CLI 的 scanner／TUI 共用入口提供本地身份。
-- 信号接口为 `New[T](name, logger)`、`Connect(Handler[T], ConnectOptions) (*Connection, error)`、`Emit(ctx, event) error` 和幂等 `Disconnect()`；`Handler[T]` 返回 error，连接选项为 Executor／Once／Lifetime／Shutdown。空回调及无效选项报错；直接连接不接受异步生命周期或非默认关闭策略。
-- 同一次发射按注册顺序取得快照、锁外调用；并发发射无全局顺序，直接回调可能并发。一次性连接在取得快照时原子移除，最多投递一次，入队失败也消耗连接；断开不撤销已取得的快照或队列任务。
-- 执行器提供 `Submit(ctx, Task) error`，Task 携带回调与关闭策略；串行队列提供 `NewQueue(QueueOptions)`、`BeginClose()`、`Close(ctx) error`、`Done()`。选项包含名称、容量、日志器和 WaitForCapacity；容量 0 默认 256，负数报错，容量只计算等待任务。默认拒绝策略下，队满／关闭分别返回 `ErrQueueFull`／`ErrClosed`，不阻塞入队、不隐式重试；日志消费者显式启用等待容量，等待可由 context 取消或 BeginClose 唤醒。
-- 异步连接显式选择 `FollowEmit` 或 `FollowExecutor`；前者保留发射 context 的取消与截止时间，后者保留值但脱离该取消。关闭策略独立选择：`CancelPending`（默认）丢弃等待任务、取消在途任务并限时等其退出；`Drain` 尝试完成等待及在途任务，预算耗尽时全部取消。同一队列可混用策略，保留任务仍按入队顺序执行。
-- 底层取消始终优先于 Drain；执行前跳过已取消任务，不拆分取消树来保证排空。context 值和事件对象不自动深拷贝。
-- 同步回调及入队失败通过 `errors.Join` 返回，仍继续其他订阅者；异步执行错误由队列记录。与当前 context 匹配的取消及 CancelPending 订阅关闭后的入队拒绝不记录失败日志；Drain 订阅的入队关闭错误、背压日志未排空及真实错误（含与取消合并的错误）明确诊断。默认日志器为 slog.Default；不恢复程序 panic。
-- 平台模块发布 `ConnectedEvent{Platform}`。app 为每个平台的 Agent 连接 Hook 与 Cron 恢复创建独立订阅和队列，使用 `FollowExecutor + CancelPending`；平台连接事件不伪造聊天来源。Cron 不依赖用户 Hook 的结果，任务投递锁支持取消等待，取消补发不追加失败通知。
-- app 持有连接和队列，装配失败亦清理。开始关闭即断开连接并 BeginClose，先解除生产者的背压等待，再等待平台／Cron 和队列退出；各队列共享 Runner 原有 30 秒总预算并行关闭，Done 仅在 worker 实际退出后关闭。
-- 预算到期请求取消并停止等待；仍有回调使用依赖时，跳过后续依赖的显式释放，由进程退出结束，不增加后台收尾链。Queue.Close 保留未完全关闭的错误供调用方识别，Runner 将正常取消和关闭预算耗尽视为正常退出；真实启动／关闭错误继续返回。
-- 验收覆盖公共来源／身份隔离、原连接回复、权限与消费者回归，信号重入／并发／一次性／错误隔离，生命周期与关闭策略组合、混合队列、取消等待、装配失败和超时依赖保护；用同步屏障控制并发测试，执行相关 race 与全量 Go 测试。
-
-<a id="phase-2"></a>
-### 阶段 2：Session 生命周期
-
-- Session 唯一持有只读绑定有效性；`CurrentBound` 返回行与原绑定，切离失效、恢复产生新绑定。只发布 current 的 `BindingChanged{Old, New, Reason}`，在所有锁外发出；撤销按绑定隔离，app 队列清理旧绑定，维护复用运行中的服务。
-- `Mutate(ctx, id, updateFn)` 在短事务中读取最新行并修改负责字段；禁止回调内 I/O 或嵌套仓储操作，错误回滚。metadata 保留未知字段和 JSON 数值，损坏时拒绝写入，自动命名提交时让手动改名优先。
-- Scope → 排序后的 SessionID → 状态锁形成短准入；耗时操作在锁外。当前非 idle 禁止外部切换，显式删除忙碌会话报错，清理跳过忙碌项并条件复核。
-- Execution 的稳定 RunID 跨追加确认及自动压缩延续；结果来自实际完成消息，各 Request／attempt 的迟到回调不得结束新 Turn。
-- 压缩期间拒绝新输入；成功先结束旧 Turn 再创建并激活新会话，复核取消与原绑定，自动交接继续已接收输入。后台压缩不创建前台 current。
-- 后台只允许所属用户同平台私聊及 CLI 管理入口恢复，群聊、频道的列表、编号、补全、直接 ID、引用及解除归档均受限制。首次恢复永久转为普通前台归属，保留 workspace，后台来源只作追溯，切走或重启不回退。
-- 接管在途 Turn 不重启请求或工具；LLM 阶段打断追加确认、工具阶段 pending、风险确认使用前台规则、压缩拒绝新输入。后续边界更新身份、工具、权限与输出，保留原请求取消链，历史结构化结果按已有汇报内容展示。
-- 原 Cron／Elnis 等待逻辑执行最终结果，记录接管与完成／取消／失败，停止 JSON 修正、自动汇报和未开始的补投递。新的独立调度创建新后台 Session，已接管 ID 不得重新后台化。
-- 验收覆盖绑定重入与延迟清理、并发首次创建／字段更新、忙闲准入、后台永久接管、跨请求等待、压缩交接及取消、后台修正与投递抑制；运行相关 race 和全量 Go 测试。
-- 本阶段不搬迁 workspace、sandbox 或 fileops 包；后续阶段继续处理模块归属。
-
-<a id="phase-3"></a>
-### 阶段 3：文件与路径能力
-
-- `workspace` 拥有工作目录契约、metadata 状态及统一路径入口，组合 `sandbox` 的后台限制；Session 适配通过仓储 `Mutate` 更新自有字段，不持有 Agent 或共享行快照。
-- `internal/fileops` 合并底层文件能力和共享编辑／撤销服务，app 创建唯一共享实例并注入实际调用方；Tool 保留协议、风险与展示。
-- 文件调用保存原绑定和提交准入能力。目标锁先于 Scope／SessionID 准入，备份状态锁最后取得；读取、内容验证与临时输出准备在 Session 准入外。
-- 最终提交内复核绑定、取消、目标、权限与文件身份／stat，完成写入、替换或删除及备份登记；与切换、删除、清理及停止串行。非 idle 禁止切换保持不变，idle 撤销提交时再次检查忙闲。
-- 编辑确认固定参数、目标、存在状态及内容 revision；撤销另外固定记录编号。复核最终目标和内容，不增加 workspace 版本；绝对路径不变或 A→B→A 后状态一致可继续。
-- 保留原始字节、编码、模式、符号链接规则、容量淘汰及成功写入后登记备份；后台编辑使用同一目标锁和 SessionID 准入，不登记前台备份。生命周期事件只清理对应旧绑定。
-- 验收覆盖路径／权限回归、确认与提交状态变化、提交和生命周期两种先后顺序、临时文件清理、命令与工具共享、后台接管及 metadata 并发保留；运行相关 race 与全量测试。外部进程文件操作不纳入提交互斥。
-
-<a id="phase-4"></a>
-### 阶段 4：模型服务
-
-- `modelmgr` 唯一持有模型选择、provider 客户端和目录缓存；app 创建共享服务，注入 Agent、命令和 Elnis。目录／选择类型由模型服务提供，当前会话模式由命令的 Session／Scope 依赖确定。
-- 启动沿用配置加载，状态恢复验收指保存后重启恢复；不保留未接入的热重载函数、修改时间检查或运行中重载入口。
-- 切换串行构建候选状态，先原子替换 `state.toml`，成功后发布内存状态；失败继续旧选择。写盘期间可读取旧快照，并发提交不丢更新；无状态路径时仅更新内存。
-- 对话 Turn、压缩和命名分别固定自己的模型及客户端；压缩未配置时使用本次对话选择，命名同时固定专用模型和 work fallback。后台接管沿用阶段 2 的重新选择边界。
-- 模型目录保留并行查询、缓存与显式刷新、配置补充、全局编号和 provider 错误展示；对外集合不共享可写缓存。标题生成、压缩算法和执行调度留在原模块，重试提示沿用现有发送链路。
-- 验收覆盖目录刷新与 provider 失败、全部模式／槽位切换、启动恢复、保存失败及并发提交、在途对话／工具循环、命名与压缩快照和 fallback；执行相关 race 与全量测试。
-
-<a id="phase-5"></a>
-### 阶段 5：上下文与工具状态
-
-- app 创建共享 `contextmgr.Service` 和 `toolrun.StateService` 并注入 Agent；上下文服务拥有加载、窗口、用量、压缩材料及 seed 状态，工具状态服务拥有发现结果、schema 缓存、tag 和规则卡展示记录。
-- Agent 保留压缩时机、Request／Turn、取消、绑定准入及会话交接，以及 pending、确认、Hook 和 transcript 编排；命令状态查询复用服务，命令包迁移留在阶段 7。
-- 工具 metadata 为唯一事实来源，删除重复内存 schema 表和无调用的恢复链路。一次输入的工具／Skill 预加载或一次发现结果，通过一次 `Mutate` 合并提交；成功后同步更新调用快照再报告成功，失败保留原状态并返回错误。
-- 工具执行及完成 Hook 顺序保留；状态提交发生在最终调用记录、返回消息与 transcript 定稿前。已经完成的动作不回滚、不自动重跑，错误明确区分执行结果与状态保存失败。
-- 各模块只解码、更新所属字段，保留原格式和未知字段，损坏 metadata 拒绝覆盖；不增加迁移、缓存 TTL 或重试。schema 和用量对外返回独立副本；用量保存失败保留实际观测值并记日志。
-- 保留压缩模型快照与 fallback、成功工具调用过滤、后台交接及 seed 物化规则；新会话继承应保留状态并清除旧用量。恢复加载已有状态；Fork 继承指定范围历史，不复制父会话工具缓存和用量。
-- 验收覆盖恢复／Fork、自动／手动压缩、用量与 seed、发现／预加载／后台缓存、提交失败、并发字段保留和 Hook 快照隔离；确认、取消和 pending 不串线，运行相关 race 与全量测试。
-
-<a id="phase-6"></a>
-### 阶段 6：发送与通知
-
-- 建立 `delivery/dispatch`，迁移平台路由、媒体发送准备和回执关联，移除这些能力对整个 Agent 的依赖。
-- 建立通知管理器和通知规则；接入现有告警与业务信号，迁移脚本、Hook、Cron／Elnis 的宿主发送依赖。
-- 按消费者配置执行器，保留需要等待实际发送结果的调用；处理无来源告警与启动期装配。
-- 发送与通知服务在 Hook 注册和 Agent 创建前装配；移除 Agent 就绪闭包及启动告警暂存。交互模式的无来源告警显示于本地 CLI，service 模式记录内容，不新增管理员广播。
-- 通知捕获原 Info、原 Sender 覆盖和按需提供的 Binding，取消或绑定失效后不发送；前后台静默、Hook 改写与 immediate／after_assistant 时序仍由 Agent 编排。
-- 部分发送失败返回成功 Receipt 和 error，关联实际成功的媒体／Session 消息，保留 Cron／Elnis 失败状态及重试规则。Telegram 已发出部分分页时不从头降级重发。脚本 wire 协议保持不变。
-- 验收：异步任务始终使用原来源；管理员与显式目标路由正确；后台提示策略、原连接回复、Hook 输出顺序、媒体和任务回执一致；发送失败不递归通知。
-
-<a id="phase-7"></a>
-### 阶段 7：命令与最终装配整理
-
-- 内置命令位于 `command/builtin`，直接依赖领域服务；Agent 命令执行器协调权限、Turn 冲突、通知和 continuation。Session 列表编号等展示状态归命令模块，app 创建并注入。
-- 共享服务和 Router 统一由 app 创建。Agent 仅保留严格注入的 `New(ctx, cfg, deps)`，不补建服务或注册命令；测试通过测试辅助函数装配。创建 Agent 后注册命令，再接入信号、补全与平台目录，最后启动平台。
-- `/rollback` 直接调用 fileops 的列表及按编号撤销入口，命令负责展示和审计。Agent 提供原 Binding、workspace 与提交准入，保留等待目标锁后的绑定、Turn／压缩复核；手动压缩仍由 Agent 编排。
-- Session 拥有标题生成，命名模型及 fallback 从 modelmgr 取得操作快照。日志 Reader、上下文状态、工具 Registry／Skill Manager 直接注入命令，清除 Agent 的失效转发与构造代码。
-- app 统一拥有信号和后台装配任务。Foundation／Runtime 构建失败也返回已取得资源的 Lifecycle，由 Runner 接管；延迟 Skill 加载可取消并等待实际结束。
-- 平台退出等待、信号、Hook／Skill、Cron 和存储清理共享 30 秒预算；在途工作未结束时跳过其依赖释放，不增加后台收尾链，真实启动错误保留。
-- 检查 Agent 只剩自身状态与编排，业务模块无反向依赖，事件对象和 metadata 无重复所有者。
-- 验收：全量测试及相关并发测试通过；完成“消息 → 命令／工具 → 状态更新 → 通知”的串联验证，并覆盖 Session 切换、文件撤销、模型切换、后台任务与启动关闭。
-
-<a id="phase-8"></a>
-### 阶段 8：Review 与职责收尾
-
-复核前七阶段的实际调用链、逻辑正确性、职责边界、依赖方向和文件归属。验收以业务规则真正归位、旧路径消失为准，不以缩短 `agent.go` 或把字段包装进另一层结构为目标。
-
-#### 已发现的问题与处理约定
-
-- 后台工具状态统一由 `toolrun.StateService` 提交，不通过 Session 仓储提前写缓存。首次任务的原生／外部工具及必要依赖一次提交，失败不启动 LLM；续跑和格式重试只恢复首轮状态，新工具参数不生效。首轮为空即没有工具。
-- Cron／Elnis 在同一 `Session.Mode` 字段固定 background，协议不选择模式；恢复前台时原子改为 work。background 不新增模型槽位，默认沿用 work；Elnis 保留 elwisp 槽位与 work fallback，Cron 支持任务级 provider/model 成对设置、清空及执行快照。
-- 后台禁止 discover_tool、workspace 和 ForegroundOnly 工具，schema Hook 不能扩大白名单；准备工具 Hook 改名后再次检查缓存，禁止 Registry fallback，并在风险评估及副作用前拒绝。前台 chat 继续忽略 schema／tool calls，不读取工具缓存或标签提示。
-- 工具选择复用 `tool_list_names`：工具／Skill 名优先，标签展开后逐根工具授权；仅显式标签注入 tag 提示。Skill 说明、runner、SOUL 和记忆复用现有链路。后台不加载 AGENTS.md，相对路径固定到对应任务沙盒。
-- 前后台工具发现及 Skill 预加载存在重复实现；Agent 还拥有标签文件读取、解析、缓存和查询。新增独立的 `toolrun` 预加载服务，复用 Registry、权限及已有工具实现，共用发现、Skill 激活、标签配置和查询。服务返回待提交状态与展示材料，StateService 保持独立并统一负责持久化；Agent 保留输入解析、提交和输出时序编排。
-- 后台会话创建、复用、模式、标题及后台身份 metadata 归现有 `session.Service`，提供不改变前台 current 的后台入口；Session 不依赖工具类型、不写工具字段。Agent 保留后台执行、Request／Turn、取消和前台接管协调，通用后台执行文件按实际职责命名。
-- 删除 Agent 的 `RunCronMessage` 及仅供它使用的请求／结果类型，相关测试迁到实际 `RunBackground` 入口；删除只剩测试使用的 `latestAssistantMessage`、`assistantRawTextFromMetadata`，结果测试验证当前执行结果返回链路。删除 Agent 内无调用的 `cronSessionMetadata`，保留 Cron 模块实际使用的实现。删除前复核引用，不保留只为旧测试存在的生产代码。
-- app 在平台启动前安装 Session 前台接管、活动会话查询及 Hook 唤醒／执行观察回调。Agent 构造器和 `SetHookManager` 不再识别具体 Hook Manager 或替共享服务安装回调；通过窄回调接线，保留原有同步、锁及准入约束。Agent 自身字段初始化、Prompt、命令执行器及补全组件组装仍归 Agent；测试装配同步遵守这些边界。
-
-#### 验收
-
-后续 Review 的五项边界：普通用户 `/stop` 的编号、ID、补全和取消限定当前原绑定；输入 Hook／预加载前及一次性提交前由 Agent 复核准入；Cron 取消、启动等待和在途退出先于 runtime／Hook 释放且共享关闭预算；Prepared Hook 不回写模型操作快照；压缩创建与命名字段统一由 Session `CreateCompacted` 管理。Fork 保留来源模式，contextmgr 保留压缩材料，Session 不依赖 contextmgr。
-
-公共来源与事件复核边界：前台接管完整替换 Info／平台发送上下文，最终 LLM 返回后再次刷新来源；Agent／Cron／Elnis 消息关联只消费实际结构化回执，平台文本、分页和流式发送提供实际来源；无聊天来源的 Hook 及其错误事件保持空 Scope／Actor；平台连接的 Cron 恢复与用户 Hook 使用独立信号订阅；Session 命名具备应用级取消与实际退出等待；后台广播副本统一由 Session 创建且不激活前台绑定。命名通知暂不发信号。
-
-- 通过实际后台入口验证首轮工具提交、续跑冻结、初始空白名单和提交失败；验证模型强行调用、schema Hook 注入及准备 Hook 改名都不能越权，前台 chat 继续禁用工具。
-- 回归前后台工具／Skill 预加载、标签、补全及权限，保持隐藏工具、后台限制和既有提示行为。
-- 验证后台结果、前台接管、Session 切换、Hook 唤醒与启动装配；检查旧入口、重复实现、metadata 所有权及反向依赖。
-- 执行相关包、race 和全量测试，继续复核前七阶段其他链路；不能以本批问题修完代替全部 Review。本次按用户约定只同步开发文档，用户文档仅删除协议中已取消的模式说明，不扩写用户手册或 CHANGELOG。
-
-#### Review 验证结果
-
-- 公共信息／信号：基础包不依赖业务模块；平台来源快照、按平台队列和关闭取消仍走既有契约。公共 Info 无平台扩展、事件显式字段、部分来源及无来源连接 Hook／错误 Hook 均有回归覆盖。
-- Session／文件：绑定同步失效、提交准入和后台接管保持原顺序；实际 app 装配测试覆盖忙碌保护、后台执行接管与 Hook 观察回调。压缩创建统一归 Session，前后台、接管、取消、保存失败和未知 metadata 保留均有回归覆盖。
-- 模型／上下文：模型先持久化再发布快照，上下文 metadata 按字段更新；Turn／Request Prepared 的 Go Handler 不能修改模型选择，允许的消息修改继续生效，前台接管仍显式重新选择。
-- 工具状态：生产代码的工具 metadata 读写集中于 StateService；前后台预加载共用服务。实际后台入口覆盖首轮提交、续跑冻结、空白名单、显式 tag、Hook／模型越权和真实沙盒文件读写；Session 恢复验证模式切换，Cron 验证任务模型 CRUD 及格式重试快照。
-- 输入／命令：跨用户 `/stop` 被拒绝，普通用户的当前子请求、编号／ID、补全及超级管理员全局管理通过实际入口验证。预加载在压缩期、准备期间切换会话／模式、切离再恢复和取消时不提交状态或成功提示。
-- 发送／装配：领域服务及内置命令没有反向依赖 Agent；原来源投递、部分回执和共享服务回归通过。Cron 测试覆盖重复停止、启动失败、迟到启动、取消与状态保存等待，以及共享预算耗尽后保留依赖且不后台收尾。旧后台适配器、重复发现、旧缓存序列化、Agent 压缩创建／命名写入及 Hook 模型回写入口均无生产引用。
-- 最终输出／回执：直接与缓冲输出覆盖最后一轮 LLM 等待期间的前台接管，最终 Hook 使用前台来源，消息按实际回执关联。QQ OneBot、QQ Official、Telegram 的真实 adapter 经本地 WebSocket／HTTP 服务验证文本、回复、分页、部分成功和 Telegram 流式回执；Cron 的管理员部分失败与 Elnis 多管理员报告经 Router、Telegram adapter 和 SQLite 验证实际消息关联。
-- `go test ./...` 通过；Agent、app、Session、toolrun、Cron、Elnis、signal、fileops、modelmgr、contextmgr、delivery、notification、command、platform、Turn 及 SQLite 的相关 `-race` 测试通过。
-
-
-<!-- locator:agent-components -->
-## 阶段 9–15：Agent 内部职责与旁路信号
-
-本节描述阶段 9–15 的结构；阶段 9–14 的基础、回复提交、执行协调、单轮对话、确认、模型调用、旁路订阅和薄入口装配已接入。阶段 15 Review 已完成并验收；单轮与模型调用按 16.1 分包，共享职责与路线职责如下，当前代码职责以 architecture.md 和 code-map.md 为准。
-
-### 范围与依赖约束
-
-- 保留现有命令、权限、配置、模型选择、持久化格式与前后台行为，不新增数据库迁移或可靠消息中间件。
-- 入口和执行协调留在 `internal/agent`，共同单轮、事实事件、能力登记及 Chat 私有实现分别归 dialogue、events、routes、chat；不新建通用工作流框架或全局事件总线。
-- 新组件不得持有 `*Agent`、匿名嵌入 Agent，或通过巨型 deps、绑定 Agent 的回调集合变相访问整个 Agent。
-- 共同单轮执行由 dialogue.Runner 实现，协议循环由登记路线实现；消费小接口，不把绑定 Agent 的方法包装成执行回调。
-- Session、Turn、Request、ContextManager、ToolRun、Media 与 FileOps 保持现有事实来源，不在新组件复制状态机或缓存。
-- Agent 对外仍被生产代码使用的方法可以保留薄委托；无调用的旧入口删除，不为旧测试保留生产兼容层。
-- 行为配置与必需依赖通过 New(ctx, cfg, deps) 在构造时注入实际拥有者，不提供 Agent 运行时 setter，不形成两份可变配置。Prompt Builder 在装配时建立来源，每轮仍读取当前 Soul、常驻记忆和工具材料；测试通过构造参数或直接组件装配验证。
-- 每阶段必须实际接入并保持可编译、可运行；不能先建立一批空组件，再把所有接线推迟到最后。
-
-### 当前结构与主要入口
-
-```text
-internal/agent/
-├── agent.go / assembly.go / config.go / dependencies.go
-├── message.go / input.go / background.go / command_runtime.go
-├── execution*.go                 # 跨轮准入、Request、交接、生命周期
-├── confirmation.go / hooks.go / identity.go / output.go / status.go
-├── toolrun_adapter.go            # 原有工具服务、确认和领域上下文适配
-├── events/                       # 事实、元信息、Signals、快照辅助
-├── routes/                       # Protocol、Loop、Compactor 登记与查询
-├── dialogue/
-│   ├── loop.go / runner.go / preparation.go
-│   ├── system_prompt*.go / prompt.go / tool_tag_prompt.go
-│   ├── pending.go / tool_execution.go / model_call.go
-│   ├── message_store.go / reply_commit.go / output.go
-│   └── execution_context.go
-└── chat/
-    ├── loop.go / preparation.go / run_loop.go
-    ├── model_call.go / transcript.go / tool_results.go
-    └── compact.go / compressor.go / compact_prompt.go / context_seed.go
-```
-
-执行协调器 → dialogue.Runner → LoopResolver → chat.Loop；公共 Runner 处理消息写入、Outcome 和回复提交，Chat 保存私有单轮状态。模型调用复用 CallProcessor，工具复用 ToolExecutor／ToolRun；压缩经 contextmgr 的 CompactorResolver 取得 chat.Compactor。注册表统一登记，消费方不接收完整路线。app 仍负责共享服务、订阅和关闭，领域服务保持唯一状态来源。具体入口见 [代码地图](code-map.md)，调用链见 [架构](architecture.md)。
-
-### 组件职责、状态与直接依赖
-
-| 组件 | 职责与主要直接依赖 | 状态归属和限制 |
-|---|---|---|
-| Agent | 对外薄委托与能力暴露；New(ctx, cfg, deps) 负责内部组件装配 | 仅保留入口组件引用和 Signals，不保存共享服务、构造中间组件、配置或 Prompt 材料 |
-| messageHandler | 使用身份、Hook、媒体、消息／媒体仓库、命令及输入组件，处理唤醒和消息分发 | 媒体解析缓存只在当前消息处理期间存在，不拥有执行状态 |
-| inputCoordinator | 使用 Session、Turn、身份、Hook、预加载、工具状态、执行与确认组件，准备输入和 continuation | 锁外准备、锁内提交，原绑定和取消复核保持不变 |
-| backgroundRunner | 后台来源、身份、sandbox、Session 和资源预加载，再交执行协调器等待结果 | sandbox 根目录由构造配置确定，执行状态仍归 Turn／Execution |
-| commandExecutor | Router、Session、Turn、身份、执行、确认、输入及输出组件 | 直接调用组件，不保存绑定 Agent 的回调集合 |
-| fileCommandPreparer | 文件服务、Session、Turn、Request、身份和 Session 仓库 | 捕获原绑定与提交准入，实际文件操作及记录归 FileOps |
-| executionCoordinator | 依赖 Session、Turn、Request、ContextManager、模型选择、dialogue.Runner 与状态记录；统一执行准入、attempt、pending 续跑、压缩和接管 | 不复制 Turn 状态机，不直接调用模型或执行工具 |
-| dialogue.ExecutionView | 使用现有 Execution 和必要的 Session 读取能力，应用接管身份、保留取消并刷新 Session 快照 | 不创建第二份执行身份或接管状态；保留后台 Sender、模型 override 和 sandbox 清除规则 |
-| dialogue.Runner | 共同单轮准备、消息保存、Outcome 和回复提交 | 不拥有跨轮状态，不完成 Execution |
-| chat.Loop | Chat 历史、摘要、模型／工具循环及接管后请求刷新 | messages、tools、usage 和轮次均为私有单轮状态 |
-| chat.Caller | Chat 请求、流消费与视觉回退，消费固定选择 | 不拥有 Session 或通知去重状态 |
-| dialogue.CallProcessor | 共同 Hook、权限过滤、媒体中心调用及调用事实 | media.Manager 拥有素材持有、解析与释放 |
-| dialogue.ReplyCommitter | 最终输出处理、发送／落库顺序、延迟 outputs、部分成功与实际回执关联 | Commit 不代表数据库与平台的跨系统事务；不完成 Execution、不消费下一轮 pending |
-| outputSender / dialogue.Output | 复用 Dispatcher，处理发送 Hook、流式与普通发送、前后台输出策略 | 不另建路由／媒体发送实现，不负责 assistant 历史提交或 Session 生命周期 |
-| confirmationCoordinator | 使用 Turn、输出和必要身份能力，处理风险确认、响应和结果转换 | 只拥有 autoConfirmSession、autoConfirmTools 及锁；等待对象仍归 Turn，追加确认归执行协调 |
-| hookBridge | 使用 Hook manager/router、Request、身份和 Media，完成事件补全、执行适配、请求观察与错误事件 | 可改写 Hook 保持原顺序；ObserveRun 的 context 和清理函数仍为同步执行参与者 |
-| statusRecorder | 拒绝旧 attempt 更新，同步合并、记录和查询状态，分配展示版本 | 拥有 runtimeStatus 及锁；不是业务状态机，平台展示订阅后按目标合并最新快照 |
-| identityResolver | 从明确上下文与安全策略解析 Actor/Scope，保留已有入口默认值规则 | 不维护全局当前用户；无来源 Hook 不套用普通 CLI 入口默认身份 |
-| 日志／通知／状态订阅者 | app 接线，旁路日志排队写入，通知复用 rules 和 Manager，展示使用 Dispatcher | 不回调 Agent 驱动执行；视觉提示去重归通知规则拥有者；状态订阅者只持有待展示最新快照，不成为业务事实来源 |
-| modelmgr 重试信号 | 在共享客户端重试入口发布事实，app 连接通知订阅 | 覆盖对话、压缩和命名；不依赖 Agent.Signals 或 Agent 的执行身份 |
-| 已有领域服务 | Session/binding、Request、Turn/Execution、Usage、工具状态、媒体和文件能力 | 保持唯一事实来源；不把领域状态搬入 Agent 的新组件 |
-
-### 接口与返回结果
-
-- Agent 对外入口及生产使用的能力保持；`Agent.Signals()` 返回 Agent 自有的具体类型化信号集合，供 app 连接订阅。`NotificationSender()` 仅提供 outputSender 的 SendAssistant 能力，供视觉提示保留输出 Hook，不持有或回调 Agent。共享模型重试信号由 modelmgr 单独提供，不能为了重试通知让共享客户端反向依赖 Agent。
-- `dialogue.Runner.RunTurn` 接收执行与 Request context、单轮输入和公共 Output，返回结构化单轮结果；明确表达完成、等待追加确认、停止、取消和失败，携带已提交 assistant 标识、原始结果和 Usage，不能通过 `nil` 错误猜测是否完成。
-- `dialogue.ReplyCommitter.Commit` 接收原始文本、平台展示文本、最终 stream 与延迟 outputs，返回消息标识、实际 receipt、持久化结果及错误。保留部分成功，不把“发送成功”和“历史提交成功”合并成一个布尔值。
-- `toolRunDeps` 直接组合所需 Hook、确认、Request、工具状态、文件能力、executionView 和本轮输出；Prompt provider 直接使用 ToolRun 与身份解析。
-- `Signals` 只组织明确事件，不提供字符串主题、万能 payload、服务查询或全局发布入口。组件只拿自己需要发布的信号，不能借信号集合获取其他业务能力。
-
-### 直接调用与旁路通知的边界
-
-适合事件化的条件是：消费方只观察已经发生的事实，不改写后续输入，不返回主流程必需的结果，主流程也不依赖其先完成。通知不等于异步；快速无 I/O 的投影可以同步连接。
-
-下列操作保持直接调用：
-
-- Session/binding 准入、同步失效、执行接管、attempt 归属、pending 接收与交接。
-- Request 注册、派生 context、取消和完成清理；包括名为 Observer 的 Hook 执行观察接口。
-- 权限判定、风险确认结果、工具预检、文件提交与可改写的输入／模型／工具／输出 Hook。
-- 用户和 assistant 消息、工具 transcript、平台消息映射及工具调用记录写入；压缩器依赖工具调用记录中的成功 ID，不能把它当普通日志延后保存。
-- ContextManager.RecordUsage；下一轮自动压缩依赖最新 Usage。Usage 日志与审计展示可独立发事件。
-- 状态快照的本地更新；迁移期间主流程仍同步读取快照，不能只把整套状态异步化。
-- 终止错误与“已通知”标记的协调，避免只入队就宣称已通知或重复发送错误。
-- 本轮保留 MaybeScheduleNaming 的直接触发，只迁移命名生命周期通知；标题更新、人工改名保护、去重和命名退出等待仍归 Session。
-
-### 事件清单与发布时机
-
-下列名称为实施采用的事实事件；不为没有消费者的未来能力增加事件。
-
-| 事件 | 发布边界 | 消费者 |
-|---|---|---|
-| UserInputReceived | 当前输入进入单轮对话时 | 用户输入审计日志 |
-| PersistenceFailed | 核心同步保存操作失败后，原错误仍沿调用链返回 | 持久化失败审计日志 |
-| TurnTimedOut | 执行超时确定后 | 超时审计日志 |
-| ModelCallCompleted | 单次调用完成，包含实际成功／失败、模型、Usage、耗时和必要文本快照；不改变原始文本与 Hook 改写结果的区别 | 模型日志、Usage 审计展示 |
-| ToolCallCompleted | 原有工具记录处理结束后，区分工具执行错误与记录错误 | 工具运行日志和审计日志 |
-| ConfirmationChanged | 等待、确认、拒绝、停止或过期事实确定后 | 确认审计日志 |
-| ToolDenied | 权限或策略拒绝确定后 | 拒绝审计日志 |
-| StatusChanged | 拒绝旧 attempt 后，本地快照同步合并、记录和分配版本，再更新展示订阅者的最新快照 | 平台状态展示 |
-| ModelRetrying | modelmgr 从共享客户端的实际重试入口发布，覆盖对话、压缩和命名；生命周期绑定实际模型调用 | 过程提示 |
-| VisionFallbackUsed | 确定采用视觉降级时 | CLI 提示和 Session 级去重 |
-| HookFailed | 保留原有错误返回和错误 Hook 处理，额外发布失败事实 | 日志及非终止协调所需的失败提示 |
-| ReplyDelivered | 实际交付操作返回后，包含成功／部分成功 receipt 和错误 | 交付观察日志 |
-| ReplyCommitted | assistant 持久化与本次关联处理结束后，明确记录实际成功或失败结果 | 提交观察日志 |
-| Session 命名开始／完成／失败信号 | 由 Session 在对应命名边界发布，复用已有命名事件数据 | namingLogger |
-
-事件及路由约定：
-
-- Agent 自有事件定义在 `agent/events/`，ModelRetrying 定义在 `modelmgr/signals.go` 并从共享客户端重试入口发布，Session 命名事件由 Session 拥有；signal 基础包不导入业务模块。模型重试不经 Agent 转发，不遗漏或重复通知压缩、命名等非对话调用。
-- app 将 Agent 事件转换成通知规则所需的明确参数；`notification/rules` 不反向导入 Agent，避免与 Agent 的现有通知调用形成包循环。
-- payload 按需要包含实际来源、SessionID、RunID、attempt、模型调用标识、消息 ID、时间和结果；不构造携带所有业务字段的万能公共事件。
-- 发布者复制后续会变化的 slice、map、Usage、receipt 等数据；订阅者不得改写快照。不传 Agent、Store、可变 Session 或任意服务容器。
-- 来源、binding 与远程 CLI 原连接复用现有契约；不另建全局当前用户，不在延迟消费时重新选择目标。接管前发布的事实保留原来源，接管后的新事实使用刷新后的来源。
-- 业务状态锁释放后发射。旁路错误不变成对话失败，不触发工具或模型重跑，也不递归发射同类失败事件。
-- 观察消费者不改变业务结果，主流程不等待日志落盘；日志队列过载时允许背压阻塞发布方，等待获得入队容量。必须立即可见的核心状态和提交仍留在直接调用链，不能宣称异步观察永远不会延迟主流程。
-
-### 订阅队列与生命周期
-
-| 消费类别 | 执行策略 | 关闭与时效 |
-|---|---|---|
-| 普通日志、审计日志及命名日志 | 独立有界串行队列，满时等待容量，FollowExecutor + Drain | 统一由消费者按成功入队顺序写入；关闭停止接收并解除入队等待，已入队记录在共享预算内排空 |
-| 平台状态展示 | 同步接收最新快照，按实际展示目标合并；独立后台消费者使用执行器生命周期 | 过滤旧版本，慢消费者恢复后推送最新终态；关闭取消待展示工作 |
-| 重试、视觉降级等过程提示 | 独立通知队列，FollowEmit + CancelPending | 跟随实际执行／模型调用，已结束调用的旧进度不展示 |
-| 可旁路的 Hook 失败等事实通知 | 独立通知队列，FollowExecutor + CancelPending | 请求正常完成或失败退出不取消已发布事实；受应用关闭、原来源和 binding 有效性约束 |
-| 快速无 I/O 的内部投影 | 同步连接 | 不访问慢存储、不发送平台消息，不持业务锁调用 |
-
-日志背压约定：
-
-- 普通日志和审计日志都不因队列满主动丢弃。以 A、B 已入队、C 到达时队列已满为例，C 等空位再入队，消费者按 A → B → C 写入；禁止 C 绕过队列直接写入，也不驱逐 A/B 或启动额外写入 goroutine。
-- 在现有 `signal/queue.go` 执行器上为日志显式提供等待容量的策略；现有默认满时拒绝行为保留给其他消费者，不能全局改成阻塞。等待必须能被执行器关闭解除，不持有业务状态锁等待，不忙轮询。
-- FollowExecutor 使已经产生的日志事实不因请求正常完成而被取消。应用开始关闭时停止接收、唤醒等待中的生产者并明确返回关闭错误；不能先等待被背压阻塞的生产者退出，再启动队列关闭。
-- 所有该队列的业务日志只经串行消费者写入。并发生产者按成功入队顺序排序，不承诺按跨请求的事件发生时间全局排序；保留事件时间和执行标识供还原业务关系。
-- 消费者自身及其失败处理不能向同一个已满队列递归投递；写入失败使用独立的底层诊断通道报告，不把失败算作成功。关闭时未入队、写入失败及预算耗尽不能静默当作正常交付；共享关闭预算和进程异常退出仍不构成可靠 outbox 保证。
-
-状态展示约定：
-
-- 状态拥有者先验证执行／attempt 归属，再同步更新快照和递增版本；不能给迟到的旧 attempt 更新分配一个更大的版本使其覆盖新执行。
-- 展示订阅者同步、无 I/O 地更新每个实际展示目标的最新快照，只调度后台消费者读取最新值；目标身份包含必要的 Session、来源和原连接，不能将不同展示连接混成一个全局当前目标。
-- 同一目标待处理的中间状态可以合并，最新快照不能因工作队列满而被丢弃。消费者慢或暂时调度不了时保留待处理标记；恢复后读取最新值，最后一个 done/error 即使没有后续事件也必须被消费。这里保证调度不遗漏，不承诺失效连接或平台发送失败后仍能送达。
-- 发送期间又产生更新时，消费者继续处理更高版本；已消费版本、待处理标记和唤醒必须协同，避免漏唤醒。目标失效或展示生命周期结束后回收相应投影；不能无限保存历史快照。
-- 并发 Emit 可交错，FIFO 和时间戳都不能替代执行归属及版本校验；展示端也过滤旧版本。本地业务快照仍同步可读，投影只负责展示。
-
-通知生命周期约定：
-
-- 过程提示跟随实际模型调用或执行的有效期；共享模型调用可能来自压缩或命名，不能假设总有 Agent attempt。调用结束后不补发旧重试进度。
-- 失败事实在请求结束后仍有意义。Request 完成清理会取消请求 context，因此这类通知使用 FollowExecutor 保留原来源值，以应用关闭和原 binding／连接有效性决定能否继续发送。
-- 终止错误与“已通知”标记仍走需要返回结果的原协调链路，不因事实通知入队就标记已通知；同一错误只保留一个用户提示发送路径。
-
-app 在平台等生产者启动前连接订阅，并持有 Connection 和 Queue。关闭时停止新事件来源、断开订阅并及时停止队列接收、解除背压等待，再等待生产者退出及已入队工作 Drain/CancelPending；禁止等待链互相阻塞。复用现有 30 秒总预算和依赖保护，实际回调未退出时不提前释放 sender、存储或日志。平台 Connected 的 Cron 与用户 Hook 独立订阅继续保留。
-
-非日志普通队列仍可在满时拒绝；状态展示通过最新值合并避免终态因容量被丢弃；日志显式等待入队容量。取消或关闭可能中止提交，但必须返回真实结果。任何入队成功都不等于实际发送或持久化成功。
-
-<a id="phase-9"></a>
-### 阶段 9：拆除内部组件对 Agent 的依赖
-
-状态：基础组件已接入，目标是为主流程迁移提供可直接组合的真实依赖。
-
-当前实现：
-
-1. identityResolver 拥有默认身份和安全策略；hookBridge 拥有 Hook manager/router 及执行适配；statusRecorder 拥有快照 map 和锁；outputSender 直接使用共享发送服务。
-2. foregroundTurnOutput/backgroundTurnOutput 只依赖发送与状态能力；execution_context.go 和 execution_output.go 分别承载执行视图与接管输出，保留原取消链和报告附件转换。
-3. toolRunPromptProvider 直接注入 ToolRun 和身份解析；配置、媒体与日志通过构造注入实际拥有者。
-4. app 安装的 Hook 唤醒、Request 观察等仍是同步参与者；纯上下文和 Session payload 转换使用包内函数。
-5. assistant 历史提交和消息映射由 replyCommitter 承接，工具执行适配器由 toolRunDeps 承接；状态同步记录及旧 attempt 过滤归 statusRecorder，展示与旁路通知由 app 订阅。
-
-验收：基础组件能用必要服务独立构造，无 Agent 字段、嵌入或绑定 Agent 的回调集合；原来源发送、CLI 原连接、后台静默、无来源 Hook、错误事件和本地状态先写后读保持一致。组件边界回归覆盖同步状态读写、策略／日志构造注入及接管取消链；Agent、app、delivery、notification、Hook、ToolRun 相关测试和 Agent／app race 通过，代码地图与已落地架构已同步。
-
-<a id="phase-10"></a>
-### 阶段 10：收拢最终回复提交
-
-状态：replyCommitter 已接入，最终发送与历史提交规则由组件负责。
-
-当前实现：
-
-1. replyCommitter 直接注入消息仓库、outputSender 和回复事实信号，Commit 显式接收本轮输出及已刷新的业务／请求 context；不持有 Agent 或绑定 Agent 的回调。
-2. 提交输入区分历史正文、原始模型文本、展示文本、最终 stream 和延迟 outputs；结果保留消息标识、原始文本、实际 assistant receipt、持久化标记及发送／保存／关联错误，返回错误沿用原优先级。
-3. 组件负责最终 Hook、空回复、流式收尾、延迟 outputs、assistant 落库及回执关联。直接输出先发送再落库，缓冲输出先落库再发送；部分成功不重发，关联只消费完整结构化来源，关联失败不终止对话。
-4. dialogue.Runner 在提交前应用 ExecutionView 并发布 sending，覆盖最后一轮 LLM 等待期间发生的接管。最终 Hook 归提交层，普通发送 Hook 归输出适配层，保持既有调用条件与顺序。
-5. executionCoordinator 使用公共 Runner 返回的提交结果继续 Touch、Usage、状态、pending、Execution 结果及命名；自动压缩和执行完成不进入提交组件。回复日志由 app 消费交付与提交事实，原错误和部分成功结果保持直接返回。
-
-验收：独立组件测试覆盖直接／缓冲／流式提交顺序、Hook 改写及取消、空回复、后台静默、仅延迟输出、保存／发送／关联失败和部分成功；真实 Agent 入口验证保存失败不误完成 Execution，既有接管及真实 adapter、Cron、Elnis 回执回归继续通过。Agent、app、delivery、Hook、平台 adapter、Cron、Elnis 相关包测试与 Agent／app race 通过，开发文档已同步。
-
-<a id="phase-11"></a>
-### 阶段 11：收拢执行交接与单轮对话
-
-状态：与阶段 12 合并接入；执行协调与单轮聊天职责已分离。
-
-当前实现：
-
-1. executionCoordinator 统一前后台准入、启动、attempt、Request 创建与清理、追加确认、pending 下一轮、压缩交接及最终完成；后台入口等待真实 Execution 结果。
-2. dialogue.Runner 通过 PrepareTurn 加载 Request 登记前材料，再调用路线准备、公共消息保存及协议 loop，最后完成公共回复提交；返回完成、暂停、停止、取消、失败或 attempt 已失效，并保留提交事实、Usage、模型与计时。
-3. 输入准备在锁外，准备前和提交前复核同一 binding、模式、取消与压缩状态；保持 Scope → 排序后的 SessionID → 状态锁顺序。
-4. ContextManager 生成压缩材料，Session 创建新会话；协调器负责执行预留、binding 更新及取消／迟到返回保护。模型循环、工具边界和最终输出共用 executionView，接管保留原请求取消链。
-5. 回复后按 Touch、Usage、状态、压缩提示、pending 交接、Execution 结果、命名的顺序收尾；提交期间出现追加确认仍保留成功提交及用量，旧 attempt 不结束续接执行。
-6. 单轮媒体、工具状态和 transcript 使用明确接收者或显式依赖函数；旧主流程和准入／压缩平行实现已删除，Agent 的压缩和接管对外入口为薄委托。
-
-验收：独立构造测试覆盖六类单轮结果、不误结束 Execution、不清理协调器 Request、不消费下一轮 pending、登记时机、加载／用户消息保存失败清理及提交中追加确认。既有追加确认、pending、自动压缩、前后台接管、切离再恢复、保存失败和迟到返回回归通过。
-
-<a id="phase-12"></a>
-### 阶段 12：拆出确认交互与单次模型调用
-
-状态：与阶段 11 合并接入；确认、模型调用和工具适配均直接组合必要服务。
-
-当前实现：
-
-1. confirmationCoordinator 拥有风险确认交互、响应、自动确认记录及锁；等待对象仍由 Turn 管理，追加确认归 executionCoordinator。确认超时与 Session 过期共享构造时建立的策略。
-2. toolRunDeps 直接使用 Hook、Request、Turn、身份、Media、工具状态、FileOps、确认组件和执行视图；工具数据库记录及发现状态仍同步提交，无 Agent 字段或反向调用。
-3. chat.Caller.Call 处理 Chat 请求、流消费和视觉回退；共同 Hook、权限过滤与观察归 CallProcessor，素材处理归媒体中心。选择快照由调用方传入，Prepared Hook 不改选模型，chat 禁用工具与 background 白名单规则保持。
-4. chat.Loop 拥有 Prompt Builder，共同系统提示管理归 dialogue；执行、单轮、Hook 和输出组件直接接收所需配置与诊断 Logger，不依赖 Agent 转发配置。
-5. 模型、工具、确认和回复观察由 app 订阅类型化事实，视觉提示去重归通知规则；核心提交、终止错误与已通知标记继续直接协调。
-
-验收：确认、confirmtool／confirmall、拒绝、停止、过期、补充输入、模型错误／取消／fallback、媒体释放、工具白名单、预检固定和文件提交准入回归通过；独立组件测试验证自动确认作用域、诊断日志构造注入及旁路日志隔离。阶段 11–12 的全仓 Go 测试和 Agent、app、Turn、Session、Request、ContextManager、ToolRun、Hook、Media、FileOps race 均通过。
-
-<a id="phase-13"></a>
-### 阶段 13：旁路信号与订阅生命周期
-
-状态：类型化事实、app 订阅和统一关闭生命周期已接入。
-
-当前实现：
-
-1. 建立 Agent 自有事件及 Agent.Signals()，按发布边界制作稳定快照；共享模型重试信号单独归 modelmgr，从既有客户端重试入口接入 app 订阅，覆盖对话、压缩和命名。
-2. 迁移模型、工具、确认和拒绝日志，保留既有字段、级别及正常运行时的记录次数；为普通、审计及命名日志显式接入有界背压，满时等待容量，禁止丢弃或绕过队列直接写入。工具记录和 Usage 更新保持同步。
-3. 本地状态校验执行归属并记录后发布 StatusChanged，展示订阅同步接收最新值、按目标合并并后台发送；过滤旧版本，保证最新 done/error 不因容量遗漏，不改变主流程同步读取快照的语义。
-4. 重试和视觉降级提示跟随调用有效期；可旁路的 Hook 失败事实跟随执行器生命周期并复核原来源及 binding。复用现有 rules，视觉提示去重归通知规则拥有者，终止错误与已通知标记仍协调处理。
-5. 回复提交发布实际交付与提交结果，日志区分发送、存储及关联错误，不把部分成功描述成全部失败或全部成功。
-6. Session 命名 notifier 替换为命名信号，保留现有命名事件字段、直接触发、标题更新和取消／退出等待。
-7. app 在生产者启动前订阅，统一管理连接和队列；关闭时先解除背压入队等待，再等待相关生产者退出和消费者排空，复用共享预算；保持 Cron 与用户 Hook 的平台连接订阅隔离。
-8. 被替代的直调、modelmgr 重试 setter、Session NamingNotifier 及 outputSender 的视觉去重／状态展示入口已删除；订阅清理接入部分启动失败与共享关闭预算，不保留兼容壳。
-
-验收已通过：事件快照与消费者失败隔离，真实 app 对话只记录一次，共享客户端对话／压缩／命名重试各通知一次；容量 1 的日志队列验证等待、FIFO、写入失败诊断及关闭唤醒。状态测试覆盖旧 attempt／版本、慢展示合并、最后 done/error、发送期间更新及投影回收；通知测试覆盖调用取消、请求结束后失败事实、原来源／binding 和不同远程 CLI 连接。保留 Drain／CancelPending、部分启动回收、关闭先唤醒生产者和依赖保护回归。全仓 `go test ./...` 与 Agent、app、modelmgr、Session、signal、notification、delivery、CLI、Turn 的相关 race 均通过。
-
-<a id="phase-14"></a>
-### 阶段 14：最终装配与残留清理
-
-状态：薄入口、职责归属和生产装配已接入，组件继续位于 internal/agent。
-
-当前实现：
-
-1. Agent 只保存消息、后台、执行、文件命令、身份、Hook、输出、状态、补全和信号入口；生产对外方法均为薄委托或能力暴露，无共享服务或构造中间组件字段。
-2. messageHandler、inputCoordinator、backgroundRunner 和 fileCommandPreparer 分别拥有消息分发、输入准备、后台准备及文件命令准入；commandExecutor 直接连接输入、执行、确认和输出组件，不回调 Agent。
-3. New(ctx, cfg, deps) 在构造时注入行为配置与必需服务，Prompt Builder 直接交给 Chat 路线；输入、后台预加载及补全使用具体 Registry／Preloader。无 Agent setter、Prompt 重建入口或配置副本。
-4. 平台统一使用结构化 completion.Service，Agent.Complete 与 CLI legacyCompleter 已删除；本地文件补全仍优先。测试通过构造配置或直接组件装配验证，不保留生产兼容入口。
-5. Usage、工具记录、回复提交、Hook 改写结果、binding 和取消继续直接处理；既有旁路订阅保持，必要诊断和入口审计归实际组件。
-6. 实际组件树、架构与代码地图已同步，清除失效文件说明；测试中的配置 setter 和 Agent 字段依赖已迁移。
-
-验收已通过：全仓 go test ./...；Agent、app、CLI、completion、Session、Turn、Request、ToolRun、FileOps、signal 的相关 race。回归覆盖唤醒／媒体／Hook、命令 continuation、预加载、确认、压缩、接管、文件准入和回复部分成功；真实 app 装配、Runner 正常／部分失败关闭及背压退出继续通过。静态检查确认内部类型／函数不依赖 Agent，13 个生产能力方法只作委托或暴露组件；Hook 观察入口保留原 nil 保护。本阶段不代表最终 Review 完成。
-
-<a id="phase-15"></a>
-### 阶段 15：Review 与整体验收
-
-目标：在全部接线完成后重新审查最新代码，确认拆分和信号化没有隐藏耦合、状态分叉或行为回归。此阶段必须实际 Review，不能只复述前面阶段的测试结果。
-
-当前 Review 发现的三项问题均已修复：Turn 的 Prompt、工具准备、前置 Hook 与用户消息落库受 Turn Request 取消／超时约束，Hook 挂入该请求树；风险确认先在 Turn 锁内登记 attempt 与响应通道，再在锁外发提示，快速响应可接收，发送失败与取消只清理对应等待；追加确认等待接入 app 生命周期，关闭预算覆盖任务和在途过期提示的实际退出。三项修正及相关验证已完成，阶段 15 已通过整体验收；完成状态见任务清单。
-
-Review 顺序与产出：
-
-1. 从真实 app 装配追踪“消息 → 输入／命令 → 执行协调 → 模型／工具 → 回复提交 → 旁路订阅”，同时追踪后台 RunBackground 和前台接管路径。
-2. 对照职责表检查每个状态的唯一拥有者；排查组件持有 Agent、回调捕获、万能依赖容器、包装后仍回到 Agent、跨组件重复缓存及不必要的转发层。
-3. 复核原绑定、准入锁、Request 取消、Execution/attempt、pending 和压缩交接；检查旧请求、旧状态或延迟通知能否影响新执行。
-4. 复核发送／存储／回执关联顺序及部分成功，继续使用真实 adapter 和后台报告集成回归；核对可改写 Hook 与只读信号边界。
-5. 审查每类信号的来源快照、发布时机、字段、错误处理、队列隔离、容量和关闭策略；确认模型重试归共享模型服务，关键状态未被误迁为可丢弃事件。实际验证日志满时背压与 FIFO、状态最新值合并和终态收敛、过程提示／失败事实不同生命周期，不能只检查存在队列或版本字段。
-6. 复核队列关闭与依赖释放、部分启动失败、命名任务退出、原 CLI 连接及 source-free Hook；特别验证等待入队的日志生产者能够被关闭唤醒，不与生产者退出等待形成死锁，保留阶段 1–8 已建立的边界回归。
-7. 对发现的 bug 先用测试或最小复现确认，再修正并运行受影响验证；记录具体结论和剩余阻塞，不能把未处理问题写成已验收。
-8. 完成全量测试、受影响包 race、启动关闭及静态依赖检查；同步文档中的实际结构和 Review 结果，所有必要修正完成后才勾选本阶段。
-
-完成标准：阶段 9–14 均实际接入并通过验证；所有组件依赖、状态所有权、核心同步边界和旁路通知符合约定；已发现的必要修正完成，新增观察功能无需回到主流程添加服务依赖。Review 不以“文件已拆开”“测试全绿”单独判定架构合格。
-
-### 阶段 9–15 验证矩阵
-
-优先复用或迁移已有测试，只为新增边界补测试；保留真实入口与生产装配测试，不能用组件 mock 全部替代。
-
-| 类别 | 必须覆盖 |
-|---|---|
-| 输入与准入 | 锁外准备、取消、切换、切离再恢复、压缩期拒绝及一次性提交 |
-| 执行交接 | 追加确认、pending、attempt、迟到返回、自动压缩和后台结果等待 |
-| 前台接管 | LLM 等待中、工具批次中、最终提交前、CLI 无平台扩展、原取消链保留 |
-| 工具安全 | chat 禁用工具、后台白名单、Prepared Hook、风险确认、文件预检与提交 |
-| 回复提交 | 流式、缓冲、空回复、部分成功、存储失败、实际 receipt 及多 Scope 同 ID |
-| 状态与信号 | 稳定快照、旧 attempt／版本过滤、最新值合并、无后续事件时终态收敛、消费者更新不漏唤醒、错误隔离；日志满时等待、FIFO、不丢弃、不绕过队列及写入失败报告 |
-| 通知来源 | 对话／压缩／命名重试归属与去重、旧 binding、原 CLI 连接、接管前后来源、过期过程提示、请求结束后的失败事实、后台静默 |
-| 生命周期 | 部分启动失败、共享预算、命名与订阅在途任务、背压等待关闭唤醒和依赖释放顺序 |
-| 架构 | 无内部 Agent 依赖或变相回调容器、无重复状态所有者、事件不承担核心命令 |
-
-仅方案落盘时检查阶段顺序、锚点、文件／方法／类型名称一致性、未完成任务标记、Markdown 代码块与 diff；不运行 Go 测试。`architecture.md` 与 `code-map.md` 只在对应代码实施后描述当前状态，不提前写成已完成。
-
 <a id="phase-16"></a>
 <!-- locator:protocol-routing -->
-## 阶段 16：共享执行层与独立协议路线
+## 阶段 16：公共执行与独立协议路线
 
-阶段 16.0 方案已落盘，16.1 的公共执行与 Chat 路线、16.2 的协议客户端与配置均已接入并验收。16.2a 的 provider 预绑定方案已确认、尚未实施；下列完整 Step16 目标树包含该调整及其他后续能力，不能视为全部落地。后续按 [任务清单](tasks.md) 分批实施，原生记录、恢复等未决事项仍须先讨论。
+16.1 的公共单轮与 Chat 路线、16.2 的协议客户端已验收。当前仍使用 `chatinfo`、`Selection.Protocol` 及按协议登记的 Route；16.2a 的公共信息迁移与 provider 绑定尚未实施，Responses 业务、原生持久化及恢复按 16.3／16.4 接入。
 
-### 已确认的目标与行为
+### 职责与依赖
 
-- Chat Completions 与 Responses 是平级路线。共同业务规则归公共层，各协议分别管理请求、流事件、loop、上下文和压缩；路线互不导入，不持有 Agent 或绑定 Agent 的回调。
-- provider 增加 `api_mode="chat"/"response"`，省略为 `chat`。`api_mode` 与 Session 的 `chat/work/background` 模式相互独立；后者继续决定工具权限、后台行为和输出规则。
-- provider 在启动装配时绑定实际客户端及对应 Loop／Compactor。Selection 只携带 provider/model 与已选客户端，公共单轮和压缩入口按 provider 查询已绑定能力，不传递或识别协议标识；原生持久化和会话兼容检查需要的身份信息独立保存。
-- 模型选择继续按现有 chat／work 等目标全局生效。双方 Chat 可跨厂商；涉及 Responses 的跨厂商切换拒绝并提示；同厂商 Responses 可切模型，实际接口不兼容时明确报错。空会话可以选定起始协议；不自动把已有 Chat 历史迁成 Responses。
-- 当前会话的实际模型／协议归属与目标选择进行比较。其他会话改变全局默认后，旧会话若不兼容，在执行前拒绝并提示切回，不隐式沿用旧模型或重建成文字上下文。
-- Responses 正常使用服务端续链，并保存返回的原生材料。服务端链失效后，仅在同厂商原生材料完整时恢复；缺少必要推理状态或素材时拒绝，不用展示历史代替原生上下文。
-- 工具全部使用 ElBot 的 ToolRun、权限、风险确认、文件预检及记录。Step16 不接入服务端内置工具，也不为将来的协议创建空包或投机性实现。
-- 用户只使用 `/compact` 或现有自动压缩。Chat 使用现有文字摘要方式，Responses 使用同厂商原生压缩；不支持原生压缩时明确报错，不自动退成文字摘要。
-- 保留前后台输入、pending、追加确认、接管、压缩交接、流式／缓冲输出与实际回执语义；新增协议不能建立第二套 Request／Turn／Execution 或可靠事件通道。
+| 领域 | 归属 | 职责 |
+|---|---|---|
+| 公共信息 | `contextinfo`（暂定名） | 按领域提供只读事实，由现有 chatinfo 扩展 |
+| 公共执行 | Agent 执行协调、`agent/dialogue` | 准入、Request、单轮准备、工具协作、结果与回复提交 |
+| 协议业务 | `agent/chat`、`agent/responses` | 各自的 loop、上下文、工具结果组织和 Compactor |
+| 协议客户端 | `llm/chatcompletions`、`llm/responses` | 原生请求、流事件、终态、独立文本及协议接口 |
+| 公共传输 | `llm/httpclient` | HTTP、代理、初始交换重试、取消、SSE 分帧及超时 |
+| 能力绑定 | `agent/routes` | provider 的 Loop／Compactor 与稳定身份登记、封闭和查询 |
+| 模型选择 | `modelmgr` | 全局选择、客户端快照、目录及纯兼容判断 |
+| 会话与上下文 | `session`、`contextmgr`、`storage` | 会话归属、用量与压缩分派、原生记录及关键提交 |
 
-### 包、文件与主要方法树
+公共层依赖消费方所需接口，协议业务与客户端分别分包，两条路线互不导入，也不持有 Agent 或绑定 Agent 的回调。客户端不依赖 Agent 业务层；公共信息包不反向依赖业务服务。新协议通过实现、装配和登记接入，共享执行流程不增加协议专用分支或第二套执行状态。
 
-文件按领域和操作命名，不设置汇集无关结构体的 `types.go`。公共业务消息不是某个协议的 wire payload；协议请求、原生 items 和事件类型分别放到协议包。以下是完整 Step16 的目标落点和职责入口，包含待实施的 16.2a provider 绑定；16.1／16.2 的实际契约见后文，后续原生接口仍须讨论。纯辅助函数不穷举，测试跟随职责文件组织。
+协议私有请求、Chat chunks、Responses items 和推理材料留在各自实现中。只共享语义一致的能力，不把 Responses 转成 Chat chunks，也不建立万能请求、事件或依赖容器。鉴权与 API 编解码归客户端，传输层不固定厂商鉴权或私有事件格式。
 
-```text
-internal/
-├── llm/                                  # 协议无关模型契约
-│   ├── message.go                        # 业务消息、角色、segments
-│   ├── tool.go                           # 公共工具定义和调用表示
-│   ├── client.go
-│   │   ├── Client / TextRequest / TextResult
-│   │   └── Usage / ModelMetadata
-│   ├── protocol.go                       # 原生记录／会话归属身份，不随 Selection 传递
-│   ├── extra.go                          # 额外参数只添加，冲突明确报错
-│   ├── httpclient/                       # 公共传输，不固定厂商鉴权
-│   │   ├── client.go                     # 发送、代理、取消、重试
-│   │   └── sse.go                        # 分帧、首包与空闲超时
-│   ├── chatcompletions/                  # Chat Completions 协议
-│   │   ├── client.go                     # New / Stream / GenerateText / ListModels
-│   │   ├── request.go                    # Request、协议消息与工具编码
-│   │   ├── response.go                   # 响应及用量解码
-│   │   └── stream.go                     # Chunk、文本与工具调用累积
-│   └── responses/                        # Responses 协议
-│       ├── client.go                     # New / Stream / GenerateText / ListModels
-│       ├── request.go                    # Request、原生 input items
-│       ├── response.go                   # Response、原生 output items
-│       ├── stream.go                     # 原生事件累积和终态判断
-│       └── compact.go                    # Compact、原生压缩输入输出
-│
-├── agent/
-│   ├── agent.go                          # Agent 对外能力及薄委托
-│   ├── assembly.go                       # New(ctx, cfg, deps)、模块内部装配
-│   ├── config.go                         # Agent 行为配置
-│   ├── dependencies.go                   # 构造所需的必需共享服务
-│   ├── events/                           # 公共事实事件、元信息与快照辅助
-│   ├── routes/
-│   │   ├── route.go                      # provider 对应的业务能力绑定
-│   │   └── registry.go                   # Register / Seal / 按 provider 查询消费能力
-│   ├── execution*.go                     # 跨轮执行、准入、Request、交接
-│   ├── execution_compact.go              # CompactCurrent / runCompact
-│   ├── message.go / input.go             # 用户输入入口
-│   ├── background.go                     # 后台准备
-│   ├── command_runtime.go                # 命令执行协调
-│   ├── hooks.go / identity.go            # 入口 Hook 与身份处理
-│   ├── output.go / status.go             # 实际输出和状态记录
-│   ├── confirmation.go                   # 风险确认协调
-│   ├── dialogue/                         # 共同单轮对话执行
-│   │   ├── loop.go                       # Loop、LoopInput、LoopResult
-│   │   ├── runner.go                     # Runner.PrepareTurn / RunTurn
-│   │   ├── preparation.go                # Preparer.LoadMaterials / PrepareInput
-│   │   ├── system_prompt*.go             # 共同系统提示与来源
-│   │   ├── message_store.go              # 用户、pending、工具 transcript 持久化
-│   │   ├── pending.go                    # DrainPending
-│   │   ├── tool_execution.go             # ToolExecutor.Execute，接入既有 ToolRun
-│   │   ├── model_call.go                 # PrepareCall / CompleteCall / 调用观察
-│   │   ├── reply_commit.go               # ReplyCommitter.Commit
-│   │   └── output.go                     # 单轮执行的输出消费契约
-│   ├── chat/                             # Chat 业务路线私有实现
-│   │   ├── loop.go                       # Loop.RunLoop
-│   │   ├── preparation.go                # Chat 历史及摘要注入
-│   │   ├── model_call.go                 # Caller.Call
-│   │   ├── transcript.go                 # 消息续接和工具结果组织
-│   │   ├── compact.go                    # Compactor.Prepare、历史筛选、摘要 seed
-│   │   └── compact_prompt.go             # 文字摘要提示词
-│   └── responses/                        # Responses 业务路线私有实现
-│       ├── loop.go                       # Loop.RunLoop
-│       ├── preparation.go                # instructions 与当前输入
-│       ├── model_call.go                 # Caller.Call
-│       ├── context.go                    # Load / BuildInput / Recover
-│       ├── tool_results.go               # 参数改写校验、原生工具结果
-│       └── compact.go                    # Compactor.Prepare、原生窗口及 seed
-│
-├── modelmgr/
-│   ├── selection.go                      # 解析目标、全局提交、客户端快照，不传 Protocol
-│   └── protocol.go                       # CanSwitch(from, to)，纯兼容检查
-├── session/
-│   ├── model_binding.go                  # ModelBinding / BindModel
-│   ├── fork.go                           # 指定消息的 checkpoint 与分支创建
-│   └── compact.go                        # 创建、继承、保存 seed 及激活
-├── contextmgr/                           # 公共上下文与压缩入口
-│   ├── service.go                        # 上下文查询、用量及阈值
-│   ├── compact.go                        # Service.Compact，查询源 provider 的压缩能力
-│   ├── compact_contract.go               # Compactor、CompactRequest、CompactResult
-│   └── compact_metadata.go               # 公共压缩记录、代数及命名信息
-├── storage/
-│   ├── protocol.go                       # Exchange、Checkpoint 与存储契约
-│   └── sqlite/
-│       ├── protocol_repository.go        # Load / AppendExchange / CommitCheckpoint
-│       ├── message_repository.go         # 业务回复与 checkpoint 的事务关联
-│       └── migrations.go                 # 原生协议记录表
-├── app/
-│   ├── models.go                         # 按 api_mode 构造实际客户端
-│   ├── services.go                       # 共享服务与路线注册表的构造
-│   └── runtime.go                        # Agent 构造及生命周期接线
-├── config/
-│   └── config.go / config_definition.go  # api_mode 及配置检查
-└── command/builtin/
-    ├── model.go                          # 目标解析、当前会话预检、全局提交
-    └── compact.go                        # /compact 用户入口
-```
-
-Chat Completions 与 Responses 的请求和解析分别位于两个客户端包，公共传输独立；启动装配按实际客户端能力绑定业务路线，不根据模型名或 URL 猜测。未来若接入 Anthropic 等其他协议，可以新增对应的 LLM 客户端包和 Agent 路线包，再完成装配登记，本阶段不创建占位目录。
-
-现有 `agent.go` 整理为对外入口与 `assembly.go`；配置、依赖和 runtime context 分开，采用单一 `New(ctx, cfg, deps)`。app 创建跨模块共享服务，Agent 构造入口组合模块内部组件；完整 Dependencies 仅在装配时使用，不保存在 Agent 或转交每个组件。不要增加多层 Builder／Factory 来包装同一次构造。
-
-### 依赖方向与扩展接入
+### 公共单轮边界
 
 ```text
-app ──→ agent                 # Agent 模块构造
-app ──→ agent/routes          # 创建共享注册表，注入能力查询接口
-agent/assembly ──→ dialogue、chat、responses
-agent/assembly ──→ routes     # 绑定 provider 与路线能力、统一登记及封闭注册表
-routes ──→ dialogue、contextmgr # 仅依赖公共能力契约
-agent/chat ──→ dialogue、contextmgr 公共契约、llm/chatcompletions
-agent/responses ──→ dialogue、contextmgr 公共契约、llm/responses
-llm/chatcompletions、llm/responses ──→ llm 公共契约、httpclient
+输入 → 执行协调器：固定选择、准入与兼容检查
+→ 必要时压缩并交接
+→ Runner.PrepareTurn：Request 登记前加载材料
+→ 登记 Request → Runner.RunTurn：准备并保存输入
+→ 按 provider 查询 Loop → 原生模型／工具循环
+→ LoopResult → ReplyCommitter → 跨轮收尾
 ```
 
-- `chat` 与 `responses` 互不导入；`dialogue` 和 `contextmgr` 不导入 Agent 根包或具体协议实现。共同入口只调用已注入的接口和注册实例，不能通过返回 Agent 再取得能力。
-- 子包不要求导出现有全部私有组件。输出、Hook、身份、工具执行和观察等边界按消费方所需能力定义；现有组件直接实现相应契约。确需跨包使用的 Request context 标识移到 Request 所属包，不能从子包反向调用 Agent 的私有辅助函数。
-- `dialogue` 只接收公共业务输入和结果。Chat chunks、Responses items、response ID 及原生推理载荷留在协议包，不扩成包含所有协议字段的万能请求／事件。
-- app 按 api_mode 创建实际客户端，Agent 装配对应业务能力，启动时建立 provider → Loop／Compactor 绑定并校验客户端满足路线所需的私有流接口。模型服务只维护客户端和模型选择，不选择业务 Loop；客户端不导入 Agent 业务层。
-- dialogue 和 contextmgr 各自定义按 provider 查询的消费接口，注册表实现这些接口，消费方不接收完整路线或识别具体协议。Register 拒绝重复绑定，Seal 后禁止修改，缺失或不匹配的能力明确报错。注册表只绑定能力，不复制领域状态。
-- 新协议增加客户端、loop、上下文／压缩策略及兼容属性，再完成相应装配登记。共享执行协调器、ToolRun、回复提交和命令框架不增加该协议的专用分支。
-- 只有行为和语义相同的部分共享；流累积、原生续接和压缩载荷不因代码形状相似而合并。HTTP 传输接收协议客户端构造的请求，不固定 Bearer 等厂商鉴权或私有事件格式。
+- 保留准备、用户输入保存、取消、父请求关联及实际提交的边界。公共结果收敛 Outcome、Usage 和提交材料；回复提交保留直接／缓冲发送、部分成功、实际回执及已成功不重发的规则。
+- 权限、风险确认、参数 Hook、媒体持有、文件预检及工具记录继续由公共协作与 ToolRun 处理；路线组织实际调用参数、ID 和原生结果。Hook 消费业务投影，展示改写与模型原文分别保存用途。
+- 普通 `/model` 不改变在途选择。前台接管刷新来源、身份和准备材料，保留原请求取消；下一次模型调用先检查兼容性，不在 loop 内隐式换协议或丢弃状态。
 
-### 单轮与模型调用链路
+<a id="phase-16-2a"></a>
+### 16.2a：公共信息与 provider 绑定
 
-```text
-用户／后台输入 → executionCoordinator（准入、选择快照、兼容检查）
-→ 必要时调用公共压缩入口并交接
-→ dialogue.Runner.PrepareTurn（Request 登记前加载材料）
-→ executionCoordinator 登记 Request、传入父请求 ID
-→ dialogue.Runner.RunTurn（Request context 下共同准备）
-→ 根据 Selection.Provider 查询启动时已绑定的 Loop
-→ 协议 Caller／客户端消费各自原生流
-→ 需要工具时调用共同 ToolExecutor／ToolRun，再由协议路线组织结果
-→ 公共 LoopResult → ReplyCommitter → executionCoordinator 跨轮收尾
+app 按 provider.api_mode 创建客户端和共享服务，Agent 装配业务能力。启动时按 provider 登记 Loop／Compactor 及稳定身份，校验客户端满足所需私有接口，统一封闭后开放入口。重复绑定、封闭前查询、封闭后修改及能力不匹配明确报错；同路线可复用无 provider 状态的业务组件。
+
+运行快照为 `Selection{Provider, Model, Client}`，移除 Selection.Protocol 和 Client.Protocol()。dialogue／contextmgr 分别按目标 provider／源会话归属查询所需能力；独立文本直接使用 Client.GenerateText。未接入主对话的 provider 仍可用于独立文本，主对话能力缺失时在压缩、保存输入和模型请求前拒绝。
+
+`api_mode="chat"/"response"` 与 Session 的 chat/work/background 模式独立；省略 api_mode 为 chat。会话持久化身份独立保存，不能用客户端对象或当前配置代替原生归属。
+
+#### 公共信息
+
+`contextinfo` 按四个领域分组，不要求所有入口同时具备全部信息：
+
+| 分组 | 公共事实 | 来源与生成时机 |
+|---|---|---|
+| Conversation | 平台、平台会话、发送者、消息与回复标识 | 平台入口；由现有 MessageContext／chatinfo.Info 衔接 |
+| Actor | ElBot 用户身份、普通用户／超管角色 | security 解析后提供，平台群角色与 ElBot 角色分别表达 |
+| Execution | Session、Request、执行关联标识 | 现有服务建立关联后提供，保留实际 ID 语义 |
+| Model | 主对话 provider、模型、Chat／Responses 协议 | 固定选择与 provider 绑定描述，选择确定后提供 |
+
+各领域的公共事实以 contextinfo 为唯一来源，现有 chatinfo、security 等模块的事实定义与存取随之改造，不保留并行副本。实际消费者从公共入口读取对应快照；信息缺失明确表达，不查询全局“当前用户／模型”补齐，也不猜成 Chat 或普通用户。公共包不携带凭据、配置、服务能力或原生载荷。
+
+角色事实不授予权限；权限判断仍归 security／ToolRun。Execution 不复制活动状态，取消、Binding.Valid、attempt 有效性仍归现有服务。`request.WithTurnID` 当前携带主 Request ID，不能解释成另一个 Turn ID。
+
+迁移接入现有 ExecutionView.Context 的前台刷新边界：Conversation 与 Actor 一起更新，整份来源上下文替换，原连接回复、平台私有扩展和执行取消语义保持。私有扩展由平台维护不可变快照，公共层不解释或序列化；会话原生归属及 checkpoint 留在 Session／原生存储。
+
+#### 独立文本与公共事件
+
+命名和 Chat 文字摘要使用 GenerateText，可选择任一已配置客户端；Responses 独立文本不续接主会话链、不执行工具。摘要及 Usage 同步返回，不改变主会话归属，也不为命名／摘要增加公共协议字段。若观察消费者需要调用身份，在相应事件中携带实际调用快照，包含回退后的真实目标。
+
+公共事件总线沿用 `Signal[T]`：来源模块拥有事件类型与信号实例，app 的 signalBindings 拥有订阅、队列和关闭生命周期。继续使用 Agent、命名、重试等已有信号，不新增全局 Bus 或 Publish(any) 入口。
+
+事件保留发布时的 EventMeta、来源及实际调用 context；不在消费时读取全局选择补全历史事实。背压、FollowEmit／FollowExecutor、Drain／CancelPending 和共享关闭预算沿用[当前信号约定](architecture.md#信号与订阅)。协议流事件先由私有实现处理，公共总线发布业务事实；权限、可改写 Hook、Usage 和关键提交仍同步完成。
+
+#### 主调用链
+
+框表示协议职责，实线表示能力调用。Responses 业务和 Compact 为后续目标，尚未接入。
+
+```mermaid
+flowchart TB
+    ENTRY["公共执行入口<br/>单轮、压缩、准入、取消"]
+    INFO["contextinfo<br/>Conversation / Actor<br/>Execution / Model"]
+    BIND["provider 能力绑定<br/>Loop / Compactor"]
+
+    ENTRY -->|"读取"| INFO
+    ENTRY --> BIND
+
+    subgraph CHAT["Chat"]
+        CB["业务<br/>Loop、上下文<br/>文字摘要、Compactor"]
+        CC["客户端<br/>编码、流解析<br/>GenerateText"]
+        CB -->|"主对话"| CC
+    end
+
+    subgraph RESPONSE["Responses"]
+        RB["业务<br/>Loop、原生上下文<br/>恢复、Compactor"]
+        RC["客户端<br/>编码、原生事件<br/>GenerateText、Compact"]
+        RB -->|"对话、原生压缩"| RC
+    end
+
+    BIND --> CB
+    BIND --> RB
+
+    HTTP["公共传输<br/>HTTP / SSE<br/>代理、超时、取消"]
+    CC --> HTTP
+    RC --> HTTP
 ```
 
-1. 保留 Request 登记前材料加载、登记后 Prompt／Hook／用户消息保存的边界；准备步骤继承当前请求取消、超时和父请求 ID。
-2. 每条路线使用自己的模型请求、流事件累积和工具 loop；不能先把 Responses 全部压成 Chat chunks，再运行旧 Chat loop。
-3. 共同模型调用处理拥有已有 Hook 边界、工具过滤、媒体持有／释放及观察事实。Hook 消费可见业务投影，原生私有推理 items 不混入展示消息或通用 Hook payload；展示改写与模型原文保持各自用途。
-4. 权限、风险确认、工具 Prepared／Completed Hook、文件预检、发现状态和工具调用记录继续由已有 ToolRun 及同步服务处理。协议路线只组织实际参数、调用 ID 和结果的原生表达。
-5. 单轮结果统一完成／暂停／停止／取消／失败／失效、Usage 和提交材料。replyCommitter 保留原有直接／缓冲发送顺序、部分成功、回执关联和已成功不重发的规则。
-6. 进行中的普通 `/model` 修改不改变已取得的请求快照。前台接管会更新来源、权限和准备材料；下一次模型调用需重新校验兼容性，不能在 loop 内直接换到另一协议或丢弃原生状态。不兼容时在请求边界停止并提示，保留已经发生的执行事实。
-7. 命名和独立文本调用使用公共文本生成契约，由相应客户端生成自己的请求；这类调用不续接主会话的 Responses 链。重试事实继续归共享模型服务，不另建旁路重试循环。
+#### 公共协作与事件
 
-### Responses 原生记录、续接和恢复
+本图引用主图业务节点；虚线表示事件发布与消费。
 
-展示消息用于用户历史、权限工具及业务观察；原生协议记录用于保留真实 API 上下文，二者按业务消息／checkpoint 关联，不能相互替代。原生记录保存请求／响应、调用身份、原生 items 和必要推理材料；Session 只保存实际协议／厂商／模型归属及 checkpoint 引用，避免把持续增长的原生历史写进 Session metadata。
+```mermaid
+flowchart LR
+    CHAT["Chat 业务"]
+    RESPONSE["Responses 业务"]
+    ENTRY["公共执行入口"]
+    OTHER["命名、modelmgr"]
 
-- 正常请求沿 `previous_response_id` 续链，每次重新发送当前 instructions，并只追加本次用户输入、pending 和工具结果。instructions 不由上一 response 的顶层字段自动继承，见 [官方迁移说明](https://developers.openai.com/api/docs/guides/migrate-to-responses)。
-- API 的完整终态可以登记原生响应事实；可续接 checkpoint 必须对应已经成功的本地关键提交。回复关联和推进位置使用事务边界，结合既有 binding／attempt 校验阻止迟到完成覆盖新执行。流 token 不逐个写入会话状态。
-- 原样保留返回的推理、调用和其他原生 items，包括接口提供的不可读推理材料；不把推理摘要当作完整推理状态。服务端链失效后，只有同厂商完整原生材料可用时才恢复，见 [官方推理与原生回放说明](https://developers.openai.com/api/docs/guides/reasoning)。
-- 原生记录涉及媒体时保留本地素材关联，由媒体服务生成实际请求载荷；临时 URL 或失效的服务端引用不能单独证明材料完整。缺少必要内容时明确拒绝恢复。
-- 恢复回放的是已保存的调用和结果，不执行历史工具。失败、取消、断流或 incomplete 不能被当作正常完整终态；实际已经成功的工具或发送事实也不能因恢复而被重复执行。
-- 工具参数 Hook 改写后，模型后续上下文必须与实际参数一致。Responses 上下文组件负责原生续接输入的调整，保留必要推理材料；不能保全时，在实际工具执行前拒绝。服务端已有 response 不能被假定可原位修改，具体原生分支／回放方案须先验证和讨论。
-- 普通参数可以按对应协议配置，结构化输出、reasoning、原生工具结果及图文输入由 Responses 路线处理。ElBot 工具与上下文归属不能因额外 payload 绕过业务规则；额外参数覆盖的具体边界列入实施前讨论。
+    SHARED["公共业务协作<br/>ToolRun、媒体<br/>Hook、回复提交"]
 
-### 模型选择与会话归属
+    subgraph EVENTS["公共事件总线"]
+        BUS["类型化 Signal[T]<br/>来源模块定义、发布"]
+        OBSERVER["日志、通知、状态展示<br/>app 管理订阅与生命周期"]
+        BUS -.-> OBSERVER
+    end
 
-`modelmgr.CanSwitch` 只接收实际模型身份和目标选择并判断兼容性，不查询或修改 Session。Session 服务保存实际归属；命令解析目标后预检，再修改原有全局选择。请求入口独立再次检查，防止其他会话、后台覆盖或接管引入不兼容目标。
+    CHAT --> SHARED
+    RESPONSE --> SHARED
 
-兼容检查所需的目标身份由 provider 已绑定路线提供，源身份来自会话原生归属记录；不向 Selection 加回 Protocol，也不让模型服务解析原生请求或选择业务路线。
+    SHARED -.->|"模型、工具、回复事实"| BUS
+    ENTRY -.->|"执行事实"| BUS
+    OTHER -.->|"命名、重试事实"| BUS
+```
+
+### 16.3：Responses 原生上下文
+
+展示消息用于历史与业务观察，原生记录保存真实请求／响应、身份、items 和推理材料，二者按业务消息／checkpoint 关联。Session 只保存归属与 checkpoint 引用，持续增长的原生历史归原生存储。
+
+- 正常沿 previous_response_id 续接，每次重新发送当前 instructions，只追加本次输入、pending 和工具结果，见[官方迁移说明](https://developers.openai.com/api/docs/guides/migrate-to-responses)。
+- API 完整终态可登记响应事实；可续接 checkpoint 仅在本地关键提交成功后推进，保留回复关联、事务及 binding／attempt 校验，阻止迟到写入。流 token 不逐个写入会话状态。
+- 原样保存返回的推理、调用和未知 items，包括不可读材料；摘要不能替代完整推理状态。媒体保留本地素材关联，临时 URL 或失效服务端引用不能证明材料完整，见[原生回放说明](https://developers.openai.com/api/docs/guides/reasoning)。
+- 失败、取消、incomplete 或提前 EOF 不作为正常完整终态。恢复回放已保存的调用和结果，不重新执行历史工具或重复已成功发送。
+- 工具参数 Hook 改写后，后续原生上下文必须与实际参数一致；不能保全时在工具执行前拒绝。服务端已有 response 不假定可原位修改，分支／回放方式须先讨论验证。只接入 ElBot function 工具，不接入服务端内置工具。
+
+### 16.4：模型兼容、恢复、压缩与 fork
+
+modelmgr.CanSwitch 只比较身份，不查询或修改 Session；源身份来自会话记录，目标身份来自 provider 绑定。命令入口先预检再修改全局选择，请求入口再次检查，且检查先于自动压缩与 API 调用。
 
 | 来源与目标 | 行为 |
 |---|---|
-| 无历史的新会话 | 可选任意已配置起始协议／厂商，在实际接入时登记归属 |
-| Chat → Chat | 允许跨厂商；保留请求快照与现有工具语义 |
-| 同厂商 Responses → Responses | 允许切模型、保留原生上下文；服务不兼容时明确报错 |
+| 无历史的新会话 | 选择已配置起始协议／厂商，并在接入时登记归属 |
+| Chat → Chat | 允许跨厂商，保留既有工具语义 |
+| 同厂商 Responses → Responses | 允许切模型，保留原生上下文；实际接口不兼容时报错 |
 | 跨厂商且任一方为 Responses | 拒绝，提示新建会话或切回兼容模型 |
-| 其他会话使全局默认与本会话不兼容 | 本会话在执行前拒绝，不隐式沿用旧模型或迁移上下文 |
-| 修改 provider 配置导致既有协议归属不可用 | 明确报错，不悄悄把旧原生记录解释成另一协议 |
+| 全局默认或 provider 配置使旧会话不兼容 | 执行前拒绝，不隐式沿用旧模型、迁移历史或重解释原生记录 |
 
-兼容检查必须先于自动压缩和 API 调用，不能先压缩旧会话，再发现目标协议不兼容。压缩／命名等独立文本模型选择不改变主会话的协议归属；Responses 原生压缩必须使用该会话同厂商的原生接口。
+服务端链失效时，仅凭同厂商完整原生材料恢复；缺少推理、有效 checkpoint 或素材则拒绝。稳定归属不能只由 provider 别名推断，具体身份字段列入实施前讨论。
 
-### 公共压缩入口与协议私有实现
+公共压缩入口按源会话归属取得 Compactor，私有实现返回统一统计及带协议身份的 seed。公共层保存和交接，Session 负责创建与激活新会话；workspace、命名代数和永久接管等继承语义沿用现状。
 
-```text
-/compact 或自动阈值
-→ 执行协调器：准入、Request、取消
-→ contextmgr.Service.Compact：查询源会话 provider 已绑定的 Compactor
-  ├── chat.Compactor.Prepare：历史筛选、文字摘要、摘要 seed
-  └── responses.Compactor.Prepare：原生窗口、原生压缩、原生 seed
-→ 公共 CompactResult
-→ 执行协调器／Session：创建新 Session、保存 seed、激活与交接
-```
+- Chat 保留文字摘要与现有新 Session seed。Responses 使用同厂商原生压缩，完整保留后续窗口、不可读压缩项及必要 items，以新会话 seed 开始，不接回旧链，见[原生压缩说明](https://developers.openai.com/api/docs/guides/compaction)。
+- 不支持原生压缩、材料不完整或提交失败时明确报错，不退成文字摘要、不改变未成功交接的当前会话。
+- Responses fork 使用指定业务回复关联的完整 checkpoint，继承协议／厂商归属；没有完整 checkpoint 则拒绝，不能用源会话最新 response ID 替代任意历史位置。Chat 保留现有 fork 行为。
 
-- `contextmgr` 继续管理共同上下文查询、用量、阈值和压缩分派；现有 Chat 专用压缩历史筛选、Compressor、提示词和摘要载荷迁入 `agent/chat`。公共层不导入它们的具体实现。
-- `CompactResult` 携带统一统计和带协议标识的 seed；公共层保存、传递和交接 seed，各路线定义并解析自己的私有内容。既有 workspace、永久接管、命名代数等继承规则保持。
-- Chat 保留现有摘要并创建新 Session 的方式。Responses 原生压缩返回完整的后续上下文窗口，含不可读压缩项及必要保留项；窗口原样保存为新会话 seed，不裁掉保留 items，不接回压缩前旧链。见 [官方原生压缩说明](https://developers.openai.com/api/docs/guides/compaction)。
-- app 创建共享注册表和公共服务；Agent 装配协议私有 Loop 与 Compactor，统一登记后封闭注册表，接线成功才开放运行。用户无需选择算法。服务不支持原生压缩、必要原生窗口不完整或提交失败时明确报错，不自动降成文字摘要，不改变未成功交接的当前会话。
-- Responses fork 使用指定业务回复关联的完整 checkpoint 建立分支，继承协议／厂商归属；不能复制源会话当前最新 response ID 当作任意历史位置。没有完整 checkpoint 的位置拒绝，Chat 保留现有行为。
+### 实施前未决问题
 
-### 16.1 当前公共契约
+相应代码任务开始前讨论并验证；出现新的选择或歧义先与用户确认，不由实施者补成既定约定。
 
-- Config 只包含 SoulPath、LLMRequestConfig、SessionIdleExpiration、SandboxRoot、ToolsConfig；必需服务归 Dependencies，runtime context 单独必传，完整依赖仅在装配使用。
-- Loop.PrepareTurn(ctx, TurnMaterials) 返回 PreparedLoop；每轮对象的 PrepareInput(ctx, requestCtx, LoopInput, Output) 返回待保存业务消息，RunLoop 返回公共 LoopResult。原生载荷和循环状态留在路线私有对象中，不通过 any 传递。
-- Runner.PrepareTurn 在 Request 登记前加载材料，Runner.RunTurn 在登记后准备和保存输入、执行路线、收敛 Outcome 及提交回复。材料加载失败不登记 Request，准备取消不保存用户输入或调用模型。
-- 注册表在 app 共享服务创建前建立；Agent 装配完整 Chat 路线，Register 后 Seal，CheckCompaction 校验上下文服务的压缩能力接线，成功后才开放入口。封闭前查询、重复登记、封闭后修改及缺失能力均明确报错。
-- MessageStore 处理用户、pending、工具 transcript 的同步写入；ReplyCommitter 保留实际发送与保存顺序、部分成功和回执关联。media.Manager.AcquireForLLM 集中持有、解析和释放请求素材。
-- Chat seed 元数据格式和消费语义保持当前实现；原生 Exchange／Checkpoint／seed 格式、能力检测与事务边界按后续任务讨论。
+1. 原生路线新增消费接口及其与已实现公共单轮、构造和事件边界的衔接。
+2. 归属身份、Exchange／Checkpoint／seed 字段、媒体关联，以及回复、工具阶段、新 Session 与 checkpoint 的事务边界；沿用现有 binding／attempt。
+3. 完整恢复材料与服务端引用的验证；参数 Hook 改写时如何保全推理状态，何时必须拒绝执行。
+4. 原生压缩能力检测、阈值、新 seed 与旧链分离，以及可建立 fork checkpoint 的业务位置。
 
-### 16.2 当前客户端契约
+### 验收
 
-- llm.Client 提供 Protocol、ListModels、GenerateText；TextRequest 包含模型、instructions、输入文本、可选显式输出上限（零值省略）及 ExtraBody，TextResult 返回文本和 Usage。协议请求与流接口归各自客户端包，公共工具 schema 仅包含 name／description／parameters。
-- app 根据 provider.api_mode 构造实际客户端；modelmgr 校验配置与客户端声明一致，当前 Selection 保存 Client 及 Protocol。对话和压缩仍按协议查注册表，provider 预绑定属于下节待实施调整。
-- 命名和 Chat 文字摘要使用 GenerateText；Responses 独立调用发送当前 instructions／input、store=false，不使用主会话 previous_response_id，也不执行工具。主对话尚无 Responses 路线，准入时先检查能力，再进行自动压缩或用户输入写入。
-- 普通对话、命名及文字摘要不设置内置 token 上限；未配置时省略相应字段，使用上游默认。用户通过 Extra 提供所选 API 支持的 token 参数。
-- httpclient 拥有显式代理、HTTP 初始交换重试、取消、SSE 分帧及首包／空闲超时，API 鉴权和响应解析归客户端。流消费后不自动重放。Responses 原生事件、完整响应、推理 items 和未知字段保留 JSON；失败、incomplete 或提前 EOF 明确报错。
-- provider／模型级 extra_payload 与请求级 ExtraBody 共用只添加规则，不转换协议字段，不递归合并。已有字段及不同层级重名均报错，相同值也不覆盖；模型、输入、工具、流式控制和 Responses 续链／存储字段即使未发送也不能由 Extra 注入。普通 reasoning、采样和输出格式参数按所选 API 配置，不支持时返回上游错误。
-- 两客户端分别编码图文／工具表达，Responses 仅提供 ElBot function 工具编码且默认 strict=false；原生 Compact 接口随 16.4 接入，不创建空实现。
-
-### 16.2a 已确认的 provider 绑定目标
-
-本节为已确认、尚未实施的调整；当前代码仍采用上节契约。下一批先完成本节，再开始 Responses 业务路线。
-
-```text
-启动装配：provider → 实际客户端 + 对应 Loop／Compactor
-运行快照：Selection{Provider, Model, Client}
-  ├── 独立文本 → Client.GenerateText
-  ├── 主对话 → 按 Provider 查询 Loop
-  └── 压缩 → 按源 provider 查询 Compactor
-```
-
-- Selection 不保存重复 Protocol，公共 Client 不提供协议声明查询；模型服务只管理全局模型选择和具体客户端快照。
-- 注册表按 provider 绑定能力，dialogue／contextmgr 分别查询所需能力，公共流程不对客户端类型或协议名称分支。具体客户端和私有流接口由启动装配匹配；同路线多个 provider 可复用无 provider 状态的业务组件。
-- 原生记录、会话归属与兼容检查所需的稳定身份独立保留，不能把客户端对象当作可持久化身份；也不把业务 Loop／Compactor 塞进低层客户端。
-- 保留封闭注册表、构造校验、缺失能力报错、请求快照及取消边界，不增加万能上下文或第二套执行状态。验证 provider 绑定与扩展接入后，同步实际架构和代码地图。
-
-### 实施顺序与验收
-
-16.0 完善本文及任务清单；16.1 的公共执行和 Chat 路线、16.2 的客户端／传输／配置已验收。16.2a 先完成 provider 预绑定及去除运行快照的协议传递；16.3 接入 Responses loop、原生持久化及提交；16.4 完成切换、恢复、压缩、fork 与接管；16.5 完成整体验收。每批保留项目可编译、默认 Chat 可运行；尚未接入的能力明确拒绝。
+按 16.2a → 16.3 → 16.4 → 16.5 接入；每批保持可编译、默认 Chat 可用，未接入能力明确拒绝。
 
 | 验证类别 | 必须覆盖 |
 |---|---|
-| 配置与装配 | 默认 Chat、非法模式、provider 与客户端／路线／策略绑定、真实 app 接线 |
-| 扩展与依赖 | 测试协议经注册接入；路线互不导入；公共层无反向 Agent／具体协议依赖，无万能容器 |
-| Chat 行为 | 原有 messages、工具 loop、摘要、fork、命名与媒体；Extra 只添加及字段冲突回归 |
-| Responses 流 | 文本、推理、多 items、多个工具、图文结果、usage、完整／失败／incomplete、断流及取消 |
-| 工具与 Hook | chat 模式禁用工具、后台白名单、风险确认、参数改写与实际执行一致、文件预检和同步记录 |
-| 模型选择 | 两 Chat 跨厂商、同厂商 Responses 换模型、禁止跨厂商、全局冲突、后台覆盖、进行中快照和接管 |
-| 原生恢复 | 完整材料、缺少推理／素材、失效 ID、checkpoint 保存失败、迟到写入、不重跑工具 |
-| 压缩与 fork | 公共分派、Chat 摘要、Responses 原生窗口、新 Session 提交／继承／交接、准确历史 checkpoint |
-| 提交与生命周期 | 流式／缓冲、部分成功、存储失败、实际回执、追加确认、启动失败及共享关闭预算 |
+| 信息与装配 | 四组事实及缺失、provider 绑定、能力错误、依赖方向、真实 app 接线 |
+| 执行与工具 | pending、停止、确认、接管、媒体、参数 Hook 一致、固定选择及权限 |
+| 原生状态 | 流终态、完整／缺失材料、迟到写入、不重复执行、压缩交接及历史 fork |
+| 提交与生命周期 | 部分成功、实际回执、存储失败、事件快照、背压、启动失败及共享关闭预算 |
 
-实现阶段运行相关包测试、最终全量测试及受影响包 race，保留既有真实入口和启动关闭回归。各批实际落地后再更新 `architecture.md`、`code-map.md`；用户功能／配置变化实施后同步用户文档与 CHANGELOG，英文镜像不手动修改。
-
-### 实施前需讨论并定稿的细节
-
-16.1／16.2 的当前契约及 16.2a 的已确认调整见上文。客户端、公共传输、api_mode 和 Extra 添加规则已经明确并验收；原生 seed 与事务边界仍需讨论。
-
-以下事项不影响本次方案落盘，但在相应代码任务开始前必须完成讨论和验证，不能把尚未确认的具体做法写成既定约定：
-
-1. 后续原生路线所需新增消费接口；沿用公共单轮、构造和事件边界，路线消费按已确认的 provider 预绑定目标接入。
-2. 原生 Exchange／Checkpoint／seed 的字段、媒体关联方式，以及回复、工具阶段、新 Session 和 checkpoint 的事务提交边界；沿用现有 binding／attempt，不新增重复执行状态。
-3. 完整恢复所需材料和可验证的服务端引用；工具参数 Hook 改写时，同厂商原生分支／回放如何保全推理状态，何时必须在执行工具前拒绝。
-4. 原生压缩的能力检测、阈值计算、新 seed 与旧链分离，以及哪些业务消息可建立完整 fork checkpoint。
-
-## 实施前需讨论的细节
-
-阶段 6 的公共信息边界、阶段 7 的统一构造，以及阶段 8 的独立预加载服务、StateService 统一持久化和 Session 后台入口均已明确，见对应章节。阶段 9–15 按本节新增方案实施：包内职责拆分、不持有 Agent、核心协作直接调用、旁路类型化信号、app 拥有订阅、最后单列 Review。阶段 8 中“命名通知暂不发信号”是该阶段验收状态，后续由阶段 13 迁移；命名触发本身仍保持直接调用。阶段 16 按其独立目标树拆出协议路线，已确认约定与实施前未决事项见该节；尚未完成的数据与接口讨论不能由实施者自行补齐。后续实施出现新的多种实现方式或歧义时，仍须先与用户讨论，不将本方案未覆盖的新选择当作已确认约定。
-
-## 验证与文档维护
-
-- 修改 Go 后运行 `gofmt`，每阶段优先运行相关包测试。公共接口调整涉及全部调用方时运行更大范围测试；信号、Session 绑定和共享缓存使用相关 race 测试验证并发行为。
-- 阶段 7、14、15 Review 及阶段 16 整体验收运行 `go test ./...`，并检查依赖方向和完整启动关闭流程；其他阶段按影响范围运行相关或全量测试。发现失败时先定位，不能通过跳过既有测试改变验收标准。
-- `tasks.md` 只跟踪阶段、待办和完成标准；本文维护目标设计、具体做法与已确认约定，避免两份文档重复保存整套实现细节。
-- `architecture.md` 和 `code-map.md` 随代码落地描述当前正确状态。信号、事件对象、绑定和依赖边界等内部约定写入开发文档，不写入用户文档或 `AGENTS.md`。
-- 实际用户功能、命令、配置或行为发生变化时，按仓库规则更新用户文档和 changelog；不能把内部重构约定当作用户功能说明。英文镜像和自动翻译产物不手动修改。
-- 仅方案文档落盘时不运行 Go 测试；阶段实施按上述代码验证规则执行，实际验收通过后再勾选相应任务。
+相关包测试通过后运行全量测试及受影响包 race，保留启动／关闭回归。代码落地后更新当前架构和代码地图，再勾选任务；其他验证与文档规则见 [AGENTS.md](../AGENTS.md)。
