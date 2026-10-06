@@ -101,6 +101,8 @@ The blocking check of root rules is executed prior to normal matching and action
 
 Although `send` action can create an output intent at all Hook points, only the points in the table above where 'outputs will be sent' will consume it. Currently, only the output of `llm.response.received` in `timing = "after_assistant"` will actually be deferred; Outputs from other points are still sent immediately according to the current flow.
 
+`llm.tools` is a read-only array of business tool definitions, each containing `name`, `description`, and `parameters`, and does not include the tool wrapper for a specific API. Protocol request encoding is performed by the client.
+
 The final assistant text usually passes through `agent.turn.output.prepared` first, and then through `agent.output.prepared`. Do not configure the same append/prepend rule at two different points; otherwise, the text will be processed twice.
 
 ### Matching Conditions and Roles
@@ -216,7 +218,7 @@ Process Hooks can also directly return `message.segments` to replace the full co
 - `llm.request.prepared` is bound to the pending item only when a new pending exists before the next request in the tool flow; When there is no pending item, no editable message is provided, and the initial input of this turn cannot be modified again.
 - `tool.call.completed` is bound to the tool result produced after actually entering the tool execution phase; pre-check failure, confirmation rejection, or failure before startup will not trigger this point.
 
-`llm.messages` is the complete working context to be sent to the model, including system, historical messages, current messages, and tool messages, but it is read-only for ordinary Hooks. Hooks cannot modify the system or historical messages. `llm.latest_user_text` is a compatibility view of the text part of the currently bound user message, and no longer represents the last `role=user` in the history; It is empty when no message is bound.
+`llm.messages` is the business work context, containing system, historical messages, current messages, and tool messages, but it is read-only for ordinary Hooks. Chat organizes it as a model request; Responses continue the chain with native records, and requests only send new inputs and tool results. Hooks cannot modify the system or historical messages. `llm.latest_user_text` is a compatibility view of the text part of the currently bound user message, and no longer represents the last `role=user` in the history; It is empty when no message is bound.
 
 Modifications by the user or pending Hooks will be written to the Session history before the model request; Modifications from tool completion Hooks will also be written to the transcript. For plain text continuations, only `content` is saved; when non-text content such as images is included, complete segments are additionally saved. `message.platform_text` always retains the original text from the platform and does not change with segments.
 
@@ -235,7 +237,9 @@ For example, if the original platform message is "This is a dog", a process Hook
 
 Images can use HTTP(S) `url`, `path` relative to the plugin directory, or `base64` up to 10 MiB; path/base64 will be normalized into a data URL readable by the model. `message.segments` modifies the LLM input and Session history; `outputs` creates an output intent sent to the platform; the two will not be converted into each other.
 
-In the tool completion event, `message.role` is `tool`, `message.segments` is the original multimodal result of the tool, and `tool.name` and `tool.id` identify the tool and this specific call. In the tool preparation event, `tool.id` and `tool.name` are read-only; only `tool.arguments` can be rewritten; The rewritten parameters are used for actual execution, subsequent LLM requests, and the transcript.
+In the tool completion event, `message.role` is `tool`, `message.segments` is the original multimodal result of the tool, and `tool.name` and `tool.id` identify the tool and this specific call. `tool.id` and `tool.name` in the tool preparation event are read-only. The `tool.arguments` of Chat can be rewritten; the actual parameters will be written back to the call header before tool execution and used for execution and subsequent requests.
+
+The call set, ID, name, and parameters returned by the Responses model are all read-only, applicable to Go Handlers, rules, and process Hooks; Attempting to rewrite will result in an error and stop the current Hook; when tool preparation fails, the error result is returned using the original `call_id`. Input, display text, and tool results can still be rewritten. This restriction ensures that local execution is consistent with the function call saved on the server.
 
 ## Unified Output
 
