@@ -1096,14 +1096,6 @@
       "translation": "Rescan and load Skills.",
       "updated_at": 1781514917
     },
-    "docs/commands.md:table:975ce60f0128b5777bf462ac960b0e5c410ec7fe5527cfabad230ea591c94730": {
-      "kind": "table",
-      "source": "切换上下文压缩模型。",
-      "source_file": "docs/commands.md",
-      "source_hash": "975ce60f0128b5777bf462ac960b0e5c410ec7fe5527cfabad230ea591c94730",
-      "translation": "Switch the context compaction model.",
-      "updated_at": 1781514917
-    },
     "docs/commands.md:table:99fcf954149006d2eeb8bcb2e5a869876cc6a9da83592f06d5ef09cfb81195c2": {
       "kind": "table",
       "source": "切换 Elnis elwisp2 模型槽位。",
@@ -1296,6 +1288,14 @@
       "translation": "Stop all active requests in the current process.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:e77ee6064631d560c404992e0984beacf59b3027fde41b06891a6075098ba5f9": {
+      "kind": "table",
+      "source": "切换 Chat 文字摘要模型；Responses 原生压缩使用当前对话模型。",
+      "source_file": "docs/commands.md",
+      "source_hash": "e77ee6064631d560c404992e0984beacf59b3027fde41b06891a6075098ba5f9",
+      "translation": "Switch the Chat text summary model; Responses native compression uses the current conversation model.",
+      "updated_at": 1791301180
+    },
     "docs/commands.md:table:ee4fde342c6b96c0fb36095dd7b999194c9c84f49ee6203cd29f80b079c935d9": {
       "kind": "table",
       "source": "等级快捷方式。",
@@ -1402,8 +1402,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "c7c2112169734d2b43049cc58785c8a675555665a609647623266aade3414bd4",
+  "source_hash": "dc6554aa76fffc629d1e0e7864c8777dac8e88c71f4c1b624e63078d53545a53",
   "target": "docs.en/commands.md",
-  "updated_at": 1791193592,
+  "updated_at": 1791301180,
   "version": 2
 }

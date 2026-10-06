@@ -41,7 +41,7 @@ If no issues are found, only `Everything is OK` will be returned. For the check 
 | `/model --elwisp1 <模型>` | Switch to Elnis elwisp1 model slot. |
 | `/model --elwisp2 <模型>` | Switch to Elnis elwisp2 model slot. |
 | `/model --elwisp3 <模型>` | Switch to Elnis elwisp3 model slot. |
-| `/model --compact <模型>` | Switch the context compaction model. |
+| `/model --compact <模型>` | Switch the Chat text summary model; Responses native compression uses the current conversation model. |
 | `/model --naming <模型>` | Switch the Session auto-naming model. |
 | `/checkmodel [关键词]` | View or search for models. |
 
