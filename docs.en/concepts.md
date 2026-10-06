@@ -35,6 +35,8 @@ The purpose of doing this:
 
 You can use `/chat` and `/work` to switch modes at runtime.
 
+Session mode and the Provider's `api_mode` are independent of each other. Existing Chat Sessions can be switched between Chat providers; Existing Responses Sessions can switch Responses models within the same Provider node. A new Session must be created first when switching across protocols or Responses providers.
+
 ## Tool Discovery
 
 ElBot does not inject the full schema of all tools by default in every round of work conversation.
@@ -77,9 +79,11 @@ The new branch inherits the context before the fork point but does not modify th
 
 ## Context compaction
 
-Long conversations will gradually approach the model's context window. Context compaction uses a compression model to organize the current conversation, then assembles the compression result with all historical original user messages as a new context starting point.
+Long conversations will gradually approach the model's context window. Chat Sessions use a compaction model to generate text summaries while preserving the original user utterances from history; The compaction model can use any protocol client. Responses Sessions use the native compaction capabilities of the current conversation model.
 
-After successful compression, it will switch to a completely independent new Session with the title `原标题 compacted-N`. The old Session will not be modified, and there is no Fork relationship between the old and new Sessions. The user's next message will be merged with the assembled compressed content to become the first user message of the new Session. It can be triggered automatically or manually by the user.
+After successful compression, it will switch to a completely independent new Session with the title `原标题 compacted-N`. Chat will merge the compressed content with the next user message for saving; Responses start a new chain from the native window, and subsequent interactions continue along the new chain. Both protocols share the automatic compression switch and threshold, and both support `/compact`.。
+
+When the Responses server explicitly reports that the old chain has expired and no new content has been generated, it will automatically recover once using a complete local native window from the same provider. Recovery will not rerun historical tools or repeat the execution of the current round's Hook; An error will be reported if reasoning or materials are missing, instead of continuing with text history.
 
 ## Prompt and Soul
 
