@@ -99,9 +99,33 @@ func (s *Service) CopyBackground(ctx context.Context, target Scope, req Backgrou
 	row := &storage.Session{ID: nextID, OwnerID: target.ActorID, Platform: target.Platform, PlatformScopeID: target.PlatformScopeID,
 		Mode: storage.SessionModeBackground, Title: title, Status: storage.SessionStatusActive, Metadata: metadata}
 	copies := make([]*storage.Message, 0, len(messages))
+	ids := make(map[string]string, len(messages))
+	for _, message := range messages {
+		ids[message.ID] = storage.NewID()
+	}
 	for _, original := range messages {
 		msg := original
-		msg.ID, msg.SessionID = storage.NewID(), row.ID
+		msg.ID, msg.SessionID = ids[original.ID], row.ID
+		resultID, err := storage.ToolResultMessageID(original)
+		if err != nil {
+			return nil, err
+		}
+		if resultID != "" {
+			if ids[resultID] == "" {
+				return nil, fmt.Errorf("copied tool result is missing")
+			}
+			fields, err := storage.DecodeSessionMetadata(msg.Metadata)
+			if err != nil {
+				return nil, err
+			}
+			if err := fields.Set(storage.ToolResultMessageKey, ids[resultID]); err != nil {
+				return nil, err
+			}
+			msg.Metadata, err = fields.Encode()
+			if err != nil {
+				return nil, err
+			}
+		}
 		msg.ParentMessageID, msg.ReplyToMessageID, msg.ReplyToPlatformMessageID = "", "", ""
 		copies = append(copies, &msg)
 	}

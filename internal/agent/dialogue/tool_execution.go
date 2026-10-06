@@ -44,21 +44,21 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 	cached, err := CachedToolsForSession(ctx, r.State, r.Registry, session)
 	if err != nil {
 		messages := make([]llm.LLMMessage, 0, len(calls))
-		transcript := []storage.Message{ToolCallStorageMessage(session.ID, assistantText, assistantRawText, calls)}
+		head := ToolCallStorageMessage(session.ID, assistantText, assistantRawText, calls)
+		if err := committer.Begin(ctx, &head); err != nil {
+			return toolrun.RunResult{Err: err}
+		}
 		for _, call := range calls {
 			message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s failed: load tool state: %v", call.Name, err))}
 			messages = append(messages, message)
-			transcript = append(transcript, ToolResultStorageMessage(session.ID, message))
-		}
-		if err := committer.Begin(ctx, &transcript[0]); err != nil {
-			return toolrun.RunResult{Err: err}
 		}
 		for i := range messages {
-			if err := committer.Result(ctx, i, calls[i], messages[i], &transcript[i+1]); err != nil {
+			stored := ToolResultStorageMessage(session.ID, messages[i])
+			if err := committer.Result(ctx, i, calls[i], messages[i], &stored); err != nil {
 				return toolrun.RunResult{Err: err}
 			}
 		}
-		return toolrun.RunResult{Messages: messages, PreparedCalls: calls, Transcript: transcript}
+		return toolrun.RunResult{Messages: messages, PreparedCalls: calls}
 	}
 	return r.Manager.Run(ctx, r.Deps.ForTurn(out, turn.AttemptFromContext(ctx)), toolrun.RunRequest{
 		Session:          session,

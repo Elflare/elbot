@@ -35,6 +35,13 @@ func bindProviderRoutes(registry *routes.Registry, models *modelmgr.Service, cha
 	}
 	for _, origin := range models.ProviderOrigins() {
 		client := models.ClientForProvider(origin.Provider)
+		registered, err := registry.CheckProviderBinding(origin, client)
+		if err != nil {
+			return err
+		}
+		if registered {
+			continue
+		}
 		binding := routes.Binding{Origin: origin, Client: client}
 		switch origin.Protocol {
 		case llm.ProtocolChat:

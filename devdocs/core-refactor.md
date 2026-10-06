@@ -8,7 +8,7 @@
 <!-- locator:protocol-routing -->
 ## 阶段 16：公共执行与独立协议路线
 
-16.1–16.4 已接入：公共单轮、独立协议客户端与业务路线、公共事实及 provider 绑定、Responses 原生持久化、兼容检查、恢复、压缩、历史 Fork 和后台副本。当前实现见架构及代码地图，下一步为 16.5 的整体职责／依赖与扩展验收。
+16.1–16.5 已完成：公共单轮、独立协议客户端与业务路线、公共事实及 provider 绑定、Responses 原生持久化、兼容检查、恢复、压缩、历史 Fork 和后台副本已接入，整体职责／依赖与扩展验收通过。当前实现见架构及代码地图。
 
 ### 职责与依赖
 
@@ -147,7 +147,8 @@ flowchart LR
 - 原样保存返回的推理、调用和未知 items，包括不可读材料；摘要不能替代完整推理状态。媒体保留本地素材关联，临时 URL 或失效服务端引用不能证明材料完整，见[原生回放说明](https://developers.openai.com/api/docs/guides/reasoning)。
 - 失败、取消、incomplete 或提前 EOF 不作为正常完整终态。恢复回放已保存的调用和结果，不重新执行历史工具或重复已成功发送。
 - Responses 返回的工具调用集合、ID、名称和参数对 Hook 只读，改写报错并在工具执行前停止；输入、展示文本和工具结果仍可改写，Chat 保留参数改写。只接入 ElBot function 工具，不接入服务端内置工具。
-- 两路线共用同步对话提交口：执行前保存整批调用头，准备后保存实际参数，每个结果在下一工具前提交。Responses 同事务保存业务消息、媒体引用、原生输入／调用状态及 checkpoint；原 Session binding、活跃 attempt 和预期旧 checkpoint 共同约束推进。
+- 两路线共用同步对话提交口：每个实际调用及对应结果以不可变 ToolPair 原子保存，提交后才进入下一工具；没有结果不留下展示调用。Responses 在副作用前保留原生响应／checkpoint／执行状态，结果提交同时保存原生输出和不可变历史快照；原 Session binding、活跃 attempt 和预期旧 checkpoint 共同约束提交。
+- Responses 主对话显式请求加密推理材料，并在恢复、压缩和分支时验证完整性；首次请求失败后可复用完整待提交输入。后台接管刷新工具 schema，解除后台要求的提示使用请求末尾的合成 user 消息，保持 system prompt 不包含该通知。
 - 原生记录存入 native_exchanges／native_inputs／native_calls／native_checkpoints，Session metadata 仅保存 llm_checkpoint 引用。实际编码请求先归档，API 终态事实独立保存，本地关键提交成功才消费输入并推进可续接位置。
 
 正常服务端续链及 16.4 的完整兼容检查、链恢复、原生 seed／压缩和历史 checkpoint Fork 已接入。
@@ -176,11 +177,11 @@ modelmgr.CanSwitch 只比较身份，不查询或修改 Session；源身份来�
 - 两路线复用 compact_enabled、compact_trigger_ratio、当前模型窗口和手动 /compact。Chat 保留文字摘要与 compact_model，任一协议客户端均可提供独立 GenerateText；Responses 固定当前对话模型调用 /responses/compact，不读取 compact_model。
 - Responses 完整保留压缩返回窗口，以新会话 seed 开始，不接回旧链，见[原生压缩说明](https://developers.openai.com/api/docs/guides/compaction)。
 - 不支持原生压缩、材料不完整或提交失败时明确报错，不退成文字摘要、不改变未成功交接的当前会话。
-- Responses fork 支持完整最终回复和工具调用头关联的 checkpoint，继承协议／厂商归属及分叉点当时的不可变材料／调用快照；没有完整 checkpoint 则拒绝，不能用最新 response ID 或之后的结果替代历史位置。未完成调用不在分支执行，补充未在此分支执行或结果未知的输出。Chat 保留现有 fork 行为。
+- 两路线从工具调用头 Fork 时，展示边界包含该调用及结果，排除后续结果。Responses 继承分叉点的不可变 checkpoint／调用快照及已完成结果引用；没有完整材料则拒绝，不能使用最新 response ID 或后续结果替代。未完成调用只在原生分支材料中补未执行／结果未知输出，不重跑历史工具；分支结果媒体重新解析，seed 独立持有素材。
 - Cron 跨平台后台副本同时复制完整原生窗口，复用源材料准备能力，不继承执行／工具运行状态或前台绑定，报告投递保持原有语义。
 - 原生 seed 独立持久化，metadata 只保留引用；新 Session、seed、复制消息及媒体引用原子保存后才激活绑定。交接前复核来源 checkpoint、取消、原绑定及接管状态。首次成功的本地 checkpoint 提交标记 seed 已消费，根材料保留供恢复使用。
 
-上述 16.4 行为已接入，当前职责与文件入口见 architecture.md 和 code-map.md。后续 16.5 按下表进行整体验收；出现新的选择或歧义仍先讨论。
+当前职责与文件入口见 architecture.md 和 code-map.md。16.5 已按下表完成验收；模型选择服务不枚举协议，预登记路线经真实 Agent 入口复用准入、保存、回复、压缩与分支能力。Responses 私有材料逻辑不进入公共执行层。成对约定只保证新写入，不迁移旧展示历史。
 
 ### 验收与Review
 

@@ -36,6 +36,9 @@ type runnerTestDeps struct {
 	prepareContext func(context.Context, *storage.Session, llm.ToolCallRequest) context.Context
 }
 
+func (*runnerTestDeps) RefreshExecution(ctx context.Context, _ *storage.Session) (context.Context, error) {
+	return ctx, nil
+}
 func (*runnerTestDeps) Begin(context.Context, *storage.Message) error            { return nil }
 func (*runnerTestDeps) Prepared(context.Context, int, llm.ToolCallRequest) error { return nil }
 func (*runnerTestDeps) Started(context.Context, int, llm.ToolCallRequest) error  { return nil }

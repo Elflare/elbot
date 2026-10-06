@@ -101,6 +101,15 @@ func TestBackgroundTakeoverDuringToolSharesPending(t *testing.T) {
 	if !found {
 		t.Fatal("pending input missing")
 	}
+	last := requests[1].Messages[len(requests[1].Messages)-1]
+	if last.Role != llm.RoleUser || !strings.Contains(llm.SegmentsTextOnly(last.Segments), "[系统提示]") || !strings.Contains(llm.SegmentsTextOnly(last.Segments), "强制 JSON 输出要求已经解除") {
+		t.Fatalf("notice must be the last user message: %+v", requests[1].Messages)
+	}
+	for _, message := range requests[1].Messages {
+		if message.Role == llm.RoleSystem && strings.Contains(llm.SegmentsTextOnly(message.Segments), "强制 JSON 输出要求已经解除") {
+			t.Fatal("takeover notice changed the system prompt prefix")
+		}
+	}
 	row, err := a.execution.sessionRows.Get(ctx, id)
 	if err != nil {
 		t.Fatal(err)

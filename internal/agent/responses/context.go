@@ -31,6 +31,7 @@ type nativeWindow struct {
 	Origin           llm.Origin
 	Checkpoint       *storage.NativeCheckpoint
 	RetainedMediaIDs []string
+	completedOutputs []api.Item
 }
 
 func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *storage.NativeCheckpoint) (*nativeWindow, error) {
@@ -143,6 +144,35 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		}
 		w.Items = append(w.Items, output...)
 		w.Origin.BaseURL = exchange.BaseURL
+	}
+	var calls []storage.NativeCall
+	if checkpoint.CallsJSON != "" {
+		if err := json.Unmarshal([]byte(checkpoint.CallsJSON), &calls); err != nil {
+			return nil, err
+		}
+	}
+	for _, call := range calls {
+		if call.ResultInputID == "" {
+			continue
+		}
+		input, err := c.Repository.GetInput(ctx, call.ResultInputID)
+		if err != nil {
+			return nil, err
+		}
+		if input.SessionID != row.ID || input.ExchangeID != checkpoint.ExchangeID || input.CallID != call.CallID {
+			return nil, fmt.Errorf("原生分支结果关联不匹配")
+		}
+		item, err := api.ParseItem([]byte(input.ItemJSON))
+		if err != nil {
+			return nil, err
+		}
+		segments, err := inputSegments(*input)
+		if err != nil {
+			return nil, err
+		}
+		w.Materials = append(w.Materials, material{ItemIndex: len(w.Items), Segments: segments})
+		w.Items = append(w.Items, item)
+		w.completedOutputs = append(w.completedOutputs, item)
 	}
 	return w, nil
 }
@@ -483,7 +513,7 @@ func checkpointCalls(cp *storage.NativeCheckpoint, items []api.Item) ([]storage.
 }
 
 func closeBranchCalls(w *nativeWindow, calls []storage.NativeCall) ([]api.Item, error) {
-	var continuation []api.Item
+	continuation := append([]api.Item(nil), w.completedOutputs...)
 	for _, call := range calls {
 		if call.ResultInputID != "" {
 			continue

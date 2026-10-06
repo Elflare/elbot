@@ -105,6 +105,9 @@ func (c *Client) PrepareRequest(req Request) (PreparedRequest, error) {
 	if err != nil {
 		return PreparedRequest{}, err
 	}
+	if err := mergeInclude(body, req.Include); err != nil {
+		return PreparedRequest{}, err
+	}
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
 	encoder.SetEscapeHTML(false)
@@ -112,6 +115,35 @@ func (c *Client) PrepareRequest(req Request) (PreparedRequest, error) {
 		return PreparedRequest{}, fmt.Errorf("marshal response request: %w", err)
 	}
 	return PreparedRequest{body: append([]byte(nil), buf.Bytes()...), model: req.Model, inputs: len(input), tools: len(req.Tools)}, nil
+}
+
+// include is additive: route-required recovery material cannot be removed by
+// configuration. AddExtraFields still rejects duplicate configuration sources.
+func mergeInclude(body map[string]any, required []string) error {
+	var configured []string
+	if value, ok := body["include"]; ok {
+		raw, err := json.Marshal(value)
+		if err != nil || len(raw) == 0 || raw[0] != '[' || json.Unmarshal(raw, &configured) != nil {
+			return fmt.Errorf("include must be an array of strings")
+		}
+	}
+	seen := map[string]bool{}
+	var merged []string
+	for _, values := range [][]string{required, configured} {
+		for _, value := range values {
+			if value == "" {
+				return fmt.Errorf("include entries must not be empty")
+			}
+			if !seen[value] {
+				seen[value] = true
+				merged = append(merged, value)
+			}
+		}
+	}
+	if len(merged) > 0 {
+		body["include"] = merged
+	}
+	return nil
 }
 
 func (c *Client) StreamPrepared(ctx context.Context, prepared PreparedRequest) (<-chan Event, error) {

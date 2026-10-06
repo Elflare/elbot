@@ -64,7 +64,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 				}
 			}
 			s.messages = updated
-			s.messages = withForegroundInstructions(s.messages)
 			s.tools, err = r.Tools.Schemas(s.requestCtx, s.session)
 			if err != nil {
 				return failedLoop(err)
@@ -127,7 +126,19 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		s.messages = append(s.messages, llm.LLMMessage{Role: llm.RoleAssistant, Segments: llm.TextSegments(assistantRawText), ToolCalls: result.ToolCalls})
 		if toolRounds >= r.Tools.MaxRoundsPerTurn() {
 			s.output.SendPreview(s.ctx, fmt.Sprintf("已达到 max_rounds_per_turn=%d，后续工具调用未执行，正在请求模型总结当前进度。", r.Tools.MaxRoundsPerTurn()))
-			s.messages = append(s.messages, skippedToolMessages(result.ToolCalls, r.Tools.MaxRoundsPerTurn())...)
+			skipped := skippedToolMessages(result.ToolCalls, r.Tools.MaxRoundsPerTurn())
+			committer := &dialogue.ToolTranscriptCommitter{Messages: r.Tools.Messages}
+			head := dialogue.ToolCallStorageMessage(s.session.ID, assistantRawText, assistantRawText, result.ToolCalls)
+			if err := committer.Begin(s.requestCtx, &head); err != nil {
+				return failedLoop(err)
+			}
+			for i, message := range skipped {
+				stored := dialogue.ToolResultStorageMessage(s.session.ID, message)
+				if err := committer.Result(s.requestCtx, i, result.ToolCalls[i], message, &stored); err != nil {
+					return failedLoop(err)
+				}
+			}
+			s.messages = append(s.messages, skipped...)
 			var summaryPending *dialogue.PendingUserMessage
 			s.messages, summaryPending = drainPendingUserInput(r.Turns, s.session.ID, s.messages, turn.AttemptFromContext(s.ctx))
 			s.messages = append(s.messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("工具调用轮次已达到上限，可以询问用户是否继续或者基于已有工具结果和当前上下文总结当前进度。")})

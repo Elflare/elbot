@@ -1,7 +1,6 @@
 package modelmgr
 
 import (
-	"strings"
 	"testing"
 
 	"elbot/internal/config"
@@ -47,16 +46,19 @@ func TestSelectionCarriesClientAndCompositionOriginsAreSnapshots(t *testing.T) {
 	}
 }
 
-func TestNewRejectsInvalidAPIMode(t *testing.T) {
-	for _, mode := range []string{"responses", "invalid"} {
+func TestNewLeavesProtocolValidationToComposition(t *testing.T) {
+	for _, mode := range []string{"custom", "test"} {
 		t.Run(mode, func(t *testing.T) {
 			opts := testOptions()
 			provider := opts.Providers["p"]
 			provider.APIMode = mode
 			opts.Providers["p"] = provider
-			_, err := New(opts)
-			if err == nil || !strings.Contains(err.Error(), "api_mode") || !strings.Contains(err.Error(), "p") {
+			service, err := New(opts)
+			if err != nil {
 				t.Fatalf("error=%v", err)
+			}
+			if service.ResolveMode("work").Client != opts.Clients["p"] {
+				t.Fatal("custom protocol lost its configured client")
 			}
 		})
 	}

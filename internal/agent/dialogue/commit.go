@@ -2,7 +2,6 @@ package dialogue
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"elbot/internal/llm"
@@ -71,31 +70,46 @@ func (c messageCommitter) Commit(ctx context.Context, message *storage.Message) 
 	return c.store.Append(ctx, message, c.operation)
 }
 
-// ToolTranscriptCommitter retains a single batch head while committing each
-// prepared call and result before advancing the shared ToolRun.
+// ToolTranscriptCommitter commits each completed display-history pair.
 type ToolTranscriptCommitter struct {
 	Messages  *MessageStore
-	HeadID    string
 	SessionID string
 }
 
 func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Message) error {
-	if err := c.Messages.Append(ctx, head, "append_tool_transcript"); err != nil {
-		return err
-	}
-	c.HeadID, c.SessionID = head.ID, head.SessionID
-	return nil
+	c.SessionID = head.SessionID
+	return c.Messages.Append(ctx, ToolBatchText(head), "append_tool_transcript")
 }
-func (c *ToolTranscriptCommitter) Prepared(ctx context.Context, index int, call llm.ToolCallRequest) error {
-	raw, err := json.Marshal(call)
-	if err != nil {
-		return err
-	}
-	return c.Messages.Commit(ctx, storage.DialogueCommit{SessionID: c.SessionID, ToolCall: &storage.ToolCallUpdate{MessageID: c.HeadID, Index: index, Call: raw}}, "update_tool_transcript")
+func (c *ToolTranscriptCommitter) Prepared(context.Context, int, llm.ToolCallRequest) error {
+	return nil
 }
 func (c *ToolTranscriptCommitter) Started(context.Context, int, llm.ToolCallRequest) error {
 	return nil
 }
-func (c *ToolTranscriptCommitter) Result(ctx context.Context, _ int, _ llm.ToolCallRequest, _ llm.LLMMessage, stored *storage.Message) error {
-	return c.Messages.Append(ctx, stored, "append_tool_transcript")
+func (c *ToolTranscriptCommitter) Result(ctx context.Context, _ int, call llm.ToolCallRequest, _ llm.LLMMessage, stored *storage.Message) error {
+	return c.Messages.Commit(ctx, storage.DialogueCommit{SessionID: c.SessionID, ToolPair: NewToolPair(c.SessionID, call, stored)}, "append_tool_transcript")
+}
+
+func ToolBatchText(head *storage.Message) *storage.Message {
+	if head.Content == "" {
+		return nil
+	}
+	metadata := AssistantMessageMetadata(head.Metadata)
+	message := ToolCallStorageMessage(head.SessionID, head.Content, metadata.RawText, nil)
+	message.ID = storage.NewID()
+	return &message
+}
+
+func NewToolPair(sessionID string, call llm.ToolCallRequest, result *storage.Message) *storage.ToolPair {
+	if result.ID == "" {
+		result.ID = storage.NewID()
+	}
+	head := ToolCallStorageMessage(sessionID, "", "", []llm.ToolCallRequest{call})
+	head.ID = storage.NewID()
+	fields, _ := storage.DecodeSessionMetadata(head.Metadata)
+	_ = fields.Set(storage.ToolResultMessageKey, result.ID)
+	head.Metadata, _ = fields.Encode()
+	head.CreatedAt = storage.Now()
+	result.CreatedAt = head.CreatedAt
+	return &storage.ToolPair{Call: &head, Result: result}
 }

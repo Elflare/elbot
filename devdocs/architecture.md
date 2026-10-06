@@ -85,13 +85,13 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 2. Agent 委托 messageHandler 处理唤醒、入站媒体与平台 Hook；commandExecutor 分发命令，inputCoordinator 准备普通输入，执行与确认组件处理 pending 和确认响应。
 3. executionCoordinator 在准入内检查目标 provider 能力、登记会话归属并启动 attempt，dialogue.Runner 加载单轮材料并按 provider 取得路线；协调器登记 Request 后，路线准备业务输入并执行公共准备 Hook，通过本轮 MessageCommitter 保存用户输入，再由私有路线调用模型。
 4. LLM 返回文本、reasoning 或 tool call。
-5. 如果有 tool call，两路线通过公共 ToolExecutor、既有 ToolRun 和 toolRunDeps 执行工具；调用头在执行前保存，每个实际参数和结果在进入下一工具前同步提交，由私有路线组织后续请求。
+5. 如果有 tool call，两路线通过公共 ToolExecutor、既有 ToolRun 和 toolRunDeps 执行工具；每个实际调用及对应结果在同一事务提交，成功后才进入下一工具，由私有路线组织后续请求。
 6. 最终输出前，dialogue.Runner 通过 ExecutionView 刷新接管来源和 Session，发布 sending 状态，再调用公共 ReplyCommitter。
 7. ReplyCommitter 执行最终输出 Hook，通过 Output／outputSender 发送并按直接／缓冲路径完成 assistant 落库及实际回执关联；Runner 返回单轮结果，由 executionCoordinator 继续执行收尾。
 
 关键约定：
 
-- user 与工具 transcript 通过共同 DialogueRepository 提交；前置 Hook 绑定的当前消息在调用 LLM 前以最终 segments 落库。调用头保留整批调用，每个准备后的参数和完成结果分别提交；停止不丢失已提交结果，不编造仍在执行工具的结果。
+- user 与工具 transcript 通过共同 DialogueRepository 提交；前置 Hook 绑定的当前消息在调用 LLM 前以最终 segments 落库。每个 ToolPair 包含一条不可变调用头和对应结果，保存实际参数及媒体引用；没有结果不写展示调用，失败或拒绝有明确结果时也成对保存。调用前普通文本独立保存一次。
 - CommitGate 复核原 Session binding 和仍存活的 Execution／attempt，只在本地事务期间持有准入。Responses 同一事务保存业务消息、媒体引用、原生输入／调用状态及 checkpoint；checkpoint 以预期旧引用比较后推进，API 审计事实独立归档。
 - 多模态消息的 `segments` 保存原始结构；`content` 由 segments 生成可读文本投影。请求 OpenAI-compatible 模型时，再按每条消息的图片顺序临时插入对应文本标签，不向 segment JSON 增加派生字段。
 - 公共 ReplyCommitter 用最终展示文本调用输出适配器完成流式 replace／finish；历史正文与原始模型文本不受展示 Hook 改写影响。
@@ -100,6 +100,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - 普通输入在工具阶段不会打断工具，会以 text/image segments 进入 pending；下一次 LLM 调用前已有的 pending 会合并注入当前轮，最终 LLM 调用期间新到达的 pending 则在当前轮正常结束后作为新用户消息自动开启下一轮。
 - chat.Loop 拥有 Prompt Builder；系统提示来源与构建器归 dialogue，每个 turn 从 Soul、工具提示、工具标签和当前 actor 的常驻记忆构建一次 system message，该消息只在当前 turn 内复用，不进入会话历史。
 - responses.Loop 拥有原生输入队列、当前 checkpoint 和本轮原生响应；每次调用重新构建 instructions，传入固定选择快照，仅解析新增输入的媒体并沿 previous_response_id 续链。公共 Hook 读取业务投影，原生 items 不进入 Chat messages 或公共执行状态。
+- 接管后刷新模型、工具 schema 和业务投影。公共 CallProcessor 在请求末尾追加带 `[系统提示]` 标记的合成 user 消息，说明后台要求解除；该提示不进入 system prompt 或展示历史。Responses 私有路线将相同提示保存为原生输入，重试复用待提交提示并保持它在输入末尾。
 - 单轮结果区分完成、暂停、停止、取消、失败与 attempt 已失效，保留提交事实、Usage、模型和计时。回复成功后，协调器依次处理 Touch、Usage、完成状态、压缩提示、pending 交接、Execution 结果和命名；提交期间进入追加确认也不会丢失已成功提交的用量。
 - 单轮材料加载在 Request 登记前，Prompt／Hook 和用户消息落库在登记后；Request 及 attempt 清理由执行协调器负责，dialogue.Runner 不结束跨轮 Execution。
 - 登记后的 Prompt、工具准备、`llm.turn.prepared`、媒体归一与用户消息落库使用 Turn Request context；准备阶段检查取消，Hook 子请求继承父请求 ID。状态发布和已完成回复提交沿用执行 context，保证已提交事实不被模型请求取消吞掉。
@@ -142,22 +143,26 @@ Agent 只保存对外能力所需的组件引用和信号集合；消息、后�
 <!-- locator:protocol-routing -->
 ## 协议路线与压缩分派
 
-- `llm.ProtocolID` 与 Session 的 chat/work/background 模式独立。`Selection` 只固定 Provider、Model、Client；modelmgr 提供从启动配置取得的不可变 Origin 描述，Agent 装配时按 api_mode 校验客户端满足路线所需私有接口。
+- `llm.ProtocolID` 与 Session 的 chat/work/background 模式独立。`Selection` 只固定 Provider、Model、Client；modelmgr 提供从启动配置取得的不可变 Origin 描述，不枚举支持的协议名称。内置配置及客户端创建由 config/app 校验，Agent 装配验证路线所需私有接口。
 - Chat Completions 与 Responses 客户端分别位于 llm/chatcompletions、llm/responses；各自编码原生请求和消费流。公共 llm.Client 只提供模型列表及独立 GenerateText，公共消息／工具定义不包含协议 JSON 包装。
 - httpclient 仅负责 HTTP、显式代理、可取消重试、SSE 分帧及超时；协议包负责鉴权、API 错误和成功终态。断流不重放请求，Extra 只补充字段，已有字段、受控名称或不同层级重名在发送前拒绝。
 - 命名与 Chat 文字摘要使用 GenerateText，可选择任一已配置客户端；Responses 独立调用使用 store=false，不续接主会话或执行工具。Chat 和 Responses 均登记主对话 Loop、Compactor 及来源材料准备能力；缺失主对话能力仍在自动压缩、保存输入和请求前拒绝。
 - `agent/routes.Registry` 按 provider 保存 Binding{Origin, Client, Loop, Compactor, Material}，另登记源协议 Compactor／MaterialPreparer。客户端必需，业务能力按需登记；重复绑定、空客户端、未登记的能力接线、封闭前查询及封闭后修改明确报错。同路线共享无 provider 状态的业务组件，能力查询分别使用目标 provider 或源 Origin。
 - dialogue、contextmgr、session 分别消费 LoopResolver、CompactorResolver、MaterialResolver；注册表依赖公共契约，公共层不导入注册表实现、Agent 根包或具体路线。
-- app 在创建上下文服务前建立注册表，Agent 装配内部路线并封闭注册表，验证压缩与材料接线成功后返回。注册表不保存执行、会话或工具状态，不提供完整依赖容器。
+- app 在创建上下文服务前建立注册表，Agent 保留与配置 Origin 和 Client 匹配的预登记路线，为其余 provider 装配内置路线并封闭注册表，验证压缩与材料接线成功后返回。注册表不保存执行、会话或工具状态，不提供完整依赖容器。
 - `/compact` 与自动阈值继续进入 executionCoordinator，公共 contextmgr.Compact 只从源 Session 的 llm_origin 查询 Compactor，不用摘要目标或当前配置猜来源；旧 provider 删除或配置改变时仍可使用已登记的源协议能力。Chat 私有实现负责历史筛选、摘要提示、模型选择和 seed 准备。公共层负责命名信息与统计，执行／Session 负责创建、继承、保存和交接。
 - 两路线共用 compact_enabled、compact_trigger_ratio 和当前模型窗口。Chat 保留文字摘要与输入保存后消费 seed 的语义；Responses 固定当前主对话 Selection 调用原生 Compact，完整保存返回窗口，以独立 seed 创建新链。首个成功 checkpoint 在同一事务标记 seed 已消费，根材料继续保留。
 - `modelmgr.CanSwitch` 纯比较源／目标身份：Chat 可跨 Chat 厂商，同一 provider 节点的 Responses 可切模型，跨协议及涉及 Responses 的跨厂商切换拒绝。命令解析候选、预检受影响槽位后才提交全局状态；执行入口在归属登记、自动压缩和保存输入前再次检查，接管后的后续调用也检查。后台永久接管在 metadata 更新前检查 work 选择，拒绝时保留原执行。
 
-Responses 请求在 HTTP 调用前保存实际编码 JSON，终态保存原始 response 和完成 items，包括未知及 encrypted_content 字段。失败、取消、incomplete 或提前 EOF 不推进 checkpoint；空业务回复仍可提交 cursor，缓冲发送失败保留已提交位置。function call 响应与调用头先提交 checkpoint，每个工具结果再与原生 function_call_output 同事务入队。中断后的普通续接补齐未执行／结果未知输出，不重跑历史工具。
+Responses 请求在 HTTP 调用前保存实际编码 JSON，主对话显式请求 reasoning.encrypted_content，与合法配置的 include 合并去重；终态保留原始 response 和完成 items。失败、取消、incomplete 或提前 EOF 不推进 checkpoint；首次失败留下的完整待提交用户输入可在下次请求继续，展示历史与原生输入不匹配时拒绝。空业务回复仍可提交 cursor，缓冲发送失败保留已提交位置。
+
+function call 响应、原生调用及 checkpoint 在工具副作用前保存，展示层不预写调用头。每个工具完成后，ToolPair、原生 function_call_output、执行状态和该展示调用头的历史快照同事务提交。历史快照复用 checkpoint 表，保持原 exchange 的 parent／response／seed，不推进活动游标或消费输入；分支只读取当时冻结的结果引用。中断后的普通续接只在原生层补齐未执行／结果未知输出，不编造展示结果或重跑历史工具。
 
 `responses.Context` 从 seed 根、checkpoint 前序链及已提交 exchange 的有序新输入和完整输出重建原生窗口。明确的旧链失效错误且尚无新响应内容时，清空 previous_response_id，以同厂商完整材料重试一次；普通网络、鉴权、含糊错误、部分流及第二次失败不再恢复。base_url 与最近实际 exchange 的地址不同时直接重建。恢复复用本轮已准备输入、instructions、工具和 Selection，不重跑 Hook／工具。缺少完整推理、原生载荷或有效本地素材则拒绝，不用文字投影替代。
 
 SQLite 的 native_exchanges、native_inputs、native_calls、native_checkpoints、native_seeds 保存原生状态；Session metadata 仅存 llm_origin、llm_checkpoint、llm_seed 等身份与引用。exchange 保存有序新输入清单，checkpoint 保存当时的不可变调用快照及根 seed 引用。媒体以本地 ID 关联业务消息、原生输入和 seed，重建时重新解析并持有素材；压缩保留隐含在不可读状态中的素材引用，来源删除不影响独立 seed。Responses 调用集合、ID、名称及参数通过消费方注入的 Hook 只读策略保护，公共 Hook 和 ToolRun 不判断协议。
+
+工具调用头通过 tool_result_message_id 关联结果。公共 Fork 将展示边界解析到对应结果之后；后台复制重新生成消息 ID 时同步重映射关联。Responses 的历史材料准备、未完成调用结尾及分支结果媒体解析归私有 Context，Session 只负责共同准入、创建与激活。新写入遵循成对约定，旧展示历史不在本轮迁移范围内。
 
 <!-- locator:commands -->
 ## 命令链路

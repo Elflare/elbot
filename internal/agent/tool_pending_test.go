@@ -333,7 +333,7 @@ func TestToolChildRequestCancelReturnsToolMessageAndContinuesTurn(t *testing.T) 
 	}
 }
 
-func TestTurnRequestCancelKeepsCallHeadWithoutInventingToolResult(t *testing.T) {
+func TestTurnRequestCancelLeavesNoUnpairedCallAndCanContinue(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
@@ -382,8 +382,20 @@ func TestTurnRequestCancelKeepsCallHeadWithoutInventingToolResult(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 2 || messages[1].Role != storage.RoleAssistant || !strings.Contains(messages[1].Metadata, "call_1") {
-		t.Fatalf("lost admitted tool call head: %+v", messages)
+	if len(messages) != 1 || messages[0].Role != storage.RoleUser {
+		t.Fatalf("unpaired call persisted: %+v", messages)
+	}
+	if err := a.HandleMessage(ctx, "继续"); err != nil {
+		t.Fatal(err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 2 {
+		t.Fatalf("requests = %d", len(requests))
+	}
+	for _, message := range requests[1].Messages {
+		if len(message.ToolCalls) != 0 || message.Role == llm.RoleTool {
+			t.Fatalf("unpaired historical tool: %+v", message)
+		}
 	}
 	for _, msg := range messages {
 		if msg.Role == storage.RoleTool && msg.ToolCallID == "call_1" {
