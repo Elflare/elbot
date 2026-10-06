@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
-	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 )
@@ -48,7 +48,7 @@ type RunRequest struct {
 	AssistantText    string
 	AssistantRawText string
 	CachedTools      []CachedTool
-	Actor            security.Actor
+	Actor            contextinfo.Actor
 }
 
 type RunResult struct {
@@ -81,7 +81,7 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 				return RunResult{Messages: messages, PreparedCalls: preparedCalls, Transcript: transcript, Stopped: true}
 			}
 			ctx = updated
-			if actor, ok := security.ActorFromContext(ctx); ok {
+			if actor, ok := contextinfo.ActorFromContext(ctx); ok {
 				req.Actor = actor
 			}
 		}
@@ -209,7 +209,7 @@ func sendBatchToolPreview(ctx context.Context, deps RunnerDeps, req RunRequest) 
 	return true
 }
 
-func (m *Manager) confirm(ctx context.Context, deps RunnerDeps, actor security.Actor, sessionID string, call llm.ToolCallRequest, resolved ResolvedTool, assessment tool.RiskAssessment) (ConfirmResult, error) {
+func (m *Manager) confirm(ctx context.Context, deps RunnerDeps, actor contextinfo.Actor, sessionID string, call llm.ToolCallRequest, resolved ResolvedTool, assessment tool.RiskAssessment) (ConfirmResult, error) {
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
 	if !resolved.Available {
 		message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: %s", call.Name, resolved.Reason))
@@ -224,7 +224,7 @@ func (m *Manager) confirm(ctx context.Context, deps RunnerDeps, actor security.A
 		return ConfirmResult{Message: message}, fmt.Errorf("native tool unavailable")
 	}
 	info := resolved.Native.Info()
-	if info.SuperadminOnly && actor.Role != security.RoleSuperadmin {
+	if info.SuperadminOnly && actor.Role != contextinfo.RoleSuperadmin {
 		deps.AuditToolDenied(ctx, sessionID, call, assessment.Level, "tool_requires_superadmin")
 		message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s denied: requires superadmin role", call.Name))
 		return ConfirmResult{Message: message}, fmt.Errorf("tool requires superadmin")

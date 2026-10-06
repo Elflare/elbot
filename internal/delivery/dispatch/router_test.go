@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 )
@@ -27,9 +27,9 @@ func (s testSender) SendNotice(ctx context.Context, notice delivery.Notice) (del
 
 func TestRouterPreservesConcurrentSourceSnapshots(t *testing.T) {
 	var mu sync.Mutex
-	seen := map[string]chatinfo.Info{}
+	seen := map[string]contextinfo.Conversation{}
 	sender := testSender{send: func(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
-		info, ok := chatinfo.FromContext(ctx)
+		info, ok := contextinfo.ConversationFromContext(ctx)
 		if !ok {
 			return delivery.Receipt{}, errors.New("missing source")
 		}
@@ -43,11 +43,11 @@ func TestRouterPreservesConcurrentSourceSnapshots(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := range 24 {
 		id := fmt.Sprint(i)
-		info := chatinfo.Info{Source: chatinfo.Source{Platform: "test", ScopeID: id}, PlatformMessageID: "message-" + id, PlatformData: id}
+		info := contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: id}, PlatformMessageID: "message-" + id, PlatformData: id}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ctx := chatinfo.WithInfo(context.Background(), info)
+			ctx := contextinfo.WithConversation(context.Background(), info)
 			if _, err := router.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(id)}}); err != nil {
 				t.Error(err)
 			}

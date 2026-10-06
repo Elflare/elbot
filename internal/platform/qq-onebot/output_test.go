@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 )
 
@@ -19,7 +19,7 @@ func testTargetContext(t target) context.Context {
 	if t.MessageType == "group" {
 		id = t.GroupID
 	}
-	return chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ScopeID: oneBotTargetScope(t), ConversationKind: chatinfo.ConversationKind(t.MessageType), ConversationID: fmt.Sprint(id)}})
+	return contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ScopeID: oneBotTargetScope(t), ConversationKind: contextinfo.ConversationKind(t.MessageType), ConversationID: fmt.Sprint(id)}})
 }
 
 func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {

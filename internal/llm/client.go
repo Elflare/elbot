@@ -7,7 +7,6 @@ import (
 
 // Client exposes independent operations, not a particular conversation protocol.
 type Client interface {
-	Protocol() ProtocolID
 	ListModels(context.Context) ([]string, error)
 	GenerateText(context.Context, TextRequest) (TextResult, error)
 }

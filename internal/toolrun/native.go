@@ -3,6 +3,7 @@ package toolrun
 import (
 	"context"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/tool"
@@ -30,7 +31,7 @@ func (s *NativeSource) BaseSchemas(ctx context.Context) []llm.ToolSchema {
 	return s.Registry.SchemasForContext(func(info tool.Info) bool { return AvailableInContext(ctx, info) })
 }
 
-func (s *NativeSource) ToolInfos(ctx context.Context, actor security.Actor, policy *security.Policy) []tool.Info {
+func (s *NativeSource) ToolInfos(ctx context.Context, actor contextinfo.Actor, policy *security.Policy) []tool.Info {
 	if s == nil || s.Registry == nil {
 		return nil
 	}
@@ -45,7 +46,7 @@ func (s *NativeSource) ToolInfos(ctx context.Context, actor security.Actor, poli
 	return available
 }
 
-func (s *NativeSource) ToolNames(ctx context.Context, actor security.Actor, policy *security.Policy) []string {
+func (s *NativeSource) ToolNames(ctx context.Context, actor contextinfo.Actor, policy *security.Policy) []string {
 	infos := s.ToolInfos(ctx, actor, policy)
 	names := make([]string, 0, len(infos))
 	for _, info := range infos {

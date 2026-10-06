@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/platform"
@@ -18,7 +18,7 @@ import (
 
 type noticeSender struct {
 	calls int
-	info  chatinfo.Info
+	info  contextinfo.Conversation
 	err   error
 }
 
@@ -27,7 +27,7 @@ func (s *noticeSender) SendChat(context.Context, []delivery.Output) (delivery.Re
 }
 func (s *noticeSender) SendNotice(ctx context.Context, _ delivery.Notice) (delivery.Receipt, error) {
 	s.calls++
-	s.info, _ = chatinfo.FromContext(ctx)
+	s.info, _ = contextinfo.ConversationFromContext(ctx)
 	return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, s.err
 }
 
@@ -47,8 +47,8 @@ func TestNotificationSourceSurvivesNewContextAndRejectsExpiredBinding(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	info := chatinfo.Info{Source: chatinfo.Source{Platform: "test", ScopeID: "old"}, PlatformMessageID: "original", PlatformData: "extension"}
-	ctx = session.WithBinding(chatinfo.WithInfo(ctx, info), binding)
+	info := contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: "old"}, PlatformMessageID: "original", PlatformData: "extension"}
+	ctx = session.WithBinding(contextinfo.WithConversation(ctx, info), binding)
 	intent := Capture(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("warning")}})
 	sender := &noticeSender{err: errors.New("send failed")}
 	manager := New(sender, nil, false)
@@ -92,10 +92,10 @@ func TestCapturedNoticeDoesNotBorrowAnotherMessagesSender(t *testing.T) {
 	router := dispatch.New(dispatch.Options{})
 	router.RegisterPlatformSender("test", registered)
 	manager := New(router, nil, false)
-	info := chatinfo.Info{Source: chatinfo.Source{Platform: "test", ScopeID: "same-user"}, PlatformData: "first-connection"}
-	origin := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: info, Sender: original})
+	info := contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: "same-user"}, PlatformData: "first-connection"}
+	origin := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: info, Sender: original})
 	intent := Capture(origin, delivery.Notice{Outputs: []delivery.Output{delivery.Text("delayed")}})
-	worker := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: info.Source, PlatformData: "second-connection"}, Sender: other})
+	worker := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: info.Source, PlatformData: "second-connection"}, Sender: other})
 	if _, err := manager.Send(worker, intent); err != nil {
 		t.Fatal(err)
 	}

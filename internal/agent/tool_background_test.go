@@ -2,8 +2,10 @@ package agent
 
 import (
 	"context"
+
 	"elbot/internal/background"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
@@ -37,7 +39,7 @@ func TestRunBackgroundPreloadsShellWithContextActorAndAutoConfirmsSandboxShell(t
 		Name:          "home/curl/event-1",
 		Title:         "Elnis shell test",
 		Platform:      "qqonebot",
-		Actor:         security.Actor{ID: "elnis:home", Platform: "elnis", PlatformUserID: "home", Role: security.RoleSuperadmin},
+		Actor:         contextinfo.Actor{ID: "elnis:home", Platform: "elnis", PlatformUserID: "home", Role: contextinfo.RoleSuperadmin},
 		ScopeID:       "elnis:home/curl/event-1",
 		Prompt:        "create a file",
 		ToolListNames: []string{"discover_tool", "shell"},
@@ -91,7 +93,7 @@ func TestRunBackgroundPreloadsSkillDetailAndActivatedHiddenWrapper(t *testing.T)
 		cfg.ToolRegistry = registry
 	})
 
-	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "skill-test", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"docx"}})
+	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "skill-test", Platform: "cli", Actor: contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"docx"}})
 	if err != nil {
 		t.Fatalf("RunBackground: %v", err)
 	}
@@ -134,7 +136,7 @@ func TestRunBackgroundUsesBackgroundModeWhenDefaultModeIsChat(t *testing.T) {
 		cfg.ToolRegistry = registry
 	})
 
-	result, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "chat-default", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"web_extract"}})
+	result, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "chat-default", Platform: "cli", Actor: contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"web_extract"}})
 	if err != nil {
 		t.Fatalf("RunBackground: %v", err)
 	}
@@ -173,7 +175,7 @@ func TestRunBackgroundCreatesFreshSessionForEachCronTrigger(t *testing.T) {
 		Kind:     background.KindCron,
 		Name:     "fresh-session",
 		Platform: "cli",
-		Actor:    security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin},
+		Actor:    contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin},
 		ScopeID:  "cron:fresh-session",
 		Prompt:   "run",
 	}
@@ -218,7 +220,7 @@ func TestRunBackgroundRepairsReusedSessionModeAndMetadata(t *testing.T) {
 		cfg.ToolRegistry = registry
 	})
 
-	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "old", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, ScopeID: "cron:old", SessionID: oldSession.ID, Prompt: "run", ToolListNames: []string{"web_extract"}, Metadata: map[string]string{"cron_job_name": "old"}})
+	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "old", Platform: "cli", Actor: contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}, ScopeID: "cron:old", SessionID: oldSession.ID, Prompt: "run", ToolListNames: []string{"web_extract"}, Metadata: map[string]string{"cron_job_name": "old"}})
 	if err != nil {
 		t.Fatalf("RunBackground: %v", err)
 	}
@@ -254,7 +256,7 @@ func TestRunBackgroundPreloadsMixedToolAndSkillWithoutSkillSchema(t *testing.T) 
 		cfg.ToolRegistry = registry
 	})
 
-	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "mixed-test", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"web_extract", "docx"}})
+	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "mixed-test", Platform: "cli", Actor: contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"web_extract", "docx"}})
 	if err != nil {
 		t.Fatalf("RunBackground: %v", err)
 	}
@@ -286,7 +288,7 @@ func TestRunBackgroundPreloadsToolListNamesWithoutDiscoverTool(t *testing.T) {
 		cfg.ToolRegistry = registry
 	})
 
-	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "test", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"web_search", "web"}})
+	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "test", Platform: "cli", Actor: contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"web_search", "web"}})
 	if err != nil {
 		t.Fatalf("RunBackground: %v", err)
 	}
@@ -325,7 +327,7 @@ func TestRunBackgroundToolPhaseDoesNotPublishRuntimeStatus(t *testing.T) {
 		cfg.ToolRegistry = registry
 	})
 
-	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "tool-status", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "run"})
+	_, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "tool-status", Platform: "cli", Actor: contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}, Prompt: "run"})
 	if err != nil {
 		t.Fatalf("RunBackground: %v", err)
 	}
@@ -352,7 +354,7 @@ func TestRunBackgroundReturnsRawAssistantTextForJSONParsing(t *testing.T) {
 		cfg.SandboxRoot = t.TempDir()
 		cfg.HookManager = hooks
 	})
-	result, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "raw-result", Platform: "cli", Actor: security.Actor{ID: "cli:local", Role: security.RoleSuperadmin}, Prompt: "run"})
+	result, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "raw-result", Platform: "cli", Actor: contextinfo.Actor{ID: "cli:local", Role: contextinfo.RoleSuperadmin}, Prompt: "run"})
 	if err != nil {
 		t.Fatal(err)
 	}

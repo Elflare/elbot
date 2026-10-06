@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -65,12 +65,12 @@ func TestPlatformMediaMaterializesOnlyWhenConsumed(t *testing.T) {
 			a := newTestMediaAgent(t, &fakePlatform{}, &fakeLLM{}, store, media.NewManager(store, root, &media.LocalBackend{Root: root}), func(cfg *testAgentOptions) {
 				cfg.HookRuntime = route
 			})
-			conversation := chatinfo.ConversationGroup
+			conversation := contextinfo.ConversationGroup
 			if tc.private {
-				conversation = chatinfo.ConversationPrivate
+				conversation = contextinfo.ConversationPrivate
 			}
 			segment := platform.MessageSegment{Type: platform.SegmentImage, PlatformFileID: "file", Name: "image.png"}
-			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "telegram", ScopeID: "group:1", ConversationKind: conversation}, Identity: chatinfo.Identity{PlatformUserID: "1"}}, MediaResolver: resolver, Segments: []platform.MessageSegment{segment, segment}})
+			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram", ScopeID: "group:1", ConversationKind: conversation}, Identity: contextinfo.Identity{PlatformUserID: "1"}}, MediaResolver: resolver, Segments: []platform.MessageSegment{segment, segment}})
 			if err := a.HandleMessage(ctx, ""); err != nil {
 				t.Fatal(err)
 			}
@@ -89,7 +89,7 @@ func TestPlatformMediaUnavailableAndMetadata(t *testing.T) {
 	root := t.TempDir()
 	a := &messageHandler{media: media.NewManager(store, root, &media.LocalBackend{Root: root})}
 	resolver := &inboundMediaResolver{}
-	msg := platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "telegram"}}, MediaResolver: resolver}
+	msg := platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram"}}, MediaResolver: resolver}
 	segment := platform.MessageSegment{Type: platform.SegmentImage, PlatformFileID: "image"}
 	got := a.materializePlatformSegment(context.Background(), msg, segment)
 	if !media.ValidID(got.MediaID) || got.MIMEType != "image/png" || got.Size != 5 || got.PlatformFileID != "" || got.URL != "" {
@@ -120,7 +120,7 @@ func TestPlatformMediaCopiesShareResolutionWithoutDroppingPositions(t *testing.T
 	}
 	resolver := &inboundMediaResolver{data: data.Bytes()}
 	segment := platform.MessageSegment{Type: platform.SegmentImage, PlatformFileID: "image", Name: "image.png"}
-	original := platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "telegram"}}, MediaResolver: resolver,
+	original := platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram"}}, MediaResolver: resolver,
 		Segments: []platform.MessageSegment{segment, segment}, ContextSegments: []platform.MessageSegment{segment},
 		Reply: platform.ReplyContext{Segments: []platform.MessageSegment{segment}},
 	}

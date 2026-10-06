@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
+	"elbot/internal/contextinfo"
 	sandboxctx "elbot/internal/sandbox"
-	"elbot/internal/security"
 	"elbot/internal/workspace"
 )
 
@@ -70,8 +70,8 @@ func (s *Service) current(ctx context.Context) (*fileRollbackCall, error) {
 	if sandboxctx.BackgroundContext(ctx) {
 		return nil, fmt.Errorf("rollback is only available in foreground sessions")
 	}
-	actor, ok := security.ActorFromContext(ctx)
-	if !ok || actor.Role != security.RoleSuperadmin {
+	actor, ok := contextinfo.ActorFromContext(ctx)
+	if !ok || actor.Role != contextinfo.RoleSuperadmin {
 		return nil, fmt.Errorf("rollback requires superadmin role")
 	}
 	if s == nil || s.Manager == nil {

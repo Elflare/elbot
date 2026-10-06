@@ -2,14 +2,14 @@ package session
 
 import (
 	"context"
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"time"
 
 	"elbot/internal/storage"
 )
 
 type Scope struct {
-	ConversationKind chatinfo.ConversationKind
+	ConversationKind contextinfo.ConversationKind
 	ActorID          string
 	Platform         string
 	PlatformScopeID  string
@@ -57,6 +57,8 @@ type Config struct {
 
 type TitleResult struct {
 	RawTitle string
+	Provider string
+	Model    string
 }
 
 type TitleGenerator interface {
@@ -75,6 +77,8 @@ type NamingCompletedEvent struct {
 	Title        string
 	TriggeredAt  time.Time
 	MessageCount int
+	Provider     string
+	Model        string
 }
 
 type NamingFailedEvent struct {
@@ -93,4 +97,6 @@ type NamingFailedEvent struct {
 	MaxFailures              int
 	FallbackApplied          bool
 	FallbackTitle            string
+	Provider                 string
+	Model                    string
 }

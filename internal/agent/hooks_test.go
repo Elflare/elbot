@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/chatinfo"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
@@ -17,7 +17,7 @@ import (
 
 func TestFillHookContextAddsPlatformMessageIDs(t *testing.T) {
 	bridge := &hookBridge{identity: &identityResolver{scopeID: "default"}}
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq-onebot",
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq-onebot",
 		ScopeID: "group:123"}, PlatformMessageID: "456",
 		ReplyToMessageID: "789"},
 		PlatformMessage: []byte(`[{"type":"json","data":{"data":"{}"}}]`)})
@@ -41,7 +41,7 @@ func TestFillHookContextAddsPlatformMessageIDs(t *testing.T) {
 
 func TestFillHookContextKeepsExplicitPlatformMessageIDs(t *testing.T) {
 	bridge := &hookBridge{identity: &identityResolver{scopeID: "default"}}
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{
 		PlatformMessageID: "from-context",
 		ReplyToMessageID:  "reply-from-context"}})
 
@@ -60,9 +60,9 @@ func TestFillHookContextKeepsExplicitPlatformMessageIDs(t *testing.T) {
 
 func TestFillHookContextAddsIntentTextWithoutWakeupPrefix(t *testing.T) {
 	bridge := &hookBridge{identity: &identityResolver{scopeID: "default"}}
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq-onebot",
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq-onebot",
 		ScopeID:          "group:123",
-		ConversationKind: chatinfo.ConversationGroup}}, TriggerKeywords: []string{"芙莉丝"},
+		ConversationKind: contextinfo.ConversationGroup}}, TriggerKeywords: []string{"芙莉丝"},
 	})
 
 	event := bridge.fillContext(ctx, hook.Event{
@@ -92,7 +92,7 @@ func TestRunHookErrorSendsFailureNotice(t *testing.T) {
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli",
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli",
 		ScopeID: "private:test"}}, Sender: p,
 	})
 
@@ -118,7 +118,7 @@ func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
 		t.Fatalf("start turn: %v", err)
 	}
 	defer parentDone()
-	ctx := request.WithTurnID(parentCtx, parent.ID)
+	ctx := parentCtx
 
 	if err := manager.Register(hook.Registration{
 		Point: hook.PointAgentInputPrepared,

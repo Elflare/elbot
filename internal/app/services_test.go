@@ -16,13 +16,13 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	elcron "elbot/internal/cron"
 	"elbot/internal/delivery"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/platform"
-	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -162,7 +162,7 @@ func TestRuntimeAssemblyCommandsShareToolAndModelServices(t *testing.T) {
 	if p.completer == nil || len(p.catalog) != len(runtime.Commands.Commands()) {
 		t.Fatal("platform did not receive the registered commands and completion service")
 	}
-	ctx := security.WithActor(context.Background(), security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin})
+	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin})
 	send := func(text string) {
 		t.Helper()
 		if err := runtime.Handler.HandleMessage(ctx, text); err != nil {
@@ -212,7 +212,7 @@ func TestRuntimeAssemblyCommandsShareToolAndModelServices(t *testing.T) {
 		t.Fatalf("next request used %v", selections)
 	}
 	before := p.text()
-	result, err := runtime.Agent.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "assembly", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "background", ModelProvider: "test", Model: "second"})
+	result, err := runtime.Agent.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "assembly", Platform: "cli", Actor: contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}, Prompt: "background", ModelProvider: "test", Model: "second"})
 	if err != nil || result.Text != "assembled answer" || result.SessionID == "" {
 		t.Fatalf("background = %#v, %v", result, err)
 	}
@@ -238,7 +238,6 @@ func TestRuntimeAssemblyFailureReturnsOwnedWorkers(t *testing.T) {
 	}
 }
 
-func (m *assemblyModel) Protocol() llm.ProtocolID { return llm.ProtocolChat }
 func (m *assemblyModel) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {
 	messages := []llm.LLMMessage{}
 	if req.Instructions != "" {

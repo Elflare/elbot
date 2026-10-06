@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -38,8 +39,8 @@ func TestSchemaProviderHidesSuperadminOnlyToolNamesFromNormalUser(t *testing.T) 
 	}
 	provider := SchemaProvider{Registry: registry, Policy: security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})}
 	scope := session.Scope{Platform: "cli", ActorID: "cli:guest"}
-	actor := security.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: security.RoleUser}
-	ctx := security.WithActor(context.Background(), actor)
+	actor := contextinfo.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: contextinfo.RoleUser}
+	ctx := contextinfo.WithActor(context.Background(), actor)
 
 	names, err := provider.ToolNames(ctx, storage.SessionModeWork, &storage.Session{}, scope)
 	if err != nil {

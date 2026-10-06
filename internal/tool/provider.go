@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -58,7 +59,7 @@ func (p SchemaProvider) ToolNames(ctx context.Context, mode string, session *sto
 	return PromptNamesFromInfos(p.allowedInfos(actor)), nil
 }
 
-func (p SchemaProvider) allowedInfos(actor security.Actor) []Info {
+func (p SchemaProvider) allowedInfos(actor contextinfo.Actor) []Info {
 	policy := p.Policy
 	if policy == nil {
 		policy = security.DefaultPolicy()
@@ -73,12 +74,12 @@ func (p SchemaProvider) allowedInfos(actor security.Actor) []Info {
 	return out
 }
 
-func actorFromScope(ctx context.Context, scope session.Scope) security.Actor {
-	if actor, ok := security.ActorFromContext(ctx); ok {
+func actorFromScope(ctx context.Context, scope session.Scope) contextinfo.Actor {
+	if actor, ok := contextinfo.ActorFromContext(ctx); ok {
 		return actor
 	}
 	if policy, ok := security.PolicyFromContext(ctx); ok && policy != nil {
 		return policy.Actor(scope.ActorID, scope.Platform, scope.ActorID, "")
 	}
-	return security.Actor{ID: scope.ActorID, Platform: scope.Platform, PlatformUserID: scope.ActorID, Role: security.RoleUser}
+	return contextinfo.Actor{ID: scope.ActorID, Platform: scope.Platform, PlatformUserID: scope.ActorID, Role: contextinfo.RoleUser}
 }

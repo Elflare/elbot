@@ -4,13 +4,13 @@ import (
 	"context"
 	"testing"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 )
 
 func TestChatHistoryUsesPublicSourceAndSender(t *testing.T) {
-	ctx := chatinfo.WithInfo(context.Background(), chatinfo.Info{
-		Source:   chatinfo.Source{Platform: "qqofficial", ScopeID: "group:openid"},
-		Identity: chatinfo.Identity{ActorID: "qqofficial:user", PlatformUserID: "user"},
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{
+		Source:   contextinfo.Source{Platform: "qqofficial", ScopeID: "group:openid"},
+		Identity: contextinfo.Identity{ActorID: "qqofficial:user", PlatformUserID: "user"},
 	})
 	chat, err := currentChatHistoryContext(ctx)
 	if err != nil || chat.Platform != "qqofficial" || chat.ScopeID != "group:openid" {

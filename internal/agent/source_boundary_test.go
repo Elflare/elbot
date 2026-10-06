@@ -7,12 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/chatinfo"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/platform"
-	"elbot/internal/security"
 	"elbot/internal/storage"
 )
 
@@ -101,7 +100,7 @@ func TestConnectedHooksKeepAbsentChatIdentity(t *testing.T) {
 
 func TestHookReadsPublicInfoWithoutPlatformExtension(t *testing.T) {
 	bridge := &hookBridge{identity: &identityResolver{platformName: "cli", actorID: "cli:local", scopeID: "local"}}
-	ctx := chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "local"}, Identity: chatinfo.Identity{PlatformUserID: "local"}, PlatformMessageID: "incoming", ReplyToMessageID: "replied"})
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "local"}, Identity: contextinfo.Identity{PlatformUserID: "local"}, PlatformMessageID: "incoming", ReplyToMessageID: "replied"})
 	e := bridge.fillContext(ctx, hook.Event{})
 	if e.Platform.PlatformMessageID != "incoming" || e.Platform.ReplyToMessageID != "replied" || e.Actor.ID != "cli:local" {
 		t.Fatalf("event=%#v", e)
@@ -110,19 +109,19 @@ func TestHookReadsPublicInfoWithoutPlatformExtension(t *testing.T) {
 
 func TestHookKeepsExplicitFieldsAndDoesNotFillPartialSource(t *testing.T) {
 	bridge := &hookBridge{identity: &identityResolver{platformName: "cli", actorID: "cli:local", scopeID: "local"}}
-	ctx := chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: "telegram"}})
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram"}})
 	e := bridge.fillContext(ctx, hook.Event{})
 	if e.Platform.Name != "telegram" || e.Platform.ScopeID != "" || e.Platform.UserID != "" || e.Actor != (hook.ActorContext{}) {
 		t.Fatalf("platform-only Info invented identity: %#v", e)
 	}
-	actor := security.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: security.RoleUser}
-	ctx = security.WithActor(ctx, actor)
+	actor := contextinfo.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: contextinfo.RoleUser}
+	ctx = contextinfo.WithActor(ctx, actor)
 	explicit := hook.Event{Platform: hook.PlatformContext{Name: "explicit", ScopeID: "explicit-scope", UserID: "explicit-user", PlatformMessageID: "explicit-message", ReplyToMessageID: "explicit-reply"}, Actor: hook.ActorContext{ID: "explicit-actor", Role: "explicit-role", DisplayName: "explicit-name"}}
 	e = bridge.fillContext(ctx, explicit)
 	if e.Platform != explicit.Platform || e.Actor != explicit.Actor {
 		t.Fatalf("explicit fields overwritten: %#v", e)
 	}
-	e = bridge.fillContext(security.WithActor(context.Background(), actor), hook.Event{})
+	e = bridge.fillContext(contextinfo.WithActor(context.Background(), actor), hook.Event{})
 	if e.Actor.ID != actor.ID || e.Actor.Role != string(actor.Role) || e.Platform.ScopeID != "" {
 		t.Fatalf("explicit security actor lost: %#v", e)
 	}

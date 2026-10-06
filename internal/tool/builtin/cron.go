@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/contextinfo"
 	elcron "elbot/internal/cron"
 	"elbot/internal/llm"
-	"elbot/internal/security"
 	"elbot/internal/tool"
 	"elbot/internal/tool/runtimeinfo"
 )
@@ -334,10 +334,10 @@ func decodeArgs(raw json.RawMessage, out any) error {
 	return nil
 }
 
-func actorFromContext(ctx context.Context) security.Actor {
-	actor, ok := security.ActorFromContext(ctx)
+func actorFromContext(ctx context.Context) contextinfo.Actor {
+	actor, ok := contextinfo.ActorFromContext(ctx)
 	if !ok {
-		return security.Actor{Role: security.RoleUser}
+		return contextinfo.Actor{Role: contextinfo.RoleUser}
 	}
 	return actor
 }

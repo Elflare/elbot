@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/chatinfo"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/tool"
 )
 
@@ -34,9 +34,9 @@ func TestLocalCLITakeoverDeliversFinalOutput(t *testing.T) {
 		close(release)
 		t.Fatal("tool did not start")
 	}
-	ctx := chatinfo.WithInfo(context.Background(), chatinfo.Info{
-		Source:   chatinfo.Source{Platform: "cli", ScopeID: "local", ConversationKind: chatinfo.ConversationUnknown, ConversationID: "local"},
-		Identity: chatinfo.Identity{ActorID: "cli:local", PlatformUserID: "local"},
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{
+		Source:   contextinfo.Source{Platform: "cli", ScopeID: "local", ConversationKind: contextinfo.ConversationUnknown, ConversationID: "local"},
+		Identity: contextinfo.Identity{ActorID: "cli:local", PlatformUserID: "local"},
 	})
 	err := a.HandleMessage(ctx, "/resume "+f.chatRequests()[0].SessionID)
 	close(release)

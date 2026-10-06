@@ -10,7 +10,6 @@ import (
 	chatroute "elbot/internal/agent/chat"
 	"elbot/internal/agent/dialogue"
 	agentevents "elbot/internal/agent/events"
-	"elbot/internal/agent/routes"
 	"elbot/internal/contextmgr"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -38,7 +37,7 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 	}
 	status := &statusRecorder{turns: turns, changed: signals.StatusChanged}
 	output := &outputSender{dispatcher: deps.Dispatcher, notifications: deps.Notifications, hooks: hooks, identity: identity, logger: logger}
-	view := dialogue.ExecutionView{Sessions: store.Sessions()}
+	view := dialogue.ExecutionView{Sessions: store.Sessions(), Providers: deps.Routes}
 	replies := &dialogue.ReplyCommitter{Messages: store.Messages(), Output: output, Delivered: signals.ReplyDelivered, Committed: signals.ReplyCommitted}
 	waitPolicy := &confirmationPolicy{identity: identity, idleExpiration: sessionIdleExpirationConfig(cfg.SessionIdleExpiration), userConfirmationTimeout: defaultUserConfirmationTimeout}
 	confirmations := &confirmationCoordinator{
@@ -67,13 +66,10 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 	calls := &dialogue.CallProcessor{Messages: messages, Media: deps.Media, Hooks: hooks, Identity: identity, Tools: tools, Completed: signals.ModelCallCompleted, Vision: signals.VisionFallbackUsed}
 	chat := &chatroute.Loop{Logger: logger, Contexts: deps.Contexts, Models: deps.Models, Turns: turns, View: view, Preparer: preparer, Tools: tools, Messages: messages, Caller: &chatroute.Caller{Calls: calls}, PromptBuilder: chatroute.PromptBuilder{System: buildSystemPrompt(cfg.SoulPath, deps.ResidentMemoryStore, toolRuntime.provider, deps.ToolPreloader)}}
 	compactor := &chatroute.Compactor{Store: store, Models: deps.Models, Contexts: deps.Contexts, Loader: contextmgr.Loader{Store: store}}
-	if err := deps.Routes.Register(routes.Route{Protocol: llm.ProtocolChat, Loop: chat, Compactor: compactor}); err != nil {
+	if err := bindProviderRoutes(deps.Routes, deps.Models, chat, compactor); err != nil {
 		return nil, err
 	}
-	if err := deps.Routes.Seal(); err != nil {
-		return nil, err
-	}
-	if err := deps.Contexts.CheckCompaction(llm.ProtocolChat); err != nil {
+	if err := deps.Contexts.CheckCompaction(llm.Origin{Protocol: llm.ProtocolChat}); err != nil {
 		return nil, fmt.Errorf("context compaction wiring: %w", err)
 	}
 	runner := &dialogue.Runner{Routes: deps.Routes, Preparer: preparer, Messages: messages, Replies: replies, Turns: turns, View: view}

@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"elbot/internal/command"
-	"elbot/internal/security"
+	"elbot/internal/contextinfo"
 	"elbot/internal/storage"
 )
 
@@ -120,7 +120,7 @@ func (c renameCommand) Info() command.Info {
 		Usage:         "/rename [number|session_id|current_title] <title>",
 		Description:   "Rename current or selected session.",
 		SessionEffect: command.SessionEffectMutate,
-		MinRole:       security.RoleUser,
+		MinRole:       contextinfo.RoleUser,
 		Help:          "Usage:\n  /rename <title>\n  /rename <number|session_id|current_title> <title>\n\nIf current_title matches more than one visible session, use /sessions and rename by number or session id.",
 	}
 }
@@ -227,7 +227,7 @@ type sessionTargetCommand struct {
 }
 
 func (c sessionTargetCommand) Info() command.Info {
-	return command.Info{Name: c.name, Usage: c.usage, Description: c.description, SessionEffect: command.SessionEffectMutate, MinRole: security.RoleUser}
+	return command.Info{Name: c.name, Usage: c.usage, Description: c.description, SessionEffect: command.SessionEffectMutate, MinRole: contextinfo.RoleUser}
 }
 
 func (c sessionTargetCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {

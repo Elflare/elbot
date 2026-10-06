@@ -4,9 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/security"
 )
 
 // PlatformAdapter is the interface for message platform adapters (CLI, QQ, etc.).
@@ -75,8 +74,8 @@ type Mention struct {
 
 // MessageContext carries per-message platform routing and actor data.
 type MessageContext struct {
-	chatinfo.Info
-	GroupRole             security.GroupRole
+	contextinfo.Conversation
+	GroupRole             contextinfo.GroupRole
 	Sender                delivery.ContextSender
 	BufferAssistantOutput bool
 	ForkFromMessageID     string
@@ -97,10 +96,21 @@ type MessageContext struct {
 type messageContextKey struct{}
 
 func WithMessageContext(ctx context.Context, msg MessageContext) context.Context {
-	return context.WithValue(chatinfo.WithInfo(ctx, msg.Info), messageContextKey{}, msg)
+	ctx = contextinfo.WithConversation(ctx, msg.Conversation)
+	// Only contextinfo owns the public snapshot. The platform value contains
+	// private state; readers receive a projection of the current public facts.
+	msg.Conversation = contextinfo.Conversation{}
+	return context.WithValue(ctx, messageContextKey{}, msg)
 }
 
 func MessageContextFrom(ctx context.Context) (MessageContext, bool) {
 	msg, ok := ctx.Value(messageContextKey{}).(MessageContext)
+	if ok {
+		msg.Conversation, _ = contextinfo.ConversationFromContext(ctx)
+	}
 	return msg, ok
+}
+
+func WithoutMessageContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, messageContextKey{}, struct{}{})
 }

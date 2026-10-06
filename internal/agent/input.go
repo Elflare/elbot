@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"elbot/internal/command"
+	"elbot/internal/contextinfo"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
-	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -160,7 +160,7 @@ func (c *inputCoordinator) expireIdleCurrentSession(ctx context.Context) error {
 	actor := c.identity.Actor(ctx)
 	result, err := c.sessions.ExpireIdleCurrent(ctx, session.ExpireIdleRequest{
 		Scope:        c.identity.Scope(ctx),
-		IsSuperadmin: actor.Role == security.RoleSuperadmin,
+		IsSuperadmin: actor.Role == contextinfo.RoleSuperadmin,
 		Config:       c.waitPolicy.idleExpiration,
 		Now:          time.Now(),
 	})

@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/elyph"
 	"elbot/internal/llm"
-	"elbot/internal/security"
 	"elbot/internal/tool"
 	"elbot/internal/tool/runtimeinfo"
 )
@@ -93,7 +93,7 @@ func (d Descriptor) ActivateTools() []string {
 
 func agentSkillNotice(ctx context.Context, record Record) string {
 	var lines []string
-	if actor, ok := security.ActorFromContext(ctx); ok && actor.Role == security.RoleSuperadmin {
+	if actor, ok := contextinfo.ActorFromContext(ctx); ok && actor.Role == contextinfo.RoleSuperadmin {
 		lines = append(lines, "- 如该文档有脚本，请发现 agent_skill_creator，参考其说明是否把他注册成普通工具。")
 	}
 	if record.ManifestFound && record.ManifestError != "" {

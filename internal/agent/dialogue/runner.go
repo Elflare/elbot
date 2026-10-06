@@ -24,15 +24,19 @@ type PreparedTurn struct{ loop PreparedLoop }
 
 // CheckSelection validates route availability before compaction or input writes.
 func (r *Runner) CheckSelection(selection modelmgr.Selection) error {
-	_, err := r.Routes.LoopFor(selection.Protocol)
+	_, err := r.Routes.LoopFor(selection.Provider)
 	if err != nil {
-		return fmt.Errorf("主对话协议 %q 尚未接入或接线无效：%w", selection.Protocol, err)
+		return fmt.Errorf("provider %q 主对话尚未接入或接线无效：%w", selection.Provider, err)
 	}
 	return nil
 }
 
 func (r *Runner) PrepareTurn(ctx context.Context, in TurnInput) (*PreparedTurn, error) {
-	route, err := r.Routes.LoopFor(in.Selection.Protocol)
+	route, err := r.Routes.LoopFor(in.Selection.Provider)
+	if err != nil {
+		return nil, err
+	}
+	ctx, err = r.View.WithModel(ctx, in.Selection)
 	if err != nil {
 		return nil, err
 	}
@@ -61,6 +65,15 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 			result.Outcome = Superseded
 		}
 	}()
+	var err error
+	ctx, err = r.View.WithModel(ctx, in.Selection)
+	if err == nil {
+		requestCtx, err = r.View.WithModel(requestCtx, in.Selection)
+	}
+	if err != nil {
+		result.Outcome, result.Err = FailedOutcome(err), err
+		return result
+	}
 	loopIn := LoopInput{Session: in.Session, Text: in.Text, Selection: in.Selection, RequestID: in.RequestID, StartedAt: result.StartedAt}
 	prepared := in.Prepared.loop
 	user, err := prepared.PrepareInput(ctx, requestCtx, loopIn, out)
@@ -87,6 +100,14 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		return result
 	}
 	ctx = r.View.Context(ctx)
+	ctx, err = r.View.WithModel(ctx, result.Selection)
+	if err == nil {
+		requestCtx, err = r.View.WithModel(requestCtx, result.Selection)
+	}
+	if err != nil {
+		result.Outcome, result.Err = FailedOutcome(err), err
+		return result
+	}
 	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: in.Session.ID, Phase: runtimestatus.PhaseSending,
 		Provider: result.Selection.Provider, Model: result.Selection.Model, Mode: in.Session.Mode, RequestID: in.RequestID,
 		Kind: request.KindTurn, Label: "chat", TurnStartedAt: result.StartedAt, StageStartedAt: storage.Now()})

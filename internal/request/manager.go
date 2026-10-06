@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/storage"
 )
 
@@ -91,6 +92,15 @@ func (m *Manager) Start(parent context.Context, start StartRequest) (Request, co
 	if req.Kind == "" {
 		req.Kind = KindLLM
 	}
+	execution, _ := contextinfo.ExecutionFromContext(ctx)
+	execution.RequestID, execution.ParentRequestID = req.ID, req.ParentID
+	if req.SessionID != "" {
+		execution.SessionID = req.SessionID
+	}
+	if req.Kind == KindTurn || execution.RootRequestID == "" {
+		execution.RootRequestID = req.ID
+	}
+	ctx = contextinfo.WithExecution(ctx, execution)
 
 	m.mu.Lock()
 	m.active[req.ID] = &activeRequest{request: req, cancel: cancel}

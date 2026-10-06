@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	agentevents "elbot/internal/agent/events"
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery/dispatch"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
@@ -48,7 +48,7 @@ func (d *statusDisplay) receive(ctx context.Context, event agentevents.StatusCha
 	if err != nil || display == "" {
 		return err
 	}
-	info, _ := chatinfo.FromContext(ctx)
+	info, _ := contextinfo.ConversationFromContext(ctx)
 	key := statusTarget{SessionID: event.Snapshot.SessionID, Platform: info.Source.Platform, ScopeID: info.Source.ScopeID, ConversationID: info.Source.ConversationID, Display: display}
 	d.mu.Lock()
 	defer d.mu.Unlock()

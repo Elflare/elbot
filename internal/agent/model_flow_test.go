@@ -2,8 +2,8 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/chatinfo"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
@@ -297,7 +297,7 @@ func TestModelSwitchUsesMessagePlatformCurrentModeForGlobalState(t *testing.T) {
 	}
 	client := &fakeLLM{models: []string{"deepseek-chat"}}
 
-	qqCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "admin"}}})
+	qqCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: contextinfo.Identity{PlatformUserID: "admin"}}})
 	a := mustNewWithOptions(t, testAgentOptions{Platform: p, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.Client{"deepseek": client, "zhipu": client}, ModeModels: modeModels, Providers: providers, StatePath: statePath, DefaultMode: storage.SessionModeWork}), Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}}, func(cfg *testAgentOptions) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "high", map[string][]string{"qq": {"admin"}})
 	})

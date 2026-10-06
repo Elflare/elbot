@@ -31,6 +31,10 @@ type llmCallResult struct {
 }
 
 func (c *Caller) Call(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *dialogue.PendingUserMessage, stream delivery.MessageStream, out dialogue.Output) (result llmCallResult, callErr error) {
+	client, ok := selection.Client.(chatcompletions.Streamer)
+	if !ok {
+		return llmCallResult{}, fmt.Errorf("provider %q does not provide the Chat streaming capability", selection.Provider)
+	}
 	sessionID := session.ID
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
 	startedAt := time.Now()
@@ -49,13 +53,6 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 		SessionID: sessionID,
 		Messages:  requestMessages,
 		Tools:     tools,
-	}
-	if selection.Client == nil {
-		return llmCallResult{}, fmt.Errorf("client not found for provider %q", selection.Provider)
-	}
-	client, ok := selection.Client.(chatcompletions.Streamer)
-	if !ok || selection.Protocol != llm.ProtocolChat {
-		return llmCallResult{}, fmt.Errorf("provider %q does not provide the Chat streaming capability", selection.Provider)
 	}
 	ch, err := client.Stream(ctx, req)
 	if err != nil {

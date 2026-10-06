@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 )
@@ -81,7 +82,7 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, error
 		}
 		result = &DiscoveryResult{Tools: out}
 	} else {
-		details, errors := t.registry.DiscoverDetails(security.WithActor(ctx, actor), names, func(candidate Tool) bool {
+		details, errors := t.registry.DiscoverDetails(contextinfo.WithActor(ctx, actor), names, func(candidate Tool) bool {
 			info := candidate.Info()
 			return InfoAvailableInContext(ctx, info) && CanAccessTool(actor, policy, info)
 		})
@@ -201,14 +202,14 @@ func discoveryContent(ctx context.Context, registry *Registry, result *Discovery
 	return strings.Join(parts, "\n\n"), nil
 }
 
-func discoverySecurity(ctx context.Context) (security.Actor, *security.Policy) {
+func discoverySecurity(ctx context.Context) (contextinfo.Actor, *security.Policy) {
 	policy, ok := security.PolicyFromContext(ctx)
 	if !ok || policy == nil {
 		policy = security.DefaultPolicy()
 	}
-	actor, ok := security.ActorFromContext(ctx)
+	actor, ok := contextinfo.ActorFromContext(ctx)
 	if !ok {
-		actor = security.Actor{Role: security.RoleUser}
+		actor = contextinfo.Actor{Role: contextinfo.RoleUser}
 	}
 	return actor, policy
 }

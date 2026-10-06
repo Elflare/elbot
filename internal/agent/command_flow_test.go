@@ -2,8 +2,8 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/chatinfo"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/platform"
@@ -89,7 +89,7 @@ func TestRegularUserCanUseOwnDataSlashCommands(t *testing.T) {
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: contextinfo.Identity{PlatformUserID: "regular"}}})
 
 	if err := a.HandleMessage(ctx, "/new"); err != nil {
 		t.Fatalf("/new: %v", err)
@@ -130,7 +130,7 @@ func TestRegularUserHelpHidesSuperadminCommands(t *testing.T) {
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: contextinfo.Identity{PlatformUserID: "regular"}}})
 
 	if err := a.HandleMessage(ctx, "/help"); err != nil {
 		t.Fatalf("/help: %v", err)
@@ -163,7 +163,7 @@ func TestRegularUserCannotUseSuperadminSlashCommands(t *testing.T) {
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: contextinfo.Identity{PlatformUserID: "regular"}}})
 
 	for _, cmd := range []string{"/model", "/requests", "/audit", "/log", "/tools", "/clean"} {
 		p.out.Reset()

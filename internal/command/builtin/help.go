@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"elbot/internal/command"
-	"elbot/internal/security"
+	"elbot/internal/contextinfo"
 )
 
 func NewHelp(deps Deps) command.Handler {
@@ -22,7 +22,7 @@ func (h helpCommand) Info() command.Info {
 		Name:        "help",
 		Usage:       "/help [command]",
 		Description: "Show available commands or detailed command help.",
-		MinRole:     security.RoleUser,
+		MinRole:     contextinfo.RoleUser,
 		Help: strings.TrimSpace(`Usage:
   /help
   /help <command>
@@ -41,7 +41,7 @@ func (h helpCommand) Handle(ctx context.Context, req command.Request) (*command.
 
 	var sb strings.Builder
 	sb.WriteString("available commands:\n")
-	actor, _ := security.ActorFromContext(ctx)
+	actor, _ := contextinfo.ActorFromContext(ctx)
 	for _, info := range h.deps.Router.CommandsForActor(actor) {
 		usage := commandUsage(req.Prefix, info)
 		sb.WriteString(fmt.Sprintf("  %-24s %s\n", usage, info.Description))
@@ -60,7 +60,7 @@ func (h helpCommand) Complete(ctx context.Context, req command.CompletionRequest
 		argsStart++
 	}
 	out := []command.Completion{}
-	actor, _ := security.ActorFromContext(ctx)
+	actor, _ := contextinfo.ActorFromContext(ctx)
 	for _, info := range h.deps.Router.CommandsForActor(actor) {
 		name := strings.TrimSpace(info.Name)
 		if name == "" || !strings.HasPrefix(name, query) {
@@ -72,7 +72,7 @@ func (h helpCommand) Complete(ctx context.Context, req command.CompletionRequest
 }
 
 func detailedHelp(ctx context.Context, prefix string, deps Deps, name string) (*command.Result, error) {
-	actor, _ := security.ActorFromContext(ctx)
+	actor, _ := contextinfo.ActorFromContext(ctx)
 	info, ok := deps.Router.CommandInfoForActor(name, actor)
 	if !ok {
 		return &command.Result{Content: fmt.Sprintf("unknown command: %s", strings.TrimSpace(name))}, nil

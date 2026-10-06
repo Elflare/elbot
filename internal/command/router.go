@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"elbot/internal/security"
+	"elbot/internal/contextinfo"
 )
 
 type Router struct {
@@ -124,7 +124,7 @@ func (r *Router) CommandInfo(name string) (Info, bool) {
 	return info, true
 }
 
-func (r *Router) CommandInfoForActor(name string, actor security.Actor) (Info, bool) {
+func (r *Router) CommandInfoForActor(name string, actor contextinfo.Actor) (Info, bool) {
 	info, ok := r.CommandInfo(name)
 	if !ok || !CanAccess(info, actor) {
 		return Info{}, false
@@ -147,7 +147,7 @@ func (r *Router) Commands() []Info {
 	return infos
 }
 
-func (r *Router) CommandsForActor(actor security.Actor) []Info {
+func (r *Router) CommandsForActor(actor contextinfo.Actor) []Info {
 	infos := r.Commands()
 	out := make([]Info, 0, len(infos))
 	for _, info := range infos {
@@ -163,11 +163,11 @@ func (r *Router) Complete(text string) []string {
 	return r.complete(text, nil)
 }
 
-func (r *Router) CompleteForActor(text string, actor security.Actor) []string {
+func (r *Router) CompleteForActor(text string, actor contextinfo.Actor) []string {
 	return r.complete(text, &actor)
 }
 
-func (r *Router) complete(text string, actor *security.Actor) []string {
+func (r *Router) complete(text string, actor *contextinfo.Actor) []string {
 	for _, prefix := range r.prefixes {
 		if !strings.HasPrefix(text, prefix) {
 			continue
@@ -190,7 +190,7 @@ func (r *Router) complete(text string, actor *security.Actor) []string {
 	return nil
 }
 
-func (r *Router) completionNames(actor *security.Actor) []string {
+func (r *Router) completionNames(actor *contextinfo.Actor) []string {
 	seen := map[string]bool{}
 	out := []string{}
 	for _, primaryName := range r.order {

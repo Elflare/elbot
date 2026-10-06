@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/security"
 	"elbot/internal/storage/sqlite"
 )
 
@@ -40,7 +40,7 @@ func TestExternalElwispDoesNotResolveHostMedia(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{"source": item.ID, "media_inputs": []map[string]string{{"media": item.ID}}})
 	call := llm.ToolCallRequest{ID: "call", Name: "external", Arguments: string(args)}
 	resolved := ResolvedTool{Available: true, Source: SourceKindELwisp, Cached: &CachedTool{Name: "external", Endpoint: server.URL}}
-	result := manager.Execute(ctx, call, resolved, security.Actor{Role: security.RoleSuperadmin})
+	result := manager.Execute(ctx, call, resolved, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	if result.Err != nil {
 		t.Fatal(result.Err)
 	}

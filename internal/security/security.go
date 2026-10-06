@@ -1,21 +1,9 @@
 package security
 
-import "strings"
+import (
+	"strings"
 
-type Role string
-
-const (
-	RoleSuperadmin Role = "superadmin"
-	RoleUser       Role = "user"
-)
-
-type GroupRole string
-
-const (
-	GroupRoleUnknown GroupRole = "unknown"
-	GroupRoleOwner   GroupRole = "owner"
-	GroupRoleAdmin   GroupRole = "admin"
-	GroupRoleMember  GroupRole = "member"
+	"elbot/internal/contextinfo"
 )
 
 type RiskLevel string
@@ -27,17 +15,6 @@ const (
 	RiskHigh     RiskLevel = "high"
 	RiskCritical RiskLevel = "critical"
 )
-
-type Actor struct {
-	ID             string
-	Platform       string
-	PlatformUserID string
-	Nickname       string
-	GroupCard      string
-	DisplayName    string
-	Role           Role
-	GroupRole      GroupRole
-}
 
 type Policy struct {
 	UserMaxToolRisk       RiskLevel
@@ -82,32 +59,32 @@ func ParseRisk(value string, fallback RiskLevel) RiskLevel {
 	}
 }
 
-func (p *Policy) Actor(id, platform, platformUserID, displayName string) Actor {
+func (p *Policy) Actor(id, platform, platformUserID, displayName string) contextinfo.Actor {
 	platform = normalize(platform)
 	platformUserID = canonicalPlatformUserID(platform, platformUserID)
 	if platformUserID == "" {
 		platformUserID = canonicalPlatformUserID(platform, id)
 	}
 	id = ActorID(platform, platformUserID)
-	role := RoleUser
+	role := contextinfo.RoleUser
 	if p != nil && p.IsSuperadmin(platform, platformUserID) {
-		role = RoleSuperadmin
+		role = contextinfo.RoleSuperadmin
 	}
-	return Actor{ID: id, Platform: platform, PlatformUserID: platformUserID, DisplayName: displayName, Role: role, GroupRole: GroupRoleUnknown}
+	return contextinfo.Actor{ID: id, Platform: platform, PlatformUserID: platformUserID, DisplayName: displayName, Role: role, GroupRole: contextinfo.GroupRoleUnknown}
 }
 
-func ParseGroupRole(value string) GroupRole {
+func ParseGroupRole(value string) contextinfo.GroupRole {
 	switch normalize(value) {
 	case "owner", "group_owner", "creator":
-		return GroupRoleOwner
+		return contextinfo.GroupRoleOwner
 	case "admin", "administrator", "group_admin":
-		return GroupRoleAdmin
+		return contextinfo.GroupRoleAdmin
 	case "member", "user", "group_member":
-		return GroupRoleMember
+		return contextinfo.GroupRoleMember
 	case "unknown", "":
-		return GroupRoleUnknown
+		return contextinfo.GroupRoleUnknown
 	default:
-		return GroupRoleUnknown
+		return contextinfo.GroupRoleUnknown
 	}
 }
 
@@ -140,8 +117,8 @@ func (p *Policy) IsSuperadmin(platform, platformUserID string) bool {
 	return ids != nil && ids[strings.TrimSpace(platformUserID)]
 }
 
-func (p *Policy) CanUseTool(actor Actor, risk RiskLevel, ownerScoped bool) bool {
-	if actor.Role == RoleSuperadmin {
+func (p *Policy) CanUseTool(actor contextinfo.Actor, risk RiskLevel, ownerScoped bool) bool {
+	if actor.Role == contextinfo.RoleSuperadmin {
 		return true
 	}
 	if ownerScoped {
@@ -154,9 +131,9 @@ func (p *Policy) CanUseTool(actor Actor, risk RiskLevel, ownerScoped bool) bool 
 	return CompareRisk(risk, maxRisk) <= 0
 }
 
-func (p *Policy) NeedsToolConfirmation(actor Actor, risk RiskLevel) bool {
+func (p *Policy) NeedsToolConfirmation(actor contextinfo.Actor, risk RiskLevel) bool {
 	threshold := RiskHigh
-	if actor.Role == RoleSuperadmin && p != nil {
+	if actor.Role == contextinfo.RoleSuperadmin && p != nil {
 		threshold = p.SuperadminConfirmRisk
 	}
 	return CompareRisk(risk, threshold) >= 0

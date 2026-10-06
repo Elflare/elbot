@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -366,8 +367,8 @@ func TestDiscoverToolHidesSuperadminOnlyToolsFromNormalUser(t *testing.T) {
 	}
 
 	policy := security.NewPolicy("medium", "high", map[string][]string{"cli": {"local"}})
-	actor := security.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: security.RoleUser}
-	ctx := security.WithPolicy(security.WithActor(context.Background(), actor), policy)
+	actor := contextinfo.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: contextinfo.RoleUser}
+	ctx := security.WithPolicy(contextinfo.WithActor(context.Background(), actor), policy)
 	result, err := NewDiscoverTool(registry).Call(ctx, CallRequest{})
 	if err != nil {
 		t.Fatal(err)
@@ -388,8 +389,8 @@ func TestDiscoverToolShowsSuperadminOnlyToolsToSuperadmin(t *testing.T) {
 		t.Fatal(err)
 	}
 	policy := security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
-	actor := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
-	ctx := security.WithPolicy(security.WithActor(context.Background(), actor), policy)
+	actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
+	ctx := security.WithPolicy(contextinfo.WithActor(context.Background(), actor), policy)
 
 	result, err := NewDiscoverTool(registry).Call(ctx, CallRequest{})
 	if err != nil {

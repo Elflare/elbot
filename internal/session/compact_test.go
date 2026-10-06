@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/llm"
 	"elbot/internal/storage"
 )
 
@@ -33,12 +34,19 @@ func TestCreateCompactedInheritsSourceAndActivatesOnlyForeground(t *testing.T) {
 				}
 				ctx = WithBinding(ctx, original)
 			}
-			next, err := svc.CreateCompacted(ctx, scope, source.ID, CompactedRequest{ID: "reserved", Title: "compact title", Metadata: `{"unknown":9007199254740993,"nested":{"keep":true},"compact_generation":2,"compact_seed":["prepared"]}`})
+			origin := llm.Origin{Protocol: llm.ProtocolChat, Provider: "source", BaseURL: "https://source.invalid/v1"}
+			if _, err := svc.RegisterOrigin(ctx, source.ID, origin); err != nil {
+				t.Fatal(err)
+			}
+			next, err := svc.CreateCompacted(ctx, scope, source.ID, CompactedRequest{ID: "reserved", Title: "compact title", Metadata: `{"unknown":9007199254740993,"nested":{"keep":true},"compact_generation":2,"compact_seed":["prepared"],"llm_origin":{"protocol":"response","provider":"summary-target"}}`})
 			if err != nil {
 				t.Fatal(err)
 			}
 			if next.ID != "reserved" || next.Title != "compact title" || next.Mode != mode || next.OwnerID != source.OwnerID || next.Platform != source.Platform || next.PlatformScopeID != source.PlatformScopeID {
 				t.Fatalf("inheritance=%+v", next)
+			}
+			if got, present, err := Origin(next); err != nil || !present || got != origin {
+				t.Fatalf("origin=%+v err=%v", got, err)
 			}
 			for _, want := range []string{`"unknown":9007199254740993`, `"nested":{"keep":true}`, `"compact_generation":2`, `"compact_seed":["prepared"]`, `"title_renamed":true`, `"title_source":"compact"`} {
 				if !strings.Contains(next.Metadata, want) {

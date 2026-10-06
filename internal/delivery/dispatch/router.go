@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/media"
 	"elbot/internal/platform"
@@ -60,7 +60,7 @@ func (r *Router) sender(ctx context.Context, target delivery.Target) (delivery.M
 	}
 	name := strings.TrimSpace(target.Platform)
 	if name == "" {
-		if info, ok := chatinfo.FromContext(ctx); ok {
+		if info, ok := contextinfo.ConversationFromContext(ctx); ok {
 			name = strings.TrimSpace(info.Source.Platform)
 		}
 	}

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"elbot/internal/chatinfo"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 )
@@ -20,7 +20,7 @@ func TestPartialAssistantSendKeepsMessageAssociation(t *testing.T) {
 			sender := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, error) {
 				return delivery.Receipt{PlatformMessageIDs: []string{"first-page"}, SentMessages: []delivery.SentMessage{{Platform: "test", ScopeID: "group:old", PlatformMessageID: "first-page"}}}, wantErr
 			})
-			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "test", ScopeID: "group:old"}, Identity: chatinfo.Identity{PlatformUserID: "user"}}, Sender: sender, BufferAssistantOutput: buffered})
+			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: "group:old"}, Identity: contextinfo.Identity{PlatformUserID: "user"}}, Sender: sender, BufferAssistantOutput: buffered})
 			if err := a.HandleMessage(ctx, "question"); !errors.Is(err, wantErr) {
 				t.Fatalf("send error=%v", err)
 			}

@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/memory/resident"
-	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/tool"
 )
@@ -230,7 +230,7 @@ func memoryScope(ctx context.Context, store *resident.Store) (session.Scope, err
 	if err := validateMemoryStore(store); err != nil {
 		return session.Scope{}, err
 	}
-	actor, ok := security.ActorFromContext(ctx)
+	actor, ok := contextinfo.ActorFromContext(ctx)
 	if !ok {
 		return session.Scope{}, fmt.Errorf("resident memory actor is not available")
 	}

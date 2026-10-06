@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"elbot/internal/security"
+	"elbot/internal/contextinfo"
 )
 
 func TestRouterDispatchAndHelpInfo(t *testing.T) {
@@ -104,14 +104,14 @@ func TestRouterCompleteCommands(t *testing.T) {
 
 func TestRouterFiltersCommandsForActor(t *testing.T) {
 	r := NewRouter([]string{"/"})
-	if err := r.Register(NewFunc(Info{Name: "public", Aliases: []string{"p"}, MinRole: security.RoleUser}, nil)); err != nil {
+	if err := r.Register(NewFunc(Info{Name: "public", Aliases: []string{"p"}, MinRole: contextinfo.RoleUser}, nil)); err != nil {
 		t.Fatalf("Register public: %v", err)
 	}
 	if err := r.Register(NewFunc(Info{Name: "secret", Aliases: []string{"s"}}, nil)); err != nil {
 		t.Fatalf("Register secret: %v", err)
 	}
 
-	user := security.Actor{Role: security.RoleUser}
+	user := contextinfo.Actor{Role: contextinfo.RoleUser}
 	if got := r.CommandsForActor(user); len(got) != 1 || got[0].Name != "public" {
 		t.Fatalf("CommandsForActor(user) = %#v", got)
 	}
@@ -120,7 +120,7 @@ func TestRouterFiltersCommandsForActor(t *testing.T) {
 	}
 	assertComplete(t, r.CompleteForActor("/", user), []string{"/public", "/p"})
 
-	admin := security.Actor{Role: security.RoleSuperadmin}
+	admin := contextinfo.Actor{Role: contextinfo.RoleSuperadmin}
 	if got := r.CommandsForActor(admin); len(got) != 2 {
 		t.Fatalf("CommandsForActor(admin) = %#v", got)
 	}

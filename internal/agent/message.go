@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/contextinfo"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
@@ -34,7 +35,7 @@ func (a *Agent) HandleMessage(ctx context.Context, text string) error {
 // HandleMessage dispatches commands and chat messages.
 func (h *messageHandler) HandleMessage(ctx context.Context, text string) (err error) {
 	actor := h.identity.Actor(ctx)
-	ctx = security.WithPolicy(security.WithActor(ctx, actor), h.identity.policy)
+	ctx = security.WithPolicy(contextinfo.WithActor(ctx, actor), h.identity.policy)
 	segments := inboundSegments(ctx, text)
 	defer func() {
 		if err != nil {

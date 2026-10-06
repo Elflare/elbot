@@ -6,8 +6,8 @@ import (
 	"log/slog"
 
 	"elbot/internal/command"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/turn"
 )
@@ -54,7 +54,7 @@ func (e *commandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		return true, nil
 	}
 
-	actor, _ := security.ActorFromContext(ctx)
+	actor, _ := contextinfo.ActorFromContext(ctx)
 	if hasInfo && !command.CanAccess(info, actor) {
 		writeAudit(e.auditLogger, slog.LevelInfo, "permission_denied", "actor_id", actor.ID, "command", text, "reason", "slash_command_requires_superadmin")
 		e.output.SendChat(ctx, fmt.Sprintf("命令 %s%s 需要超级管理员权限。", parsed.Prefix, parsed.Name))

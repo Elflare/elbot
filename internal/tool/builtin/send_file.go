@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"strings"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
@@ -97,7 +97,7 @@ func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		return nil, err
 	}
 	if sandbox.BackgroundKind == sandboxctx.BackgroundKindCron {
-		if info, ok := chatinfo.FromContext(ctx); ok && strings.TrimSpace(info.Source.Platform) != "" {
+		if info, ok := contextinfo.ConversationFromContext(ctx); ok && strings.TrimSpace(info.Source.Platform) != "" {
 			out.Target = delivery.Target{Platform: info.Source.Platform, Superadmins: true}
 		}
 	}

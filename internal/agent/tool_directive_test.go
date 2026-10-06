@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"os"
@@ -390,7 +392,7 @@ func TestToolDirectiveOnlyValidToolPreloadsNextTurn(t *testing.T) {
 
 func TestAgentSkillCreatorNoticePreloads(t *testing.T) {
 	for _, entry := range []string{"directive", "background"} {
-		for _, role := range []security.Role{security.RoleUser, security.RoleSuperadmin, ""} {
+		for _, role := range []contextinfo.Role{contextinfo.RoleUser, contextinfo.RoleSuperadmin, ""} {
 			t.Run(entry+"/"+string(role), func(t *testing.T) {
 
 				registry := tool.NewRegistry()
@@ -405,7 +407,7 @@ func TestAgentSkillCreatorNoticePreloads(t *testing.T) {
 				})
 				ctx := context.Background()
 				if role != "" {
-					ctx = security.WithActor(ctx, security.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: role})
+					ctx = contextinfo.WithActor(ctx, contextinfo.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: role})
 				}
 				sessionRecord, err := a.execution.sessionForInput(ctx, "prepare skill")
 				if err != nil {
@@ -426,10 +428,10 @@ func TestAgentSkillCreatorNoticePreloads(t *testing.T) {
 				if !strings.Contains(content, "# DOCX") {
 					t.Fatalf("missing skill body: %q", content)
 				}
-				if got := strings.Contains(content, "agent_skill_creator"); got != (role == security.RoleSuperadmin) {
+				if got := strings.Contains(content, "agent_skill_creator"); got != (role == contextinfo.RoleSuperadmin) {
 					t.Fatalf("creator notice for %q: %q", role, content)
 				}
-				if got := strings.Contains(content, "ElBot AgentSkill 使用提示："); got != (role == security.RoleSuperadmin) {
+				if got := strings.Contains(content, "ElBot AgentSkill 使用提示："); got != (role == contextinfo.RoleSuperadmin) {
 					t.Fatalf("notice heading: %q", content)
 				}
 			})

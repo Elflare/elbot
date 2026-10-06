@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"elbot/internal/llm"
 	"elbot/internal/storage"
 )
 
@@ -25,6 +26,10 @@ func TestCopyBackgroundKeepsForegroundBindingsAndMetadataTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	origin := llm.Origin{Protocol: llm.ProtocolChat, Provider: "source", BaseURL: "https://source.invalid/v1"}
+	if _, err := svc.RegisterOrigin(ctx, source.ID, origin); err != nil {
+		t.Fatal(err)
+	}
 	parent := &storage.Message{SessionID: source.ID, Role: storage.RoleUser, Content: "question"}
 	if err := store.Messages().Append(ctx, parent); err != nil {
 		t.Fatal(err)
@@ -40,6 +45,9 @@ func TestCopyBackgroundKeepsForegroundBindingsAndMetadataTypes(t *testing.T) {
 		}
 		if copy.Mode != storage.SessionModeBackground || copy.OwnerID != target.ActorID || copy.Platform != target.Platform || copy.PlatformScopeID != target.PlatformScopeID || copy.Title != "report" || !IsBackground(copy) {
 			t.Fatalf("copy=%#v", copy)
+		}
+		if got, present, err := Origin(copy); err != nil || !present || got != origin {
+			t.Fatalf("origin=%+v err=%v", got, err)
 		}
 		fields, err := storage.DecodeSessionMetadata(copy.Metadata)
 		if err != nil || string(fields["cron_broadcast_copy"]) != "true" || string(fields["unknown"]) != "9007199254740993" || string(fields["title_source"]) != `"cron"` || string(fields["background_kind"]) != `"cron"` {

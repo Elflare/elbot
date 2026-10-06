@@ -2,9 +2,9 @@ package background
 
 import (
 	"context"
-	"elbot/internal/llm"
 
-	"elbot/internal/security"
+	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/toolrun"
 )
 
@@ -24,7 +24,7 @@ type RunRequest struct {
 	Name           string
 	Title          string
 	Platform       string
-	Actor          security.Actor
+	Actor          contextinfo.Actor
 	ScopeID        string
 	SessionID      string
 	ModelProvider  string

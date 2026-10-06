@@ -10,7 +10,6 @@ import (
 
 	chatroute "elbot/internal/agent/chat"
 	"elbot/internal/agent/dialogue"
-	"elbot/internal/agent/routes"
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
 	"elbot/internal/hook"
@@ -50,7 +49,7 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 	bridge := &hookBridge{manager: hooks, requests: opts.Requests, identity: identity, dispatcher: opts.Dispatcher}
 	status := &statusRecorder{}
 	output := &outputSender{dispatcher: opts.Dispatcher, notifications: opts.Notifications, hooks: bridge, identity: identity}
-	view := dialogue.ExecutionView{Sessions: store.Sessions()}
+	view := dialogue.ExecutionView{Sessions: store.Sessions(), Providers: opts.Routes}
 	policy := &confirmationPolicy{identity: identity, userConfirmationTimeout: time.Second}
 	confirmations := &confirmationCoordinator{
 		sessions: opts.Sessions, requests: opts.Requests, turns: opts.Turns, commands: opts.Commands,
@@ -65,10 +64,7 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 	preparer := &dialogue.Preparer{Contexts: opts.Contexts, Identity: identity, Hooks: bridge, Tools: tools}
 	calls := &dialogue.CallProcessor{Messages: messages, Hooks: bridge, Identity: identity, Tools: tools}
 	chat := &chatroute.Loop{Contexts: opts.Contexts, Models: models, Turns: opts.Turns, View: view, Preparer: preparer, Tools: tools, Messages: messages, Caller: &chatroute.Caller{Calls: calls}, PromptBuilder: chatroute.PromptBuilder{System: dialogue.NewSystemPromptManager(dialogue.SoulSystemPromptSource{Soul: dialogue.StaticSoulProvider{Prompt: "test"}})}}
-	if err := opts.Routes.Register(routes.Route{Protocol: llm.ProtocolChat, Loop: chat, Compactor: &chatroute.Compactor{Store: store, Models: models, Contexts: opts.Contexts, Loader: contextmgr.Loader{Store: store}}}); err != nil {
-		t.Fatal(err)
-	}
-	if err := opts.Routes.Seal(); err != nil {
+	if err := bindProviderRoutes(opts.Routes, models, chat, &chatroute.Compactor{Store: store, Models: models, Contexts: opts.Contexts, Loader: contextmgr.Loader{Store: store}}); err != nil {
 		t.Fatal(err)
 	}
 	runner := &dialogue.Runner{Routes: opts.Routes, Preparer: preparer, Messages: messages, Replies: &dialogue.ReplyCommitter{Messages: store.Messages(), Output: output}, Turns: opts.Turns, View: view}
@@ -82,6 +78,14 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 func (f *executionFixture) begin(t *testing.T) (context.Context, context.Context, dialogue.TurnInput, *turn.Execution) {
 	t.Helper()
 	ctx, row, err := f.execution.resolveInput(context.Background(), "hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin, err := f.opts.Routes.OriginFor("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err = f.opts.Sessions.RegisterOrigin(ctx, row.ID, origin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +103,7 @@ func (f *executionFixture) begin(t *testing.T) (context.Context, context.Context
 		t.Fatal(err)
 	}
 	t.Cleanup(done)
-	return ctx, request.WithTurnID(requestCtx, info.ID), dialogue.TurnInput{Session: row, Text: "hello", Selection: modelmgr.SelectionForTurn(ctx, f.opts.Models, row), RequestID: info.ID, Prepared: prepared}, execution
+	return ctx, requestCtx, dialogue.TurnInput{Session: row, Text: "hello", Selection: modelmgr.SelectionForTurn(ctx, f.opts.Models, row), RequestID: info.ID, Prepared: prepared}, execution
 }
 
 func (f *executionFixture) on(t *testing.T, point hook.Point, fn func(hook.Event) hook.Event) {

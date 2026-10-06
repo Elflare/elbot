@@ -7,7 +7,7 @@ import (
 	"time"
 
 	agentevents "elbot/internal/agent/events"
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/hook"
@@ -63,7 +63,7 @@ func TestNoticeLifetimesOriginalSourceAndVisionDedup(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = b.Close(context.Background()) })
 	releaseProgress, releaseFailure := holdObserverQueue(t, b.queues[0]), holdObserverQueue(t, b.queues[1])
-	ctx, cancel := context.WithCancel(platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "original"}}, Sender: one}))
+	ctx, cancel := context.WithCancel(platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "original"}}, Sender: one}))
 	meta := agentevents.EventMeta{At: time.Now(), SessionID: "s"}
 	if err := events.VisionFallbackUsed.Emit(ctx, agentevents.VisionFallbackUsedEvent{EventMeta: meta, Visible: true}); err != nil {
 		t.Fatal(err)

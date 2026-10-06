@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"elbot/internal/command"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/tool"
@@ -24,10 +25,10 @@ func TestServiceReturnsFirstNonEmptySource(t *testing.T) {
 
 func TestRouterSourceCompletesCommands(t *testing.T) {
 	router := command.NewRouter([]string{"/"})
-	if err := router.Register(command.NewFunc(command.Info{Name: "model", Aliases: []string{"m"}, MinRole: security.RoleUser}, nil)); err != nil {
+	if err := router.Register(command.NewFunc(command.Info{Name: "model", Aliases: []string{"m"}, MinRole: contextinfo.RoleUser}, nil)); err != nil {
 		t.Fatalf("register model: %v", err)
 	}
-	if err := router.Register(command.NewFunc(command.Info{Name: "models", MinRole: security.RoleUser}, nil)); err != nil {
+	if err := router.Register(command.NewFunc(command.Info{Name: "models", MinRole: contextinfo.RoleUser}, nil)); err != nil {
 		t.Fatalf("register models: %v", err)
 	}
 	items := RouterSource{Router: router}.Complete(context.Background(), Request{Text: "/m"})
@@ -43,7 +44,7 @@ func TestRouterSourceCompletesCommands(t *testing.T) {
 
 func TestRouterSourceFiltersCommandsByActor(t *testing.T) {
 	router := command.NewRouter([]string{"/"})
-	if err := router.Register(command.NewFunc(command.Info{Name: "public", Aliases: []string{"p"}, MinRole: security.RoleUser}, nil)); err != nil {
+	if err := router.Register(command.NewFunc(command.Info{Name: "public", Aliases: []string{"p"}, MinRole: contextinfo.RoleUser}, nil)); err != nil {
 		t.Fatal(err)
 	}
 	if err := router.Register(command.NewFunc(command.Info{Name: "secret", Aliases: []string{"s"}}, nil)); err != nil {
@@ -53,7 +54,7 @@ func TestRouterSourceFiltersCommandsByActor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	userSource := RouterSource{Router: router, Actor: func(context.Context) security.Actor { return security.Actor{Role: security.RoleUser} }}
+	userSource := RouterSource{Router: router, Actor: func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: contextinfo.RoleUser} }}
 	items := userSource.Complete(context.Background(), Request{Text: "/"})
 	if len(items) != 2 || items[0].Text != "/public" || items[1].Text != "/p" {
 		t.Fatalf("user command completions = %#v", items)
@@ -65,7 +66,7 @@ func TestRouterSourceFiltersCommandsByActor(t *testing.T) {
 		t.Fatalf("user private argument completions = %#v", got)
 	}
 
-	adminSource := RouterSource{Router: router, Actor: func(context.Context) security.Actor { return security.Actor{Role: security.RoleSuperadmin} }}
+	adminSource := RouterSource{Router: router, Actor: func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: contextinfo.RoleSuperadmin} }}
 	if got := adminSource.Complete(context.Background(), Request{Text: "/s"}); len(got) != 2 || got[0].Text != "/secret" || got[1].Text != "/s" {
 		t.Fatalf("admin private command completions = %#v", got)
 	}
@@ -83,7 +84,7 @@ func TestToolDirectiveSourceCompletesOnlyPlainTools(t *testing.T) {
 	_ = registry.Register(completionTestSkill{completionTestTool: completionTestTool{name: "docx"}})
 	source := ToolDirectiveSource{
 		Registry: func() *tool.Registry { return registry },
-		Actor:    func(context.Context) security.Actor { return security.Actor{Role: security.RoleSuperadmin} },
+		Actor:    func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: contextinfo.RoleSuperadmin} },
 	}
 
 	items := source.Complete(context.Background(), Request{Text: "查 @tool:we", Cursor: len("查 @tool:we")})
@@ -118,7 +119,7 @@ func TestToolDirectiveSourceCompletesSkillsSeparately(t *testing.T) {
 	_ = registry.Register(completionTestSkill{completionTestTool: completionTestTool{name: "docx", description: "skill"}})
 	source := ToolDirectiveSource{
 		Registry: func() *tool.Registry { return registry },
-		Actor:    func(context.Context) security.Actor { return security.Actor{Role: security.RoleSuperadmin} },
+		Actor:    func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: contextinfo.RoleSuperadmin} },
 	}
 
 	items := source.Complete(context.Background(), Request{Text: "查 @skill:do", Cursor: len("查 @skill:do")})
@@ -148,8 +149,8 @@ func TestToolDirectiveSourceCompletesConfiguredTags(t *testing.T) {
 	_ = registry.Register(completionTestTool{name: "alpha", description: "alpha"})
 	source := ToolDirectiveSource{
 		Registry: func() *tool.Registry { return registry },
-		Actor:    func(context.Context) security.Actor { return security.Actor{Role: security.RoleSuperadmin} },
-		Tags: func(context.Context, *tool.Registry, security.Actor, *security.Policy) []string {
+		Actor:    func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: contextinfo.RoleSuperadmin} },
+		Tags: func(context.Context, *tool.Registry, contextinfo.Actor, *security.Policy) []string {
 			return []string{"agent"}
 		},
 		ToolNamesByTag: func(_ context.Context, _ *tool.Registry, tag string, _ func(tool.Tool) bool) []string {
@@ -171,7 +172,7 @@ func TestRouterSourceCompletesCommandArgs(t *testing.T) {
 	if err := router.Register(commandArgCompleter{}); err != nil {
 		t.Fatal(err)
 	}
-	items := RouterSource{Router: router, Actor: func(context.Context) security.Actor { return security.Actor{Role: security.RoleSuperadmin} }}.Complete(context.Background(), Request{Text: "/help mo", Cursor: len("/help mo")})
+	items := RouterSource{Router: router, Actor: func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: contextinfo.RoleSuperadmin} }}.Complete(context.Background(), Request{Text: "/help mo", Cursor: len("/help mo")})
 	if len(items) != 1 || items[0].Text != "model" || items[0].ReplaceStart != len("/help ") || items[0].ReplaceEnd != len("/help mo") {
 		t.Fatalf("Complete = %#v", items)
 	}

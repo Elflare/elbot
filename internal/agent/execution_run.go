@@ -21,11 +21,28 @@ func (c *executionCoordinator) runAttempt(ctx context.Context, session *storage.
 	if err != nil {
 		return session, turn.Input{}, err
 	}
-	release()
 	selection := modelmgr.SelectionForTurn(ctx, c.models, session)
 	// TODO Step16.3: register the Responses dialogue route. Until then reject
 	// missing capabilities before automatic compaction, input writes or API calls.
 	if err := c.dialogue.CheckSelection(selection); err != nil {
+		release()
+		return session, turn.Input{}, err
+	}
+	ctx, err = c.view.WithModel(ctx, selection)
+	if err != nil {
+		release()
+		return session, turn.Input{}, err
+	}
+	origin, err := c.dialogue.Routes.OriginFor(selection.Provider)
+	if err == nil {
+		var latest *storage.Session
+		latest, err = c.sessions.RegisterOrigin(ctx, session.ID, origin)
+		if err == nil {
+			*session = *latest
+		}
+	}
+	release()
+	if err != nil {
 		return session, turn.Input{}, err
 	}
 	ctx, session, err = c.compactBeforeTurn(ctx, session, text, out, selection)
@@ -98,7 +115,6 @@ func (c *executionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 		return dialogue.TurnResult{Outcome: dialogue.FailedOutcome(err), Err: err}, turn.Input{}
 	}
 	defer done()
-	reqCtx = request.WithTurnID(reqCtx, reqCtxInfo.ID)
 
 	result := c.dialogue.RunTurn(ctx, reqCtx, dialogue.TurnInput{Session: session, Text: text, Selection: selection, RequestID: reqCtxInfo.ID, Prepared: prepared}, out)
 	if result.QuietCancellation {

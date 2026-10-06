@@ -5,20 +5,19 @@ import (
 	"testing"
 
 	"elbot/internal/agent/dialogue"
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/hook"
-	"elbot/internal/security"
 )
 
 func TestPublicChatInfoConsumersAndSecurityPrecedence(t *testing.T) {
 	identity := &identityResolver{platformName: "test", actorID: "local", scopeID: "local"}
 	bridge := &hookBridge{identity: identity}
-	ctx := chatinfo.WithInfo(context.Background(), chatinfo.Info{
-		Source:   chatinfo.Source{Platform: "qqonebot", ScopeID: "group:9", ConversationKind: chatinfo.ConversationGroup, ConversationID: "9"},
-		Identity: chatinfo.Identity{ActorID: "cli:local", PlatformUserID: "qqonebot:123", Nickname: "昵称", GroupCard: "名片", DisplayName: "显示名"},
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{
+		Source:   contextinfo.Source{Platform: "qqonebot", ScopeID: "group:9", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"},
+		Identity: contextinfo.Identity{ActorID: "cli:local", PlatformUserID: "qqonebot:123", Nickname: "昵称", GroupCard: "名片", DisplayName: "显示名"},
 	})
 	actor := identity.Actor(ctx)
-	if actor.ID != "qqonebot:123" || actor.PlatformUserID != "123" || actor.Role != security.RoleUser {
+	if actor.ID != "qqonebot:123" || actor.PlatformUserID != "123" || actor.Role != contextinfo.RoleUser {
 		t.Fatalf("public identity must use canonical user and security policy: %+v", actor)
 	}
 	scope := identity.Scope(ctx)
@@ -33,8 +32,8 @@ func TestPublicChatInfoConsumersAndSecurityPrecedence(t *testing.T) {
 	if event.Platform.Name != "qqonebot" || event.Platform.ScopeID != "group:9" {
 		t.Fatalf("hook source = %+v", event.Platform)
 	}
-	trusted := security.Actor{ID: "trusted", PlatformUserID: "456", Role: security.RoleSuperadmin}
-	if got := identity.Actor(security.WithActor(ctx, trusted)); got != trusted {
+	trusted := contextinfo.Actor{ID: "trusted", PlatformUserID: "456", Role: contextinfo.RoleSuperadmin}
+	if got := identity.Actor(contextinfo.WithActor(ctx, trusted)); got != trusted {
 		t.Fatalf("security context must take precedence: %+v", got)
 	}
 }

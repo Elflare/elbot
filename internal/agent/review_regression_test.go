@@ -2,9 +2,9 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/chatinfo"
 	"elbot/internal/completion"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
@@ -54,7 +54,7 @@ func TestStopCompletionUsesResolvedActorAndCurrentSession(t *testing.T) {
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "m", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
 	})
-	user := platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "user"}, Identity: chatinfo.Identity{PlatformUserID: "user"}}})
+	user := platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "user"}, Identity: contextinfo.Identity{PlatformUserID: "user"}}})
 	row, err := a.execution.sessions.Create(user, a.identity.Scope(user), session.CreateRequest{})
 	if err != nil {
 		t.Fatal(err)
@@ -134,7 +134,7 @@ func TestReviewStopCannotCancelOtherUsersRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer done()
-	attacker := platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "attacker"}, Identity: chatinfo.Identity{PlatformUserID: "attacker"}}})
+	attacker := platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "attacker"}, Identity: contextinfo.Identity{PlatformUserID: "attacker"}}})
 	if err := a.HandleMessage(attacker, "/stop 1"); err != nil {
 		t.Fatal(err)
 	}

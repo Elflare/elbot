@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
@@ -36,7 +37,7 @@ func TestForegroundOnlyToolHiddenInBackgroundSchemasAndNames(t *testing.T) {
 	}
 	manager := NewManager(registry, security.DefaultPolicy())
 	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Dir: t.TempDir(), Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
-	view := Context{Mode: storage.SessionModeWork, Actor: security.Actor{Role: security.RoleSuperadmin}}
+	view := Context{Mode: storage.SessionModeWork, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}}
 	names, err := manager.ToolNames(ctx, view)
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +64,7 @@ func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) 
 		t.Fatal(err)
 	}
 	manager := NewManager(registry, security.DefaultPolicy())
-	view := Context{Mode: storage.SessionModeWork, Actor: security.Actor{Role: security.RoleSuperadmin}}
+	view := Context{Mode: storage.SessionModeWork, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}}
 	cached := func(name string) CachedTool {
 		return CachedTool{Name: name, Source: SourceKindNative, Schema: llm.ToolSchema{Name: name}}
 	}

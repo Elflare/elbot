@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
@@ -264,7 +264,7 @@ type chatHistoryContext struct {
 }
 
 func currentChatHistoryContext(ctx context.Context) (chatHistoryContext, error) {
-	info, ok := chatinfo.FromContext(ctx)
+	info, ok := contextinfo.ConversationFromContext(ctx)
 	if !ok || strings.TrimSpace(info.Source.Platform) == "" || strings.TrimSpace(info.Source.ScopeID) == "" {
 		return chatHistoryContext{}, fmt.Errorf("当前上下文没有平台聊天信息，无法自动确定要查询哪个聊天。")
 	}

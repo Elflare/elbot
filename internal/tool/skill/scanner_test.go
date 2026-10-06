@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/security"
 	"elbot/internal/tool"
 )
@@ -181,8 +182,8 @@ func TestPolicyOnlyAgentSkillHiddenFromNormalUserDiscovery(t *testing.T) {
 		}
 	}
 	policy := security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
-	actor := security.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: security.RoleUser}
-	ctx := security.WithPolicy(security.WithActor(context.Background(), actor), policy)
+	actor := contextinfo.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: contextinfo.RoleUser}
+	ctx := security.WithPolicy(contextinfo.WithActor(context.Background(), actor), policy)
 	discover := tool.NewDiscoverTool(registry)
 	result, err := discover.Call(ctx, tool.CallRequest{})
 	if err != nil {
@@ -216,8 +217,8 @@ superadmin_only = true
 		}
 	}
 	policy := security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
-	superadmin := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
-	ctx := security.WithPolicy(security.WithActor(context.Background(), superadmin), policy)
+	superadmin := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
+	ctx := security.WithPolicy(contextinfo.WithActor(context.Background(), superadmin), policy)
 	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
 	result, err := tool.NewDiscoverTool(registry).Call(ctx, tool.CallRequest{Arguments: args})
 	if err != nil {
@@ -399,11 +400,11 @@ func TestAgentSkillCreatorNoticeDiscovery(t *testing.T) {
 			t.Fatal(err)
 		}
 		discover := tool.NewDiscoverTool(registry)
-		for _, role := range []security.Role{security.RoleUser, security.RoleSuperadmin, ""} {
+		for _, role := range []contextinfo.Role{contextinfo.RoleUser, contextinfo.RoleSuperadmin, ""} {
 			t.Run(fmt.Sprintf("invalid=%t/role=%s", invalidManifest, role), func(t *testing.T) {
 				ctx := context.Background()
 				if role != "" {
-					ctx = security.WithActor(ctx, security.Actor{Role: role})
+					ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: role})
 				}
 				result, err := discover.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"name":"docx"}`)})
 				if err != nil {
@@ -420,13 +421,13 @@ func TestAgentSkillCreatorNoticeDiscovery(t *testing.T) {
 					if !strings.Contains(content, "# DOCX") {
 						t.Fatalf("missing skill body: %q", content)
 					}
-					if got := strings.Contains(content, "agent_skill_creator"); got != (role == security.RoleSuperadmin) {
+					if got := strings.Contains(content, "agent_skill_creator"); got != (role == contextinfo.RoleSuperadmin) {
 						t.Fatalf("creator notice for %q: %q", role, content)
 					}
 					if got := strings.Contains(content, "invalid manifest"); got != invalidManifest {
 						t.Fatalf("manifest diagnostic: %q", content)
 					}
-					if got := strings.Contains(content, "ElBot AgentSkill 使用提示："); got != (invalidManifest || role == security.RoleSuperadmin) {
+					if got := strings.Contains(content, "ElBot AgentSkill 使用提示："); got != (invalidManifest || role == contextinfo.RoleSuperadmin) {
 						t.Fatalf("notice heading: %q", content)
 					}
 				}

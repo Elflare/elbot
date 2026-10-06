@@ -58,7 +58,7 @@ func validateConstruction(ctx context.Context, cfg Config, deps Dependencies) er
 		return fmt.Errorf("runtime context is required")
 	}
 	if deps.Routes == nil {
-		return fmt.Errorf("protocol routes are required")
+		return fmt.Errorf("provider bindings are required")
 	}
 	if deps.Models == nil {
 		return fmt.Errorf("model service is required")

@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"elbot/internal/background"
-	"elbot/internal/chatinfo"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
@@ -49,7 +49,7 @@ func (discardSender) SendNotice(context.Context, delivery.Notice) (delivery.Rece
 func (r *backgroundRunner) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
 	actor := req.Actor
 	if actor.Role == "" {
-		actor.Role = security.RoleSuperadmin
+		actor.Role = contextinfo.RoleSuperadmin
 	}
 	platformName := req.Platform
 	if platformName == "" {
@@ -62,8 +62,8 @@ func (r *backgroundRunner) RunBackground(ctx context.Context, req background.Run
 	if scopeID == "" {
 		scopeID = backgroundScopeID(req.Kind, req.Name)
 	}
-	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: platformName, ScopeID: scopeID}, Identity: chatinfo.Identity{ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, Nickname: actor.Nickname, GroupCard: actor.GroupCard, DisplayName: actor.DisplayName}}, Sender: discardSender{}, Segments: backgroundPromptSegments(req.PromptSegments)})
-	ctx = security.WithPolicy(security.WithActor(ctx, actor), r.identity.policy)
+	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ScopeID: scopeID}, Identity: contextinfo.Identity{ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, Nickname: actor.Nickname, GroupCard: actor.GroupCard, DisplayName: actor.DisplayName}}, Sender: discardSender{}, Segments: backgroundPromptSegments(req.PromptSegments)})
+	ctx = security.WithPolicy(contextinfo.WithActor(ctx, actor), r.identity.policy)
 
 	sandboxRoot := r.sandboxRoot
 	if sandboxRoot == "" {
@@ -151,7 +151,7 @@ func (r *backgroundRunner) preloadBackgroundResources(ctx context.Context, row *
 	if row == nil || row.Mode != storage.SessionModeBackground {
 		return backgroundPreloadResult{}
 	}
-	preloadCtx := security.WithActor(security.WithPolicy(ctx, r.identity.policy), r.identity.Actor(ctx))
+	preloadCtx := contextinfo.WithActor(security.WithPolicy(ctx, r.identity.policy), r.identity.Actor(ctx))
 	prepared := r.preloader.PrepareBackground(preloadCtx, row.ID, names, allowed)
 	prepared.Update.Tools = append(toolrun.BackgroundCachedTools(ctx, initial), prepared.Update.Tools...)
 	prepared.Update.Tools = toolrun.BackgroundCachedTools(ctx, prepared.Update.Tools)

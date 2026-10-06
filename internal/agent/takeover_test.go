@@ -11,13 +11,12 @@ import (
 	"time"
 
 	"elbot/internal/background"
-	"elbot/internal/chatinfo"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
 	sandboxctx "elbot/internal/sandbox"
-	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -31,12 +30,12 @@ type backgroundTestResult struct {
 }
 
 func takeoverPrivateContext() context.Context {
-	return platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "private:1", ConversationKind: chatinfo.ConversationPrivate}, Identity: chatinfo.Identity{ActorID: "qq:1", PlatformUserID: "1"}}})
+	return platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ScopeID: "private:1", ConversationKind: contextinfo.ConversationPrivate}, Identity: contextinfo.Identity{ActorID: "qq:1", PlatformUserID: "1"}}})
 }
 func startTakeoverTest(a *Agent) <-chan backgroundTestResult {
 	done := make(chan backgroundTestResult, 1)
 	go func() {
-		r, err := a.RunBackground(context.Background(), background.RunRequest{Kind: background.KindCron, Name: "takeover", Platform: "qq", Actor: security.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: security.RoleSuperadmin}, Prompt: "original background task", ToolListNames: []string{"slow"}})
+		r, err := a.RunBackground(context.Background(), background.RunRequest{Kind: background.KindCron, Name: "takeover", Platform: "qq", Actor: contextinfo.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: contextinfo.RoleSuperadmin}, Prompt: "original background task", ToolListNames: []string{"slow"}})
 		done <- backgroundTestResult{r, err}
 	}()
 	return done
@@ -131,7 +130,7 @@ func TestBackgroundTakeoverSwitchesTaskModelToWork(t *testing.T) {
 	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	done := make(chan backgroundTestResult, 1)
 	go func() {
-		r, err := a.RunBackground(context.Background(), background.RunRequest{Kind: background.KindCron, Name: "models", Platform: "qq", Actor: security.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"slow"}, Model: "task-model"})
+		r, err := a.RunBackground(context.Background(), background.RunRequest{Kind: background.KindCron, Name: "models", Platform: "qq", Actor: contextinfo.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: contextinfo.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"slow"}, Model: "task-model"})
 		done <- backgroundTestResult{r, err}
 	}()
 	select {
@@ -202,7 +201,7 @@ func TestBackgroundCompactHandoff(t *testing.T) {
 			f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"compressed history", "finished after compact"}}
 			a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
 			a.output.dispatcher.RegisterPlatformSender("qq", p)
-			req := background.RunRequest{Kind: background.KindCron, Name: "compact", Platform: "qq", Actor: security.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: security.RoleSuperadmin}, Prompt: "accepted input"}
+			req := background.RunRequest{Kind: background.KindCron, Name: "compact", Platform: "qq", Actor: contextinfo.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: contextinfo.RoleSuperadmin}, Prompt: "accepted input"}
 			row, err := a.execution.sessions.PrepareBackground(context.Background(), session.Scope{ActorID: "qq:1", Platform: "qq", PlatformScopeID: "cron:compact"}, session.BackgroundRequest{Kind: string(req.Kind), Name: req.Name})
 			if err != nil {
 				t.Fatal(err)
@@ -419,9 +418,9 @@ func TestTakeoverRefreshesNextToolInSameBatch(t *testing.T) {
 	}
 	select {
 	case ctx := <-observed:
-		actor, _ := security.ActorFromContext(ctx)
+		actor, _ := contextinfo.ActorFromContext(ctx)
 		binding, ok := session.BindingFromContext(ctx)
-		if sandboxctx.BackgroundContext(ctx) || actor.Role != security.RoleUser || !ok || !binding.Valid() || binding.SessionID() != id {
+		if sandboxctx.BackgroundContext(ctx) || actor.Role != contextinfo.RoleUser || !ok || !binding.Valid() || binding.SessionID() != id {
 			t.Fatalf("tool context: actor=%#v binding=%#v background=%v", actor, binding, sandboxctx.BackgroundContext(ctx))
 		}
 		dir, err := workspace.CurrentWorkspaceDir(context.WithoutCancel(ctx))

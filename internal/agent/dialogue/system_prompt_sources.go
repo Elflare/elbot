@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/memory/resident"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/storage"
@@ -15,7 +15,7 @@ import (
 type ConversationMetaSystemPromptSource struct{}
 
 func (ConversationMetaSystemPromptSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
-	info, ok := chatinfo.FromContext(ctx)
+	info, ok := contextinfo.ConversationFromContext(ctx)
 	if !ok {
 		info.Source.Platform = req.Scope.Platform
 	}

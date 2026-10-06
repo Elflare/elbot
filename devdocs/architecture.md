@@ -17,7 +17,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 2. `internal/launcher/cli.go` 解析 `run`、`cli`、`service run`、补全和远程 CLI 参数。
 3. 普通运行进入 `internal/app.Run`，由默认 `Runner` 执行；远程 CLI 进入 `internal/app` 的 CLI client 入口。
 4. Runner 按 Environment、Foundation、Models、Platforms、Runtime、Integrations 阶段装配配置、日志、SQLite、LLM、Agent、Tool、Platform、Hook、Output、Cron 和 Elnis。
-5. app 创建共享服务、路线注册表和命令 Router；Agent 装配 Chat Loop 与 Compactor 并统一登记、封闭注册表，随后注册内置命令和连接信号、补全与平台目录；接线成功前不启动平台。
+5. app 创建共享服务、provider 注册表和命令 Router；Agent 校验各客户端的私有接口，绑定业务能力及归属描述，登记源协议 Compactor 并封闭注册表，随后注册内置命令和连接信号、补全与平台目录；接线成功前不启动平台。
 6. app 层按运行模式启动平台 runtime，并在平台启动后异步启动 Cron runtime。
 
 设计边界：
@@ -32,14 +32,17 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - 关闭时应用上下文立即取消 Cron handler、Session 命名和追加确认等待，并停止新调度。Runner 先对订阅调用 `BeginClose`，断开连接、关闭队列接收并唤醒等待入队的生产者，再等待平台与 Foundation 的 `StopCron(ctx)` 结束，随后等待队列、追加确认及其在途提示、命名和 Hook runtime 退出、等待 Skill 加载结束，最后关闭 SQLite 和日志。重复停止等待同一完成结果，关闭后迟到的启动不能重新开放调度。
 - 平台退出、Cron 和后续清理共享 30 秒预算。预算到期停止等待；平台、Cron 或回调仍在运行时跳过其依赖的显式释放，交给进程退出，不启动后台收尾链。正常取消／关闭预算耗尽不视为应用失败，Cron 正常取消不报告任务失败；真实错误继续返回。
 
-<!-- locator:chatinfo -->
-## 公共聊天信息
+<!-- locator:contextinfo -->
+## 公共上下文事实
 
-- `chatinfo.Info` 携带每条消息的 Source、Identity、平台消息／回复 ID 和 `PlatformData any`；平台会话 ID 不等于 ElBot Session ID。权限仍由 security 判定，公共身份不授予权限。
-- 平台 `MessageContext` 嵌入 Info，公共消息标识只有一个所有者；安装时同步提供公共快照，本地 CLI scanner／TUI 只安装公共信息。Prompt 直接读取 Info 并格式化公共字段，不再通过 ConversationMeta 中转，也不展开平台扩展。
+- `contextinfo` 唯一定义并存取 Conversation、Actor、Execution、Model 四组事实，各 getter 返回快照及是否存在；缺失不补入口身份或全局模型。公共包只依赖 context，不持有配置、凭据、服务或原生载荷。
+- Conversation 携带 Source、Identity、平台消息／回复 ID 和 `PlatformData any`；平台会话 ID 不等于 ElBot Session ID。Actor 携带解析后的 ElBot 身份、角色和平台群角色，权限仍由 security／ToolRun 判定，角色事实不授予权限。
+- 平台 `MessageContext` 嵌入 Conversation，安装时将其移入公共 context，私有上下文仅保存正文、Sender 等平台能力；读取时从公共事实重建投影。本地 CLI scanner／TUI 只安装公共 Conversation。Prompt 直接读取公共事实，不展开平台扩展。
+- Execution 由 Session、Request、Turn 在建立关联时提供 SessionID、当前 RequestID、ParentRequestID、RootRequestID、RunID、Attempt；工具／Hook 子请求有自己的 RequestID，保留主请求 RootRequestID。这些值不代替 Binding.Valid、活动执行或 attempt 校验。
+- Model 在主对话选择确定后，由固定 Selection 与 provider 绑定描述提供 provider、model、protocol；前台接管采用新选择时更新，普通全局模型切换不改在途事实。选择前及无主对话的入口不虚构 Model。
 - `PlatformData` 由平台定义私有类型，优先只放公共字段无法表达的必要信息。发布后不改写；可变数据由生产者制作稳定快照，公共层不通用深拷贝、不序列化扩展。连接引用保留平台管理的生命周期，不代表持久投递地址。
 - OneBot／Telegram 从公共会话信息恢复目标，QQ 官方从公共消息 ID 与扩展恢复回复。远程 CLI 扩展保存原连接引用：默认回复只到原连接，断开即失败；显式用户／管理员目标才按原有多连接规则发送。
-- 前台接管独立复制公共 Info，并替换整份平台上下文；本地 CLI 没有平台扩展时也清除后台 Sender 与消息残留。执行自身的取消保持不变。
+- 前台接管一起刷新 Conversation、Actor、原绑定及整份平台上下文；新来源缺失的事实明确清除，本地 CLI 同样清除后台 Sender 与消息残留。执行自身的取消保持不变。
 
 <!-- locator:signal -->
 ## 信号与订阅
@@ -80,7 +83,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 
 1. 平台 adapter 收到消息并交给 Agent。
 2. Agent 委托 messageHandler 处理唤醒、入站媒体与平台 Hook；commandExecutor 分发命令，inputCoordinator 准备普通输入，执行与确认组件处理 pending 和确认响应。
-3. executionCoordinator 准入并启动 attempt，dialogue.Runner 加载单轮材料并按协议取得路线；协调器登记 Request 后，Chat 的每轮执行对象构建 Prompt，公共 Preparer 执行准备 Hook，MessageStore 保存用户输入，再由 chat.Caller 调用模型。
+3. executionCoordinator 在准入内检查目标 provider 能力、登记会话归属并启动 attempt，dialogue.Runner 加载单轮材料并按 provider 取得路线；协调器登记 Request 后，Chat 的每轮执行对象构建 Prompt，公共 Preparer 执行准备 Hook，MessageStore 保存用户输入，再由 chat.Caller 调用模型。
 4. LLM 返回文本、reasoning 或 tool call。
 5. 如果有 tool call，chat.Loop 通过公共 ToolExecutor、既有 ToolRun 和 toolRunDeps 执行工具；公共 MessageStore 保存工具 transcript，Chat 组织后续请求并继续循环。
 6. 最终输出前，dialogue.Runner 通过 ExecutionView 刷新接管来源和 Session，发布 sending 状态，再调用公共 ReplyCommitter。
@@ -135,17 +138,17 @@ Agent 只保存对外能力所需的组件引用和信号集合；消息、后�
 <!-- locator:protocol-routing -->
 ## 协议路线与压缩分派
 
-- `llm.ProtocolID` 与 Session 的 chat/work/background 模式独立；当前模型快照保存实际客户端及其 Protocol，modelmgr 构造时校验客户端声明与 provider.api_mode 一致。
-- Chat Completions 与 Responses 客户端分别位于 llm/chatcompletions、llm/responses；各自编码原生请求和消费流。公共 llm.Client 只提供协议声明、模型列表及独立 GenerateText，公共消息／工具定义不包含协议 JSON 包装。
+- `llm.ProtocolID` 与 Session 的 chat/work/background 模式独立。`Selection` 只固定 Provider、Model、Client；modelmgr 提供从启动配置取得的不可变 Origin 描述，Agent 装配时按 api_mode 校验客户端满足路线所需私有接口。
+- Chat Completions 与 Responses 客户端分别位于 llm/chatcompletions、llm/responses；各自编码原生请求和消费流。公共 llm.Client 只提供模型列表及独立 GenerateText，公共消息／工具定义不包含协议 JSON 包装。
 - httpclient 仅负责 HTTP、显式代理、可取消重试、SSE 分帧及超时；协议包负责鉴权、API 错误和成功终态。断流不重放请求，Extra 只补充字段，已有字段、受控名称或不同层级重名在发送前拒绝。
 - 命名与 Chat 文字摘要使用 GenerateText，可选择任一已配置客户端；Responses 独立调用使用 store=false，不续接主会话或执行工具。当前仅登记 Chat 业务 Loop／Compactor；缺失主对话能力时在自动压缩、保存输入和请求前拒绝。
-- `agent/routes.Registry` 在一处登记 Protocol、Loop、Compactor；Register 拒绝重复及缺失必需 Loop，Seal 后不能修改，封闭前不能执行能力查询。可选能力缺失时查询明确报错。
+- `agent/routes.Registry` 按 provider 保存 Binding{Origin, Client, Loop, Compactor}，另登记源协议 Compactor。客户端必需，Loop／Compactor 可缺失；重复绑定、空客户端、未登记的压缩接线、封闭前查询及封闭后修改明确报错。同路线共享无 provider 状态的业务组件，能力查询分别使用目标 provider 或源 Origin。
 - dialogue 只依赖 LoopResolver，contextmgr 只依赖 CompactorResolver；注册表依赖公共契约，公共层不导入注册表实现、Agent 根包或具体路线。
 - app 在创建上下文服务前建立注册表，Agent 装配内部路线并封闭注册表，验证 Chat 压缩接线成功后返回。注册表不保存执行、会话或工具状态，不提供完整依赖容器。
-- `/compact` 与自动阈值继续进入 executionCoordinator，公共 contextmgr.Compact 按源协议查询 Compactor；Chat 私有实现负责历史筛选、摘要提示、模型选择和 seed 准备。公共层负责命名信息与统计，执行／Session 负责创建、继承、保存和交接。
+- `/compact` 与自动阈值继续进入 executionCoordinator，公共 contextmgr.Compact 只从源 Session 的 llm_origin 查询 Compactor，不用摘要目标或当前配置猜来源；旧 provider 删除或配置改变时仍可使用已登记的源协议能力。Chat 私有实现负责历史筛选、摘要提示、模型选择和 seed 准备。公共层负责命名信息与统计，执行／Session 负责创建、继承、保存和交接。
 - Chat 保留当前文字摘要与 seed 格式、成功保存后消费 seed 的语义。Responses 原生记录、seed、兼容检查和恢复仍属后续步骤，不能视为已接入。
 
-已确认的 provider 预绑定及移除 Selection.Protocol 方案尚未实施，目标约定见 [阶段 16](core-refactor.md#phase-16)；本节描述当前代码。
+Responses provider 当前只绑定独立文本客户端，主对话能力缺失时在自动压缩、输入保存和模型请求前拒绝。后续业务接入见 [阶段 16](core-refactor.md#phase-16)。
 
 <!-- locator:commands -->
 ## 命令链路
@@ -376,11 +379,13 @@ shell 导出缓存位于 sandbox 的 `media-inputs/`，按内容 ID 命名，首
 
 Session 服务唯一管理 current 绑定及其同步失效。绑定只公开 `Scope()`、`SessionID()`、`Valid()`，不提供取消；`CurrentBound` 一并返回持久化快照和原绑定。切离后旧绑定永久无效，切回同一 Session 获得新绑定；未变化的 current 不重复发信号。输入、工具和确认续接传递原绑定，普通旧调用不能重新捕获 current 而复活。
 
+`llm_origin` 在 Session metadata 独立保存首次主对话准入的 protocol、provider、去除末尾斜线的 base_url，不含模型或凭据；RegisterOrigin 受原 Binding／Session 准入和取消保护，保存失败不继续调用。已有完整归属不随切模型改写，协议不匹配拒绝；压缩、Fork、后台复制继承源归属，独立创建保持未定。旧数据库一次迁移只标记已有 Chat 会话的 protocol，下一次实际 Chat 准入补全 provider／base_url，不伪造历史来源。
+
 `PrepareBackground` 创建或复用后台会话，在同一 `Session.Mode` 字段固定 `background`，管理标题及后台身份 metadata，不激活前台 current；复用时保留其他模块字段，拒绝已被前台接管的会话。首次后台工具状态由调用方另交 StateService 提交。
 
 `CopyBackground` 在来源 Session 准入内复核后台状态，复用后台创建规则并复制历史、清除旧消息引用。Cron 只决定目标归属和业务 metadata；Session 统一设置后台模式与命名标记，副本不改变前台 current，不继承工具或执行状态。来源已被接管时拒绝复制。
 
-命名任务由 Session 的 `StartNaming`、`Close`、`Done` 管理，app 注入应用生命周期并等待实际退出。关闭后不接收新命名，准备阶段和在途生成均纳入退出等待；Turn 结束不取消命名，应用取消后的迟到结果不写标题、不执行 fallback、不报告命名失败。`NamingSignals()` 发布 Scheduled／Completed／Failed，app 在命名启动前接入有界背压日志消费者；标题更新与命名触发仍直接执行。
+命名任务由 Session 的 `StartNaming`、`Close`、`Done` 管理，app 注入应用生命周期并等待实际退出。关闭后不接收新命名，准备阶段和在途生成均纳入退出等待；Turn 结束不取消命名，应用取消后的迟到结果不写标题、不执行 fallback、不报告命名失败。`NamingSignals()` 发布 Scheduled／Completed／Failed，结果携带实际调用的 provider／model，包括 fallback 目标；app 在命名启动前接入有界背压日志消费者。独立文本不改主对话 Model 或 Session 原生归属，标题更新与命名触发仍直接执行。
 
 `CreateCompacted` 接收来源 Session ID、预分配的新 ID、标题与已准备的 metadata，在准入内复核来源及前台原绑定，继承归属和模式，统一设置命名字段并保存新会话。前台更新 current，后台不创建前台绑定；保存失败不改变绑定。Session 不依赖 contextmgr，摘要、seed、代数及压缩标题材料仍归上下文服务，执行交接仍归 Agent。Fork 保留来源模式。
 
@@ -447,6 +452,7 @@ SQLite 实现负责：
 - Session 写入统一使用 `Mutate(ctx, id, updateFn)`：短事务读取最新行、修改负责字段并返回新快照，回调错误回滚；回调不做 I/O、模型调用或嵌套仓储操作。metadata 使用 RawMessage 保留未知字段及数值精度，解码失败拒绝写入；集合合并、接管条件和手动命名优先检查均基于事务内最新值。
 - Message 的 `segments` 是多模态消息的完整结构来源；`content` 是由 segments 生成的纯文本快速路径。仅多模态内容保存 segments，读取时非空 segments 优先，否则直接使用 content。
 - migration 需要可重复检测已应用版本。
+- 第 18 版 migration 为已有 Session 的缺失 llm_origin 写入 protocol=chat，保留其他 metadata 及已有归属；损坏或非对象 metadata 使整次迁移回滚。新创建的会话不受已执行迁移影响。
 - 查询条件要保留平台隔离、归档过滤、Fork 范围等业务约束。
 
 <!-- locator:elnis -->

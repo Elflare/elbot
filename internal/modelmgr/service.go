@@ -4,6 +4,8 @@ package modelmgr
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 
 	"elbot/internal/config"
@@ -31,6 +33,7 @@ type Service struct {
 	sessionState config.StateSessionConfig
 	save         func(string, config.StateConfig) error
 	clients      map[string]llm.Client
+	origins      map[string]llm.Origin
 	providers    map[string]*providerCatalog
 	retrying     *signal.Signal[ModelRetryingEvent]
 }
@@ -61,6 +64,7 @@ func New(opts Options) (*Service, error) {
 		sessionState: config.StateSessionConfig{DefaultMode: opts.DefaultMode},
 		save:         config.SaveState,
 		clients:      make(map[string]llm.Client, len(opts.Providers)),
+		origins:      make(map[string]llm.Origin, len(opts.Providers)),
 		providers:    make(map[string]*providerCatalog, len(opts.Providers)),
 		retrying:     signal.New[ModelRetryingEvent]("model.retrying", nil),
 	}
@@ -73,10 +77,8 @@ func New(opts Options) (*Service, error) {
 		if mode != "chat" && mode != "response" {
 			return nil, fmt.Errorf("provider %q has invalid api_mode %q", name, mode)
 		}
-		if client.Protocol() != llm.ProtocolID(mode) {
-			return nil, fmt.Errorf("provider %q api_mode %q does not match client protocol %q", name, mode, client.Protocol())
-		}
 		s.clients[name] = client
+		s.origins[name] = llm.Origin{Provider: name, Protocol: llm.ProtocolID(mode), BaseURL: strings.TrimRight(provider.BaseURL, "/")}
 		s.providers[name] = &providerCatalog{
 			baseURL: provider.BaseURL, apiKey: provider.APIKey, apiKeyEnv: provider.APIKeyEnv,
 			configured: append([]string(nil), provider.Models...),
@@ -103,3 +105,14 @@ func validateSelection(name string, selected config.ModelSelection, providers ma
 }
 
 func (s *Service) ClientForProvider(provider string) llm.Client { return s.clients[provider] }
+
+// ProviderOrigins supplies immutable configuration facts for composition. Model
+// selection does not choose business routes or inspect native client interfaces.
+func (s *Service) ProviderOrigins() []llm.Origin {
+	origins := make([]llm.Origin, 0, len(s.origins))
+	for _, origin := range s.origins {
+		origins = append(origins, origin)
+	}
+	sort.Slice(origins, func(i, j int) bool { return origins[i].Provider < origins[j].Provider })
+	return origins
+}

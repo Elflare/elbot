@@ -13,8 +13,8 @@ import (
 	"time"
 	"unicode"
 
-	"elbot/internal/chatinfo"
 	"elbot/internal/command"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
@@ -128,24 +128,24 @@ func (a *Adapter) handleUpdate(ctx context.Context, handler platform.PlatformHan
 	a.handleMessage(ctx, handler, *upd.Message)
 }
 
-func (a *Adapter) messageGroupRole(ctx context.Context, msg message) security.GroupRole {
+func (a *Adapter) messageGroupRole(ctx context.Context, msg message) contextinfo.GroupRole {
 	if msg.From == nil || (msg.Chat.Type != "group" && msg.Chat.Type != "supergroup") {
-		return security.GroupRoleUnknown
+		return contextinfo.GroupRoleUnknown
 	}
 	member, err := a.client.getChatMember(ctx, msg.Chat.ID, msg.From.ID)
 	if err != nil {
 		a.logWarn("get telegram chat member failed", "error", err)
-		return security.GroupRoleUnknown
+		return contextinfo.GroupRoleUnknown
 	}
 	switch strings.TrimSpace(member.Status) {
 	case "creator":
-		return security.GroupRoleOwner
+		return contextinfo.GroupRoleOwner
 	case "administrator":
-		return security.GroupRoleAdmin
+		return contextinfo.GroupRoleAdmin
 	case "member", "restricted":
-		return security.GroupRoleMember
+		return contextinfo.GroupRoleMember
 	default:
-		return security.GroupRoleUnknown
+		return contextinfo.GroupRoleUnknown
 	}
 }
 
@@ -174,14 +174,14 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 	platformUserID := userIDString(msg.From)
 	groupRole := a.messageGroupRole(ctx, msg)
 	messageCtx := platform.MessageContext{
-		Info: chatinfo.Info{
-			Source: chatinfo.Source{
+		Conversation: contextinfo.Conversation{
+			Source: contextinfo.Source{
 				Platform:         a.Name(),
 				ScopeID:          scopeID(msg.Chat),
 				ConversationKind: telegramConversationKind(msg.Chat),
 				ConversationID:   formatMessageID(msg.Chat.ID),
 			},
-			Identity: chatinfo.Identity{
+			Identity: contextinfo.Identity{
 				ActorID:        security.ActorID(a.Name(), platformUserID),
 				PlatformUserID: platformUserID,
 				Nickname:       displayNamePtr(msg.From, ""),
@@ -213,8 +213,8 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 			Store:           a.store,
 			ChatHistory:     a.chatHistory,
 			Platform:        a.Name(),
-			ScopeID:         messageCtx.Info.Source.ScopeID,
-			ActorID:         messageCtx.Info.Identity.ActorID,
+			ScopeID:         messageCtx.Conversation.Source.ScopeID,
+			ActorID:         messageCtx.Conversation.Identity.ActorID,
 			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, userIDString(msg.From)),
 			ReplyID:         normalized.ReplyID,
 			Text:            text,
@@ -270,7 +270,7 @@ func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Outp
 }
 
 func contextTarget(ctx context.Context) (target, error) {
-	info, ok := chatinfo.FromContext(ctx)
+	info, ok := contextinfo.ConversationFromContext(ctx)
 	if !ok || info.Source.Platform != platformName {
 		return target{}, fmt.Errorf("telegram send target missing")
 	}
@@ -283,7 +283,7 @@ func contextTarget(ctx context.Context) (target, error) {
 		t = target{ChatID: id, ScopeID: info.Source.ScopeID}
 		if t.ScopeID == "" {
 			switch info.Source.ConversationKind {
-			case chatinfo.ConversationPrivate, chatinfo.ConversationGroup, chatinfo.ConversationChannel:
+			case contextinfo.ConversationPrivate, contextinfo.ConversationGroup, contextinfo.ConversationChannel:
 				t.ScopeID = string(info.Source.ConversationKind) + ":" + strconv.FormatInt(id, 10)
 			}
 		}

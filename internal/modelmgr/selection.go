@@ -12,8 +12,7 @@ import (
 // Selection fixes both the model identity and its client for one operation.
 type Selection struct {
 	config.ModelSelection
-	Client   llm.Client
-	Protocol llm.ProtocolID
+	Client llm.Client
 }
 
 type NamingSelection struct {
@@ -31,11 +30,7 @@ func (state runtimeState) mode(mode string) config.ModelSelection {
 
 func (s *Service) Resolve(selected config.ModelSelection) Selection {
 	client := s.clients[selected.Provider]
-	var protocol llm.ProtocolID
-	if client != nil {
-		protocol = client.Protocol()
-	}
-	return Selection{ModelSelection: selected, Client: client, Protocol: protocol}
+	return Selection{ModelSelection: selected, Client: client}
 }
 
 // ValidateSelection checks an explicit task choice without changing shared state.

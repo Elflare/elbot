@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/notification"
@@ -26,7 +26,7 @@ func HookFailure(ctx context.Context, notices *notification.Manager, event hook.
 		text = string(body[:1200]) + "\n...（已截断）"
 	}
 	target := delivery.Target{}
-	if _, ok := chatinfo.FromContext(ctx); !ok {
+	if _, ok := contextinfo.ConversationFromContext(ctx); !ok {
 		target.Platform = event.Platform.Name
 		target.ScopeID = event.Platform.ScopeID
 	}

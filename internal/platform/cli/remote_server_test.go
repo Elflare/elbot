@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"github.com/coder/websocket"
@@ -70,11 +70,11 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 	one, first := dial()
 	two, second := dial()
 	snapshot := func(client *remoteClientConn) context.Context {
-		info, ok := chatinfo.FromContext(s.messageContext(ctx, client))
+		info, ok := contextinfo.ConversationFromContext(s.messageContext(ctx, client))
 		if !ok {
 			t.Fatal("missing public info")
 		}
-		return chatinfo.WithInfo(ctx, info)
+		return contextinfo.WithConversation(ctx, info)
 	}
 	firstCtx, secondCtx := snapshot(first), snapshot(second)
 	router := dispatch.New(dispatch.Options{Primary: s})

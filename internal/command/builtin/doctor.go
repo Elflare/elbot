@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"elbot/internal/command"
-	"elbot/internal/security"
+	"elbot/internal/contextinfo"
 )
 
 type doctorCommand struct{ deps Deps }
@@ -19,7 +19,7 @@ func (c doctorCommand) Info() command.Info {
 		Usage:       "/doctor",
 		Description: "检查配置与内置 Skill，生成可复制给 Elbot 的处理请求。",
 		Help:        "只读检查当前服务的配置文件和内置 Skill；按文件列出缺失项、配置错误及 Skill 差异，并附上配置说明和默认模板地址。未知字段仅检查主配置；没有问题时返回 Everything is OK。不会自动修改文件。",
-		MinRole:     security.RoleSuperadmin,
+		MinRole:     contextinfo.RoleSuperadmin,
 	}
 }
 

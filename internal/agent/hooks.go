@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	agentevents "elbot/internal/agent/events"
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -15,7 +15,6 @@ import (
 	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/platform"
 	"elbot/internal/request"
-	"elbot/internal/security"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
@@ -51,7 +50,7 @@ func (h *hookBridge) Route(ctx context.Context, event hook.Event) (hook.Event, b
 		return event, false, nil
 	}
 	if id := h.router.RouteHookID(event); id != "" && h.requests != nil {
-		_, requestCtx, done, err := h.requests.Start(ctx, request.StartRequest{ParentID: request.TurnIDFromContext(ctx), Kind: request.KindHook, Label: id + " continuation"})
+		_, requestCtx, done, err := h.requests.Start(ctx, request.StartRequest{ParentID: contextinfo.RootRequestIDFromContext(ctx), Kind: request.KindHook, Label: id + " continuation"})
 		if err == nil {
 			defer done()
 			ctx = requestCtx
@@ -109,7 +108,7 @@ func (h *hookBridge) ObserveRun(ctx context.Context, event hook.Event, info hook
 		label = strings.TrimSpace(string(info.Point))
 	}
 	_, reqCtx, done, err := h.requests.Start(ctx, request.StartRequest{
-		ParentID:  request.TurnIDFromContext(ctx),
+		ParentID:  contextinfo.RootRequestIDFromContext(ctx),
 		SessionID: sessionID,
 		Kind:      request.KindHook,
 		Label:     label,
@@ -157,7 +156,7 @@ func (h *hookBridge) fillContext(ctx context.Context, event hook.Event) hook.Eve
 	// Connection and other source-free events must not inherit the Agent's
 	// default local identity. Only message facts or an explicit actor apply.
 	actor := h.identity.SourceActor(ctx)
-	if info, ok := chatinfo.FromContext(ctx); ok {
+	if info, ok := contextinfo.ConversationFromContext(ctx); ok {
 		if event.Platform.Name == "" {
 			event.Platform.Name = info.Source.Platform
 		}
@@ -206,7 +205,7 @@ func (h *hookBridge) fillContext(ctx context.Context, event hook.Event) hook.Eve
 	return event
 }
 
-func actorContext(actor security.Actor) hook.ActorContext {
+func actorContext(actor contextinfo.Actor) hook.ActorContext {
 	return hook.ActorContext{ID: actor.ID, Role: string(actor.Role), GroupRole: string(actor.GroupRole), UserID: actor.PlatformUserID, Nickname: actor.Nickname, GroupCard: actor.GroupCard, DisplayName: actor.DisplayName}
 }
 

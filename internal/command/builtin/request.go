@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"elbot/internal/command"
+	"elbot/internal/contextinfo"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
-	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/turn"
 )
@@ -60,7 +60,7 @@ func (c stopCommand) Info() command.Info {
 		Name:        "stop",
 		Usage:       "/stop [request_id|number]",
 		Description: "Stop a request or all requests in current session. Use /requests to see numbers like 1 or 1.1.",
-		MinRole:     security.RoleUser,
+		MinRole:     contextinfo.RoleUser,
 	}
 }
 
@@ -102,8 +102,8 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 		return &command.Result{Content: "stopped 1 request"}, nil
 	}
 
-	actor, _ := security.ActorFromContext(ctx)
-	if binding == nil && actor.Role == security.RoleSuperadmin {
+	actor, _ := contextinfo.ActorFromContext(ctx)
+	if binding == nil && actor.Role == contextinfo.RoleSuperadmin {
 		_, binding, _ = deps.Sessions.CurrentBound(ctx, deps.Scope(ctx))
 	}
 	if binding == nil {
@@ -242,7 +242,7 @@ func stoppableRequests(ctx context.Context, deps Deps) ([]request.Request, *sess
 	if deps.Requests == nil {
 		return nil, nil
 	}
-	if actor, _ := security.ActorFromContext(ctx); actor.Role == security.RoleSuperadmin {
+	if actor, _ := contextinfo.ActorFromContext(ctx); actor.Role == contextinfo.RoleSuperadmin {
 		return deps.Requests.List(), nil
 	}
 	_, binding, err := deps.Sessions.CurrentBound(ctx, deps.Scope(ctx))

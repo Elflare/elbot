@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/security"
@@ -51,11 +52,11 @@ func ruleRoleConditions(rule Rule) []hook.Condition {
 	}
 	for _, role := range rule.Roles {
 		role = strings.TrimSpace(role)
-		switch security.Role(role) {
-		case security.RoleSuperadmin, security.RoleUser:
+		switch contextinfo.Role(role) {
+		case contextinfo.RoleSuperadmin, contextinfo.RoleUser:
 			add("actor.role", role)
 		default:
-			if parsed := security.ParseGroupRole(role); parsed != security.GroupRoleUnknown || role == string(security.GroupRoleUnknown) {
+			if parsed := security.ParseGroupRole(role); parsed != contextinfo.GroupRoleUnknown || role == string(contextinfo.GroupRoleUnknown) {
 				add("actor.group_role", string(parsed))
 			}
 		}
@@ -185,23 +186,23 @@ func validateRule(rule Rule) error {
 func (r Rule) validateRoles() error {
 	for _, role := range r.Roles {
 		role = strings.TrimSpace(role)
-		switch security.Role(role) {
-		case security.RoleSuperadmin, security.RoleUser:
+		switch contextinfo.Role(role) {
+		case contextinfo.RoleSuperadmin, contextinfo.RoleUser:
 			continue
 		}
-		if security.ParseGroupRole(role) == security.GroupRoleUnknown && role != string(security.GroupRoleUnknown) {
+		if security.ParseGroupRole(role) == contextinfo.GroupRoleUnknown && role != string(contextinfo.GroupRoleUnknown) {
 			return fmt.Errorf("unsupported role %q", role)
 		}
 	}
 	for _, role := range r.ActorRoles {
-		switch security.Role(strings.TrimSpace(role)) {
-		case security.RoleSuperadmin, security.RoleUser:
+		switch contextinfo.Role(strings.TrimSpace(role)) {
+		case contextinfo.RoleSuperadmin, contextinfo.RoleUser:
 		default:
 			return fmt.Errorf("unsupported actor role %q", role)
 		}
 	}
 	for _, role := range r.GroupRoles {
-		if security.ParseGroupRole(role) == security.GroupRoleUnknown && strings.TrimSpace(role) != string(security.GroupRoleUnknown) {
+		if security.ParseGroupRole(role) == contextinfo.GroupRoleUnknown && strings.TrimSpace(role) != string(contextinfo.GroupRoleUnknown) {
 			return fmt.Errorf("unsupported group role %q", role)
 		}
 	}

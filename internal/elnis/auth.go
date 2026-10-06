@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/elvena"
-	"elbot/internal/security"
 	"elbot/internal/toolrun"
 )
 
@@ -49,7 +49,7 @@ func (s *Service) authorizeElwisp(event Event) error {
 
 func (s *Service) authorizeInternalTools(ctx context.Context, event Event) error {
 	allowed := s.allowedInternalTools(event.Request.Elwisp.Name)
-	ctx = security.WithActor(ctx, elnisActor(event))
+	ctx = contextinfo.WithActor(ctx, elnisActor(event))
 	for _, selection := range s.toolPreloader.BackgroundSelections(ctx, event.Request.ToolListNames) {
 		for _, name := range selection.Names {
 			if !allowed[name] {

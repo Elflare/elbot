@@ -3,7 +3,7 @@ package command
 import (
 	"context"
 
-	"elbot/internal/security"
+	"elbot/internal/contextinfo"
 )
 
 type Info struct {
@@ -15,11 +15,11 @@ type Info struct {
 	SessionEffect SessionEffect
 	// MinRole controls slash-command access. RoleUser allows regular users;
 	// empty defaults to RoleSuperadmin for backward compatibility.
-	MinRole security.Role
+	MinRole contextinfo.Role
 }
 
-func CanAccess(info Info, actor security.Actor) bool {
-	return info.MinRole == security.RoleUser || actor.Role == security.RoleSuperadmin
+func CanAccess(info Info, actor contextinfo.Actor) bool {
+	return info.MinRole == contextinfo.RoleUser || actor.Role == contextinfo.RoleSuperadmin
 }
 
 type SessionEffect uint8

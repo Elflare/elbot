@@ -13,8 +13,8 @@ import (
 
 	"elbot/internal/agent/dialogue"
 	agentevents "elbot/internal/agent/events"
-	"elbot/internal/chatinfo"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/hook"
@@ -104,7 +104,7 @@ func TestComponentPolicyOptionsReachHookAndPrompt(t *testing.T) {
 	if err := registry.Register(componentAdminTool{agentDetailTool{name: "admin_only"}}); err != nil {
 		t.Fatal(err)
 	}
-	ctx := chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "private:1"}, Identity: chatinfo.Identity{PlatformUserID: "1"}})
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ScopeID: "private:1"}, Identity: contextinfo.Identity{PlatformUserID: "1"}})
 	for _, admin := range []bool{false, true} {
 		admins := map[string][]string{}
 		if admin {
@@ -117,7 +117,7 @@ func TestComponentPolicyOptionsReachHookAndPrompt(t *testing.T) {
 		provider := a.execution.dialogue.Preparer.Tools.Provider.(toolRunPromptProvider)
 		actor := a.identity.Actor(ctx)
 		event := a.hooks.fillContext(ctx, hook.Event{})
-		if (actor.Role == security.RoleSuperadmin) != admin || event.Actor.Role != string(actor.Role) {
+		if (actor.Role == contextinfo.RoleSuperadmin) != admin || event.Actor.Role != string(actor.Role) {
 			t.Fatalf("identity and Hook disagree with configured policy: %+v / %+v", actor, event.Actor)
 		}
 		names, err := provider.ToolNames(ctx, storage.SessionModeWork, &storage.Session{ID: "s1"}, a.Scope(ctx))
@@ -177,18 +177,21 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 	requestCtx, cancelRequest := context.WithCancel(context.Background())
 	defer cancelRequest()
 	ctx := turn.WithAttempt(turn.WithExecution(requestCtx, execution), "attempt")
-	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "cron:1"}}, Sender: &fakePlatform{}, BufferAssistantOutput: true})
+	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ScopeID: "cron:1"}}, Sender: &fakePlatform{}, BufferAssistantOutput: true})
 	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Root: "/background", Dir: "/background/task"})
 	ctx = modelmgr.WithSelectionOverride(ctx, config.ModelSelection{Provider: "task", Model: "task"})
-	foreground, cancelForeground := context.WithCancel(chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "remote:original"}}))
-	actor := security.Actor{ID: "cli:owner", Role: security.RoleSuperadmin}
-	execution.Adopt(security.WithActor(foreground, actor))
+	foreground, cancelForeground := context.WithCancel(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "remote:original"}}))
+	actor := contextinfo.Actor{ID: "cli:owner", Role: contextinfo.RoleSuperadmin}
+	execution.Adopt(contextinfo.WithActor(foreground, actor))
 	cancelForeground()
 	view := dialogue.ExecutionView{}
 	refreshed := view.Context(ctx)
 	msg, ok := platform.MessageContextFrom(refreshed)
-	if !ok || msg.Info.Source.ScopeID != "remote:original" || msg.Sender != nil || msg.BufferAssistantOutput {
+	if ok || msg.Sender != nil || msg.BufferAssistantOutput {
 		t.Fatalf("retained background routing: %+v", msg)
+	}
+	if info, ok := contextinfo.ConversationFromContext(refreshed); !ok || info.Source.ScopeID != "remote:original" {
+		t.Fatalf("foreground public facts = %+v, %v", info, ok)
 	}
 	if sandbox, _ := sandboxctx.SandboxContextFromContext(refreshed); sandbox.Root != "" || sandbox.Dir != "" {
 		t.Fatalf("retained sandbox: %+v", sandbox)
@@ -196,7 +199,7 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 	if selection := modelmgr.SelectionOverrideFromContext(refreshed); selection.Provider != "" || selection.Model != "" {
 		t.Fatalf("retained model override: %+v", selection)
 	}
-	if got, _ := security.ActorFromContext(refreshed); got != actor || turn.AttemptFromContext(refreshed) != "attempt" || refreshed.Err() != nil {
+	if got, _ := contextinfo.ActorFromContext(refreshed); got != actor || turn.AttemptFromContext(refreshed) != "attempt" || refreshed.Err() != nil {
 		t.Fatalf("lost request identity or inherited foreground cancellation: %+v / %v", got, refreshed.Err())
 	}
 	cancelRequest()

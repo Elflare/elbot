@@ -11,9 +11,9 @@ import (
 	"testing"
 
 	"elbot/internal/command"
+	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
-	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -31,7 +31,7 @@ func rollbackAgentFixture(t *testing.T) (*Agent, *fakePlatform, context.Context,
 		t.Fatal(err)
 	}
 	a := mustNewWithOptions(t, opts)
-	ctx := security.WithActor(context.Background(), security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin})
+	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin})
 	row, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "files"})
 	if err != nil {
 		t.Fatal(err)
@@ -140,7 +140,7 @@ func TestRollbackCommandInvalidatesOnNewAndDeniesRegularUsers(t *testing.T) {
 	editForRollback(t, a, ctx, row, "file", "created")
 	records, _ := listTestFileRollbacks(a, ctx)
 	id := records[0].ID
-	userCtx := security.WithActor(ctx, security.Actor{ID: "regular", Role: security.RoleUser})
+	userCtx := contextinfo.WithActor(ctx, contextinfo.Actor{ID: "regular", Role: contextinfo.RoleUser})
 	if err := a.HandleMessage(userCtx, "/rollback"); err != nil {
 		t.Fatal(err)
 	}

@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
 	"elbot/internal/request"
-	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
@@ -58,7 +58,7 @@ func fileRollbackContext(ctx context.Context, service *fileops.Service, sessions
 // PrepareFileCommand captures the original binding and execution admission for
 // file commands. The file service owns record lookup and the actual operation.
 func (p *fileCommandPreparer) PrepareFileCommand(ctx context.Context, idleOnly bool) (context.Context, error) {
-	if p.identity.Actor(ctx).Role != security.RoleSuperadmin {
+	if p.identity.Actor(ctx).Role != contextinfo.RoleSuperadmin {
 		return ctx, fmt.Errorf("rollback requires superadmin role")
 	}
 	if p.service == nil {
@@ -80,7 +80,7 @@ func (p *fileCommandPreparer) PrepareFileCommand(ctx context.Context, idleOnly b
 	if idleOnly && (p.turns.Snapshot(row.ID).Phase != turn.PhaseIdle || compactActive(p.turns, p.requests, row.ID)) {
 		return ctx, fmt.Errorf("当前会话仍在执行任务或压缩；请等待完成，或先 /stop")
 	}
-	ctx = session.WithBinding(security.WithActor(ctx, p.identity.Actor(ctx)), binding)
+	ctx = session.WithBinding(contextinfo.WithActor(ctx, p.identity.Actor(ctx)), binding)
 	// Listing never enters commit admission, but a reused command context must
 	// still reject a write if a Turn begins while it waits for the target lock.
 	ctx = fileRollbackContext(ctx, p.service, p.sessions, p.turns, p.requests, p.identity, row, true)

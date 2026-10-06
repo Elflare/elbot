@@ -2,8 +2,8 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/chatinfo"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
@@ -55,9 +55,9 @@ func TestUnwokenGroupMessageSkipsLLMButAllowsPassiveHook(t *testing.T) {
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot",
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot",
 		ScopeID:          "group:9",
-		ConversationKind: chatinfo.ConversationGroup}}, Sender: p,
+		ConversationKind: contextinfo.ConversationGroup}}, Sender: p,
 		RawText:  "hello",
 		Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "hello"}},
 	})
@@ -87,9 +87,9 @@ func TestUnwokenGroupMessageSkipsDefaultHook(t *testing.T) {
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot",
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot",
 		ScopeID:          "group:9",
-		ConversationKind: chatinfo.ConversationGroup}}, Sender: p,
+		ConversationKind: contextinfo.ConversationGroup}}, Sender: p,
 		RawText:  "hello",
 		Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "hello"}},
 	})
@@ -120,9 +120,9 @@ func TestWokenGroupMessageSkipsForbiddenHookAndRunsLLM(t *testing.T) {
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot",
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot",
 		ScopeID:          "group:9",
-		ConversationKind: chatinfo.ConversationGroup}}, Sender: p,
+		ConversationKind: contextinfo.ConversationGroup}}, Sender: p,
 		RawText:         "芙莉丝 hello",
 		Segments:        []platform.MessageSegment{{Type: platform.SegmentText, Text: "芙莉丝 hello"}},
 		TriggerKeywords: []string{"芙莉丝"},
@@ -158,9 +158,9 @@ func TestPrefixWokenGroupMessageRunsTurnOutputHook(t *testing.T) {
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot",
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot",
 		ScopeID:          "group:9",
-		ConversationKind: chatinfo.ConversationGroup}}, Sender: p,
+		ConversationKind: contextinfo.ConversationGroup}}, Sender: p,
 		BufferAssistantOutput: true,
 		RawText:               "芙莉丝 hello",
 		Segments:              []platform.MessageSegment{{Type: platform.SegmentText, Text: "芙莉丝 hello"}},
@@ -189,9 +189,9 @@ func TestPassiveHookCannotWakeLLMByEditingMessage(t *testing.T) {
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot",
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot",
 		ScopeID:          "group:9",
-		ConversationKind: chatinfo.ConversationGroup}}, Sender: p,
+		ConversationKind: contextinfo.ConversationGroup}}, Sender: p,
 		RawText:         "hello",
 		Segments:        []platform.MessageSegment{{Type: platform.SegmentText, Text: "hello"}},
 		TriggerKeywords: []string{"芙莉丝"},
@@ -209,9 +209,9 @@ func TestWokenGroupMessageStripsTriggerKeywordBeforeLLM(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot",
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot",
 		ScopeID:          "group:9",
-		ConversationKind: chatinfo.ConversationGroup}}, Sender: p,
+		ConversationKind: contextinfo.ConversationGroup}}, Sender: p,
 		RawText:         "芙莉丝 hello",
 		Segments:        []platform.MessageSegment{{Type: platform.SegmentText, Text: "芙莉丝 hello"}},
 		TriggerKeywords: []string{"芙莉丝"},
@@ -259,9 +259,9 @@ func TestPlatformMessageReceivedHookMatchesCurrentTextWithReplyContext(t *testin
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot",
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot",
 		ScopeID:          "group:9",
-		ConversationKind: chatinfo.ConversationGroup}}, Sender: p,
+		ConversationKind: contextinfo.ConversationGroup}}, Sender: p,
 		RawText:         "撤回",
 		Segments:        []platform.MessageSegment{{Type: platform.SegmentText, Text: "撤回"}},
 		ContextText:     "[引用：通知]：通知内容\n\n撤回",

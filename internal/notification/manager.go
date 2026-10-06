@@ -6,19 +6,19 @@ import (
 	"log/slog"
 	"strings"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/session"
 )
 
 // Intent preserves the event's original source and activation across asynchronous work.
-// PlatformData follows chatinfo's immutable snapshot convention.
+// PlatformData follows contextinfo's immutable snapshot convention.
 type Intent struct {
-	Info    *chatinfo.Info
-	Binding *session.Binding
-	Notice  delivery.Notice
-	sender  delivery.ContextSender
+	Conversation *contextinfo.Conversation
+	Binding      *session.Binding
+	Notice       delivery.Notice
+	sender       delivery.ContextSender
 }
 
 type Manager struct {
@@ -33,8 +33,8 @@ func New(sender delivery.MessageSender, logger *slog.Logger, logWithoutSource bo
 
 func Capture(ctx context.Context, notice delivery.Notice) Intent {
 	intent := Intent{Notice: notice}
-	if info, ok := chatinfo.FromContext(ctx); ok {
-		intent.Info = &info
+	if info, ok := contextinfo.ConversationFromContext(ctx); ok {
+		intent.Conversation = &info
 	}
 	intent.Binding, _ = session.BindingFromContext(ctx)
 	if msg, ok := platform.MessageContextFrom(ctx); ok {
@@ -60,11 +60,11 @@ func (m *Manager) Send(ctx context.Context, intent Intent) (delivery.Receipt, er
 	// Replace routing values, retaining the worker's cancellation. In particular,
 	// never borrow another message's Sender or lose a captured discard sender.
 	message := platform.MessageContext{Sender: intent.sender}
-	if intent.Info != nil {
-		message.Info = *intent.Info
+	if intent.Conversation != nil {
+		message.Conversation = *intent.Conversation
 	}
 	ctx = platform.WithMessageContext(ctx, message)
-	if m.logWithoutSource && intent.Notice.Target.Empty() && (intent.Info == nil || intent.Info.Source.Platform == "") {
+	if m.logWithoutSource && intent.Notice.Target.Empty() && (intent.Conversation == nil || intent.Conversation.Source.Platform == "") {
 		if err := delivery.ValidateOutputs(intent.Notice.Outputs); err != nil {
 			return delivery.Receipt{}, err
 		}

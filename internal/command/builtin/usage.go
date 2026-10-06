@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"elbot/internal/command"
+	"elbot/internal/contextinfo"
 	"elbot/internal/logging"
-	"elbot/internal/security"
 )
 
 const usageQueryLimit = 100000
@@ -19,7 +19,7 @@ func usageInfo() command.Info {
 		Name:        "usage",
 		Usage:       "/usage [options]",
 		Description: "Aggregate token usage from audit logs.",
-		MinRole:     security.RoleSuperadmin,
+		MinRole:     contextinfo.RoleSuperadmin,
 		Help: strings.TrimSpace(`Options:
   -d, --days <n>        Days to look back. Default: 1.
   -m, --model <name>    Filter by model name.

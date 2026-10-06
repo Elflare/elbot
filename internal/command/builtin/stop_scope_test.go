@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"elbot/internal/command"
+	"elbot/internal/contextinfo"
 	"elbot/internal/request"
-	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/turn"
 )
@@ -15,7 +15,7 @@ import (
 func TestStopUserScopeResolutionAndChildren(t *testing.T) {
 	for _, target := range []string{"number", "id", "tool", "hook", "all"} {
 		t.Run(target, func(t *testing.T) {
-			ctx := security.WithActor(context.Background(), security.Actor{Role: security.RoleUser})
+			ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser})
 			sessions := session.NewService(newCommandTestStore(t))
 			scope := session.Scope{ActorID: "qq:one", Platform: "qq", PlatformScopeID: "one"}
 			row, err := sessions.Create(ctx, scope, session.CreateRequest{Title: "current"})
@@ -87,7 +87,7 @@ func TestStopUserScopeResolutionAndChildren(t *testing.T) {
 func TestStopRejectsMissingOrExpiredCurrent(t *testing.T) {
 	for _, state := range []string{"no current", "other current", "resumed current"} {
 		t.Run(state, func(t *testing.T) {
-			ctx := security.WithActor(context.Background(), security.Actor{Role: security.RoleUser})
+			ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser})
 			svc := session.NewService(newCommandTestStore(t))
 			scope := session.Scope{ActorID: "one", Platform: "qq", PlatformScopeID: "one"}
 			source, err := svc.Create(ctx, scope, session.CreateRequest{})

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/signal"
@@ -157,8 +157,8 @@ func isGroupToolPreviewNotice(ctx context.Context, outputs []delivery.Output) bo
 	if len(outputs) != 1 || outputs[0].Kind != delivery.KindText || !strings.HasPrefix(strings.TrimSpace(outputs[0].Text), "[tool]") {
 		return false
 	}
-	info, ok := chatinfo.FromContext(ctx)
-	return ok && info.Source.Platform == platformName && info.Source.ConversationKind == chatinfo.ConversationGroup
+	info, ok := contextinfo.ConversationFromContext(ctx)
+	return ok && info.Source.Platform == platformName && info.Source.ConversationKind == contextinfo.ConversationGroup
 }
 
 func (a *Adapter) nextMsgSeq(msgID string) int {

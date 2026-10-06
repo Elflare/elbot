@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"elbot/internal/background"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/security"
@@ -154,7 +155,7 @@ func TestMissedOnceReportTextIncludesPlatformWithoutPersistingTargetLanguage(t *
 func TestCreateRejectsPastAndBumpsCurrentMinuteOnceRunAt(t *testing.T) {
 	svc := NewService(Options{Store: fakeCronStore{cron: newFakeCronRepo()}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:04:30") }
-	actor := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
+	actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
 	base := UpsertRequest{Name: "bad", Title: "bad", ScheduleMode: ScheduleOnce, TriggerMode: TriggerDirect, Message: "提醒", Enabled: true, Actor: actor, SourcePlatform: "cli"}
 
 	base.RunAt = "2026-01-02 03:03:59"
@@ -181,7 +182,7 @@ func TestUpdateRejectsCurrentMinuteOnceRunAt(t *testing.T) {
 	repo := newFakeCronRepo()
 	svc := NewService(Options{Store: fakeCronStore{cron: repo}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:04:30") }
-	actor := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
+	actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
 	if _, err := svc.Create(context.Background(), UpsertRequest{Name: "update_bad", Title: "bad", ScheduleMode: ScheduleOnce, RunAt: "2026-01-02 03:05:00", TriggerMode: TriggerDirect, Message: "提醒", Enabled: true, Actor: actor, SourcePlatform: "cli"}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -199,7 +200,7 @@ func TestUpdateReenablesCompletedOnceCronWithFreshDeliveryState(t *testing.T) {
 	repo := newFakeCronRepo()
 	svc := NewService(Options{Store: fakeCronStore{cron: repo}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:04:30") }
-	actor := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
+	actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
 	job := upsertTestCronJob(t, repo, Metadata{
 		Kind:      metadataKind,
 		Version:   1,
@@ -233,7 +234,7 @@ func TestUpdateReenablesCompletedOnceCronWithFreshDeliveryState(t *testing.T) {
 func TestCreateLLMCronRequiresElyphTask(t *testing.T) {
 	svc := NewService(Options{Store: fakeCronStore{cron: newFakeCronRepo()}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:04:30") }
-	actor := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
+	actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
 	base := UpsertRequest{Name: "daily", Title: "daily", ScheduleMode: ScheduleOnce, RunAt: "2026-01-02 03:05:00", TriggerMode: TriggerLLM, Message: "自然语言任务", Enabled: true, Actor: actor, SourcePlatform: "cli"}
 	if _, err := svc.Create(context.Background(), base); err == nil || !strings.Contains(err.Error(), "#task") {
 		t.Fatalf("invalid LLM cron error = %v", err)
@@ -249,7 +250,7 @@ func TestCreateAndUpdateLLMCronToolListNames(t *testing.T) {
 	repo := newFakeCronRepo()
 	svc := NewService(Options{Store: fakeCronStore{cron: repo}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:04:30") }
-	actor := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
+	actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
 	job, err := svc.Create(context.Background(), UpsertRequest{Name: "tools", Title: "tools", ScheduleMode: ScheduleOnce, RunAt: "2026-01-02 03:05:00", TriggerMode: TriggerLLM, Message: testElyphTask("tools"), ToolListNames: []string{" web_search ", "web_search", "shell"}, Enabled: true, Actor: actor, SourcePlatform: "cli"})
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -574,7 +575,7 @@ func TestDisableDuringMissedDeliveryDoesNotReenableJob(t *testing.T) {
 		svc.NotifyPlatformConnected(ctx, "cli")
 	}()
 	<-started
-	actor := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
+	actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
 	if err := svc.Disable(ctx, job.Name, actor); err != nil {
 		t.Fatalf("Disable: %v", err)
 	}
@@ -657,7 +658,7 @@ func TestRunLLMReportIgnoresLegacySessionIDMetadata(t *testing.T) {
 func TestCreateDirectCronDoesNotRequireElyphTask(t *testing.T) {
 	svc := NewService(Options{Store: fakeCronStore{cron: newFakeCronRepo()}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:04:30") }
-	actor := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
+	actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
 	req := UpsertRequest{Name: "direct", Title: "direct", ScheduleMode: ScheduleOnce, RunAt: "2026-01-02 03:05:00", TriggerMode: TriggerDirect, Message: "自然语言提醒", Enabled: true, Actor: actor, SourcePlatform: "cli"}
 	if _, err := svc.Create(context.Background(), req); err != nil {
 		t.Fatalf("direct cron should accept plain text: %v", err)
@@ -764,7 +765,7 @@ func TestNotifyPlatformConnectedSkipsAlreadyDeliveredPlatform(t *testing.T) {
 func TestMigrateLegacyDeliveryStateDisablesCompletedOnceCron(t *testing.T) {
 	repo := newFakeCronRepo()
 	svc := NewService(Options{Store: fakeCronStore{cron: repo}, EnabledPlatforms: []PlatformTarget{{Name: "qqonebot", SuperadminIDs: []string{"1001"}}}})
-	actor := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
+	actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
 	job := upsertTestCronJob(t, repo, Metadata{
 		Kind:      metadataKind,
 		Version:   1,
@@ -949,7 +950,7 @@ func TestMigrateLegacyDeliveryStateSkipsFreshAndCurrentCycles(t *testing.T) {
 func TestListHidesCompletedCronByDefault(t *testing.T) {
 	repo := newFakeCronRepo()
 	svc := NewService(Options{Store: fakeCronStore{cron: repo}})
-	actor := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
+	actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "done", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "done"}, Target: CronTarget{SourcePlatform: "cli"}})
 	state := CronDeliveryState{RunID: "run", ReportReady: true, TaskCompleted: true, Report: "done", Targets: []CronDeliveryTargetState{{Key: "cli|superadmins", Outputs: []CronDeliveryOutputState{{ID: "text", Status: DeliveryDelivered}}}}}
 	repo.jobs[job.Name].DeliveryState = mustMarshalTestDelivery(t, state)

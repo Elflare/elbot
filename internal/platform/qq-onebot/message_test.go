@@ -13,7 +13,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
@@ -304,7 +304,7 @@ func TestHandleEventDeliversPlainGroupMessage(t *testing.T) {
 	if !ok {
 		t.Fatal("missing message context")
 	}
-	if msgCtx.Info.Source.ConversationKind != chatinfo.ConversationGroup || msgCtx.Info.Source.ConversationID != "9" || msgCtx.RawText != "hello" {
+	if msgCtx.Conversation.Source.ConversationKind != contextinfo.ConversationGroup || msgCtx.Conversation.Source.ConversationID != "9" || msgCtx.RawText != "hello" {
 		t.Fatalf("message context = %#v", msgCtx)
 	}
 }

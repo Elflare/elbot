@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
@@ -133,8 +133,8 @@ func TestAdmissionSeparatesScopesAndProtectsBusyDeletion(t *testing.T) {
 func TestBackgroundPromotionAccessAndPersistence(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
-	private := Scope{ActorID: "qq:1", Platform: "qq", PlatformScopeID: "private:1", ConversationKind: chatinfo.ConversationPrivate}
-	group := Scope{ActorID: "qq:1", Platform: "qq", PlatformScopeID: "group:1", ConversationKind: chatinfo.ConversationGroup}
+	private := Scope{ActorID: "qq:1", Platform: "qq", PlatformScopeID: "private:1", ConversationKind: contextinfo.ConversationPrivate}
+	group := Scope{ActorID: "qq:1", Platform: "qq", PlatformScopeID: "group:1", ConversationKind: contextinfo.ConversationGroup}
 	for _, prefix := range []string{"cron:", "elnis:"} {
 		row := &storage.Session{OwnerID: "qq:1", Platform: "qq", PlatformScopeID: prefix + "event", Mode: storage.SessionModeWork, Metadata: `{"background_kind":"cron","unknown":9007199254740993,"workspace_dir":"/workspace"}`}
 		if err := store.Sessions().Create(ctx, row); err != nil {
@@ -210,7 +210,7 @@ func TestManualRenameWinsAtGeneratedTitleCommit(t *testing.T) {
 func TestCustomBackgroundScopeCannotAppearInGroupLists(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
-	group := Scope{ActorID: "u", Platform: "qq", PlatformScopeID: "group:1", ConversationKind: chatinfo.ConversationGroup}
+	group := Scope{ActorID: "u", Platform: "qq", PlatformScopeID: "group:1", ConversationKind: contextinfo.ConversationGroup}
 	row := &storage.Session{OwnerID: "u", Platform: "qq", PlatformScopeID: "group:1", Metadata: "{\"background_kind\":\"cron\"}"}
 	if err := store.Sessions().Create(ctx, row); err != nil {
 		t.Fatal(err)
@@ -219,7 +219,7 @@ func TestCustomBackgroundScopeCannotAppearInGroupLists(t *testing.T) {
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("group list: %#v %v", rows, err)
 	}
-	private := Scope{ActorID: "u", Platform: "qq", PlatformScopeID: "private:1", ConversationKind: chatinfo.ConversationPrivate}
+	private := Scope{ActorID: "u", Platform: "qq", PlatformScopeID: "private:1", ConversationKind: contextinfo.ConversationPrivate}
 	rows, err = svc.List(ctx, private, "", 20)
 	if err != nil || len(rows) != 1 || rows[0].ID != row.ID {
 		t.Fatalf("private list: %#v %v", rows, err)
@@ -233,7 +233,7 @@ func TestCorruptMetadataRejectsRenameAndPromotion(t *testing.T) {
 	if err := store.Sessions().Create(ctx, row); err != nil {
 		t.Fatal(err)
 	}
-	scope := Scope{ActorID: "u", Platform: "qq", PlatformScopeID: "private:1", ConversationKind: chatinfo.ConversationPrivate}
+	scope := Scope{ActorID: "u", Platform: "qq", PlatformScopeID: "private:1", ConversationKind: contextinfo.ConversationPrivate}
 	if _, err := svc.Rename(ctx, scope, row.ID, "changed"); err == nil {
 		t.Fatal("renamed corrupt metadata")
 	}

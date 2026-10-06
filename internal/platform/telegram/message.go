@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
@@ -105,16 +105,16 @@ func largestPhoto(photos []photoSize) photoSize {
 	return best
 }
 
-func telegramConversationKind(c chat) chatinfo.ConversationKind {
+func telegramConversationKind(c chat) contextinfo.ConversationKind {
 	switch c.Type {
 	case "private":
-		return chatinfo.ConversationPrivate
+		return contextinfo.ConversationPrivate
 	case "group", "supergroup":
-		return chatinfo.ConversationGroup
+		return contextinfo.ConversationGroup
 	case "channel":
-		return chatinfo.ConversationChannel
+		return contextinfo.ConversationChannel
 	default:
-		return chatinfo.ConversationUnknown
+		return contextinfo.ConversationUnknown
 	}
 }
 

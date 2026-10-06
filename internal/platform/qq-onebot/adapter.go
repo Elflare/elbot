@@ -17,8 +17,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	"elbot/internal/chatinfo"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
@@ -441,16 +441,16 @@ func oneBotTargetScope(target target) string {
 	return ""
 }
 func contextTarget(ctx context.Context) (target, error) {
-	info, ok := chatinfo.FromContext(ctx)
+	info, ok := contextinfo.ConversationFromContext(ctx)
 	if !ok || info.Source.Platform != "qqonebot" {
 		return target{}, fmt.Errorf("qq send target missing")
 	}
 	out := delivery.Target{ScopeID: info.Source.ScopeID}
 	if info.Source.ConversationID != "" {
 		switch info.Source.ConversationKind {
-		case chatinfo.ConversationGroup:
+		case contextinfo.ConversationGroup:
 			out.GroupID = info.Source.ConversationID
-		case chatinfo.ConversationPrivate:
+		case contextinfo.ConversationPrivate:
 			out.PrivateUserID = info.Source.ConversationID
 		}
 	}
@@ -539,9 +539,9 @@ func outputSegments(sendFileMode string, outputs ...delivery.Output) ([]Segment,
 	return segments, nil
 }
 
-func oneBotGroupRole(event Event) security.GroupRole {
+func oneBotGroupRole(event Event) contextinfo.GroupRole {
 	if event.MessageType != "group" {
-		return security.GroupRoleUnknown
+		return contextinfo.GroupRoleUnknown
 	}
 	return security.ParseGroupRole(event.Sender.Role)
 }
@@ -620,14 +620,14 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		conversationID = strconv.FormatInt(event.GroupID, 10)
 	}
 	messageCtx := platform.MessageContext{
-		Info: chatinfo.Info{
-			Source: chatinfo.Source{
+		Conversation: contextinfo.Conversation{
+			Source: contextinfo.Source{
 				Platform:         a.Name(),
 				ScopeID:          scopeID(event),
 				ConversationKind: oneBotConversationKind(event),
 				ConversationID:   conversationID,
 			},
-			Identity: chatinfo.Identity{
+			Identity: contextinfo.Identity{
 				ActorID:        security.ActorID(a.Name(), strconv.FormatInt(event.UserID, 10)),
 				PlatformUserID: strconv.FormatInt(event.UserID, 10),
 				Nickname:       strings.TrimSpace(event.Sender.Nickname),
@@ -675,7 +675,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 			Store:           a.store,
 			ChatHistory:     a.chatHistory,
 			Platform:        a.Name(),
-			ScopeID:         messageCtx.Info.Source.ScopeID,
+			ScopeID:         messageCtx.Conversation.Source.ScopeID,
 			ActorID:         security.ActorID(a.Name(), strconv.FormatInt(event.UserID, 10)),
 			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, strconv.FormatInt(event.UserID, 10)),
 			ReplyID:         normalized.ReplyID,
@@ -754,14 +754,14 @@ func (a *Adapter) resolveAtSegments(ctx context.Context, event Event, msg Normal
 	return msg
 }
 
-func oneBotConversationKind(event Event) chatinfo.ConversationKind {
+func oneBotConversationKind(event Event) contextinfo.ConversationKind {
 	switch event.MessageType {
 	case "private":
-		return chatinfo.ConversationPrivate
+		return contextinfo.ConversationPrivate
 	case "group":
-		return chatinfo.ConversationGroup
+		return contextinfo.ConversationGroup
 	default:
-		return chatinfo.ConversationUnknown
+		return contextinfo.ConversationUnknown
 	}
 }
 

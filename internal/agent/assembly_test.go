@@ -252,7 +252,7 @@ type testAssembly struct {
 }
 
 func testChatRoute(a *Agent) *chatroute.Loop {
-	loop, err := a.execution.dialogue.Routes.LoopFor(llm.ProtocolChat)
+	loop, err := a.execution.dialogue.Routes.LoopFor(a.execution.models.ResolveMode(storage.SessionModeWork).Provider)
 	if err != nil {
 		panic(err)
 	}

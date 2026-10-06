@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool"
@@ -63,7 +63,7 @@ func TestRunRetainsExactMediaArgumentsForSession(t *testing.T) {
 		manager := NewManager(registry, nil)
 		manager.Media = center
 		return manager.Run(ctx, &runnerTestDeps{}, RunRequest{
-			Session: session, Actor: security.Actor{Role: security.RoleSuperadmin},
+			Session: session, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 			Calls: []llm.ToolCallRequest{{ID: "call-1", Name: tl.Name(), Arguments: arguments}},
 		})
 	}
@@ -119,7 +119,7 @@ func TestRunDoesNotRetainMediaBeforeExecution(t *testing.T) {
 	manager := NewManager(registry, nil)
 	manager.Media = center
 	manager.Run(ctx, &runnerTestDeps{}, RunRequest{
-		Session: session, Actor: security.Actor{Role: security.RoleSuperadmin},
+		Session: session, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{ID: "call-1", Name: "preflight_tool", Arguments: `{"media":"` + item.ID + `"}`}},
 	})
 	if refs, err := store.MediaReferences().ListByOwner(ctx, "session_tool", session.ID); err != nil || len(refs) != 0 {
@@ -139,7 +139,7 @@ func TestRunDoesNotRetainMediaBeforeExecution(t *testing.T) {
 	manager.Media = center
 	missingID := media.IDPrefix + strings.Repeat("f", 64)
 	result := manager.Run(ctx, &runnerTestDeps{}, RunRequest{
-		Session: missingSession, Actor: security.Actor{Role: security.RoleSuperadmin},
+		Session: missingSession, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{ID: "call-2", Name: recorder.Name(), Arguments: `{"media":"` + missingID + `"}`}},
 	})
 	if recorder.received != "" || len(result.Messages) != 1 || !strings.Contains(llm.SegmentsContentText(result.Messages[0].Segments), "retain media arguments") {
@@ -166,7 +166,7 @@ func TestMediaArgumentsRemainExplicit(t *testing.T) {
 	if _, err := manager.AssessRisk(context.Background(), resolved, arguments); err != nil {
 		t.Fatal(err)
 	}
-	result := manager.Execute(context.Background(), call, resolved, security.Actor{Role: security.RoleSuperadmin})
+	result := manager.Execute(context.Background(), call, resolved, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	if result.Err != nil {
 		t.Fatal(result.Err)
 	}

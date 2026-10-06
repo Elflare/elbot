@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/security"
 )
 
@@ -18,9 +19,9 @@ func isElnisModelSlot(slot string) bool {
 	}
 }
 
-func elnisActor(event Event) security.Actor {
+func elnisActor(event Event) contextinfo.Actor {
 	id := security.ActorID("elnis", event.Origin.Label())
-	return security.Actor{ID: id, Platform: "elnis", PlatformUserID: event.Origin.Label(), DisplayName: event.Request.Elwisp.Name, Role: security.RoleSuperadmin}
+	return contextinfo.Actor{ID: id, Platform: "elnis", PlatformUserID: event.Origin.Label(), DisplayName: event.Request.Elwisp.Name, Role: contextinfo.RoleSuperadmin}
 }
 
 func firstPlatform(rawTargets string) string {

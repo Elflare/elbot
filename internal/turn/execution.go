@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"sync"
+
+	"elbot/internal/contextinfo"
 )
 
 // Execution spans individual requests and append-confirmation continuations.
@@ -79,9 +81,14 @@ func (e *Execution) Wait(ctx context.Context) Result {
 func (e *Execution) Done() <-chan struct{} { return e.done }
 
 type executionKey struct{}
-type attemptKey struct{}
 
 func WithExecution(ctx context.Context, e *Execution) context.Context {
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	facts.RunID = ""
+	if e != nil {
+		facts.RunID = e.ID
+	}
+	ctx = contextinfo.WithExecution(ctx, facts)
 	return context.WithValue(ctx, executionKey{}, e)
 }
 func ExecutionFromContext(ctx context.Context) *Execution {
@@ -89,11 +96,13 @@ func ExecutionFromContext(ctx context.Context) *Execution {
 	return e
 }
 func WithAttempt(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, attemptKey{}, id)
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	facts.Attempt = id
+	return contextinfo.WithExecution(ctx, facts)
 }
 func AttemptFromContext(ctx context.Context) string {
-	id, _ := ctx.Value(attemptKey{}).(string)
-	return id
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	return facts.Attempt
 }
 
 func matches(turn *state, expected []string) bool {

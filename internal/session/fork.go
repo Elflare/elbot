@@ -40,6 +40,10 @@ func (s *Service) Fork(ctx context.Context, scope Scope, fromMessageID string) (
 	if !s.canAccess(scope, source) {
 		return nil, fmt.Errorf("session %s is not in current platform scope", source.ID)
 	}
+	metadata, err := InheritOrigin(source, "")
+	if err != nil {
+		return nil, err
+	}
 
 	fork := &storage.Session{
 		ParentSessionID:   source.ID,
@@ -50,6 +54,7 @@ func (s *Service) Fork(ctx context.Context, scope Scope, fromMessageID string) (
 		Mode:              source.Mode,
 		Status:            storage.SessionStatusActive,
 		Title:             forkTitle(source.Title),
+		Metadata:          metadata,
 	}
 	if err := s.store.Sessions().Create(ctx, fork); err != nil {
 		return nil, err

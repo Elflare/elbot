@@ -5,27 +5,26 @@ import (
 	"fmt"
 	"time"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-	"elbot/internal/turn"
 )
 
 // EventMeta identifies the published fact, never a mutable execution handle.
 type EventMeta struct {
 	At                        time.Time
 	SessionID, RunID, Attempt string
+	RequestID, RootRequestID  string
 }
 
 func Meta(ctx context.Context, sessionID string) EventMeta {
-	m := EventMeta{At: time.Now(), SessionID: sessionID, Attempt: turn.AttemptFromContext(ctx)}
-	if e := turn.ExecutionFromContext(ctx); e != nil {
-		m.RunID = e.ID
-	}
-	return m
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	return EventMeta{At: time.Now(), SessionID: sessionID, RunID: facts.RunID, Attempt: facts.Attempt,
+		RequestID: facts.RequestID, RootRequestID: facts.RootRequestID}
 }
 
 type ModelCallCompletedEvent struct {

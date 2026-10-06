@@ -8,13 +8,13 @@
 <!-- locator:protocol-routing -->
 ## 阶段 16：公共执行与独立协议路线
 
-16.1 的公共单轮与 Chat 路线、16.2 的协议客户端已验收。当前仍使用 `chatinfo`、`Selection.Protocol` 及按协议登记的 Route；16.2a 的公共信息迁移与 provider 绑定尚未实施，Responses 业务、原生持久化及恢复按 16.3／16.4 接入。
+16.1 的公共单轮与 Chat 路线、16.2 的协议客户端、16.2a 的公共信息与 provider 绑定已接入。当前使用 `contextinfo` 四组公共事实、固定 Selection 及 provider Binding；Responses 业务、原生持久化及恢复按 16.3／16.4 接入。
 
 ### 职责与依赖
 
 | 领域 | 归属 | 职责 |
 |---|---|---|
-| 公共信息 | `contextinfo`（暂定名） | 按领域提供只读事实，由现有 chatinfo 扩展 |
+| 公共信息 | `contextinfo` | 按领域唯一定义并提供只读事实 |
 | 公共执行 | Agent 执行协调、`agent/dialogue` | 准入、Request、单轮准备、工具协作、结果与回复提交 |
 | 协议业务 | `agent/chat`、`agent/responses` | 各自的 loop、上下文、工具结果组织和 Compactor |
 | 协议客户端 | `llm/chatcompletions`、`llm/responses` | 原生请求、流事件、终态、独立文本及协议接口 |
@@ -51,20 +51,22 @@ app 按 provider.api_mode 创建客户端和共享服务，Agent 装配业务能
 
 `api_mode="chat"/"response"` 与 Session 的 chat/work/background 模式独立；省略 api_mode 为 chat。会话持久化身份独立保存，不能用客户端对象或当前配置代替原生归属。
 
+Binding 的 Origin 来自已有 provider 名称、api_mode 和去除末尾斜线的 base_url，不增加配置字段。Session 在首次主对话准入时保存 llm_origin，已有完整归属保持不变；压缩、Fork、后台复制继承来源。旧数据库一次迁移只给已有会话标记 protocol=chat，保留其他 metadata，之后实际 Chat 准入补全 provider／base_url。源 Compactor 独立登记，即使旧 provider 已删除或改配置也按持久化源协议分派，不借用摘要目标推断。
+
 #### 公共信息
 
 `contextinfo` 按四个领域分组，不要求所有入口同时具备全部信息：
 
 | 分组 | 公共事实 | 来源与生成时机 |
 |---|---|---|
-| Conversation | 平台、平台会话、发送者、消息与回复标识 | 平台入口；由现有 MessageContext／chatinfo.Info 衔接 |
+| Conversation | 平台、平台会话、发送者、消息与回复标识 | 平台入口；MessageContext 安装公共事实并在读取时重建投影 |
 | Actor | ElBot 用户身份、普通用户／超管角色 | security 解析后提供，平台群角色与 ElBot 角色分别表达 |
 | Execution | Session、Request、执行关联标识 | 现有服务建立关联后提供，保留实际 ID 语义 |
 | Model | 主对话 provider、模型、Chat／Responses 协议 | 固定选择与 provider 绑定描述，选择确定后提供 |
 
-各领域的公共事实以 contextinfo 为唯一来源，现有 chatinfo、security 等模块的事实定义与存取随之改造，不保留并行副本。实际消费者从公共入口读取对应快照；信息缺失明确表达，不查询全局“当前用户／模型”补齐，也不猜成 Chat 或普通用户。公共包不携带凭据、配置、服务能力或原生载荷。
+各领域的公共事实以 contextinfo 为唯一来源，消费者从公共入口读取对应快照，不保留并行定义或存取。信息缺失明确表达，不查询全局“当前用户／模型”补齐，也不猜成 Chat 或普通用户。公共包不携带凭据、配置、服务能力或原生载荷。
 
-角色事实不授予权限；权限判断仍归 security／ToolRun。Execution 不复制活动状态，取消、Binding.Valid、attempt 有效性仍归现有服务。`request.WithTurnID` 当前携带主 Request ID，不能解释成另一个 Turn ID。
+角色事实不授予权限；权限判断仍归 security／ToolRun。Execution 提供 SessionID、当前 RequestID、ParentRequestID、RootRequestID、RunID、Attempt，不复制活动状态；取消、Binding.Valid、attempt 有效性仍归现有服务。子请求保留主请求 RootRequestID，自己的 RequestID 与执行 RunID 分别表达。
 
 迁移接入现有 ExecutionView.Context 的前台刷新边界：Conversation 与 Actor 一起更新，整份来源上下文替换，原连接回复、平台私有扩展和执行取消语义保持。私有扩展由平台维护不可变快照，公共层不解释或序列化；会话原生归属及 checkpoint 留在 Session／原生存储。
 

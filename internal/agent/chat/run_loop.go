@@ -38,6 +38,15 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		s.ctx = r.View.Context(s.ctx)
 		if sessionpkg.WasPromoted(s.session) && !foregroundPrepared {
 			foregroundPrepared = true
+			s.selection = modelmgr.SelectionForTurn(s.requestCtx, r.Models, s.session)
+			var modelErr error
+			s.requestCtx, modelErr = r.View.WithModel(s.requestCtx, s.selection)
+			if modelErr == nil {
+				s.ctx, modelErr = r.View.WithModel(s.ctx, s.selection)
+			}
+			if modelErr != nil {
+				return failedLoop(modelErr)
+			}
 			scope := r.Preparer.Identity.Scope(s.requestCtx)
 			prompt, err := r.PromptBuilder.Build(s.requestCtx, PromptBuildRequest{Session: s.session, Scope: scope})
 			if err != nil {
@@ -55,7 +64,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 				}
 			}
 			s.messages = updated
-			s.selection = modelmgr.SelectionForTurn(s.requestCtx, r.Models, s.session)
 			s.messages = withForegroundInstructions(s.messages)
 			s.tools, err = r.Tools.Schemas(s.requestCtx, s.session)
 			if err != nil {
