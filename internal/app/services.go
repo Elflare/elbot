@@ -119,7 +119,7 @@ func registerBuiltinCommands(foundation *FoundationComponents, s *sharedServices
 	return commandbuiltin.RegisterDefaultModules(s.Commands, commandbuiltin.Deps{
 		Doctor: s.Doctor, Router: s.Commands, Sessions: s.Sessions,
 		Requests: s.Requests, Turns: s.Turns, Store: foundation.Store, Scope: agt.Scope,
-		Models: s.Models, Contexts: s.Contexts, Logger: foundation.Logger, Compact: agt,
+		Models: s.Models, Providers: s.Routes, Contexts: s.Contexts, Logger: foundation.Logger, Compact: agt,
 		Tools: tools.Registry, Skills: tools.SkillManager,
 		FileRollback: s.Files, PrepareFileContext: agt.PrepareFileCommand,
 		Hooks: hooks, SessionState: s.SessionCommands, Audit: auditFunc(foundation.Logs),

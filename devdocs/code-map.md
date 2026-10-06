@@ -108,7 +108,8 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 - `internal/agent/dialogue/system_prompt*.go`、`prompt.go`、`tool_tag_prompt.go`：Soul、常驻记忆、工具提示等共同来源和组合。
 - `internal/agent/dialogue/message_store.go`：用户／pending／工具 transcript 写入和业务 metadata 编解码。
 - `internal/agent/dialogue/commit.go`：MessageCommitter、原 binding／活跃 attempt 提交准入、Chat 调用头参数更新和逐工具结果提交。
-- `internal/agent/responses/loop.go`、`model_call.go`：原生业务 Loop、固定选择、pending／停止／接管、实际请求归档与原生事件消费；`input.go`：新增输入和多模态 function_call_output 编码；`persistence.go`：业务消息与原生输入／调用／checkpoint 事务及中断调用结尾。
+- `internal/agent/responses/loop.go`、`model_call.go`：原生业务 Loop、固定选择、pending／停止／接管及旧链失效后的一次完整回放；`native_call.go`：每次实际请求归档、原生流／终态及新内容检测；`input.go`：新增输入和多模态 function_call_output 编码；`persistence.go`：业务消息与原生输入／调用／checkpoint 事务及中断调用结尾。
+- `internal/agent/responses/context.go`：seed 根与已提交 checkpoint 窗口重建、原生完整性校验、媒体关联和重新解析；`branch.go`：历史 Fork／后台复制准备、不可变调用快照及分支未执行输出；`compact.go`：当前模型原生压缩、整个返回窗口及素材关联。
 
 常用搜索：
 
@@ -119,9 +120,9 @@ rg -n "Handle|Run|Prompt|tool_calls|reasoning|usage|pending|prepared" internal/a
 <!-- locator:protocol-routing -->
 ## 协议路线登记
 
-- `internal/agent/routes/route.go`、`registry.go`：按 provider 登记 Binding{Origin, Client, Loop, Compactor}、独立登记源协议压缩能力、封闭及按能力查询；不拥有运行状态。
+- `internal/agent/routes/route.go`、`registry.go`：按 provider 登记 Binding{Origin, Client, Loop, Compactor, Material}、独立登记源协议压缩／材料准备能力、封闭及按能力查询；不拥有运行状态。
 - `internal/agent/assembly_routes.go`、`assembly.go`、`internal/app/services.go`：app 创建共享注册表及上下文服务，Agent 根据描述校验客户端私有接口、绑定 Chat／Responses 业务和独立文本能力、封闭和校验接线后才开放运行。
-- `internal/agent/dialogue/loop.go`、`internal/contextmgr/compact_contract.go`：消费方的小查询接口；公共层不导入注册表实现或具体路线。
+- `internal/agent/dialogue/loop.go`、`internal/contextmgr/compact_contract.go`、`internal/session/material.go`：消费方的小查询接口及不解释协议载荷的材料交接契约；公共层不导入注册表实现或具体路线。
 - `internal/llm/protocol.go`、`origin.go`：协议标识及纯归属描述；`internal/modelmgr/selection.go`、`service.go`：固定 Provider／Model／Client 快照、启动配置生成的不可变 ProviderOrigins。`internal/app/models.go` 按 provider.api_mode 构造原生客户端。
 
 <!-- locator:commands -->
@@ -332,7 +333,7 @@ rg -n "PlatformAdapter|SendChat|MessageSegment|Actor|Scope|remote|websocket|long
 
 - `internal/session/service.go`、`types.go`：Session 服务主体和领域请求/结果类型。
 - `internal/session/binding.go`、`signals.go`、`coordination.go`、`activity.go`：当前绑定、锁外变化信号、Scope／SessionID 短准入及忙闲检查。
-- `internal/session/promotion.go`：后台可见性、永久前台归属和在途接管入口。
+- `internal/session/promotion.go`：后台可见性、永久前台归属和在途接管入口；通过注入的纯检查在永久变更前校验 work 模型兼容性。
 - `internal/session/background.go`：后台 Session 创建／复用、模式、标题和后台身份 metadata，不修改前台 current，不处理工具状态。
 - `internal/session/compact.go`：CreateCompacted 的来源／绑定复核、归属及模式继承、命名字段与保存；只为前台结果激活 current。
 - `internal/session/origin.go`：llm_origin 解码、首次主对话准入登记及源会话继承；不从当前配置推断持久化来源，不以公共执行 ID 代替原绑定。
@@ -341,6 +342,7 @@ rg -n "PlatformAdapter|SendChat|MessageSegment|Actor|Scope|remote|websocket|long
 - `internal/session/mode.go`：模式激活和 work 历史限制。
 - `internal/session/lifecycle.go`、`query.go`、`fork.go`、`expiration.go`：生命周期、查询、Fork 和闲置过期策略。
 - `internal/session/background_copy.go`：后台广播副本的来源复核、创建与历史复制，不激活前台 current。
+- `internal/session/material.go`：来源材料准备／查询契约、显式 Chat 展示材料及窄原子保存请求；Fork／Copy 在准入锁外准备，在交接时复核来源。
 - `internal/session/naming.go`、`naming_lifecycle.go`、`naming_signals.go`：异步命名、应用级取消及准备／生成退出等待，发布 Scheduled／Completed／Failed；app 接入日志消费者。
 - `internal/contextmgr/state.go`、`internal/toolrun/state.go`：分别解释上下文与工具 metadata，更新时保留其他模块及未知字段。
 - `internal/session/workspace.go`：workspace 持久化适配、原子字段更新及原绑定检查；`commit.go`：原绑定的短提交准入。
@@ -360,6 +362,7 @@ rg -n "Fork|Archive|Pinned|Expire|SessionMode|metadata|workspace|cron:" internal
 先看：
 
 - `internal/contextmgr/service.go`、`state.go`、`compact.go`、`compact_contract.go`：共同历史查询、用量、阈值、seed 状态与压缩路由契约；`internal/agent/chat/compact.go`、`compressor.go`、`compact_prompt.go`：Chat 历史筛选与摘要实现。
+- `internal/agent/responses/compact.go`、`context.go`：Responses 原生压缩、完整窗口／素材准备及独立 seed，不读取 Chat 摘要模型。
 - `internal/agent/execution_compact.go`：协调手动／自动压缩的 Request／Turn、取消、绑定准入和会话交接；`context_usage.go`：协调器的用量记录与压缩阈值检查；`internal/agent/chat/context_seed.go`：Chat 的 seed 消耗时机。命令直接读取 contextmgr。
 - `internal/agent/chat/transcript.go`：Chat Prompt Builder 与历史组织。
 - `internal/agent/dialogue/system_prompt*.go`：共同 system prompt 管理和来源。
@@ -383,7 +386,9 @@ rg -n "ContextLoader|Compress|Window|System Prompt|MessageSegment|usage" interna
 - `internal/llm/chatcompletions/`：Chat 客户端、原生请求编码、chunks、工具参数累积、用量、模型列表和日志。
 - `internal/llm/responses/`：Responses 客户端、原生 items／事件／完整响应及未知 JSON 保留，成功／失败／incomplete 终态；GenerateText 是独立调用，不处理业务工具或主会话持久化。
 - `internal/llm/responses/client.go`：PrepareRequest 合并参数并冻结实际编码 JSON，StreamPrepared 发送同一字节快照，供业务路线在 API 前归档；鉴权头不进入快照。
+- `internal/llm/responses/compact.go`：独立 Compact 请求冻结、HTTP 调用及整个原生窗口解析；`error.go`：保留 status／code／param，识别明确的旧链失效。
 - `internal/modelmgr/service.go`、`selection.go`：共享服务与构造校验，模式／槽位、压缩和命名选择及请求快照。
+- `internal/modelmgr/compatibility.go`：按协议／provider 节点名纯比较 CanSwitch；`internal/command/builtin/model.go`：解析候选、只预检受影响槽位并提交全局选择。
 - `internal/modelmgr/signals.go`：共享客户端重试事实，供对话／压缩／命名统一消费；订阅归 app 所有。
 - `internal/modelmgr/catalog.go`、`state.go`：模型目录缓存、筛选与 provider 错误，串行保存后发布选择状态；原子文件写入复用 `config.SaveState` 和 `fileops`。
 - `internal/agent/chat/model_call.go`、`internal/agent/dialogue/model_call.go`：协议调用与共同调用处理；`internal/notification/rules/model.go`：模型重试／降级提示。
@@ -407,6 +412,7 @@ rg -n -m 20 "ChatCompletion|Stream|SSE|reasoning|usage|ToolCall|MessageSegment|M
 - `internal/storage/sqlite/`：SQLite store、migration 和 repository 实现。
 - `internal/storage/sqlite/migrations.go`：第 18 版为已有 Chat 会话补 protocol 归属，保留未知 metadata，损坏数据使迁移回滚；`origin_migration_test.go` 覆盖升级、回滚及只迁移一次。
 - `internal/storage/dialogue.go`、`sqlite/dialogue_repository.go`：共同对话事务、单调用参数更新、原生 Exchange／Input／Call／Checkpoint 记录，原生 checkpoint 比较提交和输入消费；migration 19 创建原生表，Session metadata 的原生状态仅存 checkpoint 引用。
+- `internal/storage/sqlite/native_material.go`：CreateMaterial 原子保存新 Session、复制消息、seed 和媒体引用并复核来源 checkpoint；migration 20 增加有序输入清单、checkpoint 调用快照／根引用及 native_seeds。首个成功 checkpoint 同事务消费 seed，根材料保持可用。
 
 常用搜索：
 

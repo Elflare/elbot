@@ -10,13 +10,28 @@ import (
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/llm/responses"
 	"elbot/internal/modelmgr"
+	"elbot/internal/session"
 )
 
 // Only composition chooses concrete protocols. Runtime consumers query the
 // sealed provider bindings or the saved source-material identity.
-func bindProviderRoutes(registry *routes.Registry, models *modelmgr.Service, chat, response dialogue.Loop, compactor contextmgr.Compactor) error {
+func bindProviderRoutes(registry *routes.Registry, models *modelmgr.Service, chat, response dialogue.Loop, compactor, nativeCompactor contextmgr.Compactor, material session.MaterialPreparer) error {
 	if err := registry.RegisterCompactor(llm.ProtocolChat, compactor); err != nil {
 		return err
+	}
+	display := session.DisplayMaterial{}
+	if err := registry.RegisterMaterial(llm.ProtocolChat, display); err != nil {
+		return err
+	}
+	if nativeCompactor != nil {
+		if err := registry.RegisterCompactor(llm.ProtocolResponse, nativeCompactor); err != nil {
+			return err
+		}
+	}
+	if material != nil {
+		if err := registry.RegisterMaterial(llm.ProtocolResponse, material); err != nil {
+			return err
+		}
 	}
 	for _, origin := range models.ProviderOrigins() {
 		client := models.ClientForProvider(origin.Provider)
@@ -27,12 +42,12 @@ func bindProviderRoutes(registry *routes.Registry, models *modelmgr.Service, cha
 				return fmt.Errorf("provider %q api_mode %q requires the Chat streaming capability", origin.Provider, origin.Protocol)
 			}
 			binding.Loop, binding.Compactor = chat, compactor
+			binding.Material = display
 		case llm.ProtocolResponse:
 			if _, ok := client.(responses.Streamer); !ok {
 				return fmt.Errorf("provider %q api_mode %q requires the Responses streaming capability", origin.Provider, origin.Protocol)
 			}
-			binding.Loop = response
-			// TODO Step16.4: install the native source compactor.
+			binding.Loop, binding.Compactor, binding.Material = response, nativeCompactor, material
 		default:
 			return fmt.Errorf("provider %q has unsupported api_mode %q", origin.Provider, origin.Protocol)
 		}

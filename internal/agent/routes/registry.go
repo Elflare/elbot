@@ -8,6 +8,7 @@ import (
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
+	"elbot/internal/session"
 )
 
 type Registry struct {
@@ -15,10 +16,11 @@ type Registry struct {
 	sealed     bool
 	providers  map[string]Binding
 	compactors map[llm.ProtocolID]contextmgr.Compactor
+	materials  map[llm.ProtocolID]session.MaterialPreparer
 }
 
 func New() *Registry {
-	return &Registry{providers: make(map[string]Binding), compactors: make(map[llm.ProtocolID]contextmgr.Compactor)}
+	return &Registry{providers: make(map[string]Binding), compactors: make(map[llm.ProtocolID]contextmgr.Compactor), materials: make(map[llm.ProtocolID]session.MaterialPreparer)}
 }
 
 func (r *Registry) Register(binding Binding) error {
@@ -38,6 +40,9 @@ func (r *Registry) Register(binding Binding) error {
 	}
 	if isNil(binding.Compactor) {
 		binding.Compactor = nil
+	}
+	if isNil(binding.Material) {
+		binding.Material = nil
 	}
 	r.providers[binding.Origin.Provider] = binding
 	return nil
@@ -74,6 +79,9 @@ func (r *Registry) Seal() error {
 	for provider, binding := range r.providers {
 		if binding.Compactor != nil && r.compactors[binding.Origin.Protocol] == nil {
 			return fmt.Errorf("provider %q source compactor is not registered", provider)
+		}
+		if binding.Material != nil && r.materials[binding.Origin.Protocol] == nil {
+			return fmt.Errorf("provider %q source material capability is not registered", provider)
 		}
 	}
 	r.sealed = true
@@ -126,6 +134,38 @@ func (r *Registry) CompactorFor(origin llm.Origin) (contextmgr.Compactor, error)
 		return nil, fmt.Errorf("source protocol %q does not support compaction", origin.Protocol)
 	}
 	return compactor, nil
+}
+
+func (r *Registry) RegisterMaterial(id llm.ProtocolID, preparer session.MaterialPreparer) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.sealed {
+		return fmt.Errorf("provider bindings are sealed")
+	}
+	if id == "" || isNil(preparer) {
+		return fmt.Errorf("source material requires an identity and capability")
+	}
+	if r.materials[id] != nil {
+		return fmt.Errorf("source material %q already registered", id)
+	}
+	r.materials[id] = preparer
+	return nil
+}
+
+func (r *Registry) MaterialFor(origin llm.Origin) (session.MaterialPreparer, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if !r.sealed {
+		return nil, fmt.Errorf("provider bindings are not sealed")
+	}
+	if binding, ok := r.providers[origin.Provider]; ok && binding.Origin == origin && binding.Material != nil {
+		return binding.Material, nil
+	}
+	preparer := r.materials[origin.Protocol]
+	if preparer == nil {
+		return nil, fmt.Errorf("source protocol %q does not support material branching", origin.Protocol)
+	}
+	return preparer, nil
 }
 
 func isNil(value any) bool {

@@ -22,9 +22,11 @@ func (c *executionCoordinator) runAttempt(ctx context.Context, session *storage.
 		return session, turn.Input{}, err
 	}
 	selection := modelmgr.SelectionForTurn(ctx, c.models, session)
-	// TODO Step16.4: compare persisted material ownership before compaction and
-	// model calls. Existing binding and attempt admission remains authoritative.
 	if err := c.dialogue.CheckSelection(selection); err != nil {
+		release()
+		return session, turn.Input{}, err
+	}
+	if err := c.view.CheckSelection(session, selection); err != nil {
 		release()
 		return session, turn.Input{}, err
 	}

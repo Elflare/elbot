@@ -31,6 +31,21 @@ func captureSessionBinding(ctx context.Context, sessions *session.Service, ident
 }
 
 func (c *executionCoordinator) resolveInput(ctx context.Context, text string) (context.Context, *storage.Session, error) {
+	// Fork prepares native/media material outside scope admission. Capture the
+	// newly activated binding afterward, with the same final identity check.
+	if msg, ok := platform.MessageContextFrom(ctx); ok && msg.ResumeSessionID == "" && msg.ForkFromMessageID != "" {
+		row, err := c.sessions.Fork(ctx, c.identity.Scope(ctx), msg.ForkFromMessageID)
+		if err != nil {
+			return ctx, nil, err
+		}
+		locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), row.ID)
+		if err != nil {
+			return ctx, nil, err
+		}
+		defer release()
+		locked, err = captureSessionBinding(locked, c.sessions, c.identity, row)
+		return locked, row, err
+	}
 	locked, release, err := c.sessions.EnterScope(ctx, c.identity.Scope(ctx))
 	if err != nil {
 		return ctx, nil, err

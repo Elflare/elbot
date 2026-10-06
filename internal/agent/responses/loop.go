@@ -19,6 +19,7 @@ import (
 
 type Loop struct {
 	Repository storage.DialogueRepository
+	Context    *Context
 	Models     *modelmgr.Service
 	Turns      *turn.Manager
 	View       dialogue.ExecutionView
@@ -42,6 +43,7 @@ type turnState struct {
 	projection      []llm.LLMMessage
 	tools           []llm.ToolSchema
 	checkpoint      *storage.NativeCheckpoint
+	seed            *storage.NativeSeed
 	exchange        *storage.NativeExchange
 	response        *api.Response
 	sourceText      string
@@ -54,8 +56,29 @@ func (r *Loop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials
 	if err != nil {
 		return nil, err
 	}
-	// TODO Step16.4: native seed, fork checkpoint selection and chain recovery.
-	return &preparedLoop{materials: materials, state: &turnState{route: r, session: materials.Session, checkpoint: checkpoint}}, nil
+	seed, err := r.Repository.Seed(ctx, materials.Session.ID)
+	if err != nil {
+		return nil, err
+	}
+	if checkpoint == nil && seed == nil && len(materials.Loaded.Messages) != 0 {
+		return nil, fmt.Errorf("Responses 会话有历史但缺少完整原生 checkpoint 或 seed")
+	}
+	if checkpoint == nil && seed != nil && seed.Consumed {
+		return nil, fmt.Errorf("原生 seed 已消费但缺少 checkpoint")
+	}
+	if seed != nil {
+		origin, known, err := session.Origin(materials.Session)
+		if err != nil {
+			return nil, err
+		}
+		if !known || seed.Protocol != string(origin.Protocol) || seed.Provider != origin.Provider {
+			return nil, fmt.Errorf("原生 seed 厂商或协议不匹配")
+		}
+	}
+	if checkpoint != nil && ((seed == nil && checkpoint.SeedID != "") || (seed != nil && checkpoint.SeedID != seed.ID)) {
+		return nil, fmt.Errorf("原生 checkpoint 的根材料不匹配")
+	}
+	return &preparedLoop{materials: materials, state: &turnState{route: r, session: materials.Session, checkpoint: checkpoint, seed: seed}}, nil
 }
 
 func (p *preparedLoop) InputCommitter() dialogue.MessageCommitter {
@@ -150,6 +173,9 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			}
 		}
 		result.Selection = s.selection
+		if err := s.route.View.CheckSelection(s.session, s.selection); err != nil {
+			return fail(err)
+		}
 		var pending *dialogue.PendingUserMessage
 		if toolPhase {
 			pending = dialogue.DrainPending(s.route.Turns, s.session.ID, turn.AttemptFromContext(s.ctx))

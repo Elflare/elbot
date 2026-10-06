@@ -19,6 +19,8 @@ type Service struct {
 	changed              *signal.Signal[BindingChangedEvent]
 	activeSessionIDs     func() []string
 	foregroundActivation func(context.Context, *storage.Session, *Binding)
+	foregroundCheck      func(context.Context, *storage.Session) error
+	materials            MaterialResolver
 	namingConfig         NamingConfig
 	titleGen             TitleGenerator
 	namingSignals        NamingSignals

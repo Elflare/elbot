@@ -32,8 +32,11 @@ func (s fakeModelService) SelectCompactModel(string) (modelmgr.ModelOption, erro
 func (s fakeModelService) SelectNamingModel(string) (modelmgr.ModelOption, error) {
 	return modelmgr.ModelOption{}, nil
 }
-func (s fakeModelService) SelectModelForMode(string, string) (modelmgr.ModelOption, error) {
+func (s fakeModelService) PrepareModel(string) (modelmgr.ModelOption, error) {
 	return modelmgr.ModelOption{}, nil
+}
+func (s fakeModelService) CommitModelForMode(_ string, option modelmgr.ModelOption) (modelmgr.ModelOption, error) {
+	return option, nil
 }
 func (s fakeModelService) Models(query string) []modelmgr.ModelOption {
 	return s.ModelList(query, modelmgr.ModelListOptions{}).Options
@@ -144,8 +147,11 @@ type recordingModelService struct {
 	arg  string
 }
 
-func (s *recordingModelService) SelectModelForMode(mode, arg string) (modelmgr.ModelOption, error) {
-	s.mode = mode
+func (s *recordingModelService) PrepareModel(arg string) (modelmgr.ModelOption, error) {
 	s.arg = arg
 	return modelmgr.ModelOption{Provider: "openai", Model: "gpt-4.1"}, nil
+}
+func (s *recordingModelService) CommitModelForMode(mode string, option modelmgr.ModelOption) (modelmgr.ModelOption, error) {
+	s.mode = mode
+	return option, nil
 }

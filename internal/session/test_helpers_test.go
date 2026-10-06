@@ -2,9 +2,11 @@ package session
 
 import (
 	"context"
+	"elbot/internal/llm"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -12,7 +14,18 @@ import (
 func newTestService(t *testing.T) (*Service, storage.Store) {
 	t.Helper()
 	store := newTestStore(t)
-	return NewService(store), store
+	svc := NewService(store)
+	svc.SetMaterials(testDisplayMaterials{})
+	return svc, store
+}
+
+type testDisplayMaterials struct{}
+
+func (testDisplayMaterials) MaterialFor(origin llm.Origin) (MaterialPreparer, error) {
+	if origin.Protocol != llm.ProtocolChat {
+		return nil, fmt.Errorf("native material is not configured in this display fixture")
+	}
+	return DisplayMaterial{}, nil
 }
 
 func newTestStore(t *testing.T) storage.Store {

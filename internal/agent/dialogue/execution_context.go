@@ -25,6 +25,18 @@ type ProviderIdentityResolver interface {
 	OriginFor(string) (llm.Origin, error)
 }
 
+func (v ExecutionView) CheckSelection(row *storage.Session, selection modelmgr.Selection) error {
+	source, _, err := session.Origin(row)
+	if err != nil {
+		return err
+	}
+	target, err := v.Providers.OriginFor(selection.Provider)
+	if err != nil {
+		return err
+	}
+	return modelmgr.CanSwitch(source, target)
+}
+
 func (v ExecutionView) WithModel(ctx context.Context, selection modelmgr.Selection) (context.Context, error) {
 	if v.Providers == nil {
 		return ctx, fmt.Errorf("provider identity bindings are not configured")

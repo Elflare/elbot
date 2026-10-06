@@ -75,6 +75,9 @@ type compactFailCreateRepo struct {
 }
 
 func (r compactFailCreateRepo) Create(context.Context, *storage.Session) error { return r.err }
+func (r compactFailCreateRepo) CreateMaterial(context.Context, storage.SessionMaterialCreate) error {
+	return r.err
+}
 
 func TestCreateCompactedFailureKeepsSourceAndBinding(t *testing.T) {
 	for _, failure := range []string{"save", "cancel", "metadata", "binding", "missing", "foreign"} {

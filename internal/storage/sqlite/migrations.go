@@ -516,6 +516,29 @@ CREATE TABLE native_checkpoints (
 CREATE INDEX idx_native_checkpoints_message ON native_checkpoints(session_id, message_id);
 `,
 	},
+	{
+		version: 20,
+		name:    "native_material_roots",
+		sql: `
+ALTER TABLE native_exchanges ADD COLUMN input_ids_json TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_checkpoints ADD COLUMN seed_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_checkpoints ADD COLUMN calls_json TEXT NOT NULL DEFAULT '';
+CREATE TABLE native_seeds (
+ id TEXT PRIMARY KEY, session_id TEXT NOT NULL UNIQUE REFERENCES sessions(id) ON DELETE CASCADE,
+ protocol TEXT NOT NULL, provider TEXT NOT NULL, base_url TEXT NOT NULL,
+ response_id TEXT NOT NULL, source_checkpoint_id TEXT NOT NULL,
+ items_json TEXT NOT NULL, materials_json TEXT NOT NULL, continuation_json TEXT NOT NULL,
+ calls_json TEXT NOT NULL, media_ids_json TEXT NOT NULL,
+ consumed INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL
+);
+CREATE TRIGGER release_native_input_media AFTER DELETE ON native_inputs BEGIN
+ DELETE FROM media_references WHERE owner_type='native_input' AND owner_id=OLD.id;
+END;
+CREATE TRIGGER release_native_seed_media AFTER DELETE ON native_seeds BEGIN
+ DELETE FROM media_references WHERE owner_type='native_seed' AND owner_id=OLD.id;
+END;
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

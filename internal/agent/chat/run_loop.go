@@ -70,6 +70,9 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 				return failedLoop(err)
 			}
 		}
+		if err := r.View.CheckSelection(s.session, s.selection); err != nil {
+			return failedLoop(err)
+		}
 		var pending *dialogue.PendingUserMessage
 		if inToolPhase {
 			s.messages, pending = drainPendingUserInput(r.Turns, s.session.ID, s.messages, turn.AttemptFromContext(s.ctx))

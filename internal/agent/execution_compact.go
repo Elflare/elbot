@@ -39,6 +39,10 @@ func (c *executionCoordinator) runCompact(ctx context.Context, current *storage.
 		release()
 		return nil, fmt.Errorf("当前会话有正在运行的请求，无法压缩")
 	}
+	if err := c.view.CheckSelection(current, selection); err != nil {
+		release()
+		return nil, err
+	}
 	info, reqCtx, done, err := c.requests.Start(locked, request.StartRequest{SessionID: current.ID, Kind: request.KindCompress, Label: "compact"})
 	if err != nil {
 		release()
@@ -50,6 +54,7 @@ func (c *executionCoordinator) runCompact(ctx context.Context, current *storage.
 		return nil, fmt.Errorf("当前会话正在处理其他任务，无法压缩")
 	}
 	c.turns.AttachExecution(current.ID, info.ID, turn.ExecutionFromContext(ctx))
+	reqCtx = turn.WithAttempt(reqCtx, info.ID)
 	release()
 	defer done()
 	defer c.turns.CompleteCompactRun(current.ID, info.ID)
@@ -80,7 +85,7 @@ func (c *executionCoordinator) runCompact(ctx context.Context, current *storage.
 	if err != nil {
 		return nil, err
 	}
-	next, err := c.sessions.CreateCompacted(locked, scope, current.ID, sessionpkg.CompactedRequest{ID: nextID, Title: prepared.Title, Metadata: encoded})
+	next, err := c.sessions.CreateCompacted(locked, scope, current.ID, sessionpkg.CompactedRequest{ID: nextID, Title: prepared.Title, Metadata: encoded, Seed: prepared.Seed, ExpectedCheckpointID: prepared.ExpectedCheckpointID})
 	if err != nil {
 		return nil, err
 	}

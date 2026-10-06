@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 压缩按会话协议分派：Chat 继续使用独立摘要模型，Responses 使用当前模型并完整保存原生返回窗口；两者共用压缩阈值。
 - 工具定义及 Hook 的只读 `llm.tools` 从 Chat 的 `type/function` 包装改为 `name/description/parameters` 业务结构，协议客户端分别生成所需 API 包装。
 - 大幅重构底层，优化各包职责与边界
 - QQ OneBot 消息超过 3000 将转为合并消息

@@ -12,8 +12,10 @@ import (
 )
 
 type PreparedCompact struct {
-	Title string
-	State *CompactState
+	Title                string
+	State                *CompactState
+	Seed                 *storage.NativeSeed
+	ExpectedCheckpointID string
 }
 
 func (s *Service) Compact(ctx context.Context, current *storage.Session, reason string, fallback modelmgr.Selection) (*PreparedCompact, error) {

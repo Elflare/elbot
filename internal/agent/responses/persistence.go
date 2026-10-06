@@ -41,13 +41,23 @@ func (s *turnState) commit(ctx context.Context, commit storage.DialogueCommit, o
 	if commit.Native != nil && commit.Native.Checkpoint.ID != "" {
 		next := commit.Native.Checkpoint
 		s.checkpoint = &next
+		if commit.Native.ConsumeSeedID != "" && s.seed != nil {
+			s.seed.Consumed = true
+		}
 	}
 	return nil
 }
 
 func (s *turnState) advance(messageID string) storage.NativeCommit {
 	parent := s.checkpointID()
-	return storage.NativeCommit{ExpectedCheckpointID: parent, Checkpoint: storage.NativeCheckpoint{ID: storage.NewID(), SessionID: s.session.ID, ParentID: parent, ExchangeID: s.exchange.ID, ResponseID: s.response.ID, MessageID: messageID}, ConsumedInputs: append([]string(nil), s.consumed...)}
+	native := storage.NativeCommit{ExpectedCheckpointID: parent, Checkpoint: storage.NativeCheckpoint{ID: storage.NewID(), SessionID: s.session.ID, ParentID: parent, ExchangeID: s.exchange.ID, ResponseID: s.response.ID, MessageID: messageID}, ConsumedInputs: append([]string(nil), s.consumed...)}
+	if s.seed != nil {
+		native.Checkpoint.SeedID = s.seed.ID
+		if !s.seed.Consumed {
+			native.ConsumeSeedID = s.seed.ID
+		}
+	}
+	return native
 }
 
 type replyCommitter struct{ state *turnState }
@@ -133,8 +143,7 @@ func (c *toolCommitter) Result(ctx context.Context, index int, _ llm.ToolCallReq
 	return nil
 }
 
-// Only interrupted local tool rounds are closed here. Recovering an unavailable
-// provider response chain is Step16.4 and is deliberately not implemented.
+// Close interrupted local tool rounds without executing historical calls.
 func (s *turnState) closeInterruptedCalls(ctx context.Context) error {
 	if s.checkpoint == nil {
 		return nil
