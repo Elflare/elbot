@@ -152,6 +152,7 @@ Provider is written in `providers.toml`:
 
 ```toml
 [providers.deepseek]
+api_mode = "chat"                  # Optional: chat / response, defaults to chat
 base_url = "https://api.deepseek.com"
 api_key_env = "DEEPSEEK_API_KEY"
 proxy = ""                          # Optional, HTTP/SOCKS5 proxy address
@@ -173,13 +174,29 @@ default_context_window = 256000
 
 Note:
 
-- `base_url` uses the Provider's OpenAI-compatible API address.
+- `api_mode` only accepts `chat` or `response`, defaults to `chat`; Calls the Chat Completions or Responses API respectively.
+- `base_url` uses the base address of the Provider's corresponding API.
 - `api_key_env` points to an environment variable name; this method is recommended for saving keys.
 - `proxy` is optional, supporting `http://` and `socks5://` proxy addresses; When omitted or left blank, it connects directly and does not inherit environment proxies such as `HTTP_PROXY` and `HTTPS_PROXY` from the ElBot process. This setting applies to both the model list and chat requests.
 - `models` is a manually supplemented list of model names, used when the Provider's model list interface cannot retrieve certain models.
 - `[providers.<name>.model_configs."<model>"]` configures `context_window` and `extra_payload` for specific models; both are optional.
+- The provider and model levels share `extra_payload`; fill in the native parameters supported by the API/model according to `api_mode`.
 - `extra_payload` will be merged into the LLM request JSON, with model-level settings overriding provider-level settings.
 - `default_context_window` of `[model_metadata]` is the global fallback value, defaulting to `256000`, and is used when `context_window` is not configured in `model_configs`.
+
+Configuration example for Responses:
+
+```toml
+[providers.native_text]
+api_mode = "response"
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+extra_payload = { reasoning = { effort = "medium" } }
+```
+
+Both Chat Completions and Responses clients can be used for naming and text summaries of Chat Sessions. Responses Sessions use the current conversation model for native compression, ignoring the selection of `/model --compact`.
+
+The protocol and provider of an existing Session are fixed during the first conversation. The provider is the node name of `[providers.<name>]`: Chat Sessions can be switched to other Chat providers; Responses Sessions can only be switched to Responses models under the same node. A new Session must be created for cross-protocol or cross-Responses provider changes. When `base_url` of the same node changes, Responses rebuilds the chain using complete local native materials.
 
 ## Built-in Web Tool Configuration
 
@@ -484,6 +501,7 @@ compact_trigger_ratio = 0.8
 - When enabled, compaction will be triggered when the Session context approaches the window limit.
 - You can also manually compress the current Session via `/compact`.
 - After successful compaction, it will switch to a new independent Session without modifying the history of the original Session.
+- Both protocols share the aforementioned switches, thresholds, and window configurations of the current model. Responses calls the `/responses/compact` of the current conversation model, retaining the entire native return window as the starting point for the new Session.
 
 The model window is configured in `model_configs` of `providers.toml`:
 
