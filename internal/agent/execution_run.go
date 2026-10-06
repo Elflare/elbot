@@ -23,6 +23,11 @@ func (c *executionCoordinator) runAttempt(ctx context.Context, session *storage.
 	}
 	release()
 	selection := modelmgr.SelectionForTurn(ctx, c.models, session)
+	// TODO Step16.3: register the Responses dialogue route. Until then reject
+	// missing capabilities before automatic compaction, input writes or API calls.
+	if err := c.dialogue.CheckSelection(selection); err != nil {
+		return session, turn.Input{}, err
+	}
 	ctx, session, err = c.compactBeforeTurn(ctx, session, text, out, selection)
 	if err != nil {
 		return session, turn.Input{}, err

@@ -61,7 +61,7 @@ rg -n "func Run|service run|completion|--client|RunCron" cmd internal/app intern
 
 - `internal/config/config.go`、`configuration.go`：启动入口及与诊断共用的读取、默认值、合并和来源记录。
 - `internal/config/assets.go`：默认资产、文件必要性与示例声明。
-- `internal/config/definition.go`、`config_definition.go`：规则类型、核心配置声明及共享校验；平台与 Hook 的 `config_definition.go` 由 app 显式装配。
+- `internal/config/definition.go`、`config_definition.go`、`provider.go`：规则类型、核心配置声明、api_mode 默认值及启动／诊断共享校验；平台与 Hook 的 `config_definition.go` 由 app 显式装配。
 - `internal/config/inspect.go`、`inspect_toml.go`：只读诊断、TOML 检查和内置内容比较。
 - `internal/doctor/`：`doctor.go` 调用配置检查入口，`report.go` 按文件生成错误/提示报告。
 - `internal/logging/`
@@ -116,7 +116,7 @@ rg -n "Handle|Run|Prompt|tool_calls|reasoning|usage|pending|prepared" internal/a
 - `internal/agent/routes/route.go`、`registry.go`：协议能力统一登记、封闭及按能力查询；只保存当前所需的 Loop／Compactor，不拥有运行状态。
 - `internal/agent/assembly.go`、`internal/app/services.go`：app 创建共享注册表及上下文服务，Agent 装配并登记 Chat 路线、封闭和校验接线后才开放运行。
 - `internal/agent/dialogue/loop.go`、`internal/contextmgr/compact_contract.go`：消费方的小查询接口；公共层不导入注册表实现或具体路线。
-- `internal/llm/protocol.go`、`internal/modelmgr/selection.go`：协议标识与固定模型快照。当前生产只登记 Chat，Responses 属后续步骤。
+- `internal/llm/protocol.go`、`internal/modelmgr/selection.go`：当前协议标识与固定客户端快照；`internal/app/models.go` 按 provider.api_mode 构造原生客户端。Responses 客户端已接入独立文本，业务路线尚未注册；provider 预绑定为待实施的 16.2a。
 
 <!-- locator:commands -->
 ## Slash 命令与补全
@@ -253,7 +253,7 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 - `internal/hook/match.go`：Hook 条件匹配、字段读取和模板值。
 - `internal/hook/manager.go`：普通 Hook 注册、排序、执行与原子 handler 快照替换。
 - `internal/hook/control/`：`/hooks` 的列表、重载和持久进程生命周期管理入口。
-- `internal/hook/builtin/`、`internal/hook/plugins/`：内置 Hook 注册与内置插件。
+- `internal/hook/builtin/`：内置规则 Hook 注册入口。
 - `internal/hook/rules/`：规则 Hook；`rules.go` 提供类型和模块入口，`config.go`/`toml_error.go` 负责配置加载与诊断，`rule.go`/`action.go`/`exec.go` 负责规则及 Action 执行，`exec_process_*.go` 负责一次性 exec 的跨平台进程树终止，`detail.go` 负责列表详情。
 - `internal/hook/runtime/`：Worker Hook 配置、进程、双向 Pipe RPC、waiting 路由、工具桥接和进程内 SharedState。
 - `internal/agent/hooks.go`：hookBridge 负责 Hook 执行、事件补全、continuation、同步 Request 观察和错误处理；对外接线保留 Agent 薄委托。
@@ -370,13 +370,15 @@ rg -n "ContextLoader|Compress|Window|System Prompt|MessageSegment|usage" interna
 
 先看：
 
-- `internal/llm/`：LLM 抽象和 MessageSegment。
-- `internal/llm/openai/`：OpenAI-compatible adapter。
+- `internal/llm/client.go`、`message.go`、`tool.go`、`segment.go`：独立文本／模型目录契约、Usage、公共业务消息及工具定义；`extra.go` 校验额外字段只能添加、不覆盖或重复。
+- `internal/llm/httpclient/client.go`、`sse.go`：公共 HTTP、显式代理、取消、重试、SSE 分帧和超时，不编码协议请求或固定鉴权。
+- `internal/llm/chatcompletions/`：Chat 客户端、原生请求编码、chunks、工具参数累积、用量、模型列表和日志。
+- `internal/llm/responses/`：Responses 客户端、原生 items／事件／完整响应及未知 JSON 保留，成功／失败／incomplete 终态；GenerateText 是独立调用，不处理业务工具或主会话持久化。
 - `internal/modelmgr/service.go`、`selection.go`：共享服务与构造校验，模式／槽位、压缩和命名选择及请求快照。
 - `internal/modelmgr/signals.go`：共享客户端重试事实，供对话／压缩／命名统一消费；订阅归 app 所有。
 - `internal/modelmgr/catalog.go`、`state.go`：模型目录缓存、筛选与 provider 错误，串行保存后发布选择状态；原子文件写入复用 `config.SaveState` 和 `fileops`。
 - `internal/agent/chat/model_call.go`、`internal/agent/dialogue/model_call.go`：协议调用与共同调用处理；`internal/notification/rules/model.go`：模型重试／降级提示。
-- `internal/session/title.go`：标题生成，开始时从模型服务取得命名与 work fallback 快照。
+- `internal/session/title.go`：标题生成，开始时取得命名与 work fallback 快照，再调用客户端 GenerateText；`internal/agent/chat/compressor.go` 通过同一文本契约生成 Chat 摘要。
 
 常用搜索：
 

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"strings"
 	"testing"
@@ -15,7 +16,7 @@ type appendShutdownModel struct {
 	started chan struct{}
 }
 
-func (m *appendShutdownModel) ChatStream(ctx context.Context, _ llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+func (m *appendShutdownModel) Stream(ctx context.Context, _ chatcompletions.Request) (<-chan chatcompletions.Chunk, error) {
 	close(m.started)
 	<-ctx.Done()
 	return nil, ctx.Err()
@@ -109,4 +110,28 @@ func TestRuntimeRetainsHookDependenciesUntilAppendOutputExits(t *testing.T) {
 		t.Fatal("released Hook runtime while expiry output was active")
 	default:
 	}
+}
+
+func (m *appendShutdownModel) Protocol() llm.ProtocolID { return llm.ProtocolChat }
+func (m *appendShutdownModel) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {
+	messages := []llm.LLMMessage{}
+	if req.Instructions != "" {
+		messages = append(messages, llm.LLMMessage{Role: llm.RoleSystem, Segments: llm.TextSegments(req.Instructions)})
+	}
+	messages = append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments(req.Input)})
+	chunks, err := m.Stream(ctx, chatcompletions.Request{Model: req.Model, Messages: messages, MaxTokens: req.MaxOutputTokens, ExtraBody: req.ExtraBody})
+	if err != nil {
+		return llm.TextResult{}, err
+	}
+	result := llm.TextResult{}
+	for chunk := range chunks {
+		if chunk.Error != nil {
+			return llm.TextResult{}, chunk.Error
+		}
+		result.Text += chunk.DeltaContent
+		if chunk.Usage != nil {
+			result.Usage = chunk.Usage
+		}
+	}
+	return result, ctx.Err()
 }

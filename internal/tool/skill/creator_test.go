@@ -158,7 +158,7 @@ func TestCreateElSkillInfoAndSchema(t *testing.T) {
 		t.Fatalf("info = %#v", info)
 	}
 	schema := creator.Schema()
-	if schema.Function.Name != CreateElSkillName || schema.Function.Parameters == nil {
+	if schema.Name != CreateElSkillName || schema.Parameters == nil {
 		t.Fatalf("schema = %#v", schema)
 	}
 }

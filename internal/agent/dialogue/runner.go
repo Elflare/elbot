@@ -2,7 +2,9 @@ package dialogue
 
 import (
 	"context"
+	"elbot/internal/modelmgr"
 	"errors"
+	"fmt"
 
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
@@ -19,6 +21,15 @@ type Runner struct {
 	View     ExecutionView
 }
 type PreparedTurn struct{ loop PreparedLoop }
+
+// CheckSelection validates route availability before compaction or input writes.
+func (r *Runner) CheckSelection(selection modelmgr.Selection) error {
+	_, err := r.Routes.LoopFor(selection.Protocol)
+	if err != nil {
+		return fmt.Errorf("主对话协议 %q 尚未接入或接线无效：%w", selection.Protocol, err)
+	}
+	return nil
+}
 
 func (r *Runner) PrepareTurn(ctx context.Context, in TurnInput) (*PreparedTurn, error) {
 	route, err := r.Routes.LoopFor(in.Selection.Protocol)

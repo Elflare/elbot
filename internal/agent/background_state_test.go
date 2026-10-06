@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"reflect"
 	"strings"
@@ -17,7 +18,7 @@ import (
 
 func backgroundCachedTool(name string, source toolrun.SourceKind) toolrun.CachedTool {
 	return toolrun.CachedTool{Name: name, Source: source, CanonicalName: name,
-		Endpoint: "http://example.invalid/tool", Schema: llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: name}}}
+		Endpoint: "http://example.invalid/tool", Schema: llm.ToolSchema{Name: name}}
 }
 
 func TestBackgroundStateFreezesInitialTools(t *testing.T) {
@@ -25,7 +26,7 @@ func TestBackgroundStateFreezesInitialTools(t *testing.T) {
 		t.Run(map[bool]string{false: "declared", true: "empty"}[empty], func(t *testing.T) {
 			ctx := context.Background()
 			store := newTestStore(t)
-			f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: "first"}}, {{DeltaContent: "second"}}}}
+			f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "first"}}, {{DeltaContent: "second"}}}}
 
 			registry := tool.NewRegistry()
 			_ = registry.Register(agentWrapperTool{name: "native_old"})

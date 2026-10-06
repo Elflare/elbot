@@ -43,7 +43,7 @@ func (s *Compactor) Prepare(ctx context.Context, current *storage.Session, reaso
 	if selection.Client == nil {
 		return nil, fmt.Errorf("压缩模型未配置")
 	}
-	compressor := Compressor{ClientFor: func(string) llm.LLM { return selection.Client }}
+	compressor := Compressor{ClientFor: func(string) llm.Client { return selection.Client }}
 	result, err := compressor.Compact(ctx, CompactRequest{Provider: selection.Provider, Model: selection.Model, Messages: messages, UserInputs: compactUserInputs(raw)})
 	if err != nil {
 		return nil, err

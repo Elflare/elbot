@@ -50,7 +50,7 @@ func validConstructorOptions(t *testing.T) testAgentOptions {
 	t.Helper()
 	return testAgentOptions{
 		Models: newTestModels(t, modelmgr.Options{
-			Clients:   map[string]llm.LLM{"default": &fakeLLM{}},
+			Clients:   map[string]llm.Client{"default": &fakeLLM{}},
 			Providers: map[string]config.ProviderConfig{"default": {}},
 			ModeModels: map[string]config.ModelSelection{
 				storage.SessionModeWork: {Provider: "default", Model: "model"},

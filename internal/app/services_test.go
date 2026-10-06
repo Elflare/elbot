@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -54,22 +55,22 @@ func (p *assemblyPlatform) text() string {
 
 type assemblyModel struct {
 	mu     sync.Mutex
-	chunks [][]llm.StreamChunk
+	chunks [][]chatcompletions.Chunk
 	models []string
 }
 
 func (*assemblyModel) ListModels(context.Context) ([]string, error) {
 	return []string{"first", "second"}, nil
 }
-func (m *assemblyModel) ChatStream(_ context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+func (m *assemblyModel) Stream(_ context.Context, req chatcompletions.Request) (<-chan chatcompletions.Chunk, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.models = append(m.models, req.Model)
-	chunks := []llm.StreamChunk{{DeltaContent: "assembled answer"}}
+	chunks := []chatcompletions.Chunk{{DeltaContent: "assembled answer"}}
 	if len(m.chunks) > 0 {
 		chunks, m.chunks = m.chunks[0], m.chunks[1:]
 	}
-	ch := make(chan llm.StreamChunk, len(chunks))
+	ch := make(chan chatcompletions.Chunk, len(chunks))
 	for _, chunk := range chunks {
 		ch <- chunk
 	}
@@ -117,7 +118,7 @@ func runtimeAssemblyFixture(t *testing.T) (RuntimeRequest, *assemblyPlatform, *a
 	events := []string{}
 	return RuntimeRequest{
 		Foundation: &FoundationComponents{Config: cfg, Store: store, Logs: logs, Logger: logs.Runtime(), CronManager: elcron.NewManager(store.CronJobs(), logs.Runtime())},
-		Models:     ModelClients{ByProvider: map[string]llm.LLM{"test": model}},
+		Models:     ModelClients{ByProvider: map[string]llm.Client{"test": model}},
 		Platforms:  PlatformComponents{Primary: p, Runtimes: []platform.Runtime{p}},
 		Profiler:   profilerStub{events: &events},
 	}, p, model
@@ -149,7 +150,7 @@ func TestRuntimeAssemblyCommandsShareToolAndModelServices(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "expected_revision": fileops.ContentRevision([]byte("before")), "edits": []map[string]any{{"operation": "overwrite", "new_text": "after"}}})
-	model.chunks = [][]llm.StreamChunk{{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "edit", Name: "edit_file", Args: string(args)}}, FinishReason: "tool_calls"}}}
+	model.chunks = [][]chatcompletions.Chunk{{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "edit", Name: "edit_file", Args: string(args)}}, FinishReason: "tool_calls"}}}
 	runtime, err := (defaultRuntimeFactory{}).Build(context.Background(), req)
 	t.Cleanup(func() { closeAssembledRuntime(t, runtime) })
 	if err != nil {
@@ -235,4 +236,28 @@ func TestRuntimeAssemblyFailureReturnsOwnedWorkers(t *testing.T) {
 	if !lifecycle.stopped() {
 		t.Fatal("startup workers survived cleanup")
 	}
+}
+
+func (m *assemblyModel) Protocol() llm.ProtocolID { return llm.ProtocolChat }
+func (m *assemblyModel) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {
+	messages := []llm.LLMMessage{}
+	if req.Instructions != "" {
+		messages = append(messages, llm.LLMMessage{Role: llm.RoleSystem, Segments: llm.TextSegments(req.Instructions)})
+	}
+	messages = append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments(req.Input)})
+	chunks, err := m.Stream(ctx, chatcompletions.Request{Model: req.Model, Messages: messages, MaxTokens: req.MaxOutputTokens, ExtraBody: req.ExtraBody})
+	if err != nil {
+		return llm.TextResult{}, err
+	}
+	result := llm.TextResult{}
+	for chunk := range chunks {
+		if chunk.Error != nil {
+			return llm.TextResult{}, chunk.Error
+		}
+		result.Text += chunk.DeltaContent
+		if chunk.Usage != nil {
+			result.Usage = chunk.Usage
+		}
+	}
+	return result, ctx.Err()
 }

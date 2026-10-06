@@ -113,7 +113,7 @@ func (m *Manager) Schemas(ctx context.Context, view Context, cached []CachedTool
 	out := make([]llm.ToolSchema, 0, len(base)+len(cached))
 	seen := map[string]bool{}
 	appendSchema := func(schema llm.ToolSchema) {
-		name := schema.Function.Name
+		name := schema.Name
 		if name == "" || seen[name] {
 			return
 		}
@@ -137,10 +137,10 @@ func (m *Manager) Schemas(ctx context.Context, view Context, cached []CachedTool
 
 func schemaForContext(ctx context.Context, schema llm.ToolSchema) llm.ToolSchema {
 	sandbox, ok := sandboxctx.SandboxContextFromContext(ctx)
-	if !ok || !sandbox.Background || !backgroundPathSchema(schema.Function.Name) {
+	if !ok || !sandbox.Background || !backgroundPathSchema(schema.Name) {
 		return schema
 	}
-	schema.Function.Description = strings.TrimSpace(schema.Function.Description + " " + sandboxctx.BackgroundPathInstruction())
+	schema.Description = strings.TrimSpace(schema.Description + " " + sandboxctx.BackgroundPathInstruction())
 	return schema
 }
 

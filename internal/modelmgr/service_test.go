@@ -2,6 +2,7 @@ package modelmgr
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"fmt"
 	"os"
@@ -21,7 +22,7 @@ type testClient struct {
 	list func(context.Context) ([]string, error)
 }
 
-func (c *testClient) ChatStream(context.Context, llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+func (c *testClient) Stream(context.Context, chatcompletions.Request) (<-chan chatcompletions.Chunk, error) {
 	return nil, errors.New("unexpected chat request")
 }
 
@@ -34,7 +35,7 @@ func (c *testClient) ListModels(ctx context.Context) ([]string, error) {
 
 func testOptions() Options {
 	return Options{
-		Clients:     map[string]llm.LLM{"p": &testClient{}, "q": &testClient{}},
+		Clients:     map[string]llm.Client{"p": &testClient{}, "q": &testClient{}},
 		Providers:   map[string]config.ProviderConfig{"p": {Models: []string{"a", "b", "c"}}, "q": {Models: []string{"a", "z"}}},
 		ModeModels:  map[string]config.ModelSelection{"work": {Provider: "p", Model: "a"}, "chat": {Provider: "q", Model: "z"}},
 		DefaultMode: "chat",
@@ -307,4 +308,28 @@ func waitError(t *testing.T, ch <-chan error) error {
 		t.Fatal("timed out waiting for operation")
 		return nil
 	}
+}
+
+func (c *testClient) Protocol() llm.ProtocolID { return llm.ProtocolChat }
+func (c *testClient) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {
+	messages := []llm.LLMMessage{}
+	if req.Instructions != "" {
+		messages = append(messages, llm.LLMMessage{Role: llm.RoleSystem, Segments: llm.TextSegments(req.Instructions)})
+	}
+	messages = append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments(req.Input)})
+	chunks, err := c.Stream(ctx, chatcompletions.Request{Model: req.Model, Messages: messages, MaxTokens: req.MaxOutputTokens, ExtraBody: req.ExtraBody})
+	if err != nil {
+		return llm.TextResult{}, err
+	}
+	result := llm.TextResult{}
+	for chunk := range chunks {
+		if chunk.Error != nil {
+			return llm.TextResult{}, chunk.Error
+		}
+		result.Text += chunk.DeltaContent
+		if chunk.Usage != nil {
+			result.Usage = chunk.Usage
+		}
+	}
+	return result, ctx.Err()
 }

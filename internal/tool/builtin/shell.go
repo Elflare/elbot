@@ -67,7 +67,7 @@ func (t ShellTool) Info() tool.Info {
 
 func (t ShellTool) Schema() llm.ToolSchema {
 	schema := shellBuilder().BuildSchema()
-	properties := schema.Function.Parameters["properties"].(map[string]any)
+	properties := schema.Parameters["properties"].(map[string]any)
 	inputs := properties["media_inputs"].(map[string]any)
 	inputs["items"].(map[string]any)["additionalProperties"] = false
 	return schema

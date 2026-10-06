@@ -39,9 +39,9 @@ func TestSendFileMediaIDBuildsLocalOutput(t *testing.T) {
 
 func TestSendFileSchemaOnlyExposesSource(t *testing.T) {
 	schema := NewSendFileTool(NewFileManager(t.TempDir(), DefaultFileDeliveryConfigForTest())).Schema()
-	properties, ok := schema.Function.Parameters["properties"].(map[string]any)
+	properties, ok := schema.Parameters["properties"].(map[string]any)
 	if !ok {
-		t.Fatalf("schema properties missing: %#v", schema.Function.Parameters)
+		t.Fatalf("schema properties missing: %#v", schema.Parameters)
 	}
 	if _, ok := properties["source"]; !ok {
 		t.Fatal("source property missing")

@@ -66,6 +66,7 @@ type ModelSelection struct {
 }
 
 type ProviderConfig struct {
+	APIMode      string                 `toml:"api_mode"`
 	BaseURL      string                 `toml:"base_url"`
 	APIKey       string                 `toml:"api_key"`
 	APIKeyEnv    string                 `toml:"api_key_env"`
@@ -394,6 +395,9 @@ func Load(path string) (*Config, error) {
 	if err := state.readCore(context.Background(), false); err != nil {
 		return nil, err
 	}
+	if err := FirstError(state.cfg.ValidateProviders()); err != nil {
+		return nil, err
+	}
 	if err := state.cfg.resolveProviderAPIKeys(filepath.Dir(configPath)); err != nil {
 		return nil, err
 	}
@@ -679,6 +683,12 @@ func (c *Config) applyElnisDefaults() {
 func (c *Config) applyProviderDefaults() {
 	if c.Providers == nil {
 		c.Providers = map[string]ProviderConfig{}
+	}
+	for name, provider := range c.Providers {
+		if provider.APIMode == "" {
+			provider.APIMode = "chat"
+			c.Providers[name] = provider
+		}
 	}
 	if c.ModelMetadata.DefaultContextWindow <= 0 {
 		c.ModelMetadata.DefaultContextWindow = DefaultContextWindow

@@ -14,7 +14,6 @@ import (
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/chatinfo"
 	"elbot/internal/llm"
-	"elbot/internal/llm/openai"
 	"elbot/internal/media"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
@@ -57,7 +56,7 @@ func TestForwardDisplayReachesVendorInOrder(t *testing.T) {
 	}))
 	defer server.Close()
 	p := &fakePlatform{}
-	a := newTestMediaAgent(t, p, openai.New(server.URL, "test", nil), store, center)
+	a := newTestMediaAgent(t, p, mustChatClient(t, server.URL, "test", nil), store, center)
 	current := []platform.MessageSegment{{Type: platform.SegmentText, Text: "芙莉丝 比较这些图片"}, {Type: platform.SegmentImage, MediaID: images[2].ID}}
 	display := []platform.MessageSegment{
 		{Type: platform.SegmentText, Text: "<forward_message>\n小明：文字 A\n"},

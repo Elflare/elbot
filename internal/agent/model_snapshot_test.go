@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"strings"
 	"sync"
@@ -51,14 +52,14 @@ func TestModelCommandKeepsInFlightToolLoopOnOriginalSelection(t *testing.T) {
 	started, release, unblock := modelBarrier(t)
 	old := &fakeLLM{
 		chatBlocks: []fakeLLMBlock{{started: started, release: release}},
-		chunks: [][]llm.StreamChunk{
-			{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call", Name: "prepared_args", Args: `{}`}}, FinishReason: "tool_calls"}},
+		chunks: [][]chatcompletions.Chunk{
+			{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call", Name: "prepared_args", Args: `{}`}}, FinishReason: "tool_calls"}},
 			{{DeltaContent: "old reply"}},
 		},
 	}
 	next := &fakeLLM{replies: []string{"new reply"}}
 	models := newTestModels(t, modelmgr.Options{
-		Clients:    map[string]llm.LLM{"old": old, "next": next},
+		Clients:    map[string]llm.Client{"old": old, "next": next},
 		Providers:  map[string]config.ProviderConfig{"old": {Models: []string{"first"}}, "next": {Models: []string{"second"}}},
 		ModeModels: map[string]config.ModelSelection{storage.SessionModeWork: {Provider: "old", Model: "first"}},
 	})
@@ -107,11 +108,11 @@ func TestModelCommandKeepsInFlightToolLoopOnOriginalSelection(t *testing.T) {
 type failingNamingClient struct {
 	started chan struct{}
 	release chan struct{}
-	request chan llm.ChatRequest
+	request chan chatcompletions.Request
 }
 
 func (c *failingNamingClient) ListModels(context.Context) ([]string, error) { return nil, nil }
-func (c *failingNamingClient) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+func (c *failingNamingClient) Stream(ctx context.Context, req chatcompletions.Request) (<-chan chatcompletions.Chunk, error) {
 	c.request <- req
 	close(c.started)
 	select {
@@ -124,11 +125,11 @@ func (c *failingNamingClient) ChatStream(ctx context.Context, req llm.ChatReques
 
 func TestNamingFallbackKeepsOriginalWorkSelectionAcrossSwitch(t *testing.T) {
 	started, release, unblock := modelBarrier(t)
-	naming := &failingNamingClient{started: started, release: release, request: make(chan llm.ChatRequest, 1)}
+	naming := &failingNamingClient{started: started, release: release, request: make(chan chatcompletions.Request, 1)}
 	old := &fakeLLM{titleReplies: []string{"old title"}}
 	next := &fakeLLM{titleReplies: []string{"new title"}}
 	models := newTestModels(t, modelmgr.Options{
-		Clients:     map[string]llm.LLM{"naming": naming, "old": old, "next": next},
+		Clients:     map[string]llm.Client{"naming": naming, "old": old, "next": next},
 		Providers:   map[string]config.ProviderConfig{"naming": {Models: []string{"title"}}, "old": {Models: []string{"first"}}, "next": {Models: []string{"second"}}},
 		ModeModels:  map[string]config.ModelSelection{storage.SessionModeWork: {Provider: "old", Model: "first"}},
 		NamingModel: config.ModelSelection{Provider: "naming", Model: "title"},
@@ -158,7 +159,7 @@ func TestNamingFallbackKeepsOriginalWorkSelectionAcrossSwitch(t *testing.T) {
 		t.Fatalf("naming model = %q", req.Model)
 	}
 	old.mu.Lock()
-	oldRequests := append([]llm.ChatRequest(nil), old.requests...)
+	oldRequests := append([]chatcompletions.Request(nil), old.requests...)
 	old.mu.Unlock()
 	if len(oldRequests) != 1 || oldRequests[0].Model != "first" || next.requestCount() != 0 {
 		t.Fatalf("fallback switched: %#v", oldRequests)
@@ -174,7 +175,7 @@ func TestCompactUsesOriginalSelectionDuringModelSwitch(t *testing.T) {
 	old := &fakeLLM{chatBlocks: []fakeLLMBlock{{started: started, release: release}}, replies: []string{"old summary", "continued reply"}}
 	next := &fakeLLM{replies: []string{"new summary"}}
 	models := newTestModels(t, modelmgr.Options{
-		Clients:    map[string]llm.LLM{"old": old, "next": next},
+		Clients:    map[string]llm.Client{"old": old, "next": next},
 		Providers:  map[string]config.ProviderConfig{"old": {Models: []string{"first"}}, "next": {Models: []string{"second"}}},
 		ModeModels: map[string]config.ModelSelection{storage.SessionModeWork: {Provider: "old", Model: "first"}},
 	})
@@ -211,4 +212,28 @@ func TestCompactUsesOriginalSelectionDuringModelSwitch(t *testing.T) {
 	if got := next.chatRequests(); len(got) != 1 || got[0].Model != "second" || !strings.Contains(llm.SegmentsContentText(got[0].Messages[1].Segments), "old summary") {
 		t.Fatalf("next compact = %#v", got)
 	}
+}
+
+func (c *failingNamingClient) Protocol() llm.ProtocolID { return llm.ProtocolChat }
+func (c *failingNamingClient) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {
+	messages := []llm.LLMMessage{}
+	if req.Instructions != "" {
+		messages = append(messages, llm.LLMMessage{Role: llm.RoleSystem, Segments: llm.TextSegments(req.Instructions)})
+	}
+	messages = append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments(req.Input)})
+	chunks, err := c.Stream(ctx, chatcompletions.Request{Model: req.Model, Messages: messages, MaxTokens: req.MaxOutputTokens, ExtraBody: req.ExtraBody})
+	if err != nil {
+		return llm.TextResult{}, err
+	}
+	result := llm.TextResult{}
+	for chunk := range chunks {
+		if chunk.Error != nil {
+			return llm.TextResult{}, chunk.Error
+		}
+		result.Text += chunk.DeltaContent
+		if chunk.Usage != nil {
+			result.Usage = chunk.Usage
+		}
+	}
+	return result, ctx.Err()
 }

@@ -33,7 +33,7 @@ func (t fakeTool) Info() Info {
 }
 
 func (t fakeTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: t.name, Description: t.Info().Description, Parameters: map[string]any{"type": "object"}}}
+	return llm.ToolSchema{Name: t.name, Description: t.Info().Description, Parameters: map[string]any{"type": "object"}}
 }
 
 func (t fakeTool) Call(context.Context, CallRequest) (*Result, error) {
@@ -69,7 +69,7 @@ func TestRegistryRegisterListDiscover(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(one.Tools) != 1 || one.Tools[0].Info.Name != "a" || one.Tools[0].Schema == nil || one.Tools[0].Schema.Function.Name != "a" {
+	if len(one.Tools) != 1 || one.Tools[0].Info.Name != "a" || one.Tools[0].Schema == nil || one.Tools[0].Schema.Name != "a" {
 		t.Fatalf("unexpected discovery detail: %#v", one.Tools)
 	}
 	if _, err := registry.Discover("missing"); err == nil {
@@ -267,7 +267,7 @@ func TestDiscoverToolSupportsBatchAndDependencies(t *testing.T) {
 	}
 }
 
-func TestDiscoverToolSchemaJSONUsesOpenAIFieldNames(t *testing.T) {
+func TestDiscoverToolSchemaJSONUsesBusinessFieldNames(t *testing.T) {
 	registry := NewRegistry()
 	if err := registry.Register(fakeTool{name: "shell", source: SourceBuiltin}); err != nil {
 		t.Fatal(err)
@@ -278,8 +278,8 @@ func TestDiscoverToolSchemaJSONUsesOpenAIFieldNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(result.Data)
-	if !strings.Contains(text, `"type":"function"`) || !strings.Contains(text, `"function"`) || strings.Contains(text, `"Type"`) || strings.Contains(text, `"Function"`) {
-		t.Fatalf("schema json should use lowercase OpenAI fields: %s", text)
+	if !strings.Contains(text, `"name":"shell"`) || !strings.Contains(text, `"parameters"`) || strings.Contains(text, `"function"`) || strings.Contains(text, `"Type"`) || strings.Contains(text, `"Function"`) {
+		t.Fatalf("schema json should use lowercase business fields: %s", text)
 	}
 }
 
@@ -561,10 +561,10 @@ func TestBuilderBuildsInfoAndSchema(t *testing.T) {
 		t.Fatalf("info = %#v", info)
 	}
 	schema := builder.BuildSchema()
-	if schema.Function.Name != "demo" || schema.Function.Parameters["required"] == nil {
+	if schema.Name != "demo" || schema.Parameters["required"] == nil {
 		t.Fatalf("schema = %#v", schema)
 	}
-	properties := schema.Function.Parameters["properties"].(map[string]any)
+	properties := schema.Parameters["properties"].(map[string]any)
 	payload := properties["payload"].(map[string]any)
 	if payload["type"] != "object" || payload["additionalProperties"] != true {
 		t.Fatalf("object property missing: %#v", schema)

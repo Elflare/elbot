@@ -76,7 +76,7 @@ func (ReadElSkillTool) Info() tool.Info {
 }
 
 func (ReadElSkillTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{
+	return llm.ToolSchema{
 		Name:        ReadElSkillName,
 		Description: "按行读取 ElBot 原生 EL Skill 文件并返回 revision。target 可选：skill_elyph 读取 SKILL.elyph；code_source 读取 main.go。默认读取 SKILL.elyph。start_line/end_line 为 1-based，可省略以读取全文。",
 		Parameters: map[string]any{
@@ -89,7 +89,7 @@ func (ReadElSkillTool) Schema() llm.ToolSchema {
 			},
 			"required": []string{"name"},
 		},
-	}}
+	}
 }
 
 func (t ReadElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
@@ -143,7 +143,7 @@ func (ModifyElSkillTool) Info() tool.Info {
 
 func (ModifyElSkillTool) Schema() llm.ToolSchema {
 	editProperties := fileops.EditOperationProperties()
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{
+	return llm.ToolSchema{
 		Name:        ModifyElSkillName,
 		Description: "修改 ElBot 原生 EL Skill 文件。target 可选：skill_elyph 修改 SKILL.elyph；code_source 修改 main.go；默认 skill_elyph。使用与 edit_file 相同的精确文本、anchor、行号插入/删除协议；所有目标基于编辑前原文解析，确认前自动预检并生成 diff。code_source 只写源码并返回 diff，不会格式化、编译或 reload；完成后调用 finalize_el_skill 检查。skill_elyph 会校验 ELyph 并 reload。",
 		Parameters: map[string]any{
@@ -158,7 +158,7 @@ func (ModifyElSkillTool) Schema() llm.ToolSchema {
 			},
 			"required": []string{"name", "edits"},
 		},
-	}}
+	}
 }
 
 func (t ModifyElSkillTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {

@@ -10,7 +10,7 @@ import (
 )
 
 type metadataLLM struct {
-	llm.LLM
+	llm.Client
 	metadata []llm.ModelMetadata
 }
 
@@ -18,7 +18,7 @@ func TestWindowResolverConcurrentCacheAccess(t *testing.T) {
 	resolver := NewWindowResolver(
 		config.ModelMetadataConfig{DefaultContextWindow: 100},
 		map[string]config.ProviderConfig{"p": {ModelConfigs: map[string]config.ModelConfig{"manual": {ContextWindow: 200}}}},
-		func(string) llm.LLM {
+		func(string) llm.Client {
 			return metadataLLM{metadata: []llm.ModelMetadata{{ID: "api", ContextWindow: 300}}}
 		},
 	)
@@ -54,7 +54,7 @@ func TestWindowResolverPriority(t *testing.T) {
 	resolver := NewWindowResolver(
 		config.ModelMetadataConfig{DefaultContextWindow: 8192},
 		providers,
-		func(provider string) llm.LLM {
+		func(provider string) llm.Client {
 			return metadataLLM{metadata: []llm.ModelMetadata{{ID: "api", ContextWindow: 32000}}}
 		},
 	)

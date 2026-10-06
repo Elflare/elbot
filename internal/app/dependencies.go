@@ -83,7 +83,7 @@ type ModelRequest struct {
 }
 
 type ModelClients struct {
-	ByProvider map[string]llm.LLM
+	ByProvider map[string]llm.Client
 }
 
 type ModelFactory interface {

@@ -99,6 +99,8 @@ text = "你好呀"
 
 `send` action 虽可在所有 Hook 点创建 output intent，但只有上表“outputs 会被发送”的点会消费它。`timing = "after_assistant"` 当前也只有 `llm.response.received` 的输出会真正延后；其他点的输出仍按当前流程立即发送。
 
+`llm.tools` 是只读的业务工具定义数组，每项包含 `name`、`description` 和 `parameters`，不包含某个 API 的工具包装。协议请求编码由客户端完成。
+
 最终 assistant 文本通常先经过 `agent.turn.output.prepared`，再经过 `agent.output.prepared`。不要在两个点配置同一 append/prepend 规则，否则文本会被处理两次。
 
 ### 匹配条件与角色

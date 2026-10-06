@@ -29,7 +29,7 @@ func stateTestStore(t *testing.T, metadata string) (storage.Store, *storage.Sess
 }
 
 func stateTestTool(name string) CachedTool {
-	return CachedTool{Name: name, Source: SourceKindNative, Schema: llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: name, Parameters: map[string]any{"properties": map[string]any{"path": map[string]any{"type": "string"}}}}}}
+	return CachedTool{Name: name, Source: SourceKindNative, Schema: llm.ToolSchema{Name: name, Parameters: map[string]any{"properties": map[string]any{"path": map[string]any{"type": "string"}}}}}
 }
 
 func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
@@ -48,8 +48,8 @@ func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 	if strings.Join(committed.Injected, ",") != "external" {
 		t.Fatalf("commit=%+v", committed)
 	}
-	item.Schema.Function.Parameters["properties"].(map[string]any)["bad"] = true
-	committed.State.ToolCache[0].Schema.Function.Parameters["bad"] = true
+	item.Schema.Parameters["properties"].(map[string]any)["bad"] = true
+	committed.State.ToolCache[0].Schema.Parameters["bad"] = true
 	restored, err := NewStateService(store).Snapshot(ctx, row.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -58,14 +58,14 @@ func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 	if len(cached) != 1 || cached[0].CanonicalName != "wisp/external" || cached[0].Endpoint != item.Endpoint || cached[0].TimeoutSeconds != 7 {
 		t.Fatalf("restored=%+v", cached)
 	}
-	if _, ok := cached[0].Schema.Function.Parameters["bad"]; ok {
+	if _, ok := cached[0].Schema.Parameters["bad"]; ok {
 		t.Fatal("output mutated persistence")
 	}
-	if _, ok := cached[0].Schema.Function.Parameters["properties"].(map[string]any)["bad"]; ok {
+	if _, ok := cached[0].Schema.Parameters["properties"].(map[string]any)["bad"]; ok {
 		t.Fatal("input mutated persistence")
 	}
-	cached[0].Schema.Function.Parameters["bad"] = true
-	if _, ok := restored.ToolCache[0].Schema.Function.Parameters["bad"]; ok {
+	cached[0].Schema.Parameters["bad"] = true
+	if _, ok := restored.ToolCache[0].Schema.Parameters["bad"]; ok {
 		t.Fatal("cache view aliases state")
 	}
 	latest, _ := store.Sessions().Get(ctx, row.ID)
@@ -86,7 +86,7 @@ func TestStateCommitFailureKeepsAllFields(t *testing.T) {
 			ctx := context.Background()
 			store, row := stateTestStore(t, metadata)
 			invalid := stateTestTool("new")
-			invalid.Schema.Function.Parameters["invalid"] = make(chan int)
+			invalid.Schema.Parameters["invalid"] = make(chan int)
 			result, err := NewStateService(store).Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{invalid}, Tags: []string{"new"}, ShownRuleCardFormats: []string{"new"}})
 			if err == nil || result.Metadata != "" || len(result.Injected) != 0 {
 				t.Fatalf("failure published state: %+v %v", result, err)
@@ -138,7 +138,7 @@ func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 			snapshot, err := service.Snapshot(ctx, row.ID)
 			if err == nil {
 				for _, item := range snapshot.ToolCache {
-					item.Schema.Function.Parameters["reader"] = true
+					item.Schema.Parameters["reader"] = true
 				}
 			}
 			errs <- err
@@ -177,12 +177,12 @@ func TestSchemasAreDetachedForPreparedHook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	schemas[0].Function.Parameters["properties"].(map[string]any)["path"].(map[string]any)["type"] = "number"
+	schemas[0].Parameters["properties"].(map[string]any)["path"].(map[string]any)["type"] = "number"
 	next, err := manager.Schemas(context.Background(), Context{Mode: storage.SessionModeWork}, []CachedTool{item})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if next[0].Function.Parameters["properties"].(map[string]any)["path"].(map[string]any)["type"] != "string" {
+	if next[0].Parameters["properties"].(map[string]any)["path"].(map[string]any)["type"] != "string" {
 		t.Fatal("prepared hook polluted next request")
 	}
 }

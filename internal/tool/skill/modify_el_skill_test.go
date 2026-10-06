@@ -105,9 +105,9 @@ func TestModifyElSkillRejectsStaleRevision(t *testing.T) {
 
 func TestModifyElSkillSchemaUsesRevision(t *testing.T) {
 	schema := NewModifyElSkillTool(nil).Schema()
-	properties, ok := schema.Function.Parameters["properties"].(map[string]any)
+	properties, ok := schema.Parameters["properties"].(map[string]any)
 	if !ok {
-		t.Fatalf("schema properties missing: %#v", schema.Function.Parameters)
+		t.Fatalf("schema properties missing: %#v", schema.Parameters)
 	}
 	if _, ok := properties["expected_revision"]; !ok {
 		t.Fatalf("modify_el_skill schema should expose expected_revision: %#v", properties)

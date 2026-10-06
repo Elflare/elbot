@@ -41,35 +41,13 @@ func (g *titleGenerator) GenerateTitle(ctx context.Context, messages []storage.M
 	return TitleResult{RawTitle: title}, err
 }
 
-func (g *titleGenerator) generate(ctx context.Context, client llm.LLM, model string, messages []storage.Message) (string, error) {
-	prompt := titlePrompt(messages)
-	req := llm.ChatRequest{
-		Model: model,
-		Messages: []llm.LLMMessage{
-			{Role: llm.RoleSystem, Segments: llm.TextSegments("你是会话命名助手。请根据对话内容生成一个简短中文标题，只输出标题，不要解释。")},
-			{Role: llm.RoleUser, Segments: llm.TextSegments(prompt)},
-		},
-		MaxTokens: 32,
-	}
-	ch, err := client.ChatStream(ctx, req)
-	if err != nil {
-		return "", err
-	}
-	var title strings.Builder
-	for {
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case chunk, ok := <-ch:
-			if !ok {
-				return title.String(), ctx.Err()
-			}
-			if chunk.Error != nil {
-				return "", chunk.Error
-			}
-			title.WriteString(chunk.DeltaContent)
-		}
-	}
+func (g *titleGenerator) generate(ctx context.Context, client llm.Client, model string, messages []storage.Message) (string, error) {
+	result, err := client.GenerateText(ctx, llm.TextRequest{
+		Model:        model,
+		Instructions: "你是会话命名助手。请根据对话内容生成一个简短中文标题，只输出标题，不要解释。",
+		Input:        titlePrompt(messages),
+	})
+	return result.Text, err
 }
 
 func titlePrompt(messages []storage.Message) string {

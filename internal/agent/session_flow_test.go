@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"strings"
 	"testing"
@@ -434,7 +435,7 @@ func TestChatSchedulesAsyncNamingAndSessionsShowPreview(t *testing.T) {
 func TestStatusRestoresUsageFromSessionMetadata(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: "reply", Usage: &llm.Usage{TotalTokens: 123, CacheHitTokens: 7}}}}}
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "reply", Usage: &llm.Usage{TotalTokens: 123, CacheHitTokens: 7}}}}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 
 	if err := a.HandleMessage(context.Background(), "hello usage"); err != nil {
@@ -475,7 +476,7 @@ func TestModeCommandContinuesWithMessageInActivatedSession(t *testing.T) {
 			f := &fakeLLM{replies: []string{"model reply"}}
 
 			a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
-				cfg.ToolProvider = &recordingToolProvider{tools: []llm.ToolSchema{{Function: llm.ToolFunctionSchema{Name: "discover_tool", Parameters: map[string]any{"type": "object"}}}}}
+				cfg.ToolProvider = &recordingToolProvider{tools: []llm.ToolSchema{{Name: "discover_tool", Parameters: map[string]any{"type": "object"}}}}
 			})
 
 			if err := a.HandleMessage(context.Background(), tt.input); err != nil {
@@ -584,7 +585,7 @@ func TestDefaultModeFromStateAppliesToNewSessions(t *testing.T) {
 	a := mustNewWithOptions(t, testAgentOptions{
 		Platform: p, Store: store, CommandPrefixes: []string{"/"},
 		Models: newTestModels(t, modelmgr.Options{
-			Clients:   map[string]llm.LLM{"default": f},
+			Clients:   map[string]llm.Client{"default": f},
 			Providers: map[string]config.ProviderConfig{"default": {}},
 			ModeModels: map[string]config.ModelSelection{
 				storage.SessionModeWork: {Provider: "default", Model: "test-model"},

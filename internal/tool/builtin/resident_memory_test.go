@@ -117,21 +117,21 @@ func TestResidentMemoryToolRisksAndSchema(t *testing.T) {
 		t.Fatalf("core risk not high")
 	}
 	schema := coreTool.Schema()
-	props, ok := schema.Function.Parameters["properties"].(map[string]any)
+	props, ok := schema.Parameters["properties"].(map[string]any)
 	if !ok {
-		t.Fatalf("properties = %#v", schema.Function.Parameters["properties"])
+		t.Fatalf("properties = %#v", schema.Parameters["properties"])
 	}
 	for _, name := range []string{"platform", "actor_id", "scope_id", "id"} {
 		if _, ok := props[name]; ok {
 			t.Fatalf("schema exposes %s: %#v", name, props)
 		}
 	}
-	if !strings.Contains(schema.Function.Description, "200 字数或单词") {
-		t.Fatalf("core description = %q", schema.Function.Description)
+	if !strings.Contains(schema.Description, "200 字数或单词") {
+		t.Fatalf("core description = %q", schema.Description)
 	}
 	for name, description := range map[string]string{
-		"core":   schema.Function.Description,
-		"normal": normalTool.Schema().Function.Description,
+		"core":   schema.Description,
+		"normal": normalTool.Schema().Description,
 	} {
 		for _, want := range []string{"第三人称", "用户", "assistant", "不记录对模型的指令"} {
 			if !strings.Contains(description, want) {
@@ -139,8 +139,8 @@ func TestResidentMemoryToolRisksAndSchema(t *testing.T) {
 			}
 		}
 	}
-	if !strings.Contains(normalTool.Schema().Function.Description, "300 字数或单词") {
-		t.Fatalf("normal description = %q", normalTool.Schema().Function.Description)
+	if !strings.Contains(normalTool.Schema().Description, "300 字数或单词") {
+		t.Fatalf("normal description = %q", normalTool.Schema().Description)
 	}
 }
 

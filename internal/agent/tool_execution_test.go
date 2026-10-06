@@ -8,6 +8,7 @@ import (
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/memory/resident"
 	"elbot/internal/platform"
 	"elbot/internal/security"
@@ -32,7 +33,7 @@ func (t preparedArgumentTool) Info() tool.Info {
 }
 
 func (t preparedArgumentTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Function: llm.ToolFunctionSchema{Name: t.Name(), Parameters: map[string]any{"type": "object"}}}
+	return llm.ToolSchema{Name: t.Name(), Parameters: map[string]any{"type": "object"}}
 }
 
 func (t preparedArgumentTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
@@ -43,8 +44,8 @@ func (t preparedArgumentTool) Call(ctx context.Context, req tool.CallRequest) (*
 func TestChatExecutesToolAndFollowsUp(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "目录已查看"}},
 	}}
 
@@ -125,8 +126,8 @@ func TestChatExecutesToolAndFollowsUp(t *testing.T) {
 func TestPreparedToolArgumentsReachExecutionLLMAndTranscript(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "prepared_args", Args: `{"q":"original"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "prepared_args", Args: `{"q":"original"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
 
@@ -196,8 +197,8 @@ func TestPreparedToolArgumentsReachExecutionLLMAndTranscript(t *testing.T) {
 func TestToolTranscriptPersistsWhenFollowupLLMFails(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo saved"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo saved"}`}}, FinishReason: "tool_calls"}},
 		{{Error: fmt.Errorf("followup failed")}},
 	}}
 
@@ -241,8 +242,8 @@ func TestToolTranscriptPersistsWhenFollowupLLMFails(t *testing.T) {
 
 func TestTurnHookCannotModifySystemDuringToolFollowup(t *testing.T) {
 	p := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo hi"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo hi"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
 
@@ -280,8 +281,8 @@ func TestTurnHookCannotModifySystemDuringToolFollowup(t *testing.T) {
 
 func TestResidentMemoryAppearsOnceAcrossToolFollowupAndTurns(t *testing.T) {
 	p := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo hi"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"echo hi"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 		{{DeltaContent: "next"}},
 	}}
@@ -333,10 +334,10 @@ func TestResidentMemoryAppearsOnceAcrossToolFollowupAndTurns(t *testing.T) {
 func TestDiscoverToolDoesNotRepeatElyphRuleCardAcrossTurns(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "discover_tool", Args: `{"name":"alpha"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "discover_tool", Args: `{"name":"alpha"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done alpha"}},
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_2", Name: "discover_tool", Args: `{"name":"beta"}`}}, FinishReason: "tool_calls"}},
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_2", Name: "discover_tool", Args: `{"name":"beta"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done beta"}},
 	}}
 
@@ -382,8 +383,8 @@ func TestDiscoverToolDoesNotRepeatElyphRuleCardAcrossTurns(t *testing.T) {
 
 func TestChatToolCallWithAssistantTextSkipsFallbackPreview(t *testing.T) {
 	p := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{DeltaContent: "我先看一下。"}, {ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{DeltaContent: "我先看一下。"}, {ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "看完了"}},
 	}}
 
@@ -411,8 +412,8 @@ func TestChatToolCallWithAssistantTextSkipsFallbackPreview(t *testing.T) {
 
 func TestNonCLIChatToolCallWithAssistantTextSkipsToolArgumentPreview(t *testing.T) {
 	p := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{DeltaContent: "我先看一下。"}, {ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{DeltaContent: "我先看一下。"}, {ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "看完了"}},
 	}}
 
@@ -440,8 +441,8 @@ func TestNonCLIChatToolCallWithAssistantTextSkipsToolArgumentPreview(t *testing.
 
 func TestToolCallAssistantEmoticonSendsBeforeFinalResponse(t *testing.T) {
 	p := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{DeltaContent: "我先查一下[[微笑]]"}, {ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{DeltaContent: "我先查一下[[微笑]]"}, {ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "查完了"}},
 	}}
 	store := newTestStore(t)
@@ -536,8 +537,8 @@ actions = [
 
 func TestChatExecutesAllToolCallsInSameRound(t *testing.T) {
 	p := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}, {ID: "call_2", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}, {ID: "call_2", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
 

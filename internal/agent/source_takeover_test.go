@@ -2,21 +2,21 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"strings"
 	"testing"
 	"time"
 
 	"elbot/internal/chatinfo"
 	"elbot/internal/config"
-	"elbot/internal/llm"
 	"elbot/internal/tool"
 )
 
 func TestLocalCLITakeoverDeliversFinalOutput(t *testing.T) {
 	p := &fakePlatform{}
 	started, release := make(chan struct{}), make(chan struct{})
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "slow-call", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "slow-call", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "foreground final"}},
 	}}
 

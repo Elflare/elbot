@@ -46,12 +46,12 @@ func TestForegroundOnlyToolHiddenInBackgroundSchemasAndNames(t *testing.T) {
 			t.Fatalf("foreground-only tool leaked into background names: %#v", names)
 		}
 	}
-	schemas, err := manager.Schemas(ctx, view, []CachedTool{{Name: "cached_foreground", Source: SourceKindELwisp, ForegroundOnly: true, Schema: llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: "cached_foreground"}}}})
+	schemas, err := manager.Schemas(ctx, view, []CachedTool{{Name: "cached_foreground", Source: SourceKindELwisp, ForegroundOnly: true, Schema: llm.ToolSchema{Name: "cached_foreground"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, schema := range schemas {
-		if schema.Function.Name == "foreground_only" || schema.Function.Name == "cached_foreground" {
+		if schema.Name == "foreground_only" || schema.Name == "cached_foreground" {
 			t.Fatalf("foreground-only tool leaked into background schemas: %#v", schemas)
 		}
 	}
@@ -65,7 +65,7 @@ func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) 
 	manager := NewManager(registry, security.DefaultPolicy())
 	view := Context{Mode: storage.SessionModeWork, Actor: security.Actor{Role: security.RoleSuperadmin}}
 	cached := func(name string) CachedTool {
-		return CachedTool{Name: name, Source: SourceKindNative, Schema: llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: name}}}
+		return CachedTool{Name: name, Source: SourceKindNative, Schema: llm.ToolSchema{Name: name}}
 	}
 	alpha := cached("alpha")
 	beta := cached("beta")
@@ -94,7 +94,7 @@ func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) 
 			}
 			names := make([]string, 0, len(schemas))
 			for _, schema := range schemas {
-				names = append(names, schema.Function.Name)
+				names = append(names, schema.Name)
 			}
 			if got := strings.Join(names, ","); got != "discover_tool,alpha,beta" {
 				t.Fatalf("schema order = %q", got)

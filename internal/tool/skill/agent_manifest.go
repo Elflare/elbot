@@ -196,7 +196,7 @@ func normalizeManifestTags(tags []string) []string {
 
 func (m AgentSkillManifest) Schema(name, description string) llm.ToolSchema {
 	parameters, _ := projectMediaSchema(m.Parameters).(map[string]any)
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: name, Description: description, Parameters: parameters}}
+	return llm.ToolSchema{Name: name, Description: description, Parameters: parameters}
 }
 
 func projectMediaSchema(value any) any {

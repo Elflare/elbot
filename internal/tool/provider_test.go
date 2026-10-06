@@ -22,7 +22,7 @@ func (t providerTestTool) Info() Info {
 	return Info{Name: t.name, Description: t.name, Source: t.source, Risk: RiskLow, Hidden: t.hidden, SuperadminOnly: t.superadminOnly}
 }
 func (t providerTestTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Type: "function", Function: llm.ToolFunctionSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}}
+	return llm.ToolSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}
 }
 func (t providerTestTool) Call(context.Context, CallRequest) (*Result, error) {
 	return &Result{Content: "ok"}, nil
@@ -78,7 +78,7 @@ func TestSchemaProviderModeBehavior(t *testing.T) {
 	if err != nil {
 		t.Fatalf("work Schemas: %v", err)
 	}
-	if len(workSchemas) != 1 || workSchemas[0].Function.Name != "discover_tool" {
+	if len(workSchemas) != 1 || workSchemas[0].Name != "discover_tool" {
 		t.Fatalf("work schemas = %#v", workSchemas)
 	}
 	names, err := provider.ToolNames(context.Background(), storage.SessionModeWork, &storage.Session{}, scope)

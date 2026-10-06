@@ -37,6 +37,16 @@ func CoreDefinitions() []Definition {
 				return [][]string{{"providers"}, {"model_metadata"}}
 			},
 			BindPath: func(c *Config, path string) { c.ProvidersConfigPath = path },
+			Validate: func(ctx ValidationContext) []Issue {
+				if !ctx.Ready("app.toml", "providers.toml") {
+					return nil
+				}
+				issues := ctx.Config.ValidateProviders()
+				for i := range issues {
+					issues[i].Path = ctx.Source(issues[i].Field...)
+				}
+				return issues
+			},
 		},
 		stateDefinition(),
 		elnisDefinition(),

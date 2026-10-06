@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"strings"
 	"testing"
@@ -105,8 +106,8 @@ func TestFailedDiscoveryMatchesTranscriptAndNextSchema(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	p := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{
-		{{ToolCallDeltas: []llm.ToolCallDelta{{ID: "discovery", Name: "discover_tool", Args: `{"name":"alpha"}`}}, FinishReason: "tool_calls"}},
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "discovery", Name: "discover_tool", Args: `{"name":"alpha"}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
 

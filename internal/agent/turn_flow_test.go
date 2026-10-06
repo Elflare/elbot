@@ -6,6 +6,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/security"
@@ -89,7 +90,7 @@ func TestTurnResponseTimeoutZeroAllowsLongTurn(t *testing.T) {
 
 func TestStreamingOutputAppendsRawAndReplacesHookText(t *testing.T) {
 	p := &fakeStreamingPlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{{
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{
 		{DeltaContent: "hello "},
 		{DeltaContent: "[[wave]]"},
 	}}}
@@ -124,7 +125,7 @@ func TestStreamingOutputAppendsRawAndReplacesHookText(t *testing.T) {
 
 func TestTurnOutputPreparedHookReplacesFinalStreamingMessage(t *testing.T) {
 	p := &fakeStreamingPlatform{}
-	f := &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: "猫"}}}}
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "猫"}}}}
 
 	manager := hook.NewManager()
 	if err := manager.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "test.turn_output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {

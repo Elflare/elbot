@@ -33,7 +33,7 @@ type CompactResult struct {
 }
 
 type Compressor struct {
-	ClientFor func(string) llm.LLM
+	ClientFor func(string) llm.Client
 }
 
 func (c Compressor) Compact(ctx context.Context, req CompactRequest) (*CompactResult, error) {
@@ -47,33 +47,23 @@ func (c Compressor) Compact(ctx context.Context, req CompactRequest) (*CompactRe
 		return nil, fmt.Errorf("压缩模型未配置")
 	}
 
-	prompt := compactPrompt(req.Messages, req.UserInputs)
-	ch, err := c.ClientFor(req.Provider).ChatStream(ctx, llm.ChatRequest{
-		Model: req.Model,
-		Messages: []llm.LLMMessage{
-			{Role: llm.RoleSystem, Segments: llm.TextSegments(compactSystemPrompt)},
-			{Role: llm.RoleUser, Segments: llm.TextSegments(prompt)},
-		},
+	client := c.ClientFor(req.Provider)
+	if client == nil {
+		return nil, fmt.Errorf("压缩模型客户端不可用")
+	}
+	result, err := client.GenerateText(ctx, llm.TextRequest{
+		Model:        req.Model,
+		Instructions: compactSystemPrompt,
+		Input:        compactPrompt(req.Messages, req.UserInputs),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("调用压缩模型: %w", err)
 	}
 
-	var sb strings.Builder
-	var usage *llm.Usage
-	for chunk := range ch {
-		if chunk.Error != nil {
-			return nil, fmt.Errorf("读取压缩结果: %w", chunk.Error)
-		}
-		sb.WriteString(chunk.DeltaContent)
-		if chunk.Usage != nil {
-			usage = chunk.Usage
-		}
-	}
-	summaryText := strings.TrimSpace(sb.String())
+	summaryText := strings.TrimSpace(result.Text)
 	if summaryText == "" {
 		return nil, fmt.Errorf("压缩模型返回空摘要")
 	}
 
-	return &CompactResult{Summary: summaryText, AssembledSummary: assembleSummary(summaryText, req.UserInputs), Usage: usage}, nil
+	return &CompactResult{Summary: summaryText, AssembledSummary: assembleSummary(summaryText, req.UserInputs), Usage: result.Usage}, nil
 }

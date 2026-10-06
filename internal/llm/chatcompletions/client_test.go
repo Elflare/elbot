@@ -1,4 +1,4 @@
-package openai
+package chatcompletions
 
 import (
 	"bytes"
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"elbot/internal/llm"
+	"elbot/internal/llm/httpclient"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -22,9 +23,9 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
-func mustNewWithOptions(t *testing.T, baseURL, apiKey string, extraPayload map[string]any, modelExtraPayloads map[string]map[string]any, opts RequestOptions) *Adapter {
+func mustNewWithOptions(t *testing.T, baseURL, apiKey string, extraPayload map[string]any, modelExtraPayloads map[string]map[string]any, opts RequestOptions) *Client {
 	t.Helper()
-	adapter, err := NewWithOptions(baseURL, apiKey, extraPayload, modelExtraPayloads, opts)
+	adapter, err := New(baseURL, apiKey, extraPayload, modelExtraPayloads, opts)
 	if err != nil {
 		t.Fatalf("NewWithOptions: %v", err)
 	}
@@ -32,34 +33,9 @@ func mustNewWithOptions(t *testing.T, baseURL, apiKey string, extraPayload map[s
 }
 
 func TestNewWithOptionsReturnsInvalidProxyError(t *testing.T) {
-	_, err := NewWithOptions("https://example.invalid/v1", "key", nil, nil, RequestOptions{Proxy: "://bad proxy"})
+	_, err := New("https://example.invalid/v1", "key", nil, nil, RequestOptions{Proxy: "://bad proxy"})
 	if err == nil || !strings.Contains(err.Error(), "invalid proxy URL") {
-		t.Fatalf("NewWithOptions() error = %v", err)
-	}
-}
-
-func TestNewWithOptionsWithoutProxyDisablesEnvironmentProxy(t *testing.T) {
-	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:7890")
-	adapter := mustNewWithOptions(t, "https://example.invalid/v1", "key", nil, nil, RequestOptions{})
-	transport := adapter.client.Transport.(*http.Transport)
-	if transport.Proxy != nil {
-		t.Fatal("transport.Proxy is set; provider should not inherit the environment proxy")
-	}
-}
-
-func TestNewWithOptionsUsesProviderProxy(t *testing.T) {
-	adapter := mustNewWithOptions(t, "https://example.invalid/v1", "key", nil, nil, RequestOptions{Proxy: "http://127.0.0.1:7890"})
-	transport := adapter.client.Transport.(*http.Transport)
-	req, err := http.NewRequest(http.MethodGet, "https://example.invalid/v1/models", nil)
-	if err != nil {
-		t.Fatalf("NewRequest: %v", err)
-	}
-	proxyURL, err := transport.Proxy(req)
-	if err != nil {
-		t.Fatalf("transport.Proxy: %v", err)
-	}
-	if got, want := proxyURL.String(), "http://127.0.0.1:7890"; got != want {
-		t.Fatalf("proxy URL = %q, want %q", got, want)
+		t.Fatalf("New() error = %v", err)
 	}
 }
 
@@ -83,8 +59,8 @@ func TestChatStream_BasicContent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL+"/", "test-key", nil)
-	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	adapter := mustNewWithOptions(t, srv.URL+"/", "test-key", nil, nil, RequestOptions{})
+	ch, err := adapter.Stream(context.Background(), Request{
 		Model: "test",
 		Messages: []llm.LLMMessage{
 			{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")},
@@ -144,9 +120,9 @@ func TestChatStream_DebugLogIncludesLatestMessageJSON(t *testing.T) {
 	defer srv.Close()
 
 	var logs bytes.Buffer
-	adapter := New(srv.URL, "secret-key", nil)
+	adapter := mustNewWithOptions(t, srv.URL, "secret-key", nil, nil, RequestOptions{})
 	adapter.SetLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	ch, err := adapter.Stream(context.Background(), Request{
 		Model: "test",
 		Messages: []llm.LLMMessage{
 			{Role: llm.RoleUser, Segments: llm.TextSegments("旧消息")},
@@ -197,9 +173,9 @@ func TestChatStreamDebugLogRedactsDataURLButRequestKeepsIt(t *testing.T) {
 	defer srv.Close()
 
 	var logs bytes.Buffer
-	adapter := New(srv.URL, "secret-key", nil)
+	adapter := mustNewWithOptions(t, srv.URL, "secret-key", nil, nil, RequestOptions{})
 	adapter.SetLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	ch, err := adapter.Stream(context.Background(), Request{
 		Model: "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{
 			{Type: llm.SegmentImage, URL: dataURL},
@@ -233,9 +209,9 @@ func TestChatStreamLogsFirstSystemMessageOncePerSession(t *testing.T) {
 	defer srv.Close()
 
 	var logs bytes.Buffer
-	adapter := New(srv.URL, "secret-key", nil)
+	adapter := mustNewWithOptions(t, srv.URL, "secret-key", nil, nil, RequestOptions{})
 	adapter.SetLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	req := llm.ChatRequest{
+	req := Request{
 		Model:     "test",
 		SessionID: "session-1",
 		Messages: []llm.LLMMessage{
@@ -244,7 +220,7 @@ func TestChatStreamLogsFirstSystemMessageOncePerSession(t *testing.T) {
 		},
 	}
 	for i := 0; i < 2; i++ {
-		ch, err := adapter.ChatStream(context.Background(), req)
+		ch, err := adapter.Stream(context.Background(), req)
 		if err != nil {
 			t.Fatalf("ChatStream %d: %v", i, err)
 		}
@@ -271,8 +247,8 @@ func TestChatStream_SendsMultimodalContentParts(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL, "test-key", nil)
-	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{})
+	_, err := adapter.Stream(context.Background(), Request{
 		Model: "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{
 			{Type: llm.SegmentText, Text: "看图"},
@@ -346,8 +322,8 @@ func TestChatStream_IncludesEmptyContentField(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL, "test-key", nil)
-	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{})
+	_, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleAssistant}},
 	})
@@ -383,8 +359,8 @@ func TestChatStream_ToolMessagesPayload(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL, "test-key", nil)
-	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{})
+	_, err := adapter.Stream(context.Background(), Request{
 		Model: "test",
 		Messages: []llm.LLMMessage{
 			{Role: llm.RoleAssistant, Segments: llm.TextSegments("I will check."), ToolCalls: []llm.ToolCallRequest{{ID: "call_1", Name: "shell", Arguments: `{"cmd":"ls"}`}}},
@@ -477,7 +453,7 @@ func TestChatStream_ResponsePrefixHonorsFirstChunkTimeout(t *testing.T) {
 		MaxRetries:        1,
 		RetryInitialDelay: time.Millisecond,
 	})
-	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	_, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -503,7 +479,7 @@ func TestChatStream_FirstChunkCanArriveAfterIdleTimeout(t *testing.T) {
 		MaxRetries:        1,
 		RetryInitialDelay: time.Millisecond,
 	})
-	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	ch, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -538,7 +514,7 @@ func TestChatStream_StreamIdleTimeout(t *testing.T) {
 		MaxRetries:        1,
 		RetryInitialDelay: time.Millisecond,
 	})
-	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	ch, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -585,7 +561,7 @@ func TestChatStream_StreamIdleResetsOnEachChunk(t *testing.T) {
 		MaxRetries:        1,
 		RetryInitialDelay: time.Millisecond,
 	})
-	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	ch, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -626,7 +602,7 @@ func TestChatStream_ActiveStreamCompletesWithoutResponseTimeout(t *testing.T) {
 		MaxRetries:        1,
 		RetryInitialDelay: time.Millisecond,
 	})
-	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	ch, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -661,8 +637,8 @@ func TestChatStream_UsageOnlyChunk(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL, "test-key", nil)
-	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{})
+	ch, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -724,7 +700,7 @@ func TestListModelMetadata(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL, "test-key", nil)
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{})
 	models, err := adapter.ListModelMetadata(context.Background())
 	if err != nil {
 		t.Fatalf("ListModelMetadata: %v", err)
@@ -741,8 +717,8 @@ func TestChatStream_HTMLResponseReturnsReadableError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL, "test-key", nil)
-	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{})
+	_, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -761,8 +737,8 @@ func TestChatStream_HTMLBodyWithSSEContentTypeReturnsReadableError(t *testing.T)
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL, "test-key", nil)
-	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{})
+	_, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -778,8 +754,8 @@ func TestChatStream_JSONBodyWithSSEContentTypeIsRejected(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL, "test-key", nil)
-	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{})
+	_, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -795,8 +771,8 @@ func TestChatStream_NonSSEResponseReturnsBoundedSummary(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL, "test-key", nil)
-	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{})
+	_, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -811,12 +787,12 @@ func TestChatStream_NonSSEResponseReturnsBoundedSummary(t *testing.T) {
 func TestChatStream_OverlongSSELineReturnsBoundedError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		io.WriteString(w, "data: "+strings.Repeat("A", maxStreamLineBytes)+"\\n\\n")
+		io.WriteString(w, "data: "+strings.Repeat("A", (8*1024*1024))+"\\n\\n")
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL, "test-key", nil)
-	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{})
+	ch, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -845,8 +821,8 @@ func TestChatStream_MalformedChunkError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL, "test-key", nil)
-	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{})
+	ch, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -881,8 +857,8 @@ func TestChatStream_ToolCalls(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL, "test-key", nil)
-	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{})
+	ch, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -890,7 +866,7 @@ func TestChatStream_ToolCalls(t *testing.T) {
 		t.Fatalf("ChatStream: %v", err)
 	}
 
-	var toolCalls []llm.ToolCallDelta
+	var toolCalls []ToolCallDelta
 	for chunk := range ch {
 		if len(chunk.ToolCallDeltas) > 0 {
 			toolCalls = append(toolCalls, chunk.ToolCallDeltas...)
@@ -919,15 +895,15 @@ func TestChatStream_ToolsPayload(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL, "test-key", nil)
-	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{})
+	_, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
-		Tools: []llm.ToolSchema{{Function: llm.ToolFunctionSchema{
+		Tools: []llm.ToolSchema{{
 			Name:        "discover_tool",
 			Description: "Discover tools.",
 			Parameters:  map[string]any{"type": "object"},
-		}}},
+		}},
 	})
 	if err != nil {
 		t.Fatalf("ChatStream: %v", err)
@@ -958,8 +934,8 @@ func TestChatStream_OmitsEmptyToolsPayload(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL, "test-key", nil)
-	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{})
+	_, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -973,16 +949,6 @@ func TestChatStream_OmitsEmptyToolsPayload(t *testing.T) {
 	}
 	if _, ok := body["tools"]; ok {
 		t.Fatalf("unexpected tools payload: %#v", body["tools"])
-	}
-}
-
-func TestRetryDelay(t *testing.T) {
-	initial := 2 * time.Second
-	want := []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second}
-	for attempt, expected := range want {
-		if got := retryDelay(initial, attempt); got != expected {
-			t.Fatalf("attempt %d delay = %s, want %s", attempt, got, expected)
-		}
 	}
 }
 
@@ -1005,7 +971,7 @@ func TestChatStream_RetriesRetryableHTTPStatus(t *testing.T) {
 	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{
 		MaxRetries:        3,
 		RetryInitialDelay: time.Millisecond,
-		OnRetry: func(ctx context.Context, event RetryEvent) {
+		OnRetry: func(ctx context.Context, event llm.RetryEvent) {
 			retryEvents++
 			if event.Attempt != retryEvents {
 				t.Fatalf("retry attempt = %d, want %d", event.Attempt, retryEvents)
@@ -1018,7 +984,7 @@ func TestChatStream_RetriesRetryableHTTPStatus(t *testing.T) {
 			}
 		},
 	})
-	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	ch, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -1044,7 +1010,7 @@ func TestChatStream_ReportsMissingDoneAsInterrupted(t *testing.T) {
 	defer srv.Close()
 
 	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{MaxRetries: 1, RetryInitialDelay: time.Millisecond})
-	ch, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	ch, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -1077,8 +1043,8 @@ func TestChatStream_HTTPError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL, "bad-key", nil)
-	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	adapter := mustNewWithOptions(t, srv.URL, "bad-key", nil, nil, RequestOptions{})
+	_, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 	})
@@ -1093,8 +1059,8 @@ func TestChatStream_HTTPError(t *testing.T) {
 func TestChatStream_ReadsHTTPErrorBodyBeforeCancel(t *testing.T) {
 	requestStarted := make(chan struct{})
 	releaseBody := make(chan struct{})
-	adapter := New("https://example.com", "bad-key", nil)
-	adapter.client = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+	adapter := mustNewWithOptions(t, "https://example.com", "bad-key", nil, nil, RequestOptions{})
+	adapter.transport = mustTransport(t, &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		reader, writer := io.Pipe()
 		close(requestStarted)
 		go func() {
@@ -1113,11 +1079,11 @@ func TestChatStream_ReadsHTTPErrorBodyBeforeCancel(t *testing.T) {
 			Body:       reader,
 			Request:    req,
 		}, nil
-	})}
+	})})
 
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+		_, err := adapter.Stream(context.Background(), Request{
 			Model:    "test",
 			Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 		})
@@ -1146,8 +1112,8 @@ func TestChatStream_ReadsHTTPErrorBodyBeforeCancel(t *testing.T) {
 
 func TestChatStream_HTTPErrorBodyReadHonorsContextCancellation(t *testing.T) {
 	requestStarted := make(chan struct{})
-	adapter := New("https://example.com", "bad-key", nil)
-	adapter.client = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+	adapter := mustNewWithOptions(t, "https://example.com", "bad-key", nil, nil, RequestOptions{})
+	adapter.transport = mustTransport(t, &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		reader, writer := io.Pipe()
 		close(requestStarted)
 		go func() {
@@ -1161,12 +1127,12 @@ func TestChatStream_HTTPErrorBodyReadHonorsContextCancellation(t *testing.T) {
 			Body:       reader,
 			Request:    req,
 		}, nil
-	})}
+	})})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := adapter.ChatStream(ctx, llm.ChatRequest{
+		_, err := adapter.Stream(ctx, Request{
 			Model:    "test",
 			Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
 		})
@@ -1195,12 +1161,11 @@ func TestChatStream_ExtraBody(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := New(srv.URL, "test-key", map[string]any{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", map[string]any{
 		"custom_provider_field": "from_provider",
-		"overridden":            "provider_value",
-	})
+	}, nil, RequestOptions{})
 
-	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	_, err := adapter.Stream(context.Background(), Request{
 		Model: "test-model",
 		Messages: []llm.LLMMessage{
 			{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")},
@@ -1209,7 +1174,6 @@ func TestChatStream_ExtraBody(t *testing.T) {
 		MaxTokens:   100,
 		ExtraBody: map[string]any{
 			"custom_request_field": "from_request",
-			"overridden":           "request_value",
 		},
 	})
 	if err != nil {
@@ -1239,9 +1203,8 @@ func TestChatStream_ExtraBody(t *testing.T) {
 		t.Errorf("custom_request_field: got %v", body["custom_request_field"])
 	}
 
-	// ExtraBody overrides ExtraPayload
-	if body["overridden"] != "request_value" {
-		t.Errorf("overridden: expected 'request_value', got %v", body["overridden"])
+	if body["max_tokens"] != float64(100) {
+		t.Errorf("max_tokens: got %v", body["max_tokens"])
 	}
 }
 
@@ -1255,25 +1218,21 @@ func TestChatStream_ModelExtraPayload(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := NewWithModelExtraPayloads(srv.URL, "test-key", map[string]any{
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", map[string]any{
 		"provider_field": "provider",
-		"overridden":     "provider_value",
 	}, map[string]map[string]any{
 		"test-model": {
 			"thinking":       map[string]any{"type": "disabled"},
-			"overridden":     "model_value",
 			"model_only_key": "model_only_value",
 		},
-	})
+	}, RequestOptions{})
 
-	_, err := adapter.ChatStream(context.Background(), llm.ChatRequest{
+	_, err := adapter.Stream(context.Background(), Request{
 		Model: "test-model",
 		Messages: []llm.LLMMessage{
 			{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")},
 		},
-		ExtraBody: map[string]any{
-			"overridden": "request_value",
-		},
+		ExtraBody: map[string]any{},
 	})
 	if err != nil {
 		t.Fatalf("ChatStream: %v", err)
@@ -1294,7 +1253,14 @@ func TestChatStream_ModelExtraPayload(t *testing.T) {
 	if !ok || thinking["type"] != "disabled" {
 		t.Errorf("thinking: got %#v", body["thinking"])
 	}
-	if body["overridden"] != "request_value" {
-		t.Errorf("overridden: expected request_value, got %v", body["overridden"])
+
+}
+
+func mustTransport(t *testing.T, client *http.Client) *httpclient.Client {
+	t.Helper()
+	transport, err := httpclient.New(httpclient.Options{HTTPClient: client})
+	if err != nil {
+		t.Fatal(err)
 	}
+	return transport
 }

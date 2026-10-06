@@ -18,7 +18,6 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
-	"elbot/internal/llm/openai"
 	"elbot/internal/media"
 	qqonebot "elbot/internal/platform/qq-onebot"
 	"elbot/internal/storage/sqlite"
@@ -106,7 +105,7 @@ func TestPrivateOneBotForwardReachesVendor(t *testing.T) {
 			}))
 			defer onebot.Close()
 			root := t.TempDir()
-			a := newTestMediaAgent(t, &fakePlatform{}, openai.New(vendor.URL, "test", nil), store, media.NewManager(store, root, &media.LocalBackend{Root: root}))
+			a := newTestMediaAgent(t, &fakePlatform{}, mustChatClient(t, vendor.URL, "test", nil), store, media.NewManager(store, root, &media.LocalBackend{Root: root}))
 			a.message.media.History = history.Repository()
 			adapter := qqonebot.New(qqonebot.Config{Enabled: true, URL: "ws" + strings.TrimPrefix(onebot.URL, "http")}, store, history.Repository(), nil)
 			completed := make(chan error, 1)

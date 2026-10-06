@@ -594,12 +594,13 @@ Review 顺序与产出：
 <!-- locator:protocol-routing -->
 ## 阶段 16：共享执行层与独立协议路线
 
-阶段 16.0 方案已落盘，16.1 已实际接入并验收公共执行与 Chat 路线；下列完整 Step16 树仍包含尚未实现的后续能力，不能视为全部落地。后续按 [任务清单](tasks.md) 的 16.2–16.5 分批实施，原生记录、恢复等未决事项仍须先讨论。
+阶段 16.0 方案已落盘，16.1 的公共执行与 Chat 路线、16.2 的协议客户端与配置均已接入并验收。16.2a 的 provider 预绑定方案已确认、尚未实施；下列完整 Step16 目标树包含该调整及其他后续能力，不能视为全部落地。后续按 [任务清单](tasks.md) 分批实施，原生记录、恢复等未决事项仍须先讨论。
 
 ### 已确认的目标与行为
 
 - Chat Completions 与 Responses 是平级路线。共同业务规则归公共层，各协议分别管理请求、流事件、loop、上下文和压缩；路线互不导入，不持有 Agent 或绑定 Agent 的回调。
 - provider 增加 `api_mode="chat"/"response"`，省略为 `chat`。`api_mode` 与 Session 的 `chat/work/background` 模式相互独立；后者继续决定工具权限、后台行为和输出规则。
+- provider 在启动装配时绑定实际客户端及对应 Loop／Compactor。Selection 只携带 provider/model 与已选客户端，公共单轮和压缩入口按 provider 查询已绑定能力，不传递或识别协议标识；原生持久化和会话兼容检查需要的身份信息独立保存。
 - 模型选择继续按现有 chat／work 等目标全局生效。双方 Chat 可跨厂商；涉及 Responses 的跨厂商切换拒绝并提示；同厂商 Responses 可切模型，实际接口不兼容时明确报错。空会话可以选定起始协议；不自动把已有 Chat 历史迁成 Responses。
 - 当前会话的实际模型／协议归属与目标选择进行比较。其他会话改变全局默认后，旧会话若不兼容，在执行前拒绝并提示切回，不隐式沿用旧模型或重建成文字上下文。
 - Responses 正常使用服务端续链，并保存返回的原生材料。服务端链失效后，仅在同厂商原生材料完整时恢复；缺少必要推理状态或素材时拒绝，不用展示历史代替原生上下文。
@@ -609,7 +610,7 @@ Review 顺序与产出：
 
 ### 包、文件与主要方法树
 
-文件按领域和操作命名，不设置汇集无关结构体的 `types.go`。公共业务消息不是某个协议的 wire payload；协议请求、原生 items 和事件类型分别放到协议包。以下是完整 Step16 的目标落点和职责入口，16.1 的具体签名已落地，后续原生接口仍须讨论；纯辅助函数不穷举，测试跟随职责文件组织。
+文件按领域和操作命名，不设置汇集无关结构体的 `types.go`。公共业务消息不是某个协议的 wire payload；协议请求、原生 items 和事件类型分别放到协议包。以下是完整 Step16 的目标落点和职责入口，包含待实施的 16.2a provider 绑定；16.1／16.2 的实际契约见后文，后续原生接口仍须讨论。纯辅助函数不穷举，测试跟随职责文件组织。
 
 ```text
 internal/
@@ -619,7 +620,8 @@ internal/
 │   ├── client.go
 │   │   ├── Client / TextRequest / TextResult
 │   │   └── Usage / ModelMetadata
-│   ├── protocol.go                       # APIMode、ProtocolInfo、ModelIdentity
+│   ├── protocol.go                       # 原生记录／会话归属身份，不随 Selection 传递
+│   ├── extra.go                          # 额外参数只添加，冲突明确报错
 │   ├── httpclient/                       # 公共传输，不固定厂商鉴权
 │   │   ├── client.go                     # 发送、代理、取消、重试
 │   │   └── sse.go                        # 分帧、首包与空闲超时
@@ -642,8 +644,8 @@ internal/
 │   ├── dependencies.go                   # 构造所需的必需共享服务
 │   ├── events/                           # 公共事实事件、元信息与快照辅助
 │   ├── routes/
-│   │   ├── route.go                      # Protocol、Loop、Compactor 统一登记
-│   │   └── registry.go                   # Register / Seal / 按能力查询
+│   │   ├── route.go                      # provider 对应的业务能力绑定
+│   │   └── registry.go                   # Register / Seal / 按 provider 查询消费能力
 │   ├── execution*.go                     # 跨轮执行、准入、Request、交接
 │   ├── execution_compact.go              # CompactCurrent / runCompact
 │   ├── message.go / input.go             # 用户输入入口
@@ -679,7 +681,7 @@ internal/
 │       └── compact.go                    # Compactor.Prepare、原生窗口及 seed
 │
 ├── modelmgr/
-│   ├── selection.go                      # 解析目标、全局提交、请求快照
+│   ├── selection.go                      # 解析目标、全局提交、客户端快照，不传 Protocol
 │   └── protocol.go                       # CanSwitch(from, to)，纯兼容检查
 ├── session/
 │   ├── model_binding.go                  # ModelBinding / BindModel
@@ -687,7 +689,7 @@ internal/
 │   └── compact.go                        # 创建、继承、保存 seed 及激活
 ├── contextmgr/                           # 公共上下文与压缩入口
 │   ├── service.go                        # 上下文查询、用量及阈值
-│   ├── compact.go                        # Service.Compact，查表分派
+│   ├── compact.go                        # Service.Compact，查询源 provider 的压缩能力
 │   ├── compact_contract.go               # Compactor、CompactRequest、CompactResult
 │   └── compact_metadata.go               # 公共压缩记录、代数及命名信息
 ├── storage/
@@ -697,7 +699,7 @@ internal/
 │       ├── message_repository.go         # 业务回复与 checkpoint 的事务关联
 │       └── migrations.go                 # 原生协议记录表
 ├── app/
-│   ├── models.go                         # 协议客户端工厂与协议信息登记
+│   ├── models.go                         # 按 api_mode 构造实际客户端
 │   ├── services.go                       # 共享服务与路线注册表的构造
 │   └── runtime.go                        # Agent 构造及生命周期接线
 ├── config/
@@ -707,7 +709,7 @@ internal/
     └── compact.go                        # /compact 用户入口
 ```
 
-`llm/openai` 的现有请求与解析迁入 `chatcompletions`，公共传输单独提取；不是按模型厂商判断应走哪条路线。未来若接入 Anthropic 等其他协议，可以新增对应的 LLM 客户端包和 Agent 路线包，本阶段不创建占位目录。
+Chat Completions 与 Responses 的请求和解析分别位于两个客户端包，公共传输独立；启动装配按实际客户端能力绑定业务路线，不根据模型名或 URL 猜测。未来若接入 Anthropic 等其他协议，可以新增对应的 LLM 客户端包和 Agent 路线包，再完成装配登记，本阶段不创建占位目录。
 
 现有 `agent.go` 整理为对外入口与 `assembly.go`；配置、依赖和 runtime context 分开，采用单一 `New(ctx, cfg, deps)`。app 创建跨模块共享服务，Agent 构造入口组合模块内部组件；完整 Dependencies 仅在装配时使用，不保存在 Agent 或转交每个组件。不要增加多层 Builder／Factory 来包装同一次构造。
 
@@ -717,7 +719,7 @@ internal/
 app ──→ agent                 # Agent 模块构造
 app ──→ agent/routes          # 创建共享注册表，注入能力查询接口
 agent/assembly ──→ dialogue、chat、responses
-agent/assembly ──→ routes     # 构造路线能力并统一登记、封闭注册表
+agent/assembly ──→ routes     # 绑定 provider 与路线能力、统一登记及封闭注册表
 routes ──→ dialogue、contextmgr # 仅依赖公共能力契约
 agent/chat ──→ dialogue、contextmgr 公共契约、llm/chatcompletions
 agent/responses ──→ dialogue、contextmgr 公共契约、llm/responses
@@ -727,7 +729,8 @@ llm/chatcompletions、llm/responses ──→ llm 公共契约、httpclient
 - `chat` 与 `responses` 互不导入；`dialogue` 和 `contextmgr` 不导入 Agent 根包或具体协议实现。共同入口只调用已注入的接口和注册实例，不能通过返回 Agent 再取得能力。
 - 子包不要求导出现有全部私有组件。输出、Hook、身份、工具执行和观察等边界按消费方所需能力定义；现有组件直接实现相应契约。确需跨包使用的 Request context 标识移到 Request 所属包，不能从子包反向调用 Agent 的私有辅助函数。
 - `dialogue` 只接收公共业务输入和结果。Chat chunks、Responses items、response ID 及原生推理载荷留在协议包，不扩成包含所有协议字段的万能请求／事件。
-- 业务路线统一登记协议标识、Loop、Compactor；dialogue 和 contextmgr 各自定义小查询接口，注册表实现这些接口，消费方不接收完整路线。客户端仍在所属装配处登记，使用同一协议标识；配置与必要能力不匹配时明确报错。Register 拒绝重复，Seal 后禁止修改。注册表只选能力，不复制领域状态。
+- app 按 api_mode 创建实际客户端，Agent 装配对应业务能力，启动时建立 provider → Loop／Compactor 绑定并校验客户端满足路线所需的私有流接口。模型服务只维护客户端和模型选择，不选择业务 Loop；客户端不导入 Agent 业务层。
+- dialogue 和 contextmgr 各自定义按 provider 查询的消费接口，注册表实现这些接口，消费方不接收完整路线或识别具体协议。Register 拒绝重复绑定，Seal 后禁止修改，缺失或不匹配的能力明确报错。注册表只绑定能力，不复制领域状态。
 - 新协议增加客户端、loop、上下文／压缩策略及兼容属性，再完成相应装配登记。共享执行协调器、ToolRun、回复提交和命令框架不增加该协议的专用分支。
 - 只有行为和语义相同的部分共享；流累积、原生续接和压缩载荷不因代码形状相似而合并。HTTP 传输接收协议客户端构造的请求，不固定 Bearer 等厂商鉴权或私有事件格式。
 
@@ -739,7 +742,7 @@ llm/chatcompletions、llm/responses ──→ llm 公共契约、httpclient
 → dialogue.Runner.PrepareTurn（Request 登记前加载材料）
 → executionCoordinator 登记 Request、传入父请求 ID
 → dialogue.Runner.RunTurn（Request context 下共同准备）
-→ 根据 api_mode 选择 chat.Loop 或 responses.Loop
+→ 根据 Selection.Provider 查询启动时已绑定的 Loop
 → 协议 Caller／客户端消费各自原生流
 → 需要工具时调用共同 ToolExecutor／ToolRun，再由协议路线组织结果
 → 公共 LoopResult → ReplyCommitter → executionCoordinator 跨轮收尾
@@ -769,6 +772,8 @@ llm/chatcompletions、llm/responses ──→ llm 公共契约、httpclient
 
 `modelmgr.CanSwitch` 只接收实际模型身份和目标选择并判断兼容性，不查询或修改 Session。Session 服务保存实际归属；命令解析目标后预检，再修改原有全局选择。请求入口独立再次检查，防止其他会话、后台覆盖或接管引入不兼容目标。
 
+兼容检查所需的目标身份由 provider 已绑定路线提供，源身份来自会话原生归属记录；不向 Selection 加回 Protocol，也不让模型服务解析原生请求或选择业务路线。
+
 | 来源与目标 | 行为 |
 |---|---|
 | 无历史的新会话 | 可选任意已配置起始协议／厂商，在实际接入时登记归属 |
@@ -785,7 +790,7 @@ llm/chatcompletions、llm/responses ──→ llm 公共契约、httpclient
 ```text
 /compact 或自动阈值
 → 执行协调器：准入、Request、取消
-→ contextmgr.Service.Compact：按源会话协议查注册表
+→ contextmgr.Service.Compact：查询源会话 provider 已绑定的 Compactor
   ├── chat.Compactor.Prepare：历史筛选、文字摘要、摘要 seed
   └── responses.Compactor.Prepare：原生窗口、原生压缩、原生 seed
 → 公共 CompactResult
@@ -807,15 +812,42 @@ llm/chatcompletions、llm/responses ──→ llm 公共契约、httpclient
 - MessageStore 处理用户、pending、工具 transcript 的同步写入；ReplyCommitter 保留实际发送与保存顺序、部分成功和回执关联。media.Manager.AcquireForLLM 集中持有、解析和释放请求素材。
 - Chat seed 元数据格式和消费语义保持当前实现；原生 Exchange／Checkpoint／seed 格式、能力检测与事务边界按后续任务讨论。
 
+### 16.2 当前客户端契约
+
+- llm.Client 提供 Protocol、ListModels、GenerateText；TextRequest 包含模型、instructions、输入文本、可选显式输出上限（零值省略）及 ExtraBody，TextResult 返回文本和 Usage。协议请求与流接口归各自客户端包，公共工具 schema 仅包含 name／description／parameters。
+- app 根据 provider.api_mode 构造实际客户端；modelmgr 校验配置与客户端声明一致，当前 Selection 保存 Client 及 Protocol。对话和压缩仍按协议查注册表，provider 预绑定属于下节待实施调整。
+- 命名和 Chat 文字摘要使用 GenerateText；Responses 独立调用发送当前 instructions／input、store=false，不使用主会话 previous_response_id，也不执行工具。主对话尚无 Responses 路线，准入时先检查能力，再进行自动压缩或用户输入写入。
+- 普通对话、命名及文字摘要不设置内置 token 上限；未配置时省略相应字段，使用上游默认。用户通过 Extra 提供所选 API 支持的 token 参数。
+- httpclient 拥有显式代理、HTTP 初始交换重试、取消、SSE 分帧及首包／空闲超时，API 鉴权和响应解析归客户端。流消费后不自动重放。Responses 原生事件、完整响应、推理 items 和未知字段保留 JSON；失败、incomplete 或提前 EOF 明确报错。
+- provider／模型级 extra_payload 与请求级 ExtraBody 共用只添加规则，不转换协议字段，不递归合并。已有字段及不同层级重名均报错，相同值也不覆盖；模型、输入、工具、流式控制和 Responses 续链／存储字段即使未发送也不能由 Extra 注入。普通 reasoning、采样和输出格式参数按所选 API 配置，不支持时返回上游错误。
+- 两客户端分别编码图文／工具表达，Responses 仅提供 ElBot function 工具编码且默认 strict=false；原生 Compact 接口随 16.4 接入，不创建空实现。
+
+### 16.2a 已确认的 provider 绑定目标
+
+本节为已确认、尚未实施的调整；当前代码仍采用上节契约。下一批先完成本节，再开始 Responses 业务路线。
+
+```text
+启动装配：provider → 实际客户端 + 对应 Loop／Compactor
+运行快照：Selection{Provider, Model, Client}
+  ├── 独立文本 → Client.GenerateText
+  ├── 主对话 → 按 Provider 查询 Loop
+  └── 压缩 → 按源 provider 查询 Compactor
+```
+
+- Selection 不保存重复 Protocol，公共 Client 不提供协议声明查询；模型服务只管理全局模型选择和具体客户端快照。
+- 注册表按 provider 绑定能力，dialogue／contextmgr 分别查询所需能力，公共流程不对客户端类型或协议名称分支。具体客户端和私有流接口由启动装配匹配；同路线多个 provider 可复用无 provider 状态的业务组件。
+- 原生记录、会话归属与兼容检查所需的稳定身份独立保留，不能把客户端对象当作可持久化身份；也不把业务 Loop／Compactor 塞进低层客户端。
+- 保留封闭注册表、构造校验、缺失能力报错、请求快照及取消边界，不增加万能上下文或第二套执行状态。验证 provider 绑定与扩展接入后，同步实际架构和代码地图。
+
 ### 实施顺序与验收
 
-16.0 只完善本文及任务清单。16.1 先整理构造和业务子包，让已有 Chat 经公共单轮入口实际运行；16.2 整理客户端契约、公共传输和配置；16.3 接入 Responses loop、原生持久化及提交；16.4 完成切换、恢复、压缩、fork 与接管；16.5 完成整体验收。每批保留项目可编译、默认 Chat 可运行；尚未接入的能力明确拒绝，不能偷偷走另一协议代替。
+16.0 完善本文及任务清单；16.1 的公共执行和 Chat 路线、16.2 的客户端／传输／配置已验收。16.2a 先完成 provider 预绑定及去除运行快照的协议传递；16.3 接入 Responses loop、原生持久化及提交；16.4 完成切换、恢复、压缩、fork 与接管；16.5 完成整体验收。每批保留项目可编译、默认 Chat 可运行；尚未接入的能力明确拒绝。
 
 | 验证类别 | 必须覆盖 |
 |---|---|
-| 配置与装配 | 默认 Chat、非法模式、客户端／路线／策略匹配、真实 app 接线 |
+| 配置与装配 | 默认 Chat、非法模式、provider 与客户端／路线／策略绑定、真实 app 接线 |
 | 扩展与依赖 | 测试协议经注册接入；路线互不导入；公共层无反向 Agent／具体协议依赖，无万能容器 |
-| Chat 行为 | 原有 messages、工具 loop、摘要、fork、命名、额外参数与媒体回归 |
+| Chat 行为 | 原有 messages、工具 loop、摘要、fork、命名与媒体；Extra 只添加及字段冲突回归 |
 | Responses 流 | 文本、推理、多 items、多个工具、图文结果、usage、完整／失败／incomplete、断流及取消 |
 | 工具与 Hook | chat 模式禁用工具、后台白名单、风险确认、参数改写与实际执行一致、文件预检和同步记录 |
 | 模型选择 | 两 Chat 跨厂商、同厂商 Responses 换模型、禁止跨厂商、全局冲突、后台覆盖、进行中快照和接管 |
@@ -827,15 +859,14 @@ llm/chatcompletions、llm/responses ──→ llm 公共契约、httpclient
 
 ### 实施前需讨论并定稿的细节
 
-16.1 已落地：唯一 New(ctx, cfg, deps)，行为配置与构造依赖分开；公共消息写入归 dialogue，媒体实现归 media.Manager；系统提示构建归 dialogue，Chat 历史组织和摘要注入归 chat；现有事实事件归 agent/events。routes 统一登记当前所需能力，公共层按能力消费。每轮执行对象保存协议私有状态，不用 any 传递。16.1 保留现有 Chat seed 格式与语义，先让 Chat 实际运行；配置及客户端拆分、原生 seed 与事务边界在后续步骤完成。
+16.1／16.2 的当前契约及 16.2a 的已确认调整见上文。客户端、公共传输、api_mode 和 Extra 添加规则已经明确并验收；原生 seed 与事务边界仍需讨论。
 
 以下事项不影响本次方案落盘，但在相应代码任务开始前必须完成讨论和验证，不能把尚未确认的具体做法写成既定约定：
 
-1. 后续原生路线所需新增消费接口；16.1 的公共单轮契约、构造、事件和注册边界按上述已确认约定实施。
+1. 后续原生路线所需新增消费接口；沿用公共单轮、构造和事件边界，路线消费按已确认的 provider 预绑定目标接入。
 2. 原生 Exchange／Checkpoint／seed 的字段、媒体关联方式，以及回复、工具阶段、新 Session 和 checkpoint 的事务提交边界；沿用现有 binding／attempt，不新增重复执行状态。
 3. 完整恢复所需材料和可验证的服务端引用；工具参数 Hook 改写时，同厂商原生分支／回放如何保全推理状态，何时必须在执行工具前拒绝。
 4. 原生压缩的能力检测、阈值计算、新 seed 与旧链分离，以及哪些业务消息可建立完整 fork checkpoint。
-5. Responses 额外参数与路由、工具、上下文关键字段的覆盖边界；既有 Chat 配置与 Hook 行为的保留方式。
 
 ## 实施前需讨论的细节
 

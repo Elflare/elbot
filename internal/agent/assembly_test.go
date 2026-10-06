@@ -162,7 +162,7 @@ func mustNewWithOptions(t *testing.T, cfg testAgentOptions, configure ...func(*t
 	return a
 }
 
-func newTestAgent(t *testing.T, p platform.PlatformAdapter, client llm.LLM, model string, provider config.ProviderConfig, store storage.Store, configure ...func(*testAgentOptions)) *Agent {
+func newTestAgent(t *testing.T, p platform.PlatformAdapter, client llm.Client, model string, provider config.ProviderConfig, store storage.Store, configure ...func(*testAgentOptions)) *Agent {
 	t.Helper()
 	return newTestAgentWithPrefixes(t, p, client, map[string]config.ModelSelection{
 		storage.SessionModeWork: {Provider: "default", Model: model},
@@ -170,21 +170,21 @@ func newTestAgent(t *testing.T, p platform.PlatformAdapter, client llm.LLM, mode
 	}, provider, store, []string{"/"}, configure...)
 }
 
-func newTestAgentWithPrefixes(t *testing.T, p platform.PlatformAdapter, client llm.LLM, modes map[string]config.ModelSelection, provider config.ProviderConfig, store storage.Store, prefixes []string, configure ...func(*testAgentOptions)) *Agent {
+func newTestAgentWithPrefixes(t *testing.T, p platform.PlatformAdapter, client llm.Client, modes map[string]config.ModelSelection, provider config.ProviderConfig, store storage.Store, prefixes []string, configure ...func(*testAgentOptions)) *Agent {
 	t.Helper()
 	return mustNewWithOptions(t, testAgentOptions{
-		Platform: p, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.LLM{"default": client}, Providers: map[string]config.ProviderConfig{"default": provider}, ModeModels: modes, DefaultMode: storage.SessionModeWork}),
+		Platform: p, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.Client{"default": client}, Providers: map[string]config.ProviderConfig{"default": provider}, ModeModels: modes, DefaultMode: storage.SessionModeWork}),
 		Providers: map[string]config.ProviderConfig{"default": provider}, Store: store, CommandPrefixes: prefixes,
 		SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork},
 	}, configure...)
 }
 
-func newTestMediaAgent(t *testing.T, p platform.PlatformAdapter, client llm.LLM, store storage.Store, center *media.Manager, configure ...func(*testAgentOptions)) *Agent {
+func newTestMediaAgent(t *testing.T, p platform.PlatformAdapter, client llm.Client, store storage.Store, center *media.Manager, configure ...func(*testAgentOptions)) *Agent {
 	t.Helper()
 	return mustNewWithOptions(t, testAgentOptions{
 		Platform: p, Store: store, Media: center, CommandPrefixes: []string{"/"},
 		Models: newTestModels(t, modelmgr.Options{
-			Clients:   map[string]llm.LLM{"default": client},
+			Clients:   map[string]llm.Client{"default": client},
 			Providers: map[string]config.ProviderConfig{"default": {}},
 			ModeModels: map[string]config.ModelSelection{
 				storage.SessionModeWork: {Provider: "default", Model: "test-model"},
