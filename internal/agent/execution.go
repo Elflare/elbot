@@ -5,8 +5,9 @@ import (
 	"log/slog"
 	"time"
 
+	"elbot/internal/agent/dialogue"
+	agentevents "elbot/internal/agent/events"
 	"elbot/internal/contextmgr"
-	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	"elbot/internal/security"
@@ -42,30 +43,19 @@ type executionCoordinator struct {
 	requests          *request.Manager
 	contexts          *contextmgr.Service
 	models            *modelmgr.Service
-	chat              *chatRunner
+	dialogue          *dialogue.Runner
 	identity          *identityResolver
-	view              executionView
+	view              dialogue.ExecutionView
 	output            *outputSender
 	status            *statusRecorder
 	waitPolicy        *confirmationPolicy
 	appendWaits       *appendWaitLifecycle
 	responseTimeout   time.Duration
-	persistenceFailed *signal.Signal[PersistenceFailedEvent]
-	timedOut          *signal.Signal[TurnTimedOutEvent]
+	persistenceFailed *signal.Signal[agentevents.PersistenceFailedEvent]
+	timedOut          *signal.Signal[agentevents.TurnTimedOutEvent]
 }
 
-const foregroundInstructions = "此会话已由用户接管，当前是普通前台对话。保留原任务目标和历史，但后台无人值守、自动汇报及强制 JSON 输出要求已经解除；按当前用户要求正常回复，工具遵循前台权限和确认规则。"
-
-func withForegroundInstructions(messages []llm.LLMMessage) []llm.LLMMessage {
-	for _, message := range messages {
-		if message.Role == llm.RoleSystem && llm.SegmentsTextOnly(message.Segments) == foregroundInstructions {
-			return messages
-		}
-	}
-	return append(messages, llm.LLMMessage{Role: llm.RoleSystem, Segments: llm.TextSegments(foregroundInstructions)})
-}
-
-func (c *executionCoordinator) Run(ctx context.Context, row *storage.Session, text string, out turnOutput) error {
+func (c *executionCoordinator) Run(ctx context.Context, row *storage.Session, text string, out dialogue.Output) error {
 	execution := turn.ExecutionFromContext(ctx)
 	if execution == nil {
 		execution = turn.NewExecution(storage.NewID())

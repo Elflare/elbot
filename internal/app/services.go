@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"elbot/internal/agent"
+	"elbot/internal/agent/routes"
 	"elbot/internal/command"
 	commandbuiltin "elbot/internal/command/builtin"
 	"elbot/internal/config"
@@ -32,6 +33,7 @@ import (
 // sharedServices contains the single instances wired into all runtime consumers.
 // It owns no background workers; their lifetimes belong to runtimeLifecycle.
 type sharedServices struct {
+	Routes          *routes.Registry
 	Models          *modelmgr.Service
 	Contexts        *contextmgr.Service
 	ToolState       *toolrun.StateService
@@ -92,9 +94,11 @@ func buildSharedServices(ctx context.Context, req RuntimeRequest) (*sharedServic
 	if err != nil {
 		return nil, err
 	}
+	routeRegistry := routes.New()
 	s := &sharedServices{
+		Routes:    routeRegistry,
 		Models:    models,
-		Contexts:  contextmgr.New(contextmgr.Options{Store: foundation.Store, Models: models, Config: cfg.Context, Metadata: cfg.ModelMetadata, Providers: cfg.Providers}),
+		Contexts:  contextmgr.New(contextmgr.Options{Compactors: routeRegistry, Store: foundation.Store, Models: models, Config: cfg.Context, Metadata: cfg.ModelMetadata, Providers: cfg.Providers}),
 		ToolState: toolrun.NewStateService(foundation.Store),
 		Sessions:  session.NewServiceWithConfig(foundation.Store, session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode}, session.NewTitleGenerator(models)),
 		Requests:  request.NewManager(0), Turns: turn.NewManager(),

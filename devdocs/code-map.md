@@ -47,7 +47,7 @@ rg -n "func Run|service run|completion|--client|RunCron" cmd internal/app intern
 ## 信号与订阅
 
 - `internal/signal/`：泛型信号、连接句柄、有界串行执行器、可选 WaitForCapacity 背压，以及独立的取消生命周期、BeginClose 和关闭策略。
-- `internal/agent/events.go`：Agent 类型化事实、Signals 入口及 Usage／Receipt 发布快照。
+- `internal/agent/events/`：Agent 类型化事实、Signals 和 Usage／Receipt 快照；`agent.go` 暴露 Signals 订阅入口。
 - `internal/app/agent_signals.go`、`agent_logging.go`、`log_record.go`：普通／审计日志的背压订阅、字段映射和实际写入错误处理。
 - `internal/app/agent_notifications.go`、`agent_status.go`、`model_signals.go`、`naming.go`：过程／失败通知、按目标合并状态、共享模型重试和命名日志订阅。
 - `internal/platform/signals.go`：平台 Connected 事件及发布接口；连接归 app 持有。
@@ -80,7 +80,7 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 
 先看：
 
-- `internal/agent/core.go`：薄入口 Agent 及 `NewWithOptions` 内部组件装配；共享服务只注入实际消费者，Agent 不保存构造中间组件或配置副本，内置命令在 app 注册。
+- `internal/agent/agent.go`、`assembly.go`：Agent 薄入口及唯一 `New(ctx, cfg, deps)` 装配；共享服务只注入实际消费者，完整 Dependencies 仅在装配使用，内置命令在 app 注册。
 - `internal/agent/message.go`、`wakeup.go`：messageHandler 的唤醒、平台消息 Hook、slash／普通输入分发和入口错误通知；Agent 消息及 Hook 唤醒方法为薄委托。
 - `internal/agent/command_runtime.go`：commandExecutor 直接组合执行、确认、输入和输出组件，处理权限、Turn 冲突、通知和 continuation。
 - `internal/agent/input.go`、`tool_directive.go`：inputCoordinator 的普通输入 Hook／预加载锁外准备、命令 continuation 和闲置过期；准入复核与 pending 分发交执行协调，风险响应交确认组件。
@@ -91,24 +91,32 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 - `internal/media/platform.go`：共享平台导入、历史媒体位置关联与本地 ID 查询；`manager.go`、`image.go`：统一媒体入库和持久化前图片压缩；`resolver.go`：LLM 媒体解析与传输选择；`history.go`：跨库历史 owner 分页对账。
 - `internal/storage/sqlite/media_history.go`：主库历史媒体关联与引用事务，区别于机器人发送输出索引。
 - `internal/delivery/dispatch/media.go`：发送前归一、发送副本解析与有序媒体回执缓存。
-- `internal/agent/options.go`、`logging.go`：构造参数校验、过期配置转换和入口审计帮助函数；配置与日志通过构造注入，不提供 Agent setter。
+- `internal/agent/config.go`、`dependencies.go`、`logging.go`：行为配置、必需依赖校验、过期配置转换和入口审计；runtime context 单独传入，不提供 Agent setter。
 - `internal/agent/identity.go`：identityResolver 拥有入口默认身份与安全策略；区分普通入口和无默认身份的 Hook 来源解析。
 - `internal/agent/toolrun_prompt_provider.go`：直接注入 ToolRun 与身份解析的 Prompt provider。
-- `internal/agent/chat.go`、`chat_prepare.go`、`chat_loop.go`：chatRunner、单轮结果类型、Request 登记前材料及登记后 Prompt／Hook 准备、模型／工具循环和回复提交；不完成跨轮 Execution。
-- `internal/agent/reply_commit.go`：replyCommitter 的提交输入／结果、最终 Hook、空回复、发送／落库顺序、延迟 outputs 和实际回执关联。
-- `internal/agent/chat_llm.go`：modelCaller 的单次请求、流消费、媒体生命周期、模型 Hook 和视觉降级；`model_selection.go`：显式依赖模型服务的选择快照。
-- `internal/agent/chat_tools.go`：单轮工具执行、schema 和 pending 注入；`toolrun_adapter.go`：直接组合服务的 toolRunDeps，负责工具 Hook、子请求、文件上下文、确认适配、调用记录和状态提交。
+- `internal/agent/dialogue/runner.go`、`loop.go`、`preparation.go`：公共单轮契约、Request 登记前加载、登记后准备／保存、Outcome 和回复提交；`internal/agent/chat/loop.go`、`preparation.go`、`run_loop.go`：Chat 私有状态、历史与摘要组织及模型／工具循环。
+- `internal/agent/dialogue/reply_commit.go`：公共提交输入／结果、最终 Hook、空回复、发送／落库顺序、延迟 outputs 和实际回执关联。
+- `internal/agent/dialogue/model_call.go`：共同模型 Hook、权限过滤与事实；`internal/agent/chat/model_call.go`：Chat 请求、流消费与视觉回退；`internal/modelmgr/context.go`：请求选择及后台覆盖；`internal/media/request.go`：请求素材解析、持有和释放。
+- `internal/agent/dialogue/tool_execution.go`、`pending.go`：共同 ToolRun、schema 和 pending 消费；`tool_display.go`：根包的工具／确认展示帮助函数；`toolrun_adapter.go`：直接组合服务的 toolRunDeps，负责工具 Hook、子请求、文件上下文、确认适配、调用记录和状态提交。
 - `internal/agent/confirmation.go`、`background_tools.go`：confirmationCoordinator 的前后台风险确认、响应、自动确认记录及共享超时策略；等待状态仍归 Turn。
 - `internal/agent/turn_output.go`：只依赖发送与状态组件的前后台 turn 输出适配。
-- `internal/agent/prompt.go`、`tools.go`：Prompt 类型与构建材料装配，生成由 chatRunner 持有的 Prompt Builder；Soul 和常驻记忆不经过 Agent 保存。
-- `internal/agent/system_prompt*.go`：Soul、常驻记忆、工具提示等 system prompt 来源和组合。
-- `internal/agent/tool_transcript.go`：用户／工具 transcript 持久化和消息 metadata 编解码。
+- `internal/agent/tools.go`：系统提示来源装配；`internal/agent/chat/transcript.go`：Chat Prompt Builder、历史消息转换和摘要注入，Soul 与常驻记忆来源归公共层。
+- `internal/agent/dialogue/system_prompt*.go`、`prompt.go`、`tool_tag_prompt.go`：Soul、常驻记忆、工具提示等共同来源和组合。
+- `internal/agent/dialogue/message_store.go`：用户／pending／工具 transcript 写入和业务 metadata 编解码。
 
 常用搜索：
 
 ```bash
 rg -n "Handle|Run|Prompt|tool_calls|reasoning|usage|pending|prepared" internal/agent
 ```
+
+<!-- locator:protocol-routing -->
+## 协议路线登记
+
+- `internal/agent/routes/route.go`、`registry.go`：协议能力统一登记、封闭及按能力查询；只保存当前所需的 Loop／Compactor，不拥有运行状态。
+- `internal/agent/assembly.go`、`internal/app/services.go`：app 创建共享注册表及上下文服务，Agent 装配并登记 Chat 路线、封闭和校验接线后才开放运行。
+- `internal/agent/dialogue/loop.go`、`internal/contextmgr/compact_contract.go`：消费方的小查询接口；公共层不导入注册表实现或具体路线。
+- `internal/llm/protocol.go`、`internal/modelmgr/selection.go`：协议标识与固定模型快照。当前生产只登记 Chat，Responses 属后续步骤。
 
 <!-- locator:commands -->
 ## Slash 命令与补全
@@ -145,11 +153,11 @@ rg -n "Register|Info\{|Help:|Complete|Alias|/requests|/model" internal/command/b
 - `internal/agent/execution.go`、`execution_run.go`：executionCoordinator 的前后台执行、接管、attempt／Request 生命周期及提交后收尾；后台等待跨追加确认和压缩的真实执行结果。
 - `internal/agent/execution_input.go`：输入接受、追加打断／确认／过期和 pending 分发。
 - `internal/agent/execution_lifecycle.go`：executionCoordinator 拥有的追加确认等待任务，原来源保留、应用取消、登记／关闭互斥以及在途过期提示退出等待；Agent.Close／Done 薄委托，app 负责关闭接线。
-- `internal/agent/execution_context.go`、`execution_output.go`：executionView 刷新来源与 Session，executionTurnOutput 切换前后台输出并转换后台报告；保留原请求取消，不拥有第二份执行状态。
+- `internal/agent/dialogue/execution_context.go`、`internal/agent/execution_output.go`：ExecutionView 刷新来源与 Session，executionTurnOutput 切换前后台输出并转换后台报告；保留原请求取消，不拥有第二份执行状态。
 - `internal/agent/execution_admission.go`：Scope／Session 准入、原绑定与模式复核、输入解析和 Turn 启动检查。
 - `internal/runtime/`
 - `internal/agent/status.go`：statusRecorder 校验 attempt 归属、同步保存／查询及发布带版本状态；`internal/app/agent_status.go` 合并最新展示值，调度终态并隔离原连接目标。
-- `internal/agent/request_context.go`：父子 request context。
+- `internal/request/context.go`：父子 request context。
 - `internal/agent/risk_confirmation.go`：高风险确认命令文案和识别。
 
 常用搜索：
@@ -172,14 +180,14 @@ rg -n "Phase|Request|Cancel|pending|confirm|runtime status|sending" internal/req
 - `internal/tool/builtin/`：内置工具。
 - `internal/tool/builtin/file_tools_ast.go`：`read_file` 的 Go/Shell AST 名称搜索与结果渲染。
 - `internal/fileops/service.go`、`edit_service.go`：命令与工具共享的编辑／撤销服务、调用绑定、确认预检与提交准入；`internal/tool/builtin/file_rollback.go` 保留工具协议及风险确认。
-- `internal/agent/tools.go`：模型／工具组件共享的工具运行配置及 chatRunner Prompt 装配；不保存 Session 工具状态。
+- `internal/agent/dialogue/tool_execution.go`：共同工具消费能力与轮次配置；`internal/agent/tools.go`：内部装配辅助；不保存第二份 Session 工具状态。
 - `internal/agent/toolrun_*.go`：Agent 到 ToolRun 的桥接。
 - `internal/toolrun/state.go`：Session 工具发现、schema、tag 和规则卡状态的统一读取与事务提交；`discovery.go` 解析发现结果与 wrapper 激活，`cache.go` 负责缓存项归一，`schema.go` 负责调用快照隔离。
 - `internal/toolrun/preload.go`、`tags.go`：独立预加载服务，共享前后台工具发现、Skill 激活、标签配置读取及查询；只返回待提交状态和展示材料。
 - `internal/toolrun/background.go`：后台缓存过滤和 schema 白名单；Manager 在准备 Hook 后按 Session 模式限制工具解析。
 - `internal/agent/tool_cache.go`：工具状态服务的调用适配，成功提交后更新调用期 Session 快照。
 - `internal/agent/tool_directive.go`：inputCoordinator 的 `@tool:` / `@skill:` 输入解析、统一提交与通知编排。
-- `internal/agent/tool_tag_prompt.go`：将工具服务提供的标签提示放入 work 模式 Prompt。
+- `internal/agent/dialogue/tool_tag_prompt.go`：将工具服务提供的标签提示放入 work 模式 Prompt。
 - `internal/security/`：工具权限和风险策略。
 - `internal/fileops/{file,encoding,text}.go`：文件生命周期、编码与通用文本处理。
 - `internal/fileops/{edit,match,diff}.go`：原子编辑解析、目标匹配与 unified diff。
@@ -198,11 +206,11 @@ rg -n "discover_tool|NewBuilder|Risk|Confirm|ToolRun|Result\{|Outputs|workspace|
 
 先看：
 
-- `internal/agent/chat_tools.go`：Agent 工具执行主入口。
+- `internal/agent/dialogue/tool_execution.go`：Agent 工具执行主入口。
 - `internal/toolrun/`：执行前解析、过滤、确认和预览。
 - `internal/tool/executor.go`：Tool Runtime 执行适配。
 - `internal/tool/tool.go`：Tool 核心类型。
-- `internal/agent/tool_transcript.go`：tool message/transcript 落库。
+- `internal/agent/dialogue/message_store.go`：tool message/transcript 同步落库。
 - `internal/storage/sqlite/tool_call_repository.go`：工具调用记录持久化。
 
 常用搜索：
@@ -274,7 +282,7 @@ rg -n "Event|Handler|Control|plugins/hooks.toml|exec|hook.v2|runtime|SharedState
 - `internal/app/services.go`、`integrations.go`、`signals.go`：共享发送／通知服务装配、外部宿主接入和平台连接执行器。
 - `internal/agent/turn_output.go`、`execution_output.go`：前后台发送策略与接管输出适配；后台保持静默但同步记录状态。
 - `internal/agent/output.go`：outputSender 的普通／流式发送和输出 Hook，保留部分成功回执；不负责 assistant 历史提交。
-- `internal/agent/reply_commit.go`：最终回复提交与 Session 消息关联，只消费回执中的实际平台、Scope 和消息 ID；错误结果保留实际发送与落库事实。
+- `internal/agent/dialogue/reply_commit.go`：最终回复提交与 Session 消息关联，只消费回执中的实际平台、Scope 和消息 ID；错误结果保留实际发送与落库事实。
 - `internal/platform/platform.go`：平台发送抽象。
 
 常用搜索：
@@ -343,10 +351,10 @@ rg -n "Fork|Archive|Pinned|Expire|SessionMode|metadata|workspace|cron:" internal
 
 先看：
 
-- `internal/contextmgr/service.go`、`state.go`、`compact.go`：共享上下文服务、用量／压缩持久化状态、压缩材料与结果；复用 loader、window、compressor 和摘要 prompt。
-- `internal/agent/execution_compact.go`：协调手动／自动压缩的 Request／Turn、取消、绑定准入和会话交接；`context_usage.go`：协调器的用量记录与压缩阈值检查；`context_seed.go`：chatRunner 的 seed 消耗时机。命令直接读取 contextmgr。
-- `internal/agent/prompt.go`：Prompt Builder。
-- `internal/agent/system_prompt*.go`：system prompt 管理和来源。
+- `internal/contextmgr/service.go`、`state.go`、`compact.go`、`compact_contract.go`：共同历史查询、用量、阈值、seed 状态与压缩路由契约；`internal/agent/chat/compact.go`、`compressor.go`、`compact_prompt.go`：Chat 历史筛选与摘要实现。
+- `internal/agent/execution_compact.go`：协调手动／自动压缩的 Request／Turn、取消、绑定准入和会话交接；`context_usage.go`：协调器的用量记录与压缩阈值检查；`internal/agent/chat/context_seed.go`：Chat 的 seed 消耗时机。命令直接读取 contextmgr。
+- `internal/agent/chat/transcript.go`：Chat Prompt Builder 与历史组织。
+- `internal/agent/dialogue/system_prompt*.go`：共同 system prompt 管理和来源。
 - `internal/llm/segment.go`：MessageSegment helper。
 
 常用搜索：
@@ -367,7 +375,7 @@ rg -n "ContextLoader|Compress|Window|System Prompt|MessageSegment|usage" interna
 - `internal/modelmgr/service.go`、`selection.go`：共享服务与构造校验，模式／槽位、压缩和命名选择及请求快照。
 - `internal/modelmgr/signals.go`：共享客户端重试事实，供对话／压缩／命名统一消费；订阅归 app 所有。
 - `internal/modelmgr/catalog.go`、`state.go`：模型目录缓存、筛选与 provider 错误，串行保存后发布选择状态；原子文件写入复用 `config.SaveState` 和 `fileops`。
-- `internal/agent/chat_llm.go`：Agent LLM 调用适配；`internal/notification/rules/model.go`：模型重试／降级提示。
+- `internal/agent/chat/model_call.go`、`internal/agent/dialogue/model_call.go`：协议调用与共同调用处理；`internal/notification/rules/model.go`：模型重试／降级提示。
 - `internal/session/title.go`：标题生成，开始时从模型服务取得命名与 work fallback 快照。
 
 常用搜索：

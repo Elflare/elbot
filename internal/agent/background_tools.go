@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 
+	agentevents "elbot/internal/agent/events"
 	"elbot/internal/llm"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/tool"
@@ -17,13 +18,13 @@ func (c *confirmationCoordinator) confirmBackgroundSandboxShell(ctx context.Cont
 		return false, false
 	}
 	kind := string(sandbox.BackgroundKind)
-	event := ConfirmationChangedEvent{EventMeta: eventMeta(ctx, sessionID), Phase: "background", Action: "auto_confirmed", Kind: kind, Tool: call.Name, Risk: string(risk), SandboxDir: sandbox.Dir, Arguments: call.Arguments}
+	event := agentevents.ConfirmationChangedEvent{EventMeta: agentevents.Meta(ctx, sessionID), Phase: "background", Action: "auto_confirmed", Kind: kind, Tool: call.Name, Risk: string(risk), SandboxDir: sandbox.Dir, Arguments: call.Arguments}
 	if risk == tool.RiskCritical {
 		event.Action = "rejected"
-		emitFact(ctx, c.changed, event)
+		agentevents.Emit(ctx, c.changed, event)
 		message.Segments = llm.TextSegments("后台沙盒禁止执行 critical 风险 shell 命令。请改用相对路径，把文件限制在当前 sandbox 目录内，避免绝对路径、.. 逃逸和危险命令；若仍无法完成，请在最终报告中说明阻塞原因。")
 		return false, true
 	}
-	emitFact(ctx, c.changed, event)
+	agentevents.Emit(ctx, c.changed, event)
 	return true, true
 }

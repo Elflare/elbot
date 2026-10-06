@@ -4,11 +4,11 @@ import (
 	"errors"
 	"log/slog"
 
-	"elbot/internal/agent"
+	agentevents "elbot/internal/agent/events"
 	"elbot/internal/signal"
 )
 
-func (b *signalBindings) connectAgentLogs(events agent.Signals, runtime, audit *slog.Logger) error {
+func (b *signalBindings) connectAgentLogs(events agentevents.Signals, runtime, audit *slog.Logger) error {
 	runtimeQueue, err := b.newQueue("agent.runtime_logs", runtime, true)
 	if err != nil {
 		return err

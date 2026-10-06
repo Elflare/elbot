@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"elbot/internal/agent"
+	agentevents "elbot/internal/agent/events"
 	"elbot/internal/chatinfo"
 	"elbot/internal/delivery/dispatch"
 	runtimestatus "elbot/internal/runtime"
@@ -16,7 +16,7 @@ import (
 type statusTarget struct{ SessionID, Platform, ScopeID, ConversationID, Display string }
 type statusProjection struct {
 	ctx   context.Context
-	event agent.StatusChangedEvent
+	event agentevents.StatusChangedEvent
 	dirty bool
 }
 
@@ -40,7 +40,7 @@ func newStatusDisplay(dispatcher *dispatch.Router, logger *slog.Logger) *statusD
 	go d.run()
 	return d
 }
-func (d *statusDisplay) receive(ctx context.Context, event agent.StatusChangedEvent) error {
+func (d *statusDisplay) receive(ctx context.Context, event agentevents.StatusChangedEvent) error {
 	if !event.Display {
 		return nil
 	}
@@ -159,7 +159,7 @@ func (d *statusDisplay) stopped() bool {
 	}
 }
 
-func (b *signalBindings) connectStatus(events agent.Signals, sessions *session.Service, dispatcher *dispatch.Router, logger *slog.Logger) error {
+func (b *signalBindings) connectStatus(events agentevents.Signals, sessions *session.Service, dispatcher *dispatch.Router, logger *slog.Logger) error {
 	display := newStatusDisplay(dispatcher, logger)
 	b.displays = append(b.displays, display)
 	if err := connectSignal(b, events.StatusChanged, display.receive, signal.ConnectOptions{}); err != nil {

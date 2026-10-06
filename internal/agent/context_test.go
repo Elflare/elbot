@@ -7,10 +7,13 @@ import (
 	"testing"
 	"time"
 
+	chatroute "elbot/internal/agent/chat"
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
+	"elbot/internal/modelmgr"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
@@ -36,8 +39,8 @@ func TestCompactMessagesFiltersToolResultsAndFailedCalls(t *testing.T) {
 		{ID: "failed", Name: "web", Arguments: `{"q":"failed"}`},
 		{ID: "missing", Name: "shell", Arguments: `{"command":"missing"}`},
 	}
-	toolCall := toolCallStorageMessage(session.ID, "C", "C", calls)
-	runtime := contextmgr.New(contextmgr.Options{Store: store})
+	toolCall := dialogue.ToolCallStorageMessage(session.ID, "C", "C", calls)
+	runtime := &chatroute.Compactor{Store: store}
 	messages, err := runtime.CompactMessages(ctx, &contextmgr.LoadedContext{
 		Summary: &storage.ContextSummary{Summary: "I"},
 		Messages: []storage.Message{
@@ -314,7 +317,7 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 	if _, err := store.ContextSummaries().LatestBySession(ctx, source.ID); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("summary after cancel err = %v", err)
 	}
-	if !a.execution.shouldCompact(ctx, source, modelSelectionForTurn(ctx, a.execution.models, source)) {
+	if !a.execution.shouldCompact(ctx, source, modelmgr.SelectionForTurn(ctx, a.execution.models, source)) {
 		t.Fatal("usage no longer triggers compact after cancellation")
 	}
 	if got := p.out.String(); !strings.Contains(got, activeTurnCommandBlockedText()) || !strings.Contains(got, "暂不执行 /delete") || !strings.Contains(got, "stopped 1 request") {
@@ -423,13 +426,13 @@ func TestModelSwitchReevaluatesCompactWindow(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 	a.execution.recordUsage(current.ID, &llm.Usage{TotalTokens: 80})
-	if !a.execution.shouldCompact(ctx, current, modelSelectionForTurn(ctx, a.execution.models, current)) {
+	if !a.execution.shouldCompact(ctx, current, modelmgr.SelectionForTurn(ctx, a.execution.models, current)) {
 		t.Fatal("small model did not trigger compact")
 	}
 	if _, err := a.execution.models.SelectModelForMode(storage.SessionModeWork, "large"); err != nil {
 		t.Fatalf("select large model: %v", err)
 	}
-	if a.execution.shouldCompact(ctx, current, modelSelectionForTurn(ctx, a.execution.models, current)) {
+	if a.execution.shouldCompact(ctx, current, modelmgr.SelectionForTurn(ctx, a.execution.models, current)) {
 		t.Fatal("large model reused the old model compact decision")
 	}
 }
@@ -443,7 +446,7 @@ func TestCancelledCompactLateResultCannotSwitchNewCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.execution.chat.messages.Append(ctx, &storage.Message{SessionID: old.ID, Role: storage.RoleUser, Content: "history"}); err != nil {
+	if err := a.execution.dialogue.Messages.Repository.Append(ctx, &storage.Message{SessionID: old.ID, Role: storage.RoleUser, Content: "history"}); err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)

@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	agentevents "elbot/internal/agent/events"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/signal"
 	"elbot/internal/turn"
@@ -16,10 +17,10 @@ type statusRecorder struct {
 	publishMu sync.Mutex
 	mu        sync.Mutex
 	snapshots map[string]runtimestatus.Snapshot
-	owners    map[string]EventMeta
+	owners    map[string]agentevents.EventMeta
 	version   uint64
 	turns     *turn.Manager
-	changed   *signal.Signal[StatusChangedEvent]
+	changed   *signal.Signal[agentevents.StatusChangedEvent]
 }
 
 func (r *statusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snapshot, display bool) {
@@ -31,7 +32,7 @@ func (r *statusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snap
 		return
 	}
 	r.mu.Lock()
-	owner := eventMeta(ctx, snapshot.SessionID)
+	owner := agentevents.Meta(ctx, snapshot.SessionID)
 	if r.turns != nil {
 		e, attempt, active := r.turns.ExecutionAttempt(snapshot.SessionID)
 		previous := r.owners[snapshot.SessionID]
@@ -47,24 +48,24 @@ func (r *statusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snap
 	}
 	if r.snapshots == nil {
 		r.snapshots = make(map[string]runtimestatus.Snapshot)
-		r.owners = make(map[string]EventMeta)
+		r.owners = make(map[string]agentevents.EventMeta)
 	}
 	snapshot = mergeRuntimeStatus(r.snapshots[snapshot.SessionID], snapshot)
-	snapshot.Usage = cloneUsage(snapshot.Usage)
+	snapshot.Usage = agentevents.CloneUsage(snapshot.Usage)
 	r.snapshots[snapshot.SessionID] = snapshot
 	r.owners[snapshot.SessionID] = owner
 	r.version++
 	version := r.version
 	r.mu.Unlock()
-	snapshot.Usage = cloneUsage(snapshot.Usage)
-	emitFact(ctx, r.changed, StatusChangedEvent{Snapshot: snapshot, Version: version, Display: display})
+	snapshot.Usage = agentevents.CloneUsage(snapshot.Usage)
+	agentevents.Emit(ctx, r.changed, agentevents.StatusChangedEvent{Snapshot: snapshot, Version: version, Display: display})
 }
 
 func (r *statusRecorder) Snapshot(sessionID string) runtimestatus.Snapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	snapshot := r.snapshots[sessionID]
-	snapshot.Usage = cloneUsage(snapshot.Usage)
+	snapshot.Usage = agentevents.CloneUsage(snapshot.Usage)
 	return snapshot
 }
 

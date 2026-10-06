@@ -17,7 +17,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 2. `internal/launcher/cli.go` 解析 `run`、`cli`、`service run`、补全和远程 CLI 参数。
 3. 普通运行进入 `internal/app.Run`，由默认 `Runner` 执行；远程 CLI 进入 `internal/app` 的 CLI client 入口。
 4. Runner 按 Environment、Foundation、Models、Platforms、Runtime、Integrations 阶段装配配置、日志、SQLite、LLM、Agent、Tool、Platform、Hook、Output、Cron 和 Elnis。
-5. app 创建共享服务和命令 Router，创建 Agent 后注册内置命令，再连接信号、补全与平台命令目录；注册完成前不启动平台。
+5. app 创建共享服务、路线注册表和命令 Router；Agent 装配 Chat Loop 与 Compactor 并统一登记、封闭注册表，随后注册内置命令和连接信号、补全与平台目录；接线成功前不启动平台。
 6. app 层按运行模式启动平台 runtime，并在平台启动后异步启动 Cron runtime。
 
 设计边界：
@@ -26,8 +26,8 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - launcher 只做命令行解析，不直接初始化复杂依赖。
 - 平台 adapter 只处理平台输入输出，不直接驱动 LLM。
 - `app.Run` 保持默认生产入口；需要替换启动阶段或做隔离测试时，使用 `NewRunner(Dependencies)` 注入分组工厂。
-- 共享 Session、Request、Turn、模型、上下文、工具状态、文件、发送、通知及命令实例由 app 创建。Agent 的 `NewWithOptions` 要求注入必需依赖，不补建服务或注册内置命令；测试装配位于测试文件中。
-- app 在平台启动前安装 Session 前台接管、活动会话查询和 Hook 唤醒／执行观察回调；这些执行回调遵守原有同步准入约束，生命周期通知另走信号。`NewWithOptions` 组合内部组件，Prompt、命令执行器和补全直接使用所属依赖。
+- 共享 Session、Request、Turn、模型、上下文、工具状态、文件、发送、通知及命令实例由 app 创建。Agent 的 `New(ctx, cfg, deps)` 要求注入必需依赖，不补建服务或注册内置命令；测试装配位于测试文件中。
+- app 在平台启动前安装 Session 前台接管、活动会话查询和 Hook 唤醒／执行观察回调；这些执行回调遵守原有同步准入约束，生命周期通知另走信号。`New(ctx, cfg, deps)` 组合内部组件，Prompt、命令执行器和补全直接使用所属依赖。
 - Foundation／Runtime 工厂即使返回错误，也返回已取得资源的 Lifecycle。Runner 接管部分构建的清理责任，不启动后续阶段；延迟 Skill 加载同时提供取消上下文和实际完成信号。
 - 关闭时应用上下文立即取消 Cron handler、Session 命名和追加确认等待，并停止新调度。Runner 先对订阅调用 `BeginClose`，断开连接、关闭队列接收并唤醒等待入队的生产者，再等待平台与 Foundation 的 `StopCron(ctx)` 结束，随后等待队列、追加确认及其在途提示、命名和 Hook runtime 退出、等待 Skill 加载结束，最后关闭 SQLite 和日志。重复停止等待同一完成结果，关闭后迟到的启动不能重新开放调度。
 - 平台退出、Cron 和后续清理共享 30 秒预算。预算到期停止等待；平台、Cron 或回调仍在运行时跳过其依赖的显式释放，交给进程退出，不启动后台收尾链。正常取消／关闭预算耗尽不视为应用失败，Cron 正常取消不报告任务失败；真实错误继续返回。
@@ -80,26 +80,26 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 
 1. 平台 adapter 收到消息并交给 Agent。
 2. Agent 委托 messageHandler 处理唤醒、入站媒体与平台 Hook；commandExecutor 分发命令，inputCoordinator 准备普通输入，执行与确认组件处理 pending 和确认响应。
-3. executionCoordinator 准入并启动 attempt，chatRunner 加载单轮材料；协调器登记 Request 后，chatRunner 构建 Prompt 并通过 modelCaller 调用已选定的模型。
+3. executionCoordinator 准入并启动 attempt，dialogue.Runner 加载单轮材料并按协议取得路线；协调器登记 Request 后，Chat 的每轮执行对象构建 Prompt，公共 Preparer 执行准备 Hook，MessageStore 保存用户输入，再由 chat.Caller 调用模型。
 4. LLM 返回文本、reasoning 或 tool call。
-5. 如果有 tool call，chatRunner 通过 ToolRun 和 toolRunDeps 执行工具；工具结果写入 transcript 后继续 LLM 循环。
-6. 最终输出前，chatRunner 通过 executionView 刷新接管来源和 Session，发布 sending 状态，再调用 replyCommitter。
-7. replyCommitter 执行最终输出 Hook，通过 turnOutput／outputSender 发送并按直接／缓冲路径完成 assistant 落库及实际回执关联；chatRunner 返回单轮结果，由 executionCoordinator 继续执行收尾。
+5. 如果有 tool call，chat.Loop 通过公共 ToolExecutor、既有 ToolRun 和 toolRunDeps 执行工具；公共 MessageStore 保存工具 transcript，Chat 组织后续请求并继续循环。
+6. 最终输出前，dialogue.Runner 通过 ExecutionView 刷新接管来源和 Session，发布 sending 状态，再调用公共 ReplyCommitter。
+7. ReplyCommitter 执行最终输出 Hook，通过 Output／outputSender 发送并按直接／缓冲路径完成 assistant 落库及实际回执关联；Runner 返回单轮结果，由 executionCoordinator 继续执行收尾。
 
 关键约定：
 
 - user 与已完成工具 transcript 会阶段性落库；前置 Hook 绑定的当前消息在调用 LLM 前以最终 segments 落库。
 - 多模态消息的 `segments` 保存原始结构；`content` 由 segments 生成可读文本投影。请求 OpenAI-compatible 模型时，再按每条消息的图片顺序临时插入对应文本标签，不向 segment JSON 增加派生字段。
-- replyCommitter 用最终展示文本调用输出适配器完成流式 replace／finish；历史正文与原始模型文本不受展示 Hook 改写影响。
+- 公共 ReplyCommitter 用最终展示文本调用输出适配器完成流式 replace／finish；历史正文与原始模型文本不受展示 Hook 改写影响。
 - 直接输出先发送及投递延迟 outputs，再落库、关联；缓冲输出先落库，再发送、关联及投递延迟 outputs。提交失败仍保留实际 assistant 回执和持久化结果，不重发已成功内容；只用回执中的完整平台、Scope 和消息 ID 关联，关联失败记录但不终止对话。
 - 发送前会发布 `sending` phase，便于 `/requests` 区分 LLM 慢还是平台发送慢。
 - 普通输入在工具阶段不会打断工具，会以 text/image segments 进入 pending；下一次 LLM 调用前已有的 pending 会合并注入当前轮，最终 LLM 调用期间新到达的 pending 则在当前轮正常结束后作为新用户消息自动开启下一轮。
-- chatRunner 拥有 Prompt Builder；每个 turn 从 Soul、工具提示、工具标签和当前 actor 的常驻记忆构建一次 system message，该消息只在当前 turn 内复用，不进入会话历史。
+- chat.Loop 拥有 Prompt Builder；系统提示来源与构建器归 dialogue，每个 turn 从 Soul、工具提示、工具标签和当前 actor 的常驻记忆构建一次 system message，该消息只在当前 turn 内复用，不进入会话历史。
 - 单轮结果区分完成、暂停、停止、取消、失败与 attempt 已失效，保留提交事实、Usage、模型和计时。回复成功后，协调器依次处理 Touch、Usage、完成状态、压缩提示、pending 交接、Execution 结果和命名；提交期间进入追加确认也不会丢失已成功提交的用量。
-- 单轮材料加载在 Request 登记前，Prompt／Hook 和用户消息落库在登记后；Request 及 attempt 清理由执行协调器负责，chatRunner 不结束跨轮 Execution。
+- 单轮材料加载在 Request 登记前，Prompt／Hook 和用户消息落库在登记后；Request 及 attempt 清理由执行协调器负责，dialogue.Runner 不结束跨轮 Execution。
 - 登记后的 Prompt、工具准备、`llm.turn.prepared`、媒体归一与用户消息落库使用 Turn Request context；准备阶段检查取消，Hook 子请求继承父请求 ID。状态发布和已完成回复提交沿用执行 context，保证已提交事实不被模型请求取消吞掉。
 
-基础组件在 `internal/agent` 内直接组合，不持有 Agent 或绑定 Agent 的回调：
+Agent 根包、公共单轮层和协议路线按消费接口直接组合，不持有 Agent 或绑定 Agent 的回调：
 
 | 组件 | 当前职责与状态 |
 |---|---|
@@ -109,25 +109,38 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 | commandExecutor | 直接连接 Router、身份、执行、确认、输入和输出组件，处理权限、Turn 冲突与 continuation，不回调 Agent。 |
 | fileCommandPreparer | 文件命令权限、原绑定、workspace 与提交准入；文件操作仍归 FileOps。 |
 | executionCoordinator | 统一前后台准入、attempt、Request 生命周期、追加确认、pending 续跑、压缩交接和执行完成；拥有追加确认等待任务的生命周期，后台入口等待真实 Execution 结果，不复制领域状态。 |
-| chatRunner | 拥有 Prompt Builder 和单轮局部材料，执行模型／工具循环及回复提交；媒体、工具状态和 transcript 使用显式依赖，不回调 Agent。 |
-| modelCaller | 接收模型选择快照，执行单次请求、流消费、请求／响应 Hook、媒体持有／释放和视觉降级；保留 chat 工具禁用及后台白名单约束。 |
+| dialogue.Runner | 公共材料加载、路线选择、登记后准备与用户保存、Outcome 收敛和回复提交；不结束跨轮 Execution。 |
+| chat.Loop / preparedLoop | 保存每轮 Chat messages、tools、usage 及摘要标记，组织历史、模型／工具循环、pending 和接管后刷新。 |
+| dialogue.MessageStore / ToolExecutor | 公共用户、pending、工具 transcript 写入及 ToolRun 接入；工具等待与状态继续归原有领域服务。 |
+| chat.Caller | Chat 请求生成、流消费与视觉回退，接收固定模型选择快照。 |
+| dialogue.CallProcessor | 共同请求／响应 Hook、工具过滤、媒体中心调用和模型事实；媒体持有／解析／释放由 media.Manager 实现。 |
 | confirmationCoordinator | 处理风险确认响应、等待及结果转换，拥有自动确认记录与锁；等待对象仍归 Turn，超时策略与追加确认、Session 过期共用。 |
 | toolRunDeps | 直接组合工具执行所需服务、确认组件和执行视图，登记工具子请求，同步写工具调用记录和发现状态。 |
 | identityResolver | 拥有入口默认身份和安全策略，统一 Actor／Scope／CLI 判断；无来源 Hook 使用不带入口默认值的来源身份解析。 |
 | hookBridge | 使用 Hook manager/router、Request、身份和 Media，负责事件补全、可改写 Hook、continuation、请求观察和错误链路；失败日志与提示发布为事实。 |
 | statusRecorder | 同步校验执行归属、合并和保存快照，拒绝旧 attempt，发布带单调版本的 StatusChanged；Agent 查询仍同步读取本地快照。 |
 | outputSender | 使用共享 Dispatcher、通知服务和 hookBridge，处理普通／流式输出、发送 Hook、preview、notice 和 reasoning；向通知规则提供窄 SendAssistant 能力。 |
-| replyCommitter | 直接使用消息仓库、outputSender 和本轮 turnOutput，处理最终 Hook、空回复、延迟 outputs、发送／落库顺序及回执关联；返回消息标识、原始文本、实际 assistant 回执、持久化结果和分阶段错误。 |
-| executionView / executionTurnOutput | 读取已有 Execution 的接管身份、刷新 Session，并选择前后台输出；保留原请求取消链，接管时清除后台路由、模型和 sandbox 覆盖。 |
+| dialogue.ReplyCommitter | 消费消息仓库、输出准备接口和本轮 Output，处理最终 Hook、空回复、延迟 outputs、发送／落库顺序、部分成功及回执关联。 |
+| dialogue.ExecutionView / executionTurnOutput | 读取已有 Execution 的接管身份、刷新 Session，并选择前后台输出；保留原请求取消链，接管时清除后台路由、模型和 sandbox 覆盖。 |
 | toolRunPromptProvider | 直接使用 ToolRun 和 identityResolver 查询 schema 与工具名。 |
 
-Agent 只保存对外能力所需的组件引用和信号集合；消息、后台、压缩、接管、文件命令、Scope、状态查询和 Hook 入口均为薄委托。配置由 `Options` 在构造时注入，Agent 不提供运行时 setter，不保留共享服务、Prompt 材料或构造中间组件的副本。工具运行配置和确认超时策略由实际消费者共享，输入／后台预加载和补全直接使用 Registry、Preloader；必要诊断与入口审计的 Logger 也直接注入所属组件。
+Agent 只保存对外能力所需的组件引用和信号集合；消息、后台、压缩、接管、文件命令、Scope、状态查询和 Hook 入口均为薄委托。行为由 `Config`、必需服务由 `Dependencies` 在构造时注入，Agent 不提供运行时 setter，不保留共享服务、Prompt 材料或构造中间组件的副本。工具运行配置和确认超时策略由实际消费者共享，输入／后台预加载和补全直接使用 Registry、Preloader；必要诊断与入口审计的 Logger 也直接注入所属组件。
 
-追加确认通过 Turn 的 `AppendWait` 固定本次等待对象；取消或过期只处理该对象，不能移除已恢复的执行或后续确认。executionCoordinator 的 `appendWaitLifecycle` 保留原 context 的来源／binding，取消链由 `Options.RuntimeContext` 提供；不受单次请求结束影响，无过期时限的等待也纳入关闭。Agent 的 `Close(ctx)`／`Done()` 为薄委托，app 在释放依赖前按共享预算等待定时任务和过期提示实际退出；未退出则保留 Hook 等依赖。非 app 装配若未提供 RuntimeContext，必须显式 Close。
+追加确认通过 Turn 的 `AppendWait` 固定本次等待对象；取消或过期只处理该对象，不能移除已恢复的执行或后续确认。executionCoordinator 的 `appendWaitLifecycle` 保留原 context 的来源／binding，取消链由 `New` 的必传 runtime context 提供；不受单次请求结束影响，无过期时限的等待也纳入关闭。Agent 的 `Close(ctx)`／`Done()` 为薄委托，app 在释放依赖前按共享预算等待定时任务和过期提示实际退出；未退出则保留 Hook 等依赖。独立装配也必须提供生命周期 context，关闭时使用同一 Close／Done 约定。
 
 `Agent.Signals()` 暴露输入、模型、工具、确认、拒绝、持久化失败、超时、状态、提示及回复事实；app 的日志订阅保留既有字段、级别和记录次数，消费者错误不改变核心结果。关键提交、Usage、工具记录、Hook 改写结果和取消仍直接处理。
 
 状态展示由 app 按 Session、原来源和实际展示目标保存最新版本，后台 worker 合并发送；同一用户的不同远程 CLI 连接仍是不同目标。发送期间的新状态会再次调度，最后 done/error 不依赖后续事件唤醒、不因队列容量丢失；后台只记录不展示，绑定失效时清理积压。视觉降级去重由通知规则按 Session 管理。
+
+<!-- locator:protocol-routing -->
+## 协议路线与压缩分派
+
+- `llm.ProtocolID` 与 Session 的 chat/work/background 模式独立；模型选择快照携带协议。本阶段只实际登记 Chat，provider 配置及 Responses 客户端在后续步骤接入。
+- `agent/routes.Registry` 在一处登记 Protocol、Loop、Compactor；Register 拒绝重复及缺失必需 Loop，Seal 后不能修改，封闭前不能执行能力查询。可选能力缺失时查询明确报错。
+- dialogue 只依赖 LoopResolver，contextmgr 只依赖 CompactorResolver；注册表依赖公共契约，公共层不导入注册表实现、Agent 根包或具体路线。
+- app 在创建上下文服务前建立注册表，Agent 装配内部路线并封闭注册表，验证 Chat 压缩接线成功后返回。注册表不保存执行、会话或工具状态，不提供完整依赖容器。
+- `/compact` 与自动阈值继续进入 executionCoordinator，公共 contextmgr.Compact 按源协议查询 Compactor；Chat 私有实现负责历史筛选、摘要提示、模型选择和 seed 准备。公共层负责命名信息与统计，执行／Session 负责创建、继承、保存和交接。
+- Chat 保留当前文字摘要与 seed 格式、成功保存后消费 seed 的语义。Responses 原生记录、seed、兼容检查和恢复仍属后续步骤，不能视为已接入。
 
 <!-- locator:commands -->
 ## 命令链路
@@ -172,7 +185,7 @@ Slash 命令链路：
 简化链路：
 
 1. LLM 返回 tool call。
-2. chatRunner 进入工具阶段，由 toolRunDeps 登记工具子请求并记录实际调用。
+2. Chat 路线进入工具阶段，通过公共 ToolExecutor 调用既有 ToolRun，由 toolRunDeps 登记工具子请求并记录实际调用。
 3. prepared Hook 只能改写 arguments；ToolRun 用最终参数做工具视图、命名解析、foreground-only 过滤、权限和风险确认，并把同一参数回灌当前 assistant tool call。
 4. Tool Runtime 执行具体工具，并按 Actor/Policy 做风险兜底校验。
 5. 已进入实际执行阶段的工具结果以 text/image segments 通过完成 Hook；工具发现状态完成提交后，再统一记录最终结果并写入 transcript；纯文本只存 `content`，多模态结果额外存 `segments`。执行前失败或拒绝不触发完成 Hook。

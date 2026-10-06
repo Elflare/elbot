@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	agentevents "elbot/internal/agent/events"
 	"elbot/internal/command"
 	"elbot/internal/llm"
 	"elbot/internal/request"
@@ -34,7 +35,7 @@ type confirmationCoordinator struct {
 	identity           *identityResolver
 	output             *outputSender
 	policy             *confirmationPolicy
-	changed            *signal.Signal[ConfirmationChangedEvent]
+	changed            *signal.Signal[agentevents.ConfirmationChangedEvent]
 	autoConfirmMu      sync.Mutex
 	autoConfirmSession map[string]bool
 	autoConfirmTools   map[string]map[string]bool
@@ -72,11 +73,11 @@ func (c *confirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 		return err
 	}
 	ctx = locked
-	var observed *ConfirmationChangedEvent
+	var observed *agentevents.ConfirmationChangedEvent
 	defer func() {
 		release()
 		if observed != nil {
-			emitFact(ctx, c.changed, *observed)
+			agentevents.Emit(ctx, c.changed, *observed)
 		}
 	}()
 	confirmation, hasConfirmation := c.turns.PendingRiskConfirmation(sessionID)
@@ -135,8 +136,8 @@ func (c *confirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 	return nil
 }
 
-func confirmationAction(ctx context.Context, sessionID, action string, confirmation turn.RiskConfirmation, extra string) *ConfirmationChangedEvent {
-	return &ConfirmationChangedEvent{EventMeta: eventMeta(ctx, sessionID), Phase: "command", Action: action, Tool: confirmation.ToolName, Risk: confirmation.Risk, Extra: extra}
+func confirmationAction(ctx context.Context, sessionID, action string, confirmation turn.RiskConfirmation, extra string) *agentevents.ConfirmationChangedEvent {
+	return &agentevents.ConfirmationChangedEvent{EventMeta: agentevents.Meta(ctx, sessionID), Phase: "command", Action: action, Tool: confirmation.ToolName, Risk: confirmation.Risk, Extra: extra}
 }
 
 func (c *confirmationCoordinator) isSessionAutoConfirmed(sessionID string) bool {
@@ -167,10 +168,10 @@ func (c *confirmationCoordinator) setToolAutoConfirmed(sessionID, toolName strin
 }
 
 func (c *confirmationCoordinator) publishConfirmationWait(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reasons []string) {
-	emitFact(ctx, c.changed, ConfirmationChangedEvent{EventMeta: eventMeta(ctx, sessionID), Phase: "wait", Tool: call.Name, Risk: string(risk), Arguments: call.Arguments, Reasons: strings.Join(reasons, "; ")})
+	agentevents.Emit(ctx, c.changed, agentevents.ConfirmationChangedEvent{EventMeta: agentevents.Meta(ctx, sessionID), Phase: "wait", Tool: call.Name, Risk: string(risk), Arguments: call.Arguments, Reasons: strings.Join(reasons, "; ")})
 }
 func (c *confirmationCoordinator) publishConfirmationResult(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, action, extra, reason string) {
-	emitFact(ctx, c.changed, ConfirmationChangedEvent{EventMeta: eventMeta(ctx, sessionID), Phase: "result", Tool: call.Name, Risk: string(risk), Action: action, Extra: extra, Reason: reason})
+	agentevents.Emit(ctx, c.changed, agentevents.ConfirmationChangedEvent{EventMeta: agentevents.Meta(ctx, sessionID), Phase: "result", Tool: call.Name, Risk: string(risk), Action: action, Extra: extra, Reason: reason})
 }
 func (c *confirmationCoordinator) AwaitToolConfirmation(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (toolrun.ConfirmResult, error) {
 	if c.isSessionAutoConfirmed(sessionID) || c.isToolAutoConfirmed(sessionID, call.Name) {

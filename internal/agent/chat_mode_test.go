@@ -62,7 +62,7 @@ func TestChatModeIgnoresForcedHookToolsAndModelCalls(t *testing.T) {
 		if len(requests) != 1 || len(requests[0].Tools) != 0 {
 			t.Fatalf("chat sent tools or entered tool loop: requests=%+v", requests)
 		}
-		messages, err := a.execution.chat.messages.ListBySession(ctx, id)
+		messages, err := a.execution.dialogue.Messages.Repository.ListBySession(ctx, id)
 		if err != nil {
 			t.Fatal(err)
 		}

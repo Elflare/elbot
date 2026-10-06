@@ -1,7 +1,7 @@
 package agent
 
 import (
-	"elbot/internal/config"
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/fileops"
 	"elbot/internal/memory/resident"
 	"elbot/internal/tool"
@@ -9,27 +9,26 @@ import (
 )
 
 type toolRuntimeState struct {
-	provider        ToolSchemaProvider
+	provider        dialogue.ToolSchemaProvider
 	manager         *toolrun.Manager
 	registry        *tool.Registry
 	fileRollback    *fileops.Service
-	config          config.ToolsConfig
 	defaultProvider bool
 }
 
-func buildPrompt(soulPath string, memory *resident.Store, provider ToolSchemaProvider, preloader *toolrun.PreloadService) PromptBuilder {
-	soul := SoulProvider(staticSoulProvider{Prompt: "You are a helpful assistant."})
+func buildSystemPrompt(soulPath string, memory *resident.Store, provider dialogue.ToolSchemaProvider, preloader *toolrun.PreloadService) dialogue.SystemPromptManager {
+	soul := dialogue.SoulProvider(dialogue.StaticSoulProvider{Prompt: "You are a helpful assistant."})
 	if soulPath != "" {
-		soul = &FileSoulProvider{Path: soulPath}
+		soul = &dialogue.FileSoulProvider{Path: soulPath}
 	}
-	manager := NewSystemPromptManager(soulSystemPromptSource{Soul: soul})
-	if nameProvider, ok := provider.(ToolNameProvider); ok {
-		manager.AddSource(toolNamesSystemPromptSource{Tools: nameProvider})
+	manager := dialogue.NewSystemPromptManager(dialogue.SoulSystemPromptSource{Soul: soul})
+	if nameProvider, ok := provider.(dialogue.ToolNameProvider); ok {
+		manager.AddSource(dialogue.ToolNamesSystemPromptSource{Tools: nameProvider})
 	}
 	if preloader != nil {
-		manager.AddSource(toolTagsSystemPromptSource{Preloader: preloader})
+		manager.AddSource(dialogue.ToolTagsSystemPromptSource{Preloader: preloader})
 	}
-	manager.AddSource(residentMemorySystemPromptSource{Store: memory})
-	manager.AddSource(conversationMetaSystemPromptSource{})
-	return PromptBuilder{System: manager}
+	manager.AddSource(dialogue.ResidentMemorySystemPromptSource{Store: memory})
+	manager.AddSource(dialogue.ConversationMetaSystemPromptSource{})
+	return manager
 }

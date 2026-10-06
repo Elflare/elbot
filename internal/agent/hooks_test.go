@@ -118,7 +118,7 @@ func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
 		t.Fatalf("start turn: %v", err)
 	}
 	defer parentDone()
-	ctx := withTurnRequestID(parentCtx, parent.ID)
+	ctx := request.WithTurnID(parentCtx, parent.ID)
 
 	if err := manager.Register(hook.Registration{
 		Point: hook.PointAgentInputPrepared,

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/request"
@@ -15,9 +16,9 @@ import (
 	"elbot/internal/turn"
 )
 
-type preparationPromptSource func(context.Context, SystemPromptRequest) ([]SystemPromptPart, error)
+type preparationPromptSource func(context.Context, dialogue.SystemPromptRequest) ([]dialogue.SystemPromptPart, error)
 
-func (f preparationPromptSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
+func (f preparationPromptSource) Parts(ctx context.Context, req dialogue.SystemPromptRequest) ([]dialogue.SystemPromptPart, error) {
 	return f(ctx, req)
 }
 
@@ -27,7 +28,7 @@ func TestTurnPreparationUsesRequestContext(t *testing.T) {
 			t.Run(stage+"/"+reason, func(t *testing.T) {
 				model := &fakeLLM{replies: []string{"unexpected"}}
 				f := newExecutionFixture(t, model, newTestStore(t))
-				f.hooks.SetObserver(f.chat.hooks.ObserveRun)
+				f.hooks.SetObserver(f.chat.Preparer.Hooks.(*hookBridge).ObserveRun)
 				ctx, reqCtx, in, _ := f.begin(t)
 				wantErr := context.Canceled
 				if reason == "timeout" {
@@ -39,7 +40,7 @@ func TestTurnPreparationUsesRequestContext(t *testing.T) {
 				var observedID, parentID string
 				var observedErr error
 				observe := func(preparationCtx context.Context) {
-					observedID = turnRequestIDFromContext(preparationCtx)
+					observedID = request.TurnIDFromContext(preparationCtx)
 					if stage == "hook" {
 						for _, active := range f.opts.Requests.ListBySession(in.Session.ID) {
 							if active.Kind == request.KindHook {
@@ -59,11 +60,11 @@ func TestTurnPreparationUsesRequestContext(t *testing.T) {
 					observedErr = preparationCtx.Err()
 				}
 				if stage == "prompt" {
-					f.chat.promptBuilder.System = NewSystemPromptManager(preparationPromptSource(func(pctx context.Context, _ SystemPromptRequest) ([]SystemPromptPart, error) {
+					f.chat.PromptBuilder.System = dialogue.NewSystemPromptManager(preparationPromptSource(func(pctx context.Context, _ dialogue.SystemPromptRequest) ([]dialogue.SystemPromptPart, error) {
 						observe(pctx)
 						// A provider may return success despite cancellation; preparation
 						// must still stop before persisting the new user message.
-						return []SystemPromptPart{{Content: "test"}}, nil
+						return []dialogue.SystemPromptPart{{Content: "test"}}, nil
 					}))
 				} else if err := f.hooks.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "preparation.cancel", Match: hook.Always(), Handler: hook.HandlerFunc(func(hctx context.Context, event hook.Event) (hook.Event, error) {
 					observe(hctx)
@@ -71,14 +72,14 @@ func TestTurnPreparationUsesRequestContext(t *testing.T) {
 				})}); err != nil {
 					t.Fatal(err)
 				}
-				result := f.chat.RunTurn(ctx, reqCtx, in, f.out)
+				result := f.runner.RunTurn(ctx, reqCtx, in, f.out)
 				if observedID != in.RequestID || !errors.Is(observedErr, wantErr) {
 					t.Fatalf("request ownership: id=%q want=%q err=%v want=%v", observedID, in.RequestID, observedErr, wantErr)
 				}
 				if stage == "hook" && parentID != in.RequestID {
 					t.Fatalf("hook parent=%q want=%q", parentID, in.RequestID)
 				}
-				if result.Outcome != chatTurnCanceled || !result.QuietCancellation || !errors.Is(result.Err, wantErr) {
+				if result.Outcome != dialogue.Canceled || !result.QuietCancellation || !errors.Is(result.Err, wantErr) {
 					t.Fatalf("result=%+v want canceled with %v", result, wantErr)
 				}
 				messages, err := f.opts.Store.Messages().ListBySession(context.Background(), in.Session.ID)
@@ -99,9 +100,9 @@ func TestExecutionPreparationCancellationCleansUp(t *testing.T) {
 				f.execution.responseTimeout = 20 * time.Millisecond
 				wantErr = context.DeadlineExceeded
 			}
-			f.chat.promptBuilder.System = NewSystemPromptManager(preparationPromptSource(func(pctx context.Context, _ SystemPromptRequest) ([]SystemPromptPart, error) {
+			f.chat.PromptBuilder.System = dialogue.NewSystemPromptManager(preparationPromptSource(func(pctx context.Context, _ dialogue.SystemPromptRequest) ([]dialogue.SystemPromptPart, error) {
 				if reason == "cancel" {
-					f.opts.Requests.Cancel(turnRequestIDFromContext(pctx))
+					f.opts.Requests.Cancel(request.TurnIDFromContext(pctx))
 				} else {
 					select {
 					case <-pctx.Done():
@@ -109,7 +110,7 @@ func TestExecutionPreparationCancellationCleansUp(t *testing.T) {
 						t.Fatal("preparation did not time out")
 					}
 				}
-				return []SystemPromptPart{{Content: "test"}}, nil
+				return []dialogue.SystemPromptPart{{Content: "test"}}, nil
 			}))
 			ctx, row, err := f.execution.resolveInput(context.Background(), "hello")
 			if err != nil {

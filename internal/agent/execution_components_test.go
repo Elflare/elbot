@@ -7,7 +7,11 @@ import (
 	"testing"
 	"time"
 
+	chatroute "elbot/internal/agent/chat"
+	"elbot/internal/agent/dialogue"
+	"elbot/internal/agent/routes"
 	"elbot/internal/config"
+	"elbot/internal/contextmgr"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
@@ -21,12 +25,13 @@ import (
 
 // Build the execution graph directly: none of these participants need Agent.
 type executionFixture struct {
-	opts          Options
+	opts          testAssembly
 	execution     *executionCoordinator
-	chat          *chatRunner
+	chat          *chatroute.Loop
+	runner        *dialogue.Runner
 	confirmations *confirmationCoordinator
 	hooks         *hook.DefaultManager
-	out           turnOutput
+	out           dialogue.Output
 }
 
 func newExecutionFixture(t *testing.T, client llm.LLM, store storage.Store) *executionFixture {
@@ -44,33 +49,36 @@ func newExecutionFixture(t *testing.T, client llm.LLM, store storage.Store) *exe
 	bridge := &hookBridge{manager: hooks, requests: opts.Requests, identity: identity, dispatcher: opts.Dispatcher}
 	status := &statusRecorder{}
 	output := &outputSender{dispatcher: opts.Dispatcher, notifications: opts.Notifications, hooks: bridge, identity: identity}
-	view := executionView{sessions: store.Sessions()}
+	view := dialogue.ExecutionView{Sessions: store.Sessions()}
 	policy := &confirmationPolicy{identity: identity, userConfirmationTimeout: time.Second}
 	confirmations := &confirmationCoordinator{
 		sessions: opts.Sessions, requests: opts.Requests, turns: opts.Turns, commands: opts.Commands,
 		identity: identity, output: output, policy: policy,
 		autoConfirmSession: map[string]bool{}, autoConfirmTools: map[string]map[string]bool{},
 	}
-	runtime := toolRuntimeState{provider: noopToolSchemaProvider{}, defaultProvider: true, config: opts.ToolsConfig, manager: opts.ToolRunner}
+	runtime := toolRuntimeState{provider: dialogue.NoopToolSchemaProvider{}, defaultProvider: true, manager: opts.ToolRunner}
 	deps := &toolRunDeps{hooks: bridge, requests: opts.Requests, turns: opts.Turns, identity: identity,
 		state: opts.ToolState, runtime: &runtime, sessions: opts.Sessions, store: store, confirmations: confirmations, view: view}
-	caller := &modelCaller{messages: store.Messages(), hooks: bridge, identity: identity, toolState: opts.ToolState, toolRuntime: &runtime}
-	chat := &chatRunner{
-		messages: store.Messages(), contexts: opts.Contexts, models: models, turns: opts.Turns, identity: identity,
-		hooks: bridge, view: view, toolRuntime: &runtime, toolState: opts.ToolState, toolDeps: deps, caller: caller,
-		replies:       &replyCommitter{messages: store.Messages(), output: output},
-		promptBuilder: PromptBuilder{System: NewSystemPromptManager(soulSystemPromptSource{Soul: staticSoulProvider{Prompt: "test"}})},
+	tools := &dialogue.ToolExecutor{Manager: opts.ToolRunner, State: opts.ToolState, Registry: opts.ToolRegistry, Provider: runtime.provider, DefaultProvider: true, Identity: identity, Deps: deps, MaxRounds: opts.ToolsConfig.MaxRoundsPerTurn}
+	messages := &dialogue.MessageStore{Repository: store.Messages()}
+	preparer := &dialogue.Preparer{Contexts: opts.Contexts, Identity: identity, Hooks: bridge, Tools: tools}
+	calls := &dialogue.CallProcessor{Messages: messages, Hooks: bridge, Identity: identity, Tools: tools}
+	chat := &chatroute.Loop{Contexts: opts.Contexts, Models: models, Turns: opts.Turns, View: view, Preparer: preparer, Tools: tools, Messages: messages, Caller: &chatroute.Caller{Calls: calls}, PromptBuilder: chatroute.PromptBuilder{System: dialogue.NewSystemPromptManager(dialogue.SoulSystemPromptSource{Soul: dialogue.StaticSoulProvider{Prompt: "test"}})}}
+	if err := opts.Routes.Register(routes.Route{Protocol: llm.ProtocolChat, Loop: chat, Compactor: &chatroute.Compactor{Store: store, Models: models, Contexts: opts.Contexts, Loader: contextmgr.Loader{Store: store}}}); err != nil {
+		t.Fatal(err)
 	}
-	execution := &executionCoordinator{sessions: opts.Sessions, sessionRows: store.Sessions(), turns: opts.Turns,
-		requests: opts.Requests, contexts: opts.Contexts, models: models, chat: chat, identity: identity,
-		view: view, output: output, status: status, waitPolicy: policy, appendWaits: newAppendWaitLifecycle(t.Context())}
+	if err := opts.Routes.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	runner := &dialogue.Runner{Routes: opts.Routes, Preparer: preparer, Messages: messages, Replies: &dialogue.ReplyCommitter{Messages: store.Messages(), Output: output}, Turns: opts.Turns, View: view}
+	execution := &executionCoordinator{sessions: opts.Sessions, sessionRows: store.Sessions(), turns: opts.Turns, requests: opts.Requests, contexts: opts.Contexts, models: models, dialogue: runner, identity: identity, view: view, output: output, status: status, waitPolicy: policy, appendWaits: newAppendWaitLifecycle(t.Context())}
 	opts.Sessions.SetForegroundActivation(execution.AdoptForeground)
 	t.Cleanup(opts.Turns.StopAll)
 	t.Cleanup(func() { _ = opts.Sessions.Close(context.Background()) })
-	return &executionFixture{opts: opts, execution: execution, chat: chat, confirmations: confirmations, hooks: hooks, out: foregroundTurnOutput{sender: output, status: status}}
+	return &executionFixture{opts: opts, execution: execution, chat: chat, runner: runner, confirmations: confirmations, hooks: hooks, out: foregroundTurnOutput{sender: output, status: status}}
 }
 
-func (f *executionFixture) begin(t *testing.T) (context.Context, context.Context, chatTurnInput, *turn.Execution) {
+func (f *executionFixture) begin(t *testing.T) (context.Context, context.Context, dialogue.TurnInput, *turn.Execution) {
 	t.Helper()
 	ctx, row, err := f.execution.resolveInput(context.Background(), "hello")
 	if err != nil {
@@ -81,7 +89,7 @@ func (f *executionFixture) begin(t *testing.T) (context.Context, context.Context
 	if !f.opts.Turns.StartExecution(row.ID, turn.Input{Text: "hello"}, execution, "attempt") {
 		t.Fatal("start attempt")
 	}
-	prepared, err := f.chat.prepareTurn(ctx, row, "hello")
+	prepared, err := f.runner.PrepareTurn(ctx, dialogue.TurnInput{Session: row, Text: "hello", Input: turn.Input{Text: "hello"}, Selection: modelmgr.SelectionForTurn(ctx, f.opts.Models, row)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +98,7 @@ func (f *executionFixture) begin(t *testing.T) (context.Context, context.Context
 		t.Fatal(err)
 	}
 	t.Cleanup(done)
-	return ctx, withTurnRequestID(requestCtx, info.ID), chatTurnInput{Session: row, Text: "hello", Selection: modelSelectionForTurn(ctx, f.opts.Models, row), RequestID: info.ID, Prepared: prepared}, execution
+	return ctx, request.WithTurnID(requestCtx, info.ID), dialogue.TurnInput{Session: row, Text: "hello", Selection: modelmgr.SelectionForTurn(ctx, f.opts.Models, row), RequestID: info.ID, Prepared: prepared}, execution
 }
 
 func (f *executionFixture) on(t *testing.T, point hook.Point, fn func(hook.Event) hook.Event) {
@@ -102,14 +110,14 @@ func (f *executionFixture) on(t *testing.T, point hook.Point, fn func(hook.Event
 	}
 }
 
-func TestChatRunnerStructuredOutcomes(t *testing.T) {
+func TestDialogueRunnerStructuredOutcomes(t *testing.T) {
 	for _, name := range []string{"completed", "failed", "canceled", "paused", "superseded", "stopped"} {
 		t.Run(name, func(t *testing.T) {
 			model := &fakeLLM{replies: []string{"done"}}
-			want := chatTurnCompleted
+			want := dialogue.Completed
 			if name == "failed" {
 				model.replies = []string{"__ERR__"}
-				want = chatTurnFailed
+				want = dialogue.Failed
 			}
 			f := newExecutionFixture(t, model, newTestStore(t))
 			ctx, requestCtx, in, execution := f.begin(t)
@@ -120,28 +128,28 @@ func TestChatRunnerStructuredOutcomes(t *testing.T) {
 						f.opts.Turns.StartToolPhase(in.Session.ID, "attempt")
 						f.opts.Turns.AppendPendingInput(in.Session.ID, turn.Input{Text: "next"})
 					case "canceled":
-						want = chatTurnCanceled
+						want = dialogue.Canceled
 						f.opts.Requests.CancelSession(in.Session.ID)
 					case "paused", "superseded":
-						want = chatTurnPaused
+						want = dialogue.Paused
 						f.opts.Turns.InterruptLLMInput(in.Session.ID, turn.Input{Text: "append"})
 						f.opts.Requests.CancelSession(in.Session.ID)
 						if name == "superseded" {
-							want = chatTurnSuperseded
+							want = dialogue.Superseded
 							merged, same, ok := f.opts.Turns.ResumeAppend(in.Session.ID)
 							if !ok || same != execution || !f.opts.Turns.StartExecution(in.Session.ID, merged, same, "next-attempt") {
 								t.Fatal("resume attempt")
 							}
 						}
 					case "stopped":
-						want = chatTurnStopped
+						want = dialogue.Stopped
 						f.opts.Turns.StopSession(in.Session.ID, "attempt")
 						e.LLM.ToolCalls = []llm.ToolCallRequest{{ID: "stopped-tool", Name: "unused"}}
 					}
 					return e
 				})
 			}
-			result := f.chat.RunTurn(ctx, requestCtx, in, f.out)
+			result := f.runner.RunTurn(ctx, requestCtx, in, f.out)
 			if result.Outcome != want {
 				t.Fatalf("outcome=%v want=%v err=%v", result.Outcome, want, result.Err)
 			}

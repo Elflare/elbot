@@ -261,18 +261,17 @@ func buildAgent(ctx context.Context, foundation *FoundationComponents, platforms
 	runner.Media = services.Media
 	preloader := toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: tools.Registry, TagsPath: cfg.ToolTagsConfigPath, Tags: cfg.ToolTags, Audit: auditFunc(foundation.Logs)})
 	services.ToolPreloader = preloader
-	agt, err := agent.NewWithOptions(agent.Options{
-		RuntimeContext: ctx,
-		Platform:       platforms.Primary, Models: services.Models,
+	agt, err := agent.New(ctx, agent.Config{SoulPath: cfg.Soul.Path, LLMRequestConfig: cfg.LLMRequest, SessionIdleExpiration: cfg.Session.IdleExpiration, SandboxRoot: cfg.Sandbox.Root, ToolsConfig: cfg.Tools}, agent.Dependencies{
+		Routes:   services.Routes,
+		Platform: platforms.Primary, Models: services.Models,
 		Contexts: services.Contexts, ToolState: services.ToolState,
 		Sessions: services.Sessions, Requests: services.Requests, Turns: services.Turns, Commands: services.Commands,
 		Store: foundation.Store, Media: services.Media,
-		SoulPath: cfg.Soul.Path, ResidentMemoryStore: tools.ResidentMemoryStore,
-		LLMRequestConfig: cfg.LLMRequest, HookManager: hooks, HookRuntime: hookRuntime,
+		ResidentMemoryStore: tools.ResidentMemoryStore,
+		HookManager:         hooks, HookRuntime: hookRuntime,
 		Dispatcher: services.Dispatcher, Notifications: services.Notifications,
 		Logs: foundation.Logs, ToolRegistry: tools.Registry, ToolRunner: runner, ToolPreloader: preloader, FileRollback: services.Files,
-		SecurityPolicy: services.Policy, SessionIdleExpiration: cfg.Session.IdleExpiration,
-		SandboxRoot: cfg.Sandbox.Root, ToolsConfig: cfg.Tools,
+		SecurityPolicy: services.Policy,
 	})
 	if err != nil {
 		return nil, err

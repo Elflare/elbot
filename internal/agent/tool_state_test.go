@@ -72,7 +72,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	if row.Metadata != before || latest.Metadata != before || tools.Text != input || skills.Text != input || len(tools.Injected) > 0 || len(skills.Skills) > 0 {
 		t.Fatalf("failed commit leaked state: tools=%+v skills=%+v row=%s", tools, skills, row.Metadata)
 	}
-	schemas, err := a.execution.chat.toolsForSession(ctx, row)
+	schemas, err := a.execution.dialogue.Preparer.Tools.Schemas(ctx, row)
 	if err != nil || toolNames(schemas) != "discover_tool" {
 		t.Fatalf("failed schema published: %s %v", toolNames(schemas), err)
 	}
@@ -152,7 +152,7 @@ func TestFailedDiscoveryMatchesTranscriptAndNextSchema(t *testing.T) {
 	if err != nil || successes["discovery"] {
 		t.Fatalf("failed discovery recorded success: %v %v", successes, err)
 	}
-	state, err := a.execution.chat.toolState.Snapshot(ctx, row.ID)
+	state, err := a.execution.dialogue.Preparer.Tools.State.Snapshot(ctx, row.ID)
 	if err != nil || len(state.ToolCache) != 0 {
 		t.Fatalf("state=%+v err=%v", state, err)
 	}
@@ -174,7 +174,7 @@ func TestForkKeepsHistoryWithoutCopyingToolOrUsageState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state, err := a.execution.chat.toolState.Snapshot(ctx, fork.ID)
+	state, err := a.execution.dialogue.Preparer.Tools.State.Snapshot(ctx, fork.ID)
 	if err != nil || len(state.ToolCache) != 0 || a.execution.usageForSession(fork) != nil {
 		t.Fatalf("fork inherited state: %+v err=%v", state, err)
 	}

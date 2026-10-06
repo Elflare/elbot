@@ -9,26 +9,26 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/agent"
+	agentevents "elbot/internal/agent/events"
 	"elbot/internal/llm"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
 
-func observerSignals() agent.Signals {
-	return agent.Signals{
-		UserInputReceived:   signal.New[agent.UserInputReceivedEvent]("input", nil),
-		PersistenceFailed:   signal.New[agent.PersistenceFailedEvent]("persistence", nil),
-		TurnTimedOut:        signal.New[agent.TurnTimedOutEvent]("timeout", nil),
-		ModelCallCompleted:  signal.New[agent.ModelCallCompletedEvent]("model", nil),
-		ToolCallCompleted:   signal.New[agent.ToolCallCompletedEvent]("tool", nil),
-		ConfirmationChanged: signal.New[agent.ConfirmationChangedEvent]("confirmation", nil),
-		ToolDenied:          signal.New[agent.ToolDeniedEvent]("denied", nil),
-		StatusChanged:       signal.New[agent.StatusChangedEvent]("status", nil),
-		VisionFallbackUsed:  signal.New[agent.VisionFallbackUsedEvent]("vision", nil),
-		HookFailed:          signal.New[agent.HookFailedEvent]("hook", nil),
-		ReplyDelivered:      signal.New[agent.ReplyDeliveredEvent]("delivery", nil),
-		ReplyCommitted:      signal.New[agent.ReplyCommittedEvent]("commit", nil),
+func observerSignals() agentevents.Signals {
+	return agentevents.Signals{
+		UserInputReceived:   signal.New[agentevents.UserInputReceivedEvent]("input", nil),
+		PersistenceFailed:   signal.New[agentevents.PersistenceFailedEvent]("persistence", nil),
+		TurnTimedOut:        signal.New[agentevents.TurnTimedOutEvent]("timeout", nil),
+		ModelCallCompleted:  signal.New[agentevents.ModelCallCompletedEvent]("model", nil),
+		ToolCallCompleted:   signal.New[agentevents.ToolCallCompletedEvent]("tool", nil),
+		ConfirmationChanged: signal.New[agentevents.ConfirmationChangedEvent]("confirmation", nil),
+		ToolDenied:          signal.New[agentevents.ToolDeniedEvent]("denied", nil),
+		StatusChanged:       signal.New[agentevents.StatusChangedEvent]("status", nil),
+		VisionFallbackUsed:  signal.New[agentevents.VisionFallbackUsedEvent]("vision", nil),
+		HookFailed:          signal.New[agentevents.HookFailedEvent]("hook", nil),
+		ReplyDelivered:      signal.New[agentevents.ReplyDeliveredEvent]("delivery", nil),
+		ReplyCommitted:      signal.New[agentevents.ReplyCommittedEvent]("commit", nil),
 	}
 }
 
@@ -71,18 +71,18 @@ func TestAgentLoggingSubscribersPreserveFactsAndFields(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Facts remain consumable after their request is finished.
-	meta := agent.EventMeta{At: time.Unix(123, 0), SessionID: "s", RunID: "r", Attempt: "a"}
-	model := agent.ModelCallCompletedEvent{EventMeta: meta, Provider: "p", Model: "m", OutputReady: true, Text: "rewritten", SourceText: "source", Usage: &llm.Usage{TotalTokens: 42}, ElapsedMS: 8}
+	meta := agentevents.EventMeta{At: time.Unix(123, 0), SessionID: "s", RunID: "r", Attempt: "a"}
+	model := agentevents.ModelCallCompletedEvent{EventMeta: meta, Provider: "p", Model: "m", OutputReady: true, Text: "rewritten", SourceText: "source", Usage: &llm.Usage{TotalTokens: 42}, ElapsedMS: 8}
 	if err := events.ModelCallCompleted.Emit(ctx, model); err != nil {
 		t.Fatal(err)
 	}
-	if err := events.ToolCallCompleted.Emit(ctx, agent.ToolCallCompletedEvent{EventMeta: meta, Arguments: " {\"x\": 1} ", Record: storage.ToolCallRecord{ToolName: "tool", ToolCallID: "id", ActorID: "actor", RiskLevel: "low", Success: true, ResultPreview: "done"}, RecordErr: errors.New("record failed")}); err != nil {
+	if err := events.ToolCallCompleted.Emit(ctx, agentevents.ToolCallCompletedEvent{EventMeta: meta, Arguments: " {\"x\": 1} ", Record: storage.ToolCallRecord{ToolName: "tool", ToolCallID: "id", ActorID: "actor", RiskLevel: "low", Success: true, ResultPreview: "done"}, RecordErr: errors.New("record failed")}); err != nil {
 		t.Fatal(err)
 	}
-	if err := events.ConfirmationChanged.Emit(ctx, agent.ConfirmationChangedEvent{EventMeta: meta, Phase: "result", Action: "reject", Tool: "tool", Risk: "high", Reason: "no"}); err != nil {
+	if err := events.ConfirmationChanged.Emit(ctx, agentevents.ConfirmationChangedEvent{EventMeta: meta, Phase: "result", Action: "reject", Tool: "tool", Risk: "high", Reason: "no"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := events.ReplyCommitted.Emit(ctx, agent.ReplyCommittedEvent{EventMeta: meta, Persisted: true, MessageID: "msg", AssociationErrors: []error{agent.AssociationFailure{PlatformMessageID: "sent", Err: errors.New("mapping failed")}}}); err != nil {
+	if err := events.ReplyCommitted.Emit(ctx, agentevents.ReplyCommittedEvent{EventMeta: meta, Persisted: true, MessageID: "msg", AssociationErrors: []error{agentevents.AssociationFailure{PlatformMessageID: "sent", Err: errors.New("mapping failed")}}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := b.Close(context.Background()); err != nil {
@@ -166,18 +166,18 @@ func TestLogBackpressureUsesConsumerAndReportsWriteFailure(t *testing.T) {
 	<-started
 	records := make(chan slog.Record, 5)
 	logs := agentLogger{runtime: slog.New(recordHandler{records: records, fail: true})}
-	source := signal.New[agent.UserInputReceivedEvent]("input", nil)
+	source := signal.New[agentevents.UserInputReceivedEvent]("input", nil)
 	_, err = source.Connect(logs.userInput, signal.ConnectOptions{Executor: q, Lifetime: signal.FollowExecutor, Shutdown: signal.Drain})
 	if err != nil {
 		t.Fatal(err)
 	}
-	meta := agent.EventMeta{At: time.Now(), SessionID: "s"}
-	if err := source.Emit(context.Background(), agent.UserInputReceivedEvent{EventMeta: meta, Text: "B"}); err != nil {
+	meta := agentevents.EventMeta{At: time.Now(), SessionID: "s"}
+	if err := source.Emit(context.Background(), agentevents.UserInputReceivedEvent{EventMeta: meta, Text: "B"}); err != nil {
 		t.Fatal(err)
 	}
 	result := make(chan error, 1)
 	go func() {
-		result <- source.Emit(context.Background(), agent.UserInputReceivedEvent{EventMeta: meta, Text: "C"})
+		result <- source.Emit(context.Background(), agentevents.UserInputReceivedEvent{EventMeta: meta, Text: "C"})
 	}()
 	select {
 	case err := <-result:

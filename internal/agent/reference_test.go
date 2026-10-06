@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/chatinfo"
 	"elbot/internal/llm"
 	"elbot/internal/media"
@@ -58,7 +59,7 @@ func TestReferencedOutputMediaReachesVisionAndCanonicalSession(t *testing.T) {
 	if messages[0].ReplyToPlatformMessageID != "sent" {
 		t.Fatalf("stored reply message id = %q", messages[0].ReplyToPlatformMessageID)
 	}
-	segments := messageSegmentsFromStorage(messages[0].Segments)
+	segments := dialogue.MessageSegmentsFromStorage(messages[0].Segments)
 	if len(segments) != 4 || segments[1].MediaID != item.ID || segments[2].Type != llm.SegmentFile || segments[3].MediaID != item.ID || strings.Count(messages[0].Content, item.ID) != 3 {
 		t.Fatalf("stored reference = %#v / %s", segments, messages[0].Content)
 	}

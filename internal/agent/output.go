@@ -6,12 +6,12 @@ import (
 	"log/slog"
 	"strings"
 
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/notification"
-	"elbot/internal/platform"
 )
 
 type outputSender struct {
@@ -44,7 +44,7 @@ func (o *outputSender) PrepareAssistant(ctx context.Context, point hook.Point, t
 }
 
 func (o *outputSender) SendAssistant(ctx context.Context, text string) (delivery.Receipt, error) {
-	if strings.TrimSpace(text) == "" && bufferAssistantOutput(ctx) {
+	if strings.TrimSpace(text) == "" && dialogue.BufferAssistantOutput(ctx) {
 		return delivery.Receipt{}, nil
 	}
 	preparedText, err := o.PrepareAssistant(ctx, hook.PointAgentOutputPrepared, text)
@@ -61,11 +61,6 @@ func (o *outputSender) SendAssistant(ctx context.Context, text string) (delivery
 	o.hooks.Notify(ctx, hook.Event{Point: hook.PointPlatformMessageSent, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(preparedText)}})
 
 	return receipt, nil
-}
-
-func bufferAssistantOutput(ctx context.Context) bool {
-	msg, ok := platform.MessageContextFrom(ctx)
-	return ok && msg.BufferAssistantOutput
 }
 
 func (o *outputSender) TextNotice(ctx context.Context, level slog.Level, text string) {
@@ -145,7 +140,7 @@ func (o *outputSender) replaceStreamOutput(ctx context.Context, streamCtx contex
 }
 
 func (o *outputSender) StartStream(ctx context.Context) delivery.MessageStream {
-	if bufferAssistantOutput(ctx) {
+	if dialogue.BufferAssistantOutput(ctx) {
 		return nil
 	}
 	stream, err := o.dispatcher.StartStream(ctx)
