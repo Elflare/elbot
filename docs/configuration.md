@@ -192,7 +192,9 @@ api_key_env = "OPENAI_API_KEY"
 extra_payload = { reasoning = { effort = "medium" } }
 ```
 
-Responses api 扔可用于命名模型，也可对 Chat api 的sessoin 进行压缩。
+Chat Completions 和 Responses 客户端都可用于命名及 Chat 会话的文字摘要。Responses 会话使用当前对话模型进行原生压缩，不使用 `/model --compact` 的选择。
+
+已有会话的协议和厂商在首次对话时固定。厂商就是 `[providers.<name>]` 的节点名：Chat 会话可切换到其他 Chat 厂商；Responses 会话只能切换同一节点下的 Responses 模型。跨协议或跨 Responses 厂商需要新建会话。同一节点的 `base_url` 变化时，Responses 用完整本地原生材料重建链。
 
 ## 内置 Web 工具配置
 
@@ -497,6 +499,7 @@ compact_trigger_ratio = 0.8
 - 开启后，Session 上下文接近窗口上限时会触发压缩。
 - 也可以通过 `/compact` 手动压缩当前 Session。
 - 压缩成功后会切换到独立的新 Session，不修改原 Session 的历史。
+- 两种协议共用上述开关、阈值和当前模型的窗口配置。Responses 调用当前对话模型的 `/responses/compact`，保留整个原生返回窗口作为新会话起点。
 
 模型窗口在 `providers.toml` 的 `model_configs` 中配置：
 

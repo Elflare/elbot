@@ -26,6 +26,7 @@ type Event struct {
 	Response       *Response       `json:"response"`
 	Code           string          `json:"code"`
 	Message        string          `json:"message"`
+	Param          string          `json:"param"`
 	Error          error           `json:"-"`
 }
 
@@ -119,10 +120,14 @@ func readStream(ctx context.Context, sse *httpclient.SSE, out chan<- Event) {
 					reason = event.Response.IncompleteDetails.Reason
 				}
 			}
-			event.Error = fmt.Errorf("%s: %s", event.Type, reason)
+			if event.Response != nil && event.Response.Error != nil {
+				event.Error = event.Response.Error
+			} else {
+				event.Error = fmt.Errorf("%s: %s", event.Type, reason)
+			}
 		case "error":
 			terminal = true
-			event.Error = fmt.Errorf("response error %s: %s", event.Code, httpclient.SafeSummary([]byte(event.Message)))
+			event.Error = &APIError{Code: event.Code, Message: event.Message, Param: event.Param}
 		}
 		if !send(event) || terminal {
 			return

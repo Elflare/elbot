@@ -2,11 +2,13 @@ package builtin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"elbot/internal/command"
 	"elbot/internal/modelmgr"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 )
 
@@ -61,22 +63,49 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 	}
 	var selected modelmgr.ModelOption
 	switch target {
-	case modelTargetChat:
-		selected, err = deps.Models.SelectModelForMode(storage.SessionModeChat, args)
-	case modelTargetWork:
-		selected, err = deps.Models.SelectModelForMode(storage.SessionModeWork, args)
-	case modelTargetElwisp1, modelTargetElwisp2, modelTargetElwisp3:
-		selected, err = deps.Models.SelectModelForMode(string(target), args)
 	case modelTargetCompact:
 		selected, err = deps.Models.SelectCompactModel(args)
 	case modelTargetNaming:
 		selected, err = deps.Models.SelectNamingModel(args)
 	default:
-		mode := deps.Sessions.DefaultMode()
-		if current, currentErr := deps.Sessions.Current(ctx, deps.Scope(ctx)); currentErr == nil && current.Mode != "" {
+		mode := storage.SessionModeWork
+		var current *storage.Session
+		if deps.Sessions != nil {
+			mode = deps.Sessions.DefaultMode()
+			var currentErr error
+			current, currentErr = deps.Sessions.Current(ctx, deps.Scope(ctx))
+			if currentErr != nil && !errors.Is(currentErr, storage.ErrNotFound) {
+				return nil, currentErr
+			}
+		}
+		if current != nil && current.Mode != "" && current.Mode != storage.SessionModeBackground {
 			mode = current.Mode
 		}
-		selected, err = deps.Models.SelectModelForMode(mode, args)
+		if current != nil && current.Mode == storage.SessionModeBackground {
+			mode = storage.SessionModeWork
+		}
+		currentMode := mode
+		if target != modelTargetCurrent {
+			mode = string(target)
+		}
+		selected, err = deps.Models.PrepareModel(args)
+		if err == nil && current != nil && mode == currentMode {
+			source, known, originErr := session.Origin(current)
+			err = originErr
+			if err == nil && known {
+				if deps.Providers == nil {
+					return nil, fmt.Errorf("provider bindings are required for model compatibility")
+				}
+				targetOrigin, targetErr := deps.Providers.OriginFor(selected.Provider)
+				err = targetErr
+				if err == nil {
+					err = modelmgr.CanSwitch(source, targetOrigin)
+				}
+			}
+		}
+		if err == nil {
+			selected, err = deps.Models.CommitModelForMode(mode, selected)
+		}
 	}
 	if err != nil {
 		return nil, err

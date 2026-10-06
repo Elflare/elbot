@@ -10,9 +10,11 @@ import (
 // CompactedRequest carries content prepared by the context owner. Session owns
 // inheritance, naming metadata, persistence and foreground activation.
 type CompactedRequest struct {
-	ID       string
-	Title    string
-	Metadata string
+	ID                   string
+	Title                string
+	Metadata             string
+	Seed                 *storage.NativeSeed
+	ExpectedCheckpointID string
 }
 
 func (s *Service) CreateCompacted(ctx context.Context, scope Scope, sourceID string, req CompactedRequest) (*storage.Session, error) {
@@ -78,8 +80,14 @@ func (s *Service) CreateCompacted(ctx context.Context, scope Scope, sourceID str
 	next := &storage.Session{ID: req.ID, OwnerID: source.OwnerID, Platform: source.Platform,
 		PlatformScopeID: source.PlatformScopeID, Title: req.Title, Mode: source.Mode,
 		Status: storage.SessionStatusActive, Metadata: metadata}
-	if err := s.store.Sessions().Create(ctx, next); err != nil {
-		return nil, err
+	var saveErr error
+	if req.Seed != nil {
+		saveErr = s.store.Sessions().CreateMaterial(ctx, storage.SessionMaterialCreate{Session: next, Seed: req.Seed, SourceSessionID: sourceID, ExpectedCheckpointID: req.ExpectedCheckpointID})
+	} else {
+		saveErr = s.store.Sessions().Create(ctx, next)
+	}
+	if saveErr != nil {
+		return nil, saveErr
 	}
 	if !background {
 		s.setCurrent(ctx, scope, next.ID, ChangeCreate)

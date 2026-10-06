@@ -17,7 +17,7 @@ func (m *Manager) RetainSessionToolArguments(ctx context.Context, sessionID, arg
 	if sessionID == "" {
 		return errors.New("session ID is required for tool media references")
 	}
-	ids := argumentMediaIDs(arguments)
+	ids := ArgumentMediaIDs(arguments)
 	if len(ids) == 0 {
 		return nil
 	}
@@ -32,7 +32,7 @@ func (m *Manager) RetainSessionToolArguments(ctx context.Context, sessionID, arg
 	return m.Store.MediaReferences().AddAll(ctx, references)
 }
 
-func argumentMediaIDs(arguments string) []string {
+func ArgumentMediaIDs(arguments string) []string {
 	var value any
 	if err := json.Unmarshal([]byte(arguments), &value); err != nil {
 		return nil

@@ -142,7 +142,7 @@ func mustNewWithOptions(t *testing.T, cfg testAgentOptions, configure ...func(*t
 	})
 	if err := commandbuiltin.RegisterDefaultModules(opts.Commands, commandbuiltin.Deps{
 		Router: opts.Commands, Sessions: opts.Sessions, Requests: opts.Requests, Turns: opts.Turns, Store: opts.Store,
-		Scope: a.Scope, Models: opts.Models, Contexts: opts.Contexts, Compact: a,
+		Scope: a.Scope, Models: opts.Models, Providers: opts.Routes, Contexts: opts.Contexts, Compact: a,
 		Tools: testToolRegistry{opts.ToolRegistry}, FileRollback: opts.FileRollback, PrepareFileContext: a.PrepareFileCommand,
 		SessionState: commandbuiltin.NewSessionCommandState(config.Default().View.SessionListPageSize, 30),
 		Audit: func(event string, attrs ...any) {

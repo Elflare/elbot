@@ -95,6 +95,23 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			if _, err := tx.ExecContext(ctx, `INSERT INTO native_inputs(id,session_id,message_id,exchange_id,call_id,item_json,media_json,consumed_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, input.ID, input.SessionID, input.MessageID, input.ExchangeID, input.CallID, input.ItemJSON, input.MediaJSON, input.ConsumedBy, storage.FormatTime(input.CreatedAt)); err != nil {
 				return err
 			}
+			var materials []struct {
+				MediaID string `json:"media"`
+			}
+			if input.MediaJSON != "" {
+				if err := json.Unmarshal([]byte(input.MediaJSON), &materials); err != nil {
+					return err
+				}
+			}
+			var ids []string
+			for _, material := range materials {
+				if material.MediaID != "" {
+					ids = append(ids, material.MediaID)
+				}
+			}
+			if err := nativeMediaReferences(ctx, tx, "native_input", input.ID, input.SessionID, ids); err != nil {
+				return err
+			}
 		}
 		for _, call := range native.Calls {
 			var owner string
@@ -127,7 +144,25 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			if checkpoint.CreatedAt.IsZero() {
 				checkpoint.CreatedAt = storage.Now()
 			}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO native_checkpoints(id,session_id,parent_id,exchange_id,response_id,message_id,created_at) VALUES(?,?,?,?,?,?,?)`, checkpoint.ID, checkpoint.SessionID, checkpoint.ParentID, checkpoint.ExchangeID, checkpoint.ResponseID, checkpoint.MessageID, storage.FormatTime(checkpoint.CreatedAt)); err != nil {
+			var seedID string
+			if raw, ok := fields["llm_seed"]; ok {
+				if err := json.Unmarshal(raw, &seedID); err != nil {
+					return err
+				}
+			}
+			if checkpoint.SeedID != seedID {
+				return fmt.Errorf("native checkpoint seed changed")
+			}
+			calls := native.Calls
+			if calls == nil {
+				calls = []storage.NativeCall{}
+			}
+			snapshot, err := json.Marshal(calls)
+			if err != nil {
+				return err
+			}
+			checkpoint.CallsJSON = string(snapshot)
+			if _, err := tx.ExecContext(ctx, `INSERT INTO native_checkpoints(id,session_id,parent_id,exchange_id,response_id,message_id,seed_id,calls_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, checkpoint.ID, checkpoint.SessionID, checkpoint.ParentID, checkpoint.ExchangeID, checkpoint.ResponseID, checkpoint.MessageID, checkpoint.SeedID, checkpoint.CallsJSON, storage.FormatTime(checkpoint.CreatedAt)); err != nil {
 				return err
 			}
 			if err := fields.Set("llm_checkpoint", checkpoint.ID); err != nil {
@@ -153,6 +188,45 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 				return fmt.Errorf("native input already consumed or absent")
 			}
 		}
+		if native.ConsumeSeedID != "" {
+			if checkpoint.ID == "" || checkpoint.SeedID != native.ConsumeSeedID {
+				return fmt.Errorf("seed consumption requires its checkpoint")
+			}
+			result, err := tx.ExecContext(ctx, `UPDATE native_seeds SET consumed=1 WHERE id=? AND session_id=? AND consumed=0`, native.ConsumeSeedID, commit.SessionID)
+			if err != nil {
+				return err
+			}
+			if n, err := result.RowsAffected(); err != nil || n != 1 {
+				return fmt.Errorf("native seed already consumed or absent")
+			}
+			if raw, ok := fields["context_compact"]; ok {
+				var state storage.SessionMetadata
+				if err := json.Unmarshal(raw, &state); err != nil {
+					return err
+				}
+				var id string
+				if raw, ok := state["seed_id"]; ok {
+					if err := json.Unmarshal(raw, &id); err != nil {
+						return err
+					}
+				}
+				if id == native.ConsumeSeedID {
+					if err := state.Set("pending", false); err != nil {
+						return err
+					}
+					if err := fields.Set("context_compact", state); err != nil {
+						return err
+					}
+					encoded, err := fields.Encode()
+					if err != nil {
+						return err
+					}
+					if _, err := tx.ExecContext(ctx, `UPDATE sessions SET metadata=? WHERE id=?`, encoded, commit.SessionID); err != nil {
+						return err
+					}
+				}
+			}
+		}
 	}
 	return tx.Commit()
 }
@@ -168,7 +242,10 @@ func (r *DialogueRepository) CreateExchange(ctx context.Context, row *storage.Na
 		row.CreatedAt = storage.Now()
 	}
 	row.Status = "pending"
-	_, err := r.db.ExecContext(ctx, `INSERT INTO native_exchanges(id,session_id,protocol,provider,base_url,model,request_id,run_id,attempt,previous_checkpoint_id,request_json,response_json,items_json,status,error,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, row.ID, row.SessionID, row.Protocol, row.Provider, row.BaseURL, row.Model, row.RequestID, row.RunID, row.Attempt, row.PreviousCheckpointID, row.RequestJSON, row.ResponseJSON, row.ItemsJSON, row.Status, row.Error, storage.FormatTime(row.CreatedAt))
+	if row.InputIDsJSON != "" && !json.Valid([]byte(row.InputIDsJSON)) {
+		return fmt.Errorf("invalid native input manifest")
+	}
+	_, err := r.db.ExecContext(ctx, `INSERT INTO native_exchanges(id,session_id,protocol,provider,base_url,model,request_id,run_id,attempt,previous_checkpoint_id,request_json,response_json,items_json,status,error,created_at,input_ids_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, row.ID, row.SessionID, row.Protocol, row.Provider, row.BaseURL, row.Model, row.RequestID, row.RunID, row.Attempt, row.PreviousCheckpointID, row.RequestJSON, row.ResponseJSON, row.ItemsJSON, row.Status, row.Error, storage.FormatTime(row.CreatedAt), row.InputIDsJSON)
 	return err
 }
 
@@ -189,7 +266,7 @@ func (r *DialogueRepository) FinishExchange(ctx context.Context, id, status, res
 func (r *DialogueRepository) GetExchange(ctx context.Context, id string) (*storage.NativeExchange, error) {
 	row := &storage.NativeExchange{}
 	var created string
-	err := r.db.QueryRowContext(ctx, `SELECT id,session_id,protocol,provider,base_url,model,request_id,run_id,attempt,previous_checkpoint_id,request_json,response_json,items_json,status,error,created_at FROM native_exchanges WHERE id=?`, id).Scan(&row.ID, &row.SessionID, &row.Protocol, &row.Provider, &row.BaseURL, &row.Model, &row.RequestID, &row.RunID, &row.Attempt, &row.PreviousCheckpointID, &row.RequestJSON, &row.ResponseJSON, &row.ItemsJSON, &row.Status, &row.Error, &created)
+	err := r.db.QueryRowContext(ctx, `SELECT id,session_id,protocol,provider,base_url,model,request_id,run_id,attempt,previous_checkpoint_id,request_json,response_json,items_json,status,error,created_at,input_ids_json FROM native_exchanges WHERE id=?`, id).Scan(&row.ID, &row.SessionID, &row.Protocol, &row.Provider, &row.BaseURL, &row.Model, &row.RequestID, &row.RunID, &row.Attempt, &row.PreviousCheckpointID, &row.RequestJSON, &row.ResponseJSON, &row.ItemsJSON, &row.Status, &row.Error, &created, &row.InputIDsJSON)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, storage.ErrNotFound
 	}
@@ -220,17 +297,17 @@ func (r *DialogueRepository) CurrentCheckpoint(ctx context.Context, sessionID st
 	if err := json.Unmarshal(value, &id); err != nil {
 		return nil, err
 	}
-	row := &storage.NativeCheckpoint{}
-	var created string
-	err = r.db.QueryRowContext(ctx, `SELECT id,session_id,parent_id,exchange_id,response_id,message_id,created_at FROM native_checkpoints WHERE id=? AND session_id=?`, id, sessionID).Scan(&row.ID, &row.SessionID, &row.ParentID, &row.ExchangeID, &row.ResponseID, &row.MessageID, &created)
-	if errors.Is(err, sql.ErrNoRows) {
+	row, err := r.GetCheckpoint(ctx, id)
+	if errors.Is(err, storage.ErrNotFound) {
 		return nil, fmt.Errorf("native checkpoint reference is missing")
 	}
 	if err != nil {
 		return nil, err
 	}
-	row.CreatedAt, err = storage.ParseTime(created)
-	return row, err
+	if row.SessionID != sessionID {
+		return nil, fmt.Errorf("native checkpoint session mismatch")
+	}
+	return row, nil
 }
 
 func (r *DialogueRepository) PendingInputs(ctx context.Context, sessionID string) ([]storage.NativeInput, error) {

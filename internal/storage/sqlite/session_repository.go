@@ -17,6 +17,14 @@ type SessionRepository struct {
 }
 
 func (r *SessionRepository) Create(ctx context.Context, session *storage.Session) error {
+	return createSession(ctx, r.db, session)
+}
+
+type sessionWriter interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func createSession(ctx context.Context, writer sessionWriter, session *storage.Session) error {
 	if session.ID == "" {
 		session.ID = storage.NewID()
 	}
@@ -34,7 +42,7 @@ func (r *SessionRepository) Create(ctx context.Context, session *storage.Session
 		session.Status = storage.SessionStatusActive
 	}
 
-	_, err := r.db.ExecContext(ctx, `
+	_, err := writer.ExecContext(ctx, `
 INSERT INTO sessions (
     id, parent_session_id, fork_from_message_id, owner_id, platform, platform_scope_id,
     mode, title, status, metadata, created_at, updated_at, archived_at, pinned_at

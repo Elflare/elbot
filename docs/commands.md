@@ -39,7 +39,7 @@ ElBot 的 slash 命令由 Agent Core 统一处理，CLI、QQ、后续平台共�
 | `/model --elwisp1 <模型>` | 切换 Elnis elwisp1 模型槽位。 |
 | `/model --elwisp2 <模型>` | 切换 Elnis elwisp2 模型槽位。 |
 | `/model --elwisp3 <模型>` | 切换 Elnis elwisp3 模型槽位。 |
-| `/model --compact <模型>` | 切换上下文压缩模型。 |
+| `/model --compact <模型>` | 切换 Chat 文字摘要模型；Responses 原生压缩使用当前对话模型。 |
 | `/model --naming <模型>` | 切换 Session 自动命名模型。 |
 | `/checkmodel [关键词]` | 查看或搜索模型。 |
 

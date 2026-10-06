@@ -8,7 +8,7 @@
 <!-- locator:protocol-routing -->
 ## 阶段 16：公共执行与独立协议路线
 
-16.1 的公共单轮与 Chat 路线、16.2 的协议客户端、16.2a 的公共信息与 provider 绑定、16.3 的 Responses 主对话与原生持久化已接入。当前使用 `contextinfo` 四组公共事实、固定 Selection、provider Binding 及共享对话提交口；完整兼容检查、恢复、原生压缩与 Fork 留待 16.4。
+16.1–16.4 已接入：公共单轮、独立协议客户端与业务路线、公共事实及 provider 绑定、Responses 原生持久化、兼容检查、恢复、压缩、历史 Fork 和后台副本。当前实现见架构及代码地图，下一步为 16.5 的整体职责／依赖与扩展验收。
 
 ### 职责与依赖
 
@@ -80,7 +80,7 @@ Binding 的 Origin 来自已有 provider 名称、api_mode 和去除末尾斜线
 
 #### 主调用链
 
-框表示协议职责，实线表示能力调用。Chat／Responses 主对话已接入；Responses 恢复、Compactor 和客户端 Compact 为 16.4 目标。
+框表示协议职责，实线表示能力调用。Chat／Responses 主对话、恢复、Compactor 和客户端 Compact 均已接入。
 
 ```mermaid
 flowchart TB
@@ -150,7 +150,7 @@ flowchart LR
 - 两路线共用同步对话提交口：执行前保存整批调用头，准备后保存实际参数，每个结果在下一工具前提交。Responses 同事务保存业务消息、媒体引用、原生输入／调用状态及 checkpoint；原 Session binding、活跃 attempt 和预期旧 checkpoint 共同约束推进。
 - 原生记录存入 native_exchanges／native_inputs／native_calls／native_checkpoints，Session metadata 仅保存 llm_checkpoint 引用。实际编码请求先归档，API 终态事实独立保存，本地关键提交成功才消费输入并推进可续接位置。
 
-正常服务端续链已接入。16.4 的完整兼容检查、链恢复、原生 seed／压缩和历史 checkpoint Fork 尚未实现，当前只留 TODO，不为过渡状态增加临时限制。
+正常服务端续链及 16.4 的完整兼容检查、链恢复、原生 seed／压缩和历史 checkpoint Fork 已接入。
 
 ### 16.4：模型兼容、恢复、压缩与 fork
 
@@ -161,23 +161,26 @@ modelmgr.CanSwitch 只比较身份，不查询或修改 Session；源身份来�
 | 无历史的新会话 | 选择已配置起始协议／厂商，并在接入时登记归属 |
 | Chat → Chat | 允许跨厂商，保留既有工具语义 |
 | 同厂商 Responses → Responses | 允许切模型，保留原生上下文；实际接口不兼容时报错 |
+| Chat ↔ Responses | 拒绝，需新建会话 |
 | 跨厂商且任一方为 Responses | 拒绝，提示新建会话或切回兼容模型 |
 | 全局默认或 provider 配置使旧会话不兼容 | 执行前拒绝，不隐式沿用旧模型、迁移历史或重解释原生记录 |
 
-服务端链失效时，仅凭同厂商完整原生材料恢复；缺少推理、有效 checkpoint 或素材则拒绝。稳定归属不能只由 provider 别名推断，具体身份字段列入实施前讨论。
+厂商身份就是 provider.toml 的节点名，不增加身份配置字段。base_url 只用于服务端链引用的所属位置校验。同厂商地址变化时以完整原生材料重建。
+
+服务端明确报告 previous_response_id 失效且尚未产生新响应内容时，自动用同厂商完整原生窗口重试一次；普通网络、鉴权、不明确错误和部分流不触发恢复。缺少推理、有效 checkpoint 或素材则拒绝，不重复运行 Hook、历史工具或已发送输出。
+
+命令先解析候选并预检，再提交全局选择；只检查会影响当前会话实际槽位的主对话切换。后台覆盖按实际 Selection 检查。后台接管在永久修改归属前预检 work 模型，不兼容时保留后台执行；后续模型调用再次检查。
 
 公共压缩入口按源会话归属取得 Compactor，私有实现返回统一统计及带协议身份的 seed。公共层保存和交接，Session 负责创建与激活新会话；workspace、命名代数和永久接管等继承语义沿用现状。
 
-- Chat 保留文字摘要与现有新 Session seed。Responses 使用同厂商原生压缩，完整保留后续窗口、不可读压缩项及必要 items，以新会话 seed 开始，不接回旧链，见[原生压缩说明](https://developers.openai.com/api/docs/guides/compaction)。
+- 两路线复用 compact_enabled、compact_trigger_ratio、当前模型窗口和手动 /compact。Chat 保留文字摘要与 compact_model，任一协议客户端均可提供独立 GenerateText；Responses 固定当前对话模型调用 /responses/compact，不读取 compact_model。
+- Responses 完整保留压缩返回窗口，以新会话 seed 开始，不接回旧链，见[原生压缩说明](https://developers.openai.com/api/docs/guides/compaction)。
 - 不支持原生压缩、材料不完整或提交失败时明确报错，不退成文字摘要、不改变未成功交接的当前会话。
-- Responses fork 使用指定业务回复关联的完整 checkpoint，继承协议／厂商归属；没有完整 checkpoint 则拒绝，不能用源会话最新 response ID 替代任意历史位置。Chat 保留现有 fork 行为。
+- Responses fork 支持完整最终回复和工具调用头关联的 checkpoint，继承协议／厂商归属及分叉点当时的不可变材料／调用快照；没有完整 checkpoint 则拒绝，不能用最新 response ID 或之后的结果替代历史位置。未完成调用不在分支执行，补充未在此分支执行或结果未知的输出。Chat 保留现有 fork 行为。
+- Cron 跨平台后台副本同时复制完整原生窗口，复用源材料准备能力，不继承执行／工具运行状态或前台绑定，报告投递保持原有语义。
+- 原生 seed 独立持久化，metadata 只保留引用；新 Session、seed、复制消息及媒体引用原子保存后才激活绑定。交接前复核来源 checkpoint、取消、原绑定及接管状态。首次成功的本地 checkpoint 提交标记 seed 已消费，根材料保留供恢复使用。
 
-### 实施前未决问题
-
-相应代码任务开始前讨论并验证；出现新的选择或歧义先与用户确认，不由实施者补成既定约定。
-
-1. 完整恢复材料与服务端引用的验证，以及恢复与新 Session／seed 的事务边界。
-2. 原生压缩能力检测、阈值、新 seed 与旧链分离，以及可建立 fork checkpoint 的业务位置。
+上述 16.4 行为已接入，当前职责与文件入口见 architecture.md 和 code-map.md。后续 16.5 按下表进行整体验收；出现新的选择或歧义仍先讨论。
 
 ### 验收与Review
 

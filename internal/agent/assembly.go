@@ -14,6 +14,7 @@ import (
 	"elbot/internal/contextmgr"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/storage"
 )
 
 func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
@@ -39,6 +40,9 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 	status := &statusRecorder{turns: turns, changed: signals.StatusChanged}
 	output := &outputSender{dispatcher: deps.Dispatcher, notifications: deps.Notifications, hooks: hooks, identity: identity, logger: logger}
 	view := dialogue.ExecutionView{Sessions: store.Sessions(), Providers: deps.Routes}
+	sessions.SetForegroundCheck(func(_ context.Context, source *storage.Session) error {
+		return view.CheckSelection(source, deps.Models.ResolveMode(storage.SessionModeWork))
+	})
 	replies := &dialogue.ReplyCommitter{Messages: store.Messages(), Output: output, Delivered: signals.ReplyDelivered, Committed: signals.ReplyCommitted}
 	waitPolicy := &confirmationPolicy{identity: identity, idleExpiration: sessionIdleExpirationConfig(cfg.SessionIdleExpiration), userConfirmationTimeout: defaultUserConfirmationTimeout}
 	confirmations := &confirmationCoordinator{
@@ -69,11 +73,14 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 	calls := &dialogue.CallProcessor{Messages: messages, Media: deps.Media, Hooks: hooks, Identity: identity, Tools: tools, Completed: signals.ModelCallCompleted, Vision: signals.VisionFallbackUsed}
 	system := buildSystemPrompt(cfg.SoulPath, deps.ResidentMemoryStore, toolRuntime.provider, deps.ToolPreloader)
 	chat := &chatroute.Loop{Logger: logger, Contexts: deps.Contexts, Models: deps.Models, Turns: turns, View: view, Preparer: preparer, Tools: tools, Messages: messages, Caller: &chatroute.Caller{Calls: calls}, PromptBuilder: chatroute.PromptBuilder{System: system}}
-	response := &responseroute.Loop{Repository: store.Dialogues(), Models: deps.Models, Turns: turns, View: view, Preparer: preparer, Tools: tools, Messages: messages, Calls: calls, System: system}
+	nativeContext := &responseroute.Context{Repository: store.Dialogues(), Media: deps.Media}
+	response := &responseroute.Loop{Repository: store.Dialogues(), Context: nativeContext, Models: deps.Models, Turns: turns, View: view, Preparer: preparer, Tools: tools, Messages: messages, Calls: calls, System: system}
 	compactor := &chatroute.Compactor{Store: store, Models: deps.Models, Contexts: deps.Contexts, Loader: contextmgr.Loader{Store: store}}
-	if err := bindProviderRoutes(deps.Routes, deps.Models, chat, response, compactor); err != nil {
+	nativeCompactor := &responseroute.Compactor{Context: nativeContext, Messages: messages, View: view, System: system, Identity: identity}
+	if err := bindProviderRoutes(deps.Routes, deps.Models, chat, response, compactor, nativeCompactor, nativeContext); err != nil {
 		return nil, err
 	}
+	sessions.SetMaterials(deps.Routes)
 	if err := deps.Contexts.CheckCompaction(llm.Origin{Protocol: llm.ProtocolChat}); err != nil {
 		return nil, fmt.Errorf("context compaction wiring: %w", err)
 	}

@@ -12,6 +12,7 @@ import (
 type CompactState struct {
 	Pending         bool   `json:"pending,omitempty"`
 	Summary         string `json:"summary,omitempty"`
+	SeedID          string `json:"seed_id,omitempty"`
 	SourceSessionID string `json:"source_session_id,omitempty"`
 	FromMessageID   string `json:"from_message_id,omitempty"`
 	ToMessageID     string `json:"to_message_id,omitempty"`
@@ -55,7 +56,7 @@ func PendingCompact(row *storage.Session) (*CompactState, error) {
 	if err != nil {
 		return nil, err
 	}
-	if state.Compact == nil || !state.Compact.Pending || state.Compact.Summary == "" {
+	if state.Compact == nil || !state.Compact.Pending || state.Compact.Summary == "" && state.Compact.SeedID == "" {
 		return nil, nil
 	}
 	return state.Compact, nil
@@ -99,5 +100,7 @@ func CompactedMetadata(raw string, state *CompactState) (string, error) {
 		return "", err
 	}
 	delete(fields, "last_usage")
+	delete(fields, "llm_checkpoint")
+	delete(fields, "llm_seed")
 	return fields.Encode()
 }

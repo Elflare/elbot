@@ -48,6 +48,12 @@ func (s *Service) SetForegroundActivation(adopt func(context.Context, *storage.S
 	s.foregroundActivation = adopt
 }
 
+// The checker reads immutable provider facts and a model snapshot only. It runs
+// before permanent promotion under admission and must not perform I/O.
+func (s *Service) SetForegroundCheck(check func(context.Context, *storage.Session) error) {
+	s.foregroundCheck = check
+}
+
 func (s *Service) activateExisting(ctx context.Context, scope Scope, id string, unarchive bool) (*storage.Session, error) {
 	ctx, release, err := s.EnterActivation(ctx, scope, id)
 	if err != nil {
@@ -63,6 +69,11 @@ func (s *Service) activateExisting(ctx context.Context, scope Scope, id string, 
 			return errors.New("session is not in current platform scope")
 		}
 		if IsBackground(row) {
+			if s.foregroundCheck != nil {
+				if err := s.foregroundCheck(ctx, row); err != nil {
+					return err
+				}
+			}
 			fields, err := storage.DecodeSessionMetadata(row.Metadata)
 			if err != nil {
 				return err

@@ -102,8 +102,10 @@ type Response struct {
 }
 
 type APIError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code       string `json:"code"`
+	Message    string `json:"message"`
+	Param      string `json:"param"`
+	StatusCode int    `json:"-"`
 }
 type IncompleteDetails struct {
 	Reason string `json:"reason"`

@@ -12,6 +12,7 @@ type NativeExchange struct {
 	ID, SessionID, Protocol, Provider, BaseURL, Model string
 	RequestID, RunID, Attempt, PreviousCheckpointID   string
 	RequestJSON, ResponseJSON, ItemsJSON              string
+	InputIDsJSON                                      string
 	Status, Error                                     string
 	CreatedAt                                         time.Time
 }
@@ -31,6 +32,7 @@ type NativeCall struct {
 
 type NativeCheckpoint struct {
 	ID, SessionID, ParentID, ExchangeID, ResponseID, MessageID string
+	SeedID, CallsJSON                                          string
 	CreatedAt                                                  time.Time
 }
 
@@ -49,6 +51,28 @@ type NativeCommit struct {
 	Inputs               []NativeInput
 	Calls                []NativeCall
 	ConsumedInputs       []string
+	ConsumeSeedID        string
+}
+
+// NativeSeed owns a complete route-defined root window independently of the
+// source session. Storage retains opaque JSON and explicit material references.
+type NativeSeed struct {
+	ID, SessionID, Protocol, Provider, BaseURL            string
+	ResponseID, SourceCheckpointID                        string
+	ItemsJSON, MaterialsJSON, ContinuationJSON, CallsJSON string
+	MediaIDs                                              []string
+	Consumed                                              bool
+	CreatedAt                                             time.Time
+}
+
+// SessionMaterialCreate is the narrow atomic boundary for a new session and
+// its prepared material. It exposes neither a transaction nor callbacks.
+type SessionMaterialCreate struct {
+	Session              *Session
+	Messages             []*Message
+	Seed                 *NativeSeed
+	SourceSessionID      string
+	ExpectedCheckpointID string
 }
 
 type DialogueCommit struct {
@@ -64,6 +88,10 @@ type DialogueRepository interface {
 	FinishExchange(context.Context, string, string, string, string, string) error
 	GetExchange(context.Context, string) (*NativeExchange, error)
 	CurrentCheckpoint(context.Context, string) (*NativeCheckpoint, error)
+	GetCheckpoint(context.Context, string) (*NativeCheckpoint, error)
+	CheckpointForMessage(context.Context, string, string) (*NativeCheckpoint, error)
+	InputsForExchange(context.Context, string) ([]NativeInput, error)
+	Seed(context.Context, string) (*NativeSeed, error)
 	PendingInputs(context.Context, string) ([]NativeInput, error)
 	Calls(context.Context, string) ([]NativeCall, error)
 }

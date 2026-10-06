@@ -26,13 +26,13 @@ func TestArgumentMediaIDsUsesExactJSONValues(t *testing.T) {
 	first := IDPrefix + strings.Repeat("a", 64)
 	second := IDPrefix + strings.Repeat("b", 64)
 	arguments := fmt.Sprintf(`{"send_media":%q,"images":[%q,%q],%q:"ignored","prompt":%q}`, second, first, first, second, "prefix "+first)
-	if got := strings.Join(argumentMediaIDs(arguments), ","); got != first+","+second {
+	if got := strings.Join(ArgumentMediaIDs(arguments), ","); got != first+","+second {
 		t.Fatalf("media IDs = %q", got)
 	}
-	if got := argumentMediaIDs(`{"source":"media:short"}`); len(got) != 0 {
+	if got := ArgumentMediaIDs(`{"source":"media:short"}`); len(got) != 0 {
 		t.Fatalf("invalid media IDs = %v", got)
 	}
-	if got := argumentMediaIDs(`{"source":`); len(got) != 0 {
+	if got := ArgumentMediaIDs(`{"source":`); len(got) != 0 {
 		t.Fatalf("invalid JSON media IDs = %v", got)
 	}
 }

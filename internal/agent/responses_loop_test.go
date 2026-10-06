@@ -29,6 +29,7 @@ import (
 )
 
 type nativeTestRequest struct {
+	Endpoint           string            `json:"-"`
 	Model              string            `json:"model"`
 	Instructions       string            `json:"instructions"`
 	PreviousResponseID string            `json:"previous_response_id"`
@@ -58,6 +59,7 @@ func newNativeFixture(t *testing.T, respond func(int, nativeTestRequest, http.Re
 			w.WriteHeader(500)
 			return
 		}
+		request.Endpoint = r.URL.Path
 		f.mu.Lock()
 		f.requests = append(f.requests, request)
 		index := len(f.requests) - 1

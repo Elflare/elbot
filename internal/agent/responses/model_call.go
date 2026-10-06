@@ -3,15 +3,12 @@ package responses
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 	"time"
 
 	"elbot/internal/agent/dialogue"
-	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -36,8 +33,6 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	if err != nil {
 		return final, err
 	}
-	// Close outstanding function outputs before appending the next user input.
-	// Relative order within each group remains the order of local submission.
 	sort.SliceStable(inputs, func(i, j int) bool { return inputs[i].CallID != "" && inputs[j].CallID == "" })
 	messages := make([]llm.LLMMessage, 0, len(inputs))
 	for _, input := range inputs {
@@ -72,120 +67,56 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	}
 	store := true
 	request := api.Request{Model: s.selection.Model, Instructions: instructions, Input: items, Tools: api.FunctionTools(s.tools), Store: &store}
-	if s.checkpoint != nil {
-		request.PreviousResponseID = s.checkpoint.ResponseID
-	}
-	prepared, err := client.PrepareRequest(request)
-	if err != nil {
-		return final, err
-	}
 	origin, err := s.route.View.Providers.OriginFor(s.selection.Provider)
 	if err != nil {
 		return final, err
 	}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	exchange := &storage.NativeExchange{SessionID: s.session.ID, Protocol: string(origin.Protocol), Provider: origin.Provider, BaseURL: origin.BaseURL, Model: s.selection.Model, RequestID: facts.RequestID, RunID: facts.RunID, Attempt: facts.Attempt, PreviousCheckpointID: s.checkpointID(), RequestJSON: string(prepared.JSON())}
-	locked, release, err := s.route.Messages.Gate.Enter(ctx, s.session.ID)
-	if err != nil {
-		return final, err
+	baseURL := origin.BaseURL
+	if s.checkpoint != nil {
+		request.PreviousResponseID = s.checkpoint.ResponseID
+		exchange, err := s.route.Repository.GetExchange(ctx, s.checkpoint.ExchangeID)
+		if err != nil {
+			return final, err
+		}
+		baseURL = exchange.BaseURL
+	} else if s.seed != nil {
+		request.PreviousResponseID, baseURL = s.seed.ResponseID, s.seed.BaseURL
+		var prefix []api.Item
+		if err := json.Unmarshal([]byte(s.seed.ContinuationJSON), &prefix); err != nil {
+			return final, err
+		}
+		request.Input = append(prefix, items...)
 	}
-	err = s.route.Repository.CreateExchange(locked, exchange)
-	release()
-	if err != nil {
-		return final, fmt.Errorf("save native request: %w", err)
+	replay := request.PreviousResponseID == "" && s.seed != nil || request.PreviousResponseID != "" && baseURL != origin.BaseURL
+	if replay {
+		var release func()
+		request, release, err = s.replayRequest(ctx, request, items, origin)
+		if err != nil {
+			return final, err
+		}
+		defer release()
 	}
 	started := time.Now()
-	status := "failed"
-	var response *api.Response
-	completedItems := map[int]api.Item{}
-	defer func() {
-		raw := ""
-		if response != nil {
-			raw = string(response.Raw)
-		}
-		done := outputItems(response, completedItems)
-		encoded, encodeErr := json.Marshal(done)
-		if encodeErr != nil {
-			err = errors.Join(err, encodeErr)
-			return
-		}
-		failure := ""
+	result, err := s.nativeCall(ctx, client, request, consumed, stream)
+	if err != nil && request.PreviousResponseID != "" && !result.OutputStarted && result.FactsSaved && api.PreviousResponseUnavailable(err) {
+		var release func()
+		request, release, err = s.replayRequest(ctx, request, items, origin)
 		if err != nil {
-			failure = err.Error()
+			return final, err
 		}
-		// Audit facts survive cancellation; they cannot advance the checkpoint.
-		if saveErr := s.route.Repository.FinishExchange(context.WithoutCancel(s.ctx), exchange.ID, status, raw, string(encoded), failure); saveErr != nil {
-			err = errors.Join(err, fmt.Errorf("save native response: %w", saveErr))
-		}
-		if err == nil {
-			s.exchange, s.response, s.consumed = exchange, response, consumed
-		}
-	}()
-	callCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	events, err := client.StreamPrepared(callCtx, prepared)
+		defer release()
+		result, err = s.nativeCall(ctx, client, request, consumed, stream)
+	}
 	if err != nil {
-		if ctx.Err() != nil {
-			status = "canceled"
-			return final, ctx.Err()
-		}
 		observation.Event.ProviderError = true
+		if ctx.Err() == nil {
+			s.route.Calls.NotifyError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: s.session.ID}, LLM: hook.LLMPayload{Provider: s.selection.Provider, Model: s.selection.Model}}, err)
+		}
 		return final, err
-	}
-	reasoningOpen := false
-	defer func() {
-		if reasoningOpen {
-			s.output.SendReasoning(ctx, "[/thinking]\n\n")
-		}
-	}()
-	for event := range events {
-		if event.Response != nil {
-			response = event.Response
-		}
-		if event.Type == "response.output_item.done" && event.Item != nil {
-			completedItems[event.OutputIndex] = *event.Item
-		}
-		if event.Error != nil {
-			status = event.Type
-			if ctx.Err() != nil {
-				status = "canceled"
-				return final, ctx.Err()
-			}
-			observation.Event.ProviderError = true
-			s.route.Calls.NotifyError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: s.session.ID}, LLM: hook.LLMPayload{Provider: s.selection.Provider, Model: s.selection.Model}}, event.Error)
-			return final, event.Error
-		}
-		switch event.Type {
-		case "response.output_text.delta", "response.refusal.delta":
-			if stream != nil && event.Delta != "" {
-				if err := stream.Append(ctx, event.Delta); err != nil {
-					return final, err
-				}
-			}
-		case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
-			if s.route.Calls.Identity.IsCLI(ctx) && event.Delta != "" {
-				if !reasoningOpen {
-					s.output.SendReasoning(ctx, "[thinking] ")
-					reasoningOpen = true
-				}
-				s.output.SendReasoning(ctx, event.Delta)
-			}
-		case "response.completed":
-			status = "completed"
-		}
-	}
-	if err := ctx.Err(); err != nil {
-		status = "canceled"
-		return final, err
-	}
-	if status != "completed" || response == nil || response.Status != "completed" || response.ID == "" {
-		observation.Event.ProviderError = true
-		return final, fmt.Errorf("responses stream: %w", io.ErrUnexpectedEOF)
 	}
 	var calls []llm.ToolCallRequest
 	seen := map[string]bool{}
-	items = outputItems(response, completedItems)
-	for _, item := range items {
+	for _, item := range result.Items {
 		if item.Type != "function_call" {
 			continue
 		}
@@ -198,18 +129,42 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	if s.session.Mode == storage.SessionModeChat && len(calls) > 0 {
 		return final, fmt.Errorf("unexpected function call with tools disabled")
 	}
-	text := outputText(items)
+	text := outputText(result.Items)
 	s.sourceText = text
 	elapsed := time.Since(started).Milliseconds()
 	observation.Event.ElapsedMS = elapsed
-	final, err = s.route.Calls.CompleteCall(ctx, s.session, s.selection, text, response.TokenUsage(), calls, elapsed)
+	final, err = s.route.Calls.CompleteCall(ctx, s.session, s.selection, text, result.Response.TokenUsage(), calls, elapsed)
 	if err != nil {
 		return final, err
 	}
 	observation.Event.OutputReady = true
 	observation.Event.Text, observation.Event.SourceText, observation.Event.ToolCallCount, observation.Event.Usage = final.Text, text, len(calls), final.Usage
-	s.calls = calls
+	s.exchange, s.response, s.consumed, s.calls = result.Exchange, result.Response, consumed, calls
 	return final, nil
+}
+
+func (s *turnState) replayRequest(ctx context.Context, request api.Request, inputs []api.Item, target llm.Origin) (api.Request, func(), error) {
+	if s.route.Context == nil {
+		return request, func() {}, fmt.Errorf("Responses 原生材料能力未配置")
+	}
+	w, err := s.route.Context.Load(ctx, s.session, s.checkpoint)
+	if err != nil {
+		return request, func() {}, err
+	}
+	if err := checkWindowTarget(w, target); err != nil {
+		return request, func() {}, err
+	}
+	prefix, release, err := s.route.Context.Resolve(ctx, w)
+	if err != nil {
+		return request, release, err
+	}
+	request.PreviousResponseID = ""
+	request.Input = append(prefix, inputs...)
+	if err := validateCallLinks(request.Input, false); err != nil {
+		release()
+		return request, func() {}, err
+	}
+	return request, release, nil
 }
 
 func outputItems(response *api.Response, completed map[int]api.Item) []api.Item {

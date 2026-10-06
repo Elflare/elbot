@@ -87,7 +87,19 @@ func (s *Service) SelectModelForMode(mode, arg string) (ModelOption, error) {
 	if err != nil {
 		return ModelOption{}, err
 	}
-	err = s.commit(func(state *runtimeState) {
+	return s.CommitModelForMode(mode, selected)
+}
+
+// PrepareModel resolves catalog input without changing any shared selection.
+func (s *Service) PrepareModel(arg string) (ModelOption, error) {
+	return s.selectModelOption(arg)
+}
+
+func (s *Service) CommitModelForMode(mode string, selected ModelOption) (ModelOption, error) {
+	if err := s.ValidateSelection(config.ModelSelection{Provider: selected.Provider, Model: selected.Model}); err != nil {
+		return ModelOption{}, err
+	}
+	err := s.commit(func(state *runtimeState) {
 		state.modes[mode] = config.ModelSelection{Provider: selected.Provider, Model: selected.Model}
 		state.listProvider = selected.Provider
 	})

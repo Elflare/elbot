@@ -135,6 +135,8 @@ func (r *MediaRepository) CheckReferences(ctx context.Context) ([]string, error)
  WHERE COALESCE(json_extract(s.value,'$.media'),'')<>'' AND NOT EXISTS
  (SELECT 1 FROM media_references r WHERE r.owner_type='cron' AND r.owner_id=c.id AND r.media_id=json_extract(s.value,'$.media'))
  UNION ALL SELECT 'missing fork reference: '||f.session_id FROM media_fork_history f WHERE NOT EXISTS(SELECT 1 FROM media_references r WHERE r.owner_type='session_fork' AND r.owner_id=f.session_id AND r.media_id=f.media_id)
+ UNION ALL SELECT 'missing native input reference: '||n.id FROM native_inputs n,json_each(CASE WHEN json_valid(n.media_json) THEN n.media_json ELSE '[]' END) s WHERE COALESCE(json_extract(s.value,'$.media'),'')<>'' AND NOT EXISTS(SELECT 1 FROM media_references r WHERE r.owner_type='native_input' AND r.owner_id=n.id AND r.media_id=json_extract(s.value,'$.media'))
+ UNION ALL SELECT 'missing native seed reference: '||n.id FROM native_seeds n,json_each(n.media_ids_json) s WHERE NOT EXISTS(SELECT 1 FROM media_references r WHERE r.owner_type='native_seed' AND r.owner_id=n.id AND r.media_id=s.value)
  UNION ALL SELECT 'dangling owner reference: '||r.owner_type||':'||r.owner_id FROM media_references r WHERE
  (r.owner_type IN ('message','tool_result') AND NOT EXISTS(SELECT 1 FROM messages WHERE id=r.owner_id)) OR
  (r.owner_type='chat_history' AND NOT EXISTS(SELECT 1 FROM media_history WHERE owner_id=r.owner_id AND media_id=r.media_id)) OR
@@ -143,6 +145,8 @@ func (r *MediaRepository) CheckReferences(ctx context.Context) ([]string, error)
  (r.owner_type='elnis_event' AND NOT EXISTS(SELECT 1 FROM elnis_events WHERE id=r.owner_id)) OR
  (r.owner_type='session_fork' AND NOT EXISTS(SELECT 1 FROM sessions WHERE id=r.owner_id)) OR
  (r.owner_type='session_tool' AND (r.session_id IS NULL OR r.session_id<>r.owner_id OR NOT EXISTS(SELECT 1 FROM sessions WHERE id=r.owner_id))) OR
+ (r.owner_type='native_input' AND NOT EXISTS(SELECT 1 FROM native_inputs WHERE id=r.owner_id AND session_id=r.session_id)) OR
+ (r.owner_type='native_seed' AND NOT EXISTS(SELECT 1 FROM native_seeds WHERE id=r.owner_id AND session_id=r.session_id)) OR
  (r.owner_type='cron' AND NOT EXISTS(SELECT 1 FROM cron_jobs WHERE id=r.owner_id))`)
 	if err != nil {
 		return nil, err

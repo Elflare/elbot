@@ -45,7 +45,8 @@ func (g CommandGroup) RegisterCommands(registrar Registrar, deps Deps) error {
 type ModelService interface {
 	CurrentModelForMode(mode string) modelmgr.ModelOption
 	CurrentCompactModel(mode string) modelmgr.ModelOption
-	SelectModelForMode(mode, arg string) (modelmgr.ModelOption, error)
+	PrepareModel(arg string) (modelmgr.ModelOption, error)
+	CommitModelForMode(mode string, selected modelmgr.ModelOption) (modelmgr.ModelOption, error)
 	SelectCompactModel(arg string) (modelmgr.ModelOption, error)
 	SelectNamingModel(arg string) (modelmgr.ModelOption, error)
 	ModelList(query string, opts modelmgr.ModelListOptions) modelmgr.ModelListResult
@@ -88,14 +89,17 @@ type DoctorService interface {
 }
 
 type Deps struct {
-	Doctor             DoctorService
-	Router             *command.Router
-	Sessions           *session.Service
-	Requests           *request.Manager
-	Turns              *turn.Manager
-	Store              storage.Store
-	Scope              func(context.Context) session.Scope
-	Models             ModelService
+	Doctor    DoctorService
+	Router    *command.Router
+	Sessions  *session.Service
+	Requests  *request.Manager
+	Turns     *turn.Manager
+	Store     storage.Store
+	Scope     func(context.Context) session.Scope
+	Models    ModelService
+	Providers interface {
+		OriginFor(string) (llm.Origin, error)
+	}
 	Compact            CompactService
 	Contexts           ContextService
 	Logger             *slog.Logger
