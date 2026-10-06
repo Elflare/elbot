@@ -81,7 +81,7 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		err = requestCtx.Err()
 	}
 	if err == nil {
-		err = r.Messages.Append(requestCtx, user, "append_user_message")
+		err = prepared.InputCommitter().Commit(requestCtx, user)
 	}
 	if err != nil {
 		result.Outcome, result.Err = FailedOutcome(err), err

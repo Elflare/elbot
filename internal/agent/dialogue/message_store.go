@@ -98,32 +98,33 @@ func PersistedToolMessage(message llm.LLMMessage) llm.LLMMessage {
 
 // MessageStore is the single dialogue-message write boundary.
 type MessageStore struct {
-	Repository storage.MessageRepository
-	Media      *media.Manager
-	Failed     *signal.Signal[agentevents.PersistenceFailedEvent]
+	Dialogues storage.DialogueRepository
+	Gate      *CommitGate
+	Media     *media.Manager
+	Failed    *signal.Signal[agentevents.PersistenceFailedEvent]
 }
 
 func (s *MessageStore) Append(ctx context.Context, message *storage.Message, operation string) error {
-	if s.Media != nil && message.Segments != "" {
-		segments := s.Media.Materialize(ctx, MessageSegmentsFromStorage(message.Segments))
-		message.Segments = StoredMessageSegments(segments)
-		message.Content = llm.SegmentsContentText(segments)
-	}
-	if err := s.Repository.Append(ctx, message); err != nil {
-		agentevents.Emit(ctx, s.Failed, agentevents.PersistenceFailedEvent{EventMeta: agentevents.Meta(ctx, message.SessionID), Operation: operation, Err: err})
-		return err
-	}
-	return nil
+	return s.Commit(ctx, storage.DialogueCommit{SessionID: message.SessionID, Messages: []*storage.Message{message}}, operation)
 }
 
-func (s *MessageStore) AppendTranscript(ctx context.Context, sessionID string, messages []storage.Message) error {
-	for i := range messages {
-		messages[i].SessionID = sessionID
-		if err := s.Append(ctx, &messages[i], "append_tool_transcript"); err != nil {
-			return err
+func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit, operation string) error {
+	for _, message := range commit.Messages {
+		if message != nil && s.Media != nil && message.Segments != "" {
+			segments := s.Media.Materialize(ctx, MessageSegmentsFromStorage(message.Segments))
+			message.Segments = StoredMessageSegments(segments)
+			message.Content = llm.SegmentsContentText(segments)
 		}
 	}
-	return nil
+	locked, release, err := s.Gate.Enter(ctx, commit.SessionID)
+	if err == nil {
+		defer release()
+		err = s.Dialogues.Commit(locked, commit)
+	}
+	if err != nil {
+		agentevents.Emit(ctx, s.Failed, agentevents.PersistenceFailedEvent{EventMeta: agentevents.Meta(ctx, commit.SessionID), Operation: operation, Err: err})
+	}
+	return err
 }
 
 func MessageSegmentsFromStorage(raw string) []llm.MessageSegment {

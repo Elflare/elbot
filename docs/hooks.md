@@ -216,7 +216,7 @@ text = "{{actions.search.result}}"
 - `llm.request.prepared` 只在工具流程下一次请求前存在新 pending 时绑定该 pending；没有 pending 时不提供可编辑消息，不能再次修改本 turn 初始输入。
 - `tool.call.completed` 绑定已经实际进入工具执行阶段后产生的工具结果；预检失败、确认拒绝或启动前失败不触发该点。
 
-`llm.messages` 是即将发给模型的完整工作上下文，包含 system、历史消息、当前消息和工具消息，但对普通 Hook 只读。Hook 不能修改 system 或历史消息。`llm.latest_user_text` 是当前绑定用户消息文字部分的兼容视图，不再表示历史中最后一个 `role=user`；没有绑定消息时为空。
+`llm.messages` 是业务工作上下文，包含 system、历史消息、当前消息和工具消息，但对普通 Hook 只读。Chat 将它组织为模型请求；Responses 以原生记录续链，请求只发送新增输入与工具结果。Hook 不能修改 system 或历史消息。`llm.latest_user_text` 是当前绑定用户消息文字部分的兼容视图，不再表示历史中最后一个 `role=user`；没有绑定消息时为空。
 
 用户或 pending 的 Hook 修改会在模型请求前写入会话历史；工具完成 Hook 的修改也会写入 transcript。纯文本继续只保存 `content`，包含图片等非文本内容时额外保存完整 segments。`message.platform_text` 始终保留平台原文，不随 segments 修改。
 
@@ -235,7 +235,9 @@ text = "{{actions.search.result}}"
 
 图片可使用 HTTP(S) `url`、相对插件目录的 `path` 或最大 10 MiB 的 `base64`，path/base64 会规范化为模型可读取的数据 URL。`message.segments` 修改 LLM 输入和会话历史；`outputs` 创建发送到平台的输出意图，两者不会互相转换。
 
-工具完成事件中的 `message.role` 为 `tool`，`message.segments` 是工具的原始多模态结果，`tool.name` 和 `tool.id` 标识工具及本次调用。工具准备事件中的 `tool.id` 和 `tool.name` 只读，只有 `tool.arguments` 可以改写；改写后的参数同时用于实际执行、后续 LLM 请求和 transcript。
+工具完成事件中的 `message.role` 为 `tool`，`message.segments` 是工具的原始多模态结果，`tool.name` 和 `tool.id` 标识工具及本次调用。工具准备事件中的 `tool.id` 和 `tool.name` 只读。Chat 的 `tool.arguments` 可以改写，实际参数会在工具执行前写回调用头，并用于执行和后续请求。
+
+Responses 模型返回的调用集合、ID、名称和参数全部只读，适用于 Go Handler、规则和进程 Hook；尝试改写会报错并停止该次 Hook，工具准备失败时以原 `call_id` 返回错误结果。输入、展示文本和工具结果仍可改写。该限制保证本地执行与服务端已保存的 function call 一致。
 
 ## 统一输出
 

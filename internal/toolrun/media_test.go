@@ -62,7 +62,7 @@ func TestRunRetainsExactMediaArgumentsForSession(t *testing.T) {
 		}
 		manager := NewManager(registry, nil)
 		manager.Media = center
-		return manager.Run(ctx, &runnerTestDeps{}, RunRequest{
+		return manager.Run(ctx, &runnerTestDeps{}, RunRequest{Committer: &testToolCommitter{},
 			Session: session, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 			Calls: []llm.ToolCallRequest{{ID: "call-1", Name: tl.Name(), Arguments: arguments}},
 		})
@@ -118,7 +118,7 @@ func TestRunDoesNotRetainMediaBeforeExecution(t *testing.T) {
 	}
 	manager := NewManager(registry, nil)
 	manager.Media = center
-	manager.Run(ctx, &runnerTestDeps{}, RunRequest{
+	manager.Run(ctx, &runnerTestDeps{}, RunRequest{Committer: &testToolCommitter{},
 		Session: session, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{ID: "call-1", Name: "preflight_tool", Arguments: `{"media":"` + item.ID + `"}`}},
 	})
@@ -138,7 +138,7 @@ func TestRunDoesNotRetainMediaBeforeExecution(t *testing.T) {
 	manager = NewManager(registry, nil)
 	manager.Media = center
 	missingID := media.IDPrefix + strings.Repeat("f", 64)
-	result := manager.Run(ctx, &runnerTestDeps{}, RunRequest{
+	result := manager.Run(ctx, &runnerTestDeps{}, RunRequest{Committer: &testToolCommitter{},
 		Session: missingSession, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{ID: "call-2", Name: recorder.Name(), Arguments: `{"media":"` + missingID + `"}`}},
 	})

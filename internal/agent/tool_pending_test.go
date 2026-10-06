@@ -333,7 +333,7 @@ func TestToolChildRequestCancelReturnsToolMessageAndContinuesTurn(t *testing.T) 
 	}
 }
 
-func TestTurnRequestCancelStopsWithoutPersistingToolTranscript(t *testing.T) {
+func TestTurnRequestCancelKeepsCallHeadWithoutInventingToolResult(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
@@ -382,10 +382,10 @@ func TestTurnRequestCancelStopsWithoutPersistingToolTranscript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(messages) != 2 || messages[1].Role != storage.RoleAssistant || !strings.Contains(messages[1].Metadata, "call_1") {
+		t.Fatalf("lost admitted tool call head: %+v", messages)
+	}
 	for _, msg := range messages {
-		if msg.Role == storage.RoleAssistant && strings.Contains(msg.Metadata, "call_1") {
-			t.Fatalf("assistant tool call transcript persisted after turn stop: %#v", messages)
-		}
 		if msg.Role == storage.RoleTool && msg.ToolCallID == "call_1" {
 			t.Fatalf("tool transcript persisted after turn stop: %#v", messages)
 		}

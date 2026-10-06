@@ -21,7 +21,18 @@ type RequestOptions = httpclient.Options
 type Streamer interface {
 	llm.Client
 	Stream(context.Context, Request) (<-chan Event, error)
+	PrepareRequest(Request) (PreparedRequest, error)
+	StreamPrepared(context.Context, PreparedRequest) (<-chan Event, error)
 }
+
+// PreparedRequest freezes the fully merged native body without credentials.
+type PreparedRequest struct {
+	body          []byte
+	model         string
+	inputs, tools int
+}
+
+func (p PreparedRequest) JSON() json.RawMessage { return append(json.RawMessage(nil), p.body...) }
 
 type Client struct {
 	baseURL            string
@@ -53,8 +64,16 @@ func (c *Client) validateBaseURL() error {
 }
 
 func (c *Client) Stream(ctx context.Context, req Request) (<-chan Event, error) {
+	prepared, err := c.PrepareRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	return c.StreamPrepared(ctx, prepared)
+}
+
+func (c *Client) PrepareRequest(req Request) (PreparedRequest, error) {
 	if strings.TrimSpace(c.baseURL) == "" {
-		return nil, errors.New("response base_url is required")
+		return PreparedRequest{}, errors.New("response base_url is required")
 	}
 	input := req.Input
 	if input == nil {
@@ -84,20 +103,27 @@ func (c *Client) Stream(ctx context.Context, req Request) (<-chan Event, error) 
 		llm.ExtraFields{Source: "model extra_payload", Fields: c.modelExtraPayloads[req.Model]},
 		llm.ExtraFields{Source: "request ExtraBody", Fields: req.ExtraBody})
 	if err != nil {
-		return nil, err
+		return PreparedRequest{}, err
 	}
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
 	encoder.SetEscapeHTML(false)
 	if err = encoder.Encode(body); err != nil {
-		return nil, fmt.Errorf("marshal response request: %w", err)
+		return PreparedRequest{}, fmt.Errorf("marshal response request: %w", err)
+	}
+	return PreparedRequest{body: append([]byte(nil), buf.Bytes()...), model: req.Model, inputs: len(input), tools: len(req.Tools)}, nil
+}
+
+func (c *Client) StreamPrepared(ctx context.Context, prepared PreparedRequest) (<-chan Event, error) {
+	if len(prepared.body) == 0 {
+		return nil, fmt.Errorf("prepared response request is empty")
 	}
 	if c.logger != nil {
-		c.logger.Debug("responses request", "endpoint", c.baseURL+"/responses", "model", req.Model, "input_items", len(input), "tools", len(req.Tools), "request_bytes", buf.Len())
+		c.logger.Debug("responses request", "endpoint", c.baseURL+"/responses", "model", prepared.model, "input_items", prepared.inputs, "tools", prepared.tools, "request_bytes", len(prepared.body))
 	}
 	callCtx, cancel := context.WithCancel(ctx)
 	resp, err := c.transport.Do(callCtx, func(ctx context.Context) (*http.Request, error) {
-		r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/responses", bytes.NewReader(buf.Bytes()))
+		r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/responses", bytes.NewReader(prepared.body))
 		if err != nil {
 			return nil, err
 		}

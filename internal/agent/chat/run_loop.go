@@ -162,6 +162,9 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		}
 		toolRounds++
 		execution := r.Tools.Execute(s.requestCtx, s.session, result.ToolCalls, assistantRawText, assistantRawText, s.output)
+		if execution.Err != nil {
+			return failedLoop(execution.Err)
+		}
 		if execution.Stopped {
 			if err := s.requestCtx.Err(); err != nil {
 				return dialogue.LoopResult{Outcome: dialogue.Canceled, Err: err, QuietCancellation: true}
@@ -170,9 +173,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		}
 		s.messages[assistantToolCallIndex].ToolCalls = append([]llm.ToolCallRequest(nil), execution.PreparedCalls...)
 		s.messages = append(s.messages, execution.Messages...)
-		if err := r.Messages.AppendTranscript(s.ctx, s.session.ID, execution.Transcript); err != nil {
-			return failedLoop(err)
-		}
 		s.tools, err = r.Tools.Schemas(s.ctx, s.session)
 		if err != nil {
 			return failedLoop(err)
@@ -187,7 +187,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 
 	return dialogue.LoopResult{
 		Outcome: dialogue.Completed,
-		Commit:  dialogue.ReplyCommitInput{Session: s.session, Text: finalText, RawText: finalRawText, PlatformText: platformFinalText, Stream: finalStream, Outputs: deferredOutputs},
+		Commit:  dialogue.ReplyCommitInput{Persistence: r.Messages.Committer("append_assistant_message"), Session: s.session, Text: finalText, RawText: finalRawText, PlatformText: platformFinalText, Stream: finalStream, Outputs: deferredOutputs},
 	}
 }
 

@@ -338,6 +338,7 @@ type SessionSummary struct {
 type Store interface {
 	Sessions() SessionRepository
 	Messages() MessageRepository
+	Dialogues() DialogueRepository
 	Media() MediaRepository
 	MediaReferences() MediaReferenceRepository
 	ContextSummaries() ContextSummaryRepository

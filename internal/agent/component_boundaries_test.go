@@ -151,7 +151,7 @@ func TestDiagnosticLoggerOptionsAndRetiredObservationLogs(t *testing.T) {
 			}
 		})
 		var replyEvents []string
-		a.execution.dialogue.Replies.Messages = &replyTestRepository{MessageRepository: a.execution.dialogue.Messages.Repository, events: &replyEvents, mapErr: errors.New("association failure")}
+		a.execution.dialogue.Replies.Messages = &replyTestRepository{MessageRepository: a.execution.dialogue.Replies.Messages, events: &replyEvents, mapErr: errors.New("association failure")}
 		ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Sender: mediaSendFunc(func([]delivery.Output) (delivery.Receipt, error) {
 			return delivery.Receipt{}, errors.New("send failure")
 		})})

@@ -10,6 +10,7 @@ import (
 	chatroute "elbot/internal/agent/chat"
 	"elbot/internal/agent/dialogue"
 	agentevents "elbot/internal/agent/events"
+	responseroute "elbot/internal/agent/responses"
 	"elbot/internal/contextmgr"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -61,12 +62,16 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 	}
 	tools := &dialogue.ToolExecutor{Manager: deps.ToolRunner, State: deps.ToolState, Registry: deps.ToolRegistry,
 		Provider: toolRuntime.provider, DefaultProvider: toolRuntime.defaultProvider, Identity: identity, Deps: toolDeps, MaxRounds: cfg.ToolsConfig.MaxRoundsPerTurn}
-	messages := &dialogue.MessageStore{Repository: store.Messages(), Media: deps.Media, Failed: signals.PersistenceFailed}
+	messages := &dialogue.MessageStore{Dialogues: store.Dialogues(), Gate: &dialogue.CommitGate{Sessions: sessions, Turns: turns, View: view}, Media: deps.Media, Failed: signals.PersistenceFailed}
+	replies.Persistence = messages.Committer("append_assistant_message")
+	tools.Messages = messages
 	preparer := &dialogue.Preparer{Contexts: deps.Contexts, Media: deps.Media, Identity: identity, Hooks: hooks, Tools: tools, InputReceived: signals.UserInputReceived}
 	calls := &dialogue.CallProcessor{Messages: messages, Media: deps.Media, Hooks: hooks, Identity: identity, Tools: tools, Completed: signals.ModelCallCompleted, Vision: signals.VisionFallbackUsed}
-	chat := &chatroute.Loop{Logger: logger, Contexts: deps.Contexts, Models: deps.Models, Turns: turns, View: view, Preparer: preparer, Tools: tools, Messages: messages, Caller: &chatroute.Caller{Calls: calls}, PromptBuilder: chatroute.PromptBuilder{System: buildSystemPrompt(cfg.SoulPath, deps.ResidentMemoryStore, toolRuntime.provider, deps.ToolPreloader)}}
+	system := buildSystemPrompt(cfg.SoulPath, deps.ResidentMemoryStore, toolRuntime.provider, deps.ToolPreloader)
+	chat := &chatroute.Loop{Logger: logger, Contexts: deps.Contexts, Models: deps.Models, Turns: turns, View: view, Preparer: preparer, Tools: tools, Messages: messages, Caller: &chatroute.Caller{Calls: calls}, PromptBuilder: chatroute.PromptBuilder{System: system}}
+	response := &responseroute.Loop{Repository: store.Dialogues(), Models: deps.Models, Turns: turns, View: view, Preparer: preparer, Tools: tools, Messages: messages, Calls: calls, System: system}
 	compactor := &chatroute.Compactor{Store: store, Models: deps.Models, Contexts: deps.Contexts, Loader: contextmgr.Loader{Store: store}}
-	if err := bindProviderRoutes(deps.Routes, deps.Models, chat, compactor); err != nil {
+	if err := bindProviderRoutes(deps.Routes, deps.Models, chat, response, compactor); err != nil {
 		return nil, err
 	}
 	if err := deps.Contexts.CheckCompaction(llm.Origin{Protocol: llm.ProtocolChat}); err != nil {

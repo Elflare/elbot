@@ -485,6 +485,37 @@ WHERE json_type(
 ) IS NULL;
 `,
 	},
+	{
+		version: 19,
+		name:    "native_dialogue",
+		sql: `
+CREATE TABLE native_exchanges (
+ id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+ protocol TEXT NOT NULL, provider TEXT NOT NULL, base_url TEXT NOT NULL, model TEXT NOT NULL,
+ request_id TEXT NOT NULL, run_id TEXT NOT NULL, attempt TEXT NOT NULL, previous_checkpoint_id TEXT NOT NULL,
+ request_json TEXT NOT NULL, response_json TEXT NOT NULL DEFAULT '', items_json TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL, error TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+);
+CREATE INDEX idx_native_exchanges_session ON native_exchanges(session_id, created_at);
+CREATE TABLE native_inputs (
+ id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+ message_id TEXT NOT NULL, exchange_id TEXT NOT NULL, call_id TEXT NOT NULL,
+ item_json TEXT NOT NULL, media_json TEXT NOT NULL, consumed_by TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+);
+CREATE INDEX idx_native_inputs_pending ON native_inputs(session_id, consumed_by, created_at);
+CREATE TABLE native_calls (
+ exchange_id TEXT NOT NULL REFERENCES native_exchanges(id) ON DELETE CASCADE,
+ call_id TEXT NOT NULL, ordinal INTEGER NOT NULL, name TEXT NOT NULL, arguments TEXT NOT NULL,
+ status TEXT NOT NULL, result_input_id TEXT NOT NULL DEFAULT '', PRIMARY KEY(exchange_id,call_id)
+);
+CREATE TABLE native_checkpoints (
+ id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+ parent_id TEXT NOT NULL, exchange_id TEXT NOT NULL REFERENCES native_exchanges(id) ON DELETE CASCADE,
+ response_id TEXT NOT NULL, message_id TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX idx_native_checkpoints_message ON native_checkpoints(session_id, message_id);
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

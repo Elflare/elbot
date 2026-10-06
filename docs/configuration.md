@@ -192,7 +192,7 @@ api_key_env = "OPENAI_API_KEY"
 extra_payload = { reasoning = { effort = "medium" } }
 ```
 
-该 provider 可用于命名模型或 Chat 会话的文字摘要模型，独立调用不续接主会话。采样、reasoning、输出格式等参数由上游 API／模型决定是否支持，不支持时返回实际错误。
+Responses api 扔可用于命名模型，也可对 Chat api 的sessoin 进行压缩。
 
 ## 内置 Web 工具配置
 

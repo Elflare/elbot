@@ -31,6 +31,10 @@ func (r *Loop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials
 	return &preparedLoop{route: r, materials: materials, compactSeedOnCurrentUser: compactSeedOnCurrentUser, summaryOnCurrentUser: summaryOnCurrentUser}, nil
 }
 
+func (p *preparedLoop) InputCommitter() dialogue.MessageCommitter {
+	return p.route.Messages.Committer("append_user_message")
+}
+
 func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue.LoopInput, out dialogue.Output) (*storage.Message, error) {
 	r := p.route
 	s := &chatTurnState{ctx: ctx, requestCtx: requestCtx, session: in.Session, text: in.Text, output: out, selection: in.Selection, requestID: in.RequestID, startedAt: in.StartedAt}

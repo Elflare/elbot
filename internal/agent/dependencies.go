@@ -66,6 +66,9 @@ func validateConstruction(ctx context.Context, cfg Config, deps Dependencies) er
 	if deps.Store == nil {
 		return fmt.Errorf("store is required")
 	}
+	if deps.Store.Dialogues() == nil {
+		return fmt.Errorf("dialogue persistence is required")
+	}
 	if deps.Platform == nil {
 		return fmt.Errorf("platform is required")
 	}

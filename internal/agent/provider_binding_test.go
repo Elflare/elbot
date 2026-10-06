@@ -2,7 +2,11 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -41,33 +45,59 @@ func TestProviderAssemblyRejectsWrongNativeCapability(t *testing.T) {
 	}
 }
 
-func TestResponseBindingRejectsMainDialogueBeforeMutation(t *testing.T) {
-	client, err := responses.New("https://unused.invalid", "", nil, nil, responses.RequestOptions{})
+func TestResponseBindingRunsNativeDialogueAndContinuesCheckpoint(t *testing.T) {
+	var requests []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			return
+		}
+		requests = append(requests, body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"r%d\",\"status\":\"completed\",\"output\":[{\"type\":\"reasoning\",\"id\":\"reasoning\",\"summary\":[],\"encrypted_content\":\"opaque\",\"unknown\":true},{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"native answer\"}]}],\"usage\":{\"input_tokens\":3,\"output_tokens\":4,\"total_tokens\":7}}}\n\n", len(requests))
+	}))
+	t.Cleanup(server.Close)
+	client, err := responses.New(server.URL, "", nil, nil, responses.RequestOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	opts := validConstructorOptions(t)
 	opts.Models = newTestModels(t, modelmgr.Options{
-		Clients: map[string]llm.Client{"native": client}, Providers: map[string]config.ProviderConfig{"native": {APIMode: "response", BaseURL: "https://unused.invalid"}},
+		Clients: map[string]llm.Client{"native": client}, Providers: map[string]config.ProviderConfig{"native": {APIMode: "response", BaseURL: server.URL}},
 		ModeModels: map[string]config.ModelSelection{"work": {Provider: "native", Model: "m"}},
 	})
+	opts.SessionConfig.NamingConfig.TriggerStep = 100
 	a := mustNewWithOptions(t, opts)
 	ctx := t.Context()
-	if err := a.HandleMessage(ctx, "do not save this"); err == nil || !strings.Contains(err.Error(), "主对话") {
-		t.Fatalf("missing dialogue was not rejected before the API call: %v", err)
+	for _, text := range []string{"first", "second"} {
+		if err := a.HandleMessage(ctx, text); err != nil {
+			t.Fatal(err)
+		}
 	}
 	row, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, known, err := session.Origin(row); err != nil || known {
-		t.Fatalf("rejected target registered an origin: %+v / %v", row, err)
+	if origin, known, err := session.Origin(row); err != nil || !known || origin.Protocol != llm.ProtocolResponse {
+		t.Fatalf("native origin: %+v / %v", row, err)
 	}
-	if messages, err := opts.Store.Messages().ListBySession(ctx, row.ID); err != nil || len(messages) != 0 {
-		t.Fatalf("rejected target saved input: %+v / %v", messages, err)
+	if messages, err := opts.Store.Messages().ListBySession(ctx, row.ID); err != nil || len(messages) != 4 || messages[3].Content != "native answer" {
+		t.Fatalf("native display history: %+v / %v", messages, err)
 	}
 	if len(a.execution.requests.List()) != 0 {
-		t.Fatal("rejected target registered a request")
+		t.Fatal("native request leaked")
+	}
+	if len(requests) != 2 || requests[0]["store"] != true || requests[1]["previous_response_id"] != "r1" || requests[0]["instructions"] != requests[1]["instructions"] || len(requests[1]["input"].([]any)) != 1 {
+		t.Fatalf("native chain: %+v", requests)
+	}
+	checkpoint, err := opts.Store.Dialogues().CurrentCheckpoint(ctx, row.ID)
+	if err != nil || checkpoint == nil || checkpoint.ResponseID != "r2" || checkpoint.MessageID == "" {
+		t.Fatalf("checkpoint=%+v %v", checkpoint, err)
+	}
+	exchange, err := opts.Store.Dialogues().GetExchange(ctx, checkpoint.ExchangeID)
+	if err != nil || !strings.Contains(exchange.ResponseJSON, "encrypted_content") || !strings.Contains(exchange.ItemsJSON, "unknown") || !strings.Contains(exchange.RequestJSON, "second") {
+		t.Fatalf("exchange=%+v %v", exchange, err)
 	}
 }
 

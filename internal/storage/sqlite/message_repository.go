@@ -15,6 +15,18 @@ type MessageRepository struct {
 }
 
 func (r *MessageRepository) Append(ctx context.Context, message *storage.Message) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := appendMessageTx(ctx, tx, message); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func appendMessageTx(ctx context.Context, tx *sql.Tx, message *storage.Message) error {
 	if message.ID == "" {
 		message.ID = storage.NewID()
 	}
@@ -22,12 +34,7 @@ func (r *MessageRepository) Append(ctx context.Context, message *storage.Message
 		message.CreatedAt = storage.Now()
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, `
+	_, err := tx.ExecContext(ctx, `
 INSERT INTO messages (
     id, session_id, role, content, parent_message_id, reply_to_platform_message_id,
     reply_to_message_id, tool_call_id, segments, metadata, created_at
@@ -67,7 +74,7 @@ INSERT INTO messages (
 			return fmt.Errorf("append message media reference: %w", err)
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (r *MessageRepository) Get(ctx context.Context, id string) (*storage.Message, error) {

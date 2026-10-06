@@ -188,7 +188,7 @@ func TestCompactUsesOriginalSelectionDuringModelSwitch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.execution.dialogue.Messages.Repository.Append(ctx, &storage.Message{SessionID: source.ID, Role: storage.RoleUser, Content: "keep me"}); err != nil {
+	if err := a.execution.dialogue.Replies.Messages.Append(ctx, &storage.Message{SessionID: source.ID, Role: storage.RoleUser, Content: "keep me"}); err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)

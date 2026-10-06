@@ -72,6 +72,20 @@ func (c *CallProcessor) NotifyError(ctx context.Context, event hook.Event, err e
 	c.Hooks.Notify(ctx, event)
 }
 func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *PendingUserMessage) (CallInput, func(), error) {
+	input, err := c.PrepareProjection(ctx, session, selection, messages, tools, pending, c.Messages.Committer("append_pending_user_message"))
+	if err != nil {
+		return CallInput{}, func() {}, err
+	}
+	cleanup := func() {}
+	if c.Media != nil {
+		input.RequestMessages, cleanup, err = c.Media.AcquireForLLM(ctx, input.Messages)
+	}
+	return input, cleanup, err
+}
+
+// PrepareProjection applies common hooks and authorization to business views.
+// Native routes acquire only their new wire input, not old display history.
+func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *PendingUserMessage, persistence MessageCommitter) (CallInput, error) {
 	sessionID := session.ID
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
 	if !toolsEnabled {
@@ -81,7 +95,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	if session.Mode == storage.SessionModeBackground {
 		cached, err := CachedToolsForSession(ctx, c.Tools.State, c.Tools.Registry, session)
 		if err != nil {
-			return CallInput{}, func() {}, err
+			return CallInput{}, err
 		}
 		allowedTools = toolrun.BackgroundToolNames(ctx, cached)
 	}
@@ -108,11 +122,11 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	})
 	if err != nil {
 		if pending != nil {
-			if persistErr := c.Messages.Append(ctx, &pending.Message, "append_pending_user_message"); persistErr != nil {
+			if persistErr := persistence.Commit(ctx, &pending.Message); persistErr != nil {
 				err = errors.Join(err, persistErr)
 			}
 		}
-		return CallInput{}, func() {}, fmt.Errorf("llm request hook: %w", err)
+		return CallInput{}, fmt.Errorf("llm request hook: %w", err)
 	}
 	tools = event.LLM.Tools
 	if allowedTools != nil {
@@ -133,19 +147,11 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 		baseMessages[pending.MessageIndex].Segments = segments
 		pending.Message.Content = llm.SegmentsContentText(segments)
 		pending.Message.Segments = StoredMessageSegments(segments)
-		if err := c.Messages.Append(ctx, &pending.Message, "append_pending_user_message"); err != nil {
-			return CallInput{}, func() {}, err
+		if err := persistence.Commit(ctx, &pending.Message); err != nil {
+			return CallInput{}, err
 		}
 	}
-	requestMessages := baseMessages
-	cleanup := func() {}
-	if c.Media != nil {
-		requestMessages, cleanup, err = c.Media.AcquireForLLM(ctx, baseMessages)
-		if err != nil {
-			return CallInput{}, func() {}, err
-		}
-	}
-	return CallInput{Messages: baseMessages, RequestMessages: requestMessages, Tools: tools}, cleanup, nil
+	return CallInput{Messages: baseMessages, RequestMessages: baseMessages, Tools: tools}, nil
 }
 
 func (c *CallProcessor) CompleteCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, content string, usage *llm.Usage, toolCalls []llm.ToolCallRequest, elapsedMs int64) (CallOutput, error) {

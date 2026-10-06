@@ -34,6 +34,7 @@ func (*testClient) GenerateText(context.Context, llm.TextRequest) (llm.TextResul
 }
 
 type testLoop struct {
+	messages *dialogue.MessageStore
 	t        *testing.T
 	prepared int
 	ran      int
@@ -53,6 +54,10 @@ func (l *testLoop) PrepareTurn(ctx context.Context, materials dialogue.TurnMater
 type testPrepared struct {
 	loop *testLoop
 	user *storage.Message
+}
+
+func (p *testPrepared) InputCommitter() dialogue.MessageCommitter {
+	return p.loop.messages.Committer("append_user_message")
 }
 
 func (p *testPrepared) PrepareInput(_, requestCtx context.Context, in dialogue.LoopInput, _ dialogue.Output) (*storage.Message, error) {
@@ -118,7 +123,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry := routes.New()
-	loop, compactor := &testLoop{t: t}, &testCompactor{}
+	loop, compactor := &testLoop{t: t, messages: &dialogue.MessageStore{Dialogues: store.Dialogues()}}, &testCompactor{}
 	origin := llm.Origin{Provider: "test-provider", Protocol: testProtocol, BaseURL: "https://test.invalid"}
 	client := &testClient{}
 	if err := registry.RegisterCompactor(testProtocol, compactor); err != nil {
@@ -140,8 +145,8 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	contexts := contextmgr.New(contextmgr.Options{Store: store, Compactors: registry})
 	out := &testOutput{t: t, messages: store.Messages()}
 	runner := &dialogue.Runner{Routes: registry, Preparer: &dialogue.Preparer{Contexts: contexts},
-		Messages: &dialogue.MessageStore{Repository: store.Messages()},
-		Replies:  &dialogue.ReplyCommitter{Messages: store.Messages(), Output: out},
+		Messages: loop.messages,
+		Replies:  &dialogue.ReplyCommitter{Messages: store.Messages(), Persistence: loop.messages.Committer("append_assistant_message"), Output: out},
 		Turns:    turn.NewManager(), View: dialogue.ExecutionView{Sessions: store.Sessions(), Providers: registry}}
 	in := dialogue.TurnInput{Session: row, Text: "incoming", Selection: modelmgr.Selection{ModelSelection: config.ModelSelection{Provider: origin.Provider, Model: "m"}, Client: client}}
 	in.Prepared, err = runner.PrepareTurn(ctx, in)
