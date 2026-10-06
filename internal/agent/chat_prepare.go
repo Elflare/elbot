@@ -64,23 +64,33 @@ func (r *chatRunner) prepareTurn(ctx context.Context, session *storage.Session, 
 }
 
 func (r *chatRunner) prepareMessages(s *chatTurnState, prepared *preparedTurn) error {
+	ctx := s.requestCtx
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	userMessage, userSegments, loaded, messages := prepared.userMessage, prepared.userSegments, prepared.loaded, prepared.messages
 	compactSeedOnCurrentUser, summaryOnCurrentUser := prepared.compactSeedOnCurrentUser, prepared.summaryOnCurrentUser
 	s.output.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{SessionID: s.session.ID, Phase: runtimestatus.PhasePreparing, Provider: s.selection.Provider, Model: s.selection.Model, Mode: s.session.Mode, TurnStartedAt: s.startedAt, StageStartedAt: s.startedAt})
-	scope := r.identity.Scope(s.ctx)
+	scope := r.identity.Scope(ctx)
 	var err error
-	s.messages, err = r.promptBuilder.Build(s.ctx, PromptBuildRequest{Session: s.session, Scope: scope, Messages: messages, Summary: loaded.Summary})
+	s.messages, err = r.promptBuilder.Build(ctx, PromptBuildRequest{Session: s.session, Scope: scope, Messages: messages, Summary: loaded.Summary})
 	if err != nil {
 		return err
 	}
-	s.tools, err = r.toolsForSession(s.ctx, s.session)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.tools, err = r.toolsForSession(ctx, s.session)
 	if err != nil {
 		return err
 	}
-	turnEvent, err := r.hooks.Run(s.ctx, hook.Event{
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	turnEvent, err := r.hooks.Run(ctx, hook.Event{
 		Point:   hook.PointLLMTurnPrepared,
 		Session: hook.SessionContext{ID: s.session.ID},
-		Message: hook.MessagePayload{ID: userMessage.ID, Role: string(llm.RoleUser), PlatformText: inboundTurnInput(s.ctx, s.text).PlatformText, Segments: append([]llm.MessageSegment(nil), userSegments...)},
+		Message: hook.MessagePayload{ID: userMessage.ID, Role: string(llm.RoleUser), PlatformText: inboundTurnInput(ctx, s.text).PlatformText, Segments: append([]llm.MessageSegment(nil), userSegments...)},
 		LLM: hook.LLMPayload{
 			Provider: s.selection.Provider,
 			Model:    s.selection.Model,
@@ -91,11 +101,14 @@ func (r *chatRunner) prepareMessages(s *chatTurnState, prepared *preparedTurn) e
 	if err != nil {
 		return fmt.Errorf("llm turn hook: %w", err)
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if s.session.Mode == storage.SessionModeWork || s.session.Mode == storage.SessionModeBackground {
 		s.tools = turnEvent.LLM.Tools
 	}
 	s.output.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{SessionID: s.session.ID, Phase: runtimestatus.PhasePreparing, Provider: s.selection.Provider, Model: s.selection.Model, Mode: s.session.Mode, TurnStartedAt: s.startedAt, StageStartedAt: s.startedAt})
-	canonicalUserSegments := materializeMedia(s.ctx, r.media, turnEvent.Message.Segments)
+	canonicalUserSegments := materializeMedia(ctx, r.media, turnEvent.Message.Segments)
 	promptUserSegments := canonicalUserSegments
 	if compactSeedOnCurrentUser || summaryOnCurrentUser {
 		promptUserSegments = llm.PrependSegmentText(promptUserSegments, summaryUserPrefix(loaded.Summary.Summary))
@@ -108,11 +121,14 @@ func (r *chatRunner) prepareMessages(s *chatTurnState, prepared *preparedTurn) e
 		userMessage.Content = llm.SegmentsContentText(canonicalUserSegments)
 		userMessage.Segments = storedMessageSegments(canonicalUserSegments)
 	}
-	if err := persistTurnMessage(s.ctx, r.messages, r.media, r.persistenceFailed, userMessage, "append_user_message"); err != nil {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := persistTurnMessage(ctx, r.messages, r.media, r.persistenceFailed, userMessage, "append_user_message"); err != nil {
 		return err
 	}
 	if compactSeedOnCurrentUser {
-		r.consumeContextCompactSeed(s.ctx, s.session)
+		r.consumeContextCompactSeed(ctx, s.session)
 	}
 
 	return nil

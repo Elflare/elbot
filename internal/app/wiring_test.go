@@ -24,7 +24,7 @@ func TestBuildAgentInstallsExecutionParticipants(t *testing.T) {
 		t.Fatal(err)
 	}
 	hooks := hook.NewManager()
-	if _, err := buildAgent(req.Foundation, req.Platforms, services, &builtin.Runtime{Registry: tool.NewRegistry()}, hooks, nil); err != nil {
+	if _, err := buildAgent(t.Context(), req.Foundation, req.Platforms, services, &builtin.Runtime{Registry: tool.NewRegistry()}, hooks, nil); err != nil {
 		t.Fatal(err)
 	}
 	scope := session.Scope{ActorID: "cli:local", Platform: "cli", PlatformScopeID: "local", IsCLI: true}

@@ -91,6 +91,7 @@ func NewWithOptions(opts Options) (*Agent, error) {
 		sessions: sessions, sessionRows: store.Sessions(), turns: turns, requests: requests, contexts: opts.Contexts,
 		models: opts.Models, chat: chat, identity: identity, view: view, output: output, status: status,
 		waitPolicy: waitPolicy, responseTimeout: responseTimeout(opts.LLMRequestConfig), persistenceFailed: signals.PersistenceFailed, timedOut: signals.TurnTimedOut, logger: logger,
+		appendWaits: newAppendWaitLifecycle(opts.RuntimeContext),
 	}
 	input := &inputCoordinator{
 		sessions: sessions, sessionRows: store.Sessions(), turns: turns, identity: identity,

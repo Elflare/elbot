@@ -216,7 +216,8 @@ func TestAppendConfirmationExpirationRefreshesOnContent(t *testing.T) {
 	m.InterruptLLM("s1", "more")
 
 	expired := make(chan bool, 1)
-	go func() { expired <- m.AwaitAppendExpiration("s1", 80*time.Millisecond) }()
+	wait := m.AppendWait("s1")
+	go func() { expired <- wait.Wait(context.Background(), 80*time.Millisecond) }()
 	time.Sleep(50 * time.Millisecond)
 	if !m.AppendPending("s1", "latest") {
 		t.Fatal("append did not refresh confirmation wait")
@@ -244,7 +245,8 @@ func TestExpiredAppendWaitCannotRemoveNewTurn(t *testing.T) {
 	m.StartLLM("s1", "first")
 	m.InterruptLLM("s1", "more")
 	oldWait := make(chan bool, 1)
-	go func() { oldWait <- m.AwaitAppendExpiration("s1", 100*time.Millisecond) }()
+	wait := m.AppendWait("s1")
+	go func() { oldWait <- wait.Wait(context.Background(), 100*time.Millisecond) }()
 	time.Sleep(10 * time.Millisecond)
 	if !m.CancelAppend("s1") {
 		t.Fatal("cancel append failed")

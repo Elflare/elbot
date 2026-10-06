@@ -449,6 +449,9 @@ internal/
 │   ├── execution_input.go
 │   │   ├── AcceptInput()
 │   │   └── ResumeAppend()
+│   ├── execution_lifecycle.go
+│   │   ├── appendWaitLifecycle          # 等待及过期提示的应用生命周期
+│   │   └── Agent.Close() / Done()       # 薄委托，app 等待实际退出
 │   ├── execution_run.go
 │   │   ├── runAttempt()
 │   │   └── finishAttempt()
@@ -782,6 +785,8 @@ app 在平台等生产者启动前连接订阅，并持有 Connection 和 Queue�
 ### 阶段 15：Review 与整体验收
 
 目标：在全部接线完成后重新审查最新代码，确认拆分和信号化没有隐藏耦合、状态分叉或行为回归。此阶段必须实际 Review，不能只复述前面阶段的测试结果。
+
+当前 Review 发现的三项问题均已修复：Turn 的 Prompt、工具准备、前置 Hook 与用户消息落库受 Turn Request 取消／超时约束，Hook 挂入该请求树；风险确认先在 Turn 锁内登记 attempt 与响应通道，再在锁外发提示，快速响应可接收，发送失败与取消只清理对应等待；追加确认等待接入 app 生命周期，关闭预算覆盖任务和在途过期提示的实际退出。本批完成问题修复；整体验收仍按下述 Review 顺序与验证矩阵执行，阶段任务保持未完成。
 
 Review 顺序与产出：
 

@@ -179,9 +179,15 @@ func (c *confirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	fullArgs := compactArguments(call.Arguments)
 	previewArgs := previewArguments(fullArgs)
 	timeout := c.policy.WaitTimeout(ctx)
-	c.publishConfirmationWait(ctx, sessionID, call, assessment.Level, assessment.Reasons)
-	c.output.SendChat(ctx, fmt.Sprintf("高风险工具调用等待确认\n工具：%s\n风险：%s\n参数：%s%s\n%s。", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout)))
-	resp, ok := c.turns.AwaitRiskConfirmationContext(ctx, sessionID, turn.RiskConfirmation{ID: call.ID, ToolName: call.Name, Arguments: fullArgs, Risk: string(assessment.Level), Summary: fmt.Sprintf("%s %s", call.Name, previewArgs), Detail: detail}, timeout, turn.AttemptFromContext(ctx))
+	wait := c.turns.BeginRiskConfirmation(sessionID, turn.RiskConfirmation{ID: call.ID, ToolName: call.Name, Arguments: fullArgs, Risk: string(assessment.Level), Summary: fmt.Sprintf("%s %s", call.Name, previewArgs), Detail: detail}, turn.AttemptFromContext(ctx))
+	defer wait.Cancel()
+	if wait != nil && ctx.Err() == nil {
+		c.publishConfirmationWait(ctx, sessionID, call, assessment.Level, assessment.Reasons)
+		if _, err := c.output.SendAssistant(ctx, fmt.Sprintf("高风险工具调用等待确认\n工具：%s\n风险：%s\n参数：%s%s\n%s。", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout))); err != nil {
+			return toolrun.ConfirmResult{Stopped: true}, fmt.Errorf("send risk confirmation: %w", err)
+		}
+	}
+	resp, ok := wait.Wait(ctx, timeout)
 	if resp.Expired {
 		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "expire", resp.Extra, "confirmation wait expired")
 		c.output.SendChat(context.WithoutCancel(ctx), "高风险工具确认已过期，当前处理已停止。")

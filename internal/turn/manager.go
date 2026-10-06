@@ -187,39 +187,65 @@ func (m *Manager) CancelAppend(sessionID string) bool {
 	return true
 }
 
-func (m *Manager) AwaitAppendExpiration(sessionID string, timeout time.Duration) bool {
-	if timeout <= 0 {
-		return false
-	}
-
+// AppendWait captures one confirmation instance before its worker is started.
+// A resumed attempt, including another wait on the same state, cannot be removed
+// by a delayed worker belonging to this instance.
+func (m *Manager) AppendWait(sessionID string) *AppendWait {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
 	if !ok || turn.phase != PhaseAwaitAppendConfirm || turn.appendDone == nil {
-		m.mu.Unlock()
+		return nil
+	}
+	return &AppendWait{manager: m, sessionID: sessionID, state: turn, refresh: turn.waitRefresh, done: turn.appendDone}
+}
+
+type AppendWait struct {
+	manager   *Manager
+	sessionID string
+	state     *state
+	refresh   <-chan struct{}
+	done      <-chan struct{}
+}
+
+// Wait returns true only for expiry. Application cancellation discards this
+// wait silently; timeout <= 0 still waits for resolution or shutdown.
+func (w *AppendWait) Wait(ctx context.Context, timeout time.Duration) bool {
+	if w == nil {
 		return false
 	}
-	refresh := turn.waitRefresh
-	done := turn.appendDone
-	m.mu.Unlock()
-
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
+	var timer *time.Timer
+	var timerC <-chan time.Time
+	if timeout > 0 {
+		timer = time.NewTimer(timeout)
+		timerC = timer.C
+		defer timer.Stop()
+	}
+	remove := func() bool {
+		m := w.manager
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		current := m.turns[w.sessionID]
+		if current == w.state && current.phase == PhaseAwaitAppendConfirm && current.appendDone == w.done {
+			removeTurn(m.turns, w.sessionID, current)
+			return true
+		}
+		return false
+	}
 	for {
 		select {
-		case <-done:
+		case <-ctx.Done():
+			remove()
 			return false
-		case <-refresh:
-			resetTimer(timer, timeout)
-		case <-timer.C:
-			m.mu.Lock()
-			current, active := m.turns[sessionID]
-			if active && current == turn && current.phase == PhaseAwaitAppendConfirm {
-				removeTurn(m.turns, sessionID, current)
-				m.mu.Unlock()
-				return true
+		case <-w.done:
+			return false
+		case <-w.refresh:
+			if timer != nil {
+				resetTimer(timer, timeout)
 			}
-			m.mu.Unlock()
-			return false
+		case <-timerC:
+			removed := remove()
+			return removed && ctx.Err() == nil
 		}
 	}
 }
@@ -228,23 +254,62 @@ func (m *Manager) AwaitRiskConfirmation(sessionID string, confirmation RiskConfi
 }
 
 func (m *Manager) AwaitRiskConfirmationContext(ctx context.Context, sessionID string, confirmation RiskConfirmation, timeout time.Duration, expected ...string) (RiskConfirmationResponse, bool) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	ch := make(chan RiskConfirmationResponse, 1)
+	return m.BeginRiskConfirmation(sessionID, confirmation, expected...).Wait(ctx, timeout)
+}
+
+// RiskConfirmationWait owns one registered confirmation, including a response
+// received before Wait starts. It must be waited on or canceled by its caller.
+type RiskConfirmationWait struct {
+	manager   *Manager
+	sessionID string
+	turn      *state
+	response  chan RiskConfirmationResponse
+	refresh   chan struct{}
+}
+
+// BeginRiskConfirmation registers the attempt and response channel atomically.
+// The caller can then publish the prompt without holding the manager lock.
+func (m *Manager) BeginRiskConfirmation(sessionID string, confirmation RiskConfirmation, expected ...string) *RiskConfirmationWait {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
 	if !ok || !matches(turn, expected) || turn.phase != PhaseTool {
-		m.mu.Unlock()
-		return RiskConfirmationResponse{Stopped: true}, false
+		return nil
 	}
 	turn.phase = PhaseAwaitRiskConfirm
 	turn.riskConfirm = &confirmation
-	turn.riskResponse = ch
+	turn.riskResponse = make(chan RiskConfirmationResponse, 1)
 	turn.waitRefresh = make(chan struct{}, 1)
-	refresh := turn.waitRefresh
-	m.mu.Unlock()
+	return &RiskConfirmationWait{manager: m, sessionID: sessionID, turn: turn, response: turn.riskResponse, refresh: turn.waitRefresh}
+}
 
+// Cancel removes only this wait; a later confirmation on the same Turn is safe.
+func (w *RiskConfirmationWait) Cancel() bool {
+	if w == nil {
+		return false
+	}
+	m := w.manager
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if current := m.turns[w.sessionID]; current == w.turn && current.phase == PhaseAwaitRiskConfirm && current.riskResponse == w.response {
+		removeTurn(m.turns, w.sessionID, current)
+		return true
+	}
+	return false
+}
+
+func (w *RiskConfirmationWait) Wait(ctx context.Context, timeout time.Duration) (RiskConfirmationResponse, bool) {
+	if w == nil {
+		return RiskConfirmationResponse{Stopped: true}, false
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	defer w.Cancel()
+	if ctx.Err() != nil {
+		return RiskConfirmationResponse{Stopped: true}, false
+	}
+	m := w.manager
 	var timer *time.Timer
 	var timerC <-chan time.Time
 	if timeout > 0 {
@@ -255,46 +320,33 @@ func (m *Manager) AwaitRiskConfirmationContext(ctx context.Context, sessionID st
 
 	for {
 		select {
-		case resp := <-ch:
+		case resp := <-w.response:
 			m.mu.Lock()
-			current, active := m.turns[sessionID]
-			if !active || current != turn {
+			current := m.turns[w.sessionID]
+			if current != w.turn || current.phase != PhaseAwaitRiskConfirm || current.riskResponse != w.response {
 				m.mu.Unlock()
 				return resp, false
 			}
-			turn.riskConfirm = nil
-			turn.riskResponse = nil
-			turn.waitRefresh = nil
-			if resp.Stopped {
-				removeTurn(m.turns, sessionID, turn)
+			if resp.Stopped || ctx.Err() != nil {
+				removeTurn(m.turns, w.sessionID, current)
 				m.mu.Unlock()
+				resp.Stopped = true
 				return resp, false
 			}
-			turn.phase = PhaseTool
+			current.riskConfirm = nil
+			current.riskResponse = nil
+			current.waitRefresh = nil
+			current.phase = PhaseTool
 			m.mu.Unlock()
 			return resp, true
-		case <-refresh:
+		case <-w.refresh:
 			if timer != nil {
 				resetTimer(timer, timeout)
 			}
 		case <-timerC:
-			resp := RiskConfirmationResponse{Stopped: true, Expired: true}
-			m.mu.Lock()
-			current, active := m.turns[sessionID]
-			if active && current == turn && current.phase == PhaseAwaitRiskConfirm {
-				removeTurn(m.turns, sessionID, current)
-				m.mu.Unlock()
-				return resp, false
-			}
-			m.mu.Unlock()
-			return RiskConfirmationResponse{Stopped: true}, false
+			removed := w.Cancel()
+			return RiskConfirmationResponse{Stopped: true, Expired: removed && ctx.Err() == nil}, false
 		case <-ctx.Done():
-			m.mu.Lock()
-			current, active := m.turns[sessionID]
-			if active && current == turn && current.phase == PhaseAwaitRiskConfirm {
-				removeTurn(m.turns, sessionID, current)
-			}
-			m.mu.Unlock()
 			return RiskConfirmationResponse{Stopped: true}, false
 		}
 	}

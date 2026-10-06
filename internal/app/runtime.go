@@ -109,10 +109,11 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	hookService := buildHookService(foundation, req.Platforms, toolRuntime, hooks, hookRuntime, hookProcessEnv, notifyHookIssue, sendNotice)
 	req.Profiler.Mark("hook register")
 
-	agt, err := buildAgent(foundation, req.Platforms, services, toolRuntime, hooks, hookRuntime)
+	agt, err := buildAgent(ctx, foundation, req.Platforms, services, toolRuntime, hooks, hookRuntime)
 	if err != nil {
 		return components, err
 	}
+	lifecycle.agent = agt
 	if err := registerBuiltinCommands(foundation, services, agt, toolRuntime, hookService); err != nil {
 		return components, err
 	}
@@ -254,14 +255,15 @@ func buildHookService(
 	return hookService
 }
 
-func buildAgent(foundation *FoundationComponents, platforms PlatformComponents, services *sharedServices, tools *builtin.Runtime, hooks *hook.DefaultManager, hookRuntime *hookruntime.Manager) (*agent.Agent, error) {
+func buildAgent(ctx context.Context, foundation *FoundationComponents, platforms PlatformComponents, services *sharedServices, tools *builtin.Runtime, hooks *hook.DefaultManager, hookRuntime *hookruntime.Manager) (*agent.Agent, error) {
 	cfg := foundation.Config
 	runner := toolrun.NewManager(tools.Registry, services.Policy)
 	runner.Media = services.Media
 	preloader := toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: tools.Registry, TagsPath: cfg.ToolTagsConfigPath, Tags: cfg.ToolTags, Audit: auditFunc(foundation.Logs)})
 	services.ToolPreloader = preloader
 	agt, err := agent.NewWithOptions(agent.Options{
-		Platform: platforms.Primary, Models: services.Models,
+		RuntimeContext: ctx,
+		Platform:       platforms.Primary, Models: services.Models,
 		Contexts: services.Contexts, ToolState: services.ToolState,
 		Sessions: services.Sessions, Requests: services.Requests, Turns: services.Turns, Commands: services.Commands,
 		Store: foundation.Store, Media: services.Media,

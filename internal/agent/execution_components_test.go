@@ -63,7 +63,7 @@ func newExecutionFixture(t *testing.T, client llm.LLM, store storage.Store) *exe
 	}
 	execution := &executionCoordinator{sessions: opts.Sessions, sessionRows: store.Sessions(), turns: opts.Turns,
 		requests: opts.Requests, contexts: opts.Contexts, models: models, chat: chat, identity: identity,
-		view: view, output: output, status: status, waitPolicy: policy}
+		view: view, output: output, status: status, waitPolicy: policy, appendWaits: newAppendWaitLifecycle(t.Context())}
 	opts.Sessions.SetForegroundActivation(execution.AdoptForeground)
 	t.Cleanup(opts.Turns.StopAll)
 	t.Cleanup(func() { _ = opts.Sessions.Close(context.Background()) })

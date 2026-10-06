@@ -108,7 +108,8 @@ func (r *chatRunner) RunTurn(ctx, requestCtx context.Context, in chatTurnInput, 
 		}
 	}()
 	if err := r.prepareMessages(s, in.Prepared); err != nil {
-		return chatTurnResult{Outcome: failedChatOutcome(err), Err: err}
+		return chatTurnResult{Outcome: failedChatOutcome(err), Err: err,
+			QuietCancellation: s.requestCtx.Err() != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))}
 	}
 	loop := r.runLoop(s)
 	result.Outcome, result.Err, result.QuietCancellation = loop.Outcome, loop.Err, loop.QuietCancellation
