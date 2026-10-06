@@ -8,6 +8,7 @@ import (
 
 	"elbot/internal/background"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/elyph"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -101,7 +102,7 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 	if err != nil {
 		return state, "", err
 	}
-	actor := security.Actor{ID: security.ActorID(meta.CreatedBy.Platform, meta.CreatedBy.PlatformUserID), Platform: meta.CreatedBy.Platform, PlatformUserID: meta.CreatedBy.PlatformUserID, DisplayName: meta.CreatedBy.DisplayName, Role: security.RoleSuperadmin}
+	actor := contextinfo.Actor{ID: security.ActorID(meta.CreatedBy.Platform, meta.CreatedBy.PlatformUserID), Platform: meta.CreatedBy.Platform, PlatformUserID: meta.CreatedBy.PlatformUserID, DisplayName: meta.CreatedBy.DisplayName, Role: contextinfo.RoleSuperadmin}
 	runRequest := background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), Prompt: cronPrompt(meta.Trigger.Message), SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}}
 	runRequest.ToolListNames = meta.LLM.ToolListNames
 	runRequest.ModelProvider, runRequest.Model = model.Provider, model.Model
@@ -159,7 +160,7 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 	return state, report, nil
 }
 
-func (s *Service) retryLLMResultFormat(ctx context.Context, job storage.CronJob, meta Metadata, actor security.Actor, sessionID string, model config.ModelSelection) (background.RunResult, CronLLMResult, error) {
+func (s *Service) retryLLMResultFormat(ctx context.Context, job storage.CronJob, meta Metadata, actor contextinfo.Actor, sessionID string, model config.ModelSelection) (background.RunResult, CronLLMResult, error) {
 	if taken, err := background.SessionTakenOver(ctx, s.store, sessionID); err != nil || taken {
 		return background.RunResult{SessionID: sessionID, TakenOver: taken, Outcome: "taken_over"}, CronLLMResult{}, err
 	}

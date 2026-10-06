@@ -40,7 +40,7 @@ func (h *messageHandler) materializePlatformMedia(ctx context.Context) context.C
 }
 
 func (h *messageHandler) materializePlatformSegment(ctx context.Context, msg platform.MessageContext, segment platform.MessageSegment) platform.MessageSegment {
-	item, err := h.media.ImportPlatform(ctx, msg.Info.Source.Platform, msg.MediaResolver, segment)
+	item, err := h.media.ImportPlatform(ctx, msg.Conversation.Source.Platform, msg.MediaResolver, segment)
 	if err != nil {
 		return unavailablePlatformSegment(segment)
 	}
@@ -57,7 +57,7 @@ func (h *messageHandler) associateInboundHistory(ctx context.Context, msg platfo
 	if h.media.History == nil || messageID == "" {
 		return
 	}
-	row, err := h.media.History.GetByPlatformMessage(ctx, msg.Info.Source.Platform, msg.Info.Source.ScopeID, messageID)
+	row, err := h.media.History.GetByPlatformMessage(ctx, msg.Conversation.Source.Platform, msg.Conversation.Source.ScopeID, messageID)
 	if err != nil {
 		return
 	}

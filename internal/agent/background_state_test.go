@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"reflect"
@@ -11,7 +13,6 @@ import (
 	"elbot/internal/background"
 	"elbot/internal/config"
 	"elbot/internal/llm"
-	"elbot/internal/security"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 )
@@ -36,7 +37,7 @@ func TestBackgroundStateFreezesInitialTools(t *testing.T) {
 				cfg.ToolRegistry = registry
 			})
 			req := background.RunRequest{Kind: background.KindElnis, Name: "freeze", Platform: "cli",
-				Actor: security.Actor{ID: "cli:local", Role: security.RoleSuperadmin}, Prompt: "run"}
+				Actor: contextinfo.Actor{ID: "cli:local", Role: contextinfo.RoleSuperadmin}, Prompt: "run"}
 			if !empty {
 				req.CachedTools = []toolrun.CachedTool{backgroundCachedTool("external_old", toolrun.SourceKindELwisp), backgroundCachedTool("native_old", toolrun.SourceKindNative)}
 			}
@@ -95,7 +96,7 @@ func TestBackgroundStateFailureDoesNotPrewriteCache(t *testing.T) {
 	repo := &toolStateFaultRepo{SessionRepository: store.Sessions(), failure: failure}
 	setTestToolState(a, toolrun.NewStateService(toolStateFaultStore{Store: store, repo: repo}))
 	result, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindElnis, Name: "failure", Platform: "cli",
-		Actor: security.Actor{ID: "cli:local", Role: security.RoleSuperadmin}, Prompt: "run",
+		Actor: contextinfo.Actor{ID: "cli:local", Role: contextinfo.RoleSuperadmin}, Prompt: "run",
 		CachedTools: []toolrun.CachedTool{backgroundCachedTool("new", toolrun.SourceKindELwisp)}})
 	if !errors.Is(err, failure) || repo.writes != 1 {
 		t.Fatalf("err=%v commits=%d", err, repo.writes)

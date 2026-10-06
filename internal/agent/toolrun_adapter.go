@@ -8,6 +8,7 @@ import (
 
 	"elbot/internal/agent/dialogue"
 	agentevents "elbot/internal/agent/events"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -88,7 +89,7 @@ func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Sess
 }
 
 func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error) {
-	toolReq, toolCtx, done, err := d.requests.Start(ctx, request.StartRequest{ParentID: request.TurnIDFromContext(ctx), SessionID: sessionID, Kind: request.KindTool, Label: toolName})
+	toolReq, toolCtx, done, err := d.requests.Start(ctx, request.StartRequest{ParentID: contextinfo.RootRequestIDFromContext(ctx), SessionID: sessionID, Kind: request.KindTool, Label: toolName})
 	if err != nil {
 		return ctx, time.Time{}, func() {}, err
 	}

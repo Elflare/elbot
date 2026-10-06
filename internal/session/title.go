@@ -25,20 +25,23 @@ func (g *titleGenerator) GenerateTitle(ctx context.Context, messages []storage.M
 	selected := g.models.ResolveNaming()
 	naming, namingModel := selected.Naming.Client, selected.Naming.Model
 	primary, primaryModel := selected.Fallback.Client, selected.Fallback.Model
+	var actual TitleResult
 	if naming != nil && namingModel != "" {
+		actual = TitleResult{Provider: selected.Naming.Provider, Model: namingModel}
 		if title, err := g.generate(ctx, naming, namingModel, messages); err == nil {
-			return TitleResult{RawTitle: title}, nil
+			actual.RawTitle = title
+			return actual, nil
 		}
 		if err := ctx.Err(); err != nil {
-			return TitleResult{}, err
+			return actual, err
 		}
 		// 专门命名模型失败时继续回退主模型，避免命名功能影响主对话。
 	}
 	if primary == nil || primaryModel == "" {
-		return TitleResult{}, fmt.Errorf("no title model available")
+		return actual, fmt.Errorf("no title model available")
 	}
 	title, err := g.generate(ctx, primary, primaryModel, messages)
-	return TitleResult{RawTitle: title}, err
+	return TitleResult{RawTitle: title, Provider: selected.Fallback.Provider, Model: primaryModel}, err
 }
 
 func (g *titleGenerator) generate(ctx context.Context, client llm.Client, model string, messages []storage.Message) (string, error) {

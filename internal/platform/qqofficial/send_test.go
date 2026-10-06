@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 )
 
@@ -27,7 +27,7 @@ func TestSendChatUsesGroupMessageAPI(t *testing.T) {
 	defer server.Close()
 
 	adapter := newQQOfficialSendTestAdapter(server)
-	ctx := chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: platformName, ConversationKind: chatinfo.ConversationGroup, ConversationID: "group-1"}, PlatformMessageID: "incoming-1"})
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ConversationKind: contextinfo.ConversationGroup, ConversationID: "group-1"}, PlatformMessageID: "incoming-1"})
 	receipt, err := adapter.SendChat(ctx, []delivery.Output{delivery.Text("hello")})
 	if err != nil {
 		t.Fatalf("SendChat: %v", err)
@@ -84,7 +84,7 @@ func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
 	defer server.Close()
 
 	adapter := newQQOfficialSendTestAdapter(server)
-	ctx := chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: platformName, ConversationKind: chatinfo.ConversationGroup, ConversationID: "group-1"}})
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ConversationKind: contextinfo.ConversationGroup, ConversationID: "group-1"}})
 	receipt, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")}})
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
@@ -136,8 +136,8 @@ func TestExplicitNoticeDoesNotReuseReplySnapshot(t *testing.T) {
 	}))
 	defer server.Close()
 	adapter := newQQOfficialSendTestAdapter(server)
-	info := chatinfo.Info{Source: chatinfo.Source{Platform: platformName, ScopeID: "group:original"}, PlatformMessageID: "original-message", PlatformData: messageData{EventID: "event"}}
-	ctx := chatinfo.WithInfo(context.Background(), info)
+	info := contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ScopeID: "group:original"}, PlatformMessageID: "original-message", PlatformData: messageData{EventID: "event"}}
+	ctx := contextinfo.WithConversation(context.Background(), info)
 	if _, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("reply")}}); err != nil {
 		t.Fatal(err)
 	}

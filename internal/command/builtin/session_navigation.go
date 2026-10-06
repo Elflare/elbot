@@ -7,12 +7,12 @@ import (
 	"strings"
 
 	"elbot/internal/command"
+	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
-	"elbot/internal/security"
 )
 
 func NewSessions(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "sessions", Usage: "/sessions [keyword]", Description: "List or search sessions.", MinRole: security.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{Name: "sessions", Usage: "/sessions [keyword]", Description: "List or search sessions.", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page, query, err := parseSessionsArgs(req.Args)
 		if err != nil {
 			return nil, err
@@ -34,7 +34,7 @@ func NewResume(deps Deps) command.Handler { return resumeCommand{deps: deps} }
 type resumeCommand struct{ deps Deps }
 
 func (c resumeCommand) Info() command.Info {
-	return command.Info{Name: "resume", Usage: "/resume [number|session_id]", Description: "Resume a previous session.", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: security.RoleUser}
+	return command.Info{Name: "resume", Usage: "/resume [number|session_id]", Description: "Resume a previous session.", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser}
 }
 
 func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
@@ -111,7 +111,7 @@ func (c resumeCommand) Complete(ctx context.Context, req command.CompletionReque
 }
 
 func NewArchives(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "archives", Usage: "/archives [page] [keyword]", Description: "List archived sessions.", MinRole: security.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{Name: "archives", Usage: "/archives [page] [keyword]", Description: "List archived sessions.", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page, query, err := parseSessionsArgs(req.Args)
 		if err != nil {
 			return nil, err
@@ -129,7 +129,7 @@ func NewArchives(deps Deps) command.Handler {
 }
 
 func NewMessages(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "messages", Usage: "/messages [page]", Description: "List assistant message IDs in current session for fork.", MinRole: security.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{Name: "messages", Usage: "/messages [page]", Description: "List assistant message IDs in current session for fork.", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page := 1
 		if arg := strings.TrimSpace(req.Args); arg != "" {
 			parsed, err := strconv.Atoi(arg)
@@ -159,7 +159,7 @@ func NewMessages(deps Deps) command.Handler {
 }
 
 func NewFork(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "fork", Usage: "/fork <message_id>", Description: "Fork current conversation from an assistant message.", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: security.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{Name: "fork", Usage: "/fork <message_id>", Description: "Fork current conversation from an assistant message.", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		messageID := strings.TrimSpace(req.Args)
 		if messageID == "" {
 			return nil, fmt.Errorf("usage: /fork <message_id>")

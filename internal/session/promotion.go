@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/storage"
 )
 
@@ -38,7 +38,7 @@ func IsBackground(row *storage.Session) bool {
 }
 
 func (scope Scope) acceptsBackground() bool {
-	return scope.IsCLI || scope.ConversationKind == chatinfo.ConversationPrivate
+	return scope.IsCLI || scope.ConversationKind == contextinfo.ConversationPrivate
 }
 
 // SetForegroundActivation installs the execution participant before startup.

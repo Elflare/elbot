@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/security"
@@ -26,18 +26,18 @@ var qqOfficialFaceFallbackPattern = regexp.MustCompile(`<faceType=[^>]*>`)
 var qqOfficialGroupAtPrefixPattern = regexp.MustCompile(`^\s*(?:@\S+\s*|<@!?[^>]+>\s*)`)
 
 func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.PlatformHandler, p payload, msg inboundMessage) {
-	a.handleInboundMessage(ctx, handler, p, msg, chatinfo.ConversationPrivate, false)
+	a.handleInboundMessage(ctx, handler, p, msg, contextinfo.ConversationPrivate, false)
 }
 
 func (a *Adapter) handleGroupMessage(ctx context.Context, handler platform.PlatformHandler, p payload, msg inboundMessage) {
-	a.handleInboundMessage(ctx, handler, p, msg, chatinfo.ConversationGroup, p.Type == eventGroupAtMessageCreate)
+	a.handleInboundMessage(ctx, handler, p, msg, contextinfo.ConversationGroup, p.Type == eventGroupAtMessageCreate)
 }
 
-func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.PlatformHandler, p payload, msg inboundMessage, conversation chatinfo.ConversationKind, mentionedBot bool) {
+func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.PlatformHandler, p payload, msg inboundMessage, conversation contextinfo.ConversationKind, mentionedBot bool) {
 	senderID, scopeID, _, targetID := inboundRoute(msg, conversation)
 	if senderID == "" {
 		label := "member_openid"
-		if conversation == chatinfo.ConversationPrivate {
+		if conversation == contextinfo.ConversationPrivate {
 			label = "user_openid"
 		}
 		a.logWarn(ctx, "qqofficial message missing sender", "field", label, "message_id", msg.ID, "event", p.Type)
@@ -58,21 +58,21 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 	actorID := security.ActorID(a.Name(), senderID)
 	bot := platform.Identity{}
 	var mentions []platform.Mention
-	if conversation == chatinfo.ConversationGroup {
+	if conversation == contextinfo.ConversationGroup {
 		bot.UserID = strings.TrimSpace(a.cfg.AppID)
 		if mentionedBot && bot.UserID != "" {
 			mentions = []platform.Mention{{UserID: bot.UserID}}
 		}
 	}
 	messageCtx := platform.MessageContext{
-		Info: chatinfo.Info{
-			Source: chatinfo.Source{
+		Conversation: contextinfo.Conversation{
+			Source: contextinfo.Source{
 				Platform:         a.Name(),
 				ScopeID:          scopeID,
 				ConversationKind: conversation,
 				ConversationID:   targetID,
 			},
-			Identity: chatinfo.Identity{
+			Identity: contextinfo.Identity{
 				ActorID:        actorID,
 				PlatformUserID: senderID,
 			},
@@ -102,7 +102,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 			Store:           a.store,
 			ChatHistory:     a.chatHistory,
 			Platform:        a.Name(),
-			ScopeID:         messageCtx.Info.Source.ScopeID,
+			ScopeID:         messageCtx.Conversation.Source.ScopeID,
 			ActorID:         actorID,
 			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, senderID),
 			ReplyID:         replyID,
@@ -126,8 +126,8 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 	}
 }
 
-func inboundRoute(msg inboundMessage, conversation chatinfo.ConversationKind) (senderID, scopeID string, kind sendTargetKind, targetID string) {
-	if conversation == chatinfo.ConversationGroup {
+func inboundRoute(msg inboundMessage, conversation contextinfo.ConversationKind) (senderID, scopeID string, kind sendTargetKind, targetID string) {
+	if conversation == contextinfo.ConversationGroup {
 		senderID = strings.TrimSpace(msg.Author.MemberOpenID)
 		targetID = strings.TrimSpace(msg.GroupOpenID)
 		return senderID, "group:" + targetID, targetGroup, targetID
@@ -151,7 +151,7 @@ func inboundReplyID(msg inboundMessage) string {
 	return strings.TrimSpace(msg.MessageReference.MessageID)
 }
 
-func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, conversation chatinfo.ConversationKind, senderID, scopeID, text, replyID string, reply platform.ReplyContext) {
+func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, conversation contextinfo.ConversationKind, senderID, scopeID, text, replyID string, reply platform.ReplyContext) {
 	if a.chatHistory == nil || (strings.TrimSpace(text) == "" && len(msg.Attachments) == 0) || strings.TrimSpace(msg.ID) == "" {
 		return
 	}
@@ -162,7 +162,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 		}
 	}
 	scopeType := "private"
-	if conversation == chatinfo.ConversationGroup {
+	if conversation == contextinfo.ConversationGroup {
 		scopeType = "group"
 	}
 	history := &storage.ChatMessage{

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	sandboxctx "elbot/internal/sandbox"
@@ -33,7 +34,7 @@ type Context struct {
 	Mode             string
 	Session          *storage.Session
 	Scope            session.Scope
-	Actor            security.Actor
+	Actor            contextinfo.Actor
 	DisableBaseTools bool
 }
 
@@ -240,7 +241,7 @@ func (m *Manager) RiskDetail(ctx context.Context, resolved ResolvedTool, call ll
 	return strings.TrimSpace(detail)
 }
 
-func (m *Manager) Execute(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, actor security.Actor) ExecutionResult {
+func (m *Manager) Execute(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, actor contextinfo.Actor) ExecutionResult {
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
 	if !resolved.Available {
 		return executionError(call, message, fmt.Errorf("%s", resolved.Reason))
@@ -290,17 +291,17 @@ func SortCachedTools(tools []CachedTool) []CachedTool {
 	return out
 }
 
-func actorForView(ctx context.Context, view Context) security.Actor {
+func actorForView(ctx context.Context, view Context) contextinfo.Actor {
 	if view.Actor.Role != "" {
 		return view.Actor
 	}
-	if actor, ok := security.ActorFromContext(ctx); ok {
+	if actor, ok := contextinfo.ActorFromContext(ctx); ok {
 		return actor
 	}
 	if policy, ok := security.PolicyFromContext(ctx); ok && policy != nil {
 		return policy.Actor(view.Scope.ActorID, view.Scope.Platform, view.Scope.ActorID, "")
 	}
-	return security.Actor{ID: view.Scope.ActorID, Platform: view.Scope.Platform, PlatformUserID: view.Scope.ActorID, Role: security.RoleUser}
+	return contextinfo.Actor{ID: view.Scope.ActorID, Platform: view.Scope.Platform, PlatformUserID: view.Scope.ActorID, Role: contextinfo.RoleUser}
 }
 
 func policyForManager(ctx context.Context, configured *security.Policy) *security.Policy {

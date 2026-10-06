@@ -24,6 +24,8 @@ func (n namingLogger) completed(ctx context.Context, event session.NamingComplet
 	return writeLog(ctx, n.logger, event.TriggeredAt, slog.LevelInfo, "session naming completed",
 		"session_id", event.SessionID,
 		"title", event.Title,
+		"provider", event.Provider,
+		"model", event.Model,
 		"message_count", event.MessageCount,
 	)
 }
@@ -32,6 +34,8 @@ func (n namingLogger) failed(ctx context.Context, event session.NamingFailedEven
 	return writeLog(ctx, n.logger, event.TriggeredAt, slog.LevelWarn, "session naming failed",
 		"session_id", event.SessionID,
 		"stage", event.Stage,
+		"provider", event.Provider,
+		"model", event.Model,
 		"llm_call", event.LLMCall,
 		"reason", event.Reason,
 		"invalid_reason", event.InvalidReason,

@@ -9,8 +9,8 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/doctor"
-	"elbot/internal/security"
 )
 
 type doctorStub struct {
@@ -59,8 +59,8 @@ func TestDoctorRegistrationPermissionsHelpAndCompletion(t *testing.T) {
 	if err := RegisterDefaultModules(router, deps); err != nil {
 		t.Fatal(err)
 	}
-	admin := security.Actor{Role: security.RoleSuperadmin}
-	user := security.Actor{Role: security.RoleUser}
+	admin := contextinfo.Actor{Role: contextinfo.RoleSuperadmin}
+	user := contextinfo.Actor{Role: contextinfo.RoleUser}
 	info, ok := router.CommandInfo("doctor")
 	if !ok || command.CanAccess(info, user) || !command.CanAccess(info, admin) || info.SessionEffect != command.SessionEffectNone {
 		t.Fatalf("doctor info = %#v", info)
@@ -71,13 +71,13 @@ func TestDoctorRegistrationPermissionsHelpAndCompletion(t *testing.T) {
 	if got := router.CompleteForActor("/doc", user); len(got) != 0 {
 		t.Fatalf("user completion = %#v", got)
 	}
-	for _, actor := range []security.Actor{admin, user} {
-		ctx := security.WithActor(context.Background(), actor)
+	for _, actor := range []contextinfo.Actor{admin, user} {
+		ctx := contextinfo.WithActor(context.Background(), actor)
 		result, err := NewHelp(deps).Handle(ctx, command.Request{Args: "doctor", Prefix: "/"})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if actor.Role == security.RoleSuperadmin {
+		if actor.Role == contextinfo.RoleSuperadmin {
 			if !strings.Contains(result.Content, "只读检查") {
 				t.Fatal(result.Content)
 			}

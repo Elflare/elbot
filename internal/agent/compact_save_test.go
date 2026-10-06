@@ -7,8 +7,8 @@ import (
 
 	"elbot/internal/background"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
@@ -46,7 +46,7 @@ func TestCompactSaveFailureReleasesExecutionAndKeepsSource(t *testing.T) {
 			if backgroundRun {
 				source, err = a.execution.sessions.PrepareBackground(ctx, session.Scope{ActorID: "cli:local", Platform: "cli", PlatformScopeID: "cron:save"}, session.BackgroundRequest{Kind: "cron", Name: "save"})
 			} else {
-				source, err = a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "source"})
+				source, err = a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "source", Metadata: `{"llm_origin":{"protocol":"chat"}}`})
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -61,7 +61,7 @@ func TestCompactSaveFailureReleasesExecutionAndKeepsSource(t *testing.T) {
 			failure := errors.New("compact save rejected")
 			repo.failure = failure
 			if backgroundRun {
-				_, err = a.RunBackground(ctx, background.RunRequest{SessionID: source.ID, Kind: background.KindCron, Name: "save", Platform: "cli", Actor: security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}, Prompt: "next input"})
+				_, err = a.RunBackground(ctx, background.RunRequest{SessionID: source.ID, Kind: background.KindCron, Name: "save", Platform: "cli", Actor: contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}, Prompt: "next input"})
 			} else {
 				err = a.HandleMessage(ctx, "/compact")
 			}

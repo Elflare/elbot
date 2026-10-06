@@ -9,9 +9,9 @@ import (
 
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/command"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/request"
-	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
@@ -43,7 +43,7 @@ type confirmationCoordinator struct {
 
 func (p *confirmationPolicy) WaitTimeout(ctx context.Context) time.Duration {
 	actor := p.identity.Actor(ctx)
-	isSuperadmin := actor.Role == security.RoleSuperadmin
+	isSuperadmin := actor.Role == contextinfo.RoleSuperadmin
 	ttlMinutes := p.idleExpiration.TTLMinutes(p.identity.Scope(ctx), isSuperadmin)
 	var sessionTimeout time.Duration
 	if ttlMinutes > 0 {

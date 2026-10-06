@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/storage"
 )
 
@@ -88,6 +89,9 @@ func (s *Service) generateTitle(ctx context.Context, sessionID string, messages 
 	if ctx.Err() != nil {
 		return
 	}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	facts.SessionID = sessionID
+	ctx = contextinfo.WithExecution(ctx, facts)
 	session, err := s.store.Sessions().Get(ctx, sessionID)
 	if ctx.Err() != nil {
 		return
@@ -103,12 +107,12 @@ func (s *Service) generateTitle(ctx context.Context, sessionID string, messages 
 		return
 	}
 	if err != nil {
-		s.handleNamingFailure(ctx, session, messages, "generate title", err, "llm_error", "", "")
+		s.handleNamingFailure(ctx, session, messages, "generate title", err, "llm_error", result, "")
 		return
 	}
 	title := normalizeTitle(result.RawTitle)
 	if title == "" || isPlaceholderTitle(title) {
-		s.handleNamingFailure(ctx, session, messages, "invalid title", nil, "invalid_response", result.RawTitle, title)
+		s.handleNamingFailure(ctx, session, messages, "invalid title", nil, "invalid_response", result, title)
 		return
 	}
 
@@ -117,14 +121,14 @@ func (s *Service) generateTitle(ctx context.Context, sessionID string, messages 
 		return
 	}
 	if err != nil {
-		s.handleNamingFailure(ctx, session, messages, "update title", err, "storage_update", result.RawTitle, title)
+		s.handleNamingFailure(ctx, session, messages, "update title", err, "storage_update", result, title)
 		return
 	}
 	s.markNamingDone(sessionID)
 	if !applied {
 		return
 	}
-	s.notifyNamingCompleted(ctx, NamingCompletedEvent{SessionID: sessionID, Title: title, TriggeredAt: storage.Now(), MessageCount: len(messages)})
+	s.notifyNamingCompleted(ctx, NamingCompletedEvent{SessionID: sessionID, Title: title, TriggeredAt: storage.Now(), MessageCount: len(messages), Provider: result.Provider, Model: result.Model})
 }
 
 func (s *Service) markNamingInFlight(sessionID string) bool {
@@ -158,14 +162,14 @@ func (s *Service) markNamingFailed(sessionID string) int {
 	return state.failures
 }
 
-func (s *Service) handleNamingFailure(ctx context.Context, session *storage.Session, messages []storage.Message, reason string, err error, stage, rawTitle, normalizedTitle string) {
+func (s *Service) handleNamingFailure(ctx context.Context, session *storage.Session, messages []storage.Message, reason string, err error, stage string, result TitleResult, normalizedTitle string) {
 	if ctx.Err() != nil {
 		return
 	}
 	failures := s.markNamingFailed(session.ID)
 	event := NamingFailedEvent{
 		SessionID: session.ID, Title: session.Title, Stage: stage, LLMCall: llmCallStatus(err),
-		GeneratedTitleRaw: rawTitle, GeneratedTitleNormalized: normalizedTitle,
+		GeneratedTitleRaw: result.RawTitle, GeneratedTitleNormalized: normalizedTitle, Provider: result.Provider, Model: result.Model,
 		InvalidReason: invalidTitleReason(normalizedTitle), Reason: reason, Err: err,
 		TriggeredAt: storage.Now(), MessageCount: len(messages), FailureCount: failures, MaxFailures: maxNamingFailures,
 	}

@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
@@ -34,7 +35,7 @@ func newRollbackFixture(t *testing.T) *rollbackFixture {
 	service := fileops.NewService(guard.CheckWrite)
 	binding := newRollbackTestBinding()
 	workspace := &testWorkspaceStore{dir: t.TempDir()}
-	base := workspacepath.WithWorkspaceStore(security.WithActor(context.Background(), security.Actor{ID: "admin", Role: security.RoleSuperadmin}), workspace)
+	base := workspacepath.WithWorkspaceStore(contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin}), workspace)
 	edit := NewEditFileTool(guard)
 	edit.Rollback = service
 	return &rollbackFixture{binding: binding, service: service, edit: edit, rollback: NewRollbackFileTool(service), workspace: workspace, base: base}
@@ -137,7 +138,7 @@ func TestRollbackToolPermissionsAndSessionExpiry(t *testing.T) {
 	f := newRollbackFixture(t)
 	f.write(t, "file", "new")
 	ctx := f.ctx()
-	userCtx := security.WithActor(ctx, security.Actor{ID: "user", Role: security.RoleUser})
+	userCtx := contextinfo.WithActor(ctx, contextinfo.Actor{ID: "user", Role: contextinfo.RoleUser})
 	if _, err := f.rollback.Call(userCtx, rollbackRequest("file")); err == nil || !strings.Contains(err.Error(), "superadmin") {
 		t.Fatalf("user: %v", err)
 	}
@@ -226,7 +227,7 @@ func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 			t.Fatalf("%s did not expand rollback", name)
 		}
 	}
-	ctx := security.WithActor(context.Background(), security.Actor{ID: "admin", Role: security.RoleSuperadmin})
+	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin})
 	details, errs := registry.DiscoverDetails(ctx, []string{"read_file", "edit_file"}, func(candidate tool.Tool) bool { return tool.InfoAvailableInContext(ctx, candidate.Info()) })
 	if len(errs) > 0 {
 		t.Fatal(errs)
@@ -240,7 +241,7 @@ func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("duplicate dependencies: %d", count)
 	}
-	user := security.Actor{ID: "user", Role: security.RoleUser}
+	user := contextinfo.Actor{ID: "user", Role: contextinfo.RoleUser}
 	details, _ = registry.DiscoverDetails(context.Background(), []string{"edit_file"}, func(candidate tool.Tool) bool {
 		return tool.CanAccessTool(user, security.NewPolicy("critical", "high", nil), candidate.Info())
 	})

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/security"
@@ -241,7 +242,7 @@ func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {
 			deps := &runnerTestDeps{}
 			result := manager.Run(context.Background(), deps, RunRequest{
 				Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
-				Actor:   security.Actor{Role: security.RoleUser},
+				Actor:   contextinfo.Actor{Role: contextinfo.RoleUser},
 				Calls:   []llm.ToolCallRequest{{ID: "call-1", Name: toolName, Arguments: "{}"}},
 			})
 			if deps.confirmed != tt.wantConfirm {
@@ -262,7 +263,7 @@ func TestRunPreservesMultimodalToolSegments(t *testing.T) {
 	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
 	result := manager.Run(context.Background(), &runnerTestDeps{}, RunRequest{
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
-		Actor:   security.Actor{Role: security.RoleSuperadmin},
+		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls:   []llm.ToolCallRequest{{ID: "call-1", Name: "image_tool", Arguments: `{}`}},
 	})
 	if len(result.Messages) != 1 || len(result.Messages[0].Segments) != 2 || result.Messages[0].Segments[1].Type != llm.SegmentImage {
@@ -279,7 +280,7 @@ func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
 	deps := &runnerTestDeps{}
 	result := manager.Run(context.Background(), deps, RunRequest{
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
-		Actor:   security.Actor{Role: security.RoleSuperadmin},
+		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
 			ID:        "call-1",
 			Name:      "preflight_tool",
@@ -313,7 +314,7 @@ func TestRunSkipsConfirmationWhenShellPreflightFails(t *testing.T) {
 	deps := &runnerTestDeps{}
 	result := manager.Run(context.Background(), deps, RunRequest{
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
-		Actor:   security.Actor{Role: security.RoleSuperadmin},
+		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
 			ID:        "call-1",
 			Name:      "shell",
@@ -346,7 +347,7 @@ func TestRunPreparesToolContextBeforePreflightAndExecution(t *testing.T) {
 	}}
 	result := manager.Run(context.Background(), deps, RunRequest{
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
-		Actor:   security.Actor{Role: security.RoleSuperadmin},
+		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
 			ID:        "call-1",
 			Name:      "context_preflight",
@@ -370,7 +371,7 @@ func TestRunKeepsNonEditFileAssessRiskBehavior(t *testing.T) {
 	deps := &runnerTestDeps{}
 	result := manager.Run(context.Background(), deps, RunRequest{
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
-		Actor:   security.Actor{Role: security.RoleSuperadmin},
+		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
 			ID:        "call-1",
 			Name:      "risk_error",

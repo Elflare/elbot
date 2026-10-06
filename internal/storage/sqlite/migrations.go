@@ -467,6 +467,24 @@ CREATE VIEW media_fork_history AS
  AND (m.created_at<checkpoint.created_at OR (m.created_at=checkpoint.created_at AND m.rowid<=checkpoint.rowid)));
 `,
 	},
+	{
+		version: 18,
+		name:    "session_llm_origin",
+		sql: `
+UPDATE sessions SET metadata = json_set(
+ CASE
+  WHEN metadata IS NULL OR trim(metadata,char(9)||char(10)||char(13)||' ')='' THEN '{}'
+  WHEN json_type(metadata)='object' THEN metadata
+  ELSE json('invalid-session-metadata')
+ END,
+ '$.llm_origin', json('{"protocol":"chat"}')
+)
+WHERE json_type(
+ CASE WHEN metadata IS NULL OR trim(metadata,char(9)||char(10)||char(13)||' ')='' THEN '{}' ELSE metadata END,
+ '$.llm_origin'
+) IS NULL;
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

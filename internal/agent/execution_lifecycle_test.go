@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/request"
-	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -75,7 +75,7 @@ func TestAppendWaitShutdownIsSilent(t *testing.T) {
 				})
 				source := context.Background()
 				if timed {
-					source = security.WithActor(source, security.Actor{ID: "cli:review", Role: security.RoleUser})
+					source = contextinfo.WithActor(source, contextinfo.Actor{ID: "cli:review", Role: contextinfo.RoleUser})
 				}
 				_, row, execution := startAppendWait(t, a, source)
 				if how == "parent" {
@@ -128,7 +128,7 @@ func TestAppendExpiryCloseWaitsForOutput(t *testing.T) {
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) { opts.HookManager = hooks })
 	t.Cleanup(func() { unblock.Do(func() { close(release) }) })
 	a.execution.waitPolicy.userConfirmationTimeout = 10 * time.Millisecond
-	startAppendWait(t, a, security.WithActor(context.Background(), security.Actor{ID: "cli:review", Role: security.RoleUser}))
+	startAppendWait(t, a, contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "cli:review", Role: contextinfo.RoleUser}))
 	select {
 	case <-started:
 	case <-time.After(time.Second):

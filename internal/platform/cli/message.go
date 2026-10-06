@@ -3,7 +3,7 @@ package cli
 import (
 	"context"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/platform"
 )
 
@@ -12,9 +12,9 @@ import (
 type localMessageHandler struct{ next platform.PlatformHandler }
 
 func (h localMessageHandler) HandleMessage(ctx context.Context, text string) error {
-	info := chatinfo.Info{
-		Source:   chatinfo.Source{Platform: "cli", ScopeID: "local", ConversationKind: chatinfo.ConversationUnknown, ConversationID: "local"},
-		Identity: chatinfo.Identity{ActorID: "cli:local", PlatformUserID: "local"},
+	info := contextinfo.Conversation{
+		Source:   contextinfo.Source{Platform: "cli", ScopeID: "local", ConversationKind: contextinfo.ConversationUnknown, ConversationID: "local"},
+		Identity: contextinfo.Identity{ActorID: "cli:local", PlatformUserID: "local"},
 	}
-	return h.next.HandleMessage(chatinfo.WithInfo(ctx, info), text)
+	return h.next.HandleMessage(contextinfo.WithConversation(ctx, info), text)
 }

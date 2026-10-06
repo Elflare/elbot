@@ -12,5 +12,5 @@ type Compactor interface {
 	Prepare(context.Context, *storage.Session, string, modelmgr.Selection) (*PreparedCompact, error)
 }
 type CompactorResolver interface {
-	CompactorFor(llm.ProtocolID) (Compactor, error)
+	CompactorFor(llm.Origin) (Compactor, error)
 }

@@ -5,6 +5,7 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/completion"
+	"elbot/internal/contextinfo"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -26,8 +27,8 @@ func newCompletion(commands *command.Router, sessions *session.Service, turns *t
 			Registry: func() *tool.Registry { return registry },
 			Actor:    identity.Actor,
 			Policy:   func() *security.Policy { return identity.policy },
-			Tags: func(ctx context.Context, _ *tool.Registry, actor security.Actor, policy *security.Policy) []string {
-				return preloader.Tags(security.WithActor(security.WithPolicy(ctx, policy), actor))
+			Tags: func(ctx context.Context, _ *tool.Registry, actor contextinfo.Actor, policy *security.Policy) []string {
+				return preloader.Tags(contextinfo.WithActor(security.WithPolicy(ctx, policy), actor))
 			},
 			ToolNamesByTag: func(ctx context.Context, _ *tool.Registry, tag string, allowed func(tool.Tool) bool) []string {
 				return preloader.ToolNamesByTag(ctx, tag, allowed)

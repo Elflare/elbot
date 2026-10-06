@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
 	sandboxctx "elbot/internal/sandbox"
-	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -32,7 +32,7 @@ type fileFixture struct {
 
 func newFileFixture(t *testing.T) *fileFixture {
 	t.Helper()
-	ctx := security.WithActor(context.Background(), security.Actor{ID: "admin", Role: security.RoleSuperadmin})
+	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin})
 	store, err := sqlite.New(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)

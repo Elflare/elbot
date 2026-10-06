@@ -36,12 +36,16 @@ rg -n "locator:tool" devdocs/code-map.md
 rg -n "func Run|service run|completion|--client|RunCron" cmd internal/app internal/launcher
 ```
 
-<!-- locator:chatinfo -->
-## 公共聊天信息
+<!-- locator:contextinfo -->
+## 公共上下文事实
 
-- `internal/chatinfo/`：每条消息的来源、发送者、公共消息／回复 ID、平台扩展及 context 存取；扩展遵守必要、不可变、不序列化的约定，不承载权限或 Sender。
-- `internal/platform/platform.go`：嵌入公共 Info 的平台消息上下文、正文和 Sender 覆盖。
+- `internal/contextinfo/conversation.go`、`actor.go`、`execution.go`、`model.go`：Conversation、Actor、Execution、Model 唯一事实定义；平台扩展不序列化，角色不授予权限，执行 ID 不代替有效性检查。
+- `internal/contextinfo/context.go`：四组事实的独立 With／From／Without 存取，显式区分缺失与零值，不补入口或全局默认值。
+- `internal/platform/platform.go`：嵌入公共 Conversation 的平台消息上下文、正文和 Sender；私有上下文不重复保存 Conversation，读取时重建投影。
 - `internal/platform/cli/message.go`：scanner／TUI 共用的本地身份入口。
+- `internal/security/security.go`、`context.go`：身份解析、权限／风险判断及 Policy；Actor 事实和角色定义归 contextinfo。
+- `internal/request/manager.go`、`internal/turn/execution.go`、`internal/session/binding.go`：在实际关联建立时发布 Request／RootRequest、Run／Attempt、Session 事实，活动状态与原绑定仍由领域服务校验。
+- `internal/agent/dialogue/execution_context.go`：前台接管刷新公共来源／身份并清除缺失事实，按固定选择与绑定发布主对话 Model。
 
 <!-- locator:signal -->
 ## 信号与订阅
@@ -113,10 +117,10 @@ rg -n "Handle|Run|Prompt|tool_calls|reasoning|usage|pending|prepared" internal/a
 <!-- locator:protocol-routing -->
 ## 协议路线登记
 
-- `internal/agent/routes/route.go`、`registry.go`：协议能力统一登记、封闭及按能力查询；只保存当前所需的 Loop／Compactor，不拥有运行状态。
-- `internal/agent/assembly.go`、`internal/app/services.go`：app 创建共享注册表及上下文服务，Agent 装配并登记 Chat 路线、封闭和校验接线后才开放运行。
+- `internal/agent/routes/route.go`、`registry.go`：按 provider 登记 Binding{Origin, Client, Loop, Compactor}、独立登记源协议压缩能力、封闭及按能力查询；不拥有运行状态。
+- `internal/agent/assembly_routes.go`、`assembly.go`、`internal/app/services.go`：app 创建共享注册表及上下文服务，Agent 根据描述校验客户端私有接口、绑定 Chat 业务／Responses 独立文本能力、封闭和校验接线后才开放运行。
 - `internal/agent/dialogue/loop.go`、`internal/contextmgr/compact_contract.go`：消费方的小查询接口；公共层不导入注册表实现或具体路线。
-- `internal/llm/protocol.go`、`internal/modelmgr/selection.go`：当前协议标识与固定客户端快照；`internal/app/models.go` 按 provider.api_mode 构造原生客户端。Responses 客户端已接入独立文本，业务路线尚未注册；provider 预绑定为待实施的 16.2a。
+- `internal/llm/protocol.go`、`origin.go`：协议标识及纯归属描述；`internal/modelmgr/selection.go`、`service.go`：固定 Provider／Model／Client 快照、启动配置生成的不可变 ProviderOrigins。`internal/app/models.go` 按 provider.api_mode 构造原生客户端，Responses 主对话尚未接入。
 
 <!-- locator:commands -->
 ## Slash 命令与补全
@@ -157,7 +161,7 @@ rg -n "Register|Info\{|Help:|Complete|Alias|/requests|/model" internal/command/b
 - `internal/agent/execution_admission.go`：Scope／Session 准入、原绑定与模式复核、输入解析和 Turn 启动检查。
 - `internal/runtime/`
 - `internal/agent/status.go`：statusRecorder 校验 attempt 归属、同步保存／查询及发布带版本状态；`internal/app/agent_status.go` 合并最新展示值，调度终态并隔离原连接目标。
-- `internal/request/context.go`：父子 request context。
+- `internal/contextinfo/execution.go`、`internal/request/manager.go`：当前、父与主 Request ID 的公共关联快照；Request 生命周期仍由 Manager 管理。
 - `internal/agent/risk_confirmation.go`：高风险确认命令文案和识别。
 
 常用搜索：
@@ -328,6 +332,7 @@ rg -n "PlatformAdapter|SendChat|MessageSegment|Actor|Scope|remote|websocket|long
 - `internal/session/promotion.go`：后台可见性、永久前台归属和在途接管入口。
 - `internal/session/background.go`：后台 Session 创建／复用、模式、标题和后台身份 metadata，不修改前台 current，不处理工具状态。
 - `internal/session/compact.go`：CreateCompacted 的来源／绑定复核、归属及模式继承、命名字段与保存；只为前台结果激活 current。
+- `internal/session/origin.go`：llm_origin 解码、首次主对话准入登记及源会话继承；不从当前配置推断持久化来源，不以公共执行 ID 代替原绑定。
 - `internal/storage/session_metadata.go`、`sqlite/session_repository.go`：metadata 原值保留与 Session 原子字段更新。
 - `internal/background/takeover.go`：后台修正及投递入口的持久化接管检查。
 - `internal/session/mode.go`：模式激活和 work 历史限制。
@@ -378,7 +383,7 @@ rg -n "ContextLoader|Compress|Window|System Prompt|MessageSegment|usage" interna
 - `internal/modelmgr/signals.go`：共享客户端重试事实，供对话／压缩／命名统一消费；订阅归 app 所有。
 - `internal/modelmgr/catalog.go`、`state.go`：模型目录缓存、筛选与 provider 错误，串行保存后发布选择状态；原子文件写入复用 `config.SaveState` 和 `fileops`。
 - `internal/agent/chat/model_call.go`、`internal/agent/dialogue/model_call.go`：协议调用与共同调用处理；`internal/notification/rules/model.go`：模型重试／降级提示。
-- `internal/session/title.go`：标题生成，开始时取得命名与 work fallback 快照，再调用客户端 GenerateText；`internal/agent/chat/compressor.go` 通过同一文本契约生成 Chat 摘要。
+- `internal/session/title.go`：标题生成，开始时取得命名与 work fallback 快照，再调用客户端 GenerateText，结果保留回退后的实际 provider／model；`internal/agent/chat/compressor.go` 通过同一文本契约生成 Chat 摘要。
 
 常用搜索：
 
@@ -396,6 +401,7 @@ rg -n -m 20 "ChatCompletion|Stream|SSE|reasoning|usage|ToolCall|MessageSegment|M
 - `internal/storage/storage.go`：领域模型和 repository interfaces；Message 使用 `content` 作为纯文本快速路径，`segments` 保存可选多模态正文。
 - `internal/storage/id.go`、`internal/storage/time.go`：通用 ID/时间 helper。
 - `internal/storage/sqlite/`：SQLite store、migration 和 repository 实现。
+- `internal/storage/sqlite/migrations.go`：第 18 版为已有 Chat 会话补 protocol 归属，保留未知 metadata，损坏数据使迁移回滚；`origin_migration_test.go` 覆盖升级、回滚及只迁移一次。
 
 常用搜索：
 

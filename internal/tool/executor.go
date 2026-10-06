@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 )
 
 type Executor struct {
 	Registry *Registry
-	Actor    security.Actor
+	Actor    contextinfo.Actor
 	Policy   *security.Policy
 }
 
@@ -45,10 +46,10 @@ func (e Executor) Execute(ctx context.Context, call llm.ToolCallRequest) Executi
 	}
 	actor := e.Actor
 	if actor.Role == "" {
-		actor = security.Actor{Role: security.RoleUser}
+		actor = contextinfo.Actor{Role: contextinfo.RoleUser}
 	}
 	info := tool.Info()
-	if info.SuperadminOnly && actor.Role != security.RoleSuperadmin {
+	if info.SuperadminOnly && actor.Role != contextinfo.RoleSuperadmin {
 		return executionError(call, message, fmt.Errorf("tool %q requires superadmin role", call.Name))
 	}
 	if !policy.CanUseTool(actor, assessment.Level, info.OwnerScoped) {

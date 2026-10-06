@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/security"
 	"elbot/internal/tool"
 )
 
 // DiscoveryStateUpdate collects a discovery's schemas, activated wrappers and
 // shown rule cards so the caller can commit them together.
-func DiscoveryStateUpdate(ctx context.Context, result *tool.Result, registry *tool.Registry, actor security.Actor, policy *security.Policy) (StateUpdate, error) {
+func DiscoveryStateUpdate(ctx context.Context, result *tool.Result, registry *tool.Registry, actor contextinfo.Actor, policy *security.Policy) (StateUpdate, error) {
 	if result == nil {
 		return StateUpdate{}, nil
 	}
@@ -27,7 +28,7 @@ func DiscoveryStateUpdate(ctx context.Context, result *tool.Result, registry *to
 	return update, nil
 }
 
-func activatedTools(ctx context.Context, metadata map[string]any, registry *tool.Registry, actor security.Actor, policy *security.Policy) []CachedTool {
+func activatedTools(ctx context.Context, metadata map[string]any, registry *tool.Registry, actor contextinfo.Actor, policy *security.Policy) []CachedTool {
 	if len(metadata) == 0 || registry == nil {
 		return nil
 	}

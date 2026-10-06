@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"elbot/internal/command"
-	"elbot/internal/security"
+	"elbot/internal/contextinfo"
 )
 
 func TestHelpCommandShowsDetailedHelp(t *testing.T) {
@@ -25,7 +25,7 @@ func TestHelpCommandShowsDetailedHelp(t *testing.T) {
 		t.Fatalf("register audit: %v", err)
 	}
 
-	ctx := security.WithActor(context.Background(), security.Actor{Role: security.RoleSuperadmin})
+	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	result, err := NewHelp(deps).Handle(ctx, command.Request{Prefix: "/", Args: "aud"})
 	if err != nil {
 		t.Fatalf("help handle: %v", err)
@@ -43,7 +43,7 @@ func TestHelpCommandFiltersByActor(t *testing.T) {
 	if err := RegisterFactories(router, deps, NewHelp); err != nil {
 		t.Fatalf("register help: %v", err)
 	}
-	if err := router.Register(command.NewFunc(command.Info{Name: "public", Usage: "/public", Description: "Public command.", MinRole: security.RoleUser}, nil)); err != nil {
+	if err := router.Register(command.NewFunc(command.Info{Name: "public", Usage: "/public", Description: "Public command.", MinRole: contextinfo.RoleUser}, nil)); err != nil {
 		t.Fatalf("register public: %v", err)
 	}
 	if err := router.Register(command.NewFunc(command.Info{Name: "secret", Usage: "/secret", Description: "Private command.", Aliases: []string{"sec"}}, nil)); err != nil {
@@ -51,7 +51,7 @@ func TestHelpCommandFiltersByActor(t *testing.T) {
 	}
 
 	help := NewHelp(deps)
-	userCtx := security.WithActor(context.Background(), security.Actor{Role: security.RoleUser})
+	userCtx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser})
 	list, err := help.Handle(userCtx, command.Request{Prefix: "/"})
 	if err != nil {
 		t.Fatalf("user help: %v", err)
@@ -76,7 +76,7 @@ func TestHelpCommandFiltersByActor(t *testing.T) {
 		t.Fatalf("user private completions = %#v", got)
 	}
 
-	adminCtx := security.WithActor(context.Background(), security.Actor{Role: security.RoleSuperadmin})
+	adminCtx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	adminList, err := help.Handle(adminCtx, command.Request{Prefix: "/"})
 	if err != nil || !strings.Contains(adminList.Content, "/secret") {
 		t.Fatalf("admin help = %#v, %v", adminList, err)

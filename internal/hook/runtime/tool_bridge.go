@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
-	"elbot/internal/security"
 	"elbot/internal/tool"
 )
 
@@ -75,7 +75,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		return nil, fmt.Errorf("tool %q is foreground-only", name)
 	}
 	callCtx := context.Background()
-	actor := security.Actor{ID: "hook:" + w.config.ID, Role: security.RoleSuperadmin}
+	actor := contextinfo.Actor{ID: "hook:" + w.config.ID, Role: contextinfo.RoleSuperadmin}
 	if !params.Background || strings.TrimSpace(params.Origin) != "" {
 		token := params.ToolContext
 		if params.Background {
@@ -86,7 +86,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 			return nil, fmt.Errorf("invalid, expired or exhausted hook context")
 		}
 		callCtx = contextValue.Context
-		actor = security.Actor{ID: contextValue.Event.Actor.ID, Platform: contextValue.Event.Platform.Name, PlatformUserID: contextValue.Event.Actor.UserID, Nickname: contextValue.Event.Actor.Nickname, GroupCard: contextValue.Event.Actor.GroupCard, Role: security.Role(contextValue.Event.Actor.Role), GroupRole: security.GroupRole(contextValue.Event.Actor.GroupRole), DisplayName: contextValue.Event.Actor.DisplayName}
+		actor = contextinfo.Actor{ID: contextValue.Event.Actor.ID, Platform: contextValue.Event.Platform.Name, PlatformUserID: contextValue.Event.Actor.UserID, Nickname: contextValue.Event.Actor.Nickname, GroupCard: contextValue.Event.Actor.GroupCard, Role: contextinfo.Role(contextValue.Event.Actor.Role), GroupRole: contextinfo.GroupRole(contextValue.Event.Actor.GroupRole), DisplayName: contextValue.Event.Actor.DisplayName}
 	} else if params.Target.Empty() {
 		return nil, fmt.Errorf("background tool output requires an explicit target")
 	} else {
@@ -94,7 +94,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		callCtx, cancel = context.WithTimeout(callCtx, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
 		defer cancel()
 	}
-	callCtx = security.WithActor(callCtx, actor)
+	callCtx = contextinfo.WithActor(callCtx, actor)
 	started := time.Now()
 	result, err := registered.Call(callCtx, tool.CallRequest{ID: randomID("plugin"), Name: name, Arguments: params.Arguments})
 	if w.manager.opts.Audit != nil {

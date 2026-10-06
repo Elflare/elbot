@@ -13,7 +13,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	"elbot/internal/security"
+	"elbot/internal/contextinfo"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )
@@ -90,7 +90,7 @@ func NewStoreWithLimits(path string, limits Limits) *Store {
 	return &Store{Path: path, Limits: normalizeLimits(limits)}
 }
 
-func ActorScope(actor security.Actor) session.Scope {
+func ActorScope(actor contextinfo.Actor) session.Scope {
 	return session.Scope{ActorID: actor.ID, Platform: actor.Platform}
 }
 

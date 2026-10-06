@@ -19,7 +19,7 @@ func TestNewValidatesRequiredDependencies(t *testing.T) {
 		change func(*testAssembly)
 		want   string
 	}{
-		{name: "routes", change: func(opts *testAssembly) { opts.Routes = nil }, want: "protocol routes are required"},
+		{name: "routes", change: func(opts *testAssembly) { opts.Routes = nil }, want: "provider bindings are required"},
 		{name: "models", change: func(opts *testAssembly) { opts.Models = nil }, want: "model service is required"},
 		{name: "store", change: func(opts *testAssembly) { opts.Store = nil }, want: "store is required"},
 		{name: "sessions", change: func(opts *testAssembly) { opts.Sessions = nil }, want: "services are required"},

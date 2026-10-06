@@ -8,8 +8,8 @@ import (
 
 	"elbot/internal/background"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/modelmgr"
-	"elbot/internal/security"
 	"elbot/internal/storage"
 )
 
@@ -37,7 +37,7 @@ func TestCronTaskModelCRUD(t *testing.T) {
 	repo := newFakeCronRepo()
 	svc := NewService(Options{Store: fakeCronStore{cron: repo}, Models: &taskModels{}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:04:30") }
-	actor := security.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: security.RoleSuperadmin}
+	actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
 	req := UpsertRequest{Name: "models", Title: "models", ScheduleMode: ScheduleOnce, RunAt: "2026-01-02 03:05:00", TriggerMode: TriggerLLM,
 		Message: testElyphTask("models"), ToolListNames: []string{"shell"}, Enabled: true, Actor: actor, SourcePlatform: "cli"}
 	for _, pair := range []config.ModelSelection{{Provider: "provider"}, {Model: "model"}, {Provider: "missing", Model: "model"}} {

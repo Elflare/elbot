@@ -10,8 +10,8 @@ import (
 
 	chatroute "elbot/internal/agent/chat"
 	"elbot/internal/agent/dialogue"
-	"elbot/internal/chatinfo"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/memory/resident"
 	"elbot/internal/platform"
@@ -50,8 +50,8 @@ func TestResidentMemorySystemPromptSourceDoesNotInjectDisplayName(t *testing.T) 
 }
 
 func TestConversationMetaSystemPromptSource(t *testing.T) {
-	info := chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"}, Identity: chatinfo.Identity{PlatformUserID: "1001", Nickname: "群名片, A=1\n下一行"}}
-	parts, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(chatinfo.WithInfo(context.Background(), info), dialogue.SystemPromptRequest{
+	info := contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"}, Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: "群名片, A=1\n下一行"}}
+	parts, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(contextinfo.WithConversation(context.Background(), info), dialogue.SystemPromptRequest{
 		Session: &storage.Session{CreatedAt: time.Date(2026, time.August, 27, 12, 34, 56, 789, time.FixedZone("CST", 8*60*60))},
 	})
 	if err != nil {
@@ -66,62 +66,62 @@ func TestConversationMetaSystemPromptSource(t *testing.T) {
 func TestConversationMetaSystemPromptSourceFields(t *testing.T) {
 	tests := []struct {
 		name string
-		meta chatinfo.Info
+		meta contextinfo.Conversation
 		want string
 	}{
 		{
 			name: "private user ID",
-			meta: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ConversationKind: "private", ConversationID: "1001"}, Identity: chatinfo.Identity{PlatformUserID: "1001", Nickname: "昵称"}},
+			meta: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ConversationKind: "private", ConversationID: "1001"}, Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: "昵称"}},
 			want: `meta: platform=qqonebot, conversation=private, display_name="昵称"(id:1001).`,
 		},
 		{
 			name: "official private OpenID",
-			meta: chatinfo.Info{Source: chatinfo.Source{Platform: "qqofficial", ConversationKind: "private", ConversationID: "openid-1"}, Identity: chatinfo.Identity{PlatformUserID: "openid-1", Nickname: "昵称"}},
+			meta: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqofficial", ConversationKind: "private", ConversationID: "openid-1"}, Identity: contextinfo.Identity{PlatformUserID: "openid-1", Nickname: "昵称"}},
 			want: `meta: platform=qqofficial, conversation=private, display_name="昵称"(id:openid-1).`,
 		},
 		{
 			name: "channel and user IDs",
-			meta: chatinfo.Info{Source: chatinfo.Source{Platform: "qqofficial", ConversationKind: "channel", ConversationID: "channel-1"}, Identity: chatinfo.Identity{PlatformUserID: "user-1", Nickname: "昵称"}},
+			meta: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqofficial", ConversationKind: "channel", ConversationID: "channel-1"}, Identity: contextinfo.Identity{PlatformUserID: "user-1", Nickname: "昵称"}},
 			want: `meta: platform=qqofficial, conversation=channel(id:channel-1), display_name="昵称"(id:user-1).`,
 		},
 		{
 			name: "missing user ID",
-			meta: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"}, Identity: chatinfo.Identity{Nickname: "群名片"}},
+			meta: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"}, Identity: contextinfo.Identity{Nickname: "群名片"}},
 			want: `meta: platform=qqonebot, conversation=group(id:9), display_name="群名片".`,
 		},
 		{
 			name: "missing conversation ID",
-			meta: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ConversationKind: "group"}, Identity: chatinfo.Identity{PlatformUserID: "1001", Nickname: "群名片"}},
+			meta: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ConversationKind: "group"}, Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: "群名片"}},
 			want: `meta: platform=qqonebot, conversation=group, display_name="群名片"(id:1001).`,
 		},
 		{
 			name: "missing display name",
-			meta: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"}, Identity: chatinfo.Identity{PlatformUserID: "1001", Nickname: " \n\t"}},
+			meta: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"}, Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: " \n\t"}},
 			want: `meta: platform=qqonebot, conversation=group(id:9), display_name=""(id:1001).`,
 		},
 		{
 			name: "missing display name and user ID",
-			meta: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ConversationKind: "private"}, Identity: chatinfo.Identity{}},
+			meta: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ConversationKind: "private"}, Identity: contextinfo.Identity{}},
 			want: "meta: platform=qqonebot, conversation=private.",
 		},
 		{
 			name: "quoted name and trimmed IDs",
-			meta: chatinfo.Info{Source: chatinfo.Source{Platform: " qqonebot ", ConversationKind: " group ", ConversationID: " 9 "}, Identity: chatinfo.Identity{PlatformUserID: " 1001 ", Nickname: " 名\"称\\路径\n下一行\t"}},
+			meta: contextinfo.Conversation{Source: contextinfo.Source{Platform: " qqonebot ", ConversationKind: " group ", ConversationID: " 9 "}, Identity: contextinfo.Identity{PlatformUserID: " 1001 ", Nickname: " 名\"称\\路径\n下一行\t"}},
 			want: `meta: platform=qqonebot, conversation=group(id:9), display_name="名\"称\\路径 下一行"(id:1001).`,
 		},
 		{
 			name: "CLI",
-			meta: chatinfo.Info{Source: chatinfo.Source{Platform: "cli"}, Identity: chatinfo.Identity{}},
+			meta: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli"}, Identity: contextinfo.Identity{}},
 			want: "meta: platform=cli.",
 		},
 		{
 			name: "empty",
-			meta: chatinfo.Info{Source: chatinfo.Source{}, Identity: chatinfo.Identity{}},
+			meta: contextinfo.Conversation{Source: contextinfo.Source{}, Identity: contextinfo.Identity{}},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parts, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(chatinfo.WithInfo(context.Background(), tt.meta), dialogue.SystemPromptRequest{})
+			parts, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(contextinfo.WithConversation(context.Background(), tt.meta), dialogue.SystemPromptRequest{})
 			if err != nil {
 				t.Fatalf("Parts: %v", err)
 			}
@@ -143,50 +143,50 @@ func TestConversationMetaFromPlatformContext(t *testing.T) {
 		name  string
 		msg   platform.MessageContext
 		scope session.Scope
-		want  chatinfo.Info
+		want  contextinfo.Conversation
 	}{
 		{
 			name:  "group card",
-			msg:   platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ConversationKind: chatinfo.ConversationGroup, ConversationID: "9"}, Identity: chatinfo.Identity{PlatformUserID: "1001", Nickname: "昵称", GroupCard: "群名片"}}},
+			msg:   platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"}, Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: "昵称", GroupCard: "群名片"}}},
 			scope: session.Scope{Platform: "qqonebot", PlatformScopeID: "group:9"},
-			want:  chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"}, Identity: chatinfo.Identity{PlatformUserID: "1001", Nickname: "群名片"}},
+			want:  contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"}, Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: "群名片"}},
 		},
 		{
 			name:  "group nickname fallback",
-			msg:   platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "telegram", ConversationKind: chatinfo.ConversationGroup, ConversationID: "-1009"}, Identity: chatinfo.Identity{PlatformUserID: "1001", Nickname: "昵称"}}},
+			msg:   platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram", ConversationKind: contextinfo.ConversationGroup, ConversationID: "-1009"}, Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: "昵称"}}},
 			scope: session.Scope{Platform: "telegram", PlatformScopeID: "supergroup:-1009"},
-			want:  chatinfo.Info{Source: chatinfo.Source{Platform: "telegram", ConversationKind: "group", ConversationID: "-1009"}, Identity: chatinfo.Identity{PlatformUserID: "1001", Nickname: "昵称"}},
+			want:  contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram", ConversationKind: "group", ConversationID: "-1009"}, Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: "昵称"}},
 		},
 		{
 			name:  "private ignores group card",
-			msg:   platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqofficial", ScopeID: "c2c:openid-1", ConversationKind: chatinfo.ConversationPrivate, ConversationID: "openid-1"}, Identity: chatinfo.Identity{PlatformUserID: "openid-1", Nickname: "昵称", GroupCard: "不应使用"}}},
+			msg:   platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqofficial", ScopeID: "c2c:openid-1", ConversationKind: contextinfo.ConversationPrivate, ConversationID: "openid-1"}, Identity: contextinfo.Identity{PlatformUserID: "openid-1", Nickname: "昵称", GroupCard: "不应使用"}}},
 			scope: session.Scope{Platform: "qqofficial", PlatformScopeID: "c2c:openid-1"},
-			want:  chatinfo.Info{Source: chatinfo.Source{Platform: "qqofficial", ConversationKind: "private", ConversationID: "openid-1"}, Identity: chatinfo.Identity{PlatformUserID: "openid-1", Nickname: "昵称"}},
+			want:  contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqofficial", ConversationKind: "private", ConversationID: "openid-1"}, Identity: contextinfo.Identity{PlatformUserID: "openid-1", Nickname: "昵称"}},
 		},
 		{
 			name:  "channel",
-			msg:   platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqofficial", ConversationKind: chatinfo.ConversationChannel, ConversationID: "channel-1"}, Identity: chatinfo.Identity{PlatformUserID: "user-1", Nickname: "昵称"}}},
+			msg:   platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqofficial", ConversationKind: contextinfo.ConversationChannel, ConversationID: "channel-1"}, Identity: contextinfo.Identity{PlatformUserID: "user-1", Nickname: "昵称"}}},
 			scope: session.Scope{Platform: "qqofficial", PlatformScopeID: "channel:channel-1"},
-			want:  chatinfo.Info{Source: chatinfo.Source{Platform: "qqofficial", ConversationKind: "channel", ConversationID: "channel-1"}, Identity: chatinfo.Identity{PlatformUserID: "user-1", Nickname: "昵称"}},
+			want:  contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqofficial", ConversationKind: "channel", ConversationID: "channel-1"}, Identity: contextinfo.Identity{PlatformUserID: "user-1", Nickname: "昵称"}},
 		},
 		{
 			name:  "group missing nickname",
-			msg:   platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ConversationKind: chatinfo.ConversationGroup, ConversationID: "9"}, Identity: chatinfo.Identity{PlatformUserID: " 1001 "}}},
+			msg:   platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"}, Identity: contextinfo.Identity{PlatformUserID: " 1001 "}}},
 			scope: session.Scope{Platform: "qqonebot", PlatformScopeID: "group:9"},
-			want:  chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"}, Identity: chatinfo.Identity{PlatformUserID: "1001"}},
+			want:  contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"}, Identity: contextinfo.Identity{PlatformUserID: "1001"}},
 		},
 		{
 			name:  "group missing user ID",
-			msg:   platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ConversationKind: chatinfo.ConversationGroup, ConversationID: "9"}, Identity: chatinfo.Identity{Nickname: "昵称"}}},
+			msg:   platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"}, Identity: contextinfo.Identity{Nickname: "昵称"}}},
 			scope: session.Scope{Platform: "qqonebot", PlatformScopeID: "group:9"},
-			want:  chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"}, Identity: chatinfo.Identity{Nickname: "昵称"}},
+			want:  contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"}, Identity: contextinfo.Identity{Nickname: "昵称"}},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := platform.WithMessageContext(context.Background(), tt.msg)
 			got, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(ctx, dialogue.SystemPromptRequest{Scope: tt.scope})
-			want, wantErr := (dialogue.ConversationMetaSystemPromptSource{}).Parts(chatinfo.WithInfo(context.Background(), tt.want), dialogue.SystemPromptRequest{})
+			want, wantErr := (dialogue.ConversationMetaSystemPromptSource{}).Parts(contextinfo.WithConversation(context.Background(), tt.want), dialogue.SystemPromptRequest{})
 			if err != nil || wantErr != nil || len(got) != 1 || len(want) != 1 || got[0] != want[0] {
 				t.Fatalf("prompt = %#v (%v), want %#v (%v)", got, err, want, wantErr)
 			}
@@ -216,8 +216,8 @@ func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
 		dialogue.ResidentMemorySystemPromptSource{Store: memoryStore},
 		dialogue.ConversationMetaSystemPromptSource{},
 	)
-	meta := chatinfo.Info{Source: chatinfo.Source{Platform: "cli"}, Identity: chatinfo.Identity{}}
-	got, err := manager.Build(chatinfo.WithInfo(ctx, meta), dialogue.SystemPromptRequest{Session: sessionRecord, Scope: scope})
+	meta := contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli"}, Identity: contextinfo.Identity{}}
+	got, err := manager.Build(contextinfo.WithConversation(ctx, meta), dialogue.SystemPromptRequest{Session: sessionRecord, Scope: scope})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}

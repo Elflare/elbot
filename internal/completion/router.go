@@ -5,17 +5,17 @@ import (
 	"strings"
 
 	"elbot/internal/command"
-	"elbot/internal/security"
+	"elbot/internal/contextinfo"
 )
 
 const KindCommand = "command"
 
 type RouterSource struct {
 	Router *command.Router
-	Actor  func(context.Context) security.Actor
+	Actor  func(context.Context) contextinfo.Actor
 }
 
-func (s RouterSource) completeArgs(ctx context.Context, req Request, actor security.Actor) []Item {
+func (s RouterSource) completeArgs(ctx context.Context, req Request, actor contextinfo.Actor) []Item {
 	parsed := s.Router.Parse(req.Text)
 	if !parsed.OK || parsed.Name == "" || !strings.ContainsAny(strings.TrimPrefix(strings.TrimLeft(req.Text, " \t"), parsed.Prefix), " \t") {
 		return nil
@@ -31,7 +31,7 @@ func (s RouterSource) completeArgs(ctx context.Context, req Request, actor secur
 	if !ok {
 		return nil
 	}
-	items := completer.Complete(security.WithActor(ctx, actor), command.CompletionRequest{Raw: req.Text, Prefix: parsed.Prefix, Name: parsed.Name, Args: parsed.Args, Cursor: req.CursorOrEnd()})
+	items := completer.Complete(contextinfo.WithActor(ctx, actor), command.CompletionRequest{Raw: req.Text, Prefix: parsed.Prefix, Name: parsed.Name, Args: parsed.Args, Cursor: req.CursorOrEnd()})
 	out := make([]Item, 0, len(items))
 	for _, item := range items {
 		out = append(out, Item{Text: item.Text, Label: item.Label, Description: item.Description, Kind: item.Kind, ReplaceStart: item.ReplaceStart, ReplaceEnd: item.ReplaceEnd})
@@ -39,11 +39,11 @@ func (s RouterSource) completeArgs(ctx context.Context, req Request, actor secur
 	return out
 }
 
-func (s RouterSource) actor(ctx context.Context) security.Actor {
+func (s RouterSource) actor(ctx context.Context) contextinfo.Actor {
 	if s.Actor != nil {
 		return s.Actor(ctx)
 	}
-	actor, _ := security.ActorFromContext(ctx)
+	actor, _ := contextinfo.ActorFromContext(ctx)
 	return actor
 }
 func (s RouterSource) Complete(ctx context.Context, req Request) []Item {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"elbot/internal/command"
-	"elbot/internal/security"
+	"elbot/internal/contextinfo"
 	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
 )
@@ -17,7 +17,7 @@ func NewWork(deps Deps) command.Handler {
 		Usage:         "/work [message]",
 		Description:   "Switch current session to work mode.",
 		SessionEffect: command.SessionEffectSwitchCurrent,
-		MinRole:       security.RoleUser,
+		MinRole:       contextinfo.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		activated, err := deps.Sessions.ActivateMode(ctx, deps.Scope(ctx), sessionpkg.ActivateModeRequest{Mode: storage.SessionModeWork, NewSessionTitle: "New work session"})
 		if err != nil {
@@ -41,7 +41,7 @@ func NewChat(deps Deps) command.Handler {
 		Usage:         "/chat [message]",
 		Description:   "Switch an empty session to chat mode, or create a chat session.",
 		SessionEffect: command.SessionEffectSwitchCurrent,
-		MinRole:       security.RoleUser,
+		MinRole:       contextinfo.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		activated, err := deps.Sessions.ActivateMode(ctx, deps.Scope(ctx), sessionpkg.ActivateModeRequest{Mode: storage.SessionModeChat, NewSessionTitle: "New chat session"})
 		if err != nil {

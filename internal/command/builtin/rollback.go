@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"elbot/internal/command"
+	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
-	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )
@@ -28,7 +28,7 @@ func (rollbackCommand) Info() command.Info {
 		Name: "rollback", Usage: "/rollback [编号]",
 		Description: "列出文件编辑备份，或撤销指定编号的修改。",
 		Help:        "每个文件仅保留最近一次 edit_file 修改。无参数列出编号，指定编号直接撤销；切换会话、重启或容量淘汰后备份失效。撤销新建文件会删除该文件。不支持 shell 修改。",
-		MinRole:     security.RoleSuperadmin,
+		MinRole:     contextinfo.RoleSuperadmin,
 	}
 }
 
@@ -66,7 +66,7 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 		return &command.Result{Content: fmt.Sprintf("无法撤销：%v\n使用 %srollback 查看当前可撤销记录。", err, req.Prefix)}, nil
 	}
 	result, err := c.deps.FileRollback.RollbackByID(ctx, id)
-	actor, _ := security.ActorFromContext(ctx)
+	actor, _ := contextinfo.ActorFromContext(ctx)
 	binding, _ := session.BindingFromContext(ctx)
 	if c.deps.Audit != nil && result.Path != "" {
 		sessionID := ""

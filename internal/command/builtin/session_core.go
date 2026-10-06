@@ -7,14 +7,14 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/modelmgr"
-	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
 
 func NewNew(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "new", Usage: "/new", Description: "Reset the current session; the next message creates a new one.", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: security.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{Name: "new", Usage: "/new", Description: "Reset the current session; the next message creates a new one.", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		if err := deps.Sessions.ResetCurrent(ctx, deps.Scope(ctx)); err != nil {
 			return nil, err
 		}
@@ -23,7 +23,7 @@ func NewNew(deps Deps) command.Handler {
 }
 
 func NewStatus(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "status", Usage: "/status", Description: "Show current session status.", MinRole: security.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{Name: "status", Usage: "/status", Description: "Show current session status.", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		status, err := deps.Sessions.Status(ctx, deps.Scope(ctx))
 		if errors.Is(err, storage.ErrNotFound) {
 			return &command.Result{Content: formatEmptyStatus(ctx, deps)}, nil

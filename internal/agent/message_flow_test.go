@@ -3,8 +3,8 @@ package agent
 import (
 	"bytes"
 	"context"
-	"elbot/internal/chatinfo"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -121,7 +121,7 @@ func TestHandleMessageImageOnlyInputReachesLLM(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"ok"}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqofficial",
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqofficial",
 		ScopeID: "c2c:user-1"}}, Sender: p,
 		Segments: []platform.MessageSegment{{Type: platform.SegmentImage, URL: "data:image/png;base64,abc", MIMEType: "image/png", Name: "image.png"}},
 	})
@@ -161,9 +161,9 @@ func TestReplyContextFallbackStillReachesLLMWhenNotConsumed(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot",
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot",
 		ScopeID:          "group:9",
-		ConversationKind: chatinfo.ConversationGroup}}, Sender: p,
+		ConversationKind: contextinfo.ConversationGroup}}, Sender: p,
 		RawText:         "芙莉丝 继续",
 		Segments:        []platform.MessageSegment{{Type: platform.SegmentText, Text: "芙莉丝 继续"}},
 		ContextText:     "[引用：通知]：通知内容\n\n芙莉丝 继续",
@@ -188,7 +188,7 @@ func TestHandleMessageSendsFallbackForEmptyLLMResponse(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{}}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq-onebot", ScopeID: "private:test"}}, Sender: p, BufferAssistantOutput: true})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq-onebot", ScopeID: "private:test"}}, Sender: p, BufferAssistantOutput: true})
 
 	if err := a.HandleMessage(ctx, "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -253,7 +253,7 @@ func TestMapSentAssistantMessageUsesOnlyCompleteReceiptSources(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ScopeID: "group:9"}, Identity: chatinfo.Identity{PlatformUserID: "1"}}})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ScopeID: "group:9"}, Identity: contextinfo.Identity{PlatformUserID: "1"}}})
 	session, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "mapped"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)

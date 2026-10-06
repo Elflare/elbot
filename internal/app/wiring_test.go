@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
@@ -70,7 +70,7 @@ func TestBuildAgentInstallsExecutionParticipants(t *testing.T) {
 		t.Fatal(err)
 	}
 	event := hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: row.ID}, Message: hook.MessagePayload{Segments: llm.TextSegments("ordinary group message")}}
-	groupCtx := platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{ConversationKind: chatinfo.ConversationGroup}}})
+	groupCtx := platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{ConversationKind: contextinfo.ConversationGroup}}})
 	if _, err := hooks.Run(groupCtx, event); err != nil {
 		t.Fatal(err)
 	}

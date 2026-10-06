@@ -42,7 +42,6 @@ func New(baseURL, apiKey string, extraPayload map[string]any, modelExtraPayloads
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, extraPayload: extraPayload, modelExtraPayloads: modelExtraPayloads, transport: transport, loggedSystem: map[string]bool{}}, nil
 }
 
-func (a *Client) Protocol() llm.ProtocolID      { return llm.ProtocolChat }
 func (a *Client) SetLogger(logger *slog.Logger) { a.logger = logger }
 func (a *Client) SetRetryNotifier(f func(context.Context, llm.RetryEvent)) {
 	a.transport.SetRetryNotifier(f)

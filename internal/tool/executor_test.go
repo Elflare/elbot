@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 )
@@ -73,7 +74,7 @@ func TestExecutorDeniesToolAboveUserRisk(t *testing.T) {
 	if err := registry.Register(fakeTool{name: "danger", source: SourceBuiltin, risk: RiskHigh}); err != nil {
 		t.Fatal(err)
 	}
-	executor := Executor{Registry: registry, Actor: security.Actor{Role: security.RoleUser}, Policy: security.DefaultPolicy()}
+	executor := Executor{Registry: registry, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Policy: security.DefaultPolicy()}
 	result := executor.Execute(context.Background(), llm.ToolCallRequest{ID: "call_1", Name: "danger", Arguments: `{}`})
 	if result.Err == nil || !strings.Contains(llm.SegmentsContentText(result.Message.Segments), "above your allowed tool level") {
 		t.Fatalf("result = %#v", result)
@@ -85,7 +86,7 @@ func TestExecutorDeniesSuperadminOnlyToolForNormalUser(t *testing.T) {
 	if err := registry.Register(fakeTool{name: "cron", source: SourceBuiltin, risk: RiskMedium, superadminOnly: true}); err != nil {
 		t.Fatal(err)
 	}
-	executor := Executor{Registry: registry, Actor: security.Actor{Role: security.RoleUser}, Policy: security.NewPolicy("medium", "high", nil)}
+	executor := Executor{Registry: registry, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Policy: security.NewPolicy("medium", "high", nil)}
 	result := executor.Execute(context.Background(), llm.ToolCallRequest{ID: "call_1", Name: "cron", Arguments: `{}`})
 	if result.Err == nil || !strings.Contains(llm.SegmentsContentText(result.Message.Segments), "requires superadmin") {
 		t.Fatalf("result = %#v", result)

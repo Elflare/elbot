@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"elbot/internal/agent/dialogue"
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/platform"
@@ -67,8 +67,8 @@ func TestForwardDisplayReachesVendorInOrder(t *testing.T) {
 	}
 	display = append(display, current...)
 	msg := platform.MessageContext{
-		Info:   chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ScopeID: "group:9", ConversationKind: chatinfo.ConversationGroup, ConversationID: "9"}, Identity: chatinfo.Identity{ActorID: "qqonebot:1", PlatformUserID: "1"}, ReplyToMessageID: row.PlatformMessageID},
-		Sender: p, RawText: "芙莉丝 比较这些图片", Segments: current, ContextSegments: display, TriggerKeywords: []string{"芙莉丝"},
+		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ScopeID: "group:9", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"}, Identity: contextinfo.Identity{ActorID: "qqonebot:1", PlatformUserID: "1"}, ReplyToMessageID: row.PlatformMessageID},
+		Sender:       p, RawText: "芙莉丝 比较这些图片", Segments: current, ContextSegments: display, TriggerKeywords: []string{"芙莉丝"},
 		Reply: platform.ReplyContext{MessageID: row.PlatformMessageID, Text: "[forward]", Segments: original},
 	}
 	inputCtx := platform.WithMessageContext(ctx, msg)

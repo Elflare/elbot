@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/directive"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -34,7 +35,7 @@ type skillDirectiveResult struct {
 }
 
 func (c *inputCoordinator) preloadContext(ctx context.Context) context.Context {
-	return security.WithActor(security.WithPolicy(ctx, c.identity.policy), c.identity.Actor(ctx))
+	return contextinfo.WithActor(security.WithPolicy(ctx, c.identity.policy), c.identity.Actor(ctx))
 }
 
 func (c *inputCoordinator) prepareToolDirectives(ctx context.Context, row *storage.Session, text string) toolDirectiveResult {

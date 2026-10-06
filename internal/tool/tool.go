@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/security"
@@ -434,8 +435,8 @@ func (r *Registry) NamesByTag(tag string, allowed func(Tool) bool) []string {
 	return names
 }
 
-func CanAccessTool(actor security.Actor, policy *security.Policy, info Info) bool {
-	if info.SuperadminOnly && actor.Role != security.RoleSuperadmin {
+func CanAccessTool(actor contextinfo.Actor, policy *security.Policy, info Info) bool {
+	if info.SuperadminOnly && actor.Role != contextinfo.RoleSuperadmin {
 		return false
 	}
 	if policy == nil {

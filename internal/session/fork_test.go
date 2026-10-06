@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"elbot/internal/llm"
 	"elbot/internal/storage"
 	"testing"
 )
@@ -13,6 +14,10 @@ func TestServiceForkCreatesCurrentBranch(t *testing.T) {
 	parent, err := svc.Create(ctx, scope, CreateRequest{Title: "parent session", Mode: storage.SessionModeChat})
 	if err != nil {
 		t.Fatalf("create parent: %v", err)
+	}
+	origin := llm.Origin{Protocol: llm.ProtocolChat, Provider: "source", BaseURL: "https://source.invalid/v1"}
+	if _, err := svc.RegisterOrigin(ctx, parent.ID, origin); err != nil {
+		t.Fatal(err)
 	}
 	assistant := &storage.Message{SessionID: parent.ID, Role: storage.RoleAssistant, Content: "answer"}
 	if err := store.Messages().Append(ctx, assistant); err != nil {
@@ -26,12 +31,22 @@ func TestServiceForkCreatesCurrentBranch(t *testing.T) {
 	if fork.ParentSessionID != parent.ID || fork.ForkFromMessageID != assistant.ID || fork.Mode != storage.SessionModeChat {
 		t.Fatalf("fork = %#v", fork)
 	}
+	if got, present, err := Origin(fork); err != nil || !present || got != origin {
+		t.Fatalf("origin=%+v err=%v", got, err)
+	}
 	current, err := svc.Current(ctx, scope)
 	if err != nil {
 		t.Fatalf("Current: %v", err)
 	}
 	if current.ID != fork.ID {
 		t.Fatalf("current = %s, want %s", current.ID, fork.ID)
+	}
+	independent, err := svc.Create(ctx, scope, CreateRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, present, err := Origin(independent); err != nil || present || got != (llm.Origin{}) {
+		t.Fatalf("independent session inherited origin: %+v %v", got, err)
 	}
 }
 

@@ -54,7 +54,11 @@ func (s *Service) CreateCompacted(ctx context.Context, scope Scope, sourceID str
 			return nil, fmt.Errorf("session binding expired")
 		}
 	}
-	fields, err := storage.DecodeSessionMetadata(req.Metadata)
+	metadata, err := InheritOrigin(source, req.Metadata)
+	if err != nil {
+		return nil, err
+	}
+	fields, err := storage.DecodeSessionMetadata(metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +68,7 @@ func (s *Service) CreateCompacted(ctx context.Context, scope Scope, sourceID str
 	if err := fields.Set("title_source", "compact"); err != nil {
 		return nil, err
 	}
-	metadata, err := fields.Encode()
+	metadata, err = fields.Encode()
 	if err != nil {
 		return nil, err
 	}

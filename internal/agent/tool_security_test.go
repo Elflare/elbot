@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/chatinfo"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/memory/resident"
 	"elbot/internal/platform"
@@ -26,8 +26,8 @@ func TestRiskConfirmationExpiresAndStopsToolFlow(t *testing.T) {
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
 	a.execution.waitPolicy.userConfirmationTimeout = 20 * time.Millisecond
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "private:regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
-	ctx = security.WithActor(ctx, security.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: security.RoleUser})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "private:regular"}, Identity: contextinfo.Identity{PlatformUserID: "regular"}}})
+	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: contextinfo.RoleUser})
 	s, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "expiring confirmation"})
 	if err != nil {
 		t.Fatal(err)
@@ -242,7 +242,7 @@ func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
 		cfg.ToolRegistry = registry
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "shared"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "shared"}, Identity: contextinfo.Identity{PlatformUserID: "regular"}}})
 
 	done := make(chan error, 1)
 	go func() { done <- a.HandleMessage(ctx, "更新我的核心记忆为：我喜欢咖啡") }()
@@ -261,12 +261,12 @@ func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 		t.Fatal("regular user did not enter risk confirmation phase")
 	}
 
-	scope := resident.ActorScope(security.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: security.RoleUser})
+	scope := resident.ActorScope(contextinfo.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: contextinfo.RoleUser})
 	if _, err := memStore.Read(ctx, scope); !errors.Is(err, resident.ErrNotFound) {
 		t.Fatalf("core memory changed before confirmation: %v", err)
 	}
 
-	otherCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "shared"}, Identity: chatinfo.Identity{PlatformUserID: "other"}}})
+	otherCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "shared"}, Identity: contextinfo.Identity{PlatformUserID: "other"}}})
 	if err := a.HandleMessage(otherCtx, "/confirm"); err != nil {
 		t.Fatalf("other user confirm: %v", err)
 	}
@@ -318,7 +318,7 @@ func TestRegularUserCanUpdateNormalMemoryWithoutConfirmation(t *testing.T) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
 		cfg.ToolRegistry = registry
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: contextinfo.Identity{PlatformUserID: "regular"}}})
 
 	if err := a.HandleMessage(ctx, "更新我的普通记忆"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -326,7 +326,7 @@ func TestRegularUserCanUpdateNormalMemoryWithoutConfirmation(t *testing.T) {
 	if strings.Contains(p.out.String(), "等待确认") {
 		t.Fatalf("normal memory should not require confirmation, output = %q", p.out.String())
 	}
-	scope := resident.ActorScope(security.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: security.RoleUser})
+	scope := resident.ActorScope(contextinfo.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: contextinfo.RoleUser})
 	mem, err := memStore.Read(ctx, scope)
 	if err != nil {
 		t.Fatalf("read memory: %v", err)
@@ -357,7 +357,7 @@ func TestRegularUserCannotCallSuperadminOnlyTool(t *testing.T) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
 		cfg.ToolRegistry = registry
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: chatinfo.Identity{PlatformUserID: "regular"}}})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: contextinfo.Identity{PlatformUserID: "regular"}}})
 
 	if err := a.HandleMessage(ctx, "写长期记忆"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -383,19 +383,19 @@ func TestRegularUserCannotCallSuperadminOnlyTool(t *testing.T) {
 
 func TestAuthorizedActorsConfirmHighRiskTools(t *testing.T) {
 	policy := security.DefaultPolicy()
-	if !policy.NeedsToolConfirmation(security.Actor{Role: security.RoleSuperadmin}, security.RiskHigh) {
+	if !policy.NeedsToolConfirmation(contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, security.RiskHigh) {
 		t.Fatalf("superadmin should need confirmation for high risk")
 	}
-	if !policy.NeedsToolConfirmation(security.Actor{Role: security.RoleUser}, security.RiskHigh) {
+	if !policy.NeedsToolConfirmation(contextinfo.Actor{Role: contextinfo.RoleUser}, security.RiskHigh) {
 		t.Fatalf("regular user should confirm high-risk authorized tools")
 	}
-	if policy.NeedsToolConfirmation(security.Actor{Role: security.RoleUser}, security.RiskMedium) {
+	if policy.NeedsToolConfirmation(contextinfo.Actor{Role: contextinfo.RoleUser}, security.RiskMedium) {
 		t.Fatalf("regular user should not confirm medium-risk tools")
 	}
-	if !policy.CanUseTool(security.Actor{Role: security.RoleUser}, security.RiskHigh, true) {
+	if !policy.CanUseTool(contextinfo.Actor{Role: contextinfo.RoleUser}, security.RiskHigh, true) {
 		t.Fatalf("regular user should be allowed for owner-scoped high risk")
 	}
-	if policy.CanUseTool(security.Actor{Role: security.RoleUser}, security.RiskHigh, false) {
+	if policy.CanUseTool(contextinfo.Actor{Role: contextinfo.RoleUser}, security.RiskHigh, false) {
 		t.Fatalf("regular user should be denied for non-owner high risk")
 	}
 }

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 )
 
@@ -90,16 +90,16 @@ func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Out
 }
 
 func (a *Adapter) contextTarget(ctx context.Context) (sendTarget, error) {
-	info, ok := chatinfo.FromContext(ctx)
+	info, ok := contextinfo.ConversationFromContext(ctx)
 	if !ok || info.Source.Platform != platformName {
 		return sendTarget{}, fmt.Errorf("qqofficial send target missing")
 	}
 	out := delivery.Target{ScopeID: info.Source.ScopeID}
 	if id := strings.TrimSpace(info.Source.ConversationID); id != "" {
 		switch info.Source.ConversationKind {
-		case chatinfo.ConversationGroup:
+		case contextinfo.ConversationGroup:
 			out.GroupID = id
-		case chatinfo.ConversationPrivate:
+		case contextinfo.ConversationPrivate:
 			out.PrivateUserID = id
 		}
 	}

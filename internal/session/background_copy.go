@@ -38,6 +38,10 @@ func (s *Service) CopyBackground(ctx context.Context, target Scope, req Backgrou
 	if err != nil {
 		return nil, err
 	}
+	seed, err = InheritOrigin(source, seed)
+	if err != nil {
+		return nil, err
+	}
 	background := BackgroundRequest{Kind: req.Kind, Name: req.Name, Title: req.Title}
 	metadata, err := backgroundMetadata(seed, background)
 	if err != nil {

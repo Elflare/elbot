@@ -40,7 +40,6 @@ func New(baseURL, apiKey string, extras map[string]any, modelExtras map[string]m
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, extraPayload: extras, modelExtraPayloads: modelExtras, transport: transport}, nil
 }
 
-func (*Client) Protocol() llm.ProtocolID        { return llm.ProtocolResponse }
 func (c *Client) SetLogger(logger *slog.Logger) { c.logger = logger }
 func (c *Client) SetRetryNotifier(f func(context.Context, llm.RetryEvent)) {
 	c.transport.SetRetryNotifier(f)

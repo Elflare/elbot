@@ -12,9 +12,9 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
-	"elbot/internal/chatinfo"
 	"elbot/internal/completion"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
@@ -53,7 +53,7 @@ type remoteClientConn struct {
 type messageData struct{ client *remoteClientConn }
 
 func originalClient(ctx context.Context) (*remoteClientConn, bool) {
-	info, ok := chatinfo.FromContext(ctx)
+	info, ok := contextinfo.ConversationFromContext(ctx)
 	if !ok || info.Source.Platform != "cli" {
 		return nil, false
 	}
@@ -236,15 +236,15 @@ func (s remoteMessageStream) Finish(ctx context.Context) (delivery.Receipt, erro
 
 func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientConn) context.Context {
 	msg := platform.MessageContext{
-		Info: chatinfo.Info{
-			Source: chatinfo.Source{
+		Conversation: contextinfo.Conversation{
+			Source: contextinfo.Source{
 				Platform:         s.Name(),
 				ScopeID:          client.id,
-				ConversationKind: chatinfo.ConversationUnknown,
+				ConversationKind: contextinfo.ConversationUnknown,
 				ConversationID:   client.id,
 			},
 			PlatformData: messageData{client: client},
-			Identity: chatinfo.Identity{
+			Identity: contextinfo.Identity{
 				ActorID:        security.ActorID(s.Name(), client.id),
 				PlatformUserID: client.id,
 				Nickname:       client.id,

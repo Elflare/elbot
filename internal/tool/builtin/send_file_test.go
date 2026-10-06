@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"elbot/internal/chatinfo"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	sandboxctx "elbot/internal/sandbox"
@@ -72,7 +72,7 @@ func TestSendFileSendsSandboxFile(t *testing.T) {
 	manager := NewFileManager(root, config.FileDeliveryConfig{})
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"source": "report.txt"})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot"}}})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot"}}})
 	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Root: root, Dir: cronDir, Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
 	result, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
 	if err != nil {

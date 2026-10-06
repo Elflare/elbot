@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"elbot/internal/command"
-	"elbot/internal/security"
+	"elbot/internal/contextinfo"
 )
 
 func NewCompact(deps Deps) command.Handler {
@@ -13,7 +13,7 @@ func NewCompact(deps Deps) command.Handler {
 		Usage:         "/compact",
 		Description:   "Compact current session context.",
 		SessionEffect: command.SessionEffectMutate,
-		MinRole:       security.RoleUser,
+		MinRole:       contextinfo.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		content, err := deps.Compact.CompactCurrent(ctx, "manual")
 		if err != nil {

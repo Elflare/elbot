@@ -141,7 +141,7 @@ func TestNamingFallbackKeepsOriginalWorkSelectionAcrossSwitch(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		result, err := g.GenerateTitle(ctx, messages)
-		if err == nil && result.RawTitle != "old title" {
+		if err == nil && (result.RawTitle != "old title" || result.Provider != "old" || result.Model != "first") {
 			err = errors.New("old naming operation did not use original fallback")
 		}
 		done <- err
@@ -165,7 +165,7 @@ func TestNamingFallbackKeepsOriginalWorkSelectionAcrossSwitch(t *testing.T) {
 		t.Fatalf("fallback switched: %#v", oldRequests)
 	}
 	result, err := g.GenerateTitle(ctx, messages)
-	if err != nil || result.RawTitle != "new title" {
+	if err != nil || result.RawTitle != "new title" || result.Provider != "next" || result.Model != "second" {
 		t.Fatalf("new naming = %#v, %v", result, err)
 	}
 }
@@ -184,7 +184,7 @@ func TestCompactUsesOriginalSelectionDuringModelSwitch(t *testing.T) {
 	a := mustNewWithOptions(t, opts)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	source, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "compact"})
+	source, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "compact", Metadata: `{"llm_origin":{"protocol":"chat"}}`})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +214,6 @@ func TestCompactUsesOriginalSelectionDuringModelSwitch(t *testing.T) {
 	}
 }
 
-func (c *failingNamingClient) Protocol() llm.ProtocolID { return llm.ProtocolChat }
 func (c *failingNamingClient) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {
 	messages := []llm.LLMMessage{}
 	if req.Instructions != "" {

@@ -112,7 +112,6 @@ func TestRuntimeRetainsHookDependenciesUntilAppendOutputExits(t *testing.T) {
 	}
 }
 
-func (m *appendShutdownModel) Protocol() llm.ProtocolID { return llm.ProtocolChat }
 func (m *appendShutdownModel) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {
 	messages := []llm.LLMMessage{}
 	if req.Instructions != "" {

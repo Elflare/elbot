@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/hook"
@@ -142,7 +142,7 @@ func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
 
 	dispatcher := dispatch.New(dispatch.Options{Store: store, Media: center, MediaRetentionDays: 7})
 	sender := &orderedMediaSender{t: t}
-	messageCtx := platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ScopeID: "group:9"}}, Sender: sender})
+	messageCtx := platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ScopeID: "group:9"}}, Sender: sender})
 	outputs := []delivery.Output{
 		{Kind: delivery.KindImage, Name: "https://example.com/private/remote.png?rkey=name-secret", Source: delivery.Source{URL: server.URL}},
 		{Kind: delivery.KindFile, Name: "local.txt", Source: delivery.Source{Path: path}},

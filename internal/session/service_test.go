@@ -2,7 +2,7 @@ package session
 
 import (
 	"context"
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/storage"
 	"errors"
 	"testing"
@@ -80,7 +80,7 @@ func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 func TestPlatformScopeCanListAndResumeSamePlatformCronSessions(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{ConversationKind: chatinfo.ConversationPrivate, ActorID: "qq:user1", Platform: "qq-onebot", PlatformScopeID: "private:user1"}
+	scope := Scope{ConversationKind: contextinfo.ConversationPrivate, ActorID: "qq:user1", Platform: "qq-onebot", PlatformScopeID: "private:user1"}
 	otherScope := Scope{ActorID: "qq:user1", Platform: "qq-onebot", PlatformScopeID: "group:g1"}
 
 	front, err := svc.Create(ctx, scope, CreateRequest{Title: "front"})

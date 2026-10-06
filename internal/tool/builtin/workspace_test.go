@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/security"
 	"elbot/internal/tool"
 	"elbot/internal/workspace"
@@ -203,7 +204,7 @@ func TestDiscoverWorkspaceLoadsCurrentAgentInstructions(t *testing.T) {
 	store := &testWorkspaceStore{dir: dir}
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	ctx = security.WithPolicy(ctx, security.NewPolicy("low", "critical", map[string][]string{"cli": {"admin"}}))
-	ctx = security.WithActor(ctx, security.Actor{ID: "cli:admin", Platform: "cli", PlatformUserID: "admin", Role: security.RoleSuperadmin})
+	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{ID: "cli:admin", Platform: "cli", PlatformUserID: "admin", Role: contextinfo.RoleSuperadmin})
 	registry := tool.NewRegistry()
 	if err := registry.Register(NewWorkspaceTool()); err != nil {
 		t.Fatal(err)

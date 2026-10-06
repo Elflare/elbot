@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
@@ -111,8 +112,8 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 				t.Fatal(err)
 			}
 			manager := toolrun.NewManager(registry, security.NewPolicy("low", "high", nil))
-			actor := security.Actor{ID: "admin", Role: security.RoleSuperadmin}
-			base := security.WithActor(context.Background(), actor)
+			actor := contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin}
+			base := contextinfo.WithActor(context.Background(), actor)
 			deps := &rollbackConfirmDeps{}
 			deps.prepareContext = func(ctx context.Context, _ *storage.Session, _ llm.ToolCallRequest) context.Context {
 				ctx = workspace.WithWorkspaceStore(ctx, &rollbackWorkspace{dir: dir})
@@ -165,7 +166,7 @@ func TestRunEditPreservesConfirmationSnapshot(t *testing.T) {
 				t.Fatal(err)
 			}
 			manager := toolrun.NewManager(registry, security.NewPolicy("low", "high", nil))
-			actor := security.Actor{ID: "admin", Role: security.RoleSuperadmin}
+			actor := contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin}
 			deps := &rollbackConfirmDeps{}
 			deps.prepareContext = func(ctx context.Context, _ *storage.Session, _ llm.ToolCallRequest) context.Context {
 				ctx = workspace.WithWorkspaceStore(ctx, &rollbackWorkspace{dir: dir})
@@ -178,7 +179,7 @@ func TestRunEditPreservesConfirmationSnapshot(t *testing.T) {
 					}
 				}
 			}
-			manager.Run(security.WithActor(context.Background(), actor), deps, toolrun.RunRequest{
+			manager.Run(contextinfo.WithActor(context.Background(), actor), deps, toolrun.RunRequest{
 				Session: &storage.Session{ID: "session", Mode: storage.SessionModeWork}, Actor: actor,
 				Calls: []llm.ToolCallRequest{{ID: "edit", Name: "edit_file", Arguments: `{"path":"file","edits":[{"operation":"replace_text","old_text":"before","new_text":"after"}]}`}},
 			})

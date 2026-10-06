@@ -5,11 +5,11 @@ import (
 	"errors"
 	"time"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
-	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
@@ -17,7 +17,7 @@ import (
 
 type Identity interface {
 	Scope(context.Context) session.Scope
-	Actor(context.Context) security.Actor
+	Actor(context.Context) contextinfo.Actor
 	IsCLI(context.Context) bool
 }
 type Hooks interface {
@@ -75,7 +75,8 @@ type PreparedLoop interface {
 	RunLoop(context.Context, context.Context, LoopInput, Output) LoopResult
 }
 type LoopResolver interface {
-	LoopFor(llm.ProtocolID) (Loop, error)
+	LoopFor(string) (Loop, error)
+	OriginFor(string) (llm.Origin, error)
 }
 
 type LoopResult struct {

@@ -7,10 +7,10 @@ import (
 
 	"elbot/internal/agent/dialogue"
 	agentevents "elbot/internal/agent/events"
+	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
-	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
@@ -28,7 +28,7 @@ func (a *Agent) CompactCurrent(ctx context.Context, triggerReason string) (strin
 
 func (c *executionCoordinator) AdoptForeground(ctx context.Context, row *storage.Session, binding *session.Binding) {
 	if execution := c.turns.Execution(row.ID); execution != nil {
-		ctx = security.WithActor(ctx, c.identity.Actor(ctx))
+		ctx = contextinfo.WithActor(ctx, c.identity.Actor(ctx))
 		execution.Adopt(session.WithBinding(ctx, binding))
 	}
 }

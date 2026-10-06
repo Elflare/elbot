@@ -507,7 +507,6 @@ func (t slowTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result,
 	}
 }
 
-func (f *fakeLLM) Protocol() llm.ProtocolID { return llm.ProtocolChat }
 func (f *fakeLLM) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {
 	messages := []llm.LLMMessage{}
 	if req.Instructions != "" {

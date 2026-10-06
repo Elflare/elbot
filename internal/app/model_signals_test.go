@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
@@ -57,7 +57,7 @@ type retryNoticePlatform struct {
 func (p *retryNoticePlatform) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
 	text := delivery.FallbackOutput(notice.Outputs).Text
 	if strings.Contains(text, "正在重试") {
-		info, _ := chatinfo.FromContext(ctx)
+		info, _ := contextinfo.ConversationFromContext(ctx)
 		p.retryNotices <- info.Source.ScopeID
 	}
 	return p.assemblyPlatform.SendNotice(ctx, notice)
@@ -74,7 +74,7 @@ func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "local"}, Identity: chatinfo.Identity{PlatformUserID: "local"}})
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "local"}, Identity: contextinfo.Identity{PlatformUserID: "local"}})
 	for _, name := range []string{"chat", "compact", "naming"} {
 		result := make(chan error, 1)
 		go func() {
@@ -142,7 +142,6 @@ func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
 	}
 }
 
-func (m *retryModel) Protocol() llm.ProtocolID { return llm.ProtocolChat }
 func (m *retryModel) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {
 	messages := []llm.LLMMessage{}
 	if req.Instructions != "" {

@@ -13,6 +13,7 @@ import (
 
 	"elbot/internal/background"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/elyph"
 	"elbot/internal/modelmgr"
@@ -223,7 +224,7 @@ func (s *Service) Update(ctx context.Context, req PatchRequest) (*storage.CronJo
 	return updated, nil
 }
 
-func (s *Service) Disable(ctx context.Context, name string, actor security.Actor) error {
+func (s *Service) Disable(ctx context.Context, name string, actor contextinfo.Actor) error {
 	if err := requireSuperadmin(actor); err != nil {
 		s.auditEvent("cron.permission_denied", "operation", "disable", "actor_id", actor.ID, "reason", err.Error())
 		return err
@@ -240,7 +241,7 @@ func (s *Service) Disable(ctx context.Context, name string, actor security.Actor
 	return nil
 }
 
-func (s *Service) Delete(ctx context.Context, name string, actor security.Actor) error {
+func (s *Service) Delete(ctx context.Context, name string, actor contextinfo.Actor) error {
 	if err := requireSuperadmin(actor); err != nil {
 		s.auditEvent("cron.permission_denied", "operation", "delete", "actor_id", actor.ID, "reason", err.Error())
 		return err
@@ -257,7 +258,7 @@ func (s *Service) Delete(ctx context.Context, name string, actor security.Actor)
 	return nil
 }
 
-func (s *Service) Get(ctx context.Context, name string, actor security.Actor) (JobView, error) {
+func (s *Service) Get(ctx context.Context, name string, actor contextinfo.Actor) (JobView, error) {
 	if err := requireSuperadmin(actor); err != nil {
 		s.auditEvent("cron.permission_denied", "operation", "get", "actor_id", actor.ID, "reason", err.Error())
 		return JobView{}, err
@@ -277,7 +278,7 @@ func (s *Service) Get(ctx context.Context, name string, actor security.Actor) (J
 	return JobView{Job: *job, Metadata: meta, Delivery: deliveryState}, nil
 }
 
-func (s *Service) List(ctx context.Context, includeDisabled, includeCompleted bool, actor security.Actor) ([]JobView, error) {
+func (s *Service) List(ctx context.Context, includeDisabled, includeCompleted bool, actor contextinfo.Actor) ([]JobView, error) {
 	if err := requireSuperadmin(actor); err != nil {
 		s.auditEvent("cron.permission_denied", "operation", "list", "actor_id", actor.ID, "reason", err.Error())
 		return nil, err

@@ -4,17 +4,17 @@ import (
 	"context"
 	"testing"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/platform"
 )
 
 type captureLocalInfo struct {
-	infos           []chatinfo.Info
+	infos           []contextinfo.Conversation
 	hasReplyContext bool
 }
 
 func (h *captureLocalInfo) HandleMessage(ctx context.Context, _ string) error {
-	info, _ := chatinfo.FromContext(ctx)
+	info, _ := contextinfo.ConversationFromContext(ctx)
 	h.infos = append(h.infos, info)
 	_, h.hasReplyContext = platform.MessageContextFrom(ctx)
 	return nil

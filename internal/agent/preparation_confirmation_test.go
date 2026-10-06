@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/contextinfo"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/request"
@@ -40,7 +41,7 @@ func TestTurnPreparationUsesRequestContext(t *testing.T) {
 				var observedID, parentID string
 				var observedErr error
 				observe := func(preparationCtx context.Context) {
-					observedID = request.TurnIDFromContext(preparationCtx)
+					observedID = contextinfo.RootRequestIDFromContext(preparationCtx)
 					if stage == "hook" {
 						for _, active := range f.opts.Requests.ListBySession(in.Session.ID) {
 							if active.Kind == request.KindHook {
@@ -102,7 +103,7 @@ func TestExecutionPreparationCancellationCleansUp(t *testing.T) {
 			}
 			f.chat.PromptBuilder.System = dialogue.NewSystemPromptManager(preparationPromptSource(func(pctx context.Context, _ dialogue.SystemPromptRequest) ([]dialogue.SystemPromptPart, error) {
 				if reason == "cancel" {
-					f.opts.Requests.Cancel(request.TurnIDFromContext(pctx))
+					f.opts.Requests.Cancel(contextinfo.RootRequestIDFromContext(pctx))
 				} else {
 					select {
 					case <-pctx.Done():

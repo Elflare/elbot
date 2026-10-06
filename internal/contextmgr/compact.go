@@ -7,6 +7,7 @@ import (
 
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 )
 
@@ -16,7 +17,14 @@ type PreparedCompact struct {
 }
 
 func (s *Service) Compact(ctx context.Context, current *storage.Session, reason string, fallback modelmgr.Selection) (*PreparedCompact, error) {
-	compactor, err := s.resolveCompactor(fallback.Protocol)
+	origin, known, err := session.Origin(current)
+	if err != nil {
+		return nil, err
+	}
+	if !known {
+		return nil, fmt.Errorf("source session origin is missing")
+	}
+	compactor, err := s.resolveCompactor(origin)
 	if err != nil {
 		return nil, err
 	}
@@ -24,16 +32,16 @@ func (s *Service) Compact(ctx context.Context, current *storage.Session, reason 
 }
 
 // CheckCompaction verifies startup wiring without executing a compression.
-func (s *Service) CheckCompaction(protocol llm.ProtocolID) error {
-	_, err := s.resolveCompactor(protocol)
+func (s *Service) CheckCompaction(origin llm.Origin) error {
+	_, err := s.resolveCompactor(origin)
 	return err
 }
 
-func (s *Service) resolveCompactor(protocol llm.ProtocolID) (Compactor, error) {
+func (s *Service) resolveCompactor(origin llm.Origin) (Compactor, error) {
 	if s.compactors == nil {
 		return nil, fmt.Errorf("compaction routes are not configured")
 	}
-	return s.compactors.CompactorFor(protocol)
+	return s.compactors.CompactorFor(origin)
 }
 
 func NextCompactedTitle(source *storage.Session, previous *CompactState) (title string, generation int, baseTitle string) {

@@ -203,7 +203,7 @@ func TestManualCompactDefersSeedUntilNextUserMessage(t *testing.T) {
 	f := &fakeLLM{replies: []string{"K", "answer J"}}
 	store := newTestStore(t)
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	old, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "manual"})
+	old, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "manual", Metadata: `{"llm_origin":{"protocol":"chat"}}`})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 	f := &fakeLLM{replies: []string{"K"}, chatBlocks: []fakeLLMBlock{{started: started, release: make(chan struct{})}}}
 	store := newTestStore(t)
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
-	source, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "compact"})
+	source, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "compact", Metadata: `{"llm_origin":{"protocol":"chat"}}`})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -442,7 +442,7 @@ func TestCancelledCompactLateResultCannotSwitchNewCurrent(t *testing.T) {
 	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{}), ignoreCancellation: true}
 	f := &fakeLLM{replies: []string{"late summary"}, chatBlocks: []fakeLLMBlock{block}}
 	a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t))
-	old, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{})
+	old, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Metadata: `{"llm_origin":{"protocol":"chat"}}`})
 	if err != nil {
 		t.Fatal(err)
 	}

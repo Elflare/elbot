@@ -9,6 +9,8 @@ import (
 
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/agent/routes"
+	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
@@ -16,12 +18,20 @@ import (
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/turn"
 )
 
 const testProtocol llm.ProtocolID = "test"
+
+type testClient struct{}
+
+func (*testClient) ListModels(context.Context) ([]string, error) { return []string{"m"}, nil }
+func (*testClient) GenerateText(context.Context, llm.TextRequest) (llm.TextResult, error) {
+	return llm.TextResult{Text: "text"}, nil
+}
 
 type testLoop struct {
 	t        *testing.T
@@ -30,8 +40,11 @@ type testLoop struct {
 }
 
 func (l *testLoop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials) (dialogue.PreparedLoop, error) {
-	if request.TurnIDFromContext(ctx) != "" {
+	if contextinfo.RootRequestIDFromContext(ctx) != "" {
 		l.t.Fatal("materials loaded after request registration")
+	}
+	if model, ok := contextinfo.ModelFromContext(ctx); !ok || model.Protocol != string(testProtocol) || model.Provider != "test-provider" {
+		l.t.Fatalf("preparation model facts = %+v, %v", model, ok)
 	}
 	l.prepared++
 	return &testPrepared{loop: l, user: materials.UserMessage}, nil
@@ -43,7 +56,7 @@ type testPrepared struct {
 }
 
 func (p *testPrepared) PrepareInput(_, requestCtx context.Context, in dialogue.LoopInput, _ dialogue.Output) (*storage.Message, error) {
-	if request.TurnIDFromContext(requestCtx) != in.RequestID {
+	if contextinfo.RootRequestIDFromContext(requestCtx) != in.RequestID {
 		p.loop.t.Fatal("preparation lost parent request")
 	}
 	p.user.Content = "canonical input"
@@ -106,13 +119,22 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	}
 	registry := routes.New()
 	loop, compactor := &testLoop{t: t}, &testCompactor{}
-	if err := registry.Register(routes.Route{Protocol: testProtocol, Loop: loop, Compactor: compactor}); err != nil {
+	origin := llm.Origin{Provider: "test-provider", Protocol: testProtocol, BaseURL: "https://test.invalid"}
+	client := &testClient{}
+	if err := registry.RegisterCompactor(testProtocol, compactor); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(routes.Route{Protocol: llm.ProtocolChat, Loop: &testLoop{t: t}, Compactor: &testCompactor{}}); err != nil {
+	if err := registry.Register(routes.Binding{Origin: origin, Client: client, Loop: loop, Compactor: compactor}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(routes.Binding{Origin: llm.Origin{Provider: "other", Protocol: llm.ProtocolChat}, Client: &testClient{}, Loop: &testLoop{t: t}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := registry.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	row, err = session.NewService(store).RegisterOrigin(ctx, row.ID, origin)
+	if err != nil {
 		t.Fatal(err)
 	}
 	contexts := contextmgr.New(contextmgr.Options{Store: store, Compactors: registry})
@@ -120,8 +142,8 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	runner := &dialogue.Runner{Routes: registry, Preparer: &dialogue.Preparer{Contexts: contexts},
 		Messages: &dialogue.MessageStore{Repository: store.Messages()},
 		Replies:  &dialogue.ReplyCommitter{Messages: store.Messages(), Output: out},
-		Turns:    turn.NewManager(), View: dialogue.ExecutionView{Sessions: store.Sessions()}}
-	in := dialogue.TurnInput{Session: row, Text: "incoming", Selection: modelmgr.Selection{Protocol: testProtocol}}
+		Turns:    turn.NewManager(), View: dialogue.ExecutionView{Sessions: store.Sessions(), Providers: registry}}
+	in := dialogue.TurnInput{Session: row, Text: "incoming", Selection: modelmgr.Selection{ModelSelection: config.ModelSelection{Provider: origin.Provider, Model: "m"}, Client: client}}
 	in.Prepared, err = runner.PrepareTurn(ctx, in)
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +155,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	}
 	defer done()
 	in.RequestID = info.ID
-	result := runner.RunTurn(ctx, request.WithTurnID(requestCtx, info.ID), in, out)
+	result := runner.RunTurn(ctx, requestCtx, in, out)
 	if result.Outcome != dialogue.Completed || !result.Committed.Persisted || result.Usage == nil || result.Usage.TotalTokens != 7 {
 		t.Fatalf("common execution failed: %+v", result)
 	}
@@ -144,7 +166,9 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	if err != nil || len(rows) != 2 || rows[1].Content != "stored reply" || dialogue.AssistantMessageMetadata(rows[1].Metadata).RawText != "source reply" {
 		t.Fatalf("common commit lost canonical reply: %+v / %v", rows, err)
 	}
-	compressed, err := contexts.Compact(ctx, row, "manual", in.Selection)
+	// Source ownership chooses the compactor even when the target selection
+	// belongs to a different provider and wire protocol.
+	compressed, err := contexts.Compact(ctx, row, "manual", modelmgr.Selection{ModelSelection: config.ModelSelection{Provider: "other", Model: "m"}, Client: &testClient{}})
 	if err != nil || compactor.calls != 1 || compressed.State.SourceSessionID != row.ID || compressed.State.TriggerReason != "manual" {
 		t.Fatalf("wrong compaction route: %+v / %v", compressed, err)
 	}
@@ -155,32 +179,116 @@ func TestRegistryRejectsInvalidWiringAndMutation(t *testing.T) {
 	if err := registry.Seal(); err == nil {
 		t.Fatal("empty registry accepted")
 	}
-	if err := registry.Register(routes.Route{Protocol: testProtocol}); err == nil {
-		t.Fatal("missing required loop accepted")
+	if err := registry.Register(routes.Binding{Origin: llm.Origin{Provider: "test", Protocol: testProtocol}}); err == nil {
+		t.Fatal("missing required client accepted")
 	}
-	entry := routes.Route{Protocol: testProtocol, Loop: &testLoop{t: t}}
+	entry := routes.Binding{Origin: llm.Origin{Provider: "test", Protocol: testProtocol}, Client: &testClient{}, Loop: &testLoop{t: t}}
 	if err := registry.Register(entry); err != nil {
 		t.Fatal(err)
 	}
 	if err := registry.Register(entry); err == nil {
-		t.Fatal("duplicate protocol accepted")
+		t.Fatal("duplicate provider accepted")
 	}
-	if _, err := registry.LoopFor(testProtocol); err == nil {
+	if _, err := registry.LoopFor("test"); err == nil {
 		t.Fatal("execution allowed before wiring completed")
 	}
 	if err := registry.Seal(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := registry.LoopFor(testProtocol); err != nil {
+	if _, err := registry.LoopFor("test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := registry.CompactorFor(testProtocol); err == nil || !strings.Contains(err.Error(), "does not support compaction") {
+	if _, err := registry.CompactorFor(entry.Origin); err == nil || !strings.Contains(err.Error(), "does not support compaction") {
 		t.Fatalf("optional capability must fail explicitly: %v", err)
 	}
 	if _, err := registry.LoopFor("unknown"); err == nil {
-		t.Fatal("unknown protocol accepted")
+		t.Fatal("unknown provider accepted")
 	}
-	if err := registry.Register(routes.Route{Protocol: "late", Loop: &testLoop{t: t}}); err == nil {
+	if err := registry.Register(routes.Binding{Origin: llm.Origin{Provider: "late", Protocol: testProtocol}, Client: &testClient{}, Loop: &testLoop{t: t}}); err == nil {
 		t.Fatal("sealed registry modified")
+	}
+}
+
+func TestProviderBindingsShareRoutesAndKeepSourceCompaction(t *testing.T) {
+	registry := routes.New()
+	loop, source := &testLoop{t: t}, &testCompactor{}
+	if err := registry.RegisterCompactor(llm.ProtocolChat, source); err != nil {
+		t.Fatal(err)
+	}
+	for _, provider := range []string{"first", "second"} {
+		if err := registry.Register(routes.Binding{
+			Origin: llm.Origin{Provider: provider, Protocol: llm.ProtocolChat, BaseURL: "https://" + provider + ".invalid"},
+			Client: &testClient{}, Loop: loop, Compactor: source,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	native := llm.Origin{Provider: "changed", Protocol: llm.ProtocolResponse, BaseURL: "https://new.invalid"}
+	text := &testClient{}
+	if err := registry.Register(routes.Binding{Origin: native, Client: text}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := registry.OriginFor("first"); err == nil {
+		t.Fatal("identity escaped before bindings were sealed")
+	}
+	if err := registry.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	for _, provider := range []string{"first", "second"} {
+		if actual, err := registry.LoopFor(provider); err != nil || actual != loop {
+			t.Fatalf("provider %s did not reuse its bound route: %v", provider, err)
+		}
+	}
+	if _, err := registry.LoopFor(native.Provider); err == nil {
+		t.Fatal("text-only provider acquired dialogue capability")
+	}
+	if result, err := text.GenerateText(t.Context(), llm.TextRequest{}); err != nil || result.Text != "text" {
+		t.Fatal("text-only operation was rejected")
+	}
+	actual, err := registry.OriginFor(native.Provider)
+	if err != nil || actual != native {
+		t.Fatalf("native descriptor = %+v, %v", actual, err)
+	}
+	actual.Protocol = llm.ProtocolChat
+	if unchanged, _ := registry.OriginFor(native.Provider); unchanged != native {
+		t.Fatal("caller mutated the binding descriptor")
+	}
+	for _, origin := range []llm.Origin{
+		{Protocol: llm.ProtocolChat},
+		{Provider: "removed", Protocol: llm.ProtocolChat, BaseURL: "https://old.invalid"},
+		{Provider: native.Provider, Protocol: llm.ProtocolChat, BaseURL: "https://old.invalid"},
+	} {
+		if actual, err := registry.CompactorFor(origin); err != nil || actual != source {
+			t.Fatalf("historical source was reinterpreted: %+v / %v", origin, err)
+		}
+	}
+	if _, err := registry.CompactorFor(llm.Origin{}); err == nil {
+		t.Fatal("missing source origin defaulted to a route")
+	}
+	if err := registry.RegisterCompactor("late", &testCompactor{}); err == nil {
+		t.Fatal("source capabilities changed after sealing")
+	}
+}
+
+func TestRegistryRejectsNilClientsAndUnwiredSourceCapabilities(t *testing.T) {
+	registry := routes.New()
+	var client *testClient
+	if err := registry.Register(routes.Binding{Origin: llm.Origin{Provider: "nil", Protocol: testProtocol}, Client: client}); err == nil {
+		t.Fatal("typed nil client accepted")
+	}
+	if err := registry.Register(routes.Binding{Origin: llm.Origin{Provider: "p", Protocol: testProtocol}, Client: &testClient{}, Compactor: &testCompactor{}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Seal(); err == nil {
+		t.Fatal("provider compactor had no source-material registration")
+	}
+	if err := registry.RegisterCompactor(testProtocol, &testCompactor{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.RegisterCompactor(testProtocol, &testCompactor{}); err == nil {
+		t.Fatal("duplicate source identity accepted")
+	}
+	if err := registry.Seal(); err != nil {
+		t.Fatal(err)
 	}
 }

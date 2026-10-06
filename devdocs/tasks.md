@@ -2,7 +2,7 @@
 
 本文只跟踪有效待办。后续设计见 [core-refactor.md](core-refactor.md)，当前实现见 [architecture.md](architecture.md) 和 [code-map.md](code-map.md)。
 
-基础工程、会话／命令／工具／平台能力、Elnis 及核心重构阶段 1–15 已完成；16.1 公共单轮与 Chat 路线、16.2 协议客户端已验收。后续任务经实际接入与验证后勾选，出现新的实现选择或歧义先讨论。
+基础工程、会话／命令／工具／平台能力、Elnis 及核心重构阶段 1–15 已完成；16.1 公共单轮与 Chat 路线、16.2 协议客户端、16.2a 公共事实与 provider 绑定已验收，全量测试、race 及启动／关闭回归通过。后续任务经实际接入与验证后勾选，出现新的实现选择或歧义先讨论。
 
 <!-- locator:core-refactor -->
 <a id="core-refactor"></a>
@@ -12,24 +12,24 @@
 
 #### 公共信息迁移
 
-- [ ] 将 chatinfo 改造为暂定名 contextinfo，统一四组公共事实的定义与存取，不保留并行副本；按 Conversation／Actor／Execution／Model 提供阶段性快照及明确的缺失状态。
-- [ ] 接入平台信息、security 身份、Session／Request／执行关联及固定模型选择，保留原连接回复与前台接管刷新边界。
+- [x] 将 chatinfo 改造为 contextinfo，统一四组公共事实的定义与存取，不保留并行副本；按 Conversation／Actor／Execution／Model 提供阶段性快照及明确的缺失状态。
+- [x] 接入平台信息、security 身份、Session／Request／执行关联及固定模型选择，保留原连接回复与前台接管刷新边界。
 
 #### provider 能力绑定
 
-- [ ] 将 Route 的 Protocol 登记／查询改为 provider 绑定，保留客户端与业务装配分工、校验和封闭机制、独立文本能力及主对话缺失能力的准入拒绝。
-- [ ] 移除 Selection.Protocol 和 Client.Protocol()；公共 Model 事实来自选择与绑定描述，持久化归属独立保留。
+- [x] 将 Route 的 Protocol 登记／查询改为 provider 绑定，保留客户端与业务装配分工、校验和封闭机制、独立文本能力及主对话缺失能力的准入拒绝。
+- [x] 移除 Selection.Protocol 和 Client.Protocol()；公共 Model 事实来自选择与绑定描述，持久化归属独立保留。
 
 #### 消费者与事件接入
 
-- [ ] dialogue／contextmgr 按目标 provider／源会话归属取得能力，Prompt、Hook 和展示读取对应公共事实。
-- [ ] 衔接已有类型化信号与 app 订阅管理，保持事件快照、实际调用 context、背压及关闭策略。
-- [ ] 保留权限、活动状态、取消与原生材料边界；独立文本不增加公共协议字段，摘要及 Usage 同步返回。
+- [x] dialogue／contextmgr 按目标 provider／源会话归属取得能力，Prompt、Hook 和展示读取对应公共事实。
+- [x] 衔接已有类型化信号与 app 订阅管理，保持事件快照、实际调用 context、背压及关闭策略。
+- [x] 保留权限、活动状态、取消与原生材料边界；独立文本不增加公共协议字段，摘要及 Usage 同步返回。
 
 #### 验证与文档同步
 
-- [ ] 覆盖多 provider、不同路线、缺失／错误绑定、信息阶段可用性、固定快照、接管及原连接回复，保留事件与生命周期回归。
-- [ ] 验证协议分工、依赖方向及同步提交边界，同步当前架构和代码地图。
+- [x] 覆盖多 provider、不同路线、缺失／错误绑定、信息阶段可用性、固定快照、接管及原连接回复，保留事件与生命周期回归。
+- [x] 验证协议分工、依赖方向及同步提交边界，同步当前架构和代码地图。
 
 ### 16.3：Responses loop 与原生持久化
 

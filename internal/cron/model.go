@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"elbot/internal/background"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	"elbot/internal/security"
 	"elbot/internal/storage"
 )
 
@@ -130,7 +130,7 @@ type UpsertRequest struct {
 	AllEnabledPlatforms bool
 
 	Enabled        bool
-	Actor          security.Actor
+	Actor          contextinfo.Actor
 	SourcePlatform string
 }
 
@@ -148,7 +148,7 @@ type PatchRequest struct {
 	AllEnabledPlatforms *bool
 
 	Enabled *bool
-	Actor   security.Actor
+	Actor   contextinfo.Actor
 }
 
 type JobView struct {
@@ -258,12 +258,12 @@ func cronSandboxSubdir(jobName string) string {
 
 func cronScopeID(jobName string) string { return "cron:" + normalizeJobName(jobName) }
 
-func actorMetadata(actor security.Actor) CronActor {
+func actorMetadata(actor contextinfo.Actor) CronActor {
 	return CronActor{ActorID: actor.ID, Platform: actor.Platform, PlatformUserID: actor.PlatformUserID, DisplayName: actor.DisplayName}
 }
 
-func requireSuperadmin(actor security.Actor) error {
-	if actor.Role != security.RoleSuperadmin {
+func requireSuperadmin(actor contextinfo.Actor) error {
+	if actor.Role != contextinfo.RoleSuperadmin {
 		return fmt.Errorf("cron requires superadmin role")
 	}
 	return nil

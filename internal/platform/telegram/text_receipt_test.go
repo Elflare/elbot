@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"elbot/internal/chatinfo"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 )
 
@@ -47,7 +47,7 @@ func TestStreamSuccessAndFinishKeepSource(t *testing.T) {
 			}))
 			defer server.Close()
 			a := New(Config{BotToken: "token", APIBaseURL: server.URL, Format: format}, nil, nil, nil)
-			ctx := chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: platformName, ScopeID: "supergroup:-19"}})
+			ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ScopeID: "supergroup:-19"}})
 			s, err := a.StartStream(ctx)
 			if err != nil {
 				t.Fatal(err)

@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm/chatcompletions"
 	"os"
 	"path/filepath"
@@ -12,7 +14,6 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/security"
 	"elbot/internal/tool"
 	"elbot/internal/tool/builtin"
 )
@@ -50,7 +51,7 @@ func TestBackgroundRejectsUndeclaredNativeTool(t *testing.T) {
 		cfg.SandboxRoot = t.TempDir()
 		cfg.ToolRegistry = registry
 	})
-	result, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindElnis, Name: "restricted", Platform: "cli", Actor: security.Actor{ID: "cli:local", Role: security.RoleSuperadmin}, Prompt: "run"})
+	result, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindElnis, Name: "restricted", Platform: "cli", Actor: contextinfo.Actor{ID: "cli:local", Role: contextinfo.RoleSuperadmin}, Prompt: "run"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +90,7 @@ func TestBackgroundRelativeFilesUseElwispSandbox(t *testing.T) {
 		cfg.ToolsConfig = config.ToolsConfig{MaxRoundsPerTurn: 3}
 		cfg.ToolRegistry = registry
 	})
-	if _, err := a.RunBackground(context.Background(), background.RunRequest{Kind: background.KindElnis, Name: "files", Platform: "cli", Actor: security.Actor{ID: "cli:local", Role: security.RoleSuperadmin}, SandboxSubdir: "elnis/watcher", Prompt: "write and read", ToolListNames: []string{"shell", "read_file", "workspace", "discover_tool"}}); err != nil {
+	if _, err := a.RunBackground(context.Background(), background.RunRequest{Kind: background.KindElnis, Name: "files", Platform: "cli", Actor: contextinfo.Actor{ID: "cli:local", Role: contextinfo.RoleSuperadmin}, SandboxSubdir: "elnis/watcher", Prompt: "write and read", ToolListNames: []string{"shell", "read_file", "workspace", "discover_tool"}}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(filepath.Join(dir, "result.txt"))
@@ -158,7 +159,7 @@ func TestBackgroundHooksCannotExpandTools(t *testing.T) {
 				cfg.ToolRegistry = registry
 				cfg.HookManager = manager
 			})
-			if _, err := a.RunBackground(context.Background(), background.RunRequest{Kind: background.KindElnis, Name: "hooks", Platform: "cli", Actor: security.Actor{ID: "cli:local", Role: security.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"allowed"}}); err != nil {
+			if _, err := a.RunBackground(context.Background(), background.RunRequest{Kind: background.KindElnis, Name: "hooks", Platform: "cli", Actor: contextinfo.Actor{ID: "cli:local", Role: contextinfo.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"allowed"}}); err != nil {
 				t.Fatal(err)
 			}
 			if executed != "" {
@@ -189,7 +190,7 @@ func TestBackgroundTagPromptRequiresExplicitSelection(t *testing.T) {
 				cfg.ToolTagsPath = ""
 				cfg.ToolTags = config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}, Prompt: "EXPLICIT_TAG_PROMPT"}}}
 			})
-			req := background.RunRequest{Kind: background.KindElnis, Name: "tag", Platform: "cli", Actor: security.Actor{ID: "cli:local", Role: security.RoleSuperadmin}, Prompt: "@tool:worker @skill:doc", ToolListNames: []string{selector}}
+			req := background.RunRequest{Kind: background.KindElnis, Name: "tag", Platform: "cli", Actor: contextinfo.Actor{ID: "cli:local", Role: contextinfo.RoleSuperadmin}, Prompt: "@tool:worker @skill:doc", ToolListNames: []string{selector}}
 			first, err := a.RunBackground(ctx, req)
 			if err != nil {
 				t.Fatal(err)
