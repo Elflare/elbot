@@ -71,6 +71,7 @@ type Loop interface {
 	PrepareTurn(context.Context, TurnMaterials) (PreparedLoop, error)
 }
 type PreparedLoop interface {
+	InputCommitter() MessageCommitter
 	PrepareInput(context.Context, context.Context, LoopInput, Output) (*storage.Message, error)
 	RunLoop(context.Context, context.Context, LoopInput, Output) LoopResult
 }

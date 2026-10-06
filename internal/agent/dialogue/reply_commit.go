@@ -15,13 +15,15 @@ import (
 
 // ReplyCommitter owns the final reply's send/save order, not the turn lifecycle.
 type ReplyCommitter struct {
-	Messages  storage.MessageRepository
-	Output    AssistantPreparer
-	Delivered *signal.Signal[agentevents.ReplyDeliveredEvent]
-	Committed *signal.Signal[agentevents.ReplyCommittedEvent]
+	Persistence MessageCommitter
+	Messages    storage.MessageRepository
+	Output      AssistantPreparer
+	Delivered   *signal.Signal[agentevents.ReplyDeliveredEvent]
+	Committed   *signal.Signal[agentevents.ReplyCommittedEvent]
 }
 
 type ReplyCommitInput struct {
+	Persistence  MessageCommitter
 	Session      *storage.Session
 	Text         string
 	RawText      string
@@ -45,6 +47,13 @@ type ReplyCommitResult struct {
 // Commit requires contexts and Session refreshed through executionView by the
 // caller. streamCtx retains the model request's original cancellation chain.
 func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitInput, out Output) (result ReplyCommitResult, commitErr error) {
+	persistence := in.Persistence
+	if persistence == nil {
+		persistence = c.Persistence
+	}
+	if persistence == nil {
+		return result, fmt.Errorf("reply persistence is required")
+	}
 	result.RawText = in.RawText
 	defer func() {
 		agentevents.Emit(ctx, c.Committed, agentevents.ReplyCommittedEvent{EventMeta: agentevents.Meta(ctx, in.Session.ID), MessageID: result.MessageID, Persisted: result.Persisted, PersistErr: result.PersistErr, Err: commitErr, AssociationErrors: append([]error(nil), result.AssociationErrors...), Receipt: agentevents.CloneReceipt(result.Receipt)})
@@ -89,13 +98,19 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 		Content:   in.Text,
 		Metadata:  AssistantRawTextMetadata(in.Text, in.RawText),
 	}
-	if !empty {
-		result.PersistErr = c.Messages.Append(ctx, message)
+	{
+		toSave := message
+		if empty {
+			toSave = nil
+		}
+		result.PersistErr = persistence.Commit(ctx, toSave)
 		if result.PersistErr != nil {
 			return result, result.PersistErr
 		}
-		result.MessageID = message.ID
-		result.Persisted = true
+		if toSave != nil {
+			result.MessageID = message.ID
+			result.Persisted = true
+		}
 	}
 	if buffered {
 		if strings.TrimSpace(text) != "" {

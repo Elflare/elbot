@@ -60,14 +60,15 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 	deps := &toolRunDeps{hooks: bridge, requests: opts.Requests, turns: opts.Turns, identity: identity,
 		state: opts.ToolState, runtime: &runtime, sessions: opts.Sessions, store: store, confirmations: confirmations, view: view}
 	tools := &dialogue.ToolExecutor{Manager: opts.ToolRunner, State: opts.ToolState, Registry: opts.ToolRegistry, Provider: runtime.provider, DefaultProvider: true, Identity: identity, Deps: deps, MaxRounds: opts.ToolsConfig.MaxRoundsPerTurn}
-	messages := &dialogue.MessageStore{Repository: store.Messages()}
+	messages := &dialogue.MessageStore{Dialogues: store.Dialogues(), Gate: &dialogue.CommitGate{Sessions: opts.Sessions, Turns: opts.Turns, View: view}}
+	tools.Messages = messages
 	preparer := &dialogue.Preparer{Contexts: opts.Contexts, Identity: identity, Hooks: bridge, Tools: tools}
 	calls := &dialogue.CallProcessor{Messages: messages, Hooks: bridge, Identity: identity, Tools: tools}
 	chat := &chatroute.Loop{Contexts: opts.Contexts, Models: models, Turns: opts.Turns, View: view, Preparer: preparer, Tools: tools, Messages: messages, Caller: &chatroute.Caller{Calls: calls}, PromptBuilder: chatroute.PromptBuilder{System: dialogue.NewSystemPromptManager(dialogue.SoulSystemPromptSource{Soul: dialogue.StaticSoulProvider{Prompt: "test"}})}}
-	if err := bindProviderRoutes(opts.Routes, models, chat, &chatroute.Compactor{Store: store, Models: models, Contexts: opts.Contexts, Loader: contextmgr.Loader{Store: store}}); err != nil {
+	if err := bindProviderRoutes(opts.Routes, models, chat, nil, &chatroute.Compactor{Store: store, Models: models, Contexts: opts.Contexts, Loader: contextmgr.Loader{Store: store}}); err != nil {
 		t.Fatal(err)
 	}
-	runner := &dialogue.Runner{Routes: opts.Routes, Preparer: preparer, Messages: messages, Replies: &dialogue.ReplyCommitter{Messages: store.Messages(), Output: output}, Turns: opts.Turns, View: view}
+	runner := &dialogue.Runner{Routes: opts.Routes, Preparer: preparer, Messages: messages, Replies: &dialogue.ReplyCommitter{Messages: store.Messages(), Persistence: messages.Committer("append_assistant_message"), Output: output}, Turns: opts.Turns, View: view}
 	execution := &executionCoordinator{sessions: opts.Sessions, sessionRows: store.Sessions(), turns: opts.Turns, requests: opts.Requests, contexts: opts.Contexts, models: models, dialogue: runner, identity: identity, view: view, output: output, status: status, waitPolicy: policy, appendWaits: newAppendWaitLifecycle(t.Context())}
 	opts.Sessions.SetForegroundActivation(execution.AdoptForeground)
 	t.Cleanup(opts.Turns.StopAll)
@@ -227,6 +228,24 @@ type executionTimingStore struct {
 }
 
 func (s executionTimingStore) Messages() storage.MessageRepository { return s.messages }
+
+func (s executionTimingStore) Dialogues() storage.DialogueRepository {
+	return executionTimingDialogues{DialogueRepository: s.Store.Dialogues(), append: s.messages.(executionTimingMessages).append}
+}
+
+type executionTimingDialogues struct {
+	storage.DialogueRepository
+	append func(storage.Message) error
+}
+
+func (r executionTimingDialogues) Commit(ctx context.Context, commit storage.DialogueCommit) error {
+	for _, row := range commit.Messages {
+		if err := r.append(*row); err != nil {
+			return err
+		}
+	}
+	return r.DialogueRepository.Commit(ctx, commit)
+}
 
 type executionTimingMessages struct {
 	storage.MessageRepository

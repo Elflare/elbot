@@ -119,7 +119,8 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	t.Cleanup(cancel)
 	f.hooks = hook.NewManager()
 	sender := &outputSender{dispatcher: dispatch.New(dispatch.Options{Primary: f.platform}), hooks: &hookBridge{manager: f.hooks, identity: &identityResolver{platformName: "cli"}}}
-	f.committer = &dialogue.ReplyCommitter{Messages: f.repo, Output: sender}
+	messages := &dialogue.MessageStore{Dialogues: replyTestDialogues{DialogueRepository: store.Dialogues(), repo: f.repo}}
+	f.committer = &dialogue.ReplyCommitter{Messages: f.repo, Persistence: messages.Committer("append_assistant_message"), Output: sender}
 	f.out = foregroundTurnOutput{sender: sender, status: &statusRecorder{}}
 	f.in = dialogue.ReplyCommitInput{Session: row, Text: "history", RawText: "raw", PlatformText: "visible", Outputs: []delivery.Output{delivery.Text("later")}}
 	return f
@@ -377,6 +378,25 @@ type replyTestStore struct {
 }
 
 func (s replyTestStore) Messages() storage.MessageRepository { return s.repo }
+
+func (s replyTestStore) Dialogues() storage.DialogueRepository {
+	return replyTestDialogues{DialogueRepository: s.Store.Dialogues(), repo: s.repo.(*replyTestRepository)}
+}
+
+type replyTestDialogues struct {
+	storage.DialogueRepository
+	repo *replyTestRepository
+}
+
+func (r replyTestDialogues) Commit(ctx context.Context, commit storage.DialogueCommit) error {
+	for _, msg := range commit.Messages {
+		*r.repo.events = append(*r.repo.events, "save")
+		if msg.Role == storage.RoleAssistant && r.repo.appendErr != nil {
+			return r.repo.appendErr
+		}
+	}
+	return r.DialogueRepository.Commit(ctx, commit)
+}
 
 func TestChatReplySaveFailureKeepsExecutionFailed(t *testing.T) {
 	for _, buffered := range []bool{false, true} {

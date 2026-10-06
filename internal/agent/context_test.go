@@ -446,7 +446,7 @@ func TestCancelledCompactLateResultCannotSwitchNewCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.execution.dialogue.Messages.Repository.Append(ctx, &storage.Message{SessionID: old.ID, Role: storage.RoleUser, Content: "history"}); err != nil {
+	if err := a.execution.dialogue.Replies.Messages.Append(ctx, &storage.Message{SessionID: old.ID, Role: storage.RoleUser, Content: "history"}); err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)

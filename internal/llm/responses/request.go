@@ -53,6 +53,7 @@ type InputContent struct {
 	ImageURL string `json:"image_url,omitempty"`
 	Detail   string `json:"detail,omitempty"`
 	FileID   string `json:"file_id,omitempty"`
+	FileURL  string `json:"file_url,omitempty"`
 	FileData string `json:"file_data,omitempty"`
 	Filename string `json:"filename,omitempty"`
 }

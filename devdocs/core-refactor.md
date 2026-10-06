@@ -8,7 +8,7 @@
 <!-- locator:protocol-routing -->
 ## 阶段 16：公共执行与独立协议路线
 
-16.1 的公共单轮与 Chat 路线、16.2 的协议客户端、16.2a 的公共信息与 provider 绑定已接入。当前使用 `contextinfo` 四组公共事实、固定 Selection 及 provider Binding；Responses 业务、原生持久化及恢复按 16.3／16.4 接入。
+16.1 的公共单轮与 Chat 路线、16.2 的协议客户端、16.2a 的公共信息与 provider 绑定、16.3 的 Responses 主对话与原生持久化已接入。当前使用 `contextinfo` 四组公共事实、固定 Selection、provider Binding 及共享对话提交口；完整兼容检查、恢复、原生压缩与 Fork 留待 16.4。
 
 ### 职责与依赖
 
@@ -80,7 +80,7 @@ Binding 的 Origin 来自已有 provider 名称、api_mode 和去除末尾斜线
 
 #### 主调用链
 
-框表示协议职责，实线表示能力调用。Responses 业务和 Compact 为后续目标，尚未接入。
+框表示协议职责，实线表示能力调用。Chat／Responses 主对话已接入；Responses 恢复、Compactor 和客户端 Compact 为 16.4 目标。
 
 ```mermaid
 flowchart TB
@@ -146,7 +146,11 @@ flowchart LR
 - API 完整终态可登记响应事实；可续接 checkpoint 仅在本地关键提交成功后推进，保留回复关联、事务及 binding／attempt 校验，阻止迟到写入。流 token 不逐个写入会话状态。
 - 原样保存返回的推理、调用和未知 items，包括不可读材料；摘要不能替代完整推理状态。媒体保留本地素材关联，临时 URL 或失效服务端引用不能证明材料完整，见[原生回放说明](https://developers.openai.com/api/docs/guides/reasoning)。
 - 失败、取消、incomplete 或提前 EOF 不作为正常完整终态。恢复回放已保存的调用和结果，不重新执行历史工具或重复已成功发送。
-- 工具参数 Hook 改写后，后续原生上下文必须与实际参数一致；不能保全时在工具执行前拒绝。服务端已有 response 不假定可原位修改，分支／回放方式须先讨论验证。只接入 ElBot function 工具，不接入服务端内置工具。
+- Responses 返回的工具调用集合、ID、名称和参数对 Hook 只读，改写报错并在工具执行前停止；输入、展示文本和工具结果仍可改写，Chat 保留参数改写。只接入 ElBot function 工具，不接入服务端内置工具。
+- 两路线共用同步对话提交口：执行前保存整批调用头，准备后保存实际参数，每个结果在下一工具前提交。Responses 同事务保存业务消息、媒体引用、原生输入／调用状态及 checkpoint；原 Session binding、活跃 attempt 和预期旧 checkpoint 共同约束推进。
+- 原生记录存入 native_exchanges／native_inputs／native_calls／native_checkpoints，Session metadata 仅保存 llm_checkpoint 引用。实际编码请求先归档，API 终态事实独立保存，本地关键提交成功才消费输入并推进可续接位置。
+
+正常服务端续链已接入。16.4 的完整兼容检查、链恢复、原生 seed／压缩和历史 checkpoint Fork 尚未实现，当前只留 TODO，不为过渡状态增加临时限制。
 
 ### 16.4：模型兼容、恢复、压缩与 fork
 
@@ -172,14 +176,11 @@ modelmgr.CanSwitch 只比较身份，不查询或修改 Session；源身份来�
 
 相应代码任务开始前讨论并验证；出现新的选择或歧义先与用户确认，不由实施者补成既定约定。
 
-1. 原生路线新增消费接口及其与已实现公共单轮、构造和事件边界的衔接。
-2. 归属身份、Exchange／Checkpoint／seed 字段、媒体关联，以及回复、工具阶段、新 Session 与 checkpoint 的事务边界；沿用现有 binding／attempt。
-3. 完整恢复材料与服务端引用的验证；参数 Hook 改写时如何保全推理状态，何时必须拒绝执行。
-4. 原生压缩能力检测、阈值、新 seed 与旧链分离，以及可建立 fork checkpoint 的业务位置。
+1. 完整恢复材料与服务端引用的验证，以及恢复与新 Session／seed 的事务边界。
+2. 原生压缩能力检测、阈值、新 seed 与旧链分离，以及可建立 fork checkpoint 的业务位置。
 
 ### 验收与Review
 
-按 16.2a → 16.3 → 16.4 → 16.5 接入；每批保持可编译、默认 Chat 可用，未接入能力明确拒绝。
 
 | 验证类别 | 必须覆盖 |
 |---|---|
@@ -187,7 +188,7 @@ modelmgr.CanSwitch 只比较身份，不查询或修改 Session；源身份来�
 | 执行与工具 | pending、停止、确认、接管、媒体、参数 Hook 一致、固定选择及权限 |
 | 原生状态 | 流终态、完整／缺失材料、迟到写入、不重复执行、压缩交接及历史 fork |
 | 提交与生命周期 | 部分成功、实际回执、存储失败、事件快照、背压、启动失败及共享关闭预算 |
-| 架构层面 | 职责是否清晰，边界是否清楚 |
+| 架构层面 | 是否按计划执行和实现，职责是否清晰，边界是否清楚 |
 | 代码层面 | 是否残留旧代码，是否使用新架构，是否有不统一的入口或者自造方法 |
 
 相关包测试通过后运行全量测试及受影响包 race，保留启动／关闭回归。代码落地后更新当前架构和代码地图，再勾选任务；其他验证与文档规则见 [AGENTS.md](../AGENTS.md)。

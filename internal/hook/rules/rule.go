@@ -217,7 +217,7 @@ func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.
 	if !rule.matchRoles(event) {
 		return event, nil
 	}
-	before := event
+	before := hook.SnapshotCalls(event)
 	state := state{Actions: map[string]actionResult{}}
 	var passThrough *bool
 	var err error
@@ -225,6 +225,9 @@ func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.
 		action.source = rule.source
 		var result actionResult
 		event, result, err = m.runAction(ctx, event, action, state)
+		if err == nil {
+			err = hook.ValidateCalls(ctx, before, event)
+		}
 		if err != nil {
 			return event, fmt.Errorf("rule %q action %d %s: %w", rule.Name, index+1, action.Type, err)
 		}

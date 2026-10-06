@@ -14,7 +14,7 @@ import (
 
 // Only composition chooses concrete protocols. Runtime consumers query the
 // sealed provider bindings or the saved source-material identity.
-func bindProviderRoutes(registry *routes.Registry, models *modelmgr.Service, chat dialogue.Loop, compactor contextmgr.Compactor) error {
+func bindProviderRoutes(registry *routes.Registry, models *modelmgr.Service, chat, response dialogue.Loop, compactor contextmgr.Compactor) error {
 	if err := registry.RegisterCompactor(llm.ProtocolChat, compactor); err != nil {
 		return err
 	}
@@ -31,7 +31,8 @@ func bindProviderRoutes(registry *routes.Registry, models *modelmgr.Service, cha
 			if _, ok := client.(responses.Streamer); !ok {
 				return fmt.Errorf("provider %q api_mode %q requires the Responses streaming capability", origin.Provider, origin.Protocol)
 			}
-			// Step16.3 installs the main dialogue. GenerateText already works.
+			binding.Loop = response
+			// TODO Step16.4: install the native source compactor.
 		default:
 			return fmt.Errorf("provider %q has unsupported api_mode %q", origin.Provider, origin.Protocol)
 		}

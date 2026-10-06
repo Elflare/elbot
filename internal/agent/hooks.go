@@ -65,14 +65,18 @@ func (h *hookBridge) Run(ctx context.Context, event hook.Event) (hook.Event, err
 		manager = hook.NoopManager{}
 	}
 	event = h.fillContext(ctx, event)
+	before := hook.SnapshotCalls(event)
 	updated, err := manager.Run(ctx, event)
+	if err == nil {
+		err = hook.ValidateCalls(ctx, before, updated)
+	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return event, err
 		}
 		h.notifyError(ctx, event, err)
 		h.publishFailure(ctx, event, err, false, true)
-		return event, err
+		return before, err
 	}
 	return updated, nil
 }

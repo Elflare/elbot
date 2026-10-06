@@ -107,6 +107,8 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 - `internal/agent/tools.go`：系统提示来源装配；`internal/agent/chat/transcript.go`：Chat Prompt Builder、历史消息转换和摘要注入，Soul 与常驻记忆来源归公共层。
 - `internal/agent/dialogue/system_prompt*.go`、`prompt.go`、`tool_tag_prompt.go`：Soul、常驻记忆、工具提示等共同来源和组合。
 - `internal/agent/dialogue/message_store.go`：用户／pending／工具 transcript 写入和业务 metadata 编解码。
+- `internal/agent/dialogue/commit.go`：MessageCommitter、原 binding／活跃 attempt 提交准入、Chat 调用头参数更新和逐工具结果提交。
+- `internal/agent/responses/loop.go`、`model_call.go`：原生业务 Loop、固定选择、pending／停止／接管、实际请求归档与原生事件消费；`input.go`：新增输入和多模态 function_call_output 编码；`persistence.go`：业务消息与原生输入／调用／checkpoint 事务及中断调用结尾。
 
 常用搜索：
 
@@ -118,9 +120,9 @@ rg -n "Handle|Run|Prompt|tool_calls|reasoning|usage|pending|prepared" internal/a
 ## 协议路线登记
 
 - `internal/agent/routes/route.go`、`registry.go`：按 provider 登记 Binding{Origin, Client, Loop, Compactor}、独立登记源协议压缩能力、封闭及按能力查询；不拥有运行状态。
-- `internal/agent/assembly_routes.go`、`assembly.go`、`internal/app/services.go`：app 创建共享注册表及上下文服务，Agent 根据描述校验客户端私有接口、绑定 Chat 业务／Responses 独立文本能力、封闭和校验接线后才开放运行。
+- `internal/agent/assembly_routes.go`、`assembly.go`、`internal/app/services.go`：app 创建共享注册表及上下文服务，Agent 根据描述校验客户端私有接口、绑定 Chat／Responses 业务和独立文本能力、封闭和校验接线后才开放运行。
 - `internal/agent/dialogue/loop.go`、`internal/contextmgr/compact_contract.go`：消费方的小查询接口；公共层不导入注册表实现或具体路线。
-- `internal/llm/protocol.go`、`origin.go`：协议标识及纯归属描述；`internal/modelmgr/selection.go`、`service.go`：固定 Provider／Model／Client 快照、启动配置生成的不可变 ProviderOrigins。`internal/app/models.go` 按 provider.api_mode 构造原生客户端，Responses 主对话尚未接入。
+- `internal/llm/protocol.go`、`origin.go`：协议标识及纯归属描述；`internal/modelmgr/selection.go`、`service.go`：固定 Provider／Model／Client 快照、启动配置生成的不可变 ProviderOrigins。`internal/app/models.go` 按 provider.api_mode 构造原生客户端。
 
 <!-- locator:commands -->
 ## Slash 命令与补全
@@ -256,6 +258,7 @@ rg -n "SKILL.elyph|ELBOT_SKILL|AgentSkill|go_skill_run|finalize|Lint|Catalog" in
 - `internal/processenv/`：Shell 与进程 Hook 共用的环境分层、PATH 补充和可执行文件解析；`internal/hook/process.go` 保留 Hook 侧适配入口。
 - `internal/hook/match.go`：Hook 条件匹配、字段读取和模板值。
 - `internal/hook/manager.go`：普通 Hook 注册、排序、执行与原子 handler 快照替换。
+- `internal/hook/call_policy.go`：消费方注入的工具调用只读策略；manager、Agent Hook 桥及规则 action 间复核，不依赖协议包。
 - `internal/hook/control/`：`/hooks` 的列表、重载和持久进程生命周期管理入口。
 - `internal/hook/builtin/`：内置规则 Hook 注册入口。
 - `internal/hook/rules/`：规则 Hook；`rules.go` 提供类型和模块入口，`config.go`/`toml_error.go` 负责配置加载与诊断，`rule.go`/`action.go`/`exec.go` 负责规则及 Action 执行，`exec_process_*.go` 负责一次性 exec 的跨平台进程树终止，`detail.go` 负责列表详情。
@@ -379,6 +382,7 @@ rg -n "ContextLoader|Compress|Window|System Prompt|MessageSegment|usage" interna
 - `internal/llm/httpclient/client.go`、`sse.go`：公共 HTTP、显式代理、取消、重试、SSE 分帧和超时，不编码协议请求或固定鉴权。
 - `internal/llm/chatcompletions/`：Chat 客户端、原生请求编码、chunks、工具参数累积、用量、模型列表和日志。
 - `internal/llm/responses/`：Responses 客户端、原生 items／事件／完整响应及未知 JSON 保留，成功／失败／incomplete 终态；GenerateText 是独立调用，不处理业务工具或主会话持久化。
+- `internal/llm/responses/client.go`：PrepareRequest 合并参数并冻结实际编码 JSON，StreamPrepared 发送同一字节快照，供业务路线在 API 前归档；鉴权头不进入快照。
 - `internal/modelmgr/service.go`、`selection.go`：共享服务与构造校验，模式／槽位、压缩和命名选择及请求快照。
 - `internal/modelmgr/signals.go`：共享客户端重试事实，供对话／压缩／命名统一消费；订阅归 app 所有。
 - `internal/modelmgr/catalog.go`、`state.go`：模型目录缓存、筛选与 provider 错误，串行保存后发布选择状态；原子文件写入复用 `config.SaveState` 和 `fileops`。
@@ -402,6 +406,7 @@ rg -n -m 20 "ChatCompletion|Stream|SSE|reasoning|usage|ToolCall|MessageSegment|M
 - `internal/storage/id.go`、`internal/storage/time.go`：通用 ID/时间 helper。
 - `internal/storage/sqlite/`：SQLite store、migration 和 repository 实现。
 - `internal/storage/sqlite/migrations.go`：第 18 版为已有 Chat 会话补 protocol 归属，保留未知 metadata，损坏数据使迁移回滚；`origin_migration_test.go` 覆盖升级、回滚及只迁移一次。
+- `internal/storage/dialogue.go`、`sqlite/dialogue_repository.go`：共同对话事务、单调用参数更新、原生 Exchange／Input／Call／Checkpoint 记录，原生 checkpoint 比较提交和输入消费；migration 19 创建原生表，Session metadata 的原生状态仅存 checkpoint 引用。
 
 常用搜索：
 

@@ -36,6 +36,13 @@ type runnerTestDeps struct {
 	prepareContext func(context.Context, *storage.Session, llm.ToolCallRequest) context.Context
 }
 
+func (*runnerTestDeps) Begin(context.Context, *storage.Message) error            { return nil }
+func (*runnerTestDeps) Prepared(context.Context, int, llm.ToolCallRequest) error { return nil }
+func (*runnerTestDeps) Started(context.Context, int, llm.ToolCallRequest) error  { return nil }
+func (*runnerTestDeps) Result(context.Context, int, llm.ToolCallRequest, llm.LLMMessage, *storage.Message) error {
+	return nil
+}
+
 func (d *runnerTestDeps) PrepareToolCall(_ context.Context, _ *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error) {
 	return call, nil
 }
@@ -122,7 +129,7 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 			if changed {
 				deps.duringConfirmation = func() { edit("after", "latest") }
 			}
-			result := manager.Run(base, deps, toolrun.RunRequest{
+			result := manager.Run(base, deps, toolrun.RunRequest{Committer: deps,
 				Session: &storage.Session{ID: "session", Mode: storage.SessionModeWork},
 				Actor:   actor,
 				Calls:   []llm.ToolCallRequest{{ID: "rollback", Name: "rollback_file", Arguments: `{"path":"file"}`}},
@@ -179,7 +186,7 @@ func TestRunEditPreservesConfirmationSnapshot(t *testing.T) {
 					}
 				}
 			}
-			manager.Run(contextinfo.WithActor(context.Background(), actor), deps, toolrun.RunRequest{
+			manager.Run(contextinfo.WithActor(context.Background(), actor), deps, toolrun.RunRequest{Committer: deps,
 				Session: &storage.Session{ID: "session", Mode: storage.SessionModeWork}, Actor: actor,
 				Calls: []llm.ToolCallRequest{{ID: "edit", Name: "edit_file", Arguments: `{"path":"file","edits":[{"operation":"replace_text","old_text":"before","new_text":"after"}]}`}},
 			})

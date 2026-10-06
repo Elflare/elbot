@@ -223,7 +223,7 @@ func (m *DefaultManager) Run(ctx context.Context, event Event) (Event, error) {
 			continue
 		}
 		event.Metadata["match"] = matchResult.Context
-		before := event
+		before := SnapshotCalls(event)
 		handlerCtx, cancel := context.WithCancel(ctx)
 		activeID := m.startActive(reg, cancel)
 		runCtx, done := m.observe(handlerCtx, event, reg, "run")
@@ -235,9 +235,12 @@ func (m *DefaultManager) Run(ctx context.Context, event Event) (Event, error) {
 			return reg.handler.HandleHook(runCtx, event)
 		}()
 		delete(event.Metadata, "match")
+		if err == nil {
+			err = ValidateCalls(ctx, before, updated)
+		}
 		if err != nil {
 			m.logHook(runCtx, "run", reg, before, before, err)
-			return event, wrapHookError(reg, err)
+			return before, wrapHookError(reg, err)
 		}
 		updated = markHookOutputs(updated, len(before.Outputs), reg, "run")
 		event = prepareEvent(updated)

@@ -16,6 +16,7 @@ type ToolDepsFactory interface {
 	ForTurn(Output, string) toolrun.RunnerDeps
 }
 type ToolExecutor struct {
+	Messages        *MessageStore
 	Manager         *toolrun.Manager
 	State           *toolrun.StateService
 	Registry        *tool.Registry
@@ -33,6 +34,10 @@ func (r *ToolExecutor) MaxRoundsPerTurn() int {
 	return r.MaxRounds
 }
 func (r *ToolExecutor) Execute(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string, out Output) toolrun.RunResult {
+	return r.ExecuteWithCommitter(ctx, session, calls, assistantText, assistantRawText, out, &ToolTranscriptCommitter{Messages: r.Messages})
+}
+
+func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string, out Output, committer toolrun.ToolCommitter) toolrun.RunResult {
 	if session == nil || (session.Mode != storage.SessionModeWork && session.Mode != storage.SessionModeBackground) {
 		return toolrun.RunResult{}
 	}
@@ -45,6 +50,14 @@ func (r *ToolExecutor) Execute(ctx context.Context, session *storage.Session, ca
 			messages = append(messages, message)
 			transcript = append(transcript, ToolResultStorageMessage(session.ID, message))
 		}
+		if err := committer.Begin(ctx, &transcript[0]); err != nil {
+			return toolrun.RunResult{Err: err}
+		}
+		for i := range messages {
+			if err := committer.Result(ctx, i, calls[i], messages[i], &transcript[i+1]); err != nil {
+				return toolrun.RunResult{Err: err}
+			}
+		}
 		return toolrun.RunResult{Messages: messages, PreparedCalls: calls, Transcript: transcript}
 	}
 	return r.Manager.Run(ctx, r.Deps.ForTurn(out, turn.AttemptFromContext(ctx)), toolrun.RunRequest{
@@ -54,6 +67,7 @@ func (r *ToolExecutor) Execute(ctx context.Context, session *storage.Session, ca
 		AssistantRawText: assistantRawText,
 		CachedTools:      cached,
 		Actor:            r.Identity.Actor(ctx),
+		Committer:        committer,
 	})
 }
 

@@ -17,6 +17,22 @@ import (
 
 type runnerContextKey struct{}
 
+type testToolCommitter struct {
+	head    *storage.Message
+	results []storage.Message
+}
+
+func (c *testToolCommitter) Begin(_ context.Context, head *storage.Message) error {
+	c.head = head
+	return nil
+}
+func (*testToolCommitter) Prepared(context.Context, int, llm.ToolCallRequest) error { return nil }
+func (*testToolCommitter) Started(context.Context, int, llm.ToolCallRequest) error  { return nil }
+func (c *testToolCommitter) Result(_ context.Context, _ int, _ llm.ToolCallRequest, _ llm.LLMMessage, row *storage.Message) error {
+	c.results = append(c.results, *row)
+	return nil
+}
+
 type runnerTestDeps struct {
 	confirmed      bool
 	completed      int
@@ -240,7 +256,7 @@ func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {
 			}
 			manager := NewManager(registry, security.NewPolicy(tt.userMaxRisk, "high", nil))
 			deps := &runnerTestDeps{}
-			result := manager.Run(context.Background(), deps, RunRequest{
+			result := manager.Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
 				Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 				Actor:   contextinfo.Actor{Role: contextinfo.RoleUser},
 				Calls:   []llm.ToolCallRequest{{ID: "call-1", Name: toolName, Arguments: "{}"}},
@@ -261,7 +277,7 @@ func TestRunPreservesMultimodalToolSegments(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
-	result := manager.Run(context.Background(), &runnerTestDeps{}, RunRequest{
+	result := manager.Run(context.Background(), &runnerTestDeps{}, RunRequest{Committer: &testToolCommitter{},
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls:   []llm.ToolCallRequest{{ID: "call-1", Name: "image_tool", Arguments: `{}`}},
@@ -278,7 +294,7 @@ func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
 	}
 	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
 	deps := &runnerTestDeps{}
-	result := manager.Run(context.Background(), deps, RunRequest{
+	result := manager.Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
@@ -312,7 +328,7 @@ func TestRunSkipsConfirmationWhenShellPreflightFails(t *testing.T) {
 	}
 	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
 	deps := &runnerTestDeps{}
-	result := manager.Run(context.Background(), deps, RunRequest{
+	result := manager.Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
@@ -345,7 +361,7 @@ func TestRunPreparesToolContextBeforePreflightAndExecution(t *testing.T) {
 	deps := &runnerTestDeps{prepareContext: func(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
 		return context.WithValue(ctx, runnerContextKey{}, "prepared")
 	}}
-	result := manager.Run(context.Background(), deps, RunRequest{
+	result := manager.Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
@@ -369,7 +385,7 @@ func TestRunKeepsNonEditFileAssessRiskBehavior(t *testing.T) {
 	}
 	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
 	deps := &runnerTestDeps{}
-	result := manager.Run(context.Background(), deps, RunRequest{
+	result := manager.Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{

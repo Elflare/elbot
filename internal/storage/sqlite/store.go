@@ -16,6 +16,7 @@ type Store struct {
 	db               *sql.DB
 	sessions         *SessionRepository
 	messages         *MessageRepository
+	dialogues        *DialogueRepository
 	contextSummaries *ContextSummaryRepository
 	toolCalls        *ToolCallRepository
 	cronJobs         *CronJobRepository
@@ -41,6 +42,7 @@ func New(ctx context.Context, path string) (*Store, error) {
 	store := &Store{db: db}
 	store.sessions = &SessionRepository{db: db}
 	store.messages = &MessageRepository{db: db}
+	store.dialogues = &DialogueRepository{db: db}
 	store.contextSummaries = &ContextSummaryRepository{db: db}
 	store.toolCalls = &ToolCallRepository{db: db}
 	store.cronJobs = &CronJobRepository{db: db}
@@ -71,6 +73,8 @@ func (s *Store) Sessions() storage.SessionRepository {
 func (s *Store) Messages() storage.MessageRepository {
 	return s.messages
 }
+
+func (s *Store) Dialogues() storage.DialogueRepository { return s.dialogues }
 
 func (s *Store) Media() storage.MediaRepository {
 	return s.media
