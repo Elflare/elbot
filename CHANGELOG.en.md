@@ -12,11 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Provider added `api_mode="chat"/"response"`; if omitted, Chat Completions will still be used.
 - `edit_file` keeps an in-memory backup of each file before its most recent edit. Added `/rollback [编号]` and tool `rollback_file` available only to superadmins, which automatically expand when file read/write tools are discovered; Records become invalid after switching Sessions, restarting, or capacity eviction. Does not overwrite modifications made by Shell or external programs.
 - Added a chat command `/doctor` available only to superadmins, which performs a read-only check for missing items in the current configuration, TOML errors, unknown fields in the main configuration, and differences in built-in Skills; Lists issues by file and generates ElBot processing requests accompanied by configuration instructions and default template addresses. Returns `Everything is OK` when there are no issues, and will not automatically modify files.
 
 ### Changed
 
+- Compaction is dispatched by Session protocol: Chat continues to use an independent summary model, while Responses use the current model and fully preserve the native return window; both share the same compaction threshold.
+- The read-only `llm.tools` for tool definitions and Hooks has been changed from Chat's `type/function` wrapper to the `name/description/parameters` business structure, with protocol clients respectively generating the required API wrappers.
 - Significantly refactored the underlying architecture, optimizing the responsibilities and boundaries of each package
 - QQ OneBot messages exceeding 3000 characters will be converted to merged messages
 - Cron/Elnis now permanently convert to ordinary foreground Sessions upon the first recovery in a private chat on the same platform as the owner or via CLI, and reconnect to the original execution. Subsequent output, permissions, and confirmations now use foreground rules; the original task waits for the final result and records the takeover, while JSON correction, automatic reporting, and unstarted supplementary deliveries are stopped. Group chats and channels no longer list or allow the restoration of background Sessions.

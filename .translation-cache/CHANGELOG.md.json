@@ -264,6 +264,14 @@
       "translation": "Fixed an issue where process Hooks under Linux services could only use the service process PATH and were unable to obtain the configuration __ELBOT_CODE_0__, causing commands available in the terminal, such as __ELBOT_CODE_1__, to fail to start;",
       "updated_at": 1784611290
     },
+    "CHANGELOG.md:list:27e6810251f6c07f7cff3e80d478cf9631683ccdcb418fc2f1c30393dde3ccb1": {
+      "kind": "list",
+      "source": "Provider 新增 __ELBOT_CODE_0__，省略仍使用 Chat Completions。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "27e6810251f6c07f7cff3e80d478cf9631683ccdcb418fc2f1c30393dde3ccb1",
+      "translation": "Provider added __ELBOT_CODE_0__; if omitted, Chat Completions will still be used.",
+      "updated_at": 1791301828
+    },
     "CHANGELOG.md:list:280823f9e19a44bcbfe92547cc46408bbcf2b93e26cd0cfcf98c3d26afaa1c3e": {
       "kind": "list",
       "source": "**工具发现机制**：默认只暴露 __ELBOT_CODE_0__ 与工具名，按需注入完整 schema，减少无效上下文开销。",
@@ -751,6 +759,14 @@
       "source_hash": "683c236912cbac92700e9378c6475d962de3778446c670e5f7665bed5a8839be",
       "translation": "Now this status only displays __ELBOT_CODE_0__.",
       "updated_at": 1784987067
+    },
+    "CHANGELOG.md:list:684bd5ccdb9a7317355562e594e9e52748d8d6b581bea617b0771c5f6fc94e9b": {
+      "kind": "list",
+      "source": "工具定义及 Hook 的只读 __ELBOT_CODE_0__ 从 Chat 的 __ELBOT_CODE_1__ 包装改为 __ELBOT_CODE_2__ 业务结构，协议客户端分别生成所需 API 包装。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "684bd5ccdb9a7317355562e594e9e52748d8d6b581bea617b0771c5f6fc94e9b",
+      "translation": "The read-only __ELBOT_CODE_0__ for tool definitions and Hooks has been changed from Chat's __ELBOT_CODE_1__ wrapper to the __ELBOT_CODE_2__ business structure, with protocol clients respectively generating the required API wrappers.",
+      "updated_at": 1791301828
     },
     "CHANGELOG.md:list:6970168418b00124c98288e227a6831f798c18ed573c05cb7a6f07fd850812c6": {
       "kind": "list",
@@ -1736,6 +1752,14 @@
       "translation": "Fixed the issue where __ELBOT_CODE_0__ tools did not support __ELBOT_CODE_1__, __ELBOT_CODE_2__, Windows __ELBOT_CODE_3__, __ELBOT_CODE_4__, and __ELBOT_CODE_5__ home directory paths when setting the directory.",
       "updated_at": 1783859074
     },
+    "CHANGELOG.md:list:dd609daf8b1234f99b66645333c771fe7f327267b7b388d69752c047e843b293": {
+      "kind": "list",
+      "source": "压缩按会话协议分派：Chat 继续使用独立摘要模型，Responses 使用当前模型并完整保存原生返回窗口；两者共用压缩阈值。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "dd609daf8b1234f99b66645333c771fe7f327267b7b388d69752c047e843b293",
+      "translation": "Compaction is dispatched by Session protocol: Chat continues to use an independent summary model, while Responses use the current model and fully preserve the native return window; both share the same compaction threshold.",
+      "updated_at": 1791301828
+    },
     "CHANGELOG.md:list:dd6e2fafd471adee9ac691e6ca40ad55b4fab8b7a20aff2095299cfa69c1f939": {
       "kind": "list",
       "source": "新增仅超管可用的 __ELBOT_CODE_0__ 和工具 __ELBOT_CODE_1__，发现读写文件工具时自动展开；",
@@ -1978,8 +2002,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "6af3b3d8421c7a2eafbd16e226daec612fd11503c51321ebd8db29dc3357db9f",
+  "source_hash": "0eae0db21ab311732c9e33e2954119a1d9d3f6cb630befbe9302e2bc2421375c",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1791252644,
+  "updated_at": 1791301828,
   "version": 2
 }
