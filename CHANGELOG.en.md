@@ -9,10 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-### Hilight
-
-- Significantly refactored the underlying architecture, optimizing the responsibilities and boundaries of each package
-- Added event system
 
 ### Added
 
@@ -21,12 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Significantly refactored the underlying architecture, optimizing the responsibilities and boundaries of each package
 - QQ OneBot messages exceeding 3000 characters will be converted to merged messages
 - Cron/Elnis now permanently convert to ordinary foreground Sessions upon the first recovery in a private chat on the same platform as the owner or via CLI, and reconnect to the original execution. Subsequent output, permissions, and confirmations now use foreground rules; the original task waits for the final result and records the takeover, while JSON correction, automatic reporting, and unstarted supplementary deliveries are stopped. Group chats and channels no longer list or allow the restoration of background Sessions.
 - Media cleanup has been changed from deleting objects one by one using a global media lock to processing up to 4 objects simultaneously with mutual exclusion based on media ID; Import and on-demand upload of different media no longer wait for a full cleanup cycle; for the same media, overlaps between upload, deletion, and re-import are still prevented. Records are retained for subsequent retries after deletion failure or cancellation.
 
 ### Fixed
 
+- Fixed the high-risk confirmation bug.
+- Fixed the additional confirmation wait bug.
 - QQ OneBot: LLM can now see merged messages in quoted replies, expanding only one level of content.
 - QQ OneBot long text pagination now only adds ellipses to non-last pages.
 - Fixed an issue where the Agent would merge all text segments and disrupt the positioning of text and images when removing wake words or tool commands.

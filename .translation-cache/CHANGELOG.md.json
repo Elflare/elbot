@@ -32,14 +32,6 @@
       "translation": "The Session Meta of the system prompt now includes the local creation time of the Session, accurate to the second; this value will not change with conversation turns to maintain Prompt cache stability.",
       "updated_at": 1787799472
     },
-    "CHANGELOG.md:list:03c7c41dcaf6c5bb09b7ec6fae904bf148c0a1aa743dea11e7a6041a9c6b2725": {
-      "kind": "list",
-      "source": "添加事件系统",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "03c7c41dcaf6c5bb09b7ec6fae904bf148c0a1aa743dea11e7a6041a9c6b2725",
-      "translation": "Added event system",
-      "updated_at": 1791194538
-    },
     "CHANGELOG.md:list:04792220a0453d2a80f396307ad2079f5a7ba1f001924b3ce14c678f7f132627": {
       "kind": "list",
       "source": "修复 Windows 下 __ELBOT_CODE_0__ 工具回退到 PowerShell 时中文输出可能乱码的问题。",
@@ -399,6 +391,14 @@
       "source_hash": "342429b7b7fcf5433a32985c52cfe244076dbf12b77ffe5ad0392e776b33d772",
       "translation": "Tool discovery and preloading are now written to the Session transactionally.",
       "updated_at": 1791194538
+    },
+    "CHANGELOG.md:list:35000b29ce2175350512d7404cce1d6091a18fcbc474ac52e38b244650f8e86f": {
+      "kind": "list",
+      "source": "修复高风险确认的bug。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "35000b29ce2175350512d7404cce1d6091a18fcbc474ac52e38b244650f8e86f",
+      "translation": "Fixed the high-risk confirmation bug.",
+      "updated_at": 1791252644
     },
     "CHANGELOG.md:list:36326ca18c13f00375cdf8134055082ca8bcb7fac1c0539ced4864dc039700ee": {
       "kind": "list",
@@ -1552,6 +1552,14 @@
       "translation": "__ELBOT_CODE_0__/__ELBOT_CODE_1__ will suggest using __ELBOT_CODE_2__ when reading EL Skill files;",
       "updated_at": 1782722558
     },
+    "CHANGELOG.md:list:c8c4f177ede0066399800b94cdcd502bcb4572af2391d002175dceb0455653d2": {
+      "kind": "list",
+      "source": "修复追加确认等待的bug。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "c8c4f177ede0066399800b94cdcd502bcb4572af2391d002175dceb0455653d2",
+      "translation": "Fixed the additional confirmation wait bug.",
+      "updated_at": 1791252644
+    },
     "CHANGELOG.md:list:c8caa4604192fa2705ae457135450fd0c77029af02d7cb5eff966ae062bcebed": {
       "kind": "list",
       "source": "命名模型与 work fallback 改为每次操作从共享模型服务取得快照，后续命名跟随新选择，在途命名、对话和压缩保持本次选择。",
@@ -1970,8 +1978,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "20412a09681103960b7301a0abbddc03ebb9f348f7163e0075cde3a32268cb1a",
+  "source_hash": "6af3b3d8421c7a2eafbd16e226daec612fd11503c51321ebd8db29dc3357db9f",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1791194538,
+  "updated_at": 1791252644,
   "version": 2
 }
