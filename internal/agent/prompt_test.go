@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	chatroute "elbot/internal/agent/chat"
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	"elbot/internal/llm"
@@ -27,7 +29,7 @@ func TestResidentMemorySystemPromptSource(t *testing.T) {
 	if err := store.WriteNormal(context.Background(), scope, "用户喜欢简短回答。"); err != nil {
 		t.Fatalf("WriteNormal: %v", err)
 	}
-	parts, err := (residentMemorySystemPromptSource{Store: store}).Parts(context.Background(), SystemPromptRequest{Scope: scope})
+	parts, err := (dialogue.ResidentMemorySystemPromptSource{Store: store}).Parts(context.Background(), dialogue.SystemPromptRequest{Scope: scope})
 	if err != nil {
 		t.Fatalf("Parts: %v", err)
 	}
@@ -38,7 +40,7 @@ func TestResidentMemorySystemPromptSource(t *testing.T) {
 
 func TestResidentMemorySystemPromptSourceDoesNotInjectDisplayName(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	parts, err := (residentMemorySystemPromptSource{Store: store}).Parts(context.Background(), SystemPromptRequest{Scope: session.Scope{Platform: "cli", ActorID: "cli:local", IsCLI: true}})
+	parts, err := (dialogue.ResidentMemorySystemPromptSource{Store: store}).Parts(context.Background(), dialogue.SystemPromptRequest{Scope: session.Scope{Platform: "cli", ActorID: "cli:local", IsCLI: true}})
 	if err != nil {
 		t.Fatalf("Parts: %v", err)
 	}
@@ -49,7 +51,7 @@ func TestResidentMemorySystemPromptSourceDoesNotInjectDisplayName(t *testing.T) 
 
 func TestConversationMetaSystemPromptSource(t *testing.T) {
 	info := chatinfo.Info{Source: chatinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"}, Identity: chatinfo.Identity{PlatformUserID: "1001", Nickname: "群名片, A=1\n下一行"}}
-	parts, err := (conversationMetaSystemPromptSource{}).Parts(chatinfo.WithInfo(context.Background(), info), SystemPromptRequest{
+	parts, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(chatinfo.WithInfo(context.Background(), info), dialogue.SystemPromptRequest{
 		Session: &storage.Session{CreatedAt: time.Date(2026, time.August, 27, 12, 34, 56, 789, time.FixedZone("CST", 8*60*60))},
 	})
 	if err != nil {
@@ -119,7 +121,7 @@ func TestConversationMetaSystemPromptSourceFields(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parts, err := (conversationMetaSystemPromptSource{}).Parts(chatinfo.WithInfo(context.Background(), tt.meta), SystemPromptRequest{})
+			parts, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(chatinfo.WithInfo(context.Background(), tt.meta), dialogue.SystemPromptRequest{})
 			if err != nil {
 				t.Fatalf("Parts: %v", err)
 			}
@@ -183,8 +185,8 @@ func TestConversationMetaFromPlatformContext(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := platform.WithMessageContext(context.Background(), tt.msg)
-			got, err := (conversationMetaSystemPromptSource{}).Parts(ctx, SystemPromptRequest{Scope: tt.scope})
-			want, wantErr := (conversationMetaSystemPromptSource{}).Parts(chatinfo.WithInfo(context.Background(), tt.want), SystemPromptRequest{})
+			got, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(ctx, dialogue.SystemPromptRequest{Scope: tt.scope})
+			want, wantErr := (dialogue.ConversationMetaSystemPromptSource{}).Parts(chatinfo.WithInfo(context.Background(), tt.want), dialogue.SystemPromptRequest{})
 			if err != nil || wantErr != nil || len(got) != 1 || len(want) != 1 || got[0] != want[0] {
 				t.Fatalf("prompt = %#v (%v), want %#v (%v)", got, err, want, wantErr)
 			}
@@ -199,7 +201,7 @@ func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
 	if err := memoryStore.WriteCore(ctx, scope, "RESIDENT_ORDER"); err != nil {
 		t.Fatalf("WriteCore: %v", err)
 	}
-	tagSource := toolTagsSystemPromptSource{Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
+	tagSource := dialogue.ToolTagsSystemPromptSource{Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
 		"alpha": {Prompt: "TAG_ALPHA"},
 		"beta":  {Prompt: "TAG_BETA"},
 	}}})}
@@ -207,19 +209,19 @@ func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
 		Mode:     storage.SessionModeWork,
 		Metadata: `{"tool_tags":["beta","alpha"]}`,
 	}
-	manager := NewSystemPromptManager(
-		soulSystemPromptSource{Soul: staticSoulProvider{Prompt: "SOUL_ORDER"}},
-		toolNamesSystemPromptSource{Tools: staticToolNames{names: []string{"shell"}}},
+	manager := dialogue.NewSystemPromptManager(
+		dialogue.SoulSystemPromptSource{Soul: dialogue.StaticSoulProvider{Prompt: "SOUL_ORDER"}},
+		dialogue.ToolNamesSystemPromptSource{Tools: staticToolNames{names: []string{"shell"}}},
 		tagSource,
-		residentMemorySystemPromptSource{Store: memoryStore},
-		conversationMetaSystemPromptSource{},
+		dialogue.ResidentMemorySystemPromptSource{Store: memoryStore},
+		dialogue.ConversationMetaSystemPromptSource{},
 	)
 	meta := chatinfo.Info{Source: chatinfo.Source{Platform: "cli"}, Identity: chatinfo.Identity{}}
-	got, err := manager.Build(chatinfo.WithInfo(ctx, meta), SystemPromptRequest{Session: sessionRecord, Scope: scope})
+	got, err := manager.Build(chatinfo.WithInfo(ctx, meta), dialogue.SystemPromptRequest{Session: sessionRecord, Scope: scope})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	parts := []string{"SOUL_ORDER", toolNamesText(PromptToolNames{Tools: []string{"shell"}}), "TAG_ALPHA", "TAG_BETA", "RESIDENT_ORDER", "meta: platform=cli."}
+	parts := []string{"SOUL_ORDER", dialogue.ToolNamesText(dialogue.PromptToolNames{Tools: []string{"shell"}}), "TAG_ALPHA", "TAG_BETA", "RESIDENT_ORDER", "meta: platform=cli."}
 	previous := -1
 	for _, part := range parts {
 		index := strings.Index(got, part)
@@ -240,7 +242,7 @@ func TestFileSoulProviderCachesUntilFileChanges(t *testing.T) {
 	if err := os.WriteFile(path, []byte("first"), 0o644); err != nil {
 		t.Fatalf("write soul: %v", err)
 	}
-	provider := &FileSoulProvider{Path: path}
+	provider := &dialogue.FileSoulProvider{Path: path}
 	got, err := provider.SystemPrompt(context.Background(), storage.SessionModeWork)
 	if err != nil {
 		t.Fatalf("SystemPrompt first: %v", err)
@@ -262,7 +264,7 @@ func TestFileSoulProviderReloadsWhenFileChanges(t *testing.T) {
 	if err := os.WriteFile(path, []byte("first"), 0o644); err != nil {
 		t.Fatalf("write soul: %v", err)
 	}
-	provider := &FileSoulProvider{Path: path}
+	provider := &dialogue.FileSoulProvider{Path: path}
 	if _, err := provider.SystemPrompt(context.Background(), storage.SessionModeWork); err != nil {
 		t.Fatalf("SystemPrompt first: %v", err)
 	}
@@ -284,7 +286,7 @@ func TestFileSoulProviderReloadsWhenFileChanges(t *testing.T) {
 
 func TestPromptBuilderMergesToolNamesIntoSingleSystemMessage(t *testing.T) {
 	builder := newTestPromptBuilder("SOUL", "shell")
-	messages, err := builder.Build(context.Background(), PromptBuildRequest{Session: &storage.Session{Mode: storage.SessionModeWork}})
+	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{Session: &storage.Session{Mode: storage.SessionModeWork}})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -299,28 +301,28 @@ func TestPromptBuilderMergesToolNamesIntoSingleSystemMessage(t *testing.T) {
 func TestToolNamesTextSeparatesToolsAndSkills(t *testing.T) {
 	tests := []struct {
 		name  string
-		names PromptToolNames
+		names dialogue.PromptToolNames
 		want  string
 	}{
-		{name: "mixed", names: PromptToolNames{Tools: []string{"shell", "web"}, Skills: []string{"code_review", "weather"}}, want: "tools: shell,web. skills: code_review,weather. Use discover_tool(names) for all possibly relevant tools/skills, including uncertain ones; prefer extras over omissions."},
-		{name: "tools only", names: PromptToolNames{Tools: []string{"shell"}}, want: "tools: shell. Use discover_tool(names) for all possibly relevant tools/skills, including uncertain ones; prefer extras over omissions."},
-		{name: "skills only", names: PromptToolNames{Skills: []string{"weather"}}, want: "skills: weather. Use discover_tool(names) for all possibly relevant tools/skills, including uncertain ones; prefer extras over omissions."},
-		{name: "empty", names: PromptToolNames{}, want: ""},
+		{name: "mixed", names: dialogue.PromptToolNames{Tools: []string{"shell", "web"}, Skills: []string{"code_review", "weather"}}, want: "tools: shell,web. skills: code_review,weather. Use discover_tool(names) for all possibly relevant tools/skills, including uncertain ones; prefer extras over omissions."},
+		{name: "tools only", names: dialogue.PromptToolNames{Tools: []string{"shell"}}, want: "tools: shell. Use discover_tool(names) for all possibly relevant tools/skills, including uncertain ones; prefer extras over omissions."},
+		{name: "skills only", names: dialogue.PromptToolNames{Skills: []string{"weather"}}, want: "skills: weather. Use discover_tool(names) for all possibly relevant tools/skills, including uncertain ones; prefer extras over omissions."},
+		{name: "empty", names: dialogue.PromptToolNames{}, want: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := toolNamesText(tt.names); got != tt.want {
-				t.Fatalf("toolNamesText() = %q, want %q", got, tt.want)
+			if got := dialogue.ToolNamesText(tt.names); got != tt.want {
+				t.Fatalf("dialogue.ToolNamesText() = %q, want %q", got, tt.want)
 			}
 		})
 	}
 }
 func TestPromptBuilderUsesAssistantRawTextFromMetadata(t *testing.T) {
 	builder := newTestPromptBuilder("SOUL")
-	messages, err := builder.Build(context.Background(), PromptBuildRequest{
+	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
-			{Role: storage.RoleAssistant, Content: "visible text", Metadata: assistantRawTextMetadata("visible text", "raw [[smile]] text")},
+			{Role: storage.RoleAssistant, Content: "visible text", Metadata: dialogue.AssistantRawTextMetadata("visible text", "raw [[smile]] text")},
 		},
 	})
 	if err != nil {
@@ -337,8 +339,8 @@ func TestPromptBuilderUsesAssistantRawTextFromMetadata(t *testing.T) {
 func TestPromptBuilderRestoresAssistantRawTextAndToolCalls(t *testing.T) {
 	builder := newTestPromptBuilder("SOUL")
 	calls := []llm.ToolCallRequest{{ID: "call-1", Name: "shell", Arguments: `{"cmd":"pwd"}`}}
-	stored := toolCallStorageMessage("session-1", "visible", "raw [[smile]]", calls)
-	messages, err := builder.Build(context.Background(), PromptBuildRequest{
+	stored := dialogue.ToolCallStorageMessage("session-1", "visible", "raw [[smile]]", calls)
+	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session:  &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{stored},
 	})
@@ -358,7 +360,7 @@ func TestPromptBuilderRestoresAssistantRawTextAndToolCalls(t *testing.T) {
 }
 
 func TestStoredMessageSegmentsUsesStableLightweightJSON(t *testing.T) {
-	stored := storedMessageSegments([]llm.MessageSegment{
+	stored := dialogue.StoredMessageSegments([]llm.MessageSegment{
 		{Type: llm.SegmentText, Text: "看图"},
 		{Type: llm.SegmentImage, URL: "https://example.com/a.png", MIMEType: "image/png"},
 	})
@@ -381,11 +383,11 @@ func TestStoredMessageSegmentsUsesStableLightweightJSON(t *testing.T) {
 }
 
 func TestToolResultStorageMessageUsesContentFastPath(t *testing.T) {
-	pureText := toolResultStorageMessage("s1", llm.LLMMessage{Role: llm.RoleTool, Name: "shell", ToolCallID: "call_1", Segments: llm.TextSegments("done")})
+	pureText := dialogue.ToolResultStorageMessage("s1", llm.LLMMessage{Role: llm.RoleTool, Name: "shell", ToolCallID: "call_1", Segments: llm.TextSegments("done")})
 	if pureText.Content != "done" || pureText.Segments != "" {
 		t.Fatalf("pure text message = %#v", pureText)
 	}
-	multimodal := toolResultStorageMessage("s1", llm.LLMMessage{Role: llm.RoleTool, Name: "screenshot", ToolCallID: "call_2", Segments: []llm.MessageSegment{
+	multimodal := dialogue.ToolResultStorageMessage("s1", llm.LLMMessage{Role: llm.RoleTool, Name: "screenshot", ToolCallID: "call_2", Segments: []llm.MessageSegment{
 		{Type: llm.SegmentText, Text: "done"},
 		{Type: llm.SegmentImage, URL: "data:image/png;base64,aGVsbG8=", Name: "result.png"},
 	}})
@@ -400,10 +402,10 @@ func TestPromptBuilderRestoresUserSegmentsFromStorage(t *testing.T) {
 		{Type: llm.SegmentText, Text: "看图"},
 		{Type: llm.SegmentImage, URL: "https://example.com/a.png", MIMEType: "image/png"},
 	}
-	messages, err := builder.Build(context.Background(), PromptBuildRequest{
+	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
-			{Role: storage.RoleUser, Content: "看图 [图片: https://example.com/a.png]", Segments: storedMessageSegments(segments)},
+			{Role: storage.RoleUser, Content: "看图 [图片: https://example.com/a.png]", Segments: dialogue.StoredMessageSegments(segments)},
 		},
 	})
 	if err != nil {
@@ -427,11 +429,11 @@ func TestPromptBuilderRestoresToolSegmentsAndFallsBackToContent(t *testing.T) {
 		{Type: llm.SegmentText, Text: "截图完成"},
 		{Type: llm.SegmentImage, URL: "https://example.com/tool.png", MIMEType: "image/png"},
 	}
-	messages, err := builder.Build(context.Background(), PromptBuildRequest{
+	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
 			{Role: storage.RoleUser, Content: "纯文本快速路径"},
-			{Role: storage.RoleTool, Content: "截图完成 [图片]", ToolCallID: "call_1", Segments: storedMessageSegments(toolSegments), Metadata: toolNameMetadata("screenshot")},
+			{Role: storage.RoleTool, Content: "截图完成 [图片]", ToolCallID: "call_1", Segments: dialogue.StoredMessageSegments(toolSegments), Metadata: dialogue.ToolNameMetadata("screenshot")},
 		},
 	})
 	if err != nil {
@@ -452,10 +454,10 @@ func TestPromptBuilderRestoresToolSegmentsAndFallsBackToContent(t *testing.T) {
 func TestPromptBuilderSummaryPreservesUserImageSegment(t *testing.T) {
 	builder := newTestPromptBuilder("SOUL")
 	segments := []llm.MessageSegment{{Type: llm.SegmentImage, URL: "https://example.com/a.png"}}
-	messages, err := builder.Build(context.Background(), PromptBuildRequest{
+	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
-			{Role: storage.RoleUser, Content: llm.SegmentsContentText(segments), Segments: storedMessageSegments(segments)},
+			{Role: storage.RoleUser, Content: llm.SegmentsContentText(segments), Segments: dialogue.StoredMessageSegments(segments)},
 		},
 		Summary: &storage.ContextSummary{Summary: "old summary"},
 	})
@@ -489,16 +491,16 @@ type staticToolNames struct {
 	names []string
 }
 
-func newTestPromptBuilder(soul string, names ...string) PromptBuilder {
-	manager := NewSystemPromptManager(soulSystemPromptSource{Soul: staticSoulProvider{Prompt: soul}})
+func newTestPromptBuilder(soul string, names ...string) chatroute.PromptBuilder {
+	manager := dialogue.NewSystemPromptManager(dialogue.SoulSystemPromptSource{Soul: dialogue.StaticSoulProvider{Prompt: soul}})
 	if len(names) > 0 {
-		manager.AddSource(toolNamesSystemPromptSource{Tools: staticToolNames{names: names}})
+		manager.AddSource(dialogue.ToolNamesSystemPromptSource{Tools: staticToolNames{names: names}})
 	}
-	return PromptBuilder{System: manager}
+	return chatroute.PromptBuilder{System: manager}
 }
 
-func (p staticToolNames) ToolNames(context.Context, string, *storage.Session, session.Scope) (PromptToolNames, error) {
-	return PromptToolNames{Tools: p.names}, nil
+func (p staticToolNames) ToolNames(context.Context, string, *storage.Session, session.Scope) (dialogue.PromptToolNames, error) {
+	return dialogue.PromptToolNames{Tools: p.names}, nil
 }
 
 func (p *recordingToolProvider) Schemas(context.Context, string, *storage.Session, session.Scope) ([]llm.ToolSchema, error) {
@@ -508,7 +510,7 @@ func (p *recordingToolProvider) Schemas(context.Context, string, *storage.Sessio
 
 func TestPromptBuilderInjectsSummaryIntoCurrentUserMessage(t *testing.T) {
 	builder := newTestPromptBuilder("SOUL")
-	messages, err := builder.Build(context.Background(), PromptBuildRequest{
+	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
 			{Role: storage.RoleAssistant, Content: "after summary"},
@@ -537,7 +539,7 @@ func TestPromptBuilderInjectsSummaryIntoCurrentUserMessage(t *testing.T) {
 
 func TestPromptBuilderKeepsSummaryOnFirstUserAfterCheckpoint(t *testing.T) {
 	builder := newTestPromptBuilder("SOUL")
-	messages, err := builder.Build(context.Background(), PromptBuildRequest{
+	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
 			{Role: storage.RoleUser, Content: "first question"},

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/chatinfo"
 	"elbot/internal/llm"
 	"elbot/internal/llm/openai"
@@ -165,7 +166,7 @@ func TestForwardDisplayReachesVendorInOrder(t *testing.T) {
 	var saved []llm.MessageSegment
 	for _, message := range messages {
 		if message.Role == storage.RoleUser {
-			saved = messageSegmentsFromStorage(message.Segments)
+			saved = dialogue.MessageSegmentsFromStorage(message.Segments)
 			break
 		}
 	}

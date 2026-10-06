@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/agent"
+	agentevents "elbot/internal/agent/events"
 	"elbot/internal/chatinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
@@ -64,11 +64,11 @@ func TestNoticeLifetimesOriginalSourceAndVisionDedup(t *testing.T) {
 	t.Cleanup(func() { _ = b.Close(context.Background()) })
 	releaseProgress, releaseFailure := holdObserverQueue(t, b.queues[0]), holdObserverQueue(t, b.queues[1])
 	ctx, cancel := context.WithCancel(platform.WithMessageContext(context.Background(), platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "original"}}, Sender: one}))
-	meta := agent.EventMeta{At: time.Now(), SessionID: "s"}
-	if err := events.VisionFallbackUsed.Emit(ctx, agent.VisionFallbackUsedEvent{EventMeta: meta, Visible: true}); err != nil {
+	meta := agentevents.EventMeta{At: time.Now(), SessionID: "s"}
+	if err := events.VisionFallbackUsed.Emit(ctx, agentevents.VisionFallbackUsedEvent{EventMeta: meta, Visible: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := events.HookFailed.Emit(ctx, agent.HookFailedEvent{EventMeta: meta, Point: hook.PointLLMResponseReceived, Err: errors.New("failed fact"), Notice: true}); err != nil {
+	if err := events.HookFailed.Emit(ctx, agentevents.HookFailedEvent{EventMeta: meta, Point: hook.PointLLMResponseReceived, Err: errors.New("failed fact"), Notice: true}); err != nil {
 		t.Fatal(err)
 	}
 	cancel()
@@ -84,7 +84,7 @@ func TestNoticeLifetimesOriginalSourceAndVisionDedup(t *testing.T) {
 	}
 	active := platform.WithMessageContext(context.Background(), platform.MessageContext{Sender: one})
 	for range 2 {
-		if err := events.VisionFallbackUsed.Emit(active, agent.VisionFallbackUsedEvent{EventMeta: meta, Visible: true}); err != nil {
+		if err := events.VisionFallbackUsed.Emit(active, agentevents.VisionFallbackUsedEvent{EventMeta: meta, Visible: true}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -118,7 +118,7 @@ func TestQueuedFailureChecksOriginalBinding(t *testing.T) {
 	t.Cleanup(func() { _ = b.Close(context.Background()) })
 	release := holdObserverQueue(t, b.queues[1])
 	ctx := session.WithBinding(context.Background(), binding)
-	if err := events.HookFailed.Emit(ctx, agent.HookFailedEvent{EventMeta: agent.EventMeta{SessionID: row.ID}, Point: hook.PointLLMResponseReceived, Err: errors.New("old"), Notice: true}); err != nil {
+	if err := events.HookFailed.Emit(ctx, agentevents.HookFailedEvent{EventMeta: agentevents.EventMeta{SessionID: row.ID}, Point: hook.PointLLMResponseReceived, Err: errors.New("old"), Notice: true}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := sessions.Create(context.Background(), scope, session.CreateRequest{Title: "new"}); err != nil {

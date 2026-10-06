@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
@@ -40,7 +41,7 @@ func TestMediaCanonicalPersistenceAndSessionRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	segments := messageSegmentsFromStorage(messages[0].Segments)
+	segments := dialogue.MessageSegmentsFromStorage(messages[0].Segments)
 	if len(segments) != 2 || !media.ValidID(segments[1].MediaID) || segments[1].URL != "" {
 		t.Fatalf("stored segments: %#v", segments)
 	}

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
@@ -94,9 +95,9 @@ type replyTestFixture struct {
 	ctx, requestCtx context.Context
 	repo            *replyTestRepository
 	platform        *replyTestPlatform
-	committer       *replyCommitter
-	out             turnOutput
-	in              replyCommitInput
+	committer       *dialogue.ReplyCommitter
+	out             dialogue.Output
+	in              dialogue.ReplyCommitInput
 	hooks           *hook.DefaultManager
 }
 
@@ -118,9 +119,9 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	t.Cleanup(cancel)
 	f.hooks = hook.NewManager()
 	sender := &outputSender{dispatcher: dispatch.New(dispatch.Options{Primary: f.platform}), hooks: &hookBridge{manager: f.hooks, identity: &identityResolver{platformName: "cli"}}}
-	f.committer = &replyCommitter{messages: f.repo, output: sender}
+	f.committer = &dialogue.ReplyCommitter{Messages: f.repo, Output: sender}
 	f.out = foregroundTurnOutput{sender: sender, status: &statusRecorder{}}
-	f.in = replyCommitInput{Session: row, Text: "history", RawText: "raw", PlatformText: "visible", Outputs: []delivery.Output{delivery.Text("later")}}
+	f.in = dialogue.ReplyCommitInput{Session: row, Text: "history", RawText: "raw", PlatformText: "visible", Outputs: []delivery.Output{delivery.Text("later")}}
 	return f
 }
 
@@ -171,7 +172,7 @@ func TestReplyCommitOrderAndTextSeparation(t *testing.T) {
 				t.Fatalf("display=%q", text)
 			}
 			message, err := f.repo.Get(f.ctx, got.MessageID)
-			if err != nil || message.Content != "history" || message.Metadata != assistantRawTextMetadata("history", "raw") {
+			if err != nil || message.Content != "history" || message.Metadata != dialogue.AssistantRawTextMetadata("history", "raw") {
 				t.Fatalf("history=%+v err=%v", message, err)
 			}
 			mapped, err := f.repo.FindByPlatformMessage(f.ctx, "telegram", "private:actual", "sent")
@@ -216,7 +217,7 @@ func TestReplyCommitFailureKeepsFactsAndDoesNotRetry(t *testing.T) {
 					wantErr = nil
 				}
 				got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-				if !errors.Is(err, wantErr) || got.Persisted != wantPersisted || hasReplyReceipt(got.Receipt) != wantReceipt {
+				if !errors.Is(err, wantErr) || got.Persisted != wantPersisted || dialogue.HasReplyReceipt(got.Receipt) != wantReceipt {
 					t.Fatalf("result=%+v err=%v events=%v", got, err, f.events)
 				}
 				if !errors.Is(got.PersistErr, f.repo.appendErr) {
@@ -276,7 +277,7 @@ func TestReplyCommitStreamFailureRetainsReceipt(t *testing.T) {
 				s.finishErr = failure
 			}
 			got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-			if !errors.Is(err, failure) || got.Persisted != (mode != "replace") || hasReplyReceipt(got.Receipt) != (mode != "replace") {
+			if !errors.Is(err, failure) || got.Persisted != (mode != "replace") || dialogue.HasReplyReceipt(got.Receipt) != (mode != "replace") {
 				t.Fatalf("result=%+v err=%v", got, err)
 			}
 			if strings.Contains(strings.Join(f.events, ","), "send") || strings.Contains(strings.Join(f.events, ","), "outputs") {
@@ -325,7 +326,7 @@ func TestReplyCommitFinalHookFailureDoesNotSaveOrSend(t *testing.T) {
 				t.Fatal(err)
 			}
 			got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-			if !errors.Is(err, context.Canceled) || got.Persisted || hasReplyReceipt(got.Receipt) || len(f.events) != 0 {
+			if !errors.Is(err, context.Canceled) || got.Persisted || dialogue.HasReplyReceipt(got.Receipt) || len(f.events) != 0 {
 				t.Fatalf("result=%+v err=%v events=%v", got, err, f.events)
 			}
 		})

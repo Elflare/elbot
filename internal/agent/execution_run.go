@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 
+	"elbot/internal/agent/dialogue"
+	agentevents "elbot/internal/agent/events"
 	"elbot/internal/modelmgr"
 	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/request"
@@ -14,13 +16,13 @@ import (
 	"elbot/internal/turn"
 )
 
-func (c *executionCoordinator) runAttempt(ctx context.Context, session *storage.Session, text string, out turnOutput) (*storage.Session, turn.Input, error) {
+func (c *executionCoordinator) runAttempt(ctx context.Context, session *storage.Session, text string, out dialogue.Output) (*storage.Session, turn.Input, error) {
 	ctx, release, err := c.enterTurn(ctx, session)
 	if err != nil {
 		return session, turn.Input{}, err
 	}
 	release()
-	selection := modelSelectionForTurn(ctx, c.models, session)
+	selection := modelmgr.SelectionForTurn(ctx, c.models, session)
 	ctx, session, err = c.compactBeforeTurn(ctx, session, text, out, selection)
 	if err != nil {
 		return session, turn.Input{}, err
@@ -49,7 +51,7 @@ func (c *executionCoordinator) runAttempt(ctx context.Context, session *storage.
 	return session, pending, nil
 }
 
-func (c *executionCoordinator) finishAttempt(ctx context.Context, session *storage.Session, out turnOutput, result chatTurnResult) error {
+func (c *executionCoordinator) finishAttempt(ctx context.Context, session *storage.Session, out dialogue.Output, result dialogue.TurnResult) error {
 	attempt := turn.AttemptFromContext(ctx)
 	execution := turn.ExecutionFromContext(ctx)
 	if err := result.Err; err != nil && !result.QuietCancellation {
@@ -72,53 +74,53 @@ func (c *executionCoordinator) finishAttempt(ctx context.Context, session *stora
 	return nil
 }
 
-func (c *executionCoordinator) runTurn(ctx context.Context, session *storage.Session, text string, out turnOutput, selection modelmgr.Selection) (chatTurnResult, turn.Input) {
-	prepared, err := c.chat.prepareTurn(ctx, session, text)
+func (c *executionCoordinator) runTurn(ctx context.Context, session *storage.Session, text string, out dialogue.Output, selection modelmgr.Selection) (dialogue.TurnResult, turn.Input) {
+	prepared, err := c.dialogue.PrepareTurn(ctx, dialogue.TurnInput{Session: session, Text: text, Input: inboundTurnInput(ctx, text), ReplyToPlatformMessageID: inboundReplyMessageID(ctx), Selection: selection})
 	if err != nil {
-		return chatTurnResult{Outcome: failedChatOutcome(err), Err: err}, turn.Input{}
+		return dialogue.TurnResult{Outcome: dialogue.FailedOutcome(err), Err: err}, turn.Input{}
 	}
 	locked, releaseRequest, err := c.sessions.EnterSessions(ctx, session.ID)
 	if err != nil {
-		return chatTurnResult{Outcome: failedChatOutcome(err), Err: err}, turn.Input{}
+		return dialogue.TurnResult{Outcome: dialogue.FailedOutcome(err), Err: err}, turn.Input{}
 	}
 	if !c.turns.MatchesAttempt(session.ID, turn.AttemptFromContext(ctx)) {
 		releaseRequest()
-		return chatTurnResult{Outcome: chatTurnCanceled, Err: context.Canceled}, turn.Input{}
+		return dialogue.TurnResult{Outcome: dialogue.Canceled, Err: context.Canceled}, turn.Input{}
 	}
 	reqCtxInfo, reqCtx, done, err := c.requests.Start(locked, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: c.responseTimeout})
 	releaseRequest()
 	if err != nil {
-		return chatTurnResult{Outcome: failedChatOutcome(err), Err: err}, turn.Input{}
+		return dialogue.TurnResult{Outcome: dialogue.FailedOutcome(err), Err: err}, turn.Input{}
 	}
 	defer done()
-	reqCtx = withTurnRequestID(reqCtx, reqCtxInfo.ID)
+	reqCtx = request.WithTurnID(reqCtx, reqCtxInfo.ID)
 
-	result := c.chat.RunTurn(ctx, reqCtx, chatTurnInput{Session: session, Text: text, Selection: selection, RequestID: reqCtxInfo.ID, Prepared: prepared}, out)
+	result := c.dialogue.RunTurn(ctx, reqCtx, dialogue.TurnInput{Session: session, Text: text, Selection: selection, RequestID: reqCtxInfo.ID, Prepared: prepared}, out)
 	if result.QuietCancellation {
 		c.handleTurnContextDone(ctx, session.ID, result.Err, out)
 		return result, turn.Input{}
 	}
-	if result.Outcome != chatTurnCompleted {
+	if result.Outcome != dialogue.Completed {
 		return result, turn.Input{}
 	}
 	pending, err := c.finishCompletedTurn(ctx, session, out, result)
 	if err != nil {
-		result.Outcome, result.Err = failedChatOutcome(err), err
+		result.Outcome, result.Err = dialogue.FailedOutcome(err), err
 	}
 	return result, pending
 }
 
-func (c *executionCoordinator) finishCompletedTurn(ctx context.Context, session *storage.Session, out turnOutput, result chatTurnResult) (turn.Input, error) {
+func (c *executionCoordinator) finishCompletedTurn(ctx context.Context, session *storage.Session, out dialogue.Output, result dialogue.TurnResult) (turn.Input, error) {
 	ctx = c.view.Context(ctx)
 	selection, usage, turnStartedAt, committed := result.Selection, result.Usage, result.StartedAt, result.Committed
 	if err := c.sessions.Touch(ctx, session); err != nil {
-		emitFact(ctx, c.persistenceFailed, PersistenceFailedEvent{EventMeta: eventMeta(ctx, session.ID), Operation: "touch_session", Err: err})
+		agentevents.Emit(ctx, c.persistenceFailed, agentevents.PersistenceFailedEvent{EventMeta: agentevents.Meta(ctx, session.ID), Operation: "touch_session", Err: err})
 		return turn.Input{}, err
 	}
 	c.recordUsage(session.ID, usage)
 	doneStatus := runtimeDoneStatus(runtimestatus.Snapshot{SessionID: session.ID, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt, Usage: usage}, storage.Now())
 	out.PublishRuntimeStatus(ctx, doneStatus)
-	nextSelection := modelSelectionForTurn(ctx, c.models, session)
+	nextSelection := modelmgr.SelectionForTurn(ctx, c.models, session)
 	if c.shouldCompact(ctx, session, nextSelection) {
 		_, _ = out.SendAssistant(ctx, "compact status: will compact before next request")
 	}
@@ -133,14 +135,14 @@ func (c *executionCoordinator) finishCompletedTurn(ctx context.Context, session 
 	return pending, nil
 }
 
-func (c *executionCoordinator) handleTurnContextDone(ctx context.Context, sessionID string, err error, out turnOutput) {
+func (c *executionCoordinator) handleTurnContextDone(ctx context.Context, sessionID string, err error, out dialogue.Output) {
 	if c.turns.Execution(sessionID) != turn.ExecutionFromContext(ctx) || (c.turns.Snapshot(sessionID).Phase != turn.PhaseAwaitAppendConfirm && c.turns.MatchesAttempt(sessionID, turn.AttemptFromContext(ctx))) {
 		if e := turn.ExecutionFromContext(ctx); e != nil {
 			e.Finish(err)
 		}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		emitFact(ctx, c.timedOut, TurnTimedOutEvent{EventMeta: eventMeta(ctx, sessionID), Err: err})
+		agentevents.Emit(ctx, c.timedOut, agentevents.TurnTimedOutEvent{EventMeta: agentevents.Meta(ctx, sessionID), Err: err})
 		out.SendNotice(ctx, slog.LevelWarn, notificationrules.TurnTimeout)
 	}
 }

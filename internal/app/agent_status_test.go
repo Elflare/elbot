@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/agent"
+	agentevents "elbot/internal/agent/events"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
@@ -53,7 +53,7 @@ func TestStatusCoalescesTerminalAndUpdatesDuringSend(t *testing.T) {
 	emit := func(version uint64, phase runtimestatus.Phase, tokens int) {
 		t.Helper()
 		usage := &llm.Usage{TotalTokens: tokens}
-		if err := d.receive(ctx, agent.StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: phase, Usage: usage}, Version: version, Display: true}); err != nil {
+		if err := d.receive(ctx, agentevents.StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: phase, Usage: usage}, Version: version, Display: true}); err != nil {
 			t.Fatal(err)
 		}
 		usage.TotalTokens = -1
@@ -97,7 +97,7 @@ func TestStatusTargetsKeepDistinctSendersAndBackgroundIsSilent(t *testing.T) {
 	one, two := &slowStatusPlatform{sent: make(chan runtimestatus.Snapshot, 3)}, &slowStatusPlatform{sent: make(chan runtimestatus.Snapshot, 3)}
 	d := newStatusDisplay(dispatch.New(dispatch.Options{Primary: one}), nil)
 	t.Cleanup(func() { _ = d.Close(context.Background()) })
-	e := agent.StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "same", Phase: runtimestatus.PhaseDone}, Version: 1, Display: true}
+	e := agentevents.StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "same", Phase: runtimestatus.PhaseDone}, Version: 1, Display: true}
 	for _, p := range []*slowStatusPlatform{one, two} {
 		ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Sender: p})
 		if err := d.receive(ctx, e); err != nil {

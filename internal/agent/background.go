@@ -12,6 +12,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
+	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
@@ -19,8 +20,6 @@ import (
 	"elbot/internal/storage"
 	"elbot/internal/toolrun"
 )
-
-type backgroundModelSelectionKey struct{}
 
 type backgroundRunner struct {
 	sessions    *session.Service
@@ -80,7 +79,7 @@ func (r *backgroundRunner) RunBackground(ctx context.Context, req background.Run
 	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Root: sandboxRoot, Dir: filepath.Join(sandboxRoot, filepath.FromSlash(sandboxSubdir)), Background: true, BackgroundKind: toolBackgroundKind(req.Kind)})
 
 	if req.ModelProvider != "" || req.Model != "" {
-		ctx = context.WithValue(ctx, backgroundModelSelectionKey{}, config.ModelSelection{Provider: req.ModelProvider, Model: req.Model})
+		ctx = modelmgr.WithSelectionOverride(ctx, config.ModelSelection{Provider: req.ModelProvider, Model: req.Model})
 	}
 
 	scope := session.Scope{ActorID: actor.ID, Platform: platformName, PlatformScopeID: scopeID, IsCLI: platformName == "cli"}

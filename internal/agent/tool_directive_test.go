@@ -72,7 +72,7 @@ func TestDiscoveredToolsAreInjectedIntoTopLevelTools(t *testing.T) {
 	resumedAgent := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
 		cfg.ToolRegistry = registry
 	})
-	resumed, err := resumedAgent.execution.chat.toolsForSession(context.Background(), sessionRecord)
+	resumed, err := resumedAgent.execution.dialogue.Preparer.Tools.Schemas(context.Background(), sessionRecord)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
+	agentevents "elbot/internal/agent/events"
 	"elbot/internal/chatinfo"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/hook"
@@ -36,7 +37,7 @@ type hookBridge struct {
 	requests   *request.Manager
 	identity   *identityResolver
 	media      *media.Manager
-	failed     *signal.Signal[HookFailedEvent]
+	failed     *signal.Signal[agentevents.HookFailedEvent]
 	dispatcher *dispatch.Router
 	logger     *slog.Logger
 }
@@ -50,7 +51,7 @@ func (h *hookBridge) Route(ctx context.Context, event hook.Event) (hook.Event, b
 		return event, false, nil
 	}
 	if id := h.router.RouteHookID(event); id != "" && h.requests != nil {
-		_, requestCtx, done, err := h.requests.Start(ctx, request.StartRequest{ParentID: turnRequestIDFromContext(ctx), Kind: request.KindHook, Label: id + " continuation"})
+		_, requestCtx, done, err := h.requests.Start(ctx, request.StartRequest{ParentID: request.TurnIDFromContext(ctx), Kind: request.KindHook, Label: id + " continuation"})
 		if err == nil {
 			defer done()
 			ctx = requestCtx
@@ -108,7 +109,7 @@ func (h *hookBridge) ObserveRun(ctx context.Context, event hook.Event, info hook
 		label = strings.TrimSpace(string(info.Point))
 	}
 	_, reqCtx, done, err := h.requests.Start(ctx, request.StartRequest{
-		ParentID:  turnRequestIDFromContext(ctx),
+		ParentID:  request.TurnIDFromContext(ctx),
 		SessionID: sessionID,
 		Kind:      request.KindHook,
 		Label:     label,
@@ -133,7 +134,7 @@ func (h *hookBridge) notifyError(ctx context.Context, source hook.Event, err err
 }
 
 func (h *hookBridge) publishFailure(ctx context.Context, event hook.Event, err error, log, notice bool) {
-	emitFact(ctx, h.failed, HookFailedEvent{EventMeta: eventMeta(ctx, event.Session.ID), Point: event.Point, Platform: event.Platform, Err: err, Log: log, Notice: notice})
+	agentevents.Emit(ctx, h.failed, agentevents.HookFailedEvent{EventMeta: agentevents.Meta(ctx, event.Session.ID), Point: event.Point, Platform: event.Platform, Err: err, Log: log, Notice: notice})
 }
 
 func (h *hookBridge) PlatformConnected(ctx context.Context, platformName string) {

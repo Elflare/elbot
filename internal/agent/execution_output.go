@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/background"
 	"elbot/internal/delivery"
 	runtimestatus "elbot/internal/runtime"
@@ -15,14 +16,14 @@ import (
 // The sink changes when a running background execution is adopted. Already
 // completed output is never replayed, and a request's cancellation is retained.
 type executionTurnOutput struct {
-	view       executionView
-	foreground turnOutput
+	view       dialogue.ExecutionView
+	foreground dialogue.Output
 	sessions   *session.Service
 	execution  *turn.Execution
-	fallback   turnOutput
+	fallback   dialogue.Output
 }
 
-func (o executionTurnOutput) target(ctx context.Context) (context.Context, turnOutput) {
+func (o executionTurnOutput) target(ctx context.Context) (context.Context, dialogue.Output) {
 	if o.execution.Foreground() != nil {
 		return o.view.Context(ctx), o.foreground
 	}
@@ -47,11 +48,11 @@ func (o executionTurnOutput) SendAssistant(ctx context.Context, text string) (de
 			text = parsed.Report
 			if len(parsed.ReportSegments) > 0 {
 				binding, _ := session.BindingFromContext(foreground)
-				row, err := o.view.sessions.Get(ctx, binding.SessionID())
+				row, err := o.view.Sessions.Get(ctx, binding.SessionID())
 				if err != nil {
 					return delivery.Receipt{}, err
 				}
-				dir, err := session.NewWorkspaceStore(o.sessions, o.view.sessions, row.ID).GetWorkspaceDir(ctx)
+				dir, err := session.NewWorkspaceStore(o.sessions, o.view.Sessions, row.ID).GetWorkspaceDir(ctx)
 				if err != nil {
 					return delivery.Receipt{}, err
 				}

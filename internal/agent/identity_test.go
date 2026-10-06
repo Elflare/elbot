@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/chatinfo"
 	"elbot/internal/hook"
 	"elbot/internal/security"
@@ -24,7 +25,7 @@ func TestPublicChatInfoConsumersAndSecurityPrecedence(t *testing.T) {
 	if scope.Platform != "qqonebot" || scope.PlatformScopeID != "group:9" || scope.ActorID != actor.ID || scope.IsCLI {
 		t.Fatalf("scope = %+v", scope)
 	}
-	parts, err := (conversationMetaSystemPromptSource{}).Parts(ctx, SystemPromptRequest{Scope: scope})
+	parts, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(ctx, dialogue.SystemPromptRequest{Scope: scope})
 	if err != nil || len(parts) != 1 || parts[0].Content != `meta: platform=qqonebot, conversation=group(id:9), display_name="名片"(id:123).` {
 		t.Fatalf("prompt meta = %+v, %v", parts, err)
 	}

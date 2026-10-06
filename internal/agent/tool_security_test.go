@@ -35,7 +35,7 @@ func TestRiskConfirmationExpiresAndStopsToolFlow(t *testing.T) {
 		t.Fatal("failed to enter tool phase")
 	}
 
-	result, err := (*a.execution.chat.toolDeps).ConfirmToolCall(ctx, s.ID, llm.ToolCallRequest{ID: "call_1", Name: "owner_tool", Arguments: "{}"}, tool.RiskAssessment{Level: tool.RiskHigh}, "")
+	result, err := (*testToolDeps(a)).ConfirmToolCall(ctx, s.ID, llm.ToolCallRequest{ID: "call_1", Name: "owner_tool", Arguments: "{}"}, tool.RiskAssessment{Level: tool.RiskHigh}, "")
 	if err != nil {
 		t.Fatalf("ConfirmToolCall: %v", err)
 	}

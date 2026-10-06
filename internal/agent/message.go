@@ -2,11 +2,11 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"reflect"
 	"strings"
 
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
@@ -39,7 +39,7 @@ func (h *messageHandler) HandleMessage(ctx context.Context, text string) (err er
 	defer func() {
 		if err != nil {
 			h.hooks.notifyError(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}}, err)
-			if shouldNotifyUserError(err) {
+			if dialogue.ShouldNotifyUserError(err) {
 				h.output.SendChat(ctx, notificationrules.ExecutionFailure(err))
 			}
 		}
@@ -105,24 +105,4 @@ func (h *messageHandler) HandleMessage(ctx context.Context, text string) (err er
 		return err
 	}
 	return h.input.handleInput(ctx, text)
-}
-
-func shouldNotifyUserError(err error) bool {
-	var notified userNotifiedError
-	return err != nil && !errors.As(err, &notified) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
-}
-
-type userNotifiedError struct {
-	err error
-}
-
-func (e userNotifiedError) Error() string { return e.err.Error() }
-
-func (e userNotifiedError) Unwrap() error { return e.err }
-
-func markUserNotified(err error) error {
-	if err == nil {
-		return nil
-	}
-	return userNotifiedError{err: err}
 }

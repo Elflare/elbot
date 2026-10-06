@@ -6,8 +6,10 @@ import (
 	"testing"
 	"time"
 
+	agentevents "elbot/internal/agent/events"
 	"elbot/internal/config"
 	"elbot/internal/llm"
+	"elbot/internal/modelmgr"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/signal"
 	"elbot/internal/turn"
@@ -15,9 +17,12 @@ import (
 
 func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 	turns := turn.NewManager()
-	events := signal.New[StatusChangedEvent]("status", nil)
-	var observed []StatusChangedEvent
-	_, _ = events.Connect(func(_ context.Context, e StatusChangedEvent) error { observed = append(observed, e); return nil }, signal.ConnectOptions{})
+	events := signal.New[agentevents.StatusChangedEvent]("status", nil)
+	var observed []agentevents.StatusChangedEvent
+	_, _ = events.Connect(func(_ context.Context, e agentevents.StatusChangedEvent) error {
+		observed = append(observed, e)
+		return nil
+	}, signal.ConnectOptions{})
 	r := &statusRecorder{turns: turns, changed: events}
 	old, current := turn.NewExecution("old"), turn.NewExecution("current")
 	oldCtx := turn.WithAttempt(turn.WithExecution(context.Background(), old), "old-attempt")
@@ -49,8 +54,8 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 func TestModelCompletionSnapshotAndObserverFailureDoNotChangeResult(t *testing.T) {
 	usage := &llm.Usage{TotalTokens: 7}
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{chunks: [][]llm.StreamChunk{{{DeltaContent: "source", Usage: usage}}}}, "model", config.ProviderConfig{}, newTestStore(t))
-	var event ModelCallCompletedEvent
-	_, _ = a.Signals().ModelCallCompleted.Connect(func(_ context.Context, e ModelCallCompletedEvent) error {
+	var event agentevents.ModelCallCompletedEvent
+	_, _ = a.Signals().ModelCallCompleted.Connect(func(_ context.Context, e agentevents.ModelCallCompletedEvent) error {
 		event = e
 		return errors.New("observer failed")
 	}, signal.ConnectOptions{})
@@ -59,7 +64,7 @@ func TestModelCompletionSnapshotAndObserverFailureDoNotChangeResult(t *testing.T
 		t.Fatal(err)
 	}
 	out := foregroundTurnOutput{sender: a.output, status: a.status}
-	result, err := a.execution.chat.caller.Call(ctx, row, modelSelectionForTurn(ctx, a.execution.models, row), nil, nil, nil, nil, out)
+	result, err := testChatRoute(a).Caller.Call(ctx, row, modelmgr.SelectionForTurn(ctx, a.execution.models, row), nil, nil, nil, nil, out)
 	if err != nil || result.Text != "source" || !event.OutputReady {
 		t.Fatalf("observation changed result: %+v / %v", result, err)
 	}
@@ -75,12 +80,12 @@ func TestReplyFactsPreservePartialSuccessAndReceiptSnapshot(t *testing.T) {
 	f.platform.sendErr = errors.New("partial send")
 	f.repo.mapErr = errors.New("map failed")
 	f.platform.receipt.SentMessages[0].OutputIndexes = []int{0}
-	signals := newSignals()
-	f.committer.delivered, f.committer.committed = signals.ReplyDelivered, signals.ReplyCommitted
-	var delivered ReplyDeliveredEvent
-	var committed ReplyCommittedEvent
-	_, _ = signals.ReplyDelivered.Connect(func(_ context.Context, e ReplyDeliveredEvent) error { delivered = e; return nil }, signal.ConnectOptions{})
-	_, _ = signals.ReplyCommitted.Connect(func(_ context.Context, e ReplyCommittedEvent) error { committed = e; return nil }, signal.ConnectOptions{})
+	signals := agentevents.NewSignals()
+	f.committer.Delivered, f.committer.Committed = signals.ReplyDelivered, signals.ReplyCommitted
+	var delivered agentevents.ReplyDeliveredEvent
+	var committed agentevents.ReplyCommittedEvent
+	_, _ = signals.ReplyDelivered.Connect(func(_ context.Context, e agentevents.ReplyDeliveredEvent) error { delivered = e; return nil }, signal.ConnectOptions{})
+	_, _ = signals.ReplyCommitted.Connect(func(_ context.Context, e agentevents.ReplyCommittedEvent) error { committed = e; return nil }, signal.ConnectOptions{})
 	result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
 	if err == nil || !result.Persisted || !committed.Persisted || delivered.Err == nil || len(committed.AssociationErrors) != 1 {
 		t.Fatalf("partial facts lost: %+v / %+v / %v", delivered, committed, err)
@@ -115,7 +120,7 @@ func TestConfirmationPublishesAfterAdmissionRelease(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	_, _ = a.Signals().ConfirmationChanged.Connect(func(_ context.Context, event ConfirmationChangedEvent) error {
+	_, _ = a.Signals().ConfirmationChanged.Connect(func(_ context.Context, event agentevents.ConfirmationChangedEvent) error {
 		if event.Phase != "command" {
 			return nil
 		}

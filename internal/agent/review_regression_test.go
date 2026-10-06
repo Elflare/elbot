@@ -39,7 +39,7 @@ func TestReviewCompactRejectsDirectiveBeforeStateMutation(t *testing.T) {
 	if err := a.HandleMessage(ctx, "@tool:web_search"); err != nil {
 		t.Fatal(err)
 	}
-	state, err := a.execution.chat.toolState.Snapshot(ctx, row.ID)
+	state, err := a.execution.dialogue.Preparer.Tools.State.Snapshot(ctx, row.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestReviewOldInputCannotCommitToolsAfterBindingSwitch(t *testing.T) {
 	if err := <-done; err == nil {
 		t.Fatal("stale input was accepted")
 	}
-	state, err := a.execution.chat.toolState.Snapshot(ctx, row.ID)
+	state, err := a.execution.dialogue.Preparer.Tools.State.Snapshot(ctx, row.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

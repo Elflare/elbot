@@ -11,12 +11,15 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/agent/dialogue"
+	agentevents "elbot/internal/agent/events"
 	"elbot/internal/chatinfo"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 	sandboxctx "elbot/internal/sandbox"
@@ -39,10 +42,10 @@ func (p *statusReadingPlatform) SetRuntimeStatus(_ context.Context, sent runtime
 }
 
 func TestComponentStatusRecordedBeforeDisplayAndBackgroundStaysSilent(t *testing.T) {
-	recorder := &statusRecorder{changed: signal.New[StatusChangedEvent]("test.status", nil)}
+	recorder := &statusRecorder{changed: signal.New[agentevents.StatusChangedEvent]("test.status", nil)}
 	p := &statusReadingPlatform{recorder: recorder, observed: make(chan runtimestatus.Snapshot, 2)}
 	foreground := foregroundTurnOutput{sender: &outputSender{dispatcher: dispatch.New(dispatch.Options{Primary: p})}, status: recorder}
-	_, err := recorder.changed.Connect(func(ctx context.Context, event StatusChangedEvent) error {
+	_, err := recorder.changed.Connect(func(ctx context.Context, event agentevents.StatusChangedEvent) error {
 		if event.Display {
 			return foreground.sender.dispatcher.SetRuntimeStatus(ctx, event.Snapshot)
 		}
@@ -111,7 +114,7 @@ func TestComponentPolicyOptionsReachHookAndPrompt(t *testing.T) {
 			cfg.ToolRegistry = registry
 			cfg.SecurityPolicy = security.NewPolicy("low", "high", admins)
 		})
-		provider := a.execution.chat.toolRuntime.provider.(toolRunPromptProvider)
+		provider := a.execution.dialogue.Preparer.Tools.Provider.(toolRunPromptProvider)
 		actor := a.identity.Actor(ctx)
 		event := a.hooks.fillContext(ctx, hook.Event{})
 		if (actor.Role == security.RoleSuperadmin) != admin || event.Actor.Role != string(actor.Role) {
@@ -148,7 +151,7 @@ func TestDiagnosticLoggerOptionsAndRetiredObservationLogs(t *testing.T) {
 			}
 		})
 		var replyEvents []string
-		a.execution.chat.replies.messages = &replyTestRepository{MessageRepository: a.execution.chat.messages, events: &replyEvents, mapErr: errors.New("association failure")}
+		a.execution.dialogue.Replies.Messages = &replyTestRepository{MessageRepository: a.execution.dialogue.Messages.Repository, events: &replyEvents, mapErr: errors.New("association failure")}
 		ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Sender: mediaSendFunc(func([]delivery.Output) (delivery.Receipt, error) {
 			return delivery.Receipt{}, errors.New("send failure")
 		})})
@@ -156,7 +159,7 @@ func TestDiagnosticLoggerOptionsAndRetiredObservationLogs(t *testing.T) {
 		if _, err := a.output.SendAssistant(ctx, "hello"); err == nil {
 			t.Fatal("expected send failure")
 		}
-		a.execution.chat.replies.associateReceipt(ctx, "session", "message", delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "qq", ScopeID: "private:1", PlatformMessageID: "sent"}}})
+		a.execution.dialogue.Replies.AssociateReceipt(ctx, "session", "message", delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "qq", ScopeID: "private:1", PlatformMessageID: "sent"}}})
 		if !enabled {
 			if logs.Len() != 0 {
 				t.Fatal("unconfigured diagnostic logger wrote a record")
@@ -176,12 +179,12 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 	ctx := turn.WithAttempt(turn.WithExecution(requestCtx, execution), "attempt")
 	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Info: chatinfo.Info{Source: chatinfo.Source{Platform: "qq", ScopeID: "cron:1"}}, Sender: &fakePlatform{}, BufferAssistantOutput: true})
 	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Root: "/background", Dir: "/background/task"})
-	ctx = context.WithValue(ctx, backgroundModelSelectionKey{}, config.ModelSelection{Provider: "task", Model: "task"})
+	ctx = modelmgr.WithSelectionOverride(ctx, config.ModelSelection{Provider: "task", Model: "task"})
 	foreground, cancelForeground := context.WithCancel(chatinfo.WithInfo(context.Background(), chatinfo.Info{Source: chatinfo.Source{Platform: "cli", ScopeID: "remote:original"}}))
 	actor := security.Actor{ID: "cli:owner", Role: security.RoleSuperadmin}
 	execution.Adopt(security.WithActor(foreground, actor))
 	cancelForeground()
-	view := executionView{}
+	view := dialogue.ExecutionView{}
 	refreshed := view.Context(ctx)
 	msg, ok := platform.MessageContextFrom(refreshed)
 	if !ok || msg.Info.Source.ScopeID != "remote:original" || msg.Sender != nil || msg.BufferAssistantOutput {
@@ -190,7 +193,7 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 	if sandbox, _ := sandboxctx.SandboxContextFromContext(refreshed); sandbox.Root != "" || sandbox.Dir != "" {
 		t.Fatalf("retained sandbox: %+v", sandbox)
 	}
-	if selection, _ := refreshed.Value(backgroundModelSelectionKey{}).(config.ModelSelection); selection.Provider != "" || selection.Model != "" {
+	if selection := modelmgr.SelectionOverrideFromContext(refreshed); selection.Provider != "" || selection.Model != "" {
 		t.Fatalf("retained model override: %+v", selection)
 	}
 	if got, _ := security.ActorFromContext(refreshed); got != actor || turn.AttemptFromContext(refreshed) != "attempt" || refreshed.Err() != nil {
@@ -212,20 +215,20 @@ func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
 		t.Fatal(err)
 	}
 	counts := map[string]int{}
-	_, _ = a.signals.UserInputReceived.Connect(func(context.Context, UserInputReceivedEvent) error { counts["input"]++; return nil }, signal.ConnectOptions{})
-	_, _ = a.signals.ModelCallCompleted.Connect(func(context.Context, ModelCallCompletedEvent) error { counts["model"]++; return nil }, signal.ConnectOptions{})
-	_, _ = a.signals.ToolCallCompleted.Connect(func(context.Context, ToolCallCompletedEvent) error { counts["tool"]++; return nil }, signal.ConnectOptions{})
-	_, _ = a.signals.ConfirmationChanged.Connect(func(context.Context, ConfirmationChangedEvent) error { counts["confirm"]++; return nil }, signal.ConnectOptions{})
-	_, _ = a.signals.TurnTimedOut.Connect(func(context.Context, TurnTimedOutEvent) error { counts["timeout"]++; return nil }, signal.ConnectOptions{})
+	_, _ = a.signals.UserInputReceived.Connect(func(context.Context, agentevents.UserInputReceivedEvent) error { counts["input"]++; return nil }, signal.ConnectOptions{})
+	_, _ = a.signals.ModelCallCompleted.Connect(func(context.Context, agentevents.ModelCallCompletedEvent) error { counts["model"]++; return nil }, signal.ConnectOptions{})
+	_, _ = a.signals.ToolCallCompleted.Connect(func(context.Context, agentevents.ToolCallCompletedEvent) error { counts["tool"]++; return nil }, signal.ConnectOptions{})
+	_, _ = a.signals.ConfirmationChanged.Connect(func(context.Context, agentevents.ConfirmationChangedEvent) error { counts["confirm"]++; return nil }, signal.ConnectOptions{})
+	_, _ = a.signals.TurnTimedOut.Connect(func(context.Context, agentevents.TurnTimedOutEvent) error { counts["timeout"]++; return nil }, signal.ConnectOptions{})
 	out := foregroundTurnOutput{sender: a.output, status: a.status}
-	if _, err := a.execution.chat.prepareTurn(ctx, row, "input"); err != nil {
+	if _, err := a.execution.dialogue.PrepareTurn(ctx, dialogue.TurnInput{Session: row, Text: "input", Selection: modelmgr.SelectionForTurn(ctx, a.execution.models, row)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.execution.chat.caller.Call(ctx, row, modelSelectionForTurn(ctx, a.execution.models, row), nil, nil, nil, nil, out); err != nil {
+	if _, err := testChatRoute(a).Caller.Call(ctx, row, modelmgr.SelectionForTurn(ctx, a.execution.models, row), nil, nil, nil, nil, out); err != nil {
 		t.Fatal(err)
 	}
 	call := llm.ToolCallRequest{ID: "call", Name: "test_tool", Arguments: "{}"}
-	a.execution.chat.toolDeps.RecordToolCall(ctx, row.ID, call, "low", storage.Now(), "done", nil)
+	testToolDeps(a).RecordToolCall(ctx, row.ID, call, "low", storage.Now(), "done", nil)
 	a.message.input.confirmations.publishConfirmationWait(ctx, row.ID, call, tool.RiskHigh, nil)
 	a.execution.handleTurnContextDone(ctx, row.ID, context.DeadlineExceeded, out)
 	for _, event := range []string{"input", "model", "tool", "confirm", "timeout"} {

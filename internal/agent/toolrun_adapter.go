@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/agent/dialogue"
+	agentevents "elbot/internal/agent/events"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -32,14 +34,14 @@ type toolRunDeps struct {
 	sessions      *sessionstate.Service
 	store         storage.Store
 	confirmations *confirmationCoordinator
-	view          executionView
-	output        turnOutput
+	view          dialogue.ExecutionView
+	output        dialogue.Output
 	attempt       string
-	completed     *signal.Signal[ToolCallCompletedEvent]
-	denied        *signal.Signal[ToolDeniedEvent]
+	completed     *signal.Signal[agentevents.ToolCallCompletedEvent]
+	denied        *signal.Signal[agentevents.ToolDeniedEvent]
 }
 
-func (d toolRunDeps) forTurn(out turnOutput, attempt string) toolRunDeps {
+func (d toolRunDeps) ForTurn(out dialogue.Output, attempt string) toolrun.RunnerDeps {
 	d.output, d.attempt = out, attempt
 	return d
 }
@@ -86,7 +88,7 @@ func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Sess
 }
 
 func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error) {
-	toolReq, toolCtx, done, err := d.requests.Start(ctx, request.StartRequest{ParentID: turnRequestIDFromContext(ctx), SessionID: sessionID, Kind: request.KindTool, Label: toolName})
+	toolReq, toolCtx, done, err := d.requests.Start(ctx, request.StartRequest{ParentID: request.TurnIDFromContext(ctx), SessionID: sessionID, Kind: request.KindTool, Label: toolName})
 	if err != nil {
 		return ctx, time.Time{}, func() {}, err
 	}
@@ -153,11 +155,11 @@ func (d toolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call 
 	if d.store != nil && d.store.ToolCalls() != nil {
 		recordErr = d.store.ToolCalls().Create(ctx, record)
 	}
-	emitFact(ctx, d.completed, ToolCallCompletedEvent{EventMeta: eventMeta(ctx, sessionID), Record: *record, Arguments: call.Arguments, RecordErr: recordErr})
+	agentevents.Emit(ctx, d.completed, agentevents.ToolCallCompletedEvent{EventMeta: agentevents.Meta(ctx, sessionID), Record: *record, Arguments: call.Arguments, RecordErr: recordErr})
 }
 
 func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string) {
-	emitFact(ctx, d.denied, ToolDeniedEvent{EventMeta: eventMeta(ctx, sessionID), ActorID: d.identity.Actor(ctx).ID, Tool: call.Name, Risk: string(risk), Reason: reason})
+	agentevents.Emit(ctx, d.denied, agentevents.ToolDeniedEvent{EventMeta: agentevents.Meta(ctx, sessionID), ActorID: d.identity.Actor(ctx).ID, Tool: call.Name, Risk: string(risk), Reason: reason})
 }
 
 func (d toolRunDeps) RememberDiscoveryResult(ctx context.Context, row *storage.Session, result *tool.Result) error {
@@ -177,15 +179,15 @@ func (d toolRunDeps) AddToolUse(sessionID, toolName string) {
 }
 
 func (d toolRunDeps) ToolResultMessage(sessionID string, message llm.LLMMessage) storage.Message {
-	return toolResultStorageMessage(sessionID, message)
+	return dialogue.ToolResultStorageMessage(sessionID, message)
 }
 
 func (d toolRunDeps) ToolCallMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest) storage.Message {
-	return toolCallStorageMessage(sessionID, content, rawText, calls)
+	return dialogue.ToolCallStorageMessage(sessionID, content, rawText, calls)
 }
 
 func (d toolRunDeps) PersistedToolMessage(message llm.LLMMessage) llm.LLMMessage {
-	return persistedToolMessage(message)
+	return dialogue.PersistedToolMessage(message)
 }
 
 func (d toolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {

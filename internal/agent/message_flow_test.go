@@ -268,8 +268,8 @@ func TestMapSentAssistantMessageUsesOnlyCompleteReceiptSources(t *testing.T) {
 		{Platform: "telegram", ScopeID: "private:1", PlatformMessageID: "101"},
 		{Platform: "telegram", ScopeID: "supergroup:-2", PlatformMessageID: "101"},
 	}
-	a.execution.chat.replies.associateReceipt(ctx, session.ID, assistant.ID, delivery.Receipt{SentMessages: sent})
-	a.execution.chat.replies.associateReceipt(ctx, session.ID, assistant.ID, delivery.Receipt{PlatformMessageIDs: []string{"legacy"}, SentMessages: []delivery.SentMessage{
+	a.execution.dialogue.Replies.AssociateReceipt(ctx, session.ID, assistant.ID, delivery.Receipt{SentMessages: sent})
+	a.execution.dialogue.Replies.AssociateReceipt(ctx, session.ID, assistant.ID, delivery.Receipt{PlatformMessageIDs: []string{"legacy"}, SentMessages: []delivery.SentMessage{
 		{Platform: "qqonebot", PlatformMessageID: "incomplete"},
 		{ScopeID: "group:9", PlatformMessageID: "incomplete"},
 		{Platform: "qqonebot", ScopeID: "group:9"},

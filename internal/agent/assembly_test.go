@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	chatroute "elbot/internal/agent/chat"
+	"elbot/internal/agent/dialogue"
+	"elbot/internal/agent/routes"
 	"elbot/internal/command"
 	commandbuiltin "elbot/internal/command/builtin"
 	"elbot/internal/completion"
@@ -48,7 +51,7 @@ type testAgentOptions struct {
 	ToolsConfig           config.ToolsConfig
 	FileRollback          *fileops.Service
 	ToolRegistry          *tool.Registry
-	ToolProvider          ToolSchemaProvider
+	ToolProvider          dialogue.ToolSchemaProvider
 	ToolTagsPath          string
 	ToolTags              config.ToolTagsConfig
 	SessionIdleExpiration *config.SessionIdleExpirationConfig
@@ -59,7 +62,7 @@ type testAgentOptions struct {
 	ResidentMemoryStore   *resident.Store
 }
 
-func assembleTestOptions(opts testAgentOptions) Options {
+func assembleTestOptions(opts testAgentOptions) testAssembly {
 	defaults := config.Default()
 	if opts.Platform == nil {
 		opts.Platform = &fakePlatform{}
@@ -79,21 +82,20 @@ func assembleTestOptions(opts testAgentOptions) Options {
 		notificationrules.ModelRetry(notices)(ctx, event.Provider, event.Retry)
 		return nil
 	}, signal.ConnectOptions{})
-	optsResult := Options{
-		RuntimeContext: opts.RuntimeContext,
-		Platform:       opts.Platform, Models: opts.Models, Store: opts.Store, Media: opts.Media,
+	registry := routes.New()
+	optsResult := testAssembly{RuntimeContext: opts.RuntimeContext, Config: Config{
+		SoulPath: opts.SoulPath, LLMRequestConfig: defaults.LLMRequest, SessionIdleExpiration: defaults.Session.IdleExpiration, SandboxRoot: opts.SandboxRoot, ToolsConfig: opts.ToolsConfig,
+	}, Dependencies: Dependencies{
+		Routes: registry, Platform: opts.Platform, Models: opts.Models, Store: opts.Store, Media: opts.Media,
 		Sessions: session.NewServiceWithConfig(opts.Store, opts.SessionConfig, session.NewTitleGenerator(opts.Models)),
 		Commands: command.NewRouter(opts.CommandPrefixes), Requests: request.NewManager(0), Turns: turn.NewManager(),
-		Contexts:  contextmgr.New(contextmgr.Options{Store: opts.Store, Models: opts.Models, Config: defaults.Context, Metadata: defaults.ModelMetadata, Providers: opts.Providers}),
+		Contexts:  contextmgr.New(contextmgr.Options{Compactors: registry, Store: opts.Store, Models: opts.Models, Config: defaults.Context, Metadata: defaults.ModelMetadata, Providers: opts.Providers}),
 		ToolState: toolrun.NewStateService(opts.Store), ToolRunner: toolrun.NewManager(opts.ToolRegistry, opts.SecurityPolicy),
 		ToolPreloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: opts.ToolRegistry, TagsPath: opts.ToolTagsPath, Tags: opts.ToolTags}),
-		ToolRegistry:  opts.ToolRegistry, FileRollback: opts.FileRollback,
-		Dispatcher: dispatcher, Notifications: notices, SecurityPolicy: opts.SecurityPolicy,
-		SandboxRoot: opts.SandboxRoot, ToolsConfig: opts.ToolsConfig,
-		LLMRequestConfig: defaults.LLMRequest, SessionIdleExpiration: defaults.Session.IdleExpiration,
-		ToolProvider: opts.ToolProvider, HookManager: opts.HookManager, HookRuntime: opts.HookRuntime, Logs: opts.Logs,
-		SoulPath: opts.SoulPath, ResidentMemoryStore: opts.ResidentMemoryStore,
-	}
+		ToolRegistry:  opts.ToolRegistry, FileRollback: opts.FileRollback, Dispatcher: dispatcher, Notifications: notices, SecurityPolicy: opts.SecurityPolicy,
+		ToolProvider: opts.ToolProvider, HookManager: opts.HookManager, HookRuntime: opts.HookRuntime, Logs: opts.Logs, ResidentMemoryStore: opts.ResidentMemoryStore,
+	}}
+
 	optsResult.ToolRunner.Media = opts.Media
 	if opts.SessionIdleExpiration != nil {
 		optsResult.SessionIdleExpiration = *opts.SessionIdleExpiration
@@ -107,7 +109,11 @@ func mustNewWithOptions(t *testing.T, cfg testAgentOptions, configure ...func(*t
 		change(&cfg)
 	}
 	opts := assembleTestOptions(cfg)
-	a, err := NewWithOptions(opts)
+	runtimeCtx := opts.RuntimeContext
+	if runtimeCtx == nil {
+		runtimeCtx = t.Context()
+	}
+	a, err := New(runtimeCtx, opts.Config, opts.Dependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +239,25 @@ func rollbackTestFile(a *Agent, ctx context.Context, id uint64) (fileops.Rollbac
 func setTestToolState(a *Agent, state *toolrun.StateService) {
 	a.message.input.toolState = state
 	a.background.toolState = state
-	a.execution.chat.toolDeps.state = state
-	a.execution.chat.caller.toolState = state
-	a.execution.chat.toolState = state
+	testToolDeps(a).state = state
+	a.execution.dialogue.Preparer.Tools.State = state
+	a.execution.dialogue.Preparer.Tools.State = state
+}
+
+// Test assembly preserves fault-injection conveniences without a legacy constructor.
+type testAssembly struct {
+	Config
+	Dependencies
+	RuntimeContext context.Context
+}
+
+func testChatRoute(a *Agent) *chatroute.Loop {
+	loop, err := a.execution.dialogue.Routes.LoopFor(llm.ProtocolChat)
+	if err != nil {
+		panic(err)
+	}
+	return loop.(*chatroute.Loop)
+}
+func testToolDeps(a *Agent) *toolRunDeps {
+	return a.execution.dialogue.Preparer.Tools.Deps.(*toolRunDeps)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextmgr"
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
@@ -17,7 +18,7 @@ func (c *executionCoordinator) CompactCurrent(ctx context.Context, triggerReason
 	if err != nil {
 		return "", err
 	}
-	_, content, err := c.compactSession(ctx, current, triggerReason, modelSelectionForTurn(ctx, c.models, current))
+	_, content, err := c.compactSession(ctx, current, triggerReason, modelmgr.SelectionForTurn(ctx, c.models, current))
 	return content, err
 }
 
@@ -162,7 +163,7 @@ func (c *executionCoordinator) compactActive(sessionID string) bool {
 	return compactActive(c.turns, c.requests, sessionID)
 }
 
-func (c *executionCoordinator) compactBeforeTurn(ctx context.Context, session *storage.Session, text string, out turnOutput, selection modelmgr.Selection) (context.Context, *storage.Session, error) {
+func (c *executionCoordinator) compactBeforeTurn(ctx context.Context, session *storage.Session, text string, out dialogue.Output, selection modelmgr.Selection) (context.Context, *storage.Session, error) {
 	if c.turns.CanCompact(session.ID, turn.ExecutionFromContext(ctx)) && c.shouldCompact(ctx, session, selection) {
 		next, content, err := c.compactSession(withInboundTurnInput(ctx, inboundTurnInput(ctx, text)), session, "auto", selection)
 		if err != nil {

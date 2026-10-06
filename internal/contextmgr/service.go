@@ -14,14 +14,16 @@ import (
 )
 
 type Options struct {
-	Store     storage.Store
-	Models    *modelmgr.Service
-	Config    config.ContextConfig
-	Metadata  config.ModelMetadataConfig
-	Providers map[string]config.ProviderConfig
+	Compactors CompactorResolver
+	Store      storage.Store
+	Models     *modelmgr.Service
+	Config     config.ContextConfig
+	Metadata   config.ModelMetadataConfig
+	Providers  map[string]config.ProviderConfig
 }
 
 type Service struct {
+	compactors     CompactorResolver
 	store          storage.Store
 	models         *modelmgr.Service
 	loader         Loader
@@ -34,7 +36,7 @@ type Service struct {
 }
 
 func New(opts Options) *Service {
-	s := &Service{store: opts.Store, models: opts.Models, loader: Loader{Store: opts.Store}, lastUsage: map[string]*llm.Usage{}}
+	s := &Service{compactors: opts.Compactors, store: opts.Store, models: opts.Models, loader: Loader{Store: opts.Store}, lastUsage: map[string]*llm.Usage{}}
 	s.Configure(opts.Config, opts.Metadata, opts.Providers)
 	return s
 }

@@ -43,7 +43,7 @@ func TestBackgroundStateFreezesInitialTools(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			before, err := a.execution.chat.toolState.Snapshot(ctx, first.SessionID)
+			before, err := a.execution.dialogue.Preparer.Tools.State.Snapshot(ctx, first.SessionID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -55,7 +55,7 @@ func TestBackgroundStateFreezesInitialTools(t *testing.T) {
 			if _, err := a.RunBackground(ctx, req); err != nil {
 				t.Fatal(err)
 			}
-			after, err := a.execution.chat.toolState.Snapshot(ctx, first.SessionID)
+			after, err := a.execution.dialogue.Preparer.Tools.State.Snapshot(ctx, first.SessionID)
 			if err != nil {
 				t.Fatal(err)
 			}

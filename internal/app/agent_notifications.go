@@ -5,14 +5,14 @@ import (
 	"errors"
 	"log/slog"
 
-	"elbot/internal/agent"
+	agentevents "elbot/internal/agent/events"
 	"elbot/internal/hook"
 	"elbot/internal/notification"
 	"elbot/internal/notification/rules"
 	"elbot/internal/signal"
 )
 
-func (b *signalBindings) connectAgentNotifications(events agent.Signals, notices *notification.Manager, sender rules.AssistantSender, logger *slog.Logger) error {
+func (b *signalBindings) connectAgentNotifications(events agentevents.Signals, notices *notification.Manager, sender rules.AssistantSender, logger *slog.Logger) error {
 	progress, err := b.newQueue("agent.progress_notices", logger, false)
 	if err != nil {
 		return err
@@ -23,10 +23,10 @@ func (b *signalBindings) connectAgentNotifications(events agent.Signals, notices
 	}
 	vision := rules.NewVisionNotices(sender)
 	return errors.Join(
-		connectSignal(b, events.VisionFallbackUsed, func(ctx context.Context, e agent.VisionFallbackUsedEvent) error {
+		connectSignal(b, events.VisionFallbackUsed, func(ctx context.Context, e agentevents.VisionFallbackUsedEvent) error {
 			return vision.Send(ctx, e.SessionID, e.Visible)
 		}, signal.ConnectOptions{Executor: progress, Lifetime: signal.FollowEmit, Shutdown: signal.CancelPending}),
-		connectSignal(b, events.HookFailed, func(ctx context.Context, e agent.HookFailedEvent) error {
+		connectSignal(b, events.HookFailed, func(ctx context.Context, e agentevents.HookFailedEvent) error {
 			if !e.Notice {
 				return nil
 			}

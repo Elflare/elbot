@@ -59,8 +59,8 @@ func editForRollback(t *testing.T, a *Agent, ctx context.Context, row *storage.S
 	}
 	raw, _ := json.Marshal(args)
 	call := llm.ToolCallRequest{ID: "edit", Name: "edit_file", Arguments: string(raw)}
-	ctx = a.execution.chat.toolDeps.PrepareToolContext(ctx, row, call)
-	editor, _ := a.execution.chat.toolRuntime.registry.Get("edit_file")
+	ctx = testToolDeps(a).PrepareToolContext(ctx, row, call)
+	editor, _ := a.execution.dialogue.Preparer.Tools.Registry.Get("edit_file")
 	if _, err := editor.Call(ctx, tool.CallRequest{ID: call.ID, Arguments: raw}); err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func testRollbackCommandRechecksIdleAtCommit(t *testing.T, prepared bool) {
 		t.Fatalf("records=%+v err=%v", records, err)
 	}
 	var once sync.Once
-	a.execution.chat.toolRuntime.fileRollback.CheckWrite = func(string) error {
+	testToolDeps(a).runtime.fileRollback.CheckWrite = func(string) error {
 		once.Do(func() {
 			locked, release, err := a.execution.sessions.EnterActivation(ctx, a.identity.Scope(ctx), row.ID)
 			if err != nil {
