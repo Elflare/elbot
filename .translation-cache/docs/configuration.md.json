@@ -1448,6 +1448,14 @@
       "translation": "__ELBOT_CODE_1__ in __ELBOT_CODE_0__ controls the idle expiration time of the current Session, in minutes:\n",
       "updated_at": 1783074493
     },
+    "docs/configuration.md:paragraph:1167fa091d626de19b49d2a7f6b52f72d6419133133db9ecb9edb53684602f4a": {
+      "kind": "paragraph",
+      "source": "同一原生历史中的工具定义固定，同名 schema 变化也需要新建会话。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1167fa091d626de19b49d2a7f6b52f72d6419133133db9ecb9edb53684602f4a",
+      "translation": "Tool definitions within the same native history are fixed; changes to a schema with the same name also require creating a new Session.\n",
+      "updated_at": 1791341097
+    },
     "docs/configuration.md:paragraph:123944ca45d38bc86a9c93ce2b88c68c450d4a5d8272799cf282d21b0bcace4a": {
       "kind": "paragraph",
       "source": "相对路径以 __ELBOT_CODE_0__ 所在目录为基准：\n",
@@ -1624,6 +1632,14 @@
       "translation": "This will preload the tools configured under __ELBOT_CODE_0__ into the current Session. If __ELBOT_CODE_1__ is not empty, it will also be appended to the system prompt starting from this round.\n",
       "updated_at": 1781779407
     },
+    "docs/configuration.md:paragraph:2b61ae7ad6d53d0672de195bef6a92e57a68acfc58d2bab8a98bb134e2e89732": {
+      "kind": "paragraph",
+      "source": "强制调用不可用工具或在无可用工具时设置 __ELBOT_CODE_0__ 会报错。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "2b61ae7ad6d53d0672de195bef6a92e57a68acfc58d2bab8a98bb134e2e89732",
+      "translation": "Forcing the invocation of unavailable tools or setting __ELBOT_CODE_0__ when no tools are available will result in an error.\n",
+      "updated_at": 1791341097
+    },
     "docs/configuration.md:paragraph:2bf74e9588b05b9f87e7965ec384c8d2c2757bbf7e47e90ceca0eee9c8403a70": {
       "kind": "paragraph",
       "source": "Elnis 配置建议拆到独立 __ELBOT_CODE_0__，__ELBOT_CODE_1__ 只保留入口路径。\n",
@@ -1687,6 +1703,14 @@
       "source_hash": "3ab1c1881e6e0f5702725c8670d0daf993dd01b5cdc785917f0628694e714a65",
       "translation": "__ELBOT_CODE_0__ itself does not affect the PATH, but once __ELBOT_CODE_1__ is included in the file, systemd will completely overwrite the original value before starting ElBot;",
       "updated_at": 1785918785
+    },
+    "docs/configuration.md:paragraph:3b2a521c31035a43a3928e77c33478e4d56f30674044a031e85faed7615cde8a": {
+      "kind": "paragraph",
+      "source": "上游需支持这两项能力，没有顶层 __ELBOT_CODE_0__ 回退。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "3b2a521c31035a43a3928e77c33478e4d56f30674044a031e85faed7615cde8a",
+      "translation": "Upstream must support these two capabilities; there is no top-level __ELBOT_CODE_0__ fallback.",
+      "updated_at": 1791341097
     },
     "docs/configuration.md:paragraph:3ce631dcd503591d75654e5600602523721958fdb1ac22b2a9d352551f63b81e": {
       "kind": "paragraph",
@@ -2128,6 +2152,14 @@
       "translation": "Default maintenance tasks include the cleanup of logs, Sessions, sandboxes, and chat history. For example, Session cleanup defaults to a 30-day retention period, sandbox content older than 7 days is cleaned up daily at 04:00 by default, and chat history cleanup is executed daily at 04:35 by default:\n",
       "updated_at": 1782226057
     },
+    "docs/configuration.md:paragraph:991c702563f873d81cf4a1320d04d97b09949da79441d99295e8e4c2127ec2fe": {
+      "kind": "paragraph",
+      "source": "Responses 工具定义通过原生输入中的 __ELBOT_CODE_0__ 发送，当前调用权限通过 __ELBOT_CODE_1__ 限定，无可用工具时发送 __ELBOT_CODE_2__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "991c702563f873d81cf4a1320d04d97b09949da79441d99295e8e4c2127ec2fe",
+      "translation": "Responses tool definitions are sent via __ELBOT_CODE_0__ in the native input, current invocation permissions are restricted via __ELBOT_CODE_1__, and __ELBOT_CODE_2__ is sent when no tools are available.",
+      "updated_at": 1791341097
+    },
     "docs/configuration.md:paragraph:9959859a45473cfd1afd30ad2e55dc67b5afdd71c76d1d1d3a2dbaca36a6eb7b": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 控制模型请求中的媒体交付：__ELBOT_CODE_2__ 使用内嵌数据，__ELBOT_CODE_3__ 使用预签名下载链接，__ELBOT_CODE_4__ 在请求媒体总大小超过 __ELBOT_CODE_5__ 时使用 S3。",
@@ -2303,6 +2335,14 @@
       "source_hash": "b4973c21af408f9bdeb18d02b1cefbcfd0aaa3c73d01d5ebf9bb2b81499e5ed2",
       "translation": "When a __ELBOT_CODE_0__ tool in a directory is first discovered or injected, or when switching to or resetting to that directory for the first time, if __ELBOT_CODE_1__ or __ELBOT_CODE_2__ exists at the root of the directory, the system will automatically attach the file content to the LLM so that it can read the working conventions of the current directory.",
       "updated_at": 1783833502
+    },
+    "docs/configuration.md:paragraph:b7a1ca6789e2becef1df08d9f18679313d7673c878ae124473586efc17bc4a71": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 只能进一步收窄当前权限；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "b7a1ca6789e2becef1df08d9f18679313d7673c878ae124473586efc17bc4a71",
+      "translation": "__ELBOT_CODE_0__ can only further narrow the current permissions;",
+      "updated_at": 1791341097
     },
     "docs/configuration.md:paragraph:b833edeb82e7c95e9c96875ea84a68fd61707bcf07c41a755b38af206c69d799": {
       "kind": "paragraph",
@@ -2512,6 +2552,14 @@
       "translation": "Runtime log configuration:\n",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:paragraph:e453ae39e390f26734b7610450877904717ddfc346b21c749477a319013bdda5": {
+      "kind": "paragraph",
+      "source": "Responses 会话使用带版本的原生输入格式；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e453ae39e390f26734b7610450877904717ddfc346b21c749477a319013bdda5",
+      "translation": "Responses Sessions use a versioned native input format;",
+      "updated_at": 1791341097
+    },
     "docs/configuration.md:paragraph:e4f2cbe75fd0b955f1b02657a8e57ae2aa406cf5fe0c2368cbc387facd5aa3ef": {
       "kind": "paragraph",
       "source": "模型服务通过有效期为 1 小时的预签名 URL 下载对象，不需要另外提供密钥。",
@@ -2527,6 +2575,14 @@
       "source_hash": "e791009aec850fc1e94bcf34e7f26d80126112f796ecb7f8c99120115c0e77bd",
       "translation": "The model service or relay service that actually downloads the files must be able to access the link.\n",
       "updated_at": 1789023374
+    },
+    "docs/configuration.md:paragraph:e9a1c1c254f024c86d8c9c9a02c2b843f6eb0da94a9d351c3d2d08cdab264f42": {
+      "kind": "paragraph",
+      "source": "缺少格式标记的旧会话不能继续对话、Fork 或压缩，请新建会话。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e9a1c1c254f024c86d8c9c9a02c2b843f6eb0da94a9d351c3d2d08cdab264f42",
+      "translation": "Old Sessions missing format markers cannot continue the conversation, be Forked, or be compressed; please create a new Session.",
+      "updated_at": 1791341097
     },
     "docs/configuration.md:paragraph:eff1b3a214ad1f1428be0c4c00ed90a38f27635458f7426388951c2205ecf67c": {
       "kind": "paragraph",
@@ -2826,8 +2882,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "f1c87df02541f691f541f4ed74201db2ce63bd63d0d6062d6b5a010a6e37dd28",
+  "source_hash": "e25135543009c6f563ba15cdd287b8b4c1c8b919e66cbf3844c726dba21ec934",
   "target": "docs.en/configuration.md",
-  "updated_at": 1791338570,
+  "updated_at": 1791341097,
   "version": 2
 }
