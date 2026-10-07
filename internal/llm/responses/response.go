@@ -107,6 +107,8 @@ type APIError struct {
 	Message    string `json:"message"`
 	Param      string `json:"param"`
 	StatusCode int    `json:"-"`
+	EventType  string `json:"-"`
+	Detail     string `json:"-"` // Sanitized, bounded diagnostics for logs only.
 }
 type IncompleteDetails struct {
 	Reason string `json:"reason"`

@@ -111,23 +111,10 @@ func readStream(ctx context.Context, sse *httpclient.SSE, out chan<- Event) {
 			}
 		case "response.failed", "response.incomplete":
 			terminal = true
-			reason := ""
-			if event.Response != nil {
-				if event.Response.Error != nil {
-					reason = httpclient.SafeSummary([]byte(event.Response.Error.Message))
-				}
-				if event.Response.IncompleteDetails != nil {
-					reason = event.Response.IncompleteDetails.Reason
-				}
-			}
-			if event.Response != nil && event.Response.Error != nil {
-				event.Error = event.Response.Error
-			} else {
-				event.Error = fmt.Errorf("%s: %s", event.Type, reason)
-			}
+			event.Error = streamAPIError(event)
 		case "error":
 			terminal = true
-			event.Error = &APIError{Code: event.Code, Message: event.Message, Param: event.Param}
+			event.Error = streamAPIError(event)
 		}
 		if !send(event) || terminal {
 			return
