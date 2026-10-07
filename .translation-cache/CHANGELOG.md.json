@@ -336,6 +336,14 @@
       "translation": "Fixed a bug where regular users could stop requests from other users.",
       "updated_at": 1791194538
     },
+    "CHANGELOG.md:list:301dc57ede8aa12d76110b6a6a5edd1efd3b963008b96143111a0ca1d46636bb": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 的 stdout／stderr 返回上限从各 16 KiB 提高到各 256 KiB，超出时在对应输出末尾说明过长截断。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "301dc57ede8aa12d76110b6a6a5edd1efd3b963008b96143111a0ca1d46636bb",
+      "translation": "The stdout/stderr return limit for __ELBOT_CODE_0__ has been increased from 16 KiB each to 256 KiB each; if exceeded, a note about truncation due to length will be added to the end of the corresponding output.",
+      "updated_at": 1791358274
+    },
     "CHANGELOG.md:list:3113c27f20b53241bc3c9f28cfe562a2fa63ad88463bbb3f33c3ef5fe21eb55f": {
       "kind": "list",
       "source": "CLI TUI 执行 __ELBOT_CODE_0__ 后会把当前运行状态收束为 __ELBOT_CODE_1__ 并固定耗时，不再继续累加状态栏时间。",
@@ -1280,6 +1288,14 @@
       "translation": "Simultaneously fixed concurrency issues related to model switching, __ELBOT_CODE_0__, and Session change commands.",
       "updated_at": 1784109405
     },
+    "CHANGELOG.md:list:a2a1d4fa6cfcdcde5c2089942902a486837d2da1e3db3cf0130e4d68a4fb7fad": {
+      "kind": "list",
+      "source": "新增 Responses 专用 __ELBOT_CODE_0__：读取媒体 ID、URL、本地图片或当前聊天历史图片；图片回灌模型，本地路径仅超管可用。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a2a1d4fa6cfcdcde5c2089942902a486837d2da1e3db3cf0130e4d68a4fb7fad",
+      "translation": "Added a dedicated __ELBOT_CODE_0__ for Responses: reads media IDs, URLs, local images, or images from the current chat history; images are fed back into the model, and local paths are only available to superadmins.",
+      "updated_at": 1791358274
+    },
     "CHANGELOG.md:list:a2c765ee4f5aa3de25461f0adededcdc8817f1c57cdd832af2ba145019abbccb": {
       "kind": "list",
       "source": "优化 __ELBOT_CODE_0__ 工具，支持目录搜索、搜索结果编号选择，以及按 AST 函数名精确返回完整函数内容及其起止行号。",
@@ -1912,6 +1928,14 @@
       "translation": "CLI TUI wide-screen mode now supports using the mouse to drag the divider between the chat area and the notification area, allowing the widths of both sides to be freely adjusted during runtime.",
       "updated_at": 1784085278
     },
+    "CHANGELOG.md:list:e8d1de65c4c974f745666b7376a6b1bb96327ccf6d5e7b9e16248c3840831682": {
+      "kind": "list",
+      "source": "修复 __ELBOT_CODE_0__ 先缓存全部输出、结束后才截断导致执行期间内存随输出量增长的问题；现在收集时限制容量，超出部分继续排空并丢弃。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "e8d1de65c4c974f745666b7376a6b1bb96327ccf6d5e7b9e16248c3840831682",
+      "translation": "Fixed an issue where __ELBOT_CODE_0__ cached all output and only truncated it after completion, causing memory usage to grow with the output volume during execution; capacity is now limited during collection, and any excess is drained and discarded.",
+      "updated_at": 1791358274
+    },
     "CHANGELOG.md:list:ea9324e8d2b186f384e727405908a402edd258407ff1c17a7fcc25913da73458": {
       "kind": "list",
       "source": "首次切换到含 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 的目录时，会自动附带说明文件内容；",
@@ -1919,6 +1943,14 @@
       "source_hash": "ea9324e8d2b186f384e727405908a402edd258407ff1c17a7fcc25913da73458",
       "translation": "When switching to a directory containing __ELBOT_CODE_0__ or __ELBOT_CODE_1__ for the first time, the contents of the documentation file will be automatically attached;",
       "updated_at": 1783178864
+    },
+    "CHANGELOG.md:list:eab1dcfc2af819bb8f4065ef64c84a312cac3b8b0e6c131791d93ad5c400eb3a": {
+      "kind": "list",
+      "source": "工具支持按 API 类型限制发现、补全、预载和执行。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "eab1dcfc2af819bb8f4065ef64c84a312cac3b8b0e6c131791d93ad5c400eb3a",
+      "translation": "Tools now support restricting discovery, completion, preloading, and execution by API type.",
+      "updated_at": 1791358274
     },
     "CHANGELOG.md:list:eaed67d51f700cdbcfbd66b43f3ab3d535edf10fa0a2eef475af820bb64b5e87": {
       "kind": "list",
@@ -2034,8 +2066,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "4eb68f0ffc69bd9c7c293e41ef5dd2709aebb0aa50e0902b1a7509571144c890",
+  "source_hash": "91779f2b19bbebfe77496ea8ec1d878d839d85d3b1a787620d7822757b8d6ba8",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1791341159,
+  "updated_at": 1791358274,
   "version": 2
 }
