@@ -28,7 +28,7 @@ func Origin(row *storage.Session) (llm.Origin, bool, error) {
 	if err := json.Unmarshal(raw, &origin); err != nil {
 		return llm.Origin{}, false, fmt.Errorf("decode session origin: %w", err)
 	}
-	if origin.Protocol == "" {
+	if origin.APIType == "" {
 		return llm.Origin{}, false, fmt.Errorf("session origin requires a protocol")
 	}
 	return origin, true, nil
@@ -37,7 +37,7 @@ func Origin(row *storage.Session) (llm.Origin, bool, error) {
 // RegisterOrigin uses the original binding or the existing session gate. It never
 // replaces a known historical origin with the current model's configuration.
 func (s *Service) RegisterOrigin(ctx context.Context, id string, target llm.Origin) (*storage.Session, error) {
-	if target.Protocol == "" || target.Provider == "" {
+	if target.APIType == "" || target.Provider == "" {
 		return nil, fmt.Errorf("dialogue origin requires a protocol and provider")
 	}
 	var release func()
@@ -60,8 +60,8 @@ func (s *Service) RegisterOrigin(ctx context.Context, id string, target llm.Orig
 			return err
 		}
 		if known {
-			if current.Protocol != target.Protocol {
-				return fmt.Errorf("source protocol %q cannot be reinterpreted as %q", current.Protocol, target.Protocol)
+			if current.APIType != target.APIType {
+				return fmt.Errorf("source protocol %q cannot be reinterpreted as %q", current.APIType, target.APIType)
 			}
 			if current.Provider != "" {
 				return nil

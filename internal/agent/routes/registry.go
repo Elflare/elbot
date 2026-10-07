@@ -15,12 +15,12 @@ type Registry struct {
 	mu         sync.RWMutex
 	sealed     bool
 	providers  map[string]Binding
-	compactors map[llm.ProtocolID]contextmgr.Compactor
-	materials  map[llm.ProtocolID]session.MaterialPreparer
+	compactors map[llm.APIType]contextmgr.Compactor
+	materials  map[llm.APIType]session.MaterialPreparer
 }
 
 func New() *Registry {
-	return &Registry{providers: make(map[string]Binding), compactors: make(map[llm.ProtocolID]contextmgr.Compactor), materials: make(map[llm.ProtocolID]session.MaterialPreparer)}
+	return &Registry{providers: make(map[string]Binding), compactors: make(map[llm.APIType]contextmgr.Compactor), materials: make(map[llm.APIType]session.MaterialPreparer)}
 }
 
 func (r *Registry) Register(binding Binding) error {
@@ -29,7 +29,7 @@ func (r *Registry) Register(binding Binding) error {
 	if r.sealed {
 		return fmt.Errorf("provider bindings are sealed")
 	}
-	if binding.Origin.Provider == "" || binding.Origin.Protocol == "" || isNil(binding.Client) {
+	if binding.Origin.Provider == "" || binding.Origin.APIType == "" || isNil(binding.Client) {
 		return fmt.Errorf("provider binding requires an identity and client")
 	}
 	if _, ok := r.providers[binding.Origin.Provider]; ok {
@@ -69,7 +69,7 @@ func (r *Registry) CheckProviderBinding(origin llm.Origin, client llm.Client) (b
 // RegisterCompactor installs the source-material capability independently of
 // configured provider aliases. In particular, migrated Chat material remains
 // compressible when its old provider has been removed or changed.
-func (r *Registry) RegisterCompactor(id llm.ProtocolID, compactor contextmgr.Compactor) error {
+func (r *Registry) RegisterCompactor(id llm.APIType, compactor contextmgr.Compactor) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.sealed {
@@ -95,10 +95,10 @@ func (r *Registry) Seal() error {
 		return fmt.Errorf("no provider bindings registered")
 	}
 	for provider, binding := range r.providers {
-		if binding.Compactor != nil && r.compactors[binding.Origin.Protocol] == nil {
+		if binding.Compactor != nil && r.compactors[binding.Origin.APIType] == nil {
 			return fmt.Errorf("provider %q source compactor is not registered", provider)
 		}
-		if binding.Material != nil && r.materials[binding.Origin.Protocol] == nil {
+		if binding.Material != nil && r.materials[binding.Origin.APIType] == nil {
 			return fmt.Errorf("provider %q source material capability is not registered", provider)
 		}
 	}
@@ -141,20 +141,20 @@ func (r *Registry) CompactorFor(origin llm.Origin) (contextmgr.Compactor, error)
 	if !r.sealed {
 		return nil, fmt.Errorf("provider bindings are not sealed")
 	}
-	if origin.Protocol == "" {
+	if origin.APIType == "" {
 		return nil, fmt.Errorf("source session origin is missing")
 	}
 	if binding, ok := r.providers[origin.Provider]; ok && binding.Origin == origin && binding.Compactor != nil {
 		return binding.Compactor, nil
 	}
-	compactor := r.compactors[origin.Protocol]
+	compactor := r.compactors[origin.APIType]
 	if compactor == nil {
-		return nil, fmt.Errorf("source protocol %q does not support compaction", origin.Protocol)
+		return nil, fmt.Errorf("source protocol %q does not support compaction", origin.APIType)
 	}
 	return compactor, nil
 }
 
-func (r *Registry) RegisterMaterial(id llm.ProtocolID, preparer session.MaterialPreparer) error {
+func (r *Registry) RegisterMaterial(id llm.APIType, preparer session.MaterialPreparer) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.sealed {
@@ -179,9 +179,9 @@ func (r *Registry) MaterialFor(origin llm.Origin) (session.MaterialPreparer, err
 	if binding, ok := r.providers[origin.Provider]; ok && binding.Origin == origin && binding.Material != nil {
 		return binding.Material, nil
 	}
-	preparer := r.materials[origin.Protocol]
+	preparer := r.materials[origin.APIType]
 	if preparer == nil {
-		return nil, fmt.Errorf("source protocol %q does not support material branching", origin.Protocol)
+		return nil, fmt.Errorf("source protocol %q does not support material branching", origin.APIType)
 	}
 	return preparer, nil
 }

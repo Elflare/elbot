@@ -61,6 +61,11 @@ func TestForegroundOnlyToolHiddenInBackgroundSchemasAndNames(t *testing.T) {
 
 func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) {
 	registry := tool.NewRegistry()
+	for _, name := range []string{"alpha", "beta"} {
+		if err := registry.Register(availabilityTestTool{name: name}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
 		t.Fatal(err)
 	}
@@ -109,6 +114,9 @@ func TestPathSchemasStayStableAcrossBackgroundTakeover(t *testing.T) {
 	manager := NewManager(tool.NewRegistry(), security.DefaultPolicy())
 	var cached []CachedTool
 	for _, name := range []string{"shell", "read_file", "edit_file", "send_file"} {
+		if err := manager.Native.Registry.Register(availabilityTestTool{name: name}); err != nil {
+			t.Fatal(err)
+		}
 		cached = append(cached, CachedTool{Name: name, Source: SourceKindNative, Schema: llm.ToolSchema{Name: name, Description: "stable definition", Parameters: map[string]any{"type": "object"}}})
 	}
 	ctx := sandboxctx.WithSandboxContext(t.Context(), sandboxctx.SandboxContext{Background: true, Dir: t.TempDir()})

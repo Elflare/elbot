@@ -71,6 +71,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/assembly_routes.go`、`internal/app/models.go`：业务路线和客户端装配。
 - `internal/agent/dialogue/loop.go`、`internal/contextmgr/compact_contract.go`、`internal/session/material.go`：公共消费与材料交接契约。
 - `internal/llm/origin.go`、`internal/modelmgr/compatibility.go`：持久化归属与纯兼容判断。
+- `internal/llm/api_type.go`、`internal/tool/availability.go`：模型 API 类型与工具可用性；`contextinfo.Model.APIType` 承载当前主对话模型事实。
 
 <!-- locator:commands -->
 ## 命令与补全
@@ -201,8 +202,9 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 媒体中心
 
 - `internal/media/`：导入、图片处理、请求／发送解析、引用与清理。
-- `internal/media/platform.go`、`internal/media/history.go`：平台媒体与跨库历史对账。
+- `internal/media/platform.go`、`internal/media/history.go`：平台媒体、历史批量获取（缓存、去重与尝试预算）及跨库历史对账。
 - `internal/tool/builtin/chat_history.go`、`internal/tool/builtin/get_media.go`：历史查询与显式媒体获取。
+- `internal/tool/builtin/view_image.go`：Responses 看图工具，来源／图片序号选择、本地权限及多模态结果。
 - `internal/delivery/dispatch/media.go`：输出媒体准备和回执缓存。
 
 <!-- locator:cron -->

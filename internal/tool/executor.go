@@ -36,6 +36,9 @@ func (e Executor) Execute(ctx context.Context, call llm.ToolCallRequest) Executi
 	if !ok {
 		return executionError(call, message, fmt.Errorf("tool %q not found", call.Name))
 	}
+	if reason := UnavailableReason(ctx, tool.Info()); reason != "" {
+		return executionError(call, message, fmt.Errorf("%s", reason))
+	}
 	assessment, err := AssessRisk(ctx, tool, CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)})
 	if err != nil {
 		return executionError(call, message, fmt.Errorf("assess risk: %w", err))

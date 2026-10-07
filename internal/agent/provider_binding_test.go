@@ -79,7 +79,7 @@ func TestResponseBindingRunsNativeDialogueAndContinuesCheckpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if origin, known, err := session.Origin(row); err != nil || !known || origin.Protocol != llm.ProtocolResponse {
+	if origin, known, err := session.Origin(row); err != nil || !known || origin.APIType != llm.APITypeResponse {
 		t.Fatalf("native origin: %+v / %v", row, err)
 	}
 	if messages, err := opts.Store.Messages().ListBySession(ctx, row.ID); err != nil || len(messages) != 4 || messages[3].Content != "native answer" {
@@ -163,7 +163,7 @@ func TestHooksReadFixedModelAndActualRequestFacts(t *testing.T) {
 	if err := a.HandleMessage(t.Context(), "hello"); err != nil {
 		t.Fatal(err)
 	}
-	if earlyModel || len(models) != 1 || models[0] != (contextinfo.Model{Provider: "default", Model: "fixed", Protocol: "chat"}) {
+	if earlyModel || len(models) != 1 || models[0] != (contextinfo.Model{Provider: "default", Model: "fixed", APIType: "chat"}) {
 		t.Fatalf("model phase facts = %v / %+v", earlyModel, models)
 	}
 	facts := executions[0]

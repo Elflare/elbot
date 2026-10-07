@@ -19,7 +19,7 @@ func nativeStorageFixture(t *testing.T) (*Store, *storage.NativeExchange) {
 	if err := store.Sessions().Create(ctx, row); err != nil {
 		t.Fatal(err)
 	}
-	exchange := &storage.NativeExchange{ID: "exchange", SessionID: "s", Protocol: "response", Provider: "p", Model: "m", RequestJSON: `{"input":[],"unknown":9007199254740993}`}
+	exchange := &storage.NativeExchange{ID: "exchange", SessionID: "s", APIType: "response", Provider: "p", Model: "m", RequestJSON: `{"input":[],"unknown":9007199254740993}`}
 	if err := store.Dialogues().CreateExchange(ctx, exchange); err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestNativeFailedExchangeCannotBecomeCheckpointAndTerminalIsImmutable(t *tes
 	if err := store.Dialogues().FinishExchange(ctx, "exchange", "failed", `{}`, `[]`, "late"); err == nil {
 		t.Fatal("terminal facts overwritten")
 	}
-	exchange := &storage.NativeExchange{ID: "failed", SessionID: "s", Protocol: "response", Provider: "p", RequestJSON: `{}`}
+	exchange := &storage.NativeExchange{ID: "failed", SessionID: "s", APIType: "response", Provider: "p", RequestJSON: `{}`}
 	if err := store.Dialogues().CreateExchange(ctx, exchange); err != nil {
 		t.Fatal(err)
 	}

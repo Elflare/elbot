@@ -10,12 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 新增 Responses 专用 `view_image`：读取媒体 ID、URL、本地图片或当前聊天历史图片；图片回灌模型，本地路径仅超管可用。
 - Provider 新增 `api_mode="chat"/"response"`，省略仍使用 Chat Completions。
 - `edit_file` 为每个文件保留最近一次编辑前的内存备份。新增仅超管可用的 `/rollback [编号]` 和工具 `rollback_file`，发现读写文件工具时自动展开；切换 Session、重启或容量淘汰后记录失效。不覆盖 Shell 或外部程序的修改。
 - 新增仅超级管理员可用的聊天命令 `/doctor`，只读检查当前配置的缺失项、TOML 错误、主配置未知字段和内置 Skill 差异；按文件列出问题，并生成附配置说明和默认模板地址的 Elbot 处理请求。无问题时返回 `Everything is OK`，不会自动修改文件。
 
 ### Changed
 
+- 历史媒体获取的缓存、去重与 5 次未缓存获取预算从 get_media 收拢到媒体中心，与 view_image 共用；失败计数，缓存不占次数。
+- 工具支持按 API 类型限制发现、补全、预载和执行；模型类型标识统一命名为 APIType，配置与持久化字段保持不变。
 - `shell` 的 stdout／stderr 返回上限从各 16 KiB 提高到各 256 KiB，超出时在对应输出末尾说明过长截断。
 - Responses 工具定义从每轮顶层 `tools` 改为原生输入中的增量 `additional_tools`，回放保留原有位置；当前调用权限单独受 `tool_choice` 限制。旧 Responses 会话及同名工具定义变化需新建会话。
 - 后台路径说明从四个路径工具的 schema 移至系统提示，前台接管不再改变工具定义。

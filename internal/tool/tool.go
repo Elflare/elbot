@@ -33,6 +33,8 @@ const (
 )
 
 type Info struct {
+	// APITypes restricts model API availability; empty permits every API type.
+	APITypes       []llm.APIType
 	Name           string
 	Description    string
 	Source         Source

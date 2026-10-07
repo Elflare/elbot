@@ -8,12 +8,12 @@ import (
 // NativeExchange is an immutable request and the terminal facts of one API call.
 // Protocol packages interpret the JSON; storage never imports their item types.
 type NativeExchange struct {
-	ID, SessionID, Protocol, Provider, BaseURL, Model string
-	RequestID, RunID, Attempt, PreviousCheckpointID   string
-	RequestJSON, ResponseJSON, ItemsJSON              string
-	InputIDsJSON                                      string
-	Status, Error                                     string
-	CreatedAt                                         time.Time
+	ID, SessionID, APIType, Provider, BaseURL, Model string
+	RequestID, RunID, Attempt, PreviousCheckpointID  string
+	RequestJSON, ResponseJSON, ItemsJSON             string
+	InputIDsJSON                                     string
+	Status, Error                                    string
+	CreatedAt                                        time.Time
 }
 
 // NativeInput holds route-owned canonical input and local material references.
@@ -56,7 +56,7 @@ type NativeCommit struct {
 // NativeSeed owns a complete route-defined root window independently of the
 // source session. Storage retains opaque JSON and explicit material references.
 type NativeSeed struct {
-	ID, SessionID, Protocol, Provider, BaseURL            string
+	ID, SessionID, APIType, Provider, BaseURL             string
 	ResponseID, SourceCheckpointID                        string
 	ItemsJSON, MaterialsJSON, ContinuationJSON, CallsJSON string
 	MediaIDs                                              []string

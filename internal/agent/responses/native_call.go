@@ -45,7 +45,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 	if err != nil {
 		return result, err
 	}
-	exchange := &storage.NativeExchange{SessionID: s.session.ID, Protocol: string(origin.Protocol), Provider: origin.Provider, BaseURL: origin.BaseURL, Model: s.selection.Model, RequestID: facts.RequestID, RunID: facts.RunID, Attempt: facts.Attempt, PreviousCheckpointID: s.checkpointID(), RequestJSON: string(prepared.JSON()), InputIDsJSON: string(ids)}
+	exchange := &storage.NativeExchange{SessionID: s.session.ID, APIType: string(origin.APIType), Provider: origin.Provider, BaseURL: origin.BaseURL, Model: s.selection.Model, RequestID: facts.RequestID, RunID: facts.RunID, Attempt: facts.Attempt, PreviousCheckpointID: s.checkpointID(), RequestJSON: string(prepared.JSON()), InputIDsJSON: string(ids)}
 	locked, release, err := s.route.Messages.Gate.Enter(ctx, s.session.ID)
 	if err != nil {
 		return result, err

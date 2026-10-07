@@ -95,7 +95,7 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 		checkpointID = cp.ID
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	exchange := &storage.NativeExchange{SessionID: row.ID, Protocol: string(target.Protocol), Provider: target.Provider, BaseURL: target.BaseURL, Model: selection.Model, RequestID: facts.RequestID, RunID: facts.RunID, Attempt: facts.Attempt, PreviousCheckpointID: checkpointID, RequestJSON: string(request.JSON()), InputIDsJSON: "[]"}
+	exchange := &storage.NativeExchange{SessionID: row.ID, APIType: string(target.APIType), Provider: target.Provider, BaseURL: target.BaseURL, Model: selection.Model, RequestID: facts.RequestID, RunID: facts.RunID, Attempt: facts.Attempt, PreviousCheckpointID: checkpointID, RequestJSON: string(request.JSON()), InputIDsJSON: "[]"}
 	locked, leave, err := c.Messages.Gate.Enter(ctx, row.ID)
 	if err != nil {
 		return nil, err

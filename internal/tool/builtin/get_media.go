@@ -3,6 +3,7 @@ package builtin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -75,13 +76,9 @@ func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		return nil, fmt.Errorf("history media is not configured")
 	}
 	msg, _ := platform.MessageContextFrom(ctx)
-	attempts := 0
-	type position struct {
-		message string
-		index   int
-	}
-	results := map[position]string{}
 	var lines []string
+	var requests []media.HistoryMediaRequest
+	var positions []int
 	for i, id := range args.MessageIDs {
 		indexes := []int{1}
 		if args.MediaIndex != nil {
@@ -95,40 +92,30 @@ func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 			}
 			return nil, err
 		}
-		segments := media.HistorySegments(*row)
-		ids, err := t.center.HistoryIDs(ctx, *row)
-		if err != nil {
-			return nil, err
-		}
 		for _, index := range indexes {
-			key := position{id, index}
-			if line, ok := results[key]; ok {
-				lines = append(lines, line)
-				continue
-			}
-			prefix := fmt.Sprintf("[#%s] %d. ", id, index)
-			line := ""
-			switch {
-			case index > len(segments):
-				line = prefix + "[媒体序号越界]"
-			case ids[index] == "" && attempts >= getMediaDownloadLimit:
-				line = prefix + "[媒体未下载：达到本次 5 个下载尝试上限]"
-			default:
-				if ids[index] == "" {
-					attempts++
-				}
-				item, err := t.center.GetHistoryMedia(ctx, *row, index, msg.MediaResolver)
-				if err != nil {
-					// Transport errors may contain credential URLs or local paths; never echo them to the LLM.
-					line = prefix + "[媒体获取失败：来源不可用、超限或关联保存失败]"
-				} else {
-					line = prefix + historyMediaLabel(segments[index-1].Type, item.ID)
-					ids[index] = item.ID
-				}
-			}
-			results[key] = line
-			lines = append(lines, line)
+			positions = append(positions, len(lines))
+			lines = append(lines, fmt.Sprintf("[#%s] %d. ", id, index))
+			requests = append(requests, media.HistoryMediaRequest{Message: *row, Index: index})
 		}
+	}
+	results, err := t.center.GetHistoryMediaBatch(ctx, requests, msg.MediaResolver, media.HistoryFetchOptions{MaxFetchAttempts: getMediaDownloadLimit})
+	if err != nil {
+		return nil, err
+	}
+	for i, result := range results {
+		var text string
+		switch {
+		case errors.Is(result.Err, media.ErrHistoryMediaIndex):
+			text = "[媒体序号越界]"
+		case errors.Is(result.Err, media.ErrHistoryFetchLimit):
+			text = "[媒体未下载：达到本次 5 个下载尝试上限]"
+		case result.Err != nil:
+			text = "[媒体获取失败：来源不可用、超限或关联保存失败]"
+		default:
+			request := requests[i]
+			text = historyMediaLabel(media.HistorySegments(request.Message)[request.Index-1].Type, result.Media.ID)
+		}
+		lines[positions[i]] += text
 	}
 	return &tool.Result{Content: strings.Join(lines, "\n")}, nil
 }

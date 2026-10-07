@@ -3,6 +3,7 @@ package tool
 import "elbot/internal/llm"
 
 type Builder struct {
+	apiTypes       []llm.APIType
 	name           string
 	description    string
 	source         Source
@@ -69,6 +70,11 @@ func (b *Builder) ForegroundOnly() *Builder {
 	return b
 }
 
+func (b *Builder) APITypes(types ...llm.APIType) *Builder {
+	b.apiTypes = append([]llm.APIType(nil), types...)
+	return b
+}
+
 func (b *Builder) DependsOn(names ...string) *Builder {
 	b.dependsOn = append(b.dependsOn, normalizeNames(names)...)
 	return b
@@ -121,7 +127,7 @@ func (b *Builder) ObjectArray(name, description string, properties map[string]an
 }
 
 func (b *Builder) BuildInfo() Info {
-	return Info{Name: b.name, Description: b.description, Source: b.source, Risk: normalizeRisk(b.risk, RiskLow), SuperadminOnly: b.superadminOnly, Hidden: b.hidden, OwnerScoped: b.ownerScoped, ForegroundOnly: b.foregroundOnly, Tags: normalizeTags(b.tags), DependsOn: normalizeNames(b.dependsOn)}
+	return Info{Name: b.name, APITypes: append([]llm.APIType(nil), b.apiTypes...), Description: b.description, Source: b.source, Risk: normalizeRisk(b.risk, RiskLow), SuperadminOnly: b.superadminOnly, Hidden: b.hidden, OwnerScoped: b.ownerScoped, ForegroundOnly: b.foregroundOnly, Tags: normalizeTags(b.tags), DependsOn: normalizeNames(b.dependsOn)}
 }
 
 func (b *Builder) BuildSchema() llm.ToolSchema {

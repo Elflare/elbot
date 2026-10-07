@@ -15,6 +15,7 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
+	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 )
 
@@ -97,7 +98,7 @@ func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.
 		if err != nil {
 			return CallInput{}, err
 		}
-		allowedTools = toolrun.BackgroundToolNames(ctx, cached)
+		allowedTools = toolrun.BackgroundToolNames(ctx, cached, c.Tools.Registry)
 	}
 	baseMessages := llm.CloneMessages(messages)
 	requestMessages := llm.CloneMessages(baseMessages)
@@ -133,6 +134,17 @@ func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.
 		return CallInput{}, fmt.Errorf("llm request hook: %w", err)
 	}
 	tools = event.LLM.Tools
+	// Hooks may change schemas, but cannot override registered availability.
+	if c.Tools != nil && c.Tools.Registry != nil {
+		filtered := make([]llm.ToolSchema, 0, len(tools))
+		for _, schema := range tools {
+			if candidate, ok := c.Tools.Registry.Get(schema.Name); ok && !tool.InfoAvailableInContext(ctx, candidate.Info()) {
+				continue
+			}
+			filtered = append(filtered, schema)
+		}
+		tools = filtered
+	}
 	if allowedTools != nil {
 		filtered := make([]llm.ToolSchema, 0, len(tools))
 		for _, schema := range tools {

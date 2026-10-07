@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"elbot/internal/command"
+	"elbot/internal/tool"
 )
 
 func NewTools(deps Deps) command.Handler {
@@ -31,7 +32,7 @@ func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command
 	}
 	fields := strings.Fields(req.Args)
 	if len(fields) == 0 {
-		return &command.Result{Content: formatTools(deps)}, nil
+		return &command.Result{Content: formatTools(ctx, deps)}, nil
 	}
 	switch fields[0] {
 	case "reload":
@@ -84,7 +85,7 @@ func (c toolsCommand) Complete(ctx context.Context, req command.CompletionReques
 	return completeConfirmFlag(req.Args, token)
 }
 
-func formatTools(deps Deps) string {
+func formatTools(ctx context.Context, deps Deps) string {
 	infos := deps.Tools.List()
 	if len(infos) == 0 {
 		return "tools: none"
@@ -92,6 +93,9 @@ func formatTools(deps Deps) string {
 	var sb strings.Builder
 	sb.WriteString("tools:\n")
 	for _, info := range infos {
+		if !tool.InfoAvailableInContext(ctx, info) {
+			continue
+		}
 		tags := ""
 		if len(info.Tags) > 0 {
 			tags = " tags=" + strings.Join(info.Tags, ",")

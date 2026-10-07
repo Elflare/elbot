@@ -25,10 +25,10 @@ func TestSelectionCarriesClientAndCompositionOriginsAreSnapshots(t *testing.T) {
 	for i, origin := range origins {
 		if origin.Provider == "p" {
 			found = true
-			if origin.Protocol != llm.ProtocolResponse || origin.BaseURL != "https://response.invalid/v1" {
+			if origin.APIType != llm.APITypeResponse || origin.BaseURL != "https://response.invalid/v1" {
 				t.Fatalf("origin=%+v", origin)
 			}
-			origins[i].Protocol = llm.ProtocolChat
+			origins[i].APIType = llm.APITypeChat
 		}
 	}
 	if !found {
@@ -37,7 +37,7 @@ func TestSelectionCarriesClientAndCompositionOriginsAreSnapshots(t *testing.T) {
 	provider.APIMode = "chat"
 	opts.Providers["p"] = provider
 	for _, origin := range s.ProviderOrigins() {
-		if origin.Provider == "p" && origin.Protocol != llm.ProtocolResponse {
+		if origin.Provider == "p" && origin.APIType != llm.APITypeResponse {
 			t.Fatal("caller changed immutable composition facts")
 		}
 	}

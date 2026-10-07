@@ -19,11 +19,22 @@ func (a *Agent) CompletionService() *completion.Service {
 	return a.completion
 }
 
-func newCompletion(commands *command.Router, sessions *session.Service, turns *turn.Manager, store storage.Store, identity *identityResolver, registry *tool.Registry, preloader *toolrun.PreloadService) *completion.Service {
+func newCompletion(commands *command.Router, sessions *session.Service, turns *turn.Manager, store storage.Store, identity *identityResolver, registry *tool.Registry, preloader *toolrun.PreloadService, execution *executionCoordinator) *completion.Service {
 	return completion.NewService(
 		completion.RiskConfirmationSource{Router: commands, Sessions: sessions, Turns: turns, Scope: identity.Scope, CommandNames: riskConfirmationCommandNames()},
 		completion.ForkMessageSource{Router: commands, Sessions: sessions, Store: store, Scope: identity.Scope},
 		completion.ToolDirectiveSource{
+			Context: func(ctx context.Context) context.Context {
+				row, err := sessions.Current(ctx, identity.Scope(ctx))
+				if err != nil && err != storage.ErrNotFound {
+					return contextinfo.WithoutModel(ctx)
+				}
+				prepared, err := execution.modelContext(ctx, row)
+				if err != nil {
+					return contextinfo.WithoutModel(ctx)
+				}
+				return prepared
+			},
 			Registry: func() *tool.Registry { return registry },
 			Actor:    identity.Actor,
 			Policy:   func() *security.Policy { return identity.policy },

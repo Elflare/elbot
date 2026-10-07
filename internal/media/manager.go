@@ -106,6 +106,11 @@ func (m *Manager) importReader(ctx context.Context, input io.Reader, size int64,
 		return nil, fmt.Errorf("media exceeds import limit of %d bytes", maxBytes)
 	}
 	spec = sanitizeInput(spec)
+	// Image responses are sometimes served as application/octet-stream. Use the
+	// content's image type so the stored object and LLM data URL agree.
+	if detected := http.DetectContentType(data); strings.HasPrefix(detected, "image/") {
+		spec.MIMEType = detected
+	}
 	if spec.MIMEType == "" {
 		spec.MIMEType = mime.TypeByExtension(filepath.Ext(spec.Name))
 	}

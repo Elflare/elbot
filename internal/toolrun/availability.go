@@ -3,7 +3,6 @@ package toolrun
 import (
 	"context"
 
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/tool"
 )
 
@@ -12,8 +11,8 @@ func AvailableInContext(ctx context.Context, info tool.Info) bool {
 }
 
 func unavailableReason(ctx context.Context, info tool.Info) string {
-	if info.ForegroundOnly && sandboxctx.BackgroundContext(ctx) {
-		return "tool is only available in foreground sessions"
+	if reason := tool.UnavailableReason(ctx, info); reason != "" {
+		return reason
 	}
 	return "tool is unavailable in this context"
 }

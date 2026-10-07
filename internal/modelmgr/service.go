@@ -75,7 +75,7 @@ func New(opts Options) (*Service, error) {
 		}
 		mode := provider.EffectiveAPIMode()
 		s.clients[name] = client
-		s.origins[name] = llm.Origin{Provider: name, Protocol: llm.ProtocolID(mode), BaseURL: strings.TrimRight(provider.BaseURL, "/")}
+		s.origins[name] = llm.Origin{Provider: name, APIType: llm.APIType(mode), BaseURL: strings.TrimRight(provider.BaseURL, "/")}
 		s.providers[name] = &providerCatalog{
 			baseURL: provider.BaseURL, apiKey: provider.APIKey, apiKeyEnv: provider.APIKeyEnv,
 			configured: append([]string(nil), provider.Models...),
