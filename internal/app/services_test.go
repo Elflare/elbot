@@ -113,7 +113,7 @@ func runtimeAssemblyFixture(t *testing.T) (RuntimeRequest, *assemblyPlatform, *a
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = logs.Close() })
+	t.Cleanup(func() { _ = logs.Close(context.Background()) })
 	p, model := &assemblyPlatform{}, &assemblyModel{}
 	events := []string{}
 	return RuntimeRequest{

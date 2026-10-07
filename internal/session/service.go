@@ -51,7 +51,7 @@ func NewServiceWithConfig(store storage.Store, cfg Config, titleGen TitleGenerat
 		store:         store,
 		current:       map[string]*Binding{},
 		gates:         map[string]*scopeGate{},
-		changed:       signal.New[BindingChangedEvent]("session.binding_changed", nil),
+		changed:       signal.New[BindingChangedEvent]("session.binding_changed"),
 		namingConfig:  cfg.NamingConfig,
 		titleGen:      titleGen,
 		namingSignals: newNamingSignals(),

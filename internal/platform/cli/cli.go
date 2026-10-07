@@ -54,7 +54,7 @@ func (a *Adapter) SetCompleter(service *completion.Service) {
 
 func (a *Adapter) ConnectedSignal() *signal.Signal[platform.ConnectedEvent] {
 	a.connectedOnce.Do(func() {
-		a.connected = signal.New[platform.ConnectedEvent](a.Name()+".connected", nil)
+		a.connected = signal.New[platform.ConnectedEvent](a.Name() + ".connected")
 	})
 	return a.connected
 }

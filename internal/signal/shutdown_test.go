@@ -1,11 +1,10 @@
 package signal
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -32,7 +31,7 @@ func TestShutdownLifetimeMatrix(t *testing.T) {
 					}
 					<-started
 					var calls atomic.Int32
-					s := New[int]("matrix", testLogger())
+					s := New[int]("matrix")
 					connect(t, s, func(context.Context, int) error { calls.Add(1); return nil }, ConnectOptions{Executor: queue, Lifetime: lifetime, Shutdown: policy})
 					ctx, cancel := context.WithCancel(context.Background())
 					defer cancel()
@@ -69,7 +68,7 @@ func TestShutdownDeadlineCancelsEveryLifetimeAndPolicy(t *testing.T) {
 				q := testQueue(t, 1)
 				started, cancelled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 				var pending atomic.Int32
-				s := New[int]("deadline", testLogger())
+				s := New[int]("deadline")
 				connect(t, s, func(ctx context.Context, event int) error {
 					if event != 0 {
 						pending.Add(1)
@@ -164,20 +163,28 @@ func TestSubmitRacesWithClose(t *testing.T) {
 }
 
 func TestCancellationLogsOnlyUnexpectedErrors(t *testing.T) {
-	var logs bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	logs, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldStderr := os.Stderr
+	os.Stderr = logs
+	t.Cleanup(func() { os.Stderr = oldStderr; _ = logs.Close() })
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	for _, failure := range []error{context.Canceled, fmt.Errorf("wrapped: %w", errors.Join(context.Canceled, errors.New("actual failure")))} {
-		s := New[int]("logging", logger)
+		s := New[int]("logging")
 		connect(t, s, func(context.Context, int) error { return failure }, ConnectOptions{})
 		_ = s.Emit(ctx, 0)
 	}
-	if got := logs.String(); strings.Count(got, "level=ERROR") != 1 || !strings.Contains(got, "actual failure") {
+	data, err := os.ReadFile(logs.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(data); strings.Count(got, "level=ERROR") != 1 || !strings.Contains(got, "actual failure") {
 		t.Fatalf("logs=%s", got)
 	}
-	logs.Reset()
-	queue, err := NewQueue(QueueOptions{Logger: logger})
+	queue, err := NewQueue(QueueOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,12 +196,55 @@ func TestCancellationLogsOnlyUnexpectedErrors(t *testing.T) {
 	if err := queue.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	s := New[int]("closed", logger)
+	s := New[int]("closed")
 	connect(t, s, func(context.Context, int) error { return nil }, ConnectOptions{Executor: queue, Lifetime: FollowExecutor})
 	if err := s.Emit(context.Background(), 0); !errors.Is(err, ErrClosed) {
 		t.Fatal(err)
 	}
-	if logs.Len() != 0 {
-		t.Fatalf("normal shutdown logged failure: %s", logs.String())
+	after, err := os.ReadFile(logs.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(data) {
+		t.Fatalf("normal shutdown logged failure: %s", after)
+	}
+}
+
+func TestDrainFailureDiagnosticDoesNotDependOnBackpressure(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	os.Stderr = file
+	t.Cleanup(func() { os.Stderr = old; _ = file.Close() })
+	for _, policy := range []ShutdownPolicy{CancelPending, Drain} {
+		queue, err := NewQueue(QueueOptions{Name: "generic", Capacity: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		started, release := make(chan struct{}), make(chan struct{})
+		if err := queue.Submit(context.Background(), Task{Shutdown: policy, Run: func(context.Context) error { close(started); <-release; return nil }}); err != nil {
+			t.Fatal(err)
+		}
+		<-started
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if err := queue.Close(ctx); !errors.Is(err, context.Canceled) {
+			t.Fatal(err)
+		}
+		close(release)
+		<-queue.Done()
+		data, err := os.ReadFile(file.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := 0
+		if policy == Drain {
+			want = 1
+		}
+		if got := strings.Count(string(data), "signal drain incomplete"); got != want {
+			t.Fatalf("policy=%d diagnostics=%s", policy, data)
+		}
 	}
 }

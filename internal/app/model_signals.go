@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"log/slog"
 
 	"elbot/internal/modelmgr"
 	"elbot/internal/notification"
@@ -10,8 +9,8 @@ import (
 	"elbot/internal/signal"
 )
 
-func (b *signalBindings) newQueue(name string, logger *slog.Logger, backpressure bool) (*signal.Queue, error) {
-	queue, err := signal.NewQueue(signal.QueueOptions{Name: name, Logger: logger, WaitForCapacity: backpressure})
+func (b *signalBindings) newQueue(name string, backpressure bool) (*signal.Queue, error) {
+	queue, err := signal.NewQueue(signal.QueueOptions{Name: name, WaitForCapacity: backpressure})
 	if err == nil {
 		b.queues = append(b.queues, queue)
 	}
@@ -26,8 +25,8 @@ func connectSignal[T any](b *signalBindings, source *signal.Signal[T], handler s
 	return err
 }
 
-func (b *signalBindings) connectModels(models *modelmgr.Service, notices *notification.Manager, logger *slog.Logger) error {
-	queue, err := b.newQueue("model.notifications", logger, false)
+func (b *signalBindings) connectModels(models *modelmgr.Service, notices *notification.Manager) error {
+	queue, err := b.newQueue("model.notifications", false)
 	if err != nil {
 		return err
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -20,18 +19,18 @@ import (
 
 func observerSignals() agentevents.Signals {
 	return agentevents.Signals{
-		UserInputReceived:   signal.New[agentevents.UserInputReceivedEvent]("input", nil),
-		PersistenceFailed:   signal.New[agentevents.PersistenceFailedEvent]("persistence", nil),
-		TurnTimedOut:        signal.New[agentevents.TurnTimedOutEvent]("timeout", nil),
-		ModelCallCompleted:  signal.New[agentevents.ModelCallCompletedEvent]("model", nil),
-		ToolCallCompleted:   signal.New[agentevents.ToolCallCompletedEvent]("tool", nil),
-		ConfirmationChanged: signal.New[agentevents.ConfirmationChangedEvent]("confirmation", nil),
-		ToolDenied:          signal.New[agentevents.ToolDeniedEvent]("denied", nil),
-		StatusChanged:       signal.New[agentevents.StatusChangedEvent]("status", nil),
-		VisionFallbackUsed:  signal.New[agentevents.VisionFallbackUsedEvent]("vision", nil),
-		HookFailed:          signal.New[agentevents.HookFailedEvent]("hook", nil),
-		ReplyDelivered:      signal.New[agentevents.ReplyDeliveredEvent]("delivery", nil),
-		ReplyCommitted:      signal.New[agentevents.ReplyCommittedEvent]("commit", nil),
+		UserInputReceived:   signal.New[agentevents.UserInputReceivedEvent]("input"),
+		PersistenceFailed:   signal.New[agentevents.PersistenceFailedEvent]("persistence"),
+		TurnTimedOut:        signal.New[agentevents.TurnTimedOutEvent]("timeout"),
+		ModelCallCompleted:  signal.New[agentevents.ModelCallCompletedEvent]("model"),
+		ToolCallCompleted:   signal.New[agentevents.ToolCallCompletedEvent]("tool"),
+		ConfirmationChanged: signal.New[agentevents.ConfirmationChangedEvent]("confirmation"),
+		ToolDenied:          signal.New[agentevents.ToolDeniedEvent]("denied"),
+		StatusChanged:       signal.New[agentevents.StatusChangedEvent]("status"),
+		VisionFallbackUsed:  signal.New[agentevents.VisionFallbackUsedEvent]("vision"),
+		HookFailed:          signal.New[agentevents.HookFailedEvent]("hook"),
+		ReplyDelivered:      signal.New[agentevents.ReplyDeliveredEvent]("delivery"),
+		ReplyCommitted:      signal.New[agentevents.ReplyCommittedEvent]("commit"),
 	}
 }
 
@@ -227,9 +226,8 @@ func TestProductionAssemblyObservesConversationExactlyOnce(t *testing.T) {
 	}
 }
 
-func TestLogBackpressureUsesConsumerAndReportsWriteFailure(t *testing.T) {
-	diagnostics := make(chan slog.Record, 8)
-	q, err := signal.NewQueue(signal.QueueOptions{Capacity: 1, WaitForCapacity: true, Logger: slog.New(recordHandler{records: diagnostics})})
+func TestLogBackpressureUsesConsumerAndContinuesAfterWriteFailure(t *testing.T) {
+	q, err := signal.NewQueue(signal.QueueOptions{Capacity: 1, WaitForCapacity: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +238,7 @@ func TestLogBackpressureUsesConsumerAndReportsWriteFailure(t *testing.T) {
 	<-started
 	records := make(chan slog.Record, 5)
 	logs := agentLogger{runtime: slog.New(recordHandler{records: records, fail: true})}
-	source := signal.New[agentevents.UserInputReceivedEvent]("input", nil)
+	source := signal.New[agentevents.UserInputReceivedEvent]("input")
 	_, err = source.Connect(logs.userInput, signal.ConnectOptions{Executor: q, Lifetime: signal.FollowExecutor, Shutdown: signal.Drain})
 	if err != nil {
 		t.Fatal(err)
@@ -272,10 +270,6 @@ func TestLogBackpressureUsesConsumerAndReportsWriteFailure(t *testing.T) {
 		if attrs := recordAttrs(awaitRecord(t, records)); attrs["text"] != text {
 			t.Fatal(attrs)
 		}
-		diagnostic := awaitRecord(t, diagnostics)
-		if diagnostic.Message != "signal task failed" || !strings.Contains(recordAttrs(diagnostic)["error"].(error).Error(), "disk write failed") {
-			t.Fatal(diagnostic)
-		}
 	}
 }
 
@@ -285,7 +279,7 @@ func TestRunnerStartsQueueShutdownBeforeWaitingForProducer(t *testing.T) {
 			var events []string
 			runner := newTestRunner(t, &events, RunModeFull, "")
 			runner.shutdownTimeout = time.Second
-			q, err := signal.NewQueue(signal.QueueOptions{Capacity: 1, WaitForCapacity: true, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+			q, err := signal.NewQueue(signal.QueueOptions{Capacity: 1, WaitForCapacity: true})
 			if err != nil {
 				t.Fatal(err)
 			}

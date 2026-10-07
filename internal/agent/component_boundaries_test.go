@@ -42,7 +42,7 @@ func (p *statusReadingPlatform) SetRuntimeStatus(_ context.Context, sent runtime
 }
 
 func TestComponentStatusRecordedBeforeDisplayAndBackgroundStaysSilent(t *testing.T) {
-	recorder := &statusRecorder{changed: signal.New[agentevents.StatusChangedEvent]("test.status", nil)}
+	recorder := &statusRecorder{changed: signal.New[agentevents.StatusChangedEvent]("test.status")}
 	p := &statusReadingPlatform{recorder: recorder, observed: make(chan runtimestatus.Snapshot, 2)}
 	foreground := foregroundTurnOutput{sender: &outputSender{dispatcher: dispatch.New(dispatch.Options{Primary: p})}, status: recorder}
 	_, err := recorder.changed.Connect(func(ctx context.Context, event agentevents.StatusChangedEvent) error {

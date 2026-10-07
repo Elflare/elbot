@@ -36,7 +36,9 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:signal -->
 ## 信号与订阅
 
-- `internal/signal/`：类型化信号、有界执行器、背压和关闭策略。
+- `internal/signal/`：类型化信号、有界执行器、背压和关闭策略；`diagnostics.go` 直接向 stderr 报告设施故障。
+- `internal/events/logging.go`：进程全局日志契约、`LogSubmitted` 和 `EmitLog` 发布快照。
+- `internal/logging/signals.go`：日志中心自身订阅、分类队列和停止准入；关闭与文件资源由 `logging.go` 管理。
 - `internal/agent/events/`、`internal/platform/signals.go`：Agent 事实与平台连接信号。
 - `internal/app/signals.go`、`internal/app/agent_logging.go`、`internal/app/agent_notifications.go`：订阅、统一事件快照关联的日志与通知。
 - `internal/app/agent_status.go`、`internal/app/model_signals.go`、`internal/app/naming.go`：状态展示、重试与命名消费者。
@@ -47,7 +49,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/config/`：读取、默认资产、模块声明、provider／state／tag 及只读检查。
 - `internal/config/definition.go`、`internal/config/provider.go`：配置规则与客户端模式校验。
 - `internal/doctor/`：配置诊断报告；`internal/command/builtin/doctor.go`：超管命令入口。
-- `internal/logging/`：日志写入、轮转与读取。
+- `internal/logging/`：日志写入、轮转与读取；`record.go` 负责全局日志的脱敏、摘要／详情和序列化大小限制。分类消费者执行运行等级过滤，旧业务 Logger 与中心共用文件写入器。
 - [配置文档](../docs/configuration.md)。
 
 <!-- locator:agent-chat -->

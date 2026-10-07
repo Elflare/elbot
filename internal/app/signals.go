@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"log/slog"
 
 	elcron "elbot/internal/cron"
 	"elbot/internal/fileops"
@@ -20,11 +19,11 @@ type signalBindings struct {
 	displays    []*statusDisplay
 }
 
-func (b *signalBindings) connectSession(sessions *session.Service, rollback *fileops.RollbackManager, logger *slog.Logger) error {
+func (b *signalBindings) connectSession(sessions *session.Service, rollback *fileops.RollbackManager) error {
 	if rollback == nil {
 		return nil
 	}
-	queue, err := signal.NewQueue(signal.QueueOptions{Name: "session.rollback_cleanup", Logger: logger})
+	queue, err := signal.NewQueue(signal.QueueOptions{Name: "session.rollback_cleanup"})
 	if err != nil {
 		return err
 	}
@@ -42,7 +41,7 @@ func (b *signalBindings) connectSession(sessions *session.Service, rollback *fil
 	return nil
 }
 
-func (b *signalBindings) connectPlatforms(agt platformHookAgent, cron *elcron.Service, adapters []platformRuntime, logger *slog.Logger) error {
+func (b *signalBindings) connectPlatforms(agt platformHookAgent, cron *elcron.Service, adapters []platformRuntime) error {
 	consumers := []struct {
 		name   string
 		notify func(context.Context, string)
@@ -63,7 +62,7 @@ func (b *signalBindings) connectPlatforms(agt platformHookAgent, cron *elcron.Se
 		}
 		name := adapter.Name()
 		for _, consumer := range consumers {
-			queue, err := signal.NewQueue(signal.QueueOptions{Name: name + ".connected." + consumer.name, Logger: logger})
+			queue, err := signal.NewQueue(signal.QueueOptions{Name: name + ".connected." + consumer.name})
 			if err != nil {
 				return err
 			}

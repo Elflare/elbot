@@ -21,7 +21,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/architecture.md
 - app 创建共享 Session、Request、Turn、模型、上下文、工具、文件、发送、通知及命令服务。`Agent.New(ctx, cfg, deps)` 注入必需依赖、组合执行组件；命令注册和外部接线归 app。
 - app 按 provider 配置创建客户端与注册表；Agent 校验并绑定协议业务能力、封闭注册表。Session／Hook 回调、订阅和补全接线成功后才开放平台入口；Cron 在平台启动后异步启动。
 - `NewRunner(Dependencies)` 支持替换分组工厂。工厂失败时交回已取得资源的 Lifecycle，由 Runner 清理部分装配结果。
-- 关闭先取消应用 context，再对订阅调用 `BeginClose`，停止接收并唤醒背压生产者；随后等待平台、Cron、订阅队列、追加确认、命名、Hook 和 Skill 加载退出，最后关闭 SQLite 与日志。
+- 关闭先取消应用 context，再对日志中心及 App 订阅调用 `BeginClose`，停止接收并唤醒背压生产者；随后等待平台、Cron、订阅队列、追加确认、命名、Hook 和 Skill 加载退出，最后关闭 SQLite 与日志。日志中心的 `Close(ctx)` 使用同一退出预算。
 - 全部退出共享 30 秒预算。超时后保留仍在运行任务的依赖，交给进程退出；重复停止等待同一完成结果，关闭后不能重启调度。正常取消及预算耗尽不算应用失败，真实错误继续返回。
 
 <!-- locator:contextinfo -->
@@ -44,13 +44,16 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/architecture.md
 <!-- locator:signal -->
 ## 信号与订阅
 
-来源模块拥有 `Signal[T]` 及事件类型，app 拥有订阅、队列和关闭生命周期。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
+来源模块拥有实例 `Signal[T]` 及事件类型，现有业务信号的订阅和队列仍由 App 管理。进程全局日志契约归 `internal/events`，日志中心自行订阅并持有分类队列；App 只负责中心的创建和生命周期。业务日志生产者迁移尚在进行，具体见[全局信号设计](global-signals.md)。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
 
 - 发射时锁内取得订阅快照、锁外调用。断开不撤销已取得快照或已入队任务；一次性连接即使入队失败也被消耗。发布方固定可变数据及实际调用 context。
 - 异步连接选择 FollowEmit（继承取消）或 FollowExecutor（只保留值）；关闭选择 CancelPending 或 Drain，底层取消优先。
 - 串行队列默认容量 256、满时拒绝。日志使用 `WaitForCapacity + FollowExecutor + Drain`，按成功入队顺序写入；`BeginClose` 停止接收并唤醒等待者。入队不等于写入成功，拒绝、写入失败及未排空均有诊断，Done 表示 worker 实际退出。
 - 日志写入预期很快、队列通常不会满，因此有意选择等待容量，并接受极端情况下业务等待且单次请求取消不能解除入队背压的取舍。
 - Agent 运行与审计日志统一使用事件发布时的 `EventMeta`，记录非空的 `session_id`、`run_id`、`attempt`、`request_id`、`root_request_id`；异步消费不查询当前执行身份。
+- `events.EmitLog` 在发布前固定时间、关联身份、错误诊断、延迟值及可变载荷。中心直接提交 runtime、audit、elnis 三个容量 256 的背压队列；解除请求取消的影响，按类别入队顺序排空。中心不替换全局信号实例，重复活动中心初始化被拒绝。
+- 全局日志消费先脱敏再限长：摘要 256 个 Unicode 字符、详情 8 KiB、序列化记录 64 KiB；优先保留事件、模块及关联字段。runtime 详情仅在 DEBUG 配置下保留，audit／elnis 不受运行等级过滤。旧 Logger 暂时共用写入器，内容处理在生产者迁移后统一纳入。
+- Signal／Queue 的设施故障直接写 stderr，不依赖业务 Logger 或全局日志信号；真正的文件写入错误由队列检查并报告。中心关闭超时不关闭仍在使用的文件，也不释放活动中心名额，后续显式关闭可继续清理。
 - 平台 Connected 的 Hook 与 Cron 恢复使用独立队列，互不阻塞；Cron 自行维护补跑、互斥和投递状态。
 
 <!-- locator:config -->

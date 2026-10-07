@@ -60,9 +60,9 @@ func TestCronConnectionRecoveryIndependentOfUserHooks(t *testing.T) {
 			agt := &signalAgent{notify: func(ctx context.Context, name string) {
 				_, _ = hooks.Run(ctx, hook.Event{Point: hook.PointPlatformConnected, Platform: hook.PlatformContext{Name: name}})
 			}}
-			p := &signalPlatform{name: "qqonebot", connected: signal.New[platform.ConnectedEvent]("review", nil)}
+			p := &signalPlatform{name: "qqonebot", connected: signal.New[platform.ConnectedEvent]("review")}
 			b := &signalBindings{}
-			if err := b.connectPlatforms(agt, cron, []platformRuntime{p}, nil); err != nil {
+			if err := b.connectPlatforms(agt, cron, []platformRuntime{p}); err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() {

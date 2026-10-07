@@ -125,18 +125,18 @@ type Signals struct {
 
 func NewSignals() Signals {
 	return Signals{
-		UserInputReceived:   signal.New[UserInputReceivedEvent]("agent.user_input", nil),
-		PersistenceFailed:   signal.New[PersistenceFailedEvent]("agent.persistence_failed", nil),
-		TurnTimedOut:        signal.New[TurnTimedOutEvent]("agent.turn_timed_out", nil),
-		ModelCallCompleted:  signal.New[ModelCallCompletedEvent]("agent.model_completed", nil),
-		ToolCallCompleted:   signal.New[ToolCallCompletedEvent]("agent.tool_completed", nil),
-		ConfirmationChanged: signal.New[ConfirmationChangedEvent]("agent.confirmation_changed", nil),
-		ToolDenied:          signal.New[ToolDeniedEvent]("agent.tool_denied", nil),
-		StatusChanged:       signal.New[StatusChangedEvent]("agent.status_changed", nil),
-		VisionFallbackUsed:  signal.New[VisionFallbackUsedEvent]("agent.vision_fallback", nil),
-		HookFailed:          signal.New[HookFailedEvent]("agent.hook_failed", nil),
-		ReplyDelivered:      signal.New[ReplyDeliveredEvent]("agent.reply_delivered", nil),
-		ReplyCommitted:      signal.New[ReplyCommittedEvent]("agent.reply_committed", nil),
+		UserInputReceived:   signal.New[UserInputReceivedEvent]("agent.user_input"),
+		PersistenceFailed:   signal.New[PersistenceFailedEvent]("agent.persistence_failed"),
+		TurnTimedOut:        signal.New[TurnTimedOutEvent]("agent.turn_timed_out"),
+		ModelCallCompleted:  signal.New[ModelCallCompletedEvent]("agent.model_completed"),
+		ToolCallCompleted:   signal.New[ToolCallCompletedEvent]("agent.tool_completed"),
+		ConfirmationChanged: signal.New[ConfirmationChangedEvent]("agent.confirmation_changed"),
+		ToolDenied:          signal.New[ToolDeniedEvent]("agent.tool_denied"),
+		StatusChanged:       signal.New[StatusChangedEvent]("agent.status_changed"),
+		VisionFallbackUsed:  signal.New[VisionFallbackUsedEvent]("agent.vision_fallback"),
+		HookFailed:          signal.New[HookFailedEvent]("agent.hook_failed"),
+		ReplyDelivered:      signal.New[ReplyDeliveredEvent]("agent.reply_delivered"),
+		ReplyCommitted:      signal.New[ReplyCommittedEvent]("agent.reply_committed"),
 	}
 }
 func Emit[T any](ctx context.Context, source *signal.Signal[T], event T) {

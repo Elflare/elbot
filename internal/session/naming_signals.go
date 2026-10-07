@@ -10,9 +10,9 @@ type NamingSignals struct {
 
 func newNamingSignals() NamingSignals {
 	return NamingSignals{
-		Scheduled: signal.New[NamingScheduledEvent]("session.naming_scheduled", nil),
-		Completed: signal.New[NamingCompletedEvent]("session.naming_completed", nil),
-		Failed:    signal.New[NamingFailedEvent]("session.naming_failed", nil),
+		Scheduled: signal.New[NamingScheduledEvent]("session.naming_scheduled"),
+		Completed: signal.New[NamingCompletedEvent]("session.naming_completed"),
+		Failed:    signal.New[NamingFailedEvent]("session.naming_failed"),
 	}
 }
 

@@ -9,11 +9,11 @@ import (
 )
 
 func (b *signalBindings) connectAgentLogs(events agentevents.Signals, runtime, audit *slog.Logger) error {
-	runtimeQueue, err := b.newQueue("agent.runtime_logs", runtime, true)
+	runtimeQueue, err := b.newQueue("agent.runtime_logs", true)
 	if err != nil {
 		return err
 	}
-	auditQueue, err := b.newQueue("agent.audit_logs", runtime, true)
+	auditQueue, err := b.newQueue("agent.audit_logs", true)
 	if err != nil {
 		return err
 	}

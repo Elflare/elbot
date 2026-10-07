@@ -47,7 +47,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	if err := components.Signals.connectNaming(services.Sessions, logger); err != nil {
 		return components, err
 	}
-	if err := components.Signals.connectModels(services.Models, services.Notifications, logger); err != nil {
+	if err := components.Signals.connectModels(services.Models, services.Notifications); err != nil {
 		return components, err
 	}
 	services.Sessions.StartNaming(ctx)
@@ -124,13 +124,13 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	if err := bindings.connectAgentLogs(agt.Signals(), logger, foundation.Logs.Audit()); err != nil {
 		return components, err
 	}
-	if err := bindings.connectAgentNotifications(agt.Signals(), services.Notifications, agt.NotificationSender(), logger); err != nil {
+	if err := bindings.connectAgentNotifications(agt.Signals(), services.Notifications, agt.NotificationSender()); err != nil {
 		return components, err
 	}
 	if err := bindings.connectStatus(agt.Signals(), services.Sessions, services.Dispatcher, logger); err != nil {
 		return components, err
 	}
-	if err := bindings.connectSession(services.Sessions, toolRuntime.FileRollback.Manager, foundation.Logger); err != nil {
+	if err := bindings.connectSession(services.Sessions, toolRuntime.FileRollback.Manager); err != nil {
 		return components, err
 	}
 	*components = RuntimeComponents{

@@ -11,7 +11,7 @@ import (
 
 func testQueue(t *testing.T, capacity int) *Queue {
 	t.Helper()
-	q, err := NewQueue(QueueOptions{Name: t.Name(), Capacity: capacity, Logger: testLogger()})
+	q, err := NewQueue(QueueOptions{Name: t.Name(), Capacity: capacity})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestQueueLifetimeAndDisconnect(t *testing.T) {
 	release := make(chan struct{})
 	submit(t, q, context.Background(), func(context.Context) error { close(started); <-release; return nil })
 	<-started
-	s := New[int]("lifetime", testLogger())
+	s := New[int]("lifetime")
 	var requestCalls atomic.Int32
 	got := make(chan int, 1)
 	request := connect(t, s, func(context.Context, int) error { requestCalls.Add(1); return nil }, ConnectOptions{Executor: q, Lifetime: FollowEmit, Shutdown: Drain})

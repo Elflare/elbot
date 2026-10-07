@@ -44,7 +44,8 @@ type LogManager interface {
 	Audit() *slog.Logger
 	Elnis() *slog.Logger
 	LogDir() string
-	Close() error
+	BeginClose()
+	Close(context.Context) error
 }
 
 type ChatHistoryStore interface {

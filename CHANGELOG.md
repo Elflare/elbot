@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 审计和 Elnis 日志从共用运行等级改为独立保留，`runtime.log_level=warn/error` 不再过滤 `/usage` 所需的用量事实。信号设施故障从业务 Logger 改为直接报告 stderr，不受运行等级影响。
 - 工具支持按 API 类型限制发现、补全、预载和执行。
 - `shell` 的 stdout／stderr 返回上限从各 16 KiB 提高到各 256 KiB，超出时在对应输出末尾说明过长截断。
 - Responses 工具定义从每轮顶层 `tools` 改为原生输入中的增量 `additional_tools`，回放保留原有位置；当前调用权限单独受 `tool_choice` 限制。旧 Responses 会话及同名工具定义变化需新建会话。
