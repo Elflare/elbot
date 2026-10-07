@@ -64,6 +64,14 @@
       "translation": "Inline Preloading",
       "updated_at": 1782205988
     },
+    "docs/concepts.md:heading:a9769c63597028731b1940b5a0e4700219fe2f6d7fc9a4bdc64dafffd13aa62a": {
+      "kind": "heading",
+      "source": "查看图片",
+      "source_file": "docs/concepts.md",
+      "source_hash": "a9769c63597028731b1940b5a0e4700219fe2f6d7fc9a4bdc64dafffd13aa62a",
+      "translation": "View Images",
+      "updated_at": 1791358203
+    },
     "docs/concepts.md:heading:bddc29ad011a93a6b759956ea0d2a466da6736646dab9d52091b568085c9d84c": {
       "kind": "heading",
       "source": "上下文压缩",
@@ -136,6 +144,14 @@
       "translation": "Even superadmins require confirmation when calling high-risk tools.",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:list:330047895c1abda0375ee397298b59033cc9caf22c65d7e95fb8a4d02327a67e": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：当前聊天的消息 ID 数组，可带 __ELBOT_CODE_1__；与 __ELBOT_CODE_2__ 二选一。省略 __ELBOT_CODE_3__ 时，每条消息取首张图片。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "330047895c1abda0375ee397298b59033cc9caf22c65d7e95fb8a4d02327a67e",
+      "translation": "__ELBOT_CODE_0__: An array of message IDs from the current chat, which can include __ELBOT_CODE_1__; choose either this or __ELBOT_CODE_2__. When __ELBOT_CODE_3__ is omitted, the first image of each message is taken.",
+      "updated_at": 1791358203
+    },
     "docs/concepts.md:list:384a24d5b2dda4ab9ffa31dc33efb1842cea0c47ba96a351a11dbb731f922435": {
       "kind": "list",
       "source": "用户文档优先覆盖稳定使用路径。",
@@ -143,6 +159,14 @@
       "source_hash": "384a24d5b2dda4ab9ffa31dc33efb1842cea0c47ba96a351a11dbb731f922435",
       "translation": "User documentation prioritizes stable usage paths.",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:list:393b9cb6645636c8d953e1b1e5226e709f572b460b320e01f6643a198966cb3f": {
+      "kind": "list",
+      "source": "文件也占序号，只能选择图片。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "393b9cb6645636c8d953e1b1e5226e709f572b460b320e01f6643a198966cb3f",
+      "translation": "Files also occupy an index, but only images can be selected.",
+      "updated_at": 1791358203
     },
     "docs/concepts.md:list:45021368ffe383a123bc6f914f6023428b5e0fa739b632dcd467400600ef85ef": {
       "kind": "list",
@@ -231,6 +255,14 @@
       "source_hash": "9ca3756b3137c74669cc338ebae6fe372dde2b280c4bf4f6c242d947312dc12f",
       "translation": "Calling the LLM.",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:list:9ce6442f21234970ccd6ec326cd57c49400bc0eef4746deee2f806cc44a992da": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：媒体 ID、HTTP(S) URL 或本地路径（含 __ELBOT_CODE_1__）；本地路径仅超级管理员可用，遵守工作区、后台沙箱和敏感文件读取规则。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "9ce6442f21234970ccd6ec326cd57c49400bc0eef4746deee2f806cc44a992da",
+      "translation": "__ELBOT_CODE_0__: Media ID, HTTP(S) URL, or local path (including __ELBOT_CODE_1__); local paths are only available to superadmins and comply with workspace, background sandbox, and sensitive file reading rules.",
+      "updated_at": 1791358203
     },
     "docs/concepts.md:list:aae110979621f0e0c6aeeee73b756b5898579b6e854cfad294374bfdd0a13946": {
       "kind": "list",
@@ -360,6 +392,22 @@
       "translation": "Managing Session context.",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:list:f12805e4162aa7a2aadbd55108a872aed094a8465aa97ca4a2247b7008a5b759": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：与消息逐项对应的媒体序号数组，从 1 开始；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "f12805e4162aa7a2aadbd55108a872aed094a8465aa97ca4a2247b7008a5b759",
+      "translation": "__ELBOT_CODE_0__: An array of media indices corresponding to each message, starting from 1;",
+      "updated_at": 1791358203
+    },
+    "docs/concepts.md:list:f4baeee35229abb2cb0254da865b845af18a0226ada24b3590cbf91c312b63fd": {
+      "kind": "list",
+      "source": "例如一条消息依次含文件、图片 A、图片 B，__ELBOT_CODE_0__ 选择两张图片。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "f4baeee35229abb2cb0254da865b845af18a0226ada24b3590cbf91c312b63fd",
+      "translation": "For example, if a message contains a file, Image A, and Image B in sequence, __ELBOT_CODE_0__ selects the two images.",
+      "updated_at": 1791358203
+    },
     "docs/concepts.md:list:fb985af310c951984a92a2800b0b830c6ab52d8991287de67415aff67d104cc5": {
       "kind": "list",
       "source": "Shell 命令。",
@@ -431,6 +479,22 @@
       "source_hash": "0accf37d50765d08207b743b29a45f16e64b5673b95996b4c7381f6bdf8c5fd8",
       "translation": "Even if the Session has expired due to inactivity or __ELBOT_CODE_0__ is no longer the current Session, quoting the last reply will still restore the original Session.\n",
       "updated_at": 1789088838
+    },
+    "docs/concepts.md:paragraph:0ad9f93028530dbce95b6e316cb7ea4eb722eb99028b4f6550f89d0bbe6ce92c": {
+      "kind": "paragraph",
+      "source": "没有对应身份的字段省略。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "0ad9f93028530dbce95b6e316cb7ea4eb722eb99028b4f6550f89d0bbe6ce92c",
+      "translation": "Fields without a corresponding identity are omitted.\n",
+      "updated_at": 1791358203
+    },
+    "docs/concepts.md:paragraph:0bf9e24bfc3d6d504621b21f04a8fcc8169c21c15a40ff94d9a3cf2a4cc0813f": {
+      "kind": "paragraph",
+      "source": "工具可限制适用的 API 类型；发现、补全、预载和执行都按当前对话模型过滤。后台任务按自身选择的模型判断。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "0bf9e24bfc3d6d504621b21f04a8fcc8169c21c15a40ff94d9a3cf2a4cc0813f",
+      "translation": "Tools can restrict the applicable API types; discovery, completion, preloading, and execution are all filtered by the current conversation model. Background tasks are determined by the model they have selected.\n",
+      "updated_at": 1791358203
     },
     "docs/concepts.md:paragraph:100216e1add448f480dd0ac48fc11d44e266b3b4c63311c30702a7dd5421e8f2": {
       "kind": "paragraph",
@@ -527,6 +591,14 @@
       "source_hash": "242d4174164fbf86a422d1f66ee7e0c083b1fc340003a409f20395966553cf0c",
       "translation": "The compaction model can use any protocol client.",
       "updated_at": 1791301387
+    },
+    "docs/concepts.md:paragraph:259fa5252e8ca377dd05befd7e87a8b41df2e2559506ca784b6538cac15bfe88": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 与 __ELBOT_CODE_1__ 的历史媒体获取每次最多尝试 5 个未缓存的位置，失败也计数；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "259fa5252e8ca377dd05befd7e87a8b41df2e2559506ca784b6538cac15bfe88",
+      "translation": "Historical media retrieval for __ELBOT_CODE_0__ and __ELBOT_CODE_1__ attempts a maximum of 5 uncached locations each time, with failures also counting toward this limit;",
+      "updated_at": 1791358203
     },
     "docs/concepts.md:paragraph:2629fde9657a9177cd946d5d0614870a4c64220d6593d16cbcbbf3a10c65f513": {
       "kind": "paragraph",
@@ -760,6 +832,14 @@
       "translation": "ElBot does not inject the full schema of all tools by default in every round of work conversation.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:59640ea55d8a8f25512bd37b5be650c8b01882ddaf6a75f60af4caee991effdb": {
+      "kind": "paragraph",
+      "source": "参数和所选序号会在获取图片前统一检查；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "59640ea55d8a8f25512bd37b5be650c8b01882ddaf6a75f60af4caee991effdb",
+      "translation": "Parameters and selected indices will be checked collectively before retrieving images;",
+      "updated_at": 1791358203
+    },
     "docs/concepts.md:paragraph:5ba4da839fa3f25bcd34f0278b8ea37627a49716117a52482134983a3bb7bcce": {
       "kind": "paragraph",
       "source": "宿主在返回前导入文件，Tool Transcript 保存稳定媒体 ID 并建立引用。",
@@ -815,6 +895,14 @@
       "source_hash": "66a033dbdcf0a214907e357a1ebbf6432b9d8954dd9d6e1e6bb49b2776bd0521",
       "translation": "The discovery process is independent of the model protocol.",
       "updated_at": 1791341016
+    },
+    "docs/concepts.md:paragraph:69bb2b5d471dd47926a0671ff61f763656c70381e6bdb337575cc5a8931aa49d": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 返回媒体 ID，默认仍取每条消息的首个媒体。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "69bb2b5d471dd47926a0671ff61f763656c70381e6bdb337575cc5a8931aa49d",
+      "translation": "__ELBOT_CODE_0__ returns media IDs, but by default, the first media of each message is still retrieved.\n",
+      "updated_at": 1791358203
     },
     "docs/concepts.md:paragraph:6a674966e7f4cff4a0315756cb5662e2d9be6272af70b9809d70b910679abe05": {
       "kind": "paragraph",
@@ -903,6 +991,14 @@
       "source_hash": "851e26e86f1bb760db1101f510ae50f69a6e37edb7a0878c080d7493f9711be3",
       "translation": "The Platform Adapter is responsible for integrating specific platforms.\n",
       "updated_at": 1783077374
+    },
+    "docs/concepts.md:paragraph:854d4033a4b840608b17c0c8cb0375c60370432be896697425f92da83e7c3559": {
+      "kind": "paragraph",
+      "source": "命令仍会继续运行并排空输出，需要完整的大量输出时可写入文件，再按范围读取。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "854d4033a4b840608b17c0c8cb0375c60370432be896697425f92da83e7c3559",
+      "translation": "The command will continue to run and drain the output; if a complete large output is required, it can be written to a file and then read by range.\n",
+      "updated_at": 1791358203
     },
     "docs/concepts.md:paragraph:87e6333feeecfcb0387ac24a73db30214b0a6e915a11dbf144af8b026d01709d": {
       "kind": "paragraph",
@@ -1048,6 +1144,14 @@
       "translation": "The system prompt is assembled in real-time into a system message for each request, with the parts arranged in the following order:\n",
       "updated_at": 1787305228
     },
+    "docs/concepts.md:paragraph:b2444d1fce3139ebcf9db6f56afaaacfa81c32dcdabe181dcc832252fea672c1": {
+      "kind": "paragraph",
+      "source": "缓存不占次数，同次重复位置复用结果。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "b2444d1fce3139ebcf9db6f56afaaacfa81c32dcdabe181dcc832252fea672c1",
+      "translation": "Cached items do not count toward the limit, and results for duplicate locations within the same request are reused.",
+      "updated_at": 1791358203
+    },
     "docs/concepts.md:paragraph:b2cde2ad1919b9a849db90881e25789e71423e018f9db3eb132d26d1e832933a": {
       "kind": "paragraph",
       "source": "恢复不会重跑历史工具或重复执行本轮 Hook；",
@@ -1079,6 +1183,14 @@
       "source_hash": "b568b1d1b7ee5d19b1adc58521553d6af26ada6cce210f99e10bb7d763f423de",
       "translation": "Meta information uses a single line of plain text, for example:\n",
       "updated_at": 1787305228
+    },
+    "docs/concepts.md:paragraph:b591ba1832c1988f91cfd70a5deba87867643c0b0e21c8845c6c4cb181a5db05": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 仅适用于 Responses，可通过 __ELBOT_CODE_1__ 预载。图片作为工具结果交给模型，不自动发送到聊天。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "b591ba1832c1988f91cfd70a5deba87867643c0b0e21c8845c6c4cb181a5db05",
+      "translation": "__ELBOT_CODE_0__ is only applicable to Responses and can be preloaded via __ELBOT_CODE_1__. Images are passed to the model as tool results and are not automatically sent to the chat.\n",
+      "updated_at": 1791358203
     },
     "docs/concepts.md:paragraph:b7b663d1943e3f7b1bcd0fa1d6d0e2f74682146674c5ef1ec059c91e5a593b9a": {
       "kind": "paragraph",
@@ -1248,6 +1360,14 @@
       "translation": "See [Hook: Rule Hook Configuration](hooks.md#规则-hook-配置) for full configuration and examples.\n",
       "updated_at": 1783077374
     },
+    "docs/concepts.md:paragraph:dad127327cfce556683a8a91ea93ae0055eb2bccfdfaa9f8e1b5745f3d52fed8": {
+      "kind": "paragraph",
+      "source": "Agent 事件的运行与审计日志统一携带可用的 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__，用于关联同一会话、逻辑执行、执行尝试及父子请求；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "dad127327cfce556683a8a91ea93ae0055eb2bccfdfaa9f8e1b5745f3d52fed8",
+      "translation": "The runtime and audit logs of Agent events uniformly carry available __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, and __ELBOT_CODE_4__, used to associate the same Session, logical execution, execution attempt, and parent-child requests;",
+      "updated_at": 1791358203
+    },
     "docs/concepts.md:paragraph:db48a351313c555004f36084a7ebb2ef10bbdc559abc1c7df186a12229d3b4cf": {
       "kind": "paragraph",
       "source": "Session 是 ElBot 的持久化会话单位，用来保存一次连续对话的上下文、模式、消息历史和工具调用记录。\n",
@@ -1255,6 +1375,14 @@
       "source_hash": "db48a351313c555004f36084a7ebb2ef10bbdc559abc1c7df186a12229d3b4cf",
       "translation": "Session is ElBot's persistent session unit, used to save the context, mode, message history, and tool call records of a continuous conversation.\n",
       "updated_at": 1784109334
+    },
+    "docs/concepts.md:paragraph:e224151c9335310b65527043f0ec0cfdf44affc62e9293032e5a8f8895109dd1": {
+      "kind": "paragraph",
+      "source": "获取失败按项返回说明，成功的图片仍可查看。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "e224151c9335310b65527043f0ec0cfdf44affc62e9293032e5a8f8895109dd1",
+      "translation": "If retrieval fails, explanations are returned per item; successfully retrieved images can still be viewed.",
+      "updated_at": 1791358203
     },
     "docs/concepts.md:paragraph:e45efa9dc37cb8606f132205f9ce326e935a9cb43bd594cd460408dd3b75c7b5": {
       "kind": "paragraph",
@@ -1320,6 +1448,14 @@
       "translation": "Therefore, Agent Core does not need to care whether messages come from the CLI, group chats, private chats, or other platforms.\n",
       "updated_at": 1783077374
     },
+    "docs/concepts.md:paragraph:f4fbd7f321cf7ac72239a2a17f1e6952a10dc3e0481f933e0f667075feb5ce09": {
+      "kind": "paragraph",
+      "source": "超出时在对应输出末尾附上过长截断说明。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "f4fbd7f321cf7ac72239a2a17f1e6952a10dc3e0481f933e0f667075feb5ce09",
+      "translation": "When the limit is exceeded, a truncation notice for excessive length is appended to the end of the corresponding output.",
+      "updated_at": 1791358203
+    },
     "docs/concepts.md:paragraph:f63c44a9c3da8282192aae7a2c14d84859f006e9b4fc9ba29c14679c3a2ab041": {
       "kind": "paragraph",
       "source": "它们的分工是：Elwisp 观测一切，Elnis 管理一切，ElBot 掌控最终执行与投递。\n",
@@ -1327,6 +1463,14 @@
       "source_hash": "f63c44a9c3da8282192aae7a2c14d84859f006e9b4fc9ba29c14679c3a2ab041",
       "translation": "Their division of labor is: Elwisp observes everything, Elnis manages everything, and ElBot controls the final execution and delivery.\n",
       "updated_at": 1781709276
+    },
+    "docs/concepts.md:paragraph:f63d5373dd9ddf13ef67059e8271470eac44b97346498af8316d902171852bc6": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 返回的 stdout 和 stderr 各自最多保留前 256 KiB（按字节计）；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "f63d5373dd9ddf13ef67059e8271470eac44b97346498af8316d902171852bc6",
+      "translation": "The stdout and stderr returned by __ELBOT_CODE_0__ each retain a maximum of the first 256 KiB (calculated by bytes);",
+      "updated_at": 1791358203
     },
     "docs/concepts.md:paragraph:f6ffabb2700911f566e9e5429b77829310584367c95356d35c87d391ef7ebf38": {
       "kind": "paragraph",
@@ -1562,8 +1706,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "6140057f66f9c80c606bccbc2912d47fec8eb03abdc0a9f746e6931401e340bc",
+  "source_hash": "61bac27b02ba5df7ccd4eecec91a8c92efb029ae811e8575ad3c9ab47202b1af",
   "target": "docs.en/concepts.md",
-  "updated_at": 1791341016,
+  "updated_at": 1791358203,
   "version": 2
 }
