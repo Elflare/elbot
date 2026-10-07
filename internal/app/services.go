@@ -13,6 +13,7 @@ import (
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/doctor"
+	"elbot/internal/elnis"
 	"elbot/internal/fileops"
 	"elbot/internal/hook"
 	hookcontrol "elbot/internal/hook/control"
@@ -72,6 +73,9 @@ func buildSharedServices(ctx context.Context, req RuntimeRequest) (*sharedServic
 		return nil, err
 	}
 	if err := foundation.Store.Media().RecoverInterrupted(ctx); err != nil {
+		return nil, err
+	}
+	if err := elnis.RecoverInterrupted(ctx, foundation.Store.ElnisEvents()); err != nil {
 		return nil, err
 	}
 	mediaCenter.History = foundation.ChatHistory

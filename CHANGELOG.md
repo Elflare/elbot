@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `shell` 的 stdout／stderr 返回上限从各 16 KiB 提高到各 256 KiB，超出时在对应输出末尾说明过长截断。
 - Responses 工具定义从每轮顶层 `tools` 改为原生输入中的增量 `additional_tools`，回放保留原有位置；当前调用权限单独受 `tool_choice` 限制。旧 Responses 会话及同名工具定义变化需新建会话。
 - 后台路径说明从四个路径工具的 schema 移至系统提示，前台接管不再改变工具定义。
 - 压缩按会话协议分派：Chat 继续使用独立摘要模型，Responses 使用当前模型并完整保存原生返回窗口；两者共用压缩阈值。
@@ -27,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复 `shell` 先缓存全部输出、结束后才截断导致执行期间内存随输出量增长的问题；现在收集时限制容量，超出部分继续排空并丢弃。
 - 修复高风险确认的bug。
 - 修复追加确认等待的bug。
 - QQ OneBot：llm现在能看到引用回复的合并消息了，只展开一层内容。

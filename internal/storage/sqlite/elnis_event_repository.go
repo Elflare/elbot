@@ -5,12 +5,30 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"elbot/internal/storage"
 )
 
 type ElnisEventRepository struct {
 	db *sql.DB
+}
+
+func (r *ElnisEventRepository) FailInterrupted(ctx context.Context, fromStatuses []string, failedStatus, reason string) error {
+	if len(fromStatuses) == 0 {
+		return nil
+	}
+	args := []any{failedStatus, reason, storage.FormatTime(storage.Now())}
+	for _, status := range fromStatuses {
+		args = append(args, status)
+	}
+	// Event status and trigger-driven reference releases share one atomic statement.
+	_, err := r.db.ExecContext(ctx, `UPDATE elnis_events SET status=?,error=?,updated_at=? WHERE status IN (`+
+		strings.TrimSuffix(strings.Repeat("?,", len(fromStatuses)), ",")+")", args...)
+	if err != nil {
+		return fmt.Errorf("recover interrupted elnis events: %w", err)
+	}
+	return nil
 }
 
 func (r *ElnisEventRepository) Create(ctx context.Context, req storage.CreateElnisEventRequest) (*storage.ElnisEvent, error) {

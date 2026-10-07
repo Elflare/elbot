@@ -14,7 +14,7 @@ Elnis 是 ElBot 内部事件入口，Elvena 定义公共协议，Elwisp 提供�
 - 使用 Bearer 或 X-Elnis-Token 鉴权。token 名只用于来源审计，Elwisp 身份来自 elwisp.name；日志不记录 token 原文。
 - 事件唯一键为 `elwisp.name + source + id`。重复键不再次分发；相同键但 hash 不同仅记录告警，不覆盖已保存事件。
 - record 只存记录；direct 在当前请求中发送文本／segments 并执行 raw／capability calls，calls-only 不额外发消息；llm 落库后入队，HTTP 不等待模型完成。
-- llm 队列在内存；启动将未持久化报告的 accepted／queued／running 事件标记失败，已持久化的报告 outbox 单独恢复。
+- llm 队列在内存；应用在 worker 启动前调用 Elnis 的恢复入口，由 Elnis 决定将未持久化报告的 accepted／queued／running 事件标记失败，事件仓储原子更新状态并释放引用。即使 Elnis 禁用也执行；已持久化的报告 outbox 单独恢复。中断执行可能已产生工具副作用，因此不自动重放。
 
 ## 来源、工具与投递裁决
 

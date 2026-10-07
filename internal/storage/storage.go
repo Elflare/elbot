@@ -427,6 +427,8 @@ type CronJobRepository interface {
 }
 
 type ElnisEventRepository interface {
+	// FailInterrupted applies the caller's recovery policy and releases event references atomically.
+	FailInterrupted(ctx context.Context, fromStatuses []string, failedStatus, reason string) error
 	Create(ctx context.Context, req CreateElnisEventRequest) (*ElnisEvent, error)
 	Get(ctx context.Context, id string) (*ElnisEvent, error)
 	GetByKey(ctx context.Context, elwispName, source, sourceID string) (*ElnisEvent, error)

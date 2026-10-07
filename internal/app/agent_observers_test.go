@@ -10,6 +10,7 @@ import (
 	"time"
 
 	agentevents "elbot/internal/agent/events"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
@@ -69,9 +70,30 @@ func TestAgentLoggingSubscribersPreserveFactsAndFields(t *testing.T) {
 	if err := b.connectAgentLogs(events, slog.New(recordHandler{records: runtimeRecords}), slog.New(recordHandler{records: auditRecords})); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "other-session", RunID: "other-run", Attempt: "other-attempt", RequestID: "other-request", RootRequestID: "other-root"}))
 	cancel() // Facts remain consumable after their request is finished.
-	meta := agentevents.EventMeta{At: time.Unix(123, 0), SessionID: "s", RunID: "r", Attempt: "a"}
+	meta := agentevents.EventMeta{At: time.Unix(123, 0), SessionID: "s", RunID: "r", Attempt: "a", RequestID: "req", RootRequestID: "root"}
+	nextRecord := func(records <-chan slog.Record) slog.Record {
+		t.Helper()
+		record := awaitRecord(t, records)
+		want := map[string]string{"session_id": meta.SessionID, "run_id": meta.RunID, "attempt": meta.Attempt, "request_id": meta.RequestID, "root_request_id": meta.RootRequestID}
+		counts := map[string]int{}
+		record.Attrs(func(attr slog.Attr) bool {
+			if value, ok := want[attr.Key]; ok {
+				counts[attr.Key]++
+				if attr.Value.String() != value {
+					t.Errorf("%s: %s=%s, want %s", record.Message, attr.Key, attr.Value.String(), value)
+				}
+			}
+			return true
+		})
+		for key := range want {
+			if counts[key] != 1 {
+				t.Errorf("%s: %s occurred %d times", record.Message, key, counts[key])
+			}
+		}
+		return record
+	}
 	model := agentevents.ModelCallCompletedEvent{EventMeta: meta, Provider: "p", Model: "m", OutputReady: true, Text: "rewritten", SourceText: "source", Usage: &llm.Usage{TotalTokens: 42}, ElapsedMS: 8}
 	if err := events.ModelCallCompleted.Emit(ctx, model); err != nil {
 		t.Fatal(err)
@@ -88,33 +110,56 @@ func TestAgentLoggingSubscribersPreserveFactsAndFields(t *testing.T) {
 	if err := b.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	first := awaitRecord(t, runtimeRecords)
+	first := nextRecord(runtimeRecords)
 	attrs := recordAttrs(first)
 	if first.Message != "llm output" || !first.Time.Equal(meta.At) || attrs["text"] != "rewritten" || attrs["raw_text"] != "source" {
 		t.Fatalf("model output: %+v %v", first, attrs)
 	}
-	if r := awaitRecord(t, runtimeRecords); r.Message != "record tool call failed" {
+	if r := nextRecord(runtimeRecords); r.Message != "record tool call failed" {
 		t.Fatal(r)
 	}
-	tool := awaitRecord(t, runtimeRecords)
+	tool := nextRecord(runtimeRecords)
 	if attrs := recordAttrs(tool); tool.Message != "tool call" || attrs["success"] != true || attrs["arguments"] != "{\"x\":1}" {
 		t.Fatalf("record failure changed execution success: %v", attrs)
 	}
-	if r := awaitRecord(t, runtimeRecords); r.Message != "map platform message failed" {
+	if r := nextRecord(runtimeRecords); r.Message != "map platform message failed" {
 		t.Fatal(r)
 	}
-	commit := awaitRecord(t, runtimeRecords)
+	commit := nextRecord(runtimeRecords)
 	if recordAttrs(commit)["persisted"] != true {
 		t.Fatal("association failure erased successful persistence")
 	}
 	for _, name := range []string{"llm_usage", "tool_call", "risk_confirmation_result", "persistence_error"} {
-		r := awaitRecord(t, auditRecords)
+		r := nextRecord(auditRecords)
 		if recordAttrs(r)["event"] != name || !r.Time.Equal(meta.At) {
 			t.Fatalf("audit order/fields: %v", recordAttrs(r))
 		}
 	}
 	if len(runtimeRecords) != 0 || len(auditRecords) != 0 {
 		t.Fatal("duplicate observations")
+	}
+}
+
+func TestAgentLoggingOmitsMissingIdentity(t *testing.T) {
+	records := make(chan slog.Record, 2)
+	logger := slog.New(recordHandler{records: records})
+	logs := agentLogger{runtime: logger, audit: logger}
+	ctx := contextinfo.WithExecution(t.Context(), contextinfo.Execution{SessionID: "current", RunID: "current", Attempt: "current", RequestID: "current", RootRequestID: "current"})
+	meta := agentevents.EventMeta{At: time.Unix(123, 0)}
+	if err := logs.userInput(ctx, agentevents.UserInputReceivedEvent{EventMeta: meta, Text: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := logs.persistence(ctx, agentevents.PersistenceFailedEvent{EventMeta: meta, Operation: "save", Err: errors.New("failed")}); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		record := awaitRecord(t, records)
+		attrs := recordAttrs(record)
+		for _, key := range []string{"session_id", "run_id", "attempt", "request_id", "root_request_id"} {
+			if value, ok := attrs[key]; ok {
+				t.Errorf("%s: absent identity %s was filled with %v", record.Message, key, value)
+			}
+		}
 	}
 }
 

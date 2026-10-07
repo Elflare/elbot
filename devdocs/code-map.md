@@ -20,7 +20,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `cmd/elbot/main.go`、`internal/launcher/cli.go`：程序入口、命令行与运行模式。
 - `internal/app/app.go`、`internal/app/runner.go`、`internal/app/dependencies.go`：生产入口、分阶段装配与替换工厂。
 - `internal/app/foundation.go`、`internal/app/models.go`：配置、存储与 provider 客户端。
-- `internal/app/services.go`、`internal/app/runtime.go`：共享服务、Agent／Tool／Hook／Cron、命令注册与执行回调。
+- `internal/app/services.go`、`internal/app/runtime.go`：共享服务、启动媒体清理与 Elnis 恢复协调、Agent／Tool／Hook／Cron、命令注册与执行回调。
 - `internal/app/platforms.go`、`internal/app/integrations.go`：平台、Elnis 与外部宿主接线。
 - `internal/app/signals.go`、`internal/app/lifecycle.go`：订阅所有权和启动失败／退出清理。
 
@@ -38,7 +38,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/signal/`：类型化信号、有界执行器、背压和关闭策略。
 - `internal/agent/events/`、`internal/platform/signals.go`：Agent 事实与平台连接信号。
-- `internal/app/signals.go`、`internal/app/agent_logging.go`、`internal/app/agent_notifications.go`：订阅、日志与通知。
+- `internal/app/signals.go`、`internal/app/agent_logging.go`、`internal/app/agent_notifications.go`：订阅、统一事件快照关联的日志与通知。
 - `internal/app/agent_status.go`、`internal/app/model_signals.go`、`internal/app/naming.go`：状态展示、重试与命名消费者。
 
 <!-- locator:config -->
@@ -186,16 +186,16 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/storage/sqlite/`、`internal/storage/sqlite/migrations.go`：存储实现与数据库迁移。
 - `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`：ToolPair／原生提交事务与 checkpoint 比较。
 - `internal/storage/sqlite/native_snapshot.go`、`internal/storage/sqlite/native_material.go`：不可变调用快照、seed 与新 Session 原子保存。
-- `internal/storage/sqlite/media_history.go`、`internal/storage/sqlite/media_lifecycle.go`：历史媒体关联、引用与清理认领。
+- `internal/storage/sqlite/media_history.go`、`internal/storage/sqlite/media_lifecycle.go`：历史媒体关联、媒体临时引用恢复与清理认领。
 
 <!-- locator:elnis -->
 ## Elnis / Elvena / Elwisp
 
 - `internal/elvena/`、`internal/elnis/types.go`：公共协议、来源与 Elnis 类型。
-- `internal/elnis/http.go`、`internal/elnis/service.go`：HTTP runtime、队列与去重分发。
+- `internal/elnis/http.go`、`internal/elnis/service.go`：HTTP runtime、队列、去重分发与中断执行恢复裁决。
 - `internal/elnis/auth.go`、`internal/elnis/prepare.go`、`internal/elnis/targets.go`：鉴权、规范化与投递裁决。
 - `internal/elnis/media.go`、`internal/elnis/outbox.go`：媒体、持久化投递与恢复。
-- `internal/storage/sqlite/elnis_event_repository.go`、`internal/background/`：事件仓储与公共后台类型。
+- `internal/storage/sqlite/elnis_event_repository.go`、`internal/background/`：事件仓储、恢复状态与引用释放的原子执行，以及公共后台类型。
 - [内部架构](elnis-elwisp.md)、[功能说明](../docs/elnis.md)、[配置与协议示例](../docs/elnis-usage.md)。
 
 ## 媒体中心

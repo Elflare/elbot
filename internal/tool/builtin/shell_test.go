@@ -3,6 +3,7 @@ package builtin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -45,6 +46,66 @@ func TestShellToolRunsArbitraryCommand(t *testing.T) {
 	}
 	if result == nil || !strings.Contains(result.Content, "elbot-shell-test") {
 		t.Fatalf("unexpected shell result: %#v", result)
+	}
+}
+
+func TestShellOutputBufferDrainsWithBoundedMemory(t *testing.T) {
+	const limit = 256 * 1024
+	for _, chunkSize := range []int{0, 1, 4093, limit + 1} {
+		t.Run(fmt.Sprint(chunkSize), func(t *testing.T) {
+			var output shellOutputBuffer
+			chunk := []byte(strings.Repeat("x", chunkSize))
+			total := 0
+			for range 300 {
+				n, err := output.Write(chunk)
+				if err != nil || n != len(chunk) {
+					t.Fatalf("write = %d, %v; want %d, nil", n, err, len(chunk))
+				}
+				total += n
+				if len(output.data) != min(total, limit) || cap(output.data) > limit {
+					t.Fatalf("retained=%d capacity=%d total=%d", len(output.data), cap(output.data), total)
+				}
+			}
+			want := strings.Repeat("x", min(total, limit))
+			if total > limit {
+				want += "\n... output too long; truncated to first 256 KiB ...\n"
+			}
+			if output.String() != want {
+				t.Fatal("retained prefix or truncation notice changed")
+			}
+		})
+	}
+}
+
+func TestShellToolOutputLimit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses POSIX shell commands")
+	}
+	const limit = 256 * 1024
+	const notice = "\n... output too long; truncated to first 256 KiB ...\n"
+	for _, size := range []int{20 * 1024, limit, limit + 1, 4 * limit} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			dir := t.TempDir()
+			out, errText := strings.Repeat("o", size), strings.Repeat("e", size)
+			for name, content := range map[string]string{"stdout.txt": out, "stderr.txt": errText} {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx := workspacepath.WithWorkspaceStore(t.Context(), &testWorkspaceStore{dir: dir})
+			args, _ := json.Marshal(map[string]any{"cmd": "cat stdout.txt & cat stderr.txt >&2 & wait; exit 7"})
+			result, err := NewShellTool().Call(ctx, tool.CallRequest{Arguments: args})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if size > limit {
+				out, errText = out[:limit]+notice, errText[:limit]+notice
+			}
+			want := out + "\nstderr:\n" + errText + "\nexit_code: 7"
+			if result.Content != want {
+				t.Fatalf("output mismatch: got %d bytes, want %d; truncations=%d", len(result.Content), len(want), strings.Count(result.Content, notice))
+			}
+		})
 	}
 }
 

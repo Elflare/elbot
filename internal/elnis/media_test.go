@@ -189,6 +189,76 @@ func TestReportMediaSurvivesWorkspaceRemovalAndRetry(t *testing.T) {
 	}
 }
 
+func TestRecoverInterruptedPreservesDurableReportsAndTerminalEvents(t *testing.T) {
+	ctx := t.Context()
+	s, close := newTestService(t, nil)
+	defer close()
+	repo := s.store.ElnisEvents()
+	const mediaID = "report-media"
+	if err := s.store.Media().Upsert(ctx, &storage.Media{ID: mediaID, Backend: "local", MIMEType: "text/plain"}); err != nil {
+		t.Fatal(err)
+	}
+	before := map[string]*storage.ElnisEvent{}
+	for _, status := range []string{StatusAccepted, StatusQueued, StatusRunning, StatusCompleted, StatusFailed, StatusTakenOver, StatusResultReady, StatusDelivering} {
+		var mediaIDs []string
+		if status == StatusAccepted || status == StatusQueued || status == StatusRunning {
+			mediaIDs = []string{mediaID}
+		}
+		row, err := repo.Create(ctx, storage.CreateElnisEventRequest{
+			EventKey: status, ElwispName: "recovery", Source: "test", SourceID: status,
+			Status: status, Error: "existing error", Result: "existing result", MediaIDs: mediaIDs,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status == StatusResultReady || status == StatusDelivering {
+			if err := repo.PrepareReport(ctx, storage.PrepareElnisReportRequest{
+				EventID: row.ID, ResultReadyStatus: status, Result: "durable report",
+				Deliveries: []storage.CreateElnisReportDeliveryRequest{{Target: "{}", Output: `{"Source":{"media":"report-media"}}`}},
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		before[status], err = repo.Get(ctx, row.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for pass := range 2 {
+		if err := RecoverInterrupted(ctx, repo); err != nil {
+			t.Fatal(err)
+		}
+		for status, previous := range before {
+			row, err := repo.Get(ctx, previous.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantStatus, wantError := previous.Status, previous.Error
+			interrupted := status == StatusAccepted || status == StatusQueued || status == StatusRunning
+			if interrupted {
+				wantStatus, wantError = StatusFailed, "interrupted before durable report"
+			}
+			if row.Status != wantStatus || row.Error != wantError || row.Result != previous.Result {
+				t.Fatalf("%s: recovered event = %#v", status, row)
+			}
+			if (pass > 0 || !interrupted) && !row.UpdatedAt.Equal(previous.UpdatedAt) {
+				t.Fatalf("%s: unchanged event timestamp was rewritten", status)
+			}
+			before[status] = row
+			if status == StatusResultReady || status == StatusDelivering {
+				items, err := repo.ListReportDeliveries(ctx, row.ID)
+				if err != nil || len(items) != 1 || items[0].Output != `{"Source":{"media":"report-media"}}` {
+					t.Fatalf("%s: outbox changed: %#v, %v", status, items, err)
+				}
+			}
+		}
+		refs, err := s.store.MediaReferences().ListMediaIDs(ctx, mediaID)
+		if err != nil || len(refs) != 2 {
+			t.Fatalf("durable report references = %#v, %v", refs, err)
+		}
+	}
+}
+
 func TestQueuedMediaReferencesRecoverAfterInterruption(t *testing.T) {
 	ctx := context.Background()
 	s, close := newTestService(t, nil)
@@ -208,6 +278,17 @@ func TestQueuedMediaReferencesRecoverAfterInterruption(t *testing.T) {
 		t.Fatalf("queue refs %v %v", refs, err)
 	}
 	if err := s.store.Media().RecoverInterrupted(ctx); err != nil {
+		t.Fatal(err)
+	}
+	refs, err = s.store.MediaReferences().ListMediaIDs(ctx, item.ID)
+	if err != nil || len(refs) != 1 {
+		t.Fatalf("media cleanup changed event references: %v, %v", refs, err)
+	}
+	row, err := s.store.ElnisEvents().GetByKey(ctx, req.Elwisp.Name, req.Source, req.ID)
+	if err != nil || row.Status != StatusQueued {
+		t.Fatalf("media cleanup changed event: %#v, %v", row, err)
+	}
+	if err := RecoverInterrupted(ctx, s.store.ElnisEvents()); err != nil {
 		t.Fatal(err)
 	}
 	refs, err = s.store.MediaReferences().ListMediaIDs(ctx, item.ID)
