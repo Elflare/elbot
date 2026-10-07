@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"strings"
 
@@ -20,6 +21,7 @@ type RequestOptions = httpclient.Options
 
 type Streamer interface {
 	llm.Client
+	StoreForModel(string) (bool, error)
 	Stream(context.Context, Request) (<-chan Event, error)
 	PrepareRequest(Request) (PreparedRequest, error)
 	StreamPrepared(context.Context, PreparedRequest) (<-chan Event, error)
@@ -75,6 +77,10 @@ func (c *Client) PrepareRequest(req Request) (PreparedRequest, error) {
 	if strings.TrimSpace(c.baseURL) == "" {
 		return PreparedRequest{}, errors.New("response base_url is required")
 	}
+	store, err := c.StoreForModel(req.Model)
+	if err != nil {
+		return PreparedRequest{}, err
+	}
 	input := req.Input
 	if input == nil {
 		input = []Item{}
@@ -90,17 +96,18 @@ func (c *Client) PrepareRequest(req Request) (PreparedRequest, error) {
 		body["previous_response_id"] = req.PreviousResponseID
 	}
 	if req.Store != nil {
-		body["store"] = *req.Store
+		store = *req.Store
 	}
+	body["store"] = store
 	if req.MaxOutputTokens > 0 {
 		body["max_output_tokens"] = req.MaxOutputTokens
 	}
 	if req.Temperature != nil {
 		body["temperature"] = *req.Temperature
 	}
-	body, err := llm.AddExtraFields(body, []string{"model", "input", "instructions", "tools", "stream", "previous_response_id", "conversation", "store"},
-		llm.ExtraFields{Source: "provider extra_payload", Fields: c.extraPayload},
-		llm.ExtraFields{Source: "model extra_payload", Fields: c.modelExtraPayloads[req.Model]},
+	body, err = llm.AddExtraFields(body, []string{"model", "input", "instructions", "tools", "stream", "previous_response_id", "conversation", "store"},
+		llm.ExtraFields{Source: "provider extra_payload", Fields: withoutStore(c.extraPayload)},
+		llm.ExtraFields{Source: "model extra_payload", Fields: withoutStore(c.modelExtraPayloads[req.Model])},
 		llm.ExtraFields{Source: "request ExtraBody", Fields: req.ExtraBody})
 	if err != nil {
 		return PreparedRequest{}, err
@@ -115,6 +122,36 @@ func (c *Client) PrepareRequest(req Request) (PreparedRequest, error) {
 		return PreparedRequest{}, fmt.Errorf("marshal response request: %w", err)
 	}
 	return PreparedRequest{body: append([]byte(nil), buf.Bytes()...), model: req.Model, inputs: len(input), tools: len(req.Tools)}, nil
+}
+
+// StoreForModel exposes the configured preference to the native dialogue loop.
+// Per-call Store still takes precedence for independent text and stateless replay.
+func (c *Client) StoreForModel(model string) (bool, error) {
+	store, source := true, ""
+	for _, extra := range []llm.ExtraFields{
+		{Source: "provider extra_payload", Fields: c.extraPayload},
+		{Source: "model extra_payload", Fields: c.modelExtraPayloads[model]},
+	} {
+		value, exists := extra.Fields["store"]
+		if !exists {
+			continue
+		}
+		if source != "" {
+			return false, fmt.Errorf("extra field %q from %s conflicts with %s; extra parameters cannot override existing fields", "store", extra.Source, source)
+		}
+		configured, ok := value.(bool)
+		if !ok {
+			return false, fmt.Errorf("store from %s must be a boolean", extra.Source)
+		}
+		store, source = configured, extra.Source
+	}
+	return store, nil
+}
+
+func withoutStore(fields map[string]any) map[string]any {
+	copy := maps.Clone(fields)
+	delete(copy, "store")
+	return copy
 }
 
 // include is additive: route-required recovery material cannot be removed by

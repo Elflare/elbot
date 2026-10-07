@@ -48,7 +48,15 @@ func (c *Context) PrepareFork(ctx context.Context, source *storage.Session, mess
 	if err := c.Validate(ctx, w); err != nil {
 		return nil, err
 	}
-	seed, err := w.Seed(continuation, calls, cp.ResponseID)
+	state, err := exchangeStorage(exchange)
+	if err != nil {
+		return nil, err
+	}
+	responseID := ""
+	if state.Available {
+		responseID = cp.ResponseID
+	}
+	seed, err := w.Seed(continuation, calls, responseID)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +94,14 @@ func (c *Context) PrepareCopy(ctx context.Context, source *storage.Session) (*se
 		if err != nil {
 			return nil, err
 		}
-		responseID, expected = cp.ResponseID, cp.ID
+		state, err := exchangeStorage(exchange)
+		if err != nil {
+			return nil, err
+		}
+		if state.Available {
+			responseID = cp.ResponseID
+		}
+		expected = cp.ID
 	}
 	continuation, err := closeBranchCalls(w, calls)
 	if err != nil {

@@ -68,7 +68,10 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	if err != nil {
 		return final, err
 	}
-	store := true
+	store, err := client.StoreForModel(s.selection.Model)
+	if err != nil {
+		return final, err
+	}
 	request := api.Request{Model: s.selection.Model, Instructions: instructions, Input: items, Tools: api.FunctionTools(s.tools), Store: &store, Include: []string{"reasoning.encrypted_content"}}
 	origin, err := s.route.View.Providers.OriginFor(s.selection.Provider)
 	if err != nil {
@@ -82,9 +85,19 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 			return final, err
 		}
 		baseURL = exchange.BaseURL
+		state, err := exchangeStorage(exchange)
+		if err != nil {
+			return final, err
+		}
+		if !state.Available {
+			if store && state.Requested && s.route.Logger != nil {
+				s.route.Logger.WarnContext(ctx, "Responses switching to stateless replay", "provider", s.selection.Provider, "model", s.selection.Model, "session_id", s.session.ID, "response_id", s.checkpoint.ResponseID, "reason", "upstream returned store:false")
+			}
+			store = false
+		}
 	} else if s.seed != nil {
 		request.PreviousResponseID, baseURL = s.seed.ResponseID, s.seed.BaseURL
-		if request.PreviousResponseID != "" && baseURL == origin.BaseURL {
+		if store && request.PreviousResponseID != "" && baseURL == origin.BaseURL {
 			prefix, release, err := s.route.Context.resolveContinuation(ctx, s.seed)
 			if err != nil {
 				return final, err
@@ -93,7 +106,7 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 			request.Input = append(prefix, items...)
 		}
 	}
-	replay := request.PreviousResponseID == "" && s.seed != nil || request.PreviousResponseID != "" && baseURL != origin.BaseURL
+	replay := !store && (s.checkpoint != nil || s.seed != nil) || request.PreviousResponseID == "" && s.seed != nil || request.PreviousResponseID != "" && baseURL != origin.BaseURL
 	if replay {
 		var release func()
 		request, release, err = s.replayRequest(ctx, request, items, origin)

@@ -94,6 +94,7 @@ type Response struct {
 	Raw               json.RawMessage    `json:"-"`
 	ID                string             `json:"id"`
 	Status            string             `json:"status"`
+	Store             *bool              `json:"store,omitempty"`
 	Model             string             `json:"model"`
 	Output            []Item             `json:"output"`
 	Usage             *ResponseUsage     `json:"usage"`
