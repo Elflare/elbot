@@ -63,6 +63,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	if err != nil {
 		return components, err
 	}
+	lifecycle.cron = cronService
 	toolRuntime, err := builtin.NewRuntime(builtin.RuntimeOptions{
 		FileRollback: services.Files,
 		ConfigDir:    filepath.Dir(cfg.ConfigPath),

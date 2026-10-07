@@ -4,6 +4,7 @@ import (
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/completion"
 	"elbot/internal/signal"
+	"sync"
 )
 
 // Agent exposes the application's message, execution and observation capabilities.
@@ -20,6 +21,8 @@ type Agent struct {
 	completion     *completion.Service
 	signals        agentevents.Signals
 	logConnections []*signal.Connection
+	doneOnce       sync.Once
+	done           chan struct{}
 }
 
 func (a *Agent) Signals() agentevents.Signals { return a.signals }

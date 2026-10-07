@@ -87,7 +87,7 @@ func TestConnectedHooksKeepAbsentChatIdentity(t *testing.T) {
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
-	a.NotifyPlatformConnected(context.Background(), "telegram")
+	a.hooks.handlePlatformConnected(context.Background(), "telegram")
 	if len(events) != 2 {
 		t.Fatalf("events=%#v", events)
 	}

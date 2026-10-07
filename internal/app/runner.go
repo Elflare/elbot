@@ -24,7 +24,11 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	var shutdownCancel context.CancelFunc
 	var bindings *signalBindings
 	var logs LogManager
+	var beginRuntimeClose func()
 	beginShutdown := func() {
+		if beginRuntimeClose != nil {
+			beginRuntimeClose()
+		}
 		if logs != nil {
 			logs.BeginClose()
 		}
@@ -124,6 +128,9 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	if runtime != nil {
 		bindings = runtime.Signals
 		if runtime.Lifecycle != nil {
+			if lifecycle, ok := runtime.Lifecycle.(interface{ BeginClose() }); ok {
+				beginRuntimeClose = lifecycle.BeginClose
+			}
 			step := cleanupStep{name: "runtime", close: runtime.Lifecycle.Close}
 			if lifecycle, ok := runtime.Lifecycle.(interface{ stopped() bool }); ok {
 				step.stopped = lifecycle.stopped

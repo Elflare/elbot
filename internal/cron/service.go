@@ -60,6 +60,7 @@ type Service struct {
 	mu                 sync.Mutex
 	connectedPlatforms map[string]bool
 	deliveryGates      map[string]chan struct{}
+	platformEvents     platformSubscriptions
 }
 
 type Options struct {

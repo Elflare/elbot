@@ -39,7 +39,9 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/signal/`：类型化信号、有界执行器、背压和关闭策略；`diagnostics.go` 直接向 stderr 报告设施故障。
 - `internal/events/logging.go`：进程全局日志契约、`LogSubmitted` 和 `EmitLog` 发布快照。
 - `internal/logging/signals.go`：日志中心自身订阅、分类队列和停止准入；关闭与文件资源由 `logging.go` 管理。
-- `internal/agent/events/`、`internal/platform/signals.go`：Agent 事实与平台连接信号。
+- `internal/agent/events/`：Agent 实例事实信号。
+- `internal/events/platform.go`：平台连接全局事实契约；各适配器直接发布。
+- `internal/agent/platform_signals.go`、`internal/cron/platform_signals.go`：Hook 协调模块与 Cron 自行订阅、按平台排队并关闭；`StartPlatformEvents` 在装配完成后启动订阅，`BeginClose`／`Close`／`Done` 管理退出。
 - `internal/agent/logging.go`、`internal/session/naming_logging.go`、`internal/modelmgr/logging.go`：来源模块的同步日志投影；命名上游失败通过审计保留诊断，模型重试日志独立于通知订阅。
 - `internal/session/naming_signals.go`、`internal/modelmgr/signals.go`：实例信号契约与访问；Session 命名生命周期和 Model Manager 的 `service.go` 负责断开来源连接。
 - `internal/app/signals.go`、`internal/app/agent_notifications.go`、`internal/app/agent_status.go`、`internal/app/model_signals.go`：App 通知、状态与重试通知订阅及其生命周期；通用 `newQueue`／`connectSignal` 归 `signals.go`，模型文件只放通知接线。
@@ -149,7 +151,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:platform -->
 ## 平台适配
 
-- `internal/platform/platform.go`、`internal/platform/builtin/`：公共契约与装配。
+- `internal/platform/platform.go`、`internal/platform/builtin/`：公共契约与装配；连接成功直接发布 `events.PlatformConnected`，不暴露实例连接信号。
 - `internal/platform/media.go`、`internal/platform/refcontext/`：历史 segments、敏感来源清洗和引用恢复。
 - `internal/platform/cli/`：本地／远程 CLI 与 TUI。
 - `internal/platform/qq-onebot/`：协议转换、forward 展开、长消息转发及回执。

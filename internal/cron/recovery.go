@@ -91,7 +91,7 @@ func (s *Service) RunMissedOnce(ctx context.Context) {
 	}
 }
 
-func (s *Service) NotifyPlatformConnected(ctx context.Context, platformName string) {
+func (s *Service) handlePlatformConnected(ctx context.Context, platformName string) {
 	platformName = strings.TrimSpace(platformName)
 	if platformName == "" {
 		return

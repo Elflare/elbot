@@ -44,7 +44,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/architecture.md
 <!-- locator:signal -->
 ## 信号与订阅
 
-来源模块拥有实例 `Signal[T]` 及事件类型。Agent、Session 和 Model Manager 自行连接同步日志投影，并在关闭时断开；App 只管理通知和状态订阅。业务诊断和日志投影统一通过 `internal/events.EmitLog` 发布，日志中心自行订阅并持有分类队列；App 负责服务装配与生命周期，不转发日志或注入 Logger。具体见[全局信号设计](global-signals.md)。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
+来源模块拥有内部事实的实例 `Signal[T]` 及事件类型。Agent、Session 和 Model Manager 自行连接同步日志投影，并在关闭时断开；App 只管理通知和状态订阅。业务诊断和日志投影统一通过 `internal/events.EmitLog` 发布，日志中心自行订阅并持有分类队列；App 负责服务装配与生命周期，不转发日志或注入 Logger。具体见[全局信号设计](global-signals.md)。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
 
 - 发射时锁内取得订阅快照、锁外调用。断开不撤销已取得快照或已入队任务；一次性连接即使入队失败也被消耗。发布方固定可变数据及实际调用 context。
 - 异步连接选择 FollowEmit（继承取消）或 FollowExecutor（只保留值）；关闭选择 CancelPending 或 Drain，底层取消优先。
@@ -56,7 +56,9 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/architecture.md
 - 日志来源显式提供事件标识和摘要：客户端重试 WARN，最终失败 ERROR，主动取消不升级，权限／确认拒绝保留 WARN。命名失败的原始错误与兜底保存错误分别保留；上游失败审计不受运行级别影响。Hook 工具调用统一为 `hook_tool_call`，通过 `source` 和 `status` 区分来源及结果。
 - Signal／Queue 的设施故障直接写 stderr，不依赖业务 Logger 或全局日志信号；真正的文件写入错误由队列检查并报告。中心关闭超时不关闭仍在使用的文件，也不释放活动中心名额，后续显式关闭可继续清理。
 - Reader 按日期和文件写入位置倒序查询，每块读取 64 KiB，满足条数立即停止；每次读取与逐行处理检查取消。打开文件后固定本次读取大小，支持跨块行及 LF／CRLF；单行上限 16 MiB，读取失败或超限返回错误。摘要、详情、字段和原始记录均可筛选，查询不改变日志记录等级。
-- 平台 Connected 的 Hook 与 Cron 恢复使用独立队列，互不阻塞；Cron 自行维护补跑、互斥和投递状态。
+- 平台直接发布全局 `events.PlatformConnected`；Hook 协调模块与 Cron 通过自身 `StartPlatformEvents` 订阅，App 只在依赖装配完成后、平台启动前调用生命周期入口。事件仅携带平台名称，不缓存、不重放。
+- Hook 与 Cron 各自按平台惰性创建容量 256、满时拒绝的独立队列；保留发射 context 的值、解除其取消影响。重复连接继续交给业务处理，Cron 自行维护补跑、互斥和投递状态。
+- 消费者在 `BeginClose` 或应用取消时断开订阅、停止准入并取消待执行／在途任务；`Done` 表示实际退出。Agent 关闭同时等待平台 Hook 与 append 等待任务，Cron Service 关闭等待连接恢复；共享 30 秒预算耗尽时不释放活跃消费者仍在使用的依赖。
 
 <!-- locator:config -->
 ## 配置与运行数据

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	elcron "elbot/internal/cron"
 	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/modelmgr"
 	"elbot/internal/session"
@@ -20,14 +21,37 @@ type runtimeLifecycle struct {
 	hooks     *hookruntime.Manager
 	sessions  *session.Service
 	models    *modelmgr.Service
+	cron      *elcron.Service
+}
+
+// BeginClose stops consumer admission before waiting for producers or queues.
+func (l *runtimeLifecycle) BeginClose() {
+	l.cancel()
+	if l.cron != nil {
+		l.cron.BeginClose()
+	}
+	if agent, ok := l.agent.(interface{ BeginClose() }); ok {
+		agent.BeginClose()
+	}
 }
 
 func (l *runtimeLifecycle) Close(ctx context.Context) error {
-	l.cancel()
+	l.BeginClose()
 	var errs []error
+	// Recovery can still be using Agent, Hook, models and storage.
+	if l.cron != nil {
+		if err := l.cron.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("close cron connection recovery: %w", err))
+		}
+		select {
+		case <-l.cron.Done():
+		default:
+			return errors.Join(errs...)
+		}
+	}
 	if l.agent != nil {
 		if err := l.agent.Close(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("close append confirmation waits: %w", err))
+			errs = append(errs, fmt.Errorf("close agent workers: %w", err))
 		}
 		select {
 		case <-l.agent.Done():
@@ -60,6 +84,13 @@ func (l *runtimeLifecycle) Close(ctx context.Context) error {
 }
 
 func (l *runtimeLifecycle) stopped() bool {
+	if l.cron != nil {
+		select {
+		case <-l.cron.Done():
+		default:
+			return false
+		}
+	}
 	if l.agent != nil {
 		select {
 		case <-l.agent.Done():

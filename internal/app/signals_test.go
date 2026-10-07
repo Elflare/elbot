@@ -7,104 +7,54 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/delivery"
+	elcron "elbot/internal/cron"
+	globalevents "elbot/internal/events"
 	"elbot/internal/fileops"
-	"elbot/internal/platform"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage/sqlite"
 )
 
-type signalPlatform struct {
-	name      string
-	connected *signal.Signal[platform.ConnectedEvent]
-}
-
-func (p *signalPlatform) Name() string                                      { return p.name }
-func (*signalPlatform) Run(context.Context, platform.PlatformHandler) error { return nil }
-func (*signalPlatform) SendChat(context.Context, []delivery.Output) (delivery.Receipt, error) {
-	return delivery.Receipt{}, nil
-}
-func (*signalPlatform) SendNotice(context.Context, delivery.Notice) (delivery.Receipt, error) {
-	return delivery.Receipt{}, nil
-}
-func (p *signalPlatform) ConnectedSignal() *signal.Signal[platform.ConnectedEvent] {
-	return p.connected
-}
-
-type signalAgent struct {
-	notify func(context.Context, string)
-}
-
-func (a *signalAgent) NotifyPlatformConnected(ctx context.Context, name string) { a.notify(ctx, name) }
-
-func TestPlatformSignalsAreIsolatedAndCancelledOnClose(t *testing.T) {
-	one := &signalPlatform{name: "one", connected: signal.New[platform.ConnectedEvent]("one")}
-	two := &signalPlatform{name: "two", connected: signal.New[platform.ConnectedEvent]("two")}
-	started, second, cancelled := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	agt := &signalAgent{notify: func(ctx context.Context, name string) {
-		if name == "one" {
-			close(started)
-			<-ctx.Done()
-			close(cancelled)
-		} else if name == "two" {
-			close(second)
-		} else {
-			t.Errorf("name=%q", name)
-		}
-	}}
-	b := &signalBindings{}
-	if err := b.connectPlatforms(agt, nil, []platformRuntime{one, two}); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if err := one.connected.Emit(ctx, platform.ConnectedEvent{Platform: "one"}); err != nil {
-		t.Fatal(err)
-	}
-	<-started // FollowExecutor ignores the original emission's cancellation.
-	if err := two.connected.Emit(context.Background(), platform.ConnectedEvent{}); err != nil {
-		t.Fatal(err)
-	}
-	<-second
-	if err := b.Close(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	<-cancelled
-	if !b.stopped() {
-		t.Fatal("incomplete ownership/close")
-	}
-	if err := one.connected.Emit(context.Background(), platform.ConnectedEvent{Platform: "one"}); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestRunnerCleansSignalBindingsOnAttachFailure(t *testing.T) {
+func TestRunnerCleansPlatformSubscriptionsOnAttachFailure(t *testing.T) {
 	var events []string
 	runner := newTestRunner(t, &events, RunModeFull, "")
-	b := &signalBindings{}
-	started := make(chan struct{})
-	p := &signalPlatform{name: "one", connected: signal.New[platform.ConnectedEvent]("one")}
+	repo := &connectionCronRepo{seen: make(chan struct{}, 1)}
+	cron := elcron.NewService(elcron.Options{Store: connectionCronStore{repo: repo}})
+	lifecycle := &runtimeLifecycle{cancel: func() {}, cron: cron}
 	runner.deps.Runtime = runtimeFactoryFunc(func(context.Context, RuntimeRequest) (*RuntimeComponents, error) {
-		return &RuntimeComponents{Handler: handlerStub{}, Signals: b, Lifecycle: lifecycleFunc(func(context.Context) error { return nil })}, nil
+		return &RuntimeComponents{Handler: handlerStub{}, CronService: cron, Lifecycle: lifecycle}, nil
 	})
 	want := errors.New("attach failed")
-	runner.deps.Integrations = integrationFactoryFunc(func(_ context.Context, req IntegrationRequest) (PlatformComponents, error) {
-		agt := &signalAgent{notify: func(ctx context.Context, _ string) { close(started); <-ctx.Done() }}
-		if err := b.connectPlatforms(agt, nil, []platformRuntime{p}); err != nil {
+	runner.deps.Integrations = integrationFactoryFunc(func(ctx context.Context, req IntegrationRequest) (PlatformComponents, error) {
+		if err := cron.StartPlatformEvents(ctx); err != nil {
 			return PlatformComponents{}, err
 		}
-		if err := p.connected.Emit(context.Background(), platform.ConnectedEvent{}); err != nil {
+		if err := globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: "one"}); err != nil {
 			return PlatformComponents{}, err
 		}
-		<-started
+		select {
+		case <-repo.seen:
+		case <-time.After(time.Second):
+			t.Fatal("connection not consumed")
+		}
 		return req.Platforms, want
 	})
 	if err := runner.Run(context.Background(), Options{}); !errors.Is(err, want) {
 		t.Fatal(err)
 	}
-	if !b.stopped() {
-		t.Fatal("signal callback leaked after failed startup")
+	if !lifecycle.stopped() {
+		t.Fatal("platform subscription leaked after failed startup")
+	}
+	if err := globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: "one"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-repo.seen:
+		t.Fatal("closed consumer ran")
+	default:
+	}
+	if err := cron.StartPlatformEvents(context.Background()); !errors.Is(err, signal.ErrClosed) {
+		t.Fatalf("restart=%v", err)
 	}
 }
 

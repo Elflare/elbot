@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 
-	elcron "elbot/internal/cron"
 	"elbot/internal/fileops"
-	"elbot/internal/platform"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 )
@@ -38,49 +36,6 @@ func (b *signalBindings) connectSession(sessions *session.Service, rollback *fil
 		return err
 	}
 	b.connections = append(b.connections, connection)
-	return nil
-}
-
-func (b *signalBindings) connectPlatforms(agt platformHookAgent, cron *elcron.Service, adapters []platformRuntime) error {
-	consumers := []struct {
-		name   string
-		notify func(context.Context, string)
-	}{{"hooks", agt.NotifyPlatformConnected}}
-	if cron != nil {
-		consumers = append(consumers, struct {
-			name   string
-			notify func(context.Context, string)
-		}{"cron", cron.NotifyPlatformConnected})
-	}
-	for _, adapter := range adapters {
-		if adapter == nil {
-			continue
-		}
-		source, ok := adapter.(platform.ConnectionSource)
-		if !ok {
-			continue
-		}
-		name := adapter.Name()
-		for _, consumer := range consumers {
-			queue, err := signal.NewQueue(signal.QueueOptions{Name: name + ".connected." + consumer.name})
-			if err != nil {
-				return err
-			}
-			b.queues = append(b.queues, queue)
-			connection, err := source.ConnectedSignal().Connect(func(ctx context.Context, event platform.ConnectedEvent) error {
-				platformName := event.Platform
-				if platformName == "" {
-					platformName = name
-				}
-				consumer.notify(ctx, platformName)
-				return nil
-			}, signal.ConnectOptions{Executor: queue, Lifetime: signal.FollowExecutor, Shutdown: signal.CancelPending})
-			if err != nil {
-				return err
-			}
-			b.connections = append(b.connections, connection)
-		}
-	}
 	return nil
 }
 

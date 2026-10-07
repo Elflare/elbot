@@ -63,7 +63,7 @@ func TestNormalizeJobNameAddsUserPrefix(t *testing.T) {
 	}
 }
 
-func TestNotifyPlatformConnectedDeliversMissedDirectCronPerPlatform(t *testing.T) {
+func TestPlatformConnectedDeliversMissedDirectCronPerPlatform(t *testing.T) {
 	repo := newFakeCronRepo()
 	store := fakeCronStore{cron: repo}
 	var sent []string
@@ -78,7 +78,9 @@ func TestNotifyPlatformConnectedDeliversMissedDirectCronPerPlatform(t *testing.T
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "提醒", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "该测试啦"}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
 
-	svc.NotifyPlatformConnected(context.Background(), "qqonebot")
+	startCronPlatformEvents(t, svc)
+
+	emitCronPlatformAndWait(t, svc, "qqonebot")
 	if len(sent) != 1 || sent[0] != "qqonebot:提醒补发：\n\n该测试啦" {
 		t.Fatalf("sent = %#v", sent)
 	}
@@ -90,11 +92,11 @@ func TestNotifyPlatformConnectedDeliversMissedDirectCronPerPlatform(t *testing.T
 		t.Fatal("job disabled before all target platforms were delivered")
 	}
 
-	svc.NotifyPlatformConnected(context.Background(), "qqonebot")
+	emitCronPlatformAndWait(t, svc, "qqonebot")
 	if len(sent) != 1 {
 		t.Fatalf("duplicate send after reconnect: %#v", sent)
 	}
-	svc.NotifyPlatformConnected(context.Background(), "cli")
+	emitCronPlatformAndWait(t, svc, "cli")
 	if len(sent) != 2 || sent[1] != "cli:提醒补发：\n\n该测试啦" {
 		t.Fatalf("sent after cli = %#v", sent)
 	}
@@ -103,7 +105,7 @@ func TestNotifyPlatformConnectedDeliversMissedDirectCronPerPlatform(t *testing.T
 	}
 }
 
-func TestNotifyPlatformConnectedGeneratesLLMReportForFirstConnectedTarget(t *testing.T) {
+func TestPlatformConnectedGeneratesLLMReportForFirstConnectedTarget(t *testing.T) {
 	repo := newFakeCronRepo()
 	store := fakeCronStore{cron: repo}
 	runner := &fakeCronRunner{text: `{"completed":true,"need_report":true,"report":"报告内容"}`}
@@ -120,7 +122,9 @@ func TestNotifyPlatformConnectedGeneratesLLMReportForFirstConnectedTarget(t *tes
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "总结", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
 
-	svc.NotifyPlatformConnected(context.Background(), "qqonebot")
+	startCronPlatformEvents(t, svc)
+
+	emitCronPlatformAndWait(t, svc, "qqonebot")
 	if runner.calls != 1 {
 		t.Fatalf("runner calls after qq = %d", runner.calls)
 	}
@@ -132,14 +136,14 @@ func TestNotifyPlatformConnectedGeneratesLLMReportForFirstConnectedTarget(t *tes
 		t.Fatalf("delivery after qq = %#v", state)
 	}
 
-	svc.NotifyPlatformConnected(context.Background(), "cli")
+	emitCronPlatformAndWait(t, svc, "cli")
 	if runner.calls != 1 {
 		t.Fatalf("runner should reuse cached report, calls = %d", runner.calls)
 	}
 	if len(sent) != 2 || sent[1] != "cli:总结补发：\n\n报告内容" {
 		t.Fatalf("sent after cli = %#v", sent)
 	}
-	svc.NotifyPlatformConnected(context.Background(), "qqonebot")
+	emitCronPlatformAndWait(t, svc, "qqonebot")
 	if runner.calls != 1 || len(sent) != 2 {
 		t.Fatalf("duplicate run/send: calls=%d sent=%#v", runner.calls, sent)
 	}
@@ -424,7 +428,7 @@ func TestMissedOnceFallsBackToTextWhenSandboxAttachmentIsMissing(t *testing.T) {
 	repo.jobs[job.Name].DeliveryState = mustMarshalTestDelivery(t, state)
 	repo.jobs[job.Name].DeliveryToken = "session"
 
-	svc.NotifyPlatformConnected(context.Background(), "cli")
+	svc.handlePlatformConnected(context.Background(), "cli")
 	if len(sent) != 2 || sent[0].Text != "日报补发：\n\n正文" || sent[1].Text != "路径 missing.png 附件发送失败" {
 		t.Fatalf("sent = %#v", sent)
 	}
@@ -453,7 +457,7 @@ func TestMissedOnceFallsBackToURLTextAfterRemoteMediaSendFails(t *testing.T) {
 	repo.jobs[job.Name].DeliveryState = mustMarshalTestDelivery(t, state)
 	repo.jobs[job.Name].DeliveryToken = "session"
 
-	svc.NotifyPlatformConnected(context.Background(), "cli")
+	svc.handlePlatformConnected(context.Background(), "cli")
 	if len(sent) != 3 || sent[1].Source.URL != "https://example.com/chart.png" || sent[2].Text != "url https://example.com/chart.png 发送失败" {
 		t.Fatalf("sent = %#v", sent)
 	}
@@ -489,8 +493,8 @@ func TestMissedOnceReconnectRetriesOnlyPendingFallbackText(t *testing.T) {
 	repo.jobs[job.Name].DeliveryState = mustMarshalTestDelivery(t, state)
 	repo.jobs[job.Name].DeliveryToken = "session"
 
-	svc.NotifyPlatformConnected(context.Background(), "cli")
-	svc.NotifyPlatformConnected(context.Background(), "cli")
+	svc.handlePlatformConnected(context.Background(), "cli")
+	svc.handlePlatformConnected(context.Background(), "cli")
 	if reportSends != 1 || mediaSends != 1 || fallbackSends != 2 {
 		t.Fatalf("report=%d media=%d fallback=%d", reportSends, mediaSends, fallbackSends)
 	}
@@ -508,8 +512,8 @@ func TestMissedOnceReusesReportWhenTaskCompletedIsFalse(t *testing.T) {
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 2, Title: "阻塞任务", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
 
-	svc.NotifyPlatformConnected(context.Background(), "qqonebot")
-	svc.NotifyPlatformConnected(context.Background(), "cli")
+	svc.handlePlatformConnected(context.Background(), "qqonebot")
+	svc.handlePlatformConnected(context.Background(), "cli")
 	if runner.calls != 1 {
 		t.Fatalf("runner calls = %d", runner.calls)
 	}
@@ -539,7 +543,7 @@ func TestConcurrentPlatformConnectionsGenerateOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			svc.NotifyPlatformConnected(ctx, platformName)
+			svc.handlePlatformConnected(ctx, platformName)
 		}()
 	}
 	wg.Wait()
@@ -574,7 +578,7 @@ func TestDisableDuringMissedDeliveryDoesNotReenableJob(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		svc.NotifyPlatformConnected(ctx, "cli")
+		svc.handlePlatformConnected(ctx, "cli")
 	}()
 	<-started
 	actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
@@ -741,7 +745,7 @@ func TestRunLLMSendsAdminNoticeWhenRetryStillInvalid(t *testing.T) {
 	}
 }
 
-func TestNotifyPlatformConnectedSkipsAlreadyDeliveredPlatform(t *testing.T) {
+func TestPlatformConnectedSkipsAlreadyDeliveredPlatform(t *testing.T) {
 	repo := newFakeCronRepo()
 	store := fakeCronStore{cron: repo}
 	var sent []string
@@ -758,7 +762,9 @@ func TestNotifyPlatformConnectedSkipsAlreadyDeliveredPlatform(t *testing.T) {
 	repo.jobs[job.Name].DeliveryState = mustMarshalTestDelivery(t, state)
 	repo.jobs[job.Name].DeliveryToken = "run"
 
-	svc.NotifyPlatformConnected(context.Background(), "cli")
+	startCronPlatformEvents(t, svc)
+
+	emitCronPlatformAndWait(t, svc, "cli")
 	if len(sent) != 0 {
 		t.Fatalf("already delivered platform was sent again: %#v", sent)
 	}
@@ -886,11 +892,11 @@ func TestMigrateLegacyDeliveryStateResumesOnlyPendingPlatform(t *testing.T) {
 		t.Fatalf("migrated delivery = %#v", state)
 	}
 
-	svc.NotifyPlatformConnected(context.Background(), "qqofficial")
+	svc.handlePlatformConnected(context.Background(), "qqofficial")
 	if len(sentPlatforms) != 0 {
 		t.Fatalf("already delivered platform was sent again: %#v", sentPlatforms)
 	}
-	svc.NotifyPlatformConnected(context.Background(), "cli")
+	svc.handlePlatformConnected(context.Background(), "cli")
 	if len(sentPlatforms) != 1 || sentPlatforms[0] != "cli" {
 		t.Fatalf("sent platforms = %#v", sentPlatforms)
 	}
