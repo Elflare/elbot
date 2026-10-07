@@ -241,61 +241,70 @@ func emitCompact(w http.ResponseWriter, items ...string) {
 }
 
 func TestResponsesCompactionUsesCurrentModelAndWholeWindowThenStartsNewChain(t *testing.T) {
-	f := newNativeFixture(t, func(index int, request nativeTestRequest, w http.ResponseWriter) {
-		switch index {
-		case 0:
-			emitNative(w, "old", "completed", `{"type":"reasoning","encrypted_content":"old-reasoning"}`, nativeText("source answer"))
-		case 1:
-			if request.Endpoint != "/responses/compact" || request.Model != "m" || request.PreviousResponseID != "" || !strings.Contains(inputJSON(request), "old-reasoning") {
-				t.Errorf("compact request=%+v", request)
+	for _, mode := range []string{"stored", "stateless"} {
+		t.Run(mode, func(t *testing.T) {
+			stateless := mode == "stateless"
+			f := newNativeFixture(t, func(index int, request nativeTestRequest, w http.ResponseWriter) {
+				switch index {
+				case 0:
+					emitNativeStore(w, "old", !stateless, `{"type":"reasoning","encrypted_content":"old-reasoning"}`, nativeText("source answer"))
+				case 1:
+					if request.Endpoint != "/responses/compact" || request.Model != "m" || request.PreviousResponseID != "" || !strings.Contains(inputJSON(request), "old-reasoning") {
+						t.Errorf("compact request=%+v", request)
+					}
+					emitCompact(w, `{"type":"message","role":"user","content":[{"type":"input_text","text":"retained input"}],"unknown":9007199254740993}`, `{"type":"compaction","encrypted_content":"compact-opaque","vendor_field":{"keep":true}}`, `{"type":"future_state","payload":"retain as-is"}`)
+				case 2:
+					body := inputJSON(request)
+					if request.PreviousResponseID != "" || len(request.Input) != 4 || !strings.Contains(body, "compact-opaque") || !strings.Contains(body, "retain as-is") || !strings.Contains(body, "9007199254740993") || strings.Contains(body, "old-reasoning") {
+						t.Errorf("new root request=%+v", request)
+					}
+					emitNativeStore(w, "new-root", !stateless, nativeText("new answer"))
+				case 3:
+					if stateless {
+						if request.PreviousResponseID != "" || request.Store || len(request.Input) != 6 || strings.Count(inputJSON(request), "compact-opaque") != 1 {
+							t.Errorf("stateless compact continuation=%+v", request)
+						}
+					} else if request.PreviousResponseID != "new-root" || len(request.Input) != 1 {
+						t.Errorf("continuation=%+v", request)
+					}
+					emitNative(w, "next", "completed", nativeText("next answer"))
+				default:
+					t.Errorf("unexpected request %d", index)
+				}
+			})
+			if err := f.agent.HandleMessage(t.Context(), "source input"); err != nil {
+				t.Fatal(err)
 			}
-			emitCompact(w, `{"type":"message","role":"user","content":[{"type":"input_text","text":"retained input"}],"unknown":9007199254740993}`, `{"type":"compaction","encrypted_content":"compact-opaque","vendor_field":{"keep":true}}`, `{"type":"future_state","payload":"retain as-is"}`)
-		case 2:
-			body := inputJSON(request)
-			if request.PreviousResponseID != "" || len(request.Input) != 4 || !strings.Contains(body, "compact-opaque") || !strings.Contains(body, "retain as-is") || !strings.Contains(body, "9007199254740993") || strings.Contains(body, "old-reasoning") {
-				t.Errorf("new root request=%+v", request)
+			old := fixtureSession(t, f)
+			if _, err := f.agent.execution.models.SelectCompactModel("native/new-model"); err != nil {
+				t.Fatal(err)
 			}
-			emitNative(w, "new-root", "completed", nativeText("new answer"))
-		case 3:
-			if request.PreviousResponseID != "new-root" || len(request.Input) != 1 {
-				t.Errorf("continuation=%+v", request)
+			if _, err := f.agent.CompactCurrent(t.Context(), "manual"); err != nil {
+				t.Fatal(err)
 			}
-			emitNative(w, "next", "completed", nativeText("next answer"))
-		default:
-			t.Errorf("unexpected request %d", index)
-		}
-	})
-	if err := f.agent.HandleMessage(t.Context(), "source input"); err != nil {
-		t.Fatal(err)
-	}
-	old := fixtureSession(t, f)
-	if _, err := f.agent.execution.models.SelectCompactModel("native/new-model"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.agent.CompactCurrent(t.Context(), "manual"); err != nil {
-		t.Fatal(err)
-	}
-	next := fixtureSession(t, f)
-	if next.ID == old.ID || next.ParentSessionID != "" || strings.Contains(next.Metadata, "llm_checkpoint") {
-		t.Fatalf("new session=%+v", next)
-	}
-	seed, err := f.store.Dialogues().Seed(t.Context(), next.ID)
-	if err != nil || seed.ResponseID != "" || seed.Consumed || !strings.Contains(seed.ItemsJSON, "compact-opaque") {
-		t.Fatalf("seed=%+v %v", seed, err)
-	}
-	if err := f.agent.HandleMessage(t.Context(), "first after compact"); err != nil {
-		t.Fatal(err)
-	}
-	seed, err = f.store.Dialogues().Seed(t.Context(), next.ID)
-	if err != nil || !seed.Consumed {
-		t.Fatalf("seed=%+v %v", seed, err)
-	}
-	row, err := f.store.Sessions().Get(t.Context(), next.ID)
-	if err != nil || strings.Contains(row.Metadata, `"pending":true`) {
-		t.Fatalf("pending compression=%+v %v", row, err)
-	}
-	if err := f.agent.HandleMessage(t.Context(), "next input"); err != nil {
-		t.Fatal(err)
+			next := fixtureSession(t, f)
+			if next.ID == old.ID || next.ParentSessionID != "" || strings.Contains(next.Metadata, "llm_checkpoint") {
+				t.Fatalf("new session=%+v", next)
+			}
+			seed, err := f.store.Dialogues().Seed(t.Context(), next.ID)
+			if err != nil || seed.ResponseID != "" || seed.Consumed || !strings.Contains(seed.ItemsJSON, "compact-opaque") {
+				t.Fatalf("seed=%+v %v", seed, err)
+			}
+			if err := f.agent.HandleMessage(t.Context(), "first after compact"); err != nil {
+				t.Fatal(err)
+			}
+			seed, err = f.store.Dialogues().Seed(t.Context(), next.ID)
+			if err != nil || !seed.Consumed {
+				t.Fatalf("seed=%+v %v", seed, err)
+			}
+			row, err := f.store.Sessions().Get(t.Context(), next.ID)
+			if err != nil || strings.Contains(row.Metadata, `"pending":true`) {
+				t.Fatalf("pending compression=%+v %v", row, err)
+			}
+			if err := f.agent.HandleMessage(t.Context(), "next input"); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 
@@ -387,46 +396,61 @@ func TestResponsesRecoveryRefusesMissingMedia(t *testing.T) {
 
 // Additional lifecycle checks use the real Session service and provider wiring.
 func TestResponsesBackgroundCopyContinuesNativeChainWithoutAdoptingCurrent(t *testing.T) {
-	f := newNativeFixture(t, func(index int, request nativeTestRequest, w http.ResponseWriter) {
-		if index == 0 {
-			emitNative(w, "background", "completed", `{"type":"reasoning","encrypted_content":"background-opaque"}`, nativeText(`{"completed":true,"need_report":false}`))
-			return
-		}
-		if request.PreviousResponseID != "background" {
-			t.Errorf("copy continuation=%+v", request)
-		}
-		emitNative(w, "copy-answer", "completed", nativeText("continued copy"))
-	})
-	actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
-	result, err := f.agent.RunBackground(t.Context(), background.RunRequest{Kind: background.KindCron, Name: "copy", Actor: actor, Platform: "cli", Prompt: "background input"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	foreground, err := f.agent.execution.sessions.Create(t.Context(), f.agent.Scope(t.Context()), session.CreateRequest{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, binding, err := f.agent.execution.sessions.CurrentBound(t.Context(), f.agent.Scope(t.Context()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	copy, err := f.agent.execution.sessions.CopyBackground(t.Context(), session.Scope{ActorID: actor.ID, Platform: "cli", PlatformScopeID: "cron:copy"}, session.BackgroundCopyRequest{SourceSessionID: result.SessionID, Kind: "cron", Name: "copy"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	current, after, err := f.agent.execution.sessions.CurrentBound(t.Context(), f.agent.Scope(t.Context()))
-	if err != nil || current.ID != foreground.ID || after != binding {
-		t.Fatalf("copy adopted foreground=%+v %v", current, err)
-	}
-	seed, err := f.store.Dialogues().Seed(t.Context(), copy.ID)
-	if err != nil || !strings.Contains(seed.ItemsJSON, "background-opaque") {
-		t.Fatalf("seed=%+v %v", seed, err)
-	}
-	if _, err := f.agent.execution.sessions.Resume(t.Context(), f.agent.Scope(t.Context()), copy.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.agent.HandleMessage(t.Context(), "continue copy"); err != nil {
-		t.Fatal(err)
+	for _, mode := range []string{"stored", "stateless"} {
+		t.Run(mode, func(t *testing.T) {
+			stateless := mode == "stateless"
+			f := newNativeFixture(t, func(index int, request nativeTestRequest, w http.ResponseWriter) {
+				if index == 0 {
+					emitNativeStore(w, "background", !stateless, `{"type":"reasoning","encrypted_content":"background-opaque"}`, nativeText(`{"completed":true,"need_report":false}`))
+					return
+				}
+				if stateless {
+					if request.PreviousResponseID != "" || strings.Count(inputJSON(request), "background-opaque") != 1 {
+						t.Errorf("stateless copy=%+v", request)
+					}
+				} else if request.PreviousResponseID != "background" {
+					t.Errorf("copy continuation=%+v", request)
+				}
+				emitNative(w, "copy-answer", "completed", nativeText("continued copy"))
+			})
+			actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
+			result, err := f.agent.RunBackground(t.Context(), background.RunRequest{Kind: background.KindCron, Name: "copy", Actor: actor, Platform: "cli", Prompt: "background input"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			foreground, err := f.agent.execution.sessions.Create(t.Context(), f.agent.Scope(t.Context()), session.CreateRequest{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, binding, err := f.agent.execution.sessions.CurrentBound(t.Context(), f.agent.Scope(t.Context()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			copy, err := f.agent.execution.sessions.CopyBackground(t.Context(), session.Scope{ActorID: actor.ID, Platform: "cli", PlatformScopeID: "cron:copy"}, session.BackgroundCopyRequest{SourceSessionID: result.SessionID, Kind: "cron", Name: "copy"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			current, after, err := f.agent.execution.sessions.CurrentBound(t.Context(), f.agent.Scope(t.Context()))
+			if err != nil || current.ID != foreground.ID || after != binding {
+				t.Fatalf("copy adopted foreground=%+v %v", current, err)
+			}
+			seed, err := f.store.Dialogues().Seed(t.Context(), copy.ID)
+			if err != nil || !strings.Contains(seed.ItemsJSON, "background-opaque") {
+				t.Fatalf("seed=%+v %v", seed, err)
+			}
+			if stateless && seed.ResponseID != "" {
+				t.Fatalf("stateless copy response ID=%s", seed.ResponseID)
+			}
+			if err := f.store.Sessions().Delete(t.Context(), result.SessionID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.agent.execution.sessions.Resume(t.Context(), f.agent.Scope(t.Context()), copy.ID); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.agent.HandleMessage(t.Context(), "continue copy"); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

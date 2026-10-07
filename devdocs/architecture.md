@@ -99,7 +99,7 @@ rg -n "locator:tool-flow" devdocs/architecture.md
 - 发送前会发布 `sending` phase，便于 `/requests` 区分 LLM 慢还是平台发送慢。
 - 普通输入在工具阶段不会打断工具，会以 text/image segments 进入 pending；下一次 LLM 调用前已有的 pending 会合并注入当前轮，最终 LLM 调用期间新到达的 pending 则在当前轮正常结束后作为新用户消息自动开启下一轮。
 - chat.Loop 拥有 Prompt Builder；系统提示来源与构建器归 dialogue，每个 turn 从 Soul、工具提示、工具标签和当前 actor 的常驻记忆构建一次 system message，该消息只在当前 turn 内复用，不进入会话历史。
-- responses.Loop 拥有原生输入队列、当前 checkpoint 和本轮原生响应；每次调用重新构建 instructions，传入固定选择快照，仅解析新增输入的媒体并沿 previous_response_id 续链。公共 Hook 读取业务投影，原生 items 不进入 Chat messages 或公共执行状态。
+- responses.Loop 拥有原生输入队列、当前 checkpoint 和本轮原生响应；每次调用重新构建 instructions，传入固定选择快照，默认仅解析新增输入的媒体并沿 previous_response_id 续链；无服务端存储时重建并解析完整原生窗口。公共 Hook 读取业务投影，原生 items 不进入 Chat messages 或公共执行状态。
 - 接管后刷新模型、工具 schema 和业务投影。公共 CallProcessor 在请求末尾追加带 `[系统提示]` 标记的合成 user 消息，说明后台要求解除；该提示不进入 system prompt 或展示历史。Responses 私有路线将相同提示保存为原生输入，重试复用待提交提示并保持它在输入末尾。
 - 单轮结果区分完成、暂停、停止、取消、失败与 attempt 已失效，保留提交事实、Usage、模型和计时。回复成功后，协调器依次处理 Touch、Usage、完成状态、压缩提示、pending 交接、Execution 结果和命名；提交期间进入追加确认也不会丢失已成功提交的用量。
 - 单轮材料加载在 Request 登记前，Prompt／Hook 和用户消息落库在登记后；Request 及 attempt 清理由执行协调器负责，dialogue.Runner 不结束跨轮 Execution。
@@ -159,6 +159,8 @@ Responses 请求在 HTTP 调用前保存实际编码 JSON，主对话显式请�
 function call 响应、原生调用及 checkpoint 在工具副作用前保存，展示层不预写调用头。每个工具完成后，ToolPair、原生 function_call_output、执行状态和该展示调用头的历史快照同事务提交。历史快照复用 checkpoint 表，保持原 exchange 的 parent／response／seed，不推进活动游标或消费输入；分支只读取当时冻结的结果引用。中断后的普通续接只在原生层补齐未执行／结果未知输出，不编造展示结果或重跑历史工具。
 
 `responses.Context` 从 seed 根、checkpoint 前序链及已提交 exchange 的有序新输入和完整输出重建原生窗口。明确的旧链失效错误且尚无新响应内容时，清空 previous_response_id，以同厂商完整材料重试一次；普通网络、鉴权、含糊错误、部分流及第二次失败不再恢复。base_url 与最近实际 exchange 的地址不同时直接重建。恢复复用本轮已准备输入、instructions、工具和 Selection，不重跑 Hook／工具。缺少完整推理、原生载荷或有效本地素材则拒绝，不用文字投影替代。
+
+Responses 的 provider／模型级 extra_payload.store 只接受布尔值，同名配置拒绝覆盖；私有客户端提供按模型读取偏好的能力，单次 Request.Store 优先，独立文本固定 false。主对话默认 true；续接前读取 checkpoint 对应实际请求／响应，任一明确 store:false 都以 store:false 发送完整窗口且不带 previous_response_id，字段缺省依据原请求判断。判断随原生事实持久化，无额外缓存或迁移。请求存储但上游关闭存储后的自动切换只记录后台 WARN，稳定无状态续接和显式关闭不重复告警。Fork／后台副本仅为可续链来源保留 seed response ID，其余使用完整独立 seed。
 
 SQLite 的 native_exchanges、native_inputs、native_calls、native_checkpoints、native_seeds 保存原生状态；Session metadata 仅存 llm_origin、llm_checkpoint、llm_seed 等身份与引用。exchange 保存有序新输入清单，checkpoint 保存当时的不可变调用快照及根 seed 引用。媒体以本地 ID 关联业务消息、原生输入和 seed，重建时重新解析并持有素材；压缩保留隐含在不可读状态中的素材引用，来源删除不影响独立 seed。Responses 调用集合、ID、名称及参数通过消费方注入的 Hook 只读策略保护，公共 Hook 和 ToolRun 不判断协议。
 

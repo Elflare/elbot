@@ -179,7 +179,7 @@ default_context_window = 256000
 - `models` 是手动补充的模型名列表，当 Provider 的模型列表接口获取不到某些模型时使用。
 - `[providers.<name>.model_configs."<model>"]` 为特定模型配置 `context_window` 和 `extra_payload`，两者都是可选的。
 - provider 和模型级共用 `extra_payload`，按 `api_mode` 填写该 API／模型支持的原生参数。
-- `extra_payload` 会合并到 LLM 请求 JSON 中，模型级覆盖 Provider 级。
+- `extra_payload` 会合并到 LLM 请求 JSON 中。
 - `[model_metadata]` 的 `default_context_window` 是全局回退值，默认 `256000`，没有在 `model_configs` 里配 `context_window` 时使用。
 
 Responses 的配置示例：
@@ -189,8 +189,10 @@ Responses 的配置示例：
 api_mode = "response"
 base_url = "https://api.openai.com/v1"
 api_key_env = "OPENAI_API_KEY"
-extra_payload = { reasoning = { effort = "medium" } }
+extra_payload = { store = false, reasoning = { effort = "medium" } }
 ```
+
+Responses 的 Provider 或模型级 `extra_payload` 可用 `store = false` 关闭服务端存储，后续发送完整原生历史；默认使用服务端续链，若上游返回 `store:false` 则自动切换，并在后台记录 WARN。
 
 Chat Completions 和 Responses 客户端都可用于命名及 Chat 会话的文字摘要。Responses 会话使用当前对话模型进行原生压缩，不使用 `/model --compact` 的选择。
 

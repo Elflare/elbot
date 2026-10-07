@@ -74,7 +74,7 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 	system := buildSystemPrompt(cfg.SoulPath, deps.ResidentMemoryStore, toolRuntime.provider, deps.ToolPreloader)
 	chat := &chatroute.Loop{Logger: logger, Contexts: deps.Contexts, Models: deps.Models, Turns: turns, View: view, Preparer: preparer, Tools: tools, Messages: messages, Caller: &chatroute.Caller{Calls: calls}, PromptBuilder: chatroute.PromptBuilder{System: system}}
 	nativeContext := &responseroute.Context{Repository: store.Dialogues(), Media: deps.Media}
-	response := &responseroute.Loop{Repository: store.Dialogues(), Context: nativeContext, Models: deps.Models, Turns: turns, View: view, Preparer: preparer, Tools: tools, Messages: messages, Calls: calls, System: system}
+	response := &responseroute.Loop{Logger: logger, Repository: store.Dialogues(), Context: nativeContext, Models: deps.Models, Turns: turns, View: view, Preparer: preparer, Tools: tools, Messages: messages, Calls: calls, System: system}
 	compactor := &chatroute.Compactor{Store: store, Models: deps.Models, Contexts: deps.Contexts, Loader: contextmgr.Loader{Store: store}}
 	nativeCompactor := &responseroute.Compactor{Context: nativeContext, Messages: messages, View: view, System: system, Identity: identity}
 	if err := bindProviderRoutes(deps.Routes, deps.Models, chat, response, compactor, nativeCompactor, nativeContext); err != nil {
