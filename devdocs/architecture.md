@@ -49,6 +49,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/architecture.md
 - 发射时锁内取得订阅快照、锁外调用。断开不撤销已取得快照或已入队任务；一次性连接即使入队失败也被消耗。发布方固定可变数据及实际调用 context。
 - 异步连接选择 FollowEmit（继承取消）或 FollowExecutor（只保留值）；关闭选择 CancelPending 或 Drain，底层取消优先。
 - 串行队列默认容量 256、满时拒绝。日志使用 `WaitForCapacity + FollowExecutor + Drain`，按成功入队顺序写入；`BeginClose` 停止接收并唤醒等待者。入队不等于写入成功，拒绝、写入失败及未排空均有诊断，Done 表示 worker 实际退出。
+- 日志写入预期很快、队列通常不会满，因此有意选择等待容量，并接受极端情况下业务等待且单次请求取消不能解除入队背压的取舍。
+- Agent 运行与审计日志统一使用事件发布时的 `EventMeta`，记录非空的 `session_id`、`run_id`、`attempt`、`request_id`、`root_request_id`；异步消费不查询当前执行身份。
 - 平台 Connected 的 Hook 与 Cron 恢复使用独立队列，互不阻塞；Cron 自行维护补跑、互斥和投递状态。
 
 <!-- locator:config -->
@@ -185,6 +187,7 @@ flowchart LR
 
 - Request 管活动请求树、父子关系、取消、超时和清理；LLM、工具、压缩与后台请求均登记，Hook／工具子请求保留根关联。
 - Turn 管 Session 当前阶段、pending、确认和工具计数；Execution 管跨追加确认与压缩的 RunID、接管来源和一次性结果。attempt 防止迟到完成覆盖新执行，续接间隙的 pending 保持忙碌状态。
+- Session、Execution、attempt、Request 分别承担归属、逻辑执行、尝试隔离和取消职责；接管、确认续跑与压缩交接保留这些独立边界，由组合场景测试约束状态转换。
 - 风险确认先在锁内登记 attempt 与响应通道，再锁外发提示；响应、取消和迟到清理只操作固定等待对象。追加确认同样固定 AppendWait，等待及过期提示受应用生命周期管理。
 - 状态同步校验归属、保存并发布单调版本。app 按 Session 和实际目标合并展示，远程 CLI 连接分别处理；终态不依赖后续事件唤醒，后台仅记录，绑定失效清理积压。
 
@@ -208,6 +211,7 @@ Runtime 管注册、schema、权限与执行器；ToolRun 管当前工具视图�
 - 前台 chat 不读写工具状态或注入 Skill／tag；请求和响应边界均过滤工具。后台只使用首轮授权缓存，续跑忽略新工具参数，禁止 discover_tool、workspace 和 ForegroundOnly 工具，Hook 不能扩大集合。
 - `tool_list_names` 优先匹配工具／Skill，再匹配 tag；只有显式 tag 注入提示。Elnis 展开后的根工具仍受 allowed_tools 限制，任务正文不能扩大权限。
 - discover_tool 激活对应 Skill wrapper；read_file／edit_file 的隐藏 rollback_file 依赖同样受权限及前台限制。schema 返回独立副本，Fork 不复制工具状态。
+- shell 在收集时分别限制 stdout／stderr 为前 256 KiB，超出部分继续排空并丢弃，截断流尾部附说明；输出量不再决定收集缓冲区的增长。
 
 `fileops.Service` 统一处理工具与命令编辑／撤销，workspace 提供路径契约，sandbox 限制后台路径。
 
@@ -223,7 +227,7 @@ Runtime 管注册、schema、权限与执行器；ToolRun 管当前工具视图�
 - Chat History 查询不下载；get_media 限当前平台／scope，单次最多尝试 5 个未入库媒体，返回文本 ID。主库按历史内部 ID 和媒体位置保存关联，历史删除后释放引用；跨库对账故障保守停止。
 - Elnis 排队 URL 不下载，LLM 执行时物化，direct 实际发送才导入；outbox 保存稳定 ID。输出回执保留有序媒体位置，缓存期限使用 retention_days，非正值不缓存。
 - 最后引用释放后保留 1 小时。清理认领与新增引用互斥；物理删除按远端 → 本地 → 记录执行，失败保留可重试状态。同媒体 ID 的导入／上传／删除互斥，不同 ID 可并行，每轮最多清理 4 个对象。
-- 清理前检查缺失引用与悬空 owner，异常保守停止。启动清理中断的临时引用并处理不可恢复的队列事件，持久化 outbox 保留；取消清理等待已启动任务退出。
+- 清理前检查缺失引用与悬空 owner，异常保守停止。应用启动在 worker／工具运行前依次清理媒体临时引用并调用 Elnis 恢复裁决，即使 Elnis 禁用也处理历史中断事件；任一步失败即停止启动，步骤可重复执行。事件状态与引用释放由事件仓储原子完成，持久化 outbox 保留；取消清理等待已启动任务退出。
 
 <!-- locator:skill -->
 ## Skill
@@ -307,6 +311,7 @@ contextmgr 管历史、窗口、用量、阈值及压缩分派；协议 Compacto
 ## Storage 与 SQLite
 
 - storage 定义领域模型和 repository 契约，SQLite 实现消息、Session、聊天历史、工具记录、Cron、Elnis 和原生状态事务。
+- 主库使用单连接，工具状态随整份 Session metadata 在事务内合并更新，以保持事务与状态合并简单可靠；实测出现连接等待或编码瓶颈后再调整存储与并发方式。
 - Session 字段修改使用 `Mutate` 在短事务读取最新行，只改负责字段；回调不做外部 I/O 或嵌套仓储操作。RawMessage 保留未知 metadata 和数值精度，损坏数据拒绝读写。
 - 多模态 segments 为结构来源，content 为文本投影；非空 segments 优先。ToolPair 保存调用／结果关联，复制消息时重映射 ID。
 - `native_exchanges`、`native_inputs`、`native_calls`、`native_checkpoints`、`native_seeds` 保存原生记录，Session metadata 只保存归属、版本和引用。关键提交比较旧 checkpoint，材料事务同时保存 Session、历史及媒体引用；查询保留平台隔离、归档与 Fork 范围。
@@ -315,6 +320,8 @@ contextmgr 管历史、窗口、用量、阈值及压缩分派；协议 Compacto
 ## Elnis / Elvena / Elwisp
 
 Elnis 接收并分发事件，Elvena 定义公共协议，Elwisp 提供外部事件和工具。Elnis 作为 app runtime 复用后台执行与发送服务，不充当聊天平台或管理外部监听器。
+
+- 未形成持久化报告的中断执行保守标记失败，避免重放已产生的工具副作用；持久化报告恢复投递，接受部分发送成功或回执未落库时的重复投递。
 
 内部链路、去重和投递约束见 [Elnis 架构](elnis-elwisp.md)；配置与协议示例见 [使用文档](../docs/elnis-usage.md)。
 

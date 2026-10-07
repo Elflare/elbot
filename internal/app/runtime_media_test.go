@@ -2,13 +2,105 @@ package app
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"elbot/internal/config"
+	"elbot/internal/storage"
 )
+
+type startupRecoveryStore struct {
+	storage.Store
+	media  storage.MediaRepository
+	events storage.ElnisEventRepository
+}
+
+func (s startupRecoveryStore) Media() storage.MediaRepository            { return s.media }
+func (s startupRecoveryStore) ElnisEvents() storage.ElnisEventRepository { return s.events }
+
+type startupRecoveryMedia struct {
+	storage.MediaRepository
+	before func() error
+}
+
+func (r startupRecoveryMedia) RecoverInterrupted(ctx context.Context) error {
+	if err := r.before(); err != nil {
+		return err
+	}
+	return r.MediaRepository.RecoverInterrupted(ctx)
+}
+
+type startupRecoveryEvents struct {
+	storage.ElnisEventRepository
+	before func() error
+}
+
+func (r startupRecoveryEvents) FailInterrupted(ctx context.Context, from []string, failed, reason string) error {
+	if err := r.before(); err != nil {
+		return err
+	}
+	return r.ElnisEventRepository.FailInterrupted(ctx, from, failed, reason)
+}
+
+func TestSharedServicesStartupRecovery(t *testing.T) {
+	for _, failAt := range []string{"", "media", "elnis"} {
+		t.Run("failure="+failAt, func(t *testing.T) {
+			req, _, _ := runtimeAssemblyFixture(t)
+			if req.Foundation.Config.Elnis.Enabled {
+				t.Fatal("fixture must disable Elnis")
+			}
+			ctx := t.Context()
+			store := req.Foundation.Store
+			row, err := store.ElnisEvents().Create(ctx, storage.CreateElnisEventRequest{
+				EventKey: "old", ElwispName: "source", SourceID: "old", Status: "queued",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var calls []string
+			wantErr := errors.New("recovery failed")
+			before := func(step string) func() error {
+				return func() error {
+					calls = append(calls, step)
+					if failAt == step {
+						return wantErr
+					}
+					return nil
+				}
+			}
+			req.Foundation.Store = startupRecoveryStore{
+				Store:  store,
+				media:  startupRecoveryMedia{MediaRepository: store.Media(), before: before("media")},
+				events: startupRecoveryEvents{ElnisEventRepository: store.ElnisEvents(), before: before("elnis")},
+			}
+			services, err := buildSharedServices(ctx, req)
+			wantCalls, wantStatus := "media,elnis", "failed"
+			if failAt == "" {
+				if err != nil || services == nil {
+					t.Fatalf("startup = %v, %v", services, err)
+				}
+			} else {
+				if !errors.Is(err, wantErr) || services != nil {
+					t.Fatalf("startup must fail before publishing services: %v, %v", services, err)
+				}
+				wantStatus = "queued"
+				if failAt == "media" {
+					wantCalls = "media"
+				}
+			}
+			if strings.Join(calls, ",") != wantCalls {
+				t.Fatalf("recovery order = %v, want %s", calls, wantCalls)
+			}
+			row, err = store.ElnisEvents().Get(ctx, row.ID)
+			if err != nil || row.Status != wantStatus {
+				t.Fatalf("recovered event = %#v, %v", row, err)
+			}
+		})
+	}
+}
 
 func TestResolveFileDeliveryCredentialsUsesConfigDotEnv(t *testing.T) {
 	for _, mode := range []string{"s3", "hybrid"} {

@@ -89,6 +89,13 @@ func NewService(opts Options) (*Service, error) {
 	}, nil
 }
 
+// RecoverInterrupted fails executions whose in-memory work cannot survive restart.
+// The app calls it before workers start, including when Elnis is disabled.
+func RecoverInterrupted(ctx context.Context, repo storage.ElnisEventRepository) error {
+	return repo.FailInterrupted(ctx, []string{StatusAccepted, StatusQueued, StatusRunning},
+		StatusFailed, "interrupted before durable report")
+}
+
 func (s *Service) SetLLMEnqueuer(enqueue EnqueueLLMFunc) {
 	s.enqueueLLM = enqueue
 }

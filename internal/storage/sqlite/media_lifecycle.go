@@ -105,20 +105,11 @@ func (r *MediaRepository) ExpireOutputs(ctx context.Context, now time.Time) erro
 	return err
 }
 
-// RecoverInterrupted runs once before workers/tools start, under the app's single-instance lifecycle.
+// RecoverInterrupted clears temporary media references before workers/tools start,
+// under the app's single-instance lifecycle. Business recovery belongs to its owner.
 func (r *MediaRepository) RecoverInterrupted(ctx context.Context) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM media_references WHERE purpose='temporary' AND owner_type IN ('hook','skill','request','output_send')`); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE elnis_events SET status='failed',error='interrupted before durable report',updated_at=? WHERE status IN ('accepted','queued','running')`, storage.FormatTime(storage.Now())); err != nil {
-		return err
-	}
-	return tx.Commit()
+	_, err := r.db.ExecContext(ctx, `DELETE FROM media_references WHERE purpose='temporary' AND owner_type IN ('hook','skill','request','output_send')`)
+	return err
 }
 
 // CheckReferences reports inconsistencies without repairing or deleting anything.
