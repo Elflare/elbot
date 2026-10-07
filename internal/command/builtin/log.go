@@ -24,8 +24,8 @@ func auditInfo() command.Info {
   --days <n>            Read logs from the last n days. Default: 1.
   --level <level>       Minimum level: debug, info, warn, error. Default: debug.
   -d, -i, -w, -e       Shorthand for --level debug/info/warn/error. -d also shows raw entries.
-  -u, -a, -t           Filter user/assistant/tool events.
-  --hook               Filter hook events.
+  -t                   Filter tool events.
+  --hook               Filter records from the hook module.
   --since <time>        Show events after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
 
   --until <time>        Show events before a time.
@@ -35,7 +35,7 @@ func auditInfo() command.Info {
   --session <id>        Filter by session_id.
   --tool <name>         Filter by tool.
   --msg <text>          Filter by msg field.
-  --contains <text>     Filter by text/arguments/result/raw fields.
+  --contains <text>     Search summaries, details, text fields and raw records.
 
 Examples:
   /audit
@@ -73,7 +73,7 @@ func elwispInfo() command.Info {
   --token <name>        Filter by Elnis token name.
   --tag <tag>           Filter by Elwisp tag. Can be repeated.
   --msg <text>          Filter by msg field.
-  --contains <text>     Filter by text/arguments/result/raw fields.
+  --contains <text>     Search summaries, details, text fields and raw records.
 
 Examples:
   /elwisp
@@ -99,12 +99,12 @@ func logInfo() command.Info {
   -d, -i, -w, -e       Shorthand for --level debug/info/warn/error. -d also shows raw entries.
   -u, -a, -t           Filter user/assistant/tool events.
   -s, --system         Filter system prompt events.
-  --hook               Filter hook events.
+  --hook               Filter records from the hook module.
   --since <time>        Show logs after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
 
   --until <time>        Show logs before a time.
   --msg <text>          Filter by msg field.
-  --contains <text>     Filter by text/arguments/result/raw fields.
+  --contains <text>     Search summaries, details, text fields and raw records.
 
 Examples:
   /log
@@ -162,7 +162,7 @@ func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest)
 		return completeStringOptions([]string{"low", "medium", "high", "critical"}, token.Text, token.Start, token.End, "risk")
 	}
 	if c.audit && previous == "--event" {
-		return completeStringOptions([]string{"user_input", "assistant_output", "llm_usage", "tool_call", "permission_denied", "session_resume", "session_fork", "hook"}, token.Text, token.Start, token.End, "audit_event")
+		return completeStringOptions([]string{"llm_usage", "llm_error", "tool_call", "permission_denied", "session_resume", "session_fork", "hook_tool_call", "hook_tool_error", "hook.tool_call"}, token.Text, token.Start, token.End, "audit_event")
 	}
 	if c.audit && previous == "--tool" {
 		return completeToolNames(c.deps, token.Text, token.Start, token.End)
@@ -193,14 +193,14 @@ func logCompletionOptions(audit, elwisp bool) []completionOption {
 	}
 	if !elwisp {
 		options = append(options,
-			completionOption{Text: "-u", Description: "User events"},
-			completionOption{Text: "-a", Description: "Assistant events"},
 			completionOption{Text: "-t", Description: "Tool events"},
-			completionOption{Text: "--hook", Description: "Hook events"},
+			completionOption{Text: "--hook", Description: "Hook module records"},
 		)
 	}
 	if !audit && !elwisp {
 		options = append(options,
+			completionOption{Text: "-u", Description: "User events"},
+			completionOption{Text: "-a", Description: "Assistant events"},
 			completionOption{Text: "-s", Description: "System prompt events"},
 			completionOption{Text: "--system", Description: "System prompt events"},
 		)
@@ -279,17 +279,6 @@ func parseAuditQuery(args string) (logging.LogQuery, error) {
 	}); err != nil {
 		return query, err
 	}
-	if fields["event"] == "user_input" {
-		fields["event"] = "user_message"
-	}
-	if fields["event"] == "assistant_output" {
-		fields["event"] = "assistant_message"
-	}
-
-	if len(query.FieldExists) > 0 {
-		query.FieldExists = nil
-		fields["event"] = "hook"
-	}
 	query.Fields = fields
 	return query, nil
 }
@@ -300,7 +289,7 @@ func parseRuntimeLogQuery(args string) (logging.LogQuery, error) {
 	fields := map[string]string{}
 	if err := parseLogArgsWithOptions(args, &query, fields, func(name, value string) error {
 		return fmt.Errorf("unknown option: --%s", name)
-	}, logArgOptions{eventFilters: true, systemFilter: true}); err != nil {
+	}, logArgOptions{eventFilters: true, messageFilters: true, systemFilter: true}); err != nil {
 		return query, err
 	}
 	query.Fields = fields
@@ -364,9 +353,10 @@ func parseLogArgs(args string, query *logging.LogQuery, fields map[string]string
 }
 
 type logArgOptions struct {
-	eventFilters bool
-	systemFilter bool
-	positional   func(value string) error
+	eventFilters   bool
+	messageFilters bool
+	systemFilter   bool
+	positional     func(value string) error
 }
 
 func parseLogArgsWithOptions(args string, query *logging.LogQuery, fields map[string]string, extra func(name, value string) error, opts logArgOptions) error {
@@ -434,12 +424,12 @@ func parseLogArgsWithOptions(args string, query *logging.LogQuery, fields map[st
 		case "-e":
 			query.MinLevel = "error"
 		case "-u":
-			if !opts.eventFilters {
+			if !opts.messageFilters {
 				return fmt.Errorf("unknown option: %s", name)
 			}
 			fields["event"] = "user_message"
 		case "-a":
-			if !opts.eventFilters {
+			if !opts.messageFilters {
 				return fmt.Errorf("unknown option: %s", name)
 			}
 			fields["event"] = "assistant_message"
@@ -457,7 +447,7 @@ func parseLogArgsWithOptions(args string, query *logging.LogQuery, fields map[st
 			if !opts.eventFilters {
 				return fmt.Errorf("unknown option: %s", name)
 			}
-			query.FieldExists = append(query.FieldExists, "hook")
+			fields["module"] = "hook"
 		case "--msg":
 			value, err := nextArg(parts, &i, name)
 			if err != nil {
@@ -587,6 +577,7 @@ func formatAuditEntries(raw bool) func([]logging.LogEntry) string {
 			}
 			f := entry.Fields
 			sb.WriteString(fmt.Sprintf("  %s %s", formatLogEntryTime(entry), fieldOr(f, "event", entry.Message)))
+			appendField(&sb, "module", f["module"])
 			appendField(&sb, "session", f["session_id"])
 			appendField(&sb, "actor", f["actor_id"])
 			appendField(&sb, "tool", f["tool"])
@@ -692,7 +683,7 @@ func firstNonEmptyLogField(value, fallback string) string {
 
 func appendRuntimeLogFields(sb *strings.Builder, fields map[string]string) {
 	for _, key := range []string{
-		"event", "point", "hook", "priority", "order", "mode",
+		"event", "module", "point", "hook", "priority", "order", "mode",
 		"hook_point", "hook_mode",
 		"kind", "name", "platform",
 		"session_id", "request_id", "request_kind", "request_phase",

@@ -1,9 +1,9 @@
 package logging
 
 import (
-	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	DefaultLogLimit = 5
-	maxLogLineBytes = 16 * 1024 * 1024
+	DefaultLogLimit   = 5
+	maxLogLineBytes   = 16 * 1024 * 1024
+	logReadBlockBytes = 64 * 1024
 )
 
 type LogQuery struct {
@@ -53,21 +54,21 @@ func (r Reader) Query(ctx context.Context, query LogQuery) ([]LogEntry, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		fileEntries, err := readLogFile(path)
+		err := readLogFileReverse(ctx, path, func(raw string) (bool, error) {
+			entry := parseLogLine(raw)
+			if matchLogEntry(entry, query) {
+				entries = append(entries, entry)
+			}
+			return len(entries) >= query.Limit, nil
+		})
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
 			}
 			return nil, err
 		}
-		for i := len(fileEntries) - 1; i >= 0; i-- {
-			entry := fileEntries[i]
-			if matchLogEntry(entry, query) {
-				entries = append(entries, entry)
-				if len(entries) >= query.Limit {
-					return entries, nil
-				}
-			}
+		if len(entries) >= query.Limit {
+			return entries, nil
 		}
 	}
 	return entries, nil
@@ -101,25 +102,94 @@ func logPaths(dir, prefix string, days int) []string {
 	return paths
 }
 
-func readLogFile(path string) ([]LogEntry, error) {
+func readLogFileReverse(ctx context.Context, path string, visit func(string) (bool, error)) error {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("stat log file %s: %w", path, err)
+	}
+	if err := scanLogLinesReverse(ctx, file, info.Size(), visit); err != nil {
+		return fmt.Errorf("read log file %s: %w", path, err)
+	}
+	return nil
+}
 
-	entries := []LogEntry{}
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 64*1024), maxLogLineBytes)
-	for scanner.Scan() {
-		raw := scanner.Text()
-		entry := parseLogLine(raw)
-		entries = append(entries, entry)
+// scanLogLinesReverse visits physical lines newest first within a fixed range.
+// Returning true from visit stops reading immediately. Line terminators are not
+// included in the 16 MiB limit, matching the text parser's LF/CRLF semantics.
+func scanLogLinesReverse(ctx context.Context, reader io.ReaderAt, size int64, visit func(string) (bool, error)) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read log file %s: %w", path, err)
+	if size == 0 {
+		return nil
 	}
-	return entries, nil
+	block := make([]byte, logReadBlockBytes)
+	// Append bytes in reverse order to avoid repeatedly prepending and copying
+	// a long line at every block boundary. Reverse only when the line is complete.
+	line := make([]byte, 0, logReadBlockBytes)
+	atEnd := true
+	emit := func() (bool, error) {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		for left, right := 0, len(line)-1; left < right; left, right = left+1, right-1 {
+			line[left], line[right] = line[right], line[left]
+		}
+		raw := strings.TrimSuffix(string(line), "\r")
+		stop, err := visit(raw)
+		line = line[:0]
+		if err != nil {
+			return false, err
+		}
+		return stop, ctx.Err()
+	}
+	for offset := size; offset > 0; {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		length := int64(len(block))
+		if offset < length {
+			length = offset
+		}
+		offset -= length
+		n, err := reader.ReadAt(block[:length], offset)
+		if err != nil && (err != io.EOF || int64(n) != length) {
+			return err
+		}
+		if int64(n) != length {
+			return io.ErrUnexpectedEOF
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		for i := n - 1; i >= 0; i-- {
+			if block[i] == '\n' {
+				if !atEnd {
+					stop, err := emit()
+					if err != nil || stop {
+						return err
+					}
+				}
+			} else {
+				line = append(line, block[i])
+				contentBytes := len(line)
+				if line[0] == '\r' {
+					contentBytes--
+				}
+				if contentBytes > maxLogLineBytes {
+					return fmt.Errorf("log line exceeds %d bytes", maxLogLineBytes)
+				}
+			}
+			atEnd = false
+		}
+	}
+	_, err := emit()
+	return err
 }
 
 func parseLogLine(raw string) LogEntry {
@@ -230,7 +300,10 @@ func matchLogEntry(entry LogEntry, query LogQuery) bool {
 }
 
 func logEntryContains(entry LogEntry, needle string) bool {
-	for _, key := range []string{"text", "raw_text", "arguments", "result", "latest_message_json", "first_system_message_json"} {
+	if containsFold(entry.Message, needle) {
+		return true
+	}
+	for _, key := range []string{"detail", "text", "raw_text", "arguments", "result", "latest_message_json", "first_system_message_json"} {
 		if containsFold(entry.Fields[key], needle) {
 			return true
 		}
