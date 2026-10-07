@@ -1432,6 +1432,14 @@
       "translation": "The working directory during execution is fixed to the Skill root directory, and stdout will serve as the tool result;",
       "updated_at": 1783074493
     },
+    "docs/configuration.md:paragraph:0dbc6c1bbf7611cdbd48845b6b72d8d6cea17c3feec7d40b5da0c0a69c8b68ad": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 只控制运行日志，支持 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "0dbc6c1bbf7611cdbd48845b6b72d8d6cea17c3feec7d40b5da0c0a69c8b68ad",
+      "translation": "__ELBOT_CODE_0__ only controls the runtime log, supporting __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, and __ELBOT_CODE_4__.",
+      "updated_at": 1791376733
+    },
     "docs/configuration.md:paragraph:0f4ace4ebfd07e5f7bc28f72c955c6a3059d3a31e6e993f73b25ab9d77590a26": {
       "kind": "paragraph",
       "source": "文件不存在时视为空配置。\n",
@@ -1471,6 +1479,14 @@
       "source_hash": "12a4bb6b933580f1b80292e45b188a7f816170a602b44ee2b15c30103cb245b8",
       "translation": "When no workspace is set, the process working directory is used.",
       "updated_at": 1791193831
+    },
+    "docs/configuration.md:paragraph:133f1abe4d0bee05418c8a9e07d5238c411dcf1409cf8a7a9e753d503e0ea1be": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 的查询等级和 __ELBOT_CODE_1__ 的记录等级相互独立：查询只显示已有记录，不改变配置或补回缺失详情。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "133f1abe4d0bee05418c8a9e07d5238c411dcf1409cf8a7a9e753d503e0ea1be",
+      "translation": "The query level of __ELBOT_CODE_0__ and the recording level of __ELBOT_CODE_1__ are independent: queries only display existing records and do not change configurations or recover missing details.",
+      "updated_at": 1791376733
     },
     "docs/configuration.md:paragraph:1348de618f0e0d0ee6e02cf28f370260454080fe4e7f5dbbe87c54feefef6abc": {
       "kind": "paragraph",
@@ -1952,6 +1968,14 @@
       "translation": "__ELBOT_CODE_0__'s __ELBOT_CODE_1__ controls OpenAI-compatible streaming requests, round processing, and retries:\n",
       "updated_at": 1782574866
     },
+    "docs/configuration.md:paragraph:8216d040cb60e0743143813d262583e1d472a922f5885b6d36e9d4b3ee1c7bfe": {
+      "kind": "paragraph",
+      "source": "初始化失败返回主程序处理。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "8216d040cb60e0743143813d262583e1d472a922f5885b6d36e9d4b3ee1c7bfe",
+      "translation": "Initialization failure returns to the main program for handling.\n",
+      "updated_at": 1791376733
+    },
     "docs/configuration.md:paragraph:82745aedc60bb1401f266f33e7012495664b9d0d72bf7920a5b04de60e98e201": {
       "kind": "paragraph",
       "source": "QQ OneBot 最小配置示例：\n",
@@ -2192,6 +2216,14 @@
       "translation": "One-time exec, Persistent Worker, and Transient Worker follow the same rules.\n",
       "updated_at": 1785918785
     },
+    "docs/configuration.md:paragraph:9c4db42ed5b38c7e0d63b0a995fa259f92baf8bbbd4af8edca1620a690d6576c": {
+      "kind": "paragraph",
+      "source": "具体筛选方式见[日志和审计命令](commands.md#日志和审计)。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "9c4db42ed5b38c7e0d63b0a995fa259f92baf8bbbd4af8edca1620a690d6576c",
+      "translation": "For specific filtering methods, see [Log and Audit Commands](commands.md#日志和审计).\n",
+      "updated_at": 1791376733
+    },
     "docs/configuration.md:paragraph:9c93c9f8415dd066cf03273a0b9950e23062066897445ae5093672de5c2c63f9": {
       "kind": "paragraph",
       "source": "不要填写 __ELBOT_CODE_0__、__ELBOT_CODE_1__ 或 __ELBOT_CODE_2__，dotenv 不执行变量替换或路径展开。没有额外目录时可以省略 __ELBOT_CODE_3__。\n",
@@ -2223,6 +2255,14 @@
       "source_hash": "9ebb7813a2367838f3a2a32cfb794592d00c5860d3ebc93bd43cf87a4e43bca7",
       "translation": "If using asdf, mise, Nix, Linuxbrew, Snap, or a custom installation path, it is recommended to write the actual __ELBOT_CODE_0__ path directly into __ELBOT_CODE_1__, rather than relying on the initialization scripts of an interactive shell.\n",
       "updated_at": 1781790272
+    },
+    "docs/configuration.md:paragraph:a01618c74ae8331e899dc90f9fc23b049ce59a4ffce3ba6242e9e23ebdbce3d4": {
+      "kind": "paragraph",
+      "source": "运行期报告后继续运行；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "a01618c74ae8331e899dc90f9fc23b049ce59a4ffce3ba6242e9e23ebdbce3d4",
+      "translation": "Continue running after reporting during runtime;",
+      "updated_at": 1791376733
     },
     "docs/configuration.md:paragraph:a09a6a292ecdf93b446713171e074b39ad603ce3b20d526cc00df1009962c1c3": {
       "kind": "paragraph",
@@ -2375,6 +2415,14 @@
       "source_hash": "bde36c57a3389da80c3df9443ac5162ce905a050640981e589de0a640519b46d",
       "translation": "The superadmin can execute __ELBOT_CODE_0__ in the chat window.",
       "updated_at": 1790906856
+    },
+    "docs/configuration.md:paragraph:be1126b2b451dd8045b8df98dedf0f5cbf680b7af4a2e1ac98e105b5dad1deb3": {
+      "kind": "paragraph",
+      "source": "审计和 Elnis 日志独立保留，提高运行等级不会停止记录 __ELBOT_CODE_0__ 所需的用量事实。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "be1126b2b451dd8045b8df98dedf0f5cbf680b7af4a2e1ac98e105b5dad1deb3",
+      "translation": "Audit and Elnis logs are preserved independently; increasing the runtime level will not stop the recording of usage facts required by __ELBOT_CODE_0__.",
+      "updated_at": 1791376733
     },
     "docs/configuration.md:paragraph:be162f25851c3503919cc3805e4292e5a731e9d4998c1391d67c7bfb2587d5b1": {
       "kind": "paragraph",
@@ -2576,6 +2624,14 @@
       "translation": "The model service or relay service that actually downloads the files must be able to access the link.\n",
       "updated_at": 1789023374
     },
+    "docs/configuration.md:paragraph:e7db6a46367d769bdda79bcc60ea75b60afdef71c230124efecf57be579b714c": {
+      "kind": "paragraph",
+      "source": "信号派发、后台信号任务和日志写入等设施故障直接报告到 stderr，由终端或服务管理器收集，不受运行日志等级过滤。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "e7db6a46367d769bdda79bcc60ea75b60afdef71c230124efecf57be579b714c",
+      "translation": "Facility failures such as signal dispatch, background signal tasks, and log writing are reported directly to stderr, collected by the terminal or service manager, and are not filtered by the runtime log level.",
+      "updated_at": 1791376733
+    },
     "docs/configuration.md:paragraph:e9a1c1c254f024c86d8c9c9a02c2b843f6eb0da94a9d351c3d2d08cdab264f42": {
       "kind": "paragraph",
       "source": "缺少格式标记的旧会话不能继续对话、Fork 或压缩，请新建会话。",
@@ -2655,6 +2711,14 @@
       "source_hash": "f72dbac20579ab84c45872c71b267bf93e81425010f5df8b8102fe1ce7ca2d25",
       "translation": "ElBot uses the following environment sources:\n",
       "updated_at": 1785918785
+    },
+    "docs/configuration.md:paragraph:f7df071ff7eed4972bc4eebbb6cac53e978b81397e9c5afbfafe9cc9f1edd7c6": {
+      "kind": "paragraph",
+      "source": "日志文件按日轮转，使用 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 前缀，保留天数由 __ELBOT_CODE_3__ 控制。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "f7df071ff7eed4972bc4eebbb6cac53e978b81397e9c5afbfafe9cc9f1edd7c6",
+      "translation": "Log files are rotated daily, using prefixes __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__; the number of days to retain is controlled by __ELBOT_CODE_3__.\n",
+      "updated_at": 1791376733
     },
     "docs/configuration.md:paragraph:f9d08914082966ab69806b53b1dc7b56f6656d3d78f84637581512cbda3c42bb": {
       "kind": "paragraph",
@@ -2882,8 +2946,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "e25135543009c6f563ba15cdd287b8b4c1c8b919e66cbf3844c726dba21ec934",
+  "source_hash": "49ba7a6367d27f70a50c14779489bce46c1f8b381a8f72e7272216ac97151c30",
   "target": "docs.en/configuration.md",
-  "updated_at": 1791341097,
+  "updated_at": 1791376733,
   "version": 2
 }
