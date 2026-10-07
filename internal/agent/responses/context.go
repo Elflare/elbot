@@ -1,6 +1,7 @@
 package responses
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -51,7 +52,8 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		if seed.Protocol != string(origin.Protocol) || seed.Provider != origin.Provider {
 			return nil, fmt.Errorf("原生 seed 厂商或协议不匹配")
 		}
-		if err := json.Unmarshal([]byte(seed.ItemsJSON), &w.Items); err != nil {
+		w.Items, err = decodeSeedInputs(seed)
+		if err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(seed.MaterialsJSON), &w.Materials); err != nil {
@@ -59,6 +61,10 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		}
 		w.RetainedMediaIDs = append([]string(nil), seed.MediaIDs...)
 		w.Origin.BaseURL = seed.BaseURL
+	} else if checkpoint != nil {
+		if err := checkInputFormat(row); err != nil {
+			return nil, err
+		}
 	}
 	if checkpoint == nil {
 		if seed == nil {
@@ -121,6 +127,30 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 			if input.SessionID != row.ID || input.ConsumedBy != exchange.ID {
 				return nil, fmt.Errorf("原生输入关联不完整")
 			}
+			canonical, segments, err := decodeQueuedInput(input)
+			if err != nil {
+				return nil, err
+			}
+			if canonical.Type != item.Type {
+				return nil, fmt.Errorf("原生输入类型不匹配")
+			}
+			if item.Type == "additional_tools" {
+				definitions, err := api.AdditionalToolDefinitions(item)
+				if err != nil {
+					return nil, err
+				}
+				storedDefinitions, err := api.AdditionalToolDefinitions(canonical)
+				if err != nil {
+					return nil, err
+				}
+				actual, _ := json.Marshal(definitions)
+				expected, _ := json.Marshal(storedDefinitions)
+				if !bytes.Equal(actual, expected) {
+					return nil, fmt.Errorf("原生工具定义与已提交输入不匹配")
+				}
+				w.Items = append(w.Items, item)
+				continue
+			}
 			var header struct {
 				CallID string `json:"call_id"`
 				Role   string `json:"role"`
@@ -130,10 +160,6 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 			}
 			if (input.CallID != "" && (item.Type != "function_call_output" || input.CallID != header.CallID)) || (input.CallID == "" && (item.Type != "message" || header.Role != "user")) {
 				return nil, fmt.Errorf("原生输入顺序或调用关联不匹配")
-			}
-			segments, err := inputSegments(input)
-			if err != nil {
-				return nil, err
 			}
 			w.Materials = append(w.Materials, material{ItemIndex: len(w.Items), Segments: segments})
 			w.Items = append(w.Items, item)
@@ -275,6 +301,11 @@ func validateItems(items []api.Item) error {
 		}
 		if item.Type == "function_call" && (item.CallID == "" || item.Name == "" || !json.Valid([]byte(item.Arguments))) {
 			return fmt.Errorf("原生工具调用不完整")
+		}
+		if item.Type == "additional_tools" {
+			if _, err := api.AdditionalToolDefinitions(item); err != nil {
+				return err
+			}
 		}
 		// Unknown items stay opaque, but an identity alone is not replay material.
 		if item.Type != "message" && item.Type != "function_call" && item.Type != "function_call_output" && item.Type != "reasoning" && item.Type != "compaction" {
@@ -546,7 +577,7 @@ func (w *nativeWindow) Seed(continuation []api.Item, calls []storage.NativeCall,
 	if calls == nil {
 		calls = []storage.NativeCall{}
 	}
-	items, err := json.Marshal(w.Items)
+	items, err := json.Marshal(seedInputs{Version: inputFormatVersion, Items: w.Items})
 	if err != nil {
 		return nil, err
 	}

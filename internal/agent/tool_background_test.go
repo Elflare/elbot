@@ -64,8 +64,9 @@ func TestRunBackgroundPreloadsShellWithContextActorAndAutoConfirmsSandboxShell(t
 	if shellSchema.Name == "" {
 		t.Fatalf("first request tools did not include preloaded shell: %#v", requests[0].Tools)
 	}
-	if !strings.Contains(shellSchema.Description, "相对路径") {
-		t.Fatalf("background shell schema description should mention relative paths: %q", shellSchema.Description)
+	systemPrompt := llm.SegmentsContentText(requests[0].Messages[0].Segments)
+	if !strings.Contains(systemPrompt, "相对路径") {
+		t.Fatalf("background system prompt should mention relative paths: %q", systemPrompt)
 	}
 	var shellResult string
 	for _, msg := range requests[1].Messages {

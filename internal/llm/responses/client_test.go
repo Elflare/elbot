@@ -73,7 +73,14 @@ func TestStreamRetainsNativeItemsAndFunctionEvents(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		json.NewDecoder(r.Body).Decode(&body)
-		tools := body["tools"].([]any)
+		if _, exists := body["tools"]; exists {
+			t.Error("top-level tool definitions sent")
+		}
+		input := body["input"].([]any)[0].(map[string]any)
+		if input["type"] != "additional_tools" || input["role"] != "developer" {
+			t.Errorf("tool input=%v", input)
+		}
+		tools := input["tools"].([]any)
 		tool := tools[0].(map[string]any)
 		if tool["type"] != "function" || tool["name"] != "read_file" || tool["strict"] != false || body["previous_response_id"] != "previous" {
 			t.Errorf("body=%v", body)
@@ -93,7 +100,11 @@ func TestStreamRetainsNativeItemsAndFunctionEvents(t *testing.T) {
 	}))
 	defer srv.Close()
 	client := mustClient(t, srv.URL, nil, nil, RequestOptions{})
-	events, err := client.Stream(context.Background(), Request{Model: "m", PreviousResponseID: "previous", Tools: FunctionTools([]llm.ToolSchema{{Name: "read_file", Parameters: map[string]any{"type": "object"}}})})
+	definitions, err := AdditionalTools(FunctionTools([]llm.ToolSchema{{Name: "read_file", Parameters: map[string]any{"type": "object"}}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := client.Stream(context.Background(), Request{Model: "m", PreviousResponseID: "previous", Input: []Item{definitions}, AllowedTools: []string{"read_file"}})
 	if err != nil {
 		t.Fatal(err)
 	}

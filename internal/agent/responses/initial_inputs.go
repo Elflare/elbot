@@ -30,6 +30,16 @@ func (r *Loop) validateInitialInputs(ctx context.Context, row *storage.Session, 
 	users := make([]storage.NativeInput, 0, len(inputs))
 	notices := 0
 	for _, input := range inputs {
+		item, _, err := decodeQueuedInput(input)
+		if err != nil {
+			return err
+		}
+		if item.Type == "additional_tools" {
+			if input.SessionID != sessionID || input.ConsumedBy != "" {
+				return missing()
+			}
+			continue
+		}
 		if isForegroundNotice(input, notice) {
 			notices++
 			continue

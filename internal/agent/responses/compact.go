@@ -56,15 +56,13 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 		return nil, err
 	}
 	for _, input := range pending {
-		item, err := api.ParseItem([]byte(input.ItemJSON))
+		item, segments, err := decodeQueuedInput(input)
 		if err != nil {
 			return nil, err
 		}
-		segments, err := inputSegments(input)
-		if err != nil {
-			return nil, err
+		if item.Type != "additional_tools" {
+			w.Materials = append(w.Materials, material{ItemIndex: len(w.Items), Segments: segments})
 		}
-		w.Materials = append(w.Materials, material{ItemIndex: len(w.Items), Segments: segments})
 		w.Items = append(w.Items, item)
 	}
 	if cp != nil {

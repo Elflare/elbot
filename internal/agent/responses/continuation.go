@@ -21,7 +21,8 @@ func (c *Context) resolveContinuation(ctx context.Context, seed *storage.NativeS
 	if len(continuation) == 0 {
 		return nil, noop, nil
 	}
-	if err := json.Unmarshal([]byte(seed.ItemsJSON), &items); err != nil {
+	items, err := decodeSeedInputs(seed)
+	if err != nil {
 		return nil, noop, err
 	}
 	start := len(items) - len(continuation)

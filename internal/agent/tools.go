@@ -28,6 +28,7 @@ func buildSystemPrompt(soulPath string, memory *resident.Store, provider dialogu
 	if preloader != nil {
 		manager.AddSource(dialogue.ToolTagsSystemPromptSource{Preloader: preloader})
 	}
+	manager.AddSource(dialogue.BackgroundPathsSystemPromptSource{})
 	manager.AddSource(dialogue.ResidentMemorySystemPromptSource{Store: memory})
 	manager.AddSource(dialogue.ConversationMetaSystemPromptSource{})
 	return manager

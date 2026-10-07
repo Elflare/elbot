@@ -2,6 +2,7 @@ package responses
 
 import (
 	"context"
+	"encoding/json"
 
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/storage"
@@ -41,8 +42,12 @@ func inputOrder(input storage.NativeInput) int {
 	if input.CallID != "" {
 		return 0
 	}
-	if input.MessageID == "" {
+	var header struct{ Type string }
+	if json.Unmarshal([]byte(input.ItemJSON), &header) == nil && header.Type == "additional_tools" {
 		return 2
+	}
+	if input.MessageID == "" {
+		return 3
 	}
 	return 1
 }

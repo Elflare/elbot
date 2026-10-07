@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Responses 工具定义从每轮顶层 `tools` 改为原生输入中的增量 `additional_tools`，回放保留原有位置；当前调用权限单独受 `tool_choice` 限制。旧 Responses 会话及同名工具定义变化需新建会话。
+- 后台路径说明从四个路径工具的 schema 移至系统提示，前台接管不再改变工具定义。
 - 压缩按会话协议分派：Chat 继续使用独立摘要模型，Responses 使用当前模型并完整保存原生返回窗口；两者共用压缩阈值。
 - 工具定义及 Hook 的只读 `llm.tools` 从 Chat 的 `type/function` 包装改为 `name/description/parameters` 业务结构，协议客户端分别生成所需 API 包装。
 - 大幅重构底层，优化各包职责与边界
