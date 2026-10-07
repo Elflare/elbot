@@ -240,11 +240,11 @@ Common options:
 | `-n, --limit <n>` | Number of entries to return, default is 5. |
 | `--days <n>` | Read logs from the last n days, default is 1. |
 | `--level <level>` | Minimum level: `debug`, `info`, `warn`, `error`. |
-| `-d, -i, -w, -e` | Level shortcuts. |
+| `-d, -i, -w, -e` | Level shortcuts; `-d` or explicit `--level debug` to simultaneously display original records. |
 | `--since <time>` | Only view entries after a certain time, e.g., `2h`, `30m`, `2026-06-03`. |
 | `--until <time>` | Only view entries before a certain time. |
 | `--msg <text>` | Filter by the msg field. |
-| `--contains <text>` | Filter by text, parameters, results, or raw content. |
+| `--contains <text>` | Filter by decoded summary, details, body fields, or original records. |
 
 `/log` additionally supports:
 
@@ -252,12 +252,14 @@ Common options:
 | --- | --- |
 | `-u`、`-a`、`-t` | Filter user, assistant, and tool events respectively. |
 | `-s, --system` | Filter and display `system prompt` logs. |
-| `--hook` | Filter Hook events. |
+| `--hook` | Filter runtime logs for `module=hook`. |
 
 `/audit` additionally supports:
 
 | Option | Function |
 | --- | --- |
+| `-t` | Filter tool audits for `event=tool_call`. |
+| `--hook` | Filter audits for `module=hook`, which can be used simultaneously with conditions such as `--event`. |
 | `--event <name>` | Filter by audit event, e.g., `tool_call`, `llm_usage`, `permission_denied`. |
 | `--risk <level>` | Filter by risk level. |
 | `--actor <id>` | Filter by actor ID. |
@@ -283,13 +285,18 @@ Example:
 /log
 /log -w -n 10
 /log --system
+/log -u -d
 /log --msg startup --days 3
 /audit --event tool_call --risk high -n 10
 /audit --actor cli:local --since 24h
+/audit --hook --event hook_tool_call
+/audit --event llm_error -d
 /elwisp
 /elwisp server-watchdog -n 20
 /elwisp --source minecraft-main --mode llm --since 2h
 ```
+
+Hook tool call audits use `hook_tool_call`, `source` distinguishes between `rules`/`plugin`, and `status` distinguishes between `ok`/`error`/`canceled`.
 
 ## Token Consumption Statistics
 

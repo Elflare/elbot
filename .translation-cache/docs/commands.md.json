@@ -400,6 +400,14 @@
       "translation": "__ELBOT_CODE_0__ will first fully scan and verify the candidate Skills, and then replace the current set all at once.",
       "updated_at": 1784340183
     },
+    "docs/commands.md:paragraph:4d8d281185bbbe245bc4a15d375b087976f14131fa1a891e5bde4e9841980c93": {
+      "kind": "paragraph",
+      "source": "Hook 工具调用审计使用 __ELBOT_CODE_0__，__ELBOT_CODE_1__ 区分 __ELBOT_CODE_2__／__ELBOT_CODE_3__，__ELBOT_CODE_4__ 区分 __ELBOT_CODE_5__／__ELBOT_CODE_6__／__ELBOT_CODE_7__。\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "4d8d281185bbbe245bc4a15d375b087976f14131fa1a891e5bde4e9841980c93",
+      "translation": "Hook tool call audits use __ELBOT_CODE_0__, __ELBOT_CODE_1__ distinguishes between __ELBOT_CODE_2__/__ELBOT_CODE_3__, and __ELBOT_CODE_4__ distinguishes between __ELBOT_CODE_5__/__ELBOT_CODE_6__/__ELBOT_CODE_7__.\n",
+      "updated_at": 1791376660
+    },
     "docs/commands.md:paragraph:4e18ac914a4e3692063ecee7f62d63117a10dd0bde42f4c98dd7797e5e0b4a4f": {
       "kind": "paragraph",
       "source": "聊天中也可以用 __ELBOT_CODE_0__（简写 __ELBOT_CODE_1__）预载工具，或用 __ELBOT_CODE_2__（简写 __ELBOT_CODE_3__）把 Skill 文档加入本轮消息并预载对应运行 wrapper。",
@@ -824,6 +832,14 @@
       "translation": "Delete expired Sessions that are not archived or pinned.",
       "updated_at": 1781514917
     },
+    "docs/commands.md:table:3c8b37634d57333279c94224fa777dfcbd8c2d42f42118949c527f22c01d1d29": {
+      "kind": "table",
+      "source": "按解码后的摘要、详情、正文字段或原始记录过滤。",
+      "source_file": "docs/commands.md",
+      "source_hash": "3c8b37634d57333279c94224fa777dfcbd8c2d42f42118949c527f22c01d1d29",
+      "translation": "Filter by decoded summary, details, body fields, or original records.",
+      "updated_at": 1791376660
+    },
     "docs/commands.md:table:3d693406db4ff9fc363bb20c99d5ddd2a7428935e2e8fd9422ea12e8385cc7c3": {
       "kind": "table",
       "source": "按 msg 字段过滤。",
@@ -879,6 +895,14 @@
       "source_hash": "47784861a54331a69ab91bf6148d0764494c94a71bd8cdf9282e7b3e78512532",
       "translation": "Restore a historical Session; index __ELBOT_CODE_0__ represents the most recently updated Session other than the current one.",
       "updated_at": 1784276178
+    },
+    "docs/commands.md:table:47926193da42909afaa3f351c2f2f3e71ba3bf1637e47cb8c9884db17a271b9e": {
+      "kind": "table",
+      "source": "筛选 __ELBOT_CODE_0__ 的工具审计。",
+      "source_file": "docs/commands.md",
+      "source_hash": "47926193da42909afaa3f351c2f2f3e71ba3bf1637e47cb8c9884db17a271b9e",
+      "translation": "Filter tool audits for __ELBOT_CODE_0__.",
+      "updated_at": 1791376660
     },
     "docs/commands.md:table:4b18f0e99fbc129f18b64f742b16ac6821ec0b60852c604bb4bcfd840ef92d43": {
       "kind": "table",
@@ -952,6 +976,14 @@
       "translation": "Start a persistent Hook.",
       "updated_at": 1783678873
     },
+    "docs/commands.md:table:5f1645e357f315d9e1662dfdf31a28e20b0de4abb4f967419b42e25f796a831b": {
+      "kind": "table",
+      "source": "等级快捷方式；__ELBOT_CODE_0__ 或显式 __ELBOT_CODE_1__ 同时显示原始记录。",
+      "source_file": "docs/commands.md",
+      "source_hash": "5f1645e357f315d9e1662dfdf31a28e20b0de4abb4f967419b42e25f796a831b",
+      "translation": "Level shortcuts; __ELBOT_CODE_0__ or explicit __ELBOT_CODE_1__ to simultaneously display original records.",
+      "updated_at": 1791376660
+    },
     "docs/commands.md:table:662180bb3357d0b97297639a4fa15e277afffa7d24630a4aa8343a9db12e49c8": {
       "kind": "table",
       "source": "查看当前进程中的 active request，包括 turn、LLM、tool、hook 等请求；turn 会显示运行阶段和阶段耗时。",
@@ -959,14 +991,6 @@
       "source_hash": "662180bb3357d0b97297639a4fa15e277afffa7d24630a4aa8343a9db12e49c8",
       "translation": "View active requests in the current process, including turn, LLM, tool, and hook requests; turns will display the execution stage and the time spent on each stage.",
       "updated_at": 1783571608
-    },
-    "docs/commands.md:table:6af7f1c01fb3994695d9dff53ca9b725917dbb86db250e9d8d154c3065086590": {
-      "kind": "table",
-      "source": "按文本、参数、结果或 raw 内容过滤。",
-      "source_file": "docs/commands.md",
-      "source_hash": "6af7f1c01fb3994695d9dff53ca9b725917dbb86db250e9d8d154c3065086590",
-      "translation": "Filter by text, parameters, results, or raw content.",
-      "updated_at": 1781514917
     },
     "docs/commands.md:table:70476364080553c045a709f5595354aef3df1078ec909e8e882936dbc101e861": {
       "kind": "table",
@@ -1079,6 +1103,14 @@
       "source_hash": "8fa37aaa6c746fb53072b6f6a943149880a5a1c290cb57787c69e222e3cefaa4",
       "translation": "Summarize by dimension: __ELBOT_CODE_0__ (default), __ELBOT_CODE_1__, __ELBOT_CODE_2__.",
       "updated_at": 1782884118
+    },
+    "docs/commands.md:table:8faebeb4a5359be5407aacc5ef1fbd3171e86d05be5806928dbbf83c48632789": {
+      "kind": "table",
+      "source": "筛选 __ELBOT_CODE_0__ 的审计，可与 __ELBOT_CODE_1__ 等条件同时使用。",
+      "source_file": "docs/commands.md",
+      "source_hash": "8faebeb4a5359be5407aacc5ef1fbd3171e86d05be5806928dbbf83c48632789",
+      "translation": "Filter audits for __ELBOT_CODE_0__, which can be used simultaneously with conditions such as __ELBOT_CODE_1__.",
+      "updated_at": 1791376660
     },
     "docs/commands.md:table:928f87d4507bf9a0085474e308949fb1f089a3baa288fddbdc1087927fbcdfba": {
       "kind": "table",
@@ -1296,14 +1328,6 @@
       "translation": "Switch the Chat text summary model; Responses native compression uses the current conversation model.",
       "updated_at": 1791301180
     },
-    "docs/commands.md:table:ee4fde342c6b96c0fb36095dd7b999194c9c84f49ee6203cd29f80b079c935d9": {
-      "kind": "table",
-      "source": "等级快捷方式。",
-      "source_file": "docs/commands.md",
-      "source_hash": "ee4fde342c6b96c0fb36095dd7b999194c9c84f49ee6203cd29f80b079c935d9",
-      "translation": "Level shortcuts.",
-      "updated_at": 1781514917
-    },
     "docs/commands.md:table:f0a41aed163185d10be30ebe8c46f209edef95ec5af244add4b8c8750cb97dfa": {
       "kind": "table",
       "source": "不传参数时停止当前 Session 的请求。",
@@ -1312,13 +1336,13 @@
       "translation": "Stops the request of the current Session when no parameters are passed.",
       "updated_at": 1786539322
     },
-    "docs/commands.md:table:f44dc3d6e7a777fcdd14e34473754ad8430bb79d8f560857f31f95faea231e7b": {
+    "docs/commands.md:table:f6428d18b3541db126482ee35e25a3a3a344f4ed527820860665f884b635707f": {
       "kind": "table",
-      "source": "筛选 Hook 事件。",
+      "source": "筛选 __ELBOT_CODE_0__ 的运行记录。",
       "source_file": "docs/commands.md",
-      "source_hash": "f44dc3d6e7a777fcdd14e34473754ad8430bb79d8f560857f31f95faea231e7b",
-      "translation": "Filter Hook events.",
-      "updated_at": 1784127033
+      "source_hash": "f6428d18b3541db126482ee35e25a3a3a344f4ed527820860665f884b635707f",
+      "translation": "Filter runtime logs for __ELBOT_CODE_0__.",
+      "updated_at": 1791376660
     },
     "docs/commands.md:table:f68452c447fd532444e28a4bdf3b590ebe3adc00ef11558ab941271dc21a7885": {
       "kind": "table",
@@ -1402,8 +1426,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "dc6554aa76fffc629d1e0e7864c8777dac8e88c71f4c1b624e63078d53545a53",
+  "source_hash": "827254b62767a35977c4646fe5fc0f33559fc45d2a5f535709ba50f36f10c1d7",
   "target": "docs.en/commands.md",
-  "updated_at": 1791301180,
+  "updated_at": 1791376660,
   "version": 2
 }
