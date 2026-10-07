@@ -3,6 +3,7 @@ package toolrun
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -101,6 +102,26 @@ func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) 
 				t.Fatalf("schema order = %q", got)
 			}
 		})
+	}
+}
+
+func TestPathSchemasStayStableAcrossBackgroundTakeover(t *testing.T) {
+	manager := NewManager(tool.NewRegistry(), security.DefaultPolicy())
+	var cached []CachedTool
+	for _, name := range []string{"shell", "read_file", "edit_file", "send_file"} {
+		cached = append(cached, CachedTool{Name: name, Source: SourceKindNative, Schema: llm.ToolSchema{Name: name, Description: "stable definition", Parameters: map[string]any{"type": "object"}}})
+	}
+	ctx := sandboxctx.WithSandboxContext(t.Context(), sandboxctx.SandboxContext{Background: true, Dir: t.TempDir()})
+	background, err := manager.Schemas(ctx, Context{Mode: storage.SessionModeBackground, DisableBaseTools: true}, cached)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreground, err := manager.Schemas(t.Context(), Context{Mode: storage.SessionModeWork}, cached)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(background) != len(cached) || !reflect.DeepEqual(background, foreground) {
+		t.Fatalf("schemas changed on takeover: background=%+v foreground=%+v", background, foreground)
 	}
 }
 func TestForegroundOnlyToolResolveRejectedInBackground(t *testing.T) {

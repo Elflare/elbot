@@ -7,12 +7,13 @@ import (
 	"elbot/internal/llm"
 )
 
-// Request owns Responses context and function tools. ExtraBody only adds fields.
+// Request owns Responses context and the currently callable function names.
+// Definitions enter the context through AdditionalTools input items.
 type Request struct {
 	Model              string
 	Instructions       string
 	Input              []Item
-	Tools              []FunctionTool
+	AllowedTools       []string
 	PreviousResponseID string
 	Store              *bool
 	MaxOutputTokens    int

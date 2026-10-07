@@ -44,6 +44,7 @@ type turnState struct {
 	output          dialogue.Output
 	projection      []llm.LLMMessage
 	tools           []llm.ToolSchema
+	definitions     toolDefinitions
 	checkpoint      *storage.NativeCheckpoint
 	seed            *storage.NativeSeed
 	exchange        *storage.NativeExchange
@@ -66,6 +67,11 @@ func (r *Loop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials
 		if err := r.validateInitialInputs(ctx, materials.Session, materials.Loaded.Messages); err != nil {
 			return nil, err
 		}
+		if len(materials.Loaded.Messages) > 0 {
+			if err := checkInputFormat(materials.Session); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if checkpoint == nil && seed != nil && seed.Consumed {
 		return nil, fmt.Errorf("原生 seed 已消费但缺少 checkpoint")
@@ -82,7 +88,18 @@ func (r *Loop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials
 	if checkpoint != nil && ((seed == nil && checkpoint.SeedID != "") || (seed != nil && checkpoint.SeedID != seed.ID)) {
 		return nil, fmt.Errorf("原生 checkpoint 的根材料不匹配")
 	}
-	return &preparedLoop{materials: materials, state: &turnState{route: r, session: materials.Session, checkpoint: checkpoint, seed: seed}}, nil
+	definitions := toolDefinitions{}
+	if checkpoint != nil || seed != nil {
+		window, err := r.Context.Load(ctx, materials.Session, checkpoint)
+		if err != nil {
+			return nil, err
+		}
+		definitions, err = definitionsIn(window.Items)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &preparedLoop{materials: materials, state: &turnState{route: r, session: materials.Session, checkpoint: checkpoint, seed: seed, definitions: definitions}}, nil
 }
 
 func (p *preparedLoop) InputCommitter() dialogue.MessageCommitter {
@@ -93,6 +110,9 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue
 	s := p.state
 	s.ctx, s.requestCtx, s.selection, s.output = ctx, hook.WithReadOnlyCalls(requestCtx), in.Selection, out
 	if err := s.requestCtx.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.ensureInputFormat(s.requestCtx); err != nil {
 		return nil, err
 	}
 	instructions, err := s.instructions(s.requestCtx)

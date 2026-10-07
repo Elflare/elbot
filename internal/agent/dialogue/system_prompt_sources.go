@@ -112,6 +112,17 @@ type ToolNamesSystemPromptSource struct {
 	Tools ToolNameProvider
 }
 
+// Runtime path rules belong to the prompt, not to a function's stable schema.
+type BackgroundPathsSystemPromptSource struct{}
+
+func (BackgroundPathsSystemPromptSource) Parts(ctx context.Context, _ SystemPromptRequest) ([]SystemPromptPart, error) {
+	sandbox, ok := sandboxctx.SandboxContextFromContext(ctx)
+	if !ok || !sandbox.Background {
+		return nil, nil
+	}
+	return []SystemPromptPart{{Name: "background_paths", Content: "后台文件与 Shell 工具（shell、read_file、edit_file、send_file）：" + sandboxctx.BackgroundPathInstruction()}}, nil
+}
+
 func (s ToolNamesSystemPromptSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
 	if s.Tools == nil || req.Session == nil {
 		return nil, nil

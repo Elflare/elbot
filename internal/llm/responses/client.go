@@ -29,12 +29,14 @@ type Streamer interface {
 
 // PreparedRequest freezes the fully merged native body without credentials.
 type PreparedRequest struct {
-	body          []byte
-	model         string
-	inputs, tools int
+	body         []byte
+	model        string
+	inputs       int
+	allowedTools []string
 }
 
-func (p PreparedRequest) JSON() json.RawMessage { return append(json.RawMessage(nil), p.body...) }
+func (p PreparedRequest) JSON() json.RawMessage  { return append(json.RawMessage(nil), p.body...) }
+func (p PreparedRequest) AllowedTools() []string { return append([]string(nil), p.allowedTools...) }
 
 type Client struct {
 	baseURL            string
@@ -89,9 +91,6 @@ func (c *Client) PrepareRequest(req Request) (PreparedRequest, error) {
 	if req.Instructions != "" {
 		body["instructions"] = req.Instructions
 	}
-	if len(req.Tools) > 0 {
-		body["tools"] = req.Tools
-	}
 	if req.PreviousResponseID != "" {
 		body["previous_response_id"] = req.PreviousResponseID
 	}
@@ -115,13 +114,18 @@ func (c *Client) PrepareRequest(req Request) (PreparedRequest, error) {
 	if err := mergeInclude(body, req.Include); err != nil {
 		return PreparedRequest{}, err
 	}
+	choice, allowed, err := restrictToolChoice(body["tool_choice"], req.AllowedTools)
+	if err != nil {
+		return PreparedRequest{}, err
+	}
+	body["tool_choice"] = choice
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
 	encoder.SetEscapeHTML(false)
 	if err = encoder.Encode(body); err != nil {
 		return PreparedRequest{}, fmt.Errorf("marshal response request: %w", err)
 	}
-	return PreparedRequest{body: append([]byte(nil), buf.Bytes()...), model: req.Model, inputs: len(input), tools: len(req.Tools)}, nil
+	return PreparedRequest{body: append([]byte(nil), buf.Bytes()...), model: req.Model, inputs: len(input), allowedTools: allowed}, nil
 }
 
 // StoreForModel exposes the configured preference to the native dialogue loop.
@@ -188,7 +192,7 @@ func (c *Client) StreamPrepared(ctx context.Context, prepared PreparedRequest) (
 		return nil, fmt.Errorf("prepared response request is empty")
 	}
 	if c.logger != nil {
-		c.logger.Debug("responses request", "endpoint", c.baseURL+"/responses", "model", prepared.model, "input_items", prepared.inputs, "tools", prepared.tools, "request_bytes", len(prepared.body))
+		c.logger.Debug("responses request", "endpoint", c.baseURL+"/responses", "model", prepared.model, "input_items", prepared.inputs, "allowed_tools", len(prepared.allowedTools), "request_bytes", len(prepared.body))
 	}
 	callCtx, cancel := context.WithCancel(ctx)
 	resp, err := c.transport.Do(callCtx, func(ctx context.Context) (*http.Request, error) {

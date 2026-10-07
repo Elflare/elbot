@@ -3,6 +3,7 @@ package responses
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -36,32 +37,18 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	if err != nil {
 		return final, err
 	}
-	sort.SliceStable(inputs, func(i, j int) bool { return inputOrder(inputs[i]) < inputOrder(inputs[j]) })
-	messages := make([]llm.LLMMessage, 0, len(inputs))
-	for _, input := range inputs {
-		segments, err := inputSegments(input)
-		if err != nil {
-			return final, err
-		}
-		messages = append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: segments})
+	inputs, err = s.queueToolDefinitions(ctx, inputs)
+	if err != nil {
+		return final, err
 	}
-	resolved := messages
-	cleanup := func() {}
-	if s.route.Calls.Media != nil {
-		resolved, cleanup, err = s.route.Calls.Media.AcquireForLLM(ctx, messages)
-		if err != nil {
-			return final, err
-		}
+	sort.SliceStable(inputs, func(i, j int) bool { return inputOrder(inputs[i]) < inputOrder(inputs[j]) })
+	items, cleanup, err := s.resolveInputs(ctx, inputs)
+	if err != nil {
+		return final, err
 	}
 	defer cleanup()
-	var items []api.Item
 	var consumed []string
-	for i, input := range inputs {
-		item, err := nativeItem(input.CallID, resolved[i].Segments)
-		if err != nil {
-			return final, err
-		}
-		items = append(items, item)
+	for _, input := range inputs {
 		consumed = append(consumed, input.ID)
 	}
 	instructions, err := s.instructions(ctx)
@@ -72,7 +59,7 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	if err != nil {
 		return final, err
 	}
-	request := api.Request{Model: s.selection.Model, Instructions: instructions, Input: items, Tools: api.FunctionTools(s.tools), Store: &store, Include: []string{"reasoning.encrypted_content"}}
+	request := api.Request{Model: s.selection.Model, Instructions: instructions, Input: items, AllowedTools: s.allowedToolNames(), Store: &store, Include: []string{"reasoning.encrypted_content"}}
 	origin, err := s.route.View.Providers.OriginFor(s.selection.Provider)
 	if err != nil {
 		return final, err
@@ -141,6 +128,9 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 		}
 		if item.CallID == "" || item.Name == "" || seen[item.CallID] {
 			return final, fmt.Errorf("invalid or duplicate Responses function call")
+		}
+		if !slices.Contains(result.AllowedTools, item.Name) {
+			return final, fmt.Errorf("Responses returned unavailable function %q", item.Name)
 		}
 		seen[item.CallID] = true
 		calls = append(calls, llm.ToolCallRequest{ID: item.CallID, Name: item.Name, Arguments: item.Arguments})

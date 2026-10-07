@@ -15,6 +15,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/memory/resident"
 	"elbot/internal/platform"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/toolrun"
@@ -35,6 +36,25 @@ func TestResidentMemorySystemPromptSource(t *testing.T) {
 	}
 	if len(parts) != 1 || parts[0].Content != "用户喜欢被称为娅娅。 用户喜欢简短回答。" {
 		t.Fatalf("parts = %#v", parts)
+	}
+}
+
+func TestBackgroundPathsAreSystemPromptOnlyUntilTakeover(t *testing.T) {
+	manager := buildSystemPrompt("", nil, nil, nil)
+	ctx := sandboxctx.WithSandboxContext(t.Context(), sandboxctx.SandboxContext{Background: true, Dir: t.TempDir()})
+	background, err := manager.Build(ctx, dialogue.SystemPromptRequest{Mode: storage.SessionModeBackground})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(background, sandboxctx.BackgroundPathInstruction()) != 1 {
+		t.Fatalf("missing or duplicate background path rules: %s", background)
+	}
+	foreground, err := manager.Build(sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{}), dialogue.SystemPromptRequest{Mode: storage.SessionModeWork})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(foreground, sandboxctx.BackgroundPathInstruction()) {
+		t.Fatal("foreground takeover retained background path rules")
 	}
 }
 

@@ -36,6 +36,7 @@ type nativeTestRequest struct {
 	Store              bool              `json:"store"`
 	Input              []json.RawMessage `json:"input"`
 	Tools              []json.RawMessage `json:"tools"`
+	ToolChoice         json.RawMessage   `json:"tool_choice"`
 	Include            []string          `json:"include"`
 }
 type nativeFixture struct {
@@ -63,6 +64,9 @@ func newNativeFixture(t *testing.T, respond func(int, nativeTestRequest, http.Re
 		request.Endpoint = r.URL.Path
 		if request.Endpoint == "/responses" && !containsNativeInclude(request.Include, "reasoning.encrypted_content") {
 			t.Error("main dialogue omitted encrypted reasoning material")
+		}
+		if request.Endpoint == "/responses" && len(request.Tools) != 0 {
+			t.Error("Responses definitions must be native input items")
 		}
 		f.mu.Lock()
 		f.requests = append(f.requests, request)
@@ -219,7 +223,7 @@ func TestResponsesPendingAndRoundLimitKeepFixedModelAndSkipUnexecutedCalls(t *te
 	unblock()
 	awaitModelDone(t, done)
 	requests := f.captured()
-	if count != 1 || len(requests) != 3 || len(requests[2].Tools) != 0 || requests[2].PreviousResponseID != "r2" {
+	if count != 1 || len(requests) != 3 || string(requests[2].ToolChoice) != `"none"` || requests[2].PreviousResponseID != "r2" {
 		t.Fatalf("count=%d requests=%+v", count, requests)
 	}
 	for _, request := range requests {
@@ -283,8 +287,7 @@ func TestResponsesBackgroundTakeoverSharesPendingAndChangesTaskModel(t *testing.
 	if !strings.Contains(string(raw), "takeover detail") {
 		t.Fatalf("pending missing: %s", raw)
 	}
-	tools, _ := json.Marshal(requests[1].Tools)
-	if strings.Contains(requests[1].Instructions, "强制 JSON 输出要求已经解除") || !strings.Contains(string(tools), "discover_tool") {
+	if strings.Contains(requests[1].Instructions, "强制 JSON 输出要求已经解除") || !strings.Contains(string(requests[1].ToolChoice), "discover_tool") || !strings.Contains(string(raw), `"type":"additional_tools"`) {
 		t.Fatalf("stale foreground instructions/tools: %+v", requests[1])
 	}
 	var notice struct {

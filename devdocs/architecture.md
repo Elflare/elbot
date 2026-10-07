@@ -156,13 +156,17 @@ Agent 只保存对外能力所需的组件引用和信号集合；消息、后�
 
 Responses 请求在 HTTP 调用前保存实际编码 JSON，主对话显式请求 reasoning.encrypted_content，与合法配置的 include 合并去重；终态保留原始 response 和完成 items。失败、取消、incomplete 或提前 EOF 不推进 checkpoint；首次失败留下的完整待提交用户输入可在下次请求继续，展示历史与原生输入不匹配时拒绝。空业务回复仍可提交 cursor，缓冲发送失败保留已提交位置。
 
+Responses 将首批和新增 schema 冻结为 developer `additional_tools` 原生输入，与待提交用户输入及工具输出一起持久化；仅该路线负责协议编码。每轮从 seed／checkpoint 历史及待提交输入重建定义索引，相同定义不重复添加，同名变化拒绝并要求新建会话。发现结果文字独立保存，重复发现仍保留新文字。新增定义排在工具输出及普通用户输入之后、接管提示之前；续链只发送新增输入，完整回放保留历史位置。压缩返回的定义继续沿用，缺失的当前工具定义在下轮重新加入。
+
+当前权限与历史定义分离：Responses 请求不发送顶层 tools，由客户端将当前工具名称和配置的 tool_choice 取交集，生成 allowed_tools／指定 function／none；响应调用也按实际请求的允许集合检查。工具轮数耗尽、chat 模式、Fork 未继承工具状态等场景不能借历史定义恢复权限。Chat 继续发送顶层 tools。后台四个路径工具的路径说明由共同 system prompt source 提供，schema 不随前台接管改变。
+
 function call 响应、原生调用及 checkpoint 在工具副作用前保存，展示层不预写调用头。每个工具完成后，ToolPair、原生 function_call_output、执行状态和该展示调用头的历史快照同事务提交。历史快照复用 checkpoint 表，保持原 exchange 的 parent／response／seed，不推进活动游标或消费输入；分支只读取当时冻结的结果引用。中断后的普通续接只在原生层补齐未执行／结果未知输出，不编造展示结果或重跑历史工具。
 
 `responses.Context` 从 seed 根、checkpoint 前序链及已提交 exchange 的有序新输入和完整输出重建原生窗口。明确的旧链失效错误且尚无新响应内容时，清空 previous_response_id，以同厂商完整材料重试一次；普通网络、鉴权、含糊错误、部分流及第二次失败不再恢复。base_url 与最近实际 exchange 的地址不同时直接重建。恢复复用本轮已准备输入、instructions、工具和 Selection，不重跑 Hook／工具。缺少完整推理、原生载荷或有效本地素材则拒绝，不用文字投影替代。
 
 Responses 的 provider／模型级 extra_payload.store 只接受布尔值，同名配置拒绝覆盖；私有客户端提供按模型读取偏好的能力，单次 Request.Store 优先，独立文本固定 false。主对话默认 true；续接前读取 checkpoint 对应实际请求／响应，任一明确 store:false 都以 store:false 发送完整窗口且不带 previous_response_id，字段缺省依据原请求判断。判断随原生事实持久化，无额外缓存或迁移。请求存储但上游关闭存储后的自动切换只记录后台 WARN，稳定无状态续接和显式关闭不重复告警。Fork／后台副本仅为可续链来源保留 seed response ID，其余使用完整独立 seed。
 
-SQLite 的 native_exchanges、native_inputs、native_calls、native_checkpoints、native_seeds 保存原生状态；Session metadata 仅存 llm_origin、llm_checkpoint、llm_seed 等身份与引用。exchange 保存有序新输入清单，checkpoint 保存当时的不可变调用快照及根 seed 引用。媒体以本地 ID 关联业务消息、原生输入和 seed，重建时重新解析并持有素材；压缩保留隐含在不可读状态中的素材引用，来源删除不影响独立 seed。Responses 调用集合、ID、名称及参数通过消费方注入的 Hook 只读策略保护，公共 Hook 和 ToolRun 不判断协议。
+SQLite 的 native_exchanges、native_inputs、native_calls、native_checkpoints、native_seeds 保存原生状态；Session metadata 存 llm_origin、llm_checkpoint、llm_seed 等身份与引用，以及 responses_input_version 格式标记。seed 的 ItemsJSON 是路线私有的 version／items 封装；旧格式拒绝续接、分支和压缩，不做迁移。exchange 保存有序新输入清单，checkpoint 保存当时的不可变调用快照及根 seed 引用。additional_tools 不关联展示消息或媒体，重建时校验定义与请求归档一致；媒体以本地 ID 关联业务消息、原生输入和 seed，重建时重新解析并持有素材；压缩保留隐含在不可读状态中的素材引用，来源删除不影响独立 seed。Responses 调用集合、ID、名称及参数通过消费方注入的 Hook 只读策略保护，公共 Hook 和 ToolRun 不判断协议。
 
 工具调用头通过 tool_result_message_id 关联结果。公共 Fork 将展示边界解析到对应结果之后；后台复制重新生成消息 ID 时同步重映射关联。Responses 的历史材料准备、未完成调用结尾及分支结果媒体解析归私有 Context，Session 只负责共同准入、创建与激活。新写入遵循成对约定，旧展示历史不在本轮迁移范围内。
 
@@ -249,9 +253,9 @@ Tool Runtime 负责注册、schema、权限、风险、确认详情、用户侧 
 
 `discover_tool` 的特殊约定：
 
-- 查询普通工具时，返回“已发现工具”文本，并把完整 schema 放在结构化 Data 供 Agent 注入 top-level tools。
+- 查询普通工具时，返回“已发现工具”文本，并把完整 schema 放在结构化 Data 供工具状态服务保存，由协议路线决定如何发送。
 - 查询说明型 AgentSkill 会激活 `agent_skill` 元工具。
-- 查询工具化 AgentSkill 会注入其 top-level schema。
+- 查询工具化 AgentSkill 会激活其 schema。
 - 查询 Go skill 会按需激活 `go_skill_run`。
 - `read_file`、`edit_file` 依赖隐藏的 `rollback_file`；依赖展开仍执行超管权限和前台限制，tag 为 `files`。
 

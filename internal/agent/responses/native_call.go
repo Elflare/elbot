@@ -19,6 +19,7 @@ type nativeCallResult struct {
 	Items         []api.Item
 	OutputStarted bool
 	FactsSaved    bool
+	AllowedTools  []string
 }
 
 // Each actual HTTP attempt gets its own immutable request and terminal facts.
@@ -34,6 +35,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 	if err != nil {
 		return result, err
 	}
+	result.AllowedTools = prepared.AllowedTools()
 	origin, err := s.route.View.Providers.OriginFor(s.selection.Provider)
 	if err != nil {
 		return result, err

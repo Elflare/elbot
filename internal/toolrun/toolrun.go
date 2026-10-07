@@ -10,7 +10,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -119,7 +118,7 @@ func (m *Manager) Schemas(ctx context.Context, view Context, cached []CachedTool
 			return
 		}
 		seen[name] = true
-		out = append(out, schemaForContext(ctx, cloneSchema(schema)))
+		out = append(out, cloneSchema(schema))
 	}
 	for _, schema := range base {
 		appendSchema(schema)
@@ -134,24 +133,6 @@ func (m *Manager) Schemas(ctx context.Context, view Context, cached []CachedTool
 		appendSchema(cachedTool.Schema)
 	}
 	return out, nil
-}
-
-func schemaForContext(ctx context.Context, schema llm.ToolSchema) llm.ToolSchema {
-	sandbox, ok := sandboxctx.SandboxContextFromContext(ctx)
-	if !ok || !sandbox.Background || !backgroundPathSchema(schema.Name) {
-		return schema
-	}
-	schema.Description = strings.TrimSpace(schema.Description + " " + sandboxctx.BackgroundPathInstruction())
-	return schema
-}
-
-func backgroundPathSchema(name string) bool {
-	switch name {
-	case "shell", "read_file", "edit_file", "send_file":
-		return true
-	default:
-		return false
-	}
 }
 
 func cachedToolAvailable(ctx context.Context, cached CachedTool) bool {

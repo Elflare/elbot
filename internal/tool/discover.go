@@ -117,9 +117,8 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, error
 	if formats := NewRuleCardFormatsFromContext(ctx); len(formats) > 0 {
 		metadata[MetadataShownRuleCardFormats] = formats
 	}
-	// 普通工具的完整 schema 通过 Data 交给 Agent 注入 top-level tools。
-	// tool message 文本只返回简短“已发现工具”，避免上下文膨胀，
-	// 也让后续请求保持稳定的工具注入顺序。
+	// 普通工具的完整 schema 通过 Data 交给工具状态服务，协议路线负责发送。
+	// tool message 独立保留发现说明，不重复展开完整 schema。
 	return &Result{Content: content, Data: data, Metadata: metadata}, nil
 }
 
