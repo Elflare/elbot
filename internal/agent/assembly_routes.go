@@ -16,20 +16,20 @@ import (
 // Only composition chooses concrete protocols. Runtime consumers query the
 // sealed provider bindings or the saved source-material identity.
 func bindProviderRoutes(registry *routes.Registry, models *modelmgr.Service, chat, response dialogue.Loop, compactor, nativeCompactor contextmgr.Compactor, material session.MaterialPreparer) error {
-	if err := registry.RegisterCompactor(llm.ProtocolChat, compactor); err != nil {
+	if err := registry.RegisterCompactor(llm.APITypeChat, compactor); err != nil {
 		return err
 	}
 	display := session.DisplayMaterial{}
-	if err := registry.RegisterMaterial(llm.ProtocolChat, display); err != nil {
+	if err := registry.RegisterMaterial(llm.APITypeChat, display); err != nil {
 		return err
 	}
 	if nativeCompactor != nil {
-		if err := registry.RegisterCompactor(llm.ProtocolResponse, nativeCompactor); err != nil {
+		if err := registry.RegisterCompactor(llm.APITypeResponse, nativeCompactor); err != nil {
 			return err
 		}
 	}
 	if material != nil {
-		if err := registry.RegisterMaterial(llm.ProtocolResponse, material); err != nil {
+		if err := registry.RegisterMaterial(llm.APITypeResponse, material); err != nil {
 			return err
 		}
 	}
@@ -43,20 +43,20 @@ func bindProviderRoutes(registry *routes.Registry, models *modelmgr.Service, cha
 			continue
 		}
 		binding := routes.Binding{Origin: origin, Client: client}
-		switch origin.Protocol {
-		case llm.ProtocolChat:
+		switch origin.APIType {
+		case llm.APITypeChat:
 			if _, ok := client.(chatcompletions.Streamer); !ok {
-				return fmt.Errorf("provider %q api_mode %q requires the Chat streaming capability", origin.Provider, origin.Protocol)
+				return fmt.Errorf("provider %q api_mode %q requires the Chat streaming capability", origin.Provider, origin.APIType)
 			}
 			binding.Loop, binding.Compactor = chat, compactor
 			binding.Material = display
-		case llm.ProtocolResponse:
+		case llm.APITypeResponse:
 			if _, ok := client.(responses.Streamer); !ok {
-				return fmt.Errorf("provider %q api_mode %q requires the Responses streaming capability", origin.Provider, origin.Protocol)
+				return fmt.Errorf("provider %q api_mode %q requires the Responses streaming capability", origin.Provider, origin.APIType)
 			}
 			binding.Loop, binding.Compactor, binding.Material = response, nativeCompactor, material
 		default:
-			return fmt.Errorf("provider %q has unsupported api_mode %q", origin.Provider, origin.Protocol)
+			return fmt.Errorf("provider %q has unsupported api_mode %q", origin.Provider, origin.APIType)
 		}
 		if err := registry.Register(binding); err != nil {
 			return err

@@ -1,15 +1,18 @@
 package agent
 
 import (
-	"context"
+	"bytes"
+	"fmt"
+	"image"
+	"image/png"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/tool"
+	"elbot/internal/tool/builtin"
 )
 
 func TestResponsesToolForkResolvesResultMediaForContinuationAndReplay(t *testing.T) {
@@ -19,20 +22,19 @@ func TestResponsesToolForkResolvesResultMediaForContinuationAndReplay(t *testing
 			var center *media.Manager
 			var imageID string
 			registry := tool.NewRegistry()
-			_ = registry.Register(nativeTool{name: "image", run: func(context.Context, tool.CallRequest) (*tool.Result, error) {
-				return &tool.Result{Segments: []llm.MessageSegment{{Type: llm.SegmentText, Text: "saved tool image"}, {Type: llm.SegmentImage, MediaID: imageID, Name: "tiny.png"}}}, nil
-			}})
 			f := newNativeFixture(t, func(index int, request nativeTestRequest, w http.ResponseWriter) {
+				if index > 0 {
+					body := inputJSON(request)
+					if !strings.Contains(body, `"type":"function_call_output"`) || strings.Count(body, `"type":"input_image"`) != 1 || !strings.Contains(body, "data:image/png;base64,") {
+						t.Errorf("view_image result missing or duplicated: %s", body)
+					}
+				}
 				switch index {
 				case 0:
-					emitNativeStore(w, "image-head", !stateless, nativeCall("image-call", "image", `{}`))
+					emitNativeStore(w, "image-head", !stateless, nativeCall("image-call", "view_image", fmt.Sprintf(`{"source":%q}`, imageID)))
 				case 1:
 					emitNativeStore(w, "source-final", !stateless, nativeText("source final"))
 				case 2, 3:
-					body := inputJSON(request)
-					if !strings.Contains(body, "data:image/png;base64,") || strings.Count(body, `"text":"saved tool image"`) != 1 {
-						t.Errorf("branch result media was not resolved exactly once: %s", body)
-					}
 					if index == 2 && !stateless {
 						if request.PreviousResponseID != "image-head" {
 							t.Errorf("continuation=%+v", request)
@@ -50,14 +52,21 @@ func TestResponsesToolForkResolvesResultMediaForContinuationAndReplay(t *testing
 			}, func(opts *testAgentOptions) {
 				root := filepath.Join(t.TempDir(), "media")
 				center = media.NewManager(opts.Store, root, &media.LocalBackend{Root: root})
+				if err := registry.Register(builtin.NewViewImageTool(center, nil)); err != nil {
+					t.Fatal(err)
+				}
 				opts.Media, opts.ToolRegistry = center, registry
 			})
-			item, err := center.ImportBytes(t.Context(), []byte("tiny image"), media.Input{Name: "tiny.png", MIMEType: "image/png"})
+			var data bytes.Buffer
+			if err := png.Encode(&data, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+				t.Fatal(err)
+			}
+			item, err := center.ImportBytes(t.Context(), data.Bytes(), media.Input{Name: "tiny.png", MIMEType: "image/png"})
 			if err != nil {
 				t.Fatal(err)
 			}
 			imageID = item.ID
-			if err := f.agent.HandleMessage(t.Context(), "@tool:image run"); err != nil {
+			if err := f.agent.HandleMessage(t.Context(), "@tool:view_image run"); err != nil {
 				t.Fatal(err)
 			}
 			source := fixtureSession(t, f)

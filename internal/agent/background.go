@@ -18,10 +18,12 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 )
 
 type backgroundRunner struct {
+	registry    *tool.Registry
 	sessions    *session.Service
 	sessionRows storage.SessionRepository
 	identity    *identityResolver
@@ -97,6 +99,10 @@ func (r *backgroundRunner) RunBackground(ctx context.Context, req background.Run
 	}
 	var preloaded backgroundPreloadResult
 	if req.SessionID == "" {
+		ctx, err = r.execution.modelContext(ctx, bgSession)
+		if err != nil {
+			return background.RunResult{SessionID: bgSession.ID}, err
+		}
 		preloaded = r.preloadBackgroundResources(ctx, bgSession, req.ToolListNames, req.CachedTools, req.AllowedToolNames)
 	}
 	if preloaded.Err != nil {
@@ -153,8 +159,8 @@ func (r *backgroundRunner) preloadBackgroundResources(ctx context.Context, row *
 	}
 	preloadCtx := contextinfo.WithActor(security.WithPolicy(ctx, r.identity.policy), r.identity.Actor(ctx))
 	prepared := r.preloader.PrepareBackground(preloadCtx, row.ID, names, allowed)
-	prepared.Update.Tools = append(toolrun.BackgroundCachedTools(ctx, initial), prepared.Update.Tools...)
-	prepared.Update.Tools = toolrun.BackgroundCachedTools(ctx, prepared.Update.Tools)
+	prepared.Update.Tools = append(toolrun.BackgroundCachedTools(ctx, initial, r.registry), prepared.Update.Tools...)
+	prepared.Update.Tools = toolrun.BackgroundCachedTools(ctx, prepared.Update.Tools, r.registry)
 	committed, err := commitToolState(ctx, r.toolState, row, prepared.Update)
 	if err != nil {
 		return backgroundPreloadResult{Err: err}

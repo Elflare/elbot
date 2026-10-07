@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -95,22 +96,91 @@ func (m *Manager) AssociateHistory(ctx context.Context, row storage.ChatMessage,
 }
 
 func (m *Manager) GetHistoryMedia(ctx context.Context, row storage.ChatMessage, index int, resolver platform.MediaResolver) (*storage.Media, error) {
-	segments := HistorySegments(row)
-	if index < 1 || index > len(segments) {
-		return nil, fmt.Errorf("media index %d out of range (message has %d media)", index, len(segments))
-	}
-	ids, err := m.HistoryIDs(ctx, row)
+	results, err := m.GetHistoryMediaBatch(ctx, []HistoryMediaRequest{{Message: row, Index: index}}, resolver, HistoryFetchOptions{})
 	if err != nil {
 		return nil, err
 	}
-	segment := segments[index-1]
-	segment.MediaID = ids[index]
-	item, err := m.ImportPlatform(ctx, row.Platform, resolver, segment)
-	if err != nil {
-		return nil, err
+	return results[0].Media, results[0].Err
+}
+
+var ErrHistoryFetchLimit = errors.New("history media fetch limit reached")
+var ErrHistoryMediaIndex = errors.New("history media index out of range")
+
+type HistoryMediaRequest struct {
+	Message storage.ChatMessage
+	Index   int
+}
+
+type HistoryMediaResult struct {
+	Media *storage.Media
+	Err   error
+}
+
+type HistoryFetchOptions struct {
+	// MaxFetchAttempts limits uncached positions, including failed attempts.
+	// Nonpositive values are unlimited. Cached media never consumes the budget.
+	MaxFetchAttempts int
+}
+
+// GetHistoryMediaBatch owns cache decisions and acquisition state for one call.
+// Results retain input order, including duplicate positions and per-item failures.
+func (m *Manager) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMediaRequest, resolver platform.MediaResolver, opts HistoryFetchOptions) ([]HistoryMediaResult, error) {
+	type messageKey struct{ platform, scope, message, history string }
+	type position struct {
+		messageKey
+		index int
 	}
-	if err := m.AssociateHistory(ctx, row, index, segment.Type, item.ID); err != nil {
-		return nil, err
+	known := map[messageKey]map[int]string{}
+	seen := map[position]HistoryMediaResult{}
+	results := make([]HistoryMediaResult, 0, len(requests))
+	attempts := 0
+	for _, request := range requests {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		row, index := request.Message, request.Index
+		key := messageKey{row.Platform, row.PlatformScopeID, row.PlatformMessageID, row.ID}
+		pos := position{key, index}
+		if result, ok := seen[pos]; ok {
+			results = append(results, result)
+			continue
+		}
+		var result HistoryMediaResult
+		segments := HistorySegments(row)
+		if index < 1 || index > len(segments) {
+			result.Err = fmt.Errorf("%w: %d (message has %d media)", ErrHistoryMediaIndex, index, len(segments))
+		} else {
+			ids, ok := known[key]
+			if !ok {
+				var err error
+				ids, err = m.HistoryIDs(ctx, row)
+				if err != nil {
+					return nil, err
+				}
+				known[key] = ids
+			}
+			if ids[index] == "" && opts.MaxFetchAttempts > 0 && attempts >= opts.MaxFetchAttempts {
+				result.Err = ErrHistoryFetchLimit
+			} else {
+				if ids[index] == "" {
+					attempts++
+				}
+				segment := segments[index-1]
+				segment.MediaID = ids[index]
+				result.Media, result.Err = m.ImportPlatform(ctx, row.Platform, resolver, segment)
+				if result.Err == nil {
+					result.Err = m.AssociateHistory(ctx, row, index, segment.Type, result.Media.ID)
+					if result.Err == nil {
+						ids[index] = result.Media.ID
+					}
+				}
+			}
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		seen[pos] = result
+		results = append(results, result)
 	}
-	return item, nil
+	return results, nil
 }

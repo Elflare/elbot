@@ -16,6 +16,18 @@ import (
 	"elbot/internal/turn"
 )
 
+// modelContext supplies the prospective main-dialogue target to tool views.
+// Execution still resolves and checks its fixed selection at admission.
+func (c *executionCoordinator) modelContext(ctx context.Context, row *storage.Session) (context.Context, error) {
+	selected := modelmgr.SelectionForTurn(ctx, c.models, row)
+	if row != nil {
+		if err := c.view.CheckSelection(row, selected); err != nil {
+			return ctx, err
+		}
+	}
+	return c.view.WithModel(ctx, selected)
+}
+
 func (c *executionCoordinator) runAttempt(ctx context.Context, session *storage.Session, text string, out dialogue.Output) (*storage.Session, turn.Input, error) {
 	ctx, release, err := c.enterTurn(ctx, session)
 	if err != nil {

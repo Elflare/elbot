@@ -21,12 +21,12 @@ func TestOriginRegistrationPreservesHistoryAndOtherMetadata(t *testing.T) {
 	if _, known, err := Origin(row); err != nil || known {
 		t.Fatalf("new session origin = %v, %v", known, err)
 	}
-	target := llm.Origin{Protocol: llm.ProtocolChat, Provider: "first", BaseURL: "https://first.invalid/v1"}
+	target := llm.Origin{APIType: llm.APITypeChat, Provider: "first", BaseURL: "https://first.invalid/v1"}
 	row, err = svc.RegisterOrigin(ctx, row.ID, target)
 	if err != nil {
 		t.Fatal(err)
 	}
-	changed := llm.Origin{Protocol: llm.ProtocolChat, Provider: "second", BaseURL: "https://second.invalid/v1"}
+	changed := llm.Origin{APIType: llm.APITypeChat, Provider: "second", BaseURL: "https://second.invalid/v1"}
 	row, err = svc.RegisterOrigin(ctx, row.ID, changed)
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +40,7 @@ func TestOriginRegistrationPreservesHistoryAndOtherMetadata(t *testing.T) {
 		}
 	}
 	before := row.Metadata
-	if _, err := svc.RegisterOrigin(ctx, row.ID, llm.Origin{Protocol: llm.ProtocolResponse, Provider: "other"}); err == nil {
+	if _, err := svc.RegisterOrigin(ctx, row.ID, llm.Origin{APIType: llm.APITypeResponse, Provider: "other"}); err == nil {
 		t.Fatal("existing material was silently reinterpreted")
 	}
 	persisted, err := store.Sessions().Get(ctx, row.ID)
@@ -69,7 +69,7 @@ func TestOriginRegistrationRejectsStaleBindingAndKeepsPartialChat(t *testing.T) 
 		t.Fatal(err)
 	}
 	old = contextinfo.WithExecution(old, contextinfo.Execution{SessionID: row.ID, RunID: "fabricated", Attempt: "fabricated"})
-	target := llm.Origin{Protocol: llm.ProtocolChat, Provider: "actual", BaseURL: "https://actual.invalid"}
+	target := llm.Origin{APIType: llm.APITypeChat, Provider: "actual", BaseURL: "https://actual.invalid"}
 	if _, err := svc.RegisterOrigin(old, row.ID, target); err == nil {
 		t.Fatal("public associations authorized an expired binding")
 	}
@@ -105,7 +105,7 @@ func TestOriginInheritanceDoesNotImportRuntimeMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	copyOrigin, _, err := Origin(&storage.Session{Metadata: inherited})
-	if err != nil || copyOrigin.Provider != "historical" || copyOrigin.Protocol != llm.ProtocolChat || strings.Contains(inherited, "active_attempt") || !strings.Contains(inherited, "9007199254740993") {
+	if err != nil || copyOrigin.Provider != "historical" || copyOrigin.APIType != llm.APITypeChat || strings.Contains(inherited, "active_attempt") || !strings.Contains(inherited, "9007199254740993") {
 		t.Fatalf("inheritance = %s, %v", inherited, err)
 	}
 	inherited, err = InheritOrigin(&storage.Session{}, inherited)

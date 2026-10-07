@@ -37,7 +37,7 @@ type extensionPrepared struct {
 
 func (l *extensionLoop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials) (dialogue.PreparedLoop, error) {
 	model, ok := contextinfo.ModelFromContext(ctx)
-	if !ok || model.Protocol != "extension" || model.Provider != "extension-provider" || contextinfo.RootRequestIDFromContext(ctx) != "" {
+	if !ok || model.APIType != "extension" || model.Provider != "extension-provider" || contextinfo.RootRequestIDFromContext(ctx) != "" {
 		l.t.Fatalf("common admission/preparation facts=%+v", model)
 	}
 	l.prepared++
@@ -97,7 +97,7 @@ func TestRegisteredProtocolUsesActualAgentAdmissionPersistenceAndSessionCapabili
 	if err := assembled.Routes.RegisterMaterial("extension", material); err != nil {
 		t.Fatal(err)
 	}
-	if err := assembled.Routes.Register(routes.Binding{Origin: llm.Origin{Provider: "extension-provider", Protocol: "extension"}, Client: client, Loop: loop, Compactor: compactor, Material: material}); err != nil {
+	if err := assembled.Routes.Register(routes.Binding{Origin: llm.Origin{Provider: "extension-provider", APIType: "extension"}, Client: client, Loop: loop, Compactor: compactor, Material: material}); err != nil {
 		t.Fatal(err)
 	}
 	a, err := New(t.Context(), assembled.Config, assembled.Dependencies)

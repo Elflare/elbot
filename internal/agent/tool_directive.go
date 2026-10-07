@@ -176,6 +176,10 @@ func (c *inputCoordinator) applyInputDirectives(ctx context.Context, row *storag
 	}
 	ctx = locked
 	release()
+	ctx, err = c.execution.modelContext(ctx, row)
+	if err != nil {
+		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err
+	}
 	tools := c.prepareToolDirectives(ctx, row, text)
 	if tools.Err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, tools.Err

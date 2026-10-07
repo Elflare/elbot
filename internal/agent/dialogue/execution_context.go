@@ -45,7 +45,7 @@ func (v ExecutionView) WithModel(ctx context.Context, selection modelmgr.Selecti
 	if err != nil {
 		return ctx, err
 	}
-	return contextinfo.WithModel(ctx, contextinfo.Model{Provider: selection.Provider, Model: selection.Model, Protocol: string(origin.Protocol)}), nil
+	return contextinfo.WithModel(ctx, contextinfo.Model{Provider: selection.Provider, Model: selection.Model, APIType: string(origin.APIType)}), nil
 }
 
 // Rebuild semantic values on the request context, retaining its cancellation.

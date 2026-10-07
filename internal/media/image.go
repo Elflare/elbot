@@ -2,6 +2,7 @@ package media
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"image"
 	"image/color"
@@ -13,7 +14,24 @@ import (
 	"strings"
 
 	"elbot/internal/config"
+	"elbot/internal/storage"
 )
+
+// ImageMetadata validates stored image content without exposing storage paths.
+func (m *Manager) ImageMetadata(ctx context.Context, id string) (*storage.Media, error) {
+	reader, item, err := m.Open(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	if _, _, err := image.Decode(reader); err != nil {
+		return nil, fmt.Errorf("媒体不是有效或支持的图片")
+	}
+	if !strings.HasPrefix(item.MIMEType, "image/") {
+		return nil, fmt.Errorf("媒体类型不是图片")
+	}
+	return item, ctx.Err()
+}
 
 func imageDimensions(data []byte) (int, int, error) {
 	config, _, err := image.DecodeConfig(bytes.NewReader(data))

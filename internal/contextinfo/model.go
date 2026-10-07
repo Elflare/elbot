@@ -5,5 +5,5 @@ package contextinfo
 type Model struct {
 	Provider string
 	Model    string
-	Protocol string
+	APIType  string
 }

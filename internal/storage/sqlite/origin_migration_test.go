@@ -67,10 +67,10 @@ func TestOriginMigrationPreservesFactsAndRunsOnlyOnce(t *testing.T) {
 			t.Fatalf("%s origin=%+v/%v/%v", id, origin, known, err)
 		}
 		if id == "known" {
-			if origin.Protocol != llm.ProtocolResponse || origin.Provider != "native" || origin.BaseURL != "https://old.invalid" {
+			if origin.APIType != llm.APITypeResponse || origin.Provider != "native" || origin.BaseURL != "https://old.invalid" {
 				t.Fatalf("known ownership overwritten: %+v", origin)
 			}
-		} else if origin.Protocol != llm.ProtocolChat || origin.Provider != "" || origin.BaseURL != "" {
+		} else if origin.APIType != llm.APITypeChat || origin.Provider != "" || origin.BaseURL != "" {
 			t.Fatalf("old %s provider was fabricated: %+v", id, origin)
 		}
 		if id == "rich" {

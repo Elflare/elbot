@@ -212,7 +212,7 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 }
 
 func (r *DialogueRepository) CreateExchange(ctx context.Context, row *storage.NativeExchange) error {
-	if row == nil || row.SessionID == "" || row.Protocol == "" || row.Provider == "" || !json.Valid([]byte(row.RequestJSON)) {
+	if row == nil || row.SessionID == "" || row.APIType == "" || row.Provider == "" || !json.Valid([]byte(row.RequestJSON)) {
 		return fmt.Errorf("invalid native exchange")
 	}
 	if row.ID == "" {
@@ -225,7 +225,7 @@ func (r *DialogueRepository) CreateExchange(ctx context.Context, row *storage.Na
 	if row.InputIDsJSON != "" && !json.Valid([]byte(row.InputIDsJSON)) {
 		return fmt.Errorf("invalid native input manifest")
 	}
-	_, err := r.db.ExecContext(ctx, `INSERT INTO native_exchanges(id,session_id,protocol,provider,base_url,model,request_id,run_id,attempt,previous_checkpoint_id,request_json,response_json,items_json,status,error,created_at,input_ids_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, row.ID, row.SessionID, row.Protocol, row.Provider, row.BaseURL, row.Model, row.RequestID, row.RunID, row.Attempt, row.PreviousCheckpointID, row.RequestJSON, row.ResponseJSON, row.ItemsJSON, row.Status, row.Error, storage.FormatTime(row.CreatedAt), row.InputIDsJSON)
+	_, err := r.db.ExecContext(ctx, `INSERT INTO native_exchanges(id,session_id,protocol,provider,base_url,model,request_id,run_id,attempt,previous_checkpoint_id,request_json,response_json,items_json,status,error,created_at,input_ids_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, row.ID, row.SessionID, row.APIType, row.Provider, row.BaseURL, row.Model, row.RequestID, row.RunID, row.Attempt, row.PreviousCheckpointID, row.RequestJSON, row.ResponseJSON, row.ItemsJSON, row.Status, row.Error, storage.FormatTime(row.CreatedAt), row.InputIDsJSON)
 	return err
 }
 
@@ -246,7 +246,7 @@ func (r *DialogueRepository) FinishExchange(ctx context.Context, id, status, res
 func (r *DialogueRepository) GetExchange(ctx context.Context, id string) (*storage.NativeExchange, error) {
 	row := &storage.NativeExchange{}
 	var created string
-	err := r.db.QueryRowContext(ctx, `SELECT id,session_id,protocol,provider,base_url,model,request_id,run_id,attempt,previous_checkpoint_id,request_json,response_json,items_json,status,error,created_at,input_ids_json FROM native_exchanges WHERE id=?`, id).Scan(&row.ID, &row.SessionID, &row.Protocol, &row.Provider, &row.BaseURL, &row.Model, &row.RequestID, &row.RunID, &row.Attempt, &row.PreviousCheckpointID, &row.RequestJSON, &row.ResponseJSON, &row.ItemsJSON, &row.Status, &row.Error, &created, &row.InputIDsJSON)
+	err := r.db.QueryRowContext(ctx, `SELECT id,session_id,protocol,provider,base_url,model,request_id,run_id,attempt,previous_checkpoint_id,request_json,response_json,items_json,status,error,created_at,input_ids_json FROM native_exchanges WHERE id=?`, id).Scan(&row.ID, &row.SessionID, &row.APIType, &row.Provider, &row.BaseURL, &row.Model, &row.RequestID, &row.RunID, &row.Attempt, &row.PreviousCheckpointID, &row.RequestJSON, &row.ResponseJSON, &row.ItemsJSON, &row.Status, &row.Error, &created, &row.InputIDsJSON)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, storage.ErrNotFound
 	}

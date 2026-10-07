@@ -15,7 +15,7 @@ func TestServiceForkCreatesCurrentBranch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create parent: %v", err)
 	}
-	origin := llm.Origin{Protocol: llm.ProtocolChat, Provider: "source", BaseURL: "https://source.invalid/v1"}
+	origin := llm.Origin{APIType: llm.APITypeChat, Provider: "source", BaseURL: "https://source.invalid/v1"}
 	if _, err := svc.RegisterOrigin(ctx, parent.ID, origin); err != nil {
 		t.Fatal(err)
 	}

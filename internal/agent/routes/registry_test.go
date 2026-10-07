@@ -24,7 +24,7 @@ import (
 	"elbot/internal/turn"
 )
 
-const testProtocol llm.ProtocolID = "test"
+const testProtocol llm.APIType = "test"
 
 type testClient struct{}
 
@@ -44,7 +44,7 @@ func (l *testLoop) PrepareTurn(ctx context.Context, materials dialogue.TurnMater
 	if contextinfo.RootRequestIDFromContext(ctx) != "" {
 		l.t.Fatal("materials loaded after request registration")
 	}
-	if model, ok := contextinfo.ModelFromContext(ctx); !ok || model.Protocol != string(testProtocol) || model.Provider != "test-provider" {
+	if model, ok := contextinfo.ModelFromContext(ctx); !ok || model.APIType != string(testProtocol) || model.Provider != "test-provider" {
 		l.t.Fatalf("preparation model facts = %+v, %v", model, ok)
 	}
 	l.prepared++
@@ -124,7 +124,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	}
 	registry := routes.New()
 	loop, compactor := &testLoop{t: t, messages: &dialogue.MessageStore{Dialogues: store.Dialogues()}}, &testCompactor{}
-	origin := llm.Origin{Provider: "test-provider", Protocol: testProtocol, BaseURL: "https://test.invalid"}
+	origin := llm.Origin{Provider: "test-provider", APIType: testProtocol, BaseURL: "https://test.invalid"}
 	client := &testClient{}
 	if err := registry.RegisterCompactor(testProtocol, compactor); err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	if err := registry.Register(routes.Binding{Origin: origin, Client: client, Loop: loop, Compactor: compactor}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(routes.Binding{Origin: llm.Origin{Provider: "other", Protocol: llm.ProtocolChat}, Client: &testClient{}, Loop: &testLoop{t: t}}); err != nil {
+	if err := registry.Register(routes.Binding{Origin: llm.Origin{Provider: "other", APIType: llm.APITypeChat}, Client: &testClient{}, Loop: &testLoop{t: t}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := registry.Seal(); err != nil {
@@ -184,10 +184,10 @@ func TestRegistryRejectsInvalidWiringAndMutation(t *testing.T) {
 	if err := registry.Seal(); err == nil {
 		t.Fatal("empty registry accepted")
 	}
-	if err := registry.Register(routes.Binding{Origin: llm.Origin{Provider: "test", Protocol: testProtocol}}); err == nil {
+	if err := registry.Register(routes.Binding{Origin: llm.Origin{Provider: "test", APIType: testProtocol}}); err == nil {
 		t.Fatal("missing required client accepted")
 	}
-	entry := routes.Binding{Origin: llm.Origin{Provider: "test", Protocol: testProtocol}, Client: &testClient{}, Loop: &testLoop{t: t}}
+	entry := routes.Binding{Origin: llm.Origin{Provider: "test", APIType: testProtocol}, Client: &testClient{}, Loop: &testLoop{t: t}}
 	if err := registry.Register(entry); err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestRegistryRejectsInvalidWiringAndMutation(t *testing.T) {
 	if _, err := registry.LoopFor("unknown"); err == nil {
 		t.Fatal("unknown provider accepted")
 	}
-	if err := registry.Register(routes.Binding{Origin: llm.Origin{Provider: "late", Protocol: testProtocol}, Client: &testClient{}, Loop: &testLoop{t: t}}); err == nil {
+	if err := registry.Register(routes.Binding{Origin: llm.Origin{Provider: "late", APIType: testProtocol}, Client: &testClient{}, Loop: &testLoop{t: t}}); err == nil {
 		t.Fatal("sealed registry modified")
 	}
 }
@@ -217,18 +217,18 @@ func TestRegistryRejectsInvalidWiringAndMutation(t *testing.T) {
 func TestProviderBindingsShareRoutesAndKeepSourceCompaction(t *testing.T) {
 	registry := routes.New()
 	loop, source := &testLoop{t: t}, &testCompactor{}
-	if err := registry.RegisterCompactor(llm.ProtocolChat, source); err != nil {
+	if err := registry.RegisterCompactor(llm.APITypeChat, source); err != nil {
 		t.Fatal(err)
 	}
 	for _, provider := range []string{"first", "second"} {
 		if err := registry.Register(routes.Binding{
-			Origin: llm.Origin{Provider: provider, Protocol: llm.ProtocolChat, BaseURL: "https://" + provider + ".invalid"},
+			Origin: llm.Origin{Provider: provider, APIType: llm.APITypeChat, BaseURL: "https://" + provider + ".invalid"},
 			Client: &testClient{}, Loop: loop, Compactor: source,
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	native := llm.Origin{Provider: "changed", Protocol: llm.ProtocolResponse, BaseURL: "https://new.invalid"}
+	native := llm.Origin{Provider: "changed", APIType: llm.APITypeResponse, BaseURL: "https://new.invalid"}
 	text := &testClient{}
 	if err := registry.Register(routes.Binding{Origin: native, Client: text}); err != nil {
 		t.Fatal(err)
@@ -254,14 +254,14 @@ func TestProviderBindingsShareRoutesAndKeepSourceCompaction(t *testing.T) {
 	if err != nil || actual != native {
 		t.Fatalf("native descriptor = %+v, %v", actual, err)
 	}
-	actual.Protocol = llm.ProtocolChat
+	actual.APIType = llm.APITypeChat
 	if unchanged, _ := registry.OriginFor(native.Provider); unchanged != native {
 		t.Fatal("caller mutated the binding descriptor")
 	}
 	for _, origin := range []llm.Origin{
-		{Protocol: llm.ProtocolChat},
-		{Provider: "removed", Protocol: llm.ProtocolChat, BaseURL: "https://old.invalid"},
-		{Provider: native.Provider, Protocol: llm.ProtocolChat, BaseURL: "https://old.invalid"},
+		{APIType: llm.APITypeChat},
+		{Provider: "removed", APIType: llm.APITypeChat, BaseURL: "https://old.invalid"},
+		{Provider: native.Provider, APIType: llm.APITypeChat, BaseURL: "https://old.invalid"},
 	} {
 		if actual, err := registry.CompactorFor(origin); err != nil || actual != source {
 			t.Fatalf("historical source was reinterpreted: %+v / %v", origin, err)
@@ -278,10 +278,10 @@ func TestProviderBindingsShareRoutesAndKeepSourceCompaction(t *testing.T) {
 func TestRegistryRejectsNilClientsAndUnwiredSourceCapabilities(t *testing.T) {
 	registry := routes.New()
 	var client *testClient
-	if err := registry.Register(routes.Binding{Origin: llm.Origin{Provider: "nil", Protocol: testProtocol}, Client: client}); err == nil {
+	if err := registry.Register(routes.Binding{Origin: llm.Origin{Provider: "nil", APIType: testProtocol}, Client: client}); err == nil {
 		t.Fatal("typed nil client accepted")
 	}
-	if err := registry.Register(routes.Binding{Origin: llm.Origin{Provider: "p", Protocol: testProtocol}, Client: &testClient{}, Compactor: &testCompactor{}}); err != nil {
+	if err := registry.Register(routes.Binding{Origin: llm.Origin{Provider: "p", APIType: testProtocol}, Client: &testClient{}, Compactor: &testCompactor{}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := registry.Seal(); err == nil {

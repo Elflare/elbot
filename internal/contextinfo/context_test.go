@@ -31,7 +31,7 @@ func TestDomainsCanBeMissingAndClearedIndependently(t *testing.T) {
 	ctx := WithConversation(base, Conversation{Source: Source{Platform: "qq"}})
 	ctx = WithActor(ctx, Actor{ID: "qq:1", Role: RoleUser})
 	ctx = WithExecution(ctx, Execution{SessionID: "session", RunID: "run"})
-	ctx = WithModel(ctx, Model{Provider: "fixed", Model: "m", Protocol: "chat"})
+	ctx = WithModel(ctx, Model{Provider: "fixed", Model: "m", APIType: "chat"})
 	cancel()
 	cleared := WithoutConversation(WithoutActor(WithoutExecution(WithoutModel(ctx))))
 	if _, ok := ConversationFromContext(cleared); ok {

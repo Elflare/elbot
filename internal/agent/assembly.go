@@ -81,7 +81,7 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 		return nil, err
 	}
 	sessions.SetMaterials(deps.Routes)
-	if err := deps.Contexts.CheckCompaction(llm.Origin{Protocol: llm.ProtocolChat}); err != nil {
+	if err := deps.Contexts.CheckCompaction(llm.Origin{APIType: llm.APITypeChat}); err != nil {
 		return nil, fmt.Errorf("context compaction wiring: %w", err)
 	}
 	runner := &dialogue.Runner{Routes: deps.Routes, Preparer: preparer, Messages: messages, Replies: replies, Turns: turns, View: view}
@@ -106,6 +106,7 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 			media: deps.Media, messages: store.Messages(), mediaRows: store.Media(), logger: logger,
 		},
 		background: &backgroundRunner{
+			registry: deps.ToolRegistry,
 			sessions: sessions, sessionRows: store.Sessions(), identity: identity, execution: execution,
 			preloader: deps.ToolPreloader, toolState: deps.ToolState,
 			sandboxRoot: filepath.Clean(strings.TrimSpace(cfg.SandboxRoot)), auditLogger: auditLogger,
@@ -115,6 +116,6 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 			turns: turns, requests: requests, identity: identity,
 		},
 		execution: execution, identity: identity, hooks: hooks, output: output, status: status,
-		completion: newCompletion(deps.Commands, sessions, turns, store, identity, deps.ToolRegistry, deps.ToolPreloader), signals: signals,
+		completion: newCompletion(deps.Commands, sessions, turns, store, identity, deps.ToolRegistry, deps.ToolPreloader, execution), signals: signals,
 	}, nil
 }

@@ -140,7 +140,11 @@ func (s *PreloadService) BackgroundSelections(ctx context.Context, names []strin
 		}
 		tag := normalizeToolTag(name)
 		roots := s.ToolNamesByTag(ctx, tag, func(t tool.Tool) bool {
-			return !t.Info().ForegroundOnly && t.Name() != "workspace" && canPreloadTool(ctx, t)
+			// Selection expands authorization roots before a model is chosen.
+			// Actual preload separately enforces current API availability.
+			info := t.Info()
+			_, skill := t.(tool.DetailProvider)
+			return !info.ForegroundOnly && !info.Hidden && !skill && t.Name() != "workspace" && tool.CanAccessTool(actorForView(ctx, Context{}), policyForManager(ctx, nil), info)
 		})
 		if len(roots) == 0 {
 			roots, tag = []string{name}, ""

@@ -67,6 +67,9 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 		}
 	}
 	if opts.FileManager != nil {
+		if err := registry.Register(NewViewImageTool(opts.FileManager.Media, opts.ChatHistory)); err != nil {
+			return err
+		}
 		if err := registry.Register(NewSendFileTool(opts.FileManager)); err != nil {
 			return err
 		}

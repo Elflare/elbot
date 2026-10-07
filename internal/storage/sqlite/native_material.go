@@ -59,13 +59,13 @@ func (r *SessionRepository) CreateMaterial(ctx context.Context, req storage.Sess
 			return err
 		}
 		var origin struct {
-			Protocol string `json:"protocol"`
+			APIType  string `json:"protocol"`
 			Provider string `json:"provider"`
 		}
 		if err := json.Unmarshal(fields["llm_origin"], &origin); err != nil {
 			return fmt.Errorf("native seed requires saved origin: %w", err)
 		}
-		if seed.Protocol != origin.Protocol || seed.Provider != origin.Provider {
+		if seed.APIType != origin.APIType || seed.Provider != origin.Provider {
 			return fmt.Errorf("native seed origin mismatch")
 		}
 		delete(fields, "llm_checkpoint")
@@ -89,7 +89,7 @@ func (r *SessionRepository) CreateMaterial(ctx context.Context, req storage.Sess
 		}
 	}
 	if seed := req.Seed; seed != nil {
-		if seed.Protocol == "" || seed.Provider == "" || seed.Consumed {
+		if seed.APIType == "" || seed.Provider == "" || seed.Consumed {
 			return fmt.Errorf("invalid native seed identity")
 		}
 		for _, value := range []string{seed.ItemsJSON, seed.MaterialsJSON, seed.ContinuationJSON, seed.CallsJSON} {
@@ -102,7 +102,7 @@ func (r *SessionRepository) CreateMaterial(ctx context.Context, req storage.Sess
 			return err
 		}
 		seed.CreatedAt = storage.Now()
-		if _, err := tx.ExecContext(ctx, `INSERT INTO native_seeds(id,session_id,protocol,provider,base_url,response_id,source_checkpoint_id,items_json,materials_json,continuation_json,calls_json,media_ids_json,consumed,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,?)`, seed.ID, seed.SessionID, seed.Protocol, seed.Provider, seed.BaseURL, seed.ResponseID, seed.SourceCheckpointID, seed.ItemsJSON, seed.MaterialsJSON, seed.ContinuationJSON, seed.CallsJSON, string(ids), storage.FormatTime(seed.CreatedAt)); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO native_seeds(id,session_id,protocol,provider,base_url,response_id,source_checkpoint_id,items_json,materials_json,continuation_json,calls_json,media_ids_json,consumed,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,?)`, seed.ID, seed.SessionID, seed.APIType, seed.Provider, seed.BaseURL, seed.ResponseID, seed.SourceCheckpointID, seed.ItemsJSON, seed.MaterialsJSON, seed.ContinuationJSON, seed.CallsJSON, string(ids), storage.FormatTime(seed.CreatedAt)); err != nil {
 			return err
 		}
 		if err := nativeMediaReferences(ctx, tx, "native_seed", seed.ID, seed.SessionID, seed.MediaIDs); err != nil {
@@ -143,7 +143,7 @@ func (r *DialogueRepository) Seed(ctx context.Context, sessionID string) (*stora
 	}
 	seed := &storage.NativeSeed{}
 	var created, ids string
-	err = r.db.QueryRowContext(ctx, `SELECT id,session_id,protocol,provider,base_url,response_id,source_checkpoint_id,items_json,materials_json,continuation_json,calls_json,media_ids_json,consumed,created_at FROM native_seeds WHERE id=? AND session_id=?`, id, sessionID).Scan(&seed.ID, &seed.SessionID, &seed.Protocol, &seed.Provider, &seed.BaseURL, &seed.ResponseID, &seed.SourceCheckpointID, &seed.ItemsJSON, &seed.MaterialsJSON, &seed.ContinuationJSON, &seed.CallsJSON, &ids, &seed.Consumed, &created)
+	err = r.db.QueryRowContext(ctx, `SELECT id,session_id,protocol,provider,base_url,response_id,source_checkpoint_id,items_json,materials_json,continuation_json,calls_json,media_ids_json,consumed,created_at FROM native_seeds WHERE id=? AND session_id=?`, id, sessionID).Scan(&seed.ID, &seed.SessionID, &seed.APIType, &seed.Provider, &seed.BaseURL, &seed.ResponseID, &seed.SourceCheckpointID, &seed.ItemsJSON, &seed.MaterialsJSON, &seed.ContinuationJSON, &seed.CallsJSON, &ids, &seed.Consumed, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("native seed reference is missing")
 	}

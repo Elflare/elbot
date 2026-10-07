@@ -34,7 +34,7 @@ func TestCreateCompactedInheritsSourceAndActivatesOnlyForeground(t *testing.T) {
 				}
 				ctx = WithBinding(ctx, original)
 			}
-			origin := llm.Origin{Protocol: llm.ProtocolChat, Provider: "source", BaseURL: "https://source.invalid/v1"}
+			origin := llm.Origin{APIType: llm.APITypeChat, Provider: "source", BaseURL: "https://source.invalid/v1"}
 			if _, err := svc.RegisterOrigin(ctx, source.ID, origin); err != nil {
 				t.Fatal(err)
 			}

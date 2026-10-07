@@ -10,7 +10,7 @@ import (
 )
 
 func materialSeed(id string) *storage.NativeSeed {
-	return &storage.NativeSeed{ID: id, Protocol: "response", Provider: "p", ItemsJSON: `[{"type":"compaction","encrypted_content":"opaque"}]`, MaterialsJSON: `[]`, ContinuationJSON: `[]`, CallsJSON: `[]`}
+	return &storage.NativeSeed{ID: id, APIType: "response", Provider: "p", ItemsJSON: `[{"type":"compaction","encrypted_content":"opaque"}]`, MaterialsJSON: `[]`, ContinuationJSON: `[]`, CallsJSON: `[]`}
 }
 
 func TestNativeSessionMaterialCreateRollsBackSessionMessagesAndMedia(t *testing.T) {
@@ -51,7 +51,7 @@ func TestNativeSeedConsumptionIsAtomicWithFirstCheckpoint(t *testing.T) {
 	if err := store.Sessions().CreateMaterial(ctx, storage.SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
 		t.Fatal(err)
 	}
-	exchange := &storage.NativeExchange{ID: "child-exchange", SessionID: row.ID, Protocol: "response", Provider: "p", RequestJSON: `{"input":[]}`, InputIDsJSON: `[]`}
+	exchange := &storage.NativeExchange{ID: "child-exchange", SessionID: row.ID, APIType: "response", Provider: "p", RequestJSON: `{"input":[]}`, InputIDsJSON: `[]`}
 	if err := store.Dialogues().CreateExchange(ctx, exchange); err != nil {
 		t.Fatal(err)
 	}

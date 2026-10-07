@@ -13,6 +13,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/platform/refcontext"
+	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/tool/runtimeinfo"
@@ -177,6 +178,9 @@ func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (
 		lines = append(lines, line)
 	}
 	lines = append(lines, "仅在需要媒体时调用 get_media(message_id=[\"...\"], media_index=[[1]]) 获取媒体 ID；可用 get_chat_history_around(message_id=\"...\") 查看附近上下文；可用 reply_to_chat_history_message(message_id=\"...\", message=\"...\") 引用回复。")
+	if hint := viewImageHistoryHint(ctx, t.center); hint != "" {
+		lines = append(lines, hint)
+	}
 	return &tool.Result{Content: chatHistoryResultLines(lines)}, nil
 }
 
@@ -219,7 +223,20 @@ func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest
 		}
 		lines = append(lines, line)
 	}
+	if hint := viewImageHistoryHint(ctx, t.center); hint != "" {
+		lines = append(lines, hint)
+	}
 	return &tool.Result{Content: chatHistoryResultLines(lines)}, nil
+}
+
+func viewImageHistoryHint(ctx context.Context, center *media.Manager) string {
+	actor, _ := contextinfo.ActorFromContext(ctx)
+	policy, _ := security.PolicyFromContext(ctx)
+	info := (ViewImageTool{}).Info()
+	if center != nil && tool.InfoAvailableInContext(ctx, info) && tool.CanAccessTool(actor, policy, info) {
+		return "看图可用 view_image(message_id=[\"...\"])；指定图片沿用上述媒体序号。"
+	}
+	return ""
 }
 
 func (t ReplyToChatHistoryMessageTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {

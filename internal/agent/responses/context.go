@@ -40,7 +40,7 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 	if err != nil {
 		return nil, err
 	}
-	if !known || origin.Protocol != llm.ProtocolResponse || origin.Provider == "" {
+	if !known || origin.APIType != llm.APITypeResponse || origin.Provider == "" {
 		return nil, fmt.Errorf("Responses 原生归属不完整")
 	}
 	w := &nativeWindow{Origin: origin, Checkpoint: checkpoint}
@@ -49,7 +49,7 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		return nil, err
 	}
 	if seed != nil {
-		if seed.Protocol != string(origin.Protocol) || seed.Provider != origin.Provider {
+		if seed.APIType != string(origin.APIType) || seed.Provider != origin.Provider {
 			return nil, fmt.Errorf("原生 seed 厂商或协议不匹配")
 		}
 		w.Items, err = decodeSeedInputs(seed)
@@ -97,7 +97,7 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		if err != nil {
 			return nil, err
 		}
-		if exchange.SessionID != row.ID || exchange.Status != "completed" || exchange.PreviousCheckpointID != cp.ParentID || exchange.Protocol != string(origin.Protocol) || exchange.Provider != origin.Provider {
+		if exchange.SessionID != row.ID || exchange.Status != "completed" || exchange.PreviousCheckpointID != cp.ParentID || exchange.APIType != string(origin.APIType) || exchange.Provider != origin.Provider {
 			return nil, fmt.Errorf("原生 checkpoint 的已提交响应不完整")
 		}
 		var response api.Response
@@ -597,7 +597,7 @@ func (w *nativeWindow) Seed(continuation []api.Item, calls []storage.NativeCall,
 	if w.Checkpoint != nil {
 		source = w.Checkpoint.ID
 	}
-	return &storage.NativeSeed{Protocol: string(w.Origin.Protocol), Provider: w.Origin.Provider, BaseURL: w.Origin.BaseURL, ResponseID: responseID, SourceCheckpointID: source, ItemsJSON: string(items), MaterialsJSON: string(materials), ContinuationJSON: string(more), CallsJSON: string(snapshot), MediaIDs: w.mediaIDs()}, nil
+	return &storage.NativeSeed{APIType: string(w.Origin.APIType), Provider: w.Origin.Provider, BaseURL: w.Origin.BaseURL, ResponseID: responseID, SourceCheckpointID: source, ItemsJSON: string(items), MaterialsJSON: string(materials), ContinuationJSON: string(more), CallsJSON: string(snapshot), MediaIDs: w.mediaIDs()}, nil
 }
 
 func checkWindowTarget(w *nativeWindow, target llm.Origin) error {

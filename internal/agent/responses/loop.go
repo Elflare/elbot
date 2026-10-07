@@ -81,7 +81,7 @@ func (r *Loop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials
 		if err != nil {
 			return nil, err
 		}
-		if !known || seed.Protocol != string(origin.Protocol) || seed.Provider != origin.Provider {
+		if !known || seed.APIType != string(origin.APIType) || seed.Provider != origin.Provider {
 			return nil, fmt.Errorf("原生 seed 厂商或协议不匹配")
 		}
 	}

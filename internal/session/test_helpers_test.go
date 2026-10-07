@@ -22,7 +22,7 @@ func newTestService(t *testing.T) (*Service, storage.Store) {
 type testDisplayMaterials struct{}
 
 func (testDisplayMaterials) MaterialFor(origin llm.Origin) (MaterialPreparer, error) {
-	if origin.Protocol != llm.ProtocolChat {
+	if origin.APIType != llm.APITypeChat {
 		return nil, fmt.Errorf("native material is not configured in this display fixture")
 	}
 	return DisplayMaterial{}, nil

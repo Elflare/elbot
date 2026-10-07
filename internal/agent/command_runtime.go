@@ -61,6 +61,14 @@ func (e *commandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		return true, nil
 	}
 
+	if parsed.Name == "tools" {
+		prepared, err := e.execution.modelContext(ctx, sessionRow)
+		if err == nil {
+			ctx = prepared
+		} else {
+			ctx = contextinfo.WithoutModel(ctx)
+		}
+	}
 	result, err := e.router.Dispatch(ctx, text)
 	if err != nil {
 		return true, err
